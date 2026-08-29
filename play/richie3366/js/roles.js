@@ -34,7 +34,7 @@ import {
 } from './generated/artifacts_data.js';
 import { game } from './gstate.js';
 import {
-    A_CHAOTIC, A_NEUTRAL, A_LAWFUL, A_INT, A_WIS,
+    A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, A_INT, A_WIS,
     MH_HUMAN, MH_ELF, MH_DWARF, MH_GNOME, MH_ORC,
 } from './const.js';
 
@@ -744,9 +744,11 @@ export function align_str(a) {
 export function align_gname(urole, a) {
     const r = urole || {};
     let gnam;
-    if (a === A_LAWFUL) gnam = r.lgod || 'Blind Io';
+    if (a === A_NONE) gnam = 'Moloch';
+    else if (a === A_LAWFUL) gnam = r.lgod || 'Blind Io';
     else if (a === A_CHAOTIC) gnam = r.cgod || 'Offler';
-    else gnam = r.ngod || '_The Lady';
+    else if (a === A_NEUTRAL) gnam = r.ngod || '_The Lady';
+    else gnam = 'someone';
     if (gnam.charAt(0) === '_') gnam = gnam.slice(1);
     return gnam;
 }

@@ -1296,10 +1296,16 @@ let _toplin = TOPLINE_EMPTY;
 // C wintty.h ttyDisplay->inread — getline/yn set this; command ^P is 0.
 let _tty_inread = 0;
 // C wintty.h DisplayDesc.intr — non-zero if inread was interrupted
-// (wintty.c tty_wait_synch `:3643` ++ still named). yn clean_up
+// (wintty.c tty_wait_synch `:3643` ++ is D-1646). yn clean_up
 // decrements (D-1631). getline.c hooked_tty_getlin `:102–105` is
 // D-1632 (`hooked_getlin_apply_intr`).
 let _tty_intr = 0;
+// C wintty.h ttyDisplay->inmore — more() while waiting; wait_synch
+// addtopl("--More--") when interrupted mid-more (D-1646).
+let _tty_inmore = 0;
+// C wintty.h ttyDisplay->rawprint — wait_synch getret path (D-1646).
+// tty_raw_print setter named.
+let _tty_rawprint = 0;
 
 /** C wintty.h ttyDisplay->inread. Getline always zeros it around
  *  tty_doprev_message (D-1611). yn zeros it only when prevmsg_window!='s'
@@ -1313,7 +1319,7 @@ export function set_tty_inread(n) {
     _tty_inread = n | 0;
 }
 
-/** C wintty.h ttyDisplay->intr. Increment is tty_wait_synch (named). */
+/** C wintty.h ttyDisplay->intr. Increment is tty_wait_synch (D-1646). */
 export function get_tty_intr() {
     return _tty_intr | 0;
 }
@@ -1329,7 +1335,7 @@ export function set_tty_intr(n) {
  * (curx unchanged). optlist.h silent is opt_out default On.
  * BEL is not an 80x24 cell; do not write stdout (Rule #2 / Chrome /
  * runner pollution). Callers still invoke this so `!silent` is one
- * branch away. wintty menu MENU_SEARCH still named; getline
+ * branch away. MENU_SEARCH PICK_NONE bell is D-1646; getline
  * kill_char / empty-erase / invalid-key bells are D-1632;
  * ESC-nonempty fallthrough else bell is D-1639.
  */
@@ -1714,6 +1720,8 @@ export function reset_display_messages() {
     _morc = 0;
     _tty_inread = 0;
     _tty_intr = 0;
+    _tty_inmore = 0;
+    _tty_rawprint = 0;
     _msg_cw = null;
     _snapshot_mesgs = null;
     _putmsghistory_initd = false;
@@ -4478,6 +4486,21 @@ export async function timebot() {
 // capture boundary, matching C session steps with 0 RNG at --More--.
 // C more() does not call flush_screen/bot — only message; paint cached botl.
 export async function more() {
+    // C topl.c more() — debug_fuzzer skip named; inmore recursion guard.
+    if (_tty_inmore) return;
+    _tty_inmore++;
+    try {
+        await more_wait_keys();
+    } finally {
+        _tty_inmore = 0;
+        _toplines = '';
+        _toplin = TOPLINE_EMPTY;
+        game._pending_message = '';
+    }
+}
+
+/** C topl.c more() body after inmore++ — xwaitforspace("\\033 "). */
+async function more_wait_keys() {
     // Lazy import avoids display ↔ input cycle (nhgetch calls topline hooks).
     const { nhgetch } = await import('./input.js');
     const CO = game?.nhDisplay?.cols || 80;
@@ -4540,10 +4563,65 @@ export async function more() {
         }
         tty_nhbell();
     }
+}
 
-    _toplines = '';
-    _toplin = TOPLINE_EMPTY;
-    game._pending_message = '';
+/**
+ * C topl.c addtopl `:193–202` — putsyms then toplin NEED_MORE.
+ * @param {string} s
+ */
+function addtopl(s) {
+    const base = (_toplines || game._pending_message || '');
+    const text = base + s;
+    _toplines = text;
+    _toplin = TOPLINE_NEED_MORE;
+    game._pending_message = text;
+    if (_delay_flushing) _paintToplineOnly();
+    else _buildScreenOutput();
+}
+
+/**
+ * C wintty.c getret `:763–781` — "Hit space/return to continue: " then
+ * xwaitforspace(" "). Contest tty is cbreak (space). No MICRO/WIN32CON.
+ */
+async function getret() {
+    const cbreak = game.iflags?.cbreak !== false;
+    const which = cbreak ? 'space' : 'return';
+    addtopl(`\nHit ${which} to continue: `);
+    const { nhgetch } = await import('./input.js');
+    for (;;) {
+        const c = await nhgetch();
+        if (c === 13 || c === 10) break;
+        if (cbreak) {
+            if (c === 27 || c === 32) break;
+            tty_nhbell();
+        }
+    }
+}
+
+/**
+ * C wintty.c tty_wait_synch `:3623–3647`.
+ * No map / rawprint → getret. Else fflush map; inmore addtopl
+ * "--More--"; inread > gameover → SPECIAL_PROMPT + two
+ * tty_doprev_message then intr++. HUPSKIP named. Callers:
+ * ttyinv_create too_small; termcap no-CM / pager fail named.
+ * @returns {Promise<void>}
+ */
+export async function tty_wait_synch() {
+    const disp = game.nhDisplay;
+    if (!disp || _tty_rawprint) {
+        await getret();
+        _tty_rawprint = 0;
+        return;
+    }
+    _buildScreenOutput();
+    if (_tty_inmore) {
+        addtopl('--More--');
+    } else if (_tty_inread > (game.program_state?.gameover | 0)) {
+        mark_topline_special_prompt(_toplines);
+        await tty_doprev_message();
+        await tty_doprev_message();
+        _tty_intr++;
+    }
 }
 
 /**

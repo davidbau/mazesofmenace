@@ -10,8 +10,9 @@
 //            gnostic/weaphit/killer/literate/pets; num_genocides;
 //            polypiles/polyselfs/wishes(+wisharti); sokoban_in_play;
 //            wizard count detail lines; show_achievements when
-//            final||wizard (record_achievement / uachieved). SoundAchievement
-//            + livelog_printf deferred. Final disclosure path deferred.
+//            final||wizard (record_achievement / uachieved).
+//            record_achievement livelog_printf (achieve_msg; gameover skip).
+//            SoundAchievement still named. Final disclosure path deferred.
 //   vanquished: in-progress #vanquished with defquery 'y' (not ask);
 //               mvitals.died census; traditional VANQ_MLVL_MNDX sort;
 //               ordinary an()/makeplural lines + total when ntypes>1;
@@ -54,7 +55,11 @@ import {
     ECMD_OK,
     ENL_GAMEINPROGRESS,
     G_GENOD,
+    LL_ACHIEVE,
+    LL_UMONST,
+    LL_MINORAC,
     LL_SPOILER,
+    LL_DUMP,
     LOW_PM,
     VANQ_MLVL_MNDX,
     VANQ_MSTR_MNDX,
@@ -66,6 +71,8 @@ import {
     VANQ_COUNT_L_H,
 } from './const.js';
 import { pline } from './display.js';
+import { livelog_printf } from './pline.js';
+import { objectNameStrs } from './objects.js';
 import { show_text_pages, show_nhw_menu_text, mhidden_description } from './pager.js';
 import { visible_region_at } from './region.js';
 import {
@@ -227,8 +234,48 @@ export function remove_achievement(achidx) {
 }
 
 /**
+ * C ref: insight.c achieve_msg[] — ordered per you.h enum achievements.
+ * Index 0 unused; ranks 23..30 have empty msg (formatted on the fly).
+ */
+const achieve_msg = [
+    { llflag: 0, msg: '' },
+    { llflag: LL_ACHIEVE, msg: 'acquired the Bell of Opening' },
+    { llflag: LL_ACHIEVE, msg: 'entered Gehennom' },
+    { llflag: LL_ACHIEVE, msg: 'acquired the Candelabrum of Invocation' },
+    { llflag: LL_ACHIEVE, msg: 'acquired the Book of the Dead' },
+    { llflag: LL_ACHIEVE, msg: 'performed the invocation' },
+    { llflag: LL_ACHIEVE, msg: 'acquired The Amulet of Yendor' },
+    { llflag: LL_ACHIEVE, msg: 'entered the Elemental Planes' },
+    { llflag: LL_ACHIEVE, msg: 'entered the Astral Plane' },
+    { llflag: LL_ACHIEVE, msg: 'ascended' },
+    { llflag: LL_ACHIEVE | LL_SPOILER, msg: "acquired the Mines' End" },
+    { llflag: LL_ACHIEVE | LL_SPOILER, msg: 'acquired the Sokoban' },
+    { llflag: LL_ACHIEVE | LL_UMONST, msg: 'killed Medusa' },
+    { llflag: 0, msg: 'hero was always blond, no, blind' },
+    { llflag: 0, msg: 'hero never wore armor' },
+    { llflag: LL_MINORAC | LL_DUMP, msg: 'entered the Gnomish Mines' },
+    { llflag: LL_ACHIEVE, msg: 'reached Mine Town' },
+    { llflag: LL_MINORAC, msg: 'entered a shop' },
+    { llflag: LL_MINORAC, msg: 'entered a temple' },
+    { llflag: LL_ACHIEVE, msg: 'consulted the Oracle' },
+    { llflag: LL_MINORAC | LL_DUMP, msg: 'read a Discworld novel' },
+    { llflag: LL_ACHIEVE, msg: 'entered Sokoban' },
+    { llflag: LL_ACHIEVE, msg: 'entered the Bigroom' },
+    { llflag: LL_MINORAC | LL_DUMP, msg: '' },
+    { llflag: LL_MINORAC | LL_DUMP, msg: '' },
+    { llflag: LL_MINORAC | LL_DUMP, msg: '' },
+    { llflag: LL_ACHIEVE, msg: '' },
+    { llflag: LL_ACHIEVE, msg: '' },
+    { llflag: LL_ACHIEVE, msg: '' },
+    { llflag: LL_ACHIEVE, msg: '' },
+    { llflag: LL_ACHIEVE, msg: '' },
+    { llflag: LL_MINORAC, msg: "learned castle drawbridge's tune" },
+    { llflag: 0, msg: '' },
+];
+
+/**
  * C ref: insight.c record_achievement — append unless duplicate abs.
- * SoundAchievement + livelog_printf deferred (no screen for #conduct).
+ * SoundAchievement named (contest Soundeffect is empty).
  */
 export function record_achievement(achidx) {
     const absidx = Math.abs(achidx | 0);
@@ -245,11 +292,35 @@ export function record_achievement(achidx) {
             break;
         }
     }
-    // SoundAchievement deferred
+    // SoundAchievement(achidx, 0, repeat) named — no SND_LIB
     if (repeat) return;
     ach[i] = achidx | 0;
     ach[i + 1] = 0;
-    // livelog_printf deferred (program_state.gameover skip too)
+
+    /* avoid livelog during final disclosure (nudist / blind-from-birth /
+       ascension logged separately in really_done) */
+    if (game.program_state?.gameover) return;
+
+    const row = achieve_msg[absidx] || achieve_msg[0];
+    if (absidx >= ACH_RNK1 && absidx <= ACH_RNK8) {
+        const u = game.u || {};
+        const title = rank_of(
+            rank_to_xlev(absidx - (ACH_RNK1 - 1)),
+            game.urole?.mnum,
+            achidx < 0,
+        );
+        livelog_printf(row.llflag,
+            'attained the rank of %s (level %d)',
+            title, u.ulevel | 0);
+    } else if (achidx === ACH_SOKO_PRIZE || achidx === ACH_MINE_PRIZE) {
+        const otyp = achidx === ACH_SOKO_PRIZE
+            ? (game.context?.achieveo?.soko_prize_otyp | 0)
+            : (game.context?.achieveo?.mines_prize_otyp | 0);
+        livelog_printf(row.llflag, '%s %s',
+            row.msg, objectNameStrs[otyp] || '');
+    } else {
+        livelog_printf(row.llflag, '%s', row.msg);
+    }
 }
 
 /**

@@ -2011,7 +2011,9 @@ function end_engulf() {
 /**
  * C ref: uhitm.c gulpum :4958–5194 — poly'd hero engulfs a monster.
  * Instant (not multi-move). d() then engulf_target then stuffed/uswallow
- * gate. Named omit: visor can_blnd; gulpmu invent snuff.
+ * gate. Await vampshifter `newcham(..., NO_NC_FLAGS)` so unleash /
+ * Elbereth finish before the expel pline (D-1648; C `:4992`).
+ * Named omit: visor can_blnd; gulpmu invent snuff.
  */
 export async function gulpum(mdef, mattk) {
     const u = game.u || {};
@@ -2034,7 +2036,7 @@ export async function gulpum(mdef, mattk) {
             }
         }
 
-        if (is_vampshifter(mdef) && newcham(mdef, mons(mdef.cham), 0)) {
+        if (is_vampshifter(mdef) && await newcham(mdef, mons(mdef.cham), 0)) {
             await pline(`You ${engl_verb} it, then ${expel_verb} it.`);
             if (canspotmon(mdef)) {
                 await pline(`It turns into ${x_monnam(mdef, ARTICLE_A, null,

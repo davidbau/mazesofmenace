@@ -22,6 +22,7 @@ export function gamelog_add(glflags, gltime, str) {
  */
 export function livelog_printf(ll_type, fmt, ...args) {
     let i = 0;
-    const msg = String(fmt).replace(/%s/g, () => String(args[i++] ?? ''));
+    // C vsnprintf %s / %d / %ld; file livelog_add still deferred.
+    const msg = String(fmt).replace(/%(?:ld|d|s)/g, () => String(args[i++] ?? ''));
     gamelog_add(ll_type, game.moves | 0, msg);
 }

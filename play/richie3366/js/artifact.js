@@ -7,7 +7,8 @@ import {
     NROFARTIFACTS,
     artilistRaw,
 } from './generated/artifacts_data.js';
-import { objectNames } from './objects.js';
+import { objectNames, NUM_OBJECTS, objectDescrs } from './objects.js';
+import { obj_shuffle_range } from './o_init.js';
 import { monsterNames, NON_PM, M2_UNDEAD, is_demon, is_dprince, is_dlord } from './monsters.js';
 import {
     A_NONE,
@@ -51,6 +52,7 @@ import {
     ECMD_CANCEL,
     GETOBJ_EXCLUDE,
     GETOBJ_SUGGEST,
+    GETOBJ_PROMPT,
     LAST_PROP,
     HALLUC,
     TIMEOUT,
@@ -77,7 +79,7 @@ import {
     flush_screen, flush_topl_more, pline, You_feel, newsym, see_monsters,
     set_sting_effects,
 } from './display.js';
-import { compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv } from './invent.js';
+import { compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, getobj } from './invent.js';
 import { xname, the, vtense, cxname, otense, set_undiscovered_artifact } from './objnam.js';
 import { recalc_telepat_range } from './do_wear.js';
 
@@ -792,6 +794,52 @@ export function exist_artifact(otyp, name) {
     return false;
 }
 
+/**
+ * C ref: artifact.c restrict_name `:574–623`.
+ * OBJ_DESCR + shuffle pool for undiscovered same-class; then artilist
+ * strcmp after stripping "the ". SPFX_NOGEN|SPFX_RESTR or quan>1.
+ * Caller: do_oname slip; wield.c spec_charge still named.
+ */
+export function restrict_name(otmp, name) {
+    if (!name) return false;
+    let n = name;
+    if (n.length >= 4 && n.slice(0, 4).toLowerCase() === 'the ') n = n.slice(4);
+
+    const objects = game.objects;
+    const otyp = otmp.otyp | 0;
+    const ocls = objects[otyp].oc_class;
+    const sametype = new Array(NUM_OBJECTS).fill(false);
+    sametype[otyp] = true;
+    const odesc = objectDescrs[objects[otyp].oc_descr_idx ?? otyp];
+    if (!objects[otyp].oc_name_known && odesc) {
+        const [lo, hi] = obj_shuffle_range(otyp);
+        const b = game.bases || [];
+        for (let i = b[ocls] | 0; i < NUM_OBJECTS; i++) {
+            if (objects[i].oc_class !== ocls) break;
+            const other = objectDescrs[objects[i].oc_descr_idx ?? i];
+            if (!objects[i].oc_name_known && other
+                && (odesc === other || (i >= lo && i <= hi))) {
+                sametype[i] = true;
+            }
+        }
+    }
+
+    const list = artilist();
+    for (let i = 1; i < list.length; i++) {
+        const a = list[i];
+        if (!a || !sametype[a.otyp]) continue;
+        let aname = a.name;
+        if (aname.length >= 4 && aname.slice(0, 4).toLowerCase() === 'the ') {
+            aname = aname.slice(4);
+        }
+        if (aname === n) {
+            return ((a.spfx & (SPFX_NOGEN | SPFX_RESTR)) !== 0)
+                || ((otmp.quan | 0) > 1);
+        }
+    }
+    return false;
+}
+
 /** C ref: artifact.c artifact_origin */
 export function artifact_origin(arti, aflags) {
     const a = arti?.oartifact | 0;
@@ -910,45 +958,6 @@ function invoke_ok(obj) {
     }
     if (obj.otyp === CRYSTAL_BALL) return GETOBJ_SUGGEST;
     return GETOBJ_EXCLUDE;
-}
-
-function invoke_suggest_lets() {
-    const lets = [];
-    for (const o of game.invent || []) {
-        if (o?.invlet && invoke_ok(o) === GETOBJ_SUGGEST) lets.push(o.invlet);
-    }
-    lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
-    return lets.join('');
-}
-
-/**
- * C ref: invent.c getobj("invoke", invoke_ok, GETOBJ_PROMPT)
- */
-async function getobj_invoke() {
-    const raw = invoke_suggest_lets();
-    if (!raw) {
-        await pline("You don't have anything to invoke.");
-        return null;
-    }
-    for (;;) {
-        await flush_topl_more();
-        const lets = raw.length > 5 ? compactify_invlets(raw) : raw;
-        const query = `What do you want to invoke? [${lets} or ?*]`;
-        const prompt = `${query} `;
-        game._pending_message = prompt;
-        await flush_screen(1);
-        const disp = game.nhDisplay;
-        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
-
-        const key = await nhgetch();
-        if (key === 27) return null;
-        const ch = String.fromCharCode(key);
-        if (ch === '?' || ch === '*') continue;
-        for (const o of game.invent || []) {
-            if (o.invlet === ch && invoke_ok(o) === GETOBJ_SUGGEST) return o;
-        }
-        await pline(`You don't have that object.`);
-    }
 }
 
 /** C invent.c getobj("charge", charge_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT).
@@ -1594,10 +1603,11 @@ export async function arti_invoke(obj) {
 
 /**
  * C ref: artifact.c doinvoke — #invoke command.
+ * getobj("invoke", invoke_ok, GETOBJ_PROMPT) is D-1665 (canned invlet).
  * @returns {number} ECMD_*
  */
 export async function doinvoke() {
-    const obj = await getobj_invoke();
+    const obj = await getobj('invoke', invoke_ok, GETOBJ_PROMPT);
     if (!obj) return ECMD_CANCEL;
     if (!retouch_object(obj, false)) return ECMD_TIME;
     return arti_invoke(obj);

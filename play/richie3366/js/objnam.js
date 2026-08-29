@@ -28,6 +28,7 @@ import {
     pmnames, MALE, FEMALE, NEUTRAL, NON_PM, NUMMONS, LOW_PM, NUM_MGENDERS,
 } from './monsters.js';
 import { BOGUSMON_BUF } from './generated/bogusmon_data.js';
+import { upstart } from './hacklib.js';
 import {
     PM_SAMURAI, PM_CLERIC, PM_LICHEN, PM_ACID_BLOB, PM_LONG_WORM_TAIL,
 } from './generated/monsters_data.js';
@@ -42,11 +43,12 @@ import {
     P_DART, P_BOOMERANG,
     OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT,
     ROTTEN_TIN, HOMEMADE_TIN, SPINACH_TIN, ismnum, MV_KNOWS_EGG,
-    ONAME, has_oname,
+    ONAME, has_oname, QBUFSZ,
     CXN_NORMAL, CXN_SINGULAR, CXN_NO_PFX, CXN_PFX_THE, CXN_ARTICLE,
     CXN_NOCORPSE,
     CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_RANDOM,
     BURN_OBJECT, HAND, FOOT, FINGER, FINGERTIP, RIGHT_HANDED,
+    CONTAINED_SYM, HANDS_SYM,
 } from './const.js';
 
 const PM_ALIGNED_CLERIC = monsterNames.indexOf('PM_ALIGNED_CLERIC');
@@ -358,25 +360,12 @@ function is_weptool(obj) {
     return n === 'PICK_AXE' || n === 'GRAPPLING_HOOK' || n === 'UNICORN_HORN';
 }
 
-function uses_known_otyp(otyp) {
-    const oc = game.objects?.[otyp];
-    if (oc?.oc_uses_known) return true;
-    const cls = oc?.oc_class ?? 0;
-    if (cls === WEAPON_CLASS || cls === ARMOR_CLASS || is_charged_otyp(otyp))
-        return true;
-    // C objects.h FOOD(..., unk=1, ...) → oc_uses_known; generated table
-    // omits the bit (same debt as D-0316 WAND). Egg/tin contents stay
-    // hidden until obj.known (open/eat / starter ini_inv).
-    const n = objectNames[otyp];
-    if (n === 'TIN' || n === 'EGG') return true;
-    // C objects.h unique/invocation TOOL/AMULET/SPBOOK BITS(..., uskn=1, ...)
-    // — generated table omits oc_uses_known (D-0872). Needed so xname can
-    // clear known before the_unique_obj picks "the "/"a ".
-    if (n === 'BELL_OF_OPENING' || n === 'CANDELABRUM_OF_INVOCATION'
-        || n === 'AMULET_OF_YENDOR' || n === 'FAKE_AMULET_OF_YENDOR'
-        || n === 'SPE_BOOK_OF_THE_DEAD')
-        return true;
-    return false;
+/**
+ * C ref: objclass.h oc_uses_known / objects.h BITS(..., uskn, ...).
+ * Table field from extract-objects.py (D-1674); not a class/name list.
+ */
+export function otyp_uses_known(otyp) {
+    return !!(game.objects?.[otyp]?.oc_uses_known);
 }
 
 /**
@@ -387,13 +376,9 @@ function uses_known_otyp(otyp) {
 function clear_unique_known_leak(obj) {
     if (!obj) return;
     const ocl = game.objects?.[obj.otyp];
-    if (!ocl?.oc_name_known && otyp_uses_known(obj.otyp) && ocl?.oc_unique) {
+    if (!ocl?.oc_name_known && ocl?.oc_uses_known && ocl?.oc_unique) {
         obj.known = 0;
     }
-}
-
-export function otyp_uses_known(otyp) {
-    return uses_known_otyp(otyp);
 }
 
 export function otyp_is_charged(otyp) {
@@ -978,6 +963,24 @@ export function cxname_singular(obj) {
 /** C ref: hacklib.c strstri — case-insensitive substring. */
 function strstri_objnam(hay, needle) {
     return String(hay ?? '').toLowerCase().includes(String(needle).toLowerCase());
+}
+
+/**
+ * C ref: objnam.c gloves_simple_name `:5531–5547` — "gauntlets" iff
+ * dknown and (oc_name_known ? OBJ_NAME : OBJ_DESCR) contains
+ * "gauntlets" (strstri). Else "gloves". Callers fingers_or_gloves
+ * (apply use_grease / use_towel) and fountain/trap local clones stay.
+ */
+export function gloves_simple_name(gloves) {
+    if (gloves && gloves.dknown) {
+        const otyp = gloves.otyp | 0;
+        const ocl = game.objects?.[otyp];
+        const actualn = objectNameStrs[otyp] || '';
+        const descrpn = objectDescrs[otyp] || '';
+        const s = ocl?.oc_name_known ? actualn : descrpn;
+        if (strstri_objnam(s, 'gauntlets')) return 'gauntlets';
+    }
+    return 'gloves';
 }
 
 /**
@@ -1923,6 +1926,14 @@ export function yname(obj) {
 }
 
 /**
+ * C ref: objnam.c Yname2 — highc first character of yname.
+ * Pre-existing local clones (do/music/timeout) stay.
+ */
+export function Yname2(obj) {
+    return upstart(yname(obj));
+}
+
+/**
  * C ref: objnam.c simpleonames ← minimal_xname — type appearance without
  * quan/BUC. Statue/figurine corpsenm suppressed (C bareobj.corpsenm=NON_PM).
  * C bareobj = zeroobj (owt 0) → BALL_CLASS never gets "very " via this path
@@ -1964,6 +1975,24 @@ export function ansimpleoname(obj) {
  */
 export function thesimpleoname(obj) {
     return the(simpleonames(obj));
+}
+
+/**
+ * C ref: objnam.c ysimple_name — shk_your + minimal_xname.
+ * JS simpleonames is the live minimal_xname stand-in (D-0881).
+ * Named omit: BUFSZ strncat cap (JS strings); sack→bag aliases.
+ * Pre-existing local clones (attrib/pickup) stay.
+ */
+export function ysimple_name(obj) {
+    return `${shk_your(obj)}${simpleonames(obj)}`;
+}
+
+/**
+ * C ref: objnam.c Ysimple_name2 — highc first character of ysimple_name.
+ * Pre-existing local clones (do_name/pickup) stay.
+ */
+export function Ysimple_name2(obj) {
+    return upstart(ysimple_name(obj));
 }
 
 /**
@@ -2036,6 +2065,75 @@ export function short_oname(obj, func, altfunc, lenlimit) {
     if (save_oname) obj.oextra.oname = save_oname;
     if (save_uname && ocl) ocl.oc_uname = save_uname;
     return outbuf;
+}
+
+/**
+ * C ref: objnam.c safe_qbuf `:5623–5698` — prefix + object name + suffix
+ * guaranteed to fit in QBUFSZ-1. `func` then `altfunc` via short_oname;
+ * lastR when the formatted name still overruns. qprefix null → empty
+ * start. C dest==qprefix means the prefix is already in dest; JS starts
+ * from qprefix (first arg unused except as that dest).
+ * Named omit: impossible() prefix/suffix/filler diagnostics (async
+ * pline; C continues after them).
+ *
+ * @param {string|null} [_qbuf] C dest; ignored when qprefix is given
+ * @param {string|null} qprefix
+ * @param {string|null} qsuffix
+ * @param {object} obj
+ * @param {function} func
+ * @param {function} [altfunc]
+ * @param {string} lastR
+ * @returns {string}
+ */
+export function safe_qbuf(_qbuf, qprefix, qsuffix, obj, func, altfunc, lastR) {
+    const lenlimit = QBUFSZ - 1;
+    const last = lastR == null ? '' : String(lastR);
+    const sfx = qsuffix == null ? '' : String(qsuffix);
+    const len_qsfx = sfx.length;
+    const len_lastR = last.length;
+
+    let buf;
+    if (qprefix == null) {
+        buf = '';
+    } else {
+        // C strncpy(..., lenlimit) then *endp='\0' at qbuf[lenlimit]
+        buf = String(qprefix).slice(0, lenlimit);
+    }
+    let len = buf.length;
+
+    if (len + len_lastR + len_qsfx > lenlimit) {
+        if (len < lenlimit) {
+            buf = (buf + last).slice(0, lenlimit);
+            len = buf.length;
+            if (sfx && len < lenlimit) {
+                buf = (buf + sfx).slice(0, lenlimit);
+            }
+        }
+    } else {
+        len += len_qsfx;
+        const bufp = short_oname(obj, func, altfunc, lenlimit - len);
+        if (len + String(bufp).length <= lenlimit) {
+            buf += bufp;
+        } else {
+            buf += last;
+        }
+        if (sfx) buf += sfx;
+    }
+    return buf;
+}
+
+/**
+ * C objnam.c doname_base `:1695–1709` — `wizard && iflags.wizweight`.
+ * `wizard` is `flags.debug`. with_price && last char ')' → ConcatF1
+ * delta 1 `, %u aum)`; else extra ` (%u aum)`.
+ */
+export function append_wizweight_suffix(obj, bp, with_price) {
+    if (!obj || !game.flags?.debug || !game.iflags?.wizweight) return bp;
+    const owt = obj.owt | 0;
+    if (with_price && bp.length > 0 && bp.charAt(bp.length - 1) === ')') {
+        return `${bp.slice(0, -1)}, ${owt} aum)`;
+    }
+    return `${bp} (${owt} aum)`;
 }
 
 /**
@@ -2416,40 +2514,74 @@ export function doname(obj) {
 
     // C doname_base: is_unpaid → unpaid_cost suffix (D-0461); with_price=0
     if (_doname_shop_suffix) bp = _doname_shop_suffix(obj, bp, false);
-    return bp;
+    return append_wizweight_suffix(obj, bp, false);
 }
 
 /**
  * C ref: objnam.c paydoname — doname with invent-style price suppressed
  * (billing menus / shk_names_obj). Named omissions: Has_contents cknown
- * dance; "an unpaid "/"your " container rewrite; wizweight toggle.
+ * dance; "an unpaid "/"your " container rewrite.
  */
 export function paydoname(obj) {
     if (!game.iflags) game.iflags = {};
+    // C paydoname `:2318–2328` — save wizweight, force Off around doname
+    const save_wizweight = game.iflags.wizweight;
+    game.iflags.wizweight = false;
     game.iflags.suppress_price = (game.iflags.suppress_price | 0) + 1;
     const p = doname(obj);
     game.iflags.suppress_price = (game.iflags.suppress_price | 0) - 1;
+    game.iflags.wizweight = save_wizweight;
     return p;
 }
 
 /**
- * C ref: invent.c xprname(obj, txt, let, dot, cost, quan)
+ * C ref: invent.c xprname(obj, txt, let, dot, cost, quan) `:2895–2954`.
  * Message/prinv paths pass dot=true (trailing period); invent menus omit it.
  * When quan is non-0, temporarily override obj.quan for doname (pickup
  * partial / merge total_of), then restore.
  * `txt` is C's second arg (hands/xtra_choice, contained, "Total:");
- * when set, doname is skipped. Named omissions: cost/Iu/Ix unpaid
- * columns; CONTAINED_SYM `>` column.
+ * when set, doname is skipped.
+ * `cost` / `let=='*'` is the Iu/Ix unpaid column (D-1663); Hallu
+ * `currency()` ROLL_FROM named — zorkmid(s) like invent.c currency
+ * without the currencies[] table. menu_tab_sep uses a tab.
  */
-export function xprname(obj, let_, dot = false, quan = 0, txt = null) {
+export function xprname(obj, let_ = undefined, dot = false, quan = 0, txt = null, cost = 0) {
     let savequan = 0;
     if (quan && obj) {
         savequan = obj.quan || 0;
         obj.quan = quan;
     }
-    const ilet = let_ ?? obj?.invlet ?? '?';
+    // C invent.c xprname `:2907–2908` — use_invlet
+    const flagOn = game.flags?.invlet_constant;
+    const use_invlet = (flagOn !== false && flagOn !== 0)
+        && obj
+        && let_ !== CONTAINED_SYM && let_ !== HANDS_SYM;
+    let ilet = let_ ?? obj?.invlet ?? '?';
     const name = txt != null ? txt : doname(obj);
-    const result = `${ilet} - ${name}${dot ? '.' : ''}`;
+    const costn = Number(cost);
+    const costCol = costn !== 0 || ilet === '*';
+    let result;
+    if (costCol) {
+        // C `:2928–2938` — Iu (dot) vs Ix; "%c - %-45.*s" + " %6ld currency"
+        if (dot && use_invlet) ilet = obj.invlet;
+        const curr = costn !== 1 ? makeplural('zorkmid') : 'zorkmid';
+        let suffix;
+        if (game.iflags?.menu_tab_sep) {
+            suffix = `\t${costn} ${curr}`;
+        } else {
+            suffix = ` ${String(costn).padStart(6)} ${curr}`;
+        }
+        let shown = name;
+        if (!game.iflags?.menu_tab_sep && shown.length < 45) {
+            shown += ' '.repeat(45 - shown.length);
+        }
+        const cap = 256 - 1 - (4 + suffix.length);
+        if (shown.length > cap) shown = shown.slice(0, cap);
+        result = `${ilet} - ${shown}${suffix}`;
+    } else {
+        if (use_invlet) ilet = obj.invlet;
+        result = `${ilet} - ${name}${dot ? '.' : ''}`;
+    }
     if (savequan) obj.quan = savequan;
     return result;
 }

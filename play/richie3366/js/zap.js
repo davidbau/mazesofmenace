@@ -2989,7 +2989,9 @@ export async function revive(corpse, by_hero) {
             if (has_omid(corpse)) free_omid(corpse);
             if (has_omonst(corpse)) free_omonst(corpse);
             if ((mtmp.cham | 0) === PM_DOPPELGANGER) {
-                newcham(mtmp, mptr, 0);
+                // C zap.c :994 — await so unleash/Elbereth finish
+                // before speed/HP (D-1648).
+                await newcham(mtmp, mptr, 0);
             } else if (mtmp.data?.mlet === 'S_ZOMBIE') {
                 mtmp.mhp = mtmp.mhpmax = 100;
                 // C: mon_adjust_speed(mtmp, 2, NULL) — MFAST, no msg
@@ -3876,7 +3878,7 @@ export async function bhitm(mtmp, otmp) {
             const mndx = mtmp.data?.mndx | 0;
             let mesg;
             if (mndx === PM_STONE_GOLEM
-                && newcham(mtmp, mons(PM_FLESH_GOLEM), 0)) {
+                && await newcham(mtmp, mons(PM_FLESH_GOLEM), 0)) {
                 mesg = 'turns to flesh!';
             } else if (mndx === PM_FLESH_GOLEM) {
                 mesg = 'seems fleshier...';
@@ -4813,7 +4815,7 @@ async function stone_to_flesh_obj(obj) {
             if (mon) {
                 ptr = mon.data;
                 if (is_golem(ptr) && ptr !== mons(PM_FLESH_GOLEM)) {
-                    newcham(
+                    await newcham(
                         mon, mons(PM_FLESH_GOLEM), NC_VIA_WAND_OR_SPELL,
                     );
                 }

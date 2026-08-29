@@ -9,10 +9,11 @@ import {
     status_line_2,
 } from './display.js';
 import { NO_COLOR } from './terminal.js';
-import { align_gname, align_gtitle, rank_of, genders } from './roles.js';
+import { align_gname, align_gtitle, align_str, rank_of, genders } from './roles.js';
 import { highc, strstri } from './hacklib.js';
+import { artiname } from './artifact.js';
 import {
-    A_NEUTRAL, A_LAWFUL, A_CHAOTIC, MIN_QUEST_LEVEL, BUFSZ,
+    A_NEUTRAL, A_LAWFUL, MIN_QUEST_LEVEL, BUFSZ,
 } from './const.js';
 import {
     A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, get_strength_str,
@@ -21,7 +22,6 @@ import { nhl_nhlib_align_shuffle } from './dungeon.js';
 import { show_text_pages } from './pager.js';
 import { mons, M2_PNAME } from './monsters.js';
 import { NON_PM, pmnames } from './generated/monsters_data.js';
-import { artilistRaw } from './generated/artifacts_data.js';
 import { an, An, the, makeplural, makesingular } from './objnam.js';
 
 /**
@@ -444,8 +444,19 @@ const QUEST_ROLE_TEXT = {
 };
 
 /** C ref: questpgr.c ldrname */
-function ldrname() {
+export function ldrname() {
     const i = game.urole?.ldrnum ?? NON_PM;
+    if (i === NON_PM || i == null) return '';
+    const ptr = mons(i);
+    const names = pmnames[i];
+    const nm = names?.[2] || names?.[0] || names?.[1] || '';
+    const pname = !!((ptr?.mflags2 ?? 0) & M2_PNAME);
+    return pname ? nm : `the ${nm}`;
+}
+
+/** C ref: questpgr.c neminame — urole.neminum, proper-name vs "the <name>". */
+function neminame() {
+    const i = game.urole?.neminum ?? NON_PM;
     if (i === NON_PM || i == null) return '';
     const ptr = mons(i);
     const names = pmnames[i];
@@ -462,6 +473,16 @@ function guardname() {
     return names?.[2] || names?.[0] || names?.[1] || '';
 }
 
+/** C ref: questpgr.c homebase — urole.homebase. */
+function homebase() {
+    return game.urole?.homebase || '';
+}
+
+/** C ref: questpgr.c intermed — urole.intermed. */
+function intermed() {
+    return game.urole?.intermed || '';
+}
+
 /** C ref: hacklib.c s_suffix — it→its, you→your, *s→*', else *'s. */
 function s_suffix(s) {
     if (!s) return s;
@@ -472,76 +493,102 @@ function s_suffix(s) {
 }
 
 /**
- * C ref: questpgr.c convert_arg — firsttime/goal/leader/assign + %Xh who.
- * Named omission: %c/%G/%A/%D/%C/%N/%L/%Z catalogue.
+ * C ref: questpgr.c convert_arg `:235–325` — fills gc.cvt_buf; JS returns it.
+ * Caller convert_line (D-1634). ualignbase is a JS object (.original/.current),
+ * not C ualignbase[A_ORIGINAL] index.
  */
 function convert_arg(c) {
     const urole = game.urole || {};
     const u = game.u || {};
     const Blind = !!(u.Blind || u.HBlind || u.EBlind);
     const female = !!game.flags?.female;
+    const aOrig = u.ualignbase?.original ?? u.ualign?.type ?? A_NEUTRAL;
+    let str;
     switch (c) {
-    case 'l':
-        return ldrname();
-    case 'H':
-        return urole.homebase || '';
-    case 'i':
-        return urole.intermed || '';
-    case 'd': {
-        const aOrig = u.ualignbase?.original ?? u.ualign?.type ?? A_NEUTRAL;
-        return align_gname(urole, aOrig);
-    }
-    case 'x':
-        return Blind ? 'sense' : 'see';
     case 'p':
-        return game.plname || '';
-    case 's':
-        // C: flags.female ? "sister" : "brother"
-        return female ? 'sister' : 'brother';
-    case 'S':
-        // C: flags.female ? "daughter" : "son"
-        return female ? 'daughter' : 'son';
-    case 'g':
-        return guardname();
-    case 'a': {
-        const aOrig = u.ualignbase?.original ?? u.ualign?.type ?? A_NEUTRAL;
-        if (aOrig === A_LAWFUL) return 'lawful';
-        if (aOrig === A_CHAOTIC) return 'chaotic';
-        return 'neutral';
-    }
+        str = game.plname || '';
+        break;
+    case 'c':
+        // C: (flags.female && gu.urole.name.f) ? name.f : name.m
+        str = (female && urole.name?.f) ? urole.name.f : (urole.name?.m || '');
+        break;
     case 'r':
-        // C: rank_of(u.ulevel, Role_switch, flags.female) — not sticky urole.rank
-        return rank_of(u.ulevel | 0, urole.mnum, female);
+        str = rank_of(u.ulevel | 0, urole.mnum, female);
+        break;
     case 'R':
-        // C: rank_of(MIN_QUEST_LEVEL, Role_switch, flags.female)
-        return rank_of(MIN_QUEST_LEVEL, urole.mnum, female);
-    case 'o':
-    case 'O': {
+        str = rank_of(MIN_QUEST_LEVEL, urole.mnum, female);
+        break;
+    case 's':
+        str = female ? 'sister' : 'brother';
+        break;
+    case 'S':
+        str = female ? 'daughter' : 'son';
+        break;
+    case 'l':
+        str = ldrname();
+        break;
+    case 'i':
+        str = intermed();
+        break;
+    case 'O':
+    case 'o': {
         // C: the(artiname(urole.questarti)); %O shortens "the Foo of Bar"
-        const qi = urole.questarti | 0;
-        const raw = (artilistRaw[qi]?.name) || '';
-        let str = raw ? the(raw) : '';
+        const raw = artiname(urole.questarti | 0);
+        str = raw ? the(raw) : '';
         if (c === 'O') {
-            const p = str.toLowerCase().indexOf(' of ');
-            if (p >= 0) str = str.slice(0, p);
+            const p = strstri(str, ' of ');
+            if (p) str = str.slice(0, str.length - p.length);
         }
-        return str;
+        break;
     }
-    case 'n': {
-        // C: neminame() — proper-name vs "the <name>"
-        const i = urole.neminum ?? NON_PM;
-        if (i === NON_PM || i == null) return '';
-        const ptr = mons(i);
-        const names = pmnames[i];
-        const nm = names?.[2] || names?.[0] || names?.[1] || '';
-        const pname = !!((ptr?.mflags2 ?? 0) & M2_PNAME);
-        return pname ? nm : `the ${nm}`;
-    }
+    case 'n':
+        str = neminame();
+        break;
+    case 'g':
+        str = guardname();
+        break;
+    case 'G':
+        str = align_gtitle(urole, aOrig);
+        break;
+    case 'H':
+        str = homebase();
+        break;
+    case 'a':
+        str = align_str(aOrig);
+        break;
+    case 'A':
+        str = align_str(u.ualign?.type ?? A_NEUTRAL);
+        break;
+    case 'd':
+        str = align_gname(urole, aOrig);
+        break;
+    case 'D':
+        str = align_gname(urole, A_LAWFUL);
+        break;
+    case 'C':
+        str = 'chaotic';
+        break;
+    case 'N':
+        str = 'neutral';
+        break;
+    case 'L':
+        str = 'lawful';
+        break;
+    case 'x':
+        str = Blind ? 'sense' : 'see';
+        break;
+    case 'Z':
+        // C: svd.dungeons[0].dname
+        str = game.dungeons?.[0]?.dname || '';
+        break;
     case '%':
-        return '%';
+        str = '%';
+        break;
     default:
-        return '';
+        str = '';
+        break;
     }
+    return str;
 }
 
 /**
@@ -581,7 +628,7 @@ function qtext_pronoun(who, which, cvt_buf) {
  * C ref: questpgr.c convert_line `:327–420` — %X then optional modifier.
  * Covered: %Xa/%XA an/An; %XC capitalize; %Xh/%XH/%Xi/%XI/%Xj/%XJ
  * qtext_pronoun when X in dlno; %Xp/%XP plural; %Xs/%XS possessive;
- * %Xt strip leading "the ".
+ * %Xt strip leading "the ". convert_arg %c/%G/%A/%D/%C/%N/%L/%Z is D-1649.
  */
 export function convert_line(inLine) {
     let out = '';
@@ -742,9 +789,9 @@ async function deliver_by_window(raw, _how) {
  *
  * Named omissions: lua VM / msg_fallbacks beyond goal_alt; array rn2
  * (angel_cuss/demon_cuss); explicit single-line output=text; NHW_MENU
- * except legacy; common fallback from qt_pager (second nhl_init);
- * other-role bodies; pauper_legacy; rawtext killed_nemesis
- * (stinky_nemesis). convert_line pronoun %Xh is D-1634.
+ * except legacy; other-role bodies; pauper_legacy; rawtext
+ * killed_nemesis (stinky_nemesis). convert_arg catalogue is D-1649;
+ * convert_line pronoun %Xh is D-1634. qt_pager common retry is D-1662.
  *
  * @param {string} section role filecode or "common"
  * @param {string} msgid
@@ -760,7 +807,8 @@ async function com_pager_core(section, msgid, showerror, rawOut) {
     const entry = lookup_quest_entry(section, msgid, false);
     const text = entry?.text || null;
     if (!text) {
-        // C: impossible() when showerror; other-role burn shuffle only
+        // C: impossible() when showerror; miss returns FALSE (qt_pager
+        // then retries section "common", which nhl_init's again).
         void showerror;
         return false;
     }
@@ -800,11 +848,15 @@ export async function com_pager(msgid) {
 }
 
 /**
- * C ref: questpgr.c qt_pager → com_pager_core(filecode) then common.
- * Common fallback (second nhl_init) named omit — other-role firsttime
- * still burns one shuffle only.
+ * C ref: questpgr.c qt_pager `:629–634`.
+ * com_pager_core(filecode, msgid, FALSE) then, on miss,
+ * com_pager_core("common", msgid, TRUE). Each core runs nhl_init
+ * (second shuffle is C). Array rn2 / pauper_legacy / killed_nemesis
+ * rawtext still named.
  */
 export async function qt_pager(msgid) {
     const code = game.urole?.filecode || 'Tou';
-    await com_pager_core(code, msgid, false, null);
+    if (!await com_pager_core(code, msgid, false, null)) {
+        await com_pager_core('common', msgid, true, null);
+    }
 }

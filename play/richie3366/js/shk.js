@@ -84,7 +84,7 @@ import { acurr, acurrstr, A_CHA, A_WIS, adjalign, exercise, Fast } from './attri
 import { simpleonames, makeplural } from './objnam.js';
 import {
     xname, doname, paydoname, set_doname_shop_suffix, otyp_is_charged,
-    ansimpleoname,
+    ansimpleoname, append_wizweight_suffix,
 } from './objnam.js';
 import {
     is_human, is_demon, is_watch, nolimbs, is_floater, is_flyer, amorphous,
@@ -93,7 +93,7 @@ import {
 import { nhgetch } from './input.js';
 import {
     paint_corner_nhw_menu, count_contents, observe_object, makeknown,
-    count_unpaid,
+    count_unpaid, currency,
 } from './invent.js';
 import { ATR_INVERSE } from './terminal.js';
 import { yn_function } from './getline.js';
@@ -557,11 +557,6 @@ export function costly_spot(x, y) {
     const eshkp = ESHK(shkp);
     return inside_shop(x, y)
         && !((x | 0) === (eshkp.shk?.x | 0) && (y | 0) === (eshkp.shk?.y | 0));
-}
-
-/** C invent.c currency — Hallu ROLL_FROM deferred → always zorkmid(s). */
-function currency(amount) {
-    return (amount | 0) === 1 ? 'zorkmid' : 'zorkmids';
 }
 
 function Role_if(pm) {
@@ -2677,15 +2672,23 @@ export function get_cost_of_shop_item(obj) {
  * C ref: objnam.c doname_with_price → doname_base(DONAME_WITH_PRICE).
  * Plain doname already applies unpaid (C first else-if); this only adds
  * for-sale / no-charge when !is_unpaid.
- * Named omissions: pricequotes append when !oc_name_known; contained_cost.
+ * Named omissions: contained_cost.
+ * C wizweight after shop suffix uses with_price to rewrite a trailing
+ * ')' (`:1697–1702`). JS splits unpaid (doname) vs for-sale (here);
+ * suppress aum during doname then append with with_price.
  */
 export function doname_with_price(obj) {
+    if (!game.iflags) game.iflags = {};
+    const save_wizweight = game.iflags.wizweight;
+    game.iflags.wizweight = false;
     let bp = doname(obj);
-    if (game.iflags?.suppress_price || game.program_state?.restoring) {
-        return bp;
+    game.iflags.wizweight = save_wizweight;
+    if (game.iflags.suppress_price || game.program_state?.restoring) {
+        return append_wizweight_suffix(obj, bp, true);
     }
-    // C: else if (is_unpaid) already handled inside doname
-    if (is_unpaid(obj)) return bp;
+    // C: else if (is_unpaid) already handled inside doname; wizweight
+    // still runs with with_price so unpaid `(…)` becomes `, N aum)`.
+    if (is_unpaid(obj)) return append_wizweight_suffix(obj, bp, true);
     const { cost: price, nochrg } = get_cost_of_shop_item(obj);
     if (price > 0) {
         const pricebuf = `${price} ${currency(price)}`;
@@ -2700,7 +2703,7 @@ export function doname_with_price(obj) {
         // C: append_price_quote when pricequotes && !oc_name_known
         bp = append_price_quote(bp, obj.otyp);
     }
-    return bp;
+    return append_wizweight_suffix(obj, bp, true);
 }
 
 // Wire C doname_base unpaid arm into objnam.doname.

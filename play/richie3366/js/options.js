@@ -32,18 +32,26 @@ import {
     MENU_PREVIOUS_PAGE,
     MENU_FIRST_PAGE,
     MENU_LAST_PAGE,
+    MENU_SEARCH,
     MENU_ITEMFLAGS_SKIPINVERT,
+    PICK_ONE,
     PICK_ANY,
     WIZKIT_MAX,
     ismnum,
+    InvOptNone,
+    InvOptOn,
+    InvOptInUse,
+    InvSparse,
+    WIN_ERR,
+    WC_PERM_INVENT,
 } from './const.js';
 import { game } from './gstate.js';
 import { rnd } from './rng.js';
-import { str_end_is } from './hacklib.js';
+import { str_end_is, highc, strstri, strsubst } from './hacklib.js';
 import { name_to_mon } from './mondata.js';
 import { nhgetch } from './input.js';
 import { flush_screen, pline, docrt, clear_committed_status } from './display.js';
-import { paint_corner_nhw_menu, dismiss_nhw_menu, collect_menu_gacc } from './invent.js';
+import { paint_corner_nhw_menu, dismiss_nhw_menu, collect_menu_gacc, process_menu_search, reassign, update_inventory, invlet_constant, perm_invent_toggled } from './invent.js';
 import { ATR_INVERSE } from './terminal.js';
 import {
     WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS, TOOL_CLASS,
@@ -304,7 +312,7 @@ export function txt2key(txt) {
  * C ref: options.c parsebindings — after BIND=/BINDINGS= prefix stripped.
  * Fills outMap: keyCode → command name (lowercase). "nothing" deletes.
  * Named omissions: mouse1/mouse2; menu-cmd aliases; CMD_PARAM (...);
- * escaped-comma key tokens (\,:cmd).
+ * escaped-comma key tokens (\,:cmd). "nothing" unbinds (Map null).
  */
 export function parsebindings(bindings, outMap) {
     if (!bindings || !outMap) return false;
@@ -327,7 +335,9 @@ export function parsebindings(bindings, outMap) {
             continue;
         }
         if (cmdTok.toLowerCase() === 'nothing') {
-            outMap.delete(key);
+            // C bind_key "nothing" → cmdbind_remove (key stays unbound).
+            // Keep the Map entry so rhack skips if/else (D-1657).
+            outMap.set(key, null);
             continue;
         }
         // Strip optional (param) — CMD_PARAM body deferred; name must match.
@@ -375,6 +385,180 @@ function optfn_boolean_word(op) {
     return null;
 }
 
+/* C options.c enum optn_result / requests — optfn_perminv_mode. */
+const optn_silenterr = -1;
+const optn_ok = 1;
+const do_init = 1;
+const do_set = 2;
+const get_val = 4;
+const get_cnf_val = 5;
+
+/**
+ * C options.c perminv_modes[][3] `:225–240` — name, alias, get_val text.
+ * TTY_PERM_INVENT: indices 5/6 are +grid; 3/4/7 stay NULL.
+ */
+const perminv_modes = [
+    ['none', 'off', 'no permanent inventory window'],
+    ['all', 'on', 'all inventory except for gold'],
+    ['full', 'gold', 'full inventory including gold'],
+    [null, null, null],
+    [null, null, null],
+    ['on+grid', 'all+grid', 'all except gold, plus unused letters'],
+    ['gold+grid', 'full+grid', 'full inventory, plus unused letters'],
+    [null, null, null],
+    ['in-use', 'inuse-only', 'subset: items currently in use'],
+];
+
+/** C WINDOWPORT(tty) — scored port is tty. */
+function windowport_tty() {
+    return true;
+}
+
+function perminv_iflags(bag) {
+    if (bag) return bag;
+    if (!game.iflags) game.iflags = {};
+    return game.iflags;
+}
+
+/**
+ * C strncmpi(op, name, ln) with ln = strlen(op): name must start with op.
+ * Inline so this file does not add strncmpi clone #4.
+ * @param {string} op
+ * @param {string|null} name
+ * @param {number} ln
+ */
+function perminv_name_prefixi(op, name, ln) {
+    if (!name) return false;
+    if (name.length < ln) return false;
+    return op.slice(0, ln).toLowerCase() === name.slice(0, ln).toLowerCase();
+}
+
+function mark_opt_need_redraw() {
+    if (!game.go) game.go = {};
+    game.go.opt_need_redraw = true;
+}
+
+/**
+ * C options.c can_set_perm_invent `:5487–5527`.
+ * InvOptOn from const.js (D-1666; C `:5507–5508`).
+ * Named omissions: check_tty_wincap body; optfn_boolean perm_invent
+ * gate; check_perm_invent_again pending retry.
+ * @param {object} [iflags]
+ * @param {boolean} [optInitial]
+ * @returns {boolean}
+ */
+function can_set_perm_invent(iflags, optInitial) {
+    const bag = perminv_iflags(iflags);
+    const old_perminv_mode = bag.perminv_mode | 0;
+    const wincap = game.windowprocs?.wincap | 0;
+    if (!(wincap & WC_PERM_INVENT) && !windowport_tty()) return false;
+
+    if ((bag.perminv_mode | 0) === InvOptNone) bag.perminv_mode = InvOptOn;
+
+    if (windowport_tty() && !optInitial) {
+        perm_invent_toggled(false);
+        if ((game.WIN_INVEN ?? WIN_ERR) === WIN_ERR) {
+            bag.perminv_mode = old_perminv_mode;
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * C options.c optfn_perminv_mode `:3045–3135`.
+ * do_handler is handler_perminv_mode (async; doset calls it directly).
+ * TTYINV getenv do_init is C `#if 0`.
+ * @param {number} req
+ * @param {boolean} negated
+ * @param {string} [op]
+ * @param {{ buf: string }|null} [optsOut]
+ * @param {object|null} [iflagsBag]
+ * @param {boolean} [optInitial]
+ * @param {*|null} [getValOp] C `op`: null from handler; non-null for 'O'
+ * @returns {number}
+ */
+export function optfn_perminv_mode(
+    req, negated, op, optsOut, iflagsBag, optInitial, getValOp,
+) {
+    const iflags = perminv_iflags(iflagsBag);
+    const old_perm_invent = !!iflags.perm_invent;
+    const old_perminv_mode = iflags.perminv_mode | 0;
+    let retval = optn_ok;
+
+    if (req === do_init) {
+        return optn_ok;
+    }
+    if (req === do_set) {
+        const val = String(op ?? '');
+        if (val && negated) {
+            // C bad_negation — reject "!perminv_mode=foo"
+            retval = optn_silenterr;
+        } else if (val) {
+            const ln = val.length;
+            let i = 0;
+            for (; i < perminv_modes.length; i++) {
+                const pi0 = perminv_modes[i][0];
+                if (!pi0) continue;
+                const pi1 = perminv_modes[i][1];
+                if (perminv_name_prefixi(val, pi0, ln)
+                    || perminv_name_prefixi(val, pi1, ln)
+                    || val.charAt(0) === String(i)) {
+                    let use = i;
+                    if (strstri(pi0, '+grid') && !windowport_tty()) {
+                        use &= ~InvSparse;
+                    }
+                    iflags.perminv_mode = use;
+                    iflags.perm_invent = true;
+                    break;
+                }
+            }
+            if (i === perminv_modes.length) {
+                iflags.perminv_mode = InvOptNone;
+                iflags.perm_invent = false;
+                retval = optn_silenterr;
+            }
+        } else if (negated) {
+            iflags.perminv_mode = InvOptNone;
+            iflags.perm_invent = false;
+        }
+        if (!optInitial) {
+            if ((iflags.perminv_mode | 0) !== old_perminv_mode
+                || !!iflags.perm_invent !== old_perm_invent) {
+                mark_opt_need_redraw();
+            }
+        }
+        return retval;
+    }
+    if (req === get_val) {
+        const mode = iflags.perminv_mode | 0;
+        const row = perminv_modes[mode];
+        let s = (row && row[2]) ? row[2] : '';
+        if (mode !== InvOptNone && !iflags.perm_invent && getValOp != null) {
+            if (mode === InvOptInUse) s = strsubst(s, ' currently', '');
+            else s = strsubst(s, ' inventory', ' invent');
+            s += ((mode & InvSparse) !== 0)
+                ? ' (Off)'
+                : " ('perm_invent' is Off)";
+        }
+        if (optsOut) optsOut.buf = s;
+        return optn_ok;
+    }
+    if (req === get_cnf_val) {
+        const mode = iflags.perminv_mode | 0;
+        const row = perminv_modes[mode];
+        if (optsOut) optsOut.buf = (row && row[0]) ? row[0] : '';
+        return optn_ok;
+    }
+    return retval;
+}
+
+function optfn_perminv_mode_get_val_display() {
+    const out = { buf: '' };
+    optfn_perminv_mode(get_val, false, '', out, null, false, true);
+    return out.buf || 'no permanent inventory window';
+}
+
 function parse_a11y_accessiblemsg(result, value) {
     if (!result.a11y) result.a11y = {};
     result.a11y.accessiblemsg = !!value;
@@ -393,6 +577,12 @@ function parse_a11y_mon_notices(result, value) {
 function parse_a11y_mon_movement(result, value) {
     if (!result.a11y) result.a11y = {};
     result.a11y.mon_movement = !!value;
+}
+
+/** C optlist.h NHOPTB wizweight addr &iflags.wizweight (set_wizonly). */
+function parse_iflags_wizweight(result, value) {
+    if (!result.iflags) result.iflags = {};
+    result.iflags.wizweight = !!value;
 }
 
 export function parseNethackrc(rc) {
@@ -504,6 +694,19 @@ export function parseNethackrc(rc) {
                     if (parsed == null) continue;
                     parse_a11y_mon_movement(result, parsed);
                 }
+                else if (key === 'wizweight') {
+                    // C optlist.h NHOPTB wizweight addr &iflags.wizweight
+                    if (negated) continue;
+                    const parsed = optfn_boolean_word(val);
+                    if (parsed == null) continue;
+                    parse_iflags_wizweight(result, parsed);
+                }
+                else if (key === 'perminv_mode') {
+                    // C optfn_perminv_mode do_set (opt_initial)
+                    optfn_perminv_mode(
+                        do_set, negated, val, null, result.iflags, true, null,
+                    );
+                }
                 else result.flags[key] = val;
             } else {
                 // Boolean flag
@@ -511,6 +714,7 @@ export function parseNethackrc(rc) {
                 const value = !negated;
 
                 if (lname === 'autopickup') result.flags.pickup = value;
+                else if (lname === 'fixinv') result.flags.invlet_constant = value;
                 else if (lname === 'color') result.flags.color = value;
                 else if (lname === 'legacy') result.flags.legacy = value;
                 else if (lname === 'tutorial') { result.flags.tutorial = value; result.tutorial_set = true; }
@@ -537,7 +741,26 @@ export function parseNethackrc(rc) {
                 else if (lname === 'mon_movement') {
                     parse_a11y_mon_movement(result, value);
                 }
-                else result.flags[lname] = value;
+                else if (lname === 'wizweight') {
+                    parse_iflags_wizweight(result, value);
+                }
+                else if (lname === 'perminv_mode') {
+                    optfn_perminv_mode(
+                        do_set, negated, '', null, result.iflags, true, null,
+                    );
+                } else {
+                    const eqIdx = stripped.indexOf('=');
+                    if (eqIdx >= 0
+                        && stripped.slice(0, eqIdx).trim().toLowerCase()
+                            === 'perminv_mode') {
+                        optfn_perminv_mode(
+                            do_set, negated,
+                            stripped.slice(eqIdx + 1).trim(),
+                            null, result.iflags, true, null,
+                        );
+                    }
+                    else result.flags[lname] = value;
+                }
             }
         }
     }
@@ -691,6 +914,70 @@ async function handler_pickup_types() {
     const prior = String(game.flags.pickup_types || '');
     const next = await choose_classes_menu('Autopickup what?', prior);
     game.flags.pickup_types = next;
+}
+
+/**
+ * C options.c handler_perminv_mode `:6010–6083` — optfn do_handler.
+ * PICK_ONE letters: pi0[0] or highc(pi1[0]) when InvSparse; gacc '0'+i.
+ * ESC (n<0) leaves flags; else pline + maybe can_set_perm_invent.
+ */
+async function handler_perminv_mode() {
+    const iflags = perminv_iflags();
+    const old_perm_invent = !!iflags.perm_invent;
+    const old_pi = iflags.perminv_mode | 0;
+    let new_pi = old_pi;
+    const widest = windowport_tty() ? 11 : 8;
+    const tab = !!iflags.menu_tab_sep;
+    const raw = [
+        {
+            text: 'Choose permanent inventory mode:',
+            selectable: false,
+            attr: ATR_INVERSE,
+        },
+        { text: '', selectable: false },
+    ];
+    for (let i = 0; i < perminv_modes.length; i++) {
+        const pi0 = perminv_modes[i][0];
+        if (!pi0) continue;
+        if (strstri(pi0, '+grid') && !windowport_tty()) continue;
+        const pi1 = perminv_modes[i][1];
+        const sep = tab
+            ? '\t'
+            : ' '.repeat(Math.max(widest - pi0.length, 1));
+        const letch = ((i & InvSparse) !== 0)
+            ? highc(pi1.charAt(0))
+            : pi0.charAt(0);
+        raw.push({
+            text: `${pi0}${sep}${perminv_modes[i][2]}`,
+            selectable: true,
+            selector: letch,
+            gselector: String.fromCharCode(48 + i),
+            mode: i,
+            selected: i === old_pi,
+        });
+    }
+    const res = await select_menu_pick_one(raw);
+    if (res.kind !== 'pick') return optn_ok;
+    new_pi = res.item.mode | 0;
+    iflags.perminv_mode = new_pi;
+    const buf = { buf: '' };
+    optfn_perminv_mode(get_val, false, '', buf, iflags, false, null);
+    await pline(
+        `'perminv_mode' ${new_pi !== old_pi ? 'changed to' : 'is still'} '${perminv_modes[new_pi][0]}' (${buf.buf}).`,
+    );
+    if (new_pi !== InvOptNone && !old_perm_invent) {
+        iflags.perm_invent = can_set_perm_invent(iflags, false);
+    } else if (new_pi === InvOptNone && old_perm_invent) {
+        iflags.perm_invent = false;
+    }
+    if (new_pi !== old_pi || !!iflags.perm_invent !== old_perm_invent) {
+        if (windowport_tty() && iflags.perm_invent && old_perm_invent) {
+            perm_invent_toggled(true);
+            perm_invent_toggled(false);
+        }
+        mark_opt_need_redraw();
+    }
+    return optn_ok;
 }
 
 /** C ref: hacklib.c mungspaces — trim ends, compress internal spaces. */
@@ -863,6 +1150,8 @@ async function doset_compound_via_getlin(opt) {
     if (opt.hasHandler) {
         if (name === 'pickup_types') {
             await handler_pickup_types();
+        } else if (name === 'perminv_mode') {
+            await handler_perminv_mode();
         }
         // Other hasHandler compounds deferred (number_pad/symset/…).
         return;
@@ -926,6 +1215,7 @@ function simple_opt_get_val(opt) {
         return parts.length ? parts.join(' + ') : 'apply-key';
     }
     if (name === 'pickup_types') return pickup_types_display();
+    if (name === 'perminv_mode') return optfn_perminv_mode_get_val_display();
     if (name === 'autopickup exceptions') {
         return currently_set_val(game.flags?.ape_count ?? 0);
     }
@@ -996,7 +1286,8 @@ function format_simple_opt_line(opt, nameWidth) {
  * Per-page 'a'..'z' for items without a fixed selector; space → next page
  * or cancel on last; Return/ESC cancel; letter → that item.
  * C wintty.c: '>' MENU_NEXT_PAGE, '<' MENU_PREVIOUS_PAGE, '^' first, '|' last
- * (space alone finishes on last page; '>' does not).
+ * (space alone finishes on last page; '>' does not). MENU_SEARCH D-1646
+ * (`:` is search unless it is an explicit page selector or gacc).
  * Pre-assigned `selector` on selectable items is kept (print_dungeon
  * continuous a..z/A.. letters).
  * @returns {Promise<{kind:'pick'|'cancel', item?:object}>}
@@ -1046,8 +1337,6 @@ export async function select_menu_pick_one(rawItems) {
         await paint_corner_nhw_menu(entries, morestr);
         await flush_screen(1);
         const key = await nhgetch();
-        const wasFullscreen = game._tty_menu_geom?.offx === 0;
-        await dismiss_nhw_menu();
         const ch = String.fromCharCode(key);
         const hit = (key !== 27 && key !== 13 && key !== 10 && key !== 32
             && ch !== '>' && ch !== '<' && ch !== '^' && ch !== '|')
@@ -1060,6 +1349,20 @@ export async function select_menu_pick_one(rawItems) {
             && key !== 27 && key !== 13 && key !== 10 && key !== 32
             ? items.find((it) => it.selectable && it.gselector === ch)
             : null;
+        // C: PICK_ONE resp_len includes gacc so ':' selector/gacc is
+        // explicit, not MENU_SEARCH. Search only when neither hits.
+        if (!hit && !ghit && ch === MENU_SEARCH) {
+            const res = await process_menu_search(items, PICK_ONE);
+            if (res.kind === 'finish' && res.item) {
+                const wasFs = game._tty_menu_geom?.offx === 0;
+                await dismiss_nhw_menu();
+                if (wasFs) clear_committed_status();
+                return { kind: 'pick', item: res.item };
+            }
+            continue;
+        }
+        const wasFullscreen = game._tty_menu_geom?.offx === 0;
+        await dismiss_nhw_menu();
         if (hit && wasFullscreen) {
             // C: fullscreen NHW_MENU clear leaves status blank across the
             // Options → choose_classes submenu; restore on final dismiss.
@@ -1167,15 +1470,9 @@ async function doset_simple_menu() {
             return 1;
         }
         // C: compound/othr — has_handler → optfn(do_handler); else getlin
-        if (opt?.opttyp === 'Comp' || opt?.opttyp === 'Othr' || opt?.name) {
-            if (opt?.name === 'pickup_types' && opt.hasHandler) {
-                await handler_pickup_types();
-                return 1;
-            }
-            if (opt?.opttyp === 'Comp' || opt?.opttyp === 'Othr') {
-                await doset_compound_via_getlin(opt);
-                return 1;
-            }
+        if (opt?.opttyp === 'Comp' || opt?.opttyp === 'Othr') {
+            await doset_compound_via_getlin(opt);
+            return 1;
         }
         // Unknown row — still count as a pick (C loops)
         return 1;
@@ -1219,7 +1516,7 @@ function invert_pick_any_matching(items, acc) {
  * MENU_SELECT_ALL/PAGE / UNSELECT_* / INVERT_* (D-0928). Group accelerators
  * invert matching gselector (invent.c wizid `'_'`/`^I` / class sym).
  * SKIPINVERT via menuitem_invert_test. Named omissions: count-prefix
- * digits; MENU_SEARCH.
+ * digits. MENU_SEARCH is D-1646.
  * Returns selected selectable items (may be empty).
  */
 export async function select_menu_pick_any(rawItems) {
@@ -1357,8 +1654,13 @@ export async function select_menu_pick_any(rawItems) {
                 invert_pick_any_matching(items, 0);
                 continue;
             }
-            // C: page selector (resp) before group_accel (gacc appended)
+            // C: page selector (resp) before MENU_SEARCH (not mapped when
+            // ':' is an explicit choice). SEARCH before gacc.
             const hit = page.find((it) => it.selectable && it.selector === ch);
+            if (ch === MENU_SEARCH && !hit) {
+                await process_menu_search(items, PICK_ANY);
+                continue;
+            }
             if (hit) {
                 hit.selected = !hit.selected;
                 continue;
@@ -1419,7 +1721,7 @@ const DOSET_BOOL_ADDR = {
     eight_bit_tty: { obj: 'iflags', key: 'eight_bit_tty' },
     extmenu: { obj: 'iflags', key: 'extmenu' },
     fireassist: { obj: 'flags', key: 'fireassist' }, // C: iflags.fireassist
-    fixinv: { obj: 'flags', key: 'fixinv' },
+    fixinv: { obj: 'flags', key: 'invlet_constant' }, // C: flags.invlet_constant
     force_invmenu: { obj: 'flags', key: 'force_invmenu' },
     goldX: { obj: 'flags', key: 'goldX' },
     help: { obj: 'flags', key: 'help' },
@@ -1470,6 +1772,8 @@ const DOSET_BOOL_ADDR = {
     weaponstatus: { obj: 'iflags', key: 'weaponstatus' },
     whatis_menu: { obj: 'iflags', key: 'whatis_menu' },
     whatis_moveskip: { obj: 'iflags', key: 'whatis_moveskip' },
+    // C optlist.h NHOPTB wizweight set_wizonly &iflags.wizweight (D-1669)
+    wizweight: { obj: 'iflags', key: 'wizweight' },
 };
 
 /**
@@ -1521,6 +1825,16 @@ const DOSET_BOOL_MOD = [
     'whatis_menu', 'whatis_moveskip',
 ];
 
+/**
+ * C options.c doset `:8820` endpass wizard→set_wiznofuz; `:8842–8843`
+ * skip set_wizonly when !wizard (`flags.debug`). Appended after
+ * whatis_moveskip so earlier mO letters stay put. wizmgender named.
+ */
+function doset_bool_mod_list() {
+    if (game.flags?.debug) return [...DOSET_BOOL_MOD, 'wizweight'];
+    return DOSET_BOOL_MOD;
+}
+
 function doset_bool_value(name) {
     const addr = DOSET_BOOL_ADDR[name];
     if (!addr) return DOSET_BOOL_DEFAULT_ON.has(name);
@@ -1537,8 +1851,8 @@ function doset_bool_value(name) {
  * toggle pline). C optlist.h NHOPTB accessiblemsg addr is
  * `&a11y.accessiblemsg` (D-1218); mention_map is `&a11y.glyph_updates`
  * (D-1219); spot_monsters is `&a11y.mon_notices` (D-1235);
- * mon_movement is `&a11y.mon_movement` (D-1236). No
- * optfn_boolean after-change arm for spot_monsters or
+ * mon_movement is `&a11y.mon_movement` (D-1236). wizweight after-change
+ * is D-1669 (`:5353–5361`). No after-change arm for spot_monsters or
  * mon_movement (unlike accessiblemsg msg_loc zero).
  */
 export function optfn_boolean_do_set(name, negated, initial = false) {
@@ -1558,6 +1872,13 @@ export function optfn_boolean_do_set(name, negated, initial = false) {
         game.a11y.msg_loc.x = 0;
         game.a11y.msg_loc.y = 0;
     }
+    if (name === 'fixinv' || name === 'price_quotes' || name === 'sortpack'
+        || name === 'implicit_uncursed' || name === 'wizweight') {
+        // C options.c optfn_boolean `:5353–5361` — opt_fixinv /
+        // price_quotes / sortpack / implicit_uncursed / wizweight.
+        if (!invlet_constant()) reassign();
+        update_inventory();
+    }
 }
 
 function doset_bool_term(name) {
@@ -1572,7 +1893,9 @@ function doset_bool_term(name) {
  * C ref: options.c doset — full options PICK_ANY (mO / menu_requested).
  * Branch envelope: help + nonmod bools + mod bools + compounds + others;
  * apply bool toggles then handlers (pickup_types). Named omissions: full
- * compound getlin arms, WC filters, wizard-only, PREFIXES, help file.
+ * compound getlin arms, WC filters, wizmgender, PREFIXES, help file.
+ * mO compound row for perminv_mode named (letter fortress);
+ * OPTIONS= + handler live. optfn_boolean perm_invent can_set gate named.
  */
 export async function doset() {
     if (!game.flags) game.flags = {};
@@ -1620,7 +1943,7 @@ export async function doset() {
             selectable: false,
         });
     }
-    for (const name of DOSET_BOOL_MOD) {
+    for (const name of doset_bool_mod_list()) {
         raw.push({
             text: format_doset_opt_line(name, doset_bool_term(name), ''),
             selectable: true,
@@ -1745,6 +2068,8 @@ export async function doset() {
     for (const name of handlerPicks) {
         if (name === 'pickup_types') {
             await handler_pickup_types();
+        } else if (name === 'perminv_mode') {
+            await handler_perminv_mode();
         }
     }
     return ECMD_OK;

@@ -106,7 +106,7 @@ import {
     In_quest, W_ARMH, W_SADDLE, P_POLEARMS, ROT_CORPSE, Is_waterlevel,
     STRAT_CLOSE, STRAT_WAITFORU, STRAT_APPEARMSG, is_pit,
     A_LAWFUL, ONAME_RANDOM, EMIN,
-    MFAST, MAXMONNO, DF_NONE,
+    MFAST, MAXMONNO, DF_NONE, u_at,
 } from './const.js';
 import {
     enexto, enexto_core, enexto_gpflags, goodpos, noteleport_level,
@@ -159,7 +159,10 @@ import {
     worm_mon_at, wormgone,
 } from './worm.js';
 import { deliver_obj_to_mon } from './dokick.js';
-import { can_be_hatched, m_at, seemimic, hideunder } from './mon.js';
+import { can_be_hatched, m_at, seemimic, hideunder, onscary, monnear } from './mon.js';
+import { m_unleash, leashable } from './apply.js';
+import { update_inventory } from './invent.js';
+import { set_apparxy, monflee } from './monmove.js';
 
 /** C ref: shknam.c neweshk — allocate eshk for MM_ESHK makemon. */
 export function neweshk(mtmp) {
@@ -1358,21 +1361,126 @@ async function newcham_show_msg(mtmp, oldname, seenorsensed, mdat) {
 }
 
 /**
+ * C ref: mon.c newcham `:5386–5398` — after set_mon_data, a leashed
+ * pet whose new form is not leashable (long worm / unsolid / headless
+ * blob) m_unleash(..., TRUE); else update_inventory so perm_invent
+ * shows "leash (attached to a <mon>)". Unleash pline is before light
+ * / SHOW_MSG (C order). m_unleash body is D-1609; this is the caller.
+ * @returns {Promise<void>|null}
+ */
+function newcham_mleashed(mtmp) {
+    if (!mtmp.mleashed) return null;
+    if (!leashable(mtmp)) return m_unleash(mtmp, true);
+    update_inventory();
+    return null;
+}
+
+/**
+ * C ref: mon.c newcham `:5517–5532` — after poly_steed (named omit).
+ * When the monster is moving: set_apparxy if mux/muy is not the hero,
+ * then hostile onscary+monnear → monflee(rn1(9,2), TRUE, TRUE).
+ * @returns {Promise<void>|null}
+ */
+function newcham_elbereth(mtmp) {
+    if (!game.context?.mon_moving) return null;
+    if (!u_at(mtmp.mux, mtmp.muy)) set_apparxy(mtmp);
+    if (!mtmp.mpeaceful
+        && onscary(mtmp.mux, mtmp.muy, mtmp)
+        && monnear(mtmp, mtmp.mux, mtmp.muy)) {
+        return monflee(mtmp, rn1(9, 2), true, true);
+    }
+    return null;
+}
+
+/**
+ * Light / invis / hideunder / long-worm / newsym / vampire cham /
+ * check_gear after set_mon_data (and after mleashed). C SHOW_MSG is
+ * after newsym; JS still awaits it last so NO_NC_FLAGS stays boolean.
+ */
+function newcham_post_set_mon_data(mtmp, olddata, mdat, pfsc) {
+    const old_light = emits_light(olddata);
+    const new_light = emits_light(mtmp.data);
+    if (old_light !== new_light) {
+        if (old_light) del_light_source(LS_MONSTER, mtmp);
+        if (new_light) {
+            new_light_source(mtmp.mx, mtmp.my, new_light, LS_MONSTER, mtmp);
+        }
+    }
+    // C mondata.h pm_invisible — stalker / black light (macro, not a clone)
+    const old_invis = (olddata?.mndx | 0) === pm('STALKER')
+        || (olddata?.mndx | 0) === pm('BLACK_LIGHT');
+    const new_invis = (mdat?.mndx | 0) === pm('STALKER')
+        || (mdat?.mndx | 0) === pm('BLACK_LIGHT');
+    if (!mtmp.perminvis || old_invis) mtmp.perminvis = new_invis ? 1 : 0;
+    mtmp.minvis = mtmp.invis_blkd ? 0 : mtmp.perminvis;
+    if (mtmp.mundetected) hideunder(mtmp);
+
+    // ustuck swallow/unstuck named omit (expels/unstuck async)
+
+    if ((mdat?.mndx | 0) === pm('LONG_WORM')
+        && (mtmp.wormno = get_wormno())) {
+        initworm(mtmp, rn2(5));
+        place_worm_tail_randomly(mtmp, mtmp.mx, mtmp.my);
+    }
+
+    mtmp.meverseen = 0;
+    newsym(mtmp.mx | 0, mtmp.my | 0);
+
+    // C: vampire cham after the pline; JS applies it before awaiting More
+    // so sync callers (makemon) keep immediate mutation.
+    if ((mtmp.cham === NON_PM || mtmp.cham == null)
+        && mdat.mlet === 'S_VAMPIRE' && !pfsc) {
+        mtmp.cham = pm_to_cham(mdat.mndx ?? NON_PM);
+    }
+
+    // possibly_unwield / mon_break_armor / mselftouch named omit
+    check_gear_next_turn(mtmp);
+    // boulder drop / poly_steed named omit
+}
+
+/**
+ * Rest of newcham after mleashed. SHOW_MSG and Elbereth monflee may
+ * return a Promise; NO_NC_FLAGS without those stays boolean true.
+ */
+function newcham_after_unleash(
+    mtmp, olddata, mdat, msg, oldname, seenorsensed, pfsc,
+) {
+    newcham_post_set_mon_data(mtmp, olddata, mdat, pfsc);
+    const after_msg = () => {
+        const ep = newcham_elbereth(mtmp);
+        // C :5517–5532 monflee is void; JS async — await at callers.
+        if (ep) {
+            return (async () => {
+                await ep;
+                return true;
+            })();
+        }
+        return true;
+    };
+    if (msg) return newcham_show_msg(mtmp, oldname, seenorsensed, mdat).then(after_msg);
+    return after_msg();
+}
+
+/**
  * C ref: mon.c newcham `:5276–5535` — take mtmp into mdat (or a random
  * accept_newcham_form). Protection_from_shape_changers cancel uncancel
  * + vampire cham (D-1573). youprop H||E via uprops like set_mimic_sym
  * (D-1564; not a third named clone of were.js / monmove.js).
- * NC_SHOW_MSG pline_mon/usmellmon/noname_monnam (D-1586). When SHOW_MSG
- * the return is a Promise (await at decide/digest/zap poly and at
- * `normal_shape` D-1594); NO_NC_FLAGS stays a boolean so sync makemon
+ * NC_SHOW_MSG pline_mon/usmellmon/noname_monnam (D-1586). mleashed
+ * m_unleash TRUE / update_inventory + Elbereth set_apparxy/monflee
+ * (D-1645). When SHOW_MSG, unleash feedback, or Elbereth flee the
+ * return is a Promise — await so C `:5386`/`:5517` finish before
+ * `return 1` (D-1648: mon_poly / mon_to_stone / vamp_stone / gulpmm /
+ * gulpum / animate_statue / revive / bhitm stone-to-flesh /
+ * stone_to_flesh_obj; D-1594 `normal_shape`; D-1586 decide/digest/zap
+ * poly). NO_NC_FLAGS without those stays a boolean so sync makemon
  * `if (newcham())` is not Promise-truthy. Vampire cham + check_gear
  * run before awaiting More (C does the pline first; cham unused by
  * the message; gear is next-turn).
  * Named omissions: NC_VIA_WAND_OR_SPELL possibly_unwield /
  * mon_break_armor / boulder bypass+flooreffects (async / missing);
- * m_unleash (async) + update_inventory leash; ustuck expels/unstuck
- * (async; l_oldname still captured for Hallu RNG); poly_steed;
- * Elbereth set_apparxy/monflee (monflee async).
+ * ustuck expels/unstuck (async; l_oldname still captured for Hallu
+ * RNG); poly_steed.
  * @returns {boolean|Promise<boolean>} true if form changed
  */
 export function newcham(mtmp, mdat, ncflags = 0) {
@@ -1464,49 +1572,20 @@ export function newcham(mtmp, mdat, ncflags = 0) {
 
     set_mon_data(mtmp, mdat);
 
-    // mleashed m_unleash / update_inventory named omit (m_unleash async)
-
-    const old_light = emits_light(olddata);
-    const new_light = emits_light(mtmp.data);
-    if (old_light !== new_light) {
-        if (old_light) del_light_source(LS_MONSTER, mtmp);
-        if (new_light) {
-            new_light_source(mtmp.mx, mtmp.my, new_light, LS_MONSTER, mtmp);
-        }
+    const unleash_p = newcham_mleashed(mtmp);
+    if (unleash_p) {
+        // C :5386–5398 finishes (including TRUE-feedback pline) before
+        // light / SHOW_MSG / Elbereth / return 1. Async callers await.
+        return (async () => {
+            await unleash_p;
+            return await Promise.resolve(newcham_after_unleash(
+                mtmp, olddata, mdat, msg, oldname, seenorsensed, pfsc,
+            ));
+        })();
     }
-    // C mondata.h pm_invisible — stalker / black light (macro, not a clone)
-    const old_invis = (olddata?.mndx | 0) === pm('STALKER')
-        || (olddata?.mndx | 0) === pm('BLACK_LIGHT');
-    const new_invis = (mdat?.mndx | 0) === pm('STALKER')
-        || (mdat?.mndx | 0) === pm('BLACK_LIGHT');
-    if (!mtmp.perminvis || old_invis) mtmp.perminvis = new_invis ? 1 : 0;
-    mtmp.minvis = mtmp.invis_blkd ? 0 : mtmp.perminvis;
-    if (mtmp.mundetected) hideunder(mtmp);
-
-    // ustuck swallow/unstuck named omit (expels/unstuck async)
-
-    if ((mdat?.mndx | 0) === pm('LONG_WORM')
-        && (mtmp.wormno = get_wormno())) {
-        initworm(mtmp, rn2(5));
-        place_worm_tail_randomly(mtmp, mtmp.mx, mtmp.my);
-    }
-
-    mtmp.meverseen = 0;
-    newsym(mtmp.mx | 0, mtmp.my | 0);
-
-    // C: vampire cham after the pline; JS applies it before awaiting More
-    // so sync callers (makemon) keep immediate mutation.
-    if ((mtmp.cham === NON_PM || mtmp.cham == null)
-        && mdat.mlet === 'S_VAMPIRE' && !pfsc) {
-        mtmp.cham = pm_to_cham(mdat.mndx ?? NON_PM);
-    }
-
-    // possibly_unwield / mon_break_armor / mselftouch named omit
-    check_gear_next_turn(mtmp);
-    // boulder drop / poly_steed / Elbereth monflee named omit
-
-    if (msg) return newcham_show_msg(mtmp, oldname, seenorsensed, mdat);
-    return true;
+    return newcham_after_unleash(
+        mtmp, olddata, mdat, msg, oldname, seenorsensed, pfsc,
+    );
 }
 
 export { vampshifted, is_vampshifter, pickvampshape };
@@ -2787,7 +2866,12 @@ export function makemon(mdat, x, y, mmflags = 0) {
         const mcham = pm_to_cham(ptr.mndx);
         if (mcham !== NON_PM) {
             mtmp.cham = mcham;
-            // Vlad stays in normal shape to carry the Candelabrum
+            // C makemon.c:1367 — newcham NO_NC_FLAGS finishes before
+            // allow_minvent=FALSE. Sync makemon cannot await (134
+            // call sites stay boolean-returning). Birth is not
+            // mleashed; in_mklev is not mon_moving. D-1648 awaits the
+            // combat/trap/zap sites that can hit unleash/Elbereth.
+            // Monster-turn summon Elbereth still named.
             if (ptr.mndx !== PM_VLAD && newcham(mtmp, null, 0))
                 allow_minvent_local = false;
         }

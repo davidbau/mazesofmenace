@@ -100,6 +100,18 @@ export function highc(c) {
 }
 
 /**
+ * C ref: hacklib.c ucase `:101–110` — walk the string, highc a-z.
+ * C mutates in place; JS returns a new string. Caller sounds.c
+ * Death `pline1(ucase(...))` (D-1653).
+ */
+export function ucase(s) {
+    const str = String(s ?? '');
+    let out = '';
+    for (let i = 0; i < str.length; i++) out += highc(str.charAt(i));
+    return out;
+}
+
+/**
  * C ref: hacklib.c upstart `:113–119` — highc the first character.
  * Callers that already have a local clone (do_name/apply/…) keep theirs;
  * newcham uses this C-home export (do not add clone #9).

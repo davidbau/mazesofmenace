@@ -5,6 +5,7 @@
 
 export {
     se_scratching,
+    se_alarm,
     se_zero_invalid,
     number_of_se_entries,
 } from './generated/seffects_data.js';

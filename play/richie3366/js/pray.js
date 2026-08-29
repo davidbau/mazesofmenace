@@ -15,7 +15,9 @@
 // (punish/attrcurse/rndcurse/summon_minion/god_zaps_you).
 // Named omissions: pleased pat_on_head gifts / crown / give_spell;
 // p_type -2/-1/1/2 outcome bodies beyond water_prayer scan;
-// pray_revive; floorfood sacrifice; known_spell SPE_TURN_UNDEAD /
+// pray_revive; offer_corpse / offer_too_soon / offer_fake_amulet /
+// offer_real_amulet (dosacrifice ECMD_TIME after pick is D-1667);
+// known_spell SPE_TURN_UNDEAD /
 // spelleffects fallback for non-Knight/Cleric; resist TELL pline polish;
 // other livelog paths; poly silent/headless can_chant; Fixed_abil/Dunce
 // adjattrib; Unaware You_feel dream prefix; music.c do_earthquake altar
@@ -29,6 +31,7 @@ import { game } from './gstate.js';
 import { rn2, rn1, rnl, rnz, rnd, d } from './rng.js';
 import { pline, verbalize, You_feel } from './display.js';
 import { nomul } from './hack.js';
+import { m_at } from './mon.js';
 import { A_WIS, A_STR, A_MAX, change_luck, adjattrib, adjalign, exercise } from './attrib.js';
 import { align_gname, xlev_to_rank, uhim } from './roles.js';
 import { objects_at, uncurse } from './mkobj.js';
@@ -56,7 +59,7 @@ import {
     is_undead as mon_is_undead,
     is_demon as mon_is_demon,
     is_vampshifter,
-    nohands, throws_rocks,
+    nohands, throws_rocks, eyecount,
     MR_ELEC, MR_DISINT,
     monsterNames,
 } from './monsters.js';
@@ -70,7 +73,7 @@ import {
     make_confused, make_stunned, make_hallucinated,
     make_glib, make_deaf,
 } from './potion.js';
-import { init_uhunger } from './eat.js';
+import { init_uhunger, floorfood } from './eat.js';
 import { region_danger, region_safety } from './region.js';
 import { safe_teleds } from './teleport.js';
 import { reset_utrap, rescued_from_terrain, heal_legs } from './trap.js';
@@ -84,6 +87,7 @@ import {
     IS_ALTAR, Amask2align, AM_MASK, AM_SHRINE, A_NONE, A_LAWFUL, A_NEUTRAL,
     A_CHAOTIC, GEHENNOM, ECMD_OK, ECMD_TIME, PARANOID_PRAY, PARANOID_CONFIRM,
     LL_CONDUCT,
+    M_AP_TYPE, M_AP_FURNITURE, has_mcorpsenm, MCORPSENM,
     LL_MINORAC, BOLT_LIM, MAXULEV, TELL, NOTELL, Upolyd, ismnum,
     DIED, KILLED_BY, Is_astralevel, M_SEEN_REFL, M_SEEN_ELEC, M_SEEN_DISINT,
     W_ARMS, W_ARMC, W_ARM, W_AMUL, OBJ_FREE, SICK_ALL,
@@ -92,8 +96,12 @@ import {
     XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
     EXT_ENCUMBER, HVY_ENCUMBER, TIMEOUT, isok, IS_OBSTRUCTED,
     SDOOR, SCORR, W_SADDLE, EYE, STOMACH,
+    nothing_happens,
 } from './const.js';
 
+const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
+const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
+const CORPSE = objectNames.indexOf('CORPSE');
 const SHIELD_OF_REFLECTION = objectNames.indexOf('SHIELD_OF_REFLECTION');
 const AMULET_OF_REFLECTION = objectNames.indexOf('AMULET_OF_REFLECTION');
 const SILVER_DRAGON_SCALES = objectNames.indexOf('SILVER_DRAGON_SCALES');
@@ -111,6 +119,8 @@ const SADDLE = objectNames.indexOf('SADDLE');
 const BOULDER = objectNames.indexOf('BOULDER');
 
 const MOLOCH = 'Moloch';
+// C ref: defsym.h PCHAR S_altar — furniture mimic mappearance
+const S_altar = 33;
 
 const STRIDENT = 4; // pray.c
 const DEVOUT = 14; // pray.c
@@ -190,6 +200,28 @@ function on_shrine() {
     if (!loc) return false;
     const mask = (loc.altarmask != null ? loc.altarmask : loc.flags) | 0;
     return (mask & AM_SHRINE) !== 0;
+}
+
+/**
+ * C ref: pray.c altarmask_at :2489–2504.
+ * Furniture-mimic altar uses MCORPSENM; else rm.altarmask.
+ * Callers: dungeon.c count_feat_lastseentyp; dig.c / music.c / pager.c named.
+ */
+export function altarmask_at(x, y) {
+    let res = 0;
+    if (isok(x, y)) {
+        const mon = m_at(x, y);
+        if (mon && M_AP_TYPE(mon) === M_AP_FURNITURE
+            && (mon.mappearance | 0) === S_altar) {
+            res = has_mcorpsenm(mon) ? (MCORPSENM(mon) | 0) : 0;
+        } else {
+            const loc = game.level?.at(x, y);
+            if (loc && IS_ALTAR(loc.typ)) {
+                res = (loc.altarmask != null ? loc.altarmask : loc.flags) | 0;
+            }
+        }
+    }
+    return res;
 }
 
 /** C: pray.c a_align — altarmask overlays rm.flags in C; JS mkaltar uses flags */
@@ -290,11 +322,6 @@ function freehand() {
     if (!uwep || !welded(uwep)) return true;
     if (!bimanual(uwep) && (!u.uarms || !u.uarms.cursed)) return true;
     return false;
-}
-
-/** C: mondata.c eyecount — poly forms deferred (humanoid 2). */
-function eyecount(_data) {
-    return 2;
 }
 
 /**
@@ -709,6 +736,7 @@ async function fix_worst_trouble(trouble) {
         let eyes = body_part(EYE);
         const cure_deaf = !!((u.HDeaf | 0) & TIMEOUT);
         if (BlindedProp() || BlindedTimeout()) {
+            /* C pray.c:562 mondata.h eyecount != 1 → plural EYE */
             if (eyecount(game.youmonst?.data) !== 1) eyes = makeplural(eyes);
             msgbuf = `Your ${eyes} ${vtense(eyes, 'feel')} better`;
             u.ucreamed = 0;
@@ -1437,9 +1465,10 @@ export async function dopray() {
 }
 
 /**
- * C ref: pray.c dosacrifice (#offer).
- * Branch envelope: not-on-altar / impaired early returns (ECMD_OK, 0 RNG).
- * floorfood sacrifice / amulet / corpse / nothing_happens deferred.
+ * C ref: pray.c dosacrifice `#offer` `:1853–1896`.
+ * Branch envelope: not-on-altar / impaired / empty floorfood → ECMD_OK;
+ * successful CORPSE / Yendor / fake pick → ECMD_TIME (D-1667) even
+ * while offer_* bodies stay named. nothing_happens is TIME.
  */
 export async function dosacrifice() {
     const u = game.u || {};
@@ -1452,8 +1481,23 @@ export async function dosacrifice() {
         await pline('You are too impaired to perform the rite.');
         return ECMD_OK;
     }
-    // floorfood("sacrifice", 1) + offering body deferred (C-JS-MAP)
-    return ECMD_OK;
+    const otmp = await floorfood('sacrifice', 1);
+    if (!otmp) return ECMD_OK;
+    /* C pray.c `:1874–1895` — each live otyp spends the turn. */
+    if ((otmp.otyp | 0) === AMULET_OF_YENDOR) {
+        /* offer_too_soon / offer_real_amulet named */
+        return ECMD_TIME;
+    }
+    if ((otmp.otyp | 0) === FAKE_AMULET_OF_YENDOR) {
+        /* offer_fake_amulet named */
+        return ECMD_TIME;
+    }
+    if ((otmp.otyp | 0) === CORPSE) {
+        /* offer_corpse named */
+        return ECMD_TIME;
+    }
+    await pline(nothing_happens);
+    return ECMD_TIME;
 }
 
 function Role_if(pm) {

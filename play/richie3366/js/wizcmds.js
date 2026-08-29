@@ -2,7 +2,7 @@
 // C ref: wizcmds.c
 
 import { game } from './gstate.js';
-import { pline, docrt } from './display.js';
+import { pline, docrt, impossible, flush_topl_more } from './display.js';
 import { getlin } from './getline.js';
 import { pluslvl, losexp } from './exper.js';
 import { makewish } from './zap.js';
@@ -22,10 +22,12 @@ import {
     SWIMMING, SLOW_DIGESTION, HALF_SPDAM, HALF_PHDAM, REGENERATION,
     ENERGY_REGENERATION, PROTECTION, PROT_FROM_SHAPE_CHANGERS,
     POLYMORPH_CONTROL, UNCHANGING, REFLECTING, FREE_ACTION, FIXED_ABIL,
-    LIFESAVED,
+    LIFESAVED, Upolyd,
 } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
 import { make_blinded } from './do.js';
+import { m_at } from './mon.js';
+import { check_invent_gold } from './invent.js';
 
 /** C timeout.c propertynames[] — wizard #wizintrinsic menu order. */
 const PROPERTYNAMES = [
@@ -508,4 +510,76 @@ export async function wiz_makemap() {
     await mklev();
     await makemap_prepost(false, was_in_W_tower);
     return ECMD_OK;
+}
+
+/**
+ * C wizcmds.c you_sanity_check `:1401–1441` — swallow/overlay/HP-Pw
+ * clamps then invent gold/invlet. Caller sanity_check.
+ * Named omit: worn.c check_wornmask_slots `:1439`.
+ */
+async function you_sanity_check() {
+    const u = game.u || (game.u = {});
+
+    if (u.uswallow && !u.ustuck) {
+        await impossible('sanity_check: swallowed by nothing?');
+        // C display_nhwindow(WIN_MESSAGE, TRUE) — wait pending More.
+        await flush_topl_more();
+        u.uswallow = 0;
+        u.uswldtim = 0;
+        await docrt();
+    }
+    const mtmp = m_at(u.ux | 0, u.uy | 0);
+    if (mtmp) {
+        // C: u.usteed is not on the map (JS m_at skips it).
+        if (u.ustuck !== mtmp) {
+            await impossible('sanity_check: you over monster');
+        }
+    }
+    if ((u.uhp | 0) > (u.uhpmax | 0)) {
+        await impossible(
+            'current hero health (%d) better than maximum? (%d)',
+            u.uhp | 0, u.uhpmax | 0,
+        );
+        u.uhp = u.uhpmax | 0;
+    }
+    if (Upolyd(u) && (u.mh | 0) > (u.mhmax | 0)) {
+        await impossible(
+            'current hero health as monster (%d) better than maximum? (%d)',
+            u.mh | 0, u.mhmax | 0,
+        );
+        u.mh = u.mhmax | 0;
+    }
+    if ((u.uen | 0) > (u.uenmax | 0)) {
+        await impossible(
+            'current hero energy (%d) better than maximum? (%d)',
+            u.uen | 0, u.uenmax | 0,
+        );
+        u.uen = u.uenmax | 0;
+    }
+
+    // C `:1439` check_wornmask_slots — named omit (worn.c).
+    await check_invent_gold('invent');
+}
+
+/**
+ * C wizcmds.c sanity_check `:1459–1481`.
+ * Envelope: sanity_no_check (^P/^R CMD_INSANE); in_sanity_check for
+ * impossible(); you_sanity_check gold/invlet via check_invent_gold
+ * ("invent"). Caller allmain.c moveloop_core when iflags.sanity_check
+ * || debug_fuzzer (opt_in Off).
+ * Named omit: obj/timer/mon/light/bc/trap/engraving/levl sanity;
+ * check_wornmask_slots; dobjsfree / clear_bypasses / resume_wish.
+ */
+export async function sanity_check() {
+    if (!game.iflags) game.iflags = {};
+    if (game.iflags.sanity_no_check) {
+        game.iflags.sanity_no_check = false;
+        return;
+    }
+    if (!game.program_state) game.program_state = {};
+    game.program_state.in_sanity_check =
+        (game.program_state.in_sanity_check | 0) + 1;
+    await you_sanity_check();
+    game.program_state.in_sanity_check =
+        (game.program_state.in_sanity_check | 0) - 1;
 }

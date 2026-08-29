@@ -392,8 +392,10 @@ function is_youmonst(m) {
  * C ref: mhitm.c mon_poly — AD_POLY metamorphosis.
  * Ported: youmonst lycanthropy/polyself (D-1004) + monster-defender
  * resists_magm/resist/system-shock/newcham/tele follow-up (D-1006).
- * Named omissions: shieldeff / shieldeff_mon flash; ANTIMAGIC gear scan
- * in resists_magm; TELL resist pline polish.
+ * Await `newcham(..., NO_NC_FLAGS)` so mleashed unleash / Elbereth
+ * flee finish before the vis pline / tele (D-1648; C `:1174` is
+ * sync int). Named omissions: shieldeff / shieldeff_mon flash;
+ * ANTIMAGIC gear scan in resists_magm; TELL resist pline polish.
  * @returns {Promise<number>} remaining damage (0 when shape-change applied)
  */
 export async function mon_poly(magr, mdef, dmg) {
@@ -444,7 +446,7 @@ export async function mon_poly(magr, mdef, dmg) {
                     await monkilled(mdef, '', AD_RBRE);
                 }
             }
-        } else if (newcham(mdef, null, 0)) {
+        } else if (await newcham(mdef, null, 0)) {
             if (vis) {
                 const was_seen = Before.toLowerCase() !== 'it';
                 const verbosely = game.flags?.verbose !== false || !was_seen;
@@ -1847,6 +1849,8 @@ export function make_corpse(mtmp) {
 
 /**
  * C ref: mon.c mon_to_stone — golem → stone golem via newcham.
+ * Await so unleash/Elbereth finish before the "Now it's" pline
+ * (D-1648; C `:3754` is sync int).
  * Call only when poly_when_stoned is true.
  */
 export async function mon_to_stone(mtmp) {
@@ -1856,7 +1860,7 @@ export async function mon_to_stone(mtmp) {
     if (canseemon(mtmp)) {
         await pline(`${Monnam(mtmp)} solidifies...`);
     }
-    if (newcham(mtmp, mons(PM_STONE_GOLEM), 0)) {
+    if (await newcham(mtmp, mons(PM_STONE_GOLEM), 0)) {
         if (canseemon(mtmp)) {
             const g = mtmp.female ? FEMALE : MALE;
             await pline(`Now it's ${an(pmname(mtmp.data, g))}.`);
@@ -1868,8 +1872,11 @@ export async function mon_to_stone(mtmp) {
 
 /**
  * C ref: mon.c vamp_stone — vampshifter / stone-immune cham revert.
- * Named omissions: expels; closed_door enexto rloc; set_mon_min_mhpmax
- * polish; full lapidifying / rises plines; display_nhwindow.
+ * Await `newcham` so unleash/Elbereth finish before cham=NON_PM /
+ * newsym (D-1648; C `:3804` NO_NC_FLAGS / `:3825` NC_SHOW_MSG still
+ * flags 0). Named omissions: expels; closed_door enexto rloc;
+ * set_mon_min_mhpmax polish; full lapidifying / rises plines;
+ * display_nhwindow.
  * @returns {boolean} true if petrification should continue
  */
 export async function vamp_stone(mtmp) {
@@ -1884,7 +1891,7 @@ export async function vamp_stone(mtmp) {
             if ((mtmp.mhpmax | 0) < 10) mtmp.mhpmax = 10;
             mtmp.mhp = mtmp.mhpmax | 0;
             // expels / door-rloc deferred
-            newcham(mtmp, mons(mndx), 0);
+            await newcham(mtmp, mons(mndx), 0);
             if ((mtmp.data?.mndx | 0) === (mndx | 0)) mtmp.cham = NON_PM;
             else mtmp.cham = mndx;
             if (mtmp.mx > 0) newsym(mtmp.mx, mtmp.my);
@@ -1896,7 +1903,7 @@ export async function vamp_stone(mtmp) {
         mtmp.mfrozen = 0;
         if ((mtmp.mhpmax | 0) < 10) mtmp.mhpmax = 10;
         mtmp.mhp = mtmp.mhpmax | 0;
-        newcham(mtmp, mons(mtmp.cham), 0); // NC_SHOW_MSG deferred
+        await newcham(mtmp, mons(mtmp.cham), 0); // NC_SHOW_MSG deferred
         if (mtmp.mx > 0) newsym(mtmp.mx, mtmp.my);
         return false;
     }
@@ -2859,7 +2866,9 @@ async function failed_grab(magr, mdef, mattk) {
  * mon_givit) is D-1244. grow_up killer-bee !victim → queen is D-1246.
  * gulpmu invent / gulpum / litroom / pickup snuff_lit callers still
  * named. Digest-Medusa stone magr / newcham NC_SHOW_MSG pline /
- * grow_up little_to_big still named.
+ * grow_up little_to_big still named. Await gulpmm vampshifter
+ * `newcham(..., NO_NC_FLAGS)` so unleash/Elbereth finish before the
+ * expel pline (D-1648; C `:874`).
  */
 async function gulpmm(magr, mdef, mattk) {
     if (!engulf_target(magr, mdef)) return M_ATTK_MISS;
@@ -2877,7 +2886,7 @@ async function gulpmm(magr, mdef, mattk) {
         }
     }
 
-    if (is_vampshifter(mdef) && newcham(mdef, mons(mdef.cham), NO_NC_FLAGS)) {
+    if (is_vampshifter(mdef) && await newcham(mdef, mons(mdef.cham), NO_NC_FLAGS)) {
         if (_mm_vis) {
             await pline(
                 `${Monnam(magr)} expels ${canspotmon(mdef) ? 'it' : 'something'}.`,

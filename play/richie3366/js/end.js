@@ -859,13 +859,11 @@ function drop_upon_death(mtmp, cont, x, y) {
  * MM_NONAME. Wizard Replace when bones file already exists (D-0581).
  * Named omissions: file compress; unleash_all/unpunish/dismount;
  * remove_mon_from_bones/dmonsfree/forget_engravings;
- * set_ghostly_objlist / resetobjs known-strip; map memory clear;
- * arise/statue arms; ebones; m_dowear; obj_attach_mid; binary savelev;
- * formatkiller body / yyyymmddhhmmss polish (how/when stubs OK for
- * bones_include_name).
+ * set_ghostly_objlist / resetobjs known-strip; map memory clear
+ * (ux/uy zero); arise/statue arms; ebones; m_dowear; obj_attach_mid;
+ * binary savelev; yyyymmddhhmmss when[] (overview lists who/how).
  */
 async function savebones(how, corpse) {
-    void how;
     const u = game.u || {};
     const flags = game.flags || {};
     const wizard = !!(flags.wizard || flags.debug);
@@ -912,6 +910,12 @@ async function savebones(how, corpse) {
 
     // C: bones.c savebones — attach cemetery before create_bonesfile
     // who = plname-ROL-RAC-GEN-ALI (playmode:debug → plname "wizard")
+    // C: ux0=ux, uy0=uy then ux=uy=0; frpx/frpy from ux0/uy0 (zeroing
+    // the hero + lastseentyp wipe still named).
+    const frpx = u.ux | 0;
+    const frpy = u.uy | 0;
+    u.ux0 = frpx;
+    u.uy0 = frpy;
     const gidx = game.flags?.female ? 1 : 0;
     const atype = u.ualign?.type | 0;
     const who = [
@@ -923,10 +927,10 @@ async function savebones(how, corpse) {
     ].join('-');
     const newbones = {
         who,
-        how: '', // formatkiller deferred
-        when: '', // yyyymmddhhmmss deferred
-        frpx: u.ux0 | u.ux | 0,
-        frpy: u.uy0 | u.uy | 0,
+        how: formatkiller(how, true),
+        when: '', // yyyymmddhhmmss named
+        frpx,
+        frpy,
         bonesknown: false,
         next: game.level?.bonesinfo || null,
     };

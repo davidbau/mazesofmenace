@@ -11,8 +11,8 @@
 //         invent.c getobj; attrib.c poison_strdmg / gainstr;
 //         potion.c make_vomiting / make_glib;
 //         costly_tin → shk costly_alteration; use_tin_opener (D-0940).
-// Named omissions: floorfood cockatrice-feel; floorfood sacrifice arm;
-// hallu AD_STUN covered D-0943; corpse_intrinsic/givit covered D-0944;
+// Named omissions: floorfood cockatrice-feel; hallu AD_STUN covered
+// D-0943; corpse_intrinsic/givit covered D-0944;
 // were*/mimic/attrcurse covered D-0945 (set_mimic_blocking /
 // retouch_equipment / display_nhwindow WIN_MAP polish / livelog /
 // eatmupdate hallu toggle);
@@ -88,9 +88,10 @@ import {
     SEE_INVIS, INVIS, PROT_FROM_SHAPE_CHANGERS, LEVITATION, SLEEPY,
     M_AP_NOTHING, M_AP_OBJECT, DISMOUNT_FELL,
     WWALKING, MAGICAL_BREATHING, FLYING, GD_EATGOLD, Is_waterlevel,
+    Is_astralevel,
     CHOKING, A_LAWFUL, STRANGLED, PARANOID_EATING,
     GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_SELECTABLE,
-    GETOBJ_EXCLUDE_NONINVENT, GETOBJ_NOFLAGS,
+    GETOBJ_EXCLUDE_NONINVENT, GETOBJ_NOFLAGS, GETOBJ_DOWNPLAY,
 } from './const.js';
 import {
     adjattrib, gainstr, acurr, acurrstr, change_luck, exercise, adjalign,
@@ -128,6 +129,7 @@ import { PM_KNIGHT } from './generated/monsters_data.js';
 const INVLET_BASIC = 52;
 
 const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
+const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const MEAT_RING = objectNames.indexOf('MEAT_RING');
 const RIN_SLOW_DIGESTION = objectNames.indexOf('RIN_SLOW_DIGESTION');
 const RIN_PROTECTION = objectNames.indexOf('RIN_PROTECTION');
@@ -915,9 +917,9 @@ function Breathless() {
  * pool-lava+(Wwalking|clinger|(Flying&&!Breathless)) skip to invent;
  * metallivore beartrap + IRONBARS + floor gold ynq; edible floor
  * FOOD (non-coin) ynq; invent getobj eat_ok GETOBJ_NOFLAGS.
- * Named omissions: will_feel_cockatrice;
- * safe_qbuf ansimpleoname fallback;
- * sacrifice corpsecheck arm (tin: D-1027 floorfood("tin", 2)).
+ * Named omissions: will_feel_cockatrice; sacrifice floor yn
+ * safe_qbuf ansimpleoname fallback (tin: D-1027 floorfood("tin", 2);
+ * sacrifice getobj: D-1665).
  */
 async function floorfood_eat() {
     const u = game.u || {};
@@ -3288,7 +3290,8 @@ function tin_ok(obj) {
 /**
  * C ref: eat.c floorfood("tin", 2) — yn tinnable floor corpses, else
  * invent getobj tin_ok. Not feeding: usteed does not skip floor.
- * Named omit: will_feel_cockatrice; sacrifice arm; safe_qbuf fallback.
+ * Named omit: will_feel_cockatrice; safe_qbuf fallback.
+ * Sacrifice getobj is D-1665.
  */
 async function floorfood_tin() {
     const u = game.u || {};
@@ -3322,11 +3325,71 @@ async function floorfood_tin() {
 }
 
 /**
- * C ref: eat.c floorfood(verb, corpsecheck). Eat (0) and tin (2);
- * sacrifice (1) deferred.
+ * C ref: eat.c offer_ok `:3538–3557` — FOOD/AMULET only; CORPSE and
+ * Yendor amulets SUGGEST (DOWNPLAY corpses on Astral / amulets off);
+ * else EXCLUDE_SELECTABLE. null → EXCLUDE or EXCLUDE_NONINVENT.
+ */
+function offer_ok(obj) {
+    if (!obj) return getobj_else ? GETOBJ_EXCLUDE_NONINVENT : GETOBJ_EXCLUDE;
+    if (obj.oclass !== FOOD_CLASS && obj.oclass !== AMULET_CLASS) {
+        return GETOBJ_EXCLUDE;
+    }
+    if ((obj.otyp | 0) !== CORPSE && (obj.otyp | 0) !== AMULET_OF_YENDOR
+        && (obj.otyp | 0) !== FAKE_AMULET_OF_YENDOR) {
+        return GETOBJ_EXCLUDE_SELECTABLE;
+    }
+    /* C: Is_astralevel ^ (oclass == AMULET_CLASS) → DOWNPLAY */
+    if (!!Is_astralevel(game.u?.uz) !== (obj.oclass === AMULET_CLASS)) {
+        return GETOBJ_DOWNPLAY;
+    }
+    return GETOBJ_SUGGEST;
+}
+
+/**
+ * C ref: eat.c floorfood("sacrifice", 1) — yn floor CORPSE, else invent
+ * getobj offer_ok GETOBJ_NOFLAGS. Not feeding: usteed does not skip floor.
+ * Named omit: will_feel_cockatrice; safe_qbuf ansimpleoname fallback.
+ */
+async function floorfood_sacrifice(verb) {
+    const u = game.u || {};
+    const ux = u.ux | 0;
+    const uy = u.uy | 0;
+    const form = hero_form_data();
+    getobj_else = 0;
+    const skip_floor = !!(game.iflags?.menu_requested
+        || !can_reach_floor(true)
+        || (is_pool_or_lava(ux, uy)
+            && (Wwalking() || is_clinger(form)
+                || (Flying() && !Breathless()))));
+    if (!skip_floor) {
+        for (let otmp = objects_at(ux, uy); otmp; otmp = otmp.nexthere) {
+            if ((otmp.otyp | 0) !== CORPSE) continue;
+            const one = (otmp.quan || 1) === 1;
+            const qbuf = `There ${one ? 'is' : 'are'} ${doname(otmp)} here; ${verb} ${one ? 'it' : 'one'}?`;
+            const c = await yn_function(qbuf, 'ynq', 'n');
+            if (c === 'y') return otmp;
+            if (c === 'q') return null;
+            getobj_else++;
+        }
+    }
+    let otmp = await getobj(verb, offer_ok, GETOBJ_NOFLAGS);
+    if (otmp && otmp.oclass !== AMULET_CLASS) {
+        if ((otmp.otyp | 0) !== CORPSE) {
+            await pline(`You can't ${verb} that!`);
+            otmp = null;
+        }
+    }
+    getobj_else = 0;
+    return otmp;
+}
+
+/**
+ * C ref: eat.c floorfood(verb, corpsecheck). Eat (0), sacrifice (1),
+ * tin (2).
  */
 export async function floorfood(verb, corpsecheck) {
     if ((corpsecheck | 0) === 0) return floorfood_eat();
+    if ((corpsecheck | 0) === 1) return floorfood_sacrifice(verb);
     if ((corpsecheck | 0) === 2) return floorfood_tin();
     return null;
 }

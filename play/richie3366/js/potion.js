@@ -155,6 +155,7 @@ import { cansee } from './vision.js';
 import {
     mons, mon_hates_blessings, pmnames, is_swimmer, monsterNames,
     has_head, is_were, is_vampshifter, is_human, breathless, haseyes,
+    eyecount,
     dmgtype, MR_POISON, MR_ACID, MR_SLEEP,
 } from './monsters.js';
 import { rider_cant_reach } from './steed.js';
@@ -227,8 +228,6 @@ const TOWEL = objectNames.indexOf('TOWEL');
 const CORPSE = objectNames.indexOf('CORPSE');
 const PM_DJINNI = monsterNames.indexOf('PM_DJINNI');
 const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
-const PM_CYCLOPS = monsterNames.indexOf('PM_CYCLOPS');
-const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_IRON_GOLEM = monsterNames.indexOf('PM_IRON_GOLEM');
 const PM_PESTILENCE = monsterNames.indexOf('PM_PESTILENCE');
 const MS_SILENT = 0;
@@ -2717,16 +2716,6 @@ function Half_gas_damage() {
 }
 
 /**
- * C mondata.h eyecount — no eyes 0; cyclops/floating eye 1; else 2.
- */
-function eyecount_pot(ptr) {
-    if (!haseyes(ptr)) return 0;
-    const n = ptr?.mndx ?? ptr?.mnum ?? -1;
-    if (n === PM_CYCLOPS || n === PM_FLOATING_EYE) return 1;
-    return 2;
-}
-
-/**
  * C potion.c potionbreathe heal arms — +1 mh if Upolyd below max,
  * +1 uhp if below max (both, not exclusive).
  */
@@ -2775,7 +2764,8 @@ export async function potionbreathe(obj) {
                 await pline('Ulch!  That potion smells terrible!');
             } else if (haseyes(yd)) {
                 let eyes = body_part(EYE);
-                if (eyecount_pot(yd) !== 1) eyes = makeplural(eyes);
+                /* C potion.c:1958 mondata.h eyecount != 1 → plural */
+                if (eyecount(yd) !== 1) eyes = makeplural(eyes);
                 await pline(`Your ${eyes} ${vtense(eyes, 'sting')}!`);
             }
             break;

@@ -1,18 +1,21 @@
 // sounds.js — Ambient sounds and #chat.
 // C ref: sounds.c — dosounds / dotalk / dochat / domonnoise (MS_BARK
 //         subset + MS_HUMANOID D-1618 / mplayer_talk D-1606 /
-//         MS_BOAST D-1626) + yelp / growl (pet abuse; D-0836).
+//         MS_BOAST D-1626 / MS_RIDER Death tribute D-1653) + yelp /
+//         growl (pet abuse; D-0836).
 
 import { game } from './gstate.js';
 import { pline, canseemon, verbalize, Hallucination } from './display.js';
 import { getdir } from './lock.js';
 import { mon_at } from './uhitm.js';
 import { Monnam } from './do_name.js';
-import { objects_at } from './mkobj.js';
+import { objects_at, noveltitle } from './mkobj.js';
+import { Death_quote } from './files.js';
+import { u_have_novel } from './invent.js';
 import { objectNames } from './generated/objects_data.js';
 import { COIN_CLASS } from './objects.js';
 import { rn2 } from './rng.js';
-import { dist2 } from './hacklib.js';
+import { dist2, ucase } from './hacklib.js';
 import { vtense } from './objnam.js';
 import { nomul } from './hack.js';
 import {
@@ -37,6 +40,7 @@ const PM_ORACLE = monsterNames.indexOf('PM_ORACLE');
 const PM_HOBBIT = monsterNames.indexOf('PM_HOBBIT');
 const PM_ARCHEOLOGIST = monsterNames.indexOf('PM_ARCHEOLOGIST');
 const PM_TOURIST = monsterNames.indexOf('PM_TOURIST');
+const PM_DEATH = monsterNames.indexOf('PM_DEATH');
 
 /** C ref: pline.c You_hear — acoustics/Deaf; Unaware/Underwater deferred. */
 async function You_hear(line) {
@@ -379,6 +383,7 @@ const MS_MUMBLE = 21;
 const MS_ORC = 24;
 const MS_HUMANOID = 25;
 const MS_SEDUCE = 31;
+const MS_RIDER = 35;
 const MS_LEADER = 36;
 const MS_BOAST = 43;
 const MS_GROAN = 44;
@@ -596,15 +601,28 @@ function poly_gender() {
     return game.flags?.female ? 1 : 0;
 }
 
+/** C context.h tribute_info.Deathnotice — saved with context. */
+function tribute_info() {
+    if (!game.context) game.context = {};
+    let t = game.context.tribute;
+    if (!t) {
+        t = { Deathnotice: 0 };
+        game.context.tribute = t;
+    }
+    return t;
+}
+
 /**
  * C ref: sounds.c domonnoise — MS_BARK + MS_SEDUCE + MS_LEADER +
  * MS_HUMANOID (D-1618 peaceful + hostile "threatens you.";
  * D-1606 endgame mplayer_talk) + MS_BOAST hostile giants
- * (D-1626; peaceful FALLTHROUGH into MS_HUMANOID). Other MS_*
- * named omitted in C-JS-MAP; unknown → ECMD_OK (silent).
- * FULL_MOON howl needs night() — deferred; falls through to
- * bark. MS_PRIEST priest_talk deferred (non-leader temple
- * priests). MS_SEDUCE doseduce (SYSOPT non-nymph) deferred.
+ * (D-1626; peaceful FALLTHROUGH into MS_HUMANOID) + MS_RIDER
+ * Death tribute (D-1653; u_have_novel / Death_quote / ucase
+ * pline). Other MS_* named omitted in C-JS-MAP; unknown →
+ * ECMD_OK (silent). FULL_MOON howl needs night() — deferred;
+ * falls through to bark. MS_PRIEST priest_talk deferred
+ * (non-leader temple priests). MS_SEDUCE doseduce (SYSOPT
+ * non-nymph) deferred.
  */
 export async function domonnoise(mtmp) {
     if (!mtmp) return ECMD_OK;
@@ -759,17 +777,50 @@ export async function domonnoise(mtmp) {
                 break;
             }
         }
+    } else if (msound === MS_RIDER) {
+        // C sounds.c MS_RIDER :1193–1218 (D-1653). Death tribute:
+        // !Deathnotice && u_have_novel → title + maybe misquoted;
+        // else rn2(3) && Death_quote; else !rn2(10) Sandman; else War.
+        // Inline fold, not strcmpi clone #3 (vault/write).
+        const ms_Death = (ptr?.mndx | 0) === PM_DEATH;
+        const trib = tribute_info();
+        const verbuf = { s: '' };
+        let book = null;
+        if (ms_Death && !trib.Deathnotice
+            && (book = u_have_novel()) != null) {
+            const tribtitle = noveltitle(book);
+            if (tribtitle) {
+                let line = `Ah, so you have a copy of /${tribtitle}/.`;
+                const tlow = String(tribtitle).toLowerCase();
+                if (tlow !== 'snuff' && tlow !== 'the wee free men') {
+                    line += '  I may have been misquoted there.';
+                }
+                verbl_msg = line;
+            }
+            trib.Deathnotice = 1;
+        } else if (ms_Death && rn2(3) && await Death_quote(verbuf)) {
+            verbl_msg = verbuf.s;
+        } else if (ms_Death && !rn2(10)) {
+            pline_msg = 'is busy reading a copy of Sandman #8.';
+        } else {
+            verbl_msg = 'Who do you think you are, War?';
+        }
     }
     // Other msound cases deferred (guardian/isshk/gecko remaps named)
 
     // C :1222–1241 pline_msg then mcan verbl_msg_mcan then verbl_msg.
-    // verbl_msg_mcan / Death ucase named omitted.
+    // verbl_msg_mcan / SetVoice / sound_speak named omitted.
     if (pline_msg) {
         await pline(`${Monnam(mtmp)} ${pline_msg}`);
         return ECMD_TIME;
     }
     if (verbl_msg) {
-        await verbalize(verbl_msg);
+        // C: PM_DEATH talks in CAPITAL LETTERS without quotation marks.
+        if ((ptr?.mndx | 0) === PM_DEATH) {
+            await pline(ucase(verbl_msg));
+        } else {
+            await verbalize(verbl_msg);
+        }
         return ECMD_TIME;
     }
     return ECMD_OK;

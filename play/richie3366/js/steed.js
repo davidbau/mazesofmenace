@@ -1,6 +1,7 @@
 // steed.js — Saddle / riding.
 // C ref: steed.c — rider_cant_reach, can_saddle, use_saddle,
-// put_saddle_on_mon, can_ride, doride, mount_steed, landing_spot,
+// put_saddle_on_mon, can_ride, doride, mount_steed,
+// landing_spot (KNOCKED preferred-dir + enexto D-1640),
 // dismount_steed (BYCHOICE + DISMOUNT_THROWN/KNOCKED/FELL HP D-1627),
 // kick_steed (D-1362), place_monster (D-1565; rm.h grid).
 
@@ -10,7 +11,8 @@ import { makeknown, near_capacity } from './invent.js';
 import {
     humanoid, noncorporeal, verysmall, bigmonst, nohands,
     amorphous, is_whirly, unsolid, touch_petrifies,
-    is_flyer, is_floater, is_neuter, M1_HUMANOID, MZ_MEDIUM, G_UNIQ,
+    is_flyer, is_floater, is_neuter, throws_rocks,
+    M1_HUMANOID, MZ_MEDIUM, G_UNIQ,
 } from './monsters.js';
 import {
     W_SADDLE, W_WEP, W_SWAPWEP, W_QUIVER,
@@ -21,7 +23,8 @@ import {
     DISMOUNT_GENERIC,
     BOTH_SIDES, KILLED_BY_AN, FLYING, LEVITATION,
     ACCESSIBLE, IS_DOOR, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN,
-    N_DIRS, xdir, ydir, FROMOUTSIDE,
+    N_DIRS, FROMOUTSIDE,
+    DIR_ERR, xytodir, dirtocoord, DIR_LEFT, DIR_RIGHT,
     M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT,
     has_mgivenname, MGIVENNAME, TELEDS_ALLOW_DRAG,
     VIBRATING_SQUARE, DIED, Never_mind, FEMALE, MALE,
@@ -40,8 +43,9 @@ import { losehp, maybe_half_phys, finish_maybe_wail } from './hack.js';
 import { set_wounded_legs, heal_legs } from './trap.js';
 import { finish_meating } from './dogmove.js';
 import { an } from './objnam.js';
-import { pmnames, PM_KNIGHT, monsterNames } from './generated/monsters_data.js';
+import { pmnames, PM_KNIGHT, PM_GRID_BUG, monsterNames } from './generated/monsters_data.js';
 import { vision_recalc } from './vision.js';
+import { enexto } from './teleport.js';
 import { which_armor } from './worn.js';
 import { acurr, exercise, Fumbling } from './attrib.js';
 import { P_SKILL } from './weapon.js';
@@ -449,17 +453,50 @@ function teleds_simple(nux, nuy, _flags) {
 }
 
 /**
- * C ref: steed.c landing_spot — adjacent dismount candidate.
- * DISMOUNT_KNOCKED preferred-dir arm deferred (reason≠KNOCKED here).
- * Diagonal squeeze / NODIAG poly deferred.
+ * C ref: steed.c landing_spot `:459–572`.
+ * DISMOUNT_KNOCKED: prefer u.dx,u.dy (uhitm knockback), then
+ * clockwise/counterclockwise 50:50 via rn2(2), then remaining dirs.
+ * Pass i==0/1/2 trap+boulder; forceit → enexto(youmonst.data).
+ * C NODIAG uses `(j % 1) != 0` (never skips; C as written).
  */
-function landing_spot(spot, reason, forceit) {
+export function landing_spot(spot, reason, forceit) {
     const u = game.u;
     const tryPos = [];
-    // Non-knocked: all 8 dirs in C xdir/ydir order (W,NW,N,NE,E,SE,S,SW)
-    for (let j = 0; j < N_DIRS; j++) {
-        tryPos.push({ x: xdir[j], y: ydir[j] });
+    for (let k = 0; k < N_DIRS; k++) tryPos.push({ x: 0, y: 0 });
+    let n = 0;
+    let j = xytodir(u.dx | 0, u.dy | 0);
+    let best_j, clockwise_j, counterclk_j;
+    if (reason === DISMOUNT_KNOCKED && j !== DIR_ERR) {
+        best_j = j;
+        tryPos[0].x = u.dx | 0;
+        tryPos[0].y = u.dy | 0;
+        const iSwap = rn2(2);
+        clockwise_j = DIR_RIGHT(j);
+        const cc = { x: 0, y: 0 };
+        dirtocoord(cc, clockwise_j);
+        tryPos[1 + iSwap].x = cc.x | 0;
+        tryPos[1 + iSwap].y = cc.y | 0;
+        counterclk_j = DIR_LEFT(j);
+        dirtocoord(cc, counterclk_j);
+        tryPos[2 - iSwap].x = cc.x | 0;
+        tryPos[2 - iSwap].y = cc.y | 0;
+        n = 3;
+    } else {
+        best_j = clockwise_j = counterclk_j = -1;
     }
+    for (j = 0; j < N_DIRS; j++) {
+        if (j === best_j || j === clockwise_j || j === counterclk_j) continue;
+        /* C: NODIAG(u.umonnum) && (j % 1) != 0 — j%1 is always 0. */
+        if (reason === DISMOUNT_POLY && ((u.umonnum | 0) === PM_GRID_BUG)
+            && (j % 1) !== 0) {
+            continue;
+        }
+        const cc = { x: 0, y: 0 };
+        dirtocoord(cc, j);
+        tryPos[n] = { x: cc.x | 0, y: cc.y | 0 };
+        n++;
+    }
+
     const impaird = !!(u.Stunned || u.Confusion || u.Fumbling);
     let iStart;
     if (reason === DISMOUNT_BYCHOICE && !impaird) iStart = 0;
@@ -470,17 +507,15 @@ function landing_spot(spot, reason, forceit) {
     let viable = 0;
     let found = false;
     let min_distance = -1;
-    const best_j = -1;
 
     for (let i = iStart; i <= 2 && !found; i++) {
-        for (let j = 0; j < tryPos.length; j++) {
+        for (j = 0; j < n; j++) {
             const x = (u.ux | 0) + tryPos[j].x;
             const y = (u.uy | 0) + tryPos[j].y;
             if (!isok(x, y)) continue;
             if (u.ux === x && u.uy === y) continue;
             if (!accessible_cell(x, y)) continue;
-            const mon = m_at(x, y);
-            if (mon && mon !== u.usteed) continue;
+            if (m_at(x, y)) continue;
             if (!test_move_ok(u.ux, u.uy, tryPos[j].x, tryPos[j].y)) continue;
 
             viable++;
@@ -491,20 +526,22 @@ function landing_spot(spot, reason, forceit) {
             if (!better) continue;
 
             const t = t_at(x, y);
-            const kn_trap = i === 0 && t && t.tseen && (t.ttyp | 0) !== VIBRATING_SQUARE;
-            const boulder = i <= 1 && sobj_at(BOULDER, x, y);
+            const kn_trap = i === 0 && t && t.tseen
+                && (t.ttyp | 0) !== VIBRATING_SQUARE;
+            const boulder = i <= 1 && sobj_at(BOULDER, x, y)
+                && !throws_rocks(you_data());
             if (!kn_trap && !boulder) {
                 spot.x = x;
                 spot.y = y;
                 min_distance = distance;
                 found = true;
+                if (best_j !== -1 && j < 3) break;
             }
         }
     }
 
     if (forceit && !found) {
-        // enexto fallback deferred — BYCHOICE forceit=0 first call
-        return false;
+        found = !!enexto(spot, u.ux | 0, u.uy | 0, you_data());
     }
     return found;
 }
@@ -671,8 +708,9 @@ function dismount_hero_ufly_ulev() {
  * HWounded_legs+rn1(5,5)) and skip heal_legs (D-1627).
  * Named omit: poly/engulfed/bones polish, water/lava steed death,
  * Punished/ustuck float_down arms, encumber_msg, polearm unweapon,
- * landing_spot KNOCKED preferred-dir / enexto forceit,
- * update_mon_extrinsics. float_down → pickup when !Air/Water
+ * uhitm DISMOUNT_KNOCKED u.dx/u.dy caller, update_mon_extrinsics.
+ * landing_spot KNOCKED preferred-dir + enexto forceit D-1640.
+ * float_down → pickup when !Air/Water
  * (D-0220 / D-0966). BYCHOICE D-0213. Hallu rain-line named.
  */
 export async function dismount_steed(reason) {

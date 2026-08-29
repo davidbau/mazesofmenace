@@ -94,7 +94,7 @@ import { UnsupportedMonsterCreationError } from './makemon_create.js';
 import { UnsupportedRegionPlacementError } from './mkmaze.js';
 import { docallcmd, UnsupportedObjectNamingError } from './do_name.js';
 import { UnsupportedObjectOperationError } from './obj.js';
-import { doloot, UnsupportedPickupError } from './pickup.js';
+import { doloot, dotip, UnsupportedPickupError } from './pickup.js';
 import {
     dodrink,
     UnsupportedPotionError,
@@ -1371,7 +1371,7 @@ export const ADMITTED_COMMANDS = Object.freeze([
     'takeoff', 'wear',
     'puton', 'quaff', 'read', 'zap', 'cast', 'reqmenu', 'fight', 'options', 'autopickup',
     'wizwish', 'wizlevelport', 'wizgenesis', 'fire', 'throw', 'swap', 'kick',
-    'save', 'wield', 'quiver', 'help', 'whatis', '#', 'loot',
+    'save', 'wield', 'quiver', 'help', 'whatis', '#', 'loot', 'force', 'tip',
 ]);
 const ADMITTED_BOUNDARY = 'the repeated-command boundary admits only '
     + `${ADMITTED_COMMANDS.join(', ')}, a one-square walk, a shift-direction `
@@ -2740,6 +2740,9 @@ async function doextcmd(key, state) {
     case 'doforce':
         // C ref: lock.c doforce(), which returns ECMD_OK or ECMD_TIME.
         return await doforce(state);
+    case 'dotip':
+        // C ref: pickup.c dotip(), which returns its own ECMD_* result.
+        return await failClosedCommand(key, state, () => dotip(state));
     default:
         resetCommandVars(state);
         throw new UnsupportedHeroCommandBoundaryError(

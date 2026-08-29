@@ -23,7 +23,7 @@ import {
 } from './objects.js';
 import { mksobj, mkobj, weight, curse, oc_merge_of, spot_stop_timers } from './mkobj.js';
 import { artifact_name, nartifact_exist } from './artifact.js';
-import { oname } from './do_name.js';
+import { oname, lookup_novel } from './do_name.js';
 import { name_to_monplus } from './mondata.js';
 import { makesingular, An, an } from './objnam.js';
 import { NON_PM, LOW_PM, monsterNames } from './monsters.js';
@@ -52,6 +52,7 @@ const GRAY_DS = objectNames.indexOf('GRAY_DRAGON_SCALES');
 const SCALE_MAIL = objectNames.indexOf('SCALE_MAIL');
 const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
 const WAN_WISHING = objectNames.indexOf('WAN_WISHING');
+const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const GOLD_SYM = '$';
 
@@ -946,6 +947,11 @@ export function readobjnam(bp, no_wish, missOut) {
         const out = { otyp: 0 };
         const aname = artifact_name(d.name, out, true);
         if (aname && out.otyp === d.otmp.otyp) d.name = aname;
+        // C objnam.c readobjnam :5355–5358 — SPE_NOVEL lookup_novel
+        if (d.otmp.otyp === SPE_NOVEL) {
+            const novelname = lookup_novel(d.name, d.otmp);
+            if (novelname) d.name = novelname;
+        }
         const wishedName = d.name;
         d.otmp = oname(d.otmp, d.name, ONAME_WISH);
         if (d.otmp.oartifact || wishedName === aname) {

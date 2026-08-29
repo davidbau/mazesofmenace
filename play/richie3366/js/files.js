@@ -2,7 +2,7 @@
 // C ref: files.c fopen_wizkit_file / wizkit_addinv / proc_wizkit_line /
 // read_wizkit; choose_passage / read_tribute / Death_quote.
 // Callers: allmain.c newgame after u_init_skills_discoveries (D-1192);
-// spell.c study_book SPE_NOVEL; sounds.c Death_quote named.
+// spell.c study_book SPE_NOVEL; sounds.c Death_quote live (D-1653).
 // Rule #2: VFS only — no fs / getenv / HOME fopen. Tribute text is
 // embedded (extract-tribute.py), not dlb disk.
 

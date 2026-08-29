@@ -2,11 +2,20 @@
 // C ref: do_name.c oname / artifact naming / docallcmd / namefloorobj
 //        (D-1555); christen_orc / rndorcname / free_oname (D-1193);
 //        new_oname (D-1363); name_from_player (D-1624, EDIT_GETLIN off);
-//        do_mgivenname / alreadynamed (D-1638).
+//        do_mgivenname / alreadynamed (D-1638); docallcmd `'d'` →
+//        o_init.c rename_disco; lookup_novel (D-1651); `'o'` getobj
+//        `"call"` (D-1660); do_oname artifact_name slip (D-1670);
+//        docallcmd cmdq_pop canned + lootabc + invent-gated i/o (D-1671);
+//        docall sink-fluid OBJ_DESCR + safe_qbuf Call/:/thing (D-1672);
+//        distant_monnam astral high-cleric conceal (D-1673).
 
-import { artifact_exists, exist_artifact } from './artifact.js';
+import {
+    artifact_exists, exist_artifact, artifact_name, restrict_name,
+} from './artifact.js';
 import { game } from './gstate.js';
-import { rn2, rn1, rn2_on_display_rng } from './rng.js';
+import { cmdq_pop, cmdq_clear } from './cmd.js';
+import { rn2, rn1, rn2_on_display_rng, rnd_on_display_rng } from './rng.js';
+import { wipeout_text } from './engrave.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, docrt, canspotmon, pline,
@@ -15,17 +24,20 @@ import {
 } from './display.js';
 import {
     paint_corner_nhw_menu, discover_object, compactify_invlets,
-    getobj_display_pickinv,
+    getobj_display_pickinv, getobj, update_inventory,
 } from './invent.js';
+import { rename_disco } from './o_init.js';
 import {
     ONAME_VIA_NAMING, ONAME_KNOW_ARTI, MGIVENNAME, has_mgivenname,
     W_SADDLE, engulfing_u, Upolyd, MD_PAD_BOGONS,
     ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR,
     SUPPRESS_IT, SUPPRESS_INVISIBLE, SUPPRESS_HALLUCINATION,
     SUPPRESS_SADDLE, SUPPRESS_NAME,
-    GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST,
-    has_oname, ONAME, CLR_MAX, BUFSZ, u_at, OBJ_FREE,
+    GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GETOBJ_NOFLAGS,
+    ECMD_OK, CMDQ_KEY, CQ_CANNED,
+    has_oname, ONAME, CLR_MAX, BUFSZ, u_at, OBJ_FREE, OBJ_INVENT, HAND,
     isok, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK, has_ebones,
+    NON_PM, Is_astralevel,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import { shkname } from './shknam.js';
@@ -37,13 +49,17 @@ import {
 import { getlin } from './getline.js';
 import { getpos } from './getpos.js';
 import { object_from_map } from './pager.js';
-import { objects_at } from './mkobj.js';
+import { objects_at, SIR_TERRY_NOVELS } from './mkobj.js';
 import { rank_of } from './roles.js';
-import { an, xname, simpleonames, set_y_monnam, set_noit_mon_nam, The } from './objnam.js';
+import {
+    an, xname, simpleonames, set_y_monnam, set_noit_mon_nam, The,
+    is_plural, safe_qbuf, body_part_latebound,
+} from './objnam.js';
 import {
     POTION_CLASS, COIN_CLASS, AMULET_CLASS, SCROLL_CLASS, WAND_CLASS,
     RING_CLASS, GEM_CLASS, SPBOOK_CLASS, ARMOR_CLASS, TOOL_CLASS,
-    VENOM_CLASS, objectNames, objectNameStrs, objectDescrs,
+    VENOM_CLASS, WEAPON_CLASS, FOOD_CLASS,
+    objectNames, objectNameStrs, objectDescrs,
 } from './objects.js';
 import { get_rnd_text } from './rumors.js';
 import { BOGUSMON_BUF } from './generated/bogusmon_data.js';
@@ -57,9 +73,15 @@ const PL_PSIZ = 32; // C: PL_PSIZ player-name / oname buffer
 const PM_GHOST = monsterNames.indexOf('PM_GHOST');
 const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
 const PM_SHOPKEEPER = monsterNames.indexOf('PM_SHOPKEEPER');
+const PM_HIGH_CLERIC = monsterNames.indexOf('PM_HIGH_CLERIC');
 const PM_JUIBLEX = monsterNames.indexOf('PM_JUIBLEX');
 const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
 const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
+const TOWEL = objectNames.indexOf('TOWEL');
+const STATUE = objectNames.indexOf('STATUE');
+const TIN = objectNames.indexOf('TIN');
+const FIGURINE = objectNames.indexOf('FIGURINE');
+const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
 const BOGUSMONSIZE = 100; // C: do_name.c rndmonnam
@@ -219,8 +241,10 @@ async function name_from_player(prompt, defres) {
 }
 
 /**
- * C ref: do_name.c do_oname — getlin name then oname.
- * Artifact_name slip / wipeout_text / literate conduct deferred.
+ * C ref: do_name.c do_oname `:289–369`.
+ * getlin then artifact_name + restrict_name / exist_artifact slip
+ * (wipeout_text + rnd_on_display_rng) or canonical Sting/Orcrist.
+ * oname via_naming literate livelog / shop bill still named.
  */
 async function do_oname(obj) {
     if (!obj) return;
@@ -228,10 +252,9 @@ async function do_oname(obj) {
         await pline(`${Ysimple_name2(obj)} already has a published name.`);
         return;
     }
-    const which = (obj.quan || 1) !== 1 ? 'these' : 'this';
-    // C: safe_qbuf(qbuf, qbuf, "?", obj, xname, simpleonames, "item")
-    const qbuf = `What do you want to name ${which} ${xname(obj)}?`;
-    const buf = await name_from_player(qbuf, safe_oname(obj));
+    const qprefix = `What do you want to name ${is_plural(obj) ? 'these' : 'this'} `;
+    const qbuf = safe_qbuf(qprefix, qprefix, '?', obj, xname, simpleonames, 'item');
+    let buf = await name_from_player(qbuf, safe_oname(obj));
     if (buf == null) return;
 
     if (obj.oartifact) {
@@ -241,7 +264,30 @@ async function do_oname(obj) {
         return;
     }
 
-    // artifact_name / restrict_name / wipeout_text slip deferred
+    const typOut = { otyp: STRANGE_OBJECT };
+    const aname = artifact_name(buf, typOut, true);
+    const objtyp = typOut.otyp;
+    if (aname
+        && (restrict_name(obj, aname) || exist_artifact(obj.otyp, aname))) {
+        buf = aname;
+        const bufcpy = buf;
+        do {
+            const prefix = buf.length >= 4
+                && buf.slice(0, 4).toLowerCase() === 'the ' ? 4 : 0;
+            buf = buf.slice(0, prefix)
+                + wipeout_text(buf.slice(prefix), rnd_on_display_rng(2), 0);
+        } while (buf === bufcpy);
+        await pline(`While engraving, your ${body_part_latebound(HAND)} slips.`);
+        await flush_topl_more();
+        await pline(`You engrave: "${buf}".`);
+        const u = game.u || (game.u = {});
+        if (!u.uconduct) u.uconduct = {};
+        u.uconduct.literate = (u.uconduct.literate | 0) + 1;
+    } else if (obj.otyp === objtyp) {
+        /* artifact_name() always returns non-Null when it sets objtyp */
+        buf = aname;
+    }
+
     oname(obj, buf, ONAME_VIA_NAMING | ONAME_KNOW_ARTI);
 }
 
@@ -464,8 +510,8 @@ async function alreadynamed(mtmp, monnambuf, usrbuf) {
  * C ref: do_name.c do_mgivenname `:198–282`. Caller: docallcmd `'m'`.
  * Hallu refuse; getpos; self/steed; m_at; swallow glyph_at; visibility;
  * name_from_player; G_UNIQ/shk/priest/ghost/ebones reject; else christen.
- * Named: astral high-cleric distant_monnam; SetVoice SND_LIB (empty
- * macro); christen leash update_inventory; cmdq_pop; lootabc letters.
+ * Named: SetVoice SND_LIB (empty macro); christen leash
+ * update_inventory. Astral high-cleric conceal is D-1673.
  */
 async function do_mgivenname() {
     if (Hallucination()) {
@@ -658,12 +704,36 @@ export function x_monnam_tame(mtmp) {
 }
 
 /**
+ * C ref: do_name.c distant_monnam `:1178–1182` — high priest(ess)
+ * identity concealed on the Astral Plane unless adjacent (hallu does
+ * its own obfuscation). C `mon->data == &mons[PM_HIGH_CLERIC]`; JS
+ * `mons()` is a fresh object so compare `data.mndx`. C `m_next2u` is
+ * a you.h macro (`distu(mx,my) <= 2`); expand here, do not add clone
+ * #6 of the named JS helper.
+ * @returns {string|null}
+ */
+function astral_high_cleric_distant_nam(mon, article) {
+    if (!mon || PM_HIGH_CLERIC < 0) return null;
+    if ((mon.data?.mndx | 0) !== PM_HIGH_CLERIC) return null;
+    if (Hallucination() || !Is_astralevel(game.u?.uz)) return null;
+    const u = game.u || {};
+    const dx = (mon.mx | 0) - (u.ux | 0);
+    const dy = (mon.my | 0) - (u.uy | 0);
+    if (dx * dx + dy * dy <= 2) return null;
+    return (article === ARTICLE_THE ? 'the ' : '')
+        + (mon.female ? 'high priestess' : 'high priest');
+}
+
+/**
  * C ref: do_name.c distant_monnam(ARTICLE_NONE) → x_monnam.
- * Shopkeeper → shkname (same arm as mon_nam / D-0307). Astral high-cleric
- * conceal deferred; hallu / mappear / invis+non-PM_SHOPKEEPER suffix deferred.
+ * Shopkeeper → shkname (same arm as mon_nam / D-0307). C pager.c
+ * `look_at_monster` uses distant_monnam ARTICLE_NONE (astral conceal
+ * first). hallu / mappear / invis+non-PM_SHOPKEEPER suffix deferred.
  */
 export function distant_monnam_none(mtmp) {
     if (!mtmp) return 'it';
+    const hid = astral_high_cleric_distant_nam(mtmp, ARTICLE_NONE);
+    if (hid != null) return hid;
     // C x_monnam: isshk && !hallu && !mappear → shkname
     if (mtmp.isshk) {
         const nam = shkname(mtmp);
@@ -676,10 +746,12 @@ export function distant_monnam_none(mtmp) {
 }
 
 /**
- * C ref: do_name.c distant_monnam `:1168–1186` — ARTICLE_THE/NONE via
- * x_monnam(..., TRUE). Astral PM_HIGH_CLERIC conceal named omit.
+ * C ref: do_name.c distant_monnam `:1168–1186` — ARTICLE_THE/NONE;
+ * astral PM_HIGH_CLERIC conceal else x_monnam(..., TRUE).
  */
 export function distant_monnam(mtmp, article = ARTICLE_THE) {
+    const hid = astral_high_cleric_distant_nam(mtmp, article);
+    if (hid != null) return hid;
     return x_monnam(mtmp, article, null, 0, true);
 }
 
@@ -944,6 +1016,54 @@ export function free_oname(obj) {
     if (has_oname(obj)) delete obj.oextra.oname;
 }
 
+/* C ref: do_name.c NVL_* — indices into sir_Terry_novels[] for aliases. */
+const NVL_COLOUR_OF_MAGIC = 0;
+const NVL_SOURCERY = 4;
+const NVL_MASKERADE = 17;
+const NVL_AMAZING_MAURICE = 27;
+const NVL_THUD = 33;
+
+/**
+ * C ref: do_name.c lookup_novel `:1626–1661` — canonical Discworld title
+ * from a player/level name. Alias spellings first, then strcmpi vs the
+ * table or The(lookname). Stores k in *idx (JS otmp.novelidx). Miss
+ * with IndexOk(*idx) returns the already-chosen title (wish after
+ * mksobj SPE_NOVEL). Inline fold, not strcmpi clone #3 (vault/write).
+ * @param {string} lookname
+ * @param {object|null} [otmp] C int *idx; omit skips store / miss fallback
+ * @returns {string|null}
+ */
+export function lookup_novel(lookname, otmp) {
+    let name = lookname == null ? '' : String(lookname);
+    const novels = SIR_TERRY_NOVELS;
+    const eq = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
+
+    if (eq(The(name), 'The Color of Magic')) {
+        name = novels[NVL_COLOUR_OF_MAGIC];
+    } else if (eq(name, 'Sorcery')) {
+        name = novels[NVL_SOURCERY];
+    } else if (eq(name, 'Masquerade')) {
+        name = novels[NVL_MASKERADE];
+    } else if (eq(The(name), 'The Amazing Maurice')) {
+        name = novels[NVL_AMAZING_MAURICE];
+    } else if (eq(name, 'Thud')) {
+        name = novels[NVL_THUD];
+    }
+
+    for (let k = 0; k < novels.length; ++k) {
+        if (eq(name, novels[k]) || eq(The(name), novels[k])) {
+            if (otmp) otmp.novelidx = k;
+            return novels[k];
+        }
+    }
+    /* name not found; if novelidx is already set, override the name */
+    if (otmp) {
+        const idx = otmp.novelidx | 0;
+        if (idx >= 0 && idx < novels.length) return novels[idx];
+    }
+    return null;
+}
+
 /**
  * C ref: do_name.c new_oname — alloc oname (lth includes NUL in C);
  * removes the old name if present. Caller strcpy's into ONAME.
@@ -1012,21 +1132,43 @@ export function christen_orc(mtmp, gang, other) {
 }
 
 /**
- * C ref: do_name.c docallcmd — "What do you want to name?" menu.
- * `m` → do_mgivenname; `i` → getobj("name")+do_oname; `f` → namefloorobj.
- * `o`/`d` still deferred.
+ * C cmd.c `_cmd_queue.key` — invent `cmdq_add_key` stores a string;
+ * iactions/apply canned clones store a char code.
+ * @param {{ key?: string|number }} cq
  */
-export async function docallcmd() {
-    await flush_topl_more();
+function cmdq_key_ch(cq) {
+    if (typeof cq.key === 'string') return cq.key.charAt(0);
+    if (typeof cq.key === 'number') return String.fromCharCode(cq.key);
+    return '';
+}
+
+/**
+ * C do_name.c docallcmd add_menu `:520–550` + select_menu.
+ * acc = lootabc ? 0 : a_char; gacc C/y/n/,/\/l. i/o only when gi.invent.
+ * Interactive analogue keeps the nhgetch loop (C select_menu inner);
+ * Space/Return with no pick re-prompts (existing JS; C n==0 → 'q').
+ * @returns {Promise<string>} item a_char, or 'q'
+ */
+async function docallcmd_menu() {
+    const abc = !!(game.flags && game.flags.lootabc);
+    const hasInvent = !!(game.invent && game.invent.length);
+    const rows = [
+        { acc: 'm', gacc: 'C', text: 'a monster' },
+        ...(hasInvent ? [
+            { acc: 'i', gacc: 'y', text: 'a particular object in inventory' },
+            { acc: 'o', gacc: 'n', text: 'the type of an object in inventory' },
+        ] : []),
+        { acc: 'f', gacc: ',', text: 'the type of an object upon the floor' },
+        { acc: 'd', gacc: '\\', text: 'the type of an object on discoveries list' },
+        { acc: 'a', gacc: 'l', text: 'record an annotation for the current level' },
+    ];
     const entries = [
         { text: 'What do you want to name?', attr: ATR_INVERSE },
         { text: '', attr: 0 },
-        { text: 'm - a monster', attr: 0 },
-        { text: 'i - a particular object in inventory', attr: 0 },
-        { text: 'o - the type of an object in inventory', attr: 0 },
-        { text: 'f - the type of an object upon the floor', attr: 0 },
-        { text: 'd - the type of an object on discoveries list', attr: 0 },
-        { text: 'a - record an annotation for the current level', attr: 0 },
+        ...rows.map((it) => ({
+            text: `${abc ? it.gacc : it.acc} - ${it.text}`,
+            attr: 0,
+        })),
     ];
     for (;;) {
         await paint_corner_nhw_menu(entries, '(end) ');
@@ -1034,34 +1176,82 @@ export async function docallcmd() {
         game._menu_overlay = false;
         await docrt();
         await flush_screen(1);
-        const ch = String.fromCharCode(key);
-        if (key === 27 || ch === 'q') return;
-        // C select_menu: Enter/space with no pick → re-prompt (n==0)
-        if (ch === '\r' || ch === '\n' || ch === ' ') continue;
-        if (ch === 'f' || ch === ',') {
-            await namefloorobj();
-            return;
-        }
-        if (ch === 'i' || ch === 'y') {
-            // C: getobj("name", name_ok, GETOBJ_PROMPT) → do_oname
-            const obj = await getobj_name();
-            if (obj) await do_oname(obj);
-            return;
-        }
-        if (ch === 'm' || ch === 'C') {
-            await do_mgivenname();
-            return;
-        }
-        if (ch === 'a' || ch === 'l') {
-            const { donamelevel } = await import('./dungeon.js');
-            await donamelevel();
-            return;
-        }
-        if (ch === 'o' || ch === 'n'
-            || ch === 'd' || ch === '\\') {
-            return;
+        const raw = String.fromCharCode(key);
+        if (key === 27 || raw === 'q') return 'q';
+        if (raw === '\r' || raw === '\n' || raw === ' ') continue;
+        for (const it of rows) {
+            if (raw === it.gacc) return it.acc;
+            if (!abc && raw === it.acc) return it.acc;
         }
     }
+}
+
+/**
+ * C ref: do_name.c docallcmd `:498–601` — cmdq_pop canned then
+ * "What do you want to name?" menu (D-1671).
+ * `m` → do_mgivenname; `i` → getobj("name")+do_oname; `o` →
+ * getobj("call", call_ok, GETOBJ_NOFLAGS) then xname + dknown/docall
+ * (D-1660); `f` → namefloorobj; `d`/`\\` → o_init.c rename_disco.
+ * Named: iactions Call pushkeys; `'i'` getobj_name clone; #if 0
+ * call_ok EXCLUDE "know those as well".
+ */
+export async function docallcmd() {
+    await flush_topl_more();
+    let ch = '';
+    const cmdq = cmdq_pop();
+    if (cmdq) {
+        // C `:511–518` KEY → ch; else cmdq_clear(CQ_CANNED); goto switch
+        if (cmdq.typ === CMDQ_KEY || cmdq.typ === 'key') {
+            ch = cmdq_key_ch(cmdq);
+        } else {
+            cmdq_clear(CQ_CANNED);
+        }
+    } else {
+        ch = await docallcmd_menu();
+    }
+    switch (ch) {
+    default:
+    case 'q':
+        break;
+    case 'm':
+        await do_mgivenname();
+        break;
+    case 'i':
+        {
+            const obj = await getobj_name();
+            if (obj) await do_oname(obj);
+        }
+        break;
+    case 'o':
+        {
+            const obj = await getobj('call', call_ok, GETOBJ_NOFLAGS);
+            if (obj) {
+                /* behave as if examining it in inventory;
+                   this might set dknown if it was picked up
+                   while blind and the hero can now see */
+                xname(obj);
+                if (!obj.dknown) {
+                    await pline('You would never recognize another one.');
+                } else {
+                    await docall(obj);
+                }
+            }
+        }
+        break;
+    case 'f':
+        await namefloorobj();
+        break;
+    case 'd':
+        await rename_disco();
+        break;
+    case 'a':
+        {
+            const { donamelevel } = await import('./dungeon.js');
+            await donamelevel();
+        }
+        break;
+    }
+    return ECMD_OK;
 }
 
 /**
@@ -1136,17 +1326,33 @@ async function namefloorobj() {
 }
 
 /**
- * C ref: do_name.c docall_xname — quan=1, clear b/c/odiluted for potions.
+ * C do_name.c docall_xname `:604–633` — copy, quan=1, drop oextra, clear
+ * BUC; then class/otyp fixups so xname is callable-type caliber (not
+ * doname). C odiluted overlays oeroded; JS keeps a separate field.
  */
 function docall_xname(obj) {
     const otemp = {
         ...obj,
+        oextra: null,
         quan: 1,
         blessed: 0,
         cursed: 0,
-        odiluted: 0,
-        oextra: null,
     };
+    if (otemp.oclass === WEAPON_CLASS) {
+        otemp.opoisoned = 0; /* not poisoned */
+    } else if (otemp.oclass === POTION_CLASS) {
+        otemp.odiluted = 0; /* not diluted */
+    } else if (otemp.otyp === TOWEL || otemp.otyp === STATUE) {
+        otemp.spe = 0; /* not wet or historic */
+    } else if (otemp.otyp === TIN) {
+        otemp.known = 0; /* suppress tin type (homemade, &c) and mon type */
+    } else if (otemp.otyp === FIGURINE) {
+        otemp.corpsenm = NON_PM; /* suppress mon type */
+    } else if (otemp.otyp === HEAVY_IRON_BALL) {
+        otemp.owt = game.objects?.[HEAVY_IRON_BALL]?.oc_weight | 0;
+    } else if (otemp.oclass === FOOD_CLASS && otemp.globby) {
+        otemp.owt = 120; /* 6*20, neither a small glob nor a large one */
+    }
     return an(xname(otemp));
 }
 
@@ -1158,36 +1364,65 @@ export async function trycall(obj) {
 }
 
 /**
- * C ref: do_name.c docall — prompt "Call <xname>:" then getlin → oc_uname.
- * Sink-fluid prompt and safe_qbuf fallbacks deferred.
+ * C do_name.c docall `:635–676` — dknown then flush_screen(1); sink
+ * potion uses OBJ_DESCR fluid prompt, else safe_qbuf Call/:/thing.
+ * C fromsink overlays corpsenm; fountain.js also sets .fromsink.
  */
 export async function docall(obj) {
-    if (!obj?.dknown) return;
-    await flush_screen(1);
+    if (!obj?.dknown) return; /* probably blind; Blind || Hallucination for 'fromsink' */
+    await flush_screen(1); /* buffered updates might matter to player's response */
+
     let qbuf;
-    if (obj.oclass === POTION_CLASS && obj.fromsink) {
-        const descr = game.objects?.[obj.otyp]?.oc_descr
-            || game.objects?.[obj.otyp]?.descr
-            || 'clear';
+    const fromsink = !!(obj.fromsink || (obj.corpsenm | 0) === 1);
+    if (obj.oclass === POTION_CLASS && fromsink) {
+        /* fromsink: kludge, meaning it's sink water */
+        const oclObj = game.objects?.[obj.otyp];
+        const descr = objectDescrs[oclObj?.oc_descr_idx ?? obj.otyp] || '';
         qbuf = `Call a stream of ${descr} fluid:`;
     } else {
-        qbuf = `Call ${docall_xname(obj)}:`;
+        qbuf = safe_qbuf(
+            null, 'Call ', ':', obj,
+            docall_xname, simpleonames, 'thing',
+        );
     }
     const ocl = game.objects?.[obj.otyp];
     if (!ocl) return;
+    /* pointer to old name */
     const buf = await name_from_player(qbuf, ocl.oc_uname);
     if (buf == null) return;
 
     const hadName = !!ocl.oc_uname;
-    ocl.oc_uname = null;
+    ocl.oc_uname = null; /* clear oc_uname */
 
+    /* name_from_player already mungspaces; empty uncalls */
     if (!buf) {
-        // undiscover_object deferred when clearing a prior call name
+        // C: undiscover_object(otyp) when had_name — named omit
+        // (o_init.c gem_learned GEM_CLASS still absent)
         void hadName;
     } else {
         ocl.oc_uname = buf;
-        // C: discover_object(otyp, FALSE, TRUE, TRUE)
-        discover_object(obj.otyp, false, true, true);
+        discover_object(obj.otyp, false, true, true); /* possibly add to disco[] */
     }
-    // update_inventory deferred
+    /* C: obj->where == OBJ_INVENT || carrying(obj->otyp). invent.c
+       carrying stays the 4 existing clones — inline the || walk. */
+    let same = obj.where === OBJ_INVENT;
+    if (!same) {
+        const inv = game.gi?.invent ?? game.invent;
+        if (Array.isArray(inv)) {
+            for (const otmp of inv) {
+                if (otmp && otmp.otyp === obj.otyp) {
+                    same = true;
+                    break;
+                }
+            }
+        } else {
+            for (let otmp = inv; otmp; otmp = otmp.nobj) {
+                if (otmp.otyp === obj.otyp) {
+                    same = true;
+                    break;
+                }
+            }
+        }
+    }
+    if (same) update_inventory();
 }

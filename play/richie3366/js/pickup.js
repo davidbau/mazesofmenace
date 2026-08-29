@@ -17,7 +17,7 @@ import {
     max_capacity, compactify_invlets, getobj_take_count, getobj_apply_count,
     getobj_from_cmdq, getobj_display_pickinv, freeinv, display_inventory,
     splittable, will_feel_cockatrice, is_worn, not_fully_identified,
-    taking_off, count_unpaid,
+    taking_off, count_unpaid, getobj,
 } from './invent.js';
 import { nomul, check_special_room, is_pool, is_lava, in_rooms, dosinkfall, SURFACE_AT, switch_terrain } from './hack.js';
 import {
@@ -28,6 +28,10 @@ import { addinv } from './u_init.js';
 import {
     an, doname, xname, cxname, cxname_singular, xprname,
     the as theArt, The, body_part_latebound, vtense,
+    safe_qbuf, ansimpleoname, otense,
+    yname as yname_objnam, Yname2,
+    ysimple_name as ysimple_name_objnam,
+    Ysimple_name2 as Ysimple_name2_objnam,
 } from './objnam.js';
 import { can_reach_floor } from './engrave.js';
 import {
@@ -40,6 +44,7 @@ import {
     Has_contents, Is_container, Is_box,
     Never_mind,
     GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_SELECTABLE,
+    GETOBJ_DOWNPLAY, GETOBJ_PROMPT,
     W_ARMOR, W_ACCESSORY, W_WEAPONS,
     SORTLOOT_PACK, SORTLOOT_LOOT, SORTLOOT_INVLET, SORTLOOT_PETRIFY,
     ALL_TYPES_SELECTED, BUC_BLESSED, BUC_CURSED, BUC_UNCURSED, BUC_UNKNOWN,
@@ -52,7 +57,7 @@ import {
     SHOPBASE,
     SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     AUTOUNLOCK_APPLY_KEY,
-    nothing_seems_to_happen, engulfing_u,
+    nothing_seems_to_happen, nothing_happens, something, engulfing_u,
     HAND, FOOT, NO_MINVENT, MM_ADJACENTOK, MM_NOMSG, ONAME_NO_FLAGS,
 } from './const.js';
 import { t_at, dotrap, NO_TRAP_FLAGS, drown, lava_effects, instapetrify } from './trap.js';
@@ -60,7 +65,8 @@ import { nhgetch } from './input.js';
 import { m_at } from './mon.js';
 import { oclass_to_sym, select_menu_pick_any } from './options.js';
 import {
-    objectNames, COIN_CLASS, VENOM_CLASS, def_oc_syms, def_char_to_objclass,
+    objectNames, COIN_CLASS, VENOM_CLASS, POTION_CLASS,
+    def_oc_syms, def_char_to_objclass,
 } from './objects.js';
 import { ATR_INVERSE } from './terminal.js';
 import {
@@ -1108,7 +1114,11 @@ async function lift_object(obj, cntRef, telekinesis) {
                         : slightloadpfx;
             const savequan = obj.quan;
             obj.quan = cntRef.count;
-            const qbuf = `${pfx} lifting ${doname(obj)}.  Continue?`;
+            // C: Sprintf prefix then safe_qbuf(qbuf, qbuf, ".  Continue?",
+            // doname, ansimpleoname, something). Container "removing" named.
+            let qbuf = `${pfx} lifting `;
+            qbuf = safe_qbuf(qbuf, qbuf, '.  Continue?', obj, doname,
+                ansimpleoname, something);
             obj.quan = savequan;
             const ans = await yn_function(qbuf, 'ynq', 'q');
             if (ans === 'q') result = -1;
@@ -2817,7 +2827,8 @@ async function pickup_traditional_floor(head, count) {
         }
         let lcount = -1;
         if (!all_of_a_type) {
-            const qbuf = `Pick up ${doname(obj)}?`;
+            const qbuf = safe_qbuf(null, 'Pick up ', '?', obj, doname,
+                ansimpleoname, something);
             const resp = (obj.quan || 1) < 2 ? ynaqchars : ynNaqchars;
             const sym = await yn_function(qbuf, resp, 'y');
             if (sym === 'q') break;
@@ -3107,9 +3118,13 @@ export async function use_container(obj, held = false, more_containers = false) 
         // C: prompt uses outmaybe, not bare outokay (empty+!cknown →
         // "Do what with your bag?" still offers take-out).
         const outmaybe = outokay || !obj.cknown;
+        // C pickup.c:3076–3082 — null prefix + Yname2/Ysimple_name2/"This"
+        // when empty; else "Do what with " + yname/ysimple_name/"it".
         const qbuf = outmaybe
-            ? `Do what with ${yname(obj)}?`
-            : `${upstart(yname(obj))} is empty.  Do what with it?`;
+            ? safe_qbuf(null, 'Do what with ', '?', obj, yname_objnam,
+                ysimple_name_objnam, 'it')
+            : safe_qbuf(null, null, ' is empty.  Do what with it?', obj,
+                Yname2, Ysimple_name2_objnam, 'This');
         if (use_menu) {
             if (!inokay && !outmaybe) {
                 // C: nothing to take out or put in → try both (feedback)
@@ -3621,11 +3636,25 @@ export async function tipcontainer(box) {
 }
 
 /**
+ * C ref: pickup.c tip_ok `:3480–3497` — COIN EXCLUDE; container / known
+ * horn of plenty SUGGEST; else DOWNPLAY.
+ */
+function tip_ok(obj) {
+    if (!obj || obj.oclass === COIN_CLASS) return GETOBJ_EXCLUDE;
+    if (Is_container(obj)) return GETOBJ_SUGGEST;
+    if ((obj.otyp | 0) === HORN_OF_PLENTY && obj.dknown
+        && (game.objects?.[obj.otyp]?.oc_name_known)) {
+        return GETOBJ_SUGGEST;
+    }
+    return GETOBJ_DOWNPLAY;
+}
+
+/**
  * C ref: pickup.c dotip — #tip empty container onto floor.
- * Ported: single floor-container ynq (def q) → tipcontainer / ECMD_OK.
- * Named omissions: multi-box choose_tip_container_menu; m-prefix invent
- * skip; getobj invent tip; candle/oil/grease/food/venom spill; tiphat;
- * tipcontainer_gettarget destination menu.
+ * Ported: floor ynq (D-1654); m-prefix skip / TRADITIONAL boxes>1 gate;
+ * getobj("tip", tip_ok, GETOBJ_PROMPT) + container/horn tipcontainer
+ * (D-1665). Named omissions: choose_tip_container_menu; candle/oil/
+ * grease/food/venom spill; tiphat; statue; tipcontainer_gettarget.
  * @returns {Promise<number>} ECMD_*
  */
 export async function dotip() {
@@ -3634,13 +3663,14 @@ export async function dotip() {
 
     const ccx = u.ux | 0;
     const ccy = u.uy | 0;
-    let boxes = 0;
-    for (let o = objects_at(ccx, ccy); o; o = o.nexthere) {
-        if (Is_container(o)) boxes++;
-    }
+    const boxes = container_at(ccx, ccy, true);
+    const style = game.flags?.menu_style ?? MENU_FULL;
 
-    // C: floor first unless menu_requested (m-prefix) skips to invent
-    if (boxes > 0 && !game.iflags?.menu_requested) {
+    // C: floor first unless menu_requested (m-prefix) skips to invent,
+    // except TRADITIONAL + boxes>1 still offers the floor menu.
+    if (boxes > 0
+        && (!game.iflags?.menu_requested
+            || (style === MENU_TRADITIONAL && boxes > 1))) {
         const overloaded = check_capacity(
             `You can't tip ${boxes > 1 ? 'one' : 'it'} while carrying so much.`,
         );
@@ -3653,9 +3683,9 @@ export async function dotip() {
             } else {
                 for (let cobj = objects_at(ccx, ccy); cobj; cobj = cobj.nexthere) {
                     if (!Is_container(cobj)) continue;
-                    const { yn_function } = await import('./getline.js');
                     const c = await yn_function(
-                        `There is ${doname(cobj)} here, tip it?`,
+                        safe_qbuf(null, 'There is ', ' here, tip it?',
+                            cobj, doname, ansimpleoname, 'container'),
                         'ynq',
                         'q',
                     );
@@ -3668,7 +3698,18 @@ export async function dotip() {
         }
     }
 
-    // getobj("tip") invent path deferred
-    await pline('Tip what?');
-    return ECMD_CANCEL;
+    const cobj = await getobj('tip', tip_ok, GETOBJ_PROMPT);
+    if (!cobj) return ECMD_CANCEL;
+
+    if (Is_container(cobj) || (cobj.otyp | 0) === HORN_OF_PLENTY) {
+        await tipcontainer(cobj);
+        return ECMD_TIME;
+    }
+    if (cobj.oclass === POTION_CLASS) {
+        await pline(`The ${xname(cobj)} ${otense(cobj, 'are')} securely sealed.`);
+        return ECMD_OK;
+    }
+    /* spill / tiphat / statue named */
+    await pline(nothing_happens);
+    return ECMD_OK;
 }

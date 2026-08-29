@@ -1,8 +1,18 @@
-// o_init.js — Object initialization / description shuffle.
-// C ref: o_init.c — init_objects, shuffle_all, randomize_gem_colors, …
+// o_init.js — Object initialization / description shuffle / discoveries.
+// C ref: o_init.c — init_objects, shuffle_all, randomize_gem_colors,
+//        interesting_to_discover / disco_append_typename / rename_disco.
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
+import { pline } from './display.js';
+import { BUFSZ } from './const.js';
+import { ATR_INVERSE } from './terminal.js';
+import { disco_typename, Japanese_item_name } from './objnam.js';
+import { append_price_quote } from './shk.js';
+import { let_to_name, DEF_INV_ORDER } from './invent.js';
+import { docall, objtyp_is_callable } from './do_name.js';
+import { select_menu_pick_one } from './options.js';
+import { PM_SAMURAI } from './generated/monsters_data.js';
 import {
     objects_globals_init,
     NUM_OBJECTS,
@@ -37,6 +47,8 @@ import {
     LAST_REAL_GEM,
     NODIR,
     IMMEDIATE,
+    objectNames,
+    objectDescrs,
 } from './objects.js';
 import { artifacts_globals_init } from './artifact.js';
 
@@ -285,4 +297,126 @@ export function init_objects() {
     init_oclass_probs();
     shuffle_all();
     objects[WAN_NOTHING].oc_dir = rn2(2) ? NODIR : IMMEDIATE;
+}
+
+/**
+ * C ref: o_init.c interesting_to_discover `:525–540`.
+ * Samurai Japanese items always; else uname or (known|encountered)+OBJ_DESCR.
+ */
+export function interesting_to_discover(i) {
+    if (game.urole?.mnum === PM_SAMURAI && Japanese_item_name(i, null)) {
+        return true;
+    }
+    const oc = objs()?.[i];
+    if (!oc) return false;
+    if (oc.oc_uname) return true;
+    if (!(oc.oc_name_known || oc.oc_encountered)) return false;
+    const di = oc.oc_descr_idx ?? i;
+    return objectDescrs[di] != null;
+}
+
+/**
+ * C ref: o_init.c disco_append_typename `:692–720`.
+ * Truncate a long user-applied name; keep " (actual type)"; then price quote.
+ * append_price_quote BUFSZ leftover is named in shk.js.
+ */
+export function disco_append_typename(buf, dis) {
+    const typnm = disco_typename(dis);
+    const len = buf.length;
+    let out;
+    if (len + typnm.length < BUFSZ) {
+        out = buf + typnm;
+    } else {
+        const p = typnm.lastIndexOf('(');
+        if (p > 0 && typnm.charAt(p - 1) === ' ' && typnm.indexOf(')', p) >= 0) {
+            const tail = typnm.slice(p - 1);
+            const n = Math.max(0, BUFSZ - 1 - (len + tail.length));
+            out = buf + typnm.slice(0, n) + tail;
+        } else {
+            const n = Math.max(0, BUFSZ - 1 - len);
+            out = buf + typnm.slice(0, n);
+        }
+    }
+    return append_price_quote(out, dis);
+}
+
+/** C: flags.inv_order string of oclass bytes; JS pack is an array of ints. */
+function rename_disco_inv_order() {
+    const raw = game.flags?.inv_order;
+    return (Array.isArray(raw) && raw.length) ? raw : DEF_INV_ORDER;
+}
+
+/**
+ * C ref: o_init.c rename_disco `:1130–1206`.
+ * Caller: do_name.c docallcmd `'d'` / `'\\'`. Skip unique/artifact
+ * sections and venom (packorder omit). Dummy is not observe_object.
+ * Dummy known = !objects[dis].oc_uses_known (D-1674 extract).
+ * `'o'` getobj is D-1660.
+ */
+export async function rename_disco() {
+    const objects = objs();
+    const b = bases();
+    const disco = game.disco || [];
+    const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
+    let ct = 0;
+    let mn = 0;
+    const items = [
+        {
+            text: 'Pick an object type to name',
+            attr: ATR_INVERSE,
+            selectable: false,
+        },
+        { text: '', attr: 0, selectable: false },
+    ];
+
+    for (const oclass of rename_disco_inv_order()) {
+        let prev_class = (oclass | 0) + 1;
+        const start = b[oclass] | 0;
+        for (let i = start;
+            i < NUM_OBJECTS && objects[i]?.oc_class === oclass; i++) {
+            const dis = disco[i] | 0;
+            if (!dis || !interesting_to_discover(dis)) continue;
+            ct++;
+            if (!objtyp_is_callable(dis)) continue;
+            mn++;
+            if (oclass !== prev_class) {
+                items.push({
+                    text: let_to_name(oclass, false, false),
+                    attr: ATR_INVERSE,
+                    selectable: false,
+                });
+                prev_class = oclass;
+            }
+            items.push({
+                text: disco_append_typename('', dis),
+                selectable: true,
+                dis,
+            });
+        }
+    }
+
+    if (ct === 0) {
+        // C: You("haven't discovered anything yet...");
+        await pline("You haven't discovered anything yet...");
+        return;
+    }
+    if (mn === 0) {
+        await pline('None of your discoveries can be assigned names...');
+        return;
+    }
+
+    const pick = await select_menu_pick_one(items);
+    let dis = STRANGE_OBJECT;
+    if (pick.kind === 'pick' && pick.item) dis = pick.item.dis | 0;
+    if (dis !== STRANGE_OBJECT) {
+        const ocl = objects[dis];
+        const odummy = {
+            otyp: dis,
+            oclass: ocl?.oc_class,
+            quan: 1,
+            known: !ocl?.oc_uses_known,
+            dknown: 1,
+        };
+        await docall(odummy);
+    }
 }

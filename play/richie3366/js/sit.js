@@ -69,9 +69,12 @@
 // Antimagic / Half_spell_damage / SPFX_INTEL resist / steed saddle
 // (D-0969) + Antimagic `shieldeff(u.ux,u.uy)` (D-1087; display.c;
 // D-1089 Antimagic ≡ uprops[ANTIMAGIC] like youprop.h / invent.js
-// hero_Antimagic — confer cloak-of-MR never writes EAntimagic).
+// hero_Antimagic — confer cloak-of-MR never writes EAntimagic);
+// **D-1652** `throne_sit_effect` Blind case 10 `eyecount(youmonst.data)`
+// via `monsters.js` (C `mondata.h`; 0 HEAD / 1 singular / 2+ plural
+// tingle — not the always-2 stub).
 // Deferred: update_inventory redraw; Hallucination hcolor synonyms;
-// Yobjnam2 shk_your/pname polish; SetVoice; eyecount poly. take_gold calls
+// Yobjnam2 shk_your/pname polish; SetVoice. take_gold calls
 // steal.c remove_worn_item (D-1049/D-1086) via steal.js — W_WEAPONS *gone,
 // armor *_off, unpunish, setnotworn pointer-walk. donning/cancel_don /
 // in_use / uskin skinback / Amulet_off / Ring_gone / Blindf_off still
@@ -115,6 +118,7 @@ import { body_part } from './polyself.js';
 import {
     amorphous, mons, M1_SLITHY, is_prince, is_vampire, eggs_in_water,
     lays_eggs, humanoid, likes_lava, is_hider, monsterNames, is_neuter, G_UNIQ,
+    eyecount,
 } from './monsters.js';
 import { get_artifact, SPFX_INTEL } from './artifact.js';
 import { ART_MAGICBANE } from './generated/artifacts_data.js';
@@ -588,11 +592,6 @@ async function sit_losehp(n, knam, k_format) {
     return false;
 }
 
-/** C ref: mondata.c eyecount — poly forms deferred (humanoid 2). */
-function eyecount(_data) {
-    return 2;
-}
-
 /** C ref: youprop.h Drain_resistance — H || E. */
 function Drain_resistance() {
     const u = game.u || {};
@@ -889,6 +888,7 @@ async function throne_sit_effect() {
                 if (!Blind()) {
                     await pline('Your vision becomes clear.');
                 } else {
+                    /* C sit.c:160 mondata.h eyecount — 0 HEAD / 1 EYE / 2+ eyes */
                     const num_of_eyes = eyecount(game.youmonst?.data);
                     let eye = body_part(EYE);
                     switch (num_of_eyes) {

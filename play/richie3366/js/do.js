@@ -22,7 +22,8 @@ import {
     VISITED, LFILE_EXISTS, RANGE_LEVEL, REST_LEVELS,
     UNENCUMBERED, KILLED_BY, DISMOUNT_FELL, NO_KILLER_PREFIX,
     MAGIC_PORTAL, TIMEOUT, BLINDED, RLOC_NOMSG,
-    ACH_HELL, ACH_MINE, ACH_SOKO,
+    ACH_HELL, ACH_MINE, ACH_SOKO, ACH_ENDG, ACH_ASTR, ACH_BGRM,
+    LL_ACHIEVE, LL_DEBUG,
     OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, OBJ_CONTAINED, OBJ_BURIED,
     CXN_SINGULAR,
     CONTAINED_TOO, BURIED_TOO, ER_DESTROYED, WT_SPLASH_THRESHOLD,
@@ -31,7 +32,7 @@ import {
     IS_WATERWALL, IS_ALTAR, is_pit, is_hole, u_at, Has_contents,
     Is_container, Is_waterlevel, Is_airlevel,
     In_quest, In_endgame, In_mines, In_sokoban, Is_rogue_level,
-    Is_astralevel, MON_FLOOR,
+    Is_astralevel, Is_knox_level, Is_bigroom, MON_FLOOR,
     PRIMARYSET, ROGUESET,
     ERODE_BURN, EF_DESTROY,
     NHCORE_GETPOS_TIP, NHCORE_ENTER_TUTORIAL, NHCORE_LEAVE_TUTORIAL,
@@ -53,7 +54,7 @@ import {
 import {
     pline, Norep, docrt, flush_screen, flush_topl_more, newsym,
     mark_topline_prompt, assign_graphics, check_gold_symbol,
-    You_feel, canseemon, canspotmon, impossible,
+    You_feel, canseemon, canspotmon, impossible, describe_level,
 } from './display.js';
 import { yn_function } from './getline.js';
 import { vision_recalc, vision_reset, recalc_block_point, cansee, couldsee } from './vision.js';
@@ -76,6 +77,7 @@ import {
     recalc_mapseen, recbranch_mapseen,
 } from './dungeon.js';
 import { record_achievement } from './insight.js';
+import { livelog_printf } from './pline.js';
 import { com_pager } from './questpgr.js';
 import { keepdogs, losedogs, mon_catchup_elapsed_time } from './dog.js';
 import { save_track, rest_track } from './track.js';
@@ -136,11 +138,12 @@ import {
 } from './monsters.js';
 import { placebc, unplacebc, drag_down, ballrelease } from './ball.js';
 import { obj_resists } from './dogmove.js';
-import { Soundeffect, se_scratching } from './sndprocs.js';
+import { Soundeffect, se_scratching, se_alarm } from './sndprocs.js';
 
 const PM_DEATH = monsterNames.indexOf('PM_DEATH');
 const PM_PESTILENCE = monsterNames.indexOf('PM_PESTILENCE');
 const PM_FAMINE = monsterNames.indexOf('PM_FAMINE');
+const PM_CROESUS = monsterNames.indexOf('PM_CROESUS');
 const BOULDER = objectNames.indexOf('BOULDER');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
 const WAN_FIRE = objectNames.indexOf('WAN_FIRE');
@@ -1302,14 +1305,12 @@ async function getlev_catchup_monsters(elapsed) {
  * Ported: quest-home gate — on qstart && !newdungeon && !ok_to_quest()
  * → "mysterious force prevents you from descending" (D-0798).
  * Deferred: binary NHFILE, Gehennom amulet mysteryforce, quest gate seal
- * RMPORTAL, endgame ACH_ENDG/ASTR (`final_level` reset_hostility D-1616;
- * create_mplayers live D-1596; gain_guardian_angel D-1608),
- * migrating-Wizard resurrect arm,
+ * RMPORTAL, migrating-Wizard resurrect arm,
  * Punished `ballfall` on trap-door falling, W-tower `u_on_rndspot` bit 2
  * (rndspot itself awaits switch_terrain D-1278; stairs u_on_sstairs
  * fallback is D-1287; cmd.c makemap_prepost amulet|wiztower is D-1288),
  * Lua NHCB_LVL_LEAVE, MICRO display_nhwindow after Valley odor;
- * ACH_BGRM; poly `locomotion()` climb verb / steed-flyer Flying;
+ * poly `locomotion()` climb verb / steed-flyer Flying;
  * u_collide_m full limbo. Ported: Punished climb
  * `great_effort` + Flying ladder "along" (D-0928 #1159);
  * Punished `drag_down`/`ballrelease` on stair fall (D-0918);
@@ -1327,6 +1328,7 @@ async function getlev_catchup_monsters(elapsed) {
  * Norep; `familiar_level_msg` via `bones_include_name` (D-0577);
  * Gehennom Valley arrival plines + `gehennom_entered` (D-0801);
  * ACH_HELL/MINE/SOKO `record_achievement` (D-0928 #1181);
+ * ACH_ENDG/ASTR/BGRM + Is_knox alarm + `new` entered livelog (D-1644);
  * hellish_smoke smell/sense smoke + heat/smoke gone (D-0801);
  * temperature_change_msg hot/cold (D-0559).
  */
@@ -1335,8 +1337,8 @@ async function getlev_catchup_monsters(elapsed) {
  * C ref: do.c final_level `:2042–2053`.
  * Caller goto_level when `new && on_level(&u.uz, &astral_level)`.
  * `iter_mons(reset_hostility)` (DEADMONSTER / mon_offmap skip) then
- * create_mplayers then gain_guardian_angel. Named: ACH_ASTR (C records
- * it after this returns).
+ * create_mplayers then gain_guardian_angel. Caller records ACH_ASTR
+ * after this returns (D-1644). reset_hostility is D-1616.
  */
 async function final_level() {
     const live = [...(game.fmon || [])];
@@ -1800,25 +1802,37 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     //     else if (Is_knox) … else if (In_mines) … else if (In_sokoban) …;
     //     else { rogue/bigroom ACH; quest_portal com_pager }
     if (In_endgame(u.uz)) {
-        // ACH_ENDG named omit
+        if (newdungeon) record_achievement(ACH_ENDG);
         if (madeNew && Is_astralevel(u.uz)) {
             await final_level();
-            // C: record_achievement(ACH_ASTR) named omit
+            record_achievement(ACH_ASTR);
         } else if (newdungeon && (u.uhave?.amulet || u.uhave_amulet)) {
             await resurrect();
         }
     } else if (In_quest(u.uz)) {
         await onquest();
+    } else if (Is_knox_level(u.uz)) {
+        /* alarm stops working once Croesus has died */
+        if (madeNew || !((game.mvitals?.[PM_CROESUS]?.died | 0))) {
+            await pline('You have penetrated a high security area!');
+            Soundeffect(se_alarm, 100);
+            await pline('An alarm sounds!');
+            for (const mtmp of [...(game.fmon || [])]) {
+                if ((mtmp.mhp | 0) < 1) continue; /* DEADMONSTER */
+                mtmp.msleeping = 0;
+            }
+        }
     } else if (In_mines(u.uz)) {
         if (newdungeon) record_achievement(ACH_MINE);
     } else if (In_sokoban(u.uz)) {
         if (newdungeon) record_achievement(ACH_SOKO);
     } else {
         // C: new && Is_rogue_level → primitive-world pline (forces --More--
-        // after dfr_post_msg materialize). Is_knox alarm / Is_bigroom ACH
-        // deferred.
+        // after dfr_post_msg materialize).
         if (madeNew && Is_rogue_level(u.uz)) {
             await pline('You enter what seems to be an older, more primitive world.');
+        } else if (madeNew && Is_bigroom(u.uz)) {
+            record_achievement(ACH_BGRM);
         }
         // C: main dungeon quest-entrance telepathy from leader
         if (!In_quest(u.uz0) && at_dgn_entrance('The Quest')
@@ -1841,11 +1855,19 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // C: temperature_change_msg(prev_temperature) after special arrival
     await temperature_change_msg(prev_temperature);
 
-    // C: goto_level `if (new)` Tourist more_experienced(level_difficulty())
-    // level_difficulty ≈ depth(&u.uz) outside endgame/amulet/builds_up.
-    if (madeNew && game.urole?.mnum === PM_TOURIST) {
-        more_experienced(depth(u.uz) | 0, 0);
-        await newexplevel();
+    // C: moved after branch-entry achievements so livelog order matches
+    // (Astral is not LL_ACHIEVE here — ACH_ASTR already is).
+    if (madeNew) {
+        const major = (In_endgame(u.uz) && !Is_astralevel(u.uz))
+            || In_quest(u.uz);
+        livelog_printf(major ? LL_ACHIEVE : LL_DEBUG,
+            'entered %s', describe_level(2));
+        // C: Role_if(PM_TOURIST) more_experienced(level_difficulty(), 0)
+        // level_difficulty ≈ depth(&u.uz) outside endgame/amulet/builds_up.
+        if (game.urole?.mnum === PM_TOURIST) {
+            more_experienced(depth(u.uz) | 0, 0);
+            await newexplevel();
+        }
     }
 
     // C: assign_level(&u.uz0, &u.uz); /* reset u.uz0 */

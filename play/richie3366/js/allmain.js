@@ -41,6 +41,7 @@ import { set_wear } from './do_wear.js';
 import { gethungry } from './eat.js';
 import { age_spells } from './spell.js';
 import { near_capacity, paint_corner_nhw_menu, encumber_msg, update_inventory } from './invent.js';
+import { sanity_check } from './wizcmds.js';
 import { com_pager_legacy } from './questpgr.js';
 import { snapshot_status_lines } from './display.js';
 import { Hello, align_str } from './roles.js';
@@ -809,6 +810,12 @@ export async function moveloop_core() {
     const g = game;
     if (!g.context) g.context = {};
     if (!g.u) g.u = {};
+
+    // C allmain.c:192–201 — dobjsfree / bypasses / resume_wish named.
+    // sanity_check before context.move (opt_in Off; gold/invlet D-1664).
+    if (g.iflags?.sanity_check || g.iflags?.debug_fuzzer) {
+        await sanity_check();
+    }
 
     // C: if (svc.context.move) { actual time passed ... }
     if (g.context.move) {

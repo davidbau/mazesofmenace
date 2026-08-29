@@ -47,6 +47,11 @@ export function rn2_on_display_rng(x) {
     return Number(val % BigInt(x));
 }
 
+/** C rnd.c rnd_on_display_rng `:167–171` — 1..x on the display stream. */
+export function rnd_on_display_rng(x) {
+    return rn2_on_display_rng(x) + 1;
+}
+
 function sgn(n) {
     return n < 0 ? -1 : n !== 0 ? 1 : 0;
 }

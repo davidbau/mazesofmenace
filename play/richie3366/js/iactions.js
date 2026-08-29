@@ -4,14 +4,16 @@
 //        dispinv_with_action.
 //
 // Branch envelope: build + show "Do what with …?" PICK_ONE menu; ESC /
-// Return / Space cancel; itemactions_pushkeys for throw (and selected arms).
-// Named omissions: full pushkeys catalogue (offer/tip/invoke/…);
-// shop pay; tip/invoke/two-weapon edge cases.
+// Return / Space cancel; itemactions_pushkeys throw/drop/apply/read/…
+// + IA_SACRIFICE / IA_TIP_CONTAINER / IA_INVOKE_OBJ (D-1665).
+// Named omissions: remaining pushkeys (unwield/name/eat/engrave/buy/
+// rub/swap/two-weapon/whatis); full apply catalogue; shop pay;
+// offer_corpse / offer_too_soon / offer_fake_amulet bodies.
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, docrt, clear_committed_status } from './display.js';
-import { paint_corner_nhw_menu, inuse_headers_accessories, inuse_headers_set_accessories } from './invent.js';
+import { paint_corner_nhw_menu, inuse_headers_accessories, inuse_headers_set_accessories, check_invent_gold } from './invent.js';
 import { cxname, the, xname, makeplural, singular, is_plural, the_unique_obj } from './objnam.js';
 import { ia_checkfile } from './pager.js';
 import { call_ok } from './do_name.js';
@@ -26,7 +28,7 @@ import {
     ECMD_OK, GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST,
     CMDQ_EXTCMD,
     W_ARMOR, W_ACCESSORY, W_AMUL, W_RING, W_TOOL, Is_container,
-    Has_contents, has_oname, ONAME, HANDS_SYM,
+    Has_contents, has_oname, ONAME, HANDS_SYM, IS_ALTAR,
 } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
 
@@ -41,9 +43,9 @@ function cmdq_add_ec(fn) {
  * Only IA_DIP_OBJ (#altdip INTERNALCMD) uses this; other arms stay
  * bare-function clones (do not write a sixth cmdq_add_ec module).
  */
-function cmdq_add_ec_entry(txt, fn) {
+function cmdq_add_ec_entry(txt, fn, flags = 0) {
     if (!game._cmdq_canned) game._cmdq_canned = [];
-    game._cmdq_canned.push({ typ: CMDQ_EXTCMD, txt, run: fn });
+    game._cmdq_canned.push({ typ: CMDQ_EXTCMD, txt, run: fn, flags: flags | 0 });
 }
 function cmdq_add_key(ch) {
     if (!game._cmdq_canned) game._cmdq_canned = [];
@@ -53,8 +55,8 @@ function cmdq_add_key(ch) {
 
 /**
  * C ref: iactions.c itemactions_pushkeys — queue CQ_CANNED ec + invlet.
- * Named omissions: most arms beyond throw/drop/apply/read/quaff/wield/
- * wear/takeoff/zap/quiver/fire/dip/adjust-stack (offer/tip/invoke still named).
+ * IA_SACRIFICE / IA_TIP_CONTAINER / IA_INVOKE_OBJ are D-1665.
+ * Named omissions: unwield/name/eat/engrave/buy/rub/swap/two-weapon/whatis.
  */
 async function itemactions_pushkeys(act, otmp) {
     switch (act) {
@@ -131,11 +133,43 @@ async function itemactions_pushkeys(act, otmp) {
         cmdq_add_ec(dofire);
         break;
     }
+    case IA_ADJUST_OBJ: {
+        /* C iactions.c `:191–194` — cmdq_add_ec(doorganize) #adjust. */
+        const { doorganize } = await import('./invent.js');
+        cmdq_add_ec(doorganize);
+        cmdq_add_key(otmp.invlet);
+        break;
+    }
     case IA_ADJUST_STACK: {
         /* C iactions.c `:194–197` — cmdq_add_ec(adjust_split) looks up
            INTERNALCMD "altadjust"; invlet answers getobj("split"). */
         const { adjust_split } = await import('./invent.js');
         cmdq_add_ec_entry('altadjust', adjust_split);
+        cmdq_add_key(otmp.invlet);
+        break;
+    }
+    case IA_SACRIFICE: {
+        /* C iactions.c `:198–201` — cmdq_add_ec(dosacrifice) #offer. */
+        const { dosacrifice } = await import('./pray.js');
+        cmdq_add_ec(dosacrifice);
+        cmdq_add_key(otmp.invlet);
+        break;
+    }
+    case IA_TIP_CONTAINER: {
+        /* C iactions.c `:233–243` — do_reqmenu PREFIXCMD then #tip +
+           invlet (m-prefix skips floor containers). */
+        const { do_reqmenu, ext_func_tab_from_txt } = await import('./cmd.js');
+        const { dotip } = await import('./pickup.js');
+        const tab = ext_func_tab_from_txt('reqmenu');
+        cmdq_add_ec_entry('reqmenu', do_reqmenu, tab?.flags | 0);
+        cmdq_add_ec(dotip);
+        cmdq_add_key(otmp.invlet);
+        break;
+    }
+    case IA_INVOKE_OBJ: {
+        /* C iactions.c `:245–248` — cmdq_add_ec(doinvoke) #invoke. */
+        const { doinvoke } = await import('./artifact.js');
+        cmdq_add_ec(doinvoke);
         cmdq_add_key(otmp.invlet);
         break;
     }
@@ -177,6 +211,8 @@ const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
 const SPE_BLANK_PAPER = objectNames.indexOf('SPE_BLANK_PAPER');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
 const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
+const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
+const CORPSE = objectNames.indexOf('CORPSE');
 const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
 const TIN = objectNames.indexOf('TIN');
 const TIN_OPENER = objectNames.indexOf('TIN_OPENER');
@@ -276,8 +312,9 @@ function is_graystone(obj) {
 
 /**
  * C ref: iactions.c itemactions — NHW_MENU PICK_ONE of context actions.
- * Named omissions: full apply-otyp catalogue polish; eat/is_edible; altar
- * offer; shop pay; tip/invoke/two-weapon edge cases; remaining pushkeys.
+ * Named omissions: full apply-otyp catalogue polish; eat/is_edible;
+ * shop pay; two-weapon; remaining pushkeys (unwield/name/eat/engrave/
+ * buy/rub/swap/whatis). O/T/V pushkeys are D-1665.
  */
 export async function itemactions(otmp) {
     if (!otmp) return ECMD_OK;
@@ -381,15 +418,26 @@ export async function itemactions(otmp) {
         add(IA_FIRE_OBJ, 'f', buf);
     }
 
-    // i / I: adjust
-    if (otmp.oclass !== COIN_CLASS) {
+    // i / I: adjust — gold only when check_invent_gold (C `:462–470`)
+    if (otmp.oclass !== COIN_CLASS || await check_invent_gold('item-action')) {
         add(IA_ADJUST_OBJ, 'i', 'Adjust inventory by assigning new letter');
     }
     if ((otmp.quan || 1) > 1 && otmp.oclass !== COIN_CLASS) {
         add(IA_ADJUST_STACK, 'I', 'Adjust inventory by splitting this stack');
     }
 
-    // O: offer — altar corpse/amulet deferred
+    // O: offer — C iactions.c `:472–483`
+    const loc = game.level?.at(u.ux, u.uy);
+    if (IS_ALTAR(loc?.typ) && !u.uswallow) {
+        if (otmp.otyp === CORPSE) {
+            add(IA_SACRIFICE, 'O',
+                'Offer this corpse as a sacrifice at this altar');
+        } else if (otmp.otyp === AMULET_OF_YENDOR
+            || otmp.otyp === FAKE_AMULET_OF_YENDOR) {
+            add(IA_SACRIFICE, 'O',
+                'Offer this amulet as a sacrifice at this altar');
+        }
+    }
 
     // p: pay unpaid — shop deferred
 

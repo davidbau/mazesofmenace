@@ -138,7 +138,7 @@ const kill_char = 0x15; /* C('U') */
  * C getline.c hooked_tty_getlin `:102–105`.
  * `if (ttyDisplay->intr) { ttyDisplay->intr--; *bufp = 0; }`
  * Truncates at the write pointer (NEWAUTOCOMP suffix), does not
- * rewind to obufp. Increment is wintty.c tty_wait_synch (named).
+ * rewind to obufp. Increment is wintty.c tty_wait_synch (D-1646).
  * @param {{ buf: string, cursor: number }} st
  */
 function hooked_getlin_apply_intr(st) {
@@ -352,7 +352,7 @@ const EXT_CMD_AC = [
 const EXT_CMDS = [
     {
         // C: cmd.c "?" IFBURIED|AUTOCOMPLETE|GENERALCMD|CMD_M_PREFIX →
-        // doextlist. Key M('?'). Body D-1625; BIND= named.
+        // doextlist. Key M('?') (D-1643 rhack cmdbind_get). Body D-1625.
         name: '?',
         wiz: false,
         autocomplete: true,
@@ -890,6 +890,174 @@ const EXT_CMDS = [
             return doprtool();
         },
     },
+    {
+        // C: cmd.c "perminv" IFBURIED|GENERALCMD|NOFUZZERCMD (no AUTOCOMPLETE)
+        // → doperminv. Key '|'. tty_update_inventory(1) arg unused.
+        name: 'perminv',
+        wiz: false,
+        autocomplete: false,
+        run: async () => {
+            const { doperminv } = await import('./invent.js');
+            return doperminv();
+        },
+    },
+    // C cmd.c extcmdlist names for rhack if/else keys so BIND= overlay
+    // uses the same tlist path as C cmdbind_get (D-1657). Same bodies as
+    // the if/else; not a second dispatch table. AUTOCOMPLETE is off
+    // (none of these rows have that flag). PREFIXCMD fight/reqmenu/
+    // rush/run overlay targets named. Walk keys still the movement arm.
+    {
+        name: 'apply', wiz: false, autocomplete: false,
+        run: async () => (await import('./apply.js')).doapply(),
+    },
+    {
+        name: 'attributes', wiz: false, autocomplete: false,
+        run: async () => (await import('./invent.js')).doattributes(),
+    },
+    {
+        name: 'autopickup', wiz: false, autocomplete: false,
+        run: async () => (await import('./options.js')).dotogglepickup(),
+    },
+    {
+        name: 'cast', wiz: false, autocomplete: false,
+        run: async () => (await import('./spell.js')).docast(),
+    },
+    {
+        name: 'close', wiz: false, autocomplete: false,
+        run: async () => (await import('./lock.js')).doclose(),
+    },
+    {
+        name: 'down', wiz: false, autocomplete: false,
+        run: async () => (await import('./do.js')).dodown(),
+    },
+    {
+        name: 'drop', wiz: false, autocomplete: false,
+        run: async () => (await import('./do.js')).dodrop(),
+    },
+    {
+        name: 'eat', wiz: false, autocomplete: false,
+        run: async () => (await import('./eat.js')).doeat(),
+    },
+    {
+        name: 'engrave', wiz: false, autocomplete: false,
+        run: async () => (await import('./engrave.js')).doengrave(),
+    },
+    {
+        name: 'fire', wiz: false, autocomplete: false,
+        run: async () => (await import('./dothrow.js')).dofire(),
+    },
+    {
+        name: 'glance', wiz: false, autocomplete: false,
+        run: async () => (await import('./pager.js')).doquickwhatis(),
+    },
+    {
+        name: 'help', wiz: false, autocomplete: false,
+        run: async () => (await import('./pager.js')).dohelp(),
+    },
+    {
+        name: 'inventory', wiz: false, autocomplete: false,
+        run: async () => (await import('./invent.js')).ddoinv(),
+    },
+    {
+        name: 'kick', wiz: false, autocomplete: false,
+        run: async () => (await import('./dokick.js')).dokick(),
+    },
+    {
+        name: 'known', wiz: false, autocomplete: false,
+        run: async () => (await import('./invent.js')).dodiscovered(),
+    },
+    {
+        name: 'look', wiz: false, autocomplete: false,
+        run: async () => (await import('./invent.js')).dolook(),
+    },
+    {
+        name: 'open', wiz: false, autocomplete: false,
+        run: async () => (await import('./lock.js')).doopen(),
+    },
+    {
+        name: 'options', wiz: false, autocomplete: false,
+        run: async () => (await import('./options.js')).doset_simple(),
+    },
+    {
+        name: 'pickup', wiz: false, autocomplete: false,
+        run: async () => (await import('./pickup.js')).dopickup(),
+    },
+    {
+        name: 'puton', wiz: false, autocomplete: false,
+        run: async () => (await import('./do_wear.js')).doputon(),
+    },
+    {
+        name: 'quaff', wiz: false, autocomplete: false,
+        run: async () => (await import('./potion.js')).dodrink(),
+    },
+    {
+        name: 'quiver', wiz: false, autocomplete: false,
+        run: async () => (await import('./wield.js')).dowieldquiver(),
+    },
+    {
+        name: 'read', wiz: false, autocomplete: false,
+        run: async () => (await import('./read.js')).doread(),
+    },
+    {
+        name: 'save', wiz: false, autocomplete: false,
+        run: async () => (await import('./save.js')).dosave(),
+    },
+    {
+        name: 'search', wiz: false, autocomplete: false,
+        run: async () => (await import('./detect.js')).dosearch(),
+    },
+    {
+        name: 'showgold', wiz: false, autocomplete: false,
+        run: async () => (await import('./invent.js')).doprgold(),
+    },
+    {
+        name: 'showspells', wiz: false, autocomplete: false,
+        run: async () => (await import('./spell.js')).dovspell(),
+    },
+    {
+        name: 'swap', wiz: false, autocomplete: false,
+        run: async () => (await import('./wield.js')).doswapweapon(),
+    },
+    {
+        name: 'takeoff', wiz: false, autocomplete: false,
+        run: async () => (await import('./do_wear.js')).dotakeoff(),
+    },
+    {
+        name: 'takeoffall', wiz: false, autocomplete: false,
+        run: async () => (await import('./do_wear.js')).doddoremarm(),
+    },
+    {
+        name: 'throw', wiz: false, autocomplete: false,
+        run: async () => (await import('./dothrow.js')).dothrow(),
+    },
+    {
+        name: 'up', wiz: false, autocomplete: false,
+        run: async () => (await import('./do.js')).doup(),
+    },
+    {
+        name: 'wait', wiz: false, autocomplete: false,
+        run: async () => (await import('./do.js')).donull(),
+    },
+    {
+        name: 'wear', wiz: false, autocomplete: false,
+        run: async () => (await import('./do_wear.js')).dowear(),
+    },
+    {
+        name: 'whatis', wiz: false, autocomplete: false,
+        run: async () => (await import('./pager.js')).dowhatis(),
+    },
+    {
+        name: 'wield', wiz: false, autocomplete: false,
+        run: async () => (await import('./wield.js')).dowield(),
+    },
+    {
+        name: 'wizlevelport', wiz: true, autocomplete: false,
+        run: async () => (await import('./wizcmds.js')).wiz_level_tele(),
+    },
+    {
+        name: 'zap', wiz: false, autocomplete: false,
+        run: async () => (await import('./zap.js')).dozap(),
+    },
 ];
 
 function wizardMode() {
@@ -898,6 +1066,24 @@ function wizardMode() {
 
 function availableExtCmds() {
     return EXT_CMDS.filter((ec) => !ec.internal && (!ec.wiz || wizardMode()));
+}
+
+/**
+ * C extcmdlist ef_funct by ef_txt for rhack cmdbind_get (D-1643 / D-1657).
+ * Same EXT_CMDS bodies as typed # — not a second table. INTERNALCMD
+ * skipped (bind_key does too). Wizard rows returned; can_do_extcmd
+ * refuses WIZMODECMD when !wizard.
+ * @param {string | null | undefined} txt
+ * @returns {(() => Promise<number>) | null}
+ */
+export function extcmd_run_by_txt(txt) {
+    if (txt == null || txt === '') return null;
+    const want = String(txt).toLowerCase();
+    for (const ec of EXT_CMDS) {
+        if (ec.internal) continue;
+        if (ec.name === want) return ec.run;
+    }
+    return null;
 }
 
 /**

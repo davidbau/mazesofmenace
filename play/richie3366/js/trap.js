@@ -328,7 +328,9 @@ export async function animate_statue(statue, x, y, cause, fail_reason = null) {
             mmflags |= MM_NOCOUNTBIRTH | MM_ADJACENTOK;
             mon = makemon(mons(PM_DOPPELGANGER), x, y, mmflags);
             if (mon && ismnum(mon.cham)) {
-                newcham(mon, mptr, 0);
+                // C trap.c :785 — newcham NO_NC_FLAGS; await so unleash /
+                // Elbereth finish before christen/seemimic (D-1648).
+                await newcham(mon, mptr, 0);
             }
         } else {
             if (cause === ANIMATE_SPELL) mmflags |= MM_ADJACENTOK;

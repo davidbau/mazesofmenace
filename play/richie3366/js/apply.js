@@ -38,6 +38,7 @@ import {
     IS_TREE, W_NONPASSWALL, FIG_TRANSFORM, TIMER_OBJECT, OBJ_MINVENT,
     EXACT_NAME, DISP_BEAM, DISP_END, HI_ZAP,
     MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS,
+    GETOBJ_PROMPT, GETOBJ_EXCLUDE as GETOBJ_EXCLUDE_C,
 } from './const.js';
 import { pick_lock, getdir } from './lock.js';
 import { ustatusline, mstatusline } from './insight.js';
@@ -47,7 +48,7 @@ import {
 } from './mon.js';
 import {
     compactify_invlets, makeknown, near_capacity, observe_object, prinv,
-    hold_another_object, consume_obj_charge, update_inventory,
+    hold_another_object, consume_obj_charge, update_inventory, getobj,
     getobj_from_cmdq, getobj_record_repeat, getobj_display_pickinv,
 } from './invent.js';
 import { rn2, rn1, rnd, d, rnl, shuffle_int_array } from './rng.js';
@@ -66,7 +67,7 @@ import {
     obj_extract_self, place_object, stackobj, weight, mksobj, stop_timer,
     start_timer, hornoplenty,
 } from './mkobj.js';
-import { xname, the, The, makeplural, vtense, doname, an, singular, cxname, thesimpleoname, simpleonames, yname, shk_your } from './objnam.js';
+import { xname, the, The, makeplural, vtense, doname, an, singular, cxname, thesimpleoname, simpleonames, yname, shk_your, Tobjnam, gloves_simple_name } from './objnam.js';
 import { obj_resists } from './dogmove.js';
 import { acurr, A_CHA, A_STR, A_DEX, A_CON, change_luck, Fumbling } from './attrib.js';
 import { Monnam, mon_nam, x_monnam, y_monnam, Hallucination, a_monnam, Amonnam } from './do_name.js';
@@ -1932,11 +1933,6 @@ function freehand_towel() {
     return false;
 }
 
-/** C objnam.c gloves_simple_name — gauntlets discovery polish deferred. */
-function gloves_simple_name_towel(_obj) {
-    return 'gloves';
-}
-
 /**
  * C ref: apply.c use_towel — wipe glib / cream / cursed slapstick.
  * dry_a_towel when wet (weapon.c). gulp_blnd_check swallow arm deferred.
@@ -2016,7 +2012,7 @@ async function use_towel(obj) {
             `You wipe off your ${
                 !u.uarmg
                     ? makeplural(body_part(HAND))
-                    : gloves_simple_name_towel(u.uarmg)
+                    : gloves_simple_name(u.uarmg)
             }.`,
         );
         if (is_wet_towel(obj)) {
@@ -2242,133 +2238,33 @@ export async function inaccessible_equipment(obj, verb, only_if_known_cursed) {
 }
 
 /**
- * C ref: apply.c grease_ok — null (hands '-') SUGGEST; COIN_CLASS EXCLUDE;
- * inaccessible_equipment EXCLUDE_INACCESS; else SUGGEST. sit.c
- * special_throne_effect grease spray uses the same COIN_CLASS skip (D-1033).
+ * C ref: apply.c grease_ok — null (hands '-') SUGGEST; COIN_CLASS EXCLUDE
+ * (const.js 0, not apply's getobj-clone -3); inaccessible_equipment
+ * EXCLUDE_INACCESS; else SUGGEST. sit.c special_throne_effect grease
+ * spray uses the same COIN_CLASS skip (D-1033).
  */
 function grease_ok(obj) {
     if (!obj) return GETOBJ_SUGGEST;
-    if (obj.oclass === COIN_CLASS) return GETOBJ_EXCLUDE;
+    if (obj.oclass === COIN_CLASS) return GETOBJ_EXCLUDE_C;
     if (equipment_is_inaccessible(obj, false)) return GETOBJ_EXCLUDE_INACCESS;
     return GETOBJ_SUGGEST;
 }
 
 /**
- * C ref: invent.c getobj("grease", grease_ok, GETOBJ_PROMPT). Hands '-'
- * always SUGGEST (allownone). GETOBJ_PROMPT always asks. Gold → cannot
- * grease gold. EXCLUDE → silly_thing. Named omit: pickinv handsbuf line;
- * compactify '-' prefix; GETOBJ_EXCLUDE_INACCESS "else" empty-invent.
- * Canned KEY live; CMDQ_INT aborts (!ALLOWCNT).
- */
-async function getobj_grease() {
-    const word = 'grease';
-    const cq = getobj_from_cmdq(grease_ok, false, hands_obj);
-    if (!cq.skip) return cq.otmp;
-
-    const suggest_lets = () => {
-        const lets = [];
-        for (const o of game.invent || []) {
-            if (o?.invlet && grease_ok(o) === GETOBJ_SUGGEST) lets.push(o.invlet);
-        }
-        return lets.join('');
-    };
-
-    for (;;) {
-        await flush_topl_more();
-        const rawLets = suggest_lets();
-        const lets = rawLets.length > 5 ? compactify_invlets(rawLets) : rawLets;
-        // C: HANDS_SYM + space + letters; strip trailing space if no letters
-        const buf = lets ? `- ${lets}` : '-';
-        const query = `What do you want to ${word}? [${buf} or ?*]`;
-        const prompt = `${query} `;
-        game._pending_message = prompt;
-        await flush_screen(1);
-        const disp = game.nhDisplay;
-        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
-
-        const key = await nhgetch();
-        const ch = String.fromCharCode(key);
-        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
-            if (game.flags?.verbose !== false) await pline('Never mind.');
-            return null;
-        }
-        if (ch === '-') return hands_obj;
-        if (ch === '?' || ch === '*') {
-            const counted = { cnt: 0, cntgiven: false };
-            const ilet = await getobj_display_pickinv(
-                ch, rawLets, false, counted,
-                { word, allownone: true, promptHasHands: true },
-            );
-            if (ilet === '\x1b') {
-                if (game.flags?.verbose !== false) await pline('Never mind.');
-                return null;
-            }
-            if (!ilet) {
-                if (game.iflags?.force_invmenu) return null;
-                continue;
-            }
-            if (ilet === '-') return hands_obj;
-            const picked = (game.invent || []).find((o) => o.invlet === ilet);
-            if (!picked) {
-                await pline("You don't have that object.");
-                continue;
-            }
-            if (picked.oclass === COIN_CLASS) {
-                await pline(`You cannot ${word} gold.`);
-                return null;
-            }
-            const rank = grease_ok(picked);
-            if (rank === GETOBJ_EXCLUDE) {
-                await pline(`That is a silly thing to ${word}.`);
-                return null;
-            }
-            game._pending_message = '';
-            getobj_record_repeat(picked, ilet);
-            return picked;
-        }
-        if (ch === '$') {
-            const gold = (game.invent || []).find((o) => o.oclass === COIN_CLASS);
-            if (gold && grease_ok(gold) === GETOBJ_EXCLUDE) {
-                await pline(`You cannot ${word} gold.`);
-                return null;
-            }
-            await pline("You don't have that object.");
-            continue;
-        }
-        const otmp = (game.invent || []).find((o) => o.invlet === ch);
-        if (!otmp) {
-            await pline("You don't have that object.");
-            continue;
-        }
-        if (otmp.oclass === COIN_CLASS) {
-            await pline(`You cannot ${word} gold.`);
-            return null;
-        }
-        const rank = grease_ok(otmp);
-        if (rank === GETOBJ_EXCLUDE) {
-            await pline(`That is a silly thing to ${word}.`);
-            return null;
-        }
-        game._pending_message = '';
-        getobj_record_repeat(otmp, ch);
-        return otmp;
-    }
-}
-
-/**
- * C ref: apply.c use_grease — Glib / cursed|Fumbling slip dropx; getobj
- * target; hands make_glib rn1(11,5); object greased + cursed && !nohands
- * glib rn1(6,10); empty known/seem. consume_obj_charge known
- * update_inventory is D-1615. Named omit: trailing update_inventory
- * (`:2652`, empty-can path); pickinv handsbuf.
+ * C ref: apply.c use_grease `:2603–2654` — Glib / cursed|Fumbling slip
+ * dropx; getobj("grease", grease_ok, GETOBJ_PROMPT); hands make_glib
+ * rn1(11,5); object greased + cursed && !nohands glib rn1(6,10); empty
+ * known/seem; trailing update_inventory (`:2652`). consume_obj_charge
+ * known update_inventory is D-1615. Named omit: shk_owns in
+ * inaccessible_equipment; sit.c special_throne_effect grease spray.
  * @returns {number} ECMD_*
  */
 export async function use_grease(obj) {
     if (!obj) return ECMD_OK;
 
-    if (Glib_apply()) {
+    if (Glib()) {
         await pline(
-            `${Tobjnam_grease(obj, 'slip')} from your ${fingers_or_gloves_apply(false)}.`,
+            `${Tobjnam(obj, 'slip')} from your ${fingers_or_gloves_apply(false)}.`,
         );
         await dropx(obj);
         return ECMD_TIME;
@@ -2378,12 +2274,12 @@ export async function use_grease(obj) {
         if ((obj.cursed || Fumbling()) && !rn2(2)) {
             await consume_obj_charge(obj, true);
             await pline(
-                `${Tobjnam_grease(obj, 'slip')} from your ${fingers_or_gloves_apply(false)}.`,
+                `${Tobjnam(obj, 'slip')} from your ${fingers_or_gloves_apply(false)}.`,
             );
             await dropx(obj);
             return ECMD_TIME;
         }
-        const otmp = await getobj_grease();
+        const otmp = await getobj('grease', grease_ok, GETOBJ_PROMPT);
         if (!otmp) return ECMD_CANCEL;
         if (await inaccessible_equipment(otmp, 'grease', false)) {
             return ECMD_OK;
@@ -2409,10 +2305,11 @@ export async function use_grease(obj) {
             );
         }
     } else if (obj.known) {
-        await pline(`${Tobjnam_grease(obj, 'are')} empty.`);
+        await pline(`${Tobjnam(obj, 'are')} empty.`);
     } else {
-        await pline(`${Tobjnam_grease(obj, 'seem')} to be empty.`);
+        await pline(`${Tobjnam(obj, 'seem')} to be empty.`);
     }
+    update_inventory();
     return ECMD_TIME;
 }
 
@@ -4311,10 +4208,10 @@ function Tobjnam_oil(obj, verb) {
     return `${The(xname(obj))} ${otense_oil(obj, verb)}`;
 }
 
-/** C do_wear.c fingers_or_gloves — gloves vs fingers. */
+/** C do_wear.c fingers_or_gloves — gloves vs makeplural(FINGER). */
 function fingers_or_gloves_apply(check_gloves) {
     if (check_gloves && game.u?.uarmg) {
-        return gloves_simple_name_towel(game.u.uarmg);
+        return gloves_simple_name(game.u.uarmg);
     }
     return makeplural(body_part(FINGER));
 }

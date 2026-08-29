@@ -121,6 +121,9 @@ export const DIR_DOWN = 9;
 export const N_DIRS = 8;
 export const N_DIRS_Z = 10;
 export function DIR_180(dir) { return (dir + 4) % N_DIRS; }
+/** C hack.h DIR_LEFT / DIR_RIGHT — 8-dir wrap. */
+export function DIR_LEFT(dir) { return ((dir) + 7) % N_DIRS; }
+export function DIR_RIGHT(dir) { return ((dir) + 1) % N_DIRS; }
 // DIR_ERR lives with other error sentinels below; xytodir uses -1.
 
 /** C ref: cmd.c xytodir — map (dx,dy) to DIR_* or DIR_ERR (-1). */
@@ -190,6 +193,14 @@ export function Amask2align(x) {
     if (masked === 0) return A_NONE;
     if (masked === AM_LAWFUL) return A_LAWFUL;
     return masked - 2; // 2->0 (NEUTRAL), 1->-1 (CHAOTIC)
+}
+// C ref: align.h Amask2msa / Msa2amask — 2-bit mapseen altar align
+// (1,2,4) ↔ (1,2,3); shrine bit stripped. MSA_NONE is 0.
+export function Amask2msa(x) {
+    return ((x & AM_MASK) === 4) ? 3 : (x & AM_MASK);
+}
+export function Msa2amask(x) {
+    return (x === 3) ? 4 : x;
 }
 
 // Gender
@@ -403,6 +414,8 @@ export const nothing_happens = "Nothing happens.";
 export const nothing_seems_to_happen = "Nothing seems to happen.";
 export const thats_enough_tries = "That's enough tries!";
 export const Never_mind = "Never mind.";
+export const something = "something";
+export const Something = "Something";
 
 // Command queue type IDs and queue selectors (include/hack.h cmdq_cmdtypes/CQ_*)
 // Runtime fields:
@@ -3050,6 +3063,15 @@ export function Is_rogue_level(uz) { const g = game; return g?.rogue_level && (u
 export function Is_oracle_level(uz) { const g = game; return g?.oracle_level && (uz ?? g?.u?.uz)?.dnum === g.oracle_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.oracle_level.dlevel; }
 export function Is_medusa_level(uz) { const g = game; return g?.medusa_level && (uz ?? g?.u?.uz)?.dnum === g.medusa_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.medusa_level.dlevel; }
 export function Is_knox_level(uz) { const g = game; return g?.knox_level && (uz ?? g?.u?.uz)?.dnum === g.knox_level.dnum && (uz ?? g?.u?.uz)?.dlevel === g.knox_level.dlevel; }
+/** C ref: dungeon.h Is_knox — Lcheck(&knox_level). */
+export function Is_knox(uz) { return Is_knox_level(uz); }
+/** C ref: dungeon.h Is_bigroom — Lcheck(&bigroom_level). */
+export function Is_bigroom(uz) {
+    const g = game;
+    return !!g?.bigroom_level
+        && (uz ?? g?.u?.uz)?.dnum === g.bigroom_level.dnum
+        && (uz ?? g?.u?.uz)?.dlevel === g.bigroom_level.dlevel;
+}
 export function Is_juiblex_level(uz) {
     const g = game;
     return g?.juiblex_level

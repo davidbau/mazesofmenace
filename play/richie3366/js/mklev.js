@@ -116,7 +116,7 @@ import {
 } from './monsters.js';
 import { name_to_monplus, name_to_mon } from './mondata.js';
 import { fruit_from_name } from './objnam.js';
-import { christen_monst, christen_orc, rndorcname, new_oname, oname } from './do_name.js';
+import { christen_monst, christen_orc, rndorcname, new_oname, oname, lookup_novel } from './do_name.js';
 import { makeroguerooms, makerogueghost } from './extralev.js';
 import { make_engr_at, make_grave, wipe_engr_at, random_engraving } from './engrave.js';
 import { cmd_from_ecname } from './dokeylist.js';
@@ -162,6 +162,7 @@ const WAN_DIGGING = objectNames.indexOf('WAN_DIGGING');
 const WAN_WISHING = objectNames.indexOf('WAN_WISHING');
 const POT_GAIN_LEVEL = objectNames.indexOf('POT_GAIN_LEVEL');
 const SPE_HEALING = objectNames.indexOf('SPE_HEALING');
+const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
 const LARGE_BOX = objectNames.indexOf('LARGE_BOX');
 const CHEST = objectNames.indexOf('CHEST');
@@ -5265,6 +5266,9 @@ function load_tower1() {
             mtmp.mstrategy = (mtmp.mstrategy || 0) | STRAT_WAITFORU;
             if (mtmp.cham != null && mtmp.cham !== NON_PM
                 && mtmp.data?.mlet !== 'S_VAMPIRE') {
+                // C sp_lev waiting vampshifted → newcham back to cham.
+                // Sync load_tower1 cannot await; mklev is not
+                // mleashed / not mon_moving (D-1648).
                 newcham(mtmp, mons(mtmp.cham), 0);
             }
         }
@@ -11355,12 +11359,13 @@ function get_location_coord(humidity, croom, rx, ry) {
 
 /**
  * C ref: sp_lev.c create_object (~2193–2439).
- * Named omit: oname / novelidx; quan>0 oc_merge; recharged; tknown;
+ * Named omit: quan>0 oc_merge; recharged; tknown;
  * invent_carrying_monster / saddle; artifact uncreate when container_obj
  * is NULL; Medusa statue fill; achievement prizes; buried bury_an_obj;
  * class-letter def_char_to_objclass (id-less RANDOM_CLASS / mkobj_at
  * oclass still work). themerms Light source fill (D-1542) is the
  * production lua that sets lit=true; this arm is the callee.
+ * oname + lookup_novel when `o.name` (D-1651).
  */
 function create_object(o, croom) {
     const named = !!(o.name);
@@ -11412,6 +11417,15 @@ function create_object(o, croom) {
     if (cn !== NON_PM) {
         if (cn === NON_PM - 1) set_corpsenm(otmp, rndmonnum());
         else set_corpsenm(otmp, cn);
+    }
+
+    // C sp_lev.c create_object :2266–2271 — after set_corpsenm, before eroded
+    if (named) {
+        const nam = typeof o.name === 'string' ? o.name : (o.name?.str || '');
+        otmp = oname(otmp, nam, ONAME_LEVEL_DEF);
+        if (otmp.otyp === SPE_NOVEL) {
+            lookup_novel(nam, otmp);
+        }
     }
 
     const eroded = o.eroded | 0;
