@@ -590,7 +590,7 @@ async function explode_losehp(dmg, how) {
         await finish_losehp_done();
     }
 }
-async function wand_explode(obj, chg) {
+export async function wand_explode(obj, chg) {
     const expl = !chg ? 'suddenly' : 'vibrates violently and';
     if (!chg) chg = 2;
     let n = (obj.spe | 0) + (chg | 0);

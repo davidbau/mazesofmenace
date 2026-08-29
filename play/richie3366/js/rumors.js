@@ -15,8 +15,8 @@ export const BY_ORACLE = 0;
 export const BY_COOKIE = 1;
 export const BY_PAPER = 2;
 
-// C ref: hacklib.c xcrypt() — involution
-function xcrypt(str) {
+// C ref: hacklib.c xcrypt() — involution; export for engrave.c blengr.
+export function xcrypt(str) {
     let bitmask = 1;
     let out = '';
     for (let i = 0; i < str.length; i++) {

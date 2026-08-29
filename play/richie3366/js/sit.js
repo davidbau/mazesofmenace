@@ -73,7 +73,7 @@
 // **D-1652** `throne_sit_effect` Blind case 10 `eyecount(youmonst.data)`
 // via `monsters.js` (C `mondata.h`; 0 HEAD / 1 singular / 2+ plural
 // tingle — not the always-2 stub).
-// Deferred: update_inventory redraw; Hallucination hcolor synonyms;
+// Deferred: rndcurse update_inventory redraw; Hallucination hcolor synonyms;
 // Yobjnam2 shk_your/pname polish; SetVoice. take_gold calls
 // steal.c remove_worn_item (D-1049/D-1086) via steal.js — W_WEAPONS *gone,
 // armor *_off, unpunish, setnotworn pointer-walk. donning/cancel_don /
@@ -110,7 +110,7 @@ import {
 import {
     objects_at, delobj, curse, unbless, mksobj, weight, set_corpsenm, stackobj,
 } from './mkobj.js';
-import { observe_object } from './invent.js';
+import { observe_object, update_inventory } from './invent.js';
 import { egg_type_from_parent } from './mon.js';
 import { objectNames, COIN_CLASS, SPBOOK_CLASS } from './objects.js';
 import { xname, the, The, vtense, makeplural } from './objnam.js';
@@ -626,10 +626,11 @@ function throne_to_room(tx, ty) {
 
 /**
  * C ref: sit.c special_throne_effect — Vlad's tower throne (effect 1..13).
- * Case 6 grease spray uses the same COIN_CLASS skip as apply.c grease_ok.
+ * Case 6 grease spray (D-1683): COIN_CLASS skip as grease_ok, then
+ * make_glib(rn1(101,100)) and update_inventory (`:278`).
  * Case 10: HConfusion only (D-1048; C Confusion ≡ HConfusion).
- * Named omit: update_inventory; losexp Upolyd/level-1 done; Punished
- * unpunish in seffects; SetVoice.
+ * Named omit: losexp Upolyd/level-1 done; Punished unpunish in
+ * seffects; SetVoice. rndcurse `update_inventory` still named.
  */
 export async function special_throne_effect(effect) {
     const u = game.u || (game.u = {});
@@ -657,14 +658,18 @@ export async function special_throne_effect(effect) {
         }
         break;
     case 6: {
-        // grease hands and inventory — same COIN skip as grease_ok
+        /* grease hands and inventory
+           Same rules for which items can be affected as grease_ok in apply.c
+           (COIN_CLASS skip; inaccessible_equipment is getobj-only). */
         const { make_glib } = await import('./potion.js');
         await pline('A greasy liquid sprays all over you!');
+        // C sit.c:274–276 — for (otmp = gi.invent; otmp; otmp = otmp->nobj)
+        // JS invent is Array ≡ C nobj walk (D-1017).
         for (const otmp of game.invent || []) {
             if (otmp.oclass !== COIN_CLASS) otmp.greased = 1;
         }
         make_glib(rn1(101, 100));
-        // update_inventory deferred
+        update_inventory(); /* C sit.c:278 */
         break;
     }
     case 7:

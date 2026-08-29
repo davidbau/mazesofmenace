@@ -848,7 +848,8 @@ function glib_uprop(u) {
 
 /**
  * C ref: potion.c make_glib(xtime)
- * set_itimeout(&Glib, xtime); inventory polish deferred.
+ * set_itimeout(&Glib, xtime); if (uarmg) update_inventory so worn
+ * gloves pick up the slippery suffix (sit.c grease spray D-1683).
  */
 export function make_glib(xtime) {
     const u = game.u || (game.u = {});
@@ -864,7 +865,9 @@ export function make_glib(xtime) {
     p.intrinsic = ((p.intrinsic | 0) & ~TIMEOUT) | itimeout(xtime);
     u.HGlib = p.intrinsic;
     u.Glib = p.intrinsic | (p.extrinsic | 0);
-    // C: if (uarmg) update_inventory() — deferred
+    // C potion.c:466–467 — may change "(being worn)" to
+    // "(being worn; slippery)" or vice versa.
+    if (u.uarmg) update_inventory();
 }
 
 /**

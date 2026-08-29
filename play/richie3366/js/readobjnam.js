@@ -1,8 +1,9 @@
 // readobjnam.js — Wish object parsing (partial).
-// C ref: objnam.c readobjnam / rnd_otyp_by_namedesc / wishymatch
+// C ref: objnam.c readobjnam / rnd_otyp_by_namedesc / wishymatch;
+//        non-wizard spe clamp uses objects[].oc_charged (D-1690).
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, rnd } from './rng.js';
 import {
     objectNames,
     objectNameStrs,
@@ -26,6 +27,7 @@ import { artifact_name, nartifact_exist } from './artifact.js';
 import { oname, lookup_novel } from './do_name.js';
 import { name_to_monplus } from './mondata.js';
 import { makesingular, An, an } from './objnam.js';
+import { is_weptool } from './wield.js';
 import { NON_PM, LOW_PM, monsterNames } from './monsters.js';
 import {
     ONAME_WISH, SPE_LIM,
@@ -54,6 +56,7 @@ const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
 const WAN_WISHING = objectNames.indexOf('WAN_WISHING');
 const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
+const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
 const GOLD_SYM = '$';
 
 /** C ref: objnam.c wrp[] / wrpsym[] — class words for wishing. */
@@ -904,10 +907,28 @@ export function readobjnam(bp, no_wish, missOut) {
     }
 
     if (d.spesgn === 0) {
+        /* spe not specified; retain the randomly assigned value */
         d.spe = d.otmp.spe | 0;
-    } else if (!wizardMode()
-        && (d.oclass === ARMOR_CLASS || d.oclass === WEAPON_CLASS)) {
-        // non-wizard clamp omitted for wizard-seed path
+    } else if (wizardMode()) {
+        /* no restrictions except SPE_LIM */
+    } else if (d.oclass === ARMOR_CLASS || d.oclass === WEAPON_CLASS
+        || is_weptool(d.otmp)
+        || (d.oclass === RING_CLASS && game.objects?.[d.typ]?.oc_charged)) {
+        // C objnam.c readobjnam :5099–5105 — rnd(5) then Luck < 0 flips sign
+        if ((d.spe | 0) > rnd(5) && (d.spe | 0) > (d.otmp.spe | 0))
+            d.spe = 0;
+        if ((d.spe | 0) > 2 && Luck() < 0)
+            d.spesgn = -1;
+    } else {
+        // C: crystal ball cancels like a wand, to (n:-1)
+        if (d.oclass === WAND_CLASS || d.typ === CRYSTAL_BALL) {
+            if ((d.spe | 0) > 1 && d.spesgn === -1)
+                d.spe = 1;
+        } else if ((d.spe | 0) > 0 && d.spesgn === -1) {
+            d.spe = 0;
+        }
+        if ((d.spe | 0) > (d.otmp.spe | 0))
+            d.spe = d.otmp.spe | 0;
     }
     if (d.spesgn === -1) d.spe = -d.spe;
     if (d.spe > SPE_LIM) d.spe = SPE_LIM;

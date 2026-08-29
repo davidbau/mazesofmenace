@@ -35,7 +35,7 @@ import {
 import { discover_object } from './invent.js';
 import { setworn } from './do_wear.js';
 import { initialspell, init_spl_book, num_spells, SPELL_LEV_PW } from './spell.js';
-import { otyp_uses_known, Japanese_item_name } from './objnam.js';
+import { otyp_uses_known, otyp_is_charged, Japanese_item_name } from './objnam.js';
 import {
     W_ARMU, W_ARM, W_ARMC, W_ARMS, W_ARMH, W_ARMG, W_ARMF,
     W_WEP, W_SWAPWEP, W_QUIVER,
@@ -804,13 +804,9 @@ function ini_inv_adjust_obj(trop, obj) {
             }
         } else {
             // C: Don't start with +0 or negative rings
-            // objects[].oc_charged not extracted yet — same charged-ring
-            // set as mkobj.js RING_CLASS (RIN_* with +n enchantment).
-            const n = objectNames[obj.otyp];
-            const oc_charged = n === 'RIN_ADORNMENT' || n === 'RIN_GAIN_STRENGTH'
-                || n === 'RIN_GAIN_CONSTITUTION' || n === 'RIN_INCREASE_ACCURACY'
-                || n === 'RIN_INCREASE_DAMAGE' || n === 'RIN_PROTECTION';
-            if (obj.oclass === RING_CLASS && oc_charged && (obj.spe | 0) <= 0) {
+            // objects[].oc_charged (BITS spec/chrg; D-1690).
+            if (obj.oclass === RING_CLASS && otyp_is_charged(obj.otyp)
+                && (obj.spe | 0) <= 0) {
                 obj.spe = rne(3);
             }
         }

@@ -235,7 +235,7 @@ import {
 } from './invent.js';
 import { mstatusline, ustatusline } from './insight.js';
 import { setnotworn } from './do.js';
-import { doname, xname, yname, distant_name, vtense, The, the, an, An, killer_xname, ansimpleoname, otyp_is_charged, makeplural } from './objnam.js';
+import { doname, xname, yname, distant_name, vtense, The, the, an, An, killer_xname, ansimpleoname, makeplural } from './objnam.js';
 import { uhim } from './roles.js';
 import { fix_wall_spines } from './mklev.js';
 import {
@@ -1606,7 +1606,7 @@ async function maybe_destroy_item(carrier, obj, dmgtyp) {
             if ((((obj.owornmask | 0) & W_RING) && uarmg && !is_metallic(uarmg))
                 || (obj.otyp | 0) === RIN_SHOCK_RESISTANCE) {
                 skip = true;
-            } else if (otyp_is_charged(obj.otyp) && rn2(3)) {
+            } else if (!!(game.objects?.[obj.otyp]?.oc_charged) && rn2(3)) {
                 chargeit = true;
             } else {
                 dindx = 5;
@@ -5082,7 +5082,7 @@ export async function poly_obj(obj, id) {
 export async function drain_item(obj, by_you) {
     if (!obj) return false;
     const oc = game.objects?.[obj.otyp];
-    const charged = !!(oc?.oc_charged) || otyp_is_charged(obj.otyp | 0);
+    const charged = !!(oc?.oc_charged);
     if ((!charged
             && obj.oclass !== WEAPON_CLASS
             && obj.oclass !== ARMOR_CLASS

@@ -48,6 +48,7 @@ import {
     TEMPLE,
     ROOMOFFSET,
     MAXNROFROOMS,
+    PL_NSIZ_PLUS,
     Amask2msa,
     Msa2amask,
     Amask2align,
@@ -984,6 +985,202 @@ function count_feat_lastseentyp(mptr, x, y) {
 export function update_mapseen_for(x, y) {
     recalc_mapseen();
     return game.lastseentyp?.[x | 0]?.[y | 0] | 0;
+}
+
+/**
+ * C rm.h cemetery.who[PL_NSIZ+4*(1+3)+1] / how[100+1] / when[15].
+ * Sizes exclude the trailing NUL (C custom_lth style).
+ */
+const CEMETERY_WHO_MAX = PL_NSIZ_PLUS - 1;
+const CEMETERY_HOW_MAX = 100;
+const CEMETERY_WHEN_MAX = 14;
+
+function msrooms_count() {
+    return (MAXNROFROOMS + 1) * 2;
+}
+
+/**
+ * C ref: save.c savecemetery `:616–637`. JSON analogue of
+ * cemetery-cemetery_flag (0 if head, -1 if empty) then Sfo_cemetery
+ * who/how/when/frpx/frpy/bonesknown per node. Empty → `[]` (flag -1).
+ * FREEING / release_data omitted (JSON VFS always writes; live chain
+ * stays). CONVERTING rest path omitted.
+ * @param {object|null} cemeteryaddr
+ * @returns {object[]}
+ */
+export function savecemetery(cemeteryaddr) {
+    const out = [];
+    for (let thisbones = cemeteryaddr; thisbones; thisbones = thisbones.next) {
+        out.push({
+            who: String(thisbones.who || '').slice(0, CEMETERY_WHO_MAX),
+            how: String(thisbones.how || '').slice(0, CEMETERY_HOW_MAX),
+            when: String(thisbones.when || '').slice(0, CEMETERY_WHEN_MAX),
+            frpx: thisbones.frpx | 0,
+            frpy: thisbones.frpy | 0,
+            bonesknown: !!thisbones.bonesknown,
+        });
+    }
+    return out;
+}
+
+/**
+ * C ref: restore.c restcemetery `:987–1017`. JSON analogue of
+ * Sfi_int flag; flag==0 do-while Sfi_cemetery until next is 0.
+ * Missing / non-array / empty = flag -1 → NULL. SFCTOOL /
+ * CONVERTING free omitted.
+ * @param {unknown} raw
+ * @returns {object|null}
+ */
+export function restcemetery(raw) {
+    if (!Array.isArray(raw) || raw.length === 0) return null;
+    let head = null;
+    let bonesaddr = null;
+    for (const rec of raw) {
+        if (!rec) continue;
+        const bonesinfo = {
+            who: String(rec.who || '').slice(0, CEMETERY_WHO_MAX),
+            how: String(rec.how || '').slice(0, CEMETERY_HOW_MAX),
+            when: String(rec.when || '').slice(0, CEMETERY_WHEN_MAX),
+            frpx: rec.frpx | 0,
+            frpy: rec.frpy | 0,
+            bonesknown: !!rec.bonesknown,
+            next: null,
+        };
+        if (!head) head = bonesinfo;
+        else bonesaddr.next = bonesinfo;
+        bonesaddr = bonesinfo;
+    }
+    return head;
+}
+
+/**
+ * C ref: dungeon.c save_mapseen `:2694–2717`. JSON analogue of
+ * branch_index + d_level + feat + flags + custom_lth + custom +
+ * msrooms[(MAXNROFROOMS+1)*2] + savecemetery(final_resting_place).
+ * Branch is an index into svb.branches (null → nbranches).
+ * @param {object} mptr
+ * @returns {object}
+ */
+export function save_mapseen(mptr) {
+    const branches = game.branches || [];
+    let brindx = 0;
+    for (; brindx < branches.length; brindx++) {
+        if (branches[brindx] === mptr.br) break;
+    }
+    const nrooms = msrooms_count();
+    const msrooms = [];
+    for (let i = 0; i < nrooms; i++) {
+        const r = mptr.msrooms?.[i];
+        msrooms.push({
+            seen: r?.seen | 0,
+            untended: r?.untended | 0,
+        });
+    }
+    const custom_lth = mptr.custom_lth | 0;
+    const custom = custom_lth && mptr.custom
+        ? String(mptr.custom).slice(0, custom_lth)
+        : null;
+    const featSrc = mptr.feat || empty_feat();
+    const feat = empty_feat();
+    for (const k of Object.keys(feat)) feat[k] = featSrc[k] | 0;
+    const flags = {};
+    const fl = mptr.flags || {};
+    for (const k of Object.keys(fl)) {
+        const v = fl[k];
+        if (typeof v === 'number' || typeof v === 'boolean') flags[k] = v;
+    }
+    return {
+        brindx,
+        lev: {
+            dnum: mptr.lev?.dnum | 0,
+            dlevel: mptr.lev?.dlevel | 0,
+        },
+        feat,
+        flags,
+        custom_lth,
+        custom,
+        msrooms,
+        final_resting_place: savecemetery(mptr.final_resting_place),
+    };
+}
+
+/**
+ * C ref: dungeon.c load_mapseen `:2720–2754`. JSON analogue of
+ * Sfi branch_index walk + d_level/feat/flags/custom + msrooms +
+ * restcemetery(final_resting_place). custom_lth 0 → custom NULL.
+ * @param {object} raw
+ * @returns {object}
+ */
+export function load_mapseen(raw) {
+    const rec = raw && typeof raw === 'object' ? raw : {};
+    const branchnum = rec.brindx | 0;
+    const branches = game.branches || [];
+    let br = null;
+    for (let brindx = 0; brindx < branches.length; brindx++) {
+        if (brindx === branchnum) {
+            br = branches[brindx];
+            break;
+        }
+    }
+    const custom_lth = rec.custom_lth | 0;
+    const custom = custom_lth
+        ? String(rec.custom ?? '').slice(0, custom_lth)
+        : null;
+    const nrooms = msrooms_count();
+    const msrooms = [];
+    for (let i = 0; i < nrooms; i++) {
+        const r = rec.msrooms?.[i];
+        msrooms.push({
+            seen: r?.seen | 0,
+            untended: r?.untended | 0,
+        });
+    }
+    const feat = empty_feat();
+    const featSrc = rec.feat || {};
+    for (const k of Object.keys(feat)) feat[k] = featSrc[k] | 0;
+    const flags = { ...(rec.flags && typeof rec.flags === 'object' ? rec.flags : {}) };
+    return {
+        lev: {
+            dnum: rec.lev?.dnum | 0,
+            dlevel: rec.lev?.dlevel | 0,
+        },
+        br,
+        feat,
+        flags,
+        custom,
+        custom_lth,
+        msrooms,
+        final_resting_place: restcemetery(rec.final_resting_place),
+    };
+}
+
+/**
+ * C ref: dungeon.c save_dungeon `:179–187` mapseen_count + save_mapseen
+ * walk. JSON analogue; dungeons/branches/tune/level_info/inv_pos already
+ * live on the save payload or named.
+ * @returns {object[]}
+ */
+export function save_mapseenchn() {
+    const out = [];
+    for (const curr_ms of game.mapseenchn || []) {
+        out.push(save_mapseen(curr_ms));
+    }
+    return out;
+}
+
+/**
+ * C ref: dungeon.c restore_dungeon `:251–262` mapseen_count +
+ * load_mapseen chain. Missing/non-array = old JSON save without this
+ * chunk (leave in-memory chain). Present array replaces, including [].
+ * @param {{ mapseenchn?: unknown }} payload
+ */
+export function restore_mapseenchn(payload) {
+    const arr = payload?.mapseenchn;
+    if (!Array.isArray(arr)) return;
+    game.mapseenchn = [];
+    for (const raw of arr) {
+        game.mapseenchn.push(load_mapseen(raw));
+    }
 }
 
 /**

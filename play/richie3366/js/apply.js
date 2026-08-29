@@ -2241,7 +2241,7 @@ export async function inaccessible_equipment(obj, verb, only_if_known_cursed) {
  * C ref: apply.c grease_ok — null (hands '-') SUGGEST; COIN_CLASS EXCLUDE
  * (const.js 0, not apply's getobj-clone -3); inaccessible_equipment
  * EXCLUDE_INACCESS; else SUGGEST. sit.c special_throne_effect grease
- * spray uses the same COIN_CLASS skip (D-1033).
+ * spray uses the same COIN_CLASS skip (D-1033/D-1683).
  */
 function grease_ok(obj) {
     if (!obj) return GETOBJ_SUGGEST;
@@ -2255,8 +2255,8 @@ function grease_ok(obj) {
  * dropx; getobj("grease", grease_ok, GETOBJ_PROMPT); hands make_glib
  * rn1(11,5); object greased + cursed && !nohands glib rn1(6,10); empty
  * known/seem; trailing update_inventory (`:2652`). consume_obj_charge
- * known update_inventory is D-1615. Named omit: shk_owns in
- * inaccessible_equipment; sit.c special_throne_effect grease spray.
+ * known update_inventory is D-1615. sit.c grease spray is D-1683.
+ * Named omit: shk_owns in inaccessible_equipment.
  * @returns {number} ECMD_*
  */
 export async function use_grease(obj) {

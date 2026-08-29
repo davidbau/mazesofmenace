@@ -2,7 +2,8 @@
 // C ref: mkobj.c — mkobj, mksobj, mkgold, next_ident, mksobj_init (partial),
 //        hornoplenty / fixup_oil (D-1031);
 //        unknwn_contnr_contents (D-1663; caller invent.c dounpaid);
-//        unknow_object (D-1674 oc_uses_known extract).
+//        unknow_object (D-1674 oc_uses_known extract);
+//        RING_CLASS mksobj_init from objects[].oc_charged (D-1690).
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rne, rnz } from './rng.js';
@@ -1570,11 +1571,9 @@ function mksobj_init(otmp, artif) {
         }
         break;
     case RING_CLASS: {
-        // C ref: mkobj.c RING_CLASS — charged vs uncharged (oc_charged/spec)
+        // C ref: mkobj.c RING_CLASS — objects[].oc_charged (BITS spec/chrg)
         const n = otypName(otmp.otyp);
-        const charged = n === 'RIN_ADORNMENT' || n === 'RIN_GAIN_STRENGTH'
-            || n === 'RIN_GAIN_CONSTITUTION' || n === 'RIN_INCREASE_ACCURACY'
-            || n === 'RIN_INCREASE_DAMAGE' || n === 'RIN_PROTECTION';
+        const charged = !!(objs()[otmp.otyp]?.oc_charged);
         if (charged) {
             blessorcurse(otmp, 3);
             if (rn2(10)) {

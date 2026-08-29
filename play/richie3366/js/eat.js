@@ -821,7 +821,7 @@ function consume_oeaten(obj, amt) {
  * (rust monster → rustprone only); ghoul corpse/egg; gel cube organic
  * without contents; else FOOD_CLASS.
  */
-function is_edible(obj) {
+export function is_edible(obj) {
     if (!obj) return false;
     const oc = game.objects?.[obj.otyp];
     if (oc?.oc_unique) return false;
@@ -927,10 +927,10 @@ async function floorfood_eat() {
     const uy = u.uy | 0;
     const form = hero_form_data();
     getobj_else = 0;
-    // C: menu_requested || !can_reach_floor || usteed ||
+    // C: iflags.menu_requested || !can_reach_floor || usteed ||
     //    (pool/lava && (Wwalking || clinger || (Flying && !Breathless)))
-    //    → skipfloor
-    const skip_floor = !!(game.flags?.menu_requested
+    //    → skipfloor (D-1675; do_reqmenu sets iflags, not flags)
+    const skip_floor = !!(game.iflags?.menu_requested
         || !can_reach_floor(true)
         || u.usteed
         || (is_pool_or_lava(ux, uy)

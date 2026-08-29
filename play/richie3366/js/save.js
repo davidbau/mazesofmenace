@@ -20,6 +20,12 @@ import { restmon_edog, savemon_edog } from './makemon.js';
 import { objects_globals_init } from './objects.js';
 import { nh_terminate_capture } from './topten.js';
 import { l_nhcore_init } from './mklev.js';
+import {
+    save_mapseenchn,
+    restore_mapseenchn,
+    savecemetery,
+    restcemetery,
+} from './dungeon.js';
 
 const SAVE_VFS_PREFIX = 'save/';
 
@@ -208,6 +214,8 @@ function rebuildObjectsAt(fobj) {
  * C ref: save.c dosave0 — write current game to VFS (JSON subset of savelev).
  * Named omissions: binary NHFILE format; multi-level ledger files; hangup
  * arms; overwrite yn; compress; looseball/chain when swallowed.
+ * mapseenchn cemetery JSON is save_dungeon/save_mapseen (D-1685);
+ * current-level bonesinfo is savelev savecemetery.
  */
 export function dosave0() {
     const u = game.u || {};
@@ -279,6 +287,11 @@ export function dosave0() {
         dnstair: lvl?.dnstair ? { ...lvl.dnstair } : null,
         lastseentyp: game.lastseentyp
             ? JSON.parse(JSON.stringify(game.lastseentyp)) : null,
+        // C save.c save_dungeon → save_mapseen + savecemetery
+        // (dungeon.c :179–187 / :2716). JSON analogue of mapseenchn.
+        mapseenchn: save_mapseenchn(),
+        // C save.c savelev `:505` savecemetery(&level.bonesinfo).
+        bonesinfo: savecemetery(lvl?.bonesinfo),
         spl_book: game.spl_book
             ? JSON.parse(JSON.stringify(game.spl_book)) : null,
         spl_orderindx: game.spl_orderindx
@@ -557,6 +570,11 @@ export function try_restore_save() {
     game.head_engr = payload.head_engr || null;
     game.stairs = payload.stairs || null;
     game.lastseentyp = payload.lastseentyp || null;
+    // C restore.c getlev `:1102` restcemetery(&level.bonesinfo).
+    map.bonesinfo = restcemetery(payload.bonesinfo);
+    // C restore.c dorecover → restore_dungeon mapseen_count +
+    // load_mapseen (dungeon.c :251–262 / :2752). After branches.
+    restore_mapseenchn(payload);
     rebuildObjectsAt(fobj);
 
     // C restore.c restgamestate `:720–722` after restnames:

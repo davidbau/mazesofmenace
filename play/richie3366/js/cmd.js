@@ -43,7 +43,7 @@ import { is_hider } from './monsters.js';
 import { vision_recalc, couldsee, cansee } from './vision.js';
 import {
     ddoinv, dodiscovered, doattributes, dolook, doprgold, doprwep, doprarm,
-    doprring, dopramulet, doprtool, doprinuse, doperminv,
+    doprring, dopramulet, doprtool, doprinuse, doperminv, dotypeinv,
 } from './invent.js';
 import { dovspell, docast, num_spells } from './spell.js';
 import { doeat } from './eat.js';
@@ -2078,6 +2078,7 @@ function rhack_repeat_command(ch, key) {
     case 'E': return doengrave;
     case 'f': return dofire;
     case 'i': return ddoinv;
+    case 'I': return dotypeinv;
     case 'o': return doopen;
     case 'p': return dopay;
     case 'P': return doputon;
@@ -2152,7 +2153,7 @@ function rhack_repeat_txt(ch, key) {
     const byCh = {
         a: 'apply', A: 'takeoffall', c: 'close', d: 'drop', D: 'droptype',
         e: 'eat',
-        E: 'engrave', f: 'fire', i: 'inventory', o: 'open', p: 'pay',
+        E: 'engrave', f: 'fire', i: 'inventory', I: 'inventtype', o: 'open', p: 'pay',
         P: 'puton', q: 'quaff', Q: 'quiver', r: 'read', s: 'search',
         S: 'save', t: 'throw', T: 'takeoff', w: 'wield', W: 'wear',
         x: 'swap', z: 'zap', Z: 'cast', ',': 'pickup', '.': 'wait',
@@ -2712,6 +2713,10 @@ export async function rhack(key) {
     } else if (ch === 'i') {
         // C ref: invent.c ddoinv / display_inventory
         await ddoinv();
+        game.context.move = 0;
+    } else if (ch === 'I') {
+        // C ref: invent.c dotypeinv / cmd.c inventtype
+        await dotypeinv();
         game.context.move = 0;
     } else if (ch === 'e') {
         // C ref: eat.c doeat

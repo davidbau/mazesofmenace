@@ -2,7 +2,8 @@
 // C ref: pray.c — can_pray, dopray, prayer_done, gods_upset, angrygods,
 // water_prayer, on_altar / a_align helpers; dosacrifice (#offer); #turn
 // (doturn / maybe_turn_mon_iter, D-0912); desecrate_altar / god_zaps_you /
-// fry_by_god (D-0963); angrygods cases 4–8 + gods_angry (D-0969).
+// fry_by_god (D-0963); angrygods cases 4–8 + gods_angry (D-0969);
+// offer_corpse / eval_offering / consume_offering (D-1678).
 //
 // Branch envelope: ParanoidPray → paranoid_query(ParanoidConfirm) (D-1000)
 // + wizard Force (D-0517) + #pray ublesscnt-too-soon (p_type 0) →
@@ -12,11 +13,14 @@
 // all minor TROUBLE_* (D-1012) + ublesscnt rnz(350); #offer not-on-altar;
 // Knight/Cleric #turn chant + exercise + undead iter + nomul;
 // digactualhole altar → desecrate_altar; angrygods 0–8 + default zap
-// (punish/attrcurse/rndcurse/summon_minion/god_zaps_you).
+// (punish/attrcurse/rndcurse/summon_minion/god_zaps_you);
+// #offer corpse → offer_corpse (D-1678).
 // Named omissions: pleased pat_on_head gifts / crown / give_spell;
 // p_type -2/-1/1/2 outcome bodies beyond water_prayer scan;
-// pray_revive; offer_corpse / offer_too_soon / offer_fake_amulet /
-// offer_real_amulet (dosacrifice ECMD_TIME after pick is D-1667);
+// pray_revive; offer_different_alignment_altar / bestow_artifact /
+// angry_priest from sacrifice_your_race; offer_too_soon /
+// offer_fake_amulet / offer_real_amulet (dosacrifice ECMD_TIME after
+// pick is D-1667);
 // known_spell SPE_TURN_UNDEAD /
 // spelleffects fallback for non-Knight/Cleric; resist TELL pline polish;
 // other livelog paths; poly silent/headless can_chant; Fixed_abil/Dunce
@@ -29,43 +33,50 @@
 
 import { game } from './gstate.js';
 import { rn2, rn1, rnl, rnz, rnd, d } from './rng.js';
-import { pline, verbalize, You_feel } from './display.js';
+import { pline, verbalize, You_feel, newsym } from './display.js';
 import { nomul } from './hack.js';
 import { m_at } from './mon.js';
-import { A_WIS, A_STR, A_MAX, change_luck, adjattrib, adjalign, exercise } from './attrib.js';
-import { align_gname, xlev_to_rank, uhim } from './roles.js';
-import { objects_at, uncurse } from './mkobj.js';
+import {
+    A_WIS, A_STR, A_MAX, change_luck, adjattrib, adjalign, exercise,
+    ALIGNLIM,
+} from './attrib.js';
+import { align_gname, align_str, xlev_to_rank, uhim, u_gname } from './roles.js';
+import {
+    objects_at, uncurse, peek_at_iced_corpse_age, eaten_stat, get_mtraits,
+} from './mkobj.js';
 import { yn_function, paranoid_query } from './getline.js';
 import { livelog_printf } from './pline.js';
 import { can_chant } from './spell.js';
 import { couldsee } from './vision.js';
 import { monflee } from './monmove.js';
-import { set_malign } from './makemon.js';
+import { set_malign, makemon } from './makemon.js';
 import { killed, xkilled } from './uhitm.js';
 import { ureflects } from './mhitu.js';
 import { aggravate } from './wizard.js';
 import { setuhpmax } from './exper.js';
 import { done } from './end.js';
 import { monstseesu, monstunseesu } from './mondata.js';
-import { mon_nam, Monnam } from './do_name.js';
+import { mon_nam, Monnam, a_monnam } from './do_name.js';
 import { disintegrate_arm, setworn, stuck_ring, unchanger } from './do_wear.js';
-import { summon_minion } from './minion.js';
-import { near_capacity, encumber_msg } from './invent.js';
+import { summon_minion, dlord } from './minion.js';
+import { near_capacity, encumber_msg, feel_cockatrice } from './invent.js';
 import { punish, unpunish } from './read.js';
 import { attrcurse, rndcurse } from './sit.js';
-import { An, xname, makeplural, vtense } from './objnam.js';
+import { An, an, xname, makeplural, vtense, corpse_xname } from './objnam.js';
 import { objectNames, POT_WATER, POTION_CLASS } from './objects.js';
 import {
     is_undead as mon_is_undead,
     is_demon as mon_is_demon,
     is_vampshifter,
     nohands, throws_rocks, eyecount,
+    is_unicorn, your_race, mons,
     MR_ELEC, MR_DISINT,
     monsterNames,
 } from './monsters.js';
 import {
     PM_KNIGHT,
     PM_CLERIC,
+    PM_ACID_BLOB,
 } from './generated/monsters_data.js';
 import { you_unwere } from './were.js';
 import {
@@ -73,7 +84,8 @@ import {
     make_confused, make_stunned, make_hallucinated,
     make_glib, make_deaf,
 } from './potion.js';
-import { init_uhunger, floorfood } from './eat.js';
+import { init_uhunger, floorfood, carried, useup, useupf } from './eat.js';
+import { rider_corpse_revival } from './pickup.js';
 import { region_danger, region_safety } from './region.js';
 import { safe_teleds } from './teleport.js';
 import { reset_utrap, rescued_from_terrain, heal_legs } from './trap.js';
@@ -84,9 +96,11 @@ import { make_blinded } from './do.js';
 import { buried_ball_to_freedom } from './dig.js';
 import { confers_luck } from './artifact.js';
 import {
-    IS_ALTAR, Amask2align, AM_MASK, AM_SHRINE, A_NONE, A_LAWFUL, A_NEUTRAL,
-    A_CHAOTIC, GEHENNOM, ECMD_OK, ECMD_TIME, PARANOID_PRAY, PARANOID_CONFIRM,
-    LL_CONDUCT,
+    IS_ALTAR, Amask2align, AM_MASK, AM_SHRINE, AM_SANCTUM, AM_CHAOTIC,
+    A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, GEHENNOM, ECMD_OK, ECMD_TIME,
+    PARANOID_PRAY, PARANOID_CONFIRM, LL_CONDUCT, CXN_ARTICLE, FROMOUTSIDE,
+    LUCKMAX, has_omonst, NON_PM, ROOM, FOOT, something,
+    STRAT_APPEARMSG, MM_NOMSG,
     M_AP_TYPE, M_AP_FURNITURE, has_mcorpsenm, MCORPSENM,
     LL_MINORAC, BOLT_LIM, MAXULEV, TELL, NOTELL, Upolyd, ismnum,
     DIED, KILLED_BY, Is_astralevel, M_SEEN_REFL, M_SEEN_ELEC, M_SEEN_DISINT,
@@ -117,6 +131,7 @@ const LOADSTONE = objectNames.indexOf('LOADSTONE');
 const HELM_OF_OPPOSITE_ALIGNMENT = objectNames.indexOf('HELM_OF_OPPOSITE_ALIGNMENT');
 const SADDLE = objectNames.indexOf('SADDLE');
 const BOULDER = objectNames.indexOf('BOULDER');
+const PM_WRAITH = monsterNames.indexOf('PM_WRAITH');
 
 const MOLOCH = 'Moloch';
 // C ref: defsym.h PCHAR S_altar — furniture mimic mappearance
@@ -1464,11 +1479,387 @@ export async function dopray() {
     return ECMD_TIME;
 }
 
+/** C: pray.c ugod_is_angry — (u.ualign.record < 0). */
+function ugod_is_angry() {
+    return ((game.u?.ualign?.record | 0) < 0);
+}
+
+/**
+ * C ref: pray.c a_gname_at `:2513–2520`.
+ * @param {number} x
+ * @param {number} y
+ */
+function a_gname_at(x, y) {
+    const loc = game.level?.at(x, y);
+    if (!loc || !IS_ALTAR(loc.typ)) return '';
+    return align_gname(game.urole, a_align(x, y));
+}
+
+/** C ref: pray.c a_gname `:2506–2510`. */
+function a_gname() {
+    const u = game.u || {};
+    return a_gname_at(u.ux | 0, u.uy | 0);
+}
+
+/**
+ * C ref: pray.c sacrifice_value `:1838–1850`.
+ * Acid blob or corpse age ≤ 50 (iced peek) → difficulty+1, maybe eaten_stat.
+ */
+function sacrifice_value(otmp) {
+    let value = 0;
+    const corpsenm = otmp.corpsenm | 0;
+    if (corpsenm === PM_ACID_BLOB
+        || ((game.moves | 0) <= (peek_at_iced_corpse_age(otmp) + 50))) {
+        value = (mons(corpsenm)?.difficulty | 0) + 1;
+        if (otmp.oeaten) value = eaten_stat(value, otmp);
+    }
+    return value;
+}
+
+/**
+ * C ref: pray.c eval_offering `:1898–1956`.
+ * Undead / unicorn bonuses; same-align unicorn is an insult (−1).
+ */
+async function eval_offering(otmp, altaralign) {
+    let value = sacrifice_value(otmp);
+    if (!value) return 0;
+
+    const ptr = mons(otmp.corpsenm);
+    const u = game.u || (game.u = {});
+    if (!u.ualign) u.ualign = { type: 0, record: 0 };
+
+    if (mon_is_undead(ptr)) {
+        if ((u.ualign.type | 0) !== A_CHAOTIC
+            || ((ptr?.mndx | 0) === PM_WRAITH
+                && (u.uconduct?.unvegetarian | 0))) {
+            value += 1;
+        }
+    } else if (is_unicorn(ptr)) {
+        const mal = ptr.maligntyp | 0;
+        const unicalign = mal > 0 ? 1 : mal < 0 ? -1 : 0;
+        if (unicalign === altaralign) {
+            await pline(
+                `Such an action is an insult to ${
+                    unicalign === A_CHAOTIC ? 'chaos'
+                        : unicalign ? 'law' : 'balance'
+                }!`,
+            );
+            await adjattrib(A_WIS, -1, true);
+            return -1;
+        } else if ((u.ualign.type | 0) === altaralign) {
+            if ((u.ualign.record | 0) < ALIGNLIM()) {
+                await You_feel(`appropriately ${align_str(u.ualign.type)}.`);
+            } else {
+                await You_feel('you are thoroughly on the right path.');
+            }
+            adjalign(5);
+            value += 3;
+        } else if (unicalign === (u.ualign.type | 0)) {
+            u.ualign.record = -1;
+            value = 1;
+        } else {
+            value += 3;
+        }
+    }
+    return value;
+}
+
+/**
+ * C ref: pray.c consume_offering `:1445–1475`.
+ * Hallu rn2(3); Blind lawful disappear; else flash/plume/flame.
+ */
+async function consume_offering(otmp) {
+    const u = game.u || {};
+    const atype = u.ualign?.type ?? 0;
+    if (Hallucination()) {
+        switch (rn2(3)) {
+        case 0:
+            await pline(
+                'Your sacrifice sprouts wings and a propeller and roars away!',
+            );
+            break;
+        case 1:
+            await pline(
+                'Your sacrifice puffs up, swelling bigger and bigger, and pops!',
+            );
+            break;
+        default:
+            await pline(
+                'Your sacrifice collapses into a cloud of dancing particles and fades away!',
+            );
+            break;
+        }
+    } else if (Blind() && atype === A_LAWFUL) {
+        await pline('Your sacrifice disappears!');
+    } else {
+        const how = atype === A_LAWFUL
+            ? 'flash of light'
+            : atype === A_NEUTRAL
+                ? 'plume of smoke'
+                : 'burst of flame';
+        await pline(`Your sacrifice is consumed in a ${how}!`);
+    }
+    if (carried(otmp)) useup(otmp);
+    else useupf(otmp, 1);
+    exercise(A_WIS, true);
+}
+
+/**
+ * C ref: pray.c offer_negative_valued `:1591–1599`.
+ */
+async function offer_negative_valued(highaltar, altaralign) {
+    const u = game.u || {};
+    if (altaralign !== (u.ualign?.type ?? 0) && highaltar) {
+        await desecrate_altar(highaltar, altaralign);
+    } else {
+        await gods_upset(altaralign);
+    }
+}
+
+/**
+ * C ref: pray.c sacrifice_your_race `:1697–1778`.
+ * Same-race corpse: demon satisfaction / infamous offense; high-altar
+ * desecrate; stain or vanish altar; dlord summon. angry_priest named.
+ */
+async function sacrifice_your_race(otmp, highaltar, altaralign) {
+    const u = game.u || (game.u = {});
+    if (!u.ualign) u.ualign = { type: 0, record: 0 };
+    const youData = game.youmonst?.data;
+
+    if (mon_is_demon(youData)) {
+        await pline('You find the idea very satisfying.');
+        exercise(A_WIS, true);
+    } else if ((u.ualign.type | 0) !== A_CHAOTIC) {
+        await pline("You'll regret this infamous offense!");
+        exercise(A_WIS, false);
+    }
+
+    if (highaltar
+        && (altaralign !== A_CHAOTIC || (u.ualign.type | 0) !== A_CHAOTIC)) {
+        await desecrate_altar(highaltar, altaralign);
+        return;
+    } else if (altaralign !== A_CHAOTIC && altaralign !== A_NONE) {
+        await pline(
+            `The altar is stained with ${game.urace?.adj || 'your'} blood.`,
+        );
+        const loc = game.level?.at(u.ux, u.uy);
+        if (loc) {
+            loc.altarmask = AM_CHAOTIC;
+            loc.flags = AM_CHAOTIC;
+        }
+        newsym(u.ux | 0, u.uy | 0);
+        /* angry_priest named */
+    } else {
+        let demonless_msg;
+        if (altaralign === A_CHAOTIC && (u.ualign.type | 0) !== A_CHAOTIC) {
+            await pline(
+                `The blood floods the altar, which vanishes in ${an(hcolor('black'))} cloud!`,
+            );
+            const loc = game.level?.at(u.ux, u.uy);
+            if (loc) {
+                loc.typ = ROOM;
+                loc.altarmask = 0;
+                loc.flags = 0;
+            }
+            newsym(u.ux | 0, u.uy | 0);
+            /* angry_priest named */
+            demonless_msg = 'cloud dissipates';
+        } else {
+            await pline('The blood covers the altar!');
+            change_luck(altaralign === A_NONE ? -2 : 2);
+            demonless_msg = 'blood coagulates';
+        }
+        const pm = dlord(altaralign);
+        const dmon = (pm !== NON_PM)
+            ? makemon(mons(pm), u.ux | 0, u.uy | 0, MM_NOMSG)
+            : null;
+        if (dmon) {
+            let dbuf = a_monnam(dmon);
+            if (!dbuf || dbuf.toLowerCase() === 'it') {
+                dbuf = 'something dreadful';
+            } else {
+                dmon.mstrategy = (dmon.mstrategy | 0) & ~STRAT_APPEARMSG;
+            }
+            await pline(`You have summoned ${dbuf}!`);
+            const ua = u.ualign.type | 0;
+            const mal = dmon.data?.maligntyp | 0;
+            const sgnU = ua > 0 ? 1 : ua < 0 ? -1 : 0;
+            const sgnM = mal > 0 ? 1 : mal < 0 ? -1 : 0;
+            if (sgnU === sgnM) dmon.mpeaceful = true;
+            await pline('You are terrified, and unable to move.');
+            nomul(-3);
+            game.multi_reason = 'being terrified of a demon';
+            game.nomovemsg = null;
+        } else {
+            await pline(`The ${demonless_msg}.`);
+        }
+    }
+
+    if ((u.ualign.type | 0) !== A_CHAOTIC) {
+        adjalign(-5);
+        u.ugangr = (u.ugangr | 0) + 3;
+        await adjattrib(A_WIS, -1, true);
+        if (!Inhell()) await angrygods(u.ualign.type);
+        change_luck(-5);
+    } else {
+        adjalign(5);
+    }
+    if (carried(otmp)) useup(otmp);
+    else useupf(otmp, 1);
+}
+
+/**
+ * C ref: pray.c offer_corpse `:1958–2120`.
+ * Gnostic livelog; feel_cockatrice; rider revival; same-race / former
+ * pet; eval_offering; consume + mollify / absolve / blesscnt / luck.
+ * Named: offer_different_alignment_altar; bestow_artifact.
+ */
+async function offer_corpse(otmp, highaltar, altaralign) {
+    const u = game.u || (game.u = {});
+    if (!u.ualign) u.ualign = { type: 0, record: 0 };
+    if (!u.uconduct) u.uconduct = {};
+    const MAXVALUE = 24;
+
+    if (!(u.uconduct.gnostic | 0)) {
+        u.uconduct.gnostic = 1;
+        livelog_printf(
+            LL_CONDUCT,
+            `rejected atheism by offering ${
+                corpse_xname(otmp, null, CXN_ARTICLE)
+            } on an altar of ${a_gname()}`,
+        );
+    } else {
+        u.uconduct.gnostic = (u.uconduct.gnostic | 0) + 1;
+    }
+
+    await feel_cockatrice(otmp, true);
+    if (await rider_corpse_revival(otmp, false)) return;
+
+    const ptr = mons(otmp.corpsenm);
+    if (your_race(ptr)) {
+        await sacrifice_your_race(otmp, highaltar, altaralign);
+        return;
+    }
+    if (has_omonst(otmp)) {
+        const mtmp = get_mtraits(otmp, false);
+        if (mtmp && mtmp.mtame) {
+            await pline('So this is how you repay loyalty?');
+            adjalign(-3);
+            u.HAggravate_monster = (u.HAggravate_monster | 0) | FROMOUTSIDE;
+            await offer_negative_valued(highaltar, altaralign);
+            return;
+        }
+    }
+
+    const value = await eval_offering(otmp, altaralign);
+    if (value === 0) {
+        await pline(nothing_happens);
+        return;
+    }
+    if (value < 0) {
+        await offer_negative_valued(highaltar, altaralign);
+        return;
+    }
+
+    if (altaralign !== (u.ualign.type | 0) && highaltar) {
+        await desecrate_altar(highaltar, altaralign);
+        return;
+    }
+    if ((u.ualign.type | 0) !== altaralign) {
+        /* offer_different_alignment_altar named — uchangealign */
+        return;
+    }
+    await consume_offering(otmp);
+    if (u.ugangr) {
+        const saved_anger = u.ugangr | 0;
+        u.ugangr = saved_anger - Math.trunc(
+            (value * ((u.ualign.type | 0) === A_CHAOTIC ? 2 : 3)) / MAXVALUE,
+        );
+        if ((u.ugangr | 0) < 0) u.ugangr = 0;
+        if ((u.ugangr | 0) !== saved_anger) {
+            const gnam = u_gname(game.urole, u.ualign.type);
+            if (u.ugangr) {
+                await pline(
+                    `${gnam} seems ${Hallucination() ? 'groovy' : 'slightly mollified'}.`,
+                );
+                if ((u.uluck | 0) < 0) change_luck(1);
+            } else {
+                await pline(
+                    `${gnam} seems ${
+                        Hallucination()
+                            ? 'cosmic (not a new fact)'
+                            : 'mollified'
+                    }.`,
+                );
+                if ((u.uluck | 0) < 0) u.uluck = 0;
+            }
+        } else if (Hallucination()) {
+            await pline('The gods seem tall.');
+        } else {
+            await pline('You have a feeling of inadequacy.');
+        }
+    } else if (ugod_is_angry()) {
+        let v = value;
+        if (v > MAXVALUE) v = MAXVALUE;
+        if (v > -(u.ualign.record | 0)) v = -(u.ualign.record | 0);
+        adjalign(v);
+        await You_feel('partially absolved.');
+    } else if ((u.ublesscnt | 0) > 0) {
+        const saved_cnt = u.ublesscnt | 0;
+        u.ublesscnt = saved_cnt - Math.trunc(
+            (value * ((u.ualign.type | 0) === A_CHAOTIC ? 500 : 300))
+                / MAXVALUE,
+        );
+        if ((u.ublesscnt | 0) < 0) u.ublesscnt = 0;
+        if ((u.ublesscnt | 0) !== saved_cnt) {
+            if (u.ublesscnt) {
+                if (Hallucination()) {
+                    await pline(
+                        'You realize that the gods are not like you and I.',
+                    );
+                } else {
+                    await pline('You have a hopeful feeling.');
+                }
+                if ((u.uluck | 0) < 0) change_luck(1);
+            } else {
+                if (Hallucination()) {
+                    await pline('Overall, there is a smell of fried onions.');
+                } else {
+                    await pline('You have a feeling of reconciliation.');
+                }
+                if ((u.uluck | 0) < 0) u.uluck = 0;
+            }
+        }
+    } else {
+        /* bestow_artifact named — mk_artifact by_align */
+        const orig_luck = u.uluck | 0;
+        let luck_increase = Math.trunc((value * LUCKMAX) / (MAXVALUE * 2));
+        if (orig_luck > value) luck_increase = 0;
+        else if (orig_luck + luck_increase > value) {
+            luck_increase = value - orig_luck;
+        }
+        change_luck(luck_increase);
+        if ((u.uluck | 0) < 0) u.uluck = 0;
+        if ((u.uluck | 0) !== orig_luck) {
+            if (Blind()) {
+                await pline(
+                    `You think ${something} brushed your ${body_part(FOOT)}.`,
+                );
+            } else {
+                await pline(
+                    Hallucination()
+                        ? `You see crabgrass at your ${makeplural(body_part(FOOT))}.  A funny thing in a dungeon.`
+                        : `You glimpse a four-leaf clover at your ${makeplural(body_part(FOOT))}.`,
+                );
+            }
+        }
+    }
+}
+
 /**
  * C ref: pray.c dosacrifice `#offer` `:1853–1896`.
  * Branch envelope: not-on-altar / impaired / empty floorfood → ECMD_OK;
- * successful CORPSE / Yendor / fake pick → ECMD_TIME (D-1667) even
- * while offer_* bodies stay named. nothing_happens is TIME.
+ * CORPSE → offer_corpse (D-1678); Yendor / fake still named; TIME.
  */
 export async function dosacrifice() {
     const u = game.u || {};
@@ -1481,6 +1872,11 @@ export async function dosacrifice() {
         await pline('You are too impaired to perform the rite.');
         return ECMD_OK;
     }
+    const loc = game.level?.at(u.ux, u.uy);
+    const mask = (loc && (loc.altarmask != null ? loc.altarmask : loc.flags)) | 0;
+    const highaltar = !!(mask & AM_SANCTUM);
+    const altaralign = a_align(u.ux | 0, u.uy | 0);
+
     const otmp = await floorfood('sacrifice', 1);
     if (!otmp) return ECMD_OK;
     /* C pray.c `:1874–1895` — each live otyp spends the turn. */
@@ -1493,7 +1889,7 @@ export async function dosacrifice() {
         return ECMD_TIME;
     }
     if ((otmp.otyp | 0) === CORPSE) {
-        /* offer_corpse named */
+        await offer_corpse(otmp, highaltar, altaralign);
         return ECMD_TIME;
     }
     await pline(nothing_happens);

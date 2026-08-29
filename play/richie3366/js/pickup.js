@@ -12,7 +12,8 @@ import {
     unsplitobj,
 } from './mkobj.js';
 import {
-    look_here, observe_object, dfeature_at, paint_corner_nhw_menu, sortloot,
+    look_here, observe_object, dfeature_at, paint_corner_nhw_menu,
+    dismiss_nhw_menu, sortloot,
     let_to_name, DEF_INV_ORDER, prinv, near_capacity, calc_capacity,
     max_capacity, compactify_invlets, getobj_take_count, getobj_apply_count,
     getobj_from_cmdq, getobj_display_pickinv, freeinv, display_inventory,
@@ -52,7 +53,7 @@ import {
     BY_NEXTHERE, USE_INVLET, INVORDER_SORT, SIGNAL_NOMENU, SIGNAL_ESCAPE,
     AUTOSELECT_SINGLE, FEEL_COCKATRICE, INCLUDE_VENOM,
     MENU_INVERT_ALL, MENU_SELECT_ALL, MENU_UNSELECT_ALL,
-    MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SKIPINVERT, PICK_NONE,
+    MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SKIPINVERT, PICK_NONE, PICK_ONE,
     MENU_TRADITIONAL, MENU_COMBINATION, MENU_FULL,
     SHOPBASE,
     SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
@@ -63,7 +64,7 @@ import {
 import { t_at, dotrap, NO_TRAP_FLAGS, drown, lava_effects, instapetrify } from './trap.js';
 import { nhgetch } from './input.js';
 import { m_at } from './mon.js';
-import { oclass_to_sym, select_menu_pick_any } from './options.js';
+import { oclass_to_sym, select_menu_pick_any, select_menu_pick_one } from './options.js';
 import {
     objectNames, COIN_CLASS, VENOM_CLASS, POTION_CLASS,
     def_oc_syms, def_char_to_objclass,
@@ -383,7 +384,8 @@ function count_categories(olist, qflags) {
  * Branch envelope for menu_remarm: WORN_TYPES | ALL_TYPES | UNPAID_TYPES
  * | BUCX_TYPES, PICK_ANY. Single-class skip via count_categories.
  * CHOOSE_ALL rows when the flag is set; ParanoidAutoAll yn named omit
- * (verify_All stays false). INCLUDE_VENOM / menu_head_objsym named.
+ * (verify_All stays false). INCLUDE_VENOM via inv_order_pack; menu_head_objsym
+ * live. PICK_ONE (dotypeinv D-1687) uses select_menu_pick_one.
  *
  * @returns {Promise<{ a_int: number|string }[]>} empty if cancelled
  */
@@ -562,7 +564,19 @@ export async function query_category(qstr, olist, qflags, how) {
         { selectable: false, text: '' },
         ...items,
     ];
-    const picked = await select_menu_pick_any(raw);
+    const pickedAny = how === PICK_ONE
+        ? null
+        : await select_menu_pick_any(raw);
+    if (how === PICK_ONE) {
+        const one = await select_menu_pick_one(raw);
+        if (one.kind !== 'pick' || !one.item) return [];
+        if (one.item.a_int === 'A') {
+            await pline('No relevant items selected.');
+            return [];
+        }
+        return [{ a_int: one.item.a_int, count: one.item.count ?? 0 }];
+    }
+    const picked = pickedAny;
     if (!picked.length) return [];
 
     /* C: 'A' by itself without ParanoidAutoAll is rejected. */
@@ -578,8 +592,9 @@ export async function query_category(qstr, olist, qflags, how) {
  * C pickup.c query_objlist `:1024–1216`.
  * menu_remarm live flags: SIGNAL_NOMENU | USE_INVLET | INVORDER_SORT,
  * PICK_ANY, allow is_worn / is_worn_by_type, invent Array.
+ * this_title / PICK_ONE / INCLUDE_VENOM pack (dotypeinv D-1687).
  * Named omit: INCLUDE_HERO fake-you; obj_to_glyph display RNG;
- * INCLUDE_VENOM; count-prefix; this_title. Floor pickup keeps the
+ * count-prefix. Floor pickup keeps the
  * existing query_objlist_pickup clone (D-0365/D-0405/D-1599).
  *
  * @returns {Promise<{ n: number, pick_list: { obj: object, count: number }[] }>}
@@ -702,11 +717,42 @@ export async function query_objlist(qstr, olist, qflags, how, allow) {
         }
     }
 
-    const raw = [
-        { selectable: false, text: qstr, attr: ATR_INVERSE },
-        { selectable: false, text: '' },
-        ...items,
-    ];
+    const raw = [];
+    /* C query_objlist: add_menu_str(gt.this_title) without heading attr. */
+    if (game.this_title) {
+        raw.push({ selectable: false, text: game.this_title });
+    }
+    if (qstr) {
+        raw.push({ selectable: false, text: qstr, attr: ATR_INVERSE });
+        raw.push({ selectable: false, text: '' });
+    }
+    raw.push(...items);
+
+    const finish_picks = (pickedItems) => {
+        const pick_list = [];
+        for (const it of pickedItems) {
+            const curr = it.obj;
+            if (!curr) continue;
+            let count = it.count;
+            if (count == null || count === -1 || count > (curr.quan || 1)) {
+                count = curr.quan || 1;
+            }
+            pick_list.push({ obj: curr, count });
+        }
+        return { n: pick_list.length, pick_list };
+    };
+
+    if (how === PICK_ONE) {
+        const one = await select_menu_pick_one(raw);
+        if (one.kind !== 'pick' || !one.item) {
+            return {
+                n: (qflags & SIGNAL_ESCAPE) ? -2 : 0,
+                pick_list: [],
+            };
+        }
+        return finish_picks([one.item]);
+    }
+
     const picked = await select_menu_pick_any(raw);
     if (!picked.length) {
         /* C: ESC n<0 → SIGNAL_ESCAPE ? -2 : 0. Empty confirm is 0. */
@@ -715,17 +761,7 @@ export async function query_objlist(qstr, olist, qflags, how, allow) {
             pick_list: [],
         };
     }
-    const pick_list = [];
-    for (const it of picked) {
-        const curr = it.obj;
-        if (!curr) continue;
-        let count = it.count;
-        if (count == null || count === -1 || count > (curr.quan || 1)) {
-            count = curr.quan || 1;
-        }
-        pick_list.push({ obj: curr, count });
-    }
-    return { n: pick_list.length, pick_list };
+    return finish_picks(picked);
 }
 
 function tally_BUCX_list(objs, here) {
@@ -973,8 +1009,9 @@ async function fatal_corpse_mistake(obj, remotely) {
 /**
  * C ref: pickup.c rider_corpse_revival — still revives when remotely;
  * message is "attempted acquisition" vs "touch".
+ * Caller: pray.c offer_corpse (touch, remotely FALSE).
  */
-async function rider_corpse_revival(obj, remotely) {
+export async function rider_corpse_revival(obj, remotely) {
     if (!obj || (obj.otyp | 0) !== CORPSE
         || !is_rider(mons(obj.corpsenm))) {
         return false;
@@ -3636,6 +3673,105 @@ export async function tipcontainer(box) {
 }
 
 /**
+ * C ref: pickup.c choose_tip_container_menu `:3500–3558` — NHW_MENU
+ * PICK_ONE of floor containers plus a preselected dummy invent row.
+ * tty_select_menu n: 0 toggle-off preselected; 1 Space/Return accept;
+ * 2 picked something else (if pick_list[0] is dummy, use [1]);
+ * -1 ESC. Named omissions: MENU_SEARCH, map_menu_cmd remaps,
+ * multi-page, tty_nhbell.
+ * @returns {Promise<number>} ECMD_*
+ */
+async function choose_tip_container_menu() {
+    const dummyobj = {};
+    const u = game.u;
+    const rows = [];
+    let i = 0;
+    for (let otmp = objects_at(u.ux | 0, u.uy | 0); otmp;
+        otmp = otmp.nexthere) {
+        if (!Is_container(otmp)) continue;
+        ++i;
+        rows.push({
+            obj: otmp,
+            selected: false,
+            selector: '',
+            text: doname(otmp),
+        });
+    }
+    // C: gi.invent — empty chain is NULL, not a zero-length array.
+    const hasInvent = !!(game.invent && game.invent.length);
+    if (hasInvent) {
+        rows.push({ kind: 'blank' });
+        // C: 'i' unless so many containers that 'i' is already used
+        // (i > 'i'-'a') or flags.lootabc.
+        const ch = (i <= ('i'.charCodeAt(0) - 'a'.charCodeAt(0))
+            && !game.flags?.lootabc) ? 'i' : '';
+        rows.push({
+            obj: dummyobj,
+            selected: true, // MENU_ITEMFLAGS_SELECTED
+            selector: ch,
+            text: 'tip something being carried',
+        });
+    }
+    // C tty_end_menu: auto a..z/A.. for identifier && !selector.
+    let menuCh = 'a';
+    for (const row of rows) {
+        if (row.kind === 'blank' || row.selector) continue;
+        row.selector = menuCh;
+        menuCh = menuCh === 'z' ? 'A'
+            : String.fromCharCode(menuCh.charCodeAt(0) + 1);
+    }
+
+    let cancelled = false;
+    for (;;) {
+        const entries = [
+            { text: 'Tip which container?', attr: ATR_INVERSE },
+            { text: '', attr: 0 },
+        ];
+        for (const row of rows) {
+            if (row.kind === 'blank') {
+                entries.push({ text: '', attr: 0 });
+                continue;
+            }
+            // C process_menu_window: str[2] '-' becomes '*' when selected.
+            const mark = row.selected ? '*' : '-';
+            entries.push({
+                text: `${row.selector} ${mark} ${row.text}`,
+                attr: 0,
+            });
+        }
+        await paint_corner_nhw_menu(entries, '(end) ');
+        await flush_screen(1);
+        const key = await nhgetch();
+        await dismiss_nhw_menu();
+
+        if (key === 27) {
+            cancelled = true;
+            break;
+        }
+        // C: \n \r space on last page finish without toggling.
+        if (key === 13 || key === 10 || key === 32) break;
+        const ch = String.fromCharCode(key);
+        const hit = rows.find((r) => r.obj && r.selector === ch);
+        if (!hit) continue; // C nhbell; stay
+        hit.selected = !hit.selected;
+        // C PICK_ONE: letter toggles then finished (other selected stay).
+        break;
+    }
+
+    if (cancelled) return ECMD_CANCEL;
+
+    const pick_list = rows.filter((r) => r.obj && r.selected);
+    const n = pick_list.length;
+    let otmp = n <= 0 ? null : pick_list[0].obj;
+    if (n > 1 && otmp === dummyobj) otmp = pick_list[1].obj;
+    if (otmp && otmp !== dummyobj) {
+        await tipcontainer(otmp);
+        return ECMD_TIME;
+    }
+    return ECMD_OK;
+}
+
+/**
  * C ref: pickup.c tip_ok `:3480–3497` — COIN EXCLUDE; container / known
  * horn of plenty SUGGEST; else DOWNPLAY.
  */
@@ -3653,8 +3789,9 @@ function tip_ok(obj) {
  * C ref: pickup.c dotip — #tip empty container onto floor.
  * Ported: floor ynq (D-1654); m-prefix skip / TRADITIONAL boxes>1 gate;
  * getobj("tip", tip_ok, GETOBJ_PROMPT) + container/horn tipcontainer
- * (D-1665). Named omissions: choose_tip_container_menu; candle/oil/
- * grease/food/venom spill; tiphat; statue; tipcontainer_gettarget.
+ * (D-1665); choose_tip_container_menu when boxes>1 (D-1679).
+ * Named omissions: candle/oil/grease/food/venom spill; tiphat; statue;
+ * tipcontainer_gettarget.
  * @returns {Promise<number>} ECMD_*
  */
 export async function dotip() {
@@ -3679,7 +3816,9 @@ export async function dotip() {
             game._check_capacity_msg = null;
         } else if (await able_to_loot(ccx, ccy, false)) {
             if (boxes > 1) {
-                // choose_tip_container_menu deferred → invent getobj path
+                const res = await choose_tip_container_menu();
+                if (res !== ECMD_OK) return res;
+                /* else pick-from-gi.invent below */
             } else {
                 for (let cobj = objects_at(ccx, ccy); cobj; cobj = cobj.nexthere) {
                     if (!Is_container(cobj)) continue;

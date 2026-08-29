@@ -984,8 +984,9 @@ function hero_form_data() {
 
 /**
  * C ref: wield.c TWOWEAPOK — weapon (not launcher/ammo/missile) or weptool.
+ * Exported for iactions.c MAYBETWOWEAPON (D-1677).
  */
-function TWOWEAPOK(obj) {
+export function TWOWEAPOK(obj) {
     if (!obj) return false;
     if (obj.oclass === WEAPON_CLASS) {
         return !(is_launcher(obj) || is_ammo(obj) || is_missile(obj));
@@ -994,7 +995,7 @@ function TWOWEAPOK(obj) {
 }
 
 /** C ref: obj.h bimanual — WEAPON/TOOL with oc_bimanual (oc_big). */
-function bimanual(obj) {
+export function bimanual(obj) {
     if (!obj) return false;
     if (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS) return false;
     return !!(game.objects?.[obj.otyp]?.oc_big);

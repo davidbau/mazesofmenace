@@ -3,6 +3,7 @@
 //        version.c doextversion; nhlua.c get_lua_version.
 //
 // Branch envelope: `/` menu (lootabc false) → map getpos / invent pick /
+// (itemed `/` cmdq_pop KEY + display_inventory canned KEY D-1686) /
 // symbol-or-name getlin / look_all|traps|engrs; `?` help menu + About
 // (OPTIONS_AT_RUNTIME → get_lua_version nhlib shuffle) + display_file
 // dat/* pages + dokeylist/domenucontrols/docontact; data.base lookups for
@@ -23,7 +24,7 @@ import {
 import { howmonseen } from './vision.js';
 import { getlin, yn_function } from './getline.js';
 import {
-    paint_corner_nhw_menu, dfeature_at, invent_lines, observe_object,
+    paint_corner_nhw_menu, dfeature_at, display_inventory, observe_object,
 } from './invent.js';
 import { stairway_at, known_branch_stairs } from './mklev.js';
 import {
@@ -47,6 +48,7 @@ import { option_help_lines } from './options.js';
 import { dokeylist_lines, domenucontrols_lines } from './dokeylist.js';
 import { t_at, trapname } from './trap.js';
 import { costly_spot } from './shk.js';
+import { cmdq_pop, cmdq_clear } from './cmd.js';
 import {
     objectNames, objectNameStrs, COIN_CLASS,
 } from './objects.js';
@@ -61,6 +63,7 @@ import {
     MHID_PREFIX, MHID_ARTICLE, MHID_ALTMON, MHID_REGION,
     MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT,
     MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON,
+    CMDQ_KEY,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR, DEC_TO_UNICODE } from './terminal.js';
 import { DAT_TEXT } from './generated/dat_text.js';
@@ -1329,19 +1332,6 @@ async function look_engrs(nearby) {
     }
 }
 
-/** Pick invent letter (C display_inventory(NULL, TRUE)). */
-async function pick_inventory_letter() {
-    const lines = invent_lines();
-    const menuItems = lines.slice(0, -1);
-    await paint_corner_nhw_menu(menuItems, '(end) ');
-    const key = await nhgetch();
-    game._menu_overlay = false;
-    await docrt();
-    await flush_screen(1);
-    if (key === 27) return null;
-    return String.fromCharCode(key);
-}
-
 async function whatis_menu_choice() {
     await flush_topl_more();
     const entries = [
@@ -1378,6 +1368,7 @@ async function whatis_menu_choice() {
 
 /**
  * C ref: pager.c do_look(mode=0) / dowhatis.
+ * cmdq_pop KEY skips the look-at menu (itemed `/` queues 'i', D-1686).
  * Returns ECMD_OK (0) — never takes time.
  */
 export async function do_look(mode = 0) {
@@ -1387,10 +1378,21 @@ export async function do_look(mode = 0) {
     let sym = 0;
     const cc = { x: game.u?.ux || 1, y: game.u?.uy || 0 };
 
-    if (!quick) {
-        i = (await whatis_menu_choice()).charCodeAt(0);
-    } else {
+    /* C pager.c `:1692–1700` — cmdq_pop KEY is the look choice;
+       else cmdq_clear; goto dowhatiscmd (skip the menu). */
+    const cmdq = cmdq_pop();
+    if (cmdq) {
+        if (cmdq.typ === CMDQ_KEY || cmdq.typ === 'key') {
+            i = typeof cmdq.key === 'string'
+                ? cmdq.key.charCodeAt(0)
+                : (cmdq.key | 0);
+        } else {
+            cmdq_clear();
+        }
+    } else if (quick) {
         i = 'y'.charCodeAt(0);
+    } else {
+        i = (await whatis_menu_choice()).charCodeAt(0);
     }
 
     const ch = String.fromCharCode(i);
@@ -1406,12 +1408,14 @@ export async function do_look(mode = 0) {
         cc.y = game.u.uy;
         break;
     case 'i': {
-        const invlet = await pick_inventory_letter();
-        if (!invlet || invlet === '\u001b') return 0;
+        /* C `:1822–1840` — display_inventory(NULL, TRUE); canned KEY
+           is consumed there (D-1686). Lookup uses singular(xname). */
+        const invlet = await display_inventory(null, true);
+        if (!invlet || invlet === '\x1b') return 0;
         let name = '';
         for (const obj of game.invent || []) {
             if (obj.invlet === invlet) {
-                name = doname(obj);
+                name = singular(obj, xname);
                 break;
             }
         }

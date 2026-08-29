@@ -7,12 +7,21 @@
 //        `"call"` (D-1660); do_oname artifact_name slip (D-1670);
 //        docallcmd cmdq_pop canned + lootabc + invent-gated i/o (D-1671);
 //        docall sink-fluid OBJ_DESCR + safe_qbuf Call/:/thing (D-1672);
-//        distant_monnam astral high-cleric conceal (D-1673).
+//        distant_monnam astral high-cleric conceal (D-1673);
+//        oname via_naming literate livelog (D-1680);
+//        docallcmd `'i'` live getobj("name", name_ok, GETOBJ_PROMPT)
+//        (D-1681);
+//        docallcmd #if 0 EXCLUDE compiled out; getobj silly_thing
+//        Call Amulet (D-1682).
 
 import {
     artifact_exists, exist_artifact, artifact_name, restrict_name,
+    bare_artifactname, set_artifact_intrinsic,
 } from './artifact.js';
 import { game } from './gstate.js';
+import { livelog_printf } from './pline.js';
+import { alter_cost } from './shk.js';
+import { set_twoweap } from './wield.js';
 import { cmdq_pop, cmdq_clear } from './cmd.js';
 import { rn2, rn1, rn2_on_display_rng, rnd_on_display_rng } from './rng.js';
 import { wipeout_text } from './engrave.js';
@@ -23,17 +32,20 @@ import {
     verbalize,
 } from './display.js';
 import {
-    paint_corner_nhw_menu, discover_object, compactify_invlets,
-    getobj_display_pickinv, getobj, update_inventory,
+    paint_corner_nhw_menu, discover_object,
+    getobj, update_inventory,
 } from './invent.js';
 import { rename_disco } from './o_init.js';
 import {
-    ONAME_VIA_NAMING, ONAME_KNOW_ARTI, MGIVENNAME, has_mgivenname,
+    ONAME_VIA_NAMING, ONAME_KNOW_ARTI, ONAME_SKIP_INVUPD,
+    LL_CONDUCT, LL_ARTIFACT, W_WEP,
+    MGIVENNAME, has_mgivenname,
     W_SADDLE, engulfing_u, Upolyd, MD_PAD_BOGONS,
     ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR,
     SUPPRESS_IT, SUPPRESS_INVISIBLE, SUPPRESS_HALLUCINATION,
     SUPPRESS_SADDLE, SUPPRESS_NAME,
     GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GETOBJ_NOFLAGS,
+    GETOBJ_PROMPT,
     ECMD_OK, CMDQ_KEY, CQ_CANNED,
     has_oname, ONAME, CLR_MAX, BUFSZ, u_at, OBJ_FREE, OBJ_INVENT, HAND,
     isok, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK, has_ebones,
@@ -52,8 +64,8 @@ import { object_from_map } from './pager.js';
 import { objects_at, SIR_TERRY_NOVELS } from './mkobj.js';
 import { rank_of } from './roles.js';
 import {
-    an, xname, simpleonames, set_y_monnam, set_noit_mon_nam, The,
-    is_plural, safe_qbuf, body_part_latebound,
+    an, xname, simpleonames, ansimpleoname, set_y_monnam, set_noit_mon_nam,
+    The, is_plural, safe_qbuf, body_part_latebound,
 } from './objnam.js';
 import {
     POTION_CLASS, COIN_CLASS, AMULET_CLASS, SCROLL_CLASS, WAND_CLASS,
@@ -86,10 +98,13 @@ const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
 const BOGUSMONSIZE = 100; // C: do_name.c rndmonnam
 const BOGON_CODES = '-_+|=';
-const QUITCHARS = ' \r\n\x1b';
 
-/** C ref: do_name.c name_ok — anything but gold; DOWNPLAY unseen/arti/novel. */
-function name_ok(obj) {
+/**
+ * C ref: do_name.c name_ok `:466–476`.
+ * EXCLUDE gold / hands; DOWNPLAY unseen, artifacts, novels.
+ * Callers: docallcmd `'i'` getobj; iactions.c item_naming_classification.
+ */
+export function name_ok(obj) {
     if (!obj || obj.oclass === COIN_CLASS) return GETOBJ_EXCLUDE;
     if (!obj.dknown || obj.oartifact || obj.otyp === SPE_NOVEL) {
         return GETOBJ_DOWNPLAY;
@@ -136,85 +151,6 @@ export function call_ok(obj) {
     return GETOBJ_SUGGEST;
 }
 
-/** SUGGEST invent letters only (C getobj `bp` / `lets[]`; DOWNPLAY → altlets). */
-function name_suggest_lets() {
-    const lets = [];
-    for (const o of game.invent || []) {
-        if (o?.invlet && name_ok(o) === GETOBJ_SUGGEST) lets.push(o.invlet);
-    }
-    // C getobj sortloot SORTLOOT_INVLET
-    lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
-    return lets.join('');
-}
-
-/**
- * C ref: invent.c getobj("name", name_ok, GETOBJ_PROMPT)
- * Prompt compactify when suggested>5; ?/* → display_pickinv_reply;
- * gold EXCLUDE → "You cannot name gold."; missing letter → continue.
- */
-async function getobj_name() {
-    for (;;) {
-        await flush_topl_more();
-        const rawLets = name_suggest_lets();
-        // C: GETOBJ_PROMPT → forceprompt; empty SUGGEST still prompts [*]
-        const lets = rawLets.length > 5
-            ? compactify_invlets(rawLets)
-            : rawLets;
-        const query = lets
-            ? `What do you want to name? [${lets} or ?*]`
-            : 'What do you want to name? [*]';
-        const prompt = `${query} `;
-        game._pending_message = prompt;
-        await flush_screen(1);
-        const disp = game.nhDisplay;
-        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
-
-        const key = await nhgetch();
-        const ch = String.fromCharCode(key);
-        if (QUITCHARS.includes(ch) || key === 27) {
-            if (game.flags?.verbose !== false) await pline('Never mind.');
-            return null;
-        }
-        if (ch === '?' || ch === '*') {
-            const counted = { cnt: 0, cntgiven: false };
-            const ilet = await getobj_display_pickinv(
-                ch, rawLets, false, counted,
-                { word: 'name', allownone: false, promptHasHands: false },
-            );
-            if (ilet === '\x1b') {
-                if (game.flags?.verbose !== false) await pline('Never mind.');
-                return null;
-            }
-            if (!ilet) {
-                if (game.iflags?.force_invmenu) return null;
-                continue;
-            }
-            const picked = (game.invent || []).find((o) => o.invlet === ilet);
-            if (!picked) {
-                await pline("You don't have that object.");
-                continue;
-            }
-            if (name_ok(picked) === GETOBJ_EXCLUDE) {
-                await pline('You cannot name gold.');
-                return null;
-            }
-            game._pending_message = '';
-            return picked;
-        }
-        const otmp = (game.invent || []).find((o) => o.invlet === ch);
-        if (!otmp) {
-            await pline("You don't have that object.");
-            continue;
-        }
-        if (name_ok(otmp) === GETOBJ_EXCLUDE) {
-            await pline('You cannot name gold.');
-            return null;
-        }
-        game._pending_message = '';
-        return otmp;
-    }
-}
-
 /** C ref: objnam.c Ysimple_name2 — capitalize simpleonames. */
 function Ysimple_name2(obj) {
     const s = simpleonames(obj) || 'item';
@@ -244,7 +180,7 @@ async function name_from_player(prompt, defres) {
  * C ref: do_name.c do_oname `:289–369`.
  * getlin then artifact_name + restrict_name / exist_artifact slip
  * (wipeout_text + rnd_on_display_rng) or canonical Sting/Orcrist.
- * oname via_naming literate livelog / shop bill still named.
+ * oname via_naming literate livelog is D-1680.
  */
 async function do_oname(obj) {
     if (!obj) return;
@@ -984,26 +920,64 @@ export function noit_mon_nam(mtmp) {
 set_noit_mon_nam(noit_mon_nam);
 
 /**
- * C ref: do_name.c oname — assign name; may create artifact via artifact_exists.
+ * C ref: do_name.c oname `:371–426` — assign name; may create an
+ * artifact via artifact_exists. via_naming literate++ livelog when
+ * naming produces Sting/Orcrist (D-1680).
+ * Named: `untwoweapon` You() (pline is async; oname stays sync).
  */
 export function oname(obj, name, oflgs = 0) {
     if (!obj) return obj;
+    const via_naming = (oflgs & ONAME_VIA_NAMING) !== 0;
+    const skip_inv_update = (oflgs & ONAME_SKIP_INVUPD) !== 0;
     let n = name || '';
     if (n.length >= PL_PSIZ) n = n.slice(0, PL_PSIZ - 1);
 
-    // If already artifact or named artifact exists, keep current
+    /* If named artifact exists in the game, do not create another.
+       Also trying to create an artifact shouldn't de-artifact it. */
     if (obj.oartifact || (n && exist_artifact(obj.otyp, n))) {
         return obj;
     }
 
-    if (!obj.oextra) obj.oextra = {};
-    if (n) obj.oextra.oname = n;
-    else delete obj.oextra.oname;
+    const lth = n ? n.length + 1 : 0;
+    new_oname(obj, lth);
+    if (lth) obj.oextra.oname = n;
 
-    if (n) artifact_exists(obj, n, true, oflgs | 0);
-
-    // Dual-wield / intrinsic / shop / literate paths deferred
-    void (oflgs & ONAME_VIA_NAMING);
+    if (lth) artifact_exists(obj, n, true, oflgs | 0);
+    if (obj.oartifact) {
+        const u = game.u || (game.u = {});
+        /* can't dual-wield with artifact as secondary weapon */
+        if (obj === u.uswapwep && u.twoweap) {
+            set_twoweap(false);
+            update_inventory();
+        }
+        /* activate warning if you've just named your weapon "Sting" */
+        if (obj === u.uwep) set_artifact_intrinsic(obj, true, W_WEP);
+        /* if obj is owned by a shop, increase your bill */
+        if (obj.unpaid) alter_cost(obj, 0);
+        if (via_naming) {
+            /* violate illiteracy since successfully wrote arti-name */
+            if (!u.uconduct) u.uconduct = {};
+            const first = !(u.uconduct.literate | 0);
+            u.uconduct.literate = (u.uconduct.literate | 0) + 1;
+            if (first) {
+                livelog_printf(
+                    LL_CONDUCT | LL_ARTIFACT,
+                    'became literate by naming %s',
+                    bare_artifactname(obj),
+                );
+            } else {
+                livelog_printf(
+                    LL_ARTIFACT,
+                    'chose %s to be named "%s"',
+                    ansimpleoname(obj),
+                    bare_artifactname(obj),
+                );
+            }
+        }
+    }
+    if ((obj.where | 0) === OBJ_INVENT && !skip_inv_update) {
+        update_inventory();
+    }
     return obj;
 }
 
@@ -1189,11 +1163,13 @@ async function docallcmd_menu() {
 /**
  * C ref: do_name.c docallcmd `:498–601` — cmdq_pop canned then
  * "What do you want to name?" menu (D-1671).
- * `m` → do_mgivenname; `i` → getobj("name")+do_oname; `o` →
- * getobj("call", call_ok, GETOBJ_NOFLAGS) then xname + dknown/docall
- * (D-1660); `f` → namefloorobj; `d`/`\\` → o_init.c rename_disco.
- * Named: iactions Call pushkeys; `'i'` getobj_name clone; #if 0
- * call_ok EXCLUDE "know those as well".
+ * `m` → do_mgivenname; `i` → getobj("name", name_ok, GETOBJ_PROMPT)
+ * then do_oname (D-1681); `o` → getobj("call", call_ok, GETOBJ_NOFLAGS)
+ * then xname + dknown/docall (D-1660); `f` → namefloorobj; `d`/`\\` →
+ * o_init.c rename_disco.
+ * C `:581–585` #if 0 `call_ok==GETOBJ_EXCLUDE` You("know those as
+ * well") is compiled out (D-1682). Live EXCLUDE is getobj →
+ * silly_thing (Call Amulet / unknown fake).
  */
 export async function docallcmd() {
     await flush_topl_more();
@@ -1218,7 +1194,7 @@ export async function docallcmd() {
         break;
     case 'i':
         {
-            const obj = await getobj_name();
+            const obj = await getobj('name', name_ok, GETOBJ_PROMPT);
             if (obj) await do_oname(obj);
         }
         break;
@@ -1233,6 +1209,7 @@ export async function docallcmd() {
                 if (!obj.dknown) {
                     await pline('You would never recognize another one.');
                 } else {
+                    /* C `:581–585` #if 0 GETOBJ_EXCLUDE arm compiled out. */
                     await docall(obj);
                 }
             }

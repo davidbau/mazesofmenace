@@ -959,6 +959,11 @@ const EXT_CMDS = [
         run: async () => (await import('./invent.js')).ddoinv(),
     },
     {
+        // C: cmd.c "inventtype" IFBURIED|GENERALCMD → dotypeinv. Key 'I'.
+        name: 'inventtype', wiz: false, autocomplete: false,
+        run: async () => (await import('./invent.js')).dotypeinv(),
+    },
+    {
         name: 'kick', wiz: false, autocomplete: false,
         run: async () => (await import('./dokick.js')).dokick(),
     },

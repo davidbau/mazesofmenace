@@ -4,12 +4,13 @@
 // Data is generated from upstream headers (js/generated/objects_data.js).
 
 import { game } from './gstate.js';
-import { P_SHORT_SWORD, P_SABER } from './const.js';
+import { P_DAGGER, P_SHORT_SWORD, P_SABER } from './const.js';
 import {
     createObjectsArray,
     NUM_OBJECTS,
     MAXOCLASSES,
     WEAPON_CLASS,
+    ARMOR_CLASS,
 } from './generated/objects_data.js';
 
 export {
@@ -119,4 +120,22 @@ export function is_sword(otmp) {
     if (!otmp || otmp.oclass !== WEAPON_CLASS) return false;
     const sk = game.objects?.[otmp.otyp]?.oc_skill | 0;
     return sk >= P_SHORT_SWORD && sk <= P_SABER;
+}
+
+/**
+ * C obj.h is_blade — WEAPON_CLASS && P_DAGGER..P_SABER oc_skill.
+ */
+export function is_blade(otmp) {
+    if (!otmp || otmp.oclass !== WEAPON_CLASS) return false;
+    const sk = game.objects?.[otmp.otyp]?.oc_skill | 0;
+    return sk >= P_DAGGER && sk <= P_SABER;
+}
+
+/** C objclass.h ARM_BOOTS; objects[] stores oc_armcat in oc_skill. */
+const ARM_BOOTS = 4;
+
+/** C obj.h is_boots — ARMOR_CLASS && oc_armcat == ARM_BOOTS. */
+export function is_boots(otmp) {
+    if (!otmp || otmp.oclass !== ARMOR_CLASS) return false;
+    return (game.objects?.[otmp.otyp]?.oc_skill | 0) === ARM_BOOTS;
 }

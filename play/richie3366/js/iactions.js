@@ -5,10 +5,13 @@
 //
 // Branch envelope: build + show "Do what with …?" PICK_ONE menu; ESC /
 // Return / Space cancel; itemactions_pushkeys throw/drop/apply/read/…
-// + IA_SACRIFICE / IA_TIP_CONTAINER / IA_INVOKE_OBJ (D-1665).
-// Named omissions: remaining pushkeys (unwield/name/eat/engrave/buy/
-// rub/swap/two-weapon/whatis); full apply catalogue; shop pay;
-// offer_corpse / offer_too_soon / offer_fake_amulet bodies.
+// + IA_SACRIFICE / IA_TIP_CONTAINER / IA_INVOKE_OBJ (D-1665) +
+// IA_UNWIELD / IA_NAME_OBJ / IA_NAME_OTYP / IA_EAT_OBJ /
+// IA_ENGRAVE_OBJ (D-1675) + IA_BUY_OBJ shop pay (D-1676) +
+// IA_TWOWEAPON (D-1677) + IA_RUB_OBJ / IA_SWAPWEAPON / IA_WHATIS_OBJ
+// (D-1686).
+// Named omissions: full apply catalogue; doengrave non-hands stylus
+// body; Traditional itemize yn. `'i'` getobj is D-1681.
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
@@ -16,8 +19,8 @@ import { flush_screen, docrt, clear_committed_status } from './display.js';
 import { paint_corner_nhw_menu, inuse_headers_accessories, inuse_headers_set_accessories, check_invent_gold } from './invent.js';
 import { cxname, the, xname, makeplural, singular, is_plural, the_unique_obj } from './objnam.js';
 import { ia_checkfile } from './pager.js';
-import { call_ok } from './do_name.js';
-import { ammo_and_launcher } from './wield.js';
+import { call_ok, name_ok } from './do_name.js';
+import { ammo_and_launcher, could_twoweap, TWOWEAPOK, bimanual } from './wield.js';
 import {
     objects, objectNames,
     WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS, TOOL_CLASS,
@@ -25,10 +28,10 @@ import {
     GEM_CLASS, COIN_CLASS,
 } from './objects.js';
 import {
-    ECMD_OK, GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST,
+    ECMD_OK, GETOBJ_SUGGEST,
     CMDQ_EXTCMD,
     W_ARMOR, W_ACCESSORY, W_AMUL, W_RING, W_TOOL, Is_container,
-    Has_contents, has_oname, ONAME, HANDS_SYM, IS_ALTAR,
+    Has_contents, has_oname, ONAME, HANDS_SYM, IS_ALTAR, SHOPBASE,
 } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
 
@@ -56,10 +59,59 @@ function cmdq_add_key(ch) {
 /**
  * C ref: iactions.c itemactions_pushkeys — queue CQ_CANNED ec + invlet.
  * IA_SACRIFICE / IA_TIP_CONTAINER / IA_INVOKE_OBJ are D-1665.
- * Named omissions: unwield/name/eat/engrave/buy/rub/swap/two-weapon/whatis.
+ * IA_UNWIELD / IA_NAME_* / IA_EAT_OBJ / IA_ENGRAVE_OBJ are D-1675.
+ * IA_BUY_OBJ is D-1676. IA_TWOWEAPON is D-1677.
+ * IA_RUB_OBJ / IA_SWAPWEAPON / IA_WHATIS_OBJ are D-1686.
  */
 async function itemactions_pushkeys(act, otmp) {
     switch (act) {
+    case IA_UNWIELD: {
+        /* C iactions.c `:150–156` — uwep→dowield, uswapwep→remarm_swapwep
+           (#altunwield), uquiver→dowieldquiver, else donull; then HANDS_SYM. */
+        const u = game.u || {};
+        if (otmp === u.uwep) {
+            const { dowield } = await import('./wield.js');
+            cmdq_add_ec(dowield);
+        } else if (otmp === u.uswapwep) {
+            const { remarm_swapwep } = await import('./do_wear.js');
+            cmdq_add_ec_entry('altunwield', remarm_swapwep);
+        } else if (otmp === u.uquiver) {
+            const { dowieldquiver } = await import('./wield.js');
+            cmdq_add_ec(dowieldquiver);
+        } else {
+            const { donull } = await import('./do.js');
+            cmdq_add_ec(donull);
+        }
+        cmdq_add_key(HANDS_SYM);
+        break;
+    }
+    case IA_NAME_OBJ:
+    case IA_NAME_OTYP: {
+        /* C iactions.c `:167–171` — docallcmd then 'i'/'o' then invlet. */
+        const { docallcmd } = await import('./do_name.js');
+        cmdq_add_ec(docallcmd);
+        cmdq_add_key(act === IA_NAME_OBJ ? 'i' : 'o');
+        cmdq_add_key(otmp.invlet);
+        break;
+    }
+    case IA_EAT_OBJ: {
+        /* C iactions.c `:177–182` — do_reqmenu PREFIXCMD then #eat +
+           invlet (m-prefix skips floor food). */
+        const { do_reqmenu, ext_func_tab_from_txt } = await import('./cmd.js');
+        const { doeat } = await import('./eat.js');
+        const tab = ext_func_tab_from_txt('reqmenu');
+        cmdq_add_ec_entry('reqmenu', do_reqmenu, tab?.flags | 0);
+        cmdq_add_ec(doeat);
+        cmdq_add_key(otmp.invlet);
+        break;
+    }
+    case IA_ENGRAVE_OBJ: {
+        /* C iactions.c `:184–187` — cmdq_add_ec(doengrave) + invlet. */
+        const { doengrave } = await import('./engrave.js');
+        cmdq_add_ec(doengrave);
+        cmdq_add_key(otmp.invlet);
+        break;
+    }
     case IA_THROW_OBJ: {
         const { dothrow } = await import('./dothrow.js');
         cmdq_add_ec(dothrow);
@@ -173,6 +225,42 @@ async function itemactions_pushkeys(act, otmp) {
         cmdq_add_key(otmp.invlet);
         break;
     }
+    case IA_BUY_OBJ: {
+        /* C iactions.c `:203–206` — cmdq_add_ec(dopay) + invlet. */
+        const { dopay } = await import('./shk.js');
+        cmdq_add_ec(dopay);
+        cmdq_add_key(otmp.invlet);
+        break;
+    }
+    case IA_TWOWEAPON: {
+        /* C iactions.c `:260–262` — cmdq_add_ec(dotwoweapon); no invlet. */
+        const { dotwoweapon } = await import('./wield.js');
+        cmdq_add_ec(dotwoweapon);
+        break;
+    }
+    case IA_RUB_OBJ: {
+        /* C iactions.c `:221–224` — cmdq_add_ec(dorub) + invlet. */
+        const { dorub } = await import('./apply.js');
+        cmdq_add_ec(dorub);
+        cmdq_add_key(otmp.invlet);
+        break;
+    }
+    case IA_SWAPWEAPON: {
+        /* C iactions.c `:257–258` — cmdq_add_ec(doswapweapon); no invlet. */
+        const { doswapweapon } = await import('./wield.js');
+        cmdq_add_ec(doswapweapon);
+        break;
+    }
+    case IA_WHATIS_OBJ: {
+        /* C iactions.c `:267–271` — cmdq_add_ec(dowhatis) then 'i'
+           (inventory look) then invlet. do_look pops the 'i';
+           display_inventory pops the invlet (D-1686). */
+        const { dowhatis } = await import('./pager.js');
+        cmdq_add_ec(dowhatis);
+        cmdq_add_key('i');
+        cmdq_add_key(otmp.invlet);
+        break;
+    }
     default:
         // remaining arms deferred
         break;
@@ -231,15 +319,6 @@ const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
 /** C ref: objnam.c simpleonames — type name without quan/BUC (xname quan=1). */
 function simpleonames(obj) {
     return singular(obj, xname);
-}
-
-/** C ref: do_name.c name_ok */
-function name_ok(obj) {
-    if (!obj || obj.oclass === COIN_CLASS) return GETOBJ_EXCLUDE;
-    if (!obj.dknown || obj.oartifact || obj.otyp === SPE_NOVEL) {
-        return GETOBJ_DOWNPLAY;
-    }
-    return GETOBJ_SUGGEST;
 }
 
 /**
@@ -311,10 +390,19 @@ function is_graystone(obj) {
 }
 
 /**
+ * C ref: iactions.c MAYBETWOWEAPON — TWOWEAPOK && !bimanual.
+ * Local #define in itemactions; do not clone TWOWEAPOK/bimanual.
+ */
+function MAYBETWOWEAPON(obj) {
+    return TWOWEAPOK(obj) && !bimanual(obj);
+}
+
+/**
  * C ref: iactions.c itemactions — NHW_MENU PICK_ONE of context actions.
- * Named omissions: full apply-otyp catalogue polish; eat/is_edible;
- * shop pay; two-weapon; remaining pushkeys (unwield/name/eat/engrave/
- * buy/rub/swap/whatis). O/T/V pushkeys are D-1665.
+ * Named omissions: full apply-otyp catalogue polish.
+ * O/T/V pushkeys are D-1665. Unwield/name/eat/engrave are D-1675.
+ * Shop pay is D-1676. Two-weapon `'X'` is D-1677. Rub/swap/whatis
+ * pushkeys are D-1686.
  */
 export async function itemactions(otmp) {
     if (!otmp) return ECMD_OK;
@@ -381,7 +469,7 @@ export async function itemactions(otmp) {
         add(IA_DROP_OBJ, 'd', `Drop this ${(otmp.quan || 1) > 1 ? 'stack' : 'item'}`);
     }
 
-    // e: eat — tin / is_edible deferred (no entry unless tin)
+    // e: eat — C iactions.c `:417–427` tin then is_edible
     if (otmp.otyp === TIN) {
         const withOpener = u.uwep && u.uwep.otyp === TIN_OPENER
             ? ' with your tin opener' : '';
@@ -390,6 +478,15 @@ export async function itemactions(otmp) {
             'e',
             `Open ${(otmp.quan || 1) > 1 ? 'one of these tins' : 'this tin'}${withOpener} and eat the contents`,
         );
+    } else {
+        const { is_edible } = await import('./eat.js');
+        if (is_edible(otmp)) {
+            add(
+                IA_EAT_OBJ,
+                'e',
+                `Eat ${(otmp.quan || 1) > 1 ? 'one of these' : 'this'}`,
+            );
+        }
     }
 
     // E: engrave
@@ -439,7 +536,19 @@ export async function itemactions(otmp) {
         }
     }
 
-    // p: pay unpaid — shop deferred
+    // p: pay unpaid — C iactions.c `:485–494`
+    if (otmp.unpaid) {
+        const { shop_keeper, inhishop } = await import('./shk.js');
+        const { in_rooms } = await import('./hack.js');
+        const mtmp = shop_keeper(in_rooms(u.ux, u.uy, SHOPBASE));
+        if (mtmp && inhishop(mtmp)) {
+            add(
+                IA_BUY_OBJ,
+                'p',
+                `Buy this unpaid ${(otmp.quan || 1) > 1 ? 'stack' : 'item'}`,
+            );
+        }
+    }
 
     // P: put on accessory
     if (!already_worn) {
@@ -577,6 +686,23 @@ export async function itemactions(otmp) {
         add(IA_SWAPWEAPON, 'x', 'Ready this as an alternate weapon');
     } else if (otmp === u.uswapwep) {
         add(IA_SWAPWEAPON, 'x', 'Swap this with your main weapon');
+    }
+
+    /* X: Toggle two-weapon — C iactions.c `:653–682`. Based on
+       TWOWEAPOK; do not call can_twoweapon (verbose). Toggle-off
+       skips the filter. */
+    if (
+        (otmp === u.uwep || otmp === u.uswapwep)
+        && (u.twoweap
+            || (could_twoweap(game.youmonst?.data) && !u.uarms
+                && u.uwep && MAYBETWOWEAPON(u.uwep)
+                && u.uswapwep && MAYBETWOWEAPON(u.uswapwep)))
+    ) {
+        add(
+            IA_TWOWEAPON,
+            'X',
+            `Toggle two-weapon combat ${u.twoweap ? 'off' : 'on'}`,
+        );
     }
 
     // z: zap

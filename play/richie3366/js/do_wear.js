@@ -1,7 +1,8 @@
 // do_wear.js — Wear / take-off / put-on (partial).
 // C ref: do_wear.c — dowear, doputon, canwearobj, accessory_or_armor_on,
 // Amulet_on, Amulet_off, Armor_on, dotakeoff, doddoremarm, take_off,
-// do_takeoff, menu_remarm, armor_or_accessory_off, armoroff, *_off.
+// do_takeoff, remarm_swapwep, menu_remarm, armor_or_accessory_off,
+// armoroff, *_off.
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
@@ -10,7 +11,7 @@ import {
     newsym, see_monsters, urgent_pline, impossible,
 } from './display.js';
 import { yn_function } from './getline.js';
-import { an, doname, the, xname, xprname, vtense, otyp_is_charged, makeplural, body_part_latebound } from './objnam.js';
+import { an, doname, the, xname, xprname, vtense, makeplural, body_part_latebound } from './objnam.js';
 import { find_ac } from './u_init.js';
 import {
     A_STR, A_CON, A_CHA, acurr, extremeattr, change_luck, Fast, Very_fast,
@@ -18,8 +19,9 @@ import {
 import { nomul, unmul, stop_occupation } from './hack.js';
 import { retouch_object, set_artifact_intrinsic } from './artifact.js';
 import { welded, setuwep, setuswapwep, setuqwep, empty_handed } from './wield.js';
+import { cmdq_pop } from './cmd.js';
 import { set_occupation } from './engrave.js';
-import { makeknown, observe_object, ggetobj, is_worn } from './invent.js';
+import { makeknown, observe_object, ggetobj, is_worn, silly_thing } from './invent.js';
 import {
     add_valid_menu_class, menu_class_present, query_category, query_objlist,
     is_worn_by_type,
@@ -29,7 +31,7 @@ import {
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_ARMOR,
     W_RING, W_RINGL, W_RINGR, W_AMUL, W_TOOL, W_WEAPONS, W_WEP, W_SWAPWEP,
     W_QUIVER, W_BALL, W_CHAIN, LEFT_RING, RIGHT_RING, W_ART,
-    ECMD_OK,
+    ECMD_OK, ECMD_FAIL, ECMD_TIME, HANDS_SYM, CMDQ_KEY,
     ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK, ERODE_NONE,
     ER_NOTHING, ER_DESTROYED, EF_PAY, EF_DESTROY,
     TIMEOUT, BLINDED, FAST, TELEPAT, STEALTH, SLEEPY, I_SPECIAL,
@@ -1455,6 +1457,40 @@ async function do_takeoff() {
 }
 
 /**
+ * C do_wear.c remarm_swapwep `:3060–3087`. Caller: iactions.c
+ * itemactions_pushkeys IA_UNWIELD when otmp==uswapwep (`#altunwield`
+ * INTERNALCMD). Pops canned HANDS_SYM; reset_remarm then do_takeoff
+ * W_SWAPWEP. Cursed secondary still comes off; TIME if gone or bknown
+ * flipped.
+ * @returns {Promise<number>}
+ */
+export async function remarm_swapwep() {
+    const cmdq = cmdq_pop();
+    let isKey = false;
+    let keych = '\0';
+    if (cmdq) {
+        isKey = cmdq.typ === CMDQ_KEY || cmdq.typ === 'key';
+        if (isKey) {
+            keych = typeof cmdq.key === 'string'
+                ? cmdq.key.charAt(0)
+                : String.fromCharCode(cmdq.key | 0);
+        }
+    }
+    const u = game.u || {};
+    if (!isKey || keych !== HANDS_SYM || !u.uswapwep) return ECMD_FAIL;
+
+    const oldbknown = u.uswapwep.bknown | 0;
+    reset_remarm();
+    const doff = takeoff_info();
+    doff.what = W_SWAPWEP;
+    doff.mask = W_SWAPWEP;
+    await do_takeoff();
+    return (!u.uswapwep || (u.uswapwep.bknown | 0) !== oldbknown)
+        ? ECMD_TIME
+        : ECMD_OK;
+}
+
+/**
  * C do_wear.c take_off `:2899–2987`. Occupation for 'A' / #takeoffall.
  * Delay uses oc_delay; cloak/suit extra when taking armor or shirt;
  * occupation start subtracts 1. menu_remarm is D-1630.
@@ -1631,7 +1667,8 @@ export async function doddoremarm() {
 
 /**
  * C ref: do_wear.c canwearobj — slot/mask for armor; poly/weld/trap gates
- * mostly deferred (human form always ok).
+ * mostly deferred (human form always ok). Noisy else → silly_thing("wear")
+ * (D-1682; C `:2189–2194`).
  * @returns {Promise<number>} 1 ok (mask out), 0 fail
  */
 export async function canwearobj(otmp, maskOut, noisy) {
@@ -1686,7 +1723,9 @@ export async function canwearobj(otmp, maskOut, noisy) {
             err++;
         } else mask = W_ARM;
     } else {
-        if (noisy) await pline("You can't wear that.");
+        /* C `:2189–2194` getobj can't do this after allow_all;
+           extra / covered-slot armor → silly_thing("wear"). */
+        if (noisy) await silly_thing('wear', otmp);
         err++;
     }
 
@@ -2204,7 +2243,7 @@ function learnring(ring, observed) {
         else if (ring.dknown) makeknown(ringtype);
     }
     if (ring.dknown && oc?.oc_name_known) {
-        if (otyp_is_charged(ringtype) || oc.oc_charged) ring.known = 1;
+        if (oc?.oc_charged) ring.known = 1;
         // update_inventory deferred
     }
 }
