@@ -716,6 +716,38 @@ async function loadLeaderboard() {
                 const scoringError = team.scoringError || null;
                 const esc = (s) => String(s)
                     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                function notPlayableWhy(p) {
+                    if (!p) return 'the browser playability check did not run';
+                    if (p.browser_ok === false) {
+                        return p.error_message
+                            ? `the build did not reach a playable game in a browser (${p.error_message})`
+                            : 'the build did not reach a playable game in a browser';
+                    }
+                    switch (p.not_playable_reason) {
+                        case 'latency':
+                            return `keystrokes are too slow (${Number(p.ms_per_move).toFixed(1)} ms/move`
+                                + ` vs ${p.threshold_ms_per_move} ms threshold)`;
+                        case 'failure-rate':
+                            return `too many sessions failed to run (${p.sessions_failed} of ${p.sessions})`;
+                        case 'aborted':
+                            return `the check ran out of time (${p.sessions_skipped} sessions not measured)`;
+                        case 'unmeasured':
+                            return 'no keystrokes could be measured';
+                        default:
+                            break;
+                    }
+                    // Pre-fix payloads carry no not_playable_reason. Infer rather
+                    // than assert a cause we cannot see.
+                    if (p.sessions_failed > 0) {
+                        return `${p.sessions_failed} of ${p.sessions} sessions failed to run`;
+                    }
+                    if (p.ms_per_move && p.threshold_ms_per_move
+                            && p.ms_per_move >= p.threshold_ms_per_move) {
+                        return `keystrokes are too slow (${Number(p.ms_per_move).toFixed(1)} ms/move`
+                            + ` vs ${p.threshold_ms_per_move} ms threshold)`;
+                    }
+                    return 'this build does not currently pass the browser playability check';
+                }
                 let errBadge = '';
                 if (scoringError) {
                     const when = scoringError.at
@@ -732,10 +764,15 @@ async function loadLeaderboard() {
                     pop.push(`<div class="stale-note">Scores shown are from the last successful run (${esc(lastGood)}). The fork is re-scored on the next cycle.</div>`);
                     errBadge = `<span class="score-err-badge lb-tip" tabindex="0">!<span class="lb-tip-pop">${pop.join('')}</span></span>`;
                 }
+
                 const playableOk = !(playability && playability.playable === false);
+                // Report the reason the verifier actually recorded. This used
+                // to quote ms/move unconditionally, so a fork disabled for a
+                // failed session rendered as "(1 ms/move vs 5 ms threshold)"
+                // -- numbers that plainly pass (teleport-contest#19).
                 const playCell = playableOk
                     ? `<a class="lb-btn play" href="${playUrl}" title="Play this build in your browser">Play</a>`
-                    : `<span class="lb-btn play disabled" title="Play disabled: this build does not currently pass the browser playability check${playability && playability.ms_per_move ? ` (${playability.ms_per_move.toFixed(0)} ms/move vs ${playability.threshold_ms_per_move} ms threshold)` : ''}">Play</span>`;
+                    : `<span class="lb-btn play disabled" title="Play disabled: ${esc(notPlayableWhy(playability))}">Play</span>`;
 
                 tr.innerHTML = `
                     <td class="rank">${i + 1}</td>
