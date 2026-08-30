@@ -1,7 +1,8 @@
 // readobjnam.js — Wish object parsing (partial).
 // C ref: objnam.c readobjnam / rnd_otyp_by_namedesc / wishymatch;
 //        non-wizard spe clamp uses objects[].oc_charged (D-1690);
-//        wish quan uses objects[].oc_merge (D-1712).
+//        wish quan uses objects[].oc_merge (D-1712);
+//        wish "poisoned " / permapoisoned (D-1732).
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
@@ -22,9 +23,10 @@ import {
     SPBOOK_CLASS,
     TOOL_CLASS,
     FOOD_CLASS,
+    is_poisonable,
 } from './objects.js';
 import { mksobj, mkobj, weight, curse, oc_merge_of, spot_stop_timers } from './mkobj.js';
-import { artifact_name, nartifact_exist } from './artifact.js';
+import { artifact_name, nartifact_exist, permapoisoned } from './artifact.js';
 import { oname, lookup_novel } from './do_name.js';
 import { name_to_monplus } from './mondata.js';
 import { makesingular, An, an } from './objnam.js';
@@ -729,6 +731,7 @@ export function readobjnam(bp, no_wish, missOut) {
         open: 0,
         closed: 0,
         doorless: 0,
+        ispoisoned: 0,
     };
 
     for (;;) {
@@ -758,6 +761,10 @@ export function readobjnam(bp, no_wish, missOut) {
             l = 7;
         } else if (/^uncursed /i.test(s)) {
             d.uncursed = 1; d.blessed = 0; d.iscursed = 0;
+            l = 9;
+        } else if (/^poisoned /i.test(s)) {
+            /* C objnam.c readobjnam `:4034–4035` — before trapped. */
+            d.ispoisoned = 1;
             l = 9;
         } else if (/^trapped /i.test(s)) {
             /* C :4038–4041 — honor trapped only in wizard mode */
@@ -956,6 +963,13 @@ export function readobjnam(bp, no_wish, missOut) {
         d.otmp.recharged = rechrg;
     }
 
+    // C objnam.c readobjnam `:5298–5305` — wish "poisoned" coats
+    // is_poisonable; else taint FOOD by age=1.
+    if (d.ispoisoned) {
+        if (is_poisonable(d.otmp)) d.otmp.opoisoned = (Luck() >= 0) ? 1 : 0;
+        else if (d.oclass === FOOD_CLASS) d.otmp.age = 1;
+    }
+
     if (d.mntmp >= GRAY_DRAGON && d.mntmp <= YELLOW_DRAGON
         && d.otmp.otyp === SCALE_MAIL) {
         d.otmp.otyp = GRAY_DSM + (d.mntmp - GRAY_DRAGON);
@@ -996,6 +1010,9 @@ export function readobjnam(bp, no_wish, missOut) {
             game.u.uconduct.wisharti = (game.u.uconduct.wisharti | 0) + 1;
         }
     }
+
+    // C objnam.c readobjnam `:5368–5369` — Grimtooth always poisoned.
+    if (permapoisoned(d.otmp)) d.otmp.opoisoned = 1;
 
     // C: evaluate rn2(nartifact_exist()) even when wizard (|| short-circuit)
     if (d.otmp.oartifact) {

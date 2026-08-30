@@ -98,6 +98,7 @@ import {
 import {
     POTION_CLASS, SPBOOK_CLASS, COIN_CLASS, ARMOR_CLASS, WEAPON_CLASS,
     TOOL_CLASS, GEM_CLASS, objectNames, objectNameStrs, objectDescrs,
+    is_poisonable,
 } from './objects.js';
 import {
     weight, obj_extract_self, bless, curse, unbless, uncurse,
@@ -111,7 +112,7 @@ import {
 import {
     makeknown, compactify_invlets, enlightenment, observe_object,
     hold_another_object, update_inventory, near_capacity, freeinv_core,
-    prinv, getobj_display_pickinv,
+    prinv, getobj_display_pickinv, useupall,
 } from './invent.js';
 import { yn_function } from './getline.js';
 import {
@@ -142,7 +143,7 @@ import {
     M_AP_FURNITURE, M_AP_OBJECT, BURNING_OIL, LOST_EXPLODING, EXPL_FIERY,
     MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS, COST_NUTRLZ,
     COST_UNCURS, COST_UNBLSS, PLNMSG_OBJ_GLOWS,
-    P_SHURIKEN, P_BOW, P_CROSSBOW, P_NONE, FINGER, LL_CONDUCT,
+    P_CROSSBOW, P_NONE, FINGER, LL_CONDUCT,
     GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_INACCESS,
     GETOBJ_EXCLUDE_NONINVENT,
     HANDS_SYM,
@@ -180,7 +181,7 @@ import {
 import { you_were, you_unwere, set_ulycn, new_were } from './were.js';
 import { which_armor, mon_set_minvis } from './worn.js';
 import { polyself, body_part } from './polyself.js';
-import { is_art, ART_GRIMTOOTH } from './artifact.js';
+import { permapoisoned } from './artifact.js';
 import { poly_obj, obj_unpolyable } from './zap.js';
 import { livelog_printf } from './pline.js';
 import { uhis } from './roles.js';
@@ -3109,22 +3110,11 @@ async function dip_potion_explosion(obj, dmg) {
         exercise(A_STR, false);
         const yd = game.youmonst?.data;
         if (!breathless(yd) || haseyes(yd)) await potionbreathe(obj);
-        useupall_pot(obj);
+        useupall(obj);
         losehp(dmg, 'alchemic blast', KILLED_BY_AN);
         return true;
     }
     return false;
-}
-
-/** C invent.c useupall subset — whole stack; setnotworn named. */
-function useupall_pot(obj) {
-    if (!obj) return;
-    const inv = game.invent || [];
-    const idx = inv.indexOf(obj);
-    if (idx >= 0) inv.splice(idx, 1);
-    freeinv_core(obj);
-    obj.quan = 0;
-    obj.where = OBJ_FREE;
 }
 
 /** C invent.c freeinv — extract invent[] then freeinv_core. */
@@ -3160,26 +3150,8 @@ async function hold_potion(potobj, drop_fmt, drop_arg, hold_msg) {
 }
 
 /**
- * C artifact.c permapoisoned `:2837–2840` — currently only Grimtooth.
- * Local clone: mhitm.js is a cycle with potionhit.
+ * C obj.h is_weptool — TOOL_CLASS && oc_skill != P_NONE.
  */
-function permapoisoned_dip(obj) {
-    return !!(obj && is_art(obj, ART_GRIMTOOTH));
-}
-
-/**
- * C obj.h is_poisonable — WEAPON_CLASS missile skill window
- * (`-P_SHURIKEN`..`-P_BOW`) or permapoisoned. Local: mkobj.js
- * `is_poisonable` is the mkobj named-missile subset (RNG).
- */
-function is_poisonable_dip(obj) {
-    const sk = game.objects?.[obj.otyp]?.oc_skill ?? 0;
-    return ((obj.oclass | 0) === WEAPON_CLASS
-        && sk >= -P_SHURIKEN && sk <= -P_BOW)
-        || permapoisoned_dip(obj);
-}
-
-/** C obj.h is_weptool — TOOL_CLASS && oc_skill != P_NONE. */
 function is_weptool_dip(o) {
     if (!o || (o.oclass | 0) !== TOOL_CLASS) return false;
     const sk = game.objects?.[o.otyp]?.oc_skill;
@@ -3337,7 +3309,7 @@ async function potion_dip(obj, potion) {
                 break;
             }
             default:
-                useupall_pot(obj);
+                useupall(obj);
                 await pline(`The mixture ${!Blind() ? 'glows brightly and ' : ''}evaporates.`);
                 return ECMD_TIME;
             }
@@ -3382,7 +3354,7 @@ async function potion_dip(obj, potion) {
 
     // C potion.c potion_dip `:2615–2636` — sickness coats is_poisonable;
     // healing / extra / full healing strips !permapoisoned coating.
-    if (is_poisonable_dip(obj)) {
+    if (is_poisonable(obj)) {
         if ((potion.otyp | 0) === POT_SICKNESS && !obj.opoisoned) {
             let buf;
             if ((potion.quan | 0) > 1) {
@@ -3394,7 +3366,7 @@ async function potion_dip(obj, potion) {
             obj.opoisoned = 1; /* C TRUE */
             await poof(potion);
             return ECMD_TIME;
-        } else if (obj.opoisoned && !permapoisoned_dip(obj)
+        } else if (obj.opoisoned && !permapoisoned(obj)
             && ((potion.otyp | 0) === POT_HEALING
                 || (potion.otyp | 0) === POT_EXTRA_HEALING
                 || (potion.otyp | 0) === POT_FULL_HEALING)) {

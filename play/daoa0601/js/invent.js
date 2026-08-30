@@ -3,21 +3,26 @@
 
 import { game } from './gstate.js';
 import {
-    bot, consumeHallucinatedMenuObjectGlyph, docrtRecalc, flush_screen, pline,
+    bot, consumeHallucinatedMenuObjectGlyph, docrtRecalc, flush_screen,
+    formatStrength, pline,
 } from './display.js';
 import { showChoiceWindow, showInventoryWindow } from './windows.js';
 import { nhgetch } from './input.js';
 import {
-    DOOR, D_BROKEN, D_ISOPEN, D_NODOOR, SINK,
+    DOOR, D_BROKEN, D_ISOPEN, D_NODOOR,
+    FOUNTAIN, GRAVE, ICE, IRONBARS, LAVAPOOL, LAVAWALL,
+    MOAT, POOL, SINK, THRONE, TREE,
 } from './const.js';
-import { NO_COLOR } from './terminal.js';
 import {
-    AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR, OBJECT_CHARGED,
+    AMULET_OF_YENDOR, FAKE_AMULET_OF_YENDOR, GOLD_PIECE, OBJECT_CHARGED,
     OBJECT_BIMANUAL, OBJECT_MATERIAL, OBJECT_NAMES, OBJECT_NUTRITION,
+    OBJECT_SUBTYPE,
 } from './object_data.js';
 import { MONSTER_NAME, MONSTER_SYMBOL } from './monster_data.js';
 import { unseenObjectNoun } from './objnam.js';
 import { armorPresentationName } from './object_grammar.js';
+import { objectTypeCallNoun } from './object_call.js';
+import { heroGoldAmount } from './hero_gold.js';
 
 const CLASS_ORDER = [
     'Coins', 'Amulets', 'Weapons', 'Armor', 'Comestibles', 'Scrolls',
@@ -143,7 +148,12 @@ export function inventoryItemDescription(item) {
     // redundant adjective while blessed and cursed state remains visible.
     observeBucForNaming(item);
     const quantity = item.quantity ?? 1;
-    const holyWater = item.otyp === 322 && item.blessed;
+    // objnam.c names both non-neutral forms intrinsically; "blessed potion
+    // of holy water" and "cursed potion of unholy water" would duplicate
+    // the same beatitude state.
+    const holyWater = item.otyp === 322 && (item.blessed || item.cursed);
+    const waterName = item.blessed
+        ? 'potion of holy water' : 'potion of unholy water';
     const parts = [];
     if (item.empty) parts.push('empty');
     const buc = bucAdjectiveForName(item, holyWater);
@@ -155,10 +165,13 @@ export function inventoryItemDescription(item) {
     if (item.poisoned || item.opoisoned) parts.push('poisoned');
     parts.push(...itemErosionWords(item));
     if (item.rustproof) parts.push('rustproof');
-    const visibleEnchantment = Number.isInteger(item.enchantment)
-        ? item.enchantment
-        : item.known && [2, 3].includes(item.oclass)
-            && Number.isInteger(item.spe) ? item.spe : null;
+    const enchantment = Number.isInteger(item.enchantment)
+        ? item.enchantment : Number.isInteger(item.spe) ? item.spe : null;
+    const weaponTool = item.oclass === 6
+        && (OBJECT_SUBTYPE[item.otyp] ?? 0) !== 0;
+    const visibleEnchantment = item.known && OBJECT_CHARGED[item.otyp]
+        && ([2, 3, 4].includes(item.oclass) || weaponTool)
+        ? enchantment : null;
     if (Number.isInteger(visibleEnchantment)) {
         parts.push(`${visibleEnchantment >= 0 ? '+' : ''}${visibleEnchantment}`);
     }
@@ -167,14 +180,14 @@ export function inventoryItemDescription(item) {
     const typeKnown = item.typeKnown
         || game._knownObjectTypes?.has(item.otyp);
     const baseName = item.dknown === false ? unseenObjectNoun(item)
-        : holyWater ? 'potion of holy water'
+        : holyWater ? waterName
         : typeKnown && item.otyp === 296 ? identifiedTinName(item)
         : typeKnown ? knownObjectName(item)
-        : callName ? `${item.name} called ${callName}`
+        : callName ? `${objectTypeCallNoun(item)} called ${callName}`
         : item.name === 'object' && item.otyp === 314
             ? 'white potion' : item.name;
     let noun = quantity === 1 ? baseName
-        : holyWater ? 'potions of holy water'
+        : holyWater ? waterName.replace('potion ', 'potions ')
             : (item.plural || `${baseName}s`);
     let description = [...parts, noun].join(' ');
     if (quantity > 1) description = `${quantity} ${description}`;
@@ -211,16 +224,88 @@ export function inventoryItemDescription(item) {
             ? ' (in quiver pouch)' : ' (at the ready)';
     if (item === game.uright || item === game.u?.uright)
         description += ' (on right hand)';
+    else if (item === game.uleft || item === game.u?.uleft)
+        description += ' (on left hand)';
     else if (item.worn) description += ' (being worn)';
     return description;
 }
 
+function rerollItemDescription(item) {
+    // invent.c:reroll_menu() brackets distant_name(doname) with
+    // override_ID.  Identify a temporary view rather than mutating the live
+    // object or discovery tables for a character which might be rejected.
+    return inventoryItemDescription({
+        ...item,
+        known: true,
+        typeKnown: true,
+        bknown: true,
+        dknown: true,
+        rknown: true,
+        chargesKnown: true,
+        overrideIdentified: true,
+    });
+}
+
+function rerollAttributeLine() {
+    const values = game.u?.acurr?.a || [];
+    return `St:${formatStrength(values[0])} Dx:${values[1] ?? '?'} Co:${values[2] ?? '?'} `
+        + `In:${values[3] ?? '?'} Wi:${values[4] ?? '?'} Ch:${values[5] ?? '?'}`;
+}
+
+async function rerollFallbackPrompt() {
+    const message = 'Reroll this character? [yn] (n) ';
+    await pline(message);
+    await flush_screen(1);
+    game.nhDisplay?.setCursor(message.length, 0);
+    for (;;) {
+        const key = await nhgetch();
+        const answer = String.fromCharCode(key).toLowerCase();
+        if (answer === 'y' || answer === 'n') return answer === 'y';
+        if ([27, 32, 10, 13].includes(key)) return false;
+    }
+}
+
+// C ref: invent.c:reroll_menu().  This menu is a startup transaction, not a
+// command: accepting another roll changes no turn state and keeps consuming
+// the live RNG stream from its current position.
+export async function rerollMenu() {
+    const acceptKey = game.flags?.lootabc ? 'a' : 'p';
+    const rerollKey = game.flags?.lootabc ? 'b' : 'r';
+    const entries = [
+        `${acceptKey} - start the game with this character`,
+        `${rerollKey} - reroll another character`,
+        '',
+        ...(game.inventory || []).map(rerollItemDescription),
+        '',
+        rerollAttributeLine(),
+    ];
+    const key = await showChoiceWindow({
+        title: 'Reroll this character?',
+        entries,
+        validKeys: [
+            acceptKey.charCodeAt(0), rerollKey.charCodeAt(0),
+            27, 32, 10, 13,
+        ],
+        restoreUnderlay: true,
+    });
+    const choice = String.fromCharCode(key);
+    const reroll = choice === rerollKey ? true
+        : choice === acceptKey ? false : await rerollFallbackPrompt();
+    if (reroll) {
+        game.u.uroleplay.numrerolls =
+            (game.u.uroleplay.numrerolls || 0) + 1;
+    }
+    return reroll;
+}
+
 function inventorySections(items = game.inventory || [], includeGold = true) {
     const grouped = new Map();
-    if (includeGold && (game._goldCount || 0) > 0) {
-        grouped.set('Coins', [`$ - ${game._goldCount} gold pieces`]);
+    const gold = heroGoldAmount(game);
+    if (includeGold && gold > 0) {
+        grouped.set('Coins', [`$ - ${gold} gold pieces`]);
     }
     for (const item of items) {
+        if (item.otyp === GOLD_PIECE || item.oclass === 12) continue;
         consumeHallucinatedMenuObjectGlyph(item);
         const fallbackClass = {
             2: 'Weapons', 3: 'Armor', 4: 'Rings', 6: 'Tools',
@@ -349,35 +434,14 @@ export async function selectInventoryObject({
 } = {}) {
     game._pending_message = '';
     game.nhDisplay?.clearRow(0);
-    const keys = `${includeGold && (game._goldCount || 0) > 0 ? '$' : ''}`
-        + items.map(item => item.invlet).join('');
+    const keys = `${includeGold && heroGoldAmount(game) > 0 ? '$' : ''}`
+        + items.filter(item => item.otyp !== GOLD_PIECE && item.oclass !== 12)
+            .map(item => item.invlet).join('');
     const key = await showInventoryWindow(inventorySections(items, includeGold), {
         selectableKeys: keys, loopUntilValid,
     });
     await flush_screen(1);
     return key;
-}
-
-// C's look-here list is a temporary tty overlay rather than a full-screen
-// menu.  Keep the live map and status visible underneath it.
-export async function showKnightFloorObjects() {
-    game._pending_message = '';
-    await flush_screen(1);
-    const display = game.nhDisplay;
-    const lines = [
-        'Things that are here:',
-        'a goblin corpse',
-        'an orcish helm',
-        '--More--',
-    ];
-    for (let row = 0; row < lines.length; row++) {
-        for (let col = 41; col < display.cols; col++)
-            display.setCell(col, row, ' ', NO_COLOR, 0);
-        for (let index = 0; index < lines[row].length; index++)
-            display.setCell(41 + index, row, lines[row][index], NO_COLOR, 0);
-    }
-    display.setCursor(49, 3);
-    return nhgetch();
 }
 
 function stairwayAt(x, y) {
@@ -425,6 +489,20 @@ export function dungeonFeatureSentenceAt(x, y) {
                     : 'closed door';
         return `There is a ${feature} here.`;
     }
+    const feature = new Map([
+        [FOUNTAIN, 'a fountain'],
+        [THRONE, 'an opulent throne'],
+        [LAVAPOOL, 'molten lava'],
+        [LAVAWALL, 'molten lava'],
+        [ICE, 'ice'],
+        [POOL, 'a pool of water'],
+        [MOAT, 'a pool of water'],
+        [SINK, 'a sink'],
+        [GRAVE, 'a grave'],
+        [TREE, 'a tree'],
+        [IRONBARS, 'a set of iron bars'],
+    ]).get(loc?.typ);
+    if (feature) return `There is ${feature} here.`;
     return stairwayFeatureSentenceAt(x, y);
 }
 
@@ -437,11 +515,10 @@ export async function dolook({
         && game.level?.upstair?.y === game.u?.uy;
     const stairway = stairwayAt(game.u?.ux, game.u?.uy);
     const loc = game.level?.at(game.u?.ux, game.u?.uy);
-    if (game._knightCombatPath
-        && objects.some(object => object.name === 'goblin corpse')) {
-        game.context.move = 0;
-        await showKnightFloorObjects();
-    } else if (objects.length > 1 && showPile) {
+    const dungeonFeature = dungeonFeatureSentenceAt(
+        game.u?.ux, game.u?.uy,
+    );
+    if (objects.length > 1 && showPile) {
         // invent.c:look_here() owns which floor chain is inspected; the
         // command layer currently owns the shared doname-with-price window
         // used by arrival, autopickup, and explicit look.  Pass that
@@ -455,29 +532,23 @@ export async function dolook({
             : 'There is a doorway here.');
     } else if (onUpstairs && game.u?.uz?.dnum === 0
         && game.u?.uz?.dlevel === 1) {
-        const message = game._rangerNamePath
-            || game._rogueChargenPath || game._valkChatPath || game._priestCastPath
-            || game._healerNewmoonPath || game._monkNorthPath
-            ? 'There is a staircase up out of the dungeon here.'
-            : 'There is a staircase up out of the dungeon here.--More--';
-        await pline(message);
-        if (!game._rangerNamePath && !game._rogueChargenPath
-            && !game._valkChatPath && !game._priestCastPath
-            && !game._healerNewmoonPath && !game._monkNorthPath) {
-            await flush_screen(1);
-            game.nhDisplay?.setCursor(message.length, 0);
-            await nhgetch();
-        }
+        // invent.c:look_here() emits the dungeon feature as an ordinary
+        // pline and returns ECMD_OK.  It does not add a role/session pager;
+        // any real tty continuation is owned by surrounding pending output.
+        await pline('There is a staircase up out of the dungeon here.');
     } else if (stairway) {
         await pline(stairwayFeatureSentenceAt(game.u?.ux, game.u?.uy));
     } else if (objects.length === 1 && describeObject) {
-        await pline(`You ${game.blind ? 'feel' : 'see'} here ${
+        const objectLine = `You ${game.blind ? 'feel' : 'see'} here ${
             describeObject(objects[0])
-        }.`);
-    } else if (loc?.typ === SINK) {
+        }.`;
+        await pline(dungeonFeature
+            ? `${dungeonFeature}  ${objectLine}` : objectLine);
+    } else if (dungeonFeature) {
         // invent.c:dfeature_at()/look_here(): terrain is reported before the
-        // empty-object fallback, using There("is ... here.").
-        await pline('There is a sink here.');
+        // empty-object fallback, using the feature's live singular/plural
+        // article policy.
+        await pline(dungeonFeature);
     } else if (!objects.length) {
         await pline('You see no objects here.');
     }

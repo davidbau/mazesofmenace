@@ -854,6 +854,24 @@ export const MAX_SUBROOMS = 24;
 export const DOORINC = 20;
 export const BUFSZ = 256;
 export const QBUFSZ = 128;
+/**
+ * C decl.c ynchars[] / ynqchars[] / ynaqchars[] / ynNaqchars[] /
+ * rightleftchars[] / hidespinchars[] — distinct objects so
+ * cmd.c yn_menuable_resp can use pointer identity (`===`), not
+ * strcmp. Interned `'yn'` is not ynchars (insight.c vanquished
+ * `allow_yn` copy stays a primitive and is not menuable).
+ * @param {string} s
+ * @returns {String}
+ */
+function yn_resp_table(s) {
+    return Object.freeze(new String(s));
+}
+export const ynchars = yn_resp_table('yn');
+export const ynqchars = yn_resp_table('ynq');
+export const ynaqchars = yn_resp_table('ynaq');
+export const ynNaqchars = yn_resp_table('yn#aq');
+export const rightleftchars = yn_resp_table('rl');
+export const hidespinchars = yn_resp_table('hsq');
 export const TBUFSZ = 300;
 export const COLBUFSZ = BUFSZ;
 export const PL_NSIZ = 32;

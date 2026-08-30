@@ -22,6 +22,7 @@ import {
     objectNameStrs,
     objectDescrs,
     objects,
+    is_poisonable,
 } from './objects.js';
 import {
     monsterNames, mons, vegetarian, is_rider, M2_PNAME, G_UNIQ,
@@ -39,7 +40,7 @@ import {
 import {
     W_ARMOR, W_AMUL, W_RING, W_RINGL, W_RINGR, W_QUIVER, W_WEP, W_SWAPWEP,
     W_ARM, W_BALL, W_CHAIN, W_TOOL, W_SADDLE, WARN_OF_MON,
-    Has_contents, Is_container, Is_box, P_NONE, P_BOW, P_CROSSBOW, P_SHURIKEN,
+    Has_contents, Is_container, Is_box, P_NONE, P_BOW, P_CROSSBOW,
     P_DART, P_BOOMERANG,
     OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT,
     ROTTEN_TIN, HOMEMADE_TIN, SPINACH_TIN, ismnum, MV_KNOWS_EGG,
@@ -50,6 +51,7 @@ import {
     BURN_OBJECT, HAND, FOOT, FINGER, FINGERTIP, RIGHT_HANDED,
     CONTAINED_SYM, HANDS_SYM,
 } from './const.js';
+import { currency } from './invent.js';
 
 const PM_ALIGNED_CLERIC = monsterNames.indexOf('PM_ALIGNED_CLERIC');
 const BOULDER = objectNames.indexOf('BOULDER');
@@ -151,15 +153,6 @@ function is_missile_obj(obj) {
     if (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS) return false;
     const sk = game.objects?.[obj.otyp]?.oc_skill ?? 0;
     return sk >= -P_BOOMERANG && sk <= -P_DART;
-}
-
-/**
- * C ref: obj.h is_poisonable — missile skill window (permapoisoned deferred).
- */
-function is_poisonable_obj(obj) {
-    if (!obj || obj.oclass !== WEAPON_CLASS) return false;
-    const sk = game.objects?.[obj.otyp]?.oc_skill ?? 0;
-    return sk >= -P_SHURIKEN && sk <= -P_BOW;
 }
 
 // C ref: objclass.h enum obj_material_types (subset for erosion naming)
@@ -617,9 +610,9 @@ function pretty_base(obj) {
         // C: WEAPON_CLASS only — is_poisonable && opoisoned → "poisoned "
         // before VENOM/TOOL fallthrough (lenses/towel would overwrite).
         // Named omission: wet-towel moist/wet; figurine " of <pm>";
-        // ConcUpdate; permapoisoned.
+        // ConcUpdate.
         if (obj.oclass === WEAPON_CLASS
-            && is_poisonable_obj(obj) && obj.opoisoned) {
+            && is_poisonable(obj) && obj.opoisoned) {
             buf = 'poisoned ';
         }
         if (n === 'LENSES') buf = 'pair of ';
@@ -2572,8 +2565,8 @@ export function paydoname(obj) {
  * `txt` is C's second arg (hands/xtra_choice, contained, "Total:");
  * when set, doname is skipped.
  * `cost` / `let=='*'` is the Iu/Ix unpaid column (D-1663); Hallu
- * `currency()` ROLL_FROM named — zorkmid(s) like invent.c currency
- * without the currencies[] table. menu_tab_sep uses a tab.
+ * `currency()` ROLL_FROM is invent.c currency (D-1720). menu_tab_sep
+ * uses a tab.
  */
 export function xprname(obj, let_ = undefined, dot = false, quan = 0, txt = null, cost = 0) {
     let savequan = 0;
@@ -2594,7 +2587,7 @@ export function xprname(obj, let_ = undefined, dot = false, quan = 0, txt = null
     if (costCol) {
         // C `:2928–2938` — Iu (dot) vs Ix; "%c - %-45.*s" + " %6ld currency"
         if (dot && use_invlet) ilet = obj.invlet;
-        const curr = costn !== 1 ? makeplural('zorkmid') : 'zorkmid';
+        const curr = currency(costn);
         let suffix;
         if (game.iflags?.menu_tab_sep) {
             suffix = `\t${costn} ${curr}`;

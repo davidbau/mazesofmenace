@@ -1,6 +1,7 @@
 // files.js — WIZKIT file handling + 3.6 tribute (files.c).
 // C ref: files.c fopen_wizkit_file / wizkit_addinv / proc_wizkit_line /
-// read_wizkit; choose_passage / read_tribute / Death_quote.
+// read_wizkit; choose_passage / read_tribute / Death_quote;
+// delete_levelfile (JSON analogue; no fs unlink).
 // Callers: allmain.c newgame after u_init_skills_discoveries (D-1192);
 // spell.c study_book SPE_NOVEL; sounds.c Death_quote live (D-1653).
 // Rule #2: VFS only — no fs / getenv / HOME fopen. Tribute text is
@@ -18,6 +19,7 @@ import { COIN_CLASS, objectNames } from './objects.js';
 import { PM_CLERIC } from './generated/monsters_data.js';
 import {
     BUFSZ, MIGR_NOBREAK, MIGR_NOSCATTER, MIGR_WITH_HERO, WIZKIT_MAX,
+    LFILE_EXISTS,
 } from './const.js';
 import { rn2 } from './rng.js';
 import { mungspaces } from './getline.js';
@@ -407,6 +409,39 @@ export async function read_tribute(
         }
     }
     return grasped;
+}
+
+/**
+ * C ref: files.c delete_levelfile `:718–730` — unlink when lev==0 or
+ * LFILE_EXISTS, then clear LFILE_EXISTS. JSON analogue: drop the
+ * in-memory stash (Contest Rule #2 — no Node unlink / fs). Keep the
+ * `level_info` slot and remaining flags (C keeps the struct).
+ * @param {number} lev
+ */
+export function delete_levelfile(lev) {
+    const i = lev | 0;
+    if (!game.level_info) game.level_info = [];
+    const info = game.level_info[i];
+    if (i === 0 || (info && ((info.flags | 0) & LFILE_EXISTS))) {
+        if (info) {
+            info.flags = (info.flags | 0) & ~LFILE_EXISTS;
+            info.level = null;
+            info.fmon = null;
+            info.fobj = null;
+            info.ftrap = null;
+            info.stairs = null;
+            info.head_engr = null;
+            info.track = null;
+            info.regions = null;
+            info.lastseentyp = null;
+            info.timers = null;
+            info.lights = null;
+            info.billobjs = null;
+            info.damagelist = null;
+            info.updest = null;
+            info.dndest = null;
+        }
+    }
 }
 
 /**

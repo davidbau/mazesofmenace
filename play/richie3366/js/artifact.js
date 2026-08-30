@@ -1,13 +1,14 @@
 // artifact.js — Artifact table accessors and touch rules (partial).
 // C ref: artifact.c / artilist.h
 // defends / defends_when_carried + defn/cary extract (D-1453).
+// arti_cost + artilist.cost extract (D-1719).
 
 import { game } from './gstate.js';
 import {
     NROFARTIFACTS,
     artilistRaw,
 } from './generated/artifacts_data.js';
-import { objectNames, NUM_OBJECTS, objectDescrs } from './objects.js';
+import { objectNames, NUM_OBJECTS, objectDescrs, objects } from './objects.js';
 import { obj_shuffle_range } from './o_init.js';
 import { monsterNames, NON_PM, M2_UNDEAD, is_demon, is_dprince, is_dlord } from './monsters.js';
 import {
@@ -242,6 +243,8 @@ export function artifacts_globals_init() {
         inv_prop: raw.inv_prop | 0,
         // C artilist.h A() acolor — glow, not the item's tint (D-1347)
         acolor: raw.acolor | 0,
+        // C artifact.h cost — sold-to-hero price; 0 → 100× oc_cost (D-1719)
+        cost: raw.cost | 0,
     }));
     // C: artiexist[NROFARTIFACTS+1]
     game.artiexist = Array.from({ length: NROFARTIFACTS + 1 }, () => ({
@@ -378,6 +381,20 @@ export function undiscovered_artifact(m) {
     return true;
 }
 set_undiscovered_artifact(undiscovered_artifact);
+
+/**
+ * C ref: artifact.c arti_cost `:2308–2317` — zorkmid value.
+ * !oartifact → objects[otyp].oc_cost; else artilist[oartifact].cost if
+ * nonzero, else 100 * oc_cost. Caller shk.c getprice `/4` when buying.
+ * end.c artifact_score is D-1730.
+ */
+export function arti_cost(otmp) {
+    const oc_cost = objects()?.[otmp?.otyp | 0]?.oc_cost | 0;
+    if (!otmp?.oartifact) return oc_cost;
+    const art = artilist()[otmp.oartifact | 0];
+    if (art?.cost) return art.cost | 0;
+    return 100 * oc_cost;
+}
 
 /** C ref: artifact.c get_artifact */
 export function get_artifact(obj) {
@@ -1712,6 +1729,15 @@ let spec_dbon_applies = false;
 /** C ref: artifact.c is_art — otmp->oartifact == art index. */
 export function is_art(otmp, art) {
     return !!(otmp && (otmp.oartifact | 0) === (art | 0));
+}
+
+/**
+ * C ref: artifact.c permapoisoned :2836–2840 — currently only Grimtooth.
+ * Callers: obj.h is_poisonable; mkobj.c mksobj_init; objnam.c readobjnam;
+ * potion.c potion_dip; uhitm leftover / mhitm_ad_phys.
+ */
+export function permapoisoned(obj) {
+    return !!(obj && is_art(obj, ART_GRIMTOOTH));
 }
 
 /**

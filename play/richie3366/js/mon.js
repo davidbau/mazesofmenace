@@ -2567,7 +2567,7 @@ export function find_mid(mid, _fm = 0) {
  * mongone passes FALSE. Named omit: extract_from_minvent worn extrinsics;
  * artifact_exists when uncreate_artifacts.
  */
-function discard_minvent(mtmp, _uncreate_artifacts) {
+export function discard_minvent(mtmp, _uncreate_artifacts) {
     if (!mtmp) return;
     while (mtmp.minvent) {
         const otmp = mtmp.minvent;

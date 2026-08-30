@@ -14,7 +14,7 @@ import { cansee } from './vision.js';
 import { dist2 } from './hacklib.js';
 import { resist_conflict, set_mon_data, on_fire } from './mondata.js';
 import { MON_WEP, mon_wield_item, hitval, dmgval } from './weapon.js';
-import { arti_reflects, artifact_hit, is_art, ART_GRIMTOOTH } from './artifact.js';
+import { arti_reflects, artifact_hit, permapoisoned } from './artifact.js';
 import { find_mac, which_armor } from './worn.js';
 import { update_monster_region } from './region.js';
 import { remove_worm, place_worm_tail_randomly, worm_known } from './worm.js';
@@ -898,14 +898,6 @@ export async function rustm(mdef, obj) {
         const { erode_obj } = await import('./trap.js');
         await erode_obj(obj, null, dmgtyp, EF_GREASE | EF_VERBOSE);
     }
-}
-
-/**
- * C ref: artifact.c permapoisoned :2837–2840 — currently only Grimtooth.
- * Caller uhitm.c mhitm_ad_phys mhitm leftover `:4184`.
- */
-function permapoisoned(obj) {
-    return !!(obj && is_art(obj, ART_GRIMTOOTH));
 }
 
 /**

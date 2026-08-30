@@ -2,7 +2,7 @@
 // C ref: win/tty/getline.c tty_getlin / hooked_tty_getlin / tty_get_ext_cmd
 // plus win/tty/topl.c tty_yn_function (yn ^P is D-1612; post-answer
 // prompt+key is D-1623; tty_nhbell / cw->cury / intr is D-1631)
-// and cmd.c yn_function addcmdq (D-1706).
+// and cmd.c yn_function addcmdq (D-1706) / yn_function_menu (D-1728).
 // EDIT_GETLIN is D-1624 (`config.h` commented out — live `#else`).
 // kill_char / empty-erase bell / invalid-key bell / getline `intr--`
 // are D-1632. ESC-nonempty fallthrough (else tty_nhbell / doprev) is
@@ -26,7 +26,10 @@ import {
     INTERNALCMD, AUTOCOMPLETE, WIZMODECMD, CMD_NOT_AVAILABLE,
     CMD_M_PREFIX,
     CMDQ_KEY, CMDQ_USER_INPUT, CQ_CANNED, CQ_REPEAT, PLNMSG_UNKNOWN,
+    ynchars, ynqchars, ynaqchars, rightleftchars, hidespinchars,
+    MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED,
 } from './const.js';
+import { select_menu_pick_one } from './options.js';
 import { EXTCMDLIST } from './generated/extcmdlist_data.js';
 import { cmdq_pop, cmdq_clear } from './cmd.js';
 import { cmdq_add_key } from './invent.js';
@@ -1314,9 +1317,9 @@ export async function paranoid_ynq(be_paranoid, prompt, accept_q = false) {
             promptprefix = '"Yes" or "No": ';
         } while (ParanoidConfirm && ans.toLowerCase() !== 'no' && --trylimit);
     } else if (accept_q) {
-        c = await yn_function(prompt, 'ynq', 'n', false);
+        c = await yn_function(prompt, ynqchars, 'n', false);
     } else {
-        c = await yn_function(prompt, 'yn', 'n', false);
+        c = await yn_function(prompt, ynchars, 'n', false);
     }
     if (c !== 'y' && (c !== 'q' || !accept_q)) c = 'n';
     return c;
@@ -1423,20 +1426,130 @@ function yn_cmdq_key(cq) {
 }
 
 /**
+ * C cmd.c yn_menuable_resp `:5393–5399` — iflags.query_menu &&
+ * window_inited && resp is one of the named decl.c tables (pointer
+ * identity, not strcmp). JS interned `'yn'` is not ynchars.
+ * @param {string|String|null|undefined} resp
+ * @returns {boolean}
+ */
+function yn_menuable_resp(resp) {
+    return !!(game.iflags?.query_menu && game.iflags?.window_inited
+        && (resp === ynchars || resp === ynqchars || resp === ynaqchars
+            || resp === rightleftchars || resp === hidespinchars));
+}
+
+/**
+ * C cmd.c yn_func_menu_opt `:5401–5413` — add_menu a_char=key,
+ * MENU_ITEMFLAGS_SELECTED when def==key. JS select_menu_pick_one
+ * keeps a pre-assigned selector.
+ * @param {object[]} items
+ * @param {string} key
+ * @param {string} text
+ * @param {string} def
+ */
+function yn_func_menu_opt(items, key, text, def) {
+    items.push({
+        selectable: true,
+        selector: key,
+        a_char: key,
+        text,
+        itemflags: def === key
+            ? MENU_ITEMFLAGS_SELECTED
+            : MENU_ITEMFLAGS_NONE,
+        selected: def === key,
+    });
+}
+
+/**
+ * C cmd.c yn_function_menu `:5416–5463` — NHW_MENU PICK_ONE then
+ * pline(query, key2txt) + clear WIN_MESSAGE. Returns the chosen char
+ * when the menu was shown; null when not menuable (caller uses
+ * tty_yn_function). Cancel/space → def. PICK_ONE letter is that
+ * a_char (C n>1 non-default when the preselected default stayed
+ * selected is the same char).
+ * @param {string} query
+ * @param {string|String|null|undefined} resp
+ * @param {string} def
+ * @returns {Promise<string|null>}
+ */
+async function yn_function_menu(query, resp, def) {
+    if (!yn_menuable_resp(resp)) return null;
+    const items = [];
+    if (resp === rightleftchars) {
+        yn_func_menu_opt(items, 'r', 'Right', def);
+        yn_func_menu_opt(items, 'l', 'Left', def);
+    } else if (resp === hidespinchars) {
+        yn_func_menu_opt(items, 'h', 'Hide', def);
+        yn_func_menu_opt(items, 's', 'Spin a web', def);
+    } else {
+        yn_func_menu_opt(items, 'y', 'Yes', def);
+        yn_func_menu_opt(items, 'n', 'No', def);
+    }
+    if (resp === ynaqchars) yn_func_menu_opt(items, 'a', 'All', def);
+    if (resp === ynqchars || resp === ynaqchars || resp === hidespinchars) {
+        yn_func_menu_opt(items, 'q', 'Quit', def);
+    }
+    const pick = await select_menu_pick_one(items);
+    // C tty_select_menu clones the list; match a_char not object
+    // identity. PICK_ONE letter → that a_char (n>1 non-default when
+    // the preselected default stayed selected is the same char).
+    // Cancel/space → def. Picking the preselected default toggles it
+    // off (n==0) then *res=def — same as that letter.
+    let res = def;
+    if (pick.kind === 'pick' && pick.item?.a_char != null) {
+        res = pick.item.a_char;
+    }
+    const code = !res || res === '\0' ? 0 : res.charCodeAt(0);
+    await pline(`${query} ${key2txt(code)}`);
+    await clear_nhwindow_message();
+    return res;
+}
+
+/**
+ * C hack.h y_n / ynq / ynaq / nyaq / YN — pass the named tables so
+ * yn_menuable_resp identity holds. Remaining `'yn'` literals named.
+ * @param {string} query
+ * @returns {Promise<string>}
+ */
+export function y_n(query) {
+    return yn_function(query, ynchars, 'n', true);
+}
+/** C hack.h ynq */
+export function ynq(query) {
+    return yn_function(query, ynqchars, 'q', true);
+}
+/** C hack.h ynaq */
+export function ynaq(query) {
+    return yn_function(query, ynaqchars, 'y', true);
+}
+/** C hack.h nyaq */
+export function nyaq(query) {
+    return yn_function(query, ynaqchars, 'n', true);
+}
+/** C hack.h YN — y_n without CQ_REPEAT */
+export function YN(query) {
+    return yn_function(query, ynchars, 'n', false);
+}
+
+/**
  * C ref: cmd.c yn_function `:5470–5583` — addcmdq pops canned/repeat
  * then records CQ_REPEAT. Default TRUE matches y_n / ynq / ynaq.
  * YN / getobj / getdir / paranoid_ynq / askchain pass FALSE.
- * Windowport is tty_yn_function. Named: yn_function_menu (query_menu),
- * debug_fuzzer, SND_SPEECH, DUMPLOG_CORE, paniclog/impossible on
- * resp-mismatch, program_state.input_state = otherInp.
+ * getdir (lock.js + getdir_cmdassist / getdir_zap / dig_getdir) calls
+ * this with NULL resp / '\0' def / FALSE (D-1721).
+ * Windowport is tty_yn_function after yn_function_menu (D-1728).
+ * Named: debug_fuzzer, SND_SPEECH, DUMPLOG_CORE, paniclog/impossible
+ * on resp-mismatch, program_state.input_state = otherInp; remaining
+ * interned `'yn'`/`'ynq'` callers (not the decl.c tables); hide+web
+ * hidespinchars in domonability.
  *
  * @param {string} query
- * @param {string|null} [resp='yn']
+ * @param {string|String|null} [resp]
  * @param {string} [def='n']
  * @param {boolean} [addcmdq=true]
  * @returns {Promise<string>}
  */
-export async function yn_function(query, resp = 'yn', def = 'n', addcmdq = true) {
+export async function yn_function(query, resp = ynchars, def = 'n', addcmdq = true) {
     if (!game.iflags) game.iflags = {};
     game.iflags.last_msg = PLNMSG_UNKNOWN;
 
@@ -1458,7 +1571,13 @@ export async function yn_function(query, resp = 'yn', def = 'n', addcmdq = true)
         }
         addcmdq = false;
     } else {
-        res = await tty_yn_function(query, resp, def);
+        const menuRes = await yn_function_menu(query, resp, def);
+        if (menuRes !== null) {
+            res = menuRes;
+        } else {
+            const ttyResp = (resp == null) ? resp : String(resp);
+            res = await tty_yn_function(query, ttyResp, def);
+        }
     }
     if (addcmdq) cmdq_add_key(CQ_REPEAT, res);
 

@@ -219,19 +219,18 @@
 
 import { game } from './gstate.js';
 import { rn1, rn2, rnd, d } from './rng.js';
-import { getlin } from './getline.js';
+import { getlin, yn_function } from './getline.js';
 import {
     flush_screen, flush_topl_more, pline, pline_dir, pline_mon, Norep, You_feel, newsym,
     tmp_at, zapdir_to_glyph, nh_delay_output, canseemon, canspotmon, shieldeff,
     obj_glyph, glyph_is_invisible, map_invisible, bot, set_msg_xy,
 } from './display.js';
 import { cansee, couldsee } from './vision.js';
-import { nhgetch } from './input.js';
 import { readobjnam_wish, HANDS_OBJ, NOTHING_OBJ } from './readobjnam.js';
 import {
     hold_another_object, makeknown, encumber_msg, enlightenment, freeinv_core,
     observe_object, display_minventory, display_binventory, display_cinventory,
-    update_inventory, set_cknown_lknown, getobj,
+    update_inventory, set_cknown_lknown, getobj, useupall,
 } from './invent.js';
 import { mstatusline, ustatusline } from './insight.js';
 import { setnotworn } from './do.js';
@@ -280,7 +279,7 @@ import { burn_away_slime, get_obj_location } from './timeout.js';
 import { show_transient_light, transient_light_cleanup } from './light.js';
 import { create_gas_cloud } from './region.js';
 import { recalc_block_point } from './vision.js';
-import { picking_at, reset_pick, boxlock, boxlock_invent, doorlock } from './lock.js';
+import { picking_at, reset_pick, boxlock, boxlock_invent, doorlock, getdir } from './lock.js';
 import { monflee, sticks } from './monmove.js';
 import { digests, set_ustuck, unstuck, expels, ureflects, u_slow_down } from './mhitu.js';
 import { newcham, makemon, create_critters, monhp_per_lvl, neweshk, add_to_minv, set_mimic_sym, newmcorpsenm } from './makemon.js';
@@ -292,8 +291,7 @@ import { dryup } from './fountain.js';
 import { explode } from './explode.js';
 import { unpunish, litroom } from './read.js';
 import { engr_at, del_engr, make_engr_at, wipe_engr_at, random_engraving, rloc_engr } from './engrave.js';
-import { bare_artifactname, defends, defends_when_carried, is_art } from './artifact.js';
-import { ART_GRIMTOOTH } from './generated/artifacts_data.js';
+import { bare_artifactname, defends, defends_when_carried } from './artifact.js';
 import { Ring_gone, Ring_off, Ring_on, setworn, set_wear } from './do_wear.js';
 import { which_armor, mon_set_minvis, check_gear_next_turn, wearslot, wearmask_to_obj } from './worn.js';
 import { mhurtle, hero_breaks, breaks } from './dothrow.js';
@@ -312,7 +310,7 @@ import {
 import {
     WAND_CLASS, SPBOOK_CLASS, WEAPON_CLASS, ARMOR_CLASS, POTION_CLASS,
     TOOL_CLASS, GEM_CLASS, SCROLL_CLASS, RING_CLASS, FOOD_CLASS, COIN_CLASS,
-    ROCK_CLASS, NODIR, IMMEDIATE, objectNames,
+    ROCK_CLASS, NODIR, IMMEDIATE, objectNames, is_poisonable,
 } from './objects.js';
 import {
     WAND_BACKFIRE_CHANCE, WAND_WREST_CHANCE, nothing_happens,
@@ -517,9 +515,6 @@ const AD_ELEC = 6;
 const AD_DRLI = 15;
 const DMG_DESTROY_SCALE = 5;
 const MAX_ITEMS_DESTROYED = 20;
-
-const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
-const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
 
 /** C ref: youprop.h Sleep_resistance */
 function Sleep_resistance() {
@@ -2312,40 +2307,17 @@ function zap_ok(obj) {
 }
 
 /**
- * C ref: cmd.c getdir for zap — '.' is self (dx=dy=dz=0, success).
- * Esc/space/return cancel. lock.js getdir still treats '.' as cancel.
- */
-/**
  * C ref: cmd.c getdir — direction for zap; '.' / 's' = self.
+ * Shared lock.js getdir owns cmdq_pop / CQ_REPEAT / yn_function.
  * After a successful horizontal dir (including self dz==0), C always
- * calls confdir(FALSE) which may roll u_maybe_impaired.
+ * calls confdir(FALSE) which may roll u_maybe_impaired — stay local;
+ * do not add trailing confdir to shared lock.js getdir.
  */
 async function getdir_zap(prompt) {
-    const msg = prompt || 'In what direction?';
-    game._pending_message = `${msg} `;
-    await flush_screen(1);
-    const disp = game.nhDisplay;
-    if (disp?.setCursor) disp.setCursor(game._pending_message.length, 0);
-    const key = await nhgetch();
-    const ch = String.fromCharCode(key);
-    game._pending_message = '';
-    if (!game.u) game.u = {};
-    if (ch === '.' || ch === 's') {
-        game.u.dx = game.u.dy = game.u.dz = 0;
-    } else if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
-        game.u.dx = game.u.dy = game.u.dz = 0;
-        return false;
-    } else if (!(ch in DIR_DX)) {
-        game.u.dx = game.u.dy = game.u.dz = 0;
-        return false;
-    } else {
-        game.u.dx = DIR_DX[ch];
-        game.u.dy = DIR_DY[ch];
-        game.u.dz = 0;
-    }
+    const ok = await getdir(prompt);
     // C getdir: if (!u.dz) confdir(FALSE);
-    if (!game.u.dz) confdir(false);
-    return true;
+    if (ok && !(game.u?.dz | 0)) confdir(false);
+    return ok;
 }
 
 /**
@@ -4949,14 +4921,8 @@ export async function poly_obj(obj, id) {
     }
 
     if (obj.otrapped && Is_box(otmp)) otmp.otrapped = 1;
-    if (obj.opoisoned) {
-        const sk = game.objects?.[otmp.otyp]?.oc_skill ?? 0;
-        if (((otmp.oclass | 0) === WEAPON_CLASS
-                && sk >= -P_SHURIKEN && sk <= -P_BOW)
-            || is_art(otmp, ART_GRIMTOOTH)) {
-            otmp.opoisoned = 1;
-        }
-    }
+    // C zap.c poly_obj `:1801–1802` — keep poison on is_poisonable result.
+    if (obj.opoisoned && is_poisonable(otmp)) otmp.opoisoned = 1;
 
     if (id === STRANGE_OBJECT && (obj.otyp | 0) === CORPSE
         && (obj.corpsenm | 0) === PM_CROCODILE) {
@@ -6334,22 +6300,6 @@ export async function weffects(obj) {
 }
 
 /**
- * C ref: invent.c useupall `:1312–1317` — setnotworn + freeinv + obfree.
- * Named omit: obfree contents/oextra; update_inventory (C dozap
- * backfire returns before the trailing update_inventory).
- */
-function useupall_invent(obj) {
-    if (!obj) return;
-    setnotworn(obj);
-    const inv = game.invent || [];
-    const idx = inv.indexOf(obj);
-    if (idx >= 0) inv.splice(idx, 1);
-    freeinv_core(obj);
-    obj.quan = 0;
-    obj.where = OBJ_FREE;
-}
-
-/**
  * C ref: zap.c backfire `:2605–2614` — cursed-wand explode.
  * in_use before losehp so a fatal done() still sees the wand;
  * C done() is noreturn so skip useupall when JS losehp is fatal.
@@ -6363,7 +6313,7 @@ async function backfire(otmp) {
         await finish_losehp_done();
         return;
     }
-    useupall_invent(otmp);
+    useupall(otmp);
 }
 
 /**

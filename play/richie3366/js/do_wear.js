@@ -45,6 +45,7 @@ import {
     ALL_FINISHED, ALL_TYPES_SELECTED, ALL_TYPES, WORN_TYPES, UNPAID_TYPES,
     BUCX_TYPES, SIGNAL_NOMENU, USE_INVLET, INVORDER_SORT, PICK_ANY,
     HAND, FOOT, TT_BEARTRAP, TT_INFLOOR, P_SHORT_SWORD, P_SABER,
+    rightleftchars,
 } from './const.js';
 import { x_monnam } from './do_name.js';
 import {
@@ -1944,14 +1945,15 @@ export async function Amulet_off() {
  * Ask Right/Left for a ring when both hands free.
  * C ref: do_wear.c accessory_or_armor_on —
  *   yn_function(qbuf, rightleftchars, '\0', TRUE).
- * Deferred: poly/non-humanoid body_part(FINGER) wording; query_menu.
+ * query_menu is D-1728 (`resp === rightleftchars`). Named: poly
+ * body_part(FINGER) wording.
  */
 async function choose_ring_hand() {
     // C: Sprintf(qbuf, "Which %s%s, Right or Left?", "ring-", finger)
     // yn_function / tty_yn_function appends " [rl] " (no (def) when '\0').
     const q = 'Which ring-finger, Right or Left?';
     for (;;) {
-        const answer = await yn_function(q, 'rl', '\0');
+        const answer = await yn_function(q, rightleftchars, '\0');
         if (!answer || answer === '\0') return 0;
         if (answer === 'l' || answer === 'L') return LEFT_RING;
         if (answer === 'r' || answer === 'R') return RIGHT_RING;

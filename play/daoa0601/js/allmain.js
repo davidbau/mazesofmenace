@@ -1,7 +1,6 @@
 // allmain.js — Main game loop.
 // C ref: allmain.c — newgame, moveloop, moveloop_core.
 //
-// Uses fastforward.js for pre/post-mklev RNG parity on seed8000.
 // Real mklev.js handles level generation for screen parity.
 
 import { game } from './gstate.js';
@@ -12,14 +11,28 @@ import {
     initialMonsterSleepState, newMonsterHitPoints, peaceMinded, rndmonnum,
     randomDefensiveMonsterItem, randomMiscMonsterItem,
     randomOffensiveMonsterItem, monsterGoodPosition, level_difficulty,
+    summonInsectsForMonster, summonNastyMonsters,
     u_on_upstairs, place_lregion,
+    disturbBuriedZombieTimers, finishBuriedZombieTimer,
+    finishMeltIceBoulderLifeSaving,
+    runClaimedBuriedZombieTimer, runClaimedMeltIceTimer,
+    runClaimedObjectRotTimer, runNextMeltIceBoulder,
 } from './mklev.js';
 import {
+    animateRollingBoulderCell,
     continueCountedCommand, continueRun, finishHeroMonsterKill,
-    finishArmorRemoval, grantAmuletWish, promptYesNo, performQuestExpulsion,
-    rhack, stopRun,
+    destroyFireInventory, finishArmorRemoval, grantAmuletWish,
+    destroyWornArmor, objectErosionKind, objectErosionMessage,
+    getLine, promptYesNo, performQuestExpulsion, discoverReflectingShield,
+    resurrectWizard, rhack, stopRun, wakeMonstersNear,
+    wakeMonstersNearWithMessages,
+    wornArmorInDestroyOrder,
 } from './cmd.js';
 import { exerciseAttribute } from './attrib.js';
+import { artifactById } from './artifacts.js';
+import {
+    curseObjectState, unblessObjectState,
+} from './object_state.js';
 import {
     docrt, cls, bot, flush_screen, pline, plineWithContinuation, newsym,
     map_invisible,
@@ -27,62 +40,107 @@ import {
     see_monsters, see_objects, see_traps,
     show_glyph_cell, swallowed, transientObjectGlyph,
     _statusLine1, _statusLine2, canProjectMonster, canSpotMonster,
+    canSeeMonster,
+    lastDirtyMapCursor, shieldeff,
 } from './display.js';
+import { lifeSaveMonster } from './mondeath.js';
 import {
     cansee, couldsee, vision_note_blocker_change, vision_recalc, vision_reset,
     init_vision_globals,
 } from './vision.js';
-import {
-    fastforward_pre_mklev, fastforward_post_mklev,
-    fastforward_step, fastforward_ranger_step,
-} from './fastforward.js';
 import { nhgetch } from './input.js';
 import { NO_COLOR, CLR_WHITE, CLR_BRIGHT_BLUE } from './terminal.js';
 import {
-    ACID_VENOM, AKLYS, ARROW, BATTLE_AXE, BOULDER, BOW, CORPSE, CROSSBOW,
-    CROSSBOW_BOLT, DAGGER, DART, FOOD_RATION, GOLD_PIECE, LONG_SWORD,
+    ACID_VENOM, AKLYS, ARROW, BATTLE_AXE, BOW, CLUB, CORPSE, CROSSBOW,
+    CROSSBOW_BOLT, CRYSTAL_BALL, DAGGER, DART,
+    ELVEN_ARROW, ELVEN_BOOTS, ELVEN_BOW, ELVEN_BROADSWORD, ELVEN_CLOAK,
+    ELVEN_DAGGER, ELVEN_LEATHER_HELM, ELVEN_MITHRIL_COAT, ELVEN_SHIELD,
+    ELVEN_SHORT_SWORD, ELVEN_SPEAR,
+    GOLD_PIECE, LARGE_BOX, LONG_SWORD,
     LUCERN_HAMMER,
     OBJECT_BIMANUAL, OBJECT_WEIGHT,
     ORCISH_DAGGER, ORCISH_HELM, OBJECT_DESCRIPTIONS, OBJECT_NAMES,
-    OBJECT_MATERIAL, POT_HEALING, POT_SLEEPING, TALLOW_CANDLE,
-    TWO_HANDED_SWORD, WAX_CANDLE,
+    OBJECT_MATERIAL, MIRROR, MUMMY_WRAPPING, PICK_AXE,
+    POT_HEALING, POT_OBJECT_DETECTION,
+    POT_SLEEPING, TALLOW_CANDLE,
+    TWO_HANDED_SWORD, WAX_CANDLE, SHIELD_OF_REFLECTION,
 } from './object_data.js';
 import {
-    BOLT_LIM, COLNO, ROWNO, DOOR, HOLE, SPIKED_PIT,
+    BOLT_LIM, COLNO, ROWNO, DOOR, D_CLOSED, D_LOCKED, HOLE, SPIKED_PIT,
+    STONE, ZAP_POS,
     VAULT, SHOPBASE, ROOMOFFSET,
     STRAT_CLOSE, STRAT_WAITFORU, STRAT_WAITMASK, NEED_WEAPON,
     MOD_ENCUMBER, W_ACCESSORY, W_WEAPONS, LR_UPTELE,
-    Upolyd, Is_airlevel,
+    M_AP_MONSTER, Upolyd, Is_airlevel, Is_waterlevel,
 } from './const.js';
-import { replayCavemanTurn } from './caveman_explore.js';
-import { replayRogueTurn, replayRogueChargenTurn } from './rogue_explore.js';
-import { replayRogueFriday13Combat } from './rogue_friday13.js';
-import { replayRogueOrcBoundary } from './rogue_orc.js';
-import { replayKnightMaintenance } from './knight_ride.js';
 import {
     collectNearbyCoords, uInitMisc, makedog, uInitInventoryAttrs,
     setInitialArmorClass, finishStartingDiscoveries,
 } from './u_init.js';
-import { roles } from './roles.js';
+import { syncBlindness, syncDeafness } from './senses.js';
+import { runClaimedObjectBurnTimer } from './light.js';
 import {
-    allocateMonsterMovement, continueDeferredHeroAttack,
+    finishEggHatchTimer, runClaimedEggHatchTimer,
+} from './egg.js';
+import {
+    finishInventoryGlobTimer, runClaimedGlobTimer,
+} from './glob.js';
+import {
+    finishFigurineTimer, runClaimedFigurineTimer,
+} from './figurine.js';
+import {
+    addObjectToMonsterInventory, linkObjectToMonsterInventory,
+} from './monster_inventory.js';
+import {
+    claimNextDueObjectTimer, LEVEL_TIMER_KIND, OBJECT_TIMER_KIND,
+    peekNextDueObjectTimer, stopObjectTimer,
+} from './object_timers.js';
+import { roles } from './roles.js';
+import { initializeSourceStartup } from './startup.js';
+import {
+    initialDungeonEntryText, recordGameLogEvent,
+} from './gamelog.js';
+import {
+    allocateMonsterMovement, beginDeferredHeroCloneWizard,
+    continueDeferredHeroAttack,
     beginDeferredHeroExpulsion, finishDeferredHeroExpulsion,
+    finishDeferredHeroCorrosionArmor, finishDeferredHeroDecayArmor,
+    finishDeferredHeroRustArmor,
     finishDeferredRangedProjectileHit,
     resumeDeferredHeroColdSpecial, resumeDeferredHeroContact,
+    resumeDeferredHeroFireSpecial,
+    resumeDeferredHeroElectricSpecial,
+    resumeDeferredHeroLifeDrain, resumeDeferredHeroStun,
+    resumeDeferredHeroSticking,
+    resumeDeferredHeroCorrosionArmor, resumeDeferredHeroDecayArmor,
+    resumeDeferredHeroRustArmor,
     resumeDeferredHeroEngulf, resumeDeferredHeroBlindness,
     resumeDeferredHeroLegs,
     resumeDeferredHeroPassive, resumeDeferredHeroReveal,
+    resumeDeferredHeroAttackAfterWield,
+    rollDeferredHeroSpellDamage,
     resumeDeferredHeroSpell, resumeDeferredHeroStoning,
+    resolveDeferredHeroSummonMonsters,
+    resolveDeferredHeroHasteSelf,
+    aggravateMonsters, resolveDeferredHeroAggravation,
     resumeDeferredHeroWeaponSwing,
     finishDeferredMonsterMiscItem,
+    finishDeferredHeroCloneWizard,
     resumeDeferredCovetousRelocation,
     resumeDeferredRestrictedTenguTeleport,
     resumeDeferredMovementSpell,
     resumeDeferredMonsterContact, resumeDeferredMonsterCounterattack,
     resumeDeferredMonsterCounterWield,
     resumeDeferredMonsterBearTrap, resumeDeferredMonsterHideUnder,
-    resumeDeferredMonsterPickup,
-    resumeDeferredMonsterRollingBoulder,
+    resumeDeferredMonsterProjectileTrap,
+    resumeDeferredMonsterDoor, resumeDeferredMonsterPickup,
+    finishDeferredMonsterRollingBoulderPlacement,
+    resumeDeferredMonsterRollingBoulderDeath,
+    resumeDeferredMonsterMagicMissileWand,
+    resolveMonsterMagicMissileContact,
+    finishMonsterMagicMissileDeath,
+    beginHeroMagicMissileContact,
+    finishHeroMagicMissileDamage,
     resumeDeferredMonsterStrikingWand,
     finishDeferredMonsterStrikingWandHit,
     relocateMonsterAfterTheft,
@@ -90,13 +148,17 @@ import {
     resolveDeferredMonsterBreath, resumeDeferredSpitAttack,
     finishDeferredMonsterDeath,
     finishDeferredMonsterCounterattackDeath, fumaroles,
-    runLevelRegions, runQuietMonsterActions, scanMonsterMovement,
+    burnHeroArmorByFire,
+    heroEveryturnEffect, runLevelRegions, runMonsterEveryturnEffects,
+    runQuietMonsterActions,
+    scanMonsterMovement,
     updateMonsterDistress,
 } from './monmove.js';
 import { rehumanizeHero } from './polyself.js';
 import { setTrack } from './track.js';
 import {
     applyArmorOnEffects, armorOnIdentifiesType, findArmorClass,
+    heroHasFreeAction, projectedArmorClass,
 } from './armor.js';
 import {
     encumbranceLabel, encumbranceMessage, nearCapacity,
@@ -105,7 +167,7 @@ import { dist2, dungeonDepth } from './hacklib.js';
 import {
     MONSTER_COLOR, MONSTER_FLAGS1, MONSTER_FLAGS2, MONSTER_GENO,
     MONSTER_HAS_WEAPON_ATTACK, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME,
-    MONSTER_SYMBOL, monsterTypeName,
+    MONSTER_SOUND, MONSTER_SYMBOL, monsterIsNonliving, monsterTypeName,
 } from './monster_data.js';
 import {
     beginHeroLifeSaving, completeHeroLifeSaving, finishOrdinaryDeath,
@@ -116,7 +178,8 @@ import {
     rememberVaultCorridorUnderHero,
 } from './vault.js';
 import {
-    objectClassForType, recordObjectEncounter, recordObjectKnowledge,
+    objectClassForType, recordObjectCall, recordObjectEncounter,
+    recordObjectKnowledge,
 } from './object_knowledge.js';
 import { automaticSearch } from './detect.js';
 import { finishPrayerOccupation } from './pray.js';
@@ -127,8 +190,9 @@ import {
     settleShopkeepersAfterDeath, shopkeeperKillerName, shopkeeperName,
 } from './shk.js';
 import { visiblePriestName } from './priest.js';
-import { inventoryItemDescription } from './invent.js';
+import { inventoryItemDescription, rerollMenu } from './invent.js';
 import { presentMonsterWebTrap } from './monster_trap_events.js';
+import { captureRunmodeDelay } from './runmode.js';
 
 const M2_LORD = 0x00000400;
 const M2_PRINCE = 0x00000800;
@@ -149,21 +213,36 @@ function observeNearbyNamedObject(object, x, y) {
     recordObjectEncounter(object.otyp);
 }
 
+function observeMonsterUsedObject(object) {
+    if (!object) return;
+    const hallucinating = !!(game.u?.hallucinating
+        || (game.u?.hallucinationTurns ?? 0) > 0);
+    if (hallucinating) {
+        // objnam.c:observe_object() does not erase prior knowledge, but it
+        // also does not reveal a newly seen object while Hallucinating.
+        if (object.dknown == null) object.dknown = false;
+        return;
+    }
+    object.dknown = true;
+}
+
 function putLine(col, row, text, attr = 0) {
     const display = game.nhDisplay;
     for (let i = 0; i < text.length && col + i < display.cols; i++)
         display.setCell(col + i, row, text[i], NO_COLOR, attr);
 }
 
-function putStatusLines() {
-    putLine(0, 22, _statusLine1().replace(/\x1b\[(\d+)C/g,
+function putStatusLines(snapshot = null) {
+    const line1 = snapshot?.[0] || _statusLine1();
+    const line2 = snapshot?.[1] || _statusLine2();
+    putLine(0, 22, line1.replace(/\x1b\[(\d+)C/g,
         (_match, count) => ' '.repeat(Number(count))));
-    putLine(0, 23, _statusLine2());
+    putLine(0, 23, line2);
 }
 
 // C ref: com_pager("legacy") and dat/quest.lua.  The role-independent
 // creation story is laid out by the tty pager; role, rank, and god are live.
-async function showLegacy() {
+async function showLegacy(statusSnapshot = null) {
     // Loading quest.lua pulls in nhlib.lua and shuffles its three alignments.
     rn2(3);
     rn2(2);
@@ -174,15 +253,25 @@ async function showLegacy() {
     const deityNoun = game.urole?.goddessAlignments
         ?.includes(game.initAlignment?.name) || god === 'The Lady'
         ? 'goddess' : 'god';
-    const outerLines = [
-        `It is written in the Book of ${god}:`,
-        `Your ${deityNoun} ${god} seeks to possess the Amulet, and with it`,
-        'to gain deserved ascendance over the other gods.',
+    const pauper = !!game.u?.uroleplay?.pauper;
+    const closingLines = pauper ? [
+        `You, an untrained ${rank}, have been unable to adequately`,
+        `prepare to be the instrument of ${god}.  Nevertheless, you`,
+        'are destined to recover the Amulet for your deity, or die',
+        'in the attempt.  Your hour of destiny has come.  For the',
+        `sake of us all:  Go bravely with ${god}!`,
+    ] : [
         `You, a newly trained ${rank}, have been heralded`,
         `from birth as the instrument of ${god}.  You are destined`,
         'to recover the Amulet for your deity, or die in the',
         'attempt.  Your hour of destiny has come.  For the sake',
         `of us all:  Go bravely with ${god}!`,
+    ];
+    const outerLines = [
+        `It is written in the Book of ${god}:`,
+        `Your ${deityNoun} ${god} seeks to possess the Amulet, and with it`,
+        'to gain deserved ascendance over the other gods.',
+        ...closingLines,
         '--More--',
     ];
     const innerLines = [
@@ -209,7 +298,7 @@ async function showLegacy() {
     putLine(left, 15, outerLines[6]);
     putLine(left, 16, outerLines[7]);
     putLine(left, 17, outerLines[8]);
-    putStatusLines();
+    putStatusLines(statusSnapshot);
     d.setCursor(left + 8, 17);
     await nhgetch();
 }
@@ -322,59 +411,33 @@ export async function restoregamePreamble() {
 
 async function askTutorial() {
     const d = game.nhDisplay;
-    const dec = /^DECgraphics$/i.test(game.symset || '');
-    const preserveMap = dec && (game.urole?.key === 'tourist'
-        || game.urole?.key === 'knight'
-        || game.urole?.key === 'wizard'
-        || game.urole?.key === 'valkyrie'
-        || game.urole?.key === 'priest'
-        || game.urole?.key === 'archeologist'
-        || game.urole?.key === 'barbarian'
-        || game._characterPickerUsed
-        || game._rangerNamePath
-        || game._rogueExplorePath
-        || game._rogueChargenPath
-        || game.flags?.suppress_alert === '3.3.1');
-    if (preserveMap) {
-        game._pending_message = '';
-        d.clearRow(0);
-        d.clearRow(1);
-        for (let row = 2; row <= 6; row++)
-            putLine(21, row, ' '.repeat(59));
-    } else if (dec) {
-        d.clearScreen();
-    } else {
-        game._pending_message = '';
-        await docrt();
-        await bot();
-        await flush_screen(1);
-        for (let row = 0; row <= 6; row++) d.clearRow(row);
-    }
+    // tty_end_menu() derives a 59-column tutorial window (content plus menu
+    // margins) from its longest row.  tty_display_nhwindow() therefore puts
+    // the recorded .nethackrc menu boundary at zero-based x20: its leading
+    // blank occupies x20 and text starts at x21.  It is a corner overlay
+    // regardless of role or symset, so retain the actual generated map west
+    // of that boundary instead of synthesizing a border.
+    game._pending_message = '';
+    d.clearRow(0);
+    d.clearRow(1);
+    for (let row = 2; row <= 6; row++)
+        putLine(20, row, ' '.repeat(60));
     putLine(21, 0, 'Do you want a tutorial?', 1);
     putLine(21, 2, 'y - Yes, do a tutorial');
-    if (dec && (game.flags?.suppress_alert === '3.3.1' || preserveMap)) {
-        putLine(21, 3, 'n - No, just start play');
-        putLine(21, 5, 'Put "OPTIONS=!tutorial" in .nethackrc to skip this query.');
-        putLine(21, 6, '(end)');
-    } else if (dec) {
-        putLine(19, 3, '┌ n - No, just start play');
-        putLine(19, 4, '│');
-        putLine(19, 5, '· Put "OPTIONS=!tutorial" in .nethackrc to skip this query.');
-        putLine(19, 6, '└ (end)');
-    } else {
-        putLine(21, 3, 'n - No, just start play');
-        putLine(21, 5, 'Put "OPTIONS=!tutorial" in .nethackrc to skip this query.');
-        putLine(21, 6, '(end)');
-    }
-    if (game._knightCombatPath)
-        putLine(17, 6, '---');
+    putLine(21, 3, 'n - No, just start play');
+    putLine(21, 5, 'Put "OPTIONS=!tutorial" in .nethackrc to skip this query.');
+    putLine(21, 6, '(end)');
     putStatusLines();
     d.setCursor(27, 6);
     let key = await nhgetch();
     while (key !== 121 && key !== 110 && key !== 27) {
-        if (dec && (game.flags?.suppress_alert === '3.3.1' || preserveMap)) {
-            d.clearRow(6);
-            d.clearRow(7);
+        // select_menu() handles ordinary invalid accelerators in place.  Its
+        // outer ask_do_tutorial() loop is re-created only when Space/Return
+        // dismisses PICK_ONE without a selection; that second pass adds the
+        // explanatory row while preserving the same corner underlay.
+        if (key === 32 || key === 10 || key === 13) {
+            putLine(20, 6, ' '.repeat(60));
+            putLine(20, 7, ' '.repeat(60));
             putLine(21, 6, "(Please choose 'y' or 'n'.)");
             putLine(21, 7, '(end)');
             d.setCursor(27, 7);
@@ -504,10 +567,7 @@ async function moveloopPreamble() {
     if (!game.tutorial_set_in_config) {
         // Creating the tutorial menu makes tty finish the pending welcome
         // message first, yielding the same intermediate --More-- boundary.
-        if (game.urole?.key === 'caveman' || game.urole?.key === 'priest'
-            || game._monkNorthPath
-            || game._rogueExplorePath
-            || game._rogueChargenPath) {
+        if (game.urole?.key === 'caveman' || game.urole?.key === 'priest') {
             await docrt();
             await bot();
             await showInlineMore(welcomeText());
@@ -537,210 +597,6 @@ async function moveloopPreamble() {
         // explicitly in the config file.
         await showWelcomeMore();
         await pline('You are in non-scoring explore/discovery mode.');
-    }
-}
-
-const ROGUE_PET_POSITIONS = {
-    1: [70, 15],
-    2: [72, 13],
-    3: [72, 13],
-    4: [70, 15],
-    5: [70, 14],
-    6: [69, 13],
-    7: [68, 13],
-    8: [68, 13],
-    9: [69, 13],
-    10: [70, 14],
-    11: [69, 14],
-    12: [69, 14],
-};
-
-function placeRoguePet(turn) {
-    if (!game._rogueExplorePath || !game.startingPet
-        || !ROGUE_PET_POSITIONS[turn]) return;
-    const pet = game.startingPet;
-    const oldx = pet.mx, oldy = pet.my;
-    [pet.mx, pet.my] = ROGUE_PET_POSITIONS[turn];
-    newsym(oldx, oldy);
-    newsym(pet.mx, pet.my);
-}
-
-function placeRogueChargenMonsters(turn) {
-    if (!game._rogueChargenPath) return;
-    const pet = game.startingPet;
-    const gridBug = game.level?.monsters?.find(monster => monster.mnum === 116);
-    const positions = {
-        2: { pet: [35, 5], gridBug: [34, 3] },
-        3: { pet: [36, 6], gridBug: [34, 4] },
-    }[turn];
-    if (!positions) return;
-    for (const [monster, position] of [[pet, positions.pet], [gridBug, positions.gridBug]]) {
-        if (!monster) continue;
-        const oldx = monster.mx, oldy = monster.my;
-        [monster.mx, monster.my] = position;
-        newsym(oldx, oldy);
-        newsym(monster.mx, monster.my);
-    }
-    if (turn === 3) {
-        const objects = game.level?.objects?.[35]?.[5];
-        if (objects) game.level.objects[35][5] = objects.filter(object => object.otyp !== 234);
-        newsym(35, 5);
-    }
-}
-
-// dogmove() reports a pet reluctantly stepping onto a corpse through tty's
-// blocking message window.  Ordinary movement keys do not dismiss --More--;
-// they remain inside this prompt and therefore cannot become hero actions.
-async function rogueCorpseMore() {
-    const message = 'Your kitten steps reluctantly onto an orc corpse.--More--';
-    await pline(message);
-    await flush_screen(1);
-    game.nhDisplay?.setCursor(message.length, 0);
-    let key;
-    do key = await nhgetch();
-    while (key !== 27 && key !== 32 && key !== 10 && key !== 13);
-
-    replayRogueTurn(8);
-    placeRoguePet(8);
-    game.moves = 9;
-    game._maintenanceMove = 9;
-    await pline('The kitten is almost hit by a dart!');
-}
-
-function moveRogueOrcHero(x, y) {
-    const u = game.u;
-    const oldx = u.ux, oldy = u.uy;
-    u.ux0 = oldx; u.uy0 = oldy;
-    u.ux = x; u.uy = y;
-    newsym(oldx, oldy);
-    vision_recalc(1);
-    newsym(x, y);
-}
-
-function runRogueOrcHeroPath(points) {
-    for (const [x, y] of points) moveRogueOrcHero(x, y);
-}
-
-function placeRogueOrcPet(x, y) {
-    const pet = game.startingPet;
-    if (!pet) return;
-    const oldx = pet.mx, oldy = pet.my;
-    pet.mx = x; pet.my = y;
-    newsym(oldx, oldy);
-    newsym(x, y);
-    show_glyph_cell(x, y, 'f', CLR_WHITE, false);
-}
-
-function replayRogueOrcScreenBoundary(boundary) {
-    game.moves = (game.moves || 1) + replayRogueOrcBoundary(boundary);
-    const petPositions = {
-        5: [9, 13], 6: [15, 13], 7: [17, 12], 9: [23, 12],
-        15: [23, 12], 16: [23, 13], 17: [23, 12], 19: [23, 12],
-        20: [24, 13], 21: [24, 13], 22: [22, 12], 23: [23, 12],
-        24: [23, 12], 25: [23, 12], 26: [23, 13], 28: [24, 13],
-        38: [24, 13], 39: [23, 13],
-    };
-    if (petPositions[boundary])
-        placeRogueOrcPet(...petPositions[boundary]);
-}
-
-async function rogueOrcMore(message) {
-    await pline(message);
-    await flush_screen(1);
-    game.nhDisplay?.setCursor(message.length, 0);
-    let key;
-    do key = await nhgetch();
-    while (key !== 27 && key !== 32 && key !== 10 && key !== 13);
-}
-
-async function rogueOrcFightAndRun() {
-    replayRogueOrcScreenBoundary(3);
-    moveRogueOrcHero(6, 13);
-    await rogueOrcMore(
-        'The kitten bites the newt.  The newt misses the kitten.--More--',
-    );
-
-    replayRogueOrcScreenBoundary(4);
-    moveRogueOrcHero(7, 13);
-    await rogueOrcMore(
-        'The kitten misses the newt.  The kitten bites the newt.--More--',
-    );
-
-    replayRogueOrcScreenBoundary(5);
-    const newt = game.level?.monsters?.find(monster => monster.mnum === 322);
-    if (newt) {
-        game.level.monsters = game.level.monsters.filter(monster => monster !== newt);
-        newsym(newt.mx, newt.my);
-    }
-    runRogueOrcHeroPath([[8, 13], [9, 13], [10, 13], [11, 13]]);
-    placeRogueOrcPet(9, 13);
-    await pline('The newt is killed!  The kitten picks up a gold piece.');
-}
-
-function dropRogueOrcGold() {
-    const x = 13, y = 13;
-    if (!game.level?.objects) return;
-    if (!game.level.objects[x]) game.level.objects[x] = [];
-    const column = game.level.objects[x];
-    if (!column[y]) column[y] = [];
-    if (!column[y].some(object => object.otyp === GOLD_PIECE)) {
-        column[y].unshift({
-            otyp: GOLD_PIECE, oclass: 12, ox: x, oy: y,
-            quan: 1, quantity: 1, name: 'gold piece',
-        });
-    }
-    const loc = game.level?.at(x, y);
-    if (loc) {
-        loc.remembered_glyph = { ch: '$', color: 11, decgfx: false };
-        show_glyph_cell(x, y, '$', 11, false);
-    }
-}
-
-async function rogueOrcTimedAction(action) {
-    if (action === 1) {
-        replayRogueOrcScreenBoundary(2);
-    } else if (action === 2) {
-        await rogueOrcFightAndRun();
-    } else if (action === 3) {
-        replayRogueOrcScreenBoundary(6);
-        runRogueOrcHeroPath([[12, 13], [13, 13], [14, 13], [15, 13], [16, 13]]);
-        placeRogueOrcPet(15, 13);
-        const hiddenCorner = game.level?.at(17, 14);
-        if (hiddenCorner) {
-            hiddenCorner.remembered_glyph = null;
-            hiddenCorner.disp_ch = ' ';
-        }
-        dropRogueOrcGold();
-        await pline('The kitten drops a gold piece.');
-    } else if (action === 4) {
-        replayRogueOrcScreenBoundary(7);
-    } else if (action === 5) {
-        replayRogueOrcScreenBoundary(9);
-        runRogueOrcHeroPath([
-            [17, 12], [18, 12], [19, 12], [20, 12],
-            [21, 12], [22, 12], [23, 12], [24, 12],
-        ]);
-        placeRogueOrcPet(23, 12);
-        const hiddenCorner = game.level?.at(17, 14);
-        if (hiddenCorner) {
-            hiddenCorner.remembered_glyph = null;
-            hiddenCorner.disp_ch = ' ';
-        }
-        const downstairs = game.level?.at(23, 16);
-        if (downstairs) {
-            downstairs.disp_color = NO_COLOR;
-            downstairs.remembered_glyph = {
-                ch: '>', color: NO_COLOR, decgfx: false,
-            };
-        }
-        await pline('You swap places with your kitten.');
-    } else {
-        const boundary = {
-            6: 15, 7: 16, 8: 17, 9: 19, 10: 20, 11: 21,
-            12: 22, 13: 23, 14: 24, 15: 25, 16: 26, 17: 28,
-            18: 38, 19: 39,
-        }[action];
-        replayRogueOrcScreenBoundary(boundary);
     }
 }
 
@@ -799,13 +655,34 @@ function randomMonsterRecord(mnum, x, y) {
     return monster;
 }
 
-function initializeRandomMonsterInventory(monster) {
+export function initializeRandomMonsterInventory(monster) {
     const inventory = monster.minvent || monster.inventory || [];
+    monster.minvent = inventory;
+    monster.inventory = inventory;
+    monster.hasInventory = inventory.length > 0;
     const monsterFlags2 = MONSTER_FLAGS2[monster?.mnum] || 0;
     const addObject = otyp => {
         if (!otyp) return null;
         const object = mksobj(otyp, true, false);
-        inventory.push(object);
+        if (MONSTER_SYMBOL[monster?.mnum] === 56 && object.blessed) {
+            object.blessed = false;
+            object.cursed = true;
+        }
+        // makemon.c:mongets() raises a prince's generated battle gear to a
+        // minimum quality after ordinary mksobj initialization.
+        if (monsterFlags2 & M2_PRINCE) {
+            if (object.oclass === 2 && (object.spe ?? 0) < 1)
+                object.spe = 1;
+            else if (object.oclass === 3 && (object.spe ?? 0) < 0)
+                object.spe = 0;
+        }
+        return addObjectToMonsterInventory(monster, object, game);
+    };
+    const initThrow = (otyp, quantityRange) => {
+        const object = addObject(otyp);
+        object.quan = 3 + rn2(quantityRange);
+        object.quantity = object.quan;
+        object.owt = (OBJECT_WEIGHT[otyp] ?? 1) * object.quan;
         return object;
     };
     if (monster?.mnum >= 59 && monster.mnum <= 61) {
@@ -831,6 +708,63 @@ function initializeRandomMonsterInventory(monster) {
         const offensiveRoll = rn2(75);
         if ((monster.m_lev ?? 0) > offensiveRoll)
             addObject(randomOffensiveMonsterItem(monster.mnum));
+    } else if (monster.mnum >= 264 && monster.mnum <= 269) {
+        // makemon.c:m_initweap(), is_elf().  Clothing probes precede the
+        // mutually exclusive primary loadout; ambient Elven Monarchs retain
+        // their two post-loadout utility probes.
+        if (rn2(2))
+            addObject(rn2(2) ? ELVEN_MITHRIL_COAT : ELVEN_CLOAK);
+        if (rn2(2)) addObject(ELVEN_LEATHER_HELM);
+        else if (!rn2(4)) addObject(ELVEN_BOOTS);
+        if (rn2(2)) addObject(ELVEN_DAGGER);
+        switch (rn2(3)) {
+        case 0:
+            if (!rn2(4)) addObject(ELVEN_SHIELD);
+            if (rn2(3)) addObject(ELVEN_SHORT_SWORD);
+            addObject(ELVEN_BOW);
+            initThrow(ELVEN_ARROW, 12);
+            break;
+        case 1:
+            addObject(ELVEN_BROADSWORD);
+            if (rn2(2)) addObject(ELVEN_SHIELD);
+            break;
+        case 2:
+            if (rn2(2)) {
+                addObject(ELVEN_SPEAR);
+                addObject(ELVEN_SHIELD);
+            }
+            break;
+        }
+        if (monster.mnum === 269) {
+            if (rn2(3)) addObject(PICK_AXE);
+            if (!rn2(50)) addObject(CRYSTAL_BALL);
+        }
+        const offensiveRoll = rn2(75);
+        if ((monster.m_lev ?? 0) > offensiveRoll)
+            addObject(randomOffensiveMonsterItem(monster.mnum));
+    } else if (MONSTER_SYMBOL[monster?.mnum] === 41
+        && MONSTER_HAS_WEAPON_ATTACK.has(monster.mnum)) {
+        // makemon.c:m_initweap(), S_OGRE.  Ranked ogres receive a better
+        // chance for a battle-axe; every class member then reaches the
+        // shared level-versus-rn2(75) offensive-item reservoir.
+        const range = monster.mnum === 205 ? 3
+            : monster.mnum === 204 ? 6 : 12;
+        addObject(!rn2(range) ? BATTLE_AXE : CLUB);
+        const offensiveRoll = rn2(75);
+        if ((monster.m_lev ?? 0) > offensiveRoll)
+            addObject(randomOffensiveMonsterItem(monster.mnum));
+    } else if (MONSTER_SYMBOL[monster?.mnum] === 29
+        && MONSTER_HAS_WEAPON_ATTACK.has(monster.mnum)) {
+        // makemon.c:m_initweap(), S_CENTAUR.  Forest centaurs use bows;
+        // plains and mountain centaurs use crossbows.
+        if (rn2(2)) {
+            const forest = monster.mnum === 131;
+            addObject(forest ? BOW : CROSSBOW);
+            initThrow(forest ? ARROW : CROSSBOW_BOLT, 12);
+        }
+        const offensiveRoll = rn2(75);
+        if ((monster.m_lev ?? 0) > offensiveRoll)
+            addObject(randomOffensiveMonsterItem(monster.mnum));
     } else if (MONSTER_SYMBOL[monster?.mnum] === 33
         && MONSTER_HAS_WEAPON_ATTACK.has(monster.mnum)) {
         // makemon.c:m_initweap(), default armament.  Gnomes have no
@@ -839,12 +773,6 @@ function initializeRandomMonsterInventory(monster) {
         const bias = ((monsterFlags2 & M2_LORD) ? 1 : 0)
             + ((monsterFlags2 & M2_PRINCE) ? 2 : 0)
             + ((monsterFlags2 & M2_NASTY) ? 1 : 0);
-        const initThrow = (otyp, quantityRange) => {
-            const object = addObject(otyp);
-            object.quan = 3 + rn2(quantityRange);
-            object.quantity = object.quan;
-            object.owt = (OBJECT_WEIGHT[otyp] ?? 1) * object.quan;
-        };
         switch (rnd(14 - 2 * bias)) {
         case 1:
             if (monsterFlags2 & M2_STRONG) addObject(BATTLE_AXE);
@@ -875,6 +803,44 @@ function initializeRandomMonsterInventory(monster) {
         const offensiveRoll = rn2(75);
         if ((monster.m_lev ?? 0) > offensiveRoll)
             addObject(randomOffensiveMonsterItem(monster.mnum));
+    }
+
+    // makemon.c:m_initinv(), S_MUMMY.  A nonzero gate grants the class's
+    // ordinary wrapping before the shared defensive/misc reservoirs.
+    if (MONSTER_SYMBOL[monster?.mnum] === 39 && rn2(7))
+        addObject(MUMMY_WRAPPING);
+
+    // makemon.c:m_initinv(), S_QUANTMECH.  Every class member probes the
+    // Schrödinger-box gate; only PM_QUANTUM_MECHANIC can receive the box.
+    if (MONSTER_SYMBOL[monster?.mnum] === 43) {
+        if (!rn2(20) && monster.mnum === 210) {
+            const box = mksobj(LARGE_BOX, false, false);
+            const cat = mksobj(CORPSE, true, false);
+            box.spe = 1;
+            cat.corpsenm = 33;
+            stopObjectTimer(cat, OBJECT_TIMER_KIND.ROT_CORPSE);
+            cat.otrapped = false;
+            box.contents = [cat];
+            addObjectToMonsterInventory(monster, box, game);
+        }
+    }
+
+    // makemon.c:m_initinv(), S_LEPRECHAUN.  Its guaranteed gold stack makes
+    // the shared greedy-species gate below skip without another rn2(5).
+    if (MONSTER_SYMBOL[monster?.mnum] === 12) {
+        const amount = d(level_difficulty(), 30);
+        const gold = mksobj(GOLD_PIECE, false, false);
+        gold.quan = amount;
+        gold.quantity = amount;
+        gold.owt = Math.max(1, Math.trunc((amount + 50) / 100));
+        linkObjectToMonsterInventory(monster, gold);
+    }
+
+    // makemon.c:m_initinv(), S_NYMPH.  These independent class gates are
+    // evaluated even when neither item is granted.
+    if (MONSTER_SYMBOL[monster?.mnum] === 14) {
+        if (!rn2(2)) addObject(MIRROR);
+        if (!rn2(2)) addObject(POT_OBJECT_DETECTION);
     }
 
     // makemon.c:m_initinv(), S_GNOME.  Ambient births are outside mklev, so
@@ -911,12 +877,10 @@ function initializeRandomMonsterInventory(monster) {
         gold.quan = amount;
         gold.quantity = amount;
         gold.owt = Math.max(1, Math.trunc((amount + 50) / 100));
-        inventory.push(gold);
+        linkObjectToMonsterInventory(monster, gold);
     }
 
     rn2(100);
-    monster.minvent = inventory;
-    monster.inventory = inventory;
     if (inventory.some(object => object.oclass === 2))
         monster.weaponCheck = NEED_WEAPON;
 }
@@ -935,17 +899,35 @@ function generateRandomMonster() {
         return shaped;
     }
     const group = [];
-    if ((MONSTER_GENO[mnum] & 0x0080) && rn2(2)) {
-        let count = Math.trunc(rnd(3) / ((game.u?.ulevel ?? 1) < 3 ? 4 : 2));
+    const geno = MONSTER_GENO[mnum] || 0;
+    let groupMaximum = 0;
+    if ((geno & 0x0080) && rn2(2)) { // G_SGROUP
+        groupMaximum = 3;
+    } else if (geno & 0x0040) { // G_LGROUP
+        groupMaximum = rn2(3) ? 10 : 3;
+    }
+    if (groupMaximum) {
+        const heroLevel = game.u?.ulevel ?? 1;
+        const divisor = heroLevel < 3 ? 4 : heroLevel < 5 ? 2 : 1;
+        let count = Math.trunc(rnd(groupMaximum) / divisor);
         if (!count) count = 1;
+        let groupCenter = { x: primary.mx, y: primary.my };
         while (count-- > 0) {
-            // enexto_core() shuffles all three rings before testing them.
-            const groupSpot = collectNearbyCoords(primary.mx, primary.my, 3)
+            // m_initgrp() performs a first peace_minded() check before it
+            // attempts placement; makemon() owns a second check for actors
+            // which are actually constructed, then group policy forces them
+            // hostile.  Each enexto is centered on the previous group member.
+            if (peaceMinded(mnum)) continue;
+            const groupSpot = collectNearbyCoords(
+                groupCenter.x, groupCenter.y, 3,
+            )
                 .find(({ x, y }) => randomMonsterGoodPos(x, y, mnum));
             if (!groupSpot) continue;
             const member = randomMonsterRecord(mnum, groupSpot.x, groupSpot.y);
+            member.mpeaceful = 0;
             initializeRandomMonsterInventory(member);
             group.push(member);
+            groupCenter = { x: member.mx, y: member.my };
         }
     }
     initializeRandomMonsterInventory(primary);
@@ -1154,6 +1136,10 @@ function finishOrDeferHeroTookTimeRng(sourceTurn) {
         game._vaultHeroTookTimePending = sourceTurn;
         return;
     }
+    if (game._deathSurvivedMessagePending) {
+        game._deathSurvivalHeroTookTimePending = sourceTurn;
+        return;
+    }
     // The final negative-multi prayer action invokes prayer_done() before
     // moveloop reaches this once-per-hero-took-time tail.  prayer_done's
     // completion pline can suspend at tty, so the Seer reschedule belongs to
@@ -1165,15 +1151,12 @@ function finishOrDeferHeroTookTimeRng(sourceTurn) {
     finishHeroTookTimeRng(sourceTurn);
 }
 
-// State-derived subset of the once-per-turn maintenance in allmain.c.
-// This covers the first quiet turn: monster movement allotments, random
-// monster generation, ambient feature sounds, hunger, and engraving wear.
-function finishInitialTurnMaintenanceRng(sourceTurn) {
-    if (!rn2(40 + ((game.u?.acurr?.a?.[1] || 0) * 3))) rnd(3);
-    // allmain.c's environmental owner runs after engraving wear. Air shares
-    // the persistent cloud list created by fixup_special(); Fire reuses the
-    // same fumarole sampler as initial arrival.
-    if (Is_airlevel(game.u?.uz)) moveElementalBubbles();
+function finishInitialTurnMaintenanceAfterIntervention(sourceTurn) {
+    // allmain.c's environmental owner runs after engraving wear. Air and
+    // Water share the moving bubble list created by fixup_special(); Fire
+    // reuses the same fumarole sampler as initial arrival.
+    if (Is_airlevel(game.u?.uz) || Is_waterlevel(game.u?.uz))
+        moveElementalBubbles();
     else if (game.level?.flags?.fumaroles) fumaroles(game);
     // Bounded compatibility paths still collapse one allocation and one hero
     // action.  Source movement-ration paths own the real post-loop boundary
@@ -1185,6 +1168,8 @@ function finishInitialTurnMaintenanceRng(sourceTurn) {
     // helplessness so fast heroes and multi-round movement rations retain the
     // same boundary.
     if ((game._helplessTurns || 0) > 0) {
+        if (!game._deathSurvivedMessagePending)
+            game._helplessRunmodeDelayPending = sourceTurn;
         game._helplessTurns--;
         if (game._helplessTurns === 0) {
             const doneMessage = game._helplessDoneMessage
@@ -1193,13 +1178,61 @@ function finishInitialTurnMaintenanceRng(sourceTurn) {
             // async moveloop owner.  Queue recovery there so an occupied
             // topline can page before unmul's message replaces it, as tty
             // pline() does in C.
-            if (usesQueuedHelplessRecovery(game))
-                game._queuedHelplessRecoveryMessage = doneMessage;
-            else appendTurnMessage(doneMessage);
+            if (doneMessage) {
+                if (usesQueuedHelplessRecovery(game))
+                    game._queuedHelplessRecoveryMessage = doneMessage;
+                else appendTurnMessage(doneMessage);
+            }
             game._helplessReason = null;
             game._helplessDoneMessage = null;
         }
     }
+}
+
+// State-derived subset of the once-per-turn maintenance in allmain.c.
+// This covers the first quiet turn: monster movement allotments, random
+// monster generation, ambient feature sounds, hunger, and engraving wear.
+function finishInitialTurnMaintenanceRng(sourceTurn) {
+    if (!rn2(40 + ((game.u?.acurr?.a?.[1] || 0) * 3))) rnd(3);
+    // allmain.c's demigod intervention clock advances after engraving wear
+    // and before environmental level motion.  Nervous outcomes 0/1 are
+    // synchronous; outcome2's black-glow pline can suspend before rndcurse,
+    // reset, environment, and once-per-action scheduling.
+    if (game.u?.uevent?.udemigod && !game.u?.invulnerable) {
+        if ((game.u.udg_cnt ?? 0) > 0) game.u.udg_cnt--;
+        if ((game.u.udg_cnt ?? 0) === 0) {
+            const intervention = rn2(6);
+            if (intervention <= 1) {
+                appendTurnMessage('You feel vaguely nervous.');
+                delete game._unresolvedDemigodIntervention;
+            } else if (intervention === 2) {
+                appendTurnMessage('You notice a black glow surrounding you.');
+                game._pendingDemigodIntervention = {
+                    kind: intervention, sourceTurn,
+                };
+                return;
+            } else if (intervention === 5) {
+                game._pendingDemigodIntervention = {
+                    kind: intervention, sourceTurn,
+                };
+                return;
+            } else if (intervention === 4) {
+                game._pendingDemigodIntervention = {
+                    kind: intervention, sourceTurn,
+                };
+                return;
+            } else if (intervention === 3) {
+                const affected = aggravateMonsters(game, rn2, []);
+                game._lastDemigodAggravation = affected.map(monster =>
+                    monster.m_id);
+                delete game._unresolvedDemigodIntervention;
+            } else {
+                game._unresolvedDemigodIntervention = intervention;
+            }
+            game.u.udg_cnt = 50 + rn2(200);
+        }
+    }
+    finishInitialTurnMaintenanceAfterIntervention(sourceTurn);
 }
 
 function periodicExercise(index, improving) {
@@ -1382,9 +1415,23 @@ function finishInitialTurnMaintenanceAfterTimeout({
     const activeHpMax = polymorphed ? 'mhmax' : 'uhpmax';
     if (!game.u?.invulnerable
         && (game.u?.[activeHp] ?? 0) < (game.u?.[activeHpMax] ?? 0)) {
-        const constitution = game.u?.acurr?.a?.[2] || 0;
-        const shouldHeal = (game.u.ulevel + constitution) > rn2(100)
-            || game.u.regeneration;
+        let shouldHeal;
+        if (polymorphed) {
+            // allmain.c:regen_hp() does not use the human level/Constitution
+            // rn2(100) check for monster-form HP.  Ordinary forms recover one
+            // point only from Regeneration or on the deterministic 20-turn
+            // cadence while movement encumbrance permits it.  The dry-eel
+            // damage branch remains separate from this non-eel carrier.
+            const nonEel = MONSTER_SYMBOL[game.u.umonnum] !== 57;
+            const encumbranceOk = nearCapacity(game) < MOD_ENCUMBER
+                || !game.u?.umoved;
+            shouldHeal = nonEel && (game.u.regeneration
+                || (encumbranceOk && sourceTurn % 20 === 0));
+        } else {
+            const constitution = game.u?.acurr?.a?.[2] || 0;
+            shouldHeal = (game.u.ulevel + constitution) > rn2(100)
+                || game.u.regeneration;
+        }
         if (shouldHeal) {
             game.u[activeHp] = Math.min(
                 game.u[activeHpMax], game.u[activeHp] + 1,
@@ -1531,21 +1578,25 @@ function initialTurnMaintenanceRng(
     // expires.
     const sourceTurn = completedTurn;
     if ((game.u?.mtimedone ?? 0) > 0) game.u.mtimedone--;
-    for (let x = 1; x < COLNO; x++) {
-        const column = game.level?.objects?.[x];
-        if (!column) continue;
-        for (let y = 0; y < ROWNO; y++) {
-            const pile = column[y];
-            if (!Array.isArray(pile) || !pile.length) continue;
-            const survivors = pile.filter(object =>
-                object.rotAt == null || object.rotAt > sourceTurn);
-            if (survivors.length !== pile.length) {
-                column[y] = survivors;
-                newsym(x, y);
-            }
+    if (peekNextDueObjectTimer(game, sourceTurn)) {
+        if (!deferAmbientMessage) {
+            throw new Error(
+                'due object timer requires source-ordered async maintenance',
+            );
         }
+        return {
+            deferredObjectTimer: true,
+            sourceTurn, moveAmount, deferAmbientMessage, polymorphed,
+        };
     }
+    return finishInitialTurnMaintenanceAfterObjectTimers({
+        sourceTurn, moveAmount, deferAmbientMessage, polymorphed,
+    });
+}
 
+function finishInitialTurnMaintenanceAfterObjectTimers({
+    sourceTurn, moveAmount, deferAmbientMessage, polymorphed,
+}) {
     // C timeout.c:nh_timeout() expires temporary confusion before regen,
     // sounds, hunger, and exerchk().  The final tick is observable twice:
     // it queues the recovery message and prevents this same turn's periodic
@@ -1554,12 +1605,61 @@ function initialTurnMaintenanceRng(
     // timeout.c:nh_timeout() returns before decrementing any property while
     // that prayer-only flag is active.
     const prayerTimeoutFreeze = !!game.u?.invulnerable;
-    if (!prayerTimeoutFreeze && (game.u?.confusionTurns ?? 0) > 0) {
-        game.u.confusionTurns--;
-        if (game.u.confusionTurns === 0) {
-            appendTurnMessage('You feel less confused now.');
-        }
+    if (!prayerTimeoutFreeze && (game.u?.stunnedTurns ?? 0) > 0) {
+        const remaining = game.u.stunnedTurns - 1;
+        if (remaining === 0) {
+            if (deferAmbientMessage) {
+                return {
+                    deferredTimeoutMessage: true,
+                    timeoutKind: 'stun',
+                    message: 'You feel a bit steadier now.',
+                    sourceTurn, moveAmount, deferAmbientMessage, polymorphed,
+                    prayerTimeoutFreeze,
+                };
+            }
+            game.u.stunnedTurns = 0;
+            game.u.stunned = false;
+            appendTurnMessage('You feel a bit steadier now.');
+        } else game.u.stunnedTurns = remaining;
     }
+
+    return finishInitialTurnMaintenanceAfterStun({
+        sourceTurn, moveAmount, deferAmbientMessage, polymorphed,
+        prayerTimeoutFreeze,
+    });
+}
+
+function finishInitialTurnMaintenanceAfterStun({
+    sourceTurn, moveAmount, deferAmbientMessage, polymorphed,
+    prayerTimeoutFreeze,
+}) {
+    if (!prayerTimeoutFreeze && (game.u?.confusionTurns ?? 0) > 0) {
+        const remaining = game.u.confusionTurns - 1;
+        if (remaining === 0) {
+            if (deferAmbientMessage) {
+                return {
+                    deferredTimeoutMessage: true,
+                    timeoutKind: 'confusion',
+                    message: 'You feel less confused now.',
+                    sourceTurn, moveAmount, deferAmbientMessage, polymorphed,
+                    prayerTimeoutFreeze,
+                };
+            }
+            game.u.confusionTurns = 0;
+            appendTurnMessage('You feel less confused now.');
+        } else game.u.confusionTurns = remaining;
+    }
+
+    return finishInitialTurnMaintenanceAfterConfusion({
+        sourceTurn, moveAmount, deferAmbientMessage, polymorphed,
+        prayerTimeoutFreeze,
+    });
+}
+
+function finishInitialTurnMaintenanceAfterConfusion({
+    sourceTurn, moveAmount, deferAmbientMessage, polymorphed,
+    prayerTimeoutFreeze,
+}) {
 
     if (!prayerTimeoutFreeze && (game.u?.hallucinationTurns ?? 0) > 0) {
         game.u.hallucinationTurns--;
@@ -1575,12 +1675,15 @@ function initialTurnMaintenanceRng(
     // owner, rather than the attack resolver, accounts for the duration which
     // elapses while monsters and the hero continue taking turns.
     if (!prayerTimeoutFreeze && (game.u?.blindTurns ?? 0) > 0) {
+        const wasBlind = !!game.blind;
         game.u.blindTurns--;
         if (game.u.blindTurns === 0) {
-            game.blind = false;
-            appendTurnMessage('You can see again.');
-            game.vision_full_recalc = 1;
-            if (game._occupation) game._occupation = null;
+            syncBlindness(game);
+            if (wasBlind && !game.blind) {
+                appendTurnMessage('You can see again.');
+                game.vision_full_recalc = 1;
+                if (game._occupation) game._occupation = null;
+            }
         }
     }
 
@@ -1618,9 +1721,51 @@ function initialTurnMaintenanceRng(
         }
     }
 
+    if (!prayerTimeoutFreeze
+        && (game.u?.halfSpellDamageTurns ?? 0) > 0) {
+        game.u.halfSpellDamageTurns--;
+        if (game.u.halfSpellDamageTurns === 0) {
+            game.u.halfSpellDamage = !!game.u.halfSpellDamageFromArtifact;
+        }
+    }
+
+    if (!prayerTimeoutFreeze
+        && (game.u?.halfPhysicalDamageTurns ?? 0) > 0) {
+        game.u.halfPhysicalDamageTurns--;
+        if (game.u.halfPhysicalDamageTurns === 0) {
+            game.u.halfPhysicalDamage
+                = !!game.u.halfPhysicalDamageFromArtifact;
+        }
+    }
+
+    if (!prayerTimeoutFreeze
+        && (game.u?.shockResistanceTurns ?? 0) > 0) {
+        game.u.shockResistanceTurns--;
+        if (game.u.shockResistanceTurns === 0) {
+            game.u.shockResistance = !!(
+                game.u.shockResistanceFromArmor
+                || game.u.intrinsicShockResistance
+            );
+        }
+    }
+
+    if (!prayerTimeoutFreeze
+        && (game.u?.magicResistanceTurns ?? 0) > 0) {
+        game.u.magicResistanceTurns--;
+        if (game.u.magicResistanceTurns === 0) {
+            const remains = !!(
+                game.u.antimagicFromArmor
+                || game.u.magicResistanceFromArmor
+                || game.u.intrinsicMagicResistance
+            );
+            game.u.magicResistance = remains;
+            game.u.antimagic = remains;
+        }
+    }
+
     if (!prayerTimeoutFreeze && (game.u?.deafTurns ?? 0) > 0) {
         game.u.deafTurns--;
-        if (game.u.deafTurns === 0) game.deaf = false;
+        if (game.u.deafTurns === 0) syncDeafness(game);
     }
 
     if (!prayerTimeoutFreeze && (game.u?._woundedLegTurns ?? 0) > 0) {
@@ -1662,8 +1807,10 @@ function initialTurnMaintenanceRng(
                 if (deferAmbientMessage) {
                     return {
                         deferredTimeoutMessage: true,
+                        timeoutKind: 'fumbling',
                         message, sourceTurn, moveAmount,
                         deferAmbientMessage, polymorphed,
+                        prayerTimeoutFreeze,
                     };
                 }
                 finishFumblingExpiryAfterMessage({ fumbled: true });
@@ -1678,21 +1825,298 @@ function initialTurnMaintenanceRng(
     });
 }
 
+export function buriedZombieTimerMessage(event, options = {}) {
+    if (event?.kind !== 'revived' || !event.monster) return;
+    const { monster, trap } = event;
+    const visible = options.visible
+        ?? cansee(monster.mx, monster.my);
+    if (visible) {
+        const spotted = options.spotted ?? canSpotMonster(monster);
+        if (!spotted) {
+            return {
+                message: 'Something claws itself out of the ground!',
+                visible: true, trap,
+            };
+        }
+        const name = options.monsterName ?? quietMonsterName(monster);
+        const article = /^[aeiou]/i.test(name) ? 'An' : 'A';
+        return {
+            message: `${article} ${name} claws itself out of the ground!`,
+            visible: true, trap,
+        };
+    }
+    const heroX = options.heroX ?? game.u?.ux ?? monster.mx;
+    const heroY = options.heroY ?? game.u?.uy ?? monster.my;
+    const dx = monster.mx - heroX;
+    const dy = monster.my - heroY;
+    const deaf = options.deaf ?? !!(game.u?.deaf || game.deaf);
+    if (!deaf && dx * dx + dy * dy < 25) {
+        return {
+            message: 'You hear scratching noises.',
+            visible: false, trap,
+        };
+    }
+    return null;
+}
+
+async function presentBuriedZombieTimer(event) {
+    const presentation = buriedZombieTimerMessage(event);
+    if (!presentation) return;
+    if (presentation.visible && presentation.trap)
+        presentation.trap.tseen = true;
+    await queueTurnMessage(presentation.message);
+    if (presentation.visible)
+        newsym(event.monster.mx, event.monster.my);
+}
+
+export function meltIceTimerMessage(event, options = {}) {
+    if (event?.kind !== LEVEL_TIMER_KIND.MELT_ICE_AWAY) return null;
+    const visible = options.visible ?? cansee(event.x, event.y);
+    const heroAt = options.heroAt
+        ?? (game.u?.ux === event.x && game.u?.uy === event.y);
+    return visible || heroAt ? 'Some ice melts away.' : null;
+}
+
+export function meltIceBoulderSettleMessage(event, options = {}) {
+    if (event?.kind !== LEVEL_TIMER_KIND.MELT_ICE_AWAY
+        || !event.pendingBoulder) return null;
+    const visible = options.visible ?? cansee(event.x, event.y);
+    return visible ? 'A boulder settles...' : null;
+}
+
+export function meltIceBoulderSplashMessage(outcome, options = {}) {
+    if (outcome?.kind !== 'melt-ice-boulder') return null;
+    const heroInWater = options.heroInWater ?? !!game.u?.uinwater;
+    if (heroInWater) return null;
+    const visible = options.visible ?? cansee(outcome.x, outcome.y);
+    if (visible) {
+        const action = outcome.fillsUp ? 'fills' : 'falls into';
+        return `There is a large splash as the boulder ${action} the ${outcome.waterBody}.`;
+    }
+    const deaf = options.deaf ?? !!(game.u?.deaf || game.deaf);
+    return deaf ? null : 'You hear a splash.';
+}
+
+export function meltIceBoulderSinkMessage(outcome, options = {}) {
+    if (outcome?.kind !== 'melt-ice-boulder' || outcome.fillsUp) return null;
+    const visible = options.visible ?? cansee(outcome.x, outcome.y);
+    const verbose = options.verbose ?? game.flags?.verbose ?? true;
+    return visible && verbose ? 'It sinks without a trace!' : null;
+}
+
+// zap.c:melt_ice() is resumable across four presentation boundaries: the
+// initial melt line, the one-time settling line, each splash, and each
+// sink-without-a-trace line.  Keep the boulder RNG and wake transaction on
+// their source side of those awaits rather than collapsing the callback into
+// one synchronous final-state patch.
+export async function finishMeltIceTimer(event, options = {}) {
+    if (!event || event.meltPresentationFinished) return event;
+    const announce = options.announce ?? queueTurnMessage;
+    const repaint = options.repaint ?? newsym;
+    const wake = options.wake ?? wakeMonstersNearWithMessages;
+    const disturb = options.disturb ?? disturbBuriedZombieTimers;
+    const saveMonster = options.lifeSaveMonster ?? lifeSaveMonster;
+    const heroInWater = options.heroInWater ?? !!game.u?.uinwater;
+
+    const message = meltIceTimerMessage(event, options);
+    const lastMessage = options.lastMessage ?? game._last_message;
+    if (message && lastMessage !== message) await announce(message);
+    if (event.pendingBoulder) {
+        const settles = meltIceBoulderSettleMessage(event, options);
+        if (settles) await announce(settles);
+    }
+    while (event.pendingBoulder || event.pendingBoulderOutcome) {
+        const outcome = runNextMeltIceBoulder(event, game);
+        if (!outcome) break;
+        if (outcome.pendingOccupantLifeSaving) {
+            const monster = outcome.pendingOccupantLifeSaving.monster;
+            const visible = options.visible ?? cansee(event.x, event.y);
+            const spotted = options.occupantSpotted
+                ?? canSeeMonster(monster, event.x, event.y);
+            const presentation = { visible, spotted };
+            if (outcome.pendingOccupantLifeSaving.genocided)
+                presentation.genocided = true;
+            if (monster.mtame > 0)
+                presentation.petSpotted = options.occupantPetSpotted
+                    ?? canSpotMonster(monster);
+            const resolution = await saveMonster(
+                monster, outcome.pendingOccupantLifeSaving.amulet,
+                presentation,
+            );
+            finishMeltIceBoulderLifeSaving(
+                event, outcome, resolution, game,
+            );
+        }
+        // boulder_hits_pool() repaints a filled square before reporting its
+        // splash; a sinking boulder remains visually cached until the
+        // melt_ice() post-loop newsym().
+        if (outcome.fillsUp) repaint(event.x, event.y);
+        const splash = meltIceBoulderSplashMessage(outcome, {
+            ...options, heroInWater,
+        });
+        if (splash) await announce(splash);
+        if (!heroInWater) {
+            await wake(event.x, event.y, 40);
+            disturb(event.x, event.y, game);
+        }
+        const sinks = meltIceBoulderSinkMessage(outcome, options);
+        if (sinks) await announce(sinks);
+    }
+    if (event.boulderOutcomes.length) repaint(event.x, event.y);
+    event.meltPresentationFinished = true;
+    return event;
+}
+
+async function runAndPresentClaimedObjectTimer(claimed, sourceTurn) {
+    if (!claimed) return null;
+    const kind = claimed.timer.kind;
+    if (kind === OBJECT_TIMER_KIND.BURN_OBJECT) {
+        return runClaimedObjectBurnTimer(claimed, game, sourceTurn);
+    }
+    if (kind === OBJECT_TIMER_KIND.HATCH_EGG) {
+        const event = await runClaimedEggHatchTimer(
+            claimed, game, sourceTurn,
+        );
+        if (event?.message) await queueTurnMessage(event.message);
+        return finishEggHatchTimer(event, game, sourceTurn);
+    }
+    if (kind === OBJECT_TIMER_KIND.SHRINK_GLOB) {
+        const event = runClaimedGlobTimer(claimed, game, sourceTurn);
+        if (event?.message) await queueTurnMessage(event.message);
+        const finished = finishInventoryGlobTimer(event, game, sourceTurn);
+        if (finished?.followupMessage)
+            await queueTurnMessage(finished.followupMessage);
+        return finished;
+    }
+    if (kind === OBJECT_TIMER_KIND.FIG_TRANSFORM) {
+        const event = await runClaimedFigurineTimer(
+            claimed, game, sourceTurn,
+        );
+        if (event?.message) await queueTurnMessage(event.message);
+        return finishFigurineTimer(event, game);
+    }
+    if (kind === OBJECT_TIMER_KIND.ZOMBIFY_MON) {
+        const event = await runClaimedBuriedZombieTimer(
+            claimed, game, sourceTurn,
+        );
+        await presentBuriedZombieTimer(event);
+        return finishBuriedZombieTimer(event, game);
+    }
+    if (kind === LEVEL_TIMER_KIND.MELT_ICE_AWAY) {
+        const event = runClaimedMeltIceTimer(claimed, game);
+        return finishMeltIceTimer(event);
+    }
+    const event = runClaimedObjectRotTimer(claimed, game);
+    if (event?.where === 'floor') newsym(event.x, event.y);
+    if (kind === OBJECT_TIMER_KIND.ROT_CORPSE
+        && event?.where === 'inventory') {
+        await queueTurnMessage('Your corpse rots away.');
+    }
+    return event;
+}
+
 async function initialTurnMaintenanceWithTty(
     completedTurn = game.moves || 1,
 ) {
     let phase = initialTurnMaintenanceRng(completedTurn, true);
-    if (phase?.deferredTimeoutMessage) {
+    while (phase?.deferredObjectTimer) {
+        const claimed = claimNextDueObjectTimer(
+            game, phase.sourceTurn,
+        );
+        await runAndPresentClaimedObjectTimer(claimed, phase.sourceTurn);
+        if (peekNextDueObjectTimer(game, phase.sourceTurn)) continue;
+        phase = finishInitialTurnMaintenanceAfterObjectTimers(phase);
+    }
+    while (phase?.deferredTimeoutMessage) {
         await queueTurnMessage(phase.message);
-        finishFumblingExpiryAfterMessage({ fumbled: true });
-        phase = finishInitialTurnMaintenanceAfterTimeout(phase);
+        if (phase.timeoutKind === 'stun') {
+            game.u.stunnedTurns = 0;
+            game.u.stunned = false;
+            phase = finishInitialTurnMaintenanceAfterStun(phase);
+        } else if (phase.timeoutKind === 'confusion') {
+            game.u.confusionTurns = 0;
+            phase = finishInitialTurnMaintenanceAfterConfusion(phase);
+        } else {
+            finishFumblingExpiryAfterMessage({ fumbled: true });
+            phase = finishInitialTurnMaintenanceAfterTimeout(phase);
+        }
     }
     let result = phase;
     if (phase?.deferredAmbientMessage) {
         await queueTurnMessage(phase.message);
         result = finishInitialTurnMaintenanceAfterAmbient(phase);
     }
+    if (game._pendingDemigodIntervention) {
+        const intervention = game._pendingDemigodIntervention;
+        game._pendingDemigodIntervention = null;
+        if (intervention.kind === 2) {
+            await waitForCurrentMonsterMore();
+            const action = { calls: [] };
+            const heroAttack = { deferredCurseItems: true };
+            await resolveDeferredHeroCurseItems(action, heroAttack);
+            delete game._unresolvedDemigodIntervention;
+        } else if (intervention.kind === 5) {
+            await resurrectWizard();
+            delete game._unresolvedDemigodIntervention;
+        } else if (intervention.kind === 4) {
+            const effect = await summonNastyMonsters(null, {
+                onCreate: async monster => {
+                    newsym(monster.mx, monster.my);
+                    const name = quietMonsterName(monster);
+                    const article = /^[aeiou]/i.test(name) ? 'An' : 'A';
+                    const adjacent = Math.max(
+                        Math.abs(monster.mx - (game.u?.ux ?? monster.mx)),
+                        Math.abs(monster.my - (game.u?.uy ?? monster.my)),
+                    ) <= 1;
+                    const message = `${article} ${name} suddenly appears ${
+                        adjacent ? 'next to you' : 'close by'
+                    }!`;
+                    if (game._pending_message !== message)
+                        await queueTurnMessage(message);
+                },
+            });
+            game._lastDemigodNasty = (effect.created || []).map(monster =>
+                monster.m_id);
+            delete game._unresolvedDemigodIntervention;
+        }
+        game.u.udg_cnt = 50 + rn2(200);
+        finishInitialTurnMaintenanceAfterIntervention(
+            intervention.sourceTurn,
+        );
+    }
+    const helplessDelayTurn = game._helplessRunmodeDelayPending;
+    delete game._helplessRunmodeDelayPending;
+    await captureRunmodeDelay(
+        game, Number.isInteger(helplessDelayTurn),
+        helplessDelayTurn ?? completedTurn,
+        { preservePhysicalTopline: true },
+    );
     await drainQueuedHelplessRecoveryMessage();
+    const delayedAction = game._delayedAction;
+    if (delayedAction) {
+        if (game._pending_message) {
+            delete delayedAction._runmodeRetainedTopline;
+        } else if (!delayedAction._runmodeRetainedTopline) {
+            delayedAction._runmodeRetainedTopline
+                = game.nhDisplay?.grid?.[0]?.map(cell => ({ ...cell }));
+        }
+    }
+    await captureRunmodeDelay(
+        game, !!delayedAction, completedTurn,
+        {
+            preservePhysicalTopline: true,
+            retainedTopline: delayedAction?._runmodeRetainedTopline,
+        },
+    );
+    // Native find_ac() follows the elapsed-turn loop.  setworn() is already
+    // live for effects, but the first donning cadence frame still shows the
+    // prior AC; the next automatic core observes the recomputed value.
+    if (game._armorClassDirtyAfterDelayedFrame) {
+        findArmorClass(game);
+        game._armorClassDirty = false;
+        delete game._armorClassDirtyAfterDelayedFrame;
+        delete game._statusProjectedAc;
+    }
     return result;
 }
 
@@ -1709,52 +2133,60 @@ async function drainQueuedHelplessRecoveryMessage() {
     // the recovery message becomes the next input boundary.
     if (after === 'hear-again' && rn2(2) === 0) {
         game.u.deafTurns = 0;
-        game.deaf = false;
+        syncDeafness(game);
     }
 }
 
 function liveQuietKnight(state = game) {
-    return state.urole?.key === 'knight'
-        && !state._knightPonyPath && !state._knightCombatPath;
+    return state.urole?.key === 'knight';
 }
 
 function liveQuietMonk(state = game) {
-    return state.urole?.key === 'monk' && !state._monkNorthPath;
+    return state.urole?.key === 'monk';
 }
 
 function liveQuietRogue(state = game) {
-    return state.urole?.key === 'rogue'
-        && !state._rogueFriday13Path
-        && !state._rogueOrcPath
-        && !state._rogueChargenPath
-        && !state._rogueExplorePath;
+    return state.urole?.key === 'rogue';
 }
 
 function liveQuietHealer(state = game) {
-    return state.urole?.key === 'healer' && !state._healerNewmoonPath;
+    return state.urole?.key === 'healer';
 }
 
 function liveQuietRanger(state = game) {
-    return state.urole?.key === 'ranger' && !state._rangerNamePath;
+    return state.urole?.key === 'ranger';
 }
 
 function liveQuietPriest(state = game) {
-    return state.urole?.key === 'priest' && !state._priestCastPath;
+    return state.urole?.key === 'priest';
 }
 
 function liveQuietSamurai(state = game) {
-    return state.urole?.key === 'samurai' && !state._samuraiAltarPath
-        && (state._samuraiLiveScheduler
-            || state._delayedAction?.kind === 'remove');
+    return state.urole?.key === 'samurai';
+}
+
+function liveQuietCaveman(state = game) {
+    return state.urole?.key === 'caveman';
 }
 
 function liveQuietValkyrie(state = game) {
-    return state.urole?.key === 'valkyrie'
-        && !state._valkPitPath && !state._valkChatPath;
+    return state.urole?.key === 'valkyrie';
 }
 
 function liveQuietTourist(state = game) {
-    return state.urole?.key === 'tourist' && !state._touristExplorePath;
+    return state.urole?.key === 'tourist';
+}
+
+function liveQuietWizard(state = game) {
+    return state.urole?.key === 'wizard';
+}
+
+// Archeologist and Barbarian have no role/session-specific turn owner.  They
+// share the ordinary movement-ration and fmon scan for every legal race and
+// command stream; role identity belongs to startup and mechanics, not to the
+// scheduler selection boundary.
+function liveBaseRole(state = game) {
+    return ['archeologist', 'barbarian'].includes(state.urole?.key);
 }
 
 function liveDebugSourceRation(state = game) {
@@ -1764,22 +2196,19 @@ function liveDebugSourceRation(state = game) {
 }
 
 function usesSourceMovementRation(state = game) {
-    return liveQuietKnight(state) || liveQuietMonk(state)
-        || liveQuietHealer(state) || liveQuietSamurai(state)
+    return liveBaseRole(state)
+        || liveQuietKnight(state) || liveQuietMonk(state)
+        || liveQuietRogue(state) || liveQuietHealer(state)
+        || liveQuietRanger(state)
+        || liveQuietPriest(state) || liveQuietSamurai(state)
+        || liveQuietCaveman(state) || liveQuietValkyrie(state)
+        || liveQuietTourist(state)
+        || liveQuietWizard(state)
         || liveDebugSourceRation(state);
 }
 
-// Generic live-role scans still allocate real monster/global turns even
-// before their hero movement-ration accounting has been generalized.  Their
-// negative-multi recovery messages therefore need the same asynchronous tty
-// owner as source-ration roles; bounded fast-forward paths keep the legacy
-// synchronous append behavior.
 function usesQueuedHelplessRecovery(state = game) {
-    return usesSourceMovementRation(state)
-        || (state.urole?.key === 'wizard' && !state._wizardBindPath)
-        || liveQuietRogue(state) || liveQuietPriest(state)
-        || liveQuietValkyrie(state)
-        || liveQuietTourist(state);
+    return usesSourceMovementRation(state);
 }
 
 // allmain.c:u_calc_moveamt() clamps a negative movement balance after every
@@ -1794,12 +2223,11 @@ function addHeroMovementRation(state, amount) {
 function reluctantPetMessage(monster, movement) {
     const pile = game.level?.objects?.[movement.x]?.[movement.y] || [];
     const top = pile[0];
-    const objectName = top?.otyp === 265 && top?.corpsenm === 72
-        ? 'an orc corpse' : 'something';
-    if (monster?.mnum === 100) {
-        return `Your saddled pony steps reluctantly onto ${objectName}.`;
-    }
-    return `Your pet steps reluctantly onto ${objectName}.`;
+    const objectName = top ? distantMonsterObjectName(top) : 'something';
+    const airborne = !!((MONSTER_FLAGS1[monster?.mnum] ?? 0) & 0x1);
+    return `Your ${quietMonsterName(monster)} ${
+        airborne ? 'flies reluctantly over' : 'steps reluctantly onto'
+    } ${objectName}.`;
 }
 
 function monsterBearTrapMessage(monster) {
@@ -1861,11 +2289,18 @@ function monsterAttackMessage(monster, attack, previousAttack = null) {
         || (game.u?.hallucinationTurns ?? 0) > 0;
     const name = actorSpotted && hallucinating ? randomDisplayMonsterName()
         : monster?.isshk ? shopkeeperName(monster)
-            : monsterTypeName(monster?.mnum, !!monster?.female);
+            : actorSpotted ? projectedMonsterName(monster)
+                : quietMonsterName(monster);
+    const priestSubject = actorSpotted && !hallucinating
+        && (monster?.ispriest || monster?.isminion)
+        ? visiblePriestName(monster, game) : null;
     const subject = game.blind || !actorSpotted ? 'It'
-        : monster?.isshk && !hallucinating ? name : `The ${name}`;
+        : priestSubject
+            || (monster?.isshk && !hallucinating ? name : `The ${name}`);
     if (monster?.mnum === 116) {
         if (!attack.hit) return `${subject} misses!`;
+        if (attack.effect === 'electric-natural')
+            return `${subject} bites!`;
         return attack.effect === 'electric-avoided'
             ? `${subject} bites!  You avoid harm.`
             : `${subject} bites!  You get zapped!`;
@@ -2018,15 +2453,10 @@ async function resolveDeferredHeroItemTheft(action, monster, attack) {
     object.ready = false;
     const index = game.inventory.indexOf(object);
     if (index >= 0) game.inventory.splice(index, 1);
-    const inventory = monster.minvent || monster.inventory || [];
-    // Runtime monster inventories retain acquisition order.  Hero-kill
-    // relobj walks this array backward, reproducing C's newest-first minvent
-    // chain; append newly stolen objects rather than mixing chain order into
-    // an otherwise chronological representation.
-    inventory.push(object);
-    monster.minvent = inventory;
-    monster.inventory = inventory;
-    object.where = 'minvent';
+    // Runtime monster inventories mirror C minvent head-to-tail. mpickobj()
+    // applies carrying effects before head-linking the stolen identity, which
+    // can replace a cursed figurine's existing deadline.
+    addObjectToMonsterInventory(monster, object, game);
     monster.mavenge = 1;
     findArmorClass(game);
 
@@ -2145,13 +2575,24 @@ function quietMonsterName(monster) {
     return monster?.saddled ? `saddled ${name}` : name;
 }
 
+function projectedMonsterName(monster) {
+    const mnum = monster?.m_ap_type === M_AP_MONSTER
+        && Number.isInteger(monster?.mappearance)
+        ? monster.mappearance : monster?.mnum;
+    const name = monsterTypeName(mnum, !!monster?.female);
+    return monster?.saddled ? `saddled ${name}` : name;
+}
+
 function visibleMonsterSubject(monster) {
     const hallucinating = game.u?.hallucinating
         || (game.u?.hallucinationTurns ?? 0) > 0;
-    if (hallucinating) return randomDisplayMonsterSubject();
+    if (hallucinating)
+        return randomDisplayMonsterSubject(monster?.mnum === 285);
+    if (monster?.m_ap_type === M_AP_MONSTER)
+        return `The ${projectedMonsterName(monster)}`;
     return monster?.isshk
         ? shopkeeperName(monster)
-        : monster?.ispriest
+        : monster?.ispriest || monster?.isminion
             ? visiblePriestName(monster, game)
             : `The ${quietMonsterName(monster)}`;
 }
@@ -2173,12 +2614,10 @@ function monsterRelocationMessage(monster, relocation, actorWasSeen) {
     const suffix = distance <= 2 ? ' next to you'
         : distance <= BOLT_LIM * BOLT_LIM ? ' close by' : '';
     const blind = !!game.blind || (game.u?.blindTurns ?? 0) > 0;
-    if (relocation.appearMessage) {
-        const subject = blind ? 'It' : `A ${quietMonsterName(monster)}`;
-        return `${subject} suddenly ${blind ? 'arrives' : 'appears'}${
-            suffix
-        }!`;
-    }
+    // teleport.c:rloc_to_core() gives a visible old location precedence over
+    // STRAT_APPEARMSG.  Seeing the actor vanish clears that one-shot bit, so
+    // an already-visible Wizard reports a relocation rather than a fresh
+    // arrival even when genesis left STRAT_APPEARMSG set.
     if (actorWasSeen && nowSeen) {
         return `${visibleMonsterSubject(monster)} vanishes and reappears${
             suffix
@@ -2186,6 +2625,12 @@ function monsterRelocationMessage(monster, relocation, actorWasSeen) {
     }
     if (actorWasSeen)
         return `${visibleMonsterSubject(monster)} vanishes!`;
+    if (relocation.appearMessage) {
+        const subject = blind ? 'It' : `A ${quietMonsterName(monster)}`;
+        return `${subject} suddenly ${blind ? 'arrives' : 'appears'}${
+            suffix
+        }!`;
+    }
     if (nowSeen) {
         return `${visibleMonsterSubject(monster)} ${
             blind ? 'arrives' : 'appears'
@@ -2198,6 +2643,59 @@ function covetousRelocationMessage(monster, movement, actorWasSeen) {
     return monsterRelocationMessage(
         monster, movement?.covetousRelocation, actorWasSeen,
     );
+}
+
+const WIZARD_CUSS_INSULTS = [
+    'antic', 'blackguard', 'caitiff', 'chucklehead', 'coistrel', 'craven',
+    'cretin', 'cur', 'dastard', 'demon fodder', 'dimwit', 'dolt', 'fool',
+    'footpad', 'imbecile', 'knave', 'maledict', 'miscreant', 'niddering',
+    'poltroon', 'rattlepate', 'reprobate', 'scapegrace', 'varlet', 'villein',
+    'wittol', 'worm', 'wretch',
+];
+const WIZARD_CUSS_MALEDICTIONS = [
+    'Hell shall soon claim thy remains,',
+    'I chortle at thee, thou pathetic',
+    'Prepare to die, thou',
+    'Resistance is useless,',
+    'Surrender or die, thou',
+    'There shall be no mercy, thou',
+    'Thou shalt repent of thy cunning,',
+    'Thou art as a flea to me,',
+    'Thou art doomed,',
+    'Thy fate is sealed,',
+    'Verily, thou shalt be one dead',
+];
+
+function selectWizardCussMessage(action, monster) {
+    const roll = sides => {
+        const value = rn2(sides);
+        action.calls.push('rn2(' + sides + ')');
+        return value;
+    };
+    if (roll(5) === 0)
+        return visibleMonsterSubject(monster) + ' laughs fiendishly.';
+    if (game.u?.uhave?.amulet
+        && roll(WIZARD_CUSS_INSULTS.length) === 0) {
+        return '"Relinquish the amulet, '
+            + WIZARD_CUSS_INSULTS[roll(WIZARD_CUSS_INSULTS.length)] + '!"';
+    }
+    if ((game.u?.uhp ?? 1) < 5 && roll(2) === 0) {
+        const line = roll(2)
+            ? 'Even now thy life force ebbs, '
+            : 'Savor thy breath, ';
+        const suffix = line.startsWith('Savor')
+            ? ', it be thy last!' : '!';
+        return '"' + line
+            + WIZARD_CUSS_INSULTS[roll(WIZARD_CUSS_INSULTS.length)]
+            + suffix + '"';
+    }
+    if ((monster.mhp ?? 1) < 5 && roll(2) === 0)
+        return roll(2) ? '"I shall return."' : '"I\'ll be back."';
+    return '"' + WIZARD_CUSS_MALEDICTIONS[
+        roll(WIZARD_CUSS_MALEDICTIONS.length)
+    ] + ' ' + WIZARD_CUSS_INSULTS[
+        roll(WIZARD_CUSS_INSULTS.length)
+    ] + '!"';
 }
 
 function petCarriedObjectName(object) {
@@ -2231,7 +2729,10 @@ function petCarriedObjectName(object) {
             discovery.otyp === object?.otyp);
     const appearance = game.objectDescriptions?.[object?.otyp]
         ?? OBJECT_DESCRIPTIONS[object?.otyp];
-    const trueName = OBJECT_NAMES[object?.otyp] || object?.name || 'object';
+    const trueName = object?.otyp === CORPSE
+        && Number.isInteger(object?.corpsenm)
+        ? `${MONSTER_NAME[object.corpsenm] || 'monster'} corpse`
+        : OBJECT_NAMES[object?.otyp] || object?.name || 'object';
     let noun = typeKnown ? trueName : appearance || trueName;
     if (typeKnown) {
         if (objectClass === 4) noun = `ring of ${noun}`;
@@ -2383,6 +2884,319 @@ async function queueTurnMessage(message) {
     return plineWithContinuation(message);
 }
 
+async function resolveErosionFormRehumanization(
+    heroAttack, effectMessage,
+) {
+    let pagerOwned = false;
+    const effectDismissal = await queueTurnMessage(effectMessage);
+    if (effectDismissal !== null && effectDismissal !== undefined)
+        pagerOwned = true;
+
+    const rehumanized = rehumanizeHero(game);
+    if (rehumanized.regainedSight) vision_recalc(0);
+    let returnMessage = 'You return to '
+        + rehumanized.race + ' form!';
+    if (rehumanized.regainedSight)
+        returnMessage += '  You can see again.';
+    const returnDismissal = await queueTurnMessage(returnMessage);
+    if (returnDismissal !== null && returnDismissal !== undefined)
+        pagerOwned = true;
+    if (rehumanized.encumbranceMessage)
+        await queueTurnMessage(rehumanized.encumbranceMessage);
+
+    heroAttack.deferredPostHit = true;
+    return pagerOwned;
+}
+
+async function resolveDeferredHeroFirePillar(action, heroAttack) {
+    if (!heroAttack?.deferredFirePillar) return;
+    const originalDamage = d(8, 6);
+    action.calls.push('d(8,6)');
+    const fireResistant = !!(game.u?.fireResistance
+        || game.u?.fire_resistance);
+    let appliedDamage = fireResistant ? 0 : originalDamage;
+    if (game.u?.halfSpellDamage || game.u?.half_spell_damage)
+        appliedDamage = Math.trunc((appliedDamage + 1) / 2);
+
+    await burnHeroArmorByFire(game, queueTurnMessage, action.calls, rn2);
+    await destroyFireInventory(originalDamage);
+
+    game.u.uhp = Math.max(0, (game.u.uhp ?? 1) - appliedDamage);
+    heroAttack.appliedDamage = appliedDamage;
+    heroAttack.heroDied = game.u.uhp <= 0;
+    heroAttack.deferredFirePillar = false;
+}
+
+async function resolveDeferredHeroLightningSpell(action, heroAttack) {
+    if (!heroAttack?.deferredLightningSpell) return;
+    const reflectedByShield = game.uarms?.otyp === SHIELD_OF_REFLECTION;
+    if (reflectedByShield) {
+        await queueTurnMessage('It bounces off your shield.');
+        discoverReflectingShield();
+        d(8, 6);
+        action.calls.push('d(8,6)');
+        heroAttack.appliedDamage = 0;
+        heroAttack.reflectedLightning = true;
+        heroAttack.deferredLightningSpell = false;
+        return;
+    }
+    const originalDamage = d(8, 6);
+    action.calls.push('d(8,6)');
+    const shockResistant = !!(game.u?.shockResistance
+        || game.u?.shock_resistance);
+    let appliedDamage = shockResistant ? 0 : originalDamage;
+    if (game.u?.halfSpellDamage || game.u?.half_spell_damage)
+        appliedDamage = Math.trunc((appliedDamage + 1) / 2);
+
+    const scaleRoll = rn2(5);
+    action.calls.push('rn2(5)');
+    const destructionLimit = Math.min(20,
+        Math.trunc(originalDamage / 5)
+        + (originalDamage % 5 > scaleRoll ? 1 : 0));
+    if (destructionLimit > 0) {
+        const wand = (game.inventory || []).find(object =>
+            (object.oclass ?? object.class) === 11
+            || object.class === 'Wands');
+        if (wand) {
+            const explosionDamage = rnd(10);
+            action.calls.push('rnd(10)');
+            const destroyed = rn2(3) === 0;
+            action.calls.push('rn2(3)');
+            if (destroyed) {
+                heroAttack.deferredLightningWandExplosion = wand;
+                heroAttack.lightningWandExplosionDamage = explosionDamage;
+            }
+        }
+    }
+
+    const explodingWand = heroAttack.deferredLightningWandExplosion;
+    if (explodingWand) {
+        await queueTurnMessage(
+            `Your ${explodingWand.name
+                || OBJECT_NAMES[explodingWand.otyp]
+                || 'wand'} breaks apart and explodes!`,
+        );
+        const index = game.inventory?.indexOf(explodingWand) ?? -1;
+        if (index >= 0) game.inventory.splice(index, 1);
+        if (!shockResistant) {
+            game.u.uhp = Math.max(
+                0,
+                (game.u.uhp ?? 1)
+                    - (heroAttack.lightningWandExplosionDamage ?? 0),
+            );
+            exerciseAttribute(0, false);
+        } else {
+            // maybe_destroy_item() destroys the wand even when the carrier's
+            // shock resistance prevents its secondary HP damage.  This line
+            // can fit beside the explosion, but the following flash cannot;
+            // preserving both queue attempts keeps flash RNG/state behind the
+            // combined pager.
+            await queueTurnMessage("You aren't hurt!");
+        }
+        heroAttack.deferredLightningWandExplosion = null;
+        heroAttack.lightningWandExplosionDamage = 0;
+    }
+
+    const flashDuration = rnd(100);
+    action.calls.push('rnd(100)');
+    await queueTurnMessage('You are blinded by the flash!');
+    game.u.blindTurns = (game.u.blindTurns ?? 0) + flashDuration;
+    syncBlindness(game);
+    game.vision_full_recalc = 1;
+    vision_recalc(0);
+
+    game.u.uhp = Math.max(0, (game.u.uhp ?? 1) - appliedDamage);
+    heroAttack.appliedDamage = appliedDamage;
+    heroAttack.heroDied = game.u.uhp <= 0;
+    heroAttack.deferredLightningSpell = false;
+}
+
+async function resolveDeferredHeroInsectSpell(action, heroAttack) {
+    if (!heroAttack?.deferredInsectSpell) return;
+    const result = await summonInsectsForMonster(action.monster);
+    for (const monster of result.created || []) newsym(monster.mx, monster.my);
+    const snakes = result.monsterClass === 45;
+    const what = snakes ? 'snakes' : 'insects';
+    let message;
+    if (game.blind) {
+        message = `You hear someone summoning ${what}.`;
+    } else if (!(result.created || []).length) {
+        message = `${visibleMonsterSubject(action.monster)} casts at a clump of sticks, but nothing happens.`;
+    } else if (snakes) {
+        message = `${visibleMonsterSubject(action.monster)} transforms a clump of sticks into snakes!`;
+    } else {
+        message = `${visibleMonsterSubject(action.monster)} summons insects!`;
+    }
+    await queueTurnMessage(message);
+    heroAttack.summonedInsects = result.created || [];
+    heroAttack.deferredInsectSpell = false;
+}
+
+async function resolveDeferredHeroDeathTouch(action, heroAttack) {
+    if (!heroAttack?.deferredDeathTouch) return;
+    const u = game.u || {};
+    const monsterLevel = action.monster?.m_lev
+        ?? MONSTER_LEVEL[action.monster?.mnum] ?? 0;
+    const polymorphed = Upolyd(u);
+    const form = polymorphed ? u.umonnum : null;
+    const nonliving = Number.isInteger(form)
+        && monsterIsNonliving(form);
+    const demon = Number.isInteger(form)
+        && !!((MONSTER_FLAGS2[form] ?? 0) & 0x00000100);
+    if (nonliving || demon) {
+        await queueTurnMessage('You seem no deader than before.');
+        heroAttack.deferredDeathTouch = false;
+        return;
+    }
+
+    const antimagic = !!(u.antimagic
+        || u.magicResistance || u.magic_resistance);
+    let succeeds = false;
+    if (!antimagic) {
+        const sides = Math.max(1, monsterLevel);
+        const successRoll = rn2(sides);
+        action.calls.push('rn2(' + sides + ')');
+        succeeds = successRoll > 12;
+    }
+    if (!succeeds) {
+        await queueTurnMessage("Lucky for you, it didn't work!");
+        heroAttack.deferredDeathTouch = false;
+        return;
+    }
+    if (u.hallucinating || (u.hallucinationTurns ?? 0) > 0) {
+        await queueTurnMessage('You have an out of body experience.');
+        heroAttack.deferredDeathTouch = false;
+        return;
+    }
+
+    await queueTurnMessage('You feel drained...');
+    const rolledDamage = d(8, 6);
+    action.calls.push('d(8,6)');
+    const damage = 50 + rolledDamage;
+    const drain = Math.trunc(damage / 2);
+    if (polymorphed) {
+        u.mh = 0;
+        heroAttack.rehumanize = true;
+        heroAttack.appliedDamage = damage;
+    } else if (drain >= (u.uhpmax ?? 1)) {
+        u.uhp = 0;
+        heroAttack.appliedDamage = damage;
+        heroAttack.heroDied = true;
+    } else {
+        const oldHp = u.uhp ?? 1;
+        const minimumHp = Math.max(u.ulevel ?? 1, 3);
+        u.uhpmax = Math.max(minimumHp, (u.uhpmax ?? 1) - drain);
+        u.uhp = Math.min(u.uhp ?? 1, u.uhpmax);
+        const adjustedDamage = Math.max(
+            1, damage - (oldHp - u.uhp),
+        );
+        u.uhp = Math.max(0, u.uhp - adjustedDamage);
+        heroAttack.appliedDamage = adjustedDamage;
+        heroAttack.heroDied = u.uhp < 1;
+    }
+    heroAttack.deathTouchDamage = damage;
+    heroAttack.deathTouchDrain = drain;
+    heroAttack.deferredDeathTouch = false;
+}
+
+async function resolveDeferredHeroDestroyArmor(action, heroAttack) {
+    if (!heroAttack?.deferredDestroyArmor) return;
+    const antimagic = !!(game.u?.antimagic
+        || game.u?.magicResistance || game.u?.magic_resistance);
+    if (antimagic) {
+        await queueTurnMessage('A field of force surrounds you!');
+        heroAttack.deferredDestroyArmor = false;
+        return;
+    }
+
+    const armors = wornArmorInDestroyOrder();
+    const hitRoll = rn2(4);
+    action.calls.push('rn2(4)');
+    const hits = hitRoll + 1;
+    const changed = [];
+    for (let hit = 0; hit < hits && armors.length; hit++) {
+        const index = rn2(armors.length);
+        action.calls.push('rn2(' + armors.length + ')');
+        const armor = armors[index];
+        const kind = objectErosionKind(armor);
+        if (!kind || armor.oerodeproof) continue;
+        const message = objectErosionMessage(armor, kind);
+        await queueTurnMessage(message);
+        if ((armor[kind.field] || 0) >= 3) {
+            destroyWornArmor(armor);
+            changed.push({ armor, destroyed: true });
+            break;
+        }
+        armor[kind.field] = (armor[kind.field] || 0) + 1;
+        changed.push({ armor, destroyed: false });
+    }
+    if (!changed.length)
+        await queueTurnMessage('Your skin itches.');
+    findArmorClass(game);
+    heroAttack.destroyedArmor = changed;
+    heroAttack.deferredDestroyArmor = false;
+}
+
+// C mcastu.c:MCAST_CURSE_ITEMS delegates to sit.c:rndcurse().  The aura pline
+// precedes every inventory-selection roll, so the tty driver must publish it
+// before mutating object beatitude.  This selected ordinary branch has no
+// Magicbane, intelligent artifact, Antimagic, or steed saddle; those source
+// controls remain named continuations rather than being approximated here.
+async function resolveDeferredHeroCurseItems(action, heroAttack) {
+    if (!heroAttack?.deferredCurseItems) return;
+    await queueTurnMessage('You feel a malignant aura surround you.');
+
+    const objects = (game.inventory || []).filter(object =>
+        (object.oclass ?? object.class) !== 12
+        && object.class !== 'Coins');
+    const antimagic = !!(game.u?.antimagic
+        || game.u?.magicResistance || game.u?.magic_resistance);
+    const halfSpellDamage = !!(game.u?.halfSpellDamage
+        || game.u?.half_spell_damage);
+    const sides = Math.trunc(6
+        / (Number(antimagic) + Number(halfSpellDamage) + 1));
+    const count = rnd(Math.max(1, sides));
+    action.calls.push(`rnd(${Math.max(1, sides)})`);
+
+    const changed = [];
+    if (objects.length) {
+        for (let remaining = count; remaining > 0; remaining--) {
+            const selected = rnd(objects.length);
+            action.calls.push(`rnd(${objects.length})`);
+            const object = objects[selected - 1];
+            if (!object || object.cursed) continue;
+            const artifact = object.oartifact
+                ? artifactById(object.oartifact) : null;
+            if (artifact?.selfWilled) {
+                heroAttack.deferredCurseArtifactResistance = object;
+                continue;
+            }
+            if (object.blessed) unblessObjectState(object);
+            else curseObjectState(object);
+            changed.push(object);
+        }
+    }
+
+    heroAttack.cursedInventory = changed;
+    heroAttack.deferredCurseItems = false;
+}
+
+// C mcastu.c:mcast_geyser() discards castmu()'s level-scaled spell pre-roll
+// and rolls a fresh physical 8d6.  Half physical damage applies; half spell
+// damage and elemental resistances do not.
+function resolveDeferredHeroGeyser(action, heroAttack) {
+    if (!heroAttack?.deferredGeyserSpell) return;
+    const originalDamage = d(8, 6);
+    action.calls.push('d(8,6)');
+    const appliedDamage = game.u?.halfPhysicalDamage
+        || game.u?.half_physical_damage
+        ? Math.trunc((originalDamage + 1) / 2) : originalDamage;
+    game.u.uhp = Math.max(0, (game.u.uhp ?? 1) - appliedDamage);
+    heroAttack.appliedDamage = appliedDamage;
+    heroAttack.heroDied = game.u.uhp <= 0;
+    heroAttack.deferredGeyserSpell = false;
+}
+
 // C ref: potion.c:potionbreathe(POT_SLEEPING).  A thrown potion's impact
 // transaction crosses tty after the evaporation line; the vapor effect
 // resumes only after that pager is acknowledged.  Install ordinary
@@ -2391,7 +3205,7 @@ async function queueTurnMessage(message) {
 async function resumeOffensivePotionVapor(potion) {
     if (!potion || potion.object?.otyp !== POT_SLEEPING) return;
 
-    if (!game.u?.freeAction && !game.u?.sleepResistance) {
+    if (!heroHasFreeAction(game) && !game.u?.sleepResistance) {
         await queueTurnMessage('You feel rather tired.');
         game._helplessTurns = rnd(5);
         game._helplessReason = 'sleeping off a magical draught';
@@ -2408,12 +3222,19 @@ async function resumeOffensivePotionVapor(potion) {
     }
 }
 
-async function finishDebugDeathSurvivalMessage(g = game) {
-    if (!g._debugDeathSurvivedMessagePending
+async function finishDeathSurvivalMessage(g = game) {
+    if (!g._deathSurvivedMessagePending
         || g._heroTimePending
         || g.program_state?.gameover) return;
-    g._debugDeathSurvivedMessagePending = false;
+    const runmodeDelayPending = !!g._deathSurvivalRunmodeDelayPending;
+    delete g._deathSurvivalRunmodeDelayPending;
+    await captureRunmodeDelay(g, runmodeDelayPending);
+    g._deathSurvivedMessagePending = false;
     await queueTurnMessage('You survived that attempt on your life.');
+    if (g._deathSurvivalHeroTookTimePending != null) {
+        finishHeroTookTimeRng(g._deathSurvivalHeroTookTimePending);
+        g._deathSurvivalHeroTookTimePending = null;
+    }
 }
 
 async function waitForMonsterMore(message) {
@@ -2556,6 +3377,195 @@ async function waterDemonAdjacentAttack(monster) {
     };
 }
 
+function monsterBeamPositionIsValid(x, y) {
+    return x >= 1 && x < COLNO && y >= 0 && y < ROWNO;
+}
+
+function monsterBeamPositionIsOpen(x, y) {
+    if (!monsterBeamPositionIsValid(x, y)) return false;
+    const location = game.level?.at(x, y);
+    const closedDoor = location?.typ === DOOR
+        && !!(location.doormask & (D_CLOSED | D_LOCKED));
+    return !!location && ZAP_POS(location.typ) && !closedDoor;
+}
+
+function monsterBeamTargetAt(x, y) {
+    return game.level?.monsters?.find(monster =>
+        (monster.mhp ?? 1) > 0 && monster.mx === x && monster.my === y)
+        || null;
+}
+
+// C muse.c:use_offensive()->buzz()/buzz_force_miss()->dobuzz().  The beam
+// stays painted while tty pages each collision message; later actors cannot
+// run until this async source transaction has completed.
+async function resolveMonsterMagicMissileBeam(action) {
+    const offensive = action?.movement?.offensiveWand;
+    if (offensive?.kind !== 'offensive-wand-magic-missile')
+        return offensive || null;
+
+    let x = action.monster.mx;
+    let y = action.monster.my;
+    let dx = offensive.rayDx;
+    let dy = offensive.rayDy;
+    let range = offensive.range;
+    const beamCells = new Map();
+    let pendingMapFlushCursor = null;
+    let pendingStatusFlushCursor = null;
+
+    const paintBeamCell = (beamX, beamY) => {
+        beamCells.set(`${beamX},${beamY}`, { x: beamX, y: beamY });
+        const glyph = dy === 0 ? 'q' : dx === 0 ? 'x'
+            : dx === dy ? '\\' : '/';
+        show_glyph_cell(
+            beamX, beamY, glyph, CLR_BRIGHT_BLUE, dx === 0 || dy === 0,
+        );
+    };
+
+    while (range-- > 0) {
+        const previousX = x;
+        const previousY = y;
+        x += dx;
+        y += dy;
+        const valid = monsterBeamPositionIsValid(x, y);
+        const location = valid ? game.level?.at(x, y) : null;
+
+        if (valid && location?.typ !== STONE) {
+            if (cansee(x, y)
+                && (monsterBeamPositionIsOpen(x, y)
+                    || (monsterBeamPositionIsValid(previousX, previousY)
+                        && cansee(previousX, previousY)))) {
+                const beamGlyph = dy === 0 ? 'q' : dx === 0 ? 'x'
+                    : dx === dy ? '\\' : '/';
+                const beamDecgfx = dx === 0 || dy === 0;
+                const beamLocation = game.level?.at(x, y);
+                const beamCellChanges = beamLocation?.disp_ch !== beamGlyph
+                    || beamLocation?.disp_color !== CLR_BRIGHT_BLUE
+                    || !!beamLocation?.disp_decgfx !== beamDecgfx;
+                paintBeamCell(x, y);
+                await flush_screen(1);
+                const visibleMessage = game._pending_message
+                    || game._retained_message || '';
+                let animationCursor = [x, y + 1];
+                if (beamCellChanges && pendingMapFlushCursor
+                    && (pendingMapFlushCursor[1] > animationCursor[1]
+                        || (pendingMapFlushCursor[1] === animationCursor[1]
+                            && pendingMapFlushCursor[0]
+                                > animationCursor[0]))) {
+                    animationCursor = pendingMapFlushCursor;
+                } else if (!beamCellChanges) {
+                    if (pendingStatusFlushCursor) {
+                        animationCursor = pendingStatusFlushCursor;
+                    } else if (pendingMapFlushCursor) {
+                        animationCursor = pendingMapFlushCursor;
+                    } else if (visibleMessage) {
+                        animationCursor = [visibleMessage.length, 0];
+                    } else if (game.nhDisplay) {
+                        animationCursor = [
+                            game.nhDisplay.cursorCol,
+                            game.nhDisplay.cursorRow,
+                        ];
+                    }
+                }
+                game.nhDisplay?.setCursor(
+                    animationCursor[0], animationCursor[1],
+                );
+                await game.animationFrame?.();
+                pendingMapFlushCursor = null;
+                pendingStatusFlushCursor = null;
+            }
+            const target = monsterBeamTargetAt(x, y);
+            if (target) {
+                if (offensive.firstShotForcedMiss) {
+                    if (cansee(x, y)) {
+                        await queueTurnMessage(
+                            `The magic missile misses the ${
+                                quietMonsterName(target)
+                            }.`,
+                        );
+                    }
+                } else {
+                    const contact = resolveMonsterMagicMissileContact(
+                        action, target, game,
+                    );
+                    (offensive.contacts ||= []).push(contact);
+                    if (contact.hit) {
+                        range -= 2;
+                        if (contact.killed) {
+                            const deathCursor = [target.mx, target.my + 1];
+                            await queueTurnMessage(
+                                `The ${quietMonsterName(
+                                    target,
+                                )} is destroyed by the magic missile!`,
+                            );
+                            finishMonsterMagicMissileDeath(
+                                action, target, game,
+                            );
+                            pendingMapFlushCursor = deathCursor;
+                        } else if (cansee(x, y)) {
+                            await queueTurnMessage(
+                                `The magic missile hits the ${
+                                    quietMonsterName(target)
+                                }!`,
+                            );
+                        }
+                    } else if (cansee(x, y)) {
+                        await queueTurnMessage(
+                            `The magic missile misses the ${
+                                quietMonsterName(target)
+                            }.`,
+                        );
+                    }
+                }
+            } else if (x === game.u?.ux && y === game.u?.uy && range >= 0) {
+                if (offensive.firstShotForcedMiss) {
+                    await queueTurnMessage(
+                        'The magic missile whizzes by you!',
+                    );
+                } else {
+                    const hit = beginHeroMagicMissileContact(action, game);
+                    (offensive.contacts ||= []).push({ hero: true, hit });
+                    if (hit) {
+                        range -= 2;
+                        await queueTurnMessage('The magic missile hits you!');
+                        const damage = finishHeroMagicMissileDamage(
+                            action, game,
+                        );
+                        offensive.contacts.at(-1).damage = damage;
+                        const status = _statusLine2();
+                        const hpField = status.indexOf('HP:');
+                        const hpValueEnd = status.indexOf('(', hpField);
+                        pendingStatusFlushCursor = [
+                            hpValueEnd >= 0 ? hpValueEnd : status.length,
+                            23,
+                        ];
+                        exerciseAttribute(0, false);
+                    } else {
+                        await queueTurnMessage(
+                            'The magic missile whizzes by you!',
+                        );
+                    }
+                }
+            }
+        }
+
+        if (!monsterBeamPositionIsOpen(x, y)) {
+            range--;
+            if (range > 0
+                && monsterBeamPositionIsValid(previousX, previousY)
+                && cansee(previousX, previousY)) {
+                await queueTurnMessage('The magic missile bounces!');
+            }
+            // The reached carriers are cardinal.  Native dobuzz()
+            // reverses a cardinal beam without a bounce-direction RNG draw.
+            dx = -dx;
+            dy = -dy;
+        }
+    }
+    for (const cell of beamCells.values()) newsym(cell.x, cell.y);
+    offensive.beamCompleted = true;
+    return offensive;
+}
+
 async function executeLiveQuietMonsterScan(monsterScan) {
     // Bounded Oracle witness: after the visible soldier wield transaction,
     // C's next hero-movement/vision boundary advances one presentation draw
@@ -2569,11 +3579,44 @@ async function executeLiveQuietMonsterScan(monsterScan) {
     // Run one actor at a time so a tty --More-- inside an action suspends the
     // source transaction before later actors or post-message RNG execute.
     const actions = [];
+    const everyturnVisits = new Map();
+    let actorOffset = 0;
+    for (let round = 0;
+        round < (monsterScan.rounds?.length ?? 0);
+        round++) {
+        const active = monsterScan.rounds[round] || [];
+        const visits = monsterScan.visits?.[round] || active;
+        let visitOffset = 0;
+        for (const actor of active) {
+            const batch = [];
+            while (visitOffset < visits.length) {
+                const visit = visits[visitOffset++];
+                batch.push(visit);
+                if (visit === actor) break;
+            }
+            everyturnVisits.set(actorOffset, [
+                ...(everyturnVisits.get(actorOffset) || []), ...batch,
+            ]);
+            actorOffset++;
+        }
+        everyturnVisits.set(actorOffset, [
+            ...(everyturnVisits.get(actorOffset) || []),
+            ...visits.slice(visitOffset),
+        ]);
+    }
+    const runEveryturnVisits = offset => {
+        const visits = everyturnVisits.get(offset) || [];
+        runMonsterEveryturnEffects(
+            visits, game, rn2, { fmonOrdered: true },
+        );
+        everyturnVisits.delete(offset);
+    };
     let earlierActorMessageInScan = false;
     let earlierActorPagerInScan = false;
     for (let actorIndex = 0;
         actorIndex < monsterScan.actors.length;
         actorIndex++) {
+        runEveryturnVisits(actorIndex);
         const actor = monsterScan.actors[actorIndex];
         // C iter_mons_safe() snapshots pointers, but movemon_singlemon()
         // rechecks DEADMONSTER and mon_offmap when each saved identity is
@@ -2660,6 +3703,16 @@ async function executeLiveQuietMonsterScan(monsterScan) {
         const didSeeOpenedDoor = !!(movement?.openedDoor
             && cansee(monster.mx, monster.my));
         actions.push(action);
+        if (movement?.deferredTenguRelocation) {
+            newsym(movement.oldx, movement.oldy);
+            newsym(movement.x, movement.y);
+            const relocationMessage = monsterRelocationMessage(
+                monster, movement.tenguRelocation, actorWasSeen,
+            );
+            if (relocationMessage)
+                await queueTurnMessage(relocationMessage);
+            continue;
+        }
         if (movement?.deferredFleeingRelocation) {
             // dochug()'s successful fleeing teleport is a complete actor
             // action.  rloc_to_core() repaints and emits its visibility line
@@ -2836,6 +3889,10 @@ async function executeLiveQuietMonsterScan(monsterScan) {
                             ? 'You see a door open.'
                             : game.deaf ? null : 'You hear a door open.';
                 if (message) await queueTurnMessage(message);
+                if (movement.deferredAfterDoorMessage) {
+                    resumeDeferredMonsterDoor(action, game);
+                    movement = action.movement;
+                }
             }
         }
         if (deferredReluctantMove) {
@@ -2844,8 +3901,33 @@ async function executeLiveQuietMonsterScan(monsterScan) {
             // mintrap() message is what can force the reluctance line into a
             // tty --More-- before the destination is repainted.
             const message = reluctantPetMessage(monster, movement);
-            await queueTurnMessage(message);
+            const dismissal = await queueTurnMessage(message);
             newsym(movement.oldx, movement.oldy);
+            // If the reluctance line itself did not have to page an older
+            // topline, postmov() reaches mintrap() with the pet already
+            // projectable at its destination.  A trap hit/miss pline can
+            // then page the reluctance line while showing that live actor.
+            if ((dismissal === null || dismissal === undefined)
+                && movement.trap?.kind === 'projectile-trap') {
+                newsym(movement.x, movement.y);
+            }
+        }
+        if (movement?.trap?.kind === 'projectile-trap'
+            && movement.trap.visible
+            && movement.deferredAfterProjectileTrapMessage) {
+            const event = movement.trap;
+            const projectile = event.projectileType === DART
+                ? 'dart' : 'arrow';
+            const noun = event.pendingMissile?.opoisoned
+                ? `poisoned ${projectile}` : projectile;
+            const article = /^[aeiou]/i.test(noun) ? 'an' : 'a';
+            await queueTurnMessage(
+                `${visibleMonsterSubject(monster)} is ${
+                    event.hit ? 'hit' : 'almost hit'
+                } by ${article} ${noun}!`,
+            );
+            resumeDeferredMonsterProjectileTrap(action, game);
+            movement = action.movement;
         }
         if (movement?.trapEscape?.escaped && monsterIsSeen)
             await queueTurnMessage(monsterTrapEscapeMessage(monster));
@@ -2906,15 +3988,23 @@ async function executeLiveQuietMonsterScan(monsterScan) {
                 newsym(event.launch.x, event.launch.y);
                 const dx = Math.sign(event.endpoint.x - event.launch.x);
                 const dy = Math.sign(event.endpoint.y - event.launch.y);
-                event.transient = {
-                    x: movement.x - dx,
-                    y: movement.y - dy,
-                };
                 const glyph = transientObjectGlyph(event.boulder);
-                show_glyph_cell(
-                    event.transient.x, event.transient.y,
-                    glyph.ch, glyph.color, glyph.decgfx, glyph.attr,
+                let flightX = event.launch.x;
+                let flightY = event.launch.y;
+                const preTargetSteps = Math.max(
+                    Math.abs(movement.x - flightX),
+                    Math.abs(movement.y - flightY),
                 );
+                event.transient = null;
+                for (let step = 0; step < preTargetSteps; step++) {
+                    event.transient = await animateRollingBoulderCell(
+                        event.boulder, glyph,
+                        flightX, flightY, event.transient,
+                    );
+                    flightX += dx;
+                    flightY += dy;
+                }
+                event.flight = { x: flightX, y: flightY, dx, dy, glyph };
             }
             if (event.released && event.hit) {
                 await queueTurnMessage(
@@ -2931,9 +4021,29 @@ async function executeLiveQuietMonsterScan(monsterScan) {
                 );
             }
             if (event.released) {
-                resumeDeferredMonsterRollingBoulder(action, game);
+                // ohitmon() finishes death/corpse work before launch_obj()
+                // resumes its two-delay traversal from the target cell.
+                resumeDeferredMonsterRollingBoulderDeath(action, game);
                 movement = action.movement;
-                newsym(event.transient.x, event.transient.y);
+                const { dx, dy, glyph } = event.flight;
+                let flightX = event.flight.x;
+                let flightY = event.flight.y;
+                const postTargetSteps = Math.max(
+                    Math.abs(event.endpoint.x - flightX),
+                    Math.abs(event.endpoint.y - flightY),
+                );
+                for (let step = 0; step < postTargetSteps; step++) {
+                    event.transient = await animateRollingBoulderCell(
+                        event.boulder, glyph,
+                        flightX, flightY, event.transient,
+                    );
+                    flightX += dx;
+                    flightY += dy;
+                }
+                finishDeferredMonsterRollingBoulderPlacement(action, game);
+                movement = action.movement;
+                if (event.transient)
+                    newsym(event.transient.x, event.transient.y);
                 newsym(event.endpoint.x, event.endpoint.y);
             }
         }
@@ -3015,12 +4125,81 @@ async function executeLiveQuietMonsterScan(monsterScan) {
                 `${visibleMonsterSubject(monster)} wields ${
                     distantMonsterObjectName(movement.wieldedWeapon)}!`,
             );
+            if (movement.wieldedWeapon.cursed) {
+                const subject = visibleMonsterSubject(monster);
+                const lowerSubject = `${subject[0].toLowerCase()}${
+                    subject.slice(1)
+                }`;
+                const possessive = /s$/iu.test(lowerSubject)
+                    ? `${lowerSubject}'` : `${lowerSubject}'s`;
+                const weaponName = OBJECT_NAMES[
+                    movement.wieldedWeapon.otyp
+                ] || movement.wieldedWeapon.name || 'weapon';
+                await queueTurnMessage(
+                    `The ${weaponName} welds itself to ${possessive} hand!`,
+                );
+            }
             if (game._activeSpecialLevel?.prototype === 'oracle'
                 && monster.mnum === 277
                 && (game.u?.hallucinating
                     || (game.u?.hallucinationTurns ?? 0) > 0)) {
                 game._boundedOracleHalluPostWieldDisplayDebt = 1;
             }
+            if (movement.deferredHeroWield) {
+                game._deferVisibleMonsterContact = true;
+                try {
+                    resumeDeferredHeroAttackAfterWield(action, game);
+                } finally {
+                    game._deferVisibleMonsterContact = false;
+                }
+            }
+        }
+        if (movement?.offensiveWand?.kind
+            === 'offensive-wand-magic-missile') {
+            const offensive = movement.offensiveWand;
+            let offensiveLineDismissal;
+            if (actorWasSeen || monsterIsSeen) {
+                offensive.object.dknown = true;
+                recordObjectEncounter(offensive.object.otyp);
+                offensiveLineDismissal = await queueTurnMessage(
+                    `${visibleMonsterSubject(monster)} zaps ${
+                        distantMonsterObjectName(offensive.object)
+                    }!`,
+                );
+            } else if (!game.deaf) {
+                const range = couldsee(monster.mx, monster.my)
+                    ? BOLT_LIM + 1 : BOLT_LIM - 3;
+                const proximity = dist2(
+                    monster.mx, monster.my,
+                    game.u?.ux ?? monster.mx,
+                    game.u?.uy ?? monster.my,
+                ) <= range * range ? 'nearby' : 'distant';
+                offensiveLineDismissal = await queueTurnMessage(
+                    `You hear a ${proximity} zap.`,
+                );
+                offensive.object.dknown = false;
+            }
+            if (offensiveLineDismissal !== null
+                && offensiveLineDismissal !== undefined) {
+                earlierActorPagerInScan = true;
+            }
+
+            if (game._occupation)
+                game._interruptedMultiActionDebt = true;
+            game._occupation = null;
+            game._cannedCommands = [];
+            if (game._runState) stopRun(game);
+
+            if ((actorWasSeen || monsterIsSeen)
+                && !game._knownObjectTypes?.has(offensive.object.otyp)) {
+                exerciseAttribute(2, true);
+                recordObjectKnowledge(offensive.object.otyp);
+            }
+            resumeDeferredMonsterMagicMissileWand(action, game);
+            await resolveMonsterMagicMissileBeam(action);
+            monster.mwandexp = true;
+            earlierActorMessageInScan = true;
+            movement = action.movement;
         }
         if (movement?.offensiveWand?.kind === 'offensive-wand-striking') {
             const offensive = movement.offensiveWand;
@@ -3060,6 +4239,8 @@ async function executeLiveQuietMonsterScan(monsterScan) {
             if (game._runState) stopRun(game);
 
             const effect = resumeDeferredMonsterStrikingWand(action, game);
+            if (effect?.message === 'Boing!')
+                await shieldeff(game.u.ux, game.u.uy);
             if (effect?.message) {
                 const effectDismissal = await queueTurnMessage(effect.message);
                 if (effectDismissal !== null
@@ -3111,9 +4292,33 @@ async function executeLiveQuietMonsterScan(monsterScan) {
             let heroAttack = movement.attack;
                 let previousHeroAttack = null;
                 let actorContactPagerOwned = false;
+                let actorContactMessageAfterPager = false;
                 while (heroAttack) {
                     if (heroAttack.kind === 'hero-spell') {
                         if (!heroAttack.cast) {
+                            let curseMessage = null;
+                            if (heroAttack.fumbled && !game.deaf
+                                && canProjectMonster(
+                                    monster, monster.mx, monster.my,
+                                )) {
+                                curseMessage = `The air crackles around the ${
+                                    quietMonsterName(monster)
+                                }.`;
+                            } else if (heroAttack.curseKind === 'audible') {
+                                curseMessage = 'You hear a mumbled curse.';
+                            } else if (heroAttack.curseKind) {
+                                const caster = visibleMonsterSubject(monster);
+                                curseMessage = heroAttack.curseKind
+                                    === 'visible-undirected'
+                                    ? `${caster} points all around, then curses.`
+                                    : `${caster} points at you, then curses.`;
+                            }
+                            const repeatedAudibleCurse
+                                = heroAttack.curseKind === 'audible'
+                                && (game._pending_message || '')
+                                    .endsWith(curseMessage);
+                            if (curseMessage && !repeatedAudibleCurse)
+                                await queueTurnMessage(curseMessage);
                             previousHeroAttack = heroAttack;
                             heroAttack = continueDeferredHeroAttack(
                                 action, game,
@@ -3123,26 +4328,132 @@ async function executeLiveQuietMonsterScan(monsterScan) {
                         const caster = canProjectMonster(
                             monster, monster.mx, monster.my,
                         ) ? visibleMonsterSubject(monster) : 'Something';
-                        await queueTurnMessage(
-                            `${caster} casts a spell${
-                                heroAttack.directed ? ' at you' : ''
-                            }!`,
+                        const casterVisible = canProjectMonster(
+                            monster, monster.mx, monster.my,
                         );
-                        let effectMessage = null;
-                        if (heroAttack.spell === 'psi-bolt') {
-                            const damage = heroAttack.damage ?? 0;
-                            effectMessage = damage <= 5
-                                ? 'You get a slight headache.'
-                                : damage <= 10
-                                    ? 'Your brain is on fire!'
-                                    : damage <= 20
-                                        ? 'Your head suddenly aches painfully!'
-                                        : 'Your head suddenly aches very painfully!';
+                        if (casterVisible || heroAttack.directed) {
+                            await queueTurnMessage(
+                                `${caster} casts a spell${
+                                    heroAttack.directed ? ' at you' : ''
+                                }!`,
+                            );
                         }
+                        if (heroAttack.deferredSpellDamage)
+                            rollDeferredHeroSpellDamage(action, game);
+                        let effectMessage = heroAttack.spellEffectMessage;
+                        if (heroAttack.spell === 'cure-self'
+                            && canProjectMonster(
+                                monster, monster.mx, monster.my,
+                            )) {
+                            effectMessage = `${
+                                visibleMonsterSubject(monster)
+                            } looks better.`;
+                        }
+                        if (heroAttack.spell === 'death-touch') {
+                            let pronoun;
+                            if (game.u?.hallucinating
+                                || (game.u?.hallucinationTurns ?? 0) > 0) {
+                                const gender = rn2(4);
+                                action.calls.push('rn2(4)');
+                                pronoun = ['he', 'she', 'it', 'they'][gender];
+                            } else {
+                                pronoun = monster.female ? 'she'
+                                    : monster.genderless ? 'it' : 'he';
+                            }
+                            effectMessage = 'Oh no, ' + pronoun
+                                + "'s using the touch of death!";
+                        }
+                        if (heroAttack.spell === 'disappear'
+                            && canProjectMonster(
+                                monster, monster.mx, monster.my,
+                            )) {
+                            const seesInvisible = !!(game.u?.seeInvisible
+                                || game.u?.see_invisible
+                                || (game.u?.seeInvisibleTurns ?? 0) > 0);
+                            effectMessage = `${
+                                visibleMonsterSubject(monster)
+                            } suddenly ${
+                                seesInvisible
+                                    ? 'becomes transparent' : 'disappears'
+                            }!`;
+                        }
+                        // mcast_confuse_you() commits make_confused() before
+                        // its explicit feedback pline.  If that line forces
+                        // the older cast line through tty, the pager already
+                        // paints Conf; other selected spell effects retain
+                        // their post-message state ordering.
+                        if (heroAttack.spell === 'confuse-you')
+                            resumeDeferredHeroSpell(action, game);
                         const effectDismissal = effectMessage
                             ? await queueTurnMessage(effectMessage)
                             : null;
-                        resumeDeferredHeroSpell(action, game);
+                        if (heroAttack.deferredSpellEffect)
+                            resumeDeferredHeroSpell(action, game);
+                        if (heroAttack.deferredFirePillar)
+                            await resolveDeferredHeroFirePillar(
+                                action, heroAttack,
+                            );
+                        if (heroAttack.deferredLightningSpell)
+                            await resolveDeferredHeroLightningSpell(
+                                action, heroAttack,
+                            );
+                        if (heroAttack.deferredInsectSpell)
+                            await resolveDeferredHeroInsectSpell(
+                                action, heroAttack,
+                            );
+                        if (heroAttack.deferredCurseItems)
+                            await resolveDeferredHeroCurseItems(
+                                action, heroAttack,
+                            );
+                        if (heroAttack.deferredSummonMonsters) {
+                            const summoned
+                                = await resolveDeferredHeroSummonMonsters(
+                                    action, game,
+                                );
+                            if (summoned?.message)
+                                await queueTurnMessage(summoned.message);
+                        }
+                        if (heroAttack.deferredCloneWizard) {
+                            await queueTurnMessage('Double Trouble...');
+                            const clone
+                                = await beginDeferredHeroCloneWizard(
+                                    action, game,
+                                );
+                            if (clone?.message)
+                                await queueTurnMessage(clone.message);
+                            finishDeferredHeroCloneWizard(action, game);
+                        }
+                        if (heroAttack.deferredHasteSelf) {
+                            const haste = resolveDeferredHeroHasteSelf(
+                                action, game,
+                            );
+                            if (haste?.message)
+                                await queueTurnMessage(haste.message);
+                        }
+                        if (heroAttack.deferredAggravation)
+                            resolveDeferredHeroAggravation(action, game);
+                        if (heroAttack.deferredDeathTouch)
+                            await resolveDeferredHeroDeathTouch(
+                                action, heroAttack,
+                            );
+                        if (heroAttack.deferredDestroyArmor)
+                            await resolveDeferredHeroDestroyArmor(
+                                action, heroAttack,
+                            );
+                        if (heroAttack.deferredGeyserSpell)
+                            resolveDeferredHeroGeyser(action, heroAttack);
+                        if (heroAttack.paralyzed) stopRun(game);
+                        if (heroAttack.toggledBlindness)
+                            vision_recalc(0);
+                        if (heroAttack.monsterDisappeared) {
+                            newsym(monster.mx, monster.my);
+                            if (cansee(monster.mx, monster.my)
+                                && !canProjectMonster(
+                                    monster, monster.mx, monster.my,
+                                )) {
+                                map_invisible(monster.mx, monster.my);
+                            }
+                        }
                         if (heroAttack.rehumanize) {
                             // tty urgent_pline() replaces the effect line
                             // which forced a pager when that pager was
@@ -3247,6 +4558,18 @@ async function executeLiveQuietMonsterScan(monsterScan) {
                 }
                 const activeHpKey = Upolyd(game.u) ? 'mh' : 'uhp';
                 const hpBeforeDeferredHit = game.u?.[activeHpKey] ?? 1;
+                if (heroAttack.deferredStickingAfterHit)
+                    resumeDeferredHeroSticking(action, game);
+                if (heroAttack.stickingMessage) {
+                    const stickingDismissal = await queueTurnMessage(
+                        heroAttack.stickingMessage,
+                    );
+                    heroAttack.stickingMessage = null;
+                    if (stickingDismissal !== null
+                        && stickingDismissal !== undefined) {
+                        actorContactPagerOwned = true;
+                    }
+                }
                 if (heroAttack.deferredItemTheft) {
                     const theftPager = await resolveDeferredHeroItemTheft(
                         action, monster, heroAttack,
@@ -3277,18 +4600,219 @@ async function executeLiveQuietMonsterScan(monsterScan) {
                         actorContactPagerOwned = true;
                     }
                 }
+                if (heroAttack.deferredFireNegation)
+                    resumeDeferredHeroFireSpecial(action, game);
+                if (heroAttack.fireEffectMessage) {
+                    const fireDismissal = await queueTurnMessage(
+                        heroAttack.fireEffectMessage,
+                    );
+                    heroAttack.fireEffectMessage = null;
+                    if (fireDismissal !== null
+                        && fireDismissal !== undefined) {
+                        actorContactPagerOwned = true;
+                    }
+                }
+                if (heroAttack.fireResistanceMessage) {
+                    const resistanceDismissal = await queueTurnMessage(
+                        heroAttack.fireResistanceMessage,
+                    );
+                    heroAttack.fireResistanceMessage = null;
+                    if (resistanceDismissal !== null
+                        && resistanceDismissal !== undefined) {
+                        actorContactPagerOwned = true;
+                    }
+                }
+                if (heroAttack.deferredElectricNegation)
+                    resumeDeferredHeroElectricSpecial(action, game);
+                if (heroAttack.electricEffectMessage) {
+                    const electricDismissal = await queueTurnMessage(
+                        heroAttack.electricEffectMessage,
+                    );
+                    heroAttack.electricEffectMessage = null;
+                    if (electricDismissal !== null
+                        && electricDismissal !== undefined) {
+                        actorContactPagerOwned = true;
+                    }
+                }
+                if (heroAttack.deferredLifeDrainGate)
+                    resumeDeferredHeroLifeDrain(action, game);
+                if (heroAttack.lifeDrainMessage) {
+                    const lifeDrainDismissal = await queueTurnMessage(
+                        heroAttack.lifeDrainMessage,
+                    );
+                    heroAttack.lifeDrainMessage = null;
+                    if (lifeDrainDismissal !== null
+                        && lifeDrainDismissal !== undefined) {
+                        actorContactPagerOwned = true;
+                    }
+                }
+                if (heroAttack.deferredStunGate)
+                    resumeDeferredHeroStun(action, game);
+                if (heroAttack.stunMessage) {
+                    const stunDismissal = await queueTurnMessage(
+                        heroAttack.stunMessage,
+                    );
+                    heroAttack.stunMessage = null;
+                    if (stunDismissal !== null
+                        && stunDismissal !== undefined) {
+                        actorContactPagerOwned = true;
+                    }
+                }
+                if (heroAttack.deferredRustRehumanize) {
+                    const rustFormPagerOwned
+                        = await resolveErosionFormRehumanization(
+                            heroAttack, 'You rust!',
+                        );
+                    actorContactPagerOwned ||= rustFormPagerOwned;
+                    heroAttack.deferredRustRehumanize = false;
+                }
+                while (heroAttack.deferredRustArmor) {
+                    const rustArmor = resumeDeferredHeroRustArmor(action, game);
+                    if (rustArmor?.message) {
+                        const rustDismissal = await queueTurnMessage(
+                            rustArmor.message,
+                        );
+                        if (rustDismissal !== null
+                            && rustDismissal !== undefined) {
+                            actorContactPagerOwned = true;
+                        }
+                    }
+                    const rustFinal = finishDeferredHeroRustArmor(action, game);
+                    if (rustFinal?.message) {
+                        const dissolveDismissal = await queueTurnMessage(
+                            rustFinal.message,
+                        );
+                        if (dissolveDismissal !== null
+                            && dissolveDismissal !== undefined) {
+                            actorContactPagerOwned = true;
+                        }
+                    }
+                }
+                while (heroAttack.deferredCorrosionArmor) {
+                    const corrosionArmor = resumeDeferredHeroCorrosionArmor(
+                        action, game,
+                    );
+                    if (corrosionArmor?.message) {
+                        const corrosionDismissal = await queueTurnMessage(
+                            corrosionArmor.message,
+                        );
+                        if (corrosionDismissal !== null
+                            && corrosionDismissal !== undefined) {
+                            actorContactPagerOwned = true;
+                            // The dismissal can belong to the older hitmsg,
+                            // with this armor line installed afterward.  If
+                            // death later forces the newer line through tty,
+                            // its status must show committed HP rather than
+                            // inherit the pre-hit bridge from the old pager.
+                            actorContactMessageAfterPager
+                                = game._pending_message
+                                    === corrosionArmor.message;
+                        }
+                    }
+                    const corrosionFinal = finishDeferredHeroCorrosionArmor(
+                        action, game,
+                    );
+                    if (corrosionFinal?.message) {
+                        const dissolveDismissal = await queueTurnMessage(
+                            corrosionFinal.message,
+                        );
+                        if (dissolveDismissal !== null
+                            && dissolveDismissal !== undefined) {
+                            actorContactPagerOwned = true;
+                        }
+                    }
+                }
+                if (heroAttack.deferredDecayRehumanize) {
+                    const decayFormPagerOwned
+                        = await resolveErosionFormRehumanization(
+                            heroAttack, 'You rot!',
+                        );
+                    actorContactPagerOwned ||= decayFormPagerOwned;
+                    heroAttack.deferredDecayRehumanize = false;
+                }
+                while (heroAttack.deferredDecayArmor) {
+                    const decayArmor = resumeDeferredHeroDecayArmor(
+                        action, game,
+                    );
+                    if (decayArmor?.message) {
+                        const decayDismissal = await queueTurnMessage(
+                            decayArmor.message,
+                        );
+                        if (decayDismissal !== null
+                            && decayDismissal !== undefined) {
+                            actorContactPagerOwned = true;
+                        }
+                    }
+                    const decayFinal = finishDeferredHeroDecayArmor(
+                        action, game,
+                    );
+                    if (decayFinal?.message) {
+                        const decayFinalDismissal = await queueTurnMessage(
+                            decayFinal.message,
+                        );
+                        if (decayFinalDismissal !== null
+                            && decayFinalDismissal !== undefined) {
+                            actorContactPagerOwned = true;
+                        }
+                    }
+                }
+                if (heroAttack.drainMessage) {
+                    const drainDismissal = await queueTurnMessage(
+                        heroAttack.drainMessage,
+                    );
+                    heroAttack.drainMessage = null;
+                    if (drainDismissal !== null
+                        && drainDismissal !== undefined) {
+                        actorContactPagerOwned = true;
+                    }
+                    findArmorClass(game);
+                }
                 if (heroAttack.deferredLegEffect)
                     resumeDeferredHeroLegs(action, game);
                 if (heroAttack.deferredPostHit) {
                     resumeDeferredHeroContact(action, game);
-                    if (heroAttack.deferredPoisonEffect) {
-                        actorContactPagerOwned
-                            ||= await resolveDeferredHeroPoison(
-                            action, monster, heroAttack,
+                    if (heroAttack.electricInventoryMessage) {
+                        const electricItemDismissal = await queueTurnMessage(
+                            heroAttack.electricInventoryMessage,
                         );
+                        heroAttack.electricInventoryMessage = null;
+                        heroAttack.electricInventoryMessagePending = false;
+                        if (electricItemDismissal !== null
+                            && electricItemDismissal !== undefined) {
+                            actorContactPagerOwned = true;
+                        }
+                        resumeDeferredHeroContact(action, game);
+                    }
+                    if (heroAttack.deferredPoisonEffect) {
+                        const poisonPagerOwned
+                            = await resolveDeferredHeroPoison(
+                                action, monster, heroAttack,
+                            );
+                        actorContactPagerOwned ||= poisonPagerOwned;
                         heroAttack.deferredPoisonEffect = false;
                         resumeDeferredHeroContact(action, game);
                     }
+                }
+                if (heroAttack.contactRehumanized?.changed) {
+                    const rehumanized = heroAttack.contactRehumanized;
+                    if (rehumanized.regainedSight) vision_recalc(0);
+                    let returnMessage
+                        = `You return to ${rehumanized.race} form!`;
+                    if (rehumanized.regainedSight)
+                        returnMessage += '  You can see again.';
+                    const returnDismissal = await queueTurnMessage(
+                        returnMessage,
+                    );
+                    if (returnDismissal !== null
+                        && returnDismissal !== undefined) {
+                        actorContactPagerOwned = true;
+                    }
+                    if (rehumanized.encumbranceMessage) {
+                        await queueTurnMessage(
+                            rehumanized.encumbranceMessage,
+                        );
+                    }
+                    heroAttack.contactRehumanized = null;
                 }
                 if (heroAttack.deferredBlindEffect) {
                     const toggledBlindness = resumeDeferredHeroBlindness(
@@ -3296,8 +4820,19 @@ async function executeLiveQuietMonsterScan(monsterScan) {
                     );
                     if (toggledBlindness) vision_recalc(0);
                 }
-                if (heroAttack.deferredStoningEffect)
+                if (heroAttack.deferredStoningEffect) {
                     resumeDeferredHeroStoning(action, game);
+                    if (heroAttack.stoningSpecialMessage) {
+                        const stoningDismissal = await queueTurnMessage(
+                            heroAttack.stoningSpecialMessage,
+                        );
+                        heroAttack.stoningSpecialMessage = null;
+                        if (stoningDismissal !== null
+                            && stoningDismissal !== undefined) {
+                            actorContactPagerOwned = true;
+                        }
+                    }
+                }
                 if (heroAttack.passive?.messageKind) {
                     const passiveDismissal = await queueTurnMessage(
                         heroPassiveResponseMessage(monster, heroAttack.passive),
@@ -3407,9 +4942,11 @@ async function executeLiveQuietMonsterScan(monsterScan) {
                     = !Upolyd(game.u) && rawFatalHpAfterContact === -1;
                 if (projectedFatalContact
                     && !exactZeroFatalHit
+                    && rawFatalHpAfterContact >= -1
                     && (statusSuppressedByHpSaveSentinel
                         || earlierActorPagerInScan
-                        || actorContactPagerOwned)) {
+                        || (actorContactPagerOwned
+                            && !actorContactMessageAfterPager))) {
                     game._statusHpOverride = hpBeforeDeferredHit;
                 }
                 // A monster-only fatal contact can make done_in_by() suspend
@@ -3512,7 +5049,8 @@ async function executeLiveQuietMonsterScan(monsterScan) {
                         // only after the interrupted movemon() scan finishes;
                         // if combat has appended to this recovery line, the
                         // attempted third pline is what forces tty --More--.
-                        game._debugDeathSurvivedMessagePending = true;
+                        game._deathSurvivedMessagePending = true;
+                        game._deathSurvivalRunmodeDelayPending = true;
                         previousHeroAttack = heroAttack;
                         heroAttack = continueDeferredHeroAttack(action, game);
                         if (heroAttack) continue;
@@ -3609,6 +5147,25 @@ async function executeLiveQuietMonsterScan(monsterScan) {
                 resumeDeferredMonsterCounterWield(action, game);
             }
         }
+        // monmove.c:dochug() performs the vile-monster emotional attack only
+        // after the complete standard attack set.  Even a nonzero result is
+        // RNG-visible before ambient/global maintenance.
+        if (movement?.attack && MONSTER_SOUND[monster.mnum] === 34
+            && !monster.mpeaceful
+            && couldsee(monster.mx, monster.my) && !monster.minvis) {
+            const cussGate = rn2(5);
+            action.calls.push('rn2(5)');
+            if (cussGate === 0)
+                movement.deferredCuss = true;
+        }
+        if (movement?.deferredCuss && monster.iswiz) {
+            movement.deferredCuss = false;
+            if (!game.deaf && !game.u?.deaf) {
+                const cussMessage = selectWizardCussMessage(action, monster);
+                await queueTurnMessage(cussMessage);
+                wakeMonstersNear(monster.mx, monster.my, 25);
+            }
+        }
         if (movement?.breathAttack) {
             const breath = movement.breathAttack;
             if (breath.cough && !game.deaf) {
@@ -3667,33 +5224,78 @@ async function executeLiveQuietMonsterScan(monsterScan) {
                 if (game._runState) stopRun(game);
 
                 if (spit.heroTarget) {
-                    const terse = spit.heroWasBlind
-                        || game.flags?.verbose === false;
-                    if (!spit.hit) {
-                        if (terse) {
-                            await queueTurnMessage('It misses.');
-                        } else if (spit.hitThreshold <= spit.hitRoll - 2) {
-                            await queueTurnMessage(
-                                `A ${spit.appearance} misses you.`,
+                    const venomGlyph = transientObjectGlyph(spit.venom);
+                    let transientFlightCell = null;
+                    const captureVenomCell = async cell => {
+                        if (transientFlightCell)
+                            newsym(
+                                transientFlightCell.x,
+                                transientFlightCell.y,
                             );
+                        transientFlightCell = null;
+                        const flightVisible = cansee(cell.x, cell.y);
+                        if (flightVisible) {
+                            show_glyph_cell(
+                                cell.x, cell.y,
+                                venomGlyph.ch, venomGlyph.color,
+                                venomGlyph.decgfx, venomGlyph.attr,
+                            );
+                            transientFlightCell = cell;
+                        }
+                        const frameCursor = flightVisible
+                            ? [cell.x, cell.y + 1]
+                            : lastDirtyMapCursor();
+                        await flush_screen(1);
+                        if (frameCursor)
+                            game.nhDisplay?.setCursor(...frameCursor);
+                        await game.animationFrame?.();
+                    };
+                    try {
+                        for (const cell of spit.flightPath || [])
+                            await captureVenomCell(cell);
+
+                        const terse = spit.heroWasBlind
+                            || game.flags?.verbose === false;
+                        if (!spit.hit) {
+                            if (terse) {
+                                await queueTurnMessage('It misses.');
+                            } else if (spit.hitThreshold
+                                <= spit.hitRoll - 2) {
+                                await queueTurnMessage(
+                                    `A ${spit.appearance} misses you.`,
+                                );
+                            } else {
+                                await queueTurnMessage(
+                                    `You are almost hit by a ${
+                                        spit.appearance}.`,
+                                );
+                            }
                         } else {
-                            await queueTurnMessage(
-                                `You are almost hit by a ${spit.appearance}.`,
-                            );
+                            await queueTurnMessage(terse
+                                ? 'You are hit.'
+                                : `You are hit by a ${spit.appearance}.`);
+                            if (spit.resisted) {
+                                await queueTurnMessage(
+                                    "It doesn't seem to hurt you.",
+                                );
+                            } else if (spit.venom?.otyp === ACID_VENOM) {
+                                await queueTurnMessage('It burns!');
+                            }
+                            if (spit.blindIncrement) {
+                                await queueTurnMessage(
+                                    'The venom blinds you.',
+                                );
+                            }
                         }
-                    } else {
-                        await queueTurnMessage(terse
-                            ? 'You are hit.'
-                            : `You are hit by a ${spit.appearance}.`);
-                        if (spit.resisted) {
-                            await queueTurnMessage(
-                                "It doesn't seem to hurt you.",
+                        await captureVenomCell({
+                            x: game.u.ux, y: game.u.uy,
+                        });
+                    } finally {
+                        if (transientFlightCell) {
+                            newsym(
+                                transientFlightCell.x,
+                                transientFlightCell.y,
                             );
-                        } else if (spit.venom?.otyp === ACID_VENOM) {
-                            await queueTurnMessage('It burns!');
-                        }
-                        if (spit.blindIncrement) {
-                            await queueTurnMessage('The venom blinds you.');
                         }
                     }
                 }
@@ -3721,24 +5323,61 @@ async function executeLiveQuietMonsterScan(monsterScan) {
                 );
             }
 
+            const potionGlyph = {
+                ch: potion.flightGlyph || '!',
+                color: NO_COLOR, decgfx: false, attr: 0,
+            };
+            if (!potion.caught && Number.isFinite(potion.preHitHp))
+                game._statusHpOverride = potion.preHitHp;
             let transientFlightCell = null;
+            let lastFlightCursor = null;
             for (const cell of potion.flightPath || []) {
                 if (transientFlightCell)
                     newsym(transientFlightCell.x, transientFlightCell.y);
                 transientFlightCell = null;
                 if (cansee(cell.x, cell.y)) {
                     show_glyph_cell(
-                        cell.x, cell.y, potion.flightGlyph || '!',
-                        NO_COLOR, false,
+                        cell.x, cell.y, potionGlyph.ch,
+                        potionGlyph.color, potionGlyph.decgfx,
+                        potionGlyph.attr,
                     );
                     transientFlightCell = cell;
                 }
+                // m_throw's potion tmp_at path leaves tty at bhitpos even
+                // when that square itself is not visible.
+                const frameCursor = [cell.x, cell.y + 1];
+                await flush_screen(1);
+                game.nhDisplay?.setCursor(...frameCursor);
+                lastFlightCursor = frameCursor;
+                await game.animationFrame?.();
             }
+            delete game._statusHpOverride;
+            const capturePotionImpactFrame = async () => {
+                if (transientFlightCell)
+                    newsym(transientFlightCell.x, transientFlightCell.y);
+                transientFlightCell = null;
+                const impactCell = { x: game.u.ux, y: game.u.uy };
+                if (cansee(impactCell.x, impactCell.y)) {
+                    show_glyph_cell(
+                        impactCell.x, impactCell.y, potionGlyph.ch,
+                        potionGlyph.color, potionGlyph.decgfx,
+                        potionGlyph.attr,
+                    );
+                    transientFlightCell = impactCell;
+                }
+                const impactCursor = lastFlightCursor
+                    || lastDirtyMapCursor();
+                await flush_screen(1);
+                if (impactCursor)
+                    game.nhDisplay?.setCursor(...impactCursor);
+                await game.animationFrame?.();
+            };
             try {
                 if (potion.caught) {
                     await queueTurnMessage(
                         `You catch the ${potion.appearance} potion!`,
                     );
+                    await capturePotionImpactFrame();
                 } else {
                     await queueTurnMessage(potion.impactMessage);
                     // potionhit() applies impact damage after the crash line,
@@ -3750,8 +5389,10 @@ async function executeLiveQuietMonsterScan(monsterScan) {
                     game._pendingOffensivePotionEffect = potion;
                     await resumeOffensivePotionVapor(potion);
                     game._pendingOffensivePotionEffect = null;
+                    await capturePotionImpactFrame();
                 }
             } finally {
+                delete game._statusHpOverride;
                 if (transientFlightCell)
                     newsym(transientFlightCell.x, transientFlightCell.y);
             }
@@ -3794,18 +5435,48 @@ async function executeLiveQuietMonsterScan(monsterScan) {
                 : {
                     ch: ranged.flightGlyph || ')',
                     color: NO_COLOR, decgfx: false, attr: 0,
-                };
+            };
             if (ranged.heroTarget) {
                 // tmp_at() leaves the last visible in-flight glyph painted
                 // while thitu() tries to add its hit/miss line.  If that
                 // pline suspends on --More--, the projectile therefore
                 // remains visible until the continuation is dismissed.
+                if (ranged.hit)
+                    game._statusHpOverride = ranged.preHitHp;
+                // A getpos/yn prompt can remain physically painted even
+                // though it is no longer a logical pending message.  Native
+                // tmp_at delays retain that row until thitu installs its
+                // result; an unseen launcher supplies no launch line first.
+                const physicalTopline = game.nhDisplay?.grid?.[0]
+                    ?.map(cell => ({ ...cell }));
+                const retainedFlightTopline = !game._pending_message
+                    && physicalTopline?.some(cell => cell.ch !== ' ')
+                    ? physicalTopline : null;
+                const restoreFlightTopline = () => {
+                    if (!retainedFlightTopline || game._pending_message) return;
+                    for (let col = 0; col < retainedFlightTopline.length; col++) {
+                        const cell = retainedFlightTopline[col];
+                        game.nhDisplay?.setCell(
+                            col, 0, cell.ch, cell.color, cell.attr,
+                        );
+                    }
+                };
+                // A visible first tmp_at cell settles the actor/map changes
+                // which preceded the throw before tty positions the flight
+                // cursor.  An invisible first step emits only a delay and
+                // deliberately retains the earlier dirty-map cursor.
+                const firstFlightCell = ranged.flightPath?.[0];
+                if (firstFlightCell
+                    && cansee(firstFlightCell.x, firstFlightCell.y)) {
+                    await flush_screen(1);
+                }
                 let transientFlightCell = null;
                 for (const cell of ranged.flightPath || []) {
                     if (transientFlightCell)
                         newsym(transientFlightCell.x, transientFlightCell.y);
                     transientFlightCell = null;
-                    if (cansee(cell.x, cell.y)) {
+                    const flightVisible = cansee(cell.x, cell.y);
+                    if (flightVisible) {
                         show_glyph_cell(
                             cell.x, cell.y, projectileGlyph.ch,
                             projectileGlyph.color, projectileGlyph.decgfx,
@@ -3813,18 +5484,48 @@ async function executeLiveQuietMonsterScan(monsterScan) {
                         );
                         transientFlightCell = cell;
                     }
+                    const frameCursor = lastDirtyMapCursor();
+                    await flush_screen(1);
+                    restoreFlightTopline();
+                    if (frameCursor)
+                        game.nhDisplay?.setCursor(...frameCursor);
+                    await game.animationFrame?.();
                 }
+                const impactCell = { x: game.u.ux, y: game.u.uy };
+                const captureImpactFrame = async () => {
+                    // tmp_at() keeps the last flight cell through any pager
+                    // raised while thitu() installs its result message.  Move
+                    // the temporary glyph onto the hero only after that
+                    // continuation resumes, immediately before the impact
+                    // delay frame.
+                    if (transientFlightCell)
+                        newsym(transientFlightCell.x, transientFlightCell.y);
+                    transientFlightCell = null;
+                    if (cansee(impactCell.x, impactCell.y)) {
+                        show_glyph_cell(
+                            impactCell.x, impactCell.y, projectileGlyph.ch,
+                            projectileGlyph.color, projectileGlyph.decgfx,
+                            projectileGlyph.attr,
+                        );
+                        transientFlightCell = impactCell;
+                    }
+                    const impactCursor = lastDirtyMapCursor();
+                    await flush_screen(1);
+                    if (impactCursor)
+                        game.nhDisplay?.setCursor(...impactCursor);
+                    await game.animationFrame?.();
+                };
                 try {
                     if (ranged.caught) {
                         await queueTurnMessage(
                             `You catch the ${ranged.appearance}!`,
                         );
+                        await captureImpactFrame();
                     } else if (ranged.hit) {
                         // thitu() has rolled the damage, but losehp() is
                         // downstream of the hit pline.  If that pline first
                         // suspends on the launch line, tty still projects the
                         // pre-hit HP at the --More-- boundary.
-                        game._statusHpOverride = ranged.preHitHp;
                         const impactSuffix = (ranged.damage ?? 0) > 4
                             ? '!' : '.';
                         try {
@@ -3870,6 +5571,8 @@ async function executeLiveQuietMonsterScan(monsterScan) {
                                 game.context.move = 0;
                                 return;
                             }
+                            delete game._statusHpOverride;
+                            await captureImpactFrame();
                         } finally {
                             delete game._statusHpOverride;
                         }
@@ -3892,8 +5595,10 @@ async function executeLiveQuietMonsterScan(monsterScan) {
                             : `${
                                 rangedArticle === 'an' ? 'An' : 'A'
                             } ${rangedAppearance} misses you.`);
+                        await captureImpactFrame();
                     }
                 } finally {
+                    delete game._statusHpOverride;
                     if (transientFlightCell)
                         newsym(transientFlightCell.x, transientFlightCell.y);
                 }
@@ -3907,7 +5612,8 @@ async function executeLiveQuietMonsterScan(monsterScan) {
                     if (transientFlightCell)
                         newsym(transientFlightCell.x, transientFlightCell.y);
                     transientFlightCell = null;
-                    if (cansee(cell.x, cell.y)) {
+                    const flightVisible = cansee(cell.x, cell.y);
+                    if (flightVisible) {
                         show_glyph_cell(
                             cell.x, cell.y, projectileGlyph.ch,
                             projectileGlyph.color, projectileGlyph.decgfx,
@@ -3915,6 +5621,10 @@ async function executeLiveQuietMonsterScan(monsterScan) {
                         );
                         transientFlightCell = cell;
                     }
+                    await flush_screen(1);
+                    if (flightVisible)
+                        game.nhDisplay?.setCursor(cell.x, cell.y + 1);
+                    await game.animationFrame?.();
                 }
                 const targetVisible = cansee(
                     ranged.target.mx, ranged.target.my,
@@ -3930,6 +5640,25 @@ async function executeLiveQuietMonsterScan(monsterScan) {
                             ranged.hit ? 'It is hit.' : 'It is missed.',
                         );
                     }
+                    if (transientFlightCell)
+                        newsym(transientFlightCell.x, transientFlightCell.y);
+                    transientFlightCell = null;
+                    if (targetVisible) {
+                        show_glyph_cell(
+                            ranged.target.mx, ranged.target.my,
+                            projectileGlyph.ch, projectileGlyph.color,
+                            projectileGlyph.decgfx, projectileGlyph.attr,
+                        );
+                        transientFlightCell = {
+                            x: ranged.target.mx, y: ranged.target.my,
+                        };
+                    }
+                    const impactCursor = targetVisible
+                        ? [ranged.target.mx, ranged.target.my + 1]
+                        : [game._pending_message?.length || 0, 0];
+                    await flush_screen(1);
+                    game.nhDisplay?.setCursor(...impactCursor);
+                    await game.animationFrame?.();
                 } finally {
                     if (transientFlightCell)
                         newsym(transientFlightCell.x, transientFlightCell.y);
@@ -4023,7 +5752,7 @@ async function executeLiveQuietMonsterScan(monsterScan) {
         if (movement?.usedDefensive?.kind === 'potion-healing') {
             const defensive = movement.usedDefensive;
             if (actorWasSeen) {
-                defensive.object.dknown = true;
+                observeMonsterUsedObject(defensive.object);
                 await queueTurnMessage(
                     `${visibleMonsterSubject(monster)} drinks ${
                         petCarriedObjectName(defensive.object)}!`,
@@ -4041,18 +5770,42 @@ async function executeLiveQuietMonsterScan(monsterScan) {
         if (movement?.usedMisc?.kind === 'potion-gain-level') {
             const misc = movement.usedMisc;
             if (actorWasSeen) {
-                misc.object.dknown = true;
+                observeMonsterUsedObject(misc.object);
                 await queueTurnMessage(
                     `${visibleMonsterSubject(monster)} drinks ${
                         petCarriedObjectName(misc.object)
                     }!`,
                 );
-                await queueTurnMessage(
-                    `${visibleMonsterSubject(monster)} seems more experienced.`,
-                );
-                if (!game._knownObjectTypes?.has(misc.object.otyp)) {
-                    exerciseAttribute(2, true);
-                    recordObjectKnowledge(misc.object.otyp);
+                if (misc.object.cursed) {
+                    await queueTurnMessage(
+                        `${visibleMonsterSubject(monster)} looks uneasy.`,
+                    );
+                    if (!game._knownObjectTypes?.has(misc.object.otyp)
+                        && !game._objectCallNames?.[misc.object.otyp]) {
+                        await waitForCurrentMonsterMore();
+                        const appearance = game.objectDescriptions?.[
+                            misc.object.otyp
+                        ] || 'strange';
+                        const description = appearance + ' potion';
+                        const article = /^[aeiou]/i.test(description)
+                            ? 'an' : 'a';
+                        const callName = await getLine(
+                            'Call ' + article + ' ' + description + ':',
+                            (_ch, key) => key >= 32 && key < 127,
+                        );
+                        if (callName?.trim())
+                            recordObjectCall(
+                                misc.object.otyp, callName.trim(),
+                            );
+                    }
+                } else {
+                    await queueTurnMessage(
+                        `${visibleMonsterSubject(monster)} seems more experienced.`,
+                    );
+                    if (!game._knownObjectTypes?.has(misc.object.otyp)) {
+                        exerciseAttribute(2, true);
+                        recordObjectKnowledge(misc.object.otyp);
+                    }
                 }
             } else if (!game.deaf) {
                 await queueTurnMessage('You hear a chugging sound.');
@@ -4064,7 +5817,7 @@ async function executeLiveQuietMonsterScan(monsterScan) {
             const misc = movement.usedMisc;
             const monsterName = quietMonsterName(monster);
             if (actorWasSeen) {
-                misc.object.dknown = true;
+                observeMonsterUsedObject(misc.object);
                 await queueTurnMessage(
                     `${visibleMonsterSubject(monster)} drinks ${
                         petCarriedObjectName(misc.object)}!`,
@@ -4091,7 +5844,10 @@ async function executeLiveQuietMonsterScan(monsterScan) {
                     if (cansee(monster.mx, monster.my))
                         map_invisible(monster.mx, monster.my);
                 }
-                game._knownObjectTypes?.add(misc.object.otyp);
+                if (!game._knownObjectTypes?.has(misc.object.otyp)) {
+                    exerciseAttribute(4, true);
+                    recordObjectKnowledge(misc.object.otyp);
+                }
             } else if (actorWasSeen && !monster.minvis) {
                 await queueTurnMessage(
                     `${visibleMonsterSubject(monster)} briefly seems to be transparent.`,
@@ -4139,21 +5895,41 @@ async function executeLiveQuietMonsterScan(monsterScan) {
             }
         }
         if (movement?.usedMisc?.kind === 'potion-speed') {
+            const misc = movement.usedMisc;
             if (actorWasSeen) {
+                observeMonsterUsedObject(misc.object);
                 await queueTurnMessage(
-                    `The ${quietMonsterName(monster)} drinks a potion of speed!`,
-                );
-                await queueTurnMessage(
-                    `The ${quietMonsterName(monster)} is suddenly moving faster.`,
+                    `${visibleMonsterSubject(monster)} drinks ${
+                        petCarriedObjectName(misc.object)
+                    }!`,
                 );
             } else if (!game.deaf) {
                 await queueTurnMessage('You hear a chugging sound.');
             }
+            finishDeferredMonsterMiscItem(action, game);
+            if (actorWasSeen && misc.speedChanged) {
+                await queueTurnMessage(
+                    `${visibleMonsterSubject(monster)} is suddenly moving ${
+                        misc.speedMuch ? 'much ' : ''
+                    }faster.`,
+                );
+                if (misc.object.dknown
+                    && !game._knownObjectTypes?.has(misc.object.otyp)) {
+                    exerciseAttribute(4, true);
+                    recordObjectKnowledge(misc.object.otyp);
+                }
+            }
         }
         if (movement?.usedMisc?.kind === 'wand-speed-monster') {
+            const misc = movement.usedMisc;
             if (actorWasSeen) {
+                observeMonsterUsedObject(misc.object);
+                const reflexive = monster.female ? 'herself'
+                    : monster.genderless ? 'itself' : 'himself';
                 await queueTurnMessage(
-                    `${visibleMonsterSubject(monster)} zaps itself with a wand of speed monster!`,
+                    `${visibleMonsterSubject(monster)} zaps ${reflexive} with ${
+                        petCarriedObjectName(misc.object)
+                    }!`,
                 );
             } else if (!game.deaf) {
                 const range = couldsee(monster.mx, monster.my)
@@ -4164,6 +5940,19 @@ async function executeLiveQuietMonsterScan(monsterScan) {
                     game.u?.uy ?? monster.my,
                 ) <= range * range ? 'nearby' : 'distant';
                 await queueTurnMessage(`You hear a ${proximity} zap.`);
+                misc.object.dknown = false;
+            }
+            finishDeferredMonsterMiscItem(action, game);
+            if (actorWasSeen && misc.speedChanged) {
+                await queueTurnMessage(
+                    `${visibleMonsterSubject(monster)} is suddenly moving ${
+                        misc.speedMuch ? 'much ' : ''
+                    }faster.`,
+                );
+                if (misc.object.dknown) {
+                    exerciseAttribute(4, true);
+                    recordObjectKnowledge(misc.object.otyp);
+                }
             }
         }
         if (movement?.guardFinished && !game._suppressMessagesUntilInput) {
@@ -4221,6 +6010,7 @@ async function executeLiveQuietMonsterScan(monsterScan) {
         }
         if (!movement?.moved) continue;
     }
+    runEveryturnVisits(monsterScan.actors.length);
     for (const wake of game._deferredMonsterTrapWakes || []) {
         for (const monster of game.level?.monsters || []) {
             if (!monster || (monster.mhp ?? 1) <= 0) continue;
@@ -4234,11 +6024,14 @@ async function executeLiveQuietMonsterScan(monsterScan) {
         }
     }
     game._deferredMonsterTrapWakes = [];
-    game._lastQuietMonsterActions = actions.map(({ monster, calls, movement }) => ({
-        m_id: monster.m_id, mnum: monster.mnum, pet: !!monster.pet, calls,
-        movement,
-    }));
     delete game._statusAcOverride;
+    // Erosion mutates worn armor during movemon(), but C does not run
+    // find_ac() until the actor scan has finished.  Only after that boundary
+    // may the next ordinary input project the new AC; intervening combat and
+    // death pagers retain the pre-scan status value.
+    if (game._armorClassDirty
+        && !game._armorClassDirtyAfterDelayedFrame)
+        game._statusProjectedAc = projectedArmorClass(game);
     return actions;
 }
 
@@ -4258,534 +6051,26 @@ async function executeSourceTurnMonsterScan(monsterScan) {
     }
 }
 
-function placeWizardBindPet(x, y) {
-    const pet = game.startingPet;
-    if (!pet) return;
-    const oldx = pet.mx, oldy = pet.my;
-    pet.mx = x; pet.my = y;
-    newsym(oldx, oldy);
-    newsym(x, y);
-}
-
-function replayWizardBindMaintenance(turn) {
-    if (turn === 1) {
-        initialTurnMaintenanceRng();
-        return;
-    }
-    if (turn === 2) {
-        rn2(5); rn2(4); rn2(100); rn2(1);
-        rn2(5); rn2(5); rn2(5);
-        for (let i = 0; i < 4; i++) rn2(12);
-        rn2(70); rn2(200); rn2(20); rn2(82);
-        placeWizardBindPet(59, 3);
-        return;
-    }
-    if (turn === 3) {
-        rn2(5); rn2(4); rn2(100); rn2(100); rn2(1); rnd(5);
-        rn2(5); rn2(5); rn2(20); rn2(5);
-        for (let i = 0; i < 4; i++) rn2(12);
-        rn2(70); rn2(200); rn2(20); rn2(82);
-        placeWizardBindPet(60, 4);
-        return;
-    }
-    if (turn === 4) {
-        rn2(5); rn2(4); rn2(100); rn2(1);
-        rn2(5); rn2(5); rn2(20); rn2(5);
-        rn2(5); rn2(4); rn2(100); rn2(100); rn2(1); rnd(5); rn2(5);
-        for (let i = 0; i < 4; i++) rn2(12);
-        rn2(70); rn2(200); rn2(20); rn2(82);
-        placeWizardBindPet(60, 4);
-        return;
-    }
-    if (turn === 5) {
-        rn2(5); rn2(4); rn2(100); rn2(1);
-        rn2(12); rn2(12); rn2(12);
-        rn2(5); rn2(5); rn2(12); rn2(5);
-        for (let i = 0; i < 4; i++) rn2(12);
-        rn2(70); rn2(200); rn2(20); rn2(82);
-        placeWizardBindPet(59, 3);
-    }
-}
-
-// C refs: dogmove.c dog_move(), monmove.c dochugw().  In the compact
-// Valkyrie start room the dog evaluates the stair square and adjacent food
-// goals twice without changing position before the second search turn.
-function valkyrieDogSearchRng() {
-    for (const range of [5, 100, 1, 2, 5, 5, 5, 5, 5, 5, 100, 1, 5])
-        rn2(range);
-}
-
-function priestDogSearchRng(stepNum) {
-    const ranges = stepNum === 2
-        ? [5, 4, 1, 5]
-        : stepNum === 3 ? [5, 4, 100, 100, 1, 2, 5] : [];
-    for (const range of ranges) rn2(range);
-}
-
-// The Healer's kitten has a floor-gold goal in this compact room.  These
-// first three turns are the dog_goal()/dog_move() shapes before the sleep ray
-// starts a longer multi-turn sequence.
-const HEALER_EARLY_TURN_RNG = {
-    1: [12, 12, 70, 200, 20, 70],
-    2: [5, 4, 100, 8, 100, 100, 100, 100, 100, 100, 100, 100, 100,
-        100, 100, 1, 2, 3, 4, 5, 5, 100, 8, 4, 100, 5,
-        12, 12, 70, 200, 20, 70],
-    3: [5, 4, 100, 8, 1, 5, 5, 100, 8, 4, 100, 5,
-        12, 12, 70, 200, 20, 70],
-};
-
-function healerEarlyTurnRng(stepNum) {
-    for (const range of HEALER_EARLY_TURN_RNG[stepNum] || []) rn2(range);
-}
-
-function placePriestPet(stepNum) {
-    if (!game.startingPet || stepNum < 2 || stepNum > 3) return;
-    const oldx = game.startingPet.mx, oldy = game.startingPet.my;
-    const next = stepNum === 2 ? [40, 7] : [39, 8];
-    [game.startingPet.mx, game.startingPet.my] = next;
-    newsym(oldx, oldy);
-    newsym(...next);
-}
-
-// Dog movement is the first live monster-turn path exercised by the Samurai
-// session.  These are the call shapes inside dog_goal()/dog_move() for each
-// successive time-taking action; global-turn allocation remains state-derived
-// below.  Keeping this boundary isolated lets the individual dog routines be
-// replaced incrementally without entangling the hero movement scheduler.
-const SAMURAI_DOG_RNG = [
-    [],
-    [5, 100, 8, 4, 5],
-    [5, 100, 8, 4, 5],
-    [5, 100, 8, 4, 1, 5],
-    [5, 100, 8, 12, 12, 12, 100, 12, 12, 12, 5],
-    [5, 100, 12, 12, 12, 12, 5],
-    [5, 100, 20, 12, 12, 12, 5, 5, 100, 20, 12, 12, 5],
-    [5, 100, 100, 1, 24, 12, 28, 12, 32, 1, 5],
-    [],
-    [5, 100, 12, 8, 5, 5, 100, 12, 16, 12, 20, 5],
-    [5, 100, 3, 12, 100, 12, 12, 12, 24, 32, 5],
-    [5, 100, 4, 12, 12, 20, 12, 5],
-    [5, 100, 4, 12, 12, 12, 24, 5, 5, 100, 4, 1, 32, 2, 12, 28, 100, 12, 24, 12, 5],
-    [5, 100, 4, 12, 16, 8, 5],
-    [5, 100, 4, 12, 8, 16, 5],
-    [5, 100, 4, 12, 5],
-    [],
-    [5, 100, 100, 4, 3, 12, 3, 12, 3, 12, 5],
-];
-
-// In the small north-east start room the dog has a different candidate set:
-// it can see the hero across the upstairs and then steps diagonally beside
-// him.  This is the dog_goal()/dog_move() call shape for that geometry.
-const SAMURAI_NORTH_ROOM_DOG_RNG = [
-    [],
-    [5, 100, 4, 1, 5, 5, 5],
-    [5, 100, 100, 100, 100, 100, 1, 2, 5, 5, 4, 1, 5],
-    [5, 100, 4, 1, 5, 5, 32, 5, 5, 100, 100, 100, 100, 100, 100,
-        1, 2, 3, 4, 5, 6, 7, 5],
-    [5, 100, 4, 100, 100, 100, 100, 100, 1, 2, 3, 4, 5, 5, 5, 32, 5],
-    [5, 100, 4, 100, 100, 100, 100, 100, 1, 2, 3, 4, 5, 6, 7, 8, 5],
-    [5, 100, 4, 100, 100, 100, 100, 100, 1, 2, 3, 4, 5, 5, 5, 24,
-        5, 5, 100, 100, 100, 100, 100, 100, 1, 2, 3, 4, 5, 6, 7, 5],
-    [5, 100, 4, 100, 100, 100, 100, 100, 1, 2, 3, 4, 5, 6, 7, 8,
-        5, 5, 100, 4, 3, 12, 3, 12, 12, 12, 12, 5],
-    [5, 100, 100, 100, 100, 100, 100, 1, 2, 3, 4, 5],
-    [5, 100, 100, 100, 100, 100, 100, 1, 2, 3, 4, 5, 5, 12, 5, 5,
-        100, 4, 100, 100, 100, 100, 100, 1, 2, 3, 4, 5],
-    [5, 100, 4, 100, 100, 100, 100, 100, 1, 2, 3, 4, 5],
-    [5, 100, 4, 100, 100, 100, 100, 100, 1, 2, 3, 5],
-    [5, 100, 100, 100, 100, 100, 100, 1, 2, 3, 4, 5, 6, 7, 5],
-    [5, 100, 4, 100, 100, 100, 100, 100, 1, 2, 5, 5, 100, 100, 100,
-        100, 100, 100, 1, 2, 3, 4, 5],
-    [5, 100, 100, 100, 100, 100, 100, 1, 2, 3, 4, 5, 6, 7, 5],
-    [5, 100, 4, 100, 100, 100, 100, 100, 1, 2, 5],
-    [5, 100, 4, 100, 100, 100, 100, 100, 1, 2, 3, 4, 5, 5, 12, 5,
-        5, 100, 4, 100, 100, 100, 100, 100, 1, 2, 3, 4, 5, 5],
-    [5, 100, 4, 3, 12, 5],
-    [5, 100, 100, 100, 100, 100, 100, 1, 2, 5],
-    [],
-    [5, 100, 4, 100, 100, 100, 100, 100, 1, 2, 3, 4, 5, 5, 5, 20, 5],
-    [5, 100, 4, 100, 100, 100, 100, 100, 1, 2, 3, 4, 5, 6, 7, 8,
-        5, 5, 16, 5, 5, 100, 4, 100, 100, 100, 100, 100, 1, 2, 3, 4,
-        5, 5],
-];
-
-// The long corridor beside the level-one altar exercises multi-turn running:
-// one uppercase movement command can advance several hero and monster turns
-// before tty asks for another key.  Each entry is the aggregate monmove and
-// once-per-turn call shape for one time-taking command in that geometry.
-const SAMURAI_ALTAR_PATH_RNG = [
-    [12, 12, 12, 12, 12, 70, 3, 400, 200, 20, 94, 5, 4, 1, 5, 5, 5,
-        5, 5, 5, 5, 5, 5, 12, 12, 12, 12, 12, 70, 3, 400, 200, 20, 94,
-        5, 4, 1, 5, 5, 16, 5, 5, 32, 5, 5, 16, 5, 5, 100, 100, 100,
-        100, 100, 1, 2, 3, 5, 12, 12, 12, 12, 12, 70, 3, 400, 200, 20,
-        94, 5, 5, 5, 24, 5, 5, 32, 5, 5, 16, 5],
-    [5, 5, 12, 12, 12, 12, 12, 70, 3, 400, 200, 20, 94, 31, 5, 3, 12,
-        3, 12, 3, 5, 5, 20, 5, 5, 20, 5, 5, 8, 5, 5, 3, 12, 5, 12,
-        12, 12, 12, 12, 70, 3, 400, 200, 20, 94, 5, 3, 12, 12, 5, 5,
-        12, 5, 5, 20, 5, 5, 8, 5, 5, 100, 100, 100, 100, 100, 1, 5,
-        12, 12, 12, 12, 12, 70, 3, 400, 200, 20, 94, 5, 3, 12, 5, 5,
-        20, 5, 5, 8, 5, 5, 12, 5, 12, 12, 12, 12, 12, 70, 3, 400,
-        200, 20, 94, 5, 12, 5, 5, 12, 5, 5, 20, 5, 5, 8, 5, 12, 12,
-        12, 12, 12, 70, 3, 400, 200, 20, 94],
-    [5, 12, 5, 5, 20, 5, 5, 8, 5, 12, 12, 12, 12, 12, 70, 3, 400,
-        200, 20, 19, 94, 5, 100, 12, 5, 5, 16, 5, 5, 8, 5, 5, 20, 5,
-        5, 8, 5, 12, 12, 12, 12, 12, 70, 3, 400, 200, 20, 94, 5, 100,
-        12, 12, 5, 5, 12, 5, 5, 8, 5, 5, 20, 5, 5, 8, 5, 5, 100,
-        100, 100, 100, 100, 100, 1, 2, 5, 12, 12, 12, 12, 12, 70, 3,
-        400, 200, 20, 94, 5, 100, 12, 12, 5, 5, 8, 5, 5, 8, 5, 5, 24,
-        5, 5, 8, 5, 5, 100, 12, 12, 5, 12, 12, 12, 12, 12, 70, 3,
-        400, 200, 20, 94, 5, 100, 12, 12, 5, 5, 16, 5, 5, 8, 5, 5,
-        100, 12, 12, 5, 12, 12, 12, 12, 12, 70, 3, 400, 200, 20, 94,
-        5, 100, 12, 12, 5, 5, 8, 5, 5, 16, 12, 5, 5, 8, 5, 5, 100,
-        12, 12, 5, 12, 12, 12, 12, 12, 70, 3, 400, 200, 20, 94],
-    [5, 100, 12, 5, 5, 24, 16, 5, 5, 8, 5],
-    [12, 12, 12, 12, 12, 70, 3, 400, 200, 20, 94],
-    [5, 100, 3, 12, 12, 5, 5, 20, 5, 5, 8, 5, 5, 100, 100, 100,
-        100, 100, 100, 1, 5, 12, 12, 12, 12, 12, 70, 3, 400, 200, 20, 94],
-    [5, 100, 3, 12, 12, 5, 5, 8, 5, 5, 12, 5, 5, 8, 5],
-    [12, 12, 12, 12, 12, 70, 3, 400, 200, 20, 94],
-    [5, 100, 12, 12, 12, 5, 5, 12, 5, 5, 8, 5, 5, 100, 8, 3, 12,
-        5, 12, 12, 12, 12, 12, 70, 3, 400, 200, 20, 94],
-    [5, 100, 12, 12, 12, 5, 5, 8, 5, 5, 12, 5, 5, 8, 5],
-    [12, 12, 12, 12, 12, 70, 3, 400, 200, 20, 19, 94],
-    [5, 100, 8, 3, 12, 5, 5, 8, 5, 5, 12, 5, 5, 8, 5, 12, 12, 12,
-        12, 12, 70, 3, 400, 200, 20, 94],
-    [5, 100, 12, 12, 12, 5, 5, 8, 5, 5, 16, 5, 5, 8, 5],
-    [12, 12, 12, 12, 12, 70, 3, 400, 200, 20, 94],
-    [5, 100, 12, 12, 12, 5, 5, 16, 5, 5, 8, 5],
-    [5, 100, 12, 12, 12, 5, 5, 8, 5, 5, 12, 5, 5, 8, 5, 5, 100,
-        12, 12, 12, 5, 12, 12, 12, 12, 12, 70, 3, 400, 200, 20, 94],
-    [5, 100, 100, 100, 100, 100, 100, 1, 2, 3, 5, 5, 8, 5, 5, 16,
-        5, 5, 16, 8, 5, 12, 12, 12, 12, 12, 70, 3, 400, 200, 20, 94],
-    [5, 100, 100, 100, 100, 100, 100, 1, 2, 5, 5, 16, 5, 5, 24, 5,
-        5, 12, 5, 12, 12, 12, 12, 12, 70, 3, 400, 200, 20, 94, 31],
-    [5, 100, 100, 100, 100, 100, 100, 1, 2, 3, 5, 5, 8, 5, 5, 12,
-        5, 5, 12, 5],
-    [12, 12, 12, 12, 12, 70, 3, 400, 200, 20, 94],
-];
-
-const SAMURAI_ALTAR_HERO_PATHS = {
-    1: [[26, 15], [27, 15], [28, 15], [29, 15]],
-    2: [[30, 15], [30, 14], [30, 13], [30, 12], [30, 11], [30, 10]],
-    3: [[29, 10], [29, 9], [29, 8], [29, 7], [29, 6], [29, 5]],
-    4: [[29, 6]], 5: [[29, 7]], 6: [[29, 8]],
-    13: [[29, 7]], 14: [[29, 6]], 15: [[29, 5]],
-};
-
-const SAMURAI_ALTAR_PET_POSITIONS = {
-    1: [28, 15], 2: [30, 11], 3: [29, 7], 4: [29, 7], 5: [29, 6],
-    6: [30, 10], 14: [31, 5], 15: [32, 5],
-    16: [30, 5], 17: [29, 6], 18: [30, 5], 19: [30, 10],
-};
-
-const RUN_DIRECTIONS_CLOCKWISE = [
-    [1, 0], [1, 1], [0, 1], [-1, 1],
-    [-1, 0], [-1, -1], [0, -1], [1, -1],
-];
-
-function retainRunHeadingAcrossBridge(oldx, oldy, x, y) {
-    const state = game._runState;
-    if (!state || state.mode === 8) return;
-    const dx = Math.sign(x - oldx);
-    const dy = Math.sign(y - oldy);
-    if (!dx && !dy) return;
-    const previous = RUN_DIRECTIONS_CLOCKWISE.findIndex(
-        ([px, py]) => px === state.dx && py === state.dy,
-    );
-    const next = RUN_DIRECTIONS_CLOCKWISE.findIndex(
-        ([nx, ny]) => nx === dx && ny === dy,
-    );
-    if (previous < 0 || next < 0 || previous === next) return;
-    let turn = next - previous;
-    if (turn > 4) turn -= 8;
-    if (turn < -4) turn += 8;
-    const accumulated = (state.lastStrTurn || 0) + turn;
-    if (turn >= -2 && turn <= 2
-        && accumulated >= -2 && accumulated <= 2) {
-        state.dx = dx;
-        state.dy = dy;
-        state.lastStrTurn = accumulated;
-    }
-}
-
-function samuraiAltarActionRng(action) {
-    const ranges = SAMURAI_ALTAR_PATH_RNG[action - 1];
-    for (const range of ranges || []) rn2(range);
-    game.moves = (game.moves || 1)
-        + (ranges || []).filter(range => range === 70).length;
-
-    for (const [x, y] of SAMURAI_ALTAR_HERO_PATHS[action] || []) {
-        const oldx = game.u.ux, oldy = game.u.uy;
-        retainRunHeadingAcrossBridge(oldx, oldy, x, y);
-        game.u.ux0 = oldx; game.u.uy0 = oldy;
-        game.u.ux = x; game.u.uy = y;
-        newsym(oldx, oldy);
-        vision_recalc(1);
-        newsym(x, y);
-        if (game._runState?.mode !== 8
-            && game.level?.at(x, y)?.typ === DOOR) {
-            stopRun(game);
-            break;
-        }
-    }
-
-    const pet = game.startingPet;
-    const petPosition = SAMURAI_ALTAR_PET_POSITIONS[action];
-    if (pet && petPosition) {
-        const oldx = pet.mx, oldy = pet.my;
-        pet.mx = petPosition[0]; pet.my = petPosition[1];
-        newsym(oldx, oldy);
-        newsym(pet.mx, pet.my);
-    }
-    if (action >= 3) {
-        // Running only glimpses the east side of this doorway; the outer
-        // corner and wall cells remain outside the hero's remembered LOS.
-        for (const [x, y] of [[31, 2], [31, 3], [30, 4], [30, 6]]) {
-            const loc = game.level?.at(x, y);
-            if (!loc) continue;
-            loc.remembered_glyph = null;
-            loc.disp_ch = ' ';
-        }
-    }
-}
-
-function samuraiMonsterActionRng(action) {
-    if (game._samuraiAltarPath) {
-        samuraiAltarActionRng(action);
-        return;
-    }
-    if (game._samuraiNorthRoomPath == null)
-        game._samuraiNorthRoomPath = (game.u?.uy ?? 99) < 10;
-    const actionRanges = game._samuraiNorthRoomPath
-        ? SAMURAI_NORTH_ROOM_DOG_RNG[action - 1]
-        : SAMURAI_DOG_RNG[action - 1];
-    for (const range of actionRanges || []) rn2(range);
-
-    const pet = game.startingPet;
-    const positions = game._samuraiNorthRoomPath ? {
-        2: [59, 4], 3: [59, 3], 4: [61, 2], 5: [60, 3],
-        6: [60, 4], 7: [60, 3], 8: [60, 2], 9: [61, 3],
-        10: [61, 2], 11: [62, 2], 12: [61, 3], 13: [62, 2],
-        14: [62, 3], 15: [62, 2], 16: [62, 3], 17: [62, 2],
-        18: [62, 3], 19: [61, 4], 20: [61, 4], 21: [60, 3],
-        22: [59, 3],
-    } : {
-        2: [51, 16], 3: [50, 16], 4: [50, 15],
-        5: [51, 16], 6: [52, 16], 7: [53, 16],
-    };
-    const position = positions[action];
-    if (pet && position) {
-        const oldx = pet.mx, oldy = pet.my;
-        pet.mx = position[0]; pet.my = position[1];
-        newsym(oldx, oldy);
-        newsym(pet.mx, pet.my);
-    }
-    if (action === 10) {
-        // The square immediately above this horizontal doorway has not yet
-        // been seen; keep it dark until crossing the threshold expands LOS.
-        for (const y of [17, 19]) {
-            const loc = game.level?.at(43, y);
-            if (!loc) continue;
-            loc.remembered_glyph = null;
-            loc.disp_ch = ' ';
-        }
-    }
-}
-
-// The south-east kitten start can bank enough movement for two steps during
-// each of these early hero turns.  These are the dog_goal()/dog_move() call
-// shapes for that geometry; the shared once-per-turn maintenance remains
-// state-derived in initialTurnMaintenanceRng().
-const TOURIST_SOUTHEAST_CAT_RNG = [
-    [5, 4, 100, 8, 100, 8, 100, 8, 5, 5, 100, 8, 100, 8, 100, 8, 100, 5],
-    [5, 100, 20, 100, 8, 100, 100, 100, 5, 5, 5, 5, 4, 100, 8, 100,
-        100, 1, 100, 5],
-    [5, 4, 100, 8, 100, 8, 100, 8, 1, 5, 5, 20, 5, 5, 5, 5, 4, 100,
-        8, 100, 100, 1, 2, 5],
-];
-
-function touristMonsterActionRng(action) {
-    const pet = game.startingPet;
-    if (!pet || game.u?.ux !== 47 || game.u?.uy !== 18) return false;
-    const ranges = TOURIST_SOUTHEAST_CAT_RNG[action - 1];
-    if (!ranges) return false;
-    for (const range of ranges) rn2(range);
-
-    const positions = [[49, 16], [48, 18], [46, 18]];
-    const position = positions[action - 1];
-    const oldx = pet.mx, oldy = pet.my;
-    pet.mx = position[0]; pet.my = position[1];
-    newsym(oldx, oldy);
-    newsym(pet.mx, pet.my);
-    return true;
-}
-
-// This north-east room run advances three squares across two elapsed turns.
-// The call shapes come from dog_goal()/dog_move() and the ordinary per-turn
-// maintenance routines; values remain supplied by the live seeded PRNG.
-const TOURIST_EXPLORE_RUN_RNG = [
-    ['rn2', 5], ['rn2', 100], ['rn2', 100], ['rn2', 100], ['rn2', 100],
-    ['rn2', 100], ['rn2', 1], ['rn2', 2], ['rn2', 5], ['rn2', 5],
-    ['rn2', 5], ['rn2', 12], ['rn2', 12], ['rn2', 12], ['rn2', 70],
-    ['rn2', 300], ['rn2', 20], ['rn2', 70], ['rn2', 5], ['rn2', 5],
-    ['rn2', 5], ['rn2', 32], ['rn2', 5], ['rn2', 5], ['rn2', 100],
-    ['rn2', 100], ['rn2', 100], ['rn2', 100], ['rn2', 100], ['rnd', 5],
-    ['rn2', 5], ['rn2', 12], ['rn2', 12], ['rn2', 12], ['rn2', 70],
-    ['rn2', 300], ['rn2', 20], ['rn2', 70],
-];
-
-function touristExploreRunRng() {
-    for (const [kind, range] of TOURIST_EXPLORE_RUN_RNG) {
-        if (kind === 'rnd') rnd(range);
-        else rn2(range);
-    }
-}
-
-function rangerNameMonsterActionRng(turn) {
-    const calls = turn === 2 ? [
-        ['rn2', 5], ['rn2', 100], ['rn2', 8], ['rn2', 4], ['rn2', 1],
-        ['rnd', 5], ['rn2', 5], ['rn2', 5], ['rn2', 100], ['rn2', 8],
-        ['rn2', 1], ['rn2', 5],
-    ] : turn === 3 ? [
-        ['rn2', 5], ['rn2', 100], ['rn2', 8], ['rn2', 100], ['rnd', 5],
-        ['rn2', 5], ['rn2', 5], ['rn2', 100], ['rn2', 100], ['rn2', 100],
-        ['rn2', 8], ['rn2', 100], ['rn2', 5],
-    ] : null;
-    if (!calls) return false;
-    for (const [kind, range] of calls) {
-        if (kind === 'rnd') rnd(range);
-        else rn2(range);
-    }
-    initialTurnMaintenanceRng();
-    return true;
-}
-
-const CAVEMAN_PET_POSITIONS = {
-    1: [48, 18], 2: [49, 17], 3: [51, 16], 4: [52, 16], 5: [50, 17],
-    6: [51, 18], 7: [53, 18], 8: [53, 18], 9: [52, 17], 10: [52, 18],
-    11: [50, 18], 12: [50, 17], 13: [49, 17], 14: [48, 16],
-    15: [48, 15], 16: [48, 14], 17: [49, 14],
-    18: [40, 5], 19: [40, 5], 20: [40, 5], 21: [49, 14],
-    24: [49, 14], 25: [49, 14],
-};
-
-function placeCavemanPet(turn) {
-    const pet = game.startingPet;
-    const position = CAVEMAN_PET_POSITIONS[turn];
-    if (!pet || !position) return;
-    const oldx = pet.mx, oldy = pet.my;
-    pet.mx = position[0]; pet.my = position[1];
-    newsym(oldx, oldy);
-    newsym(pet.mx, pet.my);
-}
-
-function cavemanFoodAt(x, y) {
-    return game.level?.objects?.[x]?.[y]
-        ?.find(object => object.otyp === FOOD_RATION);
-}
-
-function removeCavemanFood(x, y) {
-    const objects = game.level?.objects?.[x]?.[y];
-    if (!objects) return;
-    game.level.objects[x][y] = objects.filter(object => object.otyp !== FOOD_RATION);
-    newsym(x, y);
-}
-
-function addCavemanFood(x, y) {
-    if (!game.level || cavemanFoodAt(x, y)) return;
-    if (!game.level.objects[x]) game.level.objects[x] = [];
-    if (!game.level.objects[x][y]) game.level.objects[x][y] = [];
-    game.level.objects[x][y].unshift({
-        otyp: FOOD_RATION, oclass: 7, name: 'food ration',
-        plural: 'food rations', quan: 1, quantity: 1, ox: x, oy: y,
-    });
-    newsym(x, y);
-}
-
-function updateCavemanFloorState(turn) {
-    switch (turn) {
-    case 1:
-        pline('You see here a food ration.');
-        break;
-    case 3:
-        removeCavemanFood(49, 17);
-        pline('Slasher picks up a food ration.');
-        break;
-    case 7:
-        addCavemanFood(51, 18);
-        pline('Slasher drops a food ration.');
-        break;
-    case 8:
-        pline('You see here a food ration.');
-        break;
-    case 11:
-        removeCavemanFood(51, 18);
-        pline('Slasher picks up a food ration.');
-        break;
-    case 18:
-        addCavemanFood(50, 14);
-        pline('You swap places with Slasher.  Slasher drops a food ration.');
-        break;
-    }
-}
-
-function brightenCavemanCorridors(turn) {
-    const dim = (x, y) => {
-        const loc = game.level?.at(x, y);
-        if (loc?.disp_ch !== '#') return;
-        loc.disp_color = NO_COLOR;
-        if (loc.remembered_glyph?.ch === '#')
-            loc.remembered_glyph.color = NO_COLOR;
-    };
-    if (turn === 17) dim(48, 14);
-    if (turn === 18) {
-        dim(51, 13);
-        dim(51, 14);
-    }
-    for (let y = 0; y < ROWNO; y++) {
-        for (let x = 1; x < COLNO; x++) {
-            const loc = game.level?.at(x, y);
-            if (loc?.disp_ch !== '#') continue;
-            // Moving pets and the hero cause newsym() to repaint the edge of
-            // the lit corridor at these two transitions.
-            if ((turn === 17 && x === 48 && y === 14)
-                || (turn >= 18 && x === 51 && (y === 13 || y === 14)))
-                continue;
-            loc.disp_color = CLR_WHITE;
-            if (loc.remembered_glyph?.ch === '#')
-                loc.remembered_glyph.color = CLR_WHITE;
-        }
-    }
+function monsterScanHasVisits(monsterScan) {
+    return !!monsterScan?.visits?.some(visits => visits.length);
 }
 
 // C ref: allmain.c newgame()
 export async function newgame() {
     const g = game;
-    // Some level-generation boundaries depend on the command fixture but are
-    // reached before the post-mklev path flags below can be derived.
-    g._knightCombatPath = g.urole?.key === 'knight'
-        && /^  ns#ride/.test(g.replayMoves || '');
-    g._monkNorthPath = g.urole?.key === 'monk'
-        && /^  n:kkkhhhjjjlll\.ssh,ek/.test(g.replayMoves || '');
-    g._valkPitPath = g.urole?.key === 'valkyrie'
-        && /^  nllllllllkkkllkk>/.test(g.replayMoves || '');
-    g._wizardBindPath = g.urole?.key === 'wizard'
-        && /BIND=v:inventory/.test(g.nethackrc || '');
-    g._wizardPolyPath = g.urole?.key === 'wizard'
-        && /^\x17wand of polymorph \(0:30\)/.test(g.replayMoves || '');
-    g._wizardQuaffPath = g.urole?.key === 'wizard'
-        && /^  nqhzc\.rjhlll/.test(g.replayMoves || '');
-    g._priestExtcmdPath = g.urole?.key === 'priest'
-        && /^  ns#pray/.test(g.replayMoves || '');
-
-    // Fast-forward through pre-mklev startup RNG calls.
-    // Covers: o_init (shuffles), dungeon init, u_init_misc.
-    const handednessRoll = fastforward_pre_mklev();
+    const handednessRoll = initializeSourceStartup();
 
     if (g.urole?.key === 'priest' && Number.isInteger(g._priestPantheonIndex)) {
         const pantheon = roles.find(role => role.mnum === g._priestPantheonIndex);
-        if (pantheon?.gods)
-            g.urole = { ...g.urole, gods: { ...pantheon.gods } };
+        if (pantheon?.gods) {
+            g.urole = {
+                ...g.urole,
+                gods: { ...pantheon.gods },
+                goddessAlignments: [
+                    ...(pantheon.goddessAlignments || []),
+                ],
+            };
+        }
     }
 
     uInitMisc(handednessRoll);
@@ -4807,139 +6092,10 @@ export async function newgame() {
     // to the hero rather than next to the level-generation origin.
     u_on_upstairs();
 
-    g._samuraiAltarPath = g.urole?.key === 'samurai'
-        && g.u?.ux === 25 && g.u?.uy === 15;
-    g._touristExplorePath = g.urole?.key === 'tourist'
-        && g.flags?.explore && g.u?.ux === 71 && g.u?.uy === 5;
-    g._rangerNamePath = g.urole?.key === 'ranger'
-        && g.level?.flags?.nsinks === 1 && g.u?.ux === 28 && g.u?.uy === 7;
-    g._rogueExplorePath = g.urole?.key === 'rogue'
-        && g.u?.ux === 71 && g.u?.uy === 14;
-    g._rogueFriday13Path = g.urole?.key === 'rogue'
-        && g.urace?.mnum === 0 && g.u?.ux === 9 && g.u?.uy === 15
-        && g.level?.flags?.nsinks === 1 && g._hasStaticThemeroom;
-    if (g._rogueFriday13Path) {
-        g.flags.pickup = false;
-        g._friday13ElapsedTurns = 46;
-        g._rogueFriday13SavePath = /Sy$/.test(g.replayMoves || '');
-    }
-    g._rogueOrcPath = g.urole?.key === 'rogue'
-        && g.urace?.mnum === 4 && g.u?.ux === 5 && g.u?.uy === 12;
-    g._rogueChargenPath = !!g._characterPickerUsed && g.urole?.key === 'rogue'
-        && g.u?.ux === 36 && g.u?.uy === 7;
-    g._valkChatPath = g.urole?.key === 'valkyrie'
-        && /#chat/.test(g.replayMoves || '');
-    g._priestCastPath = g.urole?.key === 'priest'
-        && /Z.*#turn/s.test(g.replayMoves || '');
-    g._healerNewmoonPath = g.urole?.key === 'healer'
-        && /szf/.test(g.replayMoves || '');
-    g._knightPonyPath = g.urole?.key === 'knight'
-        && /^  sns#ride/.test(g.replayMoves || '');
-    g._knightCombatPath = g.urole?.key === 'knight'
-        && /^  ns#ride/.test(g.replayMoves || '');
-    if (g._valkChatPath) {
-        // The C room-fill order leaves this generated boulder in the
-        // upstairs room.  Preserve that state until room filling itself is
-        // fully driven by C's pointer-order traversal.
-        const x = 26, y = 17;
-        if (!g.level.objects[x]) g.level.objects[x] = [];
-        g.level.objects[x][y] = [{
-            otyp: BOULDER, oclass: 14, ox: x, oy: y, quan: 1,
-            color: CLR_BRIGHT_BLUE,
-            // Bounded room-fill bridge: this placeholder reconstructs the
-            // recorded object glyph but is not a fully registered C object
-            // and must not alter Algorithm-C blocker tables.  Remove this
-            // exception when ordinary room object placement owns the state.
-            visionBlocker: false,
-        }];
-    }
-
-    const realRoleStartup = g.urole?.key === 'archeologist'
-        || g.urole?.key === 'barbarian'
-        || g.urole?.key === 'caveman' || g.urole?.key === 'ranger'
-        || g.urole?.key === 'rogue' || g.urole?.key === 'healer'
-        || g.urole?.key === 'samurai' || g.urole?.key === 'tourist'
-        || g.urole?.key === 'valkyrie' || g.urole?.key === 'priest'
-        || g.urole?.key === 'knight' || g.urole?.key === 'monk'
-        || g.urole?.key === 'wizard';
-    if (realRoleStartup) {
-        makedog();
-        if (g._rogueChargenPath && g.startingPet) {
-            g.startingPet.mx = 35;
-            g.startingPet.my = 7;
-        }
-        uInitInventoryAttrs();
-        if (g._rogueChargenPath) {
-            const sickness = g.discoveries?.find(entry => entry.name === 'potion of sickness');
-            if (sickness) sickness.appearance = 'swirly';
-        }
-        if (g._touristExplorePath) {
-            g.discoveries = [
-                { class: 'Scrolls', name: 'scroll of magic mapping', appearance: 'GHOTI' },
-                { class: 'Potions', name: 'potion of extra healing', appearance: 'sky blue' },
-                { class: 'Wands', name: 'wand of wishing', appearance: 'ebony' },
-            ];
-        }
-    } else {
-        // Roles not ported yet retain the starter replay until their real
-        // inventory tables are translated.
-        fastforward_post_mklev();
-    }
-
-    // This Priest fixture begins with a zero-time cast menu.  newgame() has
-    // already performed the turn-1 maintenance represented in the C startup
-    // trace, so do not repeat it before the first command is read.
-    if (g._priestCastPath) g._maintenanceMove = g.moves || 1;
-
-    // Roles whose inventory tables have not been ported yet keep the old
-    // starter state so their command paths remain executable.
-    if (!realRoleStartup) {
-    g._goldCount = 757;
-    g.u.ulevel = 1;
-    g.u.uhp = 10; g.u.uhpmax = 10;
-    g.u.uen = 2; g.u.uenmax = 2;
-    g.u.uac = 10; g.u.uexp = 0;
-    g.u.ualign = { type: 0, record: 0 };
-    g.u.acurr = { a: [9, 14, 12, 11, 16, 16] };
-    g.u.amax = { a: [9, 14, 12, 11, 16, 16] };
-    g.u.rightHanded = false;
-    g.moves = 1;
-    g.urole = {
-        key: 'tourist',
-        name: { m: 'Tourist', f: 'Tourist' },
-        rank: { m: 'Rambler', f: 'Rambler' },
-        gods: { lawful: 'Blind Io', neutral: 'The Lady', chaotic: 'Offler' },
-        greeting: 'Aloha',
-    };
-    g.urace = { noun: 'human', adj: 'human' };
-    g.flags.female = true;
-    g.plname = g.plname || 'Contestant';
-
-    // C ref: u_init.c Tourist starting inventory after its seeded quantity,
-    // enchantment, and charge rolls.  The object model is consumed by the
-    // generic invent.c-style renderer rather than replayed as screen text.
-    g.inventory = [
-        { invlet: 'a', class: 'Weapons', quantity: 27, name: 'dart', plural: 'darts', enchantment: 2, ready: true },
-        { invlet: 'b', class: 'Comestibles', quantity: 6, name: 'food ration', plural: 'food rations', buc: 'uncursed' },
-        { invlet: 'c', class: 'Comestibles', quantity: 1, name: 'apple', buc: 'uncursed' },
-        { invlet: 'd', class: 'Comestibles', quantity: 2, name: 'fortune cookie', plural: 'fortune cookies', buc: 'uncursed' },
-        { invlet: 'e', class: 'Comestibles', quantity: 1, name: 'clove of garlic', buc: 'uncursed' },
-        { invlet: 'f', class: 'Comestibles', quantity: 1, name: 'slime mold', buc: 'uncursed' },
-        { invlet: 'g', class: 'Comestibles', quantity: 2, name: 'tin of lichen', plural: 'tins of lichen', buc: 'uncursed' },
-        { invlet: 'h', class: 'Potions', quantity: 2, name: 'potion of extra healing', plural: 'potions of extra healing', buc: 'uncursed' },
-        { invlet: 'i', class: 'Scrolls', quantity: 4, name: 'scroll of magic mapping', plural: 'scrolls of magic mapping', buc: 'uncursed' },
-        { invlet: 'j', class: 'Armor', quantity: 1, name: 'Hawaiian shirt', buc: 'uncursed', enchantment: 0, worn: true },
-        { invlet: 'k', class: 'Tools', quantity: 1, name: 'expensive camera', charges: { recharged: 0, current: 34 } },
-        { invlet: 'l', class: 'Tools', quantity: 1, name: 'credit card', buc: 'uncursed' },
-    ];
-    g._lastInvNr = 11;
-    g.discoveries = [
-        { class: 'Scrolls', name: 'scroll of magic mapping', appearance: 'ANDOVA BEGARIN' },
-        { class: 'Potions', name: 'potion of extra healing', appearance: 'murky' },
-    ];
-    g.spells = [];
-    }
-
+    if (g.urole?.key === 'samurai')
+        g._samuraiLiveScheduler = true;
+    makedog();
+    uInitInventoryAttrs();
     // Initial display
     init_vision_globals();
     vision_reset();
@@ -4949,17 +6105,30 @@ export async function newgame() {
     await flush_screen(1);
     await bot();
 
-    if (g.flags?.legacy) await showLegacy();
-
-    // C calls u_init_skills_discoveries() after the first docrt()/bot().
-    // The legacy overlay therefore retains the pre-skill Pw in its backing
-    // status row, while the next moveloop redraw sees the level-one casting
-    // minimum.
-    if (realRoleStartup) finishStartingDiscoveries();
-    if (g._startingPwMinimum && (g.u.uenmax || 0) < g._startingPwMinimum) {
-        g.u.uen = g.u.uenmax = g.u.uenpeak = g._startingPwMinimum;
-        delete g._startingPwMinimum;
+    while (g.u?.uroleplay?.reroll && await rerollMenu()) {
+        uInitInventoryAttrs();
+        await bot();
     }
+    const preSkillsStatus = [_statusLine1(), _statusLine2()];
+
+    // C applies equipment, spells, discoveries, skills, spell-power minimum,
+    // and AC only after the final candidate has been accepted.  It does not
+    // redraw bot() here, so the legacy overlay still retains the pre-skill
+    // status row underneath it.
+    finishStartingDiscoveries();
+
+    if (g.flags?.legacy) await showLegacy(preSkillsStatus);
+
+    // A new game begins with one complete hero movement ration.  No global
+    // turn has elapsed merely because the welcome/tutorial transaction has
+    // finished; the first time-taking command owns the first movemon and
+    // maintenance pass.  Compatibility paths historically hid this by
+    // skipping the generic maintenance block altogether.
+    g._maintenanceMove = g.moves || 1;
+
+    // allmain.c:welcome(TRUE) guarantees that the live chronicle starts with
+    // an entry even when no later major achievement occurs.
+    recordGameLogEvent(initialDungeonEntryText(g), { state: g, turn: 1 });
 
     // Welcome is left pending until moveloop starts.  On tty, creation of
     // the default tutorial menu first exposes it as a --More-- boundary.
@@ -4995,43 +6164,12 @@ export async function moveloop_core() {
         const current = nearCapacity(g);
         const message = encumbranceMessage(previous, current);
         if (message) await plineWithContinuation(message);
+        // pickup.c:encumber_msg() marks botl and commits oldcap only after
+        // Your()/You() returns.  If that message first pages an older pickup
+        // line, the pager must retain the previous status projection.
         g._encumbranceLevel = current;
         g.u._encumbrance = encumbranceLabel(current);
         g._capacityDirty = false;
-    }
-
-    // Port the movement-ration boundary for the real Samurai startup.  C
-    // subtracts one action after a time-taking command, then only starts a
-    // new global turn when the hero has less than NORMAL_SPEED remaining.
-    // This is why intrinsic Fast can give a command without a monster turn.
-    // Once an ordinary Samurai starts a multi-turn armor removal, current
-    // fmon state replaces the bounded early-game compatibility transcript and
-    // remains authoritative for all later turns in that life.
-    if (liveQuietSamurai(g)) g._samuraiLiveScheduler = true;
-    const boundedSamuraiCompatibility = g.urole?.key === 'samurai'
-        && !liveQuietSamurai(g);
-    if (boundedSamuraiCompatibility && g.context?.move) {
-        const action = (g._samuraiTimedActions || 0) + 1;
-        g._samuraiTimedActions = action;
-        samuraiMonsterActionRng(action);
-        if (!g._samuraiAltarPath) {
-            g.u.umovement = (g.u.umovement ?? 12) - 12;
-            if (g.u.umovement < 12) {
-                addHeroMovementRation(g, initialTurnMaintenanceRng(
-                    (g.moves || 1) + 1,
-                ));
-                g.moves = (g.moves || 1) + 1;
-            }
-        }
-        g.context.move = 0;
-    }
-
-    if (g._rogueOrcPath && g.context?.move) {
-        const action = (g._rogueOrcTimedActions || 0) + 1;
-        g._rogueOrcTimedActions = action;
-        await rogueOrcTimedAction(action);
-        g.context.move = 0;
-        g._maintenanceMove = g.moves || 1;
     }
 
     // C allmain.c keeps cycling movemon/global turns until the hero has a
@@ -5040,8 +6178,7 @@ export async function moveloop_core() {
     // so some commands need a second monster/global round before input.
     const livePrayerTurn = (g._prayerTurnsRemaining || 0) > 0
         && (g.urole?.key === 'wizard' || liveQuietKnight(g));
-    if ((liveQuietMonk(g) || liveQuietHealer(g) || liveQuietSamurai(g)
-        || liveDebugSourceRation(g))
+    if ((usesSourceMovementRation(g) && !liveQuietKnight(g))
         && g._heroTimePending) {
         const consumeInterruptedMultiAction = () => {
             if (!g._interruptedMultiActionDebt
@@ -5063,7 +6200,7 @@ export async function moveloop_core() {
                     movement: monster.movement,
                 }),
             ));
-            if (monsterScan.actors.length) {
+            if (monsterScanHasVisits(monsterScan)) {
                 await executeSourceTurnMonsterScan(monsterScan);
                 // C done()/really_done() is noreturn.  The JavaScript
                 // endgame presenter returns after drawing the score list, so
@@ -5110,7 +6247,7 @@ export async function moveloop_core() {
                     mnum: monster.mnum, pet: !!monster.pet,
                     movement: monster.movement,
             })));
-            if (monsterScan.actors.length) {
+            if (monsterScanHasVisits(monsterScan)) {
                 await executeSourceTurnMonsterScan(monsterScan);
                 if (g.program_state?.gameover) return;
             }
@@ -5131,7 +6268,7 @@ export async function moveloop_core() {
     // moveloop completes the actor scan and any required global allocation
     // before unmul() tries to append that text.  Keep it outside the actor
     // scan so tty's resulting --More-- projects the post-maintenance state.
-    await finishDebugDeathSurvivalMessage(g);
+    await finishDeathSurvivalMessage(g);
 
     // allmain.c's once-per-player-input Amulet check follows all elapsed
     // monster/global work and precedes find_ac()/vision/input.  A level
@@ -5144,52 +6281,21 @@ export async function moveloop_core() {
     // in the worn slot, but attacks during that just-started donning turn
     // still observe the previous u.uac; later negative-multi turns see the
     // recomputed value.
-    if (g._armorClassDirty && !g._heroTimePending) {
+    if (g._armorClassDirty && !g._heroTimePending
+        && !g._armorClassDirtyAfterDelayedFrame) {
         findArmorClass(g);
         g._armorClassDirty = false;
+        delete g._statusProjectedAc;
     }
 
     // C's turn maintenance runs once per elapsed turn.  Menus and other
     // zero-time commands can re-enter the command prompt without advancing
     // `moves`; they must not repeat monster movement or consume more RNG.
-    if (!boundedSamuraiCompatibility && !g._rogueOrcPath
-        && g._maintenanceMove !== (g.moves || 1)) {
-        const stepNum = (g.moves || 1) - 1;
-        const liveQuietRole = (g.urole?.key === 'knight'
-                && !g._knightPonyPath && !g._knightCombatPath)
-            || (g.urole?.key === 'wizard' && !g._wizardBindPath)
-            || g.urole?.key === 'monk'
-            // Wizard levelchange can promote any role before its first live
-            // action.  At that point actor movement, newly gained intrinsics,
-            // and maintenance must come from current state rather than the
-            // startup role's bounded fast-forward transcript.
-            || liveDebugSourceRation(g)
-            // Ordinary Rogues share the source movemon()/dog_move() scheduler.
-            // The named paths below remain bounded compatibility bridges; a
-            // generic Rogue must not inherit their session-shaped RNG replay.
-            || liveQuietRogue(g)
-            // Ordinary Healers use the same source movemon()/dog_move()
-            // scheduler.  Only the explicit new-moon compatibility witness
-            // remains on its bounded early-turn replay below.
-            || liveQuietHealer(g)
-            // Ordinary Rangers must derive pet goals and actor movement from
-            // the current fobj/fmon graph.  The named start remains on its
-            // bounded compatibility path until separately generalized.
-            || liveQuietRanger(g)
-            || liveQuietPriest(g)
-            || liveQuietSamurai(g)
-            // Ordinary Valkyries and Tourists have no native role-specific
-            // pet transcript.  Keep their explicitly bounded compatibility
-            // paths isolated, but drive every other actor from live fmon,
-            // floor-object, edog, and candidate state.
-            || liveQuietValkyrie(g)
-            || liveQuietTourist(g)
-            // Delayed armor completion is the first seed5006 boundary where
-            // the generated destination's live kitten and monsters all own a
-            // movement ration; replaying a generic Tourist call list loses
-            // their combat and state changes.
-            || (g.urole?.key === 'tourist'
-                && (!!g._delayedAction || !!g._liveQuietTurnRequested));
+    if (g._maintenanceMove !== (g.moves || 1)) {
+        // Every legal role shares one source-owned actor/global maintenance
+        // boundary.  Role identity may change mechanics inside that boundary,
+        // but it does not select a recorded turn transcript.
+        const liveQuietRole = usesSourceMovementRation(g);
         let monsterScan = null;
         if (g._monsterMovementInitialized || liveQuietRole) {
             monsterScan = scanMonsterMovement(
@@ -5199,6 +6305,16 @@ export async function moveloop_core() {
                 mnum: monster.mnum, pet: !!monster.pet,
                 movement: monster.movement,
             })));
+        }
+        const hasMonsterVisits = monsterScanHasVisits(monsterScan);
+        // bca6ac9 moved stateful first-round effects out of speculative
+        // planning so active actors could interleave them in live fmon order.
+        // A scan with no full-ration actor still visits every identity in C;
+        // run only that inactive tail here without promoting the scan into a
+        // live-role maintenance transaction or executing any actor action.
+        if (!g._tutorialActive
+            && !monsterScan?.actors?.length && hasMonsterVisits) {
+            await executeSourceTurnMonsterScan(monsterScan);
         }
         if (liveQuietRole && !g._tutorialActive
             && (monsterScan?.actors?.length || g._ordinaryDescentLive
@@ -5224,121 +6340,13 @@ export async function moveloop_core() {
             // do not enter role/session-specific pet replay or act while the
             // hero traverses the instructional rooms.
             initialTurnMaintenanceRng();
-        } else if (g.urole?.key === 'ranger') {
-            let petMoved = false;
-            if (stepNum === 1) initialTurnMaintenanceRng();
-            else if (g._rangerNamePath)
-                petMoved = rangerNameMonsterActionRng(stepNum);
-            else petMoved = fastforward_ranger_step(stepNum);
-            if (petMoved && g.startingPet) {
-                const { mx, my } = g.startingPet;
-                if (g._rangerNamePath) {
-                    const position = stepNum === 2 ? [28, 8] : [26, 10];
-                    [g.startingPet.mx, g.startingPet.my] = position;
-                } else {
-                    g.startingPet.mx = mx + 1;
-                    g.startingPet.my = my + 1;
-                }
-                newsym(mx, my);
-                newsym(g.startingPet.mx, g.startingPet.my);
-            }
-        } else if (g.urole?.key === 'caveman') {
-            if (stepNum === 1) initialTurnMaintenanceRng();
-            else replayCavemanTurn(stepNum);
-            placeCavemanPet(stepNum);
-            updateCavemanFloorState(stepNum);
-            brightenCavemanCorridors(stepNum);
-        } else if (g.urole?.key === 'rogue') {
-            if (g._rogueFriday13Path) {
-                if (!g._rogueFriday13RngReplayed) {
-                    replayRogueFriday13Combat(!g._rogueFriday13SavePath);
-                    g._rogueFriday13RngReplayed = true;
-                }
-            } else if (stepNum === 1) {
-                initialTurnMaintenanceRng();
-            } else if (g._rogueChargenPath) {
-                replayRogueChargenTurn(stepNum);
-                placeRogueChargenMonsters(stepNum);
-                if (stepNum === 3) await pline('The kitten picks up a towel.');
-            } else {
-                replayRogueTurn(stepNum);
-                placeRoguePet(stepNum);
-                if (g._rogueExplorePath && stepNum === 7)
-                    await rogueCorpseMore();
-                else if (g._rogueExplorePath && stepNum === 9)
-                    await pline('The kitten picks up a dart.');
-            }
-        } else if (g.urole?.key === 'tourist' && stepNum === 1) {
+        } else {
+            // A turn with no full-ration actor still executes the ordinary C
+            // global maintenance transaction.  The deleted fallback replayed
+            // a fixed RNG transcript and therefore skipped state transitions
+            // such as negative-multi recovery.
             initialTurnMaintenanceRng();
-        } else if (g.urole?.key === 'valkyrie') {
-            if (stepNum === 1) initialTurnMaintenanceRng();
-            else if (stepNum === 2) {
-                valkyrieDogSearchRng();
-                initialTurnMaintenanceRng();
-            }
-        } else if (g.urole?.key === 'monk' && stepNum === 1) {
-            // Monks gain intrinsic Fast at level one, so their first live
-            // allocation uses the shared u_calc_moveamt() rn2(3) gate.
-            initialTurnMaintenanceRng();
-        } else if (g._priestCastPath) {
-            if (stepNum >= 2) priestDogSearchRng(stepNum);
-            initialTurnMaintenanceRng();
-            placePriestPet(stepNum);
-        } else if (liveQuietHealer(g) && stepNum === 1) {
-            // The first elapsed Healer turn has no prior monster movement
-            // ration to scan, but it still runs the complete source global
-            // maintenance pass.  In particular, the engraving wipe gate is
-            // 40 + 3 * current Dexterity rather than fastforward's fixed 82.
-            initialTurnMaintenanceRng();
-        } else if (g._healerNewmoonPath && stepNum <= 3) {
-            healerEarlyTurnRng(stepNum);
-        } else if (liveQuietPriest(g) && stepNum === 1) {
-            initialTurnMaintenanceRng();
-        } else if (g._wizardBindPath && stepNum <= 5) {
-            replayWizardBindMaintenance(stepNum);
-        } else if (g.urole?.key === 'wizard' && stepNum === 1) {
-            initialTurnMaintenanceRng();
-        } else if (g.urole?.key === 'knight') {
-            if (!g._knightPonyPath && !g._knightCombatPath && stepNum === 1)
-                initialTurnMaintenanceRng();
-            else replayKnightMaintenance(stepNum, g._knightCombatPath);
-            const zombie = g.level?.monsters?.find(mon => mon.symbol === 'Z');
-            if (g._knightPonyPath && stepNum === 3 && zombie) {
-                g.u.uhp = Math.min(g.u.uhpmax, (g.u.uhp || 0) + 1);
-                const oldx = zombie.mx, oldy = zombie.my;
-                zombie.mx = 63;
-                zombie.my = 4;
-                newsym(oldx, oldy);
-                newsym(63, 4);
-            }
-            if (g._knightPonyPath && stepNum === 4 && g.startingPet) {
-                const oldx = g.startingPet.mx, oldy = g.startingPet.my;
-                g.startingPet.mx = 61;
-                g.startingPet.my = 2;
-                newsym(oldx, oldy);
-                newsym(61, 2);
-                if (zombie) {
-                    const zx = zombie.mx, zy = zombie.my;
-                    zombie.mx = 62;
-                    zombie.my = 3;
-                    newsym(zx, zy);
-                    newsym(62, 3);
-                }
-            }
-            if (g._knightPonyPath && stepNum === 6 && g.startingPet) {
-                const oldx = g.startingPet.mx, oldy = g.startingPet.my;
-                g.startingPet.mx = 60;
-                g.startingPet.my = 2;
-                newsym(oldx, oldy);
-                newsym(60, 2);
-            }
-        } else if (g._touristExplorePath && stepNum === 2) {
-            touristExploreRunRng();
-            g.moves = 4;
-        } else if (g.urole?.key === 'tourist'
-            && touristMonsterActionRng(stepNum - 1)) {
-            initialTurnMaintenanceRng();
-        } else fastforward_step(stepNum);
+        }
         g._maintenanceMove = g.moves || 1;
     }
 
@@ -5346,7 +6354,7 @@ export async function moveloop_core() {
     // below the early source-ration checkpoint above.  Declined Wizard death
     // can therefore install nomovemsg during that scan; finish the same
     // post-scan owner here before the next command byte is read.
-    await finishDebugDeathSurvivalMessage(g);
+    await finishDeathSurvivalMessage(g);
 
     if (g._liveQuietTurnRequested
         && g._maintenanceMove === (g.moves || 1)) {
@@ -5361,6 +6369,10 @@ export async function moveloop_core() {
         // turn; prayer consumes that ration but must not shorten its nominal
         // three-turn duration a second time.
         if (g._prayerLastTickMove !== prayerTurn) {
+            await captureRunmodeDelay(
+                g, true, prayerTurn,
+                { preservePhysicalTopline: true },
+            );
             g._prayerLastTickMove = prayerTurn;
             g._prayerTurnsRemaining--;
         }
@@ -5500,6 +6512,7 @@ export async function moveloop_core() {
     delete g._statusAcOverride;
     await bot();
     await flush_screen(1);
+    heroEveryturnEffect(g);
 
     // A negative C `multi` suppresses rhack() but still leaves context.move
     // set, so the next moveloop invocation spends another hero action.  Once
@@ -5531,6 +6544,10 @@ export async function moveloop_core() {
                 g.moves = (g.moves || 1) + 1;
             }
         }
+        const countedMultiActive = (g._occupation?.key === 's'
+            || g._occupation?.key === '.')
+            && (g._occupation?.remaining ?? 0) > 0;
+        await captureRunmodeDelay(g, countedMultiActive);
         return;
     }
 
@@ -5562,13 +6579,7 @@ export async function moveloop_core() {
     await rhack(0);
 
     // Advance turn
-    // Reevaluate the Samurai boundary after rhack(): a command such as
-    // delayed armor removal can be the event which promotes this life from
-    // its bounded startup transcript to the live source-ration scheduler.
-    const postCommandBoundedSamurai = g.urole?.key === 'samurai'
-        && !liveQuietSamurai(g);
-    if (g.context?.move && !postCommandBoundedSamurai
-        && !g._rogueOrcPath) {
+    if (g.context?.move) {
         // C allmain.c increments hero_seq once for every time-taking hero
         // action.  It is not the same as `moves`: intrinsic speed can permit
         // multiple actions during one global turn.  Stethoscope's one-free-

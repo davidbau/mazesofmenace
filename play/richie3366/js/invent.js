@@ -36,7 +36,8 @@
 // D-1655: invent.c flags.invlet_constant / reassign / obj_to_let
 //        (fixinv opt_out On).
 // D-1663: invent.c dounpaid / find_unpaid + mkobj.c
-//        unknwn_contnr_contents + xprname Iu/Ix cost. D-1687:
+//        unknwn_contnr_contents + xprname Iu/Ix cost. D-1720:
+//        currency Hallu ROLL_FROM(currencies). D-1687:
 //        dotypeinv Traditional itemize yn + this_type_only /
 //        tally_BUCX; callee doinvbill. wizcmds sanity_check is D-1664.
 // D-1682: invent.c silly_thing (Call Amulet / unknown fake; getobj
@@ -53,8 +54,10 @@ import {
 import { xprname, an, vtense, doname, distant_name, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, simpleonames, set_not_fully_identified, makeplural, body_part_latebound, corpse_xname, killer_xname } from './objnam.js';
 import { yn_function, getlin, mungspaces } from './getline.js';
 import { get_count, pmatchi, cmdq_pop, cmdq_clear } from './cmd.js';
-import { mergable, is_damageable, stop_timer, splitobj, unsplitobj, clear_splitobjs, unknwn_contnr_contents } from './mkobj.js';
-import { unpaid_cost, doinvbill, gem_learned } from './shk.js';
+import { mergable, is_damageable, stop_timer, splitobj, unsplitobj, clear_splitobjs, unknwn_contnr_contents, weight } from './mkobj.js';
+import { unpaid_cost, doinvbill, gem_learned, obfree } from './shk.js';
+import { hidden_gold } from './vault.js';
+import { setnotworn } from './do.js';
 import { s_suffix } from './do_name.js';
 import { inv_cnt } from './steal.js';
 import { assigninvlet } from './u_init.js';
@@ -1117,14 +1120,45 @@ export function tally_BUCX(list, by_nexthere = false) {
 }
 
 /**
- * C invent.c currency `:1545–1554`. Hallu ROLL_FROM(currencies[]) named
- * omit — always "zorkmid" / makeplural. Callers shk Iu/Ix (D-1663).
+ * C invent.c currencies[] `:1521–1543` — Hallu ROLL_FROM pool
+ * (hack.h `array[rn2(SIZE(array))]`). Fictional units + trailing zorkmid.
+ */
+const CURRENCIES = [
+    'Altarian Dollar',
+    'Ankh-Morpork Dollar',
+    'auric',
+    'buckazoid',
+    'cirbozoid',
+    'credit chit',
+    'cubit',
+    'Flanian Pobble Bead',
+    'fretzer',
+    'imperial credit',
+    'Hong Kong Luna Dollar',
+    'kongbuck',
+    'nanite',
+    'quatloo',
+    'simoleon',
+    'solari',
+    'spacebuck',
+    'sporebuck',
+    'Triganic Pu',
+    'woolong',
+    'zorkmid',
+];
+
+/**
+ * C invent.c currency `:1545–1554`. Hallu → ROLL_FROM(currencies);
+ * else "zorkmid". amount != 1L → makeplural. Callers shk Iu/Ix xprname
+ * (D-1663). shk_names_obj traded/relinquish fmt still C's hardcoded
+ * "zorkmid%s" + plur(amt), not this.
  * @param {number} amount
  * @returns {string}
  */
 export function currency(amount) {
-    const res = 'zorkmid';
-    if (Number(amount) !== 1) return makeplural(res);
+    // C: Hallucination ? ROLL_FROM(currencies) : "zorkmid"
+    let res = Hallucination() ? CURRENCIES[rn2(CURRENCIES.length)] : 'zorkmid';
+    if (Number(amount) !== 1) res = makeplural(res);
     return res;
 }
 
@@ -3902,6 +3936,36 @@ export function update_inventory() {
 }
 
 /**
+ * C ref: invent.c useupall `:1311–1317` — setnotworn, freeinv, then
+ * obfree(obj, NULL) (contents + shop bill). Callee shk.c obfree is
+ * D-1727. Named: nhl_gamestate leftover (do.js tutorial stash);
+ * delobj still extract-only.
+ */
+export function useupall(obj) {
+    if (!obj) return;
+    setnotworn(obj);
+    freeinv(obj);
+    obfree(obj, null);
+}
+
+/**
+ * C ref: invent.c useup `:1320–1333` — quan>1: in_use=FALSE, quan--,
+ * weight, update_inventory; else useupall. write.c dowrite paper
+ * (D-1735). Named: eat.js hybrid still useup+useupf; detect/potion/
+ * read/spell local clones; full dealloc_obj.
+ */
+export function useup(obj) {
+    if (obj.quan > 1) {
+        obj.in_use = false;
+        obj.quan--;
+        obj.owt = weight(obj);
+        update_inventory();
+    } else {
+        useupall(obj);
+    }
+}
+
+/**
  * C ref: invent.c consume_obj_charge `:1336–1346` — maybe check_unpaid,
  * then spe--, then update_inventory when known so perm_invent sees the
  * new charge (tty_update_inventory → sync_perminvent). Unpaid is D-1047;
@@ -4789,8 +4853,9 @@ export async function enlightenment(mode, final = 0) {
         if (!umoney) {
             lines.push(` Your wallet ${final ? 'was' : 'is'} empty.`);
         } else {
+            // C insight.c `:787–788` currency(umoney)
             lines.push(
-                ` Your wallet contain${final ? 'ed' : 's'} ${umoney} zorkmid${umoney === 1 ? '' : 's'}.`,
+                ` Your wallet contain${final ? 'ed' : 's'} ${umoney} ${currency(umoney)}.`,
             );
         }
         lines.push(autopickup_enlightenment_line_final(!!final));
@@ -5024,7 +5089,7 @@ export async function doattributes(enl_mode = null) {
     opposed += '.';
 
     const wallet = gold
-        ? `  Your wallet contains ${gold} zorkmids.`
+        ? `  Your wallet contains ${gold} ${currency(gold)}.`
         : '  Your wallet is empty.';
 
     const hp = u.uhp | 0;
@@ -5447,23 +5512,57 @@ export async function doattributes(enl_mode = null) {
 }
 
 /**
- * C ref: invent.c doprgold / #showgold / '$'.
- * Named omissions: hidden_gold stashed message; shopper_financial_report;
- * menu_requested dispinv; non-verbose "no money" / total arms.
+ * C ref: invent.c doprgold `:4502–4546` / #showgold / '$' (D-1731).
+ * money_cnt first COIN_CLASS + hidden_gold(FALSE). Verbose wallet/stash
+ * one pline (`eos` append); else umoney+hmoney total. m-prefix `$`
+ * dispinv_with_action("$", FALSE) when umoney.
+ * Named: shopper_financial_report (shop_debt missing); botl/detect/
+ * insight/topten/u_init hidden_gold callers; dokick hidden_gold_kick clone.
  */
 export async function doprgold() {
+    // C: money_cnt(gi.invent) — first COIN_CLASS quan (gold merges)
     let umoney = 0;
     for (const o of game.invent || []) {
-        if (o.oclass === COIN_CLASS) umoney += o.quan | 0;
+        if (o.oclass === COIN_CLASS) {
+            umoney = o.quan | 0;
+            break;
+        }
     }
+    // C: hidden_gold(FALSE) — known container gold only
+    const hmoney = hidden_gold(false);
+
     if (game.flags?.verbose !== false) {
-        if (!umoney) await pline('Your wallet is empty.');
-        else await pline(`Your wallet contains ${umoney} zorkmid${umoney === 1 ? '' : 's'}.`);
-    } else if (umoney) {
-        await pline(`You are carrying a total of ${umoney} zorkmid${umoney === 1 ? '' : 's'}.`);
+        let buf;
+        if (!umoney) {
+            buf = 'Your wallet is empty';
+        } else {
+            buf = `Your wallet contains ${umoney} ${currency(umoney)}`;
+        }
+        if (hmoney) {
+            // C: Sprintf(eos(buf), ", %s you have %ld %s stashed...")
+            buf += `, ${umoney ? 'and' : 'but'} you have ${hmoney} ${
+                umoney ? 'more' : currency(hmoney)
+            } stashed away in your pack`;
+        }
+        await pline(`${buf}.`);
     } else {
-        await pline('You have no money.');
+        const total = umoney + hmoney;
+        if (total) {
+            await pline(
+                `You are carrying a total of ${total} ${currency(total)}.`,
+            );
+        } else {
+            await pline('You have no money.');
+        }
     }
+    // C: shopper_financial_report() — named omit (shop_debt not live)
+
+    if (umoney && game.iflags?.menu_requested) {
+        const { dispinv_with_action } = await import('./iactions.js');
+        // C: mustn't use TRUE or gold wouldn't show unless quivered
+        await dispinv_with_action('$', false, null);
+    }
+
     return ECMD_OK;
 }
 
@@ -7017,6 +7116,9 @@ function invent_merged(otmp, obj) {
     if (obj.bknown) otmp.bknown = 1;
     if (obj.rknown) otmp.rknown = 1;
     extract_invent(obj);
+    obj.nobj = null;
+    obj.where = OBJ_FREE;
+    obfree(obj, otmp);
     return otmp;
 }
 

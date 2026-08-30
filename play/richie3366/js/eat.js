@@ -99,7 +99,7 @@ import {
 } from './attrib.js';
 import { nomul, losehp, still_chewing, is_pool, is_lava, stop_occupation } from './hack.js';
 import { near_capacity, observe_object, makeknown, getobj,
-    freeinv_core, encumber_msg, update_inventory } from './invent.js';
+    encumber_msg, update_inventory, useupall } from './invent.js';
 import {
     make_confused, make_vomiting, make_glib, make_stoned, make_slimed,
     make_stunned, make_hallucinated, make_sick,
@@ -1045,18 +1045,12 @@ export function useup(otmp) {
         }
     }
     if (!onFloor) {
-        // Invent / free invent-child: invent.c useup — no obj_resists
         if ((otmp.quan || 1) > 1) {
             otmp.quan--;
             otmp.owt = weight(otmp);
             return;
         }
-        freeinv_core(otmp);
-        const inv = game.invent || [];
-        const idx = inv.indexOf(otmp);
-        if (idx >= 0) inv.splice(idx, 1);
-        otmp.quan = 0;
-        otmp.where = OBJ_FREE;
+        useupall(otmp);
         return;
     }
     // Floor: invent.c useupf(otmp, 1L)
@@ -2115,18 +2109,6 @@ function use_up_tin(tin) {
     else useup(tin); // floor path via useup's OBJ_FLOOR arm
     if (!game.context) game.context = {};
     game.context.tin = { tin: null, o_id: 0, reqtime: 0, usedtime: 0 };
-}
-
-/**
- * C ref: invent.c useupall — remove entire invent stack (setnotworn deferred).
- */
-function useupall(otmp) {
-    if (!otmp) return;
-    const inv = game.invent || [];
-    const idx = inv.indexOf(otmp);
-    if (idx >= 0) inv.splice(idx, 1);
-    otmp.quan = 0;
-    otmp.where = OBJ_FREE;
 }
 
 /**

@@ -116,7 +116,7 @@ import {
 import { monsterNames, PM_ROGUE } from './generated/monsters_data.js';
 import { thitu, ohitmon, hits_bars } from './mthrowu.js';
 import { dmgval, MON_WEP, mwepgone, wet_a_towel, dry_a_towel, is_wet_towel } from './weapon.js';
-import { observe_object, encumber_msg, near_capacity, makeknown, update_inventory } from './invent.js';
+import { observe_object, encumber_msg, near_capacity, makeknown, update_inventory, currency } from './invent.js';
 import { makemon, rndmonnum_adj, mpickobj, set_malign, newcham } from './makemon.js';
 import {
     A_CHA, A_STR, A_DEX, A_CON, A_WIS, adjattrib, exercise, adjalign,
@@ -5193,10 +5193,6 @@ function Tobjnam_chest(obj, verb) {
     return `${nam} ${v}`;
 }
 
-function currency_chest(amt) {
-    return (amt | 0) === 1 ? 'zorkmid' : 'zorkmids';
-}
-
 /**
  * C ref: invent.c / shk.c delete_contents — obfree chain (no obj_resists).
  */
@@ -5308,11 +5304,11 @@ export async function chest_trap(obj, bodypart, disarm) {
             if (costly && loss) {
                 if (insider) {
                     await pline(
-                        `You owe ${loss} ${currency_chest(loss)} for objects destroyed.`,
+                        `You owe ${loss} ${currency(loss)} for objects destroyed.`,
                     );
                 } else {
                     await pline(
-                        `You caused ${loss} ${currency_chest(loss)} worth of damage!`,
+                        `You caused ${loss} ${currency(loss)} worth of damage!`,
                     );
                     await make_angry_shk(shkp, ox, oy);
                 }

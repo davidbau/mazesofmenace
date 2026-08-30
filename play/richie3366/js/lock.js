@@ -4,7 +4,8 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, newsym, canseemon, pline_mon } from './display.js';
+import { pline, newsym, canseemon, pline_mon, clear_nhwindow_message } from './display.js';
+import { yn_function } from './getline.js';
 import { vision_recalc, recalc_block_point, cansee } from './vision.js';
 import { stop_occupation, in_rooms } from './hack.js';
 import {
@@ -14,7 +15,10 @@ import {
     P_DAGGER, P_FLAIL, P_LANCE, P_PICK_AXE, P_SABER, P_NONE,
     AUTOUNLOCK_APPLY_KEY, STRAT_WAITMASK, TT_PIT, M_AP_TYPE,
     M_AP_FURNITURE, M_AP_OBJECT, FINGER,
+    CMDQ_DIR, CMDQ_KEY, CQ_CANNED, CQ_REPEAT,
+    xytodir,
 } from './const.js';
+import { cmdq_pop, cmdq_clear } from './cmd.js';
 import { rnl, rn2, rnd } from './rng.js';
 import { acurr, acurrstr, A_STR, A_DEX, A_CON, exercise } from './attrib.js';
 import { verysmall, nohands, passes_walls, G_UNIQ } from './monsters.js';
@@ -33,6 +37,7 @@ import { PM_ROGUE, PM_WIZARD } from './generated/monsters_data.js';
 import { m_at, wake_nearto } from './mon.js';
 import { getdir_cmdassist } from './dothrow.js';
 import { b_trapped, t_at } from './trap.js';
+import { currency, cmdq_add_key } from './invent.js';
 
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
@@ -321,61 +326,98 @@ async function picklock() {
 }
 
 /**
- * C ref: cmd.c getdir — cmdq DIR/KEY then yn_function; self ./s; <>;
- * movecmd walk/run/rush; optional numpad when number_pad on.
- * Named omit: mouse `_` getpos; help_dir / cmdassist / "strange direction"
- * (NEED_MORE key-eating; throw path keeps getdir_cmdassist); trailing
- * confdir(FALSE) (use_whip already confdirs; adding it here would double
- * confuse-whip); CQ_REPEAT; fuzzer; dxdy_moveok.
+ * C cmd.c reset_commands !num_pad sdir[0..7] walk keys. Number_pad
+ * layouts named. Vertical player keys are '<' up / '>' down
+ * (apply_dirsym / dir_from_key), not C dirchars[DIR_DOWN]= '<'
+ * (hack.h lists DIR_DOWN then DIR_UP; JS DIR_UP/DOWN are swapped).
  */
-export async function getdir(prompt) {
-    const q = game._cmdq_canned;
-    if (q?.length) {
-        const head = q[0];
-        if (head && typeof head === 'object'
-            && (head.typ === 'key' || head.typ === 'dir')) {
-            q.shift();
-            if (!game.u) game.u = {};
-            if (head.typ === 'dir') {
-                game.u.dx = head.dirx | 0;
-                game.u.dy = head.diry | 0;
-                game.u.dz = head.dirz | 0;
-                return true;
-            }
-            const ch = typeof head.key === 'string'
-                ? head.key
-                : String.fromCharCode(head.key | 0);
-            const key = typeof head.key === 'number'
-                ? head.key
-                : ch.charCodeAt(0);
-            return apply_dirsym(ch, key);
+const GETDIR_DIRCHARS = 'hykulnjb><';
+
+/** C getdir CMDQ_DIR → dirchars[xytodir] or '<'/'>'. */
+function getdir_dirsym_from_dir(cmdq) {
+    if (!(cmdq.dirz | 0)) {
+        const d = xytodir(cmdq.dirx | 0, cmdq.diry | 0);
+        if (d < 0 || d >= 8) return '\0';
+        return GETDIR_DIRCHARS.charAt(d);
+    }
+    return (cmdq.dirz | 0) > 0 ? '>' : '<';
+}
+
+function getdir_key_to_sym(key) {
+    if (typeof key === 'string') return key.length ? key.charAt(0) : '\0';
+    if (typeof key === 'number') return String.fromCharCode(key | 0);
+    return '\0';
+}
+
+function nhgetch_to_dirsym(k) {
+    if (typeof k === 'string') return k.length ? k.charAt(0) : '\0';
+    return String.fromCharCode(k | 0);
+}
+
+/**
+ * C ref: cmd.c getdir `:3962–4019` — cmdq_pop DIR/KEY (CQ_REPEAT when
+ * gi.in_doagain) then yn_function / readchar, clear WIN_MESSAGE, ^R
+ * retry, cmdq_add_key(CQ_REPEAT) when !in_doagain. Queue-popped
+ * DIR/KEY skip the REPEAT record (goto got_dirsym).
+ * Named: mouse `_` getpos; full redraw_cmd bind; readchar_queue;
+ * fuzzer; input_state.
+ * @param {string|null|undefined} prompt
+ * @returns {Promise<string>} dirsym
+ */
+export async function getdir_read_dirsym(prompt) {
+    const cmdq = cmdq_pop();
+    if (cmdq) {
+        if (cmdq.typ === CMDQ_DIR || cmdq.typ === 'dir') {
+            return getdir_dirsym_from_dir(cmdq);
         }
-        if (head && typeof head === 'object' && head.typ) {
-            // C: cmdq neither DIR nor KEY → cmdq_clear, fail
-            game._cmdq_canned = [];
-            return false;
+        if (cmdq.typ === CMDQ_KEY || cmdq.typ === 'key') {
+            return getdir_key_to_sym(cmdq.key);
         }
+        // C: neither DIR nor KEY → cmdq_clear(CQ_CANNED), dirsym NUL
+        cmdq_clear(CQ_CANNED);
+        return '\0';
     }
 
-    const msg = prompt || 'In what direction?';
+    // C `:3987–3988` — '^' is a help_dir marker, not the prompt text
+    const query = (prompt && prompt.charAt(0) !== '^')
+        ? prompt : 'In what direction?';
     for (;;) {
-        game._pending_message = `${msg} `;
-        await flush_screen(1);
-        const disp = game.nhDisplay;
-        if (disp?.setCursor) {
-            disp.setCursor(game._pending_message.length, 0);
+        let dirsym;
+        if (game.in_doagain) {
+            // C `:3983–3984` — in_doagain || *readchar_queue → readchar
+            dirsym = nhgetch_to_dirsym(await nhgetch());
+        } else {
+            dirsym = await yn_function(query, null, '\0', false);
         }
-        const key = await nhgetch();
-        const ch = String.fromCharCode(key);
-        game._pending_message = '';
-        // C: redraw_cmd (^R) → docrt then retry
+        clear_nhwindow_message();
+        const key = (dirsym && dirsym.charCodeAt) ? dirsym.charCodeAt(0) : 0;
+        // C: redraw_cmd (^R) → docrt then retry; no REPEAT record
         if (key === 18) continue;
-        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
-            return false;
-        }
-        if (!game.u) game.u = {};
-        return apply_dirsym(ch, key);
+        if (!game.in_doagain) cmdq_add_key(CQ_REPEAT, dirsym);
+        return dirsym || '\0';
     }
+}
+
+/**
+ * C ref: cmd.c getdir `:3956–4119` — cmdq DIR/KEY then
+ * yn_function((s && *s != '^') ? s : "In what direction?", NULL, '\0',
+ * FALSE) and clear_nhwindow(WIN_MESSAGE). Self ./s; <>; movecmd
+ * walk/run/rush; optional numpad when number_pad on.
+ * Named omit: mouse `_` getpos; help_dir / cmdassist / "strange
+ * direction" (NEED_MORE key-eating; throw path keeps
+ * getdir_cmdassist); trailing confdir(FALSE) (use_whip already
+ * confdirs; adding it here would double confuse-whip);
+ * fuzzer; dxdy_moveok; yn_function_menu; input_state.
+ */
+export async function getdir(prompt) {
+    const dirsym = await getdir_read_dirsym(prompt);
+    const ch = dirsym || '\0';
+    const key = ch.charCodeAt(0);
+    if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
+        return false;
+    }
+    if (!game.u) game.u = {};
+    return apply_dirsym(ch, key);
 }
 
 /** C ref: cmd.c get_adjacent_loc — getdir (cmdassist) then adjacent cell. */
@@ -1269,7 +1311,6 @@ export async function breakchestlock(box, destroyit) {
     const costly = !!shkp;
     const peaceful_shk = !!(costly && shkp.mpeaceful);
     let loss = 0;
-    const currency = (amt) => ((amt | 0) === 1 ? 'zorkmid' : 'zorkmids');
 
     await pline(`In fact, you've totally destroyed ${the(xname(box))}.`);
     while (box.cobj) {

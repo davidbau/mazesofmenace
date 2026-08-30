@@ -49,7 +49,7 @@ import {
 import {
     compactify_invlets, makeknown, near_capacity, observe_object, prinv,
     hold_another_object, consume_obj_charge, update_inventory, getobj,
-    getobj_from_cmdq, getobj_record_repeat, getobj_display_pickinv,
+    getobj_from_cmdq, getobj_record_repeat, getobj_display_pickinv, useupall,
 } from './invent.js';
 import { rn2, rn1, rnd, d, rnl, shuffle_int_array } from './rng.js';
 import {
@@ -4233,7 +4233,7 @@ function freeinv_apply(obj) {
     obj.where = OBJ_FREE;
 }
 
-/** C invent.c useup — consume one; useupall path skips obfree contents. */
+/** C invent.c useup — consume one; quan==1 is useupall. */
 function useup_apply(obj) {
     if (!obj) return;
     if ((obj.quan || 1) > 1) {
@@ -4242,18 +4242,7 @@ function useup_apply(obj) {
         obj.owt = weight(obj);
         return;
     }
-    setnotworn(obj);
-    freeinv_apply(obj);
-    obj.quan = 0;
-}
-
-/** C invent.c useupall — setnotworn + freeinv; obfree oextra omitted. */
-function useupall_apply(obj) {
-    if (!obj) return;
-    setnotworn(obj);
-    freeinv_apply(obj);
-    obj.quan = 0;
-    obj.where = OBJ_FREE;
+    useupall(obj);
 }
 
 /** C invent.c carrying — first matching otyp in hero invent[]. */
@@ -5008,7 +4997,7 @@ export async function use_candle(optr) {
         );
     }
     if (otmp.lamplit) obj_merge_light_sources(otmp, otmp);
-    useupall_apply(obj);
+    useupall(obj);
     otmp.owt = weight(otmp);
     // update_inventory deferred
 }

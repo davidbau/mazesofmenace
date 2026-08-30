@@ -32,7 +32,7 @@ import { vision_recalc, recalc_block_point, couldsee, cansee } from './vision.js
 import { getdir, breakchestlock } from './lock.js';
 import { yn_function } from './getline.js';
 import { kick_steed } from './steed.js';
-import { near_capacity, inv_weight, weight_cap } from './invent.js';
+import { near_capacity, inv_weight, weight_cap, currency } from './invent.js';
 import {
     objects_at, obj_extract_self, add_to_migration, mksobj_at, mksobj, mkgold,
     weight, rnd_class, place_object, stackobj, splitobj, delobj,
@@ -1062,7 +1062,6 @@ export async function container_impact_dmg(obj, x, y) {
     const frominv = obj !== game.kickedobj;
     let loss = 0;
     let wchange = false;
-    const currency = (amt) => ((amt | 0) === 1 ? 'zorkmid' : 'zorkmids');
 
     for (let otmp = obj.cobj; otmp; ) {
         const otmp2 = otmp.nobj;
@@ -1166,7 +1165,7 @@ async function ghitm(mtmp, gold) {
                 if (eshk) eshk.credit = (eshk.credit | 0) + value;
                 const credit = eshk?.credit | 0;
                 await pline(
-                    `You have ${credit} ${credit === 1 ? 'zorkmid' : 'zorkmids'} in credit.`,
+                    `You have ${credit} ${currency(credit)} in credit.`,
                 );
             } else {
                 await verbalize('Thanks, scum!');
@@ -2002,7 +2001,6 @@ export async function impact_drop(missile, x, y, dlev) {
     const u = game.u || {};
     const uball = u.uball;
     const uchain = u.uchain;
-    const currency = (amt) => ((amt | 0) === 1 ? 'zorkmid' : 'zorkmids');
 
     for (let obj = objects_at(x, y); obj; ) {
         const obj2 = obj.nexthere;

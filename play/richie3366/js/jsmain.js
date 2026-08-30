@@ -212,6 +212,10 @@ export class NethackGame {
             g.nhDisplay = this._pendingDisplay;
             this._pendingDisplay = null;
         }
+        // C wintty.c tty_display_nhwindow NHW_MESSAGE `:1882–1883`
+        // iflags.window_inited (yn_menuable_resp needs it; D-1728).
+        if (!g.iflags) g.iflags = {};
+        g.iflags.window_inited = !!g.nhDisplay;
         // C nh_delay_output → contest animationFrame (throw/zap beams)
         g.animationFrame = this.animationFrame.bind(this);
 

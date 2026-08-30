@@ -12,6 +12,8 @@ import {
 } from './const.js';
 import { makemonAt } from './mklev.js';
 import { couldsee } from './vision.js';
+import { hiddenGold } from './gold.js';
+import { heroGoldAmount } from './hero_gold.js';
 
 const PM_GUARD = 272;
 const VAULT_GUARD_TIME = 30;
@@ -132,13 +134,6 @@ async function readGuardName() {
     return name.trim();
 }
 
-function hiddenGoldAmount() {
-    return (game.inventory || []).reduce((total, object) =>
-        total + (object.contents || []).reduce((inside, content) =>
-            inside + (content.otyp === 438
-                ? (content.quantity ?? content.quan ?? 1) : 0), 0), 0);
-}
-
 function inFakeCorridor(guard, x, y) {
     const egd = guard?._egd;
     if (!egd) return false;
@@ -229,7 +224,7 @@ function clearFakeCorridor(guard, force = false, state = game) {
 }
 
 function guardGoldState(state = game) {
-    return (state._goldCount || 0) + hiddenGoldAmount();
+    return heroGoldAmount(state) + hiddenGold(state, true);
 }
 
 function vaultGuardNextSquare(guard, state = game) {
@@ -399,15 +394,15 @@ export async function continueVaultGuardArrival(state = game) {
     await morePrompt("Suddenly one of the Vault's guards enters!");
     await readGuardName();
 
-    const hiddenGold = hiddenGoldAmount();
-    if (hiddenGold) {
+    const stashedGold = hiddenGold(game, true);
+    if (stashedGold) {
         guard._egd.dropgoldcnt++;
         await morePrompt('"I don\'t know you."  "You have hidden gold."');
         await morePrompt(
             '"Most likely all your gold was stolen from this vault."',
         );
         await pline('"Please drop that gold and follow me."');
-    } else if (game._goldCount) {
+    } else if (heroGoldAmount(game)) {
         guard._egd.dropgoldcnt++;
         await morePrompt('"I don\'t know you."');
         await morePrompt(

@@ -16,19 +16,21 @@
 //        check_unpaid / check_unpaid_usage / cost_per_charge (D-1047).
 //        find_oid / o_on / gem_learned / bp_to_obj billobjs (D-1691).
 //        remote_burglary / rob_shop / call_kops / makekops (D-1717).
+//        get_cost glass-gem pseudo-ID (D-1718).
+//        getprice arti_cost (D-1719).
+//        obfree / delete_contents (D-1727).
+//        u_left_shop leave verbalize + choose_stairs (D-1733).
 // Named omissions: shk_fixes_damage in shk_move; allmain/bones
 // fix_shop_damage callers; holetime dig follow; angry
 // Displaced pline (shk path); following verbalize;
 // m_break_boulder; m_move_aggress; inhistemple callers; mapseen_temple;
 // m_canseeu for angry chase; ACH_SHOP mapseen; Hallu shkname;
-// SetVoice / Soundeffect robbed mutter; leave-bill verbalize;
+// SetVoice / Soundeffect robbed mutter;
 // shk_move Fast + sobj_at pickaxe (u_entered_shop doorway is D-1080);
 // mongone full;
 // mnearto full (door yank uses enexto/rloc; home_shk still coord set);
 // after_shk_move occupancy check_special_room (bill_p==-1000 producer);
 // losedogs make_happy_shoppers; paygd; M1_NOHEAD has_head;
-// gem glass
-// pseudo-ID in get_cost; arti_cost; Hallu currency ROLL_FROM;
 // get_obj_location buried (minvent via distant_name); sell-side quotes partial;
 // dopay: debit/robbed/angry appease (D-0998);
 // multi-shk getpos pay-whom (D-1704); mute/Deaf nod is D-1716;
@@ -46,6 +48,7 @@
 import { game } from './gstate.js';
 import { rn2, rn1, rnd } from './rng.js';
 import { dist2, highc, online2, upstart, depth } from './hacklib.js';
+import { choose_stairs } from './wizard.js';
 import { in_rooms, stop_occupation } from './hack.js';
 import {
     ESHK, EPRI, IS_ROOM, IS_DOOR, IS_WALL, ZAP_POS, NOTONL, u_at, isok,
@@ -55,7 +58,7 @@ import {
     OBJ_MINVENT, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_FREE, OBJ_DELETED,
     OBJ_ONBILL,
     NO_ROOM, TEMPLE, RLOC_MSG, RLOC_NOMSG,
-    DISPLACED, LOW_PM, Has_contents, MAXULEV, ECMD_OK, ECMD_TIME, ECMD_CANCEL,
+    DISPLACED, LOW_PM, Has_contents, Is_container, has_omid, OMID, MAXULEV, ECMD_OK, ECMD_TIME, ECMD_CANCEL,
     EYE, M_AP_NOTHING, M_AP_MONSTER, M_AP_TYPE,
     COST_CONTENTS, COST_SINGLEOBJ, COST_UNBLSS, COST_UNCURS, TELEPAT,
     MENU_TRADITIONAL, MENU_FULL,
@@ -68,7 +71,8 @@ import { mon_nam, x_monnam, y_monnam, Monnam } from './do_name.js';
 import {
     COIN_CLASS, FOOD_CLASS, WAND_CLASS, POTION_CLASS, ARMOR_CLASS,
     WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
-    BALL_CLASS, CHAIN_CLASS, FIRST_REAL_GEM, objects, POT_WATER,
+    BALL_CLASS, CHAIN_CLASS, FIRST_REAL_GEM, LAST_REAL_GEM, objects,
+    POT_WATER,
 } from './objects.js';
 import {
     newsym, pline, Norep, verbalize, You_feel, docrt, flush_screen,
@@ -112,6 +116,10 @@ import { ledger_no } from './dungeon.js';
 import { Is_candle } from './timeout.js';
 import { addinv } from './u_init.js';
 import { SchroedingersBox } from './pickup.js';
+import { arti_cost } from './artifact.js';
+import { o_unleash } from './apply.js';
+import { setnotworn } from './do.js';
+import { reset_pick } from './lock.js';
 
 const PICK_AXE = objectNames.indexOf('PICK_AXE');
 const DWARVISH_MATTOCK = objectNames.indexOf('DWARVISH_MATTOCK');
@@ -135,6 +143,27 @@ const EXPENSIVE_CAMERA = objectNames.indexOf('EXPENSIVE_CAMERA');
 const POT_OIL = objectNames.indexOf('POT_OIL');
 /** C objects.h STRANGE_OBJECT — otyp 0; gem_learned all-gems sentinel. */
 const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
+/** C objects.h MARKER FIRST_GLASS_GEM = WORTHLESS_WHITE_GLASS (after JADE). */
+const FIRST_GLASS_GEM = LAST_REAL_GEM + 1;
+/** C objects.h GEM names used by get_cost glass pseudo-ID. */
+const DIAMOND = objectNames.indexOf('DIAMOND');
+const OPAL = objectNames.indexOf('OPAL');
+const SAPPHIRE = objectNames.indexOf('SAPPHIRE');
+const AQUAMARINE = objectNames.indexOf('AQUAMARINE');
+const RUBY = objectNames.indexOf('RUBY');
+const JASPER = objectNames.indexOf('JASPER');
+const AMBER = objectNames.indexOf('AMBER');
+const TOPAZ = objectNames.indexOf('TOPAZ');
+const JACINTH = objectNames.indexOf('JACINTH');
+const AGATE = objectNames.indexOf('AGATE');
+const CITRINE = objectNames.indexOf('CITRINE');
+const CHRYSOBERYL = objectNames.indexOf('CHRYSOBERYL');
+const BLACK_OPAL = objectNames.indexOf('BLACK_OPAL');
+const JET = objectNames.indexOf('JET');
+const EMERALD = objectNames.indexOf('EMERALD');
+const JADE = objectNames.indexOf('JADE');
+const AMETHYST = objectNames.indexOf('AMETHYST');
+const FLUORITE = objectNames.indexOf('FLUORITE');
 const LAND_MINE = objectNames.indexOf('LAND_MINE');
 const BEARTRAP = objectNames.indexOf('BEARTRAP');
 const BOULDER = objectNames.indexOf('BOULDER');
@@ -180,20 +209,6 @@ function noit_mhim(mtmp) {
 }
 function noit_mhis(mtmp) {
     return mtmp?.female ? 'her' : 'his';
-}
-
-/**
- * C vault.c / invent.c hidden_gold — gold inside carried containers.
- * @param {boolean} even_if_unknown
- */
-function hidden_gold(even_if_unknown) {
-    let value = 0;
-    for (const obj of game.invent || []) {
-        if (Has_contents(obj) && (obj.cknown || even_if_unknown)) {
-            value += contained_gold(obj, even_if_unknown);
-        }
-    }
-    return value;
 }
 
 /**
@@ -260,12 +275,13 @@ export function set_residency(shkp, zero_out) {
 }
 
 /**
- * C ref: shk.c u_left_shop — leave/boundary bill prompts.
- * Named omissions: leave-boundary verbalize (`!*leavestring && !muteshk`)
- * then rob_shop; caller still deferred so stepping onto the door does
- * not skip C's pay-before-leaving return. remote_burglary is D-1717.
+ * C ref: shk.c u_left_shop `:578–625` — leave/boundary bill prompts.
+ * Boundary unpaid: verbalize (or Deaf/mute pline) then return so the
+ * pay-before-leaving warning is not skipped. Outright leave: rob_shop
+ * then call_kops. remote_burglary is D-1717. Named: SetVoice; heaven
+ * teleport.c caller.
  */
-export async function u_left_shop(leavestring, _newlev) {
+export async function u_left_shop(leavestring, newlev) {
     const u = game.u;
     if (!u) return;
     const leave = leavestring || '';
@@ -281,8 +297,27 @@ export async function u_left_shop(leavestring, _newlev) {
     const eshkp = ESHK(shkp);
     if (!((eshkp?.billct | 0) || (eshkp?.debit | 0))) return;
 
-    // bill unpaid arms (verbalize then rob_shop) deferred — do not
-    // rob_shop here or the boundary warning return is skipped.
+    if (!leave && !muteshk(shkp)) {
+        const not_upset = !eshkp.surcharge;
+        const plname = game.plname || '';
+        if (!hero_deaf() && !muteshk(shkp)) {
+            // SetVoice deferred
+            await verbalize(
+                not_upset
+                    ? `${plname}!  Please pay before leaving.`
+                    : `${plname}!  Don't you leave without paying!`,
+            );
+        } else {
+            await pline(
+                `${Shknam(shkp)} ${not_upset ? 'points out' : 'makes it clear'} that you need to pay before leaving${not_upset ? '.' : '!'}`,
+            );
+        }
+        return;
+    }
+
+    if (await rob_shop(shkp)) {
+        await call_kops(shkp, !newlev && !!loc0?.edge);
+    }
 }
 
 /**
@@ -317,8 +352,7 @@ function makekops(mm) {
 
 /**
  * C ref: shk.c call_kops `:509–564` — alarm, angry_guards, then makekops.
- * Named omit: choose_stairs / stairway_find_type_dir (sx,sy stay 0 so
- * the down-stair swarm is skipped; shk swarm still runs).
+ * choose_stairs (D-1733) fills the down-stair swarm when !nearshop.
  */
 async function call_kops(shkp, nearshop) {
     if (!shkp) return;
@@ -343,9 +377,8 @@ async function call_kops(shkp, nearshop) {
     }
     if (nokops) return;
 
-    const sx = 0;
-    const sy = 0;
-    // choose_stairs(&sx, &sy, TRUE) named omit — isok(0,0) is false.
+    const stair = { sx: 0, sy: 0 };
+    choose_stairs(stair, true);
 
     if (nearshop) {
         if (game.flags?.verbose !== false) {
@@ -357,8 +390,8 @@ async function call_kops(shkp, nearshop) {
     if (game.flags?.verbose !== false) {
         await pline('The Keystone Kops are after you!');
     }
-    if (isok(sx, sy)) {
-        makekops({ x: sx, y: sy });
+    if (isok(stair.sx, stair.sy)) {
+        makekops({ x: stair.sx, y: stair.sy });
     }
     makekops({ x: shkp.mx | 0, y: shkp.my | 0 });
 }
@@ -1092,8 +1125,7 @@ async function litter_scatter(litter, x, y, shkp) {
         if ((otmp.otyp | 0) === BOULDER || (otmp.otyp | 0) === ROCK) {
             // C obj_extract_self + obfree — not delobj (no obj_resists rn2).
             obj_extract_self(otmp);
-            otmp.quan = 0;
-            otmp.where = OBJ_FREE;
+            obfree(otmp, null);
             continue;
         }
         let trylimit = 10;
@@ -2899,13 +2931,13 @@ set_doname_shop_suffix(append_doname_unpaid_suffix);
 
 /**
  * C ref: shk.c getprice — base oc_cost + class tweaks.
- * Named omissions: arti_cost; corpsenm_price_adj; full candle Is_candle.
+ * Named omissions: corpsenm_price_adj; full candle Is_candle.
  */
 function getprice(obj, shk_buying) {
     const oc = objects()?.[obj?.otyp | 0];
     let tmp = (oc?.oc_cost | 0);
     if (obj?.oartifact) {
-        // arti_cost deferred — leave table cost; get_cost still *4 later
+        tmp = arti_cost(obj);
         if (shk_buying) tmp = Math.trunc(tmp / 4);
     }
     switch (obj?.oclass | 0) {
@@ -2938,7 +2970,7 @@ function getprice(obj, shk_buying) {
 
 /**
  * C ref: shk.c get_cost — charge for one unit.
- * Named omissions: glass-gem pseudo-ID table; bill-price reuse FIXME.
+ * Named omissions: bill-price reuse FIXME.
  */
 function get_cost(obj, shkp) {
     let tmp = getprice(obj, false);
@@ -2949,7 +2981,45 @@ function get_cost(obj, shkp) {
     const oc = objects()?.[obj?.otyp | 0];
     if (!obj?.dknown || !oc?.oc_name_known) {
         if ((obj?.oclass | 0) === GEM_CLASS && (oc?.oc_material | 0) === GLASS) {
-            // glass gem pseudo-ID → objects[i].oc_cost deferred; keep tmp
+            /* C shk.c get_cost :2897–2941 — ubirthday-stable color table */
+            const otyp = obj.otyp | 0;
+            const pseudorand =
+                ((game.ubirthday | 0) % otyp) >= Math.trunc(otyp / 2);
+            let i;
+            switch (otyp - FIRST_GLASS_GEM) {
+            case 0: /* white */
+                i = pseudorand ? DIAMOND : OPAL;
+                break;
+            case 1: /* blue */
+                i = pseudorand ? SAPPHIRE : AQUAMARINE;
+                break;
+            case 2: /* red */
+                i = pseudorand ? RUBY : JASPER;
+                break;
+            case 3: /* yellowish brown */
+                i = pseudorand ? AMBER : TOPAZ;
+                break;
+            case 4: /* orange */
+                i = pseudorand ? JACINTH : AGATE;
+                break;
+            case 5: /* yellow */
+                i = pseudorand ? CITRINE : CHRYSOBERYL;
+                break;
+            case 6: /* black */
+                i = pseudorand ? BLACK_OPAL : JET;
+                break;
+            case 7: /* green */
+                i = pseudorand ? EMERALD : JADE;
+                break;
+            case 8: /* violet */
+                i = pseudorand ? AMETHYST : FLUORITE;
+                break;
+            default:
+                impossible(`bad glass gem ${otyp}?`);
+                i = STRANGE_OBJECT;
+                break;
+            }
+            tmp = objects()?.[i]?.oc_cost | 0;
         } else if (oid_price_adjustment(obj, obj?.o_id | 0) > 0) {
             multiplier *= 4;
             divisor *= 3;
@@ -3184,9 +3254,142 @@ function add_to_billobjs(obj) {
 }
 
 /**
+ * C ref: eat.c food_disappears `:395–403` — clear victual if this food
+ * was being eaten, then stop timers. First JS body lives here as an
+ * obfree callee (eat.js export still named).
+ */
+function food_disappears(obj) {
+    const vic = game.context?.victual;
+    if (vic && obj === vic.piece) {
+        game.context.victual = {};
+    }
+    if (obj.timed) obj_stop_timers(obj);
+}
+
+/**
+ * C ref: spell.c book_disappears `:644–652` — drop spbook.book / o_id
+ * when the studied book is destroyed. First JS body lives here as an
+ * obfree callee (spell.js export still named).
+ */
+function book_disappears(obj) {
+    const sp = game.context?.spbook;
+    if (sp && obj === sp.book) {
+        sp.book = null;
+        sp.o_id = 0;
+    }
+}
+
+/**
+ * C ref: lock.c maybe_reset_pick `:268–285` — clear xlock when this
+ * container is gx.xlock.box, or when container is Null and the box is
+ * not carried (level change). Callee reset_pick is live in lock.js.
+ */
+function maybe_reset_pick(container) {
+    const box = game.xlock?.box || null;
+    if (container ? container === box
+        : (!box || !(game.invent || []).includes(box))) {
+        reset_pick();
+    }
+}
+
+/**
+ * C ref: shk.c delete_contents `:1174–1183` — extract + obfree each
+ * cobj (recursive via obfree Has_contents). No obj_resists.
+ */
+export function delete_contents(obj) {
+    if (!obj) return;
+    while (obj.cobj) {
+        const curr = obj.cobj;
+        obj_extract_self(curr);
+        obfree(curr, null);
+    }
+}
+
+/**
+ * C ref: shk.c obfree `:1186–1275` — release an already-extracted
+ * object. Leash / food / book / contents / pick / boulder; unpaid bill
+ * useup→billobjs or merge bquan; else oid_price_adjustment may donate
+ * o_id to merge; worn sanity; dealloc_obj subset (timers + OBJ_DELETED).
+ * Named: full mkobj.c dealloc_obj (lua_ref, objs_deleted, LS_OBJECT,
+ * thrownobj/kickedobj/tin/splitobjs); delobj still extract-only.
+ */
+export function obfree(obj, merge) {
+    if (!obj) return;
+
+    if ((obj.otyp | 0) === LEASH && (obj.leashmon | 0)) {
+        o_unleash(obj);
+    }
+    if ((obj.oclass | 0) === FOOD_CLASS) food_disappears(obj);
+    if ((obj.oclass | 0) === SPBOOK_CLASS) book_disappears(obj);
+    if (Has_contents(obj)) delete_contents(obj);
+    if (Is_container(obj)) maybe_reset_pick(obj);
+    if ((obj.otyp | 0) === BOULDER) obj.next_boulder = 0;
+
+    let shkp = null;
+    if (obj.unpaid) {
+        let idx = 0;
+        for (;;) {
+            const nxt = next_shkp(idx, true);
+            if (!nxt.shkp) break;
+            if (onbill(obj, nxt.shkp, true)) {
+                shkp = nxt.shkp;
+                break;
+            }
+            idx = nxt.nextIdx;
+        }
+    }
+    if (!shkp) shkp = shop_keeper(game.u?.ushops);
+
+    const bp = onbill(obj, shkp, false);
+    if (bp) {
+        if (!merge) {
+            bp.useup = true;
+            obj.unpaid = 0;
+            if (obj.globby && !obj.owt && has_omid(obj)) {
+                obj.owt = OMID(obj);
+            }
+            add_to_billobjs(obj);
+            return;
+        }
+        const bpm = onbill(merge, shkp, false);
+        if (!bpm) {
+            impossible(
+                'obfree: not on bill, otyp,where,quan,unpaid = (%d,%d,%d,%d) (%d,%d,%d,%d)?',
+                obj.otyp | 0, obj.where | 0, obj.quan | 0, obj.unpaid ? 1 : 0,
+                merge.otyp | 0, merge.where | 0, merge.quan | 0,
+                merge.unpaid ? 1 : 0,
+            );
+            return;
+        }
+        const eshkp = ESHK(shkp);
+        bpm.bquan = (bpm.bquan | 0) + (bp.bquan | 0);
+        eshkp.billct = (eshkp.billct | 0) - 1;
+        const bill = eshkp.bill_p || eshkp.bill;
+        if (bill) {
+            const i = bill.indexOf(bp);
+            if (i >= 0) bill[i] = bill[eshkp.billct | 0];
+        }
+    } else if (merge
+        && oid_price_adjustment(obj, obj.o_id)
+            > oid_price_adjustment(merge, merge.o_id)) {
+        merge.o_id = obj.o_id | 0;
+    }
+
+    if (obj.owornmask) {
+        impossible(
+            'obfree: deleting worn obj (%d: %d)',
+            obj.otyp | 0, obj.owornmask | 0,
+        );
+        setnotworn(obj);
+    }
+    dealloc_obj_free(obj);
+}
+
+/**
  * C ref: shk.c add_one_tobill `:3308–3363`.
  * dummy TRUE → useup + add_to_billobjs (FullyUsedUp). Bill-full You();
- * OBJ_FREE dealloc; globby newomid/OMID. Full dealloc_obj is obfree Open.
+ * OBJ_FREE dealloc; globby newomid/OMID. Full dealloc_obj (lua/lights)
+ * still named on obfree.
  */
 async function add_one_tobill(obj, dummy, shkp) {
     const eshkp = ESHK(shkp);
@@ -3575,7 +3778,7 @@ export async function shk_move(shkp) {
     return z;
 }
 
-import { gd_move as vault_gd_move } from './vault.js';
+import { gd_move as vault_gd_move, hidden_gold } from './vault.js';
 
 /**
  * C ref: vault.c gd_move — re-export peaceful escort subset from vault.js.

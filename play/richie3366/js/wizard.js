@@ -1,5 +1,6 @@
 // wizard.js — Wizard of Yendor harassment from wizard.c.
 // C ref: wizard.c resurrect (new-Wizard makemon arm); aggravate; tactics;
+//         choose_stairs (D-1733; also shk.c call_kops);
 //         nasty / pick_nasty (pick_nasty lives in makemon.js for newcham).
 
 import { game } from './gstate.js';
@@ -17,6 +18,8 @@ import { noteleport_level, enexto } from './teleport.js';
 import { mnexto } from './mon.js';
 import { inhishop } from './shk.js';
 import { msummon, monster_census, Inhell } from './minion.js';
+import { builds_up } from './hacklib.js';
+import { stairway_find_type_dir } from './mklev.js';
 
 const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
 const PM_ARCH_LICH = monsterNames.indexOf('PM_ARCH_LICH');
@@ -189,11 +192,39 @@ function strategy(mtmp) {
 }
 
 /**
+ * C ref: wizard.c choose_stairs `:330–364` — pick stair/ladder coord for
+ * Kops (call_kops) and covetous heal. Leaves sx,sy as-is when none found
+ * (portal-only levels). dir True = forward, False = backtrack.
+ */
+export function choose_stairs(coord, dir) {
+    const uz = game.u?.uz;
+    const stdir = builds_up(uz) ? !!dir : !dir;
+    let stway = stairway_find_type_dir(false, stdir);
+    if (!stway) {
+        stway = stairway_find_type_dir(true, stdir);
+        if (!stway) {
+            const dnum = uz?.dnum | 0;
+            for (stway = game.stairs; stway; stway = stway.next) {
+                if ((stway.tolev?.dnum | 0) !== dnum) break;
+            }
+            if (!stway) {
+                stway = stairway_find_type_dir(false, !stdir);
+                if (!stway) stway = stairway_find_type_dir(true, !stdir);
+            }
+        }
+    }
+    if (stway && coord) {
+        coord.sx = stway.sx;
+        coord.sy = stway.sy;
+    }
+}
+
+/**
  * C ref: wizard.c tactics — covetous special move before distfleeck.
  * Envelope: strategy → mstrategy update → STRAT_NONE harass rn2/mnexto.
  * STRAT_HEAL: set mavenge only; choose_stairs / rloc / healmon /
  * FALLTHROUGH-to-harass deferred (falling through burned extra rn2 when C
- * early-returned from HEAL).
+ * early-returned from HEAL). choose_stairs is live for call_kops.
  */
 export async function tactics(mtmp) {
     const strat = strategy(mtmp);

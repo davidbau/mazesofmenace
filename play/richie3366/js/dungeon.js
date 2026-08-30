@@ -116,6 +116,7 @@ import {
     ASCENDED,
     ESCAPED,
     In_endgame,
+    In_quest,
     In_sokoban,
     SHOPBASE,
     TEMPLE,
@@ -130,6 +131,7 @@ import {
     VIBRATING_SQUARE,
     Is_astralevel,
     Is_knox,
+    Is_rogue_level,
     Is_stronghold,
     Is_bigroom,
     Is_valley,
@@ -981,6 +983,8 @@ function on_level(a, b) {
  * #overview (why==0). Cemetery: final_resting_place && (knownbones
  * || wizard) after recalc clone (D-1659). Auto-flags oracle/bigroom/
  * valley/msanctum/vibrating_square from recalc_mapseen (D-1707).
+ * sokosolved / roguelevel / quest_summons / questing / notreachable
+ * from recalc_mapseen (D-1724).
  */
 function interest_mapseen(mptr) {
     const u = game.u || {};
@@ -1008,7 +1012,7 @@ function interest_mapseen(mptr) {
 }
 
 /** Ensure lastseentyp[COLNO][ROWNO]; C svl.lastseentyp. */
-function ensure_lastseentyp() {
+export function ensure_lastseentyp() {
     if (!game.lastseentyp) {
         const a = new Array(COLNO);
         for (let x = 0; x < COLNO; x++) a[x] = new Array(ROWNO).fill(0);
@@ -1457,6 +1461,15 @@ function Blind() {
 }
 
 /**
+ * C rm.h Sokoban — svl.level.flags.sokoban_rules.
+ * JS also mirrors game.Sokoban after getlev (do.js).
+ */
+function Sokoban() {
+    const lf = game.level?.flags;
+    return !!(lf?.sokoban_rules || lf?.sokoban || game.Sokoban);
+}
+
+/**
  * C dungeon.c Invocation_lev `:2016–2021` — In_hell && deepest-1.
  * Canonical export (hack.js / apply.js still have local clones).
  * @param {{ dnum?: number, dlevel?: number }|null|undefined} lev
@@ -1520,8 +1533,9 @@ function clone_cemetery_chain(head) {
  * pass then restored by count_feat if the drawbridge is still seen;
  * flags.castle / flags.ludios stick. Blind bigroom / oracle DELPHI /
  * valley / sanctum / vibrating_square (D-1707). Cemetery when[] is
- * yyyymmddhhmmss (D-1710). Named: sokosolved / roguelevel /
- * quest_summons / questing / notreachable; DRAWBRIDGE_UP lastseentyp.
+ * yyyymmddhhmmss (D-1710). sokosolved / roguelevel / quest_summons /
+ * questing / notreachable (D-1724). Named: DRAWBRIDGE_UP lastseentyp
+ * is D-1711; display_monster M_AP_FURNITURE lastseentyp still named.
  */
 export function recalc_mapseen() {
     const mptr = ensure_mapseen(null);
@@ -1533,6 +1547,22 @@ export function recalc_mapseen() {
     if (!mptr.flags) mptr.flags = {};
     const u = game.u;
     const rooms = game.level?.rooms || [];
+    /* C `:3099–3134` — reached → clear notreachable (quest dnum
+       chain); sokosolved / roguelevel / quest flags. castle/ludios
+       stick. knownbones re-derived in the cemetery walk below. */
+    if (mptr.flags.notreachable) {
+        mptr.flags.notreachable = 0;
+        if (In_quest(u?.uz)) {
+            const dnum = mptr.lev?.dnum | 0;
+            for (const tmp of game.mapseenchn || []) {
+                if ((tmp.lev?.dnum | 0) === dnum) {
+                    if (!tmp.flags) tmp.flags = {};
+                    tmp.flags.notreachable = 0;
+                }
+            }
+        }
+    }
+    mptr.flags.sokosolved = In_sokoban(u?.uz) && !Sokoban() ? 1 : 0;
     /* C `:3115–3124` — bigroom retains when Blind; oracle reset;
        destroyed drawbridge → tunesuffix empty. forgot=0 after the
        Blind test so a one-shot forget does not keep wiping bigroom. */
@@ -1541,9 +1571,17 @@ export function recalc_mapseen() {
     } else if (mptr.flags.forgot) {
         mptr.flags.bigroom = 0;
     }
+    mptr.flags.roguelevel = Is_rogue_level(u?.uz) ? 1 : 0;
     mptr.flags.oracle = 0;
     mptr.flags.castletune = 0;
     mptr.flags.forgot = 0;
+    const ue = u?.uevent || {};
+    const qs = game.quest_status || {};
+    mptr.flags.quest_summons = (at_dgn_entrance('The Quest')
+        && ue.qcalled
+        && !(ue.qcompleted || ue.qexpelled || qs.leader_is_dead)) ? 1 : 0;
+    mptr.flags.questing = (on_level(u?.uz, game.qstart_level)
+        && qs.got_quest) ? 1 : 0;
 
     // C: track rooms the hero is in → msrooms[].seen / untended
     const urooms = u?.urooms || '';
@@ -1697,6 +1735,21 @@ export function recbranch_mapseen(source, dest) {
         return;
     }
     mptr.br = br;
+}
+
+/**
+ * C ref: dungeon.c remdun_mapseen `:2810–2832` — mark overview nodes
+ * for dungeon `dnum` notreachable (C `#if 1`; does not unlink).
+ * @param {number} dnum
+ */
+export function remdun_mapseen(dnum) {
+    const want = dnum | 0;
+    for (const mptr of game.mapseenchn || []) {
+        if ((mptr?.lev?.dnum | 0) === want) {
+            if (!mptr.flags) mptr.flags = {};
+            mptr.flags.notreachable = 1;
+        }
+    }
 }
 
 /** C ref: dungeon.c seen_string — 0/1/2/3 → no/a|an/some/many */

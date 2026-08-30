@@ -4,7 +4,8 @@
 //        unknwn_contnr_contents (D-1663; caller invent.c dounpaid);
 //        unknow_object (D-1674 oc_uses_known extract);
 //        RING_CLASS mksobj_init from objects[].oc_charged (D-1690);
-//        objects[].oc_merge from objects.h BITS mrg (D-1712).
+//        objects[].oc_merge from objects.h BITS mrg (D-1712);
+//        obj.h is_multigen / is_poisonable + permapoisoned (D-1732).
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rne, rnz } from './rng.js';
@@ -28,6 +29,8 @@ import {
     CHAIN_CLASS,
     VENOM_CLASS,
     objectNames,
+    is_multigen,
+    is_poisonable,
 } from './objects.js';
 import {
     rndmonnum, rndmonnum_adj,
@@ -36,7 +39,7 @@ import {
     undead_to_corpse, can_be_hatched, dead_species, copy_mextra,
     zombie_form,
 } from './mon.js';
-import { nartifact_exist, mk_artifact } from './artifact.js';
+import { nartifact_exist, mk_artifact, permapoisoned } from './artifact.js';
 import {
     mons, is_male, is_female, is_neuter, is_human, verysmall, PM_LICHEN, monsterNames,
     G_NOCORPSE, NON_PM as MON_NON_PM,
@@ -63,6 +66,7 @@ import {
 } from './const.js';
 import { recalc_block_point } from './vision.js';
 import { del_light_source, discard_flashes } from './light.js';
+import { obfree } from './shk.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const HORN_OF_PLENTY = objectNames.indexOf('HORN_OF_PLENTY');
@@ -567,19 +571,6 @@ const O = {
     get WAX_CANDLE() { return otypByName('WAX_CANDLE'); },
     get BELL() { return otypByName('BELL'); },
 };
-
-// C ref: obj.h is_multigen — WEAPON_CLASS with oc_skill in -P_SHURIKEN..-P_BOW
-function is_multigen(otmp) {
-    const n = otypName(otmp.otyp);
-    return ['ARROW', 'ELVEN_ARROW', 'ORCISH_ARROW', 'SILVER_ARROW', 'YA',
-        'CROSSBOW_BOLT', 'DART', 'SHURIKEN'].includes(n);
-}
-
-// C ref: obj.h is_poisonable — same missile skill window as is_multigen,
-// or permapoisoned (artifact.c; none on ordinary mklev/ini_inv kits).
-function is_poisonable(otmp) {
-    return is_multigen(otmp);
-}
 
 export function is_rustprone(otmp) {
     return objs()[otmp.otyp]?.oc_material === IRON;
@@ -1680,6 +1671,8 @@ function mksobj_init(otmp, artif) {
         break;
     }
     mkobj_erosions(otmp);
+    // C mkobj.c mksobj_init `:1173–1174` — Grimtooth (etc.) always poisoned.
+    if (permapoisoned(otmp)) otmp.opoisoned = 1;
 }
 
 // C ref: do_name.c sir_Terry_novels[] — C-home of the table; lookup_novel
@@ -1991,7 +1984,7 @@ function merged(potmp, pobj) {
     if (obj.bknown !== otmp.bknown) otmp.bknown = 1;
     if (obj.rknown !== otmp.rknown) otmp.rknown = 1;
     if (obj.bypass) otmp.bypass = 1;
-    obj.where = OBJ_FREE;
+    obfree(obj, otmp);
     potmp.obj = otmp;
     pobj.obj = null;
     return true;

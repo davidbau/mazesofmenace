@@ -7,12 +7,15 @@
 import { game } from './gstate.js';
 import { pline, plineWithContinuation } from './display.js';
 import { rn2 } from './rng.js';
-import { nextIdent } from './ident.js';
+import { detachHeroGold, heroGoldAmount } from './hero_gold.js';
+import { exerciseAttribute } from './attrib.js';
+import { heroIsDeaf } from './senses.js';
 import { MORGUE, OROOM, ROOMOFFSET, SHOPBASE } from './const.js';
 import { roomForRoomno } from './room.js';
 import { intemple, templeRoomAt } from './priest.js';
 import {
-    OBJECT_COST, OBJECT_MATERIAL, OBJECT_NAMES,
+    BRASS_LANTERN, MAGIC_LAMP, OBJECT_COST, OBJECT_MATERIAL, OBJECT_NAMES,
+    OIL_LAMP,
 } from './object_data.js';
 import { recordObjectPriceQuote } from './object_knowledge.js';
 import { ACH_TOWN, recordAchievement } from './achievements.js';
@@ -271,9 +274,9 @@ export function carriedShopBill(resident, state = game) {
 export function settleCarriedShopBillItem(resident, item, state = game) {
     const { entry, object, price } = item || {};
     if (!resident?.eshk || !entry || !object || price <= 0
-        || (state._goldCount || 0) < price) return false;
-    if (state._goldCount > price) nextIdent();
-    state._goldCount -= price;
+        || heroGoldAmount(state) < price) return false;
+    const paid = detachHeroGold(state, price);
+    if (paid) paid.where = 'gone';
     resident.gold = (resident.gold || 0) + price;
     object.unpaid = false;
     resident.eshk.bill = (resident.eshk.bill || [])
@@ -371,6 +374,41 @@ export function shopObjectUnitCost(object, resident = null, state = game) {
     if (resident?.eshk?.surcharge)
         cost += Math.trunc((cost + 2) / 3);
     return cost;
+}
+
+// C refs: shk.c:check_unpaid()/check_unpaid_usage()/cost_per_charge().
+// Lamps pay a usage fee only when switched on while their resident shopkeeper
+// is still operating the current shop.  Magic-lamp lighting uses an ordinary
+// oil-lamp fee so its inexhaustible light does not identify it for free.
+// Prefix RNG is consumed before deaf/mute presentation, exactly as in C.
+export async function chargeUnpaidLampUse(object, state = game) {
+    if (!object?.unpaid
+        || ![OIL_LAMP, BRASS_LANTERN, MAGIC_LAMP].includes(object.otyp)) {
+        return null;
+    }
+    const resident = shopkeeperForHero(state);
+    if (!resident) return null;
+
+    let amount = object.otyp === MAGIC_LAMP
+        ? OBJECT_COST[OIL_LAMP]
+        : shopObjectUnitCost(object, resident, state);
+    if (object.otyp !== MAGIC_LAMP && (object.spe ?? 0) > 1)
+        amount = Math.trunc(amount / 4);
+    if (amount <= 0) return null;
+
+    const first = rn2(3) === 0 ? 'Hey!  ' : '';
+    const second = rn2(3) === 0 ? 'Ahem.  ' : '';
+    const audible = !heroIsDeaf(state) && !resident.mute;
+    const message = audible
+        ? `"${first}${second}Usage fee, ${amount} zorkmid${
+            amount === 1 ? '' : 's'}."`
+        : null;
+    if (message) {
+        await pline(message);
+        exerciseAttribute(4, true, state);
+    }
+    resident.eshk.debit = (resident.eshk.debit ?? 0) + amount;
+    return { resident, amount, message };
 }
 
 export function getCostOfShopItem(object, state = game) {

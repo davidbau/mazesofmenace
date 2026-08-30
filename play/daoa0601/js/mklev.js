@@ -7,7 +7,7 @@
 
 import { game } from './gstate.js';
 import { nextIdent } from './ident.js';
-import { GameMap, makeLocation } from './game.js';
+import { GameMap } from './game.js';
 import { rn2, rnd, rn1, rne, rnz, d } from './rng.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import {
@@ -30,13 +30,18 @@ import {
     Is_rogue_level,
     SPACE_POS, isok, W_NONDIGGABLE, W_NONPASSWALL, FILL_NORMAL, FILL_LVFLAGS,
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DBWALL,
-    DB_EAST, TREE, AIR, CLOUD,
+    ICED_POOL, ICED_MOAT,
+    DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, DB_MOAT, DB_LAVA,
+    TREE, AIR, CLOUD,
     A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL,
     AM_SHRINE, AM_SANCTUM, Align2amask,
     LR_DOWNSTAIR, LR_UPSTAIR, LR_UPTELE, LR_DOWNTELE,
-    M_AP_FURNITURE, M_AP_OBJECT, NEED_WEAPON,
-    MM_ASLEEP, MM_NONAME, MM_NOGRP, MM_EPRI, MM_NOWAIT, MM_NOTAIL,
-    MM_NOCOUNTBIRTH, MM_NOMSG,
+    M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER,
+    MM_ANGRY, MM_ASLEEP, MM_NONAME, MM_NOGRP, MM_EMIN, MM_EPRI,
+    MM_NOWAIT, MM_NOTAIL, MM_IGNOREWATER,
+    MM_NOCOUNTBIRTH, MM_NOMSG, MM_MALE, MM_FEMALE, MM_EDOG, NO_MINVENT,
+    G_EXTINCT, G_GENOD, G_NOCORPSE,
+    W_AMUL, CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_INIT,
     STRAT_APPEARMSG, STRAT_CLOSE, STRAT_WAITFORU,
     WM_X_BL, WM_X_BLTR, WM_X_BR, WM_X_TL, WM_X_TLBR, WM_X_TR,
 } from './const.js';
@@ -54,8 +59,10 @@ import {
     OIL_LAMP,
     MAGIC_LAMP, EXPENSIVE_CAMERA, BLINDFOLD,
     CRYSTAL_BALL, TINNING_KIT, CAN_OF_GREASE, FIGURINE, MAGIC_MARKER,
+    LAND_MINE, BEARTRAP,
     MAGIC_FLUTE, FROST_HORN, FIRE_HORN, HORN_OF_PLENTY, MAGIC_HARP,
-    DRUM_OF_EARTHQUAKE, CORPSE, EGG, MEAT_RING, KELP_FROND,
+    DRUM_OF_EARTHQUAKE, CORPSE, EGG, MEAT_RING,
+    GLOB_OF_GRAY_OOZE, GLOB_OF_BLACK_PUDDING, KELP_FROND,
     SLIME_MOLD, MELON, CREAM_PIE, CANDY_BAR, TIN, GOLD_PIECE, NOVEL,
     DILITHIUM_CRYSTAL, LUCKSTONE, LOADSTONE, TOUCHSTONE,
     ROCK, BOULDER, STATUE, DART, DAGGER, SPEAR, SLING, ORCISH_DAGGER, MACE,
@@ -74,6 +81,7 @@ import {
     LEATHER_ARMOR, LEATHER_JACKET, LEATHER_GLOVES,
     MIRROR, POT_OBJECT_DETECTION, POT_BOOZE, APPLE, SHIELD_OF_REFLECTION,
     WAN_WISHING, SPE_BOOK_OF_THE_DEAD,
+    AMULET_OF_LIFE_SAVING,
 } from './object_data.js';
 import {
     MONSTER_ATTACKS, MONSTER_BODY_META, MONSTER_DIFFICULTY, MONSTER_GENO,
@@ -83,19 +91,36 @@ import {
     MONSTER_HAS_WEAPON_ATTACK, MONSTER_COLOR, MONSTER_NAME, MONSTER_RESISTS,
     SPECIAL_PM, monsterIsNonliving,
 } from './monster_data.js';
+import { petLifeSavingGap } from './mondeath.js';
 import { nhgetch } from './input.js';
 import { flush_screen, newsym, pline } from './display.js';
 import { premap_detect } from './detect.js';
 import {
     TRUE_RUMORS, FALSE_RUMORS, RANDOM_ENGRAVINGS, RANDOM_EPITAPHS,
 } from './random_text_data.js';
-import { makeEngravingAt, wipeoutText } from './engrave.js';
+import { engravingAt, makeEngravingAt, wipeoutText } from './engrave.js';
 import { registerQuestLeader } from './quest.js';
 import { armorBonus } from './armor.js';
 import { initializeMonsterArmor } from './monworn.js';
+import {
+    addObjectToMonsterInventory, linkObjectToMonsterInventory,
+} from './monster_inventory.js';
 import { setupElementalBubbles } from './elemental.js';
 import { roomForIndex } from './room.js';
+import { createHarmlessGasCloudSelection } from './regions.js';
+import { beginOilLampBurn } from './light.js';
+import {
+    claimNextDueObjectTimer, LEVEL_TIMER_KIND, OBJECT_TIMER_KIND,
+    objectTimers, objectsInTimerGraph, peekNextDueObjectTimer,
+    scheduleLevelTimer, scheduleObjectTimer, stopAllObjectTimers,
+    stopLevelTimer, stopObjectTimer,
+} from './object_timers.js';
 import { setMonsterApparentHeroPosition } from './monster_perception.js';
+import { objectWeight } from './weight.js';
+import {
+    mergable as objectsMergable, mergeObjectStacks,
+} from './object_merge.js';
+import { vision_note_blocker_change } from './vision.js';
 
 // Object/class constants (normally from objects.js, not in contest template)
 const RANDOM_CLASS = 0;
@@ -104,6 +129,9 @@ const ARMOR_CLASS = 3;
 const RING_CLASS = 4;
 const AMULET_CLASS = 5;
 const TOOL_CLASS = 6;
+const M2_DOMESTIC = 0x00400000;
+const G_NOGEN = 0x0200;
+const MAXMONNO = 120;
 const FOOD_CLASS = 7;
 const POTION_CLASS = 8;
 const SCROLL_CLASS = 9;
@@ -232,6 +260,7 @@ const PM_HIGH_CLERIC = 276;
 const PM_ARCH_PRIEST = 350;
 const PM_ACOLYTE = 375;
 const PM_HUMAN_MUMMY = 192;
+const PM_ETTIN_MUMMY = 193;
 const PM_HUMAN_ZOMBIE = 244;
 const PM_ETTIN_ZOMBIE = 245;
 const PM_GIANT_ZOMBIE = 247;
@@ -245,7 +274,16 @@ const PM_DWARF = 44;
 const PM_KITTEN = 32;
 const PM_WOOD_NYMPH = 67;
 const PM_WATER_NYMPH = 68;
+const PM_DOG = 18;
+const PM_KOBOLD = 59;
+const PM_GOBLIN = 70;
+const PM_HILL_ORC = 73;
+const PM_MORDOR_ORC = 74;
+const PM_URUK_HAI = 75;
+const PM_ORC_SHAMAN = 76;
+const PM_ORC_CAPTAIN = 77;
 const PM_RAVEN = 128;
+const PM_MONKEY = 233;
 const PM_KOBOLD_SHAMAN = 62;
 const PM_GNOME = 165;
 const PM_GNOME_LEADER = 166;
@@ -257,6 +295,8 @@ const PM_SOLDIER = 277;
 const PM_SERGEANT = 278;
 const PM_LIEUTENANT = 280;
 const PM_CAPTAIN = 281;
+const PM_STONE_GIANT = 170;
+const PM_CROESUS = 286;
 const K_RATION = 294;
 const C_RATION = 295;
 const BUGLE = 256;
@@ -273,11 +313,15 @@ const PM_VLAD_THE_IMPALER = 228;
 const PM_VAMPIRE_BAT = 129;
 const PM_JABBERWOCK = 178;
 const PM_ARCHON = 125;
+const PM_ANGEL = 122;
 const PM_DOPPELGANGER = 270;
 const PM_SANDESTIN = 301;
 const PM_CHAMELEON = 327;
 const PM_ARCHAEOLOGIST = 331;
 const PM_WIZARD_OF_YENDOR = 285;
+const PM_DEATH = 311;
+const PM_PESTILENCE = 312;
+const PM_FAMINE = 313;
 const PM_WIZARD = 343;
 const PM_LORD_CARNARVON = 344;
 const PM_PELIAS = 345;
@@ -288,9 +332,13 @@ const PM_APPRENTICE = 382;
 const PM_SALAMANDER = 329;
 const S_MIMIC = 13;
 const S_DEMON = 56;
+const G_UNIQ_MASK = 0x1000;
+const M1_NOEYES = 0x00001000;
+const S_ANGEL = 27;
+const S_VAMPIRE = 48;
+const S_HUMAN = 53;
 const SCR_CREATE_MONSTER = 329;
 const AMULET_OF_REFLECTION = 208;
-const AMULET_OF_LIFE_SAVING = 202;
 const HELM_OF_BRILLIANCE = 96;
 const DIAMOND = 440;
 const RUBY = 441;
@@ -304,9 +352,19 @@ const FLINT = 473;
 const PM_HOBBIT = 43;
 const PM_GNOME_RULER = 168;
 const PM_MEDUSA = 284;
+const PM_GREMLIN = 40;
+const PM_TITAN = 176;
+const PM_YELLOW_LIGHT = 118;
+const PM_BABY_YELLOW_DRAGON = 142;
+const PM_YELLOW_DRAGON = 152;
+const PM_BLACK_NAGA_HATCHLING = 196;
+const PM_BLACK_NAGA = 200;
+const PM_COBRA = 219;
+const PM_STONE_GOLEM = 257;
 const PM_OGRE = 203;
 const PM_ROCK_TROLL = 222;
 const PM_GIANT_EEL = 319;
+const PM_ELECTRIC_EEL = 320;
 const PM_KRAKEN = 321;
 const PM_PIRANHA = 317;
 const PM_WUMPUS = 84;
@@ -374,6 +432,7 @@ const ARROW_TRAP = 1;
 const DART_TRAP = 2;
 const ROCKTRAP = 3;
 const SQKY_BOARD = 4;
+const BEAR_TRAP = 5;
 const LANDMINE = 6;
 const ROLLING_BOULDER_TRAP = 7;
 const SLP_GAS_TRAP = 8;
@@ -574,6 +633,18 @@ export function level_difficulty() {
         return depth_of_level(game.sanctum_level)
             + Math.trunc((game.u?.ulevel || 1) / 2);
     }
+    if (game.u?.uhave?.amulet) {
+        let deepest = depth_of_level(uz);
+        for (const key of game._levelCache?.keys?.() || []) {
+            const [dnum, dlevel] = String(key).split(':').map(Number);
+            if (!Number.isInteger(dnum) || !Number.isInteger(dlevel))
+                continue;
+            deepest = Math.max(
+                deepest, depth_of_level({ dnum, dlevel }),
+            );
+        }
+        return deepest;
+    }
     let difficulty = depth_of_level(uz);
     const dungeon = game.dungeons?.[uz?.dnum ?? 0];
     if ((dungeon?.entry_lev ?? 1) > 1) {
@@ -636,7 +707,10 @@ export function mksobj(otyp, init, artif) {
         // per-turn hatch trial beginning at age 151.
         for (let age = 151; age <= 200; age++) {
             if (rnd(age) > 150) {
-                otmp.hatchAt = (game.moves ?? 0) + age;
+                scheduleObjectTimer(
+                    otmp, OBJECT_TIMER_KIND.HATCH_EGG,
+                    (game.moves ?? 0) + age, game,
+                );
                 break;
             }
         }
@@ -647,6 +721,9 @@ export function mksobj(otyp, init, artif) {
         // floor glyph is currently visible.
         otmp.novelidx = rn2(41);
     }
+    // C mkobj.c:mksobj() computes weight only after type-specific state,
+    // quantities, corpse identity, timers, and generated contents are final.
+    otmp.owt = objectWeight(otmp);
     return otmp;
 }
 
@@ -849,6 +926,19 @@ function mksobj_init(otmp, artif) {
                 }
             } else otmp.spe = 1;
             blessorcurse(otmp, 10);
+        } else if (otyp >= GLOB_OF_GRAY_OOZE
+            && otyp <= GLOB_OF_BLACK_PUDDING) {
+            // mkobj.c:mksobj_init() constructs globs as one variable-weight
+            // identity and immediately starts their first 23..27-turn timer.
+            otmp.globby = true;
+            otmp.quan = otmp.quantity = 1;
+            otmp.owt = OBJECT_WEIGHT[otyp];
+            otmp.known = otmp.dknown = true;
+            otmp.corpsenm = 206 + (otyp - GLOB_OF_GRAY_OOZE);
+            scheduleObjectTimer(
+                otmp, OBJECT_TIMER_KIND.SHRINK_GLOB,
+                (game.moves ?? 0) + 23 + rn2(5), game,
+            );
         } else if (otyp === KELP_FROND) {
             otmp.quan = rnd(2);
         } else if (otyp === CANDY_BAR) {
@@ -856,7 +946,9 @@ function mksobj_init(otmp, artif) {
             // deliberately-unused blank wrapper.
             otmp.spe = 1 + rn2(12);
         }
-        if (otyp !== CORPSE && otyp !== MEAT_RING && otyp !== KELP_FROND)
+        if (otyp !== CORPSE && otyp !== MEAT_RING && otyp !== KELP_FROND
+            && !(otyp >= GLOB_OF_GRAY_OOZE
+                && otyp <= GLOB_OF_BLACK_PUDDING))
             if (!rn2(6)) otmp.quan = 2;
         break;
     case GEM_CLASS:
@@ -1086,6 +1178,7 @@ export function place_object(otmp, x, y) {
     if (!game.level.objects[x][y]) game.level.objects[x][y] = [];
     // C links newly placed objects at the head of the square's object chain.
     game.level.objects[x][y].unshift(otmp);
+    updateCorpseIceTimer(otmp, x, y, game.level.at(x, y)?.typ === ICE);
     return otmp;
 }
 
@@ -1094,66 +1187,7 @@ export function place_object(otmp, x, y) {
 // newly placed object passed to stackobj(), while a compatible older identity
 // is extracted from the pile.
 export function mergable(otmp, obj, state = game) {
-    if (!otmp || !obj || otmp === obj || otmp.otyp !== obj.otyp
-        || otmp.nomerge || obj.nomerge || !OBJECT_MERGE[obj.otyp]) {
-        return false;
-    }
-    if (obj.oclass === COIN_CLASS) return true;
-    if (!!otmp.cursed !== !!obj.cursed
-        || !!otmp.blessed !== !!obj.blessed) return false;
-
-    const otmpLost = otmp.how_lost ?? 0;
-    const objLost = obj.how_lost ?? 0;
-    if (otmpLost === 4 || objLost === 4
-        || (otmpLost !== 0 && otmpLost !== objLost)) return false;
-    if (obj.globby || otmp.globby) return !!obj.globby && !!otmp.globby;
-
-    for (const field of [
-        'unpaid', 'no_charge', 'obroken', 'otrapped', 'lamplit', 'opoisoned',
-    ]) {
-        if (!!otmp[field] !== !!obj[field]) return false;
-    }
-    if ((otmp.spe ?? 0) !== (obj.spe ?? 0)) return false;
-    if (obj.oclass === FOOD_CLASS
-        && ((otmp.oeaten ?? 0) !== (obj.oeaten ?? 0)
-            || !!otmp.orotten !== !!obj.orotten)) return false;
-
-    const impairedSight = !!state?.blind || (state?.u?.blindTurns ?? 0) > 0
-        || !!state?.u?.hallucinating
-        || (state?.u?.hallucinationTurns ?? 0) > 0;
-    const cleric = state?.urole?.key === 'priest';
-    if (!!otmp.dknown !== !!obj.dknown
-        || ((!!otmp.bknown !== !!obj.bknown)
-            && !cleric && impairedSight)
-        || (otmp.oeroded ?? 0) !== (obj.oeroded ?? 0)
-        || (otmp.oeroded2 ?? 0) !== (obj.oeroded2 ?? 0)
-        || !!otmp.greased !== !!obj.greased
-        || !!otmp.oerodeproof !== !!obj.oerodeproof
-        || ((!!otmp.rknown !== !!obj.rknown) && impairedSight)) {
-        return false;
-    }
-
-    if ([CORPSE, EGG, TIN].includes(obj.otyp)
-        && (otmp.corpsenm ?? -1) !== (obj.corpsenm ?? -1)) return false;
-    if (obj.otyp === EGG && (otmp.timed || obj.timed)) return false;
-    if ((obj.otyp === TALLOW_CANDLE || obj.otyp === WAX_CANDLE)
-        && Math.trunc((otmp.age ?? 0) / 25)
-            !== Math.trunc((obj.age ?? 0) / 25)) return false;
-    if (obj.otyp === POT_OIL && obj.lamplit) return false;
-
-    const hasAttachment = candidate => !!(
-        candidate.attachedMid || candidate.attachedMonster
-        || candidate.oextra?.omid || candidate.oextra?.omonst
-    );
-    if (hasAttachment(otmp) || hasAttachment(obj)) return false;
-
-    const otmpName = otmp.oextra?.oname ?? otmp.oname ?? '';
-    const objName = obj.oextra?.oname ?? obj.oname ?? '';
-    if ((otmpName && objName && otmpName !== objName)
-        || (obj.otyp === CORPSE && !!otmpName !== !!objName)) return false;
-    if ((otmp.oartifact ?? 0) !== (obj.oartifact ?? 0)) return false;
-    if (!!otmp.known !== !!obj.known && impairedSight) return false;
-    return true;
+    return objectsMergable(otmp, obj, state);
 }
 
 // C ref: invent.c:merged()/stackobj().  `obj` remains the live identity
@@ -1165,37 +1199,9 @@ export function stack_object(obj, state = game) {
         candidate !== obj && mergable(obj, candidate, state));
     if (!existing) return obj;
 
-    const objQuantity = obj.quan ?? obj.quantity ?? 1;
-    const existingQuantity = existing.quan ?? existing.quantity ?? 1;
-    const quantity = objQuantity + existingQuantity;
-    if (!obj.lamplit && !obj.globby) {
-        obj.age = Math.trunc(
-            (((obj.age ?? 0) * objQuantity)
-                + ((existing.age ?? 0) * existingQuantity)) / quantity,
-        );
-    }
-    if (!obj.globby) obj.quan = obj.quantity = quantity;
-    const unitWeight = OBJECT_WEIGHT[obj.otyp];
-    obj.owt = Number.isFinite(unitWeight)
-        ? unitWeight * quantity
-        : (obj.owt ?? 0) + (existing.owt ?? 0);
-
-    if (!obj.oextra?.oname && !obj.oname) {
-        if (existing.oextra?.oname) {
-            obj.oextra = {
-                ...(obj.oextra || {}), oname: existing.oextra.oname,
-            };
-        } else if (existing.oname) obj.oname = existing.oname;
-    }
-    if (!!obj.known !== !!existing.known) obj.known = true;
-    if (!!obj.rknown !== !!existing.rknown) obj.rknown = true;
-    if (!!obj.bknown !== !!existing.bknown) obj.bknown = true;
-
     const index = pile.indexOf(existing);
     if (index >= 0) pile.splice(index, 1);
-    existing.where = 'gone';
-    existing.ox = existing.oy = 0;
-    return obj;
+    return mergeObjectStacks(obj, existing, state) || obj;
 }
 
 // C ref: mkobj.c:remove_object().  Extract one floor-object identity while
@@ -1208,6 +1214,7 @@ export function remove_object(otmp) {
     const index = pile?.indexOf(otmp) ?? -1;
     if (index >= 0) pile.splice(index, 1);
     otmp.where = 'free';
+    updateCorpseIceTimer(otmp, otmp.ox, otmp.oy, false);
     return otmp;
 }
 function dealloc_obj(otmp) { /* stub */ }
@@ -1247,13 +1254,58 @@ function startCorpseTimeout(body) {
     if (body.age == null) body.age = currentMove;
     const age = currentMove - body.age;
     const baseDelay = age > 250 ? rotAdjust : 250 - age;
-    body.rotAt = currentMove + baseDelay + rnz(rotAdjust) - rotAdjust;
+    scheduleObjectTimer(
+        body, OBJECT_TIMER_KIND.ROT_CORPSE,
+        currentMove + baseDelay + rnz(rotAdjust) - rotAdjust,
+        game,
+    );
+}
+
+// C ref: mkobj.c:obj_timer_checks(). Corpse rot/revival time doubles while a
+// floor or buried corpse is on ice and contracts by the inverse adjustment
+// when it leaves. Stopping and restarting also assigns a new source timer id.
+function updateCorpseIceTimer(body, x, y, isOnIce, state = game) {
+    if (!body || body.otyp !== CORPSE) return false;
+    const timer = objectTimers(body).find(candidate =>
+        candidate.kind === OBJECT_TIMER_KIND.ROT_CORPSE);
+    if (!timer) return false;
+    const currentMove = state.moves ?? 0;
+    if (isOnIce && !body.on_ice) {
+        const remaining = Math.max(0, timer.deadline - currentMove);
+        stopObjectTimer(body, OBJECT_TIMER_KIND.ROT_CORPSE);
+        body.on_ice = true;
+        const age = currentMove - (body.age ?? currentMove);
+        body.age = currentMove - age * 2;
+        scheduleObjectTimer(
+            body, OBJECT_TIMER_KIND.ROT_CORPSE,
+            currentMove + remaining * 2, state,
+        );
+        return true;
+    }
+    if (!isOnIce && body.on_ice) {
+        const remaining = Math.max(0, timer.deadline - currentMove);
+        stopObjectTimer(body, OBJECT_TIMER_KIND.ROT_CORPSE);
+        body.on_ice = false;
+        const age = currentMove - (body.age ?? currentMove);
+        body.age += Math.trunc(age / 2);
+        scheduleObjectTimer(
+            body, OBJECT_TIMER_KIND.ROT_CORPSE,
+            currentMove + Math.trunc(remaining / 2), state,
+        );
+        return true;
+    }
+    return false;
 }
 
 function set_corpsenm(otmp, pm) {
     if (!otmp) return;
+    // C stops every existing corpse timer before replacing its species.
+    stopAllObjectTimers(otmp);
     otmp.corpsenm = pm;
-    if (otmp.otyp === CORPSE) startCorpseTimeout(otmp);
+    if (otmp.otyp === CORPSE) {
+        startCorpseTimeout(otmp);
+        otmp.owt = objectWeight(otmp);
+    }
 }
 
 // mkcorpstat stub
@@ -1261,6 +1313,9 @@ export function mkcorpstat(objtyp, mtmp, pm, x, y, flags) {
     // C ref: mkcorpstat() creates and initializes a statue, including its
     // random monster identity and possible container roll.
     const otmp = mksobj(objtyp, !!(flags & 0x08), false);
+    // mkobj.c records gender and historic-statue bits in the overloaded spe
+    // field after mksobj() initialization and before the species override.
+    otmp.spe = flags & 0x07;
     if (pm != null) {
         const oldCorpsenm = otmp.corpsenm;
         otmp.corpsenm = pm;
@@ -2122,6 +2177,7 @@ function levelMonsterAt(x, y, ignore = null) {
 
 export function monsterGoodPosition(
     mndx, x, y, avoidMonsterGenerationExclusions = false,
+    checkScary = false, ignoreWater = false,
 ) {
     const loc = game.level?.at?.(x, y);
     if (!loc || !isok(x, y)) return false;
@@ -2136,11 +2192,13 @@ export function monsterGoodPosition(
             || symbol === 5 || symbol === 25;
         const swimmer = !!(flags1 & 0x00000002);
 
-        if (IS_POOL(loc.typ)) {
+        if (IS_POOL(loc.typ) && !ignoreWater) {
             const waterWall = loc.typ === WATER;
             return swimmer || (!game.level?.flags?.waterlevel
                 && !waterWall && inAir);
-        } else if (symbol === 57 && rn2(13)) { // S_EEL avoids dry terrain
+        } else if (symbol === 57 && rn2(13) && !ignoreWater) {
+            // C evaluates the eel probe before MM_IGNOREWATER suppresses its
+            // result, so an ignored-water eel still owns the rn2(13) draw.
             return false;
         } else if (IS_LAVA(loc.typ)) {
             if (mndx === PM_FLOATING_EYE) return false;
@@ -2154,13 +2212,15 @@ export function monsterGoodPosition(
             && !(loc.wall_info & W_NONPASSWALL)) return true;
         if ((flags1 & 0x00000004) && loc.typ === DOOR
             && (loc.doormask & (D_CLOSED | D_LOCKED))) return true;
+        if (checkScary && monsterTypeScaredFromPosition(mndx, x, y))
+            return false;
     }
     // C teleport.c:accessible() excludes a closed or locked door even
     // though DOOR is otherwise an ACCESSIBLE terrain type.  Pass-wall and
     // amorphous species have already taken their explicit exceptions above.
     if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED)))
         return false;
-    if (loc.typ < DOOR) return false;
+    if (loc.typ < DOOR && !(ignoreWater && IS_POOL(loc.typ))) return false;
     const hasBoulder = game.level.objects?.[x]?.[y]?.some(
         object => object.otyp === BOULDER,
     );
@@ -2173,6 +2233,25 @@ export function monsterGoodPosition(
         return false;
     }
     return true;
+}
+
+// C teleport.c:goodpos_onscary().  New-monster placement has species data
+// but no live actor state, so its first enexto pass uses this deliberately
+// narrower scare approximation before retrying without GP_CHECKSCARY.
+function monsterTypeScaredFromPosition(mndx, x, y) {
+    const symbol = MONSTER_SYMBOL[mndx] ?? 0;
+    if (symbol === S_HUMAN || symbol === S_ANGEL
+        || [PM_DEATH, PM_PESTILENCE, PM_FAMINE].includes(mndx)
+        || ((MONSTER_GENO[mndx] ?? 0) & G_UNIQ_MASK)) return false;
+    const loc = game.level?.at?.(x, y);
+    if (loc?.typ === ALTAR && symbol === S_VAMPIRE) return true;
+    if (game.level?.objects?.[x]?.[y]?.some(
+        object => object.otyp === SCR_SCARE_MONSTER,
+    )) return true;
+    const inHell = !!game.dungeons?.[game.u?.uz?.dnum ?? -1]?.flags?.hellish;
+    if (inHell || In_endgame(game.u?.uz) || mndx === PM_MINOTAUR
+        || ((MONSTER_FLAGS1[mndx] ?? 0) & M1_NOEYES)) return false;
+    return !!engravingAt(x, y)?.text?.includes('Elbereth');
 }
 
 // C ref: makemon.c makemon_rnd_goodpos().  The random phase owns a complete
@@ -2287,12 +2366,22 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
         && !(genderFlags & (M2_LORD | M2_PRINCE));
     const isQuestLeaderType = mndx === game.urole?.ldrnum;
     const isQuestNemesis = mndx === game.urole?.neminum;
+    const femaleOk = !(genderFlags & (M2_MALE | M2_NEUTER));
+    const maleOk = !(genderFlags & (M2_FEMALE | M2_NEUTER));
     const monsterFemale = (genderFlags & M2_FEMALE) ? true
-        : (genderFlags & (M2_MALE | M2_NEUTER)) ? false
-            : isQuestLeaderType ? game.quest_status?.ldrgend === 1
-                : isQuestNemesis ? game.quest_status?.nemgend === 1
-                    : !!rn2(2);
-    const peaceful = peaceMinded(mndx);
+        : ((mmflags & MM_FEMALE) && femaleOk) ? true
+            : (genderFlags & M2_MALE) ? false
+                : ((mmflags & MM_MALE) && maleOk) ? false
+                    : (genderFlags & M2_NEUTER) ? false
+                        : isQuestLeaderType
+                            ? game.quest_status?.ldrgend === 1
+                            : isQuestNemesis
+                                ? game.quest_status?.nemgend === 1
+                                : !!rn2(2);
+    // makemon.c honors MM_ANGRY before consulting peace_minded().  This is
+    // RNG-visible for co-aligned neutral species such as fallback garter
+    // snakes; hostile ant summons happened to short-circuit the same helper.
+    const peaceful = (mmflags & MM_ANGRY) ? false : peaceMinded(mndx);
     let monsterSleeping = initialMonsterSleepState(
         mndx, !!(mmflags & MM_ASLEEP),
     );
@@ -2308,7 +2397,14 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
     // creation-order slot now so enexto() sees the occupied center and the
     // final JS array retains primary-then-members order.
     if (!game.level.monsters) game.level.monsters = [];
-    const pendingMonster = { mnum: mndx, mx: x, my: y, mhp: hp };
+    const monsterInventory = [];
+    const pendingMonster = {
+        m_id: monsterId,
+        mnum: mndx, mx: x, my: y, mhp: hp,
+        minvent: monsterInventory,
+        inventory: monsterInventory,
+        hasInventory: false,
+    };
     const monsterIndex = game.level.monsters.push(pendingMonster) - 1;
 
     let generatedGhostName = null;
@@ -2361,6 +2457,24 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
         mkobj_at(RANDOM_CLASS, x, y, true);
     }
 
+    // C makemon.c creates an ordinary aligned/high cleric without MM_EPRI or
+    // MM_EMIN as a roaming minion before group and inventory initialization.
+    // create_particular() applies an explicit hostile disposition only after
+    // this constructor returns, so both alignment/renegade draws remain live.
+    let clericMinion = null;
+    if ([PM_ALIGNED_CLERIC, PM_HIGH_CLERIC].includes(mndx)
+        && !(mmflags & (MM_EPRI | MM_EMIN))) {
+        const minAlign = rn2(3) - 1;
+        const renegade = !!(mmflags & MM_ANGRY) || rn2(3) === 0;
+        const minionPeaceful = minAlign === (game.u?.ualign?.type ?? 0)
+            ? !renegade : renegade;
+        clericMinion = {
+            min_align: minAlign,
+            renegade,
+            mpeaceful: minionPeaceful ? 1 : 0,
+        };
+    }
+
     if (mdat == null && !(mmflags & MM_NOGRP)) {
         const geno = MONSTER_GENO[mndx] || 0;
         if ((geno & G_SGROUP) && rn2(2)) {
@@ -2372,11 +2486,17 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
 
     let monsterWeaponQuantity;
     let hasMonsterInventory = false;
+    const allowMonsterInventory = !(mmflags & NO_MINVENT);
     let skipCommonMonsterInventory = Is_rogue_level(game.u?.uz);
-    const monsterInventory = [];
     const mongets = otyp => {
         const object = mksobj(otyp, true, false);
-        monsterInventory.push(object);
+        // makemon.c:mongets(): demons never retain blessed objects; a raw
+        // blessing becomes a curse before the identity enters minvent.
+        if (MONSTER_SYMBOL[mndx] === 56 && object.blessed) {
+            object.blessed = false;
+            object.cursed = true;
+        }
+        addObjectToMonsterInventory(pendingMonster, object, game);
         hasMonsterInventory = true;
         return object;
     };
@@ -2384,7 +2504,7 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
         const gold = mksobj(GOLD_PIECE, false, false);
         gold.quan = amount;
         gold.quantity = amount;
-        monsterInventory.push(gold);
+        linkObjectToMonsterInventory(pendingMonster, gold);
         hasMonsterInventory = true;
         return gold;
     };
@@ -2433,18 +2553,22 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
         }
         giveOffensiveMonsterItem();
     };
-    if (mndx === PM_VLAD_THE_IMPALER)
+    if (allowMonsterInventory && mndx === PM_VLAD_THE_IMPALER)
         mongets(CANDELABRUM_OF_INVOCATION);
     if (isQuestNemesis) {
         // makemon() gives MS_NEMESIS the Bell before its level-generation
         // sleep gate and normal weapon/inventory initialization.
-        mongets(BELL_OF_OPENING);
+        if (allowMonsterInventory) mongets(BELL_OF_OPENING);
         if (game.in_mklev && isNeutralDemon
             && !game.u?.uhave?.amulet && rn2(5)) {
             monsterSleeping = 1;
         }
     }
-    if (mndx === PM_VLAD_THE_IMPALER) {
+    // C makemon.c's allow_minvent gate surrounds m_initweap() but not birth
+    // state such as mimic appearance, sleep, peacefulness, or shapechanging.
+    if (!allowMonsterInventory) {
+        // The caller requires an empty initial inventory.
+    } else if (mndx === PM_VLAD_THE_IMPALER) {
         // Vlad is a vampire prince and extra-nasty, reducing the ordinary
         // armament table to rnd(8).  His fixed Candelabrum above exists
         // before this shared weapon/offensive-item tail.
@@ -2490,7 +2614,7 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
         weapon.cursed = false;
         weapon.oerodeproof = true;
         weapon.spe = rn2(4) + (weapon.otyp === SILVER_MACE ? 3 : 0);
-        monsterInventory.push(weapon);
+        addObjectToMonsterInventory(pendingMonster, weapon, game);
         hasMonsterInventory = true;
 
         const shield = mksobj(
@@ -2499,7 +2623,7 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
         );
         shield.oerodeproof = true;
         shield.spe = 0;
-        monsterInventory.push(shield);
+        addObjectToMonsterInventory(pendingMonster, shield, game);
         giveOffensiveMonsterItem();
     } else if (MONSTER_SYMBOL[mndx] === 8 && mndx === PM_HOBBIT) {
         // C ref: makemon.c m_initweap(), S_HUMANOID/PM_HOBBIT.
@@ -2677,7 +2801,7 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
         const whistle = mksobj(TIN_WHISTLE, true, false);
         whistle.cursed = true;
         whistle.buc = 'cursed';
-        monsterInventory.push(whistle);
+        addObjectToMonsterInventory(pendingMonster, whistle, game);
         hasMonsterInventory = true;
     } else if (mndx === PM_SHOPKEEPER) {
         // C refs: makemon.c m_initweap() and m_initinv().  Shopkeepers have
@@ -2731,7 +2855,7 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
             mace.cursed = true;
             mace.buc = 'cursed';
         }
-        monsterInventory.push(mace);
+        addObjectToMonsterInventory(pendingMonster, mace, game);
         hasMonsterInventory = true;
         const offensiveRoll = rn2(75);
         if (baseLevel > offensiveRoll) {
@@ -3009,8 +3133,12 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
         }
     }
 
-    if (mndx === PM_ARCH_PRIEST || mndx === PM_ALIGNED_CLERIC
-        || mndx === PM_HIGH_CLERIC) {
+    // m_initinv(), m_dowear(), and the domestic-saddle probe share the same
+    // allow_minvent gate.  NO_MINVENT must consume none of their RNG and must
+    // leave an empty minvent even for species with fixed starting objects.
+    if (allowMonsterInventory
+        && (mndx === PM_ARCH_PRIEST || mndx === PM_ALIGNED_CLERIC
+            || mndx === PM_HIGH_CLERIC)) {
         // C ref: makemon.c m_initinv(), Priest/Cleric quest-leader branch.
         mongets(rn2(7) ? ROBE
             : rn2(3) ? CLOAK_OF_PROTECTION : CLOAK_OF_MAGIC_RESISTANCE);
@@ -3018,18 +3146,18 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
         mkmonmoney(rn1(10, 20));
     }
 
-    if (MONSTER_SYMBOL[mndx] === 14) { // S_NYMPH
+    if (allowMonsterInventory && MONSTER_SYMBOL[mndx] === 14) { // S_NYMPH
         // C ref: makemon.c m_initinv(), S_NYMPH.
         if (!rn2(2)) mongets(MIRROR);
         if (!rn2(2)) mongets(POT_OBJECT_DETECTION);
     }
-    if (mndx === PM_MINOTAUR) {
+    if (allowMonsterInventory && mndx === PM_MINOTAUR) {
         // C ref: makemon.c:m_initinv(), S_GIANT.  This probe belongs to the
         // explicit minotaur constructor, before the common defensive and
         // miscellaneous inventory reservoirs.
         if (!rn2(8) || (game.in_mklev && Is_earthlevel(game.u?.uz)))
             mongets(WAN_DIGGING);
-    } else if (MONSTER_SYMBOL[mndx] === 34
+    } else if (allowMonsterInventory && MONSTER_SYMBOL[mndx] === 34
         && (genderFlags & M2_GIANT)) {
         // C ref: makemon.c m_initinv(), is_giant().  Each iteration chooses
         // one weighted gem/glass type, creates it without ordinary object
@@ -3042,17 +3170,17 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
             gem.quan = rn1(2, 3);
             gem.quantity = gem.quan;
             gem.owt = (OBJECT_WEIGHT[gem.otyp] ?? 1) * gem.quan;
-            monsterInventory.push(gem);
+            addObjectToMonsterInventory(pendingMonster, gem, game);
             hasMonsterInventory = true;
         }
     }
-    if (MONSTER_SYMBOL[mndx] === 12) { // S_LEPRECHAUN
+    if (allowMonsterInventory && MONSTER_SYMBOL[mndx] === 12) { // S_LEPRECHAUN
         mkmonmoney(d(level_difficulty(), 30));
     }
-    if (MONSTER_SYMBOL[mndx] === 39) { // S_MUMMY
+    if (allowMonsterInventory && MONSTER_SYMBOL[mndx] === 39) { // S_MUMMY
         if (rn2(7)) mongets(MUMMY_WRAPPING);
     }
-    if (MONSTER_SYMBOL[mndx] === 38) { // S_LICH
+    if (allowMonsterInventory && MONSTER_SYMBOL[mndx] === 38) { // S_LICH
         if (mndx === 185 && !rn2(13)) { // PM_MASTER_LICH
             mongets(rn2(7) ? ATHAME : WAN_NOTHING);
         } else if (mndx === 186 && !rn2(3)) { // PM_ARCH_LICH
@@ -3062,11 +3190,11 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
             );
             if (weapon.spe < 2) weapon.spe = rnd(3);
             if (!rn2(4)) weapon.oerodeproof = true;
-            monsterInventory.push(weapon);
+            addObjectToMonsterInventory(pendingMonster, weapon, game);
             hasMonsterInventory = true;
         }
     }
-    if (MONSTER_SYMBOL[mndx] === 33) { // S_GNOME
+    if (allowMonsterInventory && MONSTER_SYMBOL[mndx] === 33) { // S_GNOME
         // C ref: makemon.c m_initinv(), S_GNOME.  During Mines generation
         // the candle chance is 1/20 (1/60 elsewhere).
         const dungeonName = game.dungeons?.[game.u?.uz?.dnum ?? 0]?.dname;
@@ -3082,7 +3210,7 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
             candle.lamplit = !game.level.at(x, y)?.lit;
         }
     }
-    if (MONSTER_SYMBOL[mndx] === 43) { // S_QUANTMECH
+    if (allowMonsterInventory && MONSTER_SYMBOL[mndx] === 43) { // S_QUANTMECH
         // C ref: makemon.c m_initinv().  The class switch evaluates the rare
         // Schrödinger-box probe before its PM_QUANTUM_MECHANIC species test,
         // so genetic engineers consume the same rn2(20) even though they can
@@ -3093,16 +3221,17 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
             const cat = mksobj(CORPSE, true, false);
             box.spe = 1;
             cat.corpsenm = 33; // PM_HOUSECAT
-            delete cat.rotAt;
+            stopObjectTimer(cat, OBJECT_TIMER_KIND.ROT_CORPSE);
             cat.otrapped = false;
             box.contents = [cat];
-            monsterInventory.push(box);
+            addObjectToMonsterInventory(pendingMonster, box, game);
             hasMonsterInventory = true;
         }
     }
 
-    if (mndx === 298 && !rn2(4)) mongets(SPEAR); // PM_ICE_DEVIL
-    if (mndx === PM_ASMODEUS) {
+    if (allowMonsterInventory && mndx === 298 && !rn2(4))
+        mongets(SPEAR); // PM_ICE_DEVIL
+    if (allowMonsterInventory && mndx === PM_ASMODEUS) {
         // C makemon.c:m_initinv(), S_DEMON.  Asmodeus has no weapon attack,
         // so his fixed cold/fire wands are inventory declarations rather
         // than m_initweap() gear and precede both common magic reservoirs.
@@ -3113,7 +3242,7 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
     // m_initinv() finishes with two level-gated reservoir rolls for every
     // monster.  The water demon wins the defensive-item check in this
     // witness and receives the selected create-monster scroll.
-    if (!skipCommonMonsterInventory) {
+    if (allowMonsterInventory && !skipCommonMonsterInventory) {
         const defensiveRoll = rn2(50);
         if (baseLevel > defensiveRoll) {
             const defensiveItem = randomDefensiveMonsterItem(mndx);
@@ -3128,7 +3257,7 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
     // C ref: makemon.c m_initinv().  Greedy monsters get a final gold gate
     // after the defensive and miscellaneous reservoirs.  Amount dice depend
     // on whether class-specific equipment already populated the inventory.
-    if ((genderFlags & M2_GREEDY)
+    if (allowMonsterInventory && (genderFlags & M2_GREEDY)
         && !monsterInventory.some(object => object.otyp === GOLD_PIECE)
         && !rn2(5)) {
         const amount = d(level_difficulty(), hasMonsterInventory ? 5 : 10);
@@ -3138,7 +3267,7 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
     }
     // makemon()'s rare domestic-saddle check is likewise unconditional on
     // the random roll and short-circuits only after it fails.
-    rn2(100);
+    if (allowMonsterInventory) rn2(100);
     const classIndex = MONSTER_SYMBOL[mndx] || 0;
     // C makemon.c: during level creation, M1_CONCEAL actors hide under an
     // object already present on their square and eel-class actors hide in
@@ -3176,7 +3305,9 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
         m_id: monsterId,
         mnum: mndx, mx: x, my: y, mhp: hp, mhpmax: hp,
         m_lev: baseLevel, female: monsterFemale,
-        msleeping: monsterSleeping, mpeaceful: peaceful ? 1 : 0, mcanmove: 1,
+        msleeping: monsterSleeping,
+        mpeaceful: clericMinion?.mpeaceful ?? (peaceful ? 1 : 0),
+        mcanmove: 1,
         mux: pendingMonster.mux, muy: pendingMonster.muy,
         mundetected: monsterUndetected,
         minvis: monsterInvisible,
@@ -3190,10 +3321,20 @@ async function makemon(mdat, x, y, mmflags, requestedByHero = false) {
         minvent: monsterInventory,
         inventory: monsterInventory,
         mstrategy: monsterStrategy,
-        weaponCheck: MONSTER_HAS_WEAPON_ATTACK.has(mndx)
-            && monsterInventory.some(object => object.oclass === WEAPON_CLASS)
-            ? NEED_WEAPON : 0,
+        // makemon() allocates weapon_check as NO_WEAPON_WANTED (zero).
+        // m_initweap() only supplies inventory; the first AT_WEAP slot will
+        // request NEED_HTH_WEAPON if no weapon is currently wielded.  Later
+        // pickup, polymorph, and loss paths explicitly set NEED_WEAPON.
+        weaponCheck: 0,
     };
+    if (clericMinion) {
+        monster.isminion = 1;
+        monster.emin = {
+            min_align: clericMinion.min_align,
+            renegade: clericMinion.renegade,
+        };
+        monster.maligntyp = clericMinion.min_align;
+    }
     if (pendingMonster.wormno) {
         monster.wormno = pendingMonster.wormno;
         monster.wormSegments = pendingMonster.wormSegments;
@@ -3235,13 +3376,19 @@ export async function makemonAt(mnum, x, y, flags = 0) {
     return makemon(mnum, x, y, flags);
 }
 
-// C refs: teleport.c collect_coords()/enexto_core() and makemon.c makemon().
-// A monster requested on the hero's occupied square is placed on the first
-// viable coordinate from three independently shuffled square rings.
-export async function makemonNear(mnum, centerX, centerY, flags = 0) {
-    const requestedByHero = centerX === game.u?.ux && centerY === game.u?.uy;
+// C teleport.c:collect_coords().  Each square ring is completely collected
+// and shuffled before the next ring begins.  A zero maximum means the whole
+// usable map, excluding the center and unused column zero.
+function collectShuffledMonsterCoordinates(centerX, centerY, maxRadius = 0) {
     const candidates = [];
-    for (let radius = 1; radius <= 3; radius++) {
+    const rowRange = centerY < ROWNO / 2
+        ? ROWNO - 1 - centerY : centerY;
+    const columnRange = centerX < COLNO / 2
+        ? COLNO - 1 - centerX : centerX;
+    const finalRadius = maxRadius
+        ? Math.min(maxRadius, Math.max(rowRange, columnRange))
+        : Math.max(rowRange, columnRange);
+    for (let radius = 1; radius <= finalRadius; radius++) {
         const ring = [];
         const lowx = centerX - radius, highx = centerX + radius;
         const lowy = centerY - radius, highy = centerY + radius;
@@ -3259,15 +3406,244 @@ export async function makemonNear(mnum, centerX, centerY, flags = 0) {
         }
         candidates.push(...ring);
     }
-    for (const pos of candidates) {
-        // teleport.c:enexto_core() tests every shuffled coordinate through
-        // goodpos() for the requested species.  Accessibility alone would
-        // incorrectly put non-flying group members into pools or lava.
-        const good = monsterGoodPosition(mnum, pos.x, pos.y);
-        if (!good) continue;
-        return makemon(mnum, pos.x, pos.y, flags, requestedByHero);
+    return candidates;
+}
+
+function findMonsterNearPositionCore(
+    mnum, centerX, centerY, checkScary, ignoreWater,
+) {
+    const nearby = collectShuffledMonsterCoordinates(centerX, centerY, 3);
+    for (const pos of nearby) {
+        if (monsterGoodPosition(
+            mnum, pos.x, pos.y, false, checkScary, ignoreWater,
+        ))
+            return pos;
+    }
+
+    // NEW_ENEXTO deliberately reshuffles the near rings while collecting the
+    // complete map, then skips their count because they were already tested.
+    const all = collectShuffledMonsterCoordinates(centerX, centerY, 0);
+    for (let index = nearby.length; index < all.length; index++) {
+        const pos = all[index];
+        if (monsterGoodPosition(
+            mnum, pos.x, pos.y, false, checkScary, ignoreWater,
+        ))
+            return pos;
     }
     return null;
+}
+
+// C teleport.c:enexto().  The first complete search avoids scary squares;
+// only total failure triggers an independently shuffled unrestricted search.
+// Exposing selection separately lets callbacks distinguish enexto failure
+// from a later makemon()/make_familiar() construction failure.
+export function findMonsterNearPosition(
+    mnum, centerX, centerY, { ignoreWater = false } = {},
+) {
+    return findMonsterNearPositionCore(
+        mnum, centerX, centerY, true, ignoreWater,
+    ) || findMonsterNearPositionCore(
+        mnum, centerX, centerY, false, ignoreWater,
+    );
+}
+
+// C refs: potion.c:split_mon() and makemon.c:clone_mon().  This owner is
+// deliberately bounded to the hostile gremlin/mold caller used by water and
+// heat effects; peaceful/tame attitude reinitialization belongs to pet state.
+export function splitHostileMonster(monster, state = game) {
+    if (!monster || state !== game || monster.mpeaceful
+        || (monster.mtame ?? 0) > 0) return null;
+    if ((monster.mhp ?? 0) > (monster.mhpmax ?? monster.mhp ?? 0))
+        monster.mhp = monster.mhpmax;
+    if ((monster.mhp ?? 0) <= 1
+        || ((state.mvitals?.[monster.mnum]?.mvflags ?? 0) & G_EXTINCT)) {
+        return null;
+    }
+
+    const position = findMonsterNearPosition(
+        monster.mnum, monster.mx, monster.my,
+    );
+    if (!position) return null;
+
+    const clone = { ...monster };
+    clone.m_id = nextIdent();
+    clone.mx = position.x;
+    clone.my = position.y;
+    clone.mundetected = 0;
+    clone.mtrapped = 0;
+    clone.mcloned = 1;
+    clone.mleashed = 0;
+    clone.isshk = 0;
+    clone.isgd = 0;
+    clone.ispriest = 0;
+    clone.minvent = [];
+    clone.inventory = clone.minvent;
+    clone.hasInventory = false;
+    clone.mtrack = [];
+    clone._track = [];
+
+    clone.mhpmax = monster.mhpmax;
+    clone.mhp = Math.trunc(monster.mhp / 2);
+    monster.mhp -= clone.mhp;
+    clone.mhpmax = Math.trunc(monster.mhpmax / 2);
+    monster.mhpmax -= clone.mhpmax;
+
+    state.level.monsters.push(clone);
+    newsym(clone.mx, clone.my);
+    return clone;
+}
+
+function heroCloneBirthLimit(mnum) {
+    const name = String(MONSTER_NAME[mnum] || '').toLowerCase();
+    return name === 'nazgul' ? 9 : name === 'erinys' ? 3 : MAXMONNO;
+}
+
+function recordHeroCloneBirth(mnum, state) {
+    if (!Array.isArray(state.mvitals)) state.mvitals = [];
+    const vital = state.mvitals[mnum]
+        || (state.mvitals[mnum] = { mvflags: 0, born: 0 });
+    if ((vital.born ?? 0) < 255) vital.born = (vital.born ?? 0) + 1;
+    if ((vital.born ?? 0) >= heroCloneBirthLimit(mnum)
+        && !((MONSTER_GENO[mnum] ?? 0) & G_NOGEN)) {
+        vital.mvflags = (vital.mvflags ?? 0) | G_EXTINCT;
+    }
+}
+
+// C refs: mhitu.c:cloneu(), potion.c:split_mon(), dog.c:initedog().
+// The actor is a fresh makemon birth rather than a copy of youmonst: it owns
+// ordinary placement, HP, gender, attitude, and identity RNG before cloneu()
+// replaces its level/HP and initializes a named tame companion.  split_mon()
+// then halves maximum form HP separately, leaving odd points with the hero.
+export async function splitHeroMonsterForm(state = game) {
+    if (state !== game)
+        throw new Error('hero clone owner requires live game state');
+    const u = state.u || {};
+    if (Number.isFinite(u.mh) && Number.isFinite(u.mhmax)
+        && u.mh > u.mhmax) u.mh = u.mhmax;
+    const mnum = u.umonnum;
+    const vitalFlags = state.mvitals?.[mnum]?.mvflags ?? 0;
+    if (!Number.isInteger(mnum) || !Number.isFinite(u.mh)
+        || !Number.isFinite(u.mhmax) || u.mh <= 1
+        || (vitalFlags & (G_EXTINCT | G_GENOD))) return null;
+
+    const clone = await makemonNear(
+        mnum, u.ux, u.uy, NO_MINVENT | MM_EDOG | MM_NOMSG, true,
+    );
+    if (!clone) return null;
+    recordHeroCloneBirth(mnum, state);
+
+    const name = state.plname || 'player';
+    const edog = {
+        parentmid: clone.m_id,
+        droptime: 0,
+        dropdist: 10000,
+        apport: u.acurr?.a?.[5] ?? 3,
+        whistletime: 0,
+        hungrytime: (state.moves ?? 0) + 1000,
+        ogoal: { x: -1, y: -1 },
+        abuse: 0,
+        revivals: 0,
+        mhpmax_penalty: 0,
+        killed_by_u: 0,
+    };
+    clone.mcloned = 1;
+    clone.name = name;
+    clone.mgivenname = name;
+    clone.m_lev = MONSTER_LEVEL[mnum] ?? clone.m_lev;
+    clone.mtame = Math.max(
+        (MONSTER_FLAGS2[mnum] ?? 0) & M2_DOMESTIC ? 10 : 5,
+        clone.mtame ?? 0,
+    );
+    clone.mpeaceful = 1;
+    clone.mavenge = 0;
+    clone.mleashed = 0;
+    clone.meating = 0;
+    clone.pet = true;
+    clone.minvent = [];
+    clone.inventory = clone.minvent;
+    clone.hasInventory = false;
+    clone.edog = edog;
+    clone.mextra = { ...(clone.mextra || {}), mgivenname: name, edog };
+    delete clone.malign;
+
+    clone.mhpmax = u.mhmax;
+    clone.mhp = Math.trunc(u.mh / 2);
+    u.mh -= clone.mhp;
+    clone.mhpmax = Math.trunc(u.mhmax / 2);
+    u.mhmax -= clone.mhpmax;
+    if (!u.uconduct) u.uconduct = {};
+    u.uconduct.pets = (u.uconduct.pets ?? 0) + 1;
+    newsym(clone.mx, clone.my);
+    return clone;
+}
+
+// C refs: teleport.c enexto()/collect_coords() and makemon.c makemon().
+export async function makemonNear(
+    mnum, centerX, centerY, flags = 0,
+    requestedByHero = centerX === game.u?.ux && centerY === game.u?.uy,
+) {
+    const pos = findMonsterNearPosition(mnum, centerX, centerY, {
+        ignoreWater: !!(flags & MM_IGNOREWATER),
+    });
+    if (!pos) return null;
+    // teleport.c:enexto_core() tests every shuffled coordinate through
+    // goodpos() for the requested species before makemon() owns construction.
+    return makemon(mnum, pos.x, pos.y, flags, requestedByHero);
+}
+
+// C mcastu.c:mcast_insects().  enexto() tests positions using the caster's
+// species before mkclass() chooses each summoned insect.  Keep both private
+// constructor owners in this module so the spell layer receives only actors.
+export async function summonInsectsForMonster(summoner) {
+    const created = [];
+    let insect = mkclass(1, 0); // S_ANT
+    const monsterClass = insect == null ? 45 : 1; // fallback S_SNAKE
+    let quantity = (summoner.m_lev ?? 0) < 2
+        ? 1 : rnd(Math.trunc((summoner.m_lev ?? 0) / 2));
+    if (quantity < 3) quantity = 3;
+
+    for (let count = 0; count <= quantity; count++) {
+        const centerX = summoner.mux ?? game.u?.ux ?? summoner.mx;
+        const centerY = summoner.muy ?? game.u?.uy ?? summoner.my;
+        const candidates = [];
+        for (let radius = 1; radius <= 3; radius++) {
+            const ring = [];
+            const lowx = centerX - radius, highx = centerX + radius;
+            const lowy = centerY - radius, highy = centerY + radius;
+            for (let y = Math.max(lowy, 0);
+                y <= Math.min(highy, ROWNO - 1); y++) {
+                for (let x = Math.max(lowx, 1);
+                    x <= Math.min(highx, COLNO - 1); x++) {
+                    if (x !== lowx && x !== highx
+                        && y !== lowy && y !== highy) continue;
+                    ring.push({ x, y });
+                }
+            }
+            for (let index = 0, remaining = ring.length;
+                remaining > 1; index++, remaining--) {
+                const pick = rn2(remaining);
+                if (pick) {
+                    [ring[index], ring[index + pick]]
+                        = [ring[index + pick], ring[index]];
+                }
+            }
+            candidates.push(...ring);
+        }
+        const position = candidates.find(({ x, y }) =>
+            monsterGoodPosition(summoner.mnum, x, y));
+        if (!position) return { created, monsterClass };
+        insect = mkclass(monsterClass, 0);
+        if (insect == null) continue;
+        const monster = await makemon(
+            insect, position.x, position.y, MM_ANGRY | MM_NOMSG, false,
+        );
+        if (!monster) continue;
+        monster.msleeping = 0;
+        monster.mpeaceful = 0;
+        monster.mtame = 0;
+        created.push(monster);
+    }
+    return { created, monsterClass };
 }
 
 // C refs: wizard.c:nasty()/pick_nasty() and mcastu.c:mcast_summon_mons().
@@ -3276,7 +3652,9 @@ export async function makemonNear(mnum, centerX, centerY, flags = 0) {
 // position, then runs the ordinary makemon() constructor.  The created
 // actors are returned so the caller can repaint them at the same runtime
 // boundary where C's makemon() calls newsym().
-export async function summonNastyMonsters(summoner) {
+export async function summonNastyMonsters(
+    summoner, { onCreate = null } = {},
+) {
     const created = [];
     const inHell = !!game.dungeons?.[
         game.u?.uz?.dnum ?? 0
@@ -3347,6 +3725,11 @@ export async function summonNastyMonsters(summoner) {
                 continue;
             }
 
+            // C makemon() calls newsym() before nasty() overrides attitude.
+            // Preserve that birth-time projection state for the spell owner;
+            // the actor becomes hostile below without an immediate repaint.
+            monster._nastyBirthPeaceful = monster.mpeaceful;
+            if (onCreate) await onCreate(monster);
             monster.msleeping = 0;
             monster.mpeaceful = 0;
             monster.mtame = 0;
@@ -3531,6 +3914,769 @@ async function maketrap(x, y, typ, options = undefined) {
         }
     }
     return trap;
+}
+
+const ZOMBIE_FORM_BY_LIVING_CORPSE = new Map([
+    [59, 239], [165, 240], [72, 241], [44, 242],
+    [264, 243], [260, 244], [174, 245], [169, 247],
+]);
+
+export function hasDueBuriedZombieTimer(
+    state = game, currentTurn = state.moves ?? 0,
+) {
+    return !!peekNextDueObjectTimer(
+        state, currentTurn,
+        new Set([OBJECT_TIMER_KIND.ZOMBIFY_MON]),
+    );
+}
+
+function removeBuriedCorpse(corpse, state = game) {
+    const index = state.level?.buriedObjects?.indexOf(corpse) ?? -1;
+    if (index >= 0) state.level.buriedObjects.splice(index, 1);
+    stopAllObjectTimers(corpse);
+    corpse.where = 'gone';
+    corpse.buried = false;
+    corpse.ox = corpse.oy = 0;
+}
+
+const RIDER_CORPSE_TYPES = new Set([
+    MONSTER_NAME.indexOf('Death'),
+    MONSTER_NAME.indexOf('Pestilence'),
+    MONSTER_NAME.indexOf('Famine'),
+]);
+
+function objectResists(object, ordinaryChance, artifactChance) {
+    if (object.otyp === AMULET_OF_YENDOR
+        || object.otyp === SPE_BOOK_OF_THE_DEAD
+        || object.otyp === CANDELABRUM_OF_INVOCATION
+        || object.otyp === BELL_OF_OPENING
+        || (object.otyp === CORPSE
+            && RIDER_CORPSE_TYPES.has(object.corpsenm))) return true;
+    const chance = rn2(100);
+    return chance < (object.artifact || object.oartifact
+        ? artifactChance : ordinaryChance);
+}
+
+function containingObject(target, state = game) {
+    return objectsInTimerGraph(state).find(object =>
+        object !== target && object.contents?.includes(target));
+}
+
+function extractObjectFromGraph(object, state = game) {
+    const where = object.where;
+    const x = object.ox, y = object.oy;
+    let removed = false;
+    if (where === 'floor') {
+        const pile = state.level?.objects?.[x]?.[y];
+        const index = pile?.indexOf(object) ?? -1;
+        if (index >= 0) {
+            pile.splice(index, 1);
+            removed = true;
+        }
+    } else if (where === 'buried') {
+        const index = state.level?.buriedObjects?.indexOf(object) ?? -1;
+        if (index >= 0) {
+            state.level.buriedObjects.splice(index, 1);
+            removed = true;
+        }
+    } else if (where === 'contained') {
+        const container = containingObject(object, state);
+        const index = container?.contents?.indexOf(object) ?? -1;
+        if (index >= 0) {
+            container.contents.splice(index, 1);
+            container.owt = objectWeight(container);
+            removed = true;
+        }
+    } else if (where === 'inventory') {
+        const index = state.inventory?.indexOf(object) ?? -1;
+        if (index >= 0) {
+            state.inventory.splice(index, 1);
+            removed = true;
+        }
+    } else if (where === 'minvent') {
+        for (const monster of state.level?.monsters || []) {
+            const lists = new Set([monster.minvent, monster.inventory]);
+            for (const list of lists) {
+                const index = list?.indexOf(object) ?? -1;
+                if (index >= 0) {
+                    list.splice(index, 1);
+                    removed = true;
+                }
+            }
+        }
+    }
+    stopAllObjectTimers(object);
+    object.where = 'gone';
+    object.buried = false;
+    object.ox = object.oy = 0;
+    return { removed, where, x, y };
+}
+
+function buryContainedObject(object, container, x, y, state = game) {
+    if (objectResists(object, 0, 0)) return false;
+    const index = container.contents?.indexOf(object) ?? -1;
+    if (index >= 0) container.contents.splice(index, 1);
+    container.owt = objectWeight(container);
+    object.where = 'free';
+    object.ox = x;
+    object.oy = y;
+
+    if (object.lamplit && object.otyp !== POT_OIL) {
+        object.lamplit = false;
+        stopObjectTimer(object, OBJECT_TIMER_KIND.BURN_OBJECT);
+        state.vision_full_recalc = 1;
+    }
+    if (object.otyp === ROCK || object.otyp === BOULDER) {
+        extractObjectFromGraph(object, state);
+        return true;
+    }
+    if (object.otyp !== CORPSE
+        && (OBJECT_MATERIAL[object.otyp] ?? Infinity) <= 8
+        && !objectResists(object, 5, 95)) {
+        scheduleObjectTimer(
+            object, OBJECT_TIMER_KIND.ROT_ORGANIC,
+            (state.moves ?? 0) + 250 + rnd(250), state,
+        );
+    }
+    addBuriedObject(object, x, y);
+    return true;
+}
+
+function buryFloorObjectsAt(x, y, state = game) {
+    const buried = [];
+    const pile = state.level?.objects?.[x]?.[y];
+    for (const object of [...(pile || [])]) {
+        // C bury_an_obj() leaves invocation artifacts and Rider corpses on
+        // the floor.  objectResists(,0,0) owns that non-random special case.
+        if (objectResists(object, 0, 0)) continue;
+        const index = pile.indexOf(object);
+        if (index >= 0) pile.splice(index, 1);
+
+        if (object.lamplit && object.otyp !== POT_OIL) {
+            object.lamplit = false;
+            stopObjectTimer(object, OBJECT_TIMER_KIND.BURN_OBJECT);
+            state.vision_full_recalc = 1;
+        }
+        if (object.otyp === ROCK || object.otyp === BOULDER) {
+            stopAllObjectTimers(object);
+            object.where = 'gone';
+            object.buried = false;
+            object.ox = object.oy = 0;
+            continue;
+        }
+        if (object.otyp !== CORPSE
+            && (OBJECT_MATERIAL[object.otyp] ?? Infinity) <= 8
+            && !objectResists(object, 5, 95)) {
+            scheduleObjectTimer(
+                object, OBJECT_TIMER_KIND.ROT_ORGANIC,
+                (state.moves ?? 0) + 250 + rnd(250), state,
+            );
+        }
+        object.where = 'buried';
+        object.buried = true;
+        object.ox = x;
+        object.oy = y;
+        if (!state.level.buriedObjects) state.level.buriedObjects = [];
+        state.level.buriedObjects.unshift(object);
+        buried.push(object);
+    }
+    return buried;
+}
+
+// C ref: trap.c:fill_pit() -> do.c:flooreffects().  The new pit survives
+// unless a floor boulder settles into it; that consumes the boulder, removes
+// the pit, and buries the rest of the floor pile.  revive_corpse() calls this
+// only after its visible/audible presentation has completed.
+export function finishBuriedZombieTimer(event, state = game) {
+    if (!event || event.kind !== 'revived' || event.finished) return event;
+    const x = event.monster?.mx, y = event.monster?.my;
+    const trap = state.level?.traps?.find(candidate =>
+        candidate.tx === x && candidate.ty === y
+        && (is_pit(candidate.ttyp) || is_hole(candidate.ttyp)));
+    const boulder = state.level?.objects?.[x]?.[y]?.find(object =>
+        object.otyp === BOULDER);
+    event.finished = true;
+    event.pitFilled = false;
+    event.filledByBoulder = null;
+    event.buriedFloorObjects = [];
+    if (!trap || !boulder) return event;
+
+    const pile = state.level.objects[x][y];
+    const boulderIndex = pile.indexOf(boulder);
+    if (boulderIndex >= 0) pile.splice(boulderIndex, 1);
+    stopAllObjectTimers(boulder);
+    boulder.where = 'gone';
+    boulder.buried = false;
+    boulder.ox = boulder.oy = 0;
+    const trapIndex = state.level.traps.indexOf(trap);
+    if (trapIndex >= 0) state.level.traps.splice(trapIndex, 1);
+    event.pitFilled = true;
+    event.filledByBoulder = boulder;
+    event.buriedFloorObjects = buryFloorObjectsAt(x, y, state);
+    return event;
+}
+
+function iceMeltTrapEffects(x, y, state = game) {
+    const trap = state.level?.traps?.find(candidate =>
+        candidate.tx === x && candidate.ty === y);
+    if (!trap) return { trap: null, removed: false, converted: null };
+    const monster = levelMonsterAt(x, y);
+    if (monster?.mtrapped) monster.mtrapped = 0;
+    if (state.u?.ux === x && state.u?.uy === y) {
+        state.u.utrap = 0;
+        state.u.utraptype = 0;
+    }
+
+    let converted = null;
+    if (trap.ttyp === LANDMINE || trap.ttyp === BEAR_TRAP) {
+        converted = mksobj(
+            trap.ttyp === LANDMINE ? LAND_MINE : BEARTRAP,
+            true, false,
+        );
+        place_object(converted, x, y);
+        // trap.c:cnv_trap_obj(..., bury_it=TRUE) delegates to bury_an_obj();
+        // even a non-resistant ordinary tool owns obj_resists(0,0)'s draw.
+        rn2(100);
+        addBuriedObject(converted, x, y);
+    }
+    const removable = trap.ttyp !== MAGIC_PORTAL
+        && trap.ttyp !== VIBRATING_SQUARE;
+    if (removable) {
+        const index = state.level.traps.indexOf(trap);
+        if (index >= 0) state.level.traps.splice(index, 1);
+    }
+    return { trap, removed: removable, converted };
+}
+
+function unearthObjectsAt(x, y, state = game) {
+    const unearthed = [];
+    for (const object of [...(state.level?.buriedObjects || [])]) {
+        if (object.ox !== x || object.oy !== y) continue;
+        const index = state.level.buriedObjects.indexOf(object);
+        if (index >= 0) state.level.buriedObjects.splice(index, 1);
+        stopObjectTimer(object, OBJECT_TIMER_KIND.ROT_ORGANIC);
+        object.where = 'free';
+        object.buried = false;
+        place_object(object, x, y);
+        stack_object(object);
+        unearthed.push(object);
+    }
+    if (state.level?.engravings) {
+        state.level.engravings = state.level.engravings.filter(engraving =>
+            engraving.x !== x || engraving.y !== y);
+    }
+    return unearthed;
+}
+
+function meltLevelHasCeiling(state = game) {
+    const flags = state.level?.flags || {};
+    if (typeof flags.has_ceiling === 'boolean') return flags.has_ceiling;
+    return state === game
+        ? !(In_endgame(state.u?.uz) && !Is_earthlevel(state.u?.uz))
+        : !(flags.is_endgame && !flags.is_earthlevel);
+}
+
+function monsterInAir(monster, state = game) {
+    if (!monster) return false;
+    const flags = MONSTER_FLAGS1[monster.mnum] ?? 0;
+    const symbol = MONSTER_SYMBOL[monster.mnum];
+    return !!(flags & 0x00000001) || symbol === 5 || symbol === 25
+        || !!(flags & 0x00000010)
+            && meltLevelHasCeiling(state) && !!monster.mundetected;
+}
+
+function monsterSafelySurvivesMeltedIce(monster, state = game) {
+    if (!monster) return true;
+    const name = MONSTER_NAME[monster.mnum];
+    // minliquid() gives these two species separate split/rust transactions.
+    if (name === 'gremlin' || name === 'iron golem') return false;
+    const flags = MONSTER_FLAGS1[monster.mnum] ?? 0;
+    return monsterInAir(monster, state)
+        || !!(flags & (0x00000002 | 0x00000010
+            | 0x00000200 | 0x00000400));
+}
+
+const MELT_SPECIAL_CORPSE_NAMES = new Set([
+    'white unicorn', 'gray unicorn', 'black unicorn', 'long worm',
+    'vampire', 'vampire leader',
+    'gray ooze', 'brown pudding', 'green slime', 'black pudding',
+]);
+
+function meltSpecialDeathFamily(monster) {
+    const name = MONSTER_NAME[monster.mnum] || '';
+    return MELT_SPECIAL_CORPSE_NAMES.has(name)
+        || (name.endsWith(' dragon') && !name.startsWith('baby '))
+        || name.endsWith(' mummy') || name.endsWith(' zombie')
+        || name.endsWith(' golem')
+        || name === 'lich' || name.endsWith('lich')
+        || name === 'troll' || name.endsWith(' troll')
+        || (MONSTER_ATTACKS[monster.mnum] || [])
+            .some(attack => attack[0] === 14
+                || attack[1] === 22 || attack[1] === 35); // BOOM/SEDU/SSEX
+}
+
+function wornMeltMonsterLifeSaver(monster) {
+    if (monsterIsNonliving(monster.mnum)) return null;
+    return (monster.minvent || monster.inventory || []).find(object =>
+        object.otyp === AMULET_OF_LIFE_SAVING
+        && ((object.owornmask ?? 0) & W_AMUL)) || null;
+}
+
+function meltOccupantDeathGap(
+    monster, state = game, { afterFailedLifeSaving = false } = {},
+) {
+    if (state !== game) return 'custom-state death projection';
+    if (Number.isInteger(monster.cham) && monster.cham >= 0)
+        return 'shapechanging';
+    const lifeSaver = wornMeltMonsterLifeSaver(monster);
+    if (lifeSaver && !afterFailedLifeSaving) {
+        const genocided = !!((state.mvitals?.[monster.mnum]?.mvflags ?? 0)
+            & G_GENOD);
+        const petGap = petLifeSavingGap(monster, { genocided, state });
+        if (petGap) return `pet life-saving ${petGap}`;
+        if (genocided) {
+            return meltOccupantDeathGap(
+                monster, state, { afterFailedLifeSaving: true },
+            );
+        }
+        return null;
+    }
+    if (monster.mtame || monster.pet) return 'pet traits';
+    if (state.u?.ustuck === monster || state.u?.usteed === monster)
+        return 'hero attachment';
+    // trap_ice_effects() runs before any boulder-fill death.  It clears
+    // mtrapped and destroys ordinary pits/holes, so mon_leaving_level() has
+    // no pit left to fill for this callback.  Do not guard on the stale
+    // pre-melt trap state inspected by runClaimedMeltIceTimer().
+    if ((MONSTER_GENO[monster.mnum] ?? 0) & G_UNIQ_MASK)
+        return 'unique monster bookkeeping';
+    if (monster.isgd || monster.iswiz || monster.isshk || monster.ispriest
+        || monster.wormno || monster.mleashed
+        || monster.isQuestLeader || monster.isQuestNemesis) {
+        return 'special monster detachment';
+    }
+    const leaderId = state.quest_status?.leader_m_id
+        ?? state.u?.quest_status?.leader_m_id;
+    if (leaderId != null && monster.m_id === leaderId)
+        return 'quest leader bookkeeping';
+    if (meltSpecialDeathFamily(monster)) return 'special corpse/death effects';
+    return null;
+}
+
+function recordMeltMonsterDeath(monster, state = game) {
+    if (!state._vanquishedCounts) state._vanquishedCounts = new Map();
+    const mnum = monster.mnum ?? -1;
+    const prior = state._vanquishedCounts.get(mnum) || {
+        mnum, name: MONSTER_NAME[mnum] || 'monster', count: 0,
+        difficulty: MONSTER_DIFFICULTY[mnum] ?? 0,
+    };
+    prior.count = Math.min(255, prior.count + 1);
+    state._vanquishedCounts.set(mnum, prior);
+}
+
+function releaseMeltMonsterInventory(monster, state = game) {
+    const x = monster.mx, y = monster.my;
+    const carried = monster.minvent?.length
+        ? monster.minvent : monster.inventory || monster.minvent || [];
+    const released = [];
+    for (const object of carried) {
+        object.owornmask = 0;
+        object.worn = false;
+        object.wornSlot = null;
+        object.wielded = false;
+        object.alternate = false;
+        object.ready = false;
+        place_object(object, x, y);
+        stack_object(object, state);
+        released.push(object);
+    }
+    monster.minvent = [];
+    monster.inventory = monster.minvent;
+    monster.hasInventory = false;
+    monster.mw = null;
+    monster.misc_worn_check = 0;
+    return released;
+}
+
+function meltLevelSpecificNoCorpse(monster, state = game) {
+    const flags = state.level?.flags || {};
+    if (flags.rogue_level || flags.is_rogue_level
+        || flags.deathdrops === false) return true;
+    const undead = !!((MONSTER_FLAGS2[monster.mnum] ?? 0) & 0x2);
+    return !!(flags.graveyard && undead && rn2(3));
+}
+
+function createMeltMonsterCorpse(monster, state = game) {
+    if (meltLevelSpecificNoCorpse(monster, state)) return null;
+    const mnum = monster.mnum;
+    const guaranteed = (((MONSTER_SIZE[mnum] ?? 2) >= 3
+            || mnum === PM_LIZARD) && !monster.mcloned)
+        || (mnum >= PM_ARCHAEOLOGIST && mnum <= PM_WIZARD)
+        || (mnum >= PM_DEATH && mnum <= PM_FAMINE);
+    const frequency = (MONSTER_GENO[mnum] ?? 0) & 0x7;
+    const range = 2 + Number(frequency < 2)
+        + Number((MONSTER_SIZE[mnum] ?? 2) === 0);
+    if (!guaranteed && rn2(range) !== 0) return null;
+    if ((MONSTER_GENO[mnum] ?? 0) & G_NOCORPSE) return null;
+
+    let flags = CORPSTAT_INIT;
+    if (monster.female) flags |= CORPSTAT_FEMALE;
+    else if (!((MONSTER_FLAGS2[mnum] ?? 0) & M2_NEUTER))
+        flags |= CORPSTAT_MALE;
+    const corpse = mkcorpstat(CORPSE, null, mnum,
+        monster.mx, monster.my, flags);
+    corpse.name = `${MONSTER_NAME[mnum] || 'monster'} corpse`;
+    if (monster.name) corpse.oname = monster.name;
+    return stack_object(corpse, state);
+}
+
+function meltAppearanceBlocksLight(monster) {
+    const type = monster.m_ap_type ?? 0;
+    const appearance = monster.mappearance ?? 0;
+    if (type === M_AP_OBJECT) return appearance === BOULDER;
+    if (type !== M_AP_FURNITURE) return false;
+    // The port persists special-level furniture in the terrain namespace,
+    // while ordinary C mimic state uses cmap indices.  Accept both encodings:
+    // C walls are below S_ndoor=12, closed doors are 15/16, and tree is 18.
+    return (appearance >= 0 && appearance < 12)
+        || appearance === 15 || appearance === 16 || appearance === 18
+        || appearance === TREE || appearance === SDOOR
+        || appearance === DOOR || IS_WALL(appearance);
+}
+
+function revealMeltMonsterAppearance(monster, state = game) {
+    const type = monster.m_ap_type ?? 0;
+    const appearance = monster.mappearance ?? 0;
+    if (type === 0 || type === M_AP_MONSTER) {
+        return {
+            revealed: false, type, appearance, lightBlocker: false,
+        };
+    }
+
+    const lightBlocker = meltAppearanceBlocksLight(monster);
+    const corpsenm = monster.mcorpsenm
+        ?? monster.mextra?.mcorpsenm ?? null;
+    monster.m_ap_type = 0;
+    monster.mappearance = 0;
+    delete monster.mcorpsenm;
+    if (monster.mextra) delete monster.mextra.mcorpsenm;
+    if (lightBlocker)
+        vision_note_blocker_change(monster.mx, monster.my);
+    newsym(monster.mx, monster.my);
+    return {
+        revealed: true, type, appearance, corpsenm, lightBlocker,
+    };
+}
+
+function resolveMeltMonsterDeath(monster, state = game) {
+    const gap = meltOccupantDeathGap(monster, state);
+    if (gap) throw new Error(`unsupported melt-ice occupant ${gap}`);
+    monster.mhp = 0;
+    recordMeltMonsterDeath(monster, state);
+    monster.dead = true;
+    monster.mundetected = 0;
+    state.level.monsters = state.level.monsters.filter(candidate =>
+        candidate !== monster);
+    const appearanceReveal = revealMeltMonsterAppearance(monster, state);
+    newsym(monster.mx, monster.my);
+    const releasedInventory = releaseMeltMonsterInventory(monster, state);
+    const corpse = createMeltMonsterCorpse(monster, state);
+    return {
+        kind: 'melt-ice-occupant-death', monster,
+        releasedInventory, appearanceReveal,
+        corpse, corpseCreated: !!corpse,
+    };
+}
+
+// C ref: hack.c:disturb_buried_zombies().  wake_nearto() shortens each
+// adjacent ZOMBIFY_MON timer to two thirds of its remaining duration, then
+// restarts it in the shared queue with a fresh insertion id.
+export function disturbBuriedZombieTimers(x, y, state = game) {
+    const disturbed = [];
+    const currentMove = state.moves ?? 0;
+    for (const corpse of state.level?.buriedObjects || []) {
+        if (corpse.otyp !== CORPSE || !corpse.timed
+            || corpse.ox < x - 1 || corpse.ox > x + 1
+            || corpse.oy < y - 1 || corpse.oy > y + 1) continue;
+        const timer = objectTimers(corpse).find(candidate =>
+            candidate.kind === OBJECT_TIMER_KIND.ZOMBIFY_MON);
+        if (!timer || timer.deadline <= 0) continue;
+        const remaining = timer.deadline - currentMove;
+        stopObjectTimer(corpse, OBJECT_TIMER_KIND.ZOMBIFY_MON);
+        const delay = Math.max(1, Math.trunc(remaining * 2 / 3));
+        const replacement = scheduleObjectTimer(
+            corpse, OBJECT_TIMER_KIND.ZOMBIFY_MON,
+            currentMove + delay, state,
+        );
+        disturbed.push({ corpse, prior: timer, replacement, delay });
+    }
+    return disturbed;
+}
+
+function floorBoulderAt(x, y, state = game) {
+    return state.level?.objects?.[x]?.[y]?.find(object =>
+        object.otyp === BOULDER) || null;
+}
+
+function finishMeltIceBoulderOutcome(event, outcome, state = game) {
+    if (!outcome || outcome.boulderFinalized) return outcome;
+    if (outcome.pendingOccupantLifeSaving) {
+        throw new Error('melt-ice boulder life-saving is still pending');
+    }
+    const { x, y, boulder, fillsUp } = outcome;
+    let removedTrap = null;
+    let buriedFloorObjects = [];
+    if (fillsUp) {
+        removedTrap = state.level?.traps?.find(trap =>
+            trap.tx === x && trap.ty === y) || null;
+        if (removedTrap) {
+            const trapIndex = state.level.traps.indexOf(removedTrap);
+            if (trapIndex >= 0) state.level.traps.splice(trapIndex, 1);
+        }
+        buriedFloorObjects = buryFloorObjectsAt(x, y, state);
+    }
+
+    stopAllObjectTimers(boulder);
+    boulder.where = 'gone';
+    boulder.buried = false;
+    boulder.ox = boulder.oy = 0;
+    const pendingBoulder = fillsUp ? null : floorBoulderAt(x, y, state);
+    event.pendingBoulder = pendingBoulder;
+    event.pendingBoulderOutcome = null;
+    event.boulderComplete = !pendingBoulder;
+    Object.assign(outcome, {
+        removedTrap, buriedFloorObjects, pendingBoulder,
+        boulderFinalized: true,
+    });
+    return outcome;
+}
+
+export function finishMeltIceBoulderLifeSaving(
+    event, outcome, resolution, state = game,
+) {
+    const pending = outcome?.pendingOccupantLifeSaving;
+    if (!pending || pending.monster !== resolution?.monster
+        || pending.amulet !== resolution?.amulet
+        || pending.genocided !== !!resolution.genocided
+        || resolution.survived !== !pending.genocided
+        || (resolution.survived
+            ? (pending.monster.mhp ?? 0) <= 0
+            : (pending.monster.mhp ?? 0) > 0)) {
+        throw new Error('invalid melt-ice monster life-saving resolution');
+    }
+    outcome.pendingOccupantLifeSaving = null;
+    outcome.occupantLifeSaving = resolution;
+    event.occupantLifeSaving = resolution;
+    if (!resolution.survived) {
+        const occupantDeath = resolveMeltMonsterDeath(
+            pending.monster, state,
+        );
+        outcome.occupantDeath = occupantDeath;
+        event.occupantDeath = occupantDeath;
+    }
+    return finishMeltIceBoulderOutcome(event, outcome, state);
+}
+
+// C refs: do.c:boulder_hits_pool() and dig.c:bury_objs().  This is one
+// resumable iteration after melt_ice()'s initial and "settles" messages have
+// returned.  Melted ICE can only expose ordinary POOL/MOAT here, so the
+// native fill rule is rn2(10) != 0; a zero sinks this boulder and leaves the
+// next boulder for another iteration.
+export function runNextMeltIceBoulder(event, state = game) {
+    if (event?.kind !== LEVEL_TIMER_KIND.MELT_ICE_AWAY
+        || event.boulderComplete) return null;
+    if (event.pendingBoulderOutcome) return event.pendingBoulderOutcome;
+    const { x, y } = event;
+    const loc = state.level?.at?.(x, y);
+    if (!loc || !IS_POOL(loc.typ)) {
+        throw new Error(`melt-ice boulder at non-pool position ${x},${y}`);
+    }
+    const boulder = floorBoulderAt(x, y, state);
+    if (!boulder) {
+        event.pendingBoulder = null;
+        event.boulderComplete = true;
+        return null;
+    }
+
+    const pile = state.level.objects[x][y];
+    const index = pile.indexOf(boulder);
+    if (index >= 0) pile.splice(index, 1);
+    boulder.where = 'free';
+    const chance = rn2(10);
+    const fillsUp = chance !== 0;
+    const waterType = loc.typ;
+    let occupantDeath = null;
+    let pendingOccupantLifeSaving = null;
+    if (fillsUp) {
+        loc.typ = ROOM;
+        loc.flags = 0;
+        loc.icedpool = 0;
+        const occupant = event.occupant;
+        if (occupant && (occupant.mhp ?? 1) > 0
+            && !monsterInAir(occupant, state)) {
+            const lifeSaver = wornMeltMonsterLifeSaver(occupant);
+            if (lifeSaver) {
+                occupant.mhp = 0;
+                pendingOccupantLifeSaving = {
+                    kind: 'melt-ice-occupant-life-saving',
+                    monster: occupant, amulet: lifeSaver,
+                    genocided: !!((state.mvitals?.[occupant.mnum]?.mvflags
+                        ?? 0) & G_GENOD),
+                };
+            } else {
+                occupantDeath = resolveMeltMonsterDeath(occupant, state);
+                event.occupantDeath = occupantDeath;
+            }
+        }
+    }
+
+    const outcome = {
+        kind: 'melt-ice-boulder', x, y, boulder, chance, fillsUp,
+        waterType, waterBody: waterType === POOL ? 'pool' : 'moat',
+        removedTrap: null, buriedFloorObjects: [], pendingBoulder: boulder,
+        occupantDeath, pendingOccupantLifeSaving,
+        occupantLifeSaving: null, boulderFinalized: false,
+    };
+    if (!event.boulderOutcomes) event.boulderOutcomes = [];
+    event.boulderOutcomes.push(outcome);
+    if (pendingOccupantLifeSaving) {
+        event.pendingBoulderOutcome = outcome;
+        return outcome;
+    }
+    return finishMeltIceBoulderOutcome(event, outcome, state);
+}
+
+// C refs: zap.c:melt_ice_away()/melt_ice(), trap.c:trap_ice_effects(),
+// mkobj.c:obj_ice_effects(), and dig.c:unearth_objs(). The shared timer has
+// already been claimed, so this callback owns terrain, trap, corpse-timer,
+// burial, engraving, and repaint state before its conditional message.
+export function runClaimedMeltIceTimer(claimed, state = game) {
+    if (claimed?.timer?.kind !== LEVEL_TIMER_KIND.MELT_ICE_AWAY
+        || !claimed.position) return null;
+    const { x, y } = claimed.position;
+    const loc = state.level?.at?.(x, y);
+    if (!loc || loc.typ !== ICE) {
+        throw new Error(`melt-ice timer at non-ice position ${x},${y}`);
+    }
+    const pile = state.level?.objects?.[x]?.[y] || [];
+    const boulder = pile.find(object => object.otyp === BOULDER) || null;
+    if (state.u?.ux === x && state.u?.uy === y) {
+        throw new Error(
+            `melt-ice hero liquid lifecycle is not implemented at ${x},${y}`,
+        );
+    }
+    const occupant = levelMonsterAt(x, y);
+    if (occupant && !monsterSafelySurvivesMeltedIce(occupant, state)) {
+        throw new Error(
+            `melt-ice monster liquid lifecycle is not implemented at ${x},${y}`,
+        );
+    }
+    if (boulder && occupant && !monsterInAir(occupant, state)) {
+        const gap = meltOccupantDeathGap(occupant, state);
+        if (gap) {
+            throw new Error(
+                `melt-ice boulder occupant ${gap} is not implemented at ${x},${y}`,
+            );
+        }
+    }
+
+    const icedpool = loc.icedpool ?? loc.flags ?? ICED_MOAT;
+    const meltInto = icedpool === ICED_POOL ? POOL : MOAT;
+    loc.typ = meltInto;
+    loc.flags = 0;
+    loc.icedpool = 0;
+    stopLevelTimer(x, y, LEVEL_TIMER_KIND.MELT_ICE_AWAY, state);
+    const trap = iceMeltTrapEffects(x, y, state);
+    for (const object of state.level?.objects?.[x]?.[y] || [])
+        updateCorpseIceTimer(object, x, y, false, state);
+    const unearthed = unearthObjectsAt(x, y, state);
+    if (state === game) newsym(x, y);
+    return {
+        kind: LEVEL_TIMER_KIND.MELT_ICE_AWAY,
+        x, y, meltInto, trap, unearthed, occupant,
+        pendingBoulder: floorBoulderAt(x, y, state),
+        boulderComplete: !floorBoulderAt(x, y, state),
+        boulderOutcomes: [],
+    };
+}
+
+export function runClaimedObjectRotTimer(claimed, state = game) {
+    const object = claimed?.object;
+    const kind = claimed?.timer?.kind;
+    if (!object || ![
+        OBJECT_TIMER_KIND.ROT_CORPSE,
+        OBJECT_TIMER_KIND.ROT_ORGANIC,
+    ].includes(kind)) return null;
+
+    if (kind === OBJECT_TIMER_KIND.ROT_ORGANIC) {
+        while (object.contents?.length) {
+            const content = object.contents[0];
+            if (!buryContainedObject(
+                content, object, object.ox, object.oy, state,
+            )) {
+                return { kind: 'blocked-organic-rot', object };
+            }
+        }
+    }
+    const location = extractObjectFromGraph(object, state);
+    return { kind, object, ...location };
+}
+
+// C refs: timeout.c:run_timers(), do.c:zombify_mon()/revive_mon(), and
+// zap.c:revive().  Claiming removes the ZOMBIFY_MON timer before its callback;
+// a failed dig or birth retains the replacement zombie corpse and its newly
+// installed ROT_CORPSE timer.
+export async function runClaimedBuriedZombieTimer(
+    claimed, state = game, currentTurn = state.moves ?? 0,
+) {
+    const corpse = claimed?.object;
+    if (!corpse || claimed?.timer?.kind !== OBJECT_TIMER_KIND.ZOMBIFY_MON)
+        return null;
+
+    const zombieForm = ZOMBIE_FORM_BY_LIVING_CORPSE.get(corpse.corpsenm);
+    if (zombieForm == null
+        || ((state.mvitals?.[zombieForm]?.mvflags ?? 0) & G_GENOD)) {
+        removeBuriedCorpse(corpse, state);
+        return { kind: 'rotted', corpse, monster: null, trap: null };
+    }
+
+    set_corpsenm(corpse, zombieForm);
+    const x = corpse.ox, y = corpse.oy;
+    const location = state.level?.at(x, y);
+    const hasTrap = state.level?.traps?.some(trap =>
+        trap.tx === x && trap.ty === y);
+    if (!location || hasTrap
+        || ![ROOM, CORR, GRAVE].includes(location.typ)) {
+        return { kind: 'failed', corpse, monster: null, trap: null };
+    }
+
+    const flags = NO_MINVENT | MM_NOWAIT | MM_NOMSG | MM_NOCOUNTBIRTH
+        | (corpse.female ? MM_FEMALE : MM_MALE);
+    const occupied = !!levelMonsterAt(x, y);
+    const monster = occupied
+        ? await makemonNear(zombieForm, x, y, flags)
+        : await makemonAt(zombieForm, x, y, flags);
+    if (!monster)
+        return { kind: 'failed', corpse, monster: null, trap: null };
+
+    monster.mrevived = 1;
+    removeBuriedCorpse(corpse, state);
+    const trap = await maketrap(monster.mx, monster.my, PIT);
+    return { kind: 'revived', corpse, monster, trap };
+}
+
+export async function runNextBuriedZombieTimer(
+    state = game, currentTurn = state.moves ?? 0,
+) {
+    const claimed = claimNextDueObjectTimer(
+        state, currentTurn,
+        new Set([OBJECT_TIMER_KIND.ZOMBIFY_MON]),
+    );
+    if (!claimed) return null;
+    const event = await runClaimedBuriedZombieTimer(
+        claimed, state, currentTurn,
+    );
+    return finishBuriedZombieTimer(event, state);
 }
 
 function make_engr_at(
@@ -3744,7 +4890,7 @@ function renewBonesIdentities(level) {
 // non-shopkeeper for the new hero after all level chains and identities have
 // been restored.  This must happen before the first scheduler pass: peaceful
 // item search and directed movement own different RNG transactions.
-function setRestoredMonsterMalign(monster) {
+function setMonsterMalign(monster) {
     let alignment = MONSTER_ALIGNMENT[monster?.mnum] ?? 0;
     if (monster?.ispriest || monster?.isminion) {
         if (monster.ispriest && monster.epri)
@@ -3789,7 +4935,7 @@ function restoreBonesMonsterAttitudes(level) {
             monster.mpeaceful = coalignedUnicorn || peaceMinded(monster.mnum)
                 ? 1 : 0;
         }
-        setRestoredMonsterMalign(monster);
+        setMonsterMalign(monster);
     }
 }
 
@@ -3873,75 +5019,7 @@ export async function mklev() {
     await makelevel();
     recount_level_features();
     level_finalize_topology();
-    normalizeWizardBindStartRoom();
     g.in_mklev = false;
-}
-
-function normalizeWizardBindStartRoom() {
-    if (!game._wizardBindPath || (game.u?.uz?.dlevel ?? 1) !== 1) return;
-    const room = game.level?.rooms?.find(candidate => candidate
-        && candidate.lx === 60 && candidate.hx === 66
-        && candidate.ly === 2 && candidate.hy === 3);
-    if (!room) return;
-
-    const dx = -1, dy = 1;
-    const xlo = room.lx - 1, xhi = room.hx + 1;
-    const ylo = room.ly - 1, yhi = room.hy + 1;
-    const cells = [];
-    const objects = [];
-    for (let x = xlo; x <= xhi; x++) {
-        for (let y = ylo; y <= yhi; y++) {
-            cells.push({ x, y, loc: { ...game.level.at(x, y) } });
-            const stack = game.level.objects?.[x]?.[y];
-            if (stack?.length) objects.push({ x, y, stack });
-        }
-    }
-    for (let x = xlo; x <= xhi; x++) {
-        for (let y = ylo; y <= yhi; y++) {
-            game.level.locations[x][y] = makeLocation();
-            if (game.level.objects?.[x]) game.level.objects[x][y] = undefined;
-        }
-    }
-    for (const { x, y, loc } of cells)
-        game.level.locations[x + dx][y + dy] = loc;
-    for (const { x, y, stack } of objects) {
-        const nx = x + dx, ny = y + dy;
-        if (!game.level.objects[nx]) game.level.objects[nx] = [];
-        game.level.objects[nx][ny] = stack;
-        for (const object of stack) { object.ox = nx; object.oy = ny; }
-    }
-
-    room.lx += dx; room.hx += dx;
-    room.ly += dy; room.hy += dy;
-    for (const door of game.level.doors || []) {
-        if (door.x >= xlo && door.x <= xhi && door.y >= ylo && door.y <= yhi) {
-            door.x += dx; door.y += dy;
-        }
-    }
-    for (const monster of game.level.monsters || []) {
-        if (monster.mx >= xlo && monster.mx <= xhi
-            && monster.my >= ylo && monster.my <= yhi) {
-            monster.mx += dx; monster.my += dy;
-        }
-    }
-    for (const trap of game.level.traps || []) {
-        if (trap.tx >= xlo && trap.tx <= xhi && trap.ty >= ylo && trap.ty <= yhi) {
-            trap.tx += dx; trap.ty += dy;
-        }
-    }
-    for (let stair = game.stairs; stair; stair = stair.next) {
-        if (stair.sx >= xlo && stair.sx <= xhi
-            && stair.sy >= ylo && stair.sy <= yhi) {
-            stair.sx += dx; stair.sy += dy;
-        }
-    }
-    for (const name of ['upstair', 'dnstair']) {
-        const stair = game.level[name];
-        if (stair?.x >= xlo && stair.x <= xhi
-            && stair.y >= ylo && stair.y <= yhi) {
-            stair.x += dx; stair.y += dy;
-        }
-    }
 }
 
 function recount_level_features() {
@@ -4323,6 +5401,72 @@ function specialSelectionFillRect(context, x1, y1, x2, y2) {
     return selection;
 }
 
+function specialSelectionLine(context, x1, y1, x2, y2) {
+    const selection = new SpecialSelection();
+    let x = context.xstart + x1;
+    let y = context.ystart + y1;
+    const targetX = context.xstart + x2;
+    const targetY = context.ystart + y2;
+    const dx = Math.abs(targetX - x);
+    const dy = Math.abs(targetY - y);
+    const sx = x < targetX ? 1 : -1;
+    const sy = y < targetY ? 1 : -1;
+    let error = dx - dy;
+    for (;;) {
+        selection.add(x, y);
+        if (x === targetX && y === targetY) break;
+        const doubled = 2 * error;
+        if (doubled > -dy) {
+            error -= dy;
+            x += sx;
+        }
+        if (doubled < dx) {
+            error += dx;
+            y += sy;
+        }
+    }
+    return selection;
+}
+
+function specialSelectionRect(context, x1, y1, x2, y2) {
+    return specialSelectionLine(context, x1, y1, x2, y1)
+        .union(specialSelectionLine(context, x1, y2, x2, y2))
+        .union(specialSelectionLine(context, x1, y1, x1, y2))
+        .union(specialSelectionLine(context, x2, y1, x2, y2));
+}
+
+function specialSelectionOfTerrain(context, typ) {
+    const selection = new SpecialSelection();
+    for (let x = 0; x < context.width; x++) {
+        for (let y = 0; y < context.height; y++) {
+            if (game.level.at(context.xstart + x, context.ystart + y)?.typ
+                === typ) {
+                selection.add(context.xstart + x, context.ystart + y);
+            }
+        }
+    }
+    return selection;
+}
+
+function specialSelectionFloodFill(context, x, y) {
+    const selection = new SpecialSelection();
+    const startX = context.xstart + x;
+    const startY = context.ystart + y;
+    const terrain = game.level.at(startX, startY)?.typ;
+    const pending = [[startX, startY]];
+    while (pending.length) {
+        const [currentX, currentY] = pending.pop();
+        if (selection.has(currentX, currentY)
+            || game.level.at(currentX, currentY)?.typ !== terrain) continue;
+        selection.add(currentX, currentY);
+        pending.push(
+            [currentX + 1, currentY], [currentX - 1, currentY],
+            [currentX, currentY + 1], [currentX, currentY - 1],
+        );
+    }
+    return selection;
+}
+
 function specialSelectionRandomPoint(context) {
     return new SpecialSelection().add(
         context.xstart + rn2(context.width),
@@ -4371,6 +5515,19 @@ function specialSelectionTerrain(selection, typ) {
     selection.forEachXMajor((x, y) => {
         if (!setLevelTerrainType(x, y, typ)) return;
         if (typ === IRONBARS || typ === HWALL)
+            game.level.at(x, y).horizontal = true;
+    });
+}
+
+function replaceSpecialSelectionTerrain(
+    selection, fromType, toType, chance = 100,
+) {
+    selection.forEachXMajor((x, y) => {
+        const loc = game.level.at(x, y);
+        if (loc?.typ !== fromType
+            || (chance < 100 && rn2(100) >= chance)) return;
+        setLevelTerrainType(x, y, toType);
+        if (toType === IRONBARS || toType === HWALL)
             game.level.at(x, y).horizontal = true;
     });
 }
@@ -4622,10 +5779,38 @@ function createSpecialMaze(corridorWidth = -1, wallThickness = -1,
         startX, startY, passageType, mazeXMax, mazeYMax,
     );
 
-    // Hell filler variants exercised here do not request dead-end removal.
-    // Keep the argument explicit so later variants cannot silently collapse
-    // that policy into the walker.
-    void removeDeadEnds;
+    if (removeDeadEnds) {
+        const directions = [
+            [0, -1], [1, 0], [0, 1], [-1, 0],
+        ];
+        const inMaze = (x, y) => x >= 2 && y >= 2
+            && x < mazeXMax && y < mazeYMax && isok(x, y);
+        for (let x = 2; x < mazeXMax; x++) {
+            for (let y = 2; y < mazeYMax; y++) {
+                if (!(x % 2) || !(y % 2)
+                    || !SPACE_POS(game.level.at(x, y)?.typ)) continue;
+                const openings = [];
+                let blockedOrEdge = 0;
+                for (const [dx, dy] of directions) {
+                    const nearX = x + dx, nearY = y + dy;
+                    const farX = x + 2 * dx, farY = y + 2 * dy;
+                    if (!inMaze(nearX, nearY) || !inMaze(farX, farY)) {
+                        blockedOrEdge++;
+                        continue;
+                    }
+                    if (!SPACE_POS(game.level.at(nearX, nearY)?.typ)
+                        && SPACE_POS(game.level.at(farX, farY)?.typ)) {
+                        openings.push([nearX, nearY]);
+                        blockedOrEdge++;
+                    }
+                }
+                if (blockedOrEdge >= 3 && openings.length) {
+                    const [openX, openY] = openings[rn2(openings.length)];
+                    game.level.at(openX, openY).typ = passageType;
+                }
+            }
+        }
+    }
 
     if (scale > 2) {
         const saved = Array.from({ length: COLNO }, (_, x) =>
@@ -4683,34 +5868,6 @@ function specialMonsterLocationAcceptable(mndx, loc, x = -1, y = -1,
     return false;
 }
 
-function loadBigrm2Map(defaultLit) {
-    const context = centeredSpecialMap(75, 18);
-    for (let x = 0; x < COLNO; x++) {
-        for (let y = 0; y < ROWNO; y++) {
-            game.level.at(x, y).lit = defaultLit;
-        }
-    }
-    for (let dy = 0; dy < context.height; dy++) {
-        for (let dx = 0; dx < context.width; dx++) {
-            const loc = game.level.at(context.xstart + dx, context.ystart + dy);
-            const top = dy === 0, bottom = dy === context.height - 1;
-            const left = dx === 0, right = dx === context.width - 1;
-            if (top && left) loc.typ = TLCORNER;
-            else if (top && right) loc.typ = TRCORNER;
-            else if (bottom && left) loc.typ = BLCORNER;
-            else if (bottom && right) loc.typ = BRCORNER;
-            else if (top || bottom) loc.typ = HWALL;
-            else if (left || right) loc.typ = VWALL;
-            else {
-                loc.typ = ROOM;
-                loc.lit = true;
-            }
-            loc.horizontal = top || bottom;
-        }
-    }
-    return context;
-}
-
 function specialStair(context, up) {
     const point = specialRandomLocation(context,
         loc => loc.typ === ROOM || loc.typ === CORR || loc.typ === ICE);
@@ -4742,7 +5899,8 @@ function specialObject(context) {
         && !game.level.objects?.[x]?.[y]?.some(
             object => object.otyp === BOULDER,
         ));
-    if (point) mkobj_at(RANDOM_CLASS, point.x, point.y, true);
+    if (point) return mkobj_at(RANDOM_CLASS, point.x, point.y, true);
+    return null;
 }
 
 function specialObjectOfClass(context, objectClass) {
@@ -4768,6 +5926,16 @@ function specialObjectOfType(context, otyp) {
     return point ? mksobj_at(otyp, point.x, point.y, true, true) : null;
 }
 
+function specialFeatureOfType(context, typ) {
+    const point = specialRandomLocation(context, loc =>
+        SPACE_POS(loc.typ) && !IS_FURNITURE(loc.typ));
+    if (!point) return null;
+    const loc = game.level.at(point.x, point.y);
+    if (!loc || IS_FURNITURE(loc.typ)) return null;
+    loc.typ = typ;
+    return point;
+}
+
 function specialDoorAt(context, mask, x, y) {
     const doorX = context.xstart + x, doorY = context.ystart + y;
     const loc = game.level.at(doorX, doorY);
@@ -4785,10 +5953,22 @@ function specialDoorAt(context, mask, x, y) {
     return { x: doorX, y: doorY };
 }
 
+function specialRandomDoorAt(context, x, y) {
+    rn2(5);
+    let mask = D_NODOOR;
+    if (rn2(3) === 0) {
+        if (rn2(5) === 0) mask = D_ISOPEN;
+        else if (rn2(6) === 0) mask = D_LOCKED;
+        else mask = D_CLOSED;
+        if (mask !== D_ISOPEN && rn2(25) === 0) mask |= D_TRAPPED;
+    }
+    return specialDoorAt(context, mask, x, y);
+}
+
 function specialIrregularRoom(context, x, y, rtype, lit, needfill) {
     // sp_lev.c lspo_region() delegates irregular rooms to flood_fill_rm().
-    // This map's connected floor component is bounded by its four doors, so
-    // a four-way fill over the seed terrain is the exact component owner.
+    // That scanline flood includes diagonally touching runs of the same
+    // terrain, then marks neighboring walls and doors as the room's edge.
     const seedX = context.xstart + x, seedY = context.ystart + y;
     const seedType = game.level.at(seedX, seedY)?.typ;
     const roomNumber = game.level.nroom + ROOMOFFSET;
@@ -4805,8 +5985,11 @@ function specialIrregularRoom(context, x, y, rtype, lit, needfill) {
         loc.lit = !!lit;
         lx = Math.min(lx, roomX); hx = Math.max(hx, roomX);
         ly = Math.min(ly, roomY); hy = Math.max(hy, roomY);
-        pending.push([roomX - 1, roomY], [roomX + 1, roomY],
-            [roomX, roomY - 1], [roomX, roomY + 1]);
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                if (dx || dy) pending.push([roomX + dx, roomY + dy]);
+            }
+        }
     }
     for (const key of visited) {
         const [roomX, roomY] = key.split(',').map(Number);
@@ -5066,13 +6249,26 @@ function courtMonsterType() {
 }
 
 async function fillCourtRoom(room) {
-    // C mkroom.c:fill_zoo(COURT).  The throne actor is constructed before
-    // the room scan; the throne terrain itself is committed only after the
-    // remaining court has been populated.
+    // C mkroom.c:fill_zoo(COURT).  Maze courts use the throne already drawn
+    // on the map; ordinary courts choose a free square for a new throne.
     const throne = { x: 0, y: 0 };
-    for (let attempts = 100; attempts > 0; attempts--) {
-        somexyspace(room, throne);
-        if (!occupied(throne.x, throne.y)) break;
+    let mappedThrone = false;
+    if (game.level.flags.is_maze_lev) {
+        for (let x = room.lx; x <= room.hx && !mappedThrone; x++) {
+            for (let y = room.ly; y <= room.hy; y++) {
+                if (game.level.at(x, y)?.typ !== THRONE) continue;
+                throne.x = x;
+                throne.y = y;
+                mappedThrone = true;
+                break;
+            }
+        }
+    }
+    if (!mappedThrone) {
+        for (let attempts = 100; attempts > 0; attempts--) {
+            somexyspace(room, throne);
+            if (!occupied(throne.x, throne.y)) break;
+        }
     }
     const difficulty = level_difficulty();
     const rulerRoll = rnd(difficulty);
@@ -5085,10 +6281,7 @@ async function fillCourtRoom(room) {
         ruler.msleeping = 1;
         ruler.mpeaceful = 0;
         const mace = mksobj(MACE, true, false);
-        mace.where = 'minvent';
-        ruler.minvent.unshift(mace);
-        ruler.inventory = ruler.minvent;
-        ruler.hasInventory = true;
+        addObjectToMonsterInventory(ruler, mace, game, { atFront: true });
     }
 
     const entrance = room.doorct
@@ -5153,6 +6346,11 @@ function loadSpecialAsciiMap(rows, defaultLit, origin = null) {
             // preserves the terrain established by level_init.
             if (row[dx] === 'x') continue;
             const loc = game.level.at(context.xstart + dx, context.ystart + dy);
+            // lspo_map() clips a fragment at COLNO/ROWNO while retaining its
+            // declared coordinate frame.  water.lua deliberately supplies an
+            // 80-column fragment beginning at column one, so its last source
+            // column lies beyond NetHack's usable map and is ignored.
+            if (!loc) continue;
             loc.lit = defaultLit;
             loc.horizontal = row[dx] === '-';
             if (row[dx] === '.') loc.typ = ROOM;
@@ -5168,6 +6366,8 @@ function loadSpecialAsciiMap(rows, defaultLit, origin = null) {
             } else if (row[dx] === 'F') loc.typ = IRONBARS;
             else if (row[dx] === 'B') loc.typ = CROSSWALL;
             else if (row[dx] === 'P') loc.typ = POOL;
+            else if (row[dx] === 'I') loc.typ = ICE;
+            else if (row[dx] === '{') loc.typ = FOUNTAIN;
             else if (row[dx] === '}') loc.typ = MOAT;
             else if (row[dx] === 'W') loc.typ = WATER;
             else if (row[dx] === 'A') {
@@ -5194,6 +6394,7 @@ function loadSpecialAsciiMap(rows, defaultLit, origin = null) {
         for (let dx = 0; dx < width; dx++) {
             if (row[dx] !== '+' && row[dx] !== 'S') continue;
             const loc = game.level.at(context.xstart + dx, context.ystart + dy);
+            if (!loc) continue;
             specialDoorAt(context, loc.doormask, dx, dy);
         }
     }
@@ -5296,6 +6497,7 @@ async function specialMonsterAt(context, mndx, x, y,
         randomGender = true,
         randomAlignment = true,
         peaceful = null,
+        mmflags = 0,
     } = {}) {
     // Lua's find_montype() resolves a requested gender before
     // create_monster() resolves random alignment.  Fixed-sex monsters skip
@@ -5306,7 +6508,7 @@ async function specialMonsterAt(context, mndx, x, y,
         rn2(3); // sp_amask_to_amask(AM_SPLEV_RANDOM) -> induced_align(80)
     mndx = applyMinesSameRaceMonsterGate(mndx);
     const monster = await makemon(
-        mndx, context.xstart + x, context.ystart + y, 0,
+        mndx, context.xstart + x, context.ystart + y, mmflags,
     );
     if (monster && randomGender) monster.female = requestedFemale;
     if (monster && peaceful != null) monster.mpeaceful = peaceful ? 1 : 0;
@@ -5346,7 +6548,7 @@ function discardSpecialMonsterInventory(monster) {
     monster.hasInventory = false;
 }
 
-function giveSpecialMonsterObject(context, monster, otyp, spe) {
+export function giveSpecialMonsterObject(context, monster, otyp, spe) {
     const point = specialRandomLocation(context);
     if (!point || !monster) return null;
     const object = mksobj_at(otyp, point.x, point.y, true, true);
@@ -5354,11 +6556,9 @@ function giveSpecialMonsterObject(context, monster, otyp, spe) {
     const pile = game.level.objects?.[point.x]?.[point.y];
     const index = pile?.indexOf(object) ?? -1;
     if (index >= 0) pile.splice(index, 1);
-    object.where = 'minvent';
-    monster.minvent.unshift(object);
-    monster.inventory = monster.minvent;
-    monster.hasInventory = true;
-    return object;
+    return addObjectToMonsterInventory(
+        monster, object, game, { atFront: true },
+    );
 }
 
 function specialNonPasswall(context) {
@@ -5459,12 +6659,14 @@ async function specialMonsterOfClass(
     return resolved;
 }
 
-async function finishSpecialTrapConstruction(trap) {
+async function finishSpecialTrapConstruction(
+    trap, { spiderOnWeb = true } = {},
+) {
     if (!trap) return null;
     const kind = trap.ttyp;
     // mklev.c:mktrap() owns the web's resident spider before evaluating the
     // shallow-level dead-predecessor gate.
-    if (kind === WEB)
+    if (kind === WEB && spiderOnWeb)
         await makemon(PM_GIANT_SPIDER, trap.tx, trap.ty, 0);
 
     if (!game.in_mklev || kind === NO_TRAP) return trap;
@@ -5495,16 +6697,13 @@ async function specialTrapOfType(context, typ) {
     return finishSpecialTrapConstruction(trap);
 }
 
-async function specialTrapAt(context, typ, x, y) {
+async function specialTrapAt(context, typ, x, y, options = undefined) {
     const trap = await maketrap(
-        context.xstart + x, context.ystart + y, typ,
+        context.xstart + x, context.ystart + y, typ, options,
     );
-    return finishSpecialTrapConstruction(trap);
+    return finishSpecialTrapConstruction(trap, options);
 }
 
-// Lua source: dat/bigrm-2.lua.  This runner deliberately stays at the script
-// level: map data and operation ordering live here; RNG and entity semantics
-// remain in the shared operations and constructors above.
 function specialRandomTrapType(inHell = false) {
     const level = level_difficulty();
     const noTeleport = !!game.level?.flags?.noteleport;
@@ -6382,6 +7581,26 @@ const MINEND2_MAP = [
     '---------------------------------------------------------------------------',
 ];
 
+const MINEND3_MAP = [
+    ' - - - - - - - - - - -- -- - - . - - - - - - - - - -- - - -- - - - - . - - |',
+    '------...---------.-----------...-----.-------.-------     ----------------|',
+    ' - - - - - - - - - - - . - - - . - - - - - - - - - - -- - -- - . - - - - - |',
+    '------------.---------...-------------------------.---   ------------------|',
+    ' - - - - - - - - - - . . - - --- - . - - - - - - - - -- -- - - - - |.....| |',
+    '--.---------------.......------------------------------- ----------|.....S-|',
+    ' - - - - |.. ..| - ....... . - - - - |.........| - - - --- - - - - |.....| |',
+    '----.----|.....|------.......--------|.........|--------------.------------|',
+    ' - - - - |..{..| - - -.... . --- - -.S.........S - - - - - - - - - - - - - |',
+    '---------|.....|--.---...------------|.........|---------------------------|',
+    ' - - - - |.. ..| - - - . - - - - - - |.........| - --- . - - - - - - - - - |',
+    '----------------------...-------.---------------------...------------------|',
+    '---..| - - - - - - - - . --- - - - - - - - - - - - - - . - - --- - - --- - |',
+    '-.S..|----.-------.------- ---------.-----------------...----- -----.-------',
+    '---..| - - - - - - - -- - - -- . - - - - - . - - - . - . - - -- -- - - - -- ',
+    '-.S..|--------.---.---       -...---------------...{.---------   ---------  ',
+    '--|. - - - - - - - -- - - - -- . - - - --- - - - . . - - - - -- - - - - - - ',
+];
+
 function uniformRoomMinesField(lit = true) {
     // Pri-loca.lua deliberately issues a second level_init after its initial
     // solid fill.  With fg and bg both ROOM, mkmap()'s 2/5 fill loop changes
@@ -6470,13 +7689,13 @@ function priestGoalMinesField() {
 // smoothing pass reads the preceding pass, and disconnected regions are
 // joined through temporary irregular rooms before their room metadata is
 // discarded.
-function mineFillerMinesField(lit) {
+function mineFillerMinesField(lit, background = STONE, walled = true) {
     const width = COLNO - 2;
     const height = ROWNO - 1;
     for (let x = 1; x < COLNO; x++) {
         for (let y = 0; y < ROWNO; y++) {
             const loc = game.level.at(x, y);
-            loc.typ = STONE;
+            loc.typ = background;
             loc.roomno = 0;
             loc.edge = false;
             loc.lit = false;
@@ -6489,7 +7708,7 @@ function mineFillerMinesField(lit) {
         const x = rn2(width - 1) + 2;
         const y = rnd(height - 1);
         const loc = game.level.at(x, y);
-        if (loc.typ === STONE) {
+        if (loc.typ === background) {
             loc.typ = ROOM;
             changed++;
         }
@@ -6501,7 +7720,7 @@ function mineFillerMinesField(lit) {
     ];
     const terrainAt = (x, y) => x <= 0 || y < 0
         || x > width || y >= height
-        ? STONE : game.level.at(x, y).typ;
+        ? background : game.level.at(x, y).typ;
     const neighborCount = (x, y) => dirs.reduce((count, [dx, dy]) =>
         count + Number(terrainAt(x + dx, y + dy) === ROOM), 0);
 
@@ -6509,14 +7728,14 @@ function mineFillerMinesField(lit) {
     for (let x = 2; x <= width; x++) {
         for (let y = 1; y < height; y++) {
             const count = neighborCount(x, y);
-            if (count <= 2) game.level.at(x, y).typ = STONE;
+            if (count <= 2) game.level.at(x, y).typ = background;
             else if (count >= 5) game.level.at(x, y).typ = ROOM;
         }
     }
 
     const applySnapshotPass = rule => {
         const next = Array.from({ length: COLNO }, () =>
-            Array(ROWNO).fill(STONE));
+            Array(ROWNO).fill(background));
         for (let x = 2; x <= width; x++) {
             for (let y = 1; y < height; y++)
                 next[x][y] = rule(neighborCount(x, y), terrainAt(x, y));
@@ -6525,9 +7744,9 @@ function mineFillerMinesField(lit) {
             for (let y = 1; y < height; y++)
                 game.level.at(x, y).typ = next[x][y];
     };
-    applySnapshotPass((count, current) => count === 5 ? STONE : current);
-    applySnapshotPass((count, current) => count < 3 ? STONE : current);
-    applySnapshotPass((count, current) => count < 3 ? STONE : current);
+    applySnapshotPass((count, current) => count === 5 ? background : current);
+    applySnapshotPass((count, current) => count < 3 ? background : current);
+    applySnapshotPass((count, current) => count < 3 ? background : current);
 
     // join_map() discovers eight-connected floor components in x-major
     // order.  Temporary room numbers make somexy() retry within an
@@ -6554,7 +7773,7 @@ function mineFillerMinesField(lit) {
             }
             if (cells.length <= 3) {
                 for (const [cx, cy] of cells) {
-                    game.level.at(cx, cy).typ = STONE;
+                    game.level.at(cx, cy).typ = background;
                     game.level.at(cx, cy).roomno = 0;
                 }
                 continue;
@@ -6588,7 +7807,7 @@ function mineFillerMinesField(lit) {
             end.y = nextRoom.ly
                 + Math.trunc((nextRoom.hy - nextRoom.ly) / 2);
         }
-        dig_corridor(start, end, null, false, ROOM, STONE);
+        dig_corridor(start, end, null, false, ROOM, background);
         if (nextRoom.lx > room.hx
             || ((nextRoom.ly > room.hy || nextRoom.hy < room.ly)
                 && rn2(3)))
@@ -6600,7 +7819,7 @@ function mineFillerMinesField(lit) {
     game.level.rooms = [{ hx: -1 }];
     game.level.nroom = 0;
 
-    wallifyMap(1, 0, COLNO - 1, ROWNO - 1);
+    if (walled) wallifyMap(1, 0, COLNO - 1, ROWNO - 1);
     if (lit) {
         for (let x = 1; x < COLNO; x++) {
             for (let y = 0; y < ROWNO; y++) {
@@ -7302,6 +8521,112 @@ async function generateMinend2(active) {
     active.upTeleportRegion = flipSpecialRegion(active.upTeleportRegion);
 }
 
+async function generateMinend3(active) {
+    fillSpecialSolid(HWALL, active.defaultLit);
+    const context = loadSpecialAsciiMap(MINEND3_MAP, active.defaultLit);
+    active.context = { ...context };
+    game.level.flags.is_special = true;
+    game.level.flags.is_maze_lev = true;
+    game.level.flags.nommap = true;
+
+    const places = luaShuffle([[1, 15], [68, 6], [1, 13]]);
+    active.places = places.map(point => [...point]);
+
+    const markNonDiggable = (x1, y1, x2, y2) => {
+        for (let x = x1; x <= x2; x++) {
+            for (let y = y1; y <= y2; y++) {
+                const loc = game.level.at(
+                    context.xstart + x, context.ystart + y,
+                );
+                if (loc && (IS_STWALL(loc.typ) || loc.typ === TREE
+                    || loc.typ === IRONBARS)) {
+                    loc.wall_info |= W_NONDIGGABLE;
+                }
+            }
+        }
+    };
+    markNonDiggable(67, 3, 73, 7);
+    markNonDiggable(0, 12, 2, 16);
+
+    for (const [x, y] of [[12, 8], [51, 15]]) {
+        const fountain = game.level.at(
+            context.xstart + x, context.ystart + y,
+        );
+        if (fountain) fountain.typ = FOUNTAIN;
+    }
+    game.level.flags.nfountains += 2;
+    setSpecialRegionLighting(context, 0, 0, 75, 16, false);
+    setSpecialRegionLighting(context, 38, 6, 46, 10, true);
+    for (const [x, y] of [
+        [37, 8], [47, 8], [73, 5], [2, 15],
+    ]) specialDoorAt(context, D_CLOSED, x, y);
+    specialMazeWalk(context, 36, 8, 'west', ROOM);
+    specialStairAt(context, 42, 8, true);
+    wallifyMap(
+        context.xstart - 1,
+        context.ystart - 1,
+        context.xstart + context.width + 1,
+        context.ystart + context.height + 1,
+    );
+
+    for (const otyp of [
+        DIAMOND, null, DIAMOND, null,
+        EMERALD, null, EMERALD, null,
+        EMERALD, null, RUBY, null,
+        RUBY, AMETHYST, null, AMETHYST,
+    ]) {
+        if (otyp == null) specialObjectOfClass(context, GEM_CLASS);
+        else specialObjectOfType(context, otyp);
+    }
+    const [luckX, luckY] = places[1];
+    const luckstone = specialObjectAt(
+        context, LUCKSTONE, luckX, luckY, { named: true },
+    );
+    if (luckstone) {
+        luckstone.blessed = false;
+        luckstone.cursed = false;
+        luckstone.achievement = true;
+    }
+    const [flintX, flintY] = places[0];
+    specialObjectAt(
+        context, FLINT, flintX, flintY, { named: true },
+    );
+    for (let count = 0; count < 5; count++)
+        specialObjectOfClass(context, SCROLL_CLASS);
+    for (let count = 0; count < 4; count++)
+        specialObjectOfClass(context, SPBOOK_CLASS);
+    for (let count = 0; count < 3; count++) specialObject(context);
+
+    for (let count = 0; count < 7; count++) await specialTrap(context);
+    await specialTrapAt(context, LEVEL_TELEP, luckX, luckY);
+    await specialTrapAt(context, LEVEL_TELEP, flintX, flintY);
+
+    for (let count = 0; count < 5; count++)
+        await specialMonsterOfClass(context, 39); // S_MUMMY
+    await specialExplicitMonster(context, PM_ETTIN_MUMMY);
+    await specialMonsterOfClass(context, 48); // S_VAMPIRE
+    for (let count = 0; count < 5; count++)
+        await specialMonsterOfClass(context, 52); // S_ZOMBIE
+    await specialMonsterOfClass(context, 48); // S_VAMPIRE
+    for (let count = 0; count < 4; count++)
+        await specialMonsterOfClass(context, 5); // S_EYE
+
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flipSpecialLevelRandom(3);
+}
+
+const MINES_END_GENERATORS = Object.freeze([
+    null, generateMinend1, generateMinend2, generateMinend3,
+]);
+
+export async function generateMinesEnd(active) {
+    const generator = MINES_END_GENERATORS[active?.variant];
+    if (!generator) {
+        throw new RangeError(`unknown Mines' End layout ${active?.variant}`);
+    }
+    await generateSpecialAndFixup(generator, active);
+}
+
 function specialRoomContext(room) {
     const context = {
         xstart: room.lx,
@@ -7438,6 +8763,168 @@ async function minetownMonster(room, mndx, peaceful = null) {
 function minetownAlignment(active) {
     return active.align?.[0] === 'law' ? A_LAWFUL
         : active.align?.[0] === 'chaos' ? A_CHAOTIC : A_NEUTRAL;
+}
+
+async function generateMinetown1(active) {
+    mineFillerMinesField(active.defaultLit);
+    const context = loadSpecialAsciiMap(
+        MINETOWN_1_MAP, active.defaultLit,
+    );
+    active.context = { ...context };
+    game.level.flags.is_special = true;
+    game.level.flags.is_maze_lev = true;
+    game.level.flags.has_town = true;
+
+    const arrival = { lx: 1, ly: 1, hx: 75, hy: 19 };
+    const townExclude = { lx: 1, ly: 0, hx: 35, hy: 21 };
+    active.upTeleportRegion = { ...arrival };
+    active.downTeleportRegion = { ...arrival };
+    active.upTeleportExclude = { ...townExclude };
+    active.downTeleportExclude = { ...townExclude };
+    active.explicitUpStairRegion = {
+        lx: 1, ly: 3, hx: 21, hy: 19,
+        nlx: 0, nly: 1, nhx: 36, nhy: 17,
+    };
+    active.explicitDownStairRegion = {
+        lx: 57, ly: 3, hx: 75, hy: 19,
+        nlx: 0, nly: 1, nhx: 36, nhy: 17,
+    };
+
+    setSpecialRegionLighting(context, 1, 1, 35, 17, true);
+    for (const [x, y] of [[16, 9], [25, 9]]) {
+        const fountain = game.level.at(
+            context.xstart + x, context.ystart + y,
+        );
+        if (fountain) fountain.typ = FOUNTAIN;
+    }
+    game.level.flags.nfountains += 2;
+    const altar = game.level.at(
+        context.xstart + 20, context.ystart + 13,
+    );
+    if (altar) {
+        altar.typ = ALTAR;
+        altar.flags = Align2amask(A_NONE);
+    }
+
+    for (const [x, y] of [
+        [5, 8], [9, 8], [13, 7], [22, 5], [27, 7], [31, 7],
+        [5, 10], [9, 10], [15, 13], [25, 13], [31, 11],
+    ]) specialRandomDoorAt(context, x, y);
+    for (const [x1, y1, x2, y2, chance] of [
+        [7, 4, 11, 6, 18], [25, 4, 29, 6, 18],
+        [7, 12, 11, 14, 18], [28, 12, 28, 14, 33],
+    ]) replaceSpecialTerrain(
+        context, x1, y1, x2, y2, VWALL, ROOM, chance,
+    );
+
+    const places = luaShuffle([
+        [5, 4], [9, 5], [13, 4], [26, 4], [31, 5],
+        [30, 14], [5, 14], [10, 13], [26, 14], [27, 13],
+    ]);
+    active.places = places.map(point => [...point]);
+    const corpseAt = (mndx, point = null) => {
+        const corpse = point
+            ? specialObjectAt(
+                context, CORPSE, point[0], point[1], { named: true },
+            )
+            : specialObjectOfType(context, CORPSE);
+        if (corpse) set_corpsenm(corpse, mndx);
+        return corpse;
+    };
+    corpseAt(PM_ALIGNED_CLERIC, [20, 12]);
+    for (let index = 0; index < 5; index++)
+        corpseAt(PM_SHOPKEEPER, places[index]);
+    for (let count = 0; count < 4; count++) corpseAt(PM_WATCHMAN);
+    corpseAt(PM_WATCH_CAPTAIN);
+
+    for (let count = rn1(10, 10); count > 0; count--) {
+        if (rn2(100) < 90) specialObjectOfType(context, BOULDER);
+        specialObjectOfType(context, ROCK);
+    }
+
+    const candleAt = (otyp, placeIndex, quantity) => {
+        const [x, y] = places[placeIndex];
+        const candle = specialObjectAt(
+            context, otyp, x, y, { named: true },
+        );
+        if (candle) {
+            candle.quan = candle.quantity = quantity;
+            candle.owt = objectWeight(candle);
+        }
+    };
+    candleAt(WAX_CANDLE, 3, rn1(2, 1));
+    candleAt(WAX_CANDLE, 0, rn1(3, 2));
+    candleAt(WAX_CANDLE, 1, rn1(2, 1));
+    candleAt(TALLOW_CANDLE, 2, rn1(3, 1));
+    candleAt(TALLOW_CANDLE, 1, rn1(2, 1));
+    candleAt(TALLOW_CANDLE, 3, rn1(2, 1));
+
+    const objectAtPlace = (otyp, placeIndex, state = null) => {
+        const [x, y] = places[placeIndex];
+        const object = specialObjectAt(
+            context, otyp, x, y, { named: true },
+        );
+        if (object && state) Object.assign(object, state);
+        return object;
+    };
+    objectAtPlace(OIL_LAMP, 1);
+    objectAtPlace(WAN_STRIKING, 0, {
+        blessed: false, cursed: false, spe: 0,
+    });
+    objectAtPlace(WAN_STRIKING, 2, {
+        blessed: false, cursed: false, spe: 0,
+    });
+    objectAtPlace(WAN_STRIKING, 3, {
+        blessed: false, cursed: false, spe: 0,
+    });
+    objectAtPlace(WAN_MAGIC_MISSILE, 3, {
+        blessed: false, cursed: false, spe: 0,
+    });
+    objectAtPlace(WAN_MAGIC_MISSILE, 4, {
+        blessed: false, cursed: false, spe: 0,
+    });
+
+    const inside = specialSelectionFloodFill(context, 18, 8);
+    const nearTemple = specialSelectionFillRect(context, 17, 8, 23, 14)
+        .intersect(inside);
+    const monsterAtSelection = async (selection, mndx, remove = true) => {
+        const point = selection.randomCoordinate(remove);
+        if (!point) return null;
+        const monster = await specialMonsterAt(
+            context, mndx,
+            point.x - context.xstart,
+            point.y - context.ystart,
+        );
+        if (monster) monster.mpeaceful = 0;
+        return monster;
+    };
+    for (let count = rn1(11, 5); count > 0; count--) {
+        const mndx = rn2(100) < 50 ? PM_ORC_CAPTAIN
+            : rn2(100) < 80 ? PM_URUK_HAI : PM_MORDOR_ORC;
+        await monsterAtSelection(inside, mndx);
+    }
+    const shamanCount = rn1(6, 1);
+    for (let index = 0; index < shamanCount; index++) {
+        const shaman = await monsterAtSelection(
+            nearTemple, PM_ORC_SHAMAN, false,
+        );
+        if (shaman && index === 0)
+            shaman.m_lev = Math.min(49, (shaman.m_lev ?? 0) + 3);
+    }
+    for (let count = rn1(10, 10); count > 0; count--) {
+        const mndx = rn2(100) < 90 ? PM_HILL_ORC : PM_GOBLIN;
+        const monster = await specialExplicitMonster(context, mndx);
+        if (monster) monster.mpeaceful = 0;
+    }
+
+    wallifyMap(1, 0, COLNO - 1, ROWNO - 1);
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flipSpecialLevelRandom(3);
+    for (const field of [
+        'upTeleportRegion', 'upTeleportExclude',
+        'downTeleportRegion', 'downTeleportExclude',
+        'explicitUpStairRegion', 'explicitDownStairRegion',
+    ]) active[field] = flipSpecialRegion(active[field]);
 }
 
 async function generateMinetown2(active) {
@@ -7783,6 +9270,51 @@ async function generateMinetown4(active) {
         await fillSpecialRoom(room);
 }
 
+const MINETOWN_1_MAP = [
+    '.....................................',
+    '.----------------F------------------.',
+    '.|.................................|.',
+    '.|.-------------......------------.|.',
+    '.|.|...|...|...|......|..|...|...|.|.',
+    '.F.|...|...|...|......|..|...|...|.|.',
+    '.|.|...|...|...|......|..|...|...|.F.',
+    '.|.|...|...|----......------------.|.',
+    '.|.---------.......................|.',
+    '.|.................................|.',
+    '.|.---------.....--...--...........|.',
+    '.|.|...|...|----.|.....|.---------.|.',
+    '.|.|...|...|...|.|.....|.|..|....|.|.',
+    '.|.|...|...|...|.|.....|.|..|....|.|.',
+    '.|.|...|...|...|.|.....|.|..|....|.|.',
+    '.|.-------------.-------.---------.|.',
+    '.|.................................F.',
+    '.-----------F------------F----------.',
+    '.....................................',
+];
+
+const MINETOWN_6_MAP = [
+    'x--------xxxxxxxxxxx-------------------x',
+    'x------xxxxxxxxxxxxxx-----------------xx',
+    '.-----................----------------.x',
+    '.|...|................|...|..|...|...|..',
+    '.|...+..--+--.........|...|..|...|...|..',
+    '.|...|..|...|..-----..|...|..|-+---+--..',
+    '.-----..|...|--|...|..--+---+-.........x',
+    '........|...|..|...+.............-----.x',
+    '........-----..|...|......--+-...|...|..',
+    'x----...|...|+------..{...|..|...+...|..',
+    'x|..+...|...|.............|..|...|...|..',
+    '.|..|...|...|-+-.....---+-------------.x',
+    '.----...--+--..|..-+-|..................',
+    '...|........|..|..|..|----....--------.x',
+    '...|..T.....----..|..|...+....|......|..',
+    '...|-....{........|..|...|....+......|x.',
+    '...--..-....T.....--------....|......|x.',
+    '.......--.....................----------',
+    '.xxxx-----xxxxxxxxxxxxxxxxxx------------',
+    'xxxx-------xxxxxxxxxxxxxxx--------------',
+];
+
 const MINETOWN_5_MAP = [
     '-----         ---------                                                    ',
     '|...---  ------.......--    -------                       ---------------  ',
@@ -7972,6 +9504,261 @@ async function generateMinetown5(active) {
     flipSpecialLevelRandom(3);
 }
 
+async function generateMinetown6(active) {
+    mineFillerMinesField(true, HWALL);
+    const context = loadSpecialAsciiMap(MINETOWN_6_MAP, false);
+    active.context = { ...context };
+    game.level.flags.is_special = true;
+    game.level.flags.is_maze_lev = true;
+    game.level.flags.has_town = true;
+    game.level.flags.inaccessibles = true;
+
+    setSpecialRegionLighting(context, 0, 0, 39, 19, true);
+    active.explicitUpStairRegion = {
+        lx: 1, ly: 3, hx: 21, hy: 19,
+        nlx: 1, nly: 0, nhx: 39, nhy: 18,
+    };
+    active.explicitDownStairRegion = {
+        lx: 60, ly: 3, hx: 75, hy: 19,
+        nlx: 0, nly: 0, nhx: 38, nhy: 18,
+    };
+    setSpecialRegionLighting(context, 13, 7, 14, 8, false);
+
+    specialRectangularRoom(
+        context, 9, 9, 11, 11, SHOPBASE + 11, true, FILL_NORMAL,
+    );
+    specialRectangularRoom(
+        context, 16, 6, 18, 8, SHOPBASE + 8, true, FILL_NORMAL,
+    );
+    specialRectangularRoom(
+        context, 23, 3, 25, 5, SHOPBASE, true, FILL_NORMAL,
+    );
+    specialRectangularRoom(
+        context, 22, 14, 24, 15,
+        game.urole?.key === 'monk' ? SHOPBASE + 10 : SHOPBASE + 5,
+        true, FILL_NORMAL,
+    );
+    const temple = specialRectangularRoom(
+        context, 31, 14, 36, 16, TEMPLE, true, FILL_NORMAL,
+    );
+    const altarX = context.xstart + 35;
+    const altarY = context.ystart + 15;
+    const altar = game.level.at(altarX, altarY);
+    const alignment = minetownAlignment(active);
+    if (altar) {
+        altar.typ = ALTAR;
+        altar.flags = Align2amask(alignment) | AM_SHRINE;
+    }
+    await specialShrinePriest(temple, altarX, altarY, alignment);
+
+    for (const [mask, x, y] of [
+        [D_CLOSED, 5, 4], [D_LOCKED, 4, 10],
+        [D_CLOSED, 10, 4], [D_CLOSED, 10, 12],
+        [D_LOCKED, 13, 9], [D_LOCKED, 14, 11],
+        [D_CLOSED, 19, 7], [D_CLOSED, 19, 12],
+        [D_CLOSED, 24, 6], [D_CLOSED, 24, 11],
+        [D_CLOSED, 25, 14], [D_CLOSED, 28, 6],
+        [D_LOCKED, 28, 8], [D_CLOSED, 30, 15],
+        [D_CLOSED, 31, 5], [D_CLOSED, 35, 5],
+        [D_CLOSED, 33, 9],
+    ]) specialDoorAt(context, mask, x, y);
+
+    for (let count = 0; count < 6; count++)
+        await specialExplicitMonster(context, PM_GNOME);
+    await specialMonsterAt(context, PM_GNOME, 14, 8);
+    await specialMonsterAt(
+        context, PM_GNOME_LEADER, 14, 7,
+        { randomGender: false },
+    );
+    await specialMonsterAt(context, PM_GNOME, 27, 10);
+    await specialExplicitMonster(
+        context, PM_GNOME_LEADER, null, { randomGender: false },
+    );
+    await specialExplicitMonster(
+        context, PM_GNOME_LEADER, null, { randomGender: false },
+    );
+    for (let count = 0; count < 3; count++)
+        await specialExplicitMonster(context, PM_DWARF);
+    for (const mndx of [
+        PM_DWARF, PM_DWARF, PM_GNOME, PM_GNOME,
+        PM_HOBBIT, PM_GOBLIN, PM_KOBOLD, PM_DOG,
+        PM_WATCHMAN, PM_WATCHMAN, PM_WATCHMAN,
+        PM_WATCH_CAPTAIN, PM_WATCH_CAPTAIN,
+    ]) {
+        const monster = await specialExplicitMonster(context, mndx);
+        if (monster) monster.mpeaceful = 1;
+    }
+
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flipSpecialLevelRandom(3);
+    active.explicitUpStairRegion = flipSpecialRegion(
+        active.explicitUpStairRegion,
+    );
+    active.explicitDownStairRegion = flipSpecialRegion(
+        active.explicitDownStairRegion,
+    );
+}
+
+async function generateMinetown7(active) {
+    game.level.flags.is_special = true;
+    game.level.flags.has_town = true;
+    const optionalRoom = async (parent, spec, contents) => {
+        if (rn2(100) >= 75) return null;
+        return buildSpecialRoom(spec, parent, contents);
+    };
+    const doorContents = (state, wall, extra = null) => async room => {
+        createSpecialRoomDoor(room, state, wall);
+        if (extra) await extra(room);
+    };
+
+    const town = await buildSpecialRoom({
+        rtype: OROOM, lit: 1, x: 3, y: 3,
+        xalign: 3, yalign: 3, w: 30, h: 15,
+    }, null, async room => {
+        for (const [x, y] of [[12, 7], [11, 13]]) {
+            const fountain = game.level.at(room.lx + x, room.ly + y);
+            if (fountain) fountain.typ = FOUNTAIN;
+        }
+        game.level.flags.nfountains += 2;
+
+        await optionalRoom(room, { x: 2, y: 2, w: 4, h: 2 },
+            doorContents('closed', 'south'));
+        await optionalRoom(room, { x: 7, y: 2, w: 2, h: 2 },
+            doorContents('closed', 'north'));
+        await optionalRoom(room, { x: 7, y: 5, w: 2, h: 2 },
+            doorContents('closed', 'south'));
+        await optionalRoom(room, {
+            x: 10, y: 2, w: 3, h: 4, lit: 1,
+        }, doorContents('closed', 'south', async child => {
+            await minetownMonster(child, PM_GNOME);
+            for (let count = 0; count < 3; count++)
+                await minetownMonster(child, PM_MONKEY);
+        }));
+        await optionalRoom(room, { x: 14, y: 2, w: 4, h: 2 },
+            doorContents('closed', 'south', child =>
+                specialMonsterOfClass(
+                    specialRoomContext(child),
+                    MONSTER_SYMBOL[PM_WOOD_NYMPH],
+                )));
+        await optionalRoom(room, { x: 16, y: 5, w: 2, h: 2 },
+            doorContents('closed', 'south'));
+        await optionalRoom(room, {
+            x: 19, y: 2, w: 2, h: 2, lit: 0,
+        }, doorContents('locked', 'east', child =>
+            minetownMonster(child, PM_GNOME_RULER)));
+
+        await buildSpecialRoom({
+            rtype: game.urole?.key === 'monk'
+                ? SHOPBASE + 10 : SHOPBASE + 5,
+            chance: 50, lit: 1, x: 19, y: 5, w: 2, h: 3,
+        }, room, doorContents('closed', 'south'));
+        await optionalRoom(room, { x: 2, y: 7, w: 2, h: 2 },
+            doorContents('closed', 'east'));
+        await buildSpecialRoom({
+            rtype: SHOPBASE + 8, chance: 50, lit: 1,
+            x: 2, y: 10, w: 2, h: 3,
+        }, room, doorContents('closed', 'south'));
+        await buildSpecialRoom({
+            rtype: SHOPBASE + 11, lit: 1,
+            x: 5, y: 10, w: 3, h: 3,
+        }, room, doorContents('closed', 'north'));
+        await optionalRoom(room, { x: 11, y: 10, w: 2, h: 2 },
+            doorContents('locked', 'west', child =>
+                specialMonsterOfClass(
+                    specialRoomContext(child),
+                    MONSTER_SYMBOL[PM_GNOME],
+                )));
+        await buildSpecialRoom({
+            rtype: SHOPBASE, chance: 60, lit: 1,
+            x: 14, y: 10, w: 2, h: 3,
+        }, room, doorContents('closed', 'north'));
+        await optionalRoom(room, { x: 17, y: 11, w: 4, h: 2 },
+            doorContents('closed', 'north'));
+        await optionalRoom(room, { x: 22, y: 11, w: 2, h: 2 },
+            doorContents('closed', 'south', child => {
+                const sink = game.level.at(child.lx, child.ly);
+                if (sink) sink.typ = SINK;
+                game.level.flags.nsinks++;
+            }));
+        await buildSpecialRoom({
+            rtype: game.urole?.key === 'monk'
+                ? SHOPBASE + 10 : SHOPBASE + 5,
+            chance: 50, lit: 1, x: 25, y: 11, w: 3, h: 2,
+        }, room, doorContents('closed', 'east'));
+        await buildSpecialRoom({
+            rtype: SHOPBASE + 8, chance: 30, lit: 1,
+            x: 25, y: 2, w: 3, h: 3,
+        }, room, doorContents('closed', 'west'));
+        await buildSpecialRoom({
+            rtype: TEMPLE, lit: 1, x: 24, y: 6, w: 4, h: 4,
+        }, room, doorContents('closed', 'west', async child => {
+            const altarX = child.lx + 2;
+            const altarY = child.ly + 1;
+            const altar = game.level.at(altarX, altarY);
+            const alignment = minetownAlignment(active);
+            altar.typ = ALTAR;
+            altar.flags = Align2amask(alignment) | AM_SHRINE;
+            await specialShrinePriest(child, altarX, altarY, alignment);
+            await minetownMonster(child, PM_GNOMISH_WIZARD);
+            await minetownMonster(child, PM_GNOMISH_WIZARD);
+        }));
+
+        for (let count = 0; count < 4; count++)
+            await minetownMonster(room, PM_WATCHMAN, true);
+        await minetownMonster(room, PM_WATCH_CAPTAIN, true);
+        for (let count = 0; count < 3; count++)
+            await minetownMonster(room, PM_GNOME);
+        await minetownMonster(room, PM_GNOME_LEADER);
+        await minetownMonster(room, PM_MONKEY);
+        await minetownMonster(room, PM_MONKEY);
+    });
+    active.context = town ? specialRoomContext(town) : null;
+
+    await buildSpecialRoom({}, null, room =>
+        specialStair(specialRoomContext(room), true));
+    await buildSpecialRoom({}, null, async room => {
+        const context = specialRoomContext(room);
+        specialStair(context, false);
+        await specialTrap(context);
+        await minetownMonster(room, PM_GNOME);
+        await minetownMonster(room, PM_GNOME);
+    });
+    await buildSpecialRoom({}, null, room =>
+        minetownMonster(room, PM_DWARF));
+    await buildSpecialRoom({}, null, async room => {
+        await specialTrap(specialRoomContext(room));
+        await minetownMonster(room, PM_GNOME);
+    });
+
+    makecorridors();
+    flipSpecialLevelRandom(3);
+    for (const room of game.level.rooms.slice(0, game.level.nroom))
+        await fillSpecialRoom(room);
+}
+
+const MINETOWN_GENERATORS = Object.freeze([
+    null,
+    { generator: generateMinetown1 },
+    { generator: generateMinetown2 },
+    { generator: generateMinetown3 },
+    { generator: generateMinetown4 },
+    { generator: generateMinetown5, fillRooms: true },
+    { generator: generateMinetown6, fillRooms: true },
+    { generator: generateMinetown7 },
+]);
+
+export async function generateMinetown(active) {
+    const entry = MINETOWN_GENERATORS[active?.variant];
+    if (!entry) {
+        throw new RangeError(`unknown Minetown layout ${active?.variant}`);
+    }
+    await generateSpecialAndFixup(entry.generator, active);
+    if (entry.fillRooms) {
+        for (const room of game.level.rooms.slice(0, game.level.nroom))
+            await fillSpecialRoom(room);
+    }
+}
+
 function oracleInducedAlignment() {
     // The Oracle level descriptor is neutral. induced_align(80) first probes
     // that descriptor and only falls back to a random dungeon alignment for
@@ -8149,19 +9936,17 @@ async function specialShrinePriest(temple, altarX, altarY, altarAlignment,
 
     if (sanctum && altarAlignment === A_NONE) {
         const amulet = mksobj(AMULET_OF_YENDOR, true, false);
-        amulet.where = 'minvent';
-        priest.minvent.unshift(amulet);
-        priest.inventory = priest.minvent;
-        priest.hasInventory = true;
+        addObjectToMonsterInventory(
+            priest, amulet, game, { atFront: true },
+        );
     }
 
     const spellbookCount = 2 + rn2(3);
     for (let count = 0; count < spellbookCount; count++) {
         const spellbook = mkobj(SPBOOK_no_NOVEL, false);
-        spellbook.where = 'minvent';
-        priest.minvent.unshift(spellbook);
-        priest.inventory = priest.minvent;
-        priest.hasInventory = true;
+        addObjectToMonsterInventory(
+            priest, spellbook, game, { atFront: true },
+        );
     }
     // which_armor(W_ARMC) only mutates the generated robe or cloak; the
     // alignment-based curse/uncurse operation itself consumes no RNG.
@@ -8448,13 +10233,14 @@ async function generatePriestLocate(active) {
 
     const hostileCleric = await specialMonsterAt(
         context, PM_ALIGNED_CLERIC, 20, 7,
-        { randomAlignment: false },
+        { randomAlignment: false, mmflags: MM_EMIN },
     );
     if (hostileCleric) {
         hostileCleric.mpeaceful = 0;
         hostileCleric.ispriest = 0;
         hostileCleric.isminion = 1;
         hostileCleric.emin = { min_align: A_NONE, renegade: false };
+        setMonsterMalign(hostileCleric);
         // sp_lev.c:create_monster() routes a descriptor with explicit
         // alignment through priest.c:mk_roamer(), which knows all traps.
         hostileCleric.mtrapseen = 0x7fffffff;
@@ -8806,23 +10592,355 @@ async function generateWizardLocate(active) {
     flipSpecialLevelRandom(3);
 }
 
-async function generateBigrm2(active) {
-    const context = loadBigrm2Map(active.defaultLit);
+function beginMappedBigRoom(active, rows, origin = null) {
+    const context = loadSpecialAsciiMap(rows, active.defaultLit, origin);
     game.level.flags.is_special = true;
     game.level.flags.is_maze_lev = true;
+    active.context = context;
+    return context;
+}
 
-    const darknessChoice = rn2(4); // Lua math.random(0, 3)
-    // Choices 0..2 alter lighting (and may add ice).  Seed0116 chooses 3;
-    // retain the choice in level state until those selection operations are
-    // implemented and witnessed by another session.
-    active.darknessChoice = darknessChoice;
-
+async function finishMappedBigRoom(
+    context, {
+        trapType = null, wallify = true, nonDiggable = true,
+    } = {},
+) {
     specialStair(context, true);
     specialStair(context, false);
+    if (nonDiggable) specialNonDiggable(context);
+    for (let count = 0; count < 15; count++) specialObject(context);
+    for (let count = 0; count < 6; count++) {
+        if (trapType == null) await specialTrap(context);
+        else await specialTrapOfType(context, trapType);
+    }
+    for (let count = 0; count < 28; count++) await specialMonster(context);
+    if (wallify) wallification(1, 0, COLNO - 1, ROWNO - 1);
+}
+
+const BIGRM_1_MAP = [
+    '---------------------------------------------------------------------------',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '|.........................................................................|',
+    '---------------------------------------------------------------------------',
+];
+
+async function generateBigrm1(active) {
+    const context = beginMappedBigRoom(active, BIGRM_1_MAP);
+    if (rn2(100) < 80) {
+        const terrains = [HWALL, IRONBARS, LAVAPOOL, TREE, CLOUD];
+        const terrain = terrains[rn2(terrains.length)];
+        const choice = rn2(6);
+        if (choice === 0) {
+            specialSelectionTerrain(
+                specialSelectionLine(context, 10, 8, 65, 8), terrain,
+            );
+        } else if (choice === 1) {
+            specialSelectionTerrain(
+                specialSelectionLine(context, 15, 4, 15, 13)
+                    .union(specialSelectionLine(context, 59, 4, 59, 13)),
+                terrain,
+            );
+        } else if (choice === 2) {
+            specialSelectionTerrain(
+                specialSelectionLine(context, 10, 8, 64, 8)
+                    .union(specialSelectionLine(context, 37, 3, 37, 14)),
+                terrain,
+            );
+        } else if (choice === 3) {
+            specialSelectionTerrain(
+                specialSelectionRect(context, 4, 4, 70, 13), terrain,
+            );
+            specialSelectionTerrain(
+                specialSelectionLine(context, 25, 4, 50, 4)
+                    .union(specialSelectionLine(context, 25, 13, 50, 13)),
+                ROOM,
+            );
+        } else if (choice === 4) {
+            specialSelectionTerrain(
+                specialSelectionFillRect(context, 5, 5, 69, 12), terrain,
+            );
+            for (let index = 0; index < 8; index++) {
+                const x = 6 + index * 8;
+                const y = 5 + (index % 2);
+                specialSelectionTerrain(
+                    specialSelectionFillRect(context, x, y, x + 6, y + 6),
+                    ROOM,
+                );
+            }
+        }
+    }
+    setSpecialRegionLighting(context, 1, 1, 73, 16, true);
+    await finishMappedBigRoom(context);
+}
+
+const BIGRM_5_MAP = [
+    '                            ------------------                            ',
+    '                    ---------................---------                    ',
+    '              -------................................-------              ',
+    '         ------............................................------         ',
+    '      ----......................................................----      ',
+    '    ---............................................................---    ',
+    '  ---................................................................---  ',
+    '---....................................................................---',
+    '|........................................................................|',
+    '|........................................................................|',
+    '|........................................................................|',
+    '---....................................................................---',
+    '  ---................................................................---  ',
+    '    ---............................................................---    ',
+    '      ----......................................................----      ',
+    '         ------............................................------         ',
+    '              -------................................-------              ',
+    '                    ---------................---------                    ',
+    '                            ------------------                            ',
+];
+
+async function generateBigrm5(active) {
+    const context = beginMappedBigRoom(active, BIGRM_5_MAP);
+    if (rn2(100) < 25) {
+        const selected = specialSelectionOfTerrain(context, ROOM)
+            .percentage(2).grow();
+        const terrain = rn2(100) < 50 ? ICE : CLOUD;
+        replaceSpecialSelectionTerrain(selected, ROOM, terrain);
+    }
+    setSpecialRegionLighting(context, 0, 0, 72, 18, true);
+    await finishMappedBigRoom(context);
+}
+
+const BIGRM_6_MAP = [
+    '     ---------         ---------         ---------         ---------     ',
+    '   ---.......---     ---.......---     ---.......---     ---.......---   ',
+    '  --...........--   --...........--   --...........--   --...........--  ',
+    ' --.............-- --.............-- --.............-- --.............-- ',
+    ' -...............- -...............- -...............- -...............- ',
+    '--...............---...............---...............---...............--',
+    '|.................-.................-.................-.................|',
+    '|........T.................T.................T.................T........|',
+    '|.......................................................................|',
+    '|......T.{.....................................................{.T......|',
+    '|.......................................................................|',
+    '|........T.................T.................T.................T........|',
+    '|.................-.................-.................-.................|',
+    '--...............---...............---...............---...............--',
+    ' -...............- -...............- -...............- -...............- ',
+    ' --.............-- --.............-- --.............-- --.............-- ',
+    '  --...........--   --...........--   --...........--   --...........--  ',
+    '   ---.......---     ---.......---     ---.......---     ---.......---   ',
+    '     ---------         ---------         ---------         ---------     ',
+];
+
+async function generateBigrm6(active) {
+    const context = beginMappedBigRoom(active, BIGRM_6_MAP);
+    setSpecialRegionLighting(context, 1, 1, 72, 17, true);
+    await finishMappedBigRoom(context);
+}
+
+const BIGRM_9_MAP = [
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}................}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+    '}}}}}}}}}}}}}}}}}}}}}................................}}}}}}}}}}}}}}}}}}}}}',
+    '}}}}}}}}}}}}}}}............................................}}}}}}}}}}}}}}}',
+    '}}}}}}}}}}......................................................}}}}}}}}}}',
+    '}}}}}}}............................................................}}}}}}}',
+    '}}}}}.......................LLLLLLLLLLLLLLLLLL.......................}}}}}',
+    '}}}....................LLLLLLLLLLLLLLLLLLLLLLLLLLL.....................}}}',
+    '}....................LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL....................}',
+    '}....................LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL....................}',
+    '}....................LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL....................}',
+    '}}}....................LLLLLLLLLLLLLLLLLLLLLLLLLLL.....................}}}',
+    '}}}}}.......................LLLLLLLLLLLLLLLLLL.......................}}}}}',
+    '}}}}}}}............................................................}}}}}}}',
+    '}}}}}}}}}}......................................................}}}}}}}}}}',
+    '}}}}}}}}}}}}}}}............................................}}}}}}}}}}}}}}}',
+    '}}}}}}}}}}}}}}}}}}}}}................................}}}}}}}}}}}}}}}}}}}}}',
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}................}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+];
+
+async function generateBigrm9(active) {
+    const context = beginMappedBigRoom(active, BIGRM_9_MAP);
+    setSpecialRegionLighting(context, 0, 0, 73, 18, false);
+    setSpecialRegionLighting(context, 26, 4, 47, 14, true);
+    setSpecialRegionLighting(context, 21, 5, 51, 13, true);
+    setSpecialRegionLighting(context, 19, 6, 54, 12, true);
+    await finishMappedBigRoom(context);
+}
+
+const BIGRM_10_MAP = [
+    '.......................................................................',
+    '.......................................................................',
+    '.......................................................................',
+    '.......................................................................',
+    '...C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C...',
+    '...CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC...',
+    '...C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C...',
+    '...CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC...',
+    '...C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C...',
+    '...CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC...',
+    '...C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C...',
+    '...CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC...',
+    '...C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C...',
+    '...CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC...',
+    '...C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C C...',
+    '.......................................................................',
+    '.......................................................................',
+    '.......................................................................',
+    '.......................................................................',
+];
+
+async function generateBigrm10(active) {
+    const context = beginMappedBigRoom(active, BIGRM_10_MAP);
+    if (rn2(100) < 40) {
+        const terrains = [LAVAPOOL, MOAT, TREE, HWALL, IRONBARS];
+        const terrain = terrains[rn2(terrains.length)];
+        replaceSpecialTerrain(
+            context, 0, 0, 70, 18, CLOUD, ROOM, 5,
+        );
+        replaceSpecialTerrain(
+            context, 0, 0, 70, 18, CLOUD, terrain, 100,
+        );
+    }
+    setSpecialRegionLighting(context, 0, 0, 70, 18, true);
+
+    const wholeMap = absoluteSpecialRegion(context, 0, 0, 70, 18);
+    const fogMaze = absoluteSpecialRegion(context, 2, 3, 68, 15);
+    active.downTeleportRegion = wholeMap;
+    active.downTeleportExclude = fogMaze;
+
+    for (let count = 0; count < 15; count++) specialObject(context);
+    for (let count = 0; count < 6; count++) await specialTrap(context);
+    for (let count = 0; count < 28; count++) await specialMonster(context);
+    specialMazeWalk(context, 4, 2, 'south', ROOM);
+
+    active.explicitUpStairRegion = {
+        ...wholeMap,
+        nlx: fogMaze.lx, nly: fogMaze.ly,
+        nhx: fogMaze.hx, nhy: fogMaze.hy,
+    };
+    specialStair(context, false);
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+}
+
+async function generateBigrm11(active) {
+    game.level.flags.is_special = true;
+    game.level.flags.is_maze_lev = true;
+    const corridorWidth = 3 + rn2(3);
+    const leaveDeadEnds = rn2(100) < 50;
+    createSpecialMaze(corridorWidth, 1, !leaveDeadEnds);
+    const context = { xstart: 0, ystart: 0, width: 76, height: 19 };
+    active.context = context;
+
+    setSpecialRegionLighting(context, 0, 0, 75, 18, true);
     specialNonDiggable();
-    for (let i = 0; i < 15; i++) specialObject(context);
-    for (let i = 0; i < 6; i++) await specialTrap(context);
-    for (let i = 0; i < 28; i++) await specialMonster(context);
+
+    const replaceWalls = selection => selection.forEachLua((x, y) => {
+        setLevelTerrainType(x, y, ROOM);
+        specialObjectAt(context, BOULDER, x, y, { named: true });
+    });
+    replaceWalls(
+        specialSelectionMatch('.w.')
+            .union(specialSelectionMatch('.\nw\n.')),
+    );
+    replaceWalls(specialSelectionMatch('.w.'));
+
+    await finishMappedBigRoom(context, {
+        trapType: ROLLING_BOULDER_TRAP,
+        nonDiggable: false,
+    });
+}
+
+function placeBigrm13Pillar(context, x, y) {
+    const left = context.xstart + x;
+    const top = context.ystart + y;
+    for (let dx = 0; dx < 3; dx++) {
+        setLevelTerrainType(left + dx, top, HWALL);
+        setLevelTerrainType(left + dx, top + 2, HWALL);
+        game.level.at(left + dx, top).horizontal = true;
+        game.level.at(left + dx, top + 2).horizontal = true;
+    }
+    setLevelTerrainType(left, top + 1, VWALL);
+    setLevelTerrainType(left + 1, top + 1, STONE);
+    setLevelTerrainType(left + 2, top + 1, VWALL);
+}
+
+async function generateBigrm13(active) {
+    const context = beginMappedBigRoom(active, BIGRM_1_MAP);
+    const filter = rn2(8);
+    for (let y = 0; y < 3; y++) {
+        for (let x = 0; x < 7; x++) {
+            const selected = filter === 0
+                || (filter === 1 && x % 2 === 1)
+                || (filter === 2 && (x + y) % 2 === 0)
+                || (filter === 3 && y % 2 === 1)
+                || (filter === 4 && y % 2 === 0)
+                || (filter === 5 && rn2(2) === 0)
+                || (filter === 6 && (x / 3) % 2 === y % 2)
+                || (filter === 7 && Math.trunc((x + 1) / 3) === y);
+            if (selected)
+                placeBigrm13Pillar(context, 12 + x * 9, 4 + y * 5);
+        }
+    }
+    setSpecialRegionLighting(context, 0, 0, 75, 18, true);
+    wallifyMap(
+        context.xstart - 1,
+        context.ystart - 1,
+        context.xstart + context.width + 1,
+        context.ystart + context.height + 1,
+    );
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    await finishMappedBigRoom(context, { wallify: false });
+}
+
+async function generateBigrm2(active) {
+    const context = beginMappedBigRoom(active, BIGRM_1_MAP);
+    setSpecialRegionLighting(context, 1, 1, 73, 16, true);
+
+    let darkness = null;
+    switch (rn2(4)) {
+    case 0:
+        darkness = specialSelectionFillRect(context, 1, 7, 22, 9)
+            .union(specialSelectionFillRect(context, 24, 1, 50, 5))
+            .union(specialSelectionFillRect(context, 24, 11, 50, 16))
+            .union(specialSelectionFillRect(context, 52, 7, 73, 9));
+        break;
+    case 1:
+        darkness = specialSelectionFillRect(context, 24, 1, 50, 16);
+        break;
+    case 2:
+        darkness = specialSelectionFillRect(context, 1, 1, 22, 16)
+            .union(specialSelectionFillRect(context, 52, 1, 73, 16));
+        break;
+    default:
+        break;
+    }
+
+    if (darkness) {
+        darkness.forEachXMajor((x, y) => {
+            const loc = game.level.at(x, y);
+            if (loc) loc.lit = false;
+        });
+        if (rn2(100) < 25) {
+            replaceSpecialSelectionTerrain(
+                darkness.grow(), ROOM, ICE,
+            );
+        }
+    }
+
+    await finishMappedBigRoom(context);
 }
 
 const BIGRM_3_MAP = [
@@ -9200,6 +11318,22 @@ async function generateBigrm12(active) {
     flipSpecialLevelRandom(2);
 }
 
+const BIG_ROOM_GENERATORS = Object.freeze([
+    null,
+    generateBigrm1, generateBigrm2, generateBigrm3, generateBigrm4,
+    generateBigrm5, generateBigrm6, generateBigrm7, generateBigrm8,
+    generateBigrm9, generateBigrm10, generateBigrm11, generateBigrm12,
+    generateBigrm13,
+]);
+
+export async function generateBigRoom(active) {
+    const generator = BIG_ROOM_GENERATORS[active?.variant];
+    if (!generator) {
+        throw new RangeError(`unknown Big Room variant ${active?.variant}`);
+    }
+    await generateSpecialAndFixup(generator, active);
+}
+
 const MEDUSA_1_MAP = [
     '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
     '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
@@ -9219,6 +11353,29 @@ const MEDUSA_1_MAP = [
     '}.......}}}}}}}......}}}}}}}}}}}}}}.......}}}}}}}}}.....}}}}}}...}}..}}}}}}',
     '}.....}}}}}}}}}}}.....}}}}}}}}}}}}}}}}}}}}}}.}}}}}}}..}}}}}}}}}}....}}}}}}}',
     '}}..}}}}}}}}}}}}}....}}}}}}}}}}}}}}}}}}}}}}...}}..}}}}}}}.}}.}}}}..}}}}}}}}',
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+];
+
+const MEDUSA_2_MAP = [
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+    '}------}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}-------}}}}}}}}--------------}',
+    '}|....|}}}}}}}}}..}.}}..}}}}}}}}}}}}}..}}}}}}-.....--}}}}}}}|............|}',
+    '}|....|.}}}}}}}}}}}.}...}}..}}}}}}}}}}}}}}}}}---......}}}}}.|............|}',
+    '}S....|.}}}}}}---}}}}}}}}}}}}}}}}}}}}}}}}}}---...|..-}}}}}}.S..----------|}',
+    '}|....|.}}}}}}-...}}}}}}}}}.}}...}.}}}}.}}}......----}}}}}}.|............|}',
+    '}|....|.}}}}}}-....--}}}}}}}}}}}}}}}}}}}}}}----...--}}}}}}}.|..--------+-|}',
+    '}|....|.}}}}}}}......}}}}...}}}}}}.}}}}}}}}}}}---..---}}}}}.|..|..S...|..|}',
+    '}|....|.}}}}}}-....-}}}}}}}------}}}}}}}}}}}}}}-...|.-}}}}}.|..|..|...|..|}',
+    '}|....|.}}}}}}}}}---}}}}}}}........}}}}}}}}}}---.|....}}}}}.|..|..|...|..|}',
+    '}|....|.}}}}}}}}}}}}}}}}}}-....|...-}}}}}}}}--...----.}}}}}.|..|..|...|..|}',
+    '}|....|.}}}}}}..}}}}}}}}}}---..--------}}}}}-..---}}}}}}}}}.|..|..-------|}',
+    '}|...}|...}}}.}}}}}}...}}}}}--..........}}}}..--}}}}}}}}}}}.|..|.........|}',
+    '}|...}S...}}.}}}}}}}}}}}}}}}-..--------}}}}}}}}}}}}}}...}}}.|..--------..S}',
+    '}|...}|...}}}}}}}..}}}}}}----..|....-}}}}}}}}}}}}}}}}}..}}}.|............|}',
+    '}|....|}}}}}....}}}}..}}.-.......----}}......}}}}}}.......}}|............|}',
+    '}------}}}}}}}}}}}}}}}}}}---------}}}}}}}}}}}}}}}}}}}}}}}}}}--------------}',
     '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
     '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
 ];
@@ -9246,6 +11403,30 @@ const MEDUSA_3_MAP = [
     '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
 ];
 
+const MEDUSA_4_MAP = [
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+    '}}}}}}}}}}}}}}........}}}}}}}}}}}}}}}}}}}}}}}..}}}.....}}}}}}}}}}}----|}}}}}',
+    '}}}}}}..----------F-.....}}}}}}}}}}}}}}}}..---...}}}}....T.}}}}}}}....|}}}}}',
+    '}}}.....|...F......S}}}}....}}}}}}}...}}.....|}}.}}}}}}}......}}}}|......}}}',
+    '}}}.....+...|..{...|}}}}}}}}}}}}.....}}}}|...|}}}}}}}}}}}.}}}}}}}}----.}}}}}',
+    '}}......|...|......|}}}}}}}}}......}}}}}}|.......}}}}}}}}}}}}}..}}}}}...}}}}',
+    '}}|-+--F|-+--....|F|-|}}}}}....}}}....}}}-----}}.....}}}}}}}......}}}}.}}}}}',
+    '}}|...}}|...|....|}}}|}}}}}}}..}}}}}}}}}}}}}}}}}}}}....}}}}}}}}....T.}}}}}}}',
+    '}}|...}}F...+....F}}}}}}}..}}}}}}}}}}}}}}...}}}}}}}}}}}}}}}}}}}}}}....}}..}}',
+    '}}|...}}|...|....|}}}|}....}}}}}}....}}}...}}}}}...}}}}}}}}}}}}}}}}}.....}}}',
+    '}}--+--F|-+--....-F|-|....}}}}}}}}}}.T...}}}}....---}}}}}}}}}}}}}}}}}}}}}}}}',
+    '}}......|...|......|}}}}}.}}}}}}}}}....}}}}}}}.....|}}}}}}}}}.}}}}}}}}}}}}}}',
+    '}}}}....+...|..{...|.}}}}}}}}}}}}}}}}}}}}}}}}}}.|..|}}}}}}}......}}}}...}}}}',
+    '}}}}}}..|...F......|...}}}}}}}}}}..---}}}}}}}}}}--.-}}}}}....}}}}}}....}}}}}',
+    '}}}}}}}}-----S----F|....}}}}}}}}}|...|}}}}}}}}}}}}...}}}}}}...}}}}}}..}}}}}}',
+    '}}}}}}}}}..............T...}}}}}.|.......}}}}}}}}}}}}}}..}...}.}}}}....}}}}}',
+    '}}}}}}}}}}....}}}}...}...}}}}}.......|.}}}}}}}}}}}}}}.......}}}}}}}}}...}}}}',
+    '}}}}}}}}}}..}}}}}}}}}}.}}}}}}}}}}-..--.}}}}}}}}..}}}}}}..T...}}}..}}}}}}}}}}',
+    '}}}}}}}}}...}}}}}}}}}}}}}}}}}}}}}}}...}}}}}}}....}}}}}}}.}}}..}}}...}}}}}}}}',
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}.}}}}}}....}}}}}}}}}}}}}}}}}}}...}}}}}}',
+    '}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}',
+];
+
 function removeFloorObject(object) {
     const pile = game.level.objects?.[object?.ox]?.[object?.oy];
     const index = pile?.indexOf(object) ?? -1;
@@ -9259,6 +11440,19 @@ function addSpecialContainerObject(container, object) {
     object.ox = object.oy = 0;
     if (!container.contents) container.contents = [];
     container.contents.unshift(object);
+    return object;
+}
+
+function addBuriedObject(object, x, y) {
+    if (!object) return object;
+    removeFloorObject(object);
+    object.where = 'buried';
+    object.buried = true;
+    object.ox = x;
+    object.oy = y;
+    if (!game.level.buriedObjects) game.level.buriedObjects = [];
+    game.level.buriedObjects.unshift(object);
+    updateCorpseIceTimer(object, x, y, game.level.at(x, y)?.typ === ICE);
     return object;
 }
 
@@ -9321,6 +11515,30 @@ async function medusaMonsterClassAt(context, monsterClass, x, y) {
         : makemon(mndx, absoluteX, absoluteY, 0);
 }
 
+async function medusaMonsterOfClass(context, monsterClass) {
+    medusaInducedAlignment();
+    const mndx = mkclass(monsterClass, 0x0200);
+    if (mndx == null) return null;
+    const point = specialMonsterRandomLocation(context, mndx);
+    if (!point) return null;
+    const occupied = game.level.monsters?.some(monster => !monster.dead
+        && monster.mx === point.x && monster.my === point.y);
+    return occupied
+        ? makemonNear(mndx, point.x, point.y)
+        : makemon(mndx, point.x, point.y, 0);
+}
+
+async function medusaRandomMonsterAt(context, x, y) {
+    medusaInducedAlignment();
+    const absoluteX = context.xstart + x;
+    const absoluteY = context.ystart + y;
+    const occupied = game.level.monsters?.some(monster => !monster.dead
+        && monster.mx === absoluteX && monster.my === absoluteY);
+    return occupied
+        ? makemonNear(null, absoluteX, absoluteY)
+        : makemon(null, absoluteX, absoluteY, 0);
+}
+
 async function medusaRandomMonster(context) {
     medusaInducedAlignment();
     const point = specialRandomLocation(context);
@@ -9338,7 +11556,10 @@ function medusaObjectAtRandom(context, otyp) {
     return mksobj_at(otyp, point.x, point.y, true, true);
 }
 
-function medusaPerseusStatue(context, x = 36, y = 10) {
+function medusaPerseusStatue(
+    context, x = 36, y = 10,
+    { shieldChance = 75, bootsChance = 25 } = {},
+) {
     const statue = specialObjectAt(
         context, STATUE, x, y, { named: true },
     );
@@ -9358,14 +11579,22 @@ function medusaPerseusStatue(context, x = 36, y = 10) {
         Object.assign(object, state);
         addSpecialContainerObject(statue, object);
     };
-    if (rn2(100) < 75)
+    if (rn2(100) < shieldChance)
         add(SHIELD_OF_REFLECTION, { cursed: true, blessed: false, spe: 0 });
-    if (rn2(100) < 25)
+    if (rn2(100) < bootsChance)
         add(LEVITATION_BOOTS, { spe: 0 });
     if (rn2(100) < 50)
         add(SCIMITAR, { cursed: false, blessed: true, spe: 2 });
     if (rn2(100) < 50) add(SACK);
     return statue;
+}
+
+function medusaDragonEggAt(context, x, y) {
+    const egg = specialObjectAt(
+        context, EGG, x, y, { named: true },
+    );
+    if (egg) set_corpsenm(egg, PM_YELLOW_DRAGON);
+    return egg;
 }
 
 function medusaMonsterGoodPos(mndx, x, y) {
@@ -9466,13 +11695,14 @@ function markSpecialSelectionWallProperty(selection, property) {
 async function sanctumHostileCleric(context, x, y) {
     const cleric = await specialMonsterAt(
         context, PM_ALIGNED_CLERIC, x, y,
-        { randomAlignment: false },
+        { randomAlignment: false, mmflags: MM_EMIN },
     );
     if (!cleric) return null;
     cleric.mpeaceful = 0;
     cleric.ispriest = 0;
     cleric.isminion = 1;
     cleric.emin = { min_align: A_NONE, renegade: false };
+    setMonsterMalign(cleric);
     // sanctum.lua supplies align="noalign", so create_monster() delegates to
     // mk_roamer() rather than ordinary makemon(); roamers know every trap.
     cleric.mtrapseen = 0x7fffffff;
@@ -9583,6 +11813,427 @@ async function generateSanctum(active) {
 
     wallification(1, 0, COLNO - 1, ROWNO - 1);
     flipSpecialLevelRandom(3);
+}
+
+const EARTH_MAP = [
+    '',
+    '  ...',
+    ' ....                ..',
+    ' .....             ...                                      ..',
+    '  ....              ....                                     ...',
+    '   ....              ...                ....                 ...      .',
+    '    ..                ..              .......                 .      ..',
+    '                                      ..  ...                        .',
+    '              .                      ..    .                         ...',
+    '             ..  ..                  .     ..                         .',
+    '            ..   ...                        .',
+    '            ...   ...',
+    '              .. ...                                 ..',
+    '               ....                                 ..',
+    '                          ..                                       ...',
+    '                         ..                                       .....',
+    '  ...                                                              ...',
+    ' ....',
+    '   ..',
+    '',
+].map(row => row.padEnd(76, ' '));
+
+const EARTH_MONSTERS = [
+    ['elven monarch', 67, 16], ['minotaur', 67, 14],
+    ['earth elemental', 52, 13, false],
+    ['earth elemental', 53, 13, false],
+    ['rock troll', 53, 12], ['stone giant', 54, 12],
+    ['pit viper', 70, 5], ['barbed devil', 69, 6],
+    ['stone giant', 69, 8], ['stone golem', 71, 8],
+    ['pit fiend', 70, 9], ['earth elemental', 70, 8, false],
+    ['earth elemental', 60, 3, false], ['stone giant', 61, 4],
+    ['earth elemental', 62, 4, false],
+    ['earth elemental', 61, 5, false],
+    ['scorpion', 62, 5], ['rock piercer', 63, 5],
+    ['umber hulk', 40, 5], ['dust vortex', 42, 5],
+    ['rock troll', 38, 6], ['earth elemental', 39, 6, false],
+    ['earth elemental', 41, 6, false],
+    ['earth elemental', 38, 7, false], ['stone giant', 39, 7],
+    ['earth elemental', 43, 7, false], ['stone golem', 37, 8],
+    ['pit viper', 43, 8], ['pit viper', 43, 9],
+    ['rock troll', 44, 10], ['earth elemental', 2, 1, false],
+    ['earth elemental', 3, 1, false], ['stone golem', 1, 2],
+    ['earth elemental', 2, 2, false], ['rock troll', 4, 3],
+    ['rock troll', 3, 3], ['pit fiend', 3, 4],
+    ['earth elemental', 4, 5, false], ['pit viper', 5, 6],
+    ['earth elemental', 21, 2, false],
+    ['earth elemental', 21, 3, false], ['minotaur', 21, 4],
+    ['earth elemental', 21, 5, false], ['rock troll', 22, 5],
+    ['earth elemental', 22, 6, false],
+    ['earth elemental', 23, 6, false], ['pit viper', 14, 8],
+    ['barbed devil', 14, 9], ['earth elemental', 13, 10, false],
+    ['rock troll', 12, 11], ['earth elemental', 14, 12, false],
+    ['earth elemental', 15, 13, false], ['stone giant', 17, 13],
+    ['stone golem', 18, 13], ['pit fiend', 18, 12],
+    ['earth elemental', 18, 11, false],
+    ['earth elemental', 18, 10, false], ['barbed devil', 2, 16],
+    ['earth elemental', 3, 16, false], ['rock troll', 2, 17],
+    ['earth elemental', 4, 17, false],
+    ['earth elemental', 4, 18, false],
+];
+
+async function generateEarth(active) {
+    const context = loadSpecialAsciiMap(EARTH_MAP, false);
+    active.context = { ...context };
+    active.specialMessages = [
+        'Well done, mortal!',
+        'But now thou must face the final Test...',
+        'Prove thyself worthy or perish!',
+    ];
+    game.level.flags.is_special = true;
+    game.level.flags.is_maze_lev = true;
+    game.level.flags.noteleport = true;
+    game.level.flags.hardfloor = true;
+    game.level.flags.shortsighted = true;
+
+    replaceSpecialSelectionTerrain(
+        specialSelectionFillRect(context, 0, 0, 75, 19),
+        STONE, ROOM, 5,
+    );
+    const arrival = absoluteSpecialRegion(context, 69, 16, 69, 16);
+    active.upTeleportRegion = { ...arrival };
+    active.downTeleportRegion = { ...arrival };
+    active.explicitPortalRegion = absoluteSpecialRegion(
+        context, 0, 0, 75, 19,
+    );
+    active.explicitPortalExclude = absoluteSpecialRegion(
+        context, 65, 13, 75, 19,
+    );
+    active.portalDestinationName = 'air';
+
+    for (const [name, x, y, peaceful = null] of EARTH_MONSTERS) {
+        const mndx = monsterIndexByName(name);
+        await specialMonsterAt(context, mndx, x, y, {
+            randomGender: namedMonsterNeedsGenderDraw(mndx), peaceful,
+        });
+    }
+    specialObjectOfType(context, BOULDER);
+
+    flipSpecialLevelRandom(3);
+    for (const field of [
+        'upTeleportRegion', 'downTeleportRegion',
+        'explicitPortalRegion', 'explicitPortalExclude',
+    ]) active[field] = flipSpecialRegion(active[field]);
+}
+
+const WATER_MAP = Array(20).fill('W'.repeat(80));
+
+async function generateWater(active) {
+    const context = loadSpecialAsciiMap(WATER_MAP, false);
+    active.context = { ...context };
+    active.specialMessages = [
+        'You find yourself suspended in an air bubble surrounded by water.',
+    ];
+    active.elementalBubbles = true;
+    game.level.flags.is_special = true;
+    game.level.flags.is_maze_lev = true;
+    game.level.flags.noteleport = true;
+    game.level.flags.hardfloor = true;
+    game.level.flags.shortsighted = true;
+    game.level.flags.waterlevel = true;
+
+    const arrival = absoluteSpecialRegion(context, 0, 0, 25, 19);
+    active.upTeleportRegion = { ...arrival };
+    active.downTeleportRegion = { ...arrival };
+    active.explicitPortalRegion = absoluteSpecialRegion(
+        context, 51, 0, 75, 19,
+    );
+    active.portalDestinationName = 'astral';
+
+    for (const [name, count] of [
+        ['giant eel', 8], ['electric eel', 8], ['kraken', 9],
+        ['shark', 4], ['piranha', 4], ['jellyfish', 4],
+    ]) {
+        const mndx = monsterIndexByName(name);
+        for (let index = 0; index < count; index++)
+            await specialExplicitMonster(context, mndx);
+    }
+    for (let count = 0; count < 4; count++)
+        await specialMonsterOfClass(context, 57);
+    const waterElemental = monsterIndexByName('water elemental');
+    for (let count = 0; count < 19; count++) {
+        await specialExplicitMonster(
+            context, waterElemental, null, { peaceful: false },
+        );
+    }
+
+    flipSpecialLevelRandom(3);
+    for (const field of [
+        'upTeleportRegion', 'downTeleportRegion', 'explicitPortalRegion',
+    ]) active[field] = flipSpecialRegion(active[field]);
+}
+
+export async function generateEarthLevel(active) {
+    await generateSpecialAndFixup(generateEarth, active);
+}
+
+export async function generateWaterLevel(active) {
+    await generateSpecialAndFixup(generateWater, active);
+}
+
+const ASTRAL_MAP = [
+    '                              ---------------',
+    '                              |.............|',
+    '                              |..---------..|',
+    '                              |..|.......|..|',
+    '---------------               |..|.......|..|               ---------------',
+    '|.............|               |..|.......|..|               |.............|',
+    '|..---------..-|   |-------|  |..|.......|..|  |-------|   |-..---------..|',
+    '|..|.......|...-| |-.......-| |..|.......|..| |-.......-| |-...|.......|..|',
+    '|..|.......|....-|-.........-||..----+----..||-.........-|-....|.......|..|',
+    '|..|.......+.....+...........||.............||...........+.....+.......|..|',
+    '|..|.......|....-|-.........-|--|.........|--|-.........-|-....|.......|..|',
+    '|..|.......|...-| |-.......-|   -|---+---|-   |-.......-| |-...|.......|..|',
+    '|..---------..-|   |---+---|    |-.......-|    |---+---|   |-..---------..|',
+    '|.............|      |...|-----|-.........-|-----|...|      |.............|',
+    '---------------      |.........|...........|.........|      ---------------',
+    '                     -------...|-.........-|...-------',
+    '                           |....|-.......-|....|',
+    '                           ---...|---+---|...---',
+    '                             |...............|',
+    '                             -----------------',
+].map(row => row.padEnd(76, ' '));
+
+function astralAlignment(value) {
+    if (value === 'law') return A_LAWFUL;
+    if (value === 'chaos') return A_CHAOTIC;
+    if (value === 'neutral') return A_NEUTRAL;
+    return A_NONE;
+}
+
+async function astralRoamerAt(
+    context, mndx, x, y, alignment, peaceful,
+) {
+    const monster = await specialMonsterAt(context, mndx, x, y, {
+        randomGender: namedMonsterNeedsGenderDraw(mndx),
+        randomAlignment: false,
+        peaceful,
+        mmflags: MM_EMIN,
+    });
+    if (!monster) return null;
+    monster.ispriest = 0;
+    monster.isminion = 1;
+    monster.emin = {
+        min_align: alignment,
+        renegade: (alignment !== (game.u?.ualign?.type ?? A_NONE))
+            !== !peaceful,
+    };
+    setMonsterMalign(monster);
+    return monster;
+}
+
+async function astralRoamerAtAbsolute(
+    mndx, point, alignment, peaceful,
+) {
+    return astralRoamerAt(
+        { xstart: point.x, ystart: point.y, width: 1, height: 1 },
+        mndx, 0, 0, alignment, peaceful,
+    );
+}
+
+const ASTRAL_MOLOCH_HORDE = [
+    [PM_ALIGNED_CLERIC, 18, 9], [PM_ALIGNED_CLERIC, 19, 8],
+    [PM_ALIGNED_CLERIC, 19, 9], [PM_ALIGNED_CLERIC, 19, 10],
+    [PM_ANGEL, 20, 9], [PM_ANGEL, 20, 10],
+    [PM_ALIGNED_CLERIC, 36, 12], [PM_ALIGNED_CLERIC, 37, 12],
+    [PM_ALIGNED_CLERIC, 38, 12], [PM_ALIGNED_CLERIC, 36, 13],
+    [PM_ANGEL, 38, 13], [PM_ANGEL, 37, 13],
+    [PM_ALIGNED_CLERIC, 56, 9], [PM_ALIGNED_CLERIC, 55, 8],
+    [PM_ALIGNED_CLERIC, 55, 9], [PM_ALIGNED_CLERIC, 55, 10],
+    [PM_ANGEL, 54, 9], [PM_ANGEL, 54, 10],
+];
+
+const ASTRAL_ALIGNED_HORDE = [
+    [PM_ALIGNED_CLERIC, 12, 7, A_CHAOTIC, false],
+    [PM_ALIGNED_CLERIC, 13, 7, A_CHAOTIC, true],
+    [PM_ALIGNED_CLERIC, 14, 7, A_LAWFUL, false],
+    [PM_ALIGNED_CLERIC, 12, 11, A_LAWFUL, true],
+    [PM_ALIGNED_CLERIC, 13, 11, A_NEUTRAL, false],
+    [PM_ALIGNED_CLERIC, 14, 11, A_NEUTRAL, true],
+    [PM_ANGEL, 11, 5, A_CHAOTIC, false],
+    [PM_ANGEL, 12, 5, A_CHAOTIC, true],
+    [PM_ANGEL, 13, 5, A_LAWFUL, false],
+    [PM_ANGEL, 11, 13, A_LAWFUL, true],
+    [PM_ANGEL, 12, 13, A_NEUTRAL, false],
+    [PM_ANGEL, 13, 13, A_NEUTRAL, true],
+    [PM_ALIGNED_CLERIC, 32, 9, A_CHAOTIC, false],
+    [PM_ALIGNED_CLERIC, 33, 9, A_CHAOTIC, true],
+    [PM_ALIGNED_CLERIC, 34, 9, A_LAWFUL, false],
+    [PM_ALIGNED_CLERIC, 40, 9, A_LAWFUL, true],
+    [PM_ALIGNED_CLERIC, 41, 9, A_NEUTRAL, false],
+    [PM_ALIGNED_CLERIC, 42, 9, A_NEUTRAL, true],
+    [PM_ANGEL, 31, 8, A_CHAOTIC, false],
+    [PM_ANGEL, 32, 8, A_CHAOTIC, true],
+    [PM_ANGEL, 31, 9, A_LAWFUL, false],
+    [PM_ANGEL, 42, 8, A_LAWFUL, true],
+    [PM_ANGEL, 43, 8, A_NEUTRAL, false],
+    [PM_ANGEL, 43, 9, A_NEUTRAL, true],
+    [PM_ALIGNED_CLERIC, 60, 7, A_CHAOTIC, false],
+    [PM_ALIGNED_CLERIC, 61, 7, A_CHAOTIC, true],
+    [PM_ALIGNED_CLERIC, 62, 7, A_LAWFUL, false],
+    [PM_ALIGNED_CLERIC, 60, 11, A_LAWFUL, true],
+    [PM_ALIGNED_CLERIC, 61, 11, A_NEUTRAL, false],
+    [PM_ALIGNED_CLERIC, 62, 11, A_NEUTRAL, true],
+    [PM_ANGEL, 61, 5, A_CHAOTIC, false],
+    [PM_ANGEL, 62, 5, A_CHAOTIC, true],
+    [PM_ANGEL, 63, 5, A_LAWFUL, false],
+    [PM_ANGEL, 61, 13, A_LAWFUL, true],
+    [PM_ANGEL, 62, 13, A_NEUTRAL, false],
+    [PM_ANGEL, 63, 13, A_NEUTRAL, true],
+];
+
+async function generateAstral(active) {
+    const context = loadSpecialAsciiMap(ASTRAL_MAP, false);
+    active.context = { ...context };
+    const heroAlignment = game.u?.ualign?.type ?? A_NONE;
+    const godKey = heroAlignment > 0 ? 'lawful'
+        : heroAlignment < 0 ? 'chaotic' : 'neutral';
+    const deity = game.urole?.gods?.[godKey] || 'your god';
+    active.specialMessages = [
+        'You arrive on the Astral Plane!',
+        `Here the High Temple of ${deity} is located.`,
+        'You sense alarm, hostility, and excitement in the air!',
+    ];
+    game.level.flags.is_special = true;
+    game.level.flags.is_maze_lev = true;
+    game.level.flags.noteleport = true;
+    game.level.flags.hardfloor = true;
+    game.level.flags.nommap = true;
+    game.level.flags.shortsighted = true;
+    game.level.flags.solidify = true;
+
+    for (let wing = 0; wing < 2; wing++) {
+        if (rn2(100) >= 60) continue;
+        const left = wing === 0;
+        specialSelectionTerrain(specialSelectionFillRect(
+            context, left ? 17 : 44, 14, left ? 30 : 57, 18,
+        ), ROOM);
+        wallification(1, 0, COLNO - 1, ROWNO - 1);
+        const barrierX = left ? 33 : 41;
+        setLevelTerrainType(
+            context.xstart + barrierX, context.ystart + 18, VWALL,
+        );
+        const hall = specialSelectionFloodFill(
+            context, left ? 30 : 44, 16,
+        );
+        setLevelTerrainType(
+            context.xstart + barrierX, context.ystart + 18, ROOM,
+        );
+        for (let count = 4 + rn2(6); count > 0; count--) {
+            const angelPoint = hall.randomCoordinate(true);
+            if (angelPoint)
+                await astralRoamerAtAbsolute(
+                    PM_ANGEL, angelPoint, A_NONE, false,
+                );
+            if (rn2(100) < 50) {
+                const monsterPoint = hall.randomCoordinate(true);
+                if (monsterPoint) {
+                    await specialMonsterAt(
+                        {
+                            xstart: monsterPoint.x,
+                            ystart: monsterPoint.y,
+                            width: 1, height: 1,
+                        },
+                        null, 0, 0, {
+                            randomGender: false, peaceful: false,
+                        },
+                    );
+                }
+            }
+        }
+    }
+
+    const riderPlaces = new SpecialSelection();
+    for (const [x, y] of [[23, 9], [37, 14], [51, 9]])
+        riderPlaces.add(context.xstart + x, context.ystart + y);
+
+    active.upTeleportRegion = absoluteSpecialRegion(
+        context, 29, 15, 45, 15,
+    );
+    active.upTeleportExclude = absoluteSpecialRegion(
+        context, 30, 15, 44, 15,
+    );
+    active.downTeleportRegion = { ...active.upTeleportRegion };
+    active.downTeleportExclude = { ...active.upTeleportExclude };
+
+    for (const [x, y] of [[1, 5], [31, 1], [61, 5]])
+        specialIrregularRoom(context, x, y, OROOM, true, 0);
+    const temples = [
+        specialRectangularRoom(
+            context, 4, 7, 10, 11, TEMPLE, true, FILL_LVFLAGS,
+        ),
+        specialRectangularRoom(
+            context, 34, 3, 40, 7, TEMPLE, true, FILL_LVFLAGS,
+        ),
+        specialRectangularRoom(
+            context, 64, 7, 70, 11, TEMPLE, true, FILL_LVFLAGS,
+        ),
+    ];
+    for (let index = 0; index < temples.length; index++) {
+        const [x, y] = [[7, 9], [37, 5], [67, 9]][index];
+        const alignment = astralAlignment(active.align[index]);
+        const altarX = context.xstart + x, altarY = context.ystart + y;
+        const altar = game.level.at(altarX, altarY);
+        altar.typ = ALTAR;
+        altar.flags = Align2amask(alignment) | AM_SHRINE | AM_SANCTUM;
+        await specialShrinePriest(
+            temples[index], altarX, altarY, alignment, { sanctum: true },
+        );
+    }
+    game.level.flags.has_temple = true;
+
+    for (const [mask, x, y] of [
+        [D_CLOSED, 11, 9], [D_CLOSED, 17, 9], [D_LOCKED, 23, 12],
+        [D_LOCKED, 37, 8], [D_CLOSED, 37, 11], [D_CLOSED, 37, 17],
+        [D_LOCKED, 51, 12], [D_LOCKED, 57, 9], [D_CLOSED, 63, 9],
+    ]) specialDoorAt(context, mask, x, y);
+    const wholeMap = specialSelectionFillRect(context, 0, 0, 74, 19);
+    markSpecialSelectionWallProperty(wholeMap, W_NONDIGGABLE);
+    markSpecialSelectionWallProperty(wholeMap, W_NONPASSWALL);
+
+    const riders = [PM_PESTILENCE, PM_DEATH, PM_FAMINE];
+    for (let group = 0; group < riders.length; group++) {
+        for (const [mndx, x, y] of ASTRAL_MOLOCH_HORDE.slice(
+            group * 6, group * 6 + 6,
+        )) {
+            await astralRoamerAt(context, mndx, x, y, A_NONE, false);
+        }
+        const point = riderPlaces.randomCoordinate(true);
+        if (point) {
+            await specialMonsterAt(
+                { xstart: point.x, ystart: point.y, width: 1, height: 1 },
+                riders[group], 0, 0, {
+                    randomGender: namedMonsterNeedsGenderDraw(riders[group]),
+                    peaceful: false,
+                },
+            );
+        }
+    }
+    for (const [mndx, x, y, alignment, peaceful]
+        of ASTRAL_ALIGNED_HORDE) {
+        await astralRoamerAt(
+            context, mndx, x, y, alignment, peaceful,
+        );
+    }
+    for (const monsterClass of [38, 38, 38, 48, 48, 48, 30, 30, 30])
+        await specialMonsterOfClass(
+            context, monsterClass, { peaceful: false },
+        );
+
+    flipSpecialLevelRandom(3);
+    for (const field of [
+        'upTeleportRegion', 'upTeleportExclude',
+        'downTeleportRegion', 'downTeleportExclude',
+    ]) active[field] = flipSpecialRegion(active[field]);
+}
+
+export async function generateAstralLevel(active) {
+    await generateSpecialAndFixup(generateAstral, active);
 }
 
 // Lua source: dat/fire.lua.  This is a full 79x21 map, so sp_lev.c anchors it
@@ -10740,6 +13391,34 @@ const WIZARD2_MAP = [
     '----------------------------x',
 ];
 
+const WIZARD3_MAP = [
+    '----------------------------x',
+    '|..|............S..........|x',
+    '|..|..------------------S--|x',
+    '|..|..|.........|..........|x',
+    '|..S..|.}}}}}}}.|..........|x',
+    '|..|..|.}}---}}.|-S--------|x',
+    '|..|..|.}--.--}.|..|.......|x',
+    '|..|..|.}|...|}.|..|.......|x',
+    '|..---|.}--.--}.|..|.......|x',
+    '|.....|.}}---}}.|..|.......|x',
+    '|.....S.}}}}}}}.|..|.......|x',
+    '|.....|.........|..|.......|x',
+    '----------------------------x',
+];
+
+const FAKE_WIZARD_MAP = [
+    '.........',
+    '.}}}}}}}.',
+    '.}}---}}.',
+    '.}--.--}.',
+    '.}|...|}.',
+    '.}--.--}.',
+    '.}}---}}.',
+    '.}}}}}}}.',
+    '.........',
+];
+
 async function generateWizard1(active) {
     // Lua source: dat/wizard1.lua.  The mazegrid initializer and protected
     // whole-level selection precede the centered transparent fortress map.
@@ -10986,7 +13665,460 @@ async function generateWizard2(active) {
     ]) active[field] = flipSpecialRegion(active[field]);
 }
 
-function generateHellMazeGrid(context, active) {
+async function generateWizard3(active) {
+    fillSpecialMazeGrid(HWALL);
+    game.level.flags.is_special = true;
+    game.level.flags.is_maze_lev = true;
+    game.level.flags.corrmaze = false;
+    game.level.flags.noteleport = true;
+    game.level.flags.hardfloor = true;
+    game.level.flags.temperature = 1;
+
+    const wholeLevelContext = {
+        xstart: 1, ystart: 0, width: COLNO - 1, height: ROWNO,
+    };
+    const wallBounds = specialSelectionMatch('-').bounds();
+    const interiorBounds = specialSelectionFillRect(
+        wholeLevelContext,
+        wallBounds.lx,
+        wallBounds.ly + 1,
+        wallBounds.hx - 2,
+        wallBounds.hy - 1,
+    );
+    const context = loadSpecialAsciiMap(WIZARD3_MAP, false);
+    active.context = { ...context };
+    const outside = {
+        lx: 1, ly: 0, hx: 79, hy: 20,
+        nlx: context.xstart, nly: context.ystart,
+        nhx: context.xstart + 28, nhy: context.ystart + 12,
+    };
+    active.explicitUpStairRegion = { ...outside };
+    active.explicitDownStairRegion = { ...outside };
+    active.explicitBranchRegion = {
+        lx: outside.lx, ly: outside.ly, hx: outside.hx, hy: outside.hy,
+    };
+    active.explicitBranchExclude = {
+        lx: outside.nlx, ly: outside.nly,
+        hx: outside.nhx, hy: outside.nhy,
+    };
+    active.upTeleportRegion = {
+        ...outside, nhx: context.xstart + 27,
+    };
+    active.downTeleportRegion = { ...active.upTeleportRegion };
+    active.explicitPortalRegion = absoluteSpecialRegion(
+        context, 25, 11, 25, 11,
+    );
+    active.portalDestinationName = 'fakewiz1';
+
+    specialMazeWalk(context, 28, 9, 'east', ROOM);
+    await fillEmptySpecialMaze(context, [{ ...context, width: 28 }]);
+    specialRectangularRoom(
+        context, 7, 3, 15, 11, MORGUE, false, FILL_LVFLAGS,
+    );
+    specialRectangularRoom(
+        context, 17, 6, 18, 11, BEEHIVE, false, FILL_NORMAL,
+    );
+    const arrivalRoom = specialRectangularRoom(
+        context, 20, 6, 26, 11, OROOM, false, 0,
+    );
+    arrivalRoom.arrival_room = true;
+    arrivalRoom.arrivalRoom = true;
+    createSpecialRoomDoor(
+        arrivalRoom, 'secret', rn2(100) < 50 ? 'west' : 'north',
+    );
+    addDoorsToSpecialRoom(arrivalRoom);
+    specialDoorAt(context, D_CLOSED, 18, 5);
+    specialLadderAt(context, 11, 7, true);
+
+    let fortressBarrier = new SpecialSelection();
+    for (const [x1, y1, x2, y2] of [
+        [0, 0, 6, 12], [6, 0, 27, 2],
+        [16, 2, 27, 12], [6, 12, 16, 12],
+    ]) {
+        fortressBarrier = fortressBarrier.union(
+            specialSelectionFillRect(context, x1, y1, x2, y2),
+        );
+    }
+    markSpecialSelectionWallProperty(fortressBarrier, W_NONDIGGABLE);
+    markSpecialSelectionWallProperty(fortressBarrier, W_NONPASSWALL);
+
+    await specialMonsterClassAt(context, 38, 10, 7);
+    const vampireLord = await specialMonsterAt(
+        context, PM_VAMPIRE_LEADER, 12, 7,
+        { randomGender: false },
+    );
+    if (vampireLord) vampireLord.female = false;
+    for (const [mndx, x, y] of [
+        [PM_KRAKEN, 8, 5], [PM_GIANT_EEL, 8, 8],
+        [PM_KRAKEN, 14, 5], [PM_GIANT_EEL, 14, 8],
+    ]) {
+        await specialMonsterAt(
+            context, mndx, x, y,
+            { randomGender: namedMonsterNeedsGenderDraw(mndx) },
+        );
+    }
+    await specialMonsterOfClass(context, 38);
+    await specialMonsterOfClass(context, 30);
+    await specialMonsterClassAt(context, 30, 26, 9);
+    for (let count = 0; count < 3; count++)
+        await specialMonsterOfClass(context, S_DEMON);
+    for (const [x, y] of [[10, 7], [12, 7], [11, 6], [11, 8]])
+        await specialTrapAt(context, SQKY_BOARD, x, y);
+    for (const objectClass of [
+        WEAPON_CLASS, POTION_CLASS, SCROLL_CLASS, SCROLL_CLASS, TOOL_CLASS,
+    ]) specialObjectOfClass(context, objectClass);
+    specialObjectClassAt(context, AMULET_CLASS, 11, 7);
+
+    const protectedArea = interiorBounds.negate()
+        .union(specialMapSelection(context, WIZARD3_MAP));
+    applyHellTweaks(wholeLevelContext, protectedArea);
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flipSpecialLevelRandom(3);
+    for (const field of [
+        'explicitUpStairRegion', 'explicitDownStairRegion',
+        'explicitBranchRegion', 'explicitBranchExclude',
+        'upTeleportRegion', 'downTeleportRegion', 'explicitPortalRegion',
+    ]) active[field] = flipSpecialRegion(active[field]);
+}
+
+async function generateFakeWizard(active, withPortal) {
+    fillSpecialMazeGrid(HWALL);
+    game.level.flags.is_special = true;
+    game.level.flags.is_maze_lev = true;
+    game.level.flags.corrmaze = false;
+    game.level.flags.temperature = 1;
+
+    const wholeLevelContext = {
+        xstart: 1, ystart: 0, width: COLNO - 1, height: ROWNO,
+    };
+    const wallBounds = specialSelectionMatch('-').bounds();
+    const interiorBounds = specialSelectionFillRect(
+        wholeLevelContext,
+        wallBounds.lx,
+        wallBounds.ly + 1,
+        wallBounds.hx - 2,
+        wallBounds.hy - 1,
+    );
+    const context = loadSpecialAsciiMap(FAKE_WIZARD_MAP, false);
+    active.context = { ...context };
+    const outside = {
+        lx: 1, ly: 0, hx: 79, hy: 20,
+        nlx: context.xstart, nly: context.ystart,
+        nhx: context.xstart + 8, nhy: context.ystart + 8,
+    };
+    active.explicitUpStairRegion = { ...outside };
+    active.explicitDownStairRegion = { ...outside };
+    active.explicitBranchRegion = {
+        lx: outside.lx, ly: outside.ly, hx: outside.hx, hy: outside.hy,
+    };
+    active.explicitBranchExclude = {
+        lx: outside.nlx, ly: outside.nly,
+        hx: outside.nhx, hy: outside.nhy,
+    };
+    const teleportExclude = absoluteSpecialRegion(context, 2, 2, 6, 6);
+    active.upTeleportRegion = {
+        lx: 1, ly: 0, hx: 79, hy: 20,
+        nlx: teleportExclude.lx, nly: teleportExclude.ly,
+        nhx: teleportExclude.hx, nhy: teleportExclude.hy,
+    };
+    active.downTeleportRegion = { ...active.upTeleportRegion };
+    if (withPortal) {
+        active.explicitPortalRegion = absoluteSpecialRegion(
+            context, 4, 4, 4, 4,
+        );
+        active.portalDestinationName = 'wizard3';
+    }
+
+    specialMazeWalk(context, 8, 5, 'east', ROOM);
+    await fillEmptySpecialMaze(context);
+    if (withPortal) {
+        const arrivalRoom = specialIrregularRoom(
+            context, 4, 3, OROOM, false, 0,
+        );
+        arrivalRoom.arrival_room = true;
+        arrivalRoom.arrivalRoom = true;
+    }
+    await specialMonsterClassAt(context, 38, 4, 4);
+    const vampireLord = await specialMonsterAt(
+        context, PM_VAMPIRE_LEADER, 3, 4,
+        { randomGender: false },
+    );
+    if (vampireLord) vampireLord.female = false;
+    await specialMonsterAt(
+        context, PM_KRAKEN, 6, 6,
+        { randomGender: namedMonsterNeedsGenderDraw(PM_KRAKEN) },
+    );
+    for (const [x, y] of [[4, 3], [4, 5], [3, 4], [5, 4]])
+        await specialTrapAt(context, SQKY_BOARD, x, y);
+    if (!withPortal)
+        specialObjectClassAt(context, AMULET_CLASS, 4, 4);
+
+    const protectedArea = interiorBounds.negate()
+        .union(specialMapSelection(context, FAKE_WIZARD_MAP));
+    applyHellTweaks(wholeLevelContext, protectedArea);
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flipSpecialLevelRandom(3);
+    for (const field of [
+        'explicitUpStairRegion', 'explicitDownStairRegion',
+        'explicitBranchRegion', 'explicitBranchExclude',
+        'upTeleportRegion', 'downTeleportRegion', 'explicitPortalRegion',
+    ]) active[field] = flipSpecialRegion(active[field]);
+}
+
+export async function generateWizard3Level(active) {
+    await generateSpecialAndFixup(generateWizard3, active);
+    for (const room of game.level.rooms.slice(0, game.level.nroom))
+        await fillSpecialRoom(room);
+}
+
+export async function generateFakeWizardLevel(active) {
+    if (!['fakewiz1', 'fakewiz2'].includes(active?.prototype)) {
+        throw new RangeError(`unknown false Wizard level ${active?.prototype}`);
+    }
+    await generateSpecialAndFixup(
+        current => generateFakeWizard(
+            current, current.prototype === 'fakewiz1',
+        ),
+        active,
+    );
+}
+
+const HELL_FORTRESS_PREFAB = [
+    'xxxxxx.xxxxxx',
+    'xLLLLLLLLLLLx',
+    'xL---------Lx',
+    'xL|.......|Lx',
+    'xL|.......|Lx',
+    '.L|.......|L.',
+    'xL|.......|Lx',
+    'xL|.......|Lx',
+    'xL---------Lx',
+    'xLLLLLLLLLLLx',
+    'xxxxxx.xxxxxx',
+];
+
+const HELL_TEMPLE_PREFAB = [
+    'FFFFFFF',
+    'F.....F',
+    'F.....F',
+    'F.....F',
+    'F.....F',
+    'F.....F',
+    'FFFFFFF',
+];
+
+const HELL_BAR_ENCLOSURE_PREFAB = [
+    '..........',
+    '..........',
+    '..........',
+    '...FFFF...',
+    '...F..F...',
+    '...F..F...',
+    '...FFFF...',
+    '..........',
+    '..........',
+    '..........',
+];
+
+const HELL_MOAT_FORTRESS_PREFAB = [
+    '.........',
+    '.}}}}}}}.',
+    '.}}---}}.',
+    '.}--.--}.',
+    '.}|...|}.',
+    '.}--.--}.',
+    '.}}---}}.',
+    '.}}}}}}}.',
+    '.........',
+];
+
+function hellPrefabOrigin(width, height, halign, valign) {
+    const horizontal = halign === 'half-left'
+        ? halfLeftSpecialMap(width, height)
+        : halign === 'half-right'
+            ? halfRightSpecialMap(width, height)
+            : centeredSpecialMap(width, height);
+    const mazeMaxY = (ROWNO - 1) & ~1;
+    let ystart = horizontal.ystart;
+    if (valign === 'top') ystart = 3;
+    else if (valign === 'bottom') {
+        ystart = mazeMaxY - height - 1;
+        if (!(ystart % 2)) ystart++;
+    }
+    return { xstart: horizontal.xstart, ystart, width, height };
+}
+
+function randomHellPrefabAlignment() {
+    return {
+        halign: ['half-left', 'center', 'half-right'][rn2(3)],
+        valign: ['top', 'center', 'bottom'][rn2(3)],
+    };
+}
+
+function loadHellPrefab(rows, { halign = 'center', valign = 'center',
+    lit = false, origin = null } = {}) {
+    const width = Math.max(...rows.map(row => row.length));
+    const placement = origin || hellPrefabOrigin(
+        width, rows.length, halign, valign,
+    );
+    return loadSpecialAsciiMap(rows, lit, placement);
+}
+
+function addHellTeleportExclusion(context, x1, y1, x2, y2) {
+    game.level.exclusionZones.push({
+        type: 'teleport',
+        lx: context.xstart + Math.min(x1, x2),
+        ly: context.ystart + Math.min(y1, y2),
+        hx: context.xstart + Math.max(x1, x2),
+        hy: context.ystart + Math.max(y1, y2),
+    });
+}
+
+function makeHellDrawbridge(context, x, y, direction) {
+    const bridgeX = context.xstart + x;
+    const bridgeY = context.ystart + y;
+    const bridge = game.level.at(bridgeX, bridgeY);
+    if (!bridge) return;
+    const under = bridge.typ === LAVAPOOL ? DB_LAVA : DB_MOAT;
+    const offsets = {
+        [DB_NORTH]: [0, -1], [DB_SOUTH]: [0, 1],
+        [DB_EAST]: [1, 0], [DB_WEST]: [-1, 0],
+    };
+    const [dx, dy] = offsets[direction];
+    bridge.typ = DRAWBRIDGE_UP;
+    bridge.horizontal = direction === DB_EAST || direction === DB_WEST;
+    bridge.drawbridgemask = direction | under;
+    const wall = game.level.at(bridgeX + dx, bridgeY + dy);
+    if (wall) {
+        wall.typ = DBWALL;
+        wall.horizontal = direction === DB_NORTH || direction === DB_SOUTH;
+        wall.wall_info |= W_NONDIGGABLE;
+    }
+}
+
+async function generateHellPrefab(prefab, coldHell) {
+    if (prefab === 1) {
+        loadHellPrefab(Array(16).fill('......'), {
+            halign: ['half-left', 'center', 'half-right'][rn2(3)],
+        });
+    } else if (prefab === 2) {
+        loadHellPrefab([
+            'xxxxxx.....xxxxxx', 'xxxx.........xxxx',
+            'xx.............xx', 'xx.............xx',
+            'x...............x', 'x...............x',
+            '.................', '.................',
+            '.................', '.................',
+            '.................', 'x...............x',
+            'x...............x', 'xx.............xx',
+            'xx.............xx', 'xxxx.........xxxx',
+            'xxxxxx.....xxxxxx',
+        ], { halign: ['half-left', 'center', 'half-right'][rn2(3)] });
+    } else if (prefab === 3) {
+        const alignment = randomHellPrefabAlignment();
+        const context = loadHellPrefab(HELL_FORTRESS_PREFAB, alignment);
+        const fortressWalls = specialSelectionFillRect(context, 2, 2, 10, 8);
+        markSpecialSelectionWallProperty(fortressWalls, W_NONDIGGABLE);
+        setSpecialRegionLighting(context, 4, 4, 8, 6, true);
+        addHellTeleportExclusion(context, 2, 2, 10, 8);
+        if (coldHell) {
+            replaceSpecialSelectionTerrain(
+                specialSelectionFillRect(context, 1, 1, 11, 9),
+                LAVAPOOL, POOL,
+            );
+        }
+        const bridges = luaShuffle([
+            [1, 5, DB_EAST], [11, 5, DB_WEST],
+            [6, 1, DB_SOUTH], [6, 9, DB_NORTH],
+        ]);
+        const bridgeCount = rnd(bridges.length);
+        for (let index = 0; index < bridgeCount; index++)
+            makeHellDrawbridge(context, ...bridges[index]);
+        const monsterClass = luaShuffle([34, 46, S_HUMAN])[0];
+        for (let count = 3 + rnd(5); count > 0; count--)
+            await specialMonsterClassAt(context, monsterClass, 6, 5);
+    } else if (prefab === 4) {
+        loadHellPrefab(Array(5).fill('.'.repeat(62)));
+    } else if (prefab === 5) {
+        const alignment = randomHellPrefabAlignment();
+        loadHellPrefab([
+            'x.....x', '.......', '.......', '.......',
+            '.......', '.......', 'x.....x',
+        ], { ...alignment, lit: true });
+    } else if (prefab === 6) {
+        const alignment = randomHellPrefabAlignment();
+        const context = loadHellPrefab(HELL_TEMPLE_PREFAB, alignment);
+        const temple = specialIrregularRoom(
+            context, 2, 2, TEMPLE, false, FILL_NORMAL,
+        );
+        const altarX = context.xstart + 3;
+        const altarY = context.ystart + 3;
+        const altar = game.level.at(altarX, altarY);
+        altar.typ = ALTAR;
+        altar.flags = Align2amask(A_NONE);
+        if (rn2(100) >= 75) {
+            altar.flags |= AM_SHRINE;
+            await specialShrinePriest(temple, altarX, altarY, A_NONE);
+        }
+        game.level.flags.has_temple = true;
+    } else if (prefab === 7) {
+        const alignment = randomHellPrefabAlignment();
+        const context = loadHellPrefab(HELL_BAR_ENCLOSURE_PREFAB, alignment);
+        addHellTeleportExclusion(context, 4, 4, 5, 5);
+        const inhabitants = [PM_ANGEL, 30, 34, 38];
+        const inhabitant = inhabitants[rn2(inhabitants.length)];
+        if (inhabitant === PM_ANGEL) {
+            await specialMonsterAt(context, inhabitant, 4, 4, {
+                randomGender: namedMonsterNeedsGenderDraw(inhabitant),
+            });
+        } else {
+            await specialMonsterClassAt(context, inhabitant, 4, 4);
+        }
+    } else if (prefab === 8) {
+        const alignment = randomHellPrefabAlignment();
+        const context = loadHellPrefab(HELL_MOAT_FORTRESS_PREFAB, alignment);
+        addHellTeleportExclusion(context, 3, 3, 5, 5);
+        await specialMonsterClassAt(context, 38, 4, 4);
+    } else if (prefab === 9) {
+        const lava = rn2(100) < 30;
+        const rows = lava
+            ? ['.....', '.LLL.', '.LZL.', '.LLL.', '.....']
+            : ['.....', '.PPP.', '.PWP.', '.PPP.', '.....'];
+        for (let dx = 1; dx <= 5; dx++) {
+            loadHellPrefab(rows, {
+                origin: {
+                    xstart: dx * 14 - 4,
+                    ystart: 3 + rn2(13),
+                    width: 5, height: 5,
+                },
+            });
+        }
+    } else if (prefab === 10) {
+        const rows = Array(17).fill('...');
+        for (let dx = 0; dx < 3; dx++) {
+            loadHellPrefab(rows, {
+                origin: {
+                    xstart: 3 + rn2(73), ystart: 3,
+                    width: 3, height: 17,
+                },
+            });
+        }
+    }
+}
+
+async function generateRandomHellPrefabs(coldHell) {
+    const repeatable = new Set([1, 2, 4, 5, 10]);
+    let loops = 0;
+    let again = true;
+    do {
+        loops++;
+        const prefab = rnd(10);
+        await generateHellPrefab(prefab, coldHell);
+        again = repeatable.has(prefab)
+            && rn2(loops * 2 + 1) !== 0;
+    } while (again && loops <= 5);
+}
+
+async function generateHellMazeGrid(context) {
     // sp_lev.c:lvlfill_maze_grid(2,0,x_maze_max,y_maze_max,HWALL).
     const mazeXMax = (COLNO - 1) & ~1;
     const mazeYMax = (ROWNO - 1) & ~1;
@@ -11022,12 +14154,7 @@ function generateHellMazeGrid(context, active) {
     );
     applyHellTweaks(context, mutableArea.negate());
 
-    if (rn2(100) < 25) {
-        // rnd_hell_prefab(false) is a separate script block.  Keep the
-        // branch visible until its map/content variants are ported instead
-        // of pretending that hell_tweaks owns prefab generation.
-        active.pendingHellPrefab = true;
-    }
+    if (rn2(100) < 25) await generateRandomHellPrefabs(false);
 }
 
 async function generateHellFiller(active) {
@@ -11045,11 +14172,60 @@ async function generateHellFiller(active) {
     // hellfill.lua runs; only the cold variant overrides this to -1.
     game.level.flags.temperature = 1;
 
-    if (active.variant === 2) {
-        generateHellMazeGrid(context, active);
+    if (active.variant === 1) {
+        mineFillerMinesField(false, STONE);
+        for (let x = 1; x < COLNO; x++) {
+            for (let y = 0; y < ROWNO; y++) {
+                const loc = game.level.at(x, y);
+                if (loc.typ === STONE) setLevelTerrainType(x, y, LAVAPOOL);
+            }
+        }
+        replaceSpecialSelectionTerrain(
+            specialSelectionOfTerrain(context, ROOM), ROOM, LAVAPOOL, 5,
+        );
+        const walls = new SpecialSelection();
+        for (let x = 1; x < COLNO; x++)
+            for (let y = 0; y < ROWNO; y++)
+                if (IS_STWALL(game.level.at(x, y)?.typ)) walls.add(x, y);
+        walls.forEachXMajor((x, y) => {
+            const loc = game.level.at(x, y);
+            if (rn2(100) < 20) setLevelTerrainType(x, y, LAVAPOOL);
+            else if (loc && rn2(100) < 15) setLevelTerrainType(x, y, ROOM);
+        });
+    } else if (active.variant === 2) {
+        await generateHellMazeGrid(context);
     } else if (active.variant === 3) {
         // Classic one-cell-wall maze with a random corridor width.
         createSpecialMaze(-1, 1, false);
+    } else if (active.variant === 4) {
+        const corridorWidth = rnd(4);
+        createSpecialMaze(corridorWidth, 1, false);
+        const outsideStone = specialSelectionOfTerrain(context, STONE);
+        const wallTerrain = luaShuffle([IRONBARS, LAVAPOOL])[0];
+        const mazeWalls = new SpecialSelection();
+        for (let x = 1; x < COLNO; x++)
+            for (let y = 0; y < ROWNO; y++)
+                if (IS_STWALL(game.level.at(x, y)?.typ)) mazeWalls.add(x, y);
+        specialSelectionTerrain(mazeWalls, wallTerrain);
+        if (corridorWidth === 1) {
+            if (wallTerrain === IRONBARS && rn2(100) < 80) {
+                const amount = 25 * rnd(4);
+                const openings = new SpecialSelection();
+                for (let x = 1; x < COLNO; x++) {
+                    for (let y = 1; y < ROWNO - 1; y++) {
+                        if (game.level.at(x, y)?.typ === IRONBARS
+                            && game.level.at(x, y - 1)?.typ === ROOM
+                            && game.level.at(x, y + 1)?.typ === ROOM) {
+                            openings.add(x, y);
+                        }
+                    }
+                }
+                specialSelectionTerrain(openings.percentage(amount), ROOM);
+            } else if (rn2(100) < 25) {
+                await generateRandomHellPrefabs(false);
+            }
+        }
+        specialSelectionTerrain(outsideStone, STONE);
     } else if (active.variant === 5) {
         // Thick-wall maze.  hellfill.lua snapshots original stone, converts
         // every solid cell through replace_terrain("w"), then restores that
@@ -11069,7 +14245,7 @@ async function generateHellFiller(active) {
             for (let x = 1; x < COLNO; x++) {
                 for (let y = 0; y < ROWNO; y++) {
                     const loc = game.level.at(x, y);
-                    if (loc && IS_STWALL(loc.typ) && rn2(100) < 100)
+                    if (loc && IS_STWALL(loc.typ))
                         setLevelTerrainType(x, y, LAVAPOOL);
                 }
             }
@@ -11103,17 +14279,58 @@ async function generateHellFiller(active) {
                 }
             }
         }
+    } else if (active.variant === 6) {
+        const corridorWidth = rnd(4);
+        createSpecialMaze(corridorWidth, 1, false);
+        game.level.flags.temperature = -1;
+        const outsideStone = specialSelectionOfTerrain(context, STONE);
+        const ice = new SpecialSelection().negate().percentage(10)
+            .grow('all')
+            .intersect(specialSelectionOfTerrain(context, ROOM));
+        specialSelectionTerrain(ice, ICE);
+        if (corridorWidth > 1)
+            specialSelectionTerrain(ice.percentage(1), WATER);
+        specialSelectionTerrain(ice.percentage(5), POOL);
+        if (rn2(100) < 25) {
+            const walls = new SpecialSelection();
+            for (let x = 1; x < COLNO; x++)
+                for (let y = 0; y < ROWNO; y++)
+                    if (IS_STWALL(game.level.at(x, y)?.typ)) walls.add(x, y);
+            specialSelectionTerrain(walls, WATER);
+        }
+        if (corridorWidth === 1 && rn2(100) < 25)
+            await generateRandomHellPrefabs(true);
+        specialSelectionTerrain(outsideStone, STONE);
+    } else if (active.variant === 7) {
+        const background = rn2(100) < 50 ? STONE : LAVAPOOL;
+        mineFillerMinesField(false, background, false);
+        const cavern = specialSelectionOfTerrain(context, ROOM).grow('all');
+        specialSelectionTerrain(cavern, ROOM);
+        specialSelectionTerrain(
+            specialSelectionRect(context, 0, 0, 78, 20), background,
+        );
+        wallification(1, 0, COLNO - 1, ROWNO - 1);
     } else {
-        // Other variants remain separate script blocks because their mines,
-        // prefabs, and terrain-selection graphs have different RNG.
-        return false;
+        throw new RangeError(`unknown Hell filler variant ${active.variant}`);
     }
 
+    game.level.flags.is_maze_lev = true;
     specialStair(context, true);
-    specialStair(context, false);
+    const dungeon = game.dungeons?.[game.u?.uz?.dnum ?? 0];
+    const invocationLevel = !!dungeon?.flags?.hellish
+        && game.u?.uz?.dlevel === (dungeon.num_dunlevs ?? 1) - 1;
+    if (invocationLevel)
+        await specialTrapOfType(context, VIBRATING_SQUARE);
+    else
+        specialStair(context, false);
     await populateHellMaze(context);
     wallification(1, 0, COLNO - 1, ROWNO - 1);
     return true;
+}
+
+export async function generateHellFillerLevel(active) {
+    await generateHellFiller(active);
+    await fixupSpecialBranch(active);
 }
 
 function flipSpecialRegion(region) {
@@ -11197,6 +14414,98 @@ async function generateMedusa1(active) {
     await medusaMonsterClassAt(context, 45, 38, 7); // S_SNAKE
     await medusaMonsterClassAt(context, 45, 38, 12);
     for (let count = 0; count < 10; count++)
+        await medusaRandomMonster(context);
+
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flipSpecialLevelRandom(3);
+    active.downTeleportRegion = flipSpecialRegion(active.downTeleportRegion);
+    active.upTeleportRegion = flipSpecialRegion(active.upTeleportRegion);
+    active.explicitBranchRegion = flipSpecialRegion(active.explicitBranchRegion);
+    active.explicitBranchExclude = flipSpecialRegion(active.explicitBranchExclude);
+}
+
+async function generateMedusa2(active) {
+    const context = loadSpecialAsciiMap(MEDUSA_2_MAP, active.defaultLit);
+    active.context = { ...context };
+    game.level.flags.is_special = true;
+    game.level.flags.is_maze_lev = true;
+    game.level.flags.noteleport = true;
+
+    setSpecialRegionLighting(context, 0, 0, 74, 19, true);
+    setSpecialRegionLighting(context, 2, 3, 5, 16, false);
+    specialIrregularRoom(context, 61, 3, OROOM, false, 0);
+    setSpecialRegionLighting(context, 71, 8, 72, 11, false);
+    const arrivalRoom = specialRectangularRoom(
+        context, 67, 8, 69, 11, OROOM, true, 0,
+    );
+    arrivalRoom.arrival_room = true;
+
+    active.downTeleportRegion = absoluteSpecialRegion(context, 2, 3, 5, 16);
+    active.upTeleportRegion = absoluteSpecialRegion(context, 61, 3, 72, 16);
+    active.explicitBranchRegion = absoluteSpecialRegion(context, 1, 0, 79, 20);
+    active.explicitBranchExclude = absoluteSpecialRegion(
+        context, 59, 1, 73, 17,
+    );
+
+    specialStairAt(context, 4, 9, true);
+    specialStairAt(context, 68, 10, false);
+    specialDoorAt(context, D_LOCKED, 71, 7);
+    specialNonDiggable({
+        xstart: context.xstart + 1,
+        ystart: context.ystart + 2,
+        width: 6,
+        height: 16,
+    });
+    specialNonDiggable({
+        xstart: context.xstart + 60,
+        ystart: context.ystart + 2,
+        width: 14,
+        height: 16,
+    });
+
+    medusaPerseusStatue(context, 68, 10, {
+        shieldChance: 25,
+        bootsChance: 75,
+    });
+    for (const [x, y] of [
+        [64, 8], [65, 8], [64, 9], [65, 9],
+        [64, 10], [65, 10], [64, 11], [65, 11],
+    ]) await medusaEmptyStatue(context, { x, y });
+    specialObjectAt(context, BOULDER, 4, 4, { named: true });
+    specialObjectClassAt(context, WAND_CLASS, 52, 9);
+    specialObjectAt(context, BOULDER, 52, 9, { named: true });
+    for (let count = 0; count < 6; count++) specialObject(context);
+
+    await medusaTrapAt(context, MAGIC_TRAP, 3, 12);
+    for (let count = 0; count < 4; count++) await specialTrap(context);
+
+    await medusaNamedMonsterAt(context, PM_MEDUSA, 68, 10, true);
+    for (const [mndx, x, y, asleep] of [
+        [PM_GREMLIN, 2, 14, false],
+        [PM_TITAN, 2, 5, false],
+        [PM_ELECTRIC_EEL, 10, 13, false],
+        [PM_ELECTRIC_EEL, 11, 13, false],
+        [PM_ELECTRIC_EEL, 10, 14, false],
+        [PM_ELECTRIC_EEL, 11, 14, false],
+        [PM_ELECTRIC_EEL, 10, 15, false],
+        [PM_ELECTRIC_EEL, 11, 15, false],
+        [PM_JELLYFISH, 1, 1, false],
+        [PM_JELLYFISH, 0, 8, false],
+        [PM_JELLYFISH, 4, 19, false],
+        [PM_STONE_GOLEM, 64, 8, true],
+        [PM_STONE_GOLEM, 65, 8, true],
+        [PM_STONE_GOLEM, 64, 9, true],
+        [PM_STONE_GOLEM, 65, 9, true],
+        [PM_COBRA, 64, 10, true],
+        [PM_COBRA, 65, 10, true],
+        [PM_YELLOW_LIGHT, 72, 11, true],
+    ]) await medusaNamedMonsterAt(context, mndx, x, y, asleep);
+    await medusaMonsterClassAt(context, S_ANGEL, 72, 8);
+    for (const [x, y] of [
+        [17, 7], [28, 11], [32, 13], [49, 9], [48, 7],
+        [65, 3], [70, 4], [70, 15], [65, 16],
+    ]) await medusaRandomMonsterAt(context, x, y);
+    for (let count = 0; count < 4; count++)
         await medusaRandomMonster(context);
 
     wallification(1, 0, COLNO - 1, ROWNO - 1);
@@ -11315,6 +14624,105 @@ async function generateMedusa3(active) {
         upStairRegion.hx, upStairRegion.hy,
         0, 0, 0, 0, LR_UPSTAIR, null,
     );
+}
+
+async function generateMedusa4(active) {
+    const context = loadSpecialAsciiMap(MEDUSA_4_MAP, active.defaultLit);
+    active.context = { ...context };
+    game.level.flags.is_special = true;
+    game.level.flags.is_maze_lev = true;
+    game.level.flags.noteleport = true;
+
+    const places = [[4, 8], [10, 4], [10, 8], [10, 12]];
+    const takePlace = () => places.splice(rn2(places.length), 1)[0];
+    const medloc = takePlace();
+    const altloc = takePlace();
+
+    setSpecialRegionLighting(context, 0, 0, 74, 19, true);
+    specialIrregularRoom(context, 13, 3, OROOM, true, 0);
+    active.downTeleportRegion = absoluteSpecialRegion(
+        context, 64, 1, 74, 17,
+    );
+    active.upTeleportRegion = absoluteSpecialRegion(
+        context, 2, 2, 18, 13,
+    );
+    let upStairRegion = absoluteSpecialRegion(context, 67, 1, 74, 20);
+
+    specialStairAt(context, medloc[0], medloc[1], false);
+    for (const [x, y] of [
+        [4, 6], [4, 10], [8, 4], [8, 12],
+        [10, 6], [10, 10], [12, 8],
+    ]) specialDoorAt(context, D_LOCKED, x, y);
+    active.explicitBranchRegion = absoluteSpecialRegion(
+        context, 27, 0, 79, 20,
+    );
+    specialNonDiggable({
+        xstart: context.xstart + 1,
+        ystart: context.ystart + 1,
+        width: 22,
+        height: 14,
+    });
+
+    specialObjectAt(context, CRYSTAL_BALL, 7, 8, { named: true });
+    medusaPerseusStatue(context, medloc[0], medloc[1]);
+    await medusaEmptyStatue(context, { x: altloc[0], y: altloc[1] });
+    for (let count = 0; count < 6; count++)
+        await medusaEmptyStatue(context);
+    for (let count = 0; count < 8; count++) specialObject(context);
+    for (let count = 0; count < 7; count++) await specialTrap(context);
+
+    await medusaNamedMonsterAt(
+        context, PM_MEDUSA, medloc[0], medloc[1], true,
+    );
+    await medusaNamedMonsterAt(context, PM_KRAKEN, 7, 7);
+    await medusaNamedMonsterAt(context, PM_YELLOW_DRAGON, 5, 4, true);
+    if (rn2(100) < 50)
+        await medusaNamedMonsterAt(
+            context, PM_BABY_YELLOW_DRAGON, 4, 4, true,
+        );
+    if (rn2(100) < 25)
+        await medusaNamedMonsterAt(
+            context, PM_BABY_YELLOW_DRAGON, 4, 5, true,
+        );
+    medusaDragonEggAt(context, 5, 4);
+    if (rn2(100) < 50) medusaDragonEggAt(context, 5, 4);
+    if (rn2(100) < 25) medusaDragonEggAt(context, 5, 4);
+
+    for (const mndx of [
+        PM_GIANT_EEL, PM_GIANT_EEL,
+        PM_JELLYFISH, PM_JELLYFISH,
+    ]) await medusaNamedMonsterAtRandom(context, mndx);
+    for (let count = 0; count < 14; count++)
+        await medusaMonsterOfClass(context, 45); // S_SNAKE
+    for (let count = 0; count < 4; count++) {
+        await medusaNamedMonsterAtRandom(context, PM_BLACK_NAGA_HATCHLING);
+        await medusaNamedMonsterAtRandom(context, PM_BLACK_NAGA);
+    }
+
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flipSpecialLevelRandom(3);
+    active.downTeleportRegion = flipSpecialRegion(active.downTeleportRegion);
+    active.upTeleportRegion = flipSpecialRegion(active.upTeleportRegion);
+    active.explicitBranchRegion = flipSpecialRegion(active.explicitBranchRegion);
+    upStairRegion = flipSpecialRegion(upStairRegion);
+    place_lregion(
+        upStairRegion.lx, upStairRegion.ly,
+        upStairRegion.hx, upStairRegion.hy,
+        0, 0, 0, 0, LR_UPSTAIR, null,
+    );
+}
+
+const MEDUSA_GENERATORS = Object.freeze([
+    null,
+    generateMedusa1, generateMedusa2, generateMedusa3, generateMedusa4,
+]);
+
+export async function generateMedusaLevel(active) {
+    const generator = MEDUSA_GENERATORS[active?.variant];
+    if (!generator) {
+        throw new RangeError(`unknown Medusa variant ${active?.variant}`);
+    }
+    await generateSpecialAndFixup(generator, active);
 }
 
 function makeToptenStatue(x, y) {
@@ -11578,8 +14986,26 @@ async function fixupSpecialBranch(active) {
 
 async function generateSpecialAndFixup(generator, active) {
     await generator(active);
-    game.level.upTeleportRegion = active?.upTeleportRegion || null;
-    game.level.downTeleportRegion = active?.downTeleportRegion || null;
+    const arrivalRegion = (region, exclude) => {
+        if (!region) return null;
+        const embeddedExclude = Number.isInteger(region.nlx)
+            ? {
+                lx: region.nlx, ly: region.nly,
+                hx: region.nhx, hy: region.nhy,
+            }
+            : null;
+        const exclusion = exclude || embeddedExclude;
+        return {
+            ...region,
+            ...(exclusion ? { exclude: { ...exclusion } } : {}),
+        };
+    };
+    game.level.upTeleportRegion = arrivalRegion(
+        active?.upTeleportRegion, active?.upTeleportExclude,
+    );
+    game.level.downTeleportRegion = arrivalRegion(
+        active?.downTeleportRegion, active?.downTeleportExclude,
+    );
     // mkmaze.c:fixup_special() must allocate and initially paint Air/Water
     // bubbles before named portals and arrival regions are materialized.
     if (active?.elementalBubbles) setupElementalBubbles();
@@ -11807,6 +15233,41 @@ const SOKO2_1_LAYOUT = {
     ],
 };
 
+const SOKO2_2_MAP = [
+    '  --------',
+    '--|.|....|',
+    '|........|----------',
+    '|.-...-..|.|.......|',
+    '|...-......|.......|',
+    '|.-....|...|.......|',
+    '|....-.--.-|.......|',
+    '|..........|.......|',
+    '|.--...|...|.......---',
+    '|....-.|---|.......+.|',
+    '--|....|------------.|',
+    '  |................+.|',
+    '  --------------------',
+];
+
+const SOKO2_2_LAYOUT = {
+    map: SOKO2_2_MAP,
+    stairs: [[false, 6, 11], [true, 15, 6]],
+    doors: [
+        [D_LOCKED, 19, 9],
+        [D_LOCKED, 19, 11],
+    ],
+    boulders: [
+        [4, 2], [4, 3], [5, 3], [7, 3], [8, 3],
+        [2, 4], [3, 4], [5, 5], [6, 6], [9, 6],
+        [3, 7], [4, 7], [7, 7], [6, 9], [5, 10], [5, 11],
+    ],
+    monsterGenerationExclusions: [[6, 11, 18, 11]],
+    traps: [
+        [ROLLING_BOULDER_TRAP, 7, 11],
+        ...Array.from({ length: 11 }, (_, index) => [HOLE, 8 + index, 11]),
+    ],
+};
+
 const SOKO3_1_MAP = [
     '-----------       -----------',
     '|....|....|--     |.........|',
@@ -12009,8 +15470,18 @@ async function generateSokobanPuzzle(active, layout) {
     );
 }
 
-async function generateSoko21(active) {
-    return generateSokobanPuzzle(active, SOKO2_1_LAYOUT);
+const SOKO2_LAYOUTS = Object.freeze([
+    null, SOKO2_1_LAYOUT, SOKO2_2_LAYOUT,
+]);
+
+export async function generateSokobanLevel2(active) {
+    const layout = SOKO2_LAYOUTS[active?.variant];
+    if (!layout) {
+        throw new RangeError(`unknown Sokoban level 2 layout ${active?.variant}`);
+    }
+    await generateSpecialAndFixup(
+        current => generateSokobanPuzzle(current, layout), active,
+    );
 }
 
 async function generateSoko31(active) {
@@ -12324,6 +15795,161 @@ async function generateCastle(active) {
     active.castleMonsterClasses = monsterClasses;
 }
 
+const KNOX_MAP = [
+    '----------------------------------------------------------------------------',
+    '| |........|...............................................................|',
+    '| |........|.................................................------------..|',
+    '| --S----S--.................................................|..........|..|',
+    '|   #   |........}}}}}}}....................}}}}}}}..........|..........|..|',
+    '|   #   |........}-----}....................}-----}..........--+--+--...|..|',
+    '|   # ---........}|...|}}}}}}}}}}}}}}}}}}}}}}|...|}.................|...|..|',
+    '|   # |..........}---S------------------------S---}.................|...|..|',
+    '|   # |..........}}}|...............|..........|}}}.................+...|..|',
+    '| --S----..........}|...............S..........|}...................|...|..|',
+    '| |.....|..........}|...............|......\\...S}...................|...|..|',
+    '| |.....+........}}}|...............|..........|}}}.................+...|..|',
+    '| |.....|........}---S------------------------S---}.................|...|..|',
+    '| |.....|........}|...|}}}}}}}}}}}}}}}}}}}}}}|...|}.................|...|..|',
+    '| |..-S----......}-----}....................}-----}..........--+--+--...|..|',
+    '| |..|....|......}}}}}}}....................}}}}}}}..........|..........|..|',
+    '| |..|....|..................................................|..........|..|',
+    '| -----------................................................------------..|',
+    '|           |..............................................................|',
+    '----------------------------------------------------------------------------',
+];
+
+async function generateKnox(active) {
+    const context = loadSpecialAsciiMap(KNOX_MAP, false);
+    active.context = { ...context };
+    game.level.flags.is_special = true;
+    game.level.flags.is_maze_lev = true;
+    game.level.flags.noteleport = true;
+
+    markSpecialSelectionWallProperty(
+        specialSelectionFillRect(context, 0, 0, 75, 19),
+        W_NONDIGGABLE,
+    );
+    active.explicitBranchRegion = absoluteSpecialRegion(
+        context, 8, 16, 8, 16,
+    );
+    active.upTeleportRegion = absoluteSpecialRegion(
+        context, 6, 15, 9, 16,
+    );
+    active.downTeleportRegion = { ...active.upTeleportRegion };
+
+    specialRectangularRoom(
+        context, 37, 8, 46, 11, COURT, true, FILL_NORMAL,
+    );
+    const croesusY = rn2(100) < 50 ? 10 : 9;
+    await specialMonsterAt(context, PM_CROESUS, 43, croesusY, {
+        randomGender: namedMonsterNeedsGenderDraw(PM_CROESUS),
+        peaceful: false,
+    });
+    if (croesusY === 9) {
+        game.level.at(context.xstart + 43, context.ystart + 9).typ = THRONE;
+        game.level.at(context.xstart + 43, context.ystart + 10).typ = ROOM;
+    }
+    if (rn2(100) < 50) {
+        const upperEntry = game.level.at(
+            context.xstart + 47, context.ystart + 9,
+        );
+        upperEntry.typ = SDOOR;
+        upperEntry.doormask = D_CLOSED;
+        game.level.at(
+            context.xstart + 47, context.ystart + 10,
+        ).typ = VWALL;
+    }
+
+    setSpecialRegionLighting(context, 21, 8, 35, 11, true);
+    for (let y = 8; y <= 11; y++) {
+        for (let x = 21; x <= 35; x++) {
+            mkgold(
+                600 + rn2(301),
+                context.xstart + x, context.ystart + y,
+            );
+            if (rn2(3) === 0) {
+                await specialTrapAt(
+                    context, rn2(3) === 0 ? SPIKED_PIT : LANDMINE, x, y,
+                );
+            }
+        }
+    }
+    if (rn2(100) < 50) {
+        game.level.at(
+            context.xstart + 36, context.ystart + 9,
+        ).typ = VWALL;
+        const lowerVault = game.level.at(
+            context.xstart + 36, context.ystart + 10,
+        );
+        lowerVault.typ = SDOOR;
+        lowerVault.doormask = D_CLOSED;
+    }
+
+    for (const [x1, y1, x2, y2] of [
+        [19, 6, 21, 6], [46, 6, 48, 6],
+        [19, 13, 21, 13], [46, 13, 48, 13],
+    ]) setSpecialRegionLighting(context, x1, y1, x2, y2, true);
+
+    specialIrregularRoom(
+        context, 3, 10, ZOO, true, FILL_NORMAL,
+    );
+    const arrival = specialRectangularRoom(
+        context, 6, 15, 9, 16, OROOM, false, 0,
+    );
+    arrival.arrival_room = true;
+    arrival.arrivalRoom = true;
+    setSpecialRegionLighting(context, 5, 14, 5, 17, false);
+    setSpecialRegionLighting(context, 5, 14, 9, 14, false);
+
+    specialIrregularRoom(
+        context, 62, 3, BARRACKS, true, FILL_NORMAL,
+    );
+    for (const [mask, x, y] of [
+        [D_CLOSED, 6, 14], [D_CLOSED, 9, 3],
+        [D_ISOPEN, 63, 5], [D_ISOPEN, 66, 5],
+        [D_ISOPEN, 68, 8], [D_LOCKED, 8, 11],
+        [D_ISOPEN, 68, 11], [D_CLOSED, 63, 14],
+        [D_CLOSED, 66, 14], [D_CLOSED, 4, 3],
+        [D_CLOSED, 4, 9],
+    ]) specialDoorAt(context, mask, x, y);
+
+    for (const [x, y] of [
+        [12, 14], [12, 13], [11, 10], [13, 2],
+        [14, 3], [20, 2], [30, 2], [40, 2],
+        [30, 16], [32, 16], [40, 16], [54, 16],
+        [54, 14], [54, 13], [57, 10], [57, 9],
+    ]) await specialMonsterAt(context, PM_SOLDIER, x, y);
+    await specialMonsterAt(context, PM_LIEUTENANT, 15, 8);
+    await specialMonsterAt(context, PM_STONE_GIANT, 3, 1);
+    for (const [x, y] of [
+        [18, 9], [49, 10], [33, 5], [33, 14],
+    ]) await specialMonsterClassAt(context, 30, x, y);
+    for (const [x, y] of [
+        [17, 8], [17, 11], [48, 8], [48, 11],
+    ]) await specialMonsterAt(context, PM_GIANT_EEL, x, y);
+
+    for (const [otyp, x, y] of [
+        [DIAMOND, 19, 6], [DIAMOND, 20, 6], [DIAMOND, 21, 6],
+        [EMERALD, 19, 13], [EMERALD, 20, 13], [EMERALD, 21, 13],
+        [RUBY, 46, 6], [RUBY, 47, 6], [RUBY, 48, 6],
+        [AMETHYST, 46, 13], [AMETHYST, 47, 13], [AMETHYST, 48, 13],
+    ]) specialObjectAt(context, otyp, x, y);
+
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flipSpecialLevelRandom(3);
+    active.explicitBranchRegion = flipSpecialRegion(
+        active.explicitBranchRegion,
+    );
+    active.upTeleportRegion = flipSpecialRegion(active.upTeleportRegion);
+    active.downTeleportRegion = flipSpecialRegion(active.downTeleportRegion);
+}
+
+export async function generateKnoxLevel(active) {
+    await generateSpecialAndFixup(generateKnox, active);
+    for (const room of game.level.rooms.slice(0, game.level.nroom))
+        await fillSpecialRoom(room);
+}
+
 async function tutorialMonsterAt(context, mndx, x, y, peaceful = null) {
     const requestedFemale = !!rn2(2); // find_montype()
     if (rn2(100) >= 80) rn2(3); // induced_align(80)
@@ -12627,6 +16253,10 @@ async function makelevel() {
                 await fillSpecialRoom(room);
             return;
         }
+        if (prototype === 'knox') {
+            await generateKnoxLevel(g._activeSpecialLevel);
+            return;
+        }
         if (prototype === 'asmodeus') {
             await generateSpecialAndFixup(generateAsmodeus,
                 g._activeSpecialLevel);
@@ -12665,44 +16295,20 @@ async function makelevel() {
                 await fillSpecialRoom(room);
             return;
         }
-        if (prototype === 'bigrm' && variant === 2) {
-            await generateSpecialAndFixup(generateBigrm2,
-                g._activeSpecialLevel);
+        if (prototype === 'wizard3') {
+            await generateWizard3Level(g._activeSpecialLevel);
             return;
         }
-        if (prototype === 'bigrm' && variant === 3) {
-            await generateSpecialAndFixup(generateBigrm3,
-                g._activeSpecialLevel);
+        if (prototype === 'fakewiz1' || prototype === 'fakewiz2') {
+            await generateFakeWizardLevel(g._activeSpecialLevel);
             return;
         }
-        if (prototype === 'bigrm' && variant === 4) {
-            await generateSpecialAndFixup(generateBigrm4,
-                g._activeSpecialLevel);
+        if (prototype === 'bigrm') {
+            await generateBigRoom(g._activeSpecialLevel);
             return;
         }
-        if (prototype === 'bigrm' && variant === 7) {
-            await generateSpecialAndFixup(generateBigrm7,
-                g._activeSpecialLevel);
-            return;
-        }
-        if (prototype === 'bigrm' && variant === 8) {
-            await generateSpecialAndFixup(generateBigrm8,
-                g._activeSpecialLevel);
-            return;
-        }
-        if (prototype === 'bigrm' && variant === 12) {
-            await generateSpecialAndFixup(generateBigrm12,
-                g._activeSpecialLevel);
-            return;
-        }
-        if (prototype === 'medusa' && variant === 1) {
-            await generateSpecialAndFixup(generateMedusa1,
-                g._activeSpecialLevel);
-            return;
-        }
-        if (prototype === 'medusa' && variant === 3) {
-            await generateSpecialAndFixup(generateMedusa3,
-                g._activeSpecialLevel);
+        if (prototype === 'medusa') {
+            await generateMedusaLevel(g._activeSpecialLevel);
             return;
         }
         if (prototype === 'valley') {
@@ -12729,6 +16335,18 @@ async function makelevel() {
                 g._activeSpecialLevel);
             return;
         }
+        if (prototype === 'earth') {
+            await generateEarthLevel(g._activeSpecialLevel);
+            return;
+        }
+        if (prototype === 'water') {
+            await generateWaterLevel(g._activeSpecialLevel);
+            return;
+        }
+        if (prototype === 'astral') {
+            await generateAstralLevel(g._activeSpecialLevel);
+            return;
+        }
         if (prototype === 'soko1' && variant === 1) {
             await generateSpecialAndFixup(generateSoko11,
                 g._activeSpecialLevel);
@@ -12739,9 +16357,8 @@ async function makelevel() {
                 g._activeSpecialLevel);
             return;
         }
-        if (prototype === 'soko2' && variant === 1) {
-            await generateSpecialAndFixup(generateSoko21,
-                g._activeSpecialLevel);
+        if (prototype === 'soko2') {
+            await generateSokobanLevel2(g._activeSpecialLevel);
             return;
         }
         if (prototype === 'soko3' && variant === 1) {
@@ -12863,36 +16480,12 @@ async function makelevel() {
                 await fillSpecialRoom(room);
             return;
         }
-        if (prototype === 'minetn' && variant === 2) {
-            await generateSpecialAndFixup(generateMinetown2,
-                g._activeSpecialLevel);
+        if (prototype === 'minetn') {
+            await generateMinetown(g._activeSpecialLevel);
             return;
         }
-        if (prototype === 'minetn' && variant === 3) {
-            await generateSpecialAndFixup(generateMinetown3,
-                g._activeSpecialLevel);
-            return;
-        }
-        if (prototype === 'minetn' && variant === 4) {
-            await generateSpecialAndFixup(generateMinetown4,
-                g._activeSpecialLevel);
-            return;
-        }
-        if (prototype === 'minetn' && variant === 5) {
-            await generateSpecialAndFixup(generateMinetown5,
-                g._activeSpecialLevel);
-            for (const room of g.level.rooms.slice(0, g.level.nroom))
-                await fillSpecialRoom(room);
-            return;
-        }
-        if (prototype === 'minend' && variant === 1) {
-            await generateSpecialAndFixup(generateMinend1,
-                g._activeSpecialLevel);
-            return;
-        }
-        if (prototype === 'minend' && variant === 2) {
-            await generateSpecialAndFixup(generateMinend2,
-                g._activeSpecialLevel);
+        if (prototype === 'minend') {
+            await generateMinesEnd(g._activeSpecialLevel);
             return;
         }
         if (prototype === 'oracle') {
@@ -12939,13 +16532,8 @@ async function makelevel() {
             file: 'hellfill.lua', align, defaultLit: false,
         };
         g._activeSpecialLevel = active;
-        if (await generateHellFiller(active)) {
-            await fixupSpecialBranch(active);
-            return;
-        }
-        // Preserve the selected descriptor while unported variants fall
-        // through to the ordinary generator; their first difference remains
-        // visible instead of being disguised as a completed Hell filler.
+        await generateHellFillerLevel(active);
+        return;
     }
 
     // C ref: mklev.c:1295 — check for below-Medusa maze level
@@ -13046,19 +16634,8 @@ async function makelevel() {
     // ordinary-room bonus and filling passes below.
     await maybeMakeSpecialRoom(roomThreshold);
 
-    // At depth 2 this fixture selects a shop candidate, then places the
-    // dungeon branch in a random room.  The branch terrain is normalized by
-    // the bounded level-transition slice; retain C's selection boundary here.
-    if (g._valkPitPath && (g.u?.uz?.dlevel ?? 1) === 2) {
-        rn2(2);
-        rn2(4);
-        rn2(6);
-    }
-
     // Place dungeon branch
-    if (branchp && !(g._valkPitPath && (g.u?.uz?.dlevel ?? 1) === 2)) {
-        await place_branch(branchp);
-    }
+    if (branchp) await place_branch(branchp);
 
     // Choose one of the ordinary rooms for any level-specific bonus item,
     // then populate every ordinary room.  The choice must use the current
@@ -13069,10 +16646,8 @@ async function makelevel() {
         .filter(room => room
             && (room.rtype === OROOM || room.rtype === THEMEROOM)
             && room.needfill === FILL_NORMAL);
-    const bonusItemRoomRange = g._valkPitPath
-        && (g.u?.uz?.dlevel ?? 1) === 2 ? 4 : fillableRooms.length;
     let bonusItemRoomCountdown = fillableRooms.length
-        ? rn2(bonusItemRoomRange) : -1;
+        ? rn2(fillableRooms.length) : -1;
     for (const croom of g.level.rooms.slice(0, g.level.nroom)) {
         const fillable = croom
             && (croom.rtype === OROOM || croom.rtype === THEMEROOM)
@@ -13584,22 +17159,22 @@ async function stockShopRoom(sroom) {
     // C ref: shkinit().  The gold object and possible charging scroll live
     // in the shopkeeper's inventory even though only their RNG-visible
     // initialization is needed by the current session.
-    const carryShopObject = object => {
-        if (!object) return null;
-        object.where = 'minvent';
-        shopkeeper.minvent.unshift(object);
-        shopkeeper.inventory = shopkeeper.minvent;
-        shopkeeper.hasInventory = true;
-        return object;
-    };
     shopkeeper.gold = 1000 + 30 * rnd(100);
-    carryShopObject(mksobj(GOLD_PIECE, false, false));
+    linkObjectToMonsterInventory(
+        shopkeeper, mksobj(GOLD_PIECE, false, false), { atFront: true },
+    );
     if (shopIndex === 6)
-        carryShopObject(mksobj(TOUCHSTONE, true, false));
+        addObjectToMonsterInventory(
+            shopkeeper, mksobj(TOUCHSTONE, true, false), game,
+            { atFront: true },
+        );
     if (shopIndex === 8 || shopIndex === 7
         || (shopIndex === 6 && rn2(2))
         || (shopIndex === 0 && rn2(5)))
-        carryShopObject(mksobj(SCR_CHARGING, true, false));
+        addObjectToMonsterInventory(
+            shopkeeper, mksobj(SCR_CHARGING, true, false), game,
+            { atFront: true },
+        );
     const shopkeeperNames = SHOPKEEPER_NAMES[shopIndex];
     if (shopIndex === 8) {
         // nameshk() deliberately randomizes hardware-store names instead of
@@ -13724,10 +17299,18 @@ function barracksMonsterType() {
 
 async function fillBarracksRoom(room) {
     const entrance = room.doorct ? game.level.doors?.[room.fdoor] : null;
+    const roomNumber = game.level.rooms.indexOf(room) + ROOMOFFSET;
     for (let x = room.lx; x <= room.hx; x++) {
         for (let y = room.ly; y <= room.hy; y++) {
             const loc = game.level.at(x, y);
-            if (!loc || !SPACE_POS(loc.typ)
+            if (!loc) continue;
+            if (room.irregular) {
+                if (loc.roomno !== roomNumber || loc.edge
+                    || (entrance
+                        && Math.max(Math.abs(x - entrance.x),
+                            Math.abs(y - entrance.y)) <= 1))
+                    continue;
+            } else if (!SPACE_POS(loc.typ)
                 || (entrance
                     && ((x === room.lx && entrance.x === x - 1)
                         || (x === room.hx && entrance.x === x + 1)
@@ -14054,7 +17637,7 @@ async function makerooms() {
 
 // Themed room metadata — must match C's themerms.lua frequency table exactly.
 // Generated from themeroom_meta.js (31 rooms).
-const THEMEROOM_META = [
+export const THEMEROOM_META = [
     { name: 'default', frequency: 1000 },
     { name: 'Fake Delphi', frequency: 1 },
     { name: 'Room in a room', frequency: 1 },
@@ -14065,7 +17648,10 @@ const THEMEROOM_META = [
     { name: 'Room with both normal contents and themed fill', frequency: 2 },
     { name: 'Pillars', frequency: 1 },
     { name: 'Mausoleum', frequency: 1 },
-    { name: 'Random dungeon feature', frequency: 1 },
+    {
+        name: 'Random dungeon feature in the middle of an odd-sized room',
+        frequency: 1,
+    },
     { name: 'L-shaped', frequency: 1 },
     { name: 'L-shaped, rot 1', frequency: 1 },
     { name: 'L-shaped, rot 2', frequency: 1 },
@@ -14484,6 +18070,29 @@ function randomIrregularRoomPosition(room) {
     return null;
 }
 
+// Lua selection.room() returns the current room's interior as a selection.
+// Use room ownership rather than the bounding rectangle so irregular themed
+// maps do not admit holes or boundary tiles into source-owned callbacks.
+function themeroomSelection(room) {
+    const selection = new SpecialSelection();
+    const roomno = (room.roomnoidx ?? game.level.rooms.indexOf(room))
+        + ROOMOFFSET;
+    for (let x = room.lx; x <= room.hx; x++) {
+        for (let y = room.ly; y <= room.hy; y++) {
+            const loc = game.level.at(x, y);
+            if (loc && !loc.edge && loc.roomno === roomno)
+                selection.add(x, y);
+        }
+    }
+    return selection;
+}
+
+function luaSelectionCoordinates(selection) {
+    const coordinates = [];
+    selection.forEachLua((x, y) => coordinates.push({ x, y }));
+    return coordinates;
+}
+
 function pickThemeroomFill(room, difficulty) {
     let pick = null;
     let totalFrequency = 0;
@@ -14495,6 +18104,193 @@ function pickThemeroomFill(room, difficulty) {
         if (rn2(totalFrequency) < 1) pick = meta;
     }
     return pick;
+}
+
+// C/Lua refs: themerms.lua selection-driven hazard fills, selvar.c
+// selection_filter_percent(), and sp_lev.c create_object()/create_trap().
+// percentage() owns its x-major filter draws; selection:iterate() then invokes
+// the retained callbacks in row-major Lua order.
+function fillIceRoom(room, difficulty = level_difficulty()) {
+    const ice = themeroomSelection(room);
+    // des.terrain(selection, "I") routes through sel_set_ter(). The themed
+    // room VM has no des.level_init({ icedpools=true }), so the existing ROOM
+    // flags remain the melt-underlay and ordinary zero flags melt to MOAT.
+    specialSelectionTerrain(ice, ICE);
+    for (const { x, y } of luaSelectionCoordinates(ice)) {
+        const loc = game.level.at(x, y);
+        loc.icedpool = loc.flags ?? 0;
+    }
+    if (rn2(100) < 25) {
+        const minTime = 1000 - difficulty * 100;
+        for (const { x, y } of luaSelectionCoordinates(ice)) {
+            scheduleLevelTimer(
+                x, y, LEVEL_TIMER_KIND.MELT_ICE_AWAY,
+                (game.moves ?? 0) + minTime + rn2(1000), game,
+            );
+        }
+    }
+}
+
+async function fillBoulderRoom(room) {
+    const context = specialRoomContext(room);
+    const selected = themeroomSelection(room).percentage(30);
+    for (const coord of luaSelectionCoordinates(selected)) {
+        const x = coord.x - context.xstart;
+        const y = coord.y - context.ystart;
+        if (rn2(100) < 50)
+            specialObjectAt(context, BOULDER, x, y);
+        else
+            await specialTrapAt(context, ROLLING_BOULDER_TRAP, x, y);
+    }
+}
+
+async function fillCloudRoom(room) {
+    const selection = themeroomSelection(room);
+    const cells = luaSelectionCoordinates(selection);
+    const context = specialRoomContext(room);
+    const fogCount = Math.trunc(selection.numPoints() / 4);
+    for (let count = 0; count < fogCount; count++) {
+        const fog = await specialExplicitMonster(context, PM_FOG_CLOUD);
+        if (fog) fog.msleeping = 1;
+    }
+    // des.gas_cloud({ selection = fog }) delegates to
+    // create_gas_cloud_selection(): the selected region is permanent until
+    // its fog-cloud occupants extend it into a finite TTL at runtime.
+    createHarmlessGasCloudSelection(game, cells, { ttl: -1 });
+}
+
+async function fillGarden(room) {
+    const selection = themeroomSelection(room);
+    const context = specialRoomContext(room);
+    const population = Math.trunc(selection.numPoints() / 6);
+    for (let count = 0; count < population; count++) {
+        const nymph = await specialExplicitMonster(context, PM_WOOD_NYMPH);
+        if (nymph) nymph.msleeping = 1;
+        if (rn2(100) < 30) specialFeatureOfType(context, FOUNTAIN);
+    }
+    game._themeroomPostprocess.push({
+        kind: 'garden-walls',
+        cells: luaSelectionCoordinates(themeroomSelection(room)),
+    });
+}
+
+const MASSACRE_CORPSE_TYPES = [
+    // Source names are 12 role guardians followed by the 13 roles; the
+    // gendered priest/priestess and caveman/cavewoman aliases intentionally
+    // resolve to the same corpse species and therefore appear twice.
+    382, 381, 378, 377, 376, 375, 374, 373, 372, 371, 370, 369,
+    343, 342, 341, 340, 339, 338, 337, 337, 336, 335, 334, 333,
+    333, 332, 331,
+];
+
+function fillMassacre(room) {
+    const context = specialRoomContext(room);
+    let corpseType = MASSACRE_CORPSE_TYPES[rn2(MASSACRE_CORPSE_TYPES.length)];
+    const corpseCount = d(5, 5);
+    for (let count = 0; count < corpseCount; count++) {
+        if (rn2(100) < 10)
+            corpseType = MASSACRE_CORPSE_TYPES[
+                rn2(MASSACRE_CORPSE_TYPES.length)
+            ];
+        specialCorpseOf(context, corpseType);
+    }
+}
+
+async function fillStatuary(room) {
+    const context = specialRoomContext(room);
+    const statueCount = d(5, 5);
+    for (let count = 0; count < statueCount; count++)
+        specialObjectOfType(context, STATUE);
+    const trapCount = d(1, 3);
+    for (let count = 0; count < trapCount; count++)
+        await specialTrapOfType(context, STATUE_TRAP);
+}
+
+// C/Lua refs: themerms.lua "Buried treasure", sp_lev.c create_object(),
+// dig.c bury_an_obj(), and zap.c obj_resists().  create_object() buries the
+// initialized chest before Lua enters its contents callback.  Keep that
+// ordering explicit: the burial draws precede d(3,4) and every child object.
+function fillBuriedTreasure(room) {
+    const context = specialRoomContext(room);
+    const chest = specialObjectOfType(context, CHEST);
+    if (!chest) return;
+    const x = chest.ox, y = chest.oy;
+
+    // A Lua `contents` function clears mkbox_cnts() only after the complete
+    // initialized chest constructor (and all of its RNG) has run.
+    chest.contents = [];
+
+    // bury_an_obj(): the first ordinary-object resistance test always draws
+    // and cannot save a non-artifact chest.  A wooden chest then gets a
+    // second 5% resistance test before its ROT_ORGANIC timer is scheduled.
+    rn2(100);
+    if (rn2(100) >= 5) {
+        scheduleObjectTimer(
+            chest, OBJECT_TIMER_KIND.ROT_ORGANIC,
+            (game.moves ?? 0) + 250 + rnd(250), game,
+        );
+    }
+    addBuriedObject(chest, x, y);
+
+    // otmp:totable() observes the retained burial coordinates.  Queueing the
+    // callback itself is RNG-free and occurs before the child-count dice.
+    game._themeroomPostprocess.push({
+        kind: 'buried-treasure-engraving',
+        x,
+        y,
+    });
+
+    const contentCount = d(3, 4);
+    for (let count = 0; count < contentCount; count++) {
+        // Nested des.object() still samples a dry room coordinate and builds
+        // a floor object before create_object() moves it into the container.
+        const object = specialObject(context);
+        addSpecialContainerObject(chest, object);
+        chest.owt = objectWeight(chest);
+    }
+}
+
+// C/Lua refs: themerms.lua "Light source" and timeout.c begin_burn().
+// The initialized oil lamp keeps its constructor-selected fuel, then lit=true
+// schedules the first source breakpoint and registers mobile illumination.
+function fillLightSource(room) {
+    const lamp = specialObjectOfType(specialRoomContext(room), OIL_LAMP);
+    if (lamp) beginOilLampBurn(lamp);
+}
+
+async function fillSpiderNest(room, difficulty) {
+    const context = specialRoomContext(room);
+    const selected = themeroomSelection(room).percentage(30);
+    const spidersEligible = difficulty > 8;
+    for (const coord of luaSelectionCoordinates(selected)) {
+        const spiderOnWeb = spidersEligible && rn2(100) < 80;
+        await specialTrapAt(
+            context, WEB,
+            coord.x - context.xstart,
+            coord.y - context.ystart,
+            { spiderOnWeb },
+        );
+    }
+}
+
+async function fillTrapRoom(room) {
+    const traps = [
+        ARROW_TRAP, DART_TRAP, ROCKTRAP, BEAR_TRAP,
+        LANDMINE, SLP_GAS_TRAP, RUST_TRAP, ANTI_MAGIC,
+    ];
+    for (let count = traps.length; count > 1; count--) {
+        const index = rn2(count);
+        [traps[count - 1], traps[index]] = [traps[index], traps[count - 1]];
+    }
+    const context = specialRoomContext(room);
+    const selected = themeroomSelection(room).percentage(30);
+    for (const coord of luaSelectionCoordinates(selected)) {
+        await specialTrapAt(
+            context, traps[0],
+            coord.x - context.xstart,
+            coord.y - context.ystart,
+        );
+    }
 }
 
 // C/Lua refs: themerms.lua "Storeroom", selvar.c
@@ -14553,9 +18349,46 @@ function fillTeleportationHub(room) {
     }
 }
 
-async function runThemeroomPostprocess() {
+export async function runThemeroomPostprocess() {
     const callbacks = game._themeroomPostprocess || [];
     for (const callback of callbacks) {
+        if (callback.kind === 'garden-walls') {
+            const selection = new SpecialSelection();
+            for (const cell of callback.cells || [])
+                selection.add(cell.x, cell.y);
+            const grown = selection.grow();
+            grown.forEachXMajor((x, y) => {
+                const loc = game.level.at(x, y);
+                if (!loc) return;
+                if (IS_STWALL(loc.typ)) loc.typ = TREE;
+                else if (loc.typ === SDOOR) loc.arboreal_sdoor = 1;
+            });
+            continue;
+        }
+        if (callback.kind === 'buried-treasure-engraving') {
+            const floors = new SpecialSelection();
+            for (let x = 0; x < COLNO; x++) {
+                for (let y = 0; y < ROWNO; y++) {
+                    if (game.level.at(x, y)?.typ === ROOM) floors.add(x, y);
+                }
+            }
+            const pos = floors.randomCoordinate(false);
+            if (!pos) continue;
+            const tx = callback.x - pos.x - 1;
+            const ty = callback.y - pos.y;
+            let direction = '';
+            if (tx === 0 && ty === 0) direction = ' here';
+            else {
+                if (tx)
+                    direction += ` ${Math.abs(tx)} ${tx > 0 ? 'east' : 'west'}`;
+                if (ty)
+                    direction += ` ${Math.abs(ty)} ${ty > 0 ? 'south' : 'north'}`;
+            }
+            makeEngravingAt(
+                pos.x, pos.y, `Dig${direction}`, null, 0, BURN,
+            );
+            continue;
+        }
         if (callback.kind !== 'teleportation-hub-trap') continue;
         const locations = new SpecialSelection();
         for (let x = 0; x < COLNO; x++) {
@@ -14587,9 +18420,13 @@ async function runThemeroomPostprocess() {
     game._themeroomPostprocess = [];
 }
 
-function fillBuriedZombies(room) {
-    // Monster indices in the NetHack 5.0 mons[] table.
+function fillBuriedZombies(room, difficulty = level_difficulty()) {
+    // Monster indices in the NetHack 5.0 mons[] table.  themerms.lua expands
+    // this reservoir at the same two level_difficulty() thresholds before
+    // entering the per-corpse shuffle loop.
     const zombifiable = [59, 165, 72, 44]; // kobold, gnome, orc, dwarf
+    if (difficulty > 3) zombifiable.push(264, 260); // elf, human
+    if (difficulty > 6) zombifiable.push(174, 169); // ettin, giant
     const count = Math.floor(((room.hx - room.lx + 1)
         * (room.hy - room.ly + 1)) / 2);
     if (!game.level.buriedObjects) game.level.buriedObjects = [];
@@ -14608,47 +18445,101 @@ function fillBuriedZombies(room) {
         // floor chain.  Ordinary corpses cannot resist, but the RNG call is
         // unconditional and therefore part of the replay contract.
         rn2(100);
-        const pile = game.level.objects[pos.x]?.[pos.y];
-        const pileIndex = pile?.indexOf(corpse) ?? -1;
-        if (pileIndex >= 0) pile.splice(pileIndex, 1);
-        corpse.buried = true;
-        game.level.buriedObjects.unshift(corpse);
+        addBuriedObject(corpse, pos.x, pos.y);
 
-        // Lua's math.random(990, 1010), used for the zombify-mon timer.
-        corpse.zombifyTimeout = 990 + rn2(21);
+        // create_object() returns to Lua only after burial.  The callback then
+        // stops the ROT_CORPSE timer installed by set_corpsenm() and replaces
+        // it with an absolute ZOMBIFY_MON deadline from math.random(990,1010).
+        stopObjectTimer(corpse, OBJECT_TIMER_KIND.ROT_CORPSE);
+        scheduleObjectTimer(
+            corpse, OBJECT_TIMER_KIND.ZOMBIFY_MON,
+            (game.moves ?? 0) + 990 + rn2(21), game,
+        );
     }
 }
 
-// The ghost-adventurer themed fill makes a ghost, then independently tries
-// two pieces of former-adventurer equipment.  This bounded branch retains
-// the canonical call shapes until the full ghost inventory helpers are
-// represented as live objects.
-function fillGhostAdventurerValkSlice() {
-    rn2(36); // selection_rndcoord
-    rn2(2); // find_montype
-    rn2(3); // induced_align
-    nextIdent();
-    d(9, 8); // newmonhp
-    for (const range of [2, 7, 34, 50, 100, 100, 100, 100]) rn2(range);
+// C/Lua refs: themerms.lua "Ghost of an Adventurer", selvar.c
+// selection_rndcoord(), and sp_lev.c create_monster()/create_object().  This
+// is a live room callback: no seed, role, replay-move, or session carrier is
+// consulted to decide whether the ghost and equipment exist.
+async function fillGhostAdventurer(room) {
+    const coord = themeroomSelection(room).randomCoordinate(false);
+    if (!coord) return;
+    const context = specialRoomContext(room);
+    const x = coord.x - context.xstart;
+    const y = coord.y - context.ystart;
+    const ghost = await specialMonsterAt(
+        context, 287, x, y, { mmflags: MM_ASLEEP }, // PM_GHOST
+    );
+    if (ghost) {
+        ghost.msleeping = 1;
+        ghost.mstrategy = (ghost.mstrategy ?? 0) | STRAT_WAITFORU;
+        ghost.waiting = true;
+    }
 
-    rnd(1002); rnd(2);
-    for (const range of [6, 11, 10, 10, 100, 20, 100, 80, 80, 1000,
-        100, 100]) rn2(range);
-
-    rnd(1000); rnd(2);
-    for (const range of [10, 11, 10, 10, 40, 100, 80, 80, 1000,
-        100, 100]) rn2(range);
+    const notBlessed = object => {
+        if (object) object.blessed = false;
+        return object;
+    };
+    if (rn2(100) < 65)
+        notBlessed(specialObjectAt(context, DAGGER, x, y));
+    if (rn2(100) < 55)
+        notBlessed(specialObjectClassAt(context, WEAPON_CLASS, x, y));
+    if (rn2(100) < 45) {
+        notBlessed(specialObjectAt(context, BOW, x, y));
+        notBlessed(specialObjectAt(context, ARROW, x, y));
+    }
+    if (rn2(100) < 65)
+        notBlessed(specialObjectClassAt(context, ARMOR_CLASS, x, y));
+    if (rn2(100) < 20)
+        notBlessed(specialObjectClassAt(context, RING_CLASS, x, y));
+    if (rn2(100) < 20)
+        notBlessed(specialObjectClassAt(context, SCROLL_CLASS, x, y));
 }
 
 function fillTempleOfGods(room) {
-    for (let index = 0; index < 4; index++) {
+    for (let index = 0; index < 3; index++) {
         const x = somex(room), y = somey(room);
         const loc = game.level?.at(x, y);
         if (loc) loc.typ = ALTAR;
     }
 }
 
-function generateStaticThemedRoom(rows, fillx, filly, difficulty, prepare = null) {
+async function applyThemeroomFill(room, fill, difficulty) {
+    if (!fill) return false;
+    if (fill.name === 'Ice room') fillIceRoom(room, difficulty);
+    else if (fill.name === 'Cloud room') await fillCloudRoom(room);
+    else if (fill.name === 'Garden') await fillGarden(room);
+    else if (fill.name === 'Boulder room') await fillBoulderRoom(room);
+    else if (fill.name === 'Spider nest')
+        await fillSpiderNest(room, difficulty);
+    else if (fill.name === 'Trap room') await fillTrapRoom(room);
+    else if (fill.name === 'Buried treasure') fillBuriedTreasure(room);
+    else if (fill.name === 'Buried zombies')
+        fillBuriedZombies(room, difficulty);
+    else if (fill.name === 'Massacre') fillMassacre(room);
+    else if (fill.name === 'Statuary') await fillStatuary(room);
+    else if (fill.name === 'Light source') fillLightSource(room);
+    else if (fill.name === 'Ghost of an Adventurer')
+        await fillGhostAdventurer(room);
+    else if (fill.name === 'Temple of the gods') fillTempleOfGods(room);
+    else if (fill.name === 'Storeroom') await fillStoreroom(room);
+    else if (fill.name === 'Teleportation hub') fillTeleportationHub(room);
+    else return false;
+    return true;
+}
+
+// Named entrypoint used by source-invariant tests and by future direct
+// THEMERMFILL plumbing.  A declared but not-yet-ported fill returns false
+// instead of pretending that an empty callback is implemented.
+export async function applyThemeroomFillByName(room, name, difficulty) {
+    const fill = THEMEROOM_FILL_META.find(candidate => candidate.name === name);
+    return fill ? applyThemeroomFill(room, fill, difficulty) : false;
+}
+
+async function generateStaticThemedRoom(
+    rows, fillx, filly, difficulty, prepare = null,
+) {
     const placed = placeThemedMap(rows);
     if (!placed) return false;
     if (prepare) prepare(placed);
@@ -14663,11 +18554,7 @@ function generateStaticThemedRoom(rows, fillx, filly, difficulty, prepare = null
     if (!room) return false;
     if (themedFill) {
         const fill = pickThemeroomFill(room, difficulty);
-        if (fill?.name === 'Buried zombies') fillBuriedZombies(room);
-        else if (fill?.name === 'Ghost of an Adventurer'
-            && game._valkPitPath) fillGhostAdventurerValkSlice();
-        else if (fill?.name === 'Teleportation hub')
-            fillTeleportationHub(room);
+        await applyThemeroomFill(room, fill, difficulty);
     }
     game._hasStaticThemeroom = true;
     return true;
@@ -14836,6 +18723,41 @@ async function generateFakeDelphi() {
     return !!outer;
 }
 
+// C/Lua ref: themerms.lua "Room in a room".  The outer room receives
+// ordinary C fill; the child owns only its callback-created door.
+async function generateRoomInRoom() {
+    const outer = await buildSpecialRoom({
+        rtype: OROOM, filled: FILL_NORMAL,
+    }, null, async outerRoom => {
+        await buildSpecialRoom({
+            rtype: OROOM, filled: 0,
+        }, outerRoom, async innerRoom => {
+            createSpecialRoomDoor(innerRoom, 'random', 'all');
+        });
+    });
+    return !!outer;
+}
+
+// C/Lua ref: themerms.lua "Huge room with another room inside".  Width and
+// height expressions are evaluated before lspo_room() pays its chance draw.
+async function generateHugeRoomWithInnerRoom() {
+    const width = 11 + rn2(10);
+    const height = 8 + rn2(5);
+    const outer = await buildSpecialRoom({
+        rtype: OROOM, w: width, h: height, filled: FILL_NORMAL,
+    }, null, async outerRoom => {
+        if (rn2(100) >= 90) return;
+        await buildSpecialRoom({
+            rtype: OROOM, filled: FILL_NORMAL,
+        }, outerRoom, async innerRoom => {
+            createSpecialRoomDoor(innerRoom, 'random', 'all');
+            if (rn2(100) < 50)
+                createSpecialRoomDoor(innerRoom, 'random', 'all');
+        });
+    });
+    return !!outer;
+}
+
 // C/Lua ref: themerms.lua "Nesting rooms".  Each des.room callback runs
 // immediately after its parent is constructed, so dimensions, chance checks,
 // subroom placement, lighting, and door selection remain interleaved.
@@ -14880,53 +18802,166 @@ async function generateNestingRooms() {
     return !!outer;
 }
 
-// C ref: themerms.lua themerooms_generate()
-// Reservoir sampling picks one themed room. For seed8000 level 1,
-// 'ordinary' always wins (frequency 1000 vs others ~1-10).
-async function themerooms_generate(difficulty) {
-    let pick = null;
-    let total_frequency = 0;
-    for (const meta of THEMEROOM_META) {
-        if (!is_themeroom_eligible(meta, difficulty)) continue;
-        const this_frequency = meta.frequency || 1;
-        total_frequency += this_frequency;
-        if (this_frequency > 0 && rn2(total_frequency) < this_frequency) {
-            pick = meta;
+// C/Lua ref: themerms.lua "Mausoleum".  The central 1x1 unjoined child is
+// intentionally a themed room so later random-special conversion cannot turn
+// the tomb into a shop or temple.
+async function generateMausoleum() {
+    const width = 5 + rn2(3) * 2;
+    const height = 5 + rn2(3) * 2;
+    const outer = await buildSpecialRoom({
+        rtype: THEMEROOM, w: width, h: height, filled: 0,
+    }, null, async outerRoom => {
+        await buildSpecialRoom({
+            rtype: THEMEROOM,
+            x: Math.trunc((width - 1) / 2),
+            y: Math.trunc((height - 1) / 2),
+            w: 1, h: 1, joined: false, filled: 0,
+        }, outerRoom, async tomb => {
+            const context = specialRoomContext(tomb);
+            if (rn2(100) < 50) {
+                const classes = [39, 48, 38, 52];
+                for (let count = classes.length; count > 1; count--) {
+                    const index = rn2(count);
+                    [classes[count - 1], classes[index]]
+                        = [classes[index], classes[count - 1]];
+                }
+                const monster = await specialMonsterOfClass(
+                    context, classes[0],
+                );
+                if (monster)
+                    monster.mstrategy = (monster.mstrategy || 0)
+                        | STRAT_WAITFORU;
+            } else {
+                const human = mkclass(53, 0x0200); // S_HUMAN
+                if (human != null) specialCorpseOf(context, human);
+            }
+            if (rn2(100) < 20)
+                createSpecialRoomDoor(tomb, 'secret', 'all');
+        });
+    });
+    return !!outer;
+}
+
+async function generateOddRoomFeature() {
+    const width = 3 + rn2(3) * 2;
+    const height = 3 + rn2(3) * 2;
+    const room = await buildSpecialRoom({
+        rtype: OROOM, w: width, h: height, filled: FILL_NORMAL,
+    }, null, generatedRoom => {
+        const features = [CLOUD, LAVAPOOL, ICE, POOL, TREE];
+        for (let count = features.length; count > 1; count--) {
+            const index = rn2(count);
+            [features[count - 1], features[index]]
+                = [features[index], features[count - 1]];
         }
-    }
-    if (!pick) return false;
-    if (pick.name === 'Fake Delphi')
+        const center = game.level.at(
+            generatedRoom.lx + Math.trunc((width - 1) / 2),
+            generatedRoom.ly + Math.trunc((height - 1) / 2),
+        );
+        if (center) center.typ = features[0];
+    });
+    return !!room;
+}
+
+// C/Lua ref: themerms.lua "Twin businesses".  Lua evaluates every helper in
+// the placements table before selecting one layout, so all twelve direction
+// percentages belong to the constructor even though only two are retained.
+async function generateTwinBusinesses() {
+    const outer = await buildSpecialRoom({
+        rtype: THEMEROOM, w: 9, h: 5, filled: 0,
+    }, null, async outerRoom => {
+        const southeast = () => rn2(100) < 50 ? 'south' : 'east';
+        const northeast = () => rn2(100) < 50 ? 'north' : 'east';
+        const northwest = () => rn2(100) < 50 ? 'north' : 'west';
+        const southwest = () => rn2(100) < 50 ? 'south' : 'west';
+        const placements = [
+            { lx: 1, ly: 1, rx: 4, ry: 1, lwall: 'south', rwall: southeast() },
+            { lx: 1, ly: 2, rx: 4, ry: 2, lwall: 'north', rwall: northeast() },
+            { lx: 1, ly: 1, rx: 5, ry: 1, lwall: southeast(), rwall: southwest() },
+            { lx: 1, ly: 1, rx: 5, ry: 2, lwall: southeast(), rwall: northwest() },
+            { lx: 1, ly: 2, rx: 5, ry: 1, lwall: northeast(), rwall: southwest() },
+            { lx: 1, ly: 2, rx: 5, ry: 2, lwall: northeast(), rwall: northwest() },
+            { lx: 2, ly: 1, rx: 5, ry: 1, lwall: southwest(), rwall: 'south' },
+            { lx: 2, ly: 2, rx: 5, ry: 2, lwall: northwest(), rwall: 'north' },
+        ];
+
+        let leftType = SHOPBASE + 4; // weapon shop
+        let rightType = SHOPBASE + 1; // armor shop
+        if (rn2(100) < 50)
+            [leftType, rightType] = [rightType, leftType];
+        const placement = placements[rnd(placements.length) - 1];
+        const shopDoorState = () => rn2(100) < 1 ? 'locked'
+            : rn2(100) < 50 ? 'closed' : 'open';
+
+        await buildSpecialRoom({
+            rtype: leftType,
+            x: placement.lx, y: placement.ly,
+            w: 3, h: 3, filled: FILL_NORMAL, joined: false,
+        }, outerRoom, leftRoom => {
+            createSpecialRoomDoor(
+                leftRoom, shopDoorState(), placement.lwall,
+            );
+        });
+        await buildSpecialRoom({
+            rtype: rightType,
+            x: placement.rx, y: placement.ry,
+            w: 3, h: 3, filled: FILL_NORMAL, joined: false,
+        }, outerRoom, rightRoom => {
+            createSpecialRoomDoor(
+                rightRoom, shopDoorState(), placement.rwall,
+            );
+        });
+    });
+    return !!outer;
+}
+
+// C ref: themerms.lua themerooms_generate()
+// The named dispatcher is shared by the reservoir and source-invariant tests;
+// selecting a rare form never falls through to a generic rectangle.
+export async function generateThemeroomByName(name, difficulty) {
+    if (name === 'Fake Delphi')
         return generateFakeDelphi();
-    if (pick.name === 'Blocked center')
-        return generateBlockedCenter(difficulty);
-    if (pick.name === 'Nesting rooms')
+    if (name === 'Room in a room')
+        return generateRoomInRoom();
+    if (name === 'Huge room with another room inside')
+        return generateHugeRoomWithInnerRoom();
+    if (name === 'Nesting rooms')
         return generateNestingRooms();
-    if (pick.name === 'Water-surrounded vault')
+    if (name === 'Mausoleum')
+        return generateMausoleum();
+    if (name === 'Random dungeon feature in the middle of an odd-sized room')
+        return generateOddRoomFeature();
+    if (name === 'Twin businesses')
+        return generateTwinBusinesses();
+    if (name === 'Blocked center')
+        return generateBlockedCenter(difficulty);
+    if (name === 'Water-surrounded vault')
         return generateWaterSurroundedVault();
-    const staticRoom = STATIC_THEMED_ROOMS.get(pick.name);
+    const staticRoom = STATIC_THEMED_ROOMS.get(name);
     if (staticRoom)
         return generateStaticThemedRoom(...staticRoom, difficulty);
-    // For 'ordinary' rooms, create a standard room
-    // For themed rooms with dynamic dimensions, consume those rn2 calls first
-    const chance = 100;
-    if (pick.name !== 'ordinary') {
-        // Themed room — not expected for seed8000, but handle RNG correctly
-        rn2(100); // chance check (build_room)
-    }
+
+    const genericNames = new Set([
+        'default', 'Default room with themed fill',
+        'Unlit room with themed fill',
+        'Room with both normal contents and themed fill', 'Pillars',
+    ]);
+    if (!genericNames.has(name)) return false;
+    rn2(100); // build_room chance check, including chance=100
     // The Lua room directive owns retained room type and lighting as well as
     // its contents callback.  These three dynamic forms are THEMEROOMs; the
     // generic default and explicitly ordinary shapes remain OROOMs.
-    const keepsThemedType = pick.name === 'Default room with themed fill'
-        || pick.name === 'Unlit room with themed fill'
-        || pick.name === 'Room with both normal contents and themed fill'
-        || pick.name === 'Pillars';
-    const usesThemedFill = pick.name === 'Default room with themed fill'
-        || pick.name === 'Unlit room with themed fill'
-        || pick.name === 'Room with both normal contents and themed fill';
+    const keepsThemedType = name === 'Default room with themed fill'
+        || name === 'Unlit room with themed fill'
+        || name === 'Room with both normal contents and themed fill'
+        || name === 'Pillars';
+    const usesThemedFill = name === 'Default room with themed fill'
+        || name === 'Unlit room with themed fill'
+        || name === 'Room with both normal contents and themed fill';
     const roomType = keepsThemedType ? THEMEROOM : OROOM;
-    const roomLit = pick.name === 'Unlit room with themed fill' ? 0 : -1;
-    const roomWidth = pick.name === 'Pillars' ? 10 : -1;
-    const roomHeight = pick.name === 'Pillars' ? 10 : -1;
+    const roomLit = name === 'Unlit room with themed fill' ? 0 : -1;
+    const roomWidth = name === 'Pillars' ? 10 : -1;
+    const roomHeight = name === 'Pillars' ? 10 : -1;
     // All dynamic themed-room directives go through create_room for placement.
     const ok = create_room(
         -1, -1, roomWidth, roomHeight, -1, -1, roomType, roomLit,
@@ -14939,22 +18974,35 @@ async function themerooms_generate(difficulty) {
             // Lua's `filled=1` belongs to the ordinary default and the
             // explicitly combined normal-plus-themed variant.  The default
             // and unlit themed-fill rooms run only their contents callback.
-            aroom.needfill = pick.name === 'Pillars'
+            aroom.needfill = name === 'Pillars'
                 || (usesThemedFill
-                    && pick.name
+                    && name
                         !== 'Room with both normal contents and themed fill')
                 ? 0 : FILL_NORMAL;
-            if (pick.name === 'Pillars') fillPillarsThemedRoom(aroom);
+            if (name === 'Pillars') fillPillarsThemedRoom(aroom);
             if (usesThemedFill) {
                 const fill = pickThemeroomFill(aroom, difficulty);
-                if (fill?.name === 'Temple of the gods') fillTempleOfGods(aroom);
-                else if (fill?.name === 'Storeroom') await fillStoreroom(aroom);
-                else if (fill?.name === 'Teleportation hub')
-                    fillTeleportationHub(aroom);
+                await applyThemeroomFill(aroom, fill, difficulty);
             }
         }
     }
     return ok;
+}
+
+async function themerooms_generate(difficulty) {
+    let pick = null;
+    let total_frequency = 0;
+    for (const meta of THEMEROOM_META) {
+        if (!is_themeroom_eligible(meta, difficulty)) continue;
+        const this_frequency = meta.frequency || 1;
+        total_frequency += this_frequency;
+        if (this_frequency > 0 && rn2(total_frequency) < this_frequency) {
+            pick = meta;
+        }
+    }
+    return pick
+        ? generateThemeroomByName(pick.name, difficulty)
+        : false;
 }
 
 // C ref: sp_lev.c check_room()
@@ -15717,19 +19765,7 @@ function generate_stairs_find_room() {
             if (generate_stairs_room_good(g.level.rooms[i], phase))
                 candidates.push(i);
         if (candidates.length > 0) {
-            const wizardFirstStair = game._wizardBindPath
-                && candidates.length === 7 && !game._wizardBindStairPicked;
-            const wizardBranch = game._wizardBindPath
-                && game._wizardBindStairPicked && !game._wizardBindBranchPicked
-                && candidates.length === 6;
-            const count = wizardFirstStair ? 6
-                : wizardBranch ? 5 : candidates.length;
-            const pick = rn2(count);
-            if (wizardFirstStair) game._wizardBindStairPicked = true;
-            if (wizardBranch) game._wizardBindBranchPicked = true;
-            const candidateIndex = (wizardFirstStair || wizardBranch) && pick >= 3
-                ? pick + 1 : pick;
-            return g.level.rooms[candidates[candidateIndex]];
+            return g.level.rooms[candidates[rn2(candidates.length)]];
         }
     }
     return g.level.rooms[rn2(g.level.nroom)];
@@ -16245,26 +20281,41 @@ function mkaltar(croom) {
 }
 
 function mkgrave_room(croom) {
-    if (croom.rtype !== OROOM) return;
     const dobell = !rn2(10);
+    if (croom.rtype !== OROOM) return;
     const pos = { x: 0, y: 0 };
     if (!find_okay_roompos(croom, pos)) return;
     make_grave(pos.x, pos.y, dobell ? 'Saved by the bell!' : null);
     if (!rn2(3)) {
         const gold = mksobj(GOLD_PIECE, true, false);
         if (gold) {
-            const depth = game.u?.uz?.dlevel ?? 1;
-            gold.quan = rnd(20) + depth * rnd(5);
+            gold.quan = gold.quantity = rnd(20)
+                + level_difficulty() * rnd(5);
+            gold.owt = objectWeight(gold);
+            addBuriedObject(gold, pos.x, pos.y);
         }
     }
     for (let tryct = rn2(5); tryct > 0; tryct--) {
         const otmp = mkobj(RANDOM_CLASS, true);
         curse(otmp);
+        addBuriedObject(otmp, pos.x, pos.y);
     }
     if (dobell) mksobj_at(BELL, pos.x, pos.y, true, false);
 }
 
-async function fill_ordinary_room(croom, bonus_items) {
+function fillRandomRoomObjects(croom, pos) {
+    if (!rn2(3) && somexyspace(croom, pos)) {
+        mkobj_at(RANDOM_CLASS, pos.x, pos.y, true);
+        let objTrycnt = 0;
+        while (!rn2(5)) {
+            if (++objTrycnt > 100) break;
+            if (somexyspace(croom, pos))
+                mkobj_at(RANDOM_CLASS, pos.x, pos.y, true);
+        }
+    }
+}
+
+export async function fill_ordinary_room(croom, bonus_items) {
     const g = game;
     if (!croom || (croom.rtype !== OROOM && croom.rtype !== THEMEROOM)) return;
     // C fills descendants before their parent and does so even when the
@@ -16274,13 +20325,18 @@ async function fill_ordinary_room(croom, bonus_items) {
     if (croom.needfill !== FILL_NORMAL) return;
 
     const pos = { x: 0, y: 0 };
-    // Sleeping monster (33%)
-    if (!rn2(3) && somexyspace(croom, pos)) {
-        await makemon(null, pos.x, pos.y, MM_NOGRP);
+    // With the Amulet, every ordinary room receives a monster and the
+    // one-in-three selection draw is short-circuited.  A generated giant
+    // spider owns a co-located web if no prior furniture or trap occupies it.
+    if ((g.u?.uhave?.amulet || !rn2(3)) && somexyspace(croom, pos)) {
+        const tmonst = await makemon(null, pos.x, pos.y, MM_NOGRP);
+        if (tmonst?.mnum === PM_GIANT_SPIDER
+            && !occupied(pos.x, pos.y)) {
+            await maketrap(pos.x, pos.y, WEB);
+        }
     }
     // Traps
-    const u_depth = g.u?.uz?.dlevel ?? 1;
-    let x = 8 - Math.trunc(u_depth / 6);
+    let x = 8 - Math.trunc(level_difficulty() / 6);
     if (x <= 1) x = 2;
     let trycnt = 0;
     while (!rn2(x) && ++trycnt < 1000) {
@@ -16289,6 +20345,12 @@ async function fill_ordinary_room(croom, bonus_items) {
     // Gold
     if (!rn2(3) && somexyspace(croom, pos)) {
         mkgold(0, pos.x, pos.y);
+    }
+    // Rogue levels skip furniture, statues, bonus/chest construction, and
+    // graffiti, then rejoin the ordinary random-object tail.
+    if (Is_rogue_level(g.u?.uz)) {
+        fillRandomRoomObjects(croom, pos);
+        return;
     }
     // Fountain
     if (!rn2(10)) mkfount(croom);
@@ -16302,7 +20364,7 @@ async function fill_ordinary_room(croom, bonus_items) {
     // Altar
     if (!rn2(60)) mkaltar(croom);
     // Grave
-    x = 80 - (u_depth * 2);
+    x = 80 - (depth_of_level(g.u?.uz) * 2);
     if (x < 2) x = 2;
     if (!rn2(x)) mkgrave_room(croom);
     // Statue
@@ -16365,6 +20427,7 @@ async function fill_ordinary_room(croom, bonus_items) {
                     }
                     addSpecialContainerObject(supply_chest, otmp);
                 }
+                supply_chest.owt = objectWeight(supply_chest);
             }
             skip_chests = true;
         }
@@ -16386,15 +20449,7 @@ async function fill_ordinary_room(croom, bonus_items) {
                 make_engr_at(pos.x, pos.y, engrText, pristine, 0, MARK);
         }
     }
-    // Random objects
-    if (!rn2(3) && somexyspace(croom, pos)) {
-        mkobj_at(RANDOM_CLASS, pos.x, pos.y, true);
-        let objTrycnt = 0;
-        while (!rn2(5)) {
-            if (++objTrycnt > 100) break;
-            if (somexyspace(croom, pos)) mkobj_at(RANDOM_CLASS, pos.x, pos.y, true);
-        }
-    }
+    fillRandomRoomObjects(croom, pos);
 }
 
 // ============================================================

@@ -132,6 +132,18 @@ export function yyyymmdd(date = 0) {
 }
 
 /**
+ * C ref: calendar.c hhmmss `:79–92` — hour*10000 + min*100 + sec.
+ * Callers: files.c paniclog; windows.c dump_fmtstr %d/%D
+ * ("%08ld%06ld" pads this long). Not yyyymmddhhmmss.
+ * @param {number} [date]
+ * @returns {number}
+ */
+export function hhmmss(date = 0) {
+    const lt = lt_for_date(date);
+    return lt.tm_hour * 10000 + lt.tm_min * 100 + lt.tm_sec;
+}
+
+/**
  * C ref: calendar.c yyyymmddhhmmss `:94–117` — static datestr[15]
  * "%04ld%02d%02d%02d%02d%02d". Caller: bones.c savebones when[].
  * @param {number} [date]

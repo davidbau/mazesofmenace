@@ -5,15 +5,20 @@
 import { d, rnl, rn2, rnd } from './rng.js';
 import { game } from './gstate.js';
 import { currentAttribute } from './attrib.js';
-import { heroIsDisplaced } from './armor.js';
-import { nextIdent } from './ident.js';
+import { loseExperienceLevel } from './exper.js';
 import {
-    map_invisible, newsym, swallowed, unmap_invisible,
+    heroHasDrainResistance, heroHasFreeAction, heroIsDisplaced,
+} from './armor.js';
+import { nextIdent } from './ident.js';
+import { heroGoldAmount, heroGoldObject } from './hero_gold.js';
+import {
+    map_invisible, newsym, randomDisplayMonsterName,
+    randomDisplayMonsterSubject, swallowed, unmap_invisible,
 } from './display.js';
 import {
     MONSTER_ATTACKS, MONSTER_BODY_META, MONSTER_FLAGS1, MONSTER_FLAGS2,
     MONSTER_FLAGS3,
-    MONSTER_GENO, MONSTER_LEVEL, MONSTER_COLOR, MONSTER_MOVE, MONSTER_NAME,
+    MONSTER_GENO, MONSTER_LEVEL, MONSTER_MOVE, MONSTER_NAME,
     MONSTER_RESISTS, MONSTER_SIZE, MONSTER_SYMBOL,
 } from './monster_data.js';
 import {
@@ -21,23 +26,25 @@ import {
     BELL_OF_OPENING, BULLWHIP,
     BLINDING_VENOM, BOULDER, CARROT, CANDELABRUM_OF_INVOCATION,
     CLOAK_OF_MAGIC_RESISTANCE,
-    CLOVE_OF_GARLIC, CORPSE, DWARVISH_MATTOCK, EGG, FLINT,
+    CLOVE_OF_GARLIC, CORPSE, DWARVISH_MATTOCK, EGG,
+    FAKE_AMULET_OF_YENDOR, FLINT,
     ENORMOUS_MEATBALL, GOLD_PIECE, MEATBALL, MEAT_RING, MEAT_STICK,
     ARROW, AXE, BATTLE_AXE, DART, IRON_SHOES,
-    OBJECT_BIMANUAL, OBJECT_DESCRIPTIONS, OBJECT_LARGE_DAMAGE, OBJECT_NAMES,
+    OBJECT_BIMANUAL, OBJECT_CHARGED, OBJECT_DESCRIPTIONS,
+    OBJECT_LARGE_DAMAGE, OBJECT_NAMES,
     OBJECT_SMALL_DAMAGE,
     OBJECT_MATERIAL, OBJECT_SUBTYPE, OBJECT_WEIGHT, PICK_AXE, ROCK,
     POT_GAIN_LEVEL, POT_HEALING, POT_INVISIBILITY, POT_SLEEPING,
-    RIN_PROTECTION_FROM_SHAPE_CHANGERS,
     SCR_SCARE_MONSTER,
     SLIME_MOLD,
     SPE_BOOK_OF_THE_DEAD, TIN, TRIPE_RATION, WAN_SPEED_MONSTER, WAN_STRIKING,
 } from './object_data.js';
 import {
-    mkcorpstat, mksobj, place_object, shapechangeMonster, summonNastyMonsters,
-    stack_object, undeadToCorpse, monsterGoodPosition,
+    makemonNear, mkcorpstat, mksobj, place_object, shapechangeMonster,
+    summonNastyMonsters, stack_object, undeadToCorpse, monsterGoodPosition,
 } from './mklev.js';
 import { getTrack } from './track.js';
+import { rehumanizeHero } from './polyself.js';
 import {
     clearPath, couldsee, visibleCellsFrom, vision_note_blocker_change,
     vision_recalc,
@@ -49,12 +56,24 @@ import { collectNearbyCoords } from './u_init.js';
 import { shopkeeperInOwnShop } from './shk.js';
 import {
     checkMonsterGearNextTurn, findMonsterArmorClass, reassessMonsterArmor,
+    snapshotMonsterCreationWearNames,
 } from './monworn.js';
 import { inTown } from './room.js';
+import { createHarmlessGasCloudSelection } from './regions.js';
+import { syncBlindness } from './senses.js';
+import {
+    addObjectToMonsterInventory, linkObjectToMonsterInventory,
+    removeObjectFromMonsterInventory,
+} from './monster_inventory.js';
 import {
     monsterCanFogWithEmptyInventory, monsterCanOozeWithEmptyInventory,
     setMonsterApparentHeroPosition,
 } from './monster_perception.js';
+import { randomBottleName } from './potion_hit.js';
+import {
+    heroHasProtectionFromShapeChangers, isHumanWereMonster, isWereMonster,
+    transformWereMonster,
+} from './were.js';
 import {
     ACCESSIBLE, ALLOW_BARS, ALLOW_DIG, ALLOW_M, ALLOW_ROCK, ALLOW_SANCT,
     ALLOW_SSM,
@@ -65,7 +84,7 @@ import {
     IS_DOOR, IS_LAVA, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_STWALL, IS_TREE,
     IS_WALL,
     IRONBARS, LAVAPOOL, LAVAWALL,
-    MAGIC_PORTAL, OPENDOOR,
+    MAGIC_PORTAL, OPENDOOR, TELEP_TRAP,
     ANTI_MAGIC, FIRE_TRAP, HOLE, LANDMINE, MAGIC_TRAP, MAX_CARR_CAP,
     M_AP_FURNITURE, M_AP_MONSTER, M_AP_NOTHING,
     M_AP_OBJECT, RUST_TRAP,
@@ -74,7 +93,7 @@ import {
     G_GONE, G_NOCORPSE,
     NEED_AXE, NEED_HTH_WEAPON, NEED_PICK_AXE, NEED_PICK_OR_AXE,
     NEED_RANGED_WEAPON, NEED_WEAPON, NO_WEAPON_WANTED,
-    NOTONL, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK,
+    MM_NOWAIT, NOTONL, STRAT_APPEARMSG, STRAT_WAITFORU, STRAT_WAITMASK,
     UNLOCKDOOR, VIBRATING_SQUARE,
     WATER, W_ACCESSORY, W_AMUL, W_ARM, W_ARMC, W_ARMF, W_ARMG, W_ARMH,
     W_ARMOR,
@@ -105,14 +124,13 @@ const M1_SLITHY = 0x00080000;
 const M1_UNSOLID = 0x00100000;
 const M1_SEE_INVIS = 0x01000000;
 const M1_TPORT = 0x02000000;
+const M1_ACID = 0x08000000;
 const M1_CARNIVORE = 0x20000000;
 const M1_HERBIVORE = 0x40000000;
 const M1_METALLIVORE = 0x80000000;
 const M1_REGEN = 0x00800000;
 const MR_FIRE = 0x01;
 const MR_SLEEP = 0x04;
-const M2_WERE = 0x00000004;
-const M2_HUMAN = 0x00000008;
 const M2_WANDER = 0x00800000;
 const M2_LORD = 0x00000400;
 const M2_PRINCE = 0x00000800;
@@ -151,6 +169,7 @@ const M3_WANTSCAND = 0x0008;
 const M3_WANTSARTI = 0x0010;
 const S_DEMON = 56;
 const PM_FOG_CLOUD = 106;
+const PM_ENERGY_VORTEX = 109;
 const PM_TENGU = 55;
 const PM_VAMPIRE = 226;
 const PM_VAMPIRE_LEADER = 227;
@@ -168,9 +187,11 @@ const PM_ARCHEOLOGIST = 331;
 const PM_WIZARD = 343;
 const PM_WATCHMAN = 282;
 const PM_WATCH_CAPTAIN = 283;
+const WAN_MAGIC_MISSILE = 429;
 const G_UNIQ = 0x1000;
 const S_GOLEM = 55;
 const AD_RUST = 24;
+const AD_DCAY = 34;
 const AD_CORR = 42;
 const POT_SPEED = 302;
 const LOW_BOOTS = 163;
@@ -206,17 +227,25 @@ const AT_SPIT = 10;
 const AT_BREA = 12;
 const AT_BOOM = 14;
 const AT_GAZE = 15;
+const AT_HUGS = 7;
 const AD_PHYS = 0;
 const AD_FIRE = 2;
 const AD_COLD = 3;
 const AD_ELEC = 6;
 const AD_DRST = 7;
+const AD_SAMU = 252;
 const AD_ACID = 8;
 const AD_BLND = 11;
+const AD_STUN = 12;
+const AD_DRLI = 15;
+const AD_WRAP = 18;
+const AD_STCK = 19;
+const AD_DREN = 16;
 const AD_LEGS = 17;
 const AD_STON = 18;
 const AD_SITM = 21;
 const AD_SEDU = 22;
+const AD_ENCH = 41;
 const AD_CLRC = 240;
 const AD_SPEL = 241;
 const PRACTICAL_OBJECT_CLASSES = new Set([
@@ -245,6 +274,12 @@ const MONSTER_SEARCH_CONTAINERS = new Set([
     217, // sack
     218, // oilskin sack
     219, // bag of holding
+]);
+const MONSTER_SEARCH_SCROLLS = new Set([
+    329, // create monster
+    333, // teleportation
+    339, // fire
+    340, // earth
 ]);
 
 // C monmove.c:can_hide_under_obj().  Floor piles are stored as source-ordered
@@ -295,6 +330,74 @@ const MONSTER_WIZARD_SPELLS = [
     { key: 'clone-wizard', level: 18, flags: MCF_HOSTILE | MCF_INDIRECT },
     { key: 'death-touch', level: 20, flags: MCF_HOSTILE },
 ];
+
+function monsterSpellEffectPreview(spell, damage, state) {
+    const antimagic = !!(state?.u?.antimagic
+        || state?.u?.magicResistance || state?.u?.magic_resistance);
+    let effectDamage = damage;
+    if (antimagic && ['psi-bolt', 'open-wounds'].includes(spell.key))
+        effectDamage = Math.trunc((effectDamage + 1) / 2);
+    let effectMessage = null;
+    if (spell.key === 'psi-bolt') {
+        effectMessage = effectDamage <= 5
+            ? 'You get a slight headache.'
+            : effectDamage <= 10
+                ? 'Your brain is on fire!'
+                : effectDamage <= 20
+                    ? 'Your head suddenly aches painfully!'
+                    : 'Your head suddenly aches very painfully!';
+    } else if (spell.key === 'open-wounds') {
+        effectMessage = effectDamage <= 5
+            ? 'Your skin itches badly for a moment.'
+            : effectDamage <= 10
+                ? 'Wounds appear on your body!'
+                : effectDamage <= 20
+                    ? 'Severe wounds appear on your body!'
+                    : 'Your body is covered with painful wounds!';
+    } else if (spell.key === 'blind-you') {
+        effectMessage = 'Scales cover your eyes!';
+    } else if (spell.key === 'paralyze') {
+        const resisted = !!(state?.u?.antimagic
+            || state?.u?.magicResistance || state?.u?.magic_resistance
+            || heroHasFreeAction(state));
+        effectMessage = resisted
+            ? 'You stiffen briefly.' : 'You are frozen in place!';
+    } else if (spell.key === 'confuse-you') {
+        if (antimagic) {
+            effectMessage = 'You feel momentarily dizzy.';
+        } else if (state?.u?.hallucinating
+            || (state?.u?.hallucinationTurns ?? 0) > 0) {
+            effectMessage = (state?.u?.confusionTurns ?? 0) > 0
+                ? 'You feel trippier!' : 'You feel trippy!';
+        } else {
+            effectMessage = (state?.u?.confusionTurns ?? 0) > 0
+                ? 'You feel more confused!' : 'You feel confused!';
+        }
+    } else if (spell.key === 'weaken-you') {
+        effectMessage = antimagic
+            ? 'You feel momentarily weakened.'
+            : 'You suddenly feel weaker!';
+    } else if (spell.key === 'aggravation') {
+        effectMessage = 'You feel that monsters are aware of your presence.';
+    } else if (spell.key === 'stun-you') {
+        const resisted = antimagic || heroHasFreeAction(state);
+        const alreadyStunned = !!state?.u?.stunned
+            || (state?.u?.stunnedTurns ?? 0) > 0;
+        effectMessage = resisted
+            ? alreadyStunned ? null : 'You feel momentarily disoriented.'
+            : alreadyStunned
+                ? 'You struggle to keep your balance.' : 'You reel...';
+    } else if (spell.key === 'curse-items') {
+        effectMessage = 'You feel as if you need some help.';
+    } else if (spell.key === 'geyser') {
+        effectMessage = 'A sudden geyser slams into you from nowhere!';
+    } else if (spell.key === 'fire-pillar') {
+        effectMessage = 'A pillar of fire strikes all around you!';
+    } else if (spell.key === 'lightning') {
+        effectMessage = 'A bolt of lightning strikes down at you from above!';
+    }
+    return { effectDamage, effectMessage };
+}
 
 // C weapon.c:hwep[], strongest/preferred first.  Object display names are
 // used as the stable bridge until the generated object layer exports the
@@ -639,6 +742,12 @@ export function finishDeferredRangedProjectileHit(
         }
     }
     if (broken) {
+        // mthrowu.c:drop_throw()->delobj()->delobj_core() still consults
+        // obj_resists(obj, 0, 0) for an ordinary destroyed missile.  The
+        // zero-percent decision cannot save it, but its rn2(100) call is part
+        // of the source transaction before global movement allocation.
+        if (!objectResistsWithoutRoll(object))
+            recordRandom(random, action.calls, 100);
         object.where = 'gone';
         object.ox = object.oy = 0;
         clearThrownObject(state, object);
@@ -710,6 +819,7 @@ function monsterWantsFloorObject(monster, object) {
     // mechanic pursuing healing and elves preferring a nearer unlocked sack.
     if (!(flags1 & (M1_MINDLESS | M1_ANIMAL))
         && (MONSTER_SEARCH_POTIONS.has(object.otyp)
+            || MONSTER_SEARCH_SCROLLS.has(object.otyp)
             || (MONSTER_SEARCH_CONTAINERS.has(object.otyp)
                 && !object.olocked && !object.locked
                 && !(object.otyp === 219 && object.cursed)))) {
@@ -802,6 +912,15 @@ export function monsterCanCarryObject(monster, object) {
     return monsterCarryAmount(monster, object) > 0;
 }
 
+function monsterRejectsOrdinaryCorpsePickup(monster, object) {
+    if (object?.otyp !== CORPSE
+        || MONSTER_SYMBOL[monster?.mnum] === S_NYMPH) return false;
+    const corpsenm = object.corpsenm;
+    const touchPetrifies = corpsenm === 9 || corpsenm === 10;
+    const acidic = !!((MONSTER_FLAGS1[corpsenm] ?? 0) & M1_ACID);
+    return !touchPetrifies && corpsenm !== PM_LIZARD && !acidic;
+}
+
 // C mon.c:mpickstuff() and monmove.c:postmov().  An interested monster takes
 // one eligible floor stack after moving, transfers it from the level's fobj
 // chain into minvent, and defers gear selection until a later action.
@@ -814,6 +933,7 @@ function pickUpMonsterFloorObject(monster, state) {
     if (!Array.isArray(pile) || !pile.length) return null;
     const index = pile.findIndex(object => !specialFloorPrize(object)
         && monsterWantsFloorObject(monster, object)
+        && !monsterRejectsOrdinaryCorpsePickup(monster, object)
         && monsterCanCarryObject(monster, object));
     if (index < 0) return null;
 
@@ -840,18 +960,11 @@ function pickUpMonsterFloorObject(monster, state) {
     } else {
         [carriedObject] = pile.splice(index, 1);
     }
-    const inventory = monster.minvent || monster.inventory || [];
-    // Generated minvent arrays are chronological in the JS projection.
-    // Appending a later pickup lets relobj's reverse traversal reproduce C's
-    // newest-first minvent chain without corrupting the stored convention.
-    inventory.push(carriedObject);
-    monster.minvent = inventory;
-    monster.inventory = inventory;
+    // mpickobj() attaches carrying effects before add_to_minv() head-links the
+    // new identity into the source-ordered minvent array.
+    addObjectToMonsterInventory(monster, carriedObject, state);
     monster.weaponCheck = NEED_WEAPON;
     checkMonsterGearNextTurn(monster);
-    carriedObject.ox = monster.mx;
-    carriedObject.oy = monster.my;
-    carriedObject.where = 'minvent';
     return carriedObject;
 }
 
@@ -888,10 +1001,32 @@ function heroCanReleaseWeapon(object) {
     return !!object && !object.cursed;
 }
 
-// C muse.c find_misc()/use_misc().  Generated JavaScript inventories retain
-// chronological acquisition order while C's minvent chain is newest-first.
-// Scan backward to preserve observable per-object RNG, but retain each older
-// viable type exactly as C's "last viable item wins" loop does.
+function probeMonsterPotionOccupant(
+    object, state, random = rn2, calls = [],
+) {
+    if (!object || (object.oclass ?? object.class) !== POTION_CLASS)
+        return null;
+    const appearance = state?.objectDescriptions?.[object.otyp]
+        ?? game.objectDescriptions?.[object.otyp]
+        ?? OBJECT_DESCRIPTIONS[object.otyp];
+    const occupantMnum = appearance === 'milky' ? 287
+        : appearance === 'smoky' ? 315 : null;
+    if (occupantMnum === null
+        || ((state?.mvitals?.[occupantMnum]?.mvflags ?? 0) & G_GONE)) {
+        return null;
+    }
+    const born = state?.mvitals?.[occupantMnum]?.born ?? 0;
+    const sides = 13 + 2 * born;
+    return {
+        appearance,
+        occupant: appearance === 'milky' ? 'ghost' : 'djinni',
+        triggered: recordRandom(random, calls, sides) === 0,
+    };
+}
+
+// C muse.c find_misc()/use_misc().  JavaScript minvent mirrors the C chain
+// head-to-tail.  Scan newest-to-oldest and retain each later viable type,
+// exactly matching C's "last viable item wins" loop.
 function useMonsterMiscItem(monster, state, random, calls) {
     const flags = MONSTER_FLAGS1[monster?.mnum] ?? 0;
     if ((flags & (M1_MINDLESS | M1_ANIMAL))
@@ -914,14 +1049,16 @@ function useMonsterMiscItem(monster, state, random, calls) {
         .some(([attackType]) => attackType === AT_GAZE);
     let selected = null;
 
-    for (let index = inventory.length - 1; index >= 0; index--) {
+    for (let index = 0; index < inventory.length; index++) {
         const object = inventory[index];
         // muse.c:find_misc() lets a temple priest use an uncursed gain-level
         // potion, but rejects a cursed one so the resident cannot leave the
         // shrine level.  The visible seed0361 resident is the bounded first
         // owner; growth remains deferred across both mquaffmsg() toplines.
-        if (monster.ispriest && object.otyp === POT_GAIN_LEVEL
-            && !object.cursed) {
+        if (object.otyp === POT_GAIN_LEVEL
+            && (!object.cursed
+                || (!monster.isgd && !monster.isshk
+                    && !monster.ispriest))) {
             selected = {
                 kind: 'potion-gain-level', object, index,
                 deferredEffect: true,
@@ -965,6 +1102,18 @@ function useMonsterMiscItem(monster, state, random, calls) {
     }
     if (!selected) return null;
 
+    const occupantProbe = probeMonsterPotionOccupant(
+        selected.object, state, random, calls,
+    );
+    if (occupantProbe?.triggered) {
+        return {
+            ...selected,
+            kind: 'potion-occupant',
+            ...occupantProbe,
+            deferredOccupant: true,
+        };
+    }
+
     if (selected.kind === 'potion-gain-level') return selected;
     if (selected.kind === 'potion-invisibility') {
         // mquaffmsg() can suspend on an older topline.  allmain applies the
@@ -990,23 +1139,12 @@ function useMonsterMiscItem(monster, state, random, calls) {
         };
     }
 
-    const { object, index } = selected;
+    const { object } = selected;
     const wand = object.otyp === WAN_SPEED_MONSTER;
-    if (wand) {
-        object.spe--;
-        object.dknown = false;
-    } else if ((object.quan ?? 1) > 1) {
-        object.quan--;
-    } else {
-        inventory.splice(index, 1);
-    }
-    monster.minvent = inventory;
-    monster.inventory = inventory;
-    monster.permspeed = monster.permspeed === MSLOW ? 0 : MFAST;
-    monster.mspeed = monster.permspeed;
     return {
         ...selected,
         kind: wand ? 'wand-speed-monster' : 'potion-speed',
+        deferredEffect: true,
     };
 }
 
@@ -1053,6 +1191,11 @@ export function finishDeferredMonsterMiscItem(action, state = game) {
 
     if (misc.kind === 'potion-gain-level') {
         removeMonsterInventoryObject(monster, misc.object);
+        if (misc.object.cursed) {
+            misc.cursedGainLevel = true;
+            misc.effectApplied = true;
+            return misc;
+        }
         const increase = rnd(8);
         action.calls?.push('rnd(8)');
         monster.mhpmax = (monster.mhpmax ?? monster.mhp ?? 1) + increase;
@@ -1065,6 +1208,26 @@ export function finishDeferredMonsterMiscItem(action, state = game) {
         // retains its own future witness rather than being guessed here.
         monster.m_lev = Math.min(49, (monster.m_lev ?? 0) + 1);
         misc.increase = increase;
+        misc.effectApplied = true;
+        return misc;
+    }
+
+    if (misc.kind === 'wand-speed-monster'
+        || misc.kind === 'potion-speed') {
+        const oldSpeed = monster.mspeed ?? 0;
+        if (misc.kind === 'wand-speed-monster') {
+            misc.object.spe--;
+        } else {
+            removeMonsterInventoryObject(monster, misc.object);
+        }
+        monster.permspeed = monster.permspeed === MSLOW ? 0 : MFAST;
+        monster.mspeed = monster.permspeed;
+        misc.oldSpeed = oldSpeed;
+        misc.speedChanged = monster.mspeed !== oldSpeed
+            && naturalMonsterSpeed(monster) !== 0
+            && monster.mcanmove !== 0 && !monster.msleeping
+            && !(monster.mfrozen ?? 0);
+        misc.speedMuch = monster.mspeed + oldSpeed === MFAST + MSLOW;
         misc.effectApplied = true;
         return misc;
     }
@@ -1095,11 +1258,10 @@ export function finishDeferredMonsterMiscItem(action, state = game) {
         const heroIndex = heroInventory.indexOf(target);
         if (heroIndex >= 0) heroInventory.splice(heroIndex, 1);
         if (misc.whereTo === 3) {
-            const inventory = monster.minvent || monster.inventory || [];
-            inventory.push(target);
-            monster.minvent = inventory;
-            monster.inventory = inventory;
-            target.where = 'minvent';
+            // muse.c:use_misc(MUSE_BULLWHIP)->mpickobj().  The disarmed
+            // identity is free of hero equipment state before the monster
+            // applies carrying effects and links it into minvent.
+            addObjectToMonsterInventory(monster, target, state);
         } else {
             const x = misc.whereTo === 1 ? monster.mx : state.u.ux;
             const y = misc.whereTo === 1 ? monster.my : state.u.uy;
@@ -1129,22 +1291,16 @@ function useNoMoveHealingPotion(
     // before mquaffmsg() and the healing roll.  The nonzero result is the
     // ordinary potion path.  Occupant creation remains an explicit deferred
     // boundary rather than silently skipping the mandatory probe.
-    const appearance = state?.objectDescriptions?.[object.otyp]
-        ?? game.objectDescriptions?.[object.otyp]
-        ?? OBJECT_DESCRIPTIONS[object.otyp];
-    const occupantMnum = appearance === 'milky' ? 287
-        : appearance === 'smoky' ? 315 : null;
-    if (occupantMnum !== null
-        && !((state?.mvitals?.[occupantMnum]?.mvflags ?? 0) & G_GONE)) {
-        const born = state?.mvitals?.[occupantMnum]?.born ?? 0;
-        if (recordRandom(random, calls, 13 + 2 * born) === 0) {
-            return {
-                kind: 'potion-healing',
-                object,
-                occupant: appearance === 'milky' ? 'ghost' : 'djinni',
-                deferredOccupant: true,
-            };
-        }
+    const occupantProbe = probeMonsterPotionOccupant(
+        object, state, random, calls,
+    );
+    if (occupantProbe?.triggered) {
+        return {
+            kind: 'potion-healing',
+            object,
+            occupant: occupantProbe.occupant,
+            deferredOccupant: true,
+        };
     }
 
     const dice = 6 + 2 * (object.blessed ? 1 : object.cursed ? -1 : 0);
@@ -1200,6 +1356,13 @@ function visibleRegionAt(state, x, y) {
             cell.x === x && cell.y === y));
 }
 
+function createFogEveryturnRegion(state, x, y, random = rn2) {
+    if (!state?.level || visibleRegionAt(state, x, y)) return null;
+    return createHarmlessGasCloudSelection(
+        state, [{ x, y }], { ttl: 4 + random(3) },
+    );
+}
+
 // C monmove.c:m_everyturn_effect().  movemon_singlemon() runs this before its
 // movement-ration check, so an otherwise stationary fog cloud still leaves a
 // one-cell harmless vapor region.  A size-one create_gas_cloud() owns only the
@@ -1207,15 +1370,35 @@ function visibleRegionAt(state, x, y) {
 function monsterEveryturnEffect(monster, state, random = rn2) {
     if (!state?.level || monster?.mnum !== PM_FOG_CLOUD
         || visibleRegionAt(state, monster.mx, monster.my)) return null;
-    const region = {
-        kind: 'gas-cloud', visible: true, damage: 0,
-        ttl: 4 + random(3),
-        cells: [{ x: monster.mx, y: monster.my }],
-    };
-    (state.level.regions ||= []).push(region);
-    if (state.level === game.level)
-        vision_note_blocker_change(monster.mx, monster.my);
-    return region;
+    return createFogEveryturnRegion(
+        state, monster.mx, monster.my, random,
+    );
+}
+
+export function runMonsterEveryturnEffects(
+    monsters, state, random = rn2, { fmonOrdered = false } = {},
+) {
+    const effects = [];
+    const visits = fmonOrdered
+        ? Array.from(monsters || []) : monstersInFmonOrder(monsters || []);
+    for (const monster of visits) {
+        initializeMonsterMovement(monster);
+        if (!schedulable(monster)) continue;
+        const effect = monsterEveryturnEffect(monster, state, random);
+        if (effect) effects.push({ monster, effect });
+    }
+    return effects;
+}
+
+// C allmain.c invokes the same species hook for `youmonst` after status
+// projection and before accepting the next command.  The region persists on
+// the level and suppresses another TTL draw while it covers the hero square.
+export function heroEveryturnEffect(state = game, random = rn2) {
+    if ((state.u?.mtimedone ?? 0) <= 0
+        || state.u?.umonnum !== PM_FOG_CLOUD) return null;
+    return createFogEveryturnRegion(
+        state, state.u.ux, state.u.uy, random,
+    );
 }
 
 // C region.c:run_regions() removes an already-expired region, then ages each
@@ -1236,31 +1419,29 @@ export function runLevelRegions(state) {
         // cloud maintains that region after its normal age decrement.  This
         // is independent of damage and prevents its harmless one-cell vapor
         // from repeatedly expiring and consuming a fresh rn1(3,4).
-        if (region.kind === 'gas-cloud' && region.ttl < 20
-            && (state.level.monsters || []).some(monster =>
-                !monster.dead && monster.mnum === PM_FOG_CLOUD
-                && region.cells?.some(cell => cell.x === monster.mx
-                    && cell.y === monster.my))) {
-            region.ttl += 5;
+        if (region.kind === 'gas-cloud') {
+            const contains = (x, y) => region.cells?.some(cell =>
+                cell.x === x && cell.y === y);
+            // region.c:run_regions() invokes inside_gas_cloud() for the hero
+            // first and then for every tracked monster.  Each fog-cloud
+            // occupant independently adds five while the current TTL is
+            // below 20; `some()` would undercount a populated Cloud room.
+            if ((state.u?.mtimedone ?? 0) > 0
+                && state.u?.umonnum === PM_FOG_CLOUD
+                && contains(state.u.ux, state.u.uy)
+                && region.ttl < 20) {
+                region.ttl += 5;
+            }
+            for (const monster of state.level.monsters || []) {
+                if (!monster.dead && monster.mnum === PM_FOG_CLOUD
+                    && contains(monster.mx, monster.my)
+                    && region.ttl < 20) {
+                    region.ttl += 5;
+                }
+            }
         }
     }
     return state.level.regions;
-}
-
-const COUNTER_WERE = new Map([
-    [15, 262], [262, 15], // werejackal <-> human werejackal
-    [21, 263], [263, 21], // werewolf <-> human werewolf
-    [91, 261], [261, 91], // wererat <-> human wererat
-]);
-const MONSTER_CLASS_SYMBOLS = ['', ...'abcdefghijklmnopqrstuvwxyz',
-    ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ', '@', ' ', "'", '&', ';', ':', '~', ']'];
-
-function protectionFromShapeChangers(state = {}) {
-    if (state.u?.protectionFromShapeChangers
-        || state.protectionFromShapeChangers) return true;
-    return [state.uleft, state.uright, state.u?.uleft, state.u?.uright]
-        .some(object => object?.otyp === RIN_PROTECTION_FROM_SHAPE_CHANGERS
-            && object.worn !== false);
 }
 
 // C ref: calendar.c night(). Session timestamps use YYYYMMDDhhmmss.
@@ -1269,17 +1450,15 @@ export function sessionIsNight(datetime) {
     return Number.isInteger(hour) && (hour < 6 || hour > 21);
 }
 
-// C refs: were.c counter_were()/new_were()/were_change(). The visual and
-// equipment side effects of a successful transformation remain with the
-// future monster-equipment slice; this phase owns identity, movement, waking,
-// healing, and—most importantly for the scheduler—the conditional RNG draw.
+// C refs: were.c counter_were()/new_were()/were_change().  The shared owner
+// applies identity, movement, waking, and healing; this scheduler leaves its
+// repaint to the enclosing display boundary.  Armor breakage and forced
+// unwielding remain a named production admission gap.
 export function wereChange(monster, state = {}, random = rn2) {
-    const oldMnum = monster?.mnum;
-    const flags = MONSTER_FLAGS2[oldMnum] ?? 0;
-    if (!(flags & M2_WERE)) return false;
+    if (!isWereMonster(monster)) return false;
 
-    const protectedHero = protectionFromShapeChangers(state);
-    if (flags & M2_HUMAN) {
+    const protectedHero = heroHasProtectionFromShapeChangers(state);
+    if (isHumanWereMonster(monster)) {
         if (protectedHero) return false;
         const fullMoon = state.flags?.moonphase === 4;
         const denominator = sessionIsNight(state.datetime)
@@ -1289,22 +1468,7 @@ export function wereChange(monster, state = {}, random = rn2) {
         return false;
     }
 
-    const newMnum = COUNTER_WERE.get(oldMnum);
-    if (!Number.isInteger(newMnum)) return false;
-    monster.mnum = newMnum;
-    monster.mmove = MONSTER_MOVE[newMnum] ?? monster.mmove ?? 0;
-    monster.symbol = MONSTER_CLASS_SYMBOLS[MONSTER_SYMBOL[newMnum] || 0] || '?';
-    monster.color = MONSTER_COLOR[newMnum];
-    if (monster.msleeping || monster.mfrozen || monster.mcanmove === 0) {
-        monster.msleeping = 0;
-        monster.mfrozen = 0;
-        monster.mcanmove = 1;
-    }
-    if (Number.isFinite(monster.mhp) && Number.isFinite(monster.mhpmax)) {
-        const healing = Math.trunc((monster.mhpmax - monster.mhp) / 4);
-        monster.mhp = Math.min(monster.mhpmax, monster.mhp + healing);
-    }
-    return true;
+    return transformWereMonster(monster, state, { repaint: false });
 }
 
 function vampireMayShiftOutOfSight(monster, state) {
@@ -1434,28 +1598,32 @@ function schedulable(monster) {
 // full ration. Actor behavior is deliberately left to dochug()/dog_move().
 export function scanMonsterMovement(monsters = [], options = {}) {
     const heroMovement = options.heroMovement ?? 0;
-    const state = options.state;
     const rounds = [];
+    const visits = [];
     let somebodyCanMove;
 
     do {
         somebodyCanMove = false;
         const actors = [];
+        const roundVisits = [];
         for (const monster of monstersInFmonOrder(monsters)) {
             initializeMonsterMovement(monster);
-            monsterEveryturnEffect(monster, state, options.random ?? rn2);
-            if (!schedulable(monster) || monster.movement < NORMAL_SPEED)
+            if (!schedulable(monster)) continue;
+            roundVisits.push(monster);
+            if (monster.movement < NORMAL_SPEED)
                 continue;
             monster.movement -= NORMAL_SPEED;
             actors.push(monster);
             if (monster.movement >= NORMAL_SPEED) somebodyCanMove = true;
         }
+        visits.push(roundVisits);
         rounds.push(actors);
         if (heroMovement >= NORMAL_SPEED) break;
     } while (somebodyCanMove);
 
     return {
         rounds,
+        visits,
         actors: rounds.flat(),
         somebodyCanMove,
     };
@@ -1610,6 +1778,7 @@ function scareScrollAffects(monster, state, x, y) {
 function monsterTrapIsHarmless(monster, trap, state) {
     if (!trap) return true;
     const speciesFlags = MONSTER_FLAGS1[monster?.mnum] ?? 0;
+    const symbol = MONSTER_SYMBOL[monster?.mnum];
     // trap.c:floor_trigger() is the complete set bypassed by flight.  Magic,
     // anti-magic, polymorph, teleport, and portal traps affect airborne
     // actors and must still participate in known-trap avoidance.
@@ -1623,6 +1792,12 @@ function monsterTrapIsHarmless(monster, trap, state) {
         return true;
     if (trap.ttyp === BEAR_TRAP)
         return (MONSTER_SIZE[monster?.mnum] ?? 2) <= 1;
+    if (trap.ttyp === WEB) {
+        return !!(speciesFlags & (M1_AMORPHOUS | M1_UNSOLID))
+            || [94, 96].includes(monster?.mnum)
+            || symbol === S_VORTEX
+            || monster?.mnum === PM_AIR_ELEMENTAL;
+    }
     return [RUST_TRAP, STATUE_TRAP, MAGIC_TRAP, VIBRATING_SQUARE]
         .includes(trap.ttyp);
 }
@@ -1802,7 +1977,13 @@ export function mfndpos(monster, state, flags = monAllowFlags(monster, state)) {
                 && (!lavaOk || !(flags & ALLOW_WALL))) continue;
             if (!(poolOk || IS_POOL(loc.typ) === wantPool)
                 || !(lavaOk || !IS_LAVA(loc.typ))) continue;
+            const engulfingHero = !!(state?.u?.uswallow
+                && state.u.ustuck === monster);
+            const slipsUnderDoor = !engulfingHero
+                && (!!(speciesFlags & M1_AMORPHOUS)
+                    || monsterCanFogWithEmptyInventory(monster));
             if (IS_DOOR(loc.typ)
+                && !slipsUnderDoor
                 && ((loc.doormask & D_CLOSED) && !(flags & OPENDOOR)
                     || (loc.doormask & D_LOCKED) && !(flags & UNLOCKDOOR))
                 && !throughDoor) {
@@ -1891,6 +2072,17 @@ function recordRandom(random, calls, range) {
     return random(range);
 }
 
+// Live monster scheduling needs the action object across tty continuations,
+// but no gameplay branch reads the diagnostic RNG transcript. Keep the
+// append-shaped dependency without allocating or retaining one array per
+// actor. The empty iterator preserves the one continuation which merges a
+// nested action log; there is deliberately nothing to merge in live mode.
+const DISCARDED_CALL_LOG = Object.freeze({
+    length: 0,
+    push() { return 0; },
+    *[Symbol.iterator]() {},
+});
+
 // C hack.h:AC_VALUE().  Hero AC below zero is deliberately randomized each
 // time an attack transaction evaluates it; callers must retain the returned
 // threshold across later slots of that same mattacku() invocation.
@@ -1915,10 +2107,19 @@ function monsterAttackThreshold(monster, state, rollOne, calls) {
 // by rnd(-uac), with a floor of one.  This is not the AC_VALUE to-hit draw.
 function reduceHeroContactDamage(damage, state, rollOne, calls) {
     const armorClass = state?.u?.uac ?? 10;
-    if (damage <= 0 || armorClass >= 0) return damage;
-    const reduction = rollOne(-armorClass);
-    calls.push(`rnd(${-armorClass})`);
-    return Math.max(1, damage - reduction);
+    let appliedDamage = damage;
+    if (appliedDamage > 0 && armorClass < 0) {
+        const reduction = rollOne(-armorClass);
+        calls.push(`rnd(${-armorClass})`);
+        appliedDamage = Math.max(1, appliedDamage - reduction);
+    }
+    // mhitu.c:hitmu() applies Half_physical_damage only after negative-AC
+    // reduction and rounds odd positive damage upward.
+    if (appliedDamage > 0 && (state?.u?.halfPhysicalDamage
+        || state?.u?.half_physical_damage)) {
+        appliedDamage = Math.trunc((appliedDamage + 1) / 2);
+    }
+    return appliedDamage;
 }
 
 function applyHeroContactDamage(state, damage) {
@@ -2476,10 +2677,10 @@ function dogGoal(monster, state, random, calls) {
         if (onStairs) {
             appr = 1;
         } else {
-            // NetHack keeps carried gold as the `$` head of gi.invent.  The JS
-            // wallet intentionally stores its amount separately, but
-            // dog_goal() still screens it before inventory letter a.
-            const carried = (state?._goldCount ?? 0) > 0
+            // NetHack keeps carried gold as the `$` head of gi.invent.  The
+            // fallback exists only for a legacy restored aggregate which has
+            // not yet been materialized by a mutating command.
+            const carried = !heroGoldObject(state) && heroGoldAmount(state) > 0
                 ? [{ otyp: GOLD_PIECE, oclass: 12, cursed: false },
                     ...(state?.inventory || [])]
                 : state?.inventory || [];
@@ -2576,11 +2777,11 @@ function petInventoryAction(monster, state, random, rollOne, calls) {
         if (!release) release = recordRandom(random, calls, apport) === 0;
         if (release && recordRandom(random, calls, 10) < apport) {
             const dropped = [...carried];
-            monster.minvent = [];
-            monster.inventory = [];
             for (const object of dropped) {
+                removeObjectFromMonsterInventory(monster, object);
                 object.ox = monster.mx;
                 object.oy = monster.my;
+                object.where = 'floor';
                 state._fobjSerial = (state._fobjSerial || 0) + 1;
                 object._fobjOrder = state._fobjSerial;
                 if (!state.level.objects[monster.mx])
@@ -2659,10 +2860,11 @@ function petInventoryAction(monster, state, random, rollOne, calls) {
                     const index = pile.indexOf(object);
                     if (index >= 0) pile.splice(index, 1);
                 }
-                pickedUp.ox = pickedUp.oy = 0;
-                pickedUp.where = 'monster';
-                monster.minvent = [pickedUp];
-                monster.inventory = monster.minvent;
+                // dogmove.c:dog_invent()->mpickobj().  The floor extraction
+                // above precedes carrying effects and final minvent linkage.
+                addObjectToMonsterInventory(
+                    monster, pickedUp, state,
+                );
                 return { pickedUp };
             }
         }
@@ -2790,8 +2992,7 @@ function createOrdinaryMonsterCorpse(defender, state, random, calls) {
 function releaseDeadMonsterInventory(defender, state) {
     const x = defender.mx, y = defender.my;
     const carried = defender.minvent || defender.inventory || [];
-    for (let index = carried.length - 1; index >= 0; index--) {
-        const object = carried[index];
+    for (const object of carried) {
         // extract_from_minvent() clears carrier-owned equipment state before
         // mdrop_obj() places and stacks the same object identity.
         object.owornmask = 0;
@@ -3459,10 +3660,29 @@ function moveHostile(
                     deferredAfterRestrictedTenguTeleport: true,
                 });
             } else {
-                // Preserve the source boundary without claiming an approximate
-                // relocation.  No current exact-session witness reaches this
-                // unrestricted success path.
-                monster.tenguTeleportPending = true;
+                const randomRelocation = (monster.mhp ?? 0) < 7
+                    || !!monster.mpeaceful
+                    || recordRandom(random, calls, 2) !== 0;
+                if (randomRelocation) {
+                    const relocation = randomMonsterRelocation(
+                        monster, state, calls, random, rollOne,
+                    );
+                    return finishMovement(relocation || {
+                        oldx, oldy, x: oldx, y: oldy, moved: false,
+                        tenguTeleportFailed: true,
+                    });
+                }
+                const relocation = relocateMonsterNextToHero(
+                    monster, state, calls, random,
+                );
+                return finishMovement(relocation ? {
+                    ...relocation,
+                    deferredTenguRelocation: true,
+                    tenguRelocation: { appearMessage: false },
+                } : {
+                    oldx, oldy, x: oldx, y: oldy, moved: false,
+                    tenguTeleportFailed: true,
+                });
             }
         }
     }
@@ -3724,15 +3944,11 @@ function moveHostile(
 // heroes give it a distance-scaled hesitation roll; a zero proceeds with the
 // throw.  Intermediate flight squares each own forcehit's rn2(5) before the
 // missile reaches an intervening monster.
-const ORDINARY_BOTTLE_NAMES = [
-    'bottle', 'phial', 'flagon', 'carafe', 'flask', 'jar', 'vial',
-];
-
 // C mhitu.c:mattacku() -> muse.c:find_offensive()/use_offensive().
 // Offensive potions preempt an AT_WEAP actor's launcher and ammunition.  The
 // first live branch is one sleeping potion aimed directly at the hero; other
-// potion types, stacks, intervening targets, and hallucinated bottle names
-// retain distinct effect owners.
+// potion types, stacks, and intervening targets retain distinct effect
+// owners. Bottle naming itself is shared with hero-thrown potionhit().
 function maybeThrowOffensiveSleepingPotion(
     monster, movement, state, random, rollOne, calls,
 ) {
@@ -3740,10 +3956,10 @@ function maybeThrowOffensiveSleepingPotion(
         || !movement.phaseFourOffensiveLinedUp
         || monster?.seenSleepResistance) return null;
     const inventory = monster?.minvent || monster?.inventory || [];
-    let potion = null;
-    for (const object of inventory) {
-        if (object?.otyp === POT_SLEEPING) potion = object;
-    }
+    // find_offensive()'s nomore(MUSE_POT_SLEEPING) keeps the first
+    // matching identity in the source minvent chain when there are duplicate
+    // sleeping-potion stacks.
+    const potion = inventory.find(object => object?.otyp === POT_SLEEPING);
     if (!potion
         || (potion.quan ?? potion.quantity ?? 1) !== 1) return null;
 
@@ -3807,17 +4023,18 @@ function maybeThrowOffensiveSleepingPotion(
         };
     }
 
-    const bottleName = ORDINARY_BOTTLE_NAMES[
-        recordRandom(random, calls, ORDINARY_BOTTLE_NAMES.length)
-    ];
+    const bottleName = randomBottleName(
+        state, range => recordRandom(random, calls, range),
+    );
     const damage = rollOne(2);
     calls.push('rnd(2)');
-    state.u.uhp = Math.max(0, (state.u.uhp ?? 1) - damage);
+    const preHitHp = state.u.uhp ?? 1;
+    state.u.uhp = Math.max(0, preHitHp - damage);
     movement.actionCompleted = true;
     return {
         kind: 'offensive-sleeping-potion', object: potion,
         appearance, flightPath: path, flightGlyph: '!',
-        heroTarget: true, caught: false, bottleName, damage,
+        heroTarget: true, caught: false, bottleName, damage, preHitHp,
         impactMessage: `The ${bottleName} crashes on your head and breaks into shards.`,
         evaporationMessage: `The ${appearance} potion evaporates.`,
         deferredVaporEffect: true,
@@ -3838,8 +4055,8 @@ function heroHasMagicResistance(state) {
 // mzapwand() presents the zap line before charge decrement and mbhit()'s
 // rn1(8,6).  Keep the post-line work deferred so tty can suspend the same
 // actor transaction on an older topline.
-function maybeBeginOffensiveStrikingWand(
-    monster, state, random, calls,
+function maybeBeginOffensiveWand(
+    monster, state, random, calls, { linedUp = undefined } = {},
 ) {
     const flags1 = MONSTER_FLAGS1[monster?.mnum] ?? 0;
     if (monster?.mpeaceful || state?.u?.uswallow
@@ -3847,26 +4064,40 @@ function maybeBeginOffensiveStrikingWand(
         return { probed: false, action: null };
     }
 
-    const linedUp = hostileLinedUp(monster, state, random, calls);
+    const aimed = linedUp === undefined
+        ? hostileLinedUp(monster, state, random, calls) : linedUp;
     const heroMagicResistance = heroHasMagicResistance(state);
-    if (!linedUp || monster?.seenMagicResistance) {
+    if (!aimed || monster?.seenMagicResistance) {
         return { probed: true, action: null };
     }
-
-    const inventory = monster?.minvent || monster?.inventory || [];
-    const wand = inventory.find(object =>
-        object?.otyp === WAN_STRIKING && (object.spe ?? 0) > 0);
-    if (!wand) return { probed: true, action: null };
 
     const heroX = state?.u?.ux;
     const heroY = state?.u?.uy;
     const targetX = Number.isFinite(monster?.mux) ? monster.mux : heroX;
     const targetY = Number.isFinite(monster?.muy) ? monster.muy : heroY;
+    const reflectionSkip = distmin(
+        monster.mx, monster.my, targetX, targetY,
+    ) <= 1 || !!monster?.seenReflection;
+    const inventory = monster?.minvent || monster?.inventory || [];
+    // find_offensive() walks minvent head-to-tail and keeps the last viable
+    // *type*.  For this projected striking/magic-missile slice, retaining each
+    // later eligible object reproduces that oldest-viable final selection.
+    let wand = null;
+    for (const object of inventory) {
+        if ((object?.otyp === WAN_STRIKING
+                || object?.otyp === WAN_MAGIC_MISSILE && !reflectionSkip)
+            && (object.spe ?? 0) > 0) {
+            wand = object;
+        }
+    }
+    if (!wand) return { probed: true, action: null };
 
     return {
         probed: true,
         action: {
-            kind: 'offensive-wand-striking',
+            kind: wand.otyp === WAN_MAGIC_MISSILE
+                ? 'offensive-wand-magic-missile'
+                : 'offensive-wand-striking',
             object: wand,
             targetX,
             targetY,
@@ -3875,6 +4106,7 @@ function maybeBeginOffensiveStrikingWand(
             heroTarget: targetX === heroX && targetY === heroY
                 && distmin(monster.mx, monster.my, heroX, heroY) === 1,
             heroMagicResistance,
+            firstShotForcedMiss: !monster.mwandexp,
             deferredEffect: true,
         },
     };
@@ -3886,7 +4118,7 @@ function beginHeroAttackOrStrikingWand(
     const threshold = monsterAttackThreshold(
         monster, state, rollOne, calls,
     );
-    const offensive = maybeBeginOffensiveStrikingWand(
+    const offensive = maybeBeginOffensiveWand(
         monster, state, random, calls,
     );
     if (offensive.action) return { offensiveWand: offensive.action };
@@ -4310,6 +4542,12 @@ async function burnArmorByFire(
     }
 }
 
+export async function burnHeroArmorByFire(
+    state, emitMessage, calls, random = rn2,
+) {
+    return burnArmorByFire(state.u, state, emitMessage, calls, random);
+}
+
 function rayArmorClass(target, state) {
     return target === state.u
         ? state.u?.uac ?? 10
@@ -4373,8 +4611,8 @@ function rayMonsterLeavesCorpse(monster, state, random, calls) {
 function finishRayKilledMonster(monster, state, random, calls) {
     const x = monster.mx, y = monster.my;
     const carried = monster.minvent || monster.inventory || [];
-    for (let index = carried.length - 1; index >= 0; index--)
-        placeThrownObject(state, carried[index], x, y);
+    for (const object of carried)
+        placeThrownObject(state, object, x, y);
     monster.minvent = [];
     monster.inventory = monster.minvent;
     state.level.monsters = state.level.monsters.filter(candidate =>
@@ -4387,12 +4625,15 @@ function finishRayKilledMonster(monster, state, random, calls) {
     const leavesCorpse = rayMonsterLeavesCorpse(
         monster, state, random, calls,
     );
-    if (leavesCorpse
-        && !((MONSTER_GENO[monster.mnum] ?? 0) & G_NOCORPSE)) {
+    const corpseForm = undeadToCorpse(monster.mnum);
+    const convertedUndeadCorpse = corpseForm !== monster.mnum;
+    if (leavesCorpse && (convertedUndeadCorpse
+        || !((MONSTER_GENO[monster.mnum] ?? 0) & G_NOCORPSE))) {
         const corpse = mksobj(CORPSE, true, false);
-        const corpseForm = undeadToCorpse(monster.mnum);
         corpse.corpsenm = corpseForm;
         corpse.name = `${MONSTER_NAME[corpseForm] || 'monster'} corpse`;
+        if (convertedUndeadCorpse)
+            corpse.age = Math.max(1, state?.moves ?? 1) - 51;
         placeThrownObject(state, corpse, x, y);
     }
     if (state === game) newsym(x, y);
@@ -4608,7 +4849,7 @@ function resolveSpitFlight(
                         + blindIncrement;
                     state.u.blindTurns = (state.u.blindTurns ?? 0)
                         + blindIncrement;
-                    state.blind = true;
+                    syncBlindness(state);
                     spit.blindIncrement = blindIncrement;
                 }
                 destroyTransientVenom(spit.venom, random, calls);
@@ -4911,6 +5152,53 @@ function placeAndStackTrapMissile(object, state, x, y) {
     return stack_object(object, state);
 }
 
+function finishMonsterProjectileTrap(
+    event, monster, state, movement, random, rollOne, calls,
+) {
+    if (!event || event.resolved) return event;
+    const missile = event.pendingMissile;
+    if (event.hit) {
+        const damageTable = (MONSTER_SIZE[monster.mnum] ?? 2) >= 3
+            ? OBJECT_LARGE_DAMAGE : OBJECT_SMALL_DAMAGE;
+        const damageSides = Math.max(
+            1, damageTable[event.projectileType] || 1,
+        );
+        let damage = rollOne(damageSides);
+        calls.push(`rnd(${damageSides})`);
+        damage += missile?.spe ?? 0;
+        if (damage < 0) damage = 0;
+        if (damage > 0) {
+            damage = Math.max(1, damage - Math.max(
+                missile?.oeroded ?? 0,
+                missile?.oeroded2 ?? 0,
+            ));
+        }
+        damage = Math.max(1, damage);
+        monster.mhp = Math.max(0, (monster.mhp ?? 1) - damage);
+        event.damage = damage;
+        event.missileConsumed = true;
+        if (monster.mhp <= 0) {
+            detachDeadMonster(monster, state);
+            const corpse = createOrdinaryMonsterCorpse(
+                monster, state, random, calls,
+            );
+            event.death = { corpseCreated: !!corpse, corpse };
+            movement.actorDied = true;
+            movement.actionCompleted = true;
+        }
+    } else {
+        event.missile = placeAndStackTrapMissile(
+            missile, state, event.trap.tx, event.trap.ty,
+        );
+        event.missileConsumed = false;
+    }
+    delete event.pendingMissile;
+    event.monsterHpAfter = monster.mhp;
+    event.killed = monster.mhp <= 0;
+    event.resolved = true;
+    return event;
+}
+
 function migrateMonsterOffLevel(monster, state, trap, {
     kind, mode, confused = false,
 }) {
@@ -4964,6 +5252,51 @@ function triggerMonsterTrap(
         movement.trap = event;
         movement.actorLeftLevel = true;
         movement.actionCompleted = true;
+        return event;
+    }
+    if (trap.ttyp === TELEP_TRAP) {
+        // trap.c:mintrap()->trapeffect_telep_trap().  Ordinary monster
+        // teleport traps keep the actor on-level, then postmov() continues
+        // with the relocated coordinates and trailing distfleeck.
+        monsterLearnsTrap(monster, trap);
+        monstersSeeTrap(state, trap);
+        const trapSquare = { x: monster.mx, y: monster.my };
+        const relocation = randomMonsterRelocation(
+            monster, state, calls, random, rollOne,
+        );
+        if (!relocation) return null;
+        movement.x = relocation.x;
+        movement.y = relocation.y;
+        movement.moved = movement.oldx !== movement.x
+            || movement.oldy !== movement.y;
+        const event = {
+            kind: 'teleport-trap', trap, trapSquare, relocation,
+            damage: 0, killed: false,
+        };
+        movement.trap = event;
+        movement.actionCompleted = true;
+        return event;
+    }
+    if (trap.ttyp === RUST_TRAP) {
+        const visible = !state?.blind && !(state?.u?.blindTurns > 0)
+            && !!(state?.viz_array?.[monster.my]?.[monster.mx] & 0x2)
+            && (!monster.minvis || state?.u?.seeInvisible
+                || state?.u?.see_invisible);
+        if (visible) trap.tseen = true;
+        monsterLearnsTrap(monster, trap);
+        monstersSeeTrap(state, trap);
+        const targetRoll = recordRandom(random, calls, 5);
+        const event = {
+            kind: 'rust-trap', trap, visible, targetRoll,
+            deferredWaterDamage: true,
+            damage: 0, killed: false,
+        };
+        // The selected seed73 actor takes the default body splash with no
+        // lit item or worn torso armor.  Head/arm equipment damage, complete
+        // rusting, and gremlin splitting remain named effect branches.
+        if (targetRoll < 3)
+            event.unimplementedTargetedWaterDamage = true;
+        movement.trap = event;
         return event;
     }
     if (trap.ttyp === PIT || trap.ttyp === SPIKED_PIT) {
@@ -5202,14 +5535,13 @@ function triggerMonsterTrap(
     }
     if (trap.ttyp === ARROW_TRAP || trap.ttyp === DART_TRAP) {
         // trap.c:mintrap()->trapeffect_{arrow,dart}_trap()->thitm().  The
-        // visible branch can suspend on either the trap trigger or hit/miss
-        // line.  This source-shaped block owns the unseen transaction first;
-        // retain visible tty handling for an independently observed witness.
+        // visible hit/miss pline can suspend on an older topline after the
+        // missile constructor and to-hit roll, but before damage, death, or
+        // floor placement.  Preserve that split as an explicit continuation.
         const visible = !state?.blind && !(state?.u?.blindTurns > 0)
             && !!(state?.viz_array?.[monster.my]?.[monster.mx] & 0x2)
             && (!monster.minvis || state?.u?.seeInvisible
                 || state?.u?.see_invisible);
-        if (visible) return null;
         if (monsterKnowsTrap(monster, trap)
             && recordRandom(random, calls, 4) !== 0) {
             const event = { kind: 'known-trap-avoided', trap, damage: 0 };
@@ -5245,50 +5577,22 @@ function triggerMonsterTrap(
             + attackLevel + (missile.spe ?? 0);
         const hit = hitThreshold <= hitRoll;
         const monsterHpBefore = monster.mhp ?? 1;
-        let damage = 0;
-        let death = null;
-        let floorMissile = null;
-        if (hit) {
-            const damageTable = (MONSTER_SIZE[monster.mnum] ?? 2) >= 3
-                ? OBJECT_LARGE_DAMAGE : OBJECT_SMALL_DAMAGE;
-            const damageSides = Math.max(1,
-                damageTable[projectileType] || 1);
-            damage = rollOne(damageSides);
-            calls.push(`rnd(${damageSides})`);
-            damage += missile.spe ?? 0;
-            if (damage < 0) damage = 0;
-            if (damage > 0) {
-                damage = Math.max(1, damage - Math.max(
-                    missile.oeroded ?? 0,
-                    missile.oeroded2 ?? 0,
-                ));
-            }
-            // thitm() makes every non-harmless strike deal at least one even
-            // when negative enchantment made dmgval() return zero.
-            damage = Math.max(1, damage);
-            monster.mhp = Math.max(0, (monster.mhp ?? 1) - damage);
-            if (monster.mhp <= 0) {
-                detachDeadMonster(monster, state);
-                const corpse = createOrdinaryMonsterCorpse(
-                    monster, state, random, calls,
-                );
-                death = { corpseCreated: !!corpse, corpse };
-                movement.actorDied = true;
-                movement.actionCompleted = true;
-            }
-        } else {
-            floorMissile = placeAndStackTrapMissile(
-                missile, state, trap.tx, trap.ty,
-            );
-        }
         const event = {
-            kind: 'projectile-trap', trap, visible: false,
-            projectileType, missile: floorMissile,
-            missileConsumed: hit, hitRoll, hitThreshold, hit,
+            kind: 'projectile-trap', trap, visible,
+            projectileType, pendingMissile: missile,
+            missileConsumed: null, hitRoll, hitThreshold, hit,
             monsterHpBefore, monsterHpAfter: monster.mhp,
-            damage, killed: monster.mhp <= 0, death,
+            damage: 0, killed: false, death: null, resolved: false,
         };
         movement.trap = event;
+        if (visible) {
+            trap.tseen = true;
+            movement.deferredAfterProjectileTrapMessage = true;
+        } else {
+            finishMonsterProjectileTrap(
+                event, monster, state, movement, random, rollOne, calls,
+            );
+        }
         return event;
     }
     if (trap.ttyp === ROCKTRAP) {
@@ -5443,9 +5747,10 @@ function triggerMonsterTrap(
         return event;
     }
     if (trap.ttyp === WEB) {
-        // trap.c:trapeffect_web(): webmakers cross safely; an ordinary
-        // monster becomes trapped without damage or an additional RNG draw.
-        if (monster.mnum === 96) return null;
+        // trap.c:mintrap() checks learned-trap avoidance, then projects trap
+        // knowledge, before delegating to trapeffect_web().  Only the effect
+        // discovers that webmakers cross safely, so they still learn an
+        // unknown web and own later avoidance probes.
         if (monsterKnowsTrap(monster, trap)
             && recordRandom(random, calls, 4) !== 0) {
             const event = { kind: 'known-trap-avoided', trap, damage: 0 };
@@ -5454,6 +5759,7 @@ function triggerMonsterTrap(
         }
         monsterLearnsTrap(monster, trap);
         monstersSeeTrap(state, trap);
+        if ([94, 96].includes(monster.mnum)) return null;
         monster.mtrapped = 1;
         if (!state?.viz_array
             || (state.viz_array?.[monster.my]?.[monster.mx] & 0x2)) {
@@ -5564,11 +5870,8 @@ function triggerMonsterTrap(
 export function triggerImmediateMonsterTrap(
     monster,
     state = game,
-    random = rn2,
-    rollDice = d,
-    rollOne = rnd,
 ) {
-    const calls = [];
+    const calls = DISCARDED_CALL_LOG;
     const movement = {
         oldx: monster?.mx,
         oldy: monster?.my,
@@ -5578,9 +5881,9 @@ export function triggerImmediateMonsterTrap(
         immediateTrap: true,
     };
     const event = triggerMonsterTrap(
-        monster, state, movement, random, rollDice, rollOne, calls,
+        monster, state, movement, rn2, d, rnd, calls,
     );
-    return { monster, movement, calls, event };
+    return { monster, movement, event };
 }
 
 function handleMonsterDoor(monster, state, movement, rollOne = rnd, calls = []) {
@@ -5620,7 +5923,9 @@ function nextHeroAttackIndex(monster, attackIndex) {
         // attack table but owns castmu() instead of a to-hit roll.  Weapon,
         // gaze, engulfing, and ranged slots retain separate future owners.
         if ((attackType >= 1 && attackType <= 7)
-            || attackType === AT_MAGC) return index;
+            || attackType === AT_MAGC
+            || (monster?.mnum === PM_ENERGY_VORTEX
+                && attackType === AT_ENGL)) return index;
     }
     return null;
 }
@@ -5674,6 +5979,51 @@ function selectHeroItemForTheft(state, random, calls) {
     return { object: null, total, ticket: initialTicket };
 }
 
+// C do_wear.c:some_armor().  Torso priority is deterministic; each later
+// occupied slot gets an independent one-in-four replacement opportunity.
+function selectHeroDisenchantmentTarget(state, random, calls) {
+    let object = state?.uarmc || state?.uarm || state?.uarmu || null;
+    for (const candidate of [
+        state?.uarmh, state?.uarmg, state?.uarmf, state?.uarms,
+    ]) {
+        if (candidate
+            && (!object || recordRandom(random, calls, 4) === 0)) {
+            object = candidate;
+        }
+    }
+    if (object) return object;
+    const fallback = recordRandom(random, calls, 5);
+    return [
+        null,
+        state?.uright || state?.u?.uright,
+        state?.uleft || state?.u?.uleft,
+        state?.uamul || state?.u?.uamul,
+        state?.ublindf || state?.u?.ublindf,
+    ][fallback] || null;
+}
+
+function drainHeroItemByDisenchanter(object, random, calls) {
+    if (!object) return false;
+    const enchantment = Number.isInteger(object.spe)
+        ? object.spe : Number.isInteger(object.enchantment)
+            ? object.enchantment : 0;
+    const objectClass = object.oclass ?? object.class;
+    const chargeable = !!OBJECT_CHARGED[object.otyp]
+        || objectClass === WEAPON_CLASS || objectClass === ARMOR_CLASS
+        || object.class === 'Weapons' || object.class === 'Armor';
+    if (!chargeable || enchantment <= 0) return false;
+    if ([AMULET_OF_YENDOR, SPE_BOOK_OF_THE_DEAD,
+        CANDELABRUM_OF_INVOCATION, BELL_OF_OPENING].includes(object.otyp)) {
+        return false;
+    }
+    const artifact = !!(object.oartifact || object.artifact);
+    if (recordRandom(random, calls, 100) < (artifact ? 90 : 10))
+        return false;
+    object.spe = enchantment - 1;
+    object.enchantment = object.spe;
+    return true;
+}
+
 // C teleport.c:rloc().  The ordinary random phase consumes complete x/y
 // pairs and accepts the first rloc_pos_ok()-shaped destination.  Theft and
 // dochug()'s fleeing-teleporter branch share this physical owner.  The
@@ -5688,7 +6038,8 @@ export function randomMonsterRelocation(
         calls.push(`rnd(${COLNO - 1})`);
         const y = random(ROWNO);
         calls.push(`rn2(${ROWNO})`);
-        if (!monsterGoodPosition(monster.mnum, x, y)
+        const selfSquare = x === monster.mx && y === monster.my;
+        if ((!selfSquare && !monsterGoodPosition(monster.mnum, x, y))
             || scareScrollAffects(monster, state, x, y)) continue;
         destination = { x, y };
         break;
@@ -5703,6 +6054,31 @@ export function randomMonsterRelocation(
         oldx, oldy,
         x: destination.x, y: destination.y,
         moved: oldx !== destination.x || oldy !== destination.y,
+    };
+}
+
+// C mon.c:mnexto()->teleport.c:enexto().  All three rings are collected and
+// shuffled before goodpos() selects a destination; the relocating monster's
+// old square remains occupied during that selection and is rejected.
+function relocateMonsterNextToHero(
+    monster, state, calls, random = rn2,
+) {
+    if (!monster) return null;
+    const oldx = monster.mx, oldy = monster.my;
+    const candidates = collectNearbyCoords(
+        state.u?.ux ?? oldx, state.u?.uy ?? oldy, 3, random, calls,
+    );
+    const destination = candidates.find(({ x, y }) =>
+        (x !== oldx || y !== oldy)
+        && expulsionDestinationOk(monster, state, x, y));
+    if (!destination) return null;
+    monster.mx = destination.x;
+    monster.my = destination.y;
+    monster.mtrack = [];
+    return {
+        oldx, oldy,
+        x: monster.mx, y: monster.my,
+        moved: oldx !== monster.mx || oldy !== monster.my,
     };
 }
 
@@ -5748,8 +6124,9 @@ function basicMonsterAttack(
     if (attackType === AT_MAGC
         && (damageType === AD_SPEL || damageType === AD_CLRC)) {
         // mhitu.c:mattacku() enters castmu() without a to-hit die.  Spell
-        // choice, fumble, and base damage all precede the effect message
-        // which can finally suspend the actor behind tty --More--.
+        // choice and fumble precede the casting line.  Base spell damage is
+        // rolled only after that line returns from tty; a long actor name can
+        // therefore move d() to the acknowledgement input.
         let spell = chooseMonsterSpell(
             monster, damageType, state, random, calls,
         );
@@ -5757,19 +6134,43 @@ function basicMonsterAttack(
             kind: 'hero-spell', threshold, attackType, damageType,
             attackIndex, cast: false,
         }, monster, attackIndex);
+        // C castmu() starts cnt at 40.  choose_monster_spell() already tests
+        // usefulness while walking the spell table; the do/while condition
+        // tests the returned spell once more, but there is no third probe
+        // after the loop.  Stateful usefulness checks such as geyser's
+        // rn2(5) make that exact call count observable.
         let attempts = 39;
         while (attempts-- > 0
-            && monsterSpellUseless(monster, spell, state)) {
+            && monsterSpellUseless(monster, spell, state, random, calls)) {
             spell = chooseMonsterSpell(
                 monster, damageType, state, random, calls,
             );
         }
-        if (monsterSpellUseless(monster, spell, state)
-            || monster.mcan || monster.mspec_used
-            || !(monster.m_lev ?? MONSTER_LEVEL[monster.mnum] ?? 0)) {
+        if (attempts < 0) {
             return retainHeroAttackContinuation({
                 kind: 'hero-spell', threshold, attackType, damageType,
                 attackIndex, spell: spell.key, cast: false,
+            }, monster, attackIndex);
+        }
+        if (monster.mcan || monster.mspec_used
+            || !(monster.m_lev ?? MONSTER_LEVEL[monster.mnum] ?? 0)) {
+            const blind = !!state?.blind
+                || (state?.u?.blindTurns ?? 0) > 0;
+            const canSeeCaster = !blind
+                && couldsee(monster.mx, monster.my)
+                && (!monster.minvis || heroCanSeeInvisible(state));
+            let curseKind = null;
+            if (canSeeCaster) {
+                curseKind = spell.flags & MCF_INDIRECT
+                    ? 'visible-undirected' : 'visible-directed';
+            } else if (!((state?.moves ?? 0) % 4)
+                || recordRandom(random, calls, 4) === 0) {
+                if (!state?.deaf) curseKind = 'audible';
+            }
+            return retainHeroAttackContinuation({
+                kind: 'hero-spell', threshold, attackType, damageType,
+                attackIndex, spell: spell.key, cast: false,
+                blocked: true, curseKind,
             }, monster, attackIndex);
         }
         const monsterLevel = monster.m_lev
@@ -5788,13 +6189,10 @@ function basicMonsterAttack(
             ? Math.trunc(monsterLevel / 2) + dice
             : Math.trunc(monsterLevel / 2) + 1;
         const spellSides = sides || 6;
-        let damage = rollDice(spellDice, spellSides);
-        calls.push(`d(${spellDice},${spellSides})`);
-        if (state?.u?.halfSpellDamage || state?.u?.half_spell_damage)
-            damage = Math.trunc((damage + 1) / 2);
         return retainHeroAttackContinuation({
             kind: 'hero-spell', threshold, attackType, damageType,
-            attackIndex, spell: spell.key, cast: true, damage,
+            attackIndex, spell: spell.key, cast: true,
+            spellDice, spellSides, deferredSpellDamage: true,
             directed: !(spell.flags & MCF_INDIRECT),
             deferredSpellEffect: true,
         }, monster, attackIndex);
@@ -5860,6 +6258,15 @@ function basicMonsterAttack(
             monster, state, random, rollOne, rollDice, calls,
             nextAttackIndex, threshold, null, deferVisibleContact,
         );
+    }
+    if (attackType === AT_ENGL && damageType === AD_DREN
+        && monster?.mnum === PM_ENERGY_VORTEX
+        && monster.mspec_used && !alreadyEngulfing) {
+        return retainHeroAttackContinuation({
+            kind: 'hero-attack', threshold, hit: false, roll: null,
+            attackType, damageType, attackIndex,
+            effect: 'engulf-cooldown-miss',
+        }, monster, attackIndex);
     }
     // An AT_WEAP slot gets a last close-range wield attempt even when the
     // actor reached mattacku() with weapon_check=NO_WEAPON_WANTED.  A legal
@@ -5960,6 +6367,16 @@ function basicMonsterAttack(
         );
         let weaponDamage = weaponSides ? rollOne(weaponSides) : 0;
         if (weaponSides) calls.push(`rnd(${weaponSides})`);
+        // weapon.c:dmgval(), non-big defender supplement.  A battle-axe
+        // keeps its encoded 1d8 die, then adds a separate 1d4 before
+        // enchantment and erosion adjustments.
+        if (contactWeapon.otyp === BATTLE_AXE) {
+            weaponDamage += rollOne(4);
+            calls.push('rnd(4)');
+        }
+        // weapon.c:dmgval(): a mace has a fixed +1 against non-big
+        // defenders in addition to its encoded 1d6 base die.
+        if (contactWeapon.otyp === 73) weaponDamage++;
         weaponDamage += contactWeapon.spe
             ?? contactWeapon.enchantment ?? 0;
         weaponDamage = Math.max(
@@ -5988,7 +6405,7 @@ function basicMonsterAttack(
             kind: 'hero-attack', roll, threshold, hit, damage,
             attackType, damageType, effect: 'physical-weapon', passive,
         }, monster, attackIndex);
-    } else if (hit && monster.mnum === 116) {
+    } else if (hit && monster.mnum === 116 && !deferVisibleContact) {
         // PM_GRID_BUG: AT_BITE AD_ELEC 1d1.  The electric special checks
         // magic cancellation, optionally checks inventory destruction, then
         // the shared post-hit knockback path consumes its distance/chance
@@ -6020,8 +6437,8 @@ function basicMonsterAttack(
         damage = rollDice(dice, sides);
         calls.push(`d(${dice},${sides})`);
         const armorProtection = state?.u?._magicNegation ?? 0;
-        const negated = recordRandom(random, calls, 10)
-            < 3 * armorProtection;
+        const negated = !!monster.mcan
+            || recordRandom(random, calls, 10) < 3 * armorProtection;
         if (deferVisibleContact) {
             return retainHeroAttackContinuation({
                 kind: 'hero-attack', roll, threshold, hit, damage,
@@ -6042,6 +6459,40 @@ function basicMonsterAttack(
             attackType, effect: 'poisonous-natural',
             poisonAttribute: damageType - 7, poisoned,
         }, monster, attackIndex);
+    } else if (hit && damageType === AD_SAMU
+        && dice > 0 && sides > 0) {
+        // uhitm.c:mhitm_ad_samu() retains ordinary claw damage.  After
+        // hitmsg(), it always spends the one-in-twenty theft gate; a hero
+        // without quest/invocation objects simply has nothing to steal.
+        damage = rollDice(dice, sides);
+        calls.push(`d(${dice},${sides})`);
+        return retainHeroAttackContinuation({
+            kind: 'hero-attack', roll, threshold, hit, damage,
+            attackType, damageType, effect: 'amulet-theft-natural',
+            deferredAmuletTheftGate: true,
+            deferredPostHit: true, oldFormMnum,
+        }, monster, attackIndex);
+    } else if (hit && damageType === AD_STCK) {
+        damage = rollDice(dice, sides);
+        calls.push(`d(${dice},${sides})`);
+        const armorProtection = state?.u?._magicNegation ?? 0;
+        const negated = !!monster.mcan
+            || recordRandom(random, calls, 10) < 3 * armorProtection;
+        return retainHeroAttackContinuation({
+            kind: 'hero-attack', roll, threshold, hit, damage,
+            attackType, damageType, effect: 'sticking-natural', negated,
+            deferredStickingAfterHit: true, oldFormMnum,
+        }, monster, attackIndex);
+    } else if (hit && !alreadyEngulfing && attackType !== AT_ENGL
+        && damageType === AD_FIRE
+        && dice > 0 && sides > 0) {
+        damage = rollDice(dice, sides);
+        calls.push(`d(${dice},${sides})`);
+        return retainHeroAttackContinuation({
+            kind: 'hero-attack', roll, threshold, hit, damage,
+            attackType, damageType, effect: 'fire-natural',
+            deferredFireNegation: true,
+        }, monster, attackIndex);
     } else if (hit && attackType === AT_TUCH && damageType === AD_COLD
         && dice > 0 && sides > 0) {
         // hmon() rolls base damage before mhitm_ad_cold(), but the latter
@@ -6054,6 +6505,16 @@ function basicMonsterAttack(
             kind: 'hero-attack', roll, threshold, hit, damage,
             attackType, damageType, effect: 'cold-natural',
             deferredColdNegation: true,
+        }, monster, attackIndex);
+    } else if (hit && !alreadyEngulfing && attackType !== AT_ENGL
+        && damageType === AD_ELEC
+        && dice > 0 && sides > 0) {
+        damage = rollDice(dice, sides);
+        calls.push(`d(${dice},${sides})`);
+        return retainHeroAttackContinuation({
+            kind: 'hero-attack', roll, threshold, hit, damage,
+            attackType, damageType, effect: 'electric-natural',
+            deferredElectricNegation: true,
         }, monster, attackIndex);
     } else if (alreadyEngulfing && dice > 0 && sides > 0) {
         // A monster already holding the hero re-enters mattacku() (and thus
@@ -6072,14 +6533,40 @@ function basicMonsterAttack(
                 effectMessage = 'You are freezing to death!';
                 applyHeroContactDamage(state, damage);
             }
+        } else if (damageType === AD_ELEC && !monster?.mcan
+            && recordRandom(random, calls, 2) !== 0) {
+            if (state.u.shockResistance || state.u.shock_resistance) {
+                damage = 0;
+                effectMessage = 'You seem unhurt.';
+            } else {
+                effectMessage = 'The air around you crackles with electricity.';
+                applyHeroContactDamage(state, damage);
+            }
         } else {
             damage = 0;
         }
-        return retainHeroAttackContinuation({
+        let deferredExpulsion = (state.u.uswldtim ?? 0) === 0;
+        let completedEnergyDrainSlot = false;
+        if (monster?.mnum === PM_ENERGY_VORTEX && attackIndex === 0
+            && !deferredExpulsion) {
+            const drain = resolveEnergyVortexDrainSlot(
+                monster, state, calls, random, rollOne, rollDice,
+            );
+            if (drain.message) {
+                effectMessage = [effectMessage, drain.message]
+                    .filter(Boolean).join('  ');
+            }
+            deferredExpulsion = drain.deferredExpulsion;
+            completedEnergyDrainSlot = true;
+        }
+        const engulfTick = retainHeroAttackContinuation({
             kind: 'hero-attack', roll, threshold, hit: true, damage,
             attackType, damageType, effect: 'engulf-tick', effectMessage,
-            deferredExpulsion: (state.u.uswldtim ?? 0) === 0,
+            deferredExpulsion,
         }, monster, attackIndex);
+        if (completedEnergyDrainSlot)
+            delete engulfTick.nextAttackIndex;
+        return engulfTick;
     } else if (hit && attackType === AT_ENGL && dice > 0 && sides > 0) {
         // mhitu.c:gulpmu() rolls base engulf damage, moves the attacker onto
         // the hero, and prints its urgent engulf line before setting
@@ -6094,7 +6581,7 @@ function basicMonsterAttack(
         state.u.ustuck = monster;
         return retainHeroAttackContinuation({
             kind: 'hero-attack', roll, threshold, hit, damage,
-            attackType, damageType, effect: 'engulf',
+            attackType, damageType, attackIndex, effect: 'engulf',
             deferredEngulf: true, engulfOldX, engulfOldY,
         }, monster, attackIndex);
     } else if (hit && damageType === AD_SITM) {
@@ -6178,6 +6665,18 @@ function basicMonsterAttack(
             blindMessage: blindApplicable && !heroWasBlind,
             deferredBlindEffect: true,
         }, monster, attackIndex);
+    } else if (hit && damageType === AD_STUN) {
+        // uhitm.c:mhitm_ad_stun().  The kick's declared damage and hitmsg
+        // precede cancellation and the one-in-four stun gate.  A selected
+        // effect adds the full damage to HStun, then halves only the HP
+        // damage before entering the common knockback/contact tail.
+        damage = rollDice(dice, sides);
+        calls.push(`d(${dice},${sides})`);
+        return retainHeroAttackContinuation({
+            kind: 'hero-attack', roll, threshold, hit, damage,
+            attackType, damageType, effect: 'stun-natural',
+            deferredStunGate: true, oldFormMnum,
+        }, monster, attackIndex);
     } else if (hit && damageType === AD_STON) {
         // mhitm_ad_ston() rolls the declared 0d0 before hitmsg().  Its hiss
         // gate belongs after that visible contact line, so keep the remaining
@@ -6188,6 +6687,113 @@ function basicMonsterAttack(
             kind: 'hero-attack', roll, threshold, hit, damage,
             attackType, damageType, effect: 'stoning-natural',
             deferredStoningEffect: true,
+        }, monster, attackIndex);
+    } else if (hit && damageType === AD_RUST) {
+        // uhitm.c:mhitm_ad_rust() still receives hitmu()'s declared 0d0
+        // damage and publishes hitmsg() before cancellation or erode_armor().
+        // Armor erosion is a separately resumable message owner; shared
+        // knockback gates follow it before mattacku() advances attack slots.
+        damage = rollDice(dice, sides);
+        calls.push(`d(${dice},${sides})`);
+        const completelyRustableForm = Upolyd(state?.u)
+            && state.u.umonnum === 259;
+        return retainHeroAttackContinuation({
+            kind: 'hero-attack', roll, threshold, hit, damage,
+            attackType, damageType,
+            effect: monster.mcan
+                ? 'cancelled-rust-natural' : 'rust-natural',
+            oldFormMnum,
+            deferredRustRehumanize: !monster.mcan
+                && completelyRustableForm,
+            deferredRustArmor: !monster.mcan
+                && !completelyRustableForm,
+            deferredPostHit: !!monster.mcan,
+        }, monster, attackIndex);
+    } else if (hit && damageType === AD_CORR) {
+        // uhitm.c:mhitm_ad_corr() keeps the bite's declared 3d8 damage, but
+        // hitmsg() and erode_armor(ERODE_CORRODE) both precede the common
+        // knockback and HP-damage tail.  Keep armor erosion resumable across
+        // tty exactly as for rust without conflating primary/secondary state.
+        damage = rollDice(dice, sides);
+        calls.push(`d(${dice},${sides})`);
+        return retainHeroAttackContinuation({
+            kind: 'hero-attack', roll, threshold, hit, damage,
+            attackType, damageType,
+            effect: monster.mcan
+                ? 'cancelled-corrosion-natural' : 'corrosion-natural',
+            oldFormMnum,
+            deferredCorrosionArmor: !monster.mcan,
+            deferredPostHit: !!monster.mcan,
+        }, monster, attackIndex);
+    } else if (hit && damageType === AD_DCAY) {
+        // uhitm.c:mhitm_ad_dcay() follows the same hitmsg/cancellation/armor
+        // continuation shape as rust, but erodes secondary rot state and
+        // deliberately disables grease protection.
+        damage = rollDice(dice, sides);
+        calls.push(`d(${dice},${sides})`);
+        const completelyRottableForm = Upolyd(state?.u)
+            && [PM_LEATHER_GOLEM, 254].includes(state.u.umonnum);
+        return retainHeroAttackContinuation({
+            kind: 'hero-attack', roll, threshold, hit, damage,
+            attackType, damageType,
+            effect: monster.mcan
+                ? 'cancelled-decay-natural' : 'decay-natural',
+            oldFormMnum,
+            deferredDecayRehumanize: !monster.mcan
+                && completelyRottableForm,
+            deferredDecayArmor: !monster.mcan
+                && !completelyRottableForm,
+            deferredPostHit: !!monster.mcan,
+        }, monster, attackIndex);
+    } else if (hit && damageType === AD_ENCH) {
+        // uhitm.c:mhitm_ad_ench().  Base damage and magic negation precede
+        // hitmsg(); some_armor(), drain resistance, and the state mutation
+        // precede the optional "less effective" pline which can force the
+        // earlier hit line through tty.
+        damage = rollDice(dice, sides);
+        calls.push(`d(${dice},${sides})`);
+        const armorProtection = state?.u?._magicNegation ?? 0;
+        const negated = !!monster.mcan
+            || recordRandom(random, calls, 10) < 3 * armorProtection;
+        let drainedObject = null;
+        if (!negated) {
+            const target = selectHeroDisenchantmentTarget(
+                state, random, calls,
+            );
+            if (drainHeroItemByDisenchanter(target, random, calls))
+                drainedObject = target;
+        }
+        const quantity = drainedObject?.quantity
+            ?? drainedObject?.quan ?? 1;
+        const drainTypeKnown = drainedObject
+            && (drainedObject.typeKnown
+                || state?._knownObjectTypes?.has(drainedObject.otyp));
+        const drainObjectClass = drainedObject?.oclass
+            ?? drainedObject?.class;
+        const drainObjectName = drainTypeKnown && drainObjectClass === RING_CLASS
+            ? `ring of ${OBJECT_NAMES[drainedObject.otyp]}`
+            : drainedObject?.name || OBJECT_NAMES[drainedObject?.otyp]
+                || 'item';
+        const drainMessage = drainedObject
+            ? `Your ${drainObjectName} ${
+                quantity === 1 ? 'seems' : 'seem'
+            } less effective.`
+            : null;
+        return retainHeroAttackContinuation({
+            kind: 'hero-attack', roll, threshold, hit, damage,
+            attackType, damageType,
+            effect: negated
+                ? 'cancelled-enchantment-natural' : 'enchantment-natural',
+            drainedObject, drainMessage,
+            deferredPostHit: true, oldFormMnum,
+        }, monster, attackIndex);
+    } else if (hit && damageType === AD_DRLI) {
+        damage = rollDice(dice, sides);
+        calls.push(`d(${dice},${sides})`);
+        return retainHeroAttackContinuation({
+            kind: 'hero-attack', roll, threshold, hit, damage,
+            attackType, damageType, effect: 'life-drain-natural',
+            deferredLifeDrainGate: true, oldFormMnum,
         }, monster, attackIndex);
     } else if (hit
         && (attackType !== AT_WEAP || !monsterWieldedWeapon(monster))
@@ -6245,12 +6851,66 @@ export function resumeDeferredHeroWeaponSwing(
     return resumed;
 }
 
+function energyDrainDice(state, dice = 2, sides = 6) {
+    const level = Math.max(state.u?.ulevel ?? 1, 6);
+    if ((state.u?.uen ?? 0) <= 5 * level && dice > 1) {
+        dice--;
+        if ((state.u?.uenmax ?? 0) <= 2 * level && sides > 3)
+            sides -= 3;
+    } else if ((state.u?.uen ?? 0) > 12 * level) {
+        dice++;
+        if ((state.u?.uenmax ?? 0) > 20 * level) sides += 3;
+    }
+    return { dice, sides };
+}
+
+function applyHeroEnergyDrain(state, amount, rollOne, calls) {
+    const hero = state.u;
+    if ((hero.uenmax ?? 0) < 1) {
+        hero.uen = hero.uenmax = 0;
+        return 'You feel momentarily lethargic.';
+    }
+    if (amount > ((hero.uen ?? 0) + (hero.uenmax ?? 0)) / 3) {
+        const originalAmount = amount;
+        amount = rollOne(originalAmount);
+        calls.push(`rnd(${originalAmount})`);
+    }
+    const punctuation = amount > (hero.uen ?? 0) ? '!' : '.';
+    hero.uen = (hero.uen ?? 0) - amount;
+    if (hero.uen < 0) {
+        const deficit = -hero.uen;
+        const maximumLoss = rollOne(deficit);
+        calls.push(`rnd(${deficit})`);
+        hero.uenmax = Math.max(0, (hero.uenmax ?? 0) - maximumLoss);
+        hero.uen = 0;
+    } else if (hero.uen > (hero.uenmax ?? 0)) {
+        hero.uen = hero.uenmax;
+    }
+    return `You feel your magical energy drain away${punctuation}`;
+}
+
+function resolveEnergyVortexDrainSlot(
+    monster, state, calls, random = rn2, rollOne = rnd, rollDice = d,
+) {
+    if ((state.u?.uswldtim ?? 0) > 0) state.u.uswldtim--;
+    const adjusted = energyDrainDice(state);
+    const amount = rollDice(adjusted.dice, adjusted.sides);
+    calls.push(`d(${adjusted.dice},${adjusted.sides})`);
+    let message = null;
+    if (!monster?.mcan && recordRandom(random, calls, 4) !== 0)
+        message = applyHeroEnergyDrain(state, amount, rollOne, calls);
+    return {
+        message,
+        deferredExpulsion: (state.u?.uswldtim ?? 0) === 0,
+    };
+}
+
 // Resume gulpmu() after the urgent initial engulf line has been dismissed.
 // The first public owner is an ice vortex: it establishes swallowed state,
 // rolls the duration, applies the first cold-effect gate, and leaves message
 // projection to allmain's tty transaction.
 export function resumeDeferredHeroEngulf(
-    action, state, random = rn2, rollOne = rnd,
+    action, state, random = rn2, rollOne = rnd, rollDice = d,
 ) {
     const attack = action?.movement?.attack;
     if (!attack?.deferredEngulf) return null;
@@ -6286,8 +6946,29 @@ export function resumeDeferredHeroEngulf(
             );
             message = 'You are freezing to death!';
         }
+    } else if (attack.damageType === AD_ELEC && !monster?.mcan
+        && recordRandom(random, calls, 2) !== 0) {
+        if (state.u.shockResistance || state.u.shock_resistance) {
+            attack.appliedDamage = 0;
+            message = 'You seem unhurt.';
+        } else {
+            attack.appliedDamage = attack.damage;
+            applyHeroContactDamage(state, attack.appliedDamage);
+            message = 'The air around you crackles with electricity.';
+        }
     } else {
         attack.appliedDamage = 0;
+    }
+    if (monster?.mnum === PM_ENERGY_VORTEX && attack.attackIndex === 0) {
+        const drain = resolveEnergyVortexDrainSlot(
+            monster, state, calls, random, rollOne, rollDice,
+        );
+        if (drain.message)
+            message = [message, drain.message].filter(Boolean).join('  ');
+        attack.deferredExpulsion = drain.deferredExpulsion;
+        // Slot 1 was completed inside the swallowed transaction above; do
+        // not expose it again through the ordinary continuation walker.
+        delete attack.nextAttackIndex;
     }
     attack.deferredEngulf = false;
     attack.engulfResolved = true;
@@ -6311,6 +6992,111 @@ export function resumeDeferredHeroColdSpecial(
     attack.deferredColdInventory = !attack.negated;
     attack.deferredPostHit = true;
     attack.deferredColdNegation = false;
+    return action;
+}
+
+// Resume mhitm_ad_fire() after hitmsg().  The fire line is independently
+// suspendable; inventory destruction, knockback, and HP follow it.
+export function resumeDeferredHeroFireSpecial(
+    action, state, random = rn2,
+) {
+    const attack = action?.movement?.attack;
+    if (!attack?.deferredFireNegation) return action;
+    const armorProtection = state?.u?._magicNegation ?? 0;
+    const cancelled = !!action.monster?.mcan;
+    attack.negated = cancelled
+        || recordRandom(random, action.calls, 10) < 3 * armorProtection;
+    if (cancelled) {
+        attack.damage = 0;
+        attack.fireEffectMessage = null;
+    } else if (attack.negated) {
+        attack.damage = 0;
+        attack.fireEffectMessage = 'You avoid harm.';
+    } else {
+        attack.fireEffectMessage = "You're on fire!";
+        if (state.u.fireResistance || state.u.fire_resistance) {
+            attack.damage = 0;
+            attack.fireResistanceMessage = "The fire doesn't feel hot!";
+        }
+    }
+    attack.deferredFireInventory = !attack.negated;
+    attack.deferredPostHit = true;
+    attack.deferredFireNegation = false;
+    return action;
+}
+
+// Resume mhitm_ad_elec() after hitmsg().  The zap line is independently
+// suspendable; its inventory-destruction gate and common hit tail follow it.
+export function resumeDeferredHeroElectricSpecial(
+    action, state, random = rn2,
+) {
+    const attack = action?.movement?.attack;
+    if (!attack?.deferredElectricNegation) return action;
+    const armorProtection = state?.u?._magicNegation ?? 0;
+    const cancelled = !!action.monster?.mcan;
+    attack.negated = cancelled
+        || recordRandom(random, action.calls, 10) < 3 * armorProtection;
+    if (cancelled) {
+        attack.damage = 0;
+        attack.electricEffectMessage = null;
+    } else if (attack.negated) {
+        attack.damage = 0;
+        attack.electricEffectMessage = 'You avoid harm.';
+    } else if (state.u.shockResistance || state.u.shock_resistance) {
+        attack.damage = 0;
+        attack.electricEffectMessage
+            = "You get zapped!  The zap doesn't shock you!";
+    } else {
+        attack.electricEffectMessage = 'You get zapped!';
+    }
+    attack.deferredElectricInventory = !attack.negated;
+    attack.deferredPostHit = true;
+    attack.deferredElectricNegation = false;
+    return action;
+}
+
+// Resume mhitm_ad_drli() after hitmsg().  A selected level loss and its
+// message precede shared knockback and the touch's ordinary HP damage.
+export function resumeDeferredHeroLifeDrain(
+    action, state, random = rn2,
+) {
+    const attack = action?.movement?.attack;
+    if (!attack?.deferredLifeDrainGate) return action;
+    const selected = recordRandom(random, action.calls, 3) === 0;
+    const drainResistant = heroHasDrainResistance(state);
+    if (selected && !drainResistant) {
+        const armorProtection = state.u?._magicNegation ?? 0;
+        const negated = !!action.monster?.mcan
+            || recordRandom(random, action.calls, 10) < 3 * armorProtection;
+        if (!negated) {
+            const loss = loseExperienceLevel(state);
+            attack.lifeDrainMessage = `Goodbye level ${loss.oldLevel}.`;
+            attack.lifeDrain = loss;
+        }
+    }
+    attack.deferredLifeDrainGate = false;
+    attack.deferredPostHit = true;
+    return action;
+}
+
+// Resume mhitm_ad_stun() after hitmsg().  make_stunned() receives the full
+// pre-halving damage; only the ordinary HP tail is reduced on selection.
+export function resumeDeferredHeroStun(
+    action, state, random = rn2,
+) {
+    const attack = action?.movement?.attack;
+    if (!attack?.deferredStunGate) return action;
+    if (!action.monster?.mcan
+        && recordRandom(random, action.calls, 4) === 0) {
+        const oldTurns = state.u?.stunnedTurns ?? 0;
+        state.u.stunnedTurns = oldTurns + Math.max(0, attack.damage ?? 0);
+        state.u.stunned = state.u.stunnedTurns > 0;
+        if (oldTurns === 0) attack.stunMessage = 'You stagger...';
+        attack.damage = Math.trunc((attack.damage ?? 0) / 2);
+        attack.stunSelected = true;
+    }
+    attack.deferredStunGate = false;
+    attack.deferredPostHit = true;
     return action;
 }
 
@@ -6411,13 +7197,9 @@ function covetousPicksUpTargetUnderfoot(monster, state) {
             covetousObjectMatchesMask(object, mask, state));
         if (index < 0) continue;
         const [object] = pile.splice(index, 1);
-        object.ox = object.oy = 0;
-        object.where = 'minvent';
-        if (!Array.isArray(monster.minvent))
-            monster.minvent = monster.inventory || [];
-        monster.minvent.unshift(object);
-        monster.inventory = monster.minvent;
-        monster.hasInventory = true;
+        addObjectToMonsterInventory(
+            monster, object, state, { atFront: true },
+        );
         return object;
     }
     return null;
@@ -6449,7 +7231,11 @@ function covetousTeleportDestination(monster, state, random, calls) {
             3, random, calls,
         );
         const destination = candidates.find(({ x, y }) =>
-            expulsionDestinationOk(monster, state, x, y)
+            // teleport.c:enexto_core()->goodpos() sees the relocating actor
+            // still occupying its old square, so that shuffled candidate is
+            // rejected just like any other MON_AT location.
+            (x !== monster.mx || y !== monster.my)
+            && expulsionDestinationOk(monster, state, x, y)
             && (!checkScary || !scareScrollAffects(
                 monster, state, x, y,
             )));
@@ -6539,6 +7325,24 @@ export function resumeDeferredHeroContact(
         }
     }
     if (attack.deferredPoisonEffect) return action;
+    if (attack.deferredAmuletTheftGate) {
+        const stealGate = recordRandom(random, calls, 20);
+        attack.deferredAmuletTheftGate = false;
+        const theftTarget = (state.inventory || []).find(object =>
+            object?.questArtifact || object?.isQuestArtifact
+            || [AMULET_OF_YENDOR, BELL_OF_OPENING,
+                SPE_BOOK_OF_THE_DEAD, CANDELABRUM_OF_INVOCATION]
+                .includes(object?.otyp));
+        if (stealGate === 0 && theftTarget) {
+            // Actual worn-item removal, theft, and relocation remain a named
+            // continuation.  A successful gate with no special target is a
+            // source no-op and must continue into knockback/passive handling.
+            attack.deferredAmuletTheft = true;
+            attack.amuletTheftTarget = theftTarget;
+            return action;
+        }
+    }
+    if (attack.deferredAmuletTheft) return action;
     if (attack.deferredColdInventory) {
         // mhitm_ad_cold() checks the attacker's level against this roll even
         // when no inventory stack is ultimately destroyed.  A successful
@@ -6551,12 +7355,68 @@ export function resumeDeferredHeroContact(
             recordRandom(random, calls, 5);
         attack.deferredColdInventory = false;
     }
+    if (attack.deferredFireInventory) {
+        const destructionGate = recordRandom(random, calls, 20);
+        const attackerLevel = action.monster?.m_lev
+            ?? MONSTER_LEVEL[action.monster?.mnum] ?? 0;
+        if (attackerLevel > destructionGate)
+            attack.unimplementedFireInventory = true;
+        attack.deferredFireInventory = false;
+    }
+    if (attack.deferredElectricInventory) {
+        const destructionGate = recordRandom(random, calls, 20);
+        const attackerLevel = action.monster?.m_lev
+            ?? MONSTER_LEVEL[action.monster?.mnum] ?? 0;
+        if (attackerLevel > destructionGate) {
+            const scaleRoll = recordRandom(random, calls, 5);
+            const baseDamage = attack.damage ?? 0;
+            const destructionLimit = Math.trunc(baseDamage / 5)
+                + (baseDamage % 5 > scaleRoll ? 1 : 0);
+            if (destructionLimit > 0) {
+                const wand = (state.inventory || []).find(object =>
+                    (object.oclass ?? object.class) === WAND_CLASS
+                    || object.class === 'Wands');
+                if (wand) {
+                    const explosionDamage = rollOne(10);
+                    calls.push('rnd(10)');
+                    if (recordRandom(random, calls, 3) === 0) {
+                        attack.electricDestroyedObject = wand;
+                        attack.electricExplosionDamage = explosionDamage;
+                        attack.electricInventoryMessage
+                            = `Your ${wand.name || OBJECT_NAMES[wand.otyp]
+                                || 'wand'} breaks apart and explodes!`;
+                        attack.electricInventoryMessagePending = true;
+                    }
+                }
+            }
+        }
+        attack.deferredElectricInventory = false;
+        if (attack.electricInventoryMessagePending) return action;
+    }
+    if (attack.electricInventoryMessagePending) return action;
+    if (attack.electricDestroyedObject) {
+        const object = attack.electricDestroyedObject;
+        const index = state.inventory?.indexOf(object) ?? -1;
+        if (index >= 0) state.inventory.splice(index, 1);
+        applyHeroContactDamage(state, attack.electricExplosionDamage ?? 0);
+        recordRandom(random, calls, 2); // exercise(A_STR, FALSE)
+        attack.electricDestroyedObject = null;
+        attack.electricExplosionDamage = 0;
+    }
     recordRandom(random, calls, 3);
     recordRandom(random, calls, 6);
     attack.appliedDamage = reduceHeroContactDamage(
         attack.damage, state, rollOne, calls,
     );
+    const wasPolymorphed = Upolyd(state?.u);
     applyHeroContactDamage(state, attack.appliedDamage);
+    if (wasPolymorphed && (state.u?.mh ?? 0) < 1) {
+        // mhitu.c:mdamageu() rehumanizes atomically before passiveum() sees
+        // the old form.  Retain the returned presentation transaction for
+        // the async actor driver, but make the body change live now so
+        // passiveum's Upolyd-only gate does not consume rn2(3).
+        attack.contactRehumanized = rehumanizeHero(state);
+    }
     if (attack.appliedDamage > 0) {
         attack.passive = applyHeroPassiveAfterContact(
             action.monster, state, random, d, calls,
@@ -6566,6 +7426,250 @@ export function resumeDeferredHeroContact(
         );
     }
     attack.deferredPostHit = false;
+    return action;
+}
+
+function heroWornArmor(state, slot) {
+    return state?.[slot] || state?.u?.[slot] || null;
+}
+
+function heroHasAcidProtectedInventory(state) {
+    const hero = state?.u || {};
+    const source = hero._propertySources?.acidResistance;
+    return !!(hero.acidResistanceFromArmor
+        || hero.acid_resistance_from_armor
+        || ['worn', 'wielded', 'accessory', 'artifact']
+            .includes(source?.kind));
+}
+
+function heroArmorErosionResult(
+    object, verbose, erosionKind, state, random, calls,
+) {
+    const corrosion = erosionKind === 'corrosion';
+    const rot = erosionKind === 'rot';
+    const objectName = object.name || object.description
+        || OBJECT_NAMES[object.otyp] || 'armor';
+    // trap.c:erode_obj(ERODE_CORRODE) asks inventory_resistance_check()
+    // before grease, material, proof, blessing, or erosion degree.  Only an
+    // equipped resistance source qualifies; an intrinsic hero resistance
+    // does not protect carried objects.  The source probability is 99%.
+    if (corrosion && heroHasAcidProtectedInventory(state)
+        && recordRandom(random, calls, 100) < 99) {
+        return { result: 'nothing', message: null };
+    }
+    if (!rot && object.greased) {
+        return {
+            result: 'greased',
+            message: `Your ${objectName} is protected by the layer of grease!`,
+            finalize: { kind: 'grease', object },
+        };
+    }
+
+    const material = OBJECT_MATERIAL[object.otyp] ?? 0;
+    const vulnerable = rot
+        ? (material <= 8 && material !== 1) || material === 10
+        : corrosion ? material === 11 || material === 13
+            : material === 11;
+    const proof = !!(object.oerodeproof
+        || (rot ? object.rotproof
+            : corrosion ? object.corrodeproof : object.rustproof));
+    const cause = rot ? 'decay' : corrosion ? 'corrosion' : 'oxidation';
+    if (!vulnerable || proof && object.rknown) {
+        return {
+            result: 'nothing',
+            message: verbose
+                ? `Your ${objectName} is not affected by ${cause}.` : null,
+        };
+    }
+    if (proof || object.blessed && rnl(4) === 0) {
+        return {
+            result: 'nothing',
+            message: proof
+                ? `Somehow, your ${objectName} is not affected by the ${cause}.`
+                : null,
+            finalize: proof ? { kind: 'proof', object } : null,
+        };
+    }
+
+    const field = corrosion || rot ? 'oeroded2' : 'oeroded';
+    const oldErosion = object[field] ?? 0;
+    if (oldErosion >= 3) {
+        return {
+            result: 'nothing',
+            message: verbose
+                ? `Your ${objectName} looks completely ${
+                    rot ? 'rotten' : corrosion ? 'corroded' : 'rusted'
+                }.` : null,
+        };
+    }
+    const adverb = oldErosion + 1 === 3
+        ? ' completely' : oldErosion ? ' further' : '';
+    return {
+        result: 'damaged',
+        message: `Your ${objectName} ${
+            rot ? 'rots' : corrosion ? 'corrodes' : 'rusts'
+        }${adverb}!`,
+        finalize: { kind: 'damage', object, field, oldErosion },
+    };
+}
+
+// Resume mhitm_ad_{rust,corr,dcay}()->erode_armor() after hitmsg() has crossed
+// any
+// tty boundary.  Head/shield/glove/boot candidates retry on ER_NOTHING; body
+// selection stops after its cloak/suit/shirt attempt even when non-vulnerable.
+function resumeDeferredHeroArmorErosion(
+    action, state, erosionKind, random = rn2,
+) {
+    const attack = action?.movement?.attack;
+    const deferredField = erosionKind === 'corrosion'
+        ? 'deferredCorrosionArmor'
+        : erosionKind === 'rot' ? 'deferredDecayArmor'
+            : 'deferredRustArmor';
+    if (!attack?.[deferredField]) return null;
+    const calls = action.calls;
+    let message = null;
+    let finalize = null;
+    let continueArmor = false;
+
+    for (;;) {
+        message = null;
+        finalize = null;
+        continueArmor = false;
+        const slot = recordRandom(random, calls, 5);
+        let target = null;
+        let verbose = false;
+        let bodySlot = false;
+        if (slot === 0) {
+            target = heroWornArmor(state, 'uarmh');
+        } else if (slot === 1) {
+            bodySlot = true;
+            verbose = true;
+            target = heroWornArmor(state, 'uarmc')
+                || heroWornArmor(state, 'uarm')
+                || heroWornArmor(state, 'uarmu');
+        } else if (slot === 2) {
+            target = heroWornArmor(state, 'uarms');
+        } else if (slot === 3) {
+            target = heroWornArmor(state, 'uarmg');
+        } else {
+            target = heroWornArmor(state, 'uarmf');
+        }
+
+        if (!target) {
+            if (bodySlot) break;
+            continue;
+        }
+        const erosion = heroArmorErosionResult(
+            target, verbose, erosionKind, state, random, calls,
+        );
+        message = erosion.message;
+        finalize = erosion.finalize;
+        continueArmor = !bodySlot && erosion.result === 'nothing';
+        // A visible ER_NOTHING result (notably actual proof) suspends inside
+        // erode_obj(); erode_armor's retry must not preselect another slot
+        // until that message has crossed tty and proof learning has committed.
+        if (message) break;
+        if (bodySlot || erosion.result !== 'nothing') break;
+    }
+
+    attack[deferredField] = false;
+    attack.deferredArmorErosionFinalize = {
+        ...(finalize || { kind: 'none' }),
+        continueArmor, deferredField,
+    };
+    return { message };
+}
+
+export function resumeDeferredHeroRustArmor(
+    action, state, random = rn2,
+) {
+    return resumeDeferredHeroArmorErosion(action, state, 'rust', random);
+}
+
+export function resumeDeferredHeroCorrosionArmor(
+    action, state, random = rn2,
+) {
+    return resumeDeferredHeroArmorErosion(
+        action, state, 'corrosion', random,
+    );
+}
+
+export function resumeDeferredHeroDecayArmor(
+    action, state, random = rn2,
+) {
+    return resumeDeferredHeroArmorErosion(action, state, 'rot', random);
+}
+
+// Complete erode_obj() only after its first message has crossed tty.  Grease
+// wear and proof learning occur after protection prose; ordinary erosion state
+// likewise commits after the rust/corrosion line.  A worn-off carried grease
+// layer owns a second independently publishable sentence.
+function finishDeferredHeroArmorErosion(
+    action, state, random = rn2,
+) {
+    const attack = action?.movement?.attack;
+    const pending = attack?.deferredArmorErosionFinalize;
+    if (!pending) return null;
+    let message = null;
+    if (pending.kind === 'grease') {
+        if (recordRandom(random, action.calls, 2) === 0) {
+            pending.object.greased = false;
+            message = 'The grease dissolves.';
+        }
+    } else if (pending.kind === 'proof') {
+        pending.object.rknown = true;
+    } else if (pending.kind === 'damage') {
+        pending.object[pending.field] = pending.oldErosion + 1;
+        // allmain.c projects the changed ARM_BONUS through find_ac() at the
+        // once-per-input boundary after the monster/global transaction.
+        state._armorClassDirty = true;
+    }
+    delete attack.deferredArmorErosionFinalize;
+    if (pending.continueArmor) attack[pending.deferredField] = true;
+    else attack.deferredPostHit = true;
+    return { message };
+}
+
+export function finishDeferredHeroRustArmor(
+    action, state, random = rn2,
+) {
+    return finishDeferredHeroArmorErosion(action, state, random);
+}
+
+export function finishDeferredHeroCorrosionArmor(
+    action, state, random = rn2,
+) {
+    return finishDeferredHeroArmorErosion(action, state, random);
+}
+
+export function finishDeferredHeroDecayArmor(
+    action, state, random = rn2,
+) {
+    return finishDeferredHeroArmorErosion(action, state, random);
+}
+
+function heroFormSticks(state) {
+    if (!Upolyd(state?.u) || !Number.isInteger(state.u.umonnum))
+        return false;
+    return (MONSTER_ATTACKS[state.u.umonnum] || []).some(
+        ([attackType, damageType]) =>
+            damageType === AD_STCK
+            || (damageType === AD_WRAP && attackType !== AT_ENGL)
+            || attackType === AT_HUGS,
+    );
+}
+
+export function resumeDeferredHeroSticking(action, state) {
+    const attack = action?.movement?.attack;
+    if (!attack?.deferredStickingAfterHit) return action;
+    if (!attack.negated && !state.u?.ustuck && !heroFormSticks(state)) {
+        state.u.ustuck = action.monster;
+        attack.stuckHero = true;
+        if (action.monster?.mnum === 293)
+            attack.stickingMessage = 'The barbs stick to you!';
+    }
+    attack.deferredStickingAfterHit = false;
+    attack.deferredPostHit = true;
     return action;
 }
 
@@ -6642,7 +7746,7 @@ export function resumeDeferredHeroBlindness(
         if (state?.u)
             state.u.blindTurns = oldTurns + increment;
         toggled = !state.blind && oldTurns <= 0;
-        state.blind = true;
+        syncBlindness(state);
         state.vision_full_recalc = 1;
     }
     recordRandom(random, action.calls, 3);
@@ -6663,12 +7767,35 @@ export function resumeDeferredHeroStoning(
     if (!attack?.deferredStoningEffect) return action;
     const special = recordRandom(random, action.calls, 3);
     attack.stoningSpecialTriggered = special === 0;
-    // The current source witness takes the ordinary no-hiss branch.  Keep a
-    // named continuation marker for the triggered branch rather than
-    // silently treating it as harmless; its rn2(10), resistance, and delayed
-    // petrification transaction remain a separate effect owner.
-    if (attack.stoningSpecialTriggered)
+    if (attack.stoningSpecialTriggered) {
         attack.deferredStoningSpecial = true;
+        const monster = action.monster;
+        const name = MONSTER_NAME[monster?.mnum] || 'monster';
+        const deaf = !!state?.deaf || (state?.u?.deafTurns ?? 0) > 0;
+        const blind = !!state?.blind || (state?.u?.blindTurns ?? 0) > 0;
+        const hallucinating = !!state?.u?.hallucinating
+            || (state?.u?.hallucinationTurns ?? 0) > 0;
+        if (monster?.mcan) {
+            if (!deaf)
+                attack.stoningSpecialMessage = `You hear a cough from the ${name}!`;
+        } else if (hallucinating && !blind) {
+            if (!deaf) attack.stoningSpecialMessage = 'You hear hissing!';
+            attack.unimplementedHallucinatedStoningKiss = true;
+        } else if (!deaf) {
+            attack.stoningSpecialMessage
+                = `You hear the ${name}'s hissing!`;
+        } else if (!blind) {
+            attack.stoningSpecialMessage = `The ${name} seems to grimace.`;
+        }
+        if (!monster?.mcan) {
+            attack.stoningPetrificationSelected
+                = recordRandom(random, action.calls, 10) === 0;
+            // do_stone_u(), including new-moon override and resistance/
+            // delayed-polyform handling, remains a separate successor.
+            if (attack.stoningPetrificationSelected)
+                attack.deferredHeroPetrification = true;
+        }
+    }
     recordRandom(random, action.calls, 3);
     recordRandom(random, action.calls, 6);
     attack.deferredStoningEffect = false;
@@ -6707,22 +7834,271 @@ export function continueDeferredHeroAttack(
     return attack;
 }
 
+// C mattacku() keeps walking its six-slot table after an AT_WEAP slot spends
+// that slot wielding a replacement.  Resume at the following attack index;
+// beginning a fresh sequence would incorrectly swing the new weapon at slot0.
+export function resumeDeferredHeroAttackAfterWield(
+    action, state, random = rn2, rollDice = d, rollOne = rnd,
+) {
+    const movement = action?.movement;
+    const pending = movement?.deferredHeroWield;
+    if (!pending) return null;
+    delete movement.deferredHeroWield;
+    const attackIndex = nextHeroAttackIndex(
+        action.monster, pending.attackIndex,
+    );
+    if (attackIndex === null) {
+        movement.attack = null;
+        return null;
+    }
+    const attack = basicMonsterAttack(
+        action.monster, state, random, rollOne, rollDice, action.calls,
+        attackIndex, pending.threshold, null, true,
+    );
+    movement.attack = attack;
+    return attack;
+}
+
+// Resume castmu() after the casting line.  Damage is pre-rolled before the
+// concrete effect line, but not before a casting line which itself pages.
+export function rollDeferredHeroSpellDamage(
+    action, state, rollDice = d,
+) {
+    const attack = action?.movement?.attack;
+    if (!attack?.deferredSpellDamage) return attack;
+    let damage = rollDice(attack.spellDice, attack.spellSides);
+    action.calls.push(`d(${attack.spellDice},${attack.spellSides})`);
+    if (state?.u?.halfSpellDamage || state?.u?.half_spell_damage)
+        damage = Math.trunc((damage + 1) / 2);
+    const spell = (attack.damageType === AD_CLRC
+        ? MONSTER_CLERIC_SPELLS : MONSTER_WIZARD_SPELLS)
+        .find(candidate => candidate.key === attack.spell);
+    const preview = monsterSpellEffectPreview(spell, damage, state);
+    attack.damage = damage;
+    attack.effectDamage = preview.effectDamage;
+    attack.spellEffectMessage = preview.effectMessage;
+    attack.deferredSpellDamage = false;
+    return attack;
+}
+
 // Resume mcastu.c:mcast_spell() after its effect message has crossed tty.
 // The first concrete owner is PSI_BOLT; applying its pre-rolled damage can
 // kill only the current monster form, in which case allmain projects the
 // shared polyself.c:rehumanize() transaction rather than treating the hero as
 // ordinarily dead.
-export function resumeDeferredHeroSpell(action, state) {
+export function resumeDeferredHeroSpell(
+    action, state, random = rn2, rollOne = rnd,
+) {
     const attack = action?.movement?.attack;
     if (!attack?.deferredSpellEffect) return null;
     attack.deferredSpellEffect = false;
-    if (attack.spell !== 'psi-bolt') {
+    if (attack.spell === 'blind-you') {
+        const turns = state.u?.halfSpellDamage
+            || state.u?.half_spell_damage ? 100 : 200;
+        const wasBlind = !!state.blind || (state.u?.blindTurns ?? 0) > 0;
+        state.u.blindTurns = turns;
+        syncBlindness(state);
+        state.vision_full_recalc = 1;
+        attack.toggledBlindness = !wasBlind;
+        attack.appliedDamage = 0;
+        return attack;
+    }
+    if (attack.spell === 'paralyze') {
+        const resisted = !!(state.u?.antimagic
+            || state.u?.magicResistance || state.u?.magic_resistance
+            || heroHasFreeAction(state));
+        const monsterLevel = action.monster?.m_lev
+            ?? MONSTER_LEVEL[action.monster?.mnum] ?? 0;
+        let duration = resisted ? 1 : 4 + monsterLevel;
+        if (state.u?.halfSpellDamage || state.u?.half_spell_damage)
+            duration = Math.trunc((duration + 1) / 2);
+        state._helplessTurns = duration;
+        state._helplessReason = 'paralyzed by a monster';
+        state._helplessDoneMessage = 'You can move again.';
+        const wasPolymorphed = Upolyd(state?.u);
+        applyHeroContactDamage(state, duration);
+        attack.appliedDamage = duration;
+        attack.paralyzed = true;
+        attack.rehumanize = wasPolymorphed && (state.u?.mh ?? 0) < 1;
+        attack.heroDied = !wasPolymorphed && (state.u?.uhp ?? 0) < 1;
+        return attack;
+    }
+    if (attack.spell === 'confuse-you') {
+        const antimagic = !!(state.u?.antimagic
+            || state.u?.magicResistance || state.u?.magic_resistance);
+        if (!antimagic) {
+            const monsterLevel = action.monster?.m_lev
+                ?? MONSTER_LEVEL[action.monster?.mnum] ?? 0;
+            let duration = monsterLevel;
+            if (state.u?.halfSpellDamage || state.u?.half_spell_damage)
+                duration = Math.trunc((duration + 1) / 2);
+            state.u.confusionTurns = (state.u.confusionTurns ?? 0) + duration;
+        }
+        attack.appliedDamage = 0;
+        attack.confusedHero = !antimagic;
+        return attack;
+    }
+    if (attack.spell === 'cure-self') {
+        const healing = d(3, 6);
+        action.calls.push('d(3,6)');
+        const monster = action.monster;
+        monster.mhp = Math.min(
+            monster.mhpmax ?? monster.mhp ?? healing,
+            (monster.mhp ?? 0) + healing,
+        );
+        attack.appliedDamage = 0;
+        attack.healedMonster = healing;
+        return attack;
+    }
+    if (attack.spell === 'disappear') {
+        const monster = action.monster;
+        monster.perminvis = 1;
+        if (!monster.invis_blkd) monster.minvis = 1;
+        attack.monsterDisappeared = true;
+        attack.appliedDamage = 0;
+        return attack;
+    }
+    if (attack.spell === 'weaken-you') {
+        const antimagic = !!(state.u?.antimagic
+            || state.u?.magicResistance || state.u?.magic_resistance);
+        attack.appliedDamage = 0;
+        if (antimagic) {
+            attack.weakenedHero = false;
+            return attack;
+        }
+
+        const monsterLevel = action.monster?.m_lev
+            ?? MONSTER_LEVEL[action.monster?.mnum] ?? 0;
+        let lossSides = Math.max(1, monsterLevel - 6);
+        if (state.u?.halfSpellDamage || state.u?.half_spell_damage)
+            lossSides = Math.trunc((lossSides + 1) / 2);
+        let strengthLoss = rollOne(lossSides);
+        action.calls.push(`rnd(${lossSides})`);
+
+        const wasPolymorphed = Upolyd(state.u);
+        const attributes = state.u?.acurr?.a;
+        const currentStrength = attributes?.[0] ?? 3;
+        let reducedStrength = currentStrength - strengthLoss;
+        let frailtyDamage = 0;
+        while (reducedStrength < 3) {
+            reducedStrength++;
+            strengthLoss--;
+            frailtyDamage += 3 + recordRandom(random, action.calls, 4);
+        }
+
+        if (frailtyDamage) {
+            applyHeroContactDamage(state, frailtyDamage);
+            if (wasPolymorphed && (state.u.mh ?? 0) > 0) {
+                state.u.mhmax = Math.max(
+                    1, (state.u.mhmax ?? 1) - frailtyDamage,
+                );
+                state.u.mh = Math.min(state.u.mh, state.u.mhmax);
+            } else if (!wasPolymorphed) {
+                const minimumHp = Math.max(1, state.u.ulevel ?? 1);
+                state.u.uhpmax = Math.max(
+                    minimumHp, (state.u.uhpmax ?? 1) - frailtyDamage,
+                );
+                state.u.uhp = Math.min(state.u.uhp, state.u.uhpmax);
+            }
+        }
+
+        const rehumanize = wasPolymorphed && (state.u.mh ?? 0) < 1;
+        if (attributes && strengthLoss > 0 && !rehumanize) {
+            attributes[0] = reducedStrength;
+            if (!Array.isArray(state.u._exercise))
+                state.u._exercise = Array(6).fill(0);
+            state.u._exercise[0] = 0;
+        }
+        attack.strengthLoss = strengthLoss;
+        attack.frailtyDamage = frailtyDamage;
+        attack.weakenedHero = strengthLoss > 0 || frailtyDamage > 0;
+        attack.rehumanize = rehumanize;
+        attack.heroDied = !wasPolymorphed && (state.u.uhp ?? 0) < 1;
+        return attack;
+    }
+    if (attack.spell === 'summon-monsters') {
+        attack.deferredSummonMonsters = true;
+        attack.appliedDamage = 0;
+        return attack;
+    }
+    if (attack.spell === 'death-touch') {
+        attack.deferredDeathTouch = true;
+        attack.appliedDamage = 0;
+        return attack;
+    }
+    if (attack.spell === 'clone-wizard') {
+        attack.deferredCloneWizard = true;
+        attack.appliedDamage = 0;
+        return attack;
+    }
+    if (attack.spell === 'haste-self') {
+        attack.deferredHasteSelf = true;
+        attack.appliedDamage = 0;
+        return attack;
+    }
+    if (attack.spell === 'aggravation') {
+        attack.deferredAggravation = true;
+        attack.appliedDamage = 0;
+        return attack;
+    }
+    if (attack.spell === 'stun-you') {
+        const resisted = !!(state.u?.antimagic
+            || state.u?.magicResistance || state.u?.magic_resistance
+            || heroHasFreeAction(state));
+        let duration = 1;
+        if (!resisted) {
+            const dexterity = state.u?.acurr?.a?.[1] ?? 10;
+            const dice = dexterity < 12 ? 6 : 4;
+            duration = d(dice, 4);
+            action.calls.push('d(' + dice + ',4)');
+            if (state.u?.halfSpellDamage || state.u?.half_spell_damage)
+                duration = Math.trunc((duration + 1) / 2);
+            duration += state.u?.stunnedTurns ?? 0;
+        }
+        state.u.stunnedTurns = duration;
+        state.u.stunned = duration > 0;
+        attack.stunnedHero = true;
+        attack.stunDuration = duration;
+        attack.appliedDamage = 0;
+        return attack;
+    }
+    if (attack.spell === 'destroy-armor') {
+        attack.deferredDestroyArmor = true;
+        attack.appliedDamage = 0;
+        return attack;
+    }
+    if (attack.spell === 'fire-pillar') {
+        attack.deferredFirePillar = true;
+        attack.appliedDamage = 0;
+        return attack;
+    }
+    if (attack.spell === 'lightning') {
+        attack.deferredLightningSpell = true;
+        attack.appliedDamage = 0;
+        return attack;
+    }
+    if (attack.spell === 'insects') {
+        attack.deferredInsectSpell = true;
+        attack.appliedDamage = 0;
+        return attack;
+    }
+    if (attack.spell === 'curse-items') {
+        attack.deferredCurseItems = true;
+        attack.appliedDamage = 0;
+        return attack;
+    }
+    if (attack.spell === 'geyser') {
+        attack.deferredGeyserSpell = true;
+        attack.appliedDamage = 0;
+        return attack;
+    }
+    if (!['psi-bolt', 'open-wounds'].includes(attack.spell)) {
         attack.unimplementedSpellEffect = true;
         return attack;
     }
     const wasPolymorphed = Upolyd(state?.u);
-    applyHeroContactDamage(state, attack.damage ?? 0);
-    attack.appliedDamage = attack.damage ?? 0;
+    applyHeroContactDamage(state, attack.effectDamage ?? attack.damage ?? 0);
+    attack.appliedDamage = attack.effectDamage ?? attack.damage ?? 0;
     attack.rehumanize = wasPolymorphed && (state.u?.mh ?? 0) < 1;
     attack.heroDied = !wasPolymorphed && (state.u?.uhp ?? 0) < 1;
     return attack;
@@ -6733,10 +8109,20 @@ function heroCanSeeInvisible(state) {
         || (state?.u?.seeInvisibleTurns ?? 0) > 0);
 }
 
-function monsterSpellUseless(monster, spell, state) {
+function monsterSpellHasAggravatables(caster, state) {
+    return !!state?.level?.monsters?.some(monster =>
+        monster !== caster && !monster.dead && (monster.mhp ?? 1) > 0
+        && (((monster.mstrategy ?? 0) & STRAT_WAITFORU)
+            || monster.msleeping || monster.mcanmove === 0
+            || (monster.mfrozen ?? 0) > 0));
+}
+
+function monsterSpellUseless(monster, spell, state, random = rn2, calls = []) {
     if ((spell.flags & MCF_HOSTILE) && monster.mpeaceful) return true;
     if (spell.key === 'cure-self')
         return (monster.mhp ?? 0) >= (monster.mhpmax ?? 0);
+    if (spell.key === 'blind-you')
+        return !!state?.blind || (state?.u?.blindTurns ?? 0) > 0;
     if (spell.key === 'haste-self')
         return monster.permspeed === MFAST || monster.mspeed === MFAST;
     if (spell.key === 'disappear') {
@@ -6746,7 +8132,20 @@ function monsterSpellUseless(monster, spell, state) {
             // same spell table without consuming another selection draw.
             || (!!monster.mpeaceful && !heroCanSeeInvisible(state));
     }
+    if (spell.key === 'death-touch') {
+        const resisted = !!(state?.u?.antimagic
+            || state?.u?.magicResistance || state?.u?.magic_resistance
+            || state?.u?.hallucinating
+            || (state?.u?.hallucinationTurns ?? 0) > 0);
+        return resisted && recordRandom(random, calls, 2) === 0;
+    }
+    if (spell.key === 'geyser')
+        return recordRandom(random, calls, 5) === 0;
     if (spell.key === 'clone-wizard') return !monster.iswiz;
+    if (spell.key === 'aggravation'
+        && !monsterSpellHasAggravatables(monster, state)) {
+        return recordRandom(random, calls, 100) !== 0;
+    }
     return false;
 }
 
@@ -6767,7 +8166,9 @@ function chooseMonsterSpell(monster, damageType, state, random, calls) {
     for (let index = list.length - 1; index >= 0; index--) {
         const spell = list[index];
         if (spell.level <= spellValue
-            && !monsterSpellUseless(monster, spell, state)) return spell;
+            && !monsterSpellUseless(
+                monster, spell, state, random, calls,
+            )) return spell;
     }
     return list[0];
 }
@@ -6788,7 +8189,9 @@ function movementSpellSelections(monster, state, random, calls) {
         // spells miss without spending the action; a successful indirect
         // spell bypasses m_move() and owns the whole actor transaction.
         if (!(spell.flags & MCF_INDIRECT)
-            || monsterSpellUseless(monster, spell, state)) continue;
+            || monsterSpellUseless(
+                monster, spell, state, random, calls,
+            )) continue;
         const monsterLevel = monster.m_lev
             ?? MONSTER_LEVEL[monster.mnum] ?? 0;
         if (monster.mcan || monster.mspec_used || !monsterLevel) {
@@ -6815,6 +8218,199 @@ function movementSpellSelections(monster, state, random, calls) {
     return null;
 }
 
+async function monsterSummonSpellEffect(monster, state) {
+    let effect = { count: 0, created: [], message: null };
+    const summoned = await summonNastyMonsters(monster);
+    effect = { ...effect, ...summoned };
+    for (const created of effect.created || []) {
+        const hostileState = created.mpeaceful;
+        if (created._nastyBirthPeaceful !== undefined)
+            created.mpeaceful = created._nastyBirthPeaceful;
+        newsym(created.mx, created.my);
+        created.mpeaceful = hostileState;
+        delete created._nastyBirthPeaceful;
+    }
+    if (effect.count > 0) {
+        if (monster?.iswiz) {
+            effect.message = `"Destroy the thief, my pet${
+                effect.count === 1 ? '' : 's'
+            }!"`;
+        } else {
+            const one = effect.count === 1;
+            const appearance = one
+                ? 'A monster appears' : 'Monsters appear';
+            const heroX = state?.u?.ux ?? monster?.mux;
+            const heroY = state?.u?.uy ?? monster?.muy;
+            const wrongTarget = monster?.mux !== heroX
+                || monster?.muy !== heroY;
+            const cannotSeeInvisible = !((MONSTER_FLAGS1[
+                monster?.mnum
+            ] ?? 0) & M1_SEE_INVIS);
+            if ((state?.invisible || state?.u?.invisible)
+                && cannotSeeInvisible && wrongTarget) {
+                effect.message = `${appearance} ${
+                    one ? 'at' : 'around'
+                } a spot near you!`;
+            } else if (heroIsDisplaced(state) && wrongTarget) {
+                effect.message = `${appearance} ${
+                    one ? 'by' : 'around'
+                } your displaced image!`;
+            } else {
+                effect.message = `${appearance} from nowhere!`;
+            }
+        }
+    }
+    return effect;
+}
+
+export async function resolveDeferredHeroSummonMonsters(action, state) {
+    const attack = action?.movement?.attack;
+    if (!attack?.deferredSummonMonsters) return null;
+    const effect = await monsterSummonSpellEffect(action.monster, state);
+    attack.summonedMonsters = effect.created || [];
+    attack.deferredSummonMonsters = false;
+    return effect;
+}
+
+const WIZARD_CLONE_APPEARANCE_NAMES = [
+    'human', 'water demon', 'vampire', 'red dragon', 'troll', 'umber hulk',
+    'xorn', 'xan', 'cockatrice', 'floating eye', 'guardian naga', 'trapper',
+];
+
+export async function beginDeferredHeroCloneWizard(action, state) {
+    const attack = action?.movement?.attack;
+    if (!attack?.deferredCloneWizard || attack.cloneWizard) return null;
+    const clone = await makemonNear(
+        285, state.u?.ux ?? 0, state.u?.uy ?? 0, MM_NOWAIT,
+    );
+    if (!clone) {
+        attack.deferredCloneWizard = false;
+        return null;
+    }
+    attack.cloneWizard = clone;
+    newsym(clone.mx, clone.my);
+    const hallucinating = !!(state.u?.hallucinating
+        || (state.u?.hallucinationTurns ?? 0) > 0);
+    if (hallucinating) {
+        snapshotMonsterCreationWearNames(
+            clone, () => randomDisplayMonsterName(),
+        );
+    }
+    // makemon() repaints after the complete creation wear pass, then formats
+    // its visible announcement.  clonewiz() performs another repaint later,
+    // after fake-Amulet and wizapp state have been installed.
+    newsym(clone.mx, clone.my);
+    const subject = hallucinating
+        ? randomDisplayMonsterSubject(true) : 'The Wizard of Yendor';
+    return {
+        clone,
+        message: `${subject} suddenly appears next to you!`,
+    };
+}
+
+export function finishDeferredHeroCloneWizard(action, state, random = rn2) {
+    const attack = action?.movement?.attack;
+    const clone = attack?.cloneWizard;
+    if (!attack?.deferredCloneWizard || !clone) return null;
+    clone.msleeping = 0;
+    clone.mtame = 0;
+    clone.mpeaceful = 0;
+    if (!state.u?.uhave?.amulet
+        && recordRandom(random, action.calls, 2) !== 0) {
+        const fake = mksobj(FAKE_AMULET_OF_YENDOR, true, false);
+        // wizard.c:clonewiz() uses add_to_minv(), not mpickobj(): a newly
+        // minted fake Amulet links directly without carrying effects.
+        linkObjectToMonsterInventory(clone, fake);
+    }
+    const protectedFromShapechangers = !!(
+        state.u?.protectionFromShapeChangers
+        || state.u?.protection_from_shape_changers
+    );
+    if (!protectedFromShapechangers) {
+        const appearanceIndex = recordRandom(
+            random, action.calls, WIZARD_CLONE_APPEARANCE_NAMES.length,
+        );
+        clone.m_ap_type = M_AP_MONSTER;
+        clone.mappearance = MONSTER_NAME.indexOf(
+            WIZARD_CLONE_APPEARANCE_NAMES[appearanceIndex],
+        );
+    }
+    newsym(clone.mx, clone.my);
+    attack.deferredCloneWizard = false;
+    return clone;
+}
+
+function monsterHasteSelfEffect(monster, state) {
+    const oldSpeed = monster.mspeed ?? 0;
+    monster.permspeed = monster.permspeed === MSLOW ? 0 : MFAST;
+    monster.mspeed = monster.permspeed;
+    const blind = !!state?.blind || (state?.u?.blindTurns ?? 0) > 0;
+    const inSight = !blind
+        && !!(state?.viz_array?.[monster.my]?.[monster.mx] & 0x2);
+    const canSeeInvisible = !!(state?.u?.seeInvisible
+        || state?.u?.see_invisible);
+    const visible = inSight && !monster.mundetected
+        && (!monster.minvis || canSeeInvisible);
+    let message = null;
+    if (visible && monster.mspeed !== oldSpeed
+        && naturalMonsterSpeed(monster) !== 0
+        && monster.mcanmove !== 0 && !monster.msleeping
+        && !(monster.mfrozen ?? 0)) {
+        const much = monster.mspeed + oldSpeed === MFAST + MSLOW
+            ? 'much ' : '';
+        message = 'The ' + MONSTER_NAME[monster.mnum]
+            + ' is suddenly moving ' + much + 'faster.';
+    }
+    return { message, oldSpeed, speed: monster.mspeed };
+}
+
+export function resolveDeferredHeroHasteSelf(action, state) {
+    const attack = action?.movement?.attack;
+    if (!attack?.deferredHasteSelf) return null;
+    const effect = monsterHasteSelfEffect(action.monster, state);
+    attack.hasteSelf = effect;
+    attack.deferredHasteSelf = false;
+    return effect;
+}
+
+export function aggravateMonsters(
+    state, random = rn2, calls = [],
+) {
+    const affected = [];
+    for (const monster of state.level?.monsters || []) {
+        if (!monster || monster.dead || (monster.mhp ?? 1) <= 0) continue;
+        const wasSleeping = !!monster.msleeping;
+        const wasWaiting = !!((monster.mstrategy ?? 0)
+            & (STRAT_WAITFORU | STRAT_APPEARMSG));
+        monster.mstrategy = (monster.mstrategy ?? 0)
+            & ~(STRAT_WAITFORU | STRAT_APPEARMSG);
+        monster.msleeping = 0;
+        let unfroze = false;
+        if (monster.mcanmove === 0
+            && recordRandom(random, calls, 5) === 0) {
+            monster.mfrozen = 0;
+            monster.mcanmove = 1;
+            unfroze = true;
+        }
+        if (wasSleeping || wasWaiting || unfroze)
+            affected.push(monster);
+    }
+    return affected;
+}
+
+export function resolveDeferredHeroAggravation(
+    action, state, random = rn2,
+) {
+    const attack = action?.movement?.attack;
+    if (!attack?.deferredAggravation) return null;
+    const affected = aggravateMonsters(
+        state, random, action.calls,
+    );
+    attack.aggravatedMonsters = affected;
+    attack.deferredAggravation = false;
+    return affected;
+}
+
 // Resume a successful castmu(FALSE,FALSE) after its casting line has crossed
 // the tty boundary.  The source effect can create actors, so it remains async
 // and only then returns to dochug() for the second distfleeck/phase-four tail.
@@ -6828,67 +8424,12 @@ export async function resumeDeferredMovementSpell(
 
     let effect = { count: 0, created: [], message: null };
     if (spellCast.spell === 'summon-monsters') {
-        const summoned = await summonNastyMonsters(action.monster);
-        effect = { ...effect, ...summoned };
-        for (const monster of effect.created || [])
-            newsym(monster.mx, monster.my);
-        if (effect.count > 0) {
-            if (action.monster?.iswiz) {
-                effect.message = `Destroy the thief, my pet${
-                    effect.count === 1 ? '' : 's'
-                }!`;
-            } else {
-                const one = effect.count === 1;
-                const appearance = one
-                    ? 'A monster appears' : 'Monsters appear';
-                const heroX = state?.u?.ux ?? action.monster?.mux;
-                const heroY = state?.u?.uy ?? action.monster?.muy;
-                const wrongTarget = action.monster?.mux !== heroX
-                    || action.monster?.muy !== heroY;
-                const cannotSeeInvisible = !((MONSTER_FLAGS1[
-                    action.monster?.mnum
-                ] ?? 0) & M1_SEE_INVIS);
-                if ((state?.invisible || state?.u?.invisible)
-                    && cannotSeeInvisible && wrongTarget) {
-                    effect.message = `${appearance} ${
-                        one ? 'at' : 'around'
-                    } a spot near you!`;
-                } else if (heroIsDisplaced(state)
-                    && wrongTarget) {
-                    effect.message = `${appearance} ${
-                        one ? 'by' : 'around'
-                    } your displaced image!`;
-                } else {
-                    effect.message = `${appearance} from nowhere!`;
-                }
-            }
-        }
+        effect = await monsterSummonSpellEffect(action.monster, state);
     } else if (spellCast.spell === 'haste-self') {
-        // C mcastu.c:MCAST_HASTE_SELF delegates to
-        // worn.c:mon_adjust_speed(+1).  Permanent slow is first cancelled;
-        // otherwise the actor becomes permanently fast.  This state changes
-        // the next mcalcmove() amount without consuming another RNG call.
-        const monster = action.monster;
-        const oldSpeed = monster.mspeed ?? 0;
-        monster.permspeed = monster.permspeed === MSLOW ? 0 : MFAST;
-        monster.mspeed = monster.permspeed;
-        const blind = !!state?.blind || (state?.u?.blindTurns ?? 0) > 0;
-        const inSight = !blind
-            && !!(state?.viz_array?.[monster.my]?.[monster.mx] & 0x2);
-        const canSeeInvisible = !!(state?.u?.seeInvisible
-            || state?.u?.see_invisible);
-        const visible = inSight && !monster.mundetected
-            && (!monster.minvis || canSeeInvisible);
-        if (visible && monster.mspeed !== oldSpeed
-            && naturalMonsterSpeed(monster) !== 0
-            && monster.mcanmove !== 0 && !monster.msleeping
-            && !(monster.mfrozen ?? 0)) {
-            const much = monster.mspeed + oldSpeed === MFAST + MSLOW
-                ? 'much ' : '';
-            effect.message = `The ${MONSTER_NAME[monster.mnum]} is suddenly moving ${
-                much
-            }faster.`;
-        }
+        effect = {
+            ...effect,
+            ...monsterHasteSelfEffect(action.monster, state),
+        };
     } else if (spellCast.spell === 'disappear') {
         // C mcastu.c:mcast_disappear() makes invisibility permanent, repaints
         // the actor square, and leaves an invisible marker when the hero saw
@@ -7111,6 +8652,10 @@ function finishDochugAfterMovement(
                     movement.actionCompleted = true;
                 } else if (phaseFour.attack?.kind === 'monster-wield') {
                     movement.wieldedWeapon = phaseFour.attack.weapon;
+                    movement.deferredHeroWield = {
+                        attackIndex: phaseFour.attack.attackIndex,
+                        threshold: phaseFour.attack.threshold,
+                    };
                 } else {
                     movement.attack = phaseFour.attack;
                 }
@@ -7146,6 +8691,17 @@ function finishDochugAfterMovement(
         distantPhaseFourAttackSetup(
             monster, movement, state, random, rollOne, calls,
         );
+        if (movement.phaseFourOffensiveEvaluated) {
+            const offensive = maybeBeginOffensiveWand(
+                monster, state, random, calls,
+                { linedUp: movement.phaseFourOffensiveLinedUp },
+            );
+            if (offensive.action) {
+                movement.offensiveWand = offensive.action;
+                movement.actionCompleted = true;
+                return;
+            }
+        }
         const offensivePotion = maybeThrowOffensiveSleepingPotion(
             monster, movement, state, random, rollOne, calls,
         );
@@ -7209,21 +8765,50 @@ function distantPhaseFourAttackSetup(
 // set_apparxy(), species probes, or candidate selection.
 function completeMovedMonsterAction(
     monster, movement, state, random, rollDice, rollOne, calls,
+    { trapAlreadyHandled = false } = {},
 ) {
     revealMonsterAfterLeavingHidingPlace(monster, movement, state);
     if (!movement.swallowedHold)
         handleMonsterDoor(monster, state, movement, rollOne, calls);
+    if (!movement.doorMessagePresented
+        && (movement.openedDoor || movement.doorExplosion)) {
+        // C postmov() publishes UnblockDoor/mb_trapped feedback before trap,
+        // tunneling, pickup, concealment, and dochug()'s trailing
+        // distfleeck().  A full older topline can therefore split this exact
+        // actor after the door state change but before any of those tails.
+        movement.deferredAfterDoorMessage = true;
+        return movement;
+    }
     // dog_move() reports MMOVE_MOVED even when candidate selection leaves
     // a pet on its original square, so postmov() still rechecks a trap there.
-    if (!movement.swallowedHold
+    if (!trapAlreadyHandled && !movement.swallowedHold
         && (movement.moved || monster?.pet || monster?.mtame))
         triggerMonsterTrap(
             monster, state, movement, random, rollDice, rollOne, calls,
         );
+    if (movement.deferredAfterProjectileTrapMessage) return movement;
     // postmov() maps both a trap-killed actor and an actor moved off-level to
     // an immediate terminal result.  Neither reaches tunneling, pickup,
     // concealment, the second distfleeck(), or phase-four attacks.
     if (movement.actorLeftLevel || movement.actorDied) return movement;
+    if (movement.actionCompleted) {
+        if (movement.itemGoalUnderfoot
+            && !movement.swallowedHold && !monster?.pet && !monster?.mtame) {
+            const pickedUp = pickUpMonsterFloorObject(monster, state);
+            if (pickedUp) {
+                movement.pickedUpHostile = pickedUp;
+                movement.pickupConsumedAction = true;
+                movement.deferredAfterPickupMessage = true;
+                return movement;
+            }
+        }
+        // dochug() recomputes distfleeck() for every non-died m_move status,
+        // including MMOVE_DONE, before its switch suppresses phase four.
+        finishDochugAfterMovement(
+            monster, movement, state, random, rollOne, rollDice, calls,
+        );
+        return movement;
+    }
     if (!movement.swallowedHold)
         monsterTunnelAfterMove(
             monster, movement, state, random, rollOne, calls,
@@ -7255,6 +8840,37 @@ function completeMovedMonsterAction(
             monster, movement, state, random, rollOne, rollDice, calls,
         );
     return movement;
+}
+
+export function resumeDeferredMonsterProjectileTrap(
+    action, state, random = rn2, rollDice = d, rollOne = rnd,
+) {
+    const movement = action?.movement;
+    if (!movement?.deferredAfterProjectileTrapMessage) return action;
+    delete movement.deferredAfterProjectileTrapMessage;
+    finishMonsterProjectileTrap(
+        movement.trap, action.monster, state, movement,
+        random, rollOne, action.calls,
+    );
+    completeMovedMonsterAction(
+        action.monster, movement, state, random, rollDice, rollOne,
+        action.calls, { trapAlreadyHandled: true },
+    );
+    return action;
+}
+
+export function resumeDeferredMonsterDoor(
+    action, state, random = rn2, rollDice = d, rollOne = rnd,
+) {
+    const movement = action?.movement;
+    if (!movement?.deferredAfterDoorMessage) return action;
+    delete movement.deferredAfterDoorMessage;
+    movement.doorMessagePresented = true;
+    completeMovedMonsterAction(
+        action.monster, movement, state, random, rollDice, rollOne,
+        action.calls,
+    );
+    return action;
 }
 
 // Resume m_move() immediately after mpickstuff() has crossed its optional
@@ -7290,7 +8906,7 @@ export function quietMonsterActionRng(
     monster, state, random = rn2, rollDice = d, rollOne = rnd,
     options = {},
 ) {
-    const calls = [];
+    const calls = DISCARDED_CALL_LOG;
     if (!options.afterCovetousRelocation) {
         // monmove.c:dochug() erodes text beneath every awake, mobile actor
         // before confusion/fleeing checks and the first set_apparxy().
@@ -7444,6 +9060,10 @@ export function quietMonsterActionRng(
             movement.actionCompleted = true;
         } else if (phaseFour.attack?.kind === 'monster-wield') {
             movement.wieldedWeapon = phaseFour.attack.weapon;
+            movement.deferredHeroWield = {
+                attackIndex: phaseFour.attack.attackIndex,
+                threshold: phaseFour.attack.threshold,
+            };
         } else {
             movement.attack = phaseFour.attack;
         }
@@ -7670,6 +9290,60 @@ export function resumeDeferredMonsterStrikingWand(
     return offensive;
 }
 
+export function resumeDeferredMonsterMagicMissileWand(
+    action, state, random = rn2,
+) {
+    const offensive = action?.movement?.offensiveWand;
+    if (offensive?.kind !== 'offensive-wand-magic-missile'
+        || !offensive.deferredEffect) return null;
+
+    offensive.deferredEffect = false;
+    offensive.object.spe = Math.max(0, (offensive.object.spe ?? 1) - 1);
+    offensive.range = 7 + recordRandom(random, action.calls, 7);
+    return offensive;
+}
+
+export function resolveMonsterMagicMissileContact(
+    action, target, state, random = rn2, rollOne = rnd, rollDice = d,
+) {
+    const hit = fireRayHits(
+        target, state, random, rollOne, action.calls,
+    );
+    let damage = 0;
+    if (hit) {
+        damage = rollDice(2, 6);
+        action.calls.push('d(2,6)');
+        target.mhp = Math.max(0, (target.mhp ?? 1) - damage);
+    }
+    return { target, hit, damage, killed: hit && target.mhp <= 0 };
+}
+
+export function finishMonsterMagicMissileDeath(
+    action, target, state, random = rn2,
+) {
+    finishRayKilledMonster(target, state, random, action.calls);
+    return target;
+}
+
+export function beginHeroMagicMissileContact(
+    action, state, random = rn2, rollOne = rnd,
+) {
+    return fireRayHits(
+        state.u, state, random, rollOne, action.calls,
+    );
+}
+
+export function finishHeroMagicMissileDamage(
+    action, state, rollDice = d,
+) {
+    let damage = rollDice(2, 6);
+    action.calls.push('d(2,6)');
+    if (state?.u?.halfSpellDamage || state?.u?.half_spell_damage)
+        damage = Math.trunc((damage + 1) / 2);
+    state.u.uhp = Math.max(0, (state.u.uhp ?? 1) - damage);
+    return damage;
+}
+
 // Resume muse.c:mbhitm() after "The wand hits you!" has crossed any tty
 // continuation boundary.  Fatal losehp() never returns to mbhitm(), so only
 // a surviving impact reaches learnit and identifies the striking wand.
@@ -7723,7 +9397,7 @@ export function resumeDeferredMonsterBearTrap(
 // optional kill lines.  ohitmon() has already consumed hit/damage RNG and
 // reduced HP; fatal detach/corpse work precedes launch_obj() continuing the
 // free in-flight boulder to its opposite endpoint.
-export function resumeDeferredMonsterRollingBoulder(
+export function resumeDeferredMonsterRollingBoulderDeath(
     action, state, random = rn2,
 ) {
     const movement = action?.movement;
@@ -7739,6 +9413,15 @@ export function resumeDeferredMonsterRollingBoulder(
         );
         event.death = { corpseCreated: !!corpse, corpse };
     }
+    return action;
+}
+
+// launch_obj() keeps rolling after ohitmon() returns.  Endpoint placement is
+// later than death/corpse resolution and every remaining per-cell delay.
+export function finishDeferredMonsterRollingBoulderPlacement(action, state) {
+    const movement = action?.movement;
+    const event = movement?.trap;
+    if (event?.kind !== 'rolling-boulder' || !event.released) return action;
     if (event.deferredPlacement) {
         event.deferredPlacement = false;
         event.boulder = placeAndStackTrapMissile(
@@ -7748,6 +9431,13 @@ export function resumeDeferredMonsterRollingBoulder(
             vision_note_blocker_change(event.endpoint.x, event.endpoint.y);
     }
     return action;
+}
+
+export function resumeDeferredMonsterRollingBoulder(
+    action, state, random = rn2,
+) {
+    resumeDeferredMonsterRollingBoulderDeath(action, state, random);
+    return finishDeferredMonsterRollingBoulderPlacement(action, state);
 }
 
 // Resume dog_move() after dog_invent() has committed and tty has had the
@@ -7937,7 +9627,7 @@ export function runQuietMonsterActions(
     actors, state, random = rn2, rollDice = d, rollOne = rnd,
 ) {
     return actors.map(monster => {
-        const calls = [];
+        const calls = DISCARDED_CALL_LOG;
         const liquidDeath = fatalUnseenLavaDeathBeforeMove(monster, state);
         if (liquidDeath)
             return { monster, calls, movement: liquidDeath };

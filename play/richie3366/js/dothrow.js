@@ -91,6 +91,7 @@ import {
 } from './trap.js';
 import { in_out_region, m_in_out_region } from './region.js';
 import { u_wipe_engr } from './engrave.js';
+import { getdir_read_dirsym } from './lock.js';
 
 const GLASS = 19;
 const POT_WATER = objectNames.indexOf('POT_WATER');
@@ -370,34 +371,6 @@ async function getobj_throw() {
         game._pending_message = '';
         return got;
     }
-}
-
-/**
- * C ref: cmd.c getdir — '.' / 's' = self (dx=dy=dz=0, success);
- * ESC/space/CR cancel (quitchars).
- */
-async function getdir(prompt) {
-    if (prompt) {
-        game._pending_message = prompt;
-        await flush_screen(1);
-        const disp = game.nhDisplay;
-        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
-    }
-    const key = await nhgetch();
-    const ch = String.fromCharCode(key);
-    // Clear yn prompt before returning to the command loop (next capture).
-    game._pending_message = '';
-    // C: NHKF_GETDIR_SELF / SELF2 → u.dx=u.dy=u.dz=0, return 1
-    if (ch === '.' || ch === 's') return { dx: 0, dy: 0, dz: 0 };
-    // C: strchr(quitchars, dirsym) → return 0 without "strange direction"
-    if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r')
-        return null;
-    const dir = dir_from_key(key, ch);
-    if (!dir) {
-        await pline('Never mind.');
-        return null;
-    }
-    return dir;
 }
 
 function freeinv(otmp) {
@@ -2486,25 +2459,17 @@ async function help_dir(msg) {
 }
 
 /**
- * C ref: cmd.c getdir via yn_function + help_dir.
+ * C ref: cmd.c getdir via yn_function + help_dir + CQ_REPEAT.
  * Esc / '.' / space / return cancel. '?' shows help and retries.
  * Other invalid keys: cmdassist NHW_TEXT then return cancel (no retry).
  * Returns {dx,dy,dz} or null. '<' / '>' set dz (C movecmd).
+ * tty_yn_function already flush_topl_more (D-0093).
  */
 export async function getdir_cmdassist(prompt) {
-    // C ref: cmd.c yn_function — flush pending topline --More-- before prompt
-    await flush_topl_more();
-    // C: tty_yn_function — Sprintf(prompt, "%s ", query)
-    const base = prompt || 'In what direction?';
-    const msg = base.endsWith(' ') ? base : `${base} `;
     for (;;) {
-        game._pending_message = msg;
-        await flush_screen(1);
-        const disp = game.nhDisplay;
-        if (disp?.setCursor) disp.setCursor(msg.length, 0);
-        const key = await nhgetch();
-        const ch = String.fromCharCode(key);
-        game._pending_message = '';
+        const dirsym = await getdir_read_dirsym(prompt);
+        const ch = dirsym;
+        const key = dirsym.charCodeAt(0);
         // C: NHKF_GETDIR_SELF / SELF2 → dx=dy=dz=0, success (not cancel)
         if (ch === '.' || ch === 's') return { dx: 0, dy: 0, dz: 0 };
         // C: strchr(quitchars, dirsym) → return 0 without help_dir

@@ -10,7 +10,7 @@ import { GameMap } from './game.js';
 import { rn2, rnd, rn1, rnz } from './rng.js';
 import { CLR_CYAN, CLR_GRAY, CLR_BRIGHT_BLUE } from './terminal.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
-import { depth as depth_of_level, dist2, distmin, level_difficulty as level_difficulty_of } from './hacklib.js';
+import { depth as depth_of_level, dist2, distmin, level_difficulty as level_difficulty_of, strstri } from './hacklib.js';
 import { try_load_bones } from './bones.js';
 import { no_bones_level } from './end.js';
 import {
@@ -80,8 +80,10 @@ import {
 import {
     RANDOM_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS,
     FOOD_CLASS, SCROLL_CLASS, POTION_CLASS, TOOL_CLASS, GEM_CLASS,
-    SPBOOK_CLASS, WAND_CLASS, AMULET_CLASS, ROCK_CLASS,
-    objectNames, objects,
+    SPBOOK_CLASS, WAND_CLASS, AMULET_CLASS, ROCK_CLASS, COIN_CLASS,
+    MAXOCLASSES, NUM_OBJECTS,
+    objectNames, objectNameStrs, objectDescrs, objects,
+    def_char_to_objclass,
 } from './objects.js';
 import { shtypes, stock_room } from './shknam.js';
 import { setgemprobs } from './o_init.js';
@@ -337,6 +339,16 @@ function stairway_find_dir(up) {
     const want = !!up;
     for (let s = game.stairs; s; s = s.next)
         if (!!s.up === want) return s;
+    return null;
+}
+
+/** C ref: stairs.c stairway_find_type_dir `:88–96` — isladder and up. */
+export function stairway_find_type_dir(isladder, up) {
+    const wantLadder = !!isladder;
+    const wantUp = !!up;
+    for (let s = game.stairs; s; s = s.next) {
+        if (!!s.isladder === wantLadder && !!s.up === wantUp) return s;
+    }
     return null;
 }
 
@@ -7605,14 +7617,8 @@ function load_minetn_1() {
     ];
     nhlib_shuffle(place);
 
-    const placeObj = (opts) => {
-        const otmp = l_create_object(opts);
-        if (otmp && (opts.quan | 0) > 0) {
-            otmp.quan = opts.quan | 0;
-            otmp.owt = weight(otmp);
-        }
-        return otmp;
-    };
+    // C lspo_object → create_object: merge stacks set quan; non-merge repeats.
+    const placeObj = (opts) => l_create_object(opts);
     placeObj({
         id: CORPSE, rx: 20, ry: 12, montype: 'aligned cleric',
     });
@@ -9980,14 +9986,12 @@ function tut1_object(xstart, ystart, mx, my, otyp, spe, buc) {
     return otmp;
 }
 
-/** C ref: tut-1 loader — quan after mksobj_at (not C oc_merge gate). */
-function tut1_object_quan(xstart, ystart, mx, my, otyp, quan) {
-    const otmp = tut1_object(xstart, ystart, mx, my, otyp, -127, null);
-    if (otmp && quan > 0) {
-        otmp.quan = quan;
-        otmp.owt = weight(otmp);
-    }
-    return otmp;
+/**
+ * C ref: dat/tut-1.lua des.object rock quantity → lspo_object.
+ * Packed rx/ry + splev origin (xstart/ystart already on game).
+ */
+function tut1_object_quan(_xstart, _ystart, mx, my, otyp, quan) {
+    return l_create_object({ id: otyp, rx: mx, ry: my, quan });
 }
 
 /**
@@ -11337,8 +11341,7 @@ function get_location(x, y, humidity, croom) {
 /**
  * C ref: sp_lev.c get_location_coord — packed add origin; random DRY retry.
  * Packed does not consult humidity (same as l_create_stairway). Random uses
- * get_location_coord_random / in-room double-try. Named omit: class-letter
- * def_char_to_objclass path lives in create_object.
+ * get_location_coord_random / in-room double-try.
  */
 function get_location_coord(humidity, croom, rx, ry) {
     if (rx < 0 && ry < 0) {
@@ -11361,12 +11364,11 @@ function get_location_coord(humidity, croom, rx, ry) {
  * C ref: sp_lev.c create_object (~2193–2439).
  * Named omit: recharged; tknown;
  * invent_carrying_monster / saddle; artifact uncreate when container_obj
- * is NULL; Medusa statue fill; achievement prizes; buried bury_an_obj;
- * class-letter def_char_to_objclass (id-less RANDOM_CLASS / mkobj_at
- * oclass still work). themerms Light source fill (D-1542) is the
- * production lua that sets lit=true; this arm is the callee.
+ * is NULL; Medusa statue fill; achievement prizes; buried bury_an_obj.
+ * themerms Light source fill (D-1542) is the production lua that sets
+ * lit=true; this arm is the callee.
  * oname + lookup_novel when `o.name` (D-1651).
- * quan>0 && oc_merge (D-1712); lspo_object non-merge repeat still named.
+ * quan>0 && oc_merge (D-1712); lspo_object non-merge repeat is D-1723.
  */
 function create_object(o, croom) {
     const named = !!(o.name);
@@ -11374,15 +11376,22 @@ function create_object(o, croom) {
     const x = pos.x;
     const y = pos.y;
 
+    // C: if (o->class >= 0) c = o->class; else c = 0;
     let c = (o.class != null && o.class >= 0) ? o.class : 0;
     let otmp;
-    const id = o.id ?? -1;
+    const id = (o.id == null) ? -1 : (o.id | 0);
     if (!c) {
         otmp = mkobj_at(RANDOM_CLASS, x, y, !named);
     } else if (id !== -1) {
         otmp = mksobj_at(id, x, y, true, !named);
     } else {
-        otmp = mkobj_at(c, x, y, !named);
+        // C create_object :2220–2232 — def_char_to_objclass; COIN → mkgold
+        const oclass = def_char_to_objclass(c);
+        if (oclass === MAXOCLASSES) {
+            throw new Error(`create_object: unexpected object class '${c}'`);
+        }
+        if (oclass === COIN_CLASS) otmp = mkgold(0, x, y);
+        else otmp = mkobj_at(oclass, x, y, !named);
     }
     if (!otmp) return null;
 
@@ -11574,34 +11583,209 @@ function lspo_object_apply_montype(tmp) {
 }
 
 /**
- * C ref: sp_lev.c lspo_object table form (unpacked; not lua_State).
- * contentsFn runs after create_object like Lua contents=function.
- * Named omit: argc string/coord overloads; quan non-merge repeat loop;
- * other load_* des.object still hand-rolled.
+ * C ref: hacklib.c strcmpi — ASCII fold. Local to sp_lev object parse.
  */
-export function l_create_object(o, contentsFn, croom = null) {
-    const tmp = { ...o };
+function lspo_strcmpi(a, b) {
+    return String(a).toLowerCase() === String(b).toLowerCase();
+}
+
+/**
+ * C ref: sp_lev.c get_coord (unpacked table / 2-array). Non-table → -1,-1.
+ */
+function get_coord_unpacked(coord) {
+    if (coord == null || typeof coord !== 'object') return { x: -1, y: -1 };
+    if (Array.isArray(coord)) {
+        if (coord.length !== 2) return { x: -1, y: -1 };
+        return { x: coord[0] | 0, y: coord[1] | 0 };
+    }
+    if (coord.x != null && coord.y != null) {
+        return { x: coord.x | 0, y: coord.y | 0 };
+    }
+    return { x: -1, y: -1 };
+}
+
+/**
+ * C ref: sp_lev.c get_table_xy_or_coord — x/y else coord.
+ */
+function get_table_xy_or_coord(o) {
+    let mx = o.x != null ? (o.x | 0) : -1;
+    let my = o.y != null ? (o.y | 0) : -1;
+    if (mx === -1 && my === -1) {
+        const xy = get_coord_unpacked(o.coord);
+        mx = xy.x;
+        my = xy.y;
+    }
+    return { x: mx, y: my };
+}
+
+/**
+ * C ref: sp_lev.c get_table_objclass — 1-char "class" else -1.
+ */
+function get_table_objclass_field(o) {
+    const s = o.class;
+    if (s == null) return -1;
+    if (typeof s === 'string' && s.length === 1) return s.charCodeAt(0);
+    return -1;
+}
+
+/**
+ * C ref: sp_lev.c find_objtype :3467–3536.
+ * Prefix "ring/potion/scroll/spellbook/wand of " sets class filter.
+ * Name then descr; unknown throws like nhl_error.
+ */
+function find_objtype(s, oclass) {
+    if (!s) return STRANGE_OBJECT;
+    let classv = def_char_to_objclass(oclass);
+    if (classv === MAXOCLASSES) classv = 0;
+    let name = String(s);
+    if (strstri(name, ' of ')) {
+        const prefixes = [
+            ['ring of ', RING_CLASS],
+            ['potion of ', POTION_CLASS],
+            ['scroll of ', SCROLL_CLASS],
+            ['spellbook of ', SPBOOK_CLASS],
+            ['wand of ', WAND_CLASS],
+        ];
+        for (const [p, cls] of prefixes) {
+            if (name.slice(0, p.length).toLowerCase() === p.toLowerCase()) {
+                classv = cls;
+                name = name.slice(p.length);
+                break;
+            }
+        }
+    }
+    const objs = game.objects;
+    for (let i = 0; i < NUM_OBJECTS; i++) {
+        const objname = objectNameStrs[i];
+        if ((!classv || classv === objs?.[i]?.oc_class)
+            && objname && lspo_strcmpi(name, objname)) {
+            return i;
+        }
+    }
+    for (let i = 0; i < NUM_OBJECTS; i++) {
+        const objname = objectDescrs[i];
+        if (objname && lspo_strcmpi(name, objname)) return i;
+    }
+    throw new Error('Unknown object id');
+}
+
+/**
+ * C ref: sp_lev.c lspo_object argc string / string+coord / string+x,y.
+ * maybe_contents stays 0. croom is JS-only (C gc.coder->croom).
+ */
+function lspo_object_from_string(paramstr, arg2, arg3) {
+    const tmp = {
+        spe: -127, quan: -1, trapped: -1, locked: -1, eroded: 0,
+        curse_state: 0, lit: 0, corpsenm: NON_PM, containment: 0,
+        name: null,
+    };
+    let ox = -1, oy = -1;
+    let croom = null;
+    if (typeof arg2 === 'number' && typeof arg3 === 'number') {
+        ox = arg2 | 0;
+        oy = arg3 | 0;
+    } else if (arg2 != null && typeof arg2 === 'object'
+               && typeof arg2 !== 'function') {
+        if (arg2.lx != null && arg2.ly != null && arg2.hx != null) {
+            croom = arg2;
+        } else {
+            const xy = get_coord_unpacked(arg2);
+            ox = xy.x;
+            oy = xy.y;
+            if (arg3 != null && typeof arg3 === 'object' && arg3.lx != null) {
+                croom = arg3;
+            }
+        }
+    }
+    if (paramstr.length === 1) {
+        tmp.class = paramstr.charCodeAt(0);
+        tmp.id = STRANGE_OBJECT;
+    } else {
+        tmp.class = -1;
+        tmp.id = find_objtype(paramstr, -1);
+    }
+    tmp.rx = ox;
+    tmp.ry = oy;
+    return { tmp, croom };
+}
+
+/**
+ * C ref: sp_lev.c lspo_object table form (unpacked; not lua_State).
+ * contentsFn runs after the create_object loop like Lua contents=function.
+ * Named omit: other load_* des.object still hand-rolled.
+ */
+function lspo_object_normalize_table(tmp) {
     if (tmp.spe == null) tmp.spe = -127;
     if (tmp.trapped == null) tmp.trapped = -1;
     if (tmp.locked == null) tmp.locked = -1;
     if (tmp.eroded == null) tmp.eroded = 0;
     if (tmp.buc != null) tmp.curse_state = get_table_buc(tmp.buc);
     if (tmp.curse_state == null) tmp.curse_state = 0;
-    if (tmp.rx == null) tmp.rx = -1;
-    if (tmp.ry == null) tmp.ry = -1;
-    // C lspo_object: get_table_boolean_opt(L, "lit", 0)
+    if (typeof tmp.quan !== 'number') tmp.quan = -1;
     if (tmp.lit == null) tmp.lit = 0;
     if (tmp.corpsenm == null) tmp.corpsenm = NON_PM;
-    if ((tmp.class == null || tmp.class < 0) && (tmp.id | 0) > 0) {
-        const oc = game.objects?.[tmp.id]?.oc_class;
-        tmp.class = (oc != null && oc >= 0) ? oc : 1;
+
+    const classChar = get_table_objclass_field(tmp);
+    if (typeof tmp.id === 'string') {
+        tmp.id = find_objtype(tmp.id, classChar);
+    } else if (tmp.id == null) {
+        tmp.id = STRANGE_OBJECT;
     }
-    lspo_object_apply_montype(tmp);
+    // C: tmpobj.class = get_table_objclass after get_table_objtype
+    tmp.class = classChar;
+
+    if (tmp.rx == null && tmp.ry == null) {
+        const xy = get_table_xy_or_coord(tmp);
+        tmp.rx = xy.x;
+        tmp.ry = xy.y;
+    }
+    if (tmp.rx == null) tmp.rx = -1;
+    if (tmp.ry == null) tmp.ry = -1;
+}
+
+/**
+ * C ref: sp_lev.c lspo_object :3556–3755 (unpacked; not lua_State).
+ * contentsFn runs after create_object like Lua contents=function.
+ * Named omit: other load_* des.object still hand-rolled.
+ */
+export function l_create_object(o, contentsFn, croom = null) {
+    let tmp;
+    let fn = contentsFn;
+    let room = croom;
+    if (typeof o === 'string') {
+        const parsed = lspo_object_from_string(o, contentsFn, croom);
+        tmp = parsed.tmp;
+        fn = null;
+        room = parsed.croom;
+    } else {
+        tmp = { ...o };
+        lspo_object_normalize_table(tmp);
+        lspo_object_apply_montype(tmp);
+    }
+
+    // C lspo_object :3663–3667 — class from objects[] or id=-1 for class letter
+    if (tmp.class === -1 && tmp.id > STRANGE_OBJECT) {
+        const oc = game.objects?.[tmp.id]?.oc_class;
+        tmp.class = oc != null ? oc : 0;
+    } else if (tmp.class > -1 && tmp.id === STRANGE_OBJECT) {
+        tmp.id = -1;
+    }
+
+    // C :3725 — quancnt only when id is a real otyp
+    let quancnt = (tmp.id > STRANGE_OBJECT) ? (tmp.quan | 0) : 0;
+
     tmp.containment = tmp.containment | 0;
     if (container_idx) tmp.containment |= SP_OBJ_CONTENT;
-    if (contentsFn) tmp.containment |= SP_OBJ_CONTAINER;
-    const otmp = create_object(tmp, croom);
-    if (typeof contentsFn === 'function') contentsFn(otmp);
+    if (fn) tmp.containment |= SP_OBJ_CONTAINER;
+
+    // C :3736–3740 — non-merge quantity creates N objects; merge stops at 1
+    let otmp = null;
+    do {
+        otmp = create_object(tmp, room);
+        quancnt--;
+    } while (quancnt > 0 && tmp.id > STRANGE_OBJECT && !oc_merge_of(tmp.id));
+
+    if (typeof fn === 'function') fn(otmp);
     if ((tmp.containment & SP_OBJ_CONTAINER) !== 0) spo_pop_container();
     return otmp;
 }

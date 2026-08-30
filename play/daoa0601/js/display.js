@@ -14,7 +14,8 @@ import {
     D_NODOOR, D_ISOPEN, D_CLOSED, D_LOCKED,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
-    WEB, VIBRATING_SQUARE, M_AP_OBJECT, def_warnsyms,
+    WEB, VIBRATING_SQUARE, M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT,
+    def_warnsyms,
     In_endgame, Is_rogue_level,
 } from './const.js';
 import {
@@ -40,6 +41,7 @@ import {
 } from './random_text_data.js';
 import { depth as dungeonDepth, endgameLevelName } from './hacklib.js';
 import { recordObjectEncounter } from './object_knowledge.js';
+import { heroGoldAmount } from './hero_gold.js';
 
 const OBJECT_SYMBOLS = ['', ']', ')', '[', '=', '"', '(', '%', '!', '?',
     '+', '/', '$', '*', '`', '0', '_', '.'];
@@ -197,7 +199,6 @@ export function objectColor(object) {
     // oclass and deliberately use the ordinary gray tty foreground.
     if (objectUsesGenericGlyph(object))
         return OBJECT_COLOR[object.oclass] ?? CLR_GRAY;
-    if (game._monkNorthPath && object?.oclass === 8) return NO_COLOR;
     // C obj_to_glyph(): a corpse keeps the depicted monster's color; it is
     // not colored as a generic food-class object.
     if (object?.otyp === CORPSE && Number.isInteger(object?.corpsenm))
@@ -897,6 +898,66 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
     loc.gnew = 1;
 }
 
+// tty cursor ownership for transient map animation follows the last cell whose
+// pending map projection differs from the physical terminal grid.  A tmp_at()
+// call whose glyph already matches the underlying floor leaves the cursor at
+// an earlier dirty cell, so the projectile coordinate itself is insufficient.
+export function lastDirtyMapCursor(g = game) {
+    const grid = g.nhDisplay?.grid;
+    if (!grid) return null;
+    let cursor = null;
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
+            const loc = g.level?.at(x, y);
+            const rawColor = loc?.disp_color ?? NO_COLOR;
+            const omittedBlank = loc?.disp_ch === ' '
+                && !((loc.disp_attr ?? 0) & 5)
+                && (rawColor === NO_COLOR || rawColor === CLR_GRAY);
+            const desiredCh = loc?.disp_ch && !omittedBlank
+                ? loc.disp_decgfx
+                    ? DEC_TO_UNICODE[loc.disp_ch] || loc.disp_ch
+                    : loc.disp_ch
+                : ' ';
+            const desiredColor = loc?.disp_ch && !omittedBlank
+                ? rawColor : CLR_GRAY;
+            const desiredAttr = loc?.disp_ch && !omittedBlank
+                ? loc.disp_attr ?? 0 : 0;
+            const actual = grid[y + 1]?.[x - 1];
+            if (!actual || actual.ch !== desiredCh
+                || actual.color !== desiredColor
+                || actual.attr !== desiredAttr) {
+                cursor = [x, y + 1];
+            }
+        }
+    }
+    return cursor;
+}
+
+const SHIELD_STATIC = [
+    '0', '#', '@', '#', '0', '#', '*',
+    '0', '#', '@', '#', '0', '#', '*',
+    '0', '#', '@', '#', '0', '#', '*',
+];
+
+// C display.c:shieldeff().  Resistance effects own a fixed 21-frame glyph
+// cycle at the protected coordinate, then restore the normal map projection.
+export async function shieldeff(x, y, g = game) {
+    if (!cansee(x, y)) return;
+    try {
+        for (const ch of SHIELD_STATIC) {
+            show_glyph_cell(x, y, ch, CLR_BRIGHT_BLUE, false);
+            await flush_screen(1);
+            g.nhDisplay?.setCursor(
+                (g.u?.ux ?? 1) - 1,
+                (g.u?.uy ?? 0) + 1,
+            );
+            await g.animationFrame?.();
+        }
+    } finally {
+        newsym(x, y);
+    }
+}
+
 // C display.c:map_invisible().  Unlike a transient actor overlay, an unseen
 // attacker's `I` is hero memory and must survive later blind redraws until a
 // caller explicitly discovers that the square no longer contains that
@@ -940,6 +1001,33 @@ export function unmap_invisible(x, y, show = true) {
 }
 
 // ── newsym ──
+function visibleMapRegionAt(x, y) {
+    return (game.level?.regions || []).find(region => region.visible
+        && region.ttl !== -2 && region.cells?.some(cell =>
+            cell.x === x && cell.y === y)) || null;
+}
+
+function monsterOverridesMapRegion(monster, x, y) {
+    if (!monster) return false;
+    if (game.u?.detectMonsters || game.detectMonsters
+        || warningProjection(monster)) return true;
+
+    const blind = !!game.blind || (game.u?.blindTurns ?? 0) > 0;
+    const telepathy = !!(game.u?.blindTelepathy || game.u?.telepathy);
+    if (blind && telepathy) return true;
+
+    const range = Math.max(game.u?.xray_range ?? -1, 1);
+    const dx = x - (game.u?.ux ?? x);
+    const dy = y - (game.u?.uy ?? y);
+    const seesInvisible = !!(game.u?.seeInvisible
+        || game.u?.see_invisible);
+    const ordinaryVisible = !blind && !monster.mundetected
+        && monster.m_ap_type !== M_AP_FURNITURE
+        && monster.m_ap_type !== M_AP_OBJECT
+        && (!monster.minvis || seesInvisible);
+    return ordinaryVisible && dx * dx + dy * dy <= range * (range + 1);
+}
+
 export function newsym(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
@@ -957,6 +1045,16 @@ export function newsym(x, y) {
     // C reveals the map symbol before living and object overlays are chosen.
     if (physicallyVisible && engraving) engraving.erevealed = true;
 
+    const monster = monsterAtMapCell(x, y);
+    const region = physicallyVisible ? visibleMapRegionAt(x, y) : null;
+    if (region && !monsterOverridesMapRegion(monster, x, y)) {
+        // region.c:show_region() uses the gas-cloud cmap glyph.  Visible gas
+        // overlays ordinary distant monsters but not sensed/warned or
+        // adjacent otherwise-visible actors.
+        show_glyph_cell(x, y, '#', NO_COLOR, false);
+        return;
+    }
+
     if (game.u?.ux === x && game.u?.uy === y) {
         // C maps the nonliving layer into memory before optionally drawing
         // the hero.  When canspotself() is false, that layer is also the live
@@ -972,7 +1070,6 @@ export function newsym(x, y) {
         return;
     }
 
-    const monster = monsterAtMapCell(x, y);
     if (monster && canProjectMonster(monster, x, y)) {
         // A visible actor overlays rather than replaces the remembered layer.
         if (physicallyVisible) mapNonlivingLocation(x, y, false);
@@ -985,14 +1082,22 @@ export function newsym(x, y) {
                 objectGlyphAttr(glyph));
             return;
         }
+        if (!hallucinationActive()
+            && monster.m_ap_type === M_AP_MONSTER
+            && Number.isInteger(monster.mappearance)) {
+            const glyph = displayMonsterGlyph(monster.mappearance);
+            show_glyph_cell(x, y, glyph.ch, glyph.color, false,
+                (monster.pet || (monster.mtame ?? 0) > 0)
+                    && game.flags?.hilite_pet ? 1 : 0);
+            return;
+        }
         if (hallucinationActive()) {
             const displayMnum = rn2Display(MONSTER_COLOR.length);
             const glyph = displayMonsterGlyph(displayMnum);
             show_glyph_cell(x, y, glyph.ch, glyph.color, false);
         } else {
             show_glyph_cell(x, y, monster.symbol || '?',
-                game._monkNorthPath && monster.mnum === 70 ? NO_COLOR
-                    : monster.mnum === 102 ? NO_COLOR
+                monster.mnum === 102 ? NO_COLOR
                     : monster.mnum === 100 || monster.mnum === 239 ? CLR_BROWN
                     : (MONSTER_COLOR[monster.mnum]
                         ?? monster.color ?? CLR_GRAY),
@@ -1118,9 +1223,9 @@ export function randomDisplayMonsterName() {
 
 // C do_name.c:Monnam() requests ARTICLE_THE, except personal bogus-monster
 // names suppress the article before the result is sentence-capitalized.
-export function randomDisplayMonsterSubject() {
+export function randomDisplayMonsterSubject(forceThe = false) {
     const { name, personal } = randomDisplayMonsterIdentity();
-    const subject = personal ? name : `the ${name}`;
+    const subject = personal && !forceThe ? name : `the ${name}`;
     return subject.charAt(0).toUpperCase() + subject.slice(1);
 }
 
@@ -1307,7 +1412,10 @@ export function _statusLine1() {
     const u = game.u;
     if (!u) return '';
     const name = game.displayName || game.plname || 'Hero';
-    const rank = game.urole?.rank;
+    const level = u.ulevel ?? 1;
+    const rankIndex = level <= 2 ? 0
+        : level <= 30 ? Math.trunc((level + 2) / 4) : 8;
+    const rank = game.urole?.title?.[rankIndex] || game.urole?.rank;
     const monsterTitle = (game.u?.mtimedone ?? 0) > 0
         ? (MONSTER_NAME[game.u?.umonnum] || 'monster')
             .replace(/\b\w/g, letter => letter.toUpperCase())
@@ -1350,9 +1458,10 @@ export function _statusLine2() {
         ?? (polymorphed ? u.mh : u.uhp) ?? 0;
     const maximumHp = polymorphed ? u.mhmax : u.uhpmax;
     const goldSymbol = Is_rogue_level(u.uz) ? '*' : '$';
-    const displayedAc = game._statusAcOverride ?? u.uac ?? 10;
+    const displayedAc = game._statusAcOverride
+        ?? game._statusProjectedAc ?? u.uac ?? 10;
     const displayedGold = game._statusGoldOverride
-        ?? game._goldCount ?? 0;
+        ?? heroGoldAmount(game);
     let line = `${location} ${goldSymbol}:${displayedGold} HP:${displayedHp}(${maximumHp || 0}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${displayedAc}`;
     if (polymorphed) {
         line += ` HD:${MONSTER_LEVEL[u.umonnum] ?? 0}`;
@@ -1369,13 +1478,14 @@ export function _statusLine2() {
     else if (hunger <= 50) line += ' Weak';
     else if (hunger <= 150) line += ' Hungry';
     if (u._encumbrance) line += ` ${u._encumbrance}`;
+    if (game.blind) line += ' Blind';
     if (polymorphed
         && ((MONSTER_FLAGS1[u.umonnum] ?? 0) & M1_FLY)) line += ' Fly';
-    if (game.blind) line += ' Blind';
     if ((u.confusionTurns ?? 0) > 0) line += ' Conf';
     if ((game._statusDeafOverride ?? game.deaf)) line += ' Deaf';
     if (u.hallucinating || (u.hallucinationTurns ?? 0) > 0)
         line += ' Hallu';
+    if (u.stunned || (u.stunnedTurns ?? 0) > 0) line += ' Stun';
     return line;
 }
 
@@ -1465,9 +1575,12 @@ function _buildScreenOutput() {
             const s2 = _statusLine2();
             for (let c = 0; c < Math.min(s2.length, display.cols); c++)
                 display.setCell(c, 23, s2[c], NO_COLOR, 0);
-            // Cursor at hero
-            if (game.u?.ux > 0)
+            const cursorOverride = game._cursorOverride;
+            if (Array.isArray(cursorOverride)) {
+                display.setCursor(cursorOverride[0], cursorOverride[1]);
+            } else if (game.u?.ux > 0) {
                 display.setCursor(game.u.ux - 1, game.u.uy + 1);
+            }
         }
     }
 }

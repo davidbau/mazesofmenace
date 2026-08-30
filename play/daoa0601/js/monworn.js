@@ -6,10 +6,13 @@ import { armorBonus, armorSlotFor } from './armor.js';
 import {
     MONSTER_EXPERIENCE_META, MONSTER_FLAGS1, MONSTER_SIZE, MONSTER_SYMBOL,
 } from './monster_data.js';
-import { AMULET_OF_GUARDING, OBJECT_DELAY } from './object_data.js';
 import {
-    AC_MAX, I_SPECIAL, W_ARM, W_ARMC, W_ARMF, W_ARMG, W_ARMH, W_ARMS,
-    W_ARMU,
+    AMULET_OF_GUARDING, AMULET_OF_LIFE_SAVING, AMULET_OF_REFLECTION,
+    OBJECT_BIMANUAL, OBJECT_DELAY,
+} from './object_data.js';
+import {
+    AC_MAX, I_SPECIAL, W_AMUL, W_ARM, W_ARMC, W_ARMF, W_ARMG, W_ARMH,
+    W_ARMS, W_ARMU,
 } from './const.js';
 
 const M1_NOHANDS = 0x00002000;
@@ -20,12 +23,15 @@ const M1_ANIMAL = 0x00040000;
 const M1_SLITHY = 0x00080000;
 const MZ_SMALL = 1;
 const MZ_LARGE = 3;
+const MZ_HUGE = 4;
 const S_CENTAUR = 29;
+const S_GHOST = 54;
 const SPEED_BOOTS = 166;
 const PM_WINGED_GARGOYLE = 42;
 const PM_MARILITH = 295;
 
 const SLOT_MASK = Object.freeze({
+    uamul: W_AMUL,
     uarm: W_ARM,
     uarmc: W_ARMC,
     uarmh: W_ARMH,
@@ -38,7 +44,7 @@ const SLOT_MASK = Object.freeze({
 // worn.c:m_dowear() visits these slots in this order.  A non-creation wear
 // can freeze the monster, causing every later slot in the same pass to stop.
 const WEAR_ORDER = Object.freeze([
-    'uarmu', 'uarmc', 'uarmh', 'uarms', 'uarmg', 'uarmf', 'uarm',
+    'uamul', 'uarmu', 'uarmc', 'uarmh', 'uarms', 'uarmg', 'uarmf', 'uarm',
 ]);
 
 function monsterCanDress(monster, creation) {
@@ -61,8 +67,38 @@ function monsterCanWearSuit(monster) {
         && monster.mnum !== PM_WINGED_GARGOYLE;
 }
 
+function monsterWrappingAllowed(monster) {
+    const flags = MONSTER_FLAGS1[monster?.mnum] ?? 0;
+    const size = MONSTER_SIZE[monster?.mnum] ?? 0;
+    const symbol = MONSTER_SYMBOL[monster?.mnum];
+    return !!(flags & M1_HUMANOID)
+        && size >= MZ_SMALL && size <= MZ_HUGE
+        && symbol !== S_GHOST && symbol !== S_CENTAUR
+        && monster.mnum !== PM_WINGED_GARGOYLE
+        && monster.mnum !== PM_MARILITH;
+}
+
+function monsterCreationWearSnapshotSlots(monster) {
+    if (!monsterCanDress(monster, true)) return [];
+    const canWearSuit = monsterCanWearSuit(monster);
+    const flags = MONSTER_FLAGS1[monster?.mnum] ?? 0;
+    const weapon = monster?.mw;
+    const slots = ['uamul'];
+    if (canWearSuit && !((monster.misc_worn_check ?? 0) & W_ARM))
+        slots.push('uarmu');
+    if (canWearSuit || monsterWrappingAllowed(monster)) slots.push('uarmc');
+    slots.push('uarmh');
+    if (!weapon || !OBJECT_BIMANUAL[weapon.otyp]) slots.push('uarms');
+    slots.push('uarmg');
+    if (!(flags & M1_SLITHY)
+        && MONSTER_SYMBOL[monster?.mnum] !== S_CENTAUR) slots.push('uarmf');
+    slots.push('uarm');
+    return slots;
+}
+
 function slotAllowed(monster, slot) {
     const flags = MONSTER_FLAGS1[monster?.mnum] ?? 0;
+    if (slot === 'uamul') return true;
     if (slot === 'uarm' || slot === 'uarmu')
         return monsterCanWearSuit(monster);
     if (slot === 'uarmc') return monsterCanWearSuit(monster);
@@ -106,6 +142,21 @@ function bestForSlot(monster, slot) {
     const mask = SLOT_MASK[slot];
     const old = wornInSlot(monster, mask);
     if (old?.cursed) return { old, best: old };
+    if (slot === 'uamul') {
+        if (old && old.otyp !== AMULET_OF_GUARDING)
+            return { old, best: old };
+        let best = old;
+        for (const object of monster?.minvent || monster?.inventory || []) {
+            if (![AMULET_OF_LIFE_SAVING, AMULET_OF_REFLECTION,
+                AMULET_OF_GUARDING].includes(object?.otyp)) continue;
+            if ((object.owornmask ?? 0) && object !== old) continue;
+            if (!best || object.otyp !== AMULET_OF_GUARDING) {
+                best = object;
+                if (best.otyp !== AMULET_OF_GUARDING) break;
+            }
+        }
+        return { old, best };
+    }
     let best = old;
     for (const object of monster?.minvent || monster?.inventory || []) {
         if (armorSlotFor(object?.otyp) !== slot) continue;
@@ -154,6 +205,13 @@ export function initializeMonsterArmor(monster) {
         if (change) changes.push(change);
     }
     return changes;
+}
+
+export function snapshotMonsterCreationWearNames(monster, snapshotName) {
+    if (typeof snapshotName !== 'function') return 0;
+    const slots = monsterCreationWearSnapshotSlots(monster);
+    for (const slot of slots) snapshotName(monster, slot);
+    return slots.length;
 }
 
 export function checkMonsterGearNextTurn(monster) {

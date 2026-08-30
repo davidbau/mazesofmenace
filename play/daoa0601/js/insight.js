@@ -18,6 +18,11 @@ import { OBJECT_NAMES, OBJECT_SUBTYPE } from './object_data.js';
 import {
     ensureHeroSkills, SKILL_LEVEL_NAMES, SKILL_NAMES,
 } from './skills.js';
+import { hiddenGold } from './gold.js';
+import { heroGoldAmount } from './hero_gold.js';
+import {
+    blindfolded, heroIsBlind, heroIsDeaf, permanentBlind,
+} from './senses.js';
 
 function alignmentName(value) {
     return value > 0 ? 'lawful' : value < 0 ? 'chaotic' : 'neutral';
@@ -38,6 +43,23 @@ function nextExperienceLevel(level) {
     return 10000000 * (level - 19);
 }
 
+export function goldInsightLines(final, indent = '  ') {
+    const purse = heroGoldAmount(game);
+    const stashed = hiddenGold(game, final);
+    let wallet = purse
+        ? `Your wallet ${final ? 'contained' : 'contains'} ${purse} zorkmid${
+            purse === 1 ? '' : 's'}`
+        : `Your wallet ${final ? 'was' : 'is'} empty`;
+    wallet += stashed ? purse ? ', and' : ', but' : '.';
+    const lines = [`${indent}${wallet}`];
+    if (stashed) {
+        lines.push(`${indent}you ${final ? 'had' : 'have'} ${stashed} ${
+            purse ? 'more' : `zorkmid${stashed === 1 ? '' : 's'}`
+        } stashed away in your pack.`);
+    }
+    return lines;
+}
+
 function piousness(record) {
     return record >= 20 ? 'piously' : record > 13 ? 'devoutly'
         : record > 8 ? 'fervently' : record > 3 ? 'stridently'
@@ -54,7 +76,12 @@ function statusEnlightenmentLines() {
     const lines = [];
     if (u.hallucinating || (u.hallucinationTurns ?? 0) > 0)
         lines.push('  You are hallucinating.');
-    if (game._statusDeafOverride ?? game.deaf)
+    if (heroIsBlind(game)) {
+        const kind = permanentBlind(game) ? 'permanently'
+            : blindfolded(game) ? 'deliberately' : 'temporarily';
+        lines.push(`  You are ${kind} blind.`);
+    }
+    if (game._statusDeafOverride ?? heroIsDeaf(game))
         lines.push('  You are deaf.');
     if (u.punished || (game.uball && game.uchain))
         lines.push('  You are chained to a heavy iron ball.');
@@ -350,6 +377,16 @@ function killedCountPhrase(count) {
     return `${count} times`;
 }
 
+function rerollConductLine() {
+    const roleplay = game.u?.uroleplay || {};
+    if (!roleplay.reroll)
+        return ' Character rerolling was not enabled.';
+    if (!(roleplay.numrerolls || 0))
+        return ' Your character was not rerolled.';
+    return ` Your character was rerolled ${
+        killedCountPhrase(roleplay.numrerolls)}.`;
+}
+
 function paginateAttributeLines(lines) {
     const contentRows = 23;
     const count = Math.ceil(lines.length / contentRows);
@@ -395,9 +432,7 @@ function attributePages() {
     const displayedDungeonName = dungeonName.replace(/^The\b/, 'the');
     const displayedDepth = /\bQuest\b/i.test(dungeonName)
         ? u.uz?.dlevel : dungeonDepth(u.uz);
-    const elapsedTurns = game._friday13ElapsedTurns ?? (game._rogueExplorePath
-        ? Math.max(1, (game.moves || 1) - 1)
-        : game.moves || 1);
+    const elapsedTurns = game.moves || 1;
     const entered = elapsedTurns === 1
         ? '  You have just started your adventure.'
         : `  You entered the dungeon ${elapsedTurns} ${
@@ -467,9 +502,7 @@ function attributePages() {
                 : `  You have ${u.uen} out of ${u.uenmax
                 } energy points (spell power).`,
         `  Your armor class is ${u.uac}.`,
-        game._goldCount
-            ? `  Your wallet contains ${game._goldCount} zorkmids.`
-            : '  Your wallet is empty.',
+        ...goldInsightLines(false),
         game.flags?.pickup && game.flags?.pickup_types
             ? `  Autopickup is on for '${game.flags.pickup_types}' plus thrown.`
             : `  Autopickup is ${game.flags?.pickup ? 'on' : 'off'}.`,
@@ -588,10 +621,11 @@ function finalAttributePages() {
                 ? ` You had all ${u.uenmax} energy points (spell power).`
                 : ` You had ${u.uen || 0} out of ${u.uenmax || 0} energy points (spell power).`;
         page1[16] = ` Your armor class was ${u.uac}.`;
-        page1[17] = (game._goldCount || 0) > 0
-            ? ` Your wallet contained ${game._goldCount} zorkmids.`
-            : ' Your wallet was empty.';
-        page1[18] = game.flags?.pickup && game.flags?.pickup_types
+        const goldLines = goldInsightLines(true, ' ');
+        page1[17] = goldLines[0];
+        const autopickupRow = goldLines.length > 1 ? 19 : 18;
+        if (goldLines.length > 1) page1[18] = goldLines[1];
+        page1[autopickupRow] = game.flags?.pickup && game.flags?.pickup_types
             ? ` Autopickup was on for '${game.flags.pickup_types}' plus thrown.`
             : ` Autopickup was ${game.flags?.pickup ? 'on' : 'off'}.`;
         page1[20] = 'Final Characteristics:';
@@ -711,9 +745,7 @@ function finalAttributePages() {
         ? ` You had all ${u.uenmax} energy points (spell power).`
         : ` You had ${u.uen || 0} out of ${u.uenmax || 0} energy points (spell power).`);
     lines.push(` Your armor class was ${u.uac}.`);
-    lines.push((game._goldCount || 0) > 0
-        ? ` Your wallet contained ${game._goldCount} zorkmids.`
-        : ' Your wallet was empty.');
+    lines.push(...goldInsightLines(true, ' '));
     lines.push(game.flags?.pickup && game.flags?.pickup_types
         ? ` Autopickup was on for '${game.flags.pickup_types}' plus thrown.`
         : ` Autopickup was ${game.flags?.pickup ? 'on' : 'off'}.`);
@@ -813,8 +845,18 @@ function currentAchievementLines() {
 export function currentConductLines() {
     const conduct = game.u?.uconduct || {};
     const lines = ['Voluntary challenges:'];
-    if (!game.u?.uroleplay?.reroll)
-        lines.push(' Character rerolling was not enabled.');
+    lines.push(rerollConductLine());
+    if (game.u?.uroleplay?.blind)
+        lines.push(' You have been blind from birth.');
+    if (game.u?.uroleplay?.deaf)
+        lines.push(' You have been deaf from birth.');
+    if (game.u?.uroleplay?.pauper) {
+        lines.push((game.inventory || []).length
+            ? ' You started without possessions.'
+            : ' You are without possessions.');
+    }
+    if (game.u?.uroleplay?.nudist)
+        lines.push(' You have been faithfully nudist.');
     if (!(conduct.food || 0)) lines.push(' You have gone without food.');
     else if (!(conduct.unvegan || 0))
         lines.push(' You have followed a strict vegan diet.');
@@ -881,8 +923,15 @@ export async function doconduct() {
 export function finalConductLines() {
     const conduct = game.u?.uconduct || {};
     const lines = ['Voluntary challenges:'];
-    if (!game.u?.uroleplay?.reroll)
-        lines.push(' Character rerolling was not enabled.');
+    lines.push(rerollConductLine());
+    if (game.u?.uroleplay?.blind)
+        lines.push(' You were blind from birth.');
+    if (game.u?.uroleplay?.deaf)
+        lines.push(' You were deaf from birth.');
+    if (game.u?.uroleplay?.pauper)
+        lines.push(' You started out without possessions.');
+    if (game.u?.uroleplay?.nudist)
+        lines.push(' You were faithfully nudist.');
     if (!(conduct.food || 0)) lines.push(' You went without food.');
     else if (!(conduct.unvegan || 0)) lines.push(' You followed a strict vegan diet.');
     else if (!(conduct.unvegetarian || 0)) lines.push(' You were vegetarian.');

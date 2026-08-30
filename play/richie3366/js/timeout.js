@@ -41,7 +41,7 @@ import { make_confused, make_slimed } from './potion.js';
 import { make_blinded } from './do.js';
 import { Fumbling, Fast, Very_fast } from './attrib.js';
 import { pline, You_feel, newsym, canseemon, verbalize, Norep, see_monsters, impossible } from './display.js';
-import { inv_weight, update_inventory } from './invent.js';
+import { inv_weight, update_inventory, useupall } from './invent.js';
 import { doname, makeplural, xname, an, The } from './objnam.js';
 import { rn2, rnd, d } from './rng.js';
 import { objectNames } from './objects.js';
@@ -672,15 +672,6 @@ async function You_see(line) {
     else await pline(`You see ${line}`);
 }
 
-function useupall_burn(otmp) {
-    if (!otmp) return;
-    const inv = game.invent || [];
-    const idx = inv.indexOf(otmp);
-    if (idx >= 0) inv.splice(idx, 1);
-    otmp.quan = 0;
-    otmp.where = OBJ_FREE;
-}
-
 /**
  * C ref: timeout.c burn_away_slime — clear Slimed TIMEOUT with message.
  */
@@ -843,7 +834,7 @@ export async function burn_object(obj, timeout) {
             }
         }
         end_burn(obj, false);
-        if (carried(obj)) useupall_burn(obj);
+        if (carried(obj)) useupall(obj);
         else {
             if (obj.where === OBJ_MIGRATING) obj.owornmask = 0;
             obj_extract_self(obj);
@@ -992,7 +983,7 @@ export async function burn_object(obj, timeout) {
                 obj.spe = 0;
                 obj.owt = weight(obj);
             } else if (carried(obj)) {
-                useupall_burn(obj);
+                useupall(obj);
                 obj = null;
             } else {
                 const onfloor = obj.where === OBJ_FLOOR;

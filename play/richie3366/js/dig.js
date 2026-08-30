@@ -33,6 +33,7 @@ import {
     in_rooms, in_town, stop_occupation, is_pool, is_lava, is_moat,
     confdir, losehp, maybe_half_phys, nomul, switch_terrain,
 } from './hack.js';
+import { currency } from './invent.js';
 import { objectNames } from './generated/objects_data.js';
 import { WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, POTION_CLASS, COIN_CLASS } from './objects.js';
 import { CLR_WHITE } from './terminal.js';
@@ -51,7 +52,6 @@ import {
     delfloortrap, trapname, mintrap, b_trapped, conjoined_pits,
     activate_statue_trap,
 } from './trap.js';
-import { nhgetch } from './input.js';
 import { set_occupation, can_reach_floor, del_engr_at, u_wipe_engr } from './engrave.js';
 import { wield_tool, welded } from './wield.js';
 import {
@@ -70,6 +70,7 @@ import {
 } from './dbridge.js';
 import { obj_resists } from './dogmove.js';
 import { unpunish, punish } from './read.js';
+import { getdir } from './lock.js';
 import {
     IS_STWALL, IS_TREE, IS_WALL, IS_OBSTRUCTED, IS_DOOR, IS_FOUNTAIN,
     IS_THRONE, IS_ALTAR, IS_ROOM, IS_SINK, IS_FURNITURE, IS_GRAVE,
@@ -435,7 +436,6 @@ export async function bury_objs(x, y) {
     const shkp = shop_keeper(rooms ? rooms.charCodeAt(0) : 0);
     const costly = !!(shkp && costly_spot(x, y));
     let loss = 0;
-    const currency = (amt) => ((amt | 0) === 1 ? 'zorkmid' : 'zorkmids');
 
     for (let otmp = objects_at(x, y); otmp; ) {
         if (costly && !game.context?.mon_moving) {
@@ -2054,40 +2054,6 @@ function otense_dig(_obj, verb) {
     return verb;
 }
 
-/** C ref: cmd.c getdir subset — hjkl/yubn + . self + <> vertical. */
-async function dig_getdir(prompt) {
-    const msg = prompt || 'In what direction?';
-    game._pending_message = `${msg} `;
-    await flush_screen(1);
-    const disp = game.nhDisplay;
-    if (disp?.setCursor) disp.setCursor(game._pending_message.length, 0);
-    const key = await nhgetch();
-    const ch = String.fromCharCode(key);
-    game._pending_message = '';
-    if (!game.u) game.u = {};
-    if (ch === '.') {
-        game.u.dx = game.u.dy = game.u.dz = 0;
-        return true;
-    }
-    if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') return false;
-    if (ch === '<') {
-        game.u.dx = game.u.dy = 0;
-        game.u.dz = -1;
-        return true;
-    }
-    if (ch === '>') {
-        game.u.dx = game.u.dy = 0;
-        game.u.dz = 1;
-        return true;
-    }
-    const ent = DIG_DIR_CHARS.find((d) => d.ch === ch && d.dz === 0);
-    if (!ent) return false;
-    game.u.dx = ent.dx;
-    game.u.dy = ent.dy;
-    game.u.dz = 0;
-    return true;
-}
-
 /** C ref: cmd.c cmdq_add_ec — rhack(0) awaits the function (D-1018). */
 function cmdq_add_ec(fn) {
     if (!game._cmdq_canned) game._cmdq_canned = [];
@@ -2148,7 +2114,7 @@ export async function use_pick_axe(obj) {
         }
     }
     const qbuf = `In what direction do you want to ${verb}? [${dirsyms}]`;
-    if (!(await dig_getdir(qbuf))) return res | ECMD_CANCEL;
+    if (!(await getdir(qbuf))) return res | ECMD_CANCEL;
     return use_pick_axe2(obj);
 }
 

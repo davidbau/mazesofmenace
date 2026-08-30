@@ -4,7 +4,9 @@
 import { game } from './gstate.js';
 import {
     AMULET_OF_GUARDING, CLOAK_OF_DISPLACEMENT, GAUNTLETS_OF_POWER,
-    FUMBLE_BOOTS, RIN_PROTECTION, OBJECT_NAMES, OBJECT_SPELL_LEVEL,
+    FUMBLE_BOOTS, RIN_FREE_ACTION, RIN_PROTECTION,
+    SHIELD_OF_DRAIN_RESISTANCE,
+    OBJECT_NAMES, OBJECT_SPELL_LEVEL,
 } from './object_data.js';
 import { rnd } from './rng.js';
 
@@ -46,6 +48,30 @@ export function heroIsDisplaced(state = game) {
         || !!state?.displaced
         || !!state?.u?.displaced
         || (state?.u?.displacedTurns ?? 0) > 0;
+}
+
+// C youprop.h:Drain_resistance includes both intrinsic sources and the
+// extrinsic property installed by setworn().  Derive the zero-delay shield
+// source from the authoritative worn slot so removal, polymorph breakage, and
+// fixture restoration cannot leave a stale boolean behind.
+export function heroHasDrainResistance(state = game) {
+    const hero = state?.u || {};
+    const shield = state?.uarms || hero.uarms;
+    return !!(hero.drainResistance || hero.drain_resistance
+        || shield?.otyp === SHIELD_OF_DRAIN_RESISTANCE);
+}
+
+// C youprop.h:Free_action includes the oc_oprop installed by either worn ring.
+// Derive ring ownership from the live slots for the same lifecycle reason as
+// shield-based drain resistance: taking the accessory off must remove the
+// effect without an independently maintained boolean.
+export function heroHasFreeAction(state = game) {
+    const hero = state?.u || {};
+    const left = state?.uleft || hero.uleft;
+    const right = state?.uright || hero.uright;
+    return !!(hero.freeAction || hero.free_action
+        || left?.otyp === RIN_FREE_ACTION
+        || right?.otyp === RIN_FREE_ACTION);
 }
 
 // do_wear.c's *_on() callbacks distinguish the physical worn property from
@@ -247,10 +273,26 @@ function equippedObject(state, slot) {
 // The strongest worn armor contribution owns magical-cancellation checks;
 // armor class by itself cannot stand in for it.
 export function magicNegation(state = game) {
-    return Math.max(0, ...ARMOR_SLOTS.map(slot => {
+    let cancellation = Math.max(0, ...ARMOR_SLOTS.map(slot => {
         const armor = equippedObject(state, slot);
         return armor ? (OBJECT_SPELL_LEVEL[armor.otyp] || 0) : 0;
     }));
+    const protectionRing = [
+        equippedObject(state, 'uleft'), equippedObject(state, 'uright'),
+    ].some(object => object?.otyp === RIN_PROTECTION);
+    const guardingAmulet
+        = equippedObject(state, 'uamul')?.otyp === AMULET_OF_GUARDING;
+    if (guardingAmulet) cancellation += 2;
+    else if (protectionRing) cancellation += 1;
+    else if (cancellation < 1) {
+        const hero = state.u || {};
+        if (((hero.intrinsicProtection || hero.protectionIntrinsic)
+                && (hero.ublessed ?? 0) > 0)
+            || (hero.uspellprot ?? hero.spellProtection ?? 0) > 0) {
+            cancellation = 1;
+        }
+    }
+    return Math.min(3, cancellation);
 }
 
 function protectionItemBonus(object, expectedType) {
@@ -259,7 +301,7 @@ function protectionItemBonus(object, expectedType) {
 
 // Rebuild current AC from authoritative equipment state. The default base is
 // human AC 10; polymorph can supply `formArmorClass` without changing callers.
-export function findArmorClass(state = game) {
+export function projectedArmorClass(state = game) {
     const hero = state.u || (state.u = {});
     let armorClass = Number.isInteger(hero.formArmorClass)
         ? hero.formArmorClass
@@ -267,8 +309,6 @@ export function findArmorClass(state = game) {
 
     for (const slot of ARMOR_SLOTS)
         armorClass -= armorBonus(equippedObject(state, slot));
-
-    hero._magicNegation = magicNegation(state);
 
     armorClass -= protectionItemBonus(
         equippedObject(state, 'uleft'), RIN_PROTECTION,
@@ -283,7 +323,12 @@ export function findArmorClass(state = game) {
         armorClass -= hero.ublessed || 0;
     armorClass -= hero.uspellprot || hero.spellProtection || 0;
 
-    armorClass = Math.max(-AC_MAX, Math.min(AC_MAX, armorClass));
-    hero.uac = armorClass;
-    return armorClass;
+    return Math.max(-AC_MAX, Math.min(AC_MAX, armorClass));
+}
+
+export function findArmorClass(state = game) {
+    const hero = state.u || (state.u = {});
+    hero._magicNegation = magicNegation(state);
+    hero.uac = projectedArmorClass(state);
+    return hero.uac;
 }

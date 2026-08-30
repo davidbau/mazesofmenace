@@ -4,7 +4,7 @@
 // Data is generated from upstream headers (js/generated/objects_data.js).
 
 import { game } from './gstate.js';
-import { P_DAGGER, P_SHORT_SWORD, P_SABER } from './const.js';
+import { P_DAGGER, P_SHORT_SWORD, P_SABER, P_SHURIKEN, P_BOW } from './const.js';
 import {
     createObjectsArray,
     NUM_OBJECTS,
@@ -12,6 +12,7 @@ import {
     WEAPON_CLASS,
     ARMOR_CLASS,
 } from './generated/objects_data.js';
+import { ART_GRIMTOOTH } from './generated/artifacts_data.js';
 
 export {
     MAXOCLASSES,
@@ -129,6 +130,26 @@ export function is_blade(otmp) {
     if (!otmp || otmp.oclass !== WEAPON_CLASS) return false;
     const sk = game.objects?.[otmp.otyp]?.oc_skill | 0;
     return sk >= P_DAGGER && sk <= P_SABER;
+}
+
+/**
+ * C obj.h is_multigen — WEAPON_CLASS && oc_skill in -P_SHURIKEN..-P_BOW
+ * (arrows, bolts, darts, shuriken). Not a name list (D-0012).
+ */
+export function is_multigen(otmp) {
+    if (!otmp || otmp.oclass !== WEAPON_CLASS) return false;
+    const sk = game.objects?.[otmp.otyp]?.oc_skill | 0;
+    return sk >= -P_SHURIKEN && sk <= -P_BOW;
+}
+
+/**
+ * C obj.h is_poisonable — same missile skill window as is_multigen, or
+ * permapoisoned (artifact.c :2836–2840, currently Grimtooth). Direct
+ * oartifact compare so this module does not import artifact.js (cycle).
+ */
+export function is_poisonable(otmp) {
+    return is_multigen(otmp)
+        || !!(otmp && (otmp.oartifact | 0) === ART_GRIMTOOTH);
 }
 
 /** C objclass.h ARM_BOOTS; objects[] stores oc_armcat in oc_skill. */

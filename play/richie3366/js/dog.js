@@ -20,6 +20,7 @@ import {
     DOGFOOD, ACCFOOD, FULL_MOON, Upolyd, has_edog, EDOG, LL_CONDUCT,
     DF_ALL, COLNO, ROWNO, ROOMOFFSET, IS_WALL,
     DISMOUNT_THROWN,
+    LS_MONSTER, OBJ_FREE,
 } from './const.js';
 import { SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
 import { is_pool, in_rooms } from './hack.js';
@@ -33,7 +34,7 @@ import {
 } from './generated/monsters_data.js';
 import { acurr, A_CHA } from './attrib.js';
 import { christen_monst, Monnam, mon_pmname } from './do_name.js';
-import { monnear, m_at, see_monster_closeup, minliquid, restore_cham, wake_nearto } from './mon.js';
+import { monnear, m_at, see_monster_closeup, minliquid, restore_cham, wake_nearto, discard_minvent } from './mon.js';
 import { mon_offmap } from './monmove.js';
 import { enexto, rloc_to, rloc, rloc_to_flag, goodpos } from './teleport.js';
 import { put_saddle_on_mon, dismount_steed } from './steed.js';
@@ -48,6 +49,7 @@ import { uhis } from './roles.js';
 import { objectNames } from './generated/objects_data.js';
 import { expels, unstuck } from './mhitu.js';
 import { sticks } from './engrave.js';
+import { emits_light, del_light_source } from './light.js';
 
 const PM_LITTLE_DOG = monsterNames.indexOf('PM_LITTLE_DOG');
 const PM_KITTEN = monsterNames.indexOf('PM_KITTEN');
@@ -1097,5 +1099,49 @@ export async function abuse_dog(mtmp) {
             newsym(mtmp.mx, mtmp.my);
             if (mtmp.wormno) redraw_worm(mtmp);
         }
+    }
+}
+
+/**
+ * C ref: dog.c discard_migrations `:935–990` — drop migrating mons/objs
+ * whose dest is not the endgame (Wizard kept). Call after cant_go_back
+ * delete_levelfile. C bypasses mongone/m_detach; JS unlinks and drops.
+ * Named omit: full obfree (timers / LS_OBJECT / contents walk) — drop
+ * the chain; GC collects cobj when the parent is unreachable.
+ */
+export function discard_migrations() {
+    const dest = { dnum: 0, dlevel: 0 };
+    const keepMons = [];
+    for (const mtmp of game.migrating_mons || []) {
+        dest.dnum = mtmp.mux | 0;
+        dest.dlevel = mtmp.muy | 0;
+        // C: Wizard kept regardless of location; keep endgame dest.
+        if (mtmp.iswiz || In_endgame(dest)) {
+            keepMons.push(mtmp);
+            continue;
+        }
+        mtmp.nmon = null;
+        discard_minvent(mtmp, false);
+        if (emits_light(mtmp.data)) del_light_source(LS_MONSTER, mtmp);
+    }
+    game.migrating_mons = keepMons;
+
+    let prev = null;
+    let otmp = game.migrating_objs || null;
+    while (otmp) {
+        const next = otmp.nobj;
+        dest.dnum = otmp.ox | 0;
+        dest.dlevel = otmp.oy | 0;
+        if (In_endgame(dest)) {
+            prev = otmp;
+            otmp = next;
+            continue;
+        }
+        if (prev) prev.nobj = next;
+        else game.migrating_objs = next;
+        otmp.nobj = null;
+        otmp.where = OBJ_FREE;
+        otmp.owornmask = 0;
+        otmp = next;
     }
 }

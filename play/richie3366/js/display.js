@@ -45,7 +45,7 @@ import {
     ROGUESET,
     DISP_BEAM, DISP_ALL, DISP_TETHER, DISP_FLASH, DISP_ALWAYS,
     DISP_CHANGE, DISP_END, DISP_FREEMEM, BACKTRACK,
-    M_AP_OBJECT, M_AP_FURNITURE, M_AP_NOTHING,
+    M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_NOTHING,
     M_AP_TYPE, M_AP_TYPMASK,
     MCORPSENM, has_mcorpsenm,
     isok,
@@ -87,7 +87,7 @@ import {
     CLR_MAGENTA, CLR_BRIGHT_MAGENTA, CLR_BRIGHT_GREEN,
     DEC_TO_UNICODE, ATR_INVERSE,
 } from './terminal.js';
-import { update_lastseentyp, In_tutorial } from './dungeon.js';
+import { update_lastseentyp, In_tutorial, cmap_to_type, ensure_lastseentyp } from './dungeon.js';
 import { stairway_at, known_branch_stairs } from './mklev.js';
 import {
     A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, get_strength_str,
@@ -295,8 +295,7 @@ function is_worm_tail(mon, x, y) {
  * rn2_on_display_rng). petnum_to_glyph is the same mlet + mon_map_attr.
  */
 function worm_tail_glyph() {
-    let mnum = PM_LONG_WORM_TAIL;
-    if (game.u?.Hallucination) mnum = rn2_on_display_rng(NUMMONS);
+    const mnum = what_mon(PM_LONG_WORM_TAIL, rn2_on_display_rng);
     const ptr = mons(mnum);
     const ch = MLET_CH[ptr?.mlet] || '~';
     const color = (mnum != null && mnum >= 0)
@@ -792,14 +791,25 @@ export function glyph_is_swallow_at(x, y) {
     return loc?.disp_kind === 'swallow';
 }
 
+/**
+ * C ref: display.h random_monster — (*rng)(NUMMONS).
+ */
+function random_monster(rng = rn2_on_display_rng) {
+    return rng(NUMMONS);
+}
+
+/**
+ * C ref: display.h what_mon — Hallucination youprop (not sticky
+ * u.Hallucination) → random_monster(rng), else the given mndx.
+ */
+export function what_mon(mon, rng = rn2_on_display_rng) {
+    return Hallucination() ? random_monster(rng) : (mon | 0);
+}
+
 // C ref: display.c map_glyph / mon_color / pet_color — per-species mcolor.
-// C ref: display.h mon_to_glyph / what_mon — Hallu → random_monster(display rng).
+// C ref: display.h mon_to_glyph — what_mon(monsndx(mon->data), rng).
 export function mon_glyph(mtmp) {
-    let mnum = mtmp.mnum ?? mtmp.data?.mndx;
-    // C: what_mon(monsndx(mon->data), rn2_on_display_rng)
-    if (game.u?.Hallucination) {
-        mnum = rn2_on_display_rng(NUMMONS);
-    }
+    const mnum = what_mon((mtmp.mnum ?? mtmp.data?.mndx) | 0, rn2_on_display_rng);
     const ptr = (mnum != null && mnum >= 0) ? mons(mnum) : mtmp.data;
     const mlet = ptr?.mlet || mtmp.data?.mlet || mtmp.mlet;
     const ch = MLET_CH[mlet] || '?';
@@ -813,9 +823,9 @@ export function mon_glyph(mtmp) {
  * C ref: display.c display_monster — M_AP_OBJECT fake obj → map_object.
  * When a mimic is PHYSICALLY_SEEN and not sensed as a monster, show the
  * disguised object glyph (and remember it) instead of the mlet letter.
- * Named omissions: M_AP_FURNITURE cmap_to_glyph + lastseentyp;
- * M_AP_MONSTER what_mon + rn2_on_display_rng; Protection_from_shape_changers
- * sensed overlay; Hallucination statue random_obj.
+ * Furniture lastseentyp is display_monster (D-1726). M_AP_MONSTER
+ * what_mon is D-1734. Named: Protection_from_shape_changers; Hallu
+ * statue random_obj.
  */
 function mimic_object_appearance_glyph(mtmp) {
     if (((mtmp.m_ap_type | 0) & M_AP_TYPMASK) !== M_AP_OBJECT) return null;
@@ -925,6 +935,84 @@ function cmap_idx_to_glyph(cmap_idx) {
             : { ch: '}', color: CLR_BRIGHT_BLUE, dec: false };
     default:
         return { ch: '?', color: NO_COLOR, dec: false };
+    }
+}
+
+/** C display.c display_monster `:498–499`. */
+const DETECTED = 2;
+const PHYSICALLY_SEEN = 1;
+
+/**
+ * C ref: display.c display_monster `:513–622`. Mimic check first when
+ * PHYSICALLY_SEEN. M_AP_FURNITURE: cmap_to_glyph into memory; if !sensed,
+ * show_glyph and lastseentyp = cmap_to_type(mappearance) — not
+ * update_lastseentyp (D-1711). M_AP_OBJECT: obj_glyph (D-0297).
+ * M_AP_MONSTER: what_mon(mappearance, rn2_on_display_rng) then
+ * monnum_to_glyph (D-1734) — not live mon_glyph. Then if !mimic ||
+ * sensed, show the real monster.
+ * Named: Protection_from_shape_changers (sensed is sensemon only);
+ * male/fem glyph offsets (same mlet on tty); pet/detected worm_tail
+ * glyph variants; show_mon_or_warn unmap_object when I-glyph.
+ */
+function display_monster(x, y, mon, sightflags, worm_tail) {
+    const ap = (mon.m_ap_type | 0) & M_AP_TYPMASK;
+    const mon_mimic = ap !== M_AP_NOTHING;
+    const sensed = mon_mimic && sensemon(mon);
+    const loc = game.level?.at(x, y);
+
+    if (mon_mimic && sightflags === PHYSICALLY_SEEN) {
+        switch (ap) {
+        default:
+        case M_AP_NOTHING: {
+            const mg = worm_tail ? worm_tail_glyph() : mon_glyph(mon);
+            show_glyph_cell(x, y, mg.ch, mg.color, false, mon_map_attr(mon));
+            break;
+        }
+        case M_AP_FURNITURE: {
+            const sym = mon.mappearance | 0;
+            const g = cmap_idx_to_glyph(sym);
+            if (loc && game.level?.flags?.hero_memory) {
+                loc.remembered_glyph = {
+                    ch: g.ch, color: g.color, decgfx: !!g.dec,
+                };
+            }
+            if (!sensed) {
+                show_glyph_cell(x, y, g.ch, g.color, !!g.dec);
+                const lst = ensure_lastseentyp();
+                lst[x][y] = cmap_to_type(sym);
+            }
+            break;
+        }
+        case M_AP_OBJECT: {
+            const apg = mimic_object_appearance_glyph(mon);
+            if (apg) {
+                show_glyph_cell(x, y, apg.ch, apg.color, !!apg.dec);
+                if (loc && game.level?.flags?.hero_memory) {
+                    loc.remembered_glyph = {
+                        ch: apg.ch, color: apg.color, decgfx: !!apg.dec,
+                        statue: (mon.mappearance | 0) === STATUE_OTYP,
+                        boulder: (mon.mappearance | 0) === BOULDER_OTYP,
+                        otyp: mon.mappearance | 0,
+                    };
+                }
+            }
+            break;
+        }
+        case M_AP_MONSTER: {
+            // C `:579–584` — appearance mndx, not the live species.
+            // monnum_to_glyph(mndx, mgendercode); tty mlet ignores gnd.
+            const mndx = what_mon(mon.mappearance | 0, rn2_on_display_rng);
+            const mg = monnum_to_display_glyph(mndx);
+            show_glyph_cell(x, y, mg.ch, mg.color, false);
+            break;
+        }
+        }
+    }
+
+    if (!mon_mimic || sensed) {
+        const mg = worm_tail ? worm_tail_glyph() : mon_glyph(mon);
+        show_glyph_cell(x, y, mg.ch, mg.color, false, mon_map_attr(mon));
+        mon.meverseen = 1;
     }
 }
 
@@ -2417,10 +2505,10 @@ function gbuf_show_kind(x, y, ch, color, decgfx, loc) {
     }
     const mtmp = mon_at_display(x, y);
     if (mtmp && cell_shows_displayed_monster(mtmp, x, y)) {
-        // Mimic object: M_AP_TYPE, not a second obj_glyph Hallu roll.
-        if (((mtmp.m_ap_type | 0) & M_AP_TYPMASK) === M_AP_OBJECT && !sensemon(mtmp)) {
-            return 'object';
-        }
+        // Mimic object/furniture: M_AP_TYPE, not a second Hallu roll.
+        const ap = (mtmp.m_ap_type | 0) & M_AP_TYPMASK;
+        if (ap === M_AP_OBJECT && !sensemon(mtmp)) return 'object';
+        if (ap === M_AP_FURNITURE && !sensemon(mtmp)) return 'cmap';
         return 'monster';
     }
     const trap = t_at_display(x, y);
@@ -3263,12 +3351,15 @@ export function feel_location(x, y) {
         }
     }
 
-    // C: sensed monster on top when !u_at
+    // C: display_monster when !u_at && sensemon — PHYSICALLY_SEEN iff
+    // tp_sensemon || MATCH_WARN, else DETECTED. Furniture lastseentyp
+    // needs PHYSICALLY_SEEN && !sensed, so this arm shows the monster.
     if ((u.ux | 0) !== (x | 0) || (u.uy | 0) !== (y | 0)) {
         const mon = mon_at_display(x, y);
         if (mon && sensemon(mon)) {
-            const mg = mon_glyph(mon);
-            show_glyph_cell(x, y, mg.ch, mg.color, false, mon_map_attr(mon));
+            const seen = (tp_sensemon(mon) || MATCH_WARN_OF_MON(mon))
+                ? PHYSICALLY_SEEN : DETECTED;
+            display_monster(x, y, mon, seen, is_worm_tail(mon, x, y));
         }
     }
 }
@@ -3396,23 +3487,9 @@ export function newsym(x, y) {
             } else {
                 map_location_memory(x, y);
             }
-            // C display_monster: M_AP_OBJECT → map_object(!sensed) before
-            // falling through to real mon_to_glyph when !mimic || sensed.
-            const apg = mimic_object_appearance_glyph(mtmp);
-            if (apg) {
-                show_glyph_cell(x, y, apg.ch, apg.color, !!apg.dec);
-                if (game.level?.flags?.hero_memory) {
-                    loc.remembered_glyph = {
-                        ch: apg.ch, color: apg.color, decgfx: !!apg.dec,
-                        statue: (mtmp.mappearance | 0) === STATUE_OTYP,
-                        boulder: (mtmp.mappearance | 0) === BOULDER_OTYP,
-                        otyp: mtmp.mappearance | 0,
-                    };
-                }
-                return;
-            }
-            const mg = worm_tail ? worm_tail_glyph() : mon_glyph(mtmp);
-            show_glyph_cell(x, y, mg.ch, mg.color, false, mon_map_attr(mtmp));
+            // C: display_monster(..., see_it ? PHYSICALLY_SEEN : DETECTED)
+            // Detect_monsters cansee arm still named (see_it only here).
+            display_monster(x, y, mtmp, PHYSICALLY_SEEN, worm_tail);
             return;
         }
         // C: else if (mon && mon_warning(mon) && !worm_tail) display_warning

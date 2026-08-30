@@ -1898,7 +1898,8 @@ const DOSET_BOOL_ADDR = {
     pickup_thrown: { obj: 'flags', key: 'pickup_thrown' },
     price_quotes: { obj: 'iflags', key: 'pricequotes' },
     pushweapon: { obj: 'flags', key: 'pushweapon' },
-    query_menu: { obj: 'flags', key: 'query_menu' },
+    // C optlist.h NHOPTB query_menu &iflags.query_menu (D-1728)
+    query_menu: { obj: 'iflags', key: 'query_menu' },
     quick_farsight: { obj: 'flags', key: 'quick_farsight' },
     rest_on_space: { obj: 'flags', key: 'rest_on_space' },
     safe_pet: { obj: 'flags', key: 'safe_pet' },

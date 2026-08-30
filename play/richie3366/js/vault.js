@@ -2,7 +2,8 @@
 // C ref: vault.c — vault_occupied, findgd, newegd, find_guard_dest, invault,
 //        clear_fcorr, restfakecorr, gd_move dig + restore,
 //        vault_gd_watching (D-0953); vault_summon_gd (D-1007);
-//        uleftvault (D-1140).
+//        uleftvault (D-1140);
+//        hidden_gold (D-1731; vault.c :1256–1268; doprgold FALSE).
 // Named omissions: migrating_mons findgd park;
 // wallify_vault body (cleanup calls stub); Croesus mon_wield;
 // fracture_rock boulder shatter; reset_faint; SetVoice; spot_stop_timers;
@@ -53,11 +54,11 @@ function money_cnt(invent) {
     return sum;
 }
 
-/** C ref: shk.c contained_gold — sum COIN_CLASS (+ nested) in container. */
+/** C ref: shk.c contained_gold `:3045–3061` — COIN_CLASS (+ nested). */
 function contained_gold(obj, even_if_unknown) {
     let value = 0;
     for (let otmp = obj?.cobj; otmp; otmp = otmp.nobj) {
-        if (otmp.oclass === COIN_CLASS) value += otmp.quan || 0;
+        if (otmp.oclass === COIN_CLASS) value += otmp.quan | 0;
         else if (Has_contents(otmp) && (otmp.cknown || even_if_unknown)) {
             value += contained_gold(otmp, even_if_unknown);
         }
@@ -65,8 +66,12 @@ function contained_gold(obj, even_if_unknown) {
     return value;
 }
 
-/** C ref: vault.c hidden_gold — gold inside carried containers. */
-function hidden_gold(even_if_unknown) {
+/**
+ * C ref: vault.c hidden_gold `:1256–1268`.
+ * Invent-array walk (JS invent is an Array; cobj stays nobj).
+ * even_if_unknown FALSE: only containers whose contents are known.
+ */
+export function hidden_gold(even_if_unknown) {
     let value = 0;
     for (const obj of game.invent || []) {
         if (Has_contents(obj) && (obj.cknown || even_if_unknown)) {

@@ -20,6 +20,7 @@ import {
     UTOTYPE_NONE, UTOTYPE_ATSTAIRS, UTOTYPE_FALLING, UTOTYPE_PORTAL,
     UTOTYPE_RMPORTAL, UTOTYPE_DEFERRED,
     VISITED, LFILE_EXISTS, RANGE_LEVEL, REST_LEVELS,
+    WRITING, FREEING,
     UNENCUMBERED, KILLED_BY, DISMOUNT_FELL, NO_KILLER_PREFIX,
     MAGIC_PORTAL, TIMEOUT, BLINDED, RLOC_NOMSG,
     ACH_HELL, ACH_MINE, ACH_SOKO, ACH_ENDG, ACH_ASTR, ACH_BGRM,
@@ -73,12 +74,13 @@ import {
 } from './mklev.js';
 import {
     In_tutorial, at_dgn_entrance, print_level_annotation,
-    recalc_mapseen, recbranch_mapseen,
+    recalc_mapseen, recbranch_mapseen, remdun_mapseen,
+    maxledgerno, ledger_to_dnum,
 } from './dungeon.js';
 import { record_achievement } from './insight.js';
 import { livelog_printf } from './pline.js';
 import { com_pager } from './questpgr.js';
-import { keepdogs, losedogs, mon_catchup_elapsed_time, update_mlstmv } from './dog.js';
+import { keepdogs, losedogs, mon_catchup_elapsed_time, update_mlstmv, discard_migrations } from './dog.js';
 import { save_track, rest_track } from './track.js';
 import { m_at, mnexto, hide_monst, hideunder, restore_cham, wake_nearto, dist2, kill_genocided_monsters } from './mon.js';
 import { enexto } from './teleport.js';
@@ -141,6 +143,7 @@ import {
 import { placebc, unplacebc, drag_down, ballrelease } from './ball.js';
 import { obj_resists } from './dogmove.js';
 import { Soundeffect, se_scratching, se_alarm } from './sndprocs.js';
+import { delete_levelfile } from './files.js';
 
 const PM_DEATH = monsterNames.indexOf('PM_DEATH');
 const PM_PESTILENCE = monsterNames.indexOf('PM_PESTILENCE');
@@ -1393,6 +1396,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     const dist = depth_of(newlevel) - depth_of(u.uz);
     let do_fall_dmg = false;
     const newdungeon = (u.uz.dnum | 0) !== (newlevel.dnum | 0);
+    let leaving_tutorial = false;
     const new_ledger = ledger_no(newlevel);
     if (new_ledger <= 0) return; // C: done(ESCAPED)
 
@@ -1406,6 +1410,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             game.flags && (game.flags.in_tutorial_branch = false);
             await tutorial(false);
             up = false; // C: re-enter level 1 as if starting new game
+            leaving_tutorial = true;
         }
     }
 
@@ -1427,12 +1432,6 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     // C: if (!iflags.nofollowers) keepdogs(FALSE)
     if (!game.iflags?.nofollowers) keepdogs(false);
-    // C do.c:1642 update_mlstmv immediately before savelev (ordinary leave).
-    update_mlstmv();
-    // C savemonchn forget_temple_entry inside update_file (WRITING|FREEING).
-    for (const mtmp of game.fmon || []) {
-        if (mtmp?.ispriest) forget_temple_entry(mtmp);
-    }
     // C: check_special_room(TRUE) on leave — move_update clears urooms so
     // arrival re-enters temple/shop messages (intemple).
     await check_special_room(true);
@@ -1477,54 +1476,93 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     game.iflags.travelcc.x = 0;
     game.iflags.travelcc.y = 0;
 
+    // C do.c:1640–1664 — cant_go_back = (newdungeon && In_endgame) ||
+    // leaving_tutorial. nhfp->mode = cant_go_back ? FREEING
+    // : (WRITING | FREEING). JSON analogue of savelev, not binary NHFILE.
+    const cant_go_back = ((newdungeon && In_endgame(newlevel)) || leaving_tutorial);
+    const save_mode = cant_go_back ? FREEING : (WRITING | FREEING);
+    if (save_mode & WRITING) {
+        // C: update_mlstmv immediately before savelev (ordinary leave).
+        update_mlstmv();
+        // C savemonchn forget_temple_entry only when update_file (WRITING).
+        for (const mtmp of game.fmon || []) {
+            if (mtmp?.ispriest) forget_temple_entry(mtmp);
+        }
+    }
+    // Named omit: else free_luathemes(tut_themes / most_themes).
+
     // C: savelev — in-memory stash + VISITED|LFILE_EXISTS + omoves timestamp
     // C: save_track before release/initrack (track.c) — per-level utrack.
     if (!game.level_info) game.level_info = [];
     const old_ledger = ledger_no(u.uz);
     const trackSnap = save_track(); // clears live ring (C release_data arm)
     if (old_ledger > 0) {
-        const prev = game.level_info[old_ledger] || { flags: 0 };
-        // C save.c savelev — Sfo_dest_area updest/dndest with the level.
-        const snapDest = (d) => ({
-            lx: d?.lx | 0, ly: d?.ly | 0, hx: d?.hx | 0, hy: d?.hy | 0,
-            nlx: d?.nlx | 0, nly: d?.nly | 0, nhx: d?.nhx | 0, nhy: d?.nhy | 0,
-        });
-        // C save.c savelev — Sfo_schar lastseentyp[COLNO][ROWNO] with the
-        // level (after savelevl). Without this, getlev left the prior
-        // level's lastseentyp live and leave-time recalc_mapseen polluted
-        // mapseen.feat (extra overview fountains).
-        const snapLastseen = (lst) => {
-            if (!lst) return null;
-            return lst.map((row) => (row ? Array.from(row) : null));
-        };
-        game.level_info[old_ledger] = {
-            flags: (prev.flags | 0) | VISITED | LFILE_EXISTS,
-            omoves: game.moves | 0,
-            level: game.level,
-            fmon: game.fmon,
-            fobj: game.fobj,
-            ftrap: game.ftrap,
-            stairs: game.stairs,
-            head_engr: game.head_engr,
-            track: trackSnap,
-            // C savelev → save_regions; rest_regions on getlev
-            regions: game.regions || [],
-            updest: snapDest(game.updest),
-            dndest: snapDest(game.dndest),
-            lastseentyp: snapLastseen(game.lastseentyp),
-            // C save.c savelev → save_timers(RANGE_LEVEL); release peels
-            // local object/spot timers off gt.timer_base so they do not
-            // fire while the hero is on another level (D-1037).
-            timers: save_timers(RANGE_LEVEL),
-            // C save.c savelev → save_light_sources(RANGE_LEVEL). Pack
-            // lamps stay on light_base (RANGE_GLOBAL / !obj_is_local).
-            lights: save_light_sources(RANGE_LEVEL),
-            // C saveobjchn gb.billobjs; FREEING zeros the live chain.
-            billobjs: game.billobjs,
-            // C savedamage; live GameMap also holds the list.
-            damagelist: game.level?.damagelist || null,
-        };
+        if (save_mode & WRITING) {
+            const prev = game.level_info[old_ledger] || { flags: 0 };
+            // C save.c savelev — Sfo_dest_area updest/dndest with the level.
+            const snapDest = (d) => ({
+                lx: d?.lx | 0, ly: d?.ly | 0, hx: d?.hx | 0, hy: d?.hy | 0,
+                nlx: d?.nlx | 0, nly: d?.nly | 0, nhx: d?.nhx | 0, nhy: d?.nhy | 0,
+            });
+            // C save.c savelev — Sfo_schar lastseentyp[COLNO][ROWNO] with the
+            // level (after savelevl). Without this, getlev left the prior
+            // level's lastseentyp live and leave-time recalc_mapseen polluted
+            // mapseen.feat (extra overview fountains).
+            const snapLastseen = (lst) => {
+                if (!lst) return null;
+                return lst.map((row) => (row ? Array.from(row) : null));
+            };
+            game.level_info[old_ledger] = {
+                flags: (prev.flags | 0) | VISITED | LFILE_EXISTS,
+                omoves: game.moves | 0,
+                level: game.level,
+                fmon: game.fmon,
+                fobj: game.fobj,
+                ftrap: game.ftrap,
+                stairs: game.stairs,
+                head_engr: game.head_engr,
+                track: trackSnap,
+                // C savelev → save_regions; rest_regions on getlev
+                regions: game.regions || [],
+                updest: snapDest(game.updest),
+                dndest: snapDest(game.dndest),
+                lastseentyp: snapLastseen(game.lastseentyp),
+                // C save.c savelev → save_timers(RANGE_LEVEL); release peels
+                // local object/spot timers off gt.timer_base so they do not
+                // fire while the hero is on another level (D-1037).
+                timers: save_timers(RANGE_LEVEL),
+                // C save.c savelev → save_light_sources(RANGE_LEVEL). Pack
+                // lamps stay on light_base (RANGE_GLOBAL / !obj_is_local).
+                lights: save_light_sources(RANGE_LEVEL),
+                // C saveobjchn gb.billobjs; FREEING zeros the live chain.
+                billobjs: game.billobjs,
+                // C savedamage; live GameMap also holds the list.
+                damagelist: game.level?.damagelist || null,
+            };
+        } else {
+            // FREEING only (savelev skip_lots): peel RANGE_LEVEL timers
+            // and lights without VISITED|LFILE_EXISTS persist.
+            save_timers(RANGE_LEVEL);
+            save_light_sources(RANGE_LEVEL);
+        }
         game.billobjs = null;
+    }
+
+    // C do.c:1653–1664 — after savelev, discard unreachable levels.
+    if (cant_go_back) {
+        const tut_dnum = game.tutorial_dnum | 0;
+        for (let l_idx = maxledgerno(); l_idx > 0; --l_idx) {
+            if (!leaving_tutorial || ledger_to_dnum(l_idx) === tut_dnum) {
+                delete_levelfile(l_idx);
+            }
+        }
+        const n_dgns = game.n_dgns | 0;
+        for (let l_idx = 0; l_idx < n_dgns; ++l_idx) {
+            if (!leaving_tutorial || l_idx === tut_dnum) {
+                remdun_mapseen(l_idx);
+            }
+        }
+        discard_migrations();
     }
 
     // C: do.c goto_level — Rogue↔Primary showsyms before u.uz reassignment

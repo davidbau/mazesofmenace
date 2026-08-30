@@ -13,6 +13,9 @@ import { rn2 } from './rng.js';
 import { recordObjectKnowledge } from './object_knowledge.js';
 import { rebasePrayerAfterLifeSaving } from './pray.js';
 import { depth } from './hacklib.js';
+import { recordGameLogEvent } from './gamelog.js';
+import { hiddenGold } from './gold.js';
+import { heroGoldAmount } from './hero_gold.js';
 import {
     ACCESSIBLE, DOOR, D_CLOSED, D_LOCKED, GRAVE, MM_NONAME, isok,
 } from './const.js';
@@ -159,6 +162,9 @@ export function completeHeroLifeSaving(transaction) {
     game.u.uhp = Math.min(game.u.uhpmax ?? giveHp, giveHp);
     if ((game.u.uhunger ?? 900) < 500) game.u.uhunger = 900;
     game.context.move = 0;
+    game._helplessTurns = 1;
+    game._helplessReason = 'attempting to cheat Death';
+    game._helplessDoneMessage = '';
     rebasePrayerAfterLifeSaving(game);
     game._lifeSavedCount = (game._lifeSavedCount || 0) + 1;
     return true;
@@ -172,6 +178,14 @@ export function restoreHeroAfterDeath() {
     game.u.uhp = Math.min(game.u.uhpmax ?? giveHp, giveHp);
     if ((game.u.uhunger ?? 900) < 500) game.u.uhunger = 900;
     game.context.move = 0;
+    // end.c:savelife() replaces any earlier negative multi (including a
+    // monster paralysis spell) with exactly -1.  The interrupted actor can
+    // finish its remaining attack slots, but no older helpless interval may
+    // allocate another autonomous monster turn afterward.  Its visible
+    // nomovemsg is projected by allmain's debug-death continuation.
+    game._helplessTurns = 1;
+    game._helplessReason = 'attempting to cheat Death';
+    game._helplessDoneMessage = '';
     rebasePrayerAfterLifeSaving(game);
     return game.u.uhp;
 }
@@ -179,6 +193,17 @@ export function restoreHeroAfterDeath() {
 function conductState(state = game) {
     if (!state.u.uconduct) state.u.uconduct = {};
     return state.u.uconduct;
+}
+
+// xkilled() breaks killer conduct before its credited kill pline can suspend
+// on an older tty message.  Vanquished/mvitals bookkeeping happens later,
+// after mondead(), so keep this mutation independently callable.
+export function recordHeroKillConduct(state = game) {
+    const conduct = conductState(state);
+    const firstKill = !(conduct.killer || 0);
+    conduct.killer = (conduct.killer || 0) + 1;
+    if (firstKill)
+        recordGameLogEvent('killed for the first time', { state });
 }
 
 // C xkilled()/monkilled() both update mvitals[].died; only hero kills break
@@ -196,8 +221,7 @@ export function recordVanquished(monster, name, {
     prior.count++;
     state._vanquishedCounts.set(mnum, prior);
     if (byHero) {
-        const conduct = conductState(state);
-        conduct.killer = (conduct.killer || 0) + 1;
+        recordHeroKillConduct(state);
         void weaponHit;
     }
 }
@@ -209,7 +233,7 @@ async function promptDeathQuestion(message) {
     return String.fromCharCode(await nhgetch()).toLowerCase();
 }
 
-function vanquishedLines() {
+export function vanquishedLines() {
     const entries = [...(game._vanquishedCounts?.values() || [])]
         .sort((a, b) => b.difficulty - a.difficulty || a.mnum - b.mnum);
     const total = entries.reduce((sum, entry) => sum + entry.count, 0);
@@ -266,16 +290,6 @@ function overviewLines(killer, deathVerb = 'killed') {
     return lines;
 }
 
-function containedGold(objects) {
-    let total = 0;
-    for (const object of objects || []) {
-        if (object.otyp === 449)
-            total += object.quan ?? object.quantity ?? 0;
-        total += containedGold(object.contents);
-    }
-    return total;
-}
-
 function sourceMove() {
     return game._statusTurnOverride ?? game._maintenanceMove
         ?? game.moves ?? 1;
@@ -295,8 +309,8 @@ function deepestVisitedDepth() {
 }
 
 function deathSummaryValues() {
-    const visibleGold = game._goldCount || 0;
-    const gold = visibleGold + containedGold(game.inventory);
+    const visibleGold = heroGoldAmount(game);
+    const gold = visibleGold + hiddenGold(game, true);
     const initialGold = game._initialGoldCount || 0;
     const gain = Math.max(0, gold - initialGold);
     const currentDepth = depth(game.u?.uz);
