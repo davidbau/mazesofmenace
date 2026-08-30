@@ -92,6 +92,52 @@ export const D_TRAPPED = 0x10;
 export const D_SECRET = 0x20;
 // AUTO-IMPORT-END: CONST_GLOBAL_RM
 
+// C ref: include/defsym.h PCHAR / include/sym.h enum cmap_symbols.
+// Not levl.typ: S_ndoor=12 vs DBWALL=12, S_tree=18 vs TREE=13.
+export const S_stone = 0;
+export const S_vwall = 1;
+export const S_hwall = 2;
+export const S_tlcorn = 3;
+export const S_trcorn = 4;
+export const S_blcorn = 5;
+export const S_brcorn = 6;
+export const S_crwall = 7;
+export const S_tuwall = 8;
+export const S_tdwall = 9;
+export const S_tlwall = 10;
+export const S_trwall = 11;
+export const S_ndoor = 12;
+export const S_vodoor = 13;
+export const S_hodoor = 14;
+export const S_vcdoor = 15;
+export const S_hcdoor = 16;
+export const S_bars = 17;
+export const S_tree = 18;
+export const S_room = 19;
+export const S_darkroom = 20;
+export const S_corr = 22;
+export const S_litcorr = 23;
+export const S_upstair = 25;
+export const S_dnstair = 26;
+export const S_upladder = 27;
+export const S_dnladder = 28;
+export const S_altar = 33;
+export const S_grave = 34;
+export const S_throne = 35;
+export const S_sink = 36;
+export const S_fountain = 37;
+export const S_pool = 38;
+export const S_ice = 39;
+export const S_lava = 40;
+export const S_lavawall = 41;
+export const S_vodbridge = 42;
+export const S_hodbridge = 43;
+export const S_vcdbridge = 44;
+export const S_hcdbridge = 45;
+export const S_air = 46;
+export const S_cloud = 47;
+export const S_water = 48;
+
 // Display dimensions
 export const TERMINAL_COLS = 80;
 export const TERMINAL_ROWS = 24;  // message + map + 2 status lines
@@ -3072,6 +3118,20 @@ export function Is_bigroom(uz) {
     return !!g?.bigroom_level
         && (uz ?? g?.u?.uz)?.dnum === g.bigroom_level.dnum
         && (uz ?? g?.u?.uz)?.dlevel === g.bigroom_level.dlevel;
+}
+/** C ref: dungeon.h Is_valley — Lcheck(&valley_level). */
+export function Is_valley(uz) {
+    const g = game;
+    return !!g?.valley_level
+        && (uz ?? g?.u?.uz)?.dnum === g.valley_level.dnum
+        && (uz ?? g?.u?.uz)?.dlevel === g.valley_level.dlevel;
+}
+/** C ref: dungeon.h Is_sanctum — Lcheck(&sanctum_level). */
+export function Is_sanctum(uz) {
+    const g = game;
+    return !!g?.sanctum_level
+        && (uz ?? g?.u?.uz)?.dnum === g.sanctum_level.dnum
+        && (uz ?? g?.u?.uz)?.dlevel === g.sanctum_level.dlevel;
 }
 export function Is_juiblex_level(uz) {
     const g = game;

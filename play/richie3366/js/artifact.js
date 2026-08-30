@@ -255,7 +255,7 @@ export function artifacts_globals_init() {
         bones: 0,
         rnd: 0,
     }));
-    // C: xint16 artidisco[NROFARTIFACTS] — save/rest still named.
+    // C: xint16 artidisco[NROFARTIFACTS] — JSON rest is D-1698.
     game.artidisco = Array(NROFARTIFACTS).fill(0);
 }
 
@@ -276,7 +276,7 @@ function Role_switch() {
 /**
  * C ref: artifact.c hack_artifacts — gift align, Excalibur role, questarti.
  * Called from init_artifacts after role_init (C allmain.c:785–793), not
- * after u_init despite the C comment. restore_artifacts still named.
+ * after u_init despite the C comment.
  */
 function hack_artifacts() {
     const list = artilist();
@@ -317,6 +317,18 @@ export function init_artifacts() {
     artifacts_globals_init();
     hack_artifacts();
     set_sting_effects(Sting_effects);
+}
+
+/**
+ * C ref: artifact.c restore_artifacts — artiexist is already on the JSON
+ * payload; copy artidisco then hack_artifacts for unsaved special cases.
+ * @param {number[]|null|undefined} artidisco
+ */
+export function restore_artifacts(artidisco) {
+    if (Array.isArray(artidisco)) {
+        game.artidisco = artidisco.map((n) => n | 0);
+    }
+    hack_artifacts();
 }
 
 /**
@@ -798,7 +810,7 @@ export function exist_artifact(otyp, name) {
  * C ref: artifact.c restrict_name `:574–623`.
  * OBJ_DESCR + shuffle pool for undiscovered same-class; then artilist
  * strcmp after stripping "the ". SPFX_NOGEN|SPFX_RESTR or quan>1.
- * Caller: do_oname slip; wield.c spec_charge still named.
+ * Callers: do_oname slip (D-1670); wield.c chwepon (D-1692).
  */
 export function restrict_name(otmp, name) {
     if (!name) return false;

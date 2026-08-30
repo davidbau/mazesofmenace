@@ -1162,7 +1162,7 @@ async function getobj_takeoff() {
             ? `What do you want to take off? [${lets} or ?*]`
             : 'What do you want to take off? [*]';
         // C invent.c getobj → yn_function(qbuf, (char *)0, '\0', FALSE)
-        const ch = await yn_function(query, null, '\0');
+        const ch = await yn_function(query, null, '\0', false);
         if (ch === '\x1b' || ch === ' ' || ch === '\n' || ch === '\r') {
             if (game.flags?.verbose !== false) await pline('Never mind.');
             return null;

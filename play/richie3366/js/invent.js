@@ -12,7 +12,8 @@
 //        zap.c zap_updown WAN_PROBING); display_cinventory container
 //        contents (D-1445; zap.c bhito WAN_PROBING); worn_wield_only /
 //        PICK_ONE / INCLUDE_HERO named;
-//        o_init.c dodiscovered / discover_object;
+//        o_init.c dodiscovered / discover_object / gem_learned;
+//        invent.c o_on (D-1691);
 //        insight.c enlightenment (BASIC ^X + MAGIC-only in-progress D-1116).
 // D-0856: display_pickinv / invent_lines obj_to_glyph Hallu display RNG.
 // D-1578: force_invmenu Special `*`/`?` + getobj redo_menu / oneloop.
@@ -47,13 +48,13 @@ import {
     flush_screen, flush_topl_more, pline, docrt, status_line_2, message_menu,
     endgamelevelname, obj_glyph, suppress_map_output,
     putmsghistory, impossible, tty_nhbell, tty_wait_synch,
-    clear_nhwindow_message,
+    clear_nhwindow_message, Hallucination,
 } from './display.js';
 import { xprname, an, vtense, doname, distant_name, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, simpleonames, set_not_fully_identified, makeplural, body_part_latebound, corpse_xname, killer_xname } from './objnam.js';
 import { yn_function, getlin, mungspaces } from './getline.js';
 import { get_count, pmatchi, cmdq_pop, cmdq_clear } from './cmd.js';
 import { mergable, is_damageable, stop_timer, splitobj, unsplitobj, clear_splitobjs, unknwn_contnr_contents } from './mkobj.js';
-import { unpaid_cost, doinvbill } from './shk.js';
+import { unpaid_cost, doinvbill, gem_learned } from './shk.js';
 import { s_suffix } from './do_name.js';
 import { inv_cnt } from './steal.js';
 import { assigninvlet } from './u_init.js';
@@ -77,6 +78,8 @@ import {
     VENOM_CLASS,
     ILLOBJ_CLASS,
     MAXOCLASSES,
+    FIRST_OBJECT,
+    NUM_OBJECTS,
     def_oc_syms,
     def_char_to_objclass,
     objectNames,
@@ -270,6 +273,35 @@ export function u_have_novel() {
     if (SPE_NOVEL < 0) return null;
     for (const otmp of game.invent || []) {
         if ((otmp?.otyp | 0) === SPE_NOVEL) return otmp;
+    }
+    return null;
+}
+
+/**
+ * C invent.c o_on `:1586–1599` — walk objchn by o_id, recurse cobj.
+ * Invent is a JS array; floor/minvent/cobj stay nobj chains (D-1691).
+ * @param {number} id
+ * @param {object|object[]|null} objchn
+ * @returns {object|null}
+ */
+export function o_on(id, objchn) {
+    if (!objchn) return null;
+    const want = id | 0;
+    if (Array.isArray(objchn)) {
+        for (const head of objchn) {
+            const hit = o_on(want, head);
+            if (hit) return hit;
+        }
+        return null;
+    }
+    let obj = objchn;
+    while (obj) {
+        if ((obj.o_id | 0) === want) return obj;
+        if (Has_contents(obj)) {
+            const temp = o_on(want, obj.cobj);
+            if (temp) return temp;
+        }
+        obj = obj.nobj;
     }
     return null;
 }
@@ -1460,7 +1492,7 @@ export async function dotypeinv() {
         }
 
         if (class_count > 1) {
-            /* C yn_function(..., '\\0', TRUE); addcmdq named omit. */
+            /* C yn_function(..., '\\0', TRUE) — addcmdq default. */
             c = await yn_function(prompt, types, '\0');
             if (!c || c === '\0') {
                 clear_nhwindow_message();
@@ -2490,13 +2522,19 @@ export function count_contents(container, nested, quantity, everything, newdrop)
 }
 
 /**
- * C ref: o_init.c observe_object — dknown + discover_object(..., FALSE, TRUE).
+ * C ref: o_init.c observe_object `:441–451`.
+ * Skip generic objects and STRANGE_OBJECT (otyp < FIRST_OBJECT) and
+ * Hallucination (`youprop.h`); else dknown + discover_object(..., FALSE,
+ * TRUE, FALSE).
  */
 export function observe_object(obj) {
-    if (!obj || game.u?.Hallucination) return;
-    // FIRST_OBJECT / generic skip deferred
-    obj.dknown = 1;
-    discover_object(obj.otyp, false, true);
+    if (!obj) return;
+    const oindx = obj.otyp;
+    /* skip for generic objects and for STRANGE_OBJECT */
+    if (oindx >= FIRST_OBJECT && !Hallucination()) {
+        obj.dknown = 1;
+        discover_object(oindx, false, true, false);
+    }
 }
 
 /**
@@ -3715,8 +3753,9 @@ export async function ddoinv() {
 
 /**
  * C ref: o_init.c discover_object(oindx, mark_as_known, mark_as_encountered,
- *                                credit_hero)
+ *                                credit_hero) `:453–494`.
  * credit_hero → exercise(A_WIS, TRUE) when newly naming the type.
+ * in_moveloop && !gameover → gem_learned(GEM_CLASS) then update_inventory.
  */
 export function discover_object(
     oindx,
@@ -3724,10 +3763,10 @@ export function discover_object(
     mark_as_encountered = false,
     credit_hero = false,
 ) {
-    if (oindx == null || oindx < 0) return;
+    if (oindx == null || oindx < FIRST_OBJECT) return;
     const objects = game.objects;
     if (!objects?.[oindx]) return;
-    if (!game.disco) game.disco = new Array(objects.length).fill(0);
+    if (!game.disco) game.disco = new Array(NUM_OBJECTS).fill(0);
 
     const samuraiJp = game.urole?.mnum === PM_SAMURAI
         && !!Japanese_item_name(oindx, null);
@@ -3749,6 +3788,13 @@ export function discover_object(
     if (mark_as_known && !objects[oindx].oc_name_known) {
         objects[oindx].oc_name_known = 1;
         if (credit_hero) exercise(A_WIS, true);
+        const ps = game.program_state || {};
+        if ((ps.in_moveloop | 0) && !ps.gameover) {
+            if ((objects[oindx].oc_class | 0) === GEM_CLASS) {
+                gem_learned(oindx);
+            }
+            update_inventory();
+        }
     }
 }
 
@@ -6662,7 +6708,7 @@ export async function getobj(word, obj_ok, ctrlflags) {
             const query = promptLets
                 ? `What do you want to ${word}? [${promptLets} or ?*]`
                 : `What do you want to ${word}? [*]`;
-            ch = await yn_function(query, null, '\0');
+            ch = await yn_function(query, null, '\0', false); // C getobj FALSE
         }
         const counted = await getobj_take_count(ch, allowcnt);
         if (counted.retry) continue;

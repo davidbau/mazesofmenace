@@ -53,6 +53,7 @@ import { show_overview } from './dungeon.js';
 import { A_CON, acurr, adjattrib } from './attrib.js';
 import { init_uhunger } from './eat.js';
 import { setworn } from './do_wear.js';
+import { night, midnight, getnow, yyyymmddhhmmss } from './calendar.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
 const STATUE = objectNames.indexOf('STATUE');
@@ -598,7 +599,7 @@ async function disclose(how, taken) {
  * Named omissions: paybill; discover_object invent walk; arise pline;
  * quit/escape/ascend score arms; In_endgame/quest depth text.
  */
-async function show_death_rip_and_summary(how, umoney) {
+async function show_death_rip_and_summary(how, umoney, endtime = 0) {
     const flags = game.flags || {};
     const done_stopprint = game.program_state?.done_stopprint | 0;
     // C: dump_forward_putstr(..., done_stopprint) + display_nhwindow
@@ -609,7 +610,7 @@ async function show_death_rip_and_summary(how, umoney) {
     // C genl_outrip: leading blank then stone then two blanks
     if (how < GENOCIDED && flags.tombstone !== false) {
         lines.push('');
-        lines.push(...genl_outrip_lines(formatkiller(how, false)));
+        lines.push(...genl_outrip_lines(formatkiller(how, false), endtime));
         lines.push('');
         lines.push('');
     }
@@ -656,6 +657,12 @@ async function really_done(how) {
     // C: done_object_cleanup before bones/disclosure — limbo missiles → map
     if (!game.program_state.panicking) done_object_cleanup();
 
+    // C really_done `:1165–1170` — one getnow for bones when[] / rip / topten
+    const endtime = getnow();
+    if (!game.iflags) game.iflags = {};
+    game.iflags.at_night = night() ? 1 : 0;
+    game.iflags.at_midnight = midnight() ? 1 : 0;
+
     // C: bones_ok = can_make_bones() before display_nhwindow(WIN_MESSAGE)
     const bones_ok = (how < GENOCIDED) && can_make_bones();
 
@@ -689,11 +696,6 @@ async function really_done(how) {
 
     // C: invent discover_object walk before disclose (and dumplog)
     if (how !== PANICKED) {
-        // C: collect at_night/at_midnight before disclosure prompts
-        const { night, midnight } = await import('./calendar.js');
-        if (!game.iflags) game.iflags = {};
-        game.iflags.at_night = night() ? 1 : 0;
-        game.iflags.at_midnight = midnight() ? 1 : 0;
         await identify_invent_for_disclose();
     }
 
@@ -739,16 +741,16 @@ async function really_done(how) {
         const wizard = !!(flags.wizard || flags.debug);
         const paranoidBones = ((flags.paranoia_bits | 0) & PARANOID_BONES) !== 0;
         if (!wizard || (await paranoid_query(paranoidBones, 'Save bones?'))) {
-            await savebones(how, corpse);
+            await savebones(how, endtime, corpse);
         }
     }
 
     // C: outrip + goodbye into NHW_TEXT then display_nhwindow(TRUE)
-    await show_death_rip_and_summary(how, umoney);
+    await show_death_rip_and_summary(how, umoney, endtime);
 
     // C: !toptenwin → exit_nhwindows then topten raw_print; nh_terminate
     // captures final screen (contest nomux input boundary, no nhgetch).
-    topten(how, 0, formatkiller(how, true));
+    topten(how, endtime, formatkiller(how, true));
     // C: if (done_stopprint) { raw_print(""); raw_print(""); }
     if (game.program_state?.done_stopprint) {
         raw_print_blanks(2);
@@ -861,9 +863,9 @@ function drop_upon_death(mtmp, cont, x, y) {
  * remove_mon_from_bones/dmonsfree/forget_engravings;
  * set_ghostly_objlist / resetobjs known-strip; map memory clear
  * (ux/uy zero); arise/statue arms; ebones; m_dowear; obj_attach_mid;
- * binary savelev; yyyymmddhhmmss when[] (overview lists who/how).
+ * binary savelev (overview lists who/how, not when[]).
  */
-async function savebones(how, corpse) {
+async function savebones(how, when, corpse) {
     const u = game.u || {};
     const flags = game.flags || {};
     const wizard = !!(flags.wizard || flags.debug);
@@ -928,7 +930,7 @@ async function savebones(how, corpse) {
     const newbones = {
         who,
         how: formatkiller(how, true),
-        when: '', // yyyymmddhhmmss named
+        when: yyyymmddhhmmss(when),
         frpx,
         frpy,
         bonesknown: false,

@@ -1,7 +1,7 @@
 // priest.js — Temple entry + priest location helpers (partial).
 // C ref: priest.c temple_occupied / findpriest / has_shrine / intemple /
 //   in_your_sanctuary / reset_hostility.
-// Named omissions: mapseen_temple; SetVoice; forget_temple_entry callers;
+// Named omissions: mapseen_temple; SetVoice;
 // priest_talk; inhistemple callers beyond findpriest.
 
 import { game } from './gstate.js';
@@ -36,6 +36,20 @@ function on_level(a, b) {
     return !!a && !!b
         && (a.dnum | 0) === (b.dnum | 0)
         && (a.dlevel | 0) === (b.dlevel | 0);
+}
+
+/**
+ * C ref: priest.c forget_temple_entry `:545–555` — zero shrine chatter
+ * timestamps. Leaving the level then returning yields a fresh start.
+ * Callers: savemonchn (ordinary WRITING|FREEING leave), save_mtraits.
+ * C skips this on cant_go_back FREEING (endgame/tutorial teardown).
+ * @param {object} priest
+ */
+export function forget_temple_entry(priest) {
+    const epri_p = priest?.ispriest ? EPRI(priest) : null;
+    if (!epri_p) return;
+    epri_p.intone_time = epri_p.enter_time =
+        epri_p.peaceful_time = epri_p.hostile_time = 0;
 }
 
 /**

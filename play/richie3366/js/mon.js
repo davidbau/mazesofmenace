@@ -2618,6 +2618,7 @@ export function replmon(mtmp, mtmp2) {
 
     if (game.context?.polearm?.hitmon === mtmp) {
         game.context.polearm.hitmon = mtmp2;
+        game.context.polearm.m_id = mtmp2.m_id | 0;
     }
 
     const list = game.fmon || [];

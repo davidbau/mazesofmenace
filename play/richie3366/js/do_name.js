@@ -7,6 +7,7 @@
 //        `"call"` (D-1660); do_oname artifact_name slip (D-1670);
 //        docallcmd cmdq_pop canned + lootabc + invent-gated i/o (D-1671);
 //        docall sink-fluid OBJ_DESCR + safe_qbuf Call/:/thing (D-1672);
+//        undiscover_object / gem_learned (D-1691);
 //        distant_monnam astral high-cleric conceal (D-1673);
 //        oname via_naming literate livelog (D-1680);
 //        docallcmd `'i'` live getobj("name", name_ok, GETOBJ_PROMPT)
@@ -35,7 +36,7 @@ import {
     paint_corner_nhw_menu, discover_object,
     getobj, update_inventory,
 } from './invent.js';
-import { rename_disco } from './o_init.js';
+import { rename_disco, undiscover_object } from './o_init.js';
 import {
     ONAME_VIA_NAMING, ONAME_KNOW_ARTI, ONAME_SKIP_INVUPD,
     LL_CONDUCT, LL_ARTIFACT, W_WEP,
@@ -1373,9 +1374,8 @@ export async function docall(obj) {
 
     /* name_from_player already mungspaces; empty uncalls */
     if (!buf) {
-        // C: undiscover_object(otyp) when had_name — named omit
-        // (o_init.c gem_learned GEM_CLASS still absent)
-        void hadName;
+        if (hadName) /* possibly remove from disco[]; old *uname_p is gone */
+            undiscover_object(obj.otyp);
     } else {
         ocl.oc_uname = buf;
         discover_object(obj.otyp, false, true, true); /* possibly add to disco[] */

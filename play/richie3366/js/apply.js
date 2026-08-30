@@ -3961,6 +3961,7 @@ async function use_pole(obj, autohit) {
     if (!game.context) game.context = {};
     if (!game.context.polearm) game.context.polearm = {};
     game.context.polearm.hitmon = null;
+    game.context.polearm.m_id = 0;
     game.bhitpos = { x: cc.x, y: cc.y };
     const mtmp = m_at(cc.x, cc.y);
     if (mtmp) {
@@ -3969,6 +3970,9 @@ async function use_pole(obj, autohit) {
         }
         if (await overexertion()) return ECMD_TIME;
         game.context.polearm.hitmon = mtmp;
+        // C save.c savemonchn stamps m_id from hitmon at FREEING;
+        // JSON keeps the id at use time (Sfo_context_info is before invent).
+        game.context.polearm.m_id = mtmp.m_id | 0;
         if (snickersnee_used_dist_attk(obj)) {
             await pline("The blade doesn't reach there!");
             return ECMD_FAIL;

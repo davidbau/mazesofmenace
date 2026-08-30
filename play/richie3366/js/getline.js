@@ -1,7 +1,8 @@
 // getline.js — Line input and extended-command entry.
 // C ref: win/tty/getline.c tty_getlin / hooked_tty_getlin / tty_get_ext_cmd
 // plus win/tty/topl.c tty_yn_function (yn ^P is D-1612; post-answer
-// prompt+key is D-1623; tty_nhbell / cw->cury / intr is D-1631).
+// prompt+key is D-1623; tty_nhbell / cw->cury / intr is D-1631)
+// and cmd.c yn_function addcmdq (D-1706).
 // EDIT_GETLIN is D-1624 (`config.h` commented out — live `#else`).
 // kill_char / empty-erase bell / invalid-key bell / getline `intr--`
 // are D-1632. ESC-nonempty fallthrough (else tty_nhbell / doprev) is
@@ -24,8 +25,11 @@ import {
     ECM_IGNOREAC, ECM_EXACTMATCH, ECM_NO1CHARCMD,
     INTERNALCMD, AUTOCOMPLETE, WIZMODECMD, CMD_NOT_AVAILABLE,
     CMD_M_PREFIX,
+    CMDQ_KEY, CMDQ_USER_INPUT, CQ_CANNED, CQ_REPEAT, PLNMSG_UNKNOWN,
 } from './const.js';
 import { EXTCMDLIST } from './generated/extcmdlist_data.js';
+import { cmdq_pop, cmdq_clear } from './cmd.js';
+import { cmdq_add_key } from './invent.js';
 
 /**
  * C ref: topl.c topl_putsym — before writing when curx == CO-1, emit `\n`
@@ -1267,7 +1271,7 @@ export function mungspaces(s) {
 
 /**
  * C ref: cmd.c paranoid_ynq — when be_paranoid, getlin must answer "yes"
- * (case-insensitive); else yn_function. ParanoidConfirm loops until
+ * (case-insensitive); else yn_function(..., FALSE). ParanoidConfirm loops until
  * yes/no/quit/ESC (accept_q gates quit). Result 'y'|'n'|'q'.
  * @param {boolean} be_paranoid
  * @param {string} prompt
@@ -1310,9 +1314,9 @@ export async function paranoid_ynq(be_paranoid, prompt, accept_q = false) {
             promptprefix = '"Yes" or "No": ';
         } while (ParanoidConfirm && ans.toLowerCase() !== 'no' && --trylimit);
     } else if (accept_q) {
-        c = await yn_function(prompt, 'ynq', 'n');
+        c = await yn_function(prompt, 'ynq', 'n', false);
     } else {
-        c = await yn_function(prompt, 'yn', 'n');
+        c = await yn_function(prompt, 'yn', 'n', false);
     }
     if (c !== 'y' && (c !== 'q' || !accept_q)) c = 'n';
     return c;
@@ -1406,6 +1410,68 @@ function tty_yn_clean_up(prompt, q) {
 }
 
 /**
+ * C cmd.c yn_function `:5496` CMDQ_KEY node — JS stores a string or
+ * a char code; apply/dig/iactions clones still use typ `'key'`.
+ * @param {{ typ?: number|string, key?: string|number } | null} cq
+ * @returns {string}
+ */
+function yn_cmdq_key(cq) {
+    const k = cq?.key;
+    if (typeof k === 'string' && k.length) return k.charAt(0);
+    if (typeof k === 'number') return String.fromCharCode(k & 0xff);
+    return '\0';
+}
+
+/**
+ * C ref: cmd.c yn_function `:5470–5583` — addcmdq pops canned/repeat
+ * then records CQ_REPEAT. Default TRUE matches y_n / ynq / ynaq.
+ * YN / getobj / getdir / paranoid_ynq / askchain pass FALSE.
+ * Windowport is tty_yn_function. Named: yn_function_menu (query_menu),
+ * debug_fuzzer, SND_SPEECH, DUMPLOG_CORE, paniclog/impossible on
+ * resp-mismatch, program_state.input_state = otherInp.
+ *
+ * @param {string} query
+ * @param {string|null} [resp='yn']
+ * @param {string} [def='n']
+ * @param {boolean} [addcmdq=true]
+ * @returns {Promise<string>}
+ */
+export async function yn_function(query, resp = 'yn', def = 'n', addcmdq = true) {
+    if (!game.iflags) game.iflags = {};
+    game.iflags.last_msg = PLNMSG_UNKNOWN;
+
+    if (typeof query === 'string' && query.length >= QBUFSZ) {
+        query = `${query.slice(0, QBUFSZ - 1 - 3)}...`;
+    }
+
+    let cq = addcmdq ? cmdq_pop() : null;
+    if (!cq) {
+        cq = { typ: CMDQ_USER_INPUT, key: '\0' };
+    }
+
+    let res = '\x1b';
+    if (cq.typ !== CMDQ_USER_INPUT) {
+        if (cq.typ === CMDQ_KEY || cq.typ === 'key') {
+            res = yn_cmdq_key(cq);
+        } else {
+            cmdq_clear(CQ_CANNED);
+        }
+        addcmdq = false;
+    } else {
+        res = await tty_yn_function(query, resp, def);
+    }
+    if (addcmdq) cmdq_add_key(CQ_REPEAT, res);
+
+    // C `:5559–5579` — remap after REPEAT record; ESC when !def
+    const hasResp = !!(resp && resp.length);
+    const hasRes = !!(res && res !== '\0');
+    if (hasResp && hasRes && !resp.includes(res)) {
+        res = (def && def !== '\0') ? def : '\x1b';
+    }
+    return res;
+}
+
+/**
  * C ref: win/tty/topl.c tty_yn_function — query + [resp] + (def) + space.
  * Esc → 'q' if in resp else 'n' if in resp else def.
  * Quitchars (space/return) → def. Invalid keys bell and retry.
@@ -1421,7 +1487,7 @@ function tty_yn_clean_up(prompt, q) {
  * follow-ups keep the unwrapped leftover until rhack's parse clear.
  * When resp contains '#', digits collect C yn_number and return '#'.
  */
-export async function yn_function(query, resp = 'yn', def = 'n') {
+async function tty_yn_function(query, resp = 'yn', def = 'n') {
     await flush_topl_more();
     // C tty_yn_function: after optional more(), clear WIN_STOP|WIN_NOSTOP
     // before painting the prompt (topl.c).

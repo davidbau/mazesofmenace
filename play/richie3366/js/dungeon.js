@@ -34,12 +34,85 @@ import {
     ECMD_OK,
     COLNO,
     ROWNO,
+    STONE,
+    VWALL,
+    HWALL,
+    TLCORNER,
+    TRCORNER,
+    BLCORNER,
+    BRCORNER,
+    CROSSWALL,
+    TUWALL,
+    TDWALL,
+    TLWALL,
+    TRWALL,
     TREE,
     FOUNTAIN,
     THRONE,
     SINK,
     GRAVE,
     ALTAR,
+    DOOR,
+    DBWALL,
+    IRONBARS,
+    ROOM,
+    CORR,
+    STAIRS,
+    LADDER,
+    POOL,
+    ICE,
+    LAVAPOOL,
+    LAVAWALL,
+    AIR,
+    CLOUD,
+    WATER,
+    DRAWBRIDGE_UP,
+    DRAWBRIDGE_DOWN,
+    S_stone,
+    S_vwall,
+    S_hwall,
+    S_tlcorn,
+    S_trcorn,
+    S_blcorn,
+    S_brcorn,
+    S_crwall,
+    S_tuwall,
+    S_tdwall,
+    S_tlwall,
+    S_trwall,
+    S_ndoor,
+    S_vodoor,
+    S_hodoor,
+    S_vcdoor,
+    S_hcdoor,
+    S_bars,
+    S_tree,
+    S_room,
+    S_darkroom,
+    S_corr,
+    S_litcorr,
+    S_upstair,
+    S_dnstair,
+    S_upladder,
+    S_dnladder,
+    S_altar,
+    S_grave,
+    S_throne,
+    S_sink,
+    S_fountain,
+    S_pool,
+    S_ice,
+    S_lava,
+    S_lavawall,
+    S_vodbridge,
+    S_hodbridge,
+    S_vcdbridge,
+    S_hcdbridge,
+    S_air,
+    S_cloud,
+    S_water,
+    M_AP_FURNITURE,
+    M_AP_TYPE,
     ASCENDED,
     ESCAPED,
     In_endgame,
@@ -53,12 +126,25 @@ import {
     Msa2amask,
     Amask2align,
     MSA_NONE,
+    DELPHI,
+    VIBRATING_SQUARE,
     Is_astralevel,
+    Is_knox,
+    Is_stronghold,
+    Is_bigroom,
+    Is_valley,
+    Is_sanctum,
+    IS_THRONE,
+    isok,
     SVALL,
 } from './const.js';
 import { builds_up } from './hacklib.js';
 import { align_gname } from './roles.js';
 import { altarmask_at } from './pray.js';
+import { is_drawbridge_wall } from './dbridge.js';
+import { db_under_typ } from './hack.js';
+import { m_at } from './mon.js';
+import { canseemon } from './display.js';
 
 const FLAG_MAP = {
     town: TOWN,
@@ -588,6 +674,19 @@ export function ledger_no(lev) {
 }
 
 /**
+ * C ref: dungeon.c maxledgerno — last dungeon ledger_start + num_dunlevs.
+ * save_dungeon linfo count is this value; the array loop is `i < count`
+ * so index maxledgerno() itself is not persisted.
+ */
+export function maxledgerno() {
+    const n = game.n_dgns | 0;
+    const duns = game.dungeons || [];
+    if (n <= 0 || !duns.length) return 0;
+    const last = duns[n - 1] || duns[duns.length - 1];
+    return ((last?.ledger_start | 0) + (last?.num_dunlevs | 0)) | 0;
+}
+
+/**
  * C ref: dungeon.c ledger_to_dnum :1401–1416 —
  * ledger_start < ledgerno ≤ ledger_start + num_dunlevs.
  */
@@ -880,8 +979,8 @@ function on_level(a, b) {
 /**
  * C ref: dungeon.c interest_mapseen — which mapseen nodes appear in
  * #overview (why==0). Cemetery: final_resting_place && (knownbones
- * || wizard) after recalc clone (D-1659). Named omissions: full
- * auto-annotation flag set beyond the common ones.
+ * || wizard) after recalc clone (D-1659). Auto-flags oracle/bigroom/
+ * valley/msanctum/vibrating_square from recalc_mapseen (D-1707).
  */
 function interest_mapseen(mptr) {
     const u = game.u || {};
@@ -919,20 +1018,154 @@ function ensure_lastseentyp() {
 }
 
 /**
- * C ref: dungeon.c update_lastseentyp — remember terrain typ when mapped.
- * DRAWBRIDGE_UP under-typ and furniture-mimic cmap_to_type deferred.
+ * C ref: mkroom.c cmap_to_type `:910–1030` — cmap S_* → levl.typ.
+ * Used for remembered terrain when mimics pose as furniture.
+ * Unknown / trap / beam / branch-stair cmap → STONE catchall.
+ */
+export function cmap_to_type(sym) {
+    let typ = STONE;
+    switch (sym | 0) {
+    case S_stone:
+        typ = STONE;
+        break;
+    case S_vwall:
+        typ = VWALL;
+        break;
+    case S_hwall:
+        typ = HWALL;
+        break;
+    case S_tlcorn:
+        typ = TLCORNER;
+        break;
+    case S_trcorn:
+        typ = TRCORNER;
+        break;
+    case S_blcorn:
+        typ = BLCORNER;
+        break;
+    case S_brcorn:
+        typ = BRCORNER;
+        break;
+    case S_crwall:
+        typ = CROSSWALL;
+        break;
+    case S_tuwall:
+        typ = TUWALL;
+        break;
+    case S_tdwall:
+        typ = TDWALL;
+        break;
+    case S_tlwall:
+        typ = TLWALL;
+        break;
+    case S_trwall:
+        typ = TRWALL;
+        break;
+    case S_ndoor:  /* no door (empty doorway) */
+    case S_vodoor: /* open door in vertical wall */
+    case S_hodoor: /* open door in horizontal wall */
+    case S_vcdoor: /* closed door in vertical wall */
+    case S_hcdoor:
+        typ = DOOR;
+        break;
+    case S_bars:
+        typ = IRONBARS;
+        break;
+    case S_tree:
+        typ = TREE;
+        break;
+    case S_room:
+    case S_darkroom:
+        typ = ROOM;
+        break;
+    case S_corr:
+    case S_litcorr:
+        typ = CORR;
+        break;
+    case S_upstair:
+    case S_dnstair:
+        typ = STAIRS;
+        break;
+    case S_upladder:
+    case S_dnladder:
+        typ = LADDER;
+        break;
+    case S_altar:
+        typ = ALTAR;
+        break;
+    case S_grave:
+        typ = GRAVE;
+        break;
+    case S_throne:
+        typ = THRONE;
+        break;
+    case S_sink:
+        typ = SINK;
+        break;
+    case S_fountain:
+        typ = FOUNTAIN;
+        break;
+    case S_pool:
+        typ = POOL;
+        break;
+    case S_ice:
+        typ = ICE;
+        break;
+    case S_lava:
+        typ = LAVAPOOL;
+        break;
+    case S_vodbridge: /* open drawbridge spanning north/south */
+    case S_hodbridge:
+        typ = DRAWBRIDGE_DOWN;
+        break;        /* east/west */
+    case S_vcdbridge: /* closed drawbridge in vertical wall */
+    case S_hcdbridge:
+        typ = DBWALL;
+        break;
+    case S_air:
+        typ = AIR;
+        break;
+    case S_cloud:
+        typ = CLOUD;
+        break;
+    case S_water:
+        typ = WATER;
+        break;
+    case S_lavawall:
+        typ = LAVAWALL;
+        break;
+    default:
+        break; /* not a cmap symbol? */
+    }
+    return typ;
+}
+
+/**
+ * C ref: dungeon.c update_lastseentyp `:2926–2938` — remember terrain
+ * typ when mapped. DRAWBRIDGE_UP → db_under_typ(drawbridgemask);
+ * visible furniture mimic → cmap_to_type(mappearance).
  */
 export function update_lastseentyp(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
+    let ltyp = loc.typ | 0;
+    if (ltyp === DRAWBRIDGE_UP)
+        ltyp = db_under_typ(loc.drawbridgemask);
+    const mtmp = m_at(x, y);
+    if (mtmp && M_AP_TYPE(mtmp) === M_AP_FURNITURE && canseemon(mtmp))
+        ltyp = cmap_to_type(mtmp.mappearance);
     const lst = ensure_lastseentyp();
-    lst[x][y] = loc.typ | 0;
+    lst[x][y] = ltyp;
 }
 
 /**
  * C ref: dungeon.c count_feat_lastseentyp — bump mapseen.feat from lastseentyp.
  * Cap at 3 ("many"). Altar msalign via Amask2msa(altarmask_at); astral
- * incomplete seenv → MSA_NONE. Knox / drawbridge castle flags deferred.
+ * incomplete seenv → MSA_NONE. DOOR on Knox with throne four columns
+ * left → flags.ludios; DOOR that is a drawbridge wall, DBWALL, or
+ * DRAWBRIDGE_DOWN on the stronghold → flags.castle + flags.castletune
+ * (print_mapseen Fort Ludios / The castle + tunesuffix). Named omit:
+ * #if 0 water/lava/ice.
  */
 function count_feat_lastseentyp(mptr, x, y) {
     const typ = game.lastseentyp?.[x]?.[y] | 0;
@@ -973,6 +1206,36 @@ function count_feat_lastseentyp(mptr, x, y) {
         if (count <= 3) mptr.feat.naltar = count;
         break;
     }
+    /* C `:3026–3068` — automatic annotation once the Fort / Castle
+       entrance has been seen (in person or via magic mapping).
+       DOOR: lowered drawbridge portcullis or Knox secret door.
+       Throne is four columns left, same row or ±1, and need not
+       have been seen yet (live levl[], not lastseentyp).
+       DBWALL: raised drawbridge closed door; DRAWBRIDGE_DOWN: span.
+       DRAWBRIDGE_UP is not this switch (moat unless adjacent DBWALL). */
+    case DOOR:
+        if (Is_knox(game.u?.uz)) {
+            const tx = x - 4;
+            for (let ty = y - 1; ty <= y + 1; ty++) {
+                if (isok(tx, ty)
+                    && IS_THRONE(game.level?.at(tx, ty)?.typ | 0)) {
+                    if (!mptr.flags) mptr.flags = {};
+                    mptr.flags.ludios = 1;
+                    break;
+                }
+            }
+            break;
+        }
+        if (is_drawbridge_wall(x, y) < 0) break;
+        /* FALLTHROUGH — C dungeon.c :3059–3065 */
+    case DBWALL:
+    case DRAWBRIDGE_DOWN:
+        if (Is_stronghold(game.u?.uz)) {
+            if (!mptr.flags) mptr.flags = {};
+            mptr.flags.castle = 1;
+            mptr.flags.castletune = 1;
+        }
+        break;
     default:
         break;
     }
@@ -1184,6 +1447,47 @@ export function restore_mapseenchn(payload) {
 }
 
 /**
+ * C youprop.h Blind — (H||E) && !B; roleplay OPTIONS:blind.
+ * Local youprop clone (not a C function).
+ */
+function Blind() {
+    const u = game.u || {};
+    if (u.uroleplay?.blind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+
+/**
+ * C dungeon.c Invocation_lev `:2016–2021` — In_hell && deepest-1.
+ * Canonical export (hack.js / apply.js still have local clones).
+ * @param {{ dnum?: number, dlevel?: number }|null|undefined} lev
+ * @returns {boolean}
+ */
+export function Invocation_lev(lev) {
+    if (!lev) return false;
+    const dun = game.dungeons?.[lev.dnum | 0];
+    if (!dun?.flags?.hellish) return false;
+    return (lev.dlevel | 0) === ((dun.num_dunlevs | 0) - 1);
+}
+
+/**
+ * C gf.ftrap walk in recalc_mapseen Invocation_lev arm. Live JS list
+ * is level.traps (D-1694); ftrap ntrap is the C-shaped fallback.
+ * @returns {object|null}
+ */
+function vibrating_square_trap() {
+    const list = game.level?.traps;
+    if (Array.isArray(list)) {
+        for (const t of list) {
+            if (t && (t.ttyp | 0) === VIBRATING_SQUARE) return t;
+        }
+    }
+    for (let t = game.ftrap; t; t = t.ntrap) {
+        if ((t.ttyp | 0) === VIBRATING_SQUARE) return t;
+    }
+    return null;
+}
+
+/**
  * C ref: dungeon.c cemetery chain copy — recalc clones bonesinfo onto
  * mapseen so #overview does not require the level to stay in memory.
  * @param {object|null} head
@@ -1212,8 +1516,12 @@ function clone_cemetery_chain(head) {
 /**
  * C ref: dungeon.c recalc_mapseen — reset current-level feat counts from
  * msrooms (shops/temples) + lastseentyp. Cemetery clone + bonesknown
- * from lastseentyp[frpx][frpy] (D-1659). Valley/sanctum/oracle/Blind
- * bigroom/drawbridge castle still deferred (named in C-JS-MAP).
+ * from lastseentyp[frpx][frpy] (D-1659). flags.castletune cleared each
+ * pass then restored by count_feat if the drawbridge is still seen;
+ * flags.castle / flags.ludios stick. Blind bigroom / oracle DELPHI /
+ * valley / sanctum / vibrating_square (D-1707). Cemetery when[] is
+ * yyyymmddhhmmss (D-1710). Named: sokosolved / roguelevel /
+ * quest_summons / questing / notreachable; DRAWBRIDGE_UP lastseentyp.
  */
 export function recalc_mapseen() {
     const mptr = ensure_mapseen(null);
@@ -1222,8 +1530,20 @@ export function recalc_mapseen() {
         mptr.msrooms = Array.from({ length: nrooms }, () => ({ seen: 0, untended: 0 }));
     }
     mptr.feat = empty_feat();
+    if (!mptr.flags) mptr.flags = {};
     const u = game.u;
     const rooms = game.level?.rooms || [];
+    /* C `:3115–3124` — bigroom retains when Blind; oracle reset;
+       destroyed drawbridge → tunesuffix empty. forgot=0 after the
+       Blind test so a one-shot forget does not keep wiping bigroom. */
+    if (!Blind()) {
+        mptr.flags.bigroom = Is_bigroom(u?.uz) ? 1 : 0;
+    } else if (mptr.flags.forgot) {
+        mptr.flags.bigroom = 0;
+    }
+    mptr.flags.oracle = 0;
+    mptr.flags.castletune = 0;
+    mptr.flags.forgot = 0;
 
     // C: track rooms the hero is in → msrooms[].seen / untended
     const urooms = u?.urooms || '';
@@ -1253,7 +1573,7 @@ export function recalc_mapseen() {
         }
     }
 
-    // C: recalculate room knowledge — shops and temples
+    // C: recalculate room knowledge — shops and temples + DELPHI oracle
     for (let i = 0; i < mptr.msrooms.length; i++) {
         if (!mptr.msrooms[i].seen) continue;
         const rt = rooms[i]?.rtype | 0;
@@ -1270,8 +1590,9 @@ export function recalc_mapseen() {
         } else if (rt === TEMPLE) {
             const count = (mptr.feat.ntemple | 0) + 1;
             if (count <= 3) mptr.feat.ntemple = count;
+        } else if (((rooms[i]?.orig_rtype ?? rooms[i]?.rtype) | 0) === DELPHI) {
+            mptr.flags.oracle = 1;
         }
-        // DELPHI → flags.oracle deferred
     }
 
     // C: if (!Levitation) update_lastseentyp(u.ux, u.uy);
@@ -1282,6 +1603,35 @@ export function recalc_mapseen() {
     for (let x = 1; x < COLNO; x++) {
         for (let y = 0; y < ROWNO; y++) {
             count_feat_lastseentyp(mptr, x, y);
+        }
+    }
+
+    /* C `:3205–3238` — valley/sanctum stick if naltar later drops;
+       sanctum clears vibrating_square on the invocation level;
+       Invocation_lev uses tseen or (no trap && sanctum not mapped). */
+    if (Is_valley(u?.uz)) {
+        if ((mptr.feat.naltar | 0) > 0) mptr.flags.valley = 1;
+    } else if (Is_sanctum(u?.uz)) {
+        if ((mptr.feat.naltar | 0) > 0) mptr.flags.msanctum = 1;
+        if (mptr.flags.msanctum) {
+            const invocat_lvl = {
+                dnum: u?.uz?.dnum | 0,
+                dlevel: (u?.uz?.dlevel | 0) - 1,
+            };
+            const oth = find_mapseen(invocat_lvl);
+            if (oth) {
+                if (!oth.flags) oth.flags = {};
+                oth.flags.vibrating_square = 0;
+            }
+        }
+    } else if (Invocation_lev(u?.uz)) {
+        const t = vibrating_square_trap();
+        if (t) {
+            mptr.flags.vibrating_square = t.tseen ? 1 : 0;
+        } else {
+            const sanctum = game.sanctum_level;
+            const oth = sanctum ? find_mapseen(sanctum) : null;
+            mptr.flags.vibrating_square = (!oth || !oth.flags?.msanctum) ? 1 : 0;
         }
     }
 
@@ -1602,7 +1952,9 @@ export function mapseen_cemetery_lines(mptr, why, reason, ctx) {
  * C ref: dungeon.c print_mapseen :3515–3728.
  * why==-1: level row selectable with identifier ledger_no+1 (ch=0).
  * Headings / feat / named-place / branch / cemetery are add_menu_str.
- * Named omit: #if 0 water/lava/ice.
+ * Knox / castle+tunesuffix flags from count_feat_lastseentyp (D-1693).
+ * Blind bigroom / oracle / valley / msanctum / vibrating_square from
+ * recalc_mapseen (D-1707). Named omit: #if 0 water/lava/ice.
  * @param {object[]} entries
  * @param {object} mptr
  * @param {number} why

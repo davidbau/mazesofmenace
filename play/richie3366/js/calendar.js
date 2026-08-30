@@ -92,14 +92,62 @@ export function friday_13th() {
 }
 
 /**
- * C ref: calendar.c yyyymmdd — contest fixed datetime via getlt when date==0.
- * @param {number} [date] unused (contest always uses getlt)
+ * C ref: calendar.c yyyymmdd / hhmmss / yyyymmddhhmmss — date==0 →
+ * getlt(); else localtime(&date). Contest time_from_yyyymmddhhmmss
+ * treats civil stamps as UTC-4, so invert with the same offset.
+ * @param {number} [date]
+ */
+function lt_for_date(date) {
+    if (!date) return getlt();
+    const utcMs = (Number(date) - 4 * 3600) * 1000;
+    const d = new Date(utcMs);
+    return {
+        tm_year: d.getUTCFullYear() - 1900,
+        tm_mon: d.getUTCMonth(),
+        tm_mday: d.getUTCDate(),
+        tm_hour: d.getUTCHours(),
+        tm_min: d.getUTCMinutes(),
+        tm_sec: d.getUTCSeconds(),
+    };
+}
+
+/** C ref: calendar.c yyyymmdd / yyyymmddhhmmss tm_year < 70 → +2000. */
+function yyyy_from_tm(lt) {
+    return lt.tm_year < 70 ? lt.tm_year + 2000 : lt.tm_year + 1900;
+}
+
+function pad2(n) {
+    return String(n | 0).padStart(2, '0');
+}
+
+/**
+ * C ref: calendar.c yyyymmdd `:55–77`.
+ * @param {number} [date]
+ * @returns {number}
  */
 export function yyyymmdd(date = 0) {
-    void date;
-    const lt = getlt();
-    let year = lt.tm_year < 70 ? lt.tm_year + 2000 : lt.tm_year + 1900;
+    const lt = lt_for_date(date);
+    const year = yyyy_from_tm(lt);
     return year * 10000 + (lt.tm_mon + 1) * 100 + lt.tm_mday;
+}
+
+/**
+ * C ref: calendar.c yyyymmddhhmmss `:94–117` — static datestr[15]
+ * "%04ld%02d%02d%02d%02d%02d". Caller: bones.c savebones when[].
+ * @param {number} [date]
+ * @returns {string}
+ */
+export function yyyymmddhhmmss(date = 0) {
+    const lt = lt_for_date(date);
+    const year = yyyy_from_tm(lt);
+    return (
+        String(year).padStart(4, '0')
+        + pad2(lt.tm_mon + 1)
+        + pad2(lt.tm_mday)
+        + pad2(lt.tm_hour)
+        + pad2(lt.tm_min)
+        + pad2(lt.tm_sec)
+    );
 }
 
 /** C ref: calendar.c night — hour < 6 || hour > 21. */

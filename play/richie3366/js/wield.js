@@ -21,14 +21,16 @@ import {
     W_WEP, W_SWAPWEP, W_QUIVER, W_ARMOR, W_ACCESSORY, W_SADDLE,
     P_NONE, P_BOW, P_CROSSBOW, P_DART, P_BOOMERANG, P_POLEARMS, P_LANCE,
     ECMD_OK, ECMD_TIME, Upolyd, HAND,
+    has_oname, ONAME, COST_DEGRD, COST_DECHNT,
 } from './const.js';
-import { retouch_object, set_artifact_intrinsic, is_art } from './artifact.js';
-import { ART_SNICKERSNEE } from './generated/artifacts_data.js';
+import { retouch_object, set_artifact_intrinsic, is_art, restrict_name } from './artifact.js';
+import { ART_SNICKERSNEE, ART_MAGICBANE } from './generated/artifacts_data.js';
 import { makeknown, encumber_msg, compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, splittable, freeinv } from './invent.js';
 import { uncurse, weight, unsplitobj, clear_splitobjs, splitobj } from './mkobj.js';
 import { trycall } from './do_name.js';
 import { addinv_nomerge } from './u_init.js';
 import { inv_cnt } from './steal.js';
+import { alter_cost, costly_alteration } from './shk.js';
 
 /** C: are_no_longer_twoweap / can_no_longer_twoweap */
 const are_no_longer_twoweap = 'are no longer using two weapons at once';
@@ -1150,11 +1152,11 @@ function is_elven_weapon(obj) {
 }
 
 /**
- * C ref: wield.c chwepon — enchant / disenchant wielded weapon.
- * Named omissions: full body_part poly; Hallucination hcolor; Magicbane
- * clue polish; artifact restrict_name faint-glow; shop costly_alteration /
- * alter_cost unpaid; useupall multi evaporate inventory sync; encumber_msg
- * after stack fuse only when quan split.
+ * C ref: wield.c chwepon `:917–1048` — enchant / disenchant wielded weapon.
+ * restrict_name faint-glow, Magicbane clue, unpaid alter_cost, and
+ * costly_alteration COST_DEGRD/DECHNT live (D-1692). Named: Hallucination
+ * hcolor; invent.c useupall (eat.js clone; obfree); Yobjnam2 local vs
+ * objnam export; encumber_msg only after stack fuse.
  * @returns {Promise<number>} 1 = enchanted (caller useup); 0 = strange_feeling used up scroll
  */
 export async function chwepon(otmp, amount) {
@@ -1175,7 +1177,7 @@ export async function chwepon(otmp, amount) {
                 buf = `Your right ${body_part_latebound(HAND)} tingles.`;
             }
             uncurse(uwep);
-            // update_inventory deferred
+            update_inventory();
         } else {
             buf = `Your ${makeplural(body_part_latebound(HAND))} ${amount >= 0 ? 'twitch' : 'itch'}.`;
         }
@@ -1198,7 +1200,7 @@ export async function chwepon(otmp, amount) {
             uwep.owt = weight(uwep);
         }
         if (uwep.cursed) uncurse(uwep);
-        // alter_cost unpaid deferred
+        if (uwep.unpaid) alter_cost(uwep, 0);
         if (otyp !== STRANGE_OBJECT) makeknown(otyp);
         if (multiple) await encumber_msg();
         return 1;
@@ -1208,7 +1210,7 @@ export async function chwepon(otmp, amount) {
         await pline(
             `Your ${simpleonames(uwep)} ${multiple ? 'fuse, and become' : 'is'} much duller now.`,
         );
-        // costly_alteration COST_DEGRD deferred
+        await costly_alteration(uwep, COST_DEGRD);
         uwep.otyp = WORM_TOOTH;
         uwep.oerodeproof = 0;
         if (multiple) {
@@ -1220,7 +1222,17 @@ export async function chwepon(otmp, amount) {
         return 1;
     }
 
-    // artifact restrict_name faint-glow deferred
+    /* C wield.c chwepon `:991–997` — named restricted artifact resists
+     * disenchant (faint glow, no spe change). Empty wepname → restrict_name
+     * FALSE. */
+    let wepname = '';
+    if (has_oname(uwep)) wepname = ONAME(uwep);
+    if (amount < 0 && uwep.oartifact && restrict_name(uwep, wepname)) {
+        if (!Blind) {
+            await pline(`${Yobjnam2(uwep, 'faintly glow')} ${color}.`);
+        }
+        return 1;
+    }
     if (((uwep.spe > 5 && amount >= 0) || (uwep.spe < -5 && amount < 0))
         && rn2(3)) {
         if (!Blind) {
@@ -1248,16 +1260,18 @@ export async function chwepon(otmp, amount) {
             makeknown(otyp);
         }
     }
-    if (amount < 0) {
-        // costly_alteration COST_DECHNT deferred
-    }
+    if (amount < 0) await costly_alteration(uwep, COST_DECHNT);
     uwep.spe = (uwep.spe | 0) + (amount | 0);
     if (amount > 0) {
         if (uwep.cursed) uncurse(uwep);
-        // alter_cost unpaid deferred
+        if (uwep.unpaid) alter_cost(uwep, 0);
     }
 
-    // Magicbane hand itch deferred (u_wield_art ART_MAGICBANE)
+    /* C u_wield_art(ART_MAGICBANE) ≡ is_art(uwep, art); do not clone #6. */
+    if (is_art(uwep, ART_MAGICBANE) && (uwep.spe | 0) >= 0) {
+        const verb = ((amount > 1) && ((uwep.spe | 0) > 1)) ? 'flin' : 'it';
+        await pline(`Your right ${body_part_latebound(HAND)} ${verb}ches!`);
+    }
 
     if ((uwep.spe | 0) > 5
         && (is_elven_weapon(uwep) || uwep.oartifact || !rn2(7))) {

@@ -8,8 +8,8 @@ import { vfsReadFile, vfsWriteFile, vfsDeleteFile } from './storage.js';
 import { next_ident } from './mkobj.js';
 import { mons } from './monsters.js';
 import { GameMap } from './game.js';
-import { OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED, OBJ_CONTAINED } from './const.js';
-import { peace_minded, set_malign, restmon_edog, savemon_edog } from './makemon.js';
+import { OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED } from './const.js';
+import { peace_minded, set_malign, restmon_edog } from './makemon.js';
 import { save_track, rest_track } from './track.js';
 import { yn_function } from './getline.js';
 import { paint_gbuf_level_to_terminal } from './display.js';
@@ -17,7 +17,13 @@ import { vision_off_newsym_gbuf } from './vision.js';
 import { fruit_from_indx, fruit_from_name } from './objnam.js';
 import { rnd } from './rng.js';
 import { objectNames } from './generated/objects_data.js';
-import { savecemetery, restcemetery } from './dungeon.js';
+import { restcemetery } from './dungeon.js';
+import { update_mlstmv } from './dog.js';
+import {
+    serLevel,
+    deserObjChain,
+    deserTraps,
+} from './lev_json.js';
 
 const BONES_VFS_PREFIX = 'bones/';
 const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
@@ -129,79 +135,6 @@ export function delete_bonesfile(lev) {
     return vfsDeleteFile(vfsPath(filename));
 }
 
-/** Serialize one object; cobj as nobj-order array. Drop back-pointers. */
-function serObj(otmp) {
-    if (!otmp) return null;
-    const out = {};
-    for (const k of Object.keys(otmp)) {
-        if (k === 'nobj' || k === 'nexthere' || k === 'ocarry'
-            || k === 'ocontainer' || k === 'cobj' || k === 'v') {
-            continue;
-        }
-        const v = otmp[k];
-        if (v != null && typeof v === 'object') {
-            // skip non-plain / live graph blobs
-            if (k === 'oextra') {
-                try {
-                    out[k] = JSON.parse(JSON.stringify(v));
-                } catch {
-                    /* omit */
-                }
-            }
-            continue;
-        }
-        out[k] = v;
-    }
-    out.cobj = serObjChain(otmp.cobj);
-    return out;
-}
-
-function serObjChain(head) {
-    const arr = [];
-    for (let o = head; o; o = o.nobj) arr.push(serObj(o));
-    return arr;
-}
-
-function serMon(mtmp) {
-    if (!mtmp) return null;
-    const out = {};
-    for (const k of Object.keys(mtmp)) {
-        // Skip live graph / derived; mtrack is serialized explicitly below
-        // (C savemon writes full struct monst including mtrack[MTSZ]).
-        if (k === 'nmon' || k === 'data' || k === 'minvent' || k === 'mtrack') {
-            continue;
-        }
-        const v = mtmp[k];
-        if (v != null && typeof v === 'object') {
-            if (k === 'mextra') {
-                try {
-                    out[k] = JSON.parse(JSON.stringify(v, (_key, val) => {
-                        if (val && typeof val === 'object'
-                            && (val.mnum != null || val.mx != null)) {
-                            return undefined; // drop back-refs to monst
-                        }
-                        return val;
-                    }));
-                } catch {
-                    /* omit */
-                }
-            }
-            continue;
-        }
-        out[k] = v;
-    }
-    // C ref: monst.h mtrack[MTSZ]; save.c savemon / restore.c restmon
-    out.mtrack = [];
-    for (let j = 0; j < 4; j++) {
-        const c = mtmp.mtrack?.[j];
-        out.mtrack.push({ x: c?.x | 0, y: c?.y | 0 });
-    }
-    out.minvent = serObjChain(mtmp.minvent);
-    // C save.c savemon `:860–869` — EDOG blob when present.
-    savemon_edog(mtmp, out);
-    return out;
-}
-
 /**
  * C ref: bones.c savebones create_bonesfile + savelev subset.
  * Persists current level after ghost envelope for cross-segment getbones.
@@ -212,31 +145,30 @@ export function write_bonesfile(lev) {
     // C: open_bonesfile miss required — do not replace existing
     if (vfsReadFile(vfsPath(filename)) != null) return false;
 
+    // C bones.c:620 update_mlstmv before savelev.
+    update_mlstmv();
+
     const lvl = game.level;
-    const locations = [];
     if (lvl?.locations) {
         for (let x = 0; x < lvl.locations.length; x++) {
             // C bones.c savebones — clear seenv/waslit/glyph before save
-            locations[x] = (lvl.locations[x] || []).map((cell) => {
-                if (!cell) return null;
-                const out = { ...cell };
-                out.seenv = 0;
-                out.waslit = false;
-                out.remembered_glyph = undefined;
-                out.disp_ch = ' ';
-                out.disp_color = 8; // NO_COLOR
-                out.disp_decgfx = false;
-                out.disp_attr = 0;
-                out.gnew = 0;
-                out.glyph_symidx = -1;
-                return out;
-            });
+            for (const cell of lvl.locations[x] || []) {
+                if (!cell) continue;
+                cell.seenv = 0;
+                cell.waslit = false;
+                cell.remembered_glyph = undefined;
+                cell.disp_ch = ' ';
+                cell.disp_color = 8; // NO_COLOR
+                cell.disp_decgfx = false;
+                cell.disp_attr = 0;
+                cell.gnew = 0;
+                cell.glyph_symidx = -1;
+            }
         }
     }
     // C: svl.lastseentyp[x][y] = 0
     if (game.lastseentyp) game.lastseentyp = null;
 
-    const fmon = [];
     for (const m of game.fmon || []) {
         // C ref: bones.c savebones — pets lose tame/peaceful for next hero
         if (m.mtame) {
@@ -245,7 +177,6 @@ export function write_bonesfile(lev) {
         }
         // C resetobjs(minvent, FALSE) SLIME_MOLD arm — after drop_upon_death
         resetobjs_mark_slime_molds(m.minvent);
-        fmon.push(serMon(m));
     }
     // C resetobjs(fobj) / resetobjs(buriedobjlist) SLIME_MOLD arm
     resetobjs_mark_slime_molds(game.fobj);
@@ -256,6 +187,9 @@ export function write_bonesfile(lev) {
     }
     // migrating_mons are off-level (mx==0); C savelev does not include them.
 
+    // Shared savelev codec (D-1696). Peek track then FREEING-clear.
+    const levelBlob = serLevel(null);
+    save_track();
     const payload = {
         version: 1,
         bonesid,
@@ -263,33 +197,9 @@ export function write_bonesfile(lev) {
         fruitchn: savefruitchn(),
         dnum: lev?.dnum | 0,
         dlevel: lev?.dlevel | 0,
-        locations,
-        rooms: lvl?.rooms ? JSON.parse(JSON.stringify(lvl.rooms)) : [],
-        nroom: lvl?.nroom | 0,
-        doors: lvl?.doors ? JSON.parse(JSON.stringify(lvl.doors)) : [],
-        doorindex: lvl?.doorindex | 0,
-        flags: lvl?.flags ? { ...lvl.flags } : {},
-        fmon,
-        fobj: serObjChain(game.fobj),
-        buriedobjlist: Array.isArray(lvl?.buriedobjlist)
-            ? (lvl.buriedobjlist || []).map((o) => serObj(o))
-            : serObjChain(lvl?.buriedobjlist),
-        billobjs: serObjChain(game.billobjs),
-        ftrap: (game.ftrap || lvl?.traps || []).map((t) => ({ ...t })),
-        head_engr: game.head_engr
-            ? JSON.parse(JSON.stringify(game.head_engr))
-            : null,
-        stairs: game.stairs
-            ? JSON.parse(JSON.stringify(game.stairs))
-            : null,
-        upstair: lvl?.upstair ? { ...lvl.upstair } : null,
-        dnstair: lvl?.dnstair ? { ...lvl.dnstair } : null,
-        // C: savecemetery / level.bonesinfo — who[] for bones_include_name
-        bonesinfo: savecemetery(lvl?.bonesinfo),
-        // C ref: save.c savelev → save_track; restore.c getlev → rest_track.
-        // Dead hero's utrack (often on/near the grave) must persist so
-        // hostile can_track monsters gettrack() after getbones.
-        track: save_track(),
+        ...levelBlob,
+        // Older getbones reads `flags` as level.flags (not linfo).
+        flags: levelBlob.level_flags,
     };
 
     return vfsWriteFile(vfsPath(filename), JSON.stringify(payload));
@@ -308,34 +218,6 @@ export function bones_include_name(name) {
         if (who.length >= len && who.slice(0, len) === buf) return true;
     }
     return false;
-}
-
-function deserObjChain(arr, where) {
-    let head = null;
-    let prev = null;
-    for (const raw of arr || []) {
-        if (!raw) continue;
-        const otmp = { ...raw };
-        const kids = otmp.cobj;
-        delete otmp.cobj;
-        otmp.nobj = null;
-        otmp.nexthere = null;
-        otmp.ocarry = null;
-        otmp.ocontainer = null;
-        otmp.where = where;
-        // C restobjchn: nested restobj keeps saved where=OBJ_CONTAINED;
-        // only ocontainer pointers are rewritten (restore.c:270-277).
-        // Parent-chain where made get_obj_location(obj, 0) accept
-        // contained objects (D-1036 risk 4 / D-1054).
-        otmp.cobj = deserObjChain(kids, OBJ_CONTAINED);
-        if (otmp.cobj) {
-            for (let c = otmp.cobj; c; c = c.nobj) c.ocontainer = otmp;
-        }
-        if (!head) head = otmp;
-        else prev.nobj = otmp;
-        prev = otmp;
-    }
-    return head;
 }
 
 /**
@@ -527,7 +409,7 @@ export async function try_load_bones(lev) {
     map.upstair = payload.upstair || null;
     map.dnstair = payload.dnstair || null;
     map.buriedobjlist = null;
-    map.traps = payload.ftrap || [];
+    map.traps = deserTraps(payload.traps ?? payload.ftrap);
 
     const fmon = [];
     for (const rawM of payload.fmon || []) {
@@ -577,7 +459,7 @@ export async function try_load_bones(lev) {
     game.fobj = fobj;
     map.buriedobjlist = buried;
     game.billobjs = billobjs;
-    game.ftrap = payload.ftrap || [];
+    game.ftrap = map.traps;
     game.head_engr = payload.head_engr || null;
     game.stairs = payload.stairs || null;
     // C: restcemetery → level.bonesinfo (bones_include_name / familiar)

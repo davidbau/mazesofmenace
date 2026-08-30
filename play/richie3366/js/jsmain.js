@@ -23,6 +23,7 @@ import { GameDisplay } from './game_display.js';
 import { askname_if_needed } from './askname.js';
 import { player_selection } from './player_selection.js';
 import { PARANOID_PRAY, PARANOID_SWIM, PARANOID_TRAP, AUTOUNLOCK_APPLY_KEY } from './const.js';
+import { check_special_room } from './hack.js';
 
 // ── NethackGame ──
 // Wraps a single game session with replay infrastructure.
@@ -226,7 +227,7 @@ export class NethackGame {
         if (!g.plname) g.plname = 'Hero';
 
         // C ref: unixmain attempt_restore — try save before player_selection/newgame
-        if (try_restore_save()) {
+        if (await try_restore_save()) {
             init_vision_globals();
             // C unixmain dorecover success: no second l_nhcore_init.
             // restore_luadata already inited luacore if it was NULL
@@ -235,6 +236,7 @@ export class NethackGame {
             await docrt();
             await bot();
             await welcome(false);
+            await check_special_room(false);
             await moveloop_preamble(true);
             return;
         }

@@ -135,7 +135,7 @@ import {
 } from './monsters.js';
 import { stairway_add } from './stairs.js';
 import { THEMEROOM_DEFINITIONS } from './themeroom_data.js';
-import { selection_area } from './themerooms.js';
+import { selection_area, ThemeroomSelection } from './themerooms.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, DRY, SP_COORD_IS_RANDOM,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -372,16 +372,16 @@ export function fill_special_room(croom, env = {}) {
         }
         case COURT:
         case BEEHIVE:
+        case MORGUE:
             fill_zoo(croom, normalized);
             break;
         case ZOO:
         case ANTHOLE:
         case COCKNEST:
         case LEPREHALL:
-        case MORGUE:
         case BARRACKS:
             throw new UnsupportedSpecialRoomError(
-                `fill_special_room(${croom.rtype}) beyond the Beehive boundary`,
+                `fill_special_room(${croom.rtype}) beyond the Morgue boundary`,
             );
         default:
             break;
@@ -457,7 +457,13 @@ async function makelevel(specialLevelLoader = null) {
         if (slev && slev.proto) {
             if (!SPECIAL_LEVEL_LOADERS) {
                 const { BIGRM_LOADERS } = await import('./bigrm.js');
-                SPECIAL_LEVEL_LOADERS = { ...BIGRM_LOADERS };
+                const { QUEST_LEVEL_LOADERS } = await import(
+                    './quest_levels.js'
+                );
+                SPECIAL_LEVEL_LOADERS = {
+                    ...BIGRM_LOADERS,
+                    ...QUEST_LEVEL_LOADERS,
+                };
             }
             // Determine the resolved protofile the same way makemaz() will.
             // For bigrm, slev.rndlevs is 13, so the proto is
@@ -970,6 +976,7 @@ function createSpecialLevelApi(state) {
 
     return {
         random: SOURCE_THEMEROOM_RANDOM,
+        get frame() { return frame; },
 
         level_init(specification) {
             if (specification?.style !== 'solidfill') {
@@ -1004,6 +1011,8 @@ function createSpecialLevelApi(state) {
                     state.specialLevelAllowFlips
                         = (state.specialLevelAllowFlips ?? 3) & ~2;
                     break;
+                case 'noteleport': state.level.flags.noteleport = true; break;
+                case 'hardfloor': state.level.flags.hardfloor = true; break;
                 case 'nomongen': state.level.flags.rndmongen = false; break;
                 case 'nodeathdrops': state.level.flags.deathdrops = false; break;
                 case 'noautosearch': state.level.flags.noautosearch = true; break;
@@ -1045,12 +1054,33 @@ function createSpecialLevelApi(state) {
             if (litStr !== undefined) {
                 // Two-argument: region(selection, "lit"/"unlit").
                 // C clones, grows if lit, then iterates to set lighting.
+                // C ref: sp_lev.c lspo_region() argc==2.
+                // C selections store absolute coords (frame applied at
+                // creation). JS selections store map-relative coords.
+                // Convert to absolute before growing so the expansion
+                // reaches into the frame margin (row ystart-1, column
+                // xstart-1) instead of clamping at relative zero.
                 const lit = litStr === 'lit';
-                const sel = lit ? selectionOrSpec.grow() : selectionOrSpec.clone();
-                sel.iterate((x, y) => {
-                    const loc = state.level.at(x, y);
-                    if (loc) loc.lit = lit;
-                }, { x: frame.xstart, y: frame.ystart });
+                const src = selectionOrSpec;
+                const { lx, ly, hx, hy } = src.bounds();
+                const absSel = new ThemeroomSelection();
+                for (let x = lx; x <= hx; ++x) {
+                    for (let y = ly; y <= hy; ++y) {
+                        if (src.get(x, y))
+                            absSel.set(frame.xstart + x, frame.ystart + y);
+                    }
+                }
+                const sel = lit ? absSel.grow() : absSel.clone();
+                // C ref: selvar.c selection_iterate() — x-major from x=0
+                const gb = sel.bounds();
+                for (let x = gb.lx; x <= gb.hx; ++x) {
+                    for (let y = gb.ly; y <= gb.hy; ++y) {
+                        if (!sel.get(x, y)) continue;
+                        const loc = state.level.at(x, y);
+                        // C ref: sp_lev.c sel_set_lit()
+                        if (loc) loc.lit = IS_LAVA(loc.typ) || lit;
+                    }
+                }
                 return;
             }
             const specification = selectionOrSpec;
@@ -1312,9 +1342,21 @@ function createSpecialLevelApi(state) {
                 // terrain(selection, char)
                 const typ = splev_chr2typ(charOrY);
                 if (typ >= MAX_TYPE) return;
-                selOrX.iterate((x, y) => {
-                    set_levltyp(x, y, typ, { state });
-                }, { x: frame.xstart, y: frame.ystart });
+                // C ref: sp_lev.c lspo_terrain() uses selvar.c
+                // selection_iterate(), x-major from x=0, with absolute
+                // coords (frame offset already in the selection).
+                const tb = selOrX.bounds();
+                for (let x = tb.lx; x <= tb.hx; ++x) {
+                    for (let y = tb.ly; y <= tb.hy; ++y) {
+                        if (!selOrX.get(x, y)) continue;
+                        set_levltyp(
+                            frame.xstart + x,
+                            frame.ystart + y,
+                            typ,
+                            { state },
+                        );
+                    }
+                }
             }
         },
 

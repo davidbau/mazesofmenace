@@ -2125,6 +2125,29 @@ export function append_wizweight_suffix(obj, bp, with_price) {
 }
 
 /**
+ * C objnam.c doname_base `:1549–1559` — STATUE/CORPSE/FIGURINE when
+ * `wizard && iflags.wizmgender`. `genders[mgend].adj` or
+ * "unspecified gender" for CORPSTAT_RANDOM.
+ */
+export function append_wizmgender_suffix(obj, bp) {
+    if (!obj || !game.flags?.debug || !game.iflags?.wizmgender) return bp;
+    const oname = objectNames[obj.otyp];
+    if (oname !== 'STATUE' && oname !== 'CORPSE' && oname !== 'FIGURINE') {
+        return bp;
+    }
+    const cgend = (obj.spe | 0) & CORPSTAT_GENDER;
+    const mgend = cgend === CORPSTAT_MALE ? MALE
+        : cgend === CORPSTAT_FEMALE ? FEMALE
+            : NEUTRAL;
+    // C role.c genders[].adj — male / female / neuter
+    const adj = mgend === MALE ? 'male'
+        : mgend === FEMALE ? 'female'
+            : 'neuter';
+    const label = cgend !== CORPSTAT_RANDOM ? adj : 'unspecified gender';
+    return `${bp} (${label})`;
+}
+
+/**
  * C ref: objnam.c doname() — invent-kit subset (Tourist/Rogue starter lines).
  * C doname_base starts with xname(obj), which forces cleric bknown before
  * the BUC prefix is read; JS doname uses pretty_base so apply the same force.
@@ -2420,6 +2443,8 @@ export function doname(obj) {
     if (obj.owornmask & (W_BALL | W_CHAIN)) {
         bp += ` (${(obj.owornmask & W_BALL) ? 'chained' : 'attached'} to you)`;
     }
+    // C objnam.c doname_base `:1549–1559` — after class switch, before W_WEP.
+    bp = append_wizmgender_suffix(obj, bp);
     // C ref: objnam.c doname_base W_WEP (objnam.c:1561–1609) — skip when
     // gm.mrg_to_wielded (pickup.c pickup_prinv merge into uwep). Stack/ammo/
     // missile/non-weptool → "(wielded)"; else ConcatF2 " (%s %s)" how-arm
@@ -2506,19 +2531,36 @@ export function doname(obj) {
 }
 
 /**
- * C ref: objnam.c paydoname — doname with invent-style price suppressed
- * (billing menus / shk_names_obj). Named omissions: Has_contents cknown
- * dance; "an unpaid "/"your " container rewrite.
+ * C ref: objnam.c paydoname `:2311–2355` — doname with invent-style
+ * price suppressed (billing menus / shk_names_obj). Has_contents zeros
+ * cknown around doname then "an unpaid "/"your " + contents phrasing.
+ * buy_container sets no_charge so the just-bought box stays "a/an"
+ * rather than "your".
  */
 export function paydoname(obj) {
+    if (!obj) return '';
     if (!game.iflags) game.iflags = {};
-    // C paydoname `:2318–2328` — save wizweight, force Off around doname
+    const save_cknown = obj.cknown;
     const save_wizweight = game.iflags.wizweight;
+    if (Has_contents(obj)) obj.cknown = 0;
     game.iflags.wizweight = false;
     game.iflags.suppress_price = (game.iflags.suppress_price | 0) + 1;
-    const p = doname(obj);
+    let p = doname(obj);
     game.iflags.suppress_price = (game.iflags.suppress_price | 0) - 1;
     game.iflags.wizweight = save_wizweight;
+
+    if (Has_contents(obj)) {
+        if (!obj.no_charge) {
+            if (p.startsWith('a ')) p = p.slice(2);
+            else if (p.startsWith('an ')) p = p.slice(3);
+            p = `${obj.unpaid ? 'an unpaid ' : 'your '}${p}`;
+        }
+        if (!obj.cknown) {
+            if (obj.unpaid) p += ' and its contents';
+            else p = `the contents of ${p}`;
+        }
+    }
+    obj.cknown = save_cknown;
     return p;
 }
 

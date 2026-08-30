@@ -43,14 +43,45 @@ import {
     InvOptInUse,
     InvSparse,
     WIN_ERR,
+    WC_ASCII_MAP,
+    WC_COLOR,
+    WC_TILED_MAP,
+    WC_PRELOAD_TILES,
+    WC_TILE_WIDTH,
+    WC_TILE_HEIGHT,
+    WC_TILE_FILE,
+    WC_INVERSE,
+    WC_ALIGN_MESSAGE,
+    WC_ALIGN_STATUS,
+    WC_VARY_MSGCOUNT,
+    WC_FONT_MAP,
+    WC_FONT_MESSAGE,
+    WC_FONT_STATUS,
+    WC_FONT_MENU,
+    WC_FONT_TEXT,
+    WC_FONTSIZ_MAP,
+    WC_FONTSIZ_MESSAGE,
+    WC_FONTSIZ_STATUS,
+    WC_FONTSIZ_MENU,
+    WC_FONTSIZ_TEXT,
+    WC_SCROLL_MARGIN,
+    WC_SPLASH_SCREEN,
+    WC_POPUP_DIALOG,
+    WC_SCROLL_AMOUNT,
+    WC_EIGHT_BIT_IN,
     WC_PERM_INVENT,
+    WC_MAP_MODE,
+    WC_WINDOWCOLORS,
+    WC_PLAYER_SELECTION,
+    WC_HILITE_PET,
+    WC_MOUSE_SUPPORT,
 } from './const.js';
 import { game } from './gstate.js';
 import { rnd } from './rng.js';
 import { str_end_is, highc, strstri, strsubst } from './hacklib.js';
 import { name_to_mon } from './mondata.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, docrt, clear_committed_status } from './display.js';
+import { flush_screen, pline, docrt, check_gold_symbol, clear_committed_status } from './display.js';
 import { paint_corner_nhw_menu, dismiss_nhw_menu, collect_menu_gacc, process_menu_search, reassign, update_inventory, invlet_constant, perm_invent_toggled } from './invent.js';
 import { ATR_INVERSE } from './terminal.js';
 import {
@@ -414,6 +445,89 @@ function windowport_tty() {
     return true;
 }
 
+/**
+ * C wintty.c tty_procs.wincap `:98–110` contest `!TTY_PERM_INVENT`.
+ * Public tty is WC_COLOR|HILITE_PET|INVERSE|EIGHT_BIT_IN only.
+ */
+function tty_procs_wincap() {
+    return WC_COLOR | WC_HILITE_PET | WC_INVERSE | WC_EIGHT_BIT_IN;
+}
+
+/** C `windowprocs.wincap`; unset bag → contest tty_procs. */
+function windowprocs_wincap() {
+    const wp = game.windowprocs;
+    if (wp && typeof wp === 'object' && Object.hasOwn(wp, 'wincap')) {
+        return wp.wincap | 0;
+    }
+    return tty_procs_wincap();
+}
+
+/**
+ * C options.c wc_options[] `:9787–9822`.
+ * perminv_mode shares WC_PERM_INVENT with perm_invent.
+ */
+const wc_options = [
+    { wc_name: 'ascii_map', wc_bit: WC_ASCII_MAP },
+    { wc_name: 'color', wc_bit: WC_COLOR },
+    { wc_name: 'eight_bit_tty', wc_bit: WC_EIGHT_BIT_IN },
+    { wc_name: 'hilite_pet', wc_bit: WC_HILITE_PET },
+    { wc_name: 'perm_invent', wc_bit: WC_PERM_INVENT },
+    { wc_name: 'perminv_mode', wc_bit: WC_PERM_INVENT },
+    { wc_name: 'popup_dialog', wc_bit: WC_POPUP_DIALOG },
+    { wc_name: 'player_selection', wc_bit: WC_PLAYER_SELECTION },
+    { wc_name: 'preload_tiles', wc_bit: WC_PRELOAD_TILES },
+    { wc_name: 'tiled_map', wc_bit: WC_TILED_MAP },
+    { wc_name: 'tile_file', wc_bit: WC_TILE_FILE },
+    { wc_name: 'tile_width', wc_bit: WC_TILE_WIDTH },
+    { wc_name: 'tile_height', wc_bit: WC_TILE_HEIGHT },
+    { wc_name: 'align_message', wc_bit: WC_ALIGN_MESSAGE },
+    { wc_name: 'align_status', wc_bit: WC_ALIGN_STATUS },
+    { wc_name: 'font_map', wc_bit: WC_FONT_MAP },
+    { wc_name: 'font_menu', wc_bit: WC_FONT_MENU },
+    { wc_name: 'font_message', wc_bit: WC_FONT_MESSAGE },
+    { wc_name: 'font_size_map', wc_bit: WC_FONTSIZ_MAP },
+    { wc_name: 'font_size_menu', wc_bit: WC_FONTSIZ_MENU },
+    { wc_name: 'font_size_message', wc_bit: WC_FONTSIZ_MESSAGE },
+    { wc_name: 'font_size_status', wc_bit: WC_FONTSIZ_STATUS },
+    { wc_name: 'font_size_text', wc_bit: WC_FONTSIZ_TEXT },
+    { wc_name: 'font_status', wc_bit: WC_FONT_STATUS },
+    { wc_name: 'font_text', wc_bit: WC_FONT_TEXT },
+    { wc_name: 'map_mode', wc_bit: WC_MAP_MODE },
+    { wc_name: 'scroll_amount', wc_bit: WC_SCROLL_AMOUNT },
+    { wc_name: 'scroll_margin', wc_bit: WC_SCROLL_MARGIN },
+    { wc_name: 'splash_screen', wc_bit: WC_SPLASH_SCREEN },
+    { wc_name: 'use_inverse', wc_bit: WC_INVERSE },
+    { wc_name: 'vary_msgcount', wc_bit: WC_VARY_MSGCOUNT },
+    { wc_name: 'windowcolors', wc_bit: WC_WINDOWCOLORS },
+    { wc_name: 'mouse_support', wc_bit: WC_MOUSE_SUPPORT },
+];
+
+/** C options.c is_wc_option `:9898–9909`. */
+function is_wc_option(optnam) {
+    for (let k = 0; k < wc_options.length; k++) {
+        if (wc_options[k].wc_name === optnam) return true;
+    }
+    return false;
+}
+
+/** C options.c wc_supported `:9911–9921`. */
+function wc_supported(optnam) {
+    for (let k = 0; k < wc_options.length; k++) {
+        if (wc_options[k].wc_name === optnam) {
+            return (windowprocs_wincap() & wc_options[k].wc_bit) !== 0;
+        }
+    }
+    return false;
+}
+
+/**
+ * C options.c doset `:8869–8872` / `:8846–8848` WC skip.
+ * wc2_supported named (petattr/statushilites already in the contest list).
+ */
+function doset_skip_unsupported(name) {
+    return is_wc_option(name) && !wc_supported(name);
+}
+
 function perminv_iflags(bag) {
     if (bag) return bag;
     if (!game.iflags) game.iflags = {};
@@ -437,6 +551,20 @@ function mark_opt_need_redraw() {
     if (!game.go) game.go = {};
     game.go.opt_need_redraw = true;
 }
+
+function mark_opt_need_glyph_reset() {
+    if (!game.go) game.go = {};
+    game.go.opt_need_glyph_reset = true;
+}
+
+/**
+ * C options.c optfn_boolean `:5376–5385` — in-game after-change sets
+ * both `go.opt_need_redraw` and `go.opt_need_glyph_reset`.
+ */
+const OPT_GLYPH_RESET = new Set([
+    'wizmgender', 'showrace', 'use_inverse', 'hilite_pile',
+    'perm_invent', 'ascii_map', 'tiled_map',
+]);
 
 /**
  * C options.c can_set_perm_invent `:5487–5527`.
@@ -585,6 +713,12 @@ function parse_iflags_wizweight(result, value) {
     result.iflags.wizweight = !!value;
 }
 
+/** C optlist.h NHOPTB wizmgender addr &iflags.wizmgender (set_wizonly). */
+function parse_iflags_wizmgender(result, value) {
+    if (!result.iflags) result.iflags = {};
+    result.iflags.wizmgender = !!value;
+}
+
 export function parseNethackrc(rc) {
     const result = {
         name: '', role: -1, race: -1, gender: -1, align: -1,
@@ -701,6 +835,13 @@ export function parseNethackrc(rc) {
                     if (parsed == null) continue;
                     parse_iflags_wizweight(result, parsed);
                 }
+                else if (key === 'wizmgender') {
+                    // C optlist.h NHOPTB wizmgender addr &iflags.wizmgender
+                    if (negated) continue;
+                    const parsed = optfn_boolean_word(val);
+                    if (parsed == null) continue;
+                    parse_iflags_wizmgender(result, parsed);
+                }
                 else if (key === 'perminv_mode') {
                     // C optfn_perminv_mode do_set (opt_initial)
                     optfn_perminv_mode(
@@ -743,6 +884,9 @@ export function parseNethackrc(rc) {
                 }
                 else if (lname === 'wizweight') {
                     parse_iflags_wizweight(result, value);
+                }
+                else if (lname === 'wizmgender') {
+                    parse_iflags_wizmgender(result, value);
                 }
                 else if (lname === 'perminv_mode') {
                     optfn_perminv_mode(
@@ -1265,6 +1409,11 @@ function simple_bool_toggle(opt) {
     if (opt.name === 'hilite_pet' && bag[opt.addr.key] && !bag.wc2_petattr) {
         bag.wc2_petattr = ATR_INVERSE;
     }
+    // C optfn_boolean `:5376–5385` then doset_simple reset_needed_visuals.
+    if (OPT_GLYPH_RESET.has(opt.name)) {
+        mark_opt_need_redraw();
+        mark_opt_need_glyph_reset();
+    }
 }
 
 function format_simple_opt_line(opt, nameWidth) {
@@ -1456,6 +1605,9 @@ async function doset_simple_menu() {
             }
         }
 
+        if (!game.go) game.go = {};
+        game.go.opt_need_redraw = false;
+        game.go.opt_need_glyph_reset = false;
         const res = await select_menu_pick_one(raw);
         if (res.kind !== 'pick') return 0;
 
@@ -1772,6 +1924,8 @@ const DOSET_BOOL_ADDR = {
     weaponstatus: { obj: 'iflags', key: 'weaponstatus' },
     whatis_menu: { obj: 'iflags', key: 'whatis_menu' },
     whatis_moveskip: { obj: 'iflags', key: 'whatis_moveskip' },
+    // C optlist.h NHOPTB wizmgender set_wizonly &iflags.wizmgender (D-1701)
+    wizmgender: { obj: 'iflags', key: 'wizmgender' },
     // C optlist.h NHOPTB wizweight set_wizonly &iflags.wizweight (D-1669)
     wizweight: { obj: 'iflags', key: 'wizweight' },
 };
@@ -1794,6 +1948,22 @@ const DOSET_BOOL_DEFAULT_ON = new Set([
 /** C options.c doset fmtstr_doset: "%s%-Ns [%s]" with indent for non-select. */
 function format_doset_opt_line(name, value, indent = '') {
     return `${indent}${String(name).padEnd(dosetSimpleNameWidth)} [${value}]`;
+}
+
+/**
+ * C options.c doset_add_menu `:9016–9065`.
+ * indexoffset 0 → non-selectable (indent replaces "a - ").
+ * Caller supplies get_val text (optfn get_val / empty_optstr).
+ */
+function doset_add_menu(name, value, indexoffset, extra = {}) {
+    const indent = indexoffset === 0 ? '    ' : '';
+    return {
+        text: format_doset_opt_line(name, value, indent),
+        selectable: indexoffset !== 0,
+        kind: 'comp',
+        name,
+        ...extra,
+    };
 }
 
 /** Non-modifiable (pass-0) bools shown on doset page 1. */
@@ -1828,10 +1998,11 @@ const DOSET_BOOL_MOD = [
 /**
  * C options.c doset `:8820` endpass wizard→set_wiznofuz; `:8842–8843`
  * skip set_wizonly when !wizard (`flags.debug`). Appended after
- * whatis_moveskip so earlier mO letters stay put. wizmgender named.
+ * whatis_moveskip so earlier mO letters stay put. allopt order:
+ * wizmgender then wizweight.
  */
 function doset_bool_mod_list() {
-    if (game.flags?.debug) return [...DOSET_BOOL_MOD, 'wizweight'];
+    if (game.flags?.debug) return [...DOSET_BOOL_MOD, 'wizmgender', 'wizweight'];
     return DOSET_BOOL_MOD;
 }
 
@@ -1852,7 +2023,8 @@ function doset_bool_value(name) {
  * `&a11y.accessiblemsg` (D-1218); mention_map is `&a11y.glyph_updates`
  * (D-1219); spot_monsters is `&a11y.mon_notices` (D-1235);
  * mon_movement is `&a11y.mon_movement` (D-1236). wizweight after-change
- * is D-1669 (`:5353–5361`). No after-change arm for spot_monsters or
+ * is D-1669 (`:5353–5361`). Glyph-reset after-change is D-1701
+ * (`:5376–5385`). No after-change arm for spot_monsters or
  * mon_movement (unlike accessiblemsg msg_loc zero).
  */
 export function optfn_boolean_do_set(name, negated, initial = false) {
@@ -1862,7 +2034,7 @@ export function optfn_boolean_do_set(name, negated, initial = false) {
     game[addr.obj][addr.key] = !negated;
     if (initial) return;
     if (name === 'showexp' || name === 'time' || name === 'showscore'
-        || name === 'showvers' || name === 'showrace') {
+        || name === 'showvers') {
         if (!game.flags) game.flags = {};
         game.flags.botl = true;
     }
@@ -1879,6 +2051,31 @@ export function optfn_boolean_do_set(name, negated, initial = false) {
         if (!invlet_constant()) reassign();
         update_inventory();
     }
+    if (OPT_GLYPH_RESET.has(name)) {
+        // C options.c optfn_boolean `:5376–5385` — wizmgender / showrace
+        // / use_inverse / hilite_pile / perm_invent / ascii_map / tiled_map.
+        mark_opt_need_redraw();
+        mark_opt_need_glyph_reset();
+    }
+}
+
+/**
+ * C options.c reset_needed_visuals `:8979–9014`.
+ * Named omit: full `reset_glyphmap(gm_optionchange)` MAX_GLYPH table
+ * (CURRENT ban); `reglyph_darkroom`; customcolors / customsymbols /
+ * palette. Glyph-reset + redraw still `check_gold_symbol` + `docrt`
+ * so tty attrs (MG_FEMALE / pile) recompute from live iflags.
+ */
+async function reset_needed_visuals() {
+    if (!game.go) game.go = {};
+    const go = game.go;
+    const needRedraw = !!go.opt_need_redraw;
+    if (needRedraw) {
+        check_gold_symbol();
+        await docrt();
+    }
+    go.opt_need_redraw = false;
+    go.opt_need_glyph_reset = false;
 }
 
 function doset_bool_term(name) {
@@ -1892,10 +2089,12 @@ function doset_bool_term(name) {
 /**
  * C ref: options.c doset — full options PICK_ANY (mO / menu_requested).
  * Branch envelope: help + nonmod bools + mod bools + compounds + others;
- * apply bool toggles then handlers (pickup_types). Named omissions: full
- * compound getlin arms, WC filters, wizmgender, PREFIXES, help file.
- * mO compound row for perminv_mode named (letter fortress);
- * OPTIONS= + handler live. optfn_boolean perm_invent can_set gate named.
+ * apply bool toggles then handlers (pickup_types / perminv_mode).
+ * CompOpt perminv_mode is in C allopt order; doset skips it when
+ * !wc_supported (contest tty !TTY_PERM_INVENT). Named omissions: full
+ * compound getlin arms, wc2_supported skip, PREFIXES, help file.
+ * OPTIONS= + handler live. optfn_boolean perm_invent can_set gate
+ * named. reset_needed_visuals subset is D-1701 (no reset_glyphmap).
  */
 export async function doset() {
     if (!game.flags) game.flags = {};
@@ -1938,12 +2137,14 @@ export async function doset() {
         attr: ATR_INVERSE,
     });
     for (const name of DOSET_BOOL_NONMOD) {
+        if (doset_skip_unsupported(name)) continue;
         raw.push({
             text: format_doset_opt_line(name, doset_bool_term(name), '    '),
             selectable: false,
         });
     }
     for (const name of doset_bool_mod_list()) {
+        if (doset_skip_unsupported(name)) continue;
         raw.push({
             text: format_doset_opt_line(name, doset_bool_term(name), ''),
             selectable: true,
@@ -1973,10 +2174,8 @@ export async function doset() {
         ['pettype', 'random'],
         ['soundlib', 'nosound'],
     ]) {
-        raw.push({
-            text: format_doset_opt_line(name, val, '    '),
-            selectable: false,
-        });
+        if (doset_skip_unsupported(name)) continue;
+        raw.push(doset_add_menu(name, val, 0));
     }
     const compounds = [
         { name: 'autounlock', val: 'apply-key' },
@@ -1996,6 +2195,9 @@ export async function doset() {
         { name: 'number_pad', val: '0=off' },
         { name: 'packorder', val: '$")[%?+!=/(*`0_' },
         { name: 'paranoid_confirmation', val: 'pray trap swim' },
+        // C optlist.h NHOPTC perminv_mode set_in_game before petattr.
+        // doset_skip_unsupported when !WC_PERM_INVENT (contest tty).
+        { name: 'perminv_mode', get_val: optfn_perminv_mode_get_val_display, handler: true },
         { name: 'petattr', val: 'inverse' },
         { name: 'pickup_burden', val: 'stressed' },
         { name: 'pickup_types', val: pickup_types_display(), handler: true },
@@ -2015,13 +2217,9 @@ export async function doset() {
         { name: 'whatis_filter', val: 'none' },
     ];
     for (const c of compounds) {
-        raw.push({
-            text: format_doset_opt_line(c.name, c.val, ''),
-            selectable: true,
-            kind: 'comp',
-            name: c.name,
-            handler: !!c.handler,
-        });
+        if (doset_skip_unsupported(c.name)) continue;
+        const val = c.get_val ? c.get_val() : c.val;
+        raw.push(doset_add_menu(c.name, val, 1, { handler: !!c.handler }));
     }
     raw.push({ text: '', selectable: false });
     raw.push({
@@ -2046,6 +2244,9 @@ export async function doset() {
         });
     }
 
+    if (!game.go) game.go = {};
+    game.go.opt_need_redraw = false;
+    game.go.opt_need_glyph_reset = false;
     const selected = await select_menu_pick_any(raw);
     const boolPicks = [];
     const handlerPicks = [];
@@ -2072,6 +2273,8 @@ export async function doset() {
             await handler_perminv_mode();
         }
     }
+    // C options.c doset `:8973` reset_needed_visuals after picks.
+    await reset_needed_visuals();
     return ECMD_OK;
 }
 
@@ -2095,6 +2298,9 @@ export async function doset_simple() {
     try {
         do {
             const picked = await doset_simple_menu();
+            const flush = !!game.go?.opt_need_redraw;
+            await reset_needed_visuals();
+            if (flush) await flush_screen(1);
             if (picked <= 0) break;
         } while (true);
     } finally {

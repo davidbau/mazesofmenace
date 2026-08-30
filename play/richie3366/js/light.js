@@ -227,7 +227,7 @@ export async function show_transient_light(obj, x, y) {
 }
 
 /** C ref: light.c discard_flashes :360–370 — LS_OBJECT with Null id. */
-function discard_flashes() {
+export function discard_flashes() {
     const list = game.light_base;
     if (!list?.length) return;
     for (let i = list.length - 1; i >= 0; i--) {

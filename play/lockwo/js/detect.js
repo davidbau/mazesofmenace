@@ -355,8 +355,9 @@ function d_fobj() {
     return (game.level?.objects || []).filter((o) => o.where === 'floor');
 }
 function d_objs_at(x, y) {
-    // mkobj.place_object() keeps the flat array in C-chain order reversed:
-    // the last matching entry is nexthere's head (the visible pile top).
+    // place_object() appends to the flat store, while C prepends each object
+    // to levl[x][y]'s nexthere chain.  Expose C's pile-head-first order to
+    // detection: the first mapped object is what the tty leaves visible.
     return (game.level?.objects || []).filter(
         (o) => o.where === 'floor' && o.ox === x && o.oy === y).reverse();
 }
@@ -957,17 +958,15 @@ export async function object_detect(detector, oclass) {
     }
 
     await cls();
-    // C's cls() clears the physical tty while object_detect() paints its
-    // temporary object-only map.  The live renderer normally rebuilds every
-    // remembered terrain cell, so mark this scoped mode and clear stale dirty
-    // bits before the detection glyphs are installed below.
-    game._object_detect_map = true;
-    for (let x = 1; x < COLNO; x++)
-        for (let y = 0; y < ROWNO; y++) {
-            const loc = game.level?.at(x, y);
-            if (loc) loc.gnew = 0;
-        }
     unconstrain_map();
+    // C's cls() clears the physical map before object_detect() paints only
+    // detected glyphs.  Our retained display buffer backs normal redraws, so
+    // clear it explicitly here; map_redisplay()'s docrt() restores the real
+    // map after browse_map() returns.  This mirrors monster_detect()'s map
+    // preparation and keeps unseen terrain from leaking behind the detector.
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++)
+            show_glyph_cell(x, y, ' ', NO_COLOR, false);
 
     /* map all buried objects first */
     for (const obj of d_buriedobjs()) {
@@ -1035,9 +1034,6 @@ export async function object_detect(detector, oclass) {
     if (!ct) await flush_screen(1);                 /* display_nhwindow(WIN_MAP, TRUE) */
     else await browse_map(ter_typ, 'object');
 
-    // The browse frames above use the object-only buffer.  C then restores
-    // the ordinary dungeon map before returning to the command loop.
-    game._object_detect_map = false;
     await map_redisplay();
     return 0;
 }

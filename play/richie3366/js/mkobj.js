@@ -3,7 +3,8 @@
 //        hornoplenty / fixup_oil (D-1031);
 //        unknwn_contnr_contents (D-1663; caller invent.c dounpaid);
 //        unknow_object (D-1674 oc_uses_known extract);
-//        RING_CLASS mksobj_init from objects[].oc_charged (D-1690).
+//        RING_CLASS mksobj_init from objects[].oc_charged (D-1690);
+//        objects[].oc_merge from objects.h BITS mrg (D-1712).
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rne, rnz } from './rng.js';
@@ -56,12 +57,12 @@ import {
     CORPSTAT_NEUTER, CORPSTAT_FEMALE, CORPSTAT_MALE,
     CXN_NO_PFX,
     Is_rogue_level, isok, ICE, DRAWBRIDGE_UP, DB_UNDER, DB_ICE,
-    LS_OBJECT, OMONST, has_omonst, OMID, has_omid, MON_DETACH,
+    LS_OBJECT, LS_MONSTER, OMONST, has_omonst, OMID, has_omid, MON_DETACH,
     IRONBARS, ROOM, IS_ALTAR, Is_airlevel, Is_waterlevel,
-    MAX_OIL_IN_FLASK, nothing_happens,
+    MAX_OIL_IN_FLASK, nothing_happens, EPRI,
 } from './const.js';
 import { recalc_block_point } from './vision.js';
-import { del_light_source } from './light.js';
+import { del_light_source, discard_flashes } from './light.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const HORN_OF_PLENTY = objectNames.indexOf('HORN_OF_PLENTY');
@@ -782,8 +783,10 @@ function insert_timer(gnu) {
 
 /**
  * C ref: timeout.c mon_is_local — not on migrating_mons / mydogs.
+ * Timers and OBJ_MINVENT only. Light sources use light.c `mx > 0`
+ * (`light_is_local`), not this helper.
  */
-function mon_is_local(mon) {
+export function mon_is_local(mon) {
     if (!mon) return false;
     for (const curr of game.migrating_mons || []) {
         if (curr === mon) return false;
@@ -799,7 +802,7 @@ function mon_is_local(mon) {
  * follow the hero; contained/minvent recurse. OBJ_FREE panics in C;
  * JS treats it as non-local so a stale timer is not saved onto a level.
  */
-function obj_is_local(obj) {
+export function obj_is_local(obj) {
     if (!obj) return false;
     switch (obj.where | 0) {
     case OBJ_INVENT:
@@ -821,7 +824,7 @@ function obj_is_local(obj) {
  * C ref: timeout.c timer_is_local — TIMER_LEVEL always; TIMER_OBJECT
  * follows obj_is_local; TIMER_GLOBAL never; TIMER_MONSTER via mon.
  */
-function timer_is_local(timer) {
+export function timer_is_local(timer) {
     if (!timer) return false;
     switch (timer.kind | 0) {
     case TIMER_LEVEL:
@@ -873,6 +876,62 @@ export function restore_timers(list) {
         if (!t) continue;
         t.next = null;
         insert_timer(t);
+    }
+}
+
+/**
+ * C ref: light.c save_light_sources `:449–454` / maybe_write_ls `:582–586`.
+ * LS_OBJECT: timeout.c `obj_is_local` (pack lamps RANGE_GLOBAL).
+ * LS_MONSTER: light.c `#define mon_is_local(mon) ((mon)->mx > 0)`
+ * (`:373`) — not timeout.c migrating/mydogs. Missing id: C
+ * `is_global = 0` (local). Keep timeout `mon_is_local` for timers
+ * and OBJ_MINVENT.
+ */
+export function light_is_local(ls) {
+    if (!ls) return false;
+    if ((ls.type | 0) === LS_OBJECT) return obj_is_local(ls.id);
+    if ((ls.type | 0) === LS_MONSTER) {
+        const mon = ls.id;
+        if (!mon) return true;
+        return (mon.mx | 0) > 0;
+    }
+    return false;
+}
+
+/**
+ * C ref: light.c save_light_sources — peel RANGE_LEVEL locals (or
+ * RANGE_GLOBAL non-locals) off gl.light_base. Camera flashes discarded.
+ * LS_MONSTER locality is `mx > 0` (D-1708); LS_OBJECT stays
+ * timeout.c `obj_is_local`.
+ * @param {number} range RANGE_LEVEL or RANGE_GLOBAL
+ * @returns {object[]}
+ */
+export function save_light_sources(range) {
+    discard_flashes();
+    game.vision_full_recalc = 0;
+    const wantLocal = (range | 0) === RANGE_LEVEL;
+    const saved = [];
+    const kept = [];
+    for (const ls of game.light_base || []) {
+        if (light_is_local(ls) === wantLocal) saved.push(ls);
+        else kept.push(ls);
+    }
+    game.light_base = kept;
+    return saved;
+}
+
+/**
+ * C ref: light.c restore_light_sources — re-insert saved elements.
+ * Relink of id-based JSON records is Cluster 2/4; in-memory stash keeps
+ * live `ls.id` pointers.
+ * @param {object[]|null|undefined} list
+ */
+export function restore_light_sources(list) {
+    if (!list) return;
+    if (!game.light_base) game.light_base = [];
+    for (const ls of list) {
+        if (!ls) continue;
+        game.light_base.push(ls);
     }
 }
 
@@ -956,7 +1015,7 @@ export function obj_has_timer(obj, action) {
  * TIMER_OBJECT: arg is obj (duplicate same obj+action aborted).
  * TIMER_LEVEL: arg is packed a_long (or `{ a_long }`); used for
  * MELT_ICE_AWAY spot timers (D-0965). tid = svt.timer_id++ (D-1527
- * #timeout print_queue). save/rest timer_id named.
+ * #timeout print_queue). JSON save/rest timer_id is D-1698.
  */
 export function start_timer(when, kind, action, arg) {
     const isObj = (kind | 0) === TIMER_OBJECT;
@@ -1652,16 +1711,16 @@ export function noveltitle(otmp) {
     return SIR_TERRY_NOVELS[j];
 }
 
-// C ref: mkobj.c clear_dknown — amulets/food/armor start dknown=1 unless
-// shield-range / oc_merge. oc_merge not extracted yet → deferred (food and
-// other mergeables may keep dknown=1 where C clears it).
+// C ref: mkobj.c clear_dknown `:835–848` — dknowns[] then shield-range /
+// objects[].oc_merge (BITS mrg) force dknown=0; pudding later sets 1.
 function clear_dknown(obj) {
     if (!obj) return;
     const cls = obj.oclass ?? 0;
     obj.dknown = DKNOWN_CLEAR_CLASSES.has(cls) ? 0 : 1;
     const otyp = obj.otyp ?? 0;
     if ((ELVEN_SHIELD >= 0 && otyp >= ELVEN_SHIELD && otyp <= ORCISH_SHIELD)
-        || otyp === SHIELD_OF_REFLECTION) {
+        || otyp === SHIELD_OF_REFLECTION
+        || oc_merge_of(otyp)) {
         obj.dknown = 0;
     }
     // Is_pudding → dknown=1 set in mksobj_init after clear_dknown
@@ -1855,19 +1914,11 @@ export function relobj_on_death(mtmp) {
 }
 
 /**
- * C ref: invent.c objects[].oc_merge — table field not yet extracted;
- * approximate from C BITS defaults. SPELL() uses mrg=0 — spellbooks
- * never stack (D-0679). Wands similarly non-merge in C BITS.
+ * C ref: objclass.h oc_merge / objects.h BITS(..., mrg, ...).
+ * Table field from extract-objects.py (D-1712); not a class heuristic.
  */
 export function oc_merge_of(otyp) {
-    const od = game.objects?.[otyp];
-    if (od && typeof od.oc_merge === 'number') return od.oc_merge !== 0;
-    if (otyp === BOULDER || otyp === STATUE || otyp === BOOMERANG) return false;
-    const oc = od?.oc_class ?? 0;
-    // C SPELL()/WAND BITS mrg=0 — do not treat SPBOOK/WAND as mergeable
-    return oc === WEAPON_CLASS || oc === GEM_CLASS || oc === FOOD_CLASS
-        || oc === POTION_CLASS || oc === SCROLL_CLASS
-        || oc === COIN_CLASS;
+    return !!(game.objects?.[otyp]?.oc_merge);
 }
 
 /**
@@ -2371,7 +2422,7 @@ export function unknwn_contnr_contents(obj) {
 }
 
 // C ref: mkobj.c obj_extract_self — floor / invent / minvent / contained /
-// migrating / buried. OBJ_ONBILL / LUAFREE / DELETED panic named omit.
+// migrating / buried / ONBILL. LUAFREE / DELETED panic named omit.
 export function obj_extract_self(obj) {
     if (!obj) return;
     // Floor: also accept legacy objs with coords but unset where
@@ -2485,6 +2536,18 @@ export function obj_extract_self(obj) {
                         p.nobj = obj.nobj || null;
                         break;
                     }
+                }
+            }
+        }
+    } else if (obj.where === OBJ_ONBILL) {
+        // C mkobj.c obj_extract_self `:2585–2586` extract_nobj(&gb.billobjs)
+        if (game.billobjs === obj) {
+            game.billobjs = obj.nobj || null;
+        } else {
+            for (let p = game.billobjs; p; p = p.nobj) {
+                if (p.nobj === obj) {
+                    p.nobj = obj.nobj || null;
+                    break;
                 }
             }
         }
@@ -2656,11 +2719,17 @@ export function obj_attach_mid(obj, mid) {
 
 /**
  * C ref: mkobj.c save_mtraits — snapshot live monst onto corpse/statue omonst.
- * Named omit: forget_temple_entry for ispriest (EPRI still copied).
  */
 export function save_mtraits(obj, mtmp) {
     if (!obj || !mtmp) return obj;
-    // forget_temple_entry(mtmp) deferred for ispriest
+    // C mkobj.c save_mtraits `:1893` forget_temple_entry before copy.
+    if (mtmp.ispriest) {
+        const epri_p = EPRI(mtmp);
+        if (epri_p) {
+            epri_p.intone_time = epri_p.enter_time =
+                epri_p.peaceful_time = epri_p.hostile_time = 0;
+        }
+    }
     if (!has_omonst(obj)) newomonst(obj);
     if (!has_omonst(obj)) return obj;
 

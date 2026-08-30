@@ -1921,7 +1921,11 @@ async function eatcorpse(otmp) {
             otmp.orotten = true;
             otmp = await touchfood(otmp);
             if (!otmp) return 1;
-            if (game.context?.victual) game.context.victual.piece = otmp;
+            if (game.context?.victual) {
+                // C eat.c food_substitution / eatcorpse: o_id at use time
+                game.context.victual.piece = otmp;
+                game.context.victual.o_id = otmp.o_id | 0;
+            }
             retcode = 1;
         }
 

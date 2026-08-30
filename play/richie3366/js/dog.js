@@ -34,6 +34,7 @@ import {
 import { acurr, A_CHA } from './attrib.js';
 import { christen_monst, Monnam, mon_pmname } from './do_name.js';
 import { monnear, m_at, see_monster_closeup, minliquid, restore_cham, wake_nearto } from './mon.js';
+import { mon_offmap } from './monmove.js';
 import { enexto, rloc_to, rloc, rloc_to_flag, goodpos } from './teleport.js';
 import { put_saddle_on_mon, dismount_steed } from './steed.js';
 import { newsym, pline, pline_mon, canspotmon, canseemon, Hallucination } from './display.js';
@@ -328,6 +329,22 @@ export function levl_follower(mtmp) {
     // C: (mflags2 & M2_STALK) && (!mflee || u.uhave.amulet)
     return !!((mtmp.data?.mflags2 | 0) & M2_STALK)
         && (!mtmp.mflee || !!(game.u?.uhave?.amulet));
+}
+
+/**
+ * C ref: dog.c update_mlstmv `:292–298` — iter_mons(set_mon_lastmove).
+ * C iter_mons (mon.c:4531–4535) skips DEADMONSTER (mhp<1) and
+ * mon_offmap (mstate != MON_FLOOR). Call after keepdogs (followers
+ * are already on mydogs).
+ */
+export function update_mlstmv() {
+    const moves = game.moves | 0;
+    for (const mtmp of game.fmon || []) {
+        if (!mtmp) continue;
+        // C: if (DEADMONSTER(mtmp) || mon_offmap(mtmp)) continue;
+        if ((mtmp.mhp | 0) < 1 || mon_offmap(mtmp)) continue;
+        mtmp.mlstmv = moves;
+    }
 }
 
 /**

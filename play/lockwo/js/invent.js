@@ -10,7 +10,7 @@ import { game } from './gstate.js';
 import { find_mac as worn_find_mac } from './worn.js';
 import { rn2, rnd, rnl, d } from './rng.js';
 import { nhgetch } from './input.js';
-import { docrt, flush_screen, newsym, pline, statusLine1Text, statusLine2Text, render_map_to_grid, y_n, topl_more, topl_more_ext, update_topl, bot, m_at } from './display.js';
+import { docrt, flush_screen, newsym, pline, statusLine1Text, statusLine2Text, render_map_to_grid, y_n, topl_more, topl_more_ext, update_topl, bot, m_at, display_nhwindow_message } from './display.js';
 import { cansee, Blind as Blind_for_wear } from './vision.js';
 import { distmin, depth as depth_of_level } from './hacklib.js';
 import { surface } from './dungeon.js';
@@ -91,7 +91,7 @@ import {
     P_DAGGER, P_KNIFE, P_SHORT_SWORD, P_SABER, P_SPEAR, P_BOW, P_SLING,
     P_CROSSBOW, P_DART, P_SHURIKEN,
     P_SKILLED, P_EXPERT,
-    CQ_CANNED, CQ_REPEAT, CMDQ_KEY, CMDQ_EXTCMD, CMDQ_INT,
+    CQ_CANNED, CQ_REPEAT, CMDQ_KEY, CMDQ_INT,
     IS_FOUNTAIN, IS_THRONE, IS_SINK, IS_GRAVE, IS_ALTAR,
     TT_BEARTRAP, TT_INFLOOR, is_pit,
     AM_SHRINE, AM_SANCTUM, Amask2align, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, A_NONE,
@@ -642,7 +642,7 @@ export async function wield_tool(obj, verb) {
     } else {
         const oldwep = game.uwep;
         if (will_weld(obj)) {
-            await ready_weapon(obj);
+            ready_weapon(obj);
         } else {
             await update_topl(`You now wield ${doname(obj)}.`);
             setuwep_slot(obj);
@@ -1264,13 +1264,6 @@ export function cmdq_pop(which = CQ_CANNED) {
     const q = _cmdq(which);
     return q.length ? q.shift() : null;
 }
-// C ref: cmd.c cmdq_add_ec() — fire-assist queues extended commands for a
-// later rhack() pass.  Store the function directly to avoid an invent.js ->
-// cmd.js import cycle; cmd.js dispatches this entry before reading a key.
-function cmdq_add_ec(which, fn) {
-    _cmdq(which).push({ typ: CMDQ_EXTCMD,
-                       ec_entry: { ef_funct: fn, ef_txt: fn?.name || '' } });
-}
 function cmdq_clear(which = CQ_CANNED) { _cmdq(which).length = 0; }
 function cmdq_add_int(which, n) { _cmdq(which).push({ typ: CMDQ_INT, intval: n }); }
 export function cmdq_add_key(which, k) {
@@ -1391,11 +1384,7 @@ function empty_handed() { return game.uarmg ? 'empty handed' : 'bare handed'; }
 // C ref: obj.h:427 pair_of(o) — lenses, gloves or boots (by oc_armcat, not
 // by a name regex: "gauntlets of power" matches neither 'gloves' nor 'boots').
 export function pair_of(obj) { return obj?.otyp === LENSES || is_gloves(obj) || is_boots(obj); }
-// C ref: obj.h is_plural(o) — plurality is driven by stack quantity (with the
-// Eyes artifact exception, which is not in the scored starter inventories).
-// A single pair of gloves/boots is still grammatically singular here; callers
-// that need the physical pair semantics explicitly add pair_of().
-export function is_plural(obj) { return (obj?.quan || 1) > 1; }
+export function is_plural(obj) { return (obj?.quan || 1) > 1 || pair_of(obj); }
 // C ref: obj.h is_weptool(o) — a TOOL_CLASS object with a real weapon skill
 // (oc_skill != P_NONE).  Pick-axe / grappling hook / unicorn horn qualify;
 // lamps, towels, bags, etc. do not.
@@ -1493,10 +1482,8 @@ export function objectBaseName(obj) {
     // Blind/distant guard) and persistent, so a blessed/cursed wished-for or
     // picked-up item shows its BUC word the first time it is described.
     if (Role_if(PM_CLERIC) && obj.bknown !== 1) obj.bknown = 1;
-    if (obj.otyp === GOLD_PIECE || obj.oclass === COIN_CLASS) {
-        const q = obj.quan || 0;
-        return q === 1 ? 'gold piece' : `${q} gold pieces`;
-    }
+    if (obj.otyp === GOLD_PIECE || obj.oclass === COIN_CLASS)
+        return 'gold piece';
 
     // C ref: objnam.c xname_flags() case BALL_CLASS:
     //     Sprintf(buf, "%sheavy iron ball", (obj->owt > ocl->oc_weight) ? "very " : "");
@@ -2182,12 +2169,7 @@ function inuseRows(lets = null, altLabel = null) {
     // again if it would be sortedinvent's only entry (:3216).
     const list = [...inventoryArray()];
     let fake = null;
-    // Keep the synthetic hands entry when the primary pointer has lost its
-    // worn bit (or points at an object no longer carried).  C's uwep pointer
-    // is cleared whenever setnotworn() runs; treating a stale JS pointer as a
-    // wielded item would hide "bare hands" from the in-use inventory.
-    if (!game.uwep || !carried(game.uwep)
-        || !((game.uwep.owornmask || 0) & W_WEP)) {
+    if (!game.uwep) {
         fake = { otyp: 0, oclass: ILLOBJ_CLASS, invlet: HANDS_SYM,
                  owornmask: W_WEP, where: OBJ_INVENT, quan: 1 };
         list.unshift(fake);
@@ -4919,12 +4901,7 @@ async function doquiver_core(verb) {
     const was_twoweap = !!game.u?.twoweap;
 
     if (!inventoryArray().length) {
-        // C uses You(), so when #fire has just reported an empty quiver this
-        // message appends to that topline instead of replacing it.
-        await update_topl(`You have nothing to ready for firing.`);
-        // No getobj prompt follows this early return; dofire()'s temporary
-        // pending-message marker must not leak into a later object prompt.
-        game._yn_need_more = false;
+        game._pending_message = `You have nothing to ready for firing.`;
         return ECMD_OK;
     }
 
@@ -5086,7 +5063,7 @@ function retouch_object(obj) {
 // prinv announcement, and the artifact retouch (rn2(4)).  Welding, shield/
 // two-handed conflicts, corpse-wield, and talking/glowing-artifact effects are
 // modelled but not exercised.
-async function ready_weapon(wep) {
+function ready_weapon(wep) {
     let res = ECMD_OK;
     const was_twoweap = !!game.u?.twoweap;
     const had_wep = !!game.uwep;
@@ -5121,8 +5098,12 @@ async function ready_weapon(wep) {
             // real.
             const dummy = wep.owornmask || 0;
             wep.owornmask = dummy | QW_WEP;
-            await update_topl(prinv_fmt(null, wep, 0));
+            prinv(null, wep, 0);
             wep.owornmask = dummy;
+            // C ref: prinv() -> pline() leaves toplin == NEED_MORE, so a
+            // following same-turn message (e.g. a pet's attack on the freed
+            // turn) accumulates onto the wield line instead of replacing it.
+            game._toplin = 1;
         }
         setuwep_slot(wep);
         if (was_twoweap && !game.u?.twoweap) {
@@ -5202,7 +5183,7 @@ export async function dowield() {
     }
 
     const oldwep = game.uwep;
-    const result = await ready_weapon(newwep);
+    const result = ready_weapon(newwep);
     if (game.flags?.pushweapon && oldwep && game.uwep !== oldwep)
         setuswapwep(oldwep);
     untwoweapon();
@@ -5228,7 +5209,7 @@ export async function doswapweapon() {
 
     const oldwep = game.uwep, oldswap = game.uswapwep;
     setuswapwep(null);
-    const result = await ready_weapon(oldswap);     // prints the new primary's line
+    const result = ready_weapon(oldswap);     // prints the new primary's line
     if (game.uwep === oldwep) {
         setuswapwep(oldswap);                 // wield failed; put it back
     } else {
@@ -5553,17 +5534,17 @@ async function tmiss(obj, mon, maybe_wakeup) {
     if (maybe_wakeup && !rn2(3)) await wakeupAttack(mon, true);
 }
 
-// C ref: dog.c abuse_dog(mtmp), reached from uhitm.c hmon_hitmon_pet().  The
-// sound choice is part of the visible thrown-hit message, not just RNG.
+// C ref: dog.c abuse_dog(mtmp), reached from uhitm.c hmon_hitmon_pet().
+// Projectile attacks need the same pet complaint and wake-up side effects as
+// hand-to-hand attacks; keeping this local preserves the thrown-path ordering.
 async function abuse_dog_thrown(mtmp) {
     if (!mtmp.mtame) return;
     mtmp.mtame--;
     if (mtmp.mtame && !mtmp.isminion && mtmp.edog)
         mtmp.edog.abuse = (mtmp.edog.abuse || 0) + 1;
     if (mtmp.mx !== 0) {
-        const yelps = mtmp.mtame && rn2(mtmp.mtame);
         const { yelp, growl } = await import('./sounds.js');
-        if (yelps) await yelp(mtmp);
+        if (mtmp.mtame && rn2(mtmp.mtame)) await yelp(mtmp);
         else await growl(mtmp);
         if (!mtmp.mtame) newsym(mtmp.mx, mtmp.my);
     }
@@ -6687,28 +6668,50 @@ export async function dofire(getDir) {
             // launcher already wielded: fire it directly.
             obj = game.uquiver;
         } else if (ammo_and_launcher(game.uquiver, game.uswapwep)) {
-            // C ref: dothrow.c:566 — these are separate canned commands.  Keep
-            // them in the queue so doswapweapon's inventory lines page across
-            // user input and its ECMD_TIME schedules a turn before the retry.
-            cmdq_add_ec(CQ_CANNED, doswapweapon);
-            cmdq_add_ec(CQ_CANNED, () => dofire(getDir));
-            return res;
+            // C ref: dothrow.c:566 — `cmdq_add_ec(doswapweapon); cmdq_add_ec(dofire)`.
+            // doswapweapon is run as its own command: it wields the launcher
+            // (printing the wield + secondary-weapon lines) and returns ECMD_TIME,
+            // so a turn elapses BEFORE the re-queued dofire runs.  We take that
+            // turn inline (mirroring hack.js run_movement), then retry the fire.
+            await doswapweapon_inline();
+            // C ref: ready_weapon() returns ECMD_TIME — the swap costs a turn even
+            // though the subsequent throw may be cancelled.  Take it inline.
+            game.context.move = 0;
+            await moveloop_turn();
+            // retry dofire: now the launcher is wielded.
+            obj = game.uquiver;
         } else {
             // C ref: dothrow.c:571 — launcher is in the PACK (a Samurai's yumi:
             // ini_inv fills uwep with the katana and uswapwep with the
             // wakizashi, so the bow never reaches a weapon slot).  C queues
             // `doswapweapon`, `dowield`, the launcher's invlet and `dofire`, and
-            // rhack() dispatches each as its own command.  Keeping those queue
-            // entries intact preserves both inventory pages and both turns.
+            // rhack() dispatches each as its own command — so BOTH ready_weapon
+            // calls return ECMD_TIME and each runs a full moveloop turn before
+            // the next runs.  Collapsing them into one turn desyncs the stream:
+            // with intrinsic Fast the hero often holds 24 movement points, so
+            // the first turn only runs movemon() and the second is the one that
+            // reallocates movement.
             const olauncher = find_launcher(game.uquiver);
             if (olauncher) {
                 if (game.uwep && !game.flags?.pushweapon) {
-                    cmdq_add_ec(CQ_CANNED, doswapweapon);
+                    if ((await doswapweapon()) === ECMD_TIME) {
+                        game.context.move = 0;
+                        await moveloop_turn();
+                        // The queued dowield is a distinct command.  Its
+                        // predecessor left the former primary's prinv() line
+                        // pending, which C pages at the command boundary
+                        // before dowield() can replace it with the launcher.
+                        await display_nhwindow_message();
+                    }
                 }
-                cmdq_add_ec(CQ_CANNED, dowield);
+                // The queued invlet is popped by getobj()'s cmdq fast path, so
+                // dowield draws no prompt.
                 cmdq_add_key(CQ_CANNED, olauncher.invlet);
-                cmdq_add_ec(CQ_CANNED, () => dofire(getDir));
-                return res;
+                if ((await dowield()) === ECMD_TIME) {
+                    game.context.move = 0;
+                    await moveloop_turn();
+                }
+                obj = game.uquiver;
             }
         }
     }

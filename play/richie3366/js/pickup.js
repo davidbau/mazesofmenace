@@ -72,6 +72,7 @@ import {
 import { ATR_INVERSE } from './terminal.js';
 import {
     addtobill, costly_spot, check_unpaid_usage, is_unpaid, doname_with_price,
+    remote_burglary,
 } from './shk.js';
 import {
     nohands, M1_NOTAKE, touch_petrifies, poly_when_stoned, is_rider, mons,
@@ -870,8 +871,9 @@ export async function check_here(picked_some) {
 
 /**
  * C ref: pickup.c pick_obj — extract from floor/minvent, addinv.
- * Shop robshop: temporary ushops → addtobill → restore; remote_burglary deferred.
- * Named omissions: engulfer minvent path; remote_burglary body.
+ * Shop robshop: temporary ushops → addtobill → restore; remote_burglary
+ * when unpaid from outside the shop (D-1717).
+ * Named omissions: engulfer minvent path (get_obj_location swallow).
  */
 export async function pick_obj(otmp) {
     if (!otmp) return otmp;
@@ -894,9 +896,7 @@ export async function pick_obj(otmp) {
     }
 
     const result = await addinv(otmp);
-    if (robshop) {
-        // remote_burglary(ox, oy) deferred
-    }
+    if (robshop) await remote_burglary(ox, oy);
     return result;
 }
 
@@ -1710,7 +1710,7 @@ async function explain_container_prompt(more_containers) {
 /**
  * C ref: pickup.c use_container TRADITIONAL/COMBINATION yn_function.
  * Listed vs extra (after ESC) responses match C pbuf/xbuf. '?' is shown
- * when iflags.cmdassist (default On), else hidden extra. addcmdq named.
+ * when iflags.cmdassist (default On), else hidden extra. addcmdq TRUE.
  * @returns {Promise<string>}
  */
 async function use_container_traditional_prompt(
@@ -2193,7 +2193,7 @@ async function getobj_stash() {
         const query = lets
             ? `What do you want to stash? [${lets} or ?*]`
             : 'What do you want to stash? [*]';
-        let ch = await yn_function(query, null, '\0');
+        let ch = await yn_function(query, null, '\0', false);
         const counted = await getobj_take_count(ch, true);
         if (counted.retry) continue;
         ch = counted.ch;
@@ -2994,7 +2994,8 @@ export async function askchain(getHead, ininv, olets, allflag, fn, ckfn, mx, wor
                 const qbuf = `${qpfx}${shown}?`;
                 const resp = (takeoff || ident || otmp.quan < 2)
                     ? ynaqchars : ynNaqchars;
-                sym = await yn_function(qbuf, resp, 'n');
+                /* C invent.c askchain `:2466–2470` FALSE — not ^A canned. */
+                sym = await yn_function(qbuf, resp, 'n', false);
             } else {
                 sym = 'y';
             }

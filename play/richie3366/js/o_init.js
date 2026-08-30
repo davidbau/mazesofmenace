@@ -1,18 +1,20 @@
 // o_init.js — Object initialization / description shuffle / discoveries.
 // C ref: o_init.c — init_objects, shuffle_all, randomize_gem_colors,
-//        interesting_to_discover / disco_append_typename / rename_disco.
+//        interesting_to_discover / disco_append_typename / rename_disco;
+//        undiscover_object / gem_learned (D-1691).
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
-import { pline } from './display.js';
+import { pline, impossible } from './display.js';
 import { BUFSZ } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
 import { disco_typename, Japanese_item_name } from './objnam.js';
-import { append_price_quote } from './shk.js';
+import { append_price_quote, gem_learned } from './shk.js';
 import { let_to_name, DEF_INV_ORDER } from './invent.js';
 import { docall, objtyp_is_callable } from './do_name.js';
 import { select_menu_pick_one } from './options.js';
 import { PM_SAMURAI } from './generated/monsters_data.js';
+import { ledger_no, maxledgerno } from './dungeon.js';
 import {
     objects_globals_init,
     NUM_OBJECTS,
@@ -64,28 +66,6 @@ function bases() {
 function copy_obj_descr(dst, src) {
     dst.oc_descr_idx = src.oc_descr_idx;
     dst.oc_color = src.oc_color;
-}
-
-/**
- * C ref: dungeon.c ledger_no — dlevel + dungeons[dnum].ledger_start.
- * Local to avoid invent/do import cycles from o_init.
- */
-function ledger_no(lev) {
-    const dnum = lev?.dnum | 0;
-    const dlevel = lev?.dlevel | 0;
-    const dun = game.dungeons?.[dnum];
-    return ((dun?.ledger_start | 0) + dlevel) | 0;
-}
-
-/**
- * C ref: dungeon.c maxledgerno — last dungeon ledger_start + num_dunlevs.
- */
-function maxledgerno() {
-    const n = game.n_dgns | 0;
-    const duns = game.dungeons || [];
-    if (n <= 0 || !duns.length) return 0;
-    const last = duns[n - 1] || duns[duns.length - 1];
-    return ((last?.ledger_start | 0) + (last?.num_dunlevs | 0)) | 0;
 }
 
 // C ref: o_init.c setgemprobs — level-dependent gem oc_prob (ledger_no).
@@ -313,6 +293,43 @@ export function interesting_to_discover(i) {
     if (!(oc.oc_name_known || oc.oc_encountered)) return false;
     const di = oc.oc_descr_idx ?? i;
     return objectDescrs[di] != null;
+}
+
+/**
+ * C o_init.c undiscover_object `:497–523` — purge oindx from disco[]
+ * when !oc_name_known && !oc_encountered (docall empty uname). Shift
+ * later class slots forward; GEM_CLASS → gem_learned.
+ * @param {number} oindx
+ */
+export function undiscover_object(oindx) {
+    const objects = objs();
+    if (oindx == null || !objects?.[oindx]) return;
+    if (objects[oindx].oc_name_known || objects[oindx].oc_encountered) {
+        return;
+    }
+    if (!game.disco) game.disco = new Array(NUM_OBJECTS).fill(0);
+    const acls = objects[oindx].oc_class;
+    const b = bases();
+    let found = false;
+    let dindx = b[acls] | 0;
+    for (;
+        dindx < NUM_OBJECTS && (game.disco[dindx] | 0) !== 0
+            && objects[dindx]?.oc_class === acls;
+        dindx++) {
+        if (found) {
+            game.disco[dindx - 1] = game.disco[dindx];
+        } else if ((game.disco[dindx] | 0) === (oindx | 0)) {
+            found = true;
+        }
+    }
+    if (found) {
+        game.disco[dindx - 1] = 0;
+    } else {
+        impossible('named object not in disco');
+    }
+    if ((objects[oindx].oc_class | 0) === GEM_CLASS) {
+        gem_learned(oindx);
+    }
 }
 
 /**

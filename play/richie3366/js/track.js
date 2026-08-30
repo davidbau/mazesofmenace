@@ -28,11 +28,11 @@ export function initrack() {
 }
 
 /**
- * C ref: track.c save_track — snapshot ring for level stash, then clear.
- * In-memory stand-in for Sfo_*; release_data arm always initrack().
- * C writes utcnt/utpnt and utrack[0..utcnt).
+ * C ref: track.c save_track write arm — snapshot without initrack().
+ * JSON serLevel copies the ring; dosave0 does not FREEING-clear it
+ * (JS Game dies after S). Bones / goto_level still call save_track().
  */
-export function save_track() {
+export function peek_track() {
     const n = Math.min(UTSZ, utcnt | 0);
     const snap = {
         utcnt: n,
@@ -42,6 +42,16 @@ export function save_track() {
     for (let i = 0; i < n; i++) {
         snap.utrack.push({ x: utrack[i].x | 0, y: utrack[i].y | 0 });
     }
+    return snap;
+}
+
+/**
+ * C ref: track.c save_track — snapshot ring for level stash, then clear.
+ * In-memory stand-in for Sfo_*; release_data arm always initrack().
+ * C writes utcnt/utpnt and utrack[0..utcnt).
+ */
+export function save_track() {
+    const snap = peek_track();
     initrack();
     return snap;
 }

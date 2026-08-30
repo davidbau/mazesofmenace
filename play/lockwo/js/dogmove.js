@@ -28,8 +28,7 @@ import { newsym, vobj_at, object_glyph, see_with_infrared } from './display.js';
 import { couldsee as visCouldsee, clear_path, cansee, view_from } from './vision.js';
 import { Monnam, x_monnam, canspotmon } from './uhitm.js';
 import { floor_object_name, doname_invent, sobj_at, stackobj } from './invent.js';
-import { dist2, mfndpos, mon_mintrap, Trap_Killed_Mon, Trap_Moved_Mon,
-    m_avoid_kicked_loc,
+import { dist2, mfndpos, mon_mintrap, Trap_Killed_Mon, Trap_Moved_Mon, m_avoid_kicked_loc,
     mon_allowflags, set_apparxy, onscary, mon_wield_item,
     Conflict, resist_conflict, mattacku } from './monmove.js';
 import { goodpos } from './teleport.js';
@@ -1557,7 +1556,13 @@ export async function dog_move(mtmp, after) {
     if (j0 === 1) {
         newsym(omx, omy);
         const tr = await mon_mintrap(mtmp);
-        if (tr === Trap_Killed_Mon) { newsym(mtmp.mx, mtmp.my); return MMOVE_DIED; }
+        // C monmove.c:1510 treats a monster moved off-level by a trap exactly
+        // like a killed monster: dochug() must not run the trailing
+        // distfleeck() recalculation for a teleported pet.
+        if (tr === Trap_Killed_Mon || tr === Trap_Moved_Mon) {
+            if (mtmp.mx) newsym(mtmp.mx, mtmp.my);
+            return MMOVE_DIED;
+        }
         newsym(mtmp.mx, mtmp.my);
         return MMOVE_MOVED; // ate something
     }
@@ -1777,8 +1782,9 @@ export async function dog_move(mtmp, after) {
         // square is redrawn (pet painted over the object) only afterwards.
         newsym(omx, omy);
         const trapret = await mon_mintrap(mtmp);
-        // C postmov() treats Trap_Moved_Mon like a death: the pet was
-        // teleported off this level, so dochug() must skip its recalc.
+        // Trap_Moved_Mon means the pet migrated off this level.  C's postmov()
+        // returns MMOVE_DIED for both moved and killed monsters, preventing a
+        // second distance probe after the teleport.
         if (trapret === Trap_Killed_Mon || trapret === Trap_Moved_Mon) {
             if (mtmp.mx) newsym(mtmp.mx, mtmp.my);
             return MMOVE_DIED;
@@ -1843,7 +1849,10 @@ export async function dog_move(mtmp, after) {
     }
     newsym(omx, omy);
     const trapret = await mon_mintrap(mtmp);
-    if (trapret === Trap_Killed_Mon) { newsym(mtmp.mx, mtmp.my); return MMOVE_DIED; }
+    if (trapret === Trap_Killed_Mon || trapret === Trap_Moved_Mon) {
+        newsym(mtmp.mx, mtmp.my);
+        return MMOVE_DIED;
+    }
     newsym(mtmp.mx, mtmp.my);
     return MMOVE_MOVED;
 }

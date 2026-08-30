@@ -68,6 +68,8 @@ import {
     Upolyd,
     MALE,
     FEMALE,
+    CORPSTAT_GENDER,
+    CORPSTAT_FEMALE,
     DEVTEAM_EMAIL,
     WIN_LOCKHISTORY,
     MAX_MSG_HISTORY,
@@ -129,13 +131,28 @@ function use_inverse_opt() {
 }
 
 /**
+ * C ref: wintty.c tty_print_glyph `:3930–3936` —
+ * (special & MG_FEMALE) && wizard && iflags.wizmgender && use_inverse
+ * → ATR_INVERSE. Pet hilite takes the earlier else-if.
+ */
+function wizmgender_inverse(isFemale) {
+    if (!isFemale || !game.flags?.debug || !game.iflags?.wizmgender) return 0;
+    return use_inverse_opt() ? ATR_INVERSE : 0;
+}
+
+/**
  * C ref: wintty.c tty_print_glyph — MG_OBJPILE && hilite_pile && use_inverse
- * → ATR_INVERSE. Named omissions: MG_DETECT / BW_* / MG_FEMALE.
+ * → ATR_INVERSE; else MG_FEMALE statue + wizmgender. Named omissions:
+ * MG_DETECT / BW_*.
  */
 function obj_map_attr(obj, rememberedPile = false) {
     const pile = rememberedPile || obj_is_piletop(obj);
     if (pile && game.iflags?.hilite_pile && use_inverse_opt()) {
         return ATR_INVERSE;
+    }
+    if (obj && (obj.otyp | 0) === STATUE_OTYP
+        && ((obj.spe | 0) & CORPSTAT_GENDER) === CORPSTAT_FEMALE) {
+        return wizmgender_inverse(true);
     }
     return 0;
 }
@@ -152,10 +169,19 @@ function hilite_pet_opt() {
 }
 
 function mon_map_attr(mtmp) {
-    if (!mtmp?.mtame || !hilite_pet_opt()) return 0;
-    const a = game.iflags?.wc2_petattr;
-    // C: ATR_NONE is 0; init + enable path keep Inverse when hilite is on.
-    return (a == null || a === 0) ? ATR_INVERSE : (a | 0);
+    if (mtmp?.mtame && hilite_pet_opt()) {
+        const a = game.iflags?.wc2_petattr;
+        // C: ATR_NONE is 0; init + enable path keep Inverse when hilite is on.
+        return (a == null || a === 0) ? ATR_INVERSE : (a | 0);
+    }
+    return wizmgender_inverse(!!mtmp?.female);
+}
+
+function hero_map_attr() {
+    // C display.h Ugender ≡ (Upolyd ? u.mfemale : flags.female)
+    const u = game.u || {};
+    const female = Upolyd(u) ? !!u.mfemale : !!game.flags?.female;
+    return wizmgender_inverse(female);
 }
 
 // C ref: defsym.h OBJCLASS_DRAWING — default object-class map symbols
@@ -969,7 +995,7 @@ export function display_self() {
     const u = game.u;
     if (!u) return;
     const hg = hero_display_glyph();
-    show_glyph_cell(u.ux | 0, u.uy | 0, hg.ch, hg.color, !!hg.dec);
+    show_glyph_cell(u.ux | 0, u.uy | 0, hg.ch, hg.color, !!hg.dec, hero_map_attr());
 }
 
 // C ref: display.h covers_objects — is_pool && !Underwater, or lava.

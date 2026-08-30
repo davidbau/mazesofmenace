@@ -306,7 +306,7 @@ function outentry(rank, t1, so, emit) {
 /**
  * C ref: topten.c topten.
  * @param {number} how
- * @param {number} when unused time_t; contest yyyymmdd via getlt
+ * @param {number} when  C time_t; yyyymmdd(when) deathdate (0 → getlt)
  * @param {string} deathStr formatkiller(how, TRUE) from caller (avoid cycle)
  *
  * Named omissions: LOGFILE/XLOGFILE; lock_file; toptenwin NHW_TEXT;

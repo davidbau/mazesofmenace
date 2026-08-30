@@ -79,7 +79,7 @@ import {
     ARMOR_CLASS, BALL_CLASS, CHAIN_CLASS, WAND_CLASS, RING_CLASS, TOOL_CLASS,
     NODIR, objectNames,
 } from './objects.js';
-import { weight, uncurse, curse, bless, blessorcurse, mkobj, delobj } from './mkobj.js';
+import { weight, uncurse, curse, bless, blessorcurse, mkobj, delobj, oc_merge_of } from './mkobj.js';
 import { A_WIS, A_STR, A_CON, exercise, adjalign } from './attrib.js';
 import {
     makeknown, getobj, identify_pack, near_capacity,
@@ -409,14 +409,6 @@ function uslinging() {
     return skill === -P_SLING;
 }
 
-/** C ref: invent.c objects[].oc_merge — table field may be absent. */
-function oc_merge(otyp) {
-    const od = game.objects?.[otyp];
-    if (od && typeof od.oc_merge === 'number') return od.oc_merge !== 0;
-    // Approximate: mergeable weapon ammo / missiles
-    return true;
-}
-
 /**
  * C ref: read.c learnscrolltyp — makeknown + XP when new.
  */
@@ -473,7 +465,7 @@ async function seffect_remove_curse(sobj) {
                     if (!u.twoweap) wornmask = 0;
                 } else if (obj === u.uquiver) {
                     if (obj.oclass === WEAPON_CLASS) {
-                        if (!oc_merge(obj.otyp)) wornmask = 0;
+                        if (!oc_merge_of(obj.otyp)) wornmask = 0;
                     } else if (obj.oclass === GEM_CLASS) {
                         if (!uslinging()) wornmask = 0;
                     } else {

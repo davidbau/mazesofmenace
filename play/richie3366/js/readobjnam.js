@@ -1,6 +1,7 @@
 // readobjnam.js — Wish object parsing (partial).
 // C ref: objnam.c readobjnam / rnd_otyp_by_namedesc / wishymatch;
-//        non-wizard spe clamp uses objects[].oc_charged (D-1690).
+//        non-wizard spe clamp uses objects[].oc_charged (D-1690);
+//        wish quan uses objects[].oc_merge (D-1712).
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
@@ -27,7 +28,8 @@ import { artifact_name, nartifact_exist } from './artifact.js';
 import { oname, lookup_novel } from './do_name.js';
 import { name_to_monplus } from './mondata.js';
 import { makesingular, An, an } from './objnam.js';
-import { is_weptool } from './wield.js';
+import { is_weptool, is_ammo, is_missile } from './wield.js';
+import { Is_candle } from './timeout.js';
 import { NON_PM, LOW_PM, monsterNames } from './monsters.js';
 import {
     ONAME_WISH, SPE_LIM,
@@ -57,6 +59,8 @@ const WAN_WISHING = objectNames.indexOf('WAN_WISHING');
 const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
+const ROCK = objectNames.indexOf('ROCK');
+const FLINT = objectNames.indexOf('FLINT');
 const GOLD_SYM = '$';
 
 /** C ref: objnam.c wrp[] / wrpsym[] — class words for wishing. */
@@ -899,11 +903,21 @@ export function readobjnam(bp, no_wish, missOut) {
     d.typ = d.otmp.otyp;
     d.oclass = d.otmp.oclass;
 
-    // C ref: objnam.c typfnd — honor d.cnt when oc_merge (wizard unrestricted;
-    // non-wizard rnd(6)/candle/ammo arms deferred).
-    if ((d.cnt | 0) > 0 && oc_merge_of(d.otmp.otyp) && wizardMode()) {
-        d.otmp.quan = d.cnt | 0;
-        d.otmp.owt = weight(d.otmp);
+    // C ref: objnam.c readobjnam :5071–5083 — honor d.cnt when oc_merge
+    // (wizard unrestricted; else rnd(6) / candle <=7 / ammo-or-rock <=20).
+    // Globby gsize/weight override still named.
+    if ((d.cnt | 0) > 0) {
+        if (oc_merge_of(d.typ)
+            && (wizardMode()
+                || (d.cnt | 0) < rnd(6)
+                || ((d.cnt | 0) <= 7 && Is_candle(d.otmp))
+                || ((d.cnt | 0) <= 20
+                    && ((d.typ | 0) === ROCK || (d.typ | 0) === FLINT
+                        || is_missile(d.otmp)
+                        || (d.oclass === WEAPON_CLASS && is_ammo(d.otmp)))))) {
+            d.otmp.quan = d.cnt | 0;
+            d.otmp.owt = weight(d.otmp);
+        }
     }
 
     if (d.spesgn === 0) {

@@ -180,7 +180,7 @@ export function monsterList() {
 // (makemon.c:1249-1250), so C visits monsters newest-first.  Our level array
 // holds monsters in creation order; return a reversed snapshot so per-monster
 // RNG (distfleeck / m_move) is emitted in the same order as C.
-function fmonOrder() {
+export function fmonOrder() {
     const list = monsterList();
     const out = new Array(list.length);
     for (let i = 0; i < list.length; i++) out[i] = list[list.length - 1 - i];
@@ -2981,15 +2981,11 @@ export async function mnearto(mtmp, x, y, move_other, rlocflags) {
     }
 
     let newx = x, newy = y;
-    const { goodpos, enexto_gpflags, rloc_to } = await import('./teleport.js');
+    const { goodpos, rloc_to } = await import('./teleport.js');
     if (!goodpos(newx, newy, mtmp, 0)) {
         /* real trouble if enexto ever fails: migrating_mons that need placing
            cause no end of problems */
-        // C ref: mnearto() falls back to enexto(), whose fake monster has
-        // m_id == 0 and therefore applies goodpos_onscary() on its first pass.
-        // The spawn helper intentionally omits that filter; using the shared
-        // teleport implementation keeps covetous relocations in the same spot.
-        const mm = enexto_gpflags(newx, newy, mtmp.data, 0);
+        const mm = enexto_spawn(newx, newy, mtmp.data);
         if (!mm || !isok(mm.x, mm.y)) {
             if (othermon) {
                 /* othermon's mx,my were zeroed above, so a bare `return 0`
@@ -3244,9 +3240,6 @@ export async function normal_shape(mon) {
 // new_were() is this file's own (private) port, and normal_shape is its only
 // new caller; a thin alias keeps that function untouched.
 async function new_were_pub(mon) { await new_were(mon); }
-// mhitu.c invokes the same form swap from summonmu(); export a lazy-cycle-safe
-// wrapper rather than duplicating were.c's message/healing/armor behavior.
-export async function new_were_for_mhitu(mon) { await new_were(mon); }
 
 // ── mon.c:4471 alloc_itermonarr() ───────────────────────────────────────────
 // C keeps one reusable struct monst *[] between monster-movement loops,

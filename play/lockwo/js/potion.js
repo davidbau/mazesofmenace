@@ -13,15 +13,14 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rnl, d } from './rng.js';
 import { pline, update_topl, y_n, newsym } from './display.js';
-import { getobj, makeknown, useup, trycall, GETOBJ_SUGGEST, GETOBJ_EXCLUDE,
+import { getobj, makeknown, useup, trycall, splitobj, GETOBJ_SUGGEST, GETOBJ_EXCLUDE,
          GETOBJ_EXCLUDE_NONINVENT, GETOBJ_NOFLAGS, GETOBJ_PROMPT,
          GETOBJ_DOWNPLAY, body_part, hands_obj, short_oname, xname,
          makeplural, remove_worn_item, is_plural, pair_of,
-         learn_unseen_invent, splitobj } from './invent.js';
+         learn_unseen_invent } from './invent.js';
 import { surface, hliquid } from './dungeon.js';
 import { heal_legs, water_damage } from './trap.js';
 import { monster_detect } from './hack.js';
-import { object_detect } from './detect.js';
 import { DEADMONSTER } from './mon.js';
 import { exercise, acurr_eff } from './attrib.js';
 import { more_experienced, pluslvl, newuexp } from './exper.js';
@@ -42,6 +41,7 @@ import { DESCR_BY_OTYP } from './o_descr_data.js';
 import { name_to_pmidx, monster_by_pmidx, enexto_spawn, makemon,
          placeOnLevel } from './makemon.js';
 import { race_attrmin, race_attrmax } from './u_init.js';
+import { object_detect } from './detect.js';
 
 // C ref: potion.c make_confused(xtime, talk) — set the HConfusion timeout.  The
 // hero's confusion timer lives on game.u.uprops.Confusion (read by isConfused()
@@ -1259,14 +1259,13 @@ async function peffect_monster_detection(otmp) {
 // C ref: prop.h TIMEOUT — the low 24 bits of a property word.
 const TIMEOUT_MASK = 0x00ffffff;
 
-// C ref: potion.c peffect_object_detection() -> detect.c object_detect().
-// The detector maps every visible object and leaves the same topline/map
-// framing as the scroll and crystal-ball paths; the old stub only exercised
-// Wisdom and left the quaff prompt on screen.
+// C ref: potion.c peffect_object_detection().  object_detect() owns both the
+// detected-map modal UI and the no-object early return; only a successful
+// detection exercises Wisdom here.
 async function peffect_object_detection(otmp) {
-    const result = await object_detect(otmp, 0);
+    if (await object_detect(otmp, 0)) return 1;
     exercise(A_WIS, true);
-    return result;
+    return 0;
 }
 
 // C ref: potion.c peffects — dispatch by potion type; returns -1 to signal
@@ -1439,10 +1438,9 @@ export async function dodrink() {
     // renumbers inventory, so the guard has to exist for it to stay that way.
     if (otmp.owornmask) {
         if ((otmp.quan || 1) > 1) {
-            // C: splitobj(otmp, 1L) mints a new object id before the occupant
-            // roll, while leaving the remainder of the worn stack intact.
-            // splitobj() mirrors the list bookkeeping but intentionally leaves
-            // the RNG-bearing next_ident() to each caller.
+            // C splitobj() calls nextoid(), whose trailing next_ident() spends
+            // rnd(2).  The shared JS splitobj deliberately has no RNG side
+            // effects so callers pay that draw at their C-equivalent site.
             next_ident();
             otmp = splitobj(otmp, 1);
             otmp.owornmask = 0;

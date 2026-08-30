@@ -91,7 +91,7 @@ import {
     mkcorpstat, next_ident,
     curse, bless, uncurse, blessorcurse, place_object, add_to_buried, weight, OBJ,
     set_corpsenm, obj_stop_timers, start_timer, obj_extract_self,
-    add_to_container, objects_at, stackobj,
+    add_to_container, objects_at, stackobj, oc_merge_of,
 } from './mkobj.js';
 import {
     makemon, mkclass, MM_NOGRP, set_mimic_sym, mpickobj, add_to_minv, newcham,
@@ -9980,7 +9980,7 @@ function tut1_object(xstart, ystart, mx, my, otyp, spe, buc) {
     return otmp;
 }
 
-/** C ref: create_object quan>0 && oc_merge — set after mksobj_at. */
+/** C ref: tut-1 loader — quan after mksobj_at (not C oc_merge gate). */
 function tut1_object_quan(xstart, ystart, mx, my, otyp, quan) {
     const otmp = tut1_object(xstart, ystart, mx, my, otyp, -127, null);
     if (otmp && quan > 0) {
@@ -11359,13 +11359,14 @@ function get_location_coord(humidity, croom, rx, ry) {
 
 /**
  * C ref: sp_lev.c create_object (~2193–2439).
- * Named omit: quan>0 oc_merge; recharged; tknown;
+ * Named omit: recharged; tknown;
  * invent_carrying_monster / saddle; artifact uncreate when container_obj
  * is NULL; Medusa statue fill; achievement prizes; buried bury_an_obj;
  * class-letter def_char_to_objclass (id-less RANDOM_CLASS / mkobj_at
  * oclass still work). themerms Light source fill (D-1542) is the
  * production lua that sets lit=true; this arm is the callee.
  * oname + lookup_novel when `o.name` (D-1651).
+ * quan>0 && oc_merge (D-1712); lspo_object non-merge repeat still named.
  */
 function create_object(o, croom) {
     const named = !!(o.name);
@@ -11449,6 +11450,12 @@ function create_object(o, croom) {
     }
     if (o.trapped === 0 || o.trapped === 1) otmp.otrapped = o.trapped;
     otmp.greased = o.greased ? 1 : 0;
+
+    // C sp_lev.c create_object :2298–2301 — quan only when oc_merge
+    if ((o.quan | 0) > 0 && oc_merge_of(otmp.otyp)) {
+        otmp.quan = o.quan | 0;
+        otmp.owt = weight(otmp);
+    }
 
     const containment = o.containment | 0;
     if (containment & SP_OBJ_CONTENT) {
