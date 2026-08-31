@@ -239,6 +239,7 @@ import {
     PM_LITTLE_DOG,
     PM_LONG_WORM,
     PM_MANES,
+    PM_MINOTAUR,
     PM_GIANT_EEL,
     PM_GUARD,
     PM_MORDOR_ORC,
@@ -1167,7 +1168,7 @@ function isMausoleumSpecies(species) {
         || (mndx >= PM_KOBOLD_ZOMBIE && mndx <= PM_GIANT_ZOMBIE);
 }
 
-function assertSupportedSpecies(species) {
+function assertSupportedSpecies(species, { allowMinotaur = false } = {}) {
     const courtSpecies = species
         && (species.pmidx === PM_BUGBEAR
             || species.pmidx === PM_DWARF_RULER
@@ -1179,6 +1180,11 @@ function assertSupportedSpecies(species) {
     const beehiveSpecies = species
         && (species.pmidx === PM_QUEEN_BEE
             || species.pmidx === PM_KILLER_BEE);
+    const barracksSpecies = species
+        && (species.pmidx === PM_SOLDIER
+            || species.pmidx === PM_SERGEANT
+            || species.pmidx === PM_LIEUTENANT
+            || species.pmidx === PM_CAPTAIN);
     const morgueSpecies = species
         && species.pmidx === PM_WRAITH;
     if (!species
@@ -1189,10 +1195,12 @@ function assertSupportedSpecies(species) {
             && !isMausoleumSpecies(species)
             && !courtSpecies
             && !beehiveSpecies
+            && !barracksSpecies
             && !morgueSpecies
             && species.pmidx !== PM_DJINNI
             && species.pmidx !== PM_WATER_DEMON
-            && species.pmidx !== PM_UMBER_HULK)) {
+            && species.pmidx !== PM_UMBER_HULK
+            && (!allowMinotaur || species.pmidx !== PM_MINOTAUR))) {
         throw new UnsupportedMonsterCreationError(
             `monster ${species?.pmidx ?? 'null'}`,
         );
@@ -1353,7 +1361,14 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
         // loop).  Outside mklev the allowlist always applies.
         if (!state.in_mklev
             || (isMainDungeonLevel(state) && !normalized._rndmonMklev)) {
-            assertSupportedSpecies(ptr);
+            assertSupportedSpecies(ptr, {
+                // sp_lev.c:fill_empty_maze() explicitly places a minotaur
+                // while generating a stocked main-dungeon maze. The caller
+                // marker keeps this admission limited to that source branch.
+                allowMinotaur: state.in_mklev
+                    && isMainDungeonLevel(state)
+                    && normalized._fillEmptyMazeMinotaur === true,
+            });
         }
         if (state.mons[ptr.pmidx] !== ptr) {
             throw new UnsupportedMonsterCreationError(
@@ -2215,6 +2230,15 @@ function m_initinv(monster, normalized) {
         if (!random.rn2(2)) mongets(monster, MIRROR, normalized);
         if (!random.rn2(2))
             mongets(monster, POT_OBJECT_DETECTION, normalized);
+    } else if (ptr.mlet === S_GIANT && ptr.pmidx === PM_MINOTAUR) {
+        // C ref: makemon.c:738-741. A minotaur gets a wand of digging with
+        // a one-in-eight chance, or unconditionally on the Earth level while
+        // generating a level. This arm precedes the generic giant gemstone
+        // arm even though minotaurs share S_GIANT.
+        if (!random.rn2(8)
+            || (state.in_mklev && Is_earthlevel(state.u?.uz))) {
+            mongets(monster, WAN_DIGGING, normalized);
+        }
     } else if (ptr.mlet === S_GIANT && is_giant(ptr)) {
         // C ref: makemon.c:738-750. All true giants carry gems. The
         // minotaur arm (WAN_DIGGING) is for G_NOGEN species only.
@@ -3244,6 +3268,15 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
     monster.m_id = next_ident(normalized);
     monster.data = ptr;
     monster.mnum = mndx;
+    // C ref: makemon.c:1253-1255. Quest chat identifies a leader by this
+    // persistent id, so record it immediately after next_ident() just as C
+    // does, before later monster initialization can observe the new monster.
+    if (ptr.msound === MS_LEADER
+        && state.urole?.ldrnum === mndx) {
+        state.svq ??= {};
+        state.svq.quest_status ??= {};
+        state.svq.quest_status.leader_m_id = monster.m_id;
+    }
     newmonhp(monster, mndx, normalized);
     initializeGender(monster, ptr, mmflags, random);
 
