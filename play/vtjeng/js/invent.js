@@ -117,6 +117,7 @@ import { stairs_description, stairway_at } from './stairs.js';
 import { is_drawbridge_wall } from './startup_a11y.js';
 import { is_ice } from './terrain.js';
 import { is_lava, is_pool, t_at } from './trap.js';
+import { hidden_gold } from './vault.js';
 import { game } from './gstate.js';
 import { itemactions } from './iactions.js';
 import { surface } from './dungeon.js';
@@ -884,9 +885,10 @@ export const _getobjInternals = Object.freeze({
     invletter_value,
 });
 
-// C ref: invent.c display_pickinv(). Covers the branch `i` reaches: the full
-// inventory, no letter subset, no extra choice, want_reply true, and the
-// default sort. Everything else stops.
+// C ref: invent.c display_pickinv(). Covers the full-inventory branch (`i`
+// reaches it) and the partial-inventory branch (equipment display commands
+// pass a `lets` filter). Extra-choice, non-reply, and non-default sort
+// branches remain unported.
 export async function display_pickinv(
     lets,
     xtra_choice,
@@ -896,11 +898,9 @@ export async function display_pickinv(
     state = game,
     { menu } = {},
 ) {
-    if (lets || xtra_choice || allowxtra || !want_reply)
+    if (xtra_choice || allowxtra)
         throw new UnsupportedFeatureDescriptionError('a partial inventory');
-    if (typeof menu !== 'function')
-        throw new TypeError('display_pickinv needs a menu owner');
-    if (state.iflags.force_invmenu || state.iflags.menu_requested)
+    if (!lets && (state.iflags.force_invmenu || state.iflags.menu_requested))
         throw new UnsupportedFeatureDescriptionError('a forced inventory menu');
     if (state.flags.sortloot === 'i' || state.flags.sortloot === 'f')
         throw new UnsupportedFeatureDescriptionError('a reordered inventory');
@@ -908,19 +908,54 @@ export async function display_pickinv(
         throw new UnsupportedFeatureDescriptionError('reassign()');
     if (!state.flags.sortpack)
         throw new UnsupportedFeatureDescriptionError('an unpacked inventory');
-    // C's n counts 0, 1, or "more than 1"; with no letter subset it then adds
-    // one, so the single-item message-line shortcut cannot apply here.
-    // C answers "Not carrying anything." here. Every starting character
-    // carries items, and nothing the port runs can empty the pack.
     if (!state.invent)
         throw new UnsupportedFeatureDescriptionError('an empty inventory');
+
+    // C ref: invent.c display_pickinv() n-count.  With a lets filter, n is
+    // the number of matching letters; without, n is 0/1/2+ of the full pack.
+    let n;
+    if (lets) {
+        n = lets.length;
+    } else {
+        n = !state.invent ? 0 : !state.invent.nobj ? 1 : 2;
+        // Without lets and without wizid, C increments n to skip the
+        // single-item message-line shortcut.
+        if (n === 1) n++;
+    }
+
+    // C ref: invent.c display_pickinv() single-item message-line path.
+    // When only one item matches and no menu is forced, show it with
+    // xprname on the message line. C returns the invlet when want_reply
+    // is true; otherwise 0, which the caller reads as "no selection."
+    if (n === 1 && !state.iflags.force_invmenu && !state.iflags.menu_requested) {
+        let match = null;
+        for (let otmp = state.invent; otmp; otmp = otmp.nobj) {
+            if (!lets || lets.includes(otmp.invlet)) { match = otmp; break; }
+        }
+        if (match) {
+            await ttyPline(
+                xprname(match, null, lets ? lets[0] : match.invlet, true, 0, 0, state),
+                state,
+            );
+            return want_reply ? match.invlet : null;
+        }
+        return null;
+    }
+
+    // The multi-item menu path requires both a menu owner and want_reply.
+    if (!want_reply)
+        throw new UnsupportedFeatureDescriptionError('a partial inventory');
+    if (typeof menu !== 'function')
+        throw new TypeError('display_pickinv needs a menu owner');
 
     // Formatting a name marks its type discovered, so every object is checked
     // for an unported naming branch before any of them is formatted. Without
     // this, a pack whose fifth item cannot be named would leave the first
     // four discovered and still refuse the command.
-    for (let otmp = state.invent; otmp; otmp = otmp.nobj)
+    for (let otmp = state.invent; otmp; otmp = otmp.nobj) {
+        if (lets && !lets.includes(otmp.invlet)) continue;
         assertObjectNameable(otmp, state);
+    }
 
     // sortloot() with SORTLOOT_INVLET|SORTLOOT_PACK keeps invent order, and
     // the class walk below is what groups it, exactly as C's nextclass loop
@@ -930,6 +965,7 @@ export async function display_pickinv(
         let classcount = 0;
         for (let otmp = state.invent; otmp; otmp = otmp.nobj) {
             if (otmp.oclass !== oclass) continue;
+            if (lets && !lets.includes(otmp.invlet)) continue;
             if (!classcount) {
                 items.push({
                     text: let_to_name(
@@ -966,12 +1002,13 @@ export async function display_inventory(lets, want_reply, state, hooks) {
     );
 }
 
-// C ref: invent.c dispinv_with_action() (2964-3002). `i` supplies no
-// letters and len is 0, so menumode is unconditionally true. When the
-// player selects a letter, the inventory is walked for the matching object
-// and itemactions() builds its action menu.
+// C ref: invent.c dispinv_with_action() (2964-3002). When lets has
+// exactly one letter and menu_requested is off, menumode is false:
+// display_pickinv() shows the item on the message line and returns 0,
+// so itemactions() is never called.
 export async function dispinv_with_action(lets, state = game, hooks = {}) {
-    const menumode = true;
+    const len = lets ? lets.length : 0;
+    const menumode = (len !== 1 || state.iflags.menu_requested);
     // The menu owner answers null for Escape, which is C's '\033' reaching
     // dispinv_with_action() without matching any invlet.
     const chosen = await display_inventory(lets, menumode, state, hooks);
@@ -3345,4 +3382,168 @@ export function count_unpaid(list) {
         if (obj.cobj) count += count_unpaid(obj.cobj);
     }
     return count;
+}
+
+// C ref: invent.c doprgold().
+export async function doprgold(state = game) {
+    const umoney = money_cnt(inventoryHead(state));
+    const hmoney = hidden_gold(false, state);
+
+    if (state.flags.verbose) {
+        let buf;
+        if (!umoney) {
+            buf = 'Your wallet is empty';
+        } else {
+            buf = `Your wallet contains ${umoney} ${currency(umoney, state)}`;
+        }
+        if (hmoney) {
+            buf += `, ${umoney ? 'and' : 'but'} you have ${hmoney} `
+                + `${umoney ? 'more' : currency(hmoney, state)}`
+                + ' stashed away in your pack';
+        }
+        await ttyPline(`${buf}.`, state);
+    } else {
+        const total = umoney + hmoney;
+        if (total) {
+            await ttyPline(
+                `You are carrying a total of ${total} ${currency(total, state)}.`,
+                state,
+            );
+        } else {
+            await ttyPline('You have no money.', state);
+        }
+    }
+    await shopper_financial_report(state);
+}
+
+// C ref: shk.c shopper_financial_report(). Reports shop credit and debt.
+async function shopper_financial_report(state) {
+    const { inside_shop, shop_keeper } = await import('./shk.js');
+    const thisShkp = shop_keeper(inside_shop(state.u.ux, state.u.uy, state), state);
+    if (thisShkp && !thisShkp.eshk?.credit && !thisShkp.eshk?.debit
+        && !thisShkp.eshk?.robbed) {
+        await ttyPline('You have no credit or debt in here.', state);
+        return;
+    }
+    if (!thisShkp) {
+        for (let mtmp = state.fmon; mtmp; mtmp = mtmp.nmon) {
+            if (mtmp.deadMonster) continue;
+            if (!mtmp.isshk) continue;
+            const eshk = mtmp.eshk;
+            if (!eshk) continue;
+            if (eshk.credit) {
+                await ttyPline(
+                    `You have ${eshk.credit} ${currency(eshk.credit, state)} `
+                    + `credit at ${mtmp.mname || 'the shopkeeper'}'s `
+                    + `${eshk.shopName || 'shop'}.`,
+                    state,
+                );
+            }
+            if (eshk.debit) {
+                await ttyPline(
+                    `You owe ${mtmp.mname || 'the shopkeeper'} `
+                    + `${eshk.debit} ${currency(eshk.debit, state)}.`,
+                    state,
+                );
+            }
+        }
+    }
+}
+
+// C ref: invent.c wearing_armor().
+export function wearing_armor(state = game) {
+    return Boolean(state.uarm || state.uarmc || state.uarmf || state.uarmg
+        || state.uarmh || state.uarms || state.uarmu);
+}
+
+// C ref: invent.c doprwep(). The ')' / #seeweapon command.
+export async function doprwep(state = game, hooks = {}) {
+    if (!state.uwep) {
+        const { empty_handed } = await import('./wield.js');
+        await ttyPline(`You are ${empty_handed(state)}.`, state);
+    } else if (!state.iflags.menu_requested) {
+        await prinv(null, state.uwep, 0);
+        if (state.u.twoweap)
+            await prinv(null, state.uswapwep, 0);
+    } else {
+        let lets = '';
+        lets += obj_to_let(state.uwep, state);
+        if (state.uswapwep)
+            lets += state.uswapwep.invlet;
+        if (state.uquiver)
+            lets += state.uquiver.invlet;
+        await dispinv_with_action(lets, state, hooks);
+    }
+    return ECMD_OK;
+}
+
+// C ref: invent.c noarmor(). Called when not wearing_armor().
+async function noarmor(report_uskin, state) {
+    if (!state.uskin || !report_uskin) {
+        await ttyPline('You are not wearing any armor.', state);
+    } else {
+        const { simpleonames } = await import('./objnam.js');
+        let uskinname = simpleonames(state.uskin, state);
+        if (uskinname.startsWith('set of '))
+            uskinname = uskinname.slice(7);
+        const dragonIdx = uskinname.indexOf(' dragon ');
+        if (dragonIdx >= 0)
+            uskinname = uskinname.slice(0, dragonIdx) + uskinname.slice(dragonIdx + 7);
+        await ttyPline(
+            `You are not wearing armor but have ${uskinname} embedded in your skin.`,
+            state,
+        );
+    }
+}
+
+// C ref: invent.c doprarm(). The '[' / #seearmor command.
+export async function doprarm(state = game, hooks = {}) {
+    if (!wearing_armor(state)) {
+        await noarmor(true, state);
+    } else {
+        let lets = '';
+        if (state.uarm)
+            lets += obj_to_let(state.uarm, state);
+        if (state.uarmc)
+            lets += obj_to_let(state.uarmc, state);
+        if (state.uarms)
+            lets += obj_to_let(state.uarms, state);
+        if (state.uarmh)
+            lets += obj_to_let(state.uarmh, state);
+        if (state.uarmg)
+            lets += obj_to_let(state.uarmg, state);
+        if (state.uarmf)
+            lets += obj_to_let(state.uarmf, state);
+        if (state.uarmu)
+            lets += obj_to_let(state.uarmu, state);
+        await dispinv_with_action(lets, state, hooks);
+    }
+    return ECMD_OK;
+}
+
+// C ref: invent.c doprring(). The '=' / #seerings command.
+export async function doprring(state = game, hooks = {}) {
+    if (!state.uleft && !state.uright) {
+        await ttyPline('You are not wearing any rings.', state);
+    } else {
+        let lets = '';
+        if (state.uright)
+            lets += obj_to_let(state.uright, state);
+        if (state.uleft)
+            lets += obj_to_let(state.uleft, state);
+        await dispinv_with_action(lets, state, hooks);
+    }
+    return ECMD_OK;
+}
+
+// C ref: invent.c dopramulet(). The '"' / #seeamulet command.
+export async function dopramulet(state = game, hooks = {}) {
+    if (!state.uamul) {
+        await ttyPline('You are not wearing an amulet.', state);
+    } else {
+        let lets = '';
+        lets += obj_to_let(state.uamul, state);
+        await dispinv_with_action(lets, state, hooks);
+    }
+    return ECMD_OK;
 }

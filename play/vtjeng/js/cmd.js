@@ -11,6 +11,9 @@ import {
     CMDQ_EXTCMD,
     CMDQ_KEY,
     COLNO,
+    A_STR,
+    A_WIS,
+    CONFUSION,
     CQ_CANNED,
     CQ_REPEAT,
     DIR_ERR,
@@ -30,10 +33,13 @@ import {
     PICK_ONE,
     PLNMSG_UNKNOWN,
     QBUFSZ,
+    LEVEL_TELEP,
     SICK,
     SLIMED,
     STONED,
     STRANGLED,
+    TELEP_TRAP,
+    TELEPORT,
     Upolyd,
     isok,
     quitchars,
@@ -74,6 +80,7 @@ import { doclose, doforce, doopen, reset_pick, UnsupportedLockError } from './lo
 import {
     attacktype,
     can_breathe,
+    can_teleport,
     hides_under,
     is_hider,
     is_mind_flayer,
@@ -88,6 +95,7 @@ import {
     AT_SPIT,
     MS_SHRIEK,
     PM_GREMLIN,
+    PM_WIZARD,
     S_NYMPH,
 } from './monsters.js';
 import { UnsupportedMonsterCreationError } from './makemon_create.js';
@@ -100,12 +108,17 @@ import {
     UnsupportedPotionError,
     UnsupportedQuaffError,
 } from './potion.js';
+import { UnsupportedFountainError } from './fountain.js';
 import { UnsupportedItemDestructionError } from './zap_destroy_items.js';
-import { UnsupportedPositionCheckError } from './teleport.js';
+import { SPE_TELEPORT_AWAY } from './objects.js';
+import { next_to_u } from './apply_next_to_u.js';
+import { UnsupportedPositionCheckError, tele } from './teleport.js';
+import { t_at } from './trap.js';
 import { UnsupportedHeroTimeoutBoundaryError } from './timeout.js';
 import { UnsupportedErosionError } from './trap_erode_obj.js';
 import {
     doeat,
+    morehungry,
     UnsupportedEatError,
     UnsupportedHungerTransitionError,
 } from './eat.js';
@@ -140,6 +153,11 @@ import { mungspaces, strstri, strsubst, visctrl } from './hacklib.js';
 import {
     ddoinv,
     dolook,
+    dopramulet,
+    doprarm,
+    doprgold,
+    doprring,
+    doprwep,
     getobj,
     hands_obj,
     UnsupportedFeatureDescriptionError,
@@ -174,6 +192,10 @@ import {
 import {
     docast,
     dovspell,
+    known_spell,
+    spe_Fresh,
+    spe_Unknown,
+    spelleffects,
     UnsupportedSpellCastError,
     UnsupportedSpellDisplayError,
     UnsupportedSpellStudyError,
@@ -202,7 +224,11 @@ import { nhgetch } from './input.js';
 import { doride, UnsupportedSteedError } from './steed.js';
 import { UnsupportedEndOfGameError } from './end.js';
 import { UnsupportedItemIgnitionError } from './apply_catch_lit.js';
-import { UnsupportedAbilityChangeError } from './attrib.js';
+import {
+    effective_attribute,
+    exercise,
+    UnsupportedAbilityChangeError,
+} from './attrib.js';
 import { UnsupportedExperienceChangeError } from './exper.js';
 import {
     doread,
@@ -1372,6 +1398,7 @@ export const ADMITTED_COMMANDS = Object.freeze([
     'puton', 'quaff', 'read', 'zap', 'cast', 'reqmenu', 'fight', 'options', 'autopickup',
     'wizwish', 'wizlevelport', 'wizgenesis', 'fire', 'throw', 'swap', 'kick',
     'save', 'wield', 'quiver', 'help', 'whatis', '#', 'loot', 'force', 'tip',
+    'showgold', 'seeweapon', 'seearmor', 'seerings', 'seeamulet', 'teleport',
 ]);
 const ADMITTED_BOUNDARY = 'the repeated-command boundary admits only '
     + `${ADMITTED_COMMANDS.join(', ')}, a one-square walk, a shift-direction `
@@ -1860,10 +1887,13 @@ export function failClosedCommandRefusals() {
         UnsupportedItemDestructionError,
         UnsupportedPotionError,
         // potion.c dodrink()/dopotion()/peffects() raises this for the 22
-        // potion types besides POT_SPEED and for the strangled, fountain,
-        // sink, underwater, worn-potion, milky and smoky branches of
-        // dodrink() that this port has not reached.
+        // potion types besides POT_SPEED and for the strangled, sink,
+        // underwater, worn-potion, milky and smoky branches of dodrink()
+        // that this port has not reached.
         UnsupportedQuaffError,
+        // fountain.c drinkfountain(), dowaterdemon(), and dryup() raise
+        // this for the fountain-effect arms this port leaves unported.
+        UnsupportedFountainError,
         UnsupportedObjectNamingError,
         // Two paths raise this. invent.c hold_another_object(), which
         // makewish() calls unguarded, raises it from its drop, artifact,
@@ -1979,16 +2009,11 @@ async function failClosedCommand(key, state, run) {
 // replaying '#' alone would not reproduce them; there the boundary preserves
 // the segment's matching prefix rather than the keystroke.
 
-// C ref: invent.c ddoinv(). Every entry is formatted before the menu draws
-// anything, so an unported object name or display branch stops before ddoinv()
-// itself writes to the screen.
-async function runInventoryCommand(key, state) {
-    return failClosedCommand(key, state, () => ddoinv(state, {
-        // invent.c display_pickinv() ends its menu with no prompt and asks
-        // select_menu() for PICK_ONE; Escape answers null.
+// C ref: invent.c display_pickinv() menu hooks. Used by ddoinv() and the
+// equipment display commands (doprwep, doprarm, doprring, dopramulet).
+function inventoryMenuHooks(state) {
+    return {
         menu: (items) => select_menu(state, {
-            // add_menu_heading() draws a class heading with
-            // iflags.menu_headings, which menuTitleStyle() reads.
             items: items.map((item) => (item.heading
                 ? {
                     ...item,
@@ -2000,7 +2025,15 @@ async function runInventoryCommand(key, state) {
             cancelValue: null,
             overlay: state.iflags?.menu_overlay !== false,
         }),
-    }));
+    };
+}
+
+// C ref: invent.c ddoinv(). Every entry is formatted before the menu draws
+// anything, so an unported object name or display branch stops before ddoinv()
+// itself writes to the screen.
+async function runInventoryCommand(key, state) {
+    return failClosedCommand(key, state, () => ddoinv(state,
+        inventoryMenuHooks(state)));
 }
 
 // C ref: spell.c dovspell().
@@ -2665,6 +2698,21 @@ async function doextcmd(key, state) {
         return await runHelpCommand(key, state);
     case 'dowhatis':
         return await runWhatisCommand(key, state);
+    case 'doprgold':
+        await failClosedCommand(key, state, () => doprgold(state));
+        return ECMD_OK;
+    case 'doprwep':
+        await failClosedCommand(key, state, () => doprwep(state, inventoryMenuHooks(state)));
+        return ECMD_OK;
+    case 'doprarm':
+        await failClosedCommand(key, state, () => doprarm(state, inventoryMenuHooks(state)));
+        return ECMD_OK;
+    case 'doprring':
+        await failClosedCommand(key, state, () => doprring(state, inventoryMenuHooks(state)));
+        return ECMD_OK;
+    case 'dopramulet':
+        await failClosedCommand(key, state, () => dopramulet(state, inventoryMenuHooks(state)));
+        return ECMD_OK;
     case 'doread':
         return await runReadCommand(key, state);
     case 'dowieldquiver':
@@ -3464,6 +3512,132 @@ export async function rhack(key, state = game) {
             resetCommandVars(state, state.multi < 0);
             return;
         }
+        if (command === 'teleport') {
+            // C ref: teleport.c dotelecmd() → dotele().
+            const trap = t_at(state.u.ux, state.u.uy, state);
+            if (trap?.tseen
+                && (trap.ttyp === TELEP_TRAP || trap.ttyp === LEVEL_TELEP)) {
+                throw new UnsupportedHeroCommandBranchBoundaryError(
+                    'dotelecmd: teleport trap interaction unported',
+                    key,
+                );
+            }
+            // C ref: dotelecmd() wizard path. Without 'm' prefix,
+            // ignore_restrictions=TRUE → dotele(TRUE) skips all checks.
+            if (state.wizard && !state.iflags?.menu_requested) {
+                if (next_to_u(state)) {
+                    if (state.iflags)
+                        state.iflags.travelcc = { x: 0, y: 0 };
+                    await tele(state);
+                    next_to_u(state);
+                } else {
+                    await ttyPline(
+                        'You shudder for a moment.',
+                        state,
+                    );
+                    resetCommandVars(state);
+                    return;
+                }
+                await morehungry(100, state);
+                resetCommandVars(state);
+                state.go.occupation = null;
+                return;
+            }
+            const prop = state.u?.uprops?.[TELEPORT];
+            const hasTeleportation = Boolean(
+                (prop?.intrinsic || prop?.extrinsic) && !prop?.blocked,
+            );
+            const levelOk = state.u.ulevel
+                >= (state.urole?.mnum === PM_WIZARD ? 8 : 12);
+            const formOk = can_teleport(state.youmonst?.data);
+            if (hasTeleportation && (levelOk || formOk)) {
+                // C ref: teleport.c dotele() intrinsic teleport path.
+                // energy = 5 * objects[SPE_TELEPORT_AWAY].oc_level
+                const spellLevel = Math.trunc(
+                    state.objects?.[SPE_TELEPORT_AWAY]?.oc_level ?? 6,
+                );
+                const energy = 5 * spellLevel;
+                state.u.uen -= energy;
+                state.disp = state.disp || {};
+                state.disp.botl = true;
+                if (next_to_u(state)) {
+                    if (state.iflags)
+                        state.iflags.travelcc = { x: 0, y: 0 };
+                    await tele(state);
+                    next_to_u(state);
+                } else {
+                    await ttyPline(
+                        'You shudder for a moment.',
+                        state,
+                    );
+                    resetCommandVars(state);
+                    return;
+                }
+                await morehungry(100, state);
+                resetCommandVars(state);
+                state.go.occupation = null;
+                return;
+            }
+            const knownsp = known_spell(SPE_TELEPORT_AWAY, state);
+            const confusion = Boolean(
+                state.u?.uprops?.[CONFUSION]?.intrinsic
+                || state.u?.uprops?.[CONFUSION]?.extrinsic,
+            );
+            if (knownsp >= spe_Fresh && !confusion) {
+                // C ref: teleport.c dotele() (1090-1137), spell-casting path.
+                const spellLevel = Math.trunc(
+                    state.objects?.[SPE_TELEPORT_AWAY]?.oc_level ?? 6,
+                );
+                const energy = 5 * spellLevel;
+                let cantdoit = null;
+                if ((state.u?.uhunger ?? 901) <= 10)
+                    cantdoit = 'are too weak from hunger';
+                else if (effective_attribute(state, A_STR) < 4)
+                    cantdoit = 'lack the strength';
+                else if (energy > state.u.uen)
+                    cantdoit = 'lack the energy';
+                if (cantdoit) {
+                    await ttyPline(
+                        `You ${cantdoit} for a teleport spell.`, state,
+                    );
+                    resetCommandVars(state);
+                    return;
+                }
+                if (await check_capacity(
+                    'Your concentration falters from carrying so much.',
+                    state,
+                )) {
+                    commandTookTime(state);
+                    resetCommandVars(state);
+                    state.go.occupation = null;
+                    return;
+                }
+                await exercise(A_WIS, true, state);
+                if (await spelleffects(
+                    SPE_TELEPORT_AWAY, true, false, state,
+                ) & ECMD_TIME) {
+                    commandTookTime(state);
+                    resetCommandVars(state);
+                    state.go.occupation = null;
+                    return;
+                }
+                resetCommandVars(state);
+                return;
+            }
+            if (!hasTeleportation) {
+                if (knownsp !== spe_Unknown)
+                    await ttyPline("You can't cast that spell.", state);
+                else
+                    await ttyPline("You don't know that spell.", state);
+            } else {
+                await ttyPline(
+                    'You are not able to teleport at will.',
+                    state,
+                );
+            }
+            resetCommandVars(state);
+            return;
+        }
         if (command === 'save') {
             // C ref: save.c dosave():43-70. dosave() always returns ECMD_OK;
             // on the success path C never returns at all (it calls
@@ -3529,6 +3703,31 @@ export async function rhack(key, state = game) {
             // puts context.move back to TRUE.
             resetCommandVars(state);
             if (elapsed) commandTookTime(state);
+            return;
+        }
+        if (command === 'showgold') {
+            await failClosedCommand(key, state, () => doprgold(state));
+            resetCommandVars(state, state.multi < 0);
+            return;
+        }
+        if (command === 'seeweapon') {
+            await failClosedCommand(key, state, () => doprwep(state, inventoryMenuHooks(state)));
+            resetCommandVars(state, state.multi < 0);
+            return;
+        }
+        if (command === 'seearmor') {
+            await failClosedCommand(key, state, () => doprarm(state, inventoryMenuHooks(state)));
+            resetCommandVars(state, state.multi < 0);
+            return;
+        }
+        if (command === 'seerings') {
+            await failClosedCommand(key, state, () => doprring(state, inventoryMenuHooks(state)));
+            resetCommandVars(state, state.multi < 0);
+            return;
+        }
+        if (command === 'seeamulet') {
+            await failClosedCommand(key, state, () => dopramulet(state, inventoryMenuHooks(state)));
+            resetCommandVars(state, state.multi < 0);
             return;
         }
         if (Object.hasOwn(MOVEMENT_INTENTS, command)) {

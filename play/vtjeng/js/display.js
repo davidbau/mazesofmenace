@@ -24,7 +24,7 @@ import { game } from './gstate.js';
 import { known_branch_stairs, stairway_at } from './stairs.js';
 import { effective_attribute } from './attrib.js';
 import { near_capacity } from './hack.js';
-import { In_hell, depth, on_level, update_lastseentyp } from './dungeon.js';
+import { In_hell, depth, dunlev, on_level, update_lastseentyp } from './dungeon.js';
 import { money_cnt } from './invent.js';
 import { cansee, seenv_matrix } from './vision.js';
 // js/tty_message.js imports flush_screen() from this file; both sides use the
@@ -57,7 +57,7 @@ import {
     D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED, LA_DOWN,
     IS_STWALL, isok, u_at, Ugender, Upolyd,
     BEAR_TRAP, NO_TRAP, WEB, is_pit,
-    In_mines, In_sokoban, Is_knox_level, MAXTCHARS,
+    In_endgame, In_mines, In_quest, In_sokoban, Is_knox_level, MAXTCHARS,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
     WM_MASK, WM_C_OUTER, WM_C_INNER,
     WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM,
@@ -1704,9 +1704,10 @@ export const ALTAR_CUSTOMIZATION_NAMES = Object.freeze([
 // clear_level_structures() (852) is what fills map memory with it; display.c
 // clear_glyph_buffer() (2107) fills the glyph buffer, which is a separate
 // array. This port encodes "nothing remembered here" as
-// `remembered_glyph === undefined` instead, and newsym()'s
-// `else if (loc.remembered_glyph)` guard stands in for C's show_mem of the
-// unexplored glyph, so no path produces the number and this refuses it.
+// `remembered_glyph === undefined` instead. newsym()'s not-visible path has
+// a final `else` clause that writes a blank cell (space, NO_COLOR) when
+// remembered_glyph is undefined, matching C's show_mem of the unexplored
+// glyph. No path produces the GLYPH_UNEXPLORED number, so this refuses it.
 function mapGlyphinfoResolves(glyph) {
     return glyph === GLYPH_NOTHING_OFF
         || glyph === GLYPH_INVISIBLE
@@ -3027,6 +3028,33 @@ export function newsym(x, y) {
         return;
     }
 
+    // display.c:1046-1056, not-visible path. C checks for monsters even
+    // when the cell is NOT in sight and displays them when the hero senses
+    // them through infravision, telepathy, warning-of-mon, or monster
+    // detection. The remaining arm handles the general WARNING property.
+    const outOfSightMon = !visible ? m_at(x, y, game) : null;
+    // C ref: display.c newsym() (1047-1049). see_it covers tp_sensemon,
+    // MATCH_WARN_OF_MON, and see_with_infrared (via canSeeMonster, which
+    // checks infravision when cansee is false). The broader sensed test
+    // adds Detect_monsters.
+    const outOfSightSeeIt = Boolean(
+        outOfSightMon
+        && (sensesMonsterWithoutDetection(outOfSightMon, game)
+            || canSeeMonster(outOfSightMon, game)),
+    );
+    const outOfSightSensed = Boolean(
+        outOfSightSeeIt
+        || (outOfSightMon && sensesMonster(outOfSightMon, game)),
+    );
+    // C ref: display.c newsym() (1055-1056). mon_warning fires only when
+    // the monster was not already handled by the sensed path above.
+    const outOfSightWarning = Boolean(
+        outOfSightMon
+        && !outOfSightSensed
+        && outOfSightMon.mx === x && outOfSightMon.my === y
+        && monsterWarnsHero(outOfSightMon, game),
+    );
+
     // Only update display/memory if cell is IN_SIGHT (lit and visible)
     if (visible) {
         const mimicAppearanceType = monster?.m_ap_type & M_AP_TYPMASK;
@@ -3105,6 +3133,19 @@ export function newsym(x, y) {
                 = remembered_glyph_from_presentation(remembered);
         }
         show_glyph_cell(x, y, shown);
+    } else if (outOfSightSensed) {
+        // display.c:1046-1054, not-visible path: the hero senses or detects
+        // the monster through infravision, telepathy, warning-of-mon, or
+        // monster detection. C calls display_monster(x, y, mon,
+        // see_it ? 0 : DETECTED, ...) without _map_location, so memory
+        // is not updated. see_it chooses the real monster glyph; DETECTED
+        // chooses the detected glyph family.
+        show_glyph_cell(x, y, outOfSightSeeIt
+            ? presentedMonsterGlyphInfo(outOfSightMon, game, false)
+            : detectedMonsterGlyphInfo(outOfSightMon, game));
+    } else if (outOfSightWarning) {
+        // display.c:1055-1056, display_warning() for out-of-sight monster
+        show_glyph_cell(x, y, warningGlyphInfo(outOfSightMon, game));
     } else if (loc.remembered_glyph) {
         // display.c:1077-1097, the tail of newsym()'s "can't see the
         // location" arm. A square remembered as lit that the hero cannot see
@@ -3143,6 +3184,19 @@ export function newsym(x, y) {
         show_glyph_cell(
             x, y, remembered_glyph_presentation(loc.remembered_glyph, game),
         );
+    } else if (loc.disp_glyph) {
+        // display.c:1094-1097, show_mem with lev->glyph == GLYPH_UNEXPLORED.
+        // The cell has no remembered glyph (unexplored). C reaches
+        // show_glyph(x, y, lev->glyph) with GLYPH_UNEXPLORED, which is a
+        // no-op when the glyph buffer already holds GLYPH_UNEXPLORED (old ==
+        // new, gnew stays 0). In JS the uninitialized state is
+        // disp_glyph === undefined rather than GLYPH_UNEXPLORED, so the
+        // equivalent no-op is to skip the write entirely. But when a transient
+        // glyph was previously written here (e.g. a warning digit for a
+        // monster that has since moved away), disp_glyph is set and stale. C's
+        // show_glyph overwrites it with GLYPH_UNEXPLORED (space, NO_COLOR);
+        // this clause does the same.
+        show_glyph_cell(x, y, { ch: ' ', color: NO_COLOR, dec: false });
     }
 }
 
@@ -3908,13 +3962,24 @@ function _statusConditions(u, shrinkLevel = 0) {
         ? ` ${conditions.map(({ text }) => text).join(' ')}` : '';
 }
 
-// C ref: botl.c describe_level(). The tutorial uses its branch label in the
-// compact status field; ordinary startup retains the traditional Dlvl label.
+// C ref: botl.c describe_level() with dflgs=0 (status line, no branch name).
+// Knox shows the dungeon name, quest shows "Home N", endgame shows the plane
+// name, and the default shows "Dlvl:N" or "Tutorial:N".
+// wintty.c shrink_dlvl() replaces text before the colon with "Dl"; quest,
+// Knox, and endgame descriptions have no colon and are never shrunk.
 function _statusLevelDescription(u, short = false) {
+    if (Is_knox_level(u.uz))
+        return game.dungeons[u.uz.dnum].dname;
+    if (In_quest(u.uz))
+        return `Home ${dunlev(u.uz)}`;
+    if (In_endgame(u.uz)) {
+        const d = depth(u.uz);
+        if (d === -5) return 'Astral Plane';
+        const planes = { [-4]: 'Water', [-3]: 'Fire', [-2]: 'Air', [-1]: 'Earth' };
+        return planes[d] ?? `unknown plane #${d}`;
+    }
     const tutorial = Number.isInteger(game.tutorial_dnum)
         && u.uz?.dnum === game.tutorial_dnum;
-    // wintty.c shrink_dlvl() replaces everything before the colon, including
-    // special-level descriptions such as "Tutorial", with the short label.
     const label = short ? 'Dl' : tutorial ? 'Tutorial' : 'Dlvl';
     return `${label}:${depth(u.uz)}`;
 }
@@ -5063,12 +5128,27 @@ export async function cls() {
 // bot() still paints it.  js/windows.js select_menu() and getlin() are the two
 // writers of the flag.
 //
-// C's remaining guards -- u.uhp != -1, gy.youmonst.data and
-// suppress_map_output() -- cover dosave(), pre-initialization and the
-// save/restore/hangup states this port does not enter.
+// C's remaining guards -- gy.youmonst.data and suppress_map_output() -- cover
+// pre-initialization and the save/restore/hangup states this port does not
+// enter.  The u.uhp != -1 guard is ported below: the C comment attributes it
+// to dosave(), but it also fires during normal gameplay when mdamageu reduces
+// HP to exactly -1 (e.g. HP 1 minus 2 damage).  Without it, bot() would
+// render HP:0 (clamped) before done() sets u.uhp = 0, and screens captured
+// during the "You die..." --More-- sequence would show HP:0 instead of the
+// pre-damage value that C's incremental terminal leaves on screen.
 export async function bot({ initialTtyRefresh = false } = {}) {
     if (game.gb?.bot_disabled === true)
         return;
+    // C botl.c bot() line 259: skip the status update when u.uhp == -1 but
+    // still clear the display flags (line 270).
+    if (game.u?.uhp === -1) {
+        if (game.disp) {
+            game.disp.botl = false;
+            game.disp.botlx = false;
+            game.disp.time_botl = false;
+        }
+        return;
+    }
     const optionalSnapshot = status_window_rows() === 3
         ? JSON.stringify(_optionalStatusEntries().map(
             ({ field, text }) => [field, text],

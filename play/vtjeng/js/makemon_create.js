@@ -19,6 +19,7 @@ import {
     BOLT_LIM,
     COLNO,
     CROSSWALL,
+    DELPHI,
     DOOR,
     FODDERSHOP,
     G_GENOD,
@@ -29,16 +30,19 @@ import {
     I_SPECIAL,
     In_endgame,
     In_quest,
+    In_mines,
     In_sokoban,
     In_V_tower,
     IS_LAVA,
     IS_POOL,
+    Is_earthlevel,
     Is_knox_level,
     Is_stronghold,
     isok,
     is_pit,
     LS_MONSTER,
     MFAST,
+    MM_NOTAIL,
     MM_ANGRY,
     MM_ASLEEP,
     MM_EDOG,
@@ -65,7 +69,6 @@ import {
     ONAME_NO_FLAGS,
     OBJ_FLOOR,
     OBJ_MINVENT,
-    OROOM,
     ROOMOFFSET,
     ROT_CORPSE,
     ROWNO,
@@ -80,11 +83,12 @@ import {
     STRAT_CLOSE,
     STRAT_WAITFORU,
     TDWALL,
+    TEMPLE,
     TLCORNER,
     TRWALL,
     TUWALL,
-    THEMEROOM,
     TRAPDOOR,
+    VAULT,
     W_AMUL,
     W_ARM,
     W_ARMC,
@@ -95,6 +99,7 @@ import {
     W_ARMU,
     W_SADDLE,
     IS_WALL,
+    ZOO,
     xdir,
     ydir,
 } from './const.js';
@@ -134,6 +139,7 @@ import {
     can_be_hatched,
     cantweararm,
     emits_light,
+    is_demon,
     is_female,
     is_giant,
     is_male,
@@ -175,6 +181,7 @@ import {
     MS_GUARDIAN,
     MS_LEADER,
     MS_NEMESIS,
+    MS_PRIEST,
     MZ_MEDIUM,
     MZ_SMALL,
     NON_PM,
@@ -192,11 +199,13 @@ import {
     PM_CHAMELEON,
     PM_CHICKATRICE,
     PM_CHIEFTAIN,
+    PM_CLERIC,
     PM_COCKATRICE,
     PM_DEMILICH,
     PM_DWARF_RULER,
     PM_DJINNI,
     PM_ELF,
+    PM_ELVEN_MONARCH,
     PM_ETTIN,
     PM_FOG_CLOUD,
     PM_FOX,
@@ -231,10 +240,14 @@ import {
     PM_LONG_WORM,
     PM_MANES,
     PM_GIANT_EEL,
+    PM_GUARD,
     PM_MORDOR_ORC,
     PM_SMALL_MIMIC,
     PM_NEANDERTHAL,
     PM_NEWT,
+    PM_CAPTAIN,
+    PM_LIEUTENANT,
+    PM_NINJA,
     PM_NURSE,
     PM_ORC,
     PM_ORC_CAPTAIN,
@@ -247,6 +260,7 @@ import {
     PM_QUEEN_BEE,
     PM_ROSHI,
     PM_SEWER_RAT,
+    PM_SERGEANT,
     PM_SHOPKEEPER,
     PM_SOLDIER,
     PM_SKELETON,
@@ -259,7 +273,11 @@ import {
     PM_VAMPIRE,
     PM_VAMPIRE_BAT,
     PM_VAMPIRE_LEADER,
+    PM_VLAD_THE_IMPALER,
     PM_WARRIOR,
+    PM_WATCH_CAPTAIN,
+    PM_WATCHMAN,
+    PM_WATER_DEMON,
     PM_WHITE_UNICORN,
     PM_WOLF,
     PM_WOOD_NYMPH,
@@ -302,6 +320,7 @@ import {
 import {
     ARM_BONUS,
     WrappingAllowed,
+    curseFreeObject,
     mkobj,
     mkobj_at,
     mksobj,
@@ -327,15 +346,23 @@ import {
     ARMOR_CLASS,
     ARROW,
     AXE,
+    BANDED_MAIL,
     BATTLE_AXE,
     BEC_DE_CORBIN,
     BOULDER,
     BOW,
+    BROADSWORD,
+    BUGLE,
+    CANDELABRUM_OF_INVOCATION,
     CHAIN_MAIL,
+    CLOAK_OF_MAGIC_RESISTANCE,
+    CLOAK_OF_PROTECTION,
     CLUB,
     COIN_CLASS,
     CORPSE,
     CROSSBOW,
+    CRYSTAL_BALL,
+    CRYSTAL_PLATE_MAIL,
     CROSSBOW_BOLT,
     DAGGER,
     DART,
@@ -362,6 +389,7 @@ import {
     ELVEN_SHORT_SWORD,
     ELVEN_SPEAR,
     FIGURINE,
+    FLAIL,
     FLINT,
     FOOD_CLASS,
     GEM_CLASS,
@@ -388,6 +416,7 @@ import {
     LUCERN_HAMMER,
     LUCKSTONE,
     LUMP_OF_ROYAL_JELLY,
+    MACE,
     MAXOCLASSES,
     MIRROR,
     MUMMY_WRAPPING,
@@ -402,6 +431,7 @@ import {
     ORCISH_SHORT_SWORD,
     PARTISAN,
     PICK_AXE,
+    PLATE_MAIL,
     POT_ACID,
     POT_BLINDNESS,
     POT_CONFUSION,
@@ -421,12 +451,16 @@ import {
     RING_MAIL,
     RING_CLASS,
     ROCK,
+    ROBE,
     ROCK_CLASS,
     SCIMITAR,
     SKELETON_KEY,
     SHORT_SWORD,
+    SHURIKEN,
+    SILVER_SABER,
     SMALL_SHIELD,
     SPEAR,
+    SPLINT_MAIL,
     SCR_CREATE_MONSTER,
     SCR_EARTH,
     SCR_TELEPORTATION,
@@ -441,6 +475,7 @@ import {
     STRANGE_OBJECT,
     TALLOW_CANDLE,
     TIN,
+    TIN_WHISTLE,
     TOOL_CLASS,
     TWO_HANDED_SWORD,
     URUK_HAI_SHIELD,
@@ -463,7 +498,7 @@ import {
 } from './objects.js';
 import { newepri } from './priest.js';
 import { d, rn1, rn2, rnd, rne, rnz } from './rng.js';
-import { enexto_core, goodpos } from './teleport.js';
+import { enexto_core, goodpos, noteleport_level } from './teleport.js';
 import {
     canSeeMonster,
     canSpotMonster,
@@ -477,6 +512,7 @@ import { get_shop_item } from './shknam.js';
 import {
     S_altar,
     S_dnstair,
+    S_fountain,
     S_grave,
     S_hcdoor,
     S_hwall,
@@ -487,7 +523,7 @@ import {
     S_vwall,
 } from './symbols.js';
 import { begin_burn, stop_timer } from './timeout.js';
-import { t_at } from './trap.js';
+import { is_pool, t_at } from './trap.js';
 import { which_armor } from './worn.js';
 
 const SUPPORTED_FLAGS = NO_MINVENT
@@ -865,36 +901,43 @@ function canHideUnderObject(obj) {
     return Boolean(current);
 }
 
-// C ref: mon.c hideunder(), restricted to the object-concealing spiders and
-// snakes reachable from the Statuary D:1 reservoir.
+// C ref: mon.c hideunder(). Covers the S_EEL aquatic-hide and M1_CONCEAL
+// object-concealing branches.
 function hideunder(monster, state) {
     const { mx: x, my: y } = monster;
     let hidden = false;
     const trap = t_at(x, y, state);
     if (monster !== state.u?.ustuck
         && !monster.mtrapped
-        && (!trap || is_pit(trap.ttyp))
-        && (monster.data.mflags1 & M1_CONCEAL)
-        && !IS_POOL(state.level.at(x, y).typ)
-        && !IS_LAVA(state.level.at(x, y).typ)) {
-        let obj = state.level.objects[x][y];
-        if (canHideUnderObject(obj)) {
-            if (!(monster.data.mresists & MR_STONE)) {
-                while (obj?.otyp === CORPSE
-                    && (obj.corpsenm === PM_COCKATRICE
-                        || obj.corpsenm === PM_CHICKATRICE)) {
-                    obj = obj.nexthere;
+        && (!trap || is_pit(trap.ttyp))) {
+        if (monster.data.mlet === S_EEL) {
+            // C ref: mon.c:4742-4747. Eels hide in water, not under objects.
+            hidden = is_pool(x, y, state)
+                && !on_level(state.u?.uz, state.water_level)
+                && (!state.u?.uinwater || !couldsee(x, y, state));
+        } else if ((monster.data.mflags1 & M1_CONCEAL)
+            && !IS_POOL(state.level.at(x, y).typ)
+            && !IS_LAVA(state.level.at(x, y).typ)) {
+            let obj = state.level.objects[x][y];
+            if (canHideUnderObject(obj)) {
+                if (!(monster.data.mresists & MR_STONE)) {
+                    while (obj?.otyp === CORPSE
+                        && (obj.corpsenm === PM_COCKATRICE
+                            || obj.corpsenm === PM_CHICKATRICE)) {
+                        obj = obj.nexthere;
+                    }
                 }
+                hidden = Boolean(obj);
             }
-            hidden = Boolean(obj);
         }
     }
     monster.mundetected = hidden;
     return hidden;
 }
 
-// C ref: makemon.c set_mimic_sym(), restricted to the ordinary and themed
-// initial-room arms and the `rt >= SHOPBASE` shop arm.
+// C ref: makemon.c set_mimic_sym(). Covers all location-based branches:
+// objects on floor, doors/walls, maze levels, corridors, ZOO/VAULT, DELPHI,
+// TEMPLE, shops, and ordinary/themed rooms.
 // The descriptor which requested the Storeroom mimic overwrites m_ap_type and
 // mappearance only. All RNG, temporary-object allocation, fruit state, and any
 // mcorpsenm overlay established here remain intact.
@@ -927,16 +970,39 @@ export function set_mimic_sym(monster, normalized) {
         appearance = isRogueLevel(state)
             ? horizontal ? S_hwall : S_vwall
             : horizontal ? S_hcdoor : S_vcdoor;
+    } else if (state.level.flags.is_maze_lev
+               // C also checks !(In_mines && in_town); in_town is unported,
+               // and no maze level contains a town, so the check is inert.
+               && !In_sokoban(state.u.uz) && random.rn2(2)) {
+        appearanceType = M_AP_OBJECT;
+        appearance = STATUE;
     } else {
         const roomIndex = (state.level.at(x, y)?.roomno ?? 0) - ROOMOFFSET;
         const roomType = roomIndex >= 0
             ? state.level.rooms?.[roomIndex]?.rtype ?? 0
-            : null;
+            : 0;
         // C's s_sym. The two shop arms that set ap_type and appear straight
         // from the shop's stock leave it undefined, which is how this port
         // spells C's two `goto assign_sym` jumps being skipped.
         let symbol;
-        if (roomType >= SHOPBASE) {
+        if (roomIndex < 0 && !t_at(x, y, state)) {
+            appearanceType = M_AP_OBJECT;
+            appearance = BOULDER;
+        } else if (roomType === ZOO || roomType === VAULT) {
+            appearanceType = M_AP_OBJECT;
+            appearance = GOLD_PIECE;
+        } else if (roomType === DELPHI) {
+            if (random.rn2(2)) {
+                appearanceType = M_AP_OBJECT;
+                appearance = STATUE;
+            } else {
+                appearanceType = M_AP_FURNITURE;
+                appearance = S_fountain;
+            }
+        } else if (roomType === TEMPLE) {
+            appearanceType = M_AP_FURNITURE;
+            appearance = S_altar;
+        } else if (roomType >= SHOPBASE) {
             // C ref: makemon.c:2467-2486. Deeper shops disguise their mimics
             // as stock more often: the strange object wins on rn2(10) >= 2 at
             // depth two, so four shop mimics in five are one.
@@ -986,10 +1052,6 @@ export function set_mimic_sym(monster, normalized) {
                         : stock;
                 }
             }
-        } else if (roomType !== OROOM && roomType !== THEMEROOM) {
-            throw new UnsupportedMonsterCreationError(
-                `mimic room type ${roomType ?? 'none'}`,
-            );
         } else {
             symbol = MIMIC_SYMBOLS[random.rn2(MIMIC_SYMBOLS.length)];
         }
@@ -1129,6 +1191,7 @@ function assertSupportedSpecies(species) {
             && !beehiveSpecies
             && !morgueSpecies
             && species.pmidx !== PM_DJINNI
+            && species.pmidx !== PM_WATER_DEMON
             && species.pmidx !== PM_UMBER_HULK)) {
         throw new UnsupportedMonsterCreationError(
             `monster ${species?.pmidx ?? 'null'}`,
@@ -1183,6 +1246,13 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
         && x === state.u?.ux
         && y === state.u?.uy
         && mmflags === MM_NOMSG;
+    // fountain.c dowaterdemon() creates a water demon on the hero's square
+    // with MM_NOMSG, the same shape as the djinni bottle call.
+    const fountainCreatureCall = !state.in_mklev
+        && ptr?.pmidx === PM_WATER_DEMON
+        && x === state.u?.ux
+        && y === state.u?.uy
+        && mmflags === MM_NOMSG;
     // read.c create_particular_creation():3315 names the species the player
     // typed and places it on the hero's own square, so makemon() reaches the
     // enexto() arm below. Its mmflags is MM_NOEXCLAM plus at most one gender
@@ -1197,6 +1267,7 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
             || mmflags === (MM_NOEXCLAM | MM_MALE)
             || mmflags === (MM_NOEXCLAM | MM_FEMALE));
     const runtimeCall = startingPetCall || djinniBottleCall
+        || fountainCreatureCall
         || runtimeRandomCall || runtimeGroupCall || createParticularCall;
     if (runtimeCall
         && (!normalized.runtimeContinuation
@@ -1497,11 +1568,6 @@ function m_initweap(monster, normalized) {
     if (!isArmed(ptr)) return;
 
     switch (ptr.mlet) {
-    case S_DEMON:
-        // C ref: makemon.c:502-523. The only admitted demon-class species is
-        // a djinni, whose data does not carry M2_DEMON; it leaves this arm
-        // before the general weapon roll so a later vanish drops no object.
-        break;
     case S_GIANT:
         // C ref: makemon.c:180-185. Ettins get clubs, other giants get
         // boulders. Only non-ettins roll for a two-handed weapon.
@@ -1522,22 +1588,39 @@ function m_initweap(monster, normalized) {
         break;
     case S_HUMAN:
         if (is_mercenary(ptr)) {
-            // C ref: makemon.c:188-225. Soldiers and watchmen share one arm;
-            // other mercenary types (sergeant, lieutenant, captain) have
-            // distinct weapons but are all G_NOGEN, so they cannot appear
-            // from rndmonst. Use the soldier/watchman arm for all types.
+            // C ref: makemon.c:188-225. Each mercenary rank gets distinct
+            // weapons; the default covers miscellaneous mercenaries.
             let w1 = 0;
             let w2 = 0;
-            if (!random.rn2(3)) {
-                do {
-                    w1 = random.rn1(
-                        BEC_DE_CORBIN - PARTISAN + 1,
-                        PARTISAN,
-                    );
-                } while (state.objects[w1].oc_skill !== P_POLEARMS);
-                w2 = random.rn2(2) ? DAGGER : KNIFE;
-            } else {
-                w1 = random.rn2(2) ? SPEAR : SHORT_SWORD;
+            switch (ptr.pmidx) {
+            case PM_WATCHMAN:
+            case PM_SOLDIER:
+                if (!random.rn2(3)) {
+                    do {
+                        w1 = random.rn1(
+                            BEC_DE_CORBIN - PARTISAN + 1,
+                            PARTISAN,
+                        );
+                    } while (state.objects[w1].oc_skill !== P_POLEARMS);
+                    w2 = random.rn2(2) ? DAGGER : KNIFE;
+                } else {
+                    w1 = random.rn2(2) ? SPEAR : SHORT_SWORD;
+                }
+                break;
+            case PM_SERGEANT:
+                w1 = random.rn2(2) ? FLAIL : MACE;
+                break;
+            case PM_LIEUTENANT:
+                w1 = random.rn2(2) ? BROADSWORD : LONG_SWORD;
+                break;
+            case PM_CAPTAIN:
+            case PM_WATCH_CAPTAIN:
+                w1 = random.rn2(2) ? LONG_SWORD : SILVER_SABER;
+                break;
+            default:
+                if (!random.rn2(4)) w1 = DAGGER;
+                if (!random.rn2(7)) w2 = SPEAR;
+                break;
             }
             if (w1) mongets(monster, w1, normalized);
             if (!w2 && w1 !== DAGGER && !random.rn2(4)) w2 = KNIFE;
@@ -1577,6 +1660,30 @@ function m_initweap(monster, normalized) {
                 }
                 break;
             }
+            // C ref: makemon.c:257-262. Elven Monarchs may receive a
+            // pick-axe and rarely a crystal ball.
+            if (ptr.pmidx === PM_ELVEN_MONARCH) {
+                if (random.rn2(3)
+                    || (state.in_mklev && Is_earthlevel(state.u?.uz)))
+                    mongets(monster, PICK_AXE, normalized);
+                if (!random.rn2(50))
+                    mongets(monster, CRYSTAL_BALL, normalized);
+            }
+        } else if (ptr.msound === MS_PRIEST
+                   || (state.urole?.mnum === PM_CLERIC
+                       && (ptr.msound === MS_LEADER
+                           || ptr.msound === MS_NEMESIS))) {
+            // C ref: makemon.c:263-269. Priests and Cleric quest
+            // representatives receive a mace with rnd(3) enchantment,
+            // 50% cursed. Bypasses mongets to skip normal mksobj_init.
+            const obj = mksobj(MACE, false, false, normalized);
+            obj.spe = random.rnd(3);
+            if (!random.rn2(2)) curseFreeObject(obj, normalized);
+            addFreshMonsterObject(monster, obj, normalized);
+        } else if (ptr.pmidx === PM_NINJA) {
+            // C ref: makemon.c:270-272.
+            mongets(monster, random.rn2(4) ? SHURIKEN : DART, normalized);
+            mongets(monster, random.rn2(4) ? SHORT_SWORD : AXE, normalized);
         } else if (ptr.msound === MS_GUARDIAN) {
             // C ref: makemon.c:273-326. Quest "guardians" receive role-
             // specific gear. Each case makes its own rn2 calls for weapon
@@ -1782,6 +1889,16 @@ function m_initweap(monster, normalized) {
         mongets(monster, KNIFE, normalized);
         mongets(monster, LONG_SWORD, normalized);
         break;
+    case S_DEMON:
+        // C ref: makemon.c:500-524. Specific named demons (Balrog, Orcus,
+        // Horned Devil, Dispater, Yeenoghu) receive special weapons; the
+        // port does not create those species so their arms are omitted.
+        // Non-demons in class S_DEMON (djinni, mail daemon) break here so
+        // a later vanish drops no object. Actual demons (water demon, etc.)
+        // fall through to the default general-weapon roll.
+        if (!is_demon(ptr))
+            break;
+         
     default:
         // C ref: makemon.c:526-567. The general case applies to gnomes and
         // every other armed species not handled by a specific case above.
@@ -1835,13 +1952,6 @@ function rejectsRandomUseItems(species) {
         || species.mattk.some((attack) => attack.aatyp === AT_EXPL)
         || species.mlet === S_GHOST
         || species.mlet === S_KOP;
-}
-
-function noTeleportLevel(state) {
-    if (state.level.flags.noteleport) return true;
-    const stasisUntil = state.level.flags.stasis_until;
-    return Number.isInteger(stasisUntil)
-        && stasisUntil >= Math.trunc(state.moves ?? 0);
 }
 
 function isNonliving(species) {
@@ -1911,7 +2021,7 @@ function rnd_defensive_item(monster, normalized) {
         )) {
         case 6:
         case 9:
-            if (noTeleportLevel(state) && ++trycnt < 2) continue;
+            if (noteleport_level(monster, state) && ++trycnt < 2) continue;
             if (!random.rn2(3)) return WAN_TELEPORTATION;
             return SCR_TELEPORTATION;
         case 0:
@@ -1998,17 +2108,39 @@ function m_initinv(monster, normalized) {
     if (isRogueLevel(state)) return;
 
     if (ptr.mlet === S_HUMAN && is_mercenary(ptr)) {
-        // C ref: makemon.c:602-701. All mercenary types are G_NOGEN; only
-        // PM_SOLDIER is reachable from rndmonst. Use mac=3 (soldier value)
-        // for all types, matching the ported armor rounds.
-        let mac = 3;
+        // C ref: makemon.c:602-701. Each mercenary rank starts at a
+        // different mac; the body armor branch depends on it.
+        let mac;
+        switch (ptr.pmidx) {
+        case PM_GUARD:        mac = -1; break;
+        case PM_SOLDIER:      mac =  3; break;
+        case PM_SERGEANT:     mac =  0; break;
+        case PM_LIEUTENANT:   mac = -2; break;
+        case PM_CAPTAIN:      mac = -3; break;
+        case PM_WATCHMAN:     mac =  3; break;
+        case PM_WATCH_CAPTAIN: mac = -2; break;
+        default:              mac =  0; break;
+        }
         let obj;
         const addArmorClass = () => {
             if (obj) mac += ARM_BONUS(obj, state);
             obj = null;
         };
 
-        if (random.rn2(5)) {
+        // C ref: makemon.c:638-648. Body armor depends on mac.
+        if (mac < -1 && random.rn2(5)) {
+            obj = mongets(
+                monster,
+                random.rn2(5) ? PLATE_MAIL : CRYSTAL_PLATE_MAIL,
+                normalized,
+            );
+        } else if (mac < 3 && random.rn2(5)) {
+            obj = mongets(
+                monster,
+                random.rn2(3) ? SPLINT_MAIL : BANDED_MAIL,
+                normalized,
+            );
+        } else if (random.rn2(5)) {
             obj = mongets(
                 monster,
                 random.rn2(3) ? RING_MAIL : STUDDED_LEATHER_ARMOR,
@@ -2047,8 +2179,38 @@ function m_initinv(monster, normalized) {
         }
         addArmorClass();
 
-        if (!random.rn2(3)) mongets(monster, K_RATION, normalized);
-        if (!random.rn2(2)) mongets(monster, C_RATION, normalized);
+        // C ref: makemon.c:682-701.
+        if (ptr.pmidx === PM_WATCH_CAPTAIN) {
+            // better weapon rather than extra gear
+        } else if (ptr.pmidx === PM_WATCHMAN) {
+            if (random.rn2(3))
+                mongets(monster, TIN_WHISTLE, normalized);
+        } else if (ptr.pmidx === PM_GUARD) {
+            const whistle = mksobj(TIN_WHISTLE, true, false, normalized);
+            curseFreeObject(whistle, normalized);
+            addFreshMonsterObject(monster, whistle, normalized);
+        } else {
+            if (!random.rn2(3)) mongets(monster, K_RATION, normalized);
+            if (!random.rn2(2)) mongets(monster, C_RATION, normalized);
+            if (ptr.pmidx !== PM_SOLDIER && !random.rn2(3))
+                mongets(monster, BUGLE, normalized);
+        }
+    } else if (ptr.mlet === S_HUMAN
+               && (ptr.msound === MS_PRIEST
+                   || (state.urole?.mnum === PM_CLERIC
+                       && (ptr.msound === MS_LEADER
+                           || ptr.msound === MS_NEMESIS)))) {
+        // C ref: makemon.c:721-727. Priests and Cleric quest
+        // representatives receive a robe or cloak, small shield, and gold.
+        mongets(
+            monster,
+            random.rn2(7) ? ROBE
+                : random.rn2(3) ? CLOAK_OF_PROTECTION
+                    : CLOAK_OF_MAGIC_RESISTANCE,
+            normalized,
+        );
+        mongets(monster, SMALL_SHIELD, normalized);
+        mkmonmoney(monster, random.rn1(10, 20), normalized);
     } else if (ptr.mlet === S_NYMPH) {
         if (!random.rn2(2)) mongets(monster, MIRROR, normalized);
         if (!random.rn2(2))
@@ -2098,7 +2260,9 @@ function m_initinv(monster, normalized) {
             break;
         }
     } else if (ptr.mlet === S_GNOME
-        && !random.rn2(60)) {
+        && !random.rn2(
+            (In_mines(state.u.uz, state) && state.in_mklev) ? 20 : 60,
+        )) {
         const candle = mksobj(
             random.rn2(4) ? TALLOW_CANDLE : WAX_CANDLE,
             true,
@@ -3008,6 +3172,7 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
         return null;
     }
     const byHero = x === state.u.ux && y === state.u.uy;
+    const allowtail = !(mmflags & MM_NOTAIL);
     const gpflags = GP_CHECKSCARY | GP_AVOID_MONPOS;
     if (x === 0 && y === 0) {
         const coordinate = makemon_rnd_goodpos(ptr, gpflags, normalized);
@@ -3146,12 +3311,20 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
             state,
         );
     }
+    // C ref: makemon.c:1351-1384. Special inventory item for specific
+    // monsters, given via mongets after the shapechanger and ghost blocks.
+    let mitem = STRANGE_OBJECT;
+    if (mndx === PM_VLAD_THE_IMPALER) mitem = CANDELABRUM_OF_INVOCATION;
     monster.cham = NON_PM;
     const naturalShape = pm_to_cham(mndx, state);
     if (!heroHasProperty(state, PROT_FROM_SHAPE_CHANGERS)
         && naturalShape !== NON_PM) {
         monster.cham = naturalShape;
-        if (newcham_initial(monster, normalized)) allowMinvent = false;
+        // C ref: makemon.c:1361. Vlad stays in his normal form so he
+        // can carry the Candelabrum of Invocation.
+        if (mndx !== PM_VLAD_THE_IMPALER
+            && newcham_initial(monster, normalized))
+            allowMinvent = false;
     } else if (mndx === PM_GHOST) {
         // C ref: makemon.c -- MM_NONAME suppresses the random ghost name.
         // savebones() passes MM_NONAME and then christen_monst separately.
@@ -3161,6 +3334,8 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
             });
         }
     }
+    if (mitem !== STRANGE_OBJECT && allowMinvent)
+        mongets(monster, mitem, normalized);
     if (state.in_mklev
         && mklevSleeperSpecies(ptr)
         && !state.u.uhave.amulet
@@ -3172,6 +3347,16 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
         // visible and undisplaced, so the source result is exact and drawless.
         monster.mux = state.u.ux;
         monster.muy = state.u.uy;
+    }
+    // C ref: makemon.c:1405-1408.
+    if (mndx === PM_LONG_WORM) {
+        monster.wormno = get_wormno(state);
+        if (monster.wormno) {
+            initworm(monster, allowtail ? random.rn2(5) : 0, state);
+            const record = wormSlots(state)[monster.wormno];
+            if (record && record.segments.length > 1)
+                place_worm_tail_randomly(monster, x, y, normalized);
+        }
     }
     set_malign(monster, state);
 

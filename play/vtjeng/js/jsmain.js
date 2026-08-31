@@ -130,14 +130,10 @@ export function set_playmode(state = game, { loginName } = {}) {
     const iflags = state.iflags ??= {};
     const sysopt = state.sysopt ??= {};
     sysopt.wizards ??= RECORDER_SYSTEM_OPTIONS.wizards;
-    // C ref: cfgfiles.c cnf_line_WIZARDS(). The recorder's committed sysconf
-    // preformats its nonempty, non-wildcard WIZARDS list for contact and panic
-    // paths. Keep that derived C state beside the one source list.
-    if (!Object.hasOwn(sysopt, 'fmtd_wizard_list')
-        && String(sysopt.wizards).length > 0
-        && sysopt.wizards !== '*') {
-        sysopt.fmtd_wizard_list = buildEnglishList(sysopt.wizards);
-    }
+    // The recorder's linux-minimal hints file does not define SYSCF, so the C
+    // binary never calls cnf_line_WIZARDS() and fmtd_wizard_list stays NULL.
+    // Do not create it here — the contact page must omit the "local support"
+    // line to match C's output.
     sysopt.explorers ??= RECORDER_SYSTEM_OPTIONS.explorers;
 
     const username = String(loginName ?? RECORDER_ACCOUNT);
@@ -490,6 +486,16 @@ export class NethackGame {
             g.program_state.restoring = 0;
             g.program_state.beyond_savefile_load = 1;
             g.program_state.in_moveloop = 1;
+
+            // C's command-dispatch state (gc.Cmd.key and related fields) is
+            // NOT part of context_info and is NOT saved or restored. After
+            // restore, gc.Cmd.key is 0 (its initial value), so the first
+            // rhack(0) reads fresh input. The JS port's equivalent,
+            // context.pendingCommand, IS serialized because it lives on the
+            // saved context struct. Clear it so the first command dispatch
+            // after restore reads from the input queue instead of re-executing
+            // the command that was in progress when the game was saved.
+            delete g.context.pendingCommand;
 
             // C ref: dorecover():944-945 docrt() + clear_nhwindow(WIN_MSG).
             vision_recalc(0);

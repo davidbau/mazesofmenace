@@ -70,7 +70,7 @@ import {
     NEUTRAL,
 } from './const.js';
 import { adjalign } from './attrib.js';
-import { set_occupation } from './cmd.js';
+import { set_occupation, yn_function } from './cmd.js';
 import { can_reach_floor } from './engrave.js';
 import { game } from './gstate.js';
 import {
@@ -84,6 +84,7 @@ import {
     getobj,
     useup,
     useupf,
+    will_feel_cockatrice,
 } from './invent.js';
 import { iter_mons_safe, mon_offmap } from './mon.js';
 import {
@@ -190,6 +191,7 @@ import {
     S_VORTEX,
 } from './monsters.js';
 import { change_luck } from './moveloop_preamble.js';
+import { make_blinded } from './potion.js';
 import {
     carried,
     costly_alteration,
@@ -200,7 +202,8 @@ import {
     weight,
 } from './obj.js';
 import {
-    corpse_xname, singular, the, the_unique_pm, xnameFresh,
+    ansimpleoname, corpse_xname, donameFresh, otense, safe_qbuf,
+    singular, the, the_unique_pm, xnameFresh,
 } from './objnam.js';
 import {
     APPLE,
@@ -1636,9 +1639,11 @@ async function fpostfx(otmp, state, env) {
             throw new UnsupportedEatError('you_unwere()');
         break;
     case CARROT:
-        // make_blinded(u.ucreamed, TRUE) clears cream from the hero's face and
-        // repairs vision; neither make_blinded() nor u.ucreamed is ported.
-        throw new UnsupportedEatError('make_blinded() for a carrot');
+        // C ref: eat.c:2518-2520. Clears cream from the hero's face. The
+        // swallow/engulf guard is unreachable: uswallow stops the eat command.
+        if (!state.u.uswallow)
+            await make_blinded(state.u.ucreamed ?? 0, true, state);
+        break;
     case FORTUNE_COOKIE:
         // outrumor() reads dat/rumors and sets the literate conduct.
         throw new UnsupportedEatError('outrumor()');
@@ -1821,13 +1826,17 @@ function eatOperations(state, statusRefresh, message = ttyPline) {
         // No other hook is reachable: a food carries no light, no shop bill
         // and no worn mask, so freeinv(), addinv_nomerge() and splitobj() take
         // their hookless path, and a hook this meal did need would stop the
-        // command rather than be skipped.
+        // command rather than be skipped.  costlyAlteration covers
+        // touchfood()'s COST_BITE: C returns early from costly_alteration()
+        // when the object is not in a shop (the common case for a floor
+        // corpse), so a no-op is correct for non-shop items.
         hooks: {
             eatenStat: eaten_stat,
             extractExternalObject: remove_object,
             stopObjectTimers: (obj, hookEnv) => {
                 obj_stop_timers(obj, hookEnv.state, hookEnv);
             },
+            costlyAlteration: () => {},
         },
         message,
         endRunning,
@@ -1846,14 +1855,18 @@ function eatOperations(state, statusRefresh, message = ttyPline) {
 export async function eatfood(state = game, env = {}) {
     const meal = victual(state);
     const eatEnv = eatOperations(state, env.statusRefresh, env.message);
-    const food = meal.piece;
+    let food = meal.piece;
 
     // C ref: `if (food && !carried(food) && !obj_here(food, u.ux, u.uy))
-    // food = 0;`. floorfood() refuses a floor object, so a meal always starts
-    // on a carried food, and no ported path takes one out of inventory while
-    // the meal runs. obj_here() therefore has no reachable input.
+    // food = 0;`. A floor corpse stays on the floor during a multi-turn
+    // meal; obj_here checks that it is still at the hero's feet.
     if (food && !carried(food)) {
-        throw new UnsupportedEatError("eatfood()'s food outside inventory");
+        let here = false;
+        for (let o = state.level.objects[state.u.ux]?.[state.u.uy];
+            o; o = o.nexthere) {
+            if (o === food) { here = true; break; }
+        }
+        if (!here) food = null;
     }
     if (!food) {
         /* maybe it was stolen? */
@@ -2008,15 +2021,9 @@ function eat_ok(obj, state = game) {
 }
 
 // C ref: eat.c floorfood() (3577-3730). Covers the `verb === "eat"` call
-// doeat() makes with corpsecheck 0, as far as the getobj() prompt.
-//
-// C reaches getobj() either by skipping the floor outright or by walking the
-// square's object chain and offering each candidate through yn_function().
-// Everything on the second route stops here: the metallivore's bear-trap,
-// iron-bars and gold questions, and the "There is <object> here; eat it?"
-// prompt, which needs otense(), safe_qbuf() and ansimpleoname(). Each would
-// consume a keystroke and paint a line, so answering the inventory prompt
-// instead would diverge rather than fail closed.
+// doeat() makes with corpsecheck 0. Walks the floor object chain and offers
+// each edible candidate through yn_function(). The metallivore's bear-trap,
+// iron-bars and gold questions remain unported.
 //
 // corpsecheck is the sacrifice and tinning selector; #offer and #tin are
 // unported, so only doeat()'s 0 arrives and the tail that rejects a non-corpse
@@ -2059,9 +2066,25 @@ export async function floorfood(verb, corpsecheck, state = game) {
             otmp;
             otmp = otmp.nexthere) {
             if (otmp.oclass !== COIN_CLASS && is_edible(otmp, state)) {
-                throw new UnsupportedEatError(
-                    'floorfood() offering an object on the floor',
+                if (otmp.otyp === CORPSE
+                    && will_feel_cockatrice(otmp, false, state)) {
+                    throw new UnsupportedEatError(
+                        'floorfood() cockatrice corpse on the floor',
+                    );
+                }
+                const one = (otmp.quan ?? 1) === 1;
+                const prefix = `There ${otense(otmp, 'are')} `;
+                const suffix = ` here; eat ${one ? 'it' : 'one'}?`;
+                const qbuf = safe_qbuf(
+                    prefix, suffix, otmp, donameFresh, ansimpleoname,
+                    one ? 'something' : 'things', state,
                 );
+                const c = await yn_function(
+                    qbuf, 'ynq', 'n', true, state,
+                );
+                if (c === 'y'.charCodeAt(0)) return otmp;
+                if (c === 'q'.charCodeAt(0)) return null;
+                ++getobj_else;
             }
         }
     }

@@ -53,6 +53,7 @@ import {
     WEB,
     ZOMBIFY_MON,
 } from './const.js';
+import { obj_resists } from './bury.js';
 import { make_engr_at } from './engrave.js';
 import { game } from './gstate.js';
 import { induced_align } from './dungeon.js';
@@ -543,7 +544,9 @@ function createMonsterBody(specification, room, env) {
         species,
         env,
     );
-    if (species && m_at(coordinate.x, coordinate.y, env.state)) {
+    // C ref: sp_lev.c create_monster() line 1977 calls enexto regardless of
+    // whether pm is NULL.  enexto_core defaults NULL to the player species.
+    if (m_at(coordinate.x, coordinate.y, env.state)) {
         const nearby = enexto(
             coordinate.x,
             coordinate.y,
@@ -561,6 +564,12 @@ function createMonsterBody(specification, room, env) {
         return null;
     }
     const monsterEnv = themedCreationEnv(env);
+    // C makemon has no species allowlist.  Special-level scripts place
+    // branch-native species that fall outside the JS allowlist (the Oracle on
+    // its eponymous main-dungeon level, for instance).  Bypass the allowlist
+    // for script-placed monsters during mklev, the same way rndmonst-selected
+    // species bypass it.
+    if (env.state?.in_mklev) monsterEnv._rndmonMklev = true;
     // C ref: sp_lev.c lspo_monster() initializes mm_flags = NO_MM_FLAGS.
     // create_monster passes m->mm_flags (initialized to NO_MM_FLAGS = 0), so
     // group creation proceeds normally for random species. makemon handles
@@ -626,7 +635,7 @@ function assertSupportedMonsterAppearance(specification, state) {
             `special-level mimic appearance type ${appearance.type}`,
         );
     }
-    if (appearance.id !== CHEST) {
+    if (appearance.id !== CHEST && appearance.id !== BOULDER) {
         throw new UnsupportedMonsterCreationError(
             `special-level mimic object appearance ${appearance.id}`,
         );
@@ -669,8 +678,15 @@ export function create_monster(specification, room, rawEnv = {}) {
     const keepDefaultInventory = hasCustomInventory
         ? specification.keepDefaultInventory === true
         : specification.keepDefaultInventory !== false;
-    if (monster && !keepDefaultInventory)
+    if (monster && !keepDefaultInventory) {
+        // C ref: sp_lev.c:2180. mdrop_special_objs (steal.c:852)
+        // calls obj_resists(obj, 0, 0) for each inventory item before
+        // discard_minvent discards them. The rn2(100) calls always
+        // return false for ordinary items but still consume the RNG.
+        for (let obj = monster.minvent; obj; obj = obj.nobj)
+            obj_resists(obj, 0, 0, env);
         discard_minvent(monster, true, env);
+    }
     if (!hasCustomInventory) return monster;
 
     const context = env.spObjectContext;

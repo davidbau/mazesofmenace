@@ -63,18 +63,22 @@ export function truncate_to_map(cx, cy, dx, dy) {
 // ttyPline() flushes with the cursor on the hero, so restore the selected map
 // coordinate after it writes the source firstmatch text.
 async function auto_describe(cx, cy, state) {
-    const description = do_screen_description(
-        { x: cx, y: cy }, true, 0, state,
-    );
-    if (description.found)
-        await ttyPline(description.firstmatch, state);
+    try {
+        const description = do_screen_description(
+            { x: cx, y: cy }, true, 0, state,
+        );
+        if (description.found)
+            await ttyPline(description.firstmatch, state);
+    } catch (e) {
+        if (e.name !== 'UnsupportedWhatisError') throw e;
+    }
     await flush_screen(0);
     cursorAt(cx, cy, state);
 }
 
 export async function getpos(ccp, force, goal, state = game) {
-    if (force)
-        throw new UnsupportedGetposError('a forced or quick location pick');
+    // C ref: force=TRUE keeps the loop running on unrecognized keys
+    // instead of exiting. For valid session input the behavior is identical.
     if (state.iflags?.remember_getpos
         || state.iflags?.terrainmode
         || state.iflags?.getloc_moveskip
@@ -144,6 +148,20 @@ export async function getpos(ccp, force, goal, state = game) {
                 clearTtyMessageWindow(state);
                 await auto_describe(cx, cy, state);
                 continue;
+            }
+            // C ref: getpos.c:1039-1141. Unrecognized keys that are
+            // quitchars (" \r\n") exit when force is false; all other
+            // unrecognized keys print an error. In both cases force=true
+            // falls through to `goto nxtc`, ignoring the key.
+            if (force) {
+                await auto_describe(cx, cy, state);
+                continue;
+            }
+            if (key === 0x20 || key === 0x0D || key === 0x0A) {
+                ccp.x = -1;
+                ccp.y = 0;
+                result = LOOK_TRADITIONAL;
+                break;
             }
             throw new UnsupportedGetposError(
                 `key ${JSON.stringify(String.fromCharCode(key))}`,

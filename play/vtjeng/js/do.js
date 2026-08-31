@@ -66,6 +66,7 @@ import {
     st_all,
 } from './const.js';
 import { reset_trapset } from './apply.js';
+import { bones_include_name } from './bones.js';
 import { next_to_u } from './apply_next_to_u.js';
 import { reset_occupations, set_move_cmd, set_occupation } from './cmd.js';
 import { docrt, flush_screen, newsym } from './display.js';
@@ -146,6 +147,7 @@ import {
     preflight_projected_random_arrival_pickup,
     u_safe_from_fatal_corpse,
 } from './pickup.js';
+import { onquest } from './quest.js';
 import { com_pager } from './questpgr.js';
 import { in_out_region, visible_region_at } from './region.js';
 import { getlev } from './restore.js';
@@ -422,6 +424,35 @@ export async function deferred_goto(state = game) {
 function heroPropertyActive(hero, index) {
     const property = hero?.uprops?.[index];
     return Boolean(property?.intrinsic || property?.extrinsic);
+}
+
+// C ref: do.c familiar_level_msg() (1448-1476). Displays a random "deja vu"
+// message when the hero enters a bones level that came from a previous game
+// played under the same name. Consumes one rn2(4) call.
+async function familiar_level_msg(state) {
+    const fam_msgs = [
+        'You have a sense of deja vu.',
+        'You feel like you\'ve been here before.',
+        'This place %s familiar...',
+        null, // no message
+    ];
+    const halu_fam_msgs = [
+        'Whoa!  Everything %s different.',
+        'You are surrounded by twisty little passages, all alike.',
+        'Gee, this %s like uncle Conan\'s place...',
+        null, // no message
+    ];
+    const which = rn2(4);
+    const halluc = heroPropertyActive(state.u, HALLUC)
+        && !heroPropertyActive(state.u, HALLUC_RES);
+    let mesg = halluc ? halu_fam_msgs[which] : fam_msgs[which];
+    if (mesg && mesg.includes('%s')) {
+        const blind = Boolean(state.u.uprops?.[BLINDED]?.intrinsic
+            || state.u.uprops?.[BLINDED]?.extrinsic);
+        mesg = mesg.replace('%s', !blind ? 'looks' : 'seems');
+    }
+    if (mesg)
+        await ttyPline(mesg, state);
 }
 
 // C ref: you.h next2u(), which is `distu(px, py) <= 2`.
@@ -1330,6 +1361,9 @@ export async function goto_level(
 
     const new_ledger = ledger_no(newlevel, state);
     let isNew = false;
+    // C ref: do.c:1493. Set to true when bones from the same player are found
+    // on a newly created level (do.c:1701); triggers familiar_level_msg().
+    let familiar = false;
     if (!(level_info(new_ledger, state).flags & LFILE_EXISTS)) {
         if (level_info(new_ledger, state).flags & VISITED) {
             // C's impossible() clears the flag and carries on; a level marked
@@ -1338,9 +1372,9 @@ export async function goto_level(
         }
         await mklev();
         isNew = true;
-        // do.c:1701 familiar = bones_include_name(svp.plname). The port loads
-        // no bones file -- js/mklev.js getbones() always answers FALSE -- so
-        // svl.level.bonesinfo is empty and no name can match.
+        // C ref: do.c:1701. After mklev() (which may load bones), check
+        // whether the bones cemetery list contains the current player's name.
+        familiar = bones_include_name(state.plname, state);
     } else {
         // do.c:1704-1711, the reload: open_levelfile(), two reseed_random()
         // calls, getlev() and oinit().
@@ -1495,32 +1529,43 @@ export async function goto_level(
 
     // do.c:1858-1872, entering Gehennom. Both arms need In_hell, and
     // dat/dungeon.lua puts the Valley below depth 25.
-    // do.c:1874-1875 familiar_level_msg() needs a bones file.
 
-    // The arrival arms at do.c:1877-1932 are keyed on the destination
-    // dungeon. In_endgame, In_quest, Is_knox, In_mines and In_sokoban are all
-    // false for D:2 of the main dungeon, so the `else` arm runs.
-    if (isNew && state.bigroom_level
-        && on_level(u.uz, state.bigroom_level)) {
-        // C ref: do.c:1907. dat/dungeon.lua puts the big room between
-        // depths 10 and 12.
-        record_achievement(ACH_BGRM, state);
-    }
-    if (!In_quest(u.uz0)
-        && at_dgn_entrance('The Quest', state)
-        && !(u.uevent?.qcompleted || u.uevent?.qexpelled
-             || state.svq?.quest_status?.leader_is_dead)) {
-        u.uevent ??= {};
-        if (!u.uevent.qcalled) {
-            u.uevent.qcalled = 1;
-            await com_pager('quest_portal', state);
-        } else {
-            await com_pager(
-                state.urole?.mnum === PM_ROGUE
-                    ? 'quest_portal_demand'
-                    : 'quest_portal_again',
-                state,
-            );
+    // C ref: do.c:1878-1879. When bones from the same player were found,
+    // display a random "deja vu" message.
+    if (familiar)
+        await familiar_level_msg(state);
+
+    // C ref: do.c:1882-1932.  Arrival arms keyed on the destination
+    // dungeon.  The if/else-if chain is mutually exclusive: exactly one
+    // arm fires.  In_endgame, Is_knox, In_mines, and In_sokoban are not
+    // yet ported; those dungeons are unreachable.
+    if (In_quest(u.uz)) {
+        // C ref: do.c:1891-1892.
+        await onquest(state);
+    } else {
+        if (isNew && state.bigroom_level
+            && on_level(u.uz, state.bigroom_level)) {
+            // C ref: do.c:1907. dat/dungeon.lua puts the big room between
+            // depths 10 and 12.
+            record_achievement(ACH_BGRM, state);
+        }
+        // C ref: do.c:1918-1931.  Main-dungeon quest portal message.
+        if (!In_quest(u.uz0)
+            && at_dgn_entrance('The Quest', state)
+            && !(u.uevent?.qcompleted || u.uevent?.qexpelled
+                 || state.svq?.quest_status?.leader_is_dead)) {
+            u.uevent ??= {};
+            if (!u.uevent.qcalled) {
+                u.uevent.qcalled = 1;
+                await com_pager('quest_portal', state);
+            } else {
+                await com_pager(
+                    state.urole?.mnum === PM_ROGUE
+                        ? 'quest_portal_demand'
+                        : 'quest_portal_again',
+                    state,
+                );
+            }
         }
     }
 
