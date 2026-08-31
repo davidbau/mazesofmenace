@@ -14,7 +14,6 @@ import { artifact_light } from './artifacts.js';
 import {
     BEAR_TRAP,
     BURN,
-    CONFLICT,
     CORR,
     DOOR,
     D_CLOSED,
@@ -53,6 +52,7 @@ import { losehp, nh_delay_output, nomul } from './hack.js';
 import { hands_obj, obj_extract_self, stackobj } from './invent.js';
 import { any_light_source } from './light.js';
 import { m_dowear, set_mimic_sym } from './makemon_create.js';
+import { fightm } from './mhitm.js';
 import { mattacku, MonsterDeathPlanningError } from './mhitu.js';
 import { m_throw, thitu, thrwmu } from './mthrowu.js';
 import { AKLYS } from './objects.js';
@@ -216,8 +216,6 @@ function assertSimpleScanState(monster, state) {
     // in mon.c hideunder(), which is not.
     if (monster.data?.mlet === S_EEL)
         unsupported('eel concealment');
-    if (activeProperty(state, CONFLICT, false))
-        unsupported('conflict combat');
     return true;
 }
 
@@ -1287,8 +1285,9 @@ async function planSimpleMonsterScan(monster, env) {
             return false;
         },
         // C ref: mon.c movemon_singlemon():1268-1281. m_dowear() reassesses
-        // the monster's gear; only a monster that would actually put
-        // something on stops the scan.
+        // the monster's gear. Its new W_ARMF/no-old-item arm applies the
+        // source delay and worn masks on the planning clone; other runtime
+        // equipment changes remain a fail-closed boundary.
         dowear: (subject, creation, subjectEnv) => m_dowear(subject, creation, {
             ...subjectEnv,
             wearArmor: () => unsupported('monster equipment changes'),
@@ -1302,13 +1301,16 @@ async function planSimpleMonsterScan(monster, env) {
         }),
         canSeeMonster: (subject) => canSeeMonster(subject, env.state),
         hideUnder: () => unsupported('eel concealment'),
-        // movemon_singlemon() requires these three, but its conflict arm is
-        // unreachable from here: assertSimpleScanState() refuses an active
-        // CONFLICT before this function is ever called. They match the live
-        // scan's owners anyway, so the two agree if that guard is ever lifted.
+        // movemon_singlemon() requires these three. fightm() owns the
+        // resistance preflight for this slice; the visibility operations stay
+        // here so the planning and live scans take the same final Conflict
+        // gates before dochugw().
         canSeeHero: () => true,
         canSeeSquare: (x, y) => cansee(x, y, env.state),
-        fightMonster: () => unsupported('conflict combat'),
+        fightMonster: (subject, subjectEnv) => fightm(subject, {
+            ...subjectEnv,
+            unsupported,
+        }),
         dochugwAction:
             adaptMonsterActionToDochugwSignature(runSimpleMonsterAction),
     });

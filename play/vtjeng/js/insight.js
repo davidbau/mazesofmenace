@@ -8,27 +8,26 @@
 // doattributes(), align_str(), size_str(), piousness(), mstatusline(), and
 // ustatusline().
 //
-// `doattributes()` is the only ported caller, so `mode` is BASICENLIGHTENMENT,
-// or BASICENLIGHTENMENT | MAGICENLIGHTENMENT under playmode:explore and
-// playmode:debug, and `final` is ENL_GAMEINPROGRESS. `enlightenment()` guards
-// `final` and the hero's form alone: it refuses any `final` other than
-// ENL_GAMEINPROGRESS, which is what keeps end-of-game disclosure out, and
-// refuses a polymorphed hero. `mode` is unchecked, because its two bits pick
-// the same sections here that they pick at insight.c:405-423. The next caller
+// `doattributes()` is the normal caller, so `mode` is BASICENLIGHTENMENT, or
+// BASICENLIGHTENMENT | MAGICENLIGHTENMENT under playmode:explore and
+// playmode:debug, and `final` is ENL_GAMEINPROGRESS. The ordinary dead
+// disclosure caller also uses BASICENLIGHTENMENT | MAGICENLIGHTENMENT with
+// ENL_GAMEOVERDEAD. `enlightenment()` refuses other final modes and
+// polymorphed heroes. `mode` is unchecked, because its two bits pick the same
+// sections here that they pick at insight.c:405-423. The next caller
 // to arrive gets no refusal from that: the potion of enlightenment
 // (potion.c:710), the wand and spell (zap.c do_enlightenment_effect()), a
 // quaffed fountain's self-knowledge (fountain.c:290) and an invoked artifact
 // (artifact.c:2163) all pass MAGICENLIGHTENMENT alone, a mode no differential
 // has covered, so each owns validating its own call. The `final` parameter is
 // still threaded through the sections, so the signatures and call shapes match
-// the C, but it is provably always ENL_GAMEINPROGRESS: no past-tense arm in
-// this file has ever executed, and none has been validated. A site that
-// collapses C's three-way choice on `final` says so in a comment, so
-// end-of-game disclosure can find it.
+// the C; the remaining final modes are not validated. A site that collapses C's
+// three-way choice on `final` says so in a comment, so end-of-game disclosure
+// can find the supported dead mode.
 //
-// attributes_enlightenment() covers three of its branches -- the piousness
-// line, the magic-cancellation line, and the can_pray() line -- and refuses
-// every other one by name. Its own comment says which.
+// attributes_enlightenment() covers the debug in-progress lines reached by
+// the authorized wizard case, together with the ordinary lines already
+// ported. Its own comment says which remaining branches are refused.
 //
 // C interleaves add_menu_str() with the walk that produces each line. Nothing
 // between them waits for input or draws, so this collects the finished list
@@ -69,6 +68,7 @@ import {
     DRAIN_RES,
     EDOG,
     ENL_GAMEINPROGRESS,
+    ENL_GAMEOVERDEAD,
     EXT_ENCUMBER,
     FAST,
     FIRE_RES,
@@ -156,24 +156,27 @@ import {
     WWALKING,
 } from './const.js';
 import { timet_delta } from './allmain.js';
-import { effective_attribute } from './attrib.js';
+import { effective_attribute, stone_luck } from './attrib.js';
 import { getnow, midnight, night } from './calendar.js';
 import { enc_stat } from './display.js';
 import { depth, dunlev } from './dungeon.js';
 import { hu_stat } from './eat.js';
 import { game } from './gstate.js';
-import { near_capacity } from './hack.js';
+import { newuexp } from './exper.js';
+import { inv_weight, near_capacity } from './hack.js';
 import { lcase, lowc, highc, mungspaces, strsubst } from './hacklib.js';
-import { currency, money_cnt } from './invent.js';
+import { carrying, currency, money_cnt } from './invent.js';
 import { makeplural } from './fruit.js';
-import { an } from './objnam.js';
+import { an, ysimple_name } from './objnam.js';
 import { oc_to_str } from './options.js';
 import {
+    CLOAK_OF_MAGIC_RESISTANCE,
     DUNCE_CAP,
     DWARVISH_CLOAK,
     GAUNTLETS_OF_POWER,
     GREEN_DRAGON_SCALE_MAIL,
     GREEN_DRAGON_SCALES,
+    LUCKSTONE,
     RIN_SUSTAIN_ABILITY,
     ROBE,
     SHIELD_OF_REFLECTION,
@@ -569,10 +572,16 @@ function background_enlightenment(final, state, lines) {
     }
 
     /* [flags.showexp currently does not matter; should it?] */
-    /* the "N more needed" clause is gated on final or wizard, neither of
-       which a ^X in an ordinary game in progress satisfies */
-    you_have(lines, final,
-        `${u.uexp} experience point${plur(u.uexp)}`, '');
+    let experience = `${u.uexp} experience point${plur(u.uexp)}`;
+    if (u.ulevel < 30 && (final || state.wizard)) {
+        const nxtlvl = newuexp(u.ulevel);
+        const delta = nxtlvl - u.uexp;
+        experience += `, ${delta} ${u.uexp > 0 ? 'more ' : ''}`
+            + `${!final ? '' : delta === 1 ? 'was ' : 'were '}`
+            + `needed ${u.ulevel < 18 ? 'to attain' : 'for'} level `
+            + `${u.ulevel + 1}`;
+    }
+    you_have(lines, final, experience, '');
     /* SCORE_ON_BOTL is not defined in the reference build, so botl_score()
        and the 'showscore' line it feeds do not exist */
 }
@@ -998,6 +1007,7 @@ function status_enlightenment(mode, final, state, lines) {
     buf = lowc(buf[0]) + buf.slice(1); /* override capitalization */
     if (buf === 'weak') buf += ' from severe hunger';
     else if (buf.startsWith('faint')) buf += ' due to starvation';
+    if (state.wizard) buf += ` <${u.uhunger}>`;
     you_are(lines, final, buf, '');
 
     /* encumbrance */
@@ -1012,12 +1022,19 @@ function status_enlightenment(mode, final, state, lines) {
             [EXT_ENCUMBER]: 'extremely', /* overtaxed */
             [OVERLOADED]: 'not possible',
         }[cap] ?? '?_?'; /* (should always get overridden) */
+        if (state.wizard) {
+            // C calls inv_weight() again after near_capacity(), preserving
+            // hack.c's live capacity cache and reporting the raw excess.
+            buf += ` <${inv_weight(state)}>`;
+        }
         buf += `; movement ${!final ? 'is' : 'was'} ${adj}`
             + `${(cap < OVERLOADED) ? ' slowed' : ''}`;
         you_are(lines, final, buf, '');
     } else {
         /* last resort entry, guarantees Status section is non-empty */
-        you_are(lines, final, 'unencumbered', '');
+        buf = 'unencumbered';
+        if (state.wizard) buf += ` <${inv_weight(state)}>`;
+        you_are(lines, final, buf, '');
     }
 
     /* current weapon(s) and corresponding skill level(s) */
@@ -1059,7 +1076,6 @@ function greenDragonSuit(state) {
 // a mounted hero before this table is read.
 const UNPORTED_ATTRIBUTE_PROPERTIES = Object.freeze([
     [INVULNERABLE, 'Invulnerable'],
-    [ANTIMAGIC, 'Antimagic'],
     [FIRE_RES, 'Fire_resistance'],
     [COLD_RES, 'Cold_resistance'],
     [SLEEP_RES, 'Sleep_resistance'],
@@ -1123,16 +1139,19 @@ const UNPORTED_ATTRIBUTE_PROPERTIES = Object.freeze([
 // like, other non-obvious capabilities". C's `mode` parameter is UNUSED, so
 // this port drops it as background_enlightenment() does.
 //
-// Three of its lines are covered:
+// The debug in-progress lines and the ordinary lines already covered here
+// are:
 //
 //   the piousness() line          insight.c:1509-1513
+//   the numeric alignment line    insight.c:1515-1518
 //   the magic-cancellation line   insight.c:1800-1808
+//   the numeric luck lines        insight.c:1909-1918
 //   the can_pray() line           insight.c:1949-1953, the !u.ugangr arm.
 //                                 C's :1946 spelling of the same Sprintf is
 //                                 inside `#if 0`, so :1949 is the live one
 //
-// Every other line stops by name, either through the property table above or
-// through one of the guards below. The polymorphed region, insight.c:1858-1893,
+// Remaining unported lines stop by name, either through the property table
+// above or through one of the guards below. The polymorphed region, insight.c:1858-1893,
 // is refused further up by enlightenment(). The `#ifdef DEBUG` named-fruit
 // block at insight.c:1955 is not compiled into the recorder --
 // nethack-c/recorder/include/config.h defines DEBUG_MIGRATING_MONS and no bare
@@ -1140,18 +1159,10 @@ const UNPORTED_ATTRIBUTE_PROPERTIES = Object.freeze([
 async function attributes_enlightenment(final, state, lines) {
     const { u } = state;
 
-    // Debug mode reshapes lines across three sections at once, and only three
-    // of the sites are here: insight.c:1516, :1916 and :1949. The rest are
-    // :701 in background_enlightenment() and :1026, :1068, :1090, :1121,
-    // :1160, :1173, :1184, :1207, :1234 and :1244 in status_enlightenment().
-    // This stop still covers all of them: doattributes():2014-2015 sets
-    // MAGICENLIGHTENMENT for every wizard, so no debug hero reaches the window
-    // without arriving here. The sections above have appended their lines by
-    // then, and throwing discards the whole list unshown.
-    if (state.wizard)
-        throw new UnsupportedEnlightenmentError('debug mode');
-
+    const finalDeadProperties = final === ENL_GAMEOVERDEAD
+        ? new Set([INFRAVISION]) : null;
     for (const [propidx, branch, present] of UNPORTED_ATTRIBUTE_PROPERTIES) {
+        if (finalDeadProperties?.has(propidx)) continue;
         if (present ? present(state) : propertyInPlay(state, propidx))
             throw new UnsupportedEnlightenmentError(branch);
     }
@@ -1189,14 +1200,15 @@ async function attributes_enlightenment(final, state, lines) {
     if (u.ulycn >= LOW_PM || hates_silver(state.youmonst?.data))
         throw new UnsupportedEnlightenmentError('the harmed-by-silver line');
     /* you.h:464 `#define Luck (u.uluck + u.moreluck)` */
-    if (u.uluck || u.moreluck)
+    const luck = (u.uluck ?? 0) + (u.moreluck ?? 0);
+    if (luck && final !== ENL_GAMEOVERDEAD && !state.wizard)
         throw new UnsupportedEnlightenmentError('the luck lines');
     // insight.c:1926 asks `carrying(LUCKSTONE) || stone_luck(TRUE)`.
     // artifact.c confers_luck() answers TRUE for a luckstone and for every
     // artifact stone_luck() counts, so scanning it refuses wherever either C
     // term holds and never later.
     for (let otmp = state.invent; otmp; otmp = otmp.nobj) {
-        if (confers_luck(otmp, state)) {
+        if (confers_luck(otmp, state) && final !== ENL_GAMEOVERDEAD) {
             throw new UnsupportedEnlightenmentError(
                 'the luck-does-not-time-out lines',
             );
@@ -1204,9 +1216,9 @@ async function attributes_enlightenment(final, state, lines) {
     }
     if (u.ugangr)
         throw new UnsupportedEnlightenmentError('the angry-god line');
-    // insight.c:1975-1997 leaves `p` NULL, and prints nothing, only while the
-    // game is in progress and the hero has never died.
-    if (u.umortality)
+    // insight.c:1975-1997 leaves `p` NULL only while the game is in progress;
+    // final dead disclosure instead prints the death state below.
+    if (u.umortality && final !== ENL_GAMEOVERDEAD)
         throw new UnsupportedEnlightenmentError('the have-been-killed line');
 
     /*\
@@ -1221,6 +1233,23 @@ async function attributes_enlightenment(final, state, lines) {
     else
         you_have(lines, final, buf, '');
 
+    if (state.wizard) {
+        enl_msg(lines, final, 'Your alignment ', 'is', 'was',
+            ` ${u.ualign.record}`, '');
+    }
+
+    if (hasProperty(state, ANTIMAGIC)) {
+        // insight.c from_what() identifies the Wizard's worn cloak in this
+        // reachable debug case. Other callers retain the ordinary wording.
+        const source = state.wizard
+            && state.uarmc?.otyp === CLOAK_OF_MAGIC_RESISTANCE
+            ? ` because of ${ysimple_name(state.uarmc, state)}` : '';
+        you_are(lines, final, `magic-protected${source}`, '');
+    }
+
+    if (hasProperty(state, INFRAVISION))
+        you_have(lines, final, 'infravision', '');
+
     let armpro = magic_negation(state.youmonst, state);
     if (armpro > 0) {
         /* magic cancellation factor, conferred by worn armor */
@@ -1231,6 +1260,38 @@ async function attributes_enlightenment(final, state, lines) {
         you_are(lines, final, mc_types[armpro], '');
     }
 
+    if (luck) {
+        const prefix = Math.abs(luck) >= 10 ? 'extremely '
+            : Math.abs(luck) >= 5 ? 'very ' : '';
+        const suffix = state.wizard ? ` (${luck})` : '';
+        you_are(lines, final,
+            `${prefix}${luck < 0 ? 'un' : ''}lucky${suffix}`, '');
+    } else if (state.wizard) {
+        enl_msg(lines, final, 'Your luck ', 'is', 'was', ' zero', '');
+    }
+
+    // C ref: insight.c:1919-1928. The permanent luck adjustment and the
+    // luckstone timeout message are separate from the aggregate Luck line.
+    // The carrying() term deliberately keeps an uncursed carried luckstone in
+    // this branch even though stone_luck(FALSE) returns zero; C emits both
+    // messages for that exact zero case.
+    if (u.moreluck > 0)
+        you_have(lines, final, 'extra luck', '');
+    else if (u.moreluck < 0)
+        you_have(lines, final, 'reduced luck', '');
+    if (carrying(LUCKSTONE, state) || stone_luck(true, state)) {
+        const timedLuck = stone_luck(false, state);
+        if (timedLuck <= 0)
+            enl_msg(lines, final, 'Bad luck ', 'does', 'did',
+                ' not time out for you', '');
+        if (timedLuck >= 0)
+            enl_msg(lines, final, 'Good luck ', 'does', 'did',
+                ' not time out for you', '');
+    }
+
+    if (final === ENL_GAMEOVERDEAD)
+        enl_msg(lines, final, You_, 'have been killed ', 'are dead', '', '');
+
     /*
      * We need to suppress this when the game is over, because death
      * can change the value calculated by can_pray(), potentially
@@ -1238,6 +1299,7 @@ async function attributes_enlightenment(final, state, lines) {
      */
     if (!final) {
         buf = `${await can_pray(false, state) ? '' : 'not '}safely pray`;
+        if (state.wizard) buf += ` (${u.ublesscnt})`;
         you_can(lines, final, buf, '');
     }
 }
@@ -1247,7 +1309,7 @@ async function attributes_enlightenment(final, state, lines) {
 // window until the list is complete, so an unported branch leaves the screen
 // untouched.
 export async function enlightenment(mode, final, state = game) {
-    if (final !== ENL_GAMEINPROGRESS)
+    if (final !== ENL_GAMEINPROGRESS && final !== ENL_GAMEOVERDEAD)
         throw new UnsupportedEnlightenmentError('end-of-game disclosure');
     if (Upolyd(state.u))
         throw new UnsupportedEnlightenmentError('a polymorphed hero');
@@ -1282,18 +1344,18 @@ export async function enlightenment(mode, final, state = game) {
     enlght_out(lines, ''); /* separator */
     enlght_out(lines, 'Miscellaneous:');
     /* reminder to player and/or information for dumplog */
-    // C's `(wizard || discover || final)` and its inner `wizard ? "debug" :
-    // "explore"` both collapse to the explore-mode arm. `final` is constantly
-    // ENL_GAMEINPROGRESS, and a debug hero cannot arrive: doattributes() sets
-    // MAGICENLIGHTENMENT for one, and attributes_enlightenment() then stops
-    // above this line. Porting debug mode restores both terms here.
-    if ((mode & BASICENLIGHTENMENT) !== 0 && state.discover) {
-        you_are(lines, final, 'running in explore mode', '');
-
+    // C's `(wizard || discover || final)` controls this reminder. The
+    // in-progress debug arm is part of this slice alongside explore mode.
+    if ((mode & BASICENLIGHTENMENT) !== 0
+        && (state.wizard || state.discover || final)) {
+        if (state.wizard || state.discover)
+            you_are(lines, final, state.wizard
+                ? 'running in debug mode' : 'running in explore mode', '');
         if (!state.flags.bones) {
             /* mention not saving bones iff hero just died */
-            // The " and storing" half needs final == ENL_GAMEOVERDEAD.
-            you_have_X(lines, final, 'disabled loading of bones levels');
+            you_have_X(lines, final, 'disabled loading'
+                + `${final === ENL_GAMEOVERDEAD ? ' and storing' : ''}`
+                + ' of bones levels');
         } else if (!state.u.uroleplay.numbones) {
             enl_msg(lines, final, You_, "haven't encountered",
                 "didn't encounter", ' any bones levels', '');
