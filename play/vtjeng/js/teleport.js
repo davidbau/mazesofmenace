@@ -6,6 +6,7 @@
 
 import {
     ACCESSIBLE,
+    ACH_AMUL,
     ALTAR,
     BLINDED,
     BOLT_LIM,
@@ -95,6 +96,10 @@ import { next_to_u } from './apply_next_to_u.js';
 import { engr_at } from './engrave.js';
 import { getlin } from './windows.js';
 import { game } from './gstate.js';
+import { addinv, prinv } from './invent.js';
+import { record_achievement } from './insight.js';
+import { objectGenerationEnv } from './object_generation.js';
+import { learnscroll } from './read.js';
 import {
     invocation_message,
     near_capacity,
@@ -140,8 +145,12 @@ import {
     S_VAMPIRE,
 } from './monsters.js';
 import { set_ustuck } from './mon.js';
-import { sobj_at } from './obj.js';
-import { BOULDER, SCR_SCARE_MONSTER } from './objects.js';
+import { mksobj, sobj_at } from './obj.js';
+import {
+    AMULET_OF_YENDOR,
+    BOULDER,
+    SCR_SCARE_MONSTER,
+} from './objects.js';
 import { within_bounded_area } from './rect.js';
 import { update_monster_region, update_player_regions } from './region.js';
 import { rn2, rnd, rnl } from './rng.js';
@@ -178,6 +187,16 @@ function teleportEnv(env = {}) {
     if (typeof random.rn2 !== 'function')
         throw new TypeError('teleport random injection requires rn2');
     return { ...env, random, state: env.state ?? game };
+}
+
+// C ref: invent.c addinv_core1() (976-980).  level_tele() supplies the
+// special-object effect hook because its generated Amulet is the only
+// addinv() caller in this module; the hook keeps the source mutation order
+// beside the mksobj()/addinv() call at teleport.c:1234-1246.
+function addinvAmuletEffects(obj, env) {
+    if (obj.otyp !== AMULET_OF_YENDOR) return;
+    env.state.u.uhave.amulet = 1;
+    record_achievement(ACH_AMUL, env.state);
 }
 
 function teleJumpOk(x1, y1, x2, y2, state) {
@@ -1129,9 +1148,28 @@ function Stunned_prop(state) {
     return Boolean(state.u?.uprops?.[STUNNED]?.intrinsic);
 }
 
-// C ref: teleport.c scrolltele() (849-915). Controlled teleport path only;
-// the uncontrolled fallback (safe_teleds) is left for a future slice.
-async function scrolltele(scroll, state = game) {
+// C ref: teleport.c safe_teleds() (717-770). The ordinary random-candidate
+// path used by the calm scroll read is bounded here; the whole-map candidate
+// fallback remains a later boundary.
+export async function safe_teleds(teleds_flags, state = game) {
+    for (let tcnt = 0; tcnt < 40; ++tcnt) {
+        const nux = rnd(COLNO - 1);
+        const nuy = rn2(ROWNO);
+        if (await teleok(nux, nuy, false, state)) {
+            await teleds(nux, nuy, teleds_flags, state);
+            return true;
+        }
+    }
+
+    throw new UnsupportedHeroMoveBoundaryError(
+        'safe_teleds() whole-map candidate fallback',
+    );
+}
+
+// C ref: teleport.c scrolltele() (849-915). The calm uncontrolled scroll
+// branch reaches safe_teleds(); controlled, level-restricted, and direct
+// teleport-command branches remain bounded to their existing callers.
+export async function scrolltele(scroll, state = game) {
     const message = ttyPline;
 
     if (noteleport_level(state.youmonst, state) && !state.wizard) {
@@ -1185,9 +1223,13 @@ async function scrolltele(scroll, state = game) {
         }
     }
 
-    throw new UnsupportedHeroMoveBoundaryError(
-        'scrolltele: uncontrolled teleport (safe_teleds) unported',
-    );
+    if (!scroll) {
+        throw new UnsupportedHeroMoveBoundaryError(
+            'scrolltele: uncontrolled teleport (safe_teleds) unported',
+        );
+    }
+    learnscroll(scroll, state);
+    await safe_teleds(TELEDS_TELEPORT, state);
 }
 
 // C ref: teleport.c tele() (842-845).
@@ -1469,15 +1511,46 @@ export async function level_tele(state = game) {
             const newlevel = { dnum: dest.dnum, dlevel: dest.dlevel };
             // C:1234-1246 endgame-amulet branch: when the selected level is
             // in the endgame and the hero is not, wizard mode conjures the
-            // Amulet of Yendor. No witness session exercises this path.
+            // Amulet of Yendor. This bounded port takes the Plane-of-Fire
+            // destination; other endgame selections remain fail-closed.
             const inEndgame = newlevel.dnum === state.astral_level?.dnum;
             const heroInEndgame =
                 state.u.uz.dnum === state.astral_level?.dnum;
-            if (inEndgame && !heroInEndgame) {
+            const enteringFire = on_level(newlevel, state.fire_level);
+            if (inEndgame && !heroInEndgame && !enteringFire) {
                 throw new UnsupportedLevelChangeError(
-                    'level_tele() endgame-amulet branch '
-                    + 'via print_dungeon menu',
+                    'level_tele() endgame destination outside Plane of Fire',
                 );
+            }
+            if (inEndgame && !heroInEndgame && enteringFire) {
+                // C:1234-1246. A wizard leaving the ordinary dungeon for
+                // Endgame receives the Amulet when it is not already held.
+                // addinv() owns the inventory letter and OBJ_INVENT state;
+                // its hook supplies addinv_core1()'s uhave/achievement arm.
+                if (!state.u.uhave.amulet) {
+                    let amu = mksobj(
+                        AMULET_OF_YENDOR,
+                        true,
+                        false,
+                        objectGenerationEnv({ state }),
+                    );
+                    if (amu) {
+                        amu = addinv(amu, {
+                            state,
+                            hooks: {
+                                addSpecialInventoryEffects:
+                                    addinvAmuletEffects,
+                                updateInventory: () => {},
+                            },
+                        });
+                        await prinv(
+                            'Endgame prerequisite:',
+                            amu,
+                            0,
+                            { state },
+                        );
+                    }
+                }
             }
             // C:1301-1302 buried_ball_to_punishment() runs unconditionally,
             // outside any !force_dest guard.
