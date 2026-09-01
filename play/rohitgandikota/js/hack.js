@@ -18,16 +18,18 @@ import { curr_mon_load } from './mon.js';
 import { inv_weight, weight_cap } from './attrib.js';
 import { carrying } from './invent.js';
 import { a_monnam, upstart } from './do_name.js';
-import { is_door_mappear, helpless } from './monst.js';
+import { is_door_mappear, helpless, DEADMONSTER } from './monst.js';
 import { dist2, distmin } from './hacklib.js';
 import { Levitation, Flying, Fire_resistance, Underwater,
-         Hallucination, Deaf } from './youprop.js';
+         Hallucination, Deaf, Passes_walls, Stealth, Swimming,
+         Amphibious, Breathless } from './youprop.js';
 import { is_pool_or_lava } from './dbridge.js';
-import { is_pool, is_lava, t_at, m_at, is_pick, seemimic } from './mon.js';
+import { is_pool, is_lava, t_at, m_at, is_pick, seemimic,
+         wake_msg } from './mon.js';
 import { hliquid } from './do_name.js';
 import { Is_waterlevel, WATER, LAVAPOOL, POOL } from './const.js';
 import { waterbody_name } from './pager.js';
-import { surface } from './dungeon.js';
+import { surface, recalc_mapseen } from './dungeon.js';
 import { pickup, can_reach_floor } from './pickup.js';
 import { dotrap } from './trap.js';
 import { is_pit, EXT_ENCUMBER, HVY_ENCUMBER, IS_FURNITURE, STAIRS, ECMD_OK, ECMD_TIME, OBJ_AT, GOLD_SYM, TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL } from './const.js';
@@ -54,13 +56,16 @@ import {
     IS_STWALL, IS_TREE, IS_OBSTRUCTED,
     W_NONDIGGABLE, W_NONPASSWALL,
 
-    ROOMOFFSET, MAXNROFROOMS, OROOM, MORGUE, TEMPLE, SHOPBASE, NO_ROOM, SHARED, SHARED_PLUS, COLNO, ROWNO, CQ_CANNED, VIBRATING_SQUARE, LAVAWALL, IS_WATERWALL, STONE, CORR, ICE, ROOM, IS_AIR,
+    ROOMOFFSET, MAXNROFROOMS, OROOM, COURT, SWAMP, BEEHIVE, MORGUE,
+    BARRACKS, ZOO, DELPHI, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE,
+    SHOPBASE, NO_ROOM, SHARED, SHARED_PLUS, COLNO, ROWNO, CQ_CANNED,
+    VIBRATING_SQUARE, LAVAWALL, IS_WATERWALL, STONE, CORR, ICE, ROOM, IS_AIR,
     THRONE, SINK, GRAVE, FOUNTAIN, ALTAR, D_ISOPEN, ACCESSIBLE, IS_SDOOR,
     M_AP_OBJECT, M_AP_FURNITURE, M_AP_TYPE, isok, u_at,
     IRONBARS, IS_DOOR, D_NODOOR, D_BROKEN, WT_SQUEEZABLE_INV,
     WT_TOOMUCH_DIAGONAL, DO_MOVE, TEST_MOVE, TEST_TRAV, TEST_TRAP,
     DIR_W, DIR_N, DIR_E, DIR_S, DIR_NW, DIR_NE, DIR_SE, DIR_SW,
-    xdir, ydir, N_DIRS } from './const.js';
+    xdir, ydir, N_DIRS, Upolyd } from './const.js';
 import { sobj_at } from './invent.js';
 import { couldsee } from './vision.js';
 import { D_CLOSED, D_LOCKED } from './const.js';
@@ -74,6 +79,9 @@ import { tunnels, needspick, passes_walls, passes_bars, dmgtype,
          metallivorous, throws_rocks, verysmall, bigmonst, amorphous,
          is_whirly, noncorporeal, slithy } from './mondata.js';
 import { INTRINSIC } from './const.js';
+import { start_timer, stop_timer, peek_timer, TIMER_OBJECT, ZOMBIFY_MON }
+    from './timeout.js';
+import { Hello } from './role.js';
 
 // src/hack.c:982 invocation_pos(), the ritual square on the penultimate
 // Gehennom level.
@@ -157,7 +165,7 @@ export function bad_rock(mdat, x, y) {
 // failure.
 export function could_move_onto_boulder(sx, sy) {
     /* can if able to phaze through rock (must be poly'd, so not riding) */
-    if (game.u.uprops?.PASSES_WALLS)
+    if (Passes_walls())
         return true;
     /* can't when riding */
     if (game.u.usteed)
@@ -184,7 +192,7 @@ export function cant_squeeze_thru(mon) {
     const is_u = mon === game.youmonst;
     const ptr = is_u ? game.youmonst.data : mon.data;
 
-    if (is_u ? !!game.u.uprops?.PASSES_WALLS : passes_walls(ptr))
+    if (is_u ? Passes_walls() : passes_walls(ptr))
         return 0;
 
     /* too big? (can_fog needs polymorph-into-fog state, not modelled) */
@@ -233,7 +241,7 @@ export async function test_move(ux, uy, dx, dy, mode) {
         return false;
 
     const tmpr = game.level.at(x, y);
-    const Passes_walls = !!game.u.uprops?.PASSES_WALLS;
+    const passesWalls = Passes_walls();
 
     /*
      *  Check for physical obstacles.  First, the place we are going.
@@ -241,7 +249,7 @@ export async function test_move(ux, uy, dx, dy, mode) {
     if (IS_OBSTRUCTED(tmpr.typ) || tmpr.typ === IRONBARS) {
         if (game.u.ublind && mode === DO_MOVE)
             await feel_location(x, y);
-        if (Passes_walls && may_passwall(x, y)) {
+        if (passesWalls && may_passwall(x, y)) {
             ; /* do nothing */
         } else if (Underwater()) {
             if (mode === DO_MOVE)
@@ -255,7 +263,7 @@ export async function test_move(ux, uy, dx, dy, mode) {
                 note_unported_hack('test_move:chew_ironbars');
                 return false;
             }
-            if (!(Passes_walls || passes_bars(game.youmonst.data))) {
+            if (!(passesWalls || passes_bars(game.youmonst.data))) {
                 if (mode === DO_MOVE && game.flags?.mention_walls)
                     await You('cannot pass through the bars.');
                 return false;
@@ -285,7 +293,7 @@ export async function test_move(ux, uy, dx, dy, mode) {
         if (closed_door(x, y)) {
             if (game.u.ublind && mode === DO_MOVE)
                 await feel_location(x, y);
-            if (Passes_walls) {
+            if (passesWalls) {
                 ; /* do nothing */
             } else if (can_ooze(game.youmonst)) {
                 if (mode === DO_MOVE)
@@ -308,8 +316,8 @@ export async function test_move(ux, uy, dx, dy, mode) {
                 } else if (mode === TEST_TRAV || mode === TEST_TRAP) {
                     /* C: goto testdiag — on survival, control falls out of
                        the door branch into the squeeze tests below */
-                    const r = test_move_testdiag(x, y, dx, dy, mode,
-                                                 Passes_walls);
+                    const r = await test_move_testdiag(x, y, dx, dy, mode,
+                                                       passesWalls);
                     if (r !== 'fallthru')
                         return r;
                     through_testdiag = true;
@@ -318,7 +326,8 @@ export async function test_move(ux, uy, dx, dy, mode) {
                     return false;
             }
         } else {
-            const r = test_move_testdiag(x, y, dx, dy, mode, Passes_walls);
+            const r = await test_move_testdiag(x, y, dx, dy, mode,
+                                               passesWalls);
             if (r !== 'fallthru')
                 return r;
         }
@@ -382,7 +391,7 @@ export async function test_move(ux, uy, dx, dy, mode) {
     const ust = game.level.at(ux, uy);
 
     /* Now see if other things block our way . . */
-    if (dx && dy && !Passes_walls && IS_DOOR(ust.typ)
+    if (dx && dy && !passesWalls && IS_DOOR(ust.typ)
         && (!doorless_door(ux, uy) || block_entry(x, y))) {
         /* Can't move at a diagonal out of a doorway with door. */
         if (mode === DO_MOVE && game.flags?.mention_walls)
@@ -391,7 +400,7 @@ export async function test_move(ux, uy, dx, dy, mode) {
     }
 
     if (sobj_at(ONAMES.BOULDER, x, y)
-        && (In_sokoban(game.u.uz) || !Passes_walls)) {
+        && (In_sokoban(game.u.uz) || !passesWalls)) {
         if (mode !== TEST_TRAV && game.context.run >= 2
             && !(game.u.ublind || Hallucination())
             && !could_move_onto_boulder(x, y)) {
@@ -416,7 +425,7 @@ export async function test_move(ux, uy, dx, dy, mode) {
 
             /* don't pick two boulders in a row, unless there's a way thru */
             if (sobj_at(ONAMES.BOULDER, ux, uy) && !In_sokoban(game.u.uz)) {
-                if (!Passes_walls
+                if (!passesWalls
                     && !could_move_onto_boulder(ux, uy)
                     && !(tunnels(game.youmonst.data)
                          && !needspick(game.youmonst.data))
@@ -437,9 +446,9 @@ export async function test_move(ux, uy, dx, dy, mode) {
 // The `testdiag` label inside src/hack.c:1138 test_move(): diagonal moves
 // into an intact doorway are not allowed. Returns 'fallthru' when the C would
 // fall out of the door branch and continue with the squeeze tests.
-function test_move_testdiag(x, y, dx, dy, mode, Passes_walls) {
-    if (dx && dy && !Passes_walls
-        && (!doorless_door(x, y) || block_door(x, y))) {
+async function test_move_testdiag(x, y, dx, dy, mode, passesWalls) {
+    if (dx && dy && !passesWalls
+        && (!doorless_door(x, y) || await block_door(x, y))) {
         /* Diagonal moves into a door are not allowed. */
         if (mode === DO_MOVE)
             note_unported_hack('test_move:diag_door_msg');
@@ -489,7 +498,21 @@ async function maybe_wail() {
 // end_running are display and movement bookkeeping.
 export async function losehp(n, knam, k_format) {
     (game.disp ||= {}).botl = true;
-    /* Upolyd's rehumanize path needs polymorph state */
+    if (Upolyd(game.u)) {
+        game.u.mh -= n;
+        if (game.u.mh > game.u.mhmax)
+            game.u.mhmax = game.u.mh;
+        if (game.u.mh < 1) {
+            const { rehumanize } = await import('./polyself.js');
+            await rehumanize();
+        } else if (n > 0 && game.u.mh * 10 < game.u.mhmax
+                   && (game.u.intrinsic?.HUnchanging
+                       || game.u.uprops?.UNCHANGING)) {
+            await maybe_wail();
+        }
+        return;
+    }
+
     const shownHp = game.u.uhp;
     game.u.uhp -= n;
     if (game.u.uhp > game.u.uhpmax)
@@ -606,7 +629,11 @@ export function move_update(newlev) {
     for (const ch of u.urooms) {
         if (!u.urooms0.includes(ch))
             u.uentered += ch;
-        const rtype = game.level?.rooms?.[ch.charCodeAt(0) - ROOMOFFSET]?.rtype;
+        const roomidx = ch.charCodeAt(0) - ROOMOFFSET;
+        const room = game.level?.rooms?.[roomidx]
+            || (game.level?.subrooms || [])
+                .find(candidate => candidate.roomnoidx === roomidx);
+        const rtype = room?.rtype;
         if (rtype >= SHOPBASE) {
             u.ushops += ch;
             if (!u.ushops0.includes(ch))
@@ -617,9 +644,36 @@ export function move_update(newlev) {
         .filter(ch => !u.ushops.includes(ch)).join('');
 }
 
-// src/hack.c:3626 check_special_room(): update room membership and deliver
-// one-time entry messages. Shops and morgues are the currently exercised
-// room types; the remaining special-room side effects stay explicit.
+// src/hack.c:3466 monstinroom() and 3482 furniture_present().
+function monster_in_room(mnum, roomno) {
+    const roomch = String.fromCharCode(roomno + ROOMOFFSET);
+    for (const mtmp of game.level?.monsters || []) {
+        if (!DEADMONSTER(mtmp) && mtmp.mnum === mnum
+            && in_rooms(mtmp.mx, mtmp.my, 0).includes(roomch))
+            return mtmp;
+    }
+    return null;
+}
+
+function furniture_present(furniture, room) {
+    for (let y = room.ly; y <= room.hy; y++)
+        for (let x = room.lx; x <= room.hx; x++)
+            if (game.level.at(x, y)?.typ === furniture
+                && inside_room(room, x, y))
+                return true;
+    return false;
+}
+
+function room_discovered(roomno) {
+    const seen = (game.level._mapseen_rooms ||= []);
+    if (!seen.includes(roomno)) {
+        seen.push(roomno);
+        recalc_mapseen();
+    }
+}
+
+// src/hack.c:3626 check_special_room(): update room membership, deliver each
+// special room's one-time entry message, and retire consumed room types.
 export async function check_special_room(newlev) {
     move_update(newlev);
 
@@ -660,10 +714,25 @@ export async function check_special_room(newlev) {
             : game.level?.subrooms?.find(r => r.roomnoidx === roomno);
         if (!room || room.rtype >= SHOPBASE)
             continue;
-        if (room.rtype === TEMPLE) {
-            const { intemple } = await import('./priest.js');
-            await intemple(ch.charCodeAt(0));
-        } else if (room.rtype === MORGUE) {
+        let rt = room.rtype;
+        let msg_given = true;
+
+        switch (rt) {
+        case ZOO:
+            await pline("Welcome to David's treasure zoo!");
+            break;
+        case SWAMP:
+            await pline(`It ${game.u.ublind ? 'feels' : 'looks'} rather ${
+                game.u.ublind ? 'humid' : 'muddy'} down here.`);
+            break;
+        case COURT:
+            await You(`enter an opulent${
+                furniture_present(THRONE, room) ? ' throne' : ''} room!`);
+            break;
+        case LEPREHALL:
+            await You('enter a leprechaun hall!');
+            break;
+        case MORGUE: {
             const { midnight } = await import('./calendar.js');
             if (midnight()) {
                 const run = u_locomotion('Run');
@@ -671,16 +740,84 @@ export async function check_special_room(newlev) {
             } else {
                 await You('have an uncanny feeling...');
             }
-            room.rtype = OROOM;
-            if (!(game.level.rooms || []).some(r => r.rtype === MORGUE))
-                game.level.flags.has_morgue = false;
-        } else if (room.rtype !== OROOM) {
-            note_unported_hack('check_special_room:other');
+            break;
         }
-        if (room.rtype !== OROOM) {
-            const seen = (game.level._mapseen_rooms ||= []);
-            if (!seen.includes(roomno))
-                seen.push(roomno);
+        case BEEHIVE:
+            await You('enter a giant beehive!');
+            break;
+        case COCKNEST:
+            await You('enter a disgusting nest!');
+            break;
+        case ANTHOLE:
+            await You('enter an anthole!');
+            break;
+        case BARRACKS:
+            if (monster_in_room(PMNAMES.PM_SOLDIER, roomno)
+                || monster_in_room(PMNAMES.PM_SERGEANT, roomno)
+                || monster_in_room(PMNAMES.PM_LIEUTENANT, roomno)
+                || monster_in_room(PMNAMES.PM_CAPTAIN, roomno)) {
+                await You('enter a military barracks!');
+            } else {
+                await You('enter an abandoned barracks.');
+            }
+            break;
+        case DELPHI: {
+            const oracle = monster_in_room(PMNAMES.PM_ORACLE, roomno);
+            if (oracle) {
+                const speech = oracle.mpeaceful
+                    ? `${Hello(null)}, ${game.plname}, welcome to Delphi!`
+                    : `You're in Delphi, ${game.plname}.`;
+                await pline(`"${speech}"`);
+            } else {
+                msg_given = false;
+            }
+            break;
+        }
+        case TEMPLE: {
+            const { intemple } = await import('./priest.js');
+            await intemple(ch.charCodeAt(0));
+            rt = 0;
+            break;
+        }
+        default:
+            msg_given = rt === TEMPLE || rt >= SHOPBASE;
+            rt = 0;
+            break;
+        }
+
+        if (msg_given)
+            room_discovered(roomno);
+
+        if (rt !== 0) {
+            room.rtype = OROOM;
+            const another = [...(game.level.rooms || []),
+                             ...(game.level.subrooms || [])]
+                .some(candidate => candidate?.rtype === rt);
+            if (!another) {
+                const flag = rt === COURT ? 'has_court'
+                    : rt === SWAMP ? 'has_swamp'
+                      : rt === MORGUE ? 'has_morgue'
+                        : rt === ZOO ? 'has_zoo'
+                          : rt === BARRACKS ? 'has_barracks'
+                            : rt === TEMPLE ? 'has_temple'
+                              : rt === BEEHIVE ? 'has_beehive' : null;
+                if (flag)
+                    game.level.flags[flag] = false;
+            }
+
+            if (rt === COURT || rt === SWAMP || rt === MORGUE || rt === ZOO) {
+                for (const mtmp of game.level.monsters || []) {
+                    if (DEADMONSTER(mtmp))
+                        continue;
+                    if (!isok(mtmp.mx, mtmp.my)
+                        || roomno !== game.level.at(mtmp.mx, mtmp.my)?.roomno)
+                        continue;
+                    if (!Stealth() && !rn2(3)) {
+                        await wake_msg(mtmp, false);
+                        mtmp.msleeping = 0;
+                    }
+                }
+            }
         }
     }
 }
@@ -803,7 +940,7 @@ const note_unported_hack = (w) => {
 // src/hack.c:1832 u_simple_floortyp() — floor solid/liquid state for the
 // hero: walls of water/lava always count; pools only when grounded.
 function u_simple_floortyp(x, y) {
-    const u_in_air = !!(game.u.uprops?.LEVITATION || game.u.uprops?.FLYING);
+    const u_in_air = Levitation() || Flying();
     const typ = game.level?.at(x, y)?.typ;
     if (typ === WATER)
         return WATER;
@@ -844,8 +981,8 @@ export async function swim_move_danger(x, y) {
                 return false;
             } else if (paranoid_swim() || liquid_wall) {
                 await You(`avoid ${
-                    game.u.uprops?.LEVITATION ? 'floating'
-                    : game.u.uprops?.FLYING ? 'flying' : 'stepping'} into the ${
+                    Levitation() ? 'floating'
+                    : Flying() ? 'flying' : 'stepping'} into the ${
                     waterbody_name(x, y)}.`);
                 await handle_tip(TIP_SWIM);
                 return true;
@@ -906,9 +1043,9 @@ export async function pooleffects(newspot) {
             }
         } else if (Is_waterlevel(u.uz)) {
             still_inwater = true;
-        } else if (u.uprops?.LEVITATION) {
+        } else if (Levitation()) {
             await You(`pop out of the ${hliquid('water')} like a cork!`);
-        } else if (u.uprops?.FLYING) {
+        } else if (Flying()) {
             await You(`fly out of the ${hliquid('water')}.`);
         } else if (u.uprops?.WWALKING) {
             await You('slowly rise above the surface.');
@@ -926,7 +1063,7 @@ export async function pooleffects(newspot) {
     }
 
     /* check for entering water or lava */
-    if (!u.ustuck && !u.uprops?.LEVITATION && !u.uprops?.FLYING
+    if (!u.ustuck && !Levitation() && !Flying()
         && is_pool_or_lava(u.ux, u.uy)) {
         if (u.usteed) {
             note_unported_hack('pooleffects:steed');
@@ -940,8 +1077,7 @@ export async function pooleffects(newspot) {
         } else if ((!u.uprops?.WWALKING
                     || game.level?.at(u.ux, u.uy)?.typ === WATER)
                    && (newspot || !u.uinwater
-                       || !(u.uprops?.SWIMMING || u.uprops?.AMPHIBIOUS
-                            || u.uprops?.BREATHLESS))) {
+                       || !(Swimming() || Amphibious() || Breathless()))) {
             const { drown } = await import('./trap.js');
             if (await drown())
                 return true;
@@ -1414,12 +1550,6 @@ export async function lookaround() {
 // src/hack.c:1787 impact_disturbs_zombies() — a heavy object hitting the floor
 // wakes zombies buried nearby.
 //
-// The early return is fully ported and is what fires in the common case: a
-// light or flimsy object makes no noticeable impact and nothing happens. Only
-// a heavy, non-flimsy drop reaches disturb_buried_zombies(), which needs the
-// buried object list and peek_timer/stop_timer -- none of which exist yet --
-// so that call is recorded rather than guessed.
-//
 // Note the threshold flips with `violent`: 10 for a violent impact, 100 for an
 // ordinary drop, so an ordinary drop has to be ten times heavier to matter.
 export function impact_disturbs_zombies(obj, violent) {
@@ -1427,8 +1557,21 @@ export function impact_disturbs_zombies(obj, violent) {
     if (obj.owt < (violent ? 10 : 100) || is_flimsy(obj))
         return;
 
-    /* disturb_buried_zombies(obj->ox, obj->oy) */
-    (game.unported ||= new Set()).add('hack:disturb_buried_zombies');
+    disturb_buried_zombies(obj.ox, obj.oy);
+}
+
+// src/hack.c:1798 disturb_buried_zombies().
+export function disturb_buried_zombies(x, y) {
+    for (const obj of (game.level?.buriedobjs || [])) {
+        if (obj.otyp === ONAMES.CORPSE && obj.timed
+            && obj.ox >= x - 1 && obj.ox <= x + 1
+            && obj.oy >= y - 1 && obj.oy <= y + 1
+            && peek_timer(ZOMBIFY_MON, obj) > 0) {
+            const remaining = stop_timer(ZOMBIFY_MON, obj);
+            start_timer(Math.max(1, Math.trunc(remaining * 2 / 3)),
+                        TIMER_OBJECT, ZOMBIFY_MON, obj);
+        }
+    }
 }
 
 // src/hack.c:4106 monster_nearby() — a spottable hostile adjacent to the hero.
@@ -1622,6 +1765,18 @@ export async function trapmove(x, y, desttrap) {
         }
         break;
     case TT_LAVA:
+        if (game.flags?.verbose !== false)
+            await Norep('You are stuck in the lava.');
+        if (!is_lava(x, y)) {
+            game.u.utrap--;
+            if ((game.u.utrap & 0xff) === 0) {
+                game.u.utrap = 0;
+                await You(`pull yourself to the edge of the ${
+                    hliquid('lava')}.`);
+            }
+        }
+        game.u.umoved = true;
+        break;
     case TT_INFLOOR:
     case TT_BURIEDBALL:
         (game.unported ||= new Set()).add('trapmove:' + game.u.utraptype);
@@ -1812,7 +1967,7 @@ async function moverock_core(sx, sy) {
                 return cannot_push(otmp, sx, sy);
             }
 
-            /* disturb_buried_zombies(sx, sy): no buried zombies yet */
+            disturb_buried_zombies(sx, sy);
 
             if (ttmp) {
                 switch (ttmp.ttyp) {
@@ -1836,10 +1991,9 @@ async function moverock_core(sx, sy) {
             }
 
             if (is_pool_or_lava(rx, ry)) {
-                /* boulder_hits_pool(otmp, rx, ry, TRUE) — rn2(10) fill
-                   roll plus the plunk/fill messages */
-                note_unported_hack('moverock:boulder_hits_pool');
-                return -1;
+                const { boulder_hits_pool } = await import('./do.js');
+                if (await boulder_hits_pool(otmp, rx, ry, true))
+                    continue;
             }
 
             await dopush(sx, sy, rx, ry, otmp, costly);
@@ -1888,7 +2042,7 @@ export async function crawl_destination(x, y) {
     if (x === game.u.ux || y === game.u.uy)
         return true;
     /* NODIAG: poly'd into a grid bug — polyself absent */
-    if (game.u.uprops?.WALLWALK)
+    if (Passes_walls())
         return true;
     const loc = game.level.at(x, y);
     if (IS_DOOR(loc.typ) && (!doorless_door(x, y) || _shk_block_door(x, y)))
@@ -1962,7 +2116,7 @@ export async function findtravelpath(mode) {
                         if (!isok(nx, ny)
                             || (mode === TRAVP_GUESS && !couldsee(nx, ny)))
                             continue;
-                        if ((!game.u.uprops?.WALLWALK /* !Passes_walls */
+                        if ((!Passes_walls()
                              && closed_door_hack(x, y))
                             || (sobj_at(ONAMES.BOULDER, x, y)
                                 && !could_move_onto_boulder(x, y))

@@ -14,7 +14,8 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { roles, races, genders, aligns } from './role_data.js';
-import { mons as MONS_INIT, PMNAMES, MSOUND } from './monst_data.js';
+import { mons as MONS_INIT, PMNAMES, MSOUND, MFLAGS } from './monst_data.js';
+import { ONAMES, SKILLS } from './objects_data.js';
 
 // include/monflag.h — msound is a number in the generated table. Assigning the
 // C identifier as a *string* here would make every `ptr.msound === MS_LEADER`
@@ -346,10 +347,10 @@ export function pick_align(rolenum, racenum, gendnum, pickhow) {
 }
 
 // include/monflag.h:138-140
-const M2_MALE = 0x00010000, M2_FEMALE = 0x00020000, M2_NEUTER = 0x00040000;
-const M2_PEACEFUL = 0x00000002, M2_HOSTILE = 0x00000004, M2_NASTY = 0x00200000;
-const M2_STALK = 0x00000008;
-const M3_CLOSE = 0x0040, M3_WANTSARTI = 0x0400, M3_WAITFORU = 0x0080;
+const {
+    M2_MALE, M2_FEMALE, M2_NEUTER, M2_PEACEFUL, M2_HOSTILE,
+    M2_NASTY, M2_STALK, M3_CLOSE, M3_WANTSARTI, M3_WAITFORU,
+} = MFLAGS;
 const NON_PM = -1;
 
 // include/mondata.h — the gender predicates role_init() branches on.
@@ -445,6 +446,11 @@ export function role_init(initrole, initalign) {
             for (let i = 0; i < roles.length; i++)
                 if (roles[i].lgod) { game.pantheon = i; break; }
         }
+    }
+
+    if (pmIndex(urole.mnum) === PMNAMES.PM_CLERIC) {
+        game.objects[ONAMES.SPE_LIGHT].oc_skill = SKILLS.P_CLERIC_SPELL;
+        game.objects[ONAMES.SPE_LIGHT].oc_subtyp = SKILLS.P_CLERIC_SPELL;
     }
 }
 

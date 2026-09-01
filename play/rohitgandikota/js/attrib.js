@@ -14,7 +14,8 @@ import { game } from './gstate.js';
 import { You, Your } from './pline.js';
 import { pline } from './display.js';
 import { UNENCUMBERED, OVERLOADED , LEFT_SIDE, RIGHT_SIDE,
-         FROMEXPER, FROMRACE, FROMOUTSIDE, Is_airlevel, TIMEOUT } from './const.js';
+         FROMEXPER, FROMRACE, FROMOUTSIDE, FROMFORM,
+         Is_airlevel, TIMEOUT } from './const.js';
 import { strongmonst, throws_rocks } from './mondata.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { ART_OGRESMASHER } from './artilist_data.js';
@@ -38,15 +39,21 @@ function Role_if(pm) {
 
 // src/hack.c weight_cap() — how much the hero can carry before encumbrance.
 //
-// Draws nothing. Only the ordinary arm is ported; the polymorph scaling, the
-// levitation and steed overrides and the wounded-leg reductions each need
-// state we do not model, and each would change the ANSWER rather than only a
-// message, so they are recorded rather than assumed away.
+// Draws nothing. This includes polymorph scaling, levitation and steed
+// overrides, and the wounded-leg reductions which flying suppresses.
 export function weight_cap() {
     /* include/weight.h:12,14 — WT_WEIGHTCAP_STRCON, WT_WEIGHTCAP_SPARE */
     let carrcap = (25 * (acurrstr() + acurr(A_CON))) + 50;
+    const u = game.u;
+    const levitating = !!(u.intrinsic?.HLevitation || u.uprops?.LEVITATION)
+                       && !u.blocked?.LEVITATION;
+    const flying = !!(u.intrinsic?.HFlying || u.uprops?.FLYING)
+                   || !!(Upolyd(u) && game.youmonst?.data
+                         && (game.youmonst.data.mflags1 & MFLAGS.M1_FLY))
+                   || !!(u.usteed
+                         && (u.usteed.data.mflags1 & MFLAGS.M1_FLY));
 
-    if (Upolyd(game.u)) {
+    if (Upolyd(u)) {
         const ptr = game.youmonst.data;
         if (ptr.mlet === MONSYMS.S_NYMPH) {
             carrcap = 1000;
@@ -59,18 +66,18 @@ export function weight_cap() {
 
     /* src/hack.c:4325 — levitating, on the Plane of Air, or riding a
        strong steed lifts the cap to MAX_CARR_CAP outright */
-    if (game.u.uprops?.LEVITATION || Is_airlevel(game.u.uz)
-        || (game.u.usteed && strongmonst(game.u.usteed.data))) {
+    if (levitating || Is_airlevel(u.uz)
+        || (u.usteed && strongmonst(u.usteed.data))) {
         carrcap = 1000;             /* MAX_CARR_CAP */
     } else {
         if (carrcap > 1000)         /* MAX_CARR_CAP */
             carrcap = 1000;
         /* include/weight.h WT_WOUNDEDLEG_REDUCT (100) per wounded leg; the
            side bits live in EWounded_legs (worn-ring bits). Flying negates. */
-        if (!game.u.uprops?.FLYING) {
-            if ((game.u.EWounded_legs || 0) & LEFT_SIDE)
+        if (!flying) {
+            if ((u.EWounded_legs || 0) & LEFT_SIDE)
                 carrcap -= 100;
-            if ((game.u.EWounded_legs || 0) & RIGHT_SIDE)
+            if ((u.EWounded_legs || 0) & RIGHT_SIDE)
                 carrcap -= 100;
         }
     }
@@ -519,7 +526,10 @@ export async function adjabil(oldlevel, newlevel) {
     };
 
     await grant(role_abil(game.flags.initrole ?? 0), FROMEXPER);
-    await grant(race_abil(game.flags.initrace ?? 0), FROMRACE);
+    const raceNoun = game.urace?.noun;
+    await grant((raceNoun === 'elf' || raceNoun === 'orc')
+                    ? race_abil(game.flags.initrace ?? 0) : [],
+                FROMRACE);
 }
 
 // src/attrib.c:815 check_innate_abil() — would the role/race table have
@@ -549,7 +559,8 @@ function innately(abilKey) {
     const word = game.u.intrinsic?.[abilKey] | 0;
     if (word & FROMOUTSIDE)
         return FROM_INTR;
-    /* FROMFORM — polymorphed heroes are not a thing yet */
+    if (word & FROMFORM)
+        return FROM_FORM;
     return FROM_NONE;
 }
 
@@ -574,6 +585,8 @@ export function from_what(abilKey) {
             buf = ' intrinsically';
         else if (innateness === FROM_EXP)
             buf = ' because of your experience';
+        else if (innateness === FROM_FORM)
+            buf = ' from your creature form';
         else {
             /* the property is on but not from the innate tables or an
                eaten corpse — " because of %s" needs what_gives() over
@@ -610,7 +623,7 @@ export function acurrstr() {
     if (str <= 18)
         return str;
     if (str <= 121)
-        return 19 + Math.trunc((str - 18) / 2); /* 18/01..18/99 -> 19..69 */
+        return 19 + Math.trunc(str / 50);
     return str - 100;
 }
 
@@ -720,7 +733,8 @@ export function exerper() {
            while the status line was showing "Conf". Same convention as
            botl.js's condition string: `intr.HX || props.X`. */
         if (game.u.intrinsic?.HConfusion || game.u.uprops?.CONFUSION
-            || game.u.intrinsic?.HHallucination || game.u.uprops?.HALLUC)
+            || ((game.u.intrinsic?.HHallucination || game.u.uprops?.HALLUC)
+                && !game.u.uprops?.HALLUC_RES))
             exercise(A_WIS, false);
         /* src/attrib.c:582 tests plain `HStun`, not `Stunned` — intrinsic
            only, so an extrinsic stun deliberately does not exercise DEX. */
@@ -813,7 +827,8 @@ export function acurr(chridx) {
         if (game.u.uwep?.oartifact === ART_OGRESMASHER)
             result = 25;
     } else if (chridx === A_INT || chridx === A_WIS) {
-        /* uarmh == DUNCE_CAP -> 6 */
+        if (game.u.uarmh?.otyp === ONAMES.DUNCE_CAP)
+            result = 6;
     } else if (chridx === A_DEX) {
         ; /* there aren't any special cases for dexterity */
     }

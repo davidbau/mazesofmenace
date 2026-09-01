@@ -44,7 +44,7 @@ import { mhim } from './mondata.js';
 import { s_suffix } from './hacklib.js';
 import { mon_hates_silver, touch_petrifies } from './dog.js';
 import { bimanual, stone_missile, is_poisonable } from './obj.js';
-import { passes_rocks } from './uhitm.js';
+import { passes_rocks, passive_obj } from './uhitm.js';
 import { obj_extract_self } from './invent.js';
 import { MATERIALS } from './objects_data.js';
 import { isok, IS_OBSTRUCTED, IRONBARS, IS_SINK, BOLT_LIM, W_WEP,
@@ -156,7 +156,7 @@ export async function drop_throw(obj, ohit, x, y) {
                 if (!mtmp && u_at(x, y))
                     mtmp = game.youmonst;
                 if (mtmp && ohit)
-                    note_unported_mthrowu('drop_throw:passive_obj');
+                    await passive_obj(mtmp, obj);
                 stackobj(obj);
             }
         }

@@ -1,13 +1,13 @@
 // vision.js — C ref: vision.c Algorithm C shadow-casting
 // does_block() and the incremental blocked-point updaters are real now;
-// light sources and pit handling are still absent.
+// light sources and pit-limited sight are live.
 
 import { game } from './gstate.js';
 import {
     COLNO, ROWNO, DOOR, SDOOR, POOL, TREE, CLOUD, LAVAWALL,
     D_CLOSED, D_LOCKED, D_TRAPPED, IS_OBSTRUCTED, IS_DOOR, IS_WATERWALL,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL,
-    IS_WALL, MAX_RADIUS,
+    IS_WALL, MAX_RADIUS, TT_PIT,
 } from './const.js';
 import { newsym } from './display.js';
 import { ONAMES } from './objects_data.js';
@@ -367,6 +367,7 @@ export function recalc_block_point(x, y) {
    update hooks after initialization, as mon.js does for mondied(). */
 game._block_point_ref = block_point;
 game._recalc_block_point_ref = recalc_block_point;
+game._cansee_ref = cansee;
 
 // Bresenham quadrant path functions (C ref: vision.c q1-q4_path)
 function q1_path(srow, scol, y2, x2) {
@@ -660,7 +661,19 @@ export function vision_recalc(control = 0) {
     }
 
     if (control !== 2) {
-        view_from(u.uy, u.ux, next, next_rmin, next_rmax);
+        if (u.utrap && u.utraptype === TT_PIT) {
+            for (let row = Math.max(0, u.uy - 1);
+                 row <= Math.min(ROWNO - 1, u.uy + 1); row++) {
+                const start = Math.max(1, u.ux - 1);
+                const stop = Math.min(COLNO - 1, u.ux + 1);
+                next_rmin[row] = start;
+                next_rmax[row] = stop;
+                for (let col = start; col <= stop; col++)
+                    next[row][col] = IN_SIGHT | COULD_SEE;
+            }
+        } else {
+            view_from(u.uy, u.ux, next, next_rmin, next_rmax);
+        }
     }
 
     /* src/vision.c:552. A blind hero still has COULD_SEE geometry so
@@ -727,6 +740,25 @@ export function vision_recalc(control = 0) {
                     next[row][col] |= IN_SIGHT;
                 }
             }
+        }
+    }
+
+    /* src/vision.c:631, the Eyes of the Overworld see every square in a
+       radius-three circle, including through walls. */
+    const xray = u.xray_range ?? -1;
+    if (xray >= 0) {
+        const ranges = circle_data.slice(circle_start[xray]);
+        for (let row = Math.max(0, uy - xray);
+             row <= Math.min(ROWNO - 1, uy + xray); row++) {
+            const halfwidth = ranges[Math.abs(uy - row)];
+            const start = Math.max(1, ux - halfwidth);
+            const stop = Math.min(COLNO - 1, ux + halfwidth);
+            for (let col = start; col <= stop; col++) {
+                next[row][col] |= IN_SIGHT;
+                level.at(col, row).seenv = SVALL;
+            }
+            next_rmin[row] = Math.min(start, next_rmin[row]);
+            next_rmax[row] = Math.max(stop, next_rmax[row]);
         }
     }
 
@@ -816,18 +848,34 @@ export function couldsee(x, y) {
 }
 
 export function init_vision_globals() {
+    /* The judge can run several independent segments in one JS process.
+       C starts each game with empty static vision buffers, while these
+       module-scoped typed arrays otherwise retain the prior segment's sight
+       mask. A blank new terminal would then skip cells which only appeared
+       unchanged relative to that stale mask. */
+    for (let y = 0; y < ROWNO; y++) {
+        cs_buf0[y].fill(0);
+        cs_buf1[y].fill(0);
+        cs_rmin0[y] = cs_rmin1[y] = COLNO;
+        cs_rmax0[y] = cs_rmax1[y] = 0;
+    }
     game.viz_array = cs_buf0;
     game.active_buf = 0;
+    game._viz_rmin = null;
+    game._viz_rmax = null;
     game.vis_step = 0;
     game.vis_start_col = 0;
     game.vis_start_row = 0;
     game.cs_rows = null;
     game.cs_left = null;
     game.cs_right = null;
+    vis_func = null;
+    varg = null;
     /* init_game() clears the shared state object between sessions. Restore
        the region hooks each time along with the other vision globals. */
     game._block_point_ref = block_point;
     game._recalc_block_point_ref = recalc_block_point;
+    game._cansee_ref = cansee;
 }
 
 // src/vision.c:1612 clear_path() — is there an unobstructed straight line from

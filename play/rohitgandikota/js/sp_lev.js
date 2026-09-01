@@ -19,7 +19,7 @@ import { selection_iterate, selection_new, selection_clone,
          selection_not, selection_rndcoord } from './selvar.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { isok, distmin } from './hacklib.js';
-import { sobj_at, weight, obj_extract_self } from './invent.js';
+import { sobj_at, weight, obj_extract_self, stackobj } from './invent.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
 import { mkobj_at, mksobj_at, add_to_container, set_corpsenm } from './mkobj.js';
 import { stock_room } from './shknam.js';
@@ -27,7 +27,9 @@ import { fill_zoo } from './mkroom.js';
 import { OBJ_NAME, OBJ_DESCR } from './objnam.js';
 import { obj_resists } from './zap.js';
 import { OBJ_BURIED } from './obj.js';
-import { start_timer, TIMER_OBJECT, ROT_ORGANIC } from './timeout.js';
+import { start_timer, TIMER_OBJECT, ROT_ORGANIC,
+         begin_burn_level_object } from './timeout.js';
+import { new_light_source, LS_OBJECT } from './light.js';
 import { make_engr_at, engr_at, del_engr } from './engrave.js';
 import { oname, christen_monst } from './do_name.js';
 import { ONAME_LEVEL_DEF } from './const.js';
@@ -50,7 +52,7 @@ import { amphibious, is_swimmer, is_flyer, is_floater, passes_walls,
 import { def_oc_syms } from './drawing_data.js';
 import { ANY_LOC, SOLID, DRY, SPACELOC, WET, HOT,
          NO_LOC_WARN } from './const.js';
-import { ACCESSIBLE } from './const.js';
+import { ACCESSIBLE, IS_FURNITURE } from './const.js';
 import { NO_TRAP, VIBRATING_SQUARE,
          MKTRAP_MAZEFLAG, MKTRAP_SEEN, MKTRAP_NOSPIDERONWEB, MKTRAP_NOVICTIM,
          ARROW_TRAP, DART_TRAP, ROCKTRAP, SQKY_BOARD, BEAR_TRAP, LANDMINE,
@@ -453,6 +455,12 @@ export function lspo_replace_terrain(opts) {
        draws rn2(2), NOCHANGE leaves the square's lit alone */
     const tolit = (opts.lit === undefined) ? SET_LIT_NOCHANGE : opts.lit;
     const set_typ_lit = (loc) => {
+        /* mkmaze.c:77 set_levltyp() keeps a garden's secret door in place;
+           AIR is a sentinel which marks that door as tree-like instead. */
+        if (loc.typ === SDOOR && totyp === AIR) {
+            loc.arboreal_sdoor = 1;
+            return;
+        }
         loc.typ = totyp;
         if (IS_LAVA(totyp))
             loc.lit = true;
@@ -817,6 +825,17 @@ export function create_trap(t, croom) {
     if (t.novictim)       mktrap_flags |= MKTRAP_NOVICTIM;
 
     mktrap_fn(t.type, mktrap_flags, null, { x: pos.x, y: pos.y });
+    const teledest = t.teledest && {
+        x: t.teledest.x + (game.xstart ?? 0),
+        y: t.teledest.y + (game.ystart ?? 0),
+    };
+    if (t.type === TELEP_TRAP && isok(teledest?.x, teledest?.y)) {
+        const trap = (game.level?.traps || [])
+            .find(candidate => candidate.tx === pos.x
+                               && candidate.ty === pos.y);
+        if (trap)
+            trap.teledest = teledest;
+    }
 }
 
 // src/sp_lev.c:4397 lspo_trap() — the des.trap() verb.
@@ -842,6 +861,7 @@ export function lspo_trap(type, x, y, opts) {
                        ? !!opts.spider_on_web : true,
         seen: !!opts?.seen,
         novictim: opts?.victim !== undefined ? !opts.victim : false,
+        teledest: opts?.teledest,
         coord: (x === undefined || x === -1) && (y === undefined || y === -1)
                ? SP_COORD_PACK_RANDOM(0)
                : SP_COORD_PACK(x, y),
@@ -1006,6 +1026,22 @@ export function create_object(o, croom) {
         otmp.oerodeproof = 0;
     }
 
+    /* src/sp_lev.c:2287 create_object() object-state options. Omitted lock
+       and trap values are -1, which preserves whatever mksobj generated. */
+    if (o.recharged)
+        otmp.recharged = o.recharged % 8;
+    if (o.locked === 0 || o.locked === 1) {
+        otmp.olocked = o.locked;
+    } else if (o.broken) {
+        otmp.obroken = 1;
+        otmp.olocked = 0;
+    }
+    if (o.trapped === 0 || o.trapped === 1)
+        otmp.otrapped = o.trapped;
+    if (o.trapped !== 0 && (o.tknown === 0 || o.tknown === 1))
+        otmp.tknown = o.tknown;
+    otmp.greased = o.greased ? 1 : 0;
+
     /* src/sp_lev.c:2298 — explicit quantity for mergeable object types */
     if (o.quan > 0 && game.objects[otmp.otyp]?.oc_merge) {
         otmp.quan = o.quan;
@@ -1134,6 +1170,13 @@ export function create_object(o, croom) {
     }
 
     if (!(o.containment & SP_OBJ_CONTENT)) {
+        stackobj(otmp);
+
+        if (o.lit) {
+            begin_burn_level_object(otmp, (lx, ly, radius, oid) =>
+                new_light_source(lx, ly, radius, LS_OBJECT, oid));
+        }
+
         if (o.buried) {
             const dealloced = { v: false };
 
@@ -1149,10 +1192,6 @@ export function create_object(o, croom) {
             }
         }
     }
-
-    /* lit, eroded, locked, trapped options still record. */
-    if (o.lit)
-        note_unported('create_object:options');
 
     return otmp;
 }
@@ -1170,6 +1209,12 @@ export function lspo_object(idOrClass, x, y, opts) {
         containment: 0,
         quan: opts?.quantity ?? -1, buried: 0, lit: 0,
         eroded: opts?.eroded ?? 0,      /* src/sp_lev.c:3592 */
+        recharged: opts?.recharged ?? 0,
+        locked: opts?.locked !== undefined ? (opts.locked ? 1 : 0) : -1,
+        trapped: opts?.trapped !== undefined ? (opts.trapped ? 1 : 0) : -1,
+        tknown: opts?.trap_known !== undefined ? (opts.trap_known ? 1 : 0) : -1,
+        greased: opts?.greased ? 1 : 0,
+        broken: opts?.broken ? 1 : 0,
         name: opts?.name ?? null,
         contents: opts?.contents ?? null,
         coord: 0,
@@ -1241,6 +1286,11 @@ export function lspo_object(idOrClass, x, y, opts) {
         if (opts?.male)     lflags |= CORPSTAT_MALE;
         if (opts?.female)   lflags |= CORPSTAT_FEMALE;
         o.spe = lflags;
+    } else if (o.id === ONAMES.EGG) {
+        o.spe = opts?.laid_by_you ? 1 : 0;
+    } else if ((o.id === ONAMES.TIN || o.id === ONAMES.FIGURINE)
+               && !nonpmobj) {
+        o.spe = 0;
     } else if (opts?.historic) {
         o.spe = CORPSTAT_HISTORIC;
     }
@@ -1263,7 +1313,13 @@ export function lspo_object(idOrClass, x, y, opts) {
     if (opts?.inContainer) o.containment |= SP_OBJ_CONTENT;
 
     lspo_object_fixup(o);
-    const otmp = create_object(o, game.coder?.croom ?? null);
+    let quancnt = o.id > STRANGE_OBJECT ? o.quan : 0;
+    let otmp;
+    do {
+        otmp = create_object(o, game.coder?.croom ?? null);
+        quancnt--;
+    } while (quancnt > 0 && o.id > STRANGE_OBJECT
+             && !game.objects[o.id].oc_merge);
 
     /* The contents closure runs with this object open as the container, then
        the stack is popped. C runs the closure even when create_object returned
@@ -1510,7 +1566,7 @@ export function bury_an_obj(otmp, dealloced) {
                     TIMER_OBJECT, ROT_ORGANIC, otmp);
     }
 
-    (game.level.buriedobjs ||= []).push(otmp);   /* add_to_buried() */
+    (game.level.buriedobjs ||= []).unshift(otmp);   /* add_to_buried() */
     otmp.where = OBJ_BURIED;
 }
 
@@ -2456,15 +2512,14 @@ export function lspo_feature(type, x, y) {
         note_unported(`lspo_feature:${type}`);
         return;
     }
-    /* sel_set_feature() — refuses to overwrite non-floor terrain */
+    /* src/sp_lev.c sel_set_feature() — existing furniture is never
+       overwritten; the typ is written to levl[][] directly, so
+       level.flags.nfountains/nsinks are NOT updated (C only counts in
+       mkfount(), mksink() and set_levltyp(), and never recounts an
+       ordinary level), which keeps themed-room fountains silent */
     const loc = game.level.at(c.x, c.y);
-    if (loc && (loc.typ === ROOM || loc.typ === CORR)) {
+    if (loc && !IS_FURNITURE(loc.typ))
         loc.typ = typ;
-        if (typ === FOUNTAIN)
-            game.level.flags.nfountains = (game.level.flags.nfountains | 0) + 1;
-        if (typ === SINK)
-            game.level.flags.nsinks = (game.level.flags.nsinks | 0) + 1;
-    }
     /* the looted/warned flag options are absent until a level needs them */
 }
 

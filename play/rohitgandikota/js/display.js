@@ -33,7 +33,7 @@ import {
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
     M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE,
     AM_NONE, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_MASK, AM_SANCTUM,
-    ACCESSIBLE, Is_rogue_level,
+    ACCESSIBLE, Is_rogue_level, Is_waterlevel,
 } from './const.js';
 import { engr_at } from './engrave.js';
 import { visible_region_at } from './region.js';
@@ -75,15 +75,16 @@ const ANSI_COLOR = [
 ];
 
 /* include/display.h canspotself().  Blind heroes can locate themselves by
-   touch; otherwise intrinsic invisibility hides the hero glyph unless they
-   can see invisible. */
-function canspotself() {
+   touch; otherwise effective invisibility hides the hero glyph unless
+   telepathy or monster detection reveals it. */
+export function canspotself() {
     const u = game.u;
     if (!u)
         return false;
     const invisible = Invis() && !See_invisible();
     return Blind() || !!u.uswallow
            || (!invisible && !u.uundetected)
+           || !!u.uprops?.TELEPAT
            || !!u.uprops?.DETECT_MONSTERS;
 }
 
@@ -920,6 +921,17 @@ function pile_attr(glyph) {
            && game.flags?.use_inverse !== false ? TERM_INVERSE : 0;
 }
 
+/* src/mkobj.c:2336-2348 place_object() keeps every boulder at the head of
+   its per-square nexthere chain.  The port's flat fobj-style list must remain
+   newest-first for global traversals, so derive the visible pile head here. */
+function vobj_at(x, y) {
+    const objects = game.level?.objects || [];
+    return objects.find(o => o.ox === x && o.oy === y
+                             && o.otyp === ONAMES.BOULDER)
+           || objects.find(o => o.ox === x && o.oy === y)
+           || null;
+}
+
 function floor_object_glyph(obj, x, y, piletop = true) {
     /* include/display.h random_obj_to_glyph(): every object is shown as a
        random object while hallucinating. CORPSE is the one random type that
@@ -941,20 +953,35 @@ function floor_object_glyph(obj, x, y, piletop = true) {
        generic but the hero can see the spot from nearby (same radius as
        distant_name(): r = max(u.xray_range, 2), neardist = 2r²−r), mark
        it as seen up close first; it is then drawn as the specific object. */
-    if (x !== undefined && obj_is_generic(obj) && cansee(x, y)
+    let generic = obj_is_generic(obj);
+    let glyphOtyp = generic ? (obj.oclass ?? OCLASSES.RANDOM_CLASS)
+                            : obj.otyp;
+    /* map_object() tests glyph_is_generic_object(), not obj_is_generic(),
+       before observing a nearby object.  That distinction matters for the
+       zeroed fake object used by display_monster(): a generic gem carried by
+       that fake has oclass 0, so C maps it as STRANGE_OBJECT and does not
+       identify it merely because it is nearby. */
+    const recognizedGeneric = generic
+        && glyphOtyp > ONAMES.STRANGE_OBJECT
+        && glyphOtyp < ONAMES.FIRST_OBJECT - 1;
+    if (x !== undefined && recognizedGeneric && cansee(x, y)
         && !Hallucination()) {
         const r = ((game.u?.xray_range ?? -1) > 2) ? game.u.xray_range : 2;
         const neardist = r * r * 2 - r;
         if (distu(x, y) <= neardist)
             observe_object(obj);
     }
-    const oc = game.objects?.[obj.otyp];
+    generic = obj_is_generic(obj);
+    glyphOtyp = generic ? (obj.oclass ?? OCLASSES.RANDOM_CLASS) : obj.otyp;
+    const oc = game.objects?.[glyphOtyp];
+    const glyphClass = oc?.oc_class ?? obj.oclass;
     let color = oc?.oc_color ?? NO_COLOR;
-    let sym = def_oc_syms[obj.oclass] || '?';
+    let sym = def_oc_syms[glyphClass] || '?';
     /* the glyph descriptor mirrors C's obj_to_glyph(): a statue and a corpse
        get their own glyph ranges (GLYPH_STATUE_OFF / GLYPH_BODY_OFF), which
        is what glyph_is_statue() tests in do_screen_description() */
-    const gdesc = { kind: 'obj', otyp: obj.otyp, oclass: obj.oclass,
+    const gdesc = { kind: 'obj', otyp: glyphOtyp, oclass: glyphClass,
+                    actual_otyp: obj.otyp,
                     corpsenm: obj.corpsenm,
                     statue: obj.otyp === ONAMES.STATUE && obj.corpsenm >= 0,
                     body: obj.otyp === ONAMES.CORPSE && obj.corpsenm >= 0 };
@@ -981,12 +1008,11 @@ function floor_object_glyph(obj, x, y, piletop = true) {
         color = game.objects?.[ONAMES.STATUE]?.oc_color ?? color;
     } else if (obj.otyp === ONAMES.CORPSE && obj.corpsenm >= 0) {
         color = game.mons?.[obj.corpsenm]?.mcolor ?? color;
-    } else if (obj_is_generic(obj)) {
+    } else if (generic) {
         /* include/display.h:940 generic_obj_to_glyph() — the generic glyph
            is oclass + GLYPH_OBJ_OFF, whose colour comes from the dummy
            class entry objects[oclass] (grey), not from the shuffled
            description of the specific otyp. */
-        color = game.objects?.[obj.oclass]?.oc_color ?? color;
         gdesc.generic = true;
     }
     return { ch: sym, color, dec: false, glyph: gdesc,
@@ -1049,6 +1075,49 @@ export async function swallowed(first) {
     swallowed_lasty = u.uy;
 }
 
+/* src/display.c:1395 under_water().  Ordinary vision is replaced by the
+   liquid squares in the hero's immediate neighborhood.  A full update calls
+   cls(), whose message-window flush is also the blocking --More-- C displays
+   when a swimming-only form first enters a pool. */
+let underwater_lastx = 0, underwater_lasty = 0;
+let underwater_delayed = false;
+
+export async function under_water(mode) {
+    const u = game.u;
+    if (!u || Is_waterlevel(u.uz) || u.uswallow)
+        return;
+
+    if (mode === 1 || underwater_delayed) {
+        await cls();
+        underwater_delayed = false;
+    } else if (mode === 2) {
+        underwater_delayed = true;
+        return;
+    } else {
+        for (let y = underwater_lasty - 1; y <= underwater_lasty + 1; y++)
+            for (let x = underwater_lastx - 1; x <= underwater_lastx + 1; x++)
+                if (isok(x, y))
+                    show_glyph_cell(x, y, ' ', NO_COLOR, false, 0,
+                                    { kind: 'unexplored' });
+    }
+
+    for (let x = u.ux - 1; x <= u.ux + 1; x++)
+        for (let y = u.uy - 1; y <= u.uy + 1; y++) {
+            if (!isok(x, y)
+                || (!is_pool_or_lava(x, y)
+                    && game.level?.at(x, y)?.typ !== ICE))
+                continue;
+            if (Blind() && (x !== u.ux || y !== u.uy))
+                show_glyph_cell(x, y, ' ', NO_COLOR, false, 0,
+                                { kind: 'unexplored' });
+            else
+                newsym(x, y);
+        }
+
+    underwater_lastx = u.ux;
+    underwater_lasty = u.uy;
+}
+
 // src/display.c:1574 see_nearby_objects() — mark the top object of nearby
 // stacks as having been seen, and if that object was being displayed as
 // generic, redisplay it as specific.  Called from u_on_newpos() whenever the
@@ -1065,8 +1134,7 @@ export function see_nearby_objects() {
                 continue;
             /* skip if no object or the object has already been marked as
                having been seen up close */
-            const obj = (game.level?.objects || [])
-                            .find(o => o.ox === ix && o.oy === iy);
+            const obj = vobj_at(ix, iy);
             if (!obj || obj.dknown)
                 continue;
             /* skip if the spot can't be seen or is too far (diagonal) */
@@ -1145,9 +1213,7 @@ export function newsym(x, y) {
            and display_self() draws '@' over it.
            include/display.h:246 maybe_display_usteed() — while riding, the
            hero's square shows the STEED's glyph, not '@'. */
-        const under = covers_objects(x, y) ? null
-            : (game.level?.objects || [])
-                  .find(o => o.ox === x && o.oy === y);
+        const under = covers_objects(x, y) ? null : vobj_at(x, y);
         const tg = under ? floor_object_glyph(under, x, y)
                          : terrain_glyph(loc, x, y);
         const steed = game.u.usteed;
@@ -1193,6 +1259,9 @@ export function newsym(x, y) {
                             && (mon.mx !== x || mon.my !== y));
         const spotMon = !!(mon && (mon_visible(mon)
                                    || (!wormTail && sensemon(mon))));
+        const detectedOnly = !!(spotMon && !wormTail
+            && game.u.uprops?.DETECT_MONSTERS && !mon_visible(mon)
+            && !tp_sensemon(mon) && !match_warn_of_mon(mon));
         /* src/display.c:1029, a warning glyph takes precedence over a
            remembered invisible-monster marker. */
         if (!spotMon && mon && mon_warning(mon) && !wormTail) {
@@ -1214,16 +1283,19 @@ export function newsym(x, y) {
             return;
         }
 
-        /* C shows the TOP of the pile, and our object list is newest-first
-           (place_object prepends), so the first match is the top.
-           _map_location: vobj_at(x,y) && !covers_objects(x,y) — a pool or
+        /* _map_location: vobj_at(x,y) && !covers_objects(x,y) -- a pool or
            lava square hides what floats... sinks under it. */
-        const obj = covers_objects(x, y) ? null
-            : (game.level?.objects || [])
-                  .find(o => o.ox === x && o.oy === y);
+        const obj = covers_objects(x, y) ? null : vobj_at(x, y);
+        const seenTrap = !obj ? t_at(x, y) : null;
+        const trapg = seenTrap?.tseen && !covers_traps(x, y)
+            ? trap_glyph(seenTrap) : null;
         const memg = obj ? floor_object_glyph(obj, x, y)
-                         : (engraving_glyph(loc, x, y)
-                            || terrain_glyph(loc, x, y));
+            : trapg ? {
+                ...trapg,
+                glyph: { kind: 'cmap', cmap: trapg.cmap },
+            }
+                : (engraving_glyph(loc, x, y)
+                   || terrain_glyph(loc, x, y));
         if (game.level?.flags?.hero_memory)
             loc.remembered_glyph = { ch: memg.ch, color: memg.color,
                                      decgfx: memg.dec,
@@ -1237,18 +1309,27 @@ export function newsym(x, y) {
            mimics stay spottable (mundetected 0) and display_monster() draws
            the DISGUISE (display.c:533). */
         if (spotMon) {
-            if (mon.m_ap_type === M_AP_OBJECT) {
+            if (M_AP_TYPE(mon) === M_AP_OBJECT) {
                 /* display.c:564 — a fake object sent to map_object() */
                 const fake = { otyp: mon.mappearance, ox: x, oy: y,
-                               oclass: game.objects?.[mon.mappearance]?.oc_class,
+                               /* obj = zeroobj; C only fills these fields. */
+                               oclass: OCLASSES.RANDOM_CLASS,
                                corpsenm: mon.mcorpsenm ?? PMNAMES.PM_TENGU,
                                quan: 1, dknown: 0 };
                 const g = floor_object_glyph(fake, x, y, false);
+                /* display_monster() maps a mimic's fake object into hero
+                   memory before drawing it. That memory survives a level
+                   change even when the terminal still holds an older cell. */
+                if (game.level?.flags?.hero_memory)
+                    loc.remembered_glyph = {
+                        ch: g.ch, color: g.color, decgfx: g.dec,
+                        glyph: g.glyph,
+                    };
                 show_glyph_cell(x, y, g.ch, g.color, g.dec ?? false, g.attr,
                                 g.glyph ?? { kind: 'obj', otyp: fake.otyp });
                 return;
             }
-            if (mon.m_ap_type === M_AP_FURNITURE) {
+            if (M_AP_TYPE(mon) === M_AP_FURNITURE) {
                 /* display.c:543 — poor man's map_background of the S_ sym */
                 const s = showsym(mon.mappearance);
                 show_glyph_cell(x, y, s ? s.ch : '?',
@@ -1260,10 +1341,13 @@ export function newsym(x, y) {
             const shown = game.mons[Hallucination()
                 ? rn2_on_display_rng(NUMMONS)
                 : (wormTail ? PMNAMES.PM_LONG_WORM_TAIL
-                    : (mon.m_ap_type === M_AP_MONSTER
+                    : (M_AP_TYPE(mon) === M_AP_MONSTER
                         ? mon.mappearance : mon.mnum))];
+            const attr = detectedOnly && !(mon.mtame && !Hallucination())
+                         && game.flags?.use_inverse !== false
+                ? TERM_INVERSE : 0;
             show_glyph_cell(x, y, def_monsyms[shown.mlet] || '?',
-                            shown.mcolor ?? NO_COLOR, false, 0,
+                            shown.mcolor ?? NO_COLOR, false, attr,
                             { kind: 'mon', mon });
             return;
         }
@@ -1279,13 +1363,20 @@ export function newsym(x, y) {
         const mon = (game.level?.monsters || [])
                         .find(m => m.mx === x && m.my === y && m.mhp > 0
                                    && !m.msleeping_hidden);
-        if (mon && (sensemon(mon)
-                    || (see_with_infrared(mon) && mon_visible(mon)))) {
+        const spotMon = !!(mon && (sensemon(mon)
+                    || (see_with_infrared(mon) && mon_visible(mon))));
+        const detectedOnly = !!(spotMon && game.u.uprops?.DETECT_MONSTERS
+            && !tp_sensemon(mon) && !match_warn_of_mon(mon)
+            && !(see_with_infrared(mon) && mon_visible(mon)));
+        if (spotMon) {
             const shown = game.mons[Hallucination()
                 ? rn2_on_display_rng(NUMMONS) : mon.mnum];
+            const attr = detectedOnly && !(mon.mtame && !Hallucination())
+                         && game.flags?.use_inverse !== false
+                ? TERM_INVERSE : 0;
             clear_invisible_memory(x, y);
             show_glyph_cell(x, y, def_monsyms[shown.mlet] || '?',
-                            shown.mcolor ?? NO_COLOR, false, 0,
+                            shown.mcolor ?? NO_COLOR, false, attr,
                             { kind: 'mon', mon });
             return;
         }
@@ -1416,6 +1507,10 @@ export function newsym(x, y) {
     }
 }
 
+/* region.js is already an input to display.js, so publish this redraw hook
+   without adding the reverse module import. */
+game._newsym_ref = newsym;
+
 
 // include/engrave.h:50 spot_shows_engravings(), include/display.h:633
 // engraving_to_glyph() -> engraving_to_defsym(), include/defsym.h:114,118.
@@ -1511,12 +1606,20 @@ export async function docrt() {
         newsym(mtmp.mx, mtmp.my);
     }
     if (game.u?.ux > 0 && canspotself()) {
-        const self = game.youmonst?.data;
-        show_glyph_cell(game.u.ux, game.u.uy,
-                        Upolyd(game.u)
-                            ? (def_monsyms[self.mlet] || '?') : '@',
-                        Upolyd(game.u) ? self.mcolor : CLR_WHITE,
-                        false, 0, { kind: 'hero' });
+        const steed = game.u.usteed;
+        if (steed && mon_visible(steed))
+            show_glyph_cell(game.u.ux, game.u.uy,
+                            def_monsyms[steed.data.mlet] || '?',
+                            steed.data.mcolor ?? NO_COLOR, false, 0,
+                            { kind: 'hero', mon: steed });
+        else {
+            const self = game.youmonst?.data;
+            show_glyph_cell(game.u.ux, game.u.uy,
+                            Upolyd(game.u)
+                                ? (def_monsyms[self.mlet] || '?') : '@',
+                            Upolyd(game.u) ? self.mcolor : CLR_WHITE,
+                            false, 0, { kind: 'hero' });
+        }
     }
 
     /* C's docrt() only refills the glyph buffer; the physical paint comes
@@ -1614,7 +1717,7 @@ function _statusLine1() {
     /* src/botl.c:989 — the status line capitalises the first letter of the
        name; svp.plname itself is left as the player typed it. */
     const rawname = game.plname || 'Hero';
-    const name = rawname.charAt(0).toUpperCase() + rawname.slice(1);
+    let name = rawname.charAt(0).toUpperCase() + rawname.slice(1);
     /* src/botl.c rank() — the status line shows the RANK for the hero's
        experience level, not the role name. This read urole.rank.m, which only
        worked against the stub role record that used to be installed here. */
@@ -1628,6 +1731,11 @@ function _statusLine1() {
         : (shownLevel === u.ulevel
            ? rank()
            : rank_of(shownLevel, game.urole, !!game.flags.female));
+    /* src/botl.c bot_via_windowport(). Keep the title within 30 columns by
+       shortening only the hero name, while preserving at least BOTL_NSIZ
+       (16) name characters even for a long polymorph title. */
+    if (name.length + 5 + role.length > 30)
+        name = name.slice(0, Math.max(30 - 5 - role.length, 16));
     const title = `${name} the ${role}`;
     /* src/botl.c:87 — u.acurr.a[] is indexed by the include/attrib.h enum
        (A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA), which is NOT the order the
@@ -1690,7 +1798,8 @@ function _statusLine2() {
     }
     const shownHp = game._deferred_status_hp_until_more
         ?? Math.max((Upolyd(u) ? u.mh : u.uhp) | 0, 0);
-    const maxHp = Upolyd(u) ? u.mhmax : u.uhpmax;
+    const maxHp = game._deferred_status_hpmax_until_more
+        ?? (Upolyd(u) ? u.mhmax : u.uhpmax);
     let s = `${lvldesc} ${Is_rogue_level(u.uz) ? '*' : '$'}:${shownMoney}`
           /* src/botl.c:120 — hp = max(hp, 0): the dying frame shows 0 */
           + ` HP:${shownHp}(${maxHp || 0})`
@@ -1798,9 +1907,7 @@ export function feel_location(x, y) {
         (game.unported ||= new Set()).add('feel_location:levitation');
 
     /* _map_location(x, y, 1) */
-    const obj = covers_objects(x, y) ? null
-        : (game.level?.objects || [])
-              .find(o => o.ox === x && o.oy === y);
+    const obj = covers_objects(x, y) ? null : vobj_at(x, y);
     const trap = t_at(x, y);
     const memg = obj ? floor_object_glyph(obj, x, y)
         : (trap && trap.tseen) ? trap_glyph(trap)
@@ -1815,7 +1922,15 @@ export function feel_location(x, y) {
        has last seen here (svl.lastseentyp); callers compare it to learn
        whether feeling the spot taught the hero anything. */
     update_lastseentyp(x, y);
-    newsym(x, y);
+    const sensed = (game.u.ux !== x || game.u.uy !== y) && m_at(x, y)
+                   && sensemon(m_at(x, y));
+    if (sensed) {
+        newsym(x, y);
+    } else {
+        show_glyph_cell(x, y, memg.ch, memg.color, memg.dec ?? false,
+                        pile_attr(memg.glyph), memg.glyph
+                            ?? { kind: 'cmap', cmap: memg.cmap });
+    }
 
     /* src/display.c:894 — "Floor spaces are dark if unlit": with dark_room
        on (5.0 default) a felt room floor is remembered as S_darkroom even
@@ -1835,6 +1950,15 @@ export function feel_location(x, y) {
                                      glyph: { kind: 'cmap',
                                               cmap: CM.S_corr } };
     }
+}
+
+// src/display.c:726 feel_newsym(): use touch mapping while blind, otherwise
+// redraw the visible location normally.
+export function feel_newsym(x, y) {
+    if (Blind())
+        feel_location(x, y);
+    else
+        newsym(x, y);
 }
 
 // src/display.c:2147 row_refresh() — repaint map row y, columns start..stop,
@@ -2084,7 +2208,14 @@ export async function more() {
     if (display) {
         const CO = display.cols ?? 80;
         let col = mlines[mlines.length - 1].length;
-        if (col >= CO - 8) { col = 0; row++; }
+        if (col >= CO - 8) {
+            col = 0;
+            row++;
+            /* topl_putsym('\n') calls cl_end() again after advancing to
+               the continuation row, clearing the map beneath --More--. */
+            for (let c = 0; c < CO; c++)
+                display.setCell(c, row, ' ', NO_COLOR, 0);
+        }
         for (let i = 0; i < defmorestr.length && col + i < CO; i++)
             display.setCell(col + i, row, defmorestr[i], NO_COLOR, 0);
         display.setCursor(Math.min(col + defmorestr.length, CO - 1), row);
@@ -2098,6 +2229,7 @@ export async function more() {
         game._deferred_status_hp_more_count--;
     } else {
         delete game._deferred_status_hp_until_more;
+        delete game._deferred_status_hpmax_until_more;
         delete game._deferred_status_hp_more_count;
     }
     if ((game._deferred_status_ac_more_count | 0) > 1) {
@@ -2105,6 +2237,12 @@ export async function more() {
     } else {
         delete game._deferred_status_ac_until_more;
         delete game._deferred_status_ac_more_count;
+    }
+    if ((game._deferred_status_blind_more_count | 0) > 1) {
+        game._deferred_status_blind_more_count--;
+    } else if (game._deferred_status_blind_more_count) {
+        delete game._deferred_status_blind;
+        delete game._deferred_status_blind_more_count;
     }
 
     /* win/tty/topl.c more():234 — ESC sets WIN_STOP: the player has asked to
@@ -2409,6 +2547,25 @@ export function display_cmap_at(cmap, x, y, color = NO_COLOR,
         return;
     show_glyph_cell(x, y, sym.ch ?? sym.sym, color, !!sym.dec, 0,
                     { kind, cmap });
+}
+
+// src/display.c:1110 shieldeff(). A resisted magical attack cycles through
+// the four shield glyphs three times, with seven frames per cycle.
+export async function shieldeff(x, y) {
+    if (game.flags?.sparkle === false || !cansee(x, y))
+        return;
+    const shield = [cmap_names.S_ss1, cmap_names.S_ss2, cmap_names.S_ss3,
+                    cmap_names.S_ss2, cmap_names.S_ss1, cmap_names.S_ss2,
+                    cmap_names.S_ss4];
+    for (let repeat = 0; repeat < 3; ++repeat) {
+        for (const cmap of shield) {
+            display_cmap_at(cmap, x, y, CLR_BRIGHT_BLUE, 'shield');
+            await flush_screen(1);
+            if (game.animationFrame)
+                await game.animationFrame();
+        }
+    }
+    newsym(x, y);
 }
 
 // src/display.c:276 map_trap() — remember and (optionally) show one trap.

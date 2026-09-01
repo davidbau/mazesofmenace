@@ -10,11 +10,15 @@ import { game } from './gstate.js';
 import { makewish } from './zap.js';
 import { encumber_msg } from './attrib.js';
 import { ECMD_OK, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ANY,
-         TIMEOUT, ARTICLE_THE, XKILL_NOMSG }
+         TIMEOUT, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR, XKILL_NOMSG,
+         ECMD_CANCEL, UTOTYPE_NONE, SICK_VOMITABLE, SICK_NONVOMITABLE,
+         SUPPRESS_IT, SUPPRESS_HALLUCINATION, SUPPRESS_SADDLE,
+         has_mgivenname }
     from './const.js';
-import { getlin } from './cmd.js';
-import { docrt, map_trap, pline, see_monsters, swallowed,
-         unmap_invisible } from './display.js';
+import { rn2 } from './rng.js';
+import { getdir, getlin } from './cmd.js';
+import { docrt, map_trap, pline, unmap_invisible, canspotmon }
+    from './display.js';
 import { pluslvl, losexp } from './exper.js';
 import { level_tele } from './teleport.js';
 import { do_mapping } from './detect.js';
@@ -27,6 +31,8 @@ import {
 import { boolean_option } from './options.js';
 import { getpos } from './getpos.js';
 import { m_at, xkilled } from './mon.js';
+import { DEADMONSTER } from './monst.js';
+import { nonliving } from './mondata.js';
 import { x_monnam } from './do_name.js';
 import { You } from './pline.js';
 
@@ -83,10 +89,47 @@ export async function wiz_kill() {
             break;
         }
 
-        const name = x_monnam(mtmp, ARTICLE_THE, null, 0, false);
-        await You(`kill ${name}!`);
+        const tame = !!mtmp.mtame;
+        const seen = canspotmon(mtmp);
+        const article = tame ? ARTICLE_YOUR : seen ? ARTICLE_THE : ARTICLE_A;
+        const adjective = tame ? (seen ? 'poor' : 'poor, unseen')
+                               : seen ? null : 'unseen';
+        const suppress = SUPPRESS_IT | SUPPRESS_HALLUCINATION
+            | (tame && has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0);
+        const name = x_monnam(mtmp, article, adjective, suppress, false);
+        await You(`${nonliving(mtmp.data) ? 'destroy' : 'kill'} ${name}!`);
         await xkilled(mtmp, XKILL_NOMSG);
     }
+    return ECMD_OK;
+}
+
+// src/wizcmds.c:487 wiz_telekinesis(). Select a visible monster and hurtle
+// it six squares in a chosen direction. The command repeats until cancelled.
+export async function wiz_telekinesis() {
+    if (!game.wizard) {
+        await pline('Unavailable command.');
+        return ECMD_OK;
+    }
+
+    const cc = { x: game.u.ux, y: game.u.uy };
+    await pline('Pick a monster to hurtle.');
+    do {
+        const ans = await getpos(cc, true, 'a monster');
+        if (ans < 0 || cc.x < 1)
+            return ECMD_CANCEL;
+
+        const mtmp = m_at(cc.x, cc.y);
+        if (mtmp && canspotmon(mtmp)) {
+            if (!await getdir('which direction?'))
+                return ECMD_CANCEL;
+            const { mhurtle } = await import('./uhitm.js');
+            await mhurtle(mtmp, game.u.dx, game.u.dy, 6);
+            if (!DEADMONSTER(mtmp) && canspotmon(mtmp)) {
+                cc.x = mtmp.mx;
+                cc.y = mtmp.my;
+            }
+        }
+    } while ((game.u.utotype || 0) === UTOTYPE_NONE);
     return ECMD_OK;
 }
 
@@ -251,12 +294,28 @@ const WIZ_INTRINSICS = [
 ];
 
 function wiz_intrinsic_timeout(key) {
+    if (key === 'SICK')
+        return Number(game.u.uprops?.SICK) || 0;
+    if (key === 'CONFUSION')
+        return game.u.intrinsic?.HConfusion | 0;
     if (key === 'HALLUC')
-        return Number(game.u.uprops?.HALLUC) || 0;
+        return (game.u.intrinsic?.HHallucination | 0) & TIMEOUT;
     if (key === 'BLINDED')
         return (game.u.intrinsic?.HBlinded | 0) & TIMEOUT;
+    if (key === 'DEAF')
+        return (game.u.intrinsic?.HDeaf | 0) & TIMEOUT;
+    if (key === 'GLIB')
+        return (game.u.intrinsic?.HGlib | 0) & TIMEOUT;
+    if (key === 'SEE_INVIS')
+        return (game.u.intrinsic?.HSee_invisible | 0) & TIMEOUT;
     if (key === 'FAST')
         return (game.u.intrinsic?.HFast | 0) & TIMEOUT;
+    if (key === 'STUNNED')
+        return (game.u.intrinsic?.HStun | 0) & TIMEOUT;
+    if (key === 'FUMBLING')
+        return (game.u.intrinsic?.HFumbling | 0) & TIMEOUT;
+    if (key === 'DETECT_MONSTERS')
+        return Number(game.u.uprops?.DETECT_MONSTERS) || 0;
     return Number(game.u.wiz_intrinsic_timeouts?.[key]) || 0;
 }
 
@@ -296,36 +355,84 @@ export async function wiz_intrinsic() {
             continue;
         const name = prop[1];
         const oldtimeout = wiz_intrinsic_timeout(key);
+        const picked_count = picks.counts?.get(key) ?? -1;
+        const amount = picked_count === -1 ? 30 : picked_count;
+        if (amount <= 0)
+            continue;
 
-        if (key === 'BLINDED') {
+        if (key === 'CONFUSION') {
+            const { make_confused } = await import('./potion.js');
+            await make_confused(Math.min(TIMEOUT, oldtimeout + amount), false);
+            await pline(`Timeout for ${name} ${oldtimeout
+                ? 'increased by' : 'set to'} ${amount}.`);
+        } else if (key === 'BLINDED') {
             const { make_blinded } = await import('./potion.js');
-            await make_blinded(oldtimeout + 30, true);
+            await make_blinded(oldtimeout + amount, true);
+        } else if (key === 'DEAF') {
+            const { make_deaf } = await import('./potion.js');
+            await make_deaf(oldtimeout + amount, true);
         } else if (key === 'HALLUC') {
-            const uprops = (game.u.uprops ||= {});
-            uprops.HALLUC = oldtimeout + 30;
-            (game.u.intrinsic ||= {}).HHallucination = oldtimeout + 30;
-            if (!oldtimeout && !uprops.HALLUC_RES) {
-                if (game.u.uswallow)
-                    await swallowed(0);
-                else
-                    see_monsters();
-                (game.disp ||= {}).botl = true;
-                await pline(`Oh wow!  Everything ${game.u.ublind
-                    ? 'feels' : 'looks'} so cosmic!`);
-            }
+            const { make_hallucinated } = await import('./potion.js');
+            await make_hallucinated(oldtimeout + amount, true);
+        } else if (key === 'STUNNED') {
+            const { make_stunned } = await import('./potion.js');
+            await make_stunned(oldtimeout + amount, true);
+        } else if (key === 'SICK') {
+            const { make_sick } = await import('./potion.js');
+            const type = !rn2(2) ? SICK_VOMITABLE : SICK_NONVOMITABLE;
+            await make_sick(oldtimeout || amount, '#wizintrinsic', true, type);
+        } else if (key === 'GLIB') {
+            const { make_glib } = await import('./potion.js');
+            make_glib(oldtimeout + amount);
+            (game.disp ||= {}).botl = true;
+            await pline('Timeout for ' + name + ' '
+                        + (oldtimeout ? 'increased by' : 'set to') + ' '
+                        + amount + '.');
+        } else if (key === 'SEE_INVIS') {
+            const intr = (game.u.intrinsic ||= {});
+            const word = intr.HSee_invisible | 0;
+            intr.HSee_invisible = (word & ~TIMEOUT)
+                | Math.min(TIMEOUT, oldtimeout + amount);
+            (game.disp ||= {}).botl = true;
+            await pline(`Timeout for ${name} ${oldtimeout
+                ? 'increased by' : 'set to'} ${amount}.`);
         } else if (key === 'FAST') {
             const intr = (game.u.intrinsic ||= {});
             const word = intr.HFast | 0;
             intr.HFast = (word & ~TIMEOUT)
-                         | Math.min(TIMEOUT, oldtimeout + 30);
+                         | Math.min(TIMEOUT, oldtimeout + amount);
             (game.disp ||= {}).botl = true;
             await pline(`Timeout for ${name} ${oldtimeout
-                ? 'increased by' : 'set to'} 30.`);
+                ? 'increased by' : 'set to'} ${amount}.`);
+        } else if (key === 'FUMBLING') {
+            const intr = (game.u.intrinsic ||= {});
+            const timeout = Math.min(TIMEOUT, oldtimeout + amount);
+            intr.HFumbling = ((intr.HFumbling | 0) & ~TIMEOUT) | timeout;
+            (game.disp ||= {}).botl = true;
+            await pline(`Timeout for ${name} ${oldtimeout
+                ? 'increased by' : 'set to'} ${amount}.`);
+        } else if (key === 'DETECT_MONSTERS') {
+            (game.u.uprops ||= {}).DETECT_MONSTERS = oldtimeout + amount;
+            (game.disp ||= {}).botl = true;
+            await pline(`Timeout for ${name} ${oldtimeout
+                ? 'increased by' : 'set to'} ${amount}.`);
         } else {
-            (game.u.wiz_intrinsic_timeouts ||= {})[key] = oldtimeout + 30;
+            const timeout = oldtimeout + amount;
+            const uprops = (game.u.uprops ||= {});
+            const bases = (game.u.wiz_intrinsic_base_props ||= {});
+            if (!oldtimeout && !Object.hasOwn(bases, key)) {
+                bases[key] = {
+                    had: Object.hasOwn(uprops, key),
+                    value: uprops[key],
+                };
+            }
+            (game.u.wiz_intrinsic_timeouts ||= {})[key] = timeout;
+            /* C stores these timers in u.uprops[p].intrinsic, so direct
+               property readers must see the timed value immediately. */
+            uprops[key] = timeout;
             (game.disp ||= {}).botl = true;
             await pline(`Timeout for ${name} ${oldtimeout
-                ? 'increased by' : 'set to'} 30.`);
+                ? 'increased by' : 'set to'} ${amount}.`);
         }
     }
     await docrt();

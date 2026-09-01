@@ -23,7 +23,7 @@ import { ECMD_FAIL } from './const.js';
 import { You, Your, You_feel, You_hear, pline_The } from './pline.js';
 import { acurr, exercise } from './attrib.js';
 import { mksobj } from './mkobj.js';
-import { zapyourself } from './zap.js';
+import { weffects, zapyourself } from './zap.js';
 import { fall_asleep } from './timeout.js';
 import { makeknown, observe_object } from './o_init.js';
 import { getdir } from './cmd.js';
@@ -370,8 +370,10 @@ async function learn() {
         spbook.o_id = 0;
         return 0;
     }
-    if (book.unpaid)
-        note_unported_spell('learn:check_unpaid');
+    if (book.unpaid) {
+        const { check_unpaid } = await import('./shk.js');
+        await check_unpaid(book);
+    }
     spbook.book = null;
     spbook.o_id = 0;
     return 0;
@@ -594,8 +596,7 @@ export async function docast() {
     return ECMD_FAIL;
 }
 
-// src/spell.c spelleffects() — cast it. Only the pre-flight check is ported;
-// the effects themselves are a per-spell dispatch that needs zap/potion/etc.
+// src/spell.c spelleffects(), cast the selected spell.
 export async function spelleffects(spell_otyp, atme, force) {
     const spell = spell_idx(spell_otyp);
     const energy = { v: 0 };
@@ -607,6 +608,7 @@ export async function spelleffects(spell_otyp, atme, force) {
     }
 
     game.u.uen -= energy.v;
+    (game.disp ||= {}).botl = true;
     exercise(A_WIS, true);
 
     /* pseudo = mksobj(spellid(spell), FALSE, FALSE) — a throwaway object
@@ -619,6 +621,7 @@ export async function spelleffects(spell_otyp, atme, force) {
     const role_skill = P_SKILL(spell_skilltype(otyp));
 
     switch (otyp) {
+    case ONAMES.SPE_TELEPORT_AWAY:
     case ONAMES.SPE_HEALING:
     case ONAMES.SPE_EXTRA_HEALING:
     case ONAMES.SPE_DRAIN_LIFE:
@@ -644,8 +647,7 @@ export async function spelleffects(spell_otyp, atme, force) {
                     note_unported_spell('spelleffects:losehp');
                 }
             } else {
-                /* weffects — the beam engine */
-                note_unported_spell('spelleffects:weffects');
+                await weffects(pseudo);
             }
         } else {
             note_unported_spell('spelleffects:weffects');
@@ -678,6 +680,73 @@ const quitchars = ' \r\n\x1b';
 // src/spell.c:17 KEEN, include/spell.h:36 SPELL_LEV_PW
 const KEEN = 20000;
 export const SPELL_LEV_PW = (lvl) => lvl * 5;
+
+// src/spell.c:1707 tport_spell(). Wizard-mode m-^T temporarily hides or
+// supplies teleport away, then uses the returned operation to restore the
+// exact prior spell-list slot.
+export const NOOP_SPELL = 0, HIDE_SPELL = 1, ADD_SPELL = 2,
+             UNHIDESPELL = 3, REMOVESPELL = 4;
+
+let savedTeleportSpell = null;
+
+export function tport_spell(what) {
+    const book = (game.spl_book ||= []);
+    let i;
+    for (i = 0; i < MAXSPELL; i++) {
+        const id = spellid(i);
+        if (id === ONAMES.SPE_TELEPORT_AWAY || id === NO_SPELL)
+            break;
+    }
+    if (i === MAXSPELL) {
+        note_unported_spell('tport_spell:spellbook full');
+    } else if (spellid(i) === NO_SPELL) {
+        if (what === HIDE_SPELL || what === REMOVESPELL) {
+            savedTeleportSpell = null;
+        } else if (what === UNHIDESPELL) {
+            if (savedTeleportSpell) {
+                book[savedTeleportSpell.index] = savedTeleportSpell.slot;
+                savedTeleportSpell = null;
+            }
+        } else if (what === ADD_SPELL) {
+            savedTeleportSpell = {
+                index: i,
+                slot: book[i],
+                hadSlot: Object.hasOwn(book, i),
+                length: book.length,
+            };
+            book[i] = {
+                sp_id: ONAMES.SPE_TELEPORT_AWAY,
+                sp_lev: game.objects[ONAMES.SPE_TELEPORT_AWAY].oc_level,
+                sp_know: KEEN,
+            };
+            return REMOVESPELL;
+        }
+    } else {
+        if (what === ADD_SPELL || what === UNHIDESPELL) {
+            savedTeleportSpell = null;
+        } else if (what === REMOVESPELL) {
+            if (savedTeleportSpell) {
+                const saved = savedTeleportSpell;
+                if (saved.hadSlot)
+                    book[i] = saved.slot;
+                else
+                    delete book[i];
+                book.length = saved.length;
+                savedTeleportSpell = null;
+            }
+        } else if (what === HIDE_SPELL) {
+            savedTeleportSpell = {
+                index: i,
+                slot: book[i],
+                hadSlot: true,
+                length: book.length,
+            };
+            book[i] = { ...book[i], sp_id: NO_SPELL };
+            return UNHIDESPELL;
+        }
+    }
+    return NOOP_SPELL;
+}
 
 export const spe_Forgotten = -1;
 export const spe_Unknown = 0;

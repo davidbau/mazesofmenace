@@ -11,14 +11,15 @@
 // js/o_init.js shuffles at game start — so a correct label here is also a
 // direct check that the o_init port is right.
 
-import { carried, is_poisonable, Has_contents } from './obj.js';
+import { carried, is_poisonable, Has_contents, OBJ_FLOOR, OBJ_MINVENT } from './obj.js';
 import { game } from './gstate.js';
 import { vegetarian, name_to_monplus, type_is_pname, verysmall,
          is_neuter, is_human } from './mondata.js';
 import { MFLAGS, MSOUND, MONSYMS } from './monst_data.js';
-import { pmname, oname } from './do_name.js';
+import { pmname, oname, y_monnam } from './do_name.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { mksobj, mkobj, rnd_class, curse, set_corpsenm, set_tin_variety,
+import { mksobj, mkobj, rnd_class, curse, set_corpsenm, zombie_form,
+         set_tin_variety,
          dead_species, can_be_hatched, erosion_matters } from './mkobj.js';
 import { Is_candle, Is_container } from './obj.js';
 import { is_ammo, is_missile } from './wield.js';
@@ -33,13 +34,17 @@ import { W_ARMOR, W_TOOL, W_RINGR, W_RINGL, W_AMUL, W_QUIVER, W_WEP,
          ismnum, SPE_LIM, RANDOM_TIN, GOLD_SYM, WT_IRON_BALL_INCR,
          P_POLEARMS, P_HAMMER, ONAME_WISH, ONAME_NO_FLAGS,
          HAND, ROOMOFFSET, NO_TRAP, TRAPNUM, ROCKTRAP, MAGIC_PORTAL,
+         BURN_OBJECT,
          is_hole, DOOR, SDOOR, IRONBARS, HWALL, VWALL, IS_WALL,
          D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED,
          D_TRAPPED, ALTAR, Align2amask, A_NONE, A_CHAOTIC, A_NEUTRAL,
-         A_LAWFUL, SINK, S_LPUDDING, S_LDWASHER, S_LRING } from './const.js';
+         A_LAWFUL, SINK, S_LPUDDING, S_LDWASHER, S_LRING, POOL, MOAT, WATER,
+         LAVAPOOL, LAVAWALL, ROOM, ICE, ICED_POOL, ICED_MOAT,
+         DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, DB_UNDER, DB_ICE,
+         DB_MOAT } from './const.js';
 import { mons, PMNAMES } from './monst_data.js';
 import { observe_object } from './o_init.js';
-import { ordin, distu } from './hacklib.js';
+import { ordin, distu, s_suffix } from './hacklib.js';
 import { cansee as cansee_o } from './vision.js';
 import { ART_ORB_OF_DETECTION, ART_EYES_OF_THE_OVERWORLD } from './artilist_data.js';
 const mons_PM_SAMURAI = PMNAMES.PM_SAMURAI;
@@ -58,13 +63,13 @@ import { is_quest_artifact } from './questpgr.js';
 import { body_part } from './polyself.js';
 import { pline } from './display.js';
 import { tty_yn_function } from './tty/topl.js';
-import { Blind } from './youprop.js';
+import { Blind, Flying, Glib, Levitation } from './youprop.js';
 
 const {
     COIN_CLASS, POTION_CLASS, SCROLL_CLASS, WAND_CLASS, SPBOOK_CLASS,
     RING_CLASS, AMULET_CLASS, ARMOR_CLASS, GEM_CLASS, WEAPON_CLASS,
     TOOL_CLASS, FOOD_CLASS, VENOM_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS,
-    MAXOCLASSES,
+    ILLOBJ_CLASS, MAXOCLASSES,
 } = OCLASSES;
 
 // include/objclass.h:190-191
@@ -122,6 +127,9 @@ export function obj_typename(otyp) {
     case ARMOR_CLASS:
         if (ocl.oc_subtyp === ARM_GLOVES || ocl.oc_subtyp === ARM_BOOTS)
             buf = 'pair of ';
+        else if (otyp >= ONAMES.GRAY_DRAGON_SCALES
+                 && otyp <= ONAMES.YELLOW_DRAGON_SCALES)
+            buf = 'set of ';
         /* FALLTHRU */
     default:
         if (nn) {
@@ -274,9 +282,18 @@ export function xname(obj) {
             dn = 'koto';
     }
     const un = ocl.oc_uname || null;
-    const pluralize = obj.quan !== 1;
+    let pluralize = obj.quan !== 1;
     const dknown = obj.dknown;
     let buf = '';
+
+    /* src/objnam.c:663, jump directly to the personal name once an artifact
+       is fully known. The ordinary object type must not prefix it. */
+    if (obj_is_pname(obj)) {
+        buf = obj.oname;
+        if (obj.oartifact && buf.startsWith('The '))
+            buf = 'the ' + buf.slice(4);
+        return /^the /i.test(buf) ? buf.slice(4) : buf;
+    }
 
     switch (obj.oclass) {
     case COIN_CLASS:
@@ -291,11 +308,26 @@ export function xname(obj) {
         /* FALLTHRU */
     case VENOM_CLASS:
     case TOOL_CLASS:
+        if (obj.otyp === ONAMES.LENSES)
+            buf = 'pair of ';
+        else if (obj.otyp === ONAMES.TOWEL && obj.spe > 0)
+            buf += obj.spe < 3 ? 'moist ' : 'wet ';
         buf += !dknown ? dn : nn ? actualn : un ? `${dn} called ${un}` : dn;
+        if (obj.otyp === ONAMES.FIGURINE && ismnum(obj.corpsenm)) {
+            const cgend = (obj.spe | 0) & (CORPSTAT_MALE | CORPSTAT_FEMALE);
+            const mgend = cgend === CORPSTAT_MALE ? MALE
+                         : cgend === CORPSTAT_FEMALE ? FEMALE : NEUTER;
+            const mnam = pmname(game.mons[obj.corpsenm], mgend);
+            buf += ` of ${just_an(mnam)}${mnam}`;
+        } else if (obj.otyp === ONAMES.TOWEL && obj.spe > 0 && game.wizard)
+            buf += ` (${obj.spe})`;
         break;
     case ARMOR_CLASS:
         if (ocl.oc_subtyp === ARM_BOOTS || ocl.oc_subtyp === ARM_GLOVES)
             buf = 'pair of ';
+        else if (obj.otyp >= ONAMES.GRAY_DRAGON_SCALES
+                 && obj.otyp <= ONAMES.YELLOW_DRAGON_SCALES)
+            buf = 'set of ';
         buf += nn ? actualn : un ? `${dn} called ${un}` : dn;
         break;
     case POTION_CLASS:
@@ -325,12 +357,31 @@ export function xname(obj) {
             else buf = `${dn} scroll`;
         }
         break;
-    case FOOD_CLASS:
+    case FOOD_CLASS: {
+        if (obj.globby) {
+            const size = obj.owt <= 100 ? 'small'
+                       : obj.owt <= 300 ? 'medium'
+                         : obj.owt <= 500 ? 'large' : 'very large';
+            buf = `${size} ${actualn}`;
+            break;
+        }
+        if (obj.otyp === ONAMES.SLIME_MOLD) {
+            let fruit = game.ffruit;
+            while (fruit && fruit.fid !== obj.spe)
+                fruit = fruit.nextf;
+            buf = fruit?.fname || 'fruit';
+            if (pluralize) {
+                buf = makeplural(makesingular(buf));
+                pluralize = false;
+            }
+            break;
+        }
         buf = actualn;
         /* src/objnam.c tin_details(): a tin names its contents once known */
         if (obj.otyp === ONAMES.TIN && obj.known)
             buf = tin_details(obj);
         break;
+    }
     case AMULET_CLASS:
         if (!dknown)
             buf = 'amulet';
@@ -454,9 +505,6 @@ function the_unique_pm(ptr) {
 // src/objnam.c:1824 corpse_xname() — "<species> corpse", with the article and
 // "the" handling C spells out for unique and personal-name monsters.
 //
-// The possessive form (Medusa's corpse), the adjective positioning and the
-// ghost/statue callers are recorded; what is ported is the ordinary
-// "a goblin corpse" that every kill produces.
 export function corpse_xname(otmp, adjective, cxn_flags) {
     const omndx = otmp.corpsenm;
     const the_prefix0 = (cxn_flags & CXN_PFX_THE) !== 0;
@@ -474,12 +522,16 @@ export function corpse_xname(otmp, adjective, cxn_flags) {
     const mgend = (cgend === CORPSTAT_MALE) ? MALE
                 : (cgend === CORPSTAT_FEMALE) ? FEMALE
                 : NEUTER;
-    const mnam = mdat ? pmname(mdat, mgend) : 'thing';
+    let mnam = mdat ? pmname(mdat, mgend) : 'thing';
+    let possessive = false;
 
-    if (mdat && type_is_pname(mdat)) {
-        no_prefix = true;
-    } else if (mdat && the_unique_pm(mdat) && !no_prefix) {
-        the_prefix = true;
+    if (mdat && (the_unique_pm(mdat) || type_is_pname(mdat))) {
+        mnam = s_suffix(mnam);
+        possessive = true;
+        if (type_is_pname(mdat))
+            no_prefix = true;
+        else if (!no_prefix)
+            the_prefix = true;
     }
     if (no_prefix)
         the_prefix = any_prefix = false;
@@ -491,7 +543,8 @@ export function corpse_xname(otmp, adjective, cxn_flags) {
     if (!adjective || !adjective.trim()) {
         nambuf += mnam;                 /* normal case: newt corpse */
     } else {
-        nambuf += `${adjective.trim()} ${mnam}`;
+        nambuf += possessive ? `${mnam} ${adjective.trim()}`
+                             : `${adjective.trim()} ${mnam}`;
         /* doname() may pass a count as the adjective; then no article */
         if (/^\d/.test(adjective.trim()))
             any_prefix = false;
@@ -694,16 +747,57 @@ export function Tobjnam(otmp, verb) {
 
 // The CORPSE arm redirects xname to cxname for the monster type; corpses on
 // this tree go through the same xname, so the redirect has nothing to change.
-/* src/objnam.c yname() — "your <name>" when carried, "the <name>" otherwise.
-   C routes the prefix through shk_your(), whose shop-ownership, monster-
-   ownership and unique-corpse arms are not reached by anything ported. */
+/* src/objnam.c yname() and src/shk.c shk_your(). */
 // src/objnam.c:2378 Yname2() — capitalized variant of yname().
 export function Yname2(obj) {
     const s = yname(obj);
     return s ? s[0].toUpperCase() + s.slice(1) : s;   /* *s = highc(*s) */
 }
 
+function shop_owner_prefix(obj) {
+    const floorStock = obj.where === OBJ_FLOOR && !obj.no_charge;
+    if (!obj.unpaid && !floorStock)
+        return null;
+
+    let x, y;
+    if (obj.where === OBJ_FLOOR) {
+        x = obj.ox;
+        y = obj.oy;
+    } else if (carried(obj)) {
+        x = game.u.ux;
+        y = game.u.uy;
+    } else {
+        return null;
+    }
+
+    const loc = game.level?.at(x, y);
+    const roomno = loc?.roomno ?? 0;
+    if (!loc || loc.edge || roomno < ROOMOFFSET)
+        return null;
+    const roomidx = roomno - ROOMOFFSET;
+    const room = game.level?.rooms?.[roomidx]
+        || (game.level?.subrooms || []).find(candidate =>
+            candidate.roomnoidx === roomidx);
+    const shkp = room?.resident;
+    const eshk = shkp?.eshk || shkp?.mextra?.eshk;
+    if (!shkp?.isshk || !eshk)
+        return null;
+    if (floorStock && eshk.shk?.x === x && eshk.shk?.y === y)
+        return null;
+
+    const raw = shkp.shknam || eshk.shknam;
+    if (!raw)
+        return null;
+    const name = /^[-+_|=]/.test(raw) ? raw.slice(1) : raw;
+    return s_suffix(name);
+}
+
 export function yname(obj) {
+    const shopOwner = shop_owner_prefix(obj);
+    if (shopOwner)
+        return `${shopOwner} ${xname(obj)}`;
+    if (obj.where === OBJ_MINVENT && obj.ocarry)
+        return `${s_suffix(y_monnam(obj.ocarry))} ${xname(obj)}`;
     return `${carried(obj) ? 'your' : 'the'} ${xname(obj)}`;
 }
 
@@ -727,10 +821,9 @@ const has_oname = (obj) => obj.oname != null;
 
 // src/objnam.c:331 obj_is_pname() — is the object's name a proper name?
 //
-// Only the artifact arm can return TRUE, and no artifact is generated by
-// anything ported yet, so not_fully_identified()'s branch is recorded rather
-// than guessed: it would change the ANSWER, not just a message.
-function obj_is_pname(obj) {
+// Only the artifact arm can return TRUE. The complete identification check is
+// important because it decides whether callers may reveal the proper name.
+export function obj_is_pname(obj) {
     if (!obj.oartifact || !has_oname(obj))
         return false;
     if (!game.program_state_gameover && !game.iflags?.override_ID) {
@@ -765,13 +858,9 @@ function the_unique_obj(obj) {
                   && (known || obj.otyp === ONAMES.AMULET_OF_YENDOR));
 }
 
-// src/artifact.c undiscovered_artifact() — C scans artidisco[]. Nothing ported
-// discovers an artifact, so the list is empty and every artifact is
-// undiscovered; the call is recorded so this stops being an assumption the
-// moment artifacts land.
+// src/artifact.c undiscovered_artifact(), C scans artidisco[].
 function undiscovered_artifact(m) {
-    note_unported_objnam('undiscovered_artifact');
-    return true;
+    return !(game.artidisco || []).includes(m);
 }
 
 // include/obj.h:421 is_plural()
@@ -889,6 +978,8 @@ function Strcasecpy(buf, at, repl) {
 }
 
 export function singular(otmp, func) {
+    if (otmp.otyp === ONAMES.CORPSE && func === xname)
+        func = cxname;
     const savequan = otmp.quan;
     otmp.quan = 1;
     const nam = func(otmp);
@@ -931,6 +1022,34 @@ function tin_details(obj) {
 // credit card and a food ration do.
 /* include/obj.h:338 Is_box() */
 const Is_box = (o) => o.otyp === ONAMES.LARGE_BOX || o.otyp === ONAMES.CHEST;
+
+// src/objnam.c is_unpaid() plus unpaid_cost(..., COST_CONTENTS). A carried
+// container's price suffix includes every billed object nested inside it.
+function billed_cost(obj) {
+    let price = 0;
+    let found = false;
+    for (const room of game.u.ushops || '') {
+        const roomidx = room.charCodeAt(0) - ROOMOFFSET;
+        const shoproom = game.level?.rooms?.[roomidx]
+            || (game.level?.subrooms || [])
+                .find(candidate => candidate.roomnoidx === roomidx);
+        const shkp = shoproom?.resident;
+        const bill = shkp?.eshk?.bill_p;
+        const entry = Array.isArray(bill)
+            ? bill.find(bp => bp.bo_id === obj.o_id) : null;
+        if (entry) {
+            price += entry.price * (obj.quan || 1);
+            found = true;
+            break;
+        }
+    }
+    for (const contained of obj.cobj || []) {
+        const nested = billed_cost(contained);
+        price += nested.price;
+        found ||= nested.found;
+    }
+    return { price, found };
+}
 
 export function doname(obj) {
     const ocl = game.objects[obj.otyp];
@@ -995,6 +1114,9 @@ export function doname(obj) {
             prefix += 'unlocked ';
     }
 
+    if (obj.greased)
+        prefix += 'greased ';
+
     /* src/objnam.c:1150 add_erosion_words — the eroded words come first:
        "very burnt", "thoroughly rusty", &c. (is_damageable gate: every
        reachable eroded item passes it, and !is_damageable items never
@@ -1031,7 +1153,14 @@ export function doname(obj) {
             bp += ' (being worn)';
         break;
     case ARMOR_CLASS:
-        if (obj.owornmask & W_ARMOR) bp += ' (being worn)';
+        if (obj.owornmask & W_ARMOR) {
+            bp += ' (being worn)';
+            /* src/objnam.c:1400. Slipperiness belongs to the hero, but C
+               annotates the worn gloves so inventory and selection menus
+               expose the condition. */
+            if (obj === game.u?.uarmg && Glib())
+                bp += '; slippery)';
+        }
         /* FALLTHRU */
     case WEAPON_CLASS:
         if (known) prefix += `${obj.spe >= 0 ? '+' : ''}${obj.spe} `;
@@ -1045,16 +1174,39 @@ export function doname(obj) {
             bp += ` (${obj.spe} of 7 candle${suffix})`;
             break;
         }
+        if (obj.otyp === ONAMES.OIL_LAMP || obj.otyp === ONAMES.MAGIC_LAMP
+            || obj.otyp === ONAMES.BRASS_LANTERN || Is_candle(obj)) {
+            if (Is_candle(obj)) {
+                const fullBurnTime = 20 * game.objects[obj.otyp].oc_cost;
+                let turnsLeft = obj.age || 0;
+                if (obj.lamplit) {
+                    const timer = (game.timer_base || []).find((candidate) =>
+                        candidate.func_index === BURN_OBJECT
+                        && candidate.arg === obj);
+                    turnsLeft += Math.max(0, (timer?.timeout || game.moves)
+                                             - (game.moves || 0));
+                }
+                if (turnsLeft < fullBurnTime)
+                    prefix += 'partly used ';
+            }
+            if (obj.lamplit)
+                bp += ' (lit)';
+            break;
+        }
         /* charged tools show "(0:n)" once the count is known */
         if (ocl.oc_charged && known)
             bp += ` (${obj.recharged || 0}:${obj.spe})`;
         break;
+    case POTION_CLASS:
+        if (obj.otyp === ONAMES.POT_OIL && obj.lamplit)
+            bp += ' (lit)';
+        break;
     case RING_CLASS:
-        /* src/objnam.c:1494 — "(on right hand)" / "(on left hand)" */
+        /* src/objnam.c:1494, use the current form's hand equivalent. */
         if (obj.owornmask & W_RINGR)
-            bp += ' (on right hand)';
+            bp += ` (on right ${body_part(HAND)})`;
         if (obj.owornmask & W_RINGL)
-            bp += ' (on left hand)';
+            bp += ` (on left ${body_part(HAND)})`;
         if (known && ocl.oc_charged)
             prefix += `${obj.spe >= 0 ? '+' : ''}${obj.spe} `;
         break;
@@ -1136,20 +1288,10 @@ export function doname(obj) {
 
     /* src/objnam.c:1654: carried shop stock shows the price stored when it
        was added to the current shopkeeper's bill. */
-    if (obj.unpaid) {
-        let quotedprice = 0;
-        for (const room of game.u.ushops || '') {
-            const shkp = game.level?.rooms?.[
-                room.charCodeAt(0) - ROOMOFFSET]?.resident;
-            const bill = shkp?.eshk?.bill_p;
-            const entry = Array.isArray(bill)
-                ? bill.find(bp_ => bp_.bo_id === obj.o_id) : null;
-            if (entry) {
-                quotedprice = entry.price * obj.quan;
-                break;
-            }
-        }
-        bp += ` (unpaid, ${quotedprice} ${currency(quotedprice)})`;
+    const billed = obj.unpaid || Has_contents(obj)
+        ? billed_cost(obj) : { price: 0, found: false };
+    if (!game.iflags?.suppress_price && (obj.unpaid || billed.found)) {
+        bp += ` (${obj.unpaid ? 'unpaid' : 'contents'}, ${billed.price} ${currency(billed.price)})`;
     }
 
     /* src/objnam.c:1527 — recompute the article now that the prefix is
@@ -2491,14 +2633,70 @@ async function wizterrainwish(d) {
     const wanted = d.bp.toLowerCase();
     if (!lev)
         return null;
+    const oldtyp = lev.typ;
+    const isDrawbridge = oldtyp === DRAWBRIDGE_DOWN
+        || oldtyp === DRAWBRIDGE_UP;
 
     if (wanted.endsWith('sink')) {
-        const oldtyp = lev.typ;
         lev.typ = SINK;
         if (oldtyp !== SINK)
             game.level.flags.nsinks = (game.level.flags.nsinks || 0) + 1;
         lev.looted = d.looted ? S_LPUDDING | S_LDWASHER | S_LRING : 0;
         await pline('A sink.');
+    } else if (wanted.endsWith('pool') || wanted.endsWith('moat')
+               || wanted.endsWith('wall of water')) {
+        const waterType = wanted.endsWith('pool') ? POOL
+            : wanted.endsWith('moat') ? MOAT : WATER;
+        if (!isDrawbridge) {
+            lev.typ = waterType;
+            lev.flags = 0;
+        } else {
+            lev.drawbridgemask = ((lev.drawbridgemask ?? 0) & ~DB_UNDER)
+                | DB_MOAT;
+        }
+        const { del_engr_at } = await import('./engrave.js');
+        del_engr_at(x, y);
+        if (isDrawbridge) {
+            await pline(`Moat ${oldtyp === DRAWBRIDGE_UP
+                ? 'in front of' : 'under'} the drawbridge.`);
+        } else {
+            const { waterbody_name } = await import('./pager.js');
+            await pline(`${An(waterbody_name(x, y))}.`);
+        }
+        const { water_damage_chain } = await import('./trap.js');
+        const floorObjects = (game.level.objects || [])
+            .filter(obj => obj.ox === x && obj.oy === y);
+        await water_damage_chain(floorObjects, true);
+    } else if (wanted.endsWith('lava')) {
+        const wall = wanted.endsWith('wall of lava');
+        lev.typ = wall ? LAVAWALL : LAVAPOOL;
+        lev.flags = 0;
+        const { del_engr_at } = await import('./engrave.js');
+        del_engr_at(x, y);
+        await pline(`A ${wall ? 'wall' : 'pool'} of molten lava.`);
+        if ((!Levitation() && !Flying()) || wall) {
+            const { pooleffects } = await import('./hack.js');
+            await pooleffects(false);
+        }
+        const floorObjects = (game.level.objects || [])
+            .filter(obj => obj.ox === x && obj.oy === y);
+        const { fire_damage_chain } = await import('./trap.js');
+        await fire_damage_chain(floorObjects, true, true, x, y);
+    } else if (wanted.endsWith('ice')) {
+        if (!isDrawbridge) {
+            lev.typ = ICE;
+            lev.icedpool = oldtyp === ROOM ? ICED_POOL : ICED_MOAT;
+        } else {
+            lev.drawbridgemask = ((lev.drawbridgemask ?? 0) & ~DB_UNDER)
+                | DB_ICE;
+        }
+        const { del_engr_at } = await import('./engrave.js');
+        del_engr_at(x, y);
+        if (wanted.startsWith('melting '))
+            note_unported_objnam('wizterrainwish:melting-ice-timer');
+        await pline(isDrawbridge
+            ? `Ice ${oldtyp === DRAWBRIDGE_UP ? 'in front of' : 'under'} the drawbridge.`
+            : 'Solid ice.');
     } else if (wanted.endsWith('altar')) {
         const alignment = wanted.startsWith('chaotic ') ? A_CHAOTIC
                         : wanted.startsWith('neutral ') ? A_NEUTRAL
@@ -2523,28 +2721,34 @@ async function wizterrainwish(d) {
                         Math.min(79, x + 1), Math.min(20, y + 1));
         lev.horizontal = lev.typ === HWALL;
         await pline('A wall.');
-    } else if (wanted === 'door') {
+    } else if (wanted === 'door' || wanted.endsWith('secret door')) {
+        const secret = wanted.endsWith('secret door');
         if (!(lev.typ === DOOR || lev.typ === SDOOR || IS_WALL(lev.typ)
               || lev.typ === IRONBARS)) {
-            await pline('Door requires door or wall location.');
+            await pline(`${secret ? 'Secret door' : 'Door'} requires door or wall location.`);
             return hands_obj;
         }
-        lev.typ = DOOR;
+        lev.typ = secret ? SDOOR : DOOR;
         let mask = d.locked ? D_LOCKED
-                   : d.doorless ? D_NODOOR
+                   : (d.doorless || secret) ? D_NODOOR
                      : d.open ? D_ISOPEN
                        : d.broken ? D_BROKEN : D_CLOSED;
-        if (d.trapped === 1 && (mask & (D_LOCKED | D_CLOSED)))
+        if (d.trapped === 1
+            && (secret || (mask & (D_LOCKED | D_CLOSED))))
             mask |= D_TRAPPED;
         lev.doormask = mask;
         const words = [];
         if (mask & D_TRAPPED) words.push('trapped');
         if (mask & D_LOCKED) words.push('locked');
-        else if (mask & D_CLOSED) words.push('closed');
-        else if (mask & D_ISOPEN) words.push('open');
-        else if (mask & D_BROKEN) words.push('broken');
-        else words.push('doorless');
-        words.push(mask === D_NODOOR ? 'doorway' : 'door');
+        if (secret) {
+            words.push('secret door');
+        } else {
+            if (mask & D_CLOSED) words.push('closed');
+            else if (mask & D_ISOPEN) words.push('open');
+            else if (mask & D_BROKEN) words.push('broken');
+            else words.push('doorless');
+            words.push(mask === D_NODOOR ? 'doorway' : 'door');
+        }
         await pline(`${An(words.join(' '))}.`);
     } else {
         return null;
@@ -2905,8 +3109,15 @@ export async function readobjnam(bp, no_wish) {
                 set_corpsenm(d.otmp, d.mntmp);
             }
             if (d.zombify) {
-                /* zombie_form() + start_timer(ZOMBIFY_MON) not ported */
-                note_unported_objnam('readobjnam:zombify');
+                /* Keep C's integer truth test. NON_PM is -1, so even a
+                   species without a zombie form receives a callback which
+                   later rots it. */
+                if (zombie_form(game.mons[d.mntmp])) {
+                    const { start_timer, TIMER_OBJECT, ZOMBIFY_MON }
+                        = await import('./timeout.js');
+                    start_timer(rn1(5, 10), TIMER_OBJECT, ZOMBIFY_MON,
+                                d.otmp);
+                }
             }
             break;
         case ONAMES.EGG:
@@ -3323,6 +3534,19 @@ export function gloves_simple_name(gloves) {
             return 'gauntlets';
     }
     return 'gloves';
+}
+
+// src/objnam.c:5551 boots_simple_name(), shoes vs boots based on discovery.
+export function boots_simple_name(boots) {
+    if (boots && boots.dknown) {
+        const ocl = game.objects[boots.otyp];
+        const actualn = OBJ_NAME(ocl), descrpn = OBJ_DESCR(ocl);
+        if ((descrpn && descrpn.toLowerCase().includes('shoes'))
+            || (ocl.oc_name_known && actualn
+                && actualn.toLowerCase().includes('shoes')))
+            return 'shoes';
+    }
+    return 'boots';
 }
 
 // src/objnam.c:1090 mshot_xname() — "the Nth arrow" during a volley.

@@ -33,6 +33,9 @@ export function settrack() {
        created, and an undefined utpnt indexes past the ring. */
     if (!game.utrack)
         initrack();
+    else
+        while (game.utrack.length < UTSZ)
+            game.utrack.push({ x: 0, y: 0 });
     game.utcnt ??= 0;
     game.utpnt ??= 0;
 

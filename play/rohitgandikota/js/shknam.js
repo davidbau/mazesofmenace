@@ -268,6 +268,7 @@ async function shkinit(shp, sroom) {
         shoproom: ((sroom.roomnoidx ?? game.level.rooms.indexOf(sroom))
                    + ROOMOFFSET),
         shoptype: sroom.rtype,
+        shoplevel: { dnum: game.u.uz.dnum, dlevel: game.u.uz.dlevel },
         shd: game.level.doors[sh],
         shk: { x: sx, y: sy },
         robbed: 0, credit: 0, debit: 0, loan: 0,

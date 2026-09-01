@@ -15,21 +15,23 @@ import { dokick_wire, ship_object, dokick } from './dokick.js';
 import { mklev, mklev_wire_mon } from './mklev.js';
 import { sp_lev_wire_mon } from './sp_lev.js';
 import { is_pool, is_lava, m_at, t_at, newcham, resists_ston,
-         mongone } from './mon.js';
+         mongone, set_ustuck } from './mon.js';
 import { do_attack } from './uhitm.js';
 import { back_to_glyph, glyph_is_invisible_at, is_safemon, mon_visible,
          sensemon, unmap_invisible } from './display.js';
-import { goodpos, place_monster, remove_monster } from './makemon.js';
+import { goodpos, hideunder, place_monster, remove_monster } from './makemon.js';
 import { sobj_at } from './invent.js';
-import { PMNAMES, MFLAGS } from './monst_data.js';
-import { is_hider, verysmall } from './mondata.js';
+import { PMNAMES, MFLAGS, MONSYMS } from './monst_data.js';
+import { hides_under, is_hider, verysmall, sticks } from './mondata.js';
 import { bad_rock, cant_squeeze_thru, nomul, domove_attackmon_at, spoteffects,
          domove_bump_mon, dopickup, trapmove, doorless_door,
-         could_move_onto_boulder, u_locomotion } from './hack.js';
+         could_move_onto_boulder, u_locomotion,
+         disturb_buried_zombies, may_passwall } from './hack.js';
 import { In_sokoban, surface } from './dungeon.js';
-import { Blind, Hallucination } from './youprop.js';
+import { Blind, Flying, Hallucination, Levitation, Passes_walls, Stealth }
+    from './youprop.js';
 import { u_on_newpos } from './teleport.js';
-import { doloot } from './pickup.js';
+import { doloot, query_inventory_category } from './pickup.js';
 import { curr_mon_load } from './mon.js';
 import { ECMD_FAIL, ECMD_CANCEL, Never_mind, A_DEX, A_CON, M_AP_TYPE,
          M_AP_FURNITURE, M_AP_OBJECT, OVERLOADED, Is_airlevel,
@@ -37,9 +39,13 @@ import { ECMD_FAIL, ECMD_CANCEL, Never_mind, A_DEX, A_CON, M_AP_TYPE,
 import { ACURR, exercise, near_capacity } from './attrib.js';
 import { is_pit, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, GETOBJ_DOWNPLAY, W_ARMOR, W_ACCESSORY, GETOBJ_EXCLUDE_INACCESS, ARTICLE_YOUR, ARTICLE_THE, CQ_CANNED, CQ_REPEAT, CMDQ_EXTCMD, CMDQ_KEY, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
-import { an, cxname, simpleonames, the } from './objnam.js';
+import { an, cxname, simpleonames, the, makeplural } from './objnam.js';
+import { is_plural, Is_container } from './obj.js';
+import { carrying } from './invent.js';
+import { is_weptool } from './mkobj.js';
+import { HANDS_SYM } from './const.js';
 import { cmap_names, defsyms } from './drawing_data.js';
-import { x_monnam, YMonnam, docallcmd, donamelevel } from './do_name.js';
+import { x_monnam, y_monnam, YMonnam, docallcmd, donamelevel } from './do_name.js';
 import { You } from './pline.js';
 
 /* js/do.js needs mklev(), and js/sp_lev.js needs mon.js's terrain tests; both
@@ -55,14 +61,15 @@ do_wire_dokick(ship_object);
 import { dungeon_wire_stairway_at } from './dungeon.js';
 dungeon_wire_stairway_at(stairway_at);
 import { wiz_level_change, wiz_level_tele, wiz_wish } from './wizcmds.js';
-import { tty_yn_function } from './tty/topl.js';
+import { tty_yn_function, doprev_message } from './tty/topl.js';
 import { extcmdlist, EXTCMD_FLAGS } from './extcmd_data.js';
-import { dodiscovered } from './o_init.js';
+import { dodiscovered, doclassdisco } from './o_init.js';
 import { enlightenment } from './insight.js';
 import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow, tty_next_page,
-         tty_destroy_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
+         tty_destroy_nhwindow, tty_start_menu, tty_add_menu, tty_add_menu_str,
+         tty_end_menu,
          tty_select_menu, NHW_TEXT, NHW_MENU, ATR_NONE } from './tty/wintty.js';
-import { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, isok, HEADSTONE, xdir, ydir, zdir, N_DIRS, N_DIRS_Z, DIR_ERR, DIR_W, DIR_NW, DIR_N, DIR_NE, DIR_E, DIR_SE, DIR_S, DIR_SW, DOMOVE_WALK, DOMOVE_RUSH, BC_BALL, BC_CHAIN, SLT_ENCUMBER, OBJ_FLOOR } from './const.js';
+import { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, isok, HEADSTONE, xdir, ydir, zdir, N_DIRS, N_DIRS_Z, DIR_ERR, DIR_W, DIR_NW, DIR_N, DIR_NE, DIR_E, DIR_SE, DIR_S, DIR_SW, DOMOVE_WALK, DOMOVE_RUSH, BC_BALL, BC_CHAIN, SLT_ENCUMBER, OBJ_FLOOR, WT_ELF } from './const.js';
 import { doopen, doopen_indir, doclose } from './lock.js';
 import { ECMD_OK, getobj } from './invent.js';
 import { count_unidentified } from './invent.js';
@@ -74,9 +81,10 @@ import { dochat } from './sounds.js';
 import { dothrow, dofire } from './dothrow.js';
 import { getpos, getpos_sethilite } from './getpos.js';
 import { get_valid_jump_position, is_valid_jump_pos } from './apply.js';
-import { dowear, doputon, dotakeoff, doremring, canwearobj_core } from './do_wear.js';
+import { dowear, doputon, dotakeoff, doremring, doddoremarm,
+         canwearobj_core } from './do_wear.js';
 import { boolean_option, show_menu_controls, paranoia_bits,
-         PARANOID_CONFIRM, PARANOID_TRAP } from './options.js';
+         PARANOID_CONFIRM, PARANOID_QUIT, PARANOID_TRAP } from './options.js';
 import { xwaitforspace } from './tty/getline.js';
 import { NO_COLOR } from './terminal.js';
 import { nhgetch } from './input.js';
@@ -88,7 +96,7 @@ import { doengrave, engr_at, wipe_engr_at } from './engrave.js';
 import { rnd, rn2 } from './rng.js';
 import { ACCESSIBLE } from './const.js';
 import { morehungry } from './eat.js';
-import { dohelp, dowhatis, doquickwhatis } from './pager.js';
+import { dohelp, dowhatis, doquickwhatis, dowhatdoes } from './pager.js';
 import { dolook, ECMD_TIME, display_inventory } from './invent.js';
 import { dovspell, docast } from './spell.js';
 import { dowieldquiver, dowield, doswapweapon, dotwoweapon } from './wield.js';
@@ -144,18 +152,26 @@ function flags_autoopen() {
     return game.flags?.autoopen !== false;
 }
 
-function blocksMove(x, y, dx, dy) {
+async function blocksMove(x, y, dx, dy) {
     /* src/hack.c:1001 — test_move clears door_opened on entry; without this
        a door opened two commands ago lets a later blocked move keep its
        turn and run a monster round C never ran */
     game.context.door_opened = false;
     const loc = game.level?.at(x, y);
     if (!loc) return true;
-    if (IS_OBSTRUCTED(loc.typ)) return true;
-    if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))) return true;
+    if (IS_OBSTRUCTED(loc.typ)
+        && !(Passes_walls() && may_passwall(x, y))) return true;
+    if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))
+        && !Passes_walls()) return true;
     /* src/hack.c:1140 test_move() — diagonal moves into an intact doorway
        are not allowed (block_door boulder check needs Sokoban state) */
-    if (dx && dy && IS_DOOR(loc.typ) && !doorless_door(x, y)) return true;
+    if (dx && dy && IS_DOOR(loc.typ)) {
+        if (!doorless_door(x, y))
+            return true;
+        const { block_door } = await import('./shk.js');
+        if (await block_door(x, y))
+            return true;
+    }
     /* src/hack.c:1208 — nor diagonal moves OUT of one */
     const ust = game.level?.at(game.u.ux, game.u.uy);
     if (dx && dy && ust && IS_DOOR(ust.typ)
@@ -304,8 +320,28 @@ export async function getdir(s) {
        routing it through tty_yn_function paints it without changing which
        key is consumed. A caller-supplied string starting with '^' is a
        key-hint, not a prompt, and is ignored here as C ignores it. */
-    const dirsym = await tty_yn_function(
-        (s && s[0] !== '^') ? s : 'In what direction?', null, '\0');
+    let dirsym;
+    /* This port's canned action builders predate CMDQ_DIR and can leave the
+       next top-level command at the head while a live getdir prompt runs.
+       Only repetition currently supplies a saved direction key here. */
+    const queued = game.in_doagain ? cmdq_pop() : null;
+    if (queued) {
+        if (queued.typ === CMDQ_KEY) {
+            dirsym = queued.key;
+        } else {
+            /* src/cmd.c:3974, a non-direction entry is a broken canned
+               command. C discards the canned tail and treats it as NUL. */
+            cmdq_clear(CQ_CANNED);
+            dirsym = '\0';
+        }
+    } else {
+        dirsym = await tty_yn_function(
+            (s && s[0] !== '^') ? s : 'In what direction?', null, '\0', false);
+        /* src/cmd.c:4017, getdir records the literal answer itself. Its
+           yn_function call uses addcmdq=FALSE so the key appears once. */
+        if (!game.in_doagain)
+            cmdq_add_key(CQ_REPEAT, dirsym);
+    }
 
     /* src/cmd.c:4011 — "remove the prompt string so caller won't have to":
        clear_nhwindow(WIN_MESSAGE) physically blanks the topline on every
@@ -490,6 +526,36 @@ export async function getlin(query, hook) {
     return buf;
 }
 
+// src/cmd.c:5588 paranoid_ynq(). A paranoid question requires the full word
+// "yes". PARANOID_CONFIRM also requires the full word "no" and retries an
+// invalid answer up to five times after the first prompt.
+export async function paranoid_ynq(beParanoid, prompt, acceptQ = false) {
+    if (!beParanoid) {
+        const choices = acceptQ ? 'ynq' : 'yn';
+        const answer = await tty_yn_function(prompt, choices, 'n', false);
+        return answer === 'y' || (acceptQ && answer === 'q') ? answer : 'n';
+    }
+
+    const confirmWords = (paranoia_bits() & PARANOID_CONFIRM) !== 0;
+    const responseType = confirmWords
+        ? (acceptQ ? '[yes|no|quit]' : '[yes|no]')
+        : (acceptQ ? '[yes|n|q] (n)' : '[yes|n] (n)');
+    let prefix = '';
+    let tries = 6;
+    do {
+        const raw = await getlin(`${prefix}${prompt} ${responseType}`);
+        const answer = raw.trim().replace(/\s+/g, ' ').toLowerCase();
+        if (answer === 'yes')
+            return 'y';
+        if (answer === 'quit' || raw === '\x1b')
+            return acceptQ ? 'q' : 'n';
+        if (!confirmWords || answer === 'no')
+            return 'n';
+        prefix = '"Yes" or "No": ';
+    } while (--tries > 0);
+    return 'n';
+}
+
 /* win/tty/getline.c:213 — hooked_tty_getlin's exit:
        ttyDisplay->toplin = TOPLINE_NON_EMPTY;
        clear_nhwindow(WIN_MESSAGE);   / * clean up after ourselves * /
@@ -636,9 +702,22 @@ function equip_ok(obj, removing, accessory) {
         && !canwearobj_core(obj).mask)
         return GETOBJ_DOWNPLAY;
 
-    /* removing inaccessible equipment */
-    if (removing)
-        note_unported_cmd('equip_ok:inaccessible_equipment');
+    /* src/do_wear.c inaccessible_equipment(obj, NULL, TRUE): while choosing
+       something to remove, only a covering item whose curse is already known
+       hides the equipment beneath it. */
+    if (removing) {
+        const knownCursed = (covering) => !!covering?.cursed
+                                           && !!covering.bknown;
+        const inaccessible = (obj === game.u.uarm
+                                && knownCursed(game.u.uarmc))
+            || (obj === game.u.uarmu
+                && (knownCursed(game.u.uarm)
+                    || knownCursed(game.u.uarmc)))
+            || ((obj === game.u.uleft || obj === game.u.uright)
+                && knownCursed(game.u.uarmg));
+        if (inaccessible)
+            return GETOBJ_EXCLUDE_INACCESS;
+    }
 
     /* all good to go */
     return GETOBJ_SUGGEST;
@@ -693,11 +772,43 @@ async function docmd_getobj(ch) {
 // The individual commands are not ported. What IS ported is reading the whole
 // name off the input, because a session that issues one and does not have it
 // consumed runs every later keystroke against the wrong command.
+async function enter_explore_mode() {
+    if (game.discover) {
+        await You('are already in explore mode.');
+        return ECMD_OK;
+    }
+
+    const oldmode = game.wizard ? 'debug mode' : 'normal game';
+    await pline(`Beware!  From explore mode there will be no return to ${oldmode},`);
+    const answer = await paranoid_ynq(
+        !!(paranoia_bits() & PARANOID_QUIT),
+        'Do you want to enter explore mode?');
+    if (answer === 'y') {
+        game.discover = true;
+        game.wizard = false;
+        tty_clear_nhwindow_message(game._topl_cury || 0);
+        await You('are now in non-scoring explore mode.');
+    } else {
+        tty_clear_nhwindow_message(game._topl_cury || 0);
+        await pline(`Continuing with ${oldmode}.`);
+    }
+    return ECMD_OK;
+}
+
 export async function doextcmd() {
     const name = await get_ext_cmd();
 
     if (name === null)
         return ECMD_OK; /* quit */
+
+    /* rhack replaces the '#' initiator with this actual function in the
+       repeat queue after execution. Keep the name as the stable command
+       identity, then replay it without asking for the extended name again. */
+    game._last_extcmd_name = name;
+    return await execute_extcmd(name);
+}
+
+async function execute_extcmd(name) {
 
     /* src/cmd.c extcmdlist — the command's own function runs here. Only the
        ones that consume further input are wired up so far, because those are
@@ -706,6 +817,8 @@ export async function doextcmd() {
         const { done2 } = await import('./end.js');
         return await done2();
     }
+    if (name === 'exploremode')
+        return await enter_explore_mode();
     if (name === 'enhance') {
         const { enhance_weapon_skill } = await import('./weapon.js');
         return await enhance_weapon_skill();
@@ -868,6 +981,10 @@ export async function doextcmd() {
         const { wiz_kill } = await import('./wizcmds.js');
         return await wiz_kill();
     }
+    if (name === 'wiztelekinesis') {
+        const { wiz_telekinesis } = await import('./wizcmds.js');
+        return await wiz_telekinesis();
+    }
     if (name === 'wizintrinsic') {
         const { wiz_intrinsic } = await import('./wizcmds.js');
         return await wiz_intrinsic();
@@ -875,6 +992,40 @@ export async function doextcmd() {
     if (name === 'wizmap') {
         const { wiz_map } = await import('./wizcmds.js');
         return await wiz_map();
+    }
+    if (name === 'wizdetect') {
+        if (game.wizard)
+            await findit();
+        else
+            await pline("Unavailable command 'wizdetect'.");
+        return ECMD_OK;
+    }
+    if (name === 'wizbury') {
+        const { bury_an_obj } = await import('./sp_lev.js');
+        let before = 0, after = 0;
+        for (let x = game.u.ux - 1; x <= game.u.ux + 1; x++) {
+            for (let y = game.u.uy - 1; y <= game.u.uy + 1; y++) {
+                if (!isok(x, y))
+                    continue;
+                const pile = (game.level?.objects || []).filter(
+                    o => o.where === OBJ_FLOOR && o.ox === x && o.oy === y);
+                before += pile.length;
+                for (const obj of pile)
+                    bury_an_obj(obj, null);
+                after += (game.level?.objects || []).filter(
+                    o => o.where === OBJ_FLOOR && o.ox === x && o.oy === y)
+                    .length;
+                newsym(x, y);
+            }
+        }
+        const buried = before - after;
+        if (!before)
+            await pline('No objects here or adjacent to bury.');
+        else if (!buried)
+            await pline('No objects buried.');
+        else
+            await pline(`${buried} object${buried === 1 ? '' : 's'} buried.`);
+        return ECMD_OK;
     }
 
     note_unported_cmd(`extcmd:${name}`);
@@ -1145,13 +1296,70 @@ function bad_rock_at(x, y) {
     return !loc || !ACCESSIBLE(loc.typ);
 }
 
+// src/pager.c doidtrap(), the '^' command. Ordinary seen floor traps are the
+// common path; trapped-door and trapped-chest glyph overlays remain separate
+// because those traps do not live on level.traps.
+async function doidtrap() {
+    if (!await getdir('^'))
+        return ECMD_CANCEL;
+
+    const x = game.u.ux + game.u.dx;
+    const y = game.u.uy + game.u.dy;
+    const trap = t_at(x, y);
+    if (trap?.tseen) {
+        const { trapname } = await import('./trap.js');
+        let suffix = '';
+        if (trap.madeby_u) {
+            suffix = trap.ttyp === WEB ? ' woven by you'
+                : (trap.ttyp === HOLE || trap.ttyp === PIT)
+                    ? ' dug by you' : ' set by you';
+        }
+        await pline(`That is ${an(trapname(trap.ttyp, false))}${suffix}.`);
+        return ECMD_OK;
+    }
+    await pline("I can't see a trap there.");
+    return ECMD_OK;
+}
+
+// src/cmd.c:1638 do_repeat(), the default Ctrl-A command.
+//
+// Replay consumes a working copy of CQ_REPEAT. The saved queue is restored
+// even when the repeated command cancels or its context has changed, so a
+// second Ctrl-A attempts the same original command again.
+async function do_repeat() {
+    if (game.in_doagain)
+        return 0;
+    if (!cmdq_peek(CQ_REPEAT)) {
+        await pline('There is no command available to repeat.');
+        return ECMD_FAIL;
+    }
+
+    const repeatCopy = cmdq_copy(CQ_REPEAT);
+    game.in_doagain = true;
+    try {
+        await rhack(0);
+        /* C handles a g/G/m/F prefix by looping inside one rhack(). The JS
+           dispatcher keeps a prefix across calls, so finish that same queue
+           here before restoring its pristine copy. */
+        while (game._cmd_prefix_pending && cmdq_peek(CQ_REPEAT))
+            await rhack(0);
+    } finally {
+        game.in_doagain = false;
+        cmdq_clear(CQ_REPEAT);
+        game.command_queue[CQ_REPEAT] = repeatCopy;
+        game.iflags.menu_requested = false;
+    }
+    return game.context.move ? ECMD_TIME : 0;
+}
+
 export async function rhack(key) {
     /* src/cmd.c:3635 — every command begins with the menu-request and
        no-pickup markers cleared; set_move_cmd() re-raises nopick from
        menu_requested for the m-prefix case. C's prefixes loop inside one
        rhack() call (goto got_prefix_input) so the reset runs once per
        command; ours span two rhack() calls, so a pending prefix skips it. */
-    if (!game._cmd_prefix_pending) {
+    const continuedPrefix = !!game._cmd_prefix_pending;
+    if (!continuedPrefix) {
         game.iflags.menu_requested = false;
         game.context.nopick = 0;
     }
@@ -1159,24 +1367,43 @@ export async function rhack(key) {
     /* src/cmd.c:3642 — queued commands run before any key is read. A
        CMDQ_EXTCMD entry dispatches its function directly, exactly like the
        doextcmd arm below; a CMDQ_KEY becomes the command key as if typed. */
+    let queuedCommand = false;
     if (key === 0) {
         const cmdq = cmdq_pop();
         if (cmdq) {
             if (cmdq.typ === CMDQ_EXTCMD && cmdq.fn) {
-                game.context.move = ((await cmdq.fn()) === ECMD_TIME ? 1 : 0);
+                const result = await cmdq.fn();
+                game.context.move = ((result & ECMD_TIME) ? 1 : 0);
+                if (!game.in_doagain) {
+                    cmdq_clear(CQ_REPEAT);
+                    cmdq_add_ec(CQ_REPEAT, cmdq.fn);
+                }
+                if (result & (ECMD_CANCEL | ECMD_FAIL)) {
+                    cmdq_clear(CQ_CANNED);
+                    cmdq_clear(CQ_REPEAT);
+                }
                 return;
             }
-            if (cmdq.typ === CMDQ_KEY)
+            if (cmdq.typ === CMDQ_KEY) {
                 key = String(cmdq.key).charCodeAt(0);
+                queuedCommand = true;
+            }
         }
     }
     let live_input = false;
+    let commandResult = 0;
+    const useResult = (result) => {
+        commandResult = result ?? 0;
+        game.context.move = ((commandResult & ECMD_TIME) ? 1 : 0);
+        return commandResult;
+    };
     let clear_before_dispatch = false;
     if (key === 0) {
         // Read key from input
         live_input = true;
         await flush_screen(1);
         key = await nhgetch();
+        game.command_count = 0;
         /* NOTE: the pre-dispatch topline clear happens BELOW, after the
            count-prefix digits are collected — a digit key leaves the
            previous message visible (seed0007 step 231: "You swap places
@@ -1221,14 +1448,11 @@ export async function rhack(key) {
             game._pending_message = '';
             game._toplin = TOPLINE_EMPTY;
             game.command_count = 0;
+            game.last_command_count = 0;
             game.context.move = 0;
             return;
         }
         game.command_count = cnt;
-        /* src/cmd.c:5142 — gm.multi = count; if (multi) multi--; */
-        game.multi = cnt;
-        if (game.multi)
-            game.multi--;
         /* the count text stays on the topline in C until the command's own
            output replaces it; rhack's pre-dispatch clear already ran */
     }
@@ -1242,7 +1466,7 @@ export async function rhack(key) {
         game._toplin = TOPLINE_EMPTY;
     }
 
-    game.cmd_key = ch0;
+    const parsedKey = ch0;
 
     /* src/options.c:7669 bind_key() — a BIND=key:command line replaces the
        key's default binding. The dispatch chain below is keyed by each
@@ -1255,6 +1479,28 @@ export async function rhack(key) {
             if (e && e.key)
                 ch0 = String.fromCharCode(e.key);
         }
+    }
+
+    /* src/cmd.c:5121 parse() stores the count parsed for this input. A bare
+       Ctrl-A therefore repeats the command once, even when the original
+       command had a count. A count typed on Ctrl-A itself is still active. */
+    if (live_input) {
+        game.last_command_count = game.command_count | 0;
+        game.multi = game.command_count | 0;
+        if (game.multi)
+            game.multi--;
+        game.cmd_key = parsedKey;
+    }
+
+    /* src/cmd.c:3732, keep the executable command followed by any input
+       helpers record. Prefix commands append rather than replacing the
+       queue. Ctrl-A preserves the old queue and '#' replaces its initiator
+       later with the actual extended command. */
+    if (!game.in_doagain && (live_input || queuedCommand)
+        && ch0 !== '\x01' && ch0 !== '#') {
+        if (!continuedPrefix)
+            cmdq_clear(CQ_REPEAT);
+        cmdq_add_key(CQ_REPEAT, ch0);
     }
 
     /* src/cmd.c:1518 do_run_west() and friends — a SHIFTED direction letter
@@ -1386,7 +1632,7 @@ export async function rhack(key) {
         game.context.move = (await dotelecmd() === ECMD_TIME ? 1 : 0);
     } else if (ch === '\x04') {
         // src/cmd.c cmdlist — C('d') is dokick.
-        game.context.move = (await dokick() === ECMD_TIME ? 1 : 0);
+        useResult(await dokick());
         game._cmd_was_kick = true;
     } else if (ch === '\x07') {
         // src/cmd.c:1962 cmdlist — C('g') is wiz_genesis.
@@ -1415,6 +1661,9 @@ export async function rhack(key) {
     } else if (ch === '_') {
         // src/cmd.c cmdlist — '_' is dotravel.
         game.context.move = ((await dotravel()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === '\x1f') {
+        // src/cmd.c cmdlist, C('_') resumes the cached travel destination.
+        game.context.move = ((await dotravel_target()) === ECMD_TIME ? 1 : 0);
     } else if (ch === 's') {
         // src/cmd.c cmdlist — 's' is dosearch, which returns ECMD_TIME.
         /* src/cmd.c:3728 — a counted command whose cmdlist entry carries
@@ -1433,6 +1682,49 @@ export async function rhack(key) {
         // src/cmd.c cmdlist — 'i' is ddoinv, which returns ECMD_OK.
         game.context.move = 0;
         await show_inventory();
+    } else if (ch === 'I') {
+        // src/invent.c dotypeinv() filters inventory by one class or BUC state.
+        game.context.move = ((await dotypeinv()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === 'v') {
+        // src/cmd.c:1693 cmdlist, 'v' is #chronicle / do_gamelog.
+        const { do_gamelog } = await import('./insight.js');
+        game.context.move = ((await do_gamelog()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === '\x0f') {
+        // src/cmd.c cmdlist, C('o') is the dungeon overview.
+        const { show_overview } = await import('./dungeon.js');
+        await show_overview();
+        game.context.move = 0;
+    } else if (ch === '\x01') {
+        // src/cmd.c cmdlist, C('a') is #repeat / do_repeat.
+        const result = await do_repeat();
+        game.context.move = ((result & ECMD_TIME) ? 1 : 0);
+        if (result & (ECMD_CANCEL | ECMD_FAIL)) {
+            cmdq_clear(CQ_CANNED);
+            cmdq_clear(CQ_REPEAT);
+        }
+    } else if (ch === 'V') {
+        // src/version.c doversion() prints the build's short version string.
+        const { VERSION_BANNER_LINE } = await import('./version_data.js');
+        await pline(VERSION_BANNER_LINE);
+        game.context.move = 0;
+    } else if (ch === '&') {
+        // src/pager.c dowhatdoes() reads one key and describes its binding.
+        game.context.move = ((await dowhatdoes()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === 'C') {
+        // src/do_name.c docallcmd() names monsters, objects, and object types.
+        game.context.move = ((await docallcmd()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === '\x12') {
+        // src/display.c doredraw() rebuilds the tty screen without time.
+        await docrt();
+        game.context.move = 0;
+    } else if (ch === '\x10') {
+        // src/cmd.c doprev_message() delegates to tty message history.
+        game.context.move = ((await doprev_message()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === '|') {
+        /* src/invent.c doperminv(), tty does not advertise WC_PERM_INVENT in
+           the pinned build, so this command always follows its first arm. */
+        await pline("Persistent inventory display is not supported by 'tty'.");
+        game.context.move = 0;
     } else if (ch === '\x18') {
         // src/cmd.c cmdlist — ^X is doattributes, which returns ECMD_OK.
         game.context.move = 0;
@@ -1441,15 +1733,22 @@ export async function rhack(key) {
         // src/cmd.c cmdlist — '\\' is dodiscovered, which returns ECMD_OK.
         game.context.move = 0;
         await show_discoveries();
+    } else if (ch === '`') {
+        // src/o_init.c doclassdisco() filters discoveries by object class.
+        game.context.move = ((await doclassdisco()) === ECMD_TIME ? 1 : 0);
+    } else if (ch === '^') {
+        // src/pager.c doidtrap() describes a seen trap in one direction.
+        game.context.move = ((await doidtrap()) === ECMD_TIME ? 1 : 0);
     } else if (ch === 'g' || ch === 'G') {
         // src/cmd.c:1588 do_rush()/do_run(): PREFIX commands. Lowercase g
         // sets context.run = 2 and uppercase G sets it to 3; the following
         // direction then carries the hero until something interesting stops
         // the run. Neither prefix consumes game time by itself.
         if (game.domove_attempting & DOMOVE_RUSH) {
-            /* "Double rush/run prefix, canceled." */
+            await pline(`Double ${ch === 'g' ? 'rush' : 'run'} prefix, canceled.`);
             game.context.run = 0;
             game.domove_attempting = 0;
+            commandResult = ECMD_CANCEL;
         } else {
             game.context.run = (ch === 'g') ? 2 : 3;
             game.domove_attempting |= DOMOVE_RUSH;
@@ -1462,8 +1761,9 @@ export async function rhack(key) {
         // a no-op while every recorded rc sets !autopickup; for others it asks
         // for a menu. Reads no extra key.
         if (game.iflags.menu_requested) {
-            /* "Double m prefix, canceled." */
+            await pline('Double move-no-pickup or request-menu prefix, canceled.');
             game.iflags.menu_requested = false;
+            commandResult = ECMD_CANCEL;
         } else {
             game.iflags.menu_requested = true;
             game._cmd_prefix_pending = true;
@@ -1476,9 +1776,10 @@ export async function rhack(key) {
         // unhandled therefore did not misalign keys, it displaced the HERO:
         // C attacks and stays put where we walked into the square.
         if (game.context.forcefight) {
-            /* "Double fight prefix, canceled." */
+            await pline('Double fight prefix, canceled.');
             game.context.forcefight = 0;
             game.context.move = 0;
+            commandResult = ECMD_CANCEL;
         } else {
             game.context.forcefight = 1;
             game._cmd_prefix_pending = true;
@@ -1497,7 +1798,9 @@ export async function rhack(key) {
         game.context.move = (await doclose() === ECMD_TIME ? 1 : 0);
     } else if (ch === 'a') {
         // src/cmd.c cmdlist — 'a' is doapply. 232 keystrokes across the corpus.
-        game.context.move = (await doapply() === ECMD_TIME ? 1 : 0);
+        /* command results are flags: cancelling the tin selection after
+           auto-wielding its opener returns ECMD_TIME | ECMD_CANCEL */
+        game.context.move = ((await doapply()) & ECMD_TIME) ? 1 : 0;
     } else if (ch === 'e') {
         // src/cmd.c cmdlist — 'e' is doeat, which reaches floorfood() and then
         // getobj(). 330 keystrokes across the public corpus, the most of any
@@ -1507,6 +1810,8 @@ export async function rhack(key) {
         game.context.move = (await doddrop() === ECMD_TIME ? 1 : 0);
     } else if (ch === 'd') {
         game.context.move = (await dodrop() === ECMD_TIME ? 1 : 0);
+    } else if (ch === 'A') {
+        game.context.move = ((await doddoremarm()) === ECMD_TIME ? 1 : 0);
     } else if ('rwqWPRT'.includes(ch)) {
         // src/cmd.c cmdlist — read, wield, quaff, drop, wear, put on, remove.
         // Every one of them starts with getobj(), which reads the inventory
@@ -1552,7 +1857,14 @@ export async function rhack(key) {
     } else if (ch === '#') {
         // src/cmd.c cmdlist — '#' is doextcmd, which reads the command name
         // off the input before doing anything.
-        game.context.move = (await doextcmd() === ECMD_TIME ? 1 : 0);
+        cmdq_clear(CQ_REPEAT);
+        game._last_extcmd_name = null;
+        useResult(await doextcmd());
+        if (game._last_extcmd_name) {
+            const name = game._last_extcmd_name;
+            cmdq_add_ec(CQ_REPEAT, () => execute_extcmd(name));
+            cmdq_shift(CQ_REPEAT);
+        }
     } else if (ch === '\x06' && game.wizard) {
         /* src/cmd.c:1982, debug-mode ^F is the default binding for
            #wizmap. It reveals the level without consuming a turn. */
@@ -1626,6 +1938,8 @@ export async function rhack(key) {
         // src/cmd.c rhack() — genuinely unrecognised key.
         game.context.move = 0;
         await pline(`Unknown command '${ch}'.`);
+        cmdq_clear(CQ_CANNED);
+        cmdq_clear(CQ_REPEAT);
     }
 
     /* src/cmd.c:3820-3825 — "hero did something else than kicking a
@@ -1635,6 +1949,10 @@ export async function rhack(key) {
     if (game.context.move && !game._cmd_was_kick)
         game.kickedloc = { x: 0, y: 0 };
     game._cmd_was_kick = false;
+    if (commandResult & (ECMD_CANCEL | ECMD_FAIL)) {
+        cmdq_clear(CQ_CANNED);
+        cmdq_clear(CQ_REPEAT);
+    }
 }
 
 // C ref: hack.c domove — execute a movement
@@ -1663,13 +1981,15 @@ export async function domove() {
 
 // src/hack.c:3020 maybe_smudge_engr()
 async function maybe_smudge_engr(x1, y1, x2, y2) {
-    /* can_reach_floor(TRUE): true for an ordinary walking hero */
-    let ep = engr_at(x1, y1);
-    if (ep && ep.engr_type !== HEADSTONE)
-        wipe_engr_at(x1, y1, rnd(5), false);
-    if ((x2 !== x1 || y2 !== y1)
-        && (ep = engr_at(x2, y2)) && ep.engr_type !== HEADSTONE)
-        wipe_engr_at(x2, y2, rnd(5), false);
+    const { can_reach_floor } = await import('./pickup.js');
+    if (can_reach_floor(true)) {
+        let ep = engr_at(x1, y1);
+        if (ep && ep.engr_type !== HEADSTONE)
+            wipe_engr_at(x1, y1, rnd(5), false);
+        if ((x2 !== x1 || y2 !== y1)
+            && (ep = engr_at(x2, y2)) && ep.engr_type !== HEADSTONE)
+            wipe_engr_at(x2, y2, rnd(5), false);
+    }
 }
 
 const BCPOS_DIFFER = 0;
@@ -1756,7 +2076,7 @@ function chainInMiddle(heroX, heroY, chainX, chainY, ballX, ballY) {
 /* src/ball.c drag_ball(). This prepares the new coordinates and removes the
    pieces before the hero moves. finishPunishmentMove() puts them back after
    vision has been recalculated, matching move_bc(1) and move_bc(0). */
-async function preparePunishmentMove(x, y) {
+export async function preparePunishmentMove(x, y, allowDrag = true) {
     const u = game.u;
     const ball = u.uball;
     const chain = u.uchain;
@@ -1809,20 +2129,22 @@ async function preparePunishmentMove(x, y) {
                     const rock1 = chainRock(tempx, tempy);
                     const rock2 = chainRock(tempx2, tempy2);
                     if (rock1 && !rock2 && !alreadyInRock) {
-                        if ((dist2(u.ux, u.uy, ball.ox, ball.oy) === 5
-                             && dist2(x, y, tempx, tempy) === 1)
-                            || (dist2(u.ux, u.uy, ball.ox, ball.oy) === 4
-                                && dist2(x, y, tempx, tempy) === 2)) {
+                        if (allowDrag
+                            && ((dist2(u.ux, u.uy, ball.ox, ball.oy) === 5
+                                 && dist2(x, y, tempx, tempy) === 1)
+                                || (dist2(u.ux, u.uy, ball.ox, ball.oy) === 4
+                                    && dist2(x, y, tempx, tempy) === 2))) {
                             dragBoth = true;
                         } else {
                             state.chainx = tempx2;
                             state.chainy = tempy2;
                         }
                     } else if (!rock1 && rock2 && !alreadyInRock) {
-                        if ((dist2(u.ux, u.uy, ball.ox, ball.oy) === 5
-                             && dist2(x, y, tempx2, tempy2) === 1)
-                            || (dist2(u.ux, u.uy, ball.ox, ball.oy) === 4
-                                && dist2(x, y, tempx2, tempy2) === 2)) {
+                        if (allowDrag
+                            && ((dist2(u.ux, u.uy, ball.ox, ball.oy) === 5
+                                 && dist2(x, y, tempx2, tempy2) === 1)
+                                || (dist2(u.ux, u.uy, ball.ox, ball.oy) === 4
+                                    && dist2(x, y, tempx2, tempy2) === 2))) {
                             dragBoth = true;
                         } else {
                             state.chainx = tempx;
@@ -1930,7 +2252,7 @@ async function preparePunishmentMove(x, y) {
     return state;
 }
 
-function finishPunishmentMove(state) {
+export function finishPunishmentMove(state) {
     if (!state)
         return;
 
@@ -2014,6 +2336,39 @@ function finishPunishmentMove(state) {
         newsym(state.ballx, state.bally);
 }
 
+// src/hack.c:2639 escape_from_sticky_mon(). A failed pull consumes the move;
+// success, a distant holder, or releasing a monster stuck to the hero lets
+// normal movement continue.
+async function escape_from_sticky_mon(x, y) {
+    const u = game.u;
+    const holder = u.ustuck;
+    if (!holder || (x === holder.mx && y === holder.my))
+        return false;
+
+    if (dist2(holder.mx, holder.my, u.ux, u.uy) > 2) {
+        set_ustuck(null);
+    } else if (sticks(game.youmonst.data)) {
+        set_ustuck(null);
+        await You(`release ${y_monnam(holder)}.`);
+    } else {
+        const holderCanMove = (holder.mcanmove ?? 1) !== 0;
+        const roll = rn2(holderCanMove ? 40 : 8);
+        if (roll === 3 && !holderCanMove) {
+            holder.mfrozen = 1;
+            holder.msleeping = 0;
+        }
+        if (roll > 2
+            && (game.u.uprops?.CONFLICT || holder.mconf || !holder.mtame)) {
+            await You(`cannot escape from ${y_monnam(holder)}!`);
+            nomul(0);
+            return true;
+        }
+        set_ustuck(null);
+        await You(`pull free from ${y_monnam(holder)}.`);
+    }
+    return false;
+}
+
 async function domove_core() {
     const u = game.u;
     /* C's domove() takes no arguments and reads u.dx/u.dy, which movecmd()
@@ -2089,6 +2444,9 @@ async function domove_core() {
     const dx = u.dx, dy = u.dy;
     const newx = u.ux + dx;
     const newy = u.uy + dy;
+
+    if (await escape_from_sticky_mon(newx, newy))
+        return;
 
     /* src/hack.c:2242: force-fighting an empty square, or walking into a stale
        invisible-monster marker without nopick, attacks the square instead of
@@ -2246,7 +2604,7 @@ async function domove_core() {
             HOLE, TRAPDOOR,
         ]);
         const clearlyImmune = groundTypes.has(trap?.ttyp)
-            && !!(game.u.uprops?.LEVITATION || game.u.uprops?.FLYING);
+            && (Levitation() || Flying());
         if ((bits & PARANOID_TRAP) && !game.u.uprops?.STUNNED
             && !game.u.uprops?.CONFUSION
             && (!game.context.nopick || game.context.run)
@@ -2287,7 +2645,7 @@ async function domove_core() {
      *
      * The door_opened guard matters: walking into a closed door with autoopen
      * opens it and consumes the turn, and that must NOT stop a run. */
-    if (blocksMove(newx, newy, dx, dy)) {
+    if (await blocksMove(newx, newy, dx, dy)) {
         // Can't move there
         /* src/hack.c:1058 — with mention_walls the blocked move says what
            stopped it, naming the background glyph. Only the solid-stone and
@@ -2354,7 +2712,7 @@ async function domove_core() {
        walking into a boulder tries to push it (moverock, hack.c:336), and
        a failed push blocks the move exactly like terrain. */
     if (sobj_at(ONAMES.BOULDER, newx, newy)
-        && (In_sokoban(game.u.uz) || !game.u.uprops?.PASSES_WALLS)) {
+        && (In_sokoban(game.u.uz) || !Passes_walls())) {
         if (!(u.ublind || Hallucination()) && (game.context.run | 0) >= 2
             && !could_move_onto_boulder(newx, newy)) {
             if (game.flags?.mention_walls)
@@ -2434,6 +2792,19 @@ async function domove_core() {
                 nomul(0);
         }
     }
+
+    /* src/hack.c:2943. A sufficiently heavy, grounded, non-stealthy hero
+       shortens nearby buried-zombie timers with every step. */
+    if (!Levitation() && !Flying() && !Stealth()
+        && game.youmonst.data.cwt >= WT_ELF / 2)
+        disturb_buried_zombies(game.u.ux, game.u.uy);
+
+    /* src/hack.c:2948. Aquatic forms hide in water, concealing forms hide
+       beneath suitable objects, and an ordinary move clears prior hiding
+       when the destination no longer supports it. */
+    if (hides_under(game.youmonst.data)
+        || game.youmonst.data.mlet === MONSYMS.S_EEL || u.dx || u.dy)
+        hideunder(game.youmonst);
 
     // Update display
     newsym(oldx, oldy);
@@ -2641,19 +3012,27 @@ async function show_attributes() {
 // offx: 80 - (maxcol) - 1, and js/tty/wintty.js adds the +2 for the leading
 // and trailing space. seed8000 records the window at column 32 with the cursor
 // at [38,20].
-async function show_inventory() {
-    const items = display_inventory();
+async function show_inventory(allowed_choices = null, title = null,
+                              show_class_headings = true) {
+    const items = display_inventory(allowed_choices);
     if (!items.length) {
         await pline('Not carrying anything.');
         return;
     }
     const win = tty_create_nhwindow(NHW_MENU);
     tty_start_menu(win, MENU_BEHAVE_STANDARD);
-    for (const it of items)
+    /* query_objlist() uses gt.this_title as an ordinary first menu line.
+       It is deliberately not the highlighted end_menu prompt. */
+    if (title)
+        tty_add_menu_str(win, title);
+    for (const it of items) {
+        if (it.heading && !show_class_headings)
+            continue;
         tty_add_menu(win, it.glyphinfo ?? null,
                      it.heading ? 0 : it.invlet.charCodeAt(0),
                      it.invlet || 0, 0,
                      it.attr, NO_COLOR, it.str, MENU_ITEMFLAGS_NONE);
+    }
     tty_end_menu(win, null);
     const picks = await tty_select_menu(win, 1 /* PICK_ONE */);
     tty_destroy_nhwindow(win);
@@ -2664,6 +3043,51 @@ async function show_inventory() {
     const obj = (game.invent || []).find(o => o.invlet === invlet);
     if (obj)
         await show_item_actions(obj);
+}
+
+// src/invent.c dotypeinv(), default MENU_FULL path. The category query only
+// offers classes and BUC states which are present, then query_objlist shows
+// the matching inventory and optionally enters that item's action menu.
+async function dotypeinv() {
+    const invent = game.invent || [];
+    if (!invent.length) {
+        await You("aren't carrying anything.");
+        return ECMD_OK;
+    }
+
+    const picks = await query_inventory_category(invent);
+    if (!picks.length)
+        return ECMD_OK;
+
+    const choice = picks[0];
+    const code = typeof choice === 'string' ? choice.charCodeAt(0) : choice;
+    const marker = String.fromCharCode(code);
+    let filter, title = null;
+    if (code > 0 && code < OCLASSES.MAXOCLASSES) {
+        filter = (obj) => obj.oclass === code;
+    } else if (marker === 'B') {
+        filter = (obj) => !!obj.bknown && !!obj.blessed;
+        title = 'Items known to be blessed:';
+    } else if (marker === 'U') {
+        filter = (obj) => !!obj.bknown && !obj.blessed && !obj.cursed;
+        title = 'Items known to be uncursed:';
+    } else if (marker === 'C') {
+        filter = (obj) => !!obj.bknown && !!obj.cursed;
+        title = 'Items known to be cursed:';
+    } else if (marker === 'X') {
+        filter = (obj) => !obj.bknown;
+        title = 'Items whose blessed/uncursed/cursed status is unknown:';
+    } else if (marker === 'P') {
+        filter = (obj) => !!obj.pickup_prev;
+        title = 'Items that were just picked up:';
+    } else {
+        return ECMD_OK;
+    }
+
+    const letters = invent.filter(filter).map((obj) => obj.invlet).join('');
+    if (letters)
+        await show_inventory(letters, title);
+    return ECMD_OK;
 }
 
 function add_item_action(win, action, text) {
@@ -2679,6 +3103,99 @@ async function show_item_actions(obj) {
     tty_start_menu(win, MENU_BEHAVE_STANDARD);
     const wornItem = !!(obj.owornmask & (W_ARMOR | W_ACCESSORY));
     const simpleName = simpleonames(obj);
+    const light = obj.lamplit ? 'Extinguish' : 'Light';
+
+    /* src/iactions.c:290 — '-': unwield; picking current weapon offers an
+       opportunity for 'w-' to wield bare/gloved hands; likewise for 'Q-'
+       with quivered item(s) */
+    if (obj === game.u.uwep || obj === game.u.uswapwep || obj === game.u.uquiver) {
+        const verb = (obj === game.u.uquiver) ? 'Quiver' : 'Wield',
+              action = (obj === game.u.uquiver) ? 'un-ready' : 'un-wield',
+              which = is_plural(obj) ? 'these' : 'this',
+              what = ((obj.oclass === OCLASSES.WEAPON_CLASS
+                       || is_weptool(obj, game.objects)) ? 'weapon' : 'item');
+        add_item_action(win, '-', `${verb} '${HANDS_SYM}' to ${action} ${which} ${
+            is_plural(obj) ? makeplural(what) : what}`);
+    }
+
+    /* src/iactions.c:309 — a: apply */
+    if (obj.oclass === OCLASSES.COIN_CLASS)
+        add_item_action(win, 'a', 'Flip a coin');
+    else if (obj.otyp === ONAMES.CREAM_PIE)
+        add_item_action(win, 'a', 'Hit yourself with this cream pie');
+    else if (obj.otyp === ONAMES.BULLWHIP)
+        add_item_action(win, 'a', 'Lash out with this whip');
+    else if (obj.otyp === ONAMES.GRAPPLING_HOOK)
+        add_item_action(win, 'a', 'Grapple something with this hook');
+    else if (obj.otyp === ONAMES.BAG_OF_TRICKS && game.objects[obj.otyp].oc_name_known)
+        /* bag of tricks skips this unless discovered */
+        add_item_action(win, 'a', 'Reach into this bag');
+    else if (Is_container(obj))
+        /* bag of tricks gets here only if not yet discovered */
+        add_item_action(win, 'a', 'Open this container');
+    else if (obj.otyp === ONAMES.CAN_OF_GREASE)
+        add_item_action(win, 'a', 'Use the can to grease an item');
+    else if (obj.otyp === ONAMES.LOCK_PICK || obj.otyp === ONAMES.CREDIT_CARD
+             || obj.otyp === ONAMES.SKELETON_KEY)
+        add_item_action(win, 'a', 'Use this tool to pick a lock');
+    else if (obj.otyp === ONAMES.TINNING_KIT)
+        add_item_action(win, 'a', 'Use this kit to tin a corpse');
+    else if (obj.otyp === ONAMES.LEASH)
+        add_item_action(win, 'a', 'Tie a pet to this leash');
+    else if (obj.otyp === ONAMES.SADDLE)
+        add_item_action(win, 'a', 'Place this saddle on a pet');
+    else if (obj.otyp === ONAMES.MAGIC_WHISTLE || obj.otyp === ONAMES.TIN_WHISTLE)
+        add_item_action(win, 'a', 'Blow this whistle');
+    else if (obj.otyp === ONAMES.EUCALYPTUS_LEAF)
+        add_item_action(win, 'a', 'Use this leaf as a whistle');
+    else if (obj.otyp === ONAMES.STETHOSCOPE)
+        add_item_action(win, 'a', 'Listen through the stethoscope');
+    else if (obj.otyp === ONAMES.MIRROR)
+        add_item_action(win, 'a', 'Show something its reflection');
+    else if (obj.otyp === ONAMES.BELL || obj.otyp === ONAMES.BELL_OF_OPENING)
+        add_item_action(win, 'a', 'Ring the bell');
+    else if (obj.otyp === ONAMES.CANDELABRUM_OF_INVOCATION) {
+        add_item_action(win, 'a', `${light} the candelabrum`);
+    } else if (obj.otyp === ONAMES.WAX_CANDLE || obj.otyp === ONAMES.TALLOW_CANDLE) {
+        const multiple = obj.quan !== 1;
+        const s = multiple ? 'these' : 'this';
+        const o = carrying(ONAMES.CANDELABRUM_OF_INVOCATION);
+        if (o && o.spe < 7)
+            add_item_action(win, 'a', `Attach ${s} to your candelabrum, or ${
+                !obj.lamplit ? 'light' : 'extinguish'} ${multiple ? 'them' : 'it'}`);
+        else
+            add_item_action(win, 'a', `${light} ${s} ${simpleonames(obj)}`);
+    } else if (obj.otyp === ONAMES.OIL_LAMP || obj.otyp === ONAMES.MAGIC_LAMP
+               || obj.otyp === ONAMES.BRASS_LANTERN) {
+        add_item_action(win, 'a', `${light} this light source`);
+    } else if (obj.otyp === ONAMES.POT_OIL && game.objects[obj.otyp].oc_name_known) {
+        add_item_action(win, 'a', `${light} this oil`);
+    } else if (obj.oclass === OCLASSES.POTION_CLASS) {
+        /* FIXME? this should probably be moved to 'D' rather than be 'a' */
+        add_item_action(win, 'a', `Dip something into ${
+            is_plural(obj) ? 'one of these' : 'this'} potion${obj.quan !== 1 ? 's' : ''}`);
+    } else if (obj.otyp === ONAMES.EXPENSIVE_CAMERA)
+        add_item_action(win, 'a', 'Take a photograph');
+    else if (obj.otyp === ONAMES.TOWEL)
+        add_item_action(win, 'a', 'Clean yourself off with this towel');
+    else if (obj.otyp === ONAMES.CRYSTAL_BALL)
+        add_item_action(win, 'a', 'Peer into this crystal ball');
+    else if (obj.otyp === ONAMES.MAGIC_MARKER)
+        add_item_action(win, 'a', 'Write on something with this marker');
+    else if (obj.otyp === ONAMES.FIGURINE)
+        add_item_action(win, 'a', 'Make this figurine transform');
+    else if (obj.otyp === ONAMES.UNICORN_HORN)
+        add_item_action(win, 'a', 'Use this unicorn horn');
+    else if (obj.otyp === ONAMES.HORN_OF_PLENTY && game.objects[obj.otyp].oc_name_known)
+        add_item_action(win, 'a', 'Blow into the horn of plenty');
+    else if (obj.otyp >= ONAMES.WOODEN_FLUTE && obj.otyp <= ONAMES.DRUM_OF_EARTHQUAKE)
+        add_item_action(win, 'a', 'Play this musical instrument');
+    else if (obj.otyp === ONAMES.LAND_MINE || obj.otyp === ONAMES.BEARTRAP)
+        add_item_action(win, 'a', 'Arm this trap');
+    else if (obj.otyp === ONAMES.PICK_AXE || obj.otyp === ONAMES.DWARVISH_MATTOCK)
+        add_item_action(win, 'a', 'Dig with this digging tool');
+    else if (obj.oclass === OCLASSES.WAND_CLASS)
+        add_item_action(win, 'a', 'Break this wand');
 
     add_item_action(win, 'c', `Name this specific ${simpleName}`);
     if (!game.objects[obj.otyp].oc_name_known)
@@ -2704,6 +3221,9 @@ async function show_item_actions(obj) {
     if (!wornItem)
         add_item_action(win, 't', obj.quan === 1
             ? 'Throw this item' : 'Throw one of these');
+    /* src/iactions.c:590 — T: take off armor */
+    if ((obj.owornmask ?? 0) & W_ARMOR)
+        add_item_action(win, 'T', 'Take off this armor');
     if (!wornItem && obj !== game.u.uwep)
         add_item_action(win, 'w', `Wield this ${obj.quan > 1 ? 'stack' : 'item'}`
                         + ' in your hands');
@@ -2817,6 +3337,22 @@ export function cmdq_pop() {
 export function cmdq_peek(q) {
     const list = (game.command_queue ||= [])[q];
     return (list && list.length) ? list[0] : null;
+}
+
+// src/cmd.c:356 cmdq_copy(), duplicate the queue nodes while preserving
+// order. Function references are immutable command identities in this port;
+// copying each entry object is the JS counterpart of copying each C node.
+export function cmdq_copy(q) {
+    const list = (game.command_queue ||= [])[q];
+    return list ? list.map((entry) => ({ ...entry })) : null;
+}
+
+// src/cmd.c:352 cmdq_shift(), move the most recently appended entry to
+// the front. doextcmd uses this after prompt answers have already been saved.
+export function cmdq_shift(q) {
+    const list = (game.command_queue ||= [])[q];
+    if (list && list.length > 1)
+        list.unshift(list.pop());
 }
 
 // src/cmd.c:5299 dotravel() — the '_' command: pick a destination with

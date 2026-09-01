@@ -4,25 +4,31 @@
 // Nothing here draws.
 
 import { game } from './gstate.js';
-import { sgn } from './hacklib.js';
+import { sgn, s_suffix } from './hacklib.js';
 import { MON_WEP } from './monst.js';
 import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_AMUL,
          W_RINGL, W_RINGR, W_WEP, W_SWAPWEP, W_QUIVER, W_TOOL, W_BALL,
-         W_CHAIN, W_ARMOR, W_ART, I_SPECIAL, BOLT_LIM, BLINDED,
-         AC_MAX } from './const.js';
+         W_CHAIN, W_ARMOR, W_ART, W_SADDLE, I_SPECIAL, BOLT_LIM, BLINDED,
+         AC_MAX, PRONOUN_HALLU, DISMOUNT_FELL, NH_BLACK } from './const.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { MFLAGS, MONSYMS, PMNAMES } from './monst_data.js';
 import { verysmall, nohands, is_animal, mindless, slithy, cantweararm,
-         has_horns } from './mondata.js';
+         has_horns, breakarm, sliparm, is_whirly, mhim,
+         pronoun_gender } from './mondata.js';
 import { is_shirt, is_cloak, is_helmet, is_shield, is_gloves, is_boots,
          is_suit, is_flimsy, bimanual, WrappingAllowed } from './obj.js';
-import { ARM_BONUS, PROP_KEYS, cancel_doff } from './do_wear.js';
-import { is_weptool } from './mkobj.js';
+import { ARM_BONUS, PROP_KEYS, cancel_doff, cloak_simple_name }
+    from './do_wear.js';
+import { is_weptool, place_object } from './mkobj.js';
 import { set_twoweap } from './wield.js';
-import { update_inventory } from './invent.js';
-import { Monnam, mon_nam } from './do_name.js';
+import { update_inventory, obj_extract_self } from './invent.js';
+import { Monnam, mon_nam, hcolor } from './do_name.js';
+import { distant_name, doname, simpleonames, otense } from './objnam.js';
+import { canseemon, newsym, pline } from './display.js';
 import { See_invisible } from './youprop.js';
+import { makeknown } from './o_init.js';
 import { ART_EYES_OF_THE_OVERWORLD } from './artilist_data.js';
+import { genders as genders_tbl } from './role_data.js';
 import { set_artifact_intrinsic } from './artifact.js';
 import { INVIS, FAST, ANTIMAGIC, REFLECTING, PROTECTION, CLAIRVOYANT,
          STEALTH, TELEPAT, LEVITATION, FLYING, WWALKING, DISPLACED,
@@ -56,8 +62,19 @@ const worn = [
 /* The flat game.u.uprops map stores, under each PROP_KEYS name, C's
    u.uprops[p].extrinsic slot mask itself (a nonzero number, so every
    truthiness read keeps working); the key is deleted when the mask empties.
-   That makes remove-one-of-two-granting-items exact. The .blocked and
-   artifact W_ART bookkeeping have no ported reader yet; their arms record. */
+   game.u.blocked carries the matching blocked slot masks. */
+
+function update_blocked(u, prop, mask, on) {
+    const key = PROP_KEYS[prop];
+    if (!key)
+        return;
+    const old = u.blocked?.[key] || 0;
+    const next = on ? old | mask : old & ~mask;
+    if (next)
+        (u.blocked ||= {})[key] = next;
+    else if (u.blocked)
+        delete u.blocked[key];
+}
 
 // src/worn.c:50 recalc_telepat_range() — range of unblind telepathy.
 export function recalc_telepat_range() {
@@ -68,9 +85,8 @@ export function recalc_telepat_range() {
         if (oobj && PROP_KEYS[game.objects[oobj.otyp].oc_oprop] === 'TELEPAT')
             nobjs++;
     }
-    /* count all artifacts with SPFX_ESP as one; ETelepat's W_ART bit is only
-       ever set by set_artifact_intrinsic, which is not ported, so this term
-       is exact while that is true */
+    /* Count all carried artifacts with SPFX_ESP as one. C likewise treats
+       ETelepat's W_ART source as one range increment. */
     if ((game.u.uprops?.TELEPAT || 0) & W_ART)
         nobjs++;
 
@@ -111,7 +127,7 @@ export function setworn(obj, mask) {
                                 delete u.uprops[PROP_KEYS[p]];
                         }
                         if ((p = w_blocks(oobj, mask)) !== 0)
-                            note_unported_worn('setworn:blocked');
+                            update_blocked(u, p, wp.w_mask, false);
                         if (oobj.oartifact)
                             set_artifact_intrinsic(oobj, false, wp.w_mask);
                     }
@@ -134,7 +150,7 @@ export function setworn(obj, mask) {
                                 (u.uprops ||= {})[PROP_KEYS[p]] =
                                     (u.uprops[PROP_KEYS[p]] || 0) | wp.w_mask;
                             if ((p = w_blocks(obj, mask)) !== 0)
-                                note_unported_worn('setworn:blocked');
+                                update_blocked(u, p, wp.w_mask, true);
                         }
                         if (obj.oartifact)
                             set_artifact_intrinsic(obj, true, wp.w_mask);
@@ -186,7 +202,7 @@ export function setnotworn(obj) {
             if (obj.oartifact)
                 set_artifact_intrinsic(obj, false, wp.w_mask);
             if ((p = w_blocks(obj, wp.w_mask)) !== 0)
-                note_unported_worn('setnotworn:blocked');
+                update_blocked(u, p, wp.w_mask, false);
         }
     if (!u.uarm)
         game.iflags.tux_penalty = false;
@@ -199,10 +215,8 @@ export function setnotworn(obj) {
 
 // src/worn.c which_armor() — the object worn in a given slot, or null.
 //
-// Monsters do not don armour in this port yet (m_dowear is absent), so the
-// minvent scan finds nothing for them. That is the honest answer for a monster
-// carrying an unworn shield, and it is the same answer the C gives; it becomes
-// wrong only once m_dowear exists, at which point this needs no change.
+// Monster equipment uses the same slot masks as hero equipment, but scans the
+// monster's own inventory instead of the hero's worn-object fields.
 export function which_armor(mon, flag) {
     if (mon === game.youmonst) {
         switch (flag) {
@@ -245,23 +259,47 @@ export function m_dowear(mon, creation) {
                           && data.pmidx !== PMNAMES.PM_SKELETON)))
         return;
 
-    m_dowear_type(mon, W_AMUL, creation, false);
     const can_wear_armor = !cantweararm(data); /* for suit, cloak, shirt */
+    if (!creation)
+        return m_dowear_runtime(mon, can_wear_armor);
+
+    m_dowear_type(mon, W_AMUL, true, false);
     /* can't put on shirt if already wearing suit */
     if (can_wear_armor && !(mon.misc_worn_check & W_ARM))
-        m_dowear_type(mon, W_ARMU, creation, false);
+        m_dowear_type(mon, W_ARMU, true, false);
     if (can_wear_armor || WrappingAllowed(data))
-        m_dowear_type(mon, W_ARMC, creation, false);
-    m_dowear_type(mon, W_ARMH, creation, false);
+        m_dowear_type(mon, W_ARMC, true, false);
+    m_dowear_type(mon, W_ARMH, true, false);
     if (!MON_WEP(mon) || !bimanual(MON_WEP(mon)))
-        m_dowear_type(mon, W_ARMS, creation, false);
-    m_dowear_type(mon, W_ARMG, creation, false);
+        m_dowear_type(mon, W_ARMS, true, false);
+    m_dowear_type(mon, W_ARMG, true, false);
     if (!slithy(data) && data.mlet !== MONSYMS.S_CENTAUR)
-        m_dowear_type(mon, W_ARMF, creation, false);
+        m_dowear_type(mon, W_ARMF, true, false);
     if (can_wear_armor)
-        m_dowear_type(mon, W_ARM, creation, false);
+        m_dowear_type(mon, W_ARM, true, false);
     else
-        m_dowear_type(mon, W_ARM, creation, RACE_EXCEPTION);
+        m_dowear_type(mon, W_ARM, true, RACE_EXCEPTION);
+}
+
+async function m_dowear_runtime(mon, can_wear_armor) {
+    const data = game.mons[mon.mnum];
+    const RACE_EXCEPTION = true;
+
+    await m_dowear_type(mon, W_AMUL, false, false);
+    if (can_wear_armor && !(mon.misc_worn_check & W_ARM))
+        await m_dowear_type(mon, W_ARMU, false, false);
+    if (can_wear_armor || WrappingAllowed(data))
+        await m_dowear_type(mon, W_ARMC, false, false);
+    await m_dowear_type(mon, W_ARMH, false, false);
+    if (!MON_WEP(mon) || !bimanual(MON_WEP(mon)))
+        await m_dowear_type(mon, W_ARMS, false, false);
+    await m_dowear_type(mon, W_ARMG, false, false);
+    if (!slithy(data) && data.mlet !== MONSYMS.S_CENTAUR)
+        await m_dowear_type(mon, W_ARMF, false, false);
+    if (can_wear_armor)
+        await m_dowear_type(mon, W_ARM, false, false);
+    else
+        await m_dowear_type(mon, W_ARM, false, RACE_EXCEPTION);
 }
 
 // include/monst.h:210 MON_WEP() — monsters do not wield in this port yet.
@@ -277,10 +315,8 @@ function m_dowear_type(mon, flag, creation, racialexception) {
     /* C copies the monster's name before looking for a better item because
        wearing one can change visibility. Keep that display-RNG side effect
        even when this slot has no candidate. */
-    if (See_invisible())
-        Monnam(mon);
-    else
-        mon_nam(mon);
+    const sawmon = canseemon(mon);
+    const nambuf = See_invisible() ? Monnam(mon) : mon_nam(mon);
 
     old = which_armor(mon, flag);
     if (old && old.cursed)
@@ -366,23 +402,57 @@ function m_dowear_type(mon, flag, creation, racialexception) {
         old.owornmask = 0;              /* avoid doname() "(being worn)" */
     }
 
-    if (!creation) {
-        /* the "<Mon> puts on <armour>." messages need doname/Monnam */
-        m_delay += game.objects[best.otyp].oc_delay;
-        mon.mfrozen = m_delay;
-        if (mon.mfrozen)
-            mon.mcanmove = 0;
+    const finishWear = () => {
+        if (!creation) {
+            m_delay += game.objects[best.otyp].oc_delay;
+            mon.mfrozen = m_delay;
+            if (mon.mfrozen)
+                mon.mcanmove = 0;
+        }
+        if (old) {
+            update_mon_extrinsics(mon, old, false, creation);
+            old.owornmask = 0;
+            /* artifact_light()/end_burn() need the light-source code */
+        }
+        mon.misc_worn_check |= flag;
+        best.owornmask |= flag;
+        if (autocurse)
+            best.cursed = true;         /* curse(best) */
+        update_mon_extrinsics(mon, best, true, creation);
+
+        if (!creation && sawmon !== canseemon(mon)
+            && mon.minvis && !See_invisible()) {
+            const message = pline(`Suddenly you cannot see ${nambuf}.`);
+            makeknown(best.otyp);
+            return message;
+        }
+        return null;
+    };
+
+    if (!creation && sawmon) {
+        let prefix = '';
+        let oldarm = '';
+        if (old) {
+            oldarm = distant_name(old, doname);
+            prefix = ` removes ${oldarm} and`;
+        }
+        let newarm = distant_name(best, doname);
+        if (newarm.toLowerCase() === oldarm.toLowerCase()) {
+            if (/^a /i.test(newarm))
+                newarm = `another ${newarm.slice(2)}`;
+            else if (/^an /i.test(newarm))
+                newarm = `another ${newarm.slice(3)}`;
+        }
+        let message = pline(`${Monnam(mon)}${prefix} puts on ${newarm}.`);
+        if (autocurse) {
+            message = message.then(() => pline(
+                `${s_suffix(Monnam(mon))} ${simpleonames(best)} `
+                + `${otense(best, 'glow')} ${hcolor(NH_BLACK)} for a moment.`));
+        }
+        return message.then(finishWear);
     }
-    if (old) {
-        update_mon_extrinsics(mon, old, false, creation);
-        old.owornmask = 0;
-        /* artifact_light()/end_burn() need the light-source code */
-    }
-    mon.misc_worn_check |= flag;
-    best.owornmask |= flag;
-    if (autocurse)
-        best.cursed = true;             /* curse(best) */
-    update_mon_extrinsics(mon, best, true, creation);
+    finishWear();
+    return null;
 }
 
 // src/worn.c extra_pref() — currently only speed boots.
@@ -418,6 +488,7 @@ const is_elven_armor = (o) =>
 function update_mon_extrinsics(mon, obj, on, silently) {
     let which = game.objects[obj.otyp].oc_oprop;
     const altwhich = altprop(obj);
+    const unseen = !canseemon(mon);
 
     mon.mextrinsics = mon.mextrinsics || 0;
 
@@ -493,8 +564,9 @@ function update_mon_extrinsics(mon, obj, on, silently) {
         mon.minvis = on ? 0 : mon.perminvis;
     }
 
-    /* the usteed/SADDLE dismount and the newsym() visibility update need the
-       steed and display state */
+    /* The usteed/SADDLE dismount still needs the steed state. */
+    if (!silently && unseen !== !canseemon(mon))
+        newsym(mon.mx, mon.my);
 }
 
 // include/prop.h:25 res_to_mr() — the first eight props are the MR_ bits.
@@ -524,6 +596,191 @@ const MFAST = 2;   /* include/monst.h — permspeed value */
 
 function note_unported_worn(what) {
     (game.unported ||= new Set()).add(what);
+}
+
+export function extract_from_minvent(mon, obj, do_extrinsics) {
+    const unwornmask = obj.owornmask || 0;
+    obj_extract_self(obj);
+    const at = (mon.minvent || []).indexOf(obj);
+    if (at >= 0)
+        mon.minvent.splice(at, 1);
+    obj.owornmask = 0;
+    if (unwornmask) {
+        if (do_extrinsics)
+            update_mon_extrinsics(mon, obj, false, false);
+        mon.misc_worn_check = (mon.misc_worn_check || 0) & ~unwornmask;
+        mon.misc_worn_check |= I_SPECIAL;
+    }
+}
+
+function matching_dragon_armor(mon, obj) {
+    let dragon = -1;
+    if (obj.otyp >= ONAMES.GRAY_DRAGON_SCALES
+        && obj.otyp <= ONAMES.YELLOW_DRAGON_SCALES) {
+        dragon = PMNAMES.PM_GRAY_DRAGON
+            + obj.otyp - ONAMES.GRAY_DRAGON_SCALES;
+    } else if (obj.otyp >= ONAMES.GRAY_DRAGON_SCALE_MAIL
+               && obj.otyp <= ONAMES.YELLOW_DRAGON_SCALE_MAIL) {
+        dragon = PMNAMES.PM_GRAY_DRAGON
+            + obj.otyp - ONAMES.GRAY_DRAGON_SCALE_MAIL;
+    }
+    return dragon === mon.mnum;
+}
+
+// src/worn.c:1177 mon_break_armor(). A new monster shape destroys armor it
+// bursts, drops armor it slips out of, and sheds gear its new body cannot use.
+// The order is visible because several messages can share one topline.
+export async function mon_break_armor(mon, polyspot) {
+    const [{ cansee }, { newsym, pline }, { You, You_hear }, { surface },
+           { can_saddle, can_ride, dismount_steed }]
+        = await Promise.all([
+            import('./vision.js'), import('./display.js'), import('./pline.js'),
+            import('./dungeon.js'), import('./steed.js'),
+        ]);
+    const mdat = mon.data;
+    const vis = cansee(mon.mx, mon.my);
+    const handless_or_tiny = nohands(mdat) || verysmall(mdat);
+    const pronoun = mhim(mon);
+    const ppronoun = genders_tbl[pronoun_gender(mon, PRONOUN_HALLU)].his;
+    let noride = false;
+
+    const destroy = (obj) => extract_from_minvent(mon, obj, true);
+    const drop = (obj) => {
+        extract_from_minvent(mon, obj, true);
+        place_object(obj, mon.mx, mon.my);
+        if (polyspot) {
+            obj.bypass = 1;
+            (game.context ||= {}).bypasses = true;
+        }
+        newsym(mon.mx, mon.my);
+    };
+
+    let obj;
+    if (breakarm(mdat)) {
+        if ((obj = which_armor(mon, W_ARM))) {
+            if (!matching_dragon_armor(mon, obj)) {
+                if (vis)
+                    await pline(`${Monnam(mon)} breaks out of ${ppronoun} armor!`);
+                else
+                    await You_hear('a cracking sound.');
+            }
+            destroy(obj);
+        }
+        if ((obj = which_armor(mon, W_ARMC))
+            && (obj.otyp !== ONAMES.MUMMY_WRAPPING
+                || !WrappingAllowed(mdat))) {
+            if (obj.oartifact) {
+                if (vis)
+                    await pline(`${s_suffix(Monnam(mon))} ${
+                        cloak_simple_name(obj)} falls off!`);
+                drop(obj);
+            } else {
+                if (vis)
+                    await pline(`${s_suffix(Monnam(mon))} ${
+                        cloak_simple_name(obj)} tears apart!`);
+                else
+                    await You_hear('a ripping sound.');
+                destroy(obj);
+            }
+        }
+        if ((obj = which_armor(mon, W_ARMU))) {
+            if (vis)
+                await pline(`${s_suffix(Monnam(mon))} shirt rips to shreds!`);
+            else
+                await You_hear('a ripping sound.');
+            destroy(obj);
+        }
+    } else if (sliparm(mdat)) {
+        const passes_thru_clothes = mdat.msize > MFLAGS.MZ_SMALL;
+
+        if ((obj = which_armor(mon, W_ARM))) {
+            if (vis)
+                await pline(`${s_suffix(Monnam(mon))} armor falls around ${
+                    pronoun}!`);
+            else
+                await You_hear('a thud.');
+            drop(obj);
+        }
+        if ((obj = which_armor(mon, W_ARMC))
+            && (obj.otyp !== ONAMES.MUMMY_WRAPPING
+                || !WrappingAllowed(mdat))) {
+            if (vis) {
+                if (is_whirly(mdat))
+                    await pline(`${s_suffix(Monnam(mon))} ${
+                        cloak_simple_name(obj)} falls, unsupported!`);
+                else
+                    await pline(`${Monnam(mon)} shrinks out of ${ppronoun} ${
+                        cloak_simple_name(obj)}!`);
+            }
+            drop(obj);
+        }
+        if ((obj = which_armor(mon, W_ARMU))) {
+            if (vis) {
+                if (passes_thru_clothes)
+                    await pline(`${Monnam(mon)} seeps right through ${
+                        ppronoun} shirt!`);
+                else
+                    await pline(`${Monnam(mon)} becomes much too small for ${
+                        ppronoun} shirt!`);
+            }
+            drop(obj);
+        }
+    }
+
+    if (handless_or_tiny) {
+        if ((obj = which_armor(mon, W_ARMG))) {
+            if (vis)
+                await pline(`${Monnam(mon)} drops ${ppronoun} gloves${
+                    MON_WEP(mon) ? ' and weapon' : ''}!`);
+            drop(obj);
+        }
+        if ((obj = which_armor(mon, W_ARMS))) {
+            if (vis)
+                await pline(`${Monnam(mon)} can no longer hold ${
+                    ppronoun} shield!`);
+            else
+                await You_hear('a clank.');
+            drop(obj);
+        }
+    }
+    if (handless_or_tiny || has_horns(mdat)) {
+        if ((obj = which_armor(mon, W_ARMH))
+            && (handless_or_tiny || !is_flimsy(obj))) {
+            if (vis)
+                await pline(`${s_suffix(Monnam(mon))} helmet falls to the ${
+                    surface(mon.mx, mon.my)}!`);
+            else
+                await You_hear('a clank.');
+            drop(obj);
+        }
+    }
+    if (handless_or_tiny || slithy(mdat) || mdat.mlet === MONSYMS.S_CENTAUR) {
+        if ((obj = which_armor(mon, W_ARMF))) {
+            if (vis) {
+                if (is_whirly(mdat))
+                    await pline(`${s_suffix(Monnam(mon))} boots fall away!`);
+                else
+                    await pline(`${s_suffix(Monnam(mon))} boots ${
+                        verysmall(mdat) ? 'slide' : 'are pushed'} off ${
+                        ppronoun} feet!`);
+            }
+            drop(obj);
+        }
+    }
+    if (!can_saddle(mon)) {
+        if ((obj = which_armor(mon, W_SADDLE))) {
+            drop(obj);
+            if (vis)
+                await pline(`${s_suffix(Monnam(mon))} saddle falls off.`);
+        }
+        if (mon === game.u.usteed)
+            noride = true;
+    }
+    if (noride || (mon === game.u.usteed && !can_ride(mon))) {
+        await You(`can no longer ride ${mon_nam(mon)}.`);
+        note_unported_worn('mon_break_armor:steed-touch-petrification');
+        await dismount_steed(DISMOUNT_FELL);
+    }
 }
 
 // src/worn.c:717 find_mac() — a monster's armour class.

@@ -16,26 +16,33 @@ import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { COLNO, ROWNO, In_endgame, In_quest, In_sokoban, GP_CHECKSCARY,
          NO_MM_FLAGS, RLOC_MSG, RLOC_NOMSG, RLOC_ERR,
-         BOLT_LIM, VAULT, STRAT_APPEARMSG, OBJ_FREE, OBJ_INVENT } from './const.js';
+         BOLT_LIM, VAULT, STRAT_APPEARMSG, OBJ_FREE, OBJ_INVENT,
+         SHOPBASE, TEMPLE, A_STR, A_WIS, TELEP_TRAP, LEVEL_TELEP,
+         FORCETRAP, I_SPECIAL, NHW_MENU, MENU_BEHAVE_STANDARD, PICK_ONE,
+         SLT_ENCUMBER,
+         MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED } from './const.js';
 import { rnl } from './rng.js';
 import { pline, see_nearby_objects, canspotmon, canseemon,
          sensemon, see_monsters } from './display.js';
-import { Blind, Hallucination } from './youprop.js';
+import { Blind, Hallucination, Teleport_control, Teleportation }
+    from './youprop.js';
 import { is_demon, is_lord, is_prince, is_covetous,
-         passes_walls } from './mondata.js';
+         passes_walls, can_teleport } from './mondata.js';
 import { You, You_feel, You_cant } from './pline.js';
-import { getlin } from './cmd.js';
+import { getlin, preparePunishmentMove, finishPunishmentMove } from './cmd.js';
 import { get_level, find_hell, depth, print_dungeon,
          dunlevs_in_dungeon } from './dungeon.js';
 import { rnd } from './rng.js';
 import { Is_knox_level } from './const.js';
 import { schedule_goto, UTOTYPE_NONE, unplacebc, placebc } from './do.js';
 import { t_at } from './mon.js';
-import { unconscious } from './trap.js';
+import { unconscious, deltrap, level_tele_trap } from './trap.js';
 import { goodpos, remove_monster, place_monster } from './makemon.js';
 import { newsym } from './display.js';
 import { vision_recalc, couldsee } from './vision.js';
-import { in_rooms, invocation_message, spoteffects } from './hack.js';
+import { check_capacity, in_rooms, invocation_message, spoteffects,
+         u_locomotion }
+    from './hack.js';
 import { morehungry } from './eat.js';
 import { getpos } from './getpos.js';
 import { Amonnam, Monnam, mon_nam } from './do_name.js';
@@ -44,6 +51,15 @@ import { distu, distmin } from './hacklib.js';
 import { isok, ECMD_OK, ECMD_TIME, VIBRATING_SQUARE, is_pit, is_hole } from './const.js';
 import { ONAMES } from './objects_data.js';
 import { learnscroll } from './read.js';
+import { ACURR, exercise, near_capacity } from './attrib.js';
+import { PMNAMES } from './monst_data.js';
+import { known_spell, spe_Fresh, spe_Unknown, spelleffects, tport_spell,
+         NOOP_SPELL, HIDE_SPELL, ADD_SPELL }
+    from './spell.js';
+import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
+         tty_select_menu, tty_destroy_nhwindow, ATR_NONE }
+    from './tty/wintty.js';
+import { NO_COLOR } from './terminal.js';
 
 // include/hack.h:1204-1210
 
@@ -284,7 +300,7 @@ export async function level_tele() {
         }
     }
 
-    if (!next_to_u() && !force_dest) {
+    if (!await next_to_u() && !force_dest) {
         await You('shudder for a moment.');
         return;
     }
@@ -341,14 +357,13 @@ function lev_by_name(nam) {
     return 0;
 }
 
-// src/hack.c next_to_u() — is everything that follows the hero adjacent?
-// Only a leashed pet or a ball and chain can fail it, and neither is modelled.
-function next_to_u() {
-    return true;
+// src/apply.c next_to_u(), loaded lazily to avoid the apply/monster cycle.
+async function next_to_u() {
+    const apply = await import('./apply.js');
+    return await apply.next_to_u();
 }
 
 const isdigit = (c) => c >= '0' && c <= '9';
-const Teleport_control = () => !!game.u?.uprops?.TELEPORT_CONTROL;
 const Stunned = () => !!game.u?.uprops?.STUNNED;
 const Confusion = () => !!game.u?.uprops?.CONFUSION;
 
@@ -419,6 +434,9 @@ function Is_botlevel_tele(lev) {
 export function u_on_newpos(x, y) {
     game.u.ux = x;
     game.u.uy = y;
+    game.u.uundetected = 0;
+    if (game.youmonst)
+        game.youmonst.mundetected = 0;
     /* src/dungeon.c:1584 — ridden steed always shares hero's location;
        cliparound() is a no-op on an 80x21 map */
     if (game.u.usteed) {
@@ -506,8 +524,22 @@ function rloc_pos_ok(x, y, mtmp) {
         }
         return true;
     }
-    if (mtmp.isshk || mtmp.ispriest)
-        note_unported_teleport('rloc:resident_room');
+    const target = game.level.at(x, y);
+    if (mtmp.isshk && mtmp.eshk) {
+        const room = mtmp.eshk.shoproom;
+        const resident = in_rooms(mtmp.mx, mtmp.my, SHOPBASE)
+            .includes(String.fromCharCode(room));
+        if (resident && target?.roomno !== room)
+            return false;
+    } else if (mtmp.ispriest) {
+        const epri = mtmp.epri ?? mtmp.mextra?.epri;
+        const room = epri?.shroom;
+        const resident = room !== undefined
+            && in_rooms(mtmp.mx, mtmp.my, TEMPLE)
+                .includes(String.fromCharCode(room));
+        if (resident && target?.roomno !== room)
+            return false;
+    }
     return tele_jump_ok(mtmp.mx, mtmp.my, x, y);
 }
 
@@ -649,13 +681,21 @@ function teleok(x, y, trapok) {
 // src/teleport.c teleds() — put the hero at <nux,nuy>.
 //
 // A distant teleport unplaces the punishment pieces and puts them back below
-// the hero at the destination. The nearby drag cases still need drag_ball().
+// the hero at the destination. A nearby relocation can leave the ball in
+// place while moving the chain, or drag both pieces for an allowed short move.
 export async function teleds(nux, nuy, teleds_flags) {
     const is_teleport = !!(teleds_flags & TELEDS_TELEPORT);
     const ball = game.u.uball;
-    const ballActive = !!(ball && ball.where !== OBJ_FREE);
+    const ballActive = !!(ball && game.u.uchain && ball.where !== OBJ_FREE);
+    let allowDrag = !!(teleds_flags & TELEDS_ALLOW_DRAG);
     let ballUnplaced = false;
+    let punishmentMove = null;
     let vaultFns = null, vaultGuard = null;
+
+    if (!ballActive
+        || near_capacity() > SLT_ENCUMBER
+        || distmin(game.u.ux, game.u.uy, nux, nuy) > 1)
+        allowDrag = false;
 
     if (game.u.urooms) {
         vaultFns = await import('./vault.js');
@@ -669,11 +709,16 @@ export async function teleds(nux, nuy, teleds_flags) {
     if (ballActive) {
         const ballStillInRange = ball.where !== OBJ_INVENT
             && distmin(nux, nuy, ball.ox, ball.oy) <= 2;
-        if (!ballStillInRange) {
+        if (ballStillInRange || allowDrag) {
+            punishmentMove = await preparePunishmentMove(nux, nuy, allowDrag);
+            if (!punishmentMove && game.u.uball
+                && game.u.uball.where !== OBJ_FREE) {
+                unplacebc();
+                ballUnplaced = true;
+            }
+        } else {
             unplacebc();
             ballUnplaced = true;
-        } else {
-            note_unported_teleport('teleds:nearby_ball_drag');
         }
     }
 
@@ -682,7 +727,9 @@ export async function teleds(nux, nuy, teleds_flags) {
     game.u.uy0 = uy0;
     u_on_newpos(nux, nuy);
 
-    if (ballUnplaced)
+    if (punishmentMove)
+        finishPunishmentMove(punishmentMove);
+    else if (ballUnplaced)
         await placebc();
 
     newsym(ux0, uy0);           /* clear the old position */
@@ -728,9 +775,8 @@ export async function scrolltele(scroll) {
     /* src/teleport.c:872 — Teleport_control (or a blessed scroll, or
        wizard mode) picks the spot via getpos; everyone else falls through
        to the random destination below */
-    const controlled = (game.u.uprops?.TELEPORT_CONTROL
-                        || game.u.intrinsic?.HTeleport_control
-                        || (scroll && scroll.blessed) || game.wizard);
+    const controlled = ((Teleport_control() || (scroll && scroll.blessed))
+                        && !Stunned()) || game.wizard;
     if (controlled) {
         if (unconscious()) {
             await pline('Being unconscious, you cannot control your teleport.');
@@ -754,6 +800,11 @@ export async function scrolltele(scroll) {
                is low; allow transfer to solid rock */
             if (teleok(cc.x, cc.y, false)) {
                 await teleds(cc.x, cc.y, TELEDS_TELEPORT);
+                if (game.iflags?.travelcc
+                    && game.u.ux === game.iflags.travelcc.x
+                    && game.u.uy === game.iflags.travelcc.y) {
+                    game.iflags.travelcc.x = game.iflags.travelcc.y = 0;
+                }
                 return;
             }
             await pline('Sorry...');
@@ -828,25 +879,108 @@ export async function tele() {
 
 // src/teleport.c:1035 dotele() — `break_the_rules` is wizard-mode ^T.
 async function dotele(break_the_rules) {
-    const trap = t_at(game.u.ux, game.u.uy);
+    let trap = t_at(game.u.ux, game.u.uy);
+    let trap_once = false;
+
+    if (trap && !trap.tseen)
+        trap = null;
 
     if (trap) {
-        note_unported_teleport('dotele:trap');
-        return 0;
+        if (trap.ttyp === LEVEL_TELEP) {
+            const { tty_yn_function } = await import('./tty/topl.js');
+            if ((await tty_yn_function(
+                    'There is a level teleporter here. Trigger it?',
+                    'yn', 'n')) === 'y') {
+                await level_tele_trap(trap, FORCETRAP);
+                return 1;
+            }
+            trap = null;
+        } else if (trap.ttyp === TELEP_TRAP) {
+            trap_once = !!trap.once;
+            if (trap.once) {
+                await pline('This is a vault teleport, usable once only.');
+                const { tty_yn_function } = await import('./tty/topl.js');
+                if ((await tty_yn_function('Jump in?', 'yn', 'n')) === 'n') {
+                    trap = null;
+                } else {
+                    deltrap(trap);
+                    newsym(game.u.ux, game.u.uy);
+                }
+            }
+            if (trap)
+                await You(`${u_locomotion('jump')} onto the teleportation trap.`);
+        } else {
+            trap = null;
+        }
     }
-    if (!break_the_rules) {
-        /* the Teleportation-intrinsic and spell-casting gate */
-        note_unported_teleport('dotele:not_wizard');
+    if (!trap && !break_the_rules) {
+        let castit = false;
+        const role = game.urole?.mnum;
+        const threshold = (role === PMNAMES.PM_WIZARD
+                           || role === 'PM_WIZARD') ? 8 : 12;
+        if (!Teleportation()
+            || ((game.u.ulevel || 0) < threshold
+                && !can_teleport(game.youmonst.data))) {
+            const knownsp = known_spell(ONAMES.SPE_TELEPORT_AWAY);
+            castit = knownsp >= spe_Fresh && !Confusion();
+            if (!castit) {
+                const reason = !Teleportation()
+                    ? (knownsp !== spe_Unknown ? "can't cast that spell"
+                                               : "don't know that spell")
+                    : 'are not able to teleport at will';
+                await You(`${reason}.`);
+                return 0;
+            }
+        }
+
+        const energy = 5 * game.objects[ONAMES.SPE_TELEPORT_AWAY].oc_level;
+        let reason = null;
+        if ((game.u.uhunger || 0) <= 10)
+            reason = 'are too weak from hunger';
+        else if (ACURR(A_STR) < 4)
+            reason = 'lack the strength';
+        else if (energy > (game.u.uen || 0))
+            reason = 'lack the energy';
+        if (reason) {
+            await You(`${reason} ${castit ? 'for a teleport spell'
+                                         : 'to teleport'}.`);
+            return 0;
+        }
+        if (await check_capacity(
+                'Your concentration falters from carrying so much.'))
+            return 1;
+
+        if (castit) {
+            exercise(A_WIS, true);
+            if ((await spelleffects(
+                    ONAMES.SPE_TELEPORT_AWAY, true, false)) & ECMD_TIME)
+                return 1;
+            return 0;
+        }
+
+        game.u.uen -= energy;
+        (game.disp ||= {}).botl = true;
+    }
+
+    if (!await next_to_u()) {
+        await You('shudder for a moment.');
         return 0;
     }
 
-    if (game.iflags?.travelcc)
-        game.iflags.travelcc.x = game.iflags.travelcc.y = 0;
-    await tele();
-    /* next_to_u() drags adjacent pets along */
-    note_unported_teleport('dotele:next_to_u');
+    if (trap && trap_once) {
+        await vault_tele();
+    } else if (trap && isok(trap.teledest?.x ?? 0,
+                            trap.teledest?.y ?? 0)) {
+        await teleds(trap.teledest.x, trap.teledest.y, TELEDS_TELEPORT);
+    } else {
+        if (game.iflags?.travelcc)
+            game.iflags.travelcc.x = game.iflags.travelcc.y = 0;
+        await tele();
+    }
+    await next_to_u();
 
-    await morehungry(100);
+    if (!trap)
+        await morehungry(100);
     return 1;
 }
 
@@ -856,13 +990,76 @@ export async function dotelecmd() {
     if (!game.wizard)
         return (await dotele(false)) ? ECMD_TIME : ECMD_OK;
 
-    /* wizard mode without the 'm' prefix ignores every restriction; with it,
-       C puts up a menu of teleport flavours, which is recorded */
-    if (game.iflags?.menu_requested) {
-        note_unported_teleport('dotelecmd:menu');
-        return ECMD_OK;
+    if (!game.iflags?.menu_requested)
+        return (await dotele(true)) ? ECMD_TIME : ECMD_OK;
+
+    const tports = [
+        ['n', 'normal ^T on demand; no spell, obey restrictions'],
+        ['s', 'via spellcast; no intrinsic teleport'],
+        ['t', 'try ^T without having it; no spell'],
+        ['w', 'debug mode; ignore restrictions'],
+    ];
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    for (const [key, description] of tports) {
+        tty_add_menu(win, null, key, key, 0, ATR_NONE, NO_COLOR,
+                     description, key === 'w' ? MENU_ITEMFLAGS_SELECTED
+                                              : MENU_ITEMFLAGS_NONE);
     }
-    const res = await dotele(true);
+    tty_end_menu(win, 'Which way do you want to teleport?');
+    const picks = await tty_select_menu(win, PICK_ONE);
+    tty_destroy_nhwindow(win);
+    if (picks.cancelled)
+        return ECMD_OK;
+
+    /* Choosing another mode leaves preselected 'w' in the selection list.
+       Choosing 'w' toggles it off and yields no picks, which C also treats as
+       the traditional unrestricted wizard command. */
+    const tmode = picks.find((pick) => pick !== 'w') || 'w';
+    const intrinsic = (game.u.intrinsic ||= {});
+    const uprops = (game.u.uprops ||= {});
+    const hadHTele = Object.hasOwn(intrinsic, 'HTeleportation');
+    const hadETele = Object.hasOwn(uprops, 'TELEPORT');
+    const saveHTele = intrinsic.HTeleportation;
+    const saveETele = uprops.TELEPORT;
+    let undoSpell = NOOP_SPELL;
+    let ignoreRestrictions = false;
+
+    switch (tmode) {
+    case 'n':
+        intrinsic.HTeleportation = (intrinsic.HTeleportation | 0) | I_SPECIAL;
+        undoSpell = tport_spell(HIDE_SPELL);
+        break;
+    case 's':
+        intrinsic.HTeleportation = 0;
+        uprops.TELEPORT = 0;
+        undoSpell = tport_spell(ADD_SPELL);
+        break;
+    case 't':
+        intrinsic.HTeleportation = 0;
+        uprops.TELEPORT = 0;
+        undoSpell = tport_spell(HIDE_SPELL);
+        break;
+    case 'w':
+        ignoreRestrictions = true;
+        break;
+    }
+
+    let res;
+    try {
+        res = await dotele(ignoreRestrictions);
+    } finally {
+        if (hadHTele)
+            intrinsic.HTeleportation = saveHTele;
+        else
+            delete intrinsic.HTeleportation;
+        if (hadETele)
+            uprops.TELEPORT = saveETele;
+        else
+            delete uprops.TELEPORT;
+        if (undoSpell !== NOOP_SPELL)
+            tport_spell(undoSpell);
+    }
     return res ? ECMD_TIME : ECMD_OK;
 }
 

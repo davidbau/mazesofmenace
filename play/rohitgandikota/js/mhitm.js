@@ -7,12 +7,13 @@
 // in mattackm(), and until that lands a pet that decides to attack does
 // nothing instead.
 //
-// Ported so far: the three leaves below. mattackm() itself, hitmm(), mdamagem()
-// and passivemm() are NOT here yet -- see docs/plan/STATUS.md for the sizing.
+// The ordinary attack loop and several elemental and special damage paths are
+// ported below. Gaze, explosion, breath, and spell branches remain recorded in
+// the coverage ledger until their C behavior is implemented.
 
 import { game } from './gstate.js';
 import { Deaf } from './youprop.js';
-import { You_hear } from './pline.js';
+import { You, You_hear } from './pline.js';
 import { M_AP_TYPE, NORMAL_SPEED } from './const.js';
 import { ATTKS } from './monst_data.js';
 import { resist_conflict } from './mondata.js';
@@ -22,7 +23,7 @@ import { mdistu, monnear, itsstuck } from './monmove.js';
 import { engulfing_u } from './const.js';
 import { Monnam, mon_nam_too } from './do_name.js';
 import { could_seduce, getmattk, mswings_verb } from './mhitu.js';
-import { MON_WEP, DEADMONSTER } from './monst.js';
+import { MON_WEP, DEADMONSTER, mon_offmap } from './monst.js';
 import { hitval, mon_wield_item, possibly_unwield } from './weapon.js';
 import { mon_nam } from './do_name.js';
 import { xname } from './objnam.js';
@@ -30,7 +31,8 @@ import { pronoun_gender } from './mondata.js';
 import { genders } from './role_data.js';
 import { mon_visible } from './display.js';
 import { NEED_WEAPON, NEED_HTH_WEAPON, PRONOUN_HALLU,
-         P_POLEARMS } from './const.js';
+         P_POLEARMS, IS_OBSTRUCTED, IS_TREE, IRONBARS,
+         MM_IGNOREWATER, W_ARMG } from './const.js';
 import { ONAMES } from './objects_data.js';
 import { dist2 } from './hacklib.js';
 import { rn2, rnd, d } from './rng.js';
@@ -39,14 +41,20 @@ import { PMNAMES, MFLAGS } from './monst_data.js';
 import { find_mac } from './worn.js';
 import { canseemon, sensemon } from './display.js';
 import { cansee } from './vision.js';
-import { m_at, monkilled } from './mon.js';
+import { m_at, monkilled, monstone } from './mon.js';
 import { touch_petrifies } from './dog.js';
-import { is_orc, unsolid, resists_ston } from './mondata.js';
+import { is_orc, unsolid, resists_ston, is_whirly, passes_walls,
+         poly_when_stoned } from './mondata.js';
 import { distmin, s_suffix } from './hacklib.js';
-import { mhitm_ad_phys, mhitm_knockback } from './uhitm.js';
-import { grow_up } from './makemon.js';
+import { mhitm_ad_phys, mhitm_ad_fire, mhitm_ad_cold, mhitm_ad_elec,
+         mhitm_ad_acid, mhitm_ad_drst, mhitm_ad_blnd,
+         mhitm_ad_sedu, mhitm_ad_drli, mhitm_ad_drin,
+         mhitm_ad_ston, attk_protection, mhitm_knockback } from './uhitm.js';
+import { grow_up, goodpos, remove_monster, place_monster } from './makemon.js';
 import { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE } from './const.js';
 import { spitmm } from './mthrowu.js';
+import { closed_door } from './cmd.js';
+import { minstapetrify } from './trap.js';
 
 // src/mhitm.c:27 noises() — the message when a fight happens out of sight.
 //
@@ -199,6 +207,29 @@ export async function fightm(mtmp) {
     return 0;
 }
 
+// src/mhitm.c:597 failed_grab(). Only attacks which need to hold their
+// target fail against an unsolid monster or a long-worm tail. Ordinary
+// touches, including a wraith's life drain, still connect.
+async function failed_grab_mm(magr, mdef, mattk) {
+    const A = ATTKS;
+    const tailmiss = !!game.notonhead;
+    if (!(unsolid(game.mons[mdef.mnum]) || tailmiss)
+        || !(mattk[0] === A.AT_HUGS || mattk[1] === A.AD_WRAP
+             || mattk[1] === A.AD_STCK || mattk[1] === A.AD_DGST)) {
+        return false;
+    }
+
+    if (game.vis && canspotmon(mdef)) {
+        const verb = mattk[1] === A.AD_DGST ? 'gulp'
+            : mattk[1] === A.AD_STCK ? 'adhere' : 'grab';
+        const target = tailmiss ? `${s_suffix(mon_nam(mdef))} tail`
+            : mon_nam(mdef);
+        await pline(`${s_suffix(Monnam(magr))} ${verb} attempt ${
+            tailmiss ? 'fails to hold' : 'passes right through'} ${target}!`);
+    }
+    return true;
+}
+
 // src/mhitm.c:293 mattackm() — one monster performs all its attacks on
 // another. Returns the M_ATTK_* result bits.
 //
@@ -247,6 +278,7 @@ export async function mattackm(magr, mdef) {
 
     /* the attack out of sequence still counts as this round's move */
     magr.mlstmv = game.moves;
+    game.skipdrin = false;
 
     for (let i = 0; i < 6; i++) {
         res[i] = M_ATTK_MISS;
@@ -258,6 +290,10 @@ export async function mattackm(magr, mdef) {
             continue;
 
         const mattk = getmattk(magr, mdef, i, res);
+        if (game.skipdrin && mattk[0] === A.AT_TENT
+            && mattk[1] === A.AD_DRIN) {
+            continue;
+        }
         let mwep = null;
         let attk = 1;
         let strike = 0;
@@ -278,7 +314,7 @@ export async function mattackm(magr, mdef) {
                 if (await mon_wield_item(magr) !== 0)
                     return M_ATTK_MISS;
             }
-            possibly_unwield(magr, false);
+            await possibly_unwield(magr, false);
             if ((mwep = MON_WEP(magr)) != null) {
                 if (game.vis)
                     await mswingsm(magr, mdef, mwep);
@@ -309,9 +345,7 @@ export async function mattackm(magr, mdef) {
             if (mwep)
                 tmp -= hitval(mwep, mdef);
             if (strike) {
-                if (unsolid(pd)) {
-                    /* failed_grab: eel wrap vs unsolid target */
-                    note_unported_mhitm('mattackm:failed_grab');
+                if (unsolid(pd) && await failed_grab_mm(magr, mdef, mattk)) {
                     strike = 0;
                     break;
                 }
@@ -324,8 +358,12 @@ export async function mattackm(magr, mdef) {
         case A.AT_HUGS:
             strike = (i >= 2 && res[i - 1] === M_ATTK_HIT
                       && res[i - 2] === M_ATTK_HIT) ? 1 : 0;
-            if (strike)
-                res[i] = await hitmm(magr, mdef, mattk, null, 0);
+            if (strike) {
+                if (await failed_grab_mm(magr, mdef, mattk))
+                    strike = 0;
+                else
+                    res[i] = await hitmm(magr, mdef, mattk, null, 0);
+            }
             break;
 
         case A.AT_SPIT:
@@ -344,7 +382,35 @@ export async function mattackm(magr, mdef) {
             }
             break;
 
-        case A.AT_GAZE: case A.AT_EXPL: case A.AT_ENGL:
+        case A.AT_ENGL:
+            if (mdef.mnum === PMNAMES.PM_SHADE) {
+                if (game.vis) {
+                    await pline(`${s_suffix(Monnam(magr))} attempt to engulf ${
+                        mon_nam(mdef)} is futile.`);
+                }
+                strike = 0;
+                break;
+            }
+            if (game.u.usteed && mdef === game.u.usteed) {
+                strike = 0;
+                break;
+            }
+            if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1)
+                continue;
+            if (engulfing_u(magr)) {
+                strike = 0;
+            } else if ((strike = tmp > rnd(20 + i) ? 1 : 0)) {
+                if (await failed_grab_mm(magr, mdef, mattk)) {
+                    strike = 0;
+                } else {
+                    res[i] = await gulpmm(magr, mdef, mattk);
+                }
+            } else {
+                await missmm(magr, mdef, mattk);
+            }
+            break;
+
+        case A.AT_GAZE: case A.AT_EXPL:
         case A.AT_BREA: case A.AT_MAGC:
             note_unported_mhitm(`mattackm:aatyp=${mattk[0]}`);
             strike = 0;
@@ -358,15 +424,18 @@ export async function mattackm(magr, mdef) {
         }
 
         if (attk && !(res[i] & M_ATTK_AGR_DIED)
-            && distmin(magr.mx, magr.my, mdef.mx, mdef.my) <= 1)
+            && distmin(magr.mx, magr.my, mdef.mx, mdef.my) <= 1) {
             res[i] = await passivemm(magr, mdef, !!strike,
                                      (res[i] & M_ATTK_DEF_DIED), mwep);
+        }
 
         if (res[i] & M_ATTK_DEF_DIED)
             return res[i];
         if (res[i] & M_ATTK_AGR_DIED)
             return res[i];
         if ((res[i] & M_ATTK_AGR_DONE) || helpless(magr))
+            return res[i];
+        if (mon_offmap(mdef))
             return res[i];
         if (res[i] & M_ATTK_HIT)
             struck = 1;
@@ -426,6 +495,99 @@ export async function hitmm(magr, mdef, mattk, mwep, dieroll) {
     return await mdamagem(magr, mdef, mattk, mwep, dieroll);
 }
 
+function engulfSquareAllowed(mon, x, y, otherData) {
+    const loc = game.level?.at(x, y);
+    if (!loc || passes_walls(mon.data))
+        return !!loc;
+    return !IS_OBSTRUCTED(loc.typ) && !closed_door(x, y)
+           && !IS_TREE(loc.typ)
+           && !(loc.typ === IRONBARS && !is_whirly(otherData));
+}
+
+// src/mhitm.c:807 engulf_target(), the shared size, trap, and terrain gate
+// used before one monster can move onto another monster's square.
+function engulf_target(magr, mdef) {
+    if (mdef.data.msize >= MFLAGS.MZ_HUGE
+        || (magr.data.msize < mdef.data.msize && !is_whirly(magr.data)))
+        return false;
+    if (mdef.mtrapped || magr.mtrapped)
+        return false;
+    return engulfSquareAllowed(mdef, mdef.mx, mdef.my, magr.data)
+           && engulfSquareAllowed(magr, magr.mx, magr.my, mdef.data);
+}
+
+function engulfVerb(ptr) {
+    for (const attack of ptr.mattk || []) {
+        if (attack[0] !== ATTKS.AT_ENGL)
+            continue;
+        if (attack[1] === ATTKS.AD_DGST)
+            return ['swallows', 'regurgitated'];
+        if (attack[1] === ATTKS.AD_WRAP)
+            return ['encloses', 'released'];
+    }
+    return ['engulfs', 'expelled'];
+}
+
+// src/mhitm.c:849 gulpmm(). Temporarily co-locate the aggressor and defender
+// so death, corpse, and display handling see the same map topology as C, then
+// restore both monsters when the defender survives.
+export async function gulpmm(magr, mdef, mattk) {
+    if (!engulf_target(magr, mdef))
+        return M_ATTK_MISS;
+
+    const [verb, release] = engulfVerb(magr.data);
+    if (game.vis)
+        await pline(`${Monnam(magr)} ${verb} ${mon_nam(mdef)}.`);
+    if ((mdef.minvent || []).some(obj => obj.lamplit))
+        note_unported_mhitm('gulpmm:snuff_lit');
+
+    const ax = magr.mx, ay = magr.my;
+    let dx = mdef.mx, dy = mdef.my;
+    remove_monster(dx, dy);
+    remove_monster(ax, ay);
+    place_monster(magr, dx, dy);
+    newsym(ax, ay);
+    newsym(dx, dy);
+
+    game.mswallower = magr;
+    const status = await mdamagem(magr, mdef, mattk, null, 0);
+    game.mswallower = null;
+
+    if ((status & (M_ATTK_AGR_DIED | M_ATTK_DEF_DIED))
+        === (M_ATTK_AGR_DIED | M_ATTK_DEF_DIED)) {
+        return status;
+    }
+    if (status & M_ATTK_DEF_DIED) {
+        if (!goodpos(dx, dy, magr, MM_IGNOREWATER)) {
+            if (m_at(dx, dy) === magr) {
+                remove_monster(dx, dy);
+                newsym(dx, dy);
+            }
+            dx = ax;
+            dy = ay;
+        }
+        if (m_at(dx, dy) !== magr) {
+            place_monster(magr, dx, dy);
+            newsym(dx, dy);
+        }
+        return status;
+    }
+    if (status & M_ATTK_AGR_DIED) {
+        place_monster(mdef, dx, dy);
+        newsym(dx, dy);
+        return status;
+    }
+
+    if (cansee(dx, dy))
+        await pline(`${Monnam(mdef)} is ${release}!`);
+    remove_monster(dx, dy);
+    place_monster(magr, ax, ay);
+    place_monster(mdef, dx, dy);
+    newsym(ax, ay);
+    newsym(dx, dy);
+    return status;
+}
+
 // src/mhitm.c:1016 mdamagem() — roll the damage, apply the damage-type
 // specials, then the hit points. The petrification arm and the non-physical
 // damage types are recorded; AD_PHYS runs the real path.
@@ -438,12 +600,59 @@ export async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
         done: false,
     };
 
-    if (touch_petrifies(pd) && !resists_ston(magr))
-        note_unported_mhitm('mdamagem:petrify_agr');
+    if ((touch_petrifies(pd)
+         || (mattk[1] === A.AD_DGST && pd === game.mons[PMNAMES.PM_MEDUSA]))
+        && !resists_ston(magr)) {
+        const protector = attk_protection(mattk[0]);
+        let wornitems = magr.misc_worn_check | 0;
+        if (mwep)
+            wornitems |= W_ARMG;
+        if (protector === 0
+            || (protector !== -1
+                && (wornitems & protector) !== protector)) {
+            if (poly_when_stoned(game.mons[magr.mnum])) {
+                await minstapetrify(magr, false);
+                return M_ATTK_HIT;
+            }
+            if (game.vis && canspotmon(magr))
+                await pline(`${Monnam(magr)} turns to stone!`);
+            await monstone(magr);
+            if (!DEADMONSTER(magr))
+                return M_ATTK_HIT;
+            if (magr.mtame && !game.vis) {
+                await You('have a peculiarly sad feeling for a moment, then it passes.');
+            }
+            return M_ATTK_AGR_DIED;
+        }
+    }
 
-    /* mhitm_adtyping: dispatch on the damage type */
+    /* mhitm_adtyping: dispatch the shared damage-type implementations. */
     if (mattk[1] === A.AD_PHYS) {
         await mhitm_ad_phys(magr, mattk, mdef, mhm);
+    } else if (mattk[1] === A.AD_FIRE) {
+        await mhitm_ad_fire(magr, mattk, mdef, mhm);
+    } else if (mattk[1] === A.AD_COLD) {
+        await mhitm_ad_cold(magr, mattk, mdef, mhm);
+    } else if (mattk[1] === A.AD_ELEC) {
+        await mhitm_ad_elec(magr, mattk, mdef, mhm);
+    } else if (mattk[1] === A.AD_ACID) {
+        await mhitm_ad_acid(magr, mattk, mdef, mhm);
+    } else if (mattk[1] === A.AD_DRST
+               || mattk[1] === A.AD_DRDX
+               || mattk[1] === A.AD_DRCO) {
+        await mhitm_ad_drst(magr, mattk, mdef, mhm);
+    } else if (mattk[1] === A.AD_BLND) {
+        await mhitm_ad_blnd(magr, mattk, mdef, mhm);
+    } else if (mattk[1] === A.AD_DRLI) {
+        await mhitm_ad_drli(magr, mattk, mdef, mhm);
+    } else if (mattk[1] === A.AD_DRIN) {
+        await mhitm_ad_drin(magr, mattk, mdef, mhm);
+    } else if (mattk[1] === A.AD_STON) {
+        await mhitm_ad_ston(magr, mattk, mdef, mhm);
+    } else if (mattk[1] === A.AD_SITM
+               || mattk[1] === A.AD_SEDU
+               || mattk[1] === A.AD_SSEX) {
+        await mhitm_ad_sedu(magr, mattk, mdef, mhm);
     } else {
         note_unported_mhitm(`mdamagem:adtyp=${mattk[1]}`);
     }
@@ -460,6 +669,13 @@ export async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
 
     mdef.mhp -= mhm.damage;
     if (mdef.mhp < 1) {
+        if (m_at(mdef.mx, mdef.my) === magr) {
+            const hp = mdef.mhp;
+            remove_monster(mdef.mx, mdef.my);
+            mdef.mhp = 1;
+            place_monster(mdef, mdef.mx, mdef.my);
+            mdef.mhp = hp;
+        }
         await monkilled(mdef, '', mattk[1]);
         if (mdef.mhp > 0)
             return mhm.hitflags;        /* mdef lifesaved */

@@ -9,8 +9,9 @@ import { game } from './gstate.js';
 import { roles } from './role_data.js';
 import { near_capacity } from './attrib.js';
 import { NOT_HUNGRY, UNENCUMBERED, SICK_VOMITABLE, SICK_NONVOMITABLE,
-         Upolyd } from './const.js';
+         TT_LAVA, Upolyd } from './const.js';
 import { MFLAGS } from './monst_data.js';
+import { Blind } from './youprop.js';
 
 /* src/botl.c:817 condtests[] — one row per status condition. `enabled`
    defaults to !opt_in and the 'status condition fields' option edits it; the
@@ -76,8 +77,8 @@ export function rank() {
     return rank_of(game.u.ulevel, game.urole, !!game.flags.female);
 }
 
-// src/eat.c hu_stat[] — trailing spaces are in the C array and are printed
-// verbatim by bot2str's " %s" (they vanish only at end-of-line).
+// src/eat.c hu_stat[] retains its legacy padding.  The tty status-field path
+// trims that padding before it joins hunger to a following condition.
 export const hu_stat = [
     "Satiated", "        ", "Hungry  ", "Weak    ",
     "Fainting", "Fainted ", "Starved "
@@ -98,9 +99,11 @@ export function bot_conditions() {
     if (props.STONED) cond += ' Stone';
     if (props.SLIMED) cond += ' Slime';
     if (props.STRANGLED) cond += ' Strngl';
-    if (u.usick_type & SICK_VOMITABLE) cond += ' FoodPois';
-    if (u.usick_type & SICK_NONVOMITABLE) cond += ' TermIll';
-    if (u.uhs != null && u.uhs !== NOT_HUNGRY) cond += ' ' + hu_stat[u.uhs];
+    const sick_type = game._deferred_status_sick_type ?? u.usick_type;
+    if (sick_type & SICK_VOMITABLE) cond += ' FoodPois';
+    if (sick_type & SICK_NONVOMITABLE) cond += ' TermIll';
+    if (u.uhs != null && u.uhs !== NOT_HUNGRY)
+        cond += ' ' + hu_stat[u.uhs].trimEnd();
     /* encumber_msg() prints before botl is marked dirty.  The tty therefore
        keeps the preceding capacity condition while that message is blocked
        at --More--; display.js otherwise recomputes every status line from
@@ -109,17 +112,20 @@ export function bot_conditions() {
         ? game._deferred_status_capacity
         : game._encumber_status_stale ? game.oldcap : near_capacity();
     if (cap > UNENCUMBERED) cond += ' ' + enc_stat[cap];
-    if (u.ublind || intr.HBlinded
-        || (Upolyd(u) && (game.youmonst.data.mflags1 & MFLAGS.M1_NOEYES)))
+    const blind = typeof game._deferred_status_blind === 'boolean'
+        ? game._deferred_status_blind : Blind();
+    if (blind)
         cond += ' Blind';
     if (intr.HDeaf || props.DEAF) cond += ' Deaf';
-    if (intr.HHallucination) cond += ' Hallu';
+    if ((intr.HHallucination || props.HALLUC) && !props.HALLUC_RES)
+        cond += ' Hallu';
     if (intr.HConfusion || props.CONFUSION) cond += ' Conf';
     if (props.LEVITATION || intr.HLevitation) cond += ' Lev';
     else if (props.FLYING || intr.HFlying
              || (Upolyd(u) && (game.youmonst.data.mflags1 & MFLAGS.M1_FLY)))
         cond += ' Fly';
-    if (intr.HStun || props.STUNNED) cond += ' Stun';
     if (u.usteed) cond += ' Ride';
+    if (intr.HStun || props.STUNNED) cond += ' Stun';
+    if (u.utrap && u.utraptype === TT_LAVA) cond += ' InLava';
     return cond;
 }

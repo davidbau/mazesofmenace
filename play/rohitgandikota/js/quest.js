@@ -8,7 +8,7 @@
 // two calls short before the text ever shows.
 
 import { game } from './gstate.js';
-import { qt_pager } from './questpgr.js';
+import { com_pager, is_quest_artifact, qt_pager } from './questpgr.js';
 import { tty_yn_function } from './tty/topl.js';
 import { You } from './pline.js';
 import { exercise } from './attrib.js';
@@ -17,10 +17,39 @@ import { rn2 } from './rng.js';
 import { A_WIS, A_CURRENT, A_ORIGINAL, MIN_QUEST_ALIGN,
          MIN_QUEST_LEVEL, STRAT_WAITMASK } from './const.js';
 import { MSOUND } from './monst_data.js';
+import { ONAMES } from './objects_data.js';
 
 /* include/quest.h:8 struct q_score — zero-initialized at game start */
 function Qstat() {
     return (game.quest_status ||= {});
+}
+
+// src/quest.c:107 nemdead() and :116 leaddead(), quest death bookkeeping.
+export async function nemdead() {
+    const q = Qstat();
+    if (!q.killed_nemesis) {
+        q.killed_nemesis = true;
+        await qt_pager('killed_nemesis');
+    }
+}
+
+export function leaddead() {
+    const q = Qstat();
+    if (!q.killed_leader)
+        q.killed_leader = true;
+}
+
+// src/quest.c:426 nemesis_stinks(), create the death cloud as monster-caused.
+export async function nemesis_stinks(mx, my) {
+    game.context ||= {};
+    const saveMonMoving = !!game.context.mon_moving;
+    game.context.mon_moving = true;
+    try {
+        const { create_gas_cloud } = await import('./region.js');
+        create_gas_cloud(mx, my, 5, 8);
+    } finally {
+        game.context.mon_moving = saveMonMoving;
+    }
 }
 
 // src/quest.c:125 artitouch() -- first contact with the role's quest
@@ -37,6 +66,53 @@ export async function artitouch(obj) {
     q.touched_artifact = true;
     await qt_pager('gotit');
     exercise(A_WIS, true);
+}
+
+// src/quest.c:226 finish_quest(), acknowledge the returned quest artifact and
+// fully identify it before giving it back to the hero.
+export async function finish_quest(obj) {
+    const q = Qstat();
+    const { carrying, fully_identify_obj, update_inventory } =
+        await import('./invent.js');
+
+    if (obj && !is_quest_artifact(obj)) {
+        const { Deaf } = await import('./youprop.js');
+        if (Deaf())
+            return;
+        fully_identify_obj(obj);
+        if (obj.otyp === ONAMES.AMULET_OF_YENDOR) {
+            await qt_pager('hasamulet');
+        } else {
+            const { pline } = await import('./display.js');
+            if (obj.otyp === ONAMES.FAKE_AMULET_OF_YENDOR) {
+                await pline('"Sorry to say, this is a mere imitation of the true Amulet of Yendor."');
+            } else {
+                const { the, xname } = await import('./objnam.js');
+                await pline(`"Ah, I see you've found ${the(xname(obj))}."`);
+            }
+        }
+        return;
+    }
+
+    if (game.u.uhave?.amulet) {
+        await qt_pager('hasamulet');
+        const amulet = carrying(ONAMES.AMULET_OF_YENDOR);
+        if (amulet) {
+            fully_identify_obj(amulet);
+            update_inventory();
+        }
+    } else {
+        await qt_pager(q.got_thanks ? 'offeredit2' : 'offeredit');
+        if (!carrying(ONAMES.BELL_OF_OPENING))
+            await com_pager('quest_complete_no_bell');
+    }
+    q.got_thanks = true;
+
+    if (obj) {
+        (game.u.uevent ||= {}).qcompleted = 1;
+        fully_identify_obj(obj);
+        update_inventory();
+    }
 }
 
 /* include/dungeon.h:129 Lcheck() via on_level() */
@@ -110,10 +186,17 @@ async function chat_with_leader(mtmp) {
     if (!mtmp.mpeaceful || q.pissed_off)
         return;
 
+    if (game.u.uhave?.questart && !q.met_nemesis)
+        q.cheater = true;
+
     if (q.got_thanks) {
-        await qt_pager('posthanks');
+        if (game.u.uhave?.amulet)
+            await finish_quest(null);
+        else
+            await qt_pager('posthanks');
     } else if (game.u.uhave?.questart) {
-        (game.unported ||= new Set()).add('quest:chat_with_leader:finish_quest');
+        const artifact = (game.invent || []).find(is_quest_artifact);
+        await finish_quest(artifact || null);
     } else if (q.got_quest) {
         await qt_pager('encourage');
     } else {

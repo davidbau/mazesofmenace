@@ -1,6 +1,7 @@
-import { setuqwep, setuwep, setuswapwep, weldmsg } from './wield.js';
+import { setuqwep, setuwep_with_feedback, setuswapwep,
+         weldmsg } from './wield.js';
 import { impact_disturbs_zombies } from './hack.js';
-import { stackobj } from './invent.js';
+import { obfree, stackobj, useupf } from './invent.js';
 // do.js — commands that move the hero between levels, and the level change
 // itself.
 // C ref: src/do.c
@@ -10,28 +11,40 @@ import { stackobj } from './invent.js';
 // the first draw the new level makes; the missing piece is everything above it.
 
 import { game } from './gstate.js';
-import { reset_occupations, set_move_cmd } from './cmd.js';
+import { paranoid_ynq, reset_occupations, set_move_cmd } from './cmd.js';
 import { welded } from './wield.js';
 import { ONAMES } from './objects_data.js';
 import { encumber_msg, exercise, weight_cap } from './attrib.js';
-import { freeinv, getobj, any_obj_ok, obj_extract_self } from './invent.js';
-import { place_object, set_bknown } from './mkobj.js';
-import { cls, pline, newsym } from './display.js';
-import { pline_The, You, You_cant, You_hear, Your } from './pline.js';
+import { freeinv, getobj, any_obj_ok, obj_extract_self, useup }
+    from './invent.js';
+import { place_object, rider_revival_time, set_bknown, set_corpsenm,
+         splitobj, zombie_form, obj_nexto_xy } from './mkobj.js';
+import { canseemon, cls, docrt, pline, newsym } from './display.js';
+import { pline_The, There, You, You_cant, You_feel, You_hear, Your }
+    from './pline.js';
 import { near_capacity } from './attrib.js';
 import { u_locomotion, losehp, check_special_room } from './hack.js';
-import { ECMD_OK, ECMD_TIME, ECMD_FAIL, LOST_DROPPED, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, W_ARMOR, W_ACCESSORY, W_SADDLE, IS_ALTAR, IS_SOFT, UNENCUMBERED, DIR_DOWN, DIR_UP, SLT_ENCUMBER, is_pit, is_hole, u_at, OBJ_FREE, OBJ_INVENT, OBJ_FLOOR, VIBRATING_SQUARE, MAGIC_PORTAL, A_STR, A_DEX, BOTH_SIDES, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, FACE, HAND, BC_BALL, BC_CHAIN, MENU_FULL, ALL_TYPES_SELECTED, Is_rogue_level, NH_AMBER, NH_BLACK, NO_MINVENT, MM_NOWAIT, MM_NOCOUNTBIRTH, MM_NOTAIL, MM_NOMSG } from './const.js';
-import { t_at, m_at, is_pool, is_lava, delobj_core } from './mon.js';
+import { ECMD_OK, ECMD_TIME, ECMD_FAIL, LOST_DROPPED, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, W_ARMOR, W_ACCESSORY, W_SADDLE, IS_ALTAR, IS_SOFT, UNENCUMBERED, DIR_DOWN, DIR_UP, SLT_ENCUMBER, is_pit, is_hole, u_at, OBJ_FREE, OBJ_INVENT, OBJ_FLOOR, OBJ_BURIED, VIBRATING_SQUARE, MAGIC_PORTAL, PIT, ROOM, CORR, GRAVE, A_STR, A_DEX, BOTH_SIDES, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, FACE, HAND, BC_BALL, BC_CHAIN, MENU_FULL, ALL_TYPES_SELECTED, Is_rogue_level, Is_waterlevel, IS_WATERWALL, DRAWBRIDGE_UP, DB_UNDER, DB_FLOOR, NH_AMBER, NH_BLACK, NO_MINVENT, MM_NOWAIT, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_MALE, MM_FEMALE, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, NON_PM, RLOC_NOMSG, st_all } from './const.js';
+import { t_at, m_at, is_pool, is_lava, delobj_core, m_in_air, mondied,
+         seemimic, wake_nearto } from './mon.js';
 import { is_pick } from './mon.js';
-import { cansee } from './vision.js';
-import { Blind, Hallucination, Levitation } from './youprop.js';
+import { cansee, recalc_block_point } from './vision.js';
+import { Blind, Deaf, Fire_resistance, Hallucination, Levitation }
+    from './youprop.js';
 import { OCLASSES } from './objects_data.js';
 import { rn2, rnd, d } from './rng.js';
-import { can_reach_floor, add_valid_menu_class, allow_category,
+import { can_reach_floor, u_safe_from_fatal_corpse,
+         add_valid_menu_class, allow_category,
          query_drop_categories, query_objlist } from './pickup.js';
 import { body_part } from './polyself.js';
-import { PMNAMES } from './monst_data.js';
-import { Monnam } from './do_name.js';
+import { dmgtype, is_displacer } from './mondata.js';
+import { ATTKS, PMNAMES, MFLAGS } from './monst_data.js';
+import { Amonnam, hliquid, Monnam, upstart, y_monnam } from './do_name.js';
+import { corpse_xname, CXN_NOCORPSE, CXN_PFX_THE, the, vtense, xname }
+    from './objnam.js';
+import { waterbody_name } from './pager.js';
+import { is_pool_or_lava } from './dbridge.js';
+import { DEADMONSTER } from './monst.js';
 
 /* mklev() lives in js/mklev.js, which this file's callers already pull in.
    A dynamic import() here hits the same partially-initialised module the
@@ -54,22 +67,66 @@ function note_unported_do(what) {
 }
 
 // src/do.c:2111 revive_corpse() and :2251 revive_mon(), with zap.c revive()
-// for an ordinary floor corpse. This is the timed Rider path: recreate the
-// monster without inventory, consume the corpse forcibly, and print the
-// species-specific rising effect.
-export async function revive_corpse(corpse) {
+// for floor, buried, and carried corpses. Recreate the monster without
+// inventory, consume the corpse forcibly, and print the species-specific
+// rising effect.
+export async function revive_corpse(corpse, byHero = false) {
+    const buried = corpse?.where === OBJ_BURIED;
+    const carried = corpse?.where === OBJ_INVENT
+        && (game.invent || []).includes(corpse);
     if (!corpse || corpse.otyp !== ONAMES.CORPSE
-        || corpse.where !== OBJ_FLOOR)
+        || (corpse.where !== OBJ_FLOOR && !buried && !carried))
         return false;
 
-    const x = corpse.ox, y = corpse.oy;
-    const ptr = game.mons[corpse.corpsenm];
-    const { makemon } = await import('./makemon.js');
-    const mmflags = NO_MINVENT | MM_NOWAIT | MM_NOCOUNTBIRTH
-                    | MM_NOTAIL | MM_NOMSG;
+    let x = carried ? game.u.ux : corpse.ox;
+    let y = carried ? game.u.uy : corpse.oy;
+    if (carried)
+        corpse.ox = x, corpse.oy = y;
+    if (buried) {
+        const typ = game.level?.at(x, y)?.typ;
+        if (!(game.level?.buriedobjs || []).includes(corpse)
+            || t_at(x, y)
+            || (typ !== ROOM && typ !== CORR && typ !== GRAVE))
+            return false;
+    }
+    const saved = corpse.omonst || corpse.oextra?.omonst || null;
+    const reviveMnum = Number.isInteger(saved?.mnum) && saved.mnum >= 0
+        ? saved.mnum : corpse.corpsenm;
+    const corpsePtr = game.mons[corpse.corpsenm];
+    const shapechangerReplacement = !saved
+        && (corpsePtr?.geno & MFLAGS.G_UNIQ) !== 0;
+    const creationMnum = shapechangerReplacement
+        ? PMNAMES.PM_DOPPELGANGER : reviveMnum;
+    const ptr = game.mons[creationMnum];
+    const { makemon, monhp_per_lvl } = await import('./makemon.js');
+    const rider = ptr.pmidx === PMNAMES.PM_DEATH
+               || ptr.pmidx === PMNAMES.PM_PESTILENCE
+               || ptr.pmidx === PMNAMES.PM_FAMINE;
+    let mmflags = NO_MINVENT | MM_NOWAIT | MM_NOCOUNTBIRTH | MM_NOMSG;
+    if (saved)
+        mmflags |= MM_NOTAIL;
+    const cgend = (corpse.spe ?? 0) & CORPSTAT_GENDER;
+    /* Rider corpses carry the neutral marker in C and still draw gender. */
+    if (!saved && !rider && cgend === CORPSTAT_MALE)
+        mmflags |= MM_MALE;
+    else if (!saved && !rider && cgend === CORPSTAT_FEMALE)
+        mmflags |= MM_FEMALE;
+    if (m_at(x, y)) {
+        const { enexto } = await import('./teleport.js');
+        const cc = { x, y };
+        if (enexto(cc, x, y, corpsePtr)) {
+            x = cc.x;
+            y = cc.y;
+        }
+    }
     const mtmp = makemon(ptr, x, y, mmflags);
     if (!mtmp)
         return false;
+
+    if (shapechangerReplacement) {
+        const { newcham } = await import('./mon.js');
+        newcham(mtmp, corpsePtr, 0);
+    }
 
     /* makemon.c calls dochugw() even for MM_NOMSG arrivals. A visible,
        nearby Rider interrupts a counted wait before revive_corpse prints
@@ -79,30 +136,218 @@ export async function revive_corpse(corpse) {
         await dochugw(mtmp, false);
     }
 
-    if (mtmp.m_lev < ptr.mlevel)
-        rnd(ptr.mlevel + 1); /* montraits' restoration-level roll */
+    if (saved) {
+        const restored = structuredClone(saved);
+        restored.data = ptr;
+
+        if ((mtmp.m_lev | 0) < ptr.mlevel) {
+            const ltmp = rnd(ptr.mlevel + 1);
+            if (ltmp > (mtmp.m_lev | 0)) {
+                while ((mtmp.m_lev | 0) < ltmp) {
+                    mtmp.m_lev++;
+                    mtmp.mhpmax += monhp_per_lvl(mtmp);
+                }
+                restored.m_lev = mtmp.m_lev;
+            }
+        }
+        if ((mtmp.mhpmax | 0) > (restored.mhpmax | 0))
+            restored.mhpmax = mtmp.mhpmax;
+        restored.mhp = restored.mhpmax;
+
+        const fresh = {
+            mx: mtmp.mx, my: mtmp.my, mux: mtmp.mux, muy: mtmp.muy,
+            m_id: mtmp.m_id, minvent: mtmp.minvent, mw: mtmp.mw,
+            wormno: mtmp.wormno,
+            misc_worn_check: mtmp.misc_worn_check,
+            weapon_check: mtmp.weapon_check,
+            mtrapseen: mtmp.mtrapseen,
+            mflee: mtmp.mflee, mburied: mtmp.mburied,
+            mundetected: mtmp.mundetected, mfleetim: mtmp.mfleetim,
+            mlstmv: mtmp.mlstmv, m_ap_type: mtmp.m_ap_type,
+        };
+        for (const key of Object.keys(mtmp))
+            delete mtmp[key];
+        Object.assign(mtmp, restored, fresh);
+        mtmp.data = ptr;
+        mtmp.mnum = reviveMnum;
+        mtmp.mrevived = 1;
+        mtmp.mavenge = 0;
+        mtmp.meating = 0;
+        mtmp.mleashed = 0;
+        mtmp.mtrapped = 0;
+        mtmp.msleeping = 0;
+        mtmp.mfrozen = 0;
+        mtmp.mcanmove = true;
+        if (!dmgtype(ptr, ATTKS.AD_SEDU) && !dmgtype(ptr, ATTKS.AD_SSEX))
+            mtmp.mcan = 0;
+        mtmp.mcansee = true;
+        mtmp.mblinded = 0;
+        mtmp.mstun = 0;
+        mtmp.mconf = 0;
+        newsym(mtmp.mx, mtmp.my);
+    } else if (rider && mtmp.m_lev < ptr.mlevel) {
+        rnd(ptr.mlevel + 1); /* Riders always carry saved traits in C */
+    }
     mtmp.mrevived = 1;
     mtmp.msleeping = 0;
     mtmp.mcanmove = true;
     mtmp.mcansee = true;
 
-    delobj_core(corpse, true);
+    if (saved && mtmp.mtame && !mtmp.isminion) {
+        const { wary_dog } = await import('./dog.js');
+        wary_dog(mtmp, true);
+    }
+    if (mtmp.mundetected) {
+        mtmp.mundetected = 0;
+        newsym(mtmp.mx, mtmp.my);
+    }
+    if (mtmp.m_ap_type)
+        seemimic(mtmp);
 
+    const oneOf = (corpse.quan | 0) > 1;
+    const consumedCorpse = oneOf ? splitobj(corpse, 1) : corpse;
+
+    if (byHero && cansee(corpse.ox, corpse.oy)) {
+        let cname;
+        if (carried) {
+            if (oneOf) {
+                consumedCorpse.quan++;
+                cname = `One of your ${corpse_xname(consumedCorpse, null, 0)}`;
+                consumedCorpse.quan--;
+            } else {
+                cname = `Your ${corpse_xname(consumedCorpse, null, 0)}`;
+            }
+        } else if ((game.mons[consumedCorpse.corpsenm]?.geno
+                    & MFLAGS.G_UNIQ) !== 0) {
+            const mname = Monnam(mtmp);
+            cname = `${mname}${mname.endsWith('s') ? "'" : "'s"} corpse`;
+        } else {
+            cname = upstart(corpse_xname(consumedCorpse, null, CXN_PFX_THE));
+        }
+        await pline(`${cname} glows iridescently.`);
+    }
+
+    if (carried) {
+        const oldcap = near_capacity();
+        useup(consumedCorpse);
+        if (near_capacity() !== oldcap)
+            game._encumber_status_stale = true;
+    } else {
+        delobj_core(consumedCorpse, true);
+    }
+
+    if (buried) {
+        const { maketrap } = await import('./mklev.js');
+        const trap = maketrap(mtmp.mx, mtmp.my, PIT);
+        if (cansee(mtmp.mx, mtmp.my)) {
+            if (trap) trap.tseen = 1;
+            await pline(`${Amonnam(mtmp)} claws itself out of the ground!`);
+            newsym(mtmp.mx, mtmp.my);
+        } else {
+            const dx = mtmp.mx - game.u.ux;
+            const dy = mtmp.my - game.u.uy;
+            if (dx * dx + dy * dy < 25)
+                await You_hear('scratching noises.');
+        }
+        return mtmp;
+    }
+
+    if (byHero)
+        return mtmp;
+
+    const risenPtr = mtmp.data;
     let effect = '';
-    if (ptr.pmidx === PMNAMES.PM_DEATH)
+    if (risenPtr.pmidx === PMNAMES.PM_DEATH)
         effect = ' in a whirl of spectral skulls';
-    else if (ptr.pmidx === PMNAMES.PM_PESTILENCE)
+    else if (risenPtr.pmidx === PMNAMES.PM_PESTILENCE)
         effect = ' in a churning pillar of flies';
-    else if (ptr.pmidx === PMNAMES.PM_FAMINE)
+    else if (risenPtr.pmidx === PMNAMES.PM_FAMINE)
         effect = ' in a ring of withered crops';
     if (cansee(x, y))
         await pline(`${Monnam(mtmp)} rises from the dead${effect}!`);
-    return true;
+    return mtmp;
 }
 
 export async function revive_mon(body) {
-    if (!await revive_corpse(body))
-        note_unported_do('revive_mon:retry');
+    const mptr = game.mons[body.corpsenm];
+    if (is_displacer(mptr) && body.where === OBJ_FLOOR
+        && (game.level?.flags?.stasis_until ?? 0) < (game.moves ?? 0)) {
+        const x = body.ox, y = body.oy;
+        const obstacle = m_at(x, y);
+        if (obstacle) {
+            const noticed = canseemon(obstacle);
+            const oldname = Monnam(obstacle);
+            const { rloc } = await import('./teleport.js');
+            if (await rloc(obstacle, RLOC_NOMSG)) {
+                if (noticed && !canseemon(obstacle))
+                    await pline(`${oldname} vanishes.`);
+                else if (!noticed && canseemon(obstacle))
+                    await pline(`${Monnam(obstacle)} appears.`);
+                else if (noticed
+                         && ((obstacle.mx - x) ** 2
+                             + (obstacle.my - y) ** 2) > 2)
+                    await pline(`${oldname} teleports.`);
+            }
+        }
+    }
+
+    const revived = await revive_corpse(body);
+    if (!revived) {
+        const { peek_timer, start_timer, TIMER_OBJECT, ROT_CORPSE, REVIVE_MON }
+            = await import('./timeout.js');
+        const rider = mptr.pmidx === PMNAMES.PM_DEATH
+            || mptr.pmidx === PMNAMES.PM_PESTILENCE
+            || mptr.pmidx === PMNAMES.PM_FAMINE;
+        let action, when;
+        if (rider && rn2(99)) {
+            action = REVIVE_MON;
+            when = rider_revival_time(body, true);
+        } else {
+            if (!peek_timer(ROT_CORPSE, body))
+                await You_feel(`${rider ? 'much ' : ''}less hassled.`);
+            action = ROT_CORPSE;
+            when = d(5, 50) - ((game.moves ?? 0) - body.age);
+            if (when < 1)
+                when = 1;
+        }
+        if (!peek_timer(action, body))
+            start_timer(when, TIMER_OBJECT, action, body);
+    }
+    return revived;
+}
+
+// src/do.c:2299 zombify_mon() - convert the corpse to its zombie species,
+// then pass it through the ordinary timed-revival path.
+export async function zombify_mon(body) {
+    const active = body?.where === OBJ_FLOOR
+        ? (game.level?.objects || []).includes(body)
+        : body?.where === OBJ_BURIED
+          && (game.level?.buriedobjs || []).includes(body);
+    if (!body || body.otyp !== ONAMES.CORPSE
+        || !active) {
+        /* C keeps object timers on the saved level. The JS queue is global,
+           so an off-level object must not consume RNG on the active level. */
+        return;
+    }
+
+    const zmon = zombie_form(game.mons[body.corpsenm]);
+    if (zmon !== NON_PM
+        && !((game.mvitals[zmon]?.mvflags ?? 0) & MFLAGS.G_GENOD)) {
+        delete body.omid;
+        delete body.omonst;
+        if (body.oextra) {
+            delete body.oextra.omid;
+            delete body.oextra.omonst;
+        }
+        set_corpsenm(body, zmon);
+        if (await revive_mon(body)) {
+            const { obj_stop_timers } = await import('./timeout.js');
+            obj_stop_timers(body);
+        }
+    } else {
+        const { rot_corpse } = await import('./dig.js');
+        await rot_corpse(body);
+    }
 }
 
 // src/ball.c:147 unplacebc_core(): detach punishment pieces from this level.
@@ -237,13 +482,102 @@ async function ballrelease() {
         return;
 
     if (u.uwep === ball)
-        setuwep(null);
+        await setuwep_with_feedback(null);
     if (u.uswapwep === ball)
         setuswapwep(null);
     if (u.uquiver === ball)
         setuqwep(null);
     freeinv(ball);
     await encumber_msg();
+}
+
+// src/do.c:50 boulder_hits_pool(). A boulder fills ordinary water nine times
+// in ten and lava one time in ten; otherwise it sinks. Pushed boulders use a
+// direct push message when they fill, while falling boulders always splash.
+export async function boulder_hits_pool(obj, x, y, pushing) {
+    if (!obj || obj.otyp !== ONAMES.BOULDER || !is_pool_or_lava(x, y))
+        return false;
+
+    const lava = is_lava(x, y);
+    const what = waterbody_name(x, y);
+    const loc = game.level.at(x, y);
+    const ltyp = loc.typ;
+    const chance = rn2(10);
+    const fillsUp = Is_waterlevel(game.u.uz) ? false
+        : IS_WATERWALL(ltyp) ? chance < 5
+          : lava ? chance === 0 : chance !== 0;
+
+    if (fillsUp) {
+        const trap = t_at(x, y);
+        if (ltyp === DRAWBRIDGE_UP) {
+            loc.drawbridgemask = ((loc.drawbridgemask ?? 0) & ~DB_UNDER)
+                | DB_FLOOR;
+        } else {
+            loc.typ = ROOM;
+            loc.flags = 0;
+            recalc_block_point(x, y);
+        }
+
+        const mon = m_at(x, y);
+        if (mon && !DEADMONSTER(mon) && !m_in_air(mon))
+            await mondied(mon);
+        if (trap) {
+            const { deltrap } = await import('./trap.js');
+            deltrap(trap);
+        }
+        const { bury_objs } = await import('./mklev.js');
+        bury_objs(x, y);
+        newsym(x, y);
+
+        if (pushing) {
+            const who = game.u.usteed ? y_monnam(game.u.usteed) : 'you';
+            await pline(upstart(who) + ' ' + vtense(who, 'push') + ' '
+                + the(xname(obj)) + ' into the ' + what + '.');
+            if (game.flags?.verbose !== false && !Blind())
+                await pline('Now you can cross it!');
+        }
+    }
+
+    if (!fillsUp || !pushing) {
+        if (!game.u.uinwater) {
+            if (pushing ? !Blind() : cansee(x, y)) {
+                await There('is a large splash as ' + the(xname(obj)) + ' '
+                    + (fillsUp ? 'fills' : 'falls into') + ' the ' + what
+                    + '.');
+            } else if (!Deaf()) {
+                await You_hear('a' + (lava ? ' sizzling' : '') + ' splash.');
+            }
+            wake_nearto(x, y, 40);
+        }
+
+        if (fillsUp && game.u.uinwater
+            && game.u.ux === x && game.u.uy === y) {
+            game.u.uinwater = 0;
+            await docrt();
+            game.vision_full_recalc = 1;
+            await You('find yourself on dry land again!');
+        } else if (lava
+                   && Math.max(Math.abs(game.u.ux - x),
+                               Math.abs(game.u.uy - y)) <= 1) {
+            await You('are hit by molten ' + hliquid('lava')
+                + (Fire_resistance() ? '.' : '!'));
+            if (game.u.uprops?.SLIMED)
+                note_unported_do('boulder_hits_pool:burn_away_slime');
+            let damage = d(Fire_resistance() ? 1 : 3, 6);
+            if (game.u.uprops?.HALF_PHDAM)
+                damage = Math.trunc((damage + 1) / 2);
+            await losehp(damage, 'molten lava', KILLED_BY);
+        } else if (!fillsUp && game.flags?.verbose !== false
+                   && (pushing ? !Blind() : cansee(x, y))) {
+            await pline('It sinks without a trace!');
+        }
+    }
+
+    if (pushing)
+        await useupf(obj, obj.quan);
+    else
+        obfree(obj);
+    return true;
 }
 
 // src/do.c:162 flooreffects() — what happens to an object landing at (x,y).
@@ -265,7 +599,7 @@ export async function flooreffects(obj, x, y, verb) {
     game.bhitpos = { x, y };
 
     if (obj.otyp === ONAMES.BOULDER && (is_pool(x, y) || is_lava(x, y))) {
-        note_unported_do('flooreffects:boulder_hits_pool');
+        res = await boulder_hits_pool(obj, x, y, false);
     } else if (obj.otyp === ONAMES.BOULDER && (t = t_at(x, y)) != null
                && (is_pit(t.ttyp) || is_hole(t.ttyp))) {
         /* the trapped-victim damage, the plug message and delfloortrap */
@@ -284,7 +618,9 @@ export async function flooreffects(obj, x, y, verb) {
             res = true;
         }
     } else if (obj.globby) {
-        note_unported_do('flooreffects:obj_meld');
+        const nearby = obj_nexto_xy(obj, x, y, true);
+        if (nearby)
+            note_unported_do('flooreffects:obj_meld');
     } else if (game.context?.mon_moving
                && IS_ALTAR(game.level.at(x, y)?.typ) && cansee(x, y)) {
         note_unported_do('flooreffects:doaltarobj');
@@ -1200,7 +1536,7 @@ export async function deferred_goto() {
 // are recorded.
 export async function dropz(obj, with_impact) {
     if (obj === game.u.uwep)
-        setuwep(null);          /* src/do.c:810 */
+        await setuwep_with_feedback(null); /* src/do.c:810 */
     if (obj === game.u.uquiver)
         setuqwep(null);         /* src/do.c:812 */
     if (obj === game.u.uswapwep)
@@ -1277,6 +1613,11 @@ export async function hitfloor(obj, verbosely) {
             ]);
         await pline(`${upstart(doname(obj))} ${otense(obj, 'hit')} the ${surface(game.u.ux, game.u.uy)}.`);
     }
+    if (obj.oclass === OCLASSES.POTION_CLASS) {
+        const { hero_breaks_potion } = await import('./dothrow.js');
+        if (await hero_breaks_potion(obj))
+            return;
+    }
     if (ship_object_fn
         && ship_object_fn(obj, game.u.ux, game.u.uy, false))
         return;
@@ -1323,6 +1664,16 @@ export async function dropx(obj) {
 // The engulfed branch, the Heart of Ahriman levitation dance (ELevitation is
 // forced so hitfloor happens before float_down), doname messages, canletgo,
 // welded/weldmsg and hitfloor are recorded.
+async function better_not_try_to_drop_that(obj) {
+    if (obj.otyp !== ONAMES.CORPSE
+        || u_safe_from_fatal_corpse(obj, st_all))
+        return false;
+
+    const species = corpse_xname(obj, null, CXN_NOCORPSE);
+    const prompt = `Drop the ${species} corpse without ${body_part(HAND)} protection on?`;
+    return (await paranoid_ynq(true, prompt, false)) !== 'y';
+}
+
 export async function drop(obj) {
     if (!obj)
         return ECMD_FAIL;
@@ -1333,15 +1684,14 @@ export async function drop(obj) {
         }
         return ECMD_FAIL;
     }
-    if (obj.otyp === ONAMES.CORPSE
-        && note_unported_do('drop:better_not_try_to_drop_that'))
+    if (await better_not_try_to_drop_that(obj))
         return ECMD_FAIL;
     if (obj === game.u.uwep) {
         if (welded(game.u.uwep)) {
             await weldmsg(obj);
             return ECMD_FAIL;
         }
-        setuwep(null);          /* src/do.c:727 */
+        await setuwep_with_feedback(null); /* src/do.c:727 */
     }
     if (obj === game.u.uquiver)
         setuqwep(null);
@@ -1391,6 +1741,20 @@ export async function dodrop() {
 }
 
 // src/do.c:924 doddrop() and :980 menu_drop(), the 'D' command.
+async function menudrop_split(obj, count) {
+    let selected = obj;
+    if (count && count < obj.quan) {
+        if (welded(obj)) {
+            /* welded stacks are not split */
+        } else if (obj.otyp === ONAMES.LOADSTONE && obj.cursed) {
+            obj.corpsenm = count;
+        } else {
+            selected = splitobj(obj, count);
+        }
+    }
+    return drop(selected);
+}
+
 export async function doddrop() {
     if (!game.invent?.length) {
         await You('have nothing to drop.');
@@ -1433,8 +1797,11 @@ export async function doddrop() {
             const objects = await query_objlist(
                 'What would you like to drop?', eligible, true);
             for (const obj of objects) {
-                if (game.invent.includes(obj))
-                    dropped += (await drop(obj)) === ECMD_TIME ? 1 : 0;
+                if (game.invent.includes(obj)) {
+                    const count = objects.counts?.get(obj) ?? obj.quan;
+                    dropped += (await menudrop_split(obj, count)) === ECMD_TIME
+                        ? 1 : 0;
+                }
             }
         }
         result = dropped ? ECMD_TIME : ECMD_OK;

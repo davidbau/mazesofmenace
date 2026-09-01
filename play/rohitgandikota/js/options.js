@@ -136,7 +136,8 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
         config_error_add(result, `Value not allowed for '${opt.name}'`);
         return false;
     }
-    if (value === null && opt.type !== 'BoolOpt' && opt.valok === 'Yes') {
+    if (value === null && opt.type !== 'BoolOpt' && opt.valok === 'Yes'
+        && !(opt.name === 'paranoid_confirmation' && negated)) {
         config_error_add(result, `Missing value for '${opt.name}'`);
         return false;
     }
@@ -144,6 +145,14 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
     if (opt.type === 'BoolOpt') {
         result.opts[opt.name] = !negated;
         (result.optSetInConfig ||= {})[opt.name] = true;
+    } else if (opt.name === 'paranoid_confirmation') {
+        const current = result.opts.paranoia_bits
+                        ?? DEFAULT_PARANOIA_BITS;
+        const parsed = parse_paranoia_setting(value, negated, current, result);
+        result.opts.paranoia_bits = parsed.bits;
+        result.opts[opt.name] = negated ? null : value;
+        if (!parsed.ok)
+            retval = false;
     } else if (opt.name === 'pickup_burden') {
         const burden = ({
             u: 0, b: 1, s: 2, n: 3, o: 4, t: 4, l: 5,
@@ -629,12 +638,24 @@ function longest_option_name(startpass, endpass) {
     return longest_name_len;
 }
 
+const iflag_boolean_options = new Set([
+    'debug_hunger', 'debug_mongen', 'debug_overwrite_stairs',
+]);
+
+function bool_opt_store(name) {
+    return iflag_boolean_options.has(name) ? (game.iflags ||= {})
+                                           : (game.flags ||= {});
+}
+
+function set_bool_optval(name, value) {
+    bool_opt_store(name)[name] = value;
+}
+
 /* The value of a boolean option. C reads *allopt[i].addr, a pointer straight
-   at the live variable; our single store is game.flags keyed by the OPTION
-   name (see the note at js/cmd.js dotogglepickup), so an option the rc never
-   mentioned and nothing has toggled falls back to the table's initval. */
+   at the live variable. Most options live in game.flags here, while the three
+   wizard debug switches match C's iflags fields. */
 function bool_optval(o) {
-    const v = game.flags?.[o.name];
+    const v = bool_opt_store(o.name)[o.name];
     return (v === undefined) ? (o.initval === 'On') : !!v;
 }
 
@@ -713,6 +734,11 @@ export const PARANOID_CONFIRM = 0x0001, PARANOID_QUIT = 0x0002,
              PARANOID_WERECHANGE = 0x0100, PARANOID_EATING = 0x0200,
              PARANOID_SWIM = 0x0400, PARANOID_TRAP = 0x0800,
              PARANOID_AUTOALL = 0x1000;
+const DEFAULT_PARANOIA_BITS = PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP;
+const ALL_PARANOIA_BITS = PARANOID_CONFIRM | PARANOID_QUIT | PARANOID_DIE
+    | PARANOID_BONES | PARANOID_HIT | PARANOID_PRAY | PARANOID_REMOVE
+    | PARANOID_BREAKWAND | PARANOID_WERECHANGE | PARANOID_EATING
+    | PARANOID_SWIM | PARANOID_TRAP | PARANOID_AUTOALL;
 const paranoia = [
     [PARANOID_CONFIRM, 'Confirm'],
     [PARANOID_QUIT, 'quit'],
@@ -729,10 +755,75 @@ const paranoia = [
     [PARANOID_REMOVE, 'Remove'],
 ];
 
+const paranoia_parameters = [
+    [PARANOID_CONFIRM, [['confirm', 1], ['paranoia', 2]]],
+    [PARANOID_QUIT, [['quit', 1], ['explore', 2]]],
+    [PARANOID_DIE, [['die', 1], ['death', 2]]],
+    [PARANOID_BONES, [['bones', 1]]],
+    [PARANOID_HIT, [['attack', 1], ['hit', 1]]],
+    [PARANOID_BREAKWAND, [['wand-break', 2], ['break-wand', 2]]],
+    [PARANOID_EATING, [['eat', 1], ['continue', 4]]],
+    [PARANOID_WERECHANGE, [['were-change', 2]]],
+    [PARANOID_PRAY, [['pray', 1]]],
+    [PARANOID_TRAP, [['trap', 1], ['move-trap', 1]]],
+    [PARANOID_AUTOALL, [['autoall', 2], ['autoselect-all', 2]]],
+    [PARANOID_SWIM, [['swim', 1]]],
+    [PARANOID_REMOVE, [['remove', 1], ['takeoff', 1]]],
+    [0, [['none', 4]]],
+    [ALL_PARANOIA_BITS, [['all', 3]]],
+];
+
+function parse_paranoia_setting(value, negated, current, result) {
+    if (negated) {
+        if (value !== null) {
+            config_error_add(result,
+                             '!paranoid_confirmation does not accept a value');
+            return { bits: current, ok: false };
+        }
+        return { bits: 0, ok: true };
+    }
+
+    let text = String(value ?? '').trim().replace(/\s+/g, ' ');
+    const keep = text[0] === '+' || text[0] === '-';
+    const clearing = text[0] === '-';
+    let bits = keep ? current : 0;
+    if (keep)
+        text = text.slice(1).trimStart();
+
+    for (let token of text.split(' ')) {
+        let fieldClearing = false;
+        if (token[0] === '!') {
+            fieldClearing = true;
+            token = token.slice(1);
+        } else if (/^no[^n]/i.test(token)) {
+            fieldClearing = true;
+            token = token.slice(2);
+        }
+        const lower = token.toLowerCase();
+        const entry = paranoia_parameters.find(([, names]) => names.some(
+            ([name, min]) => lower.length >= min && name.startsWith(lower)));
+        if (!entry) {
+            config_error_add(result,
+                             `Unknown paranoid_confirmation parameter '${token}'`);
+            return { bits, ok: false };
+        }
+        const mask = entry[0];
+        if (mask === 0) {
+            if (!keep)
+                bits = 0;
+        } else if (clearing || fieldClearing) {
+            bits &= ~mask;
+        } else {
+            bits |= mask;
+        }
+    }
+    return { bits, ok: true };
+}
+
 /* src/options.c:7173 initoptions_init() default */
 export function paranoia_bits() {
     return game.flags?.paranoia_bits
-           ?? (PARANOID_PRAY | PARANOID_SWIM | PARANOID_TRAP);
+           ?? DEFAULT_PARANOIA_BITS;
 }
 
 /* The get_val arm of each compound/other option that reaches the simple
@@ -1065,7 +1156,7 @@ async function doset_simple_menu() {
                    js/cmd.js dotogglepickup), so the flip happens here --
                    routing it through parseoptions() updated game.rc.opts and
                    left the menu showing the old value. */
-                game.flags[allopt[k].name] = !bool_optval(allopt[k]);
+                set_bool_optval(allopt[k].name, !bool_optval(allopt[k]));
                 boolopt_side_effects(allopt[k].name);
             } else if (allopt[k].hasHandler !== 'Yes') {
                 /* src/options.c:8672 — a compound option with no handler
@@ -1330,8 +1421,8 @@ export async function doset() {
             }
 
         /* PREFIXES_IN_USE ("Variable playground locations:") is not
-           compiled into the reference binary — the recorded menu is 7
-           pages and ends at "status highlight rules" */
+           compiled into the reference binary. The recorded DEBUG build has
+           8 pages and ends at "status highlight rules". */
         tty_end_menu(tmpwin, 'Set what options?');
         game.opt_need_redraw = false;
 
@@ -1358,7 +1449,7 @@ export async function doset() {
                    (give_opt_msg is TRUE here, unlike doset_simple) reports
                    the change (options.c:5438) */
                 const newval = !bool_optval(o);
-                game.flags[o.name] = newval;
+                set_bool_optval(o.name, newval);
                 boolopt_side_effects(o.name);
                 await pline(`'${o.name}' option toggled ${newval ? 'on'
                                                                  : 'off'}.`);

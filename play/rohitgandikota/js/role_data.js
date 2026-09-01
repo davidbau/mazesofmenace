@@ -1972,10 +1972,13 @@ export function role_abil(rolenum) {
     return INNATE[ROLE_ABIL_BY_NAME[nm]] || [];
 }
 
-// src/attrib.c adjabil() — the race table; only elves and orcs have one.
+// src/attrib.c check_innate_abil() - all four infravision races have a table.
+// adjabil() separately limits level-based race grants to elves and orcs.
 export function race_abil(racenum) {
     const noun = races[racenum]?.noun;
-    return INNATE[{ elf: 'elf_abil', orc: 'orc_abil' }[noun]] || [];
+    return INNATE[{
+        dwarf: 'dwa_abil', elf: 'elf_abil', gnome: 'gno_abil', orc: 'orc_abil',
+    }[noun]] || [];
 }
 
 // src/role.c str2role() matches on the role name, case-insensitively.

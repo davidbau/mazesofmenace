@@ -486,6 +486,84 @@ export function dodiscovered() {
     return ct ? lines : null;
 }
 
+function discoveries_for_class(oclass) {
+    const found = [];
+    const hi = game.bases[oclass + 1] ?? game.objects.length;
+    for (let i = game.bases[oclass]; i < hi; i++) {
+        const dis = game.disco?.[i];
+        if (dis && interesting_to_discover(dis))
+            found.push(dis);
+    }
+    return found;
+}
+
+// src/o_init.c doclassdisco(), default MENU_FULL path. It first offers only
+// classes which have discoveries, then shows the selected class in an
+// NHW_TEXT window. Unique items and artifacts are added when those discovery
+// stores are ported; ordinary object classes cover every current producer.
+export async function doclassdisco() {
+    const classes = [...inv_order()];
+    if (!classes.includes(VENOM_CLASS))
+        classes.push(VENOM_CLASS);
+    const available = classes.filter((oclass) =>
+        discoveries_for_class(oclass).length > 0);
+
+    if (!available.length) {
+        const { You } = await import('./pline.js');
+        await You("haven't discovered any items yet.");
+        return 0;
+    }
+
+    const {
+        tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
+        tty_select_menu, tty_destroy_nhwindow, tty_putstr,
+        tty_display_nhwindow, tty_next_page, NHW_MENU, NHW_TEXT,
+    } = await import('./tty/wintty.js');
+    const { MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ONE } =
+        await import('./const.js');
+    const { NO_COLOR } = await import('./terminal.js');
+    const { def_oc_syms } = await import('./drawing_data.js');
+    const { xwaitforspace } = await import('./tty/getline.js');
+
+    const menu = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(menu, MENU_BEHAVE_STANDARD);
+    let selector = 'a';
+    for (const oclass of available) {
+        tty_add_menu(menu, null, oclass, selector, def_oc_syms[oclass],
+                     ATR_NONE, NO_COLOR, let_to_name(oclass).toLowerCase(),
+                     MENU_ITEMFLAGS_NONE);
+        selector = String.fromCharCode(selector.charCodeAt(0) + 1);
+    }
+    tty_end_menu(menu, 'View discoveries for which sort of objects?');
+    const picks = await tty_select_menu(menu, PICK_ONE);
+    tty_destroy_nhwindow(menu);
+    if (!picks.length)
+        return 0;
+
+    const oclass = picks[0];
+    const discoveries = discoveries_for_class(oclass);
+    const sort = game.flags?.discosort || 'o';
+    let lines = discoveries.map((otyp) =>
+        (game.objects[otyp].oc_encountered ? '  ' : '* ')
+        + disco_typename(otyp) + append_price_quote(otyp));
+    if (sort === 'a' || sort === 'c')
+        lines = lines.sort((a, b) => a.localeCompare(b));
+
+    const order = sort === 'o' ? 'order of discovery'
+        : sort === 's' ? "'sortloot' order" : 'alphabetical order';
+    const win = tty_create_nhwindow(NHW_TEXT);
+    tty_putstr(win, ATR_NONE,
+               `Discovered ${let_to_name(oclass)} in ${order}`);
+    for (const line of lines)
+        tty_putstr(win, ATR_NONE, line);
+    await tty_display_nhwindow(win);
+    await xwaitforspace(' \r\n\x1b');
+    while (game.morc !== '\x1b' && tty_next_page(win))
+        await xwaitforspace(' \r\n\x1b');
+    tty_destroy_nhwindow(win);
+    return 0;
+}
+
 // src/decl.c flags.inv_order — the default packorder.
 function inv_order() {
     const O = OCLASSES;

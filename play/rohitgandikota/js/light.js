@@ -15,7 +15,8 @@
 // serializer can round-trip without pointer fixups.
 
 import { game } from './gstate.js';
-import { COLNO, ROWNO } from './const.js';
+import { COLNO, ROWNO, OBJ_FREE } from './const.js';
+import { ONAMES } from './objects_data.js';
 /* imported from vision.c, for small circles (src/light.c:56) */
 import { circle_ptr, clear_path, COULD_SEE, TEMP_LIT } from './vision.js';
 
@@ -171,10 +172,71 @@ export function do_light_sources(cs_rows) {
     }
 }
 
-// src/light.c:262 show_transient_light() / :331 transient_light_cleanup() —
-// thrown lit objects and camera flashes; nothing reaches them yet.
-export function show_transient_light(obj, x, y) {
-    note_unported_light('show_transient_light');
+// src/light.c:262 show_transient_light(). A thrown lit object is temporarily
+// put on the floor so the ordinary mobile-light resolver follows it. The
+// vision pass maps terrain and monsters revealed during that instant, then
+// the object returns to OBJ_FREE while its flight continues.
+export async function show_transient_light(obj, x, y) {
+    if (!obj) {
+        note_unported_light('show_transient_light:camera_flash');
+        return;
+    }
+
+    const source = lights().find((ls) =>
+        ls.type === LS_OBJECT && ls.id === obj.o_id);
+    if (!source || obj.where !== OBJ_FREE) {
+        note_unported_light('show_transient_light:invalid-object');
+        return;
+    }
+
+    const [{ place_object }, { obj_extract_self },
+           { vision_recalc }, { canseemon, flush_screen }] =
+        await Promise.all([
+            import('./mkobj.js'), import('./invent.js'),
+            import('./vision.js'), import('./display.js'),
+        ]);
+
+    place_object(obj, game.bhitpos?.x ?? x, game.bhitpos?.y ?? y);
+    vision_recalc(0);
+    await flush_screen(0);
+
+    const radiusSquared = source.range * source.range;
+    for (const mon of (game.level?.monsters || [])) {
+        if ((mon.mhp | 0) <= 0 || (mon.isgd && !mon.mx))
+            continue;
+        const dx = mon.mx - x, dy = mon.my - y;
+        if (dx * dx + dy * dy <= radiusSquared && canseemon(mon))
+            mon.mtemplit = 1;
+    }
+
+    if (game.animationFrame)
+        await game.animationFrame();
+    obj_extract_self(obj);
+}
+
+// src/light.c:331 transient_light_cleanup(). A light deleted during a
+// projectile effect requests a full vision pass. Monsters which were only
+// visible in the moving light become remembered invisible-monster markers.
+export async function transient_light_cleanup() {
+    const { vision_recalc } = await import('./vision.js');
+    const { canspotmon, map_invisible, flush_screen } =
+        await import('./display.js');
+
+    if (game.vision_full_recalc)
+        vision_recalc(0);
+
+    let changed = false;
+    for (const mon of (game.level?.monsters || [])) {
+        if ((mon.mhp | 0) <= 0 || !mon.mtemplit)
+            continue;
+        mon.mtemplit = 0;
+        if (!canspotmon(mon)) {
+            map_invisible(mon.mx, mon.my);
+            changed = true;
+        }
+    }
+    if (changed)
+        await flush_screen(0);
 }
 
 // src/light.c:648 any_light_source()
@@ -201,4 +263,31 @@ export function obj_sheds_light(obj) {
 
 export function obj_is_burning(obj) {
     return !!(obj && obj.lamplit);
+}
+
+// src/light.c:779 obj_split_light_source(). Copy the source entry to the
+// split object and resize both candle sources for their new stack sizes.
+export function obj_split_light_source(src, dest) {
+    const sources = lights();
+    const original = [...sources];
+    for (const source of original) {
+        if (source.type !== LS_OBJECT || source.id !== src.o_id)
+            continue;
+
+        const copy = { ...source, id: dest.o_id };
+        if (src.otyp === ONAMES.TALLOW_CANDLE
+            || src.otyp === ONAMES.WAX_CANDLE) {
+            const radius = (obj) => {
+                let value = 1;
+                while (value * value <= obj.quan && value < MAX_RADIUS)
+                    value++;
+                return value;
+            };
+            source.range = radius(src);
+            copy.range = radius(dest);
+            game.vision_full_recalc = 1;
+        }
+        sources.unshift(copy);
+        dest.lamplit = 1;
+    }
 }

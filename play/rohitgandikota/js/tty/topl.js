@@ -52,7 +52,7 @@ function wrap_topline(text, columns) {
 export async function update_topl(bp) {
     const CO = game?.nhDisplay?.cols ?? 80;
     const n0 = bp.length;
-    const toplines = game._pending_message || '';   /* gt.toplines */
+    const toplines = game._toplines || '';          /* gt.toplines */
     const cury = game._topl_cury || 0;
 
     /* C assigns notdied inside the final term of the joining condition.
@@ -69,7 +69,8 @@ export async function update_topl(bp) {
         && cury === 0
         && n0 + toplines.length + 3 < CO - 8   /* room for --More-- */
         && (notdied = bp.slice(0, 7) !== 'You die')) {
-        game._pending_message = toplines + '  ' + bp;
+        game._toplines = toplines + '  ' + bp;
+        game._pending_message = game._toplines;
         const painted = (game._topline_physical_prefix || '')
             + game._pending_message;
         game._topl_curx = painted.length;
@@ -92,14 +93,13 @@ export async function update_topl(bp) {
     }
 
     remember_topl();
-    game._toplines = bp;    /* gt.toplines: strncpy(gt.toplines, bp, TBUFSZ) */
-
     /* C wraps a message longer than CO by REPLACING a space with '\n', walking
        back from column CO - 1 to find one; a token longer than the whole line
        is split after instead. The newlines stay inside gt.toplines, which is
        how a long message ends up on two rows. */
     const out = wrap_topline(bp.slice(0, TBUFSZ - 1), CO);
 
+    game._toplines = out;   /* gt.toplines after strncpy() and wrapping */
     game._pending_message = out;
     /* "You die" is urgent and lifts an earlier ESC suppression. */
     if (!notdied) {
@@ -119,17 +119,15 @@ function addtopl(bp) {
 
 // win/tty/topl.c:96 remember_topl() — push the current line into ^P history.
 //
-// gt.toplines is game._pending_message (see update_topl). The load-bearing
-// part is not the history ring, which nothing reads yet, but the CLEAR: C
-// empties toplines after banking it, and advances maxrow/maxcol around the
-// ring. Leaving it set meant the previous message stayed live and could be
-// appended to or re-painted after it should have been retired.
+// gt.toplines is game._toplines. It is logical message text and survives a
+// physical clear of row zero, which is what lets ^P recall the current line.
+// update_topl() banks it immediately before installing a replacement.
 //
 // Draws nothing.
-function remember_topl() {
+export function remember_topl() {
     const rows = game.iflags?.msg_history || 20;
     const idx = game._msg_maxrow || 0;
-    const toplines = game._pending_message || '';
+    const toplines = game._toplines || '';
 
     /* WIN_LOCKHISTORY, or nothing to remember */
     if (game._win_lockhistory || !toplines)
@@ -138,7 +136,7 @@ function remember_topl() {
     (game._msg_history ||= [])[idx] = toplines;
 
     /* program_state.in_checkpoint is never set on this path */
-    game._pending_message = '';
+    game._toplines = '';
     game._msg_maxcol = game._msg_maxrow = (idx + 1) % rows;
 }
 
@@ -153,6 +151,7 @@ async function redotoplin(str) {
     const otoplin = game._toplin;
 
     game._topline_physical_prefix = '';
+    game._pending_message = str;
     game._toplin = str ? TOPLINE_NEED_MORE : TOPLINE_EMPTY;
     game._topl_curx = 0;
     game._topl_cury = (str.match(/\n/g) || []).length;
@@ -160,6 +159,31 @@ async function redotoplin(str) {
                            the message NOW, not at the next screen flush */
     if (game._topl_cury && otoplin !== TOPLINE_SPECIAL_PROMPT)
         await more();
+}
+
+// win/tty/topl.c tty_doprev_message(), default msg_window:single path. The
+// current logical top line is recalled first, then consecutive Ctrl-P
+// commands walk backward through the circular history and wrap to current.
+export async function doprev_message() {
+    const rows = game.iflags?.msg_history || 20;
+    const maxrow = game._msg_maxrow || 0;
+    let maxcol = game._msg_maxcol;
+    if (maxcol === undefined || maxcol === null)
+        maxcol = maxrow;
+
+    const str = maxcol === maxrow
+        ? (game._toplines || '')
+        : (game._msg_history?.[maxcol] || '');
+    if (str)
+        await redotoplin(str);
+
+    maxcol--;
+    if (maxcol < 0)
+        maxcol = rows - 1;
+    if (!game._msg_history?.[maxcol])
+        maxcol = maxrow;
+    game._msg_maxcol = maxcol;
+    return 0;
 }
 
 // tty_putstr(..., ATR_NOHISTORY) takes the show_topl() path.  The displayed
@@ -194,13 +218,45 @@ const TBUFSZ = 300;
 //
 // Not ported: the resp filter (allowed characters, '#' for digits, an <esc>
 // hiding the tail from the prompt), yn_number, and the doprev/^P history.
-export async function tty_yn_function(query, resp, def) {
+export async function tty_yn_function(query, resp, def, addcmdq = false) {
+    /* src/cmd.c:5487 yn_function(), repeatable questions consume their
+       saved answer before invoking the window port. There is deliberately
+       no prompt frame during Ctrl-A replay. getdir(), getobj(), and a few
+       parsing-only callers pass addcmdq=false and manage input themselves. */
+    if (addcmdq) {
+        const { cmdq_pop, cmdq_clear } = await import('../cmd.js');
+        const { CMDQ_KEY, CQ_CANNED } = await import('../const.js');
+        const queued = cmdq_pop();
+        if (queued) {
+            let ch = '\x1b';
+            if (queued.typ === CMDQ_KEY)
+                ch = queued.key;
+            else
+                cmdq_clear(CQ_CANNED);
+            if (resp && !resp.includes(ch))
+                ch = (def && def !== '\0') ? def : '\x1b';
+            return ch;
+        }
+    }
+
     /* win/tty/topl.c:391-393 — the pending-message more() is SKIPPED while
        WIN_STOP is set (the player already ESCed this turn's messages), and
        the flag is lifted either way: a question needs an answer. */
     if (game._toplin === TOPLINE_NEED_MORE && !game._win_stop)
         await more();
     game._win_stop = false;
+
+    /* custompline() prepares the map after any pending --More-- has been
+       acknowledged. This ordering preserves temporary effects under the
+       --More-- frame, then exposes terrain changes beneath the prompt. */
+    if (game.vision_full_recalc) {
+        const { vision_recalc } = await import('../vision.js');
+        vision_recalc(0);
+    }
+    if (game.u?.ux) {
+        const { flush_screen } = await import('../display.js');
+        await flush_screen(1);
+    }
 
     let prompt = query;
     if (resp) {
@@ -217,11 +273,15 @@ export async function tty_yn_function(query, resp, def) {
        advance a 79-column question's logical cursor onto an empty second
        row, even though the visible cells contain only the question text. */
     const columns = game?.nhDisplay?.cols ?? 80;
-    /* tty continuation rows retain the space that occupied the wrap column;
-       update_topl replaces it logically, but the physical tty starts the
-       continuation at column 1. */
-    const renderedPrompt = wrap_topline(prompt + ' ', columns)
-        .replace(/\n/g, '\n ');
+    /* SUPPRESS_HISTORY routes this through show_topl(), whose putsyms()
+       hard-wraps before column CO rather than using update_topl()'s word
+       wrapping. */
+    const promptText = prompt + ' ';
+    const promptWidth = columns - 1;
+    const promptLines = [];
+    for (let start = 0; start < promptText.length; start += promptWidth)
+        promptLines.push(promptText.slice(start, start + promptWidth));
+    const renderedPrompt = promptLines.join('\n');
     game._topline_physical_prefix = '';
     game._pending_message = renderedPrompt;
     game._toplin = TOPLINE_SPECIAL_PROMPT;
@@ -229,9 +289,9 @@ export async function tty_yn_function(query, resp, def) {
 
     const display = game?.nhDisplay;
     if (display) {
-        const promptLines = renderedPrompt.split('\n');
-        const cursorRow = promptLines.length - 1;
-        const lastLineLength = promptLines[cursorRow].length;
+        const renderedLines = renderedPrompt.split('\n');
+        const cursorRow = renderedLines.length - 1;
+        const lastLineLength = renderedLines[cursorRow].length;
         game._topl_curx = lastLineLength;
         game._topl_cury = cursorRow;
         /* The tty's clear-to-EOL fallback parks column 1 on an empty wrapped
@@ -247,6 +307,12 @@ export async function tty_yn_function(query, resp, def) {
         game._toplines = prompt + vis;   /* gt.toplines: ^P recall buffer */
         game._pending_message = '';
         game._toplin = TOPLINE_NON_EMPTY;
+        /* win/tty/topl.c clears the message window here when the prompt
+           wrapped onto a continuation row. */
+        if (promptLines.length > 1) {
+            tty_clear_nhwindow_message(promptLines.length - 1);
+            game._topl_curx = game._topl_cury = 0;
+        }
         return q;
     };
 
@@ -263,11 +329,20 @@ export async function tty_yn_function(query, resp, def) {
     for (;;) {
         const c = await nhgetch();
         const ch = (typeof c === 'string') ? c : String.fromCharCode(c);
+        let answer = null;
         if (!resp)
-            return clean_up(ch);
-        if (resp.includes(ch))
-            return clean_up(ch);
-        if (ch === '\x1b' || ch === '\r' || ch === '\n' || ch === ' ')
-            return clean_up(def && def !== '\0' ? def : ch);
+            answer = ch;
+        else if (resp.includes(ch))
+            answer = ch;
+        else if (ch === '\x1b' || ch === '\r' || ch === '\n' || ch === ' ')
+            answer = (def && def !== '\0') ? def : ch;
+        if (answer !== null) {
+            if (addcmdq && !game.in_doagain) {
+                const { cmdq_add_key } = await import('../cmd.js');
+                const { CQ_REPEAT } = await import('../const.js');
+                cmdq_add_key(CQ_REPEAT, answer);
+            }
+            return clean_up(answer);
+        }
     }
 }

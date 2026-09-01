@@ -1,8 +1,8 @@
 // artifact.js — artifact bookkeeping.
 // C ref: src/artifact.c
 //
-// Covers artifact generation and the wish flow's name and existence tracking.
-// The intrinsic half of artifact.c is not ported yet.
+// Covers artifact generation, intrinsic effects, and the wish flow's name and
+// existence tracking.
 
 import { game } from './gstate.js';
 import { fuzzymatch } from './hacklib.js';
@@ -19,8 +19,9 @@ import { Fire_resistance, Cold_resistance, Shock_resistance,
 import { rn2, rnd, rnz, d } from './rng.js';
 import { ONAME_VIA_NAMING, ONAME_WISH, ONAME_GIFT, ONAME_VIA_DIP,
          ONAME_LEVEL_DEF, ONAME_BONES, ONAME_RANDOM,
-         ONAME_KNOW_ARTI, ECMD_TIME, ECMD_CANCEL, GETOBJ_PROMPT,
-         nothing_happens, W_WEP, W_ARTI } from './const.js';
+         ONAME_KNOW_ARTI, ECMD_OK, ECMD_TIME, ECMD_CANCEL, GETOBJ_PROMPT,
+         nothing_happens, W_ARM, W_WEP, W_ART, W_ARTI, SICK_ALL,
+         TIMEOUT, W_SWAPWEP, W_QUIVER, W_BALL } from './const.js';
 
 /* include/artilist.h — artilist[i].otyp, resolved from the generated
    ONAMES-key table. Index 0 is the dummy (STRANGE_OBJECT == 0). */
@@ -221,13 +222,41 @@ function mtype_value(rec) {
 const ALIGNS = { A_LAWFUL: 1, A_NEUTRAL: 0, A_CHAOTIC: -1, A_NONE: -128 };
 const rec_align = (rec) => ALIGNS[rec.align] ?? -128;
 
+/* src/artifact.c hack_artifacts(). C mutates its process-local artilist after
+   role selection. Replays share this module, so derive the same values from
+   the current game instead of mutating the generated table across segments. */
+function role_matches(role) {
+    return role === game.urole?.mnum || PMNAMES[role] === game.urole?.mnum;
+}
+
+function artifact_role(rec, artinum) {
+    if (artinum === game.urole?.questarti)
+        return game.urole?.mnum;
+    if (artinum === ART_EXCALIBUR && !role_matches('PM_KNIGHT'))
+        return 'NON_PM';
+    return rec.role;
+}
+
+function artifact_alignment(rec, artinum) {
+    const alignment = rec_align(rec);
+    if (artinum === game.urole?.questarti
+        || (alignment !== -128 && role_matches(rec.role))) {
+        return game.u.ualignbase?.[0]
+               ?? game.u.ualign?.type
+               ?? alignment;
+    }
+    return alignment;
+}
+
 /* include/artifact.h SPFX_* bits used below */
-const SPFX_INTEL = 0x04, SPFX_RESTR = 0x02, SPFX_WARN = 0x20,
+const SPFX_INTEL = 0x04, SPFX_RESTR = 0x02, SPFX_SPEAK = 0x08,
+      SPFX_WARN = 0x20,
       SPFX_ATTK = 0x40, SPFX_SEARCH = 0x00000200,
       SPFX_HALRES = 0x00000800, SPFX_ESP = 0x00001000,
       SPFX_STLTH = 0x00002000, SPFX_REGEN = 0x00004000,
       SPFX_EREGEN = 0x00008000, SPFX_HSPDAM = 0x00010000,
       SPFX_HPHDAM = 0x00020000, SPFX_TCTRL = 0x00040000,
+      SPFX_LUCK = 0x00080000,
       SPFX_DMONS = 0x00100000, SPFX_DCLAS = 0x00200000,
       SPFX_DFLAG1 = 0x00400000, SPFX_DFLAG2 = 0x00800000,
       SPFX_DALIGN = 0x01000000, SPFX_DBONUS = 0x01F00000,
@@ -239,6 +268,45 @@ export function get_artifact(obj) {
     const n = obj?.oartifact ?? 0;
     return (n > 0 && n < artifact_records.length) ? artifact_records[n]
                                                   : artifact_records[0];
+}
+
+// src/artifact.c:2309 arti_cost(). Artifact prices are separate from the
+// base object table and also supply the shop and score values.
+export function arti_cost(obj) {
+    const base = game.objects[obj?.otyp]?.oc_cost ?? 0;
+    if (!obj?.oartifact)
+        return base;
+    return get_artifact(obj).cost || 100 * base;
+}
+
+// src/artifact.c:2264 artifact_light(). Sunsword is always a light source;
+// gold dragon armor emits light only while worn as the suit.
+export function artifact_light(obj) {
+    if (obj && (obj.otyp === ONAMES.GOLD_DRAGON_SCALE_MAIL
+                || obj.otyp === ONAMES.GOLD_DRAGON_SCALES)
+        && (obj.owornmask & W_ARM))
+        return true;
+    return get_artifact(obj) !== artifact_records[0]
+        && is_art(obj, ART_SUNSWORD);
+}
+
+// src/artifact.c:2279 arti_speak(). Speaking artifacts use a non-cookie
+// rumor whose truth follows the object's beatitude.
+export async function arti_speak(obj) {
+    const art = get_artifact(obj);
+    if (art === artifact_records[0] || !(art.spfx & SPFX_SPEAK))
+        return ECMD_OK;
+
+    const [{ getrumor }, { bcsign }, { Tobjnam }, { pline }] =
+        await Promise.all([
+            import('./rumors.js'), import('./mkobj.js'),
+            import('./objnam.js'), import('./display.js'),
+        ]);
+    const line = getrumor(bcsign(obj), true)
+        || 'NetHack rumors file closed for renovation.';
+    await pline(`${Tobjnam(obj, 'whisper')}:`);
+    await pline(`"${line}"`);
+    return ECMD_TIME;
 }
 
 function set_artifact_prop(key, on, mask) {
@@ -268,35 +336,70 @@ function arti_adtyp(field) {
     return name ? (ADTYPES[name] | 0) : 0;
 }
 
+const ARTIFACT_DEFENSE_PROPS = new Map([
+    [ADTYPES.AD_FIRE, 'FIRE_RES'], [ADTYPES.AD_COLD, 'COLD_RES'],
+    [ADTYPES.AD_ELEC, 'SHOCK_RES'], [ADTYPES.AD_MAGM, 'ANTIMAGIC'],
+    [ADTYPES.AD_DISN, 'DISINT_RES'], [ADTYPES.AD_DRST, 'POISON_RES'],
+    [ADTYPES.AD_DRLI, 'DRAIN_RES'],
+]);
+
+const ARTIFACT_SPFX_PROPS = [
+    [SPFX_SEARCH, 'SEARCHING'], [SPFX_HALRES, 'HALLUC_RES'],
+    [SPFX_ESP, 'TELEPAT'], [SPFX_STLTH, 'STEALTH'],
+    [SPFX_REGEN, 'REGENERATION'],
+    [SPFX_EREGEN, 'ENERGY_REGENERATION'],
+    [SPFX_TCTRL, 'TELEPORT_CONTROL'], [SPFX_HSPDAM, 'HALF_SPDAM'],
+    [SPFX_HPHDAM, 'HALF_PHDAM'], [SPFX_PROTECT, 'PROTECTION'],
+];
+
+// src/attrib.c what_gives(), carried-artifact arm used by debug attributes.
+export function carried_artifact_conveys(obj, key) {
+    const art = get_artifact(obj);
+    if (art === artifact_records[0])
+        return false;
+    if (ARTIFACT_DEFENSE_PROPS.get(arti_adtyp(art.cary)) === key)
+        return true;
+    const spfx = art.cspfx | 0;
+    if (ARTIFACT_SPFX_PROPS.some(([bit, prop]) => prop === key && (spfx & bit)))
+        return true;
+    if (spfx & SPFX_WARN)
+        return (mtype_value(art) ? 'WARN_OF_MON' : 'WARNING') === key;
+    return false;
+}
+
+// src/artifact.c:524 confers_luck(), SPFX_LUCK applies while carried.
+export function artifact_confers_luck(obj) {
+    const art = get_artifact(obj);
+    return art !== artifact_records[0] && !!(art.spfx & SPFX_LUCK);
+}
+
 // src/artifact.c:716 set_artifact_intrinsic(), wielded and worn effects.
 export function set_artifact_intrinsic(obj, on, wp_mask) {
     const art = get_artifact(obj);
     if (art === artifact_records[0])
         return;
 
-    const dprops = new Map([
-        [ADTYPES.AD_FIRE, 'FIRE_RES'], [ADTYPES.AD_COLD, 'COLD_RES'],
-        [ADTYPES.AD_ELEC, 'SHOCK_RES'], [ADTYPES.AD_MAGM, 'ANTIMAGIC'],
-        [ADTYPES.AD_DISN, 'DISINT_RES'], [ADTYPES.AD_DRST, 'POISON_RES'],
-        [ADTYPES.AD_DRLI, 'DRAIN_RES'],
-    ]);
-    const dprop = dprops.get(arti_adtyp(art.defn));
+    const carried = wp_mask === W_ART;
+    let dtyp = arti_adtyp(carried ? art.cary : art.defn);
+    let spfx = carried ? (art.cspfx | 0) : art.spfx;
+
+    if (carried && !on) {
+        const others = (game.invent || []).filter((other) => other.oartifact);
+        if (others.some((other) => arti_adtyp(get_artifact(other).cary) === dtyp))
+            dtyp = 0;
+        for (const other of others)
+            spfx &= ~(get_artifact(other).cspfx | 0);
+    }
+
+    const dprop = ARTIFACT_DEFENSE_PROPS.get(dtyp);
     if (dprop)
         set_artifact_prop(dprop, on, wp_mask);
 
-    const mappings = [
-        [SPFX_SEARCH, 'SEARCHING'], [SPFX_HALRES, 'HALLUC_RES'],
-        [SPFX_ESP, 'TELEPAT'], [SPFX_STLTH, 'STEALTH'],
-        [SPFX_REGEN, 'REGENERATION'],
-        [SPFX_EREGEN, 'ENERGY_REGENERATION'],
-        [SPFX_TCTRL, 'TELEPORT_CONTROL'], [SPFX_HSPDAM, 'HALF_SPDAM'],
-        [SPFX_HPHDAM, 'HALF_PHDAM'], [SPFX_PROTECT, 'PROTECTION'],
-    ];
-    for (const [bit, key] of mappings)
-        if (art.spfx & bit)
+    for (const [bit, key] of ARTIFACT_SPFX_PROPS)
+        if (spfx & bit)
             set_artifact_prop(key, on, wp_mask);
 
-    if (art.spfx & SPFX_WARN) {
+    if (spfx & SPFX_WARN) {
         const mt = mtype_value(art);
         set_artifact_prop(mt ? 'WARN_OF_MON' : 'WARNING', on, wp_mask);
         if (mt) {
@@ -305,10 +408,12 @@ export function set_artifact_intrinsic(obj, on, wp_mask) {
                              : ((warning.obj || 0) & ~mt);
         }
     }
-    if ((art.spfx & SPFX_REFLECT) && (wp_mask & W_WEP))
+    if ((spfx & SPFX_REFLECT) && (wp_mask & W_WEP))
         set_artifact_prop('REFLECTING', on, wp_mask);
-    if (art.spfx & SPFX_XRAY)
+    if ((spfx & SPFX_XRAY) && wp_mask !== W_ART) {
         game.u.xray_range = on ? 3 : -1;
+        game.vision_full_recalc = 1;
+    }
     if ((wp_mask & W_WEP) && is_art(obj, ART_SUNSWORD))
         set_artifact_prop('BLND_RES', on, wp_mask);
 }
@@ -373,7 +478,7 @@ export function defends_when_carried(adtyp, otmp) {
 
 // src/artifact.c:1009 spec_applies(), shared by special attack bonuses and
 // the DBONUS slice used by bane_applies().
-function spec_applies(weap, mon) {
+function spec_applies(weap, mon, artinum = artifact_records.indexOf(weap)) {
     if (!(weap.spfx & (SPFX_DBONUS | SPFX_ATTK)))
         return weap.attk.startsWith('PHYS');
 
@@ -392,10 +497,12 @@ function spec_applies(weap, mon) {
     else if (weap.spfx & SPFX_DFLAG2)
         return ((ptr.mflags2 & mt) !== 0)
                || (yours && ((game.urace?.selfmask ?? 0) & mt) !== 0);
-    else if (weap.spfx & SPFX_DALIGN)
-        return yours ? (game.u.ualign?.type !== rec_align(weap))
+    else if (weap.spfx & SPFX_DALIGN) {
+        const alignment = artifact_alignment(weap, artinum);
+        return yours ? (game.u.ualign?.type !== alignment)
                      : (ptr.maligntyp === -128
-                        || Math.sign(ptr.maligntyp) !== rec_align(weap));
+                        || Math.sign(ptr.maligntyp) !== alignment);
+    }
     else if (weap.spfx & SPFX_ATTK) {
         const adtyp = arti_adtyp(weap.attk);
         if (defended(yours ? null : mon, adtyp))
@@ -477,7 +584,7 @@ export function spec_dbon(obj, mon, tmp) {
 function bane_applies(oart, mon) {
     if (oart !== artifact_records[0] && (oart.spfx & SPFX_DBONUS) !== 0) {
         const atmp = { ...oart, spfx: oart.spfx & SPFX_DBONUS };
-        if (spec_applies(atmp, mon))
+        if (spec_applies(atmp, mon, artifact_records.indexOf(oart)))
             return true;
     }
     return false;
@@ -487,6 +594,9 @@ function bane_applies(oart, mon) {
 // touch (pick up or wield) an artifact. 0 means it refuses.
 export function touch_artifact(obj, mon) {
     const oart = get_artifact(obj);
+    const artinum = obj?.oartifact ?? 0;
+    const role = artifact_role(oart, artinum);
+    const alignment = artifact_alignment(oart, artinum);
     let badclass, badalign;
 
     if (oart === artifact_records[0])
@@ -496,27 +606,23 @@ export function touch_artifact(obj, mon) {
     /* all quest artifacts are self-willed */
     const self_willed = (oart.spfx & SPFX_INTEL) !== 0;
     if (yours) {
-        const role_pm = (typeof game.urole?.mnum === 'string')
-            ? game.urole.mnum : null;
-        const role_match = oart.role === 'NON_PM'
-            || oart.role === role_pm
-            || PMNAMES[oart.role] === game.urole?.mnum;
+        const role_match = role === 'NON_PM' || role_matches(role);
         const race_match = oart.race === 'NON_PM'
             || PMNAMES[oart.race] === game.urace?.mnum
             || oart.race === game.urace?.mnum;
         badclass = self_willed
-                   && ((oart.role !== 'NON_PM' && !role_match)
+                   && ((role !== 'NON_PM' && !role_match)
                        || (oart.race !== 'NON_PM' && !race_match));
         badalign = (oart.spfx & SPFX_RESTR) !== 0
-                   && rec_align(oart) !== -128
-                   && (rec_align(oart) !== (game.u.ualign?.type ?? 0)
+                   && alignment !== -128
+                   && (alignment !== (game.u.ualign?.type ?? 0)
                        || (game.u.ualign?.record ?? 0) < 0);
     } else if (!is_covetous(mon.data) && !is_mplayer(mon.data)) {
-        badclass = self_willed && oart.role !== 'NON_PM'
+        badclass = self_willed && role !== 'NON_PM'
                    && oart !== artifact_records[ART_EXCALIBUR];
         badalign = (oart.spfx & SPFX_RESTR) !== 0
-                   && rec_align(oart) !== -128
-                   && rec_align(oart) !== Math.sign(mon.data.maligntyp);
+                   && alignment !== -128
+                   && alignment !== Math.sign(mon.data.maligntyp);
     } else { /* an M3_WANTSxxx monster or a fake player */
         badclass = badalign = false;
     }
@@ -569,6 +675,193 @@ export function retouch_object(obj, loseit) {
     if (obj.owornmask || loseit)
         note_unported_art('retouch_object:drop');
     return 0;
+}
+
+// src/artifact.c:2640 retouch_equipment(). The common path only retests
+// equipment and carried artifacts; ordinary safe gear has no side effects.
+// retouch_object records the remaining harmful silver and bane branches.
+export function retouch_equipment(dropflag) {
+    const u = game.u;
+    const checked = new Set();
+    const wearmask = ~(W_QUIVER | (u.twoweap ? 0 : W_SWAPWEP) | W_BALL);
+
+    const active = (obj) => {
+        const art = get_artifact(obj);
+        const beingworn = !!((obj.owornmask || 0) & wearmask);
+        const carryeffect = art !== artifact_records[0]
+                            && (!!arti_adtyp(art.cary) || !!art.cspfx);
+        const invoked = art !== artifact_records[0] && !!art.inv_prop
+                        && !!((u.uprops?.[art.inv_prop] || 0) & W_ARTI);
+        return beingworn || carryeffect || invoked;
+    };
+    const check = (obj, dropit) => {
+        if (!obj || checked.has(obj))
+            return;
+        checked.add(obj);
+        if (active(obj))
+            retouch_object(obj, dropit);
+    };
+
+    if (u.twoweap)
+        check(u.uswapwep, dropflag > 0);
+    check(u.uwep, dropflag > 0);
+    for (const obj of game.invent || [])
+        check(obj, dropflag === 1);
+}
+
+async function nothing_special(obj) {
+    if ((game.invent || []).includes(obj)) {
+        const { You_feel } = await import('./pline.js');
+        await You_feel('a surge of power, but nothing seems to happen.');
+    }
+}
+
+// src/artifact.c:2089 arti_invoke_cost(). Special powers start a cooldown on
+// first use. Reusing one too soon either spends 25 Pw for the two directional
+// powers or extends the cooldown and reports that the artifact is tired.
+async function arti_invoke_cost(obj, prop) {
+    if ((obj.age || 0) > game.moves) {
+        const pwCost = (prop === 'FLING_POISON' || prop === 'BLINDING_RAY')
+            ? 25 : -1;
+        if (pwCost < 0 || game.u.uen < pwCost) {
+            const { xname, the, otense } = await import('./objnam.js');
+            const { You_feel } = await import('./pline.js');
+            await You_feel(`that ${the(xname(obj))} ${otense(obj, 'are')} ignoring you.`);
+            obj.age += d(3, 10);
+            return false;
+        }
+        const { You_feel } = await import('./pline.js');
+        await You_feel('drained...');
+        game.u.uen -= pwCost;
+        (game.disp ||= {}).botl = true;
+    } else {
+        obj.age = game.moves + rnz(100);
+    }
+    return true;
+}
+
+// src/artifact.c:1780 invoke_healing(). NetHack 5.0 prints both adjacent
+// "better" messages when the power has an effect, so retain both calls.
+async function invoke_healing(obj) {
+    const u = game.u;
+    const sick = !!u.uprops?.SICK;
+    const slimed = !!u.uprops?.SLIMED;
+    const creamed = Number(u.ucreamed) || 0;
+    const hblinded = u.intrinsic?.HBlinded | 0;
+    const blinded = !!hblinded && !u.blocked?.BLINDED;
+    const blindTimeout = hblinded & TIMEOUT;
+    const healamt = Math.trunc((u.uhpmax + 1 - u.uhp) / 2);
+    const { You_feel } = await import('./pline.js');
+
+    if (healamt || sick || slimed || Number(blinded) > creamed)
+        await You_feel('better.');
+    if (healamt || sick || slimed || blindTimeout > creamed) {
+        const slightly = !healamt && !sick && !slimed
+                         && (hblinded & ~TIMEOUT) !== 0;
+        await You_feel(`${slightly ? 'slightly ' : ''}better.`);
+    } else {
+        await nothing_special(obj);
+        return ECMD_TIME;
+    }
+
+    if (healamt > 0)
+        u.uhp += healamt;
+    if (sick) {
+        const { make_sick } = await import('./potion.js');
+        await make_sick(0, null, false, SICK_ALL);
+    }
+    if (slimed)
+        u.uprops.SLIMED = 0;
+    if (blindTimeout > creamed) {
+        const { make_blinded } = await import('./potion.js');
+        await make_blinded(creamed, false);
+    }
+    (game.disp ||= {}).botl = true;
+    return ECMD_TIME;
+}
+
+// src/artifact.c:1818 invoke_energy_boost(). Small deficits are filled in
+// full; large deficits restore half, capped at 120 Pw.
+async function invoke_energy_boost(obj) {
+    const u = game.u;
+    let epboost = Math.trunc((u.uenmax + 1 - u.uen) / 2);
+
+    if (epboost > 120)
+        epboost = 120;
+    else if (epboost < 12)
+        epboost = u.uenmax - u.uen;
+    if (epboost) {
+        const { You_feel } = await import('./pline.js');
+        u.uen += epboost;
+        (game.disp ||= {}).botl = true;
+        await You_feel('re-energized.');
+    } else {
+        await nothing_special(obj);
+    }
+    return ECMD_TIME;
+}
+
+// src/artifact.c:1918 invoke_create_ammo(). The new arrows inherit the
+// Longbow's beatitude, then pass through normal inventory merging.
+async function invoke_create_ammo(obj) {
+    const { mksobj } = await import('./mkobj.js');
+    const { weight, hold_another_object } = await import('./invent.js');
+    const { aobjnam } = await import('./objnam.js');
+    const otmp = mksobj(ONAMES.ARROW, true, false);
+
+    if (!otmp) {
+        await nothing_special(obj);
+        return ECMD_TIME;
+    }
+    otmp.blessed = obj.blessed;
+    otmp.cursed = obj.cursed;
+    otmp.bknown = obj.bknown;
+    otmp.oeroded = otmp.oeroded2 = 0;
+    if (obj.blessed) {
+        if (otmp.spe < 0)
+            otmp.spe = 0;
+        otmp.quan += rnd(10);
+    } else if (obj.cursed) {
+        if (otmp.spe > 0)
+            otmp.spe = 0;
+    } else {
+        otmp.quan += rnd(5);
+    }
+    otmp.owt = weight(otmp);
+    await hold_another_object(otmp, 'Suddenly %s out.',
+                              aobjnam(otmp, 'fall'), null);
+    return ECMD_TIME;
+}
+
+// src/artifact.c:2162 ENLIGHTENING. enlightenment() builds the text, while
+// the artifact caller owns the same menu paging and redraw used by C.
+async function invoke_enlightening() {
+    const { enlightenment, MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS } =
+        await import('./insight.js');
+    const { tty_create_nhwindow, tty_destroy_nhwindow, tty_start_menu,
+            tty_add_menu, tty_end_menu, tty_display_nhwindow, tty_next_page,
+            NHW_MENU, ATR_NONE } = await import('./tty/wintty.js');
+    const { MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE } =
+        await import('./const.js');
+    const { NO_COLOR } = await import('./terminal.js');
+    const { xwaitforspace } = await import('./tty/getline.js');
+    const { docrt } = await import('./display.js');
+    const win = tty_create_nhwindow(NHW_MENU);
+
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    for (const line of enlightenment(MAGICENLIGHTENMENT,
+                                      ENL_GAMEINPROGRESS)) {
+        tty_add_menu(win, null, 0, 0, 0, ATR_NONE, NO_COLOR, line,
+                     MENU_ITEMFLAGS_NONE);
+    }
+    tty_end_menu(win, null);
+    await tty_display_nhwindow(win);
+    await xwaitforspace(' \r\n\x1b');
+    while (tty_next_page(win))
+        await xwaitforspace(' \r\n\x1b');
+    tty_destroy_nhwindow(win);
+    await docrt();
+    return ECMD_TIME;
 }
 
 // src/artifact.c:2131 arti_invoke(), ordinary property powers. These toggle
@@ -672,6 +965,27 @@ export async function doinvoke() {
     if (oart.inv_prop === 'CONFLICT' || oart.inv_prop === 'LEVITATION'
         || oart.inv_prop === 'INVIS')
         return invoke_property(obj, oart.inv_prop);
+
+    if (!(await arti_invoke_cost(obj, oart.inv_prop)))
+        return ECMD_TIME;
+
+    switch (oart.inv_prop) {
+    case 'HEALING':
+        return invoke_healing(obj);
+    case 'ENERGY_BOOST':
+        return invoke_energy_boost(obj);
+    case 'CREATE_AMMO':
+        return invoke_create_ammo(obj);
+    case 'ENLIGHTENING':
+        return invoke_enlightening();
+    case 'LEV_TELE': {
+        const { level_tele } = await import('./teleport.js');
+        await level_tele();
+        return ECMD_TIME;
+    }
+    default:
+        break;
+    }
 
     note_unported_art(`arti_invoke:special_power=${oart.inv_prop}`);
     return ECMD_TIME;

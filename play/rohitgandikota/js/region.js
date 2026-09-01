@@ -59,9 +59,14 @@ function add_region(reg) {
     (game.regions ||= []).push(reg);
     if (reg.visible) {
         for (let x = reg.bounding_box.lx; x <= reg.bounding_box.hx; ++x)
-            for (let y = reg.bounding_box.ly; y <= reg.bounding_box.hy; ++y)
-                if (isok(x, y) && inside_region(reg, x, y))
+            for (let y = reg.bounding_box.ly; y <= reg.bounding_box.hy; ++y) {
+                if (!isok(x, y))
+                    continue;
+                if (inside_region(reg, x, y))
                     game._block_point_ref?.(x, y);
+                if (game._cansee_ref?.(x, y))
+                    game._newsym_ref?.(x, y);
+            }
     }
     reg.hero_inside = inside_region(reg, game.u.ux, game.u.uy);
 }

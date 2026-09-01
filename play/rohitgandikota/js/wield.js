@@ -7,8 +7,8 @@
 
 import { game } from './gstate.js';
 import { pline } from './display.js';
-import { cantwield, could_twoweap } from './mondata.js';
-import { retouch_object } from './artifact.js';
+import { cantwield, could_twoweap, humanoid } from './mondata.js';
+import { artifact_light, arti_speak, is_art, retouch_object } from './artifact.js';
 import { dropx } from './do.js';
 import { ACURR } from './attrib.js';
 import { rnd } from './rng.js';
@@ -24,7 +24,7 @@ import { hcolor } from './do_name.js';
 import { NH_BLACK, NH_BLUE, NH_AMBER, HAND, A_DEX,
          invlet_basic } from './const.js';
 import { Yobjnam2, otense, simpleonames, makeplural, an, xname, The,
-         aobjnam, Yname2, yname, vtense, doname } from './objnam.js';
+         Tobjnam, aobjnam, Yname2, yname, vtense, doname } from './objnam.js';
 import { body_part } from './polyself.js';
 import { uncurse } from './mkobj.js';
 import { setworn } from './worn.js';
@@ -41,6 +41,9 @@ import { getobj, prinv } from './invent.js';
 import { W_QUIVER, W_WEP, W_SWAPWEP, W_ARMOR, W_ACCESSORY, W_SADDLE, P_BOOMERANG, P_DART, ECMD_OK, ECMD_TIME, ECMD_FAIL, ECMD_CANCEL, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_PROMPT, GETOBJ_ALLOWCNT } from './const.js';
 import { You } from './pline.js';
 import { tty_yn_function } from './tty/topl.js';
+import { ART_OGRESMASHER } from './artilist_data.js';
+import { Blind, Glib } from './youprop.js';
+import { del_light_source, new_light_source, LS_OBJECT } from './light.js';
 
 // include/hack.h:1330 ynq()
 const ynq = (query) => tty_yn_function(query, 'ynq', 'q');
@@ -170,18 +173,47 @@ const are_no_longer_twoweap = 'are no longer using two weapons at once',
 
 // src/wield.c:100 setuwep() — make obj the wielded weapon.
 //
-// The Ogresmasher botl updates and the Sunsword artifact-light shutdown are
-// recorded; both need artifact state this tree does not track. The unweapon
-// computation is the load-bearing part: it decides the "bashing" message for
-// every later attack with a non-weapon.
+function artifact_light_radius(obj) {
+    return obj.blessed ? 3 : obj.cursed ? 1 : 2;
+}
+
+function artifact_light_description(obj) {
+    return ['strangely', 'dimly', 'brightly', 'brilliantly'][
+        artifact_light_radius(obj)] || 'strangely';
+}
+
+function begin_artifact_light(obj) {
+    obj.lamplit = 1;
+    new_light_source(game.u.ux, game.u.uy, artifact_light_radius(obj),
+                     LS_OBJECT, obj.o_id);
+    game.vision_full_recalc = 1;
+    update_inventory();
+}
+
+function end_artifact_light(obj) {
+    del_light_source(LS_OBJECT, obj.o_id);
+    obj.lamplit = 0;
+    game.vision_full_recalc = 1;
+    update_inventory();
+}
+
+// The return value is the old artifact whose permanent light was stopped.
+// Async callers use it to print C's message after the slot update.
 export function setuwep(obj) {
     const olduwep = game.u.uwep;
 
     if (obj === game.u.uwep)
-        return; /* necessary to not set gu.unweapon */
+        return null; /* necessary to not set gu.unweapon */
     setworn(obj, W_WEP);
-    if ((obj && obj.oartifact) || (olduwep && olduwep.oartifact))
-        note_unported_wield('setuwep:artifact arms');
+    if (game.u.uwep === obj
+        && (is_art(game.u.uwep, ART_OGRESMASHER)
+            || is_art(olduwep, ART_OGRESMASHER)))
+        (game.disp ||= {}).botl = true;
+    let stoppedLight = null;
+    if (game.u.uwep === obj && artifact_light(olduwep) && olduwep.lamplit) {
+        end_artifact_light(olduwep);
+        stoppedLight = olduwep;
+    }
     if (obj) {
         game.unweapon = (obj.oclass === OCLASSES.WEAPON_CLASS)
                        ? is_launcher(obj) || is_ammo(obj) || is_missile(obj)
@@ -189,14 +221,21 @@ export function setuwep(obj) {
                        : !is_weptool(obj, game.objects) && !is_wet_towel(obj);
     } else
         game.unweapon = true; /* for "bare hands" message */
+    return stoppedLight;
+}
+
+export async function setuwep_with_feedback(obj) {
+    const stoppedLight = setuwep(obj);
+    if (stoppedLight && !Blind())
+        await pline(`${Tobjnam(stoppedLight, 'stop')} shining.`);
+    return stoppedLight;
 }
 
 // src/wield.c:158 empty_handed() — description of hands when not wielding.
 export function empty_handed() {
     return game.u.uarmg ? "empty handed" /* gloves imply hands */
-           : "bare handed"; /* humanoid(youmonst.data) is true for every
-                               un-polymorphed playable form, and polyself is
-                               not ported, so the paws arm is unreachable */
+           : humanoid(game.youmonst.data) ? "bare handed"
+             : "not wielding anything";
 }
 
 // src/wield.c:138 cant_wield_corpse() — cockatrice corpse, bare hands.
@@ -227,7 +266,7 @@ export async function ready_weapon(wep) {
         /* No weapon */
         if (game.u.uwep) {
             await You(`are ${empty_handed()}.`);
-            setuwep(null);
+            await setuwep_with_feedback(null);
             res = ECMD_TIME;
         } else
             await You(`are already ${empty_handed()}.`);
@@ -273,7 +312,7 @@ export async function ready_weapon(wep) {
             wep.owornmask = dummy;
         }
 
-        setuwep(wep);
+        await setuwep_with_feedback(wep);
         if (was_twoweap && !game.u.twoweap && game.flags.verbose) {
             /* skip this message if we already got "empty handed" one above;
                also, Null is not safe for neither TWOWEAPOK() or bimanual() */
@@ -283,7 +322,13 @@ export async function ready_weapon(wep) {
                             : can_no_longer_twoweap}.`);
         }
         if (wep.oartifact)
-            note_unported_wield('ready_weapon:arti_speak');
+            res |= await arti_speak(wep);
+        if (artifact_light(wep) && !wep.lamplit) {
+            begin_artifact_light(wep);
+            if (!Blind())
+                await pline(`${Tobjnam(wep, 'begin')} to shine ${
+                    artifact_light_description(wep)}!`);
+        }
         if (wep.unpaid)
             note_unported_wield('ready_weapon:shk_warning');
     }
@@ -679,8 +724,8 @@ export async function can_twoweapon() {
                && cant_wield_corpse(game.u.uswapwep)) {
         /* [Note: !TWOWEAPOK() check prevents ever getting here...] */
         ; /* must be life-saved to reach here; return FALSE */
-    } else if (game.u.uprops?.GLIB || game.u.uswapwep.cursed) {
-        if (!game.u.uprops?.GLIB)
+    } else if (Glib() || game.u.uswapwep.cursed) {
+        if (!Glib())
             set_bknown(game.u.uswapwep, 1);
         await drop_uswapwep();
     } else
@@ -742,7 +787,7 @@ export async function wield_tool(obj, verb = 'wield') {
             await ready_weapon(obj);
         } else {
             await You(`now wield ${doname(obj)}.`);
-            setuwep(obj);
+            await setuwep_with_feedback(obj);
         }
         if (game.flags.pushweapon && oldwep && game.u.uwep !== oldwep)
             setuswapwep(oldwep);
@@ -817,10 +862,13 @@ export async function weldmsg(obj) {
 }
 
 // src/wield.c:872 uwepgone() — the wielded weapon is gone (broken, eaten).
-export function uwepgone() {
+export async function uwepgone() {
     if (game.u.uwep) {
-        if (game.u.uwep.oartifact && game.u.uwep.lamplit)
-            note_unported_wield('uwepgone:artifact_light');
+        if (artifact_light(game.u.uwep) && game.u.uwep.lamplit) {
+            end_artifact_light(game.u.uwep);
+            if (!Blind())
+                await pline(`${Tobjnam(game.u.uwep, 'stop')} shining.`);
+        }
         setworn(null, W_WEP);
         game.unweapon = true;
         update_inventory();

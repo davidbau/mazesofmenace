@@ -12,7 +12,8 @@
 import { game, resetGame } from './gstate.js';
 import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { pushKey, nhgetch } from './input.js';
-import { newgame, moveloop_core, maybe_do_tutorial } from './allmain.js';
+import { newgame, newgame_moveloop_preamble, moveloop_core,
+         maybe_do_tutorial } from './allmain.js';
 import { wd_message } from './unixmain.js';
 import { parseNethackrc, optValue, set_fruit_name } from './options.js';
 import { assign_graphics } from './symbols.js';
@@ -157,7 +158,17 @@ export class NethackGame {
         if ('tutorial' in rc.opts) g.tutorial_set_in_config = true;
 
         // Initialize hero struct
-        g.u = { ux: 0, uy: 0, ux0: 0, uy0: 0 };
+        /* include/you.h u.uroleplay. These startup-only options alter the
+           inventory generator itself, so they must exist before u_init()
+           rather than being copied after character creation. Pauper implies
+           nudist in options.c. */
+        g.u = {
+            ux: 0, uy: 0, ux0: 0, uy0: 0,
+            uroleplay: {
+                pauper: !!g.flags.pauper,
+                nudist: !!g.flags.nudist || !!g.flags.pauper,
+            },
+        };
         g.context = { move: 0 };
         set_fruit_name(optValue(rc, 'fruit') || 'slime mold', true);
         g.program_state = {};
@@ -197,20 +208,26 @@ export class NethackGame {
         this._installCaptureHook();
 
         // Run game startup
-        await newgame();
-        /* src/allmain.c moveloop_preamble() sets this before the first
-           command. Attribute changes use it to announce load changes. */
-        g.program_state.in_moveloop = true;
+        const resuming = await newgame();
 
         /* sys/unix/unixmain.c:317 — "newgame(); wd_message();": the play-mode
            notice lands between welcome() and the tutorial query. */
         await wd_message();
 
+        /* src/allmain.c moveloop() enters its preamble after unixmain's
+           wd_message(). Initial pickup and its engraving feedback therefore
+           follow the explore-mode notice as well as welcome(). */
+        await newgame_moveloop_preamble(resuming);
+        /* moveloop_preamble() sets this before the first command. Attribute
+           changes use it to announce load changes. */
+        g.program_state.in_moveloop = true;
+
         /* src/allmain.c moveloop() — the tutorial query sits between
            moveloop_preamble() and the first moveloop_core(). This driver calls
            moveloop_core() directly rather than moveloop(), so the query has to
            be invoked here or it never runs. */
-        await maybe_do_tutorial();
+        if (!resuming)
+            await maybe_do_tutorial();
     }
 
     _installCaptureHook() {
@@ -312,7 +329,11 @@ export async function runSegment(input) {
     // Drive the game loop until input is exhausted. The judge looks
     // at game.getScreens() afterwards; whatever the contestant
     // captured is what gets compared.
-    const maxIter = Math.max(moves.length * 8, 1024);
+    const repeatCounts = [...moves.matchAll(/\d+/g)]
+        .map((match) => Number.parseInt(match[0], 10))
+        .filter(Number.isFinite);
+    const maxRepeat = repeatCounts.length ? Math.max(...repeatCounts) : 0;
+    const maxIter = Math.max(moves.length * 8, maxRepeat + 1024, 1024);
     for (let iter = 0; iter < maxIter; iter++) {
         try {
             await moveloop_core();

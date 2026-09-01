@@ -11,13 +11,90 @@
 // (bury_an_obj spends rnd(250) for ROT_ORGANIC). Only the bookkeeping is here.
 
 import { game } from './gstate.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, d } from './rng.js';
 import { stop_occupation } from './allmain.js';
 import { nomul } from './hack.js';
-import { TIMEOUT, FROMOUTSIDE, WT_NOISY_INV, FOOT, A_DEX, A_CON,
-         PLNMSG_ONE_ITEM_HERE } from './const.js';
+import { TIMEOUT, FROMOUTSIDE, I_SPECIAL, WT_NOISY_INV, FOOT, NECK,
+         A_STR, A_DEX, A_CON, DIED, KILLED_BY,
+         PLNMSG_ONE_ITEM_HERE, FULL_MOON, FAINTING, MV_KNOWS_EGG,
+         NO_MINVENT, MM_NOMSG, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT }
+    from './const.js';
 import { ONAMES } from './objects_data.js';
+import { PMNAMES, MFLAGS, MONSYMS } from './monst_data.js';
 import { pline } from './display.js';
+
+// src/timeout.c:187 vomiting_dialogue(). It runs before the property timer is
+// decremented, so every switch value uses the pending timeout minus one.
+async function vomiting_dialogue() {
+    const props = (game.u.uprops ||= {});
+    const v = (props.VOMITING || 0) - 1;
+    let text = null;
+
+    switch (v) {
+    case 14:
+        text = 'are feeling mildly nauseated.';
+        break;
+    case 11:
+        text = props.CONFUSION ? 'feel slightly more confused.'
+                               : 'feel slightly confused.';
+        break;
+    case 6: {
+        const { make_stunned, make_confused } = await import('./potion.js');
+        await make_stunned((game.u.intrinsic?.HStun || 0) + d(2, 4), false);
+        await stop_occupation();
+        await make_confused((game.u.intrinsic?.HConfusion || 0) + d(2, 4),
+                            false);
+        if ((game.multi ?? 0) > 0)
+            nomul(0);
+        break;
+    }
+    case 9: {
+        const { make_confused } = await import('./potion.js');
+        await make_confused((game.u.intrinsic?.HConfusion || 0) + d(2, 4),
+                            false);
+        if ((game.multi ?? 0) > 0)
+            nomul(0);
+        break;
+    }
+    case 8:
+        text = game.u.uprops?.STUNNED ? "can't think straight."
+                                     : "can't seem to think straight.";
+        break;
+    case 5:
+        text = 'feel incredibly sick.';
+        break;
+    case 2: {
+        const { cantvomit } = await import('./mondata.js');
+        const { Hallucination } = await import('./youprop.js');
+        if (cantvomit(game.youmonst.data))
+            text = 'gag uncontrollably.';
+        else
+            text = Hallucination() ? 'are about to hurl!'
+                                   : 'are about to vomit.';
+        break;
+    }
+    case 0: {
+        await stop_occupation();
+        const { cantvomit } = await import('./mondata.js');
+        const { Hallucination } = await import('./youprop.js');
+        const { morehungry, vomit } = await import('./eat.js');
+        if (!cantvomit(game.youmonst.data)) {
+            await morehungry(20);
+            if (game.u.uhs < FAINTING)
+                await pline(`You ${Hallucination() ? 'hurl chunks' : 'vomit'}!`);
+        }
+        await vomit();
+        break;
+    }
+    default:
+        break;
+    }
+
+    if (text)
+        await pline(`You ${text}`);
+    const { exercise } = await import('./attrib.js');
+    exercise(A_CON, false);
+}
 
 // include/timeout.h:11 enum timer_type
 export const TIMER_NONE = 0;
@@ -82,18 +159,376 @@ export function start_timer(when, kind, func_index, arg) {
     return true;
 }
 
+// src/timeout.c:2299 stop_timer() and :2328 peek_timer().
+export function stop_timer(func_index, arg) {
+    const base = (game.timer_base ||= []);
+    const index = base.findIndex(
+        (timer) => timer.func_index === func_index && timer.arg === arg);
+    if (index < 0)
+        return 0;
+
+    const [timer] = base.splice(index, 1);
+    if (timer.kind === TIMER_OBJECT)
+        arg.timed = Math.max(0, (arg.timed ?? 1) - 1);
+    return timer.timeout - (game.moves ?? 0);
+}
+
+export function peek_timer(func_index, arg) {
+    const timer = (game.timer_base || []).find(
+        (candidate) => candidate.func_index === func_index
+            && candidate.arg === arg);
+    return timer?.timeout ?? 0;
+}
+
 // src/timeout.c:2377 obj_stop_timers(). Remove every timer attached to an
 // object before changing the object type or corpse species.
 export function obj_stop_timers(obj) {
     const base = (game.timer_base ||= []);
     let removed = 0;
-    game.timer_base = base.filter((timer) => {
-        const match = timer.kind === TIMER_OBJECT && timer.arg === obj;
-        if (match)
+    for (let i = base.length - 1; i >= 0; --i) {
+        const timer = base[i];
+        if (timer.kind === TIMER_OBJECT && timer.arg === obj) {
+            base.splice(i, 1);
             removed++;
-        return !match;
-    });
+        }
+    }
     obj.timed = Math.max(0, (obj.timed || 0) - removed);
+}
+
+// src/timeout.c:2359 obj_split_timers(). Duplicate every object timer onto
+// the newly split object without changing the source object's timers.
+export function obj_split_timers(src, dest) {
+    const timers = (game.timer_base || []).filter(
+        (timer) => timer.kind === TIMER_OBJECT && timer.arg === src);
+    for (const timer of timers)
+        start_timer(timer.timeout - (game.moves ?? 0), TIMER_OBJECT,
+                    timer.func_index, dest);
+}
+
+function candle_light_range(obj) {
+    if (obj.otyp === ONAMES.CANDELABRUM_OF_INVOCATION)
+        return obj.spe < 4 ? 2 : obj.spe < 7 ? 3 : 4;
+
+    let radius = 1;
+    while (radius * radius <= obj.quan)
+        radius++;
+    return radius;
+}
+
+const ordinary_candle = (obj) => obj.otyp === ONAMES.TALLOW_CANDLE
+    || obj.otyp === ONAMES.WAX_CANDLE;
+
+// src/timeout.c:1712 begin_burn(). The timer stores the next fuel checkpoint
+// while age holds any fuel beyond that checkpoint, exactly as the C object
+// does. The synchronous core lets special-level generation finish a floor
+// object's timer before the first screen is drawn.
+function begin_burn_core(obj) {
+    if (!obj || (!obj.age && obj.otyp !== ONAMES.MAGIC_LAMP))
+        return null;
+
+    let radius = 3;
+    let turns = 0;
+    let do_timer = true;
+
+    if (obj.otyp === ONAMES.MAGIC_LAMP) {
+        obj.lamplit = 1;
+        do_timer = false;
+    } else if (obj.otyp === ONAMES.POT_OIL) {
+        turns = obj.age;
+        if (obj.odiluted)
+            turns = Math.trunc((3 * turns + 2) / 4);
+        radius = 1;
+    } else if (obj.otyp === ONAMES.BRASS_LANTERN
+               || obj.otyp === ONAMES.OIL_LAMP) {
+        turns = obj.age > 150 ? obj.age - 150
+              : obj.age > 100 ? obj.age - 100
+                : obj.age > 50 ? obj.age - 50
+                  : obj.age > 25 ? obj.age - 25 : obj.age;
+    } else if (ordinary_candle(obj)
+               || obj.otyp === ONAMES.CANDELABRUM_OF_INVOCATION) {
+        turns = obj.age > 75 ? obj.age - 75
+              : obj.age > 15 ? obj.age - 15 : obj.age;
+        radius = candle_light_range(obj);
+    } else {
+        note_unported_timeout('begin_burn:otyp=' + obj.otyp);
+        return null;
+    }
+
+    if (do_timer) {
+        if (start_timer(turns, TIMER_OBJECT, BURN_OBJECT, obj)) {
+            obj.lamplit = 1;
+            obj.age -= turns;
+        } else {
+            obj.lamplit = 0;
+        }
+    }
+
+    return { radius };
+}
+
+function burn_location(obj) {
+    if (obj.where === OBJ_INVENT)
+        return { x: game.u.ux, y: game.u.uy };
+    if (obj.where === OBJ_FLOOR)
+        return { x: obj.ox, y: obj.oy };
+    if (obj.where === OBJ_MINVENT && obj.ocarry)
+        return { x: obj.ocarry.mx, y: obj.ocarry.my };
+    return null;
+}
+
+// Level descriptions execute synchronously. Supply their already-loaded light
+// hook so a lit floor object has both its timer and light source immediately.
+export function begin_burn_level_object(obj, add_light_source) {
+    const state = begin_burn_core(obj);
+    if (!state || !obj.lamplit)
+        return;
+
+    const loc = burn_location(obj);
+    if (!loc) {
+        note_unported_timeout('begin_burn:object_location');
+        return;
+    }
+    add_light_source(loc.x, loc.y, state.radius, obj.o_id);
+    game.vision_full_recalc = 1;
+}
+
+export async function begin_burn(obj, already_lit) {
+    const state = begin_burn_core(obj);
+    if (!state)
+        return;
+
+    if (obj.lamplit && obj.where === OBJ_INVENT && !already_lit) {
+        const { update_inventory } = await import('./invent.js');
+        update_inventory();
+    }
+
+    if (obj.lamplit && !already_lit) {
+        const loc = burn_location(obj);
+        if (!loc) {
+            note_unported_timeout('begin_burn:object_location');
+        } else {
+            const { new_light_source, LS_OBJECT } = await import('./light.js');
+            new_light_source(loc.x, loc.y, state.radius, LS_OBJECT, obj.o_id);
+            game.vision_full_recalc = 1;
+        }
+    }
+}
+
+// src/timeout.c:1804 end_burn() plus cleanup_burn(). stop_timer() returns the
+// remaining delay, which is the unused fuel cleanup_burn restores to age.
+export async function end_burn(obj, timer_attached) {
+    if (!obj?.lamplit)
+        return;
+
+    if (obj.otyp === ONAMES.MAGIC_LAMP)
+        timer_attached = false;
+
+    if (timer_attached) {
+        const remaining = stop_timer(BURN_OBJECT, obj);
+        if (!remaining)
+            note_unported_timeout('end_burn:missing_timer');
+        obj.age = (obj.age || 0) + remaining;
+    }
+
+    const { del_light_source, LS_OBJECT } = await import('./light.js');
+    del_light_source(LS_OBJECT, obj.o_id);
+    obj.lamplit = 0;
+    game.vision_full_recalc = 1;
+    if (obj.where === OBJ_INVENT) {
+        const { update_inventory } = await import('./invent.js');
+        update_inventory();
+    }
+}
+
+async function burn_object(obj, timeout) {
+    const lamp = obj?.otyp === ONAMES.BRASS_LANTERN
+        || obj?.otyp === ONAMES.OIL_LAMP;
+    const candle = ordinary_candle(obj);
+    const menorah = obj?.otyp === ONAMES.CANDELABRUM_OF_INVOCATION;
+    if (obj?.otyp !== ONAMES.POT_OIL && !lamp && !candle && !menorah) {
+        note_unported_timeout('burn_object:otyp=' + obj?.otyp);
+        return;
+    }
+
+    if (timeout !== (game.moves ?? 0)) {
+        const how_long = (game.moves ?? 0) - timeout;
+        if (how_long < (obj.age || 0)) {
+            obj.age -= how_long;
+            await begin_burn(obj, true);
+            return;
+        }
+        obj.age = 0;
+        await end_burn(obj, false);
+        if (menorah) {
+            obj.spe = 0;
+            const { weight, update_inventory } = await import('./invent.js');
+            obj.owt = weight(obj);
+            if (obj.where === OBJ_INVENT)
+                update_inventory();
+        } else if ((candle || obj.otyp === ONAMES.POT_OIL)
+                   && (obj.where === OBJ_FLOOR || obj.where === OBJ_MINVENT)) {
+            const was_floor = obj.where === OBJ_FLOOR;
+            const ox = obj.ox, oy = obj.oy;
+            const { obj_extract_self } = await import('./invent.js');
+            obj_extract_self(obj);
+            if (was_floor) {
+                const { newsym } = await import('./display.js');
+                newsym(ox, oy);
+            }
+        }
+        return;
+    }
+
+    let x, y;
+    if (obj.where === OBJ_INVENT) {
+        x = game.u.ux;
+        y = game.u.uy;
+    } else if (obj.where === OBJ_FLOOR) {
+        x = obj.ox;
+        y = obj.oy;
+    } else if (obj.where === OBJ_MINVENT && obj.ocarry) {
+        x = obj.ocarry.mx;
+        y = obj.ocarry.my;
+    }
+    const [{ Blind, Hallucination }, { cansee }, names] = await Promise.all([
+        import('./youprop.js'), import('./vision.js'), import('./objnam.js'),
+    ]);
+    const canseeit = x !== undefined && !Blind() && cansee(x, y);
+    const bytouch = obj.where === OBJ_INVENT
+        && obj.otyp !== ONAMES.BRASS_LANTERN;
+    const many = menorah ? obj.spe > 1 : obj.quan > 1;
+
+    if (obj.otyp === ONAMES.POT_OIL) {
+        if (canseeit) {
+            if (obj.where === OBJ_INVENT)
+                await pline('Your potion of oil has burnt away.');
+            else if (obj.where === OBJ_FLOOR) {
+                const { You_see } = await import('./pline.js');
+                await You_see('a burning potion of oil go out.');
+            } else {
+                note_unported_timeout('burn_object:minvent_message');
+            }
+        }
+        await end_burn(obj, false);
+        const { obj_extract_self, useupall } = await import('./invent.js');
+        if (obj.where === OBJ_INVENT) {
+            useupall(obj);
+        } else {
+            const was_floor = obj.where === OBJ_FLOOR;
+            const ox = obj.ox, oy = obj.oy;
+            obj_extract_self(obj);
+            if (was_floor) {
+                const { newsym } = await import('./display.js');
+                newsym(ox, oy);
+            }
+        }
+        return;
+    }
+
+    if (lamp) {
+        if (obj.age === 150 || obj.age === 100 || obj.age === 50) {
+            if (canseeit) {
+                if (obj.otyp === ONAMES.BRASS_LANTERN) {
+                    await pline('Your lantern is getting dim.');
+                } else {
+                    await pline(`${names.Yname2(obj)} flickers${
+                        obj.age === 50 ? ' considerably' : ''}.`);
+                }
+            }
+        } else if (obj.age === 25) {
+            if (canseeit) {
+                if (obj.otyp === ONAMES.BRASS_LANTERN)
+                    await pline('Your lantern is getting dim.');
+                else
+                    await pline(`${names.Yname2(obj)} seems about to go out.`);
+            }
+        } else if (obj.age === 0) {
+            if (canseeit || bytouch) {
+                await pline(obj.otyp === ONAMES.BRASS_LANTERN
+                    ? 'Your lantern has run out of power.'
+                    : `${names.Yname2(obj)} has gone out.`);
+            }
+            await end_burn(obj, false);
+        }
+        if (obj.age)
+            await begin_burn(obj, true);
+        return;
+    }
+
+    if (obj.age === 75 && canseeit) {
+        if (obj.where === OBJ_FLOOR) {
+            const { You_see } = await import('./pline.js');
+            await You_see(`${menorah ? "a candelabrum's " : many ? 'some ' : 'a '
+                }candle${many ? 's' : ''} getting short.`);
+        } else {
+            const subject = menorah
+                ? `Your candelabrum's candle${many ? 's are' : ' is'}`
+                : `${many ? 'Your candles are' : 'Your candle is'}`;
+            await pline(`${subject} getting short.`);
+        }
+    } else if (obj.age === 15 && canseeit) {
+        if (obj.where === OBJ_FLOOR) {
+            const { You_see } = await import('./pline.js');
+            await You_see(`${menorah ? "a candelabrum's " : many ? 'some ' : 'a '
+                }candle${many ? "s'" : "'s"} flame${many ? 's' : ''} flicker low!`);
+        } else {
+            const subject = menorah
+                ? `Your candelabrum's candle${many ? "s'" : "'s"}`
+                : many ? "Your candles'" : "Your candle's";
+            await pline(`${subject} flame${many ? 's' : ''} flicker${
+                many ? '' : 's'} low!`);
+        }
+    } else if (obj.age === 0) {
+        if (canseeit || bytouch) {
+            if (menorah) {
+                if (obj.where === OBJ_FLOOR) {
+                    const { You_see } = await import('./pline.js');
+                    await You_see(`a candelabrum's flame${many ? 's' : ''} die.`);
+                } else {
+                    await pline(`Your candelabrum's flame${
+                        many ? 's die' : ' dies'}.`);
+                }
+            } else {
+                if (obj.where === OBJ_FLOOR) {
+                    const { You_see } = await import('./pline.js');
+                    await You_see(`${many ? 'some ' : ''}${
+                        many ? names.xname(obj) : names.an(names.xname(obj))
+                    } consumed!`);
+                } else {
+                    await pline(`${names.Yname2(obj)} ${
+                        many ? 'are' : 'is'} consumed!`);
+                }
+                if (Hallucination())
+                    await pline(many ? 'They shriek!' : 'It shrieks!');
+                else if (!Blind())
+                    await pline(many ? 'Their flames die.' : 'Its flame dies.');
+            }
+        }
+        await end_burn(obj, false);
+        if (menorah) {
+            obj.spe = 0;
+            const { weight, update_inventory } = await import('./invent.js');
+            obj.owt = weight(obj);
+            if (obj.where === OBJ_INVENT)
+                update_inventory();
+        } else {
+            const { obj_extract_self, useupall } = await import('./invent.js');
+            if (obj.where === OBJ_INVENT)
+                useupall(obj);
+            else {
+                const was_floor = obj.where === OBJ_FLOOR;
+                const ox = obj.ox, oy = obj.oy;
+                obj_extract_self(obj);
+                if (was_floor) {
+                    const { newsym } = await import('./display.js');
+                    newsym(ox, oy);
+                }
+            }
+        }
+        return;
+    }
+    if (obj.age)
+        await begin_burn(obj, true);
 }
 
 // src/timeout.c:2222 run_timers() — fire every timer whose time has come.
@@ -121,9 +556,25 @@ export async function run_timers() {
             await revive_mon(curr.arg);
             break;
         }
+        case ZOMBIFY_MON: {
+            const { zombify_mon } = await import('./do.js');
+            await zombify_mon(curr.arg, curr.timeout);
+            break;
+        }
+        case BURN_OBJECT:
+            await burn_object(curr.arg, curr.timeout);
+            break;
+        case HATCH_EGG:
+            await hatch_egg(curr.arg, curr.timeout);
+            break;
+        case SHRINK_GLOB: {
+            const { shrink_glob } = await import('./mkobj.js');
+            await shrink_glob(curr.arg, curr.timeout);
+            break;
+        }
         default:
-            /* hatch_egg, burn_object, revive_mon... — each is its own
-               subsystem; record which one fired unported */
+            /* The remaining callbacks each need their own subsystem; record
+               which one fired unported. */
             (game.unported ||= new Set())
                 .add('timeout:run_timers:' + curr.func_index);
             break;
@@ -234,17 +685,87 @@ async function slip_or_trip() {
     }
 }
 
-// src/timeout.c:660 nh_timeout() — the per-turn countdown of intrinsic
-// timeouts. Only the intrinsic-timer loop is live; the luck rebalancing,
-// storm/fumaroles arms and most expiry cases need absent state and are
-// recorded when their trigger appears.
+// src/timeout.c:588 nh_timeout() - per-turn luck and intrinsic timeouts.
 export async function nh_timeout() {
-    if (game.u.uluck)
-        note_unported_timeout('nh_timeout:luck_rebalance');
+    const u = game.u;
+    const intr = (u.intrinsic ||= {});
+    let baseluck = game.flags?.moonphase === FULL_MOON ? 1 : 0;
+    if (game.flags?.friday13)
+        baseluck--;
+    if (game.quest_status?.killed_leader)
+        baseluck -= 4;
+    const role = game.urole?.mnum;
+    if ((role === PMNAMES.PM_ARCHEOLOGIST || role === 'PM_ARCHEOLOGIST')
+        && u.uarmh?.otyp === ONAMES.FEDORA)
+        baseluck++;
+
+    const luckPeriod = (u.uhave?.amulet || u.ugangr) ? 300 : 600;
+    if ((u.uluck || 0) !== baseluck
+        && (game.moves || 0) % luckPeriod === 0) {
+        const { stone_luck } = await import('./invent.js');
+        const timeLuck = stone_luck(false);
+        const noStone = !(game.invent || []).some(
+            (obj) => obj.otyp === ONAMES.LUCKSTONE) && !stone_luck(true);
+        if (u.uluck > baseluck && (noStone || timeLuck < 0))
+            u.uluck--;
+        else if (u.uluck < baseluck && (noStone || timeLuck > 0))
+            u.uluck++;
+    }
     /* src/timeout.c:621, successful prayer freezes every dangerous
        timeout, including wizard-set intrinsics, until prayer finishes. */
-    if (game.u.uinvulnerable)
+    if (u.uinvulnerable)
         return;
+
+    /* src/timeout.c:649: facial cream wears off one point per turn before
+       HBlinded is decremented below. */
+    if (u.ucreamed)
+        u.ucreamed--;
+
+    const vomiting = u.uprops?.VOMITING || 0;
+    if (vomiting) {
+        await vomiting_dialogue();
+        u.uprops.VOMITING = vomiting - 1;
+        if (!u.uprops.VOMITING)
+            (game.disp ||= {}).botl = true;
+    }
+
+    const strangled = intr.HStrangled || 0;
+    if (strangled) {
+        const remaining = strangled & TIMEOUT;
+        if (remaining > 0 && remaining <= 5) {
+            const { breathless } = await import('./mondata.js');
+            const cannot_breathe = breathless(game.youmonst.data)
+                || !!(intr.HMagical_breathing
+                       || game.u.uprops?.MAGICAL_BREATHING);
+            const alternate = cannot_breathe || !rn2(50);
+            const neck = (await import('./polyself.js')).body_part(NECK);
+            const ordinary = [
+                'You find it hard to breathe.',
+                "You're gasping for air.",
+                'You can no longer breathe.',
+                null,
+                'You suffocate.',
+            ];
+            const special = [
+                `Your ${neck} is becoming constricted.`,
+                'Your blood is having trouble reaching your brain.',
+                `The pressure on your ${neck} increases.`,
+                'Your consciousness is fading.',
+                'You suffocate.',
+            ];
+            let message = (alternate ? special : ordinary)[5 - remaining];
+            if (!message) {
+                const { hcolor } = await import('./do_name.js');
+                const { NH_BLUE } = await import('./const.js');
+                message = `You're turning ${hcolor(NH_BLUE)}.`;
+            }
+            await pline(message);
+            if (!alternate)
+                await stop_occupation();
+        }
+        const { exercise } = await import('./attrib.js');
+        exercise(A_STR, false);
+    }
 
     /* src/timeout.c:631 sickness_dialogue(), followed later in nh_timeout by
        the property countdown. Fatal illness abuses constitution every turn,
@@ -263,8 +784,6 @@ export async function nh_timeout() {
         game.u.uprops.SICK = sick - 1;
     }
 
-    const intr = (game.u.intrinsic ||= {});
-
     for (const key of Object.keys(intr)) {
         const v = intr[key];
         if (typeof v !== 'number' || !(v & TIMEOUT))
@@ -274,6 +793,25 @@ export async function nh_timeout() {
             continue;
         /* the timeout just ran out */
         switch (key) {
+        case 'HStrangled': {
+            intr.HStrangled |= I_SPECIAL;
+            game.killer = {
+                format: KILLED_BY,
+                name: u.uburied ? 'suffocation' : 'strangulation',
+            };
+            const { done } = await import('./end.js');
+            await done(DIED);
+            intr.HStrangled &= ~I_SPECIAL;
+            (game.disp ||= {}).botl = true;
+            if (u.uamul?.otyp === ONAMES.AMULET_OF_STRANGULATION) {
+                const amulet = u.uamul;
+                const { Your } = await import('./pline.js');
+                await Your('amulet vanishes!');
+                const { useup } = await import('./invent.js');
+                useup(amulet);
+            }
+            break;
+        }
         case 'HWounded_legs': {
             /* src/timeout.c nh_timeout WOUNDED_LEGS arm: heal_legs(0) */
             const { heal_legs } = await import('./do.js');
@@ -309,12 +847,35 @@ export async function nh_timeout() {
             await make_blinded(0, true);
             break;
         }
+        case 'HGlib': {
+            const { make_glib } = await import('./potion.js');
+            intr.HGlib = 1; /* preserve the old state for make_glib() */
+            make_glib(0);
+            break;
+        }
+        case 'HDeaf': {
+            const { make_deaf } = await import('./potion.js');
+            const { Deaf } = await import('./youprop.js');
+            intr.HDeaf = (intr.HDeaf & ~TIMEOUT) | 1;
+            await make_deaf(0, true);
+            (game.disp ||= {}).botl = true;
+            if (!Deaf())
+                await stop_occupation();
+            break;
+        }
         case 'HFast': {
             const { Fast, Very_fast } = await import('./attrib.js');
             if (!Very_fast()) {
                 const { You_feel } = await import('./pline.js');
                 await You_feel(`yourself slow down${Fast() ? ' a bit' : ''}.`);
             }
+            break;
+        }
+        case 'HSee_invisible': {
+            const { newsym, see_monsters } = await import('./display.js');
+            see_monsters();
+            newsym(game.u.ux, game.u.uy);
+            await stop_occupation();
             break;
         }
         case 'HFumbling': {
@@ -356,8 +917,19 @@ export async function nh_timeout() {
         for (const key of Object.keys(wiz)) {
             if (typeof wiz[key] !== 'number' || wiz[key] <= 0)
                 continue;
-            if (--wiz[key] === 0)
+            const remaining = --wiz[key];
+            if (remaining === 0) {
                 delete wiz[key];
+                const base = game.u.wiz_intrinsic_base_props?.[key];
+                if (base?.had)
+                    (game.u.uprops ||= {})[key] = base.value;
+                else if (game.u.uprops)
+                    delete game.u.uprops[key];
+                if (game.u.wiz_intrinsic_base_props)
+                    delete game.u.wiz_intrinsic_base_props[key];
+            } else {
+                (game.u.uprops ||= {})[key] = remaining;
+            }
         }
     }
 
@@ -372,7 +944,8 @@ function note_unported_timeout(what) {
 // src/timeout.c:981 attach_egg_hatch_timeout() — decide if and when the egg
 // hatches: one rnd(i) per age 151..200 until a roll exceeds 150.
 export function attach_egg_hatch_timeout(egg, when = 0) {
-    /* stop_timer: no previous timer exists at creation */
+    /* C always replaces an existing hatch timer before choosing the delay. */
+    stop_timer(HATCH_EGG, egg);
     if (!when) {
         for (let i = (200 - 50) + 1; i <= 200; i++)
             if (rnd(i) > 150) {
@@ -382,6 +955,165 @@ export function attach_egg_hatch_timeout(egg, when = 0) {
     }
     if (when)
         start_timer(when, TIMER_OBJECT, HATCH_EGG, egg);
+}
+
+// src/timeout.c:1017 hatch_egg() -- turn a fertile egg stack into one or more
+// adjacent baby monsters, report what the hero can perceive, and consume the
+// eggs which actually hatched.
+export async function hatch_egg(egg, timeout) {
+    if (!egg || (egg.corpsenm ?? -1) < 0)
+        return;
+
+    const { big_to_little } = await import('./mkobj.js');
+    const { carried } = await import('./obj.js');
+    const mnum = big_to_little(egg.corpsenm);
+
+    let x, y;
+    if (egg.where === OBJ_INVENT && (game.invent || []).includes(egg)) {
+        x = game.u.ux;
+        y = game.u.uy;
+    } else if (egg.where === OBJ_FLOOR
+               && (game.level?.objects || []).includes(egg)) {
+        x = egg.ox;
+        y = egg.oy;
+    } else if (egg.where === OBJ_MINVENT && egg.ocarry
+               && (game.level?.monsters || []).includes(egg.ocarry)
+               && (egg.ocarry.minvent || []).includes(egg)) {
+        x = egg.ocarry.mx;
+        y = egg.ocarry.my;
+    } else {
+        /* C moves object timers to the saved level's timer chain. The port's
+           timer queue is global, so reject an object which is not owned by
+           the active level before this callback consumes any RNG. */
+        return;
+    }
+
+    const isCarried = carried(egg);
+    const yours = !!(egg.spe
+        || (!game.flags.female && isCarried && !rn2(2)));
+    const silent = timeout !== game.moves;
+
+    const { cansee } = await import('./vision.js');
+    const { enexto } = await import('./teleport.js');
+    const { makemon } = await import('./makemon.js');
+    let hatchcount = rnd(egg.quan | 0);
+    const canseeHatchspot = cansee(x, y) && !silent;
+    const ptr = game.mons[mnum];
+    let mon = null, mon2 = null;
+    let i = hatchcount;
+
+    if (!(ptr.geno & MFLAGS.G_UNIQ)
+        && !((game.mvitals[mnum]?.mvflags ?? 0)
+             & (MFLAGS.G_GENOD | MFLAGS.G_EXTINCT))) {
+        for (; i > 0; i--) {
+            const cc = { x: 0, y: 0 };
+            if (!enexto(cc, x, y, ptr))
+                break;
+            mon = makemon(ptr, cc.x, cc.y, NO_MINVENT | MM_NOMSG);
+            if (!mon)
+                break;
+
+            if ((yours && !silent)
+                || (isCarried && mon.data.mlet === MONSYMS.S_DRAGON)) {
+                const { initedog } = await import('./dog.js');
+                initedog(mon, true);
+                if (isCarried && mon.data.mlet !== MONSYMS.S_DRAGON)
+                    mon.mtame = 20;
+            }
+            if ((game.mvitals[mnum]?.mvflags ?? 0) & MFLAGS.G_EXTINCT)
+                break;
+            mon2 = mon;
+        }
+        if (!mon)
+            mon = mon2;
+        hatchcount -= i;
+        egg.quan -= hatchcount;
+    }
+
+    if (!mon)
+        return;
+
+    const siblings = hatchcount > 1;
+    let monname = '';
+    if (canseeHatchspot) {
+        const { m_monnam } = await import('./do_name.js');
+        const { an, makeplural } = await import('./objnam.js');
+        const base = m_monnam(mon);
+        monname = siblings ? `some ${makeplural(base)}` : an(base);
+    }
+
+    let knowsEgg = false;
+    let redraw = false;
+    if (egg.where === OBJ_INVENT) {
+        const { You_feel, You_see } = await import('./pline.js');
+        const { locomotion, is_silent } = await import('./mondata.js');
+        knowsEgg = true;
+        if (canseeHatchspot)
+            await You_see(`${monname} ${locomotion(mon.data, 'drop')} out of your pack!`);
+        else
+            await You_feel(`something ${locomotion(mon.data, 'drop')} from your pack!`);
+
+        const { Deaf } = await import('./youprop.js');
+        if (yours) {
+            const { cry_sound } = await import('./sounds.js');
+            const { ing_suffix } = await import('./hacklib.js');
+            await pline(`${siblings ? 'Their' : 'Its'} ${
+                ing_suffix(cry_sound(mon))} ${
+                is_silent(mon.data) || Deaf() ? 'seems' : 'sounds'} like "${
+                game.flags.female ? 'mommy' : 'daddy'}${egg.spe ? '.' : '?'}"`);
+        } else if (mon.data.mlet === MONSYMS.S_DRAGON && !Deaf()) {
+            await pline('"Gleep!"');
+        }
+    } else if (egg.where === OBJ_FLOOR) {
+        if (canseeHatchspot) {
+            const { You_see } = await import('./pline.js');
+            knowsEgg = true;
+            await You_see(`${monname} hatch.`);
+            redraw = true;
+        }
+    } else if (egg.where === OBJ_MINVENT && canseeHatchspot) {
+        const { a_monnam } = await import('./do_name.js');
+        const { s_suffix } = await import('./hacklib.js');
+        const { locomotion } = await import('./mondata.js');
+        const { canseemon } = await import('./display.js');
+        const { is_pool } = await import('./mon.js');
+        const carrier = egg.ocarry;
+        let carriedby;
+        if (carrier && canseemon(carrier)
+            && (!carrier.wormno || cansee(carrier.mx, carrier.my))) {
+            carriedby = `${s_suffix(a_monnam(carrier))} pack`;
+            knowsEgg = true;
+        } else {
+            carriedby = is_pool(mon.mx, mon.my) ? 'empty water' : 'thin air';
+        }
+        const { You_see } = await import('./pline.js');
+        await You_see(`${monname} ${locomotion(mon.data, 'drop')} out of ${carriedby}!`);
+    }
+
+    if (canseeHatchspot && knowsEgg) {
+        game.mvitals[egg.corpsenm].mvflags |= MV_KNOWS_EGG;
+        const { update_inventory } = await import('./invent.js');
+        update_inventory();
+    }
+
+    const { useup, obj_extract_self, weight } = await import('./invent.js');
+    if (egg.quan > 0) {
+        attach_egg_hatch_timeout(egg, rnd(12));
+        egg.owt = weight(egg);
+    } else if (isCarried) {
+        useup(egg);
+    } else {
+        obj_extract_self(egg);
+        const { m_at } = await import('./mon.js');
+        const { hideunder } = await import('./makemon.js');
+        const floorMon = m_at(x, y);
+        if (floorMon && !hideunder(floorMon) && cansee(x, y))
+            redraw = true;
+    }
+    if (redraw) {
+        const { newsym } = await import('./display.js');
+        newsym(x, y);
+    }
 }
 
 // src/timeout.c:1846 do_storms() — no lightning if not a stormy level (the

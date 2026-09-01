@@ -21,15 +21,19 @@ import { MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE,
          NEED_WEAPON, NEED_HTH_WEAPON } from './const.js';
 import { acurr } from './attrib.js';
 import { put_saddle_on_mon } from './steed.js';
-import { perceives, is_domestic, is_undead, needspick, nohands, verysmall, is_animal, mindless, attacktype, resists_ston, resists_acid, max_passive_dmg, is_flyer, is_floater, regenerates, resist_conflict } from './mondata.js';
+import { perceives, is_domestic, is_undead, needspick, nohands, verysmall,
+         is_animal, mindless, attacktype, dmgtype, resists_ston, resists_acid,
+         max_passive_dmg, is_flyer, is_floater, regenerates, resist_conflict,
+         is_covetous, is_human, sticks } from './mondata.js';
 import { sobj_at, eaten_stat, obj_extract_self } from './invent.js';
 import { may_dig } from './hack.js';
 import { is_metallic, OBJ_FLOOR } from './obj.js';
 import { obj_resists } from './zap.js';
 import { newsym, canspotmon, mon_visible, pline, canseemon } from './display.js';
-import { splitobj, peek_at_iced_corpse_age } from './mkobj.js';
+import { splitobj, peek_at_iced_corpse_age, place_object } from './mkobj.js';
 import { yelp, growl } from './sounds.js';
-import { m_consume_obj, is_pick, check_gear_next_turn, healmon } from './mon.js';
+import { m_consume_obj, is_pick, check_gear_next_turn, healmon,
+         wake_nearto, unstuck } from './mon.js';
 import {
     mfndpos, mon_allowflags, is_pool, is_lava, can_carry, m_at, t_at,
 } from './mon.js';
@@ -37,7 +41,8 @@ import {
     COLNO, ROWNO, IS_ROOM, MAGIC_PORTAL, ALLOW_M, ALLOW_U,
     IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED, isok,
     IS_STWALL, IS_TREE, W_NONDIGGABLE,
-    ALLOW_MDISP, ALLOW_TRAPS, A_CHA,
+    ALLOW_MDISP, ALLOW_TRAPS, A_CHA, CORPSTAT_GENDER,
+    CORPSTAT_FEMALE, CORPSTAT_MALE, Upolyd,
 } from './const.js';
 import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
 import { MFLAGS, MONSYMS, NUMMONS, MSOUND, ATTKS } from './monst_data.js';
@@ -46,14 +51,16 @@ const { WOOD, IRON, SILVER, MITHRIL } = MATERIALS;
 import { rn2, rnd, getRngLog } from './rng.js';
 import { dist2, sgn } from './hacklib.js';
 import { couldsee, clear_path, cansee } from './vision.js';
-import { doname } from './objnam.js';
-import { Monnam, noit_Monnam, christen_monst, x_monnam } from './do_name.js';
+import { distant_name, doname, xname, the, The } from './objnam.js';
+import { Monnam, noit_Monnam, christen_monst, x_monnam,
+         y_monnam } from './do_name.js';
 import { ARTICLE_YOUR } from './const.js';
 import { MIGR_RANDOM, MIGR_APPROX_XY, MIGR_EXACT_XY, MIGR_WITH_HERO,
          MIGR_LEFTOVERS, MON_MIGRATING, MON_LIMBO,
          RLOC_NOMSG } from './const.js';
 import { Hallucination } from './youprop.js';
-import { pline_xy } from './pline.js';
+import { night } from './calendar.js';
+import { pline_xy, You, You_feel } from './pline.js';
 import { relobj } from './steal.js';
 import { set_apparxy, mon_track_add } from './monmove.js';
 import { gettrack } from './track.js';
@@ -62,9 +69,12 @@ import { mattackm } from './mhitm.js';
 import { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED } from './const.js';
 import { PMNAMES } from './monst_data.js';
 import {
-    makemon, MM_EDOG, NO_MINVENT, place_monster, remove_monster, is_rider,
-    mpickobj, set_malign, deliver_obj_to_mon, DF_ALL } from './makemon.js';
+    makemon, MM_EDOG, MM_IGNOREWATER, MM_NOMSG, MM_MALE, MM_FEMALE,
+    NO_MINVENT, place_monster, remove_monster, is_rider, mpickobj, set_malign,
+    deliver_obj_to_mon, DF_ALL } from './makemon.js';
 import { rloc } from './teleport.js';
+import { finish_meating } from './dogmove.js';
+import { FULL_MOON } from './const.js';
 
 const NON_PM = -1;
 
@@ -156,7 +166,7 @@ export function makedog() {
 //
 // `everything` is FALSE when re-taming an already-tame monster, and then only
 // the apport floor is applied.
-function initedog(mtmp, everything) {
+export function initedog(mtmp, everything) {
     const edogp = (mtmp.edog ||= {});
     const minhungry = game.moves + 1000;
     const minimumtame = is_domestic(mtmp.data) ? 10 : 5;
@@ -195,6 +205,71 @@ function initedog(mtmp, everything) {
     /* src/dog.c:87 — pets-conduct counter (the first-pet livelog is
        invisible); gain_guardian_angel() reads it on the Astral Plane */
     (game.u.uconduct ||= {}).pets = ((game.u.uconduct.pets | 0) + 1);
+}
+
+// src/dog.c:138 make_familiar(), for figurines. Spell-created familiars use
+// a separate random-species path and remain outside this entry point.
+export async function make_familiar(otmp, x, y, quietly = false) {
+    const mndx = otmp?.corpsenm;
+    if (!Number.isInteger(mndx) || mndx < 0 || mndx >= NUMMONS)
+        return null;
+
+    const vitals = game.mvitals[mndx];
+    const hasSpecialLimit = mndx === PMNAMES.PM_NAZGUL
+                         || mndx === PMNAMES.PM_ERINYS;
+    if (hasSpecialLimit && (vitals?.mvflags & MFLAGS.G_EXTINCT)) {
+        if (!quietly)
+            await pline('... into a pile of dust.');
+        return null;
+    }
+
+    let mmflags = MM_EDOG | MM_IGNOREWATER | NO_MINVENT | MM_NOMSG;
+    const cgend = (otmp.spe | 0) & CORPSTAT_GENDER;
+    if (cgend === CORPSTAT_FEMALE)
+        mmflags |= MM_FEMALE;
+    else if (cgend === CORPSTAT_MALE)
+        mmflags |= MM_MALE;
+
+    const mtmp = makemon(game.mons[mndx], x, y, mmflags);
+    if (!mtmp) {
+        if (!quietly)
+            await pline('The figurine writhes and then shatters into pieces!');
+        return null;
+    }
+    if (mtmp.isminion) {
+        mtmp.isminion = 0;
+        if (mtmp.mextra)
+            delete mtmp.mextra.emin;
+    }
+    if (is_pool(mtmp.mx, mtmp.my)) {
+        const { minliquid } = await import('./mon.js');
+        if (await minliquid(mtmp))
+            return null;
+    }
+
+    let chance = rn2(10);
+    if (chance > 2)
+        chance = otmp.blessed ? 0 : !otmp.cursed ? 1 : 2;
+    if (chance === 0) {
+        initedog(mtmp, true);
+    } else if (chance === 2) {
+        if (!quietly)
+            await You('get a bad feeling about this.');
+        mtmp.mpeaceful = 0;
+        set_malign(mtmp);
+    }
+    if (otmp.oname)
+        christen_monst(mtmp, otmp.oname);
+
+    mtmp.msleeping = 0;
+    set_malign(mtmp);
+    newsym(mtmp.mx, mtmp.my);
+    if (mtmp.mtame && attacktype(mtmp.data, ATTKS.AT_WEAP)) {
+        mtmp.weapon_check = NEED_HTH_WEAPON;
+        const { mon_wield_item } = await import('./weapon.js');
+        await mon_wield_item(mtmp);
+    }
+    return mtmp;
 }
 
 // ---------------------------------------------------------------------------
@@ -273,8 +348,13 @@ function stale_egg(obj) {
 }
 
 function polyfood(obj) {
-    note_unported('polyfood');
-    return false;
+    if ((obj.otyp !== ONAMES.CORPSE && obj.otyp !== ONAMES.EGG
+         && obj.otyp !== ONAMES.TIN)
+        || !ismnum(obj.corpsenm))
+        return false;
+    const ptr = game.mons[obj.corpsenm];
+    return !!((ptr.mflags2 & MFLAGS.M2_SHAPESHIFTER)
+              || dmgtype(ptr, ATTKS.AD_POLY));
 }
 
 function same_race(pm1, pm2) {
@@ -504,6 +584,121 @@ export function dogfood(mon, obj) {
     }
 }
 
+// src/dog.c:1143 tamedog(), tame a monster or feed an existing pet.
+export async function tamedog(mtmp, obj, givemsg) {
+    let blessedScroll = false;
+    if (obj && (obj.oclass === OCLASSES.SCROLL_CLASS
+                || obj.oclass === OCLASSES.SPBOOK_CLASS)) {
+        blessedScroll = !!obj.blessed;
+        obj = null;
+    }
+
+    if (mtmp.mfrozen)
+        mtmp.mfrozen = Math.trunc((mtmp.mfrozen + 1) / 2);
+    if (mtmp.msleeping)
+        wake_nearto(mtmp.mx, mtmp.my, 1);
+
+    if (mtmp.iswiz || mtmp.mnum === PMNAMES.PM_MEDUSA
+        || (mtmp.data.mflags3 & MFLAGS.M3_WANTSARTI))
+        return false;
+
+    if (givemsg && !mtmp.mpeaceful && canspotmon(mtmp)) {
+        await pline(`${Monnam(mtmp)} seems ${Hallucination()
+            ? 'really chill' : 'more amiable'}.`);
+        givemsg = false;
+    }
+    mtmp.mpeaceful = 1;
+    set_malign(mtmp);
+
+    if (game.flags?.moonphase === FULL_MOON && night() && rn2(6) && obj
+        && mtmp.data.mlet === MONSYMS.S_DOG)
+        return false;
+
+    mtmp.mflee = 0;
+    mtmp.mfleetim = 0;
+
+    if (mtmp === game.u.ustuck) {
+        if (game.u.uswallow) {
+            const { expels } = await import('./mhitu.js');
+            await expels(mtmp, mtmp.data, true);
+        } else {
+            const heroData = game.youmonst?.data ?? game.mons[game.u.umonnum];
+            if (!(Upolyd(game.u) && sticks(heroData)))
+                await unstuck(mtmp);
+        }
+    }
+
+    if (mtmp.mtame && obj) {
+        if (mtmp.mcanmove && !mtmp.mconf && !mtmp.meating) {
+            const tasty = dogfood(mtmp, obj);
+            if (!(tasty === DOGFOOD
+                  || (tasty <= ACCFOOD
+                      && mtmp.edog.hungrytime <= game.moves)))
+                return false;
+            if (canseemon(mtmp)) {
+                const bigCorpse = obj.otyp === ONAMES.CORPSE
+                    && ismnum(obj.corpsenm)
+                    && game.mons[obj.corpsenm].msize > mtmp.data.msize;
+                await pline(`${Monnam(mtmp)} catches ${the(xname(obj))}${
+                    bigCorpse ? ', or vice versa!' : '.'}`);
+            } else if (cansee(mtmp.mx, mtmp.my)) {
+                await pline(`${The(xname(obj))} stops.`);
+            }
+            place_object(obj, mtmp.mx, mtmp.my);
+            await dog_eat(mtmp, obj, mtmp.mx, mtmp.my, false);
+            return true;
+        }
+        return false;
+    }
+
+    if (mtmp.mtame && mtmp.mtame < 10) {
+        if (mtmp.mtame < rnd(10))
+            mtmp.mtame++;
+        if (blessedScroll)
+            mtmp.mtame = Math.min(10, mtmp.mtame + 2);
+        return false;
+    }
+
+    if (mtmp.isshk) {
+        const { make_happy_shk } = await import('./shk.js');
+        await make_happy_shk(mtmp, false);
+        return false;
+    }
+
+    const heroData = game.youmonst?.data ?? game.mons[game.u.umonnum];
+    if (!mtmp.mcanmove || mtmp.isshk || mtmp.isgd || mtmp.ispriest
+        || mtmp.isminion || is_covetous(mtmp.data) || is_human(mtmp.data)
+        || (is_demon(mtmp.data) && !is_demon(heroData))
+        || (obj && dogfood(mtmp, obj) >= MANFOOD))
+        return false;
+
+    if (mtmp.m_id === game.quest_status?.leader_m_id)
+        return false;
+
+    initedog(mtmp, !mtmp.edog);
+
+    if (obj) {
+        place_object(obj, mtmp.mx, mtmp.my);
+        if (await dog_eat(mtmp, obj, mtmp.mx, mtmp.my, true) === 2)
+            return true;
+    }
+
+    if (givemsg && canspotmon(mtmp)) {
+        await pline(`${Monnam(mtmp)} seems quite ${Hallucination()
+            ? 'approachable' : 'friendly'}.`);
+    }
+
+    newsym(mtmp.mx, mtmp.my);
+    if (mtmp.wormno)
+        note_unported('tamedog:redraw_worm');
+    if (attacktype(mtmp.data, ATTKS.AT_WEAP)) {
+        mtmp.weapon_check = NEED_HTH_WEAPON;
+        const { mon_wield_item } = await import('./weapon.js');
+        await mon_wield_item(mtmp);
+    }
+    return true;
+}
+
 /* src/artifact.c is not ported; no session generates a quest artifact this
    early, and the call draws nothing either way. */
 function is_quest_artifact(obj) { return false; }
@@ -533,7 +728,7 @@ const SQSRCHRADIUS = 5;
 //
 // Draws nothing. The size multiplier is a switch on the PET's size, not the
 // food's, and MZ_MEDIUM shares the default arm.
-function dog_nutrition(mtmp, obj) {
+export function dog_nutrition(mtmp, obj) {
     let nutrit;
     const mdat = game.mons[mtmp.mnum];
 
@@ -592,7 +787,7 @@ function dog_nutrition(mtmp, obj) {
 // Not ported, each recorded rather than faked: the killer-bee royal jelly
 // bypass, the rust monster's erodeproof branch, shop billing (unpaid,
 // costly_alteration, unpaid_cost) and the eating messages.
-async function dog_eat(mtmp, obj, x, y, devour) {
+export async function dog_eat(mtmp, obj, x, y, devour) {
     const edog = mtmp.edog;
     let nutrit;
 
@@ -670,7 +865,7 @@ async function dog_eat(mtmp, obj, x, y, devour) {
             if (edog.apport <= 0)
                 edog.apport = 1;        /* impossible() in C */
         }
-        m_consume_obj(mtmp, obj);
+        await m_consume_obj(mtmp, obj);
     }
 
     return DEADMONSTER(mtmp) ? 2 : 1;
@@ -703,7 +898,11 @@ export function dog_goal(mtmp, edog, after, udist, whappr) {
     const in_masters_sight = couldsee(omx, omy);
     const dog_has_minvent = !!droppables(mtmp);
 
-    for (const obj of (game.level.objects || [])) {
+    if (!edog || mtmp.mleashed) {
+        gtyp = APPORT;
+        gx = game.u.ux;
+        gy = game.u.uy;
+    } else for (const obj of (game.level.objects || [])) {
         /* C walks fobj, the FLOOR chain: an object the hero picked up
            (where OBJ_INVENT, ox/oy stale) or a contained one must not be
            scanned — dogfood() draws, so a phantom entry desyncs the pet. */
@@ -1144,7 +1343,7 @@ const DOG_HUNGRY = 300, DOG_WEAK = 500, DOG_STARVE = 750;
 // stops dochug from calling distfleeck a second time for it — so a pet that
 // starves changes the DRAW COUNT of the turn even though this function itself
 // spends nothing.
-function dog_hunger(mtmp, edog) {
+async function dog_hunger(mtmp, edog) {
     const mdat = game.mons[mtmp.mnum];
 
     if (game.moves > edog.hungrytime + DOG_WEAK) {
@@ -1163,8 +1362,15 @@ function dog_hunger(mtmp, edog) {
                 note_unported('dog_starve');
                 return true;
             }
-            /* the "confused from hunger" / beg() messages need pline plumbing */
-            note_unported('dog_hunger:messages');
+            if (cansee(mtmp.mx, mtmp.my)) {
+                await pline(`${Monnam(mtmp)} is confused from hunger.`);
+            } else if (couldsee(mtmp.mx, mtmp.my)) {
+                note_unported('dog_hunger:beg');
+            } else {
+                await You_feel(`worried about ${y_monnam(mtmp)}.`);
+            }
+            const { stop_occupation } = await import('./allmain.js');
+            await stop_occupation();
         } else if (game.moves > edog.hungrytime + DOG_STARVE
                    || DEADMONSTER(mtmp)) {
             note_unported('dog_starve');
@@ -1178,7 +1384,7 @@ export async function dog_move(mtmp, after) {
     const edog = mtmp.mtame ? (mtmp.edog || {}) : null;
     if (!edog) return 0;
 
-    if (dog_hunger(mtmp, edog))
+    if (await dog_hunger(mtmp, edog))
         return MMOVE_DIED;
 
     const omx = mtmp.mx, omy = mtmp.my;
@@ -1282,6 +1488,9 @@ export async function dog_move(mtmp, after) {
 
     for (let i = 0; i < cnt; i++) {
         const nx = mfp.poss[i].x, ny = mfp.poss[i].y;
+
+        if (mtmp.mleashed && distu(nx, ny) > 4)
+            continue;
 
         /* src/dogmove.c:1141 — the ALLOW_M attack and ALLOW_MDISP displace
            branches need mattackm/mdisplacem, the monster-vs-monster combat
@@ -1613,7 +1822,7 @@ export async function dog_invent(mtmp, edog, udist) {
                                xname -> find_artifact wants otmp still on the
                                floor; no artifact discovery on this tree, so
                                doname supplies the printed name. */
-                            const otmpname = doname(otmp);
+                            const otmpname = distant_name(otmp, doname);
                             if (game.flags?.verbose)
                                 await pline_xy(omx, omy,
                                     `${Monnam(mtmp)} picks up ${otmpname}.`);
@@ -1748,10 +1957,50 @@ function distu(x, y) {
     return dx * dx + dy * dy;
 }
 
-// src/dog.c:789 keepdogs() — move adjacent followers off the map and onto
-// the mydogs list before the hero leaves the level. The steed, meating/
-// trapped feedback, amulet-holder and keep_mon_accessible arms need absent
-// state and are recorded when reached.
+function same_level(a, b) {
+    return !!a && !!b && a.dnum === b.dnum && a.dlevel === b.dlevel;
+}
+
+// src/dog.c:768 keep_mon_accessible(). The Wizard is globally reachable.
+// A shopkeeper, priest, or guard only needs this treatment while away from
+// the level recorded in its role-specific state.
+function keep_mon_accessible(mtmp) {
+    if (mtmp.iswiz)
+        return true;
+    const eshk = mtmp.eshk || mtmp.mextra?.eshk;
+    const epri = mtmp.epri || mtmp.mextra?.epri;
+    const egd = mtmp.egd || mtmp.mextra?.egd;
+    return !!((mtmp.isshk && eshk?.shoplevel
+               && !same_level(game.u.uz, eshk.shoplevel))
+              || (mtmp.ispriest && epri?.shrlevel
+                  && !same_level(game.u.uz, epri.shrlevel))
+              || (mtmp.isgd && egd?.gdlevel
+                  && !same_level(game.u.uz, egd.gdlevel)));
+}
+
+// migrate_to_level() for keep_mon_accessible's exact-position case. Its
+// destination is the level being left, so no ledger conversion is needed.
+function migrate_accessible_monster(mtmp) {
+    const mx = mtmp.mx, my = mtmp.my;
+    remove_monster(mx, my);
+    const idx = game.level.monsters.indexOf(mtmp);
+    if (idx >= 0)
+        game.level.monsters.splice(idx, 1);
+
+    mtmp.mstate = (mtmp.mstate || 0) | MON_MIGRATING;
+    mtmp.mtrack ||= [];
+    mtmp.mtrack[2] = { x: game.u.uz.dnum, y: game.u.uz.dlevel };
+    mtmp.mtrack[1] = { x: mx, y: my };
+    mtmp.mtrack[0] = { x: MIGR_EXACT_XY, y: 0 };
+    mtmp.mux = game.u.uz.dnum;
+    mtmp.muy = game.u.uz.dlevel;
+    mtmp.mx = mtmp.my = 0;
+    mtmp.mlstmv = game.moves;
+    (game.migrating_mons ||= []).unshift(mtmp);
+}
+
+// src/dog.c:789 keepdogs() moves adjacent followers off the map and onto
+// the mydogs list before the hero leaves the level.
 export function keepdogs(pets_only) {
     const chain = [...(game.level?.monsters || [])];
     for (const mtmp of chain) {
@@ -1759,7 +2008,8 @@ export function keepdogs(pets_only) {
             continue;
         if (pets_only && !mtmp.mtame)
             continue;
-        if (((mdistu_dog(mtmp) <= 2 && levl_follower(mtmp)))
+        if (((mdistu_dog(mtmp) <= 2 && levl_follower(mtmp))
+             || (game.u.uhave?.amulet && mtmp.iswiz))
             && (!helpless(mtmp))
             && !(mtmp.mstrategy & 0x20000000 /* STRAT_WAITFORU */)) {
             if (mtmp.mtrapped)
@@ -1780,8 +2030,8 @@ export function keepdogs(pets_only) {
             (game.mydogs ||= []).unshift(mtmp);
             mtmp.mx = mtmp.my = 0; /* mx==0 implies migrating */
             mtmp.mlstmv = game.moves;
-        } else if (mtmp.iswiz || mtmp.isshk || mtmp.ispriest || mtmp.isgd) {
-            note_unported('keepdogs:keep_mon_accessible');
+        } else if (keep_mon_accessible(mtmp)) {
+            migrate_accessible_monster(mtmp);
         }
     }
 }
@@ -1809,7 +2059,7 @@ function levl_follower(mtmp) {
         && (!mtmp.mflee || game.u.uhave?.amulet);
 }
 
-const Before_you = 0, With_you = 1, After_you = 2;
+const Before_you = 0, With_you = 1, After_you = 2, Wiz_arrive = -1;
 const MON_STILL_ARRIVING = 0x100;
 
 // src/dog.c:304 losedogs(). Restore exact-position residents first, then
@@ -1856,13 +2106,13 @@ export async function losedogs() {
 
 // src/dog.c:420 mon_arrive(). This covers companions plus random,
 // approximate, exact, and hero-relative independent arrivals.
-async function mon_arrive(mtmp, when) {
+export async function mon_arrive(mtmp, when) {
     (game.level.monsters ||= []).unshift(mtmp);
     mtmp.mstate = (mtmp.mstate || 0) | MON_STILL_ARRIVING;
     mtmp.mstrategy = (mtmp.mstrategy | 0) | 0x40000000; /* STRAT_ARRIVE */
     mtmp.mstate &= ~(MON_MIGRATING | MON_LIMBO);
 
-    const xyloc = mtmp.mtrack?.[0]?.x ?? MIGR_RANDOM;
+    let xyloc = mtmp.mtrack?.[0]?.x ?? MIGR_RANDOM;
     const xyflags = mtmp.mtrack?.[0]?.y ?? 0;
     let xlocale = mtmp.mtrack?.[1]?.x ?? 0;
     let ylocale = mtmp.mtrack?.[1]?.y ?? 0;
@@ -1884,7 +2134,8 @@ async function mon_arrive(mtmp, when) {
         }
         mtmp.mstate &= ~MON_STILL_ARRIVING;
         return true;
-    }
+    } else if (when === Wiz_arrive)
+        xyloc = MIGR_WITH_HERO;
 
     let wander = 0;
     if ((mtmp.mlstmv ?? game.moves) < game.moves - 1) {
@@ -1963,6 +2214,52 @@ export async function abuse_dog(mtmp) {
             newsym(mtmp.mx, mtmp.my);
             if (mtmp.wormno)
                 note_unported('abuse_dog:redraw_worm');
+        }
+    }
+}
+
+// src/dog.c:1292 wary_dog() -- revived pets can lose tameness based on how
+// they died and how they were treated.  Revival calls this quietly.
+export function wary_dog(mtmp, was_dead) {
+    const edog = !mtmp.isminion ? mtmp.edog : null;
+
+    finish_meating(mtmp);
+    if (!mtmp.mtame)
+        return;
+
+    if (edog?.mhpmax_penalty) {
+        mtmp.mhpmax += edog.mhpmax_penalty;
+        mtmp.mhp += edog.mhpmax_penalty;
+        edog.mhpmax_penalty = 0;
+    }
+
+    if (edog && (edog.killed_by_u === 1 || edog.abuse > 2)) {
+        mtmp.mpeaceful = mtmp.mtame = 0;
+        if (edog.abuse >= 0 && edog.abuse < 10
+            && !rn2(edog.abuse + 1))
+            mtmp.mpeaceful = 1;
+    } else {
+        mtmp.mtame = rn2(mtmp.mtame + 1);
+        if (!mtmp.mtame)
+            mtmp.mpeaceful = rn2(2);
+    }
+
+    if (!mtmp.mtame) {
+        if (!was_dead)
+            note_unported('wary_dog:life_saved_feedback');
+        newsym(mtmp.mx, mtmp.my);
+    } else if (edog) {
+        edog.revivals = (edog.revivals | 0) + 1;
+        edog.killed_by_u = 0;
+        edog.abuse = 0;
+        edog.ogoal = { x: -1, y: -1 };
+        if (was_dead || edog.hungrytime < game.moves + 500)
+            edog.hungrytime = game.moves + 500;
+        if (was_dead) {
+            edog.droptime = 0;
+            edog.dropdist = 10000;
+            edog.whistletime = 0;
+            edog.apport = 5;
         }
     }
 }

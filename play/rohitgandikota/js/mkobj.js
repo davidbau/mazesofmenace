@@ -1,4 +1,4 @@
-import { is_human, is_neuter, vegetarian } from './mondata.js';
+import { is_human, is_neuter, vegetarian, is_elf } from './mondata.js';
 import { mk_artifact, nartifact_exist } from './artifact.js';
 // mkobj.js — object creation.
 // C ref: src/mkobj.c
@@ -26,12 +26,15 @@ import { mk_artifact, nartifact_exist } from './artifact.js';
 // js/o_init.js init_objects().
 
 import { game } from './gstate.js';
-import { start_timer, TIMER_OBJECT,
+import { start_timer, stop_timer, TIMER_OBJECT,
          ROT_CORPSE as TIMEOUT_ROT_CORPSE,
          REVIVE_MON as TIMEOUT_REVIVE_MON,
-         obj_stop_timers } from './timeout.js';
+         SHRINK_GLOB,
+         obj_stop_timers, obj_split_timers } from './timeout.js';
 import { attach_egg_hatch_timeout } from './timeout.js';
-import { Is_rogue_level, NODIR, OBJ_FLOOR, OBJ_INVENT, In_quest } from './const.js';
+import { Is_rogue_level, MAX_OIL_IN_FLASK, NODIR, OBJ_FLOOR, OBJ_INVENT,
+         OBJ_BURIED, ICE, DRAWBRIDGE_UP, DB_UNDER, DB_ICE,
+         In_quest, MON_DETACH, isok } from './const.js';
 import { rnd, rn1, rn2, rne, rnz } from './rng.js';
 import { OCLASSES, ONAMES, SKILLS, obj_descr } from './objects_data.js';
 import {
@@ -41,12 +44,16 @@ import { PMNAMES, MONSYMS, MFLAGS, GROWNUPS } from './monst_data.js';
 /* invent.js imports erosion_matters() from here, so this edge closes a cycle.
    Both sides export function DECLARATIONS, which hoist, so each module sees the
    other's bindings by the time anything is called. */
-import { merged, weight, update_inventory, obj_extract_self } from './invent.js';
+import { merged, mergable, weight, update_inventory,
+         obj_extract_self } from './invent.js';
 import { OBJ_CONTAINED, Is_pudding, Is_candle } from './obj.js';
 import { oname, noveltitle } from './do_name.js';
 import { ONAME_NO_FLAGS } from './const.js';
 import { depth } from './dungeon.js';
 import { block_point } from './vision.js';
+import { obj_sheds_light, obj_split_light_source } from './light.js';
+import { splitbill } from './shk.js';
+import { is_ice } from './dbridge.js';
 
 // include/objclass.h:152 — #define SPBOOK_no_NOVEL (0 - (int) SPBOOK_CLASS)
 // A NEGATED class, not an index past the real ones. It is the one caller-facing
@@ -186,10 +193,25 @@ export function splitobj(obj, num) {
     game.context.objsplit.parent_oid = obj.o_id;
     game.context.objsplit.child_oid = otmp.o_id;
 
+    /* C inserts the child immediately after the parent in both floor chains.
+     * The port represents those chains with one level object array. */
+    if (obj.where === OBJ_FLOOR) {
+        const objects = game.level?.objects;
+        const index = objects?.indexOf(obj) ?? -1;
+        if (index >= 0)
+            objects.splice(index + 1, 0, otmp);
+    } else if (obj.where === OBJ_INVENT) {
+        const index = (game.invent || []).indexOf(obj);
+        if (index >= 0)
+            game.invent.splice(index + 1, 0, otmp);
+    }
+
     if (obj.unpaid)
-        note_unported_obj('splitobj:splitbill');
+        splitbill(obj, otmp);
     if (obj.timed)
-        note_unported_obj('splitobj:obj_split_timers');
+        obj_split_timers(obj, otmp);
+    if (obj_sheds_light(obj))
+        obj_split_light_source(obj, otmp);
 
     return otmp;
 }
@@ -794,6 +816,10 @@ export function mksobj(otyp, init, artif) {
     case ONAMES.BOULDER:
         otmp.next_boulder = 0;
         break;
+    case ONAMES.POT_OIL:
+        otmp.age = MAX_OIL_IN_FLASK;
+        otmp.fromsink = 0;
+        break;
     case ONAMES.SPE_NOVEL: {
         /* src/mkobj.c:1246 — every novel gets a Discworld title at
            creation; the rn2 over the title table is in the stream */
@@ -822,7 +848,7 @@ function little_to_big(montype) {
     const p = GROWNUPS.find(([baby]) => baby === montype);
     return p ? p[1] : montype;
 }
-function big_to_little(montype) {
+export function big_to_little(montype) {
     const p = GROWNUPS.find(([, adult]) => adult === montype);
     return p ? p[0] : montype;
 }
@@ -932,12 +958,122 @@ function assign_candy_wrapper(obj) {
 }
 
 
-// src/timeout.c start_glob_timeout() — when the caller passes 0, the shrink
-// time is 25 + rn2(5) - 2.
-function start_glob_timeout(obj, when) {
+// src/mkobj.c start_glob_timeout() - schedule the next one-unit shrink.
+export function start_glob_timeout(obj, when) {
+    if (!obj.globby)
+        return;
+    if (obj.timed)
+        stop_timer(SHRINK_GLOB, obj);
     if (when < 1)
         when = 25 + rn2(5) - 2;
     obj.shrink_when = when;
+    start_timer(when, TIMER_OBJECT, SHRINK_GLOB, obj);
+}
+
+const NOT_ON_ICE = 0, SET_ON_ICE = 1, BURIED_UNDER_ICE = 2;
+
+// src/mkobj.c item_on_ice(). A contained glob inherits the location of its
+// outermost container, including a container buried under ice.
+function item_on_ice(item) {
+    let outer = item;
+    while (outer?.where === OBJ_CONTAINED && outer.ocontainer)
+        outer = outer.ocontainer;
+    if (!outer || (outer.where !== OBJ_FLOOR && outer.where !== OBJ_BURIED))
+        return NOT_ON_ICE;
+
+    const x = outer.ox, y = outer.oy;
+    if (!isok(x, y))
+        return NOT_ON_ICE;
+    const loc = game.level?.at(x, y);
+    const onIce = loc?.typ === ICE
+        || (loc?.typ === DRAWBRIDGE_UP
+            && ((loc.drawbridgemask ?? 0) & DB_UNDER) === DB_ICE);
+    if (!onIce)
+        return NOT_ON_ICE;
+    return outer.where === OBJ_BURIED ? BURIED_UNDER_ICE : SET_ON_ICE;
+}
+
+// src/mkobj.c shrink_glob() - reduce a glob by one weight unit and keep its
+// timer active until it dissolves.
+export async function shrink_glob(obj) {
+    if (!obj?.globby)
+        return;
+
+    const globLocation = item_on_ice(obj);
+    let eatingGlob = false;
+    if (game.context?.victual?.piece === obj && game.occupation) {
+        const { eatfood } = await import('./eat.js');
+        eatingGlob = game.occupation === eatfood;
+    }
+    if (eatingGlob || globLocation === BURIED_UNDER_ICE
+        || (globLocation === SET_ON_ICE && (game.moves ?? 0) % 3 === 1)) {
+        start_glob_timeout(obj, 0);
+        return;
+    }
+
+    const inInvent = obj.where === OBJ_INVENT;
+    const onFloor = obj.where === OBJ_FLOOR;
+    const container = obj.where === OBJ_CONTAINED ? obj.ocontainer : null;
+    let topContainer = null, oldTopWeight = 0;
+    if (container) {
+        topContainer = container;
+        while (topContainer.where === OBJ_CONTAINED && topContainer.ocontainer)
+            topContainer = topContainer.ocontainer;
+        oldTopWeight = topContainer.owt;
+    }
+    const ox = obj.ox, oy = obj.oy;
+    const { Yname2 } = await import('./objnam.js');
+    const globName = Yname2(obj);
+    const baseWeight = Math.max(game.objects[obj.otyp].oc_weight || 0, 1);
+    const messageWeight = Math.trunc((baseWeight + 1) / 2);
+    const shrinksVisibly = obj.owt > 0 && obj.owt % messageWeight === 0;
+
+    if (obj.owt > 0) {
+        obj.owt--;
+        if (obj.oeaten > 1)
+            obj.oeaten--;
+    }
+    const gone = !obj.owt;
+
+    if (container) {
+        for (let parent = container; parent; parent = parent.ocontainer)
+            parent.owt = weight(parent);
+    }
+    if (inInvent && (shrinksVisibly || gone)) {
+        const { pline } = await import('./display.js');
+        await pline(`${globName} ${gone ? 'dissolves completely' : 'shrinks'}.`);
+    } else if (topContainer?.where === OBJ_INVENT) {
+        const { near_capacity } = await import('./attrib.js');
+        if (gone || (shrinksVisibly && topContainer.owt !== oldTopWeight)
+            || near_capacity() !== game.oldcap) {
+            const { pline } = await import('./display.js');
+            await pline(`${Yname2(topContainer)} ${
+                topContainer.owt !== oldTopWeight ? 'becomes' : 'seems'
+            }${gone ? '' : ' slightly'} lighter.`);
+        }
+    }
+
+    if (gone) {
+        let visible = false;
+        if (onFloor) {
+            const { cansee } = await import('./vision.js');
+            visible = cansee(ox, oy);
+        }
+        obj_extract_self(obj);
+        if (onFloor) {
+            const { newsym, pline } = await import('./display.js');
+            newsym(ox, oy);
+            if (visible)
+                await pline(`${globName} fades away.`);
+        }
+    } else {
+        start_glob_timeout(obj, 0);
+    }
+    if (inInvent || topContainer?.where === OBJ_INVENT) {
+        update_inventory();
+        const { encumber_msg } = await import('./attrib.js');
+        await encumber_msg();
+    }
 }
 
 // src/objnam.c:5403 rnd_class() — pick within an otyp range by oc_prob.
@@ -1063,6 +1199,33 @@ export function undead_to_corpse(mndx) {
     return UNDEAD_TO_CORPSE.get(mndx) ?? mndx;
 }
 
+// src/mon.c:386 zombie_form() - the zombie-specific inverse of
+// undead_to_corpse(). Pure lookup, no draw.
+export function zombie_form(ptr) {
+    switch (ptr.mlet) {
+    case MONSYMS.S_ZOMBIE:
+        return NON_PM;
+    case MONSYMS.S_KOBOLD:
+        return PMNAMES.PM_KOBOLD_ZOMBIE;
+    case MONSYMS.S_ORC:
+        return PMNAMES.PM_ORC_ZOMBIE;
+    case MONSYMS.S_GIANT:
+        return ptr.pmidx === PMNAMES.PM_ETTIN
+            ? PMNAMES.PM_ETTIN_ZOMBIE : PMNAMES.PM_GIANT_ZOMBIE;
+    case MONSYMS.S_HUMAN:
+    case MONSYMS.S_KOP:
+        return is_elf(ptr) ? PMNAMES.PM_ELF_ZOMBIE
+                           : PMNAMES.PM_HUMAN_ZOMBIE;
+    case MONSYMS.S_HUMANOID:
+        return (ptr.mflags2 & MFLAGS.M2_DWARF)
+            ? PMNAMES.PM_DWARF_ZOMBIE : NON_PM;
+    case MONSYMS.S_GNOME:
+        return PMNAMES.PM_GNOME_ZOMBIE;
+    default:
+        return NON_PM;
+    }
+}
+
 // src/mkobj.c:828 dknowns[] — the classes whose appearance is not fully
 // obvious at a glance, so a new object starts with dknown 0.
 const dknowns = [
@@ -1157,6 +1320,32 @@ export function place_object(otmp, x, y) {
     (game.level.objects ||= []).unshift(otmp);
 }
 
+// src/mkobj.c:3661 obj_nexto_xy(), find a mergable object on this or an
+// adjacent square. The adjacent scan always spends two draws to choose its
+// horizontal and vertical order, even when there is no matching object.
+export function obj_nexto_xy(obj, x, y, recurs) {
+    const here = (game.level.objects || []).find((otmp) =>
+        otmp !== obj && otmp.where === OBJ_FLOOR
+        && otmp.ox === x && otmp.oy === y
+        && otmp.otyp === obj.otyp && mergable(otmp, obj));
+    if (here || !recurs)
+        return here || null;
+
+    const dx = rn2(2) ? -1 : 1;
+    const dy = rn2(2) ? -1 : 1;
+    const ex = x - dx, ey = y - dy;
+    for (let fx = ex; Math.abs(fx - ex) < 3; fx += dx) {
+        for (let fy = ey; Math.abs(fy - ey) < 3; fy += dy) {
+            if (isok(fx, fy) && (fx !== x || fy !== y)) {
+                const otmp = obj_nexto_xy(obj, fx, fy, false);
+                if (otmp)
+                    return otmp;
+            }
+        }
+    }
+    return null;
+}
+
 export function mkgold(amount, x, y) {
     let gold = g_at(x, y);
 
@@ -1193,6 +1382,35 @@ export function special_corpse(num) {
         || is_rider(game.mons[num]);
 }
 
+// src/mkobj.c:2157 save_mtraits() -- keep an individual's monster record on
+// its corpse or statue while dropping live-map and inventory pointers.
+function save_mtraits(obj, mtmp) {
+    const saved = structuredClone({
+        ...mtmp,
+        data: null,
+        minvent: null,
+        mw: null,
+    });
+    const baselevel = mtmp.data?.mlevel ?? 0;
+
+    saved.mnum = mtmp.mnum ?? mtmp.data?.pmidx ?? NON_PM;
+    saved.data = null;
+    saved.minvent = null;
+    saved.mw = null;
+    saved.wormno = 0;
+    if ((saved.mhpmax | 0) <= baselevel)
+        saved.mhpmax = baselevel + 1;
+    if ((saved.mhp | 0) > saved.mhpmax)
+        saved.mhp = saved.mhpmax;
+    if ((saved.mhp | 0) < 1)
+        saved.mhp = 0;
+    saved.mstate = (saved.mstate | 0) & ~MON_DETACH;
+
+    obj.omonst = saved;
+    (obj.oextra ||= {}).omonst = saved;
+    return obj;
+}
+
 // src/mkobj.c:1976 set_corpsenm()
 // src/mkobj.c:2148 mkcorpstat() — a corpse or statue, optionally carrying a
 // dead monster's traits. The level-generation callers pass a fixed spot and
@@ -1216,9 +1434,11 @@ export function mkcorpstat(objtype, mtmp, ptr, x, y, corpstatflags) {
 
     if (mtmp) {
         /* save_mtraits() keeps the individual's stats with the remains */
-        note_unported_obj('mkcorpstat:save_mtraits');
+        save_mtraits(otmp, mtmp);
         if (!ptr)
             ptr = mtmp.data;
+        if (mtmp.mcan && !is_rider(ptr))
+            otmp.norevive = 1;
     }
 
     /* override mkobjs()'s initialization of a random monster type */
@@ -1278,6 +1498,24 @@ export function uncurse(otmp) {
 }
 
 export function set_corpsenm(obj, id) {
+    const old_id = obj.corpsenm;
+    let when = 0;
+
+    /* C removes timers before changing species. Egg hatch timers retain
+       their remaining delay when they are attached again below. */
+    if (obj.timed) {
+        if (obj.otyp === ONAMES.EGG)
+            when = stop_timer(HATCH_EGG, obj);
+        else
+            obj_stop_timers(obj);
+    }
+
+    if (obj.otyp === ONAMES.CORPSE && obj.oeaten
+        && game.mons[old_id].cnutrit !== game.mons[id].cnutrit) {
+        obj.oeaten = Math.trunc(obj.oeaten * game.mons[id].cnutrit
+                               / game.mons[old_id].cnutrit);
+    }
+
     obj.corpsenm = id;
     switch (obj.otyp) {
     case ONAMES.CORPSE:
@@ -1291,7 +1529,7 @@ export function set_corpsenm(obj, id) {
         /* src/mkobj.c:1360 — the hatch-decision loop DRAWS one rnd(i) per
            candidate age, so it cannot be skipped */
         if (obj.corpsenm !== NON_PM && !dead_species(obj.corpsenm, true))
-            attach_egg_hatch_timeout(obj, 0);
+            attach_egg_hatch_timeout(obj, when);
         break;
     default:
         /* FIGURINE attaches its own timer; needs carried state */
@@ -1319,6 +1557,7 @@ export function start_corpse_timeout(body) {
     } else if (game.mons[body.corpsenm].mlet === MONSYMS.S_TROLL) {
         for (let a = 2; a <= TAINT_AGE; a++)
             if (!rn2(TROLL_REVIVE_CHANCE)) {
+                action = TIMEOUT_REVIVE_MON;
                 when = a;
                 break;
             }
@@ -1416,4 +1655,46 @@ export function peek_at_iced_corpse_age(otmp) {
                              / ROT_ICE_ADJUSTMENT);
     }
     return retval;
+}
+
+// src/mkobj.c:2397 obj_ice_effects(). Corpse rot and revival timers run at
+// half speed on ice, then return to ordinary speed when the ice melts.
+export function obj_ice_effects(x, y, doBuried = false) {
+    const objects = (game.level?.objects || []).filter(obj =>
+        obj.where === OBJ_FLOOR && obj.ox === x && obj.oy === y);
+    if (doBuried) {
+        objects.push(...(game.level?.buriedobjs || []).filter(obj =>
+            obj.where === OBJ_BURIED && obj.ox === x && obj.oy === y));
+    }
+
+    for (const obj of objects) {
+        if (!obj.timed || obj.otyp !== ONAMES.CORPSE)
+            continue;
+
+        const onIce = is_ice(x, y);
+        if (onIce === !!obj.on_ice)
+            continue;
+
+        let action = TIMEOUT_ROT_CORPSE;
+        let remaining = stop_timer(action, obj);
+        if (!remaining) {
+            action = TIMEOUT_REVIVE_MON;
+            remaining = stop_timer(action, obj);
+        }
+        if (!remaining)
+            continue;
+
+        const age = (game.moves ?? 0) - (obj.age ?? 0);
+        if (onIce) {
+            obj.on_ice = 1;
+            remaining *= ROT_ICE_ADJUSTMENT;
+            obj.age = (game.moves ?? 0) - age * ROT_ICE_ADJUSTMENT;
+        } else {
+            obj.on_ice = 0;
+            remaining = Math.trunc(remaining / ROT_ICE_ADJUSTMENT);
+            obj.age += Math.trunc(age * (ROT_ICE_ADJUSTMENT - 1)
+                                  / ROT_ICE_ADJUSTMENT);
+        }
+        start_timer(remaining, TIMER_OBJECT, action, obj);
+    }
 }

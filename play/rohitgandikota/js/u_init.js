@@ -341,6 +341,11 @@ export function knows_class(sym) {
 
 // src/u_init.c:1174 ini_inv()
 export function ini_inv(trop_table) {
+    /* src/u_init.c:1305. A pauper still takes the role-level bonus-item
+       checks, but each ini_inv() call returns before even drawing quantity. */
+    if (game.u.uroleplay?.pauper)
+        return;
+
     let ti = 0;
     let trop = trop_table[ti];
     let got_sp1 = false;
@@ -375,6 +380,15 @@ export function ini_inv(trop_table) {
         }
 
         ini_inv_obj_substitution(trop, obj);
+
+        /* src/u_init.c:1343. Object creation and racial substitution have
+           already happened, but a nudist discards this whole armor entry
+           before its post-creation adjustments or inventory insertion. */
+        if (game.u.uroleplay?.nudist && obj.oclass === ARMOR_CLASS) {
+            trop = trop_table[++ti];
+            if (trop) quan = trquan(trop);
+            continue;
+        }
 
         if (ini_inv_adjust_obj(trop, obj))
             quan = 1;

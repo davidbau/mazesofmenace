@@ -10,7 +10,7 @@ import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
          tty_select_menu, tty_destroy_nhwindow } from './tty/wintty.js';
 import { docrt, flush_screen, pline } from './display.js';
 import { discover_object } from './o_init.js';
-import { an, xname } from './objnam.js';
+import { an, just_an, xname } from './objnam.js';
 import { NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE,
          PICK_ONE, ECMD_OK, GETOBJ_PROMPT, GETOBJ_EXCLUDE,
          GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, ONAME_VIA_NAMING,
@@ -24,11 +24,13 @@ import { OCLASSES, ONAMES } from './objects_data.js';
 import { ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR,
          M_AP_TYPE, M_AP_MONSTER, PRONOUN_HALLU,
          SUPPRESS_SADDLE, SUPPRESS_IT, SUPPRESS_INVISIBLE,
-         SUPPRESS_HALLUCINATION, SUPPRESS_MAPPEARANCE, AUGMENT_IT,
+         SUPPRESS_HALLUCINATION, SUPPRESS_MAPPEARANCE, SUPPRESS_NAME,
+         AUGMENT_IT,
          MD_PAD_BOGONS,
          has_mgivenname, MGIVENNAME, W_SADDLE, A_NONE, A_LAWFUL,
-         A_NEUTRAL, A_CHAOTIC } from './const.js';
-import { humanoid, is_animal, mindless, pronoun_gender, type_is_pname } from './mondata.js';
+         A_NEUTRAL, A_CHAOTIC, In_endgame } from './const.js';
+import { humanoid, is_animal, is_mplayer, mindless, pronoun_gender,
+         type_is_pname } from './mondata.js';
 import { canspotmon } from './display.js';
 import { ONAME_SKIP_INVUPD } from './const.js';
 import { exist_artifact, artifact_exists } from './artifact.js';
@@ -36,6 +38,8 @@ import { carried } from './obj.js';
 import { getobj, update_inventory } from './invent.js';
 import { get_rnd_text } from './rumors.js';
 import { mungspaces } from './hacklib.js';
+import { rank_of } from './botl.js';
+import { roles } from './role_data.js';
 
 // src/do_name.c:759 ghostnames[] — 34 entries.
 const ghostnames = [
@@ -171,8 +175,7 @@ function priest_name(mtmp, article) {
         || (article === ARTICLE_A && highPriest))
         prefix = 'the ';
     else if (article === ARTICLE_A) {
-        const withArticle = just_an(what);
-        prefix = withArticle.slice(0, withArticle.length - what.length);
+        prefix = just_an(what);
     }
 
     const alignment = mtmp.ispriest
@@ -213,6 +216,8 @@ export function x_monnam(mtmp, article, adjective, suppress, called) {
 
     const do_hallu = Hallucination()
         && !((suppress || 0) & SUPPRESS_HALLUCINATION);
+    const do_invis = !!mtmp.minvis
+        && !((suppress || 0) & SUPPRESS_INVISIBLE);
 
     if (!do_hallu && (mtmp.ispriest || mtmp.isminion))
         return priest_name(mtmp, article);
@@ -231,17 +236,19 @@ export function x_monnam(mtmp, article, adjective, suppress, called) {
         const raw = mtmp.shknam || mtmp.eshk?.shknam
             || mtmp.mextra?.eshk?.shknam;
         if (raw) {
-            const shkname = /^[-+_|]/.test(raw) ? raw.slice(1) : raw;
-            if (mtmp.data === game.mons[PMNAMES.PM_SHOPKEEPER]
-                && !mtmp.minvis)
-                return shkname;
-            note_do_name_unported('x_monnam:unusual_shopkeeper');
+            const shkname = /^[-+_|=]/.test(raw) ? raw.slice(1) : raw;
+            const unusual = mtmp.data !== game.mons[PMNAMES.PM_SHOPKEEPER]
+                || do_invis;
+            const description = unusual
+                ? `${shkname} the ${do_invis ? 'invisible ' : ''}${pm_name}`
+                : shkname;
+            if (adjective && article === ARTICLE_THE)
+                return `the ${adjective} ${description}`;
+            return description;
         } else {
             note_do_name_unported('x_monnam:shkname');
         }
     }
-    if (mtmp.minvis)
-        note_do_name_unported('x_monnam:invisible');
     /* src/do_name.c:875, unseen monsters read as "it". AUGMENT_IT asks for
        "someone" for a thinking humanoid and "something" otherwise; while
        hallucinating, rn2(2) may invert that choice. */
@@ -255,10 +262,12 @@ export function x_monnam(mtmp, article, adjective, suppress, called) {
         return (!do_hallu ? someone : !rn2(2)) ? 'someone' : 'something';
     }
 
-    /* Put the adjectives in the buffer; the invisible state is recorded
-       above. src/do_name.c:943 — "saddled" is appended for a steed wearing
-       its saddle unless SUPPRESS_SADDLE, Blind or Hallucination. */
+    /* Put the adjectives in the buffer. src/do_name.c:943 says "saddled"
+       is appended for a steed wearing its saddle unless SUPPRESS_SADDLE,
+       Blind or Hallucination. */
     let buf = adjective ? adjective + ' ' : '';
+    if (do_invis)
+        buf += 'invisible ';
     const do_saddle = !((suppress || 0) & SUPPRESS_SADDLE);
     if (do_saddle && ((mtmp.misc_worn_check || 0) & W_SADDLE)
         && !game.u.ublind && !game.u.uprops?.HALLUC)
@@ -286,6 +295,11 @@ export function x_monnam(mtmp, article, adjective, suppress, called) {
             buf += name;
             name_at_start = true;
         }
+    } else if (is_mplayer(mdat) && !In_endgame(game.u.uz)) {
+        const role = roles.find(candidate => candidate.mnum === mtmp.mnum)
+                  || game.urole;
+        buf += rank_of(mtmp.m_lev, role, !!mtmp.female).toLowerCase();
+        name_at_start = false;
     } else {
         buf += pm_name;
         name_at_start = type_is_pname(mdat);
@@ -301,18 +315,10 @@ export function x_monnam(mtmp, article, adjective, suppress, called) {
     switch (article) {
     case ARTICLE_YOUR: return 'your ' + buf;
     case ARTICLE_THE:  return 'the ' + buf;
-    case ARTICLE_A:    return just_an(buf);
+    case ARTICLE_A:    return just_an(buf) + buf;
     case ARTICLE_NONE:
     default:           return buf;
     }
-}
-
-// src/objnam.c just_an() — "a " or "an ". C also handles a leading vowel that
-// sounds like a consonant and single letters; only the vowel rule is here.
-function just_an(str) {
-    if (!str) return str;
-    note_do_name_unported('just_an:special_cases');
-    return ('aeiou'.includes(str[0].toLowerCase()) ? 'an ' : 'a ') + str;
 }
 
 // src/do_name.c:1152 a_monnam() — ARTICLE_A.
@@ -324,6 +330,16 @@ export const Amonnam = (mtmp) => upstart(a_monnam(mtmp));
 export const a_monnam = (mtmp) =>
     x_monnam(mtmp, ARTICLE_A, null, has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0,
              false);
+
+// src/do_name.c:1102 noname_monnam(). Shopkeeper names are deliberately
+// retained because x_monnam's shopkeeper arm ignores SUPPRESS_NAME.
+export const noname_monnam = (mtmp, article) =>
+    x_monnam(mtmp, article, null, SUPPRESS_NAME, false);
+
+// src/do_name.c:1035 l_monnam(), a leash name without an article.
+export const l_monnam = (mtmp) =>
+    x_monnam(mtmp, ARTICLE_NONE, null,
+             has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, true);
 
 // src/do_name.c:1052 christen_monst() — give a monster its name.
 // C stores it in mextra and truncates to PL_PSIZ-1 (31); the ghost rename
@@ -373,6 +389,12 @@ export const Monnam  = (mtmp) => upstart(mon_nam(mtmp));
 export const YMonnam = (mtmp) => upstart(y_monnam(mtmp));
 export const noit_Monnam = (mtmp) => upstart(noit_mon_nam(mtmp));
 export const Some_Monnam = (mtmp) => upstart(some_mon_nam(mtmp));
+
+// src/do_name.c:1142 Adjmonnam() -- a capitalized definite monster name
+// with an adjective inserted before the ordinary description.
+export const Adjmonnam = (mtmp, adjective) =>
+    upstart(x_monnam(mtmp, ARTICLE_THE, adjective,
+                     has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, false));
 
 // src/do_name.c:1191 mon_nam_too() — name `mon`, except that when it IS
 // `other_mon` the reflexive pronoun is used instead.

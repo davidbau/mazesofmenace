@@ -8,7 +8,7 @@ import { ONAMES } from './objects_data.js';
 import { M_ATTK_MISS, M_ATTK_HIT, MFAST, MSLOW, STRAT_WAITFORU, HEAD,
          M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP,
          M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_POISON,
-         M_SEEN_ACID } from './const.js';
+         M_SEEN_ACID, BZ_OFS_AD } from './const.js';
 import { canspotmon, canseemon, map_invisible, mon_warning, newsym,
          pline } from './display.js';
 import { cansee, couldsee } from './vision.js';
@@ -19,6 +19,7 @@ import { perceives } from './mondata.js';
 import { body_part } from './polyself.js';
 import { helpless } from './monst.js';
 import { nomul } from './hack.js';
+import { sgn } from './hacklib.js';
 
 const MCF_INDIRECT = 0x01;
 const MCF_SIGHT = 0x02;
@@ -168,6 +169,34 @@ async function cursetxt(mtmp, undirected) {
         if (!Deaf())
             await You_hear('a mumbled curse.');
     }
+}
+
+// src/mcastu.c:989 buzzmu(), a monster's ranged elemental spell.
+export async function buzzmu(mtmp, mattk) {
+    const adtyp = mattk[1];
+    if (adtyp < ATTKS.AD_MAGM || adtyp > ATTKS.AD_SPC2)
+        return M_ATTK_MISS;
+
+    const seen = seen_resistance_for(adtyp);
+    if (mtmp.mcan || (seen && ((mtmp.seen_resistance ?? 0) & seen))) {
+        await cursetxt(mtmp, false);
+        return M_ATTK_MISS;
+    }
+
+    const { lined_up } = await import('./monmove.js');
+    if (!lined_up(mtmp) || !rn2(3))
+        return M_ATTK_MISS;
+
+    nomul(0);
+    const { dobuzz, flash_str } = await import('./zap.js');
+    const bztyp = BZ_OFS_AD(adtyp);
+    if (canseemon(mtmp))
+        await pline(`${Monnam(mtmp)} zaps you with a ${flash_str(bztyp)}!`);
+    game.buzzer = mtmp;
+    await dobuzz(-10 - bztyp, mattk[2], mtmp.mx, mtmp.my,
+                 sgn(game.tbx), sgn(game.tby));
+    game.buzzer = null;
+    return M_ATTK_HIT;
 }
 
 async function mcast_psi_bolt(mtmp, dmg) {

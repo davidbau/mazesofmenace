@@ -338,7 +338,7 @@ async function maybe_turn_mon(mtmp, range) {
             await killed(mtmp);
         }
     } else {
-        monflee(mtmp, 0, false, true);
+        await monflee(mtmp, 0, false, true);
     }
     return false;
 }
@@ -802,7 +802,7 @@ async function consume_offering(obj) {
     if (carried(obj))
         useup(obj);
     else
-        useupf(obj, 1);
+        await useupf(obj, 1);
     exercise(A_WIS, true);
 }
 
@@ -919,7 +919,7 @@ async function sacrifice_your_race(obj, highaltar, altaralign) {
     if (carried(obj))
         useup(obj);
     else
-        useupf(obj, 1);
+        await useupf(obj, 1);
 }
 
 // src/pray.c:1959 offer_corpse(), with ordinary, alignment-conflict, prayer
@@ -1095,7 +1095,7 @@ async function offer_real_amulet(obj, altaralign) {
     if (carried(obj))
         useup(obj);
     else
-        useupf(obj, 1);
+        await useupf(obj, 1);
 
     const altarGod = align_gname(altaralign);
     const heroGod = align_gname(game.u.ualign.type);

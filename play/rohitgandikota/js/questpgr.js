@@ -343,6 +343,31 @@ export async function qt_pager(msgid) {
     return true;
 }
 
+// src/questpgr.c:150 stinky_nemesis(), inspect the raw death text without
+// displaying it. Loading quest.lua still creates a Lua state and consumes its
+// two alignment-shuffle draws.
+export function stinky_nemesis() {
+    nhl_init();
+    const section = questtext[game.urole.filecode];
+    let entry = section?.killed_nemesis;
+    if (!entry) {
+        const fallback = questtext.msg_fallbacks?.killed_nemesis;
+        if (fallback)
+            entry = section?.[fallback];
+    }
+    const text = Array.isArray(entry) ? null : entry?.text;
+    if (!text)
+        return false;
+
+    const flat = text.replace(/\n/g, ' ').toLowerCase();
+    const starts = ['noxious', 'poisonous', 'toxic']
+        .map(word => flat.indexOf(word)).filter(pos => pos >= 0);
+    if (!starts.length)
+        return false;
+    const tail = flat.slice(Math.min(...starts));
+    return tail.includes(' gas') || tail.includes(' fumes');
+}
+
 // src/questpgr.c:637 qt_montype() — the quest branch's biased random
 // monster: usually one of the role's two signature enemies, otherwise a
 // random member of that enemy's class.

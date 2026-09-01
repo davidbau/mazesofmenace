@@ -10,15 +10,16 @@
 // exception is pronoun_gender() at the bottom, which rolls rn2(4) when the
 // hero is hallucinating.
 
-import { PMNAMES, MONSYMS, MFLAGS, ATTKS } from './monst_data.js';
+import { PMNAMES, MONSYMS, MFLAGS, ATTKS, GROWNUPS } from './monst_data.js';
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
-import { Hallucination, Unaware } from './youprop.js';
+import { Hallucination, Invis, Underwater, Unaware } from './youprop.js';
 import { defends, defends_when_carried } from './artifact.js';
 import { canspotmon } from './display.js';
-import { G_UNIQ, PRONOUN_NO_IT, PRONOUN_HALLU } from './const.js';
+import { G_UNIQ, M_SEEN_NOTHING, PRONOUN_NO_IT,
+         PRONOUN_HALLU } from './const.js';
 import { dist2 } from './hacklib.js';
-import { clear_path } from './vision.js';
+import { clear_path, couldsee } from './vision.js';
 import { ACURR } from './attrib.js';
 import { A_CHA } from './const.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
@@ -89,6 +90,31 @@ export const corpse_eater = (ptr) =>
 // include/mondata.h humanoid()
 export const humanoid = (ptr) => (ptr.mflags1 & MFLAGS.M1_HUMANOID) !== 0;
 
+// src/mondata.c:1331 big_little_match(). Two forms match when either can
+// reach the other by following the complete baby-to-adult progression table.
+export function big_little_match(montyp1, montyp2) {
+    if (montyp1 === montyp2)
+        return true;
+    if (game.mons[montyp1]?.mlet !== game.mons[montyp2]?.mlet)
+        return false;
+
+    const growsTo = (mnum) => {
+        const pair = GROWNUPS.find(([little]) => little === mnum);
+        return pair ? pair[1] : mnum;
+    };
+    for (let little = montyp1, big = growsTo(little);
+         big !== little; little = big, big = growsTo(little)) {
+        if (big === montyp2)
+            return true;
+    }
+    for (let little = montyp2, big = growsTo(little);
+         big !== little; little = big, big = growsTo(little)) {
+        if (big === montyp1)
+            return true;
+    }
+    return false;
+}
+
 // include/mondata.h:57 is_whirly()
 
 // src/mondata.c:632 sliparm() — armour slides off these entirely.
@@ -156,6 +182,47 @@ export const is_domestic = (ptr) => (ptr.mflags2 & MFLAGS.M2_DOMESTIC) !== 0;
 
 // include/mondata.h:81 perceives() — can this species see invisible?
 export const perceives = (ptr) => (ptr.mflags1 & MFLAGS.M1_SEE_INVIS) !== 0;
+
+// include/vision.h m_canseeu() and src/mondata.c monstseesu(). Monsters in
+// the hero's line of sight remember which defenses they have seen succeed.
+// The C macro intentionally does not test mcansee here.
+function monster_can_see_hero(mtmp) {
+    const ptr = mtmp.data || game.mons?.[mtmp.mnum];
+    return (!Invis() || (ptr && perceives(ptr)))
+        && !Underwater()
+        && couldsee(mtmp.mx, mtmp.my);
+}
+
+export function monstseesu(seenres) {
+    if (seenres === M_SEEN_NOTHING || game.u.uswallow)
+        return;
+    for (const mtmp of game.level?.monsters || []) {
+        if ((mtmp.mhp | 0) > 0 && monster_can_see_hero(mtmp))
+            mtmp.seen_resistance = (mtmp.seen_resistance ?? 0) | seenres;
+    }
+}
+
+export function monstunseesu(seenres) {
+    if (seenres === M_SEEN_NOTHING || game.u.uswallow)
+        return;
+    for (const mtmp of game.level?.monsters || []) {
+        if ((mtmp.mhp | 0) > 0 && monster_can_see_hero(mtmp))
+            mtmp.seen_resistance = (mtmp.seen_resistance ?? 0) & ~seenres;
+    }
+}
+
+export const can_teleport = (ptr) => (ptr.mflags1 & MFLAGS.M1_TPORT) !== 0;
+export const control_teleport = (ptr) =>
+    (ptr.mflags1 & MFLAGS.M1_TPORT_CNTRL) !== 0;
+export const telepathic = (ptr) =>
+    ptr.pmidx === PMNAMES.PM_FLOATING_EYE
+    || ptr.pmidx === PMNAMES.PM_MIND_FLAYER
+    || ptr.pmidx === PMNAMES.PM_MASTER_MIND_FLAYER;
+export const infravision = (ptr) =>
+    (ptr.mflags3 & MFLAGS.M3_INFRAVISION) !== 0;
+export const pm_invisible = (ptr) =>
+    ptr.pmidx === PMNAMES.PM_STALKER
+    || ptr.pmidx === PMNAMES.PM_BLACK_LIGHT;
 
 // include/mondata.h is_animal()
 export const is_animal = (ptr) => (ptr.mflags1 & MFLAGS.M1_ANIMAL) !== 0;
@@ -441,6 +508,18 @@ export const resists_poison = (mon) => Resists_Elem(mon, POISON_RES);
 export const resists_acid   = (mon) => Resists_Elem(mon, ACID_RES);
 export const resists_ston   = (mon) => Resists_Elem(mon, STONE_RES);
 
+// src/mondata.c:201 resists_drli(), drain-life resistance shared by hero and
+// monsters. Unlike elemental resistance, this is based on creature families
+// plus artifact or dragon-armor defense rather than a resistance bit.
+export function resists_drli(mon) {
+    const ptr = mon.data || game.mons[mon.mnum];
+    return is_undead(ptr) || is_demon(ptr)
+        || (ptr.mflags2 & MFLAGS.M2_WERE) !== 0
+        || (mon === game.youmonst && (game.u.ulycn ?? -1) >= 0)
+        || ptr.pmidx === PMNAMES.PM_DEATH || is_vampshifter(mon)
+        || defended(mon, ATTKS.AD_DRLI);
+}
+
 function note_unported_mondata(what) {
     (game.unported ||= new Set()).add(what);
 }
@@ -492,14 +571,15 @@ export const is_silent  = (d) => d.msound === MFLAGS.MS_SILENT;
 
 // src/mondata.c:567 can_blow() — can this monster blow a horn?
 //
-// The hero's Strangled arm is not modelled; it only applies to youmonst and a
-// monster is never that here.
 export function can_blow(mtmp) {
     const d = game.mons[mtmp.mnum];
 
     if ((is_silent(d) || d.msound === MFLAGS.MS_BUZZ)
         && (breathless(d) || verysmall(d) || !has_head(d)
             || d.mlet === MONSYMS.S_EEL))
+        return false;
+    if (mtmp === game.youmonst
+        && (game.u.intrinsic?.HStrangled || game.u.uprops?.STRANGLED))
         return false;
     return true;
 }
@@ -669,15 +749,13 @@ export const vegetarian = (ptr) =>
 // "gray dragon scale mail" as PM_GRAY_DRAGON + "scale mail" and
 // "yeti corpse" as PM_YETI + "corpse".
 //
-// The rank-title fallback (title_to_mon) is not ported; it is recorded when
-// nothing else matched so the gap stays visible.
 const NAME_TO_MON_ALTS = [
     ['grey dragon', 'PM_GRAY_DRAGON'], ['baby grey dragon', 'PM_BABY_GRAY_DRAGON'],
     ['grey unicorn', 'PM_GRAY_UNICORN'], ['grey ooze', 'PM_GRAY_OOZE'],
     ['gray-elf', 'PM_GREY_ELF'], ['mindflayer', 'PM_MIND_FLAYER'],
     ['master mindflayer', 'PM_MASTER_MIND_FLAYER'],
-    ['aligned priest', 'PM_ALIGNED_CLERIC'], ['aligned priestess', 'PM_ALIGNED_CLERIC'],
-    ['high priest', 'PM_HIGH_CLERIC'], ['high priestess', 'PM_HIGH_CLERIC'],
+    ['aligned priest', 'PM_ALIGNED_CLERIC', 0], ['aligned priestess', 'PM_ALIGNED_CLERIC', 1],
+    ['high priest', 'PM_HIGH_CLERIC', 0], ['high priestess', 'PM_HIGH_CLERIC', 1],
     ['master of thief', 'PM_MASTER_OF_THIEVES'], ['master thief', 'PM_MASTER_OF_THIEVES'],
     ['master of assassin', 'PM_MASTER_ASSASSIN'],
     ['master-lich', 'PM_MASTER_LICH'], ['masterlich', 'PM_MASTER_LICH'],
@@ -693,13 +771,13 @@ const NAME_TO_MON_ALTS = [
     ['uruk hai', 'PM_URUK_HAI'], ['orc captain', 'PM_ORC_CAPTAIN'],
     ['woodland elf', 'PM_WOODLAND_ELF'], ['green elf', 'PM_GREEN_ELF'],
     ['grey elf', 'PM_GREY_ELF'], ['gray elf', 'PM_GREY_ELF'],
-    ['elf lady', 'PM_ELF_NOBLE'], ['elf lord', 'PM_ELF_NOBLE'],
+    ['elf lady', 'PM_ELF_NOBLE', 1], ['elf lord', 'PM_ELF_NOBLE', 0],
     ['elf noble', 'PM_ELF_NOBLE'], ['olog hai', 'PM_OLOG_HAI'],
     ['arch lich', 'PM_ARCH_LICH'], ['archlich', 'PM_ARCH_LICH'],
-    ['incubi', 'PM_AMOROUS_DEMON'], ['succubi', 'PM_AMOROUS_DEMON'],
+    ['incubi', 'PM_AMOROUS_DEMON', 0], ['succubi', 'PM_AMOROUS_DEMON', 1],
     ['violet fungi', 'PM_VIOLET_FUNGUS'], ['homunculi', 'PM_HOMUNCULUS'],
     ['baluchitheria', 'PM_BALUCHITHERIUM'], ['lurkers above', 'PM_LURKER_ABOVE'],
-    ['cavemen', 'PM_CAVE_DWELLER'], ['cavewomen', 'PM_CAVE_DWELLER'],
+    ['cavemen', 'PM_CAVE_DWELLER', 0], ['cavewomen', 'PM_CAVE_DWELLER', 1],
     ['watchmen', 'PM_WATCHMAN'], ['djinn', 'PM_DJINNI'],
     ['mumakil', 'PM_MUMAK'], ['erinyes', 'PM_ERINYS'],
 ];
@@ -732,13 +810,13 @@ export function name_to_monplus(in_str, rest_box, gender_name_var) {
     const low = str.toLowerCase();
     const slen = str.length;
 
-    for (const [nm, pm] of NAME_TO_MON_ALTS) {
+    for (const [nm, pm, genderHint = 2] of NAME_TO_MON_ALTS) {
         if (low.startsWith(nm)
             && (!str[nm.length] || str[nm.length] === ' '
                 || str[nm.length] === "'")) {
             if (rest_box) rest_box.at = skipped + nm.length;
-            /* C's names[] rows carry a genderhint the generated ALTS table
-               does not; gendered alt spellings keep the caller's value */
+            if (gender_name_var)
+                gender_name_var.v = genderHint;
             const v = PMNAMES[pm];
             if (v !== undefined) return v;
         }
@@ -769,8 +847,8 @@ export function name_to_monplus(in_str, rest_box, gender_name_var) {
     }
 
     if (mntmp === NON_PM) {
-        /* the title_to_mon() rank-title fallback ("captain", "ninja") is
-           not ported; ordinary non-monster strings correctly land here */
+        /* title_to_mon() is a separate caller fallback; ordinary
+           non-monster strings correctly land here */
         return NON_PM;
     }
     if (rest_box) rest_box.at = skipped + len;
@@ -823,6 +901,11 @@ export const hates_light = (ptr) => ptr.pmidx === PMNAMES.PM_GREMLIN;
 
 // include/mondata.h:46 haseyes()
 export const haseyes = (ptr) => (ptr.mflags1 & MFLAGS.M1_NOEYES) === 0;
+// include/mondata.h:48 eyecount(). Only Cyclops and floating-eye anatomy is
+// singular; every other form with eyes uses a plural body-part message.
+export const eyecount = (ptr) => !haseyes(ptr) ? 0
+    : (ptr.pmidx === PMNAMES.PM_CYCLOPS
+       || ptr.pmidx === PMNAMES.PM_FLOATING_EYE) ? 1 : 2;
 
 // src/mondata.c:1507 olfaction(): forms known not to have a sense of smell.
 export const olfaction = (ptr) =>
@@ -848,6 +931,7 @@ export const emits_light = (ptr) =>
 
 // include/mondata.h:97,99,136,137 — race and rank flags.
 export const is_elf    = (ptr) => (ptr.mflags2 & MFLAGS.M2_ELF) !== 0;
+export const is_dwarf  = (ptr) => (ptr.mflags2 & MFLAGS.M2_DWARF) !== 0;
 export const is_gnome  = (ptr) => (ptr.mflags2 & MFLAGS.M2_GNOME) !== 0;
 export const is_lord   = (ptr) => (ptr.mflags2 & MFLAGS.M2_LORD) !== 0;
 export const is_prince = (ptr) => (ptr.mflags2 & MFLAGS.M2_PRINCE) !== 0;

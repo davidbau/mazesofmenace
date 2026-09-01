@@ -720,9 +720,10 @@ function unset_all_on_page(window, page) {
 // win/tty/wintty.c:1329 process_menu_window() — display the menu and run the
 // key loop, then win/tty/wintty.c tty_select_menu() collects what is selected.
 //
-// Counts are not reached by any ported caller yet. Returns the identifiers of
-// the picked entries, so C's `select_menu(...) > 0` test becomes
-// `.length > 0`.
+// Returns the identifiers of the picked entries, so C's
+// `select_menu(...) > 0` test becomes `.length > 0`. The attached `counts`
+// map preserves C's per-selection counts, and `cancelled` distinguishes ESC
+// from explicitly deselecting every preselected item.
 export async function tty_select_menu(window, how) {
     const cw = windows[window];
     if (!cw) return [];
@@ -755,6 +756,7 @@ export async function tty_select_menu(window, how) {
                 && (how === PICK_ANY || gcnt.get(curr.gselector) === 1))
                 gacc += curr.gselector;
 
+    let counting = false, count = 0;
     let finished = false;
     while (!finished) {
         const c = await nhgetch();
@@ -763,26 +765,43 @@ export async function tty_select_menu(window, how) {
         const explicitIndex = explicitItems.findIndex(
             item => item.identifier && item.selector === morc);
 
+        if (/^[0-9]$/.test(morc) && explicitIndex < 0
+            && !(!counting && gacc.includes(morc))) {
+            count = Math.min(Number.MAX_SAFE_INTEGER,
+                             count * 10 + Number(morc));
+            if (count)
+                counting = true;
+            continue;
+        }
+
         /* wintty.c checks the page's response characters before mapping menu
            commands, so ':' selects a ':' entry instead of opening search. */
         if (explicitIndex >= 0) {
             const curr = explicitItems[explicitIndex];
             if (curr.selected) {
-                curr.selected = false;
-                curr.count = -1;
-            } else {
+                if (counting && count > 0)
+                    curr.count = count;
+                else {
+                    curr.selected = false;
+                    curr.count = -1;
+                }
+            } else if (!counting || count > 0) {
                 curr.selected = true;
+                if (counting)
+                    curr.count = count;
             }
             set_item_state(window, explicitIndex, curr);
             if (how === PICK_ONE)
                 finished = true;
         } else if (morc === '\x1b') {           /* cancel */
-            for (let curr = cw.mlist; curr; curr = curr.next) {
-                curr.selected = false;
-                curr.count = -1;
+            if (!counting) {
+                for (let curr = cw.mlist; curr; curr = curr.next) {
+                    curr.selected = false;
+                    curr.count = -1;
+                }
+                cw.cancelled = true;
+                finished = true;
             }
-            cw.cancelled = true;
-            finished = true;
         } else if (morc === '\n' || morc === '\r' || c === 0) {
             finished = true;                    /* commit */
         } else if (morc === ' ' || morc === MENU_NEXT_PAGE) {
@@ -871,7 +890,8 @@ export async function tty_select_menu(window, how) {
         } else if (gacc.includes(morc)) {
             /* group accelerator; for the PICK_ONE case, we know that it
                matches exactly one item in order to be in gacc[] */
-            invert_all(window, cw.curr_page, morc, -1);
+            invert_all(window, cw.curr_page, morc,
+                       counting ? count : -1);
             if (how === PICK_ONE)
                 finished = true;
         } else {
@@ -893,6 +913,8 @@ export async function tty_select_menu(window, how) {
             }
             /* unacceptable input: C rings the bell and keeps reading */
         }
+        counting = false;
+        count = 0;
     }
 
     /* win/tty/wintty.c:2794 — dismiss (not destroy) before returning, so the
@@ -905,12 +927,18 @@ export async function tty_select_menu(window, how) {
     tty_dismiss_nhwindow(window);
     game.bot_disabled = oldBotDisabled;
 
-    if (cw.cancelled)
-        return [];
     const picks = [];
-    for (let curr = cw.mlist; curr; curr = curr.next)
-        if (curr.identifier && curr.selected)
+    Object.defineProperty(picks, 'cancelled', { value: !!cw.cancelled });
+    if (cw.cancelled)
+        return picks;
+    const counts = new Map();
+    for (let curr = cw.mlist; curr; curr = curr.next) {
+        if (curr.identifier && curr.selected) {
             picks.push(curr.identifier);
+            counts.set(curr.identifier, curr.count);
+        }
+    }
+    Object.defineProperty(picks, 'counts', { value: counts });
     return picks;
 }
 

@@ -20,10 +20,10 @@ import { W_SADDLE, ECMD_OK, ECMD_TIME, ECMD_CANCEL, isok, SLT_ENCUMBER,
          DISMOUNT_GENERIC, DISMOUNT_FELL, DISMOUNT_THROWN, DISMOUNT_KNOCKED,
          DISMOUNT_POLY, DISMOUNT_ENGULFED, DISMOUNT_BONES, DISMOUNT_BYCHOICE,
          has_mgivenname } from './const.js';
-import { OBJ_MINVENT } from './obj.js';
+import { OBJ_MINVENT, is_metallic } from './obj.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { pline } from './display.js';
-import { You, You_cant } from './pline.js';
+import { newsym, pline } from './display.js';
+import { You, You_cant, Your } from './pline.js';
 import { Monnam, mon_nam, pmname } from './do_name.js';
 import { m_at, is_pool, is_lava, t_at } from './mon.js';
 import { remove_monster, place_monster } from './makemon.js';
@@ -41,6 +41,8 @@ import { throws_rocks } from './mondata.js';
 import { grounded } from './trap.js';
 import { is_pole } from './mhitu.js';
 import { PMNAMES } from './monst_data.js';
+import { Glib } from './youprop.js';
+import { greatest_erosion } from './do_wear.js';
 
 function note_unported_steed(what) {
     (game.unported ||= new Set()).add('steed:' + what);
@@ -102,9 +104,15 @@ export async function doride() {
         await dismount_steed(DISMOUNT_BYCHOICE);
     } else if (await getdir(null)
                && isok(game.u.ux + game.u.dx, game.u.uy + game.u.dy)) {
+        let force = false;
+        if (game.wizard) {
+            const { tty_yn_function } = await import('./tty/topl.js');
+            force = (await tty_yn_function(
+                'Force the mount to succeed?', 'yn', 'n')) === 'y';
+        }
         return (await mount_steed(
                     m_at(game.u.ux + game.u.dx, game.u.uy + game.u.dy),
-                    false))
+                    force))
             ? ECMD_TIME : ECMD_OK;
     } else {
         return ECMD_CANCEL;
@@ -131,6 +139,33 @@ async function maybewakesteed(steed) {
         await pline(`${Monnam(steed)} wakes up.`);
     /* regardless of waking, terminate any meal in progress */
     finish_meating(steed);
+}
+
+// src/steed.c:420 kick_steed() lowers an awake steed's tameness, possibly
+// throw the rider, or start a gallop. The helpless response has extra
+// pronoun-sensitive text and remains separately visible in the gap audit.
+export async function kick_steed() {
+    const steed = game.u.usteed;
+    if (!steed)
+        return;
+    if (helpless(steed)) {
+        note_unported_steed('kick:helpless');
+        return;
+    }
+
+    if (steed.mtame)
+        steed.mtame--;
+    if (!steed.mtame && steed.mleashed)
+        note_unported_steed('kick:m_unleash');
+    if (!steed.mtame
+        || game.u.ulevel + steed.mtame < rnd(20)) {
+        newsym(steed.mx, steed.my);
+        await dismount_steed(DISMOUNT_THROWN);
+        return;
+    }
+
+    await pline(`${Monnam(steed)} gallops!`);
+    game.u.ugallop = (game.u.ugallop | 0) + rn1(20, 30);
 }
 
 // src/steed.c:197 mount_steed() — start riding the given monster.
@@ -191,14 +226,19 @@ export async function mount_steed(mtmp, force) {
         note_unported_steed('mount:levitation');
         return false;
     }
-    if (!force && game.u.uarm)
-        note_unported_steed('mount:metallic_arm_erosion');
+    if (!force && game.u.uarm && is_metallic(game.u.uarm)
+        && greatest_erosion(game.u.uarm)) {
+        const condition = game.u.uarm.oeroded ? 'rusty' : 'corroded';
+        await Your(`${condition} armor is too stiff to be able to mount ${
+            mon_nam(mtmp)}.`);
+        return false;
+    }
     const Confusion = game.u.intrinsic?.HConfusion
                       || game.u.uprops?.CONFUSION;
     const Wounded_legs = (game.u.intrinsic?.HWounded_legs || 0) > 0
                          || (game.u.EWounded_legs || 0);
     if (!force
-        && (Confusion || game.u.uprops?.FUMBLING || game.u.uprops?.GLIB
+        && (Confusion || game.u.uprops?.FUMBLING || Glib()
             || Wounded_legs || otmp.cursed || otmp.greased
             || (game.u.ulevel + mtmp.mtame
                 < rnd(20)))) { /* rnd(MAXULEV / 2 + 5) */
@@ -220,6 +260,10 @@ export async function mount_steed(mtmp, force) {
         if (game.u.uprops?.FLYING)
             await You(`and ${mon_nam(mtmp)} take flight together.`);
     }
+    /* src/steed.c:368: a polearm which was unsuitable on foot becomes a
+       proper wielded weapon as soon as the hero is mounted. */
+    if (game.u.uwep && is_pole(game.u.uwep))
+        game.unweapon = false;
     game.u.usteed = mtmp;
     if (game.u.uprops?.STEALTH)
         note_unported_steed('mount:steed_vs_stealth');

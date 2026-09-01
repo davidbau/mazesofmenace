@@ -7,33 +7,36 @@
 // array that comparison has no input at all.
 
 import { game } from './gstate.js';
-import { OBJ_NAME, doname, xname, the, makesingular } from './objnam.js';
+import { OBJ_NAME, doname, xname, the, makesingular, Tobjnam,
+         makeplural, distant_name } from './objnam.js';
 /* include/defsym.h OBJCLASS rows, the `name` column — C's def_oc_syms[].name
    (js/drawing_data.js keeps only the symbol chars). Index = oclass. Used by
    weapon_descr() below, same as C's object_detect(). */
 const def_oc_syms_name = ["", "illegal objects", "weapons", "armor", "rings",
     "amulets", "tools", "food", "potions", "scrolls", "spellbooks", "wands",
     "coins", "rocks", "large stones", "iron balls", "chains", "venoms"];
-import { STR18, P_SKILL_LIMIT, P_LAST_WEAPON, P_UNSKILLED, P_BASIC, P_EXPERT, P_ISRESTRICTED, P_SLING, P_FLAIL, P_PICK_AXE } from './const.js';
+import { STR18, P_SKILL_LIMIT, P_LAST_WEAPON, P_UNSKILLED, P_BASIC, P_EXPERT, P_ISRESTRICTED, P_SLING, P_FLAIL, P_PICK_AXE, Upolyd } from './const.js';
 import { MONSYMS } from './monst_data.js';
 import { mon_hates_blessings, thick_skinned, passes_walls, is_swimmer, strongmonst, attacktype, is_wooden, hates_light, throws_rocks, mindless, is_animal } from './mondata.js';
-import { is_axe } from './obj.js';
+import { is_axe, bimanual, is_plural } from './obj.js';
 import { greatest_erosion } from './do_wear.js';
 import { ATTKS } from './monst_data.js';
 import { is_spear } from './u_init.js';
 import { is_pool, is_pick, m_carrying, can_touch_safely, resists_ston } from './mon.js';
-import { is_weptool } from './mkobj.js';
+import { is_weptool, place_object } from './mkobj.js';
 import { MON_WEP } from './monst.js';
 import { mon_hates_silver, touch_petrifies } from './dog.js';
-import { hands_obj } from './invent.js';
-import { couldsee } from './vision.js';
-import { likes_gems } from './makemon.js';
-import { dist2 } from './hacklib.js';
+import { hands_obj, obj_extract_self, stackobj } from './invent.js';
+import { cansee, couldsee } from './vision.js';
+import { adj_lev, likes_gems } from './makemon.js';
+import { dist2, s_suffix } from './hacklib.js';
 import { ART_SNICKERSNEE } from './artilist_data.js';
 import { which_armor } from './worn.js';
-import { canseemon, pline } from './display.js';
-import { Monnam } from './do_name.js';
-import { W_ARMS, W_ARMG, W_WEP, NO_WEAPON_WANTED, NEED_WEAPON,
+import { canseemon, newsym, pline } from './display.js';
+import { Monnam, mon_nam } from './do_name.js';
+import { W_ARM, W_ARMC, W_ARMS, W_ARMG, W_ARMU, W_RINGL, W_RINGR, W_WEP,
+         HAND,
+         NO_WEAPON_WANTED, NEED_WEAPON,
          NEED_RANGED_WEAPON, NEED_HTH_WEAPON, NEED_PICK_AXE, NEED_AXE,
          NEED_PICK_OR_AXE } from './const.js';
 import { ACURR } from './attrib.js';
@@ -371,7 +374,7 @@ export function select_rwep(mtmp) {
 // src/weapon.c:950 abon() — the hero's to-hit bonus from Str and Dex.
 //
 // No draws; pure arithmetic, so its correctness is checked by value rather
-// than by the scoreboard. The Upolyd arm needs adj_lev and is recorded.
+// than by the scoreboard.
 //
 // Note the two comments C keeps here, both of which change the numbers: the
 // Str test is `< STR18(50)` rather than `<=`, so exactly 18/50 gives a bonus
@@ -381,10 +384,8 @@ export function abon() {
     const str = ACURR(A_STR), dex = ACURR(A_DEX);
     let sbon;
 
-    if (game.u.umonnum !== undefined && game.u.umonnum !== game.u.umonster) {
-        note_unported_weapon('abon:Upolyd');
-        return 0;
-    }
+    if (Upolyd(game.u))
+        return adj_lev(game.mons[game.u.umonnum]) - 3;
 
     if (str < 6)                 sbon = -2;
     else if (str < 8)            sbon = -1;
@@ -803,6 +804,62 @@ export function dmgval(otmp, mon) {
     return tmp;
 }
 
+// src/weapon.c:361 special_dmgval(), blessed and silver damage from worn
+// equipment used in a non-weapon hit. The caller supplies a mutable output
+// object because C returns the damage and writes the silver slot mask through
+// a pointer.
+export function special_dmgval(magr, mdef, armask, silverhitOut = null) {
+    const leftRing = (armask & W_RINGL) !== 0;
+    const rightRing = (armask & W_RINGR) !== 0;
+    let obj = null, silverhit = 0, bonus = 0;
+
+    if (armask & (W_ARMC | W_ARM | W_ARMU)) {
+        if ((armask & W_ARMC) && (obj = which_armor(magr, W_ARMC)))
+            armask = W_ARMC;
+        else if ((armask & W_ARM) && (obj = which_armor(magr, W_ARM)))
+            armask = W_ARM;
+        else if ((armask & W_ARMU) && (obj = which_armor(magr, W_ARMU)))
+            armask = W_ARMU;
+        else
+            armask = 0;
+    } else if (armask & (W_ARMG | W_RINGL | W_RINGR)) {
+        obj = which_armor(magr, W_ARMG);
+        armask = obj ? W_ARMG : 0;
+    } else {
+        obj = which_armor(magr, armask);
+    }
+
+    if (obj) {
+        if (obj.blessed && mon_hates_blessings(mdef))
+            bonus += rnd(4);
+        if (game.objects[obj.otyp].oc_material === MATERIALS.SILVER
+            && mon_hates_silver(mdef)) {
+            bonus += rnd(20);
+            silverhit |= armask;
+        }
+    } else if ((leftRing || rightRing) && magr === game.youmonst) {
+        const left = game.u.uleft, right = game.u.uright;
+
+        if (leftRing && left
+            && game.objects[left.otyp].oc_material === MATERIALS.SILVER
+            && mon_hates_silver(mdef)) {
+            bonus += rnd(20);
+            silverhit |= W_RINGL;
+        }
+        if (rightRing && right
+            && game.objects[right.otyp].oc_material === MATERIALS.SILVER
+            && mon_hates_silver(mdef)) {
+            if (!(silverhit & W_RINGL))
+                bonus += rnd(20);
+            silverhit |= W_RINGR;
+        }
+    }
+
+    if (silverhitOut)
+        silverhitOut.value = silverhit;
+    return bonus;
+}
+
 // include/weight.h:18 WT_IRON_BALL_INCR — verified against the header, not
 // recalled: the value was written from memory first and then checked.
 const WT_IRON_BALL_INCR = 160;
@@ -901,7 +958,7 @@ export function select_hwep(mtmp) {
 // re-arms weapon_check = NEED_WEAPON so the next wield check re-evaluates;
 // the stolen/destroyed and no-longer-AT_WEAP arms need states that are
 // recorded when reached.
-export function possibly_unwield(mon, polyspot) {
+export async function possibly_unwield(mon, polyspot) {
     const mw_tmp = MON_WEP(mon);
     if (!mw_tmp)
         return;
@@ -912,8 +969,22 @@ export function possibly_unwield(mon, polyspot) {
         return;
     }
     if (!attacktype(game.mons[mon.mnum], ATTKS.AT_WEAP)) {
-        /* poly'd into a non-wielder: drop the weapon to the floor */
-        note_unported_weapon('possibly_unwield:drop');
+        setmnotwielded(mon, mw_tmp);
+        mon.weapon_check = NO_WEAPON_WANTED;
+        if (cansee(mon.mx, mon.my)) {
+            await pline(`${Monnam(mon)} drops ${distant_name(mw_tmp, doname)}.`);
+            newsym(mon.mx, mon.my);
+        }
+        obj_extract_self(mw_tmp);
+        const { flooreffects } = await import('./do.js');
+        if (!await flooreffects(mw_tmp, mon.mx, mon.my, 'drop')) {
+            if (polyspot) {
+                mw_tmp.bypass = 1;
+                (game.context ||= {}).bypasses = true;
+            }
+            place_object(mw_tmp, mon.mx, mon.my);
+            stackobj(mw_tmp);
+        }
         return;
     }
     /* Note that if there is no change, setting the check to NEED_WEAPON
@@ -1011,9 +1082,13 @@ export async function mon_wield_item(mon) {
             const newly_welded = mwelded_weapon(obj);
             obj.owornmask &= ~W_WEP;
             if (newly_welded) {
-                /* "The <weapon> welds itself to <mon>'s <hand>!" needs
-                   Tobjnam/mbodypart */
-                note_unported_weapon('mon_wield_item:weld_msg');
+                const { mbodypart } = await import('./polyself.js');
+                let mon_hand = mbodypart(mon, HAND);
+                if (bimanual(obj))
+                    mon_hand = makeplural(mon_hand);
+                await pline(`${Tobjnam(obj, 'weld')} ${
+                    is_plural(obj) ? 'themselves' : 'itself'} to ${
+                    s_suffix(mon_nam(mon))} ${mon_hand}!`);
                 obj.bknown = 1;
             }
         }

@@ -8,7 +8,7 @@ import { PMNAMES, ATTKS as A, MFLAGS, MONSYMS } from './monst_data.js';
 import { rnd, rn1, rn2 } from './rng.js';
 import { ACURR } from './attrib.js';
 import { pline } from './display.js';
-import { A_CON, A_WIS, NORMAL_SPEED, NATTK } from './const.js';
+import { A_CON, A_WIS, NORMAL_SPEED, NATTK, Upolyd } from './const.js';
 import { find_mac } from './worn.js';
 import { Goodbye } from './role.js';
 
@@ -247,7 +247,17 @@ export async function losexp(drainer) {
     if (u.uexp > 0)
         u.uexp = newuexp(u.ulevel) - 1;
 
-    /* Upolyd mh adjustment — polymorph not modelled */
+    if (Upolyd(u)) {
+        const { monhp_per_lvl } = await import('./makemon.js');
+        num = monhp_per_lvl(game.youmonst);
+        u.mhmax -= num;
+        u.mh -= num;
+        if (u.mh <= 0) {
+            const { rehumanize } = await import('./polyself.js');
+            await rehumanize();
+        }
+    }
+
     (game.disp ||= {}).botl = true;
 }
 

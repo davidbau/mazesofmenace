@@ -15,22 +15,27 @@ import { COLNO, ROWNO, BOLT_LIM, STONE, SCORR, SDOOR, GRAVE, CORR,
          POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE,
          MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, ECMD_OK,
          TER_DETECT, TER_MAP, M_AP_TYPE, M_AP_FURNITURE,
-         M_AP_OBJECT, AM_MASK, AM_SANCTUM, Amask2align, Is_astralevel,
-         A_LAWFUL, A_NEUTRAL, A_CHAOTIC } from './const.js';
+         M_AP_OBJECT, M_AP_FLAG, M_AP_F_DKNOWN, OBJ_FLOOR,
+         AM_MASK, AM_SANCTUM, Amask2align, Is_astralevel,
+         A_LAWFUL, A_NEUTRAL, A_CHAOTIC, STRAT_WAITMASK } from './const.js';
 import { defsyms, monexplain, oc_explain, def_monsyms, def_oc_syms,
          cmap_names } from './drawing_data.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { PMNAMES } from './monst_data.js';
-import { pline, glyph_at, docrt, flush_screen,
+import { pline, glyph_at, docrt, flush_screen, canspotself,
          tty_clear_nhwindow_message } from './display.js';
 import { couldsee } from './vision.js';
 import { DEC_TO_UNICODE, NO_COLOR } from './terminal.js';
 import { m_at, t_at } from './mon.js';
+import { is_obj_mappear } from './monst.js';
 import { engr_at } from './engrave.js';
 import { x_monnam, upstart, pmname, hliquid } from './do_name.js';
 import { ARTICLE_NONE } from './const.js';
 import { an, the, makesingular, singular, xname, doname,
-         simpleonames } from './objnam.js';
+         simpleonames, OBJ_NAME } from './objnam.js';
+import { mkobj, mksobj } from './mkobj.js';
+import { observe_object } from './o_init.js';
+import { Blind, Hallucination } from './youprop.js';
 import { pmatch, tabexpand, mungspaces, isok } from './hacklib.js';
 import { data as DATAFILE } from './dat_files.js';
 import * as DAT from './dat_files.js';
@@ -47,6 +52,7 @@ import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
          NHW_TEXT, NHW_MENU, ATR_NONE } from './tty/wintty.js';
 import { nhgetch } from './input.js';
 import { ok_to_quest } from './quest.js';
+import { costly_spot, doname_with_price } from './shk.js';
 
 function note_unported_pager(what) {
     (game.unported ||= new Set()).add('pager:' + what);
@@ -117,22 +123,84 @@ function monhealthdescr(mon) {
     return '';
 }
 
+// src/pager.c:282 object_from_map() — recover the object represented by a
+// remembered glyph, manufacturing the same temporary object as C when the
+// glyph belongs to a mimic, stale memory, or detection display.
+function object_from_map(glyph, x, y) {
+    const glyphotyp = glyph?.kind === 'obj'
+        ? (glyph.otyp ?? ONAMES.STRANGE_OBJECT)
+        : ONAMES.STRANGE_OBJECT;
+    let otmp = (game.level?.objects || [])
+        .find(o => o.ox === x && o.oy === y && o.otyp === glyphotyp) || null;
+    let mtmp = m_at(x, y);
+    let mimicObj = false;
+
+    if (mtmp && is_obj_mappear(mtmp, glyphotyp)) {
+        otmp = null;
+        mimicObj = true;
+    } else {
+        mtmp = null;
+    }
+
+    let fake = false;
+    if (!otmp || otmp.otyp !== glyphotyp) {
+        const objclass = game.objects?.[glyphotyp];
+        otmp = OBJ_NAME(objclass)
+            ? mksobj(glyphotyp, false, false)
+            : mkobj(objclass?.oc_class ?? OCLASSES.ILLOBJ_CLASS, false);
+        fake = true;
+
+        if (otmp.oclass === OCLASSES.COIN_CLASS)
+            otmp.quan = 2;
+        else if (otmp.otyp === ONAMES.SLIME_MOLD)
+            otmp.spe = game.context?.current_fruit ?? 1;
+
+        if (mtmp && (mtmp.mcorpsenm ?? -1) >= 0) {
+            if (otmp.otyp === ONAMES.SLIME_MOLD)
+                otmp.spe = mtmp.mcorpsenm;
+            else
+                otmp.corpsenm = mtmp.mcorpsenm;
+        } else if (otmp.otyp === ONAMES.CORPSE && glyph?.body) {
+            otmp.corpsenm = glyph.corpsenm;
+        } else if (otmp.otyp === ONAMES.STATUE && glyph?.statue) {
+            otmp.corpsenm = glyph.corpsenm;
+        }
+
+        if (otmp.otyp === ONAMES.LEASH)
+            otmp.corpsenm = 0;
+        otmp.where = OBJ_FLOOR;
+        otmp.ox = x;
+        otmp.oy = y;
+        otmp.no_charge = otmp.otyp === ONAMES.STRANGE_OBJECT
+                         && costly_spot(x, y);
+    }
+
+    const nextToHero = Math.abs(x - game.u.ux) <= 1
+                    && Math.abs(y - game.u.uy) <= 1;
+    if (otmp && nextToHero && !Blind() && !Hallucination()
+        && (fake || otmp.where === OBJ_FLOOR)
+        && !game.iflags?.terrainmode)
+        observe_object(otmp);
+
+    if (fake && mtmp && mimicObj
+        && (otmp.dknown || (M_AP_FLAG(mtmp) & M_AP_F_DKNOWN))) {
+        mtmp.m_ap_type |= M_AP_F_DKNOWN;
+        observe_object(otmp);
+    }
+    return { otmp, fake };
+}
+
 // src/pager.c:380 look_at_object()
 function look_at_object(x, y, glyph) {
-    /* object_from_map(): find the object the glyph came from. The fake-object
-       manufacture for stale map memory draws no RNG only in mksobj's no-init
-       path, which is not ported; a live cell always has its object. */
-    let otmp = (game.level?.objects || [])
-        .find(o => o.ox === x && o.oy === y
-                   && (glyph.otyp === undefined || o.otyp === glyph.otyp));
+    const { otmp } = object_from_map(glyph, x, y);
     let buf;
     if (otmp) {
-        /* distant_name(otmp, dknown ? doname_with_price : doname_vague_quan):
-           within sight doname applies; price needs shops (absent) */
-        buf = doname(otmp);
+        buf = otmp.otyp !== ONAMES.STRANGE_OBJECT
+            ? (otmp.dknown ? doname_with_price(otmp) : doname(otmp))
+            : (OBJ_NAME(game.objects[ONAMES.STRANGE_OBJECT])
+               || 'strange object');
     } else {
-        note_unported_pager('look_at_object:fakeobj');
-        buf = 'object';
+        buf = 'something';
     }
     const loc = game.level?.at(x, y);
     if (loc) {
@@ -161,7 +229,7 @@ function look_at_monster(mtmp, x, y) {
         buf += ", can't move (paralyzed or sleeping or busy)";
     else if (mtmp.msleeping)
         buf += ', asleep';
-    else if ((mtmp.mstrategy & 0x0000ffff) !== 0)  /* STRAT_WAITMASK */
+    else if ((mtmp.mstrategy & STRAT_WAITMASK) !== 0)
         buf += ', meditating';
     if (mtmp.mleashed)
         buf += ', leashed to you';
@@ -224,7 +292,7 @@ function lookat(x, y) {
     const glyph = glyph_at(x, y);
     const loc = game.level?.at(x, y);
 
-    if (game.u.ux === x && game.u.uy === y /* && canspotself() */) {
+    if (game.u.ux === x && game.u.uy === y && canspotself()) {
         buf = self_lookat();
         /* pm stays null for self: file lookup uses the name string.
            The only exception is a gnomish wizard, forced to the generic
@@ -1433,13 +1501,13 @@ export async function dohelp() {
                      NO_COLOR, text, MENU_ITEMFLAGS_NONE);
     });
     tty_end_menu(win, 'Select one item:');
-    await tty_display_nhwindow(win);
-
-    const key = await nhgetch();
+    /* src/pager.c:2890 — select_menu(PICK_ONE): a key that matches no
+       entry rings the bell and leaves the menu up; only a pick, ESC,
+       space or return ends it */
+    const picks = await tty_select_menu(win, 1 /* PICK_ONE */);
     tty_destroy_nhwindow(win);
-    await docrt();
 
-    const ch = String.fromCharCode(key);
+    const ch = picks.length ? picks[0] : '';
     switch (ch) {
     case 'a':
         return await doextversion();

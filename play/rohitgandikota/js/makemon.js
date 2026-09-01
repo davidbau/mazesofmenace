@@ -56,6 +56,7 @@ import { mon_track_clear, onscary } from './monmove.js';
 /* questpgr.js has no imports back into makemon.js at module level except
    through the mkclass wire below (set at this module's top level). */
 import { qt_montype, questpgr_wire_mkclass } from './questpgr.js';
+import { start_timer, TIMER_OBJECT, BURN_OBJECT } from './timeout.js';
 
 
 // include/permonst.h:15,23
@@ -508,7 +509,7 @@ export function adj_lev(ptr) {
 }
 
 // src/makemon.c:2233 golemhp()
-function golemhp(type) {
+export function golemhp(type) {
     const P = PMNAMES;
     switch (type) {
     case P.PM_STRAW_GOLEM:   return 20;
@@ -569,6 +570,22 @@ function wrong_elem_type(ptr) {
             return true;
     }
     return false;
+}
+
+// src/makemon.c:986 monhp_per_lvl() -- hit points gained per restored level.
+export function monhp_per_lvl(mon) {
+    const ptr = mon.data;
+    let hp = rnd(8);
+
+    if (is_golem(ptr))
+        hp = Math.trunc(golemhp(mon.mnum) / ptr.mlevel);
+    else if (ptr.mlevel > 49)
+        hp = 4 + rnd(4);
+    else if (ptr.mlet === S_DRAGON && mon.mnum >= PMNAMES.PM_GRAY_DRAGON)
+        hp = 4 + rn2(5);
+    else if (!mon.m_lev)
+        hp = rnd(4);
+    return hp;
 }
 
 // src/makemon.c:1012 newmonhp() — the monster's level and hit points.
@@ -905,13 +922,16 @@ function m_initinv(mtmp) {
             if (!mpickobj(mtmp, otmp)
                 && !game.level.at(mtmp.mx, mtmp.my)?.lit) {
                 /* src/timeout.c:1712 begin_burn(). A single candle has
-                   radius 2. Its 125- or 325-turn burn timer is longer than
-                   level-generation arrivals need, but the active object
-                   light source must exist immediately. */
-                otmp.lamplit = 1;
-                new_light_source(mtmp.mx, mtmp.my, 2, LS_OBJECT, otmp.o_id);
-                game.vision_full_recalc = 1;
-                note_unported('m_initinv:begin_burn_timer');
+                   radius 2 and stops first at 75 turns of fuel. */
+                const turns = otmp.age > 75 ? otmp.age - 75
+                            : otmp.age > 15 ? otmp.age - 15 : otmp.age;
+                if (start_timer(turns, TIMER_OBJECT, BURN_OBJECT, otmp)) {
+                    otmp.lamplit = 1;
+                    otmp.age -= turns;
+                    new_light_source(mtmp.mx, mtmp.my, 2,
+                                     LS_OBJECT, otmp.o_id);
+                    game.vision_full_recalc = 1;
+                }
             }
         }
         break;
@@ -1277,9 +1297,11 @@ function mkobj_at(oclass, x, y, artif) {
 // stub that always set mundetected = 0, so a swamp snake created over its
 // starter object stood in plain sight where C's is hidden.
 export function hideunder(mtmp, defer_newsym = false) {
+    const isHero = mtmp === game.youmonst;
     let undetected = false;
-    const x = mtmp.mx, y = mtmp.my;
-    const ptr = game.mons[mtmp.mnum];
+    const x = isHero ? game.u.ux : mtmp.mx;
+    const y = isHero ? game.u.uy : mtmp.my;
+    const ptr = isHero ? game.youmonst.data : game.mons[mtmp.mnum];
     let t2;
 
     if (mtmp === game.u.ustuck) {
@@ -1318,8 +1340,10 @@ export function hideunder(mtmp, defer_newsym = false) {
         }
     }
 
-    const oldundetctd = !!mtmp.mundetected;
+    const oldundetctd = !!(isHero ? game.u.uundetected : mtmp.mundetected);
     mtmp.mundetected = undetected ? 1 : 0;
+    if (isHero)
+        game.u.uundetected = mtmp.mundetected;
     if (undetected !== oldundetctd && !defer_newsym)
         newsym(x, y);
     return undetected;
@@ -2074,6 +2098,10 @@ export function makemon(ptr, x, y, mmflags) {
     let allow_minvent = ((mmflags & NO_MINVENT) === 0);
     const countbirth = ((mmflags & MM_NOCOUNTBIRTH) === 0);
 
+    /* newcham lives in mon.js, which imports this module. Wire its creation
+       helpers after module evaluation, on the first ordinary makemon call. */
+    mon_wire_cham({ newmonhp, rndmonst });
+
     if (game.iflags?.debug_mongen || (!game.level?.flags?.rndmongen && !ptr))
         return null;
 
@@ -2190,6 +2218,13 @@ export function makemon(ptr, x, y, mmflags) {
     mtmp.mcansee = mtmp.mcanmove = true;
     mtmp.mgenmklev = game.in_mklev;
     mtmp.mpeaceful = (mmflags & MM_ANGRY) ? false : peace_minded(ptr);
+    if (mmflags & MM_MINVIS) {
+        mtmp.perminvis = true;
+        if (!mtmp.invis_blkd) {
+            mtmp.minvis = true;
+            newsym(mtmp.mx, mtmp.my);
+        }
+    }
 
     switch (ptr.mlet) {
     case S_MIMIC:
@@ -2272,7 +2307,6 @@ export function makemon(ptr, x, y, mmflags) {
     if (is_shapeshifter(ptr)) {
         const mcham = mndx;    /* pm_to_cham: M2_SHAPESHIFTER means itself */
         mtmp.cham = mcham;
-        mon_wire_cham({ newmonhp, rndmonst });
         if (mndx !== PMNAMES.PM_VLAD_THE_IMPALER
             && newcham(mtmp, null, 0))
             allow_minvent = false;
@@ -2294,6 +2328,10 @@ export function makemon(ptr, x, y, mmflags) {
              || mndx === PMNAMES.PM_LONG_WORM || mndx === PMNAMES.PM_GIANT_EEL)
             && !game.u.uhave?.amulet && rn2(5))
             mtmp.msleeping = true;
+    } else if (byyou) {
+        /* src/makemon.c:1391. Creation beside the hero draws the monster
+           once here and again in the common arrival block below. */
+        newsym(mtmp.mx, mtmp.my);
     }
 
     /* src/makemon.c:1404 — a long worm grows a random tail at creation */

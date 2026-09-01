@@ -18,16 +18,20 @@ import {
 import { in_rooms } from './hack.js';
 import { MM_NOCOUNTBIRTH, MM_NOMSG, SHOPBASE, COURT, LEPREHALL, ZOO, TEMPLE,
          BEEHIVE, MORGUE, ANTHOLE, BARRACKS, SWAMP, COCKNEST,
-         G_GONE, BR_NO_END1, BR_NO_END2, BR_PORTAL } from './const.js';
+         G_GONE, BR_NO_END1, BR_NO_END2, BR_PORTAL,
+         OBJ_FLOOR } from './const.js';
 import { do_mkroom, antholemon, mkroom_wire } from './mkroom.js';
 import { SPBOOK_no_NOVEL } from './mkobj.js';
 import { mongone, m_at, is_pool, minliquid, seemimic } from './mon.js';
 import { sgn } from './hacklib.js';
 import { set_wall_state, newsym, flush_screen,
          display_nhwindow_message } from './display.js';
-import { obj_extract_self } from './invent.js';
+import { obj_extract_self, stackobj } from './invent.js';
+import { stop_timer, ROT_ORGANIC } from './timeout.js';
 import { PMNAMES, MONSYMS } from './monst_data.js';
-import { fill_special_room, sp_lev_wire_mklev, sp_lev_wire_walkfrom, sp_lev_wire_priest, sp_lev_wire_roamer, reset_xystart_size } from './sp_lev.js';
+import { bury_an_obj, fill_special_room, sp_lev_wire_mklev,
+         sp_lev_wire_walkfrom, sp_lev_wire_priest, sp_lev_wire_roamer,
+         reset_xystart_size } from './sp_lev.js';
 import { walkfrom, mkmaze_wire_mklev, mkportal } from './mkmaze.js';
 import { enexto_core } from './teleport.js';
 import { goodpos } from './makemon.js';
@@ -100,7 +104,7 @@ function mk_knox_portal(x, y) {
 
     place_branch(br, x, y);
 }
-import { random_engraving, wipeout_text } from './engrave.js';
+import { del_engr_at, random_engraving, wipeout_text } from './engrave.js';
 import { merged, weight, sobj_at } from './invent.js';
 import { mkroll_launch, mintrap, deltrap } from './trap.js';
 import { themeroom_fill_contents, post_level_generate } from './themerms.js';
@@ -112,7 +116,7 @@ import { pline_The, You } from './pline.js';
 
 // include/permonst.h / include/hack.h:1189-1193, 1404
 const NON_PM = -1;
-const CORPSTAT_INIT = 0x08, CORPSTAT_SPE_VAL = 0x07,
+const CORPSTAT_FEMALE = 0x01, CORPSTAT_INIT = 0x08, CORPSTAT_SPE_VAL = 0x07,
       CORPSTAT_NONE = 0x00; /* include/obj.h */
 const TAINT_AGE = 50;
 // Object type and object class constants come from js/objects_data.js, which
@@ -344,7 +348,7 @@ let _nextObjId = 1;
 /* mkgold() lives in js/mkobj.js, where src/mkobj.c has it. */
 
 function add_to_buried(otmp) {
-    (game.level.buriedobjs ||= []).push(otmp);
+    (game.level.buriedobjs ||= []).unshift(otmp);
 }
 function dealloc_obj(otmp) { /* stub */ }
 
@@ -406,6 +410,32 @@ function choose_trapnote(ttmp) {
         if (tavail[k] === 0)
             tpick.push(k);
     return tpick.length > 0 ? tpick[rn2(tpick.length)] : rn2(12);
+}
+
+// src/dig.c:2025 bury_objs(). Terrain changes move every floor object on the
+// square onto the buried chain, then erase any engraving there.
+export function bury_objs(x, y) {
+    const pile = [...(game.level?.objects || [])].filter(obj =>
+        obj.where === OBJ_FLOOR && obj.ox === x && obj.oy === y);
+    for (const obj of pile)
+        bury_an_obj(obj, null);
+    del_engr_at(x, y);
+    newsym(x, y);
+}
+
+// src/dig.c:2086 unearth_objs(). Pits and holes expose every object buried
+// on their square. Object timers other than ROT_ORGANIC keep running.
+export function unearth_objs(x, y) {
+    for (const obj of [...(game.level?.buriedobjs || [])]) {
+        if (obj.ox !== x || obj.oy !== y)
+            continue;
+        obj_extract_self(obj);
+        if (obj.timed)
+            stop_timer(ROT_ORGANIC, obj);
+        place_object(obj, x, y);
+        stackobj(obj);
+    }
+    newsym(x, y);
 }
 
 // src/trap.c:490 maketrap()
@@ -486,6 +516,7 @@ export function maketrap(x, y, typ) {
            gates the draw, not the case label. */
         if (is_hole(typ))
             hole_destination(trap.dst);
+        unearth_objs(x, y);
         break;
     default:
         break;
@@ -556,7 +587,10 @@ export async function mklev() {
     if (await getbones()) return;
     g.in_mklev = true;
     await makelevel();
-    recount_level_features();
+    /* C's mklev() never recounts fountains and sinks: the counts are only
+       kept by mkfount()/mksink() and set_levltyp(), and Lua des.feature()
+       writes levl[][].typ directly without touching them. A recount here
+       made themed-room fountains audible that C never counts. */
     level_finalize_topology();
     g.in_mklev = false;
 }
@@ -2687,10 +2721,12 @@ async function makeniche(trap_type) {
                 if (!rn2(5) && loc && IS_WALL(loc.typ)) {
                     loc.typ = IRONBARS;
                     if (rn2(3)) {
-                        /* src/mklev.c — a dead adventurer behind the bars */
+                        /* src/mklev.c:786 passes TRUE, numeric 1, as the
+                           corpstat flag. That aliases CORPSTAT_FEMALE and
+                           deliberately does not request initialization. */
                         const ptr = mkclass(MONSYMS.S_HUMAN, 0);
                         mkcorpstat(CORPSE, null, ptr ? monsndx(ptr) : NON_PM,
-                                   xx, yy + dy, CORPSTAT_INIT);
+                                   xx, yy + dy, CORPSTAT_FEMALE);
                     }
                 }
                 if (!g.level.flags.noteleport) {

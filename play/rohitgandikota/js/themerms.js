@@ -20,8 +20,11 @@ import { selection_from_mkroom, l_selection_iterate, selection_rndcoord,
          selection_new, selection_clear } from './selvar.js';
 import { ROOM } from './const.js';
 import { lspo_engraving, lspo_terrain, lspo_trap, get_traptype_byname,
-         lspo_object, lspo_monster, lspo_altar } from './sp_lev.js';
+         lspo_object, lspo_monster, lspo_altar, lspo_feature,
+         lspo_replace_terrain, l_selection_grow } from './sp_lev.js';
 import { create_gas_cloud_selection } from './region.js';
+import { start_timer, obj_stop_timers, TIMER_OBJECT, ZOMBIFY_MON }
+    from './timeout.js';
 
 function note_unported_themerms(what) {
     (game.unported ||= new Set()).add(what);
@@ -291,11 +294,13 @@ export function fill_buried_zombies(rm) {
     const n = (rm.width * rm.height) / 2;
     for (let i = 1; i <= n; i++) {
         lua_shuffle(zombifiable);
-        lspo_object('corpse', undefined, undefined,
-                    { montype: zombifiable[0], buried: true });
-        /* o:stop_timer("rot-corpse") draws nothing */
-        nh_random(990, 21);             /* math.random(990, 1010) */
-        note_unported_themerms('start_timer:zombify-mon');
+        const body = lspo_object('corpse', undefined, undefined,
+                                 { montype: zombifiable[0], buried: true });
+        const when = nh_random(990, 21); /* math.random(990, 1010) */
+        if (body) {
+            obj_stop_timers(body);       /* o:stop_timer("rot-corpse") */
+            start_timer(when, TIMER_OBJECT, ZOMBIFY_MON, body);
+        }
     }
 }
 
@@ -317,9 +322,26 @@ export function fill_garden(rm) {
     for (let i = 1; i <= npts; i++) {
         lspo_monster('wood nymph', undefined, undefined, { asleep: true });
         if (percent(30))
-            note_unported_themerms('des.feature:fountain');
+            lspo_feature('fountain');
     }
-    note_unported_themerms('postprocess:make_garden_walls');
+    postprocess_add(make_garden_walls, {
+        sel: selection_from_mkroom(rm._mkroom || rm),
+    });
+}
+
+// dat/themerms.lua:1071 make_garden_walls().
+function make_garden_walls(data) {
+    const sel = l_selection_grow(data.sel);
+    lspo_replace_terrain({
+        selection: sel,
+        fromterrain: 'w',
+        toterrain: 'T',
+    });
+    lspo_replace_terrain({
+        selection: sel,
+        fromterrain: 'S',
+        toterrain: 'A',
+    });
 }
 
 // dat/themerms.lua:137 "Buried treasure"
@@ -480,5 +502,5 @@ export function make_a_trap(data) {
                    && data.teledest.y !== data.coord.y));
     }
     lspo_trap(get_traptype_byname(data.type), data.coord.x, data.coord.y,
-              { seen: data.seen });
+              { seen: data.seen, teledest: data.teledest });
 }

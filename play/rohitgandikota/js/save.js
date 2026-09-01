@@ -142,7 +142,7 @@ export async function dosave() {
     tty_clear_nhwindow_message(game._topl_cury || 0);
     game._pending_message = '';
     /* src/save.c:46 y_n() — ynq defaults 'n' (include/hack.h y_n macro) */
-    const ans = await tty_yn_function('Really save?', 'yn', 'n');
+    const ans = await tty_yn_function('Really save?', 'yn', 'n', true);
     tty_clear_nhwindow_message(game._topl_cury || 0);
     game._pending_message = '';
     if (ans === 'n') {

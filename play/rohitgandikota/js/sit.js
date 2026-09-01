@@ -294,7 +294,7 @@ async function sit_on_object(obj) {
             await pline("It's squishy...");
         else if (obj.otyp === ONAMES.CREAM_PIE) {
             await pline('Squelch!');
-            useupf(obj, obj.quan);
+            await useupf(obj, obj.quan);
         } else if (!(obj.otyp === ONAMES.LARGE_BOX || obj.otyp === ONAMES.CHEST
                      || obj.otyp === ONAMES.ICE_BOX /* Is_box */
                      || game.objects[obj.otyp].oc_material === MATERIALS.CLOTH))

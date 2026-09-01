@@ -32,7 +32,7 @@ import { is_vampshifter } from './monst.js';
 import { newsym, canseemon, canspotmon, sensemon, pline } from './display.js';
 import { You, You_see, You_hear } from './pline.js';
 import { create_gas_cloud, visible_region_at } from './region.js';
-import { Monnam, mon_nam, y_monnam, upstart } from './do_name.js';
+import { Adjmonnam, Monnam, mon_nam, y_monnam, upstart } from './do_name.js';
 import { Blind, Deaf } from './youprop.js';
 import { Is_rogue_level as IRL_const, D_TRAPPED } from './const.js';
 import { sobj_at, money_cnt } from './invent.js';
@@ -44,7 +44,7 @@ import { Is_container, Is_candle, is_cloak, is_gloves,
 import { is_weptool } from './mkobj.js';
 import { metallivorous, corpse_eater, is_covetous,
          resist_conflict } from './mondata.js';
-import { may_dig, in_town, losehp } from './hack.js';
+import { may_dig, in_town, losehp, disturb_buried_zombies } from './hack.js';
 import { place_monster, remove_monster, hideunder,
          hideunder_with_message } from './makemon.js';
 import { rn2, rnd, d } from './rng.js';
@@ -56,7 +56,8 @@ import {
     curr_mon_load, max_mon_load,
 } from './mon.js';
 import { MONSYMS, MFLAGS, PMNAMES, ATTKS } from './monst_data.js';
-import { M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER } from './const.js';
+import { M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, M_AP_FURNITURE,
+         M_AP_OBJECT } from './const.js';
 import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
 import { is_pit } from './const.js';
 import { couldsee, cansee, clear_path, recalc_block_point,
@@ -84,7 +85,7 @@ import { MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE,
          Upolyd, u_at, NORMAL_SPEED, M_ATTK_HIT, M_ATTK_DEF_DIED,
          M_ATTK_AGR_DIED } from './const.js';
 import { mon_wield_item } from './weapon.js';
-import { mattacku } from './mhitu.js';
+import { mattacku, gazemu } from './mhitu.js';
 import { noattacks } from './mondata.js';
 import { helpless } from './monst.js';
 import { is_axe, is_pick } from './mon.js';
@@ -936,10 +937,9 @@ export function onscary(x, y, mtmp) {
 
 // src/monmove.c:462 monflee() — begin fleeing for fleetime turns.
 //
-// The caller has already spent the rnd() that produces fleetime; this function
-// itself only draws through its messages, which need pline plumbing that is not
-// here yet.
-export function monflee(mtmp, fleetime, first, fleemsg) {
+// The caller has already spent the rnd() that produces fleetime. The ordinary
+// and immobile message paths do not draw further RNG.
+export async function monflee(mtmp, fleetime, first, fleemsg) {
     if (DEADMONSTER(mtmp))
         return;
 
@@ -957,8 +957,15 @@ export function monflee(mtmp, fleetime, first, fleemsg) {
                 fleetime++;
             mtmp.mfleetim = Math.min(fleetime, 127);
         }
-        if (!mtmp.mflee && fleemsg)
-            note_unported('monflee:fleemsg');
+        if (!mtmp.mflee && fleemsg && canseemon(mtmp)
+            && M_AP_TYPE(mtmp) !== M_AP_FURNITURE
+            && M_AP_TYPE(mtmp) !== M_AP_OBJECT) {
+            if (!mtmp.mcanmove || !game.mons[mtmp.mnum].mmove) {
+                await pline(`${Adjmonnam(mtmp, 'immobile')} seems to flinch.`);
+            } else {
+                await pline(`${Monnam(mtmp)} turns to flee.`);
+            }
+        }
 
         /* src/monmove.c:521 — a vrock covers its escape in a stench cloud */
         if (mtmp.mnum === PMNAMES.PM_VROCK && !mtmp.mspec_used) {
@@ -1082,7 +1089,7 @@ export function can_ooze(mtmp) {
 }
 
 // src/monmove.c:532 distfleeck()
-export function distfleeck(mtmp) {
+export async function distfleeck(mtmp) {
     let seescaryx, seescaryy;
     const bravegremlin = (rn2(5) === 0);
 
@@ -1107,7 +1114,7 @@ export function distfleeck(mtmp) {
                    || (flees_light(mtmp) && !bravegremlin)
                    || (!mtmp.mpeaceful && in_your_sanctuary(mtmp, 0, 0)))) {
         scared = true;
-        monflee(mtmp, rnd(rn2(7) ? 10 : 100), true, true);
+        await monflee(mtmp, rnd(rn2(7) ? 10 : 100), true, true);
     } else {
         scared = false;
     }
@@ -1223,7 +1230,15 @@ export async function dochug(mtmp) {
         }
     }
 
-    /* m_respond(): the shrieker/medusa special responses are recorded */
+    /* src/mon.c:4122 m_respond(), Medusa gazes once before movement. */
+    if (mtmp.mnum === PMNAMES.PM_MEDUSA
+        && couldsee(mtmp.mx, mtmp.my)) {
+        const gaze = mtmp.data.mattk.find(atk => atk[0] === ATTKS.AT_GAZE);
+        if (gaze)
+            await gazemu(mtmp, gaze);
+        if (DEADMONSTER(mtmp))
+            return 1;
+    }
 
     /* src/monmove.c:757 — fleeing monsters might regain courage */
     if (mtmp.mflee && !mtmp.mfleetim
@@ -1250,7 +1265,7 @@ export async function dochug(mtmp) {
     }
 
     /* src/monmove.c:791 */
-    let { inrange, nearby, scared } = distfleeck(mtmp);
+    let { inrange, nearby, scared } = await distfleeck(mtmp);
 
     const mdat = game.mons[mtmp.mnum];
     let status = 0;
@@ -1272,7 +1287,7 @@ export async function dochug(mtmp) {
                && !rn2(20)) {
         await mind_blast(mtmp);
         set_apparxy(mtmp);
-        ({ inrange, nearby, scared } = distfleeck(mtmp));
+        ({ inrange, nearby, scared } = await distfleeck(mtmp));
     }
 
     /* src/monmove.c:840 — if monster is nearby you, and has to wield a
@@ -1342,7 +1357,7 @@ export async function dochug(mtmp) {
         /* src/monmove.c:915 — distfleeck is RECALCULATED after the move, so
            every monster that takes a turn spends TWO rn2(5) draws, not one. */
         if (status !== MMOVE_DIED)
-            ({ inrange, nearby, scared } = distfleeck(mtmp));
+            ({ inrange, nearby, scared } = await distfleeck(mtmp));
 
         /* src/monmove.c:917 — the status switch. For pets, cases 0 and 3
            are equivalent. */
@@ -1363,6 +1378,11 @@ export async function dochug(mtmp) {
             /* if confused grabber has wandered off, let go */
             if (mtmp === game.u.ustuck && !(distu(mtmp.mx, mtmp.my) <= 2))
                 note_unported_monmove('dochug:unstuck');
+            {
+                const { grounded } = await import('./trap.js');
+                if (grounded(mdat))
+                    disturb_buried_zombies(mtmp.mx, mtmp.my);
+            }
             /* Maybe it stepped on a trap and fell asleep... */
             if (helpless(mtmp))
                 return 0;
@@ -1694,7 +1714,7 @@ export async function m_move(mtmp, after) {
     const flag = mon_allowflags(mtmp);
     const mfp = {};
     const cnt = mfndpos(mtmp, mfp, flag);
-    if (cnt === 0) {
+    if (cnt === 0 && !is_unicorn(ptr)) {
         if (find_defensive(mtmp, true) && await use_defensive(mtmp))
             return MMOVE_DONE;
         return MMOVE_NOMOVES;
@@ -1821,6 +1841,13 @@ export async function m_move(mtmp, after) {
            the matching remembered square, so an unmaintained track makes
            every match land on j=0 and draws the wrong modulus. */
         mon_track_add(mtmp, omx, omy);
+    } else if (is_unicorn(ptr) && rn2(2)) {
+        /* A unicorn which cannot find an acceptable step may teleport. */
+        const { rloc, tele_restrict } = await import('./teleport.js');
+        if (!await tele_restrict(mtmp)) {
+            await rloc(mtmp, RLOC_MSG);
+            return MMOVE_MOVED;
+        }
     }
 
     return await postmov(mtmp, ptr, omx, omy, mmoved, can_tunnel);
@@ -1829,7 +1856,7 @@ export async function m_move(mtmp, after) {
 // src/mon.c:4698 maybe_unhide_at(), monster arm. A concealed monster which
 // leaves its covering object must be revealed before postmov() decides
 // whether to roll for hiding again at the destination.
-function maybe_unhide_at_mon(mtmp) {
+export function maybe_unhide_at_mon(mtmp) {
     if (!mtmp.mundetected)
         return;
     const ptr = game.mons[mtmp.mnum];
@@ -2331,7 +2358,7 @@ export function m_everyturn_effect(mtmp) {
     const x = is_u ? game.u.ux : mtmp.mx,
           y = is_u ? game.u.uy : mtmp.my;
 
-    if (mtmp.mnum === PMNAMES.PM_FOG_CLOUD || (is_u && false /* Upolyd fog */)) {
+    if (mtmp.mnum === PMNAMES.PM_FOG_CLOUD) {
         /* don't leave a vapor cloud if some other gas cloud is already
            present, or when flowing under closed doors */
         if (!closed_door_mm(x, y) && !visible_region_at(x, y))

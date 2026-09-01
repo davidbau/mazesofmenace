@@ -305,7 +305,9 @@ export async function dosearch0(aflag) {
                 if (trap && !trap.tseen && !rnl(8)) {
                     nomul(0);
                     if (trap.ttyp === STATUE_TRAP) {
-                        note_unported_detect('dosearch0:activate_statue_trap');
+                        const { activate_statue_trap } = await import('./trap.js');
+                        if (await activate_statue_trap(trap, x, y, false))
+                            exercise(A_WIS, true);
                         return 1;
                     } else {
                         await find_trap(trap);

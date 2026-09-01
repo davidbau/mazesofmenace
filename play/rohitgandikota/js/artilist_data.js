@@ -123,6 +123,7 @@ export const artifact_otyps = [
 export const artifact_records = [
  {
   "spfx": 0,
+  "cspfx": 0,
   "mtype": "0",
   "attk": "NO_ATTK",
   "defn": "NO_DFNS",
@@ -132,10 +133,12 @@ export const artifact_records = [
   "role": "NON_PM",
   "race": "NON_PM",
   "gen_spe": 0,
-  "gift_value": 0
+  "gift_value": 0,
+  "cost": 0
  },
  {
   "spfx": 663,
+  "cspfx": 0,
   "mtype": "0",
   "attk": "PHYS(5, 10)",
   "defn": "DRLI(0, 0)",
@@ -145,10 +148,12 @@ export const artifact_records = [
   "role": "PM_KNIGHT",
   "race": "NON_PM",
   "gen_spe": 0,
-  "gift_value": 10
+  "gift_value": 10,
+  "cost": 4000
  },
  {
   "spfx": 454,
+  "cspfx": 0,
   "mtype": "0",
   "attk": "DRLI(5, 2)",
   "defn": "DRLI(0, 0)",
@@ -158,10 +163,12 @@ export const artifact_records = [
   "role": "NON_PM",
   "race": "NON_PM",
   "gen_spe": 0,
-  "gift_value": 9
+  "gift_value": 9,
+  "cost": 8000
  },
  {
   "spfx": 66,
+  "cspfx": 0,
   "mtype": "0",
   "attk": "ELEC(5, 24)",
   "defn": "NO_DFNS",
@@ -171,10 +178,12 @@ export const artifact_records = [
   "role": "PM_VALKYRIE",
   "race": "NON_PM",
   "gen_spe": 0,
-  "gift_value": 8
+  "gift_value": 8,
+  "cost": 4000
  },
  {
   "spfx": 2,
+  "cspfx": 0,
   "mtype": "0",
   "attk": "PHYS(3, 6)",
   "defn": "NO_DFNS",
@@ -184,10 +193,12 @@ export const artifact_records = [
   "role": "PM_BARBARIAN",
   "race": "NON_PM",
   "gen_spe": 0,
-  "gift_value": 8
+  "gift_value": 8,
+  "cost": 1500
  },
  {
   "spfx": 8388642,
+  "cspfx": 0,
   "mtype": "M2_ELF",
   "attk": "PHYS(2, 6)",
   "defn": "POIS(0,0)",
@@ -197,10 +208,12 @@ export const artifact_records = [
   "role": "NON_PM",
   "race": "PM_ORC",
   "gen_spe": 0,
-  "gift_value": 5
+  "gift_value": 5,
+  "cost": 1200
  },
  {
   "spfx": 8388640,
+  "cspfx": 0,
   "mtype": "M2_ORC",
   "attk": "PHYS(5, 0)",
   "defn": "NO_DFNS",
@@ -210,10 +223,12 @@ export const artifact_records = [
   "role": "NON_PM",
   "race": "PM_ELF",
   "gen_spe": 3,
-  "gift_value": 4
+  "gift_value": 4,
+  "cost": 2000
  },
  {
   "spfx": 8388640,
+  "cspfx": 0,
   "mtype": "M2_ORC",
   "attk": "PHYS(5, 0)",
   "defn": "NO_DFNS",
@@ -223,10 +238,12 @@ export const artifact_records = [
   "role": "NON_PM",
   "race": "PM_ELF",
   "gen_spe": 3,
-  "gift_value": 1
+  "gift_value": 1,
+  "cost": 800
  },
  {
   "spfx": 194,
+  "cspfx": 0,
   "mtype": "0",
   "attk": "STUN(3, 4)",
   "defn": "DFNS(AD_MAGM)",
@@ -236,10 +253,12 @@ export const artifact_records = [
   "role": "PM_WIZARD",
   "race": "NON_PM",
   "gen_spe": 0,
-  "gift_value": 7
+  "gift_value": 7,
+  "cost": 3500
  },
  {
   "spfx": 194,
+  "cspfx": 0,
   "mtype": "0",
   "attk": "COLD(5, 0)",
   "defn": "COLD(0, 0)",
@@ -249,10 +268,12 @@ export const artifact_records = [
   "role": "NON_PM",
   "race": "NON_PM",
   "gen_spe": 0,
-  "gift_value": 9
+  "gift_value": 9,
+  "cost": 3000
  },
  {
   "spfx": 194,
+  "cspfx": 0,
   "mtype": "0",
   "attk": "FIRE(5, 0)",
   "defn": "FIRE(0, 0)",
@@ -262,10 +283,12 @@ export const artifact_records = [
   "role": "NON_PM",
   "race": "NON_PM",
   "gen_spe": 0,
-  "gift_value": 5
+  "gift_value": 5,
+  "cost": 3000
  },
  {
   "spfx": 69206018,
+  "cspfx": 0,
   "mtype": "S_DRAGON",
   "attk": "PHYS(5, 0)",
   "defn": "NO_DFNS",
@@ -275,10 +298,12 @@ export const artifact_records = [
   "role": "NON_PM",
   "race": "NON_PM",
   "gen_spe": 2,
-  "gift_value": 5
+  "gift_value": 5,
+  "cost": 500
  },
  {
   "spfx": 8388610,
+  "cspfx": 0,
   "mtype": "M2_DEMON",
   "attk": "PHYS(5, 0)",
   "defn": "NO_DFNS",
@@ -288,10 +313,12 @@ export const artifact_records = [
   "role": "PM_CLERIC",
   "race": "NON_PM",
   "gen_spe": 1,
-  "gift_value": 3
+  "gift_value": 3,
+  "cost": 2500
  },
  {
   "spfx": 8388610,
+  "cspfx": 0,
   "mtype": "M2_WERE",
   "attk": "PHYS(5, 0)",
   "defn": "DFNS(AD_WERE)",
@@ -301,10 +328,12 @@ export const artifact_records = [
   "role": "NON_PM",
   "race": "NON_PM",
   "gen_spe": 1,
-  "gift_value": 4
+  "gift_value": 4,
+  "cost": 1500
  },
  {
   "spfx": 2050,
+  "cspfx": 0,
   "mtype": "0",
   "attk": "PHYS(5, 0)",
   "defn": "NO_DFNS",
@@ -314,10 +343,12 @@ export const artifact_records = [
   "role": "NON_PM",
   "race": "NON_PM",
   "gen_spe": 0,
-  "gift_value": 10
+  "gift_value": 10,
+  "cost": 8000
  },
  {
   "spfx": 8388610,
+  "cspfx": 0,
   "mtype": "M2_GIANT",
   "attk": "PHYS(5, 0)",
   "defn": "NO_DFNS",
@@ -327,10 +358,12 @@ export const artifact_records = [
   "role": "NON_PM",
   "race": "NON_PM",
   "gen_spe": 2,
-  "gift_value": 4
+  "gift_value": 4,
+  "cost": 200
  },
  {
   "spfx": 2097154,
+  "cspfx": 0,
   "mtype": "S_OGRE",
   "attk": "PHYS(5, 0)",
   "defn": "NO_DFNS",
@@ -340,10 +373,12 @@ export const artifact_records = [
   "role": "NON_PM",
   "race": "NON_PM",
   "gen_spe": 2,
-  "gift_value": 1
+  "gift_value": 1,
+  "cost": 200
  },
  {
   "spfx": 2113538,
+  "cspfx": 0,
   "mtype": "S_TROLL",
   "attk": "PHYS(5, 0)",
   "defn": "NO_DFNS",
@@ -353,10 +388,12 @@ export const artifact_records = [
   "role": "NON_PM",
   "race": "NON_PM",
   "gen_spe": 2,
-  "gift_value": 1
+  "gift_value": 1,
+  "cost": 200
  },
  {
   "spfx": 1026,
+  "cspfx": 0,
   "mtype": "0",
   "attk": "PHYS(5, 1)",
   "defn": "NO_DFNS",
@@ -366,10 +403,12 @@ export const artifact_records = [
   "role": "NON_PM",
   "race": "NON_PM",
   "gen_spe": 1,
-  "gift_value": 5
+  "gift_value": 5,
+  "cost": 4000
  },
  {
   "spfx": 2,
+  "cspfx": 0,
   "mtype": "0",
   "attk": "PHYS(0, 8)",
   "defn": "NO_DFNS",
@@ -379,10 +418,12 @@ export const artifact_records = [
   "role": "PM_SAMURAI",
   "race": "NON_PM",
   "gen_spe": 0,
-  "gift_value": 8
+  "gift_value": 8,
+  "cost": 1200
  },
  {
   "spfx": 8388610,
+  "cspfx": 0,
   "mtype": "M2_UNDEAD",
   "attk": "PHYS(5, 0)",
   "defn": "DFNS(AD_BLND)",
@@ -392,10 +433,12 @@ export const artifact_records = [
   "role": "NON_PM",
   "race": "NON_PM",
   "gen_spe": 0,
-  "gift_value": 6
+  "gift_value": 6,
+  "cost": 1500
  },
  {
   "spfx": 7,
+  "cspfx": 69632,
   "mtype": "0",
   "attk": "NO_ATTK",
   "defn": "NO_DFNS",
@@ -405,10 +448,12 @@ export const artifact_records = [
   "role": "PM_ARCHEOLOGIST",
   "race": "NON_PM",
   "gen_spe": 0,
-  "gift_value": 12
+  "gift_value": 12,
+  "cost": 2500
  },
  {
   "spfx": 7,
+  "cspfx": 8192,
   "mtype": "0",
   "attk": "PHYS(5, 0)",
   "defn": "NO_DFNS",
@@ -418,10 +463,12 @@ export const artifact_records = [
   "role": "PM_BARBARIAN",
   "race": "NON_PM",
   "gen_spe": 0,
-  "gift_value": 12
+  "gift_value": 12,
+  "cost": 2500
  },
  {
   "spfx": 16777223,
+  "cspfx": 0,
   "mtype": "0",
   "attk": "PHYS(5, 0)",
   "defn": "DFNS(AD_MAGM)",
@@ -431,10 +478,12 @@ export const artifact_records = [
   "role": "PM_CAVE_DWELLER",
   "race": "NON_PM",
   "gen_spe": 0,
-  "gift_value": 12
+  "gift_value": 12,
+  "cost": 2500
  },
  {
   "spfx": 16711,
+  "cspfx": 0,
   "mtype": "0",
   "attk": "DRLI(0, 0)",
   "defn": "DRLI(0, 0)",
@@ -444,10 +493,12 @@ export const artifact_records = [
   "role": "PM_HEALER",
   "race": "NON_PM",
   "gen_spe": 0,
-  "gift_value": 12
+  "gift_value": 12,
+  "cost": 5000
  },
  {
   "spfx": 15,
+  "cspfx": 4096,
   "mtype": "0",
   "attk": "NO_ATTK",
   "defn": "NO_DFNS",
@@ -457,10 +508,12 @@ export const artifact_records = [
   "role": "PM_KNIGHT",
   "race": "NON_PM",
   "gen_spe": 0,
-  "gift_value": 12
+  "gift_value": 12,
+  "cost": 1500
  },
  {
   "spfx": 33554439,
+  "cspfx": 0,
   "mtype": "0",
   "attk": "NO_ATTK",
   "defn": "DFNS(AD_MAGM)",
@@ -470,10 +523,12 @@ export const artifact_records = [
   "role": "PM_MONK",
   "race": "NON_PM",
   "gen_spe": 0,
-  "gift_value": 12
+  "gift_value": 12,
+  "cost": 2500
  },
  {
   "spfx": 142606343,
+  "cspfx": 0,
   "mtype": "M2_UNDEAD",
   "attk": "NO_ATTK",
   "defn": "NO_DFNS",
@@ -483,10 +538,12 @@ export const artifact_records = [
   "role": "PM_CLERIC",
   "race": "NON_PM",
   "gen_spe": 0,
-  "gift_value": 12
+  "gift_value": 12,
+  "cost": 2000
  },
  {
   "spfx": 67108871,
+  "cspfx": 4096,
   "mtype": "0",
   "attk": "PHYS(5, 0)",
   "defn": "NO_DFNS",
@@ -496,10 +553,12 @@ export const artifact_records = [
   "role": "PM_RANGER",
   "race": "NON_PM",
   "gen_spe": 0,
-  "gift_value": 12
+  "gift_value": 12,
+  "cost": 4000
  },
  {
   "spfx": 15,
+  "cspfx": 393248,
   "mtype": "0",
   "attk": "NO_ATTK",
   "defn": "NO_DFNS",
@@ -509,10 +568,12 @@ export const artifact_records = [
   "role": "PM_ROGUE",
   "race": "NON_PM",
   "gen_spe": 0,
-  "gift_value": 12
+  "gift_value": 12,
+  "cost": 3500
  },
  {
   "spfx": 134743047,
+  "cspfx": 0,
   "mtype": "0",
   "attk": "PHYS(0, 8)",
   "defn": "NO_DFNS",
@@ -522,10 +583,12 @@ export const artifact_records = [
   "role": "PM_SAMURAI",
   "race": "NON_PM",
   "gen_spe": 0,
-  "gift_value": 12
+  "gift_value": 12,
+  "cost": 4500
  },
  {
   "spfx": 135,
+  "cspfx": 69632,
   "mtype": "0",
   "attk": "NO_ATTK",
   "defn": "NO_DFNS",
@@ -535,10 +598,12 @@ export const artifact_records = [
   "role": "PM_TOURIST",
   "race": "NON_PM",
   "gen_spe": 0,
-  "gift_value": 12
+  "gift_value": 12,
+  "cost": 7000
  },
  {
   "spfx": 524295,
+  "cspfx": 196640,
   "mtype": "0",
   "attk": "NO_ATTK",
   "defn": "NO_DFNS",
@@ -548,10 +613,12 @@ export const artifact_records = [
   "role": "PM_VALKYRIE",
   "race": "NON_PM",
   "gen_spe": 0,
-  "gift_value": 12
+  "gift_value": 12,
+  "cost": 3500
  },
  {
   "spfx": 7,
+  "cspfx": 98304,
   "mtype": "0",
   "attk": "NO_ATTK",
   "defn": "DFNS(AD_MAGM)",
@@ -561,6 +628,7 @@ export const artifact_records = [
   "role": "PM_WIZARD",
   "race": "NON_PM",
   "gen_spe": 0,
-  "gift_value": 12
+  "gift_value": 12,
+  "cost": 4000
  }
 ];

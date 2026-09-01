@@ -1,5 +1,8 @@
-import { exercise, near_capacity, adjalign, poison_strdmg } from './attrib.js';
-import { A_CON, SLT_ENCUMBER, W_RINGL, W_RINGR } from './const.js';
+import { exercise, near_capacity, adjalign, poison_strdmg, adjattrib,
+         acurrstr, change_luck }
+    from './attrib.js';
+import { A_CON, COST_BITE, COST_DSTROY, COST_OPEN, SLT_ENCUMBER,
+         W_RINGL, W_RINGR } from './const.js';
 // eat.js — nutrition.
 // C ref: src/eat.c
 //
@@ -11,12 +14,17 @@ import { game } from './gstate.js';
 import { Race_if } from './u_init.js';
 import { carnivorous, herbivorous, metallivorous, acidic, poisonous,
          flesh_petrifies, vegan, vegetarian, type_is_pname, dmgtype,
-         attacktype, cantvomit, olfaction } from './mondata.js';
+         attacktype, cantvomit, cantwield, olfaction } from './mondata.js';
 import { can_reach_floor } from './pickup.js';
 import { is_pool_or_lava } from './dbridge.js';
 import { tty_yn_function } from './tty/topl.js';
-import { Unaware, Hallucination, Poison_resistance } from './youprop.js';
-import { singular, xname, doname } from './objnam.js';
+import { Unaware, Hallucination, Poison_resistance, Stone_resistance, Glib,
+         Blind }
+    from './youprop.js';
+import { singular, xname, doname, yobjnam, makeplural, the,
+         gloves_simple_name }
+    from './objnam.js';
+import { rndmonnam, hcolor } from './do_name.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { You, You_cant } from './pline.js';
 import { outrumor } from './rumors.js';
@@ -27,7 +35,7 @@ import { end_running, nomul, rounddiv, check_capacity } from './hack.js';
 import { sgn, distu } from './hacklib.js';
 import { ACURR } from './attrib.js';
 import { bot } from './display.js';
-import { A_STR, STARVING, STARVED, FIRE_RES, SLEEP_RES, COLD_RES,
+import { A_STR, A_DEX, STARVING, STARVED, FIRE_RES, SLEEP_RES, COLD_RES,
          DISINT_RES, SHOCK_RES, POISON_RES, ACID_RES, STONE_RES, TELEPORT,
          TELEPORT_CONTROL, TELEPAT, LAST_PROP, FROMOUTSIDE } from './const.js';
 import { set_occupation, stop_occupation } from './allmain.js';
@@ -35,23 +43,32 @@ import { rn2, rnd, rn1, d } from './rng.js';
 import { You_feel, Your } from './pline.js';
 import { losehp } from './hack.js';
 import { SICK_RES, SICK_VOMITABLE, KILLED_BY_AN } from './const.js';
-import { NOT_HUNGRY, ECMD_OK, ECMD_TIME, SATIATED, KILLED_BY, CHOKING, WEAK, HUNGRY, FAINTING, FAINTED, A_LAWFUL, W_ARMOR, W_TOOL, W_AMUL, W_SADDLE } from './const.js';
+import { NOT_HUNGRY, ECMD_OK, ECMD_TIME, SATIATED, KILLED_BY, CHOKING, WEAK, HUNGRY, FAINTING, FAINTED, A_LAWFUL, W_ARMOR, W_TOOL, W_AMUL, W_SADDLE, HOMEMADE_TIN, NON_PM, STR18 } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
-import { getobj, weight, useup, useupf, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_DOWNPLAY, freeinv, update_inventory, reorder_invent, addinv_nomerge } from './invent.js';
+import { getobj, weight, useup, useupf, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_DOWNPLAY, freeinv, update_inventory, reorder_invent, addinv_nomerge, stackobj } from './invent.js';
 import { pline } from './display.js';
+import { observe_object } from './o_init.js';
 /* include/obj.h:332 carried() is a WHERE test, not list membership. */
 import { carried } from './obj.js';
 import { splitobj, bcsign } from './mkobj.js';
-import { is_rottable } from './trap.js';
+import { is_rottable, b_trapped } from './trap.js';
 import { body_part } from './polyself.js';
 import { LIGHT_HEADED, Is_airlevel, Is_astralevel, Is_waterlevel } from './const.js';
 import { surface } from './dungeon.js';
+import { FINGER, NH_GREEN, NO_PART, TIMEOUT } from './const.js';
+import { were_beastie } from './were.js';
+
+/* include/hack.h:51 CANNIBAL_ALLOWED() */
+const cannibal_allowed = () =>
+    game.urole?.mnum === 'PM_CAVE_DWELLER'
+    || game.urole?.mnum === PMNAMES.PM_CAVE_DWELLER
+    || Race_if(PMNAMES.PM_ORC);
 
 // src/eat.c:3170 gethungry()
 export async function gethungry() {
     const u = game.u;
 
-    if (u.uinvulnerable)
+    if (u.uinvulnerable || game.iflags?.debug_hunger)
         return;                       /* forced to fast while praying */
 
     /* src/eat.c:3174 — ordinary food consumption. The Unaware term is a real
@@ -150,6 +167,33 @@ export function init_uhunger() {
     game.u.uhs = NOT_HUNGRY;
 }
 
+// src/eat.c tinnable() and tin_ok().
+export function tinnable(corpse) {
+    return !corpse.oeaten && !!game.mons[corpse.corpsenm].cnutrit;
+}
+
+function tin_ok(obj) {
+    if (!obj)
+        return GETOBJ_EXCLUDE;
+    if (obj.oclass !== OCLASSES.FOOD_CLASS)
+        return GETOBJ_EXCLUDE;
+    if (obj.otyp !== ONAMES.CORPSE || !tinnable(obj))
+        return GETOBJ_EXCLUDE_SELECTABLE;
+    return GETOBJ_SUGGEST;
+}
+
+async function inventory_floorfood(verb, corpsecheck, offering) {
+    const obj = await getobj(verb, offering ? offer_ok
+                                  : corpsecheck === 2 ? tin_ok : eat_ok, 0);
+    if (obj && corpsecheck && !(offering && obj.oclass === OCLASSES.AMULET_CLASS)
+        && (obj.otyp !== ONAMES.CORPSE
+            || (corpsecheck === 2 && !tinnable(obj)))) {
+        await You_cant(`${verb} that!`);
+        return null;
+    }
+    return obj;
+}
+
 // src/eat.c floorfood() — offer each edible thing at the hero's feet with a
 // y/n prompt, then fall through to getobj() for something carried.
 //
@@ -166,7 +210,7 @@ export async function floorfood(verb, corpsecheck) {
     /* if we can't touch floor objects then use inventory food only */
     if (!can_reach_floor(true)
         || (is_pool_or_lava(game.u.ux, game.u.uy)))
-        return await getobj(verb, offering ? offer_ok : eat_ok, 0);
+        return await inventory_floorfood(verb, corpsecheck, offering);
 
     /* src/eat.c — the metallivore arms (bear trap, iron bars, gold) come
        first and each spends a prompt; no ported hero is metallivorous. */
@@ -179,7 +223,8 @@ export async function floorfood(verb, corpsecheck) {
         if (otmp.ox !== game.u.ux || otmp.oy !== game.u.uy)
             continue;
         const wanted = corpsecheck
-            ? (otmp.otyp === ONAMES.CORPSE && corpsecheck === 1)
+            ? (otmp.otyp === ONAMES.CORPSE
+               && (corpsecheck === 1 || tinnable(otmp)))
             : feeding ? (otmp.oclass !== OCLASSES.COIN_CLASS
                          && is_edible(otmp))
                       : otmp.oclass === OCLASSES.FOOD_CLASS;
@@ -198,7 +243,7 @@ export async function floorfood(verb, corpsecheck) {
     }
 
  /* skipfloor: */
-    return await getobj(verb, offering ? offer_ok : eat_ok, 0);
+    return await inventory_floorfood(verb, corpsecheck, offering);
 }
 
 // src/eat.c doeat() — the 'e' command.
@@ -318,7 +363,7 @@ export function tin_variety_txt(s, tinvariety) {
 // next_ident. costly_alteration (shop billing) and the 52-slot overflow drop
 // are recorded. The re-slot mirrors C's freeinv + addinv_nomerge using
 // assigninvlet's rule: first unused letter, a-z then A-Z.
-function touchfood(otmp) {
+async function touchfood(otmp) {
     if (otmp.quan > 1) {
         if (!carried(otmp))
             splitobj(otmp, otmp.quan - 1);
@@ -327,7 +372,8 @@ function touchfood(otmp) {
     }
 
     if (!otmp.oeaten) {
-        note_unported_eat('touchfood:costly_alteration');
+        const { costly_alteration } = await import('./shk.js');
+        await costly_alteration(otmp, COST_BITE);
         otmp.oeaten = obj_nutrition(otmp);
     }
 
@@ -389,6 +435,16 @@ async function violated_vegetarian() {
         await You_feel('guilty.');
         adjalign(-1);
     }
+}
+
+// src/eat.c:568 eating_conducts(), shared by ordinary meals and brain eating.
+export async function eating_conducts(pd) {
+    const conduct = (game.u.uconduct ||= {});
+    conduct.food = (conduct.food | 0) + 1;
+    if (!vegan(pd))
+        conduct.unvegan = (conduct.unvegan | 0) + 1;
+    if (!vegetarian(pd))
+        await violated_vegetarian();
 }
 
 /* src/eat.c:2491 foodwords[]; indices are enum obj_material_types. */
@@ -581,11 +637,10 @@ export async function doeat() {
         return ECMD_OK;
     }
 
-    /* src/eat.c doeat() tail — the tin, corpse and conduct arms above this
-       need their own subsystems; what is ported is the ordinary-food path,
-       which is the one that reaches choke(). */
+    /* src/eat.c doeat() tail. Tins have their own opening occupation; the
+       remaining arms continue through corpse or ordinary-food handling. */
     if (otmp.otyp === ONAMES.TIN) {
-        note_unported_eat('doeat:tin');
+        await start_tin(otmp);
         return ECMD_TIME;
     }
 
@@ -596,7 +651,7 @@ export async function doeat() {
         /* src/eat.c:2966 — touchfood() precedes eatcorpse(), so oeaten has
            the full corpse nutrition before rottenfood divides it. */
         const already_partly_eaten = !!otmp.oeaten;
-        otmp = touchfood(otmp);
+        otmp = await touchfood(otmp);
         const v0 = (game.context.victual ||= {});
         v0.piece = otmp;
         v0.o_id = otmp.o_id;
@@ -635,7 +690,7 @@ export async function doeat() {
 
     /* src/eat.c:2968 — touchfood() BEFORE the victual is set up; it may
        replace otmp with the split-off single. */
-    otmp = touchfood(otmp);
+    otmp = await touchfood(otmp);
 
     const v = (game.context.victual ||= {});
     v.piece = otmp;
@@ -704,12 +759,6 @@ async function fprefx(otmp) {
                     ? "bland."
                     : Hallucination() ? "gnarly!" : "delicious!"}`);
     };
-    /* include/hack.h:51 CANNIBAL_ALLOWED() */
-    const cannibal_allowed = () =>
-        game.urole?.mnum === 'PM_CAVE_DWELLER'
-        || game.urole?.mnum === PMNAMES.PM_CAVE_DWELLER
-        || Race_if(PMNAMES.PM_ORC);
-
     switch (otmp.otyp) {
     case ONAMES.EGG:
         if (otmp.corpsenm === PMNAMES.PM_PYROLISK) {
@@ -745,8 +794,9 @@ async function fprefx(otmp) {
             /* not cannibalism, but we use similar criteria
                for deciding whether to be sickened by this meal */
             if (rn2(2) && !cannibal_allowed()) {
-                rn1(game.context.victual.reqtime, 14);
-                note_unported_eat('fprefx:make_vomiting');
+                const { make_vomiting } = await import('./potion.js');
+                await make_vomiting(rn1(game.context.victual.reqtime, 14),
+                                    false);
             }
         }
         break;
@@ -861,6 +911,22 @@ export async function start_eating(otmp, already_partly_eaten) {
     v.doreset = 0;
     v.eating = 1;
 
+    /* src/eat.c:2041 cprefx(), lycanthropy arm of maybe_cannibal().
+       An infected hero treats every related helper species as their own. */
+    if ((otmp.otyp === ONAMES.CORPSE || otmp.globby)
+        && game.context.ate_brains !== game.moves) {
+        game.context.ate_brains = game.moves;
+        const pm = v.piece?.corpsenm ?? NON_PM;
+        if (!cannibal_allowed() && game.u.ulycn >= 0
+            && were_beastie(pm) === game.u.ulycn) {
+            await You('cannibal!  You will regret this!');
+            const intr = (game.u.intrinsic ||= {});
+            intr.HAggravate_monster = (intr.HAggravate_monster | 0)
+                                      | FROMOUTSIDE;
+            change_luck(-rn1(4, 2));
+        }
+    }
+
     if (await bite()) {
         /* survived choking, finish off food that's nearly done;
            need this to handle cockatrice eggs, fortune cookies, etc */
@@ -882,7 +948,7 @@ export async function start_eating(otmp, already_partly_eaten) {
         return;
     }
 
-    set_occupation(eatfood, `eating ${otmp.oname ?? ''}`, 0);
+    set_occupation(eatfood, `eating ${food_xname(otmp, true)}`, 0);
 }
 
 function note_unported_eat(what) {
@@ -968,12 +1034,320 @@ export async function bite() {
 // than < , so the last turn of a meal still takes a bite. Writing it as < , or
 // biting before incrementing, drops that final bite -- and for a Satiated hero
 // that final bite is the one that chokes.
-/* src/eat.c:1571 opentin() — the tin-opening occupation. Not ported yet;
-   newhungry() compares occupation pointers against it, so the symbol must
-   exist for that test even while nothing can ever set it. */
-function opentin() {
-    (game.unported ||= new Set()).add('eat:opentin');
+// src/eat.c:1491 tin_variety(). This is needed before even an empty tin can
+// be identified because C chooses and stores no variety for a fresh tin.
+function tin_variety(tin) {
+    let r;
+    if (tin.spe === 1)
+        return -1;
+    if (tin.cursed)
+        return 0;
+    if (tin.spe < 0)
+        r = -tin.spe - 1;
+    else
+        r = rn2(TTSZ - 1);
+
+    if (r === HOMEMADE_TIN && !tin.blessed && !rn2(7))
+        r = 0;
+    if (r === 0 && tin.corpsenm !== NON_PM
+        && nonrotting_corpse(tin.corpsenm))
+        r = HOMEMADE_TIN;
+    return r;
+}
+
+async function use_up_tin(tin) {
+    if (carried(tin))
+        useup(tin);
+    else
+        await useupf(tin, 1);
+    const tc = (game.context ||= {}).tin ||= {};
+    tc.tin = null;
+    tc.o_id = 0;
+}
+
+// src/eat.c:1389 costly_tin(). Splitting first keeps the untouched remainder
+// in place and charges only the opened or destroyed tin.
+async function costly_tin(tin, alter_type) {
+    const { costly_alteration, costly_spot } = await import('./shk.js');
+    const inInventory = carried(tin);
+    const billable = inInventory ? tin.unpaid
+                                 : costly_spot(tin.ox, tin.oy) && !tin.no_charge;
+    if (!billable)
+        return tin;
+
+    if (tin.quan > 1) {
+        tin = splitobj(tin, 1);
+        const tc = (game.context ||= {}).tin ||= {};
+        tc.tin = tin;
+        tc.o_id = tin.o_id;
+    }
+    await costly_alteration(tin, alter_type);
+    return tin;
+}
+
+// src/attrib.c:203 gainstr(), with the tin as the BUC source and no message.
+async function gainstr_from_tin(tin) {
+    const base = game.u.acurr?.a?.[A_STR] ?? 0;
+    let amount;
+    if (base < 18)
+        amount = rn2(4) ? 1 : rnd(6);
+    else if (base < STR18(85))
+        amount = rnd(10);
+    else
+        amount = 1;
+    await adjattrib(A_STR, tin.cursed ? -amount : amount, 1);
+}
+
+// src/eat.c:1528 consume_tin().
+async function consume_tin(mesg) {
+    const tc = (game.context ||= {}).tin ||= {};
+    let tin = tc.tin;
+    const r = tin_variety(tin);
+    const always_eat = metallivorous(game.youmonst.data);
+
+    if (tin.otrapped || (tin.cursed && r !== HOMEMADE_TIN && !rn2(8))) {
+        await b_trapped('tin', NO_PART);
+        tin = await costly_tin(tin, COST_DSTROY);
+        await use_up_tin(tin);
+        return;
+    }
+
+    await pline(mesg);
+    if (r !== -1 && tin.corpsenm === NON_PM) {
+        if (Hallucination())
+            await pline(`It's full of ${rn2(2) ? 'air elemental souffle'
+                                               : 'dehydrated water'}.`);
+        else
+            await pline('It turns out to be empty.');
+        observe_object(tin);
+        tin.known = 1;
+        tin = await costly_tin(tin, COST_OPEN);
+        await use_up_tin(tin);
+        if (always_eat)
+            await lesshungry(5);
+        return;
+    }
+
+    if (r !== -1) {
+        const mnum = tin.corpsenm;
+        const mdat = game.mons[mnum];
+        let what;
+        let which = 0;
+
+        if ((mnum === PMNAMES.PM_COCKATRICE
+             || mnum === PMNAMES.PM_CHICKATRICE)
+            && (Stone_resistance() || Hallucination())) {
+            what = 'chicken';
+            which = 1;
+        } else if (Hallucination()) {
+            what = rndmonnam();
+        } else {
+            what = mdat?.pmnames?.[2] ?? mdat?.pmnames?.[0] ?? 'monster';
+            if (!type_is_pname(mdat) && (mdat.geno & MFLAGS_EAT.G_UNIQ))
+                which = 2;
+            else if (type_is_pname(mdat))
+                which = 1;
+        }
+        if (which === 0)
+            what = makeplural(what);
+        else if (which === 2)
+            what = the(what);
+
+        if (!always_eat) {
+            await pline(`It smells like ${what}.`);
+            if ((await tty_yn_function('Eat it?', 'yn', 'n')) === 'n') {
+                if (game.flags?.verbose !== false)
+                    await You('discard the open tin.');
+                if (!Hallucination()) {
+                    observe_object(tin);
+                    tin.known = 1;
+                }
+                tin = await costly_tin(tin, COST_OPEN);
+                await use_up_tin(tin);
+                return;
+            }
+        }
+
+        game.context.victual = {};
+        const meat = mdat?.pmnames?.[2] ?? mdat?.pmnames?.[0] ?? 'monster';
+        await You(`consume ${tintxts[r].txt} ${meat}.`);
+        const conduct = game.u.uconduct ||= {};
+        conduct.food = (conduct.food | 0) + 1;
+        if (!vegan(mdat))
+            conduct.unvegan = (conduct.unvegan | 0) + 1;
+        if (!vegetarian(mdat))
+            await violated_vegetarian();
+        observe_object(tin);
+        tin.known = 1;
+        tin = await costly_tin(tin, COST_OPEN);
+
+        /* Newt and ordinary corpse effects already live in cpostfx(). The
+           pre-consumption special species remain explicit there or below. */
+        await cpostfx(mnum);
+        if (!game.context.tin.tin)
+            return;
+
+        if (tintxts[r].nut < 0) {
+            const { make_vomiting } = await import('./potion.js');
+            await make_vomiting(rn1(15, 10), false);
+        } else {
+            let nutrition = tintxts[r].nut;
+            if (r === HOMEMADE_TIN && nutrition > mdat.cnutrit)
+                nutrition = mdat.cnutrit;
+            if (always_eat)
+                nutrition += 5;
+            await use_up_tin(tin);
+            await lesshungry(nutrition);
+        }
+        if (tintxts[r].greasy) {
+            const already_glib = (game.u.intrinsic?.HGlib | 0) & TIMEOUT;
+            const { make_glib } = await import('./potion.js');
+            make_glib(already_glib + rn1(11, 5));
+            const fingers = game.u.uarmg
+                ? gloves_simple_name(game.u.uarmg)
+                : makeplural(body_part(FINGER));
+            await pline('Eating ' + tintxts[r].txt + ' food made your '
+                        + fingers + ' '
+                        + (already_glib ? 'even more' : 'very')
+                        + ' slippery.');
+        }
+        if (game.context.tin.tin)
+            await use_up_tin(tin);
+        return;
+    }
+
+    if (tin.cursed) {
+        await pline('It contains some decaying'
+                    + (Blind() ? '' : ' ' + hcolor(NH_GREEN))
+                    + ' substance.');
+    } else {
+        await pline('It contains spinach.');
+        observe_object(tin);
+        tin.known = 1;
+    }
+    if (!always_eat
+        && (await tty_yn_function('Eat it?', 'yn', 'n')) === 'n') {
+        if (game.flags?.verbose !== false)
+            await You('discard the open tin.');
+        tin = await costly_tin(tin, COST_OPEN);
+        await use_up_tin(tin);
+        return;
+    }
+    const conduct = game.u.uconduct ||= {};
+    conduct.food = (conduct.food | 0) + 1;
+    if (!tin.cursed) {
+        await pline(`This makes you feel like ${Hallucination()
+                     ? "Swee'pea" : 'Popeye'}!`);
+    }
+    await gainstr_from_tin(tin);
+    tin = await costly_tin(tin, COST_OPEN);
+
+    let nutrition = tin.blessed ? 600
+                    : !tin.cursed ? 400 + rnd(200)
+                      : 200 + rnd(400);
+    if (always_eat)
+        nutrition += 5;
+    await use_up_tin(tin);
+    await lesshungry(nutrition);
+}
+
+// src/eat.c:1703 opentin() and :1723 start_tin(). Applying a tin opener and
+// eating a tin directly share this timing state machine.
+async function opentin() {
+    const tc = game.context?.tin;
+    const tin = tc?.tin;
+    if (!tin || (!carried(tin)
+        && (!obj_here(tin, game.u.ux, game.u.uy) || !can_reach_floor(true))))
+        return 0;
+    if (tc.usedtime++ >= 50) {
+        await You('give up your attempt to open the tin.');
+        return 0;
+    }
+    if (tc.usedtime < tc.reqtime)
+        return 1;
+
+    await consume_tin('You succeed in opening the tin.');
     return 0;
+}
+
+export async function start_tin(tin) {
+    let mesg = null;
+    let delay;
+
+    if (metallivorous(game.youmonst.data)) {
+        mesg = 'You bite right into the metal tin...';
+        delay = 0;
+    } else if (cantwield(game.youmonst.data)) {
+        await You('cannot handle the tin properly to open it.');
+        return;
+    } else if (tin.blessed) {
+        delay = game.u.uwep?.blessed
+                && game.u.uwep.otyp === ONAMES.TIN_OPENER ? 0 : rn2(2);
+        if (!delay)
+            mesg = 'The tin opens like magic!';
+        else
+            await pline('The tin seems easy to open.');
+    } else if (game.u.uwep?.otyp === ONAMES.TIN_OPENER) {
+        mesg = 'You easily open the tin.';
+        delay = rn2(game.u.uwep.cursed ? 3
+                    : !game.u.uwep.blessed ? 2 : 1);
+        await pline(`Using ${yobjnam(game.u.uwep, null)} you try to open the tin.`);
+    } else {
+        const uwep = game.u.uwep;
+        let using_tool = true;
+
+        switch (uwep?.otyp) {
+        case ONAMES.DAGGER:
+        case ONAMES.SILVER_DAGGER:
+        case ONAMES.ELVEN_DAGGER:
+        case ONAMES.ORCISH_DAGGER:
+        case ONAMES.ATHAME:
+        case ONAMES.KNIFE:
+        case ONAMES.STILETTO:
+        case ONAMES.CRYSKNIFE:
+            delay = 3;
+            break;
+        case ONAMES.PICK_AXE:
+        case ONAMES.AXE:
+            delay = 6;
+            break;
+        default:
+            using_tool = false;
+            break;
+        }
+
+        if (using_tool) {
+            await pline('Using ' + yobjnam(uwep, null)
+                        + ' you try to open the tin.');
+        } else {
+            await pline('It is not so easy to open this tin.');
+            if (Glib()) {
+                await pline('The tin slips from your fingers.');
+                if (tin.quan > 1)
+                    tin = splitobj(tin, 1);
+                if (carried(tin)) {
+                    const { dropx } = await import('./do.js');
+                    await dropx(tin);
+                } else {
+                    stackobj(tin);
+                }
+                return;
+            }
+            delay = rn1(1 + Math.trunc(500 / (ACURR(A_DEX) + acurrstr())),
+                        10);
+        }
+    }
+
+    const tc = (game.context ||= {}).tin ||= {};
+    tc.tin = tin;
+    tc.o_id = tin.o_id;
+    if (!delay) {
+        await consume_tin(mesg);
+    } else {
+        tc.reqtime = delay;
+        tc.usedtime = 0;
+        set_occupation(opentin, 'opening the tin', 0);
+    }
 }
 
 export async function eatfood() {
@@ -1038,7 +1412,7 @@ export async function done_eating(message) {
         if (carried(piece))
             useup(piece);
         else
-            useupf(piece, 1);
+            await useupf(piece, 1);
     }
 
     game.context.victual = {};          /* zero_victual */

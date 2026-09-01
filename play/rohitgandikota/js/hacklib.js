@@ -44,6 +44,34 @@ export function s_suffix(s) {
     return s + "'s";
 }
 
+// src/hacklib.c:363 ing_suffix() -- form a present participle while keeping
+// trailing "on", "off", or "with" after the inflected verb.
+export function ing_suffix(str) {
+    let stem = String(str);
+    let tail = '';
+    const trailing = / (on|off|with)$/i.exec(stem);
+    if (trailing) {
+        tail = trailing[0];
+        stem = stem.slice(0, -tail.length);
+    }
+
+    const low = stem.toLowerCase();
+    const vowels = 'aeiouwy';
+    if (low.endsWith('er')) {
+        /* slither -> slithering */
+    } else if (stem.length >= 3
+               && !vowels.includes(low.at(-1))
+               && vowels.includes(low.at(-2))
+               && !vowels.includes(low.at(-3))) {
+        stem += stem.at(-1);
+    } else if (low.endsWith('ie')) {
+        stem = stem.slice(0, -2) + 'y';
+    } else if (low.endsWith('e')) {
+        stem = stem.slice(0, -1);
+    }
+    return stem + 'ing' + tail;
+}
+
 // src/hacklib.c:704 online2() — are the two points on a straight line?
 //
 // Orthogonal when either delta is zero, diagonal when the deltas match in

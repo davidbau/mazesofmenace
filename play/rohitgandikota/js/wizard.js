@@ -17,7 +17,7 @@ import { ONAMES } from './objects_data.js';
 import { attacktype, is_covetous } from './mondata.js';
 import { inhishop, inhistemple } from './monmove.js';
 import { builds_up } from './dungeon.js';
-import { DEADMONSTER } from './monst.js';
+import { DEADMONSTER, helpless } from './monst.js';
 
 // src/wizard.c:61 amulet() — carrying the Amulet: a worn or wielded Amulet
 // senses the portal (rn2(15) gate), and while the Wizard of Yendor is in
@@ -49,9 +49,20 @@ export async function amulet() {
 
     if (!game.context?.no_of_wizards)
         return;
-    /* find Wizard, and wake him if necessary — the resurrected-Wizard
-       machinery is not ported; record instead of guessing the rn2(40) */
-    (game.unported ||= new Set()).add('amulet:wake_wizard');
+    /* find every live Wizard, spending one wake roll for each sleeping one
+       until a Wizard notices the Amulet */
+    for (const mtmp of game.level?.monsters || []) {
+        if (DEADMONSTER(mtmp))
+            continue;
+        if (mtmp.iswiz && mtmp.msleeping && !rn2(40)) {
+            mtmp.msleeping = 0;
+            if (distu(mtmp.mx, mtmp.my) > 2) {
+                const { You } = await import('./pline.js');
+                await You('get the creepy feeling that somebody noticed your taking the Amulet.');
+            }
+            return;
+        }
+    }
 }
 
 // src/wizard.c:105 mon_has_amulet()
@@ -427,7 +438,8 @@ export function aggravate() {
 // src/wizard.c:481 resurrect() — force confrontation with the Wizard:
 // entering a new dungeon while carrying the Amulet conjures him beside the
 // hero (makemon at the hero's square goes through enexto). The
-// migrating-Wizard arm needs the migrating_mons list and records.
+// migrating-Wizard arm reuses the existing monster and brings it near the
+// hero, preserving its state and the C draw order.
 export async function resurrect() {
     let mtmp = null;
     let verb;
@@ -460,7 +472,31 @@ export async function resurrect() {
     } else {
         /* look for a migrating Wizard */
         verb = 'elude';
-        note_unported_wizard('resurrect:migrating_wizard');
+        const migrating = game.migrating_mons || [];
+        for (let i = 0; i < migrating.length; i++) {
+            const candidate = migrating[i];
+            let elapsed = game.moves - (candidate.mlstmv ?? game.moves);
+            if (!candidate.iswiz || mon_has_amulet(candidate) || elapsed <= 0)
+                continue;
+
+            const { mon_arrive, mon_catchup_elapsed_time } =
+                await import('./dog.js');
+            await mon_catchup_elapsed_time(candidate, elapsed);
+            elapsed = Math.trunc(Math.min(elapsed, 2147483646) / 50);
+            if (candidate.msleeping && rn2(elapsed + 1))
+                candidate.msleeping = 0;
+            if (candidate.mfrozen === 1) {
+                candidate.mfrozen = 0;
+                candidate.mcanmove = 1;
+            }
+            if (helpless(candidate))
+                continue;
+
+            migrating.splice(i, 1);
+            if (await mon_arrive(candidate, -1) && candidate.mx)
+                mtmp = candidate;
+            break;
+        }
     }
 
     if (mtmp) {

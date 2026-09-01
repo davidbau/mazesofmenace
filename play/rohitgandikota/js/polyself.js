@@ -7,13 +7,24 @@
 
 import { game } from './gstate.js';
 import { is_neuter, humanoid, slithy, attacktype, name_to_monplus,
-         strongmonst, sliparm, nohands, verysmall, is_whirly } from './mondata.js';
-import { mons, PMNAMES, MONSYMS, ATTKS, MFLAGS } from './monst_data.js';
+         strongmonst, sliparm, breakarm, nohands, verysmall,
+         is_whirly, num_horns, has_head, hides_under, webmaker,
+         is_hider, lays_eggs, is_swimmer, is_unicorn,
+         regenerates, resists_drli, dmgtype, dmgtype_fromattack,
+         perceives, telepathic, infravision, pm_invisible,
+         can_teleport, control_teleport, is_floater, is_flyer,
+         passes_walls, haseyes, is_dwarf, is_elf, is_giant, is_gnome,
+         is_orc, is_undead } from './mondata.js';
+import { mons, PMNAMES, MONSYMS, ATTKS, MFLAGS, MSOUND } from './monst_data.js';
+import { races } from './role_data.js';
+import { is_vampshifter } from './monst.js';
 import { NO_PART, ARM, FINGER, FINGERTIP, FOOT, HAND, HANDED,
          HEAD, LEG, TOE, HAIR, EYE, NOSE, A_STR, A_WIS, A_CON,
          ECMD_OK, ECMD_TIME, KILLED_BY_AN, Upolyd, FROMFORM } from './const.js';
 import { rn2, rn1, d, rnd } from './rng.js';
-import { OCLASSES } from './objects_data.js';
+import { OCLASSES, ONAMES } from './objects_data.js';
+import { WrappingAllowed, is_flimsy } from './obj.js';
+import { simpleonames, vtense, yname } from './objnam.js';
 
 /* src/polyself.c:1975 — the per-shape body-part tables, in C's order:
    ARM, EYE, FACE, FINGER, FINGERTIP, FOOT, HAND, HANDED, HEAD, LEG,
@@ -195,6 +206,34 @@ export function body_part(part) {
     return mbodypart(game.youmonst, part);
 }
 
+// src/polyself.c:2160 ugolemeffects(). Flesh golems convert electrical
+// damage into a small heal, and iron golems convert fire damage into a heal.
+// The caller has already established resistance, so this function only
+// handles the form-specific recovery.
+export async function ugolemeffects(damtype, dam) {
+    const u = game.u;
+    let heal = 0;
+
+    if (u.umonnum !== PMNAMES.PM_FLESH_GOLEM
+        && u.umonnum !== PMNAMES.PM_IRON_GOLEM)
+        return;
+    if (damtype === ATTKS.AD_ELEC
+        && u.umonnum === PMNAMES.PM_FLESH_GOLEM)
+        heal = Math.trunc((dam + 5) / 6);
+    else if (damtype === ATTKS.AD_FIRE
+             && u.umonnum === PMNAMES.PM_IRON_GOLEM)
+        heal = dam;
+
+    if (heal && u.mh < u.mhmax) {
+        u.mh = Math.min(u.mh + heal, u.mhmax);
+        (game.disp ||= {}).botl = true;
+        const { pline } = await import('./display.js');
+        await pline('Strangely, you feel better than before.');
+        const { exercise } = await import('./attrib.js');
+        exercise(A_STR, true);
+    }
+}
+
 // src/polyself.c:2149 poly_gender() — the polymorphed hero's gender.
 // 0 and 1 mean what flags.female means; 2 is none.
 //
@@ -210,6 +249,28 @@ export function poly_gender() {
     return game.flags?.female ? 1 : 0;
 }
 
+// src/polyself.c:273 change_sex().  The base sex always changes.  A
+// polymorphed body changes too unless its species has a fixed sex.
+export function change_sex() {
+    const u = game.u;
+    const polymorphed = Upolyd(u);
+    const mdat = game.youmonst?.data;
+    const fixed_male = !!(mdat?.mflags2 & MFLAGS.M2_MALE);
+    const fixed_female = !!(mdat?.mflags2 & MFLAGS.M2_FEMALE);
+
+    if (!polymorphed
+        || (!fixed_male && !fixed_female && !is_neuter(mdat)))
+        game.flags.female = !game.flags.female;
+    if (polymorphed)
+        u.mfemale = !u.mfemale;
+
+    if (!polymorphed) {
+        u.umonnum = u.umonster;
+    } else if (u.umonnum === PMNAMES.PM_AMOROUS_DEMON) {
+        game.flags.female = !game.flags.female;
+    }
+}
+
 const clone_attr = (attr) => attr ? { ...attr, a: [...attr.a] } : attr;
 const indefinite = (name) => `${/^[aeiou]/i.test(name) ? 'an' : 'a'} ${name}`;
 const placeholder_forms = new Set([
@@ -220,13 +281,87 @@ const polyok = (mdat) => !!mdat && !(mdat.mflags2 & MFLAGS.M2_NOPOLY);
 const your_race = (mdat) =>
     !!mdat && !!(mdat.mflags2 & (game.urace?.selfmask || 0));
 
-// src/polyself.c:35 set_uasmon(), the form-derived stunned property.
-// Bats and stalkers are intrinsically stunned while the form lasts.
-function set_form_stun(mdat, mntmp) {
+// src/polyself.c:35 set_uasmon(), form-derived intrinsic properties.
+function set_form_intrinsics(mdat, mntmp) {
     const intr = (game.u.intrinsic ||= {});
-    intr.HStun = (intr.HStun || 0) & ~FROMFORM;
-    if (mntmp === PMNAMES.PM_STALKER || mdat?.mlet === MONSYMS.S_BAT)
-        intr.HStun |= FROMFORM;
+    const propset = (key, on) => {
+        intr[key] = (intr[key] || 0) & ~FROMFORM;
+        if (on)
+            intr[key] |= FROMFORM;
+    };
+    const resists = (mask) => !!(mdat?.mresists & mask);
+
+    propset('HFire_resistance', resists(MFLAGS.MR_FIRE));
+    propset('HCold_resistance', resists(MFLAGS.MR_COLD));
+    propset('HSleep_resistance', resists(MFLAGS.MR_SLEEP));
+    propset('HDisint_resistance', resists(MFLAGS.MR_DISINT));
+    propset('HShock_resistance', resists(MFLAGS.MR_ELEC));
+    propset('HPoison_resistance', resists(MFLAGS.MR_POISON));
+    propset('HAcid_resistance', resists(MFLAGS.MR_ACID));
+    propset('HStone_resistance', resists(MFLAGS.MR_STONE));
+
+    const savedWeapon = game.u.uwep;
+    game.u.uwep = null;
+    propset('HDrain_resistance', !!mdat && resists_drli(game.youmonst));
+    game.u.uwep = savedWeapon;
+
+    propset('HAntimagic', !!mdat && (dmgtype(mdat, ATTKS.AD_MAGM)
+             || mntmp === PMNAMES.PM_BABY_GRAY_DRAGON
+             || dmgtype(mdat, ATTKS.AD_RBRE)));
+    propset('HSick_resistance', !!mdat
+            && (mdat.mlet === MONSYMS.S_FUNGUS
+                || mntmp === PMNAMES.PM_GHOUL));
+    propset('HStun', mntmp === PMNAMES.PM_STALKER
+            || mdat?.mlet === MONSYMS.S_BAT);
+    propset('HHalluc_resistance', !!mdat && dmgtype(mdat, ATTKS.AD_HALU));
+    propset('HSee_invisible', !!mdat && perceives(mdat));
+    propset('HTelepat', !!mdat && telepathic(mdat));
+
+    const sightForm = Upolyd(game.u)
+        ? mdat : (game.mons?.[game.urace?.mnum] || mons[game.urace?.mnum]);
+    propset('HInfravision', !!sightForm && infravision(sightForm));
+    propset('HInvis', !!mdat && pm_invisible(mdat));
+    propset('HTeleportation', !!mdat && can_teleport(mdat));
+    propset('HTeleport_control', !!mdat && control_teleport(mdat));
+    propset('HLevitation', !!mdat && is_floater(mdat));
+    propset('HFlying', !!mdat && is_flyer(mdat) && !is_floater(mdat));
+    propset('HSwimming', !!mdat && is_swimmer(mdat));
+    propset('HPasses_walls', !!mdat && passes_walls(mdat));
+    propset('HRegeneration', !!mdat && regenerates(mdat));
+    propset('HReflecting', mntmp === PMNAMES.PM_SILVER_DRAGON);
+    propset('HBlinded', !!mdat && !haseyes(mdat));
+    propset('HBlnd_resistance', !!mdat
+            && (dmgtype_fromattack(mdat, ATTKS.AD_BLND, ATTKS.AT_EXPL)
+                || dmgtype_fromattack(mdat, ATTKS.AD_BLND, ATTKS.AT_GAZE)));
+
+    const facewearBlinds = game.u.ublindf
+        && (game.u.ublindf.otyp === ONAMES.BLINDFOLD
+            || game.u.ublindf.otyp === ONAMES.TOWEL);
+    game.u.ublind = !game.u.blocked?.BLINDED
+        && (!!intr.HBlinded || facewearBlinds) ? 1 : 0;
+}
+
+// src/polyself.c:1077 uasmon_maxStr(): temporary maximum strength for the
+// current monster form, including race-shaped forms and living giants.
+function uasmon_maxStr(mdat, mntmp) {
+    let raceForm = mntmp;
+    if (is_orc(mdat)) {
+        if (mntmp !== PMNAMES.PM_URUK_HAI
+            && mntmp !== PMNAMES.PM_ORC_CAPTAIN)
+            raceForm = PMNAMES.PM_ORC;
+    } else if (is_elf(mdat)) {
+        raceForm = PMNAMES.PM_ELF;
+    } else if (is_dwarf(mdat)) {
+        raceForm = PMNAMES.PM_DWARF;
+    } else if (is_gnome(mdat)) {
+        raceForm = PMNAMES.PM_GNOME;
+    }
+    const race = races.find((candidate) => candidate.mnum === raceForm);
+    if (strongmonst(mdat)) {
+        const livingGiant = is_giant(mdat) && !is_undead(mdat);
+        return race?.attrmax?.[A_STR] ?? (livingGiant ? 119 : 118);
+    }
+    return race?.attrmax?.[A_STR] ?? 18;
 }
 
 // src/polyself.c:332 newman() and :200 polyman(), the controlled return to
@@ -299,7 +434,7 @@ async function newman() {
     game.flags.female = !!u.mfemale;
     game.youmonst.data = game.mons?.[u.umonster] || mons[u.umonster];
     game.youmonst.mnum = u.umonster;
-    set_form_stun(game.youmonst.data, u.umonster);
+    set_form_intrinsics(game.youmonst.data, u.umonster);
     u.mh = u.mhmax = 0;
     u.mtimedone = 0;
     u.uundetected = 0;
@@ -336,13 +471,18 @@ export async function rehumanize() {
     const { Blind } = await import('./youprop.js');
     const was_blind = Blind();
 
+    const oldspeed = game.youmonst.data?.mmove || 0;
+    const baseform = game.mons?.[u.umonster] || mons[u.umonster];
+
     u.acurr = clone_attr(u.macurr);
     u.amax = clone_attr(u.mamax);
     u.umonnum = u.umonster;
     game.flags.female = !!u.mfemale;
-    game.youmonst.data = game.mons?.[u.umonster] || mons[u.umonster];
+    if (u.umovement && baseform.mmove < oldspeed && oldspeed > 0)
+        u.umovement = Math.trunc(u.umovement * baseform.mmove / oldspeed);
+    game.youmonst.data = baseform;
     game.youmonst.mnum = u.umonster;
-    set_form_stun(game.youmonst.data, u.umonster);
+    set_form_intrinsics(game.youmonst.data, u.umonster);
     u.mh = u.mhmax = 0;
     u.mtimedone = 0;
     u.uundetected = 0;
@@ -351,9 +491,14 @@ export async function rehumanize() {
     find_ac();
     const { newsym, see_monsters, urgent_pline } = await import('./display.js');
     newsym(u.ux, u.uy);
+    const regainedSight = was_blind && !Blind();
+    if (regainedSight) {
+        game._deferred_status_blind = false;
+        game._deferred_status_blind_more_count = 1;
+    }
     await urgent_pline(`You return to ${game.urace.adj} form!`);
 
-    if (was_blind && !Blind()) {
+    if (regainedSight) {
         (u.intrinsic ||= {}).HBlinded = 1;
         u.ublind = 1;
         const { make_blinded } = await import('./potion.js');
@@ -372,14 +517,19 @@ export async function rehumanize() {
 // src/polyself.c:735 polymon(): install a monster form. The shared state,
 // hit-dice, armor-fit and wielded-object paths are live for every form; rare
 // form-specific effects remain recorded at their trigger.
-export async function polymon(mntmp) {
+export async function polymon(mntmp, options = {}) {
     const u = game.u;
     const mdat = game.mons?.[mntmp] || mons[mntmp];
+    const allowSexChange = options.allowSexChange !== false;
+    const keepAttributesForMessage = !!options.keepAttributesForMessage;
     if (!mdat)
         return 0;
+    const { Blind } = await import('./youprop.js');
+    const wasBlind = Blind();
     const oldAc = u.uac;
     let droppedCloak = false;
     let droppedWeaponMessage = null;
+    const breaksArmor = breakarm(mdat);
 
     (u.uconduct ||= {}).polyselfs = (u.uconduct.polyselfs | 0) + 1;
 
@@ -391,7 +541,7 @@ export async function polymon(mntmp) {
         u.macurr = clone_attr(u.acurr);
         u.mamax = clone_attr(u.amax);
         u.mfemale = !!game.flags.female;
-    } else {
+    } else if (!keepAttributesForMessage) {
         u.acurr = clone_attr(u.macurr);
         u.amax = clone_attr(u.mamax);
         game.flags.female = !!u.mfemale;
@@ -399,18 +549,31 @@ export async function polymon(mntmp) {
 
     const fixed_male = !!(mdat.mflags2 & 0x00010000);
     const fixed_female = !!(mdat.mflags2 & 0x00020000);
+    let changedNeutralSex = false;
     if (fixed_male && game.flags.female)
         game.flags.female = false;
     else if (fixed_female && !game.flags.female)
         game.flags.female = true;
-    else if (!fixed_male && !fixed_female && !is_neuter(mdat) && !rn2(10))
+    else if (allowSexChange && !fixed_male && !fixed_female
+             && !is_neuter(mdat) && !rn2(10)) {
         game.flags.female = !game.flags.female;
+        changedNeutralSex = true;
+    }
 
     const monname = mdat.pmnames[game.flags.female ? 1 : 0]
                     || mdat.pmnames[2] || mdat.pmnames[0];
+    const shownName = `${changedNeutralSex
+        ? (game.flags.female ? 'female ' : 'male ') : ''}${monname}`;
     const { You } = await import('./pline.js');
     await You(`${u.umonnum !== mntmp ? 'turn into' : 'feel like'} `
-              + `${indefinite(u.umonnum !== mntmp ? monname : `new ${monname}`)}!`);
+              + `${indefinite(u.umonnum !== mntmp
+                  ? shownName : `new ${shownName}`)}!`);
+
+    if (Upolyd(u) && keepAttributesForMessage) {
+        u.acurr = clone_attr(u.macurr);
+        u.amax = clone_attr(u.mamax);
+        game.flags.female = !!u.mfemale;
+    }
 
     u.mtimedone = rn1(500, 500);
     /* src/mondata.c:11 set_mon_data() prorates banked movement when the
@@ -422,13 +585,14 @@ export async function polymon(mntmp) {
     u.umonnum = mntmp;
     game.youmonst.data = mdat;
     game.youmonst.mnum = mntmp;
-    set_form_stun(mdat, mntmp);
+    set_form_intrinsics(mdat, mntmp);
 
+    const maxStrength = uasmon_maxStr(mdat, mntmp);
     if (strongmonst(mdat)) {
-        u.acurr.a[A_STR] = 118;
-        u.amax.a[A_STR] = 118;
+        u.acurr.a[A_STR] = maxStrength;
+        u.amax.a[A_STR] = maxStrength;
     } else {
-        u.amax.a[A_STR] = Math.min(u.amax.a[A_STR], 18);
+        u.amax.a[A_STR] = maxStrength;
         u.acurr.a[A_STR] = Math.min(u.acurr.a[A_STR], u.amax.a[A_STR]);
     }
 
@@ -436,6 +600,9 @@ export async function polymon(mntmp) {
     if (mdat.mlet === MONSYMS.S_DRAGON
         && mntmp >= PMNAMES.PM_GRAY_DRAGON) {
         u.mhmax = 4 * mlvl + d(mlvl, 4);
+    } else if (mdat.mlet === MONSYMS.S_GOLEM) {
+        const { golemhp } = await import('./makemon.js');
+        u.mhmax = golemhp(mntmp);
     } else {
         u.mhmax = mlvl ? d(mlvl, 8) : rnd(4);
     }
@@ -443,7 +610,50 @@ export async function polymon(mntmp) {
     if (u.ulevel < mlvl)
         u.mtimedone = Math.trunc(u.mtimedone * u.ulevel / mlvl);
 
-    if (sliparm(mdat) && u.uarm) {
+    if (breaksArmor && u.uarm) {
+        const armor = u.uarm;
+        await You('break out of your armor!');
+        exercise(A_STR, false);
+        const { setnotworn } = await import('./worn.js');
+        setnotworn(armor);
+        const { useup } = await import('./invent.js');
+        useup(armor);
+    }
+
+    if (breaksArmor && u.uarmc
+        && (u.uarmc.otyp !== ONAMES.MUMMY_WRAPPING
+            || !WrappingAllowed(mdat))) {
+        const cloak = u.uarmc;
+        const { cloak_simple_name } = await import('./do_wear.js');
+        const cloakName = cloak_simple_name(cloak);
+        const { setnotworn } = await import('./worn.js');
+        setnotworn(cloak);
+        if (cloak.otyp === ONAMES.MUMMY_WRAPPING) {
+            const { Your } = await import('./pline.js');
+            await Your(`${cloakName} tears apart!`);
+            const { useup } = await import('./invent.js');
+            useup(cloak);
+        } else {
+            const { pline } = await import('./display.js');
+            await pline(cloak.otyp === ONAMES.ALCHEMY_SMOCK
+                ? `The knot on your ${cloakName} is pulled apart!`
+                : `The clasp on your ${cloakName} breaks open!`);
+            const { dropx } = await import('./do.js');
+            await dropx(cloak);
+        }
+    }
+
+    if (breaksArmor && u.uarmu) {
+        const shirt = u.uarmu;
+        const { Your } = await import('./pline.js');
+        await Your('shirt rips to shreds!');
+        const { setnotworn } = await import('./worn.js');
+        setnotworn(shirt);
+        const { useup } = await import('./invent.js');
+        useup(shirt);
+    }
+
+    if (!breaksArmor && sliparm(mdat) && u.uarm) {
         const armor = u.uarm;
         const { Your } = await import('./pline.js');
         await Your('armor falls around you!');
@@ -453,7 +663,7 @@ export async function polymon(mntmp) {
         await dropx(armor);
     }
 
-    if (sliparm(mdat) && u.uarmc) {
+    if (!breaksArmor && sliparm(mdat) && u.uarmc) {
         const cloak = u.uarmc;
         const { cloak_simple_name } = await import('./do_wear.js');
         await You(`shrink out of your ${cloak_simple_name(cloak)}!`);
@@ -464,6 +674,38 @@ export async function polymon(mntmp) {
         droppedCloak = true;
     }
 
+    if (!breaksArmor && sliparm(mdat) && u.uarmu) {
+        const shirt = u.uarmu;
+        const { You } = await import('./pline.js');
+        await You(is_whirly(mdat)
+            ? 'seep right through your shirt!'
+            : 'become much too small for your shirt!');
+        const { setnotworn } = await import('./worn.js');
+        setnotworn(shirt);
+        const { dropx } = await import('./do.js');
+        await dropx(shirt);
+    }
+
+    if (num_horns(mdat) && u.uarmh) {
+        const helm = u.uarmh;
+        const { helm_simple_name } = await import('./do_wear.js');
+        const helmName = helm_simple_name(helm);
+        if (is_flimsy(helm)) {
+            const horns = num_horns(mdat) === 1 ? 'horn' : 'horns';
+            const { Your } = await import('./pline.js');
+            await Your(`${horns} ${horns === 'horn' ? 'pierces' : 'pierce'} `
+                       + `through ${yname(helm)}.`);
+        } else {
+            const { surface } = await import('./dungeon.js');
+            const { Your } = await import('./pline.js');
+            await Your(`${helmName} falls to the ${surface(u.ux, u.uy)}!`);
+            const { setnotworn } = await import('./worn.js');
+            setnotworn(helm);
+            const { dropx } = await import('./do.js');
+            await dropx(helm);
+        }
+    }
+
     if ((nohands(mdat) || verysmall(mdat)) && u.uarmg) {
         const gloves = u.uarmg;
         const weapon = u.uwep;
@@ -471,7 +713,7 @@ export async function polymon(mntmp) {
         await You(`drop your gloves${weapon ? ' and weapon' : ''}!`);
         if (weapon) {
             const { uwepgone } = await import('./wield.js');
-            uwepgone();
+            await uwepgone();
             const { dropx } = await import('./do.js');
             await dropx(weapon);
         }
@@ -518,18 +760,31 @@ export async function polymon(mntmp) {
         await dropx(boots);
     }
 
+    if (u.ublindf && !has_head(mdat)) {
+        const eyewearObj = u.ublindf;
+        let eyewear = simpleonames(eyewearObj);
+        if (eyewear.startsWith('pair of '))
+            eyewear = eyewear.slice(8);
+        const { Your } = await import('./pline.js');
+        await Your(`${eyewear} ${vtense(eyewear, 'fall')} off!`);
+        const { Blindf_off } = await import('./do_wear.js');
+        await Blindf_off(null);
+        const { dropx } = await import('./do.js');
+        await dropx(eyewearObj);
+    }
+
     if (nohands(mdat) && u.uwep) {
         const weapon = u.uwep;
         const { weapon_descr } = await import('./weapon.js');
-        const which = weapon_descr(weapon);
+        const { is_sword, uwepgone } = await import('./wield.js');
+        const which = is_sword(weapon) ? 'sword' : weapon_descr(weapon);
         const message = `find you must drop ${
             which.startsWith('corpse') ? 'the' : 'your'} ${which}!`;
         if (droppedCloak)
             droppedWeaponMessage = message;
         else
             await You(message);
-        const { uwepgone } = await import('./wield.js');
-        uwepgone();
+        await uwepgone();
         const { dropx } = await import('./do.js');
         await dropx(weapon);
     }
@@ -540,6 +795,14 @@ export async function polymon(mntmp) {
     }
     const { find_ac } = await import('./do_wear.js');
     find_ac();
+
+    if (wasBlind && !Blind()) {
+        (u.intrinsic ||= {}).HBlinded = 1;
+        u.ublind = 1;
+        const { make_blinded } = await import('./potion.js');
+        await make_blinded(0, true);
+    }
+
     const { newsym, see_monsters } = await import('./display.js');
     newsym(u.ux, u.uy);
     game.vision_full_recalc = 1;
@@ -553,9 +816,47 @@ export async function polymon(mntmp) {
         delete game._deferred_status_ac_more_count;
     }
 
-    if (game.flags.verbose && attacktype(mdat, ATTKS.AT_BREA)) {
+    if (game.flags.verbose) {
         const { pline } = await import('./display.js');
-        await pline('Use the command #monster to use your breath weapon.');
+        const monsterAbility = async (action) =>
+            pline(`Use the command #monster to ${action}.`);
+        const mightHide = is_hider(mdat) || hides_under(mdat);
+
+        if (attacktype(mdat, ATTKS.AT_BREA))
+            await monsterAbility('use your breath weapon');
+        if (attacktype(mdat, ATTKS.AT_SPIT))
+            await monsterAbility('spit venom');
+        if (mdat.mlet === MONSYMS.S_NYMPH)
+            await monsterAbility('remove an iron ball');
+        if (attacktype(mdat, ATTKS.AT_GAZE))
+            await monsterAbility('gaze at monsters');
+        if (mightHide && webmaker(mdat))
+            await monsterAbility('hide or to spin a web');
+        else if (mightHide)
+            await monsterAbility('hide');
+        else if (webmaker(mdat))
+            await monsterAbility('spin a web');
+        if (mdat.mflags2 & MFLAGS.M2_WERE)
+            await monsterAbility('summon help');
+        if (u.umonnum === PMNAMES.PM_GREMLIN)
+            await monsterAbility('multiply in a fountain');
+        if (is_unicorn(mdat))
+            await monsterAbility('use your horn');
+        if (mdat.pmidx === PMNAMES.PM_MIND_FLAYER
+            || mdat.pmidx === PMNAMES.PM_MASTER_MIND_FLAYER)
+            await monsterAbility('emit a mental blast');
+        if (mdat.msound === MSOUND.MS_SHRIEK)
+            await monsterAbility('shriek');
+        if (mdat.mlet === MONSYMS.S_VAMPIRE || is_vampshifter(game.youmonst))
+            await monsterAbility('change shape');
+
+        if (lays_eggs(mdat) && game.flags.female
+            && mdat.pmidx !== PMNAMES.PM_GIANT_EEL
+            && mdat.pmidx !== PMNAMES.PM_ELECTRIC_EEL) {
+            const action = mdat.mlet === MONSYMS.S_EEL && is_swimmer(mdat)
+                ? 'spawn in the water' : 'lay an egg';
+            await pline(`Use the command #sit to ${action}.`);
+        }
     }
     return 1;
 }
@@ -638,6 +939,24 @@ export async function domonability() {
         (game.disp ||= {}).botl = true;
         const { getdir } = await import('./cmd.js');
         return await getdir(null) ? ECMD_TIME : ECMD_OK;
+    }
+    if (mdat.mflags2 & MFLAGS.M2_WERE) {
+        if (game.u.uen < 10) {
+            await You('lack the energy to send forth a call for help!');
+            return ECMD_OK;
+        }
+        game.u.uen -= 10;
+        (game.disp ||= {}).botl = true;
+        await You('call upon your brethren for help!');
+        const { exercise } = await import('./attrib.js');
+        exercise(A_WIS, true);
+        const { were_summon } = await import('./were.js');
+        const { total } = await were_summon(mdat, true);
+        if (!total) {
+            const { pline } = await import('./display.js');
+            await pline('But none arrive.');
+        }
+        return ECMD_TIME;
     }
     if (Upolyd(game.u)) {
         const { pline } = await import('./display.js');

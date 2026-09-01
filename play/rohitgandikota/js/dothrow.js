@@ -1,13 +1,18 @@
 import { game } from './gstate.js';
 import { pline } from './display.js';
 import { splitobj, place_object } from './mkobj.js';
-import { freeinv, stackobj } from './invent.js';
-import { encumber_msg, near_capacity, ACURR, acurrstr, exercise } from './attrib.js';
+import { addinv, freeinv, fully_identify_obj, stackobj } from './invent.js';
+import { encumber_msg, near_capacity, ACURR, acurrstr, exercise,
+         change_luck } from './attrib.js';
 import { A_DEX, A_STR, BOLT_LIM, IS_SOFT, LOST_THROWN, THROWN_WEAPON,
-         HMON_THROWN, HMON_KICKED, HMON_APPLIED, engulfing_u } from './const.js';
+         HMON_THROWN, HMON_KICKED, HMON_APPLIED, STRAT_WAITMASK,
+         engulfing_u, RLOC_MSG, POTHIT_HERO_THROW, HEAD, EYE, OBJ_FLOOR }
+    from './const.js';
 /* include/objclass.h:79 — oc_dir bits for weapons */
 const PIERCE = 1;
-import { singular, xname, an, The, otense, mshot_xname } from './objnam.js';
+import { singular, xname, an, the, The, otense, mshot_xname, doname,
+         makeplural }
+    from './objnam.js';
 import { skill_name, weapon_descr, weapon_type, P_SKILL } from './weapon.js';
 import { SKILLS, MATERIALS } from './objects_data.js';
 import { rn2, rnd } from './rng.js';
@@ -17,27 +22,45 @@ import { is_blade } from './mon.js';
 import { is_missile, is_sword } from './wield.js';
 import { cansee } from './vision.js';
 import { newsym, canseemon } from './display.js';
-import { Levitation } from './youprop.js';
+import { Levitation, Blind, Underwater } from './youprop.js';
 import { cmdq_add_ec, cmdq_add_key } from './cmd.js';
 import { doswapweapon, dowield, doquiver_core, is_ammo } from './wield.js';
 import { greatest_erosion } from './do_wear.js';
 import { rnl } from './rng.js';
 import { is_pole, is_spear } from './u_init.js';
-import { You, You_cant } from './pline.js';
+import { You, You_cant, You_hear, Your } from './pline.js';
 import { ammo_and_launcher } from './wield.js';
 import { ECMD_OK, ECMD_TIME, ECMD_CANCEL, CQ_CANNED } from './const.js';
 import { getobj, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY,
          GETOBJ_PROMPT, GETOBJ_ALLOWCNT } from './invent.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
-import { throws_rocks, is_orc, is_elf, is_unicorn, notake,
-         nohands } from './mondata.js';
-import { PMNAMES, MFLAGS } from './monst_data.js';
+import { throws_rocks, is_orc, is_elf, is_unicorn, is_domestic, notake,
+         nohands, breathless, eyecount, haseyes } from './mondata.js';
+import { PMNAMES, MFLAGS, MONSYMS } from './monst_data.js';
 import { is_weptool } from './mkobj.js';
 import { hitval, weapon_hit_bonus } from './weapon.js';
 import { getdir } from './cmd.js';
 import { find_mac } from './worn.js';
-import { distmin } from './hacklib.js';
-import { hmon } from './uhitm.js';
+import { distmin, sgn } from './hacklib.js';
+import { hmon, passive_obj } from './uhitm.js';
+import { Monnam, Some_Monnam, upstart } from './do_name.js';
+import { Deaf } from './youprop.js';
+import { helpless } from './monst.js';
+import { ceiling } from './dungeon.js';
+import { body_part } from './polyself.js';
+
+// include/mondata.h:255 befriend_with_obj(). This predicate is checked before
+// dogfood(), so a domestic monster offered normal food does not spend
+// dogfood()'s obj_resists draw until tamedog() inspects the meal.
+function befriend_with_obj(ptr, obj) {
+    if (ptr.pmidx === PMNAMES.PM_MONKEY || ptr.pmidx === PMNAMES.PM_APE)
+        return obj.otyp === ONAMES.BANANA;
+    return is_domestic(ptr) && obj.oclass === OCLASSES.FOOD_CLASS
+        && (ptr.mlet !== MONSYMS.S_UNICORN
+            || game.objects[obj.otyp].oc_material === MATERIALS.VEGGY
+            || (obj.otyp === ONAMES.CORPSE
+                && obj.corpsenm === PMNAMES.PM_LICHEN));
+}
 
 // dothrow.js — throwing, firing, and the path a thrown thing takes.
 // C ref: src/dothrow.c
@@ -248,7 +271,32 @@ export async function throwit(obj, wep_mask) {
         return;
     }
     if (u.dz) {
-        note_unported_dothrow('throwit:vertical_throw');
+        if (u.dz < 0) {
+            const hitsroof = !!rn2(5) && !Underwater();
+            if (obj.oclass === OCLASSES.POTION_CLASS) {
+                if (hitsroof && breaktest(obj)) {
+                    await pline(`${upstart(doname(obj))} hits the ${
+                        ceiling(u.ux, u.uy)}.`);
+                    await break_potion_after_test(obj);
+                } else {
+                    await pline(`${upstart(doname(obj))} ${
+                        hitsroof ? 'hits' : 'almost hits'} the ${
+                        ceiling(u.ux, u.uy)}, then falls back on top of your ${
+                        body_part(HEAD)}.`);
+                    const { potionhit } = await import('./potion.js');
+                    await potionhit(game.youmonst, obj, POTHIT_HERO_THROW);
+                }
+            } else {
+                note_unported_dothrow('throwit:vertical_throw');
+            }
+        } else {
+            if (obj.oclass === OCLASSES.POTION_CLASS) {
+                const { hitfloor } = await import('./do.js');
+                await hitfloor(obj, true);
+            } else {
+                note_unported_dothrow('throwit:vertical_throw');
+            }
+        }
         game.thrownobj = null;
         return;
     }
@@ -315,20 +363,92 @@ export async function throwit(obj, wep_mask) {
     if ((!IS_SOFT(btyp) && breaktest(obj))
         || obj.oclass === OCLASSES.VENOM_CLASS) {
         /* breakmsg + breakobj destroy the missile */
-        note_unported_dothrow('throwit:breakage');
+        if (obj.oclass === OCLASSES.POTION_CLASS) {
+            await break_potion_after_test(obj, bx, by);
+        } else {
+            note_unported_dothrow('throwit:breakage');
+        }
         game.thrownobj = null;
         return;
     }
     if (is_pool(bx, by) || is_lava(bx, by))
         note_unported_dothrow('throwit:splash');
 
-    /* flooreffects consumes the object in water/lava/altars; plain floor
-       falls through to placement */
     game.thrownobj = null;
+    const { flooreffects } = await import('./do.js');
+    if (await flooreffects(obj, bx, by, 'fall'))
+        return;
     place_object(obj, bx, by);
     stackobj(obj);
     if (cansee(bx, by))
         newsym(bx, by);
+}
+
+// src/dothrow.c:2309 gem_accept(), a unicorn accepts or rejects a gem,
+// adjusts Luck from its value and identification state, then relocates.
+async function gem_accept(mon, obj) {
+    const objclass = game.objects[obj.otyp];
+    const is_buddy = sgn(mon.data.maligntyp)
+        === sgn(game.u.ualign?.type ?? 0);
+    const is_gem = objclass.oc_material === MATERIALS.GEMSTONE;
+    let message = Monnam(mon);
+    let accepted = false;
+
+    mon.mpeaceful = 1;
+    mon.mavenge = 0;
+
+    if (obj.dknown && objclass.oc_name_known) {
+        if (is_gem) {
+            if (is_buddy) {
+                message += ' gratefully';
+                change_luck(5);
+            } else {
+                message += ' hesitatingly';
+                change_luck(rn2(7) - 3);
+            }
+            accepted = true;
+        }
+    } else if (obj.oname != null || objclass.oc_uname) {
+        if (is_gem) {
+            if (is_buddy) {
+                message += ' gratefully';
+                change_luck(2);
+            } else {
+                message += ' hesitatingly';
+                change_luck(rn2(3) - 1);
+            }
+            accepted = true;
+        }
+    } else if (is_gem) {
+        if (is_buddy) {
+            message += ' gratefully';
+            change_luck(1);
+        } else {
+            message += ' hesitatingly';
+            change_luck(rn2(3) - 1);
+        }
+        accepted = true;
+    } else {
+        message += ' graciously';
+        accepted = true;
+    }
+
+    if (accepted) {
+        message += ' accepts your gift.';
+        if ((game.u.ushops || '').length || obj.unpaid)
+            note_unported_dothrow('gem_accept:check_shop_obj');
+        const { mpickobj } = await import('./steal.js');
+        mpickobj(mon, obj);
+    } else {
+        message += ' is not interested in your junk.';
+    }
+
+    if (!Blind())
+        await pline(message);
+    const { rloc, tele_restrict } = await import('./teleport.js');
+    if (!await tele_restrict(mon))
+        await rloc(mon, RLOC_MSG);
+    return accepted ? 1 : 0;
 }
 
 // src/dothrow.c:2013 thitmonst() - resolve a thrown object at a monster.
@@ -375,9 +495,53 @@ export async function thitmonst(mon, obj) {
     if (guaranteed_hit)
         tmp += 1000;
 
-    /* Unicorn gifts and quest-leader catches precede dieroll in C. */
-    if (obj.oclass === OCLASSES.GEM_CLASS && is_unicorn(mdat)) {
-        note_unported_dothrow('thitmonst:unicorn_gift');
+    /* src/dothrow.c:2082, unicorn gifts precede the ordinary to-hit roll. */
+    const uslinging = !!u.uwep
+        && game.objects[u.uwep.otyp].oc_skill === SKILLS.P_SLING;
+    if (obj.oclass === OCLASSES.GEM_CLASS && is_unicorn(mdat)
+        && game.objects[obj.otyp].oc_material !== MATERIALS.MINERAL
+        && !uslinging) {
+        if (helpless(mon)) {
+            await tmiss(obj, mon, false);
+            return 0;
+        }
+        if (mon.mtame) {
+            await pline(`${Monnam(mon)} catches and drops ${the(xname(obj))}.`);
+            return 0;
+        }
+        await pline(`${Monnam(mon)} catches ${the(xname(obj))}.`);
+        return await gem_accept(mon, obj);
+    }
+
+    const specialForLeader = ((obj.oartifact ?? 0) === game.urole?.questarti
+        || !!game.objects[obj.otyp].oc_unique
+        || (obj.otyp === ONAMES.FAKE_AMULET_OF_YENDOR && !obj.known))
+        && mon.m_id === game.quest_status?.leader_m_id;
+    if (hmode !== HMON_APPLIED && specialForLeader) {
+        mon.msleeping = 0;
+        mon.mstrategy &= ~STRAT_WAITMASK;
+        if (mon.mcanmove) {
+            await pline(`${Some_Monnam(mon)} catches ${the(xname(obj))}.`);
+            if (((game.u.uevent?.invoked && game.objects[obj.otyp].oc_unique
+                  && obj.otyp !== ONAMES.AMULET_OF_YENDOR)
+                 || !mon.mpeaceful)) {
+                if (mon.mpeaceful && !Deaf()) {
+                    fully_identify_obj(obj);
+                    await pline(`"${The(xname(obj))}'s part in this is finished."`);
+                    await pline('"We will guard it in case it is ever needed again."');
+                }
+                const { mpickobj } = await import('./steal.js');
+                mpickobj(mon, obj);
+            } else {
+                const { finish_quest } = await import('./quest.js');
+                await finish_quest(obj);
+                const next2u = distmin(mon.mx, mon.my, u.ux, u.uy) <= 1;
+                await pline(`${Some_Monnam(mon)} ${next2u ? 'hands' : 'tosses'} ${the(xname(obj))} back to you.`);
+                await addinv(obj);
+                await encumber_msg();
+            }
+            return 1;
+        }
         return 0;
     }
 
@@ -416,7 +580,7 @@ export async function thitmonst(mon, obj) {
                 game.thrownobj = null;
                 return 1;
             }
-            note_unported_dothrow('thitmonst:passive_obj');
+            await passive_obj(mon, obj);
         } else {
             await tmiss(obj, mon, true);
             if (hmode === HMON_APPLIED)
@@ -437,8 +601,24 @@ export async function thitmonst(mon, obj) {
                && (guaranteed_hit || dex > rnd(25))) {
         await hmon(mon, obj, hmode, dieroll);
         return 1;
+    } else if (obj.oclass === OCLASSES.POTION_CLASS
+               && (guaranteed_hit || dex > rnd(25))) {
+        const { potionhit } = await import('./potion.js');
+        await potionhit(mon, obj, POTHIT_HERO_THROW);
+        return 1;
     } else {
-        await tmiss(obj, mon, true);
+        const dog = await import('./dog.js');
+        const acceptsFood = befriend_with_obj(mdat, obj)
+            || (mon.mtame && dog.dogfood(mon, obj) <= dog.ACCFOOD);
+        if (acceptsFood) {
+            if (await dog.tamedog(mon, obj, true))
+                return 1;
+            await tmiss(obj, mon, false);
+            mon.msleeping = 0;
+            mon.mstrategy &= ~STRAT_WAITMASK;
+        } else {
+            await tmiss(obj, mon, true);
+        }
     }
 
     return 0;
@@ -482,6 +662,63 @@ export function breaktest(obj) {
     default:
         return false;
     }
+}
+
+// src/dothrow.c:breakmsg(), breakobj(), and hero_breaks(), narrowed to
+// potions. Vertical throws call this after breaktest() selects breakage;
+// hitfloor() calls hero_breaks_potion() so the resistance path can still
+// leave the potion intact on the floor.
+async function break_potion_after_test(obj, impactX = null, impactY = null) {
+    const wasOnFloor = obj.where === OBJ_FLOOR;
+    const floorX = obj.ox, floorY = obj.oy;
+    const x = wasOnFloor ? floorX
+            : impactX === null ? game.u.ux : impactX;
+    const y = wasOnFloor ? floorY
+            : impactY === null ? game.u.uy : impactY;
+
+    if (Blind())
+        await You_hear('something shatter!');
+    else
+        await pline(`${upstart(doname(obj))} shatters!`);
+
+    obj.in_use = true;
+    if (obj.otyp === ONAMES.POT_OIL && obj.lamplit) {
+        const { explode_oil } = await import('./explode.js');
+        await explode_oil(obj, x, y);
+    } else if (!breathless(game.youmonst.data)
+               || haseyes(game.youmonst.data)) {
+        const wetTowel = game.u.ublindf?.otyp === ONAMES.TOWEL
+            && (game.u.ublindf.spe | 0) > 0;
+        const halfGasDamage = wetTowel || game.u.uprops?.HALF_GAS_DAMAGE;
+        if (obj.otyp !== ONAMES.POT_WATER && !halfGasDamage) {
+            if (!breathless(game.youmonst.data))
+                await You('smell a peculiar odor...');
+            else {
+                const count = eyecount(game.youmonst.data);
+                let eyes = body_part(EYE);
+                if (count !== 1)
+                    eyes = makeplural(eyes);
+                await Your(`${eyes} ${count === 1 ? 'waters' : 'water'}.`);
+            }
+        }
+        const { potionbreathe } = await import('./potion.js');
+        await potionbreathe(obj);
+    }
+    /* delobj_core() makes one final indestructibility check before obfree(). */
+    obj_resists(obj, 0, 0);
+    const { obfree, obj_extract_self } = await import('./invent.js');
+    if (wasOnFloor)
+        obj_extract_self(obj);
+    obfree(obj);
+    if (wasOnFloor)
+        newsym(floorX, floorY);
+}
+
+export async function hero_breaks_potion(obj) {
+    if (obj.oclass !== OCLASSES.POTION_CLASS || !breaktest(obj))
+        return false;
+    await break_potion_after_test(obj);
+    return true;
 }
 
 // src/dothrow.c:63 throwing_weapon() — a weapon meant to be thrown.

@@ -7,10 +7,11 @@
 
 import { game } from './gstate.js';
 import { is_ice } from './dbridge.js';
-import { rn2, rnd } from './rng.js';
+import { rn1, rn2, rnd } from './rng.js';
 import { can_reach_floor } from './pickup.js';
 import { getrumor, get_rnd_text, MD_PAD_RUMORS } from './rumors.js';
-import { DUST, ENGRAVE, BURN, MARK, HEADSTONE, ENGR_BLOOD, N_ENGRAVE, ECMD_OK, ECMD_TIME, ECMD_CANCEL } from './const.js';
+import { COLNO, ROWNO, DUST, ENGRAVE, BURN, MARK, HEADSTONE, ENGR_BLOOD,
+         N_ENGRAVE, ECMD_OK, ECMD_TIME, ECMD_CANCEL } from './const.js';
 import { getobj, GETOBJ_PROMPT, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, hands_obj } from './invent.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { is_pool, is_lava } from './mon.js';
@@ -22,6 +23,7 @@ import { exercise } from './attrib.js';
 import { A_WIS } from './const.js';
 import { xname, doname } from './objnam.js';
 import { more_experienced } from './exper.js';
+import { surface } from './dungeon.js';
 
 // src/engrave.c:65 rubouts[] — how each character degrades. Order matters:
 // wipeout_text() scans linearly and the index it stops at decides whether the
@@ -217,6 +219,34 @@ export function del_engr(ep) {
     if (i >= 0) list.splice(i, 1);
 }
 
+// src/engrave.c del_engr_at()
+export function del_engr_at(x, y) {
+    const ep = engr_at(x, y);
+    if (ep)
+        del_engr(ep);
+}
+
+// src/engrave.c:1667 rloc_engr() - randomly relocate an engraving to a
+// terrain square accepted by goodpos(). The destination draws are observable
+// even when the relocated text is outside the current viewport.
+export async function rloc_engr(ep) {
+    const { goodpos } = await import('./makemon.js');
+    let tryct = 200;
+
+    do {
+        if (--tryct < 0)
+            return;
+        const tx = rn1(COLNO - 3, 2);
+        const ty = rn2(ROWNO);
+        if (!engr_at(tx, ty) && goodpos(tx, ty, null, 0)) {
+            ep.x = tx;
+            ep.y = ty;
+            newsym(tx, ty);
+            return;
+        }
+    } while (true);
+}
+
 // src/engrave.c:408 make_engr_at() — replaces any engraving already there.
 //
 // It DOES draw, on one branch: engr_type <= 0 means "pick one", and that costs
@@ -235,12 +265,8 @@ export function make_engr_at(x, y, s, pristine_s, e_time, e_type) {
     const txt = String(s);
     /* src/engrave.c:442 — engraving "Elbereth": at mklev it guards objects,
        from the player it exercises wisdom */
-    if (txt === 'Elbereth') {
-        if (game.in_mklev)
-            note_unported_engrave('make_engr_at:guardobjects');
-        else
-            exercise(A_WIS, true);
-    }
+    if (txt === 'Elbereth' && !game.in_mklev)
+        exercise(A_WIS, true);
     const ep = {
         x, y,
         engr_txt: txt,                          /* actual_text */
@@ -258,8 +284,6 @@ export function make_engr_at(x, y, s, pristine_s, e_time, e_type) {
     if (txt === 'Elbereth') {
         if (game.in_mklev)
             ep.guardobjects = 1;
-        else
-            note_unported_engrave('make_engr_at:exercise');
     }
 
     (game.level.lev_engr ||= []).push(ep);
@@ -350,11 +374,10 @@ function u_can_engrave() {
 
 // src/engrave.c:956 doengrave() — the 'E' command, dust-writing spine.
 //
-// The wand/weapon/marker special effects (doengrave_sfx_item), existing-
-// engraving interaction, altars and graves record when their state occurs;
-// the fingertip-in-dust path is complete: implement prompt, "You write in
-// the dust with your fingertip.", the text prompt, the DUST mix-up rolls
-// (one rn2(25) per non-space character), and the engrave occupation.
+// Fire and digging wands cover the BURN and ENGRAVE writing paths. Other
+// item effects, existing-engraving interaction, altars and graves record when
+// their state occurs. The fingertip-in-dust path implements the prompt, DUST
+// mix-up rolls, and engraving occupation.
 export async function doengrave() {
     if (!u_can_engrave())
         return ECMD_OK;                 /* ECMD_FAIL */
@@ -369,7 +392,8 @@ export async function doengrave() {
     let stylus = null;
     let post_engr_text = '';
     if (otmp !== hands_obj) {
-        if (otmp.otyp !== ONAMES.WAN_FIRE) {
+        if (otmp.otyp !== ONAMES.WAN_FIRE
+            && otmp.otyp !== ONAMES.WAN_DIGGING) {
             note_unported_engrave('doengrave:stylus_item');
             return ECMD_TIME;
         }
@@ -379,13 +403,19 @@ export async function doengrave() {
             await pline_The('wand is too worn out to engrave.');
             return ECMD_TIME;
         }
-        type = BURN;
+        type = otmp.otyp === ONAMES.WAN_FIRE ? BURN : ENGRAVE;
         stylus = otmp;
-        post_engr_text = game.u.ublind ? 'You feel the wand heat up.'
-                                       : 'Flames fly from the wand.';
+        if (otmp.otyp === ONAMES.WAN_FIRE) {
+            post_engr_text = game.u.ublind ? 'You feel the wand heat up.'
+                                           : 'Flames fly from the wand.';
+        } else {
+            post_engr_text = game.u.ublind ? 'You feel tremors.'
+                                           : 'Gravel flies up from the floor.';
+        }
         if (!game.objects[otmp.otyp].oc_name_known) {
             if (game.flags?.verbose !== false)
-                await pline(`This ${xname(otmp)} is a wand of fire!`);
+                await pline(`This ${xname(otmp)} is a wand of ${
+                    otmp.otyp === ONAMES.WAN_FIRE ? 'fire' : 'digging'}!`);
             learnwand(otmp);
             if (game.objects[otmp.otyp].oc_name_known)
                 more_experienced(0, 10);
@@ -398,14 +428,22 @@ export async function doengrave() {
         return ECMD_TIME;
     }
 
+    const eloc = surface(game.u.ux, game.u.uy);
     if (otmp === hands_obj)
-        await You('write in the dust with your fingertip.');
+        await You(`write in the ${is_ice(game.u.ux, game.u.uy)
+            ? 'frost' : 'dust'} with your fingertip.`);
+    else if (type === BURN)
+        await You(`burn into the ${eloc} with ${doname(otmp)}.`);
     else
-        await You(`burn into the floor with ${doname(otmp)}.`);
+        await You(`engrave in the ${eloc} with ${doname(otmp)}.`);
 
-    const ebuf0 = await getlin(type === BURN
-        ? 'What do you want to burn into the floor here?'
-        : 'What do you want to write in the dust here?');
+    const prompt = type === BURN
+        ? `What do you want to burn into the ${eloc} here?`
+        : type === ENGRAVE
+            ? `What do you want to engrave in the ${eloc} here?`
+            : `What do you want to write in the ${is_ice(game.u.ux, game.u.uy)
+                ? 'frost' : 'dust'} here?`;
+    const ebuf0 = await getlin(prompt);
     if (ebuf0 === null)
         { await pline('Never mind.'); return ECMD_OK; }
     /* mungspaces: tabs to spaces, consecutive spaces condensed */

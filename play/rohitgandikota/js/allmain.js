@@ -4,7 +4,7 @@
 // Real mklev.js handles level generation for screen parity.
 
 import { game } from './gstate.js';
-import { set_wear } from './do_wear.js';
+import { glibr, set_wear } from './do_wear.js';
 import { maybe_finished_meal } from './eat.js';
 
 // src/allmain.c set_occupation() / stop_occupation() — the multi-turn action
@@ -58,12 +58,13 @@ import { encumber_msg, exerchk, change_luck, ACURR,
          near_capacity } from './attrib.js';
 import { init_uhunger } from './eat.js';
 import { settrack, initrack } from './track.js';
-import { phase_of_the_moon, friday_13th } from './calendar.js';
+import { phase_of_the_moon, friday_13th, night } from './calendar.js';
 import { ask_do_tutorial, set_playmode, optfn_playmode } from './options.js';
 import { ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, A_CURRENT, In_endgame,
          FULL_MOON, NEW_MOON, COLNO, A_CON, A_WIS, A_INT, MOD_ENCUMBER,
          UNENCUMBERED, SLT_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, A_DEX,
-         Upolyd, Is_waterlevel, Is_airlevel } from './const.js';
+         Upolyd, Is_waterlevel, Is_airlevel, FROMFORM, TT_LAVA, NON_PM }
+         from './const.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { rhack, domove } from './cmd.js';
 import { lookaround, end_running, unmul, nomul,
@@ -72,10 +73,10 @@ import { deferred_goto } from './do.js';
 import { You } from './pline.js';
 import {
     docrt, cls, bot, flush_screen, pline, see_monsters, see_objects,
-    see_traps, swallowed,
+    see_traps, swallowed, newsym,
     TOPLINE_EMPTY,
 } from './display.js';
-import { Hallucination } from './youprop.js';
+import { Glib, Hallucination, Teleportation, Underwater } from './youprop.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { init_objects } from './o_init.js';
 import { init_dungeons } from './dungeon.js';
@@ -102,7 +103,10 @@ function init_sound_disp_gamewindows() {
 
 // include/you.h:441-442
 const RIGHT_HANDED = 0x00, LEFT_HANDED = 0x01;
-import { mcalcmove, mcalcdistress, movemon, NORMAL_SPEED } from './mon.js';
+import { mcalcmove, mcalcdistress, movemon, NORMAL_SPEED, is_pool } from './mon.js';
+import { breathless } from './mondata.js';
+import { MONSYMS } from './monst_data.js';
+import { m_everyturn_effect } from './monmove.js';
 import { u_wipe_engr } from './engrave.js';
 import { dosounds } from './sounds.js';
 import { dosearch0 } from './detect.js';
@@ -116,6 +120,39 @@ import { rnd } from './rng.js';
 import { find_ac } from './do_wear.js';
 import { clear_splitobjs } from './mkobj.js';
 import { pickup } from './pickup.js';
+
+// src/allmain.c moveloop_preamble(). unixmain calls this after newgame() has
+// printed welcome and wd_message() has reported explore mode. That ordering
+// is visible when pickup(1) finds an engraving on the initial square: the
+// welcome line is the one waiting at --More--, then the engraving is shown.
+export async function newgame_moveloop_preamble(resuming = false) {
+    const g = game;
+
+    /* side-effects from the real world */
+    g.flags.moonphase = phase_of_the_moon();
+    if (g.flags.moonphase === FULL_MOON) {
+        await You('are lucky!  Full moon tonight.');
+        change_luck(1);
+    } else if (g.flags.moonphase === NEW_MOON) {
+        await pline('Be careful!  New moon tonight.');
+    }
+    g.flags.friday13 = friday_13th();
+    if (g.flags.friday13) {
+        await pline('Watch out!  Bad things can happen on Friday the 13th.');
+        change_luck(-1);
+    }
+
+    if (!resuming) {
+        g.context.rndencode = rnd(9000);
+        set_wear(null);
+        for (const obj of (g.invent || []))
+            obj.pickup_prev = 0;
+        await pickup(1);
+        g.context.seer_turn = rnd(30);
+        g.u.umovement = NORMAL_SPEED;
+        initrack();
+    }
+}
 
 // C ref: allmain.c newgame()
 export async function newgame() {
@@ -183,23 +220,7 @@ export async function newgame() {
                 await pline(`${Hello(null)} ${g.plname}, the ${g.urace.adj} `
                             + `${role_name}, welcome back to NetHack!`);
             }
-            /* src/allmain.c:56 moveloop_preamble() — the real-world side
-               effects fire on restore too; the restore rc pins a different
-               datetime (full moon) exactly to exercise this */
-            g.flags.moonphase = phase_of_the_moon();
-            if (g.flags.moonphase === FULL_MOON) {
-                await You('are lucky!  Full moon tonight.');
-                change_luck(1);
-            } else if (g.flags.moonphase === NEW_MOON) {
-                await pline('Be careful!  New moon tonight.');
-            }
-            g.flags.friday13 = friday_13th();
-            if (g.flags.friday13) {
-                await pline('Watch out!  Bad things can happen on '
-                            + 'Friday the 13th.');
-                change_luck(-1);
-            }
-            return;
+            return true;
         }
     }
 
@@ -281,6 +302,8 @@ export async function newgame() {
         // src/u_init.c:991 — u.umonnum = u.umonster = urole.mnum. find_ac()
         // starts from mons[u.umonnum].ac, so a hero without it has no base AC.
         g.u.umonnum = g.u.umonster = g.urole.mnum;
+        // src/u_init.c:992. A zero-initialized value would name a real monster.
+        g.u.ulycn = NON_PM;
         /* src/decl.c go.oldcap — zero-initialised; encumber_msg() compares
            against it and undefined breaks the first transition message. */
         g.oldcap = 0;
@@ -294,14 +317,15 @@ export async function newgame() {
         // functions that take a real monster (dmgval, mhitm_ad_phys,
         // could_seduce), which read .data and .mnum.
         g.youmonst = { data: g.mons[g.u.umonnum], mnum: g.u.umonnum };
-        /* set_uasmon()'s PROPSET(INFRAVISION) — infravision is a property
+        /* set_uasmon()'s PROPSET(INFRAVISION) - infravision is a property
            of the hero's physical race (mondata.c:838): orcs, elves,
-           dwarves and gnomes see warm monsters in the dark */
+           dwarves and gnomes see warm monsters in the dark. C stores the
+           source as FROMFORM, outside the low TIMEOUT bits. */
         {
             const racemon = g.mons[g.urace?.mnum];
             (g.u.intrinsic ||= {}).HInfravision =
-                !!(racemon
-                   && (racemon.mflags3 & 256 /* M3_INFRAVISION */));
+                (racemon && (racemon.mflags3 & 256 /* M3_INFRAVISION */))
+                    ? FROMFORM : 0;
         }
         g.u.ulevel = g.u.ulevelmax = 1;
         /* type and record were filled by newhp() above, where C sets them. */
@@ -374,6 +398,7 @@ export async function newgame() {
     // u_init_skills_discoveries() and the legacy pager, which is why the legacy
     // window is drawn over a map and a status line rather than a blank screen.
     init_vision_globals();
+    game._newsym_ref = newsym;
     vision_reset();
     vision_recalc(0);
     /* src/allmain.c:756 display_nhwindow(WIN_MESSAGE, FALSE) — the NON-blocking
@@ -391,55 +416,17 @@ export async function newgame() {
     // src/allmain.c:824 — u_init_skills_discoveries(): the hero already knows
     // what came in their own pack. This is what fills the `\\` window.
     u_init_skills_discoveries();
+    /* src/u_init.c:1413 computes initial AC here. The first bot() above has
+       already drawn the legacy window's underlying AC:0 status, but later
+       startup paging and the first command use this real value. */
+    find_ac();
 
     // src/allmain.c:831 — the legacy blurb. It draws because com_pager()
     // creates its own Lua state, and every Lua state costs nhlib.lua's
     // shuffle(align). `legacy` is opt_out (initval On), so it fires unless
     // the rc says `!legacy`.
     if (g.flags.legacy !== false)
-        await com_pager(g.uroleplay?.pauper ? 'pauper_legacy' : 'legacy');
-
-    // src/allmain.c:71-83 moveloop_preamble(), new-game branch. This was the
-    // last thing js/fastforward.js replayed, and replaying it skipped the line
-    // that matters most here:
-    //
-    //     svc.context.rndencode = rnd(9000);
-    //     set_wear((struct obj *) 0);
-    //     reset_justpicked(gi.invent);
-    //     (void) pickup(1);
-    //     svc.context.seer_turn = (long) rnd(30);
-    //     u.umovement = NORMAL_SPEED;      <-- never happened while replayed
-    //     initrack();
-    //
-    // Without the hero's initial movement points, moveloop_core's
-    // hero-can't-move loop starts at -NORMAL_SPEED instead of 0 and runs its
-    // new-turn block twice per command, advancing the turn counter twice.
-    g.context.rndencode = rnd(9000);
-    /* src/allmain.c:73 calls set_wear((struct obj *) 0) here for the side
-       effects of starting gear. set_wear is 30 lines in src/do_wear.c but is
-       a dispatcher, not a leaf:
-       it calls Blindf_on, Ring_on, Amulet_on, Shirt_on, Armor_on, Cloak_on,
-       Boots_on, Gloves_on, Helmet_on and Shield_on, and NONE of those ten
-       exist in js/ yet. Porting it means porting whichever of them the
-       starting gear actually triggers -- for most roles that is Armor_on
-       plus one or two others, so the real unit is those functions rather
-       than set_wear itself.
-
-       tools/unported-hits.mjs has this reached by 100% of sessions, but the
-       reach figure counts the CALL, not the work behind it. */
-    set_wear(null);   /* for side-effects of starting gear */
-    /* src/allmain.c:74-75 clears the flags set while creating starting
-       inventory, then performs the initial-square autopickup. */
-    for (const obj of (g.invent || []))
-        obj.pickup_prev = 0;
-    await pickup(1);
-    g.context.seer_turn = rnd(30);
-    g.u.umovement = NORMAL_SPEED;
-
-    // src/allmain.c:453 — moveloop_preamble() calls find_ac(). Until it does,
-    // u.uac is still the 0 it was born with, which is why the status line under
-    // the legacy window reads AC:0 even for a hero already wearing armour.
-    find_ac();
+        await com_pager(g.u.uroleplay?.pauper ? 'pauper_legacy' : 'legacy');
 
     // Remaining hardcoded player state. u_init now computes the inventory,
     // gold, attributes, alignment and handedness for real; what is left is
@@ -487,28 +474,7 @@ export async function newgame() {
         livelog_add(`${g.plname} the${buf} entered the dungeon`);
     }
 
-    // src/allmain.c:56 moveloop_preamble() — "side-effects from the real
-    // world", and they come BEFORE the new-game branch.
-    //
-    // Neither draws, but both can pline, and a pline at this point is what
-    // pushes the greeting into needing a --More--: the greeting is 76 columns
-    // and "--More--" is 8, so the tty wraps the prompt onto row 1 rather than
-    // appending it. That is the whole difference on seed4500's first frame.
-    //
-    // The luck changes are real too: a full moon starts the hero at Luck 1 and
-    // Friday the 13th at -1, which every later luck-sensitive roll reads.
-    g.flags.moonphase = phase_of_the_moon();
-    if (g.flags.moonphase === FULL_MOON) {
-        await You('are lucky!  Full moon tonight.');
-        change_luck(1);
-    } else if (g.flags.moonphase === NEW_MOON) {
-        await pline('Be careful!  New moon tonight.');
-    }
-    g.flags.friday13 = friday_13th();
-    if (g.flags.friday13) {
-        await pline('Watch out!  Bad things can happen on Friday the 13th.');
-        change_luck(-1);
-    }
+    return false;
 }
 
 // src/allmain.c:118 u_calc_moveamt()
@@ -596,11 +562,33 @@ async function regen_hp(wtcap) {
     let heal = 0;
     let reached_full = false;
     const encumbrance_ok = (wtcap < MOD_ENCUMBER || !game.u.umoved);
-    const U_CAN_REGEN = () => !!(game.u.uprops?.REGENERATION
+    const U_CAN_REGEN = () => !!(game.u.intrinsic?.HRegeneration
+                                 || game.u.uprops?.REGENERATION
                                  || (game.u.uprops?.SLEEPY && game.u.usleep));
 
     if (Upolyd(game.u)) {
-        note_unported_main('regen_hp:Upolyd');
+        if (game.u.mh < 1) {
+            const { rehumanize } = await import('./polyself.js');
+            await rehumanize();
+        } else if (game.youmonst.data.mlet === MONSYMS.S_EEL
+                   && !is_pool(game.u.ux, game.u.uy)
+                   && !Is_waterlevel(game.u.uz)
+                   && !game.u.uprops?.MAGICAL_BREATHING
+                   && !breathless(game.youmonst.data)) {
+            if (game.u.mh > 1 && !U_CAN_REGEN()
+                && rn2(game.u.mh) > rn2(8)
+                && (!game.u.uprops?.HALF_PHDAM || !(game.moves % 2)))
+                heal = -1;
+        } else if (game.u.mh < game.u.mhmax
+                   && (U_CAN_REGEN()
+                       || (encumbrance_ok && !(game.moves % 20)))) {
+            heal = 1;
+        }
+        if (heal) {
+            (game.disp ||= {}).botl = true;
+            game.u.mh += heal;
+            reached_full = (game.u.mh === game.u.mhmax);
+        }
     } else {
         if (game.u.uhp < game.u.uhpmax && (encumbrance_ok || U_CAN_REGEN())) {
             heal = (game.u.ulevel + ACURR(A_CON)) > rn2(100) ? 1 : 0;
@@ -668,6 +656,17 @@ export async function moveloop_core() {
         return;
     }
 
+    /* src/cmd.c parse()/rhack() consume a prefix and its following key in
+       one command dispatch. The replay harness supplies one key at a time,
+       so continue a pending g/G/m/F prefix before returning to moveloop's
+       per-input hallucination redraw, status, and hero-form effects. */
+    if (g._cmd_prefix_pending) {
+        await rhack(0);
+        if (g.u.utotype)
+            await deferred_goto();
+        return;
+    }
+
     if (g.context?.move) {
         /* src/allmain.c:205 — actual time passed */
         g.u.umovement = (g.u.umovement || 0) - NORMAL_SPEED;
@@ -690,9 +689,17 @@ export async function moveloop_core() {
             } while (monscanmove);
             g.context.mon_moving = false;
 
+            /* src/allmain.c:219. Capture burden after monster actions, even
+               when the hero already has enough movement to act. The saved
+               value is used by the next movement grant. A monster can force
+               rehumanization here, changing carrying capacity between the
+               action and that later grant. */
+            g.mvl_wtcap = near_capacity();
+
             if (!monscanmove && g.u.umovement < NORMAL_SPEED) {
                 /* src/allmain.c:222 — both hero and monsters are out of
                    steam this round, so set up a new turn */
+                g.were_changes = 0;
                 await mcalcdistress();
 
                 /* src/allmain.c:232 — reallocate movement rations */
@@ -706,7 +713,7 @@ export async function moveloop_core() {
                    effectively loses its first turn */
                 maybe_generate_rnd_mon();
 
-                u_calc_moveamt(near_capacity());
+                u_calc_moveamt(g.mvl_wtcap);
                 /* src/allmain.c:242 — record the square the hero just left, so
                    a monster that cannot see the hero has a trail to follow. */
                 settrack();
@@ -719,6 +726,10 @@ export async function moveloop_core() {
                 /* allmain.c:260: begin this turn's hero movement sequence. */
                 g.hero_seq = g.moves * 8;
 
+                /* src/allmain.c:271: slippery fingers act before property
+                   timeouts, so the last turn of Glib can still drop gear. */
+                if (Glib())
+                    await glibr();
                 /* src/allmain.c:275 — nh_timeout() then the prayer
                    timeout, every turn. */
                 await nh_timeout();
@@ -731,7 +742,8 @@ export async function moveloop_core() {
                    rn2(100) only starts once the hero has been hurt. */
                 if (!g.u.uinvulnerable
                     && (!Upolyd(g.u) ? (g.u.uhp < g.u.uhpmax)
-                                     : (g.u.mh < g.u.mhmax)))
+                                     : (g.u.mh < g.u.mhmax
+                                        || g.youmonst.data.mlet === MONSYMS.S_EEL)))
                     await regen_hp(near_capacity());
 
                 /* src/allmain.c:298 — overexert_hp when heavily encumbered
@@ -740,11 +752,65 @@ export async function moveloop_core() {
                 /* src/allmain.c:305 — regen_pw runs unconditionally */
                 await regen_pw(near_capacity());
 
+                /* src/allmain.c:307: innate or equipped teleportation can
+                   fire once per turn.  Form-derived teleportation lives in
+                   HTeleportation's FROMFORM bit, so reading the shared macro
+                   is required for nymph and tengu forms too. */
+                if (!g.u.uinvulnerable && Teleportation() && !rn2(85)) {
+                    const oldUx = g.u.ux, oldUy = g.u.uy;
+                    const { tele } = await import('./teleport.js');
+                    await tele();
+                    if (g.u.ux !== oldUx || g.u.uy !== oldUy) {
+                        const { next_to_u } = await import('./apply.js');
+                        if (!await next_to_u())
+                            (g.unported ||= new Set()).add('check_leash');
+                        const { cmdq_clear } = await import('./cmd.js');
+                        const { CQ_CANNED, CQ_REPEAT } = await import('./const.js');
+                        cmdq_clear(CQ_CANNED);
+                        cmdq_clear(CQ_REPEAT);
+                    }
+                }
+
+                /* src/allmain.c:318. A lycanthropic hero makes this roll on
+                   every new turn while in base form, even when an adjacent
+                   monster will prevent the resulting change. */
+                if (!g.u.uinvulnerable) {
+                    const polymorph = !!(g.u.intrinsic?.HPolymorph
+                                         || g.u.uprops?.POLYMORPH);
+                    if ((g.mvl_change === 1 && !polymorph)
+                        || (g.mvl_change === 2 && g.u.ulycn === NON_PM))
+                        g.mvl_change = 0;
+                    if (polymorph && !rn2(100)) {
+                        g.mvl_change = 1;
+                    } else if (g.u.ulycn !== NON_PM && !Upolyd(g.u)
+                               && !rn2(80 - 20 * night())) {
+                        g.mvl_change = 2;
+                    }
+                    const unchanging = !!(g.u.intrinsic?.HUnchanging
+                                          || g.u.uprops?.UNCHANGING);
+                    if (g.mvl_change && !unchanging && (g.multi ?? 0) >= 0) {
+                        await stop_occupation();
+                        if (g.mvl_change === 1) {
+                            const { polyself } = await import('./polyself.js');
+                            await polyself();
+                        } else {
+                            const { you_were } = await import('./were.js');
+                            await you_were();
+                        }
+                        g.mvl_change = 0;
+                    }
+                }
+
                 /* src/allmain.c:342 — intrinsic Searching autosearches
                    every turn (Archeologists have it from level 1) */
                 if ((g.u.intrinsic?.HSearching || g.u.uprops?.SEARCHING)
                     && !g.level?.flags?.noautosearch && (g.multi ?? 0) >= 0)
                     await dosearch0(1);
+
+                if (g.were_changes) {
+                    const { set_ulycn } = await import('./were.js');
+                    set_ulycn(g.u.ulycn);
+                }
 
                 await dosounds();
                 /* src/allmain.c:353 do_storms() — draws only on a stormy
@@ -823,6 +889,22 @@ export async function moveloop_core() {
             g.context.seer_turn = g.moves + rn1(31, 15); /*15..45*/
         }
 
+        /* src/allmain.c:422-432: liquid terrain keeps acting after the
+           command.  Lava advances its two-part escape and sinking counter;
+           a stationary hero re-runs pool effects; underwater vision then
+           redraws only the immediate liquid neighborhood. */
+        if (g.u.utrap && g.u.utraptype === TT_LAVA) {
+            const { sink_into_lava } = await import('./trap.js');
+            await sink_into_lava();
+        } else if (!g.u.umoved) {
+            const { pooleffects } = await import('./hack.js');
+            await pooleffects(false);
+        }
+        if (Underwater()) {
+            const { under_water } = await import('./display.js');
+            await under_water(0);
+        }
+
         /* the move flag is CONSUMED by the turn block above. C's blocking
            input reads a whole command before control returns here, so the
            flag's lifetime is one command -> one turn. Our prompts suspend
@@ -875,6 +957,11 @@ export async function moveloop_core() {
     }
     await bot();
     await flush_screen(1);
+
+    /* src/allmain.c:481, every living hero form gets its once-per-input
+       monster effect before occupations and command reading. Fog clouds use
+       this to leave a harmless one-square vapor trail. */
+    m_everyturn_effect(g.youmonst);
 
     /* src/allmain.c:485 — an active occupation CONSUMES the turn instead of
        reading a command. It runs once per turn until it returns 0, and a
