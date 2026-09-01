@@ -124,7 +124,8 @@ import { game } from './gstate.js';
 import { itemactions } from './iactions.js';
 import { surface } from './dungeon.js';
 import { can_reach_floor, engr_at } from './engrave.js';
-import { displayTtyMenuTextWindow } from './tty_menu.js';
+import { displayTtyMenuTextWindow, menuTitleStyle } from './tty_menu.js';
+import { select_menu } from './windows.js';
 import {
     AMULET_OF_YENDOR,
     AKLYS,
@@ -633,8 +634,9 @@ export function any_obj_ok(obj) {
 // of that flag; cmdq_add_key(CQ_REPEAT) has no CQ_REPEAT queue to add to for
 // the same reason; flags.invlet_constant is checked below because reassign()
 // is unported; and iflags.force_invmenu stops rather than take an untested
-// arm. The '?' and '*' menu and the '-' hands answer stop too, each naming
-// what it would need.
+// arm. The '?' menu, non-throw '*' menus and the '-' hands answer stop too,
+// each naming what it would need. The ordinary throw '*' menu is source-live
+// below.
 //
 // The fifth, C's cmdq_pop() at 1779, now has a queue to read. Itemactions
 // queues a command followed by the selected object's inventory letter, so
@@ -757,8 +759,9 @@ export async function getobj(word, obj_ok, ctrlflags, state = game) {
     // C's two letter subsets, kept here in the shape C builds them in. `lets`
     // is the suggested set snapshotted before compactify() rewrites `letters`,
     // and `altletsStr` below is the downplayed set. The bounded nonempty `?`
-    // arm below hands `lets` to display_pickinv(); the `*` and empty/alternate
-    // subset arms remain fail-closed until their own slices are reached.
+    // arm below hands a nonempty `lets` set to display_pickinv() for the
+    // source-live read and throw callers; empty/alternate subset arms remain
+    // fail-closed until their own slices are reached.
     const lets = letters.join(''); /* necessary since we destroy buf */
     if (suggested > 5) { /* compactify string */
         letters.push('\0');
@@ -809,11 +812,12 @@ export async function getobj(word, obj_ok, ctrlflags, state = game) {
             throw new UnsupportedObjectPromptError('mime_action()');
         }
         if (ilet === '?') {
-            // C ref: invent.c getobj() redo_menu (1966-1970). For this slice
-            // read_ok() has produced a nonempty suggested set, so the TTY
-            // single-item display_pickinv() path is source-live. Empty lets
-            // and the alternate '*' menu remain outside this boundary.
-            if (word !== 'read')
+            // C ref: invent.c getobj() redo_menu (1966-1970). The ordinary
+            // read and throw callbacks can produce a nonempty suggested set,
+            // so display_pickinv() is source-live for those two callers.
+            // Empty lets and the alternate '*' menu remain outside this
+            // boundary.
+            if (word !== 'read' && word !== 'throw')
                 throw new UnsupportedObjectPromptError(
                     'display_pickinv() with a letter subset',
                 );
@@ -827,12 +831,26 @@ export async function getobj(word, obj_ok, ctrlflags, state = game) {
             if (!picked) continue;
             ilet = picked;
         } else if (ilet === '*') {
-            // C ref: getobj()'s redo_menu block (1966-1998). '*' includes
-            // the hands/self extra choice and the alternate-letter subset;
-            // that menu remains outside this bounded suggested-'?' slice.
-            throw new UnsupportedObjectPromptError(
-                'display_pickinv() with a letter subset',
+            // C ref: invent.c getobj() redo_menu (1966-1998). The ordinary
+            // throw callback excludes hands, so this is the full inventory
+            // menu with no extra choice, query, or alternate subset. Other
+            // object prompts still stop here until their menu branches are
+            // selected and validated independently.
+            if (word !== 'throw')
+                throw new UnsupportedObjectPromptError(
+                    'display_pickinv() with a letter subset',
+                );
+            const picked = await display_pickinv(
+                null, null, null, false, true, state,
             );
+            if (!picked) continue;
+            if (picked === HANDS_SYM)
+                return hands_obj;
+            if (picked === '\x1b') {
+                if (state.flags.verbose) await ttyPline(Never_mind, state);
+                return null;
+            }
+            ilet = picked;
         }
         /* find the item which was picked */
         for (otmp = inventoryHead(state); otmp; otmp = otmp.nobj)
@@ -900,11 +918,11 @@ export const _getobjInternals = Object.freeze({
     invletter_value,
 });
 
-// C ref: invent.c display_pickinv(). Covers the full-inventory branch (`i`
-// reaches it), the bounded one-item suggested subset from getobj() (`?`),
-// and the partial-inventory branch (equipment display commands pass a `lets`
-// filter). Extra-choice, non-reply, and non-default sort branches remain
-// unported.
+// C ref: invent.c display_pickinv(). Covers the full-inventory branches (`i`
+// and the ordinary throw `*` reach it), the bounded one-item suggested subset
+// from getobj() (`?`), and the partial-inventory branch (equipment display
+// commands pass a `lets` filter). Extra-choice, non-reply, and non-default
+// sort branches remain unported.
 export async function display_pickinv(
     lets,
     xtra_choice,
@@ -972,8 +990,18 @@ export async function display_pickinv(
     // The multi-item menu path requires both a menu owner and want_reply.
     if (!want_reply)
         throw new UnsupportedFeatureDescriptionError('a partial inventory');
-    if (typeof menu !== 'function')
-        throw new TypeError('display_pickinv needs a menu owner');
+    const menuOwner = menu ?? ((items) => select_menu(state, {
+        items: items.map((item) => (item.heading
+            ? {
+                ...item,
+                attr: menuTitleStyle(state).titleAttr,
+                color: menuTitleStyle(state).titleColor,
+            }
+            : item)),
+        how: PICK_ONE,
+        cancelValue: null,
+        overlay: state.iflags?.menu_overlay !== false,
+    }));
 
     // Formatting a name marks its type discovered, so every object is checked
     // for an unported naming branch before any of them is formatted. Without
@@ -1018,7 +1046,7 @@ export async function display_pickinv(
     }
     if (query)
         throw new UnsupportedFeatureDescriptionError('a menu prompt');
-    return menu(items, state);
+    return menuOwner(items, state);
 }
 
 // C ref: invent.c display_inventory(). Its queued-key branch needs a command

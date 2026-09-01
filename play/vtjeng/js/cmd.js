@@ -186,6 +186,7 @@ import { UnsupportedHideError } from './mon.js';
 import { dosave } from './save.js';
 import {
     dohelp,
+    doquickwhatis,
     dowhatis,
     UnsupportedHelpError,
     UnsupportedWhatisError,
@@ -1407,7 +1408,7 @@ export const ADMITTED_COMMANDS = Object.freeze([
     'puton', 'quaff', 'read', 'zap', 'cast', 'reqmenu', 'fight', 'options', 'autopickup',
     'wizwish', 'wizlevelport', 'wizgenesis', 'fire', 'throw', 'swap', 'kick',
     'save', 'wield', 'quiver', 'help', 'whatis', '#', 'loot', 'force', 'tip',
-    'showgold', 'seeweapon', 'seearmor', 'seerings', 'seeamulet', 'teleport',
+    'glance', 'showgold', 'seeweapon', 'seearmor', 'seerings', 'seeamulet', 'teleport',
     'terrain', 'travel',
 ]);
 const ADMITTED_BOUNDARY = 'the repeated-command boundary admits only '
@@ -1673,11 +1674,9 @@ async function dotravel(key, state = game) {
     return dotravel_target(state);
 }
 
-// C ref: cmd.c dotravel_target() (5348-5379). The state setup is source
-// faithful through the call into domove(), where the next slice begins at
-// hack.c's ordinary travel path search. Leaving that call as a boundary is
-// deliberate: moving one ordinary step here would use the stale u.dx/u.dy
-// instead of C's findtravelpath() direction.
+// C ref: cmd.c dotravel_target() (5348-5379). The state setup and the first
+// domove() call are source-faithful; hack.c's travel path search chooses the
+// direction before the ordinary movement pipeline runs.
 async function dotravel_target(state = game) {
     const travelcc = state.iflags?.travelcc;
     if (!isok(travelcc?.x, travelcc?.y)) {
@@ -1705,9 +1704,8 @@ async function dotravel_target(state = game) {
     state.u.last_str_turn = 0;
     state.context.mv = 1;
 
-    throw new UnsupportedHeroMoveBoundaryError(
-        'travel path selection in findtravelpath()',
-    );
+    await domove(state);
+    return ECMD_TIME;
 }
 
 // C ref: cmd.c set_move_cmd() and rhack()'s DOMOVE_WALK/DOMOVE_RUSH paths.
@@ -2290,6 +2288,13 @@ async function runWhatisCommand(key, state) {
     return failClosedCommand(key, state, () => dowhatis(state));
 }
 
+// C ref: pager.c doquickwhatis(). The glance command is the cursor-based
+// quick form of do_look(): it returns ECMD_OK, never spends a turn, and its
+// ordinary map path is complete for the current glance goal.
+async function runGlanceCommand(key, state) {
+    return failClosedCommand(key, state, () => doquickwhatis(state));
+}
+
 // C ref: pager.c dohelp(). The handler returns ECMD_OK after either a menu
 // cancellation or a selected target completes, so it never spends a turn.
 async function runHelpCommand(key, state) {
@@ -2844,6 +2849,8 @@ async function doextcmd(key, state) {
         return await runHelpCommand(key, state);
     case 'dowhatis':
         return await runWhatisCommand(key, state);
+    case 'doquickwhatis':
+        return await runGlanceCommand(key, state);
     case 'doprgold':
         await failClosedCommand(key, state, () => doprgold(state));
         return ECMD_OK;
@@ -3251,6 +3258,11 @@ export async function rhack(key, state = game) {
         }
         if (command === 'whatis') {
             await runWhatisCommand(key, state);
+            resetCommandVars(state, state.multi < 0);
+            return;
+        }
+        if (command === 'glance') {
+            await runGlanceCommand(key, state);
             resetCommandVars(state, state.multi < 0);
             return;
         }

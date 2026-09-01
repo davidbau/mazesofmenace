@@ -877,7 +877,11 @@ async function moveSimpleOrdinary(monster, env) {
 async function moveSimplePet(monster, after, env) {
     return dog_move(monster, after, {
         ...env,
-        attackHero: () => unsupported('pet attack on the hero'),
+        // dogmove.c:1280-1287 hands an ALLOW_U landing directly to
+        // mattacku().  Starting pets are constrained by assertSimpleActionState
+        // above; mattacku() itself keeps every attack family outside this
+        // ordinary visible physical boundary fail-closed.
+        attackHero: attackHeroWithMattacku,
         avoidKicked: (subject, x, y) =>
             m_avoid_kicked_loc(subject, x, y, env.state),
         avoidSokobanPush: (subject, x, y) =>
@@ -1322,6 +1326,12 @@ async function planSimpleMonsterScan(monster, env) {
         canSeeSquare: (x, y) => cansee(x, y, env.state),
         fightMonster: (subject, subjectEnv) => fightm(subject, {
             ...subjectEnv,
+            // mhitm.c owns these effects, but the clone must remain silent and
+            // must not mutate the live display while preflighting a turn.
+            message: async () => {},
+            markInvisible: () => {},
+            redraw: () => {},
+            wieldMonsterItemAgainstMonster,
             unsupported,
         }),
         dochugwAction:
