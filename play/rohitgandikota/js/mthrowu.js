@@ -5,6 +5,20 @@
 // the first draw of every monster shot. monshoot()/m_throw()/ohitmon() —
 // the flight itself — are the remaining consumers and arrive with thrwmu.
 
+import { sobj_at } from './invent.js';
+import { MFLAGS } from './monst_data.js';
+import { ARM_GLOVES } from './const.js';
+import { WT_IRON_BALL_INCR } from './const.js';
+import { BRK_MELEE } from './const.js';
+import { BRK_BY_HERO } from './const.js';
+import { W_NONDIGGABLE } from './const.js';
+import { wake_nearto } from './mon.js';
+import { acurrstr } from './attrib.js';
+import { is_flimsy } from './obj.js';
+import { dissolve_bars } from './monmove.js';
+import { harmless_missile } from './dothrow.js';
+import { breaks } from './dothrow.js';
+import { hero_breaks } from './dothrow.js';
 import { game } from './gstate.js';
 import { rnd } from './rng.js';
 import { rounddiv } from './hack.js';
@@ -954,6 +968,46 @@ function blocking_terrain(x, y) {
 // src/mthrowu.c:1295 linedup_callback() — walk from (bx,by) toward (ax,ay)
 // along a straight or diagonal line within BOLT_LIM, calling fnc for each
 // step; stops at blocking terrain, returns true when fnc does.
+// src/mthrowu.c:1330 linedup()
+export function linedup(ax, ay, bx, by, boulderhandling) { /* 0=block, 1=ignore, 2=conditionally block */
+    let dx, dy, boulderspots;
+
+    /* These two values are set for use after successful return. */
+    game.tbx = ax - bx;
+    game.tby = ay - by;
+
+    /* sometimes displacement makes a monster think that you're at its
+       own location; prevent it from throwing and zapping in that case */
+    if (!game.tbx && !game.tby)
+        return false;
+
+    /* straight line, orthogonal to the map or diagonal */
+    if ((!game.tbx || !game.tby || Math.abs(game.tbx) === Math.abs(game.tby))
+        && distmin(game.tbx, game.tby, 0, 0) < BOLT_LIM) {
+        if (u_at(ax, ay) ? couldsee(bx, by)
+                         : clear_path(ax, ay, bx, by))
+            return true;
+        /* don't have line of sight, but might still be lined up
+           if that lack of sight is due solely to boulders */
+        if (boulderhandling === 0)
+            return false;
+        dx = sgn(ax - bx), dy = sgn(ay - by);
+        boulderspots = 0;
+        do {
+            /* <bx,by> is guaranteed to eventually converge with <ax,ay> */
+            bx += dx, by += dy;
+            if (blocking_terrain(bx, by))
+                return false;
+            if (sobj_at(ONAMES.BOULDER, bx, by))
+                ++boulderspots;
+        } while (bx !== ax || by !== ay);
+        /* reached target position without encountering obstacle */
+        if (boulderhandling === 1 || rn2(2 + boulderspots) < 2)
+            return true;
+    }
+    return false;
+}
+
 export function linedup_callback(ax, ay, bx, by, fnc) {
     /* These two values are set for use after successful return. */
     game.tbx = ax - bx;
@@ -979,3 +1033,128 @@ export function linedup_callback(ax, ay, bx, by, fnc) {
     }
     return false;
 }
+
+// src/mthrowu.c:1417 hit_bars(); objp is a {obj} box
+export async function hit_bars(objp, objx, objy, barsx, barsy, breakflags) {
+    const otmp = objp.obj;
+    const obj_type = otmp.otyp;
+    const nodissolve = (game.level.at(barsx, barsy).wall_info & W_NONDIGGABLE) !== 0,
+          your_fault = (breakflags & BRK_BY_HERO) !== 0,
+          melee_attk = (breakflags & BRK_MELEE) !== 0;
+    let noise = 0;
+
+    if (your_fault
+        ? await hero_breaks(otmp, objx, objy, breakflags)
+        : await breaks(otmp, objx, objy)) {
+        objp.obj = null; /* object is now gone */
+        /* breakage makes its own noises */
+        if (obj_type === ONAMES.POT_ACID) {
+            if (cansee(barsx, barsy) && !nodissolve) {
+                await pline_The('iron bars are dissolved!');
+            } else {
+                /* Soundeffect(se_angry_snakes, 100) */
+                await You_hear(Hallucination() ? 'angry snakes!'
+                                               : 'a hissing noise.');
+            }
+            if (!nodissolve)
+                await dissolve_bars(barsx, barsy);
+        }
+    } else {
+        if (!Deaf()) {
+            const barsounds = ['', 'Whang', 'Whap', 'Flapp', 'Clink', 'Clonk'];
+            const bsindx = (obj_type === ONAMES.BOULDER || obj_type === ONAMES.HEAVY_IRON_BALL)
+                           ? 1
+                           : harmless_missile(otmp) ? 2
+                           : is_flimsy(otmp) ? 3
+                           : (otmp.oclass === OCLASSES.COIN_CLASS
+                              || game.objects[obj_type].oc_material === MATERIALS.GOLD
+                              || game.objects[obj_type].oc_material === MATERIALS.SILVER)
+                             ? 4
+                             : barsounds.length - 1;
+
+            /* Soundeffect(se[bsindx], 100) */
+            await pline(`${barsounds[bsindx]}!`);
+        }
+        if (!(harmless_missile(otmp) || is_flimsy(otmp)))
+            noise = 4 * 4;
+
+        if (your_fault && (otmp.otyp === ONAMES.WAR_HAMMER
+                           || otmp.otyp === ONAMES.HEAVY_IRON_BALL)) {
+            /* iron ball isn't a weapon or wep-tool so doesn't use obj->spe;
+               weight is normally 480 but can be increased by increments
+               of 160 (scrolls of punishment read while already punished) */
+            const spe = ((otmp.otyp === ONAMES.HEAVY_IRON_BALL) /* 3+ for iron ball */
+                         ? Math.trunc(otmp.owt / WT_IRON_BALL_INCR)
+                         : otmp.spe);
+            /* chance: used in saving throw for the bars; more likely to
+               break those when 'chance' is _lower_; acurrstr(): 3..25 */
+            const chance = (melee_attk ? 40 : 60) - acurrstr() - spe;
+
+            if (!rn2(Math.max(2, chance))) {
+                await You('break the bars apart!');
+                await dissolve_bars(barsx, barsy);
+                noise = noise * 2;
+            }
+        }
+
+        if (noise)
+            wake_nearto(barsx, barsy, noise);
+    }
+}
+
+// src/mthrowu.c:1499 hits_bars(); obj_p is a {obj} box, set to null if the
+// object breaks
+export async function hits_bars(obj_p, x, y, barsx, barsy, always_hit, whodidit) {
+    const otmp = obj_p.obj;
+    const obj_type = otmp.otyp;
+    let hits = !!always_hit;
+
+    if (!hits)
+        switch (otmp.oclass) {
+        case OCLASSES.WEAPON_CLASS: {
+            const oskill = game.objects[obj_type].oc_skill;
+
+            hits = (oskill !== -SKILLS.P_BOW && oskill !== -SKILLS.P_CROSSBOW
+                    && oskill !== -SKILLS.P_DART && oskill !== -SKILLS.P_SHURIKEN
+                    && oskill !== SKILLS.P_SPEAR
+                    && oskill !== SKILLS.P_KNIFE); /* but not dagger */
+            break;
+        }
+        case OCLASSES.ARMOR_CLASS:
+            hits = (game.objects[obj_type].oc_armcat !== ARM_GLOVES);
+            break;
+        case OCLASSES.TOOL_CLASS:
+            hits = (obj_type !== ONAMES.SKELETON_KEY && obj_type !== ONAMES.LOCK_PICK
+                    && obj_type !== ONAMES.CREDIT_CARD && obj_type !== ONAMES.TALLOW_CANDLE
+                    && obj_type !== ONAMES.WAX_CANDLE && obj_type !== ONAMES.LENSES
+                    && obj_type !== ONAMES.TIN_WHISTLE && obj_type !== ONAMES.MAGIC_WHISTLE);
+            break;
+        case OCLASSES.ROCK_CLASS: /* includes boulder */
+            if (obj_type !== ONAMES.STATUE || game.mons[otmp.corpsenm].msize > MFLAGS.MZ_TINY)
+                hits = true;
+            break;
+        case OCLASSES.FOOD_CLASS:
+            if (obj_type === ONAMES.CORPSE && game.mons[otmp.corpsenm].msize > MFLAGS.MZ_TINY)
+                hits = true;
+            else
+                hits = (obj_type === ONAMES.MEAT_STICK
+                        || obj_type === ONAMES.ENORMOUS_MEATBALL);
+            break;
+        case OCLASSES.SPBOOK_CLASS:
+        case OCLASSES.WAND_CLASS:
+        case OCLASSES.BALL_CLASS:
+        case OCLASSES.CHAIN_CLASS:
+            hits = true;
+            break;
+        default:
+            break;
+        }
+
+    if (hits && whodidit !== -1) {
+        await hit_bars(obj_p, x, y, barsx, barsy,
+                       (whodidit === 1) ? BRK_BY_HERO : 0);
+    }
+
+    return hits;
+}
+

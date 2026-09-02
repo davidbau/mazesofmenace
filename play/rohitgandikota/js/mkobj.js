@@ -1,3 +1,11 @@
+import { carried } from './obj.js';
+import { makeplural, obj_typename } from './objnam.js';
+import { You_see, Your, You_hear } from './pline.js';
+import { Hallucination } from './youprop.js';
+import { newsym } from './display.js';
+import { maybe_unhide_at } from './mon.js';
+import { globby_bill_fixup } from './shk.js';
+import { has_omonst, OMONST } from './const.js';
 import { OBJ_MIGRATING } from './const.js';
 import { maybe_reset_pick } from './lock.js';
 import { Is_container } from './obj.js';
@@ -1356,6 +1364,139 @@ export function obj_nexto_xy(obj, x, y, recurs) {
     return null;
 }
 
+// src/mkobj.c:3702 obj_absorb(); obj1 and obj2 are {v} boxes like the C's
+// pointer-to-pointer arguments
+export async function obj_absorb(obj1, obj2) {
+    let otmp1, otmp2;
+    let o1wt, o2wt;
+    let agetmp;
+
+    /* don't let people dumb it up */
+    if (obj1 && obj2) {
+        otmp1 = obj1.v;
+        otmp2 = obj2.v;
+        if (otmp1 && otmp2 && otmp1 !== otmp2) {
+            await globby_bill_fixup(otmp1, otmp2);
+            if (otmp1.bknown !== otmp2.bknown)
+                otmp1.bknown = otmp2.bknown = 0;
+            if (otmp1.rknown !== otmp2.rknown)
+                otmp1.rknown = otmp2.rknown = 0;
+            if (otmp1.greased !== otmp2.greased)
+                otmp1.greased = otmp2.greased = 0;
+            if (otmp1.orotten || otmp2.orotten)
+                otmp1.orotten = otmp2.orotten = 1;
+            o1wt = otmp1.oeaten ? otmp1.oeaten : otmp1.owt;
+            o2wt = otmp2.oeaten ? otmp2.oeaten : otmp2.owt;
+            /* averaging the relative ages is less likely to overflow
+               than averaging the absolute ages directly */
+            agetmp = Math.trunc(((game.moves - otmp1.age) * o1wt
+                                 + (game.moves - otmp2.age) * o2wt)
+                                / (o1wt + o2wt));
+            /* convert relative age back to absolute age */
+            otmp1.age = game.moves - agetmp;
+            otmp1.owt += o2wt;
+            if (otmp1.oeaten || otmp2.oeaten)
+                otmp1.oeaten = o1wt + o2wt;
+            otmp1.quan = 1;
+            if (otmp1.globby && otmp2.globby) {
+                /* average (not weighted, no pun intended) the two globs'
+                   shrink timers and use that to give otmp1 a new timer */
+                let tm1 = stop_timer(SHRINK_GLOB, otmp1),
+                    tm2 = stop_timer(SHRINK_GLOB, otmp2);
+
+                tm1 = Math.trunc(((tm1 ? tm1 : 25) + (tm2 ? tm2 : 25) + 1) / 2);
+                start_glob_timeout(otmp1, tm1);
+            }
+            /* get rid of second glob, return augmented first one */
+            obj_extract_self(otmp2);
+            /* dealloc_obj(otmp2) */
+            obj2.v = null;
+            return otmp1;
+        }
+    }
+
+    /* impossible("obj_absorb: not called with two actual objects") */
+    return null;
+}
+
+// src/mkobj.c:3768 obj_meld(); obj1 and obj2 are {v} boxes
+export async function obj_meld(obj1, obj2) {
+    let otmp1, otmp2, result = null;
+    let ox, oy; /* coordinates for the glob that goes away */
+
+    if (obj1 && obj2) {
+        otmp1 = obj1.v;
+        otmp2 = obj2.v;
+        if (otmp1 && otmp2 && otmp1 !== otmp2) {
+            ox = oy = 0;
+            /*
+             * FIXME?
+             *  If one of the objects is free because it's being dropped,
+             *  we should really finish a full drop and then absorb/meld
+             *  if it survives the flooreffects().  Then lighter-melds-into-
+             *  heavier will be true even when heavier is the one dropped.
+             *
+             *  [Also, what about when one of the globs is on the shore
+             *  and we drop the other into adjacent pool or vice versa?]
+             */
+            if (!(otmp2.where === OBJ_FLOOR && otmp1.where === OBJ_FREE)
+                && (otmp1.owt > otmp2.owt
+                    || (otmp1.owt === otmp2.owt && rn2(2)))) {
+                if (otmp2.where === OBJ_FLOOR)
+                    ox = otmp2.ox, oy = otmp2.oy;
+                result = await obj_absorb(obj1, obj2);
+            } else {
+                if (otmp1.where === OBJ_FLOOR)
+                    ox = otmp1.ox, oy = otmp1.oy;
+                result = await obj_absorb(obj2, obj1);
+            }
+            /* callers really ought to take care of this; glob melding is
+               a bookkeeping issue rather than a display one */
+            if (ox) {
+                if (cansee(ox, oy))
+                    newsym(ox, oy);
+                /* and this; a hides-under monster might be hiding under
+                   the glob that went away; if there's nothing else there
+                   to hide under, force it out of hiding */
+                maybe_unhide_at(ox, oy);
+            }
+        }
+    } else {
+        /* impossible("obj_meld: not called with two actual objects") */
+    }
+    return result;
+}
+
+// src/mkobj.c:3818 pudding_merge_message()
+export async function pudding_merge_message(otmp, otmp2) {
+    const visible = (cansee(otmp.ox, otmp.oy)
+                     || cansee(otmp2.ox, otmp2.oy)),
+          onfloor = (otmp.where === OBJ_FLOOR || otmp2.where === OBJ_FLOOR),
+          inpack = (carried(otmp) || carried(otmp2));
+
+    /* the player will know something happened inside his own inventory */
+    if ((!Blind() && visible) || inpack) {
+        if (Hallucination()) {
+            if (onfloor) {
+                await You_see('parts of the floor melting!');
+            } else if (inpack) {
+                await Your('pack reaches out and grabs something!');
+            }
+            /* even though we can see where they should be,
+             * they'll be out of our view (minvent or container)
+             * so don't actually show anything */
+        } else if (onfloor || inpack) {
+            const adj = ((otmp.ox !== game.u.ux || otmp.oy !== game.u.uy)
+                         && (otmp2.ox !== game.u.ux || otmp2.oy !== game.u.uy));
+
+            await pline(`The ${(onfloor && adj) ? 'adjacent ' : ''}${makeplural(obj_typename(otmp.otyp))} coalesce${inpack ? ' inside your pack' : ''}.`);
+        }
+    } else {
+        /* Soundeffect(se_faint_sloshing, 25) */
+        await You_hear('a faint sloshing sound.');
+    }
+}
+
 export function mkgold(amount, x, y) {
     let gold = g_at(x, y);
 
@@ -1765,4 +1906,44 @@ export function add_to_migration(obj) {
         maybe_reset_pick(obj);
     obj.where = OBJ_MIGRATING;
     (game.migrating_objs ||= []).unshift(obj);
+}
+
+// src/mkobj.c:2733 container_weight()
+export function container_weight(object) {
+    object.owt = weight(object);
+    if (object.where === OBJ_CONTAINED)
+        container_weight(object.ocontainer);
+}
+
+// src/mkobj.c:2201 get_mtraits(); the monster traits saved with a corpse or
+// statue, either the stored copy itself or a duplicate
+export function get_mtraits(obj, copyof) {
+    let mtmp = null;
+    let mnew = null;
+
+    if (has_omonst(obj))
+        mtmp = OMONST(obj);
+    if (mtmp) {
+        if (copyof) {
+            mnew = structuredClone(mtmp);
+        } else {
+            mnew = mtmp;
+        }
+        mnew.data = game.mons[mnew.mnum];
+    }
+    return mnew;
+}
+
+// src/mkobj.c:2129 corpse_revive_type(); the type of monster a corpse would
+// revive as: a saved former monster keeps its own species
+export function corpse_revive_type(obj) {
+    let revivetype = obj.corpsenm;
+    let mtmp;
+
+    if (has_omonst(obj) && ((mtmp = get_mtraits(obj, false)) != null)) {
+        /* mtmp is a copy of the original monster's type and
+           attributes, not a real monster */
+        revivetype = mtmp.mnum;
+    }
+    return revivetype;
 }

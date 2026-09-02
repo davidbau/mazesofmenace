@@ -10,6 +10,19 @@
 // Porting notes for the two things that fail silently if got wrong are in
 // docs/plan/04-level-generation.md §4.0.
 
+import { IS_FOUNTAIN } from './const.js';
+import { IS_GRAVE } from './const.js';
+import { IS_ALTAR } from './const.js';
+import { CLOUD } from './const.js';
+import { u_at } from './const.js';
+import { hliquid } from './do_name.js';
+import { Underwater } from './youprop.js';
+import { On_stairs } from './stairs.js';
+import { is_ice } from './dbridge.js';
+import { ATTKS } from './monst_data.js';
+import { digests } from './mondata.js';
+import { is_animal } from './mondata.js';
+import { dmgtype_fromattack } from './mondata.js';
 import { within_bounded_area } from './mkmaze.js';
 import { Is_wiz1_level, Is_wiz2_level, Is_wiz3_level } from './const.js';
 import { game } from './gstate.js';
@@ -1164,42 +1177,51 @@ export function ceiling(x, y) {
     return 'rock cavern';
 }
 
-// src/dungeon.c:1750 surface() — what the hero is standing on, for messages.
-//
-// Only the arms a normal dungeon floor reaches are live: pools, ice, lava,
-// altars and the swallowed/air cases are recorded when hit.
+/* include/mondata.h:73 enfolds() */
+const enfolds = (ptr) => dmgtype_fromattack(ptr, ATTKS.AD_WRAP, ATTKS.AT_ENGL) != null;
+
+// src/dungeon.c:1750 surface(); what the hero is standing on, for messages
 export function surface(x, y) {
     const lev = game.level?.at(x, y);
     if (!lev)
         return 'floor';
-    const levtyp = lev.typ;
-    /* src/dungeon.c:1750 — the engulfed maw/husk arm and the air levels
-       are unreachable states here so far */
-    if (game.u?.uswallow && game.u.ux === x && game.u.uy === y)
-        return 'maw';
-    if (is_pool(x, y))
-        return game.u?.uinwater ? 'bottom' : 'water';
-    if (levtyp === ICE)
+    /* include/rm.h:146 SURFACE_AT() */
+    const levtyp = (lev.typ === DRAWBRIDGE_UP) ? db_under_typ(lev.drawbridgemask)
+                                               : lev.typ;
+
+    if (u_at(x, y) && game.u.uswallow && is_animal(game.u.ustuck.data))
+        /* 'husk' is iffy but maw is wrong for 't' class */
+        return digests(game.u.ustuck.data) ? 'maw'
+               : enfolds(game.u.ustuck.data) ? 'husk'
+                 : 'nonesuch'; /* can't happen (fingers crossed...) */
+    else if (IS_AIR(levtyp))
+        return Is_waterlevel(game.u.uz) ? 'air bubble'
+                                        : (levtyp === CLOUD) ? 'cloud' : 'air';
+    else if (is_pool(x, y))
+        return (Underwater() && !Is_waterlevel(game.u.uz))
+            ? 'bottom' : hliquid('water');
+    else if (is_ice(x, y))
         return 'ice';
-    if (is_lava(x, y))
-        return 'lava';
-    if (levtyp === DRAWBRIDGE_DOWN)
+    else if (is_lava(x, y))
+        return hliquid('lava');
+    else if (lev.typ === DRAWBRIDGE_DOWN)
         return 'bridge';
-    if (levtyp === ALTAR)
+    else if (IS_ALTAR(levtyp))
         return 'altar';
-    if (levtyp === GRAVE)
+    else if (IS_GRAVE(levtyp))
         return 'headstone';
-    if (levtyp === FOUNTAIN)
+    else if (IS_FOUNTAIN(levtyp))
         return 'fountain';
-    if (stairway_at_fn && stairway_at_fn(x, y))
+    else if (On_stairs(x, y))
         return 'stairs';
-    if (IS_WALL(levtyp) || levtyp === SDOOR)
+    else if (IS_WALL(levtyp) || levtyp === SDOOR)
         return 'wall'; /* 'surface' during Passes_walls */
-    if (IS_DOOR(levtyp))
+    else if (IS_DOOR(levtyp))
         return 'doorway'; /* even for closed door */
-    if (levtyp === ROOM)
+    else if (IS_ROOM(levtyp) && !Is_earthlevel(game.u.uz))
         return 'floor';
-    return 'ground';
+    else
+        return 'ground';
 }
 
 /* js/do.js stairway_at, wired to break the import cycle */

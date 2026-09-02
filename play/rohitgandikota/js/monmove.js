@@ -5,6 +5,11 @@
 // roll), once per monster that acts, so it is the first thing a turn with
 // awake monsters spends after the movement allotment.
 
+import { CORR } from './const.js';
+import { ROOM } from './const.js';
+import { switch_terrain } from './hack.js';
+import { in_rooms } from './hack.js';
+import { Is_special } from './dungeon.js';
 import { game } from './gstate.js';
 import { mpickstuff, mondied, wake_nearto, wake_msg, wakeup,
          monkilled } from './mon.js';
@@ -1060,6 +1065,18 @@ export function set_apparxy(mtmp) {
 
     mtmp.mux = mx;
     mtmp.muy = my;
+}
+
+// src/monmove.c:2170 dissolve_bars()
+export async function dissolve_bars(x, y) {
+    const lev = game.level.at(x, y);
+    lev.typ = (lev.edge === 1) ? DOOR
+        : (Is_special(game.u.uz) || in_rooms(x, y, 0)) ? ROOM : CORR;
+    lev.flags = 0; /* doormask = D_NODOOR */
+    lev.doormask = 0;
+    newsym(x, y);
+    if (u_at(x, y))
+        await switch_terrain();
 }
 
 // src/monmove.c:2188 accessible() — uses the terrain in front of a closed

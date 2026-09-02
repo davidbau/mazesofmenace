@@ -1,3 +1,8 @@
+import { maybe_unhide_at } from './mon.js';
+import { is_rider } from './mondata.js';
+import { goodpos } from './makemon.js';
+import { rloc_to, enexto } from './teleport.js';
+import { revive_corpse } from './do.js';
 import { obj_ice_effects } from './mkobj.js';
 import { spot_time_left, spot_stop_timers, MELT_ICE_AWAY } from './timeout.js';
 import { float_vs_flight } from './polyself.js';
@@ -124,6 +129,16 @@ export async function invocation_message() {
         await pline(`${The(xname(candelabrum))} ${
             u.ublind ? 'throbs palpably' : 'glows with a strange light'}!`);
     }
+}
+
+// src/hack.c:825 movobj()
+export function movobj(obj, ox, oy) {
+    /* optimize by leaving on the fobj chain? */
+    obj_extract_self(obj); /* remove_object(obj) */
+    maybe_unhide_at(obj.ox, obj.oy);
+    newsym(obj.ox, obj.oy);
+    place_object(obj, ox, oy);
+    newsym(ox, oy);
 }
 
 // src/hack.c:922 may_dig() — intended to be called only on ROCKs or TREEs. A
@@ -2329,4 +2344,38 @@ export async function set_uinwater(in_out) {
         game.u.uinwater = in_out ? 1 : 0;
         await switch_terrain();
     }
+}
+
+// src/hack.c:105 revive_nasty(); a Rider's or the Wizard's corpse at <x,y>
+// revives when something tries to cover it; returns true if one did
+export async function revive_nasty(x, y, msg) {
+    let mtmp;
+    const cc = { x: 0, y: 0 };
+    let revived = false;
+
+    for (const otmp of (game.level?.objects || []).filter(
+             (o) => o.ox === x && o.oy === y)) {
+        if (otmp.otyp === ONAMES.CORPSE
+            && (is_rider(game.mons[otmp.corpsenm])
+                || otmp.corpsenm === PMNAMES.PM_WIZARD_OF_YENDOR)) {
+            /* move any living monster already at that location */
+            if ((mtmp = m_at(x, y)) && enexto(cc, x, y, mtmp.data))
+                await rloc_to(mtmp, cc.x, cc.y);
+            if (msg)
+                await Norep(msg);
+            revived = await revive_corpse(otmp);
+        }
+    }
+
+    /* this location might not be safe, if not, move revived monster */
+    if (revived) {
+        mtmp = m_at(x, y);
+        if (mtmp && !goodpos(x, y, mtmp, 0)
+            && enexto(cc, x, y, mtmp.data)) {
+            await rloc_to(mtmp, cc.x, cc.y);
+        }
+        /* else impossible? */
+    }
+
+    return revived;
 }

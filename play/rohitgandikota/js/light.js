@@ -14,6 +14,8 @@
 // remember nothing" contract the C file documents, in a form the snapshot
 // serializer can round-trip without pointer fixups.
 
+import { DEADMONSTER } from './monst.js';
+import { FM_YOU, FM_FMON, FM_MIGRATE, FM_MYDOGS } from './const.js';
 import { artifact_light } from './artifact.js';
 import { game } from './gstate.js';
 import { COLNO, ROWNO, OBJ_FREE } from './const.js';
@@ -332,4 +334,24 @@ export function obj_split_light_source(src, dest) {
         sources.unshift(copy);
         dest.lamplit = 1;
     }
+}
+
+// src/light.c:376 find_mid(); the monster with id 'nid' on the lists named
+// by fmflags
+export function find_mid(nid, fmflags) {
+    if ((fmflags & FM_YOU) && nid === 1)
+        return game.youmonst;
+    if (fmflags & FM_FMON)
+        for (const mtmp of (game.level?.monsters || []))
+            if (!DEADMONSTER(mtmp) && mtmp.m_id === nid)
+                return mtmp;
+    if (fmflags & FM_MIGRATE)
+        for (const mtmp of (game.migrating_mons || []))
+            if (mtmp.m_id === nid)
+                return mtmp;
+    if (fmflags & FM_MYDOGS)
+        for (const mtmp of (game.mydogs || []))
+            if (mtmp.m_id === nid)
+                return mtmp;
+    return null;
 }

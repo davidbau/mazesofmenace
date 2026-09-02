@@ -276,7 +276,13 @@ export function Japanese_item_name(otyp, ordinaryname) {
 }
 
 // src/objnam.c:820 xname() — the object's name without quantity or BUC.
+// src/objnam.c xname(): xname_flags(obj, CXN_NORMAL)
 export function xname(obj) {
+    return xname_flags(obj, CXN_NORMAL);
+}
+
+// src/objnam.c xname_flags()
+export function xname_flags(obj, cxn_flags) {
     const ocl = game.objects[obj.otyp];
     /* src/objnam.c:627 — naming an object the hero can see observes it:
            if (!Blind && !gd.distantname) observe_object(obj);
@@ -299,7 +305,7 @@ export function xname(obj) {
             dn = 'koto';
     }
     const un = ocl.oc_uname || null;
-    let pluralize = obj.quan !== 1;
+    let pluralize = (obj.quan !== 1) && !(cxn_flags & CXN_SINGULAR);
     const dknown = obj.dknown;
     let buf = '';
 
@@ -507,9 +513,14 @@ export function xname(obj) {
 
 // src/eat.c tin_details() — " of <monster>" or " of spinach".
 // src/objnam.c singular() — name one item of a stack.
-/* include/obj.h — corpse_xname() flags */
-export const CXN_NORMAL = 0, CXN_NOCORPSE = 1, CXN_PFX_THE = 2,
-             CXN_ARTICLE = 4, CXN_NOARTICLE = 8, CXN_SINGULAR = 16;
+/* include/hack.h:61 — corpse_xname() flags */
+export const CXN_NORMAL = 0,    /* no special handling */
+             CXN_SINGULAR = 1,  /* override quantity if greater than 1 */
+             CXN_NO_PFX = 2,    /* suppress "the" from "the Unique Monst */
+             CXN_PFX_THE = 4,   /* prefix with "the " (unless pname) */
+             CXN_ARTICLE = 8,   /* include a/an/the prefix */
+             CXN_NOCORPSE = 16, /* suppress " corpse" suffix */
+             CXN_NOARTICLE = CXN_NO_PFX; /* this port's earlier name */
 
 // src/objnam.c:1121 the_unique_pm() — a unique monster that wants "the";
 // one with a personal name wants neither article.
@@ -528,7 +539,7 @@ export function corpse_xname(otmp, adjective, cxn_flags) {
     const article = (cxn_flags & CXN_ARTICLE) !== 0;
     const omit_corpse = (cxn_flags & CXN_NOCORPSE) !== 0;
     const ignore_quan = (cxn_flags & CXN_SINGULAR) !== 0;
-    let no_prefix = (cxn_flags & CXN_NOARTICLE) !== 0;
+    let no_prefix = (cxn_flags & CXN_NO_PFX) !== 0;
     let any_prefix = !no_prefix && article;
     let the_prefix = the_prefix0;
 
@@ -3719,4 +3730,12 @@ export function bare_artifactname(obj) {
         outbuf = xname(obj);
     }
     return outbuf;
+}
+
+// src/objnam.c:1933 cxname_singular(); xname_flags(obj, CXN_SINGULAR) with
+// the corpse naming variant for corpses
+export function cxname_singular(obj) {
+    if (obj.otyp === ONAMES.CORPSE)
+        return corpse_xname(obj, null, CXN_SINGULAR);
+    return xname_flags(obj, CXN_SINGULAR);
 }

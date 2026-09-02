@@ -4,6 +4,7 @@
 // Covers artifact generation, intrinsic effects, and the wish flow's name and
 // existence tracking.
 
+import { ART_NONARTIFACT } from './artilist_data.js';
 import { game } from './gstate.js';
 import { fuzzymatch } from './hacklib.js';
 import { ONAMES } from './objects_data.js';
@@ -268,6 +269,19 @@ export function get_artifact(obj) {
     const n = obj?.oartifact ?? 0;
     return (n > 0 && n < artifact_records.length) ? artifact_records[n]
                                                   : artifact_records[0];
+}
+
+// include/obj.h:441 u_wield_art() -> is_art(uwep, art)
+export function u_wield_art(art) {
+    return is_art(game.u.uwep, art);
+}
+
+// src/artifact.c spec_ability()
+export function spec_ability(otmp, abil) {
+    const arti = get_artifact(otmp);
+
+    return (otmp.oartifact !== ART_NONARTIFACT
+            && ((arti.spfx | 0) & abil) !== 0);
 }
 
 // src/artifact.c:2309 arti_cost(). Artifact prices are separate from the

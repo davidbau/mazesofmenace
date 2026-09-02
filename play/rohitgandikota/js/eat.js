@@ -1,3 +1,7 @@
+import { selftouch } from './trap.js';
+import { Levitation } from './youprop.js';
+import { unmul } from './hack.js';
+import { donull } from './do.js';
 import { POLY_NOFLAGS } from './const.js';
 import { polyself } from './polyself.js';
 import { Unchanging } from './youprop.js';
@@ -155,9 +159,25 @@ function worn_eat(mask) {
 }
 
 
+// src/eat.c:3336 unfaint()
+export async function unfaint() {
+    await Hear_again();
+    if (game.u.uhs > FAINTING)
+        game.u.uhs = FAINTING;
+    await stop_occupation();
+    (game.disp ||= {}).botl = true;
+    return 0;
+}
+
 // src/eat.c:3347 is_fainted()
 export function is_fainted() {
     return game.u.uhs === FAINTED;
+}
+
+// src/eat.c:3354 reset_faint()
+export async function reset_faint() {
+    if (game.afternmv === unfaint)
+        await unmul('You revive.');
 }
 
 // src/eat.c:126 init_uhunger() — the hero starts well fed.
@@ -1511,14 +1531,22 @@ export async function newuhs(incr) {
                 /* stop what you're doing, then faint */
                 await stop_occupation();
                 await You('faint from lack of food.');
-                /* incr_itimeout(&HDeaf, duration) and afternmv=unfaint need
-                   the deafness timer and the faint callback */
-                note_unported_eat('newuhs:faint_machinery');
+                {
+                    /* incr_itimeout(&HDeaf, duration) */
+                    const intr = (game.u.intrinsic ||= {});
+                    let long_val = ((intr.HDeaf | 0) & TIMEOUT) + duration;
+                    if (long_val > TIMEOUT)
+                        long_val = TIMEOUT;
+                    intr.HDeaf = ((intr.HDeaf | 0) & ~TIMEOUT) | long_val;
+                }
                 (game.disp ||= {}).botl = true;
                 nomul(-duration);
                 game.multi_reason = 'fainted from lack of food';
                 game.nomovemsg = 'You regain consciousness.';
+                game.afternmv = unfaint;
                 newhs2 = FAINTED;
+                if (!Levitation())
+                    await selftouch('Falling, you');
             }
         } else if (game.u.uhunger
                    < -(100 + 10 * Number(ACURR(A_CON)))) {
@@ -2048,5 +2076,18 @@ async function cpostfx(pm) {
         } else if (tmp > 0) {
             await givit(tmp, ptr);
         }
+    }
+}
+
+// src/eat.c:3893 cant_finish_meal(); called by revive(); sort of the opposite
+// of maybe_finished_meal()
+export async function cant_finish_meal(corpse) {
+    if (game.occupation === eatfood && game.context.victual?.piece === corpse) {
+        game.context.victual = {}; /* zero_victual: victual.piece = 0, .o_id = 0 */
+        if (!corpse.oeaten)
+            corpse.oeaten = 1; /* [see consume_oeaten()] */
+        game.occupation = donull; /* any non-Null other than eatfood() */
+        await stop_occupation();
+        await newuhs(false);
     }
 }

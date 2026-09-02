@@ -1,6 +1,15 @@
 // music.js -- musical instruments and their effects.
 // C ref: src/music.c
 
+import { record_achievement } from './insight.js';
+import { find_drawbridge, open_drawbridge, close_drawbridge, is_drawbridge_wall } from './dbridge.js';
+import { Is_stronghold, ACH_TUNE, DRAWBRIDGE_DOWN, IS_DRAWBRIDGE, plur } from './const.js';
+import { mungspaces, highc, isok } from './hacklib.js';
+import { getlin } from './cmd.js';
+import { thesimpleoname, the, xname } from './objnam.js';
+import { can_blow } from './mondata.js';
+import { You_cant, You_hear } from './pline.js';
+import { Underwater } from './youprop.js';
 import { Norep } from './pline.js';
 import { dist2 } from './hacklib.js';
 import { MFLAGS, PMNAMES } from './monst_data.js';
@@ -138,24 +147,144 @@ async function do_improvisation(instr) {
     return ECMD_TIME;
 }
 
-// src/music.c:755 do_play_instrument(). Drums always improvise. Other
-// instruments ask first when the hero is unimpaired.
-export async function do_play_instrument(instr) {
-    let choice = 'y';
-    const impaired = !!(game.u.uprops?.STUNNED || game.u.uprops?.CONFUSION
-                        || Hallucination());
+/* include/youprop.h */
+const Stunned = () => !!(game.u.intrinsic?.HStun || game.u.uprops?.STUNNED);
+const Confusion = () => !!(game.u.intrinsic?.HConfusion
+                           || game.u.uprops?.CONFUSION);
 
-    if (instr.otyp !== ONAMES.LEATHER_DRUM
-        && instr.otyp !== ONAMES.DRUM_OF_EARTHQUAKE && !impaired) {
-        choice = await tty_yn_function('Improvise?', 'ynq', 'q');
-        if (choice === 'q')
-            return ECMD_OK;
+// src/music.c:759 do_play_instrument()
+export async function do_play_instrument(instr) {
+    let buf = '', c = 'y';
+    let x, y;
+    let ok;
+
+    if (Underwater()) {
+        await You_cant('play music underwater!');
+        return ECMD_OK;
+    } else if ((instr.otyp === ONAMES.WOODEN_FLUTE || instr.otyp === ONAMES.MAGIC_FLUTE
+                || instr.otyp === ONAMES.TOOLED_HORN || instr.otyp === ONAMES.FROST_HORN
+                || instr.otyp === ONAMES.FIRE_HORN || instr.otyp === ONAMES.BUGLE)
+               && !can_blow(game.youmonst)) {
+        await You(`are incapable of playing ${thesimpleoname(instr)}.`);
+        return ECMD_OK;
     }
-    if (choice !== 'n')
+    if (instr.otyp !== ONAMES.LEATHER_DRUM && instr.otyp !== ONAMES.DRUM_OF_EARTHQUAKE
+        && !(Stunned() || Confusion() || Hallucination())) {
+        c = await tty_yn_function('Improvise?', 'ynq', 'q');
+        if (c === 'q') {
+            await pline('Never mind.'); /* goto nevermind */
+            return ECMD_OK;
+        }
+    }
+
+    if (c !== 'n')
         return await do_improvisation(instr);
 
-    note_unported_music('play_tune');
-    return ECMD_OK;
+    if (game.u.uevent?.uheard_tune === 2)
+        c = await tty_yn_function('Play the passtune?', 'ynq', 'q');
+    if (c === 'q') {
+        await pline('Never mind.'); /* goto nevermind */
+        return ECMD_OK;
+    } else if (c === 'y') {
+        buf = game.castle_tune;
+    } else {
+        buf = await getlin('What tune are you playing? [5 notes, A-G]');
+        buf = mungspaces(buf);
+        if (buf.charAt(0) === '\x1b') {
+            await pline('Never mind.'); /* goto nevermind */
+            return ECMD_OK;
+        }
+
+        /* convert to uppercase and change any "H" to the expected "B" */
+        buf = [...buf].map((ch) => {
+            ch = highc(ch);
+            return (ch === 'H') ? 'B' : ch;
+        }).join('');
+    }
+
+    await You(!Deaf() ? `extract a strange sound from ${the(xname(instr))}!`
+                      : `can feel ${the(xname(instr))} emitting vibrations.`);
+    /* Hero_playnotes(obj_to_instr(instr), buf, 50): empty in this build */
+
+    /* Check if there was the Stronghold drawbridge near
+     * and if the tune conforms to what we're waiting for.
+     */
+    if (Is_stronghold(game.u.uz)) {
+        exercise(A_WIS, true); /* just for trying */
+        if (buf === game.castle_tune) {
+            /* Search for the drawbridge */
+            for (y = game.u.uy - 1; y <= game.u.uy + 1; y++)
+                for (x = game.u.ux - 1; x <= game.u.ux + 1; x++) {
+                    if (!isok(x, y))
+                        continue;
+                    const cc = { x, y };
+                    if (find_drawbridge(cc)) {
+                        /* tune now fully known */
+                        (game.u.uevent ||= {}).uheard_tune = 2;
+                        record_achievement(ACH_TUNE);
+                        if (game.level.at(cc.x, cc.y).typ === DRAWBRIDGE_DOWN)
+                            await close_drawbridge(cc.x, cc.y);
+                        else
+                            await open_drawbridge(cc.x, cc.y);
+                        return ECMD_TIME;
+                    }
+                }
+        } else if (!Deaf()) {
+            if ((game.u.uevent?.uheard_tune | 0) < 1)
+                (game.u.uevent ||= {}).uheard_tune = 1;
+            /* Okay, it wasn't the right tune, but perhaps
+             * we can give the player some hints like in the
+             * Mastermind game */
+            ok = false;
+            for (y = game.u.uy - 1; y <= game.u.uy + 1 && !ok; y++)
+                for (x = game.u.ux - 1; x <= game.u.ux + 1 && !ok; x++)
+                    if (isok(x, y))
+                        if (IS_DRAWBRIDGE(game.level.at(x, y).typ)
+                            || is_drawbridge_wall(x, y) >= 0)
+                            ok = true;
+            if (ok) { /* There is a drawbridge near */
+                let tumblers, gears;
+                const matched = [false, false, false, false, false];
+
+                tumblers = gears = 0;
+
+                for (x = 0; x < buf.length; x++)
+                    if (x < 5) {
+                        if (buf[x] === game.castle_tune[x]) {
+                            gears++;
+                            matched[x] = true;
+                        } else {
+                            for (y = 0; y < 5; y++)
+                                if (!matched[y] && buf[x] === game.castle_tune[y]
+                                    && buf[y] !== game.castle_tune[y]) {
+                                    tumblers++;
+                                    matched[y] = true;
+                                    break;
+                                }
+                        }
+                    }
+                if (tumblers) {
+                    if (gears) {
+                        /* Soundeffect(se_tumbler_click, 50); Soundeffect(se_gear_turn, 50) */
+                        await You_hear(`${tumblers} tumbler${plur(tumblers)} click and ${gears} gear${plur(gears)} turn.`);
+                    } else {
+                        /* Soundeffect(se_tumbler_click, 50) */
+                        await You_hear(`${tumblers} tumbler${plur(tumblers)} click.`);
+                    }
+                } else if (gears) {
+                    await You_hear(`${gears} gear${plur(gears)} turn.`);
+                    /* could only get `gears == 5' by playing five
+                       correct notes followed by excess; otherwise,
+                       tune would have matched above */
+                    if (gears === 5) {
+                        (game.u.uevent ||= {}).uheard_tune = 2;
+                        record_achievement(ACH_TUNE);
+                    }
+                }
+            }
+        }
+    }
+    return ECMD_TIME;
 }
 
 /* include/mondata.h is_mercenary() */

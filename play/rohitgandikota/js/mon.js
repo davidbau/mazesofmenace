@@ -1,3 +1,4 @@
+import { revive_corpse } from './do.js';
 import { monsndx } from './makemon.js';
 import { kill_egg } from './timeout.js';
 import { Has_contents } from './obj.js';
@@ -1092,10 +1093,19 @@ export async function meatobj(mtmp) {
         const corpsenm = otmp.corpsenm ?? NON_PM;
         const corpsepm = ismnum(corpsenm) ? game.mons[corpsenm] : null;
 
+        /* touch sensitive items */
         if (otmp.otyp === ONAMES.CORPSE && corpsepm
             && is_rider(corpsepm)) {
-            note_unported_mon('meatobj:revive_rider');
-            continue;
+            const ox = otmp.ox, oy = otmp.oy;
+            const revived_it = await revive_corpse(otmp);
+
+            newsym(ox, oy);
+            /* Rider corpse isn't just inedible; can't engulf it either */
+            if (!revived_it)
+                continue;
+            /* [should check whether revival forced 'mtmp' off the level
+               and return 3 in that situation (if possible...)] */
+            break;
         }
 
         if ((otmp.otyp === ONAMES.CORPSE && corpsepm

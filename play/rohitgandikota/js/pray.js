@@ -5,6 +5,9 @@
 // the tested sacrifice paths. Some punishment, conversion, and artifact-gift
 // paths remain partial.
 
+import { has_omonst, OMONST, ANIMATE_SPELL } from './const.js';
+import { animate_statue } from './trap.js';
+import { revive } from './zap.js';
 import { cmap_names } from './drawing_data.js';
 import { M_AP_TYPE, M_AP_FURNITURE, MCORPSENM } from './const.js';
 import { m_at } from './mon.js';
@@ -1554,22 +1557,29 @@ async function prayer_done() {
 
     if (p_type === 0) {
         if (on_altar() && u.ualign.type !== alignment)
-            note_unported_pray('prayer_done:water_prayer');
+            await water_prayer(false);
         u.ublesscnt += rnz(250);
         change_luck(-3);
         await gods_upset(u.ualign.type);
     } else if (p_type === 1) {
         if (on_altar() && u.ualign.type !== alignment)
-            note_unported_pray('prayer_done:water_prayer');
+            await water_prayer(false);
         await angrygods(u.ualign.type); /* naughty */
     } else if (p_type === 2) {
-        note_unported_pray('prayer_done:cross_altar');
-        await angrygods(u.ualign.type);
+        if (await water_prayer(false)) {
+            /* attempted water prayer on a non-coaligned altar */
+            u.ublesscnt += rnz(250);
+            change_luck(-3);
+            await gods_upset(u.ualign.type);
+        } else
+            await pleased(alignment);
     } else {
         /* coaligned */
-        if (on_altar())
-            note_unported_pray('prayer_done:pray_revive_water');
-        await pleased(alignment);
+        if (on_altar()) {
+            await pray_revive();
+            await water_prayer(true);
+        }
+        await pleased(alignment); /* nice */
     }
     return 1;
 }
@@ -1671,5 +1681,58 @@ export async function altar_wrath(x, y) {
            the chance to lose another point drops down, eventually to 0 */
         if (Luck() > -5 && rn2(Luck() + 6))
             change_luck(rn2(20) ? -1 : -2);
+    }
+}
+
+// src/pray.c:1387 water_prayer()
+async function water_prayer(bless_water) {
+    let changed = 0;
+    let other = false;
+    const bc_known = !(Blind() || Hallucination());
+
+    for (const otmp of (game.level?.objects || [])
+             .filter(o => o.ox === game.u.ux && o.oy === game.u.uy)) {
+        /* turn water into (un)holy water */
+        if (otmp.otyp === ONAMES.POT_WATER
+            && (bless_water ? !otmp.blessed : !otmp.cursed)) {
+            otmp.blessed = bless_water ? 1 : 0;
+            otmp.cursed = !bless_water ? 1 : 0;
+            otmp.bknown = bc_known ? 1 : 0; /* ok to bypass set_bknown() */
+            changed += otmp.quan;
+        } else if (otmp.oclass === OCLASSES.POTION_CLASS)
+            other = true;
+    }
+    if (!Blind() && changed) {
+        await pline(`${((other && changed > 1) ? 'Some of the'
+                        : (other ? 'One of the' : 'The'))} potion${
+                      ((other || changed > 1) ? 's' : '')} on the altar glow${
+                      (changed > 1 ? '' : 's')} ${
+                      (bless_water ? hcolor(NH_LIGHT_BLUE) : hcolor(NH_BLACK))} for a moment.`);
+    }
+    return changed > 0;
+}
+
+// src/pray.c:2177 pray_revive(); a dead pet on the altar (corpse or statue
+// with saved traits) is brought back by a successful prayer
+async function pray_revive() {
+    const u = game.u;
+    let otmp = null;
+
+    for (const o of (game.level.objects || []).filter(
+             (obj) => obj.ox === u.ux && obj.oy === u.uy))
+        if ((o.otyp === ONAMES.CORPSE || o.otyp === ONAMES.STATUE)
+            && has_omonst(o)
+            && OMONST(o).mtame && !OMONST(o).isminion) {
+            otmp = o;
+            break;
+        }
+
+    if (!otmp)
+        return false;
+
+    if (otmp.otyp === ONAMES.CORPSE)
+        return (await revive(otmp, true)) != null;
+    else {
+        return (await animate_statue(otmp, u.ux, u.uy, ANIMATE_SPELL)) != null;
     }
 }

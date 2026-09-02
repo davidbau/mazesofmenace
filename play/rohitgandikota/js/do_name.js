@@ -6,6 +6,7 @@
 // creates, so skipping it left two calls unspent in the middle of level
 // generation.
 
+import { Mgender } from './const.js';
 import { genders } from './role_data.js';
 import { vtense, makeplural } from './objnam.js';
 import { ismnum, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_RANDOM, MALE, FEMALE, NEUTRAL } from './const.js';
@@ -452,6 +453,13 @@ export function new_oname(obj, lth) {
         /* zero length: the new name is empty; get rid of the old name */
         if (obj.oname != null)
             delete obj.oname;
+    }
+}
+
+// src/do_name.c:81 free_oname()
+export function free_oname(obj) {
+    if (obj.oname != null) { /* has_oname(obj) */
+        delete obj.oname; /* ONAME(obj) = (char *) 0 */
     }
 }
 
@@ -913,3 +921,8 @@ export function monverbself(mon, monnamtext, verb, othertext) {
 }
 
 export { mhe } from './mondata.js';
+
+// src/do_name.c:1313 mon_pmname(); the monster's species name for its gender
+export function mon_pmname(mon) {
+    return pmname(mon.data, Mgender(mon));
+}

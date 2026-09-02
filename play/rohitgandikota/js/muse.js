@@ -8,6 +8,7 @@
 // gm.m (the muse selection struct) is game.m here; find_offensive() resets
 // the offensive slice at its head exactly as C does.
 
+import { unturn_dead } from './zap.js';
 import { is_bat } from './makemon.js';
 import { mon_learns_traps, fill_pit, mintrap } from './trap.js';
 import { upstart } from './do_name.js';
@@ -2506,9 +2507,8 @@ export async function mbhitm(mtmp, otmp) {
         } else {
             let wake = false;
 
-            /* zap.c unturn_dead() (reviving the target's carried
-               corpses) is not ported yet */
-            note_unported_muse('mbhitm:unturn_dead');
+            if (await unturn_dead(mtmp)) /* affects mtmp's invent, not mtmp */
+                wake = true;
             if (is_undead(mtmp.data) || is_vampshifter(mtmp)) {
                 wake = reveal_invis = true;
                 /* the target is an undead creature; wand's zap will

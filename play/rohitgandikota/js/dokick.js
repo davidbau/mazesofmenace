@@ -11,6 +11,15 @@
 // reads 0. js/cmd.js does the wiring instead, exactly as it already does for
 // mklev and sp_lev.
 
+import { ismnum } from './const.js';
+import { shkname } from './shknam.js';
+import { useup, obfree } from './invent.js';
+import { change_luck } from './attrib.js';
+import { obj_resists } from './zap.js';
+import { Is_mbag } from './mkobj.js';
+import { Is_container } from './obj.js';
+import { stolen_value, make_angry_shk, inside_shop } from './shk.js';
+import { find_drawbridge } from './dbridge.js';
 import { angry_guards } from './mon.js';
 import { Shknam } from './shknam.js';
 import { You_hear } from './pline.js';
@@ -617,7 +626,10 @@ async function kick_ouch(x, y, maploc, kickobjnam) {
             note_unported_dokick('kick_ouch:feel_location');
         if (is_drawbridge_wall(x, y) >= 0) {
             await pline_The('drawbridge is unaffected.');
-            note_unported_dokick('kick_ouch:find_drawbridge');
+            /* update maploc to refer to the drawbridge */
+            const cc = { x, y };
+            find_drawbridge(cc);
+            maploc = game.level.at(cc.x, cc.y);
         }
         wake_nearto(x, y, 5 * 5);
     }
@@ -985,6 +997,71 @@ export function drop_to(cc, loc, x, y) {
     }
 }
 
+// src/dokick.c:412 container_impact_dmg()
+export async function container_impact_dmg(obj, x, y) {
+    let shkp;
+    let loss = 0;
+    let costly, insider, frominv, wchange = false;
+
+    /* only consider normal containers */
+    if (!Is_container(obj) || !Has_contents(obj) || Is_mbag(obj))
+        return;
+
+    costly = ((shkp = shop_keeper((in_rooms(x, y, SHOPBASE) || '\0').charCodeAt(0)))
+              && costly_spot(x, y));
+    insider = (game.u.ushops && inside_shop(game.u.ux, game.u.uy)
+               && (in_rooms(x, y, SHOPBASE) || '').charAt(0) === game.u.ushops.charAt(0));
+    /* if dropped or thrown, shop ownership flags are set on this obj */
+    frominv = (obj !== game.kickedobj);
+
+    for (const otmp of [...(obj.cobj || [])]) {
+        let result = null;
+
+        if (game.objects[otmp.otyp].oc_material === MATERIALS.GLASS
+            && otmp.oclass !== OCLASSES.GEM_CLASS && !obj_resists(otmp, 33, 100)) {
+            result = 'shatter';
+        } else if (otmp.otyp === ONAMES.EGG && !rn2(3)) {
+            result = 'cracking';
+        }
+        if (result) {
+            if (otmp.otyp === ONAMES.MIRROR)
+                change_luck(-2);
+
+            /* eggs laid by you.  penalty is -1 per egg, max 5,
+             * but it's always exactly 1 that breaks */
+            if (otmp.otyp === ONAMES.EGG && otmp.spe && ismnum(otmp.corpsenm))
+                change_luck(-1);
+            /* Soundeffect(se_egg_cracking / se_glass_shattering, 25) */
+            await You_hear(`a muffled ${result}.`);
+            if (costly) {
+                if (frominv && !otmp.unpaid)
+                    otmp.no_charge = 1;
+                loss +=
+                    await stolen_value(otmp, x, y, !!shkp.mpeaceful, true);
+            }
+            if (otmp.quan > 1) {
+                useup(otmp);
+            } else {
+                obj_extract_self(otmp);
+                obfree(otmp, null);
+            }
+            /* contents of this container are no longer known */
+            obj.cknown = 0;
+            wchange = true;
+        }
+    }
+    if (wchange)
+        obj.owt = weight(obj);
+    if (costly && loss) {
+        if (!insider) {
+            await You(`caused ${loss} ${currency(loss)} worth of damage!`);
+            await make_angry_shk(shkp, x, y);
+        } else {
+            await You(`owe ${shkname(shkp)} ${loss} ${currency(loss)} for objects destroyed.`);
+        }
+    }
+}
+
 // src/dokick.c:1511 impact_drop(); objects at <x,y> tumble through the
 // gate there (stairs, ladder, hole) to the level below
 export async function impact_drop(missile, x, y, dlev) {
@@ -1048,9 +1125,15 @@ export async function impact_drop(missile, x, y, dlev) {
         obj_extract_self(obj);
 
         if (costly) {
-            /* price += stolen_value(obj, x, y, ..., TRUE): the shop theft
-               accounting is not ported yet */
-            note_unported_dokick('impact_drop:stolen_value');
+            /* strchr(u.urooms, '\0') finds the terminator, so an empty
+               in_rooms() result counts as a match in the C */
+            const oshop = (in_rooms(x, y, SHOPBASE) || '').charAt(0);
+            price += await stolen_value(obj, x, y,
+                                        (costly_spot(u.ux, u.uy)
+                                         && (oshop === ''
+                                             || (u.urooms || '').includes(oshop))),
+                                        true);
+            /* set obj->no_charge to 0 */
             if (Has_contents(obj))
                 picked_container(obj); /* does the right thing */
             if (obj.oclass !== OCLASSES.COIN_CLASS)
@@ -1092,7 +1175,7 @@ export async function impact_drop(missile, x, y, dlev) {
             } else
                 await You_hear('a scream, "Thief!"');
             hot_pursuit(shkp);
-            angry_guards(false);
+            await angry_guards(false);
             return;
         }
         if (ESHK(shkp).debit > debit) {

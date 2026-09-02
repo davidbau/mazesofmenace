@@ -12,6 +12,12 @@
 // rn2(8) rn2(7) … rn2(2) rn2(16) rn2(15) … run the recordings show when a pet
 // is placed.
 
+import { make_stunned } from './potion.js';
+import { UTOTYPE_PORTAL } from './const.js';
+import { UTOTYPE_ATSTAIRS } from './const.js';
+import { TIMEOUT } from './const.js';
+import { TT_BURIEDBALL } from './const.js';
+import { buried_ball_to_punishment } from './dig.js';
 import { RLOC_NONE, u_at } from './const.js';
 import { somexyspace } from './mklev.js';
 import { search_special } from './mkroom.js';
@@ -893,7 +899,7 @@ export async function tele() {
 }
 
 // src/teleport.c:1035 dotele() — `break_the_rules` is wizard-mode ^T.
-async function dotele(break_the_rules) {
+export async function dotele(break_the_rules) {
     let trap = t_at(game.u.ux, game.u.uy);
     let trap_once = false;
 
@@ -997,6 +1003,57 @@ async function dotele(break_the_rules) {
     if (!trap)
         await morehungry(100);
     return 1;
+}
+
+/* include/dungeon.h on_level() */
+const on_level = (a, b) => !!a && !!b && a.dnum === b.dnum && a.dlevel === b.dlevel;
+/* include/dungeon.h In_tutorial() */
+const In_tutorial = (uz) => uz?.dnum === game.tutorial_dnum;
+// src/teleport.c:1444 domagicportal()
+export async function domagicportal(ttmp) {
+    let target_level;
+    let totype;
+    let stunmsg = null;
+
+    if (game.u.utrap && game.u.utraptype === TT_BURIEDBALL)
+        await buried_ball_to_punishment();
+
+    if (!(await next_to_u())) {
+        await You('shudder for a moment.');
+        return;
+    }
+
+    /* if landed from another portal, do nothing */
+    /* problem: level teleport landing escapes the check */
+    if (!on_level(game.u.uz, game.u.uz0))
+        return;
+
+    await You('activated a magic portal!');
+
+    /* prevent the poor shnook, whose amulet was stolen while in
+     * the endgame, from accidently triggering the portal to the
+     * next level, and thus losing the game
+     */
+    if (In_endgame(game.u.uz) && !game.u.uhave?.amulet) {
+        await You_feel('dizzy for a moment, but nothing happens...');
+        return;
+    }
+
+    target_level = ttmp.dst;
+
+    /* coming back from tutorial doesn't trigger stunning */
+    if (In_tutorial(game.u.uz) && !In_tutorial(target_level)) {
+        /* returning to normal play => arrive on level 1 stairs */
+        totype = UTOTYPE_ATSTAIRS;
+        stunmsg = 'Resuming regular play.';
+    } else {
+        totype = UTOTYPE_PORTAL;
+        stunmsg = !Stunned() ? 'You feel slightly dizzy.'
+                             : 'You feel dizzier.';
+        await make_stunned(((game.u.intrinsic?.HStun | 0) & TIMEOUT) + 3, false);
+    }
+
+    schedule_goto(target_level, totype, stunmsg, null);
 }
 
 // src/teleport.c:919 dotelecmd() — the ^T command.

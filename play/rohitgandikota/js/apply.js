@@ -1,6 +1,16 @@
 // apply.js — the 'a' command.
 // C ref: src/apply.c
 
+import { boulder_hits_pool } from './do.js';
+import { is_pool_or_lava } from './dbridge.js';
+import { OBJ_INVENT, OBJ_MINVENT } from './const.js';
+import { Wwalking } from './youprop.js';
+import { humanoid, is_flyer, is_floater } from './mondata.js';
+import { set_msg_xy } from './pline.js';
+import { couldsee } from './vision.js';
+import { get_obj_location } from './zap.js';
+import { Shk_Your } from './shk.js';
+import { verbalize } from './pline.js';
 import { NO_MINVENT, TT_BURIEDBALL } from './const.js';
 import { buried_ball_to_freedom } from './dig.js';
 import { unpunish } from './read.js';
@@ -139,6 +149,15 @@ const APPLIED_CONTAINERS = [ONAMES.LARGE_BOX, ONAMES.CHEST, ONAMES.ICE_BOX,
 export function number_leashed() {
     return (game.invent || []).filter((obj) =>
         obj.otyp === ONAMES.LEASH && obj.leashmon).length;
+}
+
+// src/apply.c:746 unleash_all()
+export function unleash_all() {
+    for (const otmp of game.invent || [])
+        if (otmp.otyp === ONAMES.LEASH)
+            otmp.leashmon = 0;
+    for (const mtmp of game.level?.monsters || [])
+        mtmp.mleashed = 0;
 }
 
 // src/apply.c:761 leashable().
@@ -675,7 +694,7 @@ async function use_bell(obj) {
         } else if (obj.cursed) {
             const mm = { x: game.u.ux, y: game.u.uy };
 
-            mkundead(mm, false, NO_MINVENT);
+            await mkundead(mm, false, NO_MINVENT);
             wake = true;
         } else if (invoking) {
             await pline(`${Tobjnam(obj, 'issue')} an unsettling shrill sound...`);
@@ -781,6 +800,96 @@ async function use_candle(obj) {
     useupall(obj);
     candelabrum.owt = weight(candelabrum);
     update_inventory();
+}
+
+// src/apply.c:1472 snuff_candle()
+export async function snuff_candle(otmp) {
+    const candle = Is_candle(otmp);
+
+    if ((candle || otmp.otyp === ONAMES.CANDELABRUM_OF_INVOCATION)
+        && otmp.lamplit) {
+        const cc = { x: 0, y: 0 };
+        const many = candle ? (otmp.quan > 1) : (otmp.spe > 1);
+
+        get_obj_location(otmp, cc, 0);
+        if (otmp.where === OBJ_MINVENT ? cansee(cc.x, cc.y) : !Blind())
+            await pline(`${Shk_Your(otmp)}${candle ? '' : "candelabrum's "}candle${many ? "s'" : "'s"} flame${many ? 's are' : ' is'} extinguished.`);
+        await end_burn(otmp, true);
+        return true;
+    }
+    return false;
+}
+
+// src/apply.c:1497 snuff_lit()
+export async function snuff_lit(obj) {
+    const cc = { x: 0, y: 0 };
+
+    if (obj.lamplit) {
+        if (obj.otyp === ONAMES.OIL_LAMP || obj.otyp === ONAMES.MAGIC_LAMP
+            || obj.otyp === ONAMES.BRASS_LANTERN || obj.otyp === ONAMES.POT_OIL) {
+            get_obj_location(obj, cc, 0);
+            if (obj.where === OBJ_MINVENT ? cansee(cc.x, cc.y) : !Blind())
+                await pline(`${Yname2(obj)} ${otense(obj, 'go')} out!`);
+            await end_burn(obj, true);
+            return true;
+        }
+        if (await snuff_candle(obj))
+            return true;
+    }
+    return false;
+}
+
+// src/apply.c:1518 splash_lit()
+export async function splash_lit(obj) {
+    let result, dunk = false;
+
+    /* lantern won't be extinguished by a rust trap or rust monster attack
+       but will be if submerged or placed into a container or swallowed by
+       a monster (for mobile light source handling, not because it ought
+       to stop being lit in all those situations...) */
+    if (obj.lamplit && obj.otyp === ONAMES.BRASS_LANTERN) {
+        let mtmp;
+        let useeit = false, uhearit = false, snuff = true;
+
+        if (obj.where === OBJ_INVENT) {
+            useeit = !Blind();
+            uhearit = !Deaf();
+            /* underwater light sources aren't allowed but if hero
+               is just entering water, Underwater won't be set yet */
+            dunk = (is_pool(game.u.ux, game.u.uy)
+                    && ((!Levitation() && !Flying() && !Wwalking())
+                        || Is_waterlevel(game.u.uz)));
+            snuff = false;
+        } else if (obj.where === OBJ_MINVENT
+                   /* don't assume that lit lantern has been swallowed;
+                      a nymph might have stolen it or picked it up */
+                   && ((mtmp = obj.ocarry), humanoid(mtmp.data))) {
+            const cc = { x: 0, y: 0 };
+
+            useeit = get_obj_location(obj, cc, 0) && cansee(cc.x, cc.y);
+            uhearit = couldsee(cc.x, cc.y) && distu(cc.x, cc.y) < 5 * 5;
+            dunk = (is_pool(mtmp.mx, mtmp.my)
+                    && ((!is_flyer(mtmp.data) && !is_floater(mtmp.data))
+                        || Is_waterlevel(game.u.uz)));
+            snuff = false;
+            if (useeit)
+                set_msg_xy(cc.x, cc.y);
+        }
+
+        if (useeit || uhearit)
+            await pline(`${Yname2(obj)} ${uhearit ? 'crackles' : ''}${(uhearit && useeit) ? ' and ' : ''}${useeit ? 'flickers' : ''}.`);
+        if (!dunk && !snuff)
+            return false;
+    }
+
+    result = await snuff_lit(obj);
+
+    /* this is simpler when we wait until after lantern has been snuffed */
+    if (dunk) {
+        /* drain some of the battery but don't short it out entirely */
+        obj.age -= (obj.age > 200) ? 100 : Math.trunc(obj.age / 2);
+    }
+    return result;
 }
 
 // src/apply.c:4151 apply_ok() — the getobj filter for 'a'.
@@ -1064,10 +1173,10 @@ async function use_tinning_kit(obj) {
 
     if (is_rider(mptr)) {
         const { revive_corpse } = await import('./do.js');
-        if (await revive_corpse(corpse, true))
-            await pline('"Yes...  But War does not preserve its enemies..."');
+        if (await revive_corpse(corpse))
+            await verbalize('Yes...  But War does not preserve its enemies...');
         else
-            await pline('The corpse evades your grasp.');
+            await pline_The('corpse evades your grasp.');
         return;
     }
     if (!mptr.cnutrit) {
@@ -2849,4 +2958,14 @@ export function o_unleash(otmp) {
         }
     otmp.leashmon = 0;
     update_inventory();
+}
+
+// src/apply.c:3897 maybe_dunk_boulders()
+export async function maybe_dunk_boulders(x, y) {
+    let otmp;
+
+    while (is_pool_or_lava(x, y) && (otmp = sobj_at(ONAMES.BOULDER, x, y)) != null) {
+        obj_extract_self(otmp);
+        await boulder_hits_pool(otmp, x, y, false);
+    }
 }

@@ -9,6 +9,15 @@
 // Functions appear in src/pager.c order. dohelp()/doextversion() at the
 // bottom predate this port of the rest of the file.
 
+import { IS_WATERWALL, Is_waterlevel } from './const.js';
+import { MELT_ICE_AWAY } from './const.js';
+import { u_at } from './const.js';
+import { DRAWBRIDGE_UP } from './const.js';
+import { Levitation } from './youprop.js';
+import { cansee } from './vision.js';
+import { distu } from './hacklib.js';
+import { spot_time_left } from './timeout.js';
+import { db_under_typ } from './dbridge.js';
 import { doextlist } from './cmd.js';
 import { game } from './gstate.js';
 import { COLNO, ROWNO, BOLT_LIM, STONE, SCORR, SDOOR, GRAVE, CORR,
@@ -253,8 +262,12 @@ function look_at_monster(mtmp, x, y) {
 // The hallucination variants and the Medusa/Juiblex/Samurai-quest moat
 // flavors use the current special-level globals.
 export function waterbody_name(x, y) {
-    if (!isok(x, y)) return 'drink';
-    return waterbody_name_typ(game.level?.at(x, y)?.typ, x, y);
+    if (!isok(x, y)) return 'drink'; /* should never happen */
+    const lev = game.level?.at(x, y);
+    /* include/rm.h:146 SURFACE_AT(): the terrain under a raised drawbridge */
+    const ltyp = (lev?.typ === DRAWBRIDGE_UP) ? db_under_typ(lev.drawbridgemask)
+                                              : lev?.typ;
+    return waterbody_name_typ(ltyp, x, y);
 }
 
 function waterbody_name_typ(ltyp, x, y) {
@@ -281,9 +294,54 @@ function waterbody_name_typ(ltyp, x, y) {
             return 'pond';
         return 'moat';
     }
-    if (ltyp === WATER) return `wall of ${hliquid('water')}`;
+    if (IS_WATERWALL(ltyp)) {
+        if (Is_waterlevel(game.u?.uz))
+            return 'limitless water'; /* even if hallucinating */
+        return `wall of ${hliquid('water')}`;
+    }
     if (ltyp === LAVAWALL) return `wall of ${hliquid('lava')}`;
-    return 'water';
+    /* default; should be unreachable */
+    return 'water'; /* don't hallucinate this as some other liquid */
+}
+
+// src/pager.c:614 ice_descr()
+export function ice_descr(x, y) {
+    const icetyp = [
+        'solid',    /* 0: not melting */
+        'sturdy',   /* 1: more than 1000 turns left */
+        'steady',   /* 2: 101..1000 turns left */
+        'unsteady', /* 3:  51..100 turns left */
+        'thin',     /* 4:  15..50 turns left */
+        'slushy',   /* 5:   1..14 turns left; matches Warning on ice */
+    ];
+    /* same formula as is used in distant_name() for objects */
+    const r = ((game.u.xray_range ?? 0) > 2) ? game.u.xray_range : 2,
+          neardist = (r * r) * 2 - r; /* same as r*r + r*(r-1) */
+    const lev = game.level.at(x, y);
+    const surface_at = (lev.typ === DRAWBRIDGE_UP) ? db_under_typ(lev.drawbridgemask) : lev.typ;
+    let outbuf;
+
+    (game.iflags ||= {}).ice_rating = -1; /* secondary output, for 'mention_decor' */
+    if (surface_at !== ICE) {
+        outbuf = `[ice:${lev.typ}?]`;
+    } else if ((distu(x, y) > neardist
+                || (!cansee(x, y) && (!u_at(x, y) || Levitation())))
+               && !game.decor_levitate_override) { /* probe_decor(pickup.c) */
+        outbuf = waterbody_name(x, y); /* "ice" or "frozen <liquid>" */
+    } else {
+        const time_left = spot_time_left(x, y, MELT_ICE_AWAY);
+
+        /* other, real ice thickness/strength terminology exists but seems
+           to be too unfamiliar for nethack's use */
+        game.iflags.ice_rating = !time_left ? 0                /* solid */
+                                 : (time_left > 1000) ? 1     /* sturdy */
+                                   : (time_left > 100) ? 2    /* steady */
+                                     : (time_left > 50) ? 3   /* unsteady */
+                                       : (time_left > 14) ? 4 /* thin */
+                                         : 5;                 /* slushy */
+        outbuf = `${icetyp[game.iflags.ice_rating]} ${waterbody_name(x, y)}`;
+    }
+    return outbuf;
 }
 
 // src/pager.c:657 lookat() — fill buf with the name of what's displayed

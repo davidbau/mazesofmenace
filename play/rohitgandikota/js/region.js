@@ -269,3 +269,50 @@ export async function run_regions() {
         }
     }
 }
+
+// src/region.c:210 mon_in_region(); is the monster inside the region's
+// monster list?
+export function mon_in_region(reg, mon) {
+    for (let i = 0; i < reg.n_monst; i++)
+        if (reg.monsters[i] === mon.m_id)
+            return true;
+    return false;
+}
+
+// src/region.c:161 add_mon_to_reg()
+export function add_mon_to_reg(reg, mon) {
+    /* long worms are handled specially; a worm's segments span squares so
+       only include it once no matter how segments the region contains */
+    if (mon_in_region(reg, mon)) {
+        /* if (mon->data != &mons[PM_LONG_WORM]) impossible(...) */
+        return;
+    }
+    (reg.monsters ||= [])[reg.n_monst++] = mon.m_id;
+}
+
+// src/region.c:192 remove_mon_from_reg()
+export function remove_mon_from_reg(reg, mon) {
+    for (let i = 0; i < reg.n_monst; i++)
+        if (reg.monsters[i] === mon.m_id) {
+            reg.n_monst--;
+            reg.monsters[i] = reg.monsters[reg.n_monst];
+            reg.monsters.length = reg.n_monst;
+            return;
+        }
+}
+
+// src/region.c:598 update_monster_region(); a monster moved: fix its
+// membership in every region
+export function update_monster_region(mon) {
+    const regions = game.regions || [];
+
+    for (let i = 0; i < regions.length; i++) {
+        if (inside_region(regions[i], mon.mx, mon.my)) {
+            if (!mon_in_region(regions[i], mon))
+                add_mon_to_reg(regions[i], mon);
+        } else {
+            if (mon_in_region(regions[i], mon))
+                remove_mon_from_reg(regions[i], mon);
+        }
+    }
+}

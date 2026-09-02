@@ -8,6 +8,7 @@
 // rn1(abs(depth) * 100, 51) — an rn2(100) — plus the next_ident of the object
 // itself.
 
+import { create_drawbridge } from './dbridge.js';
 import { bury_an_obj } from './dig.js';
 import { game } from './gstate.js';
 import { mk_mplayer } from './mplayer.js';
@@ -3298,36 +3299,10 @@ export function lspo_drawbridge(opts) {
     let db_open = opts.state === 'open' ? 1 : opts.state === 'closed' ? 0 : -1;
     if (db_open === -1) db_open = !rn2(2) ? 1 : 0;
 
-    /* src/dbridge.c:394 create_drawbridge() — x,y is the span; x2,y2 the
-       gate (portcullis) square, one step in `dir` */
-    let x2 = x, y2 = y;
-    if (dir === DB_NORTH) y2--;
-    else if (dir === DB_SOUTH) y2++;
-    else if (dir === DB_WEST) x2--;
-    else x2++;
-
-    /* src/dbridge.c:394 create_drawbridge() — both squares take horizontal;
-       the wall square of a raised bridge is non-diggable; a span over lava
-       records DB_LAVA in the mask (DB_MOAT is 0). */
-    const span = game.level.at(x, y), gate = game.level.at(x2, y2);
-    if (!span || !gate) return;
-    const horiz = (dir === DB_NORTH || dir === DB_SOUTH);
-    const lava = span.typ === LAVAPOOL;   /* assume initialized map */
-    if (!C_IS_WALL(gate.typ))
-        return;                           /* create_drawbridge() FALSE */
-    if (db_open) {
-        span.typ = DRAWBRIDGE_DOWN;
-        gate.typ = DOOR;
-        gate.doormask = D_NODOOR;
-    } else {
-        span.typ = DRAWBRIDGE_UP;
-        gate.typ = DBWALL;
-        /* Drawbridges are non-diggable. */
-        gate.wall_info = W_NONDIGGABLE;
+    if (!create_drawbridge(x, y, dir, db_open ? true : false)) {
+        /* impossible("Cannot create drawbridge.") */
+        return;
     }
-    span.horizontal = !horiz;
-    gate.horizontal = horiz;
-    span.drawbridgemask = dir | (lava ? DB_LAVA : DB_MOAT);
     SpLev_Map_set(x, y);
 }
 

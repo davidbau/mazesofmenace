@@ -187,6 +187,10 @@ export function num_horns(ptr) {
 }
 
 export const has_horns = (ptr) => num_horns(ptr) > 0;
+// include/mondata.h unique_corpstat()
+export const unique_corpstat = (ptr) => (ptr.geno & G_UNIQ) !== 0;
+// include/mondata.h is_reviver()
+export const is_reviver = (ptr) => is_rider(ptr) || ptr.mlet === MONSYMS.S_TROLL;
 // include/mondata.h:161 is_rider()
 export const is_rider = (ptr) => ptr.pmidx === PMNAMES.PM_DEATH
     || ptr.pmidx === PMNAMES.PM_FAMINE || ptr.pmidx === PMNAMES.PM_PESTILENCE;

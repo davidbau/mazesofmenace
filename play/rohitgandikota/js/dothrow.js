@@ -1,3 +1,19 @@
+import { BRK_KNOWN2NOTBREAK } from './const.js';
+import { BRK_KNOWN2BREAK } from './const.js';
+import { BRK_KNOWN_OUTCOME } from './const.js';
+import { BRK_FROM_INV } from './const.js';
+import { ship_object, container_impact_dmg } from './dokick.js';
+import { snuff_candle } from './apply.js';
+import { is_flammable } from './mkobj.js';
+import { obj_sheds_light } from './light.js';
+import { is_pick } from './mon.js';
+import { display_object_at, flush_screen, temporary_object_glyph } from './display.js';
+import { SHOPBASE, ESHK, WT_SPLASH_THRESHOLD } from './const.js';
+import { Has_contents } from './obj.js';
+import { contained_gold, weight, obfree } from './invent.js';
+import { impact_disturbs_zombies } from './hack.js';
+import { in_rooms } from './hack.js';
+import { shop_keeper, is_unpaid, stolen_value, subfrombill, donate_gold, sellobj, make_angry_shk, inside_shop } from './shk.js';
 import { rndmonnam } from './do_name.js';
 import { d } from './rng.js';
 import { delobj } from './mon.js';
@@ -246,6 +262,80 @@ export async function throw_obj(obj, shotlimit) {
     return res;
 }
 
+// src/dothrow.c:1181 check_shop_obj()
+async function check_shop_obj(obj, x, y, broken) {
+    let costly_xy;
+    const shkp = shop_keeper((game.u.ushops || '\0').charCodeAt(0));
+
+    if (!shkp)
+        return;
+
+    costly_xy = costly_spot(x, y);
+    if (broken || !costly_xy
+        || (in_rooms(x, y, SHOPBASE) || '').charAt(0) !== (game.u.ushops || '').charAt(0)) {
+        /* thrown out of a shop or into a different shop */
+        if (is_unpaid(obj))
+            await stolen_value(obj, game.u.ux, game.u.uy, !!shkp.mpeaceful,
+                               false);
+        if (broken)
+            obj.no_charge = 1;
+    } else if (costly_xy) {
+        const oshops = in_rooms(x, y, SHOPBASE) || '';
+
+        /* ushops0: in case we threw while levitating and recoiled
+           out of shop (most likely to the shk's spot in front of door) */
+        if (oshops.charAt(0) === (game.u.ushops || '').charAt(0)
+            || oshops.charAt(0) === (game.u.ushops0 || '').charAt(0)) {
+            if (is_unpaid(obj)) {
+                const gtg = Has_contents(obj) ? contained_gold(obj, true) : 0;
+
+                subfrombill(obj, shkp);
+                if (gtg > 0)
+                    await donate_gold(gtg, shkp, true);
+            } else if (x !== shkp.mx || y !== shkp.my) {
+                await sellobj(obj, x, y);
+            }
+        }
+    }
+}
+
+// src/dothrow.c:1220 harmless_missile()
+export function harmless_missile(obj) {
+    const otyp = obj.otyp;
+
+    /* this list is fairly arbitrary */
+    switch (otyp) {
+    case ONAMES.SLING:
+    case ONAMES.EUCALYPTUS_LEAF:
+    case ONAMES.KELP_FROND:
+    case ONAMES.SPRIG_OF_WOLFSBANE:
+    case ONAMES.FORTUNE_COOKIE:
+    case ONAMES.PANCAKE:
+        return true;
+    case ONAMES.RUBBER_HOSE:
+    case ONAMES.BAG_OF_TRICKS:
+        return (obj.spe < 1);
+    case ONAMES.SACK:
+    case ONAMES.OILSKIN_SACK:
+    case ONAMES.BAG_OF_HOLDING:
+        return !Has_contents(obj);
+    default:
+        if (obj.oclass === OCLASSES.SCROLL_CLASS) /* scrolls but not all paper objs */
+            return true;
+        if (game.objects[otyp].oc_material === MATERIALS.CLOTH)
+            return true;
+        break;
+    }
+    return false;
+}
+
+// src/dothrow.c:1460 throwit_return()
+function throwit_return(clear_thrownobj) {
+    (game.iflags ||= {}).returning_missile = null;
+    if (clear_thrownobj)
+        game.thrownobj = null;
+}
+
 // src/dothrow.c:1510 throwit() — fly the missile and land it.
 //
 // The reachable spine: a horizontal hand-thrown or launched missile that
@@ -370,31 +460,86 @@ export async function throwit(obj, wep_mask) {
         }
     }
 
-    /* src/dothrow.c:1780 — landing: break, splash, or come to rest */
+    /* src/dothrow.c:1780 */
     const bx = game.bhitpos.x, by = game.bhitpos.y;
-    const btyp = game.level.at(bx, by)?.typ;
-    if ((!IS_SOFT(btyp) && breaktest(obj))
+    if ((!IS_SOFT(game.level.at(bx, by).typ) && breaktest(obj))
+        /* venom [via #monster to spit while poly'd] fails breaktest()
+           but we want to force breakage even when location IS_SOFT() */
         || obj.oclass === OCLASSES.VENOM_CLASS) {
-        /* breakmsg + breakobj destroy the missile */
-        if (obj.oclass === OCLASSES.POTION_CLASS) {
-            await break_potion_after_test(obj, bx, by);
-        } else {
-            note_unported_dothrow('throwit:breakage');
+        /* tmp_at(DISP_FLASH, obj_to_glyph(obj, rn2_on_display_rng));
+           tmp_at(gb.bhitpos.x, gb.bhitpos.y);
+           nh_delay_output();
+           tmp_at(DISP_END, 0); */
+        if (cansee(bx, by)) {
+            display_object_at(obj, bx, by, temporary_object_glyph(obj));
+            await flush_screen(0);
         }
-        game.thrownobj = null;
+        if (game.animationFrame)
+            await game.animationFrame();
+        if (cansee(bx, by))
+            newsym(bx, by);
+        await breakmsg(obj, cansee(bx, by));
+        if (await breakobj(obj, bx, by, true, true)) {
+            throwit_return(true);
+            return;
+        }
+    }
+    if (!Deaf() && !Underwater()) {
+        /* Some sound effects when item lands in water or lava */
+        if (is_pool(bx, by)
+            || (is_lava(bx, by)
+                && !is_flammable(obj, game.objects))) {
+            /* Soundeffect(se_splash, 50) */
+            await pline((weight(obj) > WT_SPLASH_THRESHOLD)
+                        ? 'Splash!' : 'Plop!');
+        }
+    }
+    const { flooreffects, obj_no_longer_held } = await import('./do.js');
+    if (await flooreffects(obj, bx, by, 'fall')) {
+        throwit_return(true);
         return;
     }
-    if (is_pool(bx, by) || is_lava(bx, by))
-        note_unported_dothrow('throwit:splash');
-
-    game.thrownobj = null;
-    const { flooreffects } = await import('./do.js');
-    if (await flooreffects(obj, bx, by, 'fall'))
+    await obj_no_longer_held(obj);
+    if (mon && mon.isshk && is_pick(obj)) {
+        if (cansee(bx, by))
+            await pline(`${Monnam(mon)} snatches up ${the(xname(obj))}.`);
+        if (game.u.ushops || obj.unpaid)
+            await check_shop_obj(obj, bx, by, false);
+        const { mpickobj } = await import('./steal.js');
+        mpickobj(mon, obj); /* may merge and free obj */
+        throwit_return(true);
         return;
+    }
+    await snuff_candle(obj);
+    if (!mon && ship_object(obj, bx, by, false)) {
+        throwit_return(true);
+        return;
+    }
+    game.thrownobj = null;
     place_object(obj, bx, by);
+    /* container contents might break;
+       do so before turning ownership of gt.thrownobj over to shk
+       (container_impact_dmg handles item already owned by shop) */
+    if (!IS_SOFT(game.level.at(bx, by).typ)) {
+        /* <x,y> is spot where you initiated throw, not gb.bhitpos */
+        await container_impact_dmg(obj, u.ux, u.uy);
+        impact_disturbs_zombies(obj, true);
+    }
+    /* charge for items thrown out of shop;
+       shk takes possession for items thrown into one */
+    if ((game.u.ushops || obj.unpaid) && obj !== u.uball)
+        await check_shop_obj(obj, bx, by, false);
+
     stackobj(obj);
+    if (obj === u.uball)
+        note_unported_dothrow('throwit:drop_ball'); /* drop_ball(bx, by) */
     if (cansee(bx, by))
         newsym(bx, by);
+    if (obj_sheds_light(obj))
+        game.vision_full_recalc = 1;
+
+    throwit_return(false);
+    return;
 }
 
 // src/dothrow.c:2309 gem_accept(), a unicorn accepts or rejects a gem,
@@ -448,8 +593,8 @@ async function gem_accept(mon, obj) {
 
     if (accepted) {
         message += ' accepts your gift.';
-        if ((game.u.ushops || '').length || obj.unpaid)
-            note_unported_dothrow('gem_accept:check_shop_obj');
+        if (game.u.ushops || obj.unpaid)
+            await check_shop_obj(obj, mon.mx, mon.my, true);
         const { mpickobj } = await import('./steal.js');
         mpickobj(mon, obj);
     } else {
@@ -543,6 +688,8 @@ export async function thitmonst(mon, obj) {
                     await pline(`"${The(xname(obj))}'s part in this is finished."`);
                     await pline('"We will guard it in case it is ever needed again."');
                 }
+                if (game.u.ushops || obj.unpaid) /* not very likely... */
+                    await check_shop_obj(obj, mon.mx, mon.my, false);
                 const { mpickobj } = await import('./steal.js');
                 mpickobj(mon, obj);
             } else {
@@ -590,6 +737,9 @@ export async function thitmonst(mon, obj) {
             if (wasthrown && !game.thrownobj)
                 return 1;
             if (should_mulch_missile(obj)) {
+                if (game.u.ushops || obj.unpaid)
+                    await check_shop_obj(obj, game.bhitpos.x, game.bhitpos.y, true);
+                obfree(obj, null);
                 game.thrownobj = null;
                 return 1;
             }
@@ -1066,6 +1216,24 @@ export async function breaks(obj, x, y) {
     return await breakobj(obj, x, y, false, false);
 }
 
+// src/dothrow.c:2417 hero_breaks()
+export async function hero_breaks(obj, x, y, breakflags) {
+    /* from_invent: thrown or dropped by player; maybe on shop bill;
+       by-hero is implicit so callers don't need to specify BRK_BY_HERO */
+    const from_invent = (breakflags & BRK_FROM_INV) !== 0,
+          in_view = Blind() ? false : (from_invent || cansee(x, y));
+    let brk = (breakflags & BRK_KNOWN_OUTCOME);
+
+    /* only call breaktest if caller hasn't already specified the outcome */
+    if (!brk)
+        brk = breaktest(obj) ? BRK_KNOWN2BREAK : BRK_KNOWN2NOTBREAK;
+    if (brk === BRK_KNOWN2NOTBREAK)
+        return 0;
+
+    await breakmsg(obj, in_view);
+    return await breakobj(obj, x, y, true, from_invent);
+}
+
 // src/dothrow.c:2457 release_camera_demon(), a broken expensive camera
 // might let its demon out.
 export async function release_camera_demon(obj, x, y) {
@@ -1143,10 +1311,29 @@ export async function breakobj(obj, x, y, hero_caused, from_invent) {
     if (hero_caused) {
         if (from_invent || obj.unpaid) {
             if (game.u.ushops || obj.unpaid)
-                note_unported_dothrow('breakobj:check_shop_obj');
+                await check_shop_obj(obj, x, y, true);
         } else if (!obj.no_charge && costly_spot(x, y)) {
-            /* stolen_value() and make_angry_shk() for breakage in a shop */
-            note_unported_dothrow('breakobj:stolen_value');
+            /* it is assumed that the obj is a floor-object */
+            const o_shop = in_rooms(x, y, SHOPBASE) || '';
+            const shkp = shop_keeper((o_shop || '\0').charCodeAt(0));
+
+            if (shkp) { /* (implies *o_shop != '\0') */
+                const eshkp = ESHK(shkp);
+
+                /* base shk actions on her peacefulness at start of
+                   this turn, so that "simultaneous" multiple breakage
+                   isn't drastically worse than single breakage */
+                if (game.hero_seq !== eshkp.break_seq)
+                    eshkp.seq_peaceful = shkp.mpeaceful;
+                if ((await stolen_value(obj, x, y, !!eshkp.seq_peaceful, false)) > 0
+                    && (o_shop.charAt(0) !== (game.u.ushops || '').charAt(0)
+                        || !inside_shop(game.u.ux, game.u.uy))
+                    && game.hero_seq !== eshkp.break_seq)
+                    await make_angry_shk(shkp, x, y);
+                /* make_angry_shk() is only called on the first instance
+                   of breakage during any particular hero move */
+                eshkp.break_seq = game.hero_seq;
+            }
         }
     }
     if (!fracture)

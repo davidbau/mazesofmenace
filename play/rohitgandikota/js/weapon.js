@@ -6,6 +6,9 @@
 // result decides the rnd(100) comparison in spelleffects_check(). Without the
 // array that comparison has no input at all.
 
+import { update_inventory } from './invent.js';
+import { carried, mcarried } from './obj.js';
+import { Yobjnam2 } from './objnam.js';
 import { You } from './pline.js';
 import { game } from './gstate.js';
 import { OBJ_NAME, doname, xname, the, makesingular, Tobjnam,
@@ -554,6 +557,47 @@ export function weapon_descr(obj) {
         break;
     }
     return makesingular(descr);
+}
+
+// include/obj.h:256 is_wet_towel()
+const is_wet_towel = (o) => o.otyp === ONAMES.TOWEL && o.spe > 0;
+
+// src/weapon.c:1020 finish_towel_change()
+function finish_towel_change(obj, newspe) {
+    /* towel wetness is always between 0 (dry) and 7, inclusive */
+    newspe = Math.min(newspe, 7);
+    obj.spe = Math.max(newspe, 0);
+
+    /* if hero is wielding this towel, don't give "you begin bashing with
+       your [wet] towel" message if it's wet, do give one if it's dry */
+    if (obj === game.u.uwep)
+        game.unweapon = !is_wet_towel(obj);
+
+    /* description might change: "towel" vs "moist towel" vs "wet towel" */
+    if (carried(obj))
+        update_inventory();
+}
+
+// src/weapon.c:1038 wet_a_towel()
+export async function wet_a_towel(obj, amt, verbose) {
+    const newspe = (amt <= 0) ? obj.spe - amt : amt;
+
+    /* new state is only reported if it's an increase */
+    if (newspe > obj.spe) {
+        if (verbose) {
+            const wetness = (newspe < 3)
+                                ? (!obj.spe ? 'damp' : 'damper')
+                                : (!obj.spe ? 'wet' : 'wetter');
+
+            if (carried(obj))
+                await pline(`${Yobjnam2(obj, null)} gets ${wetness}.`);
+            else if (mcarried(obj) && canseemon(obj.ocarry))
+                await pline(`${s_suffix(Monnam(obj.ocarry))} ${xname(obj)} gets ${wetness}.`);
+        }
+    }
+
+    if (newspe !== obj.spe)
+        finish_towel_change(obj, newspe);
 }
 
 // src/weapon.c:1092 skill_level_name()

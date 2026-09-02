@@ -151,6 +151,9 @@ export const Teleport_control = () =>
 export const Teleportation = () =>
     !!(game.u?.intrinsic?.HTeleportation || game.u?.uprops?.TELEPORT);
 
+// include/youprop.h Wwalking
+export const Wwalking = () => !!(game.u?.intrinsic?.HWwalking
+                                 || game.u?.uprops?.WWALKING);
 export const Swimming = () =>
     !!game.u?.intrinsic?.HSwimming
     || !!game.u?.uprops?.SWIMMING

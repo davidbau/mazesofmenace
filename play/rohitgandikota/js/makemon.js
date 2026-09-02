@@ -7,6 +7,9 @@
 // depends on exactly which monsters pass the filters. Getting a filter wrong
 // changes the number of draws, not just their values.
 
+import { mon_aligntyp } from './monmove.js';
+import { is_sword } from './wield.js';
+import { is_mplayer } from './mondata.js';
 import { game } from './gstate.js';
 import { def_monsyms } from './drawing_data.js';
 import { new_light_source, LS_OBJECT, LS_MONSTER } from './light.js';
@@ -117,6 +120,8 @@ export const is_female = (ptr) => (ptr.mflags2 & M2_FEMALE) !== 0;
 const always_hostile = (ptr) => (ptr.mflags2 & M2_HOSTILE) !== 0;
 const always_peaceful = (ptr) => (ptr.mflags2 & M2_PEACEFUL) !== 0;
 const is_minion = (ptr) => (ptr.mflags2 & M2_MINION) !== 0;
+// include/monst.h:281 is_lminion()
+const is_lminion = (mon) => is_minion(mon.data) && mon_aligntyp(mon) === A_LAWFUL;
 const likes_gold = (ptr) => (ptr.mflags2 & M2_GREEDY) !== 0;
 const is_domestic = (ptr) => (ptr.mflags2 & M2_DOMESTIC) !== 0;
 const race_hostile = (ptr) => (ptr.mflags2 & (game.urace?.hatemask ?? 0)) !== 0;
@@ -702,12 +707,54 @@ export function peace_minded(ptr) {
 // src/makemon.c:900 mongets() — create otyp and hand it to the monster.
 // The blessing/curse fixups below need object subsystems that are not ported;
 // none of them draw, so the RNG stream is unaffected by their absence.
+// src/makemon.c:2181 mongets()
 export function mongets(mtmp, otyp) {
+    let otmp;
+
     if (!otyp)
         return null;
-    const otmp = mksobj(otyp, true, false);
-    if (otmp)
-        mpickobj(mtmp, otmp);
+    otmp = mksobj(otyp, true, false);
+    if (otmp) {
+        if (mtmp.data.mlet === MONSYMS.S_DEMON) {
+            /* demons never get blessed objects */
+            if (otmp.blessed)
+                curse(otmp);
+        } else if (is_lminion(mtmp)) {
+            /* lawful minions don't get cursed, bad, or rusting objects */
+            otmp.cursed = 0;
+            if (otmp.spe < 0)
+                otmp.spe = 0;
+            otmp.oerodeproof = 1;
+            otmp.oeroded = otmp.oeroded2 = 0;
+        } else if (is_mplayer(mtmp.data) && is_sword(otmp)) {
+            otmp.spe = (3 + rn2(4));
+        }
+
+        if (otmp.otyp === ONAMES.CANDELABRUM_OF_INVOCATION) {
+            otmp.spe = 0;
+            otmp.age = 0;
+            otmp.lamplit = 0;
+            otmp.blessed = otmp.cursed = 0;
+        } else if (otmp.otyp === ONAMES.BELL_OF_OPENING) {
+            otmp.blessed = otmp.cursed = 0;
+        } else if (otmp.otyp === ONAMES.SPE_BOOK_OF_THE_DEAD) {
+            otmp.blessed = 0;
+            otmp.cursed = 1;
+        }
+
+        /* leaders don't tolerate inferior quality battle gear */
+        if (is_prince(mtmp.data)) {
+            if (otmp.oclass === OCLASSES.WEAPON_CLASS && otmp.spe < 1)
+                otmp.spe = 1;
+            else if (otmp.oclass === OCLASSES.ARMOR_CLASS && otmp.spe < 0)
+                otmp.spe = 0;
+        }
+
+        if (mpickobj(mtmp, otmp)) {
+            /* otmp was freed via merging with something else */
+            otmp = null;
+        }
+    }
     return otmp;
 }
 

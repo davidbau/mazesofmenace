@@ -1,6 +1,8 @@
 // detect.js — searching and detection.
 // C ref: src/detect.c
 
+import { trapname } from './trap.js';
+import { find_drawbridge, open_drawbridge } from './dbridge.js';
 import { expels } from './mhitu.js';
 import { is_drawbridge_wall } from './dbridge.js';
 import { b_trapped, openholdingtrap, openfallingtrap } from './trap.js';
@@ -226,11 +228,8 @@ export async function find_trap(trap) {
     }
 }
 
-/* src/drawing.c trapname() — defsyms explanation for the trap's cmap */
-export function trapname(ttyp) {
-    const base = defsyms.findIndex(d => d.name === 'S_arrow_trap');
-    return defsyms[base + ttyp - 1]?.explain ?? 'trap';
-}
+/* src/trap.c:7100 trapname() lives in js/trap.js; re-exported for callers */
+export { trapname };
 
 // src/detect.c:1964 mfind0() — reveal a hidden/mimicking/unseen monster
 // found by searching. Returns -1 skip, 0 nothing, 1 found (uses the turn).
@@ -2207,10 +2206,14 @@ async function openone(zx, zy, num_p) {
         if ((await openholdingtrap(mon, dummy))
             || (await openfallingtrap(mon, true, dummy)))
             num_p.value++;
-    } else if (is_drawbridge_wall(zx, zy) >= 0 || lev.typ === DRAWBRIDGE_UP) {
-        /* find_drawbridge()/open_drawbridge(): dbridge.c's drawbridge
-           machinery is not ported */
-        note_unported_detect('openone:drawbridge');
+    } else {
+        const cc = { x: zx, y: zy };
+
+        if (find_drawbridge(cc)) {
+            /* make sure it isn't an open drawbridge */
+            await open_drawbridge(cc.x, cc.y);
+            num_p.value++;
+        }
     }
 }
 

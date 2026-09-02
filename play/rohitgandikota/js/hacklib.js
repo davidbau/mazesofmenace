@@ -138,6 +138,11 @@ export function tabexpand(s) {
 
 // src/hacklib.c mungspaces() — expand tabs to spaces, squeeze runs of
 // spaces to one, strip leading and trailing space, truncate at newline.
+// src/hacklib.c highc()
+export function highc(c) {
+    return ('a' <= c && c <= 'z') ? c.toUpperCase() : c;
+}
+
 export function mungspaces(bp) {
     let out = '';
     let was_space = true;

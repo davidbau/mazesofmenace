@@ -2907,6 +2907,13 @@ export function has_ebones(mtmp) { return !!mtmp?.mextra?.ebones; }
 export function ONAME(obj) { return obj?.oextra?.oname || ''; }
 export function has_oname(obj) { return !!obj?.oextra?.oname; }
 export function OMONST(obj) { return obj?.oextra?.omonst; }
+// include/obj.h:194 OMID(), :197 has_omonst(), :199 has_omid(); mkobj.c
+// free_omonst()/free_omid() drop the saved data
+export function OMID(obj) { return obj?.oextra?.omid || 0; }
+export function has_omonst(obj) { return !!(obj?.oextra && OMONST(obj)); }
+export function has_omid(obj) { return !!(obj?.oextra && OMID(obj)); }
+export function free_omonst(obj) { if (obj?.oextra) delete obj.oextra.omonst; delete obj.omonst; }
+export function free_omid(obj) { if (obj?.oextra) delete obj.oextra.omid; delete obj.omid; }
 export function MGIVENNAME(mtmp) { return mtmp?.mextra?.mgivenname || mtmp?.mgivenname || ''; }
 export function has_mgivenname(mtmp) { return !!(mtmp?.mextra?.mgivenname || mtmp?.mgivenname); }
 

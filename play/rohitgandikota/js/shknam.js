@@ -268,7 +268,7 @@ async function shkinit(shp, sroom) {
     shk.isshk = shk.mpeaceful = 1;
     set_malign(shk);
     shk.msleeping = 0;
-    shk.eshk = {
+    shk.eshk = (shk.mextra ||= {}).eshk = {
         shoproom: ((sroom.roomnoidx ?? game.level.rooms.indexOf(sroom))
                    + ROOMOFFSET),
         shoptype: sroom.rtype,

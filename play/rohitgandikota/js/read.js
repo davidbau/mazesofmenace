@@ -4,6 +4,8 @@
 // The spellbook route is live (doread -> study_book); scroll effects need
 // seffects and stay recorded after their prompt keys are consumed.
 
+import { unique_corpstat } from './mondata.js';
+import { has_omonst } from './const.js';
 import { monster_census } from './minion.js';
 import { monsndx, NO_MINVENT, MM_NOMSG } from './makemon.js';
 import { pmname } from './do_name.js';
@@ -1335,7 +1337,7 @@ const ONTHRONE = 4;
 // src/read.c:2826 do_genocide(); how: 0 = no genocide; create monsters
 // (cursed scroll), 1 = normal genocide, 3 = forced genocide of player
 // monster, 5 (4 | 1) = normal genocide from throne
-async function do_genocide(how) {
+export async function do_genocide(how) {
     const u = game.u;
     const youmonst = game.youmonst;
     const mons = game.mons;
@@ -2601,4 +2603,23 @@ async function seffect_mail(sobj) {
         await readmail(sobj);
         break;
     }
+}
+
+// src/read.c:3112 cant_revive(); mtype.v is the monster index (modified for
+// some inputs); the types which can't be revived, resurrected or created
+export function cant_revive(mtype, revival, from_obj) {
+    /* SHOPKEEPERS can be revived now */
+    if (mtype.v === PMNAMES.PM_GUARD || (mtype.v === PMNAMES.PM_SHOPKEEPER && !revival)
+        || mtype.v === PMNAMES.PM_HIGH_CLERIC || mtype.v === PMNAMES.PM_ALIGNED_CLERIC
+        || mtype.v === PMNAMES.PM_ANGEL) {
+        return true;
+    } else if (mtype.v === PMNAMES.PM_LONG_WORM_TAIL) { /* for create_particular() */
+        return true;
+    } else if (unique_corpstat(game.mons[mtype.v])
+               && (!from_obj || !has_omonst(from_obj))) {
+        /* unique corpses (from bones or wizard mode wish) or
+           statues (bones or any wish) end up as shapechangers */
+        return true;
+    }
+    return false;
 }
