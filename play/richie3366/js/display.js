@@ -33,8 +33,16 @@ import {
     WM_MASK, WM_C_OUTER, WM_C_INNER,
     WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM, WM_T_LONG, WM_T_BL, WM_T_BR,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
-    HI_GOLD, HI_METAL, HI_ZAP,
-    WEB, VIBRATING_SQUARE, TRAPNUM,
+    HI_GOLD, HI_METAL, HI_ZAP, HI_WOOD,
+    WEB, TRAPNUM, BEAR_TRAP, NO_TRAP, is_pit,
+    trap_to_defsym, MAXTCHARS, explodecolors, NUM_ZAP,
+    S_arrow_trap, S_web, S_vibrating_square,
+    S_vbeam, S_hbeam, S_lslant, S_rslant,
+    S_digbeam, S_flashbeam, S_boomleft, S_boomright,
+    S_ss1, S_ss2, S_ss3, S_ss4, S_poisoncloud, S_goodpos,
+    S_expl_tl, S_expl_tc, S_expl_tr, S_expl_ml, S_expl_mc, S_expl_mr,
+    S_expl_bl, S_expl_bc, S_expl_br,
+    EXPL_NOXIOUS, EXPL_MUDDY, EXPL_WET, EXPL_MAGICAL, EXPL_FIERY, EXPL_FROSTY,
     In_mines,
     In_sokoban,
     In_quest,
@@ -64,6 +72,8 @@ import {
     HALLUC,
     HALLUC_RES,
     WARN_OF_MON,
+    PROT_FROM_SHAPE_CHANGERS,
+    DETECT_MONSTERS,
     BOLT_LIM,
     Upolyd,
     MALE,
@@ -390,6 +400,35 @@ export function Warn_of_mon() {
         || (p?.intrinsic | 0) || (p?.extrinsic | 0));
 }
 
+/**
+ * C ref: youprop.h Protection_from_shape_changers — H || E
+ * (`uprops[PROT_FROM_SHAPE_CHANGERS]`). Flat H/E mirrors are eat/wear
+ * copies; sticky `u.Protection_from_shape_changers` is a JS fallback
+ * (same as do_wear / restore_cham).
+ */
+function Protection_from_shape_changers() {
+    const u = game.u || {};
+    const p = u.uprops?.[PROT_FROM_SHAPE_CHANGERS];
+    return !!(u.HProtection_from_shape_changers
+        || u.EProtection_from_shape_changers
+        || u.Protection_from_shape_changers
+        || (p?.intrinsic | 0) || (p?.extrinsic | 0));
+}
+
+/**
+ * C ref: youprop.h Detect_monsters — HDetect_monsters || EDetect_monsters.
+ * Flat H/E mirrors are potion/timeout copies; sticky `u.Detect_monsters`
+ * is a JS fallback (same as `sensemon` / restore).
+ */
+function Detect_monsters() {
+    const u = game.u || {};
+    const p = u.uprops?.[DETECT_MONSTERS];
+    return !!((u.HDetect_monsters | 0)
+        || (u.EDetect_monsters | 0)
+        || u.Detect_monsters
+        || (p?.intrinsic | 0) || (p?.extrinsic | 0));
+}
+
 // artifact.js imports display.js; Sting_effects registers here at load.
 let _Sting_effects = null;
 /** Late-bind artifact.c Sting_effects (avoid display↔artifact ESM cycle). */
@@ -448,8 +487,7 @@ export function sensemon(mon) {
     if (!mon) return false;
     const u = game.u || {};
     if (u.uswallow && mon !== u.ustuck) return false;
-    if (u.Detect_monsters
-        || (u.HDetect_monsters | 0) || (u.EDetect_monsters | 0)) {
+    if (Detect_monsters()) {
         return true;
     }
     return tp_sensemon(mon) || MATCH_WARN_OF_MON(mon);
@@ -820,18 +858,16 @@ export function mon_glyph(mtmp) {
 }
 
 /**
- * C ref: display.c display_monster — M_AP_OBJECT fake obj → map_object.
- * When a mimic is PHYSICALLY_SEEN and not sensed as a monster, show the
- * disguised object glyph (and remember it) instead of the mlet letter.
- * Furniture lastseentyp is display_monster (D-1726). M_AP_MONSTER
- * what_mon is D-1734. Named: Protection_from_shape_changers; Hallu
- * statue random_obj.
+ * C ref: display.c display_monster — displayed M_AP_OBJECT glyph for
+ * reveal_terrain_getglyph (not memory). display_monster itself sends a
+ * fake obj to map_object (D-1739). When sensed, C gbuf is the monster.
+ * Furniture lastseentyp is D-1726. M_AP_MONSTER what_mon is D-1734.
+ * Protection sensed is D-1736.
  */
 function mimic_object_appearance_glyph(mtmp) {
     if (((mtmp.m_ap_type | 0) & M_AP_TYPMASK) !== M_AP_OBJECT) return null;
-    // C: sensed = Protection_from_shape_changers || sensemon(mon)
-    // Protection stubbed false; when sensed, caller shows real mon_glyph.
-    if (sensemon(mtmp)) return null;
+    // C display_monster `:518–519` — sensed paints the monster, not obj.
+    if (Protection_from_shape_changers() || sensemon(mtmp)) return null;
     const corpsenm = has_mcorpsenm(mtmp) ? MCORPSENM(mtmp) : PM_TENGU;
     return obj_glyph({
         otyp: mtmp.mappearance | 0,
@@ -843,9 +879,10 @@ function mimic_object_appearance_glyph(mtmp) {
  * C ref: display.h cmap_to_glyph(cmap_idx). Walls → cmap_walls_to_glyph
  * branch colors. S_altar → altar_to_glyph(AM_NEUTRAL) (no
  * USE_GENERAL_ALTAR_COLORS). DEC remaps match terrain_glyph.
- * Named: trap/zap/expl cmap; drawbridge cmap 42–45.
+ * Trap/zap/cmap-C (S_arrow_trap..S_goodpos) via defsym.h PCHAR.
+ * Named: drawbridge cmap 42–45; swallow cmap; integer glyph IDs.
  */
-function cmap_idx_to_glyph(cmap_idx) {
+export function cmap_idx_to_glyph(cmap_idx) {
     const idx = cmap_idx | 0;
     const dec = use_decgraphics();
     if (idx >= S_STONE && idx <= S_TRWALL) {
@@ -934,8 +971,88 @@ function cmap_idx_to_glyph(cmap_idx) {
         return dec ? { ch: '`', color: CLR_BRIGHT_BLUE, dec: true }
             : { ch: '}', color: CLR_BRIGHT_BLUE, dec: false };
     default:
+        return cmap_trap_zap_expl_glyph(idx, dec);
+    }
+}
+
+/**
+ * C defsym.h PCHAR 49–87: traps, zap beams, cmap C (dig/flash/boom/
+ * shield/poisoncloud/goodpos). cmap_to_glyph uses cmap_b then cmap_c.
+ * idx > S_goodpos is NO_GLYPH in C (swallow/expl use other macros).
+ */
+function cmap_trap_zap_expl_glyph(idx, dec) {
+    if (idx >= S_arrow_trap && idx < S_arrow_trap + MAXTCHARS) {
+        let ch = '^';
+        if (idx === S_web) ch = '"';
+        else if (idx === S_vibrating_square) ch = '~';
+        const trapcolors = [
+            HI_METAL, HI_METAL, CLR_GRAY, CLR_BROWN, HI_METAL,
+            CLR_RED, CLR_GRAY, HI_ZAP, CLR_BLUE, CLR_ORANGE,
+            CLR_BLACK, CLR_BLACK, CLR_BROWN, CLR_BROWN, CLR_MAGENTA,
+            CLR_MAGENTA, CLR_BRIGHT_MAGENTA, CLR_GRAY, CLR_GRAY, HI_ZAP,
+            HI_ZAP, CLR_BRIGHT_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_ORANGE,
+        ];
+        const color = trapcolors[idx - S_arrow_trap] ?? HI_METAL;
+        return { ch, color, dec: false };
+    }
+    if (idx >= S_vbeam && idx <= S_rslant) {
+        const ascii = ['|', '-', '\\', '/'][idx - S_vbeam];
+        if (dec && idx === S_vbeam) return { ch: 'x', color: CLR_GRAY, dec: true };
+        if (dec && idx === S_hbeam) return { ch: 'q', color: CLR_GRAY, dec: true };
+        return { ch: ascii, color: CLR_GRAY, dec: false };
+    }
+    switch (idx) {
+    case S_digbeam:
+        return { ch: '*', color: CLR_WHITE, dec: false };
+    case S_flashbeam:
+        return { ch: '!', color: CLR_WHITE, dec: false };
+    case S_boomleft:
+        return { ch: ')', color: HI_WOOD, dec: false };
+    case S_boomright:
+        return { ch: '(', color: HI_WOOD, dec: false };
+    case S_ss1:
+        return { ch: '0', color: HI_ZAP, dec: false };
+    case S_ss2:
+        return { ch: '#', color: HI_ZAP, dec: false };
+    case S_ss3:
+        return { ch: '@', color: HI_ZAP, dec: false };
+    case S_ss4:
+        return { ch: '*', color: HI_ZAP, dec: false };
+    case S_poisoncloud:
+        return { ch: '#', color: CLR_BRIGHT_GREEN, dec: false };
+    case S_goodpos:
+        return { ch: '$', color: HI_ZAP, dec: false };
+    default:
         return { ch: '?', color: NO_COLOR, dec: false };
     }
+}
+
+/**
+ * C display.h explosion_to_glyph(expltyp, idx). Offset from S_expl_tl;
+ * unknown expltyp (incl. EXPL_DARK) uses FIERY like the C ternary.
+ * DEC: S_expl_tc/ml/mr/bc (dat/symbols). Named: reset_glyphmap explodecolors
+ * vs defsym orange when integer glyph ids land.
+ */
+export function explosion_to_glyph(expltyp, idx) {
+    const eidx = (idx | 0) - S_expl_tl;
+    const chs = ['/', '-', '\\', '|', ' ', '|', '\\', '-', '/'];
+    let ch = chs[eidx] ?? '/';
+    const et = expltyp | 0;
+    let color = CLR_ORANGE;
+    if (et === EXPL_FROSTY) color = CLR_WHITE;
+    else if (et === EXPL_MAGICAL) color = CLR_MAGENTA;
+    else if (et === EXPL_WET) color = CLR_BLUE;
+    else if (et === EXPL_MUDDY) color = CLR_BROWN;
+    else if (et === EXPL_NOXIOUS) color = CLR_GREEN;
+    else color = explodecolors[EXPL_FIERY] ?? CLR_ORANGE;
+    if (use_decgraphics()) {
+        if ((idx | 0) === S_expl_tc) return { ch: 'o', color, dec: true };
+        if ((idx | 0) === S_expl_ml || (idx | 0) === S_expl_mr) {
+            return { ch: 'x', color, dec: true };
+        }
+        if ((idx | 0) === S_expl_bc) return { ch: 's', color, dec: true };
+    }
+    return { ch, color, dec: false };
 }
 
 /** C display.c display_monster `:498–499`. */
@@ -946,18 +1063,21 @@ const PHYSICALLY_SEEN = 1;
  * C ref: display.c display_monster `:513–622`. Mimic check first when
  * PHYSICALLY_SEEN. M_AP_FURNITURE: cmap_to_glyph into memory; if !sensed,
  * show_glyph and lastseentyp = cmap_to_type(mappearance) — not
- * update_lastseentyp (D-1711). M_AP_OBJECT: obj_glyph (D-0297).
- * M_AP_MONSTER: what_mon(mappearance, rn2_on_display_rng) then
- * monnum_to_glyph (D-1734) — not live mon_glyph. Then if !mimic ||
- * sensed, show the real monster.
- * Named: Protection_from_shape_changers (sensed is sensemon only);
- * male/fem glyph offsets (same mlet on tty); pet/detected worm_tail
- * glyph variants; show_mon_or_warn unmap_object when I-glyph.
+ * update_lastseentyp (D-1711). M_AP_OBJECT: fake obj → map_object(&obj,
+ * !sensed) (D-1739) — memory + observe_object even when sensed; show
+ * only when !sensed. M_AP_MONSTER: what_mon(mappearance,
+ * rn2_on_display_rng) then monnum_to_glyph (D-1734) — not live
+ * mon_glyph. Then if !mimic || sensed, show the real monster. sensed
+ * is Protection_from_shape_changers || sensemon (D-1736). newsym
+ * cansee Detect_monsters is D-1737 (sightflags DETECTED when !see_it).
+ * Named: male/fem glyph offsets (same mlet on tty); pet/detected
+ * worm_tail glyph variants; show_mon_or_warn unmap_object when I-glyph.
  */
 function display_monster(x, y, mon, sightflags, worm_tail) {
     const ap = (mon.m_ap_type | 0) & M_AP_TYPMASK;
     const mon_mimic = ap !== M_AP_NOTHING;
-    const sensed = mon_mimic && sensemon(mon);
+    const sensed = mon_mimic && (Protection_from_shape_changers()
+        || sensemon(mon));
     const loc = game.level?.at(x, y);
 
     if (mon_mimic && sightflags === PHYSICALLY_SEEN) {
@@ -984,18 +1104,17 @@ function display_monster(x, y, mon, sightflags, worm_tail) {
             break;
         }
         case M_AP_OBJECT: {
-            const apg = mimic_object_appearance_glyph(mon);
-            if (apg) {
-                show_glyph_cell(x, y, apg.ch, apg.color, !!apg.dec);
-                if (loc && game.level?.flags?.hero_memory) {
-                    loc.remembered_glyph = {
-                        ch: apg.ch, color: apg.color, decgfx: !!apg.dec,
-                        statue: (mon.mappearance | 0) === STATUE_OTYP,
-                        boulder: (mon.mappearance | 0) === BOULDER_OTYP,
-                        otyp: mon.mappearance | 0,
-                    };
-                }
-            }
+            // C `:564–575` — cg.zeroobj + ox/oy/otyp/corpsenm.
+            // map_object(&obj, !sensed): hero_memory even when sensed;
+            // observe_object when generic+cansee+neardist; show_glyph
+            // only if !sensed. Default corpsenm is PM_TENGU.
+            const obj = {
+                ox: x,
+                oy: y,
+                otyp: mon.mappearance | 0,
+                corpsenm: has_mcorpsenm(mon) ? MCORPSENM(mon) : PM_TENGU,
+            };
+            map_object(obj, !sensed);
             break;
         }
         case M_AP_MONSTER: {
@@ -1118,40 +1237,10 @@ function t_at_display(x, y) {
  */
 function trap_glyph(trap) {
     const ttyp = trap?.ttyp | 0;
-    // Indexed by trap_types; NO_TRAP=0 unused. ch '^' except WEB '"' / VS '~'.
-    const colors = [
-        NO_COLOR,           // NO_TRAP
-        HI_METAL,           // ARROW_TRAP
-        HI_METAL,           // DART_TRAP
-        CLR_GRAY,           // ROCKTRAP
-        CLR_BROWN,           // SQKY_BOARD
-        HI_METAL,           // BEAR_TRAP
-        CLR_RED,            // LANDMINE
-        CLR_GRAY,            // ROLLING_BOULDER_TRAP
-        HI_ZAP,             // SLP_GAS_TRAP
-        CLR_BLUE,           // RUST_TRAP
-        CLR_ORANGE,          // FIRE_TRAP
-        CLR_BLACK,           // PIT
-        CLR_BLACK,           // SPIKED_PIT
-        CLR_BROWN,          // HOLE
-        CLR_BROWN,          // TRAPDOOR
-        CLR_MAGENTA,         // TELEP_TRAP
-        CLR_MAGENTA,         // LEVEL_TELEP
-        CLR_BRIGHT_MAGENTA,  // MAGIC_PORTAL
-        CLR_GRAY,            // WEB
-        CLR_GRAY,            // STATUE_TRAP
-        HI_ZAP,             // MAGIC_TRAP
-        HI_ZAP,             // ANTI_MAGIC
-        CLR_BRIGHT_GREEN,   // POLY_TRAP
-        CLR_MAGENTA,         // VIBRATING_SQUARE
-        CLR_ORANGE,          // TRAPPED_DOOR
-        CLR_ORANGE,          // TRAPPED_CHEST
-    ];
-    let ch = '^';
-    if (ttyp === WEB) ch = '"';
-    else if (ttyp === VIBRATING_SQUARE) ch = '~';
-    const color = (ttyp > 0 && ttyp < TRAPNUM) ? colors[ttyp] : HI_METAL;
-    return { ch, color, dec: false };
+    if (ttyp <= NO_TRAP || ttyp >= TRAPNUM) {
+        return { ch: '^', color: HI_METAL, dec: false };
+    }
+    return cmap_idx_to_glyph(trap_to_defsym(ttyp));
 }
 
 /**
@@ -2465,18 +2554,17 @@ function cell_shows_displayed_monster(mtmp, x, y) {
     if (game.u?.uswallow) return false;
     const worm_tail = is_worm_tail(mtmp, x, y);
     if (cansee(x, y)) {
-        // C: see_it = mon_visible || (!worm_tail && (tp || MATCH_WARN))
-        // Detect_monsters cansee arm still named.
-        return !!(mon_visible(mtmp) || (!worm_tail && tp_sensemon(mtmp)));
+        // C newsym `:1013–1028` — see_it || (!worm_tail && Detect_monsters)
+        const see_it = !!(mon_visible(mtmp)
+            || (!worm_tail && (tp_sensemon(mtmp) || MATCH_WARN_OF_MON(mtmp))));
+        return !!(see_it || (!worm_tail && Detect_monsters()));
     }
     if (tp_sensemon(mtmp) || MATCH_WARN_OF_MON(mtmp)
         || (mon_visible(mtmp) && see_with_infrared(mtmp))) {
         return true;
     }
     if (worm_tail) return false;
-    const u = game.u || {};
-    return !!(u.Detect_monsters
-        || (u.HDetect_monsters | 0) || (u.EDetect_monsters | 0));
+    return Detect_monsters();
 }
 
 /**
@@ -2507,8 +2595,9 @@ function gbuf_show_kind(x, y, ch, color, decgfx, loc) {
     if (mtmp && cell_shows_displayed_monster(mtmp, x, y)) {
         // Mimic object/furniture: M_AP_TYPE, not a second Hallu roll.
         const ap = (mtmp.m_ap_type | 0) & M_AP_TYPMASK;
-        if (ap === M_AP_OBJECT && !sensemon(mtmp)) return 'object';
-        if (ap === M_AP_FURNITURE && !sensemon(mtmp)) return 'cmap';
+        const sensed = Protection_from_shape_changers() || sensemon(mtmp);
+        if (ap === M_AP_OBJECT && !sensed) return 'object';
+        if (ap === M_AP_FURNITURE && !sensed) return 'cmap';
         return 'monster';
     }
     const trap = t_at_display(x, y);
@@ -2928,7 +3017,7 @@ async function tmp_at_tether_backtrack(tglyph) {
  */
 export function zapdir_to_glyph(dx0, dy0, beam_type) {
     let bt = beam_type | 0;
-    if (bt < 0 || bt >= 8) bt = 0;
+    if (bt < 0 || bt >= NUM_ZAP) bt = 0;
     const dx = dx0 | 0;
     const dy = dy0 | 0;
     // C: dx = (dx == dy) ? 2 : (dx && dy) ? 3 : dx ? 1 : 0
@@ -3070,42 +3159,112 @@ export async function nh_delay_output() {
 const SHIELD_COUNT = 21;
 
 /**
- * C defsym.h S_ss1..S_ss4 Primary ASCII ('0' '#' '@' '*' / HI_ZAP).
- * Full showsyms / DECgraphics S_ss* remap named (dat/symbols).
- */
-const SHIELD_SS1 = { ch: '0', color: HI_ZAP, dec: false };
-const SHIELD_SS2 = { ch: '#', color: HI_ZAP, dec: false };
-const SHIELD_SS3 = { ch: '@', color: HI_ZAP, dec: false };
-const SHIELD_SS4 = { ch: '*', color: HI_ZAP, dec: false };
-
-/**
  * C decl.c shield_static[SHIELD_COUNT] — S_ss1, S_ss2, S_ss3, S_ss2,
- * S_ss1, S_ss2, S_ss4 (7 per row × 3).
+ * S_ss1, S_ss2, S_ss4 (7 per row × 3). cmap_to_glyph at show time.
  */
 const shield_static = [
-    SHIELD_SS1, SHIELD_SS2, SHIELD_SS3, SHIELD_SS2, SHIELD_SS1, SHIELD_SS2, SHIELD_SS4,
-    SHIELD_SS1, SHIELD_SS2, SHIELD_SS3, SHIELD_SS2, SHIELD_SS1, SHIELD_SS2, SHIELD_SS4,
-    SHIELD_SS1, SHIELD_SS2, SHIELD_SS3, SHIELD_SS2, SHIELD_SS1, SHIELD_SS2, SHIELD_SS4,
+    S_ss1, S_ss2, S_ss3, S_ss2, S_ss1, S_ss2, S_ss4,
+    S_ss1, S_ss2, S_ss3, S_ss2, S_ss1, S_ss2, S_ss4,
+    S_ss1, S_ss2, S_ss3, S_ss2, S_ss1, S_ss2, S_ss4,
 ];
 
 /**
  * C ref: display.c shieldeff — magic shield pyrotechnics at (x, y).
  * flags.sparkle is optlist.h opt_out default On; missing JS field ≡ On.
- * Named omissions: DEC/showsyms S_ss* remap; explode.c inline sparkle
- * loop; shieldeff_mon (mon.c wrapper); other callers still unwired.
+ * Named omissions: DEC/showsyms S_ss* remap; shieldeff_mon (mon.c
+ * wrapper); other callers still unwired.
  */
 export async function shieldeff(x, y) {
     // C: if (!flags.sparkle) return;
     if (game.flags?.sparkle === false) return;
     if (cansee(x, y)) {
         for (let i = 0; i < SHIELD_COUNT; i++) {
-            const g = shield_static[i];
-            show_glyph_cell(x, y, g.ch, g.color, g.dec);
+            const g = cmap_idx_to_glyph(shield_static[i]);
+            void show_glyph_cell(x, y, g.ch, g.color, !!g.dec);
             await flush_screen(1); /* make sure the glyph shows up */
             await nh_delay_output();
         }
         newsym(x, y); /* restore the old information */
     }
+}
+
+/** C explode.c explode_action bits used by the visible blast painter. */
+const EXPL_SHOW_MON = 1;
+const EXPL_SHOW_HERO = 2;
+const EXPL_SHOW_SKIP = 4;
+
+/**
+ * C explode.c `:388–438` — tmp_at DISP_BEAM/CHANGE of
+ * explosion_to_glyph, optional cmap_to_glyph(shield_static) sparkle,
+ * then DISP_END. Caller still owns Boom!/You_hear.
+ * explosion[i][j] is column-first (C).
+ */
+export async function explode_show_visible(x, y, expltype, explmask) {
+    const explosion = [
+        [S_expl_tl, S_expl_ml, S_expl_bl],
+        [S_expl_tc, S_expl_mc, S_expl_bc],
+        [S_expl_tr, S_expl_mr, S_expl_br],
+    ];
+    let visible = false;
+    let any_shield = false;
+    for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 3; j++) {
+            const mask = explmask?.[i]?.[j] | 0;
+            if (mask === EXPL_SHOW_SKIP) continue;
+            const xx = (x | 0) + i - 1;
+            const yy = (y | 0) + j - 1;
+            if (cansee(xx, yy)) visible = true;
+            if ((mask & (EXPL_SHOW_MON | EXPL_SHOW_HERO)) !== 0) {
+                any_shield = true;
+            }
+        }
+    }
+    if (!visible) return;
+    let starting = 1;
+    for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 3; j++) {
+            if ((explmask[i][j] | 0) === EXPL_SHOW_SKIP) continue;
+            const g = explosion_to_glyph(expltype, explosion[i][j]);
+            tmp_at(starting ? DISP_BEAM : DISP_CHANGE, g);
+            tmp_at((x | 0) + i - 1, (y | 0) + j - 1);
+            starting = 0;
+        }
+    }
+    void flush_screen(0);
+    if (any_shield && game.flags?.sparkle !== false) {
+        for (let k = 0; k < SHIELD_COUNT; k++) {
+            const sg = cmap_idx_to_glyph(shield_static[k]);
+            for (let i = 0; i < 3; i++) {
+                for (let j = 0; j < 3; j++) {
+                    const mask = explmask[i][j] | 0;
+                    if ((mask & (EXPL_SHOW_MON | EXPL_SHOW_HERO)) === 0) {
+                        continue;
+                    }
+                    void show_glyph_cell(
+                        (x | 0) + i - 1, (y | 0) + j - 1,
+                        sg.ch, sg.color, !!sg.dec,
+                    );
+                }
+            }
+            await flush_screen(1);
+            await nh_delay_output();
+        }
+        for (let i = 0; i < 3; i++) {
+            for (let j = 0; j < 3; j++) {
+                const mask = explmask[i][j] | 0;
+                if ((mask & (EXPL_SHOW_MON | EXPL_SHOW_HERO)) === 0) continue;
+                const g = explosion_to_glyph(expltype, explosion[i][j]);
+                void show_glyph_cell(
+                    (x | 0) + i - 1, (y | 0) + j - 1,
+                    g.ch, g.color, !!g.dec,
+                );
+            }
+        }
+    } else {
+        await nh_delay_output();
+        await nh_delay_output();
+    }
+    tmp_at(DISP_END, 0);
 }
 
 /**
@@ -3184,8 +3343,7 @@ function canseeself() {
 function senseself() {
     const u = game.u || {};
     // Unblind_telepat = ETelepat; Detect_monsters = H|E
-    return !!(u.ETelepat || u.Unblind_telepat || u.Detect_monsters
-        || (u.HDetect_monsters | 0) || (u.EDetect_monsters | 0));
+    return !!(u.ETelepat || u.Unblind_telepat || Detect_monsters());
 }
 function canspotself() {
     return canseeself() || senseself();
@@ -3473,10 +3631,18 @@ export function newsym(x, y) {
         // C: accessible / pool-lava visible region before monster/map
         if (newsym_try_show_region(x, y, loc, mtmp)) return;
         // C: see_it = mon_visible || (!worm_tail && (tp || MATCH_WARN))
-        // Detect_monsters cansee arm still named.
         const see_it = mtmp && (mon_visible(mtmp)
             || (!worm_tail && (tp_sensemon(mtmp) || MATCH_WARN_OF_MON(mtmp))));
-        if (see_it) {
+        // C `:1016–1031` — Detect_monsters paints DETECTED when !see_it
+        if (mtmp && (see_it || (!worm_tail && Detect_monsters()))) {
+            // C: if monster is in a physical trap, you see trap too
+            if (mtmp.mtrapped) {
+                const trap = t_at_display(x, y);
+                const tt = trap ? (trap.ttyp | 0) : NO_TRAP;
+                if (tt === BEAR_TRAP || is_pit(tt) || tt === WEB) {
+                    trap.tseen = 1;
+                }
+            }
             // C: _map_location(x, y, FALSE) then display_monster — memory
             // keeps object under the monster so leaving sight does not
             // replace ) with remembered corridor.
@@ -3487,9 +3653,8 @@ export function newsym(x, y) {
             } else {
                 map_location_memory(x, y);
             }
-            // C: display_monster(..., see_it ? PHYSICALLY_SEEN : DETECTED)
-            // Detect_monsters cansee arm still named (see_it only here).
-            display_monster(x, y, mtmp, PHYSICALLY_SEEN, worm_tail);
+            display_monster(x, y, mtmp,
+                see_it ? PHYSICALLY_SEEN : DETECTED, worm_tail);
             return;
         }
         // C: else if (mon && mon_warning(mon) && !worm_tail) display_warning
@@ -3517,14 +3682,10 @@ export function newsym(x, y) {
         show_glyph_cell(x, y, mg.ch, mg.color, false, mon_map_attr(mtmp));
         return;
     }
-    {
-        const u = game.u || {};
-        if (mtmp && !worm_tail && (u.Detect_monsters
-            || (u.HDetect_monsters | 0) || (u.EDetect_monsters | 0))) {
-            const mg = mon_glyph(mtmp);
-            show_glyph_cell(x, y, mg.ch, mg.color, false, mon_map_attr(mtmp));
-            return;
-        }
+    if (mtmp && !worm_tail && Detect_monsters()) {
+        const mg = mon_glyph(mtmp);
+        show_glyph_cell(x, y, mg.ch, mg.color, false, mon_map_attr(mtmp));
+        return;
     }
     if (mtmp && mon_warning(mtmp) && !worm_tail) {
         display_warning(mtmp);
@@ -3677,7 +3838,8 @@ export function swallowed(first = 0) {
  * Warn_of_mon counts warntype.obj & mflags2 then Sting_effects (D-1493).
  * MATCH_WARN overlay is newsym see_it (D-1514).
  * see_wsegs refreshes tail cells (D-1529).
- * Named omissions: MON_STILL_ARRIVING skip; Detect_monsters cansee.
+ * Named omissions: MON_STILL_ARRIVING skip.
+ * Detect_monsters cansee is newsym (D-1737).
  */
 export function see_monsters() {
     if (game.defer_see_monsters) return;

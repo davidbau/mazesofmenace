@@ -55,7 +55,7 @@ import { xprname, an, vtense, doname, distant_name, Japanese_item_name, xname, c
 import { yn_function, getlin, mungspaces } from './getline.js';
 import { get_count, pmatchi, cmdq_pop, cmdq_clear } from './cmd.js';
 import { mergable, is_damageable, stop_timer, splitobj, unsplitobj, clear_splitobjs, unknwn_contnr_contents, weight } from './mkobj.js';
-import { unpaid_cost, doinvbill, gem_learned, obfree } from './shk.js';
+import { unpaid_cost, doinvbill, gem_learned, obfree, shopper_financial_report } from './shk.js';
 import { hidden_gold } from './vault.js';
 import { setnotworn } from './do.js';
 import { s_suffix } from './do_name.js';
@@ -5514,10 +5514,11 @@ export async function doattributes(enl_mode = null) {
 /**
  * C ref: invent.c doprgold `:4502–4546` / #showgold / '$' (D-1731).
  * money_cnt first COIN_CLASS + hidden_gold(FALSE). Verbose wallet/stash
- * one pline (`eos` append); else umoney+hmoney total. m-prefix `$`
+ * one pline (`eos` append); else umoney+hmoney total. Then
+ * shopper_financial_report (D-1740). m-prefix `$`
  * dispinv_with_action("$", FALSE) when umoney.
- * Named: shopper_financial_report (shop_debt missing); botl/detect/
- * insight/topten/u_init hidden_gold callers; dokick hidden_gold_kick clone.
+ * Named: botl/detect/insight/topten/u_init hidden_gold callers;
+ * dokick hidden_gold_kick clone.
  */
 export async function doprgold() {
     // C: money_cnt(gi.invent) — first COIN_CLASS quan (gold merges)
@@ -5555,7 +5556,7 @@ export async function doprgold() {
             await pline('You have no money.');
         }
     }
-    // C: shopper_financial_report() — named omit (shop_debt not live)
+    await shopper_financial_report();
 
     if (umoney && game.iflags?.menu_requested) {
         const { dispinv_with_action } = await import('./iactions.js');

@@ -14,7 +14,8 @@
 // burnarmor FIRE, resist, cold×2↔fire, Half_phys PHYS/ACID,
 // exercise A_STR, xkilled/monkilled); wake_nearto;
 // scatter individual/pile + MAY_HIT flight (tree/kick).
-// Named omissions: hallu rndmonnam; sparkle/shield glyphs;
+// Named omissions: hallu rndmonnam; You_hear vs Boom! when
+// !visible; map_invisible when mtmp && !canspotmon;
 // ugolemeffects/golemeffects; Invulnerable;
 // grabbing/engulf double-damage; wake_nearto
 // beyond msleeping; Role_switch damu only for known role pm;
@@ -24,7 +25,7 @@
 
 import { game } from './gstate.js';
 import { d, rn2, rnd } from './rng.js';
-import { pline, newsym } from './display.js';
+import { pline, newsym, explode_show_visible, unmap_invisible } from './display.js';
 import { cansee } from './vision.js';
 import { m_at, setmangry } from './mon.js';
 import { Monnam } from './do_name.js';
@@ -296,10 +297,11 @@ function Role_if(pm) {
  * C ref: explode.c explode — PHYS + AD_FIRE (D-0968) + AD_COLD/ELEC
  * (D-0971) + AD_MAGM/DISN/DRST/ACID (D-0973) mon/hero combat +
  * WAND/SCROLL/OIL/TRAP olet → zap_over_floor + pay_for_damage
- * (D-0949). Visual beam / shield sparkle deferred.
+ * (D-0949). Visible blast via explosion_to_glyph / cmap shield
+ * (display.js explode_show_visible). You_hear vs Boom! when
+ * !visible still named.
  */
-export async function explode(x, y, typeIn, dam, olet, _expltype) {
-    void _expltype;
+export async function explode(x, y, typeIn, dam, olet, expltype) {
     let type = typeIn | 0;
     let damu = dam | 0;
     let uhurt = 0; // 0=unhurt, 1=items only, 2=you+items
@@ -386,11 +388,15 @@ export async function explode(x, y, typeIn, dam, olet, _expltype) {
             if (mtmp && (mtmp.mhp | 0) < 1) mtmp = null;
             if (mtmp) {
                 explmask[i][j] |= explosionmask(mtmp, adtyp, olet);
+            } else {
+                unmap_invisible(xx, yy);
             }
         }
     }
 
-    // Visible blast glyphs / delay deferred
+    await explode_show_visible(x, y, expltype, explmask);
+
+    // C: Boom! when !Deaf && !didmsg (visible blast already painted)
     if (!game.u?.Deaf) {
         await pline('Boom!');
     }

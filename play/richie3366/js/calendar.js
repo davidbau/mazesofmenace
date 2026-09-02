@@ -75,6 +75,17 @@ export function getlt() {
     };
 }
 
+/**
+ * C ref: calendar.c getyear `:48–52`.
+ * Always `1900 + getlt()->tm_year` (void; current civil stamp). Unlike
+ * yyyymmdd / yyyymmddhhmmss, there is no `tm_year < 70` → +2000
+ * fallback. Caller: mhitu.c `ld()` (`doseduce` leap-day 0xe5) — named.
+ * @returns {number}
+ */
+export function getyear() {
+    return 1900 + getlt().tm_year;
+}
+
 // C ref: calendar.c phase_of_the_moon() — 0-7, 0 new, 4 full
 export function phase_of_the_moon() {
     const lt = getlt();

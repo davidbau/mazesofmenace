@@ -137,6 +137,64 @@ export const S_hcdbridge = 45;
 export const S_air = 46;
 export const S_cloud = 47;
 export const S_water = 48;
+// C defsym.h PCHAR traps / zap / cmap C / explosions (cmap_to_glyph
+// trap/zap/expl). Drawbridge 42–45 already above; swallow 88–95 named.
+export const S_arrow_trap = 49;
+export const S_dart_trap = 50;
+export const S_falling_rock_trap = 51;
+export const S_squeaky_board = 52;
+export const S_bear_trap = 53;
+export const S_land_mine = 54;
+export const S_rolling_boulder_trap = 55;
+export const S_sleeping_gas_trap = 56;
+export const S_rust_trap = 57;
+export const S_fire_trap = 58;
+export const S_pit = 59;
+export const S_spiked_pit = 60;
+export const S_hole = 61;
+export const S_trap_door = 62;
+export const S_teleportation_trap = 63;
+export const S_level_teleporter = 64;
+export const S_magic_portal = 65;
+export const S_web = 66;
+export const S_statue_trap = 67;
+export const S_magic_trap = 68;
+export const S_anti_magic_trap = 69;
+export const S_polymorph_trap = 70;
+export const S_vibrating_square = 71;
+export const S_trapped_door = 72;
+export const S_trapped_chest = 73;
+export const S_vbeam = 74;
+export const S_hbeam = 75;
+export const S_lslant = 76;
+export const S_rslant = 77;
+export const S_digbeam = 78;
+export const S_flashbeam = 79;
+export const S_boomleft = 80;
+export const S_boomright = 81;
+export const S_ss1 = 82;
+export const S_ss2 = 83;
+export const S_ss3 = 84;
+export const S_ss4 = 85;
+export const S_poisoncloud = 86;
+export const S_goodpos = 87;
+export const S_expl_tl = 96;
+export const S_expl_tc = 97;
+export const S_expl_tr = 98;
+export const S_expl_ml = 99;
+export const S_expl_mc = 100;
+export const S_expl_mr = 101;
+export const S_expl_bl = 102;
+export const S_expl_bc = 103;
+export const S_expl_br = 104;
+/** C rm.h trap_to_defsym — S_arrow_trap + ttyp - 1. */
+export function trap_to_defsym(t) {
+    return S_arrow_trap + (t | 0) - 1;
+}
+/** C rm.h defsym_to_trap. */
+export function defsym_to_trap(d) {
+    return (d | 0) - S_arrow_trap + 1;
+}
 
 // Display dimensions
 export const TERMINAL_COLS = 80;
@@ -2594,7 +2652,13 @@ export const DRAGON_SILVER      = CLR_BRIGHT_CYAN;
 // [CONST_SYMBOLS content removed — now in symbols.js]
 
 export const MAXEXPCHARS = 9;                               // number of explosion characters
-
+/** C display.h NUM_ZAP — zap beam types (zapdir_to_glyph packs type<<2). */
+export const NUM_ZAP = 8;
+/** C display.h explode_colors — index by EXPL_DARK..EXPL_FROSTY. */
+export const explodecolors = [
+    CLR_BLACK, CLR_GREEN, CLR_BROWN, CLR_BLUE,
+    CLR_MAGENTA, CLR_ORANGE, CLR_WHITE,
+];
 // ==========================================================================
 // 3. Level Type Constants (from include/rm.h, lines 55-97)
 //    enum levl_typ_types
@@ -2640,7 +2704,7 @@ export function is_magical_trap(ttyp) {
 }
 export function is_xport(ttyp) { return ttyp >= TELEP_TRAP && ttyp <= MAGIC_PORTAL; }
 
-// trap_to_defsym/defsym_to_trap moved to symbols.js (depends on S_arrow_trap)
+// trap_to_defsym / defsym_to_trap live next to S_arrow_trap (defsym.h).
 
 // MAXTCHARS: number of trap characters (from include/sym.h, line 92)
 export const MAXTCHARS = TRAPNUM - 1;

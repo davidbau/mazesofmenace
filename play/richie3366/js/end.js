@@ -13,7 +13,10 @@ import { show_text_pages, show_nhw_menu_text } from './pager.js';
 import { genl_outrip_lines } from './rip.js';
 import { Goodbye } from './roles.js';
 import { an, doname, xname, the as theArt, the_unique_obj } from './objnam.js';
-import { COIN_CLASS, objectNameStrs } from './objects.js';
+import {
+    COIN_CLASS, objectNameStrs, objects,
+    AMULET_CLASS, GEM_CLASS, FIRST_REAL_GEM, LAST_REAL_GEM,
+} from './objects.js';
 import { arti_cost, artiname } from './artifact.js';
 import {
     DIED, GENOCIDED, STONING, QUIT, ESCAPED, ASCENDED, STARVING, BURNING,
@@ -27,11 +30,11 @@ import {
     ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD,
     Is_container, SORTLOOT_LOOT, SORTLOOT_PACK,
     PARANOID_DIE, PARANOID_BONES, PARANOID_QUIT, TT_LAVA, Has_contents,
-    LIFESAVED, W_AMUL,
+    has_oname, LIFESAVED, W_AMUL,
 } from './const.js';
 import { G_NOCORPSE, mons } from './monsters.js';
-import { oname, christen_monst } from './do_name.js';
-import { mkcorpstat, curse, place_object, stackobj } from './mkobj.js';
+import { oname, christen_monst, free_oname } from './do_name.js';
+import { mkcorpstat, curse, place_object, stackobj, mksobj } from './mkobj.js';
 import { make_grave } from './engrave.js';
 import { makemon } from './makemon.js';
 import {
@@ -42,7 +45,7 @@ import { genders, aligns } from './roles.js';
 import { topten, nh_terminate_capture, raw_print_blanks } from './topten.js';
 import { objectNames } from './generated/objects_data.js';
 import { monsterNames, pmnames, PM_TOURIST } from './generated/monsters_data.js';
-import { paybill, money2mon } from './shk.js';
+import { paybill, money2mon, obfree } from './shk.js';
 import { hidden_gold } from './vault.js';
 import { shkname, shkname_is_pname } from './shknam.js';
 import {
@@ -65,6 +68,9 @@ const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
 const BAG_OF_TRICKS = objectNames.indexOf('BAG_OF_TRICKS');
 const LARGE_BOX = objectNames.indexOf('LARGE_BOX');
 const AMULET_OF_LIFE_SAVING = objectNames.indexOf('AMULET_OF_LIFE_SAVING');
+const FIRST_AMULET = objectNames.indexOf('AMULET_OF_ESP');
+const LAST_AMULET = objectNames.indexOf('AMULET_OF_YENDOR');
+const LAST_GLASS_GEM = objectNames.indexOf('WORTHLESS_VIOLET_GLASS');
 const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
 const CANDELABRUM_OF_INVOCATION =
@@ -84,7 +90,7 @@ function nowrap_add(a, b) {
  * chain. Unique/invocation items: zorkmid value via arti_cost, score
  * value * 5 / 2. counting → nowrap_add into u.urexp; else discover,
  * mark known, putstr the worth line. Recurse Has_contents.
- * DUMPLOG listing (endwin 0) remains named omit.
+ * DUMPLOG listing (endwin 0) remains named omit. get_valuables is D-1741.
  * @param {object[]|object|null} list
  * @param {boolean} counting
  * @param {string[]|null} [lines] NHW_TEXT stand-in when !counting
@@ -122,6 +128,146 @@ export function artifact_score(list, counting, lines = null) {
         }
         if (Has_contents(otmp)) {
             artifact_score(otmp.cobj, counting, lines);
+        }
+    }
+}
+
+/**
+ * C ref: decl.c gv.valuables / ga.amulets / gg.gems. Recreate so
+ * otyp-index identity holds (C BSS zeros once; JS may collect twice
+ * in one process). Size: LAST_AMULET+1-FIRST_AMULET; gems get one
+ * extra slot for all glass (LAST_REAL_GEM+1-FIRST_REAL_GEM+1).
+ */
+function reset_valuables() {
+    const nA = LAST_AMULET + 1 - FIRST_AMULET;
+    const nG = LAST_REAL_GEM + 1 - FIRST_REAL_GEM + 1;
+    game.amulets = Array.from({ length: nA }, () => ({ count: 0, typ: 0 }));
+    game.gems = Array.from({ length: nG }, () => ({ count: 0, typ: 0 }));
+    game.valuables = [
+        { list: game.gems, size: nG },
+        { list: game.amulets, size: nA },
+        { list: null, size: 0 },
+    ];
+}
+
+/**
+ * C ref: end.c get_valuables `:762–791`. Walk invent or a cobj nobj
+ * chain. Recurse Has_contents first (artifact bags still scanned).
+ * Skip oartifact. Tally AMULET_CLASS by otyp-FIRST_AMULET; GEM_CLASS
+ * through LAST_GLASS_GEM with glass collapsed to LAST_REAL_GEM+1.
+ * Luckstones and other graystones are past LAST_GLASS_GEM — omitted
+ * here as in C.
+ * @param {object[]|object|null} list
+ */
+export function get_valuables(list) {
+    if (!list) return;
+    if (!game.amulets || !game.gems) reset_valuables();
+    const walk = Array.isArray(list)
+        ? list.filter(Boolean)
+        : (() => {
+            const out = [];
+            for (let obj = list; obj; obj = obj.nobj) out.push(obj);
+            return out;
+        })();
+    for (const obj of walk) {
+        if (Has_contents(obj)) {
+            get_valuables(obj.cobj);
+        } else if (obj.oartifact) {
+            continue;
+        } else if ((obj.oclass | 0) === AMULET_CLASS) {
+            const i = (obj.otyp | 0) - FIRST_AMULET;
+            const slot = game.amulets[i];
+            if (!slot.count) {
+                slot.count = obj.quan | 0;
+                slot.typ = obj.otyp | 0;
+            } else {
+                slot.count += obj.quan | 0; /* always adds one */
+            }
+        } else if ((obj.oclass | 0) === GEM_CLASS
+            && (obj.otyp | 0) <= LAST_GLASS_GEM) {
+            const i = Math.min(obj.otyp | 0, LAST_REAL_GEM + 1) - FIRST_REAL_GEM;
+            const slot = game.gems[i];
+            if (!slot.count) {
+                slot.count = obj.quan | 0;
+                slot.typ = obj.otyp | 0;
+            } else {
+                slot.count += obj.quan | 0;
+            }
+        }
+    }
+}
+
+/**
+ * C ref: end.c sort_valuables `:797–818`. Insertion sort by count
+ * descending; empty slots stay put. Structure-copy — do not alias.
+ * @param {Array<{count: number, typ: number}>} list
+ * @param {number} size
+ */
+function sort_valuables(list, size) {
+    for (let i = 1; i < size; i++) {
+        if (list[i].count === 0) continue;
+        const ltmp = { count: list[i].count, typ: list[i].typ };
+        let j = i;
+        for (; j > 0; --j) {
+            if (list[j - 1].count >= ltmp.count) break;
+            list[j] = { count: list[j - 1].count, typ: list[j - 1].typ };
+        }
+        list[j] = ltmp;
+    }
+}
+
+/** C really_done `:1439–1446` — count * objects[typ].oc_cost into urexp. */
+function score_collected_valuables() {
+    const u = game.u || (game.u = {});
+    const objs = objects();
+    for (const val of game.valuables || []) {
+        if (!val.list) continue;
+        for (let i = 0; i < val.size; i++) {
+            if (val.list[i].count !== 0) {
+                const tmp = val.list[i].count
+                    * (objs?.[val.list[i].typ]?.oc_cost | 0);
+                u.urexp = nowrap_add(u.urexp | 0, tmp);
+            }
+        }
+    }
+}
+
+/**
+ * C ref: end.c really_done `:1490–1519`. Sort then putstr each
+ * non-zero slot. Real gems/amulets: mksobj(FALSE,FALSE) + xname.
+ * Glass: "worthless piece(s) of colored glass". DUMPLOG redirect
+ * remains named omit.
+ * @param {string[]} lines
+ */
+function list_valuables(lines) {
+    const objs = objects();
+    for (const val of game.valuables || []) {
+        if (!val.list) continue;
+        sort_valuables(val.list, val.size);
+        for (let i = 0; i < val.size; i++) {
+            const typ = val.list[i].typ;
+            const count = val.list[i].count;
+            if (count === 0) continue;
+            if ((objs?.[typ]?.oc_class | 0) !== GEM_CLASS
+                || typ <= LAST_REAL_GEM) {
+                const otmp = mksobj(typ, false, false);
+                discover_object(otmp.otyp, true, true, false);
+                otmp.dknown = 1;
+                otmp.known = 1;
+                if (has_oname(otmp)) free_oname(otmp);
+                otmp.quan = count;
+                const cost = count * (objs[typ]?.oc_cost | 0);
+                lines.push(
+                    `${String(count).padStart(8)} ${xname(otmp)}`
+                    + ` (worth ${cost} ${currency(2)}),`,
+                );
+                obfree(otmp, null);
+            } else {
+                lines.push(
+                    `${String(count).padStart(8)} worthless piece`
+                    + `${plur(count)} of colored glass,`,
+                );
+            }
         }
     }
 }
@@ -629,7 +775,7 @@ async function disclose(how, taken) {
  * C ref: end.c really_done death summary + rip — NHW_TEXT via
  * display_nhwindow; wintty process_text_window paginates at rows-1.
  * Named omissions: paybill; discover_object invent walk; arise pline;
- * get_valuables / pet-HP / Schroedinger score; In_endgame/quest depth;
+ * pet-HP / Schroedinger score; In_endgame/quest depth;
  * DUMPLOG second artifact_score; amulet killer suffix.
  */
 async function show_death_rip_and_summary(how, umoney, endtime = 0) {
@@ -667,6 +813,7 @@ async function show_death_rip_and_summary(how, umoney, endtime = 0) {
             : 'escaped from the dungeon';
         lines.push(`You ${verb} with ${pts} point${plur(pts)},`);
         artifact_score(game.invent, false, lines);
+        list_valuables(lines);
     } else {
         const where = game.dungeons?.[u.uz?.dnum | 0]?.dname
             || 'The Dungeons of Doom';
@@ -691,7 +838,7 @@ async function show_death_rip_and_summary(how, umoney, endtime = 0) {
 
 /**
  * C ref: end.c really_done — gameover; paybill; disclose; score; bones; rip; topten.
- * Named omissions: clearpriests/paygd; get_valuables / pet-HP score;
+ * Named omissions: clearpriests/paygd; pet-HP / Schroedinger score;
  * dump/livelog; logfile/xlogfile; toptenwin NHW_TEXT; arise pline;
  * inven_inuse / ball-chain arms of done_object_cleanup; unleash_all
  * in finish_paybill; launch_in_progress abort; ParanoidBones getlin.
@@ -791,10 +938,14 @@ async function really_done(how) {
         }
     }
 
-    // C really_done `:1449` — count unique items after gold/depth, only
-    // on ESCAPED/ASCENDED (bones_ok is false for those hows). Listing is
-    // `:1482` inside the NHW_TEXT arm. get_valuables / pet HP named.
+    // C really_done `:1433–1449` — zero valuables, get_valuables,
+    // oc_cost score, then unique-item count. Only ESCAPED/ASCENDED
+    // (bones_ok is false for those hows). Listing is `:1482` / `:1490`
+    // inside the NHW_TEXT arm. pet HP named.
     if (how === ESCAPED || how === ASCENDED) {
+        reset_valuables();
+        get_valuables(game.invent);
+        score_collected_valuables();
         artifact_score(game.invent, true);
     }
 

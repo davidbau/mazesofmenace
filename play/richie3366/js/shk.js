@@ -20,6 +20,7 @@
 //        getprice arti_cost (D-1719).
 //        obfree / delete_contents (D-1727).
 //        u_left_shop leave verbalize + choose_stairs (D-1733).
+//        shopper_financial_report / shop_debt (D-1740).
 // Named omissions: shk_fixes_damage in shk_move; allmain/bones
 // fix_shop_damage callers; holetime dig follow; angry
 // Displaced pline (shk path); following verbalize;
@@ -4016,6 +4017,70 @@ function addupbill(shkp) {
         total += (e.price | 0) * (e.bquan | 0);
     }
     return total;
+}
+
+/**
+ * C ref: shk.c shop_debt `:989–999` (static). debit plus billed
+ * price*bquan. Caller: shopper_financial_report only (rob_shop still
+ * uses addupbill+debit like C).
+ */
+function shop_debt(eshkp) {
+    let debt = eshkp.debit | 0;
+    const bp = eshkp.bill_p || eshkp.bill;
+    let ct = eshkp.billct | 0;
+    for (let i = 0; ct > 0; i++, ct--) {
+        const e = bp?.[i];
+        if (!e) continue;
+        debt += (e.price | 0) * (e.bquan | 0);
+    }
+    return debt;
+}
+
+/**
+ * C ref: shk.c shopper_financial_report `:1002–1035`.
+ * Caller: invent.c doprgold after wallet/stash (D-1731).
+ * pass 0: shop we are in; pass 1: other shops on this level.
+ * `(shkp != this_shkp) ^ pass` skips the other pass's shops.
+ * Empty current shop: "no credit or debt" then this_shkp=0 so pass 1
+ * still walks everyone but the else-arms stay silent.
+ * Named: costly_gold; dokick hidden_gold_kick.
+ */
+export async function shopper_financial_report() {
+    const u = game.u || {};
+    let this_shkp = shop_keeper(inside_shop(u.ux, u.uy));
+    let eshkp = this_shkp ? ESHK(this_shkp) : null;
+    if (eshkp && !(eshkp.credit || shop_debt(eshkp))) {
+        await pline('You have no credit or debt in here.');
+        this_shkp = null; /* skip first pass */
+    }
+
+    /* pass 0: report for the shop we're currently in, if any;
+       pass 1: report for all other shops on this level. */
+    for (let pass = this_shkp ? 0 : 1; pass <= 1; pass++) {
+        for (let walk = next_shkp(0, false); walk.shkp;
+             walk = next_shkp(walk.nextIdx, false)) {
+            const shkp = walk.shkp;
+            if ((shkp !== this_shkp) ^ pass) continue;
+            eshkp = ESHK(shkp);
+            let amt = eshkp.credit | 0;
+            if (amt !== 0) {
+                const shopnm = shtypes[(eshkp.shoptype | 0) - SHOPBASE]?.name;
+                await pline(
+                    `You have ${amt} ${currency(amt)} credit at ${s_suffix(shkname(shkp))} ${shopnm}.`,
+                );
+            } else if (shkp === this_shkp) {
+                await pline('You have no credit in here.');
+            }
+            amt = shop_debt(eshkp);
+            if (amt !== 0) {
+                await pline(
+                    `You owe ${shkname(shkp)} ${amt} ${currency(amt)}.`,
+                );
+            } else if (shkp === this_shkp) {
+                await pline("You don't owe any gold here.");
+            }
+        }
+    }
 }
 
 /**
