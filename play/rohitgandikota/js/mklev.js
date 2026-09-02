@@ -3087,6 +3087,13 @@ export function mktrap(num, mktrapflags, croom, tm) {
         makemon(game.mons[PMNAMES.PM_GIANT_SPIDER], m.x, m.y, NO_MM_FLAGS);
     if (trap && (mktrapflags & MKTRAP_SEEN))
         trap.tseen = true;
+    /* src/mklev.c:2108 — a magic portal made while the hero came from
+       somewhere (the tutorial) leads back there */
+    if (kind === MAGIC_PORTAL
+        && (game.u.ucamefrom?.dnum || game.u.ucamefrom?.dlevel)) {
+        trap.dst = { dnum: game.u.ucamefrom.dnum,
+                     dlevel: game.u.ucamefrom.dlevel };
+    }
 
     if (game.in_mklev && kind !== NO_TRAP && !(mktrapflags & MKTRAP_NOVICTIM)
         && lvl <= rnd(4)

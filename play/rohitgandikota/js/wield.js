@@ -874,3 +874,19 @@ export async function uwepgone() {
         update_inventory();
     }
 }
+
+// src/wield.c:888 uswapwepgone() — the secondary weapon is gone.
+export function uswapwepgone() {
+    if (game.u.uswapwep) {
+        setworn(null, W_SWAPWEP);
+        update_inventory();
+    }
+}
+
+// src/wield.c:897 uqwepgone() — the quivered ammunition is gone.
+export function uqwepgone() {
+    if (game.u.uquiver) {
+        setworn(null, W_QUIVER);
+        update_inventory();
+    }
+}

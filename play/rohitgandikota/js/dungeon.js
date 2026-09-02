@@ -10,6 +10,8 @@
 // Porting notes for the two things that fail silently if got wrong are in
 // docs/plan/04-level-generation.md §4.0.
 
+import { within_bounded_area } from './mkmaze.js';
+import { Is_wiz1_level, Is_wiz2_level, Is_wiz3_level } from './const.js';
 import { game } from './gstate.js';
 import { In_endgame, In_quest, Is_earthlevel, Is_firelevel, Is_waterlevel,
          ROOM, CORR, ICE, SDOOR, ALTAR, GRAVE, TREE, THRONE,
@@ -378,6 +380,12 @@ function add_branch(dgn, child_entry_level, pd) {
 }
 
 // src/dungeon.c depth() — absolute depth of a d_level.
+// src/dungeon.c:1376 ledger_no() — the level's index in the whole-game
+// bookkeeping list of levels.
+export function ledger_no(lev) {
+    return lev.dlevel + (game.dungeons[lev.dnum]?.ledger_start ?? 0);
+}
+
 export function depth(dlev) {
     return game.dungeons[dlev.dnum].depth_start + dlev.dlevel - 1;
 }
@@ -767,6 +775,18 @@ export function has_ceiling(lev) {
     if (In_endgame(lev) && !Is_earthlevel(lev))
         return false;
     return true;
+}
+
+// src/dungeon.c:1701 avoid_ceiling() — some levels (the quest, and levels
+// without a ceiling) should not be described as having one.
+export function avoid_ceiling(lev) {
+    /* the quest home level and its filler levels may have ceilings in
+       some parts and not others; avoid the ambiguity there by testing
+       with avoid_ceiling() and using alternative messaging that avoids
+       the term ceiling altogether there */
+    if (In_quest(lev) || !has_ceiling(lev))
+        return true;
+    return false;
 }
 
 // src/dungeon.c get_level() — turn a LOGICAL depth into a d_level.
@@ -1485,4 +1505,53 @@ export async function show_overview(why, reason) {
     await tty_select_menu(win, 0 /* PICK_NONE */);
     tty_destroy_nhwindow(win);
     return 0;
+}
+
+// src/dungeon.c:2943 update_mapseen_for() — recount the whole level's
+// remembered features and report what the hero last saw at (x, y)
+export function update_mapseen_for(x, y) {
+    recalc_mapseen(); /* whole level */
+    return game.level.at(x, y)?.lastseentyp;
+}
+
+// src/dungeon.c:1402 ledger_to_dnum(), which dungeon a ledger number is in.
+export function ledger_to_dnum(ledgerno) {
+    for (let i = 0; i < game.n_dgns; i++)
+        if (game.dungeons[i].ledger_start < ledgerno
+            && ledgerno <= (game.dungeons[i].ledger_start
+                            + game.dungeons[i].num_dunlevs))
+            return i;
+
+    throw new Error(`level number out of range [ledger_to_dnum(${ledgerno})]`);
+}
+
+// src/dungeon.c:1422 ledger_to_dlev(), the level within that dungeon.
+export function ledger_to_dlev(ledgerno) {
+    return (ledgerno
+            - game.dungeons[ledger_to_dnum(ledgerno)].ledger_start);
+}
+
+// src/dungeon.c:1914 On_W_tower_level(), one of the Wizard's Tower levels.
+export function On_W_tower_level(lev) {
+    return (Is_wiz1_level(lev)
+            || Is_wiz2_level(lev)
+            || Is_wiz3_level(lev));
+}
+
+// src/dungeon.c:1923 In_W_tower(), inside the tower's walls on one of
+// those levels.
+export function In_W_tower(x, y, lev) {
+    if (!On_W_tower_level(lev))
+        return false;
+    /*
+     * Both of the exclusion regions for arriving via level teleport
+     * (from above or below) define the tower's boundary.
+     *  assert(svd.dndest.nIX == svd.dndest.nIX);
+     */
+    if (!game.dndest?.nlx) {
+        /* impossible("No boundary for Wizard's Tower?"); */
+        return false;
+    }
+    return within_bounded_area(x, y, game.dndest.nlx, game.dndest.nly,
+                               game.dndest.nhx, game.dndest.nhy);
 }

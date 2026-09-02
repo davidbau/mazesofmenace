@@ -1,6 +1,10 @@
 // spell.js — spellcasting.
 // C ref: src/spell.c
 
+import { HEAD } from './const.js';
+import { body_part } from './polyself.js';
+import { helm_simple_name } from './do_wear.js';
+import { do_vicinity_map } from './detect.js';
 import { game } from './gstate.js';
 import { pline } from './display.js';
 import { ECMD_OK, weight } from './invent.js';
@@ -10,7 +14,7 @@ import { isqrt } from './hacklib.js';
 import { is_metallic } from './obj.js';
 import { ONAMES, OCLASSES, SKILLS } from './objects_data.js';
 import { PMNAMES } from './monst_data.js';
-import { rnd, rn2, rn1, d } from './rng.js';
+import { rnd, rn2, rn1, d, rnl } from './rng.js';
 import { tty_yn_function } from './tty/topl.js';
 import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
          tty_select_menu, tty_destroy_nhwindow, ATR_NONE,
@@ -28,7 +32,11 @@ import { fall_asleep } from './timeout.js';
 import { makeknown, observe_object } from './o_init.js';
 import { getdir } from './cmd.js';
 import { update_inventory } from './invent.js';
-import { NODIR } from './const.js';
+import { obfree } from './invent.js';
+import { use_skill } from './weapon.js';
+import { seffects } from './read.js';
+import { peffects } from './potion.js';
+import { NODIR, NO_KILLER_PREFIX } from './const.js';
 import { A_WIS, KILLED_BY_AN } from './const.js';
 import { morehungry } from './eat.js';
 import { ECMD_TIME } from './const.js';
@@ -618,10 +626,41 @@ export async function spelleffects(spell_otyp, atme, force) {
     pseudo.blessed = pseudo.cursed = 0;
     pseudo.quan = 20;                   /* do not let useup get it */
     const otyp = pseudo.otyp;
-    const role_skill = P_SKILL(spell_skilltype(otyp));
+    const skill = spell_skilltype(otyp);
+    const role_skill = P_SKILL(skill);
+    let physical_damage = false;
 
     switch (otyp) {
+    /* As the hero increases in skill some spells increase in their effects
+       without additional cost. Skilled fireball/cone of cold throw an
+       explosion at a chosen spot; throwspell()/explode()/spell_damage_bonus()
+       are not ported yet, so a skilled cast is noted. Unskilled casters fall
+       through to the wand-duplicate arm below (buzz via weffects). */
+    case ONAMES.SPE_FIREBALL:
+    case ONAMES.SPE_CONE_OF_COLD:
+        if (role_skill >= SKILLS.P_SKILLED) {
+            note_unported_spell('spelleffects:skilled fireball/cold');
+            break;
+        }
+        /* FALLTHRU */
+
+    /* these spells are all duplicates of wand effects */
+    case ONAMES.SPE_FORCE_BOLT:
+        physical_damage = true;
+        /* FALLTHRU */
+    case ONAMES.SPE_SLEEP:
+    case ONAMES.SPE_MAGIC_MISSILE:
+    case ONAMES.SPE_KNOCK:
+    case ONAMES.SPE_SLOW_MONSTER:
+    case ONAMES.SPE_WIZARD_LOCK:
+    case ONAMES.SPE_DIG:
+    case ONAMES.SPE_TURN_UNDEAD:
+    case ONAMES.SPE_POLYMORPH:
     case ONAMES.SPE_TELEPORT_AWAY:
+    case ONAMES.SPE_CANCELLATION:
+    case ONAMES.SPE_FINGER_OF_DEATH:
+    case ONAMES.SPE_LIGHT:
+    case ONAMES.SPE_DETECT_UNSEEN:
     case ONAMES.SPE_HEALING:
     case ONAMES.SPE_EXTRA_HEALING:
     case ONAMES.SPE_DRAIN_LIFE:
@@ -641,24 +680,92 @@ export async function spelleffects(spell_otyp, atme, force) {
                 await pline_The('magical energy is released!');
             }
             if (!game.u.dx && !game.u.dy && !game.u.dz) {
-                const dmg = await zapyourself(pseudo, true);
-                if (dmg) {
-                    /* losehp("zapped himself with a spell") */
-                    note_unported_spell('spelleffects:losehp');
+                let damage = await zapyourself(pseudo, true);
+                if (damage) {
+                    const self = game.flags?.female ? 'herself' : 'himself';
+                    /* Maybe_Half_Phys(damage) — halved with the intrinsic */
+                    if (physical_damage && game.u.uprops?.HALF_PHDAM)
+                        damage = Math.trunc((damage + 1) / 2);
+                    const { losehp } = await import('./hack.js');
+                    await losehp(damage, `zapped ${self} with a spell`,
+                                 NO_KILLER_PREFIX);
                 }
             } else {
                 await weffects(pseudo);
             }
         } else {
-            note_unported_spell('spelleffects:weffects');
+            await weffects(pseudo);
         }
         update_inventory();     /* spell may modify inventory */
         break;
-    default:
-        /* the remaining arms need seffects/peffects/the beam engine */
-        note_unported_spell('spelleffects:per-spell dispatch');
+
+    /* these are all duplicates of scroll effects (seffects); not ported */
+    case ONAMES.SPE_REMOVE_CURSE:
+    case ONAMES.SPE_CONFUSE_MONSTER:
+    case ONAMES.SPE_DETECT_FOOD:
+    case ONAMES.SPE_CAUSE_FEAR:
+    case ONAMES.SPE_IDENTIFY:
+    case ONAMES.SPE_CHARM_MONSTER:
+        if (role_skill >= SKILLS.P_SKILLED)
+            pseudo.blessed = 1;
+        /* FALLTHRU */
+    case ONAMES.SPE_MAGIC_MAPPING:
+    case ONAMES.SPE_CREATE_MONSTER:
+        await seffects(pseudo);
         break;
+
+    /* these are all duplicates of potion effects */
+    case ONAMES.SPE_HASTE_SELF:
+    case ONAMES.SPE_DETECT_TREASURE:
+    case ONAMES.SPE_DETECT_MONSTERS:
+    case ONAMES.SPE_LEVITATION:
+    case ONAMES.SPE_RESTORE_ABILITY:
+        if (role_skill >= SKILLS.P_SKILLED)
+            pseudo.blessed = 1;
+        /* FALLTHRU */
+    case ONAMES.SPE_INVISIBILITY:
+        await peffects(pseudo);
+        break;
+
+    case ONAMES.SPE_CURE_BLINDNESS:
+        note_unported_spell('spelleffects:cure_blindness');
+        break;
+    case ONAMES.SPE_CURE_SICKNESS:
+        note_unported_spell('spelleffects:cure_sickness');
+        break;
+    case ONAMES.SPE_CREATE_FAMILIAR:
+        note_unported_spell('spelleffects:create_familiar');
+        break;
+    case ONAMES.SPE_CLAIRVOYANCE:
+        if (!game.u.blocked?.CLAIRVOYANT) {
+            if (role_skill >= SKILLS.P_SKILLED)
+                pseudo.blessed = 1; /* detect monsters as well as map */
+            await do_vicinity_map(pseudo);
+        /* at present, only one thing blocks clairvoyance */
+        } else if (game.u.uarmh && game.u.uarmh.otyp === ONAMES.CORNUTHAUM)
+            await You(`sense a pointy hat on top of your ${body_part(HEAD)}.`);
+        break;
+    case ONAMES.SPE_PROTECTION:
+        note_unported_spell('spelleffects:protection');
+        break;
+    case ONAMES.SPE_JUMPING:
+        note_unported_spell('spelleffects:jumping');
+        break;
+    case ONAMES.SPE_CHAIN_LIGHTNING:
+        note_unported_spell('spelleffects:chain_lightning');
+        break;
+    default:
+        /* impossible("Unknown spell %d attempted.") */
+        note_unported_spell('spelleffects:unknown');
+        obfree(pseudo);
+        return ECMD_OK;
     }
+
+    /* gain skill for successful cast */
+    if (!force)
+        use_skill(skill, spellev(spell));
+
+    obfree(pseudo);             /* now, get rid of it */
     return ECMD_TIME;
 }
 
@@ -1146,4 +1253,52 @@ export async function dovspell() {
         }
     }
     return ECMD_OK;
+}
+
+// src/spell.c:1763 losespells() — amnesia: forget some of the known spells.
+export function losespells() {
+    let n, nzap, i;
+
+    /* in case reading has been interrupted earlier, discard context */
+    (game.context ||= {}).spbook ||= {};
+    game.context.spbook.book = null;
+    game.context.spbook.o_id = 0;
+    /* count the number of known spells */
+    for (n = 0; n < MAXSPELL; ++n)
+        if (spellid(n) === NO_SPELL)
+            break;
+
+    /* lose anywhere from zero to all known spells;
+       if confused, use the worse of two die rolls */
+    nzap = rn2(n + 1);
+    if (game.u.uprops?.CONFUSION) {
+        i = rn2(n + 1);
+        if (i > nzap)
+            nzap = i;
+    }
+    /* good Luck might ameliorate spell loss */
+    if (nzap > 1 && !rnl(7))
+        nzap = rnd(nzap);
+
+    /*
+     * Forget 'nzap' out of 'n' known spells by setting their memory
+     * retention to zero.  Every spell has the same probability to be
+     * forgotten, even if its retention is already zero.
+     *
+     * Perhaps we should forget the corresponding book too?
+     *
+     * (3.4.3 removed spells entirely from the list, but that was
+     * unfair to the player.)
+     */
+    for (i = 0; nzap > 0; ++i) {
+        /* when nzap is small relative to the number of spells left,
+           the chance to lose spell [i] is small; as the number of
+           remaining candidates shrinks, the chance per candidate
+           gets bigger; overall, exactly nzap entries are affected */
+        if (rn2(n - i) < nzap) {
+            game.spl_book[i].sp_know = 0;   /* spellknow(i) = 0 */
+            exercise(A_WIS, false);
+            --nzap;
+        }
+    }
 }

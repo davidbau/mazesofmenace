@@ -1,4 +1,11 @@
+import { OBJ_FREE, OBJ_MINVENT } from './const.js';
 import { is_human, is_neuter, vegetarian, is_elf } from './mondata.js';
+import { arti_light_radius, obj_adjust_light_radius } from './light.js';
+import { get_obj_location } from './zap.js';
+import { Blind } from './youprop.js';
+import { cansee } from './vision.js';
+import { Yname2, otense } from './objnam.js';
+import { pline } from './display.js';
 import { mk_artifact, nartifact_exist } from './artifact.js';
 // mkobj.js — object creation.
 // C ref: src/mkobj.c
@@ -844,7 +851,7 @@ export function mksobj(otyp, init, artif) {
 }
 
 // src/mondata.c:1305 little_to_big() / :1318 big_to_little()
-function little_to_big(montype) {
+export function little_to_big(montype) {
     const p = GROWNUPS.find(([baby]) => baby === montype);
     return p ? p[1] : montype;
 }
@@ -1489,6 +1496,36 @@ export function mk_tt_object(objtype, x, y) {
 // The light-radius and luck bookkeeping around it only fires for a lit
 // artifact or a carried luck-conferring object, neither of which applies to
 // a priest's robe at level generation; they are recorded rather than faked.
+// src/mkobj.c:1704 maybe_adjust_light() — a lit artifact's radiance depends
+// on its bless/curse state, so it can change after blessing or cursing.
+export async function maybe_adjust_light(obj, old_range) {
+    let buf = '';
+    const cc = { x: 0, y: 0 };
+    const new_range = arti_light_radius(obj), delta = new_range - old_range;
+
+    if (delta) {
+        obj_adjust_light_radius(obj, new_range);
+        /* message is only given for artifacts in hero's possession; other
+           artifacts have to be in use to emit light and monsters' gear won't
+           change bless or curse state */
+        if (!Blind() && get_obj_location(obj, cc, 0)) {
+            /* iflags.last_msg == PLNMSG_OBJ_GLOWS is not tracked by the
+               port's pline, so the "It/They shine" variant never fires */
+            if (obj.where === OBJ_INVENT || cansee(cc.x, cc.y))
+                buf = Yname2(obj);
+            if (buf) {
+                /* "brightly" if uncursed, and "brilliantly" if blessed;
+                   when changing intensity, using "less brightly" is
+                   straightforward for dimming, but we need "brighter"
+                   rather than "more brightly" for brightening; ugh */
+                await pline(`${buf} ${otense(obj, 'shine')} ${
+                    (Math.abs(delta) > 1) ? 'much ' : ''}${
+                    (delta > 0) ? 'brighter' : 'less brightly'}.`);
+            }
+        }
+    }
+}
+
 export function uncurse(otmp) {
     if (otmp.lamplit)
         note_unported_obj('uncurse:arti_light_radius');
@@ -1697,4 +1734,21 @@ export function obj_ice_effects(x, y, doBuried = false) {
         }
         start_timer(remaining, TIMER_OBJECT, action, obj);
     }
+}
+
+// src/mkobj.c:2648 add_to_minv(), give a free object to a monster; returns
+// 1 when it merged into a stack the monster already carries.
+export function add_to_minv(mon, obj) {
+    if ((obj.where | 0) !== OBJ_FREE)
+        throw new Error(`add_to_minv: obj where=${obj.where}, not free`);
+
+    /* merge if possible */
+    for (const otmp of (mon.minvent || []))
+        if (merged({ o: otmp }, { o: obj }))
+            return 1; /* obj merged and then free'd */
+    /* else insert; don't bother forcing it to end of chain */
+    obj.where = OBJ_MINVENT;
+    obj.ocarry = mon;
+    (mon.minvent ||= []).unshift(obj);
+    return 0; /* obj on mon's inventory chain */
 }

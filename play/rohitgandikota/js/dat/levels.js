@@ -20,6 +20,7 @@ import { bigrm11_level } from './bigrm-11.js';
 import { bigrm12_level } from './bigrm-12.js';
 import { bigrm13_level } from './bigrm-13.js';
 import { tut1_level } from './tut-1.js';
+import { tut2_level } from './tut-2.js';
 import { castle_level } from './castle.js';
 import { valley_level } from './valley.js';
 import { barstrt_level } from './bar-strt.js';
@@ -87,6 +88,7 @@ export const SPECIAL_LEVELS = {
     'bigrm-12': bigrm12_level,
     'bigrm-13': bigrm13_level,
     'tut-1': tut1_level,
+    'tut-2': tut2_level,
     oracle: oracle_level,
     castle: castle_level,
     valley: valley_level,

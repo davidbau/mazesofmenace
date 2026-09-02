@@ -98,7 +98,7 @@ export async function makemaz(s) {
 }
 
 // src/mkmaze.c:311 within_bounded_area()
-const within_bounded_area = (x, y, lx, ly, hx, hy) =>
+export const within_bounded_area = (x, y, lx, ly, hx, hy) =>
     (x >= lx && x <= hx && y >= ly && y <= hy);
 
 // src/mkmaze.c:341 bad_location()

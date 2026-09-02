@@ -208,6 +208,47 @@ export function formatkiller(how, incl_helpless) {
     }
 }
 
+// src/end.c:1721 delayed_killer() — remember the cause of a pending death
+// (stoning, sliming, strangling, ...) so done() can name it when it comes.
+export function delayed_killer(id, format, killername) {
+    let k = find_delayed_killer(id);
+    if (!k) {
+        game.killer ||= {};
+        k = { id, format: 0, name: '', next: game.killer.next || null };
+        game.killer.next = k;
+    }
+    k.format = format;
+    k.name = killername ? killername : '';
+    game.killer.name = '';
+}
+
+// src/end.c:1740 find_delayed_killer()
+export function find_delayed_killer(id) {
+    let k;
+    for (k = game.killer?.next || null; k; k = k.next) {
+        if (k.id === id)
+            break;
+    }
+    return k || null;
+}
+
+// src/end.c:1752 dealloc_killer()
+export function dealloc_killer(kptr) {
+    if (!kptr)
+        return;
+    let prev = game.killer, k;
+    for (k = game.killer?.next || null; k; k = k.next) {
+        if (k === kptr)
+            break;
+        prev = k;
+    }
+    if (!k) {
+        /* impossible("dealloc_killer (#%d) not on list", kptr->id) */
+    } else {
+        prev.next = k.next;
+    }
+}
+
 // src/end.c:704 savelife() — explore/wizard "OK, so you don't die."
 function savelife(how) {
     const u = game.u;

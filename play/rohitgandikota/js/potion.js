@@ -3,6 +3,14 @@
 //
 // Only healup() so far, reached by the healing spells' zapyourself route.
 
+import { POLY_NOFLAGS, POLY_CONTROLLED, POLY_LOW_CTRL } from './const.js';
+import { polyself } from './polyself.js';
+import { Unchanging } from './youprop.js';
+import { clone_mon } from './makemon.js';
+import { cloneu } from './mhitu.js';
+import { object_detect } from './detect.js';
+import { mon_set_minvis, mon_adjust_speed } from './worn.js';
+import { SLIMED, M_AP_MONSTER, M_AP_NOTHING } from './const.js';
 import { fruitname, makeplural, xname } from './objnam.js';
 import { hliquid, trycall } from './do_name.js';
 import { newuhs } from './eat.js';
@@ -19,7 +27,9 @@ import { A_STR, A_INT, A_DEX, A_CON, A_CHA,
 import { Your } from './pline.js';
 import { nomul, losehp } from './hack.js';
 import { surface } from './dungeon.js';
-import { A_WIS, ECMD_CANCEL, IS_FOUNTAIN, IS_SINK } from './const.js';
+import { A_WIS, ECMD_CANCEL, ECMD_FAIL, CQ_CANNED, IS_FOUNTAIN, IS_SINK } from './const.js';
+import { cmdq_peek, drink_ok } from './cmd.js';
+import { is_plural } from './obj.js';
 import { Unaware, Hallucination, Halluc_resistance, Blind,
          Deaf, Poison_resistance, Sleep_resistance,
          Underwater, Antimagic } from './youprop.js';
@@ -51,6 +61,32 @@ import { hcolor } from './do_name.js';
 import { Monnam, mon_nam } from './do_name.js';
 import { mkobj, splitobj } from './mkobj.js';
 import { distu, s_suffix } from './hacklib.js';
+import { pluslvl } from './exper.js';
+import { heal_legs } from './do.js';
+import { speed_up } from './zap.js';
+import { INTRINSIC, FROMOUTSIDE } from './const.js';
+import { monstseesu, monstunseesu } from './mondata.js';
+import { fall_asleep } from './timeout.js';
+import { M_SEEN_SLEEP } from './const.js';
+import { worn, self_invis_message, hard_helmet } from './do_wear.js';
+import { W_ARMC, W_ARMH, I_SPECIAL, W_ARTI, STONED,
+         MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS } from './const.js';
+import { yname } from './objnam.js';
+import { aggravate } from './wizard.js';
+import { increment_intrinsic_timeout, do_enlightenment_effect } from './zap.js';
+import { Invis, Acid_resistance, Levitation } from './youprop.js';
+import { fix_petrification } from './eat.js';
+import { unfixable_trouble_count } from './apply.js';
+import { enlightenment } from './insight.js';
+import { display_nhwindow_message } from './display.js';
+import { stairway_at, doup, goto_level } from './do.js';
+import { has_ceiling, ceiling, depth, get_level, Can_rise_up,
+         ledger_no } from './dungeon.js';
+import { spoteffects } from './hack.js';
+import { rndexp } from './exper.js';
+import { float_up } from './trap.js';
+import { float_vs_flight } from './polyself.js';
+import { delayed_killer, find_delayed_killer, dealloc_killer } from './end.js';
 const G_GONE = MFLAGS.G_GENOD | MFLAGS.G_EXTINCT;
 
 function note_unported_potion(what) {
@@ -59,7 +95,7 @@ function note_unported_potion(what) {
 
 // src/mhitm.c:paralyze_monst() and slept_monst(). These small helpers are
 // kept here with their only current caller, thrown potion effects.
-function paralyze_monst(mon, amount) {
+export function paralyze_monst(mon, amount) {
     mon.mcanmove = 0;
     mon.mfrozen = Math.min(amount, 127);
     mon.meating = 0;
@@ -71,33 +107,6 @@ async function slept_monst(mon) {
         && !sticks(game.youmonst.data) && !game.u.uswallow) {
         await pline(`${s_suffix(Monnam(mon))} grip relaxes.`);
         await unstuck(mon);
-    }
-}
-
-// src/worn.c:mon_set_minvis() and mon_adjust_speed(), narrowed to the two
-// potionhit callers which need them.
-function mon_set_minvis(mon, cursedPotion) {
-    mon.perminvis = cursedPotion ? 0 : 1;
-    if (!mon.invis_blkd) {
-        mon.minvis = mon.perminvis;
-        newsym(mon.mx, mon.my);
-    }
-}
-
-async function mon_adjust_speed(mon, obj) {
-    const oldspeed = mon.mspeed | 0;
-    mon.permspeed = (mon.permspeed | 0) === MSLOW ? 0 : MFAST;
-    const speedArmor = (mon.minvent || []).some(item =>
-        item.owornmask && game.objects[item.otyp]?.oc_oprop === FAST);
-    mon.mspeed = speedArmor ? MFAST : mon.permspeed;
-
-    if (mon.mspeed !== oldspeed && mon.data.mmove
-        && !mon.mfrozen && !mon.msleeping && canseemon(mon)) {
-        const howmuch = mon.mspeed + oldspeed === MFAST + MSLOW
-            ? 'much ' : '';
-        await pline(`${Monnam(mon)} is suddenly moving ${howmuch}faster.`);
-        const { learnwand } = await import('./zap.js');
-        learnwand(obj);
     }
 }
 
@@ -342,8 +351,7 @@ export async function potionbreathe(obj) {
         }
         case ONAMES.POT_WATER:
             if (game.u.umonnum === PMNAMES.PM_GREMLIN) {
-                const { split_you } = await import('./mhitu.js');
-                await split_you();
+                await split_mon(game.youmonst, null);
             } else if (ismnum(game.u.ulycn)) {
                 const { you_unwere, you_were } = await import('./were.js');
                 if (obj.blessed && game.u.umonnum === game.u.ulycn)
@@ -435,12 +443,8 @@ export async function potionhit(mon, obj, how) {
             await explode_oil(obj, game.u.ux, game.u.uy);
         } else if (obj.otyp === ONAMES.POT_POLYMORPH) {
             await You_feel(`a little ${Hallucination() ? 'normal' : 'strange'}.`);
-            const unchanging = !!(game.u.intrinsic?.HUnchanging
-                                  || game.u.uprops?.UNCHANGING);
-            if (!unchanging && !Antimagic()) {
-                const { polyself } = await import('./polyself.js');
-                await polyself();
-            }
+            if (!Unchanging() && !Antimagic())
+                await polyself(POLY_NOFLAGS);
         } else if (obj.otyp === ONAMES.POT_ACID
                    && !game.u.uprops?.ACID_RES) {
             await pline(`This burns${obj.blessed ? ' a little'
@@ -520,7 +524,7 @@ export async function potionhit(mon, obj, how) {
             break;
         case ONAMES.POT_SPEED:
             angermon = false;
-            await mon_adjust_speed(mon, obj);
+            await mon_adjust_speed(mon, 1, obj);
             break;
         case ONAMES.POT_BLINDNESS:
             if (haseyes(mon.data) && (mon.mcansee || mon.mblinded)) {
@@ -875,6 +879,21 @@ const itimeout_incr = (old, incr) => Math.max(0, (old || 0) + incr);
 // include/obj.h bcsign()
 const bcsign = (o) => (o.blessed ? 1 : 0) - (o.cursed ? 1 : 0);
 
+// src/potion.c:1317 peffect_polymorph()
+async function peffect_polymorph(otmp) {
+    const u = game.u;
+    await You_feel(`a little ${Hallucination() ? 'normal' : 'strange'}.`);
+    if (!Unchanging()) {
+        if (!otmp.blessed || (u.umonnum !== u.umonster))
+            await polyself(POLY_NOFLAGS);
+        else {
+            await polyself(POLY_CONTROLLED | POLY_LOW_CTRL);
+            if (u.mtimedone && u.umonnum !== u.umonster)
+                u.mtimedone = Math.min(u.mtimedone, rn2(15) + 10);
+        }
+    }
+}
+
 // src/potion.c:1014 peffect_confusion()
 async function peffect_confusion(otmp) {
     if (!game.u.uprops?.CONFUSION) {
@@ -1163,7 +1182,326 @@ async function peffect_water(otmp) {
 
 // src/potion.c:1333 peffects() — dispatch one quaffed potion.
 // Returns -1 to let dopotion() finish (identify + useup), matching C.
-async function peffects(otmp) {
+// src/potion.c peffect_full_healing()
+async function peffect_full_healing(otmp) {
+    await You_feel('completely healed.');
+    await healup(400, 4 + 4 * bcsign(otmp), !otmp.cursed, true);
+    /* Restore one lost level if blessed */
+    if (otmp.blessed && game.u.ulevel < game.u.ulevelmax) {
+        /* when multiple levels have been lost, drinking multiple potions
+           will only get half of them back */
+        game.u.ulevelmax -= 1;
+        await pluslvl(false);
+    }
+    await make_hallucinated(0, true, 0);
+    exercise(A_STR, true);
+    exercise(A_CON, true);
+    /* blessed potion heals wounded legs even when riding (so heals steed's
+       legs--it's magic); uncursed potion heals hero's legs unless riding */
+    const wounded_legs = ((game.u.intrinsic?.HWounded_legs || 0) > 0)
+                         || !!(game.u.EWounded_legs || 0);
+    if (wounded_legs && (otmp.blessed || (!otmp.cursed && !game.u.usteed)))
+        await heal_legs(0);
+}
+
+// src/potion.c peffect_sleeping()
+async function peffect_sleeping(otmp) {
+    if (Sleep_resistance()
+        || game.u.uprops?.FREE_ACTION || game.u.intrinsic?.HFree_action) {
+        monstseesu(M_SEEN_SLEEP);
+        await You('yawn.');
+    } else {
+        await You('suddenly fall asleep!');
+        monstunseesu(M_SEEN_SLEEP);
+        await fall_asleep(-rn1(10, 25 - 12 * bcsign(otmp)), true);
+    }
+}
+
+// src/potion.c:222 make_stoned() — start or stop turning to stone.
+export async function make_stoned(xtime, msg, killedby, killername) {
+    const props = (game.u.uprops ||= {});
+    const old = props.STONED | 0;
+
+    /* set_itimeout(&Stoned, xtime) */
+    props.STONED = xtime | 0;
+    if ((xtime !== 0) !== (old !== 0)) {
+        (game.disp ||= {}).botl = true;
+        if (msg)
+            await pline(msg);
+    }
+    if (!props.STONED)
+        dealloc_killer(find_delayed_killer(STONED));
+    else if (!old)
+        delayed_killer(STONED, killedby, killername);
+}
+
+// src/potion.c peffect_restore_ability()
+async function peffect_restore_ability(otmp) {
+    const u = game.u;
+    game.potion_unkn++;
+    if (otmp.cursed) {
+        await pline('Ulch!  This makes you feel mediocre!');
+        return;
+    } else {
+        /* unlike unicorn horn, overrides Fixed_abil */
+        await pline(`Wow!  This makes you feel ${
+            (!otmp.blessed) ? 'good'
+            : unfixable_trouble_count(false) ? 'better'
+              : 'great'}!`);
+        let i = rn2(A_MAX); /* start at a random point */
+        for (let ii = 0; ii < A_MAX; ii++) {
+            const lim = u.amax.a[i];   /* AMAX(i) */
+            /* this used to adjust 'lim' for A_STR when u.uhs was
+               WEAK or worse, but that's handled via ATEMP(A_STR) now */
+            if (u.acurr.a[i] < lim) {  /* ABASE(i) < lim */
+                u.acurr.a[i] = lim;
+                u.aexe.a[i] = Math.max(u.aexe.a[i] | 0, 0);
+                (game.disp ||= {}).botl = true;
+                if (!otmp.blessed)
+                    break;
+            }
+            if (++i >= A_MAX)
+                i = 0;
+        }
+    }
+}
+
+// src/potion.c peffect_hallucination()
+async function peffect_hallucination(otmp) {
+    const intr = (game.u.intrinsic ||= {});
+    if (Halluc_resistance()) {
+        game.potion_nothing++;
+        return;
+    } else if (Hallucination()) {
+        game.potion_nothing++;
+    }
+    await make_hallucinated(itimeout_incr(intr.HHallucination,
+                                          rn1(200, 600 - 300 * bcsign(otmp))),
+                            true, 0);
+    if ((otmp.blessed && !rn2(3)) || (!otmp.cursed && !rn2(6))) {
+        await You('perceive yourself...');
+        await display_nhwindow_message();
+        /* enlightenment(MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS): the text
+           goes into an NHW_MENU window that pages like ^X */
+        {
+            const { tty_create_nhwindow, tty_start_menu, tty_add_menu,
+                    tty_end_menu, tty_display_nhwindow, tty_next_page,
+                    tty_destroy_nhwindow } = await import('./tty/wintty.js');
+            const { NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE }
+                = await import('./const.js');
+            const { NO_COLOR, ATR_NONE } = await import('./terminal.js');
+            const { xwaitforspace } = await import('./tty/getline.js');
+            const { docrt } = await import('./display.js');
+            const win = tty_create_nhwindow(NHW_MENU);
+            tty_start_menu(win, MENU_BEHAVE_STANDARD);
+            for (const line of enlightenment(MAGICENLIGHTENMENT,
+                                              ENL_GAMEINPROGRESS))
+                tty_add_menu(win, null, 0, 0, 0, ATR_NONE, NO_COLOR, line,
+                             MENU_ITEMFLAGS_NONE);
+            tty_end_menu(win, null);
+            await tty_display_nhwindow(win);
+            await xwaitforspace(' \r\n\x1b');
+            while (game.morc !== '\x1b' && tty_next_page(win))
+                await xwaitforspace(' \r\n\x1b');
+            tty_destroy_nhwindow(win);
+            await docrt();
+        }
+        await Your('awareness re-normalizes.');
+        exercise(A_WIS, true);
+    }
+}
+
+// src/potion.c peffect_enlightenment()
+async function peffect_enlightenment(otmp) {
+    if (otmp.cursed) {
+        game.potion_unkn++;
+        await You('have an uneasy feeling...');
+        exercise(A_WIS, false);
+    } else {
+        if (otmp.blessed) {
+            await adjattrib(A_INT, 1, 0);
+            await adjattrib(A_WIS, 1, 0);
+        }
+        await do_enlightenment_effect();
+    }
+}
+
+// src/potion.c peffect_invisibility()
+async function peffect_invisibility(otmp) {
+    const u = game.u;
+    const intr = (u.intrinsic ||= {});
+    const is_spell = (otmp.oclass === OCLASSES.SPBOOK_CLASS);
+    const uarmc = worn(W_ARMC);
+
+    if (is_spell && u.blocked?.INVIS && uarmc?.otyp === ONAMES.MUMMY_WRAPPING) {
+        await You_feel(`rather itchy under ${yname(uarmc)}.`);
+        return;
+    }
+    if (Invis() || Blind() || u.blocked?.INVIS) {
+        game.potion_nothing++;
+    } else {
+        await self_invis_message();
+    }
+    if (otmp.blessed && !rn2((intr.HInvis | 0) ? 15 : 30))
+        intr.HInvis = (intr.HInvis | 0) | FROMOUTSIDE;
+    else
+        increment_intrinsic_timeout('HInvis',
+                                    d(6 - 3 * bcsign(otmp), 100) + 100);
+    newsym(u.ux, u.uy); /* update position */
+    if (otmp.cursed) {
+        await pline('For some reason, you feel your presence is known.');
+        aggravate();
+        /* cursed potion isn't permanent so remove the permanent
+           invisibility */
+        intr.HInvis = (intr.HInvis | 0) & ~FROMOUTSIDE;
+    }
+}
+
+// src/potion.c peffect_levitation()
+async function peffect_levitation(otmp) {
+    const u = game.u;
+    const intr = (u.intrinsic ||= {});
+
+    if (!Levitation() && !u.blocked?.LEVITATION) {
+        /* set_itimeout(&HLevitation, 1L) */
+        intr.HLevitation = ((intr.HLevitation | 0) & ~TIMEOUT) | 1;
+        await float_up();
+        /* This used to set timeout back to 0 if blessed or uncursed.
+           But now we leave it so that cursed effect yields "you float
+           down" on next turn.  Blessed and uncursed get one extra turn
+           duration. */
+    } else /* already levitating, or can't levitate */
+        game.potion_nothing++;
+
+    if (otmp.cursed) {
+        let stway;
+        /* 'already levitating' used to block the cursed effect(s)
+           aside from ~I_SPECIAL; it was not clear whether that was
+           intentional; either way, it no longer does (as of 3.6.1) */
+        intr.HLevitation = (intr.HLevitation | 0) & ~I_SPECIAL; /* can't descend upon demand */
+        if (u.blocked?.LEVITATION) {
+            ; /* rising via levitation is blocked */
+        } else if ((stway = stairway_at(u.ux, u.uy)) != null && stway.up) {
+            await doup();
+            /* in case we're already Levitating, which would have
+               resulted in incrementing 'nothing' */
+            game.potion_nothing = 0; /* not nothing after all */
+        } else if (has_ceiling(u.uz)) {
+            const uarmh = worn(W_ARMH);
+            let dmg = rnd(!uarmh ? 10 : !hard_helmet(uarmh) ? 6 : 3);
+            await You(`hit your ${body_part(HEAD)} on the ${ceiling(u.ux, u.uy)}.`);
+            if (u.uprops?.HALF_PHDAM)
+                dmg = Math.trunc((dmg + 1) / 2);   /* Maybe_Half_Phys */
+            await losehp(dmg, 'colliding with the ceiling', KILLED_BY);
+            game.potion_nothing = 0; /* not nothing after all */
+        }
+    } else if (otmp.blessed) {
+        /* at this point, timeout is already at least 1 */
+        increment_intrinsic_timeout('HLevitation', rn1(50, 250));
+        /* can descend at will (stop levitating via '>') provided timeout
+           is the only factor (ie, not also wearing Lev ring or boots) */
+        intr.HLevitation = (intr.HLevitation | 0) | I_SPECIAL;
+    } else /* timeout is already at least 1 */
+        increment_intrinsic_timeout('HLevitation', rn1(140, 10));
+
+    if (Levitation() && IS_SINK(game.level.at(u.ux, u.uy).typ))
+        await spoteffects(false);
+    float_vs_flight();
+}
+
+// src/potion.c peffect_acid()
+async function peffect_acid(otmp) {
+    if (Acid_resistance()) {
+        /* Not necessarily a creature who _likes_ acid */
+        await pline(`This tastes ${Hallucination() ? 'tangy' : 'sour'}.`);
+    } else {
+        await pline(`This burns${otmp.blessed ? ' a little'
+                                 : otmp.cursed ? ' a lot' : ' like acid'}!`);
+        let dmg = d(otmp.cursed ? 2 : 1, otmp.blessed ? 4 : 8);
+        if (game.u.uprops?.HALF_PHDAM)
+            dmg = Math.trunc((dmg + 1) / 2);   /* Maybe_Half_Phys */
+        await losehp(dmg, 'potion of acid', KILLED_BY_AN);
+        exercise(A_CON, false);
+    }
+    if (game.u.uprops?.STONED)
+        await fix_petrification();
+    game.potion_unkn++; /* holy/unholy water can burn like acid too */
+}
+
+// src/potion.c peffect_gain_level()
+async function peffect_gain_level(otmp) {
+    const u = game.u;
+    if (otmp.cursed) {
+        const on_lvl_1 = (ledger_no(u.uz) === 1);
+
+        game.potion_unkn++;
+        if (on_lvl_1 ? !!u.uhave?.amulet : Can_rise_up(u.ux, u.uy, u.uz)) {
+            let newlevel;
+
+            if (on_lvl_1) {
+                newlevel = { ...game.earth_level }; /* assign_level() */
+            } else {
+                const newlev = depth(u.uz) - 1;
+                newlevel = { dnum: 0, dlevel: 0 };
+                get_level(newlevel, newlev);
+                if (newlevel.dnum === u.uz.dnum      /* on_level() */
+                    && newlevel.dlevel === u.uz.dlevel) {
+                    await pline('It tasted bad.');
+                    return;
+                }
+            }
+            await You(`rise up, through the ${ceiling(u.ux, u.uy)}!`);
+            await goto_level(newlevel, false, false, false);
+        } else {
+            await You('have an uneasy feeling.');
+        }
+        return;
+    }
+    await pluslvl(false);
+    /* blessed potions place you at a random spot in the
+       middle of the new level instead of the low point */
+    if (otmp.blessed)
+        u.uexp = rndexp(true);
+}
+
+// src/potion.c peffect_gain_ability()
+async function peffect_gain_ability(otmp) {
+    if (otmp.cursed) {
+        await pline('Ulch!  That potion tasted foul!');
+    } else if (false /* Fixed_abil: no source is modeled yet */) {
+        /* nothing */
+    } else {      /* If blessed, increase all; if not, try up to */
+        let itmp;  /* 6 times to find one which can be increased. */
+        let i = -1;   /* increment to 0 */
+        for (let ii = A_MAX; ii > 0; ii--) {
+            i = (otmp.blessed ? i + 1 : rn2(A_MAX));
+            /* only give "nothing happens" message on last try (except blessed) */
+            itmp = (otmp.blessed || ii === 1) ? 0 : -1;
+            if ((await adjattrib(i, 1, itmp)) && !otmp.blessed)
+                break;
+        }
+    }
+}
+
+// src/potion.c peffect_speed()
+async function peffect_speed(otmp) {
+    const is_speed = (otmp.otyp === ONAMES.POT_SPEED);
+    const wounded_legs = ((game.u.intrinsic?.HWounded_legs || 0) > 0)
+                         || !!(game.u.EWounded_legs || 0);
+    /* using a potion of speed while wounded (not on a steed) heals legs */
+    if (is_speed && wounded_legs && !otmp.cursed && !game.u.usteed) {
+        await heal_legs(0);
+        return;
+    }
+    await speed_up(rn1(10, 100 + 60 * bcsign(otmp)));
+    if (is_speed && !otmp.cursed
+        && !((game.u.intrinsic?.HFast | 0) & INTRINSIC)) { /* not intrinsically fast */
+        await Your('quickness feels very natural.');
+        (game.u.intrinsic ||= {}).HFast = (game.u.intrinsic.HFast | 0) | FROMOUTSIDE;
+    }
+}
+
+export async function peffects(otmp) {
     switch (otmp.otyp) {
     case ONAMES.POT_BOOZE:
         await peffect_booze(otmp);
@@ -1174,11 +1512,17 @@ async function peffects(otmp) {
     case ONAMES.POT_EXTRA_HEALING:
         await peffect_extra_healing(otmp);
         break;
+    case ONAMES.POT_FULL_HEALING:
+        await peffect_full_healing(otmp);
+        break;
     case ONAMES.POT_GAIN_ENERGY:
         await peffect_gain_energy(otmp);
         break;
     case ONAMES.POT_CONFUSION:
         await peffect_confusion(otmp);
+        break;
+    case ONAMES.POT_POLYMORPH:
+        await peffect_polymorph(otmp);
         break;
     case ONAMES.POT_SICKNESS:
         await peffect_sickness(otmp);
@@ -1189,7 +1533,42 @@ async function peffects(otmp) {
     case ONAMES.POT_PARALYSIS:
         await peffect_paralysis(otmp);
         break;
+    case ONAMES.POT_SLEEPING:
+        await peffect_sleeping(otmp);
+        break;
+    case ONAMES.POT_RESTORE_ABILITY:
+    case ONAMES.SPE_RESTORE_ABILITY:
+        await peffect_restore_ability(otmp);
+        break;
+    case ONAMES.POT_HALLUCINATION:
+        await peffect_hallucination(otmp);
+        break;
+    case ONAMES.POT_ENLIGHTENMENT:
+        await peffect_enlightenment(otmp);
+        break;
+    case ONAMES.SPE_INVISIBILITY:
+    case ONAMES.POT_INVISIBILITY:
+        await peffect_invisibility(otmp);
+        break;
+    case ONAMES.POT_GAIN_ABILITY:
+        await peffect_gain_ability(otmp);
+        break;
+    case ONAMES.POT_GAIN_LEVEL:
+        await peffect_gain_level(otmp);
+        break;
+    case ONAMES.POT_LEVITATION:
+    case ONAMES.SPE_LEVITATION:
+        await peffect_levitation(otmp);
+        break;
+    case ONAMES.POT_ACID:
+        await peffect_acid(otmp);
+        break;
+    case ONAMES.POT_SPEED:
+    case ONAMES.SPE_HASTE_SELF:
+        await peffect_speed(otmp);
+        break;
     case ONAMES.POT_MONSTER_DETECTION:
+    case ONAMES.SPE_DETECT_MONSTERS:
         if (await peffect_monster_detection(otmp))
             return 1;
         break;
@@ -1202,6 +1581,11 @@ async function peffects(otmp) {
         break;
     case ONAMES.POT_WATER:
         await peffect_water(otmp);
+        break;
+    case ONAMES.POT_OBJECT_DETECTION:
+    case ONAMES.SPE_DETECT_TREASURE:
+        if (await peffect_object_detection(otmp))
+            return 1;
         break;
     default:
         /* every other arm draws through its own subsystem */
@@ -1617,4 +2001,103 @@ export async function dodip() {
     if (!potion)
         return ECMD_CANCEL;
     return await potion_dip(obj, potion);
+}
+
+// src/potion.c:2379 dip_into() — #dip with the potion chosen first (the
+// item-action menu's 'a' on a potion)
+export async function dip_into() {
+    if (!cmdq_peek(CQ_CANNED)) {
+        /* impossible("dip_into: where is potion?") */
+        return ECMD_FAIL;
+    }
+
+    /* note: drink_ok() callback for quaffing is also used to validate
+       a potion to dip into */
+    /* C clears drink_ok_extra here (haven't been asked about and declined
+       to use a floor feature like a fountain); drink_ok()'s
+       EXCLUDE_NONINVENT arm that reads it is not modelled (see cmd.js) */
+    const potion = await getobj('dip', drink_ok, GETOBJ_NOFLAGS);
+    if (!potion || potion.oclass !== OCLASSES.POTION_CLASS)
+        return ECMD_CANCEL;
+
+    /* "What do you want to dip into <the potion>? [abc or ?*] " */
+    const qbuf = `dip into ${is_plural(potion) ? 'one of ' : ''}${thesimpleoname(potion)}`;
+    const obj = await getobj(qbuf, dip_ok, GETOBJ_PROMPT);
+    if (!obj)
+        return ECMD_CANCEL;
+    if (await inaccessible_equipment(obj, 'dip', false))
+        return ECMD_OK;
+
+    return await potion_dip(obj, potion);
+}
+
+// src/potion.c:195 make_slimed(), set or clear the turning-to-slime timer.
+export async function make_slimed(xtime, msg) {
+    const props = (game.u.uprops ||= {});
+    const old = props.SLIMED || 0;
+
+    props.SLIMED = xtime; /* set_itimeout(&Slimed, xtime) */
+    if ((xtime !== 0) !== (old !== 0)) {
+        (game.disp ||= {}).botl = true;
+        if (msg)
+            await pline(msg);
+    }
+    if (!props.SLIMED) {
+        dealloc_killer(find_delayed_killer(SLIMED));
+        /* fake appearance is set late in turn-to-slime countdown */
+        if (game.youmonst.m_ap_type === M_AP_MONSTER
+            && game.youmonst.mappearance === PMNAMES.PM_GREEN_SLIME) {
+            game.youmonst.m_ap_type = M_AP_NOTHING;
+            game.youmonst.mappearance = 0;
+        }
+    }
+}
+
+// src/potion.c:955 peffect_object_detection(); 1 when nothing was detected.
+async function peffect_object_detection(otmp) {
+    if (await object_detect(otmp, 0))
+        return 1; /* nothing detected */
+    exercise(A_WIS, true);
+    return 0;
+}
+
+// src/potion.c:2873 split_mon(); split a monster (or the hero) whose heat has
+// been raised, or who touched water as a gremlin
+export async function split_mon(mon, mtmp) {
+    /* mtmp: optional attacker whose heat triggered it */
+    let mtmp2;
+    let reason = '';
+
+    if (mtmp)
+        reason = ` from ${(mtmp === game.youmonst) ? 'your'
+                                                   : s_suffix(mon_nam(mtmp))} heat`;
+
+    if (mon === game.youmonst) {
+        if (game.u.mh > game.u.mhmax) /* sanity precaution */
+            game.u.mh = game.u.mhmax;
+        mtmp2 = (game.u.mh > 1) ? cloneu() : null;
+        if (mtmp2) {
+            /* cloneu() has done mtmp2->mhpmax = u.mhmax, mtmp2->mhp = u.mh / 2,
+               and u.mh -= mtmp2->mhp; these reductions for both max hp
+               can't make either of them exceed corresponding current hp */
+            mtmp2.mhpmax = Math.trunc(game.u.mhmax / 2);
+            game.u.mhmax -= mtmp2.mhpmax;
+            (game.disp ||= {}).botl = true;
+            await You(`multiply${reason}!`);
+        }
+    } else {
+        if (mon.mhp > mon.mhpmax) /* sanity precaution */
+            mon.mhp = mon.mhpmax;
+        mtmp2 = (mon.mhp > 1) ? clone_mon(mon, 0, 0) : null;
+        if (mtmp2) {
+            /* clone_mon() has done mtmp2->mhpmax = mon->mhpmax, mtmp2->mhp =
+               mhp = mon->mhp / 2, and mon->mh -= mtmp2->mhp;
+               dividing max by 2 can't result in it exceeding current */
+            mtmp2.mhpmax = Math.trunc(mon.mhpmax / 2);
+            mon.mhpmax -= mtmp2.mhpmax;
+            if (canspotmon(mon))
+                await pline(`${Monnam(mon)} multiplies${reason}!`);
+        }
+    }
+    return mtmp2;
 }

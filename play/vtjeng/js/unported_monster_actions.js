@@ -17,6 +17,7 @@ import {
     CORR,
     DOOR,
     D_CLOSED,
+    FIRE_RES,
     HEADSTONE,
     INVIS,
     IS_FOUNTAIN,
@@ -28,6 +29,10 @@ import {
     OBJ_MINVENT,
     ROOM,
     STRAT_CLOSE,
+    SLEEP_RES,
+    SLP_GAS_TRAP,
+    FIRE_TRAP,
+    ANTI_MAGIC,
 } from './const.js';
 import { exercise } from './attrib.js';
 // js/allmain.js imports this file's action runners, so this edge closes an
@@ -36,6 +41,7 @@ import { exercise } from './attrib.js';
 // reads it at module scope.
 import { stop_occupation } from './allmain.js';
 import { bot, map_invisible, newsym, obj_to_glyph, tmp_at } from './display.js';
+import { mdig_tunnel } from './dig.js';
 import { flooreffects } from './do.js';
 import { should_mulch_missile, shipsAway } from './dothrow.js';
 import {
@@ -46,7 +52,7 @@ import {
     pet_ranged_attk,
 } from './dogmove.js';
 import { capitalizedMonsterName } from './do_name.js';
-import { engr_at } from './engrave.js';
+import { engr_at, wipe_engr_at } from './engrave.js';
 import { game } from './gstate.js';
 import { losehp, nh_delay_output, nomul } from './hack.js';
 import { hands_obj, obj_extract_self, stackobj } from './invent.js';
@@ -58,25 +64,30 @@ import { m_throw, thitu, thrwmu } from './mthrowu.js';
 import { AKLYS } from './objects.js';
 import {
     adaptMonsterActionToDochugwSignature,
+    minliquid,
     movemon_singlemon,
     restrap,
     wake_msg,
 } from './mon.js';
 import {
     attacktype,
+    defended,
     is_covetous,
-    is_floater,
-    is_flyer,
     is_swimmer,
     likes_lava,
     monsndx,
+    monster_resists_element,
     nohands,
     passes_walls,
     perceives,
+    resists_magm,
     tunnels,
     verysmall,
 } from './mondata.js';
 import {
+    AD_FIRE,
+    AD_MAGM,
+    AD_SLEE,
     AT_MAGC,
     PM_ERINYS,
     PM_FLOATING_EYE,
@@ -144,6 +155,7 @@ import {
     cansee,
     couldsee,
     does_block,
+    m_canseeu,
     makeVisionBuffers,
     recalc_block_point,
     vision_recalc,
@@ -201,30 +213,20 @@ function assertSimpleScanState(monster, state) {
     // path -- they all describe branches mon.c only takes after the movement
     // debit -- so they are deliberately skipped rather than merely bypassed.
     if (monster.movement < NORMAL_SPEED) return true;
-    // C ref: mon.c minliquid_core() :967-972. A flyer or floater is not "in"
-    // a pool or lava, so minliquid_core()'s drown/burn effects do not apply.
-    // On the Plane of Water, flyers ARE subject to pool effects
-    // (Is_waterlevel check at :970); that level is not yet reachable.
-    if ((is_pool(monster.mx, monster.my, state)
-            || is_lava(monster.mx, monster.my, state))
-        && !is_flyer(monster.data)
-        && !is_floater(monster.data)) {
-        unsupported('monster liquid effects');
-    }
     // mon.c restrap() is ported, so an M1_HIDE monster is scanned like any
     // other; the eel half stands, because movemon_singlemon()'s S_EEL arm ends
     // in mon.c hideunder(), which is not.
+    const liquidReason = unportedMinliquidReason(monster, state);
+    if (liquidReason) unsupported(liquidReason);
     if (monster.data?.mlet === S_EEL)
         unsupported('eel concealment');
     return true;
 }
 
-// C ref: mon.c minliquid_core() (961-1122). Nothing in this port runs that
-// function's body, so both of its `minLiquid` owners -- elapsedTurnMinLiquid()
-// in js/allmain.js for the live turn, and planSimpleMonsterScan()'s operation
-// below for the cloned scan -- answer "C leaves this monster alone" and refuse
-// otherwise. This names which refusal a monster's square and species earn, so
-// the two owners cannot drift apart; each throws its own error type.
+// C ref: mon.c minliquid_core() (961-1122). The ordinary pool and lava
+// branches now run through js/mon.js. This predicate retains only the
+// species-specific fountain split that this bounded slice deliberately leaves
+// at the action boundary.
 //
 // The square decides for every species but one. C derives `inpool` at :967 and
 // `inlava` at :971 to guard the drown and burn effects at :1068 and :1010,
@@ -247,11 +249,6 @@ function assertSimpleScanState(monster, state) {
 // the other order. That is only a labelling difference: a gremlin in water
 // matches both, and whichever arm claims it, the caller refuses.
 export function unportedMinliquidReason(monster, state) {
-    if ((is_pool(monster.mx, monster.my, state)
-            || is_lava(monster.mx, monster.my, state))
-        && !is_flyer(monster.data)
-        && !is_floater(monster.data))
-        return 'a non-flying monster in liquid';
     if (monsndx(monster.data) === PM_GREMLIN
         && IS_FOUNTAIN(state.level?.at?.(monster.mx, monster.my)?.typ))
         return 'a gremlin splitting in a fountain';
@@ -307,6 +304,11 @@ function assertSimpleActionState(monster, state) {
     // and pri_move() respectively, which handle the stationary and milling
     // paths and refuse the rest.
     //
+    // mon.c m_respond() is a no-op unless its source predicates hold: a
+    // shrieker must be adjacent, Medusa must be in couldsee(), and Erinys
+    // must be hostile, able to see, and able to see the hero. Refuse only
+    // those active response branches; a distant shrieker, for example, falls
+    // through dochug() without any special-action work.
     // monmove.c dochug() checks msleeping before m_move()'s leppie_avoidance()
     // arm. For a non-tame, non-minion leprechaun outside couldsee(),
     // disturb() returns 0 without a draw, so this exact case returns from
@@ -318,7 +320,18 @@ function assertSimpleActionState(monster, state) {
         && !monster.mtame
         && !monster.isminion
         && !couldsee(monster.mx, monster.my, state);
-    if (SPECIAL_RESPONDERS.has(monster.data?.pmidx)
+    const specialResponseNeeded = monster.data?.pmidx === PM_SHRIEKER
+        ? Math.abs(monster.mx - state.u.ux) <= 1
+            && Math.abs(monster.my - state.u.uy) <= 1
+        : monster.data?.pmidx === PM_MEDUSA
+            ? couldsee(monster.mx, monster.my, state)
+            : monster.data?.pmidx === PM_ERINYS
+                ? !monster.mpeaceful
+                    && monster.mcansee
+                    && m_canseeu(monster, state)
+                : false;
+    if ((SPECIAL_RESPONDERS.has(monster.data?.pmidx)
+            && specialResponseNeeded)
         || monster.data?.pmidx === PM_TENGU
         || (monster.data?.pmidx === PM_LEPRECHAUN
             && !sleepingOutOfSightLeprechaun)
@@ -540,6 +553,19 @@ function planningState(state) {
         ...state,
         ...topLevelObjectPointers,
         context,
+        // track.c settrack() advances the ring during every planned elapsed
+        // turn. The clone must own both counters and coordinates; sharing the
+        // ring makes the live pass see the planning footprint a second time.
+        track: state.track
+            ? {
+                utcnt: state.track.utcnt,
+                utpnt: state.track.utpnt,
+                utrack: state.track.utrack.map((coordinate) => ({
+                    x: coordinate.x,
+                    y: coordinate.y,
+                })),
+            }
+            : state.track,
         // Hallucinatory runtime creation names use rnd.c's independent
         // display stream.  A planned appearance must advance only this copy;
         // otherwise a dry run changes later live glyphs even though every
@@ -653,8 +679,24 @@ function ordinaryMonsterCanSeeHero(monster, state) {
         && couldsee(monster.mx, monster.my, state);
 }
 
-function resistsTrapEffect() {
-    unsupported('monster trap-resistance evaluation');
+// C ref: trap.c m_harmless_trap() (1133-1175). Only these three traps ask
+// for resistance; the surrounding trap cases are decided by
+// monmove.js m_harmless_trap() without a callback.
+function resistsTrapEffect(monster, trapType, env) {
+    const state = env.state ?? game;
+    if (trapType === SLP_GAS_TRAP) {
+        return monster_resists_element(monster, SLEEP_RES, state)
+            || defended(monster, AD_SLEE, state);
+    }
+    if (trapType === FIRE_TRAP) {
+        return monster_resists_element(monster, FIRE_RES, state)
+            || defended(monster, AD_FIRE, state);
+    }
+    if (trapType === ANTI_MAGIC) {
+        return resists_magm(monster, state)
+            || defended(monster, AD_MAGM, state);
+    }
+    return false;
 }
 
 // C ref: monmove.c postmov()'s `here->doormask == D_CLOSED && can_open` arm
@@ -832,7 +874,7 @@ function wipeSimpleEngraving(x, y, _count, _magical, env) {
         || (engraving.engr_type === BURN && !is_ice(x, y, env.state))) {
         return;
     }
-    unsupported('monster engraving wear');
+    return wipe_engr_at(x, y, _count, _magical, env);
 }
 
 // UnblockDoor's second rebuild, vision_recalc(0). The cloned scan runs the
@@ -857,6 +899,7 @@ async function moveSimpleOrdinary(monster, env) {
     return m_move(monster, {
         ...env,
         ...doorVisionOperations(env),
+        mdigTunnel: mdig_tunnel,
         mayCrossRegion: admitSimpleDestinationAndRegion,
         resistsTrapEffect,
         // mon.c can_touch_safely() asks artifact.c touch_artifact() about
@@ -989,8 +1032,14 @@ async function throwRangedWeapon(monster, env) {
             unsupported('monster polearm or returning-weapon action');
         }
         if (propellor && propellor !== hands_obj) {
-            if (monster.mw)
-                unsupported('monster ranged wield with a current weapon');
+            // C's thrwmu() preamble reaches mon_wield_item() even when a
+            // different, non-welded MON_WEP already exists. That call clears
+            // the old W_WEP bit, equips gp.propellor, announces the switch,
+            // and consumes this monster turn. A welded current weapon stays
+            // fail-closed because weapon.c mon_wield_item() takes its own
+            // refusal branch instead of replacing it.
+            if (monster.mw && mwelded(monster.mw, env.state))
+                unsupported('monster ranged wield with a welded current weapon');
             if (propellor.oartifact || artifact_light(propellor))
                 unsupported('monster ranged artifact wield');
             if (will_weld(propellor, env.state))
@@ -1291,16 +1340,31 @@ async function planSimpleMonsterScan(monster, env) {
             return planningVisionRecalc(env.state)(control);
         },
         clearBypasses: () => unsupported('monster bypass cleanup'),
-        // unportedMinliquidReason() is the live owner's predicate too, so both
-        // tables refuse the same squares. Its water and lava arm duplicates
-        // assertSimpleScanState()'s earlier liquid guard, which reaches this
-        // monster first; its gremlin arm does not, and is the one that fires
-        // here.
-        minLiquid: async (subject, subjectEnv) => {
-            const reason = unportedMinliquidReason(subject, subjectEnv.state);
-            if (reason) unsupported(reason);
-            return false;
-        },
+        // C ref: mon.c minliquid(). The clone uses the same source function
+        // as the live elapsed-turn owner, but every display, relocation,
+        // inventory, and overcrowding tail stays a planning-owned seam.
+        minLiquid: (subject, subjectEnv) => minliquid(subject, {
+            ...subjectEnv,
+            unsupported,
+            message: async () => {},
+            canSee: (x, y) => cansee(x, y, subjectEnv.state),
+            relocateMonster: () => unsupported(
+                'monster liquid relocation',
+            ),
+            fireDamageChain: () => unsupported(
+                'monster fire inventory damage',
+            ),
+            waterDamageChain: () => unsupported(
+                'monster water inventory damage',
+            ),
+            dealWithOvercrowding: () => unsupported(
+                'monster liquid overcrowding',
+            ),
+            hooks: {
+                ...(subjectEnv.hooks ?? {}),
+                newsym: () => {},
+            },
+        }),
         // C ref: mon.c movemon_singlemon():1268-1281. m_dowear() reassesses
         // the monster's gear. Its new W_ARMF/no-old-item arm applies the
         // source delay and worn masks on the planning clone; other runtime

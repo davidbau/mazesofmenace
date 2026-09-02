@@ -10,6 +10,9 @@
 // The delay itself is drawn by the CALLER, before start_timer is reached
 // (bury_an_obj spends rnd(250) for ROT_ORGANIC). Only the bookkeeping is here.
 
+import { update_inventory } from './invent.js';
+import { little_to_big } from './mkobj.js';
+import { make_slimed } from './potion.js';
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
 import { stop_occupation } from './allmain.js';
@@ -596,6 +599,15 @@ export async function fall_asleep(how_long, wakeup_msg) {
     game.nomovemsg = wakeup_msg ? "You wake up." : "You can move again.";
 }
 
+// src/timeout.c:1193 learn_egg_type(); note whether egg is a hatchable one
+export function learn_egg_type(mnum) {
+    /* baby monsters hatch from grown-up eggs */
+    mnum = little_to_big(mnum);
+    game.mvitals[mnum].mvflags |= MV_KNOWS_EGG;
+    /* we might have just learned about other eggs being carried */
+    update_inventory();
+}
+
 // src/timeout.c:1221 slip_or_trip() — feedback when FUMBLING expires after a
 // move. The floor-object and ordinary on-foot paths are common. Ice and
 // mounted movement retain their exact gates and record only the unported
@@ -957,6 +969,11 @@ export function attach_egg_hatch_timeout(egg, when = 0) {
         start_timer(when, TIMER_OBJECT, HATCH_EGG, egg);
 }
 
+// src/timeout.c:1009 kill_egg(); prevent an egg from hatching
+export function kill_egg(egg) {
+    stop_timer(HATCH_EGG, egg);
+}
+
 // src/timeout.c:1017 hatch_egg() -- turn a fertile egg stack into one or more
 // adjacent baby monsters, report what the hero can perceive, and consume the
 // eggs which actually hatched.
@@ -1166,5 +1183,12 @@ export async function do_storms() {
     } else {
         const { You_hear } = await import('./pline.js');
         await You_hear('a rumbling noise.');
+    }
+}
+
+// src/timeout.c:448 burn_away_slime(), fire burns off the green slime.
+export async function burn_away_slime() {
+    if (game.u.uprops?.SLIMED) {
+        await make_slimed(0, 'The slime that covers you is burned away!');
     }
 }

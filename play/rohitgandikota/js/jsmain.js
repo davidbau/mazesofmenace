@@ -324,7 +324,17 @@ export async function runSegment(input) {
 
     for (const ch of moves) display.pushKey(ch.charCodeAt(0));
 
-    await nhGame.start();
+    /* A recording can end while the C game is still inside a startup
+       prompt (the legacy text, chargen, the name). Running out of keys
+       there is the same clean end as running out inside the move loop;
+       letting it throw here discarded every screen the segment recorded. */
+    try {
+        await nhGame.start();
+    } catch (e) {
+        if (!String(e?.message || '').includes('Input queue empty'))
+            throw e;
+        return nhGame;
+    }
 
     // Drive the game loop until input is exhausted. The judge looks
     // at game.getScreens() afterwards; whatever the contestant

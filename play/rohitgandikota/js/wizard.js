@@ -5,6 +5,11 @@
 // sandestin and doppelganger shapes. The Wizard's own strategy engine
 // (tactics, intervene, resurrection) is not ported.
 
+import { newsym } from './display.js';
+import { M_AP_MONSTER, MM_NOWAIT } from './const.js';
+import { Protection_from_shape_changers } from './youprop.js';
+import { mksobj, add_to_minv } from './mkobj.js';
+import { makemon } from './makemon.js';
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import { PMNAMES, MONSYMS, ATTKS, MFLAGS, GROWNUPS } from './monst_data.js';
@@ -757,4 +762,31 @@ export async function nasty(summoner) {
     if (count)
         count = monster_census(false) - census;
     return count;
+}
+
+/* src/wizard.c:52 wizapp[], what the Wizard's clone can pretend to be */
+const wizapp = [
+    PMNAMES.PM_HUMAN,      PMNAMES.PM_WATER_DEMON,  PMNAMES.PM_VAMPIRE,
+    PMNAMES.PM_RED_DRAGON, PMNAMES.PM_TROLL,        PMNAMES.PM_UMBER_HULK,
+    PMNAMES.PM_XORN,       PMNAMES.PM_XAN,          PMNAMES.PM_COCKATRICE,
+    PMNAMES.PM_FLOATING_EYE, PMNAMES.PM_GUARDIAN_NAGA, PMNAMES.PM_TRAPPER,
+];
+
+// src/wizard.c:517 clonewiz(), the Wizard of Yendor makes a double.
+export function clonewiz() {
+    let mtmp2;
+
+    if ((mtmp2 = makemon(game.mons[PMNAMES.PM_WIZARD_OF_YENDOR],
+                         game.u.ux, game.u.uy, MM_NOWAIT)) != null) {
+        mtmp2.msleeping = mtmp2.mtame = mtmp2.mpeaceful = 0;
+        if (!game.u.uhave?.amulet && rn2(2)) { /* give clone a fake */
+            add_to_minv(mtmp2,
+                        mksobj(ONAMES.FAKE_AMULET_OF_YENDOR, true, false));
+        }
+        if (!Protection_from_shape_changers()) {
+            mtmp2.m_ap_type = M_AP_MONSTER;
+            mtmp2.mappearance = wizapp[rn2(wizapp.length)];
+        }
+        newsym(mtmp2.mx, mtmp2.my);
+    }
 }

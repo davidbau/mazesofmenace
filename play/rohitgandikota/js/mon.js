@@ -1,3 +1,14 @@
+import { monsndx } from './makemon.js';
+import { kill_egg } from './timeout.js';
+import { Has_contents } from './obj.js';
+import { dead_species } from './mkobj.js';
+import { LOW_PM } from './const.js';
+import { is_vampire, is_shapeshifter } from './mondata.js';
+import { can_hide_under_obj } from './monmove.js';
+import { u_at, OBJ_AT } from './const.js';
+import { mon_explodes } from './explode.js';
+import { fill_pit } from './trap.js';
+import { remove_worm } from './worm.js';
 import { mon_offmap, is_lightblocker_mappear } from './monst.js';
 import { dist2 } from './hacklib.js';
 import { m_dowear, mon_break_armor } from './worn.js';
@@ -428,7 +439,7 @@ import { fightm } from './mhitm.js';
 // include/you.h:560 m_next2u() — distu((m)->mx, (m)->my) <= 2.
 // Its C home is you.h; kept here because restrap() below is its only user so
 // far and js/mon.js already exports mdistu's twin.
-const m_next2u = (mtmp) => mdistu(mtmp) <= 2;
+export const m_next2u = (mtmp) => mdistu(mtmp) <= 2;
 
 // src/mon.c:961 restrap() — a hider that is not being watched hides again.
 //
@@ -2552,60 +2563,6 @@ export function make_corpse(mtmp, corpseflags) {
     return obj;
 }
 
-// src/mon.c:3181 corpse_chance() — does the kill leave a corpse at all?
-//
-// A visible, uncontained physical death explosion applies its effects in
-// map order: nearby monsters first, then the hero.  Elemental explosions and
-// swallowed explosions still remain outside this slice.
-async function mon_explodes(mon, mattk) {
-    const dam = mattk[2] ? d(mattk[2], mattk[3])
-              : mattk[3] ? d(game.mons[mon.mnum].mlevel + 1, mattk[3])
-                : 0;
-    const name = game.mons[mon.mnum].pmnames?.[2] || 'monster';
-    const possessive = name.endsWith('s') ? `${name}'` : `${name}'s`;
-    const blast = `${possessive} explosion`;
-    const x = mon.mx, y = mon.my;
-
-    /* tmp_at(DISP_END) restores every blast square before the messages and
-       damage are processed. */
-    for (let xx = x - 1; xx <= x + 1; xx++)
-        for (let yy = y - 1; yy <= y + 1; yy++)
-            if (isok(xx, yy))
-                newsym(xx, yy);
-
-    await pline('Boom!');
-
-    if (dam) {
-        for (let xx = x - 1; xx <= x + 1; xx++) {
-            for (let yy = y - 1; yy <= y + 1; yy++) {
-                if (!isok(xx, yy))
-                    continue;
-                const mtmp = m_at(xx, yy);
-                if (!mtmp || DEADMONSTER(mtmp))
-                    continue;
-                if (cansee(xx, yy))
-                    await pline(`${Monnam(mtmp)} is caught in the ${blast}!`);
-                const itemdmg = await destroy_items(mtmp, ATTKS.AD_PHYS, dam);
-                let mdam = dam;
-                if (resist(mtmp, MON_EXPLODE, 0, false))
-                    mdam = Math.trunc((dam + 1) / 2);
-                mtmp.mhp -= mdam + itemdmg;
-                if (DEADMONSTER(mtmp))
-                    await xkilled(mtmp, XKILL_GIVEMSG);
-                else
-                    await setmangry(mtmp, true);
-            }
-        }
-
-        if (Math.abs(game.u.ux - x) <= 1 && Math.abs(game.u.uy - y) <= 1) {
-            await You(`are caught in the ${blast}!`);
-            await destroy_items(game.youmonst, ATTKS.AD_PHYS, dam);
-            game.u.uhp -= dam;
-            (game.disp ||= {}).botl = true;
-            exercise(A_STR, false);
-        }
-    }
-}
 
 // src/mon.c:3181 corpse_chance() -- does the kill leave a corpse at all?
 // The ordinary tail is the draw: !rn2(2 + rare + verysmall).
@@ -3597,4 +3554,177 @@ export async function get_iter_mons(bfunc) {
             return mtmp;
     }
     return null;
+}
+
+// src/mon.c:2696 mon_leaving_level(), bookkeeping for a monster leaving the
+// level by migration or death: off the map, unstuck, mimicry revealed.
+export async function mon_leaving_level(mon) {
+    const mx = mon.mx, my = mon.my;
+    const onmap = (isok(mx, my) && m_at(mx, my) === mon);
+
+    /* to prevent an infinite relobj-flooreffects-hmon-killed loop */
+    mon.mtrapped = 0;
+    await unstuck(mon); /* mon is not swallowing or holding you nor held by you */
+
+    /* vault guard might be at <0,0> */
+    if (onmap || mon === m_at(0, 0)) {
+        if (mon.wormno)
+            await remove_worm(mon);
+        else
+            remove_monster(mx, my);
+    }
+    if (onmap) {
+        mon.mundetected = 0; /* for migration; doesn't matter for death */
+        /* mimic must be revealed if it is going to migrate to another level
+           or it is accompanying the hero to another level */
+        if (mon.m_ap_type !== M_AP_NOTHING && mon.m_ap_type !== M_AP_MONSTER)
+            seemimic(mon);
+        await fill_pit(mx, my);
+        newsym(mx, my);
+    }
+    if (mon === game.context?.polearm?.hitmon)
+        game.context.polearm.hitmon = null;
+}
+
+// src/mon.c:2561 relmon(), take a monster off the level's monster list,
+// prepending it to migrating_mons or mydogs when a list is given.
+export async function relmon(mon, monst_list) {
+    if (!(game.level?.monsters || []).length)
+        throw new Error('relmon: no fmon available.');
+
+    await mon_leaving_level(mon);
+
+    const idx = game.level.monsters.indexOf(mon);
+    if (idx < 0)
+        throw new Error('relmon: mon not in list.');
+    game.level.monsters.splice(idx, 1);
+
+    if (monst_list) /* put on migrating_mons or mydogs */
+        monst_list.unshift(mon);
+}
+
+// src/mon.c:4698 maybe_unhide_at(), a hider at <x,y> that lost its cover
+// stops hiding.
+export function maybe_unhide_at(x, y) {
+    let mtmp;
+    let undetected = false, trapped = false;
+
+    if ((mtmp = m_at(x, y)) != null) {
+        undetected = !!mtmp.mundetected;
+        trapped = !!mtmp.mtrapped;
+    } else if (u_at(x, y)) {
+        mtmp = game.youmonst;
+        undetected = !!game.u.uundetected;
+        trapped = !!game.u.utrap;
+    } else {
+        return;
+    }
+    if (undetected
+        && ((hides_under(mtmp.data)
+             && (!OBJ_AT(x, y) || trapped
+                 || !can_hide_under_obj((game.level.objects || [])
+                                        .find(o => o.ox === x && o.oy === y))))
+            || (mtmp.data.mlet === MONSYMS.S_EEL && !is_pool(x, y))))
+        hideunder(mtmp);
+}
+
+// src/mon.c pm_to_cham(); return the shapeshifter type for a monster index
+export function pm_to_cham(mndx) {
+    let mcham = NON_PM;
+
+    /* the shapeshifters are the only monsters who use 'cham' field */
+    if (ismnum(mndx) && is_shapeshifter(game.mons[mndx]))
+        mcham = mndx;
+    return mcham;
+}
+
+// src/mon.c:4527 iter_mons(); iterate all monsters on the level, calling
+// vfunc for each
+export function iter_mons(vfunc) {
+    for (const mtmp of [...(game.level.monsters || [])]) {
+        if (DEADMONSTER(mtmp) || mon_offmap(mtmp))
+            continue;
+        vfunc(mtmp);
+    }
+}
+
+// src/mon.c:5015 valid_vampshiftform(); Is this a valid shapeshift form for
+// a vampire?
+export function valid_vampshiftform(base, form) {
+    if (base >= LOW_PM && is_vampire(game.mons[base])) {
+        if (form === PMNAMES.PM_VAMPIRE_BAT || form === PMNAMES.PM_FOG_CLOUD
+            || (form === PMNAMES.PM_WOLF && base !== PMNAMES.PM_VAMPIRE))
+            return true;
+    }
+    return false;
+}
+
+// src/mon.c:5538 BREEDER_EGG
+const BREEDER_EGG = () => !rn2(77);
+
+// src/mon.c:5569 egg_type_from_parent(); the type of egg a monster lays;
+// caller must handle lays_eggs() check
+export function egg_type_from_parent(mnum, force_ordinary) {
+    if (force_ordinary || !BREEDER_EGG()) {
+        if (mnum === PMNAMES.PM_QUEEN_BEE)
+            mnum = PMNAMES.PM_KILLER_BEE;
+        else if (mnum === PMNAMES.PM_WINGED_GARGOYLE)
+            mnum = PMNAMES.PM_GARGOYLE;
+    }
+    return mnum;
+}
+
+// src/mon.c:5609 kill_eggs(); kill off any eggs of genocided monsters
+export function kill_eggs(obj_list) {
+    for (const otmp of (obj_list || [])) {
+        if (otmp.otyp === ONAMES.EGG) {
+            if (dead_species(otmp.corpsenm, true)) {
+                /*
+                 * It seems we could also just catch this when
+                 * it attempted to hatch, so we wouldn't have to
+                 * search all of the objlists.. or stop all
+                 * hatch timers based on a corpsenm.
+                 */
+                kill_egg(otmp);
+            }
+        } else if (Has_contents(otmp)) {
+            kill_eggs(otmp.cobj);
+        }
+    }
+}
+
+// src/mon.c:5639 kill_genocided_monsters(); kill all monsters of a genocided
+// species (and their eggs, everywhere)
+export async function kill_genocided_monsters() {
+    let kill_cham;
+    let mndx;
+
+    /*
+     * Called during genocide, and again upon level change.  The latter
+     * catches up with any migrating monsters as they finally arrive at
+     * their intended destinations, so possessions get deposited there.
+     *
+     * The initial genocide is what removes any level-resident monsters
+     * of the genocided species.
+     */
+    for (const mtmp of [...(game.level.monsters || [])]) {
+        if (DEADMONSTER(mtmp))
+            continue;
+        mndx = monsndx(mtmp.data);
+        kill_cham = (ismnum(mtmp.cham ?? NON_PM)
+                     && (game.mvitals[mtmp.cham].mvflags & G_GENOD));
+        if ((game.mvitals[mndx].mvflags & G_GENOD) || kill_cham) {
+            if (ismnum(mtmp.cham ?? NON_PM) && !kill_cham)
+                newcham(mtmp, null, NC_SHOW_MSG);
+            else
+                await mondead(mtmp);
+        }
+        if (mtmp.minvent)
+            kill_eggs(mtmp.minvent);
+    }
+
+    kill_eggs(game.invent);
+    kill_eggs(game.level.objects);
+    kill_eggs(game.migrating_objs);
+    kill_eggs(game.level.buriedobjs);
 }

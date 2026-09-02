@@ -8,6 +8,7 @@
 // rather than open-coding the prefix at each call site -- "You " and "Your "
 // carry a trailing space that is easy to lose.
 
+import { PLINE_VERBALIZE } from './const.js';
 import { pline } from './display.js';
 import { game } from './gstate.js';
 import { Deaf, Unaware, Underwater } from './youprop.js';
@@ -103,4 +104,32 @@ export async function Norep(line) {
 // event list. Turn stamps come from svm.moves.
 export function livelog_add(text) {
     (game.gamelog ||= []).push({ turn: game.moves | 0, text });
+}
+
+// src/pline.c:531 gamelog_add()
+export function gamelog_add(glflags, gltime, msg) {
+    (game.gamelog ||= []).push({ flags: glflags, turn: gltime, text: msg });
+}
+
+// src/pline.c:514 livelog_printf(); the #chronicle entry and the LIVELOG
+// file line
+export function livelog_printf(ll_type, line) {
+    gamelog_add(ll_type, game.moves | 0, line);
+    /* livelog_add(ll_type, line) writes the livelog file; no screen effect */
+}
+
+// src/pline.c:138 pline_mon(), pline() with the message located at a monster.
+export async function pline_mon(mtmp, line) {
+    if (mtmp === game.youmonst)
+        set_msg_xy(0, 0);
+    else
+        set_msg_xy(mtmp.mx, mtmp.my);
+    await pline(line);
+}
+
+// src/pline.c:476 verbalize(), speech: the line wrapped in double quotes.
+export async function verbalize(line) {
+    game.pline_flags = (game.pline_flags | 0) | PLINE_VERBALIZE;
+    await pline('"' + line + '"');
+    game.pline_flags &= ~PLINE_VERBALIZE;
 }

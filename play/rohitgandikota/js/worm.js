@@ -5,6 +5,14 @@
 // when makemon builds one (the tail segments and their random placement).
 // Worm movement, cutting and hp bookkeeping are recorded when reached.
 
+import { NO_COLOR, ATR_INVERSE as TERM_INVERSE } from './terminal.js';
+import { def_monsyms } from './drawing_data.js';
+import { show_glyph_cell } from './display.js';
+import { NUMMONS } from './monst_data.js';
+import { rn2_on_display_rng } from './rng.js';
+import { Hallucination } from './youprop.js';
+import { NON_PM } from './const.js';
+import { PMNAMES } from './monst_data.js';
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { newsym } from './display.js';
@@ -216,4 +224,69 @@ export function flip_worm_segs_vertical(worm, miny, maxy) {
 
 export function flip_worm_segs_horizontal(worm, minx, maxx) {
     flip_worm_segs(worm, 'x', minx, maxx);
+}
+
+// src/worm.c:487 see_wsegs(), redisplay a worm's tail segments.
+export function see_wsegs(worm) {
+    const w = wstate();
+    let curr = w.wtails[worm.wormno];
+
+    while (curr !== w.wheads[worm.wormno]) {
+        newsym(curr.wx, curr.wy);
+        curr = curr.nseg;
+    }
+}
+
+// src/worm.c:308 wormgone(), the tail goes away when the worm leaves the
+// level (or dies); the worm itself is still a long worm.
+export function wormgone(worm) {
+    const w = wstate();
+    const wnum = worm.wormno;
+
+    /* if (!wnum) impossible("wormgone: wormno is 0"); [runs to completion] */
+    worm.wormno = 0; /* still a long worm but doesn't grow/shrink anymore */
+    toss_wsegs(w.wtails[wnum], true);
+    w.wheads[wnum] = w.wtails[wnum] = null;
+    w.wgrowtime[wnum] = 0;
+    /* when a long worm gets created by a polymorph zap, it gets flagged
+       with MCORPSENM()==PM_LONG_WORM so that the same zap won't trigger
+       another polymorph if it hits the new tail */
+    if (worm.data?.pmidx === PMNAMES.PM_LONG_WORM && worm.mcorpsenm != null)
+        worm.mcorpsenm = NON_PM; /* no longer polymorph-proof */
+}
+
+// src/worm.c:714 remove_worm(), take a worm's tail segments off the map.
+export async function remove_worm(worm) {
+    const { remove_monster } = await import('./makemon.js');
+    const w = wstate();
+    let curr = w.wtails[worm.wormno];
+
+    while (curr) {
+        if (curr.wx) {
+            remove_monster(curr.wx, curr.wy);
+            newsym(curr.wx, curr.wy);
+            curr.wx = 0;
+        }
+        curr = curr.nseg;
+    }
+}
+
+// src/worm.c:503 detect_wsegs(), show a long worm's tail segments, with the
+// detection glyph when asked for.
+export function detect_wsegs(worm, use_detection_glyph) {
+    const w = wstate();
+    let curr = w.wtails[worm.wormno];
+    /* what_mon(PM_LONG_WORM_TAIL, newsym_rn2) */
+    const what_tail = Hallucination() ? rn2_on_display_rng(NUMMONS)
+                                      : PMNAMES.PM_LONG_WORM_TAIL;
+    const shown = game.mons[what_tail];
+    const attr = (use_detection_glyph && game.flags?.use_inverse !== false)
+                 ? TERM_INVERSE : 0;
+
+    while (curr !== w.wheads[worm.wormno]) {
+        show_glyph_cell(curr.wx, curr.wy, def_monsyms[shown.mlet] || '?',
+                        shown.mcolor ?? NO_COLOR, false, attr,
+                        { kind: 'mon', mon: worm });
+        curr = curr.nseg;
+    }
 }

@@ -9,6 +9,14 @@
 // when the role has no fixed pet, then a whole collect_coords() ring shuffle
 // from enexto() to place it.
 
+import { vision_recalc } from './vision.js';
+import { emits_light } from './mondata.js';
+import { ledger_to_dnum, ledger_to_dlev, depth, In_W_tower } from './dungeon.js';
+import { relmon } from './mon.js';
+import { m_unleash } from './apply.js';
+import { count_wsegs, wormgone } from './worm.js';
+import { picked_container, set_residency } from './shk.js';
+import { Has_contents, MAX_NUM_WORMS } from './const.js';
 import { game } from './gstate.js';
 import { which_armor } from './worn.js';
 import { DEADMONSTER, is_vampshifter, MON_WEP } from './monst.js';
@@ -1272,7 +1280,7 @@ function best_target(mtmp, forced) {
 // dog_move calls this AFTER its position loop and BEFORE committing the move
 // (src/dogmove.c:1273). We were not calling it at all, which is why seed0102
 // and seed0105 both stop at score_targ's rnd(5).
-async function pet_ranged_attk(mtmp, forced) {
+export async function pet_ranged_attk(mtmp, forced) {
     let hungry = false;
 
     /* How hungry is the pet? */
@@ -2337,4 +2345,80 @@ export async function mon_catchup_elapsed_time(mtmp, nmv) {
     healmon(mtmp, heal, 0);
 
     mtmp.mlstmv = game.moves;               /* set_mon_lastmove() */
+}
+
+// src/dog.c:729 mon_leave(), what a monster does when it departs the level;
+// returns the (possibly truncated) count of long worm tail segments.
+export function mon_leave(mtmp) {
+    let num_segs = 0; /* return value */
+
+    /* set minvent's obj->no_charge to 0 */
+    for (const obj of (mtmp.minvent || [])) {
+        if (Has_contents(obj))
+            picked_container(obj); /* does the right thing */
+        obj.no_charge = 0;
+    }
+
+    /* if this is a shopkeeper, clear the 'resident' field of her shop;
+       if/when she returns, it will be set back by mon_arrive()  */
+    if (mtmp.isshk)
+        set_residency(mtmp, true);
+
+    /* if this is a long worm, handle its tail segments before mtmp itself;
+       we pass possibly truncated segment count to caller via return value  */
+    if (mtmp.wormno) {
+        const cnt = count_wsegs(mtmp), mx = mtmp.mx, my = mtmp.my;
+
+        /* since monst->wormno is overloaded to hold the number of
+           tail segments during migration, a very long worm with
+           more segments than can fit in that field gets truncated */
+        num_segs = Math.min(cnt, MAX_NUM_WORMS - 1);
+        wormgone(mtmp);
+        /* put the worm's head back in the level's map; wormgone() removed
+           it and relmon() expects it to still be there unless this
+           is happening during a failed attempt to migrate to this level */
+        if (mx)
+            place_monster(mtmp, mx, my);
+    }
+    return num_segs;
+}
+
+// src/dog.c:887 migrate_to_level(), send a monster off to another level.
+export async function migrate_to_level(mtmp, tolev, xyloc, cc) {
+    const new_lev = { dnum: 0, dlevel: 0 };
+    let xyflags;
+    const mx = mtmp.mx, my = mtmp.my; /* <mx,my> needed below */
+    let num_segs; /* count of worm segments */
+
+    if (mtmp.mleashed) {
+        mtmp.mtame--;
+        await m_unleash(mtmp, true);
+    }
+
+    num_segs = mon_leave(mtmp);
+    await relmon(mtmp, (game.migrating_mons ||= [])); /* mtmp->mx,my retain their value */
+    mtmp.mstate = (mtmp.mstate || 0) | MON_MIGRATING;
+
+    new_lev.dnum = ledger_to_dnum(tolev);
+    new_lev.dlevel = ledger_to_dlev(tolev);
+    /* overload mtmp->[mx,my], mtmp->[mux,muy], and mtmp->mtrack[] as */
+    /* destination codes */
+    xyflags = (depth(new_lev) < depth(game.u.uz)) ? 1 : 0; /* 1 => up */
+    if (In_W_tower(mx, my, game.u.uz))
+        xyflags |= 2;
+    mtmp.wormno = num_segs;
+    mtmp.mlstmv = game.moves;
+    mtmp.mtrack ||= [];
+    mtmp.mtrack[2] = { x: game.u.uz.dnum,   /* migrating from this dungeon */
+                       y: game.u.uz.dlevel }; /* migrating from this dungeon level */
+    mtmp.mtrack[1] = { x: cc ? cc.x : mx, y: cc ? cc.y : my };
+    mtmp.mtrack[0] = { x: xyloc, y: xyflags };
+    mtmp.mux = new_lev.dnum;
+    mtmp.muy = new_lev.dlevel;
+    mtmp.mx = mtmp.my = 0; /* mx==0 implies migrating */
+
+    /* don't extinguish a mobile light; it still exists but has changed
+       from local (monst->mx > 0) to global (mx==0, not on this level) */
+    if (emits_light(mtmp.data))
+        vision_recalc(0);
 }

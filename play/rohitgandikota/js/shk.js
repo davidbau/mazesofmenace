@@ -6,6 +6,15 @@
 // own combat are not ported. js/shknam.js holds the naming and stocking half
 // (shtypes, nameshk, stock_room), which is src/shknam.c.
 
+import { ismnum, OBJ_MINVENT } from './const.js';
+import { carried } from './obj.js';
+import { the_unique_pm } from './objnam.js';
+import { type_is_pname } from './mondata.js';
+import { y_monnam } from './do_name.js';
+import { shkname } from './shknam.js';
+import { Your } from './pline.js';
+import { get_obj_location } from './zap.js';
+import { update_inventory } from './invent.js';
 import { game } from './gstate.js';
 import { ESHK, SHOPBASE, IS_DOOR, ROOMOFFSET, NO_ROOM, A_CHA, MAXULEV,
          HUNGRY, PICK_ANY, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE,
@@ -96,6 +105,67 @@ export function hot_pursuit(shkp) {
 function note_unported_shk(what) {
     (game.unported ||= new Set()).add('shk:' + what);
     return false;
+}
+
+// src/shk.c:215 next_shkp() — the next shopkeeper on the monster list,
+// optionally only one with a bill; an angry one without a surcharge gets
+// riled.
+export function next_shkp(shkp, withbill) {
+    const mons = game.level?.monsters || [];
+    let i = shkp ? mons.indexOf(shkp) : -1;
+    let found = null;
+    for (; i >= 0 && i < mons.length; i++) {
+        const m = mons[i];
+        if (DEADMONSTER(m))
+            continue;
+        const eshk = m.isshk ? (m.eshk || ESHK(m)) : null;
+        if (m.isshk && ((eshk?.bill_p?.length || 0) || !withbill)) {
+            found = m;
+            break;
+        }
+    }
+    if (found) {
+        if (!found.mpeaceful) {                         /* ANGRY(shkp) */
+            const eshk = found.eshk || ESHK(found);
+            if (!eshk.surcharge)
+                rile_shk(found);
+        }
+    }
+    return found;
+}
+
+// src/shk.c:1136 onbill() — the bill entry for obj on this shopkeeper's bill.
+export function onbill(obj, shkp, silent) {
+    if (shkp) {
+        const eshk = shkp.eshk || ESHK(shkp);
+        for (const bp of eshk.bill_p || []) {
+            if (bp.bo_id === obj.o_id) {
+                /* if (!obj->unpaid) impossible("onbill: paid obj on bill?") */
+                return bp;
+            }
+        }
+    }
+    /* if (obj->unpaid && !silent) impossible("onbill: unpaid obj %s?", ...) */
+    return null;
+}
+
+// src/shk.c:3237 alter_cost() — an unpaid object was changed (enchanted,
+// eroded, ...); re-price it on the bill, never lowering the price unless
+// amt is negative.
+export function alter_cost(obj, amt) {
+    let bp = null;
+
+    for (let shkp = next_shkp(game.level?.monsters?.[0] ?? null, true); shkp;
+         shkp = next_shkp(game.level?.monsters?.[game.level.monsters.indexOf(shkp) + 1] ?? null, true)) {
+        if ((bp = onbill(obj, shkp, true)) != null) {
+            const new_price = !amt ? get_cost(obj, shkp) : (amt < 0) ? -amt : amt;
+            if (new_price > bp.price || amt < 0) {
+                bp.price = new_price;
+                update_inventory();
+            }
+            break; /* done */
+        }
+    }
 }
 
 // src/shk.c:439 record_price_quote()
@@ -484,7 +554,7 @@ export async function u_left_shop(leavestring, newlev) {
 
 // src/shk.c:2846 get_pricing_units(). Ordinary stacks price by quantity;
 // globs price by their current weight.
-function get_pricing_units(obj) {
+export function get_pricing_units(obj) {
     let units = obj.quan || 1;
     if (obj.globby) {
         const unitWeight = game.objects[obj.otyp]?.oc_weight || 0;
@@ -629,7 +699,7 @@ function getprice(obj, shk_buying = false) {
 }
 
 // src/shk.c:2877 get_cost(), what the shopkeeper charges for one item.
-function get_cost(obj, shkp) {
+export function get_cost(obj, shkp) {
     let tmp = getprice(obj);
     let multiplier = 1, divisor = 1;
     const ocl = game.objects[obj.otyp];
@@ -845,7 +915,7 @@ export async function check_unpaid(obj) {
 
 // src/shk.c:3085 picked_container(). Once a container leaves the floor, its
 // contents no longer use floor-only no_charge ownership markers.
-function picked_container(obj) {
+export function picked_container(obj) {
     for (const contained of obj.cobj || []) {
         if (contained.oclass === OCLASSES.COIN_CLASS)
             continue;
@@ -2576,4 +2646,171 @@ export function noisy_shop(sroom) {
     const mtmp = sroom.resident;
     if (mtmp && inhishop(mtmp))
         wake_nearto(mtmp.mx, mtmp.my, 11 * 11);
+}
+
+// include/dungeon.h:112 on_level()
+const on_level = (a, b) => !!a && !!b && a.dnum === b.dnum && a.dlevel === b.dlevel;
+
+// src/shk.c:272 set_residency(), record (or clear) a shopkeeper as the
+// resident of its shop while on the shop's level.
+export function set_residency(shkp, zero_out) {
+    const eshk = shkp.eshk || ESHK(shkp);
+
+    if (on_level(eshk.shoplevel, game.u.uz)) {
+        const roomidx = eshk.shoproom - ROOMOFFSET;
+        const room = game.level?.rooms?.[roomidx]
+            || (game.level?.subrooms || [])
+                .find(candidate => candidate.roomnoidx === roomidx);
+
+        if (room)
+            room.resident = (zero_out) ? null : shkp;
+    }
+}
+
+/* src/shk.c:632 credit_report()'s static credit_snap[][] */
+const credit_snap = [[0, 0, 0], [0, 0, 0]];
+const BEFORE = 0, NOW = 1;
+
+// src/shk.c:628 credit_report(), remember (idx 0) or report (idx 1) how
+// the hero's credit, debt, and loan changed.
+export async function credit_report(shkp, idx, silent) {
+    const eshkp = shkp.eshk || ESHK(shkp);
+
+    if (!idx) {
+        credit_snap[BEFORE][0] = credit_snap[NOW][0] = 0;
+        credit_snap[BEFORE][1] = credit_snap[NOW][1] = 0;
+        credit_snap[BEFORE][2] = credit_snap[NOW][2] = 0;
+    } else {
+        idx = 1;
+    }
+    credit_snap[idx][0] = eshkp.credit | 0;
+    credit_snap[idx][1] = eshkp.debit | 0;
+    credit_snap[idx][2] = eshkp.loan | 0;
+
+    if (idx && !silent) {
+        let amt = 0;
+        let msg = 'debt has increased';
+
+        if (credit_snap[NOW][0] < credit_snap[BEFORE][0]) {
+            amt = credit_snap[BEFORE][0] - credit_snap[NOW][0];
+            msg = 'credit has been reduced';
+        } else if (credit_snap[NOW][1] > credit_snap[BEFORE][1]) {
+            amt = credit_snap[NOW][1] - credit_snap[BEFORE][1];
+        } else if (credit_snap[NOW][2] > credit_snap[BEFORE][2]) {
+            amt = credit_snap[NOW][2] - credit_snap[BEFORE][2];
+        }
+        if (amt)
+            await Your(`${msg} by ${amt} ${currency(amt)}.`);
+    }
+}
+
+// src/shk.c:2995 contained_cost(), the price of a container's contents
+// (usell: what the shopkeeper would pay; else what the hero owes).
+export function contained_cost(obj, shkp, price, usell, unpaid_only) {
+    let top;
+    const cc = { x: 0, y: 0 };
+    let on_floor, freespot;
+
+    for (top = obj; top.where === OBJ_CONTAINED; top = top.ocontainer)
+        continue;
+    /* pick_obj() removes item from floor, adds it to shop bill, then
+       puts it in inventory; behave as if it is still on the floor
+       during the add-to-bill portion of that situation */
+    on_floor = (top.where === OBJ_FLOOR || top.where === OBJ_FREE);
+    if (top.where === OBJ_FREE || !get_obj_location(top, cc, 0))
+        cc.x = game.u.ux, cc.y = game.u.uy;
+    const eshkp = shkp.eshk || ESHK(shkp);
+    freespot = (on_floor && cc.x === eshkp.shk.x && cc.y === eshkp.shk.y);
+
+    /* price of contained objects; "top" container handled by caller */
+    for (const otmp of (obj.cobj || [])) {
+        if (otmp.oclass === OCLASSES.COIN_CLASS)
+            continue;
+
+        if (usell) {
+            /* saleable() and set_cost(), the selling side, are not ported */
+            note_unported_shk('contained_cost:usell');
+        } else {
+            /* the hero is asked to pay for unpaid items (contents of
+               floor containers) inside shop proper;
+               items on freespot are implicitly 'no charge' */
+            if (on_floor ? (!otmp.no_charge && !freespot)
+                         : (otmp.unpaid || !unpaid_only))
+                price += get_cost(otmp, shkp) * get_pricing_units(otmp);
+        }
+        if (Has_contents(otmp))
+            price = contained_cost(otmp, shkp, price, usell, unpaid_only);
+    }
+    return price;
+}
+
+// src/shk.c:3451 billable(), is obj something a shopkeeper would bill?
+// shkpp.shkp is the shopkeeper in (non-null if already validated) and out.
+export function billable(shkpp, obj, roomno, reset_nocharge) {
+    let shkp = shkpp.shkp;
+
+    if (!shkp) {
+        if (!roomno)
+            return false;
+        shkp = shop_keeper(roomno);
+        if (!shkp || !inhishop(shkp))
+            return false;
+    }
+    /* perhaps we threw it away earlier */
+    if (onbill(obj, shkp, false)
+        || (obj.oclass === OCLASSES.FOOD_CLASS && obj.oeaten))
+        return false;
+    /* outer container might be marked no_charge but still have contents
+       which should be charged for; clear no_charge when picking things up */
+    if (obj.no_charge) {
+        if (!Has_contents(obj) || (contained_gold(obj, true) === 0
+                                   && contained_cost(obj, shkp, 0, false,
+                                                     !reset_nocharge) === 0))
+            shkp = null; /* not billable */
+        if (reset_nocharge && !shkp && obj.oclass !== OCLASSES.COIN_CLASS) {
+            obj.no_charge = 0;
+            if (Has_contents(obj))
+                picked_container(obj); /* clear no_charge */
+        }
+    }
+    shkpp.shkp = shkp;
+    return shkp ? true : false;
+}
+
+/* src/decl.c c_common_strings.c_the_your[] */
+const the_your = ['the', 'your'];
+
+// src/shk.c:5885 shk_owns(), "<shk>'s" when a shopkeeper owns obj.
+function shk_owns(obj) {
+    let shkp;
+    const cc = { x: 0, y: 0 };
+
+    if (get_obj_location(obj, cc, 0)
+        && (obj.unpaid || (obj.where === OBJ_FLOOR && !obj.no_charge
+                            && costly_spot(cc.x, cc.y)))) {
+        shkp = shop_keeper(inside_shop(cc.x, cc.y));
+        return shkp ? s_suffix(shkname(shkp)) : the_your[0];
+    }
+    return null;
+}
+
+// src/shk.c:5900 mon_owns(), "<monster>'s" when a monster carries obj.
+function mon_owns(obj) {
+    if (obj.where === OBJ_MINVENT)
+        return s_suffix(y_monnam(obj.ocarry));
+    return null;
+}
+
+// src/shk.c:5862 shk_your(), the ownership prefix for an object name.
+export function shk_your(obj) {
+    const chk_pm = obj.otyp === ONAMES.CORPSE && ismnum(obj.corpsenm);
+    let buf = '';
+
+    if (chk_pm && type_is_pname(game.mons[obj.corpsenm]))
+        return buf; /* skip ownership prefix and space: "Medusa's corpse" */
+    else if (chk_pm && the_unique_pm(game.mons[obj.corpsenm]))
+        buf = 'the'; /* override ownership: "the Oracle's corpse" */
+    else if ((buf = shk_owns(obj)) == null && (buf = mon_owns(obj)) == null)
+        buf = the_your[carried(obj) ? 1 : 0];
+    return buf + ' ';
 }

@@ -1560,7 +1560,7 @@ export async function dropz(obj, with_impact) {
         stackobj(obj);
         newsym(game.u.ux, game.u.uy);   /* remap location under self */
     }
-    encumber_msg();
+    await encumber_msg();
 }
 
 // src/do.c dropy() — dropz with no impact.

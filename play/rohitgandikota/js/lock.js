@@ -6,13 +6,19 @@
 // Dexterity and Constitution, and a session that opens a door runs one call
 // short of C without it.
 
+import { Role_if } from './attrib.js';
 import { game } from './gstate.js';
 import { pline_xy } from './pline.js';
 import { rnl } from './rng.js';
 import { A_STR, A_DEX, A_CON, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, D_ISOPEN, D_TRAPPED, IS_DOOR, ECMD_OK, ECMD_TIME } from './const.js';
 import { newsym } from './display.js';
 import { exercise, acurrstr, ACURR } from './attrib.js';
-import { get_adjacent_loc } from './cmd.js';
+import { get_adjacent_loc, closed_door } from './cmd.js';
+import { container_at, doloot } from './pickup.js';
+import { is_db_wall } from './dbridge.js';
+import { update_mapseen_for } from './dungeon.js';
+import { DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, u_at } from './const.js';
+import { Blind } from './youprop.js';
 import { m_at } from './mon.js';
 import { is_door_mappear } from './monst.js';
 import { nohands } from './mondata.js';
@@ -66,21 +72,67 @@ export async function doopen_indir(x, y) {
         return ECMD_OK;
     }
 
-    if (verysmall(game.mons[game.u.umonnum])) {
-        /* "You're too small to pull the door open." */
-        return res;
-    }
+    let dirprompt = null; /* have get_adjacent_loc() -> getdir() use default */
+    if (game.u.utrap && game.u.utraptype === TT_PIT
+        && container_at(game.u.ux, game.u.uy, false))
+        dirprompt = 'Open where? [.>]';
 
     if (x > 0 && y >= 0) {
+        /* nonzero <x,y> is used when hero in amorphous form tries to
+           flow under a closed door at <x,y>; the test here was using
+           'y > 0' but that would give incorrect results if doors are
+           ever allowed to be placed on the top row of the map */
         cc.x = x;
         cc.y = y;
-    } else if (!await get_adjacent_loc(null, null, game.u.ux, game.u.uy, cc)) {
+    } else if (!await get_adjacent_loc(dirprompt, null, game.u.ux, game.u.uy, cc)) {
         return ECMD_OK;
     }
 
+    /* open at yourself/up/down: switch to loot unless there is a closed
+       door here (possible with Passes_walls) and direction isn't 'down' */
+    if (u_at(cc.x, cc.y) && (game.u.dz > 0 || !closed_door(game.u.ux, game.u.uy)))
+        return await doloot();
+
+    /* this used to be done prior to get_adjacent_loc() but doing so was
+       incorrect once open at hero's spot became an alternate way to loot */
+    if (game.u.utrap && game.u.utraptype === TT_PIT) {
+        await You_cant('reach over the edge of the pit.');
+        return ECMD_OK;
+    }
+
+    if (await stumble_on_door_mimic(cc.x, cc.y))
+        return ECMD_TIME;
+
+    /* when choosing a direction is impaired, use a turn
+       regardless of whether a door is successfully targeted */
+    if (game.u.uprops?.CONFUSION || game.u.uprops?.STUNNED)
+        res = ECMD_TIME;
+
     const door = game.level.at(cc.x, cc.y);
-    if (!door || !IS_DOOR(door.typ))
+    const portcullis = (is_drawbridge_wall(cc.x, cc.y) >= 0);
+    /* this used to be 'if (Blind)' but using a key skips that so we do too */
+    {
+        const oldglyph = door.glyph;
+        const oldlastseentyp = update_mapseen_for(cc.x, cc.y);
+
+        newsym(cc.x, cc.y);
+        if (door.glyph !== oldglyph
+            || game.level.at(cc.x, cc.y)?.lastseentyp !== oldlastseentyp)
+            res = ECMD_TIME; /* learned something */
+    }
+
+    if (portcullis || !IS_DOOR(door.typ)) {
+        /* closed portcullis or spot that opened bridge would span */
+        if (is_db_wall(cc.x, cc.y) || door.typ === DRAWBRIDGE_UP)
+            await There('is no obvious way to open the drawbridge.');
+        else if (portcullis || door.typ === DRAWBRIDGE_DOWN)
+            await pline_The('drawbridge is already open.');
+        else if (container_at(cc.x, cc.y, true))
+            await pline(`${Blind() ? 'Feels' : 'Seems'} like something lootable over there.`);
+        else
+            await You(`${Blind() ? 'feel' : 'see'} no door there.`);
         return res;
+    }
 
     if (!(door.doormask & D_CLOSED)) {
         /* src/lock.c:855-876 — say why the door won't open. */
@@ -120,6 +172,11 @@ export async function doopen_indir(x, y) {
                 note_unported_lock('doopen_indir:autounlock_kick');
             }
         }
+        return res;
+    }
+
+    if (verysmall(game.youmonst.data)) {
+        await pline("You're too small to pull the door open.");
         return res;
     }
 
@@ -875,4 +932,47 @@ export async function doforce() {
 /* include/hack.h:1330 ynq() */
 async function ynq(query) {
     return await tty_yn_function(query, 'ynq', 'q');
+}
+
+// src/lock.c:1056 boxlock(), magical locking/unlocking of a box.
+export async function boxlock(obj, otmp) /* obj *is* a box */
+{
+    let res = 0;
+
+    switch (otmp.otyp) {
+    case ONAMES.WAN_LOCKING:
+    case ONAMES.SPE_WIZARD_LOCK:
+        if (!obj.olocked) { /* lock it; fix if broken */
+            await pline('Klunk!');
+            obj.olocked = 1;
+            obj.obroken = 0;
+            if (Role_if(PMNAMES.PM_WIZARD))
+                obj.lknown = 1;
+            else
+                obj.lknown = 0;
+            res = 1;
+        } /* else already closed and locked */
+        break;
+    case ONAMES.WAN_OPENING:
+    case ONAMES.SPE_KNOCK:
+        if (obj.olocked) { /* unlock; isn't broken so doesn't need fixing */
+            await pline('Klick!');
+            obj.olocked = 0;
+            res = 1;
+            if (Role_if(PMNAMES.PM_WIZARD))
+                obj.lknown = 1;
+            else
+                obj.lknown = 0;
+        } else /* silently fix if broken */
+            obj.obroken = 0;
+        break;
+    case ONAMES.WAN_POLYMORPH:
+    case ONAMES.SPE_POLYMORPH:
+        /* maybe start unlocking chest, get interrupted, then zap it;
+           we must avoid any attempt to resume unlocking it */
+        if (game.xlock?.box === obj)
+            reset_pick();
+        break;
+    }
+    return res;
 }

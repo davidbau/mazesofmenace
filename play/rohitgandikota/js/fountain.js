@@ -4,6 +4,8 @@
 // Fountain and sink interactions.  The implemented arms preserve the C
 // source's draw order; unavailable side effects remain explicitly recorded.
 
+import { POLY_NOFLAGS } from './const.js';
+import { Unchanging } from './youprop.js';
 import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { more, pline } from './display.js';
@@ -569,10 +571,10 @@ export async function drinksink() {
         break;
     case 10:
         await pline(`This ${hliquid('water')} contains toxic wastes!`);
-        if (!game.u.uprops?.UNCHANGING) {
+        if (!Unchanging()) {
             await You('undergo a freakish metamorphosis!');
             const { polyself } = await import('./polyself.js');
-            await polyself();
+            await polyself(POLY_NOFLAGS);
         }
         break;
     case 13: {

@@ -324,18 +324,84 @@ export async function tty_yn_function(query, resp, def, addcmdq = false) {
         await bot();
     }
 
-    /* with a resp string, only the listed characters (plus the quitchars) are
-       accepted; anything else re-reads. */
+    /* win/tty/topl.c:430 — with a resp string the answer is lowercased
+       unless the allowed responses contain an uppercase letter; ESC picks
+       'q' or 'n' when allowed and the default otherwise; space, return and
+       newline pick the default; a '#' or a digit (when '#' is allowed)
+       reads a count; anything else rings the bell and reads again. */
+    const allow_num = !!resp && resp.includes('#');
+    const preserve_case = !resp || /[A-Z]/.test(resp);
+    const quitchars = ' \r\n\x1b';
     for (;;) {
         const c = await nhgetch();
-        const ch = (typeof c === 'string') ? c : String.fromCharCode(c);
+        let ch = (typeof c === 'string') ? c : String.fromCharCode(c);
         let answer = null;
-        if (!resp)
+        if (!resp) {
             answer = ch;
-        else if (resp.includes(ch))
-            answer = ch;
-        else if (ch === '\x1b' || ch === '\r' || ch === '\n' || ch === ' ')
-            answer = (def && def !== '\0') ? def : ch;
+        } else {
+            if (!preserve_case)
+                ch = ch.toLowerCase();
+            const digit_ok = allow_num && /^[0-9]$/.test(ch);
+            if (ch === '\x1b') {
+                answer = resp.includes('q') ? 'q'
+                       : resp.includes('n') ? 'n'
+                         : (def && def !== '\0') ? def : ch;
+            } else if (quitchars.includes(ch)) {
+                answer = (def && def !== '\0') ? def : ch;
+            } else if (!resp.includes(ch) && !digit_ok) {
+                /* tty_nhbell(); try again */
+            } else if (ch === '#' || digit_ok) {
+                let n_len = 0, value = 0;
+                let z;
+                addtopl('#'); n_len++;
+                if (ch !== '#') {
+                    addtopl(ch); n_len++;
+                    value = ch.charCodeAt(0) - 48;
+                    ch = '#';
+                }
+                do { /* loop until we get a non-digit */
+                    const zc = await nhgetch();
+                    z = (typeof zc === 'string') ? zc : String.fromCharCode(zc);
+                    if (!preserve_case)
+                        z = z.toLowerCase();
+                    if (/^[0-9]$/.test(z)) {
+                        value = value * 10 + (z.charCodeAt(0) - 48);
+                        if (value > 2147483647) { /* AppendLongDigit overflow */
+                            value = -1;
+                            break; /* overflow: try again */
+                        }
+                        addtopl(z); n_len++;
+                    } else if (z === 'y' || quitchars.includes(z)) {
+                        if (z === '\x1b')
+                            value = -1; /* abort */
+                        z = '\n';       /* break */
+                    } else if (z === '\x7f' || z === '\b') {
+                        if (n_len <= 1) {
+                            value = -1;
+                            break;
+                        } else {
+                            value = Math.trunc(value / 10);
+                            removetopl(1); n_len--;
+                        }
+                    } else {
+                        value = -1; /* abort */
+                        break;
+                    }
+                } while (z !== '\n');
+                if (value > 0)
+                    game.yn_number = value;
+                else if (value === 0)
+                    ch = 'n'; /* 0 => "no" */
+                else {       /* remove number from top line, then try again */
+                    removetopl(n_len); n_len = 0;
+                    ch = '\0';
+                }
+                if (ch !== '\0')
+                    answer = ch;
+            } else {
+                answer = ch;
+            }
+        }
         if (answer !== null) {
             if (addcmdq && !game.in_doagain) {
                 const { cmdq_add_key } = await import('../cmd.js');
@@ -344,5 +410,22 @@ export async function tty_yn_function(query, resp, def, addcmdq = false) {
             }
             return clean_up(answer);
         }
+    }
+}
+
+// win/tty/topl.c:452 tty_putmsghistory(msg, FALSE) — remember a line without
+// displaying it: the current top line moves to history and this becomes the
+// most recent one.
+export function putmsghistory(msg) {
+    if (msg) {
+        /* Caller is asking us to remember a top line that needed more.
+           Should we call more?  This can happen when the player has set
+           iflags.force_invmenu and they attempt to shoot with nothing in
+           the quiver. */
+        if (game._toplin === TOPLINE_NEED_MORE)
+            game._toplin = TOPLINE_NON_EMPTY;
+        /* move most recent message to history, make this become most recent */
+        remember_topl();
+        game._toplines = msg;
     }
 }

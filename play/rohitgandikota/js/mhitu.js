@@ -7,6 +7,16 @@
 // that are absent and are recorded through note_unported_mhitu() at the
 // exact C decision point, so game.unported names what a divergence wanted.
 
+import { mhitm_ad_poly } from './uhitm.js';
+import { monsndx } from './makemon.js';
+import { split_mon } from './potion.js';
+import { Your } from './pline.js';
+import { ugolemeffects } from './polyself.js';
+import { make_blinded, make_hallucinated } from './potion.js';
+import { mondead, wake_nearto } from './mon.js';
+import { resists_blnd } from './mondata.js';
+import { is_waterwall } from './dbridge.js';
+import { mon_explodes } from './explode.js';
 import { game } from './gstate.js';
 import { midnight, night } from './calendar.js';
 import { breamm, thrwmu, spitmm } from './mthrowu.js';
@@ -59,7 +69,7 @@ import { mhitm_ad_phys, mhitm_ad_fire, mhitm_ad_cold, mhitm_ad_elec,
          mhitm_ad_blnd, mhitm_ad_ston, mhitm_ad_drli,
          mhitm_ad_ench, mhitm_ad_samu, mhitm_knockback,
          mhitm_mgc_atk_negated, attk_protection, erode_armor,
-         golem_element_effects } from './uhitm.js';
+         golemeffects } from './uhitm.js';
 import { is_pool, t_at, newcham } from './mon.js';
 import { touch_petrifies, initedog } from './dog.js';
 import { find_offensive, use_offensive, mon_reflects } from './muse.js';
@@ -131,6 +141,9 @@ async function mhitm_ad_deth(magr, mhm) {
 
 // include/you.h:324 mhis() — possessive pronoun for a monster.
 export const mhis = (mtmp) => genders[pronoun_gender(mtmp, PRONOUN_HALLU)].his;
+// include/you.h:315 uhim(), :316 uhis()
+export const uhim = () => genders[game.flags?.female ? 1 : 0].him;
+export const uhis = () => genders[game.flags?.female ? 1 : 0].his;
 
 // include/objclass.h:79 — weapon strike directions.
 const PIERCE = 1, SLASH = 2, WHACK = 4;
@@ -344,153 +357,74 @@ async function wildmiss(mtmp, mattk) {
     }
 }
 
-// src/explode.c:26 explosionmask(), elemental subset used by an exploding
-// sphere. A resistant target still has vulnerable inventory destroyed, but
-// takes no direct blast damage and skips the later resist() draw.
-function elemental_explosion_resistance(mon, adtyp) {
-    if (mon === game.youmonst) {
-        if (adtyp === ATTKS.AD_FIRE)
-            return Fire_resistance();
-        if (adtyp === ATTKS.AD_COLD)
-            return Cold_resistance();
-        if (adtyp === ATTKS.AD_ELEC)
-            return Shock_resistance();
-        return false;
-    }
-    if (adtyp === ATTKS.AD_FIRE)
-        return resists_fire(mon);
-    if (adtyp === ATTKS.AD_COLD)
-        return resists_cold(mon);
-    if (adtyp === ATTKS.AD_ELEC)
-        return resists_elec(mon);
-    return false;
-}
-
-// src/explode.c:1018 mon_explodes() plus the elemental MON_EXPLODE slice of
-// explode(). Effects are applied in column-major map order, monsters first
-// and the hero last. That order controls both item-destruction and resistance
-// RNG, so it is part of the game state rather than presentation detail.
-async function mon_explodes_u(mtmp, mattk) {
-    const adtyp = mattk[1];
-    const dam = mattk[2] ? d(mattk[2], mattk[3])
-              : mattk[3] ? d(game.mons[mtmp.mnum].mlevel + 1, mattk[3])
-                : 0;
-    const mdat = game.mons[mtmp.mnum];
-    const blast = `${s_suffix(pmname(mdat, mtmp.female ? 1 : 0))} explosion`;
-    const x = mtmp.mx, y = mtmp.my;
-    const do_hallu = Hallucination();
-    const { destroy_items, resist } = await import('./zap.js');
-    const { m_at, mondead, monkilled, wake_nearto } = await import('./mon.js');
-
-    /* The exploder dies before targets are collected, so it cannot be caught
-       in its own blast. mondead() retains mx/my just as C does. */
-    await mondead(mtmp);
-    newsym(x, y);
-
-    let visible = false;
-    for (let xx = x - 1; xx <= x + 1; ++xx)
-        for (let yy = y - 1; yy <= y + 1; ++yy)
-            if (cansee(xx, yy))
-                visible = true;
-
-    if (visible) {
-        /* The temporary 3x3 explosion glyph is not yet shared with zap.js.
-           Restoring all cells gives the post-animation screen and preserves
-           the message boundary; record the missing transient frames. */
-        note_unported_mhitu('mon_explodes:visible_animation');
-        for (let xx = x - 1; xx <= x + 1; ++xx)
-            for (let yy = y - 1; yy <= y + 1; ++yy)
-                newsym(xx, yy);
-        await pline('Boom!');
-    } else {
-        await You_hear('a blast.');
-    }
-
-    if (dam) {
-        for (let xx = x - 1; xx <= x + 1; ++xx) {
-            for (let yy = y - 1; yy <= y + 1; ++yy) {
-                const target = m_at(xx, yy);
-                if (!target || DEADMONSTER(target))
-                    continue;
-
-                let target_blast = blast;
-                if (do_hallu) {
-                    let tryct = 0;
-                    do {
-                        target_blast = `${s_suffix(rndmonnam())} explosion`;
-                    } while (target_blast[0] !== target_blast[0].toLowerCase()
-                             && ++tryct < 20);
-                }
-                if (cansee(xx, yy))
-                    await pline(`${Monnam(target)} is caught in the ${target_blast}!`);
-
-                const itemdmg = await destroy_items(target, adtyp, dam);
-                if (elemental_explosion_resistance(target, adtyp)) {
-                    target.mhp -= itemdmg;
-                } else {
-                    let mdam = dam;
-                    if (resist(target, MON_EXPLODE, 0, false))
-                        mdam = Math.trunc((dam + 1) / 2);
-                    if (adtyp === ATTKS.AD_FIRE && resists_cold(target))
-                        mdam *= 2;
-                    else if (adtyp === ATTKS.AD_COLD && resists_fire(target))
-                        mdam *= 2;
-                    target.mhp -= mdam + itemdmg;
-                }
-                if (DEADMONSTER(target))
-                    await monkilled(target, '', adtyp);
-            }
-        }
-
-        if (Math.abs(game.u.ux - x) <= 1
-            && Math.abs(game.u.uy - y) <= 1) {
-            let hero_blast = blast;
-            if (do_hallu) {
-                do {
-                    hero_blast = `${s_suffix(rndmonnam())} explosion`;
-                } while (hero_blast[0] !== hero_blast[0].toLowerCase());
-            }
-            if (game.flags?.verbose)
-                await You(`are caught in the ${hero_blast}!`);
-            await destroy_items(game.youmonst, adtyp, dam);
-            if (!elemental_explosion_resistance(game.youmonst, adtyp)) {
-                game.u.uhp -= dam;
-                (game.disp ||= {}).botl = true;
-            }
-            exercise(A_STR, false);
-        }
-    }
-
-    wake_nearto(x, y, Math.max(dam * dam, 50));
-}
-
-// src/mhitu.c:1591 explmu() -- a contact explosion spends its own damage
-// roll before mon_explodes() rolls the actual area damage.
+// src/mhitu.c:1591 explmu(), a monster explodes at (or near) the hero.
 async function explmu(mtmp, mattk, ufound, indx) {
+    let kill_agr = true;
+    let not_affected;
+    let tmp;
+
     if (mtmp.mcan)
         return M_ATTK_MISS;
 
-    const tmp = d(mattk[2], mattk[3]);
-    const not_affected = defended(mtmp, mattk[1]);
+    tmp = d(mattk[2], mattk[3]);
+    not_affected = defended(mtmp, mattk[1]);
+
     if (!ufound) {
-        await pline(`${canseemon(mtmp) ? Monnam(mtmp) : 'It'} explodes at a spot in thin air!`);
+        await pline(`${canseemon(mtmp) ? Monnam(mtmp) : 'It'} explodes at a spot in ${
+                    is_waterwall(mtmp.mux, mtmp.muy) ? 'empty water' : 'thin air'}!`);
     } else {
         await hitmsg(mtmp, mattk, indx);
     }
 
-    if (mattk[1] === ATTKS.AD_COLD
-        || mattk[1] === ATTKS.AD_FIRE
-        || mattk[1] === ATTKS.AD_ELEC) {
-        await mon_explodes_u(mtmp, mattk);
-    } else {
-        note_unported_mhitu(`explmu:adtyp=${mattk[1]}`);
-    }
+    switch (mattk[1]) {
+    case ATTKS.AD_COLD:
+    case ATTKS.AD_FIRE:
+    case ATTKS.AD_ELEC:
+        await mon_explodes(mtmp, mattk);
+        if (!DEADMONSTER(mtmp))
+            kill_agr = false; /* lifesaving? */
+        break;
+    case ATTKS.AD_BLND:
+        not_affected = resists_blnd(game.youmonst);
+        if (ufound && !not_affected) {
+            /* sometimes you're affected even if it's invisible */
+            if (mon_visible(mtmp) || (rnd(tmp = Math.trunc(tmp / 2)) > game.u.ulevel)) {
+                await You('are blinded by a blast of light!');
+                await make_blinded(tmp, false);
+                if (!Blind())
+                    await Your('vision quickly clears.'); /* Your1(vision_clears) */
+            } else if (game.flags?.verbose !== false)
+                await You('get the impression it was not terribly bright.');
+        }
+        break;
+    case ATTKS.AD_HALU:
+        not_affected = not_affected || Blind() || (game.u.umonnum === PMNAMES.PM_BLACK_LIGHT
+                                  || game.u.umonnum === PMNAMES.PM_VIOLET_FUNGUS
+                                  || dmgtype(game.youmonst.data, ATTKS.AD_STUN));
+        if (ufound && !not_affected) {
+            let chg;
 
-    if (not_affected)
+            if (!Hallucination())
+                await You('are caught in a blast of kaleidoscopic light!');
+            /* avoid "It explodes.  You are freaked out." */
+            await mondead(mtmp);    /* remove it from map now */
+            kill_agr = false; /* already killed (maybe lifesaved) */
+            chg = await make_hallucinated((game.u.intrinsic?.HHallucination || 0) + tmp, false, 0);
+            await You(`${chg ? 'are freaked out' : 'seem unaffected'}.`);
+        }
+        break;
+    default:
+        /* impossible("unknown exploder damage type %d", mattk->adtyp); */
+        break;
+    }
+    if (not_affected) {
         await You('seem unaffected by it.');
-    const { wake_nearto } = await import('./mon.js');
+        await ugolemeffects(mattk[1], tmp);
+    }
+    if (kill_agr && !DEADMONSTER(mtmp))
+        await mondead(mtmp);
     wake_nearto(mtmp.mx, mtmp.my, 7 * 7);
-    return DEADMONSTER(mtmp) ? M_ATTK_AGR_DIED : M_ATTK_MISS;
+    return (!DEADMONSTER(mtmp)) ? M_ATTK_MISS : M_ATTK_AGR_DIED;
 }
 
 // src/mhitu.c:1680 gazemu(), common visibility and hallucination gates,
@@ -557,8 +491,7 @@ export async function gazemu(mtmp, mattk) {
             await You(`meet ${s_suffix(mon_nam(mtmp))} gaze.`);
             await stop_occupation();
             if (poly_when_stoned(game.youmonst.data)
-                && await polymon(PMNAMES.PM_STONE_GOLEM,
-                                 { allowSexChange: false }))
+                && await polymon(PMNAMES.PM_STONE_GOLEM))
                 return M_ATTK_MISS;
             await urgent_pline('You turn to stone...');
             game.killer = {
@@ -1239,6 +1172,8 @@ async function hitmu(mtmp, mattk, indx) {
         await mhitm_ad_blnd(mtmp, mattk, game.youmonst, mhm);
     } else if (mattk[1] === A.AD_STON) {
         await mhitm_ad_ston(mtmp, mattk, game.youmonst, mhm);
+    } else if (mattk[1] === A.AD_POLY) {
+        await mhitm_ad_poly(mtmp, mattk, game.youmonst, mhm);
     } else if (mattk[1] === A.AD_DRLI) {
         await mhitm_ad_drli(mtmp, mattk, game.youmonst, mhm);
     } else if (mattk[1] === A.AD_ENCH) {
@@ -1548,37 +1483,29 @@ async function passiveum_mon_to_stone(mtmp) {
     }
 }
 
-// src/mhitu.c:2613 cloneu() and src/potion.c:2873 split_mon().
-// A null attacker is water vapor; a monster attacker supplies the heat text.
-export async function split_you(attacker = null) {
+// src/mhitu.c:2616 cloneu()
+export function cloneu() {
     const u = game.u;
-    const mndx = game.youmonst.mnum;
+    let mon;
+    const mndx = monsndx(game.youmonst.data);
 
-    if (u.mh > u.mhmax)
-        u.mh = u.mhmax;
-    if (u.mh <= 1
-        || ((game.mvitals?.[mndx]?.mvflags ?? 0) & MFLAGS.G_EXTINCT) !== 0)
+    if (u.mh <= 1)
         return null;
-
-    const clone = makemon(game.youmonst.data, u.ux, u.uy,
-                          NO_MINVENT | MM_EDOG | MM_NOMSG);
-    if (!clone)
+    if (game.mvitals[mndx].mvflags & MFLAGS.G_EXTINCT)
         return null;
-
-    clone.mcloned = 1;
-    christen_monst(clone, game.plname);
-    initedog(clone, true);
-    clone.m_lev = game.youmonst.data.mlevel;
-    clone.mhpmax = u.mhmax;
-    clone.mhp = Math.trunc(u.mh / 2);
-    u.mh -= clone.mhp;
-    clone.mhpmax = Math.trunc(u.mhmax / 2);
-    u.mhmax -= clone.mhpmax;
+    mon = makemon(game.youmonst.data, u.ux, u.uy,
+                  NO_MINVENT | MM_EDOG | MM_NOMSG);
+    if (!mon)
+        return null;
+    mon.mcloned = 1;
+    mon = christen_monst(mon, game.plname);
+    initedog(mon, true);
+    mon.m_lev = game.youmonst.data.mlevel;
+    mon.mhpmax = u.mhmax;
+    mon.mhp = Math.trunc(u.mh / 2);
+    u.mh -= mon.mhp;
     (game.disp ||= {}).botl = true;
-    await You(attacker
-        ? `multiply from ${s_suffix(mon_nam(attacker))} heat!`
-        : 'multiply!');
-    return clone;
+    return mon;
 }
 
 async function passiveum(olduasmon, mtmp, mattk) {
@@ -1693,7 +1620,7 @@ async function passiveum(olduasmon, mtmp, mattk) {
             if (resists_cold(mtmp)) {
                 await shieldeff(mtmp.mx, mtmp.my);
                 await pline(`${Monnam(mtmp)} is mildly chilly.`);
-                await golem_element_effects(mtmp, A.AD_COLD, tmp);
+                await golemeffects(mtmp, A.AD_COLD, tmp);
                 tmp = 0;
                 break;
             }
@@ -1719,7 +1646,7 @@ async function passiveum(olduasmon, mtmp, mattk) {
                 game.u.mhmax = game.u.mh;
             (game.disp ||= {}).botl = true;
             if (game.u.mhmax > (game.youmonst.data.mlevel + 1) * 8)
-                await split_you(mtmp);
+                await split_mon(game.youmonst, mtmp);
             break;
         case A.AD_STUN:
             if (!mtmp.mstun) {
@@ -1733,7 +1660,7 @@ async function passiveum(olduasmon, mtmp, mattk) {
             if (resists_fire(mtmp)) {
                 await shieldeff(mtmp.mx, mtmp.my);
                 await pline(`${Monnam(mtmp)} is mildly warm.`);
-                await golem_element_effects(mtmp, A.AD_FIRE, tmp);
+                await golemeffects(mtmp, A.AD_FIRE, tmp);
                 tmp = 0;
                 break;
             }
@@ -1743,7 +1670,7 @@ async function passiveum(olduasmon, mtmp, mattk) {
             if (resists_elec(mtmp)) {
                 await shieldeff(mtmp.mx, mtmp.my);
                 await pline(`${Monnam(mtmp)} is slightly tingled.`);
-                await golem_element_effects(mtmp, A.AD_ELEC, tmp);
+                await golemeffects(mtmp, A.AD_ELEC, tmp);
                 tmp = 0;
                 break;
             }

@@ -160,11 +160,12 @@ function nhl_gamestate_save() {
         ubak: { ...g.u },
         disco: JSON.parse(JSON.stringify(g.disco ?? [])),
         mvitals: JSON.parse(JSON.stringify(g.mvitals ?? {})),
-        spl_book: JSON.parse(JSON.stringify(g.u.spl_book ?? [])),
+        /* svs.spl_book: the port keeps it as game.spl_book (spell.js) */
+        spl_book: JSON.parse(JSON.stringify(g.spl_book ?? [])),
     };
     g.lastinvnr = 51; /* next inventory letter will be 'a' */
-    if (g.u.spl_book)
-        g.u.spl_book = [];
+    /* memset(svs.spl_book, 0, ...) */
+    g.spl_book = [];
     g.gmst_stored = true;
     update_inventory();
 }
@@ -193,7 +194,7 @@ function nhl_gamestate_restore() {
     Object.assign(g.u, g.gmst.ubak);
     g.disco = g.gmst.disco;
     g.mvitals = g.gmst.mvitals;
-    g.u.spl_book = g.gmst.spl_book;
+    g.spl_book = g.gmst.spl_book;
     /* uname'd object types are cleared in C; ours stores oc_uname on
        game.objects entries */
     for (const oc of (g.objects || []))

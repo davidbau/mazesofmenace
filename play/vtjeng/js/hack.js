@@ -91,6 +91,7 @@ import {
     TEST_TRAP,
     TEST_MOVE,
     TRAVP_TRAVEL,
+    TRAVP_VALID,
     TIMER_OBJECT,
     TIP_GETPOS,
     TT_BEARTRAP,
@@ -123,6 +124,8 @@ import {
     classify_terrain,
     feel_location,
     flush_screen,
+    glyph_at,
+    glyph_is_cmap,
     glyph_is_invisible,
     glyph_to_cmap,
     newsym,
@@ -149,6 +152,7 @@ import {
     wipe_engr_at,
 } from './engrave.js';
 import { game } from './gstate.js';
+import { carrying } from './invent.js';
 import { doopen_indir } from './lock.js';
 import {
     amorphous,
@@ -189,10 +193,13 @@ import {
     COIN_CLASS,
     CORPSE,
     CREDIT_CARD,
+    DWARVISH_MATTOCK,
     LOCK_PICK,
+    PICK_AXE,
     SKELETON_KEY,
     STATUE,
     WATER_WALKING_BOOTS,
+    WAN_DIGGING,
 } from './objects.js';
 import {
     AT_EXPL,
@@ -345,7 +352,11 @@ export function weight_cap(state = game) {
             capacity = Math.trunc(capacity * mdat.cwt / WT_HUMAN);
         }
     }
-    if (state.u.usteed && strongmonst(state.u.usteed.data)) {
+    // hack.c:4330-4333. Levitation and the Plane of Air both provide the
+    // full carrying capacity even when no equipment changes u.uprops.
+    if (propertyActiveUnblocked(state, LEVITATION)
+        || Is_airlevel(state.u.uz)
+        || (state.u.usteed && strongmonst(state.u.usteed.data))) {
         capacity = MAX_CARR_CAP;
     } else {
         capacity = Math.min(capacity, MAX_CARR_CAP);
@@ -1621,6 +1632,12 @@ function requireHeldStepDestination(x, y, state) {
 // cmd.c establishes movement intent only after this hack.c admission seam has
 // shown that the destination is inside the currently ported domove() subset.
 export function preflightDomoveDestination(x, y, state = game, run = 0) {
+    // C's domove_core() never uses the requested adjacent destination while
+    // swallowed: it replaces the direction with (0, 0), repositions to
+    // u.ustuck->mx,my, and attacks that monster. Let that source-order branch
+    // run before this ordinary-destination admission seam examines x,y.
+    if (state.u?.uswallow) return;
+
     // The destination monster comes first, because domove_core() does: it
     // takes m_at() at hack.c:2763, runs its run-stop, then domove_bump_mon()
     // and domove_attackmon_at() at 2794-2799, and only reaches test_move() at
@@ -2419,12 +2436,10 @@ export async function test_move(
         return false;
     }
 
-    // C ref: hack.c:1216-1252, the boulder block. Two of its four arms are
-    // ported: the run arm that stops in front of a boulder the hero cannot get
-    // past, and the moverock() call that pushes one. The still_chewing() arm
-    // above it and the TEST_TRAV arm below it are not -- the first is refused
-    // by preflight_moverock(), the second belongs to findtravelpath(), which
-    // has no port and is the only caller that asks for TEST_TRAV.
+    // C ref: hack.c:1216-1252, the boulder block. The run arm stops in front
+    // of a boulder the hero cannot get past, the DO_MOVE arm pushes one, and
+    // the TEST_TRAV arm rejects Sokoban and consecutive boulders that cannot
+    // be bypassed. The still_chewing() arm remains behind preflight.
     //
     // A Passes_walls hero walks onto the square without touching the boulder,
     // outside Sokoban. No ported path grants the property, so the guard is
@@ -2446,6 +2461,28 @@ export async function test_move(
                 );
             }
             return false;
+        }
+        if (mode === TEST_TRAV) {
+            // hack.c:1231-1248. Travel never crosses a Sokoban boulder. On
+            // ordinary levels, a second boulder is allowed only when the
+            // hero can get through the current one, tunnel through it, or
+            // carries one of C's digging tools.
+            if (In_sokoban(state.u.uz)) return false;
+            if (sobj_at(BOULDER, ux, uy, state)
+                && !propertyPresent(state, PASSES_WALLS)
+                && !could_move_onto_boulder(
+                    ux, uy, state.u.dx ?? 0, state.u.dy ?? 0, state,
+                )
+                && !(tunnels(state.youmonst?.data)
+                    && !needspick(state.youmonst?.data))
+                && !carrying(PICK_AXE, state)
+                && !carrying(DWARVISH_MATTOCK, state)) {
+                const diggingWand = carrying(WAN_DIGGING, state);
+                if (!diggingWand
+                    || !objectType(diggingWand, state).oc_name_known) {
+                    return false;
+                }
+            }
         }
         if (mode === DO_MOVE) {
             // Every unported arm of moverock_core() is refused here rather
@@ -2515,14 +2552,15 @@ function travelSquareVisible(x, y, state) {
         || (!heroIsBlind(state) && couldsee(x, y, state)));
 }
 
-// C ref: hack.c findtravelpath() (1266-1459), ordinary TRAVP_TRAVEL arm.
-// The search grows a shortest path backwards from the selected destination.
+    // C ref: hack.c findtravelpath() (1266-1459). TRAVP_TRAVEL grows a
+    // shortest path backwards from the selected destination; TRAVP_VALID
+    // reverses the endpoints while checking a proposed destination.
 // Its frontier order is source-defined: cardinal directions first in W, N,
 // E, S order, then NW, NE, SE, SW. That order is observable when two paths
 // have the same length, so it is kept explicitly instead of relying on a
 // generic path-finding helper.
 export async function findtravelpath(mode = TRAVP_TRAVEL, state = game) {
-    if (mode !== TRAVP_TRAVEL) {
+    if (mode !== TRAVP_TRAVEL && mode !== TRAVP_VALID) {
         throw new UnsupportedHeroMoveBoundaryError(
             'non-ordinary travel path selection',
         );
@@ -2546,19 +2584,26 @@ export async function findtravelpath(mode = TRAVP_TRAVEL, state = game) {
             TEST_MOVE,
             state,
         )) {
-            state.u.dx = state.u.tx - state.u.ux;
-            state.u.dy = state.u.ty - state.u.uy;
-            nomul(0, state);
-            state.iflags.travelcc.x = 0;
-            state.iflags.travelcc.y = 0;
+            if (mode === TRAVP_TRAVEL) {
+                state.u.dx = state.u.tx - state.u.ux;
+                state.u.dy = state.u.ty - state.u.uy;
+                nomul(0, state);
+                state.iflags.travelcc.x = 0;
+                state.iflags.travelcc.y = 0;
+            }
             return true;
         }
-        state.context.run = 8;
+        if (mode === TRAVP_TRAVEL) state.context.run = 8;
     }
 
     if (state.u.tx === state.u.ux && state.u.ty === state.u.uy)
         return false;
 
+    const validTarget = mode === TRAVP_VALID;
+    const startX = validTarget ? state.u.ux : state.u.tx;
+    const startY = validTarget ? state.u.uy : state.u.ty;
+    const goalX = validTarget ? state.u.tx : state.u.ux;
+    const goalY = validTarget ? state.u.ty : state.u.uy;
     const travel = new Uint16Array(COLNO * ROWNO);
     const travelStepX = [[], []];
     const travelStepY = [[], []];
@@ -2566,8 +2611,8 @@ export async function findtravelpath(mode = TRAVP_TRAVEL, state = game) {
     let n = 1;
     let set = 0;
     let radius = 1;
-    travelStepX[0][0] = state.u.tx;
-    travelStepY[0][0] = state.u.ty;
+    travelStepX[0][0] = startX;
+    travelStepY[0][0] = startY;
 
     while (n !== 0) {
         let nn = 0;
@@ -2625,12 +2670,13 @@ export async function findtravelpath(mode = TRAVP_TRAVEL, state = game) {
                     TEST_TRAV,
                     state,
                 ) && travelSquareVisible(nx, ny, state)) {
-                    if (nx === state.u.ux && ny === state.u.uy) {
+                    if (nx === goalX && ny === goalY) {
                         const visited = travelMapGet(state, x, y);
-                        state.u.dx = x - state.u.ux;
-                        state.u.dy = y - state.u.uy;
-                        if ((x === state.u.tx && y === state.u.ty)
-                            || visited) {
+                        state.u.dx = x - goalX;
+                        state.u.dy = y - goalY;
+                        if (!validTarget
+                            && ((x === state.u.tx && y === state.u.ty)
+                                || visited)) {
                             nomul(0, state);
                             state.context.run = 8;
                             if (visited) {
@@ -2666,6 +2712,30 @@ export async function findtravelpath(mode = TRAVP_TRAVEL, state = game) {
     state.u.dy = 0;
     nomul(0, state);
     return false;
+}
+
+// C ref: hack.c is_valid_travelpt() (1526-1542). getpos.c uses this while
+// describing a selected travel destination; it temporarily makes that square
+// the travel target and asks the same backwards path search used by travel.
+export async function is_valid_travelpt(x, y, state = game) {
+    if (u_at(x, y, state)) return true;
+    const location = state.level?.at(x, y);
+    const glyph = glyph_at(x, y, state);
+    if (isok(x, y)
+        && glyph_is_cmap(glyph)
+        && glyph_to_cmap(glyph) === S_stone
+        && !location?.seenv) {
+        return false;
+    }
+    const oldTarget = { x: state.u.tx, y: state.u.ty };
+    state.u.tx = x;
+    state.u.ty = y;
+    try {
+        return await findtravelpath(TRAVP_VALID, state);
+    } finally {
+        state.u.tx = oldTarget.x;
+        state.u.ty = oldTarget.y;
+    }
 }
 
 // C ref: hack.c move_out_of_bounds() (2584-2612). domove_core() calls this
@@ -3060,21 +3130,44 @@ async function domove_core(state = game) {
         state.context.travel1 = 0;
     }
 
-    const newx = u.ux + u.dx;
-    const newy = u.uy + u.dy;
+    let newx;
+    let newy;
+    let destinationMonster;
+    if (u.uswallow) {
+        // C ref: hack.c domove_core():2739-2743. A swallowed hero does not
+        // move in the requested direction. The swallower owns the hero's
+        // position, and the rest of domove_core() handles it as the target of
+        // this command so uhitm.c can deliver the guaranteed swallowed hit.
+        if (!u.ustuck) {
+            throw new UnsupportedHeroMoveBoundaryError(
+                'swallowed hero without an engulfer',
+            );
+        }
+        u.dx = 0;
+        u.dy = 0;
+        newx = u.ustuck.mx;
+        newy = u.ustuck.my;
+        u_on_newpos(newx, newy, state);
+        destinationMonster = u.ustuck;
+    } else {
+        newx = u.ux + u.dx;
+        newy = u.uy + u.dy;
 
-    if (await move_out_of_bounds(newx, newy, state)) {
-        state.domoveAttempting = 0;
-        return;
-    }
-    // C ref: domove_core():2763-2777. The destination monster is read, and the
-    // run stopped in front of it, before anything reads the terrain.
-    const destinationMonster = m_at(newx, newy, state);
-    if (runStopsBeforeMonster(destinationMonster, state.context.run, state)) {
-        nomul(0, state);
-        state.context.move = 0;
-        state.domoveAttempting = 0;
-        return;
+        if (await move_out_of_bounds(newx, newy, state)) {
+            state.domoveAttempting = 0;
+            return;
+        }
+        // C ref: domove_core():2763-2777. The destination monster is read, and
+        // the run stopped in front of it, before anything reads the terrain.
+        destinationMonster = m_at(newx, newy, state);
+        if (runStopsBeforeMonster(
+            destinationMonster, state.context.run, state,
+        )) {
+            nomul(0, state);
+            state.context.move = 0;
+            state.domoveAttempting = 0;
+            return;
+        }
     }
 
     // C ref: domove_core():2780-2781, the square the hero is leaving. C writes
@@ -3095,12 +3188,19 @@ async function domove_core(state = game) {
     // It is gated on `!is_safemon(mtmp) || svc.context.forcefight`, so a pet
     // displacement skips it, and a hostile target or the 'F' prefix takes it.
     if (destinationMonster) {
-        requireSupportedDestinationMonster(
-            destinationMonster,
-            newx,
-            newy,
-            state,
-        );
+        if (u.uswallow) {
+            // C still applies the optional m-prefix bump message, but the
+            // engulfing target is admitted by uhitm.c attack_checks() before
+            // ordinary visibility and concealment checks.
+            requireNoMonsterBump(destinationMonster, state);
+        } else {
+            requireSupportedDestinationMonster(
+                destinationMonster,
+                newx,
+                newy,
+                state,
+            );
+        }
         if (!is_safemon(destinationMonster, state)
             || state.context.forcefight) {
             nomul(0, state);

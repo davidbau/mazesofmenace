@@ -6,6 +6,9 @@
 // mkshop reads .prob to pick the SHOP, get_shop_item reads .iprobs to pick each
 // ITEM in it.
 
+import { Hallucination } from './youprop.js';
+import { has_eshk, ESHK } from './const.js';
+import { noit_mon_nam } from './do_name.js';
 import { rnd } from './rng.js';
 import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
 import { game } from './gstate.js';
@@ -400,4 +403,47 @@ export async function stock_room(shp_indx, sroom) {
     }
 
     game.level.flags.has_shop = true;
+}
+
+// src/shknam.c:856 shkname(), a shopkeeper's name (a random one of the
+// right shop type when hallucinating).
+export function shkname(mtmp) {
+    let nam;
+    const save_isshk = mtmp.isshk;
+
+    mtmp.isshk = 0; /* don't want mon_nam() calling shkname() */
+    nam = noit_mon_nam(mtmp);
+    mtmp.isshk = save_isshk;
+    if (!mtmp.isshk) {
+        /* impossible("shkname: \"%s\" is not a shopkeeper.", nam); */
+    } else if (!has_eshk(mtmp)) {
+        throw new Error(`shkname: shopkeeper "${nam}" lacks 'eshk' data.`);
+    } else {
+        let shknm = ESHK(mtmp).shknam;
+
+        if (Hallucination() && !game.program_state_gameover) {
+            let nlp;
+            let num;
+
+            /* count shop types; ignore ones with prob=0 (no random
+               shops of those types); the hallucinatory name choice
+               ignores shop generation probabilities;
+               pick a name at random from that shop type's list */
+            for (num = 0; num < shtypes.length; num++)
+                if (shtypes[num].prob === 0)
+                    break;
+            if (num > 0) {
+                nlp = SHKNAMES[shtypes[rn2(num)].shknms];
+                for (num = 0; nlp[num]; num++)
+                    continue;
+                if (num > 0)
+                    shknm = nlp[rn2(num)];
+            }
+        }
+        /* strip prefix if present */
+        if (!/[A-Za-z]/.test(shknm[0]))
+            shknm = shknm.slice(1);
+        nam = shknm;
+    }
+    return nam;
 }

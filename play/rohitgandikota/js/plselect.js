@@ -1,3 +1,4 @@
+import { PL_NSIZ } from './const.js';
 // plselect.js — interactive character selection.
 // C ref: src/role.c genl_player_setup() (:2206) and tty_askname().
 //
@@ -74,30 +75,54 @@ export function tty_init_nhwindows() {
 const WHO_ARE_YOU = 'Who are you? ';
 
 async function tty_askname() {
-    tty_putstr_base('');
-    tty_putstr_base(WHO_ARE_YOU);
-    tty_curs_base(WHO_ARE_YOU.length + 1, tty_base_pos().y - 1);
-
     let name = '';
-    for (;;) {
-        tty_base_cursor();
-        const c = String.fromCharCode(await nhgetch());
-        if (c === '\n' || c === '\r') break;
-        if (c === '\x1b') { name = ''; break; }
-        if (c === '\b' || c === '\x7f') {
-            if (name.length) {
-                name = name.slice(0, -1);
-                tty_curs_base(WHO_ARE_YOU.length + 1 + name.length,
-                              tty_base_pos().y);
-                tty_putch_base(' ');
-                tty_curs_base(WHO_ARE_YOU.length + 1 + name.length,
-                              tty_base_pos().y);
-            }
-            continue;
+    let tryct = 0;
+
+    tty_putstr_base('');
+    do {
+        if (++tryct > 1) {
+            /* bail("Giving up after 10 tries.") past ten empty answers */
+            tty_curs_base(1, tty_base_pos().y - 1);
+            tty_putstr_base('Enter a name for your character...');
+            tty_curs_base(1, tty_base_pos().y);
+            tty_putstr_base(''); /* cl_end() */
+            tty_curs_base(1, tty_base_pos().y - 1);
         }
-        name += c;
-        tty_putch_base(c);
-    }
+        tty_putstr_base(WHO_ARE_YOU);
+        tty_curs_base(WHO_ARE_YOU.length + 1, tty_base_pos().y - 1);
+        name = '';
+        for (;;) {
+            tty_base_cursor();
+            let c = String.fromCharCode(await nhgetch());
+            if (c === '\n' || c === '\r') break;
+            if (c === '\x1b') { name = ''; break; } /* continue outer loop */
+            if (c === '\b' || c === '\x7f') {
+                if (name.length) {
+                    name = name.slice(0, -1);
+                    tty_curs_base(WHO_ARE_YOU.length + 1 + name.length,
+                                  tty_base_pos().y);
+                    tty_putch_base(' ');
+                    tty_curs_base(WHO_ARE_YOU.length + 1 + name.length,
+                                  tty_base_pos().y);
+                }
+                continue;
+            }
+            /* win/tty/wintty.c:740 (UNIX): anything but a letter, '-', '@',
+               or a digit after the first character becomes '_' (the name
+               ends up in a save file name); capped at sizeof plname - 1 */
+            if (c !== '-' && c !== '@')
+                if (!(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z')
+                    /* reject leading digit but allow digits elsewhere
+                       (avoids ambiguity when character name gets
+                       appended to uid to construct save file name) */
+                    && !(c >= '0' && c <= '9' && name.length > 0))
+                    c = '_';
+            if (name.length < PL_NSIZ - 1) {
+                name += c;
+                tty_putch_base(c);
+            }
+        }
+    } while (name.length === 0);
     tty_base_cursor();
     /* win/tty/wintty.c:754 — since the player picked an arbitrary name here,
        they may pick another one during role selection. That is what puts the

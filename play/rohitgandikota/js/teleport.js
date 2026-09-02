@@ -12,6 +12,21 @@
 // rn2(8) rn2(7) … rn2(2) rn2(16) rn2(15) … run the recordings show when a pet
 // is placed.
 
+import { RLOC_NONE, u_at } from './const.js';
+import { somexyspace } from './mklev.js';
+import { search_special } from './mkroom.js';
+import { migrate_to_level } from './dog.js';
+import { control_teleport } from './mondata.js';
+import { ledger_no } from './dungeon.js';
+import { onscary } from './monmove.js';
+import { MONSYMS } from './monst_data.js';
+import { is_home_elemental } from './makemon.js';
+import { mon_has_amulet } from './wizard.js';
+import { clamp_hole_destination, seetrap, Trap_Effect_Finished, Trap_Moved_Mon } from './trap.js';
+import { NO_TRAP, HOLE, TRAPDOOR, MAGIC_PORTAL, MIGR_RANDOM, MIGR_PORTAL, is_xport, Is_stronghold, Is_botlevel } from './const.js';
+import { Your, pline_mon } from './pline.js';
+import { yelp } from './sounds.js';
+import { get_mleash, m_unleash } from './apply.js';
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { COLNO, ROWNO, In_endgame, In_quest, In_sokoban, GP_CHECKSCARY,
@@ -544,7 +559,7 @@ function rloc_pos_ok(x, y, mtmp) {
 }
 
 // src/teleport.c:1648 rloc_to_core(), ordinary non-worm relocation path.
-async function rloc_to_core(mtmp, x, y, rlocflags) {
+export async function rloc_to_core(mtmp, x, y, rlocflags) {
     const oldx = mtmp.mx, oldy = mtmp.my;
     const preventmsg = (rlocflags & RLOC_NOMSG) !== 0;
     const vanishmsg = (rlocflags & RLOC_MSG) !== 0;
@@ -1067,4 +1082,170 @@ export async function dotelecmd() {
 export function enexto(cc, xx, yy, mdat) {
     return (enexto_core(cc, xx, yy, mdat, GP_CHECKSCARY, goodpos)
             || enexto_core(cc, xx, yy, mdat, NO_MM_FLAGS, goodpos));
+}
+
+// src/teleport.c:786 teleport_pet(), may this pet be teleported away, or
+// does its leash hold it (a cursed leash refuses unless forced)?
+export async function teleport_pet(mtmp, force_it) {
+    let otmp;
+
+    if (mtmp === game.u.usteed)
+        return false;
+
+    if (mtmp.mleashed) {
+        otmp = get_mleash(mtmp);
+        if (!otmp) {
+            /* impossible("%s is leashed, without a leash.", Monnam(mtmp)); */
+            await m_unleash(mtmp, false); /* release_it: */
+            return true;
+        }
+        if (otmp.cursed && !force_it) {
+            await yelp(mtmp);
+            return false;
+        } else {
+            await Your('leash goes slack.');
+            await m_unleash(mtmp, false);
+            return true;
+        }
+    }
+    return true;
+}
+
+// src/teleport.c:2006 mlevel_tele_trap(), a monster on a level teleporter,
+// hole, trap door, or magic portal (or forced off the level: NO_TRAP).
+export async function mlevel_tele_trap(mtmp, trap, force_it, in_sight) {
+    const tt = (trap ? trap.ttyp : NO_TRAP);
+
+    if (mtmp === game.u.ustuck) /* probably a vortex */
+        return Trap_Effect_Finished; /* temporary? kludge */
+    if (await teleport_pet(mtmp, force_it)) {
+        let tolevel = { dnum: 0, dlevel: 0 };
+        let migrate_typ = MIGR_RANDOM;
+
+        if (is_hole(tt)) {
+            if (Is_stronghold(game.u.uz)) {
+                tolevel = { ...game.valley_level };
+            } else if (Is_botlevel(game.u.uz)) {
+                if (in_sight && trap.tseen)
+                    await pline_mon(mtmp, `${Monnam(mtmp)} avoids the ${
+                                   (tt === HOLE) ? 'hole' : 'trap'}.`);
+                return Trap_Effect_Finished;
+            } else {
+                tolevel = { ...trap.dst };
+                clamp_hole_destination(tolevel);
+            }
+        } else if (tt === MAGIC_PORTAL) {
+            if (In_endgame(game.u.uz) && (mon_has_amulet(mtmp)
+                                          || is_home_elemental(mtmp.data)
+                                          || rn2(7))) {
+                if (in_sight && mtmp.data.mlet !== MONSYMS.S_ELEMENTAL) {
+                    await pline_mon(mtmp,
+                                    `${Monnam(mtmp)} seems to shimmer for a moment.`);
+                    seetrap(trap);
+                }
+                return Trap_Effect_Finished;
+            } else {
+                tolevel = { ...trap.dst };
+                migrate_typ = MIGR_PORTAL;
+            }
+        } else if (tt === LEVEL_TELEP || tt === NO_TRAP) {
+            let nlev;
+
+            if (mon_has_amulet(mtmp) || In_endgame(game.u.uz)
+                /* NO_TRAP is used when forcing a monster off the level;
+                   onscary(0,0,) is true for the Wizard, Riders, lawful
+                   minions, Angels of any alignment, shopkeeper or priest
+                   currently inside his or her own special room */
+                || (tt === NO_TRAP && onscary(0, 0, mtmp))) {
+                if (in_sight)
+                    await pline_mon(mtmp,
+                                    `${Monnam(mtmp)} seems very disoriented for a moment.`);
+                return Trap_Effect_Finished;
+            }
+            if (tt === NO_TRAP) {
+                /* creature is being forced off the level to make room;
+                   it will try to return to this level (at a random spot
+                   rather than its current one) if the level is left by
+                   the hero and then revisited */
+                tolevel = { ...game.u.uz };
+            } else {
+                nlev = random_teleport_level();
+                if (nlev === depth(game.u.uz)) {
+                    if (in_sight)
+                        await pline_mon(mtmp, `${Monnam(mtmp)} shudders for a moment.`);
+                    return Trap_Effect_Finished;
+                }
+                get_level(tolevel, nlev);
+            }
+        } else {
+            /* impossible("mlevel_tele_trap: unexpected trap type (%d)", tt); */
+            return Trap_Effect_Finished;
+        }
+
+        if (in_sight) {
+            await pline_mon(mtmp, `Suddenly, ${mon_nam(mtmp)} ${
+                            (tt === HOLE) ? 'falls into a hole'
+                            : (tt === TRAPDOOR) ? 'falls through a trap door'
+                              : 'disappears out of sight'}.`);
+            if (trap)
+                seetrap(trap);
+        }
+        if (is_xport(tt) && !control_teleport(mtmp.data))
+            mtmp.mconf = 1;
+        await migrate_to_level(mtmp, ledger_no(tolevel), migrate_typ, null);
+        return Trap_Moved_Mon; /* no longer on this level */
+    }
+    return Trap_Effect_Finished;
+}
+
+// src/teleport.c:1771 rloc_to(), place a monster at <x,y> without a message.
+export async function rloc_to(mtmp, x, y) {
+    await rloc_to_core(mtmp, x, y, RLOC_NOMSG);
+}
+
+// src/teleport.c:1937 mvault_tele(), a monster on the vault's one-shot
+// teleporter goes into the vault (or anywhere, if that fails).
+export async function mvault_tele(mtmp) {
+    const croom = search_special(VAULT);
+    const c = { x: 0, y: 0 };
+
+    if (croom && somexyspace(croom, c) && goodpos(c.x, c.y, mtmp, 0)) {
+        await rloc_to(mtmp, c.x, c.y);
+        return;
+    }
+    await rloc(mtmp, RLOC_NONE);
+}
+
+// src/teleport.c:1962 mtele_trap(), a monster steps on a teleport trap.
+export async function mtele_trap(mtmp, trap, in_sight) {
+    let monname;
+
+    /* [note: this method doesn't consider a monster which is on a spot
+       which is not visible to the hero but which the hero can see that
+       teleporting from it isn't visible] */
+    if (noteleport_level(mtmp))
+        return;
+
+    if (await teleport_pet(mtmp, false)) {
+        /* Note: don't remove the trap here as the monster might be
+           holding some other object */
+        monname = Monnam(mtmp);
+        if (trap.once)
+            await mvault_tele(mtmp);
+        else if (isok(trap.teledest?.x ?? 0, trap.teledest?.y ?? 0)) {
+            if (!(m_at(trap.teledest.x, trap.teledest.y)
+                  || u_at(trap.teledest.x, trap.teledest.y))) {
+                await rloc_to_core(mtmp, trap.teledest.x, trap.teledest.y,
+                                   RLOC_MSG);
+            }
+        } else
+            await rloc(mtmp, RLOC_NONE);
+        if (in_sight) {
+            if (canseemon(mtmp))
+                await pline(`${monname} seems disoriented.`);
+            else
+                await pline(`${monname} suddenly disappears!`);
+            seetrap(trap);
+        }
+    }
 }

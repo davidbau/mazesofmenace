@@ -1256,7 +1256,7 @@ function doset_add_menu(tmpwin, o, fmtstr, indexoffset) {
 
 /* src/windows.c:1816 add_menu_heading() — non-selectable line in
    iflags.menu_headings style (ATR_INVERSE + NO_COLOR by default). */
-function add_menu_heading(tmpwin, buf) {
+export function add_menu_heading(tmpwin, buf) {
     let attr = game.iflags?.menu_headings?.attr ?? ATR_INVERSE;
     let color = game.iflags?.menu_headings?.color ?? NO_COLOR;
     if (game.program_state?.gameover)

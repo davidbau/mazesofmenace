@@ -18,6 +18,9 @@ export const MON_WEP = (mon) => mon.mw || null;
 import { PMNAMES, MONSYMS } from './monst_data.js';
 import { M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT } from './const.js';
 import { ONAMES } from './objects_data.js';
+// include/monst.h:220 vampshifted(); a vampire in its shifted form
+export const vampshifted = (mon) =>
+    is_vampshifter(mon) && mon.data.mlet !== MONSYMS.S_VAMPIRE;
 export const is_vampshifter = (mon) =>
     mon.cham === PMNAMES.PM_VAMPIRE || mon.cham === PMNAMES.PM_VAMPIRE_LEADER
     || mon.cham === PMNAMES.PM_VLAD_THE_IMPALER;

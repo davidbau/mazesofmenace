@@ -5,6 +5,12 @@
 // spell digging are ported. Deep holes and the rarer trap interactions remain
 // partial.
 
+import { del_engr_at } from './engrave.js';
+import { reset_utrap } from './trap.js';
+import { stackobj } from './invent.js';
+import { place_object } from './mkobj.js';
+import { dist2 } from './hacklib.js';
+import { COLNO, TT_BURIEDBALL } from './const.js';
 import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { newsym, canseemon, display_cmap_at, flush_screen, pline }
@@ -84,7 +90,7 @@ function digging_context() {
     };
 }
 
-function stairway_at(x, y) {
+export function stairway_at(x, y) {
     for (let stway = game.stairs; stway; stway = stway.next)
         if (stway.sx === x && stway.sy === y)
             return stway;
@@ -653,5 +659,61 @@ export async function rot_corpse(obj) {
         newsym(x, y);
     } else if (in_invent) {
         /* update_inventory() — perm_invent only */
+    }
+}
+
+// src/dig.c:1885 buried_ball(), the buried iron ball at or near <cc>;
+// cc is moved to the ball's spot.
+export function buried_ball(cc) {
+    let odist, bdist = COLNO;
+    let ball = null;
+
+    /* FIXME:
+     *  This is just approximate; if multiple balls are buried and we've
+     *  picked the wrong one, the chain will be replaced in a different
+     *  location than it was originally.
+     */
+    /* [an untrapped hero can't be the one being freed, so the value
+       of u.utraptype is no longer meaningful; if u.utrap is still set
+       then u.utraptype needs to be for buried ball] */
+    if (!game.u.utrap || game.u.utraptype === TT_BURIEDBALL) {
+        for (const otmp of (game.level.buriedobjs || [])) {
+            if (otmp.otyp !== ONAMES.HEAVY_IRON_BALL)
+                continue;
+            /* if found at the target spot, we're done */
+            if (otmp.ox === cc.x && otmp.oy === cc.y)
+                return otmp;
+            /* find nearest within allowable vicinity: +/-2
+             *  4 5 8
+             *  1 2 5
+             *  0 1 4
+             */
+            odist = dist2(otmp.ox, otmp.oy, cc.x, cc.y);
+            if (odist <= 8 && (!ball || odist < bdist)) {
+                ball = otmp;
+                bdist = odist;
+            }
+        }
+    }
+    if (ball) {
+        cc.x = ball.ox;
+        cc.y = ball.oy;
+    }
+    return ball;
+}
+
+// src/dig.c:1958 buried_ball_to_freedom(), dig the chained ball back up.
+export async function buried_ball_to_freedom() {
+    const cc = { x: game.u.ux, y: game.u.uy };
+    let ball;
+
+    ball = buried_ball(cc);
+    if (ball) {
+        obj_extract_self(ball);
+        place_object(ball, cc.x, cc.y);
+        stackobj(ball);
+        await reset_utrap(true);
+        del_engr_at(cc.x, cc.y);
+        newsym(cc.x, cc.y);
     }
 }

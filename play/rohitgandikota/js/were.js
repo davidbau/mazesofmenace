@@ -5,6 +5,7 @@
 // level (the rn2 whose size depends on day/night and moon phase), so a
 // level with a werejackal on it desyncs immediately without this.
 
+import { set_uasmon } from './polyself.js';
 import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { pline } from './display.js';
@@ -132,13 +133,8 @@ export function were_beastie(pm) {
 // hero's innate drain resistance without changing the current body.
 export function set_ulycn(which) {
     game.u.ulycn = which;
-    const intr = (game.u.intrinsic ||= {});
-    intr.HDrain_resistance = (intr.HDrain_resistance || 0) & ~FROMFORM;
-    if (resists_drli(game.youmonst))
-        intr.HDrain_resistance |= FROMFORM;
-    /* src/polyself.c:set_uasmon() clears this after rebuilding the
-       form-derived properties which set_ulycn() has just refreshed. */
-    game.were_changes = 0;
+    /* add or remove lycanthrope's innate intrinsics (Drain_resistance) */
+    set_uasmon();
 }
 
 // src/were.c:187 you_were(). Hostile adjacent monsters suppress an
@@ -170,7 +166,7 @@ export async function you_were() {
     }
     game.were_changes = (game.were_changes || 0) + 1;
     const { polymon } = await import('./polyself.js');
-    await polymon(u.ulycn, { allowSexChange: false });
+    await polymon(u.ulycn);
 }
 
 // src/were.c:215 you_unwere(). Holy water can cure the infection and, when

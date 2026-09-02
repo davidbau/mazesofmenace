@@ -13,6 +13,24 @@
 // else records itself through note_unported() rather than guessing, because a
 // spurious line shifts every row below it and costs the whole frame.
 
+import { upstart } from './do_name.js';
+import { monexplain } from './drawing_data.js';
+import { is_rider } from './mondata.js';
+import { NUMMONS, PMNAMES } from './monst_data.js';
+import { VANQ_MLVL_MNDX, VANQ_MSTR_MNDX, VANQ_ALPHA_SEP, VANQ_ALPHA_MIX, VANQ_MCLS_HTOL, VANQ_MCLS_LTOH, VANQ_COUNT_H_L, VANQ_COUNT_L_H, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_NONE, PICK_ONE, ECMD_OK, LOW_PM, NEUTRAL, G_UNIQ, G_GENOD, G_GONE, G_EXTINCT } from './const.js';
+import { NO_COLOR } from './terminal.js';
+import { docrt } from './display.js';
+import { tty_yn_function } from './tty/topl.js';
+import { xwaitforspace } from './tty/getline.js';
+import { tty_create_nhwindow, tty_destroy_nhwindow, tty_putstr, tty_display_nhwindow, tty_next_page, tty_start_menu, tty_add_menu, tty_end_menu, tty_select_menu, NHW_MENU, ATR_NONE, ATR_INVERSE } from './tty/wintty.js';
+import { MONSYMS } from './monst_data.js';
+import { You } from './pline.js';
+import { ceiling, surface } from './dungeon.js';
+import { hides_under, is_clinger } from './mondata.js';
+import { waterbody_name } from './pager.js';
+import { is_pool, t_at } from './mon.js';
+import { simple_typename, ansimpleoname } from './objnam.js';
+import { M_AP_TYPE, M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, TT_PIT, SPIKED_PIT } from './const.js';
 import { game } from './gstate.js';
 import { P_NONE, P_UNSKILLED, P_SKILLED, P_ISRESTRICTED, FULL_MOON, NEW_MOON, WEAK,
          P_TWO_WEAPON_COMBAT, ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE,
@@ -1149,6 +1167,64 @@ export async function ustatusline() {
 }
 
 
+// src/insight.c:2022 youhiding(); the hero is hiding (or mimicking)
+export async function youhiding(via_enlghtmt, msgflag) {
+    /* via_enlghtmt: enlightenment line vs topl message;
+       msgflag: for variant message phrasing */
+    const u = game.u;
+    const youmonst = game.youmonst;
+    let buf = 'hiding';
+
+    if (M_AP_TYPE(youmonst) !== M_AP_NOTHING) {
+        /* mimic; hero is only able to mimic a strange object or gold
+           or hallucinatory alternative to gold, so we skip the details
+           for the hypothetical furniture and monster cases */
+        buf = 'mimicking';
+        if (M_AP_TYPE(youmonst) === M_AP_OBJECT) {
+            buf += ` ${an(simple_typename(youmonst.mappearance))}`;
+        } else if (M_AP_TYPE(youmonst) === M_AP_FURNITURE) {
+            buf += ' something';
+        } else if (M_AP_TYPE(youmonst) === M_AP_MONSTER) {
+            buf += ' someone';
+        } else {
+            ; /* something unexpected; leave 'buf' as-is */
+        }
+    } else if (u.uundetected) {
+        /* points past "hiding" */
+        if (youmonst.data.mlet === MONSYMS.S_EEL) {
+            if (is_pool(u.ux, u.uy))
+                buf += ` in the ${waterbody_name(u.ux, u.uy)}`;
+        } else if (hides_under(youmonst.data)) {
+            const o = (game.level.objects || [])
+                .find((obj) => obj.ox === u.ux && obj.oy === u.uy);
+
+            if (o)
+                buf += ` underneath ${ansimpleoname(o)}`;
+        } else if (is_clinger(youmonst.data) || Flying()) {
+            buf += ` on the ${ceiling(u.ux, u.uy)}`;
+        } else {
+            if (u.utrap && u.utraptype === TT_PIT) {
+                const t = t_at(u.ux, u.uy);
+
+                buf += ` in a ${(t && t.ttyp === SPIKED_PIT) ? 'spiked ' : ''}pit`;
+            } else
+                buf += ` on the ${surface(u.ux, u.uy)}`;
+        }
+    } else {
+        ; /* shouldn't happen; will result in generic "you are hiding" */
+    }
+
+    if (via_enlghtmt) {
+        const save_final = en_final;
+        en_final = msgflag; /* 'final' is used by you_are() macro */
+        you_are(buf, '');
+        en_final = save_final;
+    } else {
+        /* #monster: "you are now hiding" */
+        await You(`are ${msgflag ? 'already' : 'now'} ${buf}.`);
+    }
+}
+
 // src/insight.c:2560 show_gamelog() / :2532 do_gamelog() — the #chronicle
 // window.
 export async function do_gamelog() {
@@ -1240,8 +1316,13 @@ export async function show_conduct(final) {
     if (!c.pets)
         have_never('had a pet');
 
-    /* num_genocides() is always 0 so far */
-    have_never('genocided any monsters');
+    const ngenocided = num_genocides();
+    if (ngenocided === 0) {
+        have_never('genocided any monsters');
+    } else {
+        have_X(`genocided ${ngenocided} type${ngenocided === 1 ? '' : 's'
+                } of monster${ngenocided === 1 ? '' : 's'}`);
+    }
 
     if (!c.polypiles)
         have_never('polymorphed an object');
@@ -1310,75 +1391,512 @@ export async function show_conduct(final) {
 }
 
 
+// src/insight.c:362 N_times()
+function N_times(n) {
+    switch (n) {
+    case 0:
+    default:
+        return `${n} times`;
+    case 1:
+        return 'once';
+    case 2:
+        return 'twice';
+    case 3:
+        return 'thrice';
+    }
+}
+
+// src/insight.c:2601 vanqorders[][3]; also used in options.c
+export const vanqorders = [
+    [ 't', 'traditional: by monster level',
+           'traditional: by monster level, by internal monster index' ],
+    [ 'd', 'by monster difficulty rating',
+           'by monster difficulty rating, by internal monster index' ],
+    [ 'a', 'alphabetically, unique monsters separate',
+           'alphabetically, first unique monsters, then others' ],
+    [ 'A', 'alphabetically, unique monsters intermixed',
+           'alphabetically, unique monsters and others intermixed' ],
+    [ 'C', 'by monster class, high to low level in class',
+           'by monster class, high to low level within class' ],
+    [ 'c', 'by monster class, low to high level in class',
+           'by monster class, low to high level within class' ],
+    [ 'n', 'by count, high to low',
+           'by count, high to low, by internal index within tied count' ],
+    [ 'z', 'by count, low to high',
+           'by count, low to high, by internal index within tied count' ],
+];
+
+/* src/hacklib.c strcmpi(): caseblind byte comparison */
+function strcmpi(a, b) {
+    a = a.toLowerCase();
+    b = b.toLowerCase();
+    return a < b ? -1 : a > b ? 1 : 0;
+}
+
+// src/insight.c:2621 vanqsort_cmp(); qsort comparison routine for
+// list_vanquished() and list_genocided()
+function vanqsort_cmp(indx1, indx2) {
+    let mlev1, mlev2, mstr1, mstr2, uniq1, uniq2, died1, died2, res;
+    let name1, name2, punct;
+    let mcls1, mcls2;
+    const mons = game.mons;
+
+    switch (game.flags.vanq_sortmode) {
+    default:
+    case VANQ_MLVL_MNDX:
+        mlev1 = mons[indx1].mlevel;
+        mlev2 = mons[indx2].mlevel;
+        res = mlev2 - mlev1; /* mlevel high to low */
+        break;
+    case VANQ_MSTR_MNDX:
+        mstr1 = mons[indx1].difficulty;
+        mstr2 = mons[indx2].difficulty;
+        res = mstr2 - mstr1; /* monstr high to low */
+        break;
+    case VANQ_ALPHA_SEP:
+        uniq1 = ((mons[indx1].geno & G_UNIQ) && indx1 !== PMNAMES.PM_HIGH_CLERIC) ? 1 : 0;
+        uniq2 = ((mons[indx2].geno & G_UNIQ) && indx2 !== PMNAMES.PM_HIGH_CLERIC) ? 1 : 0;
+        if (uniq1 ^ uniq2) { /* one or other uniq, but not both */
+            res = uniq2 - uniq1;
+            break;
+        } /* else both unique or neither unique */
+        /* FALLTHROUGH */
+    case VANQ_ALPHA_MIX:
+        name1 = mons[indx1].pmnames[NEUTRAL];
+        name2 = mons[indx2].pmnames[NEUTRAL];
+        res = strcmpi(name1, name2); /* caseblind alpha, low to high */
+        break;
+    case VANQ_MCLS_HTOL:
+    case VANQ_MCLS_LTOH:
+        /* mons[].mlet values are small integers, not actual characters;
+           if 'char' happens to be unsigned, (mlet1 - mlet2) would yield
+           an inappropriate result when mlet2 is greater than mlet1,
+           so force our copies (mcls1, mcls2) to be signed */
+        mcls1 = mons[indx1].mlet;
+        mcls2 = mons[indx2].mlet;
+        /* S_ANT through S_ZRUTY correspond to lowercase monster classes,
+           S_ANGEL through S_ZOMBIE correspond to uppercase, and various
+           punctuation characters are used for classes beyond those */
+        if (mcls1 > MONSYMS.S_ZOMBIE && mcls2 > MONSYMS.S_ZOMBIE) {
+            /* force a specific order to the punctuation classes that's
+               different from the internal order;
+               internal order is ok if neither or just one is punctuation
+               since letters have lower values so come out before punct */
+            const punctclasses = [
+                MONSYMS.S_LIZARD, MONSYMS.S_EEL, MONSYMS.S_GOLEM,
+                MONSYMS.S_GHOST, MONSYMS.S_DEMON, MONSYMS.S_HUMAN,
+            ];
+            if ((punct = punctclasses.indexOf(mcls1)) >= 0)
+                mcls1 = MONSYMS.S_ZOMBIE + 1 + punct;
+            if ((punct = punctclasses.indexOf(mcls2)) >= 0)
+                mcls2 = MONSYMS.S_ZOMBIE + 1 + punct;
+        }
+        res = mcls1 - mcls2; /* class */
+        if (res === 0) {
+            /* Riders and demons share S_DEMON so this test only matters
+               above when both mcls1 and mcls2 are either Riders or demons or
+               one of each; force Riders to be sorted before demons */
+            res = (is_rider(mons[indx2]) ? 1 : 0) - (is_rider(mons[indx1]) ? 1 : 0);
+            /* -1 => #1 is a Rider, #2 isn't;
+                0 => both Riders or neither;
+               +1 => #2 is a Rider, #1 isn't */
+            if (res)
+                break;
+            mlev1 = mons[indx1].mlevel;
+            mlev2 = mons[indx2].mlevel;
+            res = mlev1 - mlev2; /* mlevel low to high */
+            if (game.flags.vanq_sortmode === VANQ_MCLS_HTOL)
+                res = -res; /* mlevel high to low */
+        }
+        break;
+    case VANQ_COUNT_H_L:
+    case VANQ_COUNT_L_H:
+        died1 = game.mvitals[indx1].died | 0;
+        died2 = game.mvitals[indx2].died | 0;
+        res = died2 - died1; /* dead count high to low */
+        if (game.flags.vanq_sortmode === VANQ_COUNT_L_H)
+            res = -res; /* dead count low to high */
+        break;
+    }
+    if (res === 0)
+        res = indx1 - indx2; /* mndx low to high */
+    return res;
+}
+
+// src/insight.c:2718 set_vanq_order(); returns -1 if cancelled via ESC,
+// otherwise the new sort order
+export async function set_vanq_order(for_vanq) {
+    let desc;
+    let n, choice;
+    const clr = NO_COLOR;
+
+    const tmpwin = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    for (let i = 0; i < vanqorders.length; i++) {
+        if (i === VANQ_ALPHA_MIX || i === VANQ_MCLS_HTOL) /* skip these */
+            continue;
+        if (!for_vanq && (i === VANQ_COUNT_H_L || i === VANQ_COUNT_L_H))
+            continue;
+        desc = vanqorders[i][2];
+        /* the alphabetical choices, "alpha, unique separate"
+           and "alpha, unique intermixed" are confusing descriptions when
+           this menu is for #genocided rather than for #vanquished */
+        if (!for_vanq && i === VANQ_ALPHA_SEP)
+            desc = 'alphabetically';
+        tty_add_menu(tmpwin, null, i + 1, vanqorders[i][0], 0,
+                     ATR_NONE, clr, desc,
+                     (i === game.flags.vanq_sortmode) ? MENU_ITEMFLAGS_SELECTED
+                                                      : MENU_ITEMFLAGS_NONE);
+    }
+    const buf = `Sort order for ${
+        for_vanq ? 'vanquished monster counts (also genocided types)'
+                 : 'genocided monster types (also vanquished counts)'}`;
+    tty_end_menu(tmpwin, buf);
+
+    const selected = await tty_select_menu(tmpwin, PICK_ONE);
+    n = selected.cancelled ? -1 : selected.length;
+    tty_destroy_nhwindow(tmpwin);
+    if (n > 0) {
+        choice = selected[0] - 1;
+        /* skip preselected entry if we have more than one item chosen */
+        if (n > 1 && choice === game.flags.vanq_sortmode)
+            choice = selected[1] - 1;
+        game.flags.vanq_sortmode = choice;
+    }
+    return (n < 0) ? -1 : game.flags.vanq_sortmode;
+}
+
+// src/insight.c:2769 dovanquished(); #vanquished command
+export async function dovanquished() {
+    await list_vanquished(game.iflags?.menu_requested ? 'A' : 'y', false);
+    (game.iflags ||= {}).menu_requested = false;
+    return ECMD_OK;
+}
+
+// src/insight.c:2777 UniqCritterIndx()
+const UniqCritterIndx = (mndx) =>
+    (game.mons[mndx].geno & G_UNIQ) !== 0 && mndx !== PMNAMES.PM_HIGH_CLERIC;
+
+// win/tty/wintty.c display_nhwindow(klwin, TRUE) for an NHW_MENU window
+async function display_menu_window_blocking(win) {
+    await tty_display_nhwindow(win);
+    await xwaitforspace(' \r\n\x1b');
+    while (tty_next_page(win))
+        await xwaitforspace(' \r\n\x1b');
+}
+
 // src/insight.c:2784 list_vanquished() — the #vanquished window; default
 // sort is by monster level high-to-low with index tiebreak (VANQ_MLVL_MNDX).
 export async function list_vanquished(defquery, ask) {
-    const mindx = [];
+    let i;
+    let pfx, nkilled;
+    let ntypes, ni;
     let total_killed = 0;
-    for (let i = 0; i < (game.mvitals || []).length; i++) {
-        const nk = game.mvitals[i]?.died | 0;
-        if (!nk)
-            continue;
-        mindx.push(i);
-        total_killed += nk;
-    }
-    const ntypes = mindx.length;
+    let klwin;
+    const mindx = [];
+    let c, buf, buftoo;
+    /* 'd' is for dumplog; 'A' is for forced sort order choice */
+    const force_sort = (defquery === 'A'),
+          dumping = (defquery === 'd');
+    const mons = game.mons;
 
-    if (ntypes) {
-        let c = defquery;
+    /* if player asked for vanquished monsters, allow choice of sort order if
+       it contains at least two entries; however, if player has used explicit
+       'm #vanquished', choose order no matter what it contains so far */
+    if (force_sort) { /* iflags.menu_requested via dovanquished() */
+        /* choose value for vanq_sortmode; cancelling the menu leaves it
+           unchanged but continues with vanquished monsters display */
+        await set_vanq_order(true);
+    }
+    if (dumping || force_sort) {
+        /* explicit 'y' for the main loop; 'a' would be superfluous for the
+           cases that might supply 'A' or 'd' */
+        defquery = 'y';
+        ask = false; /* redundant */
+    }
+
+    /* count the number of different types of monsters killed */
+    ntypes = 0;
+    for (i = LOW_PM; i < NUMMONS; i++) {
+        if ((nkilled = (game.mvitals[i]?.died | 0)) === 0)
+            continue;
+        mindx[ntypes++] = i;
+        total_killed += nkilled;
+    }
+
+    if (ntypes !== 0) {
+        let mlet, prev_mlet = 0; /* used as small integer, not character */
+        let class_header, uniq_header, Rider,
+            was_uniq = false, special_hdr = false;
+
         if (ask) {
-            const { tty_yn_function } = await import('./tty/topl.js');
-            c = await tty_yn_function(
-                'Do you want an account of creatures vanquished?',
-                ntypes > 1 ? 'ynaq' : 'ynq', defquery || 'n');
+            let allow_yn;
+
+            if (ntypes > 1) {
+                allow_yn = 'ynaq';
+            } else {
+                allow_yn = 'ynq';   /* don't include 'a', but */
+                allow_yn += '\x1ba'; /* allow user to answer 'a' */
+                if (defquery === 'a') /* potential default from 'disclose' */
+                    defquery = 'y';
+            }
+            c = await tty_yn_function('Do you want an account of creatures vanquished?',
+                                      allow_yn, defquery, true);
+        } else {
+            c = defquery;
         }
         if (c === 'q')
             game.done_stopprint = (game.done_stopprint | 0) + 1;
-        if (c !== 'y' && c !== 'a')
-            return;
-        const {
-            tty_create_nhwindow, tty_destroy_nhwindow, tty_putstr,
-            tty_display_nhwindow, tty_next_page, NHW_MENU,
-        } = await import('./tty/wintty.js');
-        const { xwaitforspace } = await import('./tty/getline.js');
-        const { docrt } = await import('./display.js');
-        const { makeplural } = await import('./objnam.js');
-        const win = tty_create_nhwindow(NHW_MENU);
-        tty_putstr(win, 0, 'Vanquished creatures:');
-        tty_putstr(win, 0, '');
-
-        mindx.sort((a, b) =>
-            (game.mons[b].mlevel - game.mons[a].mlevel) || (a - b));
-        for (const i of mindx) {
-            const nk = game.mvitals[i].died | 0;
-            const nam = game.mons[i].pmnames?.filter(Boolean)[0]
-                        ?? game.mons[i].pmnames?.[0];
-            let buf;
-            if ((game.mons[i].geno ?? 0) & 0x1000 /* G_UNIQ */) {
-                buf = `${!type_is_pname(game.mons[i]) ? 'the ' : ''}${nam}`;
-            } else if (nk === 1) {
-                buf = an(nam);
-            } else {
-                buf = `${String(nk).padStart(3)} ${makeplural(nam)}`;
+        if (c === 'y' || c === 'a') {
+            if (c === 'a' && ntypes > 1) { /* ask user to choose sort order */
+                /* if choosing order is cancelled, this skips displaying list
+                   of vanquished monsters but does not set 'done_stopprint' */
+                if (await set_vanq_order(true) < 0)
+                    return;
             }
-            /* leading spaces to match a 3-digit prefix */
-            const pfx = buf.startsWith('the ') ? 0
-                      : buf.startsWith('an ') ? 1
-                        : buf.startsWith('a ') ? 2
+            uniq_header = (game.flags.vanq_sortmode === VANQ_ALPHA_SEP);
+            class_header = ((game.flags.vanq_sortmode === VANQ_MCLS_LTOH
+                             || game.flags.vanq_sortmode === VANQ_MCLS_HTOL)
+                            && ntypes > 1);
+
+            klwin = tty_create_nhwindow(NHW_MENU);
+            tty_putstr(klwin, 0, 'Vanquished creatures:');
+            if (!dumping)
+                tty_putstr(klwin, 0, '');
+
+            mindx.sort(vanqsort_cmp);
+            for (ni = 0; ni < ntypes; ni++) {
+                i = mindx[ni];
+                nkilled = game.mvitals[i].died | 0;
+                Rider = is_rider(mons[i]);
+                mlet = mons[i].mlet;
+                if (class_header
+                    && (mlet !== prev_mlet || (special_hdr && !Rider))) {
+                    if (!Rider) {
+                        buf = monexplain[mlet];
+                        special_hdr = false;
+                    } else {
+                        buf = 'Rider';
+                        special_hdr = true;
+                    }
+                    /* when 'ask' is True, the attribute (highlighting)
+                       of various header lines is suppressed */
+                    tty_putstr(klwin, ask ? ATR_NONE
+                                          : (game.iflags?.menu_headings?.attr
+                                             ?? ATR_INVERSE),
+                               upstart(buf));
+                    prev_mlet = mlet;
+                }
+                if (UniqCritterIndx(i)) {
+                    buf = `${!type_is_pname(mons[i]) ? 'the ' : ''}${
+                        mons[i].pmnames[NEUTRAL]}`;
+                    if (nkilled > 1)
+                        buf += ` (${N_times(nkilled)})`;
+                    was_uniq = true;
+                } else {
+                    if (uniq_header && was_uniq) {
+                        tty_putstr(klwin, 0, '');
+                        was_uniq = false;
+                    }
+                    /* trolls or undead might have come back,
+                       but we don't keep track of that */
+                    if (nkilled === 1)
+                        buf = an(mons[i].pmnames[NEUTRAL]);
+                    else
+                        buf = `${String(nkilled).padStart(3)} ${
+                            makeplural(mons[i].pmnames[NEUTRAL])}`;
+                }
+                /* number of leading spaces to match 3 digit prefix */
+                pfx = buf.slice(0, 4).toLowerCase() === 'the ' ? 0
+                      : buf.slice(0, 3).toLowerCase() === 'an ' ? 1
+                        : buf.slice(0, 2).toLowerCase() === 'a ' ? 2
                           : !/[0-9]/.test(buf[2] ?? '') ? 4 : 0;
-            tty_putstr(win, 0, `${' '.repeat(pfx)}${buf}`);
+                if (class_header)
+                    ++pfx;
+                buftoo = `${' '.repeat(pfx)}${buf}`;
+                tty_putstr(klwin, 0, buftoo);
+            }
+            if (ntypes > 1) {
+                if (!dumping)
+                    tty_putstr(klwin, 0, '');
+                buf = `${total_killed} creatures vanquished.`;
+                tty_putstr(klwin, 0, buf);
+            }
+            await display_menu_window_blocking(klwin);
+            tty_destroy_nhwindow(klwin);
+            await docrt();
         }
-        if (ntypes > 1) {
-            tty_putstr(win, 0, '');
-            tty_putstr(win, 0, `${total_killed} creatures vanquished.`);
-        }
-        await tty_display_nhwindow(win);
-        await xwaitforspace(' \r\n\x1b');
-        while (tty_next_page(win))
-            await xwaitforspace(' \r\n\x1b');
-        tty_destroy_nhwindow(win);
-        await docrt();
-    } else if (ask && !game.program_state_gameover) {
+    } else if (!game.program_state_gameover) {
         await pline('No creatures have been vanquished.');
+    } else if (dumping) {
+        /* DUMPLOG: putstr(0, 0, "No creatures were vanquished."); not pline() */
+        tty_putstr(0, 0, 'No creatures were vanquished.');
     }
+}
+
+// src/insight.c:2953 num_genocides(); number of monster species which have
+// been genocided
+export function num_genocides() {
+    let n = 0;
+
+    for (let i = LOW_PM; i < NUMMONS; ++i) {
+        if (game.mvitals[i]?.mvflags & G_GENOD) {
+            ++n;
+            /* if (UniqCritterIndx(i))
+                   impossible("unique creature '%d: %s' genocided?", ...) */
+        }
+    }
+    return n;
+}
+
+// src/insight.c:2970 num_extinct()
+function num_extinct() {
+    let n = 0;
+
+    for (let i = LOW_PM; i < NUMMONS; ++i) {
+        if (UniqCritterIndx(i))
+            continue;
+        if (((game.mvitals[i]?.mvflags | 0) & G_GONE) === G_EXTINCT)
+            ++n;
+    }
+    return n;
+}
+
+// src/insight.c:2985 num_gone(); fills mindx[] with the genocided and/or
+// extinct species
+function num_gone(mvflags, mindx) {
+    const mflg = mvflags & 0xff;
+    let n = 0;
+
+    mindx.length = 0;
+    for (let i = LOW_PM; i < NUMMONS; ++i) {
+        /* uniques can't be genocided but can become extinct;
+           however, they're never reported as extinct, so skip them */
+        if (UniqCritterIndx(i))
+            continue;
+        if (((game.mvitals[i]?.mvflags | 0) & mflg) !== 0)
+            mindx[n++] = i;
+    }
+    return n;
+}
+
+// src/insight.c:3007 list_genocided(); list of genocided and extinct species
+export async function list_genocided(defquery, ask) {
+    let i, mndx;
+    let ngenocided, nextinct, ngone, mvflags;
+    const mindx = [];
+    let c;
+    let klwin;
+    let buf;
+    let genoing, /* prompting for genocide or class genocide */
+        dumping; /* for DUMPLOG; doesn't need to be conditional */
+    let both = (game.program_state_gameover || game.wizard || game.discover);
+    const mons = game.mons;
+
+    dumping = (defquery === 'd');
+    genoing = (defquery === 'g');
+    if (dumping || genoing)
+        defquery = 'y';
+    if (genoing)
+        both = false; /* genocides only, not extinctions */
+
+    /* count the number of extinct and genocided species; performing both
+       counts before counting the number of genocided species will only
+       happen rarely and is simpler than a more general single pass check;
+       extinctions are only revealed during end of game disclosure or when
+       running in wizard or explore mode */
+    ngenocided = num_genocides();
+    nextinct = both ? num_extinct() : 0;
+    mvflags = G_GENOD | (both ? G_EXTINCT : 0);
+    ngone = num_gone(mvflags, mindx);
+
+    /* genocided or extinct species list */
+    if (ngone > 0) {
+        buf = `Do you want a list of ${
+            (nextinct && !ngenocided) ? 'extinct ' : ''}species${
+            (ngenocided) ? ' genocided' : ''}${
+            (nextinct && ngenocided) ? ' and extinct' : ''}?`;
+        c = ask ? await tty_yn_function(buf, (ngone > 1) ? 'ynaq' : 'ynq\x1ba',
+                                        defquery, true)
+                : defquery;
+        if (c === 'q')
+            game.done_stopprint = (game.done_stopprint | 0) + 1;
+        if (c === 'y' || c === 'a') {
+            let save_sortmode;
+            let mlet, prev_mlet = 0;
+            let class_header = false;
+
+            if (ngone > 1) {
+                if (c === 'a') { /* ask player to choose sort order */
+                    if (await set_vanq_order(false) < 0)
+                        return;
+                }
+                /* sorting by count high to low or low to high
+                   don't make sense for genocides; if the preferred order
+                   to set to either of those, use alphabetical instead;
+                   note: the tie breaker for by-class is level-high-to-low
+                   or level-low-to-high rather than count so is ok as-is */
+                save_sortmode = game.flags.vanq_sortmode;
+                if (game.flags.vanq_sortmode === VANQ_COUNT_H_L
+                    || game.flags.vanq_sortmode === VANQ_COUNT_L_H)
+                    game.flags.vanq_sortmode = VANQ_ALPHA_MIX;
+                mindx.sort(vanqsort_cmp);
+                class_header = (game.flags.vanq_sortmode === VANQ_MCLS_LTOH
+                                || game.flags.vanq_sortmode === VANQ_MCLS_HTOL);
+                game.flags.vanq_sortmode = save_sortmode;
+            }
+
+            klwin = tty_create_nhwindow(NHW_MENU);
+            buf = `${(ngenocided) ? 'Genocided' : 'Extinct'}${
+                (nextinct && ngenocided) ? ' or extinct' : ''} species:`;
+            tty_putstr(klwin, 0, buf);
+            if (!dumping)
+                tty_putstr(klwin, 0, '');
+
+            for (i = 0; i < ngone; ++i) {
+                mndx = mindx[i];
+                mlet = mons[mndx].mlet;
+                if (class_header && mlet !== prev_mlet) {
+                    buf = monexplain[mlet];
+                    /* when 'ask' is True, the attribute (highlighting)
+                       of various header lines is suppressed */
+                    tty_putstr(klwin, ask ? ATR_NONE
+                                          : (game.iflags?.menu_headings?.attr
+                                             ?? ATR_INVERSE),
+                               upstart(buf));
+                    prev_mlet = mlet;
+                }
+                buf = ` ${makeplural(mons[mndx].pmnames[NEUTRAL])}`;
+                if (((game.mvitals[mndx]?.mvflags | 0) & G_GONE) === G_EXTINCT)
+                    buf += ' (extinct)';
+                tty_putstr(klwin, 0, buf);
+            }
+            if (!dumping)
+                tty_putstr(klwin, 0, '');
+            if (ngenocided > 0) {
+                buf = `${ngenocided} species genocided.`;
+                tty_putstr(klwin, 0, buf);
+            }
+            if (nextinct > 0) {
+                buf = `${nextinct} species extinct.`;
+                tty_putstr(klwin, 0, buf);
+            }
+
+            await display_menu_window_blocking(klwin);
+            tty_destroy_nhwindow(klwin);
+            await docrt();
+        }
+    } else if (!game.program_state_gameover) {
+        /* #genocided or #polyself prompt; if 'both', the (unlikely)
+           extinction has been ignored */
+        await pline(`No creatures have been genocided${genoing ? ' yet' : ''}.`);
+    } else if (dumping) { /* 'gameover' is True if we make it here */
+        tty_putstr(0, 0, 'No species were genocided or became extinct.');
+    }
+}
+
+// src/insight.c:3138 dogenocided(); #genocided command
+export async function dogenocided() {
+    await list_genocided(game.iflags?.menu_requested ? 'a' : 'y', false);
+    return ECMD_OK;
 }

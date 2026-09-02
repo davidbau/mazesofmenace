@@ -593,3 +593,18 @@ function let_to_name(oclass) {
 export function makeknown(otyp) {
     discover_object(otyp, true, true, true);
 }
+
+// src/o_init.c:352 objdescr_is(), does obj's unidentified description
+// match descr?
+export function objdescr_is(obj, descr) {
+    let objdescr;
+
+    if (!obj) {
+        /* impossible("objdescr_is: null obj"); */
+        return false;
+    }
+    objdescr = OBJ_DESCR(game.objects[obj.otyp].oc_descr_idx);
+    if (!objdescr)
+        return false; /* no obj description, no match */
+    return objdescr === descr;
+}

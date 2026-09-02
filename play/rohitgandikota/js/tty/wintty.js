@@ -343,6 +343,12 @@ export function tty_putstr(window, attr, str) {
 // difference shows — their longest line is 32, which the other branch would put
 // at column 47 and this one puts at 40, matching the recordings.
 function compute_offx(cw) {
+    /* win/tty/wintty.c tty_display_nhwindow(), NHW_MENU/NHW_TEXT arm. The
+       recorder build defines H2344_BROKEN (wintty.c:13), so the overlay
+       column is
+           min(min(82, cols / 2), cols - s_maxcol - 1)
+       and only a window taller than the display, or menu_overlay off, is
+       forced to full-screen mode. */
     let offx = (cw.type === NHW_TEXT)
              ? 0
              : Math.min(Math.min(82, Math.floor(COLS / 2)),
@@ -350,8 +356,7 @@ function compute_offx(cw) {
     if (offx < 0) offx = 0;
     if (cw.type === NHW_MENU) cw.offy = 0;
 
-    /* a window taller than the display cannot overlay; it takes the screen */
-    if (cw.maxrow >= ROWS) offx = 0;
+    if (cw.maxrow >= ROWS || game.iflags?.menu_overlay === false) offx = 0;
     return offx;
 }
 

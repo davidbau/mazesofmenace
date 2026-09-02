@@ -197,3 +197,30 @@ export function ordin(n) {
     return (dd === 0 || dd > 3 || Math.trunc((n % 100) / 10) === 1) ? "th"
                : (dd === 1) ? "st" : (dd === 2) ? "nd" : "rd";
 }
+
+// src/hacklib.c pmatchi(), case-insensitive wildcard match.
+export function pmatchi(patrn, strng) {
+    return pmatch_internal(String(patrn), String(strng), true);
+}
+
+// src/hacklib.c:533 visctrl(), a key as printable text ("^X", "M-x").
+export function visctrl(ch) {
+    let c = typeof ch === 'number' ? ch : String(ch).charCodeAt(0);
+    let ccc = '';
+
+    if (c & 0o200) {
+        ccc += 'M';
+        ccc += '-';
+    }
+    c &= 0o177;
+    if (c < 0o40) {
+        ccc += '^';
+        ccc += String.fromCharCode(c | 0o100); /* letter */
+    } else if (c === 0o177) {
+        ccc += '^';
+        ccc += String.fromCharCode(c & ~0o100); /* '?' */
+    } else {
+        ccc += String.fromCharCode(c); /* printable character */
+    }
+    return ccc;
+}

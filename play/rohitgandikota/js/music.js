@@ -1,6 +1,9 @@
 // music.js -- musical instruments and their effects.
 // C ref: src/music.c
 
+import { Norep } from './pline.js';
+import { dist2 } from './hacklib.js';
+import { MFLAGS, PMNAMES } from './monst_data.js';
 import { game } from './gstate.js';
 import { A_WIS, ECMD_OK, ECMD_TIME, G_UNIQ, STRAT_WAITMASK } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
@@ -153,4 +156,38 @@ export async function do_play_instrument(instr) {
 
     note_unported_music('play_tune');
     return ECMD_OK;
+}
+
+/* include/mondata.h is_mercenary() */
+const is_mercenary_m = (ptr) => (ptr.mflags2 & MFLAGS.M2_MERC) !== 0;
+
+// src/music.c:162 awaken_soldiers(), a bugle readies every soldier and
+// wakes (or scares) everything else within earshot.
+export async function awaken_soldiers(bugler /* monster that played instrument */) {
+    let distance, distm;
+
+    /* distance of affected non-soldier monsters to bugler */
+    distance = ((bugler === game.youmonst) ? game.u.ulevel
+                                           : bugler.data.mlevel) * 30;
+
+    for (const mtmp of (game.level?.monsters || [])) {
+        if (DEADMONSTER(mtmp))
+            continue;
+        if (is_mercenary_m(mtmp.data) && mtmp.data.pmidx !== PMNAMES.PM_GUARD) {
+            if (!mtmp.mtame)
+                mtmp.mpeaceful = 0;
+            mtmp.msleeping = mtmp.mfrozen = 0;
+            mtmp.mcanmove = 1;
+            mtmp.mstrategy = (mtmp.mstrategy | 0) & ~STRAT_WAITMASK;
+            if (canseemon(mtmp))
+                await pline(`${Monnam(mtmp)} is now ready for battle!`);
+            else if (!Deaf())
+                await Norep('You hear the rattle of battle gear being readied.'); /* Deaf-aware */
+        } else if ((distm = ((bugler === game.youmonst)
+                                 ? mdistu(mtmp)
+                                 : dist2(bugler.mx, bugler.my, mtmp.mx,
+                                         mtmp.my))) < distance) {
+            await awaken_scare(mtmp, (distm < distance / 3));
+        }
+    }
 }

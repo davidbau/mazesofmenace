@@ -249,6 +249,7 @@ export function STR19(x) { return 100 + x; } // 19 and above
 
 // C ref: zap.h — BZ_OFS_AD(x) = (x) - 1
 export function BZ_OFS_AD(adtyp) { return adtyp - 1; }
+export function BZ_U_BREATH(bztyp) { return 20 + bztyp; }  /* 20..29 */
 
 // Room types (mkroom.h)
 export const OROOM = 0;
@@ -2966,3 +2967,25 @@ export const NH_BLACK = 'black', NH_AMBER = 'amber', NH_GOLDEN = 'golden',
              NH_LIGHT_BLUE = 'light blue', NH_RED = 'red', NH_GREEN = 'green',
              NH_SILVER = 'silver', NH_BLUE = 'blue', NH_PURPLE = 'purple',
              NH_WHITE = 'white', NH_ORANGE = 'orange';
+
+/* include/objclass.h:37 enum obj_armor_types — objects[].oc_subtyp for armor */
+export const ARM_SUIT = 0;
+export const ARM_SHIELD = 1;
+export const ARM_HELM = 2;
+export const ARM_GLOVES = 3;
+export const ARM_BOOTS = 4;
+export const ARM_CLOAK = 5;
+export const ARM_SHIRT = 6;
+
+// include/dungeon.h:110 Lassigned(), :111 Lcheck(), :124-126 Is_wiz*_level(),
+// :127 Is_sanctum()
+export function Lassigned(y) { return !!y && !!(y.dlevel || y.dnum); }
+export function Lcheck(x, z) { return Lassigned(z) && !!x && x.dnum === z.dnum && x.dlevel === z.dlevel; }
+export function Is_wiz1_level(uz) { return Lcheck(uz ?? game?.u?.uz, game?.wiz1_level); }
+export function Is_wiz2_level(uz) { return Lcheck(uz ?? game?.u?.uz, game?.wiz2_level); }
+export function Is_wiz3_level(uz) { return Lcheck(uz ?? game?.u?.uz, game?.wiz3_level); }
+export function Is_sanctum(uz) { return Lcheck(uz ?? game?.u?.uz, game?.sanctum_level); }
+
+// include/monst.h:268 Mgender()
+export function Mgender(mon) { return mon.female ? FEMALE : MALE; }
+

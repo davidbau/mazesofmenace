@@ -11,6 +11,9 @@
 // js/o_init.js shuffles at game start — so a correct label here is also a
 // direct check that the o_init port is right.
 
+import { get_artifact } from './artifact.js';
+import { QBUFSZ } from './const.js';
+import { shk_your } from './shk.js';
 import { carried, is_poisonable, Has_contents, OBJ_FLOOR, OBJ_MINVENT } from './obj.js';
 import { game } from './gstate.js';
 import { vegetarian, name_to_monplus, type_is_pname, verysmall,
@@ -48,6 +51,7 @@ import { ordin, distu, s_suffix } from './hacklib.js';
 import { cansee as cansee_o } from './vision.js';
 import { ART_ORB_OF_DETECTION, ART_EYES_OF_THE_OVERWORLD } from './artilist_data.js';
 const mons_PM_SAMURAI = PMNAMES.PM_SAMURAI;
+import { helm_simple_name, cloak_simple_name } from './do_wear.js';
 import { OCLASSES, ONAMES, MATERIALS, obj_descr,
          NUM_OBJECTS } from './objects_data.js';
 import { strstri, strsubst, fuzzymatch, mungspaces } from './hacklib.js';
@@ -161,6 +165,19 @@ export function obj_typename(otyp) {
 // ---------------------------------------------------------------------------
 // xname / doname
 // ---------------------------------------------------------------------------
+
+// src/objnam.c:245 simple_typename(); less verbose result than obj_typename()
+export function simple_typename(otyp) {
+    const save_uname = game.objects[otyp].oc_uname;
+
+    game.objects[otyp].oc_uname = null; /* suppress any name given by user */
+    let bufp = obj_typename(otyp);
+    game.objects[otyp].oc_uname = save_uname;
+    const pp = strstri(bufp, ' (');
+    if (pp >= 0)
+        bufp = bufp.slice(0, pp); /* strip the appended description */
+    return bufp;
+}
 
 // src/objnam.c:437 just_an() — "", "a " or "an ".
 //
@@ -496,7 +513,7 @@ export const CXN_NORMAL = 0, CXN_NOCORPSE = 1, CXN_PFX_THE = 2,
 
 // src/objnam.c:1121 the_unique_pm() — a unique monster that wants "the";
 // one with a personal name wants neither article.
-function the_unique_pm(ptr) {
+export function the_unique_pm(ptr) {
     if (type_is_pname(ptr))
         return false;
     return (ptr.geno & MFLAGS.G_UNIQ) !== 0;
@@ -846,7 +863,7 @@ export function obj_is_pname(obj) {
 // src/objnam.c:1106 the_unique_obj() — is this THE Amulet (or another
 // unique object the hero has identified)? The fake amulet lies while
 // unknown.
-function the_unique_obj(obj) {
+export function the_unique_obj(obj) {
     const known = obj.known;
 
     if (!obj.dknown)
@@ -3578,4 +3595,128 @@ export function distant_name(obj, func) {
         game.distantname--;
     }
     return str;
+}
+
+// src/objnam.c:5570 shield_simple_name()
+export function shield_simple_name(shield) {
+    if (shield) {
+        /* xname() describes unknown (unseen) reflection as smooth */
+        if (shield.otyp === ONAMES.SHIELD_OF_REFLECTION)
+            return shield.dknown ? 'silver shield' : 'smooth shield';
+    }
+    return 'shield';
+}
+
+// src/objnam.c:5600 shirt_simple_name()
+export function shirt_simple_name(shirt) {
+    return 'shirt';
+}
+
+// src/objnam.c:5435 armor_simple_name()
+export function armor_simple_name(armor) {
+    let result;
+    const armcat = game.objects[armor.otyp].oc_subtyp; /* oc_armcat */
+    switch (armcat) {
+    case ARM_SUIT:
+        result = suit_simple_name(armor);
+        break;
+    case ARM_CLOAK:
+        result = cloak_simple_name(armor);
+        break;
+    case ARM_HELM:
+        result = helm_simple_name(armor);
+        break;
+    case ARM_GLOVES:
+        result = gloves_simple_name(armor);
+        break;
+    case ARM_BOOTS:
+        result = boots_simple_name(armor);
+        break;
+    case ARM_SHIELD:
+        result = shield_simple_name(armor);
+        break;
+    case ARM_SHIRT:
+        result = shirt_simple_name(armor);
+        break;
+    default:
+        result = simpleonames(armor);
+        /* impossible("unknown armor category (%s => %u)") */
+        break;
+    }
+    return result;
+}
+
+// src/objnam.c:2490 actualoname(), the object's real name, ignoring what
+// the hero knows about it.
+export function actualoname(obj) {
+    let res;
+
+    (game.iflags ||= {}).override_ID = true;
+    res = minimal_xname(obj);
+    game.iflags.override_ID = false;
+    return res;
+}
+
+// src/objnam.c:2303 Doname2(), doname() with a capital letter.
+export function Doname2(obj) {
+    const s = doname(obj);
+
+    return s ? s[0].toUpperCase() + s.slice(1) : s;
+}
+
+// src/objnam.c:2391 ysimple_name(), "your <simple name>" (or "the", or the
+// owner's).
+export function ysimple_name(obj) {
+    const s = shk_your(obj);
+
+    return s + minimal_xname(obj);
+}
+
+// src/objnam.c:5624 safe_qbuf(), build "<qprefix><object name><qsuffix>"
+// within QBUFSZ, shortening the name (func, then altfunc) and falling back
+// to lastR when even that will not fit.
+export function safe_qbuf(qprefix, qsuffix, obj, func, altfunc, lastR) {
+    let qbuf, bufp;
+    let len;
+    const len_qsfx = qsuffix ? qsuffix.length : 0;
+    const len_lastR = lastR.length;
+    const lenlimit = QBUFSZ - 1;
+
+    qbuf = qprefix ? qprefix.slice(0, lenlimit) : '';
+    len = qbuf.length;
+    if (len + len_lastR + len_qsfx > lenlimit) {
+        /* too long even with last resort; we're going to lose part of it */
+        if (len < lenlimit) {
+            qbuf += lastR.slice(0, lenlimit - len);
+            len = qbuf.length;
+            if (qsuffix && len < lenlimit) {
+                qbuf += qsuffix.slice(0, lenlimit - len);
+            }
+        }
+    } else {
+        len += len_qsfx; /* include the pending suffix */
+        bufp = short_oname(obj, func, altfunc, lenlimit - len);
+        if (len + bufp.length <= lenlimit)
+            qbuf += bufp; /* formatted name fits */
+        else
+            qbuf += lastR; /* use last resort */
+        if (qsuffix)
+            qbuf += qsuffix;
+    }
+    return qbuf;
+}
+
+// src/objnam.c bare_artifactname(), the artifact's name without any
+// object type or known/dknown/&c feedback.
+export function bare_artifactname(obj) {
+    let outbuf;
+
+    if (obj.oartifact) {
+        outbuf = get_artifact(obj)?.name ?? xname(obj);
+        if (outbuf.startsWith('The '))
+            outbuf = outbuf[0].toLowerCase() + outbuf.slice(1);
+    } else {
+        outbuf = xname(obj);
+    }
+    return outbuf;
 }

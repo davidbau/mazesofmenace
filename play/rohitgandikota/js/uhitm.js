@@ -1,3 +1,5 @@
+import { mon_poly } from './mhitm.js';
+import { split_mon } from './potion.js';
 import { change_luck, exercise, poisoned } from './attrib.js';
 import { A_DEX, A_STR, A_INT, A_WIS, ERODE_NONE, ERODE_BURN, ERODE_RUST,
          ERODE_CORRODE, EF_NONE, EF_GREASE, EF_VERBOSE, ER_NOTHING,
@@ -1091,6 +1093,13 @@ async function damageum(mon, mattk, specialdmg) {
                           specialdmg, done: false };
             await mhitm_ad_ston(game.youmonst, mattk, mon, mhm);
             damage = mhm.damage;
+        } else if (mattk[1] === ATTKS.AD_POLY) {
+            const mhm = { damage, hitflags: M_ATTK_MISS, permdmg: 0,
+                          specialdmg, done: false };
+            await mhitm_ad_poly(game.youmonst, mattk, mon, mhm);
+            damage = mhm.damage;
+            if (mhm.done)
+                return mhm.hitflags;
         } else {
             note_unported_uhitm(`damageum:adtyp=${mattk[1]}`);
         }
@@ -1104,23 +1113,6 @@ async function damageum(mon, mattk, specialdmg) {
         return M_ATTK_DEF_DIED;
     }
     return M_ATTK_HIT;
-}
-
-// src/potion.c split_mon(), for a mold or jelly strengthened by the hero's
-// heat. clone_mon() performs placement and divides current HP; this tail
-// divides maximum HP and emits the heat-specific message.
-async function split_mon_from_heat(mon) {
-    if (mon.mhp > mon.mhpmax)
-        mon.mhp = mon.mhpmax;
-    const clone = mon.mhp > 1 ? clone_mon(mon, 0, 0) : null;
-    if (!clone)
-        return null;
-
-    clone.mhpmax = Math.trunc(mon.mhpmax / 2);
-    mon.mhpmax -= clone.mhpmax;
-    if (canspotmon(mon))
-        await pline(`${Monnam(mon)} multiplies from your heat!`);
-    return clone;
 }
 
 // src/mhitm.c attk_protection(), the armor slots which keep an aggressive
@@ -1307,8 +1299,7 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp,
                 if (!Stone_resistance()) {
                     if (poly_when_stoned(game.youmonst.data)) {
                         const { polymon } = await import('./polyself.js');
-                        if (await polymon(PMNAMES.PM_STONE_GOLEM,
-                                          { allowSexChange: false }))
+                        if (await polymon(PMNAMES.PM_STONE_GOLEM))
                             break;
                     }
                     const { done_in_by } = await import('./end.js');
@@ -1437,7 +1428,7 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp,
                 healmon(mon, Math.trunc((tmp + rn2(2)) / 2),
                         Math.trunc((tmp + 1) / 2));
                 if (mon.mhpmax > ((mon.m_lev | 0) + 1) * 8)
-                    await split_mon_from_heat(mon);
+                    await split_mon(mon, game.youmonst);
             }
             break;
         case ATTKS.AD_STUN:
@@ -2650,7 +2641,7 @@ function on_fire(ptr, mattk) {
 
 // src/mon.c:5680 golemeffects(), elemental healing and slowing for flesh
 // and iron golems.
-export async function golem_element_effects(mon, adtyp, damage) {
+export async function golemeffects(mon, adtyp, damage) {
     let heal = 0, slow = false;
 
     if (mon.mnum === PMNAMES.PM_FLESH_GOLEM) {
@@ -2682,6 +2673,54 @@ export async function golem_element_effects(mon, adtyp, damage) {
     }
     if (heal && healmon(mon, heal, 0) && cansee(mon.mx, mon.my))
         await pline(`${Monnam(mon)} seems healthier.`);
+}
+
+/* include/hack.h:1236 Maybe_Half_Phys() */
+const Maybe_Half_Phys = (dmg) =>
+    (game.u.intrinsic?.HHalf_physical_damage || game.u.uprops?.HALF_PHDAM)
+        ? Math.trunc((dmg + 1) / 2) : dmg;
+
+// src/uhitm.c:3729 mhitm_ad_poly()
+export async function mhitm_ad_poly(magr, mattk, mdef, mhm) {
+    const negated = (await mhitm_mgc_atk_negated(magr, mdef, false))
+                    || !!magr.mspec_used;
+
+    if (magr === game.youmonst) {
+        /* uhitm */
+        if (!game.u.uwep && mhm.damage < mdef.mhp) {
+            if (negated) {
+                await pline(`${Monnam(mdef)} is not transformed.`);
+            } else {
+                mhm.damage = await mon_poly(game.youmonst, mdef, mhm.damage);
+                if (DEADMONSTER(mdef))
+                    mhm.hitflags |= M_ATTK_DEF_DIED;
+                mhm.hitflags |= M_ATTK_HIT;
+                mhm.done = true;
+            }
+        }
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk);
+        if (Maybe_Half_Phys(mhm.damage) < (Upolyd(game.u) ? game.u.mh : game.u.uhp)) {
+            if (negated) {
+                if (magr.mcan)
+                    await You("aren't transformed.");
+            } else {
+                mhm.damage = await mon_poly(magr, game.youmonst, mhm.damage);
+                mhm.hitflags |= M_ATTK_HIT;
+                mhm.done = true;
+            }
+        }
+    } else {
+        /* mhitm */
+        if (mhm.damage < mdef.mhp && !negated) {
+            mhm.damage = await mon_poly(magr, mdef, mhm.damage);
+            if (DEADMONSTER(mdef))
+                mhm.hitflags |= M_ATTK_DEF_DIED;
+            mhm.hitflags |= M_ATTK_HIT;
+            mhm.done = true;
+        }
+    }
 }
 
 // src/uhitm.c:2445 mhitm_ad_drli(), a monster draining the hero's life.
@@ -2887,7 +2926,7 @@ export async function mhitm_ad_fire(magr, mattk, mdef, mhm) {
         if (resists_fire(mdef) || defended(mdef, ATTKS.AD_FIRE)) {
             if (!Blind())
                 await pline_The(`fire doesn't heat ${mon_nam(mdef)}!`);
-            await golem_element_effects(mdef, ATTKS.AD_FIRE, mhm.damage);
+            await golemeffects(mdef, ATTKS.AD_FIRE, mhm.damage);
             await shieldeff(mdef.mx, mdef.my);
             mhm.damage = 0;
         }
@@ -2945,7 +2984,7 @@ export async function mhitm_ad_fire(magr, mattk, mdef, mhm) {
             if (game.vis && canseemon(mdef))
                 await pline_The(`fire doesn't seem to burn ${mon_nam(mdef)}!`);
             await shieldeff(mdef.mx, mdef.my);
-            await golem_element_effects(mdef, ATTKS.AD_FIRE, mhm.damage);
+            await golemeffects(mdef, ATTKS.AD_FIRE, mhm.damage);
             mhm.damage = 0;
         }
         mhm.damage += await destroy_items(mdef, ATTKS.AD_FIRE, orig_dmg);
@@ -2968,7 +3007,7 @@ export async function mhitm_ad_cold(magr, mattk, mdef, mhm) {
             await shieldeff(mdef.mx, mdef.my);
             if (!Blind())
                 await pline_The(`frost doesn't chill ${mon_nam(mdef)}!`);
-            await golem_element_effects(mdef, ATTKS.AD_COLD, mhm.damage);
+            await golemeffects(mdef, ATTKS.AD_COLD, mhm.damage);
             mhm.damage = 0;
         }
         mhm.damage += await destroy_items(mdef, ATTKS.AD_COLD, orig_dmg);
@@ -3000,7 +3039,7 @@ export async function mhitm_ad_cold(magr, mattk, mdef, mhm) {
             if (game.vis && canseemon(mdef))
                 await pline_The(`frost doesn't seem to chill ${mon_nam(mdef)}!`);
             await shieldeff(mdef.mx, mdef.my);
-            await golem_element_effects(mdef, ATTKS.AD_COLD, mhm.damage);
+            await golemeffects(mdef, ATTKS.AD_COLD, mhm.damage);
             mhm.damage = 0;
         }
         mhm.damage += await destroy_items(mdef, ATTKS.AD_COLD, orig_dmg);
@@ -3025,7 +3064,7 @@ export async function mhitm_ad_elec(magr, mattk, mdef, mhm) {
         if (resists_elec(mdef) || defended(mdef, ATTKS.AD_ELEC)) {
             if (!Blind())
                 await pline_The(`zap doesn't shock ${mon_nam(mdef)}!`);
-            await golem_element_effects(mdef, ATTKS.AD_ELEC, mhm.damage);
+            await golemeffects(mdef, ATTKS.AD_ELEC, mhm.damage);
             await shieldeff(mdef.mx, mdef.my);
             mhm.damage = 0;
         }
@@ -3059,7 +3098,7 @@ export async function mhitm_ad_elec(magr, mattk, mdef, mhm) {
             if (game.vis && canseemon(mdef))
                 await pline_The(`zap doesn't shock ${mon_nam(mdef)}!`);
             await shieldeff(mdef.mx, mdef.my);
-            await golem_element_effects(mdef, ATTKS.AD_ELEC, mhm.damage);
+            await golemeffects(mdef, ATTKS.AD_ELEC, mhm.damage);
             mhm.damage = 0;
         }
         mhm.damage += await destroy_items(mdef, ATTKS.AD_ELEC, orig_dmg);
@@ -3911,4 +3950,12 @@ export async function mhitm_knockback(magr, mdef, mattk, mhm, weapon_used) {
     if (!u_agr && DEADMONSTER(magr))
         mhm.hitflags |= M_ATTK_AGR_DIED;
     return true;
+}
+
+// src/uhitm.c:6300 disguised_as_non_mon(), a mimic posing as something
+// that isn't a monster and not sensed through the disguise.
+export function disguised_as_non_mon(mtmp) {
+    return (!sensemon(mtmp)
+            && M_AP_TYPE(mtmp)
+            && M_AP_TYPE(mtmp) !== M_AP_MONSTER);
 }

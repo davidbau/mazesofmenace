@@ -30,6 +30,72 @@ import { rn2, rn1, rnd } from './rng.js';
 import { setnotworn } from './worn.js';
 import { stop_occupation } from './allmain.js';
 import { encumber_msg } from './attrib.js';
+import { donning, cancel_don, Armor_off, Cloak_off, Boots_off, Gloves_off, Helmet_off, Shield_off, Shirt_off, Amulet_off, Ring_gone, Blindf_off, worn } from './do_wear.js';
+import { uwepgone, uswapwepgone, uqwepgone } from './wield.js';
+import { unpunish } from './read.js';
+import { skinback } from './polyself.js';
+import { setworn } from './worn.js';
+import { W_AMUL, W_RING, W_TOOL, W_BALL, W_CHAIN, OBJ_DELETED, W_ARM, W_ARMC, W_ARMF, W_ARMG, W_ARMH, W_ARMS, W_ARMU } from './const.js';
+
+// src/steal.c:213 remove_worn_item() — take a worn or wielded object out of
+// its slot, running the slot's take-off side effects. unchain_ball says
+// whether a ball or chain being removed unpunishes the hero.
+export async function remove_worn_item(obj, unchain_ball) {
+    const u = game.u;
+
+    if (donning(obj))
+        cancel_don();
+    if (!obj.owornmask)
+        return;
+
+    const oldinuse = obj.in_use;
+    obj.in_use = 1;
+    if (obj.owornmask & W_ARMOR) {
+        if (obj === u.uskin) {
+            /* impossible("Removing embedded scales?") */
+            await skinback(true); /* uarm = uskin; uskin = 0; */
+        }
+        if (obj === worn(W_ARM))
+            await Armor_off();
+        else if (obj === worn(W_ARMC))
+            await Cloak_off(obj);
+        else if (obj === worn(W_ARMF))
+            await Boots_off(obj);
+        else if (obj === worn(W_ARMG))
+            await Gloves_off(obj);
+        else if (obj === worn(W_ARMH))
+            await Helmet_off(obj);
+        else if (obj === worn(W_ARMS))
+            await Shield_off();
+        else if (obj === worn(W_ARMU))
+            await Shirt_off();
+        else
+            setworn(null, obj.owornmask & W_ARMOR);
+    } else if (obj.owornmask & W_AMUL) {
+        await Amulet_off();
+    } else if (obj.owornmask & W_RING) {
+        await Ring_gone(obj);
+    } else if (obj.owornmask & W_TOOL) {
+        await Blindf_off(obj);
+    } else if (obj.owornmask & W_WEAPONS) {
+        if (obj === u.uwep)
+            await uwepgone();
+        if (obj === u.uswapwep)
+            uswapwepgone();
+        if (obj === u.uquiver)
+            uqwepgone();
+    }
+
+    if (obj.owornmask & (W_BALL | W_CHAIN)) {
+        if (unchain_ball)
+            unpunish();
+    } else if (obj.owornmask) {
+        /* catchall */
+        setnotworn(obj);
+    }
+    /* if (obj->where == OBJ_DELETED) debugpline1("remove_worn_item() \"%s\" deleted!", ...) */
+    obj.in_use = oldinuse;
+}
 
 function note_unported_steal(what) {
     (game.unported ||= new Set()).add(what);

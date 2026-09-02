@@ -147,3 +147,6 @@ export const is_poisonable = (otmp) =>
      && objects[otmp.otyp].oc_skill >= -SKILLS.P_SHURIKEN
      && objects[otmp.otyp].oc_skill <= -SKILLS.P_BOW)
     || permapoisoned(otmp);
+
+// include/obj.h Is_box()
+export const Is_box = (otmp) => (otmp.otyp === ONAMES.LARGE_BOX || otmp.otyp === ONAMES.CHEST);

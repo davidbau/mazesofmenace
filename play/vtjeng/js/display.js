@@ -30,7 +30,7 @@ import { cansee, seenv_matrix } from './vision.js';
 // js/tty_message.js imports flush_screen() from this file; both sides use the
 // other's exports only inside function bodies, so the cycle resolves.
 import {
-    TOPLINE_EMPTY,
+    TOPLINE_NEED_MORE,
     clearTtyMessageWindow,
     dismissPendingTtyMessage,
 } from './tty_message.js';
@@ -836,6 +836,19 @@ export function hero_glyph_info(state = game) {
     );
 }
 
+// C ref: display.h display_self() (251-260). Keep this as a separate helper
+// because display.c newsym() uses it as the only permitted update while the
+// hero is swallowed.
+export function display_self(state = game) {
+    if (state !== game)
+        throw new TypeError('display_self() draws the global game state');
+    const steed = game.u?.usteed;
+    const hero = (steed && monsterVisible(steed, game))
+        ? riddenMonsterGlyphInfo(steed, game)
+        : hero_glyph_info(game);
+    show_glyph_cell(game.u.ux, game.u.uy, hero);
+}
+
 function withMonsterAccessibility(
     glyph,
     monster,
@@ -893,6 +906,24 @@ function actualMonsterGlyphInfo(monster, state) {
         monster.data,
         state,
         monster.mtame ? 'pet' : 'monster',
+    );
+}
+
+// C ref: detect.c map_monst() (122-133). The temporary detector display uses
+// the monster's real mon_to_glyph()/pet_to_glyph() presentation, even when a
+// monster is currently mimicking furniture, an object, or another monster.
+// The ordinary display_monster() path intentionally does something different
+// for those disguises, so keep this producer separate from monster_glyph_info.
+export function map_monster_glyph_info(monster, state = game) {
+    if (!monster?.data)
+        throw new TypeError('map_monster_glyph_info requires monster data');
+    // C's detected_mon_to_glyph()/pet_to_glyph()/mon_to_glyph() all pass
+    // through what_mon(), so hallucination replaces the displayed species and
+    // consumes one display-RNG draw even during a temporary detector frame.
+    if (monster.data.mlet === 0)
+        return detectedMonsterGlyphInfo(monster, state);
+    return presentedMonsterGlyphInfo(
+        monster, state, false, Boolean(monster.mtame),
     );
 }
 
@@ -979,7 +1010,7 @@ export function hallucinated_statue_glyph_info(
 // Hallucination changes the presented species for both detected and physically
 // seen monsters, but not the gender half of the range each of the three
 // what_mon() macros picks: that stays mon->female whatever species is shown.
-function presentedMonsterGlyphInfo(monster, state, detected) {
+function presentedMonsterGlyphInfo(monster, state, detected, pet = false) {
     const hallucinating = heroHallucinating(state);
     if (monster.mtame && !hallucinating)
         return actualMonsterGlyphInfo(monster, state);
@@ -1002,8 +1033,8 @@ function presentedMonsterGlyphInfo(monster, state, detected) {
         : genderedMonsterGlyph(
             mnum,
             monster.female,
-            GLYPH_MON_MALE_OFF,
-            GLYPH_MON_FEM_OFF,
+            pet ? GLYPH_PET_MALE_OFF : GLYPH_MON_MALE_OFF,
+            pet ? GLYPH_PET_FEM_OFF : GLYPH_MON_FEM_OFF,
         );
     const glyph = glyphPresentation(
         monster_class_symbol(species.mlet, state),
@@ -1012,7 +1043,8 @@ function presentedMonsterGlyphInfo(monster, state, detected) {
         numeric_glyph_customization(logicalGlyph, state),
     );
     const attr = print_glyph_attr(
-        (detected ? MG_DETECT : 0) | monsterGenderFlag(monster.female),
+        (detected ? MG_DETECT : monster.mtame && pet ? MG_PET : 0)
+        | monsterGenderFlag(monster.female),
         state,
     );
     if (attr) glyph.attr = attr;
@@ -2301,15 +2333,34 @@ export function swallow_to_glyph(
 // reached by mhitu.c gulpmu(); the continuing-position redraw is outside this
 // slice because gulpmu() does not call swallowed(FALSE) for repeated damage.
 export async function swallowed(first, state = game) {
-    if (!first) {
-        throw new Error('swallowed(FALSE) is outside the current port boundary');
-    }
     if (state !== game) {
         throw new TypeError('swallowed() requires the live game state');
     }
 
-    await cls();
-    await bot();
+    // C keeps the previous swallowed position in static locals so the
+    // continuing redraw can erase the old stomach before drawing the new one.
+    // A game state is the equivalent lifetime in this port.
+    if (!first) {
+        const previous = state._swallowedLast;
+        if (previous) {
+            // GLYPH_UNEXPLORED is the display.c sentinel rather than a
+            // normal glyph-map entry, so clear the presentation directly.
+            const unexplored = {
+                ch: ' ',
+                color: NO_COLOR,
+                dec: false,
+                glyph: GLYPH_UNEXPLORED_OFF,
+            };
+            for (let y = previous.y - 1; y <= previous.y + 1; ++y) {
+                for (let x = previous.x - 1; x <= previous.x + 1; ++x) {
+                    if (isok(x, y)) show_glyph_cell(x, y, unexplored);
+                }
+            }
+        }
+    } else {
+        await cls();
+        await bot();
+    }
 
     const swallower = monsndx(state.u?.ustuck?.data);
     const leftOk = isok(state.u.ux - 1, state.u.uy);
@@ -2351,6 +2402,8 @@ export async function swallowed(first, state = game) {
                 stomachGlyph(S_sw_br),
             );
     }
+
+    state._swallowedLast = { x: state.u.ux, y: state.u.uy };
 }
 
 // C ref: display.c glyph_at() (2478-2482). Read the logical number from the
@@ -2966,6 +3019,13 @@ export function newsym(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
 
+    // display.c:938-943. A swallowed hero owns the transient 3x3 stomach
+    // display; only repaint the hero itself, never the surrounding map.
+    if (game.u?.uswallow) {
+        if (u_at(x, y, game)) display_self();
+        return;
+    }
+
     const visible = cansee(x, y);
     if (visible) {
         // display.c:newsym() snapshots permanent location lighting at the
@@ -3112,11 +3172,7 @@ export function newsym(x, y) {
         // puts a visible steed's glyph on the hero's square while the hero
         // rides; the hero's own glyph shows through only when there is no
         // steed or the hero cannot see it.
-        const steed = game.u.usteed;
-        const hero = (steed && monsterVisible(steed, game))
-            ? riddenMonsterGlyphInfo(steed, game)
-            : hero_glyph_info(game);
-        show_glyph_cell(x, y, hero);
+        display_self();
         if (game.level?.flags?.hero_memory)
             loc.remembered_glyph
                 = remembered_glyph_from_presentation(rememberedUnderlying);
@@ -3320,9 +3376,11 @@ export function see_monsters(state = game) {
         if ((mon.mstate & MON_STILL_ARRIVING) !== 0) continue;
         newsym(mon.mx, mon.my);
         if (mon.wormno) {
-            // worm.c see_wsegs() redraws the tail segments; no worm reaches
-            // any level this port generates.
-            throw new Error('see_monsters() over a long worm');
+            // worm.c see_wsegs() redraws tail segments. The current level
+            // generator can still create one, but its tail placement is not
+            // yet represented in the JS map; retain the head redraw and let
+            // the existing tail cells keep their remembered presentation.
+            continue;
         }
         if (warn_of_mon
             && (state.context?.warntype?.obj & mon.data.mflags2) !== 0) {
@@ -3341,6 +3399,31 @@ export function see_monsters(state = game) {
     if (!state.u.usteed) newsym(state.u.ux, state.u.uy);
 }
 
+// C ref: display.c see_objects() (1558-1570). Repaint the top object at each
+// floor pile when hallucination changes. The inventory refresh is owned by
+// the caller, just as the C helper delegates it to update_inventory().
+export function see_objects(state = game) {
+    if (state !== game)
+        throw new TypeError('see_objects() draws the global game state');
+    for (let object = state.level?.objlist ?? null;
+         object; object = object.nobj) {
+        if (vobj_at(object.ox, object.oy, state) === object)
+            newsym(object.ox, object.oy);
+    }
+}
+
+// C ref: display.c see_traps() (1611-1622). Only traps whose current glyph is
+// still a trap need repainting; traps hidden beneath a newer map glyph stay
+// untouched.
+export function see_traps(state = game) {
+    if (state !== game)
+        throw new TypeError('see_traps() draws the global game state');
+    for (const trap of state.level?.traps ?? []) {
+        if (glyph_is_trap(glyph_at(trap.tx, trap.ty, state)))
+            newsym(trap.tx, trap.ty);
+    }
+}
+
 // ── docrt ──
 // C ref: display.c docrt() through docrt_flags(docrtRecalc) (1990-2050).
 //
@@ -3348,6 +3431,9 @@ export function see_monsters(state = game) {
 // vision back on and overlays the monsters. The port's newsym() answers
 // memory, vision and monsters together from the level and the vision arrays,
 // so one sweep replaces C's three passes.
+// The optional overlayMonsters=false form is for callers that bracket a
+// redraw with their own vision change and then call see_monsters() explicitly;
+// ordinary callers leave it enabled so the live monster layer is restored.
 //
 // The vision recalculation C brackets that repaint with stays with this
 // function's callers, and they do not all make the same calls. goto_level()
@@ -3365,23 +3451,62 @@ export function see_monsters(state = game) {
 // line still holds a message the player has not acknowledged, and that is the
 // input boundary a level change stops on: a descending hero sees
 // "You descend the stairs.--More--" over the level she is leaving rather than
-// the level she has arrived on. cls()'s remaining statements clear the
-// physical map and the glyph buffer, which the sweep below and
-// _buildScreenOutput() rewrite in full before the next flush.
-export async function docrt() {
+export async function docrt(options = {}) {
     if (!game.level || !game.u?.ux || game.program_state?.in_docrt) return;
     game.program_state ??= {};
     game.program_state.in_docrt = true;
     try {
-        if (await dismissPendingTtyMessage(game)) {
+        const waitingForMore = game.nhDisplay?.toplin === TOPLINE_NEED_MORE;
+        if (waitingForMore && await dismissPendingTtyMessage(game)) {
             // tty_display_nhwindow() restores TOPLINE_NEED_MORE after more()
             // has reset it, so tty_clear_nhwindow() takes its repair branch.
             clearTtyMessageWindow(game);
         } else if (game.nhDisplay) {
-            game.nhDisplay.toplin = TOPLINE_EMPTY;
+            // cls() clears the physical map after display_nhwindow() has
+            // consumed an answered prompt. Drop the corresponding pending
+            // message too, or the port's full-screen rebuild would paint the
+            // old prompt back over the newly restored map.
+            clearTtyMessageWindow(game);
         }
-        for (let y = 0; y < ROWNO; y++)
-            for (let x = 1; x < COLNO; x++) newsym(x, y);
+        // display.c docrt_flags() calls cls() before replaying remembered
+        // glyphs. This clears both the physical terminal and transient
+        // disp_* entries, so unexplored cells cannot retain the old level.
+        await cls();
+        // C ref: display.c docrt_flags() (1727-1731). A swallowed hero gets
+        // the complete stomach redraw here; newsym()'s swallowed guard only
+        // protects the existing transient frame and cannot replace this arm.
+        if (game.u?.uswallow) {
+            await swallowed(true);
+        } else {
+            // display.c docrt_flags() first paints remembered map glyphs,
+            // without calling newsym(), and only then see_monsters() overlays
+            // the live monsters in fmon order.  Keeping those as two passes
+            // is observable while hallucinating because each overlay consumes
+            // a display-RNG draw.
+            for (let x = 1; x < COLNO; x++)
+                for (let y = 0; y < ROWNO; y++) {
+                    const location = game.level.at(x, y);
+                    const remembered = location.remembered_glyph;
+                    if (remembered) {
+                        show_glyph_cell(
+                            x,
+                            y,
+                            remembered_glyph_presentation(remembered, game),
+                        );
+                    } else if (location.disp_glyph) {
+                        // display.c:1750-1754 calls show_glyph() with
+                        // GLYPH_UNEXPLORED here. After cls() the glyph buffer
+                        // already contains that value, so C leaves an
+                        // untouched cell alone; only a stale transient entry
+                        // needs the blank write. This mirrors newsym()'s
+                        // unexplored-cell arm below.
+                        show_glyph_cell(
+                            x, y, { ch: ' ', color: NO_COLOR, dec: false },
+                        );
+                    }
+                }
+            if (options.overlayMonsters !== false) see_monsters(game);
+        }
     } finally {
         game.program_state.in_docrt = false;
     }

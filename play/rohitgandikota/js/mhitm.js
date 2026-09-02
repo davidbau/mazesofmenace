@@ -11,6 +11,22 @@
 // ported below. Gaze, explosion, breath, and spell branches remain recorded in
 // the coverage ledger until their C behavior is implemented.
 
+import { mhitm_ad_poly } from './uhitm.js';
+import { MONSYMS } from './monst_data.js';
+import { finish_meating } from './dogmove.js';
+import { tele, tele_restrict, rloc } from './teleport.js';
+import { OCLASSES } from './objects_data.js';
+import { x_monnam } from './do_name.js';
+import { monsndx } from './makemon.js';
+import { resist } from './zap.js';
+import { shieldeff_mon, xkilled, newcham, pm_to_cham } from './mon.js';
+import { resists_magm, can_teleport, resists_sleep, defended } from './mondata.js';
+import { NON_PM, POLY_NOFLAGS, TELL, NOTELL, NO_NC_FLAGS, XKILL_GIVEMSG, XKILL_NOCORPSE, ARTICLE_A, SUPPRESS_NAME, SUPPRESS_IT, SUPPRESS_INVISIBLE, RLOC_MSG, nothing_happens, M_AP_FURNITURE, M_AP_OBJECT } from './const.js';
+import { you_were, you_unwere } from './were.js';
+import { polyself } from './polyself.js';
+import { You_feel } from './pline.js';
+import { shieldeff } from './display.js';
+import { Antimagic, Unchanging } from './youprop.js';
 import { game } from './gstate.js';
 import { Deaf } from './youprop.js';
 import { You, You_hear } from './pline.js';
@@ -649,6 +665,8 @@ export async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
         await mhitm_ad_drin(magr, mattk, mdef, mhm);
     } else if (mattk[1] === A.AD_STON) {
         await mhitm_ad_ston(magr, mattk, mdef, mhm);
+    } else if (mattk[1] === A.AD_POLY) {
+        await mhitm_ad_poly(magr, mattk, mdef, mhm);
     } else if (mattk[1] === A.AD_SITM
                || mattk[1] === A.AD_SEDU
                || mattk[1] === A.AD_SSEX) {
@@ -750,4 +768,112 @@ export async function passivemm(magr, mdef, mhitb, mdead, mwep) {
 
 function note_unported_mhitm(what) {
     (game.unported ||= new Set()).add(what);
+}
+
+// src/mhitm.c:1118 mon_poly(); magr attacks mdef with AD_POLY; return the
+// (possibly changed) damage
+export async function mon_poly(magr, mdef, dmg) {
+    const freaky = ' undergoes a freakish metamorphosis';
+    const oldform = mdef.data;
+
+    if (mdef === game.youmonst) {
+        if (Antimagic()) {
+            await shieldeff(game.u.ux, game.u.uy);
+        } else if (Unchanging()) {
+            ; /* just take a little damage */
+        } else {
+            if (game.u.ulycn === NON_PM) {
+                await You('are subjected to a freakish metamorphosis.');
+                await polyself(POLY_NOFLAGS);
+            } else if (game.u.umonnum !== game.u.ulycn) {
+                await You_feel('an unnatural urge coming on.');
+                await you_were();
+            } else {
+                await You_feel('a natural urge coming on.');
+                await you_unwere(false);
+            }
+            dmg = 0;
+        }
+    } else {
+        const Before = Monnam(mdef);
+
+        if (resists_magm(mdef)) {
+            if (game.vis)
+                shieldeff_mon(mdef);
+        } else if (resist(mdef, OCLASSES.WAND_CLASS, 0, TELL)) {
+            ;
+        } else if (!rn2(25) && (mdef.cham ?? NON_PM) === NON_PM
+                   && (mdef.mcan
+                       || pm_to_cham(monsndx(mdef.data)) !== NON_PM)) {
+            /* Chameleons or canceled shapeshifters take extra damage
+               rather than kill outright */
+            if (game.vis)
+                await pline(`${Before} shudders!`);
+            dmg += Math.trunc((mdef.mhpmax + 1) / 2);
+            mdef.mhp -= dmg;
+            dmg = 0;
+            if (DEADMONSTER(mdef)) {
+                if (magr === game.youmonst)
+                    await xkilled(mdef, XKILL_GIVEMSG | XKILL_NOCORPSE);
+                else
+                    await monkilled(mdef, '', ATTKS.AD_RBRE);
+            }
+        } else if (newcham(mdef, null, NO_NC_FLAGS)) {
+            if (game.vis) { /* either seen or adjacent */
+                const was_seen = Before.toLowerCase() !== 'it',
+                      verbosely = game.flags.verbose || !was_seen;
+
+                if (canspotmon(mdef))
+                    await pline(`${Before}${verbosely ? freaky : ''}${
+                        verbosely ? ' and' : ''} turns into ${
+                        x_monnam(mdef, ARTICLE_A, null,
+                                 (SUPPRESS_NAME | SUPPRESS_IT
+                                  | SUPPRESS_INVISIBLE), false)}.`);
+                else if (was_seen || magr === game.youmonst)
+                    await pline(`${Before}${freaky}${
+                        !was_seen ? '' : ' and disappears'}.`);
+            }
+            dmg = 0;
+            if (can_teleport(magr.data)) {
+                if (magr === game.youmonst)
+                    await tele();
+                else if (!(await tele_restrict(magr)))
+                    await rloc(magr, RLOC_MSG);
+            }
+        } else {
+            if (game.vis && game.flags.verbose)
+                await pline(nothing_happens);
+        }
+    }
+    /* prevent attacker from repeating the attack on the changed form of
+       effect during next turn or two; not enforced for poly'd hero */
+    if (mdef.data !== oldform && magr !== game.youmonst)
+        magr.mspec_used += rnd(2);
+    return dmg;
+}
+
+// src/mhitm.c:1223 sleep_monst(); Returns 1 if monster fell asleep, 0
+// otherwise; how < 0 means the monster resists via resist() is skipped
+export async function sleep_monst(mon, amt, how) {
+    if (how >= 0 && !mon.msleeping && !mon.mfrozen
+        && mon.data.mlet === MONSYMS.S_MIMIC
+        && (M_AP_TYPE(mon) === M_AP_FURNITURE
+            || M_AP_TYPE(mon) === M_AP_OBJECT))
+        seemimic(mon);
+
+    if (resists_sleep(mon) || defended(mon, ATTKS.AD_SLEE)
+        || (how >= 0 && resist(mon, how, 0, NOTELL))) {
+        await shieldeff(mon.mx, mon.my);
+    } else if (mon.mcanmove) {
+        finish_meating(mon); /* terminate any meal-in-progress */
+        amt += (mon.mfrozen | 0);
+        if (amt > 0) { /* sleep for N turns */
+            mon.mcanmove = 0;
+            mon.mfrozen = Math.min(amt, 127);
+        } else { /* sleep until awakened */
+            mon.msleeping = 1;
+        }
+        return 1;
+    }
+    return 0;
 }

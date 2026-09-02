@@ -15,6 +15,7 @@
 //     effect com_pager has when the entry carries a literal `text`; an entry
 //     that is an ARRAY of strings additionally draws rn2(#array).
 
+import { MSOUND } from './monst_data.js';
 import { type_is_pname } from './mondata.js';
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
@@ -398,3 +399,22 @@ function pmIndex(v) {
    wire to avoid the import cycle. */
 let mkclass_fn = null;
 export function questpgr_wire_mkclass(fn) { mkclass_fn = fn; }
+
+// src/questpgr.c:31 quest_info(); the role's quest leader/nemesis/guardian
+// monster index, or the quest artifact for typ 0
+export function quest_info(typ) {
+    switch (typ) {
+    case 0:
+        return game.urole.questarti;
+    case MSOUND.MS_LEADER:
+        return game.urole.ldrnum;
+    case MSOUND.MS_NEMESIS:
+        return game.urole.neminum;
+    case MSOUND.MS_GUARDIAN:
+        return game.urole.guardnum;
+    default:
+        /* impossible("quest_info(%d)", typ) */
+        break;
+    }
+    return 0;
+}

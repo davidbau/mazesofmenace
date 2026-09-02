@@ -6,6 +6,7 @@
 // result decides the rnd(100) comparison in spelleffects_check(). Without the
 // array that comparison has no input at all.
 
+import { You } from './pline.js';
 import { game } from './gstate.js';
 import { OBJ_NAME, doname, xname, the, makesingular, Tobjnam,
          makeplural, distant_name } from './objnam.js';
@@ -47,7 +48,7 @@ import { A_STR, A_DEX } from './const.js';
 import { AKLYS_LIM } from './const.js';
 import { ONAMES, OCLASSES, MATERIALS, SKILLS } from './objects_data.js';
 import { bigmonst } from './mondata.js';
-import { rnd, d } from './rng.js';
+import { rnd, d, rn2 } from './rng.js';
 import { spell_skilltype } from './spell.js';
 import { discover_object } from './o_init.js';
 import { P_NONE, P_NUM_SKILLS, P_BARE_HANDED_COMBAT, P_RIDING, P_HEALING_SPELL, P_CLERIC_SPELL, P_TWO_WEAPON_COMBAT, P_SKILLED, P_MASTER, P_GRAND_MASTER, P_ATTACK_SPELL, P_ENCHANTMENT_SPELL, P_BOW, P_CROSSBOW } from './const.js';
@@ -1423,4 +1424,39 @@ export async function enhance_weapon_skill() {
         break;
     }
     return 0; /* ECMD_OK */
+}
+
+// src/weapon.c:1476 drain_weapon_skill() — amnesia: lose n advanced skills
+// a level each, giving the slots back.
+export async function drain_weapon_skill(n) {
+    const u = game.u;
+    const sk = u.weapon_skills;
+    const tmpskills = new Array(P_NUM_SKILLS).fill(0);
+    let skill, i, curradv, prevadv;
+
+    while (--n >= 0) {
+        if (u.skills_advanced) {
+            /* Pick a random skill, deleting it from the list. */
+            i = rn2(u.skills_advanced);
+            skill = u.skill_record[i];
+            tmpskills[skill] = 1;
+            for (; i < u.skills_advanced - 1; i++) {
+                u.skill_record[i] = u.skill_record[i + 1];
+            }
+            u.skills_advanced--;
+            /* if (P_SKILL(skill) <= P_UNSKILLED) panic("drain_weapon_skill") */
+            sk[skill].skill--;   /* drop skill one level */
+            /* refund slots used for that level */
+            u.weapon_slots = (u.weapon_slots | 0) + slots_required(skill);
+            /* drain a random proportion of the practice */
+            curradv = practice_needed_to_advance(sk[skill].skill);
+            prevadv = practice_needed_to_advance(sk[skill].skill - 1);
+            if (sk[skill].advance >= curradv)
+                sk[skill].advance = prevadv + rn2(curradv - prevadv);
+        }
+    }
+    for (skill = 0; skill < P_NUM_SKILLS; skill++)
+        if (tmpskills[skill]) {
+            await You(`forget ${sk[skill].skill >= P_BASIC ? 'some of ' : ''}your training in ${P_NAME(skill)}.`);
+        }
 }

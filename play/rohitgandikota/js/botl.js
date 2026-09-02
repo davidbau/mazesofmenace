@@ -77,6 +77,19 @@ export function rank() {
     return rank_of(game.u.ulevel, game.urole, !!game.flags.female);
 }
 
+// src/botl.c:402 max_rank_sz()
+export function max_rank_sz() {
+    let r, maxr = 0;
+    for (let i = 0; i < 9; i++) {
+        if (game.urole.rank[i]?.m && (r = game.urole.rank[i].m.length) > maxr)
+            maxr = r;
+        if (game.urole.rank[i]?.f && (r = game.urole.rank[i].f.length) > maxr)
+            maxr = r;
+    }
+    game.mrank_sz = maxr;
+    return;
+}
+
 // src/eat.c hu_stat[] retains its legacy padding.  The tty status-field path
 // trims that padding before it joins hunger to a following condition.
 export const hu_stat = [

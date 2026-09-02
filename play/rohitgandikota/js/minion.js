@@ -4,6 +4,10 @@
 // Ports demon and aligned summoning plus the Astral-arrival guardian angel
 // machinery. Demon bribery and direct god-sent minion summons remain gaps.
 
+import { align_gname } from './pray.js';
+import { s_suffix } from './hacklib.js';
+import { pline_The, verbalize } from './pline.js';
+import { NON_PM, STRAT_APPEARMSG } from './const.js';
 import { game } from './gstate.js';
 import { rn1, rn2, rnd, d } from './rng.js';
 import { PMNAMES, MONSYMS, MFLAGS } from './monst_data.js';
@@ -348,5 +352,70 @@ export async function gain_guardian_angel() {
                 m_dowear(mtmp, true);
             }
         }
+    }
+}
+
+// src/minion.c:198 summon_minion(), a god sends a minion after the hero.
+export async function summon_minion(alignment, talk) {
+    let mon;
+    let mnum;
+
+    switch (alignment) {
+    case A_LAWFUL:
+        mnum = lminion();
+        break;
+    case A_NEUTRAL:
+        mnum = elementals[rn2(elementals.length)];
+        break;
+    case A_CHAOTIC:
+    case A_NONE:
+        mnum = ndemon(alignment);
+        break;
+    default:
+        /* impossible("unaligned player?"); */
+        mnum = ndemon(A_NONE);
+        break;
+    }
+    if (mnum === NON_PM) {
+        mon = null;
+    } else if (mnum === PMNAMES.PM_ANGEL) {
+        mon = makemon(game.mons[mnum], game.u.ux, game.u.uy, MM_EMIN | MM_NOMSG);
+        if (mon) {
+            const emin = (mon.mextra ||= {}).emin ||= {};
+            mon.emin = emin;
+            mon.isminion = 1;
+            emin.min_align = alignment;
+            emin.renegade = false;
+        }
+    } else if (mnum !== PMNAMES.PM_SHOPKEEPER && mnum !== PMNAMES.PM_GUARD
+               && mnum !== PMNAMES.PM_ALIGNED_CLERIC
+               && mnum !== PMNAMES.PM_HIGH_CLERIC) {
+        /* This was the case before minions were separate from ordinary
+           monsters and demons.  Is this test really needed now?  Is it
+           appropriate or necessary now that the structures are separate? */
+        mon = makemon(game.mons[mnum], game.u.ux, game.u.uy, MM_EMIN | MM_NOMSG);
+        if (mon) {
+            const emin = (mon.mextra ||= {}).emin ||= {};
+            mon.emin = emin;
+            mon.isminion = 1;
+            emin.min_align = alignment;
+            emin.renegade = false;
+        }
+    } else {
+        mon = makemon(game.mons[mnum], game.u.ux, game.u.uy, MM_NOMSG);
+    }
+    if (mon) {
+        if (talk) {
+            if (!Deaf())
+                await pline_The(`voice of ${align_gname(alignment)} booms:`);
+            else
+                await You_feel(`${s_suffix(align_gname(alignment))} booming voice:`);
+            await verbalize('Thou shalt pay for thine indiscretion!');
+            if (canspotmon(mon))
+                await pline(`${Amonnam(mon)} appears before you.`);
+            mon.mstrategy = (mon.mstrategy | 0) & ~STRAT_APPEARMSG;
+        }
+        mon.mpeaceful = false;
+        /* don't call set_malign(); player was naughty */
     }
 }

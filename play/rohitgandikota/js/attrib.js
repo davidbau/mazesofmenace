@@ -32,7 +32,7 @@ import { ATTKS, MFLAGS, PMNAMES, MONSYMS } from './monst_data.js';
 import { Upolyd } from './const.js';
 
 // include/you.h:247 Role_if()
-function Role_if(pm) {
+export function Role_if(pm) {
     const m = game.urole?.mnum;
     return m === pm || m === PMNAMES[pm];
 }
@@ -916,3 +916,23 @@ export function adjalign(n) {
    is 10 + moves/200, so it GROWS as the game runs. Writing it as a flat 10,
    which the first draft of this did, caps a long game's alignment too low. */
 const ALIGNLIM = () => 10 + Math.trunc((game.moves || 0) / 200);
+
+// src/attrib.c:1147 minuhpmax(), the smallest acceptable u.uhpmax.
+export function minuhpmax(altmin) {
+    if (altmin < 1)
+        altmin = 1;
+    return Math.max(game.u.ulevel, altmin);
+}
+
+// src/attrib.c:1182 adjuhploss(), trim a pending hp loss by however much
+// current hp already dropped when uhpmax shrank.
+export function adjuhploss(loss, olduhp) {
+    if (!Upolyd(game.u)) {
+        if (game.u.uhp < olduhp)
+            loss -= (olduhp - game.u.uhp);
+    } else {
+        if (game.u.mh < olduhp)
+            loss -= (olduhp - game.u.mh);
+    }
+    return Math.max(loss, 1);
+}

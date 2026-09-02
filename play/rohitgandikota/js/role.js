@@ -517,6 +517,15 @@ export function str2align(str) {
     return randomish(str) ? ROLE_RANDOM : ROLE_NONE;
 }
 
+// src/role.c:2163 character_race(); the Race entry for a race-like
+// monster index, or null
+export function character_race(pmindex) {
+    for (const r of races)
+        if (r.mnum === pmindex)
+            return r;
+    return null;
+}
+
 export { roles, races, genders, aligns };
 
 // ---------------------------------------------------------------------------

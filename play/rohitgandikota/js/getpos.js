@@ -24,6 +24,29 @@ import { handle_tip, is_valid_travelpt, TIP_GETPOS } from './hack.js';
 import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
          tty_next_page, tty_destroy_nhwindow, NHW_MENU } from './tty/wintty.js';
 
+import { NUM_GLOCS, GLOC_MONS, GLOC_OBJS, GLOC_DOOR, GLOC_EXPLORE,
+         GLOC_INTERESTING, GLOC_VALID, GFILTER_VIEW, GFILTER_AREA,
+         NUM_GFILTER, GPCOORDS_COMPASS, GPCOORDS_COMFULL, GPCOORDS_MAP,
+         GPCOORDS_SCREEN, VIBRATING_SQUARE, MENU_BEHAVE_STANDARD,
+         MENU_ITEMFLAGS_NONE, IS_DOOR } from './const.js';
+import { is_cmap_drawbridge, is_cmap_water, is_cmap_lava,
+         is_cmap_furniture } from './pager.js';
+import { back_to_glyph } from './display.js';
+import { cansee } from './vision.js';
+import { selection_new, selection_getpoint, selection_floodfill,
+         set_selection_floodfillchk } from './selvar.js';
+import { PMNAMES } from './monst_data.js';
+import { ONAMES } from './objects_data.js';
+import { t_at } from './mon.js';
+import { invocation_pos } from './hack.js';
+import { xytodir, directionname } from './cmd.js';
+import { You } from './pline.js';
+import { an } from './objnam.js';
+import { tty_start_menu, tty_add_menu, tty_end_menu, tty_select_menu,
+         ATR_NONE } from './tty/wintty.js';
+import { NO_COLOR } from './terminal.js';
+import { xwaitforspace } from './tty/getline.js';
+
 const CM = cmap_names;
 
 // include/hack.h:543-546 — which pick key was used.
@@ -112,12 +135,18 @@ async function getpos_help(force, goal) {
         put("Type Space or Escape when you're done.");
     put('');
 
+    /* src/getpos.c:231 display_nhwindow(tmpwin, TRUE): the tty text window
+       pages with dmore(), which only space, return or ESC dismiss; any
+       other key rings the bell and keeps waiting */
     await tty_display_nhwindow(win);
-    await nhgetch();
-    while (tty_next_page(win))
-        await nhgetch();
+    await xwaitforspace(quitchars);
+    while (game.morc !== '\x1b' && tty_next_page(win))
+        await xwaitforspace(quitchars);
     tty_destroy_nhwindow(win);
 }
+
+/* include/hack.h — quitchars */
+const quitchars = ' \r\n\x1b';
 
 // C curs(WIN_MAP, cx, cy) — park the terminal cursor on the map square.
 // _buildScreenOutput() honors game._map_cursor over the hero's position.
@@ -216,8 +245,10 @@ function truncate_to_map(c, dx, dy) {
 export async function getpos(ccp, force, goal) {
     let result = 0;
     const c = { x: ccp.x, y: ccp.y };
-    const gathered = new Array(4).fill(null);
-    const gatherIndex = new Array(4).fill(0);
+    /* src/getpos.c:806 — one gathered array per gloc, filled on first use */
+    const garr = new Array(NUM_GLOCS).fill(null);
+    const gcount = new Array(NUM_GLOCS).fill(0);
+    const gidx = new Array(NUM_GLOCS).fill(0);
     /* boolean msg_given = TRUE: clear message window by default */
     let msg_given = true;
     let show_goal_msg = false;
@@ -300,7 +331,11 @@ export async function getpos(ccp, force, goal) {
                 show_goal_msg = true;
             msg_given = true;
         } else if (ch === '@') {
-            /* NHKF_GETPOS_SELF */
+            /* NHKF_GETPOS_SELF: reset 'm&M', 'o&O', &c; otherwise, there's
+               no way for player to achieve that except by manually cycling
+               through all spots */
+            for (let i = 0; i < NUM_GLOCS; i++)
+                gidx[i] = 0;
             c.x = game.u.ux;
             c.y = game.u.uy;
         } else if (ch === '*') {
@@ -313,79 +348,58 @@ export async function getpos(ccp, force, goal) {
         } else if (ch === '$') {
             note_unported_getpos(`key:${ch}`);
             show_goal_msg = true;
-        } else if ((ch === 'd' || ch === 'D')
-                   && !game.iflags?.getloc_usemenu) {
-            const gloc = 2;
-            if (!gathered[gloc]) {
-                const doors = [];
-                for (let x = 1; x < COLNO; x++) {
-                    for (let y = 0; y < ROWNO; y++) {
-                        const glyph = glyph_at(x, y);
-                        const cmap = glyph.kind === 'cmap' ? glyph.cmap : -1;
-                        const isDoor = is_cmap_door(cmap)
-                            || (cmap >= CM.S_vodbridge
-                                && cmap <= CM.S_hcdbridge)
-                            || cmap === CM.S_ndoor;
-                        if ((x === game.u.ux && y === game.u.uy) || isDoor)
-                            doors.push({ x, y });
-                    }
+        } else if ('mMoOdDxXaAzZ'.includes(ch)) {
+            /* src/getpos.c:1011 — 'm|M', 'o|O', &c: nearest or farthest
+               monster, object, door, unexplored spot, interesting thing or
+               valid location */
+            const gtmp = 'mMoOdDxXaAzZ'.indexOf(ch), /* 0..11 */
+                  gloc = gtmp >> 1;                  /* 0..5 */
+            if (game.iflags?.getloc_usemenu) {
+                const tmpcrd = { x: 0, y: 0 };
+                if (await getpos_menu(tmpcrd, gloc)) {
+                    c.x = tmpcrd.x;
+                    c.y = tmpcrd.y;
                 }
-                doors.sort((a, b) => {
-                    const ad = Math.max(Math.abs(game.u.ux - a.x),
-                                        Math.abs(game.u.uy - a.y));
-                    const bd = Math.max(Math.abs(game.u.ux - b.x),
-                                        Math.abs(game.u.uy - b.y));
-                    return ad !== bd ? ad - bd
-                        : a.y !== b.y ? a.y - b.y : a.x - b.x;
-                });
-                gathered[gloc] = doors;
-                gatherIndex[gloc] = 0;
-            }
-            const doors = gathered[gloc];
-            if (ch === 'd')
-                gatherIndex[gloc] = (gatherIndex[gloc] + 1) % doors.length;
-            else
-                gatherIndex[gloc] = (gatherIndex[gloc] + doors.length - 1)
-                    % doors.length;
-            c.x = doors[gatherIndex[gloc]].x;
-            c.y = doors[gatherIndex[gloc]].y;
-        } else if ((ch === 'm' || ch === 'M')
-                   && !game.iflags?.getloc_usemenu) {
-            const gloc = 0;
-            if (!gathered[gloc]) {
-                const monsters = [{ x: game.u.ux, y: game.u.uy }];
-                for (let x = 1; x < COLNO; x++) {
-                    for (let y = 0; y < ROWNO; y++) {
-                        if (x === game.u.ux && y === game.u.uy)
-                            continue;
-                        if (glyph_at(x, y)?.kind === 'mon')
-                            monsters.push({ x, y });
-                    }
+            } else {
+                if (!garr[gloc]) {
+                    garr[gloc] = gather_locs(gloc);
+                    gcount[gloc] = garr[gloc].length;
+                    gidx[gloc] = 0; /* garr[][0] is hero's spot */
                 }
-                monsters.sort((a, b) => {
-                    const ad = Math.max(Math.abs(game.u.ux - a.x),
-                                        Math.abs(game.u.uy - a.y));
-                    const bd = Math.max(Math.abs(game.u.ux - b.x),
-                                        Math.abs(game.u.uy - b.y));
-                    return ad !== bd ? ad - bd
-                        : a.y !== b.y ? a.y - b.y : a.x - b.x;
-                });
-                gathered[gloc] = monsters;
-                gatherIndex[gloc] = 0;
+                if (!(gtmp & 1)) {  /* c=='m' || c=='o' || c=='d' || c=='x') */
+                    gidx[gloc] = (gidx[gloc] + 1) % gcount[gloc];
+                } else {            /* c=='M' || c=='O' || c=='D' || c=='X') */
+                    if (--gidx[gloc] < 0)
+                        gidx[gloc] = gcount[gloc] - 1;
+                }
+                c.x = garr[gloc][gidx[gloc]].x;
+                c.y = garr[gloc][gidx[gloc]].y;
             }
-            const monsters = gathered[gloc];
-            if (ch === 'm')
-                gatherIndex[gloc] = (gatherIndex[gloc] + 1)
-                                    % monsters.length;
-            else
-                gatherIndex[gloc] = (gatherIndex[gloc] + monsters.length - 1)
-                                    % monsters.length;
-            c.x = monsters[gatherIndex[gloc]].x;
-            c.y = monsters[gatherIndex[gloc]].y;
-        } else if ('oOxXaAzZ'.includes(ch) || ch === '!' || ch === '"') {
-            /* remaining gather_locs cycling, the menu, hilite and the view
-               filter each consume only their own key */
-            note_unported_getpos(`key:${ch}`);
+        } else if (ch === '"') {
+            /* NHKF_GETPOS_LIMITVIEW */
+            const view_filters = [
+                'Not limiting targets',
+                'Limiting targets to those in sight',
+                'Limiting targets to those in same area',
+            ];
+            game.iflags = game.iflags || {};
+            game.iflags.getloc_filter
+                = ((game.iflags.getloc_filter | 0) + 1) % NUM_GFILTER;
+            for (let i = 0; i < NUM_GLOCS; i++) {
+                garr[i] = null;
+                gidx[i] = gcount[i] = 0;
+            }
+            await pline(`${view_filters[game.iflags.getloc_filter]}.`);
+            msg_given = true;
+        } else if (ch === '!') {
+            /* NHKF_GETPOS_MENU */
+            game.iflags = game.iflags || {};
+            game.iflags.getloc_usemenu = !game.iflags.getloc_usemenu;
+            await pline(`${game.iflags.getloc_usemenu ? 'Using' : 'Not using'
+                } a menu to show possible targets${
+                game.iflags.getloc_usemenu
+                    ? " for 'm|M', 'o|O', 'd|D', and 'x|X'" : ''}.`);
+            msg_given = true;
         } else {
             if (!' \r\n\x1b'.includes(ch)) {
                 /* look for a dungeon feature the typed symbol matches, and
@@ -492,4 +506,288 @@ export async function getpos(ccp, force, goal) {
     game._map_cursor = null;
     getpos_sethilite(null, null);
     return result;
+}
+
+/* ---- src/getpos.c:341-437 target gathering and the view filters ---- */
+
+// src/getpos.c:341 gloc_filter_classify_glyph()
+function gloc_filter_classify_glyph(glyph) {
+    if (!glyph || (glyph.kind && glyph.kind !== 'cmap') || glyph.cmap === undefined)
+        return 0;
+    const c = glyph.cmap;
+    if (is_cmap_room(c) || is_cmap_furniture(c))
+        return 1;
+    else if (is_cmap_wall(c) || c === CM.S_tree)
+        return 2;
+    else if (is_cmap_corr(c))
+        return 3;
+    else if (is_cmap_water(c))
+        return 4;
+    else if (is_cmap_lava(c))
+        return 5;
+    return 0;
+}
+
+// src/getpos.c:363 gloc_filter_floodfill_matcharea()
+function gloc_filter_floodfill_matcharea(x, y) {
+    const loc = game.level.at(x, y);
+    const glyph = back_to_glyph(loc, x, y);
+    if (!loc.seenv)
+        return false;
+    const match = game.gloc_filter_floodfill_match_glyph;
+    if (glyph.cmap === match.cmap)
+        return true;
+    if (gloc_filter_classify_glyph(glyph) === gloc_filter_classify_glyph(match))
+        return true;
+    return false;
+}
+
+// src/getpos.c:380 gloc_filter_floodfill()
+function gloc_filter_floodfill(x, y) {
+    game.gloc_filter_floodfill_match_glyph = back_to_glyph(game.level.at(x, y), x, y);
+    set_selection_floodfillchk(gloc_filter_floodfill_matcharea);
+    selection_floodfill(game.gloc_filter_map, x, y, false);
+}
+
+// src/getpos.c:391 gloc_filter_init()
+function gloc_filter_init() {
+    if ((game.iflags?.getloc_filter | 0) === GFILTER_AREA) {
+        if (!game.gloc_filter_map)
+            game.gloc_filter_map = selection_new();
+        /* special case: if we're in a doorway, try to figure out which
+           direction we're moving, and use that side of the doorway */
+        const u = game.u;
+        if (IS_DOOR(game.level.at(u.ux, u.uy)?.typ)) {
+            if ((u.dx || u.dy) && isok(u.ux + u.dx, u.uy + u.dy)) {
+                gloc_filter_floodfill(u.ux + u.dx, u.uy + u.dy);
+            } else {
+                /* TODO: maybe add both sides of the doorway? */
+            }
+        } else {
+            gloc_filter_floodfill(u.ux, u.uy);
+        }
+    }
+}
+
+// src/getpos.c:412 gloc_filter_done()
+function gloc_filter_done() {
+    if (game.gloc_filter_map)
+        game.gloc_filter_map = null;
+}
+
+// src/getpos.c:336 GLOC_SAME_AREA()
+function GLOC_SAME_AREA(x, y) {
+    return isok(x, y) && !!selection_getpoint(x, y, game.gloc_filter_map);
+}
+
+// src/getpos.c:421 known_vibrating_square_at()
+function known_vibrating_square_at(x, y) {
+    /* note: this only acknowledges the genuine vibrating square, not
+       fake ones produced by wizard mode wishing for traps which could
+       possibly be transfered to normal play via bones file */
+    if (invocation_pos(x, y)) {
+        const ttmp = t_at(x, y);
+        return !!(ttmp && ttmp.ttyp === VIBRATING_SQUARE && ttmp.tseen);
+    }
+    return false;
+}
+
+// include/display.h IS_UNEXPLORED_LOC(): remembered as unexplored and never
+// seen from any angle
+function IS_UNEXPLORED_LOC(x, y) {
+    return isok(x, y) && glyph_at(x, y).kind === 'unexplored'
+           && !game.level.at(x, y)?.seenv;
+}
+
+// src/getpos.c:438 gather_locs_interesting()
+function gather_locs_interesting(x, y, gloc) {
+    const filter = game.iflags?.getloc_filter | 0;
+    if (filter === GFILTER_VIEW && !cansee(x, y))
+        return false;
+    if (filter === GFILTER_AREA && !GLOC_SAME_AREA(x, y)
+        && !GLOC_SAME_AREA(x - 1, y) && !GLOC_SAME_AREA(x, y - 1)
+        && !GLOC_SAME_AREA(x + 1, y) && !GLOC_SAME_AREA(x, y + 1))
+        return false;
+
+    const glyph = glyph_at(x, y);
+    const sym = glyph.kind === 'cmap' ? glyph.cmap : -1;
+
+    switch (gloc) {
+    default:
+    case GLOC_MONS:
+        /* unlike '/M', this skips monsters revealed by
+           warning glyphs and remembered unseen ones */
+        return (glyph.kind === 'mon'
+                && glyph.mon?.mnum !== PMNAMES.PM_LONG_WORM_TAIL);
+    case GLOC_OBJS:
+        return (glyph.kind === 'obj'
+                && glyph.otyp !== ONAMES.BOULDER
+                && glyph.otyp !== ONAMES.ROCK);
+    case GLOC_DOOR:
+        return (sym !== -1
+                && (is_cmap_door(sym)
+                    || is_cmap_drawbridge(sym)
+                    || sym === CM.S_ndoor));
+    case GLOC_EXPLORE:
+        /* C also tests !glyph_is_nothing(glyph_to_cmap(glyph)), which
+           compares a cmap index with the GLYPH_NOTHING glyph number and so
+           never fails for a cmap glyph */
+        return (sym !== -1
+                && (is_cmap_door(sym)
+                    || is_cmap_drawbridge(sym)
+                    || sym === CM.S_ndoor
+                    || is_cmap_room(sym)
+                    || is_cmap_corr(sym))
+                && (IS_UNEXPLORED_LOC(x + 1, y)
+                    || IS_UNEXPLORED_LOC(x - 1, y)
+                    || IS_UNEXPLORED_LOC(x, y + 1)
+                    || IS_UNEXPLORED_LOC(x, y - 1)));
+    case GLOC_VALID:
+        if (getpos_getvalid)
+            return !!getpos_getvalid(x, y);
+        /*FALLTHRU*/
+    case GLOC_INTERESTING:
+        return (gather_locs_interesting(x, y, GLOC_DOOR)
+                || !((sym !== -1
+                      && (is_cmap_wall(sym)
+                          || sym === CM.S_tree
+                          || sym === CM.S_bars
+                          || sym === CM.S_ice
+                          || sym === CM.S_air
+                          || sym === CM.S_cloud
+                          || is_cmap_lava(sym)
+                          || is_cmap_water(sym)
+                          || sym === CM.S_ndoor
+                          || is_cmap_room(sym)
+                          || is_cmap_corr(sym)))
+                     || glyph.kind === 'nothing'
+                     || glyph.kind === 'unexplored')
+                || known_vibrating_square_at(x, y));
+    }
+}
+
+// src/getpos.c:513 gather_locs() — every interesting spot of the requested
+// kind plus the hero's own, sorted by distance from the hero. The hero's
+// spot always sorts to [0] (distance 0).
+function gather_locs(gloc) {
+    gloc_filter_init();
+    const arr = [];
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++)
+            if ((x === game.u.ux && y === game.u.uy)
+                || gather_locs_interesting(x, y, gloc))
+                arr.push({ x, y });
+    arr.sort(cmp_coord_distu);
+    gloc_filter_done();
+    return arr;
+}
+
+// src/getpos.c:319 cmp_coord_distu() — Chebyshev distance from the hero,
+// then row, then column
+function cmp_coord_distu(c1, c2) {
+    let dx = game.u.ux - c1.x, dy = game.u.uy - c1.y;
+    const dist_1 = Math.max(Math.abs(dx), Math.abs(dy));
+    dx = game.u.ux - c2.x, dy = game.u.uy - c2.y;
+    const dist_2 = Math.max(Math.abs(dx), Math.abs(dy));
+    if (dist_1 === dist_2)
+        return (c1.y !== c2.y) ? (c1.y - c2.y) : (c1.x - c2.x);
+    return dist_1 - dist_2;
+}
+
+// src/getpos.c:561 dxdy_to_dist_descr()
+function dxdy_to_dist_descr(dx, dy, fulldir) {
+    let dst;
+    if (!dx && !dy)
+        return 'here';
+    if ((dst = xytodir(dx, dy)) !== -1)
+        /* explicit direction; 'one step' is implicit */
+        return directionname(dst);
+    const dirnames = [['n', 'north'], ['s', 'south'], ['w', 'west'], ['e', 'east']];
+    let buf = '';
+    /* 9999: protect buf[] against overflow caused by invalid values */
+    if (dy) {
+        if (Math.abs(dy) > 9999)
+            dy = sgn(dy) * 9999;
+        buf += `${Math.abs(dy)}${dirnames[(dy > 0) ? 1 : 0][fulldir ? 1 : 0]}${dx ? ',' : ''}`;
+    }
+    if (dx) {
+        if (Math.abs(dx) > 9999)
+            dx = sgn(dx) * 9999;
+        buf += `${Math.abs(dx)}${dirnames[2 + ((dx > 0) ? 1 : 0)][fulldir ? 1 : 0]}`;
+    }
+    return buf;
+}
+
+// src/getpos.c:595 coord_desc() — coordinate formatting for 'whatis_coord'
+function coord_desc(x, y, cmode) {
+    switch (cmode) {
+    default:
+        return '';
+    case GPCOORDS_COMFULL:
+    case GPCOORDS_COMPASS:
+        /* "east", "3s", "2n,4w" */
+        return `(${dxdy_to_dist_descr(x - game.u.ux, y - game.u.uy,
+                                      cmode === GPCOORDS_COMFULL)})`;
+    case GPCOORDS_MAP: /* x,y */
+        /* upper left corner of map is <1,0>;
+           with default COLNO,ROWNO lower right corner is <79,20> */
+        return `<${x},${y}>`;
+    case GPCOORDS_SCREEN: /* y+2,x */
+        /* map line 0 is screen row 2;
+           map column 0 isn't used, map column 1 is screen column 1 */
+        return `[${String(y + 2).padStart(ROWNO - 1 + 2 < 100 ? 2 : 3, '0')},${
+            String(x).padStart(COLNO - 1 < 100 ? 2 : 3, '0')}]`;
+    }
+}
+
+// src/getpos.c:117 gloc_descr[] and gloc_filtertxt[]
+const gloc_descr = [
+    ['any monsters', 'monster', 'next/previous monster', 'monsters'],
+    ['any items', 'item', 'next/previous object', 'objects'],
+    ['any doors', 'door', 'next/previous door or doorway',
+     'doors or doorways'],
+    ['any unexplored areas', 'unexplored area', 'unexplored location',
+     'locations next to unexplored locations'],
+    ['anything interesting', 'interesting thing', 'anything interesting',
+     'anything interesting'],
+    ['any valid locations', 'valid location', 'valid location',
+     'valid locations'],
+];
+const gloc_filtertxt = ['', ' in view', ' in this area'];
+
+// src/getpos.c:665 getpos_menu() — pick a gathered target from a menu
+async function getpos_menu(ccp, gloc) {
+    const garr = gather_locs(gloc);
+    const gcount = garr.length;
+    const filter = game.iflags?.getloc_filter | 0;
+
+    if (gcount < 2) { /* gcount always includes the hero */
+        await You(`cannot ${(filter === GFILTER_VIEW) ? 'see' : 'detect'} ${
+            gloc_descr[gloc][0]}.`);
+        return false;
+    }
+
+    const tmpwin = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    /* gather_locs returns array[0] == you. skip it. */
+    for (let i = 1; i < gcount; i++) {
+        const tmpcc = { x: garr[i].x, y: garr[i].y };
+        const res = do_screen_description(tmpcc, true, 0);
+        if (res.found) {
+            const tmpbuf = coord_desc(garr[i].x, garr[i].y,
+                                      game.iflags?.getpos_coords ?? 'n');
+            tty_add_menu(tmpwin, null, i + 1, 0, 0, ATR_NONE, NO_COLOR,
+                         `${res.firstmatch}${tmpbuf ? ' ' : ''}${tmpbuf}`,
+                         MENU_ITEMFLAGS_NONE);
+        }
+    }
+    tty_end_menu(tmpwin, `Pick ${an(gloc_descr[gloc][1])}${gloc_filtertxt[filter]}${
+        game.iflags?.getloc_travelmode ? ' for travel destination' : ''}`);
+    const picks = await tty_select_menu(tmpwin, 1 /* PICK_ONE */);
+    tty_destroy_nhwindow(tmpwin);
+    if (picks.length > 0) {
+        ccp.x = garr[picks[0] - 1].x;
+        ccp.y = garr[picks[0] - 1].y;
+    }
+    return picks.length > 0;
 }

@@ -5,6 +5,8 @@
 // Rare artifact, fatal-corpse, and remote-shop branches remain
 // explicit recorded gaps.
 
+import { MAY_HIT, MAY_DESTROY } from './const.js';
+import { scatter } from './explode.js';
 import { def_oc_syms } from './drawing_data.js';
 import { game } from './gstate.js';
 import { addinv, prinv, obj_extract_self, inv_order, let_to_name,
@@ -124,10 +126,7 @@ async function fatal_corpse_mistake(obj, remotely) {
 
     if (poly_when_stoned(game.youmonst.data)) {
         const { polymon } = await import('./polyself.js');
-        if (await polymon(PMNAMES.PM_STONE_GOLEM, {
-            allowSexChange: false,
-            keepAttributesForMessage: true,
-        })) {
+        if (await polymon(PMNAMES.PM_STONE_GOLEM)) {
             await display_nhwindow_message();
             return false;
         }
@@ -1420,95 +1419,6 @@ function mbag_explodes(obj, depthin) {
     return false;
 }
 
-// src/explode.c:721 scatter() -- the MAY_HIT | MAY_DESTROY form used by a
-// bag-of-holding explosion. This owns one original contained stack. A stack
-// can split into several independently moving pieces before they land.
-async function scatter_boh_object(obj, blastforce) {
-    const pieces = [];
-    let remaining = obj;
-
-    while (remaining) {
-        let piece = remaining;
-        if (remaining.quan > 1) {
-            const limit = Math.min(remaining.quan - 1, 0x7fffffff);
-            piece = splitobj(remaining, rnd(limit));
-        } else {
-            remaining = null;
-        }
-        obj_extract_self(piece);
-
-        const destroyRoll = rn2(10);
-        const material = game.objects[piece.otyp].oc_material;
-        if (!destroyRoll || material === MATERIALS.GLASS
-            || piece.otyp === ONAMES.EGG) {
-            const { breaktest } = await import('./dothrow.js');
-            if (breaktest(piece)) {
-                note_unported_pickup('scatter:break-effects');
-                obfree(piece);
-                continue;
-            }
-        }
-
-        const direction = rn2(8);
-        const force = Math.max(1,
-            blastforce - Math.trunc((piece.owt ?? weight(piece)) / 40));
-        pieces.push({
-            obj: piece,
-            x: game.u.ux,
-            y: game.u.uy,
-            dx: xdir[direction],
-            dy: ydir[direction],
-            range: rnd(force),
-            stopped: false,
-        });
-    }
-
-    let farthest = pieces.reduce((n, piece) => Math.max(n, piece.range), 0);
-    while (farthest-- > 0) {
-        for (const piece of pieces) {
-            if (piece.range-- <= 0 || piece.stopped || !piece.obj)
-                continue;
-
-            const nx = piece.x + piece.dx;
-            const ny = piece.y + piece.dy;
-            const loc = isok(nx, ny) ? game.level.at(nx, ny) : null;
-            const closedDoor = loc?.typ === DOOR
-                && ((loc.doormask ?? 0) & (D_CLOSED | D_LOCKED));
-            if (!loc || !ZAP_POS(loc.typ) || closedDoor) {
-                piece.stopped = true;
-                continue;
-            }
-
-            game.thrownobj = piece.obj;
-            game.bhitpos = { x: nx, y: ny };
-            const mon = m_at(nx, ny);
-            if (mon) {
-                piece.range--;
-                const { ohitmon } = await import('./mthrowu.js');
-                if (await ohitmon(mon, piece.obj, 1, false)) {
-                    piece.obj = null;
-                    piece.stopped = true;
-                }
-            }
-            piece.x = nx;
-            piece.y = ny;
-            if (IS_SINK(loc.typ))
-                piece.stopped = true;
-            game.thrownobj = null;
-        }
-    }
-
-    const { flooreffects } = await import('./do.js');
-    for (const piece of pieces) {
-        if (piece.obj
-            && !(await flooreffects(piece.obj, piece.x, piece.y, 'land'))) {
-            place_object(piece.obj, piece.x, piece.y);
-            stackobj(piece.obj);
-        }
-        newsym(piece.x, piece.y);
-    }
-    newsym(game.u.ux, game.u.uy);
-}
 
 // src/pickup.c:2803 mbag_item_gone() -- finish deleting one object lost from
 // a cursed or exploding magical bag. Shop billing remains explicit.
@@ -1552,7 +1462,7 @@ async function do_boh_explosion(boh, onFloor) {
         } else {
             obj.ox = game.u.ux;
             obj.oy = game.u.uy;
-            await scatter_boh_object(obj, 4);
+            await scatter(game.u.ux, game.u.uy, 4, MAY_HIT | MAY_DESTROY, obj);
         }
     }
 }
@@ -2106,4 +2016,20 @@ export function sortloot_items(items) {
             return a.idx - b.idx;   /* stable */
         })
         .map(e => e.obj);
+}
+
+// src/pickup.c:2024 container_at() — number of containers at a spot (or
+// just whether there is one when !countem)
+export function container_at(x, y, countem) {
+    let container_count = 0;
+    for (const cobj of (game.level?.objects || [])) {
+        if (cobj.ox !== x || cobj.oy !== y)
+            continue;
+        if (Is_container(cobj)) {
+            container_count++;
+            if (!countem)
+                break;
+        }
+    }
+    return container_count;
 }

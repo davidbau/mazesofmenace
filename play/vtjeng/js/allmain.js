@@ -9,11 +9,14 @@ import { getnow } from './calendar.js';
 import { game } from './gstate.js';
 import {
     A_DEX,
+    BLINDED,
     CLAIRVOYANT,
     COLNO,
     CQ_CANNED,
     EXT_ENCUMBER,
     FAST,
+    HALLUC,
+    HALLUC_RES,
     HVY_ENCUMBER,
     INTRINSIC,
     MOD_ENCUMBER,
@@ -22,7 +25,10 @@ import {
     RLOC_NOMSG,
     SEARCHING,
     SLT_ENCUMBER,
+    TELEPAT,
     UNENCUMBERED,
+    WARNING,
+    WARN_OF_MON,
 } from './const.js';
 import { effective_attribute, exerchk } from './attrib.js';
 import { makedog, see_nearby_monsters } from './dog.js';
@@ -34,6 +40,7 @@ import {
     decide_to_shapeshift,
     mcalcdistress,
     mcalcmove,
+    minliquid,
     movemon,
     movemon_singlemon,
     restrap,
@@ -90,13 +97,19 @@ import {
     flush_screen,
     map_invisible,
     newsym,
+    see_monsters,
+    see_objects,
+    see_traps,
+    swallowed,
     timebot,
     UnsupportedMapMemoryError,
 } from './display.js';
 import {
     dismissPendingTtyMessage,
+    displayPendingTtyMessageWindow,
     ttyNorep,
     ttyPline,
+    ttyUrgentPline,
 } from './tty_message.js';
 import {
     canSeeMonster,
@@ -140,7 +153,6 @@ import {
     admitPlannedVisionChange,
     preflightSimpleMonsterActions,
     runSimpleMonsterAction,
-    unportedMinliquidReason,
     UnsupportedSimpleMonsterActionError,
     wieldMonsterItemAgainstMonster,
 } from './unported_monster_actions.js';
@@ -158,6 +170,7 @@ import { automatic_search } from './detect.js';
 import { age_spells } from './spell.js';
 import { settrack } from './track.js';
 import { clear_splitobjs } from './obj.js';
+import { makewish } from './zap.js';
 
 // PRNG-owning initializer seam corresponding to the point immediately before
 // allmain.c:newgame() calls mklev(). Asynchronous only because u_init_misc()
@@ -626,13 +639,32 @@ async function runEveryTurnEffectWithRegionHooks(monster, env) {
     });
 }
 
-// The live half of mon.c minliquid_core()'s refusal; the cloned scan's half
-// calls the same predicate. unportedMinliquidReason() states which of that
-// function's branches each square and species earns.
 function elapsedTurnMinLiquid(monster, env) {
-    const reason = unportedMinliquidReason(monster, env.state);
-    if (reason) elapsedTurnBoundary(reason);
-    return false;
+    return minliquid(monster, {
+        ...env,
+        state: env.state,
+        canSee: (x, y) => cansee(x, y, env.state),
+        message: env.planning ? async () => {} : ttyPline,
+        unsupported: unavailableElapsedTurnOperation(
+            'monster liquid effect',
+        ),
+        relocateMonster: unavailableElapsedTurnOperation(
+            'monster liquid relocation',
+        ),
+        fireDamageChain: unavailableElapsedTurnOperation(
+            'monster fire inventory damage',
+        ),
+        waterDamageChain: unavailableElapsedTurnOperation(
+            'monster water inventory damage',
+        ),
+        dealWithOvercrowding: unavailableElapsedTurnOperation(
+            'monster liquid overcrowding',
+        ),
+        hooks: {
+            ...(env.hooks ?? {}),
+            newsym: env.planning ? () => {} : (x, y) => newsym(x, y),
+        },
+    });
 }
 
 export async function finishElapsedTurn(
@@ -669,6 +701,7 @@ export async function finishElapsedTurn(
     await mcalcdistress(state, {
         state,
         random,
+        planning,
         message: turnMessage,
         redrawSquare: planning ? () => {} : newsym,
         visionRecalc: planning ? () => {} : vision_recalc,
@@ -1207,6 +1240,22 @@ export async function moveloop_core() {
     // time.
     clear_splitobjs(g);
 
+    // C ref: allmain.c moveloop_core() (445-450). Picking up the Amulet
+    // schedules exactly one wish at the next once-per-input boundary. The
+    // urgent message must be emitted before makewish() reads the next key;
+    // otherwise the pending arrival --More-- consumes that key instead and
+    // shifts every later wish prompt and screen.
+    if (g.u.uhave?.amulet && !g.u.uevent?.amulet_wish) {
+        g.u.uevent ??= {};
+        g.u.uevent.amulet_wish = 1;
+        await displayPendingTtyMessageWindow(g);
+        await ttyUrgentPline(
+            'The Amulet is bestowing a wish upon you!',
+            g,
+        );
+        await makewish(g);
+    }
+
     // Vision + display
     if (g.vision_full_recalc) {
         vision_recalc(0);
@@ -1216,6 +1265,37 @@ export async function moveloop_core() {
     // flushing can expose the completed frame.
     await emitGlyphUpdateNotices(g, { pline: ttyPline });
     find_ac(g);
+    // C ref: allmain.c moveloop_core() (474-485). When the hero cannot move
+    // this input, hallucination repaints the visible monster/object/trap
+    // layers and redraws the swallowed stomach. The latter bypasses newsym(),
+    // so the swallowed guard alone is not enough: omitting this branch leaves
+    // the stale pre-hallucination DEC/Unicode stomach on the terminal.
+    const hallucination = g.u.uprops?.[HALLUC];
+    const hallucinating = Boolean(
+        hallucination?.intrinsic
+        && !hallucination?.blocked
+        && !propertyActive(g, HALLUC_RES),
+    );
+    const blind = Boolean(g.u.uprops?.[BLINDED]?.intrinsic
+        || g.u.uprops?.[BLINDED]?.extrinsic)
+        && !g.u.uprops?.[BLINDED]?.blocked;
+    if (!g.context?.mv || blind) {
+        if (hallucinating) {
+            see_monsters(g);
+            see_objects(g);
+            see_traps(g);
+            if (g.u.uswallow) await swallowed(false, g);
+        } else if (Boolean(g.u.uprops?.[TELEPAT]?.extrinsic)
+            || propertyActive(g, WARNING)
+            || propertyActive(g, WARN_OF_MON)
+            || (g.level?.regions ?? []).some((region) => (
+                region.visible && region.ttl !== -2
+            ))) {
+            // allmain.c:462-467. These sensing modes need only the monster
+            // overlay; objects and traps retain their ordinary memory.
+            see_monsters(g);
+        }
+    }
     // C ref: allmain.c moveloop_core() (473-478). The status line repaints
     // only when a writer marked it dirty, and a turn on which only the counter
     // moved refreshes that one field. curs_on_u() is display.c's

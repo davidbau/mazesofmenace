@@ -74,6 +74,31 @@ import { ATTKS } from './monst_data.js';
 import { Deaf, Hallucination, Sleep_resistance } from './youprop.js';
 import { You_hear } from './pline.js';
 
+// src/mthrowu.c:31 hallublasts[]
+const hallublasts = [
+    "asteroids", "beads", "bubbles", "butterflies", "champagne", "chaos",
+    "coins", "cotton candy", "crumbs", "dark matter", "darkness", "data",
+    "dust specks", "emoticons", "emotions", "entropy", "flowers", "foam",
+    "fog", "gamma rays", "gelatin", "gemstones", "ghosts", "glass shards",
+    "glitter", "good vibes", "gravel", "gravity", "gravy", "grawlixes",
+    "holy light", "hornets", "hot air", "hyphens", "hypnosis", "infrared",
+    "insects", "jargon", "laser beams", "leaves", "lightening", "logic gates",
+    "magma", "marbles", "mathematics", "megabytes", "metal shavings",
+    "metapatterns", "meteors", "mist", "mud", "music", "nanites", "needles",
+    "noise", "nostalgia", "oil", "paint", "photons", "pixels", "plasma",
+    "polarity", "powder", "powerups", "prismatic light", "pure logic",
+    "purple", "radio waves", "rainbows", "rock music", "rocket fuel", "rope",
+    "sadness", "salt", "sand", "scrolls", "sludge", "smileys", "snowflakes",
+    "sparkles", "specularity", "spores", "stars", "steam", "tetrahedrons",
+    "text", "the past", "tornadoes", "toxic waste", "ultraviolet light",
+    "viruses", "water", "waveforms", "wind", "X-rays", "zorkmids",
+];
+
+// src/mthrowu.c:52 rnd_hallublast(); Return a random hallucinatory blast.
+export function rnd_hallublast() {
+    return hallublasts[rn2(hallublasts.length)]; /* ROLL_FROM */
+}
+
 // src/mthrowu.c:198 monmulti() — how many missiles this volley holds.
 //
 // The rnd(multishot) fires only when the stack, launcher and confusion

@@ -1,3 +1,18 @@
+import { dobreathe, dospit, doremove, dogaze, dosummon, dohide, dospinweb, domindblast, dopoly } from './polyself.js';
+import { pet_ranged_attk } from './dog.js';
+import { is_vampshifter } from './monst.js';
+import { aggravate } from './wizard.js';
+import { use_unicorn_horn } from './apply.js';
+import { There } from './pline.js';
+import { dryup } from './fountain.js';
+import { split_mon } from './potion.js';
+import { IS_FOUNTAIN } from './const.js';
+import { ATTKS, MSOUND } from './monst_data.js';
+import { is_were } from './were.js';
+import { webmaker, can_breathe, attacktype, is_mind_flayer, is_unicorn, is_vampire } from './mondata.js';
+import { PICK_ONE, CMD_M_PREFIX, AUTOCOMPLETE, CMD_NOT_AVAILABLE, INTERNALCMD, WIZMODECMD, GENERALCMD, QBUFSZ } from './const.js';
+import { add_menu_heading } from './options.js';
+import { pmatchi, visctrl, strstri, strsubst } from './hacklib.js';
 import { seemimic } from './mon.js';
 // cmd.js — Command dispatch and movement.
 // C ref: cmd.c rhack(), hack.c domove().
@@ -39,7 +54,34 @@ import { ECMD_FAIL, ECMD_CANCEL, Never_mind, A_DEX, A_CON, M_AP_TYPE,
 import { ACURR, exercise, near_capacity } from './attrib.js';
 import { is_pit, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, GETOBJ_DOWNPLAY, W_ARMOR, W_ACCESSORY, GETOBJ_EXCLUDE_INACCESS, ARTICLE_YOUR, ARTICLE_THE, CQ_CANNED, CQ_REPEAT, CMDQ_EXTCMD, CMDQ_KEY, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
-import { an, cxname, simpleonames, the, makeplural } from './objnam.js';
+import { an, cxname, simpleonames, the, makeplural, singular, xname,
+         the_unique_obj, armor_simple_name } from './objnam.js';
+import { is_edible } from './eat.js';
+import { donull } from './do.js';
+import { shop_keeper, dopay } from './shk.js';
+import { in_rooms } from './hack.js';
+import { inhishop } from './monmove.js';
+import { IS_ALTAR, FINGER, HAND, SHOPBASE, W_AMUL, W_RING, W_TOOL, ONAME,
+         has_oname, GC_ECHOFIRST, GC_CONDHIST, GC_SAVEHIST } from './const.js';
+import { body_part } from './polyself.js';
+import { Has_contents, bimanual } from './obj.js';
+import { ammo_and_launcher, is_ammo, is_missile } from './wield.js';
+import { is_launcher } from './u_init.js';
+import { could_twoweap, cantwield } from './mondata.js';
+import { is_blade } from './mon.js';
+import { checkfile, chkfilIaCheck, chkfilDontAsk } from './pager.js';
+import { worn, ia_dotakeoff, remarm_swapwep } from './do_wear.js';
+import { name_ok, call_ok } from './do_name.js';
+import { wearmask_to_obj, armcat_to_wornmask } from './worn.js';
+import { doorganize, adjust_split } from './invent.js';
+import { dosacrifice } from './pray.js';
+import { dorub } from './apply.js';
+import { doinvoke } from './artifact.js';
+import { dip_into } from './potion.js';
+import { pline_nohistory } from './display.js';
+import { Norep } from './pline.js';
+import { mungspaces } from './hacklib.js';
+import { putmsghistory } from './tty/topl.js';
 import { is_plural, Is_container } from './obj.js';
 import { carrying } from './invent.js';
 import { is_weptool } from './mkobj.js';
@@ -187,6 +229,17 @@ export function xytodir(x, y) {
         if (x === xdir[dd] && y === ydir[dd])
             return dd;
     return DIR_ERR;
+}
+
+// src/cmd.c:3843 directionname() — name of a direction code.
+export function directionname(dir) {
+    const dirnames = [
+        'west',      'northwest', 'north',     'northeast', 'east',
+        'southeast', 'south',     'southwest', 'down',      'up',
+    ];
+    if (dir < 0 || dir >= N_DIRS_Z)
+        return 'invalid';
+    return dirnames[dir];
 }
 
 // src/cmd.c:3859 dirtocoord() — convert a direction code into an x,y pair.
@@ -429,6 +482,7 @@ export async function getlin(query, hook) {
        screen. */
     let buf = '';
     let pos = 0;
+    let shown = '';   /* the echoed text, typed characters as typed */
 
     /* win/tty/getline.c:53 — an unacknowledged message gets its --More--
        BEFORE the prompt appears:
@@ -453,7 +507,10 @@ export async function getlin(query, hook) {
          * any of that left the prompt invisible: seed0360's '#' never
          * appeared and the cursor sat out on the map.
          */
-        const promptText = `${query} ${buf}`;
+        /* what the tty has painted: typed characters as typed (the
+           completion hook rewrites the buffer in canonical case, but only
+           the remainder after the cursor is echoed from it) */
+        const promptText = `${query} ${shown}`;
         game._toplin = TOPLINE_SPECIAL_PROMPT;
         const display = game?.nhDisplay;
         const CO = display?.cols ?? 80;
@@ -494,6 +551,7 @@ export async function getlin(query, hook) {
                a key the C spends going round again. */
             if (buf !== '') {
                 buf = '';               /* obufp[0] = '\0'; bufp = obufp; */
+                shown = '';
                 pos = 0;
                 continue;
             }
@@ -508,17 +566,23 @@ export async function getlin(query, hook) {
             if (pos > 0) {
                 pos--;
                 buf = buf.slice(0, pos);
+                shown = shown.slice(0, pos); /* "\b" then blanks over the rest */
             }
             /* else tty_nhbell() */
         } else if (c >= ' ' && c !== '\x7f' && pos < COLNO) {
             /*  *bufp = c; bufp[1] = 0;  — the new character REPLACES whatever
                 the previous completion had put after the cursor. */
             buf = buf.slice(0, pos) + c;
+            shown = shown.slice(0, pos) + c; /* putsyms(bufp): c overwrites the
+                                                spot; a failed hook blanks any
+                                                earlier guess after it */
             pos++;
             if (hook) {
                 const completed = hook(buf);
-                if (completed !== null)
+                if (completed !== null) {
                     buf = completed;    /* pointer and cursor left where they were */
+                    shown += completed.slice(pos); /* putsyms(bufp): the rest */
+                }
             }
         }
     }
@@ -613,7 +677,10 @@ function ext_cmd_getlin_hook(base) {
 // match it against extcmdlist.
 async function get_ext_cmd() {
     /* C passes the completion hook unless replaying with in_doagain. */
-    const buf = (await getlin('#', ext_cmd_getlin_hook)).trim();
+    /* mungspaces(): leading and trailing blanks go, and runs of blanks
+       collapse to one before matching and before the unknown-command
+       message echoes the text */
+    const buf = mungspaces(await getlin('#', ext_cmd_getlin_hook));
 
     if (buf === '' || buf === '\x1b')
         return null;
@@ -631,7 +698,7 @@ async function get_ext_cmd() {
    returns GETOBJ_EXCLUDE; C's EXCLUDE_NONINVENT case needs drink_ok_extra,
    which tracks whether the hero already passed up a fountain, and is not
    modelled. */
-function drink_ok(obj) {
+export function drink_ok(obj) {
     if (!obj)
         return GETOBJ_EXCLUDE;
     if (obj.oclass === OCLASSES.POTION_CLASS)
@@ -704,8 +771,9 @@ function equip_ok(obj, removing, accessory) {
 
     /* src/do_wear.c inaccessible_equipment(obj, NULL, TRUE): while choosing
        something to remove, only a covering item whose curse is already known
-       hides the equipment beneath it. */
-    if (removing) {
+       hides the equipment beneath it. An item-action pick (ia_dotakeoff)
+       skips the check, as C's gi.item_action_in_progress does. */
+    if (removing && !game.item_action_in_progress) {
         const knownCursed = (covering) => !!covering?.cursed
                                            && !!covering.bknown;
         const inaccessible = (obj === game.u.uarm
@@ -769,6 +837,73 @@ async function docmd_getobj(ch) {
 
 // src/cmd.c:495 doextcmd() — dispatch an extended command.
 //
+/* src/decl.c:118 hidespinchars[] */
+const hidespinchars = 'hsq';
+
+// src/cmd.c:890 domonability(); #monster command - use special monster
+// ability while polymorphed
+export async function domonability() {
+    const u = game.u;
+    const uptr = game.youmonst.data;
+    const might_hide = (is_hider(uptr) || hides_under(uptr));
+    let c = '\0';
+
+    if (might_hide && webmaker(uptr)) {
+        c = await tty_yn_function('Hide [h] or spin a web [s]?',
+                                  hidespinchars, 'q', true);
+        if (c === 'q' || c === '\x1b')
+            return ECMD_OK;
+    }
+
+    if (can_breathe(uptr))
+        return await dobreathe();
+    else if (attacktype(uptr, ATTKS.AT_SPIT))
+        return await dospit();
+    else if (uptr.mlet === MONSYMS.S_NYMPH)
+        return await doremove();
+    else if (attacktype(uptr, ATTKS.AT_GAZE))
+        return await dogaze();
+    else if (is_were(uptr))
+        return await dosummon();
+    else if (c !== '\0' ? c === 'h' : might_hide)
+        return await dohide();
+    else if (c !== '\0' ? c === 's' : webmaker(uptr))
+        return await dospinweb();
+    else if (is_mind_flayer(uptr))
+        return await domindblast();
+    else if (u.umonnum === PMNAMES.PM_GREMLIN) {
+        if (IS_FOUNTAIN(game.level.at(u.ux, u.uy).typ)) {
+            if (await split_mon(game.youmonst, null))
+                await dryup(u.ux, u.uy, true);
+        } else if (is_pool(u.ux, u.uy)) {
+            /* hero is either water walking or flying or has
+               magical breathing */
+            await split_mon(game.youmonst, null);
+        } else {
+            await There('is no fountain here.');
+        }
+    } else if (is_unicorn(uptr)) {
+        await use_unicorn_horn(null);
+        return ECMD_TIME;
+    } else if (uptr.msound === MSOUND.MS_SHRIEK) {
+        await You('shriek.');
+        if (u.uburied)
+            await pline('Unfortunately sound does not carry well through rock.');
+        else
+            aggravate();
+    } else if (is_vampire(uptr) || is_vampshifter(game.youmonst)) {
+        return await dopoly();
+    } else if (u.usteed && can_breathe(u.usteed.data)) {
+        await pet_ranged_attk(u.usteed, true);
+        return ECMD_TIME;
+    } else if (Upolyd(u)) {
+        await pline('Any special ability you may have is purely reflexive.');
+    } else {
+        await You("don't have a special ability in your normal form!");
+    }
+    return ECMD_OK;
+}
+
 // The individual commands are not ported. What IS ported is reading the whole
 // name off the input, because a session that issues one and does not have it
 // consumed runs every later keystroke against the wrong command.
@@ -796,16 +931,21 @@ async function enter_explore_mode() {
 }
 
 export async function doextcmd() {
-    const name = await get_ext_cmd();
+    let name, retval;
 
-    if (name === null)
-        return ECMD_OK; /* quit */
-
-    /* rhack replaces the '#' initiator with this actual function in the
-       repeat queue after execution. Keep the name as the stable command
-       identity, then replay it without asking for the extended name again. */
-    game._last_extcmd_name = name;
-    return await execute_extcmd(name);
+    /* keep repeating until we don't run help or quit */
+    do {
+        name = await get_ext_cmd();
+        if (name === null)
+            return ECMD_OK; /* quit */
+        /* rhack replaces the '#' initiator with this actual function in the
+           repeat queue after execution. Keep the name as the stable command
+           identity, then replay it without asking for the extended name
+           again. */
+        game._last_extcmd_name = name;
+        retval = await execute_extcmd(name);
+    } while (name === '?'); /* func == doextlist */
+    return retval;
 }
 
 async function execute_extcmd(name) {
@@ -836,16 +976,12 @@ async function execute_extcmd(name) {
     if (name === 'wizidentify')
         return await show_wiz_identify();
     if (name === 'genocided') {
-        /* src/insight.c list_genocided() — nothing is ever genocided in a
-           recorded session, so only the empty-list line is live */
-        const { pline } = await import('./display.js');
-        await pline('No creatures have been genocided.');
-        return ECMD_OK;
+        const { dogenocided } = await import('./insight.js');
+        return await dogenocided();
     }
     if (name === 'vanquished') {
-        const { list_vanquished } = await import('./insight.js');
-        await list_vanquished('y', false);
-        return ECMD_OK;
+        const { dovanquished } = await import('./insight.js');
+        return await dovanquished();
     }
     if (name === 'conduct') {
         const { show_conduct } = await import('./insight.js');
@@ -916,11 +1052,10 @@ async function execute_extcmd(name) {
         return await dowipe();
     }
     if (name === 'polyself') {
-        const { wiz_polyself } = await import('./polyself.js');
+        const { wiz_polyself } = await import('./wizcmds.js');
         return await wiz_polyself();
     }
     if (name === 'monster') {
-        const { domonability } = await import('./polyself.js');
         return await domonability();
     }
     if (name === 'invoke') {
@@ -1027,6 +1162,9 @@ async function execute_extcmd(name) {
             await pline(`${buried} object${buried === 1 ? '' : 's'} buried.`);
         return ECMD_OK;
     }
+
+    if (name === '?')
+        return await doextlist();
 
     note_unported_cmd(`extcmd:${name}`);
     return ECMD_OK;
@@ -3095,30 +3233,181 @@ function add_item_action(win, action, text) {
                  ATR_NONE, NO_COLOR, text, MENU_ITEMFLAGS_NONE);
 }
 
-/* src/iactions.c itemactions(), common ordinary-object actions. More unusual
-   item-specific apply, invoke, and equipment variants stay with their command
-   implementations until those paths need them. */
+// src/cmd.c:1575 do_reqmenu() — the m-prefix as a queued command: the next
+// command sees iflags.menu_requested. The key bound to it is the default m;
+// the port has no cmd_from_func() binding table, so the message names m.
+export async function do_reqmenu() {
+    if (game.iflags?.menu_requested) {
+        await Norep(`Double ${visctrl_key('m'.charCodeAt(0))} prefix, canceled.`);
+        game.iflags.menu_requested = false;
+        return ECMD_CANCEL;
+    }
+    (game.iflags ||= {}).menu_requested = true;
+    return ECMD_OK;
+}
+
+/* include/obj.h:413 is_graystone() */
+const is_graystone = (o) => o.otyp === ONAMES.LUCKSTONE || o.otyp === ONAMES.LOADSTONE
+    || o.otyp === ONAMES.FLINT || o.otyp === ONAMES.TOUCHSTONE;
+
+/* include/obj.h:256 is_wet_towel() */
+const is_wet_towel = (o) => o.otyp === ONAMES.TOWEL && (o.spe | 0) > 0;
+
+// src/iactions.c:46 item_naming_classification() — the texts for 'c'/'C'
+function item_naming_classification(obj) {
+    const Name = 'Name', Rename = 'Rename or un-name', Call = 'Call',
+          /* "re-call" seems a bit weird, but "recall" and
+             "rename" don't fit for changing a type name */
+          Recall = 'Re-call or un-call';
+    let onamebuf = '', ocallbuf = '';
+
+    if (name_ok(obj) === GETOBJ_SUGGEST) {
+        onamebuf = `${(!has_oname(obj) || !ONAME(obj)) ? Name : Rename} ${
+            the_unique_obj(obj) ? 'the'
+            : !is_plural(obj) ? 'this specific'
+              : 'this stack of'} ${simpleonames(obj)}`;
+    }
+    if (call_ok(obj) === GETOBJ_SUGGEST) {
+        let callname = simpleonames(obj);
+        /* prefix known unique item with "the", make all other types plural */
+        if (the_unique_obj(obj)) /* treats unID'd fake amulets as if real */
+            callname = the(callname);
+        else if (!is_plural(obj))
+            callname = makeplural(callname);
+        ocallbuf = `${(!game.objects[obj.otyp].oc_uname) ? Call : Recall} the type for ${callname}`;
+    }
+    return { onamebuf, ocallbuf };
+}
+
+// src/iactions.c:86 item_reading_classification() — the text for 'r', or
+// null when the item cannot be read
+function item_reading_classification(obj) {
+    const otyp = obj.otyp;
+    if (otyp === ONAMES.FORTUNE_COOKIE)
+        return 'Read the message inside this cookie';
+    if (otyp === ONAMES.T_SHIRT)
+        return 'Read the slogan on the shirt';
+    if (otyp === ONAMES.ALCHEMY_SMOCK)
+        return 'Read the slogan on the apron';
+    if (otyp === ONAMES.HAWAIIAN_SHIRT)
+        return 'Look at the pattern on the shirt';
+    if (obj.oclass === OCLASSES.SCROLL_CLASS) {
+        const magic = ((obj.dknown
+                        && otyp !== ONAMES.SCR_MAIL
+                        && (otyp !== ONAMES.SCR_BLANK_PAPER
+                            || !game.objects[otyp].oc_name_known))
+                       ? ' to activate its magic' : '');
+        return `Read this scroll${magic}`;
+    }
+    if (obj.oclass === OCLASSES.SPBOOK_CLASS) {
+        const novel = (otyp === ONAMES.SPE_NOVEL),
+              blank = (otyp === ONAMES.SPE_BLANK_PAPER
+                       && game.objects[otyp].oc_name_known),
+              tome = (otyp === ONAMES.SPE_BOOK_OF_THE_DEAD
+                      && game.objects[otyp].oc_name_known);
+        return `${(novel || blank) ? 'Read' : tome ? 'Examine' : 'Study'} this ${
+            novel ? simpleonames(obj) /* "novel" or "paperback book" */
+                  : tome ? 'tome' : 'spellbook'}`;
+    }
+    return null;
+}
+
+// src/pager.c:807 ia_checkfile() — does the data file have an entry for
+// what "/i" would look up?
+async function ia_checkfile(otmp) {
+    /* singular() of xname() of otmp is what "/i" looks up */
+    const itemnam = singular(otmp, xname);
+    return await checkfile(itemnam, null, chkfilIaCheck | chkfilDontAsk, null);
+}
+
+// src/cmd.c:5010 get_count() — read a numeric prefix key by key
+export async function get_count(allowchars, inkey, maxcount, count, gc_flags) {
+    let key, cnt = 0;
+    const first = inkey ? (inkey.charCodeAt(0) - 48) : 0;
+    let backspaced = false, showzero = true;
+    const historicmsg = (gc_flags & GC_SAVEHIST) !== 0,
+          /* conditionalmsg: show the count as a message if it differs from the
+             [first digit] value passed in via 'inkey' */
+          conditionalmsg = (gc_flags & GC_CONDHIST) !== 0,
+          echoalways = (gc_flags & GC_ECHOFIRST) !== 0;
+    const STANDBY_erase_char = '\x7f';
+
+    for (;;) {
+        if (inkey) {
+            key = inkey;
+            inkey = '';
+        } else {
+            const c = await nhgetch();
+            key = typeof c === 'string' ? c : String.fromCharCode(c);
+        }
+
+        if (/^[0-9]$/.test(key)) {
+            const dgt = key.charCodeAt(0) - 48;
+            cnt = cnt * 10 + dgt; /* AppendLongDigit() */
+            if (cnt > 2147483647) /* LARGEST_INT: C's long overflow test */
+                cnt = 0;
+            else if (maxcount > 0 && cnt > maxcount)
+                cnt = maxcount;
+            showzero = (key === '0');
+        } else if (key === '\b' || key === STANDBY_erase_char) {
+            if (!cnt && !echoalways)
+                break;
+            showzero = false;
+            cnt = Math.trunc(cnt / 10);
+            backspaced = true;
+        } else if (key === '\x1b') {
+            break;
+        } else if (!allowchars || allowchars.includes(key)) {
+            break;
+        }
+
+        if (cnt > 9 || backspaced || echoalways) {
+            tty_clear_nhwindow_message(game._topl_cury || 0);
+            let qbuf;
+            if (backspaced && !cnt && !showzero) {
+                qbuf = 'Count: ';
+            } else {
+                qbuf = `Count: ${cnt}`;
+                backspaced = false;
+            }
+            await pline_nohistory(qbuf);
+        }
+    }
+    count.value = cnt;
+
+    if (historicmsg || (conditionalmsg && cnt !== first)) {
+        putmsghistory(`Count: ${cnt} ${key2txt(key.charCodeAt(0))}`);
+    }
+    return key;
+}
+
+/* src/iactions.c:282 itemactions() — the menu of things the hero could do
+   with one inventory item, in C's key order. */
 async function show_item_actions(obj) {
     const win = tty_create_nhwindow(NHW_MENU);
     tty_start_menu(win, MENU_BEHAVE_STANDARD);
-    const wornItem = !!(obj.owornmask & (W_ARMOR | W_ACCESSORY));
-    const simpleName = simpleonames(obj);
+    const u = game.u;
+    const plural = obj.quan > 1;
     const light = obj.lamplit ? 'Extinguish' : 'Light';
+    const already_worn = (obj.owornmask & (W_ARMOR | W_ACCESSORY)) !== 0;
 
-    /* src/iactions.c:290 — '-': unwield; picking current weapon offers an
-       opportunity for 'w-' to wield bare/gloved hands; likewise for 'Q-'
-       with quivered item(s) */
-    if (obj === game.u.uwep || obj === game.u.uswapwep || obj === game.u.uquiver) {
-        const verb = (obj === game.u.uquiver) ? 'Quiver' : 'Wield',
-              action = (obj === game.u.uquiver) ? 'un-ready' : 'un-wield',
+    /* -: unwield; picking current weapon offers an opportunity for 'w-'
+       to wield bare/gloved hands; likewise for 'Q-' with quivered item(s) */
+    if (obj === u.uwep || obj === u.uswapwep || obj === u.uquiver) {
+        const verb = (obj === u.uquiver) ? 'Quiver' : 'Wield',
+              action = (obj === u.uquiver) ? 'un-ready' : 'un-wield',
               which = is_plural(obj) ? 'these' : 'this',
               what = ((obj.oclass === OCLASSES.WEAPON_CLASS
                        || is_weptool(obj, game.objects)) ? 'weapon' : 'item');
+        /*
+         * TODO: if uwep is ammo, tell player that to shoot instead of toss,
+         *       the corresponding launcher must be wielded;
+         */
         add_item_action(win, '-', `${verb} '${HANDS_SYM}' to ${action} ${which} ${
             is_plural(obj) ? makeplural(what) : what}`);
     }
 
-    /* src/iactions.c:309 — a: apply */
+    /* a: apply */
     if (obj.oclass === OCLASSES.COIN_CLASS)
         add_item_action(win, 'a', 'Flip a coin');
     else if (obj.otyp === ONAMES.CREAM_PIE)
@@ -3197,68 +3486,340 @@ async function show_item_actions(obj) {
     else if (obj.oclass === OCLASSES.WAND_CLASS)
         add_item_action(win, 'a', 'Break this wand');
 
-    add_item_action(win, 'c', `Name this specific ${simpleName}`);
-    if (!game.objects[obj.otyp].oc_name_known)
-        add_item_action(win, 'C', `Call the type for ${simpleName}`);
-    if (!wornItem)
-        add_item_action(win, 'd', `Drop this ${obj.quan > 1 ? 'stack' : 'item'}`);
-    if (obj.oclass === OCLASSES.RING_CLASS) {
-        const verb = game.objects[obj.otyp].oc_tough ? 'Engrave' : 'Write';
-        add_item_action(win, 'E', `${verb} on the ${surface(game.u.ux, game.u.uy)} `
-                        + `with ${obj.quan > 1 ? 'one of these items' : 'this item'}`);
+    /* 'c', 'C' - call an item or its type something */
+    const { onamebuf, ocallbuf } = item_naming_classification(obj);
+    if (onamebuf)
+        add_item_action(win, 'c', onamebuf);
+    if (ocallbuf)
+        add_item_action(win, 'C', ocallbuf);
+
+    /* d: drop item, works on everything except worn items; those will
+       always have a takeoff/remove choice so we don't have to worry
+       about the menu maybe being empty when 'd' is suppressed */
+    if (!already_worn)
+        add_item_action(win, 'd', `Drop this ${plural ? 'stack' : 'item'}`);
+
+    /* e: eat item */
+    if (obj.otyp === ONAMES.TIN) {
+        add_item_action(win, 'e', `Open ${plural ? 'one of these tins' : 'this tin'} and eat the contents${
+            (u.uwep && u.uwep.otyp === ONAMES.TIN_OPENER) ? ' with your tin opener' : ''}`);
+    } else if (is_edible(obj)) {
+        add_item_action(win, 'e', `Eat ${plural ? 'one of these' : 'this'}`);
     }
-    if (obj.oclass !== OCLASSES.COIN_CLASS)
+
+    /* E: engrave with item */
+    if (obj.otyp === ONAMES.TOWEL) {
+        add_item_action(win, 'E', 'Wipe the floor with this towel');
+    } else if (obj.otyp === ONAMES.MAGIC_MARKER) {
+        add_item_action(win, 'E', 'Scribble graffiti on the floor');
+    } else if (obj.oclass === OCLASSES.WEAPON_CLASS || obj.oclass === OCLASSES.WAND_CLASS
+               || obj.oclass === OCLASSES.GEM_CLASS || obj.oclass === OCLASSES.RING_CLASS) {
+        add_item_action(win, 'E', `${
+            (is_blade(obj) || obj.oclass === OCLASSES.WAND_CLASS
+             || ((obj.oclass === OCLASSES.GEM_CLASS || obj.oclass === OCLASSES.RING_CLASS)
+                 && game.objects[obj.otyp].oc_tough)) ? 'Engrave' : 'Write'} on the ${
+            surface(u.ux, u.uy)} with ${plural ? 'one of these items' : 'this item'}`);
+    }
+
+    /* f: fire quivered ammo */
+    if (obj === u.uquiver) {
+        const shoot = ammo_and_launcher(obj, u.uwep);
+        /* FIXME: see the multi-shot FIXME about "one of" for 't: throw' */
+        let buf = `${shoot ? 'Shoot' : 'Throw'} ${plural ? 'one of these' : 'this'}`;
+        if (shoot)
+            buf += ` with your wielded ${simpleonames(u.uwep)}`;
+        add_item_action(win, 'f', buf);
+    }
+
+    /* i: #adjust inventory letter; gold can't be adjusted unless there
+       is some in a slot other than '$' (which shouldn't be possible) */
+    if (obj.oclass !== OCLASSES.COIN_CLASS
+        || (game.invent || []).some((o) => o.oclass === OCLASSES.COIN_CLASS
+                                            && o.invlet !== '$')) /* check_invent_gold() */
         add_item_action(win, 'i', 'Adjust inventory by assigning new letter');
-    if (obj.quan > 1 && obj.oclass !== OCLASSES.COIN_CLASS)
+    /* I: #adjust inventory item by splitting its stack  */
+    if (plural && obj.oclass !== OCLASSES.COIN_CLASS)
         add_item_action(win, 'I', 'Adjust inventory by splitting this stack');
-    if (obj.oclass === OCLASSES.SPBOOK_CLASS)
-        add_item_action(win, 'r', 'Study this spellbook');
-    else if (obj.oclass === OCLASSES.SCROLL_CLASS)
-        add_item_action(win, 'r', 'Read this scroll to activate its magic');
-    if (!wornItem && obj.oclass === OCLASSES.RING_CLASS)
-        add_item_action(win, 'P', !game.u.uleft || !game.u.uright
-            ? 'Put this ring on' : '[both ring fingers in use]');
-    if (!wornItem)
-        add_item_action(win, 't', obj.quan === 1
-            ? 'Throw this item' : 'Throw one of these');
-    /* src/iactions.c:590 — T: take off armor */
-    if ((obj.owornmask ?? 0) & W_ARMOR)
+
+    /* O: offer sacrifice */
+    if (IS_ALTAR(game.level.at(u.ux, u.uy)?.typ) && !u.uswallow) {
+        /* FIXME: this doesn't match #offer's likely candidates, which don't
+           include corpses on Astral and don't include amulets off Astral */
+        if (obj.otyp === ONAMES.CORPSE)
+            add_item_action(win, 'O', 'Offer this corpse as a sacrifice at this altar');
+        else if (obj.otyp === ONAMES.AMULET_OF_YENDOR
+                 || obj.otyp === ONAMES.FAKE_AMULET_OF_YENDOR)
+            add_item_action(win, 'O', 'Offer this amulet as a sacrifice at this altar');
+    }
+
+    /* p: pay for unpaid utems */
+    let mtmp;
+    if (obj.unpaid
+        /* FIXME: should also handle player owned container (so not
+           flagged 'unpaid') holding shop owned items */
+        && (mtmp = shop_keeper((in_rooms(u.ux, u.uy, SHOPBASE) || '\0').charCodeAt(0))) != null
+        && inhishop(mtmp)) {
+        add_item_action(win, 'p', `Buy this unpaid ${plural ? 'stack' : 'item'}`);
+    }
+
+    /* P: put on accessory */
+    if (!already_worn) {
+        /* if 'otmp' is worn, we'll skip 'P' and show 'R' below;
+           if not worn, we show 'P - Put on this <simple-item>' if
+           the slot is available, or 'P - <unavailable>'; for the latter,
+           'P' will fail but we don't want to omit the choice because
+           item actions can be used to learn commands */
+        let buf = '';
+        if (obj.oclass === OCLASSES.AMULET_CLASS) {
+            buf = !u.uamul ? 'Put this amulet on' : '[already wearing an amulet]';
+        } else if (obj.oclass === OCLASSES.RING_CLASS || obj.otyp === ONAMES.MEAT_RING) {
+            if (!u.uleft || !u.uright)
+                buf = 'Put this ring on';
+            else
+                buf = `[both ring ${makeplural(body_part(FINGER))} in use]`;
+        } else if (obj.otyp === ONAMES.BLINDFOLD || obj.otyp === ONAMES.TOWEL
+                   || obj.otyp === ONAMES.LENSES) {
+            if (u.ublindf)
+                buf = '[already wearing eyewear]';
+            else if (obj.otyp === ONAMES.LENSES)
+                buf = 'Put these lenses on';
+            else
+                buf = `Put this on${(obj.otyp === ONAMES.TOWEL) ? ' to blindfold yourself' : ''}`;
+        }
+        if (buf)
+            add_item_action(win, 'P', buf);
+    }
+
+    /* q: drink item */
+    if (obj.oclass === OCLASSES.POTION_CLASS)
+        add_item_action(win, 'q', `Quaff (drink) ${plural ? 'one of these potions' : 'this potion'}`);
+
+    /* Q: quiver throwable item */
+    if ((obj.oclass === OCLASSES.GEM_CLASS || obj.oclass === OCLASSES.WEAPON_CLASS)
+        && obj !== u.uquiver)
+        add_item_action(win, 'Q', `Quiver this ${plural ? 'stack' : 'item'} for easy ${
+            ammo_and_launcher(obj, u.uwep) ? 'shooting' : 'throwing'} with 'f'ire`);
+
+    /* r: read item */
+    const readbuf = item_reading_classification(obj);
+    if (readbuf !== null)
+        add_item_action(win, 'r', readbuf);
+
+    /* R: remove accessory or rub item */
+    if (obj.owornmask & W_ACCESSORY) {
+        add_item_action(win, 'R', `Remove this ${
+            (obj.owornmask & W_AMUL) ? 'amulet'
+            : (obj.owornmask & W_RING) ? 'ring'
+              : (obj.owornmask & W_TOOL) ? 'eyewear'
+                : 'accessory'}`); /* catchall -- can't happen */
+    }
+    if (obj.otyp === ONAMES.OIL_LAMP || obj.otyp === ONAMES.MAGIC_LAMP
+        || obj.otyp === ONAMES.BRASS_LANTERN) {
+        add_item_action(win, 'R', `Rub this ${simpleonames(obj)}`);
+    } else if (obj.oclass === OCLASSES.GEM_CLASS && is_graystone(obj))
+        add_item_action(win, 'R', 'Rub something on this stone');
+
+    /* t: throw item */
+    if (!already_worn) {
+        const shoot = ammo_and_launcher(obj, u.uwep);
+        /*
+         * FIXME:
+         *  'one of these' should be changed to 'some of these' when there
+         *  is the possibility of a multi-shot volley but we don't have
+         *  any way to determine that except by actually calculating the
+         *  volley count and that could randomly yield 1 here and 2..N
+         *  while throwing or vice versa.
+         */
+        add_item_action(win, 't', `${shoot ? 'Shoot' : 'Throw'} ${
+            (obj.quan === 1) ? 'this item'
+            : (obj.otyp === ONAMES.GOLD_PIECE) ? 'them'
+              : 'one of these'}${
+            /* if otmp is quivered, we've already listed
+               'f - shoot|throw this item' as a choice;
+               if 't' is duplicating that, say so ('t' and 'f'
+               behavior differs for throwing a stack of gold) */
+            (obj === u.uquiver && (obj.otyp !== ONAMES.GOLD_PIECE
+                                   || obj.quan === 1))
+            ? " (same as 'f')" : ''}`);
+    }
+
+    /* T: take off armor, tip carried container */
+    if (obj.owornmask & W_ARMOR)
         add_item_action(win, 'T', 'Take off this armor');
-    if (!wornItem && obj !== game.u.uwep)
-        add_item_action(win, 'w', `Wield this ${obj.quan > 1 ? 'stack' : 'item'}`
-                        + ' in your hands');
-    if (!wornItem && obj.oclass === OCLASSES.ARMOR_CLASS)
-        add_item_action(win, 'W', 'Wear this armor');
+    if ((Is_container(obj) && (Has_contents(obj) || !obj.cknown))
+        || (obj.otyp === ONAMES.HORN_OF_PLENTY && (obj.spe > 0 || !obj.known)))
+        add_item_action(win, 'T', 'Tip all the contents out of this container');
+
+    /* V: invoke */
+    if ((obj.otyp === ONAMES.FAKE_AMULET_OF_YENDOR && !obj.known)
+        || obj.oartifact || game.objects[obj.otyp].oc_unique
+        /* non-artifact crystal balls don't have any unique power but
+           the #invoke command lists them as likely candidates */
+        || obj.otyp === ONAMES.CRYSTAL_BALL)
+        add_item_action(win, 'V', 'Try to invoke a unique power of this object');
+
+    /* w: wield, hold in hands, works on everything but with different
+       advice text; not mentioned for things that are already wielded */
+    if (obj === u.uwep || cantwield(game.youmonst?.data ?? game.mons[u.umonnum ?? 0])) {
+        ; /* either already wielded or can't wield anything; skip 'w' */
+    } else if (obj.oclass === OCLASSES.WEAPON_CLASS || is_weptool(obj, game.objects)
+               || is_wet_towel(obj) || obj.otyp === ONAMES.HEAVY_IRON_BALL) {
+        add_item_action(win, 'w', `Wield this ${plural ? 'stack' : 'item'} as your weapon`);
+    } else if (obj.otyp === ONAMES.TIN_OPENER) {
+        add_item_action(win, 'w', 'Wield the tin opener to easily open tins');
+    } else if (!already_worn) {
+        /* originally this was using "hold this item in your hands" but
+           there's no concept of "holding an item", plus it unwields
+           whatever item you already have wielded so use "wield this item" */
+        add_item_action(win, 'w', `Wield this ${plural ? 'stack' : 'item'} in your ${
+            /* only two-handed weapons and unicorn horns care about
+               pluralizing "hand" and they won't reach here, but plural
+               sounds better when poly'd into something with "claw" */
+            makeplural(body_part(HAND))}`);
+    }
+
+    /* W: wear armor */
+    if (!already_worn) {
+        if (obj.oclass === OCLASSES.ARMOR_CLASS) {
+            /* if 'otmp' is worn we skip 'W' (and show 'T' above instead);
+               if it isn't, we either show "W - wear this" if otmp's slot
+               isn't populated, or "W - [already wearing <simple-armor>]";
+               for the latter, picking 'W' will fail but we don't want to
+               omit 'W' in this situation */
+            const Wmask = armcat_to_wornmask(game.objects[obj.otyp].oc_subtyp);
+            const o = wearmask_to_obj(Wmask);
+            add_item_action(win, 'W', !o ? 'Wear this armor'
+                            : `[already wearing ${an(armor_simple_name(o))}]`);
+        }
+    }
+
+    /* x: Swap main and readied weapon */
+    if (obj === u.uwep && u.uswapwep)
+        add_item_action(win, 'x', 'Swap this with your alternate weapon');
+    else if (obj === u.uwep)
+        add_item_action(win, 'x', 'Ready this as an alternate weapon');
+    else if (obj === u.uswapwep)
+        add_item_action(win, 'x', 'Swap this with your main weapon');
+
+    /* this is based on TWOWEAPOK() in wield.c; we don't call can_two_weapon()
+       because it is very verbose; attempting to two-weapon might be rejected
+       but we screen out most reasons for rejection before offering it as a
+       choice */
+    const MAYBETWOWEAPON = (o) =>
+        (((o.oclass === OCLASSES.WEAPON_CLASS)
+          ? !(is_launcher(o) || is_ammo(o) || is_missile(o))
+          : is_weptool(o, game.objects))
+         && !bimanual(o));
+    /* X: Toggle two-weapon mode on or off */
+    if ((obj === u.uwep || obj === u.uswapwep)
+        /* if already two-weaponing, no special checks needed to toggle off */
+        && (u.twoweap
+        /* but if not, try to filter most "you can't do that" here */
+            || (could_twoweap(game.youmonst?.data ?? game.mons[u.umonnum ?? 0]) && !u.uarms
+                && u.uwep && MAYBETWOWEAPON(u.uwep)
+                && u.uswapwep && MAYBETWOWEAPON(u.uswapwep)))) {
+        add_item_action(win, 'X', `Toggle two-weapon combat ${u.twoweap ? 'off' : 'on'}`);
+    }
+
+    /* z: Zap wand */
     if (obj.oclass === OCLASSES.WAND_CLASS)
         add_item_action(win, 'z', 'Zap this wand to release its magic');
-    add_item_action(win, '/', `Look up information about ${obj.quan > 1
-        ? 'these' : 'this'}`);
+
+    /* ?: Look up an item in the game's database */
+    if (await ia_checkfile(obj))
+        add_item_action(win, '/', `Look up information about ${plural ? 'these' : 'this'}`);
 
     tty_end_menu(win, `Do what with ${the(cxname(obj))}?`);
     const picks = await tty_select_menu(win, 1 /* PICK_ONE */);
     tty_destroy_nhwindow(win);
     if (picks.length)
         queue_item_action(String.fromCharCode(picks[0]), obj);
+    /* finish the 'i' command:  no time elapses and cancelling without
+       selecting an action doesn't matter */
 }
 
+// src/iactions.c:138 itemactions_pushkeys() — queue the picked action as the
+// command plus the keys it would have asked for
 function queue_item_action(action, obj) {
     const push = (fn, ...keys) => {
         cmdq_add_ec(CQ_CANNED, fn);
         for (const key of keys)
             cmdq_add_key(CQ_CANNED, key);
     };
+    const u = game.u;
     switch (action) {
-    case 'c': push(docallcmd, 'i', obj.invlet); break;
+    case '-': /* IA_UNWIELD */
+        push((obj === u.uwep) ? dowield
+             : (obj === u.uswapwep) ? remarm_swapwep
+               : (obj === u.uquiver) ? dowieldquiver
+                 : donull, /* can't happen */
+             HANDS_SYM);
+        break;
+    case 'a': /* IA_APPLY_OBJ / IA_DIP_OBJ */
+        if (obj.oclass === OCLASSES.POTION_CLASS)
+            /* #dip: first prompt is for the potion, second for the item
+               to dip; using the inventory item first (the instigating
+               potion) matches C's dip_into() */
+            push(dip_into, obj.invlet);
+        else
+            push(doapply, obj.invlet);
+        break;
+    case 'c': /* IA_NAME_OBJ */
+    case 'C': /* IA_NAME_OTYP */
+        push(docallcmd, (action === 'c') ? 'i' : 'o', obj.invlet);
+        break;
     case 'd': push(dodrop, obj.invlet); break;
+    case 'e':
+        /* m-prefix to skip floor food if present and eat food from invent */
+        cmdq_add_ec(CQ_CANNED, do_reqmenu);
+        push(doeat, obj.invlet);
+        break;
     case 'E': push(doengrave, obj.invlet); break;
+    case 'f': push(dofire); break;
+    case 'i': push(doorganize, obj.invlet); break;       /* #adjust */
+    case 'I': push(adjust_split, obj.invlet); break;     /* #altadjust */
+    case 'O': push(dosacrifice, obj.invlet); break;
+    case 'p': push(dopay, obj.invlet); break;
     case 'P': push(doputon, obj.invlet); break;
+    case 'q':
+        /* m-prefix to skip fountain or sink if present and drink a potion
+           from invent */
+        cmdq_add_ec(CQ_CANNED, do_reqmenu);
+        push(() => dodrink(drink_ok), obj.invlet);
+        break;
+    case 'Q': push(dowieldquiver, obj.invlet); break;
     case 'r': push(() => doread(read_ok), obj.invlet); break;
+    case 'R':
+        if (obj.owornmask & W_ACCESSORY)
+            push(ia_dotakeoff, obj.invlet);              /* #altdotakeoff */
+        else
+            push(dorub, obj.invlet);
+        break;
     case 't': push(dothrow, obj.invlet); break;
+    case 'T':
+        if (obj.owornmask & W_ARMOR) {
+            push(ia_dotakeoff, obj.invlet);              /* #altdotakeoff */
+        } else {
+            /* start with m-prefix to skip floor containers;
+               for menustyle:Traditional when more than one floor container
+               is present, player will get a #tip menu and have to pick
+               the "tip something being carried" choice, then this item
+               will be already chosen from inventory; suboptimal but
+               possibly an acceptable tradeoff since combining item actions
+               with use of traditional ggetobj() is an unlikely scenario */
+            cmdq_add_ec(CQ_CANNED, do_reqmenu);
+            push(dotip, obj.invlet);
+        }
+        break;
+    case 'V': push(doinvoke, obj.invlet); break;
     case 'w': push(dowield, obj.invlet); break;
+    case 'W': push(dowear, obj.invlet); break;
+    case 'x': push(doswapweapon); break;
+    case 'X': push(dotwoweapon); break;
     case 'z': push(dozap, obj.invlet); break;
-    case '/': push(dowhatis, 'i', obj.invlet); break;
+    case '/': push(dowhatis, 'i', obj.invlet); break;   /* "/" command, "i" == item from inventory */
     default:
-        note_unported_cmd(`item_action:${action}`);
+        /* impossible("Unknown item action %d", act) */
         break;
     }
 }
@@ -3321,6 +3882,11 @@ export function cmdq_add_ec(q, fn) {
 // src/cmd.c:274 cmdq_add_key() — add a key to the command queue.
 export function cmdq_add_key(q, key) {
     ((game.command_queue ||= [])[q] ||= []).push({ typ: CMDQ_KEY, key });
+}
+
+// src/cmd.c:283 cmdq_add_int() — add an integer (a count) to the command queue.
+export function cmdq_add_int(q, intval) {
+    ((game.command_queue ||= [])[q] ||= []).push({ typ: CMDQ_INT, intval });
 }
 
 // src/cmd.c:410 cmdq_pop() — pop the topmost command. The queue popped
@@ -3651,4 +4217,214 @@ export function key2extcmddesc(key) {
         return buf;
     }
     return null;
+}
+
+// src/cmd.c:5655 paranoid_query(), a yes/no paranoid_ynq().
+export async function paranoid_query(be_paranoid, prompt) {
+    return (await paranoid_ynq(be_paranoid, prompt, false)) === 'y';
+}
+
+// src/cmd.c cmd_from_func(), the key a command is bound to.  The JS
+// dispatch is by command name, so this takes the name: a BIND line in the
+// rc file wins, else the command's default key.
+export function cmd_from_func(name) {
+    for (const [key, bound] of Object.entries(game.rc_key_bindings || {}))
+        if (bound === name)
+            return key;
+    const e = extcmdlist.find((x) => x.ef_txt === name);
+    return (e && e.key) ? String.fromCharCode(e.key) : '\0';
+}
+
+// src/cmd.c accept_menu_prefix(), does the command take the 'm' prefix?
+export function accept_menu_prefix(ec) {
+    return !!(ec && ((ec.flags & CMD_M_PREFIX) !== 0));
+}
+
+// src/cmd.c doc_extcmd_flagstr(), the "[mA]" column of the extended
+// command list; with a null efp, the menu's footnote.
+function doc_extcmd_flagstr(menuwin, efp) {
+    if (!efp) {
+        tty_add_menu_str(menuwin, '[A] Command autocompletes');
+        tty_add_menu_str(menuwin, `[m] Command accepts '${
+                         visctrl(cmd_from_func('reqmenu'))}' prefix`);
+        return null;
+    } else {
+        const mprefix = accept_menu_prefix(efp),
+              autocomplete = (efp.flags & AUTOCOMPLETE) !== 0;
+        let Abuf = '';
+
+        /* "" or "[m]" or "[A]" or "[mA]" */
+        if (mprefix || autocomplete) {
+            Abuf += '[';
+            if (mprefix)
+                Abuf += 'm';
+            if (autocomplete)
+                Abuf += 'A';
+            Abuf += ']';
+        }
+        return Abuf;
+    }
+}
+
+// src/cmd.c:562 doextlist(), the "#?" list of extended commands.
+export async function doextlist() {
+    let buf, searchbuf = '', descbuf;
+    let cmd_desc;
+    let menuwin;
+    let n, pass;
+    let menumode = 0;
+    const menushown = [0, 0];
+    let onelist = 0;
+    let redisplay = true, search = false;
+    const headings = ['Extended commands', 'Debugging Extended Commands'];
+    const clr = NO_COLOR;
+
+    menuwin = tty_create_nhwindow(NHW_MENU);
+
+    while (redisplay) {
+        redisplay = false;
+        tty_start_menu(menuwin, MENU_BEHAVE_STANDARD);
+        tty_add_menu_str(menuwin, 'Extended Commands List');
+        tty_add_menu_str(menuwin, '');
+
+        buf = `Switch to ${menumode ? 'including' : 'excluding'} commands that don't autocomplete`;
+        tty_add_menu(menuwin, null, 1, 'a', 0, ATR_NONE, clr, buf,
+                     MENU_ITEMFLAGS_NONE);
+
+        if (!searchbuf) {
+            /* [when searching, the ':' menu command doesn't work well
+               because it applies to selectable entries, and this menu
+               would only examine the two or three meta entries, not the
+               actual list of extended commands shown via separator lines;
+               having ':' as an explicit selector overrides the default
+               menu behavior for it; we retain 's' as a group accelerator] */
+            tty_add_menu(menuwin, null, 2, ':', 's', ATR_NONE,
+                         clr, 'Search extended commands',
+                         MENU_ITEMFLAGS_NONE);
+        } else {
+            buf = 'Switch back from search';
+            if (buf.length + searchbuf.length + ' ("")'.length < QBUFSZ)
+                buf += ` ("${searchbuf}")`;
+            /* specifying ':' as a group accelerator here is mostly a
+               statement of intent (we'd like to accept it as a synonym but
+               also want to hide it from general menu use) because it won't
+               work for interfaces which support ':' to search; use as a
+               general menu command takes precedence over group accelerator */
+            tty_add_menu(menuwin, null, 3, 's', ':', ATR_NONE,
+                         clr, buf, MENU_ITEMFLAGS_NONE);
+        }
+        if (game.wizard) {
+            tty_add_menu(menuwin, null, 4, 'z', 0, ATR_NONE, clr,
+          onelist ? 'Switch to showing debugging commands in separate section'
+       : 'Switch to showing all alphabetically, including debugging commands',
+                         MENU_ITEMFLAGS_NONE);
+        }
+        tty_add_menu_str(menuwin, '');
+        menushown[0] = menushown[1] = 0;
+        n = 0;
+        for (pass = 0; pass <= 1; ++pass) {
+            /* skip second pass if not in wizard mode or wizard mode
+               commands are being integrated into a single list */
+            if (pass === 1 && (onelist || !game.wizard))
+                break;
+            for (const efp of extcmdlist) {
+                let wizc;
+
+                if ((efp.flags & (CMD_NOT_AVAILABLE | INTERNALCMD)) !== 0)
+                    continue;
+                /* if hiding non-autocomplete commands, skip such */
+                if (menumode === 1 && (efp.flags & AUTOCOMPLETE) === 0)
+                    continue;
+                /* if not in wizard mode, skip wizard mode commands;
+                   when showing two sections, skip wizard mode commands
+                   in pass==0 and skip other commands in pass==1 */
+                wizc = ((efp.flags & WIZMODECMD) !== 0) ? 1 : 0;
+                if (wizc && !game.wizard)
+                    continue;
+                if (!onelist && pass !== wizc)
+                    continue;
+                cmd_desc = efp.ef_desc;
+                /* reduce "become extinct or been genocided" if "extinct"
+                   doesn't apply during the current game */
+                if (!game.wizard && !game.discover
+                    && (efp.flags & GENERALCMD) !== 0 /* minor optimization */
+                    && strstri(cmd_desc, 'extinct') >= 0)
+                    cmd_desc = (descbuf = strsubst(cmd_desc,
+                                        ' been genocided or become extinct',
+                                        ' been genocided'));
+
+                /* skip if not matching search string */
+                if (searchbuf
+                    && strstri(efp.ef_txt, searchbuf) < 0
+                    && strstri(cmd_desc, searchbuf) < 0
+                    /* [these next two are cheap and improve coverage; use
+                       pmatch rather than regexp for menu searching] */
+                    && !pmatchi(searchbuf, efp.ef_txt)
+                    && !pmatchi(searchbuf, cmd_desc))
+                    continue;
+
+                /* We're about to show an item, so show heading if needed.
+                   Doing menu in inner loop like this on demand avoids a
+                   heading with no subordinate entries on the search
+                   results menu. */
+                if (!menushown[pass]) {
+                    buf = headings[pass];
+                    add_menu_heading(menuwin, buf);
+                    menushown[pass] = 1;
+                }
+                /* fmt: "%-14s %4s %s" -> "spell autocomplete description";
+                   2nd field will be "    " or " [A]" or " [m]" or "[mA]" */
+                buf = ` ${efp.ef_txt.padEnd(14)} ${
+                      doc_extcmd_flagstr(menuwin, efp).padStart(4)} ${cmd_desc}`;
+                tty_add_menu_str(menuwin, buf);
+                ++n;
+            }
+            if (n)
+                tty_add_menu_str(menuwin, '');
+        }
+        if (searchbuf && !n)
+            tty_add_menu_str(menuwin, 'no matches');
+        else
+            doc_extcmd_flagstr(menuwin, null);
+
+        tty_end_menu(menuwin, null);
+        const selected = await tty_select_menu(menuwin, PICK_ONE);
+        n = selected.length;
+        if (n > 0) {
+            switch (selected[0]) {
+            case 1: /* 'a': toggle show/hide non-autocomplete */
+                menumode = 1 - menumode;  /* toggle 0 -> 1, 1 -> 0 */
+                redisplay = true;
+                break;
+            case 2: /* ':' when not searching yet: enable search */
+                search = true;
+                break;
+            case 3: /* 's' when already searching: disable search */
+                search = false;
+                searchbuf = '';
+                redisplay = true;
+                break;
+            case 4: /* 'z': toggle showing wizard mode commands separately */
+                search = false;
+                searchbuf = '';
+                onelist = 1 - onelist;  /* toggle 0 -> 1, 1 -> 0 */
+                redisplay = true;
+                break;
+            }
+        } else { /* n==0: ESC or 'q' or Return with nothing selected */
+            search = false;
+            searchbuf = '';
+        }
+        if (search) {
+            searchbuf = await getlin('Extended command list search phrase?');
+            searchbuf = mungspaces(searchbuf);
+            if (searchbuf[0] === '\x1b')
+                searchbuf = '';
+            if (searchbuf)
+                redisplay = true;
+            search = false;
+        }
+    }
+    tty_destroy_nhwindow(menuwin);
+    return ECMD_OK;
 }

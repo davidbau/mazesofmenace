@@ -5,6 +5,19 @@
 // the tested sacrifice paths. Some punishment, conversion, and artifact-gift
 // paths remain partial.
 
+import { uhim } from './mhitu.js';
+import { Disint_resistance } from './youprop.js';
+import { genders } from './role_data.js';
+import { Monnam } from './do_name.js';
+import { punish } from './read.js';
+import { verbalize } from './pline.js';
+import { summon_minion } from './minion.js';
+import { ureflects } from './zap.js';
+import { shieldeff } from './display.js';
+import { XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT, M_SEEN_REFL, M_SEEN_ELEC, M_SEEN_DISINT, Is_astralevel, Is_sanctum } from './const.js';
+import { xkilled } from './mon.js';
+import { resists_disint, resists_elec, monstseesu, monstunseesu } from './mondata.js';
+import { disintegrate_arm } from './do_wear.js';
 import { game } from './gstate.js';
 import { rn1, rn2, rnd, rnz, rnl, rn2_on_display_rng } from './rng.js';
 import { newsym, pline, more, see_monsters } from './display.js';
@@ -499,10 +512,10 @@ async function angrygods(resp_god) {
     case 3: {
         await godvoice(resp_god, null);
         /* ugod_is_angry(): ualign.record < 0 */
-        await pline(`"Thou ${(game.u.ualign.record < 0
-                              && resp_god === game.u.ualign.type)
-                             ? 'hast strayed from the path' : 'art arrogant'}, mortal."`);
-        await pline('"Thou must relearn thy lessons!"');
+        await pline(`"Thou ${(ugod_is_angry() && resp_god === game.u.ualign.type)
+                             ? 'hast strayed from the path' : 'art arrogant'}, ${
+                     game.youmonst.data.mlet === MONSYMS.S_HUMAN ? 'mortal' : 'creature'}."`);
+        await verbalize('Thou must relearn thy lessons!');
         const { adjattrib } = await import('./attrib.js');
         await adjattrib(A_WIS, -1, 0);
         const { losexp } = await import('./exper.js');
@@ -510,8 +523,12 @@ async function angrygods(resp_god) {
         break;
     }
     case 6:
-        note_unported_pray('angrygods:punish');
-        break;
+        if (!game.u.uball) { /* !Punished */
+            await gods_angry(resp_god);
+            await punish(null);
+            break;
+        }
+        /* FALLTHROUGH */
     case 4:
     case 5: {
         await gods_angry(resp_god);
@@ -524,7 +541,13 @@ async function angrygods(resp_god) {
     }
     case 7:
     case 8:
-        note_unported_pray('angrygods:summon_minion');
+        await godvoice(resp_god, null);
+        await verbalize(`Thou durst ${
+                        (on_altar() && (a_align(u.ux, u.uy) !== resp_god))
+                            ? 'scorn' : 'call upon'} me?`);
+        await pline(`"Then die, ${
+                    (game.youmonst.data.mlet === MONSYMS.S_HUMAN) ? 'mortal' : 'creature'}!"`);
+        await summon_minion(resp_god, false);
         break;
     default:
         await gods_angry(resp_god);
@@ -1182,69 +1205,87 @@ async function fry_by_god(resp_god, via_disintegration) {
     await done(DIED);
 }
 
-async function disintegrate_divine_armor(obj, slot) {
-    if (!obj || obj_resists(obj, 0, 90))
-        return false;
-    const message = slot === 'shield'
-        ? 'Your shield crumbles away!'
-        : slot === 'cloak'
-          ? 'Your cloak crumbles and turns to dust!'
-          : slot === 'shirt'
-            ? 'Your shirt crumbles into tiny threads and falls apart!'
-            : 'Your armor turns to dust and falls to the floor!';
-    await pline(message);
-    await more();
-    useup(obj);
-    return true;
-}
-
+// src/pray.c:602 god_zaps_you(), lightning and then a disintegration beam
+// from an angry god.
 async function god_zaps_you(resp_god) {
     const u = game.u;
-    if (u.uswallow) {
-        note_unported_pray('god_zaps_you:swallowed');
-        return;
-    }
 
-    await pline('Suddenly, a bolt of lightning strikes you!');
-    if (Reflecting()) {
-        await pline(u.ublind
-                    ? "For some reason you're unaffected."
-                    : 'It reflects from your armor!');
-    } else if (Shock_resistance()) {
-        await pline('It seems not to affect you.');
+    if (u.uswallow) {
+        await pline('Suddenly a bolt of lightning comes down at you from the heavens!');
+        await pline(`It strikes ${mon_nam(u.ustuck)}!`);
+        if (!resists_elec(u.ustuck)) {
+            await pline(`${Monnam(u.ustuck)} fries to a crisp!`);
+            /* Yup, you get experience.  It takes guts to successfully
+             * pull off this trick on your god, anyway.
+             * Other credit/blame applies (luck or alignment adjustments),
+             * but not direct kill responsibility: we don't want misc.
+             * killer types. */
+            await xkilled(u.ustuck, XKILL_NOMSG | XKILL_NOCONDUCT);
+        } else
+            await pline(`${Monnam(u.ustuck)} seems unaffected.`);
     } else {
-        await fry_by_god(resp_god, false);
+        await pline('Suddenly, a bolt of lightning strikes you!');
+        if (Reflecting()) {
+            await shieldeff(u.ux, u.uy);
+            if (Blind())
+                await pline("For some reason you're unaffected.");
+            else
+                await ureflects('%s reflects from your %s.', 'It');
+            monstseesu(M_SEEN_REFL);
+        } else if (Shock_resistance()) {
+            await shieldeff(u.ux, u.uy);
+            await pline('It seems not to affect you.');
+            monstseesu(M_SEEN_ELEC);
+            monstunseesu(M_SEEN_REFL);
+        } else {
+            await fry_by_god(resp_god, false);
+            monstunseesu(M_SEEN_REFL | M_SEEN_ELEC);
+        }
     }
 
     await pline(`${align_gname(resp_god)} is not deterred...`);
-    await pline('A wide-angle disintegration beam hits you!');
+    if (u.uswallow) {
+        await pline(`A wide-angle disintegration beam aimed at you hits ${mon_nam(u.ustuck)}!`);
+        if (!resists_disint(u.ustuck)) {
+            await pline(`${Monnam(u.ustuck)} disintegrates into a pile of dust!`);
+            await xkilled(u.ustuck, XKILL_NOMSG | XKILL_NOCORPSE | XKILL_NOCONDUCT);
+        } else
+            await pline(`${Monnam(u.ustuck)} seems unaffected.`);
+    } else {
+        await pline('A wide-angle disintegration beam hits you!');
 
-    const reflecting = u.uprops?.REFLECTING || 0;
-    const disint = u.uprops?.DISINT_RES || 0;
-    let armorDestroyed = false;
-    if (u.uarms && !(reflecting & W_ARMS) && !(disint & W_ARMS))
-        armorDestroyed = await disintegrate_divine_armor(u.uarms, 'shield')
-                         || armorDestroyed;
-    if (u.uarmc && !(reflecting & W_ARMC) && !(disint & W_ARMC))
-        armorDestroyed = await disintegrate_divine_armor(u.uarmc, 'cloak')
-                         || armorDestroyed;
-    if (u.uarm && !(reflecting & W_ARM) && !(disint & W_ARM) && !u.uarmc)
-        armorDestroyed = await disintegrate_divine_armor(u.uarm, 'armor')
-                         || armorDestroyed;
-    if (u.uarmu && !u.uarm && !u.uarmc)
-        armorDestroyed = await disintegrate_divine_armor(u.uarmu, 'shirt')
-                         || armorDestroyed;
+        /* disintegrate shield and body armor before disintegrating
+         * the impending vulnerable hero */
+        const EReflecting = u.uprops?.REFLECTING || 0;
+        const EDisint_resistance = u.uprops?.DISINT_RES || 0;
 
-    const disintResistant = !!(u.intrinsic?.HDisint_resistance
-                               || u.uprops?.DISINT_RES);
-    if (!disintResistant)
-        await fry_by_god(resp_god, true);
-    else {
-        await You(`bask in its ${NH_BLACK} glow for a minute...`);
-        await godvoice(resp_god, 'I believe it not!');
+        if (u.uarms && !(EReflecting & W_ARMS)
+            && !(EDisint_resistance & W_ARMS))
+            await disintegrate_arm(u.uarms);
+        if (u.uarmc && !(EReflecting & W_ARMC)
+            && !(EDisint_resistance & W_ARMC))
+            await disintegrate_arm(u.uarmc);
+        if (u.uarm && !(EReflecting & W_ARM) && !(EDisint_resistance & W_ARM)
+            && !u.uarmc)
+            await disintegrate_arm(u.uarm);
+        if (u.uarmu && !u.uarm && !u.uarmc)
+            await disintegrate_arm(u.uarmu);
+        if (!Disint_resistance()) {
+            await fry_by_god(resp_god, true);
+            monstunseesu(M_SEEN_DISINT);
+        } else {
+            await You(`bask in its ${NH_BLACK} glow for a minute...`);
+            await godvoice(resp_god, 'I believe it not!');
+            monstseesu(M_SEEN_DISINT);
+        }
+        if (Is_astralevel(u.uz) || Is_sanctum(u.uz)) {
+            await verbalize('Thou cannot escape my wrath, mortal!');
+            await summon_minion(resp_god, false);
+            await summon_minion(resp_god, false);
+            await summon_minion(resp_god, false);
+            await verbalize(`Destroy ${uhim()}, my servants!`);
+        }
     }
-    if (armorDestroyed)
-        find_ac();
 }
 
 // src/pray.c:1071 pleased(). The successful-prayer favors and crowning path
@@ -1577,4 +1618,13 @@ export async function dopray() {
     }
 
     return ECMD_TIME;
+}
+
+// src/pray.c:104 ugod_is_angry()
+const ugod_is_angry = () => game.u.ualign.record < 0;
+
+
+// src/pray.c: a_align(), the alignment of the altar at <x,y>.
+function a_align(x, y) {
+    return Amask2align(game.level.at(x, y).altarmask & AM_MASK);
 }

@@ -6,6 +6,9 @@
 // creates, so skipping it left two calls unspent in the middle of level
 // generation.
 
+import { genders } from './role_data.js';
+import { vtense, makeplural } from './objnam.js';
+import { ismnum, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_RANDOM, MALE, FEMALE, NEUTRAL } from './const.js';
 import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
          tty_select_menu, tty_destroy_nhwindow } from './tty/wintty.js';
 import { docrt, flush_screen, pline } from './display.js';
@@ -20,7 +23,7 @@ import { game } from './gstate.js';
 import { rn1, rn2, rn2_on_display_rng } from './rng.js';
 import { Hallucination } from './youprop.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
-import { OCLASSES, ONAMES } from './objects_data.js';
+import { OCLASSES, ONAMES, obj_descr } from './objects_data.js';
 import { ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR,
          M_AP_TYPE, M_AP_MONSTER, PRONOUN_HALLU,
          SUPPRESS_SADDLE, SUPPRESS_IT, SUPPRESS_INVISIBLE,
@@ -498,7 +501,7 @@ export function oname(obj, name, oflgs) {
 // src/do_name.c:467 name_ok() and :290 do_oname(), select and name one
 // particular inventory object. The artifact-name restriction path is left to
 // oname(); ordinary player notes consume no gameplay RNG.
-function name_ok(obj) {
+export function name_ok(obj) {
     if (!obj || obj.oclass === OCLASSES.COIN_CLASS)
         return GETOBJ_EXCLUDE;
     if (!obj.dknown || obj.oartifact || obj.otyp === ONAMES.SPE_NOVEL)
@@ -783,3 +786,130 @@ export function noveltitle(box) {
     }
     return sir_Terry_novels[j];
 }
+
+// src/do_name.c:445 objtyp_is_callable()
+export function objtyp_is_callable(i) {
+    if (game.objects[i].oc_uname)
+        return true;
+
+    switch (game.objects[i].oc_class) {
+    case OCLASSES.AMULET_CLASS:
+        /* 5.0: calling these used to be allowed but that enabled the
+           player to tell whether two unID'd amulets of yendor were both
+           fake or one was real by calling them distinct names and then
+           checking discoveries to see whether first name was replaced
+           by second or both names stuck; with more than two available
+           to work with, if they weren't all fake it was possible to
+           determine which one was the real one */
+        if (i === ONAMES.AMULET_OF_YENDOR || i === ONAMES.FAKE_AMULET_OF_YENDOR)
+            break; /* return FALSE */
+        /*FALLTHRU*/
+    case OCLASSES.SCROLL_CLASS:
+    case OCLASSES.POTION_CLASS:
+    case OCLASSES.WAND_CLASS:
+    case OCLASSES.RING_CLASS:
+    case OCLASSES.GEM_CLASS:
+    case OCLASSES.SPBOOK_CLASS:
+    case OCLASSES.ARMOR_CLASS:
+    case OCLASSES.TOOL_CLASS:
+    case OCLASSES.VENOM_CLASS:
+        if (obj_descr[i]?.oc_descr)
+            return true;
+        break;
+    default:
+        break;
+    }
+    return false;
+}
+
+// src/do_name.c:480 call_ok() — getobj callback for object type to name
+export function call_ok(obj) {
+    if (!obj || !objtyp_is_callable(obj.otyp))
+        return GETOBJ_EXCLUDE;
+    /* not a likely candidate if not seen yet since naming will fail,
+       or if it has been discovered and doesn't already have a name;
+       when something has been named and then becomes discovered, it
+       remains a likely candidate until player renames it to <space>
+       to remove that no longer needed name */
+    if (!obj.dknown || (game.objects[obj.otyp].oc_name_known
+                        && !game.objects[obj.otyp].oc_uname))
+        return GETOBJ_DOWNPLAY;
+    return GETOBJ_SUGGEST;
+}
+
+/* src/do_name.c:1365 bogon_codes[], see dat/bonusmon.txt */
+const bogon_codes = '-_+|=';
+
+// src/do_name.c:1369 bogusmon(), a random bogus monster name; a leading
+// code character is stripped and reported through codeOut.code.
+export function bogusmon(codeOut) {
+    let mnam;
+
+    if (codeOut)
+        codeOut.code = '';
+    mnam = get_rnd_text('bogusmon', rn2_on_display_rng, MD_PAD_BOGONS);
+    if (!mnam) {
+        mnam = 'bogon';
+    } else if (bogon_codes.includes(mnam[0])) { /* strip prefix if present */
+        if (codeOut)
+            codeOut.code = mnam[0];
+        mnam = mnam.slice(1);
+    }
+    return mnam;
+}
+
+// src/do_name.c:1321 obj_pmname(), the monster name of a corpse, statue,
+// or figurine, honoring the gender recorded in obj->spe.
+export function obj_pmname(obj) {
+    if ((obj.otyp === ONAMES.CORPSE || obj.otyp === ONAMES.STATUE
+         || obj.otyp === ONAMES.FIGURINE)
+        && ismnum(obj.corpsenm)) {
+        const cgend = (obj.spe & CORPSTAT_GENDER),
+            mgend = ((cgend === CORPSTAT_MALE) ? MALE
+                     : (cgend === CORPSTAT_FEMALE) ? FEMALE
+                       : NEUTRAL);
+        let mndx = obj.corpsenm;
+
+        /* mons[].pmnames[] for monster cleric uses "priest" or "priestess"
+           or "aligned cleric"; we want to avoid "aligned cleric [corpse]"
+           unless it has been explicitly flagged as neuter rather than
+           defaulting to random (which fails male or female check above);
+           role monster cleric uses "priest" or "priestess" or "cleric"
+           without "aligned" prefix so we switch to that; [can't force
+           random gender to be chosen here because splitting a stack of
+           corpses could cause the split-off portion to change gender, so
+           settle for avoiding "aligned"] */
+        if (mndx === PMNAMES.PM_ALIGNED_CLERIC && cgend === CORPSTAT_RANDOM)
+            mndx = PMNAMES.PM_CLERIC;
+        return pmname(game.mons[mndx], mgend);
+    }
+    /* impossible("obj_pmname otyp:%i,corpsenm:%i", obj->otyp, obj->corpsenm); */
+    return 'two-legged glorkum-seeker';
+}
+
+// src/do_name.c:1221 monverbself(), "<mon> <verb>s [othertext] <self>";
+// a plural subject keeps the plural verb and "themselves".
+export function monverbself(mon, monnamtext, verb, othertext) {
+    let verbs;
+    let selfbuf; /* sizeof "themselves" suffices */
+
+    selfbuf = mon_nam_too(mon, mon);
+    verbs = vtense(selfbuf, verb);
+    if (verb === verbs) { /* a match indicates that it stayed plural */
+        monnamtext = makeplural(monnamtext);
+        if (monnamtext.toLowerCase() === genders[3].he) {
+            const capitaliz = (monnamtext[0] === monnamtext[0].toUpperCase());
+
+            monnamtext = genders[3].him;
+            if (capitaliz)
+                monnamtext = monnamtext[0].toUpperCase() + monnamtext.slice(1);
+        }
+    }
+    monnamtext += ' ' + verbs;
+    if (othertext)
+        monnamtext += ' ' + othertext;
+    monnamtext += ' ' + selfbuf;
+    return monnamtext;
+}
+
+export { mhe } from './mondata.js';

@@ -3,9 +3,14 @@
 //
 // Nothing here draws.
 
+import { pline_mon } from './pline.js';
+import { learnwand } from './zap.js';
+import { see_wsegs } from './worm.js';
 import { game } from './gstate.js';
 import { sgn, s_suffix } from './hacklib.js';
 import { MON_WEP } from './monst.js';
+import { ARM_SUIT, ARM_SHIELD, ARM_HELM, ARM_GLOVES, ARM_BOOTS, ARM_CLOAK,
+         ARM_SHIRT } from './const.js';
 import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_AMUL,
          W_RINGL, W_RINGR, W_WEP, W_SWAPWEP, W_QUIVER, W_TOOL, W_BALL,
          W_CHAIN, W_ARMOR, W_ART, W_SADDLE, I_SPECIAL, BOLT_LIM, BLINDED,
@@ -465,7 +470,7 @@ function extra_pref(mon, obj) {
 }
 
 // src/worn.c racial_exception() — hobbits may wear elven armour (LoTR).
-function racial_exception(mon, obj) {
+export function racial_exception(mon, obj) {
     /* raceptr(mon) is the monster's own permonst unless it is the hero */
     if (game.mons[mon.mnum].pmidx === PMNAMES.PM_HOBBIT && is_elven_armor(obj))
         return 1;
@@ -473,7 +478,7 @@ function racial_exception(mon, obj) {
 }
 
 // include/obj.h:299 is_elven_armor()
-const is_elven_armor = (o) =>
+export const is_elven_armor = (o) =>
     o.otyp === ONAMES.ELVEN_LEATHER_HELM || o.otyp === ONAMES.ELVEN_MITHRIL_COAT
     || o.otyp === ONAMES.ELVEN_CLOAK || o.otyp === ONAMES.ELVEN_SHIELD
     || o.otyp === ONAMES.ELVEN_BOOTS;
@@ -485,7 +490,7 @@ const is_elven_armor = (o) =>
 // orders FIRE_RES..STONE_RES to match MR_FIRE..MR_STONE.
 //
 // No draws.
-function update_mon_extrinsics(mon, obj, on, silently) {
+export function update_mon_extrinsics(mon, obj, on, silently) {
     let which = game.objects[obj.otyp].oc_oprop;
     const altwhich = altprop(obj);
     const unseen = !canseemon(mon);
@@ -593,6 +598,7 @@ function w_blocks(o, m) {
 }
 
 const MFAST = 2;   /* include/monst.h — permspeed value */
+const MSLOW = 1;   /* include/monst.h — permspeed value */
 
 function note_unported_worn(what) {
     (game.unported ||= new Set()).add(what);
@@ -807,4 +813,125 @@ export function find_mac(mon) {
     if (Math.abs(base) > AC_MAX)
         base = sgn(base) * AC_MAX;
     return base;
+}
+
+// src/worn.c:206 wearmask_to_obj() — the worn item in a slot mask
+export function wearmask_to_obj(wornmask) {
+    for (const wp of worn)
+        if (wp.w_mask & wornmask)
+            return game.u[wp.w_obj] || null;
+    return null;
+}
+
+// src/worn.c:250 armcat_to_wornmask()
+export function armcat_to_wornmask(cat) {
+    let mask = 0;
+    switch (cat) {
+    case ARM_SUIT:
+        mask = W_ARM;
+        break;
+    case ARM_CLOAK:
+        mask = W_ARMC;
+        break;
+    case ARM_HELM:
+        mask = W_ARMH;
+        break;
+    case ARM_SHIELD:
+        mask = W_ARMS;
+        break;
+    case ARM_GLOVES:
+        mask = W_ARMG;
+        break;
+    case ARM_BOOTS:
+        mask = W_ARMF;
+        break;
+    case ARM_SHIRT:
+        mask = W_ARMU;
+        break;
+    }
+    return mask;
+}
+
+// src/worn.c:474 mon_set_minvis(), a monster becomes permanently invisible
+// (or, from a cursed potion, permanently visible).
+export function mon_set_minvis(mon, cursed_potion) {
+    mon.perminvis = !cursed_potion ? 1 : 0;
+    if (!mon.invis_blkd) {
+        mon.minvis = mon.perminvis;
+        newsym(mon.mx, mon.my); /* make it disappear */
+        if (mon.wormno)
+            see_wsegs(mon); /* and any tail too */
+    }
+}
+
+// src/worn.c:488 mon_adjust_speed(), change a monster's intrinsic speed
+// and recompute its effective speed from worn speed boots.
+export async function mon_adjust_speed(mon, adjust, obj) {
+    let otmp;
+    let give_msg = !game.in_mklev, petrify = false;
+    const oldspeed = mon.mspeed | 0;
+
+    switch (adjust) {
+    case 2:
+        mon.permspeed = MFAST;
+        give_msg = false; /* special-case monster creation */
+        break;
+    case 1:
+        if (mon.permspeed === MSLOW)
+            mon.permspeed = 0;
+        else
+            mon.permspeed = MFAST;
+        break;
+    case 0: /* just check for worn speed boots */
+        break;
+    case -1:
+        if (mon.permspeed === MFAST)
+            mon.permspeed = 0;
+        else
+            mon.permspeed = MSLOW;
+        break;
+    case -2:
+        mon.permspeed = MSLOW;
+        give_msg = false; /* (not currently used) */
+        break;
+    case -3: /* petrification */
+        if (mon.permspeed === MFAST)
+            mon.permspeed = 0;
+        petrify = true;
+        break;
+    case -4: /* green slime */
+        if (mon.permspeed === MFAST)
+            mon.permspeed = 0;
+        give_msg = false;
+        break;
+    }
+
+    otmp = (mon.minvent || []).find(o => o.owornmask
+                                        && game.objects[o.otyp].oc_oprop === FAST);
+    if (otmp) /* speed boots */
+        mon.mspeed = MFAST;
+    else
+        mon.mspeed = mon.permspeed | 0;
+
+    /* no message if monster is immobile (temp or perm) or unseen */
+    if (give_msg && (mon.mspeed !== oldspeed || petrify) && mon.data.mmove
+        && !(mon.mfrozen || mon.msleeping) && canseemon(mon)) {
+        /* fast to slow (skipping intermediate state) or vice versa */
+        const howmuch =
+            (mon.mspeed + oldspeed === MFAST + MSLOW) ? 'much ' : '';
+
+        if (petrify) {
+            /* mimic the player's petrification countdown; "slowing down"
+               even if fast movement rate retained via worn speed boots */
+            if (game.flags?.verbose !== false)
+                await pline_mon(mon, `${Monnam(mon)} is slowing down.`);
+        } else if (adjust > 0 || mon.mspeed === MFAST)
+            await pline_mon(mon, `${Monnam(mon)} is suddenly moving ${howmuch}faster.`);
+        else
+            await pline_mon(mon, `${Monnam(mon)} seems to be moving ${howmuch}slower.`);
+
+        /* might discover an object if we see the speed change happen */
+        if (obj != null)
+            learnwand(obj);
+    }
 }

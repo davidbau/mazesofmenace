@@ -5,6 +5,7 @@
 // avoid_moving_on_liquid() both need. The drawbridge machinery itself is not
 // ported.
 
+import { IS_WATERWALL } from './const.js';
 import { is_pool, is_lava } from './mon.js';
 import { game } from './gstate.js';
 import { isok, MOAT, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT, DB_ICE, ICE,
@@ -81,4 +82,16 @@ export function db_under_typ(mask) {
     default:
         return STONE;
     }
+}
+
+// src/dbridge.c:64 is_db_wall()
+export function is_db_wall(x, y) {
+    return game.level.at(x, y)?.typ === DBWALL;
+}
+
+// src/dbridge.c:38 is_waterwall()
+export function is_waterwall(x, y) {
+    if (isok(x, y) && IS_WATERWALL(game.level.at(x, y).typ))
+        return true;
+    return false;
 }

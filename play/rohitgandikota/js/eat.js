@@ -1,3 +1,6 @@
+import { POLY_NOFLAGS } from './const.js';
+import { polyself } from './polyself.js';
+import { Unchanging } from './youprop.js';
 import { exercise, near_capacity, adjalign, poison_strdmg, adjattrib,
          acurrstr, change_luck }
     from './attrib.js';
@@ -34,6 +37,8 @@ import { done } from './end.js';
 import { end_running, nomul, rounddiv, check_capacity } from './hack.js';
 import { sgn, distu } from './hacklib.js';
 import { ACURR } from './attrib.js';
+import { A_CHA } from './const.js';
+import { make_stoned } from './potion.js';
 import { bot } from './display.js';
 import { A_STR, A_DEX, STARVING, STARVED, FIRE_RES, SLEEP_RES, COLD_RES,
          DISINT_RES, SHOCK_RES, POISON_RES, ACID_RES, STONE_RES, TELEPORT,
@@ -863,6 +868,17 @@ async function fprefx(otmp) {
 // the fortune cookie's rumor and the apple/pear "core dumped" deferral. The
 // stat-gain foods (royal jelly, giant corpses via cpostfx) and the wolfsbane
 // and carrot cures are gated on state no current hero has.
+// src/eat.c:867 fix_petrification() — stop turning to stone.
+export async function fix_petrification() {
+    let buf;
+    if (Hallucination())
+        buf = `What a pity--you just ruined a future piece of ${
+            ACURR(A_CHA) > 15 ? 'fine ' : ''}art!`;
+    else
+        buf = 'You feel limber!';
+    await make_stoned(0, buf, 0, null);
+}
+
 async function fpostfx(otmp) {
     switch (otmp.otyp) {
     case ONAMES.SPRIG_OF_WOLFSBANE:
@@ -1959,6 +1975,25 @@ async function cpostfx(pm) {
         return;
 
     switch (pm) {
+    case PMNAMES.PM_CHAMELEON:
+    case PMNAMES.PM_DOPPELGANGER:
+    case PMNAMES.PM_SANDESTIN: /* moot--they don't leave corpses */
+    case PMNAMES.PM_GENETIC_ENGINEER:
+        if (Unchanging()) {
+            await You_feel('momentarily different.'); /* same as poly trap */
+        } else {
+            /* use up the rest of the tin, if any, and its nutrition
+               early to keep it out of bones */
+            if (game.context.tin?.tin) {
+                await use_up_tin(game.context.tin.tin);
+                await lesshungry(200 + (metallivorous(game.youmonst.data) ? 5 : 0));
+            }
+            await You(`${(pm === PMNAMES.PM_GENETIC_ENGINEER)
+                          ? 'undergo a freakish metamorphosis'
+                          : 'feel a change coming over you'}.`);
+            await polyself(POLY_NOFLAGS);
+        }
+        break;
     case PMNAMES.PM_WRAITH:
     case PMNAMES.PM_HUMAN_WERERAT:
     case PMNAMES.PM_HUMAN_WEREJACKAL:
@@ -1973,9 +2008,6 @@ async function cpostfx(pm) {
     case PMNAMES.PM_SMALL_MIMIC:
     case PMNAMES.PM_QUANTUM_MECHANIC:
     case PMNAMES.PM_LIZARD:
-    case PMNAMES.PM_CHAMELEON:
-    case PMNAMES.PM_DOPPELGANGER:
-    case PMNAMES.PM_GENETIC_ENGINEER:
     case PMNAMES.PM_DISPLACER_BEAST:
     case PMNAMES.PM_DISENCHANTER:
     case PMNAMES.PM_MIND_FLAYER:

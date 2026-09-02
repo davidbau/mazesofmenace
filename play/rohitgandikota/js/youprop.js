@@ -119,6 +119,12 @@ export const Shock_resistance = () => !!(game.u?.intrinsic?.HShock_resistance
                                          || game.u?.uprops?.SHOCK_RES);
 export const Free_action = () => !!(game.u?.intrinsic?.HFree_action
                                     || game.u?.uprops?.FREE_ACTION);
+// include/youprop.h:368 Polymorph_control, :372 Unchanging
+export const Polymorph_control = () =>
+    !!(game.u?.intrinsic?.HPolymorph_control
+       || game.u?.uprops?.POLYMORPH_CONTROL);
+export const Unchanging = () => !!(game.u?.intrinsic?.HUnchanging
+                                   || game.u?.uprops?.UNCHANGING);
 export const Poison_resistance = () =>
     !!(game.u?.intrinsic?.HPoison_resistance || game.u?.uprops?.POISON_RES);
 export const Disint_resistance = () =>

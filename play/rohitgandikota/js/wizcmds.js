@@ -6,6 +6,8 @@
 // issue any of them, and each one that prompts spends keys. A '#' command whose
 // body is skipped leaves its prompt's keystrokes to be read as commands.
 
+import { POLY_CONTROLLED } from './const.js';
+import { polyself } from './polyself.js';
 import { game } from './gstate.js';
 import { makewish } from './zap.js';
 import { encumber_msg } from './attrib.js';
@@ -134,7 +136,7 @@ export async function wiz_telekinesis() {
 }
 
 // src/wizcmds.c:176 wiz_map(): reveal the level, traps, and engravings.
-export function wiz_map() {
+export async function wiz_map() {
     if (!game.wizard) {
         note_unported_wizcmds('wiz_map:unavailcmd');
         return ECMD_OK;
@@ -159,7 +161,7 @@ export function wiz_map() {
         map_trap(trap, true);
     }
     /* show_map_spot() maps engravings while do_mapping() scans the level. */
-    do_mapping();
+    await do_mapping();
 
     if (saved.hconf !== undefined) intrinsic.HConfusion = saved.hconf;
     if (saved.hhallu !== undefined) intrinsic.HHallucination = saved.hhallu;
@@ -454,5 +456,11 @@ export async function wiz_level_tele() {
         await level_tele();
     else
         await pline('Unavailable command.');   /* unavailcmd */
+    return ECMD_OK;
+}
+
+// src/wizcmds.c:568 wiz_polyself(); #polyself command - change hero's form
+export async function wiz_polyself() {
+    await polyself(POLY_CONTROLLED);
     return ECMD_OK;
 }

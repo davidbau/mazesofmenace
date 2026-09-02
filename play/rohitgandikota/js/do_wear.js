@@ -4,6 +4,14 @@
 // Initial u.uac is 0 when the first startup status is drawn. u_init's later
 // find_ac() computes the real value before welcome and moveloop paging.
 
+import { W_ARMOR, GETOBJ_SUGGEST, GETOBJ_EXCLUDE } from './const.js';
+import { obj_resists } from './zap.js';
+import { selftouch } from './trap.js';
+import { shirt_simple_name, shield_simple_name, vtense } from './objnam.js';
+import { urgent_pline } from './display.js';
+import { artifact_light } from './artifact.js';
+import { end_burn } from './timeout.js';
+import { setnotworn } from './worn.js';
 import { game } from './gstate.js';
 import { mons } from './monst_data.js';
 import { objects, ONAMES, OCLASSES } from './objects_data.js';
@@ -41,6 +49,8 @@ import { an, xname, doname, the, Tobjnam, gloves_simple_name,
 import { makeknown, observe_object } from './o_init.js';
 import { hcolor } from './do_name.js';
 import { ART_OGRESMASHER } from './artilist_data.js';
+import { cmdq_pop } from './cmd.js';
+import { CMDQ_KEY, ECMD_FAIL } from './const.js';
 import { prinv, update_inventory, useup, ECMD_OK, display_inventory, xprname }
     from './invent.js';
 import { nomul, spoteffects, unmul } from './hack.js';
@@ -385,7 +395,7 @@ async function Cloak_on() {
     return reveal_worn_armor(W_ARMC);
 }
 
-async function Cloak_off(otmp) {
+export async function Cloak_off(otmp) {
     const prop = PROP_KEYS[objects[otmp.otyp].oc_oprop];
     const oldprop = prop
         ? (game.u.uprops?.[prop] || 0) & ~WORN_CLOAK : 0;
@@ -496,7 +506,7 @@ function adjust_helmet_brilliance(obj, delta) {
     (game.disp ||= {}).botl = true;
 }
 
-async function Helmet_off(otmp) {
+export async function Helmet_off(otmp) {
     (game.context_takeoff ||= {}).mask &= ~W_ARMH;
     switch (otmp.otyp) {
     case ONAMES.FEDORA:
@@ -863,7 +873,7 @@ export async function Boots_on() {
 }
 
 // src/do_wear.c:239 Boots_off()
-async function Boots_off(otmp) {
+export async function Boots_off(otmp) {
     const prop = PROP_KEYS[objects[otmp.otyp].oc_oprop];
     const oldprop = prop
         ? (game.u.uprops?.[prop] || 0) & ~WORN_BOOTS : 0;
@@ -981,6 +991,95 @@ export async function Amulet_on(amul) {
 }
 
 // src/do_wear.c:1030 Amulet_off() — does its own off_msg.
+// src/do_wear.c:733 Shield_off()
+export async function Shield_off() {
+    const uarms = worn(W_ARMS);
+    (game.context_takeoff ||= {}).mask &= ~W_ARMS;
+    /* no shield currently requires special handling when taken off, but
+       keep this uncommented in case somebody adds a new one which does */
+    switch (uarms?.otyp) {
+    case ONAMES.SMALL_SHIELD:
+    case ONAMES.SHIELD_OF_DRAIN_RESISTANCE:
+    case ONAMES.SHIELD_OF_SHOCK_RESISTANCE:
+    case ONAMES.ELVEN_SHIELD:
+    case ONAMES.URUK_HAI_SHIELD:
+    case ONAMES.ORCISH_SHIELD:
+    case ONAMES.DWARVISH_ROUNDSHIELD:
+    case ONAMES.LARGE_SHIELD:
+    case ONAMES.SHIELD_OF_REFLECTION:
+        break;
+    default:
+        /* impossible(unknown_type, c_shield, uarms->otyp) */
+        break;
+    }
+    setworn(null, W_ARMS);
+    return 0;
+}
+
+// src/do_wear.c:778 Shirt_off()
+export async function Shirt_off() {
+    const uarmu = worn(W_ARMU);
+    (game.context_takeoff ||= {}).mask &= ~W_ARMU;
+    /* no shirt currently requires special handling when taken off, but
+       keep this uncommented in case somebody adds a new one which does */
+    switch (uarmu?.otyp) {
+    case ONAMES.HAWAIIAN_SHIRT:
+    case ONAMES.T_SHIRT:
+        break;
+    default:
+        /* impossible(unknown_type, c_shirt, uarmu->otyp) */
+        break;
+    }
+    setworn(null, W_ARMU);
+    return 0;
+}
+
+// src/do_wear.c:909 Armor_off() — the body armor comes off; a lit artifact
+// stops shining and dragon armor's secondary property is withdrawn.
+export async function Armor_off() {
+    const otmp = worn(W_ARM);
+    const was_arti_light = !!(otmp && otmp.lamplit && artifact_light(otmp));
+
+    (game.context_takeoff ||= {}).mask &= ~W_ARM;
+    setworn(null, W_ARM);
+    game.context_takeoff.cancelled_don = false;
+
+    /* taking off yellow dragon scales/mail might be fatal; arti_light
+       comes from gold dragon scales/mail so they don't overlap, but
+       conceptually the non-fatal change should be done before the
+       potentially fatal change in case the latter results in bones */
+    if (was_arti_light && !artifact_light(otmp)) {
+        await end_burn(otmp, false);
+        if (!Blind())
+            await pline(`${Tobjnam(otmp, 'stop')} shining.`);
+    }
+    await dragon_armor_handling(otmp, false);
+    return 0;
+}
+
+// src/do_wear.c:939 Armor_gone(); used for destroying armor (and by
+// break_armor())
+export async function Armor_gone() {
+    const otmp = game.u.uarm;
+    const was_arti_light = !!(otmp && otmp.lamplit && artifact_light(otmp));
+
+    (game.context_takeoff ||= {}).mask &= ~W_ARM;
+    setnotworn(game.u.uarm);
+    game.context_takeoff.cancelled_don = false;
+
+    /* taking off yellow dragon scales/mail might be fatal; arti_light
+       comes from gold dragon scales/mail so they don't overlap, but
+       conceptually the non-fatal change should be done before the
+       potentially fatal change in case the latter results in bones */
+    if (was_arti_light && !artifact_light(otmp)) {
+        await end_burn(otmp, false);
+        if (!Blind())
+            await pline(`${Tobjnam(otmp, 'stop')} shining.`);
+    }
+    await dragon_armor_handling(otmp, false);
+    return 0;
+}
+
 export async function Amulet_off() {
     const uamul = worn(W_AMUL);
     if (!uamul) return;
@@ -1136,7 +1235,7 @@ async function toggle_displacement(obj, oldprop, on) {
 }
 
 // src/potion.c:471 self_invis_message().
-async function self_invis_message() {
+export async function self_invis_message() {
     await pline(`${Hallucination() ? 'Far out, man!  You'
                                   : 'Gee!  All of a sudden, you'} ${
         See_invisible() ? 'can see right through yourself'
@@ -1156,7 +1255,7 @@ const PASSIVE_RING_TYPES = new Set([
     ONAMES.MEAT_RING,
 ]);
 
-async function Ring_on(obj) {
+export async function Ring_on(obj) {
     const ringmask = W_RINGL | W_RINGR;
     const prop = PROP_KEYS[objects[obj.otyp].oc_oprop];
     let oldprop = prop ? (game.u.uprops?.[prop] || 0) : 0;
@@ -1231,11 +1330,17 @@ async function Ring_on(obj) {
     }
 }
 
-async function Ring_off(obj) {
+// src/do_wear.c:1300 Ring_off_or_gone() — the ring leaves its finger: taken
+// off (setworn) or gone entirely (setnotworn, e.g. destroyed or stolen).
+async function Ring_off_or_gone(obj, gone) {
     const mask = obj.owornmask & (W_RINGL | W_RINGR);
     const oldprop = (game.u.uprops?.STEALTH || 0) & ~mask;
     const observable = obj.otyp === ONAMES.RIN_PROTECTION && obj.spe !== 0;
-    setworn(null, mask);
+    (game.context_takeoff ||= {}).mask &= ~mask;
+    if (gone)
+        setnotworn(obj);
+    else
+        setworn(null, obj.owornmask);
     if (obj.otyp === ONAMES.RIN_PROTECTION) {
         learnring(obj, observable);
         if (obj.spe)
@@ -1286,6 +1391,16 @@ async function Ring_off(obj) {
     } else {
         note_unported_do_wear(`Ring_off:otyp=${obj.otyp}`);
     }
+}
+
+// src/do_wear.c:1449 Ring_off()
+export async function Ring_off(obj) {
+    await Ring_off_or_gone(obj, false);
+}
+
+// src/do_wear.c:1455 Ring_gone()
+export async function Ring_gone(obj) {
+    await Ring_off_or_gone(obj, true);
 }
 
 // src/do_wear.c:2030 canwearobj() — find the slot; refuse with C's message
@@ -2156,7 +2271,7 @@ async function slot_off(otmp) {
     }
 }
 
-async function Gloves_off(otmp) {
+export async function Gloves_off(otmp) {
     switch (otmp.otyp) {
     case ONAMES.GAUNTLETS_OF_POWER:
         makeknown(otmp.otyp);
@@ -2409,4 +2524,190 @@ export function hard_helmet(obj) {
     if (!obj || !is_helmet(obj))
         return false;
     return (is_metallic(obj) || is_crackable(obj)) ? true : false;
+}
+
+// src/do_wear.c:1862 ia_dotakeoff() — #altdotakeoff, the item-action
+// menu's 'T'/'R': the getobj filter skips the inaccessible-equipment test
+export async function ia_dotakeoff() {
+    game.item_action_in_progress = true;
+    const res = await dotakeoff();
+    game.item_action_in_progress = false;
+    return res;
+}
+
+// src/do_wear.c:3062 remarm_swapwep() — '-' picked for the alternate
+// weapon from the item-action menu: un-ready it through do_takeoff()
+export async function remarm_swapwep() {
+    let cq;
+    const cmdq = cmdq_pop();
+    if (cmdq) {
+        /* '-' uswapwep item-action picked from context-sensitive invent */
+        cq = cmdq;
+    } else {
+        cq = { typ: CMDQ_KEY, key: '\0' }; /* something other than '-' */
+    }
+    if (cq.typ !== CMDQ_KEY || cq.key !== '-' || !game.u.uswapwep)
+        return ECMD_FAIL;
+    const oldbknown = game.u.uswapwep.bknown; /* when deciding whether this
+                                              * command has done something that
+                                              * takes time, behave as if a
+                                              * cursed secondary weapon can't be
+                                              * unwielded even though things
+                                              * don't work that way... */
+    reset_remarm();
+    game.context.takeoff.what = game.context.takeoff.mask = W_SWAPWEP;
+    await do_takeoff();
+    return (!game.u.uswapwep || game.u.uswapwep.bknown !== oldbknown)
+           ? ECMD_TIME : ECMD_OK;
+}
+
+// src/do_wear.c:2630 some_armor() — pick a worn armor piece at random,
+// weighted toward the body slot (cloak, else suit, else shirt), then a 1/4
+// chance each for helmet, gloves, boots and shield.
+export function some_armor(victim) {
+    const isyou = (victim === game.youmonst);
+    let otmph, otmp;
+
+    otmph = isyou ? worn(W_ARMC) : which_armor(victim, W_ARMC);
+    if (!otmph)
+        otmph = isyou ? worn(W_ARM) : which_armor(victim, W_ARM);
+    if (!otmph)
+        otmph = isyou ? worn(W_ARMU) : which_armor(victim, W_ARMU);
+
+    otmp = isyou ? worn(W_ARMH) : which_armor(victim, W_ARMH);
+    if (otmp && (!otmph || !rn2(4)))
+        otmph = otmp;
+    otmp = isyou ? worn(W_ARMG) : which_armor(victim, W_ARMG);
+    if (otmp && (!otmph || !rn2(4)))
+        otmph = otmp;
+    otmp = isyou ? worn(W_ARMF) : which_armor(victim, W_ARMF);
+    if (otmp && (!otmph || !rn2(4)))
+        otmph = otmp;
+    otmp = isyou ? worn(W_ARMS) : which_armor(victim, W_ARMS);
+    if (otmp && (!otmph || !rn2(4)))
+        otmph = otmp;
+    return otmph || null;
+}
+
+// src/do_wear.c:3319 adj_abon() — gauntlets of dexterity and helm of
+// brilliance move the attribute bonus with their enchantment.
+export function adj_abon(otmp, delta) {
+    const uarmg = worn(W_ARMG), uarmh = worn(W_ARMH);
+    const abon = ((game.u.abon ||= {}).a ||= new Array(A_MAX).fill(0));
+
+    if (uarmg && uarmg === otmp && otmp.otyp === ONAMES.GAUNTLETS_OF_DEXTERITY) {
+        if (delta) {
+            makeknown(uarmg.otyp);
+            abon[A_DEX] += delta;
+        }
+        (game.disp ||= {}).botl = true;
+    }
+    if (uarmh && uarmh === otmp && otmp.otyp === ONAMES.HELM_OF_BRILLIANCE) {
+        if (delta) {
+            makeknown(uarmh.otyp);
+            abon[A_INT] += delta;
+            abon[A_WIS] += delta;
+        }
+        (game.disp ||= {}).botl = true;
+    }
+}
+
+// src/do_wear.c:3144 wornarm_destroyed(), take a destroyed piece of worn
+// armor off and use it up.
+export async function wornarm_destroyed(wornarm) {
+    const wornoid = wornarm.o_id;
+
+    /* if the item is still being donned, stop that; this clears
+       uarmc/uarm/&c so doing this now won't interfere with the tests in
+       'if (wornarm==uarmc) ... else if (wornarm==uarm) ... else ...' */
+    if (donning(wornarm))
+        cancel_don();
+
+    if (wornarm === game.u.uarmc)
+        await Cloak_off();
+    else if (wornarm === game.u.uarm)
+        await Armor_off();
+    else if (wornarm === game.u.uarmu)
+        await Shirt_off();
+    else if (wornarm === game.u.uarmh)
+        await Helmet_off();
+    else if (wornarm === game.u.uarmg)
+        await Gloves_off();
+    else if (wornarm === game.u.uarmf)
+        await Boots_off();
+    else if (wornarm === game.u.uarms)
+        await Shield_off();
+
+    /* the armor-off routine might have already used up the item;
+       using carried() to check wornarm->where==OBJ_INVENT is not viable;
+       scan invent instead; if already freed it shouldn't be possible to
+       have re-used the stale memory for a new item yet but verify o_id
+       just in case */
+    for (const invobj of [...(game.invent || [])]) {
+        if (invobj === wornarm && invobj.o_id === wornoid) {
+            useup(wornarm);
+            break;
+        }
+    }
+}
+
+// src/do_wear.c:3184 maybe_destroy_armor(), the armor to destroy unless it
+// resists; resisted.v carries the resist so an inner layer stays safe.
+function maybe_destroy_armor(armor, atmp, resisted) {
+    if ((armor != null) && (!atmp || atmp === armor)
+        && ((resisted.v = obj_resists(armor, 0, 90)) === false)) {
+        armor.in_use = 1;
+        return armor;
+    }
+    return null;
+}
+
+// src/do_wear.c:3196 disintegrate_arm(), destroy one worn piece of armor,
+// outermost first; returns 1 when something was destroyed.
+export async function disintegrate_arm(atmp) {
+    let otmp = null;
+    let losing_gloves = false;
+    const resisted = { v: false }, resistedc = { v: false },
+        resistedsuit = { v: false };
+
+    if ((otmp = maybe_destroy_armor(game.u.uarmc, atmp, resistedc)) != null) {
+        await urgent_pline(`Your ${cloak_simple_name(otmp)} crumbles and turns to dust!`);
+    } else if (!resistedc.v
+             && (otmp = maybe_destroy_armor(game.u.uarm, atmp, resistedsuit)) != null) {
+        const suit = suit_simple_name(otmp);
+
+        /* for gold DSM, we don't want Armor_gone() to report that it
+           stops shining _after_ we've been told that it is destroyed */
+        if (otmp.lamplit)
+            await end_burn(otmp, false);
+        await urgent_pline(`Your ${suit} ${vtense(suit, 'turn')} to dust and ${
+                           vtense(suit, 'fall')} to the ${surface(game.u.ux, game.u.uy)}!`);
+    } else if (!resistedc.v && !resistedsuit.v
+             && (otmp = maybe_destroy_armor(game.u.uarmu, atmp, resisted)) != null) {
+        await urgent_pline(`Your ${shirt_simple_name(otmp)} crumbles into tiny threads and falls apart!`); /* always "shirt" */
+    } else if ((otmp = maybe_destroy_armor(game.u.uarmh, atmp, resisted)) != null) {
+        await urgent_pline(`Your ${helm_simple_name(otmp)} turns to dust and is blown away!`); /* "helm" or "hat" */
+    } else if ((otmp = maybe_destroy_armor(game.u.uarmg, atmp, resisted)) != null) {
+        await urgent_pline(`Your ${gloves_simple_name(otmp)} vanish!`);
+        losing_gloves = true;
+    } else if ((otmp = maybe_destroy_armor(game.u.uarmf, atmp, resisted)) != null) {
+        await urgent_pline(`Your ${boots_simple_name(otmp)} disintegrate!`);
+    } else if ((otmp = maybe_destroy_armor(game.u.uarms, atmp, resisted)) != null) {
+        await urgent_pline(`Your ${shield_simple_name(otmp)} crumbles away!`);
+    } else {
+        return 0; /* could not destroy anything */
+    }
+
+    await wornarm_destroyed(otmp);
+    if (losing_gloves)
+        await selftouch('You');
+    await stop_occupation();
+    return 1;
+}
+
+// src/do_wear.c:3480 any_worn_armor_ok(), getobj callback: worn armor only.
+export function any_worn_armor_ok(obj) {
+    if (obj && (obj.owornmask & W_ARMOR))
+        return GETOBJ_SUGGEST;
+    return GETOBJ_EXCLUDE;
 }

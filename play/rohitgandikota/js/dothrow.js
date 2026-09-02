@@ -1,3 +1,16 @@
+import { rndmonnam } from './do_name.js';
+import { d } from './rng.js';
+import { delobj } from './mon.js';
+import { costly_spot } from './shk.js';
+import { potionbreathe } from './potion.js';
+import { explode, explode_oil } from './explode.js';
+import { is_crackable, erode_obj } from './trap.js';
+import { An, Doname2, armor_simple_name, vtense } from './objnam.js';
+import { canspotmon } from './display.js';
+import { MM_NOMSG, ERODE_CRACK, EF_DESTROY, EF_VERBOSE, ER_DESTROYED, EXPL_FIERY, ismnum } from './const.js';
+import { makemon, set_malign } from './makemon.js';
+import { Hallucination } from './youprop.js';
+import { distu } from './hacklib.js';
 import { game } from './gstate.js';
 import { pline } from './display.js';
 import { splitobj, place_object } from './mkobj.js';
@@ -1035,4 +1048,150 @@ export function omon_adj(mon, obj, mon_notices) {
         break;
     }
     return tmp;
+}
+
+/* include/youprop.h:405 Half_gas_damage */
+const Half_gas_damage = () => !!(game.u.ublindf && game.u.ublindf.otyp === ONAMES.TOWEL
+                                 && game.u.ublindf.spe > 0);
+/* include/hack.h next2u() */
+const next2u = (px, py) => distu(px, py) <= 2;
+
+// src/dothrow.c:2444 breaks(), does obj break at <x,y>?  Returns 1 if so.
+export async function breaks(obj, x, y) {
+    const in_view = Blind() ? false : cansee(x, y);
+
+    if (!breaktest(obj))
+        return 0;
+    await breakmsg(obj, in_view);
+    return await breakobj(obj, x, y, false, false);
+}
+
+// src/dothrow.c:2457 release_camera_demon(), a broken expensive camera
+// might let its demon out.
+export async function release_camera_demon(obj, x, y) {
+    let mtmp;
+
+    if (!rn2(3)
+        && (mtmp = makemon(game.mons[rn2(3) ? PMNAMES.PM_HOMUNCULUS
+                                            : PMNAMES.PM_IMP], x, y,
+                           MM_NOMSG)) != null) {
+        if (canspotmon(mtmp))
+            await pline(`${Hallucination() ? An(rndmonnam())
+                                           : 'The picture-painting demon'} is released!`);
+        mtmp.mpeaceful = !obj.cursed ? 1 : 0;
+        set_malign(mtmp);
+    }
+}
+
+// src/dothrow.c:2480 breakobj(), the effects of a breakable object
+// breaking; returns 1 if it broke.
+export async function breakobj(obj, x, y, hero_caused, from_invent) {
+    let fracture = false;
+    let explosion = false;
+
+    if (is_crackable(obj)) /* if erodeproof, erode_obj() will say so */
+        return ((await erode_obj(obj, armor_simple_name(obj), ERODE_CRACK,
+                                 EF_DESTROY | EF_VERBOSE)) === ER_DESTROYED) ? 1 : 0;
+
+    switch (obj.oclass === OCLASSES.POTION_CLASS ? ONAMES.POT_WATER : obj.otyp) {
+    case ONAMES.MIRROR:
+        if (hero_caused)
+            change_luck(-2);
+        break;
+    case ONAMES.POT_WATER:      /* really, all potions */
+        obj.in_use = 1; /* in case it's fatal */
+        if (obj.otyp === ONAMES.POT_OIL && obj.lamplit) {
+            await explode_oil(obj, x, y);
+        } else if (next2u(x, y)) {
+            if (!breathless(game.youmonst.data) || haseyes(game.youmonst.data)) {
+                if (obj.otyp !== ONAMES.POT_WATER && !Half_gas_damage()) {
+                    if (!breathless(game.youmonst.data)) {
+                        /* [what about "familiar odor" when known?] */
+                        await You('smell a peculiar odor...');
+                    } else {
+                        let eyes = body_part(EYE);
+
+                        if (eyecount(game.youmonst.data) !== 1)
+                            eyes = makeplural(eyes);
+                        await Your(`${eyes} ${vtense(eyes, 'water')}.`);
+                    }
+                }
+                await potionbreathe(obj);
+            }
+        }
+        break;
+    case ONAMES.EXPENSIVE_CAMERA:
+        await release_camera_demon(obj, x, y);
+        break;
+    case ONAMES.EGG:
+        /* breaking your own eggs is bad luck */
+        if (hero_caused && obj.spe && ismnum(obj.corpsenm))
+            change_luck(-Math.min(obj.quan, 5));
+        if (obj.corpsenm === PMNAMES.PM_PYROLISK)
+            explosion = true;
+        break;
+    case ONAMES.BOULDER:
+    case ONAMES.STATUE:
+        /* caller will handle object disposition;
+           we're just doing the shop theft handling */
+        fracture = true;
+        break;
+    default:
+        break;
+    }
+
+    if (hero_caused) {
+        if (from_invent || obj.unpaid) {
+            if (game.u.ushops || obj.unpaid)
+                note_unported_dothrow('breakobj:check_shop_obj');
+        } else if (!obj.no_charge && costly_spot(x, y)) {
+            /* stolen_value() and make_angry_shk() for breakage in a shop */
+            note_unported_dothrow('breakobj:stolen_value');
+        }
+    }
+    if (!fracture)
+        delobj(obj);
+    if (explosion)
+        await explode(x, y, -11, d(3, 6), 0, EXPL_FIERY);
+    return 1;
+}
+
+// src/dothrow.c:2612 breakmsg(), the message for a breaking object.
+export async function breakmsg(obj, in_view) {
+    let to_pieces;
+
+    if (is_crackable(obj)) /* breakobj() will call erode_obj() for message */
+        return;
+
+    to_pieces = '';
+    switch (obj.oclass === OCLASSES.POTION_CLASS ? ONAMES.POT_WATER : obj.otyp) {
+    default: /* glass or crystal wand */
+        /* if (obj->oclass != WAND_CLASS) impossible("breaking odd object (%d)?"); */
+        /* FALLTHROUGH */
+    case ONAMES.LENSES:
+    case ONAMES.MIRROR:
+    case ONAMES.CRYSTAL_BALL:
+    case ONAMES.EXPENSIVE_CAMERA:
+        to_pieces = ' into a thousand pieces';
+        /* FALLTHROUGH */
+    case ONAMES.POT_WATER: /* really, all potions */
+        if (!in_view)
+            await You_hear('something shatter!');
+        else
+            await pline(`${Doname2(obj)} shatter${
+                        (obj.quan === 1) ? 's' : ''}${to_pieces}!`);
+        break;
+    case ONAMES.EGG:
+    case ONAMES.MELON:
+        await pline('Splat!');
+        break;
+    case ONAMES.CREAM_PIE:
+        if (in_view)
+            await pline('What a mess!');
+        break;
+    case ONAMES.ACID_VENOM:
+    case ONAMES.BLINDING_VENOM:
+        await pline('Splash!');
+        break;
+    }
 }

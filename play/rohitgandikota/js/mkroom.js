@@ -10,6 +10,8 @@
 // Only the shop path is ported so far. mkzoo, mkswamp and mktemple are absent
 // and recorded, so do_mkroom's other arms are honest holes rather than stubs.
 
+import { sobj_at } from './invent.js';
+import { enexto } from './teleport.js';
 import { game } from './gstate.js';
 import { rnd, rn2, rn1 } from './rng.js';
 import { level_difficulty, Inhell, set_malign, mongets, MM_ASLEEP,
@@ -734,4 +736,28 @@ export function cmap_to_type(sym) {
     case CM.S_lavawall: return LAVAWALL;
     default:            return STONE; /* not a cmap symbol? (catchall) */
     }
+}
+
+// src/mkroom.c:456 mkundead(), raise some undead around <mm>.
+export function mkundead(mm, revive_corpses, mm_flags) {
+    let cnt = Math.trunc((level_difficulty() + 1) / 10) + rnd(5);
+    let mdat;
+    let otmp;
+    const cc = { x: 0, y: 0 };
+
+    while (cnt--) {
+        mdat = morguemon();
+        if (mdat && enexto(cc, mm.x, mm.y, mdat)
+            && (!revive_corpses
+                || !(otmp = sobj_at(ONAMES.CORPSE, cc.x, cc.y))
+                || !revive_noted(otmp)))
+            makemon(mdat, cc.x, cc.y, mm_flags);
+    }
+    game.level.flags.graveyard = true; /* reduced chance for undead corpse */
+}
+/* zap.c revive() is not ported; a corpse that would be revived here is
+   left alone and noted */
+function revive_noted(otmp) {
+    (game.unported ||= new Set()).add('mkroom:mkundead:revive');
+    return false;
 }

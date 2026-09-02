@@ -14,6 +14,7 @@
 // remember nothing" contract the C file documents, in a form the snapshot
 // serializer can round-trip without pointer fixups.
 
+import { artifact_light } from './artifact.js';
 import { game } from './gstate.js';
 import { COLNO, ROWNO, OBJ_FREE } from './const.js';
 import { ONAMES } from './objects_data.js';
@@ -55,6 +56,47 @@ export function del_light_source(type, id) {
     const i = ls.findIndex((s) => s.type === type && s.id === id);
     if (i >= 0)
         ls.splice(i, 1);
+}
+
+// src/light.c:826 obj_adjust_light_radius() — an artifact's light changed
+// intensity (blessed/cursed state changed).
+export function obj_adjust_light_radius(obj, new_radius) {
+    for (const ls of lights()) {
+        if (ls.type === LS_OBJECT && ls.id === obj.o_id) {
+            if (new_radius !== ls.range)
+                game.vision_full_recalc = 1;
+            ls.range = new_radius;
+            return;
+        }
+    }
+    /* impossible("obj_adjust_light_radius: can't find %s", xname(obj)) */
+}
+
+// src/light.c:881 arti_light_radius() — light radius emitted by a lit
+// artifact (or gold dragon armor): 3 blessed, 2 uncursed, 1 cursed.
+export function arti_light_radius(obj) {
+    let res;
+
+    /*
+     * Used by begin_burn() when setting up a new light source
+     * (obj->lamplit will already be set by this point) and
+     * also by bless()/unbless()/uncurse()/curse() to adjust
+     * the light radius if the artifact is already lit.
+     */
+    if (!obj.lamplit || !artifact_light(obj))
+        return 0;
+
+    /* it's an emitting artifact; radius depends on its curse/bless state */
+    res = (obj.blessed ? 3 : !obj.cursed ? 2 : 1);
+    /* hero is wearing gold dragon scales? (embedded gold dragon scales
+       have minimum radiance; hero as light source will use light radius
+       based on monster form); otherwise, worn gold DSM gives off more
+       light than other light sources */
+    if (obj === game.u.uskin)
+        res = 1;
+    else if (obj.otyp === ONAMES.GOLD_DRAGON_SCALE_MAIL) /* DSM but not scales */
+        ++res;
+    return res;
 }
 
 // src/mon.c:377 get_mon_location() (the ls resolution arm) — a monster still

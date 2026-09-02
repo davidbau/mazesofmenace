@@ -35,6 +35,9 @@ import { next_ident, mksobj, mkobj, place_object, curse, rnd_class, can_be_hatch
 import { sgn, isok } from './hacklib.js';
 import { get_shop_item } from './shknam.js';
 import { canseemon, canspotmon, newsym } from './display.js';
+import { sensemon } from './display.js';
+import { M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER } from './const.js';
+import { create_particular } from './read.js';
 import { cansee, does_block, block_point } from './vision.js';
 import { COLNO, ROWNO, MFAST } from './const.js';
 import { attacktype, is_neuter, is_floater, emits_light, likes_lava,
@@ -105,8 +108,8 @@ export const {
 } = MMFLAGS;
 
 // include/mondata.h predicates, one line each as in C.
-const is_golem = (ptr) => ptr.mlet === S_GOLEM;
-const is_bat = (ptr) => ptr.pmidx === PMNAMES.PM_BAT
+export const is_golem = (ptr) => ptr.mlet === S_GOLEM;
+export const is_bat = (ptr) => ptr.pmidx === PMNAMES.PM_BAT
                      || ptr.pmidx === PMNAMES.PM_GIANT_BAT
                      || ptr.pmidx === PMNAMES.PM_VAMPIRE_BAT;
 export const is_male = (ptr) => (ptr.mflags2 & M2_MALE) !== 0;
@@ -334,7 +337,7 @@ function mk_gen_ok(mndx, mvflagsmask, genomask) {
 }
 
 // include/mondata.h:147 — corpses of zombies and mummies use these as stand-ins.
-const is_placeholder = (ptr) =>
+export const is_placeholder = (ptr) =>
     ptr.pmidx === PMNAMES.PM_ORC || ptr.pmidx === PMNAMES.PM_GIANT
     || ptr.pmidx === PMNAMES.PM_ELF || ptr.pmidx === PMNAMES.PM_HUMAN;
 
@@ -410,6 +413,39 @@ export function mkclass_aligned(klass, spc, atyp) {
 // src/makemon.c:1872 mkclass()
 export function mkclass(klass, spc) {
     return mkclass_aligned(klass, spc, A_NONE);
+}
+
+// src/makemon.c:1983 mkclass_poly(); like mkclass(), but excludes several
+// monster types from polymorph selection
+export function mkclass_poly(klass) {
+    let first, last, num = 0;
+    let gmask;
+
+    for (first = LOW_PM; first < SPECIAL_PM; first++)
+        if (game.mons[first].mlet === klass)
+            break;
+    if (first === SPECIAL_PM)
+        return NON_PM;
+
+    gmask = (G_NOGEN | G_UNIQ);
+    /* the "usually" part of "hell and no-hell are usually excluded";
+       [it applies to every candidate here instead of to each one because
+       that would make the two loops inconsistent with each other for non L] */
+    if (rn2(9) || klass === S_LICH)
+        gmask |= (Inhell() ? G_NOHELL : G_HELL);
+
+    for (last = first; last < SPECIAL_PM && game.mons[last].mlet === klass; last++)
+        if (mk_gen_ok(last, G_GENOD, gmask))
+            num += game.mons[last].geno & G_FREQ;
+    if (!num)
+        return NON_PM;
+
+    for (num = rnd(num); num > 0; first++)
+        if (mk_gen_ok(first, G_GENOD, gmask))
+            num -= game.mons[first].geno & G_FREQ;
+    first--; /* correct an off-by-one error */
+
+    return first;
 }
 
 // src/mkobj.c:395 rndmonnum_adj() — Plan A is a level-appropriate common
@@ -1050,7 +1086,7 @@ const nonliving_mm = (ptr) =>
     || ptr.mlet === MONSYMS.S_GOLEM
     || ptr.mlet === MONSYMS.S_VORTEX;
 
-function findgold(minvent) {
+export function findgold(minvent) {
     return (minvent || []).some(o => o.oclass === OCLASSES.COIN_CLASS);
 }
 
@@ -1591,7 +1627,7 @@ function m_initlgrp(mtmp, x, y, mmf) { m_initgrp(mtmp, x, y, 10, mmf); }
 const humanoid = (ptr) => (ptr.mflags1 & MFLAGS.M1_HUMANOID) !== 0;
 const is_elf = (ptr) => (ptr.mflags2 & MFLAGS.M2_ELF) !== 0;
 const is_dwarf = (ptr) => (ptr.mflags2 & MFLAGS.M2_DWARF) !== 0;
-const is_mercenary = (ptr) => (ptr.mflags2 & MFLAGS.M2_MERC) !== 0;
+export const is_mercenary = (ptr) => (ptr.mflags2 & MFLAGS.M2_MERC) !== 0;
 const extra_nasty = (ptr) => (ptr.mflags2 & MFLAGS.M2_NASTY) !== 0;
 const strongmonst = (ptr) => (ptr.mflags2 & M2_STRONG) !== 0;
 const is_lord = (ptr) => (ptr.mflags2 & MFLAGS.M2_LORD) !== 0;
@@ -1659,6 +1695,40 @@ export function rnd_offensive_item(mtmp) {
 /* worn helm lookup + hard_helmet (do_wear.c:568), local slice for
    rnd_offensive_item; the noncorporeal test is folded into UNSOLID above
    (C checks both, and every noncorporeal permonst is also unsolid). */
+// src/makemon.c:1556 create_critters() — make cnt monsters next to the hero;
+// returns True iff the hero sees a new monster appear.
+export async function create_critters(cnt, mptr, neverask) {
+    const u = game.u;
+    let known = false;
+    let ask = (game.wizard && !neverask);
+
+    while (cnt--) {
+        if (ask) {
+            if (await create_particular()) {
+                known = true;
+                continue;
+            } else
+                ask = false; /* ESC will shut off prompting */
+        }
+        let x = u.ux, y = u.uy;
+        /* if in water, try to encourage an aquatic monster
+           by finding and then specifying another wet location */
+        const c = { x: 0, y: 0 };
+        if (!mptr && u.uinwater
+            && enexto(c, x, y, game.mons[PMNAMES.PM_GIANT_EEL]))
+            x = c.x, y = c.y;
+
+        const mon = makemon(mptr, x, y, NO_MM_FLAGS);
+        if (!mon)
+            continue; /* try again [should probably stop instead] */
+        if ((canseemon(mon) && (M_AP_TYPE(mon) === M_AP_NOTHING
+                                || M_AP_TYPE(mon) === M_AP_MONSTER))
+            || sensemon(mon))
+            known = true;
+    }
+    return known;
+}
+
 function which_armor_mm(mtmp) {
     for (const o of (mtmp.minvent || []))
         if ((o.owornmask ?? 0) & W_ARMH_MM)
