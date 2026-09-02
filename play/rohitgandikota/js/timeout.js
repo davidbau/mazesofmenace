@@ -534,6 +534,40 @@ async function burn_object(obj, timeout) {
         await begin_burn(obj, true);
 }
 
+// src/timeout.c:2416 spot_stop_timers(); stop all timers at a location
+// (level timers whose argument is the packed location)
+export function spot_stop_timers(x, y, func_index) {
+    const where = ((x << 16) | y);
+    const timers = game.timer_base || [];
+
+    for (const curr of [...timers]) {
+        if (curr.kind === TIMER_LEVEL && curr.func_index === func_index
+            && curr.arg === where) {
+            timers.splice(timers.indexOf(curr), 1);
+            /* the cleanup function for MELT_ICE_AWAY (melt_ice_away's
+               cleanup) is not registered in this port's timer table */
+        }
+    }
+}
+
+// src/timeout.c:2444 spot_time_expires(); the time a location timer fires
+export function spot_time_expires(x, y, func_index) {
+    const where = ((x << 16) | y);
+
+    for (const curr of (game.timer_base || [])) {
+        if (curr.kind === TIMER_LEVEL && curr.func_index === func_index
+            && curr.arg === where)
+            return curr.timeout;
+    }
+    return 0;
+}
+
+// src/timeout.c:2459 spot_time_left()
+export function spot_time_left(x, y, func_index) {
+    const expires = spot_time_expires(x, y, func_index);
+    return (expires > 0) ? expires - game.moves : 0;
+}
+
 // src/timeout.c:2222 run_timers() — fire every timer whose time has come.
 // The list is ordered; we are done when the first element is in the future.
 // Runs from nh_timeout()'s tail (timeout.c:947) and from goto_level.
@@ -551,7 +585,7 @@ export async function run_timers() {
         }
         case ROT_ORGANIC: {
             const { rot_organic } = await import('./dig.js');
-            rot_organic(curr.arg);
+            await rot_organic(curr.arg);
             break;
         }
         case REVIVE_MON: {

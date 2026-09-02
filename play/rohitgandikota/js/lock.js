@@ -6,6 +6,7 @@
 // Dexterity and Constitution, and a session that opens a door runs one call
 // short of C without it.
 
+import { OBJ_INVENT } from './const.js';
 import { Role_if } from './attrib.js';
 import { game } from './gstate.js';
 import { pline_xy } from './pline.js';
@@ -975,4 +976,18 @@ export async function boxlock(obj, otmp) /* obj *is* a box */
         break;
     }
     return res;
+}
+
+/* include/obj.h carried() */
+const carried = (o) => o.where === OBJ_INVENT;
+
+// src/lock.c maybe_reset_pick(); clear the lock-picking context when the
+// container it refers to is being deleted (or, with a null container, when
+// leaving a level behind while not carrying the context's box)
+export function maybe_reset_pick(container) {
+    const xl = game.xlock || {};
+
+    if (container ? (container === xl.box)
+                  : (!xl.box || !carried(xl.box)))
+        reset_pick();
 }

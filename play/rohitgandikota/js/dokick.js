@@ -11,6 +11,16 @@
 // reads 0. js/cmd.js does the wiring instead, exactly as it already does for
 // mklev and sp_lev.
 
+import { angry_guards } from './mon.js';
+import { Shknam } from './shknam.js';
+import { You_hear } from './pline.js';
+import { cansee } from './vision.js';
+import { add_to_migration } from './mkobj.js';
+import { Has_contents } from './obj.js';
+import { obj_extract_self, currency } from './invent.js';
+import { in_rooms } from './hack.js';
+import { costly_spot, shop_keeper, picked_container, hot_pursuit } from './shk.js';
+import { MIGR_WITH_HERO, Is_stronghold, In_endgame, Is_botlevel, ESHK, SHOPBASE } from './const.js';
 import { game } from './gstate.js';
 import { MIGR_NOWHERE, MIGR_RANDOM, MIGR_STAIRS_UP, MIGR_LADDER_UP,
          MIGR_SSTAIRS, TRAPDOOR, is_hole, SLT_ENCUMBER, STRAT_WAITMASK,
@@ -937,4 +947,158 @@ async function kick_nondoor(x, y, avrg_attrib, maploc) {
     }
     await kick_dumb(x, y);
     return ECMD_TIME;
+}
+
+// src/dokick.c:1473 drop_to(); the destination of objects falling through
+// the gate at <x,y>: cc.x is the dungeon number and cc.y the level
+export function drop_to(cc, loc, x, y) {
+    const u = game.u;
+    const stway = stairway_at(x, y);
+
+    switch (loc) {
+    case MIGR_RANDOM: /* trap door or hole */
+        if (Is_stronghold(u.uz)) {
+            cc.x = game.valley_level.dnum;
+            cc.y = game.valley_level.dlevel;
+            break;
+        } else if (In_endgame(u.uz) || Is_botlevel(u.uz)) {
+            cc.y = cc.x = 0;
+            break;
+        }
+        /* FALLTHROUGH */
+    case MIGR_STAIRS_UP:
+    case MIGR_LADDER_UP:
+    case MIGR_SSTAIRS:
+        if (stway) {
+            cc.x = stway.tolev.dnum;
+            cc.y = stway.tolev.dlevel;
+        } else {
+            cc.x = u.uz.dnum;
+            cc.y = u.uz.dlevel + 1;
+        }
+        break;
+    default:
+    case MIGR_NOWHERE:
+        /* y==0 means "nowhere", in which case x doesn't matter */
+        cc.y = cc.x = 0;
+        break;
+    }
+}
+
+// src/dokick.c:1511 impact_drop(); objects at <x,y> tumble through the
+// gate there (stairs, ladder, hole) to the level below
+export async function impact_drop(missile, x, y, dlev) {
+    /* missile: caused impact, won't drop itself; dlev: if !0 send to dlev
+       near player */
+    const u = game.u;
+    let toloc;
+    let shkp;
+    let oct, dct, price, debit, robbed;
+    let angry, costly, isrock;
+    const cc = { x: 0, y: 0 };
+
+    if (!OBJ_AT(x, y))
+        return;
+
+    toloc = down_gate(x, y);
+    drop_to(cc, toloc, x, y);
+    if (!cc.y)
+        return;
+
+    if (dlev) {
+        /* send objects next to player falling through trap door.
+         * checked in obj_delivery().
+         */
+        toloc = MIGR_WITH_HERO;
+        cc.y = dlev;
+    }
+
+    costly = costly_spot(x, y);
+    price = debit = robbed = 0;
+    angry = false;
+    shkp = null;
+    /* if 'costly', we must keep a record of ESHK(shkp) before
+     * it undergoes changes through the calls to stolen_value.
+     * the angry bit must be reset, if needed, in this fn, since
+     * stolen_value is called under the 'silent' flag to avoid
+     * unsavory pline repetitions.
+     */
+    if (costly) {
+        if ((shkp = shop_keeper((in_rooms(x, y, SHOPBASE) || '\0').charCodeAt(0))) != null) {
+            debit = ESHK(shkp).debit;
+            robbed = ESHK(shkp).robbed;
+            angry = !shkp.mpeaceful;
+        }
+    }
+
+    isrock = (missile && missile.otyp === ONAMES.ROCK);
+    oct = dct = 0;
+    for (const obj of (game.level.objects || []).filter(
+             (o) => o.ox === x && o.oy === y)) {
+        if (obj === missile)
+            continue;
+        /* number of objects in the pile */
+        oct += obj.quan;
+        if (obj === u.uball || obj === u.uchain)
+            continue;
+        /* boulders can fall too, but rarely & never due to rocks */
+        if ((isrock && obj.otyp === ONAMES.BOULDER)
+            || rn2(obj.otyp === ONAMES.BOULDER ? 30 : 3))
+            continue;
+        obj_extract_self(obj);
+
+        if (costly) {
+            /* price += stolen_value(obj, x, y, ..., TRUE): the shop theft
+               accounting is not ported yet */
+            note_unported_dokick('impact_drop:stolen_value');
+            if (Has_contents(obj))
+                picked_container(obj); /* does the right thing */
+            if (obj.oclass !== OCLASSES.COIN_CLASS)
+                obj.no_charge = 0;
+        }
+
+        add_to_migration(obj);
+        obj.ox = cc.x;
+        obj.oy = cc.y;
+        obj.owornmask = toloc;
+        /* number of fallen objects */
+        dct += obj.quan;
+    }
+
+    if (dct && cansee(x, y)) { /* at least one object fell */
+        const what = (dct === 1 ? 'object falls' : 'objects fall');
+
+        if (missile)
+            await pline(`From the impact, ${
+                dct === oct ? 'the ' : dct === 1 ? 'an' : ''}other ${what}.`);
+        else if (oct === dct)
+            await pline(`${dct === 1 ? 'The' : 'All the'} adjacent ${what} ${
+                game.gate_str}.`);
+        else
+            await pline(`${dct === 1 ? 'One of the' : 'Some of the'} adjacent ${
+                dct === 1 ? 'objects falls' : what} ${game.gate_str}.`);
+    }
+
+    if (costly && shkp && price) {
+        if (ESHK(shkp).robbed > robbed) {
+            await You(`removed ${price} ${currency(price)} worth of goods!`);
+            if (cansee(shkp.mx, shkp.my)) {
+                if (!ESHK(shkp).customer)
+                    ESHK(shkp).customer = game.plname;
+                if (angry)
+                    await pline(`${Shknam(shkp)} is infuriated!`);
+                else
+                    await pline(`"${game.plname}, you are a thief!"`);
+            } else
+                await You_hear('a scream, "Thief!"');
+            hot_pursuit(shkp);
+            angry_guards(false);
+            return;
+        }
+        if (ESHK(shkp).debit > debit) {
+            const amt = (ESHK(shkp).debit - debit);
+
+            await You(`owe ${Shknam(shkp)} ${amt} ${currency(amt)} for goods lost.`);
+        }
+    }
 }

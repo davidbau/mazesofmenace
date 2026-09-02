@@ -6,6 +6,17 @@
 // own combat are not ported. js/shknam.js holds the naming and stocking half
 // (shtypes, nameshk, stock_room), which is src/shknam.c.
 
+import { Shknam } from './shknam.js';
+import { add_to_minv } from './mkobj.js';
+import { setnotworn } from './worn.js';
+import { makeplural } from './objnam.js';
+import { growl } from './sounds.js';
+import { m_next2u, mnexto } from './mon.js';
+import { TT_PIT, RLOC_MSG, W_SWAPWEP, W_QUIVER } from './const.js';
+import { verbalize } from './pline.js';
+import { is_silent, nolimbs, locomotion } from './mondata.js';
+import { sgn } from './hacklib.js';
+import { Role_if } from './attrib.js';
 import { ismnum, OBJ_MINVENT } from './const.js';
 import { carried } from './obj.js';
 import { the_unique_pm } from './objnam.js';
@@ -2813,4 +2824,89 @@ export function shk_your(obj) {
     else if ((buf = shk_owns(obj)) == null && (buf = mon_owns(obj)) == null)
         buf = the_your[carried(obj) ? 1 : 0];
     return buf + ' ';
+}
+
+/* include/hack.h um_dist() */
+const um_dist = (x, y, n) => (Math.abs(game.u.ux - x) > n || Math.abs(game.u.uy - y) > n);
+
+// src/shk.c:5019 shopdig(); the hero digs in a shop: warning (fall==0) or,
+// when the hole opens (fall==1), the shopkeeper grabs the pack
+export async function shopdig(fall) {
+    const u = game.u;
+    const shkp = shop_keeper((u.ushops || '\0').charCodeAt(0));
+    let lang;
+    let grabs = 'grabs';
+
+    if (!shkp)
+        return;
+
+    /* 0 == can't speak, 1 == makes animal noises, 2 == speaks */
+    if (!inhishop(shkp)) {
+        if (Role_if(PMNAMES.PM_KNIGHT)) {
+            await You_feel('like a common thief.');
+            adjalign(-sgn(u.ualign.type));
+        }
+        return;
+    }
+
+    lang = 0;
+    if (helpless(shkp) || is_silent(shkp.data))
+        ; /* lang stays 0 */
+    else if (shkp.data.msound <= MSOUND.MS_ANIMAL)
+        lang = 1;
+    else if (shkp.data.msound >= MSOUND.MS_HUMANOID)
+        lang = 2;
+
+    if (!fall) {
+        if (lang === 2) {
+            if (!Deaf() && !muteshk(shkp)) {
+                /* SetVoice(shkp, 0, 80, 0) */
+                if (u.utraptype === TT_PIT) {
+                    await verbalize(`Be careful, ${
+                        game.flags.female ? 'madam' : 'sir'}, or you might fall through the floor.`);
+                } else {
+                    await verbalize(`${game.flags.female ? 'Madam' : 'Sir'
+                                    }, do not damage the floor here!`);
+                }
+            }
+        }
+        if (Role_if(PMNAMES.PM_KNIGHT)) {
+            await You_feel('like a common thief.');
+            adjalign(-sgn(u.ualign.type));
+        }
+    } else if (!um_dist(shkp.mx, shkp.my, 5)
+               && !helpless(shkp)
+               && (ESHK(shkp).billct || ESHK(shkp).debit)) {
+        if (nolimbs(shkp.data)) {
+            grabs = 'knocks off';
+        }
+        if (!m_next2u(shkp)) {
+            mnexto(shkp, RLOC_MSG);
+            /* for some reason the shopkeeper can't come next to you */
+            if (!m_next2u(shkp)) {
+                if (lang === 2)
+                    await pline(`${Shknam(shkp)} curses you in anger and frustration!`);
+                else if (lang === 1)
+                    await growl(shkp);
+                rile_shk(shkp);
+                return;
+            } else
+                await pline(`${Shknam(shkp)} ${
+                    makeplural(locomotion(shkp.data, 'leap'))}, and ${grabs} your backpack!`);
+        } else
+            await pline(`${Shknam(shkp)} ${grabs} your backpack!`);
+
+        for (const obj of [...(game.invent || [])]) {
+            if ((obj.owornmask & ~(W_SWAPWEP | W_QUIVER)) !== 0
+                || (obj === u.uswapwep && u.twoweap)
+                || (obj.otyp === ONAMES.LEASH && obj.leashmon))
+                continue;
+            if (obj === game.current_wand)
+                continue;
+            setnotworn(obj);
+            freeinv(obj);
+            subfrombill(obj, shkp);
+            add_to_minv(shkp, obj); /* may free obj */
+        }
+    }
 }

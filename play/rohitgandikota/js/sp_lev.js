@@ -8,6 +8,7 @@
 // rn1(abs(depth) * 100, 51) — an rn2(100) — plus the next_ident of the object
 // itself.
 
+import { bury_an_obj } from './dig.js';
 import { game } from './gstate.js';
 import { mk_mplayer } from './mplayer.js';
 import { get_level_extends, fix_wall_spines, stairway_add,
@@ -1538,37 +1539,8 @@ const NO_INVENT = 0, CUSTOM_INVENT = 0x01, DEFAULT_INVENT = 0x02;
 // piles as a flat list rather than a nexthere chain (see js/invent.js:141), and
 // the only caller of that return value is bury_objs(), which is not ported, so
 // there is nothing here to return it from.
-export function bury_an_obj(otmp, dealloced) {
-    if (dealloced)
-        dealloced.v = false;
-
-    if (obj_resists(otmp, 0, 0))
-        return;                         /* Riders, Amulet, invocation tools */
-
-    obj_extract_self(otmp);
-
-    const under_ice = game.level?.at(otmp.ox, otmp.oy)?.typ === ICE;
-
-    if ((otmp.otyp === ONAMES.ROCK && !under_ice)
-        || otmp.otyp === ONAMES.BOULDER) {
-        /* merges into burying material; boulder removal is for #wizbury */
-        if (dealloced)
-            dealloced.v = true;
-        return;                         /* obfree() */
-    }
-
-    if (otmp.otyp === ONAMES.CORPSE) {
-        /* already handled; should cancel the timer if under ice */
-    } else if ((under_ice ? (otmp.oclass === OCLASSES.POTION_CLASS)
-                          : is_organic(otmp))
-               && !obj_resists(otmp, 5, 95)) {
-        start_timer((under_ice ? 0 : 250) + rnd(250),
-                    TIMER_OBJECT, ROT_ORGANIC, otmp);
-    }
-
-    (game.level.buriedobjs ||= []).unshift(otmp);   /* add_to_buried() */
-    otmp.where = OBJ_BURIED;
-}
+/* bury_an_obj() lives in js/dig.js, where src/dig.c has it */
+export { bury_an_obj } from './dig.js';
 
 // include/obj.h is_organic()
 const is_organic = (o) => game.objects[o.otyp].oc_material <= MATERIALS.WOOD;

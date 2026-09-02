@@ -22,6 +22,7 @@ import {
     INVIS,
     IS_FOUNTAIN,
     IS_FURNITURE,
+    IS_WATERWALL,
     MON_FLOOR,
     MON_MIGRATING,
     NEED_WEAPON,
@@ -52,6 +53,7 @@ import {
     pet_ranged_attk,
 } from './dogmove.js';
 import { capitalizedMonsterName } from './do_name.js';
+import { on_level } from './dungeon.js';
 import { engr_at, wipe_engr_at } from './engrave.js';
 import { game } from './gstate.js';
 import { losehp, nh_delay_output, nomul } from './hack.js';
@@ -59,18 +61,20 @@ import { hands_obj, obj_extract_self, stackobj } from './invent.js';
 import { any_light_source } from './light.js';
 import { m_dowear, set_mimic_sym } from './makemon_create.js';
 import { fightm } from './mhitm.js';
-import { mattacku, MonsterDeathPlanningError } from './mhitu.js';
+import { mattacku, mdamageu, MonsterDeathPlanningError } from './mhitu.js';
+import { castmu } from './mcastu.js';
 import { m_throw, thitu, thrwmu } from './mthrowu.js';
 import { AKLYS } from './objects.js';
 import {
     adaptMonsterActionToDochugwSignature,
+    hideunder,
     minliquid,
     movemon_singlemon,
     restrap,
     wake_msg,
 } from './mon.js';
 import {
-    attacktype,
+    breathless,
     defended,
     is_covetous,
     is_swimmer,
@@ -85,9 +89,11 @@ import {
     verysmall,
 } from './mondata.js';
 import {
+    AD_CLRC,
     AD_FIRE,
     AD_MAGM,
     AD_SLEE,
+    AD_SPEL,
     AT_MAGC,
     PM_ERINYS,
     PM_FLOATING_EYE,
@@ -213,13 +219,12 @@ function assertSimpleScanState(monster, state) {
     // path -- they all describe branches mon.c only takes after the movement
     // debit -- so they are deliberately skipped rather than merely bypassed.
     if (monster.movement < NORMAL_SPEED) return true;
-    // mon.c restrap() is ported, so an M1_HIDE monster is scanned like any
-    // other; the eel half stands, because movemon_singlemon()'s S_EEL arm ends
-    // in mon.c hideunder(), which is not.
+    // mon.c restrap() and movemon_singlemon()'s S_EEL concealment arm are
+    // both ported, so an M1_HIDE monster and an eel are scanned like any
+    // other monster; mon.c hideunder() raises its own boundary class for the
+    // arms it does not cover.
     const liquidReason = unportedMinliquidReason(monster, state);
     if (liquidReason) unsupported(liquidReason);
-    if (monster.data?.mlet === S_EEL)
-        unsupported('eel concealment');
     return true;
 }
 
@@ -248,10 +253,27 @@ function assertSimpleScanState(monster, state) {
 // C tests the gremlin at :987 before either liquid arm, and these two are in
 // the other order. That is only a labelling difference: a gremlin in water
 // matches both, and whichever arm claims it, the caller refuses.
+//
+// The eel is the other exception, and it is the `else` of the pool arm at
+// :1111-1119: an eel that is neither in water nor in lava loses hit points to
+// `rn2(mtmp->mhp) > rn2(8)` and is sent fleeing by monflee(). Neither effect
+// is ported, and that draw pair sits ahead of every later draw in the turn, so
+// answering false for a stranded eel would move the whole random-number log
+// with no stop to mark it. mklev() only ever places an eel in water, but
+// wizcmds.c wiz_genesis() can put one on dry land, because goodpos() accepts a
+// dry square for an eel one time in thirteen (teleport.c:148).
 export function unportedMinliquidReason(monster, state) {
     if (monsndx(monster.data) === PM_GREMLIN
         && IS_FOUNTAIN(state.level?.at?.(monster.mx, monster.my)?.typ))
         return 'a gremlin splitting in a fountain';
+    const location = state.level?.at?.(monster.mx, monster.my);
+    if (monster.data?.mlet === S_EEL
+        && !is_pool(monster.mx, monster.my, state)
+        && !is_lava(monster.mx, monster.my, state)
+        && !(location && IS_WATERWALL(location.typ))
+        && !on_level(state.u?.uz, state.water_level)
+        && !breathless(monster.data))
+        return 'an eel out of water';
     return null;
 }
 
@@ -339,8 +361,6 @@ function assertSimpleActionState(monster, state) {
         || monster.data?.pmidx === PM_GELATINOUS_CUBE) {
         unsupported('a special monster action');
     }
-    if (attacktype(monster.data, AT_MAGC))
-        unsupported('monster ranged or magical action');
 }
 
 function clonedRandom(state) {
@@ -1152,7 +1172,28 @@ async function throwRangedWeapon(monster, env) {
 // melee ones -- refuses from inside mattacku() itself, so this seam adds only
 // the operations that file cannot import.
 function attackHeroWithMattacku(monster, env) {
-    return mattacku(monster, { ...env, throwRangedWeapon, unsupported });
+    return mattacku(monster, {
+        ...env,
+        throwRangedWeapon,
+        unsupported,
+        // C ref: mhitu.c:930 castmu(mtmp, mattk, TRUE, foundyou).
+        castMonsterSpell: (subject, mattk, thinkFound, actualFound, spellEnv) =>
+            castmu(subject, mattk, thinkFound, actualFound, {
+                ...spellEnv,
+                monsterName: (mtmp) => capitalizedMonsterName(mtmp, env.state),
+                monnam: (mtmp) => {
+                    const name = mtmp.data?.pmnames?.[2]
+                        ?? mtmp.data?.pmnames?.[0]
+                        ?? 'something';
+                    return `the ${name}`;
+                },
+                message: env.planning ? undefined : async (text, s) => {
+                    await ttyPline(text, s);
+                },
+                mdamageu: (mtmp2, dmg) =>
+                    mdamageu(mtmp2, dmg, spellEnv.state ?? env.state, spellEnv),
+            }),
+    });
 }
 
 export async function wieldMonsterItemAgainstMonster(
@@ -1218,6 +1259,44 @@ export async function runSimpleMonsterAction(monster, rawEnv = {}) {
                 // (dogmove.c:911) and js/dogmove.js pet_ranged_attk()
                 // (dogmove.c:1286).
                 attackHero: attackHeroWithMattacku,
+                // C ref: monmove.c:895-907. Iterate AT_MAGC attack slots
+                // with AD_SPEL or AD_CLRC and call castmu(FALSE, FALSE).
+                // Most of the time, choose_monster_spell picks a directed
+                // spell and castmu returns M_ATTK_MISS immediately.
+                castUndirectedSpell: async (subject, spellEnv) => {
+                    const mdat = subject.data;
+                    if (!mdat?.mattk) return false;
+                    const castEnv = {
+                        ...spellEnv,
+                        monsterName: (mtmp) =>
+                            capitalizedMonsterName(mtmp, state),
+                        monnam: (mtmp) => {
+                            const name = mtmp.data?.pmnames?.[2]
+                                ?? mtmp.data?.pmnames?.[0]
+                                ?? 'something';
+                            return `the ${name}`;
+                        },
+                        message: env.planning ? undefined
+                            : async (text, s) => { await ttyPline(text, s); },
+                        mdamageu: (mtmp2, dmg) =>
+                            mdamageu(
+                                mtmp2, dmg,
+                                spellEnv.state ?? state,
+                                spellEnv,
+                            ),
+                    };
+                    for (const a of mdat.mattk) {
+                        if (a.aatyp === AT_MAGC
+                            && (a.adtyp === AD_SPEL
+                                || a.adtyp === AD_CLRC)) {
+                            const result = await castmu(
+                                subject, a, false, false, castEnv,
+                            );
+                            if (result & 0x1) return true; /* M_ATTK_HIT */
+                        }
+                    }
+                    return false;
+                },
                 monFlee: () => unsupported('monster flight'),
                 monsterCanSeeHero: ordinaryMonsterCanSeeHero,
                 moveMonster: moveSimpleOrdinary,
@@ -1381,7 +1460,14 @@ async function planSimpleMonsterScan(monster, env) {
             setMimicSym: setPlannedMimicSym,
         }),
         canSeeMonster: (subject) => canSeeMonster(subject, env.state),
-        hideUnder: () => unsupported('eel concealment'),
+        // C ref: mon.c movemon_singlemon():1295-1303 and hideunder():4726-4801.
+        // js/allmain.js binds the same function for the live pass. The clone
+        // owns the eel's mundetected; only the newsym() that follows it is
+        // suppressed, because the live pass repaints the square afterwards.
+        hideUnder: (subject, subjectEnv) => hideunder(subject, {
+            ...subjectEnv,
+            redraw: () => {},
+        }),
         // movemon_singlemon() requires these three. fightm() owns the
         // resistance preflight for this slice; the visibility operations stay
         // here so the planning and live scans take the same final Conflict

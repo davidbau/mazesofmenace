@@ -5,6 +5,10 @@
 // the tested sacrifice paths. Some punishment, conversion, and artifact-gift
 // paths remain partial.
 
+import { cmap_names } from './drawing_data.js';
+import { M_AP_TYPE, M_AP_FURNITURE, MCORPSENM } from './const.js';
+import { m_at } from './mon.js';
+import { isok } from './hacklib.js';
 import { uhim } from './mhitu.js';
 import { Disint_resistance } from './youprop.js';
 import { genders } from './role_data.js';
@@ -1066,7 +1070,7 @@ async function offer_too_soon(altaralign) {
 }
 
 // src/pray.c:1498 desecrate_altar().
-async function desecrate_altar(highaltar, altaralign) {
+export async function desecrate_altar(highaltar, altaralign) {
     if (altaralign === game.u.ualign.type) {
         adjalign(-20);
         game.u.ugangr = (game.u.ugangr || 0) + 5;
@@ -1627,4 +1631,45 @@ const ugod_is_angry = () => game.u.ualign.record < 0;
 // src/pray.c: a_align(), the alignment of the altar at <x,y>.
 function a_align(x, y) {
     return Amask2align(game.level.at(x, y).altarmask & AM_MASK);
+}
+
+// src/pray.c:2490 altarmask_at(); the altar mask at <x,y>, allowing for a
+// mimic posing as an altar
+export function altarmask_at(x, y) {
+    let res = 0;
+
+    if (isok(x, y)) {
+        const mon = m_at(x, y);
+
+        if (mon && M_AP_TYPE(mon) === M_AP_FURNITURE
+            && mon.mappearance === cmap_names.S_altar)
+            res = (MCORPSENM(mon) !== NON_PM) ? MCORPSENM(mon) : 0; /* has_mcorpsenm() */
+        else if (IS_ALTAR(game.level.at(x, y).typ))
+            res = game.level.at(x, y).altarmask;
+    }
+    return res;
+}
+
+// src/pray.c:2652 altar_wrath(); an altar has been desecrated by digging
+export async function altar_wrath(x, y) {
+    const u = game.u;
+    const altaralign = a_align(x, y);
+
+    if (u.ualign.type === altaralign && u.ualign.record > -rn2(4)) {
+        await godvoice(altaralign, 'How darest thou desecrate my altar!');
+        await adjattrib(A_WIS, -1, false);
+        u.ualign.record--;
+    } else {
+        await pline(`${
+            !Deaf() ? 'A voice (could it be'
+                    : 'Despite your deafness, you seem to hear'} ${
+            align_gname(altaralign)}${
+            !Deaf() ? '?) whispers' : ' say'}:`);
+        /* SetVoice((struct monst *) 0, 0, 80, voice_deity) */
+        await verbalize('Thou shalt pay, infidel!');
+        /* higher luck is more likely to be reduced; as it approaches -5
+           the chance to lose another point drops down, eventually to 0 */
+        if (Luck() > -5 && rn2(Luck() + 6))
+            change_luck(rn2(20) ? -1 : -2);
+    }
 }

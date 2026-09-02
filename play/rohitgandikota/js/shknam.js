@@ -6,6 +6,7 @@
 // mkshop reads .prob to pick the SHOP, get_shop_item reads .iprobs to pick each
 // ITEM in it.
 
+import { upstart } from './do_name.js';
 import { Hallucination } from './youprop.js';
 import { has_eshk, ESHK } from './const.js';
 import { noit_mon_nam } from './do_name.js';
@@ -446,4 +447,9 @@ export function shkname(mtmp) {
         nam = shknm;
     }
     return nam;
+}
+
+// src/shknam.c Shknam(); shkname() with its first letter capitalized
+export function Shknam(mtmp) {
+    return upstart(shkname(mtmp));
 }

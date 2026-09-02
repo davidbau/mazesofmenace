@@ -6,6 +6,9 @@
 // holds the pieces of src/trap.c it calls into, so that a grep for a C symbol
 // finds it in the file its C twin lives in.
 
+import { set_uinwater } from './hack.js';
+import { sellobj } from './shk.js';
+import { bury_an_obj } from './dig.js';
 import { sleep_monst } from './mhitm.js';
 import { shieldeff_mon } from './mon.js';
 import { mpickobj } from './steal.js';
@@ -1035,7 +1038,7 @@ export function trapname(ttyp, override) {
 
 // src/trap.c:6552 conjoined_pits() — did the hero step between two pits dug
 // into each other? False-fast unless currently in a pit.
-function conjoined_pits(trap2, trap1, u_entering_trap2) {
+export function conjoined_pits(trap2, trap1, u_entering_trap2) {
     if (!trap1 || !trap2)
         return false;
     if (!isok(trap2.tx, trap2.ty) || !isok(trap1.tx, trap1.ty)
@@ -2998,17 +3001,6 @@ function number_leashed() {
     return i;
 }
 
-// src/hack.c:3221 set_uinwater() — besides the flag, entering/leaving water
-// re-evaluates terrain-derived properties.
-function set_uinwater(in_out) {
-    if (!!in_out !== !!game.u.uinwater) {
-        game.u.uinwater = in_out ? 1 : 0;
-        /* switch_terrain() toggles Lev/Fly from terrain; no recorded
-           session carries either, so the call is recorded */
-        note_unported_trap('set_uinwater:switch_terrain');
-    }
-}
-
 // src/trap.c:4900 emergency_disrobe() — drop random items until light
 // enough to crawl out; true if now unencumbered enough.
 async function emergency_disrobe(state) {
@@ -3154,7 +3146,7 @@ export async function drown() {
         if (u.uprops?.PUNISHED)
             note_unported_trap('drown:placebc');
         vision_recalc(2); /* unsee old position */
-        set_uinwater(1);
+        await set_uinwater(1);
         await under_water(1);
         game.vision_full_recalc = 1;
         return false;
@@ -3197,7 +3189,7 @@ export async function drown() {
         /* still too much weight */
         await pline('But in vain.');
     }
-    set_uinwater(1);
+    await set_uinwater(1);
     await pline('You drown.'); /* urgent_pline */
     for (let i = 0; i < 2; i++) {
         let pool_of_water = waterbody_name(u.ux, u.uy);
@@ -3217,7 +3209,7 @@ export async function drown() {
         await pline("You're still drowning.");
     }
     if (u.uinwater) {
-        set_uinwater(0);
+        await set_uinwater(0);
         note_unported_trap('drown:rescued_from_terrain');
     }
     return true;
@@ -4272,4 +4264,59 @@ export async function steedintrap(trap, otmp) {
         return Trap_Killed_Mon;
     }
     return steedhit ? 1 : 0;
+}
+
+// src/trap.c:5341 cnv_trap_obj(); convert a trap into the object it was
+// made from (dart, arrow, rock, land mine, bear trap)
+export async function cnv_trap_obj(otyp, cnt, ttmp, bury_it) {
+    const otmp = mksobj(otyp, true, false);
+    let mtmp;
+
+    otmp.quan = cnt;
+    otmp.owt = weight(otmp);
+    /* Only dart traps are capable of being poisonous */
+    if (otyp !== ONAMES.DART)
+        otmp.opoisoned = 0;
+    place_object(otmp, ttmp.tx, ttmp.ty);
+    if (bury_it) {
+        /* magical digging first disarms this trap, then will unearth it */
+        await bury_an_obj(otmp, null);
+    } else {
+        /* Sell your own traps only... */
+        if (ttmp.madeby_u)
+            await sellobj(otmp, ttmp.tx, ttmp.ty);
+        stackobj(otmp);
+    }
+    newsym(ttmp.tx, ttmp.ty);
+    if (game.u.utrap && game.u.ux === ttmp.tx && game.u.uy === ttmp.ty)
+        await reset_utrap(true);
+    if (((mtmp = m_at(ttmp.tx, ttmp.ty)) != null) && mtmp.mtrapped)
+        mtmp.mtrapped = 0;
+    deltrap(ttmp);
+}
+
+// src/trap.c:6668 delfloortrap(); used for doors and pits: remove a trap
+// which would be destroyed by the terrain change, freeing whoever is in it
+export async function delfloortrap(ttmp) {
+    /* Destroy a trap that emanates from the floor. */
+    /* some of these are arbitrary -dlc */
+    if (ttmp && ((ttmp.ttyp === SQKY_BOARD) || (ttmp.ttyp === BEAR_TRAP)
+                 || (ttmp.ttyp === LANDMINE) || (ttmp.ttyp === FIRE_TRAP)
+                 || is_pit(ttmp.ttyp)
+                 || is_hole(ttmp.ttyp)
+                 || (ttmp.ttyp === TELEP_TRAP) || (ttmp.ttyp === LEVEL_TELEP)
+                 || (ttmp.ttyp === WEB) || (ttmp.ttyp === MAGIC_TRAP)
+                 || (ttmp.ttyp === ANTI_MAGIC))) {
+        let mtmp;
+
+        if (game.u.ux === ttmp.tx && game.u.uy === ttmp.ty) {
+            if (game.u.utraptype !== TT_BURIEDBALL)
+                await reset_utrap(true);
+        } else if ((mtmp = m_at(ttmp.tx, ttmp.ty)) != null) {
+            mtmp.mtrapped = 0;
+        }
+        deltrap(ttmp);
+        return true;
+    }
+    return false;
 }

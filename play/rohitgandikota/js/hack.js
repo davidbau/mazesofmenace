@@ -1,3 +1,9 @@
+import { obj_ice_effects } from './mkobj.js';
+import { spot_time_left, spot_stop_timers, MELT_ICE_AWAY } from './timeout.js';
+import { float_vs_flight } from './polyself.js';
+import { float_up } from './trap.js';
+import { You_cant } from './pline.js';
+import { FROMOUTSIDE, DRAWBRIDGE_UP, DB_UNDER, DB_ICE } from './const.js';
 import { obj_extract_self } from './invent.js';
 import { place_object } from './mkobj.js';
 import { exercise } from './attrib.js';
@@ -2246,5 +2252,81 @@ function end_running_hack(and_travel) {
     if (and_travel) {
         game.context.travel = game.context.travel1 = 0;
         game.context.mv = 0;
+    }
+}
+
+// src/hack.c:3178 switch_terrain(); when the hero's location changes to or
+// from solid rock, levitation and flight are blocked or restored
+export async function switch_terrain() {
+    const u = game.u;
+    const lev = game.level.at(u.ux, u.uy);
+    const blocklev = (IS_OBSTRUCTED(lev.typ) || closed_door(u.ux, u.uy)
+                      || IS_WATERWALL(lev.typ)
+                      || lev.typ === LAVAWALL),
+          was_levitating = !!Levitation(), was_flying = !!Flying();
+    const blocked = (u.blocked ||= {});
+
+    if (blocklev) {
+        /* called from spoteffects(), stop levitating but skip float_down() */
+        if (Levitation())
+            await You_cant('levitate in here.');
+        blocked.LEVITATION = (blocked.LEVITATION | 0) | FROMOUTSIDE;
+    } else if (blocked.LEVITATION) {
+        blocked.LEVITATION = (blocked.LEVITATION | 0) & ~FROMOUTSIDE;
+        /* we're probably levitating now; if not, we're probably trapped
+           to a buried iron ball so get float_up() feedback for that */
+        if (Levitation() || blocked.LEVITATION)
+            await float_up();
+    }
+    /* the same terrain that blocks levitation also blocks flight */
+    if (blocklev) {
+        if (Flying())
+            await You_cant('fly in here.');
+        blocked.FLYING = (blocked.FLYING | 0) | FROMOUTSIDE;
+    } else if (blocked.FLYING) {
+        blocked.FLYING = (blocked.FLYING | 0) & ~FROMOUTSIDE;
+        float_vs_flight(); /* maybe toggle (BFlying & I_SPECIAL) */
+        /* [minor bug: we don't know whether this is beginning flight or
+           resuming it; that could be tracked so that this message could
+           be adjusted to "resume flying", but isn't worth the effort...] */
+        if (Flying())
+            await You('start flying.');
+    }
+    if ((!!Levitation() ^ was_levitating) || (!!Flying() ^ was_flying))
+        (game.disp ||= {}).botl = true; /* update Lev/Fly status condition */
+    /* if (flags.terrainstatus) classify_terrain(): the terrain status
+       condition is a windowport status-hilite feature */
+}
+
+// src/hack.c:4525 spot_checks(); a location's terrain changed; anything
+// which depends on the old type needs to be cleaned up
+export function spot_checks(x, y, old_typ) {
+    const new_typ = game.level.at(x, y).typ;
+    let db_ice_now = false;
+
+    switch (old_typ) {
+    case DRAWBRIDGE_UP:
+        db_ice_now = ((game.level.at(x, y).drawbridgemask & DB_UNDER) === DB_ICE);
+        /* FALLTHROUGH */
+    case ICE:
+        if ((new_typ !== old_typ)
+            || (old_typ === DRAWBRIDGE_UP && !db_ice_now)) {
+            /* make sure there's no MELT_ICE_AWAY timer */
+            if (spot_time_left(x, y, MELT_ICE_AWAY)) {
+                spot_stop_timers(x, y, MELT_ICE_AWAY);
+            }
+            /* adjust things affected by the ice */
+            obj_ice_effects(x, y, false);
+        }
+        break;
+    }
+}
+
+// src/hack.c:3221 set_uinwater(); besides the flag, entering or leaving
+// water re-evaluates the terrain-derived properties
+export async function set_uinwater(in_out) {
+    if ((in_out ? 1 : 0) !== (game.u.uinwater ? 1 : 0)) {
+        game.u.uinwater = in_out ? 1 : 0;
+        await switch_terrain();
     }
 }

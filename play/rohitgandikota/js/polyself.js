@@ -1798,7 +1798,7 @@ export async function dospinweb() {
         case SPIKED_PIT:
             await You('spin a web, covering up the pit.');
             deltrap(ttmp);
-            bury_objs(x, y);
+            await bury_objs(x, y);
             newsym(x, y);
             return ECMD_TIME;
         case SQKY_BOARD:

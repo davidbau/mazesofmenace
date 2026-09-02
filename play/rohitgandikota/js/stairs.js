@@ -78,3 +78,9 @@ export function stairs_description(sway, stcase) {
 function note_unported_stairs(what) {
     (game.unported ||= new Set()).add('stairs:' + what);
 }
+
+// src/stairs.c:154 On_ladder()
+export function On_ladder(x, y) {
+    const stway = stairway_at(x, y);
+    return !!(stway && stway.isladder);
+}

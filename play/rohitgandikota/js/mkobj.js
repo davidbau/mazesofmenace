@@ -1,3 +1,6 @@
+import { OBJ_MIGRATING } from './const.js';
+import { maybe_reset_pick } from './lock.js';
+import { Is_container } from './obj.js';
 import { OBJ_FREE, OBJ_MINVENT } from './const.js';
 import { is_human, is_neuter, vegetarian, is_elf } from './mondata.js';
 import { arti_light_radius, obj_adjust_light_radius } from './light.js';
@@ -1751,4 +1754,15 @@ export function add_to_minv(mon, obj) {
     obj.ocarry = mon;
     (mon.minvent ||= []).unshift(obj);
     return 0; /* obj on mon's inventory chain */
+}
+
+// src/mkobj.c:2698 add_to_migration()
+export function add_to_migration(obj) {
+    /* if (obj->where != OBJ_FREE) panic("add_to_migration: obj where=%d, not free", obj->where);
+       if (obj->unpaid) impossible("unpaid object migrating to another level? [%s]", ...) */
+    obj.no_charge = 0; /* was only relevant while inside a shop */
+    if (Is_container(obj))
+        maybe_reset_pick(obj);
+    obj.where = OBJ_MIGRATING;
+    (game.migrating_objs ||= []).unshift(obj);
 }

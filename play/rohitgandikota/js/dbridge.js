@@ -95,3 +95,31 @@ export function is_waterwall(x, y) {
         return true;
     return false;
 }
+
+// src/dbridge.c:180 find_drawbridge(); cc names a drawbridge or its wall;
+// on return it names the drawbridge itself
+export function find_drawbridge(cc) {
+    let dir;
+
+    if (IS_DRAWBRIDGE(game.level.at(cc.x, cc.y).typ))
+        return true;
+    dir = is_drawbridge_wall(cc.x, cc.y);
+    if (dir >= 0) {
+        switch (dir) {
+        case DB_NORTH:
+            cc.y++;
+            break;
+        case DB_SOUTH:
+            cc.y--;
+            break;
+        case DB_EAST:
+            cc.x--;
+            break;
+        case DB_WEST:
+            cc.x++;
+            break;
+        }
+        return true;
+    }
+    return false;
+}

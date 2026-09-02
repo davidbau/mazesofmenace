@@ -1,3 +1,7 @@
+import { set_uinwater } from './hack.js';
+import { set_ustuck } from './mon.js';
+import { reset_utrap, fill_pit } from './trap.js';
+import { impact_drop } from './dokick.js';
 import { setuqwep, setuwep_with_feedback, setuswapwep,
          weldmsg } from './wield.js';
 import { impact_disturbs_zombies } from './hack.js';
@@ -884,9 +888,19 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     /* src/do.c:1607 - a destination belongs to the level being left. */
     game.iflags = game.iflags || {};
     game.iflags.travelcc = { x: 0, y: 0 };
-    await check_special_room(true);
+    /* digging context is level-aware and can actually be resumed if
+       hero returns to the previous level without any intervening dig */
+
+    if (falling) /* assuming this is only trap door or hole */
+        await impact_drop(null, game.u.ux, game.u.uy, newlevel.dlevel);
+    await check_special_room(true); /* probably was a trap door */
     if (game.u.uball)
         unplacebc();
+    await reset_utrap(false); /* needed in level_tele */
+    await fill_pit(game.u.ux, game.u.uy);
+    set_ustuck(null); /* clear u.ustuck and u.uswallow */
+    await set_uinwater(0); /* u.uinwater = 0 */
+    game.u.uundetected = 0; /* not hidden, even if means are available */
     /* src/do.c:1623 — the tutorial transition sets iflags.nofollowers so
        the pet stays behind */
     if (!game.iflags?.nofollowers)

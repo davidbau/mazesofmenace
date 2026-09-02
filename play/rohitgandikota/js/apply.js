@@ -99,7 +99,7 @@ import { attach_egg_hatch_timeout, begin_burn, end_burn, HATCH_EGG,
 import { bhit, obj_resists, zapyourself } from './zap.js';
 import { ceiling, surface } from './dungeon.js';
 import { can_reach_floor, pickup_object } from './pickup.js';
-import { dig_typ, use_pick_axe2 } from './dig.js';
+import { use_pick_axe } from './dig.js';
 import { dbon, do_attack } from './uhitm.js';
 import { possibly_unwield, setmnotwielded } from './weapon.js';
 
@@ -274,41 +274,6 @@ function on_stairs_at_u() {
     return false;
 }
 
-// src/dig.c:1092 use_pick_axe() -- wield first, replay the application, then
-// show only directions with a useful target plus the reachable vertical one.
-async function use_pick_axe(obj) {
-    if (obj !== game.u.uwep) {
-        if (await wield_tool(obj, 'swing')) {
-            cmdq_add_ec(CQ_CANNED, doapply);
-            cmdq_add_key(CQ_CANNED, obj.invlet);
-            return ECMD_TIME;
-        }
-        return ECMD_OK;
-    }
-
-    const verb = is_pick(obj) ? 'dig' : 'chop';
-    if (game.u.utrap && game.u.utraptype === TT_WEB) {
-        await pline(`Unfortunately, you can't ${verb} while entangled in a web.`);
-        return ECMD_OK;
-    }
-
-    const chars = 'hykulnjb<>';
-    const choices = [];
-    const downok = can_reach_floor(false);
-    for (let dir = 0; dir < N_DIRS_Z; dir++) {
-        if (dir < 8) {
-            const rx = game.u.ux + xdir[dir], ry = game.u.uy + ydir[dir];
-            if (!isok(rx, ry) || dig_typ(obj, rx, ry) === DIGTYP_UNDIGGABLE)
-                continue;
-        } else if (((dir === 9) ? 1 : 0) ^ (downok ? 1 : 0)) {
-            continue;
-        }
-        choices.push(chars[dir]);
-    }
-    if (!await getdir(`In what direction do you want to ${verb}? [${choices.join('')}]`))
-        return ECMD_CANCEL;
-    return await use_pick_axe2(obj);
-}
 
 // src/apply.c:2955 use_whip(). This covers wield-and-replay, direction
 // handling, self damage, ordinary snaps, adjacent attacks, floor snags, and
@@ -2873,4 +2838,15 @@ async function do_break_wand(obj) {
 
     discard_broken_wand();
     return ECMD_TIME;
+}
+
+// src/apply.c:711 o_unleash(); release the leash's monster
+export function o_unleash(otmp) {
+    for (const mtmp of (game.level.monsters || []))
+        if (mtmp.m_id === otmp.leashmon) {
+            mtmp.mleashed = 0;
+            break;
+        }
+    otmp.leashmon = 0;
+    update_inventory();
 }

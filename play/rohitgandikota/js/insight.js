@@ -235,7 +235,7 @@ const plur = (n) => (n === 1 ? '' : 's');
 const highc = (s) => s ? s[0].toUpperCase() + s.slice(1) : s;
 
 // src/role.c align_str() / align_gname()
-const align_str = (a) => a === 1 ? 'lawful' : a === 0 ? 'neutral'
+export const align_str = (a) => a === 1 ? 'lawful' : a === 0 ? 'neutral'
                        : a === -1 ? 'chaotic' : 'unaligned';
 function align_gname(a) {
     const r = game.roles?.[game.pantheon] ?? game.urole;

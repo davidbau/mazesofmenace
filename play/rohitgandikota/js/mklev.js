@@ -5,6 +5,8 @@
 // room placement, corridors, doors, stairs, niches, and fill.
 // Uses the real game PRNG (not a separate layout PRNG) for bit-exact parity.
 
+import { bury_objs, unearth_objs } from './dig.js';
+import { OBJ_BURIED } from './const.js';
 import { game } from './gstate.js';
 import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
 import {
@@ -347,7 +349,9 @@ let _nextObjId = 1;
 
 /* mkgold() lives in js/mkobj.js, where src/mkobj.c has it. */
 
-function add_to_buried(otmp) {
+// src/mkobj.c add_to_buried()
+export function add_to_buried(otmp) {
+    otmp.where = OBJ_BURIED;
     (game.level.buriedobjs ||= []).unshift(otmp);
 }
 function dealloc_obj(otmp) { /* stub */ }
@@ -412,31 +416,9 @@ function choose_trapnote(ttmp) {
     return tpick.length > 0 ? tpick[rn2(tpick.length)] : rn2(12);
 }
 
-// src/dig.c:2025 bury_objs(). Terrain changes move every floor object on the
-// square onto the buried chain, then erase any engraving there.
-export function bury_objs(x, y) {
-    const pile = [...(game.level?.objects || [])].filter(obj =>
-        obj.where === OBJ_FLOOR && obj.ox === x && obj.oy === y);
-    for (const obj of pile)
-        bury_an_obj(obj, null);
-    del_engr_at(x, y);
-    newsym(x, y);
-}
-
-// src/dig.c:2086 unearth_objs(). Pits and holes expose every object buried
-// on their square. Object timers other than ROT_ORGANIC keep running.
-export function unearth_objs(x, y) {
-    for (const obj of [...(game.level?.buriedobjs || [])]) {
-        if (obj.ox !== x || obj.oy !== y)
-            continue;
-        obj_extract_self(obj);
-        if (obj.timed)
-            stop_timer(ROT_ORGANIC, obj);
-        place_object(obj, x, y);
-        stackobj(obj);
-    }
-    newsym(x, y);
-}
+/* bury_objs() and unearth_objs() live in js/dig.js, where src/dig.c has
+   them; re-exported for the existing importers */
+export { bury_objs, unearth_objs } from './dig.js';
 
 // src/trap.c:490 maketrap()
 // NOTE: not async. C's maketrap() is an ordinary function and this one has no

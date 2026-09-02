@@ -840,7 +840,17 @@ export async function mattacku(monster, rawEnv = {}) {
             break;
 
         case M.AT_MAGC:
-            unsupported('a monster casting at the hero');
+            if (range2) {
+                // buzzmu() calls buzz() which is a large zap.c subsystem.
+                unsupported('a monster casting a ranged spell (buzzmu)');
+            } else {
+                const castMonsterSpell = requireMattackuOperation(
+                    env, 'castMonsterSpell',
+                );
+                sum[i] = await castMonsterSpell(
+                    monster, mattk, true, foundyou, env,
+                );
+            }
             break;
 
         default: /* no attack */
@@ -857,8 +867,9 @@ export async function mattacku(monster, rawEnv = {}) {
         // C follows this with `return 1` for a dead attacker and `break` for a
         // teleported one, reading M_ATTK_AGR_DIED and M_ATTK_AGR_DONE out of
         // sum[i]. Neither bit can be set: hitmu() is the only writer of sum[i]
-        // and both of its exits answer M_ATTK_HIT, while gulpmu(), explmu(),
-        // gazemu(), castmu() and buzzmu() all refuse above.
+        // and both of its exits answer M_ATTK_HIT; gulpmu(), explmu(), and
+        // gazemu() refuse above; castmu() answers M_ATTK_HIT or M_ATTK_MISS
+        // and buzzmu() refuses above.
     }
     return false;
 }
@@ -1252,7 +1263,7 @@ async function hitmu(mtmp, mattk, env) {
 // when uhp drops below 1; the normal planning pass raises the internal signal
 // above because done() calls bot() on the module-level game and
 // paranoid_query() reads input.
-async function mdamageu(mtmp, n, state, env) {
+export async function mdamageu(mtmp, n, state, env) {
     const unsupported = requireMattackuOperation(env, 'unsupported');
     const message = requireMattackuOperation(env, 'message');
 

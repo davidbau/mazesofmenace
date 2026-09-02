@@ -122,7 +122,7 @@ const NODIAG = (monnum) => monnum === PMNAMES.PM_GRID_BUG;
 const is_minion = (ptr) => (ptr.mflags2 & MFLAGS.M2_MINION) !== 0;
 
 // src/monmove.c:54 mb_trapped() -- a monster triggers a trapped door.
-async function mb_trapped(mtmp, canseeit) {
+export async function mb_trapped(mtmp, canseeit) {
     if (game.flags?.verbose) {
         if (canseeit && !Unaware())
             await pline('KABOOM!!  You see a door explode.');

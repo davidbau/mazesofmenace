@@ -162,6 +162,7 @@ import { money_cnt } from './invent.js';
 import { ranged_attk_available } from './mhitu.js';
 import {
     curr_mon_load,
+    hideunder,
     m_carrying,
     max_mon_load,
     mon_allowflags,
@@ -1741,11 +1742,10 @@ export async function wield_pre_move_weapon(monster, range, rawEnv = {}) {
 //   m_respond(), is_covetous() tactics    the boundary rejects both
 //   release_hero(), u.ustuck              no hero-grabbing monster is reachable
 //   Demonic Blackmail, watch_on_duty(),   the boundary rejects guards,
-//   mind_blast()                          priests, and AT_MAGC; a shopkeeper
-//                                         reaches m_move()'s isshk dispatch
-//                                         before dochug() PHASE FOUR
+//   mind_blast()                          priests; a shopkeeper reaches
+//                                         m_move()'s isshk dispatch before
+//                                         dochug() PHASE FOUR
 //   killer bee jelly, gelcube_digests()   the boundary rejects both species
-//   castmu() undirected spell             the boundary rejects AT_MAGC
 //   mon_offmap(), wormhitu()              unreachable on a fresh D:1 level
 //   cuss()                                no MS_CUSS species can be generated
 //                                         at the D:1 difficulty cap
@@ -1860,7 +1860,22 @@ export async function dochug(monster, rawEnv = {}) {
     let status = MMOVE_NOTHING;
     let panicattk = false;
     if (mayMove) {
-        status = await moveMonster(monster, env);
+        // C ref: monmove.c:889-908. "Possibly cast an undirected spell if
+        // not attacking you."  castmu(FALSE, FALSE) picks a spell and
+        // returns immediately when the spell is directed (the common case),
+        // so most of the time this is just one choose_monster_spell() draw.
+        if (!(monster.mspec_used ?? 0)
+            && dist2(monster.mx, monster.my, state.u.ux, state.u.uy) <= 49) {
+            const castUndirectedSpell = rawEnv.castUndirectedSpell;
+            if (typeof castUndirectedSpell === 'function') {
+                const spellResult = await castUndirectedSpell(monster, env);
+                if (spellResult) {
+                    status = MMOVE_DONE;
+                }
+            }
+        }
+
+        if (!status) status = await moveMonster(monster, env);
         if (status !== MMOVE_DIED) {
             range = await distanceAndFear(monster, { ...env, monFlee });
         }
@@ -2462,27 +2477,33 @@ export async function postmov(
         // no port, though monmove.c:1257 makes it constantly true off
         // Sokoban.
         if (webmaker(species)) unsupported('monster web spinning');
-        // monmove.c:1692-1699 draws rn2(5) for a hides_under() species or an
-        // eel whose mundetected is clear, and helpless() cannot hold here
-        // because dochug() returns before m_move() for a sleeping or immobile
-        // monster.  The pre-scan guard keys on is_hider() (M1_HIDE), which is
-        // a different flag from hides_under() (M1_CONCEAL), so a garter snake,
-        // centipede or scorpion reached this point and the draw was simply
-        // skipped -- a divergence with no refusal and no stop.
-        const emptyHideSquare = hides_under(species)
-            && species?.mlet !== S_EEL
-            && !state.level?.objects?.[monster.mx]?.[monster.my]
-            && !t_at(monster.mx, monster.my, state)
-            && !monster.mtrapped;
-        if (emptyHideSquare) {
+        // C ref: monmove.c:1692-1699.  A hides_under() species or an eel
+        // re-hides after moving, drawing rn2(5) unless it is already hidden;
+        // helpless() cannot hold here because dochug() returns before
+        // m_move() for a sleeping or immobile monster.  The pre-scan guard
+        // keys on is_hider() (M1_HIDE), which is a different flag from
+        // hides_under() (M1_CONCEAL), so a garter snake, centipede or
+        // scorpion reaches this point.
+        if (hides_under(species) || species?.mlet === S_EEL) {
+            // mon.c hideunder() is ported for the eel arm only.  A
+            // hides_under() species keeps the answer this file already
+            // derived for the one case where the C function has nothing to
+            // decide: an empty square with no trap holds nothing to hide
+            // under, so hideunder() clears mundetected and returns FALSE.
+            // Every other object-concealing square still stops the scan.
+            const eel = species?.mlet === S_EEL;
+            const emptyHideSquare = !eel
+                && !state.level?.objects?.[monster.mx]?.[monster.my]
+                && !t_at(monster.mx, monster.my, state)
+                && !monster.mtrapped;
+            if (!eel && !emptyHideSquare)
+                unsupported('monster hiding under an object');
             if (monster.mundetected
                 || (!helpless(monster) && random.rn2(5))) {
-                // mon.c hideunder(): no object means undetected remains clear.
-                monster.mundetected = 0;
+                if (eel) hideunder(monster, { state, redraw });
+                else monster.mundetected = 0;
             }
             redraw(monster.mx, monster.my);
-        } else if (hides_under(species) || species?.mlet === S_EEL) {
-            unsupported('monster hiding under an object');
         }
         // C ref: monmove.c:1700-1702.  after_shk_move() re-enters the shop
         // for a shopkeeper that moved.

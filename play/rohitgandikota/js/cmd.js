@@ -1,3 +1,5 @@
+import { NODIAG } from './hack.js';
+import { MV_ANY, MV_RUN, MV_RUSH, MV_WALK } from './const.js';
 import { dobreathe, dospit, doremove, dogaze, dosummon, dohide, dospinweb, domindblast, dopoly } from './polyself.js';
 import { pet_ranged_attk } from './dog.js';
 import { is_vampshifter } from './monst.js';
@@ -4232,7 +4234,84 @@ export function cmd_from_func(name) {
         if (bound === name)
             return key;
     const e = extcmdlist.find((x) => x.ef_txt === name);
-    return (e && e.key) ? String.fromCharCode(e.key) : '\0';
+    if (e && e.key)
+        return String.fromCharCode(e.key);
+    /* movement commands get their keys from Cmd.move[] in reset_commands() */
+    return MOVE_DEFAULT_KEYS[name] ?? '\0';
+}
+
+/* src/cmd.c move_funcs[][]: the movement command names by direction and
+   mode; the direction keys themselves come from the current bindings */
+const move_funcs = [
+    ['movewest', 'runwest', 'rushwest'],
+    ['movenorthwest', 'runnorthwest', 'rushnorthwest'],
+    ['movenorth', 'runnorth', 'rushnorth'],
+    ['movenortheast', 'runnortheast', 'rushnortheast'],
+    ['moveeast', 'runeast', 'rusheast'],
+    ['movesoutheast', 'runsoutheast', 'rushsoutheast'],
+    ['movesouth', 'runsouth', 'rushsouth'],
+    ['movesouthwest', 'runsouthwest', 'rushsouthwest'],
+    ['down', 'down', 'down'],
+    ['up', 'up', 'up'],
+];
+/* src/cmd.c reset_commands() binds Cmd.move[] ("hjklyubn", or the number
+   pad digits) and Cmd.rush/run to the movement commands; this port keeps
+   the default vi-key layout, in sdir order */
+const MOVE_DEFAULT_KEYS = { movewest: 'h', movenorthwest: 'y', movenorth: 'k',
+                            movenortheast: 'u', moveeast: 'l',
+                            movesoutheast: 'n', movesouth: 'j',
+                            movesouthwest: 'b' };
+
+// src/cmd.c:3029 cmd_from_dir(); the key bound to the movement command for
+// direction 'dir' in mode 'mode'
+export function cmd_from_dir(dir, mode) {
+    return cmd_from_func(move_funcs[dir][mode]);
+}
+
+// src/cmd.c:3869 movecmd(); returns True if the key is a movement command
+// within the plane of the map, after setting u.dx, u.dy, u.dz
+export function movecmd(sym, mode) {
+    let d = DIR_ERR;
+    let bound = game.rc_key_bindings?.[sym];
+
+    if (bound === undefined) {
+        const dk = KEY_TO_DIR[sym];
+        if (dk !== undefined)
+            bound = move_funcs[dk][MV_WALK];
+        else if (sym === '<')
+            bound = 'up';
+        else if (sym === '>')
+            bound = 'down';
+    }
+    if (bound) {
+        if (mode === MV_ANY) {
+            for (d = N_DIRS_Z - 1; d > DIR_ERR; d--)
+                if (bound === move_funcs[d][MV_WALK]
+                    || bound === move_funcs[d][MV_RUN]
+                    || bound === move_funcs[d][MV_RUSH])
+                    break;
+        } else {
+            for (d = N_DIRS_Z - 1; d > DIR_ERR; d--)
+                if (bound === move_funcs[d][mode])
+                    break;
+        }
+    }
+    if (d !== DIR_ERR) {
+        game.u.dx = xdir[d];
+        game.u.dy = ydir[d];
+        game.u.dz = zdir[d];
+        return !game.u.dz;
+    }
+    game.u.dz = 0;
+    return 0;
+}
+
+// src/cmd.c:3902 dxdy_moveok(); a diagonal move is impossible for some forms
+export function dxdy_moveok() {
+    const u = game.u;
+    if (u.dx && u.dy && NODIAG(u.umonnum))
+        u.dx = u.dy = 0;
+    return u.dx || u.dy;
 }
 
 // src/cmd.c accept_menu_prefix(), does the command take the 'm' prefix?

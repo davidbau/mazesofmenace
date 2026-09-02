@@ -246,7 +246,7 @@ async function gush(x, y, state) {
 // src/fountain.c:121 dogushforth(). do_clear_area supplies C's exact visible
 // coordinate order; process the collected coordinates serially for water
 // damage messages and draws.
-async function dogushforth(drinking) {
+export async function dogushforth(drinking) {
     const coords = [];
     do_clear_area(game.u.ux, game.u.uy, 7,
                   (x, y) => coords.push([x, y]), null);

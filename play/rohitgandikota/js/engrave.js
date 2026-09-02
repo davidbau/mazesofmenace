@@ -5,6 +5,7 @@
 // and wipeout_text(), which mklev.c calls when it decorates a room. Both are
 // heavy PRNG consumers and were previously a single invented rn2(48).
 
+import { ceiling } from './dungeon.js';
 import { game } from './gstate.js';
 import { is_ice } from './dbridge.js';
 import { rn1, rn2, rnd } from './rng.js';
@@ -537,4 +538,15 @@ export function engrave() {
     newsym(eng.pos.x, eng.pos.y);
     game.context.engraving = null;
     return 0;
+}
+
+// src/engrave.c:218 cant_reach_floor()
+export async function cant_reach_floor(x, y, up, check_pit, wand_engraving) {
+    await pline(`${
+        wand_engraving
+            ? 'The wand does nothing more, and the tip of the wand'
+            : 'You'} can't reach the ${
+        up  ? ceiling(x, y)
+            : (check_pit && can_reach_floor(false)) ? 'bottom of the pit'
+                                                    : surface(x, y)}.`);
 }
