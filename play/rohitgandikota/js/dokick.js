@@ -48,7 +48,7 @@ import { is_pool } from './mon.js';
 import { OBJ_AT } from './const.js';
 import { sobj_at, weight } from './invent.js';
 import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
-import { pline, canspotmon, more, map_invisible, unmap_invisible,
+import { pline, canseemon, canspotmon, more, map_invisible, unmap_invisible,
          glyph_is_invisible_at } from './display.js';
 import { Your, There } from './pline.js';
 import { m_at } from './mon.js';

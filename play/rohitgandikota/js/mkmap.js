@@ -13,6 +13,7 @@ import { COLNO, ROWNO, NO_ROOM, SHARED, SDOOR,
    declarations, which hoist, so the cycle resolves. */
 import { add_room, somexy, dig_corridor } from './mklev.js';
 import { wallify_map } from './sp_lev.js';
+import { impossible } from './pline.js';
 
 // src/mkmap.c:442 litstate_rnd()
 //
@@ -315,7 +316,7 @@ function finish_map(fg_typ, bg_typ, lit, walled, icedpools) {
 
 // src/mkmap.c:378 remove_rooms() — when a level processed by join_map is
 // overlaid by a MAP, rooms fully inside the region are removed.
-export function remove_rooms(lx, ly, hx, hy) {
+export async function remove_rooms(lx, ly, hx, hy) {
     for (let i = game.level.nroom - 1; i >= 0; --i) {
         const croom = game.level.rooms[i];
         if (croom.hx < lx || croom.lx >= hx
@@ -325,7 +326,7 @@ export function remove_rooms(lx, ly, hx, hy) {
         if (croom.lx < lx || croom.hx >= hx
             || croom.ly < ly || croom.hy >= hy) { /* partial overlap */
             if (!croom.irregular)
-                impossible('regular room in joined map');
+                await impossible('regular room in joined map');
         } else {
             /* total overlap, remove the room */
             remove_room(i);

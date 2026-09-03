@@ -166,7 +166,7 @@ import { d, rn1 } from './rng.js';
 import { ACURR, exercise, poisoned } from './attrib.js';
 import { ONAMES } from './objects_data.js';
 import { KILLED_BY_AN, A_STR } from './const.js';
-import { W_SADDLE, NO_TRAP_FLAGS, HEAD, ARM, W_ARMH, W_ARMS, W_ARMG,
+import { W_SADDLE, NO_TRAP_FLAGS, RECURSIVETRAP, HEAD, ARM, W_ARMH, W_ARMS, W_ARMG,
          W_ARMC, W_ARM, W_ARMU, W_WEP, W_SWAPWEP, MAX_ERODE,
          W_ARMOR, W_ACCESSORY, W_ART,
          ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE, ERODE_CRACK,
@@ -1304,6 +1304,8 @@ export async function dotrap(trap, trflags) {
         return await trapeffect_magic_trap(game.youmonst, trap, trflags);
     if (ttype === BEAR_TRAP)
         return await trapeffect_bear_trap(game.youmonst, trap, trflags);
+    if (ttype === LANDMINE)
+        return await trapeffect_landmine(game.youmonst, trap, trflags);
     if (ttype === SLP_GAS_TRAP)
         return await trapeffect_slp_gas_trap(game.youmonst, trap, trflags);
     if (ttype === RUST_TRAP)

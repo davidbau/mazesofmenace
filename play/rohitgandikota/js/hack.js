@@ -61,7 +61,7 @@ import { do_attack } from './uhitm.js';
 import { sensemon, is_safemon, mon_visible, pline, canspotmon } from './display.js';
 import { hides_under, noattacks, is_hider } from './mondata.js';
 import { onscary } from './monmove.js';
-import { PMNAMES, MONSYMS } from './monst_data.js';
+import { PMNAMES, MONSYMS, ATTKS } from './monst_data.js';
 import { rn2 } from './rng.js';
 import {
     IS_STWALL, IS_TREE, IS_OBSTRUCTED,
@@ -70,7 +70,7 @@ import {
     ROOMOFFSET, MAXNROFROOMS, OROOM, COURT, SWAMP, BEEHIVE, MORGUE,
     BARRACKS, ZOO, DELPHI, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE,
     SHOPBASE, NO_ROOM, SHARED, SHARED_PLUS, COLNO, ROWNO, CQ_CANNED,
-    VIBRATING_SQUARE, LAVAWALL, IS_WATERWALL, STONE, CORR, ICE, ROOM, IS_AIR,
+    VIBRATING_SQUARE, LAVAWALL, IS_WATERWALL, STONE, CORR, SCORR, ICE, ROOM, IS_AIR,
     THRONE, SINK, GRAVE, FOUNTAIN, ALTAR, D_ISOPEN, ACCESSIBLE, IS_SDOOR,
     M_AP_OBJECT, M_AP_FURNITURE, M_AP_TYPE, isok, u_at,
     IRONBARS, IS_DOOR, D_NODOOR, D_BROKEN, WT_SQUEEZABLE_INV,
@@ -278,8 +278,8 @@ export async function test_move(ux, uy, dx, dy, mode) {
             return false;
         } else if (tmpr.typ === IRONBARS) {
             if (mode === DO_MOVE
-                && (dmgtype(game.youmonst.data, AD_RUST)
-                    || dmgtype(game.youmonst.data, AD_CORR)
+                && (dmgtype(game.youmonst.data, ATTKS.AD_RUST)
+                    || dmgtype(game.youmonst.data, ATTKS.AD_CORR)
                     || metallivorous(game.youmonst.data))) {
                 note_unported_hack('test_move:chew_ironbars');
                 return false;
@@ -1250,13 +1250,13 @@ export async function unmul(msg_override) {
 // because the player has no reason to believe it is safe. C's own comment
 // notes this should use cause_known() if anything but boots ever grants it.
 const Known_wwalking = () =>
-    !!(game.uarmf && game.uarmf.otyp === ONAMES.WATER_WALKING_BOOTS
-       && objects[ONAMES.WATER_WALKING_BOOTS]?.oc_name_known
+    !!(game.u.uarmf && game.u.uarmf.otyp === ONAMES.WATER_WALKING_BOOTS
+       && game.objects[ONAMES.WATER_WALKING_BOOTS]?.oc_name_known
        && !game.u?.usteed);
 
 const Known_lwalking = () =>
     !!(Known_wwalking() && Fire_resistance()
-       && game.uarmf.oerodeproof && game.uarmf.rknown);
+       && game.u.uarmf.oerodeproof && game.u.uarmf.rknown);
 
 /* include/context.h:15 — the one-shot gameplay tips, a bitfield in
    svc.context.tips */

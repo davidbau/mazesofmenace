@@ -71,7 +71,7 @@ import {
 import { xname, the, The, makeplural, vtense, doname, an, singular, cxname, thesimpleoname, simpleonames, yname, shk_your, Tobjnam, gloves_simple_name } from './objnam.js';
 import { obj_resists } from './dogmove.js';
 import { acurr, A_CHA, A_STR, A_DEX, A_CON, change_luck, Fumbling } from './attrib.js';
-import { Monnam, mon_nam, x_monnam, y_monnam, Hallucination, a_monnam, Amonnam } from './do_name.js';
+import { Monnam, mon_nam, x_monnam, y_monnam, Hallucination, a_monnam, Amonnam, monverbself } from './do_name.js';
 import { monflee } from './monmove.js';
 import { nomul, confdir, losehp, maybe_half_phys, is_pool, is_lava, overexertion, in_rooms } from './hack.js';
 import { getpos, getpos_sethilite } from './getpos.js';
@@ -777,7 +777,10 @@ async function use_mirror(obj) {
         }
     } else if ((how_seen & SEENMON) === MONSEEN_INFRAVIS) {
         if (vis) {
-            await pline(`${Monnam(mtmp)} is too far away to see in the dark.`);
+            // C apply.c `:1124–1127` — "<mon> is too far away to see
+            // itself in the dark." (monverbself supplies the reflexive).
+            await pline(`${monverbself(mtmp, Monnam(mtmp), 'are',
+                'too far away to see')} in the dark.`);
         }
     } else if (mlet === 'S_VAMPIRE' || mlet === 'S_GHOST'
         || is_vampshifter(mtmp)) {
@@ -803,7 +806,9 @@ async function use_mirror(obj) {
     } else if (monable && (mlet === 'S_NYMPH' || mndx === PM_AMOROUS_DEMON)) {
         // steal + rloc deferred — pline only
         if (vis) {
-            await pline(`${Monnam(mtmp)} admires itself in your ${mirror}.`);
+            // C apply.c `:1156–1159` — "<mon> admires self in your mirror"
+            await pline(`${monverbself(mtmp, Monnam(mtmp), 'admire', null)
+                } in your ${mirror}.`);
         } else {
             await pline(`It steals your ${mirror}!`);
         }

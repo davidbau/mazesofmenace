@@ -1767,7 +1767,7 @@ async function steedintrap_pit(trap) {
  * C ref: trap.c trapeffect_pit — hero + monster branches.
  * Hero: Lev/Fly skip, clinger, fall/plunge/sit verbs, spikes, set_utrap
  * rn1(6,2), losehp, SPIKED poisoned(), selftouch, exercise STR/DEX.
- * Named omissions: Punished ballfall/unplacebc/placebc; poly locomotion.
+ * Named omissions: poly locomotion.
  */
 async function trapeffect_pit(mtmp, trap, trflags) {
     const ttype = trap.ttyp;
@@ -1904,9 +1904,10 @@ async function trapeffect_pit(mtmp, trap, trflags) {
                 );
                 if (await finish_hero_losehp()) return Trap_Effect_Finished;
             }
-            // C trap.c `:1955–1958` — Punished && !carried(uball):
-            // lift the ball&chain, drop the ball on the hero, re-place.
-            if (game.u?.Punished && !carried(game.u?.uball)) {
+            // C trap.c `:1955–1958` — Punished ≡ (uball != 0) (youprop.h:77)
+            // && !carried(uball): unplacebc, ballfall, placebc
+            // (D-1778 / D-1786). Never sticky u.Punished.
+            if (game.u?.uball && !carried(game.u?.uball)) {
                 unplacebc();
                 await ballfall();
                 placebc();

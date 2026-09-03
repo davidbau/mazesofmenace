@@ -38,7 +38,7 @@ import { pline, newsym, canspotmon, describe_level, impossible } from './display
 import { getdir } from './lock.js';
 import { m_at } from './mon.js';
 import { isok } from './hacklib.js';
-import { Monnam, mon_nam, pmname, y_monnam, Hallucination } from './do_name.js';
+import { Monnam, mon_nam, monverbself, pmname, y_monnam, Hallucination } from './do_name.js';
 import { losehp, maybe_half_phys, finish_maybe_wail } from './hack.js';
 import { set_wounded_legs, heal_legs } from './trap.js';
 import { finish_meating } from './dogmove.js';
@@ -51,7 +51,7 @@ import { acurr, exercise, Fumbling } from './attrib.js';
 import { P_SKILL } from './weapon.js';
 import { welded } from './wield.js';
 import { level_mon_at } from './worm.js';
-import { mhe, pronoun_gender, PRONOUN_HALLU } from './mondata.js';
+import { mhe } from './mondata.js';
 
 const SADDLE = objectNames.indexOf('SADDLE');
 const BOULDER = objectNames.indexOf('BOULDER');
@@ -833,8 +833,9 @@ function helpless_steed(mtmp) {
 
 /**
  * C ref: steed.c kick_steed `:402–449` — whip/kick riding (D-1362).
- * Named omit: full `do_name.c` `monverbself` vtense/makeplural
- * (Hallu they/themselves uses a thin stand-in).
+ * The rouse pline goes through `do_name.c` `monverbself` (D-1790), so
+ * a hallucinated steed can be roused as "Them rouse themselves!" —
+ * that is what C's genders[3] arm writes.
  */
 export async function kick_steed() {
     const u = game.u || {};
@@ -852,18 +853,10 @@ export async function kick_steed() {
                 steed.mcanmove = 1;
             }
             if (helpless_steed(steed)) await pline(`${He} stirs.`);
-            else {
-                const self = ['himself', 'herself', 'itself', 'themselves'][
-                    pronoun_gender(steed, PRONOUN_HALLU)
-                ];
-                const verb = self === 'themselves' ? 'rouse' : 'rouses';
-                let subj = He;
-                if (self === 'themselves') {
-                    subj = He.charAt(0) === He.charAt(0).toUpperCase()
-                        ? 'They' : 'they';
-                }
-                await pline(`${subj} ${verb} ${self}!`);
-            }
+            /* C `:427–429` — mhe() already drew its own rn2(4), and
+               monverbself draws a second one, so hallucination really can
+               yield "He rouses herself". */
+            else await pline(`${monverbself(steed, He, 'rouse', null)}!`);
         } else {
             await pline(`${He} does not respond.`);
         }

@@ -139,6 +139,8 @@ import {
     IS_THRONE,
     isok,
     SVALL,
+    VISITED,
+    In_V_tower,
 } from './const.js';
 import { builds_up } from './hacklib.js';
 import { align_gname } from './roles.js';
@@ -254,11 +256,31 @@ export function insert_branch(new_branch, extract_first) {
     g.branches.splice(insertAt, 0, new_branch);
 }
 
+/**
+ * C ref: dungeon.c find_branch `:310–337`. With a proto_dungeon this is
+ * the build-time lookup (C panics when it misses). Without one — the
+ * `lev_by_name` path — it matches a live branch by its *end2* dungeon
+ * name, case-insensitively and also with a leading "The " ignored, and
+ * packs both ledger numbers into one int: `(end1 << 8) | end2`, or -1.
+ */
 function find_branch(name, pd) {
-    for (let i = 0; i < pd.n_brs; i++) {
-        if (pd.tmpbranch[i].name === name) return i;
+    if (pd) {
+        for (let i = 0; i < pd.n_brs; i++) {
+            if (pd.tmpbranch[i].name === name) return i;
+        }
+        throw new Error(`find_branch: can't find ${name}`);
     }
-    throw new Error(`find_branch: can't find ${name}`);
+    /* support for level tport by name */
+    const want = String(name ?? '').toLowerCase();
+    for (const br of game.branches || []) {
+        const dnam = String(game.dungeons?.[br?.end2?.dnum]?.dname ?? '');
+        const low = dnam.toLowerCase();
+        if (low === want
+            || (low.slice(0, 4) === 'the ' && low.slice(4) === want)) {
+            return ((ledger_no(br.end1) << 8) | ledger_no(br.end2)) | 0;
+        }
+    }
+    return -1;
 }
 
 function parent_dnum(s, pd) {
@@ -714,6 +736,121 @@ export function ledger_to_dlev(ledgerno) {
     return (want - (game.dungeons?.[dnum]?.ledger_start | 0)) | 0;
 }
 
+/** C ref: dungeon.c find_mapseen_by_str `:2651–2661` — the player's own
+ *  `#annotate` label for a level, matched case-insensitively. */
+function find_mapseen_by_str(str) {
+    const want = String(str ?? '').toLowerCase();
+    return (game.mapseenchn || []).find(
+        (m) => m?.custom && String(m.custom).toLowerCase() === want,
+    ) || null;
+}
+
+/**
+ * C ref: dungeon.c dlev_in_current_branch `:2087–2092` — same dnum, or
+ * the valley/medusa pair, which C deliberately treats as one branch so
+ * that Gehennom and the dungeon below Medusa reach each other.
+ */
+function dlev_in_current_branch(dlev) {
+    const uz = game.u?.uz || {};
+    const un = uz.dnum | 0;
+    const dn = dlev?.dnum | 0;
+    if (dn === un) return true;
+    const valley = game.valley_level;
+    const medusa = game.medusa_level;
+    if (!valley || !medusa) return false;
+    return (un === (valley.dnum | 0) && dn === (medusa.dnum | 0))
+        || (un === (medusa.dnum | 0) && dn === (valley.dnum | 0));
+}
+
+/** C wizard — debug mode; JS keeps it on game.flags (D-0176). */
+function wizard_mode() {
+    return !!(game.flags?.debug || game.flags?.wizard);
+}
+
+/** C ref: dungeon.c lev_by_name `:2096–2170` — VISITED gate helper. */
+function ledger_visited(idx) {
+    return (((game.level_info?.[idx]?.flags | 0) & VISITED) === VISITED);
+}
+
+/**
+ * C ref: dungeon.c lev_by_name `:2096–2170` — resolve a level *name*
+ * typed at the level-teleport prompt to a depth, or 0 for "no idea".
+ *
+ * Custom `#annotate` labels win outright. Otherwise C normalises the
+ * input — a leading "The ", a trailing " level", and two aliases
+ * ("gehennom"/"hell", which would otherwise match the Gehennom *branch*
+ * and land on the castle, and "delphi" because the Oracle says
+ * "welcome to Delphi") — then tries `find_level`, and only if that
+ * misses falls back to branch names, including "<branch> to Xyzzy".
+ *
+ * The gates are the interesting part: outside wizard mode the level (or
+ * *both* ends of a branch) must have been VISITED, and the destination
+ * must be in the current branch — you cannot name your way out of the
+ * dungeon you are in.
+ * @returns {number} depth, or 0 when the name resolves to nothing usable
+ */
+export function lev_by_name(nam0) {
+    let lev = 0;
+    let slev = null;
+    let dlev = null;
+    let nam = String(nam0 ?? '');
+
+    /* look at the player's custom level annotations first */
+    const mseen = find_mapseen_by_str(nam);
+    if (mseen) {
+        dlev = mseen.lev;
+    } else {
+        /* allow strings like "the oracle level" to find "oracle" */
+        if (nam.slice(0, 4).toLowerCase() === 'the ') nam = nam.slice(4);
+        // C: strstri(nam, " level") only when it sits at eos - 6
+        if (nam.length >= 6 && nam.slice(-6).toLowerCase() === ' level') {
+            nam = nam.slice(0, -6);
+        }
+        const low = nam.toLowerCase();
+        if (low === 'gehennom' || low === 'hell') {
+            /* hell is the old name and wouldn't match; gehennom would
+               match its branch, yielding the castle instead of valley */
+            nam = In_V_tower(game.u?.uz) ? " to Vlad's tower" : 'valley';
+        } else if (low === 'delphi') {
+            nam = 'oracle';
+        }
+        slev = find_level(nam);
+        if (slev) dlev = slev.dlevel;
+    }
+
+    if (mseen || slev) {
+        const idx = ledger_no(dlev);
+        if (dlev_in_current_branch(dlev)
+            && (wizard_mode() || ledger_visited(idx))) {
+            lev = depth_of(dlev);
+        }
+    } else { /* not a specific level; try branch names */
+        let idx = find_branch(nam, null);
+        /* "<branch> to Xyzzy" */
+        if (idx < 0) {
+            const at = nam.toLowerCase().indexOf(' to ');
+            if (at >= 0) idx = find_branch(nam.slice(at + 4), null);
+        }
+        if (idx >= 0) {
+            const idxtoo = (idx >> 8) & 0x00FF;
+            idx &= 0x00FF;
+            /* wizard, or else _both_ sides of the branch seen */
+            if (wizard_mode()
+                || (ledger_visited(idx) && ledger_visited(idxtoo))) {
+                if (ledger_to_dnum(idxtoo) === (game.u?.uz?.dnum | 0)) {
+                    idx = idxtoo;
+                }
+                const d = {
+                    dnum: ledger_to_dnum(idx),
+                    dlevel: ledger_to_dlev(idx),
+                };
+                if (dlev_in_current_branch(d)) lev = depth_of(d);
+            }
+        }
+    }
+    return lev;
+}
+
 export function find_level(name) {
     const want = name.toLowerCase();
     for (const curr of game.sp_levchn || []) {
@@ -972,8 +1109,12 @@ function OF_INTEREST(feat) {
         || feat.ngrave || feat.ntree || feat.nshop || feat.ntemple);
 }
 
-/** C ref: dungeon.c on_level — same dnum/dlevel. */
-function on_level(a, b) {
+/**
+ * C ref: dungeon.c on_level `:1438–1443` — same dnum/dlevel.
+ * Exported so `dog.c` `keep_mon_accessible` uses the real one instead
+ * of a fourteenth copy; the other 13 local clones are their own row.
+ */
+export function on_level(a, b) {
     return (a?.dnum | 0) === (b?.dnum | 0)
         && (a?.dlevel | 0) === (b?.dlevel | 0);
 }

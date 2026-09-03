@@ -57,7 +57,10 @@ import { nhgetch } from './input.js';
 import { ATR_INVERSE } from './terminal.js';
 import { more_experienced } from './exper.js';
 import { getlin, yn_function } from './getline.js';
-import { get_level, find_hell, In_W_tower, On_W_tower_level, In_tutorial } from './dungeon.js';
+import {
+    get_level, find_hell, In_W_tower, On_W_tower_level, In_tutorial,
+    lev_by_name,
+} from './dungeon.js';
 import { depth, distmin } from './hacklib.js';
 import { addinv } from './u_init.js';
 import { mon_nam, Monnam, x_monnam, noit_mon_nam, Hallucination } from './do_name.js';
@@ -2190,8 +2193,9 @@ export function random_teleport_level() {
  * Confusion/`*` / involuntary → random_teleport_level (D-0575);
  * past-main-dungeon → find_hell (D-0904); heaven `u_left_shop` /
  * Cloud 9 / fly-or-plummet / done(DIED) / escape dlevel 0 (D-1764);
- * buried_ball_to_punishment before next_to_u. Named omissions:
- * lev_by_name; bymenu=FALSE print_dungeon; Quest/mines/sanctum
+ * buried_ball_to_punishment before next_to_u. **lev_by_name D-1780**
+ * (`dungeon.c:2096–2170` via `js/dungeon.js`). Named omissions:
+ * bymenu=FALSE print_dungeon; Quest/mines/sanctum
  * deepest clamp + invoked gate; Nowhere suicide yn; debug_fuzzer.
  */
 export async function level_tele() {
@@ -2271,12 +2275,13 @@ export async function level_tele() {
                 // loop → print_dungeon on next iteration
                 continue;
             }
-            // lev_by_name deferred → atoi only
-            const trimmed = String(buf).trim();
-            if (/^-?\d+$/.test(trimmed)) {
-                newlev = parseInt(trimmed, 10) | 0;
-            } else {
-                newlev = 0;
+            // C `:1248–1249` — else if ((newlev = lev_by_name(buf)) == 0)
+            //                       newlev = atoi(buf);
+            newlev = lev_by_name(buf) | 0;
+            if (newlev === 0) {
+                // C atoi: leading digits (or -digits), 0 otherwise
+                const m = /^\s*(-?\d+)/.exec(String(buf));
+                newlev = m ? (parseInt(m[1], 10) | 0) : 0;
             }
         } while (
             !use_random

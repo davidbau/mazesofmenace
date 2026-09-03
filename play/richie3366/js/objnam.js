@@ -29,7 +29,8 @@ import {
     pmnames, MALE, FEMALE, NEUTRAL, NON_PM, NUMMONS, LOW_PM, NUM_MGENDERS,
 } from './monsters.js';
 import { BOGUSMON_BUF } from './generated/bogusmon_data.js';
-import { upstart } from './hacklib.js';
+import { upstart, highc } from './hacklib.js';
+import { genders } from './roles.js';
 import {
     PM_SAMURAI, PM_CLERIC, PM_LICHEN, PM_ACID_BLOB, PM_LONG_WORM_TAIL,
 } from './generated/monsters_data.js';
@@ -1498,14 +1499,33 @@ export function makesingular(oldstr) {
 }
 
 /**
- * C ref: objnam.c makeplural — irregular one_off + singplur_compound + ya.
- * Named omissions: pronoun genders; already_plural ae/eaux; man→men;
+ * C ref: objnam.c makeplural — pronouns, then irregular one_off +
+ * singplur_compound + ya.
+ * Named omissions: already_plural ae/eaux; man→men;
  * as_is collective; singplur_lookup mongoose/slice edges;
  * full case-preserve polish beyond matched-suffix first letter.
  */
 export function makeplural(s) {
     if (s == null || s === '') return 's';
     while (s.startsWith(' ')) s = s.slice(1);
+    /* C `:2853–2869` — makeplural() is used on monsters as well as
+       objects, and monsters get referred to by pronoun, so check those
+       first. "her" (genders[1].him and .his) and "it" (genders[2].he and
+       .him) are ambiguous; C takes the first match in he/him/his order
+       and lets the caller fix things up, which is what monverbself does. */
+    const lo = s.toLowerCase();
+    for (let i = 0; i <= 2; i++) {
+        let str = '';
+        if (lo === genders[i].he) str = genders[3].he;       /* "they" */
+        else if (lo === genders[i].him) str = genders[3].him; /* "them" */
+        else if (lo === genders[i].his) str = genders[3].his; /* "their" */
+        if (str) {
+            if (s.charAt(0) === highc(s.charAt(0))) {
+                str = highc(str.charAt(0)) + str.slice(1);
+            }
+            return str;
+        }
+    }
     // C: skip "pair of " → keep as-is (objects use collective "pair")
     if (/^pair of /i.test(s)) return s;
     // C: singplur_compound — pluralize head only ("scrolls labeled KIRJE")

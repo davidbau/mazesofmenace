@@ -38,8 +38,8 @@ import {
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     HI_GOLD, HI_METAL, HI_ZAP, HI_WOOD,
     WEB, TRAPNUM, BEAR_TRAP, NO_TRAP, is_pit,
-    trap_to_defsym, MAXTCHARS, explodecolors, NUM_ZAP, MAXEXPCHARS,
-    S_stone, S_vwall, S_trwall, S_ndoor, S_brdnladder, S_grave, S_altar,
+    trap_to_defsym, defsym_to_trap, MAXTCHARS, explodecolors, NUM_ZAP, MAXEXPCHARS,
+    S_stone, S_vwall, S_trwall, S_ndoor, S_brdnladder, S_grave, S_altar, S_room,
     S_arrow_trap, S_web, S_vibrating_square,
     S_vbeam, S_hbeam, S_lslant, S_rslant,
     S_digbeam, S_flashbeam, S_boomleft, S_boomright,
@@ -653,6 +653,32 @@ export function glyph_is_trap(glyph) {
     const g = glyph_id(glyph);
     return g != null && g >= GLYPH_TRAP_OFF && g < GLYPH_TRAP_OFF + MAXTCHARS;
 }
+
+/**
+ * C display.h glyph_to_trap `:671–674` — peel GLYPH_TRAP_OFF through
+ * defsym_to_trap. A non-trap glyph is NO_GLYPH, not a ttyp (lookat
+ * never calls this unless glyph_is_trap was true).
+ */
+export function glyph_to_trap(glyph) {
+    if (!glyph_is_trap(glyph)) return NO_GLYPH;
+    const g = glyph_id(glyph);
+    return defsym_to_trap((g - GLYPH_TRAP_OFF) + S_arrow_trap);
+}
+
+/**
+ * C display.c glyph_at `:2477–2483` — gg.gbuf[y][x].glyphinfo.glyph.
+ * JS gbuf is loc.disp_glyph (D-1767). OOB returns cmap S_room (C XXX).
+ */
+export function glyph_at(x, y) {
+    const xx = x | 0;
+    const yy = y | 0;
+    if (xx < 0 || yy < 0 || xx >= COLNO || yy >= ROWNO) {
+        return cmap_to_glyph(S_room); /* XXX */
+    }
+    const loc = game.level?.at?.(xx, yy);
+    return typeof loc?.disp_glyph === 'number' ? (loc.disp_glyph | 0) : NO_GLYPH;
+}
+
 export function glyph_is_warning(glyph) {
     const g = glyph_id(glyph);
     return g != null && g >= GLYPH_WARNING_OFF && g < GLYPH_WARNING_OFF + WARNCOUNT;
@@ -1588,7 +1614,8 @@ const PHYSICALLY_SEEN = 1;
  * (what_mon tail); else mon_to_glyph / worm_tail what_mon. tty MG_PET
  * vs MG_DETECT via glyph_tty_attr. Integer GLYPH_*_OFF + male/fem
  * banks (D-1765; same mlet on tty). detect.c map_monst is D-1765.
- * Named: ridden_mon_to_glyph display_self/usteed wire.
+ * C has no steed arm here — a ridden steed is painted by
+ * `display_self` / `maybe_display_usteed` instead (D-1784).
  */
 function display_monster(x, y, mon, sightflags, worm_tail) {
     const ap = (mon.m_ap_type | 0) & M_AP_TYPMASK;
@@ -1716,9 +1743,21 @@ function hero_glyph() {
  * NOTHING → hero_glyph; FURNITURE → cmap_to_glyph(mappearance);
  * OBJECT → objnum_to_glyph(mappearance); else monnum_to_glyph(..., Ugender).
  */
+/**
+ * C ref: display.h `maybe_display_usteed` `:246–249` — while riding a
+ * visible steed, the hero's square shows the **steed**, and C picks it
+ * with `ridden_mon_to_glyph`, not `mon_to_glyph`: the id lands in the
+ * GLYPH_RIDDEN_* bank rather than GLYPH_MON_*. That matters downstream
+ * because `map_glyphinfo` `:2986–2997` reads the bank to set
+ * `MG_RIDDEN | MG_FEMALE`/`MG_MALE` from the **steed's** gender, and
+ * `glyph_to_mon` / `glyph_is_ridden_monster` key off it too.
+ * Named omission: `map_glyphinfo`'s `has_rogue_color` arm, which makes
+ * a ridden glyph NO_COLOR on the Rogue level — part of the wider
+ * ROGUESET colour deferral, not this row.
+ */
 function hero_display_glyph() {
     const steed = game.u?.usteed;
-    if (steed && mon_visible(steed)) return mon_glyph(steed);
+    if (steed && mon_visible(steed)) return ridden_mon_to_glyph(steed);
     const you = game.youmonst;
     const ap = (you?.m_ap_type | 0) & M_AP_TYPMASK;
     if (ap === M_AP_NOTHING) return hero_glyph();
@@ -1735,13 +1774,19 @@ function hero_display_glyph() {
 
 /**
  * C ref: display.h display_self — show_glyph(u.ux, u.uy, …).
+ * The tty attribute follows the glyph C actually emits: on a ridden
+ * steed `map_glyphinfo` sets MG_FEMALE from the steed, so the
+ * wizmgender inverse is the steed's gender, not the hero's.
  * Named: find_trap cls wait; muse.c display_self.
  */
 export function display_self() {
     const u = game.u;
     if (!u) return;
     const hg = hero_display_glyph();
-    show_glyph_cell(u.ux | 0, u.uy | 0, hg.ch, hg.color, !!hg.dec, hero_map_attr(),
+    const attr = (hg.kind === 'ridden')
+        ? wizmgender_inverse(!!u.usteed?.female)
+        : hero_map_attr();
+    show_glyph_cell(u.ux | 0, u.uy | 0, hg.ch, hg.color, !!hg.dec, attr,
         hg.glyph);
 }
 

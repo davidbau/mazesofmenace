@@ -22,7 +22,7 @@ import { game } from './gstate.js';
 import { vegetarian, name_to_monplus, type_is_pname, verysmall,
          is_neuter, is_human } from './mondata.js';
 import { MFLAGS, MSOUND, MONSYMS } from './monst_data.js';
-import { pmname, oname, y_monnam } from './do_name.js';
+import { pmname, oname, y_monnam, noit_mon_nam } from './do_name.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { mksobj, mkobj, rnd_class, curse, set_corpsenm, zombie_form,
          set_tin_variety,
@@ -33,7 +33,7 @@ import { is_weptool, is_rustprone, is_corrodeable, is_flammable,
          is_crackable, is_rottable } from './mkobj.js';
 import { is_damageable } from './trap.js';
 import { bimanual } from './obj.js';
-import { W_ARMOR, W_TOOL, W_RINGR, W_RINGL, W_AMUL, W_QUIVER, W_WEP,
+import { W_ARMOR, W_TOOL, W_SADDLE, W_RINGR, W_RINGL, W_AMUL, W_QUIVER, W_WEP,
          W_BALL, W_CHAIN, plur, P_BOW, W_SWAPWEP,
          MALE, FEMALE, NEUTER, NEUTRAL, CORPSTAT_MALE, CORPSTAT_FEMALE,
          CORPSTAT_RANDOM, CORPSTAT_NEUTER, CORPSTAT_HISTORIC, NON_PM, LOW_PM,
@@ -42,6 +42,7 @@ import { W_ARMOR, W_TOOL, W_RINGR, W_RINGL, W_AMUL, W_QUIVER, W_WEP,
          HAND, ROOMOFFSET, NO_TRAP, TRAPNUM, ROCKTRAP, MAGIC_PORTAL,
          BURN_OBJECT,
          is_hole, DOOR, SDOOR, IRONBARS, HWALL, VWALL, IS_WALL,
+         W_NONDIGGABLE, W_NONPASSWALL,
          D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED,
          D_TRAPPED, ALTAR, Align2amask, A_NONE, A_CHAOTIC, A_NEUTRAL,
          A_LAWFUL, SINK, S_LPUDDING, S_LDWASHER, S_LRING, POOL, MOAT, WATER,
@@ -71,6 +72,7 @@ import { body_part } from './polyself.js';
 import { pline } from './display.js';
 import { tty_yn_function } from './tty/topl.js';
 import { Blind, Flying, Glib, Levitation } from './youprop.js';
+import { DEADMONSTER } from './monst.js';
 
 const {
     COIN_CLASS, POTION_CLASS, SCROLL_CLASS, WAND_CLASS, SPBOOK_CLASS,
@@ -1203,9 +1205,24 @@ export function doname(obj) {
         if (known) prefix += `${obj.spe >= 0 ? '+' : ''}${obj.spe} `;
         break;
     case TOOL_CLASS:
-        /* src/objnam.c:1486 — a worn tool (blindfold, lenses, towel) */
-        if (obj.owornmask & W_TOOL)
+        /* src/objnam.c:1433 -- a worn tool (blindfold, lenses, towel) or
+           saddle stops here rather than also receiving a tool-state suffix. */
+        if (obj.owornmask & (W_TOOL | W_SADDLE)) {
             bp += ' (being worn)';
+            break;
+        }
+        if (obj.otyp === ONAMES.LEASH && obj.leashmon) {
+            const mlsh = (game.level?.monsters || [])
+                .find(candidate => candidate.m_id === obj.leashmon);
+            if (mlsh && !DEADMONSTER(mlsh))
+                bp += ` (attached to ${noit_mon_nam(mlsh)})`;
+            else {
+                note_unported_objnam(mlsh ? 'doname:dead-leashed-monster'
+                                          : 'doname:missing-leashed-monster');
+                obj.leashmon = 0;
+            }
+            break;
+        }
         if (obj.otyp === ONAMES.CANDELABRUM_OF_INVOCATION) {
             const suffix = `${plur(obj.spe)}${obj.lamplit ? ', lit' : ' attached'}`;
             bp += ` (${obj.spe} of 7 candle${suffix})`;
@@ -2663,7 +2680,18 @@ async function wiztrapwish(d) {
     return null;
 }
 
-// src/objnam.c:3554 wizterrainwish(), sink, altar, wall, and regular-door arms.
+// src/objnam.c:3539 set_wallprop_from_str()
+function set_wallprop_from_str(bp) {
+    let wall_prop = 0;
+    if (bp.includes('undiggable ') || bp.includes('nondiggable '))
+        wall_prop |= W_NONDIGGABLE;
+    if (bp.includes('unphaseable ') || bp.includes('nonpasswall '))
+        wall_prop |= W_NONPASSWALL;
+    if (wall_prop)
+        game.level.at(game.u.ux, game.u.uy).wall_info |= wall_prop;
+}
+
+// src/objnam.c:3554 wizterrainwish(), supported terrain arms.
 async function wizterrainwish(d) {
     const x = game.u.ux, y = game.u.uy;
     const lev = game.level?.at(x, y);
@@ -2746,6 +2774,11 @@ async function wizterrainwish(d) {
         lev.typ = ALTAR;
         lev.altarmask = Align2amask(alignment);
         await pline(`${An(label)} altar.`);
+    } else if (wanted.endsWith('bars')) {
+        lev.typ = IRONBARS;
+        lev.flags = 0;
+        set_wallprop_from_str(d.bp);
+        await pline('Iron bars.');
     } else if (wanted === 'wall') {
         const north = game.level.at(x, y - 1);
         const south = game.level.at(x, y + 1);

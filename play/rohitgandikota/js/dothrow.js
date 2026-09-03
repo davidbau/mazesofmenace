@@ -245,6 +245,12 @@ export async function throw_obj(obj, shotlimit) {
     if (!await getdir(null))
         return ECMD_OK; /* ECMD_CANCEL — no time passes */
 
+    /* src/dothrow.c:127-131: direction selection precedes canletgo(), so a
+       refused worn item still consumes the direction key but no game turn. */
+    const { canletgo_with_feedback } = await import('./do.js');
+    if (!await canletgo_with_feedback(obj, 'throw'))
+        return ECMD_OK;
+
     if (obj.otyp === ONAMES.BOULDER && !throws_rocks(game.mons?.[u.umonnum])) {
         await pline("It's too heavy.");
         return ECMD_TIME;

@@ -370,25 +370,26 @@ export function lspo_region(dx1, dy1, rtype, irregular, needfill, contents,
 }
 
 // src/sp_lev.c add_doors_to_room()
-function add_doors_to_room(croom) {
+export function add_doors_to_room(croom) {
     for (let x = croom.lx - 1; x <= croom.hx + 1; x++)
         for (let y = croom.ly - 1; y <= croom.hy + 1; y++) {
             const loc = game.level.at(x, y);
             if (loc && (IS_DOOR(loc.typ) || loc.typ === SDOOR))
                 maybe_add_door(x, y, croom);
         }
+    for (let i = 0; i < (croom.nsubrooms || 0); i++)
+        add_doors_to_room(croom.sbrooms[i]);
 }
 
 // src/sp_lev.c maybe_add_door() — record a door already stamped by the map.
 function maybe_add_door(x, y, croom) {
     const loc = game.level.at(x, y);
     if (!loc) return;
-    if (croom.irregular) {
-        const rmno = croom.roomnoidx + ROOMOFFSET;
-        if (loc.edge && (loc.roomno === rmno || loc.roomno === 1 /*SHARED*/))
-            add_door_fn(x, y, croom);
-    } else if (x === croom.lx - 1 || x === croom.hx + 1
-               || y === croom.ly - 1 || y === croom.hy + 1) {
+    const rmno = (croom.roomnoidx ?? -ROOMOFFSET) + ROOMOFFSET;
+    if (croom.hx >= 0
+        && ((!croom.irregular && inside_room(croom, x, y))
+            || loc.roomno === rmno
+            || shared_with_room(x, y, croom, rmno))) {
         add_door_fn(x, y, croom);
     }
 }
@@ -2238,6 +2239,7 @@ export function lspo_room(opts, create_room_fn, topologize_fn) {
         opts.contents(mkroom_table(aroom));
         spo_endroom();
     }
+    add_doors_to_room(aroom);
     return aroom;
 }
 
@@ -2611,20 +2613,8 @@ function shared_with_room(x, y, droom, rmno) {
     return false;
 }
 
-// src/sp_lev.c:1111 maybe_add_door() — full port used by
-// link_doors_rooms(); the :326 variant above predates it and stays for the
-// map-scan callers until a level exercises both.
-function maybe_add_door_full(x, y, droom, rmno) {
-    if (droom.hx >= 0
-        && ((!droom.irregular && inside_room(droom, x, y))
-            || game.level.at(x, y)?.roomno === rmno
-            || shared_with_room(x, y, droom, rmno)))
-        add_door_fn(x, y, droom);
-}
-
 // src/sp_lev.c:1122 link_doors_rooms()
 function link_doors_rooms() {
-    const ROOMOFFSET_L = 3; /* include/mkroom.h ROOMOFFSET */
     for (let y = 0; y < ROWNO; y++)
         for (let x = 0; x < COLNO; x++) {
             const t = game.level.at(x, y)?.typ;
@@ -2632,10 +2622,9 @@ function link_doors_rooms() {
                 set_door_orientation(x, y);
                 for (let i = 0; i < game.level.nroom; i++) {
                     const room = game.level.rooms[i];
-                    maybe_add_door_full(x, y, room, i + ROOMOFFSET_L);
+                    maybe_add_door(x, y, room);
                     for (let m = 0; m < (room.nsubrooms | 0); m++)
-                        maybe_add_door_full(x, y, room.sbrooms[m],
-                                            room.sbrooms[m].roomnoidx ?? -99);
+                        maybe_add_door(x, y, room.sbrooms[m]);
                 }
             }
         }

@@ -42,7 +42,8 @@ import { hides_under, touch_petrifies, poly_when_stoned } from './mondata.js';
 import { worn } from './do_wear.js';
 import { empty_handed } from './wield.js';
 import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU,
-         W_RINGL, W_RINGR, W_AMUL, W_ART } from './const.js';
+         W_RINGL, W_RINGR, W_AMUL, W_ART, W_TOOL, W_SADDLE }
+    from './const.js';
 import { Blind as heroBlind, Hallucination,
          Stone_resistance } from './youprop.js';
 import { doname, an, corpse_xname, makeplural, obj_typename, CXN_PFX_THE,
@@ -2045,14 +2046,23 @@ export async function dopramulet() {
     return ECMD_OK;
 }
 
+// src/invent.c:4696 tool_being_used(), the wider predicate behind '('.
+function tool_being_used(obj) {
+    if (obj.owornmask & (W_TOOL | W_SADDLE))
+        return true;
+    if (obj.oclass !== OCLASSES.TOOL_CLASS)
+        return false;
+    return obj === game.u.uwep || !!obj.lamplit
+        || (obj.otyp === ONAMES.LEASH && !!obj.leashmon);
+}
+
 // src/invent.c:4715 doprtool() — the '(' command.
 export async function doprtool() {
-    const ct = (game.invent || []).filter(o => o.owornmask
-                                               || o.lamplit).length;
-    if (!ct)
+    const tools = (game.invent || []).filter(tool_being_used);
+    if (!tools.length)
         await You('are not using any tools.');
     else
-        note_unported_invent('doprtool:dispinv_with_action');
+        return await dispinv_with_action(tools);
     return ECMD_OK;
 }
 

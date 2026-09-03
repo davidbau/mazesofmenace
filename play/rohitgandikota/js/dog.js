@@ -16,7 +16,7 @@ import { relmon } from './mon.js';
 import { m_unleash } from './apply.js';
 import { count_wsegs, wormgone } from './worm.js';
 import { picked_container, set_residency } from './shk.js';
-import { Has_contents, MAX_NUM_WORMS } from './const.js';
+import { Has_contents, MAX_NUM_WORMS, W_ARMS } from './const.js';
 import { game } from './gstate.js';
 import { which_armor } from './worn.js';
 import { DEADMONSTER, is_vampshifter, MON_WEP } from './monst.js';

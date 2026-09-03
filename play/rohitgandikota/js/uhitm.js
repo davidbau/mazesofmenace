@@ -1190,7 +1190,7 @@ export async function hmonas(mon) {
                       || DEADMONSTER(mon)))
             continue;
 
-        const mattk = attacks[i];
+        let mattk = attacks[i];
         const aatyp = mattk[0];
         let weapon = null;
         let dhit = 0;
@@ -1330,33 +1330,30 @@ export async function hmonas(mon) {
                 } else {
                     await Your(`${verb} passes harmlessly through ${mon_nam(mon)}.`);
                 }
-                break;
+            } else if (!(await failed_grab(game.youmonst, mon, mattk))) {
+                /* can't grab unsolid creatures (checked after shade handling);
+                   otherwise, use the hug attack against an ordinary foe */
+                if (mon === game.u.ustuck) {
+                    await pline(`${Monnam(mon)} is being ${byhand ? 'throttled' : 'crushed'}${
+                          /* extra feedback for non-breather being choked */
+                          unconcerned ? " but doesn't seem concerned" : ''}.`);
+                    if (silverhit.v && game.flags?.verbose !== false)
+                        await silver_sears(game.youmonst, mon, silverhit.v);
+                    sum[i] = await damageum(mon, mattk, specialdmg);
+                } else if (i >= 2 && (sum[i - 1] > M_ATTK_MISS)
+                           && (sum[i - 2] > M_ATTK_MISS)) {
+                    /* in case we're hugging a new target while already
+                       holding something else; yields feedback
+                       "<u.ustuck> is no longer in your clutches" */
+                    if (game.u.ustuck && game.u.ustuck !== mon)
+                        await uunstick();
+                    await You(`grab ${mon_nam(mon)}!`);
+                    set_ustuck(mon);
+                    if (silverhit.v && game.flags?.verbose !== false)
+                        await silver_sears(game.youmonst, mon, silverhit.v);
+                    sum[i] = await damageum(mon, mattk, specialdmg);
+                }
             }
-            /* can't grab unsolid creatures (checked after shade handling) */
-            if (await failed_grab(game.youmonst, mon, mattk))
-                break;
-            /* hug attack against ordinary foe */
-            if (mon === game.u.ustuck) {
-                await pline(`${Monnam(mon)} is being ${byhand ? 'throttled' : 'crushed'}${
-                      /* extra feedback for non-breather being choked */
-                      unconcerned ? " but doesn't seem concerned" : ''}.`);
-                if (silverhit.v && game.flags?.verbose !== false)
-                    await silver_sears(game.youmonst, mon, silverhit.v);
-                sum[i] = await damageum(mon, mattk, specialdmg);
-            } else if (i >= 2 && (sum[i - 1] > M_ATTK_MISS)
-                       && (sum[i - 2] > M_ATTK_MISS)) {
-                /* in case we're hugging a new target while already
-                   holding something else; yields feedback
-                   "<u.ustuck> is no longer in your clutches" */
-                if (game.u.ustuck && game.u.ustuck !== mon)
-                    await uunstick();
-                await You(`grab ${mon_nam(mon)}!`);
-                set_ustuck(mon);
-                if (silverhit.v && game.flags?.verbose !== false)
-                    await silver_sears(game.youmonst, mon, silverhit.v);
-                sum[i] = await damageum(mon, mattk, specialdmg);
-            }
-            break; /* AT_HUGS */
         } else {
             note_unported_uhitm(`hmonas:aatyp=${aatyp}`);
             continue;
@@ -1370,6 +1367,10 @@ export async function hmonas(mon) {
             break;
         sum[i] = mhm.hitflags;
         if (DEADMONSTER(mon))
+            break;
+        if (!Upolyd(game.u))
+            break;
+        if ((game.multi || 0) < 0)
             break;
     }
 

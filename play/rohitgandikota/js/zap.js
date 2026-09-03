@@ -318,7 +318,7 @@ import { killed, monkilled, seemimic, shieldeff_mon, wakeup,
 import { ONAMES } from './objects_data.js';
 import { rn2, rnd, d } from './rng.js';
 import { is_rider, create_critters } from './makemon.js';
-import { OBJ_INVENT, OBJ_MINVENT, OBJ_BURIED, OBJ_CONTAINED, BURIED_TOO, CONTAINED_TOO } from './const.js';
+import { OBJ_INVENT, OBJ_MINVENT, OBJ_BURIED, OBJ_CONTAINED, OBJ_MIGRATING, BURIED_TOO, CONTAINED_TOO } from './const.js';
 import { getobj, GETOBJ_SUGGEST, GETOBJ_EXCLUDE, update_inventory,
          stackobj } from './invent.js';
 import { getdir } from './cmd.js';
@@ -388,6 +388,9 @@ import { ustatusline, enlightenment } from './insight.js';
 import { MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS } from './const.js';
 import { display_nhwindow_message } from './display.js';
 import { waterbody_name } from './pager.js';
+
+// include/rm.h:538 Sokoban is the level's active rule flag.
+const Sokoban = () => !!game.level?.flags?.sokoban_rules;
 
 // src/zap.c:1459 obj_resists() — does this object survive being destroyed?
 //

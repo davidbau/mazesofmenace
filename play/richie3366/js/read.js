@@ -18,7 +18,8 @@
 // (D-1098) + seffect_create_monster SCR/SPE_CREATE_MONSTER (D-1401) +
 // SPE_MAGIC_MAPPING seffects (D-1407; callee seffect_magic_mapping) +
 // seffect_taming SCR_TAMING/SPE_CHARM_MONSTER + recharge/charge_ok (D-1502) +
-// seffect_gold_detection SCR_GOLD_DETECTION (D-1773).
+// seffect_gold_detection SCR_GOLD_DETECTION (D-1773) +
+// seffect_food_detection SCR_FOOD_DETECTION / SPE_DETECT_FOOD (D-1781).
 // Named omissions: fortune/shirt/credit-card/marker/coin/orb/candy/Braille
 // Blind gates; study_book novel / dull sleep (occupation learn D-0907);
 // other seffect_*; SCR_IDENTIFY SPE_IDENTIFY cast; menu_identify traditional
@@ -86,7 +87,9 @@ import {
     makeknown, getobj, identify_pack, near_capacity,
 } from './invent.js';
 import { more_experienced } from './exper.js';
-import { do_mapping, cvt_sdoor_to_door, gold_detect, trap_detect } from './detect.js';
+import {
+    do_mapping, cvt_sdoor_to_door, gold_detect, trap_detect, food_detect,
+} from './detect.js';
 import { study_book, can_chant } from './spell.js';
 import { scrolltele, level_tele } from './teleport.js';
 import { trycall, hcolor } from './do_name.js';
@@ -132,6 +135,8 @@ const SCR_GENOCIDE = objectNames.indexOf('SCR_GENOCIDE');
 const SCR_CREATE_MONSTER = objectNames.indexOf('SCR_CREATE_MONSTER');
 const SPE_CREATE_MONSTER = objectNames.indexOf('SPE_CREATE_MONSTER');
 const SCR_GOLD_DETECTION = objectNames.indexOf('SCR_GOLD_DETECTION');
+const SCR_FOOD_DETECTION = objectNames.indexOf('SCR_FOOD_DETECTION');
+const SPE_DETECT_FOOD = objectNames.indexOf('SPE_DETECT_FOOD');
 const SCR_BLANK_PAPER = objectNames.indexOf('SCR_BLANK_PAPER');
 const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
@@ -362,7 +367,7 @@ export async function litroom(on, obj) {
         // passes &is_lit (light on), not `on`.
         set_lit(u.ux | 0, u.uy | 0, 1);
     } else {
-        do_clear_area(
+        await do_clear_area(
             u.ux, u.uy,
             blessed_effect ? 9 : 5,
             set_lit,
@@ -1056,6 +1061,20 @@ async function seffect_gold_detection(sobj) {
 }
 
 /**
+ * C ref: read.c seffect_food_detection `:2045–2053` —
+ * `if (food_detect(sobj)) *sobjp = 0;`, i.e. nothing detected so
+ * `strange_feeling` already used the scroll up. `gk.known` comes back
+ * through the out-param (this port keeps `known` module-local).
+ * @returns {Promise<object|null>} null when sobj is gone
+ */
+async function seffect_food_detection(sobj) {
+    const out = {};
+    const usedUp = await food_detect(sobj, out);
+    if (out.known) known = true;
+    return usedUp ? null : sobj;
+}
+
+/**
  * C ref: read.c seffect_identify.
  * Scroll: useup first, self-ID messages, learnscrolltyp, then
  * identify_pack(cval). SPE_IDENTIFY cast path deferred (wired if seffects).
@@ -1284,6 +1303,12 @@ export async function seffects(sobj) {
         if (!kept) return 1;
         break;
     }
+    case SCR_FOOD_DETECTION:
+    case SPE_DETECT_FOOD: {
+        const kept = await seffect_food_detection(sobj);
+        if (!kept) return 1;
+        break;
+    }
     default:
         // Other seffect_* deferred — do not useup
         await pline('That scroll is not implemented yet.');
@@ -1338,7 +1363,8 @@ export async function doread() {
         && otyp !== SCR_REMOVE_CURSE && otyp !== SCR_ENCHANT_WEAPON
         && otyp !== SCR_DESTROY_ARMOR && otyp !== SCR_IDENTIFY
         && otyp !== SCR_PUNISHMENT && otyp !== SCR_GENOCIDE
-        && otyp !== SCR_CREATE_MONSTER && otyp !== SCR_GOLD_DETECTION) {
+        && otyp !== SCR_CREATE_MONSTER && otyp !== SCR_GOLD_DETECTION
+        && otyp !== SCR_FOOD_DETECTION) {
         await pline('That scroll is not implemented yet.');
         return 0;
     }

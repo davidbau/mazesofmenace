@@ -30,6 +30,11 @@
 // SPE_MAGIC_MAPPING seffects (D-1407; same C `:1528–1531` arm, no
 // skilled bless; callee read.c seffect_magic_mapping — SCR live
 // D-0075).
+// SPE_DETECT_FOOD seffects (D-1788; C `:1517–1531` skilled bless
+// then FALLTHROUGH seffects; callee read.c seffect_food_detection
+// → detect.c food_detect D-1781). Remaining scroll-duplicate
+// otyps (REMOVE_CURSE / CONFUSE_MONSTER / CAUSE_FEAR / IDENTIFY /
+// CHARM_MONSTER) still named.
 // SPE_HASTE_SELF peffects (D-1408; C `:1534–1546` skilled bless then
 // peffects(pseudo); callee potion.c peffect_speed / speed_up).
 // SPE_DETECT_TREASURE peffects (D-1417; same C `:1534–1546` skilled
@@ -1824,6 +1829,12 @@ async function cast_protection() {
  * callee read.c seffect_create_monster).
  * SPE_MAGIC_MAPPING seffects(pseudo) (D-1407; same C case;
  * callee read.c seffect_magic_mapping — scroll path D-0075).
+ * SPE_DETECT_FOOD seffects(pseudo) (D-1788; C `:1517–1531`
+ * skilled bless then FALLTHROUGH seffects; callee read.c
+ * seffect_food_detection → detect.c food_detect D-1781).
+ * Remaining scroll-duplicate otyps (REMOVE_CURSE /
+ * CONFUSE_MONSTER / CAUSE_FEAR / IDENTIFY / CHARM_MONSTER)
+ * still named.
  * SPE_HASTE_SELF peffects(pseudo) (D-1408; C `:1534–1546`
  * skilled bless then peffects; callee potion.c peffect_speed /
  * speed_up). SPE_DETECT_TREASURE peffects (D-1417; same arm;
@@ -1880,7 +1891,9 @@ async function cast_protection() {
  * D-1446. Remaining wand-duplicate named omit is empty
  * for this group; zap_map engraving/cancel trap is D-1476.
  * Other otyps named omission (return TIME after energy
- * spent + exercise).
+ * spent + exercise): remaining scroll-duplicate
+ * REMOVE_CURSE / CONFUSE_MONSTER / CAUSE_FEAR / IDENTIFY /
+ * CHARM_MONSTER (DETECT_FOOD is D-1788).
  */
 export async function spelleffects(spell_otyp, atme, force) {
     const spell = force ? spell_otyp : spell_idx(spell_otyp);
@@ -2036,11 +2049,17 @@ export async function spelleffects(spell_otyp, atme, force) {
     } else if (otyp === SPE_CHAIN_LIGHTNING) {
         /* C spell.c :1588–1590 — cast_chain_lightning(); */
         await cast_chain_lightning();
-    } else if (otyp === SPE_MAGIC_MAPPING || otyp === SPE_CREATE_MONSTER) {
-        /* C spell.c :1528–1531 — MAGIC_MAPPING/CREATE_MONSTER
-         * (void) seffects(pseudo); neither takes the skilled-bless
-         * FALLTHROUGH (that is REMOVE_CURSE through CHARM_MONSTER).
-         * Dynamic import: read.js → spell.js. */
+    } else if (otyp === SPE_DETECT_FOOD
+        || otyp === SPE_MAGIC_MAPPING
+        || otyp === SPE_CREATE_MONSTER) {
+        /* C spell.c :1517–1531 — DETECT_FOOD is in the skilled-bless
+         * FALLTHROUGH group (REMOVE_CURSE through CHARM_MONSTER);
+         * MAGIC_MAPPING/CREATE_MONSTER skip the bless and only
+         * (void) seffects(pseudo). Remaining scroll-duplicate
+         * otyps still named. Dynamic import: read.js → spell.js. */
+        if (otyp === SPE_DETECT_FOOD && role_skill >= P_SKILLED) {
+            pseudo.blessed = true;
+        }
         const { seffects } = await import('./read.js');
         await seffects(pseudo);
     } else if (otyp === SPE_HASTE_SELF || otyp === SPE_DETECT_TREASURE

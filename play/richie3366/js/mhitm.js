@@ -103,7 +103,7 @@ import {
     obj_meld, pudding_merge_message, place_object, add_to_container,
     weight, mksobj, set_corpsenm, obj_stop_timers,
 } from './mkobj.js';
-import { Monnam, mon_nam, Adjmonnam, oname, pmname, x_monnam, hliquid, y_monnam } from './do_name.js';
+import { Monnam, mon_nam, mon_nam_too, Adjmonnam, oname, pmname, x_monnam, hliquid, y_monnam } from './do_name.js';
 import { an, xname, makeplural, cxname, vtense, The, simpleonames } from './objnam.js';
 import { mon_explodes } from './explode.js';
 import { newcham, pm_to_cham } from './makemon.js';
@@ -1060,16 +1060,6 @@ export function SYSOPT_SEDUCE() {
     const v = game.sysopt?.seduce;
     if (v == null) return true;
     return !!v;
-}
-
-/**
- * C ref: do_name.c mon_nam_too — mon_nam unless mon==other → him/her/itself.
- * Named omission: Hallu pronoun_gender rn2(4) → themselves.
- */
-function mon_nam_too(mon, other_mon) {
-    if (mon !== other_mon) return mon_nam(mon);
-    if (is_neuter(mon?.data)) return 'itself';
-    return mon?.female ? 'herself' : 'himself';
 }
 
 /**

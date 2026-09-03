@@ -75,8 +75,8 @@ export async function update_topl(bp) {
             + game._pending_message;
         game._topl_curx = painted.length;
         if (!skip) {
-            addtopl(bp);
-            paint_topline();    /* addtopl() -> topl_putsym: painted at once */
+            game._toplin = TOPLINE_NEED_MORE;
+            paint_topline();    /* same physical append that addtopl paints */
         }
         return;
     }
@@ -110,11 +110,47 @@ export async function update_topl(bp) {
         await redotoplin(out);
 }
 
-// win/tty/topl.c:229 addtopl() — append to the line already being shown.
-// The paint is deferred to _buildScreenOutput(), which reads _pending_message,
-// so there is nothing to do here beyond keeping the state flag C keeps.
+// win/tty/topl.c:194 addtopl(), physical text without changing history.
 function addtopl(bp) {
+    const columns = game?.nhDisplay?.cols ?? 80;
+    const lines = ((game._topline_physical_prefix || '')
+                   + (game._pending_message || '')).split('\n');
+    let x = game._topl_curx || 0, y = game._topl_cury || 0;
+    for (const c of bp) {
+        if (x === columns - 1) {
+            x = 0;
+            y++;
+        }
+        lines[y] = (lines[y] || '').slice(0, x).padEnd(x, ' ') + c;
+        x++;
+    }
+    game._pending_message = lines.join('\n');
+    game._topline_physical_prefix = '';
+    game._topl_curx = x;
+    game._topl_cury = y;
+    paint_topline();
+    game.nhDisplay?.setCursor(x, y);
     game._toplin = TOPLINE_NEED_MORE;
+}
+
+// win/tty/topl.c:354 removetopl(), erase each character with "\b \b".
+function removetopl(n) {
+    const columns = game?.nhDisplay?.cols ?? 80;
+    const lines = (game._pending_message || '').split('\n');
+    let x = game._topl_curx || 0, y = game._topl_cury || 0;
+    while (n-- > 0) {
+        if (x === 0 && y > 0) {
+            y--;
+            x = columns - 1;
+        }
+        x--;
+        lines[y] = lines[y].slice(0, x);
+    }
+    game._pending_message = lines.join('\n');
+    game._topl_curx = x;
+    game._topl_cury = y;
+    paint_topline();
+    game.nhDisplay?.setCursor(x, y);
 }
 
 // win/tty/topl.c:96 remember_topl() — push the current line into ^P history.
@@ -208,16 +244,12 @@ const TBUFSZ = 300;
 
 // win/tty/topl.c:365 tty_yn_function() — the generic prompt-and-read-a-key.
 //
-// Only the resp == NULL arm is ported, which is the one getspell() uses:
-// "If resp is NULL, any single character is accepted and returned."
-//
-// The two pieces of state matter more than the read. A pending message is
+// A pending message is
 // flushed through more() FIRST, so the prompt never lands on top of an
 // unacknowledged line, and toplin goes to TOPLINE_SPECIAL_PROMPT, which is
 // what stops the next message from joining onto the prompt text.
-//
-// Not ported: the resp filter (allowed characters, '#' for digits, an <esc>
-// hiding the tail from the prompt), yn_number, and the doprev/^P history.
+// The response filter and numeric '#' input are ported. The Ctrl-P history
+// interaction and acceptable responses hidden after an ESC byte are not.
 export async function tty_yn_function(query, resp, def, addcmdq = false) {
     /* src/cmd.c:5487 yn_function(), repeatable questions consume their
        saved answer before invoking the window port. There is deliberately
@@ -238,6 +270,8 @@ export async function tty_yn_function(query, resp, def, addcmdq = false) {
             return ch;
         }
     }
+
+    game.yn_number = 0;
 
     /* win/tty/topl.c:391-393 — the pending-message more() is SKIPPED while
        WIN_STOP is set (the player already ESCed this turn's messages), and
@@ -262,8 +296,8 @@ export async function tty_yn_function(query, resp, def, addcmdq = false) {
     if (resp) {
         /* win/tty/topl.c builds "<query> [<resp>] " and appends "(<def>) "
            when there is a default. The screen shows it as
-           "... Ready it instead? [ynq] (q)". The '#' digits case and the
-           <esc>-hides-the-tail case are not ported. */
+           "... Ready it instead? [ynq] (q)". Acceptable responses after an
+           embedded ESC byte are not yet hidden from the displayed prompt. */
         prompt += ` [${resp}]`;
         if (def && def !== '\0')
             prompt += ` (${def})`;
@@ -303,8 +337,9 @@ export async function tty_yn_function(query, resp, def, addcmdq = false) {
        form of the answer key) becomes the topline text, flagged NON_EMPTY so
        the NEXT key read erases it before its boundary frame. */
     const clean_up = (q) => {
-        const vis = (q >= ' ' && q !== '\x7f') ? q : '';
-        game._toplines = prompt + vis;   /* gt.toplines: ^P recall buffer */
+        const vis = game.yn_number ? `#${game.yn_number}`
+            : (q >= ' ' && q !== '\x7f') ? q : '';
+        game._toplines = promptText + vis;   /* gt.toplines: ^P recall buffer */
         game._pending_message = '';
         game._toplin = TOPLINE_NON_EMPTY;
         /* win/tty/topl.c clears the message window here when the prompt

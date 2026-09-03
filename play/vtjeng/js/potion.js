@@ -323,11 +323,43 @@ export function make_glib(xtime, state = game) {
     // (nohands form), so the uarmg guard is always false here.
 }
 
-// C ref: potion.c make_blinded() (261-331), restricted to two ordinary cream
-// paths: use_cream_pie()'s silent sighted-to-blind transition and wipeoff()'s
-// one-turn timed-blindness probe back to sight. Other callers need the
-// already-blind, Eyes of the Overworld, Punished, and alternate message arms,
-// so they remain fail-closed here.
+// C ref: potion.c make_deaf() (443-457). Set or clear timed deafness.
+// When talk is true and the state changes, prints "You can hear again." or
+// "You are unable to hear anything."  The rottenfood fainting callback
+// (Hear_again) calls make_deaf(0, false), clearing the timer silently.
+export function make_deaf(xtime, talk, state = game) {
+    const prop = state.u?.uprops?.[DEAF];
+    if (!prop) return;
+    const old = prop.intrinsic & TIMEOUT;
+
+    if (Unaware(state)) talk = false;
+
+    set_itimeout(prop, xtime);
+
+    // C ref: youprop.h:125 Deaf. HDeaf || EDeaf || u.uroleplay.deaf.
+    const deaf = Boolean(
+        (prop.intrinsic & TIMEOUT) || prop.extrinsic
+        || state.u?.uroleplay?.deaf,
+    );
+
+    if (Boolean(xtime) !== Boolean(old)) {
+        state.disp ??= {};
+        state.disp.botl = true;
+        if (talk) {
+            // "You can hear again." when clearing, "unable to hear" when setting.
+            // Only fires when talk is true AND the state actually flipped.
+            throw new UnsupportedPotionError(
+                'make_deaf() with talk=true messaging',
+            );
+        }
+    }
+}
+
+// C ref: potion.c make_blinded() (261-331). Covers the silent transitions
+// (talk=false) used by cream-pie and rotten-food blindness, wipeoff()'s
+// one-turn restoration, and the sighted no-op from carrot eating.  Talking
+// paths besides wipeoff (Hallucination wordings, Blindfolded/Eyes messages,
+// Punished set_bc) remain fail-closed.
 export async function make_blinded(xtime, talk, state = game) {
     const prop = state.u?.uprops?.[BLINDED];
     if (!prop)
@@ -338,12 +370,12 @@ export async function make_blinded(xtime, talk, state = game) {
         state.uwep
         && ((state.u.uprops?.[WARN_OF_MON]?.extrinsic ?? 0) & W_WEP),
     );
-    const startsCreamBlindness = talk === false
-        && old === 0
+    // Silent sighted-to-blind: cream-pie, rotten food, etc.  When talk is
+    // false C skips every message.  The Punished guard around set_bc(0) is
+    // outside the talk condition in C, so we still reject punished heroes.
+    const silentBlindnessIncrease = talk === false
         && !heroIsBlind(state)
         && !punished
-        && !prop.extrinsic
-        && !prop.blocked
         && Number.isInteger(xtime)
         && xtime >= 1
         && xtime <= TIMEOUT;
@@ -369,7 +401,7 @@ export async function make_blinded(xtime, talk, state = game) {
     const sightedNoop = xtime === 0
         && old === 0
         && !heroIsBlind(state);
-    if (!startsCreamBlindness && !restoresWipedSight && !sightedNoop) {
+    if (!silentBlindnessIncrease && !restoresWipedSight && !sightedNoop) {
         throw new UnsupportedPotionError(
             'make_blinded() outside the ordinary cream-pie transitions',
         );
@@ -798,7 +830,7 @@ async function dopotion(otmp, state = game) {
             discover_object(otmp.otyp, true, true, true, state);
             more_experienced(0, 10, state);
         } else {
-            trycall(otmp, state);
+            await trycall(otmp, state);
         }
     }
     useup(otmp);
@@ -1104,7 +1136,7 @@ export async function potionhit(mon, obj, how, rawEnv = {}) {
             || haseyes(state.youmonst.data))) {
         await potionbreathe(obj, state, { ...rawEnv, state, random, message });
     } else if (obj.dknown && cansee(tx, ty, state)) {
-        trycall(obj, state);
+        await trycall(obj, state);
     }
 
     // C's `*u.ushops` is the first entry of the room list; js/rooms.js keeps
@@ -1272,7 +1304,7 @@ export async function potionbreathe(obj, state = game, env = {}) {
         // `kn` counts the arms whose message told the hero what the potion
         // was; every other arm offers the naming prompt instead.
         if (kn) discover_object(obj.otyp, true, true, true, state, env);
-        else trycall(obj, state);
+        else await trycall(obj, state);
     }
 }
 

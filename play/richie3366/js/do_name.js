@@ -63,10 +63,10 @@ import { getlin } from './getline.js';
 import { getpos } from './getpos.js';
 import { object_from_map } from './pager.js';
 import { objects_at, SIR_TERRY_NOVELS } from './mkobj.js';
-import { rank_of } from './roles.js';
+import { rank_of, genders } from './roles.js';
 import {
     an, xname, simpleonames, ansimpleoname, set_y_monnam, set_noit_mon_nam,
-    The, is_plural, safe_qbuf, body_part_latebound,
+    The, is_plural, safe_qbuf, body_part_latebound, vtense, makeplural,
 } from './objnam.js';
 import {
     POTION_CLASS, COIN_CLASS, AMULET_CLASS, SCROLL_CLASS, WAND_CLASS,
@@ -78,7 +78,8 @@ import { get_rnd_text } from './rumors.js';
 import { BOGUSMON_BUF } from './generated/bogusmon_data.js';
 import { m_at } from './mon.js';
 import { cansee } from './vision.js';
-import { fuzzymatch, strstri } from './hacklib.js';
+import { fuzzymatch, strstri, highc } from './hacklib.js';
+import { pronoun_gender, PRONOUN_HALLU } from './mondata.js';
 import { beautiful } from './apply.js';
 import { mhe, mhis } from './fountain.js';
 
@@ -828,6 +829,69 @@ export function mon_nam(mtmp) {
         has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0,
         false,
     );
+}
+
+/**
+ * C ref: do_name.c mon_nam_too `:1189–1216` — `mon_nam` for anyone but
+ * the monster itself; when the two are the same, the reflexive pronoun
+ * that `pronoun_gender(mon, PRONOUN_HALLU)` picks. That call draws
+ * `rn2(4)` **first** while hallucinating (D-1776), so this is an
+ * RNG-visible helper, and index 3 ("group") is reachable only then —
+ * which is where "themselves" comes from.
+ */
+export function mon_nam_too(mon, other_mon) {
+    if (mon !== other_mon) return mon_nam(mon);
+    switch (pronoun_gender(mon, PRONOUN_HALLU)) {
+    case 0:
+        return 'himself';
+    case 1:
+        return 'herself';
+    case 3: /* could happen when hallucinating */
+        return 'themselves';
+    default:
+    case 2:
+        return 'itself';
+    }
+}
+
+/**
+ * C ref: do_name.c monverbself `:1219–1249` — build
+ * "<monnamtext> <verb> <othertext> {him|her|it}self", with the verb and
+ * the subject dragged into the plural when Hallucination made the
+ * reflexive "themselves".
+ *
+ * `verb` arrives plural, so `vtense(selfbuf, verb)` normally returns the
+ * singular; getting the verb back unchanged is C's test for "the
+ * reflexive stayed plural", and only then is the subject pluralised.
+ *
+ * The genders[3] fixup is ported exactly as C **writes** it, not as C's
+ * comment describes it: the comment says makeplural turns "it" into
+ * "them" and wants "they", but `makeplural` matches `genders[2].he`
+ * first and yields "they", and this arm then rewrites that to
+ * `genders[3].him` — "them". So C prints "Them rouse themselves!" for a
+ * hallucinated steed, and "Theys …" when the subject was already "They"
+ * (makeplural's default `s`). Do not "correct" this to "they"; the
+ * scored comparison is against the C build.
+ */
+export function monverbself(mon, monnamtext, verb, othertext) {
+    /* "himself"/"herself"/"itself", maybe "themselves" if hallucinating */
+    const selfbuf = mon_nam_too(mon, mon);
+    /* verb starts plural; this yields singular except for "themselves" */
+    const verbs = vtense(selfbuf, verb);
+    let text = String(monnamtext ?? '');
+
+    if (verb === verbs) { /* a match indicates that it stayed plural */
+        text = makeplural(text);
+        /* C `:1236–1244` — see the note above on he-vs-him here */
+        if (text.toLowerCase() === genders[3].he) {
+            const capitaliz = text.charAt(0) === highc(text.charAt(0));
+            text = genders[3].him;
+            if (capitaliz) text = highc(text.charAt(0)) + text.slice(1);
+        }
+    }
+    let out = `${text} ${verbs}`;
+    if (othertext) out += ` ${othertext}`;
+    return `${out} ${selfbuf}`;
 }
 
 /**

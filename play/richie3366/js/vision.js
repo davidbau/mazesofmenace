@@ -9,7 +9,7 @@ import {
     D_CLOSED, D_LOCKED, D_TRAPPED,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL,
     IS_WALL, IS_WATERWALL, IS_OBSTRUCTED, IS_DOOR,
-    ROOMOFFSET, Is_rogue_level,
+    ROOMOFFSET, Is_rogue_level, Is_waterlevel, Is_airlevel,
     TEMP_LIT, M_AP_OBJECT, M_AP_FURNITURE, M_AP_TYPE, SEE_INVIS,
     MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT,
     MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON,
@@ -22,6 +22,7 @@ import { worm_known } from './worm.js';
 import { objectNames } from './objects.js';
 import { do_light_sources } from './light.js';
 import { visible_region_at } from './region.js';
+import { detecting } from './detect.js';
 
 const COULD_SEE = 0x1;
 const IN_SIGHT = 0x2;
@@ -713,15 +714,34 @@ function view_from(srow, scol, cs_rows, cs_left, cs_right, range = 0,
 }
 
 /**
- * C ref: vision.c do_clear_area — hero-centered uses couldsee; off-hero
- * uses view_from(..., range, func, arg) for pet wantdoor / similar.
+ * C ref: vision.c do_clear_area `:2106–2148` — run `func` over a
+ * radius-`range` circle. Off-hero C does the hard work through
+ * `view_from`; centred on the hero it walks the precomputed circle and
+ * gates on `couldsee`.
+ *
+ * The gate has an escape hatch: `override_vision` is set when the
+ * callback is one of the *detection* ones (`detect.c` `detecting`
+ * `:1928–1932` — `findone` or `openone`) **and** the hero is on the
+ * water or air level, because vision does not pass through water or
+ * clouds but detection should. C leaves a comment wishing this were a
+ * caller-supplied argument; it is a callback-identity test, so the port
+ * imports `detecting` from `detect.js` rather than guessing.
+ *
+ * Async here only because this port's display helpers are async — C is
+ * synchronous throughout — so `func` is awaited to keep C's per-cell
+ * ordering. Callers await.
  */
-export function do_clear_area(scol, srow, range, func, arg) {
+export async function do_clear_area(scol, srow, range, func, arg) {
     const u = game.u || {};
     if (scol !== u.ux || srow !== u.uy) {
+        /* not centered on hero: view_from does the hard work */
         view_from(srow, scol, null, null, null, range, func, arg);
         return;
     }
+    /* vision doesn't pass through water or clouds, detection should */
+    const override_vision = detecting(func)
+        && (Is_waterlevel(u.uz) || Is_airlevel(u.uz));
+
     if (range < 1 || range >= circle_start.length) return;
     if (game.vision_full_recalc) vision_recalc(0);
     const limitsStart = circle_start[range];
@@ -736,7 +756,7 @@ export function do_clear_area(scol, srow, range, func, arg) {
         let max_x = scol + offset;
         if (max_x >= COLNO) max_x = COLNO - 1;
         for (let x = min_x; x <= max_x; x++) {
-            if (couldsee(x, y)) func(x, y, arg);
+            if (couldsee(x, y) || override_vision) await func(x, y, arg);
         }
     }
 }

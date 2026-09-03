@@ -184,7 +184,8 @@ import { Can_fall_thru } from './dungeon.js';
 import { lspo_map, lspo_region, sp_lev_wire, sp_lev_wire_mktrap,
          sp_lev_wire_okdoor, sp_lev_wire_subroom,
          lspo_room, lspo_door, lspo_object, lspo_monster, lspo_exclusion,
-         inside_room, lspo_terrain, lspo_replace_terrain } from './sp_lev.js';
+         inside_room, lspo_terrain, lspo_replace_terrain,
+         add_doors_to_room } from './sp_lev.js';
 import { percent } from './nhlua.js';
 import { lua_shuffle } from './nhlua.js';
 import { selection_new, selection_setpoint } from './selvar.js';
@@ -1320,6 +1321,7 @@ async function themerooms_generate(difficulty) {
                 contents(mkroom_table(aroom));
                 spo_endroom();
             }
+            add_doors_to_room(aroom);
         }
     }
     return ok;

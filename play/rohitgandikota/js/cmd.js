@@ -1,5 +1,5 @@
 import { NODIAG } from './hack.js';
-import { MV_ANY, MV_RUN, MV_RUSH, MV_WALK } from './const.js';
+import { MV_ANY, MV_RUN, MV_RUSH, MV_WALK, CMDQ_INT, IRONBARS, DO_MOVE } from './const.js';
 import { dobreathe, dospit, doremove, dogaze, dosummon, dohide, dospinweb, domindblast, dopoly } from './polyself.js';
 import { pet_ranged_attk } from './dog.js';
 import { is_vampshifter } from './monst.js';
@@ -48,7 +48,7 @@ import { In_sokoban, surface } from './dungeon.js';
 import { Blind, Flying, Hallucination, Levitation, Passes_walls, Stealth }
     from './youprop.js';
 import { u_on_newpos } from './teleport.js';
-import { doloot, query_inventory_category } from './pickup.js';
+import { doloot, dotip, query_inventory_category } from './pickup.js';
 import { curr_mon_load } from './mon.js';
 import { ECMD_FAIL, ECMD_CANCEL, Never_mind, A_DEX, A_CON, M_AP_TYPE,
          M_AP_FURNITURE, M_AP_OBJECT, OVERLOADED, Is_airlevel,
@@ -203,6 +203,10 @@ async function blocksMove(x, y, dx, dy) {
     game.context.door_opened = false;
     const loc = game.level?.at(x, y);
     if (!loc) return true;
+    if (loc.typ === IRONBARS) {
+        const { test_move } = await import('./hack.js');
+        return !(await test_move(game.u.ux, game.u.uy, dx, dy, DO_MOVE));
+    }
     if (IS_OBSTRUCTED(loc.typ)
         && !(Passes_walls() && may_passwall(x, y))) return true;
     if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))
@@ -955,6 +959,12 @@ async function execute_extcmd(name) {
     /* src/cmd.c extcmdlist — the command's own function runs here. Only the
        ones that consume further input are wired up so far, because those are
        the ones whose absence puts the whole session out of step. */
+    if (name === 'shell') {
+        /* sys/unix/unixunix.c:dosh — the contest sysconf has no permitted
+           shell users, so both '!' and #shell are rejected here. */
+        await Norep("Unavailable command '!'.");
+        return ECMD_OK;
+    }
     if (name === 'quit') {
         const { done2 } = await import('./end.js');
         return await done2();
@@ -1463,6 +1473,28 @@ async function do_repeat() {
     return game.context.move ? ECMD_TIME : 0;
 }
 
+// src/cmd.c:3584 reset_cmd_vars(). Commands which finish without using time
+// discard a parsed repeat count and every transient movement-prefix field.
+// The repeat queue survives ordinary ECMD_OK results so Ctrl-A can replay the
+// command later; cancellation and failure clear both command queues.
+function reset_cmd_vars(reset_cmdq) {
+    game.context.run = 0;
+    game.context.nopick = 0;
+    game.context.forcefight = false;
+    game.context.move = 0;
+    game.context.mv = false;
+    game.domove_attempting = 0;
+    game.multi = 0;
+    game.iflags.menu_requested = false;
+    game.context.travel = game.context.travel1 = 0;
+    game.travelmap = null;
+    game._cmd_prefix_pending = false;
+    if (reset_cmdq) {
+        cmdq_clear(CQ_CANNED);
+        cmdq_clear(CQ_REPEAT);
+    }
+}
+
 export async function rhack(key) {
     /* src/cmd.c:3635 — every command begins with the menu-request and
        no-pickup markers cleared; set_move_cmd() re-raises nopick from
@@ -1662,6 +1694,19 @@ export async function rhack(key) {
         await pline("The 'F' prefix should be followed by a movement command"
                     + `${vertical ? ' other than up or down' : ''}.`);
         return;
+    }
+
+    /* src/cmd.c:3693-3723: unlike g/G/F, the m prefix can also modify
+       selected nonmovement commands. Reject a known command whose cmdlist
+       entry lacks CMD_M_PREFIX instead of dispatching it normally. */
+    if (continuedPrefix && game.iflags.menu_requested
+        && !isMovementKey(ch) && !'gGmF'.includes(ch)) {
+        const command = cmdbind_table().get(ch0.charCodeAt(0));
+        if (command && !accept_menu_prefix(command)) {
+            await pline_nohistory(`The ${command.ef_txt} command does not accept 'm' prefix.`);
+            reset_cmd_vars(true);
+            return;
+        }
     }
 
     if (isMovementKey(ch)) {
@@ -1872,7 +1917,7 @@ export async function rhack(key) {
         // a no-op while every recorded rc sets !autopickup; for others it asks
         // for a menu. Reads no extra key.
         if (game.iflags.menu_requested) {
-            await pline('Double move-no-pickup or request-menu prefix, canceled.');
+            await pline('Double m prefix, canceled.');
             game.iflags.menu_requested = false;
             commandResult = ECMD_CANCEL;
         } else {
@@ -1976,6 +2021,9 @@ export async function rhack(key) {
             cmdq_add_ec(CQ_REPEAT, () => execute_extcmd(name));
             cmdq_shift(CQ_REPEAT);
         }
+    } else if (ch === '!') {
+        game.context.move = ((await execute_extcmd('shell')) === ECMD_TIME
+                             ? 1 : 0);
     } else if (ch === '\x06' && game.wizard) {
         /* src/cmd.c:1982, debug-mode ^F is the default binding for
            #wizmap. It reveals the level without consuming a turn. */
@@ -2060,10 +2108,16 @@ export async function rhack(key) {
     if (game.context.move && !game._cmd_was_kick)
         game.kickedloc = { x: 0, y: 0 };
     game._cmd_was_kick = false;
-    if (commandResult & (ECMD_CANCEL | ECMD_FAIL)) {
-        cmdq_clear(CQ_CANNED);
-        cmdq_clear(CQ_REPEAT);
-    }
+    const commandTookTime = !!game.context.move
+        || !!(commandResult & ECMD_TIME);
+    if (commandResult & (ECMD_CANCEL | ECMD_FAIL))
+        reset_cmd_vars(true);
+    else if (!commandTookTime && !game._cmd_prefix_pending
+             && !isMovementKey(ch))
+        reset_cmd_vars(game.multi < 0);
+    /* C reasserts context.move after reset_cmd_vars for TIME|CANCEL. */
+    if (commandTookTime)
+        game.context.move = 1;
 }
 
 // C ref: hack.c domove — execute a movement

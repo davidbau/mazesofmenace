@@ -739,7 +739,7 @@ export async function dogushforth(drinking) {
     const u = game.u || {};
     const poolcnt = { n: 0 };
     const cells = [];
-    do_clear_area(u.ux, u.uy, 7, (x, y) => { cells.push([x, y]); }, null);
+    await do_clear_area(u.ux, u.uy, 7, (x, y) => { cells.push([x, y]); }, null);
     for (const [x, y] of cells) {
         await gush(x, y, poolcnt);
     }

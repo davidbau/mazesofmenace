@@ -10,7 +10,7 @@ import { stop_occupation } from './allmain.js';
 import { add_damage } from './shk.js';
 import { in_rooms } from './hack.js';
 import { wake_nearto } from './mon.js';
-import { distu } from './hacklib.js';
+import { distu, s_suffix } from './hacklib.js';
 import { Deaf } from './youprop.js';
 import { Unaware } from './youprop.js';
 import { mb_trapped } from './monmove.js';
@@ -28,7 +28,7 @@ import { game } from './gstate.js';
 import { pline_xy } from './pline.js';
 import { rnl } from './rng.js';
 import { A_STR, A_DEX, A_CON, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, D_ISOPEN, D_TRAPPED, IS_DOOR, ECMD_OK, ECMD_TIME } from './const.js';
-import { newsym } from './display.js';
+import { newsym, map_invisible } from './display.js';
 import { exercise, acurrstr, ACURR } from './attrib.js';
 import { get_adjacent_loc, closed_door } from './cmd.js';
 import { container_at, doloot } from './pickup.js';
@@ -44,8 +44,9 @@ import { canspotmon } from './display.js';
 import { You_cant, You, pline_The } from './pline.js';
 import { getdir } from './cmd.js';
 import { ECMD_CANCEL, TT_PIT, isok, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT } from './const.js';
-import { Monnam, mon_nam } from './do_name.js';
-import { Levitation } from './youprop.js';
+import { Monnam, mon_nam, Some_Monnam } from './do_name.js';
+import { Levitation, Protection_from_shape_changers } from './youprop.js';
+import { stumble_onto_mimic } from './uhitm.js';
 import { AUTOUNLOCK_UNTRAP, AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_KICK,
          OBJ_FLOOR } from './const.js';
 import { unblock_point } from './vision.js';
@@ -263,13 +264,11 @@ export async function doopen() {
     return doopen_indir(0, 0);
 }
 
-// src/lock.c:759 stumble_on_door_mimic() — walking a command at a mimicking
-// door reveals it. seemimic and the mimic-attack followup are in js/mon.js;
-// the attack (stumble_onto_mimic) is recorded.
-function stumble_on_door_mimic(x, y) {
+// src/lock.c:759 stumble_on_door_mimic()
+export async function stumble_on_door_mimic(x, y) {
     const mtmp = m_at(x, y);
-    if (mtmp && is_door_mappear(mtmp)) {
-        note_unported('doclose:stumble_onto_mimic');
+    if (mtmp && is_door_mappear(mtmp) && !Protection_from_shape_changers()) {
+        await stumble_onto_mimic(mtmp);
         return true;
     }
     return false;
@@ -287,12 +286,13 @@ export async function obstructed(x, y, quietly) {
             return true;
         }
         if (!quietly) {
-            /* Some_Monnam: Monnam, or Someone/Something when unspottable;
-               the tail arm needs long worms, recorded via the same name */
-            await pline(`${canspotmon(mtmp) ? Monnam(mtmp) : "Something"} blocks the way!`);
+            let Mn = Some_Monnam(mtmp);
+            if ((mtmp.mx !== x || mtmp.my !== y) && canspotmon(mtmp))
+                Mn = s_suffix(Mn) + ' tail';
+            await pline(`${Mn} blocks the way!`);
         }
         if (!canspotmon(mtmp))
-            note_unported('obstructed:map_invisible');
+            map_invisible(x, y);
         return true;
     }
     if ((game.level?.objects || []).some(o => o.ox === x && o.oy === y)) {
@@ -329,7 +329,7 @@ export async function doclose() {
 
     let nodoor = !isok(x, y);
 
-    if (!nodoor && stumble_on_door_mimic(x, y))
+    if (!nodoor && await stumble_on_door_mimic(x, y))
         return ECMD_TIME;
 
     /* Confusion/Stunned would set res = ECMD_TIME; both unreachable yet.

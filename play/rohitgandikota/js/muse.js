@@ -11,7 +11,7 @@
 import { doorlock } from './lock.js';
 import { unturn_dead } from './zap.js';
 import { is_bat } from './makemon.js';
-import { mon_learns_traps, fill_pit, mintrap } from './trap.js';
+import { mon_learns_traps, fill_pit, mintrap, seetrap, Trap_Killed_Mon } from './trap.js';
 import { upstart } from './do_name.js';
 import { slimeproof } from './dog.js';
 import { mhe } from './do_name.js';
@@ -30,7 +30,7 @@ import { maketrap } from './mklev.js';
 import { is_drawbridge_wall, is_ice } from './dbridge.js';
 import { inhishop } from './monmove.js';
 import { migrate_to_level } from './dog.js';
-import { On_W_tower_level, depth, get_level, ledger_no, Can_dig_down, surface, ceiling, dunlev, dunlevs_in_dungeon } from './dungeon.js';
+import { On_W_tower_level, depth, get_level, ledger_no, Can_dig_down, Can_fall_thru, surface, ceiling, dunlev, dunlevs_in_dungeon } from './dungeon.js';
 import { any_quest_artifact } from './questpgr.js';
 import { mon_has_amulet } from './wizard.js';
 import { trapname } from './detect.js';

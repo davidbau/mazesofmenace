@@ -11,7 +11,7 @@ import { shirt_simple_name, shield_simple_name, vtense } from './objnam.js';
 import { urgent_pline } from './display.js';
 import { artifact_light } from './artifact.js';
 import { end_burn } from './timeout.js';
-import { setnotworn } from './worn.js';
+import { setnotworn, which_armor } from './worn.js';
 import { game } from './gstate.js';
 import { mons } from './monst_data.js';
 import { objects, ONAMES, OCLASSES } from './objects_data.js';
@@ -21,7 +21,7 @@ import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_TOOL,
          WORN_ARMOR, WORN_CLOAK, WORN_SHIRT, WORN_HELMET, WORN_GLOVES,
          WORN_SHIELD, WORN_BOOTS, WORN_AMUL, WORN_BLINDF,
          LEFT_RING, RIGHT_RING, TIMEOUT, A_STR, A_INT, A_WIS, A_DEX, A_CON,
-         A_CHA, A_CURRENT, A_CHAOTIC, A_LAWFUL, A_NEUTRAL, NH_BLACK,
+         A_CHA, A_MAX, A_CURRENT, A_CHAOTIC, A_LAWFUL, A_NEUTRAL, NH_BLACK,
          INTRINSIC, HEAD, HAND, FINGER, CQ_CANNED, st_corpse,
          st_petrifies, MENU_TRADITIONAL, MENU_COMBINATION, MENU_FULL,
          MENU_PARTIAL,

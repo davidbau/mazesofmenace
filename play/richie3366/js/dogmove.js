@@ -419,7 +419,7 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
 }
 
 // C ref: dogmove.c dog_goal()
-function dog_goal(mtmp, edog, after, udist, whappr) {
+async function dog_goal(mtmp, edog, after, udist, whappr) {
     // C: Steeds don't move on their own will
     if (mtmp === game.u?.usteed) return -2;
 
@@ -543,7 +543,7 @@ function dog_goal(mtmp, edog, after, udist, whappr) {
             const fardist = { v: DOG_GOAL_FARAWAY * DOG_GOAL_FARAWAY };
             gg.gx = DOG_GOAL_FARAWAY;
             gg.gy = DOG_GOAL_FARAWAY;
-            do_clear_area(omx, omy, 9, (x, y, distPtr) => {
+            await do_clear_area(omx, omy, 9, (x, y, distPtr) => {
                 const ndist = dist2(x, y, game.u.ux, game.u.uy);
                 if (distPtr.v > ndist) {
                     gg.gx = x;
@@ -825,7 +825,7 @@ export async function dog_move(mtmp, after) {
         whappr = ((game.moves ?? 1) - (edog.whistletime || 0) < 5) ? 1 : 0;
     }
 
-    const appr = dog_goal(mtmp, edog, after, udist, whappr);
+    const appr = await dog_goal(mtmp, edog, after, udist, whappr);
     if (appr === -2) return MMOVE_NOTHING;
 
     // C: Conflict && !resist_conflict — edog falls through; !edog

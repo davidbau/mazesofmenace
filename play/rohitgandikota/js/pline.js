@@ -9,10 +9,41 @@
 // carry a trailing space that is easy to lose.
 
 import { dirtocoord } from './cmd.js';
-import { PLINE_VERBALIZE } from './const.js';
+import { PLINE_VERBALIZE, BUFSZ, DEVTEAM_EMAIL, URGENT_MESSAGE } from './const.js';
 import { pline } from './display.js';
 import { game } from './gstate.js';
 import { Deaf, Unaware, Underwater } from './youprop.js';
+
+// src/pline.c:584 impossible(), with already-formatted message text.
+export async function impossible(s) {
+    const state = (game.program_state ||= {});
+    if (state.in_impossible)
+        throw new Error('impossible called impossible');
+    state.in_impossible = 1;
+    const pbuf = s.slice(0, BUFSZ - 1);
+    // Keep the diagnostic in memory. Native paniclog files and browser
+    // crash-report submission are not part of this message-path port.
+    (game.impossible_log ||= []).push(pbuf);
+    if (game.iflags?.debug_fuzzer === 1) /* fuzzer_impossible_panic */
+        throw new Error(pbuf);
+
+    game.pline_flags = URGENT_MESSAGE;
+    await pline(pbuf);
+    game.pline_flags = 0;
+    if (state.in_sanity_check) {
+        state.in_impossible = 0;
+        return;
+    }
+
+    let pbuf2 = 'Program in disorder!';
+    if (state.something_worth_saving)
+        pbuf2 += '  (Saving and reloading may fix this problem.)';
+    await pline(pbuf2);
+    await pline(`Please report these messages to ${DEVTEAM_EMAIL}.`);
+    if (game.sysopt?.support)
+        await pline(`Alternatively, contact local support: ${game.sysopt.support}`);
+    state.in_impossible = 0;
+}
 
 // src/pline.c:366 You()
 export async function You(line) {

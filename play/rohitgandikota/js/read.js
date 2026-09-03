@@ -37,7 +37,7 @@ import { is_whirly } from './mondata.js';
 import { WT_IRON_BALL_INCR } from './const.js';
 import { game } from './gstate.js';
 import { getobj, GETOBJ_PROMPT, ECMD_TIME, ECMD_OK } from './invent.js';
-import { ECMD_CANCEL, SPE_LIM, CORR, Is_rogue_level, W_ARMOR,
+import { ECMD_CANCEL, SPE_LIM, CORR, Is_rogue_level, W_ARMOR, W_ARM, NODIR,
          A_STR, A_CON, W_BALL, W_CHAIN, W_ART, W_ARTI, TT_BURIEDBALL,
          BY_COOKIE, G_UNIQ, M_AP_TYPE, M_AP_MONSTER, M_AP_OBJECT,
          M_AP_FURNITURE, MM_FEMALE, MM_MALE, NON_PM, W_SADDLE,

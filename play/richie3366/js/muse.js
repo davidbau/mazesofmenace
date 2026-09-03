@@ -8,7 +8,7 @@ import { rn2, rn1, rnd, d } from './rng.js';
 import { cansee, couldsee } from './vision.js';
 import { pline, mon_visible, see_with_infrared, pline_mon, verbalize } from './display.js';
 import { worm_known } from './worm.js';
-import { Monnam, mon_nam, Hallucination } from './do_name.js';
+import { Monnam, mon_nam, monverbself, Hallucination } from './do_name.js';
 import { doname, singular, an, xname, the, makeplural } from './objnam.js';
 import { dist2, distmin, m_at, m_carrying } from './mon.js';
 import { lined_up, m_throw } from './mthrowu.js';
@@ -1080,8 +1080,13 @@ async function mzapwand(mtmp, otmp, self) {
         await pline(`You hear a ${near ? 'nearby' : 'distant'} zap.`);
         // unknow_object deferred
     } else if (self) {
-        // monverbself("zap") simplified
-        await pline(`${Monnam(mtmp)} zaps ${doname(otmp)}!`);
+        // C muse.c `:183–185` — "%s with %s!" over
+        // monverbself(mtmp, Monnam(mtmp), "zap", NULL): the wand-zapper
+        // names itself ("<mon> zaps himself with <wand>!").
+        await pline(
+            `${monverbself(mtmp, Monnam(mtmp), 'zap', null)} with ${
+                doname(otmp)}!`,
+        );
     } else {
         // C: pline_mon("%s zaps %s!", Monnam, an(xname(otmp)))
         // C xname_flags observe_object sets dknown before WAND descr arm.

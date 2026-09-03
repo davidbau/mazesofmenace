@@ -943,7 +943,7 @@ async function really_done(how) {
     // are live (same shape as observe_quantum_cat).
     if (how === ESCAPED || how === ASCENDED) {
         const { keepdogs } = await import('./dog.js');
-        keepdogs(true);
+        await keepdogs(true);
     }
 
     // C: score before bones (invent still held; gold may already be money2mon'd)

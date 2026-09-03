@@ -31,7 +31,7 @@ import { Is_container, Has_contents, carried } from './obj.js';
 import { AUTOUNLOCK_UNTRAP, AUTOUNLOCK_APPLY_KEY,
          AUTOUNLOCK_FORCE } from './const.js';
 import { check_capacity, in_rooms, losehp } from './hack.js';
-import { ECMD_OK, ECMD_TIME, IS_FURNITURE, ICE, POOL, MOAT, WATER,
+import { ECMD_OK, ECMD_TIME, ECMD_CANCEL, IS_FURNITURE, ICE, POOL, MOAT, WATER,
          LAVAPOOL, nothing_happens, nothing_seems_to_happen } from './const.js';
 import { upstart, trycall } from './do_name.js';
 
@@ -57,7 +57,8 @@ import { PMNAMES } from './monst_data.js';
 import { def_char_to_objclass } from './sp_lev.js';
 import { read_engr_at } from './engrave.js';
 import { rn2, rnd, d } from './rng.js';
-import { OBJ_AT, LOOKHERE_NOFLAGS, LOOKHERE_PICKED_SOME } from './const.js';
+import { OBJ_AT, LOOKHERE_NOFLAGS, LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE } from './const.js';
+import { NO_COLOR } from './terminal.js';
 import { There, You, Your } from './pline.js';
 import { flush_screen } from './display.js';
 import { look_here } from './invent.js';
@@ -430,7 +431,7 @@ export async function query_objlist(qstr,   /* query string */
     const { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
             tty_display_nhwindow, tty_select_menu, tty_destroy_nhwindow,
             ATR_NONE, ATR_INVERSE, NHW_MENU } = await import('./tty/wintty.js');
-    const { MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, NO_COLOR, PICK_ANY }
+    const { MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ANY }
         = await import('./const.js');
     const { docrt } = await import('./display.js');
 
@@ -867,7 +868,7 @@ async function choose_tip_target(box, includeTargets = false) {
             tty_select_menu, tty_destroy_nhwindow, ATR_NONE, NHW_MENU }
         = await import('./tty/wintty.js');
     const { MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE,
-            MENU_ITEMFLAGS_SELECTED, NO_COLOR, PICK_ONE }
+            MENU_ITEMFLAGS_SELECTED, PICK_ONE }
         = await import('./const.js');
     const { docrt } = await import('./display.js');
     const targets = includeTargets
@@ -1331,7 +1332,7 @@ async function query_category(qstr, olist, qflags, how = null) {
             tty_select_menu, tty_destroy_nhwindow, ATR_NONE, ATR_INVERSE,
             NHW_MENU } = await import('./tty/wintty.js');
     const { MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE,
-            MENU_ITEMFLAGS_SKIPINVERT, NO_COLOR, PICK_ONE, PICK_ANY }
+            MENU_ITEMFLAGS_SKIPINVERT, PICK_ONE, PICK_ANY }
         = await import('./const.js');
     if (!olist || !olist.length)
         return [];
@@ -1744,7 +1745,7 @@ async function in_or_out_menu(prompt, obj, outokay, inokay, alreadyused,
             tty_select_menu, tty_destroy_nhwindow, ATR_NONE, NHW_MENU }
         = await import('./tty/wintty.js');
     const { MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE,
-            MENU_ITEMFLAGS_SELECTED, NO_COLOR, PICK_ONE }
+            MENU_ITEMFLAGS_SELECTED, PICK_ONE }
         = await import('./const.js');
     const { docrt } = await import('./display.js');
 

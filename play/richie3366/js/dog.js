@@ -7,7 +7,7 @@ import { makemon, set_malign, rndmonst_adj, newedog } from './makemon.js';
 import { deliver_obj_to_mon } from './dokick.js';
 import {
     mons, NON_PM, is_human, is_covetous, is_demon,
-    regenerates, M2_STALK, is_domestic, haseyes,
+    regenerates, M2_STALK, is_domestic, haseyes, humanoid,
 } from './monsters.js';
 import {
     MM_EDOG, MM_IGNOREWATER, MM_NOMSG, MM_FEMALE, MM_MALE, NO_MINVENT,
@@ -20,7 +20,8 @@ import {
     STRAT_ARRIVE, RLOC_NOMSG, MAGIC_PORTAL, In_endgame, isok, MTSZ, MANFOOD,
     DOGFOOD, ACCFOOD, FULL_MOON, Upolyd, has_edog, EDOG, LL_CONDUCT,
     DF_ALL, COLNO, ROWNO, ROOMOFFSET, IS_WALL,
-    DISMOUNT_THROWN,
+    DISMOUNT_THROWN, DISMOUNT_GENERIC, NO_TRAP_FLAGS,
+    ESHK, EPRI, EGD,
     LS_MONSTER, OBJ_FREE,
 } from './const.js';
 import { SCROLL_CLASS, SPBOOK_CLASS } from './objects.js';
@@ -34,12 +35,20 @@ import {
     PM_RANGER,
 } from './generated/monsters_data.js';
 import { acurr, A_CHA } from './attrib.js';
-import { christen_monst, Monnam, mon_pmname } from './do_name.js';
-import { monnear, m_at, see_monster_closeup, minliquid, restore_cham, wake_nearto, discard_minvent } from './mon.js';
+import { christen_monst, Monnam, mon_pmname, s_suffix } from './do_name.js';
+import {
+    monnear, m_at, see_monster_closeup, minliquid, restore_cham,
+    wake_nearto, discard_minvent, mdrop_special_objs,
+} from './mon.js';
 import { mon_offmap } from './monmove.js';
-import { enexto, rloc_to, rloc, rloc_to_flag, goodpos } from './teleport.js';
+import {
+    enexto, rloc_to, rloc, rloc_to_flag, goodpos, migrate_to_level,
+} from './teleport.js';
 import { put_saddle_on_mon, dismount_steed } from './steed.js';
-import { newsym, pline, pline_mon, canspotmon, canseemon, Hallucination } from './display.js';
+import {
+    newsym, pline, pline_mon, canspotmon, canseemon, Hallucination,
+    impossible,
+} from './display.js';
 import { redraw_worm } from './worm.js';
 import { hero_conflict } from './mondata.js';
 import { cansee } from './vision.js';
@@ -50,6 +59,9 @@ import { uhis } from './roles.js';
 import { objectNames } from './generated/objects_data.js';
 import { expels, unstuck } from './mhitu.js';
 import { finish_meating } from './dogmove.js';
+import { on_level, ledger_no } from './dungeon.js';
+import { mintrap } from './trap.js';
+import { m_unleash, mon_has_amulet } from './apply.js';
 import { sticks } from './engrave.js';
 import { emits_light, del_light_source } from './light.js';
 
@@ -352,27 +364,74 @@ export function update_mlstmv() {
 }
 
 /**
- * C ref: dog.c keepdogs — move nearby followers onto mydogs before level leave.
- * pets_only (`:799–809`) wakes/untraps so escape/ascend companions are
- * not left for meals or traps. migrate_to_level / leash /
- * mon_has_amulet stay_behind still named.
+ * C ref: dog.c keep_mon_accessible `:764–785` — should this monster ride
+ * the `migrating_mons` list rather than being stashed in the level's
+ * save file? The Wizard, so his next harassment can fetch him and so he
+ * resumes his spot if the hero returns first; and a shopkeeper, temple
+ * priest or vault guard while away from the level their `mextra` names,
+ * in case `#wizmakemap` replaces that level behind their back.
  */
-export function keepdogs(pets_only = false) {
+function keep_mon_accessible(mon) {
+    if (!mon) return false;
+    if (mon.iswiz) return true;
+    const uz = game.u?.uz;
+    if ((mon.isshk && !on_level(uz, ESHK(mon)?.shoplevel))
+        || (mon.ispriest && !on_level(uz, EPRI(mon)?.shrlevel))
+        || (mon.isgd && !on_level(uz, EGD(mon)?.gdlevel))) {
+        return true;
+    }
+    /* normal monsters go into the level save file instead */
+    return false;
+}
+
+/**
+ * C ref: dog.c keepdogs `:786–884` — decide, for every monster on the
+ * level the hero is leaving, whether it follows, is left behind, or is
+ * kept reachable off-level.
+ *
+ * `pets_only` (ascension / final escape) first clears the mundane
+ * trifles — trap, meal, sleep, paralysis — that would otherwise strand
+ * a pet, and rejects everything untame.
+ *
+ * A follower must be adjacent and a `levl_follower` (or be the Wizard
+ * chasing the Amulet from anywhere), must not be helpless unless it is
+ * the steed, and must have noticed the hero (`STRAT_WAITFORU`).
+ * Even then C gives a trapped one an escape attempt via `mintrap` —
+ * an RNG draw — and then three things can still hold it back: it is
+ * still eating or still trapped, or it carries the Amulet. Being left
+ * behind snaps any leash ("suddenly comes loose"), and a leashed pet
+ * that was never a candidate gets the gentler "leash goes slack".
+ *
+ * The walk itself is C's `for (mtmp = fmon; mtmp; mtmp = mtmp2)` with
+ * `mtmp2` saved first: both departure arms unlink `mtmp` from `fmon`
+ * while the walk is still running (D-1789).
+ *
+ * Named omissions: `mon_leave` `:725–763` — minvent `no_charge` /
+ * `picked_container`, shk `set_residency`, and the worm-segment count
+ * that C stores in `wormno` during migration; `relmon` `mon.c:2559`
+ * itself, so the follower arm splices `fmon` inline and never runs
+ * `mon_leaving_level`'s take-off-map (`remove_monster` / `seemimic` /
+ * `fill_pit` / `newsym`).
+ * @param {boolean} pets_only true for ascension or final escape
+ */
+export async function keepdogs(pets_only = false) {
     const u = game.u;
-    const list = game.fmon || [];
-    const stay = [];
+    /* C `:793–794` saves `mtmp2 = mtmp->nmon` *before* the body runs,
+       because both departure arms unlink `mtmp` from `fmon` underneath
+       the walk: `relmon(mtmp, &gm.mydogs)` for a follower, and
+       `migrate_to_level` (which calls `relmon(mtmp, &gm.migrating_mons)`)
+       for one kept accessible. A JS array carries no `nmon` links, so the
+       walk order is a snapshot and departers are unlinked from the live
+       `game.fmon` in place. Rebuilding `fmon` from a survivors list
+       instead would drop every monster a mid-walk splice skipped past, and
+       every monster a callee appended. */
+    const list = [...(game.fmon || [])];
     if (!game.mydogs) game.mydogs = [];
 
     for (const mtmp of list) {
-        if (mtmp.mhp != null && mtmp.mhp <= 0) {
-            stay.push(mtmp);
-            continue;
-        }
+        if (mtmp.mhp != null && mtmp.mhp <= 0) continue;
         if (pets_only) {
-            if (!mtmp.mtame) {
-                stay.push(mtmp);
-                continue;
-            }
+            if (!mtmp.mtame) continue; /* reject non-pets */
             // C `:799–809` — mundane trifles must not block escape/ascend
             mtmp.mtrapped = 0;
             finish_meating(mtmp);
@@ -383,25 +442,74 @@ export function keepdogs(pets_only = false) {
         const near = monnear(mtmp, u.ux, u.uy);
         const follow = levl_follower(mtmp);
         // C: (monnear && levl_follower) || (uhave.amulet && iswiz)
-        const chase = near && follow
+        const chase = (near && follow)
             || (!!(game.u?.uhave?.amulet) && mtmp.iswiz);
-        const helpless = !mtmp.mcanmove || mtmp.msleeping || (mtmp.mfrozen | 0) > 0;
+        const helpless = !mtmp.mcanmove || mtmp.msleeping
+            || (mtmp.mfrozen | 0) > 0;
         const waiting = !!(mtmp.mstrategy & STRAT_WAITFORU);
+
         if (chase && (!helpless || mtmp === u.usteed) && !waiting) {
-            if (mtmp.meating || mtmp.mtrapped) {
-                stay.push(mtmp);
+            let stay_behind = false;
+
+            if (mtmp.mtrapped) await mintrap(mtmp, NO_TRAP_FLAGS);
+            if (mtmp === u.usteed) {
+                /* make sure steed is eligible to accompany hero */
+                mtmp.mtrapped = 0;        /* escape trap */
+                mtmp.meating = 0;         /* terminate eating */
+                mdrop_special_objs(mtmp); /* drop Amulet */
+            } else if (mtmp.meating || mtmp.mtrapped) {
+                if (canseemon(mtmp)) {
+                    await pline_mon(mtmp, `${Monnam(mtmp)} is still ${
+                        mtmp.meating ? 'eating' : 'trapped'}.`);
+                }
+                stay_behind = true;
+            } else if (mon_has_amulet(mtmp)) {
+                if (canseemon(mtmp)) {
+                    await pline(
+                        `${Monnam(mtmp)} seems very disoriented for a moment.`,
+                    );
+                }
+                stay_behind = true;
+            }
+            if (stay_behind) {
+                if (mtmp.mleashed) {
+                    await pline(`${humanoid(mtmp.data)
+                        ? (mtmp.female ? 'Her' : 'His')
+                        : 'Its'} leash suddenly comes loose.`);
+                    await m_unleash(mtmp, false);
+                }
+                if (mtmp === u.usteed) {
+                    /* can't happen unless the stay_behind logic above
+                       gets scrambled by a later change */
+                    await impossible('steed left behind?');
+                    await dismount_steed(DISMOUNT_GENERIC);
+                }
                 continue;
             }
-            // C: relmon(mtmp, &mydogs) prepends — LIFO so last kept arrives first
+
+            // C `:862–863` relmon(mtmp, &gm.mydogs) — unlink from fmon,
+            // then prepend (LIFO, so the last kept arrives first).
+            // Named omissions: relmon's mon_leaving_level take-off-map
+            // (remove_monster / seemimic / fill_pit / newsym) and
+            // mon_leave's wormno / no_charge / set_residency.
+            const gone = (game.fmon || []).indexOf(mtmp);
+            if (gone >= 0) game.fmon.splice(gone, 1);
             game.mydogs.unshift(mtmp);
-            mtmp.mx = 0;
+            mtmp.mx = 0; /* mx==0 implies migrating */
             mtmp.my = 0;
             mtmp.mlstmv = game.moves | 0;
+        } else if (keep_mon_accessible(mtmp)) {
+            migrate_to_level(mtmp, ledger_no(u.uz), MIGR_EXACT_XY, null);
         } else {
-            stay.push(mtmp);
+            if (mtmp.mleashed) {
+                /* quest leader can eject the hero while a leashed pet
+                   is not next to them */
+                await pline(`${s_suffix(Monnam(mtmp))} leash goes slack.`);
+                await m_unleash(mtmp, false);
+            }
+            /* C leaves an ordinary monster on fmon — no relmon here. */
         }
     }
-    game.fmon = stay;
 }
 
 /**

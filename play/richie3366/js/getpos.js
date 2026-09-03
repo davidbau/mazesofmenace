@@ -20,10 +20,11 @@ import { nhgetch } from './input.js';
 import {
     flush_screen, flush_screen_getpos_dirty, pline, docrt, terrain_glyph,
     look_shown_at, newsym_force, glyph_is_invisible, glyph_to_obj_at,
+    glyph_at, glyph_is_trap, glyph_to_trap,
 } from './display.js';
 import { cansee } from './vision.js';
 import { ansimpleoname } from './objnam.js';
-import { look_at_object } from './pager.js';
+import { look_at_object, trap_description } from './pager.js';
 import {
     COLNO, ROWNO, isok, TER_MON, TER_OBJ, TER_MAP, TER_DETECT,
     GLOC_MONS, GLOC_OBJS, GLOC_DOOR, GLOC_EXPLORE, GLOC_INTERESTING, GLOC_VALID,
@@ -46,7 +47,7 @@ import {
 import { paint_corner_nhw_menu } from './invent.js';
 import { distant_monnam_none, pmname, Ugender } from './do_name.js';
 import { stairway_at, known_branch_stairs } from './mklev.js';
-import { t_at, trapname } from './trap.js';
+import { t_at } from './trap.js';
 import { waterbody_name, invocation_pos } from './hack.js';
 import { is_valid_travelpt } from './cmd.js';
 import { ok_to_quest } from './quest.js';
@@ -583,8 +584,9 @@ function cmap_defsym_explanation(x, y, loc) {
  * underwater unreconnoitered, special cmap arms (altar; doors D-0815;
  * cloud typ D-0811). Object: lookat glyph_is_object → look_at_object
  * (D-1547; fakeobj via object_from_map D-1524). doname_with_price /
- * doname_vague_quan, buried/embedded suffixes deferred. Trap: tseen
- * `trapname` only (trapped_chest/door / Hallucination deferred). Travel:
+ * doname_vague_quan, buried/embedded suffixes deferred. Trap: lookat
+ * glyph_is_trap(glyph_at) → trap_description(glyph_to_trap) (D-1787;
+ * no tseen / ftrap). Travel:
  * " (no travel path)" via is_valid_travelpt when getloc_travelmode
  * (D-0809). getpos_getvalid "(invalid target)" live (D-0899); S_goodpos
  * hilite glyphs deferred.
@@ -597,6 +599,13 @@ export function auto_describe_text(cx, cy) {
         && (!terrainmode || (terrainmode & TER_MON) !== 0)
     ) {
         return self_lookat_brief();
+    }
+
+    // C lookat `:718–721` — trap tnum is glyph_to_trap(glyph_at), not t_at.
+    // Dummytrap chest/door: trap glyph, floor pile still present.
+    const glyph = glyph_at(cx, cy);
+    if (glyph_is_trap(glyph)) {
+        return trap_description(glyph_to_trap(glyph), cx, cy);
     }
 
     // C lookat: glyph_is_monster then glyph_is_object (gbuf, not occupancy).
@@ -660,10 +669,6 @@ export function auto_describe_text(cx, cy) {
     // then do_screen_description blocked-stair rewrite (D-0814)
     const stair = stair_ladder_explanation(cx, cy);
     if (stair) return maybe_blocked_staircase_down(stair);
-
-    // C lookat glyph_is_trap → trap_description (seen map_trap glyph)
-    const trap = t_at(cx, cy);
-    if (trap && trap.tseen) return trapname(trap.ttyp, false);
 
     // C lookat glyph_is_cmap → defsyms / waterbody_name (ROOM/moat/wall…)
     const cmap = cmap_defsym_explanation(cx, cy, loc);

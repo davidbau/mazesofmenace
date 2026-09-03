@@ -2,7 +2,7 @@ import { allow_all } from './pickup.js';
 import { PICK_ANY } from './const.js';
 import { USE_INVLET } from './const.js';
 import { INVORDER_SORT } from './const.js';
-import { Has_contents } from './obj.js';
+import { Has_contents, bimanual } from './obj.js';
 import { COST_DEGRD } from './const.js';
 import { costly_alteration } from './shk.js';
 import { distu } from './hacklib.js';
@@ -56,7 +56,7 @@ import { freeinv, getobj, any_obj_ok, obj_extract_self, useup }
 import { place_object, rider_revival_time, set_bknown, set_corpsenm,
          splitobj, zombie_form, obj_nexto_xy } from './mkobj.js';
 import { canseemon, cls, docrt, pline, newsym } from './display.js';
-import { pline_The, There, You, You_cant, You_feel, You_hear, Your }
+import { Norep, pline_The, There, You, You_cant, You_feel, You_hear, Your }
     from './pline.js';
 import { near_capacity } from './attrib.js';
 import { u_locomotion, losehp, check_special_room } from './hack.js';
@@ -1458,14 +1458,43 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         }
     }
 
-    /* src/do.c:1942 — first visit to a level: the livelog entry itself is
-       invisible, but a TOURIST gains sightseeing experience for it, and
-       that can level the hero up (newhp/newpw draws). */
-    if (!familiar_level && game.urole?.name?.m === 'Tourist') {
-        const { more_experienced, newexplevel } = await import('./exper.js');
-        const { level_difficulty } = await import('./dungeon.js');
-        more_experienced(level_difficulty(), 0);
-        await newexplevel();
+    /* src/do.c:1942 — log every first visit before Tourist sightseeing
+       experience, since gaining a level can append another event. */
+    if (!familiar_level) {
+        const { LL_ACHIEVE, LL_DEBUG, In_quest, In_endgame,
+                Is_astralevel, Is_knox_level } = await import('./const.js');
+        const { endgamelevelname } = await import('./dungeon.js');
+        const uz = game.u.uz;
+        let dloc, addbranch = true;
+
+        /* src/botl.c describe_level(dloc, 2) */
+        if (Is_knox_level(uz)) {
+            dloc = game.dungeons[uz.dnum].dname;
+            addbranch = false;
+        } else if (In_quest(uz)) {
+            dloc = `Home ${uz.dlevel}`;
+        } else if (In_endgame(uz)) {
+            dloc = endgamelevelname(depth_do(uz));
+            addbranch = false;
+        } else {
+            dloc = `level ${depth_do(uz)}`;
+        }
+        if (addbranch) {
+            dloc += `, ${game.dungeons[uz.dnum].dname}`;
+            dloc = dloc.replace('The ', 'the ');
+        }
+
+        const major = ((In_endgame(uz) && !Is_astralevel(uz))
+                       || In_quest(uz));
+        const { livelog_printf } = await import('./pline.js');
+        livelog_printf(major ? LL_ACHIEVE : LL_DEBUG, `entered ${dloc}`);
+
+        if (game.urole?.name?.m === 'Tourist') {
+            const { more_experienced, newexplevel } = await import('./exper.js');
+            const { level_difficulty } = await import('./dungeon.js');
+            more_experienced(level_difficulty(), 0);
+            await newexplevel();
+        }
     }
 
     /* src/do.c:1967 — reset u.uz0 */
@@ -1803,13 +1832,8 @@ async function better_not_try_to_drop_that(obj) {
 export async function drop(obj) {
     if (!obj)
         return ECMD_FAIL;
-    if (!canletgo(obj, 'drop')) {
-        if (game._canletgo_message) {
-            await pline(game._canletgo_message);
-            delete game._canletgo_message;
-        }
+    if (!await canletgo_with_feedback(obj, 'drop'))
         return ECMD_FAIL;
-    }
     if (await better_not_try_to_drop_that(obj))
         return ECMD_FAIL;
     if (obj === game.u.uwep) {
@@ -1994,13 +2018,21 @@ export async function doddrop() {
 // refusal itself is real.
 export function canletgo(obj, word) {
     if (obj.owornmask & (W_ARMOR | W_ACCESSORY)) {
-        if (word)
+        if (word) {
             game._canletgo_message = `You cannot ${word} something you are wearing.`;
+            game._canletgo_norep = true;
+        }
         return false;
     }
     if (obj === game.u.uwep && welded(game.u.uwep)) {
         /* no weldmsg(), so uwep bknown might become set silently */
-        if (word) note_unported_do('canletgo:welded_msg');
+        if (word) {
+            let hand = body_part(HAND);
+            if (bimanual(game.u.uwep))
+                hand = makeplural(hand);
+            game._canletgo_message = `You cannot ${word} something welded to your ${hand}.`;
+            game._canletgo_norep = true;
+        }
         return false;
     }
     if (obj.otyp === ONAMES.LOADSTONE && obj.cursed) {
@@ -2026,6 +2058,28 @@ export function canletgo(obj, word) {
         return false;
     }
     return true;
+}
+
+/* canletgo() is a synchronous predicate because several AI and equipment
+   callers use it silently. Command callers use this wrapper to emit the
+   message through the same pline or Norep path as src/do.c:665-710. */
+export async function canletgo_with_feedback(obj, word) {
+    delete game._canletgo_message;
+    delete game._canletgo_norep;
+    if (canletgo(obj, word))
+        return true;
+
+    const message = game._canletgo_message;
+    const norep = !!game._canletgo_norep;
+    delete game._canletgo_message;
+    delete game._canletgo_norep;
+    if (message) {
+        if (norep)
+            await Norep(message);
+        else
+            await pline(message);
+    }
+    return false;
 }
 
 // src/do.c:2325 cmd_safety_prevention() — refuse a no-op command next to a

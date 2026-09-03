@@ -3,7 +3,6 @@
 // include/optlist.h into js/optlist.js by tools/gen-optlist.mjs.
 
 import { game } from './gstate.js';
-import { nhgetch } from './input.js';
 import { more, TOPLINE_NEED_MORE, pline, docrt, bot } from './display.js';
 import {
     NHW_MENU, ATR_NONE, ATR_INVERSE,
@@ -282,21 +281,13 @@ export async function ask_do_tutorial() {
             tty_add_menu_str(win, "(Please choose 'y' or 'n'.)");
 
         tty_end_menu(win, 'Do you want a tutorial?');
-        await tty_display_nhwindow(win);
-
-        /* select_menu(win, PICK_ONE) — returns as soon as a selector is typed */
-        let answered = null;
-        for (;;) {
-            const c = String.fromCharCode(await nhgetch());
-            if (c === '\x1b') { answered = 'esc'; break; }
-            if (c === 'y' || c === 'n') { answered = c; break; }
-            /* space and return select nothing, so the menu is rebuilt */
-            if (c === ' ' || c === '\r' || c === '\n') break;
-        }
+        const selected = await tty_select_menu(win, PICK_ONE);
         tty_destroy_nhwindow(win);
 
-        if (answered === 'esc') return false;
-        if (answered) return answered === 'y';
+        if (selected.cancelled)
+            return false;
+        if (selected.length)
+            return selected[0] === 'y'.charCodeAt(0);
     }
 }
 

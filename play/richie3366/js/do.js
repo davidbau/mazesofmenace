@@ -1439,7 +1439,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     } catch { /* apply optional */ }
 
     // C: if (!iflags.nofollowers) keepdogs(FALSE)
-    if (!game.iflags?.nofollowers) keepdogs(false);
+    if (!game.iflags?.nofollowers) await keepdogs(false);
     // C: check_special_room(TRUE) on leave — move_update clears urooms so
     // arrival re-enters temple/shop messages (intemple).
     await check_special_room(true);
@@ -1796,9 +1796,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         // Named omit: was_in_W_tower bit 2 (D-1179).
         await u_on_rndspot(up ? 1 : 0);
         if (falling) {
-            // C do.c `:1805–1809` — Punished && !welded(uball) ballfall,
-            // then selftouch, then do_fall_dmg (D-1179 / D-1778).
-            if (u.Punished && !welded(u.uball)) await ballfall();
+            // C do.c `:1805–1809` — Punished ≡ (uball != 0) (youprop.h:77)
+            // && !welded(uball) then ballfall, then selftouch, then
+            // do_fall_dmg (D-1179 / D-1778 / D-1786). Never sticky
+            // u.Punished — that field is never written.
+            if (u.uball && !welded(u.uball)) await ballfall();
             await selftouch('Falling, you');
             do_fall_dmg = true;
         }
