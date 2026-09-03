@@ -93,7 +93,7 @@ import {
     mkcorpstat, next_ident,
     curse, bless, uncurse, blessorcurse, place_object, add_to_buried, weight, OBJ,
     set_corpsenm, obj_stop_timers, start_timer, obj_extract_self,
-    add_to_container, objects_at, stackobj, oc_merge_of,
+    add_to_container, objects_at, stackobj, oc_merge_of, dealloc_obj,
 } from './mkobj.js';
 import {
     makemon, mkclass, MM_NOGRP, set_mimic_sym, mpickobj, add_to_minv, newcham,
@@ -1193,8 +1193,7 @@ function level_difficulty() {
     return level_difficulty_of(game.u?.uz);
 }
 
-// place_object / weight / add_to_container imported from mkobj.js
-function dealloc_obj(_otmp) { /* stub */ }
+// place_object / weight / add_to_container / dealloc_obj imported from mkobj.js
 // C ref: mkobj.c sobj_at — first floor object of otyp at (x,y)
 function sobj_at(otyp, x, y) {
     for (let otmp = objects_at(x, y); otmp; otmp = otmp.nexthere) {
@@ -19727,7 +19726,7 @@ function mktrap_victim(trap) {
         curse(otmp);
         // C: for mktrap_victim, PIT is an exploded LANDMINE
         if (trap.ttyp === PIT && mktrap_breaktest(otmp)) {
-            /* dealloc — not placed */
+            dealloc_obj(otmp);
         } else {
             place_object(otmp, x, y);
         }
@@ -19935,9 +19934,9 @@ async function fill_ordinary_room(croom, bonus_items) {
                             const lv2 = (g.objects?.[otmp2.otyp]?.oc_level) | 0;
                             // C: keep lower-level book; dealloc the other
                             if (lv1 <= lv2) {
-                                otmp2.quan = 0;
+                                dealloc_obj(otmp2);
                             } else {
-                                otmp.quan = 0;
+                                dealloc_obj(otmp);
                                 otmp = otmp2;
                             }
                         }
@@ -20080,7 +20079,7 @@ export function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_che
                     for (let i = 0; i < cnt; i++) {
                         const otmp = mkobj(GEM_CLASS, false);
                         if (otmp && otmp.otyp === ROCK) {
-                            /* dealloc — not placed */
+                            dealloc_obj(otmp); /* discard it */
                         } else if (otmp) {
                             otmp.ox = x;
                             otmp.oy = y;

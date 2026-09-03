@@ -13,7 +13,7 @@ import { pline, pline_mon, newsym, canspotmon, canseemon, map_invisible, unmap_o
 import { cansee } from './vision.js';
 import { dist2 } from './hacklib.js';
 import { resist_conflict, set_mon_data, on_fire } from './mondata.js';
-import { MON_WEP, mon_wield_item, hitval, dmgval } from './weapon.js';
+import { MON_WEP, mon_wield_item, hitval, dmgval, possibly_unwield } from './weapon.js';
 import { arti_reflects, artifact_hit, permapoisoned } from './artifact.js';
 import { find_mac, which_armor } from './worn.js';
 import { update_monster_region } from './region.js';
@@ -1055,9 +1055,11 @@ function See_invisible() {
     return !!((u.HSee_invisible | 0) || (u.ESee_invisible | 0) || u.See_invisible);
 }
 
-/** C ref: sys.h SYSOPT_SEDUCE — runtime seduce option. */
-function SYSOPT_SEDUCE() {
-    return !!(game.sysopt?.seduce);
+/** C ref: sys.h SYSOPT_SEDUCE — runtime seduce option (sys.c default 1). */
+export function SYSOPT_SEDUCE() {
+    const v = game.sysopt?.seduce;
+    if (v == null) return true;
+    return !!v;
 }
 
 /**
@@ -3141,7 +3143,8 @@ export async function mattackm(magr, mdef) {
                         return M_ATTK_MISS;
                     }
                 }
-                // possibly_unwield / mswingsm deferred
+                await possibly_unwield(magr, false);
+                // mswingsm deferred
                 mwep = MON_WEP(magr);
                 if (mwep) tmp += hitval(mwep, mdef);
                 // FALLTHROUGH to melee hit roll

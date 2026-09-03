@@ -8,6 +8,7 @@ import { rn2, rnd, rn1, d } from './rng.js';
 import { depth as depth_of_level, level_difficulty as level_difficulty_of, upstart } from './hacklib.js';
 import { put_saddle_on_mon, can_saddle, place_monster } from './steed.js';
 import { m_dowear, which_armor, check_gear_next_turn } from './worn.js';
+import { possibly_unwield } from './weapon.js';
 import {
     LOW_PM,
     SPECIAL_PM,
@@ -818,7 +819,7 @@ export function mkclass_aligned(mletClass, spc = 0, atyp = A_NONE) {
 }
 
 // C ref: makemon.c adj_lev() — no RNG
-function adj_lev(ptr) {
+export function adj_lev(ptr) {
     // C: Wizard level = base + times killed (capped 49); independent of depth
     if ((ptr?.mndx | 0) === pm('WIZARD_OF_YENDOR')) {
         let tmp = (ptr.mlevel | 0)
@@ -1433,7 +1434,7 @@ function newcham_post_set_mon_data(mtmp, olddata, mdat, pfsc) {
         mtmp.cham = pm_to_cham(mdat.mndx ?? NON_PM);
     }
 
-    // possibly_unwield / mon_break_armor / mselftouch named omit
+    // mon_break_armor / mselftouch named omit
     check_gear_next_turn(mtmp);
     // boulder drop / poly_steed named omit
 }
@@ -1443,10 +1444,10 @@ function newcham_post_set_mon_data(mtmp, olddata, mdat, pfsc) {
  * return a Promise; NO_NC_FLAGS without those stays boolean true.
  */
 function newcham_after_unleash(
-    mtmp, olddata, mdat, msg, oldname, seenorsensed, pfsc,
+    mtmp, olddata, mdat, msg, oldname, seenorsensed, pfsc, polyspot,
 ) {
     newcham_post_set_mon_data(mtmp, olddata, mdat, pfsc);
-    const after_msg = () => {
+    const after_pu = () => {
         const ep = newcham_elbereth(mtmp);
         // C :5517–5532 monflee is void; JS async — await at callers.
         if (ep) {
@@ -1456,6 +1457,12 @@ function newcham_after_unleash(
             })();
         }
         return true;
+    };
+    const after_msg = () => {
+        // C :5484 possibly_unwield after SHOW_MSG / vampire cham.
+        const pu = possibly_unwield(mtmp, polyspot);
+        if (pu) return Promise.resolve(pu).then(after_pu);
+        return after_pu();
     };
     if (msg) return newcham_show_msg(mtmp, oldname, seenorsensed, mdat).then(after_msg);
     return after_msg();
@@ -1477,8 +1484,8 @@ function newcham_after_unleash(
  * `if (newcham())` is not Promise-truthy. Vampire cham + check_gear
  * run before awaiting More (C does the pline first; cham unused by
  * the message; gear is next-turn).
- * Named omissions: NC_VIA_WAND_OR_SPELL possibly_unwield /
- * mon_break_armor / boulder bypass+flooreffects (async / missing);
+ * Named omissions: NC_VIA_WAND_OR_SPELL mon_break_armor / boulder
+ * bypass+flooreffects still named; possibly_unwield is D-1744;
  * ustuck expels/unstuck (async; l_oldname still captured for Hallu
  * RNG); poly_steed.
  * @returns {boolean|Promise<boolean>} true if form changed
@@ -1492,7 +1499,6 @@ export function newcham(mtmp, mdat, ncflags = 0) {
     const polyspot = ((ncflags | 0) & NC_VIA_WAND_OR_SPELL) !== 0;
     const msg = ((ncflags | 0) & NC_SHOW_MSG) !== 0;
     const seenorsensed = canspotmon(mtmp);
-    void polyspot; // VIA_WAND possibly_unwield / break_armor / boulder named
 
     if (mtmp.cham === NON_PM || mtmp.cham == null) {
         // C: non-shapechanger — riders + mbirth_limit immunes (Nazgul/Erinys);
@@ -1580,11 +1586,12 @@ export function newcham(mtmp, mdat, ncflags = 0) {
             await unleash_p;
             return await Promise.resolve(newcham_after_unleash(
                 mtmp, olddata, mdat, msg, oldname, seenorsensed, pfsc,
+                polyspot,
             ));
         })();
     }
     return newcham_after_unleash(
-        mtmp, olddata, mdat, msg, oldname, seenorsensed, pfsc,
+        mtmp, olddata, mdat, msg, oldname, seenorsensed, pfsc, polyspot,
     );
 }
 

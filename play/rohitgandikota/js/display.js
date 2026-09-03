@@ -1218,21 +1218,12 @@ export function newsym(x, y) {
            include/display.h:246 maybe_display_usteed() — while riding, the
            hero's square shows the STEED's glyph, not '@'. */
         const under = covers_objects(x, y) ? null : vobj_at(x, y);
+        /* src/display.c:422 map_location(): objects, then the engraving,
+           then the background */
         const tg = under ? floor_object_glyph(under, x, y)
-                         : terrain_glyph(loc, x, y);
-        const steed = game.u.usteed;
-        if (canspotself() && steed && mon_visible(steed))
-            show_glyph_cell(x, y, def_monsyms[steed.data.mlet] || '?',
-                            steed.data.mcolor ?? NO_COLOR, false, 0,
-                            { kind: 'hero', mon: steed });
-        else if (canspotself()) {
-            const self = game.youmonst?.data;
-            show_glyph_cell(x, y,
-                            Upolyd(game.u)
-                                ? (def_monsyms[self.mlet] || '?') : '@',
-                            Upolyd(game.u) ? self.mcolor : CLR_WHITE,
-                            false, 0, { kind: 'hero' });
-        }
+                         : (engraving_glyph(loc, x, y) ?? terrain_glyph(loc, x, y));
+        if (canspotself())
+            display_self(); /* the steed, the disguise, or the hero */
         else
             show_glyph_cell(x, y, tg.ch, tg.color, tg.dec, pile_attr(tg.glyph),
                             tg.glyph ?? { kind: 'cmap', cmap: tg.cmap });

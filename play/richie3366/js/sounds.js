@@ -2,10 +2,15 @@
 // C ref: sounds.c — dosounds / dotalk / dochat / domonnoise (MS_BARK
 //         subset + MS_HUMANOID D-1618 / mplayer_talk D-1606 /
 //         MS_BOAST D-1626 / MS_RIDER Death tribute D-1653) + yelp /
-//         growl (pet abuse; D-0836).
+//         growl (pet abuse; D-0836);
+//         set_voice (D-1752; !SND_SPEECH no-op). SetVoice is sndprocs.h.
+//         sound_speak (D-1761; !SND_SPEECH no-op). SoundSpeak is sndprocs.h.
+//         maybe_gasp (D-1762); beg (D-1763).
 
 import { game } from './gstate.js';
-import { pline, canseemon, verbalize, Hallucination } from './display.js';
+import {
+    pline, canseemon, canspotmon, verbalize, Hallucination, map_invisible,
+} from './display.js';
 import { getdir } from './lock.js';
 import { mon_at } from './uhitm.js';
 import { Monnam } from './do_name.js';
@@ -21,19 +26,49 @@ import { nomul } from './hack.js';
 import {
     is_animal, is_flyer, is_lord, is_prince, is_mercenary, is_undead,
     is_mplayer, is_elf, is_dwarf, is_gnome, likes_magic, monsterNames,
-    mons, G_UNIQ,
+    mons, G_UNIQ, carnivorous, herbivorous,
 } from './monsters.js';
 import {
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, isok, IS_WALL, SDOOR, SIZE,
     ANY_SHOP, ANY_TYPE, OROOM, SHOPBASE, ROOMOFFSET, VAULT,
     COURT, BEEHIVE, MORGUE, BARRACKS, ZOO,
-    ESHK, Is_astralevel, Is_oracle_level, In_endgame, STRAT_WAITMASK,
+    ESHK, EMIN, has_emin, Is_astralevel, Is_oracle_level, In_endgame,
+    STRAT_WAITMASK,
 } from './const.js';
 import { mplayer_talk } from './mplayer.js';
 import { vault_occupied, findgd } from './vault.js';
 import { t_at } from './trap.js';
 import { same_race } from './mondata.js';
 import { mhis } from './fountain.js';
+import { could_seduce, SYSOPT_SEDUCE } from './mhitm.js';
+import { doseduce } from './mhitu.js';
+import { SetVoice, voice_death } from './sndprocs.js';
+import { p_coaligned } from './priest.js';
+
+/**
+ * C ref: sounds.c set_voice `:2160–2182`. Body is `#ifdef SND_SPEECH`;
+ * contest C has no SND_SPEECH (`SPEECHONLY UNUSED`), so this is a
+ * no-op. Direct callers: shk.c `u_entered_shop` welcome / `addtobill`
+ * quotes. `SetVoice` (sndprocs.h) does not call this without SND_LIB.
+ */
+export function set_voice(mtmp, tone, volume, moreinfo) {
+    void mtmp;
+    void tone;
+    void volume;
+    void moreinfo;
+}
+
+/**
+ * C ref: sounds.c sound_speak `:2184–2220`. Body is `#ifdef SND_SPEECH`;
+ * contest C has no SND_SPEECH, so this is a no-op. Direct caller:
+ * `domonnoise` MS_RIDER Death after `SetVoice` (`:1235`; tmpbuf is the
+ * ucased line already passed to `pline1`). `cmd.c` yn_function
+ * `sound_speak(query)` is `#ifdef SND_SPEECH` (compiled out).
+ * `SoundSpeak` (sndprocs.h `:275`) does not call this without SND_LIB.
+ */
+export function sound_speak(text) {
+    void text;
+}
 
 const STATUE = objectNames.indexOf('STATUE');
 const PM_ORACLE = monsterNames.indexOf('PM_ORACLE');
@@ -379,12 +414,29 @@ const MS_NEIGH = 12;
 const MS_MOO = 13;
 const MS_WAIL = 14;
 const MS_ANIMAL = 17;
+const MS_LAUGH = 20;
 const MS_MUMBLE = 21;
+const MS_IMITATE = 22;
+const MS_WERE = 23;
 const MS_ORC = 24;
 const MS_HUMANOID = 25;
+const MS_ARREST = 26;
+const MS_SOLDIER = 27;
+const MS_GUARD = 28;
+const MS_DJINNI = 29;
+const MS_NURSE = 30;
 const MS_SEDUCE = 31;
+const MS_VAMPIRE = 32;
+const MS_BRIBE = 33;
+const MS_CUSS = 34;
 const MS_RIDER = 35;
 const MS_LEADER = 36;
+const MS_NEMESIS = 37;
+const MS_GUARDIAN = 38;
+const MS_SELL = 39;
+const MS_ORACLE = 40;
+const MS_PRIEST = 41;
+const MS_SPELL = 42;
 const MS_BOAST = 43;
 const MS_GROAN = 44;
 
@@ -400,6 +452,115 @@ const H_SOUNDS = [
     'moo', 'boom', 'murmur', 'oink', 'quack', 'rumble',
     'twang', 'toot', 'gargle', 'hoot', 'warble',
 ];
+
+/**
+ * C ref: sounds.c beg `:518–542`. Hungry-pet noise after helpless /
+ * diet gate. Caller `dog_hunger` (`dogmove.c` `:383`) is still named
+ * omitted from `dog_move`. `is_silent` is the mondata.h one-liner
+ * (`msound == MS_SILENT`); do not add a named clone (region.js).
+ */
+export async function beg(mtmp) {
+    if (helpless(mtmp)
+        || !(carnivorous(mtmp.data) || herbivorous(mtmp.data))) {
+        return;
+    }
+
+    /* presumably nearness and soundok checks have already been made */
+    const msound = mtmp.data.msound | 0;
+    if (msound !== MS_SILENT && msound <= MS_ANIMAL) {
+        await domonnoise(mtmp);
+    } else if (msound >= MS_HUMANOID) {
+        if (!canspotmon(mtmp)) {
+            map_invisible(mtmp.mx, mtmp.my);
+        }
+        SetVoice(mtmp, 0, 80, 0);
+        await verbalize("I'm hungry.");
+    } else {
+        /* this is pretty lame but is better than leaving out the block
+           of speech types between animal and humanoid; this covers
+           MS_SILENT too (if caller lets that get this far) since it's
+           excluded by the first two cases */
+        if (canspotmon(mtmp)) {
+            await pline(`${Monnam(mtmp)} seems famished.`);
+        }
+        /* looking famished will be a good trick for a tame skeleton... */
+    }
+}
+
+/**
+ * C ref: sounds.c maybe_gasp `:545–610`. Returns ROLL_FROM(Exclam) or
+ * NULL. Caller `peacefuls_respond` (`mon.c` `:4188`) is still named
+ * omitted from `setmangry`. JS `mons()` is a fresh permonst so C
+ * `mptr != &mons[gu.urole.guardnum]` is mndx (same as
+ * `reset_hostility`). Live `p_coaligned` is priest.js (EPRI.shralign
+ * / maligntyp; isminion `mon_aligntyp` is that module's body).
+ */
+export function maybe_gasp(mon) {
+    const Exclam = ['Gasp!', 'Uh-oh.', 'Oh my!', 'What?', 'Why?'];
+    const mptr = mon?.data;
+    if (!mptr) return null;
+    let msound = mptr.msound | 0;
+    let dogasp = false;
+
+    /* other roles' guardians and cross-aligned priests don't gasp */
+    if ((msound === MS_GUARDIAN
+            && (mptr.mndx | 0) !== (game.urole?.guardnum | 0))
+        || (msound === MS_PRIEST && !p_coaligned(mon))) {
+        msound = MS_SILENT;
+    } else if (msound === MS_CUSS && has_emin(mon)
+        /* co-aligned angels do gasp */
+        && (p_coaligned(mon)
+            ? !EMIN(mon).renegade : EMIN(mon).renegade)) {
+        msound = MS_HUMANOID;
+    }
+
+    /*
+     * Only called for humanoids so animal noise handling is ignored.
+     */
+    switch (msound) {
+    case MS_HUMANOID:
+    case MS_ARREST: /* Kops */
+    case MS_SOLDIER: /* solider, watchman */
+    case MS_GUARD: /* vault guard */
+    case MS_NURSE:
+    case MS_SEDUCE: /* nymph, succubus/incubus */
+    case MS_LEADER: /* quest leader */
+    case MS_GUARDIAN: /* leader's guards */
+    case MS_SELL: /* shopkeeper */
+    case MS_ORACLE:
+    case MS_PRIEST: /* temple priest, roaming aligned priest (not mplayer) */
+    case MS_BOAST: /* giants */
+    case MS_IMITATE: /* doppelganger, leocrotta, Aleax */
+        dogasp = true;
+        break;
+    /* issue comprehensible word(s) if hero is similar type of creature */
+    case MS_ORC: /* used to be synonym for MS_GRUNT */
+    case MS_GRUNT: /* ogres, trolls, gargoyles, one or two others */
+    case MS_LAUGH: /* leprechaun, gremlin */
+    case MS_ROAR: /* dragon, xorn, owlbear */
+    case MS_BELLOW: /* crocodile */
+    /* capable of speech but only do so if hero is similar type */
+    case MS_DJINNI:
+    case MS_VAMPIRE: /* vampire in its own form */
+    case MS_WERE: /* lycanthrope in human form */
+    case MS_SPELL: /* titan, barrow wight, Nazgul, nalfeshnee */
+        dogasp = mptr.mlet === game.youmonst?.data?.mlet;
+        break;
+    /* capable of speech but don't care if you attack peacefuls */
+    case MS_BRIBE:
+    case MS_CUSS:
+    case MS_RIDER:
+    case MS_NEMESIS:
+    /* can't speak */
+    case MS_SILENT:
+    default:
+        break;
+    }
+    if (dogasp) {
+        return Exclam[rn2(SIZE(Exclam))]; /* [mon->m_id % SIZE(Exclam)]; */
+    }
+    return null;
+}
 
 /**
  * C ref: permonst.msound (monflag.h). Tables extract SIZ sound.
@@ -621,8 +782,7 @@ function tribute_info() {
  * pline). Other MS_* named omitted in C-JS-MAP; unknown →
  * ECMD_OK (silent). FULL_MOON howl needs night() — deferred;
  * falls through to bark. MS_PRIEST priest_talk deferred
- * (non-leader temple priests). MS_SEDUCE doseduce (SYSOPT
- * non-nymph) deferred.
+ * (non-leader temple priests).
  */
 export async function domonnoise(mtmp) {
     if (!mtmp) return ECMD_OK;
@@ -672,13 +832,15 @@ export async function domonnoise(mtmp) {
             pline_msg = 'growls.';
         }
     } else if (msound === MS_SEDUCE) {
-        // C sounds.c MS_SEDUCE — nymph chat; doseduce non-nymph deferred.
-        // SYSOPT_SEDUCE: opposite-gender rn2(3); else male-only rn2(3).
-        // Same-gender / female under !SEDUCE → swval 0 → "cajoles you."
+        // C sounds.c MS_SEDUCE :1106–1128 — SYSOPT default on;
+        // non-nymph could_seduce==1 → doseduce then break (ECMD_TIME).
         let swval;
-        const seduce = !!(game.sysopt?.seduce);
-        if (seduce) {
-            // could_seduce + doseduce for non-nymph deferred
+        if (SYSOPT_SEDUCE()) {
+            if (ptr?.mlet !== 'S_NYMPH'
+                && could_seduce(mtmp, game.youmonst, null) === 1) {
+                await doseduce(mtmp);
+                return ECMD_TIME;
+            }
             swval = (poly_gender() !== (mtmp.female | 0)) ? rn2(3) : 0;
         } else {
             swval = (poly_gender() === 0) ? rn2(3) : 0;
@@ -809,7 +971,7 @@ export async function domonnoise(mtmp) {
     // Other msound cases deferred (guardian/isshk/gecko remaps named)
 
     // C :1222–1241 pline_msg then mcan verbl_msg_mcan then verbl_msg.
-    // verbl_msg_mcan / SetVoice / sound_speak named omitted.
+    // verbl_msg_mcan still named (no cancelled-speech arm).
     if (pline_msg) {
         await pline(`${Monnam(mtmp)} ${pline_msg}`);
         return ECMD_TIME;
@@ -817,8 +979,14 @@ export async function domonnoise(mtmp) {
     if (verbl_msg) {
         // C: PM_DEATH talks in CAPITAL LETTERS without quotation marks.
         if ((ptr?.mndx | 0) === PM_DEATH) {
-            await pline(ucase(verbl_msg));
+            // C: pline1(ucase(strcpy(tmpbuf, verbl_msg))); then
+            // SetVoice(0,0,80,voice_death); sound_speak(tmpbuf).
+            const tmpbuf = ucase(verbl_msg);
+            await pline(tmpbuf);
+            SetVoice(null, 0, 80, voice_death);
+            sound_speak(tmpbuf);
         } else {
+            SetVoice(mtmp, 0, 80, 0);
             await verbalize(verbl_msg);
         }
         return ECMD_TIME;

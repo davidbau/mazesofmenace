@@ -12,6 +12,22 @@
 // rn2(8) rn2(7) … rn2(2) rn2(16) rn2(15) … run the recordings show when a pet
 // is placed.
 
+import { rn1 } from './rng.js';
+import { m_into_limbo } from './mon.js';
+import { unstuck } from './mon.js';
+import { engulfing_u } from './const.js';
+import { place_object } from './mkobj.js';
+import { stolen_value } from './shk.js';
+import { addtobill } from './shk.js';
+import { subfrombill } from './shk.js';
+import { costly_adjacent } from './shk.js';
+import { costly_spot } from './shk.js';
+import { find_objowner } from './shk.js';
+import { On_W_tower_level } from './dungeon.js';
+import { obj_extract_self } from './invent.js';
+import { flooreffects } from './do.js';
+import { revive_corpse } from './do.js';
+import { is_rider } from './mondata.js';
 import { make_stunned } from './potion.js';
 import { UTOTYPE_PORTAL } from './const.js';
 import { UTOTYPE_ATSTAIRS } from './const.js';
@@ -1305,4 +1321,120 @@ export async function mtele_trap(mtmp, trap, in_sight) {
             seetrap(trap);
         }
     }
+}
+
+// src/teleport.c rloco(); teleport an object somewhere on the level
+export async function rloco(obj) {
+    let tx, ty, otx, oty;
+    let restricted_fall;
+    let try_limit = 4000;
+
+    if (obj.otyp === ONAMES.CORPSE && is_rider(game.mons[obj.corpsenm])) {
+        if (await revive_corpse(obj))
+            return false;
+    }
+
+    obj_extract_self(obj);
+    otx = obj.ox;
+    oty = obj.oy;
+    const dndest = game.dndest || {};
+    restricted_fall = (otx === 0 && !!dndest.lx);
+    do {
+        tx = rn1(COLNO - 3, 2);
+        ty = rn2(ROWNO);
+        if (!--try_limit)
+            break;
+    } while (!goodpos(tx, ty, null, 0)
+             || (restricted_fall
+                 && (!within_bounded_area(tx, ty,
+                                          dndest.lx, dndest.ly,
+                                          dndest.hx, dndest.hy)
+                     || (dndest.nlx
+                         && within_bounded_area(tx, ty,
+                                                dndest.nlx, dndest.nly,
+                                                dndest.nhx, dndest.nhy))))
+             /* on the Wizard Tower levels, objects inside should
+                stay inside and objects outside should stay outside */
+             || (dndest.nlx && On_W_tower_level(game.u.uz)
+                 && within_bounded_area(tx, ty,
+                                        dndest.nlx, dndest.nly,
+                                        dndest.nhx, dndest.nhy)
+                    !== within_bounded_area(otx, oty,
+                                            dndest.nlx, dndest.nly,
+                                            dndest.nhx, dndest.nhy)));
+
+    if (await flooreffects(obj, tx, ty, 'fall')) {
+        /* update old location (if any) since flooreffects() couldn't;
+           unblock_point() for boulder handled by obj_extract_self() */
+        if (!(otx === 0 && oty === 0))
+            newsym(otx, oty);
+        return false;
+    } else if (otx === 0 && oty === 0) {
+        ; /* fell through a trap door; no update of old loc needed */
+    } else {
+        const shkp = find_objowner(obj, otx, oty);
+        const objinshop = shkp && costly_spot(otx, oty),
+              onboundary = shkp && costly_adjacent(shkp, otx, oty);
+
+        /*
+         * If object starts inside shop or is unpaid and on shop boundary:
+         * if hero is outside the shop, treat this as theft;
+         * otherwise, if it arrives inside same shop, remove it from bill;
+         * otherwise, if it arrives on the boundary, add it to bill;
+         * if it arrives outside the shop, treat this as a theft.
+         * Billing routines deal with obj->no_charge.
+         */
+        if (objinshop || (obj.unpaid && onboundary)) {
+            const h = in_rooms(game.u.ux, game.u.uy, SHOPBASE)[0] || '',
+                  oo = in_rooms(otx, oty, 0)[0] || '';
+            const hinshop = h && in_rooms(shkp.mx, shkp.my, 0).includes(h);
+
+            if (hinshop && costly_spot(tx, ty)
+                /* verify that it's the same shop */
+                && oo && in_rooms(tx, ty, 0).includes(oo)) {
+                if (obj.unpaid)
+                    subfrombill(obj, shkp);
+            } else if (hinshop && costly_adjacent(shkp, tx, ty)
+                       && oo && in_rooms(tx, ty, 0).includes(oo)) {
+                if (!obj.unpaid)
+                    await addtobill(obj, false, false, false);
+            } else {
+                await stolen_value(obj, otx, oty, false, false);
+            }
+        }
+
+        newsym(otx, oty); /* update old location */
+    }
+    place_object(obj, tx, ty);
+    /* note: block_point() for boulder handled by place_object() */
+    newsym(tx, ty);
+    return true;
+}
+
+// src/teleport.c u_teleport_mon(); the hero teleports a monster away
+export async function u_teleport_mon(mtmp, give_feedback) {
+    const cc = { x: 0, y: 0 };
+
+    if ((game.level.flags?.stasis_until || 0) >= game.moves) {
+        if (give_feedback)
+            await pline(`A mysterious force prevents you teleporting ${mon_nam(mtmp)}!`);
+        return false;
+    } else if (mtmp.ispriest && in_rooms(mtmp.mx, mtmp.my, TEMPLE).length) {
+        if (give_feedback)
+            await pline(`${Monnam(mtmp)} resists your magic!`);
+        return false;
+    } else if (engulfing_u(mtmp) && noteleport_level(mtmp)) {
+        if (give_feedback)
+            await You(`are no longer inside ${mon_nam(mtmp)}!`);
+        await unstuck(mtmp);
+        if (!(await rloc(mtmp, RLOC_MSG)))
+            m_into_limbo(mtmp);
+    } else if ((is_rider(mtmp.data) || control_teleport(mtmp.data))
+               && rn2(13) && enexto(cc, game.u.ux, game.u.uy, mtmp.data)) {
+        await rloc_to(mtmp, cc.x, cc.y);
+    } else {
+        if (!(await rloc(mtmp, RLOC_MSG)))
+            return false;
+    }
+    return true;
 }

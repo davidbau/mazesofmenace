@@ -9,6 +9,16 @@
 // Functions appear in src/pager.c order. dohelp()/doextversion() at the
 // bottom predate this port of the rest of the file.
 
+import { Mgender } from './const.js';
+import { M_AP_MONSTER } from './const.js';
+import { MONSYMS } from './monst_data.js';
+import { visible_region_at } from './region.js';
+import { is_pool } from './mon.js';
+import { surface } from './dungeon.js';
+import { ceiling_hider } from './mondata.js';
+import { is_hider } from './mondata.js';
+import { hides_under } from './mondata.js';
+import { obj_descr } from './objects_data.js';
 import { IS_WATERWALL, Is_waterlevel } from './const.js';
 import { MELT_ICE_AWAY } from './const.js';
 import { u_at } from './const.js';
@@ -340,6 +350,98 @@ export function ice_descr(x, y) {
                                        : (time_left > 14) ? 4 /* thin */
                                          : 5;                 /* slushy */
         outbuf = `${icetyp[game.iflags.ice_rating]} ${waterbody_name(x, y)}`;
+    }
+    return outbuf;
+}
+
+/* include/hack.h:1179 MHID_* */
+export const MHID_PREFIX = 1, MHID_ARTICLE = 2, MHID_ALTMON = 4, MHID_REGION = 8;
+
+// src/pager.c:186 mhidden_description(); returns the description string
+export function mhidden_description(mon, mhid_flags) {
+    let otmp;
+    let what;
+    let reg;
+    const incl_prefix = (mhid_flags & MHID_PREFIX) !== 0,
+          incl_article = (mhid_flags & MHID_ARTICLE) !== 0,
+          show_altmon = (mhid_flags & MHID_ALTMON) !== 0,
+          force_region = (mhid_flags & MHID_REGION) !== 0;
+    let fakeobj;
+    const isyou = (mon === game.youmonst);
+    const x = isyou ? game.u.ux : mon.mx, y = isyou ? game.u.uy : mon.my;
+    const glyph = (game.level.flags?.hero_memory && !isyou) ? game.level.at(x, y).glyph
+                                                            : glyph_at(x, y);
+    let outbuf = '';
+
+    const objfrommap = () => {
+        otmp = null;
+        const res = object_from_map(glyph, x, y);
+        fakeobj = res.fakeobj;
+        otmp = res.obj;
+        what = (otmp && otmp.otyp !== ONAMES.STRANGE_OBJECT)
+               ? simpleonames(otmp)
+               : obj_descr[ONAMES.STRANGE_OBJECT].oc_name;
+        if (incl_article && (!otmp || otmp.quan === 1))
+            what = an(what);
+        outbuf += what;
+        /* dealloc_obj(otmp) for a fake object: nothing to free here */
+    };
+
+    if (M_AP_TYPE(mon) === M_AP_FURNITURE
+        || M_AP_TYPE(mon) === M_AP_OBJECT) {
+        if (incl_prefix)
+            outbuf = ', mimicking ';
+        if (M_AP_TYPE(mon) === M_AP_FURNITURE) {
+            what = defsyms[mon.mappearance].explain;
+            if (incl_article)
+                what = an(what);
+            outbuf += what;
+        } else if (M_AP_TYPE(mon) === M_AP_OBJECT
+                   /* remembered glyph, not glyph_at() which is 'mon' */
+                   && glyph?.kind === 'obj') {
+            objfrommap();
+        } else {
+            outbuf += 'something';
+        }
+    } else if (M_AP_TYPE(mon) === M_AP_MONSTER) {
+        if (show_altmon) {
+            if (incl_prefix)
+                outbuf += ', masquerading as ';
+            what = pmname(game.mons[mon.mappearance], Mgender(mon));
+            if (incl_prefix)
+                what = an(what);
+            outbuf += what;
+        }
+    } else if (isyou ? game.u.uundetected : mon.mundetected) {
+        outbuf = ', hiding';
+        if (hides_under(mon.data)) {
+            outbuf += ' under ';
+            /* remembered glyph, not glyph_at() which is 'mon' */
+            if (glyph?.kind === 'obj')
+                objfrommap();
+            else
+                outbuf += 'something';
+        } else if (is_hider(mon.data)) {
+            outbuf += ` on the ${ceiling_hider(mon.data) ? 'ceiling'
+                                                        : surface(x, y)}`; /* trapper */
+        } else {
+            if (mon.data.mlet === MONSYMS.S_EEL && is_pool(x, y))
+                outbuf += ' in murky water';
+        }
+    }
+
+    /* FIXME: <x,y> isn't right when looking at long worm tails */
+    if ((reg = visible_region_at(x, y)) != null) {
+        const r = ((game.u.xray_range ?? 0) > 1) ? game.u.xray_range : 1;
+
+        /* at present, hero must be next to the monster; ... */
+        if (distu(x, y) <= r * (r + 1) || force_region) {
+            const rglyph = reg.glyph;
+            const poison_gas = (rglyph?.kind === 'cmap'
+                                && rglyph.cmap === cmap_names.S_poisoncloud);
+
+            outbuf += `, in a cloud of ${poison_gas ? 'poison gas' : 'vapor'}`;
+        }
     }
     return outbuf;
 }

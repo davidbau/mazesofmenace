@@ -3,7 +3,7 @@
 //        bones.c can_make_bones / drop_upon_death / savebones.
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, d } from './rng.js';
 import { depth } from './hacklib.js';
 import {
     pline, flush_topl_more, bot, You_feel, clear_nhwindow_message,
@@ -25,7 +25,7 @@ import {
     ECMD_OK, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, PANICKED,
     DISCLOSE_YES_WITHOUT_PROMPT, DISCLOSE_NO_WITHOUT_PROMPT,
     DISCLOSE_SPECIAL_WITHOUT_PROMPT, DISCLOSE_PROMPT_DEFAULT_YES,
-    DISCLOSE_PROMPT_DEFAULT_SPECIAL, NUM_DISCLOSURE_OPTIONS,
+    DISCLOSE_PROMPT_DEFAULT_NO, DISCLOSE_PROMPT_DEFAULT_SPECIAL, NUM_DISCLOSURE_OPTIONS,
     BASICENLIGHTENMENT, MAGICENLIGHTENMENT,
     ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD,
     Is_container, SORTLOOT_LOOT, SORTLOOT_PACK,
@@ -33,10 +33,10 @@ import {
     has_oname, LIFESAVED, W_AMUL,
 } from './const.js';
 import { G_NOCORPSE, mons } from './monsters.js';
-import { oname, christen_monst, free_oname } from './do_name.js';
+import { oname, christen_monst, free_oname, mon_nam } from './do_name.js';
 import { mkcorpstat, curse, place_object, stackobj, mksobj } from './mkobj.js';
 import { make_grave } from './engrave.js';
-import { makemon } from './makemon.js';
+import { makemon, adj_lev } from './makemon.js';
 import {
     write_bonesfile, bones_file_exists, delete_bonesfile,
     goodfruit, savebones_negate_fruit_ids,
@@ -76,6 +76,7 @@ const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
 const CANDELABRUM_OF_INVOCATION =
     objectNames.indexOf('CANDELABRUM_OF_INVOCATION');
 const PM_GHOST = monsterNames.indexOf('PM_GHOST');
+const PM_HOUSECAT = monsterNames.indexOf('PM_HOUSECAT');
 
 /** C ref: integer.h nowrap_add — saturate at LONG_MAX (JS Number analogue). */
 function nowrap_add(a, b) {
@@ -230,6 +231,34 @@ function score_collected_valuables() {
             }
         }
     }
+}
+
+/**
+ * C ref: end.c really_done `:1453–1476`. After unique-item counting.
+ * C sets viz_array[0][0] |= IN_SIGHT so mon_nam can see mx=0 mydogs;
+ * JS x_monnam already skips do_it when program_state.gameover.
+ * Walk mydogs: name every companion; mtame → nowrap_add(urexp, mhp).
+ * Live Schroedingers_cat: adj_lev(housecat) then d(m_lev, 8).
+ * DUMPLOG listing remains named omit.
+ * @returns {string[]} mon_nam fragments (no leading "You")
+ */
+export function score_escape_companions() {
+    const u = game.u || (game.u = {});
+    const names = [];
+    for (const mtmp of game.mydogs || []) {
+        if (!mtmp) continue;
+        names.push(mon_nam(mtmp));
+        if (mtmp.mtame) {
+            u.urexp = nowrap_add(u.urexp | 0, mtmp.mhp | 0);
+        }
+    }
+    if (game.Schroedingers_cat) {
+        const m_lev = adj_lev(mons(PM_HOUSECAT));
+        const mhp = d(m_lev, 8);
+        u.urexp = nowrap_add(u.urexp | 0, mhp);
+        names.push("Schroedinger's cat");
+    }
+    return names;
 }
 
 /**
@@ -559,12 +588,12 @@ function set_cknown_lknown(obj) {
  * C ref: end.c really_done invent walk before disclose — ID everything
  * for inventory disclosure / dumplog. observe_quantum_cat(FALSE, FALSE)
  * so a live cat leaves spe set (container_contents "Schroedinger's cat!").
- * Named omissions: escape/ascend companion HP from Schroedingers_cat.
+ * game.Schroedingers_cat is C's file-scope boolean for escape companion HP.
  */
 async function identify_invent_for_disclose() {
     const invent = game.invent || [];
-    // Local to this death — C file-static; JS games reuse the module.
-    let Schroedingers_cat = false;
+    // C BSS zeros once per process; JS reuses the module across games.
+    game.Schroedingers_cat = false;
     let observe_quantum_cat = null;
     for (const obj of invent) {
         if (!obj) continue;
@@ -572,13 +601,13 @@ async function identify_invent_for_disclose() {
         obj.known = obj.bknown = obj.dknown = obj.rknown = 1;
         set_cknown_lknown(obj);
         if (SchroedingersBox(obj)) {
-            if (!Schroedingers_cat) {
+            if (!game.Schroedingers_cat) {
                 // pickup→trap→end cycle; load after modules are live
                 if (!observe_quantum_cat) {
                     ({ observe_quantum_cat } = await import('./pickup.js'));
                 }
                 await observe_quantum_cat(obj, false, false);
-                if (SchroedingersBox(obj)) Schroedingers_cat = true;
+                if (SchroedingersBox(obj)) game.Schroedingers_cat = true;
             } else {
                 obj.spe = 0;
             }
@@ -775,8 +804,8 @@ async function disclose(how, taken) {
  * C ref: end.c really_done death summary + rip — NHW_TEXT via
  * display_nhwindow; wintty process_text_window paginates at rows-1.
  * Named omissions: paybill; discover_object invent walk; arise pline;
- * pet-HP / Schroedinger score; In_endgame/quest depth;
- * DUMPLOG second artifact_score; amulet killer suffix.
+ * In_endgame/quest depth; DUMPLOG second artifact_score; amulet killer
+ * suffix. Companion pet HP / live-cat d() is D-1754.
  */
 async function show_death_rip_and_summary(how, umoney, endtime = 0) {
     const flags = game.flags || {};
@@ -805,19 +834,28 @@ async function show_death_rip_and_summary(how, umoney, endtime = 0) {
     lines.push(`${Goodbye()} ${plname} the ${roleName}...`);
     lines.push('');
 
-    const pts = u.urexp | 0;
     if (how === ESCAPED || how === ASCENDED) {
-        // C `:1475–1482` after artifact_score counting; pets named omit
+        // C `:1453–1482` after artifact_score counting: companion names
+        // then (same or next putstr) verb + points. Pets first so urexp
+        // in the sentence includes mhp / live-cat d().
+        const names = score_escape_companions();
+        const scored = u.urexp | 0;
         const verb = how === ASCENDED
             ? 'went to your reward'
             : 'escaped from the dungeon';
-        lines.push(`You ${verb} with ${pts} point${plur(pts)},`);
+        if (names.length) {
+            lines.push(`You and ${names.join(' and ')}`);
+            lines.push(`${verb} with ${scored} point${plur(scored)},`);
+        } else {
+            lines.push(`You ${verb} with ${scored} point${plur(scored)},`);
+        }
         artifact_score(game.invent, false, lines);
         list_valuables(lines);
     } else {
         const where = game.dungeons?.[u.uz?.dnum | 0]?.dname
             || 'The Dungeons of Doom';
         const dlev = depth(u.uz);
+        const pts = u.urexp | 0;
         lines.push(
             `You ${ENDS[how] || 'died'} in ${where} on dungeon level ${dlev} with ${pts} point${plur(pts)},`,
         );
@@ -838,10 +876,10 @@ async function show_death_rip_and_summary(how, umoney, endtime = 0) {
 
 /**
  * C ref: end.c really_done — gameover; paybill; disclose; score; bones; rip; topten.
- * Named omissions: clearpriests/paygd; pet-HP / Schroedinger score;
- * dump/livelog; logfile/xlogfile; toptenwin NHW_TEXT; arise pline;
- * inven_inuse / ball-chain arms of done_object_cleanup; unleash_all
- * in finish_paybill; launch_in_progress abort; ParanoidBones getlin.
+ * Named omissions: clearpriests/paygd; dump/livelog; logfile/xlogfile;
+ * toptenwin NHW_TEXT; arise pline; inven_inuse / ball-chain arms of
+ * done_object_cleanup; unleash_all in finish_paybill; launch_in_progress
+ * abort; ParanoidBones getlin; DUMPLOG second artifact_score.
  */
 async function really_done(how) {
     if (!game.program_state) game.program_state = {};
@@ -899,6 +937,15 @@ async function really_done(how) {
         await disclose(how, taken);
     }
 
+    // C `:1293–1295` after dump_everything (named omit) so pets stay
+    // on-map during dump; mydogs then feeds escape companion HP.
+    // dog.js is in the 87-module SCC with end.js; load after modules
+    // are live (same shape as observe_quantum_cat).
+    if (how === ESCAPED || how === ASCENDED) {
+        const { keepdogs } = await import('./dog.js');
+        keepdogs(true);
+    }
+
     // C: score before bones (invent still held; gold may already be money2mon'd)
     let umoney = money_cnt(game.invent);
     // C: umoney += hidden_gold(TRUE)
@@ -940,8 +987,8 @@ async function really_done(how) {
 
     // C really_done `:1433–1449` — zero valuables, get_valuables,
     // oc_cost score, then unique-item count. Only ESCAPED/ASCENDED
-    // (bones_ok is false for those hows). Listing is `:1482` / `:1490`
-    // inside the NHW_TEXT arm. pet HP named.
+    // (bones_ok is false for those hows). Companion HP is `:1453–1476`
+    // inside the NHW_TEXT arm. DUMPLOG listing remains named.
     if (how === ESCAPED || how === ASCENDED) {
         reset_valuables();
         get_valuables(game.invent);

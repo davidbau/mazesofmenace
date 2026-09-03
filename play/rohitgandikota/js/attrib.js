@@ -936,3 +936,22 @@ export function adjuhploss(loss, olduhp) {
     }
     return Math.max(loss, 1);
 }
+
+/* include/attrib.h:36 STR18() */
+const STR18 = (x) => (18 + x); /* 18/xx */
+
+// src/attrib.c gainstr(); strength from giants (incr 0) or royal jelly
+export async function gainstr(otmp, incr, givemsg) {
+    let num = incr;
+
+    if (!num) {
+        if (ABASE(A_STR) < 18)
+            num = (rn2(4) ? 1 : rnd(6));
+        else if (ABASE(A_STR) < STR18(85))
+            num = rnd(10);
+        else
+            num = 1;
+    }
+    await adjattrib(A_STR, (otmp && otmp.cursed) ? -num : num,
+                    givemsg ? -1 : 1);
+}

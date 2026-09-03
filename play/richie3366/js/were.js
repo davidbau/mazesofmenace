@@ -4,7 +4,7 @@
 // Branch envelope: ParanoidWerechange getlin via paranoid_query (D-1001);
 // mon were_change / new_were; set_ulycn Drain_resistance.
 // Named omissions: were_summon; howl You_hear + wake_nearto; mon_break_armor;
-// mon_poly monster-defender via mhitm (D-1006).
+// mon_poly monster-defender via mhitm (D-1006). possibly_unwield D-1744.
 // Callers wired: allmain Poly/ulycn (D-1002); potion peffect_water /
 // potionbreathe + pray TROUBLE_LYCANTHROPE + mon_poly youmonst (D-1004);
 // eat wolfsbane you_unwere.
@@ -19,6 +19,7 @@ import { monsterNames, pmnames } from './generated/monsters_data.js';
 import { canseemon, newsym, pline, You_feel } from './display.js';
 import { Monnam } from './do_name.js';
 import { set_mon_data } from './mondata.js';
+import { possibly_unwield } from './weapon.js';
 import { set_uasmon, polymon, rehumanize } from './polyself.js';
 import { monster_nearby } from './hack.js';
 import { an } from './objnam.js';
@@ -121,8 +122,9 @@ export function counter_were(pm) {
 
 /**
  * C ref: were.c new_were — flip human ↔ beast form.
- * Named omissions: mon_break_armor; possibly_unwield; monflee onscary
+ * Named omissions: mon_break_armor; monflee onscary
  * (svc.context.mon_moving + mux/muy scary near); Soundeffect.
+ * possibly_unwield is D-1744.
  */
 export function new_were(mon) {
     if (!mon?.data) return;
@@ -158,7 +160,8 @@ export function new_were(mon) {
     const lost = ((mon.mhpmax | 0) - (mon.mhp | 0)) >> 2;
     if (lost > 0) mon.mhp = (mon.mhp | 0) + lost;
     newsym(mon.mx, mon.my);
-    // mon_break_armor / possibly_unwield / monflee deferred
+    // C :130 possibly_unwield(mon, FALSE); mon_break_armor / monflee named
+    return possibly_unwield(mon, false);
 }
 
 /**
@@ -237,13 +240,15 @@ export function were_change(mon) {
                 ? (full ? 3 : 30)
                 : (full ? 10 : 50);
             if (!rn2(chance)) {
-                new_were(mon);
+                const p = new_were(mon);
                 if (game.were_changes != null) game.were_changes++;
                 // howl You_hear / wake_nearto deferred (no RNG)
+                return p;
             }
         }
     } else if (!rn2(30) || Protection_from_shape_changers()) {
-        new_were(mon);
+        const p = new_were(mon);
         if (game.were_changes != null) game.were_changes++;
+        return p;
     }
 }

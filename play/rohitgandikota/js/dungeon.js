@@ -1577,3 +1577,9 @@ export function In_W_tower(x, y, lev) {
     return within_bounded_area(x, y, game.dndest.nlx, game.dndest.nly,
                                game.dndest.nhx, game.dndest.nhy);
 }
+
+// src/dungeon.c on_level(); are two d_levels the same level?
+export function on_level(lev1, lev2) {
+    return (lev1.dnum === lev2.dnum
+            && lev1.dlevel === lev2.dlevel);
+}

@@ -4,6 +4,7 @@
 import { game } from './gstate.js';
 import { rnd, rn2, rn1 } from './rng.js';
 import { mklev, l_nhcore_init, u_on_upstairs, fumaroles, movebubbles } from './mklev.js';
+import { dobjsfree } from './mkobj.js';
 import { rhack, continue_run, run_active, continue_search, search_repeat_active, dolookaround } from './cmd.js';
 import {
     docrt, cls, bot, flush_screen, pline, flush_topl_more, see_monsters,
@@ -811,8 +812,9 @@ export async function moveloop_core() {
     if (!g.context) g.context = {};
     if (!g.u) g.u = {};
 
-    // C allmain.c:192–201 — dobjsfree / bypasses / resume_wish named.
+    // C allmain.c:192–201 — dobjsfree then bypasses / resume_wish named.
     // sanity_check before context.move (opt_in Off; gold/invlet D-1664).
+    dobjsfree();
     if (g.iflags?.sanity_check || g.iflags?.debug_fuzzer) {
         await sanity_check();
     }

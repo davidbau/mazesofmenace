@@ -19,7 +19,10 @@ import {
 } from './monsters.js';
 import {
     M_SEEN_NOTHING, M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP,
-    M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_POISON, M_SEEN_ACID, CONFLICT,
+    M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_POISON, M_SEEN_ACID, M_SEEN_REFL,
+    CONFLICT,
+    ANTIMAGIC, FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, POISON_RES,
+    SHOCK_RES, ACID_RES, REFLECTING,
 } from './const.js';
 import { mon_msound } from './sounds.js';
 import { makesingular } from './objnam.js';
@@ -504,6 +507,32 @@ export function cvt_adtyp_to_mseenres(adtyp) {
     case AD_ACID: return M_SEEN_ACID;
     default: return M_SEEN_NOTHING;
     }
+}
+
+/**
+ * C ref: mondata.c cvt_prop_to_mseenres — youprop index → M_SEEN_*.
+ * Caller worn.c setworn via monstunseesu_prop.
+ */
+export function cvt_prop_to_mseenres(prop) {
+    switch (prop | 0) {
+    case ANTIMAGIC: return M_SEEN_MAGR;
+    case FIRE_RES: return M_SEEN_FIRE;
+    case COLD_RES: return M_SEEN_COLD;
+    case SLEEP_RES: return M_SEEN_SLEEP;
+    case DISINT_RES: return M_SEEN_DISINT;
+    case POISON_RES: return M_SEEN_POISON;
+    case SHOCK_RES: return M_SEEN_ELEC;
+    case ACID_RES: return M_SEEN_ACID;
+    case REFLECTING: return M_SEEN_REFL;
+    default: return M_SEEN_NOTHING;
+    }
+}
+
+/**
+ * C monst.h monstunseesu_prop — forget seen-res for this oc_oprop.
+ */
+export function monstunseesu_prop(prop) {
+    monstunseesu(cvt_prop_to_mseenres(prop));
 }
 
 /**

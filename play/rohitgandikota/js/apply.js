@@ -1,6 +1,8 @@
 // apply.js — the 'a' command.
 // C ref: src/apply.c
 
+import { INTRINSIC } from './const.js';
+import { Passes_walls } from './youprop.js';
 import { boulder_hits_pool } from './do.js';
 import { is_pool_or_lava } from './dbridge.js';
 import { OBJ_INVENT, OBJ_MINVENT } from './const.js';
@@ -738,7 +740,7 @@ async function use_bell(obj) {
         obj.known = 1;
     }
     if (wake)
-        wake_nearby(true);
+        await wake_nearby(true);
     update_inventory();
 }
 
@@ -2009,7 +2011,7 @@ async function use_whistle(obj) {
             await You_feel(`rushing air tickle your ${body_part(NOSE)}.`);
         else
             await You(`produce a ${obj.cursed ? 'shrill' : 'high'} whistling sound.`);
-        wake_nearby(true);
+        await wake_nearby(true);
         if (obj.cursed)
             note_unported_apply('use_whistle:vault_summon_gd');
     }
@@ -2113,7 +2115,7 @@ async function use_magic_whistle(obj) {
     } else if (obj.cursed && !rn2(2)) {
         await You(`produce a ${Underwater() ? 'very ' : ''}high-${Deaf()
             ? 'frequency vibration' : 'pitched humming noise'}.`);
-        wake_nearby(true);
+        await wake_nearby(true);
         if (!rn2(2))
             note_unported_apply('use_magic_whistle:tele_to_rnd_pet');
     } else {
@@ -2620,97 +2622,113 @@ const APPLY_CASED_OTYPS = new Set([
 ].map((k) => ONAMES[k]).filter((v) => v !== undefined));
 
 
-// src/apply.c:1997 is_valid_jump_pos() — can the hero jump to <x,y>?
-//
-// The first arm is the one every recorded jump takes: without a jumping
-// intrinsic the destination must be a knight's move away, distu == 5. The
-// door-trajectory tail (which decides whether a diagonal jump can leave or
-// enter a doorway) is recorded.
-/* src/apply.c:1997 — C prints inline and returns FALSE. Our pline is async
-   and get_valid_jump_position() is called from a sync path, so the test
-   returns the reason C would have printed (null when the jump is legal) and
-   the caller with a message to give prints it. The tests and their order are
-   C's exactly. */
-export function jump_pos_failure(x, y, magic) {
-    const distu = dist2(x, y, game.u.ux, game.u.uy);
+/* src/apply.c:1854 enum jump_trajectory */
+const jAny = 0, /* any direction => magical jump */
+      jHorz = 1,
+      jVert = 2,
+      jDiag = 3; /* jHorz|jVert */
 
-    if (!magic && !game.u.uprops?.JUMPING && distu !== 5)
-        return { pline: 'Illegal move!' };
-    if (distu > (magic ? 6 + magic * 3 : 9))
-        return { pline: 'Too far!' };
-    if (!isok(x, y))
-        return { You: 'cannot jump there!' };
-    if (!cansee(x, y))
-        return { You: 'cannot see where to land!' };
+// src/apply.c:1862 check_jump(); callback routine for walk_path()
+function check_jump(arg, x, y) {
+    const traj = arg;
+    const lev = game.level.at(x, y);
 
-    /* src/apply.c:2003 — classify the trajectory so the door checks below
-       can tell a horizontal jump from a vertical one. Knight's moves and
-       other irregular directions are flattened onto the nearest axis. */
-    const dx = x - game.u.ux, dy = y - game.u.uy;
-    let ax = Math.abs(dx), ay = Math.abs(dy);
-    const diag = (magic || game.u.uprops?.PASSES_WALLS || (!dx && !dy)) ? jAny
-               : !dy ? jHorz : !dx ? jVert : jDiag;
-    if (ax >= 2 * ay)
-        ay = 0;
-    else if (ay >= 2 * ax)
-        ax = 0;
-    const traj = (magic || game.u.uprops?.PASSES_WALLS || (!ax && !ay)) ? jAny
-               : !ay ? jHorz : !ax ? jVert : jDiag;
-
-    const lev = game.level?.at(game.u.ux, game.u.uy);
-    if (diag === jDiag && IS_DOOR(lev?.typ) && (lev.doormask & D_ISOPEN))
-        return { You_cant: 'jump diagonally out of a doorway.' };
-    if (!walk_path({ x: game.u.ux, y: game.u.uy }, { x, y },
-                   check_jump, traj))
-        return { There: 'is an obstacle preventing that jump.' };
-    return null;
-}
-
-// src/apply.c:2065 — the caller that wants the messages.
-export async function is_valid_jump_pos(x, y, magic, showmsg) {
-    const fail = jump_pos_failure(x, y, magic);
-    if (!fail)
+    if (Passes_walls())
         return true;
-    if (showmsg) {
-        if (fail.pline) await pline(fail.pline);
-        else if (fail.You) await You(fail.You);
-        else if (fail.You_cant) await You_cant(fail.You_cant);
-        else if (fail.There) await There(fail.There);
-    }
-    return false;
-}
-
-/* src/apply.c:1975 — the jump trajectory classes. */
-const jAny = 0, jHorz = 1, jVert = 2, jDiag = 3;
-
-// src/apply.c:1980 check_jump() — walk_path's per-square callback.
-function check_jump(traj, x, y) {
-    const lev = game.level?.at(x, y);
-
-    if (game.u.uprops?.PASSES_WALLS)
-        return true;
-    if (IS_STWALL(lev?.typ))
+    if (IS_STWALL(lev.typ))
         return false;
-    if (IS_DOOR(lev?.typ)) {
+    if (IS_DOOR(lev.typ)) {
         if (closed_door(x, y))
             return false;
-        if ((lev.doormask & D_ISOPEN) && traj !== jAny
+        if ((lev.doormask & D_ISOPEN) !== 0 && traj !== jAny
+            /* reject diagonal jump into or out-of or through open door */
             && (traj === jDiag
-                || ((traj & jHorz) !== 0) === (!!lev.horizontal)))
+                /* reject horizontal jump through horizontal open door
+                   and non-horizontal (ie, vertical) jump through
+                   non-horizontal (vertical) open door */
+                || ((traj & jHorz) !== 0) === !!lev.horizontal))
             return false;
         /* empty doorways aren't restricted */
     }
-    if (sobj_at(ONAMES.BOULDER, x, y))
-        return false;                   /* throws_rocks: no giant hero here */
+    /* let giants jump over boulders (what about Flying?
+       and is there really enough head room for giants to jump
+       at all, let alone over something tall?) */
+    if (sobj_at(ONAMES.BOULDER, x, y) && !throws_rocks(game.youmonst.data))
+        return false;
     return true;
 }
 
-// src/apply.c:2035 get_valid_jump_position()
-export function get_valid_jump_position(x, y) {
-    return isok(x, y)
-           && (ACCESSIBLE(game.level?.at(x, y)?.typ)
-               || game.u.uprops?.PASSES_WALLS)
-           && !jump_pos_failure(x, y, game.jumping_is_magic);
+// src/apply.c:1893 is_valid_jump_pos()
+export async function is_valid_jump_pos(x, y, magic, showmsg) {
+    if (!magic && !((game.u.intrinsic?.HJumping ?? 0) & ~INTRINSIC)
+        && !game.u.uprops?.JUMPING && distu(x, y) !== 5) {
+        /* The Knight jumping restriction still applies when riding a
+         * horse.  After all, what shape is the knight piece in chess?
+         */
+        if (showmsg)
+            await pline('Illegal move!');
+        return false;
+    } else if (distu(x, y) > (magic ? 6 + magic * 3 : 9)) {
+        if (showmsg)
+            await pline('Too far!');
+        return false;
+    } else if (!isok(x, y)) {
+        if (showmsg)
+            await You('cannot jump there!');
+        return false;
+    } else if (!cansee(x, y)) {
+        if (showmsg)
+            await You('cannot see where to land!');
+        return false;
+    } else {
+        const uc = {}, tc = {};
+        const lev = game.level.at(game.u.ux, game.u.uy);
+        /* we want to categorize trajectory for use in determining
+           passage through doorways: horizontal, vertical, or diagonal;
+           since knight's jump and other irregular directions are
+           possible, we flatten those out to simplify door checks */
+        let diag, traj;
+        const dx = x - game.u.ux, dy = y - game.u.uy;
+        let ax = Math.abs(dx), ay = Math.abs(dy);
+
+        /* diag: any non-orthogonal destination classified as diagonal */
+        diag = (magic || Passes_walls() || (!dx && !dy)) ? jAny
+               : !dy ? jHorz : !dx ? jVert : jDiag;
+        /* traj: flatten out the trajectory => some diagonals re-classified */
+        if (ax >= 2 * ay)
+            ay = 0;
+        else if (ay >= 2 * ax)
+            ax = 0;
+        traj = (magic || Passes_walls() || (!ax && !ay)) ? jAny
+               : !ay ? jHorz : !ax ? jVert : jDiag;
+        /* walk_path doesn't process the starting spot;
+           this is iffy:  if you're starting on a closed door spot,
+           you _can_ jump diagonally from doorway (without needing
+           Passes_walls); that's intentional but is it correct? */
+        if (diag === jDiag && IS_DOOR(lev.typ)
+            && (lev.doormask & D_ISOPEN) !== 0
+            && (traj === jDiag
+                || ((traj & jHorz) !== 0) === !!lev.horizontal)) {
+            if (showmsg)
+                await You_cant('jump diagonally out of a doorway.');
+            return false;
+        }
+        uc.x = game.u.ux, uc.y = game.u.uy;
+        tc.x = x, tc.y = y; /* target */
+        if (!(await walk_path(uc, tc, check_jump, traj))) {
+            if (showmsg)
+                await There('is an obstacle preventing that jump.');
+            return false;
+        }
+    }
+    return true;
+}
+
+// src/apply.c:1959 get_valid_jump_position()
+export async function get_valid_jump_position(x, y) {
+    return (isok(x, y)
+            && (ACCESSIBLE(game.level.at(x, y).typ) || Passes_walls())
+            && await is_valid_jump_pos(x, y, game.jumping_is_magic, false));
 }
 
 // src/apply.c:726 m_unleash(), release a monster from its leash.
@@ -2968,4 +2986,9 @@ export async function maybe_dunk_boulders(x, y) {
         obj_extract_self(otmp);
         await boulder_hits_pool(otmp, x, y, false);
     }
+}
+
+// src/apply.c um_dist(); is <x,y> more than n squares from the hero?
+export function um_dist(x, y, n) {
+    return (Math.abs(game.u.ux - x) > n || Math.abs(game.u.uy - y) > n);
 }

@@ -24,6 +24,7 @@ import {
     has_oname, ONAME, COST_DEGRD, COST_DECHNT,
 } from './const.js';
 import { retouch_object, set_artifact_intrinsic, is_art, restrict_name } from './artifact.js';
+import { setworn } from './do_wear.js';
 import { ART_SNICKERSNEE, ART_MAGICBANE } from './generated/artifacts_data.js';
 import { makeknown, encumber_msg, compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, splittable, freeinv } from './invent.js';
 import { uncurse, weight, unsplitobj, clear_splitobjs, splitobj } from './mkobj.js';
@@ -164,6 +165,15 @@ function will_weld(obj) {
     return n === 'HEAVY_IRON_BALL' || n === 'IRON_CHAIN' || n === 'TIN_OPENER';
 }
 
+/**
+ * C ref: wield.c mwelded `:1077–1084` — monster's cursed welded weapon.
+ * Caller must pass a monster's item. monmove.js still has a local clone.
+ */
+export function mwelded(obj) {
+    if (obj && ((obj.owornmask || 0) & W_WEP) && will_weld(obj)) return true;
+    return false;
+}
+
 /** C ref: wield.c welded */
 export function welded(obj) {
     const uwep = game.u?.uwep;
@@ -239,106 +249,40 @@ export async function wield_tool(obj, verb) {
 }
 
 /**
- * C ref: wield.c setuwep — W_WEP slot + set_artifact_intrinsic on/off.
+ * C ref: wield.c setuwep — W_WEP via setworn; unweapon after.
  * Ogresmasher/Sunsword light deferred.
  */
 export function setuwep(obj) {
     const u = game.u || (game.u = {});
     const olduwep = u.uwep || null;
-    if (obj === olduwep) return;
+    if (obj === olduwep) return; /* necessary to not set gu.unweapon */
 
-    // C worn.c setworn: clearing W_WEP while twoweap → set_twoweap(FALSE)
-    if (u.twoweap && olduwep
-        && ((olduwep.owornmask || 0) & (W_WEP | W_SWAPWEP))) {
-        set_twoweap(false);
-    }
-
-    if (olduwep) {
-        // C worn.c setworn: set_artifact_intrinsic(oobj, 0, mask) before clear
-        if (olduwep.oartifact) set_artifact_intrinsic(olduwep, false, W_WEP);
-        olduwep.owornmask = (olduwep.owornmask || 0) & ~W_WEP;
-    }
+    setworn(obj, W_WEP);
+    // C: Ogresmasher botl / Sunsword end_burn named omit
     if (obj) {
-        // clear other weapon slots if this object was there
-        if (u.uswapwep === obj) {
-            u.uswapwep = null;
-            obj.owornmask = (obj.owornmask || 0) & ~W_SWAPWEP;
-        }
-        if (u.uquiver === obj) {
-            u.uquiver = null;
-            obj.owornmask = (obj.owornmask || 0) & ~W_QUIVER;
-        }
-        obj.owornmask = (obj.owornmask || 0) | W_WEP;
-        u.uwep = obj;
-        // C: set_artifact_intrinsic(obj, 1, W_WEP) after wear
-        if (obj.oartifact) set_artifact_intrinsic(obj, true, W_WEP);
-        // C: gu.unweapon for launchers/ammo/missiles/poles/non-weptools
         if (!game.gu) game.gu = {};
         game.gu.unweapon = (obj.oclass === WEAPON_CLASS)
             ? (is_launcher(obj) || is_ammo(obj) || is_missile(obj)
                 || (is_pole(obj) && !u.usteed))
             : (!is_weptool(obj));
     } else {
-        u.uwep = null;
         if (!game.gu) game.gu = {};
         game.gu.unweapon = true;
     }
 }
 
 /**
- * C ref: wield.c setuswapwep — W_SWAPWEP slot.
+ * C ref: wield.c setuswapwep — W_SWAPWEP via setworn (no oc_oprop).
  */
 export function setuswapwep(obj) {
-    const u = game.u || (game.u = {});
-    const old = u.uswapwep || null;
-    if (obj === old) return;
-
-    // C worn.c setworn: clearing W_SWAPWEP while twoweap → set_twoweap(FALSE)
-    if (u.twoweap && old
-        && ((old.owornmask || 0) & (W_WEP | W_SWAPWEP))) {
-        set_twoweap(false);
-    }
-
-    if (old) old.owornmask = (old.owornmask || 0) & ~W_SWAPWEP;
-    if (obj) {
-        if (u.uwep === obj) {
-            u.uwep = null;
-            obj.owornmask = (obj.owornmask || 0) & ~W_WEP;
-        }
-        if (u.uquiver === obj) {
-            u.uquiver = null;
-            obj.owornmask = (obj.owornmask || 0) & ~W_QUIVER;
-        }
-        obj.owornmask = (obj.owornmask || 0) | W_SWAPWEP;
-        u.uswapwep = obj;
-    } else {
-        u.uswapwep = null;
-    }
+    setworn(obj, W_SWAPWEP);
 }
 
 /**
- * C ref: wield.c setuqwep — W_QUIVER slot.
+ * C ref: wield.c setuqwep — W_QUIVER via setworn (no oc_oprop).
  */
 export function setuqwep(obj) {
-    const u = game.u || (game.u = {});
-    const old = u.uquiver || null;
-    if (obj === old) return;
-
-    if (old) old.owornmask = (old.owornmask || 0) & ~W_QUIVER;
-    if (obj) {
-        if (u.uwep === obj) {
-            u.uwep = null;
-            obj.owornmask = (obj.owornmask || 0) & ~W_WEP;
-        }
-        if (u.uswapwep === obj) {
-            u.uswapwep = null;
-            obj.owornmask = (obj.owornmask || 0) & ~W_SWAPWEP;
-        }
-        obj.owornmask = (obj.owornmask || 0) | W_QUIVER;
-        u.uquiver = obj;
-    } else {
-        u.uquiver = null;
-    }
+    setworn(obj, W_QUIVER);
 }
 
 /**

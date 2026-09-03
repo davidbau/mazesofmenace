@@ -3,7 +3,7 @@
 //   m_dowear, m_dowear_type, update_mon_extrinsics, extra_pref,
 //   racial_exception; mon.c check_gear_next_turn.
 // Named omissions: wear plines when !creation (freeze still applied);
-//   artifact_light begin_burn/end_burn; full w_blocks Clairvoyance/Eyes;
+//   artifact_light begin_burn/end_burn;
 //   dragon-scale altprop beyond alchemy smock;
 //   extract_from_minvent artifact_light/obj_no_longer_held;
 //   youmonst which_armor slot table (hero uses uarm*).
@@ -17,13 +17,15 @@ import {
     INVIS, FAST, ANTIMAGIC, REFLECTING, PROTECTION, CLAIRVOYANT, STEALTH,
     TELEPAT, LEVITATION, FLYING, WWALKING, DISPLACED, FUMBLING, JUMPING,
     FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES,
-    ACID_RES, STONE_RES, MFAST,
+    ACID_RES, STONE_RES, MFAST, BLINDED,
 } from './const.js';
 import {
     verysmall, nohands, is_animal, mindless, humanoid, noncorporeal,
     bigmonst, is_whirly, M1_SLITHY, MZ_SMALL, MZ_HUGE,
-    monsterNames,
+    monsterNames, PM_WIZARD,
 } from './monsters.js';
+import { is_art } from './artifact.js';
+import { ART_EYES_OF_THE_OVERWORLD } from './generated/artifacts_data.js';
 import {
     ARMOR_CLASS, AMULET_CLASS, WEAPON_CLASS, TOOL_CLASS,
     RING_CLASS, FOOD_CLASS, GEM_CLASS, BALL_CLASS, CHAIN_CLASS,
@@ -57,6 +59,7 @@ const AMULET_OF_LIFE_SAVING = objectNames.indexOf('AMULET_OF_LIFE_SAVING');
 const AMULET_OF_REFLECTION = objectNames.indexOf('AMULET_OF_REFLECTION');
 const AMULET_OF_GUARDING = objectNames.indexOf('AMULET_OF_GUARDING');
 const MUMMY_WRAPPING = objectNames.indexOf('MUMMY_WRAPPING');
+const CORNUTHAUM = objectNames.indexOf('CORNUTHAUM');
 const HELM_OF_OPPOSITE_ALIGNMENT = objectNames.indexOf('HELM_OF_OPPOSITE_ALIGNMENT');
 const DUNCE_CAP = objectNames.indexOf('DUNCE_CAP');
 const SPEED_BOOTS = objectNames.indexOf('SPEED_BOOTS');
@@ -214,9 +217,21 @@ function altprop(o) {
     return 0;
 }
 
-/** C ref: worn.c w_blocks — mummy wrapping blocks INVIS */
-function w_blocks(o, m) {
-    if ((o?.otyp | 0) === MUMMY_WRAPPING && (m & W_ARMC) !== 0) return INVIS;
+/**
+ * C ref: worn.c w_blocks — one blocking item per property.
+ * Mummy wrapping blocks INVIS; cornuthaum blocks CLAIRVOYANT unless
+ * wizard; Eyes of the Overworld block BLINDED.
+ */
+export function w_blocks(o, m) {
+    if (!o) return 0;
+    if ((o.otyp | 0) === MUMMY_WRAPPING && (m & W_ARMC) !== 0) return INVIS;
+    if ((o.otyp | 0) === CORNUTHAUM && (m & W_ARMH) !== 0
+        && (game.urole?.mnum | 0) !== PM_WIZARD) {
+        return CLAIRVOYANT;
+    }
+    if (is_art(o, ART_EYES_OF_THE_OVERWORLD) && (m & W_TOOL) !== 0) {
+        return BLINDED;
+    }
     return 0;
 }
 
@@ -353,10 +368,20 @@ export function check_gear_next_turn(mon) {
 }
 
 /**
+ * C ref: worn.c bypass_obj `:1118–1123` — mark so this-turn pile zaps skip.
+ * Caller: weapon.c possibly_unwield polyspot. zap.js still has a local clone.
+ */
+export function bypass_obj(obj) {
+    obj.bypass = 1;
+    if (!game.context) game.context = {};
+    game.context.bypasses = true;
+}
+
+/**
  * C ref: worn.c extract_from_minvent — unlink minvent obj; worn extras
  * when owornmask. Named omit: artifact_light end_burn; obj_no_longer_held
  * (crysknife); setmnotwielded light polish (mwepgone core inlined to
- * avoid worn↔weapon).
+ * avoid worn↔weapon). possibly_unwield is weapon.c D-1744.
  */
 export function extract_from_minvent(mon, obj, do_extrinsics, silently) {
     if (!mon || !obj) return;

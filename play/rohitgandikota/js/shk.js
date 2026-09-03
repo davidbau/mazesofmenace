@@ -6,6 +6,13 @@
 // own combat are not ported. js/shknam.js holds the naming and stocking half
 // (shtypes, nameshk, stock_room), which is src/shknam.c.
 
+import { obfree } from './invent.js';
+import { obj_extract_self } from './invent.js';
+import { mpickobj } from './steal.js';
+import { flush_screen } from './display.js';
+import { map_invisible } from './display.js';
+import { the } from './objnam.js';
+import { mnearto } from './mon.js';
 import { OBJ_BURIED } from './const.js';
 import { You } from './pline.js';
 import { angry_guards } from './mon.js';
@@ -76,6 +83,8 @@ import { arti_cost } from './artifact.js';
 import { block_point, cansee } from './vision.js';
 import { del_engr_at } from './engrave.js';
 import { Norep, You_feel, You_hear } from './pline.js';
+
+
 
 // src/shk.c:1449 hot_pursuit() — the shopkeeper starts following you.
 //
@@ -534,38 +543,6 @@ export async function make_angry_shk(shkp, ox, oy) {
     await pline(`${shopkeeper_name(shkp)} ${shkp.mpeaceful
         ? 'gets angry' : 'is furious'}!`);
     hot_pursuit(shkp);
-}
-
-// src/zap.c:1970 poly_obj() shop tail. Transforming merchandise angers its
-// resident even though the replacement object itself is not on the bill.
-export async function shop_object_transformed(obj, replacement, x, y) {
-    if ((!replacement || replacement.where === OBJ_INVENT) && !obj.unpaid)
-        return;
-    if (!costly_spot(x, y))
-        return;
-
-    const rooms = in_rooms(x, y, SHOPBASE);
-    const shkp = shop_keeper(rooms ? rooms.charCodeAt(0) : NO_ROOM);
-    if (!shkp || !inhishop(shkp))
-        return;
-    if (obj.no_charge
-        && (!Has_contents(obj) || !contained_purchase_cost(obj, shkp)))
-        return;
-
-    if (!shkp.mpeaceful) {
-        await Norep(`${shopkeeper_name(shkp)} is furious!`);
-        return;
-    }
-
-    const heroRoom = in_rooms(game.u.ux, game.u.uy, 0)?.[0] || '';
-    const keeperRoom = in_rooms(shkp.mx, shkp.my, 0)?.[0] || '';
-    if ((game.u.ushops || '').length && heroRoom === keeperRoom
-        && !costly_spot(game.u.ux, game.u.uy)) {
-        await make_angry_shk(shkp);
-    } else {
-        await pline(`${shopkeeper_name(shkp)} gets angry!`);
-        hot_pursuit(shkp);
-    }
 }
 
 // src/shk.c:235 shkgone(): remove a dead shopkeeper's room residency and
@@ -1098,29 +1075,43 @@ function count_unpaid_contents(obj) {
 
 // src/shk.c:5745 costly_gold(). Picking shop-floor gold back up first consumes
 // credit, then becomes debt and a loan if the credit is insufficient.
-async function costly_gold(amount, shkp, silent) {
-    const eshk = shkp.eshk || ESHK(shkp);
-    if ((eshk.credit || 0) >= amount) {
-        if (!silent) {
-            await pline(eshk.credit > amount
-                ? `Your credit is reduced by ${amount} ${currency(amount)}.`
-                : 'Your credit is erased.');
-        }
-        eshk.credit -= amount;
-        return;
-    }
+export async function costly_gold(x, y, amount, silent) {
+    let delta;
+    let shkp;
+    let eshkp;
 
-    const delta = amount - (eshk.credit || 0);
-    if (!silent) {
-        if (eshk.credit)
-            await pline('Your credit is erased.');
-        await pline(eshk.debit
-            ? `Your debt increases by ${delta} ${currency(delta)}.`
-            : `You owe ${shopkeeper_name(shkp)} ${delta} ${currency(delta)}.`);
+    if (!costly_spot(x, y))
+        return;
+    /* shkp is guaranteed to exist after successful costly_spot(), but
+       the static analyzer isn't smart enough to realize that, so follow
+       the shkp assignment with a redundant test that will always fail */
+    shkp = shop_keeper(in_rooms(x, y, SHOPBASE).charCodeAt(0));
+    if (!shkp)
+        return;
+
+    eshkp = shkp.eshk;
+    if (eshkp.credit >= amount) {
+        if (!silent) {
+            if (eshkp.credit > amount)
+                await Your(`credit is reduced by ${amount} ${currency(amount)}.`);
+            else
+                await Your('credit is erased.');
+        }
+        eshkp.credit -= amount;
+    } else {
+        delta = amount - eshkp.credit;
+        if (!silent) {
+            if (eshkp.credit)
+                await Your('credit is erased.');
+            if (eshkp.debit)
+                await Your(`debt increases by ${delta} ${currency(delta)}.`);
+            else
+                await You(`owe ${shkname(shkp)} ${delta} ${currency(delta)}.`);
+        }
+        eshkp.debit += delta;
+        eshkp.loan += delta;
+        eshkp.credit = 0;
     }
-    eshk.debit = (eshk.debit || 0) + delta;
-    eshk.loan = (eshk.loan || 0) + delta;
-    eshk.credit = 0;
 }
 
 // src/shk.c:3490 addtobill(), including container contents and gold.
@@ -1144,7 +1135,7 @@ export async function addtobill(obj, ininv, dummy, silent) {
         return;
     }
     if (obj.oclass === OCLASSES.COIN_CLASS) {
-        await costly_gold(obj.quan || 1, shkp, silent);
+        await costly_gold(obj.ox, obj.oy, obj.quan, silent);
         return;
     }
 
@@ -1168,7 +1159,7 @@ export async function addtobill(obj, ininv, dummy, silent) {
         price += contentsPrice;
 
         if (containedGold) {
-            await costly_gold(containedGold, shkp, silent);
+            await costly_gold(obj.ox, obj.oy, containedGold, silent);
             if (!price)
                 return;
         }
@@ -2958,10 +2949,10 @@ export function tended_shop(sroom) {
 }
 
 // src/shk.c:1126 noisy_shop() — shop sounds wake the neighborhood.
-export function noisy_shop(sroom) {
+export async function noisy_shop(sroom) {
     const mtmp = sroom.resident;
     if (mtmp && inhishop(mtmp))
-        wake_nearto(mtmp.mx, mtmp.my, 11 * 11);
+        await wake_nearto(mtmp.mx, mtmp.my, 11 * 11);
 }
 
 // include/dungeon.h:112 on_level()
@@ -3336,4 +3327,63 @@ export async function globby_bill_fixup(obj_absorber, obj_absorbed) {
      **************************************************************/
 
     return;
+}
+
+// src/shk.c shkcatch(); a shopkeeper snatches a thrown pick-axe
+export async function shkcatch(obj, x, y) {
+    let shkp;
+
+    shkp = shop_keeper(inside_shop(x, y));
+    if (!shkp || !inhishop(shkp))
+        return null;
+
+    if (!helpless(shkp)
+        && (game.u.ushops[0] !== shkp.eshk.shoproom || !inside_shop(game.u.ux, game.u.uy))
+        && dist2(shkp.mx, shkp.my, x, y) < 3
+        /* if it is the shk's pos, you hit and anger him */
+        && (shkp.mx !== x || shkp.my !== y)) {
+        if (await mnearto(shkp, x, y, true, RLOC_NOMSG) === 2
+            && !Deaf() && !muteshk(shkp)) {
+            /* SetVoice(shkp, 0, 80, 0) */
+            await verbalize('Out of my way, scum!');
+        }
+        if (cansee(x, y)) {
+            await pline(`${Shknam(shkp)} nimbly${
+                (x === shkp.mx && y === shkp.my) ? '' : ' reaches over and'} catches ${the(xname(obj))}.`);
+            if (!canspotmon(shkp))
+                map_invisible(x, y);
+            /* nh_delay_output(); mark_synch(); */
+            if (game.animationFrame) {
+                await flush_screen(0);
+                await game.animationFrame();
+            }
+        }
+        subfrombill(obj, shkp);
+        await mpickobj(shkp, obj);
+        return shkp;
+    }
+    return null;
+}
+
+// src/shk.c delete_contents(); empty a container
+export function delete_contents(obj) {
+    let curr;
+
+    while ((curr = (obj.cobj && obj.cobj[0])) != null) {
+        obj_extract_self(curr);
+        obfree(curr, null);
+    }
+}
+
+// src/shk.c costly_adjacent(); is <x,y> on the shop's wall or door, or the
+// free spot one step inside the door
+export function costly_adjacent(shkp, x, y) {
+    let eshkp;
+
+    if (!shkp || !inhishop(shkp) || !isok(x, y))
+        return false;
+    eshkp = shkp.eshk;
+    /* adjacent if <x,y> is a shop wall spot, including door;
+       also treat "free spot" one step inside the door as adjacent */
+    return (!!game.level.at(x, y).edge || (x === eshkp.shk.x && y === eshkp.shk.y));
 }

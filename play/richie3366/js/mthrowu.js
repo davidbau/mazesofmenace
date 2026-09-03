@@ -623,8 +623,8 @@ function The(str) {
     return t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
 }
 
-/** C ref: zap.c miss — missile miss message. */
-async function miss(str, mtmp) {
+/** C ref: zap.c miss `:3570–3576` — missile miss message. */
+export async function miss(str, mtmp) {
     const bx = game.bhitpos?.x ?? mtmp.mx;
     const by = game.bhitpos?.y ?? mtmp.my;
     const whom = ((cansee(bx, by) || canspotmon(mtmp))

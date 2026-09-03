@@ -1,3 +1,5 @@
+import { cmap_names } from './drawing_data.js';
+import { HATCH_EGG } from './const.js';
 import { carried } from './obj.js';
 import { makeplural, obj_typename } from './objnam.js';
 import { You_see, Your, You_hear } from './pline.js';
@@ -1946,4 +1948,114 @@ export function corpse_revive_type(obj) {
         revivetype = mtmp.mnum;
     }
     return revivetype;
+}
+
+// src/mkobj.c fixup_oil(); potions of oil use obj->age differently
+export function fixup_oil(potion, /* potion that just had its otyp changed */
+                          source) /* item used to create potion; might be Null */
+{
+    if (potion.otyp === ONAMES.POT_OIL) {
+        if (source && source.otyp === ONAMES.POT_OIL) {
+            /* potion of oil being used to set potion's otyp to oil;
+               source might be partly used */
+            potion.age = source.age;
+        } else {
+            /* non-oil is being turned into oil; change absolute age
+               (turn created) into relative age (amount remaining /
+               burn time available) */
+            potion.age = MAX_OIL_IN_FLASK;
+        }
+    } else if (source && source.otyp === ONAMES.POT_OIL) {
+        /* potion is no longer oil, being turned into non-oil */
+        if (potion.age === source.age)
+            potion.age = game.moves;
+        /* when source is a partly used oil, mark potion as diluted */
+        if (source.age < MAX_OIL_IN_FLASK)
+            potion.odiluted = 1;
+    }
+}
+
+// src/mkobj.c replace_object(); put otmp where obj is in whichever list
+// holds obj.  The C splices linked lists; ours replaces the array slot.
+// extract_nobj() leaves obj free.
+export function replace_object(obj, otmp) {
+    otmp.where = obj.where;
+    switch (obj.where) {
+    case OBJ_FREE:
+        /* do nothing */
+        break;
+    case OBJ_INVENT: {
+        const i = game.invent.indexOf(obj);
+        if (i >= 0)
+            game.invent.splice(i, 1, otmp);
+        else
+            game.invent.push(otmp);
+        break;
+    }
+    case OBJ_CONTAINED: {
+        otmp.ocontainer = obj.ocontainer;
+        const list = obj.ocontainer.cobj;
+        const i = list.indexOf(obj);
+        if (i >= 0)
+            list.splice(i, 1, otmp);
+        else
+            list.push(otmp);
+        break;
+    }
+    case OBJ_MINVENT: {
+        otmp.ocarry = obj.ocarry;
+        const list = obj.ocarry.minvent;
+        const i = list.indexOf(obj);
+        if (i >= 0)
+            list.splice(i, 1, otmp);
+        else
+            list.push(otmp);
+        break;
+    }
+    case OBJ_FLOOR: {
+        otmp.ox = obj.ox;
+        otmp.oy = obj.oy;
+        const i = game.level.objects.indexOf(obj);
+        if (i >= 0)
+            game.level.objects.splice(i, 1, otmp);
+        else
+            game.level.objects.unshift(otmp);
+        break;
+    }
+    default:
+        /* panic("replace_object: obj position") */
+        break;
+    }
+    obj.where = OBJ_FREE;
+}
+
+// src/mkobj.c stone_furniture_type(); furniture a mimic can pose as which
+// stone to flesh affects
+export function stone_furniture_type(mappearance) {
+    const sym = mappearance;
+
+    switch (sym) {
+    case cmap_names.S_upstair:
+    case cmap_names.S_dnstair:
+    case cmap_names.S_brupstair:
+    case cmap_names.S_brdnstair:
+    case cmap_names.S_altar:
+    case cmap_names.S_throne:
+    case cmap_names.S_sink: /* stone sink is iffy; metal might be more appropriate */
+        return true;
+    default:
+        if (sym >= cmap_names.S_vwall && sym <= cmap_names.S_trwall)
+            return true;
+        break;
+    }
+    return false;
+}
+
+// src/mkobj.c stone_object_type()
+export function stone_object_type(mappearance) {
+    const otyp = mappearance;
+
+    /* we exclude wands, rings, and gems even though some qualify as stone;
+       there aren't any weapons or armor classified as made out of stone */
+    return (otyp === ONAMES.BOULDER || otyp === ONAMES.STATUE || otyp === ONAMES.FIGURINE);
 }

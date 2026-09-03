@@ -5,6 +5,17 @@
 // when makemon builds one (the tail segments and their random placement).
 // Worm movement, cutting and hp bookkeeping are recorded when reached.
 
+import { You } from './pline.js';
+import { Monnam } from './do_name.js';
+import { mon_nam } from './do_name.js';
+import { s_suffix } from './hacklib.js';
+import { pline } from './display.js';
+import { canspotmon } from './display.js';
+import { d } from './rng.js';
+import { rnd } from './rng.js';
+import { clone_mon } from './makemon.js';
+import { remove_monster } from './makemon.js';
+import { m_at } from './mon.js';
 import { NO_COLOR, ATR_INVERSE as TERM_INVERSE } from './terminal.js';
 import { def_monsyms } from './drawing_data.js';
 import { show_glyph_cell } from './display.js';
@@ -289,4 +300,145 @@ export function detect_wsegs(worm, use_detection_glyph) {
                         { kind: 'mon', mon: worm });
         curr = curr.nseg;
     }
+}
+
+// src/worm.c shrink_worm()
+export function shrink_worm(wnum) { /* worm number */
+    const w = wstate();
+    let seg;
+
+    if (w.wtails[wnum] === w.wheads[wnum])
+        return; /* no tail */
+
+    seg = w.wtails[wnum];
+    w.wtails[wnum] = seg.nseg;
+    seg.nseg = null;
+    toss_wsegs(seg, true);
+}
+
+// src/worm.c place_wsegs()
+export function place_wsegs(worm, oldworm) {
+    const w = wstate();
+    let curr = w.wtails[worm.wormno];
+
+    while (curr !== w.wheads[worm.wormno]) {
+        const x = curr.wx, y = curr.wy;
+        const mtmp = m_at(x, y);
+
+        if (oldworm && mtmp === oldworm)
+            remove_monster(x, y);
+        /* else if (mtmp) impossible("placing worm seg <%d,%d> over another mon");
+           else if (oldworm) impossible("replacing worm seg <%d,%d> on empty spot"); */
+
+        place_worm_seg(worm, x, y);
+        curr = curr.nseg;
+    }
+    /* head segment is co-located with worm itself so not placed on the map */
+    curr.wx = worm.mx, curr.wy = worm.my;
+}
+
+// src/worm.c cutworm(); cuttier: hit is by wielded blade or axe or by
+// thrown axe
+export async function cutworm(worm, x, y, cuttier) {
+    const w = wstate();
+    let curr, new_tail;
+    let new_worm;
+    const wnum = worm.wormno;
+    let cut_chance, new_wnum;
+
+    if (!wnum)
+        return; /* bullet-proofing */
+
+    if (x === worm.mx && y === worm.my)
+        return; /* hit on head */
+
+    /* cutting goes best with a cuttier weapon */
+    cut_chance = rnd(20); /* Normally     1-16 does not cut, 17-20 does, */
+    if (cuttier)
+        cut_chance += 10; /* with a blade 1- 6 does not cut,  7-20 does. */
+
+    if (cut_chance < 17)
+        return; /* not good enough */
+
+    /* Find the segment that was attacked. */
+    curr = w.wtails[wnum];
+
+    while ((curr.wx !== x) || (curr.wy !== y)) {
+        curr = curr.nseg;
+        if (!curr) {
+            /* impossible("cutworm: no segment at (%d,%d)") */
+            return;
+        }
+    }
+
+    /* If this is the tail segment, then the worm just loses it. */
+    if (curr === w.wtails[wnum]) {
+        shrink_worm(wnum);
+        return;
+    }
+
+    /*
+     *  Split the worm.  The tail for the new worm is the old worm's tail.
+     *  The tail for the old worm is the segment that follows "curr",
+     *  and "curr" becomes the dummy segment under the new head.
+     */
+    new_tail = w.wtails[wnum];
+    w.wtails[wnum] = curr.nseg;
+    curr.nseg = null; /* split the worm */
+
+    /*
+     *  At this point, the old worm is correct.  Any new worm will have
+     *  its head at "curr" and its tail at "new_tail".  The old worm
+     *  must be at least level 3 in order to produce a new worm.
+     */
+    new_worm = null;
+    new_wnum = (worm.m_lev >= 3 && !rn2(3)) ? get_wormno() : 0;
+    if (new_wnum) {
+        remove_monster(x, y); /* clone_mon puts new head here */
+        /* clone_mon() will fail if enough long worms have been
+           created to have them be marked as extinct or if the hit
+           that cut the current one has dropped it down to 1 HP */
+        new_worm = clone_mon(worm, x, y);
+    }
+
+    /* Sometimes the tail end dies. */
+    if (!new_worm) {
+        place_worm_seg(worm, x, y); /* place the "head" segment back */
+        if (game.context?.mon_moving) {
+            if (canspotmon(worm))
+                await pline(`Part of ${s_suffix(mon_nam(worm))} tail has been cut off.`);
+        } else
+            await You(`cut part of the tail off of ${mon_nam(worm)}.`);
+        toss_wsegs(new_tail, true);
+        if (worm.mhp > 1)
+            worm.mhp = Math.trunc(worm.mhp / 2);
+        return;
+    }
+
+    new_worm.wormno = new_wnum; /* affix new worm number */
+    new_worm.mcloned = 0;       /* treat second worm as a normal monster */
+
+    /* Devalue the monster level of both halves of the worm.
+       Note: m_lev is always at least 3 in order to get this far. */
+    worm.m_lev = Math.max(worm.m_lev - 2, 3);
+    new_worm.m_lev = worm.m_lev;
+
+    /* Calculate the lower-level mhp; use <N>d8 for long worms.
+       Can't use newmonhp() here because it would reset m_lev. */
+    new_worm.mhpmax = new_worm.mhp = d(new_worm.m_lev, 8);
+    worm.mhpmax = d(worm.m_lev, 8); /* new maxHP for old worm */
+    if (worm.mhpmax < worm.mhp)
+        worm.mhp = worm.mhpmax;
+
+    w.wtails[new_wnum] = new_tail; /* We've got all the info right now */
+    w.wheads[new_wnum] = curr;     /* so we can do this faster than    */
+    w.wgrowtime[new_wnum] = 0;     /* trying to call initworm().       */
+
+    /* Place the new monster at all the segment locations. */
+    place_wsegs(new_worm, worm);
+
+    if (game.context?.mon_moving)
+        await pline(`${Monnam(worm)} is cut in half.`);
+    else
+        await You(`cut ${mon_nam(worm)} in half.`);
 }

@@ -129,6 +129,7 @@ import { rnd, rn2, rn1, rnl, rn2_on_display_rng } from './rng.js';
 import { morehungry, poison_strdmg } from './eat.js';
 import { zapyourself, spell_damage_bonus, weffects, zhitm, resists_elec } from './zap.js';
 import { tele } from './teleport.js';
+import { make_blinded } from './do.js';
 import { aggravate } from './wizard.js';
 import { make_confused, make_stunned, healup, make_slimed, peffects } from './potion.js';
 import { trycall, hcolor, hliquid, Hallucination, mon_nam, Monnam } from './do_name.js';
@@ -552,22 +553,6 @@ function BlindedTimeout() {
     return (game.u?.HBlinded | 0) & TIMEOUT;
 }
 
-/**
- * C ref: potion.c make_blinded — TIMEOUT set + Blind mirror.
- * Eyes override / toggle_blindness vision / Punished set_bc / talk
- * messages deferred (talk unused for cursed_book case 2 path polish).
- */
-function make_blinded(xtime, _talk) {
-    const u = game.u || (game.u = {});
-    const wasBlind = !!(u.Blind || ((u.HBlinded | 0) && !(u.BBlinded | 0)));
-    u.HBlinded = ((u.HBlinded | 0) & ~TIMEOUT) | (xtime ? (xtime & TIMEOUT) : 0);
-    const nowBlind = !!((u.HBlinded | 0) && !(u.BBlinded | 0));
-    if (wasBlind !== nowBlind) {
-        u.Blind = nowBlind;
-        if (game.flags) game.flags.botl = true;
-    }
-}
-
 /** C ref: youprop.h Poison_resistance. */
 function Poison_resistance() {
     const u = game.u || {};
@@ -607,7 +592,7 @@ async function cursed_book(bp) {
         aggravate();
         break;
     case 2:
-        make_blinded(BlindedTimeout() + rn1(100, 250), true);
+        await make_blinded(BlindedTimeout() + rn1(100, 250), true);
         break;
     case 3:
         await take_gold();

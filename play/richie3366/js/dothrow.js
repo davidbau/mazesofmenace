@@ -14,6 +14,7 @@ import { cansee, vision_recalc } from './vision.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import {
     place_object, splitobj, stackobj, delobj, is_crackable, objects_at,
+    weight,
 } from './mkobj.js';
 import {
     losehp, maybe_half_phys, nomul, impact_disturbs_zombies, finish_maybe_wail,
@@ -40,10 +41,10 @@ import {
     HURTLING, FORCEBUNGLE, IRONBARS, Upolyd, FACE, HEAD, ARM, FOOT, STONING,
     TIMEOUT, WT_TO_DMG, POTHIT_HERO_THROW, Has_contents, NON_PM, LOW_PM,
     W_WEP, W_SWAPWEP, W_QUIVER, STR19, LOST_NONE, SLT_ENCUMBER, Is_airlevel,
-    BOLT_LIM, AKLYS_LIM, HAND, THROWN_TETHERED_WEAPON,
+    BOLT_LIM, AKLYS_LIM, HAND, THROWN_WEAPON, THROWN_TETHERED_WEAPON,
     xdir, ydir, xytodir, N_DIRS, RIGHT_HANDED, IS_SINK, HI_WOOD, OBJ_MINVENT,
     DISP_FLASH, DISP_CHANGE, DISP_END, DISP_TETHER, BACKTRACK, ECMD_TIME,
-    DEAF, SHOPBASE,
+    DEAF, SHOPBASE, Is_waterlevel,
 } from './const.js';
 import { NO_COLOR } from './terminal.js';
 import { obj_resists, dogfood } from './dogmove.js';
@@ -875,26 +876,29 @@ function s_suffix_throw_gold(s) {
 /**
  * C dothrow.c throw_gold. Swallow (D-1302): after the self-cancel gate,
  * freeinv then add_to_minv(ustuck) — not swallowit/mpickobj — with
- * pline_The entrails when digests(ustuck->data). Named omit: You()
- * self pline / unsplitobj (D-0720); dz ceiling; bhit; ghitm;
- * ship_object; flooreffects; sellobj; quivered gold via throwit.
+ * pline_The entrails when digests(ustuck->data). After swallow: dz /
+ * bhit THROWN_WEAPON / ghitm (D-1751 hidden_gold(TRUE) kick site) /
+ * ship_object / flooreffects / sellobj. Named omit: unsplitobj (D-0720);
+ * quivered gold via throwit; dungeon.c ceiling vault/temple/shop/
+ * water/fire/quest/Underwater labels; full surface().
  */
 export async function throw_gold(obj) {
     const u = game.u || {};
     // C :2661 — self before freeinv. Do not ingest gold thrown at `.`.
     if (!(u.dx || 0) && !(u.dy || 0) && !(u.dz || 0)) {
-        // C You("cannot throw gold at yourself.") + unsplitobj named.
+        await pline('You cannot throw gold at yourself.');
+        // C You() + unsplitobj named (D-0720).
         return 0; // C ECMD_CANCEL; JS cmd.js treats truthy as time
     }
+    freeinv(obj);
+    if (obj?.oclass === COIN_CLASS) {
+        game._goldCount = Math.max(
+            0, (game._goldCount || 0) - (obj.quan || 0),
+        );
+        if (!game.flags) game.flags = {};
+        game.flags.botl = true;
+    }
     if (u.uswallow) {
-        freeinv(obj);
-        if (obj?.oclass === COIN_CLASS) {
-            game._goldCount = Math.max(
-                0, (game._goldCount || 0) - (obj.quan || 0),
-            );
-            if (!game.flags) game.flags = {};
-            game.flags.botl = true;
-        }
         let swallower = mon_nam(u.ustuck);
         // C :2674 — digests → s_suffix(mon_nam) + " entrails"
         if (u.ustuck?.data && digests(u.ustuck.data)) {
@@ -904,8 +908,88 @@ export async function throw_gold(obj) {
         if (u.ustuck && obj) add_to_minv(u.ustuck, obj);
         return ECMD_TIME;
     }
-    // Named omit: rest of throw_gold (dz / bhit / ghitm / ship / floor)
-    return 0;
+
+    const bhitpos = game.bhitpos || (game.bhitpos = { x: 0, y: 0 });
+    game._bhitpos = bhitpos;
+
+    if (u.dz) {
+        // C :2682–2693 — ceiling bounce; dungeon.c ceiling details named
+        if ((u.dz | 0) < 0 && !Is_airlevel(u.uz)
+            && !(u.Underwater || u.uinwater)
+            && !Is_waterlevel(u.uz)) {
+            await pline(
+                `The gold hits the ceiling, then falls back on top of your ${
+                    body_part(HEAD)
+                }.`,
+            );
+            if (u.uarmh) {
+                await pline(
+                    `Fortunately, you are wearing ${
+                        an(helm_simple_name(u.uarmh))
+                    }!`,
+                );
+            }
+        }
+        bhitpos.x = u.ux | 0;
+        bhitpos.y = u.uy | 0;
+    } else {
+        // C :2696 — same range as thrown objects
+        const range = Math.trunc(acurrstr() / 2)
+            - Math.trunc((weight(obj) | 0) / 40);
+        const odx = (u.ux | 0) + (u.dx | 0);
+        const ody = (u.uy | 0) + (u.dy | 0);
+        const dest = game.level?.at?.(odx, ody);
+        const dest_closed = !!(dest && IS_DOOR(dest.typ)
+            && ((dest.doormask | 0) & (D_LOCKED | D_CLOSED)));
+        if (!isok(odx, ody) || !dest || !ZAP_POS(dest.typ) || dest_closed) {
+            bhitpos.x = u.ux | 0;
+            bhitpos.y = u.uy | 0;
+        } else {
+            const { bhit } = await import('./zap.js');
+            const pref = {
+                get obj() { return obj; },
+                set obj(v) { obj = v; },
+            };
+            const mon = await bhit(
+                u.dx | 0, u.dy | 0, range, THROWN_WEAPON, null, null, pref,
+            );
+            obj = pref.obj;
+            if (!obj) return ECMD_TIME;
+            if (mon) {
+                const { ghitm } = await import('./dokick.js');
+                if (await ghitm(mon, obj)) return ECMD_TIME;
+            } else {
+                const { ship_object } = await import('./dokick.js');
+                if (await ship_object(
+                    obj, bhitpos.x | 0, bhitpos.y | 0, false,
+                )) {
+                    return ECMD_TIME;
+                }
+            }
+        }
+    }
+
+    {
+        const { flooreffects } = await import('./do.js');
+        if (await flooreffects(obj, bhitpos.x | 0, bhitpos.y | 0, 'fall')) {
+            return ECMD_TIME;
+        }
+    }
+    if ((u.dz | 0) > 0) {
+        // C surface() — room → floor; full dungeon.c surface named
+        const loc = game.level?.at?.(bhitpos.x | 0, bhitpos.y | 0);
+        const typ = loc?.typ | 0;
+        const surf = (IS_ROOM(typ) && !Is_earthlevel(u.uz)) ? 'floor' : 'ground';
+        await pline(`The gold hits the ${surf}.`);
+    }
+    place_object(obj, bhitpos.x | 0, bhitpos.y | 0);
+    if (u.ushops) {
+        const { sellobj } = await import('./shk.js');
+        await sellobj(obj, bhitpos.x | 0, bhitpos.y | 0);
+    }
+    stackobj(obj);
+    newsym(bhitpos.x | 0, bhitpos.y | 0);
+    return ECMD_TIME;
 }
 
 /**

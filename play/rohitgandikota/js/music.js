@@ -62,7 +62,7 @@ async function awaken_scare(mtmp, scary) {
         return;
 
     const { resist } = await import('./zap.js');
-    if (resist(mtmp, OCLASSES.TOOL_CLASS, 0, false) || !onscary(0, 0, mtmp))
+    if (await resist(mtmp, OCLASSES.TOOL_CLASS, 0, false) || !onscary(0, 0, mtmp))
         return;
 
     if (!mtmp.mflee && canseemon(mtmp))

@@ -5,6 +5,7 @@
 // the tested sacrifice paths. Some punishment, conversion, and artifact-gift
 // paths remain partial.
 
+import { ureflects } from './muse.js';
 import { has_omonst, OMONST, ANIMATE_SPELL } from './const.js';
 import { animate_statue } from './trap.js';
 import { revive } from './zap.js';
@@ -19,7 +20,7 @@ import { Monnam } from './do_name.js';
 import { punish } from './read.js';
 import { verbalize } from './pline.js';
 import { summon_minion } from './minion.js';
-import { ureflects } from './zap.js';
+
 import { shieldeff } from './display.js';
 import { XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT, M_SEEN_REFL, M_SEEN_ELEC, M_SEEN_DISINT, Is_astralevel, Is_sanctum } from './const.js';
 import { xkilled } from './mon.js';
@@ -345,12 +346,12 @@ async function maybe_turn_mon(mtmp, range) {
         mtmp.mcanmove = 1;
         return true;
     }
-    if (resist(mtmp, 0, 0, true))
+    if (await resist(mtmp, 0, 0, true))
         return false;
 
     const destroy_level = turn_destroy_levels.get(data.mlet);
     if (destroy_level !== undefined && game.u.ulevel >= destroy_level
-        && !resist(mtmp, 0, 0, false)) {
+        && !await resist(mtmp, 0, 0, false)) {
         if (game.u.ualign.type === A_CHAOTIC) {
             mtmp.mpeaceful = 1;
             set_malign(mtmp);
@@ -1641,6 +1642,14 @@ const ugod_is_angry = () => game.u.ualign.record < 0;
 // src/pray.c: a_align(), the alignment of the altar at <x,y>.
 function a_align(x, y) {
     return Amask2align(game.level.at(x, y).altarmask & AM_MASK);
+}
+
+// src/pray.c:2514 a_gname_at()
+export function a_gname_at(x, y) {
+    if (!IS_ALTAR(game.level.at(x, y).typ))
+        return null;
+
+    return align_gname(a_align(x, y));
 }
 
 // src/pray.c:2490 altarmask_at(); the altar mask at <x,y>, allowing for a

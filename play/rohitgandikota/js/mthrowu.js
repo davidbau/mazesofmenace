@@ -1098,7 +1098,7 @@ export async function hit_bars(objp, objx, objy, barsx, barsy, breakflags) {
         }
 
         if (noise)
-            wake_nearto(barsx, barsy, noise);
+            await wake_nearto(barsx, barsy, noise);
     }
 }
 

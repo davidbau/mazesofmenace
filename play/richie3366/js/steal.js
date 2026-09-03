@@ -20,7 +20,7 @@ import {
     W_ARMOR, W_ACCESSORY, W_WEAPONS,
     W_AMUL, W_RING, W_TOOL, W_RINGL, W_RINGR, W_BALL, W_CHAIN,
     LEFT_RING, RIGHT_RING, ADORNED, LOST_STOLEN,
-    LARGEST_INT, PLNMSG_MON_TAKES_OFF_ITEM,
+    LARGEST_INT, PLNMSG_MON_TAKES_OFF_ITEM, FAINTED,
 } from './const.js';
 import {
     COIN_CLASS, ARMOR_CLASS, TOOL_CLASS, AMULET_CLASS, RING_CLASS,
@@ -53,6 +53,26 @@ export function inv_cnt(inclgold) {
         n++;
     }
     return n;
+}
+
+/**
+ * C ref: steal.c unresponsive `:131–142`.
+ * Callers: mhitu.c doseduce; steal.c monkey_business (named).
+ */
+export function unresponsive() {
+    if ((game.multi | 0) >= 0) return false;
+    const u = game.u || {};
+    // C trap.c unconscious — usleep or wake-msg prefixes (multi already < 0)
+    const msg = game.nomovemsg || '';
+    const unconscious = !!(u.usleep
+        || msg.startsWith('You awake')
+        || msg.startsWith('You regain con')
+        || msg.startsWith('You are consci'));
+    const fainted = (u.uhs | 0) === FAINTED;
+    const reason = game.multi_reason || '';
+    return unconscious || fainted
+        || reason.startsWith('frozen')
+        || reason.startsWith('paralyzed');
 }
 
 /**

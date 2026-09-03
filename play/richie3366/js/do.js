@@ -21,8 +21,9 @@ import {
     UTOTYPE_RMPORTAL, UTOTYPE_DEFERRED,
     VISITED, LFILE_EXISTS, RANGE_LEVEL, REST_LEVELS,
     WRITING, FREEING,
-    UNENCUMBERED, KILLED_BY, DISMOUNT_FELL, NO_KILLER_PREFIX,
-    MAGIC_PORTAL, TIMEOUT, BLINDED, RLOC_NOMSG,
+    UNENCUMBERED, KILLED_BY, DISMOUNT_FELL, NO_KILLER_PREFIX, ESCAPED,
+    MAGIC_PORTAL, TIMEOUT, BLINDED, RLOC_NOMSG, EYE, FROMOUTSIDE,
+    WARN_OF_MON, TELEPAT, INFRAVISION,
     ACH_HELL, ACH_MINE, ACH_SOKO, ACH_ENDG, ACH_ASTR, ACH_BGRM,
     LL_ACHIEVE, LL_DEBUG,
     OBJ_FREE, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT, OBJ_CONTAINED, OBJ_BURIED,
@@ -56,6 +57,7 @@ import {
     pline, Norep, docrt, flush_screen, flush_topl_more, newsym,
     mark_topline_prompt, assign_graphics, check_gold_symbol,
     You_feel, canseemon, canspotmon, impossible, describe_level,
+    see_monsters,
 } from './display.js';
 import { yn_function } from './getline.js';
 import { vision_recalc, vision_reset, recalc_block_point, cansee, couldsee } from './vision.js';
@@ -93,10 +95,13 @@ import {
 import { place_object, stackobj, weight, delobj, obj_extract_self,
     obj_nexto_xy, obj_meld, pudding_merge_message,
     save_timers, restore_timers, run_timers, splitobj,
-    save_light_sources, restore_light_sources,
+    save_light_sources, restore_light_sources, dobjsfree,
 } from './mkobj.js';
 import { ship_object, obj_delivery, container_impact_dmg } from './dokick.js';
-import { doname, xname, the, The, vtense, an, yname, corpse_xname, is_plural, otense } from './objnam.js';
+import {
+    doname, xname, the, The, vtense, an, yname, corpse_xname, is_plural,
+    otense, makeplural, body_part_latebound,
+} from './objnam.js';
 import { Monnam, Amonnam, Adjmonnam, mon_nam } from './do_name.js';
 import { revive } from './zap.js';
 import {
@@ -115,17 +120,17 @@ import {
 } from './wield.js';
 import {
     setworn, confer_oc_oprop, recalc_telepat_range, reset_remarm,
+    cancel_doff,
 } from './do_wear.js';
-import { bypass_objlist, nxt_unbypassed_obj } from './worn.js';
+import { bypass_objlist, nxt_unbypassed_obj, w_blocks } from './worn.js';
 import { reset_pick } from './lock.js';
 import { addinv_nomerge } from './u_init.js';
 import {
-    is_art, set_artifact_intrinsic,
+    set_artifact_intrinsic, Sting_effects,
 } from './artifact.js';
-import { ART_EYES_OF_THE_OVERWORLD } from './generated/artifacts_data.js';
 import { more_experienced, newexplevel } from './exper.js';
 import {
-    PM_TOURIST, PM_ROGUE, PM_WIZARD, monsterNames,
+    PM_TOURIST, PM_ROGUE, monsterNames,
 } from './generated/monsters_data.js';
 import { dismount_steed, place_monster } from './steed.js';
 import { set_residency } from './shk.js';
@@ -139,11 +144,13 @@ import { bones_include_name } from './bones.js';
 import {
     olfaction, passes_walls, throws_rocks, is_flyer, is_floater,
     amorphous, nolimbs, M1_SLITHY, MZ_SMALL, mons, is_rider, hides_under,
+    haseyes, eyecount,
 } from './monsters.js';
 import { placebc, unplacebc, drag_down, ballrelease } from './ball.js';
 import { obj_resists } from './dogmove.js';
 import { Soundeffect, se_scratching, se_alarm } from './sndprocs.js';
 import { delete_levelfile } from './files.js';
+import { strange_feeling } from './detect.js';
 
 const PM_DEATH = monsterNames.indexOf('PM_DEATH');
 const PM_PESTILENCE = monsterNames.indexOf('PM_PESTILENCE');
@@ -160,8 +167,6 @@ const ICE_BOX = objectNames.indexOf('ICE_BOX');
 const CHEST = objectNames.indexOf('CHEST');
 const LARGE_BOX = objectNames.indexOf('LARGE_BOX');
 const STATUE = objectNames.indexOf('STATUE');
-const MUMMY_WRAPPING = objectNames.indexOf('MUMMY_WRAPPING');
-const CORNUTHAUM = objectNames.indexOf('CORNUTHAUM');
 /** C worn.c worn[] — hero slot pointer + mask (setnotworn). */
 const WORN_SLOTS = [
     ['uarm', W_ARM],
@@ -425,26 +430,10 @@ async function There(line) {
     await pline(`There ${line}`);
 }
 /**
- * C worn.c w_blocks — mummy wrapping / cornuthaum / Eyes of the Overworld.
- */
-function w_blocks_hero(o, m) {
-    if (!o) return 0;
-    if ((o.otyp | 0) === MUMMY_WRAPPING && (m & W_ARMC) !== 0) return INVIS;
-    if ((o.otyp | 0) === CORNUTHAUM && (m & W_ARMH) !== 0
-        && game.urole?.mnum !== PM_WIZARD) {
-        return CLAIRVOYANT;
-    }
-    if (is_art(o, ART_EYES_OF_THE_OVERWORLD) && (m & W_TOOL) !== 0) {
-        return BLINDED;
-    }
-    return 0;
-}
-
-/**
  * C worn.c setnotworn — pointer-walk worn[]; does not call setworn.
  * Clears oc_oprop extrinsic only for slots that currently point at obj.
  * Leaves owornmask bits when obj is not in the slot (tutorial restore flag).
- * Named omit: cancel_doff; monstunseesu_prop; update_inventory.
+ * Named omit: monstunseesu_prop; update_inventory.
  * Exported for shopdig snatch (D-1016); tutorial stash/restore (D-1015/D-1020).
  */
 export function setnotworn(obj) {
@@ -456,12 +445,13 @@ export function setnotworn(obj) {
     let unworn = 0;
     for (const [slot, mask] of WORN_SLOTS) {
         if (u[slot] !== obj) continue;
+        cancel_doff(obj, mask);
         u[slot] = null;
         unworn |= mask;
         confer_oc_oprop(obj, mask, false);
         obj.owornmask = (obj.owornmask || 0) & ~mask;
         if (obj.oartifact) set_artifact_intrinsic(obj, false, mask);
-        const blocked = w_blocks_hero(obj, mask);
+        const blocked = w_blocks(obj, mask);
         if (blocked) {
             if (!u.uprops) u.uprops = {};
             if (!u.uprops[blocked]) {
@@ -469,6 +459,13 @@ export function setnotworn(obj) {
             }
             u.uprops[blocked].blocked =
                 (u.uprops[blocked].blocked | 0) & ~mask;
+            if (blocked === BLINDED) {
+                u.BBlinded = (u.BBlinded | 0) & ~mask;
+            } else if (blocked === INVIS) {
+                u.BInvis = (u.BInvis | 0) & ~mask;
+            } else if (blocked === CLAIRVOYANT) {
+                u.BClairvoyant = (u.BClairvoyant | 0) & ~mask;
+            }
         }
     }
     if (!u.uarm && game.iflags) game.iflags.tux_penalty = false;
@@ -1337,6 +1334,8 @@ export async function getlev_catchup_monsters(elapsed) {
  * Ported: quest entrance `com_pager(quest_portal*)` (D-0650).
  * Ported: quest-home gate — on qstart && !newdungeon && !ok_to_quest()
  * → "mysterious force prevents you from descending" (D-0798).
+ * Ported: `ledger_no <= 0` → `done(ESCAPED)` after tutorial (D-1764;
+ * C `:1517–1519`; heaven escape dlevel 0).
  * Deferred: binary NHFILE, Gehennom amulet mysteryforce, quest gate seal
  * RMPORTAL, migrating-Wizard resurrect arm,
  * Punished `ballfall` on trap-door falling, W-tower `u_on_rndspot` bit 2
@@ -1397,8 +1396,6 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     let do_fall_dmg = false;
     const newdungeon = (u.uz.dnum | 0) !== (newlevel.dnum | 0);
     let leaving_tutorial = false;
-    const new_ledger = ledger_no(newlevel);
-    if (new_ledger <= 0) return; // C: done(ESCAPED)
 
     // C: do.c — tutorial(TRUE/FALSE) via nhcore when crossing tutorial branch.
     if (newdungeon) {
@@ -1412,6 +1409,14 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             up = false; // C: re-enter level 1 as if starting new game
             leaving_tutorial = true;
         }
+    }
+    // C do.c :1517–1519 — after tutorial; ledger_no <= 0 is done(ESCAPED)
+    // (noreturn). JS done() returns after really_done so stop here.
+    const new_ledger = ledger_no(newlevel);
+    if (new_ledger <= 0) {
+        const { done } = await import('./end.js');
+        await done(ESCAPED);
+        return;
     }
 
     // C: prevent leaving quest Home deeper in-branch until ok_to_quest
@@ -1492,6 +1497,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // Named omit: else free_luathemes(tut_themes / most_themes).
 
     // C: savelev — in-memory stash + VISITED|LFILE_EXISTS + omoves timestamp
+    // C save.c:490–491 — dobjsfree before writing when objs_deleted.
+    if (save_mode & WRITING) dobjsfree();
     // C: save_track before release/initrack (track.c) — per-level utrack.
     if (!game.level_info) game.level_info = [];
     const old_ledger = ledger_no(u.uz);
@@ -2688,9 +2695,62 @@ function incr_itimeout_HBlinded(incr) {
 }
 
 /**
- * C ref: potion.c make_blinded — talk + toggle_blindness subset for wipeoff.
- * Named omissions: Eyes override probe detail; Punished set_bc; Hallucination
- * talk variants; Blindfolded itch/twitch; Sting_effects.
+ * C potion.c `:334–364` toggle_blindness — make_blinded / Blindf_on /
+ * Blindf_off. Sting_effects(-1) so later stop-glow matches.
+ */
+export async function toggle_blindness() {
+    const u = game.u || {};
+    // C youprop.h EWarn_of_mon ≡ uprops[WARN_OF_MON].extrinsic
+    const ewarn = (u.uprops?.[WARN_OF_MON]?.extrinsic | 0)
+        || (u.EWarn_of_mon | 0);
+    const Stinging = !!(u.uwep && (ewarn & W_WEP) !== 0);
+
+    if (game.flags) game.flags.botl = true;
+    if (game.disp) game.disp.botl = true;
+    game.vision_full_recalc = 1;
+    vision_recalc(0);
+    const blind_telepat = !!((u.HTelepat | 0) || (u.ETelepat | 0)
+        || (u.uprops?.[TELEPAT]?.intrinsic | 0)
+        || (u.uprops?.[TELEPAT]?.extrinsic | 0));
+    const infravision = !!((u.HInfravision | 0) || (u.EInfravision | 0)
+        || (u.uprops?.[INFRAVISION]?.intrinsic | 0)
+        || (u.uprops?.[INFRAVISION]?.extrinsic | 0));
+    if (blind_telepat || infravision || Stinging) {
+        see_monsters();
+    }
+    if (Stinging) {
+        await Sting_effects(-1);
+    }
+    if (!Blind()) {
+        learn_unseen_invent();
+    }
+}
+
+/**
+ * C potion.c `:257–258` + make_blinded timeout-without-toggle talk.
+ * Your(eyemsg) / Your(vismsg) / strange_feeling(NULL,NULL).
+ */
+async function make_blinded_notoggle_talk(eyeVerb, visChange, visHalluAdj) {
+    const youdata = game.youmonst?.data;
+    const u = game.u || {};
+    if (!haseyes(youdata) || ((u.HBlinded | 0) & FROMOUTSIDE) !== 0) {
+        await strange_feeling(null, null);
+    } else if ((u.EBlinded | 0) || (u.uprops?.[BLINDED]?.extrinsic | 0)) {
+        let eyes = body_part_latebound(EYE);
+        if (eyecount(youdata) !== 1) eyes = makeplural(eyes);
+        await pline(`Your ${eyes} momentarily ${vtense(eyes, eyeVerb)}.`);
+    } else {
+        const adj = Hallucination() ? visHalluAdj : 'normal';
+        await pline(
+            `Your vision seems to ${visChange} for a moment but is ${adj} now.`,
+        );
+    }
+}
+
+/**
+ * C ref: potion.c make_blinded `:260–331` — talk then toggle_blindness.
+ * Named omissions: Unaware talk=FALSE (unconscious/is_fainted);
+ * Punished set_bc.
  * learn_unseen_invent on regain-sight (D-0928 #1098).
  * Exported for timeout.c nh_timeout BLINDED expiry.
  */
@@ -2703,23 +2763,40 @@ export async function make_blinded(xtime, talk) {
     const can_see_now = !Blind();
     set_itimeout_HBlinded(old);
 
-    if (can_see_now && !u_could_see && talk) {
-        await pline('You can see again.');
-    } else if (u_could_see && !can_see_now && talk) {
-        await pline('A cloud of darkness falls upon you.');
+    if (can_see_now && !u_could_see) {
+        if (talk) {
+            if (Hallucination()) {
+                await pline('Far out!  Everything is all cosmic again!');
+            } else {
+                await pline('You can see again.');
+            }
+        }
+    } else if (old && !xtime) {
+        if (talk) {
+            await make_blinded_notoggle_talk('itch', 'brighten', 'sadder');
+        }
+    }
+
+    if (u_could_see && !can_see_now) {
+        if (talk) {
+            if (Hallucination()) {
+                await pline('Oh, bummer!  Everything is dark!  Help!');
+            } else {
+                await pline('A cloud of darkness falls upon you.');
+            }
+        }
+        // C: if (Punished) set_bc(0) — named omit
+    } else if (!old && xtime) {
+        if (talk) {
+            await make_blinded_notoggle_talk('twitch', 'dim', 'happier');
+        }
     }
 
     set_itimeout_HBlinded(xtime);
-    // Sync sticky mirror used by display/status Blind checks.
     u.Blind = Blind();
     u.ublind = false;
     if (u_could_see !== can_see_now) {
-        // C: toggle_blindness — botl + vision_recalc(0)
-        if (game.flags) game.flags.botl = true;
-        game.vision_full_recalc = 1;
-        vision_recalc(0);
-        // C: if (!Blind) learn_unseen_invent()
-        if (!Blind()) learn_unseen_invent();
+        await toggle_blindness();
     }
 }
 

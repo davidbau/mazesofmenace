@@ -30,30 +30,31 @@
 // map_trap + map_engraving after furniture (D-0928 #1158); oldglyph
 // trap/object restore deferred; unconstrain still named for
 // do_mapping/reveal_terrain/monster_detect (do_vicinity_map D-1391
-// has save/restore);
+// has save/restore; display_trap_map unconstrain+reconstrain);
 // notice_mon_off/on; findone flash_glyph / mimic / hider / invis /
-// chest-trap detect;
-// trapped-door dummytrap; FOUND_FLASH_COUNT==0 tmp_at path;
+// foundone vision-pulse; FOUND_FLASH_COUNT==0 tmp_at path;
 // detecting() vision override for openone; open_drawbridge crush/entity;
 // reveal_terrain region/gascloud / trap keep restore /
 // M_AP_FURNITURE; wiz_map_levltyp / wiz_levltyp_legend;
 // TER_FULL explore-only map body; arboreal default tree;
 // monster_detect cursed wake / blessed WIN_MAP /
-// pet_to_glyph / TER_DETECT autodescribe;
+// TER_DETECT autodescribe; map_monst pet/detect/monsym is D-1765;
 // mfind0 set_msg_xy / display_nhwindow flush;
 // object_detect buried/minvent/cursed-mimic/gold/clear_stale_map;
 // observe_recursively on buried/minvent (invent+floor do_dknown D-1417);
-// trap_detect chest/door OTRAP arms;
-// furniture_detect M_AP_FURNITURE seemimic polish.
+// furniture_detect M_AP_FURNITURE seemimic polish;
+// gold_detect; under_water/under_ground after reconstrain.
 
 import { game } from './gstate.js';
 import { rnl, rn2, rnd } from './rng.js';
 import {
     newsym, pline, magic_map_background, terrain_glyph, obj_glyph,
     show_glyph_cell, display_self, map_trap, map_engraving, canspotmon, sensemon,
-    map_invisible, glyph_is_invisible, warning_of, You_feel,
+    map_invisible, glyph_is_invisible, glyph_is_monster, warning_of, You_feel,
     feel_location, feel_newsym, unmap_invisible, map_object, Norep,
-    see_monsters, flush_screen, docrt, mon_glyph,
+    see_monsters, flush_screen, docrt,
+    Hallucination, random_object, random_monster,
+    pet_to_glyph, detected_mon_to_glyph, mon_to_glyph, monsym, glyph_tty_attr,
 } from './display.js';
 import { vision_recalc, couldsee, recalc_block_point, cansee } from './vision.js';
 import { visible_region_at } from './region.js';
@@ -62,6 +63,7 @@ import { body_part } from './polyself.js';
 import { A_WIS, A_INT, acurr, exercise } from './attrib.js';
 import {
     t_at, activate_statue_trap, b_trapped, openholdingtrap, openfallingtrap,
+    trapname,
 } from './trap.js';
 import { engr_at } from './engrave.js';
 import { cmd_safety_prevention, make_blinded } from './do.js';
@@ -80,7 +82,8 @@ import {
 import { objects_at, weight } from './mkobj.js';
 import { makeknown, consume_obj_charge, observe_object } from './invent.js';
 import { yn_function } from './getline.js';
-import { nomul, losehp, maybe_half_phys, is_pool } from './hack.js';
+import { nomul, losehp, maybe_half_phys, is_pool, closed_door } from './hack.js';
+import { get_obj_location } from './timeout.js';
 import { detect_wsegs } from './worm.js';
 import { PM_LONG_WORM_TAIL, monsterNames } from './generated/monsters_data.js';
 import { depth, dist2 } from './hacklib.js';
@@ -93,6 +96,8 @@ import {
     I_SPECIAL, M_AP_TYPE, ARTICLE_A, ROOMOFFSET,
     TIMEOUT, Never_mind, KILLED_BY_AN, TOE, SYM_BOULDER,
     IN_SIGHT, CLAIRVOYANT, LAVAPOOL, LAVAWALL, Has_contents,
+    BEAR_TRAP, TRAPPED_DOOR, TRAPPED_CHEST,
+    BURIED_TOO, CONTAINED_TOO,
 } from './const.js';
 import { room_discovered } from './dungeon.js';
 
@@ -120,6 +125,14 @@ function distu_detect(x, y) {
 
 const BOULDER = objectNames.indexOf('BOULDER');
 const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
+const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
+
+/* C detect.c dummytrap — door/chest sense_trap stand-in; fields reset
+ * at each use. OTRAP_* are detect.c local #defines. */
+const dummytrap = { tx: 0, ty: 0, ttyp: 0, tseen: 0 };
+const OTRAP_NONE = 0;
+const OTRAP_HERE = 1;
+const OTRAP_THERE = 2;
 const DEF_MIMIC = 'm';
 const DEF_MIMIC_DEF = ']';
 const QUITCHARS = ' \r\n\x1b';
@@ -189,7 +202,7 @@ function useup(otmp) {
  * text, else txt; trycall if dknown; useup. Crystal-ball callers
  * pass a null detector and skip this.
  */
-async function strange_feeling(obj, txt) {
+export async function strange_feeling(obj, txt) {
     const beginner = !!(game.flags?.beginner);
     const Hallucination = !!(game.u?.Hallucination || game.u?.HHallucination);
     if (beginner || !txt) {
@@ -292,42 +305,6 @@ const CIRCLE_DATA = [
 const CIRCLE_START = [0, 1, 3, 6, 10, 15, 21, 28, 36];
 
 const LENSES = objectNames.indexOf('LENSES');
-
-// C ref: defsym.h trap explanations (non-hallucination trapname)
-const TRAP_EXPLANATIONS = [
-    '', // NO_TRAP
-    'arrow trap',
-    'dart trap',
-    'falling rock trap',
-    'squeaky board',
-    'bear trap',
-    'land mine',
-    'rolling boulder trap',
-    'sleeping gas trap',
-    'rust trap',
-    'fire trap',
-    'pit',
-    'spiked pit',
-    'hole',
-    'trap door',
-    'teleportation trap',
-    'level teleporter',
-    'magic portal',
-    'web',
-    'statue trap',
-    'magic trap',
-    'anti-magic field',
-    'polymorph trap',
-    'vibrating square',
-    'trapped door',
-    'trapped chest',
-];
-
-/** C ref: trap.c trapname(ttyp, override) — non-hallucination only */
-function trapname(ttyp, _override) {
-    if (ttyp > NO_TRAP && ttyp < TRAPNUM) return TRAP_EXPLANATIONS[ttyp] || 'trap';
-    return 'trap';
-}
 
 /** C ref: detect.c cvt_sdoor_to_door */
 export function cvt_sdoor_to_door(lev) {
@@ -560,12 +537,14 @@ function do_clear_area(scol, srow, range, func, arg) {
 }
 
 /**
- * C ref: detect.c findone — SDOOR/SCORR/unseen traps only.
- * Flash, mimic/hider/invis, chest traps, trapped doors deferred.
+ * C ref: detect.c findone — SDOOR/SCORR/unseen traps + sense_trap.
+ * Flash, mimic/hider/invis, foundone vision-pulse deferred.
  */
 function findone(zx, zy, found) {
     const lev = game.level?.at(zx, zy);
     if (!lev) return;
+
+    found.ft_cc = { x: zx, y: zy };
 
     if (lev.typ === SDOOR) {
         cvt_sdoor_to_door(lev);
@@ -582,9 +561,25 @@ function findone(zx, zy, found) {
     const ttmp = t_at(zx, zy);
     if (ttmp && !ttmp.tseen && ttmp.ttyp !== STATUE_TRAP) {
         ttmp.tseen = true;
-        newsym(zx, zy);
+        sense_trap(ttmp, zx, zy, 0); /* handles Hallucination */
         found.num_traps++;
     }
+    if (closed_door(zx, zy) && ((lev.doormask || 0) & D_TRAPPED) !== 0) {
+        dummytrap.ttyp = TRAPPED_DOOR;
+        dummytrap.tx = zx;
+        dummytrap.ty = zy;
+        dummytrap.tseen = 1;
+        sense_trap(dummytrap, zx, zy, 0);
+        found.num_traps++;
+    }
+    let mtmp = m_at(zx, zy);
+    if (mtmp && ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !(mtmp.mx | 0)))) {
+        mtmp = null;
+    }
+    detect_obj_traps(game.level?.buriedobjlist, true, 0, found);
+    detect_obj_traps(floor_objects(), true, 0, found);
+    if (mtmp) detect_obj_traps(mtmp.minvent, true, 0, found);
+    if (u_at(zx, zy)) detect_obj_traps(game.invent, true, 0, found);
 }
 
 /**
@@ -596,6 +591,7 @@ export async function findit() {
     if (u.uswallow) return 0;
 
     const found = {
+        ft_cc: { x: u.ux | 0, y: u.uy | 0 },
         num_sdoors: 0,
         num_scorrs: 0,
         num_traps: 0,
@@ -949,7 +945,7 @@ function reconstrain_map() {
 }
 
 /**
- * JS has no integer glyph ids. Snapshot gbuf-like disp_* for C glyph_at.
+ * JS gbuf analogue: loc.disp_* plus integer loc.disp_glyph when set.
  * C ref: display.c glyph_at / gbuf[y][x].glyph.
  */
 function glyph_at_disp(x, y) {
@@ -964,6 +960,7 @@ function glyph_at_disp(x, y) {
         color: loc.disp_color ?? null,
         kind: loc.disp_kind ?? '',
         invisible,
+        glyph: loc.disp_glyph,
     };
 }
 
@@ -978,9 +975,9 @@ function glyph_disp_changed(a, b) {
  * map_monst / map_invisible; skilled/blessed/Clairvoyant observe_object +
  * mdetected browse; random_farsight quick_farsight skip; post-loop I-replace
  * + see_monsters; browse_map then docrt.
- * Named omissions: pet_to_glyph / detected_mon_to_glyph (plain
- * mon_glyph); allmain seer_turn caller still named. detect_wsegs is
- * D-1545 (map_monst FALSE here, like C `:1531`).
+ * Named omissions: allmain seer_turn caller still named. detect_wsegs is
+ * D-1545 (map_monst FALSE here, like C `:1531`). map_monst
+ * pet/detected/monsym is D-1765.
  * @param {object|null} sobj fake spellbook (null = random farsight)
  */
 export async function do_vicinity_map(sobj) {
@@ -1026,7 +1023,8 @@ export async function do_vicinity_map(sobj) {
             if (mtmp && (mtmp.mx | 0) === zx && (mtmp.my | 0) === zy) {
                 if ((unconstrained || !hero_memory)
                     && !extended && (zx !== ux || zy !== uy)
-                    && oldglyph.kind !== 'monster') {
+                    && oldglyph.kind !== 'monster'
+                    && !glyph_is_monster(oldglyph.glyph)) {
                     map_invisible(zx, zy);
                 } else {
                     map_monst(mtmp, false);
@@ -1091,12 +1089,19 @@ function mtmp_is_long_worm(mtmp) {
 /**
  * C ref: detect.c map_monst :120–134 — show_glyph head; showtail &&
  * PM_LONG_WORM → detect_wsegs(mtmp, 0) (D-1545; identity D-1549).
- * Named: monsym==' ' detected_mon_to_glyph; pet_to_glyph (plain
- * mon_glyph).
+ * monsym==' ' → detected_mon_to_glyph (ghosts); else mtame →
+ * pet_to_glyph else mon_to_glyph. Integer GLYPH_*_OFF on `.glyph`.
  */
 export function map_monst(mtmp, showtail) {
-    const g = mon_glyph(mtmp);
-    show_glyph_cell(mtmp.mx, mtmp.my, g.ch, g.color, false);
+    const g = (monsym(mtmp.data) === ' ')
+        ? detected_mon_to_glyph(mtmp)
+        : mtmp.mtame
+            ? pet_to_glyph(mtmp)
+            : mon_to_glyph(mtmp);
+    show_glyph_cell(
+        mtmp.mx, mtmp.my, g.ch, g.color, false,
+        glyph_tty_attr(mtmp, g.kind), g.glyph,
+    );
     if (showtail && mtmp_is_long_worm(mtmp)) {
         detect_wsegs(mtmp, false);
     }
@@ -1110,8 +1115,8 @@ export function map_monst(mtmp, showtail) {
  * Empty + otmp → strange_feeling (D-1418; hallu heebie jeebies else
  * threatened). Crystal-ball / fountain pass null and skip that.
  * Named omissions: cursed-otmp wake; blessed persistent
- * display_nhwindow; unconstrain underwater/buried/swallow;
- * pet_to_glyph / detected_mon_to_glyph (plain mon_glyph).
+ * display_nhwindow; unconstrain underwater/buried/swallow.
+ * map_monst pet/detected/monsym is D-1765.
  * detect_wsegs is D-1545 (map_monst TRUE). Long-worm identity is
  * D-1549 (mnum/mndx, not mons() ptr).
  */
@@ -1437,40 +1442,236 @@ export async function object_detect(detector, oclass) {
 }
 
 /**
- * C ref: detect.c trap_detect — crystal ball / scroll path.
- * Returns 1 if nothing detected, 0 if something was.
- * Branch envelope: floor ftrap scan; remote → map_trap + browse;
- * underfoot-only → toes itch; none → return 1.
- * Named omissions: detect_obj_traps chest/buried/minvent; door D_TRAPPED;
- * strange_feeling when sobj; cursed_src gold map.
+ * C gf.ftrap / ntrap. JS maketrap pushes `level.traps`.
  */
-export async function trap_detect(sobj) {
-    void sobj;
+function ftrap_list() {
+    return game.ftrap || game.level?.traps || [];
+}
+
+/**
+ * C fobj nobj — JS has no fobj chain; walk every cell's nexthere.
+ */
+function floor_objects() {
+    const out = [];
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            for (let o = objects_at(x, y); o; o = o.nexthere) out.push(o);
+        }
+    }
+    return out;
+}
+
+function *iter_objs(objlist) {
+    if (!objlist) return;
+    if (Array.isArray(objlist)) {
+        for (const o of objlist) {
+            if (o) yield o;
+        }
+        return;
+    }
+    for (let o = objlist; o; o = o.nobj) yield o;
+}
+
+/**
+ * C ref: detect.c sense_trap — Hallu/cursed fake obj (GOLD/random quan)
+ * else map_trap + tseen. Dummy BEAR_TRAP arm is C-obsolete but kept.
+ */
+export function sense_trap(trap, x, y, src_cursed) {
+    if (Hallucination() || src_cursed) {
+        const obj = {};
+        if (trap) {
+            obj.ox = trap.tx | 0;
+            obj.oy = trap.ty | 0;
+        } else {
+            obj.ox = x | 0;
+            obj.oy = y | 0;
+        }
+        obj.otyp = !Hallucination() ? GOLD_PIECE : random_object(rn2);
+        const def = game.objects?.[obj.otyp];
+        obj.quan = (obj.otyp === GOLD_PIECE) ? rnd(10)
+            : def?.oc_merge ? rnd(2) : 1;
+        obj.corpsenm = random_monster(rn2); /* if otyp == CORPSE */
+        map_object(obj, 1);
+    } else if (trap) {
+        map_trap(trap, 1);
+        trap.tseen = 1;
+    } else {
+        dummytrap.tx = x | 0;
+        dummytrap.ty = y | 0;
+        dummytrap.ttyp = BEAR_TRAP;
+        map_trap(dummytrap, 1);
+    }
+}
+
+/**
+ * C ref: detect.c detect_obj_traps — chest otrapped on a list.
+ * flash_glyph_at / foundone when ft non-null named omit (counts still).
+ */
+function detect_obj_traps(objlist, show_them, how, ft) {
+    let result = OTRAP_NONE;
+    dummytrap.ttyp = TRAPPED_CHEST;
+    for (const otmp of iter_objs(objlist)) {
+        let x = 0;
+        let y = 0;
+        if ((Is_box(otmp) && otmp.otrapped) || Has_contents(otmp)) {
+            const loc = get_obj_location(otmp, BURIED_TOO | CONTAINED_TOO);
+            if (!loc || !isok(loc.x, loc.y)
+                || (ft && ((loc.x | 0) !== (ft.ft_cc.x | 0)
+                    || (loc.y | 0) !== (ft.ft_cc.y | 0)))) {
+                continue;
+            }
+            x = loc.x | 0;
+            y = loc.y | 0;
+        }
+        if (Is_box(otmp) && otmp.otrapped) {
+            otmp.tknown = 1;
+            observe_object(otmp);
+            result |= u_at(x, y) ? OTRAP_HERE : OTRAP_THERE;
+            if (show_them) {
+                dummytrap.tx = x;
+                dummytrap.ty = y;
+                sense_trap(dummytrap, x, y, how);
+            }
+            if (ft) {
+                ft.num_traps++;
+            }
+        }
+        if (Has_contents(otmp)) {
+            result |= detect_obj_traps(otmp.cobj, show_them, how, ft);
+        }
+    }
+    return result;
+}
+
+/**
+ * C ref: detect.c display_trap_map — cls + sense_trap floor/chest/door.
+ * under_water/under_ground after reconstrain named.
+ */
+async function display_trap_map(cursed_src) {
+    const { cls, flush_topl_more } = await import('./display.js');
+    let ter_typ = TER_DETECT | (cursed_src ? TER_OBJ : TER_TRP);
+
+    await cls();
+    unconstrain_map();
+    detect_obj_traps(game.level?.buriedobjlist, true, cursed_src, null);
+    detect_obj_traps(floor_objects(), true, cursed_src, null);
+    for (const mon of game.fmon || []) {
+        if (!mon || (mon.mhp | 0) < 1 || (mon.isgd && !(mon.mx | 0))) continue;
+        detect_obj_traps(mon.minvent, true, cursed_src, null);
+    }
+    detect_obj_traps(game.invent, true, cursed_src, null);
+
+    for (const ttmp of ftrap_list()) {
+        if (ttmp) sense_trap(ttmp, 0, 0, cursed_src);
+    }
+
+    dummytrap.ttyp = TRAPPED_DOOR;
+    const doors = game.level?.doors || [];
+    const doorindex = game.level?.doorindex | 0;
+    for (let door = 0; door < doorindex; door++) {
+        const cc = doors[door];
+        if (!cc) continue;
+        const loc = game.level?.at(cc.x, cc.y);
+        if (!loc || loc.typ === SDOOR) continue;
+        if (((loc.doormask ?? loc.flags) | 0) & D_TRAPPED) {
+            dummytrap.tx = cc.x;
+            dummytrap.ty = cc.y;
+            sense_trap(dummytrap, cc.x, cc.y, cursed_src);
+        }
+    }
+
     const ux = game.u?.ux | 0;
     const uy = game.u?.uy | 0;
+    const loc = game.level?.at(ux, uy);
+    /* C glyph_is_trap || glyph_is_object on gbuf after sense_trap;
+     * JS has no integer glyph ids — cls left unexplored, paint sets disp. */
+    if (!loc || loc.disp_kind === 'unexplored'
+        || loc.disp_ch == null || loc.disp_ch === '') {
+        newsym(ux, uy);
+        ter_typ |= TER_MON;
+    }
+    await You_feel(`${cursed_src ? 'very greedy' : 'entrapped'}.`);
+    await flush_topl_more();
+    await browse_map(ter_typ, cursed_src ? 'gold' : 'trap of interest');
+    reconstrain_map();
+    await map_redisplay();
+}
+
+/**
+ * C ref: detect.c trap_detect — crystal ball / cursed gold-scroll path.
+ * Returns 1 if nothing detected, 0 if something was.
+ */
+export async function trap_detect(sobj) {
+    const cursed_src = !!(sobj && sobj.cursed);
     let found = false;
-    let remote = false;
-    for (const ttmp of game.ftrap || []) {
+    const ux = game.u?.ux | 0;
+    const uy = game.u?.uy | 0;
+
+    if (game.u?.usteed) {
+        game.u.usteed.mx = ux;
+        game.u.usteed.my = uy;
+    }
+
+    for (const ttmp of ftrap_list()) {
         if (!ttmp) continue;
         if ((ttmp.tx | 0) !== ux || (ttmp.ty | 0) !== uy) {
-            remote = true;
-            break;
+            await display_trap_map(cursed_src);
+            return 0;
         }
         found = true;
     }
-    if (remote) {
-        const { cls, flush_topl_more } = await import('./display.js');
-        await cls();
-        for (const ttmp of game.ftrap || []) {
-            if (ttmp) map_trap(ttmp, 1);
+    let tr = detect_obj_traps(floor_objects(), false, 0, null);
+    if (tr !== OTRAP_NONE) {
+        if (tr & OTRAP_THERE) {
+            await display_trap_map(cursed_src);
+            return 0;
         }
-        await You_feel('entrapped.');
-        await flush_topl_more();
-        await browse_map(TER_DETECT | TER_TRP, 'trap of interest');
-        await map_redisplay();
-        return 0;
+        found = true;
     }
-    if (!found) return 1;
+    tr = detect_obj_traps(game.level?.buriedobjlist, false, 0, null);
+    if (tr !== OTRAP_NONE) {
+        if (tr & OTRAP_THERE) {
+            await display_trap_map(cursed_src);
+            return 0;
+        }
+        found = true;
+    }
+    for (const mon of game.fmon || []) {
+        if (!mon || (mon.mhp | 0) < 1 || (mon.isgd && !(mon.mx | 0))) continue;
+        tr = detect_obj_traps(mon.minvent, false, 0, null);
+        if (tr !== OTRAP_NONE) {
+            if (tr & OTRAP_THERE) {
+                await display_trap_map(cursed_src);
+                return 0;
+            }
+            found = true;
+        }
+    }
+    if (detect_obj_traps(game.invent, false, 0, null) !== OTRAP_NONE) {
+        found = true;
+    }
+    const doors = game.level?.doors || [];
+    const doorindex = game.level?.doorindex | 0;
+    for (let door = 0; door < doorindex; door++) {
+        const cc = doors[door];
+        if (!cc) continue;
+        const loc = game.level?.at(cc.x, cc.y);
+        if (!loc || loc.typ === SDOOR) continue;
+        if (((loc.doormask ?? loc.flags) | 0) & D_TRAPPED) {
+            if ((cc.x | 0) !== ux || (cc.y | 0) !== uy) {
+                await display_trap_map(cursed_src);
+                return 0;
+            }
+            found = true;
+        }
+    }
+    if (!found) {
+        await strange_feeling(
+            sobj,
+            `Your ${makeplural(body_part(TOE))} stop itching.`,
+        );
+        return 1;
+    }
     await pline(`Your ${makeplural(body_part(TOE))} itch.`);
     return 0;
 }

@@ -5,6 +5,9 @@
 // roll), once per monster that acts, so it is the first thing a turn with
 // awake monsters spends after the movement allotment.
 
+import { monsndx } from './makemon.js';
+import { is_obj_mappear } from './monst.js';
+import { Invis } from './youprop.js';
 import { CORR } from './const.js';
 import { ROOM } from './const.js';
 import { switch_terrain } from './hack.js';
@@ -95,6 +98,27 @@ import { noattacks } from './mondata.js';
 import { helpless } from './monst.js';
 import { is_axe, is_pick } from './mon.js';
 import { MSOUND } from './monst_data.js';
+import { pline_mon } from './pline.js';
+import { verbalize } from './pline.js';
+import { Amonnam } from './do_name.js';
+import { nolimbs } from './mondata.js';
+import { mhis } from './mondata.js';
+import { mbodypart } from './polyself.js';
+import { HEAD } from './const.js';
+import { ARM } from './const.js';
+import { makeplural } from './objnam.js';
+
+
+
+
+
+
+
+
+
+
+
+
 
 function note_unported_monmove(what) {
     (game.unported ||= new Set()).add('monmove:' + what);
@@ -135,7 +159,7 @@ export async function mb_trapped(mtmp, canseeit) {
             await You_hear(`a ${distu(mtmp.mx, mtmp.my) > 7 * 7
                                 ? 'distant' : 'nearby'} explosion.`);
     }
-    wake_nearto(mtmp.mx, mtmp.my, 7 * 7);
+    await wake_nearto(mtmp.mx, mtmp.my, 7 * 7);
     mtmp.mstun = 1;
     mtmp.mhp -= rnd(15);
     if (DEADMONSTER(mtmp)) {
@@ -1647,7 +1671,7 @@ export async function m_move(mtmp, after) {
     const prange = { min: 0, max: 0 };
     let appr = mtmp.mflee ? -1 : 1;
 
-    if (mtmp.mconf) {
+    if (mtmp.mconf || engulfing_u(mtmp)) {
         appr = 0;
     } else {
         /* src/monmove.c:1861 — all three terms matter. Ours had only the
@@ -1661,11 +1685,11 @@ export async function m_move(mtmp, after) {
                             && (dist2(omx, omy, ggx, ggy) <= 36));
 
         if (!mtmp.mcansee
-            || (should_see && game.u.uprops?.INVIS
-                && !perceives(ptr) && rn2(11))
+            || (should_see && Invis() && !perceives(ptr) && rn2(11))
+            || is_obj_mappear(game.youmonst, ONAMES.STRANGE_OBJECT) || game.u.uundetected
+            || (is_obj_mappear(game.youmonst, ONAMES.GOLD_PIECE) && !likes_gold(ptr))
             || (mtmp.mpeaceful && !mtmp.isshk) /* allow shks to follow */
-            || ((mtmp.mnum === PMNAMES.PM_STALKER
-                 || ptr.mlet === MONSYMS.S_BAT
+            || ((monsndx(ptr) === PMNAMES.PM_STALKER || ptr.mlet === MONSYMS.S_BAT
                  || ptr.mlet === MONSYMS.S_LIGHT) && !rn2(3)))
             appr = 0;
 
@@ -2392,4 +2416,27 @@ export function m_postmove_effect(mtmp) {
         create_gas_cloud(x, y, 1, 8);
     else if (mtmp.mnum === PMNAMES.PM_STEAM_VORTEX && !mtmp.mcan)
         create_gas_cloud(x, y, 1, 0);           /* harmless vapor */
+}
+
+// src/monmove.c mon_yells(); a monster shouts (a watchman's warning)
+export async function mon_yells(mon, shout) {
+    if (Deaf()) {
+        if (canspotmon(mon))
+            /* Sidenote on "A watchman angrily waves her arms!"
+             * Female being called watchman is correct (career name).
+             */
+            await pline_mon(mon, `${Amonnam(mon)} angrily ${
+                nolimbs(mon.data) ? 'shakes' : 'waves'} ${mhis(mon)} ${
+                nolimbs(mon.data) ? mbodypart(mon, HEAD)
+                                  : makeplural(mbodypart(mon, ARM))}!`);
+    } else {
+        if (canspotmon(mon)) {
+            await pline_mon(mon, `${Amonnam(mon)} yells:`);
+        } else {
+            /* Soundeffect(se_someone_yells, 75); */
+            await You_hear('someone yell:');
+        }
+        /* SetVoice(mon, 0, 80, 0); */
+        await verbalize(shout);
+    }
 }

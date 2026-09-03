@@ -261,7 +261,8 @@ export async function explode(x, y, type, dam, olet, expltype) {
     let adtyp;
     const explmask = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
     let xx, yy;
-    let shopdamage = false, generic = false,
+    const shopdamage = { v: false };
+    let generic = false,
         do_hallu = false, inside_engulfer, grabbed, grabbing;
     const grabxy = { x: 0, y: 0 };
     let hallu_buf = '';
@@ -507,10 +508,10 @@ export async function explode(x, y, type, dam, olet, expltype) {
                     continue;
                 }
                 /* for inside_engulfer, only <u.ux,u.uy> is affected */
-                /* [shop damage bookkeeping (zap_over_floor's shopdamage
-                   out-parameter) is not tracked by the JS zap_over_floor] */
                 if (!(u.uswallow && !game.context?.mon_moving))
-                    await zap_over_floor(xx, yy, type, false);
+                    await zap_over_floor(xx, yy, type,
+                                         shopdamage, false,
+                                         exploding_wand_typ);
                 mtmp = m_at(xx, yy);
                 if (!mtmp && u_at(xx, yy))
                     mtmp = u.usteed;
@@ -548,7 +549,7 @@ export async function explode(x, y, type, dam, olet, expltype) {
                 } else {
                     let mdam = dam;
 
-                    if (resist(mtmp, olet, 0, false)) {
+                    if (await resist(mtmp, olet, 0, false)) {
                         /* inside_engulfer: <xx,yy> == <u.ux,u.uy> */
                         if (cansee(xx, yy) || inside_engulfer)
                             await pline(`${Monnam(mtmp)} resists the ${str}!`);
@@ -686,7 +687,7 @@ export async function explode(x, y, type, dam, olet, expltype) {
         exercise(A_STR, false);
     }
 
-    if (shopdamage) {
+    if (shopdamage.v) {
         await pay_for_damage((adtyp === ATTKS.AD_FIRE) ? 'burn away'
                              : (adtyp === ATTKS.AD_COLD) ? 'shatter'
                                : (adtyp === ATTKS.AD_DISN) ? 'disintegrate'
@@ -700,7 +701,7 @@ export async function explode(x, y, type, dam, olet, expltype) {
         i = 50; /* in case random damage is very small */
     if (inside_engulfer)
         i = Math.trunc((i + 3) / 4);
-    wake_nearto(x, y, i);
+    await wake_nearto(x, y, i);
 }
 
 // src/explode.c:721 scatter(), fling the objects at <sx,sy> (or just obj)

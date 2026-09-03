@@ -9,7 +9,7 @@ import {
     verbalize, mon_visible, tp_sensemon, see_with_infrared, tmp_at,
     set_msg_xy,
 } from './display.js';
-import { vision_recalc, cansee, couldsee, howmonseen } from './vision.js';
+import { cansee, couldsee, howmonseen } from './vision.js';
 import {
     TOOL_CLASS, WAND_CLASS, SPBOOK_CLASS, WEAPON_CLASS, POTION_CLASS,
     COIN_CLASS, GEM_CLASS, FOOD_CLASS, RING_CLASS, RANDOM_CLASS,
@@ -61,7 +61,7 @@ import {
     touch_petrifies, poly_when_stoned, is_rider,
 } from './monsters.js';
 import { can_blow, little_to_big, big_to_little, hero_conflict } from './mondata.js';
-import { wield_tool, welded, is_pole } from './wield.js';
+import { wield_tool, welded, is_pole, mwelded } from './wield.js';
 import {
     splitobj, delobj, objects_at, unbless, attach_egg_hatch_timeout, kill_egg,
     obj_extract_self, place_object, stackobj, weight, mksobj, stop_timer,
@@ -78,7 +78,7 @@ import { walk_path, thitmonst, hurtle } from './dothrow.js';
 import { uhim, uhis } from './roles.js';
 import { is_art } from './artifact.js';
 import { ART_SNICKERSNEE } from './generated/artifacts_data.js';
-import { P_SKILL, weapon_type, dbon, MON_WEP, is_wet_towel, dry_a_towel, hands_obj } from './weapon.js';
+import { P_SKILL, weapon_type, dbon, MON_WEP, is_wet_towel, dry_a_towel, hands_obj, possibly_unwield, setmnotwielded } from './weapon.js';
 import { pickup_object, spoteffects } from './pickup.js';
 import { select_menu_pick_one } from './options.js';
 import { teleds, tele_to_rnd_pet, noteleport_level, enexto, rloc_to } from './teleport.js';
@@ -119,8 +119,7 @@ import {
 } from './potion.js';
 import { Blindf_on, Blindf_off, cursed_check } from './do_wear.js';
 import {
-    dropx, setnotworn, fire_damage, make_blinded as potion_make_blinded,
-    revive_corpse,
+    dropx, setnotworn, fire_damage, make_blinded, revive_corpse,
 } from './do.js';
 import { polymon, mbodypart, body_part } from './polyself.js';
 import { unpunish } from './read.js';
@@ -962,40 +961,6 @@ function BlindedTimeout() {
 }
 
 /**
- * C ref: potion.c make_blinded + toggle_blindness subset.
- * Sets HBlinded TIMEOUT; on sight toggle → botl + vision_recalc(0).
- * Eyes override / Punished set_bc / Blind_telepat see_monsters / talk deferred.
- */
-function make_blinded(xtime, _talk) {
-    const u = game.u || (game.u = {});
-    const old = BlindedTimeout();
-    // C probes Blind via props before committing xtime
-    const u_could_see = !Blind();
-    u.HBlinded = ((u.HBlinded | 0) & ~TIMEOUT) | (xtime ? 1 : 0);
-    const can_see_now = !Blind();
-    u.HBlinded = ((u.HBlinded | 0) & ~TIMEOUT) | (old & TIMEOUT);
-
-    const next = ((u.HBlinded | 0) & ~TIMEOUT)
-        | (xtime ? (xtime & TIMEOUT) : 0);
-    u.HBlinded = next;
-    // C: HBlinded ≡ uprops[BLINDED].intrinsic — keep in sync (D-0928 #1171)
-    if (!u.uprops) u.uprops = {};
-    if (!u.uprops[BLINDED]) {
-        u.uprops[BLINDED] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
-    }
-    u.uprops[BLINDED].intrinsic =
-        ((u.uprops[BLINDED].intrinsic | 0) & ~TIMEOUT) | (next & TIMEOUT);
-    u.Blind = Blind();
-    if (u_could_see !== can_see_now) {
-        // C: toggle_blindness — botl + vision_full_recalc + vision_recalc(0)
-        if (game.flags) game.flags.botl = true;
-        game.vision_full_recalc = 1;
-        vision_recalc(0);
-        // Blind_telepat / Infravision / Sting see_monsters deferred
-    }
-}
-
-/**
  * C ref: mondata.c can_blnd(NULL, &youmonst, AT_WEAP, cream_pie) subset.
  * Named omissions: visored helmet; mon_perma_blind; raven-vs-raven.
  */
@@ -1057,7 +1022,7 @@ async function use_cream_pie(obj) {
     if (can_blnd_cream_self(pie)) {
         const blindinc = rnd(25);
         u.ucreamed = (u.ucreamed | 0) + blindinc;
-        make_blinded(BlindedTimeout() + blindinc, false);
+        await make_blinded(BlindedTimeout() + blindinc, false);
         if (!Blind() || (Blind() && wasblind)) {
             await pline(
                 `There's ${wascreamed ? 'more ' : ''}sticky goop all over your ${
@@ -1974,7 +1939,7 @@ async function use_towel(obj) {
                         old ? 'has more' : 'now has'
                     } gunk on it!`,
                 );
-                make_blinded(BlindedTimeout() + ((u.ucreamed | 0) - old), true);
+                await make_blinded(BlindedTimeout() + ((u.ucreamed | 0) - old), true);
             } else {
                 const bf = u.ublindf;
                 let what;
@@ -2023,13 +1988,13 @@ async function use_towel(obj) {
     if (u.ucreamed | 0) {
         const cream = u.ucreamed | 0;
         // C: incr_itimeout(&HBlinded, -ucreamed)
-        make_blinded(BlindedTimeout() - cream, false);
+        await make_blinded(BlindedTimeout() - cream, false);
         u.ucreamed = 0;
         if (!Blind()) {
             await pline("You've got the glop off.");
             // gulp_blnd_check deferred → always false
-            make_blinded(1, false);
-            make_blinded(0, true);
+            await make_blinded(1, false);
+            await make_blinded(0, true);
         } else {
             await pline(`Your ${body_part(FACE)} feels clean now.`);
         }
@@ -3368,40 +3333,6 @@ function bimanual_apply(obj) {
     return !!(oc?.oc_bimanual || oc?.oc_big);
 }
 
-/** C ref: wield.c mwelded — monster wielded cursed wep (owornmask & W_WEP). */
-function mwelded_apply(obj) {
-    if (!obj) return false;
-    if (!((obj.owornmask || 0) & W_WEP)) return false;
-    if (!obj.cursed) return false;
-    if (obj.oclass === WEAPON_CLASS) return true;
-    return obj.oclass === TOOL_CLASS
-        && ((game.objects?.[obj.otyp]?.oc_skill | 0) !== P_NONE);
-}
-
-/** C ref: weapon.c setmnotwielded — artifact_light end_burn deferred. */
-function setmnotwielded_apply(mon, obj) {
-    if (!obj) return;
-    if (MON_WEP(mon) === obj) mon.mw = null;
-    obj.owornmask = (obj.owornmask || 0) & ~W_WEP;
-}
-
-/**
- * C ref: weapon.c possibly_unwield — after extract, wep is gone from minvent.
- */
-function possibly_unwield_apply(mon) {
-    const mw_tmp = MON_WEP(mon);
-    if (!mw_tmp) return;
-    let obj = mon.minvent;
-    while (obj) {
-        if (obj === mw_tmp) break;
-        obj = obj.nobj;
-    }
-    if (!obj) {
-        mon.mw = null;
-        mon.weapon_check = NEED_WEAPON;
-    }
-}
-
 /** C ref: do.c obj_no_longer_held — recurse contents; CRYSKNIFE → worm tooth. */
 async function obj_no_longer_held_apply(obj) {
     if (!obj) return;
@@ -3439,8 +3370,7 @@ async function kick_steed_apply() {
 
 /**
  * C ref: apply.c use_whip — lash, pit yank, disarm, force_attack.
- * Named omit: #if 0 snatch-to-face thitu; artifact_light on setmnotwielded;
- * wipe_engr_at body.
+ * Named omit: #if 0 snatch-to-face thitu; wipe_engr_at body.
  */
 async function use_whip(obj) {
     const u = game.u || (game.u = {});
@@ -3612,7 +3542,7 @@ async function whip_attack(obj, mtmp, rx, ry, proficient) {
             if (bimanual_apply(otmp)) mon_hand = makeplural(mon_hand);
         }
         await pline(`You wrap your bullwhip around ${yname(otmp)}.`);
-        if (gotit && mwelded_apply(otmp)) {
+        if (gotit && mwelded(otmp)) {
             await pline(
                 `${(otmp.quan | 0) === 1 ? 'It is' : 'They are'} welded to ${mhis_apply(mtmp)} ${mon_hand}${
                     !otmp.bknown ? '!' : '.'
@@ -3623,8 +3553,8 @@ async function whip_attack(obj, mtmp, rx, ry, proficient) {
         }
         if (gotit) {
             obj_extract_self(otmp);
-            possibly_unwield_apply(mtmp);
-            setmnotwielded_apply(mtmp, otmp);
+            await possibly_unwield(mtmp, false);
+            await setmnotwielded(mtmp, otmp);
             switch (rn2(proficient + 1)) {
             case 2:
                 await pline(
@@ -4753,7 +4683,7 @@ export async function use_unicorn_horn(obj) {
             );
             break;
         case 1:
-            await potion_make_blinded(BlindedTimeout() + lcount, true);
+            await make_blinded(BlindedTimeout() + lcount, true);
             break;
         case 2:
             if (!(u.HConfusion | 0)) {
@@ -4817,7 +4747,7 @@ export async function use_unicorn_horn(obj) {
             did_prop++;
             break;
         case BLINDED:
-            await potion_make_blinded(u.ucreamed | 0, true);
+            await make_blinded(u.ucreamed | 0, true);
             did_prop++;
             break;
         case HALLUC:

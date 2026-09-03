@@ -21,6 +21,7 @@ import {
     M_AP_NOTHING,
     UTOTYPE_NONE, UTOTYPE_ATSTAIRS, UTOTYPE_PORTAL, TIMEOUT,
     OBJ_FREE, SLT_ENCUMBER, EXT_ENCUMBER, TT_BURIEDBALL,
+    DIED, NO_KILLER_PREFIX,
     is_hole, is_pit, Is_stronghold, Is_botlevel, Is_knox_level,
     In_endgame, In_sokoban, In_quest, Is_waterlevel,
     Is_airlevel, Is_firelevel, Is_earthlevel,
@@ -42,7 +43,7 @@ import {
 } from './monsters.js';
 import {
     newsym, pline, You_feel, see_monsters, canseemon, canspotmon, sensemon,
-    shieldeff, docrt, impossible, flush_screen,
+    shieldeff, docrt, impossible, flush_screen, verbalize, flush_topl_more,
 } from './display.js';
 import { vision_recalc, couldsee } from './vision.js';
 import {
@@ -63,6 +64,8 @@ import { mon_nam, Monnam, x_monnam, noit_mon_nam, Hallucination } from './do_nam
 import { placebc, unplacebc, drag_ball, move_bc } from './ball.js';
 import { acurr, A_STR, A_WIS, exercise } from './attrib.js';
 import { in_out_region, update_player_regions, update_monster_region } from './region.js';
+import { SetVoice, voice_deity } from './sndprocs.js';
+import { uhis } from './roles.js';
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const WAN_TELEPORTATION = objectNames.indexOf('WAN_TELEPORTATION');
 const SPE_TELEPORT_AWAY = objectNames.indexOf('SPE_TELEPORT_AWAY');
@@ -2185,10 +2188,11 @@ export function random_teleport_level() {
  * AMULET_OF_YENDOR grant via mksobj+addinv (D-0549); In_endgame
  * wizard negative dest → dlevel = dunlevs + newlev (D-0560);
  * Confusion/`*` / involuntary → random_teleport_level (D-0575);
- * past-main-dungeon → find_hell (D-0904). Named omissions:
- * lev_by_name; bymenu=FALSE print_dungeon; heaven/escape outside
- * endgame; Quest/mines/sanctum deepest clamp + invoked gate;
- * Nowhere suicide yn; buried ball; debug_fuzzer.
+ * past-main-dungeon → find_hell (D-0904); heaven `u_left_shop` /
+ * Cloud 9 / fly-or-plummet / done(DIED) / escape dlevel 0 (D-1764);
+ * buried_ball_to_punishment before next_to_u. Named omissions:
+ * lev_by_name; bymenu=FALSE print_dungeon; Quest/mines/sanctum
+ * deepest clamp + invoked gate; Nowhere suicide yn; debug_fuzzer.
  */
 export async function level_tele() {
     const u = game.u || {};
@@ -2315,6 +2319,12 @@ export async function level_tele() {
         force_dest = false;
     }
 
+    // C teleport.c :1301–1302 — buried ball before next_to_u
+    if (u.utrap && (u.utraptype | 0) === TT_BURIEDBALL) {
+        const { buried_ball_to_punishment } = await import('./dig.js');
+        await buried_ball_to_punishment();
+    }
+
     // C: next_to_u leash gate (D-1005)
     {
         const { next_to_u } = await import('./apply.js');
@@ -2339,13 +2349,70 @@ export async function level_tele() {
         return;
     }
 
+    // C teleport.c :1321–1385 — heaven / Cloud 9 / fly-or-plummet then
+    // done(DIED) or escape dlevel 0. debug_fuzzer random retry named omit.
+    if (!game.killer) game.killer = { name: '', format: 0 };
+    game.killer.name = '';
+    let escape_by_flying = null;
     if (newlev < 0 && !force_dest) {
-        // heaven / escape deferred
-        await pline('You shudder for a moment.');
-        return;
+        if ((u.ushops0 || '')[0]) {
+            /* take unpaid inventory items off of shop bills */
+            game.in_mklev = true; /* suppress map update */
+            const { u_left_shop } = await import('./shk.js');
+            await u_left_shop(u.ushops0, true);
+            /* you're now effectively out of the shop */
+            u.ushops0 = '';
+            u.ushops = '';
+            game.in_mklev = false;
+        }
+        if (newlev <= -10) {
+            await pline('You arrive in heaven.');
+            SetVoice(null, 0, 80, voice_deity);
+            await verbalize("Thou art early, but we'll admit thee.");
+            game.killer.format = NO_KILLER_PREFIX;
+            game.killer.name = 'went to heaven prematurely';
+        } else if (newlev === -9) {
+            await You_feel('deliriously happy.');
+            await pline("(In fact, you're on Cloud 9!)");
+            await flush_topl_more();
+        } else {
+            await pline('You are now high above the clouds...');
+        }
+
+        if (game.killer.name) {
+            ; /* arrival in heaven is pending */
+        } else if (Levitation()) {
+            escape_by_flying = 'float gently down to earth';
+        } else if (Flying()) {
+            escape_by_flying = 'fly down to the ground';
+        } else {
+            await pline("Unfortunately, you don't know how to fly.");
+            await pline('You plummet a few thousand feet to your death.');
+            game.killer.name =
+                `teleported out of the dungeon and fell to ${uhis()} death`;
+            game.killer.format = NO_KILLER_PREFIX;
+        }
     }
 
-    if (!force_dest) {
+    if (game.killer.name) {
+        /* set specific death location; this also suppresses bones */
+        const lsav = { dnum: u.uz.dnum | 0, dlevel: u.uz.dlevel | 0 };
+        u.uz.dnum = 0; /* main dungeon */
+        u.uz.dlevel = (newlev <= -10) ? -10 : 0; /* heaven or surface */
+        const { done } = await import('./end.js');
+        await done(DIED);
+        /* C done() is noreturn on death; JS really_done returns */
+        if (game.program_state?.gameover) return;
+        escape_by_flying = 'find yourself back on the surface';
+        u.uz.dnum = lsav.dnum;
+        u.uz.dlevel = lsav.dlevel;
+    }
+
+    if (escape_by_flying) {
+        await pline(`You ${escape_by_flying}.`);
+        newlevel.dnum = 0; /* specify main dungeon */
+        newlevel.dlevel = 0; /* escape the dungeon */
+    } else if (!force_dest) {
         // C: medusa's dungeon (main) && newlev past last main depth
         // → find_hell (valley); else get_level (+ deepest clamps deferred)
         const medusa = game.medusa_level;

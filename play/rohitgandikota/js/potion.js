@@ -3,6 +3,7 @@
 //
 // Only healup() so far, reached by the healing spells' zapyourself route.
 
+import { slept_monst } from './mhitm.js';
 import { POLY_NOFLAGS, POLY_CONTROLLED, POLY_LOW_CTRL } from './const.js';
 import { polyself } from './polyself.js';
 import { Unchanging } from './youprop.js';
@@ -102,13 +103,6 @@ export function paralyze_monst(mon, amount) {
     mon.mstrategy = (mon.mstrategy | 0) & ~STRAT_WAITFORU;
 }
 
-async function slept_monst(mon) {
-    if ((mon.msleeping || !mon.mcanmove) && mon === game.u.ustuck
-        && !sticks(game.youmonst.data) && !game.u.uswallow) {
-        await pline(`${s_suffix(Monnam(mon))} grip relaxes.`);
-        await unstuck(mon);
-    }
-}
 
 // src/potion.c:137 make_sick(). Set or clear fatal illness and food
 // poisoning. The delayed-killer record is retained in JS state for the
@@ -491,7 +485,7 @@ export async function potionhit(mon, obj, how) {
         case ONAMES.POT_CONFUSION:
         case ONAMES.POT_BOOZE: {
             const { resist } = await import('./zap.js');
-            if (!resist(mon, OCLASSES.POTION_CLASS, 0, false))
+            if (!await resist(mon, OCLASSES.POTION_CLASS, 0, false))
                 mon.mconf = 1;
             break;
         }
@@ -511,8 +505,8 @@ export async function potionhit(mon, obj, how) {
             break;
         }
         case ONAMES.POT_SLEEPING: {
-            const { sleep_monst } = await import('./zap.js');
-            if (sleep_monst(mon, rnd(12), OCLASSES.POTION_CLASS)) {
+            const { sleep_monst } = await import('./mhitm.js');
+            if (await sleep_monst(mon, rnd(12), OCLASSES.POTION_CLASS)) {
                 await pline(`${Monnam(mon)} falls asleep.`);
                 await slept_monst(mon);
             }
@@ -531,7 +525,7 @@ export async function potionhit(mon, obj, how) {
                 const first = rn2(32);
                 const second = rn2(32);
                 const { resist } = await import('./zap.js');
-                const resisted = resist(mon, OCLASSES.POTION_CLASS, 0, false);
+                const resisted = await resist(mon, OCLASSES.POTION_CLASS, 0, false);
                 const duration = 64 + first + second * !resisted
                                + (mon.mblinded | 0);
                 mon.mblinded = Math.min(duration, 127);
@@ -566,7 +560,7 @@ export async function potionhit(mon, obj, how) {
                     await pline(`${Monnam(mon)} ${
                         is_silent(mon.data) ? 'writhes' : 'shrieks'} in pain!`);
                     if (!is_silent(mon.data))
-                        wake_nearto(tx, ty, (mon.data.mlevel | 0) * 10);
+                        await wake_nearto(tx, ty, (mon.data.mlevel | 0) * 10);
                     mon.mhp -= d(2, 6);
                     if ((mon.mhp | 0) <= 0)
                         await killed(mon);
@@ -618,11 +612,11 @@ export async function potionhit(mon, obj, how) {
         case ONAMES.POT_ACID: {
             const { resist } = await import('./zap.js');
             if (!resists_acid(mon)
-                && !resist(mon, OCLASSES.POTION_CLASS, 0, false)) {
+                && !await resist(mon, OCLASSES.POTION_CLASS, 0, false)) {
                 await pline(`${Monnam(mon)} ${
                     is_silent(mon.data) ? 'writhes' : 'shrieks'} in pain!`);
                 if (!is_silent(mon.data))
-                    wake_nearto(tx, ty, (mon.data.mlevel | 0) * 10);
+                    await wake_nearto(tx, ty, (mon.data.mlevel | 0) * 10);
                 mon.mhp -= d(obj.cursed ? 2 : 1, obj.blessed ? 4 : 8);
                 if ((mon.mhp | 0) <= 0)
                     await killed(mon);
@@ -1852,7 +1846,7 @@ async function dip_potion_explosion(obj, damage) {
 
     obj.in_use = true;
     await pline(`${game.u.uprops?.DEAF ? '' : 'BOOM!  '}They explode!`);
-    wake_nearto(game.u.ux, game.u.uy, (BOLT_LIM + 1) * (BOLT_LIM + 1));
+    await wake_nearto(game.u.ux, game.u.uy, (BOLT_LIM + 1) * (BOLT_LIM + 1));
     exercise(A_STR, false);
     if (!breathless(game.youmonst.data) || haseyes(game.youmonst.data))
         await potionbreathe(obj);
@@ -2100,4 +2094,25 @@ export async function split_mon(mon, mtmp) {
         }
     }
     return mtmp2;
+}
+
+// src/potion.c itimeout(); clamp a timeout value to the TIMEOUT field
+export function itimeout(val) {
+    if (val < 0)
+        val = 0;
+    else if (val > TIMEOUT)
+        val = TIMEOUT;
+    return val;
+}
+
+// src/potion.c set_itimeout(); which = { key } into game.u.intrinsic
+export function set_itimeout(which, val) {
+    const intr = (game.u.intrinsic ||= {});
+    intr[which] = ((intr[which] | 0) & ~TIMEOUT) | itimeout(val);
+}
+
+// src/potion.c incr_itimeout()
+export function incr_itimeout(which, incr) {
+    const intr = (game.u.intrinsic ||= {});
+    set_itimeout(which, itimeout_incr(intr[which] | 0, incr));
 }

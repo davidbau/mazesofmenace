@@ -1,6 +1,7 @@
 // light.js — C ref: light.c light_source list + do_light_sources.
 // LS_MONSTER + LS_OBJECT (lamps/candles via begin_burn);
-// camera flash range 0 + show_transient_light / transient_light_cleanup (D-1597).
+// camera flash range 0 + show_transient_light / transient_light_cleanup (D-1597);
+// obj_sheds_light / obj_is_burning (D-1743; caller mkobj.c dealloc_obj).
 
 import { game } from './gstate.js';
 import {
@@ -16,6 +17,7 @@ import { dist2 } from './hacklib.js';
 import { place_object, obj_extract_self } from './mkobj.js';
 import { simpleonames, otense } from './objnam.js';
 import { monsterNames } from './monsters.js';
+import { ignitable, artifact_light } from './timeout.js';
 
 function pm(name) {
     return monsterNames.indexOf(`PM_${name}`);
@@ -76,6 +78,23 @@ export function del_light_source(type, id) {
         list.splice(idx, 1);
         game.vision_full_recalc = 1;
     }
+}
+
+/**
+ * C ref: light.c obj_is_burning `:770–775` — lamplit && (ignitable
+ * || artifact_light). Callees timeout.js ignitable / artifact_light
+ * (C obj.h / artifact.c).
+ */
+export function obj_is_burning(obj) {
+    return !!(obj && obj.lamplit && (ignitable(obj) || artifact_light(obj)));
+}
+
+/**
+ * C ref: light.c obj_sheds_light `:762–767` — so far only burning
+ * objects. Caller mkobj.c dealloc_obj (D-1743).
+ */
+export function obj_sheds_light(obj) {
+    return obj_is_burning(obj);
 }
 
 /** Drop all lights (level leave). */

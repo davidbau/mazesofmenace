@@ -3,7 +3,9 @@
 //        zap.c destroy_items / resist / zap_over_floor
 //        (D-0949 shopdamage → pay_for_damage; D-0968 AD_FIRE;
 //         D-0971 AD_COLD/ELEC; D-0973 AD_MAGM/DISN/DRST/ACID;
-//         D-0986 scatter MAY_HIT for tree kick).
+//         D-0986 scatter MAY_HIT for tree kick;
+//         D-1760 3x3 map_invisible !canspotmon + You_hear vs Boom!
+//         + engulfer_explosion_msg).
 //
 // Branch envelope: AT_BOOM AD_PHYS / AD_MAGM..AD_SPC2 → MON_EXPLODE;
 // WAND_CLASS / BURNING_OIL / SCROLL / TRAP_EXPLODE olet preamble;
@@ -13,22 +15,30 @@
 // COLD/DISN/ELEC/DRST/ACID mon/hero damage (destroy_items,
 // burnarmor FIRE, resist, cold×2↔fire, Half_phys PHYS/ACID,
 // exercise A_STR, xkilled/monkilled); wake_nearto;
-// scatter individual/pile + MAY_HIT flight (tree/kick).
-// Named omissions: hallu rndmonnam; You_hear vs Boom! when
-// !visible; map_invisible when mtmp && !canspotmon;
-// ugolemeffects/golemeffects; Invulnerable;
+// scatter individual/pile + MAY_HIT flight (tree/kick);
+// 3x3 map_invisible when cansee && !canspotmon; !visible
+// You_hear("a blast.") / generic "explosion" / Boom!;
+// engulfing_u → engulfer_explosion_msg; seemimic before caught-in.
+// Named omissions: hallu rndmonnam; You_hear Underwater/Unaware
+// prefixes; ugolemeffects/golemeffects; Invulnerable;
 // grabbing/engulf double-damage; wake_nearto
 // beyond msleeping; Role_switch damu only for known role pm;
-// resists_magm worn/artifact ANTIMAGIC scan; engulfer_explosion_msg;
+// resists_magm worn/artifact ANTIMAGIC scan; TRAP_EXPLODE killer
+// uhim/uhis; explode_show_visible already owns explosion_to_glyph;
 // scatter MAY_FRACTURE/MAY_DESTROY/shop bill/flooreffects/VIS_EFFECTS/
 // uball chain shatter/hideunder.
 
 import { game } from './gstate.js';
 import { d, rn2, rnd } from './rng.js';
-import { pline, newsym, explode_show_visible, unmap_invisible } from './display.js';
+import {
+    pline, newsym, explode_show_visible, unmap_invisible, map_invisible,
+    canspotmon,
+} from './display.js';
 import { cansee } from './vision.js';
-import { m_at, setmangry } from './mon.js';
+import { m_at, setmangry, seemimic } from './mon.js';
 import { Monnam } from './do_name.js';
+import { Soundeffect, se_blast } from './sndprocs.js';
+import { digests } from './mhitu.js';
 import {
     maybe_half_phys, nomul, stop_occupation,
 } from './hack.js';
@@ -38,6 +48,7 @@ import {
     EXPL_FROSTY, EXPL_MAGICAL,
     STRAT_WAITMASK, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX,
     BURNING_OIL, TRAP_EXPLODE, XKILL_GIVEMSG, XKILL_NOCORPSE, BURNING, DIED,
+    engulfing_u,
     N_DIRS, xdir, ydir, ZAP_POS, IS_DOOR, IS_SINK, STONE,
     LARGEST_INT, MAY_HITMON, MAY_HITYOU,
     D_ISOPEN, D_NODOOR, D_BROKEN,
@@ -294,12 +305,51 @@ function Role_if(pm) {
 }
 
 /**
+ * C ref: explode.c engulfer_explosion_msg `:117–179` — swallowed
+ * digest vs enfold adjectives. Caller: explode when engulfing_u.
+ */
+async function engulfer_explosion_msg(adtyp, olet) {
+    const ustuck = game.u?.ustuck;
+    if (!ustuck) return;
+    let adj;
+    if (digests(ustuck.data)) {
+        switch (adtyp) {
+        case AD_FIRE: adj = 'heartburn'; break;
+        case AD_COLD: adj = 'chilly'; break;
+        case AD_DISN:
+            adj = olet === WAND_CLASS
+                ? 'irradiated by pure energy' : 'perforated';
+            break;
+        case AD_ELEC: adj = 'shocked'; break;
+        case AD_DRST: adj = 'poisoned'; break;
+        case AD_ACID: adj = 'an upset stomach'; break;
+        default: adj = 'fried'; break;
+        }
+        await pline(`${Monnam(ustuck)} gets ${adj}!`);
+    } else {
+        switch (adtyp) {
+        case AD_FIRE: adj = 'toasted'; break;
+        case AD_COLD: adj = 'chilly'; break;
+        case AD_DISN:
+            adj = olet === WAND_CLASS
+                ? 'overwhelmed by pure energy' : 'perforated';
+            break;
+        case AD_ELEC: adj = 'shocked'; break;
+        case AD_DRST: adj = 'intoxicated'; break;
+        case AD_ACID: adj = 'burned'; break;
+        default: adj = 'fried'; break;
+        }
+        await pline(`${Monnam(ustuck)} gets slightly ${adj}!`);
+    }
+}
+
+/**
  * C ref: explode.c explode — PHYS + AD_FIRE (D-0968) + AD_COLD/ELEC
  * (D-0971) + AD_MAGM/DISN/DRST/ACID (D-0973) mon/hero combat +
  * WAND/SCROLL/OIL/TRAP olet → zap_over_floor + pay_for_damage
  * (D-0949). Visible blast via explosion_to_glyph / cmap shield
- * (display.js explode_show_visible). You_hear vs Boom! when
- * !visible still named.
+ * (display.js explode_show_visible; D-1738). D-1760: 3x3
+ * map_invisible !canspotmon, You_hear vs Boom!, engulfer msg.
  */
 export async function explode(x, y, typeIn, dam, olet, expltype) {
     let type = typeIn | 0;
@@ -307,6 +357,8 @@ export async function explode(x, y, typeIn, dam, olet, expltype) {
     let uhurt = 0; // 0=unhurt, 1=items only, 2=you+items
     let str = '';
     let exploding_wand_typ = 0;
+    let generic = false;
+    let didmsg = false;
     const you_exploding = olet === MON_EXPLODE && type >= 0;
     const shopdamage = { v: false };
 
@@ -370,6 +422,7 @@ export async function explode(x, y, typeIn, dam, olet, expltype) {
 
     const you = game.youmonst || { _youmonst: true };
     const explmask = [];
+    let visible = false;
     for (let i = 0; i < 3; i++) {
         explmask[i] = [];
         for (let j = 0; j < 3; j++) {
@@ -388,16 +441,39 @@ export async function explode(x, y, typeIn, dam, olet, expltype) {
             if (mtmp && (mtmp.mhp | 0) < 1) mtmp = null;
             if (mtmp) {
                 explmask[i][j] |= explosionmask(mtmp, adtyp, olet);
-            } else {
+            }
+            // C explode.c :378–381 — I-glyph when in view but not spottable
+            if (mtmp && cansee(xx, yy) && !canspotmon(mtmp)) {
+                map_invisible(xx, yy);
+            } else if (!mtmp) {
                 unmap_invisible(xx, yy);
             }
+            if (cansee(xx, yy)) visible = true;
         }
     }
 
-    await explode_show_visible(x, y, expltype, explmask);
-
-    // C: Boom! when !Deaf && !didmsg (visible blast already painted)
-    if (!game.u?.Deaf) {
+    // C youprop.h:125 Deaf — inline (do not add hero_Deaf clone #4)
+    const uDeaf = game.u || {};
+    const expl_deaf = !!((uDeaf.HDeaf | 0) || (uDeaf.EDeaf | 0)
+        || uDeaf.uroleplay?.deaf || uDeaf.Deaf);
+    if (visible) {
+        await explode_show_visible(x, y, expltype, explmask);
+    } else {
+        // C :439–448 — unseen MON/TRAP blast is generic "explosion"
+        if (olet === MON_EXPLODE || olet === TRAP_EXPLODE) {
+            str = 'explosion';
+            generic = true;
+        }
+        if (!expl_deaf && olet !== SCROLL_CLASS) {
+            Soundeffect(se_blast, 75);
+            // C You_hear: skip when !flags.acoustics; Unaware/Underwater named
+            if (game.flags?.acoustics !== false) {
+                await pline('You hear a blast.');
+            }
+            didmsg = true;
+        }
+    }
+    if (!expl_deaf && !didmsg) {
         await pline('Boom!');
     }
 
@@ -434,7 +510,11 @@ export async function explode(x, y, typeIn, dam, olet, expltype) {
                 if (!mtmp) continue;
                 if ((mtmp.mhp | 0) < 1) continue;
 
-                if (cansee(xx, yy)) {
+                // C explode.c :503–509
+                if (engulfing_u(mtmp)) {
+                    await engulfer_explosion_msg(adtyp, olet);
+                } else if (cansee(xx, yy)) {
+                    if (mtmp.m_ap_type) seemimic(mtmp);
                     await pline(`${Monnam(mtmp)} is caught in the ${str}!`);
                 }
 
@@ -522,7 +602,8 @@ export async function explode(x, y, typeIn, dam, olet, expltype) {
             // Upolyd rehumanize deferred — fatal path as non-poly
             if (!game.killer) game.killer = { name: '', format: 0 };
             if (olet === MON_EXPLODE) {
-                if (str && str !== game.killer.name) {
+                // C :646–650 — unseen blast keeps killer.name (generic)
+                if (!generic && str && str !== game.killer.name) {
                     game.killer.name = str;
                 }
                 game.killer.format = KILLED_BY_AN;

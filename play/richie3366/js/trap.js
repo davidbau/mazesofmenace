@@ -16,7 +16,8 @@
 // openholdingtrap (D-0981) / closeholdingtrap (D-1425).
 
 import { game } from './gstate.js';
-import { rn2, rnd, rn1, d, rnl } from './rng.js';
+import { rn2, rnd, rn1, d, rnl, rn2_on_display_rng } from './rng.js';
+import { rank_of } from './roles.js';
 import {
     mksobj, place_object, weight, stackobj, relobj_on_death,
     is_flammable, is_rustprone, is_rottable, is_corrodeable, is_crackable,
@@ -30,7 +31,7 @@ import {
     newsym, pline, pline_xy, urgent_pline, mon_visible, see_with_infrared,
     You_feel, unmap_object, glyph_is_invisible, tmp_at, nh_delay_output,
     obj_glyph, flush_topl_more, feel_newsym, canspotmon, map_invisible,
-    set_msg_xy,
+    set_msg_xy, Hallucination,
 } from './display.js';
 import { doname, an, the, The, xname, yname, cxname, makeplural, vtense } from './objnam.js';
 import {
@@ -134,6 +135,7 @@ import { unpunish } from './read.js';
 import { create_gas_cloud } from './region.js';
 import { polymon, body_part, mbodypart } from './polyself.js';
 import { done } from './end.js';
+import { make_blinded } from './do.js';
 import { mon_adjust_speed } from './muse.js';
 import { m_dowear } from './worn.js';
 import { m_unleash } from './apply.js';
@@ -1387,7 +1389,8 @@ function check_in_air(mtmp, trflags) {
 
 /**
  * C ref: trap.c trapname / defsym.h trap PCHAR explanations.
- * Hallucination override deferred (always FALSE path).
+ * Index is ttyp (NO_TRAP=0). anti-magic uses PCHAR2 desc, not the
+ * tile name "anti magic trap".
  */
 const TRAP_EXPLANATIONS = [
     '', // NO_TRAP
@@ -1419,6 +1422,32 @@ const TRAP_EXPLANATIONS = [
 ];
 
 /**
+ * C trap.c trapname `:7104–7130` halu_trapnames[]. SIZE is 62.
+ * display.h has no random_trap_to_glyph in this C; hallu is names.
+ */
+const HALU_TRAPNAMES = [
+    'bottomless pit', 'polymorphism trap', 'devil teleporter',
+    'falling boulder trap', 'anti-anti-magic field', 'weeping gas trap',
+    'queasy board', 'electrified web', 'owlbear trap', 'sand mine',
+    'vacillating triangle',
+    'death trap', 'disintegration trap', 'ice trap', 'monochrome trap',
+    'axeblade trap', 'pool of boiling oil', 'pool of quicksand',
+    'field of caltrops', 'buzzsaw trap', 'spiked floor', 'revolving wall',
+    'uneven floor', 'finger trap', 'jack-in-a-box', 'yellow snow',
+    'booby trap', 'rat trap', 'poisoned nail', 'snare', 'whirlpool',
+    'trip wire', 'roach motel (tm)',
+    'negative space', 'tensor field', 'singularity', 'imperial fleet',
+    'black hole', 'thermal detonator', 'event horizon',
+    'entoptic phenomenon',
+    'sweet-smelling gas vent', 'phone booth', 'exploding runes',
+    'never-ending elevator', 'slime pit', 'warp zone', 'illusory floor',
+    'pile of poo', 'honey trap', 'tourist trap',
+    'banana peel', 'garden rake', 'whoopie cushion', 'box and stick trap',
+    'fly trap', 'legal trap', 'pit of snakes', 'pollywog trap',
+    'slippery slope', 'thirst trap', 'suntrap',
+];
+
+/**
  * C ref: trap.c sokoban_guilt — Sokoban ≡ level.flags.sokoban_rules.
  * Conduct + luck only; C TODO feedback still unnamed. maybe_finish_sokoban
  * and other callers (zap/read/steed/dig) still named. nopick m-dir D-1262.
@@ -1433,9 +1462,51 @@ export function sokoban_guilt() {
     }
 }
 
-/** C ref: trap.c trapname(ttyp, override) — non-hallucination only. */
-export function trapname(ttyp, _override) {
-    const t = ttyp | 0;
+/**
+ * C ref: trap.c trapname(ttyp, override) `:7098–7155`.
+ * Hallu && !override: nameidx = rn2_on_display_rng(TRAPNUM+SIZE+1).
+ * Last slot → role/rank +" trap" (core rn2(3); copynchars 27);
+ * else ≥TRAPNUM → HALU_TRAPNAMES; else nameidx!=NO_TRAP replaces ttyp.
+ * C display.h trap_to_glyph is not Hallu (no random_trap_to_glyph).
+ */
+export function trapname(ttyp, override) {
+    let t = ttyp | 0;
+    if (Hallucination() && !override) {
+        const total_names = TRAPNUM + HALU_TRAPNAMES.length;
+        const nameidx = rn2_on_display_rng(total_names + 1);
+        if (nameidx === total_names) {
+            const u = game.u || {};
+            const fem = Upolyd(u) ? !!u.mfemale : !!game.flags?.female;
+            const role = game.urole || {};
+            // C: rn2(3) ? (fem && name.f ? name.f : name.m)
+            //    : rank_of(u.ulevel, Role_switch, fem). Role_switch ≡
+            //    urole.mnum (you.h). sizeof roletrap 33 − sizeof " trap" 6.
+            const src = rn2(3)
+                ? ((fem && role.name?.f) ? role.name.f : (role.name?.m || ''))
+                : rank_of(u.ulevel | 0, role.mnum | 0, fem);
+            let roletrap = '';
+            const nmax = 27;
+            const s = String(src || '');
+            for (let i = 0; i < nmax && i < s.length; i++) {
+                const ch = s.charAt(i);
+                if (ch === '\n') break;
+                roletrap += ch;
+            }
+            roletrap += ' trap';
+            let out = '';
+            for (let i = 0; i < roletrap.length; i++) {
+                const c = roletrap.charCodeAt(i);
+                out += (c >= 65 && c <= 90)
+                    ? String.fromCharCode(c | 32)
+                    : roletrap.charAt(i);
+            }
+            return out;
+        }
+        if (nameidx >= TRAPNUM) {
+            return HALU_TRAPNAMES[nameidx - TRAPNUM];
+        }
+        if (nameidx !== NO_TRAP) t = nameidx;
+    }
     if (t > NO_TRAP && t < TRAPNUM) return TRAP_EXPLANATIONS[t] || 'trap';
     return 'trap';
 }
@@ -3790,11 +3861,7 @@ function Deaf() {
     const u = game.u || {};
     return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
 }
-function Hallucination() {
-    const u = game.u || {};
-    if (u.Hallucination) return true;
-    return !!((u.HHallucination | 0) && !(u.Halluc_resistance | 0));
-}
+/** Hallucination: imported display.js youprop (H && !resist). */
 /** C youprop.h Confusion — HConfusion (booleanized). */
 function Confusion() {
     return !!((game.u?.HConfusion | 0));
@@ -3833,24 +3900,6 @@ function incr_itimeout_prop(key, incr) {
     const u = game.u || (game.u = {});
     const cur = u[key] | 0;
     set_itimeout_prop(key, (cur & TIMEOUT) + (incr | 0));
-}
-/**
- * C ref: potion.c make_blinded — talk=FALSE envelope for domagictrap.
- * Named omission: Eyes override probe detail; toggle_blindness vision recalc;
- * Punished set_bc; talk messages (always FALSE here).
- */
-function make_blinded(xtime, _talk) {
-    const u = game.u || (game.u = {});
-    const old = (u.HBlinded | 0) & TIMEOUT;
-    const u_could_see = !Blind();
-    set_itimeout_prop('HBlinded', xtime ? 1 : 0);
-    const can_see_now = !Blind();
-    set_itimeout_prop('HBlinded', old);
-    set_itimeout_prop('HBlinded', xtime);
-    if (u_could_see !== can_see_now) {
-        u.Blind = !can_see_now;
-        if (game.flags) game.flags.botl = true;
-    }
 }
 /** C mondata.c resists_blnd — hero Blind/Unaware gate; arti/expl deferred. */
 function resists_blnd(mon) {
@@ -3944,7 +3993,7 @@ async function domagictrap() {
         let cnt = rnd(4);
         if (!resists_blnd(game.youmonst || { _youmonst: true })) {
             await pline('You are momentarily blinded by a flash of light!');
-            make_blinded(rn1(5, 10), false);
+            await make_blinded(rn1(5, 10), false);
             if (!Blind()) await pline(`Your ${VISION_CLEARS}`);
         } else if (!Blind()) {
             await pline('You see a flash of light!');

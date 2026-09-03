@@ -25,6 +25,15 @@ import { A_WIS } from './const.js';
 import { xname, doname } from './objnam.js';
 import { more_experienced } from './exper.js';
 import { surface } from './dungeon.js';
+import { IS_GRAVE } from './const.js';
+import { NO_MM_FLAGS } from './const.js';
+import { makemon } from './makemon.js';
+import { PMNAMES } from './monst_data.js';
+
+
+
+
+
 
 // src/engrave.c:65 rubouts[] — how each character degrades. Order matters:
 // wipeout_text() scans linearly and the index it stops at decides whether the
@@ -549,4 +558,20 @@ export async function cant_reach_floor(x, y, up, check_pit, wand_engraving) {
         up  ? ceiling(x, y)
             : (check_pit && can_reach_floor(false)) ? 'bottom of the pit'
                                                     : surface(x, y)}.`);
+}
+
+// src/engrave.c disturb_grave(); summon a ghoul from a disturbed grave (once)
+export async function disturb_grave(x, y) {
+    const lev = game.level.at(x, y);
+
+    if (!IS_GRAVE(lev.typ)) {
+        /* impossible("Disturbing grave that isn't a grave? (%d)", lev->typ) */
+    } else if (lev.disturbed) {
+        /* impossible("Disturbing already disturbed grave?") */
+    } else {
+        await You('disturb the undead!');
+        lev.disturbed = 1;
+        await makemon(game.mons[PMNAMES.PM_GHOUL], x, y, NO_MM_FLAGS);
+        exercise(A_WIS, false);
+    }
 }

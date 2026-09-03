@@ -100,7 +100,7 @@ function doorless_door(x, y) {
 }
 
 /** C ref: hack.c closed_door — D_CLOSED | D_LOCKED. */
-function closed_door(x, y) {
+export function closed_door(x, y) {
     const loc = game.level?.at(x, y);
     if (!loc || !IS_DOOR(loc.typ)) return false;
     return !!((loc.doormask || 0) & (D_CLOSED | D_LOCKED));
@@ -141,6 +141,8 @@ function a_monnam(mtmp) {
 
 /**
  * C ref: hack.c cannot_push_msg — vain-push topline (no monster-behind).
+ * Blind feel_location `:257–258` (D-1749). Levitation Blind feel is
+ * moverock_core, not here.
  */
 async function cannot_push_msg(otmp, sx, sy) {
     const what = `the ${xname(otmp)}`;
@@ -149,7 +151,7 @@ async function cannot_push_msg(otmp, sx, sy) {
     } else {
         await pline(`You try to move ${what}, but in vain.`);
     }
-    // Blind feel_location deferred
+    if (Blind_im()) feel_location(sx, sy);
 }
 
 /**
@@ -362,8 +364,15 @@ async function dopush(sx, sy, rx, ry, otmp) {
         dloc.remembered_glyph = null; // unmap_object trap/engr arms deferred
     }
     otmp.next_boulder = 0; /* C hack.c dopush :208 — reset before movobj. D-1294. */
-    movobj(otmp, rx, ry);
-    newsym(sx, sy);
+    movobj(otmp, rx, ry); /* C: newsym dest (and source) */
+    // C hack.c dopush `:210–215` — Blind feel dest+source (is_worm_tail
+    // overlay in feel_location D-1749); else newsym source again.
+    if (Blind_im()) {
+        feel_location(rx, ry);
+        feel_location(sx, sy);
+    } else {
+        newsym(sx, sy);
+    }
 }
 
 /**
@@ -381,11 +390,12 @@ function moverock_done(sx, sy) {
  * Branch envelope: Blind unseen start-of-loop feel (D-1281) + next_boulder
  * naming (D-1294) + nopick m-dir over/against (D-1262) + clear-dest dopush
  * + monster-behind You_hear/canspotmon + closed_door cannot_push_msg
- * (D-0317) + rumbling disturb_buried_zombies (D-1214). Named omissions:
- * Sokoban diagonal, shop costly, trap/teleport/pool arms, Levitation
- * (after nopick), verysmall vain-push, tunneling chew, revive_nasty,
- * y_monnam steed wording, dopush/cannot_push_msg/Levitation Blind
- * feel_location. Giant pickup/maneuver D-1253.
+ * (D-0317) + rumbling disturb_buried_zombies (D-1214) + Blind
+ * feel_location on dopush / cannot_push_msg / monster-behind (D-1749).
+ * Named omissions: Sokoban diagonal, shop costly, trap/teleport/pool
+ * arms, Levitation (after nopick) Blind feel, verysmall vain-push Blind
+ * feel, tunneling chew, revive_nasty, y_monnam steed wording. Giant
+ * pickup/maneuver D-1253.
  * Returns 0 to advance onto vacated cell, -1 to abort the move.
  */
 async function moverock_core(sx, sy) {
@@ -469,7 +479,9 @@ async function moverock_core(sx, sy) {
             if (mtmp && !noncorporeal(mtmp.data)
                 && (!mtmp.mtrapped || !(ttmp && is_pit(ttmp.ttyp)))) {
                 let deliver_part1 = false;
-                // Blind feel_location deferred
+                // C hack.c `:459–460` — Blind feel_location(sx,sy) before
+                // canspotmon / You_hear (D-1749).
+                if (Blind_im()) feel_location(sx, sy);
                 if (canspotmon(mtmp)) {
                     await pline(`There's ${a_monnam(mtmp)} on the other side.`);
                     deliver_part1 = true;

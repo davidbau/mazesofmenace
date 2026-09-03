@@ -11,30 +11,43 @@ import {
     M_ATTK_DEF_DIED,
     Upolyd, DIED, P_WHIP, NON_PM, XKILL_NOMSG, NEW_MOON,
     DISPLACED, CONFLICT, IS_WATERWALL, RLOC_MSG, RLOC_NOMSG, TIMEOUT, FAST, ARTICLE_A,
-    LEFT_SIDE, RIGHT_SIDE, LEG, POOL, DROWNING, KILLED_BY_AN,
+    LEFT_SIDE, RIGHT_SIDE, LEFT_RING, RIGHT_RING, LEG, HAND, HAIR,
+    POOL, DROWNING, KILLED_BY_AN,
     MAGICAL_BREATHING, SWIMMING, Is_medusa_level, Is_waterlevel,
     W_ARMS, W_WEP, W_AMUL, W_ARM, BOLT_LIM, STONING, KILLED_BY, M_SEEN_FIRE,
-    REFLECTING,
+    REFLECTING, A_CHAOTIC, LARGEST_INT,
 } from './const.js';
 import { thrwmu, spitmu, breamu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
-import { destroy_items } from './zap.js';
-import { nomul, stop_occupation, maybe_half_phys, is_pool } from './hack.js';
+import { destroy_items, resists_drli } from './zap.js';
+import { nomul, stop_occupation, maybe_half_phys, is_pool, losehp } from './hack.js';
 import { rnd, d, rn2, rn1 } from './rng.js';
 import {
     pline, pline_mon, set_msg_xy, mon_visible, canspotmon, map_invisible,
     canseemon, newsym, docrt, swallowed, flush_topl_more, tp_sensemon,
-    shieldeff, urgent_pline,
+    shieldeff, urgent_pline, You_feel, verbalize, impossible,
 } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_off_newsym_gbuf } from './vision.js';
-import { Monnam, mon_nam, pmname, hliquid, x_monnam, Hallucination } from './do_name.js';
+import {
+    Monnam, mon_nam, pmname, hliquid, x_monnam, Hallucination,
+    noit_mon_nam, noit_Monnam,
+} from './do_name.js';
 import { MON_WEP, mon_wield_item, dmgval, hitval, drain_weapon_skill } from './weapon.js';
 import { arti_reflects } from './artifact.js';
-import { is_pole } from './wield.js';
-import { xname, doname, an } from './objnam.js';
-import { objectNames, ARMOR_CLASS } from './objects.js';
+import { is_pole, welded } from './wield.js';
+import { xname, doname, an, yname, the, simpleonames, safe_qbuf } from './objnam.js';
+import { objectNames, ARMOR_CLASS, COIN_CLASS } from './objects.js';
 import { objects_at, is_metallic, is_crackable } from './mkobj.js';
-import { steal } from './steal.js';
+import { steal, unresponsive, remove_worn_item } from './steal.js';
+import {
+    stop_donning, setworn, Ring_on, Ring_gone, suit_simple_name,
+} from './do_wear.js';
+import { mpickobj } from './makemon.js';
+import { money2mon } from './shk.js';
+import { y_n } from './getline.js';
+import { getyear, yyyymmdd } from './calendar.js';
+import { pluslvl, losexp } from './exper.js';
+import { mhe } from './fountain.js';
 import { rloc, tele_restrict } from './teleport.js';
 import { monflee } from './monmove.js';
 import {
@@ -44,20 +57,26 @@ import {
     poly_when_stoned, has_head, slithy, amphibious, breathless, is_swimmer,
     MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
 } from './monsters.js';
-import { done_in_by, done } from './end.js';
+import { done_in_by, done, finish_losehp_done } from './end.js';
+import { make_blinded } from './do.js';
 import { msummon, Inhell } from './minion.js';
 import { monsterNames } from './generated/monsters_data.js';
-import { A_STR, A_INT, A_DEX, A_CON, acurr, adjattrib, exercise, poisoned, Fast } from './attrib.js';
+import {
+    A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, adjattrib, exercise,
+    poisoned, Fast, adjalign,
+} from './attrib.js';
 import { xkilled, killed } from './uhitm.js';
 import {
     m_seenres, cvt_adtyp_to_mseenres, monstseesu, monstunseesu, m_canseeu,
 } from './mondata.js';
 import { which_armor } from './worn.js';
-import { makeknown } from './invent.js';
+import {
+    makeknown, freeinv, prinv, observe_object, currency, u_carried_gloves,
+} from './invent.js';
 import { burn_away_slime } from './timeout.js';
 import {
     get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mattackm,
-    could_seduce, mon_poly, mondead,
+    could_seduce, SYSOPT_SEDUCE, mon_poly, mondead,
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
     AT_ENGL, AT_GAZE, AT_SPIT, AT_BREA, AT_EXPL, AT_BOOM, AT_TENT, AT_MAGC,
     AT_HUGS,
@@ -69,6 +88,7 @@ import { rehumanize, polymon, body_part } from './polyself.js';
 import { set_wounded_legs, burnarmor, ignite_items } from './trap.js';
 import { mon_explodes } from './explode.js';
 import { make_hallucinated, make_confused, make_stunned } from './potion.js';
+import { SetVoice } from './sndprocs.js';
 
 /** C ref: monattk.h — passiveum damage types beyond mhitm export set. */
 const AD_STUN = 12;
@@ -114,6 +134,8 @@ function resists_mr(mon, mrBit) {
 
 const PM_BALROG = monsterNames.indexOf('PM_BALROG');
 const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
+const PM_LEPRECHAUN = monsterNames.indexOf('PM_LEPRECHAUN');
+const RIN_ADORNMENT = objectNames.indexOf('RIN_ADORNMENT');
 const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
 const PM_FIRE_VORTEX = monsterNames.indexOf('PM_FIRE_VORTEX');
 const PM_FLAMING_SPHERE = monsterNames.indexOf('PM_FLAMING_SPHERE');
@@ -290,8 +312,7 @@ export async function hitmsg(mtmp, mattk) {
         const Blind = !!(game.u?.Blind || game.u?.ublind
             || (((game.u?.HBlinded | 0) || (game.u?.EBlinded | 0))
                 && !(game.u?.BBlinded | 0)));
-        const Deaf = !!(game.u?.Deaf || game.u?.HDeaf);
-        const how = Blind ? (Deaf ? 'touches' : 'talks to') : 'smiles at';
+        const how = Blind ? (hero_Deaf() ? 'touches' : 'talks to') : 'smiles at';
         const adv = (compat === 2) ? 'engagingly' : 'seductively';
         await pline_mon(mtmp, `${Monst_name} ${how} you ${adv}.`);
     } else {
@@ -586,25 +607,6 @@ function Flying() {
 }
 
 /**
- * C ref: potion.c make_blinded — TIMEOUT set + Blind mirror + vision_recalc.
- * Eyes override / Punished set_bc / talk messages deferred (talk unused).
- */
-function make_blinded(xtime, _talk) {
-    const u = game.u || (game.u = {});
-    const wasBlind = Blind();
-    u.HBlinded = ((u.HBlinded | 0) & ~TIMEOUT)
-        | (xtime ? ((xtime | 0) & TIMEOUT) : 0);
-    const nowBlind = Blind();
-    u.Blind = nowBlind;
-    u.ublind = false;
-    if (wasBlind !== nowBlind) {
-        if (game.flags) game.flags.botl = true;
-        game.vision_full_recalc = 1;
-        vision_recalc(0);
-    }
-}
-
-/**
  * C ref: mondata.c can_blnd — mhitu AD_BLND subset (AT_CLAW raven).
  * Named omissions: cream-pie/venom obj arms; Blindfolded ublindf; visor;
  * raven-vs-raven; resists_blnd light aatyps; mon_perma_blind.
@@ -637,7 +639,7 @@ async function mhitm_ad_blnd_u(mtmp, mattk, mhm) {
         if (!Blind()) {
             await pline(`${Monnam(mtmp)} blinds you!`);
         }
-        make_blinded(BlindedTimeout() + (mhm.damage | 0), false);
+        await make_blinded(BlindedTimeout() + (mhm.damage | 0), false);
         if (!Blind()) {
             // Eyes of the Overworld — vision_clears deferred
         }
@@ -901,6 +903,397 @@ function hard_helmet(obj) {
 /** C ref: objnam.c helm_simple_name `:5513–5528` — hat vs helm. */
 function helm_simple_name(helmet) {
     return !hard_helmet(helmet) ? 'hat' : 'helm';
+}
+
+/**
+ * C ref: mhitu.c `:25` `#define ld()`.
+ * Leap day: `yyyymmdd(0) - getyear()*10000 == 0xe5` (Feb 29 as mmdd 229).
+ * Sole caller: doseduce leap-day succubus gloves verbalize.
+ */
+export function ld() {
+    return (yyyymmdd(0) - (getyear() * 10000)) === 0xe5;
+}
+
+/**
+ * C youprop.h:125 Deaf ≡ HDeaf || EDeaf || u.uroleplay.deaf
+ * (plus u.Deaf flag, matching invent.js / do.js / monmove.js).
+ * Do not drop EDeaf / roleplay deaf: mayberem and doseduce Cha rn2/y_n
+ * sit behind this (review 711).
+ */
+function hero_Deaf() {
+    const u = game.u || {};
+    return !!((u.HDeaf | 0) || (u.EDeaf | 0)
+        || u.uroleplay?.deaf || u.Deaf);
+}
+
+function botl_mark() {
+    if (!game.flags) game.flags = {};
+    game.flags.botl = true;
+}
+
+function invent_snapshot() {
+    const inv = game.invent;
+    if (!inv) return [];
+    if (Array.isArray(inv)) return [...inv];
+    const out = [];
+    for (let o = inv; o; o = o.nobj) out.push(o);
+    return out;
+}
+
+function money_cnt_invent() {
+    let sum = 0;
+    for (const o of invent_snapshot()) {
+        if (o.oclass === COIN_CLASS) sum += o.quan | 0;
+    }
+    return sum;
+}
+
+/**
+ * C ref: mhitu.c mayberem `:2308–2352` — static, only doseduce.
+ * SetVoice is empty without SND_LIB_INTEGRATED (contest sndprocs.h; D-1752).
+ */
+async function mayberem(mon, seducer, obj, str) {
+    if (!obj || !obj.owornmask) return;
+    const u = game.u || {};
+    if ((u.utotype | 0) || !m_next2u(mon)) return;
+
+    if (hero_Deaf()) {
+        await pline(`${seducer} takes off your ${str}.`);
+    } else if (rn2(20) < acurr(A_CHA)) {
+        SetVoice(mon, 0, 80, 0); /* C: y_n is set up for this */
+        const qbuf = `"Shall I remove your ${str}, ${
+            !rn2(2) ? 'lover' : !rn2(2) ? 'dear' : 'sweetheart'
+        }?"`;
+        if ((await y_n(qbuf)) === 'n') return;
+    } else {
+        const hairbuf = `let me run my fingers through your ${body_part(HAIR)}`;
+        let why;
+        if (obj === u.uarm) why = "let's get a little closer";
+        else if (obj === u.uarmc || obj === u.uarms) why = "it's in the way";
+        else if (obj === u.uarmf) why = 'let me rub your feet';
+        else if (obj === u.uarmg) why = "they're too clumsy";
+        else if (obj === u.uarmu) why = 'let me massage you';
+        else why = hairbuf;
+        SetVoice(mon, 0, 80, 0);
+        await verbalize(`Take off your ${str}; ${why}.`);
+    }
+    await remove_worn_item(obj, true);
+}
+
+/**
+ * C ref: mhitu.c doseduce `:1984–2305`.
+ * Callers: uhitm.c mhitm_ad_ssex (monster→you) and sounds.c MS_SEDUCE.
+ * SetVoice via sndprocs.h empty without SND_LIB (D-1752). Named: uhitm hero-as-seducer;
+ * mhitm mon-mon AD_SSEX; steal.c unresponsive monkey_business site.
+ */
+export async function doseduce(mon) {
+    const u = game.u || (game.u = {});
+    const mndx = mon?.data?.mndx ?? mon?.mnum ?? -1;
+    const fem = (mndx === PM_AMOROUS_DEMON && (mon.female ? FEMALE : MALE) === FEMALE);
+
+    if (mon.mcan || (mon.mspec_used | 0)) {
+        await pline_mon(
+            mon,
+            `${Monnam(mon)} acts as though ${mhe(mon)} has got a ${
+                mon.mcan ? 'severe ' : ''
+            }headache.`,
+        );
+        return 0;
+    }
+    if (unresponsive()) {
+        await pline_mon(
+            mon,
+            `${Monnam(mon)} seems dismayed at your lack of response.`,
+        );
+        return 0;
+    }
+
+    const seewho = canseemon(mon);
+    if (!seewho) await pline('Someone caresses you...');
+    else await You_feel(`very attracted to ${mon_nam(mon)}.`);
+    const Who = !seewho ? (fem ? 'She' : 'He') : Monnam(mon);
+
+    await stop_donning(null);
+    let tried_gloves = welded(u.uwep) ? 1 : 0;
+
+    for (const ring of invent_snapshot()) {
+        if ((ring.otyp | 0) !== RIN_ADORNMENT) continue;
+        if (fem) {
+            if (ring.owornmask && u.uarmg) {
+                if (!tried_gloves++) {
+                    await mayberem(mon, Who, u.uarmg, 'gloves');
+                }
+                if (u.uarmg) continue;
+            }
+            if (!hero_Deaf() && rn2(20) < acurr(A_CHA)) {
+                const qbuf = safe_qbuf(
+                    null, '"That ', ' looks pretty.  May I have it?"',
+                    ring, xname, simpleonames, 'ring',
+                );
+                makeknown(RIN_ADORNMENT);
+                SetVoice(mon, 0, 80, 0);
+                if ((await y_n(qbuf)) === 'n') continue;
+            } else {
+                await pline(
+                    `${Who} decides she'd like ${yname(ring)}, and takes it.`,
+                );
+            }
+            makeknown(RIN_ADORNMENT);
+            if (ring.owornmask) await remove_worn_item(ring, false);
+            freeinv(ring);
+            mpickobj(mon, ring);
+        } else {
+            if (u.uleft && u.uright
+                && (u.uleft.otyp | 0) === RIN_ADORNMENT
+                && (u.uright.otyp | 0) === RIN_ADORNMENT) {
+                break;
+            }
+            if (ring === u.uleft || ring === u.uright) continue;
+            if (u.uarmg) {
+                if (!tried_gloves++) {
+                    await mayberem(mon, Who, u.uarmg, 'gloves');
+                }
+                if (u.uarmg) break;
+            }
+            if (!hero_Deaf() && rn2(20) < acurr(A_CHA)) {
+                const qbuf = safe_qbuf(
+                    null, '"That ',
+                    ' looks pretty.  Would you wear it for me?"',
+                    ring, xname, simpleonames, 'ring',
+                );
+                makeknown(RIN_ADORNMENT);
+                SetVoice(mon, 0, 80, 0);
+                if ((await y_n(qbuf)) === 'n') continue;
+            } else {
+                await pline(
+                    `${Who} decides you'd look prettier wearing ${yname(ring)},`,
+                );
+                await pline('and puts it on your finger.');
+            }
+            makeknown(RIN_ADORNMENT);
+            if (!u.uright) {
+                await pline(
+                    `${Who} puts ${the(xname(ring))} on your right ${body_part(HAND)}.`,
+                );
+                setworn(ring, RIGHT_RING);
+            } else if (!u.uleft) {
+                await pline(
+                    `${Who} puts ${the(xname(ring))} on your left ${body_part(HAND)}.`,
+                );
+                setworn(ring, LEFT_RING);
+            } else if (u.uright && (u.uright.otyp | 0) !== RIN_ADORNMENT) {
+                await pline(
+                    `${Who} replaces ${yname(u.uright)} with ${yname(ring)}.`,
+                );
+                await Ring_gone(u.uright);
+                if ((u.utotype | 0) || !m_next2u(mon)) return 1;
+                setworn(ring, RIGHT_RING);
+            } else if (u.uleft && (u.uleft.otyp | 0) !== RIN_ADORNMENT) {
+                await pline(
+                    `${Who} replaces ${yname(u.uleft)} with ${yname(ring)}.`,
+                );
+                await Ring_gone(u.uleft);
+                if ((u.utotype | 0) || !m_next2u(mon)) return 1;
+                setworn(ring, LEFT_RING);
+            } else {
+                await impossible('ring replacement');
+            }
+            await Ring_on(ring);
+            await prinv(null, ring, 0);
+        }
+    }
+
+    const naked = !u.uarmc && !u.uarmf && !u.uarmg && !u.uarms
+        && !u.uarmh && !u.uarmu;
+    await urgent_pline(
+        `${Who} ${
+            hero_Deaf() ? 'seems to murmur into your ear'
+                : naked ? 'murmurs sweet nothings into your ear'
+                    : 'murmurs in your ear'
+        }${naked ? '' : ', while helping you undress'}.`,
+    );
+    await mayberem(mon, Who, u.uarmc, cloak_simple_name(u.uarmc));
+    if (!u.uarmc) {
+        await mayberem(mon, Who, u.uarm, suit_simple_name(u.uarm));
+    }
+    await mayberem(mon, Who, u.uarmf, 'boots');
+    if (!tried_gloves) await mayberem(mon, Who, u.uarmg, 'gloves');
+    await mayberem(mon, Who, u.uarms, 'shield');
+    await mayberem(mon, Who, u.uarmh, helm_simple_name(u.uarmh));
+    if (!u.uarmc && !u.uarm) {
+        await mayberem(mon, Who, u.uarmu, 'shirt');
+    }
+
+    if ((u.utotype | 0) || !m_next2u(mon)) return 1;
+
+    if (u.uarm || u.uarmc) {
+        if (!hero_Deaf()) {
+            if (!(ld() && mon.female)) {
+                SetVoice(mon, 0, 80, 0);
+                await verbalize(
+                    `You're such a ${
+                        game.flags?.female ? 'sweet lady' : 'nice guy'
+                    }; I wish...`,
+                );
+            } else {
+                const yourgloves = u_carried_gloves();
+                if (yourgloves) observe_object(yourgloves);
+                await verbalize(
+                    `Well, then you owe me ${
+                        yourgloves ? yname(yourgloves) : 'twelve pairs of gloves'
+                    }${
+                        yourgloves ? ' and eleven more pairs of gloves' : ''
+                    }!`,
+                );
+            }
+        } else if (seewho) {
+            await pline_mon(mon, `${Monnam(mon)} appears to sigh.`);
+        }
+        if (!(await tele_restrict(mon))) await rloc(mon, RLOC_MSG);
+        return 1;
+    }
+    if ((u.ualign?.type | 0) === A_CHAOTIC) adjalign(1);
+
+    await urgent_pline(
+        `Time stands still while you and ${noit_mon_nam(mon)} lie in each other's arms...`,
+    );
+    const attr_tot = acurr(A_CHA) + acurr(A_INT);
+    if (rn2(35) > Math.min(attr_tot, 32)) {
+        await pline(
+            `${noit_Monnam(mon)} seems to have enjoyed it more than you...`,
+        );
+        switch (rn2(5)) {
+        case 0: {
+            await You_feel('drained of energy.');
+            u.uen = 0;
+            const halfPhys = !!(u.HHalf_physical_damage || u.EHalf_physical_damage);
+            u.uenmax = (u.uenmax | 0) - rnd(halfPhys ? 5 : 10);
+            exercise(A_CON, false);
+            if ((u.uenmax | 0) < 0) u.uenmax = 0;
+            break;
+        }
+        case 1:
+            await pline('You are down in the dumps.');
+            await adjattrib(A_CON, -1, true);
+            exercise(A_CON, false);
+            botl_mark();
+            break;
+        case 2:
+            await pline('Your senses are dulled.');
+            await adjattrib(A_WIS, -1, true);
+            exercise(A_WIS, false);
+            botl_mark();
+            break;
+        case 3:
+            if (!resists_drli(game.youmonst)) {
+                await You_feel('out of shape.');
+                await losexp('overexertion');
+            } else {
+                await pline('You have a curious feeling...');
+            }
+            exercise(A_CON, false);
+            exercise(A_DEX, false);
+            exercise(A_WIS, false);
+            break;
+        case 4: {
+            await You_feel('exhausted.');
+            exercise(A_STR, false);
+            const tmp = rn1(10, 6);
+            losehp(maybe_half_phys(tmp), 'exhaustion', KILLED_BY);
+            if (game._losehp_needs_done) await finish_losehp_done();
+            break;
+        }
+        default:
+            break;
+        }
+    } else {
+        mon.mspec_used = rnd(100);
+        await pline(
+            `You seem to have enjoyed it more than ${noit_mon_nam(mon)}...`,
+        );
+        switch (rn2(5)) {
+        case 0: {
+            await You_feel('raised to your full potential.');
+            exercise(A_CON, true);
+            u.uenmax = (u.uenmax | 0) + rnd(5);
+            u.uen = u.uenmax;
+            if ((u.uenpeak | 0) < (u.uenmax | 0)) u.uenpeak = u.uenmax;
+            break;
+        }
+        case 1:
+            await You_feel('good enough to do it again.');
+            await adjattrib(A_CON, 1, true);
+            exercise(A_CON, true);
+            botl_mark();
+            break;
+        case 2:
+            await pline(`You will always remember ${noit_mon_nam(mon)}...`);
+            await adjattrib(A_WIS, 1, true);
+            exercise(A_WIS, true);
+            botl_mark();
+            break;
+        case 3:
+            await pline('That was a very educational experience.');
+            await pluslvl(false);
+            exercise(A_WIS, true);
+            break;
+        case 4:
+            await You_feel('restored to health!');
+            u.uhp = u.uhpmax;
+            if (Upolyd(u)) u.mh = u.mhmax;
+            exercise(A_STR, true);
+            botl_mark();
+            break;
+        default:
+            break;
+        }
+    }
+
+    if (mon.mtame) {
+        /* don't charge */
+    } else if (rn2(20) < acurr(A_CHA)) {
+        await pline(
+            `${noit_Monnam(mon)} demands that you pay ${
+                mon.female ? 'her' : 'him'
+            }, but you refuse...`,
+        );
+    } else if ((u.umonnum | 0) === PM_LEPRECHAUN) {
+        await pline_mon(
+            mon,
+            `${noit_Monnam(mon)} tries to take your gold, but fails...`,
+        );
+    } else {
+        const umoney = money_cnt_invent();
+        let cost;
+        if (umoney > LARGEST_INT - 10) {
+            cost = rnd(LARGEST_INT) + 500;
+        } else {
+            cost = rnd((umoney | 0) + 10) + 500;
+        }
+        if (mon.mpeaceful) {
+            cost = Math.trunc(cost / 5);
+            if (!cost) cost = 1;
+        }
+        if (cost > umoney) cost = umoney;
+        if (!cost) {
+            if (!hero_Deaf()) {
+                SetVoice(mon, 0, 80, 0);
+                await verbalize("It's on the house!");
+            } else {
+                await pline('No charge.');
+            }
+        } else {
+            await pline_mon(
+                mon,
+                `${noit_Monnam(mon)} takes ${cost} ${currency(cost)} for services rendered!`,
+            );
+            money2mon(mon, cost);
+            botl_mark();
+        }
+    }
+    if (!rn2(25)) mon.mcan = 1;
+    if (!(await tele_restrict(mon))) await rloc(mon, RLOC_MSG);
+    return 1;
 }
 
 /**
@@ -1242,8 +1635,8 @@ async function gulpmu(mtmp, mattk) {
 /**
  * C ref: uhitm.c mhitm_ad_sedu — mhitu (monster→you) arm only.
  * Brag/remarks is pline_mon (D-1240); charm-fail stays pline.
- * Named omissions: uhitm steal_it; mhitm minvent steal; SYSOPT_SEDUCE
- * doseduce; Adjmonnam charm polish; animal locomotion flee pline.
+ * Named omissions: uhitm steal_it; mhitm minvent steal;
+ * Adjmonnam charm polish; animal locomotion flee pline.
  */
 async function mhitm_ad_sedu(mtmp, mattk, mhm) {
     if (is_animal(mtmp.data)) {
@@ -1253,7 +1646,7 @@ async function mhitm_ad_sedu(mtmp, mattk, mhm) {
     } else {
         const youdat = game.youmonst?.data;
         if (dmgtype(youdat, AD_SEDU) || dmgtype(youdat, AD_SSEX)) {
-            const Deaf = !!(game.u?.Deaf || game.u?.HDeaf);
+            const Deaf = hero_Deaf();
             // C uhitm.c mhitm_ad_sedu :4647 — pline_mon(magr); charm-fail stays pline
             await pline_mon(
                 mtmp,
@@ -1307,11 +1700,28 @@ async function mhitm_ad_sedu(mtmp, mattk, mhm) {
 }
 
 /**
+ * C ref: uhitm.c mhitm_ad_ssex `:4750–4778` — mhitu (monster→you) arm.
+ * SYSOPT_SEDUCE (default on) → doseduce when could_seduce==1 && !mcan.
+ * Named: uhitm hero-as-seducer; mhitm mon-mon AD_SSEX.
+ */
+async function mhitm_ad_ssex(mtmp, mattk, mhm) {
+    if (SYSOPT_SEDUCE()) {
+        if (could_seduce(mtmp, game.youmonst, mattk) === 1 && !mtmp.mcan) {
+            if (await doseduce(mtmp)) {
+                mhm.hitflags = M_ATTK_AGR_DONE;
+                mhm.done = true;
+            }
+        }
+        return;
+    }
+    await mhitm_ad_sedu(mtmp, mattk, mhm);
+}
+
+/**
  * C ref: pline.c You_hear — acoustics/Deaf gate (local for mhitu).
  */
 async function You_hear(line) {
-    const u = game.u || {};
-    if (u.Deaf || u.HDeaf || game.flags?.acoustics === false) return;
+    if (hero_Deaf() || game.flags?.acoustics === false) return;
     await pline(`You hear ${line}`);
 }
 
@@ -1342,7 +1752,7 @@ function do_stone_u(mtmp) {
 async function mhitm_ad_ston_u(mtmp, mattk, mhm) {
     await hitmsg(mtmp, mattk);
     if (!rn2(3)) {
-        const Deaf = !!(game.u?.Deaf || game.u?.HDeaf);
+        const Deaf = hero_Deaf();
         if (mtmp.mcan) {
             if (!Deaf) await You_hear(`a cough from ${mon_nam(mtmp)}!`);
         } else {
@@ -1605,7 +2015,7 @@ export async function mhitm_ad_wrap_u(mtmp, mattk, mhm) {
 
 /**
  * C ref: uhitm.c mhitm_adtyping — mhitu (monster→you) subset.
- * PHYS + ELEC + COLD + DRST/DRDX/DRCO + SITM/SEDU + BLND + STON + LEGS
+ * PHYS + ELEC + COLD + DRST/DRDX/DRCO + SITM/SEDU + SSEX (D-1750) + BLND + STON + LEGS
  * + POLY (D-1004) + DRIN (D-1329) + WRAP (D-1331); other adtyps zero damage.
  */
 async function mhitm_adtyping_u(mtmp, mattk, mhm) {
@@ -1627,6 +2037,9 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
     case AD_SITM:
     case AD_SEDU:
         await mhitm_ad_sedu(mtmp, mattk, mhm);
+        break;
+    case AD_SSEX:
+        await mhitm_ad_ssex(mtmp, mattk, mhm);
         break;
     case AD_BLND:
         await mhitm_ad_blnd_u(mtmp, mattk, mhm);
@@ -2196,7 +2609,7 @@ export async function gazemu(mtmp, mattk) {
                 await pline(
                     `You are blinded by ${s_suffix_hitmsg(mon_nam(mtmp))} radiance!`,
                 );
-                make_blinded(blnd, false);
+                await make_blinded(blnd, false);
                 await stop_occupation();
                 if (!Blind()) {
                     await pline('Your vision clears.');
@@ -2309,7 +2722,7 @@ export async function explmu(mtmp, mattk, ufound) {
             if (mon_visible(mtmp)
                 || (rnd(tmp = Math.trunc(tmp / 2)) > (u.ulevel | 0))) {
                 await pline('You are blinded by a blast of light!');
-                make_blinded(tmp, false);
+                await make_blinded(tmp, false);
                 if (!Blind()) await pline('Your vision clears.');
             } else if (game.flags?.verbose !== false) {
                 await pline(

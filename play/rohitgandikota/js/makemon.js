@@ -146,9 +146,9 @@ export const is_rider = (ptr) => ptr.pmidx === PMNAMES.PM_DEATH
 const is_armed = (ptr) => attacktype(ptr, AT_WEAP);
 
 // include/monst.h:259-265
-const monmax_difficulty = (levdif) => Math.trunc((levdif + (game.u?.ulevel ?? 0)) / 2);
+export const monmax_difficulty = (levdif) => Math.trunc((levdif + (game.u?.ulevel ?? 0)) / 2);
 const monmin_difficulty = (levdif) => Math.trunc(levdif / 6);
-const montoostrong = (mndx, lev) => game.mons[mndx].difficulty > lev;
+export const montoostrong = (mndx, lev) => game.mons[mndx].difficulty > lev;
 const montooweak = (mndx, lev) => game.mons[mndx].difficulty < lev;
 
 /* level_difficulty() now lives in js/dungeon.js, where src/dungeon.c has it;
@@ -2701,3 +2701,10 @@ export function clone_mon(mon, x, y) {
 
 /* wire mkclass into questpgr's qt_montype (cycle avoidance) */
 questpgr_wire_mkclass(mkclass);
+
+// src/makemon.c newmcorpsenm(); give mtmp an mcorpsenm slot, not yet set
+export function newmcorpsenm(mtmp) {
+    if (!mtmp.mextra)
+        mtmp.mextra = {};
+    mtmp.mextra.mcorpsenm = NON_PM; /* not initialized yet */
+}

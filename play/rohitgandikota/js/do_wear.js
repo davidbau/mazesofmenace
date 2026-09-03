@@ -1219,7 +1219,7 @@ async function toggle_stealth(obj, oldprop, on) {
 }
 
 // src/do_wear.c toggle_displacement().
-async function toggle_displacement(obj, oldprop, on) {
+export async function toggle_displacement(obj, oldprop, on) {
     if (on ? game.initial_don : game.context_takeoff?.cancelled_don)
         return;
     if (!oldprop && !game.u.intrinsic?.HDisplaced

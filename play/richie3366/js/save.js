@@ -28,7 +28,7 @@ import {
     maxledgerno,
 } from './dungeon.js';
 import { rest_track } from './track.js';
-import { restore_timers, restore_light_sources, run_timers } from './mkobj.js';
+import { restore_timers, restore_light_sources, run_timers, dobjsfree } from './mkobj.js';
 import { vision_reset } from './vision.js';
 import { setworn } from './do_wear.js';
 import { setuwep, setuswapwep, setuqwep } from './wield.js';
@@ -367,6 +367,9 @@ export function dosave0() {
     // C: undo date-dependent luck before persisting
     if (game.flags?.moonphase === FULL_MOON) change_luck(-1);
     if (game.flags?.friday13) change_luck(1);
+
+    // C save.c:490–491 — dobjsfree before persisting when objs_deleted.
+    dobjsfree();
 
     const path = set_savefile_name(game.plname);
     const currentLedger = ledger_no(u.uz);

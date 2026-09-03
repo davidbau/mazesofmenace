@@ -1,26 +1,30 @@
 // weapon.js — Monster weapon selection + damage (partial).
 // C ref: weapon.c select_rwep / select_hwep / dmgval / special_dmgval /
-//         silver_sears / mon_wield_item; enhance_weapon_skill (#enhance);
+//         silver_sears / mon_wield_item / possibly_unwield /
+//         setmnotwielded / mwepgone; enhance_weapon_skill (#enhance);
 //         dothrow.c should_mulch_missile / multishot_class_bonus.
 
 import { game } from './gstate.js';
 import { rn2, rnd, rnl } from './rng.js';
-import { flush_topl_more, pline, You_feel, canseemon, bot, pline_mon } from './display.js';
+import {
+    flush_topl_more, pline, You_feel, canseemon, bot, pline_mon, newsym,
+} from './display.js';
+import { cansee } from './vision.js';
 import { select_menu_pick_none } from './invent.js';
 import { select_menu_pick_one } from './options.js';
 import { yn_function } from './getline.js';
-import { Monnam, mon_nam } from './do_name.js';
-import { doname, xname, vtense } from './objnam.js';
+import { Monnam, mon_nam, s_suffix } from './do_name.js';
+import { doname, xname, vtense, The, distant_name, otense } from './objnam.js';
 import {
     WEAPON_CLASS, GEM_CLASS, TOOL_CLASS, objectNames, objectNameStrs,
 } from './objects.js';
 import {
-    is_ammo, ammo_and_launcher, is_missile,
+    is_ammo, ammo_and_launcher, is_missile, mwelded,
 } from './wield.js';
 import {
     is_lord, is_prince, strongmonst, mon_hates_blessings, mon_hates_silver,
 } from './monsters.js';
-import { which_armor } from './worn.js';
+import { which_armor, bypass_obj } from './worn.js';
 import {
     P_NONE, P_DAGGER, P_KNIFE, P_AXE, P_PICK_AXE,
     P_SHORT_SWORD, P_BROAD_SWORD, P_LONG_SWORD, P_TWO_HANDED_SWORD,
@@ -39,8 +43,13 @@ import {
     NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE,
     NO_WEAPON_WANTED, W_WEP, W_ARMS, W_ARMG,
     W_ARM, W_ARMC, W_ARMH, W_ARMF, W_ARMU, W_RINGL, W_RINGR,
-    ECMD_OK, STR18, Upolyd, MAXULEV,
+    ECMD_OK, STR18, Upolyd, MAXULEV, HAND,
 } from './const.js';
+import { obj_extract_self, place_object, stackobj } from './mkobj.js';
+import { flooreffects } from './do.js';
+import { artifact_light, end_burn } from './timeout.js';
+import { mbodypart } from './polyself.js';
+import { attacktype_fordmg } from './uhitm.js';
 import { acurr, A_STR } from './attrib.js';
 import { m_carrying, mon_has_shield } from './mon.js';
 import { ATR_INVERSE } from './terminal.js';
@@ -67,17 +76,95 @@ export function MON_WEP(mon) {
     return mon?.mw || null;
 }
 
+/** C ref: monst.h MON_NOWEP(mon) → mon->mw = 0 */
+export function MON_NOWEP(mon) {
+    mon.mw = null;
+}
+
+/** C ref: monattk.h AT_WEAP — uses weapon. */
+const AT_WEAP = 254;
+
 /**
- * C ref: weapon.c mwepgone — clear monster wielded weapon.
- * Named omissions: setmnotwielded artifact_light / light-source polish.
+ * C ref: weapon.c setmnotwielded `:1813–1828`.
+ * Returns a Promise when the artifact_light stop-shining pline runs;
+ * otherwise void so sync callers (mwepgone / stolen-wep) stay boolean.
+ */
+export function setmnotwielded(mon, obj) {
+    if (!obj) return;
+    let lightP = null;
+    if (artifact_light(obj) && obj.lamplit) {
+        end_burn(obj, false);
+        if (canseemon(mon)) {
+            lightP = pline(
+                `${The(xname(obj))} in ${s_suffix(mon_nam(mon))} ${mbodypart(mon, HAND)} ${otense(obj, 'stop')} shining.`,
+            );
+        }
+    }
+    if (MON_WEP(mon) === obj) MON_NOWEP(mon);
+    obj.owornmask = (obj.owornmask || 0) & ~W_WEP;
+    return lightP;
+}
+
+/**
+ * C ref: weapon.c mwepgone `:937–946` — setmnotwielded then NEED_WEAPON.
  */
 export function mwepgone(mon) {
-    if (!mon) return;
     const mwep = MON_WEP(mon);
-    if (!mwep) return;
-    mon.mw = null;
-    mwep.owornmask = (mwep.owornmask || 0) & ~W_WEP;
-    mon.weapon_check = NEED_WEAPON;
+    if (mwep) {
+        const sm = setmnotwielded(mon, mwep);
+        mon.weapon_check = NEED_WEAPON;
+        return sm;
+    }
+}
+
+/**
+ * C ref: weapon.c possibly_unwield `:746–795`.
+ * Drop path awaits pline_mon / flooreffects (nhgetch). Stolen/destroyed
+ * mw and still-AT_WEAP NEED_WEAPON stay synchronous so newcham NO_NC_FLAGS
+ * can remain a boolean. Named: steal_it / mhitm_ad_sitm callers; m_throw
+ * uses setmnotwielded not this (C `:604–607`).
+ * @returns {void|Promise<void>}
+ */
+export function possibly_unwield(mon, polyspot) {
+    const mw_tmp = MON_WEP(mon);
+    if (!mw_tmp) return;
+    let obj = mon.minvent;
+    for (; obj; obj = obj.nobj) {
+        if (obj === mw_tmp) break;
+    }
+    if (!obj) {
+        /* The weapon was stolen or destroyed */
+        MON_NOWEP(mon);
+        mon.weapon_check = NEED_WEAPON;
+        return;
+    }
+    if (!attacktype_fordmg(mon.data, AT_WEAP, -1)) {
+        return possibly_unwield_drop(mon, obj, mw_tmp, polyspot);
+    }
+    /* Stronger/weaker poly still wields until mon_wield_item. */
+    if (!(mwelded(mw_tmp) && mon.weapon_check === NO_WEAPON_WANTED)) {
+        mon.weapon_check = NEED_WEAPON;
+    }
+}
+
+/** C: possibly_unwield !AT_WEAP drop — distant_name before extract_self. */
+async function possibly_unwield_drop(mon, obj, mw_tmp, polyspot) {
+    const sm = setmnotwielded(mon, mw_tmp);
+    if (sm) await sm;
+    mon.weapon_check = NO_WEAPON_WANTED;
+    if (cansee(mon.mx, mon.my)) {
+        await pline_mon(
+            mon,
+            `${Monnam(mon)} drops ${distant_name(obj, doname)}.`,
+        );
+        newsym(mon.mx, mon.my);
+    }
+    obj_extract_self(obj);
+    if (!(await flooreffects(obj, mon.mx, mon.my, 'drop'))) {
+        if (polyspot) bypass_obj(obj);
+        place_object(obj, mon.mx, mon.my);
+        stackobj(obj);
+    }
 }
 
 /** C ref: obj.h is_weptool */

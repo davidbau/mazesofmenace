@@ -11,6 +11,10 @@
 // ported below. Gaze, explosion, breath, and spell branches remain recorded in
 // the coverage ledger until their C behavior is implemented.
 
+import { unstuck } from './mon.js';
+import { pline_mon } from './pline.js';
+import { sticks } from './mondata.js';
+import { some_mon_nam } from './do_name.js';
 import { mhitm_ad_poly } from './uhitm.js';
 import { MONSYMS } from './monst_data.js';
 import { finish_meating } from './dogmove.js';
@@ -223,29 +227,6 @@ export async function fightm(mtmp) {
     return 0;
 }
 
-// src/mhitm.c:597 failed_grab(). Only attacks which need to hold their
-// target fail against an unsolid monster or a long-worm tail. Ordinary
-// touches, including a wraith's life drain, still connect.
-async function failed_grab_mm(magr, mdef, mattk) {
-    const A = ATTKS;
-    const tailmiss = !!game.notonhead;
-    if (!(unsolid(game.mons[mdef.mnum]) || tailmiss)
-        || !(mattk[0] === A.AT_HUGS || mattk[1] === A.AD_WRAP
-             || mattk[1] === A.AD_STCK || mattk[1] === A.AD_DGST)) {
-        return false;
-    }
-
-    if (game.vis && canspotmon(mdef)) {
-        const verb = mattk[1] === A.AD_DGST ? 'gulp'
-            : mattk[1] === A.AD_STCK ? 'adhere' : 'grab';
-        const target = tailmiss ? `${s_suffix(mon_nam(mdef))} tail`
-            : mon_nam(mdef);
-        await pline(`${s_suffix(Monnam(magr))} ${verb} attempt ${
-            tailmiss ? 'fails to hold' : 'passes right through'} ${target}!`);
-    }
-    return true;
-}
-
 // src/mhitm.c:293 mattackm() — one monster performs all its attacks on
 // another. Returns the M_ATTK_* result bits.
 //
@@ -361,7 +342,7 @@ export async function mattackm(magr, mdef) {
             if (mwep)
                 tmp -= hitval(mwep, mdef);
             if (strike) {
-                if (unsolid(pd) && await failed_grab_mm(magr, mdef, mattk)) {
+                if (unsolid(pd) && await failed_grab(magr, mdef, mattk)) {
                     strike = 0;
                     break;
                 }
@@ -375,7 +356,7 @@ export async function mattackm(magr, mdef) {
             strike = (i >= 2 && res[i - 1] === M_ATTK_HIT
                       && res[i - 2] === M_ATTK_HIT) ? 1 : 0;
             if (strike) {
-                if (await failed_grab_mm(magr, mdef, mattk))
+                if (await failed_grab(magr, mdef, mattk))
                     strike = 0;
                 else
                     res[i] = await hitmm(magr, mdef, mattk, null, 0);
@@ -416,7 +397,7 @@ export async function mattackm(magr, mdef) {
             if (engulfing_u(magr)) {
                 strike = 0;
             } else if ((strike = tmp > rnd(20 + i) ? 1 : 0)) {
-                if (await failed_grab_mm(magr, mdef, mattk)) {
+                if (await failed_grab(magr, mdef, mattk)) {
                     strike = 0;
                 } else {
                     res[i] = await gulpmm(magr, mdef, mattk);
@@ -800,7 +781,7 @@ export async function mon_poly(magr, mdef, dmg) {
         if (resists_magm(mdef)) {
             if (game.vis)
                 shieldeff_mon(mdef);
-        } else if (resist(mdef, OCLASSES.WAND_CLASS, 0, TELL)) {
+        } else if (await resist(mdef, OCLASSES.WAND_CLASS, 0, TELL)) {
             ;
         } else if (!rn2(25) && (mdef.cham ?? NON_PM) === NON_PM
                    && (mdef.mcan
@@ -862,7 +843,7 @@ export async function sleep_monst(mon, amt, how) {
         seemimic(mon);
 
     if (resists_sleep(mon) || defended(mon, ATTKS.AD_SLEE)
-        || (how >= 0 && resist(mon, how, 0, NOTELL))) {
+        || (how >= 0 && await resist(mon, how, 0, NOTELL))) {
         await shieldeff(mon.mx, mon.my);
     } else if (mon.mcanmove) {
         finish_meating(mon); /* terminate any meal-in-progress */
@@ -876,4 +857,49 @@ export async function sleep_monst(mon, amt, how) {
         return 1;
     }
     return 0;
+}
+
+// src/mhitm.c:597 failed_grab(); grabs pass through unsolid targets and
+// fail to hold a long worm's tail
+export async function failed_grab(magr, mdef, mattk) {
+    if ((unsolid(mdef.data) || game.notonhead)
+        /* hug attack: most holders (owlbear, python, pit fiend, &c);
+           wrap damage: eel grabbing, trapper/lurker-above engulfing;
+           stick-to damage: mimic, lichen;
+           digestion damage: purple worm swallowing */
+        && (mattk[0] === ATTKS.AT_HUGS || mattk[1] === ATTKS.AD_WRAP
+            || mattk[1] === ATTKS.AD_STCK  || mattk[1] === ATTKS.AD_DGST)) {
+        if ((game.vis && canspotmon(mdef)) /* mon-vs-mon */
+            || magr === game.youmonst || mdef === game.youmonst) {
+            let magrnam, mdefnam;
+            const tailmiss = !!game.notonhead;
+            const verb = (mattk[1] === ATTKS.AD_DGST) ? 'gulp'
+                         : (mattk[1] === ATTKS.AD_STCK) ? 'adhere'
+                           : 'grab';
+
+            magrnam = (magr === game.youmonst) ? 'Your' : s_suffix(Monnam(magr));
+            if (!tailmiss) {
+                mdefnam = (mdef === game.youmonst) ? 'you' : mon_nam(mdef);
+            } else {
+                /* hero poly'd into long worm can't grow tail
+                   so no 'youmonst' handling is needed here */
+                mdefnam = `${s_suffix(some_mon_nam(mdef))} tail`;
+            }
+            /* unsolid grab misses are actually somewhat iffy--how come
+               ordinary attacks don't also pass right through? */
+            await pline(`${magrnam.slice(0, 99)} ${verb} attempt ${
+                  !tailmiss ? 'passes right through' : 'fails to hold'} ${mdefnam.slice(0, 99)}!`);
+        }
+        return true;
+    }
+    return false;
+}
+
+// src/mhitm.c slept_monst(); a sleeping or paralyzed holder loses its grip
+export async function slept_monst(mon) {
+    if (helpless(mon) && mon === game.u.ustuck
+        && !sticks(game.youmonst.data) && !game.u.uswallow) {
+        await pline_mon(mon, `${s_suffix(Monnam(mon))} grip relaxes.`);
+        await unstuck(mon);
+    }
 }

@@ -5,6 +5,7 @@
 // special-level selection. The queries run for real: does_block() asks
 // visible_region_at() for every map square during vision recalculation.
 
+import { pline } from './display.js';
 import { game } from './gstate.js';
 
 // src/region.c:54 inside_rect()
@@ -230,7 +231,7 @@ async function inside_gas_cloud(reg) {
         await pline(`Something is burning your ${makeplural(body_part(LUNG))}!`);
         await You('cough and spit blood!');
         const { wake_nearto } = await import('./mon.js');
-        wake_nearto(game.u.ux, game.u.uy, 2);
+        await wake_nearto(game.u.ux, game.u.uy, 2);
         damage = rnd(damage) + 5;
         if (game.u.uprops?.HALF_PHDAM)
             damage = Math.trunc((damage + 1) / 2);
@@ -241,7 +242,7 @@ async function inside_gas_cloud(reg) {
     } else {
         await You('cough!');
         const { wake_nearto } = await import('./mon.js');
-        wake_nearto(game.u.ux, game.u.uy, 2);
+        await wake_nearto(game.u.ux, game.u.uy, 2);
     }
 }
 
@@ -315,4 +316,100 @@ export function update_monster_region(mon) {
                 remove_mon_from_reg(regions[i], mon);
         }
     }
+}
+
+/* src/region.c callbacks[]: only the gas cloud callbacks exist; every
+   region's can_enter_f/can_leave_f/enter_f/leave_f stays NO_CALLBACK */
+const callbacks = {};
+
+// src/region.c:480 in_out_region()
+export async function in_out_region(x, y) {
+    const regions = game.regions || [];
+    let f_indx = null;
+
+    /* First check if hero can do the move */
+    for (const reg of regions) {
+        if (reg.attach_2_u)
+            continue;
+        if (inside_region(reg, x, y)
+            ? (!reg.hero_inside
+               && (f_indx = reg.can_enter_f) != null)
+            : (reg.hero_inside
+               && (f_indx = reg.can_leave_f) != null)) {
+            if (!(await callbacks[f_indx](reg, null)))
+                return false;
+        }
+    }
+
+    /* Callbacks for the regions hero does leave */
+    for (const reg of regions) {
+        if (reg.attach_2_u)
+            continue;
+        if (reg.hero_inside && !inside_region(reg, x, y)) {
+            reg.hero_inside = false; /* clear_hero_inside */
+            if (reg.leave_msg != null)
+                await pline(reg.leave_msg);
+            if ((f_indx = reg.leave_f) != null)
+                await callbacks[f_indx](reg, null);
+        }
+    }
+
+    /* Callbacks for the regions hero does enter */
+    for (const reg of regions) {
+        if (reg.attach_2_u)
+            continue;
+        if (!reg.hero_inside && inside_region(reg, x, y)) {
+            reg.hero_inside = true; /* set_hero_inside */
+            if (reg.enter_msg != null)
+                await pline(reg.enter_msg);
+            if ((f_indx = reg.enter_f) != null)
+                await callbacks[f_indx](reg, null);
+        }
+    }
+
+    return true;
+}
+
+// src/region.c:533 m_in_out_region()
+export async function m_in_out_region(mon, x, y) {
+    const regions = game.regions || [];
+    let f_indx = null;
+
+    /* First check if mon can do the move */
+    for (const reg of regions) {
+        if (reg.attach_2_m === mon.m_id)
+            continue;
+        if (inside_region(reg, x, y)
+            ? (!mon_in_region(reg, mon)
+               && (f_indx = reg.can_enter_f) != null)
+            : (mon_in_region(reg, mon)
+               && (f_indx = reg.can_leave_f) != null)) {
+            if (!(await callbacks[f_indx](reg, mon)))
+                return false;
+        }
+    }
+
+    /* Callbacks for the regions mon does leave */
+    for (const reg of regions) {
+        if (reg.attach_2_m === mon.m_id)
+            continue;
+        if (mon_in_region(reg, mon) && !inside_region(reg, x, y)) {
+            remove_mon_from_reg(reg, mon);
+            if ((f_indx = reg.leave_f) != null)
+                await callbacks[f_indx](reg, mon);
+        }
+    }
+
+    /* Callbacks for the regions mon does enter */
+    for (const reg of regions) {
+        if (reg.attach_2_m === mon.m_id)
+            continue;
+        if (!mon_in_region(reg, mon) && inside_region(reg, x, y)) {
+            add_mon_to_reg(reg, mon);
+            if ((f_indx = reg.enter_f) != null)
+                await callbacks[f_indx](reg, mon);
+        }
+    }
+
+    return true;
 }

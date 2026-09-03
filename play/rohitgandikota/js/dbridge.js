@@ -819,7 +819,7 @@ export async function destroy_drawbridge(x, y) {
         lev1.typ = ((lev1.drawbridgemask & DB_ICE) ? ICE : ROOM);
         lev1.icedpool = ((lev1.drawbridgemask & DB_ICE) ? ICED_MOAT : 0);
     }
-    wake_nearto(x, y, 500);
+    await wake_nearto(x, y, 500);
     lev2.typ = DOOR;
     lev2.doormask = D_NODOOR;
     if ((t = t_at(x, y)) != null)

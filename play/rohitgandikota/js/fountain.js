@@ -35,6 +35,22 @@ import { hcolor, hliquid } from './do_name.js';
 import { Blind, Fire_resistance, Hallucination } from './youprop.js';
 import { losehp } from './hack.js';
 import { more_experienced, newexplevel } from './exper.js';
+import { Deaf } from './youprop.js';
+import { body_part } from './polyself.js';
+import { FACE } from './const.js';
+import { A_DEX } from './const.js';
+import { You_see } from './pline.js';
+
+
+
+
+
+
+
+
+
+
+
 
 function note_unported_fountain(what) {
     (game.unported ||= new Set()).add('fountain:' + what);
@@ -718,4 +734,27 @@ export async function dipfountain(obj) {
     }
     update_inventory();
     await dryup(game.u.ux, game.u.uy, true);
+}
+
+// src/fountain.c sink_backs_up(); a kicked sink spits out a ring, once
+export async function sink_backs_up(x, y) {
+    let buf;
+
+    if (!Blind())
+        buf = 'Muddy waste pops up from the drain';
+    else if (!Deaf())
+        buf = 'You hear a sloshing sound'; /* Deaf-aware */
+    else
+        buf = `Something splashes you in the ${body_part(FACE)}`;
+    await pline(`${!Deaf() ? 'Flupp!  ' : ''}${buf}.`);
+
+    if (!(game.level.at(x, y).looted & S_LRING)) { /* once per sink */
+        if (!Blind())
+            await You_see('a ring shining in its midst.');
+        mkobj_at(OCLASSES.RING_CLASS, x, y, true);
+        newsym(x, y);
+        exercise(A_DEX, true);
+        exercise(A_WIS, true); /* a discovery! */
+        game.level.at(x, y).looted |= S_LRING;
+    }
 }

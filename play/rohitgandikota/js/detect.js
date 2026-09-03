@@ -2181,7 +2181,7 @@ async function openone(zx, zy, num_p) {
             else
                 await Norep(`You ${cansee(zx, zy) ? 'see' : (!Deaf() ? 'hear'
                                                               : 'feel the shock of')} an explosion!`);
-            wake_nearto(zx, zy, 11 * 11);
+            await wake_nearto(zx, zy, 11 * 11);
             lev.doormask = D_NODOOR;
         } else
             lev.doormask = D_ISOPEN;

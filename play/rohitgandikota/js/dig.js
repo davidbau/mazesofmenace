@@ -516,7 +516,7 @@ export async function dig() {
         case 1:
             /* Soundeffect(se_bang_weapon_side, 100) */
             await pline(`Bang!  You hit with the broad side of ${the(xname(uwep))}!`);
-            wake_nearby(false);
+            await wake_nearby(false);
             break;
         default:
             await Your('swing misses its mark.');
@@ -718,7 +718,7 @@ export async function dig() {
 
         if (!game.did_dig_msg) {
             await You(`hit the ${d_target[dig_target]} with all your might.`);
-            wake_nearby(false);
+            await wake_nearby(false);
             game.did_dig_msg = true;
         }
     }
@@ -877,7 +877,7 @@ export async function digactualhole(x, y, madeby, ttyp) {
             add_damage(x, y, heros_fault ? SHOP_PIT_COST : 0);
 
         if (madeby_u)
-            wake_nearby(false);
+            await wake_nearby(false);
         /* in case we're digging down while encased in solid rock
            which is blocking levitation or flight */
         await switch_terrain();
@@ -1055,7 +1055,7 @@ export async function dighole(pit_only, by_magic, cc) {
     } else if (is_pool_or_lava(dig_x, dig_y)) {
         await pline_The(`${hliquid(is_lava(dig_x, dig_y) ? 'lava' : 'water')
                         } sloshes furiously for a moment, then subsides.`);
-        wake_nearby(false); /* splashing */
+        await wake_nearby(false); /* splashing */
 
     } else if (old_typ === DRAWBRIDGE_DOWN
                || (is_drawbridge_wall(dig_x, dig_y) >= 0)) {
@@ -1084,7 +1084,7 @@ export async function dighole(pit_only, by_magic, cc) {
              */
             /* Soundeffect(se_kadoom_boulder_falls_in, 60) */
             await pline('KADOOM!  The boulder falls in!');
-            wake_nearby(false);
+            await wake_nearby(false);
             await delfloortrap(ttmp);
         }
         delobj(boulder_here);
@@ -1351,7 +1351,7 @@ export async function use_pick_axe2(obj) {
                 game.nomovemsg = 'You pull free.';
             } else if (lev.typ === IRONBARS) {
                 await pline('Clang!');
-                wake_nearby(false);
+                await wake_nearby(false);
             } else if (IS_WATERWALL(lev.typ)) {
                 await pline('Splash!');
             } else if (lev.typ === LAVAWALL) {
@@ -1375,7 +1375,7 @@ export async function use_pick_axe2(obj) {
                     if (vibrate)
                         await losehp(Maybe_Half_Phys(2), 'axing a hard object',
                                      KILLED_BY);
-                    wake_nearby(false);
+                    await wake_nearby(false);
                 } else {
                     /* dig_typ() picked DIGTYP_UNDIGGABLE, which means hero
                        and there is at least one boulder or statue or both

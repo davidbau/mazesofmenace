@@ -6,6 +6,8 @@
 // result decides the rnd(100) comparison in spelleffects_check(). Without the
 // array that comparison has no input at all.
 
+import { vtense } from './objnam.js';
+import { Your } from './pline.js';
 import { update_inventory } from './invent.js';
 import { carried, mcarried } from './obj.js';
 import { Yobjnam2 } from './objnam.js';
@@ -1503,4 +1505,34 @@ export async function drain_weapon_skill(n) {
         if (tmpskills[skill]) {
             await You(`forget ${sk[skill].skill >= P_BASIC ? 'some of ' : ''}your training in ${P_NAME(skill)}.`);
         }
+}
+
+// src/weapon.c:436 silver_sears(); the hero's silver ring(s) sear a
+// silver-hating target hit bare-handed
+export async function silver_sears(magr, mdef, silverhit) {
+    let rings; /* plenty of room for "rings" */
+    const ltyp = ((game.u.uleft && (silverhit & W_RINGL) !== 0)
+                  ? game.u.uleft.otyp : ONAMES.STRANGE_OBJECT),
+          rtyp = ((game.u.uright && (silverhit & W_RINGR) !== 0)
+                  ? game.u.uright.otyp : ONAMES.STRANGE_OBJECT);
+    let both;
+    const l_dknown = !!(game.u.uleft && game.u.uleft.dknown),
+          r_dknown = !!(game.u.uright && game.u.uright.dknown),
+          l_ag = (game.objects[ltyp].oc_material === MATERIALS.SILVER && l_dknown),
+          r_ag = (game.objects[rtyp].oc_material === MATERIALS.SILVER && r_dknown);
+
+    if ((silverhit & (W_RINGL | W_RINGR)) !== 0) {
+        /* plural if both the same type (so not multi_claw and both rings
+           are non-Null) and either both known or neither known, or both
+           silver (in case there is ever more than one type of silver ring)
+           and both known; singular if multi_claw (where one of ltyp or
+           rtyp will always be STRANGE_OBJECT) even if both rings are known
+           silver [see hmonas(uhitm.c) for explanation of 'multi_claw'] */
+        both = ((ltyp === rtyp && l_dknown === r_dknown) || (l_ag && r_ag));
+        rings = `ring${both ? 's' : ''}`;
+        await Your(`${(l_ag || r_ag) ? 'silver '
+                    : both ? ''
+                      : ((silverhit & W_RINGL) !== 0) ? 'left '
+                        : 'right '}${rings} ${vtense(rings, 'sear')} ${mon_nam(mdef)}!`);
+    }
 }

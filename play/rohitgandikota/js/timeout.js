@@ -938,7 +938,7 @@ export async function nh_timeout() {
                         await You('make a lot of noise!');
                     }
                     const { wake_nearby } = await import('./mon.js');
-                    wake_nearby(false);
+                    await wake_nearby(false);
                 }
             }
             intr.HFumbling &= ~FROMOUTSIDE;

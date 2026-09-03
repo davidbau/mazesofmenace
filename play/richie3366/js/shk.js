@@ -18,7 +18,8 @@
 //        remote_burglary / rob_shop / call_kops / makekops (D-1717).
 //        get_cost glass-gem pseudo-ID (D-1718).
 //        getprice arti_cost (D-1719).
-//        obfree / delete_contents (D-1727).
+//        obfree / delete_contents (D-1727);
+//        mkobj.c dealloc_obj via obfree (D-1743).
 //        u_left_shop leave verbalize + choose_stairs (D-1733).
 //        shopper_financial_report / shop_debt (D-1740).
 // Named omissions: shk_fixes_damage in shk_move; allmain/bones
@@ -26,7 +27,7 @@
 // Displaced pline (shk path); following verbalize;
 // m_break_boulder; m_move_aggress; inhistemple callers; mapseen_temple;
 // m_canseeu for angry chase; ACH_SHOP mapseen; Hallu shkname;
-// SetVoice / Soundeffect robbed mutter;
+// Soundeffect robbed mutter; remaining SetVoice pick_pick / kops / pay-bill;
 // shk_move Fast + sobj_at pickaxe (u_entered_shop doorway is D-1080);
 // mongone full;
 // mnearto full (door yank uses enexto/rloc; home_shk still coord set);
@@ -37,12 +38,12 @@
 // multi-shk getpos pay-whom (D-1704); mute/Deaf nod is D-1716;
 // container bill_box_content (D-1705);
 // traditional itemize ynq (D-1715); FullyUsedUp/PartlyUsedUp (D-1714);
-// SetVoice; Izchak candle special_stock polish; safe_qbuf sell prompt;
+// remaining SetVoice (pick_pick / kops / pay-bill); Izchak candle special_stock polish; safe_qbuf sell prompt;
 // money2u invent-full dropy; break_seq simultaneous shop shatter;
 // nextoid shop-price
 // oid match; stolen_value callers beyond revive/kick/dig/lock/costly_alteration
 // / rloc_to minvent (D-1163);
-// SetVoice; copy_oextra / free_omid / Is_candle on bill_dummy;
+// copy_oextra / free_omid / Is_candle on bill_dummy;
 // ghod_hitsu; clear_no_charge shop-rival filter / buriedobjlist;
 // mbodypart/body_part lunge text; sleep(1) door-yank pause.
 
@@ -87,7 +88,7 @@ import { Hello } from './roles.js';
 import { shtypes, shkname, Shknam, saleable } from './shknam.js';
 import {
     splitobj, next_ident, obj_extract_self, objects_at, place_object,
-    mksobj, weight, newomid, obj_stop_timers,
+    mksobj, weight, newomid, obj_stop_timers, dealloc_obj,
 } from './mkobj.js';
 import { add_to_minv, mpickobj, makemon } from './makemon.js';
 import { acurr, acurrstr, A_CHA, A_WIS, adjalign, exercise, Fast } from './attrib.js';
@@ -110,7 +111,7 @@ import { ATR_INVERSE } from './terminal.js';
 import { yn_function } from './getline.js';
 import { getpos } from './getpos.js';
 import { m_at, angry_guards } from './mon.js';
-import { Soundeffect, se_alarm } from './sndprocs.js';
+import { Soundeffect, se_alarm, SetVoice } from './sndprocs.js';
 import { livelog_printf } from './pline.js';
 import { enexto, rloc_to_flag, migrate_to_level } from './teleport.js';
 import { ledger_no } from './dungeon.js';
@@ -121,6 +122,7 @@ import { arti_cost } from './artifact.js';
 import { o_unleash } from './apply.js';
 import { setnotworn } from './do.js';
 import { reset_pick } from './lock.js';
+import { set_voice } from './sounds.js';
 
 const PICK_AXE = objectNames.indexOf('PICK_AXE');
 const DWARVISH_MATTOCK = objectNames.indexOf('DWARVISH_MATTOCK');
@@ -279,8 +281,8 @@ export function set_residency(shkp, zero_out) {
  * C ref: shk.c u_left_shop `:578–625` — leave/boundary bill prompts.
  * Boundary unpaid: verbalize (or Deaf/mute pline) then return so the
  * pay-before-leaving warning is not skipped. Outright leave: rob_shop
- * then call_kops. remote_burglary is D-1717. Named: SetVoice; heaven
- * teleport.c caller.
+ * then call_kops. remote_burglary is D-1717. Named: heaven
+ * teleport.c caller. SetVoice is D-1752.
  */
 export async function u_left_shop(leavestring, newlev) {
     const u = game.u;
@@ -302,7 +304,7 @@ export async function u_left_shop(leavestring, newlev) {
         const not_upset = !eshkp.surcharge;
         const plname = game.plname || '';
         if (!hero_deaf() && !muteshk(shkp)) {
-            // SetVoice deferred
+            SetVoice(shkp, 0, 80, 0);
             await verbalize(
                 not_upset
                     ? `${plname}!  Please pay before leaving.`
@@ -532,7 +534,7 @@ async function deserted_shop(enterstring) {
  * C ref: shk.c u_entered_shop — welcome / deserted / blocking.
  * Covered: tended peaceful Welcome; deserted_shop + empty_shops latch;
  * Invis; angry / surcharge / robbed; pickaxe/mattock/steed/Fast doorway
- * + extra `dochug`. Named omit: SetVoice; Soundeffect robbed mutter;
+ * + extra `dochug`. Named omit: Soundeffect robbed mutter;
  * Hallu shkname; C bill_p poison on !inhishop.
  */
 export async function u_entered_shop(enterstring) {
@@ -581,7 +583,7 @@ export async function u_entered_shop(enterstring) {
     if (hero_invis()) {
         await pline(`${Shknam(shkp)} senses your presence.`);
         if (!hero_deaf() && !muteshk(shkp)) {
-            // SetVoice deferred
+            SetVoice(shkp, 0, 80, 0);
             await verbalize('Invisible customers are not welcome!');
         } else {
             await pline(
@@ -597,6 +599,7 @@ export async function u_entered_shop(enterstring) {
 
     if (ANGRY(shkp)) {
         if (!deaf && !muteshk(shkp)) {
+            SetVoice(shkp, 0, 80, 0);
             await verbalize(
                 `So, ${plname}, you dare return to ${s_suffix(shkname(shkp))} ${shopName}?!`,
             );
@@ -608,6 +611,7 @@ export async function u_entered_shop(enterstring) {
     } else if (eshkp.surcharge) {
         if (!deaf && !muteshk(shkp)) {
             const { mbodypart } = await import('./polyself.js');
+            SetVoice(shkp, 0, 80, 0);
             await verbalize(
                 `Back again, ${plname}?  I've got my ${mbodypart(shkp, EYE)} on you.`,
             );
@@ -630,6 +634,7 @@ export async function u_entered_shop(enterstring) {
     } else {
         if (!deaf && !muteshk(shkp)) {
             const again = eshkp.visitct++ ? ' again' : '';
+            set_voice(shkp, 0, 80, 0);
             await verbalize(
                 `${Hello(shkp)}, ${plname}!  Welcome${again} to ${s_suffix(shkname(shkp))} ${shopName}!`,
             );
@@ -662,6 +667,7 @@ export async function u_entered_shop(enterstring) {
                 if (!hero_blind()) makeknown(DWARVISH_MATTOCK);
             }
             if (!deaf && !muteshk(shkp)) {
+                SetVoice(shkp, 0, 80, 0);
                 await verbalize(
                     not_upset
                         ? `Will you please leave your ${tool}${plur(cnt)} outside?`
@@ -676,6 +682,7 @@ export async function u_entered_shop(enterstring) {
         } else if (u.usteed) {
             const steed = y_monnam(u.usteed);
             if (!deaf && !muteshk(shkp)) {
+                SetVoice(shkp, 0, 80, 0);
                 await verbalize(
                     not_upset
                         ? `Will you please leave ${steed} outside?`
@@ -3227,17 +3234,6 @@ export function billable(shkHolder, obj, roomno, reset_nocharge) {
 }
 
 /**
- * C mkobj.c dealloc_obj subset for shop dummy already OBJ_FREE.
- * Full lights / lua_ref / objs_deleted queue is invent.c obfree Open.
- */
-function dealloc_obj_free(obj) {
-    if (!obj) return;
-    if (obj.timed) obj_stop_timers(obj);
-    obj.where = OBJ_DELETED;
-    obj.nobj = null;
-}
-
-/**
  * C ref: shk.c add_to_billobjs `:3365–3383` — prepend gb.billobjs,
  * OBJ_ONBILL. Dummy used-up items live here so bp_to_obj(useup) finds them.
  */
@@ -3310,9 +3306,9 @@ export function delete_contents(obj) {
  * C ref: shk.c obfree `:1186–1275` — release an already-extracted
  * object. Leash / food / book / contents / pick / boulder; unpaid bill
  * useup→billobjs or merge bquan; else oid_price_adjustment may donate
- * o_id to merge; worn sanity; dealloc_obj subset (timers + OBJ_DELETED).
- * Named: full mkobj.c dealloc_obj (lua_ref, objs_deleted, LS_OBJECT,
- * thrownobj/kickedobj/tin/splitobjs); delobj still extract-only.
+ * o_id to merge; worn sanity; mkobj.c dealloc_obj (D-1743).
+ * Callers include invent.c delobj_core (D-1756). Named: zap.js
+ * delete_contents clone.
  */
 export function obfree(obj, merge) {
     if (!obj) return;
@@ -3383,14 +3379,13 @@ export function obfree(obj, merge) {
         );
         setnotworn(obj);
     }
-    dealloc_obj_free(obj);
+    dealloc_obj(obj);
 }
 
 /**
  * C ref: shk.c add_one_tobill `:3308–3363`.
  * dummy TRUE → useup + add_to_billobjs (FullyUsedUp). Bill-full You();
- * OBJ_FREE dealloc; globby newomid/OMID. Full dealloc_obj (lua/lights)
- * still named on obfree.
+ * OBJ_FREE dealloc_obj; globby newomid/OMID.
  */
 async function add_one_tobill(obj, dummy, shkp) {
     const eshkp = ESHK(shkp);
@@ -3408,7 +3403,7 @@ async function add_one_tobill(obj, dummy, shkp) {
         unbilled = true;
     }
     if (unbilled) {
-        if ((obj.where | 0) === OBJ_FREE) dealloc_obj_free(obj);
+        if ((obj.where | 0) === OBJ_FREE) dealloc_obj(obj);
         return;
     }
 
@@ -3473,7 +3468,7 @@ function append_honorific(bufRef) {
  * COIN_CLASS / container contained_gold → costly_gold (D-0991);
  * container contained_cost + bill_box_content (D-1705);
  * add_one_tobill dummy→billobjs (D-1714).
- * Named: remote silent; SetVoice.
+ * Named: remote silent. set_voice is D-1752.
  */
 export async function addtobill(obj, ininv, dummy, silent) {
     const holder = { shkp: null };
@@ -3545,6 +3540,7 @@ export async function addtobill(obj, ininv, dummy, silent) {
             }
             const saveQuan = obj.quan;
             obj.quan = 1;
+            set_voice(shkp, 0, 80, 0);
             const forWhat = (saveQuan > 1)
                 ? 'per'
                 : (contentscount && !obj.unpaid)
@@ -3563,6 +3559,7 @@ export async function addtobill(obj, ininv, dummy, silent) {
                 ? 'the contents of ' : '';
             const andContents = contentscount && obj.unpaid
                 ? ' and its contents' : '';
+            set_voice(shkp, 0, 80, 0);
             await pline(
                 `The list price of ${contentsonly}${the(xname(obj))}${andContents} is ${ltmp} ${currency(ltmp)}${(obj.quan | 0) > 1 ? ' each' : ''}.`,
             );
@@ -3962,7 +3959,7 @@ function setpaid(shkp) {
     let obj;
     while ((obj = game.billobjs) != null) {
         obj_extract_self(obj);
-        dealloc_obj_free(obj);
+        dealloc_obj(obj);
     }
     if (shkp) {
         const eshk = ESHK(shkp);
@@ -4728,7 +4725,7 @@ function update_bill(indx, ibillct, ibill, eshkp, bp, paiditem) {
     paiditem.unpaid = 0;
     if ((paiditem.where | 0) === OBJ_ONBILL) {
         obj_extract_self(paiditem);
-        dealloc_obj_free(paiditem);
+        dealloc_obj(paiditem);
     }
     const newebillct = (eshkp.billct | 0) - 1;
     const bpIdx = bill.indexOf(bp);
@@ -5110,7 +5107,7 @@ function Blind_telepat() {
  * (D-1702); multi-shk getpos pay-whom (D-1704); thank-you verbalize;
  * ECMD_TIME when paid; FullyUsedUp/PartlyUsedUp (D-1714);
  * Traditional itemize ynq (D-1715).
- * mute/Deaf thank-you nod (D-1716). SetVoice still named.
+ * mute/Deaf thank-you nod (D-1716). SetVoice is D-1752.
  */
 export async function dopay() {
     game.multi = 0;
@@ -5393,7 +5390,7 @@ export async function dopay() {
         const shopNm = st?.name || 'shop';
         const bang = eshkp.surcharge ? '.' : '!';
         if (!hero_deaf() && !muteshk(shkp)) {
-            // SetVoice(shkp, 0, 80, 0) — no-op without SOUNDLIB
+            SetVoice(shkp, 0, 80, 0);
             await verbalize(
                 `Thank you for shopping in ${s_suffix(shkname(shkp))} ${shopNm}${bang}`,
             );

@@ -167,7 +167,7 @@ async function auto_describe(cx, cy) {
         /* src/getpos.c:655 — a command that set a validator through
            getpos_sethilite() marks squares it cannot use. */
         const invalid = (game.iflags?.autodescribe !== false
-                         && getpos_getvalid && !getpos_getvalid(cx, cy))
+                         && getpos_getvalid && !(await getpos_getvalid(cx, cy)))
                         ? ' (invalid target)' : '';
         const noTravelPath = (game.iflags?.getloc_travelmode
                               && !(await is_valid_travelpt(cx, cy)))
@@ -183,7 +183,7 @@ async function auto_describe(cx, cy) {
 let getpos_getvalid = null;
 
 // src/getpos.c:1560 getpos_sethilite()
-export function getpos_sethilite(gp_hilitefunc, gp_getvalidfunc) {
+export async function getpos_sethilite(gp_hilitefunc, gp_getvalidfunc) {
     const old_getvalid = getpos_getvalid;
     const new_getvalid = gp_getvalidfunc || null;
     getpos_getvalid = new_getvalid;
@@ -197,8 +197,8 @@ export function getpos_sethilite(gp_hilitefunc, gp_getvalidfunc) {
         let last = null;
         for (let x = 1; x < COLNO; x++) {
             for (let y = 0; y < ROWNO; y++) {
-                if ((old_getvalid && old_getvalid(x, y))
-                    || (new_getvalid && new_getvalid(x, y))) {
+                if ((old_getvalid && await old_getvalid(x, y))
+                    || (new_getvalid && await new_getvalid(x, y))) {
                     newsym(x, y);
                     if (!last || y > last.y || (y === last.y && x > last.x))
                         last = { x, y };
@@ -504,7 +504,7 @@ export async function getpos(ccp, force, goal) {
     ccp.y = c.y;
     game.getposx = game.getposy = 0;
     game._map_cursor = null;
-    getpos_sethilite(null, null);
+    await getpos_sethilite(null, null);
     return result;
 }
 

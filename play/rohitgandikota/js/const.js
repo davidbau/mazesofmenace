@@ -338,6 +338,8 @@ export const nothing_happens = "Nothing happens.";
 export const nothing_seems_to_happen = "Nothing seems to happen.";
 export const thats_enough_tries = "That's enough tries!";
 export const Never_mind = "Never mind.";
+export const something = "something";
+export const Something = "Something";
 
 // Command queue type IDs and queue selectors (include/hack.h cmdq_cmdtypes/CQ_*)
 // Runtime fields:
@@ -2490,6 +2492,8 @@ export function IS_SOFT(typ)       { return typ === AIR || typ === CLOUD || IS_P
 
 
 // Trap utility macros (from include/trap.h)
+/* include/trap.h:116 undestroyable_trap() */
+export const undestroyable_trap = (ttyp) => (ttyp === MAGIC_PORTAL || ttyp === VIBRATING_SQUARE);
 export function is_magical_trap(ttyp) {
     return ttyp === TELEP_TRAP || ttyp === LEVEL_TELEP
         || ttyp === MAGIC_TRAP || ttyp === ANTI_MAGIC
@@ -2996,3 +3000,22 @@ export function Is_sanctum(uz) { return Lcheck(uz ?? game?.u?.uz, game?.sanctum_
 // include/monst.h:268 Mgender()
 export function Mgender(mon) { return mon.female ? FEMALE : MALE; }
 
+/* src/decl.c:20 c_obj_colors[] */
+export const c_obj_colors = [
+    'black',          /* CLR_BLACK */
+    'red',            /* CLR_RED */
+    'green',          /* CLR_GREEN */
+    'brown',          /* CLR_BROWN */
+    'blue',           /* CLR_BLUE */
+    'magenta',        /* CLR_MAGENTA */
+    'cyan',           /* CLR_CYAN */
+    'gray',           /* CLR_GRAY */
+    'transparent',    /* no_color */
+    'orange',         /* CLR_ORANGE */
+    'bright green',   /* CLR_BRIGHT_GREEN */
+    'yellow',         /* CLR_YELLOW */
+    'bright blue',    /* CLR_BRIGHT_BLUE */
+    'bright magenta', /* CLR_BRIGHT_MAGENTA */
+    'bright cyan',    /* CLR_BRIGHT_CYAN */
+    'white',          /* CLR_WHITE */
+];

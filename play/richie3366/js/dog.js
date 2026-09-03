@@ -16,6 +16,7 @@ import {
     MIGR_RANDOM, MIGR_APPROX_XY, MIGR_EXACT_XY, MIGR_STAIRS_UP,
     MIGR_STAIRS_DOWN, MIGR_LADDER_UP, MIGR_LADDER_DOWN, MIGR_SSTAIRS,
     MIGR_PORTAL, MIGR_WITH_HERO, MIGR_LEFTOVERS, MON_MIGRATING, MON_LIMBO,
+    MON_STILL_ARRIVING,
     STRAT_ARRIVE, RLOC_NOMSG, MAGIC_PORTAL, In_endgame, isok, MTSZ, MANFOOD,
     DOGFOOD, ACCFOOD, FULL_MOON, Upolyd, has_edog, EDOG, LL_CONDUCT,
     DF_ALL, COLNO, ROWNO, ROOMOFFSET, IS_WALL,
@@ -48,6 +49,7 @@ import { livelog_printf } from './pline.js';
 import { uhis } from './roles.js';
 import { objectNames } from './generated/objects_data.js';
 import { expels, unstuck } from './mhitu.js';
+import { finish_meating } from './dogmove.js';
 import { sticks } from './engrave.js';
 import { emits_light, del_light_source } from './light.js';
 
@@ -351,7 +353,9 @@ export function update_mlstmv() {
 
 /**
  * C ref: dog.c keepdogs — move nearby followers onto mydogs before level leave.
- * pets_only path; migrate_to_level / leash / mon_has_amulet stay_behind deferred.
+ * pets_only (`:799–809`) wakes/untraps so escape/ascend companions are
+ * not left for meals or traps. migrate_to_level / leash /
+ * mon_has_amulet stay_behind still named.
  */
 export function keepdogs(pets_only = false) {
     const u = game.u;
@@ -364,9 +368,17 @@ export function keepdogs(pets_only = false) {
             stay.push(mtmp);
             continue;
         }
-        if (pets_only && !mtmp.mtame) {
-            stay.push(mtmp);
-            continue;
+        if (pets_only) {
+            if (!mtmp.mtame) {
+                stay.push(mtmp);
+                continue;
+            }
+            // C `:799–809` — mundane trifles must not block escape/ascend
+            mtmp.mtrapped = 0;
+            finish_meating(mtmp);
+            mtmp.msleeping = 0;
+            mtmp.mfrozen = 0;
+            mtmp.mcanmove = 1;
         }
         const near = monnear(mtmp, u.ux, u.uy);
         const follow = levl_follower(mtmp);
@@ -566,9 +578,12 @@ export async function tamedog(mtmp, obj, givemsg = true) {
  * C restore_cham `:464` before usteed return / With_you place (PfSC
  * may differ from when the pet left). C returns here before
  * MIGR_LEFTOVERS (D-1505 After_you).
+ * D-1746: MON_STILL_ARRIVING for see_monsters (C `:430` / `:479`;
+ * usteed return leaves the bit, matching C).
  */
 async function mon_arrive_with_you(mtmp) {
     const u = game.u;
+    mtmp.mstate = (mtmp.mstate | 0) | MON_STILL_ARRIVING;
     if (!game.fmon) game.fmon = [];
     game.fmon.unshift(mtmp);
     mtmp.mux = u.ux;
@@ -585,6 +600,7 @@ async function mon_arrive_with_you(mtmp) {
         if (enexto(mm, u.ux, u.uy, mtmp.data)) rloc_to(mtmp, mm.x, mm.y);
         else rloc_to(mtmp, u.ux, u.uy);
     }
+    mtmp.mstate = (mtmp.mstate | 0) & ~MON_STILL_ARRIVING;
 }
 
 /** C ref: stairs.c stairway_find_from — first stair matching fromdlev+ladder. */
@@ -779,9 +795,11 @@ export function arrive_wander_xy(xlocale, ylocale, wander) {
  * Named omissions: worm/isshk residency; Wiz_arrive;
  * failed_arrivals/relmon; debug_fuzzer portal; impossible() no-portal;
  * full mnearto yank.
+ * D-1746: MON_STILL_ARRIVING for see_monsters (C `:430` / `:622`).
  */
 async function mon_arrive_after_you(mtmp) {
     const u = game.u;
+    mtmp.mstate = (mtmp.mstate | 0) | MON_STILL_ARRIVING;
     if (!game.fmon) game.fmon = [];
     game.fmon.unshift(mtmp);
     mtmp.mstrategy = (mtmp.mstrategy | 0) | STRAT_ARRIVE;
@@ -894,6 +912,7 @@ async function mon_arrive_after_you(mtmp) {
     } else {
         await rloc(mtmp, RLOC_NOMSG);
     }
+    mtmp.mstate = (mtmp.mstate | 0) & ~MON_STILL_ARRIVING;
 }
 
 /**

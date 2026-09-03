@@ -1,13 +1,14 @@
 // mcastu.js: monster spell selection and casting.
 // C ref: src/mcastu.c
 
+import { ureflects } from './muse.js';
 import { is_waterwall } from './dbridge.js';
 import { genders } from './role_data.js';
 import { mdamageu } from './mhitu.js';
 import { monster_census } from './minion.js';
 import { enexto } from './teleport.js';
 import { mkclass, makemon, set_malign } from './makemon.js';
-import { destroy_items, ureflects, flashburn, mon_spell_hits_spot } from './zap.js';
+import { destroy_items, flashburn, mon_spell_hits_spot } from './zap.js';
 import { burnarmor, ignite_items } from './trap.js';
 import { burn_away_slime } from './timeout.js';
 import { make_stunned, make_blinded, make_confused } from './potion.js';

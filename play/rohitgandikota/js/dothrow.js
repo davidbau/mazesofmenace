@@ -1,3 +1,94 @@
+import { DEADMONSTER } from './monst.js';
+import { M_AP_TYPE } from './const.js';
+import { TT_BURIEDBALL } from './const.js';
+import { TT_INFLOOR } from './const.js';
+import { TT_LAVA } from './const.js';
+import { TT_WEB } from './const.js';
+import { Upolyd } from './const.js';
+import { u_at } from './const.js';
+import { MM_IGNORELAVA } from './const.js';
+import { MM_IGNOREWATER } from './const.js';
+import { FORCEBUNGLE } from './const.js';
+import { HURTLING } from './const.js';
+import { Is_waterlevel } from './const.js';
+import { is_hole } from './const.js';
+import { is_pit } from './const.js';
+import { NO_TRAP_FLAGS } from './const.js';
+import { FIRE_TRAP } from './const.js';
+import { VIBRATING_SQUARE } from './const.js';
+import { MAGIC_PORTAL } from './const.js';
+import { W_ARMC } from './const.js';
+import { W_ARM } from './const.js';
+import { W_ARMU } from './const.js';
+import { NEUTRAL } from './const.js';
+import { has_mgivenname } from './const.js';
+import { SUPPRESS_NAME } from './const.js';
+import { EXACT_NAME } from './const.js';
+import { AUGMENT_IT } from './const.js';
+import { SUPPRESS_SADDLE } from './const.js';
+import { ARTICLE_YOUR } from './const.js';
+import { ARTICLE_A } from './const.js';
+import { KILLED_BY } from './const.js';
+import { WT_TOOMUCH_DIAGONAL } from './const.js';
+import { IRONBARS } from './const.js';
+import { IS_TREE } from './const.js';
+import { IS_OBSTRUCTED } from './const.js';
+import { D_ISOPEN } from './const.js';
+import { IS_DOOR } from './const.js';
+import { I_SPECIAL } from './const.js';
+import { closed_door } from './cmd.js';
+import { carried } from './obj.js';
+import { surface } from './dungeon.js';
+import { stop_occupation } from './allmain.js';
+import { set_apparxy } from './monmove.js';
+import { place_monster } from './makemon.js';
+import { remove_monster } from './makemon.js';
+import { goodpos } from './makemon.js';
+import { Flying } from './youprop.js';
+import { is_moat } from './dbridge.js';
+import { is_waterwall } from './dbridge.js';
+import { vision_recalc } from './vision.js';
+import { u_on_newpos } from './teleport.js';
+import { which_armor } from './worn.js';
+import { Trap_Moved_Mon } from './trap.js';
+import { Trap_Caught_Mon } from './trap.js';
+import { Trap_Killed_Mon } from './trap.js';
+import { drown } from './trap.js';
+import { mintrap } from './trap.js';
+import { trapname } from './trap.js';
+import { dotrap } from './trap.js';
+import { minstapetrify } from './trap.js';
+import { instapetrify } from './trap.js';
+import { noit_mhim } from './mondata.js';
+import { hliquid } from './do_name.js';
+import { a_monnam } from './do_name.js';
+import { pmname } from './do_name.js';
+import { x_monnam } from './do_name.js';
+import { map_invisible } from './display.js';
+import { glyph_at } from './display.js';
+import { seemimic } from './mon.js';
+import { minliquid } from './mon.js';
+import { setmangry } from './mon.js';
+import { t_at } from './mon.js';
+import { m_at } from './mon.js';
+import { wake_nearto } from './mon.js';
+import { touch_petrifies } from './mondata.js';
+import { bigmonst } from './mondata.js';
+import { inv_weight } from './attrib.js';
+import { weight_cap } from './attrib.js';
+import { sobj_at } from './invent.js';
+import { Norep } from './pline.js';
+import { You_feel } from './pline.js';
+import { nomul } from './hack.js';
+import { check_special_room } from './hack.js';
+import { switch_terrain } from './hack.js';
+import { losehp } from './hack.js';
+import { bad_rock } from './hack.js';
+import { may_passwall } from './hack.js';
+import { m_in_out_region } from './region.js';
+import { in_out_region } from './region.js';
+import { isok } from './hacklib.js';
+import { ordin } from './hacklib.js';
 import { BRK_KNOWN2NOTBREAK } from './const.js';
 import { BRK_KNOWN2BREAK } from './const.js';
 import { BRK_KNOWN_OUTCOME } from './const.js';
@@ -964,7 +1055,7 @@ function note_unported_dothrow(what) {
 // callers learn where the path was blocked. C's comment notes the algorithm
 // handles slanted moves suboptimally — a diagonal that clips a corner fails
 // rather than routing around it — and that quirk is part of the behaviour.
-export function walk_path(src_cc, dest_cc, check_proc, arg) {
+export async function walk_path(src_cc, dest_cc, check_proc, arg) {
     let err;
     let x, y, dx, dy, x_change, y_change, i, prev_x, prev_y;
     let keep_going = true;
@@ -998,7 +1089,7 @@ export function walk_path(src_cc, dest_cc, check_proc, arg) {
                 err -= dy << 1;
             }
             /* check for early exit condition */
-            if (!(keep_going = check_proc(arg, x, y)))
+            if (!(keep_going = await check_proc(arg, x, y)))
                 break;
         }
     } else {
@@ -1012,7 +1103,7 @@ export function walk_path(src_cc, dest_cc, check_proc, arg) {
                 err -= dx << 1;
             }
             /* check for early exit condition */
-            if (!(keep_going = check_proc(arg, x, y)))
+            if (!(keep_going = await check_proc(arg, x, y)))
                 break;
         }
     }
@@ -1023,6 +1114,424 @@ export function walk_path(src_cc, dest_cc, check_proc, arg) {
     dest_cc.x = prev_x;
     dest_cc.y = prev_y;
     return false;
+}
+
+// src/dothrow.c:590 endmultishot()
+export async function endmultishot(verbose) {
+    const m_shot = (game.m_shot ||= { n: 0, i: 0, o: 0, s: 0 });
+
+    if (m_shot.i < m_shot.n) {
+        if (verbose && !game.context?.mon_moving) {
+            await You(`stop ${m_shot.s ? 'firing' : 'throwing'} after the ${
+                m_shot.i}${ordin(m_shot.i)} ${m_shot.s ? 'shot' : 'toss'}.`);
+        }
+        m_shot.n = m_shot.i; /* make current shot be the last */
+    }
+}
+
+// src/dothrow.c:742 hurtle_jump(); arg is the {range} box hurtle_step reads
+export async function hurtle_jump(arg, x, y) {
+    let res;
+    const save_EWwalking = game.u.uprops?.WWALKING;
+
+    /* prevent jumping over water from being placed in that water */
+    (game.u.uprops ||= {}).WWALKING = (game.u.uprops.WWALKING | 0) | I_SPECIAL;
+    res = await hurtle_step(arg, x, y);
+    if (save_EWwalking)
+        game.u.uprops.WWALKING = save_EWwalking;
+    else
+        delete game.u.uprops.WWALKING;
+    return res;
+}
+
+/* include/dungeon.h Sokoban */
+const Sokoban = () => !!game.level?.flags?.sokoban_rules;
+/* include/hack.h Maybe_Half_Phys() */
+const Maybe_Half_Phys = (dmg) =>
+    (game.u.intrinsic?.HHalf_physical_damage || game.u.uprops?.HALF_PHDAM)
+        ? Math.trunc((dmg + 1) / 2) : dmg;
+/* include/youprop.h */
+const Punished = () => !!game.u.uball;
+const Wwalking = () => !!(game.u.intrinsic?.HWwalking || game.u.uprops?.WWALKING);
+const Swimming = () => !!(game.u.intrinsic?.HSwimming || game.u.uprops?.SWIMMING);
+const Passes_walls = () => !!(game.u.intrinsic?.HPasses_walls || game.u.uprops?.WALLWALK);
+/* include/hack.h:1414 NODIAG() */
+const NODIAG = (monnum) => monnum === PMNAMES.PM_GRID_BUG;
+
+// src/dothrow.c:773 hurtle_step(); arg is a {range} box, the C int pointer
+export async function hurtle_step(arg, x, y) {
+    let ox, oy;
+    const range = arg;
+    let obj;
+    let mon;
+    let may_pass = true, via_jumping, stopping_short;
+    let ttmp;
+    let lev;
+    let ltyp, dmg = 0;
+
+    if (!isok(x, y)) {
+        await You_feel('the spirits holding you back.');
+        return false;
+    } else if (!(await in_out_region(x, y))) {
+        return false;
+    } else if (range.range === 0) {
+        return false; /* previous step wants to stop now */
+    }
+    via_jumping = ((game.u.uprops?.WWALKING | 0) & I_SPECIAL) !== 0;
+    stopping_short = (via_jumping && range.range < 2);
+    lev = game.level.at(x, y);
+    ltyp = lev.typ;
+
+    if (!Passes_walls() || !(may_pass = may_passwall(x, y))) {
+        let why = null;
+        const diagonal = (game.u.ux - x) !== 0 && (game.u.uy - y) !== 0,
+              open_door = IS_DOOR(ltyp) && (lev.doormask & D_ISOPEN) !== 0,
+              odoor_diag = open_door && diagonal;
+
+        if (IS_OBSTRUCTED(game.level.at(x, y).typ)
+            || closed_door(x, y) || odoor_diag) {
+            why = IS_TREE(ltyp) ? 'bumping into a tree'
+                  : IS_OBSTRUCTED(ltyp) ? 'bumping into a wall'
+                    : odoor_diag ? 'bumping into a door frame'
+                      : 'bumping into a closed door';
+            if (odoor_diag)
+                await You('hit the door frame!');
+            await pline('Ouch!');
+        } else if (ltyp === IRONBARS) {
+            why = 'crashing into iron bars';
+            await You('crash into some iron bars.  Ouch!');
+        } else if ((obj = sobj_at(ONAMES.BOULDER, x, y)) != null) {
+            why = 'bumping into a boulder';
+            await You(`bump into a ${xname(obj)}.  Ouch!`);
+        }  else if (!may_pass) {
+            /* did we hit a no-dig non-wall position? */
+            why = 'touching the edge of the universe';
+            await You('smack into something!');
+        } else if (diagonal
+                   && bad_rock(game.youmonst.data, game.u.ux, y)
+                   && bad_rock(game.youmonst.data, x, game.u.uy)) {
+            const too_much = ((game.invent && game.invent.length)
+                       && (inv_weight() + weight_cap() > WT_TOOMUCH_DIAGONAL));
+
+            if (bigmonst(game.youmonst.data) || too_much) {
+                why = 'wedging into a narrow crevice';
+                await You(`${too_much ? 'and all your belongings ' : ''}get forcefully wedged into a crevice.`);
+            }
+        }
+        if (why) {
+            dmg = rnd(2 + range.range);
+            await losehp(Maybe_Half_Phys(dmg), why, KILLED_BY);
+            await wake_nearto(x, y, 10);
+            return false;
+        }
+    }
+
+    if ((mon = m_at(x, y)) != null) {
+        let mnam;
+        const glyph = glyph_at(x, y);
+
+        mon.mundetected = 0; /* wakeup() will handle mimic */
+        /* after unhiding; combination of a_monnam() and some_mon_nam();
+           yields "someone" or "something" instead of "it" for unseen mon */
+        mnam = x_monnam(mon, ARTICLE_A, null,
+                        ((has_mgivenname(mon) ? SUPPRESS_SADDLE : 0)
+                         | AUGMENT_IT),
+                        false);
+        if (glyph.kind !== 'mon' && glyph.kind !== 'invis')
+            await You(`find ${mnam} by bumping into ${noit_mhim(mon)}.`);
+        else
+            await You(`bump into ${mnam}.`);
+        await wakeup(mon, false);
+        if (!canspotmon(mon))
+            map_invisible(mon.mx, mon.my);
+        await setmangry(mon, false);
+        if (touch_petrifies(mon.data)
+            /* this is a bodily collision, so check for body armor */
+            && !game.u.uarmu && !game.u.uarm && !game.u.uarmc) {
+            game.killer = { format: KILLED_BY, name: `bumping into ${an(pmname(mon.data, NEUTRAL))}` };
+            await instapetrify(game.killer.name);
+        }
+        if (touch_petrifies(game.youmonst.data)
+            && !which_armor(mon, W_ARMU | W_ARM | W_ARMC)) {
+            await minstapetrify(mon, true);
+        }
+        await wake_nearto(x, y, 10);
+        return false;
+    }
+
+    if ((game.u.ux - x) && (game.u.uy - y)
+        && bad_rock(game.youmonst.data, game.u.ux, y)
+        && bad_rock(game.youmonst.data, x, game.u.uy)) {
+        /* Move at a diagonal. */
+        if (Sokoban()) {
+            await You('come to an abrupt halt!');
+            return false;
+        }
+    }
+
+    /* caller has already determined that dragging the ball is allowed;
+       if ball is carried we might still need to drag the chain */
+    if (Punished()) {
+        /* drag_ball()/move_bc() are ball.c, not ported */
+        note_unported_dothrow('hurtle_step:drag_ball');
+    }
+
+    ox = game.u.ux;
+    oy = game.u.uy;
+    u_on_newpos(x, y); /* set u.<ux,uy>, u.usteed-><mx,my>; cliparound(); */
+    newsym(ox, oy);    /* update old position */
+    vision_recalc(1);  /* update for new position */
+    await flush_screen(1);
+    /* if terrain type changes, levitation or flying might become blocked
+       or unblocked; might issue message, so do this after map+vision has
+       been updated for new location instead of right after u_on_newpos() */
+    if (ltyp !== game.level.at(ox, oy).typ)
+        await switch_terrain();
+
+    /* might be entering a special room (treasure zoo, thrown room, &c) that
+       has a first-time entry message, or leaving shop with unpaid goods */
+    await check_special_room(false);
+
+    if (is_pool(x, y) && !game.u.uinwater) {
+        if (is_waterwall(x, y) || !(Levitation() || Flying() || Wwalking())) {
+            /* couldn't move while hurtling; allow movement now so that
+               drown() will give a chance to crawl out of pool and survive */
+            game.multi = 0;
+            await drown();
+            return false;
+        } else if (!Is_waterlevel(game.u.uz) && !stopping_short) {
+            await Norep(`You move over ${an(is_moat(x, y) ? 'moat' : 'pool')}.`);
+        }
+    } else if (is_lava(x, y) && !stopping_short) {
+        await Norep('You move over some lava.');
+    }
+
+    /* FIXME:
+     * Each trap should really trigger on the recoil if it would
+     * trigger during normal movement. However, not all the possible
+     * side-effects of this are tested [as of 3.4.0] so we trigger
+     * those that we have tested, and offer a message for the ones
+     * that we have not yet tested.
+     */
+    if ((ttmp = t_at(x, y)) != null) {
+        if (stopping_short) {
+            ; /* see the comment above hurtle_jump() */
+        } else if (ttmp.ttyp === MAGIC_PORTAL) {
+            await dotrap(ttmp, NO_TRAP_FLAGS);
+            return false;
+        } else if (ttmp.ttyp === VIBRATING_SQUARE) {
+            await pline('The ground vibrates as you pass it.');
+            await dotrap(ttmp, NO_TRAP_FLAGS); /* doesn't print messages */
+        } else if (ttmp.ttyp === FIRE_TRAP) {
+            await dotrap(ttmp, NO_TRAP_FLAGS);
+        } else if ((is_pit(ttmp.ttyp) || is_hole(ttmp.ttyp)) && Sokoban()) {
+            /* air currents overcome the recoil in Sokoban;
+               when jumping, caller performs last step and enters trap */
+            if (!via_jumping)
+                await dotrap(ttmp, NO_TRAP_FLAGS);
+            range.range = 0;
+            return true;
+        } else {
+            if (ttmp.tseen)
+                await You(`pass right over ${an(trapname(ttmp.ttyp, false))}.`);
+        }
+    }
+    if (--range.range < 0) /* make sure our range never goes negative */
+        range.range = 0;
+    if (range.range !== 0 && game.animationFrame)
+        await game.animationFrame(); /* nh_delay_output() */
+    return true;
+}
+
+// src/dothrow.c:957 will_hurtle()
+export function will_hurtle(mon, x, y) {
+    if (!isok(x, y))
+        return false;
+    /*
+     * TODO: Treat walls, doors, iron bars, pools, lava, etc. specially
+     * rather than just stopping before.
+     */
+    if (mon.data.msize >= MFLAGS.MZ_HUGE || mon === game.u.ustuck || mon.mtrapped)
+        return false;
+    return goodpos(x, y, mon, MM_IGNOREWATER | MM_IGNORELAVA);
+}
+
+// src/dothrow.c:992 mhurtle_step(); arg is the monster
+export async function mhurtle_step(arg, x, y) {
+    const mon = arg;
+    let mtmp;
+
+    if (!isok(x, y))
+        return false;
+
+    if (will_hurtle(mon, x, y) && await m_in_out_region(mon, x, y)) {
+        let res;
+
+        if (mon !== game.u.usteed) {
+            remove_monster(mon.mx, mon.my);
+            newsym(mon.mx, mon.my);
+            place_monster(mon, x, y);
+            newsym(mon.mx, mon.my);
+        } else {
+            /* steed is hurtling, move hero which will also move steed */
+            game.u.ux0 = game.u.ux, game.u.uy0 = game.u.uy;
+            u_on_newpos(x, y);
+            newsym(game.u.ux0, game.u.uy0); /* update old position */
+            vision_recalc(0); /* new location => different lines of sight */
+        }
+        await flush_screen(1);
+        if (game.animationFrame)
+            await game.animationFrame(); /* nh_delay_output() */
+        set_apparxy(mon);
+        if (is_waterwall(x, y))
+            return false;
+        res = await mintrap(mon, HURTLING);
+        if (res === Trap_Killed_Mon
+            || res === Trap_Caught_Mon
+            || res === Trap_Moved_Mon)
+            return false;
+        return true;
+    }
+    if ((mtmp = m_at(x, y)) != null && mtmp !== mon) {
+        if (canseemon(mon) || canseemon(mtmp))
+            await pline(`${Monnam(mon)} bumps into ${a_monnam(mtmp)}.`);
+        await wakeup(mtmp, !game.context?.mon_moving);
+        /* check whether 'mon' is turned to stone by touching 'mtmp' */
+        if (touch_petrifies(mtmp.data)
+            && !which_armor(mon, W_ARMU | W_ARM | W_ARMC)) {
+            await minstapetrify(mon, !game.context?.mon_moving);
+            newsym(mon.mx, mon.my);
+        }
+        /* and whether 'mtmp' is turned to stone by being touched by 'mon' */
+        if (touch_petrifies(mon.data)
+            && !which_armor(mtmp, W_ARMU | W_ARM | W_ARMC)) {
+            await minstapetrify(mtmp, !game.context?.mon_moving);
+            newsym(mtmp.mx, mtmp.my);
+        }
+    } else if (u_at(x, y)) {
+        /* a monster has caused 'mon' to hurtle against hero */
+        await pline(`${Some_Monnam(mon)} bumps into you.`);
+        await stop_occupation();
+        /* check whether 'mon' is turned to stone by touching poly'd hero */
+        if (Upolyd(game.u) && touch_petrifies(game.youmonst.data)
+            && !which_armor(mon, W_ARMU | W_ARM | W_ARMC)) {
+            /* give poly'd hero credit/blame despite a monster causing it */
+            await minstapetrify(mon, true);
+            newsym(mon.mx, mon.my);
+        }
+        /* and whether hero is turned to stone by being touched by 'mon' */
+        if (touch_petrifies(mon.data) && !(game.u.uarmu || game.u.uarm || game.u.uarmc)) {
+            game.killer = { format: KILLED_BY,
+                            name: `being hit by ${
+                     /* combine m_monnam() and noname_monnam():
+                        "{your,a} hurtling cockatrice" w/o assigned name */
+                     x_monnam(mon, mon.mtame ? ARTICLE_YOUR : ARTICLE_A,
+                              'hurtling', EXACT_NAME | SUPPRESS_NAME, false)}` };
+            await instapetrify(game.killer.name);
+            newsym(game.u.ux, game.u.uy);
+        }
+    }
+
+    return false;
+}
+
+// src/dothrow.c:1078 hurtle(); move the hero after recoil or knockback
+export async function hurtle(dx, dy, range, verbose) {
+    const uc = { x: 0, y: 0 }, cc = { x: 0, y: 0 };
+
+    /* The chain is stretched vertically, so you shouldn't be able to move
+     * very far diagonally.  The premise that you should be able to move one
+     * spot leads to calculations that allow you to only move one spot away
+     * from the ball, if you are levitating over the ball, or one spot
+     * towards the ball, if you are at the end of the chain.  Rather than
+     * bother with all of that, assume that there is no slack in the chain
+     * for diagonal movement, give the player a message and return.
+     */
+    if (Punished() && !carried(game.u.uball)) {
+        await You_feel('a tug from the iron ball.');
+        nomul(0);
+        return;
+    } else if (game.u.utrap) {
+        await You(`are anchored by the ${
+            (game.u.utraptype === TT_WEB) ? 'web'
+            : (game.u.utraptype === TT_LAVA) ? hliquid('lava')
+              : (game.u.utraptype === TT_INFLOOR) ? surface(game.u.ux, game.u.uy)
+                : (game.u.utraptype === TT_BURIEDBALL) ? 'buried ball'
+                  : 'trap'}.`);
+        nomul(0);
+        return;
+    }
+
+    /* make sure dx and dy are [-1,0,1] */
+    dx = sgn(dx);
+    dy = sgn(dy);
+
+    if (!range || (!dx && !dy) || game.u.ustuck)
+        return; /* paranoia */
+
+    nomul(-range);
+    game.multi_reason = 'moving through the air';
+    game.nomovemsg = ''; /* it just happens */
+    if (verbose)
+        await You(`${(range > 1) ? 'hurtle' : 'float'} in the opposite direction.`);
+    /* if we're in the midst of shooting multiple projectiles, stop */
+    await endmultishot(true);
+    uc.x = game.u.ux;
+    uc.y = game.u.uy;
+    /* this setting of cc is only correct if dx and dy are [-1,0,1] only */
+    cc.x = game.u.ux + (dx * range);
+    cc.y = game.u.uy + (dy * range);
+    await walk_path(uc, cc, hurtle_step, { range });
+}
+
+// src/dothrow.c:1130 mhurtle(); move a monster along a straight path
+export async function mhurtle(mon, dx, dy, range) {
+    const mc = { x: 0, y: 0 }, cc = { x: 0, y: 0 };
+
+    await wakeup(mon, !game.context?.mon_moving);
+    /* At the very least, debilitate the monster */
+    mon.movement = 0;
+    mon.mstun = 1;
+
+    /* Is the monster stuck or too heavy to push?
+     * (very large monsters have too much inertia, even floaters and flyers)
+     */
+    if (mon.data.msize >= MFLAGS.MZ_HUGE || mon === game.u.ustuck || mon.mtrapped) {
+        if (canseemon(mon))
+            await pline(`${Monnam(mon)} doesn't budge!`);
+        return;
+    }
+
+    /* Make sure dx and dy are [-1,0,1] */
+    dx = sgn(dx);
+    dy = sgn(dy);
+    if (!range || (!dx && !dy))
+        return; /* paranoia */
+    /* don't let grid bugs be hurtled diagonally */
+    if (dx && dy && NODIAG(mon.mnum))
+        return;
+
+    /* undetected monster can be moved by your strike */
+    if (mon.mundetected) {
+        mon.mundetected = 0;
+        newsym(mon.mx, mon.my);
+    }
+    if (M_AP_TYPE(mon))
+        seemimic(mon);
+
+    /* Send the monster along the path */
+    mc.x = mon.mx;
+    mc.y = mon.my;
+    cc.x = mon.mx + (dx * range);
+    cc.y = mon.my + (dy * range);
+    await walk_path(mc, cc, mhurtle_step, mon);
+    if (!DEADMONSTER(mon)) {
+        if (t_at(mon.mx, mon.my))
+            await mintrap(mon, FORCEBUNGLE);
+        else
+            await minliquid(mon);
+    }
+    return;
 }
 
 // src/dothrow.c:447 find_launcher() — the launcher in inventory matching this

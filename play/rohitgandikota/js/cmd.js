@@ -1360,7 +1360,7 @@ async function dojump() {
     /* src/apply.c:2062 — the cursor marks squares the jump cannot reach.
        display_jump_positions (the tmp_at beam) is not ported; the validator
        is, because getpos' auto-describe prints "(invalid target)" from it. */
-    getpos_sethilite(null, get_valid_jump_position);
+    await getpos_sethilite(null, get_valid_jump_position);
 
     if (await getpos(cc, true, 'the desired position') < 0)
         return ECMD_CANCEL; /* user pressed ESC */
@@ -1392,9 +1392,9 @@ async function dojump() {
     if (temp < 0) temp = -temp;
     if (range < temp) range = temp;
 
-    const { walk_path } = await import('./dothrow.js');
+    const { walk_path, hurtle_jump } = await import('./dothrow.js');
     const { teleds, TELEDS_NO_FLAGS } = await import('./teleport.js');
-    walk_path(uc, cc, hurtle_jump, { range });
+    await walk_path(uc, cc, hurtle_jump, { range });
     /* hurtle_jump -> hurtle_step results in <u.ux,u.uy> == <cc.x,cc.y> and
      * usually moves the ball if punished, but does not handle all the
      * effects of landing on the final position.
@@ -1405,35 +1405,6 @@ async function dojump() {
     game.nomovemsg = '';
     await morehungry(rnd(25));
     return ECMD_TIME;
-}
-
-// src/dothrow.c hurtle_step() — one square of a hurtle, via walk_path().
-//
-// Only the unobstructed case is live. C's wall/crevice arm draws
-// rnd(2 + range) for the damage and wakes monsters; a jump that hits
-// something is recorded instead of guessed.
-function hurtle_step(arg, x, y) {
-    if (!isok(x, y) || bad_rock_at(x, y)) {
-        note_unported_cmd('hurtle_step:obstructed');
-        return false;
-    }
-    if (m_at(x, y)) {
-        note_unported_cmd('hurtle_step:monster');
-        return false;
-    }
-    /* C moves the hero one step here; teleds() places them at the end */
-    return true;
-}
-
-/* src/apply.c hurtle_jump() — hurtle_step with flying allowed over water */
-function hurtle_jump(arg, x, y) {
-    return hurtle_step(arg, x, y);
-}
-
-/* include/rm.h — a square the hero cannot occupy */
-function bad_rock_at(x, y) {
-    const loc = game.level?.at(x, y);
-    return !loc || !ACCESSIBLE(loc.typ);
 }
 
 // src/pager.c doidtrap(), the '^' command. Ordinary seen floor traps are the

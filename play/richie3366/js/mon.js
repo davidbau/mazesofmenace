@@ -786,7 +786,7 @@ async function m_calcdistress(mtmp) {
     }
     mon_regen(mtmp, false);
     if (ismnum(mtmp.cham)) await decide_to_shapeshift(mtmp);
-    were_change(mtmp);
+    await were_change(mtmp);
     if (mtmp.mblinded && !(--mtmp.mblinded)) mtmp.mcansee = 1;
     if (mtmp.mfrozen && !(--mtmp.mfrozen)) mtmp.mcanmove = 1;
     if (mtmp.mfleetim && !(--mtmp.mfleetim)) mtmp.mflee = 0;

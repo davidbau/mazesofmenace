@@ -4,6 +4,16 @@
 // Temple creation, entry, movement, chat, donations, roaming minions, and
 // anger are implemented here.
 
+import { ATTKS } from './monst_data.js';
+import { BZ_OFS_AD } from './const.js';
+import { IS_DOOR } from './const.js';
+import { u_at } from './const.js';
+import { EPRI } from './const.js';
+import { sgn } from './hacklib.js';
+import { s_suffix } from './hacklib.js';
+import { buzz } from './zap.js';
+import { linedup } from './mthrowu.js';
+import { a_gname_at } from './pray.js';
 import { game } from './gstate.js';
 import { rn2, rn1, d } from './rng.js';
 import { makemon, remove_monster, place_monster,
@@ -642,4 +652,95 @@ export async function angry_priest() {
         priest.ispriest = 0;
         priest.isminion = 1;
     }
+}
+
+// src/priest.c:142 temple_occupied(); the first room in the hero's room
+// list that is a temple, as its room character
+function temple_occupied(array) {
+    for (const ch of array || '')
+        if (game.level.rooms[ch.charCodeAt(0) - ROOMOFFSET]?.rtype === TEMPLE)
+            return ch;
+    return '';
+}
+
+/* include/hack.h:1486 BZ_M_SPELL() */
+const BZ_M_SPELL = (bztyp) => (-10 - (bztyp));
+
+// src/priest.c ghod_hitsu(); the temple's god retaliates against a hero
+// who hits its priest
+export async function ghod_hitsu(priest) {
+    let troom;
+    let oldbuzzer;
+    let oldcurrwand;
+    let x, y, ax, ay;
+    const roomno = temple_occupied(game.u.urooms);
+
+    if (!roomno || !has_shrine(priest))
+        return;
+
+    const epri = priest.epri || EPRI(priest);
+    ax = x = epri.shrpos.x;
+    ay = y = epri.shrpos.y;
+    troom = game.level.rooms[roomno.charCodeAt(0) - ROOMOFFSET];
+
+    if (u_at(x, y) || !linedup(game.u.ux, game.u.uy, x, y, 1)) {
+        if (IS_DOOR(game.level.at(game.u.ux, game.u.uy).typ)) {
+            if (game.u.ux === troom.lx - 1) {
+                x = troom.hx;
+                y = game.u.uy;
+            } else if (game.u.ux === troom.hx + 1) {
+                x = troom.lx;
+                y = game.u.uy;
+            } else if (game.u.uy === troom.ly - 1) {
+                x = game.u.ux;
+                y = troom.hy;
+            } else if (game.u.uy === troom.hy + 1) {
+                x = game.u.ux;
+                y = troom.ly;
+            }
+        } else {
+            switch (rn2(4)) {
+            case 0:
+                x = game.u.ux;
+                y = troom.ly;
+                break;
+            case 1:
+                x = game.u.ux;
+                y = troom.hy;
+                break;
+            case 2:
+                x = troom.lx;
+                y = game.u.uy;
+                break;
+            default:
+                x = troom.hx;
+                y = game.u.uy;
+                break;
+            }
+        }
+        if (!linedup(game.u.ux, game.u.uy, x, y, 1))
+            return;
+    }
+
+    switch (rn2(3)) {
+    case 0:
+        await pline(`${a_gname_at(ax, ay)} roars in anger:  "Thou shalt suffer!"`);
+        break;
+    case 1:
+        await pline(`${s_suffix(a_gname_at(ax, ay))} voice booms:  "How darest thou harm my servant!"`);
+        break;
+    default:
+        await pline(`${a_gname_at(ax, ay)} roars:  "Thou dost profane my shrine!"`);
+        break;
+    }
+
+    /* bolt of lightning cast by unspecified monster */
+    oldcurrwand = game.current_wand;
+    game.current_wand = null;
+    oldbuzzer = game.buzzer;
+    game.buzzer = null;
+    await buzz(BZ_M_SPELL(BZ_OFS_AD(ATTKS.AD_ELEC)), 6, x, y, sgn(game.tbx), sgn(game.tby));
+    game.buzzer = oldbuzzer;
+    game.current_wand = oldcurrwand;
+    exercise(A_WIS, false);
 }

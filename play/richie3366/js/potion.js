@@ -3736,7 +3736,7 @@ async function potionhit_mon_water(mon, obj, tx, ty, your_fault) {
                 const { killed } = await import('./uhitm.js');
                 await killed(mon);
             } else if (is_were(mon.data) && !is_human(mon.data)) {
-                new_were(mon);
+                await new_were(mon);
             }
         } else if (obj.cursed) {
             angermon = false;
@@ -3746,7 +3746,7 @@ async function potionhit_mon_water(mon, obj, tx, ty, your_fault) {
             healmon(mon, d(2, 6), 0);
             if (is_were(mon.data) && is_human(mon.data)
                 && !Protection_from_shape_changers_pot()) {
-                new_were(mon);
+                await new_were(mon);
             }
         }
     } else if ((mon.data?.mndx ?? mon.mnum) === PM_GREMLIN) {

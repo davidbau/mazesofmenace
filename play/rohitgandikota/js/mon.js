@@ -1,3 +1,21 @@
+import { migrate_monster } from './trap.js';
+import { um_dist } from './apply.js';
+import { gazemu } from './mhitu.js';
+import { aggravate } from './wizard.js';
+import { stop_occupation } from './allmain.js';
+import { ledger_no } from './dungeon.js';
+import { level_difficulty } from './dungeon.js';
+import { montoostrong } from './makemon.js';
+import { monmax_difficulty } from './makemon.js';
+import { simple_typename } from './objnam.js';
+import { The } from './objnam.js';
+import { pline_mon } from './pline.js';
+import { MON_LIMBO } from './const.js';
+import { MIGR_APPROX_XY } from './const.js';
+import { NATTK } from './const.js';
+import { c_obj_colors } from './const.js';
+import { W_AMUL } from './const.js';
+import { is_vampshifter } from './monst.js';
 import { revive_corpse } from './do.js';
 import { monsndx } from './makemon.js';
 import { kill_egg } from './timeout.js';
@@ -1192,6 +1210,11 @@ import { touch_artifact } from './artifact.js';
 export { touch_artifact };
 import { pick_nasty, mon_has_amulet } from './wizard.js';
 import { tt_doppel } from './topten.js';
+import { rloc_to } from './teleport.js';
+
+
+
+
 /* include/mondata.h:93 polyok() */
 const polyok = (ptr) => (ptr.mflags2 & MFLAGS.M2_NOPOLY) === 0;
 /* gu.urole.guardnum — role table carries it as a PM index */
@@ -3465,11 +3488,11 @@ export function newcham(mtmp, mdat, ncflags) {
 // src/mon.c:4367 wake_nearby() / wake_nearto_core() — noise wakes monsters
 // within u.ulevel*20 squared distance. Draw-neutral, but the waking matters:
 // a monster left asleep moves differently on every later turn.
-export function wake_nearby(petcall) {
-    wake_nearto_core(game.u.ux, game.u.uy, game.u.ulevel * 20, petcall);
+export async function wake_nearby(petcall) {
+    await wake_nearto_core(game.u.ux, game.u.uy, game.u.ulevel * 20, petcall);
 }
 
-function wake_nearto_core(x, y, distance, petcall) {
+export async function wake_nearto_core(x, y, distance, petcall) {
     /* C walks the fmon chain; this port keeps it as game.level.monsters,
        newest-first (see makemon.js's unshift). There is no game.fmon. */
     for (const mtmp of (game.level?.monsters || [])) {
@@ -3478,6 +3501,7 @@ function wake_nearto_core(x, y, distance, petcall) {
         if (distance === 0 || dist2(mtmp.mx, mtmp.my, x, y) < distance) {
             /* sleep for N turns uses mtmp->mfrozen, but so does paralysis
                so we leave mfrozen monsters alone */
+            await wake_msg(mtmp, false);
             mtmp.msleeping = 0; /* wake indeterminate sleep */
             if (!(game.mons[mtmp.mnum].geno & G_UNIQ))
                 mtmp.mstrategy &= ~STRAT_WAITMASK; /* wake 'meditation' */
@@ -3499,23 +3523,8 @@ function wake_nearto_core(x, y, distance, petcall) {
 }
 
 // src/mon.c:4402 wake_nearto()
-export function wake_nearto(x, y, distance) {
-    wake_nearto_core(x, y, distance, false);
-}
-
-// src/mon.c:4402 wake_nearto(), including visible wake-up messages. Async
-// callers use this form because wake_msg can fill the tty topline and block.
-export async function wake_nearto_with_messages(x, y, distance) {
-    for (const mtmp of (game.level?.monsters || [])) {
-        if (DEADMONSTER(mtmp))
-            continue;
-        if (distance === 0 || dist2(mtmp.mx, mtmp.my, x, y) < distance) {
-            await wake_msg(mtmp, false);
-            mtmp.msleeping = 0;
-            if (!(game.mons[mtmp.mnum].geno & G_UNIQ))
-                mtmp.mstrategy &= ~STRAT_WAITMASK;
-        }
-    }
+export async function wake_nearto(x, y, distance) {
+    await wake_nearto_core(x, y, distance, false);
 }
 
 // src/mon.c:4649 restore_cham() — reloaded shapechanger bookkeeping.
@@ -3737,4 +3746,117 @@ export async function kill_genocided_monsters() {
     kill_eggs(game.level.objects);
     kill_eggs(game.migrating_objs);
     kill_eggs(game.level.buriedobjs);
+}
+
+// src/mon.c:2827 mlifesaver(); the worn amulet of life saving that would fire
+export function mlifesaver(mon) {
+    if (!nonliving(mon.data) || is_vampshifter(mon)) {
+        const otmp = which_armor(mon, W_AMUL);
+
+        if (otmp && otmp.otyp === ONAMES.AMULET_OF_LIFE_SAVING)
+            return otmp;
+    }
+    return null;
+}
+
+// src/mon.c mimic_hit_msg(); a disguised mimic hit by healing magic
+export async function mimic_hit_msg(mtmp, otyp) {
+    const ap = mtmp.mappearance;
+
+    switch (M_AP_TYPE(mtmp)) {
+    case M_AP_NOTHING:
+    case M_AP_FURNITURE:
+    case M_AP_MONSTER:
+        break;
+    case M_AP_OBJECT:
+        if (otyp === ONAMES.SPE_HEALING || otyp === ONAMES.SPE_EXTRA_HEALING) {
+            await pline_mon(mtmp, `${The(simple_typename(ap))} seems a more vivid ${
+                c_obj_colors[game.objects[ap].oc_color]} than before.`);
+        }
+        break;
+    }
+}
+
+/* include/monst.h:261 monmax_difficulty_lev() */
+const monmax_difficulty_lev = () => monmax_difficulty(level_difficulty());
+
+// src/mon.c m_respond_shrieker(); a shrieker shrieks and may call a purple worm
+async function m_respond_shrieker(mtmp) {
+    if (!Deaf()) {
+        await pline(`${Monnam(mtmp)} shrieks.`);
+        await stop_occupation();
+    }
+    if (!rn2(10)) { /* 1/10 chance per shriek to create a monster */
+        /* new monster has a 1/13 chance to be a purple worm, random
+           otherwise; baby purple worm if adult is too difficult */
+        await makemon(rn2(13) ? null
+                      : game.mons[montoostrong(PMNAMES.PM_PURPLE_WORM,
+                                               monmax_difficulty_lev())
+                                  ? PMNAMES.PM_BABY_PURPLE_WORM : PMNAMES.PM_PURPLE_WORM],
+                      0, 0, NO_MM_FLAGS);
+    }
+    aggravate();
+}
+
+// src/mon.c m_respond_medusa(); Medusa gazes back
+async function m_respond_medusa(mtmp) {
+    let i;
+
+    for (i = 0; i < NATTK; i++)
+        if (mtmp.data.mattk[i][0] === ATTKS.AT_GAZE) {
+            await gazemu(mtmp, mtmp.data.mattk[i]);
+            break;
+        }
+}
+
+// src/mon.c m_respond(); a monster reacts to being disturbed
+export async function m_respond(mtmp) {
+    if (mtmp.data.msound === MSOUND.MS_SHRIEK && !um_dist(mtmp.mx, mtmp.my, 1))
+        await m_respond_shrieker(mtmp);
+    if (mtmp.data === game.mons[PMNAMES.PM_MEDUSA] && couldsee(mtmp.mx, mtmp.my))
+        await m_respond_medusa(mtmp);
+    /* Erinyes will inform surrounding monsters of your crimes */
+    if (mtmp.data === game.mons[PMNAMES.PM_ERINYS] && !mtmp.mpeaceful && m_canseeu(mtmp))
+        aggravate();
+}
+
+// src/mon.c m_into_limbo(); send mtmp off the level with no destination
+export function m_into_limbo(mtmp) {
+    const target_lev = ledger_no(game.u.uz), xyloc = MIGR_APPROX_XY;
+
+    mtmp.mstate |= MON_LIMBO;
+    migrate_monster(mtmp, target_lev, xyloc);
+}
+
+// src/mon.c get_iter_mons_xy(); call bfunc(mon, x, y) for every monster on
+// the level until it returns True; returns that monster
+export async function get_iter_mons_xy(bfunc, x, y) {
+    for (const mtmp of [...(game.level?.monsters || [])]) {
+        if (DEADMONSTER(mtmp) || mon_offmap(mtmp))
+            continue;
+        if (await bfunc(mtmp, x, y))
+            return mtmp;
+    }
+    return null;
+}
+
+// src/mon.c maybe_mnexto(); move mtmp next to the hero if a visible spot can
+// be found (evading a kick)
+export async function maybe_mnexto(mtmp) {
+    const mm = { x: 0, y: 0 };
+    const ptr = mtmp.data;
+    const diagok = !NODIAG(monsndx(ptr));
+    let tryct = 20;
+
+    do {
+        if (!enexto(mm, game.u.ux, game.u.uy, ptr))
+            return;
+        if (couldsee(mm.x, mm.y)
+            /* don't move grid bugs diagonally */
+            && (diagok || mm.x === mtmp.mx || mm.y === mtmp.my)) {
+            /* [this doesn't honor the 'montelecontrol' option] */
+            await rloc_to(mtmp, mm.x, mm.y);
+            return;
+        }
+    } while (--tryct > 0);
 }

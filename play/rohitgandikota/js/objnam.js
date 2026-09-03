@@ -11,6 +11,9 @@
 // js/o_init.js shuffles at game start — so a correct label here is also a
 // direct check that the o_init port is right.
 
+import { M_AP_OBJECT } from './const.js';
+import { M_AP_TYPE } from './const.js';
+import { ONAME } from './const.js';
 import { get_artifact } from './artifact.js';
 import { QBUFSZ } from './const.js';
 import { shk_your } from './shk.js';
@@ -3738,4 +3741,79 @@ export function cxname_singular(obj) {
     if (obj.otyp === ONAMES.CORPSE)
         return corpse_xname(obj, null, CXN_SINGULAR);
     return xname_flags(obj, CXN_SINGULAR);
+}
+
+// src/objnam.c killer_xname(); an object's name for the "killed by" line:
+// identified type, no blessed/cursed or rustproof detail, no user name
+export function killer_xname(obj) {
+    let save_ocknown;
+    let buf, save_ocuname, save_oname = null;
+
+    /* bypass object twiddling for artifacts */
+    if (obj.oartifact)
+        return bare_artifactname(obj);
+
+    /* remember original settings for core of the object;
+       oextra structs other than oname don't matter here--since they
+       aren't modified they don't need to be saved and restored */
+    const save_obj = { ...obj };
+    if (has_oname(obj))
+        save_oname = ONAME(obj);
+
+    /* killer name should be more specific than general xname; however, exact
+       info like blessed/cursed and rustproof makes things be too verbose; set
+       dknown (not observe_object) because dead characters don't observe */
+    obj.known = obj.dknown = 1;
+    obj.bknown = obj.rknown = obj.greased = 0;
+    /* if character is a priest[ess], bknown will get toggled back on */
+    if (obj.otyp !== ONAMES.POT_WATER)
+        obj.blessed = obj.cursed = 0;
+    else
+        obj.bknown = 1; /* describe holy/unholy water as such */
+    /* "killed by poisoned <obj>" would be misleading when poison is
+       not the cause of death and "poisoned by poisoned <obj>" would
+       be redundant when it is, so suppress "poisoned" prefix */
+    obj.opoisoned = 0;
+    /* strip user-supplied name; artifacts keep theirs */
+    if (!obj.oartifact && save_oname)
+        obj.oextra.oname = null;
+    /* temporarily identify the type of object */
+    save_ocknown = game.objects[obj.otyp].oc_name_known;
+    game.objects[obj.otyp].oc_name_known = 1;
+    save_ocuname = game.objects[obj.otyp].oc_uname;
+    game.objects[obj.otyp].oc_uname = null; /* avoid "foo called bar" */
+
+    /* format the object */
+    if (obj.otyp === ONAMES.CORPSE) {
+        buf = corpse_xname(obj, null, CXN_NORMAL);
+    } else if (obj.otyp === ONAMES.SLIME_MOLD) {
+        /* concession to "most unique deaths competition" in the annual
+           devnull tournament, suppress player supplied fruit names because
+           those can be used to fake other objects and dungeon features */
+        buf = `deadly slime mold${plur(obj.quan)}`;
+    } else {
+        buf = xname(obj);
+    }
+    /* apply an article if appropriate; caller should always use KILLED_BY */
+    if (obj.quan === 1 && !strstri(buf, "'s ") && !strstri(buf, "s' "))
+        buf = (obj_is_pname(obj) || the_unique_obj(obj)) ? the(buf) : an(buf);
+
+    game.objects[obj.otyp].oc_name_known = save_ocknown;
+    game.objects[obj.otyp].oc_uname = save_ocuname;
+    Object.assign(obj, save_obj); /* restore object's core settings */
+    if (!obj.oartifact && save_oname)
+        obj.oextra.oname = save_oname;
+
+    return buf;
+}
+
+// src/objnam.c mimic_obj_name(); what a mimic (or mimicking hero) looks like
+export function mimic_obj_name(mtmp) {
+    if (M_AP_TYPE(mtmp) === M_AP_OBJECT) {
+        if (mtmp.mappearance === ONAMES.GOLD_PIECE)
+            return 'gold';
+        if (mtmp.mappearance !== ONAMES.STRANGE_OBJECT)
+            return simple_typename(mtmp.mappearance);
+    }
+    return 'whatcha-may-callit';
 }

@@ -286,7 +286,7 @@ import { newcham, makemon, create_critters, monhp_per_lvl, neweshk, add_to_minv,
 import { tele, u_teleport_mon, rloco, enexto } from './teleport.js';
 import { find_ac } from './u_init.js';
 import { rehumanize, polymon, body_part } from './polyself.js';
-import { costly_alteration, stolen_value, costly_spot, shop_keeper, hot_pursuit } from './shk.js';
+import { costly_alteration, stolen_value, costly_spot, shop_keeper, hot_pursuit, obfree } from './shk.js';
 import { dryup } from './fountain.js';
 import { explode } from './explode.js';
 import { unpunish, litroom } from './read.js';
@@ -299,7 +299,7 @@ import { abuse_dog, wary_dog, tamedog } from './dog.js';
 import { setuwep, setuswapwep, setuqwep, set_twoweap } from './wield.js';
 import { remove_worn_item } from './steal.js';
 import {
-    mkobj, mksobj, delobj, objects_at, replace_object, rnd_class, weight, splitobj,
+    mkobj, mksobj, delobj, delobj_core, objects_at, replace_object, rnd_class, weight, splitobj,
     oc_merge_of, uncurse, attach_egg_hatch_timeout, obj_extract_self,
     eaten_stat, start_timer, spot_stop_timers, spot_time_left, obj_stop_timers,
     obj_ice_effects, place_object, stackobj, mergable, set_corpsenm, kill_egg,
@@ -2835,24 +2835,11 @@ function zombie_can_dig(x, y) {
     return typ === ROOM || typ === CORR || typ === GRAVE;
 }
 
-/** Thin obfree after extract — drop refs for GC. */
-function obfree_corpse(obj) {
-    if (!obj) return;
-    obj.quan = 0;
-    obj.where = OBJ_FREE;
-    if (obj.oextra) {
-        delete obj.oextra.omonst;
-        delete obj.oextra.omid;
-        delete obj.oextra.oname;
-    }
-}
-
 /**
  * C ref: zap.c revive — invent/minvent/floor + container/buried +
  * cant_revive zombie/doppel + montraits/omonst + ghost recorporealize +
  * shop stolen_value (D-0983).
- * Named omit: cant_finish_meal; Rider delobj_core force;
- * animate_statue caller of montraits.
+ * Named: cant_finish_meal; animate_statue caller of montraits.
  * @returns {Promise<object|null>} revived monst or null
  */
 export async function revive(corpse, by_hero) {
@@ -3066,19 +3053,19 @@ export async function revive(corpse, by_hero) {
         useup_invent(used);
         break;
     case OBJ_FLOOR:
-        delobj(used);
+        delobj_core(used, true);
         break;
     case OBJ_MINVENT:
         m_useup(used.ocarry, used);
         break;
     case OBJ_CONTAINED:
         obj_extract_self(used);
-        obfree_corpse(used);
+        obfree(used, null);
         break;
     case OBJ_BURIED:
         if (is_zomb) {
             obj_extract_self(used);
-            obfree_corpse(used);
+            obfree(used, null);
             break;
         }
         // C panics for non-zombie buried — leave corpse
@@ -3524,7 +3511,7 @@ async function miss_msg(str, mtmp) {
  * Death/vampshifter, else defended(AD_DRLI). First caller: zap.c
  * bhitm SPE_DRAIN_LIFE (D-1436). Named omit: defended worn-item walk.
  */
-function resists_drli(mon) {
+export function resists_drli(mon) {
     const ptr = mon?.data;
     if (!ptr) return false;
     if (is_undead(ptr) || is_demon(ptr) || is_were(ptr)

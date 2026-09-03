@@ -935,3 +935,80 @@ export async function mon_adjust_speed(mon, adjust, obj) {
             learnwand(obj);
     }
 }
+
+// src/worn.c wearslot(); which slots could obj be worn in
+export function wearslot(obj) {
+    const otyp = obj.otyp;
+    /* practically any item can be wielded or quivered; it's up to
+       our caller to handle such things--we assume "normal" usage */
+    let res = 0; /* default: can't be worn anywhere */
+
+    switch (obj.oclass) {
+    case OCLASSES.AMULET_CLASS:
+        res = W_AMUL; /* WORN_AMUL */
+        break;
+    case OCLASSES.RING_CLASS:
+        res = W_RINGL | W_RINGR; /* W_RING, BOTH_SIDES */
+        break;
+    case OCLASSES.ARMOR_CLASS:
+        switch (game.objects[otyp].oc_armcat) {
+        case ARM_SUIT:
+            res = W_ARM;
+            break; /* WORN_ARMOR */
+        case ARM_SHIELD:
+            res = W_ARMS;
+            break; /* WORN_SHIELD */
+        case ARM_HELM:
+            res = W_ARMH;
+            break; /* WORN_HELMET */
+        case ARM_GLOVES:
+            res = W_ARMG;
+            break; /* WORN_GLOVES */
+        case ARM_BOOTS:
+            res = W_ARMF;
+            break; /* WORN_BOOTS */
+        case ARM_CLOAK:
+            res = W_ARMC;
+            break; /* WORN_CLOAK */
+        case ARM_SHIRT:
+            res = W_ARMU;
+            break; /* WORN_SHIRT */
+        }
+        break;
+    case OCLASSES.WEAPON_CLASS:
+        res = W_WEP | W_SWAPWEP;
+        if (game.objects[otyp].oc_merge)
+            res |= W_QUIVER;
+        break;
+    case OCLASSES.TOOL_CLASS:
+        if (otyp === ONAMES.BLINDFOLD || otyp === ONAMES.TOWEL || otyp === ONAMES.LENSES)
+            res = W_TOOL; /* WORN_BLINDF */
+        else if (is_weptool(obj, game.objects) || otyp === ONAMES.TIN_OPENER)
+            res = W_WEP | W_SWAPWEP;
+        else if (otyp === ONAMES.SADDLE)
+            res = W_SADDLE;
+        break;
+    case OCLASSES.FOOD_CLASS:
+        if (obj.otyp === ONAMES.MEAT_RING)
+            res = W_RINGL | W_RINGR;
+        break;
+    case OCLASSES.GEM_CLASS:
+        res = W_QUIVER;
+        break;
+    case OCLASSES.BALL_CLASS:
+        res = W_BALL;
+        break;
+    case OCLASSES.CHAIN_CLASS:
+        res = W_CHAIN;
+        break;
+    default:
+        break;
+    }
+    return res;
+}
+
+// src/worn.c bypass_obj(); mark obj so the current zap skips it
+export function bypass_obj(obj) {
+    obj.bypass = 1;
+    (game.context ||= {}).bypasses = true;
+}

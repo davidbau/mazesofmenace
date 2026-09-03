@@ -1,6 +1,28 @@
 // invent.js — inventory and the look-here command.
 // C ref: src/invent.c
 
+import { MON_WEP } from './monst.js';
+import { noit_Monnam } from './do_name.js';
+import { engulfing_u } from './const.js';
+import { allow_all } from './pickup.js';
+import { query_objlist } from './pickup.js';
+import { s_suffix } from './hacklib.js';
+import { strsubst } from './hacklib.js';
+import { safe_qbuf } from './objnam.js';
+import { ansimpleoname } from './objnam.js';
+import { docrt } from './display.js';
+import { add_menu_heading } from './options.js';
+import { QBUFSZ } from './const.js';
+import { MINV_PICKMASK } from './const.js';
+import { MINV_ALL } from './const.js';
+import { INCLUDE_HERO } from './const.js';
+import { INVORDER_SORT } from './const.js';
+import { PICK_NONE } from './const.js';
+import { MENU_BEHAVE_STANDARD } from './const.js';
+import { tty_select_menu } from './tty/wintty.js';
+import { tty_end_menu } from './tty/wintty.js';
+import { tty_add_menu_str } from './tty/wintty.js';
+import { tty_start_menu } from './tty/wintty.js';
 import { Has_contents } from './obj.js';
 import { get_obj_location } from './zap.js';
 import { unpunish } from './read.js';
@@ -137,7 +159,7 @@ export function assigninvlet(otmp) {
 // before entering inventory. Quest-artifact text is asynchronous in the tty
 // port, so addinv() waits for it before assigning an inventory letter and
 // printing the ordinary pickup message.
-function addinv_core1(obj) {
+export function addinv_core1(obj) {
     if (obj.oclass === OCLASSES.COIN_CLASS) {
         (game.disp ||= {}).botl = true;
         return null;
@@ -261,7 +283,7 @@ export function addinv_nomerge(obj) {
 
 // src/invent.c:1022 addinv_core2() — side effects of an object having
 // just been added to inventory. Returns a promise only when it prints.
-function addinv_core2(obj) {
+export function addinv_core2(obj) {
     if (confers_luck(obj))
         set_moreluck();
     /* Archeologists can decipher the writing on a scroll label to work out
@@ -1684,7 +1706,7 @@ export function set_moreluck() {
         game.u.moreluck = bonus >= 0 ? 3 : -3;
 }
 
-function freeinv_core(obj) {
+export function freeinv_core(obj) {
     if (obj.oclass === OCLASSES.COIN_CLASS) {
         /* src/invent.c freeinv_core() — this arm is exactly two statements in
            5.0. The 'money2mon' gap recorded here before did not correspond to
@@ -2301,4 +2323,169 @@ export function delallobj(x, y) {
             continue;
         delobj(otmp);
     }
+}
+
+// src/invent.c set_cknown_lknown(); probing a container or statue learns
+// its contents and lock state; a tin learns its contents
+export function set_cknown_lknown(obj) {
+    if (Is_container(obj) || obj.otyp === ONAMES.STATUE)
+        obj.cknown = obj.lknown = 1;
+    else if (obj.otyp === ONAMES.TIN)
+        obj.cknown = 1;
+    /* TODO? cknown might be extended to candy bar, where it would mean that
+       wrapper's text was known which in turn indicates candy bar's content */
+    return;
+}
+
+// src/invent.c worn_wield_only(); query_objlist() filter for a monster's
+// armament: things that *are* worn or wielded
+export function worn_wield_only(obj) {
+    return (obj.owornmask !== 0 && obj.owornmask != null);
+}
+
+// src/invent.c invdisp_nothing(); a header, a blank line and "(none)"
+export async function invdisp_nothing(hdr, txt) {
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    add_menu_heading(win, hdr);
+    tty_add_menu_str(win, '');
+    tty_add_menu_str(win, txt);
+    tty_end_menu(win, null);
+    await tty_display_nhwindow(win);
+    await tty_select_menu(win, PICK_NONE);
+    tty_destroy_nhwindow(win);
+    await docrt();
+    return;
+}
+
+// src/invent.c cinv_doname(); doname() with "trapped" inserted for a
+// container whose trap probing has just revealed
+export function cinv_doname(obj) {
+    let result = doname(obj);
+
+    /*
+     * If obj->tknown ever gets implemented, doname() will handle this.
+     * Assumes that probing reveals the trap prior to calling us.  Since
+     * we lack that flag, hero forgets about it as soon as we're done....
+     */
+    if (obj.otrapped && result.length + 'trapped '.length + 1 <= QBUFSZ) {
+        /* obj->lknown has been set before calling us so either "locked" or
+           "unlocked" should always be present (for a trapped container) */
+        const p = result.indexOf(' locked'),
+              q = result.indexOf(' unlocked');
+
+        if (p >= 0 && (q < 0 || p < q))
+            result = strsubst(result, ' locked ', ' trapped locked ');
+        else if (q >= 0)
+            result = strsubst(result, ' unlocked ', ' trapped unlocked ');
+        /* might need to change "an" to "a"; when no BUC is present,
+           "an unlocked" yielded "an trapped unlocked" above */
+        result = strsubst(result, 'an trapped ', 'a trapped ');
+    }
+    return result;
+}
+
+// src/invent.c cinv_ansimpleoname(); ansimpleoname() with "trapped"
+export function cinv_ansimpleoname(obj) {
+    let result = ansimpleoname(obj);
+
+    if (obj.otrapped) {
+        if (result.slice(0, 2) !== 'a ')
+            result = strsubst(result, 'a ', 'a trapped ');
+        else if (result.slice(0, 3) !== 'an ')
+            result = strsubst(result, 'an ', 'an trapped ');
+        /* unique container? nethack doesn't have any */
+        else if (result.slice(0, 4) !== 'the ')
+            result = strsubst(result, 'the ', 'the trapped ');
+        /* no leading article at all? shouldn't happen with ansimpleoname() */
+        else
+            result = strsubst(result, '', 'trapped '); /* insert at beginning */
+    }
+    return result;
+}
+
+// src/invent.c display_cinventory(); show the contents of a container
+// (probing); returns the selected object, if any
+export async function display_cinventory(obj) {
+    let ret;
+    let n;
+    let selected = [];
+
+    const qbuf = safe_qbuf('Contents of ', ':', obj,
+                           /* custom formatting routines to insert "trapped"
+                              into the object's name when appropriate;
+                              last resort "that" won't ever get used */
+                           cinv_doname, cinv_ansimpleoname, 'that');
+
+    if (obj.cobj && obj.cobj.length) {
+        selected = await query_objlist(qbuf, obj.cobj, INVORDER_SORT,
+                                       PICK_NONE, allow_all);
+        n = selected.length;
+    } else {
+        await invdisp_nothing(qbuf, '(empty)');
+        n = 0;
+    }
+    if (n > 0)
+        ret = selected[0];
+    else
+        ret = null;
+    obj.cknown = 1;
+    return ret;
+}
+
+// src/invent.c display_minventory(); show a monster's inventory
+export async function display_minventory(mon,    /* monster whose minvent we're showing */
+                                         dflags, /* control over what to display */
+                                         title)  /* menu title */
+{
+    let ret;
+    let tmp;
+    let n;
+    let selected = [];
+    const do_all = (dflags & MINV_ALL) !== 0,
+          incl_hero = (do_all && engulfing_u(mon)),
+          have_inv = !!(mon.minvent && mon.minvent.length),
+          have_any = (have_inv || incl_hero),
+          pickings = (dflags & MINV_PICKMASK);
+
+    tmp = `${s_suffix(noit_Monnam(mon))} ${do_all ? 'possessions' : 'armament'}:`;
+
+    if (do_all ? have_any : (mon.misc_worn_check || MON_WEP(mon))) {
+        /* Fool the 'weapon in hand' routine into
+         * displaying 'weapon in claw', etc. properly.
+         */
+        game.youmonst.data = mon.data;
+        /* in case inside a shop, don't append "for sale" prices */
+        (game.iflags ||= {}).suppress_price = (game.iflags.suppress_price || 0) + 1;
+
+        selected = await query_objlist(title ? title : tmp, mon.minvent || [],
+                                       (INVORDER_SORT | (incl_hero ? INCLUDE_HERO : 0)),
+                                       pickings,
+                                       do_all ? allow_all : worn_wield_only);
+        n = selected.length;
+
+        game.iflags.suppress_price--;
+        /* was 'set_uasmon();' but that potentially has side-effects */
+        game.youmonst.data = game.mons[game.u.umonnum]; /* basic part of set_uasmon() */
+    } else {
+        await invdisp_nothing(title ? title : tmp, '(none)');
+        n = 0;
+    }
+
+    if (n > 0)
+        ret = selected[0];
+    else
+        ret = null;
+    return ret;
+}
+
+// src/invent.c g_at(); the gold on the floor at <x,y>, if any
+export function g_at(x, y) {
+    for (const obj of game.level.objects) {
+        if (obj.where !== OBJ_FLOOR || obj.ox !== x || obj.oy !== y)
+            continue;
+        if (obj.oclass === OCLASSES.COIN_CLASS)
+            return obj;
+    }
+    return null;
 }

@@ -88,6 +88,398 @@ import { SDOOR, SCORR, CORR, STAIRS, LADDER, IRONBARS, LA_DOWN, ROOM,
          T_LOOTED, TREE_LOOTED, TREE_SWARM, S_LPUDDING, S_LDWASHER,
          MM_ANGRY, MM_NOMSG, MM_MALE, MM_FEMALE, KILLED_BY,
          A_WIS, A_LAWFUL, ICE, ZAP_POS } from './const.js';
+import { wake_nearby } from './mon.js';
+import { get_iter_mons } from './mon.js';
+import { get_iter_mons_xy } from './mon.js';
+import { maybe_mnexto } from './mon.js';
+import { wakeup } from './mon.js';
+import { Role_if } from './attrib.js';
+import { A_CHA } from './const.js';
+import { P_NONE } from './const.js';
+import { P_MARTIAL_ARTS } from './const.js';
+import { W_ARMF } from './const.js';
+import { NO_TRAP_FLAGS } from './const.js';
+import { NATTK } from './const.js';
+import { M_ATTK_MISS } from './const.js';
+import { M_ATTK_DEF_DIED } from './const.js';
+import { STONE } from './const.js';
+import { OBJ_FLOOR } from './const.js';
+import { OBJ_MINVENT } from './const.js';
+import { OBJ_MIGRATING } from './const.js';
+import { WEB } from './const.js';
+import { STATUE_TRAP } from './const.js';
+import { CXN_PFX_THE } from './const.js';
+import { FOOT } from './const.js';
+import { KICKED_WEAPON } from './const.js';
+import { VIS_EFFECTS } from './const.js';
+import { MAY_HIT } from './const.js';
+import { D_WARNED } from './const.js';
+import { SHOP_DOOR_COST } from './const.js';
+import { ER_NOTHING } from './const.js';
+import { NH_BLACK } from './const.js';
+import { TT_PIT } from './const.js';
+import { TT_WEB } from './const.js';
+import { TT_BEARTRAP } from './const.js';
+import { LAVAWALL } from './const.js';
+import { Is_airlevel } from './const.js';
+import { Is_waterlevel } from './const.js';
+import { something } from './const.js';
+import { Something } from './const.js';
+import { is_pit } from './const.js';
+import { Trap_Killed_Mon } from './trap.js';
+import { can_teleport } from './mondata.js';
+import { attacktype } from './mondata.js';
+import { likes_gold } from './mondata.js';
+import { touch_petrifies } from './mondata.js';
+import { poly_when_stoned } from './mondata.js';
+import { digests } from './mondata.js';
+import { is_giant } from './mondata.js';
+import { is_watch } from './mondata.js';
+import { special_dmgval } from './weapon.js';
+import { use_skill } from './weapon.js';
+import { find_roll_to_hit } from './uhitm.js';
+import { mon_maybe_unparalyze } from './uhitm.js';
+import { damageum } from './uhitm.js';
+import { missum } from './uhitm.js';
+import { set_apparxy } from './monmove.js';
+import { mon_yells } from './monmove.js';
+import { goodpos } from './makemon.js';
+import { remove_monster } from './makemon.js';
+import { place_monster } from './makemon.js';
+import { is_mercenary } from './makemon.js';
+import { m_in_out_region } from './region.js';
+import { mintrap } from './trap.js';
+import { find_trap } from './detect.js';
+import { activate_statue_trap } from './trap.js';
+import { instapetrify } from './trap.js';
+import { chest_trap } from './trap.js';
+import { b_trapped } from './trap.js';
+import { fall_through } from './trap.js';
+import { water_damage } from './trap.js';
+import { Levitation } from './youprop.js';
+import { Passes_walls } from './youprop.js';
+import { Stone_resistance } from './youprop.js';
+import { Hallucination } from './youprop.js';
+import { Blind } from './youprop.js';
+import { feel_location } from './display.js';
+import { feel_newsym } from './display.js';
+import { glyph_at } from './display.js';
+import { show_glyph_cell } from './display.js';
+import { You_cant } from './pline.js';
+import { Norep } from './pline.js';
+import { verbalize } from './pline.js';
+import { hliquid } from './do_name.js';
+import { mhis } from './mondata.js';
+import { noteleport_level } from './teleport.js';
+import { finish_meating } from './dogmove.js';
+import { mpickobj } from './makemon.js';
+import { make_happy_shk } from './shk.js';
+import { money_cnt } from './invent.js';
+import { hidden_gold } from './invent.js';
+import { xname } from './objnam.js';
+import { otense } from './objnam.js';
+import { miss } from './zap.js';
+import { killer_xname } from './objnam.js';
+import { corpse_xname } from './objnam.js';
+import { singular } from './objnam.js';
+import { The } from './objnam.js';
+import { distant_name } from './objnam.js';
+import { Doname2 } from './objnam.js';
+import { An } from './objnam.js';
+import { polymon } from './polyself.js';
+import { is_ice } from './dbridge.js';
+import { is_art } from './artifact.js';
+import { ART_MJOLLNIR } from './artilist_data.js';
+import { find_objowner } from './shk.js';
+import { costly_adjacent } from './shk.js';
+import { addtobill } from './shk.js';
+import { flooreffects } from './do.js';
+import { place_object } from './mkobj.js';
+import { impact_disturbs_zombies } from './hack.js';
+import { stackobj } from './invent.js';
+import { Is_box } from './obj.js';
+import { breakchestlock } from './lock.js';
+import { hero_breaks } from './dothrow.js';
+import { splitobj } from './mkobj.js';
+import { scatter } from './explode.js';
+import { surface } from './dungeon.js';
+import { snuff_candle } from './apply.js';
+import { bhit } from './zap.js';
+import { thitmonst } from './dothrow.js';
+import { costly_gold } from './shk.js';
+import { subfrombill } from './shk.js';
+import { contained_gold } from './invent.js';
+import { donate_gold } from './shk.js';
+import { set_wounded_legs } from './do.js';
+import { hurtle } from './dothrow.js';
+import { in_town } from './hack.js';
+import { add_damage } from './shk.js';
+import { pay_for_damage } from './shk.js';
+import { mksobj } from './mkobj.js';
+import { altar_wrath } from './pray.js';
+import { disturb_grave } from './engrave.js';
+import { del_engr_at } from './engrave.js';
+import { G_GONE } from './const.js';
+import { rnd_treefruit_at } from './dig.js';
+import { is_plural } from './obj.js';
+import { sink_backs_up } from './fountain.js';
+import { kick_steed } from './steed.js';
+import { legs_in_no_shape } from './do.js';
+import { t_at } from './mon.js';
+import { couldsee } from './vision.js';
+import { d } from './rng.js';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* src/dokick.c:8 martial() — Samurai and Monk get the bonus, as do bigfoot
    forms and anyone wearing kicking boots. */
@@ -170,23 +562,6 @@ export function ship_object(otmp, x, y, shop_floor_obj) {
 }
 
 
-// src/mon.c:4367 wake_nearby() — wake everything within ulevel*20 squared.
-// Draws nothing: it clears msleeping and the waiting strategy bit.
-function wake_nearby(petcall) {
-    const distance = game.u.ulevel * 20;
-    for (const mtmp of (game.level?.monsters || [])) {
-        if (mtmp.mhp <= 0)
-            continue;
-        if (distance === 0
-            || dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy) < distance) {
-            mtmp.msleeping = 0;
-            mtmp.mstrategy &= ~STRAT_WAITMASK;
-            if (petcall && mtmp.mtame)
-                note_unported_dokick('wake_nearby:petcall');
-        }
-    }
-}
-
 // src/dokick.c:1213 maybe_kick_monster() — the checks that can call the kick
 // off. forcefight is forced on for a hostile or unseen target so
 // attack_checks does not ask "Really attack?"; overexertion() DRAWS.
@@ -206,93 +581,134 @@ async function maybe_kick_monster(mon, x, y) {
 }
 
 const kick_passes_thru = 'kick passes harmlessly through';
+/* src/decl.c gn.nowhere: the rm kick_ouch() refers to when off the map */
+const nowhere = { typ: STONE };
+/* include/hack.h ROLL_FROM(); include/youprop.h Wounded_legs */
+const ROLL_FROM = (array) => array[rn2(array.length)];
+const Wounded_legs = () => !!(game.u.intrinsic?.HWounded_legs || game.u.EWounded_legs);
+/* include/hack.h:1236 Maybe_Half_Phys() */
+const Maybe_Half_Phys = (dmg) =>
+    (!!(game.u.intrinsic?.HHalf_physical_damage || game.u.uprops?.HALF_PHDAM)
+     ? Math.trunc((dmg + 1) / 2) : dmg);
+/* include/you.h Luck: u.uluck + u.moreluck, read at each use */
+const Luck = () => (game.u.uluck | 0) + (game.u.moreluck | 0);
+/* the C compares glyph integers; our glyph_at() returns descriptors */
+const same_glyph = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 // src/dokick.c:34 kickdmg(), damage from an ordinary, unpolymorphed kick.
 // Keep the damage, exercise and passive-counterattack calls in C's order;
 // all three can draw and the target can die between them.
 async function kickdmg(mon, clumsy) {
-    const ptr = mon.data || game.mons[mon.mnum];
-    const boots = game.u.uarmf || null;
+    let mdx, mdy;
     let dmg = Math.trunc((acurrstr() + ACURR(A_DEX) + ACURR(A_CON)) / 15);
-    let specialdmg = 0;
+    let specialdmg, kick_skill = P_NONE;
+    let trapkilled = false;
 
-    if (boots?.otyp === ONAMES.KICKING_BOOTS)
+    if (game.u.uarmf && game.u.uarmf.otyp === ONAMES.KICKING_BOOTS)
         dmg += 5;
+
+    /* excessive wt affects dex, so it affects dmg */
     if (clumsy)
         dmg = Math.trunc(dmg / 2);
-    if (thick_skinned(ptr) || ptr.pmidx === PMNAMES.PM_SHADE)
+
+    /* kicking a dragon or an elephant will not harm it */
+    if (thick_skinned(mon.data))
         dmg = 0;
 
-    if (boots?.blessed && mon_hates_blessings(mon))
-        specialdmg += rnd(4);
-    if (boots && game.objects?.[boots.otyp]?.oc_material === MATERIALS.SILVER
-        && mon_hates_silver(mon))
-        specialdmg += rnd(20);
+    /* attacking a shade is normally useless */
+    if (mon.data === game.mons[PMNAMES.PM_SHADE])
+        dmg = 0;
 
-    if (ptr.pmidx === PMNAMES.PM_SHADE && !specialdmg) {
+    specialdmg = special_dmgval(game.youmonst, mon, W_ARMF, null);
+
+    if (mon.data === game.mons[PMNAMES.PM_SHADE] && !specialdmg) {
         await pline_The(`${kick_passes_thru}.`);
+        /* doesn't exercise skill or abuse alignment or frighten pet,
+           and shades have no passive counterattack */
         return;
     }
 
     if (M_AP_TYPE(mon))
         seemimic(mon);
+
     await check_caitiff(mon);
 
+    /* squeeze some guilt feelings... */
     if (mon.mtame) {
         await abuse_dog(mon);
         if (mon.mtame)
-            monflee(mon, dmg ? rnd(dmg) : 1, false, false);
+            await monflee(mon, (dmg ? rnd(dmg) : 1), false, false);
         else
             mon.mflee = 0;
     }
 
-    let kick_skill = false;
     if (dmg > 0) {
+        /* convert potential damage to actual damage */
         dmg = rnd(dmg);
         if (martial()) {
-            kick_skill = dmg > 1;
+            if (dmg > 1)
+                kick_skill = P_MARTIAL_ARTS;
             dmg += rn2(Math.trunc(ACURR(A_DEX) / 2) + 1);
         }
+        /* a good kick exercises your dex */
         exercise(A_DEX, true);
     }
-    dmg += specialdmg;
-    if (boots)
-        dmg += boots.spe || 0;
-    dmg += game.u.udaminc || 0;
+    dmg += specialdmg; /* for blessed (or hypothetically, silver) boots */
+    if (game.u.uarmf)
+        dmg += (game.u.uarmf.spe | 0);
+    dmg += (game.u.udaminc | 0); /* add ring(s) of increase damage */
     if (dmg > 0)
         mon.mhp -= dmg;
-
-    if (!DEADMONSTER(mon) && martial() && !bigmonst(ptr) && !rn2(3)
+    if (!DEADMONSTER(mon) && martial() && !bigmonst(mon.data) && !rn2(3)
         && mon.mcanmove && mon !== game.u.ustuck && !mon.mtrapped) {
-        /* The common roll is preserved. Relocating the target also needs
-           region crossing and trap handling, neither of which is complete. */
-        note_unported_dokick('kickdmg:reel');
+        /* see if the monster has a place to move into */
+        mdx = mon.mx + game.u.dx;
+        mdy = mon.my + game.u.dy;
+        /* TODO: replace with mhurtle? */
+        if (goodpos(mdx, mdy, mon, 0)) {
+            await pline(`${Monnam(mon)} reels from the blow.`);
+            if (await m_in_out_region(mon, mdx, mdy)) {
+                remove_monster(mon.mx, mon.my);
+                newsym(mon.mx, mon.my);
+                place_monster(mon, mdx, mdy);
+                newsym(mon.mx, mon.my);
+                set_apparxy(mon);
+                if (await mintrap(mon, NO_TRAP_FLAGS) === Trap_Killed_Mon)
+                    trapkilled = true;
+            }
+        }
     }
 
-    await passive(mon, boots, true, !DEADMONSTER(mon), ATTKS.AT_KICK, false);
-    if (DEADMONSTER(mon))
+    await passive(mon, game.u.uarmf, true, !DEADMONSTER(mon), ATTKS.AT_KICK, false);
+    if (DEADMONSTER(mon) && !trapkilled)
         await killed(mon);
-    if (kick_skill)
-        note_unported_dokick('kickdmg:use_skill');
+
+    /* may bring up a dialog, so put this after all messages */
+    if (kick_skill !== P_NONE) /* exercise proficiency */
+        await use_skill(kick_skill, 1);
 }
 
 // src/dokick.c:146 kick_monster(), the ordinary hero form is complete.
 // Polymorphed multi-kick attacks are tracked separately because they use the
 // full hmonas damage machinery rather than this function's kickdmg path.
 async function kick_monster(mon, x, y) {
-    const ptr = mon.data || game.mons[mon.mnum];
     let clumsy = false;
+    let i, j;
+    let doit = false;
 
+    /* anger target even if wild miss will occur */
     await setmangry(mon, true);
 
-    if (game.u.uprops?.LEVITATION && !rn2(3) && verysmall(ptr)
-        && !is_flyer(ptr)) {
+    if (Levitation() && !rn2(3) && verysmall(mon.data)
+        && !is_flyer(mon.data)) {
         await pline('Floating in the air, you miss wildly!');
         exercise(A_DEX, false);
-        await passive(mon, game.u.uarmf, false, true, ATTKS.AT_KICK, false);
+        await passive(mon, game.u.uarmf, false, 1, ATTKS.AT_KICK, false);
         return;
     }
 
+    /* reveal hidden target even if kick ends up missing (note: being
+       hidden doesn't affect chance to hit so neither does this reveal) */
     if (mon.mundetected
         || (M_AP_TYPE(mon) && M_AP_TYPE(mon) !== M_AP_MONSTER)) {
         if (M_AP_TYPE(mon))
@@ -302,131 +718,527 @@ async function kick_monster(mon, x, y) {
             map_invisible(x, y);
         else
             newsym(x, y);
-        await There(`is ${canspotmon(mon) ? a_monnam(mon)
-                                         : 'something hidden'} here.`);
+        await There(`is ${canspotmon(mon) ? a_monnam(mon) : 'something hidden'} here.`);
     }
 
-    if (Upolyd(game.u)
-        && ptr.mattk?.some(a => a?.[0] === ATTKS.AT_KICK))
-        note_unported_dokick('kick_monster:polymorphed_kicks');
+    /* Kick attacks by kicking monsters are normal attacks, not special.
+     * This is almost always worthless, since you can either take one turn
+     * and do all your kicks, or else take one turn and attack the monster
+     * normally, getting all your attacks _including_ all your kicks.
+     * If you have >1 kick attack, you get all of them.
+     */
+    if (Upolyd(game.u) && attacktype(game.youmonst.data, ATTKS.AT_KICK)) {
+        let uattk;
+        let sum, kickdieroll, armorpenalty, specialdmg;
+        const out = { attk_count: 0, role_roll_penalty: 0 };
+        const tmp = await find_roll_to_hit(mon, ATTKS.AT_KICK, null, out);
+        armorpenalty = out.role_roll_penalty;
+        mon_maybe_unparalyze(mon);
 
-    const i = -inv_weight();
-    const j = weight_cap();
-    const j10 = Math.trunc(j / 10), j5 = Math.trunc(j / 5);
+        for (i = 0; i < NATTK; i++) {
+            /* first of two kicks might have provoked counterattack
+               that has incapacitated the hero (ie, floating eye) */
+            if (game.multi < 0)
+                break;
 
+            uattk = game.youmonst.data.mattk[i];
+            /* we only care about kicking attacks here */
+            if (uattk[0] !== ATTKS.AT_KICK)
+                continue;
+
+            kickdieroll = rnd(20);
+            specialdmg = special_dmgval(game.youmonst, mon, W_ARMF, null);
+            if (mon.data === game.mons[PMNAMES.PM_SHADE] && !specialdmg) {
+                /* doesn't matter whether it would have hit or missed,
+                   and shades have no passive counterattack */
+                await Your(`${kick_passes_thru} ${mon_nam(mon)}.`);
+                break; /* skip any additional kicks */
+            } else if (tmp > kickdieroll) {
+                await You(`kick ${mon_nam(mon)}.`);
+                sum = await damageum(mon, uattk, specialdmg);
+                await passive(mon, game.u.uarmf, (sum !== M_ATTK_MISS),
+                              !(sum & M_ATTK_DEF_DIED), ATTKS.AT_KICK, false);
+                if ((sum & M_ATTK_DEF_DIED))
+                    break; /* Defender died */
+            } else {
+                await missum(mon, uattk, (tmp + armorpenalty > kickdieroll));
+                await passive(mon, game.u.uarmf, false, 1, ATTKS.AT_KICK, false);
+            }
+        }
+        return;
+    }
+
+    i = -inv_weight();
+    j = weight_cap();
+
+    /* What the following confusing if statements mean:
+     * If you are over 70% of carrying capacity, you go through a "deal no
+     * damage" check, and if that fails, a "clumsy kick" check.
+     * At this % of carrycap | Chance of no damage | Chance of clumsiness
+     *             [70%-80%) |                 1/4 |                  1/3
+     *             [80%-90%) |                 1/3 |                  1/2
+     *            [90%-100%) |                 1/2 |                   1
+     */
     if (i < Math.trunc((j * 3) / 10)) {
-        if (!rn2(i < j10 ? 2 : i < j5 ? 3 : 4)) {
-            if (!martial()) {
+        if (!rn2((i < Math.trunc(j / 10)) ? 2 : (i < Math.trunc(j / 5)) ? 3 : 4)) {
+            if (martial())
+                doit = true;
+            else {
                 await Your('clumsy kick does no damage.');
-                await passive(mon, game.u.uarmf, false, true, ATTKS.AT_KICK,
-                              false);
+                await passive(mon, game.u.uarmf, false, 1, ATTKS.AT_KICK, false);
                 return;
             }
         }
-        if (i < j10)
-            clumsy = true;
-        else if (!rn2(i < j5 ? 2 : 3))
-            clumsy = true;
+        if (!doit) {
+            if (i < Math.trunc(j / 10))
+                clumsy = true;
+            else if (!rn2((i < Math.trunc(j / 5)) ? 2 : 3))
+                clumsy = true;
+        }
     }
 
-    if (Fumbling())
-        clumsy = true;
-    else if (game.u.uarm && game.objects?.[game.u.uarm.otyp]?.oc_bulky
-             && ACURR(A_DEX) < rnd(25))
-        clumsy = true;
+    if (!doit) {
+        if (Fumbling())
+            clumsy = true;
 
+        else if (game.u.uarm && game.objects[game.u.uarm.otyp].oc_bulky && ACURR(A_DEX) < rnd(25))
+            clumsy = true;
+    }
+ /* doit: */
     await You(`kick ${mon_nam(mon)}.`);
-    if (!rn2(clumsy ? 3 : 4) && (clumsy || !bigmonst(ptr))
-        && mon.mcansee && !mon.mtrapped && !thick_skinned(ptr)
-        && ptr.mlet !== MONSYMS.S_EEL && haseyes(ptr) && mon.mcanmove
-        && !mon.mstun && !mon.mconf && !mon.msleeping && ptr.mmove >= 12) {
-        if (!nohands(ptr) && !rn2(martial() ? 5 : 3)) {
+    if (!rn2(clumsy ? 3 : 4) && (clumsy || !bigmonst(mon.data))
+        && mon.mcansee && !mon.mtrapped && !thick_skinned(mon.data)
+        && mon.data.mlet !== MONSYMS.S_EEL && haseyes(mon.data) && mon.mcanmove
+        && !mon.mstun && !mon.mconf && !mon.msleeping
+        && mon.data.mmove >= 12) {
+        if (!nohands(mon.data) && !rn2(martial() ? 5 : 3)) {
             await pline(`${Monnam(mon)} blocks your ${clumsy ? 'clumsy ' : ''}kick.`);
-            await passive(mon, game.u.uarmf, false, true, ATTKS.AT_KICK,
-                          false);
+            await passive(mon, game.u.uarmf, false, 1, ATTKS.AT_KICK, false);
             return;
-        }
-
-        mnexto(mon);
-        if (mon.mx !== x || mon.my !== y) {
-            unmap_invisible(x, y);
-            const motion = is_floater(ptr) ? 'floats'
-                : is_flyer(ptr) ? 'swoops'
-                  : (nolimbs(ptr) || slithy(ptr)) ? 'slides' : 'jumps';
-            await pline(`${Monnam(mon)} ${motion}, ${clumsy ? 'easily' : 'nimbly'} evading your ${clumsy ? 'clumsy ' : ''}kick.`);
-            await passive(mon, game.u.uarmf, false, true, ATTKS.AT_KICK,
-                          false);
-            return;
+        } else {
+            await maybe_mnexto(mon);
+            if (mon.mx !== x || mon.my !== y) {
+                unmap_invisible(x, y);
+                await pline(`${Monnam(mon)} ${
+                    (can_teleport(mon.data) && !noteleport_level(mon))
+                        ? 'teleports'
+                        : is_floater(mon.data)
+                              ? 'floats'
+                              : is_flyer(mon.data) ? 'swoops'
+                                                   : (nolimbs(mon.data)
+                                                      || slithy(mon.data))
+                                                         ? 'slides'
+                                                         : 'jumps'}, ${
+                    clumsy ? 'easily' : 'nimbly'} evading your ${clumsy ? 'clumsy ' : ''}kick.`);
+                await passive(mon, game.u.uarmf, false, 1, ATTKS.AT_KICK, false);
+                return;
+            }
         }
     }
-
     await kickdmg(mon, clumsy);
+}
+
+// src/dokick.c:295 ghitm(); gold hits a monster.  Return TRUE if caught
+// (the gold taken care of), FALSE otherwise.  The gold object is *not*
+// attached to the fobj chain!
+async function ghitm(mtmp, gold) {
+    let msg_given = false;
+
+    if (!likes_gold(mtmp.data) && !mtmp.isshk && !mtmp.ispriest
+        && !mtmp.isgd && !is_mercenary(mtmp.data)) {
+        await wakeup(mtmp, true);
+    } else if (!mtmp.mcanmove) {
+        /* too light to do real damage */
+        if (canseemon(mtmp)) {
+            await pline_The(`${xname(gold)} harmlessly ${otense(gold, 'hit')} ${mon_nam(mtmp)}.`);
+            msg_given = true;
+        }
+    } else {
+        const was_sleeping = mtmp.msleeping;
+        let umoney;
+        const value = gold.quan * game.objects[gold.otyp].oc_cost;
+
+        mtmp.msleeping = 0; /* end indeterminate sleep (won't get here
+                             * for temporary--counted--sleep since that
+                             * uses mfrozen and mfrozen implies !mcanmove) */
+        finish_meating(mtmp);
+        if (!mtmp.isgd && !rn2(4)) /* not always pleasing */
+            await setmangry(mtmp, true);
+        /* greedy monsters catch gold */
+        if (cansee(mtmp.mx, mtmp.my))
+            await pline(`${Monnam(mtmp)} ${was_sleeping ? 'awakens and ' : ''}catches the gold.`);
+        await mpickobj(mtmp, gold);
+        gold = null; /* obj has been freed */
+        if (mtmp.isshk) {
+            let robbed = mtmp.eshk.robbed;
+
+            if (robbed) {
+                robbed -= value;
+                if (robbed < 0)
+                    robbed = 0;
+                await pline_The(`amount ${!robbed ? '' : 'partially '}covers ${mhis(mtmp)} recent losses.`);
+                mtmp.eshk.robbed = robbed;
+                if (!robbed)
+                    await make_happy_shk(mtmp, false);
+            } else {
+                /* SetVoice(mtmp, 0, 80, 0); */
+                if (mtmp.mpeaceful) {
+                    mtmp.eshk.credit += value;
+                    await You(`have ${mtmp.eshk.credit} ${currency(mtmp.eshk.credit)} in credit.`);
+                } else
+                    await verbalize('Thanks, scum!');
+            }
+        } else if (mtmp.ispriest) {
+            /* SetVoice(mtmp, 0, 80, 0); */
+            if (mtmp.mpeaceful)
+                await verbalize('Thank you for your contribution.');
+            else
+                await verbalize('Thanks, scum!');
+        } else if (mtmp.isgd) {
+            umoney = money_cnt(game.invent);
+            /* Some of these are iffy, because a hostile guard
+               won't become peaceful and resume leading hero
+               out of the vault.  If he did do that, player
+               could try fighting, then weasel out of being
+               killed by throwing his/her gold when losing. */
+            /* SetVoice(mtmp, 0, 80, 0); */
+            await verbalize(umoney ? 'Drop the rest and follow me.'
+                            : hidden_gold(true)
+                              ? 'You still have hidden gold.  Drop it now.'
+                              : mtmp.mpeaceful
+                                ? "I'll take care of that; please move along."
+                                : "I'll take that; now get moving.");
+        } else if (is_mercenary(mtmp.data)) {
+            const was_angry = !mtmp.mpeaceful;
+            let goldreqd = 0;
+
+            if (mtmp.data === game.mons[PMNAMES.PM_SOLDIER])
+                goldreqd = 100;
+            else if (mtmp.data === game.mons[PMNAMES.PM_SERGEANT])
+                goldreqd = 250;
+            else if (mtmp.data === game.mons[PMNAMES.PM_LIEUTENANT])
+                goldreqd = 500;
+            else if (mtmp.data === game.mons[PMNAMES.PM_CAPTAIN])
+                goldreqd = 750;
+
+            if (goldreqd && rn2(3)) {
+                umoney = money_cnt(game.invent);
+                goldreqd += Math.trunc((umoney + game.u.ulevel * rn2(5)) / ACURR(A_CHA));
+                if (value > goldreqd)
+                    mtmp.mpeaceful = true;
+            }
+
+            if (!mtmp.mpeaceful) {
+                /* SetVoice(mtmp, 0, 80, 0); */
+                if (goldreqd)
+                    await verbalize("That's not enough, coward!");
+                else /* unbribable (watchman) */
+                    await verbalize("I don't take bribes from scum like you!");
+            } else if (was_angry) {
+                /* SetVoice(mtmp, 0, 80, 0); */
+                await verbalize('That should do.  Now beat it!');
+            } else {
+                /* SetVoice(mtmp, 0, 80, 0); */
+                await verbalize(`Thanks for the tip, ${game.flags.female ? 'lady' : 'buddy'}.`);
+            }
+        }
+        return true;
+    }
+
+    if (!msg_given)
+        await miss(xname(gold), mtmp);
+    return false;
 }
 
 // src/dokick.c:508 really_kick_object(), through the common immovable-object
 // path. This covers ordinary floor stacks whose next square is blocked, while
 // retaining the range and break-test draws that happen before the "Thump!".
-async function really_kick_object(obj, x, y) {
-    if (!obj || obj.otyp === ONAMES.BOULDER)
-        return false;
+// src/dokick.c:489 kick_object(); kick the top object of the pile at <x,y>;
+// kickobjnam = { v } receives the object's killer name (matters iff res==0)
+async function kick_object(x, y, kickobjnam) {
+    let res = 0;
+
+    kickobjnam.v = '';
+    /* if a pile, the "top" object gets kicked */
+    game.kickedobj = (game.level.objects || []).find(o => o.where === OBJ_FLOOR && o.ox === x && o.oy === y) || null;
+    if (game.kickedobj) {
+        /* formatted object name matters iff res==0 */
+        kickobjnam.v = killer_xname(game.kickedobj);
+        /* kick object; if fatal, done() will clean up kickedobj */
+        res = await really_kick_object(x, y);
+        game.kickedobj = null;
+    }
+    return res;
+}
+
+// src/dokick.c:508 really_kick_object(); guts of kick_object
+async function really_kick_object(x, y) {
+    let range;
+    let mon, shkp = null;
+    let trap;
+    let bhitroom;
+    let costly, isgold, slide = false;
+
+    /* gk.kickedobj should always be set due to conditions of call */
+    if (!game.kickedobj || game.kickedobj.otyp === ONAMES.BOULDER
+        || game.kickedobj === game.u.uball || game.kickedobj === game.u.uchain)
+        return 0;
+
+    if ((trap = t_at(x, y)) != null) {
+        if ((is_pit(trap.ttyp) && !Passes_walls()) || trap.ttyp === WEB) {
+            if (!trap.tseen)
+                await find_trap(trap);
+            await You_cant(`kick ${something} that's in a ${
+                Hallucination() ? 'tizzy'
+                    : (trap.ttyp === WEB) ? 'web'
+                        : 'pit'}!`);
+            return 1;
+        }
+        if (trap.ttyp === STATUE_TRAP) {
+            await activate_statue_trap(trap, x, y, false);
+            return 1;
+        }
+    }
 
     if (Fumbling() && !rn2(3)) {
         await Your('clumsy kick missed.');
-        return true;
+        return 1;
     }
 
-    const isgold = obj.oclass === OCLASSES.COIN_CLASS;
-    let k_owt = obj.owt;
-    if (obj.quan > 1 && !isgold) {
-        const save_quan = obj.quan;
-        obj.quan = 1;
-        k_owt = weight(obj);
-        obj.quan = save_quan;
+    if (!game.u.uarmf && game.kickedobj.otyp === ONAMES.CORPSE
+        && touch_petrifies(game.mons[game.kickedobj.corpsenm])
+        && !Stone_resistance()) {
+        await You(`kick ${corpse_xname(game.kickedobj, null, CXN_PFX_THE)} with your bare ${
+            makeplural(body_part(FOOT))}.`);
+        if (poly_when_stoned(game.youmonst.data) && await polymon(PMNAMES.PM_STONE_GOLEM)) {
+            ; /* hero has been transformed but kick continues */
+        } else {
+            /* normalize body shape here; foot, not body_part(FOOT) */
+            (game.killer ||= {}).name = `kicking ${killer_xname(game.kickedobj)} barefoot`;
+            await instapetrify(game.killer.name);
+        }
     }
 
-    let range = Math.trunc(acurrstr() / 2) - Math.trunc(k_owt / 40);
+    isgold = (game.kickedobj.oclass === OCLASSES.COIN_CLASS);
+    {
+        let k_owt = game.kickedobj.owt;
+
+        /* for non-gold stack, 1 item will be split off below (unless an
+           early return occurs, so we aren't moving the split to here);
+           calculate the range for that 1 rather than for the whole stack */
+        if (game.kickedobj.quan > 1 && !isgold) {
+            const save_quan = game.kickedobj.quan;
+
+            game.kickedobj.quan = 1;
+            k_owt = weight(game.kickedobj);
+            game.kickedobj.quan = save_quan;
+        }
+
+        /* range < 2 means the object will not move
+           (maybe dexterity should also figure here) */
+        range = Math.trunc(acurrstr() / 2) - Math.trunc(k_owt / 40);
+    }
+
     if (martial())
         range += rnd(3);
 
     if (is_pool(x, y)) {
-        range = Math.trunc(range / 3) + 1;
+        /* you're in the water too; significantly reduce range */
+        range = Math.trunc(range / 3) + 1; /* {1,2}=>1, {3,4,5}=>2, {6,7,8}=>3 */
+    } else if (Is_airlevel(game.u.uz) || Is_waterlevel(game.u.uz)) {
+        /* you're in air, since is_pool did not match */
+        range += rnd(3);
     } else {
-        if (game.level.at(x, y)?.typ === ICE)
-            range += rnd(3);
-        if (obj.greased)
-            range += rnd(3);
+        if (is_ice(x, y))
+            range += rnd(3), slide = true;
+        if (game.kickedobj.greased)
+            range += rnd(3), slide = true;
     }
 
-    const nx = x + game.u.dx, ny = y + game.u.dy;
-    const nextloc = game.level.at(nx, ny);
-    if (!isok(nx, ny) || !nextloc || !ZAP_POS(nextloc.typ)
-        || closed_door(nx, ny))
+    /* Mjollnir is magically too heavy to kick */
+    if (is_art(game.kickedobj, ART_MJOLLNIR))
         range = 1;
 
-    await You(`kick ${doname(obj)}.`);
+    /* see if the object has a place to move into */
+    if (!isok(x + game.u.dx, y + game.u.dy)
+        || !ZAP_POS(game.level.at(x + game.u.dx, y + game.u.dy).typ)
+        || closed_door(x + game.u.dx, y + game.u.dy))
+        range = 1;
 
-    const isbox = obj.otyp === ONAMES.LARGE_BOX || obj.otyp === ONAMES.CHEST;
-    if (isbox) {
-        note_unported_dokick('really_kick_object:box');
-        return true;
+    /* 5.0: this used to skip 'costly' handling if kickedobj->no_charge
+       was set but that optimization could result in no_charge staying set
+       for objects kicked out of the shop */
+    shkp = find_objowner(game.kickedobj, x, y);
+    costly = (shkp && (costly_spot(x, y) || (costly_adjacent(shkp, x, y)
+                                             && game.kickedobj.unpaid)));
+    /* 5.0: give feedback about the item being kicked; some follow-on
+       messages refer to "it" */
+    await Norep(`You kick ${
+        !isgold ? singular(game.kickedobj, doname) : doname(game.kickedobj)}.`);
+
+    if (IS_OBSTRUCTED(game.level.at(x, y).typ) || closed_door(x, y)) {
+        if ((!martial() && rn2(20) > ACURR(A_DEX))
+            || IS_OBSTRUCTED(game.level.at(game.u.ux, game.u.uy).typ) || closed_door(game.u.ux, game.u.uy)) {
+            if (Blind())
+                await pline("It doesn't come loose.");
+            else
+                await pline(`${The(distant_name(game.kickedobj, xname))} ${
+                    otense(game.kickedobj, 'do')}n't come loose.`);
+            return (!rn2(3) || martial()) ? 1 : 0;
+        }
+        if (Blind())
+            await pline('It comes loose.');
+        else
+            await pline(`${The(distant_name(game.kickedobj, xname))} ${
+                otense(game.kickedobj, 'come')} loose.`);
+        obj_extract_self(game.kickedobj);
+        newsym(x, y);
+        if (costly && (!costly_spot(game.u.ux, game.u.uy)
+                       || !(game.u.urooms || '').includes(in_rooms(x, y, SHOPBASE)[0] || '\0'))) {
+            if (!game.kickedobj.no_charge)
+                await addtobill(game.kickedobj, false, false, false);
+            else /* don't leave no_charge set when outside shop */
+                game.kickedobj.no_charge = 0;
+        }
+        if (!(await flooreffects(game.kickedobj, game.u.ux, game.u.uy, 'fall'))) {
+            place_object(game.kickedobj, game.u.ux, game.u.uy);
+            impact_disturbs_zombies(game.kickedobj, true);
+            stackobj(game.kickedobj);
+            newsym(game.u.ux, game.u.uy);
+        }
+        return 1;
     }
 
-    const { breaktest, hero_breaks_potion } = await import('./dothrow.js');
-    if (obj.oclass === OCLASSES.POTION_CLASS) {
-        if (await hero_breaks_potion(obj))
-            return true;
-    } else if (breaktest(obj)) {
-        note_unported_dokick('really_kick_object:breakage');
-        return true;
+    /* a box gets a chance of breaking open here */
+    if (Is_box(game.kickedobj)) {
+        const otrp = game.kickedobj.otrapped;
+
+        if (range < 2)
+            await pline('THUD!');
+        await container_impact_dmg(game.kickedobj, x, y);
+        if (game.kickedobj.olocked) {
+            if (!rn2(5) || (martial() && !rn2(2))) {
+                await You('break open the lock!');
+                await breakchestlock(game.kickedobj, false);
+                if (otrp)
+                    await chest_trap(game.kickedobj, LEG, false);
+                return 1;
+            }
+        } else {
+            if (!rn2(3) || (martial() && !rn2(2))) {
+                await pline_The('lid slams open, then falls shut.');
+                game.kickedobj.lknown = 1;
+                if (otrp)
+                    await chest_trap(game.kickedobj, LEG, false);
+                return 1;
+            }
+        }
+        if (range < 2)
+            return 1;
+        /* else let it fall through to the next cases... */
     }
 
+    /* fragile objects should not be kicked */
+    if (await hero_breaks(game.kickedobj, game.kickedobj.ox, game.kickedobj.oy, 0))
+        return 1;
+
+    /* too heavy to move.  range is calculated as potential distance from
+     * player, so range == 2 means the object may move up to one square
+     * from its current position
+     */
     if (range < 2) {
-        await pline('Thump!');
-        return !rn2(3) || martial();
+        if (!Is_box(game.kickedobj))
+            await pline('Thump!');
+        return (!rn2(3) || martial()) ? 1 : 0;
     }
 
-    note_unported_dokick('really_kick_object:motion');
-    return true;
+    if (game.kickedobj.quan > 1) {
+        if (!isgold) {
+            game.kickedobj = splitobj(game.kickedobj, 1);
+        } else {
+            if (rn2(20)) {
+                const flyingcoinmsg = [
+                    'scatter the coins', 'knock coins all over the place',
+                    'send coins flying in all directions',
+                ];
+
+                if (!Deaf())
+                    await pline('Thwwpingg!');
+                await You(`${ROLL_FROM(flyingcoinmsg)}!`);
+                await scatter(x, y, rnd(3), VIS_EFFECTS | MAY_HIT,
+                              game.kickedobj);
+                newsym(x, y);
+                return 1;
+            }
+            if (game.kickedobj.quan > 300) {
+                await pline('Thump!');
+                return (!rn2(3) || martial()) ? 1 : 0;
+            }
+        }
+    }
+
+    if (slide && !Blind())
+        await pline(`Whee!  ${Doname2(game.kickedobj)} ${
+            otense(game.kickedobj, 'slide')} across the ${surface(x, y)}.`);
+
+    obj_extract_self(game.kickedobj);
+    snuff_candle(game.kickedobj);
+    newsym(x, y);
+    const pobj = { obj: game.kickedobj };
+    mon = await bhit(game.u.dx, game.u.dy, range, KICKED_WEAPON,
+                     null, null, pobj);
+    game.kickedobj = pobj.obj;
+    if (!game.kickedobj)
+        return 1; /* object broken */
+
+    if (mon) {
+        if (mon.isshk && game.kickedobj.where === OBJ_MINVENT
+            && game.kickedobj.ocarry === mon)
+            return 1; /* alert shk caught it */
+        game.notonhead = (mon.mx !== game.bhitpos.x || mon.my !== game.bhitpos.y);
+        if (isgold ? await ghitm(mon, game.kickedobj)      /* caught? */
+                   : await thitmonst(mon, game.kickedobj)) /* hit && used up? */
+            return 1;
+    }
+
+    /* the object might have fallen down a hole;
+       ship_object() will have taken care of shop billing */
+    if (game.kickedobj.where === OBJ_MIGRATING)
+        return 1;
+
+    bhitroom = in_rooms(game.bhitpos.x, game.bhitpos.y, SHOPBASE)[0] || '';
+    /* if obj is marked no_charge, stolen_value() won't blame hero for
+       theft but will clear that flag */
+    if (costly && (!costly_spot(game.bhitpos.x, game.bhitpos.y)
+                   || (in_rooms(x, y, SHOPBASE)[0] || '') !== bhitroom)) {
+        /* kicked from inside shop to somewhere outside shop */
+        if (isgold)
+            await costly_gold(x, y, game.kickedobj.quan, false);
+        else
+            await stolen_value(game.kickedobj, x, y, !!shkp.mpeaceful,
+                               false);
+        costly = false; /* already billed */
+    }
+
+    if (await flooreffects(game.kickedobj, game.bhitpos.x, game.bhitpos.y, 'fall'))
+        return 1;
+    if (costly) {
+        let gtg = 0;
+
+        /* costly + landed outside shop handled above; must be inside shop */
+        if (game.kickedobj.unpaid)
+            subfrombill(game.kickedobj, shkp);
+
+        /* if billed for contained gold during kick, get a refund now */
+        if (Has_contents(game.kickedobj)
+            && (gtg = contained_gold(game.kickedobj, true)) > 0)
+            await donate_gold(gtg, shkp, false);
+    }
+    place_object(game.kickedobj, game.bhitpos.x, game.bhitpos.y);
+    impact_disturbs_zombies(game.kickedobj, true);
+    stackobj(game.kickedobj);
+    newsym(game.kickedobj.ox, game.kickedobj.oy);
+    return 1;
 }
 
 // src/dokick.c:1257 dokick() — the '^D' command.
@@ -436,37 +1248,34 @@ async function really_kick_object(obj, x, y) {
 // direction, the swallowed and Levitation arms, and the monster kick; kicking
 // objects, doors and terrain is recorded.
 export async function dokick() {
+    let x, y;
+    let avrg_attrib;
+    let glyph, oldglyph = null, oldcell = null;
+    let mtmp;
     let no_kick = false;
-    const mdat = game.youmonst?.data;
 
-    if (nolimbs(mdat) || slithy(mdat)) {
+    if (nolimbs(game.youmonst.data) || slithy(game.youmonst.data)) {
         await You('have no legs to kick with.');
         no_kick = true;
-    } else if (verysmall(mdat)) {
+    } else if (verysmall(game.youmonst.data)) {
         await You('are too small to do any kicking.');
         no_kick = true;
     } else if (game.u.usteed) {
         const { tty_yn_function } = await import('./tty/topl.js');
         if ((await tty_yn_function('Kick your steed?', 'yn', 'y')) === 'y') {
             await You(`kick ${mon_nam(game.u.usteed)}.`);
-            const { kick_steed } = await import('./steed.js');
             await kick_steed();
             return ECMD_TIME;
+        } else {
+            return ECMD_OK;
         }
-        return ECMD_OK;
-    } else if ((game.u.intrinsic?.HWounded_legs || 0) > 0
-               || (game.u.EWounded_legs || 0)) {
-        const side = (game.u.EWounded_legs || 0) & BOTH_SIDES;
-        let leg = body_part(LEG);
-        if (side === BOTH_SIDES)
-            leg = makeplural(leg);
-        await Your(`${side === LEFT_SIDE ? 'left ' : side === RIGHT_SIDE ? 'right ' : ''}`
-                   + `${leg} ${side === BOTH_SIDES ? 'are' : 'is'} in no shape for kicking.`);
+    } else if (Wounded_legs()) {
+        await legs_in_no_shape('kicking', false);
         no_kick = true;
     } else if (near_capacity() > SLT_ENCUMBER) {
         await Your('load is too heavy to balance yourself for a kick.');
         no_kick = true;
-    } else if (mdat?.mlet === MONSYMS.S_LIZARD) {
+    } else if (game.youmonst.data.mlet === MONSYMS.S_LIZARD) {
         await Your('legs cannot kick effectively.');
         no_kick = true;
     } else if (game.u.uinwater && !rn2(2)) {
@@ -474,15 +1283,28 @@ export async function dokick() {
         no_kick = true;
     } else if (game.u.utrap) {
         no_kick = true;
-        note_unported_dokick('dokick:utrap');
-    } else if (sobj_at(ONAMES.BOULDER, game.u.ux, game.u.uy)) {
+        switch (game.u.utraptype) {
+        case TT_PIT:
+            if (!Passes_walls())
+                await pline("There's not enough room to kick down here.");
+            else
+                no_kick = false;
+            break;
+        case TT_WEB:
+        case TT_BEARTRAP:
+            await You_cant(`move your ${body_part(LEG)}!`);
+            break;
+        default:
+            break;
+        }
+    } else if (sobj_at(ONAMES.BOULDER, game.u.ux, game.u.uy) && !Passes_walls()) {
         await pline("There's not enough room to kick in here.");
         no_kick = true;
     }
 
     if (no_kick) {
-        /* ignore direction typed before the player notices the kick failed */
-        await display_nhwindow_message();      /* --More-- */
+        /* ignore direction typed before player notices kick failed */
+        await display_nhwindow_message(); /* --More-- */
         return ECMD_FAIL;
     }
 
@@ -491,154 +1313,251 @@ export async function dokick() {
     if (!game.u.dx && !game.u.dy)
         return ECMD_CANCEL;
 
-    const x = game.u.ux + game.u.dx, y = game.u.uy + game.u.dy;
+    x = game.u.ux + game.u.dx;
+    y = game.u.uy + game.u.dy;
     game.kickedloc = { x, y };
 
+    /* KMH -- Kicking boots always succeed */
+    if (game.u.uarmf && game.u.uarmf.otyp === ONAMES.KICKING_BOOTS)
+        avrg_attrib = 99;
+    else
+        avrg_attrib = Math.trunc((acurrstr() + ACURR(A_DEX) + ACURR(A_CON)) / 3);
+
     if (game.u.uswallow) {
-        rn2(3);
-        note_unported_dokick('dokick:uswallow');
+        switch (rn2(3)) {
+        case 0:
+            await You_cant(`move your ${body_part(LEG)}!`);
+            break;
+        case 1:
+            if (digests(game.u.ustuck.data)) {
+                await pline(`${Monnam(game.u.ustuck)} burps loudly.`);
+                break;
+            }
+            /*FALLTHRU*/
+        default:
+            await Your('feeble kick has no effect.');
+            break;
+        }
+        return ECMD_TIME;
+    } else if (game.u.utrap && game.u.utraptype === TT_PIT) {
+        /* must be Passes_walls */
+        await You('kick at the side of the pit.');
         return ECMD_TIME;
     }
-    if (game.u.uprops?.LEVITATION) {
-        note_unported_dokick('dokick:levitation');
-        return ECMD_OK;
+    if (Levitation()) {
+        let xx, yy;
+
+        xx = game.u.ux - game.u.dx;
+        yy = game.u.uy - game.u.dy;
+        /* doors can be opened while levitating, so they must be
+         * reachable for bracing purposes
+         * Possible extension: allow bracing against stuff on the side?
+         */
+        if (isok(xx, yy) && !IS_OBSTRUCTED(game.level.at(xx, yy).typ)
+            && !IS_DOOR(game.level.at(xx, yy).typ)
+            && (!Is_airlevel(game.u.uz) || !OBJ_AT(xx, yy))) {
+            await You('have nothing to brace yourself against.');
+            return ECMD_OK;
+        }
     }
 
-    const mtmp = isok(x, y) ? m_at(x, y) : null;
+    mtmp = isok(x, y) ? m_at(x, y) : null;
+    /* might not kick monster if it is hidden and becomes revealed,
+       if it is peaceful and player declines to attack, or if the
+       hero passes out due to encumbrance with low hp; svc.context.move
+       will be 1 unless player declines to kick peaceful monster */
     if (mtmp) {
+        oldglyph = glyph_at(x, y);
+        {
+            const loc = game.level.at(x, y);
+            oldcell = { ch: loc.disp_ch, color: loc.disp_color, dec: loc.disp_decgfx,
+                        attr: loc.disp_attr, glyph: loc.disp_glyph };
+        }
         if (!(await maybe_kick_monster(mtmp, x, y)))
-            return game.context.move ? ECMD_TIME : ECMD_OK;
+            return (game.context.move ? ECMD_TIME : ECMD_OK);
     }
 
-    wake_nearby(false);
+    await wake_nearby(false);
     u_wipe_engr(2);
 
     if (!isok(x, y)) {
-        note_unported_dokick('dokick:kick_ouch_offmap');
+        game.maploc = nowhere;
+        await kick_ouch(x, y, '');
         return ECMD_TIME;
     }
+    game.maploc = game.level.at(x, y);
 
-    /* The next five tests stay in C's order: monsters, pools, objects,
-       non-doors, doors. */
+    /*
+     * The next five tests should stay in their present order:
+     * monsters, pools, objects, non-doors, doors.
+     *
+     * [FIXME:  Monsters who are hidden underneath objects or
+     * in pools should lead to hero kicking the concealment
+     * rather than the monster, probably exposing the hidden
+     * monster in the process.  And monsters who are hidden on
+     * ceiling shouldn't be kickable (unless hero is flying?);
+     * kicking toward them should just target whatever is on
+     * the floor at that spot.]
+     */
+
     if (mtmp) {
+        /* save mtmp->data (for recoil) in case mtmp gets killed */
+        const mdat = mtmp.data;
+
         await kick_monster(mtmp, x, y);
-        if (!DEADMONSTER(mtmp) && !canspotmon(mtmp)
-            && mtmp.mx === x && mtmp.my === y
-            && !glyph_is_invisible_at(x, y) && !engulfing_u(mtmp))
+        glyph = glyph_at(x, y);
+        /* see comment in attack_checks() */
+        if (DEADMONSTER(mtmp)) { /* DEADMONSTER() */
+            /* if we mapped an invisible monster and immediately
+               killed it, we don't want to forget what we thought
+               was there before the kick */
+            if (!same_glyph(glyph, oldglyph) && glyph_is_invisible_at(x, y))
+                show_glyph_cell(x, y, oldcell.ch, oldcell.color, oldcell.dec,
+                                oldcell.attr, oldcell.glyph); /* show_glyph(x, y, oldglyph) */
+        } else if (!canspotmon(mtmp)
+                   /* check <x,y>; monster that evades kick by jumping
+                      to an unseen square doesn't leave an I behind */
+                   && mtmp.mx === x && mtmp.my === y
+                   && !glyph_is_invisible_at(x, y)
+                   && !engulfing_u(mtmp)) {
             map_invisible(x, y);
+        }
+        /* recoil if floating */
+        if ((Is_airlevel(game.u.uz) || Levitation()) && game.context.move) {
+            let range;
+
+            range =
+                (game.youmonst.data.cwt + (weight_cap() + inv_weight()));
+            if (range < 1)
+                range = 1; /* divide by zero avoidance */
+            range = Math.trunc((3 * mdat.cwt) / range);
+
+            if (range < 1)
+                range = 1;
+            await hurtle(-game.u.dx, -game.u.dy, range, true);
+        }
         return ECMD_TIME;
     }
-
     unmap_invisible(x, y);
-
-    /* src/dokick.c:1328 — KMH: kicking boots always succeed */
-    const avrg_attrib = (game.u.uarmf
-                         && game.u.uarmf.otyp === ONAMES.KICKING_BOOTS)
-        ? 99
-        : Math.trunc((acurrstr() + ACURR(A_DEX) + ACURR(A_CON)) / 3);
-
-    /* src/dokick.c:1444 — kicking water or lava just splashes it */
-    if (is_pool(x, y) !== !!game.u.uinwater) {
-        note_unported_dokick('dokick:splash');
+    if ((is_pool(x, y) || game.maploc.typ === LAVAWALL) !== !!game.u.uinwater) {
+        /* objects normally can't be removed from water by kicking */
+        await You(`splash some ${hliquid(is_pool(x, y) ? 'water' : 'lava')} around.`);
+        /* pretend the kick is fast enough for lava not to burn */
         return ECMD_TIME;
     }
 
-    if (OBJ_AT(x, y)) {
-        /* The flat floor list is newest-first, matching the head of C's
-           per-square pile chain. */
-        const obj = (game.level.objects || [])
-            .find(o => o.ox === x && o.oy === y);
-        if (await really_kick_object(obj, x, y))
+    if (OBJ_AT(x, y) && (!Levitation() || Is_airlevel(game.u.uz)
+                         || Is_waterlevel(game.u.uz) || sobj_at(ONAMES.BOULDER, x, y))) {
+        const kickobjnam = { v: '' };
+
+        if (await kick_object(x, y, kickobjnam)) {
+            if (Is_airlevel(game.u.uz))
+                await hurtle(-game.u.dx, -game.u.dy, 1, true); /* assume it's light */
             return ECMD_TIME;
-        note_unported_dokick('dokick:kick_object');
+        }
+        await kick_ouch(x, y, kickobjnam.v);
         return ECMD_TIME;
     }
 
-    const maploc = game.level.at(x, y);
-    if (IS_DOOR(maploc.typ))
-        await kick_door(x, y, avrg_attrib, maploc);
+    if (IS_DOOR(game.maploc.typ))
+        await kick_door(x, y, avrg_attrib);
     else
-        return await kick_nondoor(x, y, avrg_attrib, maploc);
+        return await kick_nondoor(x, y, avrg_attrib);
     return ECMD_TIME;
 }
 
-// src/dokick.c:1596 kickstr() — the killer string for a fatal kick.
-function kickstr(maploc, kickobjnam) {
+// src/dokick.c:794 kickstr(); cause of death if kicking kills kicker
+function kickstr(kickobjnam) {
     let what;
+
     if (kickobjnam)
         what = kickobjnam;
-    else if (!maploc)
+    else if (game.maploc === nowhere)
         what = 'nothing';
-    else if (IS_DOOR(maploc.typ))
+    else if (IS_DOOR(game.maploc.typ))
         what = 'a door';
-    else if (IS_TREE(maploc.typ))
+    else if (IS_TREE(game.maploc.typ))
         what = 'a tree';
-    else if (IS_STWALL(maploc.typ))
+    else if (IS_STWALL(game.maploc.typ))
         what = 'a wall';
-    else if (IS_OBSTRUCTED(maploc.typ))
+    else if (IS_OBSTRUCTED(game.maploc.typ))
         what = 'a rock';
-    else if (IS_THRONE(maploc.typ))
+    else if (IS_THRONE(game.maploc.typ))
         what = 'a throne';
-    else if (IS_FOUNTAIN(maploc.typ))
+    else if (IS_FOUNTAIN(game.maploc.typ))
         what = 'a fountain';
-    else if (IS_GRAVE(maploc.typ))
+    else if (IS_GRAVE(game.maploc.typ))
         what = 'a headstone';
-    else if (IS_SINK(maploc.typ))
+    else if (IS_SINK(game.maploc.typ))
         what = 'a sink';
-    else if (IS_ALTAR(maploc.typ))
+    else if (IS_ALTAR(game.maploc.typ))
         what = 'an altar';
-    else if (IS_DRAWBRIDGE(maploc.typ))
+    else if (IS_DRAWBRIDGE(game.maploc.typ))
         what = 'a drawbridge';
-    else if (maploc.typ === STAIRS)
+    else if (game.maploc.typ === STAIRS)
         what = 'the stairs';
-    else if (maploc.typ === LADDER)
+    else if (game.maploc.typ === LADDER)
         what = 'a ladder';
-    else if (maploc.typ === IRONBARS)
+    else if (game.maploc.typ === IRONBARS)
         what = 'an iron bar';
     else
         what = 'something weird';
     return 'kicking ' + what;
 }
 
-// src/dokick.c:881 kick_ouch() — the kick hurt the hero, not the target.
-// Kept local because importing do.js here creates the dokick/do wiring cycle
-// described at the top of this file.
-async function wound_kicking_leg(timex) {
-    game.disp ||= {};
-    game.disp.botl = true;
-    const intr = (game.u.intrinsic ||= {});
-    const wounded = (intr.HWounded_legs || 0) > 0
-        || (game.u.EWounded_legs || 0);
-    if (!wounded)
-        game.u.atemp.a[A_DEX]--;
-    if (!wounded || (intr.HWounded_legs || 0) < timex)
-        intr.HWounded_legs = timex;
-    game.u.EWounded_legs = (game.u.EWounded_legs || 0) | RIGHT_SIDE;
-    await encumber_msg();
+// src/dokick.c:834 watchman_thief_arrest(); get_iter_mons() callback
+async function watchman_thief_arrest(mtmp) {
+    if (is_watch(mtmp.data) && couldsee(mtmp.mx, mtmp.my)
+        && mtmp.mpeaceful) {
+        await mon_yells(mtmp, "Halt, thief!  You're under arrest!");
+        await angry_guards(false);
+        return true;
+    }
+    return false;
 }
 
-async function kick_ouch(x, y, maploc, kickobjnam) {
+// src/dokick.c:846 watchman_door_damage(); get_iter_mons_xy() callback
+async function watchman_door_damage(mtmp, x, y) {
+    if (is_watch(mtmp.data) && mtmp.mpeaceful
+        && couldsee(mtmp.mx, mtmp.my)) {
+        if (game.level.at(x, y).looted & D_WARNED) {
+            await mon_yells(mtmp,
+                            "Halt, vandal!  You're under arrest!");
+            await angry_guards(false);
+        } else {
+            await mon_yells(mtmp, 'Hey, stop damaging that door!');
+            game.level.at(x, y).looted |= D_WARNED;
+        }
+        return true;
+    }
+    return false;
+}
+
+// src/dokick.c:881 kick_ouch(); the kick hurt the hero, not the target
+async function kick_ouch(x, y, kickobjnam) {
+    let dmg;
+
     await pline('Ouch!  That hurts!');
     exercise(A_DEX, false);
     exercise(A_STR, false);
     if (isok(x, y)) {
-        if (game.u.ublind)
-            note_unported_dokick('kick_ouch:feel_location');
+        if (Blind())
+            feel_location(x, y); /* we know we hit it */
         if (is_drawbridge_wall(x, y) >= 0) {
             await pline_The('drawbridge is unaffected.');
             /* update maploc to refer to the drawbridge */
             const cc = { x, y };
             find_drawbridge(cc);
-            maploc = game.level.at(cc.x, cc.y);
+            game.maploc = game.level.at(cc.x, cc.y);
         }
-        wake_nearto(x, y, 5 * 5);
+        await wake_nearto(x, y, 5 * 5);
     }
     if (!rn2(3))
-        await wound_kicking_leg(5 + rnd(5));
-    const dmg = rnd(ACURR(A_CON) > 15 ? 3 : 5);
-    await losehp(dmg, kickstr(maploc, kickobjnam), KILLED_BY);
-    if (game.u.uprops?.LEVITATION)
-        note_unported_dokick('kick_ouch:hurtle');
+        await set_wounded_legs(RIGHT_SIDE, 5 + rnd(5));
+    dmg = rnd(ACURR(A_CON) > 15 ? 3 : 5);
+    await losehp(Maybe_Half_Phys(dmg), kickstr(kickobjnam), KILLED_BY);
+    if (Is_airlevel(game.u.uz) || Levitation())
+        await hurtle(-game.u.dx, -game.u.dy, rn1(2, 4), true); /* assume it's heavy */
 }
 
 // src/dokick.c:890 kick_dumb() — kicking a doorway with nothing in it.
@@ -646,123 +1565,135 @@ async function kick_dumb(x, y) {
     exercise(A_DEX, false);
     if (martial() || ACURR(A_DEX) >= 16 || rn2(3)) {
         await You('kick at empty space.');
-        if (game.u.ublind)
-            note_unported_dokick('kick_dumb:feel_location');
+        if (Blind())
+            feel_location(x, y);
     } else {
         await pline('Dumb move!  You strain a muscle.');
         exercise(A_STR, false);
-        await wound_kicking_leg(5 + rnd(5));
+        await set_wounded_legs(RIGHT_SIDE, 5 + rnd(5));
     }
-    /* the airlevel/Levitation hurtle needs neither here */
+    if ((Is_airlevel(game.u.uz) || Levitation()) && rn2(2))
+        await hurtle(-game.u.dx, -game.u.dy, 1, true);
 }
 
 // src/dokick.c:910 kick_door() — kick a door.
-async function kick_door(x, y, avrg_attrib, maploc) {
-    if (maploc.doormask === D_ISOPEN || maploc.doormask === D_BROKEN
-        || maploc.doormask === D_NODOOR) {
+async function kick_door(x, y, avrg_attrib) {
+    let doorbuster;
+
+    if (game.maploc.doormask === D_ISOPEN || game.maploc.doormask === D_BROKEN
+        || game.maploc.doormask === D_NODOOR) {
         await kick_dumb(x, y);
         return; /* uses a turn */
     }
 
     /* not enough leverage to kick open doors while levitating */
-    if (game.u.uprops?.LEVITATION) {
-        await kick_ouch(x, y, maploc, '');
-        return;
+    if (Levitation()) {
+        await kick_ouch(x, y, '');
         return;
     }
 
     exercise(A_DEX, true);
-    const doorbuster = false;   /* Upolyd && is_giant(youmonst.data) */
+    doorbuster = Upolyd(game.u) && is_giant(game.youmonst.data);
     /* door is known to be CLOSED or LOCKED */
     if (doorbuster
         || (rnl(35) < avrg_attrib + (!martial() ? 0 : ACURR(A_DEX)))) {
-        const shopdoor = false; /* *in_rooms(x, y, SHOPBASE) */
+        const shopdoor = in_rooms(x, y, SHOPBASE).length ? true : false;
 
         /* break the door */
-        if (maploc.doormask & D_TRAPPED) {
-            if (game.flags?.verbose)
+        if (game.maploc.doormask & D_TRAPPED) {
+            if (game.flags.verbose)
                 await You('kick the door.');
             exercise(A_STR, false);
-            maploc.doormask = D_NODOOR;
-            note_unported_dokick('kick_door:b_trapped');
+            game.maploc.doormask = D_NODOOR;
+            await b_trapped('door', FOOT);
         } else if (ACURR(A_STR) > 18 && !rn2(5) && !shopdoor) {
+            /* Soundeffect(se_kick_door_it_shatters, 50); */
             await pline('As you kick the door, it shatters to pieces!');
             exercise(A_STR, true);
-            maploc.doormask = D_NODOOR;
+            game.maploc.doormask = D_NODOOR;
         } else {
+            /* Soundeffect(se_kick_door_it_crashes_open, 50); */
             await pline('As you kick the door, it crashes open!');
             exercise(A_STR, true);
-            maploc.doormask = D_BROKEN;
+            game.maploc.doormask = D_BROKEN;
         }
-        newsym(x, y);           /* feel_newsym: we know we broke it */
+        feel_newsym(x, y); /* we know we broke it */
         recalc_block_point(x, y); /* vision */
+        if (shopdoor) {
+            add_damage(x, y, SHOP_DOOR_COST);
+            await pay_for_damage('break', false);
+        }
+        if (in_town(x, y))
+            await get_iter_mons(watchman_thief_arrest);
     } else {
-        if (game.u.ublind)
-            note_unported_dokick('kick_door:feel_location');
+        if (Blind())
+            feel_location(x, y); /* we know we hit it */
         exercise(A_STR, true);
         /* note: this used to be unconditional "WHAMMM!!!" but that has a
            fairly strong connotation of noise that a deaf hero shouldn't
            hear; we've kept the extra 'm's and one of the extra '!'s */
-        await pline(`${(game.u.udeaf || !rn2(3)) ? 'Thwack' : 'Whammm'}!!`);
+        await pline(`${(Deaf() || !rn2(3)) ? 'Thwack' : 'Whammm'}!!`);
+        if (in_town(x, y))
+            await get_iter_mons_xy(watchman_door_damage, x, y);
     }
-    /* in_town() watchman reactions need town rooms */
 }
 
 // src/dokick.c:974 kick_nondoor() — every terrain arm that is not a door.
 // Unreachable machinery is recorded at the exact C call position; every
 // draw C makes before such a point is made here too.
-async function kick_nondoor(x, y, avrg_attrib, maploc) {
-    const G_GONE = MFLAGS.G_GENOD | MFLAGS.G_EXTINCT;
-    const Levitation = !!game.u.uprops?.LEVITATION;
-    const Blind = !!game.u.ublind;
-
-    if (maploc.typ === SDOOR) {
-        if (!Levitation && rn2(30) < avrg_attrib) {
-            cvt_sdoor_to_door(maploc); /* ->typ = DOOR */
-            await pline('Crash!  %s a secret door!'.replace('%s',
-                  ((maploc.doormask & (D_LOCKED | D_TRAPPED))
-                   === D_LOCKED) ? 'Your kick uncovers' : 'You kick open'));
+async function kick_nondoor(x, y, avrg_attrib) {
+    if (game.maploc.typ === SDOOR) {
+        if (!Levitation() && rn2(30) < avrg_attrib) {
+            cvt_sdoor_to_door(game.maploc); /* ->typ = DOOR */
+            /* Soundeffect(se_crash_door, 40); */
+            await pline(`Crash!  ${
+                  /* don't "kick open" when it's locked
+                     unless it also happens to be trapped */
+                  ((game.maploc.doormask & (D_LOCKED | D_TRAPPED))
+                   === D_LOCKED) ? 'Your kick uncovers' : 'You kick open'} a secret door!`);
             exercise(A_DEX, true);
-            if (maploc.doormask & D_TRAPPED) {
-                maploc.doormask = D_NODOOR;
-                note_unported_dokick('kick_nondoor:b_trapped');
-            } else if (maploc.doormask !== D_NODOOR
-                       && !(maploc.doormask & D_LOCKED))
-                maploc.doormask = D_ISOPEN;
-            newsym(x, y); /* feel_newsym: we know it's gone */
-            if (maploc.doormask === D_ISOPEN
-                || maploc.doormask === D_NODOOR)
+            if (game.maploc.doormask & D_TRAPPED) {
+                game.maploc.doormask = D_NODOOR;
+                await b_trapped('door', FOOT);
+            } else if (game.maploc.doormask !== D_NODOOR
+                       && !(game.maploc.doormask & D_LOCKED))
+                game.maploc.doormask = D_ISOPEN;
+            feel_newsym(x, y); /* we know it's gone */
+            if (game.maploc.doormask === D_ISOPEN
+                || game.maploc.doormask === D_NODOOR)
                 unblock_point(x, y); /* vision */
             return ECMD_TIME;
         } else {
-            await kick_ouch(x, y, maploc, '');
+            await kick_ouch(x, y, '');
             return ECMD_TIME;
         }
     }
-    if (maploc.typ === SCORR) {
-        if (!Levitation && rn2(30) < avrg_attrib) {
+    if (game.maploc.typ === SCORR) {
+        if (!Levitation() && rn2(30) < avrg_attrib) {
+            /* Soundeffect(se_crash_door, 40); */
             await pline('Crash!  You kick open a secret passage!');
             exercise(A_DEX, true);
-            maploc.typ = CORR;
-            newsym(x, y); /* feel_newsym: we know it's gone */
+            game.maploc.typ = CORR;
+            feel_newsym(x, y); /* we know it's gone */
             unblock_point(x, y); /* vision */
             return ECMD_TIME;
         } else {
-            await kick_ouch(x, y, maploc, '');
+            await kick_ouch(x, y, '');
             return ECMD_TIME;
         }
     }
-    if (IS_THRONE(maploc.typ)) {
-        const Luck = (game.u.uluck | 0) + (game.u.moreluck | 0);
-        if (Levitation) {
+    if (IS_THRONE(game.maploc.typ)) {
+        let i;
+        if (Levitation()) {
             await kick_dumb(x, y);
             return ECMD_TIME;
         }
-        if ((Luck < 0 || maploc.looted) && !rn2(3)) {
-            maploc.looted = 0; /* don't leave loose ends.. */
-            maploc.typ = ROOM;
+        if ((Luck() < 0 || game.maploc.looted) && !rn2(3)) {
+            game.maploc.looted = 0; /* don't leave loose ends.. */
+            game.maploc.typ = ROOM;
             mkgold(rnd(200), x, y);
-            if (Blind)
+            /* Soundeffect(se_crash_throne_destroyed, 60); */
+            if (Blind())
                 await pline('CRASH!  You destroy it.');
             else {
                 await pline('CRASH!  You destroy the throne.');
@@ -770,90 +1701,95 @@ async function kick_nondoor(x, y, avrg_attrib, maploc) {
             }
             exercise(A_DEX, true);
             return ECMD_TIME;
-        } else if (Luck > 0 && !rn2(3) && !maploc.looted) {
+        } else if (Luck() > 0 && !rn2(3) && !game.maploc.looted) {
             mkgold(rn1(201, 300), x, y);
-            let i = Luck + 1;
+            i = Luck() + 1;
             if (i > 6)
                 i = 6;
             while (i--)
-                mksobj_at(rnd_class(ONAMES.DILITHIUM_CRYSTAL,
-                                    ONAMES.LUCKSTONE - 1), x, y,
-                          false, true);
-            if (Blind)
-                await You('kick something loose!');
+                mksobj_at(
+                       rnd_class(ONAMES.DILITHIUM_CRYSTAL, ONAMES.LUCKSTONE - 1), x, y,
+                       false, true);
+            if (Blind())
+                await You(`kick ${something} loose!`);
             else {
                 await You('kick loose some ornamental coins and gems!');
                 newsym(x, y);
             }
             /* prevent endless milking */
-            maploc.looted = T_LOOTED;
+            game.maploc.looted = T_LOOTED;
             return ECMD_TIME;
         } else if (!rn2(4)) {
             if (dunlev(game.u.uz) < dunlevs_in_dungeon(game.u.uz)) {
-                note_unported_dokick('kick_nondoor:fall_through');
+                await fall_through(false, 0);
                 return ECMD_TIME;
             } else {
-                await kick_ouch(x, y, maploc, '');
+                await kick_ouch(x, y, '');
                 return ECMD_TIME;
             }
         }
-        await kick_ouch(x, y, maploc, '');
+        await kick_ouch(x, y, '');
         return ECMD_TIME;
     }
-    if (IS_ALTAR(maploc.typ)) {
-        if (Levitation) {
+    if (IS_ALTAR(game.maploc.typ)) {
+        if (Levitation()) {
             await kick_dumb(x, y);
             return ECMD_TIME;
         }
-        await You(`kick ${Blind ? 'something' : 'the altar'}.`);
-        note_unported_dokick('kick_nondoor:altar_wrath');
+        await You(`kick ${(Blind() ? something : 'the altar')}.`);
+        await altar_wrath(x, y);
         if (!rn2(3)) {
-            await kick_ouch(x, y, maploc, '');
+            await kick_ouch(x, y, '');
             return ECMD_TIME;
         }
         exercise(A_DEX, true);
         return ECMD_TIME;
     }
-    if (IS_FOUNTAIN(maploc.typ)) {
-        if (Levitation) {
+    if (IS_FOUNTAIN(game.maploc.typ)) {
+        if (Levitation()) {
             await kick_dumb(x, y);
             return ECMD_TIME;
         }
-        await You(`kick ${Blind ? 'something' : 'the fountain'}.`);
+        await You(`kick ${(Blind() ? something : 'the fountain')}.`);
         if (!rn2(3)) {
-            await kick_ouch(x, y, maploc, '');
+            await kick_ouch(x, y, '');
             return ECMD_TIME;
         }
         /* make metal boots rust */
-        if (game.uarmf && rn2(3))
-            note_unported_dokick('kick_nondoor:water_damage');
+        if (game.u.uarmf && rn2(3))
+            if (await water_damage(game.u.uarmf, 'metal boots', true) === ER_NOTHING) {
+                await Your('boots get wet.');
+                /* could cause short-lived fumbling here */
+            }
         exercise(A_DEX, true);
         return ECMD_TIME;
     }
-    if (IS_GRAVE(maploc.typ)) {
-        if (Levitation) {
+    if (IS_GRAVE(game.maploc.typ)) {
+        if (Levitation()) {
             await kick_dumb(x, y);
         } else if (rn2(4)) {
             /* minor injury */
-            await kick_ouch(x, y, maploc, '');
-        } else if (!maploc.disturbed && !rn2(2)) {
-            /* disturb the grave: summon a ghoul (once only) */
-            note_unported_dokick('kick_nondoor:disturb_grave');
+            await kick_ouch(x, y, '');
+        } else if (!game.maploc.disturbed && !rn2(2)) {
+            /* disturb the grave: summon a ghoul (once only), same as
+               when engraving */
+            await disturb_grave(x, y);
         } else {
-            /* destroy the headstone */
+            /* destroy the headstone, implicitly destroying any
+               not-yet-created contents (including zombie or mummy);
+               any already created contents will still be buried here */
             exercise(A_WIS, false);
-            if (game.urole?.name?.m === 'Archeologist'
-                || game.urole?.name?.m === 'Samurai'
-                || (game.u.ualign?.type === A_LAWFUL
-                    && (game.u.ualign?.record ?? 0) > -10))
-                adjalign(-sgn(game.u.ualign?.type ?? 0));
-            maploc.typ = ROOM;
-            maploc.emptygrave = 0; /* clear 'flags' */
-            maploc.disturbed = 0;  /* clear 'horizontal' */
+            if (Role_if(PMNAMES.PM_ARCHEOLOGIST) || Role_if(PMNAMES.PM_SAMURAI)
+                || (game.u.ualign.type === A_LAWFUL && game.u.ualign.record > -10))
+                await adjalign(-sgn(game.u.ualign.type));
+            game.maploc.typ = ROOM;
+            game.maploc.emptygrave = 0; /* clear 'flags' */
+            game.maploc.disturbed = 0; /* clear 'horizontal' */
             mksobj_at(ONAMES.ROCK, x, y, true, false);
-            note_unported_dokick('kick_nondoor:del_engr_at');
-            if (Blind) {
-                await pline('Crack!  Something broke!');
+            del_engr_at(x, y);
+            if (Blind()) {
+                /* [feel this happen if Deaf?] */
+                await pline(`Crack!  ${Something} broke!`);
             } else {
                 await pline_The('headstone topples over and breaks!');
                 newsym(x, y);
@@ -861,100 +1797,121 @@ async function kick_nondoor(x, y, avrg_attrib, maploc) {
         }
         return ECMD_TIME;
     }
-    if (maploc.typ === IRONBARS) {
-        await kick_ouch(x, y, maploc, '');
+    if (game.maploc.typ === IRONBARS) {
+        await kick_ouch(x, y, '');
         return ECMD_TIME;
     }
-    if (IS_TREE(maploc.typ)) {
+    if (IS_TREE(game.maploc.typ)) {
+        let treefruit;
+
         /* nothing, fruit or trouble? 75:23.5:1.5% */
         if (rn2(3)) {
-            if (!rn2(6)
-                && !((game.mvitals?.[PMNAMES.PM_KILLER_BEE]?.mvflags ?? 0)
-                     & G_GONE))
-                await pline('You hear a low buzzing.'); /* a warning */
-            await kick_ouch(x, y, maploc, '');
+            if (!rn2(6) && !(game.mvitals[PMNAMES.PM_KILLER_BEE].mvflags & G_GONE))
+                await You_hear('a low buzzing.'); /* a warning */
+            await kick_ouch(x, y, '');
             return ECMD_TIME;
         }
-        if (rn2(15) && !(maploc.looted & TREE_LOOTED)) {
-            /* rnd_treefruit_at() + scatter() are the fruit drop; neither
-               is ported, and the arm changes the object map. */
-            note_unported_dokick('kick_nondoor:treefruit');
+        if (rn2(15) && !(game.maploc.looted & TREE_LOOTED)
+            && (treefruit = rnd_treefruit_at(x, y)) != null) {
+            const nfruit = 8 - rnl(7);
+            let nfall;
+            const frtype = treefruit.otyp;
+
+            treefruit.quan = nfruit;
+            treefruit.owt = weight(treefruit);
+            if (is_plural(treefruit))
+                await pline(`Some ${xname(treefruit)} fall from the tree!`);
+            else
+                await pline(`${An(xname(treefruit))} falls from the tree!`);
+            nfall = await scatter(x, y, 2, MAY_HIT, treefruit);
+            if (nfall !== nfruit) {
+                /* scatter left some in the tree, but treefruit
+                 * may not refer to the correct object */
+                treefruit = mksobj(frtype, true, false);
+                treefruit.quan = nfruit - nfall;
+                await pline(`${nfruit - nfall} ${xname(treefruit)} got caught in the branches.`);
+                /* dealloc_obj(treefruit) */
+            }
+            exercise(A_DEX, true);
+            exercise(A_WIS, true); /* discovered a new food source! */
+            newsym(x, y);
+            game.maploc.looted |= TREE_LOOTED;
             return ECMD_TIME;
-        } else if (!(maploc.looted & TREE_SWARM)) {
+        } else if (!(game.maploc.looted & TREE_SWARM)) {
             let cnt = rnl(4) + 2;
             let made = 0;
             const mm = { x, y };
+
             while (cnt--) {
                 if (enexto(mm, mm.x, mm.y, game.mons[PMNAMES.PM_KILLER_BEE])
-                    && await makemon(game.mons[PMNAMES.PM_KILLER_BEE],
-                                     mm.x, mm.y, MM_ANGRY | MM_NOMSG))
+                    && await makemon(game.mons[PMNAMES.PM_KILLER_BEE], mm.x, mm.y,
+                                     MM_ANGRY | MM_NOMSG))
                     made++;
             }
             if (made)
                 await pline("You've attracted the tree's former occupants!");
             else
                 await You('smell stale honey.');
-            maploc.looted |= TREE_SWARM;
+            game.maploc.looted |= TREE_SWARM;
             return ECMD_TIME;
         }
-        await kick_ouch(x, y, maploc, '');
+        await kick_ouch(x, y, '');
         return ECMD_TIME;
     }
-    if (IS_SINK(maploc.typ)) {
+    if (IS_SINK(game.maploc.typ)) {
         const gend = poly_gender();
 
-        if (Levitation) {
+        if (Levitation()) {
             await kick_dumb(x, y);
             return ECMD_TIME;
         }
         if (rn2(5)) {
+            /* Soundeffect(se_klunk_pipe, 60); */
             if (!Deaf())
                 await pline('Klunk!  The pipes vibrate noisily.');
             else
                 await pline('Klunk!');
             exercise(A_DEX, true);
             return ECMD_TIME;
-        } else if (!(maploc.looted & S_LPUDDING) && !rn2(3)
-                   && !((game.mvitals?.[PMNAMES.PM_BLACK_PUDDING]?.mvflags
-                         ?? 0) & G_GONE)) {
-            if (Blind) {
+        } else if (!(game.maploc.looted & S_LPUDDING) && !rn2(3)
+                   && !(game.mvitals[PMNAMES.PM_BLACK_PUDDING].mvflags & G_GONE)) {
+            /* Soundeffect(se_gushing_sound, 100); */
+            if (Blind()) {
                 if (!Deaf())
-                    await pline('You hear a gushing sound.');
+                    await You_hear('a gushing sound.');
             } else {
-                await pline(`A ${hcolor('black')} ooze gushes up from the drain!`);
+                await pline(`A ${hcolor(NH_BLACK)} ooze gushes up from the drain!`);
             }
             await makemon(game.mons[PMNAMES.PM_BLACK_PUDDING], x, y, MM_NOMSG);
             exercise(A_DEX, true);
             newsym(x, y);
-            maploc.looted |= S_LPUDDING;
+            game.maploc.looted |= S_LPUDDING;
             return ECMD_TIME;
-        } else if (!(maploc.looted & S_LDWASHER) && !rn2(3)
-                   && !((game.mvitals?.[PMNAMES.PM_AMOROUS_DEMON]?.mvflags
-                         ?? 0) & G_GONE)) {
+        } else if (!(game.maploc.looted & S_LDWASHER) && !rn2(3)
+                   && !(game.mvitals[PMNAMES.PM_AMOROUS_DEMON].mvflags & G_GONE)) {
             /* can't resist... */
-            await pline(`${Blind ? 'Something' : 'The dish washer'} returns!`);
+            await pline(`${(Blind() ? Something : 'The dish washer')} returns!`);
             if (await makemon(game.mons[PMNAMES.PM_AMOROUS_DEMON], x, y,
                               MM_NOMSG | ((gend === 1 || (gend === 2 && rn2(2)))
                                           ? MM_MALE : MM_FEMALE)))
                 newsym(x, y);
-            maploc.looted |= S_LDWASHER;
+            game.maploc.looted |= S_LDWASHER;
             exercise(A_DEX, true);
             return ECMD_TIME;
         } else if (!rn2(3)) {
-            note_unported_dokick('kick_nondoor:sink_backs_up');
+            await sink_backs_up(x, y);
             return ECMD_TIME;
         }
-        await kick_ouch(x, y, maploc, '');
+        await kick_ouch(x, y, '');
         return ECMD_TIME;
     }
-    if (maploc.typ === STAIRS || maploc.typ === LADDER
-        || IS_STWALL(maploc.typ)) {
-        const sway = stairway_at(x, y);
-        if (!IS_STWALL(maploc.typ) && sway && !sway.up) {
+    if (game.maploc.typ === STAIRS || game.maploc.typ === LADDER
+        || IS_STWALL(game.maploc.typ)) {
+        if (!IS_STWALL(game.maploc.typ) && game.maploc.ladder === LA_DOWN) {
             await kick_dumb(x, y);
             return ECMD_TIME;
         }
-        await kick_ouch(x, y, maploc, '');
+        await kick_ouch(x, y, '');
         return ECMD_TIME;
     }
     await kick_dumb(x, y);

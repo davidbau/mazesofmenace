@@ -370,7 +370,7 @@ async function wand_explode(obj, chg /* recharging */) {
 }
 
 // src/read.c:729 recharge() — apply a scroll of charging to obj.
-async function recharge(obj, curse_bless) {
+export async function recharge(obj, curse_bless) {
     const u = game.u;
     let n;
     const is_cursed = curse_bless < 0;
@@ -761,7 +761,7 @@ export async function drop_boulder_on_player(confused, helmet_protects, byu,
     } else
         dmg = 0;
     /* Must be before the losehp(), for bones files */
-    wake_nearto(u.ux, u.uy, 4 * 4);
+    await wake_nearto(u.ux, u.uy, 4 * 4);
     if (!(await flooreffects(otmp2, u.ux, u.uy, 'fall'))) {
         place_object(otmp2, u.ux, u.uy);
         stackobj(otmp2);
@@ -821,7 +821,7 @@ export async function drop_boulder_on_monster(x, y, confused, byu) {
         } else {
             await wakeup(mtmp, byu);
         }
-        wake_nearto(x, y, 4 * 4);
+        await wake_nearto(x, y, 4 * 4);
     } else if (engulfing_u(mtmp)) {
         obfree(otmp2);
         /* fall through to player */
@@ -994,7 +994,7 @@ async function seffect_scare_monster(sobj) {
             if (confused || scursed) {
                 mtmp.mflee = mtmp.mfrozen = mtmp.msleeping = 0;
                 mtmp.mcanmove = 1;
-            } else if (!resist(mtmp, sobj.oclass, 0, NOTELL))
+            } else if (!await resist(mtmp, sobj.oclass, 0, NOTELL))
                 await monflee(mtmp, 0, false, false);
             if (!mtmp.mtame)
                 ct++; /* pets don't laugh at you */
@@ -1033,7 +1033,7 @@ async function maybe_tame(mtmp, sobj) {
     }
 
     const { resist } = await import('./zap.js');
-    if (!resist(mtmp, sobj.oclass, 0, false) || mtmp.isshk) {
+    if (!await resist(mtmp, sobj.oclass, 0, false) || mtmp.isshk) {
         const { tamedog } = await import('./dog.js');
         await tamedog(mtmp, sobj, false);
     }

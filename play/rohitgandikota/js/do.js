@@ -1,3 +1,7 @@
+import { allow_all } from './pickup.js';
+import { PICK_ANY } from './const.js';
+import { USE_INVLET } from './const.js';
+import { INVORDER_SORT } from './const.js';
 import { Has_contents } from './obj.js';
 import { COST_DEGRD } from './const.js';
 import { costly_alteration } from './shk.js';
@@ -77,6 +81,18 @@ import { corpse_xname, CXN_NOCORPSE, CXN_PFX_THE, the, vtense, xname }
 import { waterbody_name } from './pager.js';
 import { is_pool_or_lava } from './dbridge.js';
 import { DEADMONSTER } from './monst.js';
+import { LEFT_SIDE } from './const.js';
+import { RIGHT_SIDE } from './const.js';
+import { LEG } from './const.js';
+import { makeplural } from './objnam.js';
+
+
+
+
+
+
+
+
 
 /* mklev() lives in js/mklev.js, which this file's callers already pull in.
    A dynamic import() here hits the same partially-initialised module the
@@ -507,7 +523,7 @@ export async function boulder_hits_pool(obj, x, y, pushing) {
             } else if (!Deaf()) {
                 await You_hear('a' + (lava ? ' sizzling' : '') + ' splash.');
             }
-            wake_nearto(x, y, 40);
+            await wake_nearto(x, y, 40);
         }
 
         if (fillsUp && game.u.uinwater
@@ -1932,7 +1948,8 @@ export async function doddrop() {
             const eligible = game.invent.filter(
                 (obj) => all_categories || allow_category(obj));
             const objects = await query_objlist(
-                'What would you like to drop?', eligible, true);
+                'What would you like to drop?', eligible,
+                INVORDER_SORT | USE_INVLET, PICK_ANY, allow_all);
             for (const obj of objects) {
                 if (game.invent.includes(obj)) {
                     const count = objects.counts?.get(obj) ?? obj.quan;
@@ -2120,5 +2137,22 @@ export async function heal_legs(how) {
 
         if (how === 0)
             await encumber_msg();
+    }
+}
+
+// src/do.c legs_in_no_shape(); wounded legs refuse jumping, kicking, riding
+export async function legs_in_no_shape(for_what, /* jumping, kicking, riding */
+                                       by_steed) {
+    if (by_steed && game.u.usteed) {
+        await pline(`${Monnam(game.u.usteed)} is in no shape for ${for_what}.`);
+    } else {
+        const wl = ((game.u.EWounded_legs | 0) & BOTH_SIDES);
+        let bp = body_part(LEG);
+
+        if (wl === BOTH_SIDES)
+            bp = makeplural(bp);
+        await Your(`${
+            (wl === LEFT_SIDE) ? 'left ' : (wl === RIGHT_SIDE) ? 'right ' : ''}${
+            bp} ${(wl === BOTH_SIDES) ? 'are' : 'is'} in no shape for ${for_what}.`);
     }
 }

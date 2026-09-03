@@ -6,6 +6,22 @@
 // Dexterity and Constitution, and a session that opens a door runs one call
 // short of C without it.
 
+import { stop_occupation } from './allmain.js';
+import { add_damage } from './shk.js';
+import { in_rooms } from './hack.js';
+import { wake_nearto } from './mon.js';
+import { distu } from './hacklib.js';
+import { Deaf } from './youprop.js';
+import { Unaware } from './youprop.js';
+import { mb_trapped } from './monmove.js';
+import { t_at } from './mon.js';
+import { You_hear } from './pline.js';
+import { vision_recalc } from './vision.js';
+import { cansee } from './vision.js';
+import { Is_rogue_level } from './const.js';
+import { SHOPBASE } from './const.js';
+import { DOOR } from './const.js';
+import { SDOOR } from './const.js';
 import { OBJ_INVENT } from './const.js';
 import { Role_if } from './attrib.js';
 import { game } from './gstate.js';
@@ -48,6 +64,46 @@ import { There } from './pline.js';
 import { block_point, recalc_block_point } from './vision.js';
 import { tty_yn_function } from './tty/topl.js';
 import { is_drawbridge_wall } from './dbridge.js';
+import { an } from './objnam.js';
+import { breathless } from './mondata.js';
+import { haseyes } from './mondata.js';
+import { bottlename } from './potion.js';
+import { potionbreathe } from './potion.js';
+import { MATERIALS } from './objects_data.js';
+import { costly_alteration } from './shk.js';
+import { costly_spot } from './shk.js';
+import { shop_keeper } from './shk.js';
+import { stolen_value } from './shk.js';
+import { COST_BRKLCK } from './const.js';
+import { obfree } from './invent.js';
+import { currency } from './invent.js';
+import { start_corpse_timeout } from './mkobj.js';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 function note_unported_lock(what) {
     (game.unported ||= new Set()).add(what);
@@ -221,7 +277,7 @@ function stumble_on_door_mimic(x, y) {
 
 // src/lock.c:926 obstructed() — is something standing or lying on the door
 // square?
-async function obstructed(x, y, quietly) {
+export async function obstructed(x, y, quietly) {
     const mtmp = m_at(x, y);
 
     if (mtmp && M_AP_TYPE(mtmp) !== M_AP_FURNITURE) {
@@ -721,6 +777,12 @@ export function reset_pick() {
     xl.box = null;
 }
 
+// src/lock.c picking_at(); is the hero currently picking the lock at <x,y>?
+export function picking_at(x, y) {
+    return (game.occupation === picklock
+            && game.xlock?.door === game.level.at(x, y));
+}
+
 /* include/obj.h is_weptool() */
 function is_weptool(o) {
     return o.oclass === OCLASSES.TOOL_CLASS
@@ -748,67 +810,102 @@ function greatest_erosion(otmp) {
     return (e1 > e2) ? e1 : e2;
 }
 
-// src/mkobj.c chest_shatter_msg() — one item destroyed inside a smashed box.
+// src/lock.c:129 chest_shatter_msg(); a container item was destroyed
 async function chest_shatter_msg(otmp) {
     let disposition;
+    let thing;
+    let save_HBlinded, save_BBlinded;
 
     if (otmp.oclass === OCLASSES.POTION_CLASS) {
-        /* bottlename() picks a random flavour word for an unidentified
-           potion, and potionbreathe() applies the vapours */
-        note_unported_lock('chest_shatter_msg:potion');
+        await You(`${Blind() ? 'hear' : 'see'} ${an(bottlename())} shatter!`);
+        if (!breathless(game.youmonst.data) || haseyes(game.youmonst.data))
+            await potionbreathe(otmp);
         return;
     }
-    /* C sets HBlinded=1 / BBlinded=0 across singular() so the name comes out
-       as the plain object type rather than its unidentified appearance --
-       "a spellbook", not "a white spellbook". */
-    const save_ublind = game.u.ublind;
+    /* We have functions for distant and singular names, but not one */
+    /* which does _both_... */
+    /* u.ublind is the JS twin of HBlinded; the BBlinded half has no twin */
+    save_HBlinded = game.u.ublind,  save_BBlinded = 0;
     game.u.ublind = 1;
-    const thing = singular(otmp, xname);
-    game.u.ublind = save_ublind;
+    thing = singular(otmp, xname);
+    game.u.ublind = save_HBlinded;
     switch (game.objects[otmp.otyp].oc_material) {
-    case PAPER:  disposition = 'is torn to shreds'; break;
-    case WAX:    disposition = 'is crushed'; break;
-    case VEGGY:  disposition = 'is pulped'; break;
-    case FLESH:  disposition = 'is mashed'; break;
-    case GLASS:  disposition = 'shatters'; break;
-    case WOOD:   disposition = 'splinters to fragments'; break;
-    default:     disposition = 'is destroyed'; break;
+    case MATERIALS.PAPER:
+        disposition = 'is torn to shreds';
+        break;
+    case MATERIALS.WAX:
+        disposition = 'is crushed';
+        break;
+    case MATERIALS.VEGGY:
+        disposition = 'is pulped';
+        break;
+    case MATERIALS.FLESH:
+        disposition = 'is mashed';
+        break;
+    case MATERIALS.GLASS:
+        disposition = 'shatters';
+        break;
+    case MATERIALS.WOOD:
+        disposition = 'splinters to fragments';
+        break;
+    default:
+        disposition = 'is destroyed';
+        break;
     }
     await pline(`${An(thing)} ${disposition}!`);
 }
 
-// src/lock.c:162 breakchestlock()
-async function breakchestlock(box, destroyit) {
+// src/lock.c:162 breakchestlock(); the lock is broken (kick, #force) or the box
+// itself is destroyed (#force with a blunt weapon)
+export async function breakchestlock(box, destroyit) {
     if (!destroyit) { /* bill for the box but not for its contents */
-        if (game.u.ushops)
-            note_unported_lock('breakchestlock:costly_alteration');
+        const hide_contents = box.cobj;
+
+        box.cobj = [];
+        await costly_alteration(box, COST_BRKLCK);
+        box.cobj = hide_contents;
         box.olocked = 0;
         box.obroken = 1;
         box.lknown = 1;
-        return;
-    }
-    /* #force has destroyed this box (at <u.ux,u.uy>) */
-    if (game.u.ushops)
-        note_unported_lock('breakchestlock:shop_loss');
+    } else { /* #force has destroyed this box (at <u.ux,u.uy>) */
+        let otmp;
+        const shkp = (game.u.ushops && costly_spot(game.u.ux, game.u.uy))
+                     ? shop_keeper(game.u.ushops.charCodeAt(0))
+                     : null;
+        const costly = (shkp != null),
+              peaceful_shk = costly && !!shkp.mpeaceful;
+        let loss = 0;
 
-    await pline(`In fact, you've totally destroyed ${the(xname(box))}.`);
-    /* Put the contents on ground at the hero's feet. */
-    let otmp;
-    while ((otmp = (box.cobj && box.cobj[0]) || null) !== null) {
-        obj_extract_self(otmp);
-        if (!rn2(3) || otmp.oclass === OCLASSES.POTION_CLASS) {
-            await chest_shatter_msg(otmp);
-            if (otmp.quan === 1)
-                continue;       /* obfree(): the object is simply gone */
-            /* this works because we're sure to have at least 1 left */
-            useup(otmp);
+        await pline(`In fact, you've totally destroyed ${the(xname(box))}.`);
+        /* Put the contents on ground at the hero's feet. */
+        while ((otmp = (box.cobj && box.cobj[0])) != null) {
+            obj_extract_self(otmp);
+            if (!rn2(3) || otmp.oclass === OCLASSES.POTION_CLASS) {
+                await chest_shatter_msg(otmp);
+                if (costly)
+                    loss += await stolen_value(otmp, game.u.ux, game.u.uy, peaceful_shk,
+                                               true);
+                if (otmp.quan === 1) {
+                    obfree(otmp, null);
+                    continue;
+                }
+                /* this works because we're sure to have at least 1 left;
+                   otherwise it would fail since otmp is not in inventory */
+                useup(otmp);
+            }
+            if (box.otyp === ONAMES.ICE_BOX && otmp.otyp === ONAMES.CORPSE) {
+                otmp.age = game.moves - otmp.age; /* actual age */
+                start_corpse_timeout(otmp);
+            }
+            place_object(otmp, game.u.ux, game.u.uy);
+            stackobj(otmp);
         }
-        if (box.otyp === ONAMES.ICE_BOX && otmp.otyp === ONAMES.CORPSE)
-            note_unported_lock('breakchestlock:ice_box_corpse');
-        place_object(otmp, game.u.ux, game.u.uy);
-        stackobj(otmp);
+        if (costly)
+            loss += await stolen_value(box, game.u.ux, game.u.uy, peaceful_shk, true);
+        if (loss)
+            await You(`owe ${loss} ${currency(loss)} for objects destroyed.`);
+        await delobj(box);
     }
-    delobj(box);
 }
 
 
@@ -842,7 +939,7 @@ export async function forcelock() {
             return (xl.usedtime = 0);
         }
     } else {            /* blunt */
-        wake_nearby(false); /* due to hammering on the container */
+        await wake_nearby(false); /* due to hammering on the container */
     }
 
     if (rn2(100) >= xl.chance)
@@ -990,4 +1087,173 @@ export function maybe_reset_pick(container) {
     if (container ? (container === xl.box)
                   : (!xl.box || !carried(xl.box)))
         reset_pick();
+}
+
+// src/lock.c doorlock(); opening, locking or striking magic hits a door;
+// returns True if something happened
+export async function doorlock(otmp, x, y) {
+    const door = game.level.at(x, y);
+    let res = true;
+    let loudness = 0;
+    let msg = null;
+    const dustcloud = 'A cloud of dust';
+    const quickly_dissipates = 'quickly dissipates';
+    const mysterywand = (otmp.oclass === OCLASSES.WAND_CLASS && !otmp.dknown);
+
+    if (door.typ === SDOOR) {
+        switch (otmp.otyp) {
+        case ONAMES.WAN_OPENING:
+        case ONAMES.SPE_KNOCK:
+        case ONAMES.WAN_STRIKING:
+        case ONAMES.SPE_FORCE_BOLT:
+            door.typ = DOOR;
+            door.doormask = D_CLOSED | (door.doormask & D_TRAPPED);
+            newsym(x, y);
+            if (cansee(x, y))
+                await pline('A door appears in the wall!');
+            if (otmp.otyp === ONAMES.WAN_OPENING || otmp.otyp === ONAMES.SPE_KNOCK)
+                return true;
+            break; /* striking: continue door handling below */
+        case ONAMES.WAN_LOCKING:
+        case ONAMES.SPE_WIZARD_LOCK:
+        default:
+            return false;
+        }
+    }
+
+    switch (otmp.otyp) {
+    case ONAMES.WAN_LOCKING:
+    case ONAMES.SPE_WIZARD_LOCK:
+        if (Is_rogue_level(game.u.uz)) {
+            const vis = cansee(x, y);
+
+            /* Can't have real locking in Rogue, so just hide doorway */
+            if (vis) {
+                await pline(`${dustcloud} springs up in the older, more primitive doorway.`);
+            } else {
+                /* Soundeffect(se_swoosh, 25); */
+                await You_hear('a swoosh.');
+            }
+            if (await obstructed(x, y, mysterywand)) {
+                if (vis)
+                    await pline_The(`cloud ${quickly_dissipates}.`);
+                return false;
+            }
+            block_point(x, y);
+            door.typ = SDOOR, door.doormask = D_NODOOR;
+            if (vis)
+                await pline_The('doorway vanishes!');
+            newsym(x, y);
+            return true;
+        }
+        if (await obstructed(x, y, mysterywand))
+            return false;
+        /* Don't allow doors to close over traps.  This is for pits */
+        /* & trap doors, but is it ever OK for anything else? */
+        if (t_at(x, y)) {
+            /* maketrap() clears doormask, so it should be NODOOR */
+            await pline(`${dustcloud} springs up in the doorway, but ${quickly_dissipates}.`);
+            return false;
+        }
+
+        switch (door.doormask & ~D_TRAPPED) {
+        case D_CLOSED:
+            msg = 'The door locks!';
+            break;
+        case D_ISOPEN:
+            msg = 'The door swings shut, and locks!';
+            break;
+        case D_BROKEN:
+            msg = 'The broken door reassembles and locks!';
+            break;
+        case D_NODOOR:
+            msg =
+               'A cloud of dust springs up and assembles itself into a door!';
+            break;
+        default:
+            res = false;
+            break;
+        }
+        block_point(x, y);
+        door.doormask = D_LOCKED | (door.doormask & D_TRAPPED);
+        newsym(x, y);
+        break;
+    case ONAMES.WAN_OPENING:
+    case ONAMES.SPE_KNOCK:
+        if (door.doormask & D_LOCKED) {
+            msg = 'The door unlocks!';
+            door.doormask = D_CLOSED | (door.doormask & D_TRAPPED);
+        } else
+            res = false;
+        break;
+    case ONAMES.WAN_STRIKING:
+    case ONAMES.SPE_FORCE_BOLT:
+        if (door.doormask & (D_LOCKED | D_CLOSED)) {
+            /* sawit: closed door location is more visible than open */
+            let sawit, seeit;
+
+            if (door.doormask & D_TRAPPED) {
+                const mtmp = m_at(x, y);
+
+                sawit = mtmp ? canseemon(mtmp) : cansee(x, y);
+                door.doormask = D_NODOOR;
+                unblock_point(x, y);
+                newsym(x, y);
+                seeit = mtmp ? canseemon(mtmp) : cansee(x, y);
+                if (mtmp) {
+                    await mb_trapped(mtmp, sawit || seeit);
+                } else {
+                    /* for mtmp, mb_trapped() does is own wake_nearto() */
+                    loudness = 40;
+                    if (game.flags.verbose) {
+                        /* Soundeffect(se_kaboom_door_explodes, 75); */
+                        if ((sawit || seeit) && !Unaware()) {
+                            await pline('KABOOM!!  You see a door explode.');
+                        } else if (!Deaf()) {
+                            /* Soundeffect(se_explosion, 75); */
+                            await You_hear(`a ${(distu(x, y) > 7 * 7) ? 'distant' : 'nearby'} explosion.`);
+                        }
+                    }
+                }
+                break;
+            }
+            sawit = cansee(x, y);
+            door.doormask = D_BROKEN;
+            recalc_block_point(x, y);
+            seeit = cansee(x, y);
+            newsym(x, y);
+            if (game.flags.verbose) {
+                if ((sawit || seeit) && !Unaware()) {
+                    await pline_The('door crashes open!');
+                } else if (!Deaf()) {
+                    /* Soundeffect(se_crashing_sound, 100); */
+                    await You_hear('a crashing sound.');
+                }
+            }
+            /* force vision recalc before printing more messages */
+            if (game.vision_full_recalc)
+                vision_recalc(0);
+            loudness = 20;
+        } else
+            res = false;
+        break;
+    default:
+        /* impossible("magic (%d) attempted on door.", otmp->otyp) */
+        break;
+    }
+    if (msg && cansee(x, y))
+        await pline(msg);
+    if (loudness > 0) {
+        /* door was destroyed */
+        await wake_nearto(x, y, loudness);
+        if (in_rooms(x, y, SHOPBASE).length)
+            add_damage(x, y, 0);
+    }
+
+    if (res && picking_at(x, y)) {
+        /* maybe unseen monster zaps door you're unlocking */
+        await stop_occupation();
+        reset_pick();
+    }
+    return res;
 }

@@ -8,6 +8,7 @@
 // rather than open-coding the prefix at each call site -- "You " and "Your "
 // carry a trailing space that is easy to lose.
 
+import { dirtocoord } from './cmd.js';
 import { PLINE_VERBALIZE } from './const.js';
 import { pline } from './display.js';
 import { game } from './gstate.js';
@@ -65,6 +66,13 @@ export async function You_see(line) {
     await pline('You see ' + line);
 }
 
+// src/pline.c:84 set_msg_dir() — the NEXT message happens one step from the hero
+export function set_msg_dir(dir) {
+    const cc = {};
+    dirtocoord(cc, dir);
+    (game.a11y ||= {}).msg_loc = { x: cc.x + game.u.ux, y: cc.y + game.u.uy };
+}
+
 // src/pline.c:93 set_msg_xy() — where the NEXT message is considered to happen.
 //
 // This feeds a11y.msg_loc, which only the accessibility message-location
@@ -72,6 +80,12 @@ export async function You_see(line) {
 // scoring; it exists so pline_xy below reads the way C reads.
 export function set_msg_xy(x, y) {
     (game.a11y ||= {}).msg_loc = { x, y };
+}
+
+// src/pline.c:118 pline_dir() — pline() with a message direction attached
+export async function pline_dir(dir, line) {
+    set_msg_dir(dir);
+    await pline(line);
 }
 
 // src/pline.c:126 pline_xy() — pline() with a message location attached.

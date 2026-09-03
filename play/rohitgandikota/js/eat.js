@@ -1,3 +1,143 @@
+import { MONSYMS } from './monst_data.js';
+import { altar_wrath } from './pray.js';
+import { melt_ice } from './zap.js';
+import { ubreatheu } from './zap.js';
+import { on_level } from './dungeon.js';
+import { reset_utrap } from './trap.js';
+import { deltrap } from './trap.js';
+import { t_at } from './mon.js';
+import { is_ice } from './dbridge.js';
+import { retouch_equipment } from './artifact.js';
+import { attrcurse } from './sit.js';
+import { dismount_steed } from './steed.js';
+import { toggle_displacement } from './do_wear.js';
+import { self_invis_message } from './do_wear.js';
+import { paranoid_query } from './cmd.js';
+import { fall_asleep } from './timeout.js';
+import { set_ulycn } from './were.js';
+import { is_were } from './were.js';
+import { you_unwere } from './were.js';
+import { pluslvl } from './exper.js';
+import { setuhpmax } from './exper.js';
+import { explode } from './explode.js';
+import { incr_itimeout } from './potion.js';
+import { set_itimeout } from './potion.js';
+import { make_hallucinated } from './potion.js';
+import { make_confused } from './potion.js';
+import { make_stunned } from './potion.js';
+import { make_blinded } from './potion.js';
+import { make_vomiting } from './potion.js';
+import { make_sick } from './potion.js';
+import { verbalize } from './pline.js';
+import { pline_The } from './pline.js';
+import { You_hear } from './pline.js';
+import { livelog_printf } from './pline.js';
+import { slimeproof } from './dog.js';
+import { heal_legs } from './do.js';
+import { dropy } from './do.js';
+import { sellobj_state } from './shk.js';
+import { feel_cockatrice } from './invent.js';
+import { will_feel_cockatrice } from './invent.js';
+import { g_at } from './invent.js';
+import { hands_obj } from './invent.js';
+import { obj_extract_self } from './invent.js';
+import { inv_cnt } from './hack.js';
+import { an } from './objnam.js';
+import { ansimpleoname } from './objnam.js';
+import { safe_qbuf } from './objnam.js';
+import { otense } from './objnam.js';
+import { the_unique_pm } from './objnam.js';
+import { corpse_xname } from './objnam.js';
+import { killer_xname } from './objnam.js';
+import { Flying } from './youprop.js';
+import { Wwalking } from './youprop.js';
+import { Deaf } from './youprop.js';
+import { Invis } from './youprop.js';
+import { Sleep_resistance } from './youprop.js';
+import { Acid_resistance } from './youprop.js';
+import { Sick_resistance } from './youprop.js';
+import { Breathless } from './youprop.js';
+import { gainstr } from './attrib.js';
+import { monflee } from './monmove.js';
+import { TOPLINE_NEED_MORE } from './const.js';
+import { TOPLINE_EMPTY } from './const.js';
+import { flush_screen } from './display.js';
+import { more } from './display.js';
+import { see_monsters } from './display.js';
+import { newsym } from './display.js';
+import { is_obj_mappear } from './monst.js';
+import { MATERIALS } from './objects_data.js';
+import { paranoia_bits } from './options.js';
+import { u_at } from './const.js';
+import { IS_ALTAR } from './const.js';
+import { GETOBJ_NOFLAGS } from './const.js';
+import { W_NONDIGGABLE } from './const.js';
+import { IRONBARS } from './const.js';
+import { TT_BEARTRAP } from './const.js';
+import { BEAR_TRAP } from './const.js';
+import { DISMOUNT_FELL } from './const.js';
+import { INTRINSIC } from './const.js';
+import { EXPL_FIERY } from './const.js';
+import { SICK_ALL } from './const.js';
+import { CXN_NORMAL } from './const.js';
+import { LL_CONDUCT } from './const.js';
+import { invlet_basic } from './const.js';
+import { OBJ_FLOOR } from './const.js';
+import { OBJ_DELETED } from './const.js';
+import { SELL_NORMAL } from './const.js';
+import { SELL_DONTSELL } from './const.js';
+import { NEUTRAL } from './const.js';
+import { STOMACH } from './const.js';
+import { POISONING } from './const.js';
+import { M_AP_OBJECT } from './const.js';
+import { M_AP_NOTHING } from './const.js';
+import { M_AP_TYPMASK } from './const.js';
+import { PARANOID_EATING } from './const.js';
+import { MAX_EGG_HATCH_TIME } from './const.js';
+import { rehumanize } from './polyself.js';
+import { polymon } from './polyself.js';
+import { uasmon_maxStr } from './polyself.js';
+import { is_clinger } from './mondata.js';
+import { attacktype_fordmg } from './mondata.js';
+import { is_undead } from './mondata.js';
+import { is_dwarf } from './mondata.js';
+import { is_elf } from './mondata.js';
+import { is_orc } from './mondata.js';
+import { humanoid } from './mondata.js';
+import { poly_when_stoned } from './mondata.js';
+import { Has_contents } from './const.js';
+import { is_metallic } from './obj.js';
+import { mksobj } from './mkobj.js';
+import { peek_at_iced_corpse_age } from './mkobj.js';
+import { is_rustprone } from './mkobj.js';
+import { is_flammable } from './mkobj.js';
+import { EDOG } from './const.js';
+import { Mgender } from './const.js';
+import { ismnum } from './const.js';
+import { Upolyd } from './const.js';
+import { A_INT } from './const.js';
+import { A_WIS } from './const.js';
+import { DIED } from './const.js';
+import { NO_KILLER_PREFIX } from './const.js';
+import { M_ATTK_AGR_DIED } from './const.js';
+import { M_ATTK_MISS } from './const.js';
+import { M_ATTK_HIT } from './const.js';
+import { monsndx } from './makemon.js';
+import { DEADMONSTER } from './monst.js';
+import { canseemon } from './display.js';
+import { canspotmon } from './display.js';
+import { pmname } from './do_name.js';
+import { mon_nam } from './do_name.js';
+import { Monnam } from './do_name.js';
+import { s_suffix } from './hacklib.js';
+import { mondied } from './mon.js';
+import { monstone } from './mon.js';
+import { your_race } from './polyself.js';
+import { same_race } from './dog.js';
+import { is_rider } from './mondata.js';
+import { mindless } from './mondata.js';
+import { noncorporeal } from './mondata.js';
+import { Role_if } from './attrib.js';
 import { selftouch } from './trap.js';
 import { Levitation } from './youprop.js';
 import { unmul } from './hack.js';
@@ -117,14 +257,22 @@ export async function gethungry() {
                 u.uhunger--;
             break;
         case 4:
-            /* the +0 ring of protection "only source of MC" corner needs
-               the EProtection source masks; a +0 protection ring here is
-               treated as hungerless and recorded */
             if (uleft && uleft.otyp !== ONAMES.MEAT_RING
+                /* more hungry if +/- is nonzero or +/- doesn't apply or
+                   +0 ring of protection is only source of protection;
+                   need to check whether both rings are +0 protection or
+                   they'd both slip by the "is there another source?" test,
+                   but don't do that for both rings or they will both be
+                   treated as supplying "MC" when only one matters;
+                   note: amulet of guarding overrides both +0 rings and
+                   is caught by the (EProtection & ~W_RINGx) == 0L tests */
                 && (uleft.spe
                     || !game.objects[uleft.otyp].oc_charged
                     || (uleft.otyp === ONAMES.RIN_PROTECTION
-                        && note_unported_eat('gethungry:protection_mc'))))
+                        && (((u.uprops?.PROTECTION | 0) & ~W_RINGL) === 0
+                            || (((u.uprops?.PROTECTION | 0) & ~W_RINGL) === W_RINGR
+                                && uright && uright.otyp === ONAMES.RIN_PROTECTION
+                                && !uright.spe)))))
                 u.uhunger--;
             break;
         case 8:
@@ -136,7 +284,7 @@ export async function gethungry() {
                 && (uright.spe
                     || !game.objects[uright.otyp].oc_charged
                     || (uright.otyp === ONAMES.RIN_PROTECTION
-                        && note_unported_eat('gethungry:protection_mc'))))
+                        && ((u.uprops?.PROTECTION | 0) & ~W_RINGR) === 0)))
                 u.uhunger--;
             break;
         case 16:
@@ -167,6 +315,196 @@ export async function unfaint() {
     await stop_occupation();
     (game.disp ||= {}).botl = true;
     return 0;
+}
+
+/* include/attrib.h ABASE(), AMAX(), ATTRMIN() */
+const ABASE = (i) => game.u.acurr.a[i];
+const AMAX = (i) => game.u.amax.a[i];
+const ATTRMIN = (i) => game.urace.attrmin[i];
+/* src/eat.c:51 CANNIBAL_ALLOWED() */
+const CANNIBAL_ALLOWED = () => (Role_if(PMNAMES.PM_CAVE_DWELLER) || Race_if(PMNAMES.PM_ORC));
+/* include/youprop.h */
+const Lifesaved = () => !!game.u.uprops?.LIFESAVED;
+const Stoned = () => !!game.u.uprops?.STONED;
+/* src/eat.c maybe_cannibal()'s static */
+let ate_brains = 0;
+
+// src/eat.c:758 maybe_cannibal()
+export async function maybe_cannibal(pm, allowmsg) {
+    const fptr = game.mons[pm]; /* food type */
+
+    /* when poly'd into a mind flayer, multiple tentacle hits in one
+       turn cause multiple digestion checks to occur; avoid giving
+       multiple luck penalties for the same attack */
+    if (game.moves === ate_brains)
+        return false;
+    ate_brains = game.moves; /* ate_anything, not just brains... */
+
+    if (!CANNIBAL_ALLOWED()
+        /* non-cannibalistic heroes shouldn't eat own species ever
+           and also shouldn't eat current species when polymorphed
+           (even if having the form of something which doesn't care
+           about cannibalism--hero's innate traits aren't altered) */
+        && (your_race(fptr)
+            || (Upolyd(game.u) && same_race(game.youmonst.data, fptr))
+            || (ismnum(game.u.ulycn) && were_beastie(pm) === game.u.ulycn))) {
+        if (allowmsg) {
+            if (Upolyd(game.u) && your_race(fptr))
+                await You('have a bad feeling deep inside.');
+            await You('cannibal!  You will regret this!');
+        }
+        (game.u.intrinsic ||= {}).HAggravate_monster = (game.u.intrinsic.HAggravate_monster | 0) | FROMOUTSIDE;
+        change_luck(-rn1(4, 2)); /* -5..-2 */
+        return true;
+    }
+    return false;
+}
+
+// src/eat.c:603 eat_brains(); dmg_p is a {v} box for the extra damage
+export async function eat_brains(magr, mdef, visflag, dmg_p) {
+    const pd = mdef.data;
+    let give_nutrit = false;
+    let result = M_ATTK_HIT;
+    const xtra_dmg = rnd(10);
+
+    /* previous tentacle attack might have triggered fatal passive
+       counterattack [callers ought to be updated to avoid this situation] */
+    if (magr !== game.youmonst && DEADMONSTER(magr)) {
+        return M_ATTK_AGR_DIED;
+    }
+
+    if (noncorporeal(pd)) {
+        if (visflag)
+            await pline(`${(mdef === game.youmonst) ? 'Your' : s_suffix(Monnam(mdef))} brain is unharmed.`);
+        return M_ATTK_MISS; /* side-effects can't occur */
+    } else if (magr === game.youmonst) {
+        await You(`eat ${s_suffix(mon_nam(mdef))} brain!`);
+    } else if (mdef === game.youmonst) {
+        await Your('brain is eaten!');
+    } else { /* monster against monster */
+        if (visflag && canspotmon(mdef))
+            await pline(`${s_suffix(Monnam(mdef))} brain is eaten!`);
+    }
+
+    if (flesh_petrifies(pd)) {
+        /* mind flayer has attempted to eat the brains of a petrification
+           inducing critter (most likely Medusa; attacking a cockatrice via
+           tentacle-touch should have been caught before reaching this far) */
+        if (magr === game.youmonst) {
+            if (!Stone_resistance() && !Stoned())
+                await make_stoned(5, null, KILLED_BY_AN,
+                                  pmname(pd, Mgender(mdef)));
+        } else {
+            /* no need to check for poly_when_stoned or Stone_resistance;
+               mind flayers don't have those capabilities */
+            if (visflag && canseemon(magr))
+                await pline(`${Monnam(magr)} turns to stone!`);
+            await monstone(magr);
+            if (!DEADMONSTER(magr)) {
+                /* life-saved; don't continue eating the brains */
+                return M_ATTK_MISS;
+            } else {
+                if (magr.mtame && !visflag)
+                    /* parallels mhitm.c's brief_feeling */
+                    await You('have a sad thought for a moment, then it passes.');
+                return M_ATTK_AGR_DIED;
+            }
+        }
+    }
+
+    if (magr === game.youmonst) {
+        /*
+         * player mind flayer is eating something's brain
+         */
+        await eating_conducts(pd);
+        if (mindless(pd)) { /* (cannibalism not possible here) */
+            await pline(`${Monnam(mdef)} doesn't notice.`);
+            /* all done; no extra harm inflicted upon target */
+            return M_ATTK_MISS;
+        } else if (is_rider(pd)) {
+            await pline('Ingesting that is fatal.');
+            game.killer = { format: NO_KILLER_PREFIX,
+                            name: `unwisely ate the brain of ${pmname(pd, Mgender(mdef))}` };
+            await done(DIED);
+            /* life-saving needed to reach here */
+            exercise(A_WIS, false);
+            dmg_p.v += xtra_dmg; /* Rider takes extra damage */
+        } else {
+            await morehungry(-rnd(30)); /* cannot choke */
+            if (ABASE(A_INT) < AMAX(A_INT)) {
+                /* recover lost Int; won't increase current max */
+                game.u.acurr.a[A_INT] += rnd(4);
+                if (ABASE(A_INT) > AMAX(A_INT))
+                    game.u.acurr.a[A_INT] = AMAX(A_INT);
+                (game.disp ||= {}).botl = true;
+            }
+            exercise(A_WIS, true);
+            dmg_p.v += xtra_dmg;
+        }
+        /* targeting another mind flayer or your own underlying species
+           is cannibalism */
+        await maybe_cannibal(monsndx(pd), true);
+
+    } else if (mdef === game.youmonst) {
+        /*
+         * monster mind flayer is eating hero's brain
+         */
+        /* no such thing as mindless players */
+        if (ABASE(A_INT) <= ATTRMIN(A_INT)) {
+            const brainlessness = 'brainlessness';
+
+            if (Lifesaved()) {
+                game.killer = { format: KILLED_BY, name: brainlessness };
+                await done(DIED);
+                /* amulet of life saving has now been used up */
+                await pline('Unfortunately your brain is still gone.');
+                /* sanity check against adding other forms of life-saving */
+                if (game.u.uprops)
+                    delete game.u.uprops.LIFESAVED;
+                if (game.u.intrinsic)
+                    game.u.intrinsic.HLifesaved = 0;
+            } else {
+                await Your('last thought fades away.');
+            }
+            game.killer = { format: KILLED_BY, name: brainlessness };
+            await done(DIED);
+            /* can only get here when in wizard or explore mode and user has
+               explicitly chosen not to die; arbitrarily boost intelligence */
+            game.u.acurr.a[A_INT] = ATTRMIN(A_INT) + 2;
+            await You_feel('like a scarecrow.');
+        }
+        give_nutrit = true; /* in case a conflicted pet is doing this */
+        exercise(A_WIS, false);
+        /* caller handles Int and memory loss */
+
+    } else { /* mhitm */
+        /*
+         * monster mind flayer is eating another monster's brain
+         */
+        if (mindless(pd)) {
+            if (visflag && canspotmon(mdef))
+                await pline(`${Monnam(mdef)} doesn't notice.`);
+            return M_ATTK_MISS;
+        } else if (is_rider(pd)) {
+            await mondied(magr);
+            if (DEADMONSTER(magr))
+                result = M_ATTK_AGR_DIED;
+            /* Rider takes extra damage regardless of whether attacker dies */
+            dmg_p.v += xtra_dmg;
+        } else {
+            dmg_p.v += xtra_dmg;
+            give_nutrit = true;
+            if (dmg_p.v >= mdef.mhp && visflag && canspotmon(mdef))
+                await pline(`${s_suffix(Monnam(mdef))} last thought fades away...`);
+        }
+    }
+
+    if (give_nutrit && magr.mtame && !magr.isminion) {
+        EDOG(magr).hungrytime += rnd(60);
+        magr.mconf = 0;
+    }
+
+    return result;
 }
 
 // src/eat.c:3347 is_fainted()
@@ -207,18 +545,6 @@ function tin_ok(obj) {
     return GETOBJ_SUGGEST;
 }
 
-async function inventory_floorfood(verb, corpsecheck, offering) {
-    const obj = await getobj(verb, offering ? offer_ok
-                                  : corpsecheck === 2 ? tin_ok : eat_ok, 0);
-    if (obj && corpsecheck && !(offering && obj.oclass === OCLASSES.AMULET_CLASS)
-        && (obj.otyp !== ONAMES.CORPSE
-            || (corpsecheck === 2 && !tinnable(obj)))) {
-        await You_cant(`${verb} that!`);
-        return null;
-    }
-    return obj;
-}
-
 // src/eat.c floorfood() — offer each edible thing at the hero's feet with a
 // y/n prompt, then fall through to getobj() for something carried.
 //
@@ -228,47 +554,160 @@ async function inventory_floorfood(verb, corpsecheck, offering) {
 // some levels, so guessing it would misalign a session rather than fix it.
 // Only the clean case is ported — nothing edible underfoot, straight to
 // getobj — and anything else is recorded.
-export async function floorfood(verb, corpsecheck) {
-    const feeding = (verb === 'eat');           /* corpsecheck == 0 */
-    const offering = (verb === 'sacrifice');    /* corpsecheck == 1 */
+export async function floorfood(verb,
+                                 corpsecheck) /* 0, no check, 1, corpses, 2, tinnable corpses */
+{
+    let otmp;
+    let qbuf;
+    let c;
+    const uptr = game.youmonst.data;
+    const feeding = (verb === 'eat'),        /* corpsecheck==0 */
+          offering = (verb === 'sacrifice'); /* corpsecheck==1 */
+    let skipfloor = false;
 
-    /* if we can't touch floor objects then use inventory food only */
-    if (!can_reach_floor(true)
-        || (is_pool_or_lava(game.u.ux, game.u.uy)))
-        return await inventory_floorfood(verb, corpsecheck, offering);
+    game.getobj_else = 0; /* haven't asked about floor food; is used to vary
+                           * "you don't have anything [else] to eat" when
+                           * floor food has been declined and inventory lacks
+                           * any suitable items */
+    /* if we can't touch floor objects then use invent food only;
+       same when 'm' prefix is used--for #eat, it means "skip floor food" */
+    if (game.iflags?.menu_requested
+        || !can_reach_floor(true) || (feeding && game.u.usteed)
+        || (is_pool_or_lava(game.u.ux, game.u.uy)
+            && (Wwalking() || is_clinger(uptr) || (Flying() && !Breathless()))))
+        skipfloor = true;
 
-    /* src/eat.c — the metallivore arms (bear trap, iron bars, gold) come
-       first and each spends a prompt; no ported hero is metallivorous. */
-    if (feeding && metallivorous(game.youmonst.data))
-        note_unported_eat('floorfood:metallivorous');
+    if (!skipfloor && feeding && metallivorous(uptr)) {
+        let gold;
+        const ttmp = t_at(game.u.ux, game.u.uy);
 
-    /* C walks level.objects[x][y] via nexthere, which is the pile in
-       top-first order; our list is newest-first for the same reason. */
-    for (const otmp of (game.level?.objects || [])) {
-        if (otmp.ox !== game.u.ux || otmp.oy !== game.u.uy)
+        if (ttmp && ttmp.tseen && ttmp.ttyp === BEAR_TRAP) {
+            const u_in_beartrap = (game.u.utrap && game.u.utraptype === TT_BEARTRAP);
+
+            /* If not already stuck in the trap, perhaps there should
+               be a chance to becoming trapped?  Probably not, because
+               then the trap would just get eaten on the _next_ turn... */
+            qbuf = `There is a bear trap here (${
+                u_in_beartrap ? 'holding you' : 'armed'}); eat it?`;
+            if ((c = await tty_yn_function(qbuf, 'ynq', 'n')) === 'y') {
+                let beartrap;
+
+                deltrap(ttmp);
+                if (u_in_beartrap)
+                    await reset_utrap(true);
+                beartrap = mksobj(ONAMES.BEARTRAP, true, false);
+                qbuf = `You only manage to ${
+                    u_in_beartrap ? 'free yourself from' : 'disarm'} the bear trap.`;
+                if (await check_capacity(qbuf) && beartrap) {
+                    obj_extract_self(beartrap);
+                    await dropy(beartrap);           /* put it on the floor */
+                    return null;
+                }
+                return beartrap;
+            } else if (c === 'q') {
+                return null;
+            }
+            ++game.getobj_else;
+        }
+        if (game.level.at(game.u.ux, game.u.uy).typ === IRONBARS) {
+            /* already verified that hero is metallivorous above */
+            const nodig = (game.level.at(game.u.ux, game.u.uy).wall_info & W_NONDIGGABLE) !== 0;
+
+            c = 'n';
+            qbuf = 'There are iron bars here';
+            if (nodig || game.u.uhunger > 1500) {
+                await pline(`${qbuf} but you ${
+                    nodig ? 'cannot' : 'are too full to'} eat them.`);
+            } else {
+                const digging = game.context.digging || {};
+                qbuf += (!digging.chew
+                         || !u_at(digging.pos?.x, digging.pos?.y)
+                         || !on_level(digging.level || {}, game.u.uz))
+                        ? '; eat them?'
+                        : '; resume eating them?';
+                c = await tty_yn_function(qbuf, 'ynq', 'n');
+            }
+            if (c === 'y')
+                return hands_obj;
+            else if (c === 'q')
+                return null;
+            ++game.getobj_else;
+        }
+        if (uptr !== game.mons[PMNAMES.PM_RUST_MONSTER]
+            && (gold = g_at(game.u.ux, game.u.uy)) != null) {
+            if (gold.quan === 1)
+                qbuf = 'There is 1 gold piece here; eat it?';
+            else
+                qbuf = `There are ${gold.quan} gold pieces here; eat them?`;
+            if ((c = await tty_yn_function(qbuf, 'ynq', 'n')) === 'y') {
+                return gold;
+            } else if (c === 'q') {
+                return null;
+            }
+            ++game.getobj_else;
+        }
+    }
+
+    /* Is there some food (probably a heavy corpse) here on the ground? */
+    if (!skipfloor)
+    for (const otmp of [...(game.level?.objects || [])]) {
+        if (otmp.where !== OBJ_FLOOR || otmp.ox !== game.u.ux || otmp.oy !== game.u.uy)
             continue;
-        const wanted = corpsecheck
-            ? (otmp.otyp === ONAMES.CORPSE
-               && (corpsecheck === 1 || tinnable(otmp)))
-            : feeding ? (otmp.oclass !== OCLASSES.COIN_CLASS
-                         && is_edible(otmp))
-                      : otmp.oclass === OCLASSES.FOOD_CLASS;
-        if (!wanted)
-            continue;
+        if (corpsecheck
+                ? (otmp.otyp === ONAMES.CORPSE
+                   && (corpsecheck === 1 || tinnable(otmp)))
+                : feeding ? (otmp.oclass !== OCLASSES.COIN_CLASS && is_edible(otmp))
+                          : otmp.oclass === OCLASSES.FOOD_CLASS) {
+            let qsfx;
+            const one = (otmp.quan === 1);
 
-        const one = (otmp.quan === 1);
-        /* "There is <an object> here; <verb> it?" */
-        const qbuf = `There ${one ? 'is' : 'are'} ${doname(otmp)}`
-                     + ` here; ${verb} ${one ? 'it' : 'one'}?`;
-        const c = await tty_yn_function(qbuf, 'ynq', 'n');
-        if (c === 'y')
-            return otmp;
-        else if (c === 'q')
-            return null;
+            /* if blind and without gloves, attempting to eat (or tin or
+               offer) a cockatrice corpse is fatal before asking whether
+               or not to use it; otherwise, 'm<dir>' followed by 'e' could
+               be used to locate cockatrice corpses without touching them */
+            if (otmp.otyp === ONAMES.CORPSE && will_feel_cockatrice(otmp, false)) {
+                await feel_cockatrice(otmp, false);
+                /* if life-saved (or poly'd into stone golem), terminate
+                   attempt to eat off floor */
+                return null;
+            }
+            /* "There is <an object> here; <verb> it?" or
+               "There are <N objects> here; <verb> one?" */
+            qbuf = `There ${otense(otmp, 'are')} `;
+            qsfx = ` here; ${verb} ${one ? 'it' : 'one'}?`;
+            qbuf = safe_qbuf(qbuf, qsfx, otmp, doname, ansimpleoname,
+                             one ? 'something' : 'things');
+            if ((c = await tty_yn_function(qbuf, 'ynq', 'n')) === 'y')
+                return  otmp;
+            else if (c === 'q')
+                return null;
+            ++game.getobj_else;
+        }
     }
 
  /* skipfloor: */
-    return await inventory_floorfood(verb, corpsecheck, offering);
+    /* We cannot use GETOBJ_PROMPT since we don't want a prompt in the case
+       where nothing edible is being carried. */
+    if (feeding) {
+        otmp = await getobj('eat', eat_ok, GETOBJ_NOFLAGS);
+    } else if (offering) {
+        otmp = await getobj('sacrifice', offer_ok, GETOBJ_NOFLAGS);
+    } else if (corpsecheck === 2) {
+        otmp = await getobj(verb, tin_ok, GETOBJ_NOFLAGS);
+    } else {
+        /* impossible("floorfood: unknown request (%s)", verb) */
+        otmp = null;
+    }
+    if (otmp && corpsecheck && !(offering && otmp.oclass === OCLASSES.AMULET_CLASS)) {
+        if (otmp.otyp !== ONAMES.CORPSE || (corpsecheck === 2 && !tinnable(otmp))) {
+            await You_cant(`${verb} that!`);
+            otmp = null;
+        }
+    }
+    /* resetting 'getobj_else' here isn't essential; it will be cleared the
+       next time it needs to be used */
+    game.getobj_else = 0;
+    return otmp;
 }
 
 // src/eat.c doeat() — the 'e' command.
@@ -276,25 +715,118 @@ export async function floorfood(verb, corpsecheck) {
 // The eating itself needs the nutrition, corpse and tin code. What is ported is
 // the object prompt, because a session that eats and does not have its
 // inventory letter consumed runs that letter as a command instead.
-// src/eat.c:91 is_edible() — can the HERO eat this?
-//
-// The fire-elemental and metallivore arms need a polymorphed youmonst,
-// which this tree does not track; ghoul and gelatinous cube read the real
-// u.umonnum. For every un-polymorphed hero this reduces to the C's tail:
-// not a unique object, and FOOD_CLASS.
-export function is_edible(obj) {
-    /* protect invocation tools but not Rider corpses (handled elsewhere) */
-    if (game.objects[obj.otyp].oc_unique)
-        return false;
+/* include/youprop.h Hunger, Slow_digestion, Strangled, Sick, Vomiting,
+   Displaced, Slimed; include/attrib.h:43 ATTRMAX(); include/objclass.h:193
+   is_organic(); include/youprop.h:22 maybe_polyd(); include/obj.h:316
+   stale_egg(); include/flag.h:578 ParanoidEating; include/monst.h:71
+   U_AP_TYPE; include/you.h:555 Ugender */
+const Hunger = () => !!(game.u.intrinsic?.HHunger || game.u.uprops?.HUNGER);
+const Slow_digestion = () => !!(game.u.intrinsic?.HSlow_digestion || game.u.uprops?.SLOW_DIGESTION);
+const Strangled = () => !!game.u.uprops?.STRANGLED;
+const Sick = () => (game.u.uprops?.SICK | 0);
+const Vomiting = () => (game.u.uprops?.VOMITING | 0);
+const Displaced = () => !!(game.u.intrinsic?.HDisplaced || game.u.uprops?.DISPLACED);
+const Slimed = () => !!game.u.uprops?.SLIMED;
+const ATTRMAX = (x) => ((x === A_STR && Upolyd(game.u)) ? uasmon_maxStr() : game.urace.attrmax[x]);
+const is_organic = (otmp) => game.objects[otmp.otyp].oc_material <= MATERIALS.WOOD;
+const maybe_polyd = (if_so, if_not) => (Upolyd(game.u) ? if_so : if_not);
+const stale_egg = (egg) => ((game.moves - egg.age) > (2 * MAX_EGG_HATCH_TIME));
+const ParanoidEating = () => ((paranoia_bits() & PARANOID_EATING) !== 0);
+const U_AP_TYPE = () => (game.youmonst.m_ap_type & M_AP_TYPMASK);
+const Ugender = () => ((Upolyd(game.u) ? game.u.mfemale : game.flags.female) ? 1 : 0);
 
-    if (game.u.umonnum === PMNAMES.PM_GHOUL) {
-        /* vegan() is not ported; a hero polymorphed into a ghoul cannot
-           arise on this tree (polyself absent), so record if reached */
-        note_unported_eat('is_edible:ghoul_vegan');
-        return obj.otyp === ONAMES.CORPSE || obj.otyp === ONAMES.EGG;
+// src/eat.c:163 eatmdone(); the "mimicking a pile of gold" afternmv
+export function eatmdone() {
+    /* release `eatmbuf' */
+    if (game.eatmbuf) {
+        if (game.nomovemsg === game.eatmbuf)
+            game.nomovemsg = null;
+        game.eatmbuf = null;
+    }
+    /* update display */
+    if (U_AP_TYPE()) {
+        game.youmonst.m_ap_type = M_AP_NOTHING;
+        newsym(game.u.ux, game.u.uy);
+    }
+    return 0;
+}
+
+// src/eat.c:181 eatmupdate(); called when hallucination is toggled
+export function eatmupdate() {
+    let altmsg = null;
+    let altapp = 0; /* lint suppression */
+
+    if (!game.eatmbuf || game.nomovemsg !== game.eatmbuf)
+        return;
+
+    if (is_obj_mappear(game.youmonst, ONAMES.ORANGE) && !Hallucination()) {
+        /* revert from hallucinatory to "normal" mimicking */
+        altmsg = 'You now prefer mimicking yourself.';
+        altapp = ONAMES.GOLD_PIECE;
+    } else if (is_obj_mappear(game.youmonst, ONAMES.GOLD_PIECE) && Hallucination()) {
+        /* won't happen; anything which might make immobilized
+           hero begin hallucinating (black light attack, theft
+           of Grayswandir) will terminate the mimicry first */
+        altmsg = 'Your rind escaped intact.';
+        altapp = ONAMES.ORANGE;
     }
 
-    return obj.oclass === OCLASSES.FOOD_CLASS;
+    if (altmsg) {
+        /* replace end-of-mimicking message */
+        game.nomovemsg = game.eatmbuf = altmsg;
+        /* update current image */
+        game.youmonst.mappearance = altapp;
+        newsym(game.u.ux, game.u.uy);
+    }
+}
+
+// src/eat.c:309 reset_eat(); flag the meal for do_reset_eat() after this round
+export function reset_eat() {
+    /* we only set a flag here - the actual reset process is done after
+     * the round is spent eating.
+     */
+    if (game.context.victual?.eating && !game.context.victual.doreset) {
+        game.context.victual.doreset = 1;
+    }
+    return;
+}
+
+// src/eat.c:2085 garlic_breath(); iter_mons() callback
+async function garlic_breath(mtmp) {
+    if (olfaction(mtmp.data) && distu(mtmp.mx, mtmp.my) < 7)
+        await monflee(mtmp, 0, false, false);
+}
+
+// src/eat.c:91 is_edible(); can the hero eat this?
+export function is_edible(obj) {
+    /* protect invocation tools but not Rider corpses (handled elsewhere)*/
+    /* if (obj->oclass != FOOD_CLASS && obj_resists(obj, 0, 0)) */
+    if (game.objects[obj.otyp].oc_unique)
+        return false;
+    /* above also prevents the Amulet from being eaten, so we must never
+       allow fake amulets to be eaten either [which is already the case] */
+
+    if (game.youmonst.data === game.mons[PMNAMES.PM_FIRE_ELEMENTAL]
+        && is_flammable(obj))
+        return true;
+
+    if (metallivorous(game.youmonst.data) && is_metallic(obj)
+        && (game.youmonst.data !== game.mons[PMNAMES.PM_RUST_MONSTER] || is_rustprone(obj)))
+        return true;
+
+    /* Ghouls only eat non-veggy corpses or eggs (see dogfood()) */
+    if (game.u.umonnum === PMNAMES.PM_GHOUL)
+        return ((obj.otyp === ONAMES.CORPSE
+                 && !vegan(game.mons[obj.corpsenm]))
+                || (obj.otyp === ONAMES.EGG));
+
+    if (game.u.umonnum === PMNAMES.PM_GELATINOUS_CUBE && is_organic(obj)
+        /* [g-cubes can eat containers and retain all contents
+            as engulfed items, but poly'd player can't do that] */
+        && !Has_contents(obj))
+        return true;
+
+    return (obj.oclass === OCLASSES.FOOD_CLASS);
 }
 
 // src/eat.c:3517 eat_ok() — getobj callback; effectively wraps is_edible().
@@ -404,11 +936,14 @@ async function touchfood(otmp) {
 
     if (carried(otmp)) {
         freeinv(otmp);
-        if ((game.invent || []).length >= 52) {
-            note_unported_eat('touchfood:overflow_drop');
+        if (inv_cnt(false) >= invlet_basic) {
+            sellobj_state(SELL_DONTSELL);
+            await dropy(otmp);
+            sellobj_state(SELL_NORMAL);
+            if (otmp.where === OBJ_DELETED)
+                otmp = null;
         } else {
-            /* addinv_nomerge: own slot, no merging back into the stack */
-            addinv_nomerge(otmp);
+            otmp = addinv_nomerge(otmp);
             update_inventory();
         }
     }
@@ -544,23 +1079,33 @@ async function eatcorpse(otmp) {
     let retcode = 0, tp = 0;
     const mnum = otmp.corpsenm;
     let rotted = 0;
-    const glob = !!otmp.globby;
-    const mdat = game.mons[mnum];
+    let ll_conduct = 0;
+    let stoneable;
+    const slimeable = (mnum === PMNAMES.PM_GREEN_SLIME && !Slimed() && !Unchanging()
+                       && !slimeproof(game.youmonst.data)),
+          glob = otmp.globby ? true : false;
 
-    if (flesh_petrifies(mdat) || mnum === PMNAMES.PM_GREEN_SLIME)
-        note_unported_eat('eatcorpse:stoneable_or_slimeable');
+    stoneable = (flesh_petrifies(game.mons[mnum]) && !Stone_resistance()
+                 && !poly_when_stoned(game.youmonst.data));
 
-    /* src/eat.c:1869 — KMH, conduct; the monk's guilt message rides on
-       violated_vegetarian() */
-    if (!vegan(mdat))
-        (game.u.uconduct ||= {}).unvegan = (game.u.uconduct.unvegan | 0) + 1;
-    if (!vegetarian(mdat))
+    /* KMH, conduct */
+    game.u.uconduct ||= {};
+    if (!vegan(game.mons[mnum]))
+        if (!game.u.uconduct.unvegan++) {
+            await livelog_printf(LL_CONDUCT,
+                  `consumed animal products for the first time, by eating ${
+                      an(food_xname(otmp, false))}`);
+            ll_conduct++;
+        }
+    if (!vegetarian(game.mons[mnum])) {
+        if (!game.u.uconduct.unvegetarian && !ll_conduct)
+            await livelog_printf(LL_CONDUCT,
+                           `tasted meat for the first time, by eating ${
+                               an(food_xname(otmp, false))}`);
         await violated_vegetarian();
-
+    }
     if (!nonrotting_corpse(mnum)) {
-        /* peek_at_iced_corpse_age(otmp) — plain age unless the corpse is on
-           ice, which nothing ported creates */
-        const age = otmp.age || 0;
+        const age = peek_at_iced_corpse_age(otmp);
 
         rotted = Math.trunc((game.moves - age) / (10 + rn2(20)));
         if (otmp.cursed)
@@ -569,73 +1114,124 @@ async function eatcorpse(otmp) {
             rotted -= 2;
     }
 
-    if (!glob && rotted > 5) {
-        note_unported_eat('eatcorpse:tainted');
+    /* 5.0: globs don't become tainted, they shrink away */
+    if (!glob && !stoneable && !slimeable && rotted > 5) {
+        const cannibal = await maybe_cannibal(mnum, false);
+
+        /* tp++; -- early return makes this unnecessary */
+        await pline(`Ulch - that ${
+            (game.mons[mnum].mlet === MONSYMS.S_FUNGUS) ? 'fungoid vegetation'
+            : vegetarian(game.mons[mnum]) ? 'protoplasm'
+              : 'meat'} was tainted${cannibal ? ', you cannibal' : ''}!`);
+        if (Sick_resistance()) {
+            await pline("It doesn't seem at all sickening, though...");
+        } else {
+            let sick_time;
+
+            sick_time = rn1(10, 10);
+            /* make sure new ill doesn't result in improvement */
+            if (Sick() && (sick_time > Sick()))
+                sick_time = (Sick() > 1) ? Sick() - 1 : 1;
+            await make_sick(sick_time, corpse_xname(otmp, 'rotted', CXN_NORMAL),
+                            true, SICK_VOMITABLE);
+
+            await pline('(It must have died too long ago to be safe to eat.)');
+        }
+        if (carried(otmp))
+            useup(otmp);
+        else
+            useupf(otmp, 1);
         return 2;
-    } else if (acidic(mdat)) {
+    } else if (acidic(game.mons[mnum]) && !Acid_resistance()) {
         tp++;
-        note_unported_eat('eatcorpse:acidic');
-    } else if (poisonous(mdat) && rn2(5)) {
+        await You('have a very bad case of stomach acid.');   /* not body_part() */
+        await losehp(rnd(15), !glob ? 'acidic corpse' : 'acidic glob',
+                     KILLED_BY_AN); /* acid damage */
+    } else if (poisonous(game.mons[mnum]) && rn2(5)) {
         tp++;
         await pline('Ecch - that must have been poisonous!');
         if (!Poison_resistance()) {
             await poison_strdmg(rnd(4), rnd(15),
                                 !glob ? 'poisonous corpse' : 'poisonous glob',
                                 KILLED_BY_AN);
-        } else {
+        } else
             await You('seem unaffected by the poison.');
-        }
+
     /* now any corpse left too long will make you mildly ill */
-    } else if ((rotted > 5 || (rotted > 3 && rn2(5)))
-               && !game.u.uprops?.[SICK_RES]?.intrinsic) {
+    } else if ((rotted > 5 || (rotted > 3 && rn2(5))) && !Sick_resistance()) {
         tp++;
-        await You_feel(`${game.u.usick ? 'very ' : ''}sick.`);
+        await You_feel(`${(Sick()) ? 'very ' : ''}sick.`);
         await losehp(rnd(8), !glob ? 'cadaver' : 'rotted glob', KILLED_BY_AN);
     }
 
     /* delay is weight dependent */
-    game.context.victual = game.context.victual || {};
-    game.context.victual.reqtime =
-        3 + ((!glob ? mdat.cwt : otmp.owt) >> 6);
+    (game.context.victual ||= {}).reqtime
+        = 3 + ((!glob ? game.mons[mnum].cwt : otmp.owt) >> 6);
 
     if (!tp && !nonrotting_corpse(mnum) && (otmp.orotten || !rn2(7))) {
         if (await rottenfood(otmp)) {
             otmp.orotten = true;
+            otmp = await touchfood(otmp);
+            if (!otmp)
+                return 1;
             retcode = 1;
         }
 
-        if (!mdat.cnutrit) {
-            note_unported_eat('eatcorpse:rots_away');
+        if (!game.mons[otmp.corpsenm].cnutrit) {
+            /* no nutrition: rots away, no message if you passed out */
+            if (!retcode)
+                await pline_The('corpse rots away completely.');
+            if (carried(otmp))
+                useup(otmp);
+            else
+                useupf(otmp, 1);
             retcode = 2;
         }
+
         if (!retcode)
-            consume_oeaten(otmp, 2);    /* oeaten >>= 2 */
+            consume_oeaten(otmp, 2); /* oeaten >>= 2 */
+    } else if ((mnum === PMNAMES.PM_COCKATRICE || mnum === PMNAMES.PM_CHICKATRICE)
+               && (Stone_resistance() || Hallucination())) {
+        await pline('This tastes just like chicken!');
+    } else if (mnum === PMNAMES.PM_FLOATING_EYE && game.u.umonnum === PMNAMES.PM_RAVEN) {
+        await You('peck the eyeball with delight.');
     } else if (tp) {
-        ; /* a message already landed; don't add "it tastes okay" */
+        ; /* we've already delivered a message; don't add "it tastes okay" */
     } else {
-        /* yummy is always false for omnivores, palatable always true */
-        const you = game.youmonst.data;
-        const yummy = (vegan(mdat)
-                       ? (!carnivorous(you) && herbivorous(you))
-                       : (carnivorous(you) && !herbivorous(you)));
-        const palatable = ((vegetarian(mdat) ? herbivorous(you)
-                                             : carnivorous(you))
+        /* yummy is always False for omnivores, palatable always True */
+        const yummy = (vegan(game.mons[mnum])
+                       ? (!carnivorous(game.youmonst.data)
+                          && herbivorous(game.youmonst.data))
+                       : (carnivorous(game.youmonst.data)
+                          && !herbivorous(game.youmonst.data))),
+              palatable = ((vegetarian(game.mons[mnum])
+                            ? herbivorous(game.youmonst.data)
+                            : carnivorous(game.youmonst.data))
                            && rn2(10)
                            && (rotted < 1 || !rn2(rotted + 1)));
-        /* first char: T = tastes ... , I = is ... ; veggies are just "okay" */
-        const palatable_msgs = ['Tokay', 'Istringy', 'Igamey', 'Ifatty',
-                                'Itough'];
-        const idx = vegetarian(mdat) ? 0 : rn2(palatable_msgs.length);
+        let pmxnam = food_xname(otmp, false);
+        const palatable_msgs = [
+            /* first char: T = tastes ... , I = is ... */
+            /* veggies are always just "okay" */
+            'Tokay', 'Istringy', 'Igamey', 'Ifatty', 'Itough'
+        ];
+        const idx = vegetarian(game.mons[mnum]) ? 0 : rn2(palatable_msgs.length);
         const palat_msg = palatable_msgs[idx];
-        const use_is = (palatable && palat_msg[0] === 'I');
-        let pmxnam = food_xname(otmp);
+        const use_is = (Hallucination() || (palatable && palat_msg[0] === 'I'));
 
         if (pmxnam.slice(0, 4).toLowerCase() === 'the ')
             pmxnam = pmxnam.slice(4);
-        await pline(`${type_is_pname(mdat) ? '' : 'This '}${pmxnam} ${
-            use_is ? 'is' : 'tastes'} ${
-            yummy ? 'delicious'
-                  : palatable ? palat_msg.slice(1) : 'terrible'}${
+        await pline(`${
+            type_is_pname(game.mons[mnum])
+               ? '' : the_unique_pm(game.mons[mnum]) ? 'The ' : 'This '}${
+            pmxnam} ${use_is ? 'is' : 'tastes'} ${
+                /* tiger reference is to TV ads for "Frosted Flakes",
+                   breakfast cereal targeted at kids by "Tony the tiger" */
+            Hallucination()
+               ? (yummy ? ((game.u.umonnum === PMNAMES.PM_TIGER) ? 'gr-r-reat' : 'gnarly')
+                        : palatable ? 'copacetic' : 'grody')
+               : (yummy ? 'delicious' : palatable ?
+                  palat_msg.slice(1) : 'terrible')}${
             (yummy || !palatable) ? '!' : '.'}`);
     }
 
@@ -741,7 +1337,7 @@ export async function doeat() {
         consume_oeaten(otmp, 1);        /* oeaten >>= 1 */
     } else if (!already_partly_eaten) {
         if (!(await fprefx(otmp))) {
-            do_reset_eat();
+            await do_reset_eat();
             return ECMD_TIME;
         }
     } else {
@@ -777,60 +1373,66 @@ async function fprefx(otmp) {
     const give_feedback = async () => {
         await pline(`This ${singular(otmp, xname)} is ${
             otmp.cursed
-                ? (Hallucination() ? "grody!" : "terrible!")
+                ? (Hallucination() ? 'grody!' : 'terrible!')
                 : (otmp.otyp === ONAMES.CRAM_RATION
                    || otmp.otyp === ONAMES.K_RATION
                    || otmp.otyp === ONAMES.C_RATION)
-                    ? "bland."
-                    : Hallucination() ? "gnarly!" : "delicious!"}`);
+                    ? 'bland.'
+                    : Hallucination() ? 'gnarly!' : 'delicious!'}`);
     };
     switch (otmp.otyp) {
     case ONAMES.EGG:
         if (otmp.corpsenm === PMNAMES.PM_PYROLISK) {
-            /* useup + explode(u.ux, u.uy, -11, d(3,6), 0, EXPL_FIERY) */
-            note_unported_eat('fprefx:pyrolisk_egg');
+            if (carried(otmp))
+                useup(otmp);
+            else
+                useupf(otmp, 1);
+            await explode(game.u.ux, game.u.uy, -11, d(3, 6), 0, EXPL_FIERY);
             return false;
-        }
-        /* stale_egg() reads iced-corpse age bookkeeping; a stale egg makes
-           vomiting with d(10,4). Fresh eggs take the plain feedback. */
-        note_unported_eat('fprefx:stale_egg_check');
-        await give_feedback();
+        } else if (stale_egg(otmp)) {
+            await pline('Ugh.  Rotten egg.'); /* perhaps others like it */
+            /* increasing existing nausea means that it will take longer
+               before eventual vomit, but also means that constitution
+               will be abused more times before illness completes */
+            await make_vomiting((Vomiting() & TIMEOUT) + d(10, 4), true);
+        } else
+            await give_feedback();
         break;
     case ONAMES.FOOD_RATION: /* nutrition 800 */
         /* 200+800 remains below 1000+1, the satiation threshold */
         if (game.u.uhunger <= 200)
-            await pline(Hallucination()
-                ? "Oh wow, like, superior, man!"
-                : "This food really hits the spot!");
-        /* 700-1+800 remains below 1500, the choking threshold */
+            await pline(`${Hallucination() ? 'Oh wow, like, superior, man'
+                                           : 'This food really hits the spot'}!`);
+
+        /* 700-1+800 remains below 1500, the choking threshold which
+           triggers "you're having a hard time getting it down" feedback */
         else if (game.u.uhunger < 700)
-            /* body_part(STOMACH) — un-polymorphed heroes all say this */
-            await pline("This satiates your stomach!");
+            await pline(`This satiates your ${body_part(STOMACH)}!`);
+        /* [satiation message may be inaccurate if eating gets interrupted] */
         break;
     case ONAMES.TRIPE_RATION:
-        /* the carnivorous non-humanoid arm needs a polymorphed hero */
-        if (Race_if(PMNAMES.PM_ORC)) {
-            await pline(Hallucination() ? "Tastes great!  Less filling!"
-                                        : "Mmm, tripe... not bad!");
+        if (carnivorous(game.youmonst.data) && !humanoid(game.youmonst.data)) {
+            await pline('This tripe ration is surprisingly good!');
+        } else if (maybe_polyd(is_orc(game.youmonst.data), Race_if(PMNAMES.PM_ORC))) {
+            await pline(Hallucination() ? 'Tastes great!  Less filling!'
+                                        : 'Mmm, tripe... not bad!');
         } else {
-            await pline("Yak - dog food!");
+            await pline('Yak - dog food!');
             more_experienced(1, 0);
             await newexplevel();
             /* not cannibalism, but we use similar criteria
                for deciding whether to be sickened by this meal */
-            if (rn2(2) && !cannibal_allowed()) {
-                const { make_vomiting } = await import('./potion.js');
+            if (rn2(2) && !CANNIBAL_ALLOWED())
                 await make_vomiting(rn1(game.context.victual.reqtime, 14),
                                     false);
-            }
         }
         break;
     case ONAMES.LEMBAS_WAFER:
-        if (Race_if(PMNAMES.PM_ORC)) {
-            await pline("!#?&* elf kibble!");
+        if (maybe_polyd(is_orc(game.youmonst.data), Race_if(PMNAMES.PM_ORC))) {
+            await pline('!#?&* elf kibble!');
             break;
-        } else if (Race_if(PMNAMES.PM_ELF)) {
-            await pline("A little goes a long way.");
+        } else if (maybe_polyd(is_elf(game.youmonst.data), Race_if(PMNAMES.PM_ELF))) {
+            await pline('A little goes a long way.');
             break;
         }
         await give_feedback();
@@ -842,39 +1444,43 @@ async function fprefx(otmp) {
         await give_feedback();
         break;
     case ONAMES.CLOVE_OF_GARLIC:
-        /* src/eat.c garlic_breath(): every nearby monster which can smell
-           the garlic starts fleeing. Import monmove lazily to avoid making
-           eat.js part of its static dependency cycle. */
-        {
-            const { monflee } = await import('./monmove.js');
-            for (const mtmp of game.level?.monsters || []) {
-                if (mtmp.mhp > 0 && olfaction(mtmp.data)
-                    && distu(mtmp.mx, mtmp.my) < 7)
-                    monflee(mtmp, 0, false, false);
-            }
+        if (is_undead(game.youmonst.data)) {
+            await make_vomiting(rn1(game.context.victual.reqtime, 5), false);
+            break;
         }
+        /* iter_mons(garlic_breath); monflee() prints, so the walk is awaited */
+        for (const mtmp of [...(game.level?.monsters || [])])
+            if (!DEADMONSTER(mtmp))
+                await garlic_breath(mtmp);
         /*FALLTHRU*/
     default:
         if (otmp.otyp === ONAMES.SLIME_MOLD && !otmp.cursed
             && otmp.spe === (game.context.current_fruit ?? 1)) {
             await pline(`My, this is a ${
-                Hallucination() ? "primo" : "yummy"} ${
+                Hallucination() ? 'primo' : 'yummy'} ${
                 singular(otmp, xname)}!`);
-        } else if (otmp.otyp === ONAMES.APPLE && otmp.cursed
-                   && !game.u.uprops?.SLEEP_RES) {
+        } else if (otmp.otyp === ONAMES.APPLE && otmp.cursed && !Sleep_resistance()) {
             ; /* skip core joke; feedback deferred til fpostfx() */
+
+        /* KMH -- Why should Unix have all the fun?
+           We check MACOS before UNIX to get the Apple-specific apple
+           message; the '#if UNIX' code will still kick in for pear.
+           (the reference build defines MACOS and UNIX) */
         } else if (otmp.otyp === ONAMES.APPLE) {
-            await pline("Delicious!  Must be a Macintosh!");
+            await pline('Delicious!  Must be a Macintosh!');
         } else if (otmp.otyp === ONAMES.PEAR) {
-            /* the #ifdef UNIX arm; MACOS grabbed APPLE above */
             if (!Hallucination()) {
-                await pline("Core dumped.");
+                await pline('Core dumped.');
             } else {
                 /* based on an old Usenet joke, a fake a.out manual page */
                 const x = rnd(100);
-                await pline(`${(x <= 75) ? "Segmentation fault"
-                              : (x <= 99) ? "Bus error"
-                                : "Yo' mama"} -- core dumped.`);
+
+                await pline(`${
+                    (x <= 75)
+                       ? 'Segmentation fault'
+                       : (x <= 99)
+                          ? 'Bus error'
+                          : "Yo' mama"} -- core dumped.`);
             }
         } else {
             await give_feedback();
@@ -902,38 +1508,93 @@ export async function fix_petrification() {
 async function fpostfx(otmp) {
     switch (otmp.otyp) {
     case ONAMES.SPRIG_OF_WOLFSBANE:
-        /* you_unwere needs lycanthropy */
+        if (ismnum(game.u.ulycn) || is_were(game.youmonst.data))
+            await you_unwere(true);
         break;
     case ONAMES.CARROT:
-        if (game.u.ucreamed)
-            note_unported_eat('fpostfx:make_blinded');
+        if (!game.u.uswallow
+            || !attacktype_fordmg(game.u.ustuck.data, ATTKS.AT_ENGL, ATTKS.AD_BLND))
+            await make_blinded(game.u.ucreamed | 0, true);
         break;
     case ONAMES.FORTUNE_COOKIE:
         await outrumor(bcsign(otmp), BY_COOKIE);
-        if (!game.u.ublind)
-            game.u.uconduct = game.u.uconduct || {},
-            game.u.uconduct.literate = (game.u.uconduct.literate || 0) + 1;
-        break;
-    case ONAMES.LUMP_OF_ROYAL_JELLY:
-        note_unported_eat('fpostfx:royal_jelly');
-        break;
-    case ONAMES.EGG:
-        if (otmp.corpsenm >= 0)
-            note_unported_eat('fpostfx:egg_petrify');
-        break;
-    case ONAMES.EUCALYPTUS_LEAF:
-        if (game.u.uprops?.SICK || game.u.uprops?.VOMITING)
-            note_unported_eat('fpostfx:eucalyptus');
-        break;
-    case ONAMES.APPLE:
-        if (otmp.cursed && !game.u.uprops?.SLEEP_RES) {
-            /* the Snow White core joke: sleeping poison */
-            note_unported_eat('fpostfx:cursed_apple_sleep');
+        if (!Blind()) {
+            game.u.uconduct ||= {};
+            if (!game.u.uconduct.literate++)
+                await livelog_printf(LL_CONDUCT,
+                    'became literate by reading the fortune inside a cookie');
         }
         break;
-    default:
+    case ONAMES.LUMP_OF_ROYAL_JELLY:
+        if (game.youmonst.data === game.mons[PMNAMES.PM_KILLER_BEE] && !Unchanging()
+            && await polymon(PMNAMES.PM_QUEEN_BEE))
+            break;
+
+        /* This stuff seems to be VERY healthy! */
+        await gainstr(otmp, 1, true);
+        if (Upolyd(game.u)) {
+            game.u.mh += otmp.cursed ? -rnd(20) : rnd(20), (game.disp ||= {}).botl = true;
+            if (game.u.mh > game.u.mhmax) {
+                if (!rn2(17))
+                    setuhpmax(game.u.mhmax + 1, false);
+                game.u.mh = game.u.mhmax;
+            } else if (game.u.mh <= 0) {
+                await rehumanize();
+            }
+        } else {
+            game.u.uhp += otmp.cursed ? -rnd(20) : rnd(20), (game.disp ||= {}).botl = true;
+            if (game.u.uhp > game.u.uhpmax) {
+                if (!rn2(17))
+                    setuhpmax(game.u.uhpmax + 1, false);
+                game.u.uhp = game.u.uhpmax;
+            } else if (game.u.uhp <= 0) {
+                (game.killer ||= {}).format = KILLED_BY_AN;
+                game.killer.name = 'rotten lump of royal jelly';
+                await done(POISONING);
+            }
+        }
+        if (!otmp.cursed)
+            await heal_legs(0);
+        break;
+    case ONAMES.EGG:
+        if (ismnum(otmp.corpsenm)
+            && flesh_petrifies(game.mons[otmp.corpsenm])) {
+            if (!Stone_resistance()
+                && !(poly_when_stoned(game.youmonst.data)
+                     && await polymon(PMNAMES.PM_STONE_GOLEM))) {
+                if (!Stoned()) {
+                    (game.killer ||= {}).name = `${game.mons[otmp.corpsenm].pmnames[NEUTRAL]} egg`;
+                    await make_stoned(5, null, KILLED_BY_AN,
+                                      game.killer.name);
+                }
+            }
+            /* note: no "tastes like chicken" message for eggs */
+        }
+        break;
+    case ONAMES.EUCALYPTUS_LEAF:
+        if (Sick() && !otmp.cursed)
+            await make_sick(0, null, true, SICK_ALL);
+        if (Vomiting() && !otmp.cursed)
+            await make_vomiting(0, true);
+        break;
+    case ONAMES.APPLE:
+        if (otmp.cursed && !Sleep_resistance()) {
+            /* Snow White; 'poisoned' applies to [a subset of] weapons,
+               not food, so we substitute cursed; fortunately our hero
+               won't have to wait for a prince to be rescued/revived */
+            if (Race_if(PMNAMES.PM_DWARF) && Hallucination()) {
+                await verbalize("Heigh-ho, ho-hum, I think I'll skip work today.");
+            } else if (Deaf() || game.flags?.acoustics === false) {
+                await You('fall asleep.');
+            } else {
+                /* Soundeffect(se_sinister_laughter, 100); */
+                await You_hear('sinister laughter as you fall asleep...');
+            }
+            await fall_asleep(-rn1(11, 20), true);
+        }
         break;
     }
+    return;
 }
 
 // src/eat.c start_eating() — begin (or resume) a meal.
@@ -1005,26 +1666,43 @@ export async function choke(food) {
     if (game.u.uhs !== SATIATED) {
         if (!food || food.otyp !== ONAMES.AMULET_OF_STRANGULATION)
             return;
+    } else if (Role_if(PMNAMES.PM_KNIGHT) && game.u.ualign.type === A_LAWFUL) {
+        await adjalign(-1); /* gluttony is unchivalrous */
+        await You_feel('like a glutton!');
+    }
+
+    exercise(A_CON, false);
+
+    if (Breathless() || Hunger() || (!Strangled() && !rn2(20))) {
+        /* choking by eating AoS doesn't involve stuffing yourself */
+        if (food && food.otyp === ONAMES.AMULET_OF_STRANGULATION) {
+            await You('choke, but recover your composure.');
+            return;
+        }
+        await You('stuff yourself and then vomit voluminously.');
+        await morehungry(Hunger() ? (game.u.uhunger - 60) : 1000); /* just got very sick! */
+        await vomit();
     } else {
-        /* Role_if(PM_KNIGHT) && u.ualign.type == A_LAWFUL -> adjalign(-1),
-           "gluttony is unchivalrous". Needs the hero's role and alignment
-           record; it changes no draw. */
-        note_unported_eat('choke:knight_adjalign');
+        (game.killer ||= {}).format = KILLED_BY_AN;
+        /*
+         * Note all "killer"s below read "Choked on %s" on the
+         * high score list & tombstone.  So plan accordingly.
+         */
+        if (food) {
+            await You(`choke over your ${foodword(food)}.`);
+            if (food.oclass === OCLASSES.COIN_CLASS) {
+                game.killer.name = 'very rich meal';
+            } else {
+                game.killer.format = KILLED_BY;
+                game.killer.name = killer_xname(food);
+            }
+        } else {
+            await You('choke over it.');
+            game.killer.name = 'quick snack';
+        }
+        await You('die...');
+        await done(CHOKING);
     }
-
-    exercise(A_CON, false);   /* src/eat.c:256 */
-
-    /* Breathless and Hunger are intrinsics this port does not track, so the
-       rn2(20) is always the deciding test here. */
-    if (!rn2(20)) {
-        if (food && food.otyp === ONAMES.AMULET_OF_STRANGULATION)
-            return;                     /* "choke, but recover your composure" */
-    }
-
-    game.killer = { format: KILLED_BY, name: 'quick snack' };
-    await pline('You choke over it.');
-    await pline('You die...');
-    await done(CHOKING);
 }
 
 // src/eat.c:3132 bite() — one turn of eating. Returns 1 if the hero choked and
@@ -1045,7 +1723,7 @@ export async function bite() {
         return 1;
     }
     if (v.doreset) {
-        do_reset_eat();     /* src/eat.c:3142 -- ported at eat.js:307 */
+        await do_reset_eat();     /* src/eat.c:3142 -- ported at eat.js:307 */
         return 0;
     }
     /* src/eat.c bite() tail — force_save_hs makes lesshungry() treat this as
@@ -1394,7 +2072,7 @@ export async function eatfood() {
         food = null;
     if (!food) {
         /* maybe it was stolen? */
-        do_reset_eat();
+        await do_reset_eat();
         return 0;
     }
     if (!v.eating)
@@ -1460,19 +2138,30 @@ export async function done_eating(message) {
 // resuming the same food has to remember whether the hero was Satiated when
 // they STARTED it. Clearing it here would let a hero resume a meal that should
 // still kill them.
-export function do_reset_eat() {
-    const v = game.context.victual;
+export async function do_reset_eat() {
+    if (game.context.victual?.piece) {
+        let otmp;
 
-    if (v?.piece) {
-        v.o_id = 0;
-        note_unported_eat('do_reset_eat:touchfood');
+        game.context.victual.o_id = 0;
+        otmp = await touchfood(game.context.victual.piece);
+        game.context.victual.piece = otmp;
+        if (otmp) {
+            game.context.victual.o_id = otmp.o_id;
+            recalc_wt();
+        }
     }
-    if (v) {
-        v.fullwarn = 0;
-        v.eating = 0;
-        v.doreset = 0;
-        /* canchoke intentionally left alone */
-    }
+    const v = (game.context.victual ||= {});
+    v.fullwarn
+        = v.eating
+        = v.doreset
+        = 0;
+    /* Do not set canchoke to FALSE; if we continue eating the same object
+     * we need to know if canchoke was set when they started eating it the
+     * previous time.  And if we don't continue eating the same object
+     * canchoke always gets recalculated anyway.
+     */
+    await stop_occupation();
+    await newuhs(false);
 }
 
 // src/eat.c newuhs() — recompute the hunger status from u.uhunger.
@@ -1651,23 +2340,53 @@ export async function morehungry(num) {
 // src/eat.c:3736 vomit() -- ordinary vomiting immobilizes the hero for two
 // turns. Polymorph-only acid breath and terrain side effects are not live in
 // the reference corpus yet.
-export async function vomit() {
-    const mdat = game.mons[game.u.umonnum];
-    if (cantvomit(mdat)) {
+export async function vomit() /* A good idea from David Neves */
+{
+    let spewed = false;
+
+    if (cantvomit(game.youmonst.data)) {
+        /* doesn't cure food poisoning; message assumes that we aren't
+           dealing with some esoteric body_part() */
         await Your('jaw gapes convulsively.');
     } else {
-        if (game.u.usick_type & SICK_VOMITABLE)
-            note_unported_eat('vomit:make_sick');
+        if (Sick() && (game.u.usick_type & SICK_VOMITABLE) !== 0)
+            await make_sick(0, null, true, SICK_VOMITABLE);
+        /* if not enough in stomach to actually vomit then dry heave;
+           vomiting_dialog() gives a vomit message when its countdown
+           reaches 0, but only if u.uhs < FAINTING (and !cantvomit()) */
         if (game.u.uhs >= FAINTING)
-            await Your('stomach heaves convulsively!');
-        else if (acidic(mdat))
-            note_unported_eat('vomit:acidic_form');
+            await Your(`${body_part(STOMACH)} heaves convulsively!`);
+        else
+            spewed = true;
     }
 
+    /* nomul()/You_can_move_again used to be unconditional, which was
+       viable while eating but not for Vomiting countdown where hero might
+       be immobilized for some other reason at the time vomit() is called */
     if ((game.multi ?? 0) >= -2) {
         nomul(-2);
         game.multi_reason = 'vomiting';
         game.nomovemsg = 'You can move again.';
+    }
+
+    if (spewed) {
+        const mattk = attacktype_fordmg(game.youmonst.data, ATTKS.AT_BREA, ATTKS.AD_ACID);
+
+        /* currently, only yellow dragons can breathe acid */
+        if (mattk) {
+            await You('breathe acid on yourself...'); /* [why?] */
+            await ubreatheu(mattk);
+        }
+        /* vomiting on an altar is, all things considered, rather impolite */
+        if (IS_ALTAR(game.level.at(game.u.ux, game.u.uy).typ))
+            await altar_wrath(game.u.ux, game.u.uy);
+        /* if poly'd into acidic form, stomach acid is stronger than normal */
+        if (acidic(game.youmonst.data)) {
+            /* TODO: if there's a web here, destroy that too (before ice) */
+            if (is_ice(game.u.ux, game.u.uy))
+                await melt_ice(game.u.ux, game.u.uy,
+                               'Your stomach acid melts straight through the ice!');
+        }
     }
 }
 
@@ -1680,7 +2399,7 @@ export function recalc_wt() {
     const piece = game.context.victual?.piece;
 
     if (!piece) {
-        note_unported_eat('recalc_wt:impossible');
+        /* impossible("recalc_wt without piece") */
         return;
     }
     piece.owt = weight(piece);
@@ -1702,21 +2421,20 @@ export function recalc_wt() {
 // polyform is not modelled, so the race test alone decides here.
 export function adj_victual_nutrition() {
     const otyp = game.context.victual.piece.otyp;
-    /* only called when nmod is negative; convert to positive */
-    let nut = -game.context.victual.nmod;
+    /* note: adj_victual_nutrition() is only called when 'nmod' is negative */
+    let nut = -game.context.victual.nmod; /* convert 'nmod' to positive */
 
     if (otyp === ONAMES.LEMBAS_WAFER) {
-        note_unported_eat('adj_victual_nutrition:maybe_polyd');
-        if (Race_if(PMNAMES.PM_ELF))
-            nut += Math.trunc((nut + 2) / 4);       /* 800 -> 1000 */
-        else if (Race_if(PMNAMES.PM_ORC))
-            nut -= Math.trunc((nut + 2) / 4);       /* 800 -> 600 */
+        if (maybe_polyd(is_elf(game.youmonst.data), Race_if(PMNAMES.PM_ELF)))
+            nut += Math.trunc((nut + 2) / 4); /* 800 -> 1000 */
+        else if (maybe_polyd(is_orc(game.youmonst.data), Race_if(PMNAMES.PM_ORC)))
+            nut -= Math.trunc((nut + 2) / 4); /* 800 -> 600 */
     } else if (otyp === ONAMES.CRAM_RATION) {
-        note_unported_eat('adj_victual_nutrition:maybe_polyd');
-        if (Race_if(PMNAMES.PM_DWARF))
-            nut += Math.trunc((nut + 3) / 6);       /* 600 -> 700 */
+        if (maybe_polyd(is_dwarf(game.youmonst.data), Race_if(PMNAMES.PM_DWARF)))
+            nut += Math.trunc((nut + 3) / 6); /* 600 -> 700 */
     }
-    return Math.max(nut, 1);
+    nut = Math.max(nut, 1);
+    return nut;
 }
 
 // src/eat.c lesshungry() — add nutrition, then react to the new total.
@@ -1734,38 +2452,40 @@ export function adj_victual_nutrition() {
 //
 // The warning and its delayed completion message share gn.nomovemsg in C.
 export async function lesshungry(num) {
-    /* see comments in newuhs() for discussion on force_save_hs */
+    /* See comments in newuhs() for discussion on force_save_hs */
     const iseating = (game.occupation === eatfood) || game.force_save_hs;
 
     game.u.uhunger += num;
     if (game.u.uhunger >= 2000) {
         if (!iseating || game.context.victual?.canchoke) {
             if (iseating) {
-                choke(game.context.victual.piece);
-                note_unported_eat('lesshungry:reset_eat');
+                await choke(game.context.victual.piece);
+                reset_eat();
             } else {
-                choke(null);        /* opentin's tin is not modelled */
+                await choke((game.occupation === opentin) ? game.context.tin?.tin : null);
                 /* no reset_eat() */
             }
         }
     } else {
-        /* report when nearly full so all eating warns before choking */
-        if (game.u.uhunger >= 1500 && !game.u.uprops?.HUNGER
+        /* Have lesshungry() report when you're nearly full so all eating
+         * warns when you're about to choke.
+         */
+        if (game.u.uhunger >= 1500 && !Hunger()
             && (!game.context.victual?.eating
-                || !game.context.victual?.fullwarn)) {
+                || (game.context.victual.eating
+                    && !game.context.victual.fullwarn))) {
             await pline("You're having a hard time getting all of it down.");
             game.nomovemsg = "You're finally finished.";
             if (!game.context.victual?.eating) {
-                nomul(-2);
+                game.multi = -2;
             } else {
                 game.context.victual.fullwarn = 1;
                 if (game.context.victual.canchoke
                     && (game.context.victual.reqtime
                         - game.context.victual.usedtime) > 1) {
-                    const answer = await tty_yn_function(
-                        'Continue eating?', 'yn', 'n');
-                    if (answer !== 'y') {
-                        do_reset_eat();
+                    /* food with one bite left will not survive a stop */
+                    if (!(await paranoid_query(ParanoidEating(), 'Continue eating?'))) {
+                        reset_eat();
                         game.nomovemsg = null;
                     }
                 }
@@ -1874,8 +2594,7 @@ async function givit(type, ptr) {
     switch (type) {
     case FIRE_RES:
         if (!((intr.HFire_resistance | 0) & FROMOUTSIDE)) {
-            await You(Hallucination() ? 'be chillin\'.'
-                                      : 'feel a momentary chill.');
+            await You(Hallucination() ? "be chillin'." : 'feel a momentary chill.');
             intr.HFire_resistance = (intr.HFire_resistance | 0) | FROMOUTSIDE;
         }
         break;
@@ -1893,12 +2612,11 @@ async function givit(type, ptr) {
         break;
     case DISINT_RES:
         if (!((intr.HDisint_resistance | 0) & FROMOUTSIDE)) {
-            await You_feel(Hallucination() ? 'totally together, man.'
-                                           : 'very firm.');
+            await You_feel(Hallucination() ? 'totally together, man.' : 'very firm.');
             intr.HDisint_resistance = (intr.HDisint_resistance | 0) | FROMOUTSIDE;
         }
         break;
-    case SHOCK_RES:
+    case SHOCK_RES: /* shock (electricity) resistance */
         if (!((intr.HShock_resistance | 0) & FROMOUTSIDE)) {
             if (Hallucination())
                 await You_feel('grounded in reality.');
@@ -1909,8 +2627,7 @@ async function givit(type, ptr) {
         break;
     case POISON_RES:
         if (!((intr.HPoison_resistance | 0) & FROMOUTSIDE)) {
-            await You_feel(game.u.uprops?.POISON_RES
-                           ? 'especially healthy.' : 'healthy.');
+            await You_feel(Poison_resistance() ? 'especially healthy.' : 'healthy.');
             intr.HPoison_resistance = (intr.HPoison_resistance | 0) | FROMOUTSIDE;
         }
         break;
@@ -1929,20 +2646,25 @@ async function givit(type, ptr) {
         break;
     case TELEPAT:
         if (!((intr.HTelepat | 0) & FROMOUTSIDE)) {
-            await You_feel(Hallucination()
-                           ? 'in touch with the cosmos.'
-                           : 'a strange mental acuity.');
+            await You_feel(Hallucination() ? 'in touch with the cosmos.'
+                                           : 'a strange mental acuity.');
             intr.HTelepat = (intr.HTelepat | 0) | FROMOUTSIDE;
-            /* update screen to reflect new status */
-            note_unported_eat('givit:telepat_see_monsters');
+            /* If blind, make sure monsters show up. */
+            if (Blind())
+                see_monsters();
         }
         break;
+    case ACID_RES:
+        if (!Acid_resistance())
+            await You_feel(`${Hallucination() ? 'secure from flashbacks'
+                            : 'less concerned about being harmed by acid'}.`);
+        incr_itimeout('HAcid_resistance', d(3, 6));
+        break;
     case STONE_RES:
-        if (!game.u.uprops?.STONE_RES) {
-            await You_feel(Hallucination() ? 'unusually limber'
-                           : 'less concerned about becoming petrified');
-            note_unported_eat('givit:timed_stone_res');
-        }
+        if (!Stone_resistance())
+            await You_feel(`${Hallucination() ? 'unusually limber'
+                            : 'less concerned about becoming petrified'}.`);
+        incr_itimeout('HStone_resistance', d(3, 6));
         break;
     default:
         break;
@@ -1997,12 +2719,123 @@ function corpse_intrinsic(ptr) {
 
 // src/eat.c:1129 cpostfx() — called after completely consuming a corpse.
 async function cpostfx(pm) {
+    let tmp = 0;
+    let catch_lycanthropy = NON_PM;
     let check_intrinsics = false;
-    const ptr = game.mons[pm];
-    if (!ptr)
-        return;
+
+    /* in case `afternmv' didn't get called for previously mimicking
+       gold, clean up now to avoid `eatmbuf' memory leak */
+    if (game.eatmbuf)
+        eatmdone();
 
     switch (pm) {
+    case PMNAMES.PM_WRAITH:
+        await pluslvl(false);
+        break;
+    case PMNAMES.PM_HUMAN_WERERAT:
+        catch_lycanthropy = PMNAMES.PM_WERERAT;
+        break;
+    case PMNAMES.PM_HUMAN_WEREJACKAL:
+        catch_lycanthropy = PMNAMES.PM_WEREJACKAL;
+        break;
+    case PMNAMES.PM_HUMAN_WEREWOLF:
+        catch_lycanthropy = PMNAMES.PM_WEREWOLF;
+        break;
+    case PMNAMES.PM_NURSE:
+        if (Upolyd(game.u))
+            game.u.mh = game.u.mhmax;
+        else
+            game.u.uhp = game.u.uhpmax;
+        await make_blinded(0, !game.u.ucreamed);
+        (game.disp ||= {}).botl = true;
+        check_intrinsics = true; /* might also convey poison resistance */
+        break;
+    case PMNAMES.PM_STALKER:
+        if (!Invis()) {
+            set_itimeout('HInvis', rn1(100, 50));
+            if (!Blind() && !game.u.blocked?.INVIS)
+                await self_invis_message();
+        } else {
+            if (!((game.u.intrinsic?.HInvis | 0) & INTRINSIC))
+                await You_feel('hidden!');
+            (game.u.intrinsic ||= {}).HInvis = (game.u.intrinsic.HInvis | 0) | FROMOUTSIDE;
+            game.u.intrinsic.HSee_invisible = (game.u.intrinsic.HSee_invisible | 0) | FROMOUTSIDE;
+        }
+        newsym(game.u.ux, game.u.uy);
+        /*FALLTHRU*/
+    case PMNAMES.PM_YELLOW_LIGHT:
+    case PMNAMES.PM_GIANT_BAT:
+        await make_stunned(((game.u.intrinsic?.HStun | 0) & TIMEOUT) + 30, false);
+        /*FALLTHRU*/
+    case PMNAMES.PM_BAT:
+        await make_stunned(((game.u.intrinsic?.HStun | 0) & TIMEOUT) + 30, false);
+        break;
+    case PMNAMES.PM_GIANT_MIMIC:
+        tmp += 10;
+        /*FALLTHRU*/
+    case PMNAMES.PM_LARGE_MIMIC:
+        tmp += 20;
+        /*FALLTHRU*/
+    case PMNAMES.PM_SMALL_MIMIC:
+        tmp += 20;
+        if (game.youmonst.data.mlet !== MONSYMS.S_MIMIC && !Unchanging()) {
+            let buf;
+            const tempshape = !Hallucination() ? 'a pile of gold'
+                                               : 'an orange';
+
+            game.u.uconduct ||= {};
+            if (!game.u.uconduct.polyselfs++) /* you're changing form */
+                await livelog_printf(LL_CONDUCT,
+                            `changed form for the first time by mimicking ${tempshape}`);
+            await You_cant(`resist the temptation to mimic ${tempshape}.`);
+            /* A pile of gold can't ride. */
+            if (game.u.usteed)
+                await dismount_steed(DISMOUNT_FELL);
+            nomul(-tmp);
+            game.multi_reason = 'pretending to be a pile of gold';
+            buf = Hallucination()
+                  ? `You suddenly dread being peeled and mimic ${
+                      an(Upolyd(game.u) ? pmname(game.youmonst.data, Ugender())
+                                        : game.urace.noun)} again!`
+                  : `You now prefer mimicking ${
+                      an(Upolyd(game.u) ? pmname(game.youmonst.data, Ugender())
+                                        : game.urace.noun)} again.`;
+            game.eatmbuf = buf;
+            game.nomovemsg = game.eatmbuf;
+            game.afternmv = eatmdone;
+            /* ??? what if this was set before? */
+            game.youmonst.m_ap_type = M_AP_OBJECT;
+            game.youmonst.mappearance = Hallucination() ? ONAMES.ORANGE : ONAMES.GOLD_PIECE;
+            newsym(game.u.ux, game.u.uy);
+            /* curs_on_u(); */
+            /* make gold symbol show up now */
+            /* display_nhwindow(WIN_MAP, TRUE): wintty.c's NHW_MAP arm flushes
+               the map (end_glyphout), turns a pending message into --More--
+               and shows the message window */
+            await flush_screen(0);
+            if (game._toplin !== TOPLINE_EMPTY)
+                game._toplin = TOPLINE_NEED_MORE;
+            if (game._toplin === TOPLINE_NEED_MORE)
+                await more();
+        }
+        break;
+    case PMNAMES.PM_QUANTUM_MECHANIC:
+        await Your('velocity suddenly seems very uncertain!');
+        if ((game.u.intrinsic?.HFast | 0) & INTRINSIC) {
+            game.u.intrinsic.HFast &= ~INTRINSIC;
+            await You('seem slower.');
+        } else {
+            (game.u.intrinsic ||= {}).HFast = (game.u.intrinsic.HFast | 0) | FROMOUTSIDE;
+            await You('seem faster.');
+        }
+        break;
+    case PMNAMES.PM_LIZARD:
+        if (((game.u.intrinsic?.HStun | 0) & TIMEOUT) > 2)
+            await make_stunned(2, false);
+        if (((game.u.intrinsic?.HConfusion | 0) & TIMEOUT) > 2)
+            await make_confused(2, false);
+        check_intrinsics = true; /* might convey temporary stoning resist */
+        break;
     case PMNAMES.PM_CHAMELEON:
     case PMNAMES.PM_DOPPELGANGER:
     case PMNAMES.PM_SANDESTIN: /* moot--they don't leave corpses */
@@ -2010,46 +2843,47 @@ async function cpostfx(pm) {
         if (Unchanging()) {
             await You_feel('momentarily different.'); /* same as poly trap */
         } else {
-            /* use up the rest of the tin, if any, and its nutrition
+            /* polyself() is potentially fatal; if food is a tin, use it up
                early to keep it out of bones */
             if (game.context.tin?.tin) {
                 await use_up_tin(game.context.tin.tin);
+                /* most tin effects end up being skipped */
                 await lesshungry(200 + (metallivorous(game.youmonst.data) ? 5 : 0));
             }
+
             await You(`${(pm === PMNAMES.PM_GENETIC_ENGINEER)
                           ? 'undergo a freakish metamorphosis'
                           : 'feel a change coming over you'}.`);
             await polyself(POLY_NOFLAGS);
         }
         break;
-    case PMNAMES.PM_WRAITH:
-    case PMNAMES.PM_HUMAN_WERERAT:
-    case PMNAMES.PM_HUMAN_WEREJACKAL:
-    case PMNAMES.PM_HUMAN_WEREWOLF:
-    case PMNAMES.PM_NURSE:
-    case PMNAMES.PM_STALKER:
-    case PMNAMES.PM_YELLOW_LIGHT:
-    case PMNAMES.PM_GIANT_BAT:
-    case PMNAMES.PM_BAT:
-    case PMNAMES.PM_GIANT_MIMIC:
-    case PMNAMES.PM_LARGE_MIMIC:
-    case PMNAMES.PM_SMALL_MIMIC:
-    case PMNAMES.PM_QUANTUM_MECHANIC:
-    case PMNAMES.PM_LIZARD:
     case PMNAMES.PM_DISPLACER_BEAST:
+        if (!Displaced()) /* give a message (before setting the timeout) */
+            await toggle_displacement(null, 0, true);
+        incr_itimeout('HDisplaced', d(6, 6));
+        break;
     case PMNAMES.PM_DISENCHANTER:
-    case PMNAMES.PM_MIND_FLAYER:
-    case PMNAMES.PM_MASTER_MIND_FLAYER:
-        /* the named special arms carry their own machinery (pluslvl,
-           lycanthropy, polyself, stun timers); each records until its
-           subsystem lands */
-        note_unported_eat(`cpostfx:pm=${pm}`);
-        return;
+        /* picks an intrinsic at random and removes it; there's
+           no feedback if hero already lacks the chosen ability */
+        await attrcurse();
+        break;
     case PMNAMES.PM_DEATH:
     case PMNAMES.PM_PESTILENCE:
     case PMNAMES.PM_FAMINE:
         /* life-saved; don't attempt to confer any intrinsics */
-        return;
+        break;
+    case PMNAMES.PM_MIND_FLAYER:
+    case PMNAMES.PM_MASTER_MIND_FLAYER:
+        if (ABASE(A_INT) < ATTRMAX(A_INT)) {
+            if (!rn2(2)) {
+                await pline('Yum!  That was real brain food!');
+                await adjattrib(A_INT, 1, false);
+                break; /* don't give them telepathy, too */
+            }
+        } else {
+            await pline('For some reason, that tasted bland.');
+        }
+        /*FALLTHRU*/
     default:
         check_intrinsics = true;
         break;
@@ -2057,26 +2891,33 @@ async function cpostfx(pm) {
 
     /* possibly convey an intrinsic */
     if (check_intrinsics) {
+        const ptr = game.mons[pm];
+
         if (dmgtype(ptr, ATTKS.AD_STUN) || dmgtype(ptr, ATTKS.AD_HALU)
             || pm === PMNAMES.PM_VIOLET_FUNGUS) {
             await pline('Oh wow!  Great stuff!');
-            /* make_hallucinated((HHallucination & TIMEOUT) + 200) */
-            note_unported_eat('cpostfx:hallu_timer');
+            await make_hallucinated(((game.u.intrinsic?.HHallucination | 0) & TIMEOUT) + 200, false,
+                                    0);
         }
 
         /* Eating magical monsters can give you some magical energy. */
         if (attacktype(ptr, ATTKS.AT_MAGC) || pm === PMNAMES.PM_NEWT)
             await eye_of_newt_buzz();
 
-        const tmp = corpse_intrinsic(ptr);
+        tmp = corpse_intrinsic(ptr);
 
-        if (tmp === -1) {
-            /* gainstr(NULL, 0, TRUE): giant strength */
-            note_unported_eat('cpostfx:gainstr');
-        } else if (tmp > 0) {
+        /* if something was chosen, give it now (givit() might fail) */
+        if (tmp === -1)
+            await gainstr(null, 0, true);
+        else if (tmp > 0)
             await givit(tmp, ptr);
-        }
+    } /* check_intrinsics */
+
+    if (ismnum(catch_lycanthropy)) {
+        set_ulycn(catch_lycanthropy);
+        await retouch_equipment(2);
     }
+    return;
 }
 
 // src/eat.c:3893 cant_finish_meal(); called by revive(); sort of the opposite

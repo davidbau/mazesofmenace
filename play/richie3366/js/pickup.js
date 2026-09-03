@@ -2592,8 +2592,8 @@ async function u_handsy() {
  * body_part(FOOT) via objnam latebound (polyself→do→pickup cycle).
  * Callers: use_container / tipcontainer_checks (makecat+givemsg TRUE);
  * end.c disclose walk (FALSE, FALSE — live leaves spe set).
- * Named omissions: muse.c monster-loot; escape/ascend Schroedingers_cat
- * companion HP; shop Shk_Your ownership prefixes.
+ * Named omissions: muse.c monster-loot; shop Shk_Your ownership prefixes.
+ * Escape/ascend companion HP is D-1754 (`game.Schroedingers_cat`).
  *
  * @param {object} box
  * @param {boolean} makecat

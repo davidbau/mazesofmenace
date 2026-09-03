@@ -5,6 +5,15 @@
 // Rare artifact, fatal-corpse, and remote-shop branches remain
 // explicit recorded gaps.
 
+import { self_lookat } from './pager.js';
+import { digests } from './mondata.js';
+import { engulfing_u } from './const.js';
+import { PICK_ANY } from './const.js';
+import { CONTAINED_SYM } from './const.js';
+import { OBJ_MINVENT } from './const.js';
+import { AUTOSELECT_SINGLE } from './const.js';
+import { USE_INVLET } from './const.js';
+import { INCLUDE_HERO } from './const.js';
 import { MAY_HIT, MAY_DESTROY } from './const.js';
 import { scatter } from './explode.js';
 import { def_oc_syms } from './drawing_data.js';
@@ -312,7 +321,7 @@ export async function pickup(what) {
         here = here.filter(o => autopick_testobj(o));
     let n_picked = 0, n_tried = 0;
     if (here.length > 1 && !autopickup) {
-        const picked = await query_objlist('Pick up what?', here);
+        const picked = await query_objlist('Pick up what?', here, INVORDER_SORT, PICK_ANY, allow_all);
         if (picked.length)
             reset_justpicked();
         for (const obj of picked) {
@@ -358,12 +367,61 @@ function autopick_testobj(otmp) {
     return !otypes || otypes.includes(def_oc_syms[otmp.oclass]);
 }
 
+// src/pickup.c allow_all(); query_objlist() filter that accepts everything
+export function allow_all(obj) {
+    return true;
+}
+
 // src/pickup.c:1025 query_objlist() — the PICK_ANY menu over a pile.
 //
 // C sorts the list into class order with a heading per class, exactly as the
 // inventory menu does, and assigns a,b,c... down the list rather than reusing
 // any inventory letter. Returns the chosen objects in menu order.
-export async function query_objlist(qstr, olist, use_invlet = false) {
+export async function query_objlist(qstr,   /* query string */
+                                    olist,  /* the list to pick from */
+                                    qflags = INVORDER_SORT, /* options to control the query */
+                                    how = PICK_ANY,         /* type of query */
+                                    allow = allow_all)      /* allow function */
+{
+    const use_invlet = (qflags & USE_INVLET) !== 0;
+    const sorted = (qflags & INVORDER_SORT) !== 0,
+          engulfer = (qflags & INCLUDE_HERO) !== 0;
+    let engulfer_minvent;
+    let n, last;
+
+    if (!olist.length && !engulfer)
+        return [];
+
+    /* count the number of items allowed */
+    n = 0, last = null;
+    for (const curr of olist)
+        if (allow(curr)) {
+            last = curr;
+            n++;
+        }
+    /* can't depend upon 'engulfer' because that's used to indicate whether
+       hero should be shown as an extra, fake item */
+    engulfer_minvent = (olist.length && olist[0].where === OBJ_MINVENT
+                        && engulfing_u(olist[0].ocarry));
+    if (engulfer_minvent && n === 1 && olist[0].owornmask) {
+        qflags &= ~AUTOSELECT_SINGLE;
+    }
+    if (engulfer) {
+        ++n;
+        /* don't autoselect swallowed hero if it's the only choice */
+        qflags &= ~AUTOSELECT_SINGLE;
+    }
+
+    if (n === 0) /* nothing to pick here */
+        return [];
+
+    if (n === 1 && (qflags & AUTOSELECT_SINGLE)) {
+        const picks = [last];
+        Object.defineProperty(picks, 'counts', { value: new Map([[last, last.quan]]) });
+        return picks;
+    }
+    olist = olist.filter(allow);
+
     const { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
             tty_display_nhwindow, tty_select_menu, tty_destroy_nhwindow,
             ATR_NONE, ATR_INVERSE, NHW_MENU } = await import('./tty/wintty.js');
@@ -412,10 +470,21 @@ export async function query_objlist(qstr, olist, use_invlet = false) {
             id++;
         }
     }
+    if (engulfer) {
+        if (sorted && n > 1) {
+            tty_add_menu(win, null, 0, 0, 0, ATR_INVERSE, NO_COLOR,
+                         `${digests(game.u.ustuck.data) ? 'Swallowed' : 'Engulfed'} Creatures`,
+                         MENU_ITEMFLAGS_NONE);
+        }
+        /* fake inventory letter, no group accelerator */
+        tty_add_menu(win, null, 0, CONTAINED_SYM, 0, ATR_NONE, NO_COLOR,
+                     an(self_lookat()), MENU_ITEMFLAGS_NONE);
+    }
+
     tty_end_menu(win, qstr);
     await tty_display_nhwindow(win);
 
-    const ids = await tty_select_menu(win, PICK_ANY);
+    const ids = await tty_select_menu(win, how);
     tty_destroy_nhwindow(win);
     await docrt();
 
@@ -1641,7 +1710,8 @@ async function menu_loot(retry, put_in) {
                            : (current_container.cobj || []);
         const eligible = src.filter(o => all_categories || allow_category(o));
         const picks = await query_objlist(`${action} what?`, eligible,
-                                          put_in && game.flags?.fixinv !== false);
+                                          INVORDER_SORT | ((put_in && game.flags?.fixinv !== false) ? USE_INVLET : 0),
+                                          PICK_ANY, allow_all);
         if (picks.length) {
             n_looted = picks.length;
             for (let otmp of picks) {

@@ -564,7 +564,7 @@ function maybe_lvltport_feedback() {
 /**
  * C ref: artifact.c Sting_effects `:2466–2501` — glow messages for
  * Sting / Orcrist / Grimtooth when warn_obj_cnt strength changes.
- * orc_count -1 is blindness toggle (make_blinded caller named omit).
+ * orc_count -1 is blindness toggle (toggle_blindness / make_blinded).
  * Hallu hcolor inside glow_color named omit.
  */
 export async function Sting_effects(orc_count) {
