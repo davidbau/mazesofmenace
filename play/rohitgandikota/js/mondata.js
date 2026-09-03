@@ -1054,6 +1054,16 @@ export function noit_mhis(mtmp) {
     return genders_tbl[pronoun_gender(mtmp, (PRONOUN_NO_IT | PRONOUN_HALLU))].his;
 }
 import { genders as genders_tbl } from './role_data.js';
+import { W_ARMH } from './const.js';
+import { objdescr_is } from './o_init.js';
+
+
+
+
+
+
+
+
 
 
 // include/mondata.h:71 digests() — swallow-and-digest engulfer (purple worm).
@@ -1087,3 +1097,138 @@ export const likes_gold = (ptr) => ((ptr.mflags2 & MFLAGS.M2_GREEDY) !== 0);
 /* include/mondata.h:159 is_watch() */
 export const is_watch = (ptr) =>
     (ptr === game.mons[PMNAMES.PM_WATCHMAN] || ptr === game.mons[PMNAMES.PM_WATCH_CAPTAIN]);
+
+/* include/monst.h:253 mon_perma_blind() */
+const mon_perma_blind = (mon) => (!mon.mcansee && !mon.mblinded);
+/* include/youprop.h Blindfolded (EBlinded): a worn blindfold or towel */
+const Blindfolded = () => !!(game.u.ublindf && (game.u.ublindf.otyp === ONAMES.BLINDFOLD
+                                                 || game.u.ublindf.otyp === ONAMES.TOWEL));
+
+// src/mondata.c:305 can_blnd(); can the attack blind the defender?
+export function can_blnd(magr, /* NULL == no specific aggressor */
+                         mdef, aatyp, obj) /* aatyp == AT_WEAP, AT_SPIT */
+{
+    const is_you = (mdef === game.youmonst);
+    let check_visor = false;
+    let o;
+
+    /* no eyes protect against all attacks for now */
+    if (!haseyes(mdef.data))
+        return false;
+
+    /* if monster has been permanently blinded, the deed is already done */
+    if (!is_you && mon_perma_blind(mdef))
+        return false;
+
+    /* /corvus oculum corvi non eruit/
+       a saying expressed in Latin rather than a zoological observation:
+       "a crow will not pluck out the eye of another crow"
+       so prevent ravens from blinding each other */
+    if (magr && magr.data === game.mons[PMNAMES.PM_RAVEN] && mdef.data === game.mons[PMNAMES.PM_RAVEN])
+        return false;
+
+    switch (aatyp) {
+    case ATTKS.AT_EXPL:
+    case ATTKS.AT_BOOM:
+    case ATTKS.AT_GAZE:
+    case ATTKS.AT_MAGC:
+    case ATTKS.AT_BREA: /* assumed to be lightning */
+        /* light-based attacks may be cancelled or resisted */
+        if (magr && magr.mcan)
+            return false;
+        return !resists_blnd(mdef);
+
+    case ATTKS.AT_WEAP:
+    case ATTKS.AT_SPIT:
+    case ATTKS.AT_NONE:
+        /* an object is used (thrown/spit/other) */
+        if (obj && (obj.otyp === ONAMES.CREAM_PIE)) {
+            if (is_you && Blindfolded())
+                return false;
+        } else if (obj && (obj.otyp === ONAMES.BLINDING_VENOM)) {
+            /* all ublindf, including LENSES, protect, cream-pies too */
+            if (is_you && (game.u.ublindf || game.u.ucreamed))
+                return false;
+            check_visor = true;
+        } else if (obj && (obj.otyp === ONAMES.POT_BLINDNESS)) {
+            return true; /* no defense */
+        } else
+            return false; /* other objects cannot cause blindness yet */
+        if ((magr === game.youmonst) && game.u.uswallow)
+            return false; /* can't affect eyes while inside monster */
+        break;
+
+    case ATTKS.AT_ENGL:
+        if (is_you && (Blindfolded() || Unaware() || game.u.ucreamed))
+            return false;
+        if (!is_you && mdef.msleeping)
+            return false;
+        break;
+
+    case ATTKS.AT_CLAW:
+        /* e.g. raven: all ublindf, including LENSES, protect */
+        if (is_you && game.u.ublindf)
+            return false;
+        if ((magr === game.youmonst) && game.u.uswallow)
+            return false; /* can't affect eyes while inside monster */
+        check_visor = true;
+        break;
+
+    case ATTKS.AT_TUCH:
+    case ATTKS.AT_STNG:
+        /* some physical, blind-inducing attacks can be cancelled */
+        if (magr && magr.mcan)
+            return false;
+        break;
+
+    default:
+        break;
+    }
+
+    /* check if wearing a visor (only checked if visor might help) */
+    if (check_visor) {
+        const chain = (mdef === game.youmonst) ? (game.invent || []) : (mdef.minvent || []);
+        for (o of chain)
+            if ((o.owornmask & W_ARMH)
+                && objdescr_is(o, 'visored helmet'))
+                return false;
+    }
+
+    return true;
+}
+
+// src/mondata.c:1411 on_fire(); how a monster of this type reacts to fire
+export function on_fire(mptr, mattk) {
+    let what;
+
+    switch (monsndx(mptr)) {
+    case PMNAMES.PM_FLAMING_SPHERE:
+    case PMNAMES.PM_FIRE_VORTEX:
+    case PMNAMES.PM_FIRE_ELEMENTAL:
+    case PMNAMES.PM_SALAMANDER:
+        what = 'already on fire';
+        break;
+    case PMNAMES.PM_WATER_ELEMENTAL:
+    case PMNAMES.PM_FOG_CLOUD:
+    case PMNAMES.PM_STEAM_VORTEX:
+        what = 'boiling';
+        break;
+    case PMNAMES.PM_ICE_VORTEX:
+    case PMNAMES.PM_GLASS_GOLEM:
+        what = 'melting';
+        break;
+    case PMNAMES.PM_STONE_GOLEM:
+    case PMNAMES.PM_CLAY_GOLEM:
+    case PMNAMES.PM_GOLD_GOLEM:
+    case PMNAMES.PM_AIR_ELEMENTAL:
+    case PMNAMES.PM_EARTH_ELEMENTAL:
+    case PMNAMES.PM_DUST_VORTEX:
+    case PMNAMES.PM_ENERGY_VORTEX:
+        what = 'heating up';
+        break;
+    default:
+        what = (mattk[0] === ATTKS.AT_HUGS) ? 'being roasted' : 'on fire';
+        break;
+    }
+    return what;
+}

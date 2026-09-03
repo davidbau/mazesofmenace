@@ -27,6 +27,8 @@ import { PMNAMES } from './monst_data.js';
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { newsym } from './display.js';
+import { cansee } from './vision.js';
+
 
 /* goodpos lives in js/makemon.js, which imports this file; wired to keep
    the import one-way. */
@@ -441,4 +443,16 @@ export async function cutworm(worm, x, y, cuttier) {
         await pline(`${Monnam(worm)} is cut in half.`);
     else
         await You(`cut ${mon_nam(worm)} in half.`);
+}
+
+// src/worm.c:883 worm_known(); is any segment of the worm visible?
+export function worm_known(worm) {
+    let curr = wstate().wtails[worm.wormno];
+
+    while (curr) {
+        if (cansee(curr.wx, curr.wy))
+            return true;
+        curr = curr.nseg;
+    }
+    return false;
 }

@@ -11,8 +11,9 @@ import {
     newsym, flush_screen, pline, pline_dir, pline_xy, set_msg_xy,
     see_nearby_objects,
     clear_nhwindow_message,
-    mon_visible, sensemon, glyph_is_invisible, unmap_object, map_object,
+    mon_visible, sensemon, glyph_is_invisible_id, unmap_object, map_object,
     look_shown_at, Norep, tty_doprev_message, putmsghistory,
+    unmap_invisible,
 } from './display.js';
 import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, SCORR, LAVAWALL,
@@ -2943,11 +2944,13 @@ async function domove(dx, dy) {
         // Named omissions: displacer swap; domove_bump_mon; mundetected Wait!;
         // full mon_visible Blind_telepat / Protection_from_shape amulet prop.
         mtmp = mon_at(newx, newy);
-        // C: forcefight with no mon, OR remembered 'I' && !m_at && !nopick
-        // → fight_empty (hack.c). Blind rush onto I must waste the turn.
         const destLoc = game.level?.at?.(newx, newy);
+        // C: forcefight with no mon, OR glyph_is_invisible(glyph_at) &&
+        // !m_at && !nopick → fight_empty (hack.c `:2242–2245`). Use
+        // gbuf (disp_glyph), not leftover remembered.invisible.
         if ((forcefight && !mtmp)
-            || (glyph_is_invisible(destLoc) && !mtmp && !game.context?.nopick)) {
+            || (glyph_is_invisible_id(destLoc?.disp_glyph)
+                && !mtmp && !game.context?.nopick)) {
             await domove_fight_empty(newx, newy);
             if (game.context?.run) end_running();
             game.context.move = 1;
@@ -2981,6 +2984,10 @@ async function domove(dx, dy) {
         }
         // safemon displace: fall through; swap after test_move succeeds
         // (not when swallowed — engulfer is never safemon displace)
+    } else {
+        // C hack.c `:2813` — unmap_invisible after fight_empty, before
+        // u_rooted. Skipped when displaceu (safemon swap).
+        unmap_invisible(newx, newy);
     }
 
     // C ref: hack.c domove_core — after attack path, before trapmove:

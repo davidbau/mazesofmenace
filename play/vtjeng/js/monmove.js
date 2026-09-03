@@ -72,10 +72,12 @@ import {
     HALLUC_RES,
     HOLE,
     ICE,
+    In_sokoban,
     INVIS,
     IRONBARS,
     IS_ALTAR,
     IS_DOOR,
+    LADDER,
     IS_OBSTRUCTED,
     IS_STWALL,
     IS_TREE,
@@ -106,6 +108,7 @@ import {
     NO_TRAP_FLAGS,
     NOTONL,
     NO_WEAPON_WANTED,
+    OBJ_FLOOR,
     OPENDOOR,
     PIT,
     POISON_RES,
@@ -123,11 +126,13 @@ import {
     SPIKED_PIT,
     SQKY_BOARD,
     SQSRCHRADIUS,
+    STAIRS,
     STATUE_TRAP,
     STEALTH,
     STONE,
     STONE_RES,
     STRAT_ARRIVE,
+    STRAT_CLOSE,
     STRAT_WAITFORU,
     STRAT_WAITMASK,
     TELEP_TRAP,
@@ -144,6 +149,8 @@ import {
     W_NONDIGGABLE,
     helpless,
     isok,
+    is_pit,
+    something,
 } from './const.js';
 import { artifactTouchable, artifact_light } from './artifacts.js';
 import { effective_attribute } from './attrib.js';
@@ -161,7 +168,7 @@ import {
 } from './hack.js';
 import { sengr_at, wipe_engr_at } from './engrave.js';
 import { game } from './gstate.js';
-import { dist2, distmin, online2 } from './hacklib.js';
+import { dist2, distmin, online2, upstart } from './hacklib.js';
 import { money_cnt } from './invent.js';
 import { ranged_attk_available } from './mhitu.js';
 import {
@@ -244,6 +251,7 @@ import {
     PM_ETTIN,
     PM_FLOATING_EYE,
     PM_FOG_CLOUD,
+    PM_GIANT_SPIDER,
     PM_GREMLIN,
     PM_GRID_BUG,
     PM_HEZROU,
@@ -321,10 +329,12 @@ import {
     mon_aligntyp,
     pri_move,
 } from './priest.js';
+import { quest_stat_check, quest_talk } from './quest.js';
 import { m_in_out_region, visible_region_at } from './region.js';
 import { d, rn1, rn2, rnd, rne, rnl, rnz } from './rng.js';
 import { in_rooms } from './rooms.js';
 import { after_shk_move, inhishop, shk_move } from './shk.js';
+import { stairway_at } from './stairs.js';
 import {
     canSpotMonster,
     collectMonsterMovementMessage,
@@ -333,7 +343,7 @@ import {
 } from './startup_a11y.js';
 import { S_poisoncloud } from './symbols.js';
 import { gettrack, hastrack } from './track.js';
-import { is_lava, is_pool, t_at, unconscious } from './trap.js';
+import { count_traps, is_lava, is_pool, maketrap, t_at, unconscious } from './trap.js';
 import {
     check_in_air,
     fixed_tele_trap,
@@ -1826,6 +1836,10 @@ export async function dochug(monster, rawEnv = {}) {
         rawEnv,
         'castUndirectedSpell',
     );
+    // C ref: monmove.c:714 and :722. The dry run that precedes a live monster
+    // turn replaces these so the conversation stays silent and reads no key.
+    const questStatCheck = rawEnv.questStatCheck ?? quest_stat_check;
+    const questTalk = rawEnv.questTalk ?? quest_talk;
     const distanceAndFear = rawEnv.distanceAndFear ?? distfleeck;
     const disturbMonster = rawEnv.disturbMonster ?? disturb;
     const setApparentHero = rawEnv.setApparentHero ?? set_apparxy;
@@ -1845,9 +1859,16 @@ export async function dochug(monster, rawEnv = {}) {
             || monster.mhp < monster.mhpmax)) {
         monster.mstrategy &= ~STRAT_WAITFORU;
     }
+    questStatCheck(monster, state);
     if (!monster.mcanmove || (monster.mstrategy & STRAT_WAITMASK)) {
         if (hallucinating()) redraw(monster.mx, monster.my);
-        return 0;
+        // C ref: monmove.c:720-722, "give the leaders a chance to speak".
+        if (monster.mcanmove && (monster.mstrategy & STRAT_CLOSE)
+            && !monster.msleeping
+            && monnear(monster, state.u.ux, state.u.uy, state)) {
+            await questTalk(monster, { state, random, unsupported });
+        }
+        return 0;             /* other frozen monsters can't do anything */
     }
     if (monster.msleeping
         && !await disturbMonster(monster, { ...env, wakeMessage })) {
@@ -2308,6 +2329,80 @@ function requireMoveOperation(env, name) {
     return operation;
 }
 
+// C ref: monmove.c holds_up_web() (1227-1239). TRUE when the cell at (x,y) is
+// a wall, rock, or similar obstruction, an upward staircase or ladder, or iron
+// bars -- anything a web strand can anchor to.
+function holds_up_web(x, y, state = game) {
+    if (!isok(x, y)) return true;
+    const typ = state.level.at(x, y).typ;
+    if (IS_OBSTRUCTED(typ)) return true;
+    if (typ === STAIRS || typ === LADDER) {
+        const sway = stairway_at(x, y, state);
+        if (sway && sway.up) return true;
+    }
+    if (typ === IRONBARS) return true;
+    return false;
+}
+
+// C ref: monmove.c count_webbing_walls() (1244-1248). Returns 0-4: how many
+// cardinal neighbours of (x,y) can hold up a web strand.
+function count_webbing_walls(x, y, state = game) {
+    return (holds_up_web(x, y - 1, state) ? 1 : 0)
+        + (holds_up_web(x + 1, y, state) ? 1 : 0)
+        + (holds_up_web(x, y + 1, state) ? 1 : 0)
+        + (holds_up_web(x - 1, y, state) ? 1 : 0);
+}
+
+// C ref: monmove.c soko_allow_web() (1252-1265). Reject webs that interfere
+// with solving Sokoban. Off Sokoban or on a solved Sokoban level, always TRUE.
+// The Sokoban arm (m_cansee check against stairway_find_dir) is deferred
+// because Sokoban web spinning is never reached in current sessions.
+function soko_allow_web(mon, state = game) {
+    if (!state.level.flags?.sokoban_rules) return true;
+    // Unsolved Sokoban: deferred. The C code allows the web only when the
+    // spinner can see the upstairs.
+    return false;
+}
+
+// C ref: monmove.c maybe_spin_web() (1269-1293). A webmaker monster may
+// create a WEB trap on its current square. The probability depends on species,
+// adjacent walls, and existing web traps on the level.
+async function maybe_spin_web(mtmp, env) {
+    const state = env.state ?? game;
+    const random = env.random ?? { rn2, d };
+    const species = mtmp.data;
+    if (webmaker(species)
+        && !helpless(mtmp) && !mtmp.mspec_used
+        && !t_at(mtmp.mx, mtmp.my, state) && soko_allow_web(mtmp, state)) {
+        const isGiantSpider = species === state.mons?.[PM_GIANT_SPIDER]
+            || species?.pmidx === PM_GIANT_SPIDER;
+        const prob = (((isGiantSpider ? 15 : 5)
+                       * (count_webbing_walls(mtmp.mx, mtmp.my, state) + 1))
+                      - (3 * count_traps(WEB, state)));
+
+        if (random.rn2(1000) < prob) {
+            const trap = maketrap(mtmp.mx, mtmp.my, WEB, { state });
+            if (trap) {
+                mtmp.mspec_used = random.d(4, 4); /* 4..16 */
+                if (cansee(mtmp.mx, mtmp.my, state)) {
+                    const mbuf = canSpotMonster(mtmp, state)
+                        ? env.unsupported('y_monnam in web-spinning message')
+                        : something;
+                    // C: pline_mon(mtmp, "%s spins a web.", upstart(mbuf));
+                    // pline_mon() is not yet ported; refuse for now when the
+                    // hero can see the spinner, since the message would be
+                    // visible.
+                    env.unsupported('pline_mon for web-spinning message');
+                    trap.tseen = 1;
+                }
+                if ((in_rooms(mtmp.mx, mtmp.my, SHOPBASE, state)[0] ?? 0)) {
+                    env.unsupported('add_damage for web in shop');
+                }
+            }
+        }
+    }
+}
+
 // The door masks that leave postmov()'s door block with nothing to do.  Three
 // of the block's four arms test D_LOCKED or D_CLOSED and the fourth tests
 // whole-mask equality with D_CLOSED, so a monster standing on a doorless,
@@ -2510,17 +2605,12 @@ export async function postmov(
             // monmove.c:1683-1687 repeats newsym() when mtmp->minvis is set.
             // ROADMAP.md records why no case can reach that arm.
         }
-        // maybe_spin_web(), called at monmove.c:1690 and defined at :1269,
-        // reaches its rn2(1000) at :1279 only when all five conjuncts of
-        // :1271-1273 hold: webmaker(), !helpless(), !mspec_used, no trap on
-        // the square, and soko_allow_web().  Skipping that draw silently would
-        // move the whole PRNG log, so this refuses on webmaker() alone and
-        // applies none of the other four.  Two are already available here --
-        // mspec_used is a monster field and t_at() is ported -- helpless() is
-        // ported but module-private to js/mhitm.js, and soko_allow_web() has
-        // no port, though monmove.c:1257 makes it constantly true off
-        // Sokoban.
-        if (webmaker(species)) unsupported('monster web spinning');
+        // C ref: monmove.c:1690, maybe_spin_web(). The five conjuncts
+        // (webmaker, !helpless, !mspec_used, no trap, soko_allow_web) gate
+        // the rn2(1000) draw at :1279. The success arm's message and shop
+        // bookkeeping remain behind unsupported guards until y_monnam,
+        // pline_mon, and add_damage are ported.
+        await maybe_spin_web(monster, { ...env, random, unsupported });
         // C ref: monmove.c:1692-1699.  A hides_under() species or an eel
         // re-hides after moving, drawing rn2(5) unless it is already hidden;
         // helpless() cannot hold here because dochug() returns before
@@ -2558,8 +2648,7 @@ export async function postmov(
 
 // C ref: monmove.c m_move().  Covers the prologue, the tame dog_move()
 // dispatch, the isshk dispatch (stationary return-0 path), and the ordinary
-// not_special path through postmov().  Not covered: the hides_under() early
-// return, the wormno branch, the is_covetous() tactics branch, the isgd and
+// not_special path through postmov().  Not covered: the wormno branch, the is_covetous() tactics branch, the isgd and
 // ispriest dispatches, m_move_aggress(), displacement, and boulder breaking.
 // Those remain explicit seams until their source owners connect.
 export async function m_move(monster, rawEnv = {}) {
@@ -2581,8 +2670,8 @@ export async function m_move(monster, rawEnv = {}) {
     const oldY = monster.my;
 
     // C ref: monmove.c:1733-1742, m_move()'s prologue.  mintrap() runs first,
-    // then the meating countdown, then hides_under (which the boundary
-    // rejects), then set_apparxy(), then the tame dispatch.
+    // then the meating countdown, then the hides_under() early return, then
+    // set_apparxy(), then the tame dispatch.
     //
     // The two seams postmov() resolves for its own mintrap() call: the cloned
     // planning scan must write neither the message window nor the map, and it
@@ -2617,6 +2706,15 @@ export async function m_move(monster, rawEnv = {}) {
         if (monster.meating <= 0) finishEating(monster, env);
         return MMOVE_DONE;
     }
+    // C ref: monmove.c:1750-1753. A concealing species already lying under
+    // something usually stays put. The draw comes before every later draw in
+    // the monster's turn, so skipping it moves the whole log.
+    if (hides_under(monster.data)
+        && can_hide_under_obj(
+            state.level?.objects?.[monster.mx]?.[monster.my], state,
+        )
+        && random.rn2(10))
+        return MMOVE_NOTHING; /* do not leave hiding place */
     set_apparxy(monster, env);
     // C ref: monmove.c:1763-1766.  mon_allowflags() computes the same three
     // capabilities for mfndpos(); m_move() keeps its own can_tunnel because it
@@ -2897,4 +2995,29 @@ export async function m_move(monster, rawEnv = {}) {
         MMOVE_MOVED,
         env,
     );
+}
+
+// C ref: monmove.c can_hide_under_obj() (2119-2167). `obj` is the head of the
+// square's pile. NO_HIDING_UNDER_STATUES is commented out upstream, so the
+// statue loop it guards is not part of the built behavior.
+export function can_hide_under_obj(headObject, state = game) {
+    let obj = headObject;
+    if (!obj || obj.where !== OBJ_FLOOR) return false;
+    /* can't hide in/on/under traps (except pits) even when there is an
+       object here; since obj is on floor, its <ox,oy> are up to date */
+    const trap = t_at(obj.ox, obj.oy, state);
+    if (trap && !is_pit(trap.ttyp)) return false;
+    /* can't hide under small amount of coins unless non-coins are also
+       present; we expect coins to be a single stack but don't assume that */
+    if (obj.oclass === COIN_CLASS) {
+        let coinquan = 0;
+        do {
+            /* 10 coins is arbitrary amount considered enough to hide under */
+            coinquan += obj.quan;
+            if (coinquan >= 10) break; /* fall through to other checks */
+            obj = obj.nexthere;
+            if (!obj) return false; /* whole pile was less than 10 coins */
+        } while (obj.oclass === COIN_CLASS);
+    }
+    return true; /* can hide under the object */
 }

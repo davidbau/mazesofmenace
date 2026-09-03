@@ -250,6 +250,82 @@ import {
     STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP, VIBRATING_SQUARE,
     TRAPPED_DOOR, TRAPPED_CHEST,
 } from './const.js';
+import { undestroyable_trap } from './const.js';
+import { TT_BEARTRAP } from './const.js';
+import { TT_WEB } from './const.js';
+import { TT_PIT } from './const.js';
+import { TT_LAVA } from './const.js';
+import { u_at } from './const.js';
+import { IS_ROOM } from './const.js';
+import { SHOP_HOLE_COST } from './const.js';
+import { DB_UNDER } from './const.js';
+import { DB_ICE } from './const.js';
+import { DB_FLOOR } from './const.js';
+import { MELT_ICE_AWAY } from './const.js';
+import { is_lava } from './mon.js';
+import { is_pool_or_lava } from './dbridge.js';
+import { single_level_branch } from './dungeon.js';
+import { reset_utrap } from './trap.js';
+import { maybe_finish_sokoban } from './trap.js';
+import { add_damage } from './shk.js';
+import { obj_ice_effects } from './mkobj.js';
+import { spot_stop_timers } from './timeout.js';
+import { set_levltyp } from './mkmaze.js';
+import { recalc_block_point } from './vision.js';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 function is_hole(t) { return t === HOLE || t === TRAPDOOR; }
 function is_pit(t) { return t === PIT || t === SPIKED_PIT; }
@@ -425,85 +501,146 @@ export { bury_objs, unearth_objs } from './dig.js';
 // awaits in it; the async marker was invented here and it forced every caller
 // up to lspo_region() to be async too, which is what blocked the themeroom
 // fills from calling des.trap at all.
+/* include/trap.h:115 unhideable_trap(); include/rm.h:320 CAN_OVERWRITE_TERRAIN();
+   include/dungeon.h Sokoban */
+const unhideable_trap = (ttyp) => ((ttyp) === HOLE); /* visible traps */
+const CAN_OVERWRITE_TERRAIN = (ttyp) =>
+    (!!game.iflags?.debug_overwrite_stairs || !((ttyp) === LADDER || (ttyp) === STAIRS));
+const Sokoban = () => !!game.level?.flags?.sokoban_rules;
+
 export function maketrap(x, y, typ) {
-    /* src/trap.c:463 — the refusal arms. A trap request can FAIL, and the
-       caller (mktrap) turns that into kind = NO_TRAP, which short-circuits
-       the victim gate before its rnd(4). Creating unconditionally made the
-       port draw a victim roll C never spends (first seen on Wiz-strt, whose
-       replace_terrain clouds reject traps via IS_AIR). */
+    let oldplace, was_ice, clear_flags;
+    let ttmp;
+    const lev = game.level?.at(x, y);
+
     if (typ === TRAPPED_DOOR || typ === TRAPPED_CHEST)
         return null;
-    if (!game.level) return null;
-    const lev = game.level.at(x, y);
-    let trap = t_at(x, y);
-    let oldplace = false;
-    if (trap) {
-        /* undestroyable_trap(): MAGIC_PORTAL or VIBRATING_SQUARE */
-        if (trap.ttyp === MAGIC_PORTAL || trap.ttyp === VIBRATING_SQUARE)
+    if (!lev)
+        return null;
+
+    if ((ttmp = t_at(x, y)) != null) {
+        if (undestroyable_trap(ttmp.ttyp))
             return null;
         oldplace = true;
-        /* src/trap.c:470 — u.utrap retyping only matters when the hero is
-           standing in the replaced trap; unreachable during level gen */
-    } else if (!lev
-               || lev.typ === STAIRS || lev.typ === LADDER
-               /* CAN_OVERWRITE_TERRAIN(); debug_overwrite_stairs is a
-                  wizard-mode option the sessions never set */
-               || IS_POOL(lev.typ) || lev.typ === LAVAPOOL
-               || (IS_FURNITURE(lev.typ) && typ !== PIT && typ !== HOLE)
+        if (game.u.utrap && u_at(x, y)
+            && ((game.u.utraptype === TT_BEARTRAP && typ !== BEAR_TRAP)
+                || (game.u.utraptype === TT_WEB && typ !== WEB)
+                || (game.u.utraptype === TT_PIT && !is_pit(typ))
+                || (game.u.utraptype === TT_LAVA && !is_lava(x, y))))
+            reset_utrap(false); /* no message, so nothing to wait for */
+        /* old <tx,ty> remain valid */
+    } else if (!CAN_OVERWRITE_TERRAIN(lev.typ) /* stairs */
+               || is_pool_or_lava(x, y)
+               || (IS_FURNITURE(lev.typ) && (typ !== PIT && typ !== HOLE))
                || (lev.typ === DRAWBRIDGE_UP && typ === MAGIC_PORTAL)
                || (IS_AIR(lev.typ) && typ !== MAGIC_PORTAL)
-               || (typ === LEVEL_TELEP
-                   && game.u?.uz?.dnum === game.special_levels?.knox_level?.dnum)) {
+               || (typ === LEVEL_TELEP && single_level_branch(game.u.uz))) {
+        /* no trap on top of furniture (caller usually screens the
+           location to inhibit this, but wizard mode wishing doesn't)
+           and no level teleporter in branch with only one level */
         return null;
-    }
-
-    if (!oldplace) {
-        trap = {
-            ttyp: typ, tx: x, ty: y,
-            tseen: (typ === HOLE),          /* unhideable_trap() */
-            once: 0, madeby_u: 0,
-            launch: { x: -1, y: -1 },
-            dst: { dnum: -1, dlevel: -1 },
-        };
-        if (!game.level.traps) game.level.traps = [];
-        game.level.traps.push(trap);
     } else {
-        /* src/trap.c — reuse the existing trap record in place */
-        trap.ttyp = typ;
-        trap.tseen = (typ === HOLE);
-        trap.once = 0; trap.madeby_u = 0;
-        trap.launch = { x: -1, y: -1 };
-        trap.dst = { dnum: -1, dlevel: -1 };
+        oldplace = false;
+        ttmp = {}; /* newtrap(), zeroed */
+        ttmp.ntrap = null;
+        ttmp.tx = x;
+        ttmp.ty = y;
     }
+    /* [re-]initialize all fields except ntrap (handled below) and <tx,ty> */
+    ttmp.vl = null; /* zero_vl */
+    ttmp.launch = { x: -1, y: -1 }; /* force error if used before set */
+    ttmp.dst = { dnum: -1, dlevel: -1 };
+    ttmp.madeby_u = 0;
+    ttmp.once = 0;
+    ttmp.tseen = unhideable_trap(typ);
+    ttmp.ttyp = typ;
 
     switch (typ) {
     case SQKY_BOARD:
-        trap.tnote = choose_trapnote(trap);
+        ttmp.tnote = choose_trapnote(ttmp);
         break;
-    case STATUE_TRAP:
+    case STATUE_TRAP: /* create a "living" statue */
         mk_trap_statue(x, y);
         break;
     case ROLLING_BOULDER_TRAP: /* boulder will roll towards trigger */
-        /* src/trap.c:512 — (void) mkroll_launch(ttmp, x, y, BOULDER, 1L) */
-        mkroll_launch(trap, x, y, BOULDER, 1);
+        mkroll_launch(ttmp, x, y, ONAMES.BOULDER, 1);
         break;
     case PIT:
     case SPIKED_PIT:
-        trap.conjoined = 0;
-        /* FALLTHRU */
+        ttmp.conjoined = 0;
+        /*FALLTHRU*/
     case HOLE:
     case TRAPDOOR:
-        /* src/trap.c:521 — only a HOLE or TRAPDOOR picks a destination, but
-           the pit cases fall through to here, so the is_hole() test is what
-           gates the draw, not the case label. */
         if (is_hole(typ))
-            hole_destination(trap.dst);
+            hole_destination(ttmp.dst);
+        if (in_rooms(x, y, SHOPBASE).length
+            && (is_hole(typ) || IS_DOOR(lev.typ) || IS_WALL(lev.typ)))
+            add_damage(x, y, /* schedule repair */
+                       ((IS_DOOR(lev.typ) || IS_WALL(lev.typ))
+                        && !game.context?.mon_moving) ? SHOP_HOLE_COST : 0);
+
+        clear_flags = true; /* assume lev->flags needs to be reset */
+        /* DRAWBRIDGE_UP passes the IS_ROOM() test so check it first;
+           it also needs to retain lev->drawbridgemask */
+        if (lev.typ === DRAWBRIDGE_UP) {
+            /* bridge is closed and we're putting a hole or pit at the span
+               spot; this trap will be deleted if/when the bridge is opened;
+               terrain becomes room floor even if it was moat, lava, or ice */
+            clear_flags = false; /* keep lev->drawbridgemask */
+            was_ice = (lev.drawbridgemask & DB_UNDER) === DB_ICE;
+            lev.drawbridgemask &= ~DB_UNDER;
+            lev.drawbridgemask |= DB_FLOOR;
+            if (was_ice) {
+                /* subset of set_levltyp() after changing ice to floor;
+                   frozen corpses resume rotting, no more ice to melt away */
+                obj_ice_effects(x, y, true);
+                spot_stop_timers(x, y, MELT_ICE_AWAY);
+            }
+        } else if (IS_ROOM(lev.typ)) {
+            set_levltyp(x, y, ROOM);
+
+        /*
+         * some cases which can happen when digging
+         * down while phasing thru solid areas
+         */
+        } else if (lev.typ === STONE || lev.typ === SCORR) {
+            set_levltyp(x, y, CORR);
+        } else if (IS_WALL(lev.typ) || lev.typ === SDOOR) {
+            set_levltyp(x, y, game.level.flags.is_maze_lev ? ROOM
+                              : game.level.flags.is_cavernous_lev ? CORR
+                                : DOOR);
+        }
+        if (clear_flags) {
+            lev.flags = 0; /* set_levltyp doesn't take care of this [yet?] */
+            lev.doormask = 0; /* the flags union: doormask, altarmask, looted, icedpool */
+            lev.looted = 0;
+        }
+
         unearth_objs(x, y);
+        recalc_block_point(x, y);
         break;
-    default:
+    case TELEP_TRAP:
+        if (game.launchplace && isok(game.launchplace.x, game.launchplace.y)) {
+            ttmp.teledest = { x: (game.xstart | 0) + game.launchplace.x,
+                              y: (game.ystart | 0) + game.launchplace.y };
+            if (ttmp.teledest.x === x && ttmp.teledest.y === y) {
+                /* impossible("making fixed-dest tele trap pointing to itself") */
+            }
+        }
         break;
     }
-    return trap;
+
+    if (!oldplace) {
+        if (!game.level.traps) game.level.traps = [];
+        game.level.traps.push(ttmp); /* ttmp->ntrap = gf.ftrap; gf.ftrap = ttmp */
+    } else {
+        /* oldplace;
+           it shouldn't be possible to override a sokoban pit or hole
+           with some other trap, but we'll check just to be safe */
+        if (Sokoban())
+            maybe_finish_sokoban();
+    }
+    return ttmp;
 }
 
 // engrave stubs
@@ -3469,4 +3606,20 @@ function level_finalize_topology() {
         const rm = rooms[i];
         if (rm && rm.rtype != null) rm.orig_rtype = rm.rtype;
     }
+}
+
+// src/mklev.c:828 count_level_features(); level.flags.nfountains, nsinks
+export function count_level_features() {
+    let x, y;
+
+    game.level.flags.nfountains = game.level.flags.nsinks = 0;
+    for (y = 0; y < ROWNO; y++)
+        for (x = 1; x < COLNO; x++) {
+            const typ = game.level.at(x, y).typ;
+
+            if (typ === FOUNTAIN)
+                game.level.flags.nfountains++;
+            else if (typ === SINK)
+                game.level.flags.nsinks++;
+        }
 }

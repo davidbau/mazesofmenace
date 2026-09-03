@@ -35,6 +35,7 @@ import {
 } from './pickup.js';
 import { obj_resists } from './dogmove.js';
 import { toggle_blindness } from './do.js';
+import { set_bc } from './ball.js';
 import {
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_ARMOR,
     W_RING, W_RINGL, W_RINGR, W_AMUL, W_TOOL, W_WEAPONS, W_WEP, W_SWAPWEP,
@@ -898,7 +899,7 @@ async function Shirt_on() {
  * Called from moveloop_preamble (!resuming) after ini_inv slots are set;
  * also poly_obj path when a worn item transforms (obj != null).
  * Named omissions: initial_don skips stealth/displacement msgs;
- * Blindf_on Punished set_bc; Amulet_on exotic bodies beyond RESTFUL_SLEEP.
+ * Amulet_on exotic bodies beyond RESTFUL_SLEEP. Punished set_bc is D-1769.
  * @param {object|null} [obj=null] Null → all worn slots; else that object only.
  */
 export async function set_wear(obj = null) {
@@ -1012,7 +1013,7 @@ function Blind() {
 
 /**
  * C ref: do_wear.c Blindf_on — setworn + on_msg + see-any-more / toggle.
- * Named omissions: Punished set_bc; Eyes of Overworld birth-blind clear
+ * Punished set_bc(0) before going blind (D-1769). Eyes birth-blind clear
  * is live; gulp_blnd_check is Blindf_off.
  */
 export async function Blindf_on(otmp) {
@@ -1027,6 +1028,8 @@ export async function Blindf_on(otmp) {
         if (game.flags?.verbose !== false) {
             await pline("You can't see any more.");
         }
+        // C do_wear.c:1476 — set ball&chain variables before going blind
+        if (game.u?.uball) set_bc(0);
     } else if (already_blind && !Blind()) {
         changed = true;
         if (game.u?.uroleplay?.blind) {
@@ -1043,7 +1046,7 @@ export async function Blindf_on(otmp) {
 
 /**
  * C ref: do_wear.c Blindf_off — clear eyewear + see-again / still-blind.
- * Named omissions: gulp_blnd_check; Punished set_bc.
+ * Named omissions: gulp_blnd_check. Punished set_bc is D-1769.
  */
 export async function Blindf_off(otmp) {
     const u = game.u || (game.u = {});
@@ -1063,6 +1066,8 @@ export async function Blindf_off(otmp) {
         } else {
             changed = true;
             await pline("You can't see anything now!");
+            // C do_wear.c:1523 — set ball&chain variables before going blind
+            if (u.uball) set_bc(0);
         }
     } else if (was_blind) {
         changed = true;
@@ -1973,7 +1978,7 @@ function hero_glib() {
 /**
  * C ref: do_wear.c accessory_or_armor_on — armor delay + accessory put-on.
  * Exotic amulet side effects deferred. Blindf_on / Blindf_off ported
- * (Punished set_bc still named).
+ * (Punished set_bc D-1769).
  * @returns {number} 0 = no turn / fail, 1 = took time
  */
 async function accessory_or_armor_on(obj) {

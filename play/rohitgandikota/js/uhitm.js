@@ -462,7 +462,7 @@ export async function flash_hits_mon(mtmp, otmp) {
             }
         } else if (useeit) {
             if (resists_blnd_by_arti(mtmp))
-                shieldeff_mon(mtmp);
+                await shieldeff_mon(mtmp);
             if (game.flags.verbose) {
                 const lit = !!game.level?.at(mx, my)?.lit;
                 await pline(lit
@@ -688,7 +688,7 @@ export async function that_is_a_mimic(mtmp, mimic_flags) {
         seemimic(mtmp);
 }
 
-async function stumble_onto_mimic(mtmp) {
+export async function stumble_onto_mimic(mtmp) {
     await that_is_a_mimic(mtmp, MIM_REVEAL);
 
     if (!game.u.ustuck && !mtmp.mflee
@@ -702,6 +702,20 @@ async function stumble_onto_mimic(mtmp) {
     if (!canspotmon(mtmp)
         && !glyph_is_invisible_at(mtmp.mx, mtmp.my))
         map_invisible(mtmp.mx, mtmp.my);
+}
+
+// src/uhitm.c:432 force_attack(); attack even a peaceful (or, if pets_too,
+// tame) monster the way 'F' would
+export async function force_attack(mtmp, pets_too) {
+    let attacked, save_Forcefight;
+
+    save_Forcefight = game.context?.forcefight;
+    /* always set forcefight On for hostiles and peacefuls, maybe for pets */
+    if (pets_too || !mtmp.mtame)
+        (game.context ||= {}).forcefight = true;
+    attacked = await do_attack(mtmp);
+    game.context.forcefight = save_Forcefight;
+    return attacked;
 }
 
 // src/uhitm.c:189 attack_checks() — everything that can stop an attack before

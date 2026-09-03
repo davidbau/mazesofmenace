@@ -75,6 +75,7 @@ import { obj_sheds_light, obj_split_light_source } from './light.js';
 import { splitbill } from './shk.js';
 import { is_ice } from './dbridge.js';
 
+
 // include/objclass.h:152 — #define SPBOOK_no_NOVEL (0 - (int) SPBOOK_CLASS)
 // A NEGATED class, not an index past the real ones. It is the one caller-facing
 // value mkobj() accepts that is not a real oclass.
@@ -2058,4 +2059,40 @@ export function stone_object_type(mappearance) {
     /* we exclude wands, rings, and gems even though some qualify as stone;
        there aren't any weapons or armor classified as made out of stone */
     return (otyp === ONAMES.BOULDER || otyp === ONAMES.STATUE || otyp === ONAMES.FIGURINE);
+}
+
+// src/mkobj.c:3347 init_dummyobj(); a temporary object of a given type, for
+// describing a mimic's disguise or a lookup by type
+export function init_dummyobj(obj, otyp, oquan) {
+    if (obj) {
+        for (const k of Object.keys(obj)) /* *obj = cg.zeroobj */
+            delete obj[k];
+        obj.otyp = otyp;
+        obj.oclass = game.objects[otyp].oc_class;
+        /* obj->dknown = 0; */
+        /* suppress known except for amulets (needed for fakes & real AoY) */
+        obj.known = (obj.oclass === OCLASSES.AMULET_CLASS)
+                        ? (obj.known | 0)
+                        /* default is "on" for types which don't use it */
+                        : (!game.objects[otyp].oc_uses_known ? 1 : 0);
+        obj.quan = oquan ? oquan : 1;
+        obj.corpsenm = NON_PM; /* suppress statue and figurine details */
+        if (obj.otyp === ONAMES.LEASH)
+            obj.leashmon = 0; /* overloads corpsenm, avoid NON_PM */
+        if (obj.otyp === ONAMES.BOULDER)
+            obj.next_boulder = 0; /* overloads corpsenm, avoid NON_PM */
+        /* but suppressing fruit details leads to "bad fruit #0" */
+        if (obj.otyp === ONAMES.SLIME_MOLD)
+            obj.spe = game.context?.current_fruit ?? 0;
+    }
+    return obj;
+}
+
+// src/mkobj.c:3643 obj_nexto(); a mergeable object next to (or under) otmp
+export function obj_nexto(otmp) {
+    if (!otmp) {
+        /* impossible("obj_nexto: wasn't given an object to check") */
+        return null;
+    }
+    return obj_nexto_xy(otmp, otmp.ox, otmp.oy, true);
 }

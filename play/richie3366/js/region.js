@@ -405,7 +405,7 @@ async function inside_gas_cloud(reg, mtmp) {
         }
         if (heros_fault(reg)) {
             const { setmangry } = await import('./mon.js');
-            setmangry(mtmp, true);
+            await setmangry(mtmp, true);
         }
         if (haseyes(mtmp.data) && mtmp.mcansee) {
             mtmp.mblinded = 1;

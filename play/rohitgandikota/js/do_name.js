@@ -45,6 +45,7 @@ import { mungspaces } from './hacklib.js';
 import { rank_of } from './botl.js';
 import { roles } from './role_data.js';
 
+
 // src/do_name.c:759 ghostnames[] — 34 entries.
 const ghostnames = [
     'Adri', 'Andries', 'Andreas', 'Bert', 'David', 'Dirk',
@@ -925,4 +926,18 @@ export { mhe } from './mondata.js';
 // src/do_name.c:1313 mon_pmname(); the monster's species name for its gender
 export function mon_pmname(mon) {
     return pmname(mon.data, Mgender(mon));
+}
+
+// src/do_name.c:95 safe_oname(); the object's name or ""
+export function safe_oname(obj) {
+    if (obj.oname)
+        return obj.oname;
+    return '';
+}
+
+// src/do_name.c:51 free_mgivenname(); forget the monster's given name
+export function free_mgivenname(mon) {
+    if (has_mgivenname(mon)) {
+        mon.mgivenname = null;
+    }
 }

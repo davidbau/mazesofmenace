@@ -42,7 +42,7 @@ import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { pline, newsym } from './display.js';
 import { getlin } from './getline.js';
-import { getobj } from './invent.js';
+import { getobj, useup } from './invent.js';
 import { A_WIS, exercise } from './attrib.js';
 import { getrumor, get_rnd_text, xcrypt } from './rumors.js';
 import { ENGRAVE_BUF, MD_PAD_ENGRAVE } from './generated/engrave_data.js';
@@ -78,7 +78,6 @@ import {
 import { zappable, learnwand, zapnodir } from './zap.js';
 import { check_unpaid } from './shk.js';
 import { more_experienced } from './exper.js';
-import { useup } from './eat.js';
 import { is_art } from './artifact.js';
 import { welded, bimanual } from './wield.js';
 import { dry_a_towel, is_wet_towel, hands_obj } from './weapon.js';

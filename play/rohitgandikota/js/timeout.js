@@ -1226,3 +1226,11 @@ export async function burn_away_slime() {
         await make_slimed(0, 'The slime that covers you is burned away!');
     }
 }
+
+// src/timeout.c:2404 obj_has_timer(); does the object have a timer of the
+// given type?
+export function obj_has_timer(object, timer_type) {
+    const timeout = peek_timer(timer_type, object);
+
+    return (timeout !== 0);
+}

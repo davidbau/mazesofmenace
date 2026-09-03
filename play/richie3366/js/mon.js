@@ -1,6 +1,7 @@
 // mon.js — Monster metabolism / movement allotment.
 // C ref: mon.c — mcalcmove, movemon, seemimic, wakeup, m_respond,
-//         maybe_mnexto (D-1336), mon_allowflags (partial).
+//         setmangry / peacefuls_respond (D-1772), maybe_mnexto (D-1336),
+//         mon_allowflags (partial).
 
 import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
@@ -11,7 +12,7 @@ import {
     NOGARLIC, IRONBARS, IS_ALTAR, DISPLACED, W_NONDIGGABLE,
     IS_WATERWALL, LAVAWALL, Is_waterlevel,
     M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
-    MSLOW, MFAST, STRAT_WAITMASK, STRAT_WAITFORU, G_GENOD,
+    MSLOW, MFAST, STRAT_WAITMASK, STRAT_WAITFORU, G_GENOD, PLNMSG_GROWL,
     BOLT_LIM, WT_TOOMUCH_DIAGONAL, IS_STWALL, W_NONPASSWALL,
     ROOM, IN_SIGHT, COULD_SEE, is_pit, TT_PIT, In_endgame, Is_earthlevel,
     Is_astralevel, Is_airlevel, Is_firelevel,
@@ -40,8 +41,8 @@ import {
     montoostrong, monmax_difficulty,
 } from './monsters.js';
 import {
-    little_to_big, big_to_little, hero_conflict, resist_conflict,
-    m_canseeu, on_fire,
+    little_to_big, big_to_little, big_little_match, hero_conflict,
+    resist_conflict, m_canseeu, on_fire,
 } from './mondata.js';
 import {
     objects_at, kill_egg, place_object, stackobj, delobj, is_metallic,
@@ -54,7 +55,7 @@ import {
 import { PM_GRID_BUG, PM_TOURIST } from './generated/monsters_data.js';
 import { enexto, rloc_to, rloc, tele_restrict, noteleport_level, rloc_to_flag, migrate_to_level, rloco, control_mon_tele } from './teleport.js';
 import { may_dig } from './dig.js';
-import { newsym, pline, pline_mon, You_feel, sensemon, canseemon, canspotmon } from './display.js';
+import { newsym, pline, pline_mon, verbalize, You_feel, sensemon, canseemon, canspotmon } from './display.js';
 import { online2, level_difficulty } from './hacklib.js';
 import { worm_cross, level_mon_at } from './worm.js';
 import { Monnam, mon_nam } from './do_name.js';
@@ -72,6 +73,8 @@ import { in_rooms, is_pool, is_lava, disturb_buried_zombies, stop_occupation } f
 import { inv_weight, weight_cap } from './invent.js';
 import { maybe_m_dowear_special } from './worn.js';
 import { adjalign } from './attrib.js';
+import { SetVoice } from './sndprocs.js';
+import { maybe_gasp, growl } from './sounds.js';
 import { vtense, doname, distant_name } from './objnam.js';
 import { obj_resists } from './dogmove.js';
 import { touch_artifact } from './artifact.js';
@@ -954,13 +957,120 @@ export function restartcham() {
 }
 
 /**
- * C ref: mon.c setmangry — peaceful → hostile on attack.
- * Branch envelope: core mpeaceful clear + humanoid/shk/gd pline +
- * adjalign (priest coalign / -1) so ualign.abuse→adj_erinys runs.
- * Named omissions: Elbereth hypocrite/rnd(5)/del_engr; growl;
- * quest guardian / peacefuls_respond bodies.
+ * C ref: mon.c peacefuls_respond `:4162–4257`. Nearby peacefuls react
+ * when the hero angers one. Watch Halt (is_watch / MS_ARREST) +
+ * angry_guards; humanoid gasp/exclaim/flee/anger; same-mlet growl+flee.
+ * Caller setmangry `:4317` when !mon_moving. mndx not mons() identity
+ * for `mons[quest_info(MS_LEADER)]` / `mons[gu.urole.guardnum]`.
+ * Named: qst_guardians_respond; tame tameness reduce.
  */
-export function setmangry(mtmp, via_attack) {
+async function peacefuls_respond(mtmp) {
+    const mndx = mtmp.data?.mndx ?? mtmp.mnum ?? NON_PM;
+    const ldrnum = game.urole?.ldrnum | 0;
+    const guardnum = game.urole?.guardnum | 0;
+
+    for (const mon of game.fmon || []) {
+        if (!mon || (mon.mhp | 0) <= 0) continue; /* DEADMONSTER */
+        if (mon === mtmp) continue;
+
+        if (!mindless(mon.data) && mon.mpeaceful
+            && couldsee(mon.mx, mon.my) && !mon.msleeping
+            && mon.mcansee && m_canseeu(mon)) {
+            let buf = '';
+            let exclaimed = false;
+            let needpunct = false;
+            let alreadyfleeing;
+
+            if (humanoid(mon.data) || mon.isshk || mon.ispriest) {
+                if (is_watch(mon.data)) {
+                    SetVoice(mon, 0, 80, 0);
+                    await verbalize("Halt!  You're under arrest!");
+                    await angry_guards(!!Deaf_respond());
+                } else {
+                    if (!Deaf_respond() && !rn2(5)) {
+                        const gasp = maybe_gasp(mon);
+                        if (gasp) {
+                            /* C strncmpi(gasp, "gasp", 4) — Exclam[0] is Gasp! */
+                            if (String(gasp).slice(0, 4).toLowerCase() === 'gasp') {
+                                buf = `${Monnam(mon)} gasps`;
+                                needpunct = true;
+                            } else {
+                                buf = `${Monnam(mon)} exclaims "${gasp}"`;
+                            }
+                            exclaimed = true;
+                        }
+                    }
+                    /* shopkeepers and temple priests might gasp in
+                       surprise, but they won't become angry here;
+                       quest leader will only get angry if hero attacks
+                       own quest guardians */
+                    if (mon.isshk || mon.ispriest
+                        || ((mon.data?.mndx | 0) === ldrnum
+                            && (mtmp.data?.mndx ?? mtmp.mnum ?? NON_PM) !== guardnum)) {
+                        if (exclaimed) {
+                            await pline_mon(mon, `${buf} then shrugs.`);
+                        }
+                        continue;
+                    }
+
+                    if ((mon.data?.mlevel | 0) < rn2(10)
+                        /* don't have quest guardians turn to flee */
+                        && (mon.data?.mndx | 0) !== guardnum) {
+                        alreadyfleeing = !!(mon.mflee || mon.mfleetim);
+                        await monflee(mon, rn2(50) + 25, true, !exclaimed);
+                        if (exclaimed) {
+                            if (game.flags?.verbose !== false && !alreadyfleeing) {
+                                buf += ' and then turns to flee.';
+                                needpunct = false;
+                            }
+                        } else {
+                            exclaimed = true; /* got msg from monflee() */
+                        }
+                    }
+                    if (buf) {
+                        await pline_mon(mon, `${buf}${needpunct ? '.' : ''}`);
+                    }
+                    if (mon.mtame) {
+                        ; /* mustn't set mpeaceful to 0 as below;
+                           * perhaps reduce tameness? */
+                    } else {
+                        mon.mpeaceful = 0;
+                        if (mon.mstrategy != null) mon.mstrategy &= ~STRAT_WAITMASK;
+                        adjalign(-1);
+                        if (!exclaimed) {
+                            await pline_mon(mon, `${Monnam(mon)} gets angry!`);
+                        }
+                    }
+                }
+            } else if (mon.data?.mlet === mtmp.data?.mlet
+                && big_little_match(mndx, mon.data?.mndx ?? mon.mnum ?? NON_PM)
+                && !rn2(3)) {
+                if (!rn2(4)) {
+                    await growl(mon);
+                    exclaimed = (game.iflags?.last_msg | 0) === PLNMSG_GROWL;
+                }
+                if (rn2(6)) {
+                    alreadyfleeing = !!(mon.mflee || mon.mfleetim);
+                    await monflee(mon, rn2(25) + 15, true, !exclaimed);
+                    if (exclaimed && !alreadyfleeing) {
+                        /* word like a separate sentence so that we
+                           don't have to poke around inside growl() */
+                        await pline('And then starts to flee.');
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * C ref: mon.c setmangry `:4260–4318` — peaceful → hostile on attack.
+ * Branch envelope: core mpeaceful clear + humanoid/shk/gd couldsee
+ * pline_mon + adjalign (priest coalign / -1) + peacefuls_respond when
+ * !mon_moving (D-1772). Named omissions: Elbereth hypocrite/rnd(5)/
+ * del_engr; victim growl else-arm; qst_guardians_respond.
+ */
+export async function setmangry(mtmp, via_attack) {
     if (!mtmp) return;
     // Elbereth hypocrite arm deferred (no RNG when not on Elbereth)
     void via_attack;
@@ -974,10 +1084,15 @@ export function setmangry(mtmp, via_attack) {
         adjalign(-1); /* attacking peaceful monsters is bad */
     }
     if (humanoid(mtmp.data) || mtmp.isshk || mtmp.isgd) {
-        // couldsee gate: still pline when visible-ish (canspot deferred)
-        pline(`${Monnam(mtmp)} gets angry!`);
+        if (couldsee(mtmp.mx, mtmp.my)) {
+            await pline_mon(mtmp, `${Monnam(mtmp)} gets angry!`);
+        }
     }
-    // growl / qst_guardians_respond / peacefuls_respond deferred
+    // growl else-arm / qst_guardians_respond named omitted
+    /* make other peaceful monsters react */
+    if (!game.context?.mon_moving) {
+        await peacefuls_respond(mtmp);
+    }
 }
 
 /** C youprop.h Deaf — H||E||uroleplay.deaf (plus u.Deaf flag). */
@@ -1042,8 +1157,8 @@ async function m_respond_medusa(mtmp) {
 /**
  * C mon.c m_respond — monster responds to player action (not passive).
  * Callers: monmove.c dochug; zap.c boomhit / bhitm.
- * Named omit: qst_guardians_respond / peacefuls_respond (setmangry).
- * Compare mndx, not mons() identity (D-0928).
+ * Named omit: qst_guardians_respond (setmangry). peacefuls_respond is
+ * D-1772. Compare mndx, not mons() identity (D-0928).
  */
 export async function m_respond(mtmp) {
     if (!mtmp || (mtmp.mhp | 0) <= 0) return;
@@ -1149,11 +1264,9 @@ export async function wakeup(mtmp, via_attack) {
         const was_peaceful = !!mtmp.mpeaceful;
         // C: was_sleeping → growl → wake_nearto (D-0922/#1161)
         if (was_sleeping) {
-            // Dynamic import avoids mon↔sounds↔uhitm static cycle.
-            const { growl } = await import('./sounds.js');
             await growl(mtmp);
         }
-        setmangry(mtmp, true);
+        await setmangry(mtmp, true);
         if (was_peaceful) {
             // ghod_hitsu deferred (priest in temple)
             if (mtmp.isshk && !(game.u?.ushops && String(game.u.ushops).length)) {

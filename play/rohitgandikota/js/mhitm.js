@@ -780,7 +780,7 @@ export async function mon_poly(magr, mdef, dmg) {
 
         if (resists_magm(mdef)) {
             if (game.vis)
-                shieldeff_mon(mdef);
+                await shieldeff_mon(mdef);
         } else if (await resist(mdef, OCLASSES.WAND_CLASS, 0, TELL)) {
             ;
         } else if (!rn2(25) && (mdef.cham ?? NON_PM) === NON_PM

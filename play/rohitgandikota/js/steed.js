@@ -43,6 +43,76 @@ import { is_pole } from './mhitu.js';
 import { PMNAMES } from './monst_data.js';
 import { Glib } from './youprop.js';
 import { greatest_erosion } from './do_wear.js';
+import { u_handsy } from './pickup.js';
+import { Underwater } from './youprop.js';
+import { Stone_resistance } from './youprop.js';
+import { Fumbling } from './youprop.js';
+import { getdir } from './cmd.js';
+import { Never_mind } from './const.js';
+import { A_WIS } from './const.js';
+import { A_DEX } from './const.js';
+import { A_CHA } from './const.js';
+import { P_RIDING } from './const.js';
+import { P_ISRESTRICTED } from './const.js';
+import { P_UNSKILLED } from './const.js';
+import { P_BASIC } from './const.js';
+import { P_SKILLED } from './const.js';
+import { P_EXPERT } from './const.js';
+import { Mgender } from './const.js';
+import { canspotmon } from './display.js';
+import { touch_petrifies } from './dog.js';
+import { poly_when_stoned } from './mondata.js';
+import { polymon } from './polyself.js';
+import { instapetrify } from './trap.js';
+import { exercise } from './attrib.js';
+import { ACURR } from './attrib.js';
+import { Role_if } from './attrib.js';
+import { P_SKILL } from './weapon.js';
+import { objdescr_is } from './o_init.js';
+import { remove_worn_item } from './steal.js';
+import { freeinv } from './invent.js';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 function note_unported_steed(what) {
     (game.unported ||= new Set()).add('steed:' + what);
@@ -62,6 +132,111 @@ export function can_saddle(mtmp) {
         && (!humanoid(ptr) || ptr.mlet === MONSYMS.S_CENTAUR)
         && !amorphous(ptr) && !noncorporeal(ptr) && !is_whirly(ptr)
         && !unsolid(ptr);
+}
+
+/* include/youprop.h Confusion */
+const Confusion = () => !!(game.u.intrinsic?.HConfusion);
+
+// src/steed.c:36 use_saddle(); apply a saddle to an adjacent animal
+export async function use_saddle(otmp) {
+    let mtmp;
+    let ptr;
+    let chance;
+
+    if (!(await u_handsy()))
+        return ECMD_OK;
+
+    /* Select an animal */
+    if (game.u.uswallow || Underwater() || !(await getdir(null))) {
+        await pline(Never_mind);
+        return ECMD_CANCEL;
+    }
+    if (!game.u.dx && !game.u.dy) {
+        await pline('Saddle yourself?  Very funny...');
+        return ECMD_OK;
+    }
+    if (!isok(game.u.ux + game.u.dx, game.u.uy + game.u.dy)
+        || !(mtmp = m_at(game.u.ux + game.u.dx, game.u.uy + game.u.dy)) || !canspotmon(mtmp)) {
+        await pline('I see nobody there.');
+        return ECMD_TIME;
+    }
+
+    /* Is this a valid monster? */
+    if ((mtmp.misc_worn_check & W_SADDLE) !== 0
+        || which_armor(mtmp, W_SADDLE)) {
+        await pline(`${Monnam(mtmp)} doesn't need another one.`);
+        return ECMD_TIME;
+    }
+    ptr = mtmp.data;
+    if (touch_petrifies(ptr) && !game.u.uarmg && !Stone_resistance()) {
+        await You(`touch ${mon_nam(mtmp)}.`);
+        if (!(poly_when_stoned(game.youmonst.data) && await polymon(PMNAMES.PM_STONE_GOLEM))) {
+            const kbuf = `attempting to saddle ${an(pmname(mtmp.data, Mgender(mtmp)))}`;
+            await instapetrify(kbuf);
+        }
+    }
+    if (ptr === game.mons[PMNAMES.PM_AMOROUS_DEMON]) {
+        await pline('Shame on you!');
+        exercise(A_WIS, false);
+        return ECMD_TIME;
+    }
+    if (mtmp.isminion || mtmp.isshk || mtmp.ispriest || mtmp.isgd
+        || mtmp.iswiz) {
+        await pline(`I think ${mon_nam(mtmp)} would mind.`);
+        return ECMD_TIME;
+    }
+    if (!can_saddle(mtmp)) {
+        await You_cant('saddle such a creature.');
+        return ECMD_TIME;
+    }
+
+    /* Calculate your chance */
+    chance = ACURR(A_DEX) + Math.trunc(ACURR(A_CHA) / 2) + 2 * mtmp.mtame;
+    chance += game.u.ulevel * (mtmp.mtame ? 20 : 5);
+    if (!mtmp.mtame)
+        chance -= 10 * mtmp.m_lev;
+    if (Role_if(PMNAMES.PM_KNIGHT))
+        chance += 20;
+    switch (P_SKILL(P_RIDING)) {
+    case P_ISRESTRICTED:
+    case P_UNSKILLED:
+    default:
+        chance -= 20;
+        break;
+    case P_BASIC:
+        break;
+    case P_SKILLED:
+        chance += 15;
+        break;
+    case P_EXPERT:
+        chance += 30;
+        break;
+    }
+    if (Confusion() || Fumbling() || Glib())
+        chance -= 20;
+    else if (game.u.uarmg && objdescr_is(game.u.uarmg, 'riding gloves'))
+        /* Bonus for wearing "riding" (but not fumbling) gloves */
+        chance += 10;
+    else if (game.u.uarmf && objdescr_is(game.u.uarmf, 'riding boots'))
+        /* ... or for "riding boots" */
+        chance += 10;
+    if (otmp.cursed)
+        chance -= 50;
+
+    /* [intended] steed becomes alert if possible */
+    await maybewakesteed(mtmp);
+
+    /* Make the attempt */
+    if (rn2(100) < chance) {
+        await You(`put the saddle on ${mon_nam(mtmp)}.`);
+        if (otmp.owornmask)
+            await remove_worn_item(otmp, false);
+        freeinv(otmp);
+        /* !can_saddle(mtmp) already eliminated above */
+        put_saddle_on_mon(otmp, mtmp);
+    } else
+        await pline(`${Monnam(mtmp)} resists!`);
+    return ECMD_TIME;
 }
 
 // src/steed.c put_saddle_on_mon() — saddle `mtmp`, making the saddle if the
@@ -121,7 +296,7 @@ export async function doride() {
 }
 
 // src/steed.c:349 maybewakesteed() — wake the steed being mounted.
-async function maybewakesteed(steed) {
+export async function maybewakesteed(steed) {
     let frozen = steed.mfrozen | 0;
     const wasimmobile = helpless(steed);
 

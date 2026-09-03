@@ -1657,7 +1657,7 @@ async function trapeffect_poly_trap(mtmp, trap, trflags) {
                 await update_mon_extrinsics(mtmp, shoes, true, true);
             }
         } else if (resists_magm(mtmp)) {
-            shieldeff_mon(mtmp);
+            await shieldeff_mon(mtmp);
         } else if (!await resist(mtmp, OCLASSES.WAND_CLASS, 0, NOTELL)) {
             newcham(mtmp, null, NC_SHOW_MSG);
             if (in_sight)
@@ -5240,4 +5240,44 @@ export async function acid_damage(obj) {
         obj.dknown = 0;
     } else
         await erode_obj(obj, null, ERODE_CORRODE, EF_GREASE | EF_VERBOSE);
+}
+
+// src/trap.c:7059 maybe_finish_sokoban(); the last pit or hole is gone, so
+// the puzzle is solved and its rules no longer apply
+export function maybe_finish_sokoban() {
+    let t = null;
+
+    if (Sokoban() && !game.in_mklev) {
+        /* scan all remaining traps, ignoring any created by the hero;
+           if this level has no more pits or holes, the current sokoban
+           puzzle has been solved */
+        for (t of (game.level?.traps || [])) {
+            if (t.madeby_u) {
+                t = null;
+                continue;
+            }
+            if (t.ttyp === PIT || t.ttyp === HOLE)
+                break;
+            t = null;
+        }
+        if (!t) {
+            /* for livelog to report the sokoban depth in the way that
+               players tend to think about it: 1 for entry level, 4 for top */
+            /* int sokonum = svd.dungeons[u.uz.dnum].entry_lev - u.uz.dlevel + 1; */
+
+            /* we've passed the last trap without finding a pit or hole;
+               clear the sokoban_rules flag so that luck penalties for
+               things like breaking boulders or jumping will no longer
+               be given, and restrictions on diagonal moves are lifted */
+            game.level.flags.sokoban_rules = 0; /* Sokoban = 0 */
+            /*
+             * TODO: give some feedback about solving the sokoban puzzle
+             * (perhaps say "congratulations" in Japanese?).
+             */
+
+            /* log the completion event regardless of whether or not
+               any normal in-game feedback has just been given */
+            /* livelog_printf(LL_MINORAC | LL_DUMP, "completed %d%s Sokoban level", ...) */
+        }
+    }
 }

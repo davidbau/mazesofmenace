@@ -151,6 +151,8 @@ import {
     UnsupportedHungerTransitionError,
 } from './eat.js';
 import { UnsupportedEndOfGameError } from './end.js';
+import { UnsupportedShopError } from './shk.js';
+import { UnsupportedVaultGuardError } from './vault.js';
 import { fightm } from './mhitm.js';
 import { m_everyturn_effect } from './monmove.js';
 import {
@@ -1173,9 +1175,16 @@ async function advanceElapsedTurn(state) {
                     clearBypasses: unavailableElapsedTurnOperation(
                         'terminal monster bypass cleanup',
                     ),
-                    deferredGoto: unavailableElapsedTurnOperation(
-                        'a deferred monster level transition',
-                    ),
+                    // C ref: mon.c movemon():1343-1347. quest.c expulsion()
+                    // schedules the hero's departure from inside the monster
+                    // scan, so movemon()'s own tail performs it. The dry run
+                    // deliberately stops short of it: generating a level
+                    // against the cloned ISAAC context would cost as much as
+                    // the live transition and answer nothing the live pass
+                    // does not, so this transition is the one part of the
+                    // turn whose refusals surface live.
+                    deferredGoto: (env) =>
+                        runDeferredGotoAtTurnBoundary(env.state),
                 });
                 // C's done_in_by() is NORETURN, so a hero the monster scan
                 // kills never reaches the once-per-turn upkeep, the movement
@@ -1192,8 +1201,19 @@ async function advanceElapsedTurn(state) {
             // refusal before the live pass starts. The normal lethal monster
             // arm reaches done_in_by() here; its existing end.c boundary is
             // converted only after the real killer and death entry are set.
-            if (!(error instanceof UnsupportedSimpleMonsterActionError)
-                && !(error instanceof UnsupportedEndOfGameError))
+            // Below that entry, end.c really_done() settles with the level's
+            // shopkeepers, vault guard and priests through paybill(), paygd()
+            // and clearpriests(), whose unported arms raise the last three
+            // classes; the planning pass never runs really_done(), so this
+            // catch is the only one between them and js/jsmain.js.
+            const liveScanRefusals = [
+                UnsupportedSimpleMonsterActionError,
+                UnsupportedEndOfGameError,
+                UnsupportedShopError,
+                UnsupportedVaultGuardError,
+                UnsupportedMonsterCreationError,
+            ];
+            if (!liveScanRefusals.some((type) => error instanceof type))
                 throw error;
             const boundary = new UnsupportedTurnBoundaryError(error.message);
             boundary.reason = error.reason;

@@ -50,6 +50,8 @@ const ynq = (query) => tty_yn_function(query, 'ynq', 'q');
 import { P_BOW, P_CROSSBOW } from './const.js';
 import { OCLASSES, ONAMES, SKILLS } from './objects_data.js';
 
+
+
 // src/wield.c ready_ok() — which objects getobj should suggest for the quiver.
 //
 // The '-' case answers for "empty the quiver": suggested only when something
@@ -889,4 +891,19 @@ export function uqwepgone() {
         setworn(null, W_QUIVER);
         update_inventory();
     }
+}
+
+// src/wield.c freehand(); the hero has a free hand (nothing welded, or a
+// one-handed weapon with an unwelded shield)
+export function freehand() {
+    return (!game.u.uwep || !welded(game.u.uwep)
+            || (!bimanual(game.u.uwep) && (!game.u.uarms || !game.u.uarms.cursed)));
+}
+
+// src/wield.c:1078 mwelded(); a monster's wielded weapon is welded to it
+export function mwelded(obj) {
+    /* caller is responsible for making sure this is a monster's item */
+    if (obj && (obj.owornmask & W_WEP) && will_weld(obj))
+        return true;
+    return false;
 }

@@ -2365,7 +2365,7 @@ export function tp_sensemon(mon) {
 }
 
 // include/hack.h:1135 MATCH_WARN_OF_MON()
-function match_warn_of_mon(mon) {
+export function match_warn_of_mon(mon) {
     if (!(game.u.intrinsic?.HWarn_of_mon || game.u.uprops?.WARN_OF_MON))
         return false;
     const wt = game.context?.warntype || {};
@@ -2510,7 +2510,9 @@ function clear_invisible_memory(x, y) {
 export function unmap_invisible(x, y) {
     if (clear_invisible_memory(x, y)) {
         newsym(x, y);
+        return true;
     }
+    return false;
 }
 
 // src/display.c:215 is_safemon() / include/display.h:159 _is_safemon()

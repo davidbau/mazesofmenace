@@ -91,6 +91,11 @@ import { erode_obj } from './trap.js';
 import { drain_item } from './zap.js';
 import { defends, retouch_equipment } from './artifact.js';
 import { set_ulycn } from './were.js';
+import { can_blnd } from './mondata.js';
+
+
+
+
 
 function note_unported_mhitu(what) {
     (game.unported ||= new Set()).add(what);
@@ -1756,7 +1761,7 @@ export async function expels(mtmp, mdat, message) {
     }
     const { unstuck, mnexto } = await import('./mon.js');
     await unstuck(mtmp);    /* clears uswallow, moves hero, docrt */
-    mnexto(mtmp, 0 /* RLOC_NOMSG */);
+    await mnexto(mtmp, 0 /* RLOC_NOMSG */);
     newsym(game.u.ux, game.u.uy);
     if (Math.max(Math.abs(mtmp.mx - game.u.ux),
                  Math.abs(mtmp.my - game.u.uy)) > 1)
@@ -2016,6 +2021,26 @@ export async function u_slip_free(mtmp, mattk) {
             obj.greased = 0;
             update_inventory();
         }
+        return true;
+    }
+    return false;
+}
+
+/* include/youprop.h Blinded: timed blindness or a worn blindfold/towel */
+const Blinded = () => !!((game.u.intrinsic?.HBlinded | 0)
+                         || (game.u.ublindf && (game.u.ublindf.otyp === ONAMES.BLINDFOLD
+                                                 || game.u.ublindf.otyp === ONAMES.TOWEL)));
+
+// src/mhitu.c:1273 gulp_blnd_check(); an engulfer with a blinding attack
+// gets its blinding in as soon as the hero can see again
+export async function gulp_blnd_check() {
+    let mattk;
+
+    if (!Blinded() && game.u.uswallow
+        && (mattk = attacktype_fordmg(game.u.ustuck.data, ATTKS.AT_ENGL, ATTKS.AD_BLND))
+        && can_blnd(game.u.ustuck, game.youmonst, mattk[0], null)) {
+        ++game.u.uswldtim; /* compensate for gulpmu change */
+        await gulpmu(game.u.ustuck, mattk);
         return true;
     }
     return false;

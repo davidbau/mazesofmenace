@@ -562,7 +562,7 @@ export async function explode(x, y, typeIn, dam, olet, expltype) {
                         await monkilled(mtmp, '', how);
                     }
                 } else if (!game.context?.mon_moving) {
-                    setmangry(mtmp, true);
+                    await setmangry(mtmp, true);
                 }
             }
         }

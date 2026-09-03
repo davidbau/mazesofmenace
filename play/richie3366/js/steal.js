@@ -1,6 +1,6 @@
 // steal.js — Monster theft from hero inventory (partial).
 // C ref: steal.c steal / worn_item_removal / remove_worn_item / inv_cnt /
-// somegold.
+// somegold / findgold.
 //
 // Branch envelope (this peel): nymph AD_SITM/AD_SEDU via mhitm_ad_sedu —
 // weighted invent pick, worn accessory clear, non-delay armor, freeinv+mpickobj;
@@ -41,6 +41,19 @@ import { mpickobj } from './makemon.js';
 import { nomul, stop_occupation } from './hack.js';
 import { encumber_msg, freeinv_core } from './invent.js';
 import { hero_conflict } from './mondata.js';
+
+const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
+
+/**
+ * C ref: steal.c findgold `:44–52` — first GOLD_PIECE on an nobj chain
+ * (no container walk). Callers: detect.c gold_detect; makemon/monmove
+ * still have local clones.
+ */
+export function findgold(argchain) {
+    let chain = argchain;
+    while (chain && chain.otyp !== GOLD_PIECE) chain = chain.nobj;
+    return chain || null;
+}
 
 /**
  * C ref: invent.c inv_cnt — count invent entries; inclgold includes COIN_CLASS.

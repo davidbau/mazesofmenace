@@ -31,7 +31,7 @@ import {
 import { exercise, A_STR, A_DEX, A_WIS, A_CON, acurr, adjalign, change_luck } from './attrib.js';
 import { overexertion, nomul, losehp, is_pool, maybe_half_phys } from './hack.js';
 import { ing_suffix } from './hacklib.js';
-import { pline, pline_mon, newsym, canseemon, canspotmon, map_invisible, unmap_object, glyph_is_invisible, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph } from './display.js';
+import { pline, pline_mon, newsym, canseemon, canspotmon, map_invisible, unmap_object, memory_glyph_is_invisible, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph } from './display.js';
 import { cansee } from './vision.js';
 import {
     dmgval, hitval, P_SKILL, weapon_hit_bonus, martial_bonus,
@@ -493,8 +493,8 @@ function mondead(mtmp) {
     mtmp.mstate = (mtmp.mstate | 0) | MON_DETACH;
     // Keep mx/my for drop coords (C mon_leaving_level).
     relobj_on_death(mtmp);
-    // C mon.c mondead: glyph_is_invisible → unmap_object
-    if (mx > 0 && glyph_is_invisible(game.level?.at?.(mx, my))) {
+    // C mon.c mondead `:3170` — glyph_is_invisible(levl.glyph)
+    if (mx > 0 && memory_glyph_is_invisible(game.level?.at?.(mx, my))) {
         unmap_object(mx, my);
     }
     if (mx > 0) newsym(mx, my);
@@ -802,14 +802,14 @@ async function hmon(mon, obj, thrown, _dieroll) {
                 }
                 await pline(`${what} ${vtense(what, 'splash')} over ${whom}!`);
             }
-            setmangry(mon, true);
+            await setmangry(mon, true);
             mon.mcansee = 0;
             const blind_dmg = rn1(25, 21);
             const sum = (mon.mblinded | 0) + blind_dmg;
             mon.mblinded = sum > 127 ? 127 : sum;
         } else {
             await pline(obj.otyp === CREAM_PIE ? 'Splat!' : 'Splash!');
-            setmangry(mon, true);
+            await setmangry(mon, true);
         }
         // C: thrown → obfree (no obj_resists); melee useup deferred
         if (thrown) {
@@ -2663,7 +2663,7 @@ export async function flash_hits_mon(mtmp, otmp) {
             }
             if ((mtmp.mhp | 0) > 0) {
                 if (!game.context?.mon_moving) {
-                    setmangry(mtmp, true);
+                    await setmangry(mtmp, true);
                 }
                 if (tmp < 9 && !mtmp.isshk && rn2(4)) {
                     await monflee(mtmp, rn2(4) ? rnd(100) : 0, false, true);
@@ -2733,14 +2733,14 @@ export async function attack_checks(mtmp, wep = null) {
     // C: forcefight → return FALSE (allow real attack; skip Wait!)
     if (game.context?.forcefight) return false;
 
-    // C: !canspotmon && !glyph_is_warning && !glyph_is_invisible
+    // C: !canspotmon && !glyph_is_warning && !glyph_is_invisible(glyph_at)
     //    && !(!Blind && mundetected && hides_under) → Wait! + map_invisible
     const loc = game.level?.at(mtmp.mx, mtmp.my);
     const Blind = !!(game.u?.Blind || game.u?.ublind
         || (((game.u?.HBlinded | 0) || (game.u?.EBlinded | 0))
             && !(game.u?.BBlinded | 0)));
     if (!canspotmon(mtmp)
-        && !glyph_is_invisible(loc)
+        && !glyph_is_invisible_id(loc?.disp_glyph)
         && !( !Blind && mtmp.mundetected /* && hides_under deferred */)) {
         // C: "Wait!  There's %s there you can't see!" / something
         await pline("Wait!  There's something there you can't see!");
@@ -2923,6 +2923,21 @@ export async function do_attack(mtmp) {
         await hitum(mtmp, uattk);
     }
     if (mtmp.mstrategy != null) mtmp.mstrategy &= ~STRAT_WAITMASK;
+    // C uhitm.c do_attack atk_done `:577–580` — plant I only if forcefight
+    // && still alive && !canspotmon && memory not already I && !engulfing.
+    // Killing blow skips this (attack_checks comment `:201–212`).
+    {
+        const u = game.u || {};
+        const ix = (u.ux | 0) + (u.dx | 0);
+        const iy = (u.uy | 0) + (u.dy | 0);
+        if (game.context?.forcefight
+            && (mtmp.mhp | 0) > 0
+            && !canspotmon(mtmp)
+            && !memory_glyph_is_invisible(game.level?.at?.(ix, iy))
+            && !engulfing_u(mtmp)) {
+            map_invisible(ix, iy);
+        }
+    }
     return true;
 }
 

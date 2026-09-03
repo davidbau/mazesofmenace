@@ -9,7 +9,7 @@ import {
     mtrapped_in_pit,
 } from './mon.js';
 import { game } from './gstate.js';
-import { pline, pline_mon, newsym, canspotmon, canseemon, map_invisible, unmap_object, glyph_is_invisible, You_feel, flush_screen, verbalize, sensemon, shieldeff } from './display.js';
+import { pline, pline_mon, newsym, canspotmon, canseemon, map_invisible, unmap_object, memory_glyph_is_invisible, You_feel, flush_screen, verbalize, sensemon, shieldeff } from './display.js';
 import { cansee } from './vision.js';
 import { dist2 } from './hacklib.js';
 import { resist_conflict, set_mon_data, on_fire } from './mondata.js';
@@ -1982,7 +1982,7 @@ export async function monstone(mdef) {
     }
 
     if (otmp) stackobj(otmp);
-    if (x > 0 && glyph_is_invisible(game.level?.at?.(x, y))) {
+    if (x > 0 && memory_glyph_is_invisible(game.level?.at?.(x, y))) {
         unmap_object(x, y);
     }
     if (x > 0 && cansee(x, y)) newsym(x, y);
@@ -2001,8 +2001,8 @@ export function mondead(mtmp) {
     mtmp.mstate = (mtmp.mstate | 0) | MON_DETACH;
     // Keep mx/my for drop + make_corpse (C mon_leaving_level).
     relobj_on_death(mtmp);
-    // C mon.c mondead: glyph_is_invisible → unmap_object before detach display
-    if (mx > 0 && glyph_is_invisible(game.level?.at?.(mx, my))) {
+    // C mon.c mondead `:3170` — glyph_is_invisible(levl.glyph)
+    if (mx > 0 && memory_glyph_is_invisible(game.level?.at?.(mx, my))) {
         unmap_object(mx, my);
     }
     if (mx > 0) newsym(mx, my);

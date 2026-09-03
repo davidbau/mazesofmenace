@@ -124,6 +124,7 @@ import {
 } from './do_wear.js';
 import { bypass_objlist, nxt_unbypassed_obj, w_blocks } from './worn.js';
 import { reset_pick } from './lock.js';
+import { Unaware } from './eat.js';
 import { addinv_nomerge } from './u_init.js';
 import {
     set_artifact_intrinsic, Sting_effects,
@@ -146,7 +147,7 @@ import {
     amorphous, nolimbs, M1_SLITHY, MZ_SMALL, mons, is_rider, hides_under,
     haseyes, eyecount,
 } from './monsters.js';
-import { placebc, unplacebc, drag_down, ballrelease } from './ball.js';
+import { placebc, unplacebc, drag_down, ballrelease, set_bc } from './ball.js';
 import { obj_resists } from './dogmove.js';
 import { Soundeffect, se_scratching, se_alarm } from './sndprocs.js';
 import { delete_levelfile } from './files.js';
@@ -2748,9 +2749,8 @@ async function make_blinded_notoggle_talk(eyeVerb, visChange, visHalluAdj) {
 }
 
 /**
- * C ref: potion.c make_blinded `:260–331` — talk then toggle_blindness.
- * Named omissions: Unaware talk=FALSE (unconscious/is_fainted);
- * Punished set_bc.
+ * C ref: potion.c make_blinded `:260–331` — Unaware then talk then
+ * Punished set_bc(0) then toggle_blindness.
  * learn_unseen_invent on regain-sight (D-0928 #1098).
  * Exported for timeout.c nh_timeout BLINDED expiry.
  */
@@ -2762,6 +2762,9 @@ export async function make_blinded(xtime, talk) {
     set_itimeout_HBlinded(xtime ? 1 : 0);
     const can_see_now = !Blind();
     set_itimeout_HBlinded(old);
+
+    // C youprop.h Unaware — unconscious() / is_fainted(); live eat.js.
+    if (Unaware()) talk = false;
 
     if (can_see_now && !u_could_see) {
         if (talk) {
@@ -2785,7 +2788,8 @@ export async function make_blinded(xtime, talk) {
                 await pline('A cloud of darkness falls upon you.');
             }
         }
-        // C: if (Punished) set_bc(0) — named omit
+        // C potion.c:309 — before the hero goes blind
+        if (u.uball) set_bc(0);
     } else if (!old && xtime) {
         if (talk) {
             await make_blinded_notoggle_talk('twitch', 'dim', 'happier');

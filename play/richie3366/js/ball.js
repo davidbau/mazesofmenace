@@ -1,11 +1,13 @@
 // ball.js — Ball & chain placement / drag (partial).
 // C ref: ball.c placebc / placebc_core / move_bc / drag_ball / bc_order /
-//         drag_down / ballrelease / litter.
+//         set_bc / drag_down / ballrelease / litter.
 //
-// Named omissions: Blind move_bc glyph/felt arms (sighted path live);
-// flooreffects rust; bcrestriction / breadcrumbs; ballfall / drop_ball;
-// litter hitfloor/shop/impact (place at feet); Soundeffect in drag_down;
-// jerked-back hmon/miss body (rnd(20) still burned); unpunish; set_bc.
+// Named omissions: Blind move_bc glyph/felt arms (sighted path live;
+// set_bc D-1769 stores bglyph/cglyph/bc_felt); unplacebc Blind glyph
+// restore; flooreffects rust; bcrestriction / breadcrumbs; ballfall /
+// drop_ball; litter hitfloor/shop/impact (place at feet); Soundeffect
+// in drag_down; jerked-back hmon/miss body (rnd(20) still burned);
+// unpunish.
 
 import { game } from './gstate.js';
 import { place_object, obj_extract_self, objects_at } from './mkobj.js';
@@ -197,6 +199,73 @@ function bc_order() {
         if (obj === uball) return BCPOS_BALL;
     }
     return BCPOS_DIFFER;
+}
+
+/**
+ * C: levl[x][y].glyph — hero_memory integer id after map_* / newsym.
+ * Fallback disp_glyph is the gbuf stamp (D-1767) when memory has no id.
+ */
+function levl_glyph_at(x, y) {
+    const loc = game.level?.at(x | 0, y | 0);
+    if (!loc) return 0;
+    const mem = loc.remembered_glyph;
+    if (mem && typeof mem.glyph === 'number') return mem.glyph | 0;
+    return loc.disp_glyph | 0;
+}
+
+/**
+ * C ref: ball.c set_bc `:379–424` — hero is about to go blind, or
+ * already blind and just punished. Snapshot glyphs under ball&chain
+ * so Blind move_bc / unplacebc can restore them (those arms still named).
+ * @param {number} already_blind C int; 0 = still sighted peek
+ */
+export function set_bc(already_blind) {
+    const u = game.u || (game.u = {});
+    const uball = u.uball;
+    const uchain = u.uchain;
+    if (!uball || !uchain) return;
+
+    const ball_on_floor = !carried(uball);
+
+    u.bc_order = bc_order();
+    u.bc_felt = ball_on_floor ? (BC_BALL | BC_CHAIN) : BC_CHAIN;
+
+    if (already_blind || (u.uswallow | 0)) {
+        u.cglyph = u.bglyph = levl_glyph_at(u.ux | 0, u.uy | 0);
+        return;
+    }
+
+    /*
+     * Sighted: lift ball&chain, newsym the under-glyphs, put them back.
+     * C uses remove_object (floor extract); JS obj_extract_self is that
+     * floor arm (mkobj.c comment: remove_object ≡ obj_extract_self).
+     */
+    obj_extract_self(uchain);
+    if (ball_on_floor) obj_extract_self(uball);
+
+    newsym(uchain.ox | 0, uchain.oy | 0);
+    u.cglyph = levl_glyph_at(uchain.ox | 0, uchain.oy | 0);
+
+    if ((u.bc_order | 0) === BCPOS_DIFFER) {
+        place_object(uchain, uchain.ox | 0, uchain.oy | 0);
+        newsym(uchain.ox | 0, uchain.oy | 0);
+        if (ball_on_floor) {
+            newsym(uball.ox | 0, uball.oy | 0);
+            u.bglyph = levl_glyph_at(uball.ox | 0, uball.oy | 0);
+            place_object(uball, uball.ox | 0, uball.oy | 0);
+            newsym(uball.ox | 0, uball.oy | 0);
+        }
+    } else {
+        u.bglyph = u.cglyph;
+        if ((u.bc_order | 0) === BCPOS_CHAIN) {
+            place_object(uball, uball.ox | 0, uball.oy | 0);
+            place_object(uchain, uchain.ox | 0, uchain.oy | 0);
+        } else {
+            place_object(uchain, uchain.ox | 0, uchain.oy | 0);
+            place_object(uball, uball.ox | 0, uball.oy | 0);
+        }
+        newsym(uball.ox | 0, uball.oy | 0);
+    }
 }
 
 function is_chain_rock(x, y) {

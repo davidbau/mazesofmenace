@@ -50,6 +50,7 @@ import {
     compactify_invlets, makeknown, near_capacity, observe_object, prinv,
     hold_another_object, consume_obj_charge, update_inventory, getobj,
     getobj_from_cmdq, getobj_record_repeat, getobj_display_pickinv, useupall,
+    useup, useupf,
 } from './invent.js';
 import { rn2, rn1, rnd, d, rnl, shuffle_int_array } from './rng.js';
 import {
@@ -83,7 +84,7 @@ import { pickup_object, spoteffects } from './pickup.js';
 import { select_menu_pick_one } from './options.js';
 import { teleds, tele_to_rnd_pet, noteleport_level, enexto, rloc_to } from './teleport.js';
 import {
-    morehungry, use_tin_opener, floorfood, set_tin_variety, useup, useupf,
+    morehungry, use_tin_opener, floorfood, set_tin_variety,
     carried, vomit,
 } from './eat.js';
 import { yn_function, paranoid_query } from './getline.js';

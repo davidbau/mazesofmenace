@@ -17,6 +17,35 @@ import { Blind, See_invisible, Underwater } from './youprop.js';
 import { is_moat } from './dbridge.js';
 import { visible_region_at } from './region.js';
 import { do_light_sources } from './light.js';
+import { canseemon } from './display.js';
+import { mon_visible } from './display.js';
+import { see_with_infrared } from './display.js';
+import { tp_sensemon } from './display.js';
+import { match_warn_of_mon } from './display.js';
+import { worm_known } from './worm.js';
+import { mdistu } from './monmove.js';
+import { MONSEEN_NORMAL } from './const.js';
+import { MONSEEN_SEEINVIS } from './const.js';
+import { MONSEEN_INFRAVIS } from './const.js';
+import { MONSEEN_TELEPAT } from './const.js';
+import { MONSEEN_XRAYVIS } from './const.js';
+import { MONSEEN_DETECT } from './const.js';
+import { MONSEEN_WARNMON } from './const.js';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // include/vision.h:8-10 — viz_array bits. TEMP_LIT is stamped by
 // do_light_sources() (js/light.js) during each recalc.
@@ -979,4 +1008,43 @@ export function do_clear_area(scol, srow, range, func, arg) {
             if (couldsee(x, y))
                 func(x, y, arg);
     }
+}
+
+/* include/youprop.h Detect_monsters */
+const Detect_monsters = () => !!(game.u.intrinsic?.HDetect_monsters || game.u.uprops?.DETECT_MONSTERS);
+
+// src/vision.c:2152 howmonseen(); the ways the hero perceives a monster
+export function howmonseen(mon) {
+    const useemon = !!canseemon(mon);
+    const xraydist = (game.u.xray_range < 0) ? -1 : (game.u.xray_range * game.u.xray_range);
+    let how_seen = 0; /* result */
+
+    /* assert(mon != NULL) */
+    /* normal vision;
+       cansee is true for both normal and astral vision,
+       but couldsee it not true for astral vision */
+    if ((mon.wormno ? worm_known(mon) : (cansee(mon.mx, mon.my)
+                                         && couldsee(mon.mx, mon.my)))
+        && mon_visible(mon) && !mon.minvis)
+        how_seen |= MONSEEN_NORMAL;
+    /* see invisible */
+    if (useemon && mon.minvis)
+        how_seen |= MONSEEN_SEEINVIS;
+    /* infravision */
+    if ((!mon.minvis || See_invisible()) && see_with_infrared(mon))
+        how_seen |= MONSEEN_INFRAVIS;
+    /* telepathy */
+    if (tp_sensemon(mon))
+        how_seen |= MONSEEN_TELEPAT;
+    /* xray */
+    if (useemon && xraydist > 0 && mdistu(mon) <= xraydist)
+        how_seen |= MONSEEN_XRAYVIS;
+    /* extended detection */
+    if (Detect_monsters())
+        how_seen |= MONSEEN_DETECT;
+    /* class-/type-specific warning */
+    if (match_warn_of_mon(mon))
+        how_seen |= MONSEEN_WARNMON;
+
+    return how_seen;
 }

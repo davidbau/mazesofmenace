@@ -54,7 +54,7 @@ import {
 import { xprname, an, vtense, doname, distant_name, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, simpleonames, set_not_fully_identified, makeplural, body_part_latebound, corpse_xname, killer_xname } from './objnam.js';
 import { yn_function, getlin, mungspaces } from './getline.js';
 import { get_count, pmatchi, cmdq_pop, cmdq_clear } from './cmd.js';
-import { mergable, is_damageable, stop_timer, splitobj, unsplitobj, clear_splitobjs, unknwn_contnr_contents, weight } from './mkobj.js';
+import { mergable, is_damageable, stop_timer, splitobj, unsplitobj, clear_splitobjs, unknwn_contnr_contents, weight, delobj } from './mkobj.js';
 import { unpaid_cost, doinvbill, gem_learned, obfree, shopper_financial_report } from './shk.js';
 import { hidden_gold } from './vault.js';
 import { setnotworn } from './do.js';
@@ -105,6 +105,7 @@ import {
     Has_contents,
     Is_container,
     Is_box,
+    u_at,
     COST_NOCONTENTS,
     has_oname,
     ONAME,
@@ -242,7 +243,8 @@ import {
 import { stairway_at, stairs_description } from './mklev.js';
 import { objects_at } from './mkobj.js';
 import { PM_SAMURAI, PM_MONK, PM_CLERIC } from './generated/monsters_data.js';
-import { humanoid, strongmonst, mons, touch_petrifies, poly_when_stoned } from './monsters.js';
+import { humanoid, strongmonst, mons, touch_petrifies, poly_when_stoned, hides_under } from './monsters.js';
+import { hideunder } from './mon.js';
 import { set_artifact_intrinsic, undiscovered_artifact, discover_artifact } from './artifact.js';
 import {
     askchain, add_valid_menu_class, collect_obj_classes,
@@ -3962,8 +3964,8 @@ export function update_inventory() {
 /**
  * C ref: invent.c useupall `:1311–1317` — setnotworn, freeinv, then
  * obfree(obj, NULL) (contents + shop bill). Callee shk.c obfree is
- * D-1727; mkobj.c dealloc_obj is D-1743. Named: nhl_gamestate leftover
- * (do.js tutorial stash); delobj still extract-only.
+ * D-1727; mkobj.c dealloc_obj is D-1743. delobj extract+obfree is
+ * D-1756. Named: nhl_gamestate leftover (do.js tutorial stash).
  */
 export function useupall(obj) {
     if (!obj) return;
@@ -3975,8 +3977,8 @@ export function useupall(obj) {
 /**
  * C ref: invent.c useup `:1320–1333` — quan>1: in_use=FALSE, quan--,
  * weight, update_inventory; else useupall. write.c dowrite paper
- * (D-1735). Named: eat.js hybrid still useup+useupf; detect/potion/
- * read/spell local clones. dealloc_obj is D-1743.
+ * (D-1735). eat.c carried?useup:useupf is D-1771. Named:
+ * detect/potion/read/spell local clones. dealloc_obj is D-1743.
  */
 export function useup(obj) {
     if (obj.quan > 1) {
@@ -3986,6 +3988,30 @@ export function useup(obj) {
         update_inventory();
     } else {
         useupall(obj);
+    }
+}
+
+/**
+ * C ref: invent.c useupf `:4762–4783` — consume numused from a floor
+ * pile. Snapshot at_u before split; splitobj when quan > numused
+ * (burn_floor_objects may call again on the remainder); delobj.
+ * If the pile was under the hero and uundetected && hides_under,
+ * hideunder(&youmonst). Named: !mon_moving && costly_spot shop
+ * addtobill vs stolen_value (both async); zap.js local clone.
+ */
+export function useupf(obj, numused) {
+    const atHero = u_at(obj.ox, obj.oy);
+    let otmp;
+    if ((obj.quan | 0) > (numused | 0)) {
+        otmp = splitobj(obj, numused);
+    } else {
+        otmp = obj;
+    }
+    delobj(otmp);
+    const u = game.u || {};
+    if (atHero && (u.uundetected | 0)
+        && hides_under(game.youmonst?.data)) {
+        hideunder(game.youmonst);
     }
 }
 

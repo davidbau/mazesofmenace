@@ -19,6 +19,7 @@
 //        get_cost glass-gem pseudo-ID (D-1718).
 //        getprice arti_cost (D-1719).
 //        obfree / delete_contents (D-1727);
+//        zap.c poly_obj imports delete_contents (D-1770);
 //        mkobj.c dealloc_obj via obfree (D-1743).
 //        u_left_shop leave verbalize + choose_stairs (D-1733).
 //        shopper_financial_report / shop_debt (D-1740).
@@ -3307,8 +3308,9 @@ export function delete_contents(obj) {
  * object. Leash / food / book / contents / pick / boulder; unpaid bill
  * useup→billobjs or merge bquan; else oid_price_adjustment may donate
  * o_id to merge; worn sanity; mkobj.c dealloc_obj (D-1743).
- * Callers include invent.c delobj_core (D-1756). Named: zap.js
- * delete_contents clone.
+ * Callers include invent.c delobj_core (D-1756) and zap.c
+ * poly_obj (D-1770). Named: trap.js delete_contents_chest,
+ * mklev.js create_object_delete_contents.
  */
 export function obfree(obj, merge) {
     if (!obj) return;

@@ -927,7 +927,7 @@ export async function kick_monster(mon, x, y) {
     let clumsy = false;
     let goto_doit = false;
 
-    setmangry(mon, true);
+    await setmangry(mon, true);
 
     const u = game.u || {};
     if (u.Levitation && !rn2(3) && verysmall(mon.data)
@@ -1148,7 +1148,7 @@ export async function ghitm(mtmp, gold) {
         const value = (gold.quan | 0) * (oc?.oc_cost | 0);
         mtmp.msleeping = 0;
         finish_meating(mtmp);
-        if (!mtmp.isgd && !rn2(4)) setmangry(mtmp, true);
+        if (!mtmp.isgd && !rn2(4)) await setmangry(mtmp, true);
         if (cansee(mtmp.mx | 0, mtmp.my | 0)) {
             await pline(
                 `${Monnam(mtmp)} ${was_sleeping ? 'awakens and ' : ''}catches the gold.`,

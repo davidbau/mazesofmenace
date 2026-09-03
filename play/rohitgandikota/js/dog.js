@@ -2138,7 +2138,7 @@ export async function mon_arrive(mtmp, when) {
             place_monster(mtmp, game.u.ux, game.u.uy);
             newsym(mtmp.mx, mtmp.my);
         } else {
-            mnexto(mtmp, RLOC_NOMSG);
+            await mnexto(mtmp, RLOC_NOMSG);
         }
         mtmp.mstate &= ~MON_STILL_ARRIVING;
         return true;

@@ -59,7 +59,7 @@ import { monstseesu, monstunseesu } from './mondata.js';
 import { mon_nam, Monnam, a_monnam } from './do_name.js';
 import { disintegrate_arm, setworn, stuck_ring, unchanger } from './do_wear.js';
 import { summon_minion, dlord } from './minion.js';
-import { near_capacity, encumber_msg, feel_cockatrice } from './invent.js';
+import { near_capacity, encumber_msg, feel_cockatrice, useup, useupf } from './invent.js';
 import { punish, unpunish } from './read.js';
 import { attrcurse, rndcurse } from './sit.js';
 import { An, an, xname, makeplural, vtense, corpse_xname } from './objnam.js';
@@ -84,7 +84,7 @@ import {
     make_confused, make_stunned, make_hallucinated,
     make_glib, make_deaf,
 } from './potion.js';
-import { init_uhunger, floorfood, carried, useup, useupf } from './eat.js';
+import { init_uhunger, floorfood, carried } from './eat.js';
 import { rider_corpse_revival } from './pickup.js';
 import { region_danger, region_safety } from './region.js';
 import { safe_teleds } from './teleport.js';

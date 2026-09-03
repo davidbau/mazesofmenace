@@ -2561,7 +2561,7 @@ export function intrinsic_possible(type, ptr) {
 }
 
 // src/eat.c:960 should_givit() — level check against per-type chance.
-function should_givit(type, ptr) {
+export function should_givit(type, ptr) {
     let chance;
     switch (type) {
     case POISON_RES:
@@ -2694,7 +2694,7 @@ async function eye_of_newt_buzz() {
 
 // src/eat.c:1339 corpse_intrinsic() — reservoir-pick one conveyable
 // intrinsic; -1 is the fake index for giant strength.
-function corpse_intrinsic(ptr) {
+export function corpse_intrinsic(ptr) {
     const conveys_STR = (ptr.mflags2 & MFLAGS_EAT.M2_GIANT) !== 0;
     let count = 0;
     let prop = 0;

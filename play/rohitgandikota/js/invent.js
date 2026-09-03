@@ -2170,6 +2170,9 @@ export async function identify_pack(id_limit, learning_id) {
 
 // src/invent.c:1664 splittable() — can this stack be split off from?
 import { welded } from './wield.js';
+
+
+
 export function splittable(obj) {
     return !((obj.otyp === ONAMES.LOADSTONE && obj.cursed)
              || (obj === game.u.uwep && welded(game.u.uwep)));
@@ -2487,5 +2490,32 @@ export function g_at(x, y) {
         if (obj.oclass === OCLASSES.COIN_CLASS)
             return obj;
     }
+    return null;
+}
+
+// src/invent.c:1479 nxtobj(); the next object of the given type after obj in
+// its chain (the floor pile when by_nexthere, otherwise the object's own
+// list: inventory, a container's contents or a monster's inventory)
+export function nxtobj(obj, type, by_nexthere) {
+    let chain;
+
+    if (by_nexthere)
+        chain = (game.level?.objects || []).filter((o) => o.ox === obj.ox && o.oy === obj.oy
+                                                      && (o.where === undefined || o.where === OBJ_FLOOR));
+    else if (obj.where === OBJ_CONTAINED && obj.ocontainer)
+        chain = obj.ocontainer.cobj || [];
+    else if (obj.where === OBJ_MINVENT && obj.ocarry)
+        chain = obj.ocarry.minvent || [];
+    else if (obj.where === OBJ_FLOOR)
+        chain = (game.level?.objects || []);
+    else
+        chain = game.invent || [];
+
+    let i = chain.indexOf(obj);
+    if (i < 0)
+        return null;
+    for (i = i + 1; i < chain.length; i++) /* start with the object after this one */
+        if (chain[i].otyp === type)
+            return chain[i];
     return null;
 }

@@ -42,6 +42,35 @@ import { obj_extract_self, stackobj, weight } from './invent.js';
 import { cmap_names } from './drawing_data.js';
 import { CLR_BRIGHT_BLUE, CLR_CYAN, CLR_GRAY } from './terminal.js';
 import { RLOC_ERR, RLOC_NOMSG } from './const.js';
+import { LADDER } from './const.js';
+import { STAIRS } from './const.js';
+import { MAX_TYPE } from './const.js';
+import { SDOOR } from './const.js';
+import { ICE } from './const.js';
+import { MELT_ICE_AWAY } from './const.js';
+import { IS_LAVA } from './const.js';
+import { IS_FOUNTAIN } from './const.js';
+import { IS_SINK } from './const.js';
+import { is_ice } from './dbridge.js';
+import { obj_ice_effects } from './mkobj.js';
+import { spot_stop_timers } from './timeout.js';
+import { count_level_features } from './mklev.js';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 function note_unported_mkmaze(what) {
     (game.unported ||= new Set()).add(what);
@@ -1390,7 +1419,7 @@ async function mv_bubble(b, dx, dy, ini) {
                 await newsym(ux0, uy0); /* clean up old position */
 
                 if (mtmp) {
-                    mnexto(mtmp, RLOC_NOMSG);
+                    await mnexto(mtmp, RLOC_NOMSG);
                 }
                 break;
             }
@@ -1427,4 +1456,47 @@ async function mv_bubble(b, dx, dy, ini) {
             b.dy = 1 - rn2(3);
         }
     }
+}
+
+/* include/rm.h:320 CAN_OVERWRITE_TERRAIN() */
+const CAN_OVERWRITE_TERRAIN = (ttyp) =>
+    (!!game.iflags?.debug_overwrite_stairs || !((ttyp) === LADDER || (ttyp) === STAIRS));
+
+// src/mkmaze.c:77 set_levltyp(); set map terrain type
+export function set_levltyp(x, y, newtyp) {
+    if (isok(x, y) && newtyp >= STONE && newtyp < MAX_TYPE) {
+        const oldtyp = game.level.at(x, y).typ;
+
+        /* hack for secret doors in garden theme rooms */
+        if (oldtyp === SDOOR && newtyp === AIR) {
+            /* levl[][].typ stays SDOOR rather than change to AIR */
+            game.level.at(x, y).arboreal_sdoor = 1;
+            return true;
+        }
+
+        if (CAN_OVERWRITE_TERRAIN(oldtyp)) {
+            /* typ==ICE || (typ==DRAWBRIDGE_UP && drawbridgemask==DB_ICE) */
+            const was_ice = is_ice(x, y);
+
+            game.level.at(x, y).typ = newtyp;
+            /* TODO?
+             *  if oldtyp used flags or horizontal differently from
+             *  the way newtyp will use them, clear them.
+             */
+
+            if (IS_LAVA(newtyp)) /* [what about IS_LAVA(oldtyp)=>.lit = 0?] */
+                game.level.at(x, y).lit = 1;
+            if (was_ice && newtyp !== ICE) {
+                /* frozen corpses resume rotting, no more ice to melt away */
+                obj_ice_effects(x, y, true);
+                spot_stop_timers(x, y, MELT_ICE_AWAY);
+            }
+            if ((IS_FOUNTAIN(oldtyp) !== IS_FOUNTAIN(newtyp))
+                || (IS_SINK(oldtyp) !== IS_SINK(newtyp)))
+                count_level_features(); /* level.flags.nfountains,nsinks */
+
+            return true;
+        }
+    }
+    return false;
 }

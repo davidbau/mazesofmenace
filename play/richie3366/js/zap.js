@@ -156,6 +156,8 @@
 // EReflecting bits (W_WEP artifact D-1342); ureflects W_AMUL/W_ARM/dragon
 // D-1353 (shared muse.c clone); mcastu ureflects named; create_polymon after poly_zapped;
 // do_osshock shop bill; invent poly_obj worn remap is D-1510;
+// poly_obj Has_contents → shk.c delete_contents D-1770
+// (trap.js delete_contents_chest / mklev.js create_object_delete_contents named);
 // poly-arm boxlock reset_pick is D-1483; polypiles/livelog named;
 // blank_novel / corpse revive→rot timer;
 // cant_finish_meal; animate_statue montraits wire; defended(); resists_magm
@@ -230,7 +232,7 @@ import { readobjnam_wish, HANDS_OBJ, NOTHING_OBJ } from './readobjnam.js';
 import {
     hold_another_object, makeknown, encumber_msg, enlightenment, freeinv_core,
     observe_object, display_minventory, display_binventory, display_cinventory,
-    update_inventory, set_cknown_lknown, getobj, useupall,
+    update_inventory, set_cknown_lknown, getobj, useupall, useup,
 } from './invent.js';
 import { mstatusline, ustatusline } from './insight.js';
 import { setnotworn } from './do.js';
@@ -274,7 +276,7 @@ import {
     openfallingtrap, self_invis_message, trapname, animate_statue,
 } from './trap.js';
 import { potionbreathe, make_stunned, speed_up } from './potion.js';
-import { useup, carried, fix_petrification } from './eat.js';
+import { carried, fix_petrification } from './eat.js';
 import { burn_away_slime, get_obj_location } from './timeout.js';
 import { show_transient_light, transient_light_cleanup } from './light.js';
 import { create_gas_cloud } from './region.js';
@@ -286,7 +288,7 @@ import { newcham, makemon, create_critters, monhp_per_lvl, neweshk, add_to_minv,
 import { tele, u_teleport_mon, rloco, enexto } from './teleport.js';
 import { find_ac } from './u_init.js';
 import { rehumanize, polymon, body_part } from './polyself.js';
-import { costly_alteration, stolen_value, costly_spot, shop_keeper, hot_pursuit, obfree } from './shk.js';
+import { costly_alteration, stolen_value, costly_spot, shop_keeper, hot_pursuit, obfree, delete_contents } from './shk.js';
 import { dryup } from './fountain.js';
 import { explode } from './explode.js';
 import { unpunish, litroom } from './read.js';
@@ -4687,21 +4689,6 @@ function do_osshock(obj) {
 }
 
 /**
- * C ref: invent.c / shk.c delete_contents — obfree chain (no obj_resists).
- */
-function delete_contents(obj) {
-    while (obj?.cobj) {
-        const curr = obj.cobj;
-        // extract from container
-        obj.cobj = curr.nobj || null;
-        curr.nobj = null;
-        curr.ocontainer = null;
-        curr.where = 0; // OBJ_FREE — obfree, no resist roll
-        if (Has_contents(curr)) delete_contents(curr);
-    }
-}
-
-/**
  * C zap.c stone_to_flesh_obj :1991–2112 — mineral/gemstone then
  * obj_resists(2,98); ROCK/TOOL boulder meat / statue animate /
  * figurine makemon; RING meat ring; WAND meat stick; GEM meatball.
@@ -4922,6 +4909,8 @@ export async function poly_obj(obj, id) {
         otmp.cursed = false;
     }
 
+    /* C zap.c poly_obj `:1827–1829` — no box contents --KAA.
+     * shk.c delete_contents (D-1770); zap.js clone retired. */
     if (Has_contents(otmp)) delete_contents(otmp);
 
     // fuse n→1 — C: !oc_merge || (can_merge && quan > rn2(1000))

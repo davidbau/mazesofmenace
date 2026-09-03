@@ -33,7 +33,7 @@ import {
     ANY_SHOP, ANY_TYPE, OROOM, SHOPBASE, ROOMOFFSET, VAULT,
     COURT, BEEHIVE, MORGUE, BARRACKS, ZOO,
     ESHK, EMIN, has_emin, Is_astralevel, Is_oracle_level, In_endgame,
-    STRAT_WAITMASK,
+    STRAT_WAITMASK, PLNMSG_GROWL,
 } from './const.js';
 import { mplayer_talk } from './mplayer.js';
 import { vault_occupied, findgd } from './vault.js';
@@ -489,11 +489,11 @@ export async function beg(mtmp) {
 
 /**
  * C ref: sounds.c maybe_gasp `:545–610`. Returns ROLL_FROM(Exclam) or
- * NULL. Caller `peacefuls_respond` (`mon.c` `:4188`) is still named
- * omitted from `setmangry`. JS `mons()` is a fresh permonst so C
- * `mptr != &mons[gu.urole.guardnum]` is mndx (same as
- * `reset_hostility`). Live `p_coaligned` is priest.js (EPRI.shralign
- * / maligntyp; isminion `mon_aligntyp` is that module's body).
+ * NULL. Caller `peacefuls_respond` (`mon.c` `:4188`, D-1772). JS
+ * `mons()` is a fresh permonst so C `mptr != &mons[gu.urole.guardnum]`
+ * is mndx (same as `reset_hostility`). Live `p_coaligned` is priest.js
+ * (EPRI.shralign / maligntyp; isminion `mon_aligntyp` is that module's
+ * body).
  */
 export function maybe_gasp(mon) {
     const Exclam = ['Gasp!', 'Uh-oh.', 'Oh my!', 'What?', 'Why?'];
@@ -648,8 +648,8 @@ function growl_sound(mtmp) {
 
 /**
  * C ref: sounds.c growl — seriously abused pet (incl. hero attacking).
- * Hallucination → ROLL_FROM(h_sounds) rn2(35). Named omission:
- * iflags.last_msg PLNMSG_GROWL.
+ * Hallucination → ROLL_FROM(h_sounds) rn2(35). last_msg PLNMSG_GROWL
+ * after the pline (peacefuls_respond exclaimed).
  */
 export async function growl(mtmp) {
     if (!mtmp || helpless(mtmp) || mon_msound(mtmp) === MS_SILENT) return;
@@ -663,6 +663,8 @@ export async function growl(mtmp) {
         const Deaf = !!(game.u?.Deaf || game.u?.HDeaf || game.u?.EDeaf);
         if (canseemon(mtmp) || !Deaf) {
             await pline(`${Monnam(mtmp)} ${vtense(null, growl_verb)}!`);
+            if (!game.iflags) game.iflags = {};
+            game.iflags.last_msg = PLNMSG_GROWL;
             if (game.context?.run) nomul(0);
         }
         // C: wake_nearto(mx, my, mlevel * 18) after growl pline

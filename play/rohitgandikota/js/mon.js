@@ -1,4 +1,3 @@
-import { migrate_monster } from './trap.js';
 import { um_dist } from './apply.js';
 import { gazemu } from './mhitu.js';
 import { aggravate } from './wizard.js';
@@ -114,6 +113,45 @@ import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
 import { distant_name, doname, makeplural } from './objnam.js';
 import { You, You_feel, You_hear } from './pline.js';
 import { Blind, Hallucination, Deaf } from './youprop.js';
+/* include/obj.h:321 polyfood(), mlevelgain(), mhealup(), ofood();
+   src/mon.c:1384 mstoning(); include/mondata.h:28 cant_drown();
+   src/mon.c:44 LEVEL_SPECIFIC_NOCORPSE(); src/mon.c:549 KEEPTRAITS();
+   include/you.h ALIGNLIM; include/youprop.h Blind_telepat;
+   include/mondata.h always_hostile(); include/prop.h:25 res_to_mr() */
+const ofood = (o) => (o.otyp === ONAMES.CORPSE || o.otyp === ONAMES.EGG || o.otyp === ONAMES.TIN);
+const polyfood = (obj) =>
+    (ofood(obj) && obj.corpsenm >= LOW_PM
+     && (pm_to_cham(obj.corpsenm) !== NON_PM
+         || dmgtype(game.mons[obj.corpsenm], ATTKS.AD_POLY)));
+const mlevelgain = (obj) => (ofood(obj) && obj.corpsenm === PMNAMES.PM_WRAITH);
+const mhealup = (obj) => (ofood(obj) && obj.corpsenm === PMNAMES.PM_NURSE);
+const mstoning = (obj) =>
+    (ofood(obj) && ismnum(obj.corpsenm)
+     && flesh_petrifies(game.mons[obj.corpsenm]));
+const cant_drown = (ptr) => (is_swimmer(ptr) || amphibious(ptr) || breathless(ptr));
+const LEVEL_SPECIFIC_NOCORPSE = (mdat) =>
+    (Is_rogue_level(game.u.uz)
+     || !game.level.flags.deathdrops
+     || (game.level.flags.graveyard && is_undead(mdat) && rn2(3)));
+const KEEPTRAITS = (mon) =>
+    (mon.isshk || mon.mtame || unique_corpstat(mon.data)
+     || is_reviver(mon.data)
+        /* normally quest leader will be unique, */
+        /* but he or she might have been polymorphed  */
+     || mon.m_id === game.quest_status?.leader_m_id
+        /* special cancellation handling for these */
+     || (dmgtype(mon.data, ATTKS.AD_SEDU) || dmgtype(mon.data, ATTKS.AD_SSEX)));
+const ALIGNLIM = () => (10 + Math.trunc(game.moves / 200));
+const Blind_telepat = () => !!(game.u.intrinsic?.HTelepat || game.u.uprops?.TELEPAT);
+const always_hostile = (ptr) => ((ptr.mflags2 & MFLAGS.M2_HOSTILE) !== 0);
+/* include/hack.h:1236 Maybe_Half_Phys() */
+const Maybe_Half_Phys = (dmg) =>
+    (!!(game.u.intrinsic?.HHalf_physical_damage || game.u.uprops?.HALF_PHDAM)
+     ? Math.trunc((dmg + 1) / 2) : dmg);
+const res_to_mr = (r) =>
+    ((FIRE_RES <= (r) && (r) <= STONE_RES) ? (1 << ((r) - 1)) : 0x00);
+/* include/objects.h NUM_GLASS_GEMS */
+const NUM_GLASS_GEMS = () => (ONAMES.LAST_GLASS_GEM - ONAMES.FIRST_GLASS_GEM + 1);
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { touch_petrifies, acidic, slimeproof, mon_hates_silver, could_reach_item } from './dog.js';
 import { is_rider, set_mimic_sym, hideunder, is_male, is_female } from './makemon.js';
@@ -364,90 +402,173 @@ async function movemon_singlemon(mtmp) {
 
 // src/mon.c:947 minliquid(), including lava and the dry-land eel arm.
 export async function minliquid(mtmp) {
-    const ptr = mtmp.data;
+    let res;
 
-    const inlava = is_lava(mtmp.mx, mtmp.my)
-        && !(is_flyer(ptr) || is_floater(ptr));
-    if (inlava && !is_clinger(ptr) && !likes_lava(ptr)) {
-        const canTeleport = (ptr.mflags1 & MFLAGS.M1_TPORT) !== 0;
-        if (canTeleport && !await tele_restrict(mtmp)
-            && await rloc(mtmp, RLOC_MSG))
-            return 0;
+    /* set up flag for mondead() and xkilled() */
+    (game.iflags ||= {}).sad_feeling = !!(mtmp.mtame && !canseemon(mtmp));
+    res = await minliquid_core(mtmp);
+    /* always clear the flag */
+    game.iflags.sad_feeling = false;
+    return res;
+}
 
-        if (!resists_fire(mtmp)) {
-            if (cansee(mtmp.mx, mtmp.my)) {
-                let fate = 'burns to a crisp';
-                if (mtmp.mnum === PMNAMES.PM_WATER_ELEMENTAL
-                    || mtmp.mnum === PMNAMES.PM_FOG_CLOUD
-                    || mtmp.mnum === PMNAMES.PM_STEAM_VORTEX)
-                    fate = 'boils away';
-                else if (mtmp.mnum === PMNAMES.PM_ICE_VORTEX
-                         || mtmp.mnum === PMNAMES.PM_GLASS_GOLEM)
-                    fate = 'melts away';
-                await pline(`${Monnam(mtmp)} ${fate}.`);
-            }
-            const x = mtmp.mx, y = mtmp.my;
-            await mondead(mtmp);
-            newsym(x, y);
-        } else {
-            mtmp.mhp--;
-            if (DEADMONSTER(mtmp)) {
-                if (cansee(mtmp.mx, mtmp.my))
-                    await pline(`${Monnam(mtmp)} surrenders to the fire.`);
-                const x = mtmp.mx, y = mtmp.my;
-                await mondead(mtmp);
-                newsym(x, y);
-            } else if (cansee(mtmp.mx, mtmp.my)) {
-                await pline(`${Monnam(mtmp)} burns slightly.`);
-            }
-        }
+// src/mon.c:961 minliquid_core(); guts of minliquid()
+async function minliquid_core(mtmp) {
+    let inpool, inlava, infountain;
+    const waterwall = is_waterwall(mtmp.mx, mtmp.my);
 
-        if (!DEADMONSTER(mtmp)) {
-            if (!m_in_air(mtmp) && !likes_lava(mtmp.data)) {
-                if ((mtmp.minvent || []).length)
-                    note_unported_mon('minliquid:fire_damage_chain');
-                if (!await rloc(mtmp, RLOC_MSG))
-                    note_unported_mon('minliquid:deal_with_overcrowding');
-            }
-            return 0;
-        }
-        return 1;
-    }
+    /* [ceiling clingers are handled below] */
+    inpool = (is_pool(mtmp.mx, mtmp.my)
+              && (!(is_flyer(mtmp.data) || is_floater(mtmp.data))
+                  /* there's no "above the surface" on the plane of water */
+                  || Is_waterlevel(game.u.uz)));
+    inlava = (is_lava(mtmp.mx, mtmp.my)
+              && !(is_flyer(mtmp.data) || is_floater(mtmp.data)));
+    infountain = IS_FOUNTAIN(game.level.at(mtmp.mx, mtmp.my).typ);
 
-    const inpool = is_pool(mtmp.mx, mtmp.my)
-        && (!(is_flyer(ptr) || is_floater(ptr)) || Is_waterlevel(game.u.uz));
-    if (inpool && !is_clinger(ptr)
-        && !(is_swimmer(ptr) || amphibious(ptr) || breathless(ptr))) {
-        const canTeleport = (ptr.mflags1 & MFLAGS.M1_TPORT) !== 0;
-        if (canTeleport && !await tele_restrict(mtmp)
-            && await rloc(mtmp, RLOC_MSG))
-            return 0;
+    /* Flying and levitation keeps our steed out of the liquid
+       (but not water-walking or swimming; note: if hero is in a
+       water location on the Plane of Water, flight and levitating
+       are blocked so this (Flying || Levitation) test fails there
+       and steed will be subject to water effects, as intended) */
+    if (mtmp === game.u.usteed && (Flying() || Levitation()) && !waterwall)
+        return 0;
 
-        if (cansee(mtmp.mx, mtmp.my)) {
-            if (game.context?.mon_moving)
-                await pline(`${Monnam(mtmp)} drowns.`);
-            else
-                await You(`drown ${mon_nam(mtmp)}.`);
-        }
-        if (game.context?.mon_moving)
+    /* Gremlin multiplying won't go on forever since the hit points
+     * keep going down, and when it gets to 1 hit point the clone
+     * function will fail.
+     */
+    if (mtmp.data === game.mons[PMNAMES.PM_GREMLIN] && (inpool || infountain) && rn2(3)) {
+        if (await split_mon(mtmp, null))
+            await dryup(mtmp.mx, mtmp.my, false);
+        if (inpool)
+            await water_damage_chain(mtmp.minvent, false);
+        return 0;
+    } else if (mtmp.data === game.mons[PMNAMES.PM_IRON_GOLEM] && inpool && !rn2(5)) {
+        const dam = d(2, 6);
+
+        if (cansee(mtmp.mx, mtmp.my))
+            await pline_mon(mtmp, `${Monnam(mtmp)} rusts.`);
+        mtmp.mhp -= dam;
+        if (mtmp.mhpmax > dam)
+            mtmp.mhpmax -= dam;
+        if (DEADMONSTER(mtmp)) {
             await mondied(mtmp);
-        else
-            await xkilled(mtmp, XKILL_NOMSG);
-        if (DEADMONSTER(mtmp))
-            return 1;
-
-        if (!m_in_air(mtmp)) {
-            if (!await rloc(mtmp, RLOC_NOMSG))
-                note_unported_mon('minliquid:deal_with_overcrowding');
+            if (DEADMONSTER(mtmp))
+                return 1;
         }
+        await water_damage_chain(mtmp.minvent, false);
         return 0;
     }
 
-    if (!inpool && ptr.mlet === MONSYMS.S_EEL && !Is_waterlevel(game.u.uz)
-        && !breathless(ptr)) {
-        if (mtmp.mhp > 1 && rn2(mtmp.mhp) > rn2(8))
-            mtmp.mhp--;
-        monflee(mtmp, 2, false, false);
+    if (inlava) {
+        /*
+         * Lava effects much as water effects. Lava likers are able to
+         * protect their stuff. Fire resistant monsters can only protect
+         * themselves  --ALI
+         */
+        if (!is_clinger(mtmp.data) && !likes_lava(mtmp.data)) {
+            /* not fair...?  hero doesn't automatically teleport away
+               from lava, just from water */
+            if (can_teleport(mtmp.data) && !(await tele_restrict(mtmp))) {
+                if (await rloc(mtmp, RLOC_MSG))
+                    return 0;
+            }
+            if (!resists_fire(mtmp)) {
+                if (cansee(mtmp.mx, mtmp.my)) {
+                    const dummy = mtmp.data.mattk[0];
+                    const how = on_fire(mtmp.data, dummy);
+
+                    await pline_mon(mtmp, `${Monnam(mtmp)} ${
+                          how === 'boiling' ? 'boils away'
+                             : how === 'melting' ? 'melts away'
+                                : 'burns to a crisp'}.`);
+                }
+                /* unlike fire -> melt ice -> pool, there's no way for the
+                   hero to create lava beneath a monster, so the !mon_moving
+                   case is not expected to happen (and we haven't made a
+                   player-against-monster variation of the message above) */
+                if (game.context?.mon_moving)
+                    await mondead(mtmp); /* no corpse */
+                else
+                    await xkilled(mtmp, XKILL_NOMSG);
+            } else {
+                mtmp.mhp -= 1;
+                if (DEADMONSTER(mtmp)) {
+                    if (cansee(mtmp.mx, mtmp.my))
+                        await pline_mon(mtmp, `${Monnam(mtmp)} surrenders to the fire.`);
+                    await mondead(mtmp); /* no corpse */
+                } else if (cansee(mtmp.mx, mtmp.my)) {
+                    await pline_mon(mtmp, `${Monnam(mtmp)} burns slightly.`);
+                }
+            }
+            if (!DEADMONSTER(mtmp)) {
+                if (m_in_air(mtmp)) {
+                    ; /* vampshifter in wolf form can revert to vampire lord
+                       * and become a flyer so not need to teleport */
+                } else if (likes_lava(mtmp.data)) {
+                    ; /* likes_lava case is hypothetical */
+                } else {
+                    await fire_damage_chain(mtmp.minvent, false, false,
+                                            mtmp.mx, mtmp.my);
+                    if (!(await rloc(mtmp, RLOC_MSG)))
+                        await deal_with_overcrowding(mtmp);
+                }
+                return 0;
+            }
+            return 1;
+        }
+    } else if (inpool || waterwall) {
+        /* Most monsters drown in pools.  flooreffects() will take care of
+         * water damage to dead monsters' inventory, but survivors need to
+         * be handled here.  Swimmers are able to protect their stuff...
+         */
+        if ((waterwall || !is_clinger(mtmp.data))
+            && !cant_drown(mtmp.data)) {
+            /* like hero with teleport intrinsic or spell, teleport away
+               if possible */
+            if (can_teleport(mtmp.data) && !(await tele_restrict(mtmp))) {
+                if (await rloc(mtmp, RLOC_MSG))
+                    return 0;
+            }
+            if (cansee(mtmp.mx, mtmp.my)) {
+                if (game.context?.mon_moving)
+                    await pline_mon(mtmp, `${Monnam(mtmp)} drowns.`);
+                else
+                    /* hero used fire to melt ice that monster was on */
+                    await You(`drown ${mon_nam(mtmp)}.`);
+            }
+            if (engulfing_u(mtmp)) {
+                /* This can happen after a purple worm plucks you off a
+                   flying steed while you are over water. */
+                await pline(`${Monnam(mtmp)} sinks as ${hliquid('water')} rushes in and flushes you out.`);
+            }
+            if (game.context?.mon_moving)
+                await mondied(mtmp); /* ok to leave corpse despite water */
+            else
+                await xkilled(mtmp, XKILL_NOMSG);
+            if (!DEADMONSTER(mtmp)) {
+                if (m_in_air(mtmp)) {
+                    ; /* vampshifter in wolf form can revert to vampire lord
+                       * and become a flyer so not need to teleport */
+                } else {
+                    await water_damage_chain(mtmp.minvent, false);
+                    if (!(await rloc(mtmp, RLOC_NOMSG)))
+                        await deal_with_overcrowding(mtmp);
+                }
+                return 0;
+            }
+            return 1;
+        }
+    } else {
+        /* but eels have a difficult time outside */
+        if (mtmp.data.mlet === MONSYMS.S_EEL && !Is_waterlevel(game.u.uz)
+            && !breathless(mtmp.data)) {
+            /* as mhp gets lower, the rate of further loss slows down */
+            if (mtmp.mhp > 1 && rn2(mtmp.mhp) > rn2(8))
+                mtmp.mhp--;
+            await monflee(mtmp, 2, false, false);
+        }
     }
     return 0;
 }
@@ -831,92 +952,101 @@ export function healmon(mtmp, amt, overheal) {
     return mtmp.mhp - oldhp;
 }
 
-function monster_intrinsic_possible(type, ptr) {
-    const conveys = ptr.mconveys | 0;
-    switch (type) {
-    case FIRE_RES:   return (conveys & MFLAGS.MR_FIRE) !== 0;
-    case COLD_RES:   return (conveys & MFLAGS.MR_COLD) !== 0;
-    case SLEEP_RES:  return (conveys & MFLAGS.MR_SLEEP) !== 0;
-    case DISINT_RES: return (conveys & MFLAGS.MR_DISINT) !== 0;
-    case SHOCK_RES:  return (conveys & MFLAGS.MR_ELEC) !== 0;
-    case POISON_RES: return (conveys & MFLAGS.MR_POISON) !== 0;
-    case ACID_RES:   return (conveys & MFLAGS.MR_ACID) !== 0;
-    case STONE_RES:  return (conveys & MFLAGS.MR_STONE) !== 0;
-    case TELEPORT:   return (ptr.mflags1 & MFLAGS.M1_TPORT) !== 0;
-    case TELEPORT_CONTROL:
-        return (ptr.mflags1 & MFLAGS.M1_TPORT_CNTRL) !== 0;
-    case TELEPAT:
-        return ptr.pmidx === PMNAMES.PM_FLOATING_EYE
-            || ptr.pmidx === PMNAMES.PM_MIND_FLAYER
-            || ptr.pmidx === PMNAMES.PM_MASTER_MIND_FLAYER;
+// src/mon.c:1726 mon_give_prop(); give an intrinsic to a monster
+function mon_give_prop(mtmp, prop, msgbox) {
+    let msg = null;
+    let intrinsic = 0; /* MR_* constant */
+
+    /* Pets don't have all the fields that the hero does, so they can't get
+       all the same intrinsics.  If it happens to choose strength gain or
+       teleport control or whatever, ignore it. */
+    switch (prop) {
+    case FIRE_RES:
+        msg = '%s shivers slightly.';
+        break;
+    case COLD_RES:
+        msg = '%s looks quite warm.';
+        break;
+    case SLEEP_RES:
+        msg = '%s looks wide awake.';
+        break;
+    case DISINT_RES:
+        msg = '%s looks very firm.';
+        break;
+    case SHOCK_RES:
+        msg = '%s crackles with static electricity.';
+        break;
+    case POISON_RES:
+        msg = '%s looks healthy.';
+        break;
     default:
-        return false;
+        return; /* can't give it */
     }
+    intrinsic = res_to_mr(prop);
+
+    /* Don't give message if it already had this property intrinsically, but
+       still do grant the intrinsic if it only had it from mresists.
+       Do print the message if it only had this property extrinsically, which
+       is why mon_resistancebits isn't used here. */
+    if ((mtmp.data.mresists | (mtmp.mintrinsics | 0)) & intrinsic)
+        msg = null;
+
+    if (intrinsic)
+        mtmp.mintrinsics = (mtmp.mintrinsics | 0) | intrinsic;
+
+    if (canseemon(mtmp) && msg)
+        msgbox.v = msg.replace('%s', Monnam(mtmp)); /* pline_mon(mtmp, msg, Monnam(mtmp)) */
 }
 
-function monster_corpse_intrinsic(ptr) {
-    const conveysStrength = (ptr.mflags2 & MFLAGS.M2_GIANT) !== 0;
-    let count = conveysStrength ? 1 : 0;
-    let prop = conveysStrength ? -1 : 0;
+// src/mon.c:1778 mon_givit(); Maybe give an intrinsic to monster from
+// eating corpse that confers it.
+async function mon_givit(mtmp, ptr) {
+    const prop = corpse_intrinsic(ptr);
+    const vis = canseemon(mtmp);
 
-    for (let i = 1; i <= LAST_PROP; i++) {
-        if (!monster_intrinsic_possible(i, ptr))
-            continue;
-        if (!rn2(++count))
-            prop = i;
-    }
-    if (conveysStrength && count === 1 && !rn2(2))
-        prop = 0;
-    return prop;
-}
-
-function monster_should_givit(prop, ptr) {
-    let chance = 15;
-    if (prop === POISON_RES
-        && (ptr.pmidx === PMNAMES.PM_KILLER_BEE
-            || ptr.pmidx === PMNAMES.PM_SCORPION)
-        && !rn2(4))
-        chance = 1;
-    else if (prop === TELEPORT)
-        chance = 10;
-    else if (prop === TELEPORT_CONTROL)
-        chance = 12;
-    else if (prop === TELEPAT)
-        chance = 1;
-    return ptr.mlevel > rn2(chance);
-}
-
-async function monster_give_prop(mtmp, prop) {
-    const messages = new Map([
-        [FIRE_RES, 'shivers slightly.'],
-        [COLD_RES, 'looks quite warm.'],
-        [SLEEP_RES, 'looks wide awake.'],
-        [DISINT_RES, 'looks very firm.'],
-        [SHOCK_RES, 'crackles with static electricity.'],
-        [POISON_RES, 'looks healthy.'],
-    ]);
-    const msg = messages.get(prop);
-    if (!msg)
-        return;
-
-    const intrinsic = 1 << (prop - 1);
-    const alreadyIntrinsic = ((mtmp.data.mresists | 0)
-                              | (mtmp.mintrinsics | 0)) & intrinsic;
-    mtmp.mintrinsics = (mtmp.mintrinsics | 0) | intrinsic;
-    if (canseemon(mtmp) && !alreadyIntrinsic)
-        await pline(Monnam(mtmp) + ' ' + msg);
-}
-
-async function monster_givit(mtmp, ptr) {
-    const prop = monster_corpse_intrinsic(ptr);
     if (DEADMONSTER(mtmp))
         return;
-    if (ptr.pmidx === PMNAMES.PM_STALKER) {
-        note_unported_mon('m_consume_obj:stalker_invisibility');
+
+    if (ptr === game.mons[PMNAMES.PM_STALKER]) {
+        /*
+         * Invisible stalker isn't flagged as conferring invisibility
+         * so prop is 0.  For hero, eating a stalker corpse confers
+         * temporary invisibility if hero is visible.  When already
+         * invisible, if confers permanent invisibility and also
+         * permanent see invisible.  For monsters, only permanent
+         * invisibility is possible; temporary invisibility and see
+         * invisible aren't implemented for them.
+         *
+         * A monster being invisible gains no benefit against other
+         * monsters, and an invisible pet when hero can't see invisible
+         * is a nuisance at best, so this is probably detrimental.
+         * Players will just have to live with it if they want to be
+         * able to have pets gain intrinsics from eating corpses.
+         */
+        if (!mtmp.perminvis || mtmp.invis_blkd) {
+            const mtmpbuf = Monnam(mtmp);
+
+            mon_set_minvis(mtmp, false);
+            if (vis)
+                await pline_mon(mtmp, `${mtmpbuf} ${
+                      !canspotmon(mtmp) ? 'vanishes'
+                      : mtmp.invis_blkd ? 'seems to flicker'
+                        : 'becomes invisible'}.`);
+        }
+        mtmp.mstun = 1; /* no timeout but will eventually wear off */
         return;
     }
-    if (prop && monster_should_givit(prop, ptr))
-        await monster_give_prop(mtmp, prop);
+
+    if (prop === 0)
+        return; /* no intrinsic from this corpse */
+
+    if (!should_givit(prop, ptr))
+        return; /* failed die roll */
+
+    const msgbox = { v: null };
+    mon_give_prop(mtmp, prop, msgbox);
+    if (msgbox.v)
+        await pline_mon(mtmp, msgbox.v);
 }
 
 // src/muse.c:2872 mcureblindness(), used by monster food effects.
@@ -933,86 +1063,117 @@ export async function mcureblindness(mon, verbose) {
 //
 // Wraith growth, polyfood, and ordinary corpse resistance conveyance are
 // implemented. The remaining special food effects stay explicitly recorded.
+// src/mon.c:1354 meatbox(); contents of eaten containers become engulfed or
+// dropped onto the floor; this is arbitrary, but otherwise g-cubes are too
+// powerful
+async function meatbox(mon, otmp) {
+    const engulf_contents = (mon.data === game.mons[PMNAMES.PM_GELATINOUS_CUBE]);
+    const x = mon.mx, y = mon.my;
+    let cobj;
+
+    if (!Has_contents(otmp) || !isok(x, y))
+        return;
+
+    if (!engulf_contents && cansee(x, y)) {
+        await pline(`${s_suffix(The(distant_name(otmp, xname)))} contents spill out onto the ${
+              surface(x, y)}.`);
+    }
+    while ((cobj = (otmp.cobj && otmp.cobj[0])) != null) {
+        obj_extract_self(cobj);
+        if (otmp.otyp === ONAMES.ICE_BOX)
+            removed_from_icebox(cobj);
+        if (engulf_contents) {
+            await mpickobj(mon, cobj);
+        } else {
+            if (!(await flooreffects(cobj, x, y, '')))
+                place_object(cobj, x, y);
+        }
+    }
+}
+
+// src/mon.c:1392 m_consume_obj(); Monster mtmp consumes an object.
+// Monster may die, polymorph, grow up, heal, etc; meating is not changed.
+// Object is extracted from any linked list and freed.
 export async function m_consume_obj(mtmp, otmp) {
     const ispet = mtmp.mtame;
-    const vis = canseemon(mtmp);
 
     /* non-pet: Heal up to the object's weight in hp */
-    if (!ispet && mtmp.mhp < mtmp.mhpmax)
+    if (!ispet && mtmp.mhp < mtmp.mhpmax) {
         healmon(mtmp, game.objects[otmp.otyp].oc_weight, 0);
-
-    if (otmp.cobj && otmp.cobj.length) {
-        note_unported_mon('m_consume_obj:meatbox');
-        return;
     }
+    if (Has_contents(otmp))
+        await meatbox(mtmp, otmp);
+    if (otmp === game.u.uball) {
+        unpunish();
+        delobj(otmp);
+    } else if (otmp === game.u.uchain) {
+        unpunish(); /* frees uchain */
+    } else {
+        let deadmimic, slimer;
+        let poly, grow, heal, eyes, mstone;
+        const vis = canseemon(mtmp);
+        const corpsenm = (otmp.otyp === ONAMES.CORPSE ? otmp.corpsenm : NON_PM);
 
-    const corpsenm = (otmp.otyp === ONAMES.CORPSE) ? otmp.corpsenm : NON_PM;
-    const has_effects = (corpsenm !== NON_PM
-                         || otmp.otyp === ONAMES.GLOB_OF_GREEN_SLIME
-                         || otmp.otyp === ONAMES.EGG
-                         || otmp.otyp === ONAMES.CARROT);
-    const foodCorpse = otmp.otyp === ONAMES.CORPSE
-        || otmp.otyp === ONAMES.EGG || otmp.otyp === ONAMES.TIN;
-    const effectpm = foodCorpse ? otmp.corpsenm : NON_PM;
+        deadmimic = (otmp.otyp === ONAMES.CORPSE && (corpsenm === PMNAMES.PM_SMALL_MIMIC
+                                                    || corpsenm === PMNAMES.PM_LARGE_MIMIC
+                                                    || corpsenm === PMNAMES.PM_GIANT_MIMIC));
+        slimer = (otmp.otyp === ONAMES.GLOB_OF_GREEN_SLIME);
+        poly = polyfood(otmp);
+        grow = mlevelgain(otmp);
+        heal = mhealup(otmp);
+        eyes = (otmp.otyp === ONAMES.CARROT);
+        mstone = mstoning(otmp);
+        delobj(otmp); /* munch */
+        if (poly || slimer) {
+            const ptr = slimer ? game.mons[PMNAMES.PM_GREEN_SLIME] : null;
 
-    /* src/mon.c — C computes polyfood/mlevelgain/mhealup/mstoning (all pure
-       predicates, no draws), then calls delobj() UNCONDITIONALLY, and only
-       then applies the consequences. This used to return before delobj on the
-       corpse arm, so the corpse was never eaten: seed0030's kitten "ate" the
-       same newt corpse at step 30 and again at step 33, and the level's object
-       count never dropped. The effects still need newcham/grow_up/monstone/
-       mon_givit and are recorded, but the object must go either way. */
-    delobj(otmp); /* munch */
-
-    if (effectpm === PMNAMES.PM_WRAITH) {
-        if ((!ispet
-             || mtmp.m_lev < mtmp.data.mlevel + 15))
-            grow_up(mtmp, null);
-        return;
+            await newcham(mtmp, ptr, vis ? NC_SHOW_MSG : NO_NC_FLAGS);
+        }
+        if (grow) {
+            if ((ispet && mtmp.m_lev < mtmp.data.mlevel + 15)
+                || !ispet)
+                await grow_up(mtmp, null);
+        }
+        if (mstone) {
+            if (poly_when_stoned(mtmp.data)) {
+                await mon_to_stone(mtmp);
+            } else if (!resists_ston(mtmp)) {
+                if (vis)
+                    await pline_mon(mtmp, `${Monnam(mtmp)} turns to stone!`);
+                await monstone(mtmp);
+            }
+        }
+        if (heal)
+            healmon(mtmp, mtmp.mhpmax, 0);
+        if ((eyes || heal) && !mtmp.mcansee)
+            await mcureblindness(mtmp, canseemon(mtmp));
+        if (ispet && deadmimic)
+            await quickmimic(mtmp);
+        /* otmp->otyp is read after delobj() in the C; the value is intact */
+        if (otmp.otyp === ONAMES.EGG && corpsenm === PMNAMES.PM_PYROLISK)
+            await explode(mtmp.mx, mtmp.my, -11, d(3, 6), 0, EXPL_FIERY);
+        if (corpsenm !== NON_PM)
+            await mon_givit(mtmp, game.mons[corpsenm]);
     }
+}
 
-    const corpseptr = game.mons[corpsenm];
-    const effectptr = game.mons[effectpm];
-    const polyfood = effectptr
-        && ((effectptr.mflags2 & MFLAGS.M2_SHAPESHIFTER)
-            || dmgtype(effectptr, ATTKS.AD_POLY));
-    const deadmimic = otmp.otyp === ONAMES.CORPSE
-        && (corpsenm === PMNAMES.PM_SMALL_MIMIC
-            || corpsenm === PMNAMES.PM_LARGE_MIMIC
-            || corpsenm === PMNAMES.PM_GIANT_MIMIC);
-    if (polyfood) {
-        await newcham(mtmp, null, vis ? NC_SHOW_MSG : 0);
-        if (corpseptr)
-            await monster_givit(mtmp, corpseptr);
-        return;
-    }
-
-    if (otmp.otyp === ONAMES.CARROT) {
-        await mcureblindness(mtmp, canseemon(mtmp));
-        return;
-    }
-
-    if (otmp.otyp === ONAMES.GLOB_OF_GREEN_SLIME) {
-        await newcham(mtmp, game.mons[PMNAMES.PM_GREEN_SLIME],
-                      vis ? NC_SHOW_MSG : 0);
-        return;
-    }
-
-    const specialEffect = effectpm === PMNAMES.PM_NURSE
-        || (effectptr
-            && (touch_petrifies(effectptr)
-                || effectpm === PMNAMES.PM_MEDUSA))
-        || deadmimic
-        || (otmp.otyp === ONAMES.EGG
-            && effectpm === PMNAMES.PM_PYROLISK);
-
-    if (corpseptr && !specialEffect)
-        return monster_givit(mtmp, corpseptr);
-
-    if (has_effects) {
-        if (specialEffect)
-            note_unported_mon('m_consume_obj:corpse_effects');
-        return;
+// src/mon.c:3760 mon_to_stone(); changes the monster into a stone monster
+// of the same type; this should only be called when poly_when_stoned() is
+// true
+export async function mon_to_stone(mtmp) {
+    if (mtmp.data.mlet === MONSYMS.S_GOLEM) {
+        /* it's a golem, and not a stone golem */
+        if (canseemon(mtmp))
+            await pline_mon(mtmp, `${Monnam(mtmp)} solidifies...`);
+        if (await newcham(mtmp, game.mons[PMNAMES.PM_STONE_GOLEM], NO_NC_FLAGS)) {
+            if (canseemon(mtmp))
+                await pline(`Now it's ${an(pmname(mtmp.data, Mgender(mtmp)))}.`);
+        } else {
+            if (canseemon(mtmp))
+                await pline('... and returns to normal.');
+        }
+    } else {
+        /* impossible("Can't polystone %s!", a_monnam(mtmp)) */
     }
 }
 
@@ -1211,6 +1372,262 @@ export { touch_artifact };
 import { pick_nasty, mon_has_amulet } from './wizard.js';
 import { tt_doppel } from './topten.js';
 import { rloc_to } from './teleport.js';
+import { unique_corpstat } from './mondata.js';
+import { is_reviver } from './mondata.js';
+import { flesh_petrifies } from './mondata.js';
+import { s_suffix } from './hacklib.js';
+import { obj_nexto } from './mkobj.js';
+import { obj_meld } from './mkobj.js';
+import { pudding_merge_message } from './mkobj.js';
+import { free_mgivenname } from './do_name.js';
+import { oname } from './do_name.js';
+import { safe_oname } from './do_name.js';
+import { bury_an_obj } from './dig.js';
+import { bypass_obj } from './worn.js';
+import { has_mgivenname } from './const.js';
+import { MGIVENNAME } from './const.js';
+import { ONAME_NO_FLAGS } from './const.js';
+import { is_golem } from './makemon.js';
+import { STOMACH } from './const.js';
+import { KILLED_BY_AN } from './const.js';
+import { Mgender } from './const.js';
+import { There } from './pline.js';
+import { body_part } from './polyself.js';
+import { pmname } from './do_name.js';
+import { losehp } from './hack.js';
+import { is_waterwall } from './dbridge.js';
+import { can_teleport } from './mondata.js';
+import { on_fire } from './mondata.js';
+import { Flying } from './youprop.js';
+import { Levitation } from './youprop.js';
+import { split_mon } from './potion.js';
+import { dryup } from './fountain.js';
+import { water_damage_chain } from './trap.js';
+import { fire_damage_chain } from './trap.js';
+import { hliquid } from './do_name.js';
+import { IS_FOUNTAIN } from './const.js';
+import { corpse_intrinsic } from './eat.js';
+import { should_givit } from './eat.js';
+import { mon_set_minvis } from './worn.js';
+import { EXPL_FIERY } from './const.js';
+import { xname } from './objnam.js';
+import { an } from './objnam.js';
+import { removed_from_icebox } from './pickup.js';
+import { flooreffects } from './do.js';
+import { unpunish } from './read.js';
+import { poly_when_stoned } from './mondata.js';
+import { quickmimic } from './dogmove.js';
+import { explode } from './explode.js';
+import { ghod_hitsu } from './priest.js';
+import { p_coaligned } from './priest.js';
+import { del_engr_at } from './engrave.js';
+import { pline_The } from './pline.js';
+import { verbalize } from './pline.js';
+import { is_watch } from './mondata.js';
+import { quest_info } from './questpgr.js';
+import { NEUTRAL } from './const.js';
+import { vtense } from './objnam.js';
+import { XKILL_NOCONDUCT } from './const.js';
+import { EDOG } from './const.js';
+import { OBJ_BURIED } from './const.js';
+import { artifact_exists } from './artifact.js';
+import { accessible } from './monmove.js';
+import { spoteffects } from './hack.js';
+import { sgn } from './hacklib.js';
+import { livelog_printf } from './pline.js';
+import { LL_CONDUCT } from './const.js';
+import { LL_KILLEDPET } from './const.js';
+import { uhis } from './mhitu.js';
+import { shieldeff } from './display.js';
+import { mdrop_special_objs } from './steal.js';
+import { migrate_to_level } from './dog.js';
+import { MIGR_RANDOM } from './const.js';
+import { MON_ENDGAME_MIGR } from './const.js';
+import { is_home_elemental } from './makemon.js';
+import { control_mon_tele } from './teleport.js';
+import { MON_OFFMAP } from './const.js';
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1294,15 +1711,6 @@ function cant_squeeze_thru(mon) {
 /* include/mondata.h:31 — ghosts */
 
 
-
-// Records an unported call by name. Returns FALSE explicitly, not undefined,
-// because several call sites use it in boolean position (seemimic's
-// is_blocker_appear, growl's verb lookup) and relying on undefined being
-// falsy there would read as an accident rather than a decision.
-function note_unported_mon(what) {
-    (game.unported ||= new Set()).add(what);
-    return false;
-}
 
 // ---------------------------------------------------------------------------
 // The predicates mfndpos() consults. All from include/mondata.h and
@@ -1443,7 +1851,7 @@ export function mm_displacement(magr, mdef) {
 
 // src/mon.c:362 zombie_maker() — by CLASS, not by flag. There is no
 // M3_ZOMBIFIER; reading one gave undefined and the predicate was always false.
-function zombie_maker(mon) {
+export function zombie_maker(mon) {
     const pm = mon.data;
     if (mon.mcan) return false;
     if (pm.mlet === MONSYMS.S_ZOMBIE)
@@ -1807,8 +2215,8 @@ export async function wakeup(mtmp, via_attack) {
             await growl(mtmp);
         await setmangry(mtmp, true);
         if (was_peaceful) {
-            if (mtmp.ispriest && in_rooms(mtmp.mx, mtmp.my, TEMPLE)?.length)
-                note_unported_mon('wakeup:ghod_hitsu');
+            if (mtmp.ispriest && in_rooms(mtmp.mx, mtmp.my, TEMPLE).length)
+                await ghod_hitsu(mtmp);
             if (mtmp.isshk && !(game.u?.ushops || '').length)
                 hot_pursuit(mtmp);
         }
@@ -1818,27 +2226,29 @@ export async function wakeup(mtmp, via_attack) {
 // src/mon.c:4143 qst_guardians_respond(). Quest guardians sense an attack on
 // their leader even without line of sight. Visibility controls only the one
 // summary message.
+// even if they can't see it
 async function qst_guardians_respond() {
-    const guardnum = guardnum_of_urole();
-    let visible = 0;
+    const q_guardian = game.mons[quest_info(MSOUND.MS_GUARDIAN)];
+    let got_mad = 0;
 
-    for (const mon of (game.level?.monsters || [])) {
-        if (DEADMONSTER(mon) || mon.mnum !== guardnum || !mon.mpeaceful)
+    for (const mon of [...(game.level?.monsters || [])]) {
+        if (DEADMONSTER(mon))
             continue;
-        mon.mpeaceful = 0;
-        if (canseemon(mon))
-            ++visible;
+        if (mon.data === q_guardian && mon.mpeaceful) {
+            mon.mpeaceful = 0;
+            if (canseemon(mon))
+                ++got_mad;
+        }
     }
-    if (visible && !Hallucination()) {
-        let who = game.mons[guardnum]?.pmnames?.[2]
-            ?? game.mons[guardnum]?.pmnames?.[0]
-            ?? game.mons[guardnum]?.pmnames?.[1]
-            ?? 'guardian';
-        if (visible > 1)
+    if (got_mad && !Hallucination()) {
+        let who = q_guardian.pmnames[NEUTRAL];
+
+        if (got_mad > 1)
             who = makeplural(who);
-        await pline(`The ${who} ${visible > 1 ? 'appear' : 'appears'} to be angry too...`);
+        await pline_The(`${who} ${vtense(who, 'appear')} to be angry too...`);
     }
 }
+
 
 const is_watch_mon = (mon) =>
     mon.mnum === PMNAMES.PM_WATCHMAN
@@ -1885,80 +2295,93 @@ export async function angry_guards(silent) {
 // src/mon.c:4168 peacefuls_respond(). Eligible bystanders react in monster
 // list order. Keeping each short-circuit and draw in C order is essential.
 async function peacefuls_respond(mtmp) {
-    const guardnum = guardnum_of_urole();
-    const leadernum = leadernum_of_urole();
+    const mndx = monsndx(mtmp.data);
 
-    for (const mon of (game.level?.monsters || [])) {
-        const ptr = game.mons[mon.mnum];
-        if (mon === mtmp || DEADMONSTER(mon) || mindless(ptr)
-            || !mon.mpeaceful || !couldsee(mon.mx, mon.my)
-            || mon.msleeping || !mon.mcansee || !m_canseeu(mon))
+    for (const mon of [...(game.level?.monsters || [])]) {
+        if (DEADMONSTER(mon))
             continue;
+        if (mon === mtmp) /* the mpeaceful test catches this since mtmp */
+            continue;     /* is no longer peaceful, but be explicit...  */
 
-        if (humanoid(ptr) || mon.isshk || mon.ispriest) {
-            if (is_watch_mon(mon)) {
-                await pline('"Halt!  You\'re under arrest!"');
-                await angry_guards(Deaf());
-                continue;
-            }
+        if (!mindless(mon.data) && mon.mpeaceful
+            && couldsee(mon.mx, mon.my) && !mon.msleeping
+            && mon.mcansee && m_canseeu(mon)) {
+            let buf;
+            let exclaimed = false, needpunct = false, alreadyfleeing;
 
-            let line = '';
-            let exclaimed = false;
-            let needsPunctuation = false;
-            if (!Deaf() && !rn2(5)) {
-                const gasp = maybe_gasp(mon);
-                if (gasp) {
-                    if (gasp.toLowerCase().startsWith('gasp')) {
-                        line = `${Monnam(mon)} gasps`;
-                        needsPunctuation = true;
-                    } else {
-                        line = `${Monnam(mon)} exclaims "${gasp}"`;
-                    }
-                    exclaimed = true;
-                }
-            }
-
-            if (mon.isshk || mon.ispriest
-                || (mon.mnum === leadernum && mtmp.mnum !== guardnum)) {
-                if (exclaimed)
-                    await pline(`${line} then shrugs.`);
-                continue;
-            }
-
-            if (ptr.mlevel < rn2(10) && mon.mnum !== guardnum) {
-                const alreadyFleeing = !!(mon.mflee || mon.mfleetim);
-                await monflee(mon, rn2(50) + 25, true, !exclaimed);
-                if (exclaimed) {
-                    if (game.flags?.verbose !== false && !alreadyFleeing) {
-                        line += ' and then turns to flee.';
-                        needsPunctuation = false;
-                    }
+            buf = '';
+            if (humanoid(mon.data) || mon.isshk || mon.ispriest) {
+                if (is_watch(mon.data)) {
+                    /* SetVoice(mon, 0, 80, 0); */
+                    await verbalize("Halt!  You're under arrest!");
+                    await angry_guards(!!Deaf());
                 } else {
-                    exclaimed = true;
+                    if (!Deaf() && !rn2(5)) {
+                        const gasp = maybe_gasp(mon);
+
+                        if (gasp) {
+                            if (gasp.slice(0, 4).toLowerCase() === 'gasp') {
+                                buf = `${Monnam(mon)} gasps`;
+                                needpunct = true;
+                            } else {
+                                buf = `${Monnam(mon)} exclaims "${gasp}"`;
+                            }
+                            exclaimed = true;
+                        }
+                    }
+                    /* shopkeepers and temple priests might gasp in
+                       surprise, but they won't become angry here;
+                       quest leader will only get angry if hero attacks
+                       own quest guardians */
+                    if (mon.isshk || mon.ispriest
+                        || (mon.data === game.mons[quest_info(MSOUND.MS_LEADER)]
+                            && mtmp.data !== game.mons[game.urole.guardnum])) {
+                        if (exclaimed)
+                            await pline_mon(mon, `${buf} then shrugs.`);
+                        continue;
+                    }
+
+                    if (mon.data.mlevel < rn2(10)
+                        /* don't have quest guardians turn to flee */
+                        && (mon.data !== game.mons[game.urole.guardnum])) {
+                        alreadyfleeing = (mon.mflee || mon.mfleetim);
+                        await monflee(mon, rn2(50) + 25, true, !exclaimed);
+                        if (exclaimed) {
+                            if (game.flags?.verbose !== false && !alreadyfleeing) {
+                                buf += ' and then turns to flee.';
+                                needpunct = false;
+                            }
+                        } else
+                            exclaimed = true; /* got msg from monflee() */
+                    }
+                    if (buf)
+                        await pline_mon(mon, `${buf}${needpunct ? '.' : ''}`);
+                    if (mon.mtame) {
+                        ; /* mustn't set mpeaceful to 0 as below;
+                           * perhaps reduce tameness? */
+                    } else {
+                        mon.mpeaceful = 0;
+                        mon.mstrategy &= ~STRAT_WAITMASK;
+                        await adjalign(-1);
+                        if (!exclaimed)
+                            await pline_mon(mon, `${Monnam(mon)} gets angry!`);
+                    }
                 }
-            }
-            if (line)
-                await pline(`${line}${needsPunctuation ? '.' : ''}`);
-            if (!mon.mtame) {
-                mon.mpeaceful = 0;
-                mon.mstrategy &= ~STRAT_WAITMASK;
-                adjalign(-1);
-                if (!exclaimed)
-                    await pline(`${Monnam(mon)} gets angry!`);
-            }
-        } else if (ptr.mlet === game.mons[mtmp.mnum].mlet
-                   && big_little_match(mtmp.mnum, mon.mnum) && !rn2(3)) {
-            let exclaimed = false;
-            if (!rn2(4)) {
-                (game.iflags ||= {}).last_msg = PLNMSG_UNKNOWN;
-                await growl(mon);
-                exclaimed = game.iflags.last_msg === PLNMSG_GROWL;
-            }
-            if (rn2(6)) {
-                const alreadyFleeing = !!(mon.mflee || mon.mfleetim);
-                await monflee(mon, rn2(25) + 15, true, !exclaimed);
-                if (exclaimed && !alreadyFleeing)
-                    await pline('And then starts to flee.');
+            } else if (mon.data.mlet === mtmp.data.mlet
+                       && big_little_match(mndx, monsndx(mon.data))
+                       && !rn2(3)) {
+                if (!rn2(4)) {
+                    await growl(mon);
+                    exclaimed = (game.iflags?.last_msg === PLNMSG_GROWL);
+                }
+                if (rn2(6)) {
+                    alreadyfleeing = (mon.mflee || mon.mfleetim);
+                    await monflee(mon, rn2(25) + 15, true, !exclaimed);
+                    if (exclaimed && !alreadyfleeing)
+                        /* word like a separate sentence so that we
+                           don't have to poke around inside growl() */
+                        await pline('And then starts to flee.');
+                }
             }
         }
     }
@@ -1980,42 +2403,60 @@ async function peacefuls_respond(mtmp) {
 // subsystem, which is not ported, so no engraving exists to stand on and the
 // branch is unreachable today -- that is the honest state, not a stub: when
 // engravings land the condition starts being true on its own.
-export async function setmangry(mtmp, via_attack, suppress_primary_message = false) {
-    if (via_attack && sengr_at("Elbereth", game.u.ux, game.u.uy, true)
+export async function setmangry(mtmp, via_attack) {
+    if (via_attack && sengr_at('Elbereth', game.u.ux, game.u.uy, true)
+        /* only hypocritical if monster is vulnerable to Elbereth (or
+           peaceful--not vulnerable but attacking it is hypocritical) */
         && (onscary(game.u.ux, game.u.uy, mtmp) || mtmp.mpeaceful)) {
-        /* unreachable until the engraving subsystem is ported */
-        adjalign((game.u.ualign.record > 5) ? -5 : -rnd(5));
-        note_unported_mon('setmangry:del_engr_at');
+        await You_feel('like a hypocrite.');
+        /* AIS: Yes, I know alignment penalties and bonuses aren't balanced
+           at the moment. This is about correct relative to other "small"
+           penalties; it should be fairly large, as attacking while standing
+           on an Elbereth means that you're requesting peace and then
+           violating your own request. I know 5 isn't actually large, but
+           it's intentionally larger than the 1s and 2s that are normally
+           given for this sort of thing. */
+        /* reduce to 3 (average) when alignment is already very low */
+        await adjalign((game.u.ualign.record > 5) ? -5 : -rnd(5));
+
+        if (!Blind())
+            await pline('The engraving beneath you fades.');
+        del_engr_at(game.u.ux, game.u.uy);
     }
 
+    /* AIS: Should this be in both places, or just in wakeup()? */
     mtmp.mstrategy &= ~STRAT_WAITMASK;
     if (!mtmp.mpeaceful)
         return;
+    /* [FIXME: this logic seems wrong; peaceful humanoids gasp or exclaim
+       when they see you attack a peaceful monster but they just casually
+       look the other way when you attack a pet?] */
     if (mtmp.mtame)
         return;
     mtmp.mpeaceful = 0;
     if (mtmp.ispriest) {
-        if (game.p_coaligned?.(mtmp))
-            adjalign(-5); /* very bad */
+        if (p_coaligned(mtmp))
+            await adjalign(-5); /* very bad */
         else
-            adjalign(2);
+            await adjalign(2);
     } else
-        adjalign(-1); /* attacking peaceful monsters is bad */
-    if (humanoid(game.mons[mtmp.mnum]) || mtmp.isshk || mtmp.isgd) {
-        if (!suppress_primary_message && couldsee(mtmp.mx, mtmp.my))
-            await pline(`${Monnam(mtmp)} gets angry!`);
-    } else if (!suppress_primary_message) {
+        await adjalign(-1); /* attacking peaceful monsters is bad */
+    if (humanoid(mtmp.data) || mtmp.isshk || mtmp.isgd) {
+        if (couldsee(mtmp.mx, mtmp.my))
+            await pline_mon(mtmp, `${Monnam(mtmp)} gets angry!`);
+    } else {
         await growl(mtmp);
     }
 
-    /* attacking your own quest leader angers his or her guardians */
-    if (mtmp.mnum === leadernum_of_urole())
+    /* attacking your own quest leader will anger his or her guardians */
+    if (mtmp.data === game.mons[quest_info(MSOUND.MS_LEADER)])
         await qst_guardians_respond();
 
     /* make other peaceful monsters react */
     if (!game.context?.mon_moving)
         await peacefuls_respond(mtmp);
 }
+
 
 // src/mon.c:5971 see_monster_closeup(), remember first close sightings and
 // photographs. Tourists receive ordinary monster experience for a first
@@ -2077,169 +2518,263 @@ export async function killed(mtmp) {
 // order matters because three of those draw. Petrification and the murder
 // penalty are live; the remaining engulfer, quest leader, priest, and
 // shopkeeper branches stay recorded where they are not yet ported.
-export async function xkilled(mtmp, xkill_flags) {
+export async function xkilled(mtmp, xkill_flags) /* 1: suppress mesg, 2: suppress corpse, 4: pacifist */
+{
+    let tmp, mndx;
     const x = mtmp.mx, y = mtmp.my;
+    let mdat;
+    let otmp;
+    let t;
+    let be_sad;
+    const wasinside = engulfing_u(mtmp);
+    let burycorpse = false;
     const nomsg = (xkill_flags & XKILL_NOMSG) !== 0;
     let nocorpse = (xkill_flags & XKILL_NOCORPSE) !== 0;
+    const noconduct = (xkill_flags & XKILL_NOCONDUCT) !== 0;
+    let cleanup = false;
 
     /* potential pet message; always clear global flag */
-    const be_sad = game.iflags?.sad_feeling;
-    if (game.iflags) game.iflags.sad_feeling = false;
+    be_sad = !!game.iflags?.sad_feeling;
+    (game.iflags ||= {}).sad_feeling = false;
 
     mtmp.mhp = 0; /* caller will usually have already done this */
-
-    /* src/mon.c:3499 — KMH, conduct: the first kill is chronicled */
-    if (!(xkill_flags & 0x4 /* XKILL_NOCONDUCT */)) {
+    if (!noconduct) { /* KMH, conduct */
         game.u.uconduct ||= {};
-        if (!game.u.uconduct.killer) {
-            const { livelog_add } = await import('./pline.js');
-            livelog_add('killed for the first time');
-        }
+        /* if (!u.uconduct.killer++): an unset counter is 0 here, not NaN */
         game.u.uconduct.killer = (game.u.uconduct.killer | 0) + 1;
+        if (game.u.uconduct.killer === 1)
+            livelog_printf(LL_CONDUCT, 'killed for the first time');
     }
-
-    if (engulfing_u(mtmp))
-        note_unported_mon('xkilled:wasinside');
-
     if (!nomsg) {
-        const namedpet = mtmp.mgivenname && !game.u.uprops?.HALLUC;
-        await You(`${nonliving(game.mons[mtmp.mnum]) ? 'destroy' : 'kill'} ${
-            !canspotmon(mtmp) ? 'it'
+        const namedpet = has_mgivenname(mtmp) && !Hallucination();
+
+        await You(`${nonliving(mtmp.data) ? 'destroy' : 'kill'} ${
+            !(wasinside || canspotmon(mtmp)) ? 'it'
               : !mtmp.mtame ? mon_nam(mtmp)
                 : x_monnam(mtmp, namedpet ? ARTICLE_NONE : ARTICLE_THE,
                            'poor', namedpet ? SUPPRESS_SADDLE : 0, false)}!`);
     }
 
-    if (mtmp.mtrapped) {
-        const t = t_at(x, y);
-        if (t && is_pit(t.ttyp)) {
-            if (sobj_at(ONAMES.BOULDER, x, y))
-                nocorpse = true;
-            if (m_carrying(mtmp, ONAMES.BOULDER))
-                note_unported_mon('xkilled:burycorpse');
-        }
+    if (mtmp.mtrapped && (t = t_at(x, y)) != null && is_pit(t.ttyp)) {
+        if (sobj_at(ONAMES.BOULDER, x, y))
+            nocorpse = true; /* Prevent corpses/treasure being created
+                              * "on top" of boulder that is about to fall in.
+                              * This is out of order, but cannot be helped
+                              * unless this whole routine is rearranged. */
+        if (m_carrying(mtmp, ONAMES.BOULDER))
+            burycorpse = true;
     }
 
     /* your pet knows who just killed it...watch out */
-    if (mtmp.mtame && !mtmp.isminion && mtmp.edog)
-        mtmp.edog.killed_by_u = 1;
+    if (mtmp.mtame && !mtmp.isminion)
+        EDOG(mtmp).killed_by_u = 1;
 
+    if (wasinside && game.thrownobj && game.thrownobj !== game.u.uball
+        /* don't give to mon if missile is going to be destroyed */
+        && game.thrownobj.oclass !== OCLASSES.POTION_CLASS
+        /* don't give to mon if missile is going to return to hero */
+        && game.thrownobj !== game.iflags?.returning_missile) {
+        /* thrown object has killed hero's engulfer; add it to mon's
+           inventory now so that it will be placed with mon's other
+           stuff prior to lookhere/autopickup when hero is expelled
+           below (as a side-effect, this missile has immunity from
+           being consumed [for this shot/throw only]) */
+        await mpickobj(mtmp, game.thrownobj);
+        /* let throwing code know that missile has been disposed of */
+        game.thrownobj = null;
+    }
+
+    game.vamp_rise_msg = false; /* might get set in mondead(); checked below */
+    game.disintegested = nocorpse; /* alternate vamp_rise mesg needed if true */
     /* dispose of monster and make cadaver */
-    const was_stoned = !!game.stoned;
-    if (was_stoned)
+    if (game.stoned)
         await monstone(mtmp);
     else
         await mondead(mtmp);
+    game.disintegested = false; /* reset */
+
+    if (!DEADMONSTER(mtmp)) { /* monster lifesaved */
+        /* Cannot put the non-visible lifesaving message in
+         * lifesaved_monster() since the message appears only when _you_
+         * kill it (as opposed to visible lifesaving which always appears).
+         */
+        game.stoned = false;
+        if (!cansee(x, y) && !game.vamp_rise_msg)
+            await pline('Maybe not...');
+        return;
+    }
 
     if (be_sad)
         await You('have a sad feeling for a moment, then it passes.');
 
-    const mdat = game.mons[mtmp.mnum]; /* mondead can change mtmp->data */
-    const mndx = mtmp.mnum;
+    mdat = mtmp.data; /* note: mondead can change mtmp->data */
+    mndx = monsndx(mdat);
 
-    if (!was_stoned && !nocorpse
-        && (ACCESSIBLE(game.level?.at(x, y)?.typ) || is_pool(x, y))) {
-        /* illogical but traditional "treasure drop" */
-        if (!rn2(6) && !((game.mvitals?.[mndx]?.mvflags ?? 0) & MC_G_NOCORPSE)
-            /* no extra item from swallower or steed */
-            && (x !== game.u.ux || y !== game.u.uy)
-            /* no extra item from kops--too easy to abuse */
-            && mdat.mlet !== MONSYMS.S_KOP
-            /* no items from cloned monsters */
-            && !mtmp.mcloned) {
-            const otmp = mkobj(OCLASSES.RANDOM_CLASS, true);
-            /* don't create large objects from small monsters */
-            const otyp = otmp.otyp;
-            if (otmp.oclass === OCLASSES.FOOD_CLASS && !(mdat.mflags2 & MFLAGS.M2_COLLECT)
-                && !otmp.oartifact) {
-                /* newly created permafood from kills makes too much
-                   nutrition in the late game */
-                delobj(otmp);
-            } else if (mdat.msize < MZ_HUMAN && otyp !== ONAMES.FIGURINE
-                       && (otmp.owt > 30 || game.objects[otyp].oc_big)) {
-                delobj(otmp);
-            } else {
-                /* flooreffects(otmp, x, y, "fall") is recorded; on ordinary
-                   floor it is false and the object simply lands */
-                place_object(otmp, x, y);
-                stackobj(otmp);
-            }
-        }
-        /* corpse--none if hero was inside the monster */
-        if (await corpse_chance(mtmp, null, false))
-            make_corpse(mtmp, CORPSTAT_NONE);
+    if (game.stoned) {
+        game.stoned = false;
+        cleanup = true;
     }
 
-    if (was_stoned) {
-        game.stoned = false;
-    } else {
+    if (!cleanup && (nocorpse || LEVEL_SPECIFIC_NOCORPSE(mdat)))
+        cleanup = true;
+
+    if (!cleanup) {
+        /* MAIL_STRUCTURES */
+        if (mdat === game.mons[PMNAMES.PM_MAIL_DAEMON]) {
+            stackobj(mksobj_at(ONAMES.SCR_MAIL, x, y, false, false));
+        }
+        if (accessible(x, y) || is_pool(x, y)) {
+            let cadaver;
+            let otyp;
+
+            /* illogical but traditional "treasure drop" */
+            if (!rn2(6) && !(game.mvitals[mndx].mvflags & MFLAGS.G_NOCORPSE)
+                /* no extra item from swallower or steed */
+                && (x !== game.u.ux || y !== game.u.uy)
+                /* no extra item from kops--too easy to abuse */
+                && mdat.mlet !== MONSYMS.S_KOP
+                /* no items from cloned monsters */
+                && !mtmp.mcloned) {
+                otmp = mkobj(OCLASSES.RANDOM_CLASS, true);
+                /* don't create large objects from small monsters */
+                otyp = otmp.otyp;
+                if (otmp.oclass === OCLASSES.FOOD_CLASS && !(mdat.mflags2 & MFLAGS.M2_COLLECT)
+                    && !otmp.oartifact) {
+                    /* don't drop newly created permafood from kills, unless
+                       the monster collects food; it creates too much nutrition
+                       in the late game and encourages grinding in the early
+                       game; oartifact check is paranoia and will be redundant
+                       until an artifact comestible is added */
+                    delobj(otmp);
+                } else if (mdat.msize < MZ_HUMAN && otyp !== ONAMES.FIGURINE
+                    /* oc_big is also oc_bimanual and oc_bulky */
+                    && (otmp.owt > 30 || game.objects[otyp].oc_big)) {
+                    if (otmp.oartifact) /* un-create */
+                        artifact_exists(otmp, safe_oname(otmp), false,
+                                        ONAME_NO_FLAGS);
+                    delobj(otmp);
+                } else if (!(await flooreffects(otmp, x, y, nomsg ? '' : 'fall'))) {
+                    place_object(otmp, x, y);
+                    stackobj(otmp);
+                }
+            }
+            /* corpse--none if hero was inside the monster */
+            if (!wasinside && await corpse_chance(mtmp, null, false)) {
+                game.zombify = (!game.thrownobj && !game.stoned && !game.u.uwep
+                                && zombie_maker(game.youmonst)
+                                && zombie_form(mtmp.data) !== NON_PM);
+                cadaver = await make_corpse(mtmp, burycorpse ? CORPSTAT_BURIED
+                                                             : CORPSTAT_NONE);
+                game.zombify = false; /* reset */
+                if (burycorpse && cadaver && cansee(x, y) && !mtmp.minvis
+                    && cadaver.where === OBJ_BURIED && !nomsg) {
+                    await pline(`${s_suffix(Monnam(mtmp))} corpse ends up buried.`);
+                }
+            }
+        }
+
+        if (wasinside) {
+            /* spoteffects() can end up clearing level of monsters; grab a copy */
+            /* museum = *mtmp; the reference copy: our object outlives the level */
+            await spoteffects(true); /* poor man's expels() */
+        }
         /* monster is gone, corpse or other object might now be visible */
         newsym(x, y);
     }
 
-    /* Punish murder of a non-hostile human by a lawful or neutral hero. */
+ /* cleanup: */
+    /*
+     * Punish bad behavior.
+     */
     if (is_human(mdat)
-        && !(mdat.mflags2 & MFLAGS.M2_HOSTILE)
-        && (mtmp.malign ?? 0) <= 0
+        && (!always_hostile(mdat) && mtmp.malign <= 0)
+        /* exclude role monsters */
         && (mndx < PMNAMES.PM_ARCHEOLOGIST || mndx > PMNAMES.PM_WIZARD)
+        /* exclude plain "human", which isn't flagged as always hostile;
+           it is rare and most likely to occur as the result of resurrecting
+           a corpse or animating a statue and usually will be hostile */
         && mndx !== PMNAMES.PM_HUMAN
+        /* only applicable if hero is lawful or neutral */
         && game.u.ualign.type !== A_CHAOTIC) {
-        const intrinsic = game.u.intrinsic ||= {};
-        intrinsic.HTelepat = (intrinsic.HTelepat | 0) & ~INTRINSIC;
+        (game.u.intrinsic ||= {}).HTelepat = (game.u.intrinsic.HTelepat | 0) & ~INTRINSIC;
         change_luck(-2);
         await You('murderer!');
-        if (Blind()
-            && !(intrinsic.HTelepat || game.u.uprops?.TELEPAT))
-            see_monsters();
+        if (Blind() && !Blind_telepat())
+            see_monsters(); /* Can't sense monsters any more. */
     }
-
     if ((mtmp.mpeaceful && !rn2(2)) || mtmp.mtame)
         change_luck(-1);
-    if (is_unicorn(mdat)
-        && sgn(game.u.ualign.type) === sgn(mdat.maligntyp)) {
+    if (is_unicorn(mdat) && sgn(game.u.ualign.type) === sgn(mdat.maligntyp)) {
         change_luck(-5);
         await You_feel('guilty...');
     }
 
     /* give experience points */
-    const tmp = experience(mtmp, game.mvitals?.[mndx]?.died ?? 0);
+    tmp = experience(mtmp, game.mvitals[mndx].died | 0);
     more_experienced(tmp, 0);
     await newexplevel(); /* will decide if you go up */
 
-    /* src/mon.c:3674: apply special-kill adjustments, then the malign value
-       fixed when the monster was created. */
-    const alignlim = 10 + Math.trunc((game.moves || 0) / 200);
-    if (mtmp.m_id === game.quest_status?.leader_m_id) {
-        adjalign(-(game.u.ualign.record + Math.trunc(alignlim / 2)));
-        game.u.ugangr = (game.u.ugangr || 0) + 7;
+    /* adjust alignment points */
+    if (mtmp.m_id === game.quest_status?.leader_m_id) { /* REAL BAD! */
+        await adjalign(-(game.u.ualign.record + Math.trunc(ALIGNLIM() / 2)));
+        game.u.ugangr = (game.u.ugangr | 0) + 7; /* instantly become "extremely" angry */
         change_luck(-20);
-        note_unported_mon('xkilled:quest_leader');
-    } else if (mdat.msound === MSOUND.MS_NEMESIS) {
+        await pline(`That was ${game.u.uevent?.qcompleted ? 'probably ' : ''}a bad idea...`);
+        if (!game.context?.mon_moving) {
+            /* iter_mons(anger_quest_guardians) */
+            for (const m of [...(game.level?.monsters || [])]) {
+                if (DEADMONSTER(m))
+                    continue;
+                await anger_quest_guardians(m);
+            }
+        }
+    } else if (mdat.msound === MSOUND.MS_NEMESIS) { /* Real good! */
         if (!game.quest_status?.killed_leader)
-            adjalign(Math.trunc(alignlim / 4));
-    } else if (mdat.msound === MSOUND.MS_GUARDIAN) {
-        adjalign(-Math.trunc(alignlim / 8));
-        game.u.ugangr = (game.u.ugangr || 0) + 1;
+            await adjalign(Math.trunc(ALIGNLIM() / 4));
+    } else if (mdat.msound === MSOUND.MS_GUARDIAN) { /* Bad */
+        await adjalign(-Math.trunc(ALIGNLIM() / 8));
+        game.u.ugangr = (game.u.ugangr | 0) + 1;
         change_luck(-4);
-        note_unported_mon('xkilled:guardian_message');
+        if (!Hallucination())
+            await pline('That was probably a bad idea...');
+        else
+            await pline('Whoopsie-daisy!');
     } else if (mtmp.ispriest) {
-        const palign = mtmp.epri?.shralign
-                    ?? mtmp.mextra?.epri?.shralign ?? A_NONE;
-        const coaligned = sgn(palign) === sgn(game.u.ualign.type);
-        adjalign(coaligned ? -2 : 2);
-        if (coaligned)
+        await adjalign((p_coaligned(mtmp)) ? -2 : 2);
+        /* cancel divine protection for killing your priest */
+        if (p_coaligned(mtmp))
             game.u.ublessed = 0;
         if (mdat.maligntyp === A_NONE)
-            adjalign(Math.trunc(alignlim / 4));
+            await adjalign(Math.trunc(ALIGNLIM() / 4)); /* BIG bonus */
     } else if (mtmp.mtame) {
-        adjalign(-15);
-        await You_hear(Hallucination()
-            ? 'the studio audience applaud!'
-            : 'the rumble of distant thunder...');
-    } else if (mtmp.mpeaceful) {
-        adjalign(-5);
-    }
-    adjalign(mtmp.malign || 0);
+        await adjalign(-15); /* bad!! */
+        /* your god is mighty displeased... */
+        if (!Hallucination()) {
+            /* Soundeffect(se_distant_thunder, 40); */
+            await You_hear('the rumble of distant thunder...');
+        } else {
+            /* Soundeffect(se_applause, 40); */
+            await You_hear('the studio audience applaud!');
+        }
+        if (!unique_corpstat(mdat)) {
+            const mname = has_mgivenname(mtmp);
+
+            livelog_printf(LL_KILLEDPET, `murdered ${mname ? MGIVENNAME(mtmp) : ''}${
+                           mname ? ', ' : ''}${uhis()} faithful ${pmname(mdat, Mgender(mtmp))}`);
+        }
+    } else if (mtmp.mpeaceful)
+        await adjalign(-5);
+
+    /* malign was already adjusted for u.ualign.type and randomization */
+    await adjalign(mtmp.malign);
+
+    return;
+}
+
+// src/mon.c:3072 anger_quest_guardians(); iter_mons() callback
+async function anger_quest_guardians(mtmp) {
+    if (mtmp.data === game.mons[game.urole.guardnum])
+        await setmangry(mtmp, true);
 }
 
 // src/mon.c:6058 shieldeff_mon() — the "resists!" flash.
@@ -2252,11 +2787,11 @@ export async function xkilled(mtmp, xkill_flags) {
 //
 // shieldeff (a display animation) and pline_mon are recorded; the cansee
 // structure is real.
-export function shieldeff_mon(mtmp) {
-    note_unported_mon('shieldeff_mon:shieldeff');
+export async function shieldeff_mon(mtmp) {
+    await shieldeff(mtmp.mx, mtmp.my);
     /* does not depend on seeing the monster; the shield effect is visible */
     if (cansee(mtmp.mx, mtmp.my))
-        note_unported_mon('shieldeff_mon:pline_resists');
+        await pline_mon(mtmp, `${Monnam(mtmp)} resists!`);
 }
 
 // src/mon.c:4322 wake_msg() — "%s wakes up!" when you see it happen.
@@ -2438,199 +2973,298 @@ export async function mpickstuff(mtmp) {
 /* include/monflag.h:201 — corpse-generation bits, via the MFLAGS table. */
 const { G_NOCORPSE: MC_G_NOCORPSE, G_FREQ: MC_G_FREQ } = MFLAGS;
 
-// src/mon.c:564 make_corpse() — drop the cadaver. The dragon-scale,
+// src/mon.c:564 await make_corpse() — drop the cadaver. The dragon-scale,
 // unicorn-horn, golem and mummy/zombie special arms record when such a
 // creature dies; the ordinary G_NOCORPSE-gated mkcorpstat path is real.
-export function make_corpse(mtmp, corpseflags) {
-    const mdat = game.mons[mtmp.mnum];
-    const mndx = mtmp.mnum;
-    const x = mtmp.mx, y = mtmp.my;
-    let corpstatflags = corpseflags;
-    let obj = null;
+export async function make_corpse(mtmp, corpseflags) {
+    const mdat = mtmp.data;
     let num;
+    let obj = null;
+    let otmp = null;
+    const x = mtmp.mx, y = mtmp.my;
+    const mndx = monsndx(mdat);
+    let corpstatflags = corpseflags;
+    const burythem = ((corpstatflags & CORPSTAT_BURIED) !== 0);
+    let default_1 = false;
 
     if (mtmp.female)
         corpstatflags |= CORPSTAT_FEMALE;
-    else if (!is_neuter(mdat))
+    else if (!is_neuter(mtmp.data))
         corpstatflags |= CORPSTAT_MALE;
 
-    const P = PMNAMES;
-    const in_range = (lo, hi) => mndx >= lo && mndx <= hi;
-    let default_1 = false;
-
-    if (in_range(P.PM_GRAY_DRAGON, P.PM_YELLOW_DRAGON)) {
-        /* dragon scales; relies on scales matching the dragon order */
+    switch (mndx) {
+    case PMNAMES.PM_GRAY_DRAGON:
+    case PMNAMES.PM_GOLD_DRAGON:
+    case PMNAMES.PM_SILVER_DRAGON:
+    case PMNAMES.PM_RED_DRAGON:
+    case PMNAMES.PM_ORANGE_DRAGON:
+    case PMNAMES.PM_WHITE_DRAGON:
+    case PMNAMES.PM_BLACK_DRAGON:
+    case PMNAMES.PM_BLUE_DRAGON:
+    case PMNAMES.PM_GREEN_DRAGON:
+    case PMNAMES.PM_YELLOW_DRAGON:
+        /* Make dragon scales.  This assumes that the order of the
+           dragons is the same as the order of the scales. */
         if (!rn2(mtmp.mrevived ? 20 : 3)) {
-            num = ONAMES.GRAY_DRAGON_SCALES + mndx - P.PM_GRAY_DRAGON;
+            num = ONAMES.GRAY_DRAGON_SCALES + monsndx(mdat) - PMNAMES.PM_GRAY_DRAGON;
             obj = mksobj_at(num, x, y, false, false);
             obj.spe = 0;
             obj.cursed = obj.blessed = false;
         }
         default_1 = true;
-    } else if (in_range(P.PM_WHITE_UNICORN, P.PM_BLACK_UNICORN)) {
+        break;
+    case PMNAMES.PM_WHITE_UNICORN:
+    case PMNAMES.PM_GRAY_UNICORN:
+    case PMNAMES.PM_BLACK_UNICORN:
         if (mtmp.mrevived && rn2(2)) {
-            note_unported_mon('make_corpse:regrown horn crumbles');
+            if (canseemon(mtmp))
+                await pline_mon(mtmp,
+                      `${s_suffix(Monnam(mtmp))} recently regrown horn crumbles to dust.`);
         } else {
             obj = mksobj_at(ONAMES.UNICORN_HORN, x, y, true, false);
             if (obj && mtmp.mrevived)
                 obj.degraded_horn = 1;
         }
         default_1 = true;
-    } else if (mndx === P.PM_LONG_WORM) {
+        break;
+    case PMNAMES.PM_LONG_WORM:
         mksobj_at(ONAMES.WORM_TOOTH, x, y, true, false);
         default_1 = true;
-    } else if (mndx === P.PM_VAMPIRE || mndx === P.PM_VAMPIRE_LEADER) {
+        break;
+    case PMNAMES.PM_VAMPIRE:
+    case PMNAMES.PM_VAMPIRE_LEADER:
         /* include mtmp in the mkcorpstat() call */
         num = undead_to_corpse(mndx);
         corpstatflags |= CORPSTAT_INIT;
-        obj = mkcorpstat(ONAMES.CORPSE, mtmp, num, x, y, corpstatflags);
+        obj = mkcorpstat(ONAMES.CORPSE, mtmp, game.mons[num], x, y, corpstatflags);
         obj.age -= (TAINT_AGE + 1); /* this is an *OLD* corpse */
-    } else if (mdat.mlet === MONSYMS.S_MUMMY
-               || mdat.mlet === MONSYMS.S_ZOMBIE) {
-        /* src/mon.c:668 — the named mummy/zombie cases; kinds without an
-           undead_to_corpse mapping (were-, giant-class uniques) fall to
-           default_1 in C via the explicit case list, matched here by
-           undead_to_corpse returning the index unchanged */
+        break;
+    case PMNAMES.PM_KOBOLD_MUMMY:
+    case PMNAMES.PM_DWARF_MUMMY:
+    case PMNAMES.PM_GNOME_MUMMY:
+    case PMNAMES.PM_ORC_MUMMY:
+    case PMNAMES.PM_ELF_MUMMY:
+    case PMNAMES.PM_HUMAN_MUMMY:
+    case PMNAMES.PM_GIANT_MUMMY:
+    case PMNAMES.PM_ETTIN_MUMMY:
+    case PMNAMES.PM_KOBOLD_ZOMBIE:
+    case PMNAMES.PM_DWARF_ZOMBIE:
+    case PMNAMES.PM_GNOME_ZOMBIE:
+    case PMNAMES.PM_ORC_ZOMBIE:
+    case PMNAMES.PM_ELF_ZOMBIE:
+    case PMNAMES.PM_HUMAN_ZOMBIE:
+    case PMNAMES.PM_GIANT_ZOMBIE:
+    case PMNAMES.PM_ETTIN_ZOMBIE:
         num = undead_to_corpse(mndx);
-        if (num !== mndx) {
-            corpstatflags |= CORPSTAT_INIT;
-            obj = mkcorpstat(ONAMES.CORPSE, mtmp, num, x, y, corpstatflags);
-            obj.age -= (TAINT_AGE + 1); /* this is an *OLD* corpse */
-            mtmp.mgivenname = null; /* free_mgivenname */
-        } else {
-            default_1 = true;
-        }
-    } else if (mndx === P.PM_IRON_GOLEM) {
+        corpstatflags |= CORPSTAT_INIT;
+        obj = mkcorpstat(ONAMES.CORPSE, mtmp, game.mons[num], x, y, corpstatflags);
+        obj.age -= (TAINT_AGE + 1); /* this is an *OLD* corpse */
+        break;
+    case PMNAMES.PM_IRON_GOLEM:
         num = d(2, 6);
         while (num--)
             obj = mksobj_at(ONAMES.IRON_CHAIN, x, y, true, false);
-        mtmp.mgivenname = null;
-    } else if (mndx === P.PM_GLASS_GOLEM) {
+        free_mgivenname(mtmp); /* don't christen obj */
+        break;
+    case PMNAMES.PM_GLASS_GOLEM:
         num = d(2, 4); /* very low chance of creating all glass gems */
         while (num--)
-            obj = mksobj_at(ONAMES.WORTHLESS_WHITE_GLASS + rn2(9),
-                            x, y, true, false); /* FIRST..LAST_GLASS_GEM */
-        mtmp.mgivenname = null;
-    } else if (mndx === P.PM_CLAY_GOLEM) {
+            obj = mksobj_at(ONAMES.FIRST_GLASS_GEM + rn2(NUM_GLASS_GEMS()),
+                            x, y, true, false);
+        free_mgivenname(mtmp);
+        break;
+    case PMNAMES.PM_CLAY_GOLEM:
         obj = mksobj_at(ONAMES.ROCK, x, y, false, false);
-        obj.quan = rn2(20) + 50;
+        obj.quan = (rn2(20) + 50);
         obj.owt = weight(obj);
-        mtmp.mgivenname = null;
-    } else if (mndx === P.PM_STONE_GOLEM) {
+        free_mgivenname(mtmp);
+        break;
+    case PMNAMES.PM_STONE_GOLEM:
         corpstatflags &= ~CORPSTAT_INIT;
-        obj = mkcorpstat(ONAMES.STATUE, null, mndx, x, y, corpstatflags);
-    } else if (mndx === P.PM_WOOD_GOLEM) {
+        obj = mkcorpstat(ONAMES.STATUE, null, mdat, x, y,
+                         corpstatflags);
+        break;
+    case PMNAMES.PM_WOOD_GOLEM:
         num = d(2, 4);
         while (num--) {
-            obj = mksobj_at(rn2(2) ? ONAMES.QUARTERSTAFF
+            obj = mksobj_at(
+                            rn2(2) ? ONAMES.QUARTERSTAFF
                             : rn2(3) ? ONAMES.SMALL_SHIELD
                             : rn2(3) ? ONAMES.CLUB
-                            : rn2(3) ? ONAMES.ELVEN_SPEAR
-                            : ONAMES.BOOMERANG, x, y, true, false);
+                            : rn2(3) ? ONAMES.ELVEN_SPEAR : ONAMES.BOOMERANG,
+                            x, y, true, false);
         }
-        mtmp.mgivenname = null;
-    } else if (mndx === P.PM_ROPE_GOLEM) {
+        free_mgivenname(mtmp);
+        break;
+    case PMNAMES.PM_ROPE_GOLEM:
         num = rn2(3);
         while (num-- > 0) {
             obj = mksobj_at(rn2(2) ? ONAMES.LEASH
-                            : rn2(3) ? ONAMES.BULLWHIP
-                            : ONAMES.GRAPPLING_HOOK, x, y, true, false);
+                            : rn2(3) ? ONAMES.BULLWHIP : ONAMES.GRAPPLING_HOOK,
+                            x, y, true, false);
         }
-        mtmp.mgivenname = null;
-    } else if (mndx === P.PM_LEATHER_GOLEM) {
+        free_mgivenname(mtmp);
+        break;
+    case PMNAMES.PM_LEATHER_GOLEM:
         num = d(2, 4);
         while (num--)
             obj = mksobj_at(rn2(4) ? ONAMES.LEATHER_ARMOR
-                            : rn2(3) ? ONAMES.LEATHER_CLOAK
-                            : ONAMES.SADDLE, x, y, true, false);
-        mtmp.mgivenname = null;
-    } else if (mndx === P.PM_GOLD_GOLEM) {
+                            : rn2(3) ? ONAMES.LEATHER_CLOAK : ONAMES.SADDLE,
+                            x, y, true, false);
+        free_mgivenname(mtmp);
+        break;
+    case PMNAMES.PM_GOLD_GOLEM:
         /* Good luck gives more coins */
-        obj = mkgold(200 - rnl(101), x, y);
-        mtmp.mgivenname = null;
-    } else if (mndx === P.PM_PAPER_GOLEM) {
+        obj = mkgold((200 - rnl(101)), x, y);
+        free_mgivenname(mtmp);
+        break;
+    case PMNAMES.PM_PAPER_GOLEM:
         num = rnd(4);
         while (num--)
             obj = mksobj_at(ONAMES.SCR_BLANK_PAPER, x, y, true, false);
-        mtmp.mgivenname = null;
-    } else if (mndx === P.PM_GRAY_OOZE || mndx === P.PM_BROWN_PUDDING
-               || mndx === P.PM_GREEN_SLIME
-               || mndx === P.PM_BLACK_PUDDING) {
-        obj = mksobj_at(ONAMES.GLOB_OF_BLACK_PUDDING
-                        - (P.PM_BLACK_PUDDING - mndx), x, y, true, false);
-        /* obj_nexto/obj_meld glob merging is recorded when piles meet */
-        note_unported_mon('make_corpse:glob merge check');
-        mtmp.mgivenname = null;
+        free_mgivenname(mtmp);
+        break;
+    /* expired puddings will congeal into a large blob;
+       like dragons, relies on the order remaining consistent */
+    case PMNAMES.PM_GRAY_OOZE:
+    case PMNAMES.PM_BROWN_PUDDING:
+    case PMNAMES.PM_GREEN_SLIME:
+    case PMNAMES.PM_BLACK_PUDDING:
+        /* we have to do this here because most other places
+           expect there to be an object coming back; not this one */
+        obj = mksobj_at(ONAMES.GLOB_OF_BLACK_PUDDING - (PMNAMES.PM_BLACK_PUDDING - mndx),
+                        x, y, true, false);
+
+        while (obj && (otmp = obj_nexto(obj)) != null) {
+            await pudding_merge_message(obj, otmp);
+            const box1 = { obj }, box2 = { obj: otmp };
+            obj = obj_meld(box1, box2);
+        }
+        free_mgivenname(mtmp);
         newsym(x, y);
         return obj;
-    } else {
+    case NON_PM: case PMNAMES.NUMMONS: /* never use as index */
+        break;
+    default:
         default_1 = true;
+        break;
     }
-
     if (default_1) {
-        /* All special cases precede the G_NOCORPSE check (mon.c:910) */
-        if ((game.mvitals?.[mndx]?.mvflags ?? 0) & MC_G_NOCORPSE)
+ /* default_1: */
+        if (game.mvitals[mndx].mvflags & MFLAGS.G_NOCORPSE) {
             return null;
-        corpstatflags |= CORPSTAT_INIT;
-        /* preserve the unique traits of some creatures */
-        const keep = (mtmp.isshk || mtmp.mtame
-                      || (mdat.geno & G_UNIQ) !== 0
-                      || is_rider(mdat) || mdat.mlet === MONSYMS.S_TROLL
-                      || mtmp.m_id === game.quest_status?.leader_m_id
-                      || dmgtype(mdat, ATTKS.AD_SEDU)
-                      || dmgtype(mdat, ATTKS.AD_SSEX));
-        obj = mkcorpstat(ONAMES.CORPSE, keep ? mtmp : null, mndx,
-                         x, y, corpstatflags);
-        if (corpseflags & CORPSTAT_BURIED)
-            note_unported_mon('make_corpse:burythem');
+        } else {
+            corpstatflags |= CORPSTAT_INIT;
+            /* preserve the unique traits of some creatures */
+            obj = mkcorpstat(ONAMES.CORPSE, KEEPTRAITS(mtmp) ? mtmp : null,
+                             mdat, x, y, corpstatflags);
+            if (burythem) {
+                const dealloc = { v: false };
+
+                await bury_an_obj(obj, dealloc);
+                newsym(x, y);
+                return dealloc.v ? null : obj;
+            }
+        }
     }
+    /* All special cases should precede the G_NOCORPSE check */
 
     if (!obj)
         return null;
 
-    /* bypass_obj under context.bypasses is polymorph state; recorded */
-    if (mtmp.mgivenname)
-        note_unported_mon('make_corpse:oname');
+    /* if polymorph or undead turning has killed this monster,
+       prevent the same attack beam from hitting its corpse */
+    if (game.context?.bypasses)
+        bypass_obj(obj);
 
-    /* obj->dknown stays 0: "It was hidden under a green mold corpse!" */
+    if (has_mgivenname(mtmp))
+        obj = oname(obj, MGIVENNAME(mtmp), ONAME_NO_FLAGS);
+
+    /*  Avoid "It was hidden under a green mold corpse!"
+     *  during Blind combat. An unseen monster referred to as "it"
+     *  could be killed and leave a corpse.  If a hider then hid
+     *  underneath it, you could be told the corpse type of a
+     *  monster that you never knew was there without this.
+     *  The code in hitmu() substitutes the word "something"
+     *  if the corpse's obj->dknown is 0.
+     */
+    if (Blind() && !sensemon(mtmp))
+        obj.dknown = 0; /* clear_dknown(obj) */
+
+    stackobj(obj); /* 'obj' remains valid if stacking happens */
+    newsym(x, y);
+    /* in case the corpse was placed at a different spot from where
+       the monster was (not expected to happen) */
+    if (obj.ox !== x || obj.oy !== y)
+        newsym(obj.ox, obj.oy);
     return obj;
 }
 
 
 // src/mon.c:3181 corpse_chance() -- does the kill leave a corpse at all?
 // The ordinary tail is the draw: !rn2(2 + rare + verysmall).
-export async function corpse_chance(mon, magr, was_swallowed) {
-    const A = ATTKS;
-    const mdat = game.mons[mon.mnum];
+export async function corpse_chance(mon, magr, /* killer, if swallowed */
+                                    was_swallowed) /* digestion */
+{
+    const mdat = mon.data;
+    let i, tmp;
 
-    if (mdat.mlet === MONSYMS.S_LICH) {
-        note_unported_mon('corpse_chance:lich_crumble');
+    if (!magr && game.mswallower && attacktype(game.mswallower.data, ATTKS.AT_ENGL))
+        magr = game.mswallower, was_swallowed = true; /* for gas spore boom */
+
+    if (mdat === game.mons[PMNAMES.PM_VLAD_THE_IMPALER] || mdat.mlet === MONSYMS.S_LICH) {
+        if (cansee(mon.mx, mon.my) && !was_swallowed)
+            await pline_mon(mon, `${s_suffix(Monnam(mon))} body crumbles into dust.`);
         return false;
     }
 
-    for (let i = 0; i < 6; i++) {
-        if (mdat.mattk[i][0] === A.AT_BOOM) {
-            /* corpse_chance computes the contained-blast damage even when it
-               goes on to call mon_explodes(), which rolls the damage again. */
+    /* Gas spores always explode upon death */
+    for (i = 0; i < NATTK; i++) {
+        if (mdat.mattk[i][0] === ATTKS.AT_BOOM) {
             if (mdat.mattk[i][2])
-                d(mdat.mattk[i][2], mdat.mattk[i][3]);
+                tmp = d(mdat.mattk[i][2], mdat.mattk[i][3]);
             else if (mdat.mattk[i][3])
-                d(mdat.mlevel + 1, mdat.mattk[i][3]);
-            if (was_swallowed && magr)
-                note_unported_mon('corpse_chance:swallowed_AT_BOOM');
+                tmp = d(mdat.mlevel + 1, mdat.mattk[i][3]);
             else
-                await mon_explodes(mon, mdat.mattk[i]);
+                tmp = 0;
+
+            if (was_swallowed && magr) {
+                /* mdef is a gas spore (AT_BOOM) that is exploding inside an
+                   engulfer; suppress usual explosion since it's contained */
+                if (magr === game.youmonst) {
+                    await There(`is an explosion in your ${body_part(STOMACH)}!`);
+                    (game.killer ||= {}).name = `${s_suffix(pmname(mdat, Mgender(mon)))} explosion`;
+                    await losehp(Maybe_Half_Phys(tmp), game.killer.name,
+                                 KILLED_BY_AN);
+                } else {
+                    await You_hear('an explosion.');
+                    magr.mhp -= tmp;
+                    if (DEADMONSTER(magr))
+                        await mondied(magr);
+                    if (DEADMONSTER(magr)) { /* maybe lifesaved */
+                        if (canspotmon(magr))
+                            await pline_mon(magr, `${Monnam(magr)} rips open!`);
+                    } else if (canseemon(magr))
+                        await pline_mon(magr, `${Monnam(magr)} seems to have indigestion.`);
+                }
+                return false;
+            }
+
+            await mon_explodes(mon, mdat.mattk[i]);
             return false;
         }
     }
 
-    /* LEVEL_SPECIFIC_NOCORPSE — Vlad's tower / astral; no such levels yet */
+    /* must duplicate this below check in xkilled() since it results in
+     * creating no objects as well as no corpse
+     */
+    if (LEVEL_SPECIFIC_NOCORPSE(mdat))
+        return false;
 
-    if (((bigmonst(mdat) || mon.mnum === PMNAMES.PM_LIZARD) && !mon.mcloned)
-        || mdat.mlet === MONSYMS.S_GOLEM || is_rider(mdat) || mon.isshk)
+    if (((bigmonst(mdat) || mdat === game.mons[PMNAMES.PM_LIZARD]) && !mon.mcloned)
+        || is_golem(mdat) || is_mplayer(mdat) || is_rider(mdat) || mon.isshk)
         return true;
-    const tmp = 2 + ((mdat.geno & MC_G_FREQ) < 2 ? 1 : 0)
-                + (verysmall(mdat) ? 1 : 0);
+    tmp = 2 + ((mdat.geno & MFLAGS.G_FREQ) < 2 ? 1 : 0) + (verysmall(mdat) ? 1 : 0);
     return !rn2(tmp);
 }
 
@@ -2681,7 +3315,9 @@ export async function mondead(mdef) {
        orphaned source that forces vision recalculation on later turns. */
     if (mx > 0 && emits_light(mdef.data))
         del_light_source(LS_MONSTER, mdef.m_id);
-    remove_monster(mx, my);
+    /* src/mon.c:2757 m_detach(): mon_leaving_level() takes mtmp off the map
+       (remove_monster/remove_worm, fill_pit, newsym) */
+    await mon_leaving_level(mdef);
     const idx = (game.level?.monsters || []).indexOf(mdef);
     if (idx >= 0)
         game.level.monsters.splice(idx, 1);
@@ -2727,7 +3363,7 @@ export async function mondied(mdef) {
 
     if (await corpse_chance(mdef, null, false)
         && (ACCESSIBLE(game.level?.at(mx, my)?.typ) || is_pool(mx, my)))
-        make_corpse(mdef, CORPSTAT_NONE);
+        await make_corpse(mdef, CORPSTAT_NONE);
 
     newsym(mx, my);
 }
@@ -2800,7 +3436,6 @@ export async function elemental_clog(mon) {
                 continue;
             const mdat = game.mons[mtmp.mnum];
             if (mdat.mlet === MONSYMS.S_ELEMENTAL) {
-                const { is_home_elemental } = await import('./makemon.js');
                 if (!is_home_elemental(mdat)) {
                     if (!m1)
                         m1 = mtmp;
@@ -2829,16 +3464,19 @@ export async function elemental_clog(mon) {
 
             mtmp.mstate = (mtmp.mstate | 0) | MON_OBLITERATE;
             mongone(mtmp);
-            /* rloc_to(mon, mx, my) — same remove/place reduction as
-               mnexto below */
-            if (mon.mx || mon.my)
-                remove_monster(mon.mx, mon.my);
-            place_monster(mon, mx, my);
-            newsym(mon.mx, mon.my);
+            /* places in the code might still reference mtmp->mx, mtmp->my */
+            /* mtmp->mx = mtmp->my = 0; */
+            await rloc_to(mon, mx, my);           /* note: mon, not mtmp */
 
         /* last resort - migrate mon to the next plane */
         } else if (!Is_astralevel(game.u.uz)) {
-            note_unported_mon('elemental_clog:migrate_mon');
+            const dest = { dnum: game.u.uz.dnum, dlevel: game.u.uz.dlevel };
+            let target_lev;
+
+            dest.dlevel--;
+            target_lev = ledger_no(dest);
+            mon.mstate = (mon.mstate | 0) | MON_ENDGAME_MIGR;
+            await migrate_mon(mon, target_lev, MIGR_RANDOM);
         }
     }
 }
@@ -2846,33 +3484,33 @@ export async function elemental_clog(mon) {
 // src/mon.c:3955 mnexto() — move a monster next to the hero: enexto()'s
 // two-pass search (whose collect_coords ring shuffles are the draws), then
 // rloc_to. Overcrowding sends the monster to limbo; recorded.
-export function mnexto(mtmp, rlocflags) {
+export async function mnexto(mtmp, rlocflags) {
+    const mm = { x: 0, y: 0 };
+
     if (mtmp === game.u.usteed) {
+        /* Keep your steed in sync with you instead */
         mtmp.mx = game.u.ux;
         mtmp.my = game.u.uy;
         return;
     }
 
-    const mm = { x: 0, y: 0 };
-    const mdat = game.mons[mtmp.mnum];
-    if (!(enexto_core(mm, game.u.ux, game.u.uy, mdat, GP_CHECKSCARY, goodpos)
-          || enexto_core(mm, game.u.ux, game.u.uy, mdat, 0, goodpos))
-        || !isok(mm.x, mm.y)) {
-        note_unported_mon('mnexto:deal_with_overcrowding');
+    if (!enexto(mm, game.u.ux, game.u.uy, mtmp.data) || !isok(mm.x, mm.y)) {
+        await deal_with_overcrowding(mtmp);
         return;
     }
-    if ((rlocflags & RLOC_MSG) !== 0)
-        return rloc_to_flag(mtmp, mm.x, mm.y, rlocflags);
+    /* wizard-mode player can choose destination by setting 'montelecontrol'
+       option; enexto()'s value for 'mm' will be the default; 'savemm' is
+       used to make sure player doesn't choose hero's location and then
+       answer 'y' to the 'override invalid spot' prompt */
+    if (game.iflags?.mon_telecontrol) {
+        const savemm = { x: mm.x, y: mm.y };
 
-    /* rloc_to_flag(mtmp, mm.x, mm.y, rlocflags): the no-message path is
-       kept synchronous for level-arrival callers which do not await it. */
-    if (mtmp.mx || mtmp.my) {
-        const oldx = mtmp.mx, oldy = mtmp.my;
-        remove_monster(oldx, oldy);
-        newsym(oldx, oldy);
+        if (!(await control_mon_tele(mtmp, mm, rlocflags, false)))
+            mm.x = savemm.x, mm.y = savemm.y;
     }
-    place_monster(mtmp, mm.x, mm.y);
-    newsym(mtmp.mx, mtmp.my);
+
+    await rloc_to_flag(mtmp, mm.x, mm.y, rlocflags);
+    return;
 }
 
 // src/mon.c:4031 mnearto() — like mnexto() but around <x,y>; with
@@ -2891,11 +3529,11 @@ export async function mnearto(mtmp, x, y, move_other, rlocflags) {
         return res;
 
     if (move_other && (othermon = m_at(x, y)) != null) {
-        /* take othermon off the map; it might end up immediately
-           returning but for the moment it is leaving */
-        remove_monster(othermon.mx, othermon.my); /* mon_leaving_level() */
+        /* take othermon off the map; it might end up immediately returning
+           but for the moment it is leaving */
+        await mon_leaving_level(othermon);
         othermon.mx = othermon.my = 0; /* 'othermon' is not on the map */
-        othermon.mstate = (othermon.mstate | 0) | 0x01; /* MON_OFFMAP */
+        othermon.mstate = (othermon.mstate | 0) | MON_OFFMAP;
     }
 
     newx = x;
@@ -2905,11 +3543,11 @@ export async function mnearto(mtmp, x, y, move_other, rlocflags) {
         if (!enexto(mm, newx, newy, mtmp.data)
             || !isok(mm.x, mm.y)) {
             if (othermon) {
-                /* deal_with_overcrowding(othermon) */
-                if (In_endgame(game.u.uz))
-                    await elemental_clog(othermon);
-                else
-                    note_unported_mon('mnearto:m_into_limbo');
+                /* othermon already had its mx, my set to 0 above
+                 * and this would shortly cause a sanity check to fail
+                 * if we just return 0 here. The caller only possesses
+                 * awareness of mtmp, not othermon. */
+                await deal_with_overcrowding(othermon);
             }
             return 0;
         }
@@ -2921,12 +3559,8 @@ export async function mnearto(mtmp, x, y, move_other, rlocflags) {
     if (move_other && othermon) {
         res = 2; /* moving another monster out of the way */
         /* 'move_other'==FALSE this time; fail rather than recurse */
-        if (!await mnearto(othermon, x, y, false, rlocflags)) {
-            if (In_endgame(game.u.uz))
-                await elemental_clog(othermon);
-            else
-                note_unported_mon('mnearto:m_into_limbo');
-        }
+        if (!(await mnearto(othermon, x, y, false, rlocflags)))
+            await deal_with_overcrowding(othermon);
     }
 
     return res;
@@ -3579,14 +4213,16 @@ export async function get_iter_mons(bfunc) {
 // level by migration or death: off the map, unstuck, mimicry revealed.
 export async function mon_leaving_level(mon) {
     const mx = mon.mx, my = mon.my;
-    const onmap = (isok(mx, my) && m_at(mx, my) === mon);
+    /* svl.level.monsters[mx][my]: the raw grid, which still holds a monster
+       whose mhp mondead() has already zeroed (m_at() filters those out) */
+    const onmap = (isok(mx, my) && game.level?.monAt?.get(`${mx},${my}`) === mon);
 
     /* to prevent an infinite relobj-flooreffects-hmon-killed loop */
     mon.mtrapped = 0;
     await unstuck(mon); /* mon is not swallowing or holding you nor held by you */
 
     /* vault guard might be at <0,0> */
-    if (onmap || mon === m_at(0, 0)) {
+    if (onmap || mon === game.level?.monAt?.get('0,0')) {
         if (mon.wormno)
             await remove_worm(mon);
         else
@@ -3821,11 +4457,39 @@ export async function m_respond(mtmp) {
 }
 
 // src/mon.c m_into_limbo(); send mtmp off the level with no destination
-export function m_into_limbo(mtmp) {
+export async function m_into_limbo(mtmp) {
     const target_lev = ledger_no(game.u.uz), xyloc = MIGR_APPROX_XY;
 
     mtmp.mstate |= MON_LIMBO;
-    migrate_monster(mtmp, target_lev, xyloc);
+    await migrate_mon(mtmp, target_lev, xyloc);
+}
+
+// src/mon.c:3843 migrate_mon(); send a monster to another level
+export async function migrate_mon(mtmp, target_lev, /* destination level */
+                                  xyloc)      /* MIGR_xxx flag for location within destination */
+{
+    /*
+     * If mtmp->mx is zero, this was a failed arrival attempt from a
+     * prior migration and mtmp isn't on the map.  In that situation
+     * it can't be engulfing or holding the hero or held by same and
+     * should have dropped any special objects during that earlier
+     * migration back when it had a valid map location.  So only
+     * perform some actions when mx is non-zero.
+     */
+    if (mtmp.mx) {
+        await unstuck(mtmp);
+        await mdrop_special_objs(mtmp);
+    }
+    await migrate_to_level(mtmp, target_lev, xyloc, null);
+}
+
+// src/mon.c:3986 deal_with_overcrowding(); no room for the monster
+export async function deal_with_overcrowding(mtmp) {
+    if (In_endgame(game.u.uz)) {
+        await elemental_clog(mtmp);
+    } else {
+        await m_into_limbo(mtmp);
+    }
 }
 
 // src/mon.c get_iter_mons_xy(); call bfunc(mon, x, y) for every monster on

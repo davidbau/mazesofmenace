@@ -197,6 +197,31 @@ export function big_to_little(montype) {
     return montype;
 }
 
+/**
+ * C ref: mondata.c big_little_match `:1329–1351`. Only caller:
+ * mon.c peacefuls_respond same-mlet arm. mons() is a fresh permonst
+ * so C `mons[a].mlet != mons[b].mlet` is the string mlet, not identity.
+ */
+export function big_little_match(montyp1, montyp2) {
+    montyp1 |= 0;
+    montyp2 |= 0;
+    /* simplest case: both are same pm */
+    if (montyp1 === montyp2) return true;
+    /* assume it isn't possible to grow from one class letter to another */
+    const p1 = mons(montyp1);
+    const p2 = mons(montyp2);
+    if (!p1 || !p2 || p1.mlet !== p2.mlet) return false;
+    /* check whether montyp1 can grow up into montyp2 */
+    for (let l = montyp1, b = little_to_big(l); b !== l; l = b, b = little_to_big(l)) {
+        if (b === montyp2) return true;
+    }
+    /* check whether montyp2 can grow up into montyp1 */
+    for (let l = montyp2, b = little_to_big(l); b !== l; l = b, b = little_to_big(l)) {
+        if (b === montyp1) return true;
+    }
+    return false;
+}
+
 const PM_KOBOLD_ZOMBIE = monsterNames.indexOf('PM_KOBOLD_ZOMBIE');
 const PM_KOBOLD_MUMMY = monsterNames.indexOf('PM_KOBOLD_MUMMY');
 const PM_TENGU = monsterNames.indexOf('PM_TENGU');

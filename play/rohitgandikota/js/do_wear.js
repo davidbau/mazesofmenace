@@ -64,6 +64,10 @@ import { body_part, change_sex, poly_gender } from './polyself.js';
 import { def_oc_syms } from './drawing_data.js';
 import { surface } from './dungeon.js';
 
+
+
+
+
 const OCLASSES_ARMOR = OCLASSES.ARMOR_CLASS;
 const OCLASSES_RING = OCLASSES.RING_CLASS;
 const OCLASSES_AMULET = OCLASSES.AMULET_CLASS;
@@ -2710,4 +2714,11 @@ export function any_worn_armor_ok(obj) {
     if (obj && (obj.owornmask & W_ARMOR))
         return GETOBJ_SUGGEST;
     return GETOBJ_EXCLUDE;
+}
+
+// src/do_wear.c:60 fingers_or_gloves(); plural "fingers" or optionally "gloves"
+export function fingers_or_gloves(check_gloves) {
+    return ((check_gloves && game.u.uarmg)
+            ? gloves_simple_name(game.u.uarmg) /* "gloves" or "gauntlets" */
+            : makeplural(body_part(FINGER))); /* "fingers" */
 }

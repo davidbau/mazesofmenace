@@ -25,6 +25,7 @@
 // **cmd_safety_prevention** for explicit `s` beside hostiles (D-0228);
 // **do_vicinity_map** clairvoyance 9×5 vicinity + skilled observe/detect
 // (D-1391; caller spell.c SPE_CLAIRVOYANCE). allmain seer_turn still named.
+// **gold_detect** (D-1773; caller read.c seffect_gold_detection).
 // Named omissions: Hallucination/cls
 // map_trap wait; artifact SPFX_SEARCH;
 // map_trap + map_engraving after furniture (D-0928 #1158); oldglyph
@@ -40,19 +41,20 @@
 // monster_detect cursed wake / blessed WIN_MAP /
 // TER_DETECT autodescribe; map_monst pet/detect/monsym is D-1765;
 // mfind0 set_msg_xy / display_nhwindow flush;
-// object_detect buried/minvent/cursed-mimic/gold/clear_stale_map;
+// object_detect buried/minvent/cursed-mimic/clear_stale_map caller;
 // observe_recursively on buried/minvent (invent+floor do_dknown D-1417);
 // furniture_detect M_AP_FURNITURE seemimic polish;
-// gold_detect; under_water/under_ground after reconstrain.
+// food_detect; under_water/under_ground after reconstrain.
 
 import { game } from './gstate.js';
 import { rnl, rn2, rnd } from './rng.js';
 import {
-    newsym, pline, magic_map_background, terrain_glyph, obj_glyph,
+    newsym, pline, magic_map_background, map_background, obj_glyph,
     show_glyph_cell, display_self, map_trap, map_engraving, canspotmon, sensemon,
     map_invisible, glyph_is_invisible, glyph_is_monster, warning_of, You_feel,
     feel_location, feel_newsym, unmap_invisible, map_object, Norep,
-    see_monsters, flush_screen, docrt,
+    see_monsters, flush_screen, docrt, cls, unmap_object, flush_topl_more,
+    glyph_is_object, glyph_to_obj,
     Hallucination, random_object, random_monster,
     pet_to_glyph, detected_mon_to_glyph, mon_to_glyph, monsym, glyph_tty_attr,
 } from './display.js';
@@ -71,7 +73,7 @@ import { m_at, seemimic, wake_nearto } from './mon.js';
 import { find_drawbridge, open_drawbridge } from './dbridge.js';
 import { expels, digests } from './mhitu.js';
 import { is_hider, hides_under } from './monsters.js';
-import { Monnam, x_monnam, x_monnam_tame, trycall } from './do_name.js';
+import { Monnam, x_monnam, x_monnam_tame, trycall, s_suffix } from './do_name.js';
 import {
     objectNames, MAXOCLASSES, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS,
     AMULET_CLASS, TOOL_CLASS, FOOD_CLASS, POTION_CLASS, SCROLL_CLASS,
@@ -80,7 +82,10 @@ import {
     def_char_to_objclass,
 } from './objects.js';
 import { objects_at, weight } from './mkobj.js';
-import { makeknown, consume_obj_charge, observe_object } from './invent.js';
+import { makeknown, consume_obj_charge, observe_object, currency } from './invent.js';
+import { hidden_gold } from './vault.js';
+import { findgold } from './steal.js';
+import { SchroedingersBox } from './pickup.js';
 import { yn_function } from './getline.js';
 import { nomul, losehp, maybe_half_phys, is_pool, closed_door } from './hack.js';
 import { get_obj_location } from './timeout.js';
@@ -97,7 +102,8 @@ import {
     TIMEOUT, Never_mind, KILLED_BY_AN, TOE, SYM_BOULDER,
     IN_SIGHT, CLAIRVOYANT, LAVAPOOL, LAVAWALL, Has_contents,
     BEAR_TRAP, TRAPPED_DOOR, TRAPPED_CHEST,
-    BURIED_TOO, CONTAINED_TOO,
+    BURIED_TOO, CONTAINED_TOO, FOOT,
+    ARTICLE_YOUR, ARTICLE_THE, SUPPRESS_SADDLE,
 } from './const.js';
 import { room_discovered } from './dungeon.js';
 
@@ -126,6 +132,11 @@ function distu_detect(x, y) {
 const BOULDER = objectNames.indexOf('BOULDER');
 const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
+const PM_GOLD_GOLEM = monsterNames.indexOf('PM_GOLD_GOLEM');
+/** C objclass.h GOLD — materials enum (Au). */
+const GOLD = 15;
+/** C objclass.h ALL_CLASSES — MAXOCLASSES, not RANDOM_CLASS 0. */
+const ALL_CLASSES = MAXOCLASSES;
 
 /* C detect.c dummytrap — door/chest sense_trap stand-in; fields reset
  * at each use. OTRAP_* are detect.c local #defines. */
@@ -738,21 +749,6 @@ function skip_premap_detect(x, y) {
 }
 
 /**
- * C ref: display.c map_background — remember real terrain; show if directed.
- */
-function map_background(x, y, show) {
-    const lev = game.level?.at(x, y);
-    if (!lev) return;
-    const tg = terrain_glyph(lev, x, y);
-    if (game.level?.flags?.hero_memory) {
-        lev.remembered_glyph = {
-            ch: tg.ch, color: tg.color, decgfx: !!tg.dec,
-        };
-    }
-    if (show) show_glyph_cell(x, y, tg.ch, tg.color, !!tg.dec);
-}
-
-/**
  * C ref: display.c map_object — remember boulder glyph for premap path.
  */
 function map_object_premap(obj, show) {
@@ -767,9 +763,10 @@ function map_object_premap(obj, show) {
             ch: og.ch, color: og.color, decgfx: !!og.dec,
             otyp: obj.otyp | 0,
             boulder: true,
+            glyph: typeof og.glyph === 'number' ? og.glyph : undefined,
         };
     }
-    if (show) show_glyph_cell(x, y, og.ch, og.color, !!og.dec);
+    if (show) show_glyph_cell(x, y, og.ch, og.color, !!og.dec, 0, og.glyph);
 }
 
 /**
@@ -1023,7 +1020,6 @@ export async function do_vicinity_map(sobj) {
             if (mtmp && (mtmp.mx | 0) === zx && (mtmp.my | 0) === zy) {
                 if ((unconstrained || !hero_memory)
                     && !extended && (zx !== ux || zy !== uy)
-                    && oldglyph.kind !== 'monster'
                     && !glyph_is_monster(oldglyph.glyph)) {
                     map_invisible(zx, zy);
                 } else {
@@ -1370,14 +1366,291 @@ export async function doterrain() {
 }
 
 /**
+ * C detect.c o_in `:200–223` — first obj of oclass, including nested
+ * contents. SchroedingersBox skip (unresolved cat).
+ */
+export function o_in(obj, oclass) {
+    if (!obj) return null;
+    if ((obj.oclass | 0) === (oclass | 0)) return obj;
+    if (Has_contents(obj) && !SchroedingersBox(obj)) {
+        for (let otmp = obj.cobj; otmp; otmp = otmp.nobj) {
+            if ((otmp.oclass | 0) === (oclass | 0)) return otmp;
+            if (Has_contents(otmp)) {
+                const temp = o_in(otmp, oclass);
+                if (temp) return temp;
+            }
+        }
+    }
+    return null;
+}
+
+/**
+ * C detect.c o_material `:228–246` — first obj of material, including
+ * nested contents. Blessed gold-detect uses GOLD.
+ */
+export function o_material(obj, material) {
+    if (!obj) return null;
+    const objects = game.objects || [];
+    if ((objects[obj.otyp]?.oc_material | 0) === (material | 0)) return obj;
+    if (Has_contents(obj)) {
+        for (let otmp = obj.cobj; otmp; otmp = otmp.nobj) {
+            if ((objects[otmp.otyp]?.oc_material | 0) === (material | 0)) {
+                return otmp;
+            }
+            if (Has_contents(otmp)) {
+                const temp = o_material(otmp, material);
+                if (temp) return temp;
+            }
+        }
+    }
+    return null;
+}
+
+/** C display.c glyph_at / gbuf[y][x].glyph — JS loc.disp_glyph (D-1767). */
+function glyph_at_gbuf(x, y) {
+    const loc = game.level?.at(x, y);
+    return loc?.disp_glyph;
+}
+
+/**
+ * C detect.c check_map_spot `:261–309` — stale object glyph vs floor
+ * / minvent. The material arm always searches GOLD (C, not `material`).
+ */
+function check_map_spot(x, y, oclass, material) {
+    const glyph = glyph_at_gbuf(x, y);
+    if (!glyph_is_object(glyph)) return false;
+    const objects = game.objects || [];
+    const shown = glyph_to_obj(glyph);
+    const oc = objects[shown];
+    if (oclass === ALL_CLASSES) {
+        const mtmp = m_at(x, y);
+        return !(objects_at(x, y) || (mtmp && mtmp.minvent));
+    }
+    if (material && oc && (oc.oc_material | 0) === (material | 0)) {
+        for (let otmp = objects_at(x, y); otmp; otmp = otmp.nexthere) {
+            if (o_material(otmp, GOLD)) return false;
+        }
+        const mtmp = m_at(x, y);
+        if (mtmp) {
+            for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
+                if (o_material(otmp, GOLD)) return false;
+            }
+        }
+        return true;
+    }
+    if (oclass && oc && (oc.oc_class | 0) === (oclass | 0)) {
+        for (let otmp = objects_at(x, y); otmp; otmp = otmp.nexthere) {
+            if (o_in(otmp, oclass)) return false;
+        }
+        const mtmp = m_at(x, y);
+        if (mtmp) {
+            for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
+                if (o_in(otmp, oclass)) return false;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C detect.c clear_stale_map `:317–331`.
+ */
+function clear_stale_map(oclass, material) {
+    let change_made = false;
+    for (let zx = 1; zx < COLNO; zx++) {
+        for (let zy = 0; zy < ROWNO; zy++) {
+            if (check_map_spot(zx, zy, oclass, material)) {
+                unmap_object(zx, zy);
+                change_made = true;
+            }
+        }
+    }
+    return change_made;
+}
+
+function mtmp_is_gold_golem(mtmp) {
+    return ((mtmp?.data?.mndx ?? mtmp?.mnum) | 0) === PM_GOLD_GOLEM;
+}
+
+/**
+ * C detect.c gold_detect `:334–475`.
+ * Returns 1 if nothing found (strange_feeling used sobj up), 0 if gold.
+ * Named: food_detect; object_detect still omits this helper's caller;
+ * under_water/under_ground after reconstrain.
+ */
+export async function gold_detect(sobj) {
+    const u = game.u || {};
+    const ux = u.ux | 0;
+    const uy = u.uy | 0;
+    let steedgold = false;
+    let ugold = false;
+    let ter_typ = TER_DETECT | TER_OBJ;
+    const stale = clear_stale_map(
+        COIN_CLASS,
+        sobj?.blessed ? GOLD : 0,
+    );
+    let known = stale;
+    let show_map = false;
+
+    for (const mtmp of game.fmon || []) {
+        if (!mtmp || (mtmp.mhp | 0) < 1 || (mtmp.isgd && !(mtmp.mx | 0))) {
+            continue;
+        }
+        if (findgold(mtmp.minvent) || mtmp_is_gold_golem(mtmp)) {
+            if (mtmp === u.usteed) {
+                steedgold = true;
+            } else {
+                known = true;
+                show_map = true;
+                break;
+            }
+        } else {
+            for (let obj = mtmp.minvent; obj; obj = obj.nobj) {
+                if ((sobj?.blessed && o_material(obj, GOLD))
+                    || o_in(obj, COIN_CLASS)) {
+                    if (mtmp === u.usteed) {
+                        steedgold = true;
+                    } else {
+                        known = true;
+                        show_map = true;
+                    }
+                    break;
+                }
+            }
+            if (show_map) break;
+        }
+    }
+
+    if (!show_map) {
+        for (const obj of floor_objects()) {
+            if (sobj?.blessed && o_material(obj, GOLD)) {
+                known = true;
+                if ((obj.ox | 0) !== ux || (obj.oy | 0) !== uy) {
+                    show_map = true;
+                    break;
+                }
+            } else if (o_in(obj, COIN_CLASS)) {
+                known = true;
+                if ((obj.ox | 0) !== ux || (obj.oy | 0) !== uy) {
+                    show_map = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (!show_map) {
+        if (!known) {
+            let buf;
+            const ym = game.youmonst;
+            if (((ym?.data?.mndx ?? ym?.mnum) | 0) === PM_GOLD_GOLEM) {
+                buf = `You feel like a million ${currency(2)}!`;
+            } else {
+                let have_coins = false;
+                for (const o of game.invent || []) {
+                    if (o && (o.oclass | 0) === COIN_CLASS) {
+                        have_coins = true;
+                        break;
+                    }
+                }
+                if (have_coins || hidden_gold(true)) {
+                    buf = 'You feel worried about your future financial situation.';
+                } else if (steedgold && u.usteed) {
+                    buf = `You feel interested in ${s_suffix(x_monnam(
+                        u.usteed,
+                        u.usteed.mtame ? ARTICLE_YOUR : ARTICLE_THE,
+                        null,
+                        SUPPRESS_SADDLE,
+                        false,
+                    ))} financial situation.`;
+                } else {
+                    buf = 'You feel materially poor.';
+                }
+            }
+            await strange_feeling(sobj, buf);
+            return 1;
+        }
+        if (stale) await docrt();
+        await pline(
+            `You notice some gold between your ${makeplural(body_part(FOOT))}.`,
+        );
+        return 0;
+    }
+
+    await cls();
+    unconstrain_map();
+    let temp = null;
+    for (const obj of floor_objects()) {
+        if (sobj?.blessed && (temp = o_material(obj, GOLD))) {
+            if (temp !== obj) {
+                temp.ox = obj.ox;
+                temp.oy = obj.oy;
+            }
+            map_object(temp, 1);
+        } else if ((temp = o_in(obj, COIN_CLASS))) {
+            if (temp !== obj) {
+                temp.ox = obj.ox;
+                temp.oy = obj.oy;
+            }
+            map_object(temp, 1);
+        }
+        if (temp && u_at(temp.ox, temp.oy)) ugold = true;
+    }
+    for (const mtmp of game.fmon || []) {
+        if (!mtmp || (mtmp.mhp | 0) < 1 || (mtmp.isgd && !(mtmp.mx | 0))) {
+            continue;
+        }
+        temp = null;
+        if (findgold(mtmp.minvent) || mtmp_is_gold_golem(mtmp)) {
+            const gold = {
+                otyp: GOLD_PIECE,
+                quan: rnd(10),
+                ox: mtmp.mx | 0,
+                oy: mtmp.my | 0,
+            };
+            map_object(gold, 1);
+            temp = gold;
+        } else {
+            for (let obj = mtmp.minvent; obj; obj = obj.nobj) {
+                if (sobj?.blessed && (temp = o_material(obj, GOLD))) {
+                    temp.ox = mtmp.mx | 0;
+                    temp.oy = mtmp.my | 0;
+                    map_object(temp, 1);
+                    break;
+                } else if ((temp = o_in(obj, COIN_CLASS))) {
+                    temp.ox = mtmp.mx | 0;
+                    temp.oy = mtmp.my | 0;
+                    map_object(temp, 1);
+                    break;
+                }
+            }
+        }
+        if (temp && u_at(temp.ox, temp.oy)) ugold = true;
+    }
+    if (!ugold) {
+        newsym(ux, uy);
+        ter_typ |= TER_MON;
+    }
+    await You_feel('very greedy, and sense gold!');
+    exercise(A_WIS, true);
+    await flush_topl_more();
+    await browse_map(ter_typ, 'gold');
+    reconstrain_map();
+    await map_redisplay();
+    return 0;
+}
+
+/**
  * C ref: detect.c object_detect — crystal-ball / scroll / potion path.
  * Returns 1 if nothing detected, 0 if something was.
  * Branch envelope: floor objects of class (0 = all); cls + map_object +
  * You detect + browse_map(TER_DETECT|TER_OBJ); map_redisplay.
  * Detector (D-1417): blessed potion/spellbook do_dknown observe_recursively
  * on invent + floor; nothing-found → strange_feeling then return 1.
- * Named omissions: buried/minvent/cursed-mimic/findgold; clear_stale_map;
- * do_dknown buried/minvent; boulder dual-class; absence-underfoot.
+ * Named omissions: buried/minvent/cursed-mimic/findgold; clear_stale_map
+ * caller (helper is D-1773 gold_detect); boulder dual-class;
+ * absence-underfoot.
  */
 export async function object_detect(detector, oclass) {
     let class_ = oclass | 0;

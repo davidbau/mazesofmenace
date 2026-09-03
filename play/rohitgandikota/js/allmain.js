@@ -294,6 +294,11 @@ export async function newgame() {
         /* C's `u` is a static struct, so u.ualign exists before newhp() writes
            into it at src/attrib.c:1091. */
         g.u.ualign = { type: 0, record: 0, abuse: 0 };
+        /* include/you.h:147 struct u_conduct, zeroed with the rest of u */
+        g.u.uconduct = { unvegetarian: 0, unvegan: 0, food: 0, gnostic: 0,
+                         weaphit: 0, killer: 0, literate: 0, polypiles: 0,
+                         polyselfs: 0, wishes: 0, wisharti: 0, hf_reserved1: 0,
+                         sokocheat: 0, pets: 0 };
         g.u.uhp = g.u.uhpmax = newhp();
         g.u.uen = g.u.uenmax = newpw();
 

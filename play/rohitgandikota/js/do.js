@@ -1520,7 +1520,7 @@ async function u_collide_m(mtmp, m_at, mnexto) {
         g.u.ux = cc.x; /* u_on_newpos */
         g.u.uy = cc.y;
     } else {
-        mnexto(mtmp);
+        await mnexto(mtmp);
     }
 
     if (m_at(g.u.ux, g.u.uy))

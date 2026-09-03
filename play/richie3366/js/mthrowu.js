@@ -745,7 +745,7 @@ export async function ohitmon(mtmp, otmp, range, verbose) {
 
     // C: if (!DEADMONSTER(mtmp) && !mon_moving) setmangry(mtmp, TRUE)
     if ((mtmp.mhp | 0) > 0 && !game.context?.mon_moving) {
-        setmangry(mtmp, true);
+        await setmangry(mtmp, true);
     }
     // C: objgone = drop_throw(...); if (!objgone && range == -1) {
     //    obj_extract_self(otmp); return FALSE; } — rolling boulder keeps going

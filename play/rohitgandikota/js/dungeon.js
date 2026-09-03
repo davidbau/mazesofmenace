@@ -48,6 +48,8 @@ import { xwaitforspace } from './tty/getline.js';
 import { NO_COLOR } from './terminal.js';
 import { MENU_ITEMFLAGS_NONE } from './const.js';
 import { an, makeplural } from './objnam.js';
+import { Is_knox_level } from './const.js';
+
 
 // include/global.h:408-409
 const MAXDUNGEON = 16;
@@ -1582,4 +1584,14 @@ export function In_W_tower(x, y, lev) {
 export function on_level(lev1, lev2) {
     return (lev1.dnum === lev2.dnum
             && lev1.dlevel === lev2.dlevel);
+}
+
+// src/dungeon.c:1967 single_level_branch(); is the level in a branch of
+// one level (Fort Ludios is the only one)?
+export function single_level_branch(lev) {
+    /*
+     * TODO:  this should be generalized instead of assuming that
+     * Fort Ludios is the only single level branch in the dungeon.
+     */
+    return Is_knox_level(lev);
 }

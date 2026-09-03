@@ -81,7 +81,7 @@ import {
 import { hands_obj } from './weapon.js';
 import { PM_KNIGHT, monsterNames } from './generated/monsters_data.js';
 import { A_MAX, A_WIS, A_CON, A_DEX, adjattrib, exercise, acurr } from './attrib.js';
-import { morehungry, poison_strdmg, vomit, useup, newuhs } from './eat.js';
+import { morehungry, poison_strdmg, vomit, newuhs } from './eat.js';
 import { losehp, in_town } from './hack.js';
 import { depth as depth_of_level, distmin } from './hacklib.js';
 import { monster_detect } from './detect.js';
@@ -96,7 +96,7 @@ import { mon_offmap } from './monmove.js';
 import { cansee, couldsee, do_clear_area } from './vision.js';
 import { del_engr_at, make_grave } from './engrave.js';
 import { monstseesu, monstunseesu } from './mondata.js';
-import { observe_object, enlightenment, update_inventory } from './invent.js';
+import { observe_object, enlightenment, update_inventory, useup } from './invent.js';
 import {
     hliquid, hcolor, x_monnam, Hallucination, rndmonnam, type_is_pname, oname,
     trycall,

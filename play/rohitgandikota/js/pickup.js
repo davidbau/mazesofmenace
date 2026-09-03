@@ -78,6 +78,11 @@ import { is_rider } from './makemon.js';
 import { body_part } from './polyself.js';
 import { tty_yn_function } from './tty/topl.js';
 import { inv_cnt } from './hack.js';
+import { freehand } from './wield.js';
+
+
+
+
 
 function note_unported_pickup(what) {
     (game.unported ||= new Set()).add(what);
@@ -1164,7 +1169,7 @@ export async function dotip() {
             surface(game.u.ux, game.u.uy)}${suffix}.`);
         if (cobj.otyp === ONAMES.CAN_OF_GREASE) {
             const { consume_obj_charge } = await import('./apply.js');
-            await consume_obj_charge(cobj);
+            await consume_obj_charge(cobj, true);
         }
         return ECMD_TIME;
     }
@@ -2102,4 +2107,16 @@ export function container_at(x, y, countem) {
         }
     }
     return container_count;
+}
+
+// src/pickup.c:2943 u_handsy(); the hero has hands and one of them is free
+export async function u_handsy() {
+    if (nohands(game.youmonst.data)) {
+        await You('have no hands!'); /* not `body_part(HAND)' */
+        return false;
+    } else if (!freehand()) {
+        await You(`have no free ${body_part(HAND)}.`);
+        return false;
+    }
+    return true;
 }

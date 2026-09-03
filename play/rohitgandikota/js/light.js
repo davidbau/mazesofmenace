@@ -22,6 +22,10 @@ import { COLNO, ROWNO, OBJ_FREE } from './const.js';
 import { ONAMES } from './objects_data.js';
 /* imported from vision.c, for small circles (src/light.c:56) */
 import { circle_ptr, clear_path, COULD_SEE, TEMP_LIT } from './vision.js';
+import { Is_candle } from './obj.js';
+import { end_burn } from './timeout.js';
+
+
 
 // include/vision.h:15 enum ls_sources
 export const LS_NONE = 0, LS_OBJECT = 1, LS_MONSTER = 2;
@@ -354,4 +358,56 @@ export function find_mid(nid, fmflags) {
             if (mtmp.m_id === nid)
                 return mtmp;
     return null;
+}
+
+// src/light.c:843 candle_light_range(); light radius of candles or the
+// candelabrum
+export function candle_light_range(obj) {
+    let radius;
+
+    if (obj.otyp === ONAMES.CANDELABRUM_OF_INVOCATION) {
+        /*
+         *      The special candelabrum emits more light than the
+         *      corresponding number of candles would.
+         *       1..3 candles, range 2 (minimum range);
+         *       4..6 candles, range 3 (normal lamp range);
+         *          7 candles, range 4 (bright).
+         */
+        radius = (obj.spe < 4) ? 2 : (obj.spe < 7) ? 3 : 4;
+    } else if (Is_candle(obj)) {
+        /*
+         *      Range is incremented quadratically. You can get the same
+         *      amount of light as from a lamp with 4 candles, and
+         *      even better light with 9 candles, and so on.
+         *       1..3  candles, range 2;
+         *       4..8  candles, range 3;
+         *       9..15 candles, range 4; &c.
+         */
+        const n = obj.quan;
+
+        radius = 1; /* always incremented at least once */
+        while (radius * radius <= n && radius < MAX_RADIUS) {
+            radius++;
+        }
+    } else {
+        /* we're only called for lit candelabrum or candles */
+        /* impossible("candlelight for %d?", obj->otyp); */
+        radius = 3; /* lamp's value */
+    }
+    return radius;
+}
+
+// src/light.c:808 obj_merge_light_sources(); candles were attached to the
+// candelabrum (src == dest) or merged into a lit stack
+export async function obj_merge_light_sources(src, dest) {
+    /* src == dest implies adding to candelabrum */
+    if (src !== dest)
+        await end_burn(src, true); /* extinguish candles */
+
+    for (const ls of lights())
+        if (ls.type === LS_OBJECT && ls.id === dest.o_id) {
+            ls.range = candle_light_range(dest);
+            game.vision_full_recalc = 1; /* in case range changed */
+            break;
+        }
 }
