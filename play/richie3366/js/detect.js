@@ -32,8 +32,10 @@
 // trap/object restore deferred; unconstrain still named for
 // do_mapping/reveal_terrain/monster_detect (do_vicinity_map D-1391
 // has save/restore; display_trap_map unconstrain+reconstrain);
-// notice_mon_off/on; findone flash_glyph / mimic / hider / invis /
-// foundone vision-pulse; FOUND_FLASH_COUNT==0 tmp_at path;
+// **findone** flash_glyph_at / foundone viz-pulse + mimic / hider /
+// invis tail + findit detect/paranoid messages (D-1775).
+// Named omissions: notice_mon_off/on; FOUND_FLASH_COUNT==0 tmp_at path;
+// do_clear_area off-hero view_from (and the vision.js clone);
 // detecting() vision override for openone; open_drawbridge crush/entity;
 // reveal_terrain region/gascloud / trap keep restore /
 // M_AP_FURNITURE; wiz_map_levltyp / wiz_levltyp_legend;
@@ -57,8 +59,13 @@ import {
     glyph_is_object, glyph_to_obj,
     Hallucination, random_object, random_monster,
     pet_to_glyph, detected_mon_to_glyph, mon_to_glyph, monsym, glyph_tty_attr,
+    flash_glyph_at, invisible_glyph_cell, memory_glyph_is_invisible,
+    cmap_idx_to_glyph, cmap_to_glyph, trap_to_glyph, back_to_glyph,
+    glyph_is_cmap, glyph_is_unexplored, NO_GLYPH,
 } from './display.js';
-import { vision_recalc, couldsee, recalc_block_point, cansee } from './vision.js';
+import {
+    vision_recalc, couldsee, recalc_block_point, unblock_point, cansee,
+} from './vision.js';
 import { visible_region_at } from './region.js';
 import { an, the, xname, The, makeplural, vtense, otense } from './objnam.js';
 import { body_part } from './polyself.js';
@@ -97,6 +104,7 @@ import {
     D_TRAPPED, WM_MASK, Is_box, NO_PART, u_at,
     STATUE_TRAP, NO_TRAP, TRAPNUM, Is_rogue_level, BOLT_LIM, COLNO, ROWNO,
     SVALL, IS_FURNITURE, STONE, W_NONDIGGABLE, W_NONPASSWALL,
+    S_hcdoor, S_vcdoor, S_corr, COULD_SEE,
     TER_MAP, TER_TRP, TER_OBJ, TER_MON, TER_FULL, TER_DETECT, ECMD_OK,
     I_SPECIAL, M_AP_TYPE, ARTICLE_A, ROOMOFFSET,
     TIMEOUT, Never_mind, KILLED_BY_AN, TOE, SYM_BOULDER,
@@ -522,7 +530,7 @@ export async function dosearch() {
  * C ref: vision.c do_clear_area — hero-centered path only.
  * Off-hero view_from deferred (findit always centers on u).
  */
-function do_clear_area(scol, srow, range, func, arg) {
+async function do_clear_area(scol, srow, range, func, arg) {
     const u = game.u || {};
     if (scol !== u.ux || srow !== u.uy) {
         // Non-hero center deferred
@@ -542,55 +550,139 @@ function do_clear_area(scol, srow, range, func, arg) {
         let max_x = scol + offset;
         if (max_x >= COLNO) max_x = COLNO - 1;
         for (let x = min_x; x <= max_x; x++) {
-            if (couldsee(x, y)) func(x, y, arg);
+            // C calls func inline; findone flashes (nh_delay_output), so
+            // the JS traversal awaits to keep C's per-cell ordering.
+            if (couldsee(x, y)) await func(x, y, arg);
         }
     }
 }
 
 /**
- * C ref: detect.c findone — SDOOR/SCORR/unseen traps + sense_trap.
- * Flash, mimic/hider/invis, foundone vision-pulse deferred.
+ * C detect.c FOUND_FLASH_COUNT `:19` — flash repeat count (0 would switch
+ * findit() to the tmp_at()/--More-- path, which stays a named omission).
  */
-function findone(zx, zy, found) {
+const FOUND_FLASH_COUNT = 6;
+
+/**
+ * C ref: detect.c foundone `:1607–1634` — notify where something was
+ * found. cmap/unexplored glyph → seenv = SVALL, then a temporary
+ * COULD_SEE|IN_SIGHT pulse around newsym() so the discovery paints even
+ * when the spot is out of sight, with viz_array restored afterwards.
+ * C takes an int glyph; this port's map helpers hand back either the id
+ * (back_to_glyph) or the tty cell (cmap_idx_to_glyph / trap_to_glyph),
+ * so normalise to the id the two glyph_is_* tests need.
+ * FOUND_FLASH_COUNT is 6 here, so the `== 0` tmp_at arm is not ported.
+ */
+function foundone(zx, zy, g) {
     const lev = game.level?.at(zx, zy);
     if (!lev) return;
+    const gid = (typeof g === 'number') ? g
+        : (typeof g?.glyph === 'number') ? g.glyph : NO_GLYPH;
+    if (glyph_is_cmap(gid) || glyph_is_unexplored(gid)) lev.seenv = SVALL;
 
-    found.ft_cc = { x: zx, y: zy };
+    const row = game.viz_array?.[zy];
+    const save_viz = row ? row[zx] : undefined;
+    if (row && !Blind()) row[zx] = COULD_SEE | IN_SIGHT;
+    newsym(zx, zy);
+    if (row) row[zx] = save_viz;
+}
+
+/**
+ * C ref: detect.c findone `:1637–1726` — SDOOR/SCORR/unseen traps +
+ * sense_trap + flash_glyph_at/foundone, then mimic / hider / invisible
+ * monster reveal. C reads t_at/m_at and filters the dead-or-vault-guard
+ * monster before touching the level, so keep that order.
+ * D-1774: `glyph_is_invisible(lev->glyph)` is the hero_memory id
+ * (memory_glyph_is_invisible), not the gbuf cell.
+ * Named omissions: the commented-out mon foundone() calls (C leaves them
+ * out too) and the FOUND_FLASH_COUNT==0 tmp_at path.
+ */
+async function findone(zx, zy, found) {
+    const lev = game.level?.at(zx, zy);
+    if (!lev) return;
+    const ttmp = t_at(zx, zy);
+    let mtmp = m_at(zx, zy);
+
+    // C: DEADMONSTER(mtmp) || (mtmp->isgd && !mtmp->mx) → treat as none
+    if (mtmp && ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !(mtmp.mx | 0)))) {
+        mtmp = null;
+    }
+    found.ft_cc = { x: zx, y: zy }; // needed by detect_obj_traps()
 
     if (lev.typ === SDOOR) {
-        cvt_sdoor_to_door(lev);
-        recalc_block_point(zx, zy); // C: unblock_point / recalc
-        newsym(zx, zy);
+        const sym = lev.horizontal ? S_hcdoor : S_vcdoor;
+        await flash_glyph_at(zx, zy, cmap_idx_to_glyph(sym),
+                             FOUND_FLASH_COUNT);
+        cvt_sdoor_to_door(lev); /* set lev->typ = DOOR */
+        recalc_block_point(zx, zy);
+        magic_map_background(zx, zy, 0);
+        foundone(zx, zy, back_to_glyph(zx, zy));
         found.num_sdoors++;
     } else if (lev.typ === SCORR) {
+        await flash_glyph_at(zx, zy, cmap_idx_to_glyph(S_corr),
+                             FOUND_FLASH_COUNT);
         lev.typ = CORR;
-        recalc_block_point(zx, zy); // C: unblock_point
-        newsym(zx, zy);
+        unblock_point(zx, zy);
+        magic_map_background(zx, zy, 0);
+        foundone(zx, zy, cmap_to_glyph(S_corr));
         found.num_scorrs++;
     }
 
-    const ttmp = t_at(zx, zy);
     if (ttmp && !ttmp.tseen && ttmp.ttyp !== STATUE_TRAP) {
+        await flash_glyph_at(zx, zy, trap_to_glyph(ttmp), FOUND_FLASH_COUNT);
         ttmp.tseen = true;
         sense_trap(ttmp, zx, zy, 0); /* handles Hallucination */
+        foundone(zx, zy, trap_to_glyph(ttmp));
         found.num_traps++;
     }
     if (closed_door(zx, zy) && ((lev.doormask || 0) & D_TRAPPED) !== 0) {
         dummytrap.ttyp = TRAPPED_DOOR;
         dummytrap.tx = zx;
         dummytrap.ty = zy;
+        await flash_glyph_at(zx, zy, trap_to_glyph(dummytrap),
+                             FOUND_FLASH_COUNT);
         dummytrap.tseen = 1;
         sense_trap(dummytrap, zx, zy, 0);
+        foundone(zx, zy, trap_to_glyph(dummytrap));
         found.num_traps++;
     }
-    let mtmp = m_at(zx, zy);
-    if (mtmp && ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !(mtmp.mx | 0)))) {
-        mtmp = null;
-    }
+    /* trapped chests */
     detect_obj_traps(game.level?.buriedobjlist, true, 0, found);
     detect_obj_traps(floor_objects(), true, 0, found);
     if (mtmp) detect_obj_traps(mtmp.minvent, true, 0, found);
     if (u_at(zx, zy)) detect_obj_traps(game.invent, true, 0, found);
+
+    if (mtmp && (!canspotmon(mtmp) || mtmp.mundetected || M_AP_TYPE(mtmp))) {
+        if (M_AP_TYPE(mtmp)) {
+            await flash_glyph_at(zx, zy, mon_to_glyph(mtmp),
+                                 FOUND_FLASH_COUNT);
+            seemimic(mtmp);
+            found.num_mons++;
+        } else if (mtmp.mundetected
+                   && (is_hider(mtmp.data) || hides_under(mtmp.data)
+                       || mtmp.data?.mlet === 'S_EEL')) {
+            await flash_glyph_at(zx, zy, mon_to_glyph(mtmp),
+                                 FOUND_FLASH_COUNT);
+            mtmp.mundetected = 0;
+            newsym(zx, zy);
+            found.num_mons++;
+        }
+        if (!memory_glyph_is_invisible(lev)) {
+            if (!canspotmon(mtmp)) {
+                await flash_glyph_at(zx, zy, invisible_glyph_cell(),
+                                     FOUND_FLASH_COUNT);
+                map_invisible(zx, zy);
+                found.num_invis++;
+            }
+        } else {
+            found.num_kept_invis++;
+        }
+    } else if (unmap_invisible(zx, zy)) {
+        /* flash the invisible monster glyph because it is already gone */
+        await flash_glyph_at(zx, zy, invisible_glyph_cell(),
+                             FOUND_FLASH_COUNT);
+        found.num_cleared_invis++;
+    }
 }
 
 /**
@@ -611,7 +703,7 @@ export async function findit() {
         num_cleared_invis: 0,
         num_kept_invis: 0,
     };
-    do_clear_area(u.ux, u.uy, BOLT_LIM, findone, found);
+    await do_clear_area(u.ux, u.uy, BOLT_LIM, findone, found);
 
     const k = (!!found.num_sdoors) + (!!found.num_scorrs)
         + (!!found.num_traps) + (!!found.num_mons);
@@ -650,7 +742,26 @@ export async function findit() {
     }
     if (buf) await pline(`You reveal ${buf}!`);
 
-    // invis / cleared_invis messages deferred (counts stay 0 here)
+    // C: You("detect %s!") — "%d[ other] unseen monsters" / "a{n|nother}
+    // unseen monster"; num_kept_invis picks the "other" wording.
+    if (found.num_invis) {
+        const other = found.num_invis > 1
+            ? `${found.num_invis}${found.num_kept_invis ? ' other' : ''} unseen monsters`
+            : `${found.num_kept_invis ? 'another' : 'an'} unseen monster`;
+        await pline(`You detect ${other}!`);
+        num += found.num_invis;
+    }
+
+    if (found.num_cleared_invis) {
+        /* at least 1 "remembered, unseen monster" marker has been removed */
+        if (!num) {
+            await You_feel(
+                `${found.num_kept_invis ? 'somewhat ' : ''}less paranoid.`,
+            );
+        }
+        num += found.num_cleared_invis;
+    }
+    /* note: num_kept_invis is not included in the final result */
 
     if (!num) await pline("You don't find anything.");
     return num;
@@ -733,7 +844,7 @@ export async function openit() {
     }
     const num = { n: 0 };
     const cells = [];
-    do_clear_area(u.ux, u.uy, BOLT_LIM, (x, y) => { cells.push([x, y]); }, null);
+    await do_clear_area(u.ux, u.uy, BOLT_LIM, (x, y) => { cells.push([x, y]); }, null);
     for (const [x, y] of cells) await openone(x, y, num);
     return num.n;
 }

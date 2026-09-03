@@ -93,7 +93,7 @@ import { destroy_items, drain_item, exclam, hit, obj_resists,
          resist } from './zap.js';
 import { Acid_resistance, Antimagic, Blind, Cold_resistance, Deaf,
          Fire_resistance, Free_action, Fumbling, Hallucination, Flying, Levitation,
-         Invisible, Reflecting, Shock_resistance,
+         Invisible, Shock_resistance,
          Stone_resistance } from './youprop.js';
 import { canseemon, canspotmon, glyph_at, sensemon, newsym, pline, shieldeff,
          flush_screen, glyph_is_invisible_at, map_invisible,
@@ -1720,10 +1720,10 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp,
                 if (!canseemon(mon))
                     break;
                 if (mon.mcansee) {
-                    if (Reflecting()) {
-                        const { ureflects } = await import('./zap.js');
-                        await ureflects('%s gaze is reflected by your %s.',
-                                        s_suffix(Monnam(mon)));
+                    const { ureflects } = await import('./muse.js');
+                    if (await ureflects('%s gaze is reflected by your %s.',
+                                        s_suffix(Monnam(mon)))) {
+                        ;
                     } else if (Hallucination() && rn2(4)) {
                         await pline(`${Monnam(mon)} looks ${
                             rn2(2) ? 'rather ' : ''}${

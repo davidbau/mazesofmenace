@@ -69,7 +69,10 @@ import {
     SELL_NORMAL, SELL_DELIBERATE, SELL_DONTSELL, CANDLESHOP,
     ARTICLE_THE, G_GONE, LL_ACHIEVE, MM_NOMSG,
 } from './const.js';
-import { hero_conflict, resist_conflict, m_canseeu } from './mondata.js';
+import {
+    hero_conflict, resist_conflict, m_canseeu,
+    noit_mhe, noit_mhim, noit_mhis,
+} from './mondata.js';
 import { mon_nam, x_monnam, y_monnam, Monnam } from './do_name.js';
 import {
     COIN_CLASS, FOOD_CLASS, WAND_CLASS, POTION_CLASS, ARMOR_CLASS,
@@ -204,16 +207,6 @@ function plur(n) {
     return (n | 0) === 1 ? '' : 's';
 }
 
-/** C you.h noit_mhe/mhim/mhis — gender pronouns (no "it"). */
-function noit_mhe(mtmp) {
-    return mtmp?.female ? 'she' : 'he';
-}
-function noit_mhim(mtmp) {
-    return mtmp?.female ? 'her' : 'him';
-}
-function noit_mhis(mtmp) {
-    return mtmp?.female ? 'her' : 'his';
-}
 
 /**
  * C: muteshk — helpless or msound <= MS_ANIMAL.
@@ -1577,7 +1570,6 @@ export async function make_happy_shk(shkp, silentkops) {
 async function getcad(shkp, dmgstr, x, y, uinshp, animal, pursue) {
     const dugwall = dmgstr === 'dig into' || dmgstr === 'damage';
     const shopOrDoor = dugwall ? 'shop' : 'door';
-    const his = 'his'; // noit_mhis deferred → male default for shk path
     if (muteshk(shkp)) {
         if (animal && !helpless(shkp)) {
             const { yelp } = await import('./sounds.js');
@@ -1587,9 +1579,13 @@ async function getcad(shkp, dmgstr, x, y, uinshp, animal, pursue) {
         if (!hero_deaf()) {
             await verbalize(`How dare you ${dmgstr} my ${shopOrDoor}?`);
         } else {
+            // C `:5153–5156` ROLL_FROM(angrytexts) + noit_mhis(shkp).
+            // C leaves printf argument order unspecified; both only
+            // draw RNG while Hallucinating, so keep the port's
+            // left-to-right convention (ROLL_FROM first) — named.
             const angry = ANGRYTEXTS[rn2(ANGRYTEXTS.length)];
             await pline(
-                `${Shknam(shkp)} is ${angry} that you decided to ${dmgstr} ${his} ${shopOrDoor}!`,
+                `${Shknam(shkp)} is ${angry} that you decided to ${dmgstr} ${noit_mhis(shkp)} ${shopOrDoor}!`,
             );
         }
     } else if (!hero_deaf()) {
@@ -1598,7 +1594,7 @@ async function getcad(shkp, dmgstr, x, y, uinshp, animal, pursue) {
     } else {
         const angry = ANGRYTEXTS[rn2(ANGRYTEXTS.length)];
         await pline(
-            `${Shknam(shkp)} is ${angry} that someone decided to ${dmgstr} ${his} ${shopOrDoor}!`,
+            `${Shknam(shkp)} is ${angry} that someone decided to ${dmgstr} ${noit_mhis(shkp)} ${shopOrDoor}!`,
         );
     }
     hot_pursuit(shkp);
@@ -4258,9 +4254,15 @@ async function inherits(shkp, numsk, croaked, silently) {
         } else {
             money2mon(shkp, loss);
             if (!silently) {
-                // currency / customer / noit_mhim deferred — rare partial path
+                // C `:2657–2661` "%s %s the %ld %s %sowed %s." —
+                // currency(loss), then "you " only when eshk->customer
+                // matches plname (C strncmp, case-sensitive, PL_NSIZ),
+                // then noit_mhim(shkp).
+                const cust = String(eshkp.customer || '').slice(0, 32);
+                const you = (cust === String(game.plname || '').slice(0, 32))
+                    ? 'you ' : '';
                 await pline(
-                    `${Shknam(shkp)} ${takes} the ${loss} gold pieces owed ${shkp.female ? 'her' : 'him'}.`,
+                    `${Shknam(shkp)} ${takes} the ${loss} ${currency(loss)} ${you}owed ${noit_mhim(shkp)}.`,
                 );
             }
             pacify_shk(shkp, false);

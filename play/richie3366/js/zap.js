@@ -294,7 +294,9 @@ import { explode } from './explode.js';
 import { unpunish, litroom } from './read.js';
 import { engr_at, del_engr, make_engr_at, wipe_engr_at, random_engraving, rloc_engr } from './engrave.js';
 import { bare_artifactname, defends, defends_when_carried } from './artifact.js';
-import { Ring_gone, Ring_off, Ring_on, setworn, set_wear } from './do_wear.js';
+import {
+    Ring_gone, Ring_off, Ring_on, setworn, set_wear, hard_helmet,
+} from './do_wear.js';
 import { which_armor, mon_set_minvis, check_gear_next_turn, wearslot, wearmask_to_obj } from './worn.js';
 import { mhurtle, hero_breaks, breaks } from './dothrow.js';
 import { abuse_dog, wary_dog, tamedog } from './dog.js';
@@ -652,21 +654,6 @@ function Blind() {
     const u = game.u || {};
     if (u.uroleplay?.blind) return true;
     return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
-}
-
-/** C obj.h is_helmet — ARMOR + oc_armcat ARM_HELM (JS oc_skill stand-in). */
-function is_helmet_zap(obj) {
-    return !!obj && obj.oclass === ARMOR_CLASS
-        && (game.objects?.[obj.otyp]?.oc_skill ?? -1) === ARM_HELM;
-}
-
-/**
- * C do_wear.c hard_helmet :567–573 — metallic or glass helm.
- * Caller: zap_updown WAN_STRIKING/SPE_FORCE_BOLT falling rock (D-1456).
- */
-function hard_helmet(obj) {
-    if (!obj || !is_helmet_zap(obj)) return false;
-    return is_metallic(obj) || is_crackable(obj);
 }
 
 /**

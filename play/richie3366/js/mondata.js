@@ -16,6 +16,7 @@ import {
     is_mind_flayer, is_minion, is_demon, is_undead, is_rider,
     is_unicorn, is_longworm,
     breathless, verysmall, has_head,
+    is_neuter, humanoid, G_UNIQ,
 } from './monsters.js';
 import {
     M_SEEN_NOTHING, M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP,
@@ -26,6 +27,9 @@ import {
 } from './const.js';
 import { mon_msound } from './sounds.js';
 import { makesingular } from './objnam.js';
+import { genders } from './roles.js';
+import { type_is_pname } from './do_name.js';
+import { canspotmon, Hallucination } from './display.js';
 
 const RIN_CONFLICT = objectNames.indexOf('RIN_CONFLICT');
 /** C monflag.h MS_SILENT / MS_BUZZ. */
@@ -700,6 +704,69 @@ export function on_fire(mptr, mattk) {
     default:
         return ((mattk?.aatyp | 0) === AT_HUGS) ? 'being roasted' : 'on fire';
     }
+}
+
+/* C you.h `:317–320` — pronoun_gender() flag masks. */
+export const PRONOUN_NORMAL = 0; /* none of the below */
+export const PRONOUN_NO_IT = 1;
+export const PRONOUN_HALLU = 2;
+
+/**
+ * C ref: mondata.c pronoun_gender `:1188–1207` — index into
+ * `role.c` genders[]. Lower animals and such are "it" even when seen;
+ * hallucination yields a random one of the four (including "they").
+ * PRONOUN_NO_IT overrides only the **visibility** test — a neuter or
+ * non-humanoid monster still reports 2 ("it").
+ * Note the Hallucination arm is checked first and burns `rn2(4)`
+ * before either gate, so it is an RNG-visible call, not just wording.
+ * @param {object} mtmp
+ * @param {number} pg_flags PRONOUN_NO_IT | PRONOUN_HALLU
+ * @returns {number} 0 male, 1 female, 2 neuter, 3 group
+ */
+export function pronoun_gender(mtmp, pg_flags) {
+    const override_vis = ((pg_flags | 0) & PRONOUN_NO_IT) ? true : false;
+    const hallu_rand = ((pg_flags | 0) & PRONOUN_HALLU) ? true : false;
+
+    if (hallu_rand && Hallucination()) return rn2(4); /* 0..3 */
+    if (!override_vis && !canspotmon(mtmp)) return 2;
+    const ptr = mtmp?.data;
+    if (!ptr || is_neuter(ptr)) return 2;
+    return (humanoid(ptr) || ((ptr.geno | 0) & G_UNIQ)
+            || type_is_pname(ptr)) ? (mtmp.female ? 1 : 0) : 2;
+}
+
+/** C you.h mhe `:322` — genders[pronoun_gender(mtmp, PRONOUN_HALLU)].he */
+export function mhe(mtmp) {
+    return genders[pronoun_gender(mtmp, PRONOUN_HALLU)].he;
+}
+
+/** C you.h mhim `:323`. */
+export function mhim(mtmp) {
+    return genders[pronoun_gender(mtmp, PRONOUN_HALLU)].him;
+}
+
+/** C you.h mhis `:324`. */
+export function mhis(mtmp) {
+    return genders[pronoun_gender(mtmp, PRONOUN_HALLU)].his;
+}
+
+/**
+ * C you.h noit_mhe `:326–327` — override "it" if the reason is lack of
+ * visibility rather than neuter species. Still "it" for neuters and
+ * non-humanoids, and still burns rn2(4) when hallucinating.
+ */
+export function noit_mhe(mtmp) {
+    return genders[pronoun_gender(mtmp, PRONOUN_NO_IT | PRONOUN_HALLU)].he;
+}
+
+/** C you.h noit_mhim `:328–329`. */
+export function noit_mhim(mtmp) {
+    return genders[pronoun_gender(mtmp, PRONOUN_NO_IT | PRONOUN_HALLU)].him;
+}
+
+/** C you.h noit_mhis `:330–331`. */
+export function noit_mhis(mtmp) {
+    return genders[pronoun_gender(mtmp, PRONOUN_NO_IT | PRONOUN_HALLU)].his;
 }
 
 export { MALE, FEMALE, NEUTRAL, NUM_MGENDERS };

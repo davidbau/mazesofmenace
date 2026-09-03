@@ -57,12 +57,11 @@ import {
     is_demon, NON_PM, NUMMONS, has_head, mindless, unsolid, breathless, mons,
     flaming, touch_petrifies, is_vampshifter, is_animal, amphibious,
     is_swimmer, slithy,
-    is_whirly, passes_walls, hates_silver, humanoid, is_neuter, G_UNIQ,
+    is_whirly, passes_walls, hates_silver, humanoid,
     MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
 } from './monsters.js';
 import {
     mkobj, place_object, stackobj, delobj, relobj_on_death,
-    is_metallic, is_crackable,
 } from './mkobj.js';
 import {
     monnear, record_mvitals_died, seemimic, wakeup, setmangry, dist2,
@@ -86,6 +85,8 @@ import { which_armor } from './worn.js';
 import { u_wipe_engr } from './engrave.js';
 import { cutworm } from './worm.js';
 import { m_unleash } from './apply.js';
+import { mhis } from './mondata.js';
+import { hard_helmet } from './do_wear.js';
 
 /** Live pager.c object_from_map / mhidden_description; bound on first use
  * (pager.js imports mon_at from this file — static import cycles). */
@@ -998,20 +999,6 @@ function damageum_ad_phys(mdef, mattk, mhm) {
     }
 }
 
-/** C ref: obj.h is_helmet — ARMOR + oc_armcat ARM_HELM. */
-function is_helmet_uhitm(obj) {
-    return obj?.oclass === ARMOR_CLASS
-        && (game.objects?.[obj.otyp]?.oc_skill ?? -1) === ARM_HELM;
-}
-
-/**
- * C ref: do_wear.c hard_helmet `:567–573` — metallic or glass helm.
- */
-function hard_helmet(obj) {
-    if (!obj || !is_helmet_uhitm(obj)) return false;
-    return is_metallic(obj) || is_crackable(obj);
-}
-
 /** C ref: objnam.c helm_simple_name `:5513–5528` — hat vs helm. */
 function helm_simple_name(helmet) {
     return !hard_helmet(helmet) ? 'hat' : 'helm';
@@ -1032,22 +1019,6 @@ function cloak_simple_name(cloak) {
         }
     }
     return 'cloak';
-}
-
-/**
- * C ref: you.h mhis → genders[pronoun_gender(mtmp, PRONOUN_HALLU)].his.
- * Hallu rn2(4) live; canspotmon→its named on the C macro.
- */
-function mhis(mtmp) {
-    if (game.u?.Hallucination) {
-        return ['his', 'her', 'its', 'their'][rn2(4)];
-    }
-    const ptr = mtmp?.data;
-    if (is_neuter(ptr)) return 'its';
-    if (humanoid(ptr) || ((ptr?.geno | 0) & G_UNIQ)) {
-        return mtmp?.female ? 'her' : 'his';
-    }
-    return 'its';
 }
 
 /**

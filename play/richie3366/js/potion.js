@@ -102,7 +102,7 @@ import {
 } from './objects.js';
 import {
     weight, obj_extract_self, bless, curse, unbless, uncurse,
-    is_metallic, is_crackable, splitobj, mkobj, fixup_oil,
+    splitobj, mkobj, fixup_oil,
     is_rustprone, is_corrodeable,
 } from './mkobj.js';
 import {
@@ -185,6 +185,7 @@ import { permapoisoned } from './artifact.js';
 import { poly_obj, obj_unpolyable } from './zap.js';
 import { livelog_printf } from './pline.js';
 import { uhis } from './roles.js';
+import { hard_helmet } from './do_wear.js';
 
 const POT_OIL = objectNames.indexOf('POT_OIL');
 const OIL_LAMP = objectNames.indexOf('OIL_LAMP');
@@ -643,19 +644,6 @@ function incr_itimeout_HDetect_monsters(incr) {
     const cur = (u.HDetect_monsters | 0)
         | (u.uprops?.[DETECT_MONSTERS]?.intrinsic | 0);
     set_HDetect_monsters((cur & ~TIMEOUT) | itimeout_incr(cur, incr));
-}
-
-/** C obj.h is_helmet — ARMOR + oc_armcat ARM_HELM (JS oc_skill stand-in). */
-const ARM_HELM = 2;
-function is_helmet(obj) {
-    return !!obj && obj.oclass === ARMOR_CLASS
-        && (game.objects?.[obj.otyp]?.oc_skill ?? -1) === ARM_HELM;
-}
-
-/** C ref: do_wear.c hard_helmet — metallic or glass helm. */
-function hard_helmet(obj) {
-    if (!obj || !is_helmet(obj)) return false;
-    return is_metallic(obj) || is_crackable(obj);
 }
 
 /** C dungeon.c has_ceiling — endgame non-earth has no ceiling. */

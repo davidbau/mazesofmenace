@@ -2612,13 +2612,16 @@ export function cant_revive(mtype, revival, from_obj) {
     if (mtype.v === PMNAMES.PM_GUARD || (mtype.v === PMNAMES.PM_SHOPKEEPER && !revival)
         || mtype.v === PMNAMES.PM_HIGH_CLERIC || mtype.v === PMNAMES.PM_ALIGNED_CLERIC
         || mtype.v === PMNAMES.PM_ANGEL) {
+        mtype.v = PMNAMES.PM_HUMAN_ZOMBIE;
         return true;
     } else if (mtype.v === PMNAMES.PM_LONG_WORM_TAIL) { /* for create_particular() */
+        mtype.v = PMNAMES.PM_LONG_WORM;
         return true;
     } else if (unique_corpstat(game.mons[mtype.v])
                && (!from_obj || !has_omonst(from_obj))) {
         /* unique corpses (from bones or wizard mode wish) or
            statues (bones or any wish) end up as shapechangers */
+        mtype.v = PMNAMES.PM_DOPPELGANGER;
         return true;
     }
     return false;

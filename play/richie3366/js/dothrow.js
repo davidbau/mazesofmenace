@@ -93,6 +93,7 @@ import {
 import { in_out_region, m_in_out_region } from './region.js';
 import { u_wipe_engr } from './engrave.js';
 import { getdir_read_dirsym } from './lock.js';
+import { hard_helmet } from './do_wear.js';
 
 const GLASS = 19;
 const POT_WATER = objectNames.indexOf('POT_WATER');
@@ -137,8 +138,6 @@ const MINERAL = 21; // objclass.h
 const GEMSTONE = 20;
 const CLOTH = 6;
 const SILVER = 14;
-const IRON = 11;
-const MITHRIL = 15;
 const PIERCE = 1; // objclass.h weapon oc_dir
 const PM_PYROLISK = monsterNames.indexOf('PM_PYROLISK');
 const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
@@ -1186,15 +1185,6 @@ function Stone_resistance_hero() {
     return !!(u.Stone_resistance || u.HStone_resistance || u.EStone_resistance);
 }
 
-/** C do_wear.c hard_helmet — metallic or glass helm. */
-function hard_helmet(obj) {
-    if (!obj) return false;
-    const mat = game.objects?.[obj.otyp]?.oc_material ?? 0;
-    if (mat >= IRON && mat <= MITHRIL) return true;
-    if (mat === GLASS && (obj.oclass === ARMOR_CLASS
-        || game.objects?.[obj.otyp]?.oc_class === ARMOR_CLASS)) return true;
-    return false;
-}
 
 /** C objnam.c helm_simple_name — "hat" polish deferred. */
 function helm_simple_name(_obj) {

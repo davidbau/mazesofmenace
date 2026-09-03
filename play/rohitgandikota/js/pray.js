@@ -1688,7 +1688,8 @@ export async function altar_wrath(x, y) {
         await verbalize('Thou shalt pay, infidel!');
         /* higher luck is more likely to be reduced; as it approaches -5
            the chance to lose another point drops down, eventually to 0 */
-        if (Luck() > -5 && rn2(Luck() + 6))
+        const luck = u.uluck + u.moreluck; // include/you.h: Luck
+        if (luck > -5 && rn2(luck + 6))
             change_luck(rn2(20) ? -1 : -2);
     }
 }

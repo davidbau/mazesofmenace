@@ -2245,9 +2245,10 @@ export async function poly_obj(obj, id) {
     otmp.blessed = obj.blessed;
 
     if (erosion_matters(otmp, game.objects)) {
-        if (is_flammable(otmp) || is_rustprone(otmp) || is_crackable(otmp))
+        if (is_flammable(otmp) || is_rustprone(otmp, game.objects)
+            || is_crackable(otmp, game.objects))
             otmp.oeroded = obj.oeroded;
-        if (is_corrodeable(otmp) || is_rottable(otmp))
+        if (is_corrodeable(otmp, game.objects) || is_rottable(otmp))
             otmp.oeroded2 = obj.oeroded2;
         if (is_damageable(otmp))
             otmp.oerodeproof = obj.oerodeproof;

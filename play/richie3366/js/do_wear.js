@@ -65,7 +65,7 @@ import {
 import { PM_ARCHEOLOGIST, PM_MONK, nolimbs, nohands, verysmall } from './monsters.js';
 import {
     is_flammable, is_rustprone, is_rottable, is_corrodeable, is_crackable,
-    erosion_matters, is_damageable,
+    erosion_matters, is_damageable, is_metallic,
 } from './mkobj.js';
 import { erode_obj, selftouch } from './trap.js';
 import { rn2, rnd } from './rng.js';
@@ -167,8 +167,20 @@ function is_cloak(obj) {
 function is_shield(obj) {
     return obj?.oclass === ARMOR_CLASS && armcat(obj) === ARM_SHIELD;
 }
-function is_helmet(obj) {
+/** C obj.h is_helmet `:283–284` — ARMOR_CLASS with oc_armcat ARM_HELM. */
+export function is_helmet(obj) {
     return obj?.oclass === ARMOR_CLASS && armcat(obj) === ARM_HELM;
+}
+
+/**
+ * C ref: do_wear.c hard_helmet `:567–573` — a helmet that actually
+ * protects the head: metallic, or crackable (glass armor). The
+ * `is_helmet` gate comes first, so a metallic non-helm is not "hard".
+ * One export; the six local copies this replaces are gone (D-1778).
+ */
+export function hard_helmet(obj) {
+    if (!obj || !is_helmet(obj)) return false;
+    return (is_metallic(obj) || is_crackable(obj)) ? true : false;
 }
 function is_gloves(obj) {
     return obj?.oclass === ARMOR_CLASS && armcat(obj) === ARM_GLOVES;

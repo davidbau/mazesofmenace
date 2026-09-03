@@ -530,7 +530,13 @@ export const CXN_NORMAL = 0,    /* no special handling */
 export function the_unique_pm(ptr) {
     if (type_is_pname(ptr))
         return false;
-    return (ptr.geno & MFLAGS.G_UNIQ) !== 0;
+    let uniq = (ptr.geno & MFLAGS.G_UNIQ) !== 0;
+    if (ptr === game.mons[PMNAMES.PM_HIGH_CLERIC]
+        || ptr === game.mons[PMNAMES.PM_LONG_WORM_TAIL])
+        uniq = false;
+    if (ptr === game.mons[PMNAMES.PM_WIZARD_OF_YENDOR])
+        uniq = true;
+    return uniq;
 }
 
 // src/objnam.c:1824 corpse_xname() — "<species> corpse", with the article and

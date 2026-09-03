@@ -299,8 +299,8 @@ export async function newgame() {
                          weaphit: 0, killer: 0, literate: 0, polypiles: 0,
                          polyselfs: 0, wishes: 0, wisharti: 0, hf_reserved1: 0,
                          sokocheat: 0, pets: 0 };
-        g.u.uhp = g.u.uhpmax = newhp();
-        g.u.uen = g.u.uenmax = newpw();
+        g.u.uhp = g.u.uhpmax = g.u.uhppeak = newhp();
+        g.u.uen = g.u.uenmax = g.u.uenpeak = newpw();
 
         // src/u_init.c:1000-1007 — u_init_misc() finishes by setting ulevel and
         // alignment, and it runs BEFORE mklev() (src/allmain.c:794 vs :807).
@@ -321,6 +321,9 @@ export async function newgame() {
            so undefined turns the whole luck system into NaN. */
         g.u.uluck = 0;
         g.u.moreluck = 0;
+        // include/you.h:384-390, zero-initialized room and shop strings.
+        g.u.urooms = g.u.urooms0 = g.u.uentered = '';
+        g.u.ushops = g.u.ushops0 = g.u.ushops_entered = g.u.ushops_left = '';
         // src/mondata.c set_uasmon() — gy.youmonst.data = &mons[u.umonnum].
         // The hero-as-monster struct: combat code passes it to the same
         // functions that take a real monster (dmgval, mhitm_ad_phys,
@@ -728,6 +731,8 @@ export async function moveloop_core() {
                 g.moves++;
                 /* allmain.c:260: begin this turn's hero movement sequence. */
                 g.hero_seq = g.moves * 8;
+                if (g.flags.time && !g.context.run)
+                    (g.disp ||= {}).time_botl = true;
 
                 /* src/allmain.c:271: slippery fingers act before property
                    timeouts, so the last turn of Glib can still drop gear. */

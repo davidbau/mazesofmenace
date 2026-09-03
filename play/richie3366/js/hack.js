@@ -311,10 +311,11 @@ export async function cannot_push(otmp, sx, sy) {
 }
 
 /**
- * C ref: hack.c movobj — extract floor obj and place at (ox,oy).
- * maybe_unhide_at deferred. Boulder → recalc_block_point both cells.
+ * C ref: hack.c movobj `:824–833` — extract floor obj and place at
+ * (ox,oy). maybe_unhide_at deferred. Boulder → recalc_block_point both
+ * cells. Exported for ball.c move_bc's Blind arms (C has one movobj).
  */
-function movobj(obj, ox, oy) {
+export function movobj(obj, ox, oy) {
     if (!obj) return;
     const ox0 = obj.ox | 0;
     const oy0 = obj.oy | 0;

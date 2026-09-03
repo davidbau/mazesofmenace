@@ -147,7 +147,9 @@ import {
     amorphous, nolimbs, M1_SLITHY, MZ_SMALL, mons, is_rider, hides_under,
     haseyes, eyecount,
 } from './monsters.js';
-import { placebc, unplacebc, drag_down, ballrelease, set_bc } from './ball.js';
+import {
+    placebc, unplacebc, drag_down, ballrelease, set_bc, ballfall,
+} from './ball.js';
 import { obj_resists } from './dogmove.js';
 import { Soundeffect, se_scratching, se_alarm } from './sndprocs.js';
 import { delete_levelfile } from './files.js';
@@ -1794,8 +1796,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         // Named omit: was_in_W_tower bit 2 (D-1179).
         await u_on_rndspot(up ? 1 : 0);
         if (falling) {
-            // C do.c:1805–1809 — Punished && !welded(uball) ballfall still
-            // named (ball.js). selftouch then do_fall_dmg (D-1179).
+            // C do.c `:1805–1809` — Punished && !welded(uball) ballfall,
+            // then selftouch, then do_fall_dmg (D-1179 / D-1778).
+            if (u.Punished && !welded(u.uball)) await ballfall();
             await selftouch('Falling, you');
             do_fall_dmg = true;
         }

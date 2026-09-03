@@ -162,7 +162,7 @@ export async function encumber_msg() {
                           + ' move a handspan with this load!');
                 break;
             }
-            game.botl = true;
+            (game.disp ||= {}).botl = true;
         } else if (oldcap > newcap) {
             switch (newcap) {
             case 0:
@@ -179,7 +179,7 @@ export async function encumber_msg() {
                 await You('stagger under your load.  Movement is still very hard.');
                 break;
             }
-            game.botl = true;
+            (game.disp ||= {}).botl = true;
         }
     } finally {
         delete game._deferred_status_capacity;

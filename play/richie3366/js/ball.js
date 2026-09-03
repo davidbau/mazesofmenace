@@ -2,32 +2,38 @@
 // C ref: ball.c placebc / placebc_core / move_bc / drag_ball / bc_order /
 //         set_bc / drag_down / ballrelease / litter.
 //
-// Named omissions: Blind move_bc glyph/felt arms (sighted path live;
-// set_bc D-1769 stores bglyph/cglyph/bc_felt); unplacebc Blind glyph
-// restore; flooreffects rust; bcrestriction / breadcrumbs; ballfall /
+// **Blind move_bc glyph/felt arms + unplacebc Blind glyph restore
+// D-1777** (set_bc D-1769 takes the bglyph/cglyph snapshots; those are
+// remembered *cells* here, not int ids, because this port's map memory
+// stores rendered cells). Named omissions: maybe_unhide_at (sync
+// callers, same deferral as hack.c movobj);
+// flooreffects rust; bcrestriction / breadcrumbs; **ballfall D-1778**
+// (C `:42–67`; `hard_helmet` is one export now, `js/do_wear.js`);
 // drop_ball; litter hitfloor/shop/impact (place at feet); Soundeffect
 // in drag_down; jerked-back hmon/miss body (rnd(20) still burned);
 // unpunish.
 
 import { game } from './gstate.js';
 import { place_object, obj_extract_self, objects_at } from './mkobj.js';
-import { newsym, pline, You_feel, cls } from './display.js';
+import { newsym, pline, You_feel, cls, map_object } from './display.js';
 import {
     OBJ_FREE, BC_BALL, BC_CHAIN, IS_OBSTRUCTED, IS_DOOR,
     D_CLOSED, D_LOCKED, POOL, is_pit, is_hole, SLT_ENCUMBER,
     W_ARMOR, W_ACCESSORY, W_SADDLE, A_STR, NO_KILLER_PREFIX, KILLED_BY_AN,
+    Is_waterlevel, HEAD,
 } from './const.js';
 import { dist2, distmin } from './hacklib.js';
 import {
-    is_pool, nomul, losehp, finish_maybe_wail, maybe_half_phys,
+    is_pool, nomul, losehp, finish_maybe_wail, maybe_half_phys, movobj,
 } from './hack.js';
 import { near_capacity, weight_cap, encumber_msg } from './invent.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd, rn1 } from './rng.js';
 import { t_at } from './trap.js';
 import { mon_at } from './uhitm.js';
+import { hard_helmet } from './do_wear.js';
 import { welded, setuwep, setuswapwep, setuqwep } from './wield.js';
 import { exercise } from './attrib.js';
-import { xname } from './objnam.js';
+import { xname, Yname2, body_part_latebound } from './objnam.js';
 
 /** C ref: ball.c BCPOS_* — stacking order when ball&chain share a cell. */
 const BCPOS_DIFFER = 0;
@@ -77,6 +83,49 @@ export async function ballrelease(showmsg) {
     if (u.uquiver === uball) setuqwep(null);
     freeinv_ball(uball);
     await encumber_msg();
+}
+
+/**
+ * C ref: ball.c ballfall `:42–67` — the hero falls to a new level with
+ * the iron ball loose. The ball only lands on the hero's head when it
+ * was *not* at the hero's spot and is not the wielded weapon, and even
+ * then only `rn2(5)` of the time; note C evaluates that roll **before**
+ * `ballrelease` so the RNG draw happens while the ball is still held.
+ * A hard helmet caps the `rn1(7, 25)` damage at 3; a soft one only
+ * earns a verbose "does not protect you" line.
+ * Named omissions: none for this arm — `ballrelease` (D-0918),
+ * `hard_helmet` (D-1778 export) and `losehp` are all live.
+ */
+export async function ballfall() {
+    const u = game.u || {};
+    const uball = u.uball;
+    if (!uball || (carried(uball) && welded(uball))) return;
+
+    const gets_hit = (((uball.ox | 0) !== (u.ux | 0)
+                       || (uball.oy | 0) !== (u.uy | 0))
+                      && (u.uwep === uball ? false : !!rn2(5)));
+    await ballrelease(true);
+    if (gets_hit) {
+        let dmg = rn1(7, 25);
+
+        await pline(`The iron ball falls on your ${body_part_latebound(HEAD)}.`);
+        const uarmh = u.uarmh;
+        if (uarmh) {
+            if (hard_helmet(uarmh)) {
+                await pline('Fortunately, you are wearing a hard helmet.');
+                dmg = 3;
+            } else if (game.flags?.verbose) {
+                await pline(`${Yname2(uarmh)} does not protect you.`);
+            }
+        }
+        // C: losehp → maybe_wail (You_hear --More--)
+        losehp(
+            maybe_half_phys(dmg),
+            'crunched in the head by an iron ball',
+            NO_KILLER_PREFIX,
+        );
+        await finish_maybe_wail();
+    }
 }
 
 /**
@@ -179,6 +228,14 @@ export async function drag_down() {
     }
 }
 
+/** C youprop.h Blind — (H||E) && !B; no sticky u.Blind (D-0716). */
+function Blind_bc() {
+    const u = game.u || {};
+    if (u.uroleplay?.blind) return true;
+    if (u.ublind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+
 /**
  * C ref: ball.c bc_order — stacking of uball/uchain when punished.
  */
@@ -207,10 +264,25 @@ function bc_order() {
  */
 function levl_glyph_at(x, y) {
     const loc = game.level?.at(x | 0, y | 0);
-    if (!loc) return 0;
+    if (!loc) return null;
     const mem = loc.remembered_glyph;
-    if (mem && typeof mem.glyph === 'number') return mem.glyph | 0;
-    return loc.disp_glyph | 0;
+    if (!mem) return null; /* nothing remembered — C GLYPH_UNEXPLORED */
+    const saved = { ...mem };
+    // D-1767: memory without an id keeps the gbuf stamp as its id
+    if (typeof saved.glyph !== 'number') saved.glyph = loc.disp_glyph | 0;
+    return saved;
+}
+
+/**
+ * C ref: ball.c `levl[x][y].glyph = u.bglyph` (`:166`, `:172`, `:449`,
+ * `:452`, `:465`, `:472`, `:487`, `:494`) — the write side of the pair
+ * above. Restoring a null snapshot clears map memory, which is what
+ * assigning an unexplored glyph does in C.
+ */
+function set_levl_glyph(x, y, saved) {
+    const loc = game.level?.at(x | 0, y | 0);
+    if (!loc) return;
+    loc.remembered_glyph = saved ? { ...saved } : null;
 }
 
 /**
@@ -305,9 +377,14 @@ export function placebc() {
 }
 
 /**
- * C ref: ball.c unplacebc → unplacebc_core.
+ * C ref: ball.c unplacebc `:211–219` → unplacebc_core `:146–177`.
  * Extract ball&chain from the floor before leaving a level (goto_level).
- * Named omissions: Blind glyph restore; maybe_unhide_at; waterlevel swallow.
+ * Blind: whichever of ball/chain the hero currently *feels* has its
+ * saved under-glyph dropped back onto the map before the extract, so
+ * the felt marker does not outlive the object (set_bc took the
+ * snapshot — D-1769). `u.bc_felt = 0` last: feel nothing.
+ * Named omissions: `maybe_unhide_at` (sync callers — same deferral as
+ * `hack.c` `movobj`); `bcrestriction` impossible().
  */
 export function unplacebc() {
     const u = game.u || {};
@@ -315,26 +392,55 @@ export function unplacebc() {
     const uchain = u.uchain;
     if (!uball || !uchain) return;
 
-    // C: swallowed → leave bc placed (except waterlevel arm deferred)
-    if (u.uswallow | 0) return;
+    if (u.uswallow | 0) {
+        // C `:149–159`: on the water level the removal still has to
+        // happen so movebubbles() disregards them; ignore vision there.
+        if (Is_waterlevel(u.uz)) {
+            if (!carried(uball)) obj_extract_self(uball);
+            obj_extract_self(uchain);
+        }
+        /* ball&chain not unplaced while swallowed */
+        return;
+    }
 
+    const Blind = Blind_bc();
     if (!carried(uball)) {
         const bx = uball.ox | 0;
         const by = uball.oy | 0;
         obj_extract_self(uball);
-        // Blind bglyph / maybe_unhide_at deferred
+        if (Blind && ((u.bc_felt | 0) & BC_BALL)) { /* drop glyph */
+            set_levl_glyph(bx, by, u.bglyph);
+        }
+        // maybe_unhide_at(bx, by) named
         newsym(bx, by);
     }
     const cx = uchain.ox | 0;
     const cy = uchain.oy | 0;
     obj_extract_self(uchain);
+    if (Blind && ((u.bc_felt | 0) & BC_CHAIN)) { /* drop glyph */
+        set_levl_glyph(cx, cy, u.cglyph);
+    }
+    // maybe_unhide_at(cx, cy) named
     newsym(cx, cy);
-    u.bc_felt = 0;
+    u.bc_felt = 0; /* feel nothing */
 }
 
 /**
- * C ref: ball.c move_bc — pick up (before) / put down (after) ball&chain.
- * Sighted path ported; Blind glyph/felt arms deferred (still movobj).
+ * C ref: ball.c move_bc `:436–556` — pick up (before) / put down
+ * (after) ball&chain.
+ *
+ * Blind arm (C `:437–532`): the hero knows the ball&chain are attached,
+ * so when they move the hero knows they left the remembered spot — but
+ * feeling around can bring either back. C tracks that with `u.bc_felt`
+ * plus the under-glyph snapshots `u.bglyph`/`u.cglyph`: on a move, drop
+ * the saved glyph back at the old cell for whichever piece is felt,
+ * clear that felt bit, pick up the glyph at the new cell, then `movobj`.
+ * When both share a cell the top one keeps the pair's glyph, so the
+ * BCPOS_BALL/BCPOS_CHAIN arms `map_object` the other piece instead of
+ * restoring terrain. Nothing is felt after a both-moved step.
+ * Only `!before` does this work; the sighted path lifts on `before`
+ * and re-places on `!before`.
+ * Named omissions: `maybe_unhide_at` inside `movobj` (sync callers).
  */
 export function move_bc(before, control, ballx, bally, chainx, chainy) {
     const u = game.u || {};
@@ -342,33 +448,71 @@ export function move_bc(before, control, ballx, bally, chainx, chainy) {
     const uchain = u.uchain;
     if (!uball || !uchain) return;
 
-    const Blind = !!(u.Blind || u.ublind
-        || (((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0)));
-
-    if (Blind) {
-        // Blind felt/glyph arms deferred — still relocate when !before
+    if (Blind_bc()) {
         if (!before) {
             if ((control & BC_CHAIN) && (control & BC_BALL)) {
-                if (!carried(uball)) {
-                    obj_extract_self(uball);
-                    place_object(uball, ballx, bally);
+                /* Both ball and chain moved.  If felt, drop glyph. */
+                if ((u.bc_felt | 0) & BC_BALL) {
+                    set_levl_glyph(uball.ox | 0, uball.oy | 0, u.bglyph);
                 }
-                obj_extract_self(uchain);
-                place_object(uchain, chainx, chainy);
-                newsym(ballx, bally);
-                newsym(chainx, chainy);
+                if ((u.bc_felt | 0) & BC_CHAIN) {
+                    set_levl_glyph(uchain.ox | 0, uchain.oy | 0, u.cglyph);
+                }
+                u.bc_felt = 0;
+
+                /* Pick up glyph at new location. */
+                u.bglyph = levl_glyph_at(ballx, bally);
+                u.cglyph = levl_glyph_at(chainx, chainy);
+
+                movobj(uball, ballx, bally);
+                movobj(uchain, chainx, chainy);
             } else if (control & BC_BALL) {
-                if (!carried(uball)) {
-                    obj_extract_self(uball);
-                    place_object(uball, ballx, bally);
-                    newsym(ballx, bally);
+                if ((u.bc_felt | 0) & BC_BALL) {
+                    if ((u.bc_order | 0) === BCPOS_DIFFER) {
+                        /* ball by itself */
+                        set_levl_glyph(uball.ox | 0, uball.oy | 0, u.bglyph);
+                    } else if ((u.bc_order | 0) === BCPOS_BALL) {
+                        if ((u.bc_felt | 0) & BC_CHAIN) {
+                            /* know chain is there */
+                            map_object(uchain, 0);
+                        } else {
+                            set_levl_glyph(uball.ox | 0, uball.oy | 0,
+                                           u.bglyph);
+                        }
+                    }
+                    u.bc_felt = (u.bc_felt | 0) & ~BC_BALL; /* not felt */
                 }
+
+                /* Pick up glyph at new position. */
+                u.bglyph = (ballx !== chainx || bally !== chainy)
+                    ? levl_glyph_at(ballx, bally)
+                    : u.cglyph;
+
+                movobj(uball, ballx, bally);
             } else if (control & BC_CHAIN) {
-                obj_extract_self(uchain);
-                place_object(uchain, chainx, chainy);
-                newsym(chainx, chainy);
+                if ((u.bc_felt | 0) & BC_CHAIN) {
+                    if ((u.bc_order | 0) === BCPOS_DIFFER) {
+                        set_levl_glyph(uchain.ox | 0, uchain.oy | 0,
+                                       u.cglyph);
+                    } else if ((u.bc_order | 0) === BCPOS_CHAIN) {
+                        if ((u.bc_felt | 0) & BC_BALL) {
+                            map_object(uball, 0);
+                        } else {
+                            set_levl_glyph(uchain.ox | 0, uchain.oy | 0,
+                                           u.cglyph);
+                        }
+                    }
+                    u.bc_felt = (u.bc_felt | 0) & ~BC_CHAIN;
+                }
+                /* Pick up glyph at new position. */
+                u.cglyph = (ballx !== chainx || bally !== chainy)
+                    ? levl_glyph_at(chainx, chainy)
+                    : u.bglyph;
+
+                movobj(uchain, chainx, chainy);
             }
-            u.bc_order = bc_order();
+
+            u.bc_order = bc_order(); /* reset the order */
         }
         return;
     }

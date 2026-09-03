@@ -139,6 +139,9 @@ import { make_blinded } from './do.js';
 import { mon_adjust_speed } from './muse.js';
 import { m_dowear } from './worn.js';
 import { m_unleash } from './apply.js';
+import { hard_helmet } from './do_wear.js';
+import { unplacebc, placebc, ballfall } from './ball.js';
+import { carried } from './eat.js';
 
 const AD_ELEC = 6;
 const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
@@ -1901,7 +1904,13 @@ async function trapeffect_pit(mtmp, trap, trflags) {
                 );
                 if (await finish_hero_losehp()) return Trap_Effect_Finished;
             }
-            // Punished !carried(uball) unplacebc/ballfall/placebc deferred
+            // C trap.c `:1955–1958` — Punished && !carried(uball):
+            // lift the ball&chain, drop the ball on the hero, re-place.
+            if (game.u?.Punished && !carried(game.u?.uball)) {
+                unplacebc();
+                await ballfall();
+                placebc();
+            }
             if (!conj_pit) await selftouch('Falling, you');
             game.vision_full_recalc = 1;
             exercise(A_STR, false);
@@ -2975,20 +2984,6 @@ function ceiling(x, y) {
 /** C ref: mondata.h passes_rocks */
 function passes_rocks(ptr) {
     return !!(passes_walls(ptr) && !unsolid(ptr));
-}
-
-/**
- * C ref: do_wear.c hard_helmet — metallic or glass armor helm.
- * is_helmet gate approximated by worn uarmh (caller only passes helm).
- */
-function hard_helmet(obj) {
-    if (!obj) return false;
-    const mat = game.objects?.[obj.otyp]?.oc_material ?? 0;
-    const IRON = 11, MITHRIL = 15, GLASS = 19;
-    if (mat >= IRON && mat <= MITHRIL) return true;
-    if (mat === GLASS && (obj.oclass === ARMOR_CLASS
-        || game.objects?.[obj.otyp]?.oc_class === ARMOR_CLASS)) return true;
-    return false;
 }
 
 /** C ref: objnam.c helm_simple_name — "helmet" / "hat" polish deferred */

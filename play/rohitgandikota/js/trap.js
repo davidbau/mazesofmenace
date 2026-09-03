@@ -5071,7 +5071,7 @@ export async function openfallingtrap(mon, trapdoor_only, noticed) {
     if (ishero) {
         if (game.u.utrap)
             return false; /* already trapped */
-        noticed.value = true;
+        noticed.v = true;
         await dotrap(t, FORCETRAP);
         result = (game.u.utrap !== 0);
     } else {
@@ -5079,7 +5079,7 @@ export async function openfallingtrap(mon, trapdoor_only, noticed) {
             return false; /* already trapped */
         /* you notice it if you see the trap close/tremble/whatever
            or if you sense the monster who becomes trapped */
-        noticed.value = cansee(t.tx, t.ty) || canspotmon(mon);
+        noticed.v = cansee(t.tx, t.ty) || canspotmon(mon);
         await wakeup(mon, true);
         result = ((await mintrap(mon, FORCETRAP)) !== Trap_Effect_Finished);
     }

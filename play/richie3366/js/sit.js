@@ -117,7 +117,7 @@ import { xname, the, The, vtense, makeplural } from './objnam.js';
 import { body_part } from './polyself.js';
 import {
     amorphous, mons, M1_SLITHY, is_prince, is_vampire, eggs_in_water,
-    lays_eggs, humanoid, likes_lava, is_hider, monsterNames, is_neuter, G_UNIQ,
+    lays_eggs, humanoid, likes_lava, is_hider, monsterNames,
     eyecount,
 } from './monsters.js';
 import { get_artifact, SPFX_INTEL } from './artifact.js';
@@ -129,7 +129,8 @@ import { yn_function, getlin } from './getline.js';
 import { t_at, dotrap, water_damage, uteetering_at_seen_pit, uescaped_shaft } from './trap.js';
 import { losehp, finish_maybe_wail, is_pool, is_lava } from './hack.js';
 import { burn_away_slime } from './timeout.js';
-import { hliquid, christen_monst, mon_nam, Monnam, type_is_pname } from './do_name.js';
+import { hliquid, christen_monst, mon_nam, Monnam } from './do_name.js';
+import { mhis } from './mondata.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
 const TOWEL = objectNames.indexOf('TOWEL');
@@ -197,27 +198,6 @@ function Hallucination() {
     if (u.Halluc_resistance) return false;
     return !!((u.Hallucination)
         || ((u.HHallucination | 0) & TIMEOUT));
-}
-
-/**
- * C you.h mhis → genders[pronoun_gender(mtmp, PRONOUN_HALLU)].his.
- * C mondata.c pronoun_gender: hallu rn2(4); !canspotmon / is_neuter /
- * non-(humanoid|G_UNIQ|pname) → 2 (its); else female.
- * Local: sit cannot import mhitu.js (zap←mhitu cycle).
- */
-function mhis(mtmp) {
-    if (Hallucination()) {
-        return ['his', 'her', 'its', 'their'][rn2(4)];
-    }
-    if (!canspotmon(mtmp)) return 'its';
-    const ptr = mtmp?.data;
-    if (!ptr || is_neuter(ptr)) return 'its';
-    if (humanoid(ptr)
-        || ((ptr.geno | 0) & G_UNIQ)
-        || type_is_pname(ptr)) {
-        return mtmp.female ? 'her' : 'his';
-    }
-    return 'its';
 }
 
 /** C ref: obj.h u_wield_art — is_art(uwep, art). */

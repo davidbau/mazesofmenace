@@ -1068,18 +1068,29 @@ export function map_invisible(x, y) {
     if (x === u.ux && y === u.uy) return; // never I under hero
     const loc = game.level?.at(x, y);
     if (!loc) return;
-    const g = { ch: 'I', color: NO_COLOR, decgfx: false, invisible: true };
     if (game.level?.flags?.hero_memory) {
-        loc.remembered_glyph = { ch: 'I', color: NO_COLOR, decgfx: false,
-            invisible: true, glyph: GLYPH_INVISIBLE };
+        loc.remembered_glyph = invisible_glyph_cell();
     }
     show_glyph_cell(x, y, 'I', NO_COLOR, false, 0, GLYPH_INVISIBLE);
 }
 
 /**
+ * C display.h GLYPH_INVISIBLE as this port's tty cell. C passes the bare
+ * int glyph to show_glyph()/flash_glyph_at(); the JS display path carries
+ * {ch,color,decgfx,glyph}, so callers that need GLYPH_INVISIBLE as a cell
+ * (map_invisible, detect.c findone flashes) share this one constructor.
+ */
+export function invisible_glyph_cell() {
+    return {
+        ch: 'I', color: NO_COLOR, decgfx: false,
+        invisible: true, glyph: GLYPH_INVISIBLE,
+    };
+}
+
+/**
  * C display.h glyph_is_invisible(levl[x][y].glyph) — hero_memory id,
  * not gbuf. mondead unmap_object(show=0) clears memory I while leaving
- * disp_glyph; treating gbuf as memory re-paints I (seed0014 @43789).
+ * disp_glyph; treating gbuf as memory re-paints I (D-1774).
  */
 export function memory_glyph_is_invisible(loc) {
     return (loc?.remembered_glyph?.glyph | 0) === GLYPH_INVISIBLE;
@@ -3899,6 +3910,39 @@ export async function nh_delay_output() {
     if (typeof af === 'function') await af.call(game);
 }
 
+/**
+ * C ref: display.c flash_glyph_at `:1304–1321` — alternate `tg` with the
+ * cell's own glyph `rpt * 2` times, ending on the map glyph. C picks
+ * glyph[1] from levl[x][y].glyph when hero_memory, else back_to_glyph();
+ * this port stores the tty cell (ch/color/dec) on `remembered_glyph`, so
+ * the memory arm copies that and the !hero_memory arm rebuilds terrain.
+ * No newsym() here (C comment: caller may have tinkered with visibility);
+ * the even iteration count guarantees the map glyph shows last.
+ * `tg` is a {ch,color,dec|decgfx,glyph} cell, the same shape tmp_at uses.
+ */
+export async function flash_glyph_at(x, y, tg, rpt) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return;
+    let mapcell;
+    if (game.level?.flags?.hero_memory) {
+        const mem = loc.remembered_glyph;
+        mapcell = mem ? { ...copy_glyph(mem), glyph: mem.glyph } : null;
+    } else {
+        mapcell = { ...terrain_glyph(loc, x, y), glyph: back_to_glyph(x, y) };
+    }
+    const glyph = [tg, mapcell];
+    const count = (rpt | 0) * 2; /* C: rpt *= 2 — two iterations per count */
+    for (let i = 0; i < count; i++) {
+        const g = glyph[i % 2];
+        if (g) {
+            show_glyph_cell(x, y, g.ch, g.color ?? NO_COLOR,
+                            !!(g.dec ?? g.decgfx), 0, g.glyph);
+        }
+        await flush_screen(1);
+        await nh_delay_output();
+    }
+}
+
 /** C display.h SHIELD_COUNT — cmap indices in shield_static[]. */
 const SHIELD_COUNT = 21;
 
@@ -4412,7 +4456,7 @@ export function newsym(x, y) {
         // (hero_memory), not gbuf. mondead unmap_object(..., show=0) clears
         // memory I but leaves disp_glyph; checking gbuf here re-paints I so
         // the next walk fight_empty's the corpse tile (eat.c eatcorpse never
-        // runs; seed0014 @43789).
+        // runs; D-1774).
         if (memory_glyph_is_invisible(loc)) {
             map_invisible(x, y);
             return;

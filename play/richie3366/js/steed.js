@@ -11,8 +11,8 @@ import { makeknown, near_capacity } from './invent.js';
 import {
     humanoid, noncorporeal, verysmall, bigmonst, nohands,
     amorphous, is_whirly, unsolid, touch_petrifies,
-    is_flyer, is_floater, is_neuter, throws_rocks,
-    M1_HUMANOID, MZ_MEDIUM, G_UNIQ,
+    is_flyer, is_floater, throws_rocks,
+    M1_HUMANOID, MZ_MEDIUM,
 } from './monsters.js';
 import {
     W_SADDLE, W_WEP, W_SWAPWEP, W_QUIVER,
@@ -38,7 +38,7 @@ import { pline, newsym, canspotmon, describe_level, impossible } from './display
 import { getdir } from './lock.js';
 import { m_at } from './mon.js';
 import { isok } from './hacklib.js';
-import { Monnam, mon_nam, pmname, y_monnam, Hallucination, type_is_pname } from './do_name.js';
+import { Monnam, mon_nam, pmname, y_monnam, Hallucination } from './do_name.js';
 import { losehp, maybe_half_phys, finish_maybe_wail } from './hack.js';
 import { set_wounded_legs, heal_legs } from './trap.js';
 import { finish_meating } from './dogmove.js';
@@ -51,6 +51,7 @@ import { acurr, exercise, Fumbling } from './attrib.js';
 import { P_SKILL } from './weapon.js';
 import { welded } from './wield.js';
 import { level_mon_at } from './worm.js';
+import { mhe, pronoun_gender, PRONOUN_HALLU } from './mondata.js';
 
 const SADDLE = objectNames.indexOf('SADDLE');
 const BOULDER = objectNames.indexOf('BOULDER');
@@ -825,27 +826,6 @@ export async function dismount_steed(reason) {
     }
 }
 
-/**
- * C you.h mhe / mondata.c pronoun_gender(PRONOUN_HALLU).
- * Hallu uses core rn2(4). type_is_pname via do_name (M2_PNAME).
- */
-function pronoun_gender(mtmp) {
-    if (Hallucination()) return rn2(4);
-    if (!canspotmon(mtmp)) return 2;
-    const ptr = mtmp?.data;
-    if (!ptr || is_neuter(ptr)) return 2;
-    if (humanoid(ptr)
-        || ((ptr.geno | 0) & G_UNIQ)
-        || type_is_pname(ptr)) {
-        return mtmp.female ? 1 : 0;
-    }
-    return 2;
-}
-
-function mhe(mtmp) {
-    return ['he', 'she', 'it', 'they'][pronoun_gender(mtmp)];
-}
-
 /** C hack.h helpless — msleeping || !mcanmove. */
 function helpless_steed(mtmp) {
     return !!(mtmp.msleeping || !mtmp.mcanmove);
@@ -874,7 +854,7 @@ export async function kick_steed() {
             if (helpless_steed(steed)) await pline(`${He} stirs.`);
             else {
                 const self = ['himself', 'herself', 'itself', 'themselves'][
-                    pronoun_gender(steed)
+                    pronoun_gender(steed, PRONOUN_HALLU)
                 ];
                 const verb = self === 'themselves' ? 'rouse' : 'rouses';
                 let subj = He;

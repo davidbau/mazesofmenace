@@ -1562,6 +1562,7 @@ export function docrt_sync_rebuild() {
         }
     vision_recalc(0);
     see_monsters();
+    (game.disp ||= {}).botlx = true;
 }
 
 export async function docrt() {
@@ -1632,6 +1633,7 @@ export async function docrt() {
        written without that trailing flush, so docrt flushes here itself —
        inside goto_level's flush_screen(-1) bracket this is a no-op and the
        old level stays painted, exactly as in C. */
+    (game.disp ||= {}).botlx = true;
     await flush_screen(0);
 }
 
@@ -2018,15 +2020,13 @@ export async function flush_screen(cursor_on_u) {
         return;
     game._flushing = true;
 
-    /* src/display.c:1939 — if (disp.botl || disp.botlx) bot();
-       gameover matters: really_done sets u.uhp = -1 without dirtying the
-       flags, and C's final --More-- shows the STALE status line. During
-       play the port still repaints unconditionally (the dirty flags are
-       not tracked everywhere C sets them, and the repaint is idempotent);
-       once the game is over it honors the flags so the death frames keep
-       the last live status. */
-    if (!game.program_state_gameover || game.disp?.botl || game.disp?.botlx)
+    /* src/display.c:2236: a message does not refresh unchanged status.
+       Object removal and polymorph can change live values before C marks
+       the status dirty. Keep the preceding status until that write. */
+    if (game.disp?.botl || game.disp?.botlx)
         await bot();
+    else if (game.disp?.time_botl)
+        timebot();
 
     const rows = game.gbuf || [];
     for (let y = 0; y < ROWNO; y++) {
@@ -2088,6 +2088,7 @@ export async function cls() {
        clear_screen(): the WHOLE terminal blanks, status rows included, and
        context.botlx makes bot() repaint them before the next boundary.
        clear_glyph_buffer() empties the logical buffer. */
+    (game.disp ||= {}).botlx = true;
     clear_glyph_buffer();
     const display = game?.nhDisplay;
     if (display?.clearScreen) display.clearScreen();
@@ -2095,11 +2096,8 @@ export async function cls() {
     game._in_cls = false;
 }
 
-// src/botl.c bot() — repaint the two status rows. C gates the call on
-// context.botl/botlx in moveloop; the repaint itself is unconditional and
-// idempotent, so calling it every turn draws the same rows C would. The
-// rows persist between calls: a blocking prompt inside a command (the
-// goto_level --More--) shows the PREVIOUS turn's status, as C does.
+// src/botl.c:253 bot(). Repaint the two status rows and clear their dirty
+// flags. Between calls, even a blocking message keeps the painted status.
 export async function bot() {
     if (game.bot_disabled)
         return;
@@ -2114,6 +2112,28 @@ export async function bot() {
     const s2 = _statusLine2();
     for (let c = 0; c < CO; c++)
         display.setCell(c, 23, c < s2.length ? s2[c] : ' ', NO_COLOR, 0);
+    const disp = (game.disp ||= {});
+    disp.botl = disp.botlx = disp.time_botl = false;
+}
+
+// src/botl.c:278 timebot(), src/botl.c:1285 stat_update_time().
+// The tty window port updates BL_TIME from its saved status fields without
+// recomputing HP, attributes, or conditions. The painted row is this port's
+// saved tty status, so replace only that field and preserve every other one.
+export function timebot() {
+    if (game.bot_disabled)
+        return;
+    const display = game?.nhDisplay;
+    const disp = (game.disp ||= {});
+    if (!display || !game.flags?.time) {
+        disp.time_botl = false;
+        return;
+    }
+    const row = (display.grid?.[23] || []).map((cell) => cell.ch || ' ').join('');
+    const updated = row.replace(/ T:\d+/, ` T:${game.moves || 1}`);
+    for (let c = 0; c < (display.cols ?? 80); c++)
+        display.setCell(c, 23, updated[c] || ' ', NO_COLOR, 0);
+    disp.time_botl = false;
 }
 
 // include/wintty.h:85 — toplin states. NEED_MORE is 1 and NON_EMPTY is 2, the

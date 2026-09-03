@@ -61,7 +61,7 @@ import {
 import { potionhit } from './potion.js';
 import { dobuzz } from './zap.js';
 import {
-    m_seenres, cvt_adtyp_to_mseenres, get_atkdam_type,
+    m_seenres, cvt_adtyp_to_mseenres, get_atkdam_type, mhim,
 } from './mondata.js';
 
 const BOULDER = objectNames.indexOf('BOULDER');
@@ -755,12 +755,6 @@ export async function ohitmon(mtmp, otmp, range, verbose) {
         return false;
     }
     return true;
-}
-
-function mhim(mtmp) {
-    // C: mhim — "him"/"her"/"it"; sex deferred → "it"
-    void mtmp;
-    return 'it';
 }
 
 /**

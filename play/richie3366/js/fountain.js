@@ -88,7 +88,7 @@ import { monster_detect } from './detect.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { makemon } from './makemon.js';
 import {
-    mons, is_watch, nolimbs, humanoid, is_neuter, G_UNIQ,
+    mons, is_watch, nolimbs,
     breathless, haseyes,
 } from './monsters.js';
 import { m_at, angry_guards, minliquid } from './mon.js';
@@ -98,7 +98,7 @@ import { del_engr_at, make_grave } from './engrave.js';
 import { monstseesu, monstunseesu } from './mondata.js';
 import { observe_object, enlightenment, update_inventory, useup } from './invent.js';
 import {
-    hliquid, hcolor, x_monnam, Hallucination, rndmonnam, type_is_pname, oname,
+    hliquid, hcolor, x_monnam, Hallucination, rndmonnam, oname,
     trycall,
 } from './do_name.js';
 import {
@@ -508,31 +508,9 @@ function level_difficulty() {
     return depth_of_level(game.u?.uz) || 1;
 }
 
-/**
- * C you.h mhe / mhis → genders[pronoun_gender(mtmp, PRONOUN_HALLU)].
- * C mondata.c pronoun_gender: hallu rn2(4); !canspotmon / is_neuter /
- * non-(humanoid|G_UNIQ|pname) → 2 (it/its); else female.
- */
-function pronoun_gender(mtmp) {
-    if (Hallucination()) return rn2(4);
-    if (!canspotmon(mtmp)) return 2;
-    const ptr = mtmp?.data;
-    if (!ptr || is_neuter(ptr)) return 2;
-    if (humanoid(ptr)
-        || ((ptr.geno | 0) & G_UNIQ)
-        || type_is_pname(ptr)) {
-        return mtmp.female ? 1 : 0;
-    }
-    return 2;
-}
-/** C you.h mhe — genders[pronoun_gender(mtmp, PRONOUN_HALLU)].he */
-export function mhe(mtmp) {
-    return ['he', 'she', 'it', 'they'][pronoun_gender(mtmp)];
-}
-/** C you.h mhis — genders[pronoun_gender(mtmp, PRONOUN_HALLU)].his */
-export function mhis(mtmp) {
-    return ['his', 'her', 'its', 'their'][pronoun_gender(mtmp)];
-}
+/* C you.h mhe / mhis — re-exported from the single mondata.c
+   pronoun_gender port; fountain.c call sites keep importing them here. */
+export { mhe, mhis } from './mondata.js';
 
 /**
  * C ref: potion.c mongrantswish — mongone then makewish.

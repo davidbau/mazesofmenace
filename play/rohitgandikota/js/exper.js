@@ -8,7 +8,7 @@ import { PMNAMES, ATTKS as A, MFLAGS, MONSYMS } from './monst_data.js';
 import { rnd, rn1, rn2 } from './rng.js';
 import { ACURR } from './attrib.js';
 import { pline } from './display.js';
-import { A_CON, A_WIS, NORMAL_SPEED, NATTK, Upolyd } from './const.js';
+import { A_CON, A_WIS, NORMAL_SPEED, NATTK, LARGEST_INT, Upolyd } from './const.js';
 import { find_mac } from './worn.js';
 import { Goodbye } from './role.js';
 
@@ -170,7 +170,6 @@ export function rndexp(gaining) {
     const maxexp = newuexp(u.ulevel);
     let diff = maxexp - minexp;
     let factor = 1;
-    const LARGEST_INT = 0x7fffffff;
     while (diff >= LARGEST_INT) {
         diff = Math.trunc(diff / 2);
         factor *= 2;
@@ -184,7 +183,6 @@ export function rndexp(gaining) {
     return result;
 }
 
-// src/attrib.c setuhpmax() — set max HP, tracking the peak.
 // src/exper.c:207 losexp() — lose an experience level (or, at level 1 with
 // no drainer, just all experience). resists_drli needs the drain-resistance
 // worn scan; nothing grants it to a fresh hero, so the real reads run.
@@ -261,15 +259,30 @@ export async function losexp(drainer) {
     (game.disp ||= {}).botl = true;
 }
 
+// src/attrib.c:1157 setuhpmax()
 export function setuhpmax(newmax, even_when_polyd) {
-    /* Upolyd is false in this port; the else arm needs polymorph state. */
-    if (newmax !== game.u.uhpmax) {
-        game.u.uhpmax = newmax;
-        if (game.u.uhpmax > (game.u.uhppeak ?? 0))
-            game.u.uhppeak = game.u.uhpmax;
+    const u = game.u;
+    if (!Upolyd(u) || even_when_polyd) {
+        if (newmax !== u.uhpmax) {
+            u.uhpmax = newmax;
+            if (u.uhpmax > u.uhppeak)
+                u.uhppeak = u.uhpmax;
+            (game.disp ||= {}).botl = true;
+        }
+        if (u.uhp > u.uhpmax) {
+            u.uhp = u.uhpmax;
+            (game.disp ||= {}).botl = true;
+        }
+    } else {
+        if (newmax !== u.mhmax) {
+            u.mhmax = newmax;
+            (game.disp ||= {}).botl = true;
+        }
+        if (u.mh > u.mhmax) {
+            u.mh = u.mhmax;
+            (game.disp ||= {}).botl = true;
+        }
     }
-    if (game.u.uhp > game.u.uhpmax)
-        game.u.uhp = game.u.uhpmax;
 }
 
 // src/exper.c pluslvl() — gain an experience level.
@@ -278,8 +291,8 @@ export function setuhpmax(newmax, even_when_polyd) {
 // #levelchange; TRUE for ordinary experience growth. The two differ in how
 // u.uexp is set, not in the draws.
 //
-// The draws are newhp() and newpw(), in that order, and BOTH are spent before
-// the level counter moves. newhp's level-up branch spends up to two rnd calls
+// When polymorphed, monhp_per_lvl runs before newhp() and newpw(). All draws
+// precede the level counter change. newhp's branch spends up to two rnd calls
 // (role and race, each gated on its adv being non-zero) plus a Constitution
 // bonus; newpw spends one rn1.
 /* async because pline() is: update_topl() can reach more(), which BLOCKS for
@@ -290,7 +303,12 @@ export async function pluslvl(incr) {
     if (!incr)
         await pline('You feel more experienced.');
 
-    /* Upolyd would take monhp_per_lvl() first; not reachable here. */
+    if (Upolyd(game.u)) {
+        const { monhp_per_lvl } = await import('./makemon.js');
+        const hpinc = monhp_per_lvl(game.youmonst);
+        game.u.mh += hpinc;
+        setuhpmax(game.u.mhmax, false);
+    }
     const hpinc = newhp();
     game.u.uhp += hpinc;
     setuhpmax(game.u.uhpmax + hpinc, true);
@@ -337,6 +355,7 @@ export async function pluslvl(incr) {
         if (game.u.ulevel > (game.u.ulevelpeak ?? 0))
             game.u.ulevelpeak = game.u.ulevel;
     }
+    (game.disp ||= {}).botl = true;
 }
 
 function note_unported_exper(what) {

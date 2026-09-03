@@ -39,7 +39,7 @@ import {
     GD_EATGOLD, GD_DESTROYGOLD,
 } from './const.js';
 import { monsterNames, mons, pmnames } from './monsters.js';
-import { m_canseeu } from './mondata.js';
+import { m_canseeu, mhe } from './mondata.js';
 import { objectNames } from './generated/objects_data.js';
 
 const PM_GUARD = monsterNames.indexOf('PM_GUARD');
@@ -112,11 +112,6 @@ function guard_pmname(guard) {
         return String(names[gender]).toLowerCase();
     }
     return 'guard';
-}
-
-function mhe(mtmp) {
-    if (!canspotmon(mtmp)) return 'it';
-    return mtmp.female ? 'she' : 'he';
 }
 
 /**

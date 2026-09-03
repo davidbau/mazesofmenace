@@ -2895,7 +2895,9 @@ export function ESHK(mtmp) { return mtmp?.mextra?.eshk; }
 export function EPRI(mtmp) { return mtmp?.mextra?.epri; }
 export function EMIN(mtmp) { return mtmp?.mextra?.emin; }
 export function EGD(mtmp) { return mtmp?.mextra?.egd; }
-export function EDOG(mtmp) { return mtmp?.mextra?.edog; }
+// dog.js stores initialized pet state on edog; MM_EDOG can also allocate an
+// empty mextra.edog before that. Read the initialized record first.
+export function EDOG(mtmp) { return mtmp?.edog || mtmp?.mextra?.edog; }
 export function EBONES(mtmp) { return mtmp?.mextra?.ebones; }
 export function MCORPSENM(mtmp) { return mtmp?.mextra?.mcorpsenm ?? -1; }
 
@@ -2903,7 +2905,7 @@ export function has_eshk(mtmp) { return !!mtmp?.mextra?.eshk; }
 export function has_epri(mtmp) { return !!mtmp?.mextra?.epri; }
 export function has_emin(mtmp) { return !!mtmp?.mextra?.emin; }
 export function has_egd(mtmp) { return !!mtmp?.mextra?.egd; }
-export function has_edog(mtmp) { return !!mtmp?.mextra?.edog; }
+export function has_edog(mtmp) { return !!EDOG(mtmp); }
 export function has_ebones(mtmp) { return !!mtmp?.mextra?.ebones; }
 
 // Object extra accessors

@@ -2195,7 +2195,7 @@ async function openone(zx, zy, num_p) {
         num_p.value++;
     } else if ((ttmp = t_at(zx, zy)) != null) {
         let mon;
-        const dummy = { value: false }; /* unneeded "you notice it arg" */
+        const dummy = { v: false }; /* unneeded "you notice it arg" */
 
         if (!ttmp.tseen && ttmp.ttyp !== STATUE_TRAP) {
             ttmp.tseen = 1;
