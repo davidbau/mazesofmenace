@@ -3,7 +3,8 @@
 //        clear_fcorr, restfakecorr, gd_move dig + restore,
 //        vault_gd_watching (D-0953); vault_summon_gd (D-1007);
 //        uleftvault (D-1140);
-//        hidden_gold (D-1731; vault.c :1256–1268; doprgold FALSE).
+//        hidden_gold (D-1731; vault.c :1256–1268; doprgold FALSE);
+//        paygd (D-1812; vault.c :1204–1247; really_done).
 // Named omissions: migrating_mons findgd park;
 // wallify_vault body (cleanup calls stub); Croesus mon_wield;
 // fracture_rock boulder shatter; reset_faint; SetVoice; spot_stop_timers;
@@ -21,13 +22,13 @@ import {
     map_location, unset_seenv,
 } from './display.js';
 import { getlin } from './getline.js';
-import { Monnam, noit_Monnam, noit_mon_nam } from './do_name.js';
+import { Monnam, noit_Monnam, noit_mon_nam, pmname } from './do_name.js';
 import { adjalign } from './attrib.js';
 import { nomul, in_rooms } from './hack.js';
 import { makeplural } from './objnam.js';
 import { cansee, couldsee, recalc_block_point } from './vision.js';
 import { COIN_CLASS } from './objects.js';
-import { del_engr_at } from './engrave.js';
+import { del_engr_at, make_grave } from './engrave.js';
 import { t_at, deltrap } from './trap.js';
 import {
     VAULT, VAULT_GUARD_TIME, ROOMOFFSET, COLNO, ROWNO,
@@ -37,6 +38,7 @@ import {
     M_AP_OBJECT, M_AP_TYPE, EGD, u_at,
     A_LAWFUL, Has_contents, IS_ROOM, ACCESSIBLE, isok,
     GD_EATGOLD, GD_DESTROYGOLD,
+    RLOC_NOMSG, FEMALE, MALE,
 } from './const.js';
 import { monsterNames, mons, pmnames } from './monsters.js';
 import { m_canseeu, mhe } from './mondata.js';
@@ -930,4 +932,68 @@ export async function gd_move(grd) {
     // C vault.c ~1199 — try restore corridor behind after each dig step
     restfakecorr(grd);
     return 1;
+}
+
+/**
+ * C ref: vault.c paygd `:1204–1247`. Death/escape: if gold and a vault
+ * guard exist, dump coins into the vault (or onto the hero when
+ * uinvault) then mongone the guard. Peaceful off-vault guards take
+ * gold via the remove_guard goto (no rn2). Hostile: mnexto, grave at
+ * rooms[vroom].lx/ly + rn2(2) each, then place coins.
+ * Named: grddead inside mongone (already named on mongone).
+ * @param {boolean} silently
+ */
+export async function paygd(silently) {
+    const grd = findgd();
+    const umoney = money_cnt(game.invent);
+    if (!umoney || !grd) return;
+
+    // invent.js already imports hidden_gold from this file; mkobj/mon
+    // sit on the same SCC. Load callees lazily so vault-first
+    // evaluation does not TDZ objnam.
+    const { freeinv, currency } = await import('./invent.js');
+    const { place_object, stackobj } = await import('./mkobj.js');
+    const { mongone, mnexto } = await import('./mon.js');
+
+    const u = game.u || {};
+    let gdx;
+    let gdy;
+    if (u.uinvault) {
+        if (!silently) {
+            await pline(
+                `Your ${umoney} ${currency(umoney)} goes into the Magic Memory Vault.`,
+            );
+        }
+        gdx = u.ux | 0;
+        gdy = u.uy | 0;
+    } else {
+        if (grd.mpeaceful) {
+            await mongone(grd);
+            return;
+        }
+        await mnexto(grd, RLOC_NOMSG);
+        if (!silently) {
+            await pline(`${Monnam(grd)} remits your gold to the vault.`);
+        }
+        const rooms = game.level?.rooms || [];
+        const rm = rooms[EGD(grd)?.vroom | 0] || {};
+        gdx = (rm.lx | 0) + rn2(2);
+        gdy = (rm.ly | 0) + rn2(2);
+        const plname = game.plname || 'Player';
+        const mndx = u.umonster ?? u.umonnum ?? game.urole?.mnum ?? 0;
+        const buf = `To Croesus: here's the gold recovered from ${plname} the ${
+            pmname(mndx, game.flags?.female ? FEMALE : MALE)
+        }.`;
+        make_grave(gdx, gdy, buf);
+    }
+    for (const coins of [...(game.invent || [])]) {
+        if (!coins) continue;
+        const oclass = game.objects?.[coins.otyp]?.oc_class ?? coins.oclass;
+        if (oclass === COIN_CLASS) {
+            freeinv(coins);
+            place_object(coins, gdx, gdy);
+            stackobj(coins);
+        }
+    }
+    await mongone(grd);
 }

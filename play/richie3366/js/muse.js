@@ -5,16 +5,18 @@
 // D-1376 / D-1810); find_defensive / use_defensive D-1809; find_misc / use_misc.
 
 import { game } from './gstate.js';
-import { rn2, rn1, rnd, d } from './rng.js';
+import { rn2, rn1, rnd, d, rn2_on_display_rng } from './rng.js';
 import { cansee, couldsee, unblock_point } from './vision.js';
 import {
     pline, mon_visible, see_with_infrared, pline_mon, verbalize,
     map_invisible, newsym, sensemon, flash_glyph_at, mon_to_glyph,
-    canspotmon, impossible,
+    canspotmon, impossible, cls, docrt, display_self, You_feel, Norep,
+    flush_screen, show_glyph_cell,
 } from './display.js';
 import { worm_known, worm_move } from './worm.js';
 import {
     Monnam, mon_nam, monverbself, Hallucination, x_monnam, trycall,
+    Some_Monnam, noit_mon_nam, s_suffix,
 } from './do_name.js';
 import {
     doname, singular, an, xname, the, makeplural, ansimpleoname,
@@ -49,11 +51,12 @@ import {
 } from './mondata.js';
 import { bcsign } from './rumors.js';
 import { enexto, migrate_to_level, tele_restrict, rloc,
-    random_teleport_level, noteleport_level, tele } from './teleport.js';
-import { makemon, mpickobj } from './makemon.js';
+    random_teleport_level, noteleport_level, tele, unconscious } from './teleport.js';
+import { makemon, mpickobj, newcham, rndmonst } from './makemon.js';
 import {
     place_object, splitobj, unbless, objects_at, mksobj, weight,
-    stackobj, unknow_object,
+    stackobj, unknow_object, obj_extract_self, add_to_container,
+    start_corpse_timeout, get_mtraits, start_glob_timeout,
 } from './mkobj.js';
 import { dropy, make_blinded, flooreffects } from './do.js';
 import {
@@ -65,7 +68,8 @@ import {
     KILLED_BY_AN, ANTIMAGIC, M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD,
     M_SEEN_ELEC, M_SEEN_SLEEP, M_SEEN_ACID, M_SEEN_REFL, TIMEOUT,
     OBJ_FLOOR, G_GONE, MM_NOMSG, NO_MM_FLAGS,
-    W_ARMOR, W_ACCESSORY, W_SADDLE, W_ARMH,
+    W_ARMOR, W_ACCESSORY, W_SADDLE, W_ARMH, W_ARM,
+    Has_contents, NON_PM, NC_SHOW_MSG, NC_VIA_WAND_OR_SPELL, POLY_TRAP,
     MIGR_RANDOM, MIGR_STAIRS_DOWN, MIGR_STAIRS_UP,
     MIGR_LADDER_DOWN, MIGR_LADDER_UP, MIGR_SSTAIRS,
     In_endgame, In_sokoban, Is_container, Is_rogue_level, Is_earthlevel,
@@ -79,14 +83,17 @@ import {
 } from './const.js';
 import { MON_WEP, dmgval } from './weapon.js';
 import { welded, setuwep, setuswapwep, mwelded } from './wield.js';
-import { depth, strsubst } from './hacklib.js';
+import { depth, strsubst, upstart } from './hacklib.js';
 import { get_level, dunlevs_in_dungeon, On_W_tower_level } from './dungeon.js';
-import { seetrap, t_at, trapname, mintrap, ceiling } from './trap.js';
+import { seetrap, t_at, trapname, mintrap, ceiling, wearing_iron_shoes } from './trap.js';
 import { stairway_at } from './mklev.js';
 import { place_monster, remove_monster } from './steed.js';
 import {
     monflee, maybe_unhide_at, locomotion, accessible, mon_would_take_item,
+    can_carry,
 } from './monmove.js';
+import { SchroedingersBox } from './pickup.js';
+import { age_is_relative } from './timeout.js';
 import { Inhell } from './minion.js';
 import { mon_has_amulet } from './apply.js';
 import { extract_from_minvent, which_armor } from './worn.js';
@@ -199,14 +206,25 @@ const MUSE_CAMERA = 18; // C muse.c offense; defense FULL_HEALING is also 18
 const MUSE_POT_GAIN_LEVEL = 1;
 const MUSE_WAN_MAKE_INVISIBLE = 2;
 const MUSE_POT_INVISIBILITY = 3;
+const MUSE_POLY_TRAP = 4;
+const MUSE_WAN_POLYMORPH = 5;
 const MUSE_POT_SPEED = 6;
 const MUSE_WAN_SPEED_MONSTER = 7;
 const MUSE_BULLWHIP = 8;
+const MUSE_POT_POLYMORPH = 9;
+const MUSE_BAG = 10;
 
 const BULLWHIP = objectNames.indexOf('BULLWHIP');
 const LOADSTONE = objectNames.indexOf('LOADSTONE');
 const LEASH = objectNames.indexOf('LEASH');
 const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
+const BAG_OF_HOLDING = objectNames.indexOf('BAG_OF_HOLDING');
+const BAG_OF_TRICKS = objectNames.indexOf('BAG_OF_TRICKS');
+const ICE_BOX = objectNames.indexOf('ICE_BOX');
+const YELLOW_DRAGON_SCALES = objectNames.indexOf('YELLOW_DRAGON_SCALES');
+const YELLOW_DRAGON_SCALE_MAIL = objectNames.indexOf('YELLOW_DRAGON_SCALE_MAIL');
+const PM_GRAY_DRAGON = monsterNames.indexOf('PM_GRAY_DRAGON');
+const PM_ICE_TROLL = monsterNames.indexOf('PM_ICE_TROLL');
 const SILVER = 14; // objclass.h
 
 /** C ref: you.h m_next2u — squared dist to hero ≤ 2. */
@@ -1721,8 +1739,10 @@ function See_invisible() {
 }
 
 /**
- * C ref: muse.c find_misc — gain-level, bullwhip rn2(5), invis, speed.
- * Named omission: poly trap, poly wand/potion, bag rn2(5)/loot.
+ * C ref: muse.c find_misc — gain-level, bullwhip rn2(5), invis, speed,
+ * poly trap/wand/potion, bag rn2(5).
+ * Named omission: C nomore() skip-rest-of-this-obj on already-ported
+ * whip/invis/speed still uses per-check `!==` rather than continue.
  */
 export function find_misc(mtmp) {
     const m = museState();
@@ -1733,6 +1753,41 @@ export function find_misc(mtmp) {
     if (is_animal(mtmp.data) || mindless(mtmp.data)) return false;
     if (game.u?.uswallow && mtmp === game.u?.ustuck) return false;
     if (dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) > 36) return false;
+
+    const stuck = mtmp === game.u?.ustuck;
+    const immobile = (mtmp.data?.mmove | 0) === 0;
+    const pmidx = mtmp.data?.mndx ?? mtmp.mnum ?? NON_PM;
+    if (!stuck && !immobile && !mtmp.mtrapped
+        && (mtmp.cham ?? NON_PM) === NON_PM
+        && ((mons(pmidx)?.difficulty ?? mtmp.data?.difficulty) | 0) < 6) {
+        const ignore_boulders = verysmall(mtmp.data)
+            || throws_rocks(mtmp.data)
+            || passes_walls(mtmp.data);
+        const diag_ok = pmidx !== PM_GRID_BUG;
+        const x = mtmp.mx | 0, y = mtmp.my | 0;
+        for (let xx = x - 1; xx <= x + 1; xx++) {
+            for (let yy = y - 1; yy <= y + 1; yy++) {
+                if (!isok(xx, yy) || u_at(xx, yy)) continue;
+                if (!diag_ok && xx !== x && yy !== y) continue;
+                if (!(xx === x && yy === y) && m_at(xx, yy)) continue;
+                const t = t_at(xx, yy);
+                if (!t) continue;
+                let boulder = null;
+                for (let o = objects_at(xx, yy); o; o = o.nexthere) {
+                    if ((o.otyp | 0) === BOULDER) { boulder = o; break; }
+                }
+                if ((!ignore_boulders && boulder) || onscary(xx, yy, mtmp)) {
+                    continue;
+                }
+                if ((t.ttyp | 0) === POLY_TRAP && !wearing_iron_shoes(mtmp)) {
+                    m.trapx = xx;
+                    m.trapy = yy;
+                    m.has_misc = MUSE_POLY_TRAP;
+                    return true;
+                }
+            }
+        }
+    }
     if (nohands(mtmp.data)) return false;
 
     const u = game.u || {};
@@ -1787,6 +1842,29 @@ export function find_misc(mtmp) {
             && mtmp.mspeed !== MFAST && !mtmp.isgd) {
             m.misc = obj;
             m.has_misc = MUSE_POT_SPEED;
+        }
+        // C: nomore(MUSE_WAN_POLYMORPH)
+        if (m.has_misc === MUSE_WAN_POLYMORPH) continue;
+        if (obj.otyp === WAN_POLYMORPH && (obj.spe | 0) > 0
+            && (mtmp.cham ?? NON_PM) === NON_PM
+            && ((mons(pmidx)?.difficulty ?? mtmp.data?.difficulty) | 0) < 6) {
+            m.misc = obj;
+            m.has_misc = MUSE_WAN_POLYMORPH;
+        }
+        if (m.has_misc === MUSE_POT_POLYMORPH) continue;
+        if (obj.otyp === POT_POLYMORPH
+            && (mtmp.cham ?? NON_PM) === NON_PM
+            && ((mons(pmidx)?.difficulty ?? mtmp.data?.difficulty) | 0) < 6) {
+            m.misc = obj;
+            m.has_misc = MUSE_POT_POLYMORPH;
+        }
+        if (m.has_misc === MUSE_BAG) continue;
+        if (Is_container(obj) && (obj.otyp | 0) !== BAG_OF_TRICKS && !rn2(5)
+            && !SchroedingersBox(obj)
+            && !m.has_misc && Has_contents(obj)
+            && !obj.olocked && !obj.otrapped) {
+            m.misc = obj;
+            m.has_misc = MUSE_BAG;
         }
     }
     return m.has_misc !== 0;
@@ -2200,15 +2278,163 @@ export async function mon_adjust_speed(mon, adjust, obj) {
 }
 
 /**
- * C ref: muse.c use_misc — gain-level / invis / bullwhip / speed.
- * Poly / bag / you_aggravate cursed-invis display deferred.
+ * C ref: pickup.c removed_from_icebox — thaw age + corpse rot/revive.
+ * Named omit: ice-troll get_mtraits data pointer identity vs mndx.
+ */
+function removed_from_icebox(obj) {
+    if (!obj || age_is_relative(obj)) return;
+    obj.age = (game.moves | 0) - (obj.age | 0);
+    if ((obj.otyp | 0) === CORPSE) {
+        const m = get_mtraits(obj, false);
+        const iceT = m
+            ? ((m.data?.mndx | 0) === PM_ICE_TROLL)
+            : ((obj.corpsenm | 0) === PM_ICE_TROLL);
+        obj.norevive = iceT ? 0 : 1;
+        start_corpse_timeout(obj);
+    } else if (obj.globby) {
+        start_glob_timeout(obj, 0);
+    }
+}
+
+/**
+ * C ref: muse.c muse_newcham_mon — dragon armor form else rndmonst().
+ * obj.h Is_dragon_scales/mail macros inlined (do not clone artifact.js).
+ */
+function muse_newcham_mon(mon) {
+    const m_armr = which_armor(mon, W_ARM);
+    if (m_armr) {
+        const t = m_armr.otyp | 0;
+        if (t >= GRAY_DRAGON_SCALES && t <= YELLOW_DRAGON_SCALES) {
+            return mons(PM_GRAY_DRAGON + t - GRAY_DRAGON_SCALES);
+        }
+        if (t >= GRAY_DRAGON_SCALE_MAIL && t <= YELLOW_DRAGON_SCALE_MAIL) {
+            return mons(PM_GRAY_DRAGON + t - GRAY_DRAGON_SCALE_MAIL);
+        }
+    }
+    return rndmonst();
+}
+
+/**
+ * C ref: muse.c mloot_container `:2263`.
+ * Named omit: cursed bag-of-holding FIXME (C returns 0).
+ */
+async function mloot_container(mon, container, vismon) {
+    let res = 0;
+    if (!container || !Has_contents(container) || container.olocked) {
+        return res;
+    }
+    // C obj.h Is_mbag — BAG_OF_HOLDING || BAG_OF_TRICKS
+    if (((container.otyp | 0) === BAG_OF_HOLDING
+            || (container.otyp | 0) === BAG_OF_TRICKS)
+        && container.cursed) {
+        return res;
+    }
+    if (SchroedingersBox(container)) return res;
+
+    const roll = rn2(10);
+    let takeout_count;
+    if (roll <= 3) takeout_count = 1;
+    else if (roll <= 6) takeout_count = 2;
+    else if (roll <= 8) takeout_count = 3;
+    else takeout_count = 4;
+
+    const howfar = mdistu(mon);
+    const nearby = howfar <= 7 * 7;
+    let contnr_nam = '';
+    let mpronounbuf = '';
+    if (vismon) {
+        mpronounbuf = mhe(mon);
+    }
+
+    for (let takeout_indx = 0; takeout_indx < takeout_count; ++takeout_indx) {
+        if (!Has_contents(container)) break;
+        let nitems = 0;
+        for (let x = container.cobj; x; x = x.nobj) ++nitems;
+        if (!rn2(nitems + 1)) break;
+        nitems = rn2(nitems);
+        let xobj = container.cobj;
+        for (; xobj; xobj = xobj.nobj) {
+            if (--nitems < 0) break;
+        }
+        if (!xobj) break;
+
+        container.cknown = 0;
+        if (!contnr_nam) {
+            contnr_nam = an(nearby ? xname(container)
+                : distant_name(container, xname));
+        }
+        obj_extract_self(xobj);
+        if (can_carry(mon, xobj)) {
+            if (vismon) {
+                if (howfar > 2) {
+                    await Norep(
+                        `${Monnam(mon)} rummages through ${contnr_nam}.`,
+                    );
+                } else if (takeout_indx === 0) {
+                    await pline_mon(mon,
+                        `${Monnam(mon)} removes ${doname(xobj)} from ${contnr_nam}.`);
+                } else {
+                    await pline(
+                        `${upstart(mpronounbuf)} removes ${doname(xobj)}.`,
+                    );
+                }
+            }
+            if ((container.otyp | 0) === ICE_BOX) {
+                removed_from_icebox(xobj);
+            }
+            mpickobj(mon, xobj);
+            res = 2;
+        } else {
+            const already_nomerge = !!xobj.nomerge;
+            const just_xobj = !Has_contents(container);
+            xobj.nomerge = 1;
+            xobj = add_to_container(container, xobj);
+            if (!already_nomerge && xobj) xobj.nomerge = 0;
+            container.owt = weight(container);
+            if (just_xobj) break;
+        }
+    }
+    return res;
+}
+
+/**
+ * C ref: muse.c you_aggravate `:2630`.
+ * Named omit: CLIPPING cliparound (macosx-minimal has no CLIPPING).
+ * WIN_MAP blocking → nhgetch after flush, no --More--.
+ */
+async function you_aggravate(mtmp) {
+    await pline(
+        `For some reason, ${s_suffix(noit_mon_nam(mtmp))} presence is known to you.`,
+    );
+    await cls();
+    const mg = mon_to_glyph(mtmp, rn2_on_display_rng);
+    await show_glyph_cell(
+        mtmp.mx, mtmp.my, mg.ch, mg.color, !!mg.dec, 0, mg.glyph,
+    );
+    display_self();
+    await You_feel(`aggravated at ${noit_mon_nam(mtmp)}.`);
+    await flush_screen(1);
+    const { nhgetch } = await import('./input.js');
+    await nhgetch();
+    await docrt();
+    if (unconscious()) {
+        game.multi = -1;
+        game.nomovemsg =
+            'Aggravated, you are jolted into full consciousness.';
+    }
+    newsym(mtmp.mx, mtmp.my);
+    if (!canspotmon(mtmp)) map_invisible(mtmp.mx, mtmp.my);
+}
+
+/**
+ * C ref: muse.c use_misc — gain-level / invis / bullwhip / speed /
+ * poly wand/potion/trap / bag / you_aggravate.
  */
 export async function use_misc(mtmp) {
     const m = museState();
     const otmp = m.misc;
     const i = await precheck(mtmp, otmp);
     if (i !== 0) return i;
-    if (!m.has_misc || !m.misc) return 0;
     const vismon = canseemon(mtmp);
     const oseen = !!(otmp && vismon);
     const vis = cansee(mtmp.mx, mtmp.my);
@@ -2261,10 +2487,11 @@ export async function use_misc(mtmp) {
         if (vismon && mtmp.minvis) {
             if (canseemon(mtmp)) {
                 await pline(
-                    `${nambuf}'s body takes on a strange transparency.`,
+                    `${upstart(s_suffix(nambuf))} body takes on a ${Hallucination() ? 'normal' : 'strange'} transparency.`,
                 );
             } else {
                 await pline(`Suddenly you cannot see ${nambuf}.`);
+                if (vis) map_invisible(mtmp.mx, mtmp.my);
             }
             if (oseen) makeknown(otmp.otyp);
         } else if (vismon && !mtmp.minvis) {
@@ -2274,9 +2501,8 @@ export async function use_misc(mtmp) {
         } else if (!vismon && canseemon(mtmp)) {
             await pline(`${Monnam(mtmp)} suddenly appears!`);
         }
-        void vis;
         if (otmp.otyp === POT_INVISIBILITY) {
-            // cursed → you_aggravate deferred (display/cls)
+            if (otmp.cursed) await you_aggravate(mtmp);
             m_useup(mtmp, otmp);
         }
         return 2;
@@ -2360,8 +2586,56 @@ export async function use_misc(mtmp) {
         await mon_adjust_speed(mtmp, 1, otmp);
         m_useup(mtmp, otmp);
         return 2;
-    default:
+    case MUSE_WAN_POLYMORPH: {
+        if (!otmp) return 0;
+        await mzapwand(mtmp, otmp, true);
+        await newcham(
+            mtmp, muse_newcham_mon(mtmp),
+            NC_VIA_WAND_OR_SPELL | NC_SHOW_MSG,
+        );
+        if (oseen) makeknown(WAN_POLYMORPH);
+        return 2;
+    }
+    case MUSE_POT_POLYMORPH: {
+        if (!otmp) return 0;
+        await mquaffmsg(mtmp, otmp);
+        m_useup(mtmp, otmp);
+        if (vismon) {
+            await pline_mon(mtmp, `${Monnam(mtmp)} suddenly mutates!`);
+        }
+        await newcham(mtmp, muse_newcham_mon(mtmp), NC_SHOW_MSG);
+        if (oseen) makeknown(POT_POLYMORPH);
+        return 2;
+    }
+    case MUSE_POLY_TRAP: {
+        const t = t_at(m.trapx, m.trapy);
+        if (!t) return 0;
+        const vistrapspot = cansee(t.tx, t.ty);
+        if (vis || vistrapspot) seetrap(t);
+        if (vismon || vistrapspot) {
+            const jump = vtense('', locomotion(mtmp.data, 'jump'));
+            await pline_mon(mtmp,
+                `${Some_Monnam(mtmp)} deliberately ${jump} onto a ${t.tseen ? trapname(t.ttyp, false) : 'hidden trap'}!`);
+        }
+        remove_monster(mtmp.mx, mtmp.my);
+        newsym(mtmp.mx, mtmp.my);
+        place_monster(mtmp, m.trapx, m.trapy);
+        await maybe_unhide_at(m.trapx, m.trapy);
+        if (mtmp.wormno) worm_move(mtmp);
+        newsym(m.trapx, m.trapy);
+        await newcham(mtmp, null, NC_SHOW_MSG);
+        return 2;
+    }
+    case MUSE_BAG:
+        if (!otmp) return 0;
+        return mloot_container(mtmp, otmp, vismon);
+    case 0:
         return 0;
+    default:
+        await impossible(
+            `${Monnam(mtmp)} wanted to perform action ${m.has_misc}?`,
+        );
+        break;
     }
     return 0;
 }

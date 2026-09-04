@@ -239,7 +239,7 @@ function can_touch_safely(_mtmp, otmp) {
  * and AT_ENGL engulfer exceptions). Hands monsters take the full stack
  * when weight allows (D-0186).
  */
-function can_carry(mtmp, otmp) {
+export function can_carry(mtmp, otmp) {
     if (!mtmp || !otmp) return 0;
     const mdat = mtmp.data;
     if ((mdat?.mflags1 ?? 0) & M1_NOTAKE) return 0;

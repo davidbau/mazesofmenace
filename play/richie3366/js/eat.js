@@ -101,7 +101,7 @@ import {
     A_STR, A_DEX, A_CHA, A_WIS, A_INT, A_CON,
 } from './attrib.js';
 import {
-    nomul, losehp, still_chewing, is_pool, is_lava, stop_occupation,
+    nomul, unmul, losehp, still_chewing, is_pool, is_lava, stop_occupation,
     end_running,
 } from './hack.js';
 import { near_capacity, observe_object, makeknown, getobj,
@@ -461,6 +461,16 @@ async function unfaint() {
 }
 
 /**
+ * C eat.c reset_faint `:3353–3358` — drown crawl-out / combat wake.
+ * Pointer compare: only the faint afternmv, not other occupations.
+ */
+export async function reset_faint() {
+    if (game.afternmv === unfaint) {
+        await unmul('You revive.');
+    }
+}
+
+/**
  * C youprop.h Unaware — gm.multi < 0 && (unconscious() || is_fainted()).
  * multi test skips the callees when the hero can act.
  */
@@ -551,7 +561,11 @@ export async function newuhs(incr) {
                 await pline('You faint from lack of food.');
                 // C: incr_itimeout(&HDeaf, duration)
                 incr_itimeout_prop(u, 'HDeaf', duration);
-                if (u.uprops?.[DEAF]) u.uprops[DEAF].intrinsic = u.HDeaf | 0;
+                if (!u.uprops) u.uprops = {};
+                if (!u.uprops[DEAF]) {
+                    u.uprops[DEAF] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+                }
+                u.uprops[DEAF].intrinsic = u.HDeaf | 0;
                 if (game.disp) game.disp.botl = true;
                 if (game.flags) game.flags.botl = true;
                 nomul(-duration);
@@ -1935,6 +1949,9 @@ export function Hear_again() {
     if (!rn2(2)) {
         const u = game.u || (game.u = {});
         u.HDeaf = (u.HDeaf | 0) & ~TIMEOUT;
+        if (u.uprops?.[DEAF]) {
+            u.uprops[DEAF].intrinsic = (u.uprops[DEAF].intrinsic | 0) & ~TIMEOUT;
+        }
         if (game.disp) game.disp.botl = true;
         if (game.flags) game.flags.botl = true;
     }
@@ -1967,6 +1984,11 @@ async function rottenfood(obj) {
         // C: incr_itimeout(&HDeaf, duration); nomul(-duration); afternmv=Hear_again
         const u = game.u || (game.u = {});
         u.HDeaf = ((u.HDeaf | 0) & ~TIMEOUT) | (((u.HDeaf | 0) & TIMEOUT) + duration);
+        if (!u.uprops) u.uprops = {};
+        if (!u.uprops[DEAF]) {
+            u.uprops[DEAF] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+        }
+        u.uprops[DEAF].intrinsic = u.HDeaf | 0;
         nomul(-duration);
         game.multi_reason = 'unconscious from rotten food';
         game.nomovemsg = 'You are conscious again.';

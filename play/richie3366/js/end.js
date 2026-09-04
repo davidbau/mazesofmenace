@@ -46,11 +46,13 @@ import { topten, nh_terminate_capture, raw_print_blanks } from './topten.js';
 import { objectNames } from './generated/objects_data.js';
 import { monsterNames, pmnames, PM_TOURIST } from './generated/monsters_data.js';
 import { paybill, money2mon, obfree } from './shk.js';
-import { hidden_gold } from './vault.js';
+import { hidden_gold, paygd } from './vault.js';
+import { clearlocks } from './files.js';
+import { clearpriests } from './priest.js';
 import { shkname, shkname_is_pname } from './shknam.js';
 import {
     enlightenment, display_inventory, discover_object, makeknown, sortloot,
-    currency,
+    currency, free_pickinv_cache,
 } from './invent.js';
 import {
     list_vanquished, list_genocided, show_conduct,
@@ -363,6 +365,36 @@ const KILLED_BY_PREFIX = [
 
 function plur(n) {
     return (n | 0) === 1 ? '' : 's';
+}
+
+/**
+ * C ref: end.c death_fixups[] `:349–361` — helplessness overrides.
+ * STONING drops "getting stoned" (unmulti); STARVING shortens
+ * "fainted from lack of food" to "fainted".
+ */
+const death_fixups = [
+    { why: STONING, unmulti: 1, exclude: 'getting stoned', include: null },
+    {
+        why: STARVING, unmulti: 0,
+        exclude: 'fainted from lack of food', include: 'fainted',
+    },
+];
+
+/**
+ * C ref: end.c fixup_death `:365–384` (staticfn). Rewrite or drop
+ * gm.multi_reason when the death how already implies that helplessness.
+ */
+function fixup_death(how) {
+    const reason = game.multi_reason;
+    if (!reason) return;
+    for (const row of death_fixups) {
+        if (row.why === how && row.exclude === reason) {
+            game.multi_reason = row.include || null;
+            game.multireasonbuf = '';
+            if (row.unmulti) game.multi = 0;
+            break;
+        }
+    }
 }
 
 /** C ref: invent.c money_cnt */
@@ -876,26 +908,53 @@ async function show_death_rip_and_summary(how, umoney, endtime = 0) {
 
 /**
  * C ref: end.c really_done — gameover; paybill; disclose; score; bones; rip; topten.
- * Named omissions: clearpriests/paygd; dump/livelog; logfile/xlogfile;
- * toptenwin NHW_TEXT; arise pline; inven_inuse / ball-chain arms of
- * done_object_cleanup; unleash_all in finish_paybill; launch_in_progress
- * abort; ParanoidBones getlin; DUMPLOG second artifact_score.
+ * Named omissions: dump/livelog; logfile/xlogfile; toptenwin NHW_TEXT;
+ * arise pline; inven_inuse / ball-chain arms of done_object_cleanup;
+ * unleash_all in finish_paybill; ParanoidBones getlin; DUMPLOG second
+ * artifact_score; POSIX signal/hangup in clearlocks; grddead inside
+ * mongone; display_pickinv cache setter; insight fmt_elapsed_time /
+ * savegamestate / dosuspend / dosh timet_delta callers.
  */
 async function really_done(how) {
     if (!game.program_state) game.program_state = {};
     game.program_state.gameover = true;
+    // C really_done `:1146` — panic save is pointless once gameover.
+    game.program_state.something_worth_saving = 0;
+    if (game.program_state.done_hup) {
+        game.program_state.done_stopprint =
+            (game.program_state.done_stopprint | 0) + 1;
+    }
+    if (!game.iflags) game.iflags = {};
+    game.iflags.vision_inited = false;
 
     // C: done_object_cleanup before bones/disclosure — limbo missiles → map
     if (!game.program_state.panicking) done_object_cleanup();
+    game.iflags.perm_invent = false;
 
     // C really_done `:1165–1170` — one getnow for bones when[] / rip / topten
     const endtime = getnow();
-    if (!game.iflags) game.iflags = {};
+    if (!game.urealtime) {
+        game.urealtime = { realtime: 0, start_timing: 0, finish_time: 0 };
+    }
+    game.urealtime.finish_time = endtime;
+    // allmain.js is in the SCC with end.js; load after modules are live
+    // (same shape as keepdogs). timet_delta is a hoisted export.
+    const { timet_delta } = await import('./allmain.js');
+    game.urealtime.realtime =
+        (game.urealtime.realtime | 0)
+        + timet_delta(endtime, game.urealtime.start_timing);
     game.iflags.at_night = night() ? 1 : 0;
     game.iflags.at_midnight = midnight() ? 1 : 0;
 
     // C: bones_ok = can_make_bones() before display_nhwindow(WIN_MESSAGE)
     const bones_ok = (how < GENOCIDED) && can_make_bones();
+
+    if (bones_ok) {
+        // trap.js already statically imports end.js — load these lazily.
+        const { launch_in_progress, force_launch_placement } =
+            await import('./trap.js');
+        if (launch_in_progress()) force_launch_placement();
+    }
 
     const u = game.u || {};
     // C end.c really_done: QUIT → NO_KILLER_PREFIX; low HP → Charon's boat
@@ -913,6 +972,8 @@ async function really_done(how) {
         game.killer.format = NO_KILLER_PREFIX;
     }
 
+    fixup_death(how);
+
     // C: paybill before display_nhwindow — may append to pending "You die..."
     let taken = false;
     if (how !== PANICKED) {
@@ -920,8 +981,11 @@ async function really_done(how) {
         // croaked: -1 escaped; 0 quit; 1 died (how != QUIT)
         const croaked = how === ESCAPED ? -1 : (how !== QUIT ? 1 : 0);
         taken = await paybill(croaked, silently);
-        // paygd / clearpriests deferred
+        await paygd(silently);
+        await clearpriests();
     }
+
+    clearlocks();
 
     await flush_topl_more();
 
@@ -995,6 +1059,10 @@ async function really_done(how) {
         score_collected_valuables();
         artifact_score(game.invent, true);
     }
+
+    // C really_done `:1376–1378` — wait_synch then free pickinv cache
+    // before tearing down WIN_INVEN / drawing the RIP window.
+    free_pickinv_cache();
 
     // C: outrip + goodbye into NHW_TEXT then display_nhwindow(TRUE)
     await show_death_rip_and_summary(how, umoney, endtime);

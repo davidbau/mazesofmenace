@@ -158,7 +158,9 @@ import {
     D_NODOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_TRAPPED, D_SECRET,
     OROOM, THEMEROOM, COURT, SWAMP, VAULT, BEEHIVE, MORGUE,
     BARRACKS, ZOO, TEMPLE, LEPREHALL, COCKNEST, ANTHOLE, SHOPBASE,
-    ARMORSHOP, WEAPONSHOP,
+    ARMORSHOP, SCROLLSHOP, POTIONSHOP, WEAPONSHOP,
+    FOODSHOP, RINGSHOP, WANDSHOP, TOOLSHOP,
+    BOOKSHOP, FODDERSHOP, CANDLESHOP,
     ROOMOFFSET, MAXNROFROOMS, MAX_SUBROOMS, SHARED,
     SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, THRONE, TREE,
     DUST, ENGRAVE, BURN, ENGR_BLOOD,
@@ -191,6 +193,7 @@ import {
     MKTRAP_NOVICTIM, MKTRAP_SEEN,
     BR_PORTAL, BR_NO_END1, BR_NO_END2, SVALL,
     CORPSTAT_INIT, MARK, MM_NOGRP, NO_MM_FLAGS,
+    AM_SHRINE, AM_SANCTUM,
     In_quest, NO_ROOM,
     TRAPNUM,
     In_endgame,
@@ -199,6 +202,7 @@ import {
     undestroyable_trap,
 } from './const.js';
 import { distmin } from './hacklib.js';
+import { priestini } from './priest.js';
 
 const XLIM = 4;
 const YLIM = 3;
@@ -559,6 +563,9 @@ async function makelevel(specialLevelLoader = null) {
                 const { HELL_LEVEL_LOADERS } = await import(
                     './hell_levels.js'
                 );
+                const { VALLEY_LEVEL_LOADERS } = await import(
+                    './valley_levels.js'
+                );
                 SPECIAL_LEVEL_LOADERS = {
                     ...BIGRM_LOADERS,
                     ...QUEST_LEVEL_LOADERS,
@@ -568,6 +575,7 @@ async function makelevel(specialLevelLoader = null) {
                     ...FIRE_LEVEL_LOADERS,
                     ...AIR_LEVEL_LOADERS,
                     ...HELL_LEVEL_LOADERS,
+                    ...VALLEY_LEVEL_LOADERS,
                 };
             }
             // Determine the resolved protofile the same way makemaz() will.
@@ -584,6 +592,9 @@ async function makelevel(specialLevelLoader = null) {
                 await makemaz(slev.proto, slev, g);
                 return;
             }
+            throw new UnsupportedLevelChangeError(
+                `makelevel: no loader for special level "${slev.proto}"`,
+            );
         }
     }
 
@@ -861,18 +872,11 @@ export function select_themeroom(difficulty, random = rn2) {
 }
 
 // C ref: nhlua.c splev_chr2typ() (379-391). The cases below are char2typ[]
-// (340-377) entry for entry, so no character C accepts reaches the default arm.
-//
-// The default arm cannot be raised, and is not converted for that reason.
-// C returns INVALID_TYPE there instead of failing, and its three consumers
-// then diverge: lspo_map() skips the cell, while get_table_mapchr_opt() and
-// nhlsel.c's selection filter raise a Lua error. Both data sources that reach
-// here are fixed tables this repository ships, and both are covered --
-// js/tutorial_level.js TUTORIAL_MAP uses " #+-.FLPSTWZ|", and the nineteen
-// maps in js/themeroom_data.js use "-.Lx|}" between them. scripts/
-// tutorial-startup.test.mjs and scripts/themeroom-data.test.mjs run every
-// character of both through this function, so a map that ever needs a new
-// one fails there rather than escaping runSegment().
+// (340-377) entry for entry. The default arm returns MAX_TYPE (C's
+// INVALID_TYPE); selection_match and lspo_map skip those cells, while
+// get_table_mapchr_opt and nhlsel.c's selection filter raise a Lua error.
+// bigrm3 uses "[" in a mapfrag pattern, which reaches here via
+// selection_match and must return MAX_TYPE to be skipped.
 export function splev_chr2typ(char) {
     switch (char) {
     case ' ': return STONE;
@@ -899,7 +903,7 @@ export function splev_chr2typ(char) {
     case 'x': return MAX_TYPE;
     case 'B': return CROSSWALL;
     case 'w': return MATCH_WALL;
-    default: throw new Error(`unsupported special-level map character ${JSON.stringify(char)}`);
+    default: return MAX_TYPE;
     }
 }
 
@@ -1192,6 +1196,9 @@ async function makemaz(proto, slev, state) {
             const { HELL_LEVEL_LOADERS } = await import(
                 './hell_levels.js'
             );
+            const { VALLEY_LEVEL_LOADERS } = await import(
+                './valley_levels.js'
+            );
             SPECIAL_LEVEL_LOADERS = {
                 ...BIGRM_LOADERS,
                 ...QUEST_LEVEL_LOADERS,
@@ -1201,6 +1208,7 @@ async function makemaz(proto, slev, state) {
                 ...FIRE_LEVEL_LOADERS,
                 ...AIR_LEVEL_LOADERS,
                 ...HELL_LEVEL_LOADERS,
+                ...VALLEY_LEVEL_LOADERS,
             };
         }
         const loader = SPECIAL_LEVEL_LOADERS[protofile];
@@ -1425,6 +1433,8 @@ function createSpecialLevelApi(state) {
                 // level flag enables periodic lightning strikes on clouds.
                 case 'stormy': state.level.flags.stormy = true; break;
                 case 'fumaroles': state.level.flags.fumaroles = true; break;
+                case 'nommap': state.level.flags.nommap = true; break;
+                case 'temperate': state.level.flags.temperature = 0; break;
                 case 'nomongen': state.level.flags.rndmongen = false; break;
                 case 'nodeathdrops': state.level.flags.deathdrops = false; break;
                 case 'noautosearch': state.level.flags.noautosearch = true; break;
@@ -1439,6 +1449,7 @@ function createSpecialLevelApi(state) {
                 // C ref: sp_lev.c lspo_level_flags(). "sokoban" sets
                 // Sokoban = 1, which is svl.level.flags.sokoban_rules.
                 case 'sokoban': state.level.flags.sokoban_rules = true; break;
+                case 'inaccessibles': state._specialLevelCheckInaccessibles = true; break;
                 default: throw new Error(`unsupported special-level flag ${name}`);
                 }
             }
@@ -1552,7 +1563,16 @@ function createSpecialLevelApi(state) {
                 // C ref: sp_lev.c lspo_region() table form with region coords.
                 const ROOM_TYPE_MAP = {
                     ordinary: OROOM, delphi: DELPHI, temple: TEMPLE,
-                    zoo: ZOO, throne: COURT, barracks: BARRACKS,
+                    morgue: MORGUE, barracks: BARRACKS, zoo: ZOO,
+                    beehive: BEEHIVE, leprehall: LEPREHALL, swamp: SWAMP,
+                    vault: VAULT, court: COURT, throne: COURT,
+                    shop: SHOPBASE, 'armor shop': ARMORSHOP,
+                    'scroll shop': SCROLLSHOP, 'potion shop': POTIONSHOP,
+                    'weapon shop': WEAPONSHOP, 'food shop': FOODSHOP,
+                    'ring shop': RINGSHOP, 'wand shop': WANDSHOP,
+                    'tool shop': TOOLSHOP, 'book shop': BOOKSHOP,
+                    'health food shop': FODDERSHOP,
+                    'candle shop': CANDLESHOP,
                 };
                 const [rx1, ry1, rx2, ry2] = specification.region;
                 const rtype = ROOM_TYPE_MAP[specification.type] ?? OROOM;
@@ -2103,6 +2123,16 @@ function createSpecialLevelApi(state) {
             };
             const ROOM_TYPE_MAP = {
                 ordinary: OROOM, delphi: DELPHI, temple: TEMPLE,
+                morgue: MORGUE, barracks: BARRACKS, zoo: ZOO,
+                beehive: BEEHIVE, leprehall: LEPREHALL, swamp: SWAMP,
+                vault: VAULT, court: COURT,
+                shop: SHOPBASE, 'armor shop': ARMORSHOP,
+                'scroll shop': SCROLLSHOP, 'potion shop': POTIONSHOP,
+                'weapon shop': WEAPONSHOP, 'food shop': FOODSHOP,
+                'ring shop': RINGSHOP, 'wand shop': WANDSHOP,
+                'tool shop': TOOLSHOP, 'book shop': BOOKSHOP,
+                'health food shop': FODDERSHOP,
+                'candle shop': CANDLESHOP,
             };
             const roomSpec = {
                 x: spec.x ?? -1,
@@ -2138,26 +2168,46 @@ function createSpecialLevelApi(state) {
             makecorridors();
         },
 
-        // C ref: sp_lev.c lspo_feature() for altars. Sets a tile to ALTAR
-        // and stores the alignment mask.
+        // C ref: sp_lev.c create_altar(). Sets a tile to ALTAR, stores
+        // the alignment mask, and calls priestini for shrine altars in
+        // temple rooms.
         altar(spec) {
             const ALIGN_STR_MAP = {
                 noalign: A_NONE, law: A_LAWFUL, neutral: A_NEUTRAL,
                 chaos: A_CHAOTIC, none: A_NONE, random: A_NONE,
                 coaligned: A_NONE, noncoaligned: A_NONE,
             };
+            const SHRINE_MAP = { altar: 0, shrine: 1, sanctum: 2 };
             let x, y;
-            if (currentCroom) {
-                x = currentCroom.lx + spec.x;
-                y = currentCroom.ly + spec.y;
+            let croom_is_temple = true;
+            let croom = currentCroom;
+            if (croom) {
+                x = croom.lx + spec.x;
+                y = croom.ly + spec.y;
+                if (croom.rtype !== TEMPLE) croom_is_temple = false;
             } else {
                 x = frame.xstart + spec.x;
                 y = frame.ystart + spec.y;
+                const sprooms = in_rooms(x, y, TEMPLE, state);
+                if (sprooms.length > 0) {
+                    croom = state.level.rooms[sprooms[0] - ROOMOFFSET];
+                } else {
+                    croom_is_temple = false;
+                }
             }
             set_levltyp(x, y, ALTAR, { state });
             const alignment = ALIGN_STR_MAP[spec.align] ?? A_NONE;
             const loc = state.level.at(x, y);
             if (loc) loc.flags = Align2amask(alignment);
+
+            let shrine = SHRINE_MAP[spec.type] ?? 0;
+            if (shrine < 0) shrine = rn2(2);
+            if (!croom_is_temple || !shrine) return;
+
+            priestini(state.u.uz, croom, x, y, shrine > 1, env);
+            loc.flags |= AM_SHRINE;
+            if (shrine === 2) loc.flags |= AM_SANCTUM;
+            state.level.flags.has_temple = true;
         },
 
         // C ref: sp_lev.c lspo_replace_terrain(). Replaces all cells of
@@ -2417,7 +2467,51 @@ function createSpecialLevelApi(state) {
             // C ref: sp_lev.c flip_level_rnd(). Each allowed flip axis
             // consumes rn2(2). bigrm-12's "noflipy" clears bit 1, leaving
             // only the horizontal axis flip.
-            flip_level_rnd(state.specialLevelAllowFlips ?? 3);
+            const flipCode = flip_level_rnd(state.specialLevelAllowFlips ?? 3);
+            // C ref: sp_lev.c flip_level() 697-733. flip_level() updates
+            // upstair/dnstair/updest/dndest but cannot reach the closure-local
+            // storedLregions. Apply the same coordinate mirror here.
+            if (flipCode && storedLregions.length) {
+                let { xmin: minx, xmax: maxx,
+                      ymin: miny, ymax: maxy } = get_level_extends();
+                if (miny < 0) miny = 0;
+                if (minx < 1) minx = 1;
+                if (maxx >= COLNO) maxx = COLNO - 1;
+                if (maxy >= ROWNO) maxy = ROWNO - 1;
+                const FlipX = (v) => (maxx - v) + minx;
+                const FlipY = (v) => (maxy - v) + miny;
+                for (const lr of storedLregions) {
+                    const r = lr.region;
+                    if (flipCode & 1) {
+                        r.ly = FlipY(r.ly);
+                        r.hy = FlipY(r.hy);
+                        if (r.ly > r.hy) {
+                            const t = r.ly; r.ly = r.hy; r.hy = t;
+                        }
+                        if (r.nly >= 0) {
+                            r.nly = FlipY(r.nly);
+                            r.nhy = FlipY(r.nhy);
+                            if (r.nly > r.nhy) {
+                                const t = r.nly; r.nly = r.nhy; r.nhy = t;
+                            }
+                        }
+                    }
+                    if (flipCode & 2) {
+                        r.lx = FlipX(r.lx);
+                        r.hx = FlipX(r.hx);
+                        if (r.lx > r.hx) {
+                            const t = r.lx; r.lx = r.hx; r.hx = t;
+                        }
+                        if (r.nlx >= 0) {
+                            r.nlx = FlipX(r.nlx);
+                            r.nhx = FlipX(r.nhx);
+                            if (r.nlx > r.nhx) {
+                                const t = r.nlx; r.nlx = r.nhx; r.nhx = t;
+                            }
+                        }
+                    }
+                }
+            }
             count_level_features(state);
 
             // C ref: sp_lev.c solidify_map(). Marks non-map STONE walls as
@@ -3183,6 +3277,7 @@ function flip_level_rnd(flp) {
     if ((flp & 1) && rn2(2)) c |= 1;
     if ((flp & 2) && rn2(2)) c |= 2;
     if (c) flip_level(c);
+    return c;
 }
 
 // C ref: mkmaze.c walkfrom() (non-MICRO recursive version). Carves a
@@ -3548,11 +3643,19 @@ function filler_region(filler, origin, definition, context) {
     return true;
 }
 
+const THEMEROOM_TYPE_MAP = {
+    ordinary: OROOM, themed: THEMEROOM,
+    shop: SHOPBASE, 'armor shop': ARMORSHOP,
+    'scroll shop': SCROLLSHOP, 'potion shop': POTIONSHOP,
+    'weapon shop': WEAPONSHOP, 'food shop': FOODSHOP,
+    'ring shop': RINGSHOP, 'wand shop': WANDSHOP,
+    'tool shop': TOOLSHOP, 'book shop': BOOKSHOP,
+    'health food shop': FODDERSHOP,
+    'candle shop': CANDLESHOP,
+};
 function room_type_from_schema(type, definition) {
-    if (type === 'ordinary') return OROOM;
-    if (type === 'themed') return THEMEROOM;
-    if (type === 'armor shop') return ARMORSHOP;
-    if (type === 'weapon shop') return WEAPONSHOP;
+    const rtype = THEMEROOM_TYPE_MAP[type];
+    if (rtype !== undefined) return rtype;
     throw new UnsupportedThemeroomActionError(
         definition,
         `has unsupported room type ${JSON.stringify(type)}`,

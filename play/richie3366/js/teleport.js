@@ -1679,7 +1679,7 @@ function Blinded() {
  * C ref: trap.c unconscious — multi < 0 and (usleep or wake-msg prefixes).
  * Local clone: trap.js imports this file (cycle). eat.js has the same body.
  */
-function unconscious() {
+export function unconscious() {
     if ((game.multi || 0) >= 0) return false;
     const u = game.u || {};
     if (u.usleep) return true;

@@ -1,7 +1,9 @@
 // quest_levels.js — Quest and special level definitions.
 // C refs: dat/Bar-strt.lua, dat/Bar-fila.lua, dat/Bar-filb.lua,
 //         dat/Bar-goal.lua, dat/Bar-loca.lua, dat/Arc-strt.lua,
-//         dat/Pri-strt.lua, dat/oracle.lua, dat/tower1.lua.
+//         dat/Pri-strt.lua, dat/Pri-loca.lua, dat/Pri-fila.lua,
+//         dat/Pri-filb.lua, dat/Pri-goal.lua, dat/oracle.lua,
+//         dat/tower1.lua.
 
 import { COLNO, FEMALE, G_GENOD, ROWNO } from './const.js';
 import { mkclass } from './makemon.js';
@@ -10,11 +12,13 @@ import {
     G_NOGEN,
     NON_PM,
     PM_ACOLYTE,
+    PM_ALIGNED_CLERIC,
     PM_ARCH_PRIEST,
     PM_CHIEFTAIN,
     PM_GIANT_EEL,
     PM_HUMAN_ZOMBIE,
     PM_LORD_CARNARVON,
+    PM_NALZOK,
     PM_OGRE,
     PM_ORACLE,
     PM_PELIAS,
@@ -25,16 +29,19 @@ import {
     PM_VAMPIRE_LEADER,
     PM_VLAD_THE_IMPALER,
     PM_WATCHMAN,
+    PM_WRAITH,
     S_CENTAUR,
     S_MUMMY,
+    S_WRAITH,
+    S_ZOMBIE,
     S_OGRE,
     S_SNAKE,
     S_TROLL,
     S_VAMPIRE,
 } from './monsters.js';
 import {
-    BULLWHIP, CHAIN_MAIL, CHEST, FEDORA, LUCKSTONE, MACE, ROBE,
-    RUNESWORD, STATUE, TALLOW_CANDLE, WAX_CANDLE,
+    BULLWHIP, CHAIN_MAIL, CHEST, FEDORA, HELM_OF_BRILLIANCE, LUCKSTONE,
+    MACE, ROBE, RUNESWORD, STATUE, TALLOW_CANDLE, WAX_CANDLE,
 } from './objects.js';
 import { rn2, rnd } from './rng.js';
 import { selection_area, ThemeroomSelection } from './themerooms.js';
@@ -802,6 +809,133 @@ async function priStrt(des, state) {
     }
 }
 
+// C ref: dat/Pri-loca.lua. Priest quest locate level — temple with morgue.
+async function priLoca(des) {
+    des.level_init({ style: 'solidfill', fg: ' ' });
+    des.level_flags('mazelevel', 'hardfloor', 'noflip');
+    // This is a kludge to init the level as a lit field.
+    des.level_init({ style: 'mines', fg: '.', bg: '.', smoothed: false, joined: false, lit: 1, walled: false });
+
+    des.map([
+        '........................................',
+        '........................................',
+        '..........----------+----------.........',
+        '..........|........|.|........|.........',
+        '..........|........|.|........|.........',
+        '..........|----.----.----.----|.........',
+        '..........+...................+.........',
+        '..........+...................+.........',
+        '..........|----.----.----.----|.........',
+        '..........|........|.|........|.........',
+        '..........|........|.|........|.........',
+        '..........----------+----------.........',
+        '........................................',
+        '........................................',
+    ]);
+
+    // Dungeon Description
+    des.region({ region: [0, 0, 9, 13], lit: 0, type: 'morgue', filled: 1 });
+    des.region({ region: [9, 0, 30, 1], lit: 0, type: 'morgue', filled: 1 });
+    des.region({ region: [9, 12, 30, 13], lit: 0, type: 'morgue', filled: 1 });
+    des.region({ region: [31, 0, 39, 13], lit: 0, type: 'morgue', filled: 1 });
+    des.region({ region: [11, 3, 29, 10], lit: 1, type: 'temple', filled: 1, irregular: 1 });
+
+    // The altar inside the temple
+    des.altar({ x: 20, y: 7, align: 'noalign', type: 'shrine' });
+    des.monster({ id: PM_ALIGNED_CLERIC, coord: [20, 7], align: 'noalign', peaceful: 0 });
+
+    // Doors
+    des.door({ state: 'locked', coord: [10, 6] });
+    des.door({ state: 'locked', coord: [10, 7] });
+    des.door({ state: 'locked', coord: [20, 2] });
+    des.door({ state: 'locked', coord: [20, 11] });
+    des.door({ state: 'locked', coord: [30, 6] });
+    des.door({ state: 'locked', coord: [30, 7] });
+
+    // Stairs
+    // Note: The up stairs are *intentionally* off of the map.
+    des.stair({ dir: 'up', coord: [43, 5] });
+    des.stair({ dir: 'down', coord: [20, 6] });
+
+    // Non diggable walls
+    des.non_diggable(selection_area(10, 2, 30, 13));
+
+    // Objects (inside the antechambers).
+    des.object({ coord: [14, 3] });
+    des.object({ coord: [15, 3] });
+    des.object({ coord: [16, 3] });
+    des.object({ coord: [14, 10] });
+    des.object({ coord: [15, 10] });
+    des.object({ coord: [16, 10] });
+    des.object({ coord: [17, 10] });
+    des.object({ coord: [24, 3] });
+    des.object({ coord: [25, 3] });
+    des.object({ coord: [26, 3] });
+    des.object({ coord: [27, 3] });
+    des.object({ coord: [24, 10] });
+    des.object({ coord: [25, 10] });
+    des.object({ coord: [26, 10] });
+    des.object({ coord: [27, 10] });
+
+    // Random traps
+    des.trap({ coord: [15, 4] });
+    des.trap({ coord: [25, 4] });
+    des.trap({ coord: [15, 9] });
+    des.trap({ coord: [25, 9] });
+    des.trap();
+    des.trap();
+    // No random monsters - the morgue generation will put them in.
+}
+
+// C ref: dat/Pri-goal.lua. Priest quest goal level — lava-filled cave with
+// Nalzok guarding the Mitre of Holiness amid human zombies and wraiths.
+async function priGoal(des) {
+    des.level_init({ style: 'solidfill', fg: ' ' });
+    des.level_flags('mazelevel');
+    des.level_init({ style: 'mines', fg: 'L', bg: '.', smoothed: false, joined: false, lit: 0, walled: false });
+
+    des.map([
+        'xxxxxx..xxxxxx...xxxxxxxxx',
+        'xxxx......xx......xxxxxxxx',
+        'xx.xx.............xxxxxxxx',
+        'x....................xxxxx',
+        '......................xxxx',
+        '......................xxxx',
+        'xx........................',
+        'xxx......................x',
+        'xxx................xxxxxxx',
+        'xxxx.....x.xx.......xxxxxx',
+        'xxxxx...xxxxxx....xxxxxxxx',
+    ]);
+
+    const place = [[14, 4], [13, 7]];
+    const placeidx = rn2(2);
+
+    des.region(selection_area(0, 0, 25, 10), 'unlit');
+
+    des.stair({ dir: 'up', coord: [20, 5] });
+
+    des.object({
+        id: HELM_OF_BRILLIANCE, coord: place[placeidx],
+        buc: 'blessed', spe: 0, eroded: -1, name: 'The Mitre of Holiness',
+    });
+    for (let i = 0; i < 14; i++) des.object();
+
+    des.trap('fire');
+    des.trap('fire');
+    des.trap('fire');
+    des.trap('fire');
+    des.trap();
+    des.trap();
+
+    des.monster({ id: PM_NALZOK, coord: place[placeidx] });
+    for (let i = 0; i < 16; i++) des.monster({ id: PM_HUMAN_ZOMBIE });
+    des.monster({ class: S_ZOMBIE });
+    des.monster({ class: S_ZOMBIE });
+    for (let i = 0; i < 8; i++) des.monster({ id: PM_WRAITH });
+    des.monster({ class: S_WRAITH });
+}
+
 // C ref: dat/tower1.lua — Upper stage of Vlad's tower.
 function tower1(des, state) {
     des.level_init({ style: 'solidfill', fg: ' ' });
@@ -887,6 +1021,121 @@ function tower1(des, state) {
     des.non_diggable();
 }
 
+// C ref: dat/Pri-fila.lua. Room-based filler level for quest levels above
+// Pri-loca: six rooms with zombie and wraith monsters, morgue rooms, and
+// random objects and traps.
+async function priFila(des) {
+    des.room({
+        type: 'ordinary',
+        contents() {
+            des.stair('up');
+            des.object();
+            des.monster({ id: PM_HUMAN_ZOMBIE });
+        },
+    });
+    des.room({
+        type: 'ordinary',
+        contents() {
+            des.object();
+            des.object();
+        },
+    });
+    des.room({
+        type: 'ordinary',
+        contents() {
+            des.object();
+            des.trap();
+            des.object();
+            des.monster({ id: PM_HUMAN_ZOMBIE });
+        },
+    });
+    des.room({
+        type: 'morgue',
+        contents() {
+            des.stair('down');
+            des.object();
+            des.trap();
+        },
+    });
+    des.room({
+        type: 'ordinary',
+        contents() {
+            des.object();
+            des.object();
+            des.trap();
+            des.monster({ id: PM_WRAITH });
+        },
+    });
+    des.room({
+        type: 'morgue',
+        contents() {
+            des.object();
+            des.trap();
+        },
+    });
+    des.random_corridors();
+}
+
+// C ref: dat/Pri-filb.lua. Room-based filler level for quest levels at or
+// below Pri-loca: six rooms with more zombie and wraith monsters, and morgue
+// rooms.
+async function priFilb(des) {
+    des.room({
+        type: 'ordinary',
+        contents() {
+            des.stair('up');
+            des.object();
+            des.monster({ id: PM_HUMAN_ZOMBIE });
+            des.monster({ id: PM_WRAITH });
+        },
+    });
+    des.room({
+        type: 'morgue',
+        contents() {
+            des.object();
+            des.object();
+            des.object();
+        },
+    });
+    des.room({
+        type: 'ordinary',
+        contents() {
+            des.object();
+            des.trap();
+            des.object();
+            des.monster({ id: PM_HUMAN_ZOMBIE });
+            des.monster({ id: PM_WRAITH });
+        },
+    });
+    des.room({
+        type: 'morgue',
+        contents() {
+            des.stair('down');
+            des.object();
+            des.object();
+            des.trap();
+        },
+    });
+    des.room({
+        type: 'ordinary',
+        contents() {
+            des.object();
+            des.object();
+            des.trap();
+            des.monster({ id: PM_HUMAN_ZOMBIE });
+            des.monster({ id: PM_WRAITH });
+        },
+    });
+    des.room({
+        type: 'morgue',
+        contents() {
+            des.object();
+            des.trap();
+        },
+    });
+    des.random_corridors();
+}
+
 export const QUEST_LEVEL_LOADERS = {
     'Bar-strt': barStrt,
     'Bar-fila': barFila,
@@ -895,6 +1144,10 @@ export const QUEST_LEVEL_LOADERS = {
     'Bar-loca': barLoca,
     'Arc-strt': arcStrt,
     'Pri-strt': priStrt,
+    'Pri-loca': priLoca,
+    'Pri-goal': priGoal,
+    'Pri-fila': priFila,
+    'Pri-filb': priFilb,
     oracle,
     tower1,
 };

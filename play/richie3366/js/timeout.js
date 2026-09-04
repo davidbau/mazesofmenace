@@ -40,7 +40,7 @@ import { run_timers, start_timer, stop_timer, weight,
     obj_has_timer, rider_revival_time, rot_corpse, set_corpsenm,
     free_omid, free_omonst,
 } from './mkobj.js';
-import { make_confused, make_slimed, make_stoned, make_stunned, make_vomiting } from './potion.js';
+import { make_confused, make_deaf, make_slimed, make_stoned, make_stunned, make_vomiting } from './potion.js';
 import { make_blinded } from './do.js';
 import { Fumbling, Fast, Very_fast, exercise, stone_luck, A_STR, A_DEX, A_CON } from './attrib.js';
 import { pline, You_feel, newsym, canseemon, verbalize, Norep, see_monsters, impossible, urgent_pline, Hallucination } from './display.js';
@@ -265,14 +265,22 @@ function extr_bits(u, propId, flat) {
     return (u[flat] | 0) || (u.uprops?.[propId]?.extrinsic | 0);
 }
 
+/** C youprop.h HDeaf ≡ u.uprops[DEAF].intrinsic — one field. */
+function set_HDeaf(bits) {
+    const u = game.u || (game.u = {});
+    if (!u.uprops) u.uprops = {};
+    if (!u.uprops[DEAF]) {
+        u.uprops[DEAF] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    }
+    u.HDeaf = bits | 0;
+    u.uprops[DEAF].intrinsic = bits | 0;
+}
+
 /** C potion.c set_itimeout(&HDeaf, val) — TIMEOUT field only. */
 function set_itimeout_HDeaf(val) {
     const u = game.u || (game.u = {});
-    u.HDeaf = ((u.HDeaf | 0) & ~TIMEOUT) | (val & TIMEOUT);
-    if (u.uprops?.[DEAF]) {
-        u.uprops[DEAF].intrinsic =
-            ((u.uprops[DEAF].intrinsic | 0) & ~TIMEOUT) | (val & TIMEOUT);
-    }
+    const cur = (u.HDeaf | 0) | (u.uprops?.[DEAF]?.intrinsic | 0);
+    set_HDeaf((cur & ~TIMEOUT) | (val & TIMEOUT));
 }
 
 /** C potion.c incr_itimeout(&HDeaf, incr) — TIMEOUT bits only. */
@@ -293,6 +301,10 @@ function sync_timeout_flats(u) {
     if (!u.uprops) u.uprops = {};
     for (const [ps, flat] of Object.entries(TIMEOUT_FLAT)) {
         const p = Number(ps);
+        /* DEAF has a dedicated nh_timeout arm. Copying HDeaf → uprops
+         * here once (D-1792) then -- only the flat left TIMEOUT stuck
+         * for #wizintrinsic (D-1817). C HDeaf ≡ uprops[DEAF].intrinsic. */
+        if (p === DEAF) continue;
         const fv = u[flat] | 0;
         if (!(fv & TIMEOUT)) continue;
         if (!u.uprops[p]) {
@@ -684,7 +696,7 @@ function nh_timeout_luck(u) {
  * CONFUSION → set_itimeout(1) + make_confused(0,TRUE) + stop_occupation;
  * BLINDED → set_itimeout(1) + make_blinded(0,TRUE) + stop_occupation (D-0928);
  * FUMBLING → slip_or_trip + nomul(-2) + incr_itimeout rnd(20) (D-0692);
- * DEAF → make_deaf(0) on expiry (D-0911; talk if !Unaware deferred).
+ * DEAF → make_deaf(0) on expiry (D-0911; Unaware talk D-1817).
  * FAST → timeout decrement + slow-down You_feel when !Very_fast (D-0919).
  * DETECT_MONSTERS TIMEOUT → see_monsters on expiry (D-1418; C timeout.c
  * `:932–934`; remaining expiry switch still silent).
@@ -787,19 +799,22 @@ export async function nh_timeout() {
     }
 
     // C case DEAF — timeout.c:752; make_deaf(0,TRUE) talk suppressed if Unaware
-    const hd = u.HDeaf | 0;
+    // HDeaf ≡ uprops[DEAF].intrinsic (youprop.h). D-1792 sync_timeout_flats
+    // copied the flat once; this arm used to -- only u.HDeaf, leaving
+    // uprops TIMEOUT stuck (seed4500 #wizintrinsic deafness [2], D-1817).
+    const hd = (u.HDeaf | 0) | (u.uprops?.[DEAF]?.intrinsic | 0);
     if (hd & TIMEOUT) {
         const next = hd - 1;
-        u.HDeaf = next;
+        set_HDeaf(next);
         if (!(next & TIMEOUT)) {
             // C: set_itimeout(&HDeaf, 1L); make_deaf(0L, TRUE);
-            // (TIMEOUT already 0 from --; set 1 so make_deaf old!=0 for botl)
-            u.HDeaf = ((u.HDeaf | 0) & ~TIMEOUT) | 1;
-            // make_deaf(0): clear TIMEOUT; Unaware → no "hear again" pline
-            u.HDeaf = (u.HDeaf | 0) & ~TIMEOUT;
+            set_itimeout_HDeaf(1);
+            await make_deaf(0, true);
             if (game.disp) game.disp.botl = true;
             if (game.flags) game.flags.botl = true;
-            const stillDeaf = !!(u.EDeaf || u.uroleplay?.deaf || u.Deaf);
+            const stillDeaf = !!(u.HDeaf || u.EDeaf || u.uroleplay?.deaf || u.Deaf
+                || (u.uprops?.[DEAF]?.intrinsic | 0)
+                || (u.uprops?.[DEAF]?.extrinsic | 0));
             if (!stillDeaf) await stop_occupation();
         }
     }

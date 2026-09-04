@@ -47,7 +47,7 @@ import { com_pager_legacy } from './questpgr.js';
 import { snapshot_status_lines } from './display.js';
 import { Hello, align_str } from './roles.js';
 import { livelog_printf } from './pline.js';
-import { phase_of_the_moon, friday_13th, night, FULL_MOON, NEW_MOON } from './calendar.js';
+import { phase_of_the_moon, friday_13th, night, getnow, FULL_MOON, NEW_MOON } from './calendar.js';
 import { ATR_INVERSE } from './terminal.js';
 import { dosounds } from './sounds.js';
 import { invault } from './vault.js';
@@ -697,6 +697,12 @@ export async function newgame() {
     await flush_screen(1);
     await bot();
 
+    // C allmain.c `:835–836` — wall-clock play time for disclosure / save.
+    g.urealtime = { realtime: 0, start_timing: getnow(), finish_time: 0 };
+    if (!g.program_state) g.program_state = {};
+    g.program_state.something_worth_saving =
+        (g.program_state.something_worth_saving | 0) + 1;
+
     // C ref: allmain.c welcome(TRUE)
     await welcome(true);
 
@@ -1071,4 +1077,16 @@ export async function moveloop(resuming) {
         await moveloop_core();
         if (game.program_state?.gameover) break;
     }
+}
+
+/**
+ * C ref: allmain.c timet_delta `:995–1001` — seconds between two time_t
+ * values (`(long) difftime(etim, stim)`). Contest getnow() is unix
+ * seconds; subtraction matches.
+ * @param {number} etim
+ * @param {number} stim
+ * @returns {number}
+ */
+export function timet_delta(etim, stim) {
+    return (Number(etim) || 0) - (Number(stim) || 0);
 }

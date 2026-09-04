@@ -1,7 +1,8 @@
 // files.js — WIZKIT file handling + 3.6 tribute (files.c).
 // C ref: files.c fopen_wizkit_file / wizkit_addinv / proc_wizkit_line /
 // read_wizkit; choose_passage / read_tribute / Death_quote;
-// delete_levelfile (JSON analogue; no fs unlink).
+// delete_levelfile (JSON analogue; no fs unlink);
+// clearlocks (JSON analogue; no POSIX signal).
 // Callers: allmain.c newgame after u_init_skills_discoveries (D-1192);
 // spell.c study_book SPE_NOVEL; sounds.c Death_quote live (D-1653).
 // Rule #2: VFS only — no fs / getenv / HOME fopen. Tribute text is
@@ -26,6 +27,7 @@ import { mungspaces } from './getline.js';
 import { pline, putmsghistory, You_feel } from './display.js';
 import { show_nhw_menu_text } from './pager.js';
 import { TRIBUTE_TEXT } from './generated/tribute_data.js';
+import { maxledgerno } from './dungeon.js';
 
 const INVLET_BASIC = 52;
 const SCR_SCARE_MONSTER = objectNames.indexOf('SCR_SCARE_MONSTER');
@@ -441,6 +443,20 @@ export function delete_levelfile(lev) {
             info.updest = null;
             info.dndest = null;
         }
+    }
+}
+
+/**
+ * C ref: files.c clearlocks `:732–750`. HANGUPHANDLING preserve_locks
+ * early return. POSIX signal/hangup ignore is named (no signals in JS).
+ * Then delete_levelfile from maxledgerno() down through 0. JSON analogue
+ * (Contest Rule #2 — no Node unlink).
+ */
+export function clearlocks() {
+    if (game.program_state?.preserve_locks) return;
+    const n = game.n_dgns | 0;
+    for (let x = (n ? maxledgerno() : 0); x >= 0; x--) {
+        delete_levelfile(x);
     }
 }
 

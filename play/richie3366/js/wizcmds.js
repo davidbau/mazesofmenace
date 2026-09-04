@@ -151,10 +151,11 @@ function incr_prop_timeout(p, amt) {
 /**
  * C ref: wizcmds.c wiz_intrinsic — #wizintrinsic
  * Envelope: propertynames menu + HALLUC → make_hallucinated;
+ * DEAF → make_deaf(newtimeout, TRUE) (D-1817; C wizcmds.c:1029);
  * BLINDED → make_blinded(newtimeout, TRUE) — not incr_prop_timeout
  * (D-0928 #1171; HBlinded from raven/cream must not be overwritten via
  * stale uprops[BLINDED]).
- * Named omissions: deaf/sick/slimed/stoned/stunned/vomiting/glib
+ * Named omissions: sick/slimed/stoned/stunned/vomiting/glib
  * special arms; count-prefix menu digits; float_vs_flight / rescham /
  * pooleffects; WARN_OF_MON species; SICK rn2 vomit-type; unavailcmd
  * ecname wording; make_blinded Blindfolded/Eyes talk variants.
@@ -165,7 +166,7 @@ export async function wiz_intrinsic() {
         return ECMD_OK;
     }
     const { select_menu_pick_any } = await import('./options.js');
-    const { make_hallucinated, make_confused } = await import('./potion.js');
+    const { make_hallucinated, make_confused, make_deaf } = await import('./potion.js');
 
     const raw = [
         { text: 'Which intrinsics?', selectable: false, attr: ATR_INVERSE },
@@ -206,6 +207,9 @@ export async function wiz_intrinsic() {
             await make_hallucinated(newtimeout, true, 0);
         } else if (p === CONFUSION) {
             await make_confused(newtimeout, true);
+        } else if (p === DEAF) {
+            // C wizcmds.c:1029 — make_deaf(newtimeout, TRUE).
+            await make_deaf(newtimeout, true);
         } else if (p === BLINDED) {
             // C wizcmds.c:1020 — make_blinded(newtimeout, TRUE).
             // Must use BlindedTimeout (HBlinded), not stale uprops[BLINDED]

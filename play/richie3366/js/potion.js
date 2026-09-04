@@ -133,7 +133,7 @@ import {
     EYE, SEE_INVIS,
     DETECT_MONSTERS, LEVITATION, INVIS, HEAD, COLNO, ROWNO,
     In_endgame, Is_earthlevel, In_sokoban,
-    QBUFSZ, STONED, SLIMED, SICK, SICK_ALL,
+    QBUFSZ, STONED, SLIMED, SICK, SICK_ALL, DEAF,
     A_CHAOTIC, A_LAWFUL, Upolyd, ismnum, NON_PM, NEUTRAL,
     P_RIDING, P_BASIC, ER_DESTROYED, ER_NOTHING, MM_NOMSG,
     ERODE_CORRODE, EF_GREASE,
@@ -172,7 +172,7 @@ import {
     trycall, docall, hliquid, a_monnam, Monnam, hcolor, x_monnam, mon_nam,
     Hallucination,
 } from './do_name.js';
-import { newuhs, fix_petrification } from './eat.js';
+import { newuhs, fix_petrification, Unaware } from './eat.js';
 import { heal_legs, water_damage, float_up, self_invis_message } from './trap.js';
 import { aggravate } from './wizard.js';
 import {
@@ -871,21 +871,29 @@ export function make_glib(xtime) {
 
 /**
  * C ref: potion.c make_deaf(xtime, talk) — HDeaf TIMEOUT set/clear.
- * Named omit: Unaware talk suppress polish when sticky Deaf extrinsic.
+ * HDeaf ≡ u.uprops[DEAF].intrinsic (youprop.h). Unaware (multi<0 &&
+ * unconscious/faint) suppresses talk like C youprop.h:399.
+ * Named omit: sticky Deaf extrinsic talk polish when already Deaf.
  * @param {number} xtime
  * @param {boolean} talk
  */
 export async function make_deaf(xtime, talk) {
     const u = game.u || (game.u = {});
-    const old = u.HDeaf | 0;
-    if (u.Unaware) talk = false;
-    u.HDeaf = ((u.HDeaf | 0) & ~TIMEOUT) | itimeout(xtime);
-    const now = u.HDeaf | 0;
+    if (!u.uprops) u.uprops = {};
+    if (!u.uprops[DEAF]) {
+        u.uprops[DEAF] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    }
+    const old = (u.HDeaf | 0) | (u.uprops[DEAF].intrinsic | 0);
+    if (u.Unaware || Unaware()) talk = false;
+    const next = (old & ~TIMEOUT) | itimeout(xtime);
+    u.HDeaf = next;
+    u.uprops[DEAF].intrinsic = next;
     if (!!xtime !== !!old) {
         if (game.disp) game.disp.botl = true;
         if (game.flags) game.flags.botl = true;
         if (talk) {
-            const Deaf = !!(now || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
+            const Deaf = !!(next || (u.EDeaf | 0) || u.uroleplay?.deaf
+                || u.Deaf || (u.uprops[DEAF].extrinsic | 0));
             if (old && !Deaf) await pline('You can hear again.');
             else await pline('You are unable to hear anything.');
         }

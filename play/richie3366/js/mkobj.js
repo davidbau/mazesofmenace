@@ -1373,7 +1373,7 @@ export function rider_revival_time(body, retry) {
 }
 
 // C ref: mkobj.c start_corpse_timeout
-function start_corpse_timeout(body) {
+export function start_corpse_timeout(body) {
     if (!body) return;
     /* lizards and lichen don't rot or revive */
     if (body.corpsenm === PM_LIZARD || body.corpsenm === PM_LICHEN) return;

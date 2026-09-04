@@ -46,6 +46,7 @@ import {
     MM_ANGRY,
     MM_ASLEEP,
     MM_EDOG,
+    MM_EGD,
     MM_EPRI,
     MM_ESHK,
     MM_FEMALE,
@@ -65,8 +66,11 @@ import {
     MON_DETACH,
     N_DIRS,
     NO_MINVENT,
+    A_LAWFUL,
+    EMIN,
     ONAME,
     ONAME_NO_FLAGS,
+    ONAME_RANDOM,
     OBJ_FLOOR,
     OBJ_MINVENT,
     ROOMOFFSET,
@@ -113,6 +117,7 @@ import {
 import {
     Amonnam,
     christen_monst,
+    oname,
     rndghostname,
 } from './do_name.js';
 import { newsym } from './display.js';
@@ -139,9 +144,11 @@ import {
     can_be_hatched,
     cantweararm,
     emits_light,
+    humanoid,
     is_demon,
     is_female,
     is_giant,
+    is_lord,
     is_male,
     is_mercenary,
     is_ndemon,
@@ -197,6 +204,7 @@ import {
     PM_CAVE_SPIDER,
     PM_BUGBEAR,
     PM_CENTIPEDE,
+    PM_CROESUS,
     PM_CHAMELEON,
     PM_CHICKATRICE,
     PM_CHIEFTAIN,
@@ -227,7 +235,9 @@ import {
     PM_HOUSECAT,
     PM_HUMAN,
     PM_HUNTER,
+    PM_ASMODEUS,
     PM_HOBGOBLIN,
+    PM_ICE_DEVIL,
     PM_JACKAL,
     PM_KOBOLD,
     PM_KOBOLD_MUMMY,
@@ -255,6 +265,7 @@ import {
     PM_ORC_CAPTAIN,
     PM_ORC_SHAMAN,
     PM_OGRE_LEADER,
+    PM_PESTILENCE,
     PM_OGRE_TYRANT,
     PM_PAGE,
     PM_PONY,
@@ -289,9 +300,11 @@ import {
     PM_WRAITH,
     PM_WUMPUS,
     PM_WIZARD,
+    PM_WIZARD_OF_YENDOR,
     PM_YELLOW_LIGHT,
     PM_YELLOW_MOLD,
     SPECIAL_PM,
+    S_ANGEL,
     S_CENTAUR,
     S_DEMON,
     S_ELEMENTAL,
@@ -322,6 +335,7 @@ import {
     S_VAMPIRE,
     S_VORTEX,
     S_WRAITH,
+    S_ZOMBIE,
 } from './monsters.js';
 import {
     ARM_BONUS,
@@ -355,6 +369,7 @@ import {
     BANDED_MAIL,
     BATTLE_AXE,
     BEC_DE_CORBIN,
+    BELL_OF_OPENING,
     BOULDER,
     BOW,
     BROADSWORD,
@@ -450,6 +465,7 @@ import {
     POT_OBJECT_DETECTION,
     POT_PARALYSIS,
     POT_POLYMORPH,
+    POT_SICKNESS,
     POT_SLEEPING,
     POT_SPEED,
     POTION_CLASS,
@@ -464,6 +480,8 @@ import {
     SKELETON_KEY,
     SHORT_SWORD,
     SHURIKEN,
+    SHIELD_OF_REFLECTION,
+    SILVER_MACE,
     SILVER_SABER,
     SMALL_SHIELD,
     SPEAR,
@@ -475,6 +493,7 @@ import {
     SLIME_MOLD,
     SLING,
     SPBOOK_CLASS,
+    SPE_DIG,
     SPETUM,
     SPEED_BOOTS,
     STATUE,
@@ -506,6 +525,7 @@ import {
     WEAPON_CLASS,
 } from './objects.js';
 import { newepri } from './priest.js';
+import { newegd } from './vault.js';
 import { d, rn1, rn2, rnd, rne, rnz } from './rng.js';
 import { enexto_core, goodpos, noteleport_level } from './teleport.js';
 import {
@@ -542,6 +562,7 @@ const SUPPORTED_FLAGS = NO_MINVENT
     | MM_ANGRY
     | MM_ASLEEP
     | MM_EDOG
+    | MM_EGD
     | MM_EPRI
     | MM_ESHK
     | MM_NOGRP
@@ -1226,6 +1247,7 @@ function assertSupportedSpecies(species, { allowMinotaur = false } = {}) {
             // outside mklev. S_EEL has no arm in m_initweap() or m_initinv(),
             // so the generic makemon() path already builds it.
             && species.pmidx !== PM_GIANT_EEL
+            && species.pmidx !== PM_GUARD
             && species.pmidx !== PM_UMBER_HULK
             && (!allowMinotaur || species.pmidx !== PM_MINOTAUR))) {
         throw new UnsupportedMonsterCreationError(
@@ -1303,9 +1325,15 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
         && (mmflags === MM_NOEXCLAM
             || mmflags === (MM_NOEXCLAM | MM_MALE)
             || mmflags === (MM_NOEXCLAM | MM_FEMALE));
+    // vault.c invault():407 creates a guard at a wall location with MM_EGD
+    // and MM_NOMSG.
+    const vaultGuardCall = !state.in_mklev
+        && ptr?.pmidx === PM_GUARD
+        && mmflags === (MM_EGD | MM_NOMSG);
     const runtimeCall = startingPetCall || djinniBottleCall
         || fountainCreatureCall
-        || runtimeRandomCall || runtimeGroupCall || createParticularCall;
+        || runtimeRandomCall || runtimeGroupCall || createParticularCall
+        || vaultGuardCall;
     if (runtimeCall
         && (!normalized.runtimeContinuation
             || typeof normalized.runtimeContinuation !== 'object')) {
@@ -1343,8 +1371,10 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
     }
     // C makemon does not check ACCESSIBLE for explicitly placed mklev
     // monsters; level templates position eels on water and other species on
-    // terrain the template chose.  Restrict the guard to runtime creation.
+    // terrain the template chose.  Guards are placed at wall positions that
+    // invault() converts to doors immediately after creation.
     if (!state.in_mklev && !startingPetCall && !randomCoordinates
+        && !vaultGuardCall
         && (!isok(x, y) || !ACCESSIBLE(state.level?.at(x, y)?.typ))) {
         throw new UnsupportedMonsterCreationError(
             `non-accessible location <${x},${y}>`,
@@ -1800,6 +1830,36 @@ function m_initweap(monster, normalized) {
         // non-priest, non-guardian humans (all G_NOGEN) receive no weapons
         // from m_initweap. C breaks here without a further else arm.
         break;
+    case S_ANGEL:
+        // C ref: makemon.c:330-360. Humanoid angels get a blessed, erodeproof
+        // weapon (long sword or silver mace) and a shield.
+        if (humanoid(ptr)) {
+            const typ = random.rn2(3) ? LONG_SWORD : SILVER_MACE;
+            const nam = typ === LONG_SWORD ? 'Sunsword' : 'Demonbane';
+            let otmp = mksobj(typ, false, false, normalized);
+            if ((!random.rn2(20) || is_lord(ptr))
+                && Math.sign(monster.isminion
+                    ? EMIN(monster)?.min_align
+                    : ptr.maligntyp) === A_LAWFUL) {
+                otmp = oname(otmp, nam, ONAME_RANDOM, normalized);
+            }
+            otmp.blessed = true;
+            otmp.cursed = false;
+            otmp.oerodeproof = true;
+            otmp.spe = random.rn2(4);
+            if (typ === SILVER_MACE) otmp.spe += 3;
+            addFreshMonsterObject(monster, otmp, normalized);
+
+            const shield = mksobj(
+                !random.rn2(4) || is_lord(ptr)
+                    ? SHIELD_OF_REFLECTION : LARGE_SHIELD,
+                false, false, normalized,
+            );
+            shield.oerodeproof = true;
+            shield.spe = 0;
+            addFreshMonsterObject(monster, shield, normalized);
+        }
+        break;
     case S_HUMANOID:
         if (ptr.pmidx === PM_HOBBIT) {
             switch (random.rn2(3)) {
@@ -1932,6 +1992,14 @@ function m_initweap(monster, normalized) {
     case S_WRAITH:
         mongets(monster, KNIFE, normalized);
         mongets(monster, LONG_SWORD, normalized);
+        break;
+    case S_ZOMBIE:
+        // C ref: makemon.c:489-494. Zombies get a chance at leather armor
+        // and a knife or short sword.
+        if (!random.rn2(4))
+            mongets(monster, LEATHER_ARMOR, normalized);
+        if (!random.rn2(4))
+            mongets(monster, random.rn2(3) ? KNIFE : SHORT_SWORD, normalized);
         break;
     case S_LIZARD:
         // C ref: makemon.c:495-499. Salamanders choose one weapon from
@@ -2328,6 +2396,13 @@ function m_initinv(monster, normalized) {
         case 3:
             mongets(monster, WAN_STRIKING, normalized);
             break;
+        }
+    } else if (ptr.mlet === S_DEMON) {
+        if (ptr.pmidx === PM_ICE_DEVIL && !random.rn2(4)) {
+            mongets(monster, SPEAR, normalized);
+        } else if (ptr.pmidx === PM_ASMODEUS) {
+            mongets(monster, WAN_COLD, normalized);
+            mongets(monster, WAN_FIRE, normalized);
         }
     } else if (ptr.mlet === S_GNOME
         && !random.rn2(
@@ -3313,6 +3388,7 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
         normalized,
     );
     const monster = newMonster();
+    if (mmflags & MM_EGD) newegd(monster);
     if (mmflags & MM_ESHK) neweshk(monster);
     if (mmflags & MM_EPRI) newepri(monster);
     if (mmflags & MM_EDOG) newedog(monster);
@@ -3412,6 +3488,12 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
         if (mndx !== PM_VLAD_THE_IMPALER
             && newcham_initial(monster, normalized))
             allowMinvent = false;
+    } else if (mndx === PM_WIZARD_OF_YENDOR) {
+        monster.iswiz = true;
+        state.context.no_of_wizards = (state.context.no_of_wizards || 0) + 1;
+        if (state.context.no_of_wizards === 1
+            && on_level(state.u?.uz, state.earth_level))
+            mitem = SPE_DIG;
     } else if (mndx === PM_GHOST) {
         // C ref: makemon.c -- MM_NONAME suppresses the random ghost name.
         // savebones() passes MM_NONAME and then christen_monst separately.
@@ -3420,6 +3502,12 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
                 updateInventory: () => update_inventory(normalized),
             });
         }
+    } else if (mndx === PM_CROESUS) {
+        mitem = TWO_HANDED_SWORD;
+    } else if (ptr.msound === MS_NEMESIS) {
+        mitem = BELL_OF_OPENING;
+    } else if (mndx === PM_PESTILENCE) {
+        mitem = POT_SICKNESS;
     }
     if (mitem !== STRANGE_OBJECT && allowMinvent)
         mongets(monster, mitem, normalized);

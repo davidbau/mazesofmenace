@@ -3135,6 +3135,12 @@ export async function mattacku(mtmp) {
             break;
         }
 
+        /* C mhitu.c mattacku `:938–950` — after a slot that killed the
+         * hero, done() longjmps and never reaches bot / sleep rn2(10) /
+         * NATTK i+1. JS really_done returns after setting
+         * program_state.gameover (wizard/explore savelife does not). */
+        if (game.program_state?.gameover) return 1;
+
         if (game.flags?.botl || game.disp?.botl) await bot();
         /* give player a chance of waking up before dying */
         if (sum[i] === M_ATTK_HIT) {

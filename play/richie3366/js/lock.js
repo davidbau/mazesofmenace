@@ -517,8 +517,9 @@ export async function getdir_read_dirsym(prompt) {
  * FALSE) and clear_nhwindow(WIN_MESSAGE). Self ./s; <>; movecmd
  * walk/run/rush; optional numpad when number_pad on.
  * Invalid / '?' → help_dir + cmdassist / "What a strange direction!"
- * (NEED_MORE via NHW_TEXT xwaitforspace). Horizontal move then
- * dxdy_moveok (grid-bug diagonal You_cant).
+ * (NEED_MORE via NHW_TEXT xwaitforspace). cmdassist is iflags
+ * (optlist default On; Options `O` writes game.iflags). Horizontal
+ * move then dxdy_moveok (grid-bug diagonal You_cant).
  * Named omit: mouse `_` getpos; trailing confdir(FALSE) (use_whip /
  * getdir_zap already confdir; adding it here would double);
  * fuzzer; yn_function_menu.
@@ -553,7 +554,10 @@ export async function getdir(prompt) {
             }
             const help_requested = ch === '?';
             let did_help = false;
-            if (help_requested || game.flags?.cmdassist !== false) {
+            // C `:4098` if (help_requested || iflags.cmdassist) —
+            // optlist default On; Options `O` writes game.iflags
+            // (D-0928 cmd_safety_prevention; D-1815). Not flags.
+            if (help_requested || game.iflags?.cmdassist !== false) {
                 const hsym = (prompt && String(prompt).charAt(0) === '^')
                     ? ch : '\0';
                 did_help = await help_dir(

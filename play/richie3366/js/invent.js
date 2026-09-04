@@ -3050,6 +3050,18 @@ export function perminvent_entries() {
 }
 
 /**
+ * C ref: invent.c free_pickinv_cache `:3043–3050`. Destroy the extra
+ * NHW_MENU held in gc.cached_pickinv_win. JS has no create_nhwindow;
+ * the sentinel is WIN_ERR until display_pickinv caches a stand-in.
+ */
+export function free_pickinv_cache() {
+    if (game.cached_pickinv_win == null) game.cached_pickinv_win = WIN_ERR;
+    if (game.cached_pickinv_win !== WIN_ERR) {
+        game.cached_pickinv_win = WIN_ERR;
+    }
+}
+
+/**
  * C ref: invent.c display_pickinv(lets, …, want_reply=TRUE, out_cnt) subset
  * for getobj `?`/`*`. Shows invent filtered to `lets` (or all when lets
  * null/'*'), PICK_ONE by invlet; ESC cancels; Space next page or null on

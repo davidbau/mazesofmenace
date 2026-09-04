@@ -1,6 +1,7 @@
 // priest.js — Temple entry + priest location helpers (partial).
 // C ref: priest.c temple_occupied / findpriest / has_shrine / intemple /
-//   in_your_sanctuary / reset_hostility / priest_talk / inhistemple.
+//   in_your_sanctuary / reset_hostility / priest_talk / inhistemple /
+//   clearpriests (D-1812; priest.c :918–929; really_done).
 // Named omissions: mapseen_temple; SetVoice pitch in intemple.
 
 import { game } from './gstate.js';
@@ -12,6 +13,7 @@ import {
 } from './const.js';
 import { pline, You_feel, canseemon, canspotmon, verbalize, newsym, Hallucination } from './display.js';
 import { makemon, set_malign } from './makemon.js';
+import { mongone } from './mon.js';
 import { mons, is_rider } from './monsters.js';
 import { monsterNames } from './generated/monsters_data.js';
 import { in_rooms, nomul } from './hack.js';
@@ -464,6 +466,21 @@ export async function priest_talk(priest) {
             } else {
                 adjalign(2);
             }
+        }
+    }
+}
+
+/**
+ * C ref: priest.c clearpriests `:918–929`. Gameover: drop off-level
+ * temple priests from fmon so they are not written into bones.
+ * Snapshot the list because mongone splices fmon (D-1789 shape).
+ */
+export async function clearpriests() {
+    const u = game.u || {};
+    for (const mtmp of [...(game.fmon || [])]) {
+        if ((mtmp.mhp | 0) < 1) continue;
+        if (mtmp.ispriest && !on_level(EPRI(mtmp)?.shrlevel, u.uz)) {
+            await mongone(mtmp);
         }
     }
 }
