@@ -20,7 +20,7 @@ import {
 } from './const.js';
 import { objects_globals_init, objectNames } from './objects.js';
 import { nh_terminate_capture } from './topten.js';
-import { l_nhcore_init } from './mklev.js';
+import { l_nhcore_init, restore_waterlevel } from './mklev.js';
 import {
     save_mapseenchn,
     restore_mapseenchn,
@@ -723,6 +723,8 @@ export async function try_restore_save() {
     game.regions = info.regions || [];
     if (info.updest) game.updest = { ...info.updest };
     if (info.dndest) game.dndest = { ...info.dndest };
+    // C restore.c rest_bubbles after rest_regions
+    if (info.waterlevel) restore_waterlevel(info.waterlevel);
     // C restore.c dorecover → restore_dungeon mapseen_count +
     // load_mapseen (dungeon.c :251–262 / :2752). After branches.
     restore_mapseenchn(payload);

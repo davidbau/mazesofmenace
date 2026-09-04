@@ -3,8 +3,9 @@
 // Callers: save.js dosave0 / try_restore_save; bones.js savebones /
 // getbones. In-session goto_level keeps live pointers in level_info
 // (no JSON mid-game). Bones ghostly extras stay in bones.js (D-0274).
-// Named: binary NHFILE; worms; bubbles; exclusions; C dst relative dance
-// (JSON stores stairs/trap dst.dlevel absolute). Two relink sites:
+// Named: binary NHFILE; worms; exclusions; C dst relative dance
+// (JSON stores stairs/trap dst.dlevel absolute). Bubbles: save_waterlevel
+// JSON analogue (D-1827). Two relink sites:
 // deserLevel RANGE_LEVEL (never billobjs); restgamestate RANGE_GLOBAL
 // against invent + migrating (D-1698). JSON gamestate-before-current is
 // a no-op for RANGE_GLOBAL (those objects are never on fobj).
@@ -633,6 +634,33 @@ export function relinkGlobalTimersLights(timers, lights, roots) {
 }
 
 /**
+ * C ref: mkmaze.c save_waterlevel — JSON analogue of bubble_count +
+ * xmin/ymin/xmax/ymax + each bubble (x,y,dx,dy,bm). Skip cons/next/prev.
+ * @param {object|null|undefined} bbubbles
+ * @param {object|null|undefined} bounds
+ */
+function serWaterlevel(bbubbles, bounds) {
+    if (!bbubbles) return null;
+    const bubbles = [];
+    for (let b = bbubbles; b; b = b.next) {
+        bubbles.push({
+            x: b.x | 0,
+            y: b.y | 0,
+            dx: b.dx | 0,
+            dy: b.dy | 0,
+            bm: Array.from(b.bm || []),
+        });
+    }
+    return {
+        xmin: bounds?.xmin | 0,
+        ymin: bounds?.ymin | 0,
+        xmax: bounds?.xmax | 0,
+        ymax: bounds?.ymax | 0,
+        bubbles,
+    };
+}
+
+/**
  * JSON analogue of savelev_core. `src == null` reads live `game.*`
  * (snapshot; does not peel timers/lights). A stash record uses the
  * same field names `goto_level` writes into `level_info`.
@@ -706,6 +734,10 @@ export function serLevel(src) {
         track,
         lights,
         damagelist: serDamage(damagelist),
+        // C save.c savelev bbubbly + save_waterlevel
+        waterlevel: live
+            ? serWaterlevel(game.bbubbles, game.waterlevel_bounds)
+            : (src.waterlevel || serWaterlevel(src.bbubbles, src.waterlevel_bounds)),
     };
 }
 
@@ -776,6 +808,8 @@ export function deserLevel(blob, opts) {
         })),
         billobjs: deserObjChain(src.billobjs, OBJ_FLOOR),
         damagelist: map.damagelist,
+        // C restore.c rest_bubbles — blob for restore_waterlevel on install
+        waterlevel: src.waterlevel || null,
     };
     if (!opts?.skipRelink) relinkLevelTimersLights(info);
     return info;
@@ -817,6 +851,7 @@ export function levelBlobFromPayload(payload) {
         track: payload.track,
         lights: payload.lights,
         damagelist: payload.damagelist,
+        waterlevel: payload.waterlevel || null,
         flags: payload.level_flags,
     };
 }

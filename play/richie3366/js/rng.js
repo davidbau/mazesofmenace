@@ -29,6 +29,29 @@ export function enableRngLog() { _rngLogEnabled = true; _rngLog = []; }
 export function getRngLog() { return _rngLog; }
 export function pushRngLogEntry(entry) { if (_rngLogEnabled) _rngLog.push(entry); }
 
+/*
+ * Diagnostic caller tag. Off unless a harness sets
+ * globalThis.__NH_RNG_TRACE = true (never in scored play): each logged
+ * draw then carries " @ <jsFunction>(<file>:<line>)" the way the C
+ * recorder tags its entries with __func__/__FILE__/__LINE__. Every
+ * comparator strips the " @ ..." suffix before matching, so the tag is
+ * free to the score and lets a first-diff name both sides. Node and
+ * Chrome stack formats both carry "/js/<file>:<line>".
+ */
+function rngCaller() {
+    const stack = String(new Error().stack || '').split('\n');
+    for (const ln of stack.slice(1)) {
+        if (ln.includes('/rng.js') || ln.includes('/isaac64.js')) continue;
+        const m = /([\w$.<>]+)?\s*\(?[^()]*\/js\/([\w./-]+):(\d+)/.exec(ln);
+        if (m) return `${m[1] ? m[1].replace(/^async /, '') : '?'}(${m[2]}:${m[3]})`;
+    }
+    return '?';
+}
+function logRng(entry) {
+    if (!_rngLogEnabled) return;
+    _rngLog.push(globalThis.__NH_RNG_TRACE ? `${entry} @ ${rngCaller()}` : entry);
+}
+
 function RND(x) {
     const val = isaac64_next_uint64(game.coreCtx);
     return Number(val % BigInt(x));
@@ -66,7 +89,7 @@ function Luck() {
 export function rn2(x) {
     if (x <= 0) return 0;
     const val = RND(x);
-    if (_rngLogEnabled) _rngLog.push(`rn2(${x})=${val}`);
+    logRng(`rn2(${x})=${val}`);
     return val;
 }
 
@@ -74,7 +97,7 @@ export function rn2(x) {
 export function rnd(x) {
     if (x <= 0) return 0;
     const val = RND(x) + 1;
-    if (_rngLogEnabled) _rngLog.push(`rnd(${x})=${val}`);
+    logRng(`rnd(${x})=${val}`);
     return val;
 }
 
@@ -92,7 +115,7 @@ export function rnl(x) {
         if (i < 0) i = 0;
         else if (i >= x) i = x - 1;
     }
-    if (_rngLogEnabled) _rngLog.push(`rnl(${x})=${i}`);
+    logRng(`rnl(${x})=${i}`);
     return i;
 }
 
@@ -106,7 +129,7 @@ export function d(n, x) {
         // Use RND directly so only the outer d() is logged (matches C PRNG log)
         sum += 1 + RND(x);
     }
-    if (_rngLogEnabled) _rngLog.push(`d(${n},${x})=${sum}`);
+    logRng(`d(${n},${x})=${sum}`);
     return sum;
 }
 
@@ -117,7 +140,7 @@ export function rne(x) {
     const utmp = ulevel < 15 ? 5 : Math.trunc(ulevel / 3);
     let tmp = 1;
     while (tmp < utmp && !rn2(x)) tmp++;
-    if (_rngLogEnabled) _rngLog.push(`rne(${x})=${tmp}`);
+    logRng(`rne(${x})=${tmp}`);
     return tmp;
 }
 
@@ -130,7 +153,7 @@ export function rnz(i) {
     tmp *= rne(4);
     if (rn2(2)) { x *= tmp; x = Math.trunc(x / 1000); }
     else { x *= 1000; x = Math.trunc(x / tmp); }
-    if (_rngLogEnabled) _rngLog.push(`rnz(${i})=${x}`);
+    logRng(`rnz(${i})=${x}`);
     return x;
 }
 

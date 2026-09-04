@@ -801,7 +801,7 @@ export async function nh_timeout() {
     // C case DEAF — timeout.c:752; make_deaf(0,TRUE) talk suppressed if Unaware
     // HDeaf ≡ uprops[DEAF].intrinsic (youprop.h). D-1792 sync_timeout_flats
     // copied the flat once; this arm used to -- only u.HDeaf, leaving
-    // uprops TIMEOUT stuck (seed4500 #wizintrinsic deafness [2], D-1817).
+    // uprops TIMEOUT stuck (#wizintrinsic DEAF leftover, D-1817).
     const hd = (u.HDeaf | 0) | (u.uprops?.[DEAF]?.intrinsic | 0);
     if (hd & TIMEOUT) {
         const next = hd - 1;

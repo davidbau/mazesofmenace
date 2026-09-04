@@ -1,5 +1,5 @@
 // wizard.js — Wizard of Yendor harassment from wizard.c.
-// C ref: wizard.c resurrect (new-Wizard makemon arm); aggravate; tactics;
+// C ref: wizard.c resurrect (new-Wizard makemon arm); aggravate; clonewiz;
 //         choose_stairs (D-1733; also shk.c call_kops);
 //         nasty / pick_nasty (pick_nasty lives in makemon.js for newcham).
 
@@ -7,11 +7,14 @@ import { game } from './gstate.js';
 import { makemon, set_malign, pick_nasty } from './makemon.js';
 import { mons, is_covetous } from './monsters.js';
 import { monsterNames } from './generated/monsters_data.js';
+import { objectNames } from './objects.js';
+import { add_to_minv, mksobj } from './mkobj.js';
 import {
     MM_NOWAIT, MM_NOMSG, NO_MM_FLAGS, STRAT_WAITMASK, STRAT_WAITFORU,
     STRAT_APPEARMSG, STRAT_NONE, STRAT_HEAL, RLOC_MSG, In_endgame,
+    M_AP_MONSTER,
 } from './const.js';
-import { pline, verbalize, Norep } from './display.js';
+import { pline, verbalize, Norep, newsym } from './display.js';
 import { Monnam } from './do_name.js';
 import { rn2, rnd } from './rng.js';
 import { noteleport_level, enexto } from './teleport.js';
@@ -24,6 +27,12 @@ import { stairway_find_type_dir } from './mklev.js';
 const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
 const PM_ARCH_LICH = monsterNames.indexOf('PM_ARCH_LICH');
 const PM_ARCHON = monsterNames.indexOf('PM_ARCHON');
+// C ref: wizard.c wizapp[] — clonewiz disguise pool
+const wizapp = [
+    'PM_HUMAN', 'PM_WATER_DEMON', 'PM_VAMPIRE', 'PM_RED_DRAGON',
+    'PM_TROLL', 'PM_UMBER_HULK', 'PM_XORN', 'PM_XAN',
+    'PM_COCKATRICE', 'PM_FLOATING_EYE', 'PM_GUARDIAN_NAGA', 'PM_TRAPPER',
+].map((n) => monsterNames.indexOf(n));
 const AT_MAGC = 255; // monattk.h
 const MAXNASTIES = 10;
 
@@ -158,6 +167,31 @@ export function aggravate() {
             mtmp.mfrozen = 0;
             mtmp.mcanmove = 1;
         }
+    }
+}
+
+function Protection_from_shape_changers() {
+    const u = game.u || {};
+    return !!(u.HProtection_from_shape_changers
+        || u.EProtection_from_shape_changers
+        || u.Protection_from_shape_changers);
+}
+
+/** C ref: wizard.c clonewiz — Double Trouble; caller checks no_of_wizards==1. */
+export function clonewiz() {
+    const u = game.u || {};
+    const mtmp2 = makemon(mons(PM_WIZARD_OF_YENDOR), u.ux, u.uy, MM_NOWAIT);
+    if (mtmp2) {
+        mtmp2.msleeping = mtmp2.mtame = mtmp2.mpeaceful = 0;
+        if (!u.uhave?.amulet && rn2(2)) {
+            const fake = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
+            add_to_minv(mtmp2, mksobj(fake, true, false));
+        }
+        if (!Protection_from_shape_changers()) {
+            mtmp2.m_ap_type = M_AP_MONSTER;
+            mtmp2.mappearance = wizapp[rn2(wizapp.length)];
+        }
+        newsym(mtmp2.mx, mtmp2.my);
     }
 }
 

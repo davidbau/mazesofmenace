@@ -34,7 +34,7 @@ import {
     DIED,
 } from './const.js';
 import { objectNames } from './objects.js';
-import { pline, You_feel } from './display.js';
+import { pline, You_feel, impossible } from './display.js';
 import { ysimple_name } from './objnam.js';
 import { what_gives, bare_artifactname, confers_luck } from './artifact.js';
 import {
@@ -279,7 +279,7 @@ export async function poisontell(typ, exclaim = true) {
  * C ref: attrib.c minuhpmax — max(ulevel, altmin).
  * @param {number} altmin
  */
-function minuhpmax(altmin) {
+export function minuhpmax(altmin) {
     const u = game.u || {};
     if ((altmin | 0) < 1) altmin = 1;
     return Math.max(u.ulevel | 0, altmin | 0);
@@ -290,7 +290,7 @@ function minuhpmax(altmin) {
  * @param {number} loss
  * @param {number} olduhp
  */
-function adjuhploss(loss, olduhp) {
+export function adjuhploss(loss, olduhp) {
     const u = game.u || {};
     if (!Upolyd(u)) {
         if ((u.uhp | 0) < (olduhp | 0)) loss -= (olduhp | 0) - (u.uhp | 0);
@@ -298,6 +298,53 @@ function adjuhploss(loss, olduhp) {
         loss -= (olduhp | 0) - (u.mh | 0);
     }
     return Math.max(loss | 0, 1);
+}
+
+/**
+ * C ref: attrib.c losestr — STR loss; may kill below ATTRMIN.
+ * Caller mcastu.c mcast_weaken_you.
+ */
+export async function losestr(num, knam, k_format) {
+    const u = game.u || (game.u = {});
+    const uhpmin = minuhpmax(1);
+    let ustr = (abase(A_STR) | 0) - (num | 0);
+    const waspolyd = Upolyd(u);
+    if ((num | 0) <= 0 || (abase(A_STR) | 0) < (attrMin(A_STR) | 0)) {
+        await impossible(`losestr: ${abase(A_STR) | 0} - ${num | 0}`);
+        return;
+    }
+    let dmg = 0;
+    while (ustr < (attrMin(A_STR) | 0)) {
+        ++ustr;
+        --num;
+        dmg += rn1(4, 3); // 3..6
+    }
+    if (dmg) {
+        if (!knam) {
+            knam = 'terminal frailty';
+            k_format = KILLED_BY;
+        }
+        const { losehp } = await import('./hack.js');
+        losehp(dmg, knam, k_format);
+        if (game._losehp_needs_done || game.program_state?.gameover) {
+            const { finish_losehp_done } = await import('./end.js');
+            await finish_losehp_done();
+            return;
+        }
+        const { setuhpmax } = await import('./exper.js');
+        if (Upolyd(u)) {
+            setuhpmax(Math.max((u.mhmax | 0) - dmg, 1), false);
+        } else if (!waspolyd) {
+            if ((u.uhpmax | 0) > uhpmin) {
+                setuhpmax(Math.max((u.uhpmax | 0) - dmg, uhpmin), false);
+            }
+        }
+        if (game.flags) game.flags.botl = true;
+        if (game.disp) game.disp.botl = true;
+    }
+    if ((num | 0) > 0 && (Upolyd(u) || !waspolyd)) {
+        await adjattrib(A_STR, -(num | 0), 1);
+    }
 }
 
 /** C hacklib.c strstri — case-insensitive substring (poison reason gate). */

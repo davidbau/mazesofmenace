@@ -2387,7 +2387,8 @@ export async function ureflects(fmt, str) {
     } else {
         return false;
     }
-    if (fmt && str) {
+    // C: fmt && str are non-NULL pointer checks; empty "" still prints.
+    if (fmt != null && str != null) {
         await pline(sprintf2(fmt, str, what));
         if (known >= 0) makeknown(known);
     }
