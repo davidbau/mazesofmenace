@@ -3,7 +3,7 @@
 //   place_worm_tail_randomly, place_worm_seg / remove_monster (rm.h),
 //   worm_move / shrink_worm / worm_nomove (D-1491), see_wsegs (D-1529),
 //   detect_wsegs (D-1545), worm_known (D-1548), cutworm / place_wsegs
-//   (D-1570), redraw_worm (D-1577).
+//   (D-1570), redraw_worm (D-1577), wormhitu (D-1798).
 // Named omissions: save/rest wsegs; mondead/dog wormgone callers;
 //   replmon/restore place_wsegs callers; muse.c / mhitu.c worm_move
 //   callers; flip_worm_segs_vertical / flip_worm_segs_horizontal.
@@ -21,6 +21,7 @@ import { NUMMONS, NON_PM, monsterNames } from './monsters.js';
 import { PM_LONG_WORM_TAIL } from './generated/monsters_data.js';
 import { clone_mon } from './makemon.js';
 import { mon_nam, Monnam, s_suffix } from './do_name.js';
+import { mattacku } from './mhitu.js';
 
 /** @type {(null|{nseg:object|null,wx:number,wy:number})[]} */
 const wheads = new Array(MAX_NUM_WORMS).fill(null);
@@ -178,6 +179,28 @@ export function wormgone(worm) {
     if ((worm.data?.mndx | 0) === PM_LONG_WORM && has_mcorpsenm(worm)) {
         worm.mextra.mcorpsenm = NON_PM;
     }
+}
+
+/**
+ * C ref: worm.c wormhitu `:343–362`. Head already had its mattacku in
+ * dochug; skip the dummy tail co-located with wheads. Remaining segs
+ * attack when distu(wx,wy) < 3 (same-cell or adjacent, incl. diagonal).
+ * Caller: monmove.c dochug PHASE FOUR.
+ */
+export async function wormhitu(worm) {
+    const wnum = worm?.wormno | 0;
+    if (!wnum) return 0;
+    const u = game.u || {};
+    const ux = u.ux | 0;
+    const uy = u.uy | 0;
+    for (let seg = wtails[wnum]; seg && seg !== wheads[wnum]; seg = seg.nseg) {
+        const dx = (seg.wx | 0) - ux;
+        const dy = (seg.wy | 0) - uy;
+        if (dx * dx + dy * dy < 3) {
+            if (await mattacku(worm)) return 1;
+        }
+    }
+    return 0;
 }
 
 /**

@@ -460,7 +460,7 @@ export async function drinksink() {
     case 9:
         await pline('Gaggg... this tastes like sewage!  You vomit.');
         // C: morehungry(rn1(30 - ACURR(A_CON), 11))
-            morehungry(rn1(30 - acurr(A_CON), 11));
+            await morehungry(rn1(30 - acurr(A_CON), 11));
             await vomit();
         break;
     case 10:
@@ -839,7 +839,7 @@ export async function drinkfountain() {
         await pline('The cool draught refreshes you.');
         // C fountain.c:281–282 — raw add, not lesshungry; don't choke on water
         u.uhunger = (u.uhunger ?? 900) + rnd(10);
-        newuhs(false);
+        await newuhs(false);
         if (mgkftn) return;
     } else {
         switch (fate) {
@@ -853,7 +853,7 @@ export async function drinkfountain() {
             break;
         case 20: // Foul water
             await pline('The water is foul!  You gag and vomit.');
-            morehungry(rn1(20, 11));
+            await morehungry(rn1(20, 11));
             // C: eat.c vomit() — nomul(-2); cantvomit/Sick/acid poly (D-1127)
             await vomit();
             break;
@@ -883,7 +883,7 @@ export async function drinkfountain() {
             break;
         case 24: { // Maybe curse some items — C fountain.c:317–334
             await pline("This water's no good!");
-            morehungry(rn1(20, 11));
+            await morehungry(rn1(20, 11));
             exercise(A_CON, false);
             // more severe than rndcurse(); coins skipped
             let buc_changed = 0;

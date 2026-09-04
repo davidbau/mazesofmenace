@@ -56,7 +56,7 @@ import { dothrow, dofire } from './dothrow.js';
 import { doapply, check_leash } from './apply.js';
 import { dokick } from './dokick.js';
 import { donull, dodown, doup, dodrop, doddrop } from './do.js';
-import { dosave } from './save.js';
+import { dosave, dosave0 } from './save.js';
 import { doset_simple, dotogglepickup, select_menu_pick_one } from './options.js';
 import {
     do_attack, mon_at, is_safemon, explum, attacktype_fordmg,
@@ -76,6 +76,7 @@ import { an, doname } from './objnam.js';
 import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
 import { objects_at } from './mkobj.js';
 import { stairway_at, u_on_newpos } from './mklev.js';
+import { In_tutorial } from './dungeon.js';
 import { ATR_INVERSE } from './terminal.js';
 import { dopay } from './shk.js';
 import { getpos, gather_locs_interesting, auto_describe_text } from './getpos.js';
@@ -87,6 +88,9 @@ import {
     hero_mimic_unhide_after_move, domove_swap_with_pet,
     test_move_run_blocked_by_boulder, test_move_boulder_is_blocking,
     test_move_hero_passes_bars, test_move_hero_chews_bars, still_chewing,
+    end_running,
+    water_turbulence, move_out_of_bounds, avoid_running_into_trap_or_liquid,
+    domove_fight_ironbars, domove_fight_web,
 } from './hack.js';
 import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
 import { drag_ball, move_bc } from './ball.js';
@@ -101,6 +105,28 @@ function cmdq_qname(q) {
 /** C ref: cmd.c cmdq_clear(q). Callers without q still clear CQ_CANNED. */
 export function cmdq_clear(q = CQ_CANNED) {
     game[cmdq_qname(q)] = [];
+}
+
+/**
+ * C ref: cmd.c end_of_input `:5182–5209` (HANGUPHANDLING).
+ * unixconf.h defines SAFERHANGUP; NOSAVEONHANGUP is off, so hangup
+ * still writes via dosave0 when something_worth_saving (tutorial
+ * zeros that first). Named omit: sound_exit_nhsound, exit_nhwindows,
+ * clearlocks (no filesystem locks — Contest Rule #2). nh_terminate
+ * becomes program_state.gameover so moveloop stops.
+ */
+export function end_of_input() {
+    if (!game.program_state) game.program_state = {};
+    const ps = game.program_state;
+    if (In_tutorial(game.u?.uz)) {
+        ps.something_worth_saving = 0;
+    }
+    if (ps.something_worth_saving) {
+        dosave0();
+    }
+    ps.in_moveloop = 0;
+    ps.exiting = 1;
+    ps.gameover = true;
 }
 
 /**
@@ -1018,17 +1044,6 @@ function block_door(_x, _y) {
     return false;
 }
 
-// C ref: hack.c end_running(and_travel) — JS always clears travel (TRUE path)
-function end_running() {
-    if (!game.context) game.context = {};
-    game.context.run = 0;
-    game.context.mv = 0;
-    game.context.travel = 0;
-    game.context.travel1 = 0;
-    if (game.context.nopick) game.context.nopick = 0;
-    game.multi = 0;
-}
-
 /**
  * C ref: hack.c test_move DO_MOVE + flags.mention_walls on IS_OBSTRUCTED.
  * Uses defsyms[].explanation via an(); S_stone → "solid stone".
@@ -1038,6 +1053,7 @@ function end_running() {
  * resist, full back_to_glyph/wall_angle→S_stone edge cases.
  * IRONBARS pass/chew is D-1270 (blocksMove / still_chewing, not here).
  * run>=2 boulder pline_dir is D-1226 (test_move, not this bump).
+ * OOB / testdiag doorway / run-into-trap-or-liquid mention_walls is D-1800.
  */
 async function mention_walls_obstructed(x, y) {
     if (!game.flags?.mention_walls) return;
@@ -1165,7 +1181,7 @@ function lookaround() {
                 && mon_visible(mtmp)) {
                 if ((ctx.run !== 1 && !is_safemon(mtmp))
                     || (infront && !ctx.travel)) {
-                    end_running();
+                    end_running(true);
                     return;
                 }
             }
@@ -1185,7 +1201,7 @@ function lookaround() {
             if (closed_door_at(x, y)) {
                 if (x !== u.ux && y !== u.uy) continue;
                 if (ctx.run !== 1 && !ctx.travel) {
-                    end_running();
+                    end_running(true);
                     return;
                 }
                 asCorr = true; // bcorr
@@ -1196,7 +1212,7 @@ function lookaround() {
                 if (ctx.run === 1) asCorr = true;
                 else if (ctx.run === 8) continue;
                 else {
-                    end_running();
+                    end_running(true);
                     return;
                 }
             }
@@ -1222,7 +1238,7 @@ function lookaround() {
     }
 
     if (corrct > 1 && ctx.run === 2) {
-        end_running();
+        end_running(true);
         return;
     }
 
@@ -1536,7 +1552,7 @@ export async function dolookaround() {
 // C ref: cmd.c — continue a DOMOVE_RUSH after the first step (moveloop multi>0)
 export async function continue_run() {
     if (!game.context?.run || !(game.multi > 0) || !game.context.mv) {
-        end_running();
+        end_running(true);
         return false;
     }
     lookaround();
@@ -1546,13 +1562,13 @@ export async function continue_run() {
     }
     // C: if (multi < COLNO && !--multi) end_running
     if (game.multi < COLNO && !--game.multi) {
-        end_running();
+        end_running(true);
     }
     // C ref: hack.c domove_core — travel recomputes step each turn
     if (game.context?.travel) {
         // C: if (!findtravelpath(TRAVP_TRAVEL)) findtravelpath(TRAVP_GUESS)
         if (!findtravelpath_travel() && !findtravelpath_guess()) {
-            end_running();
+            end_running(true);
             game.context.move = 0;
             return false;
         }
@@ -1666,7 +1682,7 @@ function findtravelpath_travel(couldseeOnly = false) {
         && (destX !== u.ux || destY !== u.uy)
         && !blocksMove(destX, destY)
         && !boulder_at(destX, destY)) {
-        end_running();
+        end_running(true);
         u.dx = destX - u.ux;
         u.dy = destY - u.uy;
         nomul(0);
@@ -1889,7 +1905,7 @@ async function dotravel_target() {
         u.dx = 0;
         u.dy = 0;
         nomul(0);
-        end_running();
+        end_running(true);
         game.context.move = 1;
     }
     return ECMD_TIME;
@@ -2219,6 +2235,11 @@ export async function rhack(key) {
     if (game.context) game.context.nopick = 0;
 
     for (;;) { // C got_prefix_input
+    // C cmd.c:3638–3641 — SAFERHANGUP done_hup → end_of_input.
+    if (game.program_state?.done_hup) {
+        end_of_input();
+        return;
+    }
     // C: cmdq_pop before parse — fireassist swap/retry lives here
     if (key === 0) {
         const canned = cmdq_pop();
@@ -2456,7 +2477,7 @@ export async function rhack(key) {
             // C tlist NULL ("nothing") or overlay target with no EXT_CMDS
             // runner — Unknown, do not fall through to if/else.
             if (game.context?.forcefight) game.context.forcefight = 0;
-            if (game.context?.run || (game.multi || 0) > 0) end_running();
+            if (game.context?.run || (game.multi || 0) > 0) end_running(true);
             if (game.context) game.context.command_count = 0;
             game._repeat_search = false;
             game.context.move = 0;
@@ -2839,7 +2860,7 @@ export async function rhack(key) {
     } else if (key === 27) {
         // Esc — cancel run/count; no message
         // C ref: cmd.c / hack.c — ESC ends running and clears multi
-        if (game.context?.run || (game.multi || 0) > 0) end_running();
+        if (game.context?.run || (game.multi || 0) > 0) end_running(true);
         if (game.context) game.context.command_count = 0;
         game._repeat_search = false;
         game.context.move = 0;
@@ -2858,7 +2879,7 @@ export async function rhack(key) {
             // C rhack: custompline(SUPPRESS_HISTORY, "Unknown command '%s'.",
             // visctrl(key)) — Ctrl-C is "^C", not raw ETX (D-1189).
             if (game.context?.forcefight) game.context.forcefight = 0;
-            if (game.context?.run || (game.multi || 0) > 0) end_running();
+            if (game.context?.run || (game.multi || 0) > 0) end_running(true);
             if (game.context) game.context.command_count = 0;
             game._repeat_search = false;
             game.context.move = 0;
@@ -2908,7 +2929,7 @@ async function domove(dx, dy) {
 
     // C ref: hack.c domove_core — carrying_too_much before swallow/attack
     if (await carrying_too_much()) {
-        if (game.context?.run) end_running();
+        if (game.context?.run) end_running(true);
         return;
     }
 
@@ -2919,8 +2940,7 @@ async function domove(dx, dy) {
     // C ref: hack.c domove_core — swallowed: zero dx/dy, u_on_newpos onto
     // ustuck, attack engulfer; skip impaired_movement / m_at walk path.
     // Named omissions still ahead of the non-swallow arm:
-    // air_turbulence, slippery_ice_fumbling, water_turbulence,
-    // escape_from_sticky_mon.
+    // air_turbulence, slippery_ice_fumbling, escape_from_sticky_mon.
     if ((u.uswallow | 0) && u.ustuck) {
         u.dx = 0;
         u.dy = 0;
@@ -2932,11 +2952,20 @@ async function domove(dx, dy) {
         // C ref: hack.c domove_core — impaired_movement after ux+dx
         // (Confusion/Stunned may rn2(5) then confdir).
         if (impaired_movement()) {
-            if (game.context?.run) end_running();
+            if (game.context?.run) end_running(true);
+            return;
+        }
+        // C hack.c:2371 / :2750–2758 — water_friction via water_turbulence,
+        // then move_out_of_bounds, then avoid_running_into_trap_or_liquid.
+        // Named: air_turbulence, slippery_ice_fumbling, escape_from_sticky_mon.
+        if (await water_turbulence()) {
+            if (game.context?.run) end_running(true);
             return;
         }
         newx = (u.ux | 0) + (u.dx | 0);
         newy = (u.uy | 0) + (u.dy | 0);
+        if (await move_out_of_bounds(newx, newy)) return;
+        if (await avoid_running_into_trap_or_liquid(newx, newy)) return;
 
         // C ref: hack.c domove_core — m_at / run-stop / attackmon BEFORE test_move
         // (closed_door / testdiag / rock). Diagonal intact-doorway bans must not
@@ -2951,8 +2980,21 @@ async function domove(dx, dy) {
         if ((forcefight && !mtmp)
             || (glyph_is_invisible_id(destLoc?.disp_glyph)
                 && !mtmp && !game.context?.nopick)) {
+            // C hack.c:2804–2811 — ironbars then web then empty.
+            if (await domove_fight_ironbars(newx, newy)) {
+                if (game.context?.run) end_running(true);
+                game.context.move = 1;
+                game.kickedloc = { x: 0, y: 0 };
+                return;
+            }
+            if (await domove_fight_web(newx, newy)) {
+                if (game.context?.run) end_running(true);
+                game.context.move = 1;
+                game.kickedloc = { x: 0, y: 0 };
+                return;
+            }
             await domove_fight_empty(newx, newy);
-            if (game.context?.run) end_running();
+            if (game.context?.run) end_running(true);
             game.context.move = 1;
             game.kickedloc = { x: 0, y: 0 };
             return;
@@ -2979,7 +3021,7 @@ async function domove(dx, dy) {
         // C: domove_attackmon_at → do_attack (safemon may return false → swap)
         // Swallowed path: mtmp is ustuck; still goes through do_attack.
         if (await do_attack(mtmp)) {
-            if (game.context?.run) end_running();
+            if (game.context?.run) end_running(true);
             return;
         }
         // safemon displace: fall through; swap after test_move succeeds
@@ -2993,7 +3035,7 @@ async function domove(dx, dy) {
     // C ref: hack.c domove_core — after attack path, before trapmove:
     // u_rooted (mmove==0) spends the turn without stepping (D-0928 #1106).
     if (await u_rooted()) {
-        if (game.context?.run) end_running();
+        if (game.context?.run) end_running(true);
         return;
     }
 
@@ -3075,7 +3117,11 @@ async function domove(dx, dy) {
         const dest = game.level?.at(newx, newy);
         if (dest && IS_DOOR(dest.typ)
             && (!doorless_door(newx, newy) || block_door(newx, newy))) {
-            if (game.context?.run) end_running();
+            // C test_move testdiag: Underwater || flags.mention_walls
+            if ((u.uinwater | 0) || game.flags?.mention_walls) {
+                await pline("You can't move diagonally into an intact doorway.");
+            }
+            if (game.context?.run) end_running(true);
             game.context.move = 0;
             return;
         }
@@ -3083,7 +3129,10 @@ async function domove(dx, dy) {
         const here = game.level?.at(u.ux, u.uy);
         if (here && IS_DOOR(here.typ)
             && (!doorless_door(u.ux, u.uy) || false /* block_entry deferred */)) {
-            if (game.context?.run) end_running();
+            if (game.flags?.mention_walls) {
+                await pline("You can't move diagonally out of an intact doorway.");
+            }
+            if (game.context?.run) end_running(true);
             game.context.move = 0;
             return;
         }
@@ -3092,13 +3141,13 @@ async function domove(dx, dy) {
     if (blocksMove(newx, newy)) {
         // Can't move there — end a run so lookaround/continue_run don't
         // keep going in the previous direction with stale multi.
-        if (game.context?.run) end_running();
+        if (game.context?.run) end_running(true);
         // C ref: hack.c test_move — DO_MOVE + mention_walls on rock/bars
         const bloc = game.level?.at(newx, newy);
         if (bloc && (IS_OBSTRUCTED(bloc.typ) || bloc.typ === IRONBARS)) {
             await mention_walls_obstructed(newx, newy);
         }
-        // out-of-bounds move_out_of_bounds mention_walls deferred
+        // out-of-bounds is move_out_of_bounds (D-1800), not this bump
         game.context.move = 0;
         return;
     }
@@ -3121,7 +3170,7 @@ async function domove(dx, dy) {
                 } else if (why === 1) {
                     await pline('Your body is too large to fit through.');
                 }
-                if (game.context?.run) end_running();
+                if (game.context?.run) end_running(true);
                 game.context.move = 0;
                 return;
             }
@@ -3154,7 +3203,7 @@ async function domove(dx, dy) {
             // C hack.c:2843–2848 — !test_move keeps move when door_opened
             // (nopick in-way learned a glyph; D-1262).
             if (!game.context?.door_opened) {
-                if (game.context?.run) end_running();
+                if (game.context?.run) end_running(true);
                 game.context.move = 0;
             }
             return;
@@ -3164,7 +3213,7 @@ async function domove(dx, dy) {
 
     // C ref: hack.c swim_move_danger — after test_move, before occupying cell
     if (await swim_move_danger(newx, newy)) {
-        if (game.context?.run) end_running();
+        if (game.context?.run) end_running(true);
         game.context.move = 0;
         nomul(0);
         return;
@@ -3180,7 +3229,7 @@ async function domove(dx, dy) {
     if (u.uball && !(u.uswallow | 0)) {
         const drag = await drag_ball(newx, newy, true);
         if (!drag.ok) {
-            if (game.context?.run) end_running();
+            if (game.context?.run) end_running(true);
             // C: drag_ball failure returns without clearing move when jerked;
             // encumber path also returns — leave context.move as-is for turn.
             return;
@@ -3263,7 +3312,7 @@ async function domove(dx, dy) {
         const tmpr = game.level?.at(newx, newy);
         if (tmpr && (tmpr.typ === DOOR || IS_OBSTRUCTED(tmpr.typ)
             || IS_FURNITURE(tmpr.typ))) {
-            end_running();
+            end_running(true);
         }
     }
 

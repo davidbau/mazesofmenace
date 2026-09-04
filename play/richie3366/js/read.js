@@ -20,8 +20,9 @@
 // seffect_taming SCR_TAMING/SPE_CHARM_MONSTER + recharge/charge_ok (D-1502) +
 // seffect_gold_detection SCR_GOLD_DETECTION (D-1773) +
 // seffect_food_detection SCR_FOOD_DETECTION / SPE_DETECT_FOOD (D-1781).
-// Named omissions: fortune/shirt/credit-card/marker/coin/orb/candy/Braille
-// Blind gates; study_book novel / dull sleep (occupation learn D-0907);
+// Named omissions: fortune/credit-card/marker/coin/orb/Braille Blind
+// gates; doread T_SHIRT/ALCHEMY_SMOCK/HAWAIIAN_SHIRT (hawaiian_design);
+// study_book novel / dull sleep (occupation learn D-0907);
 // other seffect_*; SCR_IDENTIFY SPE_IDENTIFY cast; menu_identify traditional
 // ggetobj; discover_artifact / learn_egg_type in fully_identify_obj;
 // SCR_DESTROY_ARMOR confused erodeproof / cursed vibrate+stun /
@@ -50,8 +51,9 @@
 // SCR_PUNISHMENT / SCR_GENOCIDE +
 // SPBOOK_CLASS → study_book (already-known refresh yn) + create_particular
 // named-monster path for #wizgenesis.
-// Named omissions: fortune/shirt/credit-card/marker/coin/orb/candy/Braille
-// Blind gates; study_book novel / dull sleep (occupation learn D-0907);
+// Named omissions: fortune/credit-card/marker/coin/orb/Braille Blind
+// gates; doread T_SHIRT/ALCHEMY_SMOCK/HAWAIIAN_SHIRT (hawaiian_design);
+// study_book novel / dull sleep (occupation learn D-0907);
 // other seffect_*; SCR_IDENTIFY SPE_IDENTIFY cast; menu_identify traditional
 // ggetobj; discover_artifact / learn_egg_type in fully_identify_obj;
 // SCR_DESTROY_ARMOR confused erodeproof / cursed vibrate+stun /

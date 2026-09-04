@@ -2007,7 +2007,7 @@ export async function dotele(break_the_rules) {
     }
     if (!trap) {
         const { morehungry } = await import('./eat.js');
-        morehungry(100);
+        await morehungry(100);
     }
     return true;
 }

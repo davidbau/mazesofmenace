@@ -49,6 +49,9 @@ export class GameMap {
             nsinks: 0,
             hero_memory: true,
             is_maze_lev: false,
+            // C mklev.c / GameMap default after clear_level_structures
+            deathdrops: true,
+            graveyard: false,
         };
     }
 

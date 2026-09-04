@@ -1712,7 +1712,8 @@ export function noveltitle(otmp) {
 
 // C ref: mkobj.c clear_dknown `:835–848` — dknowns[] then shield-range /
 // objects[].oc_merge (BITS mrg) force dknown=0; pudding later sets 1.
-function clear_dknown(obj) {
+// Caller: mon.c make_corpse Blind arm (`:928`).
+export function clear_dknown(obj) {
     if (!obj) return;
     const cls = obj.oclass ?? 0;
     obj.dknown = DKNOWN_CLEAR_CLASSES.has(cls) ? 0 : 1;

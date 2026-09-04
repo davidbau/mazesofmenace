@@ -9595,7 +9595,8 @@ function load_tut1() {
     if (!game.level.flags) game.level.flags = {};
     game.level.flags.is_maze_lev = true;
     game.level.flags.nomongen = true;
-    game.level.flags.nodeathdrops = true;
+    // C sp_lev.c "nodeathdrops" → svl.level.flags.deathdrops = 0
+    game.level.flags.deathdrops = false;
     game.level.flags.noautosearch = true;
 
     // des.map([[...]]) — C lspo_map string form → SPLEV_CENTER (not 1,0)

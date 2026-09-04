@@ -17,7 +17,7 @@
 
 import {
     artifact_exists, exist_artifact, artifact_name, restrict_name,
-    bare_artifactname, set_artifact_intrinsic,
+    bare_artifactname, set_artifact_intrinsic, youmonst,
 } from './artifact.js';
 import { game } from './gstate.js';
 import { livelog_printf } from './pline.js';
@@ -34,7 +34,7 @@ import {
 } from './display.js';
 import {
     paint_corner_nhw_menu, discover_object,
-    getobj, update_inventory,
+    getobj, update_inventory, Blind,
 } from './invent.js';
 import { rename_disco, undiscover_object } from './o_init.js';
 import {
@@ -44,13 +44,14 @@ import {
     W_SADDLE, engulfing_u, Upolyd, MD_PAD_BOGONS,
     ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR,
     SUPPRESS_IT, SUPPRESS_INVISIBLE, SUPPRESS_HALLUCINATION,
-    SUPPRESS_SADDLE, SUPPRESS_NAME,
+    SUPPRESS_SADDLE, SUPPRESS_MAPPEARANCE, SUPPRESS_NAME, EXACT_NAME,
+    AUGMENT_IT,
     GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GETOBJ_NOFLAGS,
     GETOBJ_PROMPT,
     ECMD_OK, CMDQ_KEY, CQ_CANNED,
     has_oname, ONAME, CLR_MAX, BUFSZ, u_at, OBJ_FREE, OBJ_INVENT, HAND,
-    isok, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPMASK, has_ebones,
-    NON_PM, Is_astralevel,
+    isok, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPMASK, has_ebones,
+    NON_PM, Is_astralevel, In_endgame,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import { shkname } from './shknam.js';
@@ -58,6 +59,7 @@ import { monsterNames } from './generated/monsters_data.js';
 import {
     M2_PNAME, MALE, FEMALE, NEUTRAL, pmnames, G_NOGEN, G_UNIQ, mons,
     LOW_PM, SPECIAL_PM, hides_under, is_rider, MS_ANIMAL,
+    humanoid, is_animal, mindless, is_mplayer,
 } from './monsters.js';
 import { getlin } from './getline.js';
 import { getpos } from './getpos.js';
@@ -65,7 +67,7 @@ import { object_from_map } from './pager.js';
 import { objects_at, SIR_TERRY_NOVELS } from './mkobj.js';
 import { rank_of, genders } from './roles.js';
 import {
-    an, xname, simpleonames, ansimpleoname, set_y_monnam, set_noit_mon_nam,
+    an, just_an, xname, simpleonames, ansimpleoname, set_y_monnam, set_noit_mon_nam,
     The, is_plural, safe_qbuf, body_part_latebound, vtense, makeplural,
 } from './objnam.js';
 import {
@@ -78,7 +80,7 @@ import { get_rnd_text } from './rumors.js';
 import { BOGUSMON_BUF } from './generated/bogusmon_data.js';
 import { m_at } from './mon.js';
 import { cansee } from './vision.js';
-import { fuzzymatch, strstri, highc } from './hacklib.js';
+import { fuzzymatch, strstri, highc, lcase } from './hacklib.js';
 import { pronoun_gender, PRONOUN_HALLU } from './mondata.js';
 import { beautiful } from './apply.js';
 import { mhe, mhis } from './fountain.js';
@@ -100,6 +102,21 @@ const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
 const BOGUSMONSIZE = 100; // C: do_name.c rndmonnam
 const BOGON_CODES = '-_+|=';
+
+/** C ref: do_name.c NUMMBUF / nextmbuf `:16–27` — 5 rotating BUFSZ slots. */
+const NUMMBUF = 5;
+const mbufs = ['', '', '', '', ''];
+let mbufidx = 0;
+function nextmbuf() {
+    mbufidx = (mbufidx + 1) % NUMMBUF;
+    mbufs[mbufidx] = '';
+    return mbufidx;
+}
+
+/** C: mtmp == &gy.youmonst */
+function is_youmonst(mtmp) {
+    return mtmp === youmonst || mtmp === game.youmonst || !!mtmp?._youmonst;
+}
 
 /**
  * C ref: do_name.c name_ok `:466–476`.
@@ -381,6 +398,16 @@ function named_ghost_monnam(mtmp) {
 }
 
 /**
+ * C ref: do_name.c free_mgivenname `:50–57` — drop MGIVENNAME so
+ * make_corpse does not christen golem/pudding drops.
+ */
+export function free_mgivenname(mon) {
+    if (!has_mgivenname(mon)) return;
+    if (mon.mextra) delete mon.mextra.mgivenname;
+    if (mon.mgivenname != null) delete mon.mgivenname;
+}
+
+/**
  * C ref: do_name.c christen_monst — assign MGIVENNAME (pet / #name).
  */
 export function christen_monst(mtmp, name) {
@@ -560,6 +587,19 @@ export function type_is_pname(ptr) {
 }
 
 /**
+ * C ref: do_name.c Mgender `:1287–1300` (!PMNAME_MACROS).
+ * youmonst uses Upolyd ? u.mfemale : flags.female; else mtmp->female.
+ */
+export function Mgender(mtmp) {
+    if (is_youmonst(mtmp)) {
+        const u = game.u || {};
+        if (Upolyd(u) ? u.mfemale : game.flags?.female) return FEMALE;
+        return MALE;
+    }
+    return mtmp?.female ? FEMALE : MALE;
+}
+
+/**
  * C ref: you.h Ugender — (Upolyd ? u.mfemale : flags.female) ? FEMALE : MALE.
  */
 export function Ugender() {
@@ -588,8 +628,7 @@ export function pmname(pm, mgender) {
 export function mon_pmname(mtmp) {
     const mndx = mtmp?.mnum ?? mtmp?.data?.mndx;
     if (mndx != null && mndx >= 0 && pmnames[mndx]) {
-        const g = mtmp?.female ? FEMALE : MALE;
-        return pmname(mndx, g);
+        return pmname(mndx, Mgender(mtmp));
     }
     const raw = mtmp?.data?.name || 'monster';
     return String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
@@ -619,8 +658,8 @@ function article_the_prefix(mtmp, has_adjectives) {
  */
 function saddle_adj(mtmp, suppress = 0) {
     if (suppress & SUPPRESS_SADDLE) return '';
-    if (game.u?.Blind || game.u?.ublind) return '';
-    if (game.u?.Hallucination || Hallucination()) return '';
+    if (Blind()) return '';
+    if (Hallucination()) return '';
     if ((mtmp?.misc_worn_check || 0) & W_SADDLE) return 'saddled ';
     return '';
 }
@@ -684,6 +723,15 @@ export function distant_monnam_none(mtmp) {
 }
 
 /**
+ * C ref: do_name.c m_monnam `:1108–1113` — x_monnam(ARTICLE_NONE,
+ * EXACT_NAME). EXACT_NAME is 0x1F (it/invis/hallu/saddle/mappear),
+ * not SUPPRESS_NAME — disclosure keeps the given name.
+ */
+export function m_monnam(mtmp) {
+    return x_monnam(mtmp, ARTICLE_NONE, null, EXACT_NAME, false);
+}
+
+/**
  * C ref: do_name.c distant_monnam `:1168–1186` — ARTICLE_THE/NONE;
  * astral PM_HIGH_CLERIC conceal else x_monnam(..., TRUE).
  */
@@ -694,12 +742,12 @@ export function distant_monnam(mtmp, article = ARTICLE_THE) {
 }
 
 /**
- * C ref: do_name.c x_monnam — generic monster naming.
- * Covers: do_it, hallu/rndmonnam, isshk, given-name/ghost, adjective,
- * saddle, ARTICLE_*, M2_PNAME / Wizard article. Named omissions:
- * priest/minion priestname, M_AP_MONSTER mappear, invis adjective,
- * is_mplayer rank_of / "the " split, AUGMENT_IT someone/something,
- * youmonst.
+ * C ref: do_name.c x_monnam `:826–1032` — generic monster naming.
+ * nextmbuf ring, youmonst, AUGMENT_IT someone/something (hallu `rn2(2)`),
+ * M_AP_MONSTER mappear, invis/saddle adjectives, is_mplayer rank_of+lcase
+ * and " the " split, ARTICLE_* via just_an, M2_PNAME / Wizard article.
+ * Named omissions: priest/minion `priestname` (no JS priestname yet —
+ * fall through to ordinary arms).
  *
  * @param {object} mtmp
  * @param {number} article ARTICLE_NONE|THE|A|YOUR
@@ -708,21 +756,32 @@ export function distant_monnam(mtmp, article = ARTICLE_THE) {
  * @param {boolean} called
  */
 export function x_monnam(mtmp, article, adjective, suppress = 0, called = false) {
-    if (!mtmp) return 'it';
+    /* C: char *buf = nextmbuf(); even the youmonst / do_it early returns
+       consume a ring slot. */
+    const idx = nextmbuf();
+    const ret = (s) => {
+        mbufs[idx] = s;
+        return mbufs[idx];
+    };
+
+    if (!mtmp) return ret('it');
+    if (is_youmonst(mtmp)) return ret('you');
 
     let art = article | 0;
     let supp = suppress | 0;
     const adj = adjective || '';
+    const mdat = mtmp.data;
+    const mndx = mdat?.mndx ?? (mtmp.mnum | 0);
+    const mappear_as_mon = ((mtmp.m_ap_type | 0) & M_AP_TYPMASK) === M_AP_MONSTER;
 
     if (game.program_state?.gameover) supp |= SUPPRESS_HALLUCINATION;
     if (art === ARTICLE_YOUR && !mtmp.mtame) art = ARTICLE_THE;
 
-    // C: uswallow && mtmp == u.ustuck → ARTICLE_THE + SUPPRESS_INVISIBLE
+    /* C: uswallow && mtmp == u.ustuck → ARTICLE_THE + SUPPRESS_INVISIBLE */
     if (game.u?.uswallow && mtmp === game.u?.ustuck) {
         art = ARTICLE_THE;
         supp |= SUPPRESS_INVISIBLE;
     }
-
     const do_hallu = Hallucination() && !(supp & SUPPRESS_HALLUCINATION);
     const do_invis = !!(mtmp.minvis) && !(supp & SUPPRESS_INVISIBLE);
     const do_it = !canspotmon(mtmp) && art !== ARTICLE_YOUR
@@ -731,38 +790,59 @@ export function x_monnam(mtmp, article, adjective, suppress = 0, called = false)
         && !engulfing_u(mtmp)
         && !(supp & SUPPRESS_IT);
     const do_saddle = !(supp & SUPPRESS_SADDLE);
-    const do_name = !(supp & SUPPRESS_NAME) || type_is_pname(mtmp.data);
-    // priest/minion / mappear deferred — fall through to ordinary arms
+    const do_mappear = mappear_as_mon && !(supp & SUPPRESS_MAPPEARANCE);
+    const do_name = !(supp & SUPPRESS_NAME) || type_is_pname(mdat);
+    const augment_it = (supp & AUGMENT_IT) !== 0;
 
+    /* unseen monsters, etc.; usually "it" but sometimes more specific;
+       when hallucinating, the more specific values might be inverted */
     if (do_it) {
-        // AUGMENT_IT someone/something deferred
-        return 'it';
+        /* !is_animal excludes all Y; !mindless excludes Z, M, \' */
+        const s_one = humanoid(mdat) && !is_animal(mdat) && !mindless(mdat);
+        /* C `:877–880` ternary: !augment_it ? "it"
+           : (!do_hallu ? s_one : !rn2(2)) ? "someone" : "something" */
+        const nam = !augment_it ? 'it'
+            : (!do_hallu ? s_one : !rn2(2)) ? 'someone'
+              : 'something';
+        return ret(nam);
     }
 
-    // Shopkeepers: shkname (+ adjective ARTICLE_THE arm)
-    if (mtmp.isshk && !do_hallu /* && !do_mappear deferred */) {
+    /* priests and minions: C priestname. Named omit — fall through. */
+
+    /* 'pm_name' is the base part of most names */
+    const pm_name = do_mappear
+        ? pmname(mtmp.mappearance | 0, Mgender(mtmp))
+        : mon_pmname(mtmp);
+
+    /* Shopkeepers: use shopkeeper name. */
+    if (mtmp.isshk && !do_hallu && !do_mappear) {
         const nam = shkname(mtmp) || '';
         if (adj && art === ARTICLE_THE) {
-            return `the ${adj} ${nam}`;
+            /* pathological case: "the angry Asidonhopo the blue dragon" */
+            return ret(`the ${adj} ${nam}`);
         }
-        const mndx = mtmp.mnum ?? mtmp.data?.mndx;
         if (mndx !== PM_SHOPKEEPER || do_invis) {
             let buf = nam;
             buf += ' the ';
             if (do_invis) buf += 'invisible ';
-            buf += mon_pmname(mtmp);
-            return buf;
+            buf += pm_name;
+            return ret(buf);
         }
-        return nam;
+        return ret(nam);
     }
 
+    /* Put the adjectives in the buffer */
     let buf = '';
     if (adj) buf += `${adj} `;
-    // invis adjective deferred (do_invis) — prior mon_nam omitted it too
-    void do_invis;
-    if (do_saddle) buf += saddle_adj(mtmp, 0);
+    if (do_invis) buf += 'invisible ';
+    if (do_saddle && (mtmp.misc_worn_check & W_SADDLE) && !Blind()
+        && !Hallucination()) {
+        buf += 'saddled ';
+    }
     const has_adjectives = buf.length > 0;
 
+    /* Put the actual monster name or type into the buffer now.
+       Remember whether the buffer starts with a personal name. */
     let name_at_start = false;
     if (do_hallu) {
         const codeOut = { c: '' };
@@ -771,41 +851,80 @@ export function x_monnam(mtmp, article, adjective, suppress = 0, called = false)
         name_at_start = bogon_is_pname(codeOut.c);
     } else if (do_name && has_mgivenname(mtmp)) {
         const name = MGIVENNAME(mtmp);
-        if ((mtmp.mnum | 0) === PM_GHOST) {
+        if (mndx === PM_GHOST) {
             buf += `${s_suffix(name)} ghost`;
             name_at_start = true;
         } else if (called) {
-            buf += `${mon_pmname(mtmp)} called ${name}`;
-            name_at_start = type_is_pname(mtmp.data);
+            buf += `${pm_name} called ${name}`;
+            name_at_start = type_is_pname(mdat);
         } else {
-            // is_mplayer " the " split deferred
-            buf += name;
-            name_at_start = true;
+            const the_tail = is_mplayer({ mndx }) ? strstri(name, ' the ') : null;
+            if (the_tail) {
+                /* <name> the <adjective> <invisible> <saddled> <rank> */
+                const prefixLen = String(name).length - the_tail.length;
+                let pbuf = String(name).slice(0, prefixLen + 5);
+                if (has_adjectives) pbuf += buf;
+                pbuf += the_tail.slice(5);
+                buf = pbuf;
+                art = ARTICLE_NONE;
+                name_at_start = true;
+            } else {
+                buf += name;
+                name_at_start = true;
+            }
         }
+    } else if (is_mplayer({ mndx }) && !In_endgame(game.u?.uz)) {
+        buf += lcase(rank_of(
+            mtmp.m_lev | 0,
+            mndx,
+            !!mtmp.female,
+        ));
+        name_at_start = false;
     } else {
-        // is_mplayer rank_of deferred — use type name
-        buf += mon_pmname(mtmp);
-        name_at_start = type_is_pname(mtmp.data);
+        buf += pm_name;
+        name_at_start = type_is_pname(mdat);
     }
 
     if (name_at_start && (art === ARTICLE_YOUR || !has_adjectives)) {
-        if ((mtmp.mnum | 0) === PM_WIZARD_OF_YENDOR) art = ARTICLE_THE;
+        if (mndx === PM_WIZARD_OF_YENDOR) art = ARTICLE_THE;
         else art = ARTICLE_NONE;
-    } else if (((mtmp.data?.geno | 0) & G_UNIQ) !== 0 && art === ARTICLE_A) {
+    } else if (((mdat?.geno | 0) & G_UNIQ) !== 0 && art === ARTICLE_A) {
         art = ARTICLE_THE;
     }
 
+    let insertbuf2 = true;
+    let buf2 = '';
     switch (art) {
     case ARTICLE_YOUR:
-        return `your ${buf}`;
+        buf2 = 'your ';
+        break;
     case ARTICLE_THE:
-        return `the ${buf}`;
+        buf2 = 'the ';
+        break;
     case ARTICLE_A:
-        return an(buf);
+        /* C: avoid an() here — just_an copies "a " / "an " / "" */
+        buf2 = just_an(buf);
+        break;
     case ARTICLE_NONE:
     default:
-        return buf;
+        insertbuf2 = false;
+        break;
     }
+    if (insertbuf2) buf = buf2 + buf;
+    return ret(buf);
+}
+
+/**
+ * C ref: do_name.c l_monnam `:1034–1039` — ARTICLE_NONE, called=TRUE.
+ */
+export function l_monnam(mtmp) {
+    return x_monnam(
+        mtmp,
+        ARTICLE_NONE,
+        null,
+        has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0,
+        true,
+    );
 }
 
 /**
@@ -819,7 +938,6 @@ export function noname_monnam(mtmp, article) {
 /**
  * C ref: do_name.c mon_nam — ARTICLE_THE; unseen → "it"; named → bare name.
  * Shopkeeper → shkname (D-0307). Hallu → rndmonnam (D-0838).
- * Invis adj / priest / AUGMENT_IT deferred (via x_monnam omissions).
  */
 export function mon_nam(mtmp) {
     return x_monnam(
@@ -827,6 +945,20 @@ export function mon_nam(mtmp) {
         ARTICLE_THE,
         null,
         has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0,
+        false,
+    );
+}
+
+/**
+ * C ref: do_name.c some_mon_nam `:1063–1071` — mon_nam but AUGMENT_IT so
+ * unseen yields "someone"/"something" (hallu `rn2(2)` in x_monnam).
+ */
+export function some_mon_nam(mtmp) {
+    return x_monnam(
+        mtmp,
+        ARTICLE_THE,
+        null,
+        has_mgivenname(mtmp) ? (SUPPRESS_SADDLE | AUGMENT_IT) : AUGMENT_IT,
         false,
     );
 }
@@ -916,7 +1048,7 @@ export function Amonnam(mtmp) {
 
 /**
  * C ref: do_name.c Adjmonnam — ARTICLE_THE + adjective, then highc.
- * Unseen still "It" (x_monnam do_it). Named: invis adj / priest polish.
+ * Unseen still "It" (x_monnam do_it). Named: priestname polish.
  */
 export function Adjmonnam(mtmp, adj) {
     return highc_name(x_monnam(
@@ -936,6 +1068,13 @@ export function Monnam(mtmp) {
 }
 
 /**
+ * C ref: do_name.c Some_Monnam `:1091–1098` — highc(some_mon_nam()).
+ */
+export function Some_Monnam(mtmp) {
+    return highc_name(some_mon_nam(mtmp));
+}
+
+/**
  * C ref: do_name.c y_monnam — ARTICLE_YOUR for pets, ARTICLE_THE else.
  * SUPPRESS_SADDLE when named or usteed.
  */
@@ -948,38 +1087,35 @@ export function y_monnam(mtmp) {
     return x_monnam(mtmp, prefix, null, suppression, false);
 }
 
+/**
+ * C ref: do_name.c YMonnam `:1132–1139` — highc(y_monnam()).
+ */
+export function YMonnam(mtmp) {
+    return highc_name(y_monnam(mtmp));
+}
+
 set_y_monnam(y_monnam);
 
 /**
- * C ref: do_name.c noit_mon_nam / noit_Monnam — ARTICLE_YOUR + SUPPRESS_IT.
- * Never "it"; named → bare; hallu deferred.
+ * C ref: do_name.c noit_mon_nam `:1051–1060` — ARTICLE_YOUR + SUPPRESS_IT
+ * (and SUPPRESS_SADDLE when named). Never "it".
  */
-export function noit_Monnam(mtmp) {
-    if (!mtmp) return 'It';
-    const ghost = named_ghost_monnam(mtmp);
-    if (ghost) return highc_name(ghost);
-    if (has_mgivenname(mtmp)) return highc_name(MGIVENNAME(mtmp));
-    if (mtmp.mtame) {
-        return highc_name(`your ${saddle_adj(mtmp)}${mon_plain_name(mtmp)}`);
-    }
-    // SUPPRESS_IT — type name even when !canspotmon
-    const sad = saddle_adj(mtmp);
-    return highc_name(
-        `${article_the_prefix(mtmp, !!sad)}${sad}${mon_plain_name(mtmp)}`,
+export function noit_mon_nam(mtmp) {
+    return x_monnam(
+        mtmp,
+        ARTICLE_YOUR,
+        null,
+        has_mgivenname(mtmp) ? (SUPPRESS_SADDLE | SUPPRESS_IT) : SUPPRESS_IT,
+        false,
     );
 }
 
-/** C ref: do_name.c noit_mon_nam — lowercase noit_Monnam. */
-export function noit_mon_nam(mtmp) {
-    if (!mtmp) return 'it';
-    const ghost = named_ghost_monnam(mtmp);
-    if (ghost) return ghost;
-    if (has_mgivenname(mtmp)) return MGIVENNAME(mtmp);
-    if (mtmp.mtame) {
-        return `your ${saddle_adj(mtmp)}${mon_plain_name(mtmp)}`;
-    }
-    const sad = saddle_adj(mtmp);
-    return `${article_the_prefix(mtmp, !!sad)}${sad}${mon_plain_name(mtmp)}`;
+/**
+ * C ref: do_name.c noit_Monnam `:1082–1089` — highc first char of
+ * noit_mon_nam (C mutates the nextmbuf slot in place).
+ */
+export function noit_Monnam(mtmp) {
+    return highc_name(noit_mon_nam(mtmp));
 }
 
 set_noit_mon_nam(noit_mon_nam);

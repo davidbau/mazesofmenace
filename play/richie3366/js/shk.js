@@ -67,7 +67,7 @@ import {
     MENU_TRADITIONAL, MENU_FULL,
     W_SWAPWEP, W_QUIVER, TT_PIT, MIGR_APPROX_XY, MON_FLOOR,
     SELL_NORMAL, SELL_DELIBERATE, SELL_DONTSELL, CANDLESHOP,
-    ARTICLE_THE, G_GONE, LL_ACHIEVE, MM_NOMSG,
+    ARTICLE_THE, G_GONE, LL_ACHIEVE, MM_NOMSG, PL_NSIZ,
 } from './const.js';
 import {
     hero_conflict, resist_conflict, m_canseeu,
@@ -89,7 +89,7 @@ import { objectNames } from './generated/objects_data.js';
 import { mattacku } from './mhitu.js';
 import { PM_GRID_BUG, PM_TOURIST, PM_KNIGHT, PM_ROGUE } from './generated/monsters_data.js';
 import { Hello } from './roles.js';
-import { shtypes, shkname, Shknam, saleable } from './shknam.js';
+import { shtypes, shkname, Shknam, saleable, is_izchak } from './shknam.js';
 import {
     splitobj, next_ident, obj_extract_self, objects_at, place_object,
     mksobj, weight, newomid, obj_stop_timers, dealloc_obj,
@@ -2179,7 +2179,7 @@ function findgold_minvent(mon) {
  * C ref: shk.c money2u — transfer gold from mon minvent to hero invent.
  * Named omit: invent-full dropy (gold always merges via addinv).
  */
-async function money2u(mon, amount) {
+export async function money2u(mon, amount) {
     const amt = amount | 0;
     if (amt <= 0 || !mon) return;
     let mongold = findgold_minvent(mon);
@@ -3878,13 +3878,21 @@ function uin_shoproom(shoproom) {
     return ushops.includes(String.fromCharCode(shoproom | 0));
 }
 
-/** C ref: invent.c money_cnt — invent is a JS array. */
-function money_cnt(invent) {
-    let sum = 0;
-    for (const o of invent || []) {
-        if (o.oclass === COIN_CLASS) sum += o.quan | 0;
+/**
+ * C ref: hack.c money_cnt `:4513–4522` — first COIN_CLASS quan, not a sum.
+ */
+export function money_cnt(otmp) {
+    if (!otmp) return 0;
+    if (Array.isArray(otmp)) {
+        for (const o of otmp) {
+            if (o && (o.oclass | 0) === COIN_CLASS) return o.quan | 0;
+        }
+        return 0;
     }
-    return sum;
+    for (let o = otmp; o; o = o.nobj) {
+        if ((o.oclass | 0) === COIN_CLASS) return o.quan | 0;
+    }
+    return 0;
 }
 
 /** C ref: steal.c findgold — first GOLD_PIECE / COIN on invent array. */
@@ -5409,4 +5417,97 @@ export async function dopay() {
     if (paid) update_inventory();
     if (game.iflags) game.iflags.menu_requested = false;
     return paid ? ECMD_TIME : ECMD_OK;
+}
+
+/** C ref: shk.c Izchak_speaks[] — ROLL_FROM; first 4 Ronen/Tamar. */
+const IZCHAK_SPEAKS = [
+    "%s says: 'These shopping malls give me a headache.'",
+    "%s says: 'Slow down.  Think clearly.'",
+    "%s says: 'You need to take things one at a time.'",
+    "%s says: 'I don't like poofy coffee... give me Colombian Supremo.'",
+    "%s says that getting the devteam's agreement on anything is difficult.",
+    "%s says that he has noticed those who serve their deity will prosper.",
+    "%s says: 'Don't try to steal from me - I have friends in high places!'",
+    "%s says: 'You may well need something from this shop in the future.'",
+    '%s comments about the Valley of the Dead as being a gateway.',
+];
+
+/** C ref: shk.c shk_chat `:5520–5601`. Caller sounds.c MS_SELL. */
+export async function shk_chat(shkp) {
+    if (!shkp) return;
+    if (!shkp.isshk) {
+        await pline(
+            `${Monnam(shkp)} asks whether you've seen any untended shops recently.`,
+        );
+        return;
+    }
+
+    const eshk = ESHK(shkp);
+    const deafMute = hero_deaf() || muteshk(shkp);
+    if (ANGRY(shkp)) {
+        await pline(
+            `${Shknam(shkp)} ${deafMute ? 'indicates' : 'mentions'} how much ${noit_mhe(shkp)} dislikes ${eshk?.robbed ? 'non-paying' : 'rude'} customers.`,
+        );
+    } else if (eshk?.following) {
+        const customer = String(eshk.customer || '');
+        const plname = String(game.plname || '');
+        if (customer.slice(0, PL_NSIZ) !== plname.slice(0, PL_NSIZ)) {
+            if (!deafMute) {
+                SetVoice(shkp, 0, 80, 0);
+                await verbalize(
+                    `${Hello(shkp)} ${plname}!  I was looking for ${customer}.`,
+                );
+            }
+            eshk.following = 0;
+        } else if (!deafMute) {
+            SetVoice(shkp, 0, 80, 0);
+            await verbalize(
+                `${Hello(shkp)} ${plname}!  Didn't you forget to pay?`,
+            );
+        } else {
+            const { body_part } = await import('./polyself.js');
+            const { ARM } = await import('./const.js');
+            await pline(
+                `${Shknam(shkp)} taps you on the ${body_part(ARM)}.`,
+            );
+        }
+    } else if (eshk?.billct) {
+        const total = addupbill(shkp) + (eshk.debit | 0);
+        await pline(
+            `${Shknam(shkp)} ${deafMute ? 'indicates' : 'says'} that your bill comes to ${total} ${currency(total)}.`,
+        );
+    } else if (eshk?.debit) {
+        await pline(
+            `${Shknam(shkp)} ${deafMute ? 'indicates' : 'reminds you'} that you owe ${noit_mhim(shkp)} ${eshk.debit | 0} ${currency(eshk.debit | 0)}.`,
+        );
+    } else if (eshk?.credit) {
+        await pline(
+            `${Shknam(shkp)} encourages you to use your ${eshk.credit | 0} ${currency(eshk.credit | 0)} of credit.`,
+        );
+    } else if (eshk?.robbed) {
+        await pline(
+            `${Shknam(shkp)} ${deafMute ? 'indicates concern' : 'complains'} about a recent robbery.`,
+        );
+    } else if (eshk?.surcharge) {
+        await pline(
+            `${Shknam(shkp)} ${deafMute ? 'indicates' : 'warns you'} that ${noit_mhe(shkp)} is watching you carefully.`,
+        );
+    } else if (money_cnt(shkp.minvent) < 50) {
+        await pline(
+            `${Shknam(shkp)} ${deafMute ? 'indicates' : 'complains'} that business is bad.`,
+        );
+    } else if (money_cnt(shkp.minvent) > 4000) {
+        await pline(
+            `${Shknam(shkp)} ${deafMute ? 'indicates' : 'says'} that business is good.`,
+        );
+    } else if (is_izchak(shkp, false)) {
+        if (!deafMute) {
+            const fmt = IZCHAK_SPEAKS[rn2(IZCHAK_SPEAKS.length)];
+            await pline(fmt.replace('%s', shkname(shkp)));
+        }
+    } else if (!deafMute) {
+        await pline(
+            `${Shknam(shkp)} talks about the problem of shoplifters.`,
+        );
+    }
 }

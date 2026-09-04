@@ -73,7 +73,7 @@ import {
 } from './monsters.js';
 import {
     yname, doname, Yname2, Yobjnam2, Tobjnam, otense, The, xname,
-    body_part_latebound,
+    body_part_latebound, set_wipeout_text,
 } from './objnam.js';
 import { zappable, learnwand, zapnodir } from './zap.js';
 import { check_unpaid } from './shk.js';
@@ -267,6 +267,7 @@ export function wipeout_text(engr, cnt, seed = 0) {
     }
     return s.slice(0, lth).join('');
 }
+set_wipeout_text(wipeout_text);
 
 /**
  * C youprop.h Levitation — (HLevitation || ELevitation) && !BLevitation.

@@ -12,7 +12,7 @@
 // Named omissions: monkey_business cant_take / ROLL_FROM how[]; stealarm
 // afternmv; Punished/uchain/buried-ball nothing_to_steal; Adornment ring
 // priority when gloves absent; leash; shop subfrombill; petrify corpse;
-// full armor_simple_name / Some_Monnam / yname polish; stop_donning.
+// full armor_simple_name / yname polish; stop_donning.
 
 import { game } from './gstate.js';
 import { rn2, rn1 } from './rng.js';
@@ -29,7 +29,7 @@ import {
 import { monnear } from './mon.js';
 import { is_animal, throws_rocks } from './monsters.js';
 import { canspotmon, pline } from './display.js';
-import { Monnam } from './do_name.js';
+import { Monnam, Some_Monnam } from './do_name.js';
 import { doname } from './objnam.js';
 import {
     setworn,
@@ -115,12 +115,6 @@ export function somegold(lmoney) {
 /** C Adornment ≡ u.uprops[ADORNED].extrinsic */
 function Adornment() {
     return game.u?.uprops?.[ADORNED]?.extrinsic | 0;
-}
-
-/** Approximate C Some_Monnam — unseen → Someone / Something. */
-function Some_Monnam(mtmp) {
-    if (canspotmon(mtmp)) return Monnam(mtmp);
-    return is_animal(mtmp?.data) ? 'Something' : 'Someone';
 }
 
 /**

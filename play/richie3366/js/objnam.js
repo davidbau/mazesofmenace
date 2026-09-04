@@ -51,6 +51,9 @@ import {
     CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_RANDOM,
     BURN_OBJECT, HAND, FOOT, FINGER, FINGERTIP, RIGHT_HANDED,
     CONTAINED_SYM, HANDS_SYM,
+    M_AP_OBJECT,
+    BUFSZ,
+    MAX_ERODE,
 } from './const.js';
 import { currency } from './invent.js';
 
@@ -63,6 +66,15 @@ const CORPSE = objectNames.indexOf('CORPSE');
 const AKLYS = objectNames.indexOf('AKLYS');
 const GOLD_DRAGON_SCALE_MAIL = objectNames.indexOf('GOLD_DRAGON_SCALE_MAIL');
 const GOLD_DRAGON_SCALES = objectNames.indexOf('GOLD_DRAGON_SCALES');
+const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
+const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
+const T_SHIRT = objectNames.indexOf('T_SHIRT');
+const HAWAIIAN_SHIRT = objectNames.indexOf('HAWAIIAN_SHIRT');
+const ALCHEMY_SMOCK = objectNames.indexOf('ALCHEMY_SMOCK');
+const CANDY_BAR = objectNames.indexOf('CANDY_BAR');
+
+/** C objnam.c PREFIX — bytes reserved ahead of xname buf for doname. */
+const XNAME_PREFIX = 80;
 
 /** C youprop.h Blind ≡ (HBlinded || EBlinded) && !BBlinded (D-0716: no sticky u.Blind). */
 function Blind() {
@@ -383,6 +395,244 @@ function tin_details(obj) {
     return `${buf}${mname} meat`;
 }
 
+/**
+ * C read.c shirt/apron/hawaiian/candy text helpers live next to
+ * xname_flags (objnam→read is TDZ on `_body_part`).
+ * C ref: read.c shirt_msgs[] in tshirt_text — o_id % SIZE.
+ */
+const shirt_msgs = [
+    'I explored the Dungeons of Doom and all I got was this lousy T-shirt!',
+    'Is that Mjollnir in your pocket or are you just happy to see me?',
+    "It's not the size of your sword, it's how #enhance'd you are with it.",
+    "Madame Elvira's House O' Succubi Lifetime Customer",
+    "Madame Elvira's House O' Succubi Employee of the Month",
+    'Ludios Vault Guards Do It In Small, Dark Rooms',
+    'Yendor Military Soldiers Do It In Large Groups',
+    'I survived Yendor Military Boot Camp',
+    'Ludios Accounting School Intra-Mural Lacrosse Team',
+    'Oracle(TM) Fountains 10th Annual Wet T-Shirt Contest',
+    'Hey, black dragon!  Disintegrate THIS!',
+    "I'm With Stupid -->",
+    "Don't blame me, I voted for Izchak!",
+    "Don't Panic",
+    'Furinkan High School Athletic Dept.',
+    'Hel-LOOO, Nurse!',
+    '=^.^=',
+    '100% goblin hair - do not wash',
+    'Aberzombie and Fitch',
+    'cK -- Cockatrice touches the Kop',
+    "Don't ask me, I only adventure here",
+    'Down with pants!',
+    'd, your dog or a killer?',
+    'FREE PUG AND NEWT!',
+    'Go team ant!',
+    'Got newt?',
+    'Hello, my darlings!',
+    'Hey!  Nymphs!  Steal This T-Shirt!',
+    'I <3 Dungeon of Doom',
+    'I <3 Maud',
+    'I am a Valkyrie.  If you see me running, try to keep up.',
+    'I am not a pack rat - I am a collector',
+    'I bounced off a rubber tree',
+    'Plunder Island Brimstone Beach Club',
+    'If you can read this, I can hit you with my polearm',
+    "I'm confused!",
+    'I scored with the princess',
+    'I want to live forever or die in the attempt.',
+    'Lichen Park',
+    'LOST IN THOUGHT - please send search party',
+    'Meat is Mordor',
+    'Minetown Better Business Bureau',
+    'Minetown Watch',
+    "Ms. Palm's House of Negotiable Affection--A Very Reputable House Of Disrepute",
+    'Protection Racketeer',
+    'Real men love Crom',
+    'Somebody stole my Mojo!',
+    'The Hellhound Gang',
+    'The Werewolves',
+    'They Might Be Storm Giants',
+    "Weapons don't kill people, I kill people",
+    'White Zombie',
+    "You're killing me!",
+    'Anhur State University - Home of the Fighting Fire Ants!',
+    'FREE HUGS',
+    'Serial Ascender',
+    'Real men are valkyries',
+    "Young Men's Cavedigging Association",
+    'Occupy Fort Ludios',
+    "I couldn't afford this T-shirt so I stole it!",
+    'Mind flayers suck',
+    "I'm not wearing any pants",
+    'Down with the living!',
+    'Pudding farmer',
+    'Vegetarian',
+    "Hello, I'm War!",
+    'It is better to light a candle than to curse the darkness',
+    'It is easier to curse the darkness than to light a candle',
+    'rock--paper--scissors--lizard--Spock!',
+    '/Valar morghulis/ -- /Valar dohaeris/',
+];
+
+/** C ref: read.c hawaiian_motifs[] in hawaiian_motif. */
+const hawaiian_motifs = [
+    'flamingo',
+    'parrot',
+    'toucan',
+    'bird of paradise',
+    'sea turtle',
+    'tropical fish',
+    'jellyfish',
+    'giant eel',
+    'water nymph',
+    'plumeria',
+    'orchid',
+    'hibiscus flower',
+    'palm tree',
+    'hula dancer',
+    'sailboat',
+    'ukulele',
+];
+
+/** C ref: read.c apron_msgs[] in apron_text. */
+const apron_msgs = [
+    'Kiss the cook',
+    "I'm making SCIENCE!",
+    "Don't mess with the chef",
+    "Don't make me poison you",
+    "Gehennom's Kitchen",
+    'Rat: The other white meat',
+    "If you can't stand the heat, get out of Gehennom!",
+    "If we weren't meant to eat animals, why are they made out of meat?",
+    "If you don't like the food, I'll stab you",
+    'I am an alchemist; if you see me running, try to catch up...',
+];
+
+/**
+ * C ref: read.c candy_wrappers[] — index 0 unused; assign_candy_wrapper
+ * spe = 1 + rn2(SIZE-1) lives in mkobj.js (do not clone).
+ */
+const candy_wrappers = [
+    '',
+    'Apollo',
+    'Moon Crunchy',
+    'Snacky Cake',
+    'Chocolate Nuggie',
+    'The Small Bar',
+    'Crispy Yum Yum',
+    'Nilla Crunchie',
+    'Berry Bar',
+    'Choco Nummer',
+    'Om-nom',
+    'Fruity Oaty',
+    'Wonka Bar',
+];
+
+let _wipeout_text = null;
+export function set_wipeout_text(fn) {
+    _wipeout_text = fn;
+}
+
+/**
+ * C ref: read.c erode_obj_text `:88–97` — wipeout_text when eroded.
+ * greatest_erosion is obj.h max(oeroded, oeroded2); do not add clone #5.
+ * Seed is o_id ^ (unsigned) ubirthday (contest getnow).
+ * wipeout_text is late-bound from engrave.js (objnam→engrave TDZ).
+ */
+function erode_obj_text(otmp, buf) {
+    const a = otmp?.oeroded | 0;
+    const b = otmp?.oeroded2 | 0;
+    const erosion = a > b ? a : b;
+    if (!erosion) return buf;
+    const cnt = ((String(buf).length * erosion) / (2 * MAX_ERODE)) | 0;
+    const seed = ((otmp.o_id >>> 0) ^ (game.ubirthday >>> 0)) >>> 0;
+    return _wipeout_text ? _wipeout_text(buf, cnt, seed) : buf;
+}
+
+/**
+ * C ref: read.c tshirt_text `:99–187` — slogan from o_id % SIZE, then erode.
+ */
+export function tshirt_text(tshirt) {
+    const n = shirt_msgs.length;
+    const msg = shirt_msgs[((tshirt?.o_id >>> 0) % n) >>> 0] || shirt_msgs[0];
+    return erode_obj_text(tshirt, msg);
+}
+
+/**
+ * C ref: read.c hawaiian_motif `:189–221` — (o_id ^ ubirthday) % SIZE.
+ * Tourist starter shirt o_id is stable; birthday supplies the mix.
+ * Named omit: hawaiian_design (doread; different ~ubirthday hash).
+ */
+export function hawaiian_motif(shirt) {
+    const n = hawaiian_motifs.length;
+    const motif = ((shirt?.o_id >>> 0) ^ (game.ubirthday >>> 0)) >>> 0;
+    return hawaiian_motifs[motif % n] || hawaiian_motifs[0];
+}
+
+/**
+ * C ref: read.c apron_text `:253–281` — alchemy smock slogan + erode.
+ */
+export function apron_text(apron) {
+    const n = apron_msgs.length;
+    const msg = apron_msgs[((apron?.o_id >>> 0) % n) >>> 0] || apron_msgs[0];
+    return erode_obj_text(apron, msg);
+}
+
+/**
+ * C ref: read.c candy_wrapper_text `:295–300` — candy_wrappers[spe % SIZE].
+ */
+export function candy_wrapper_text(obj) {
+    const n = candy_wrappers.length;
+    return candy_wrappers[((obj?.spe | 0) % n) >>> 0] || '';
+}
+
+/**
+ * C ref: objnam.c xcalled `:557–572` — append `pfx + " called " + sfx`
+ * at eos(buf). siz is BUFSZ or BUFSZ-PREFIX; C panics if prefix will not
+ * fit (named). `%.*s` truncates sfx to remaining room.
+ */
+function xcalled(buf, siz, pfx, sfx) {
+    const base = String(buf ?? '');
+    const p = String(pfx ?? '');
+    const s = String(sfx ?? '');
+    const pfxlen = p.length + 8; /* sizeof " called " - sizeof "" */
+    const bufsiz = (siz | 0) - 1 - base.length;
+    let take = s;
+    if (pfxlen <= bufsiz) {
+        const room = bufsiz - pfxlen;
+        if (room < s.length) take = s.slice(0, Math.max(0, room));
+    }
+    return `${base}${p} called ${take}`;
+}
+
+function xcalled_xname(buf, pfx, sfx) {
+    return xcalled(buf, BUFSZ - XNAME_PREFIX, pfx, sfx);
+}
+
+/**
+ * C ref: objnam.c xname_flags `:971–996` — gameover disclosure for
+ * readable clothing / candy. Dummy o_id==0 (minimal_xname) skips.
+ * Named: PREFIX/obuf overflow paniclog; hawaiian_design is doread.
+ */
+function xname_gameover_suffix(obj) {
+    if (!game.program_state?.gameover || !(obj?.o_id | 0)) return '';
+    const typ = obj.otyp | 0;
+    if (typ === T_SHIRT) {
+        return ` with text "${tshirt_text(obj)}"`;
+    }
+    if (typ === ALCHEMY_SMOCK) {
+        return ` with text "${apron_text(obj)}"`;
+    }
+    if (typ === CANDY_BAR) {
+        const lbl = candy_wrapper_text(obj);
+        if (lbl) return ` labeled "${lbl}"`;
+        return '';
+    }
+    if (typ === HAWAIIAN_SHIRT) {
+        return ` with ${an(hawaiian_motif(obj))} motif`;
+    }
+    return '';
+}
+
 function pretty_base(obj) {
     const n = objectNames[obj.otyp];
     // C ref: objnam.c xname_flags FOOD_CLASS SLIME_MOLD `:747–774` —
@@ -444,8 +694,8 @@ function pretty_base(obj) {
                 }
                 return `${buf} of ${actual}`;
             }
-            // called-name: "potion called foo"
-            return un ? `${buf} called ${un}` : buf;
+            // C: xcalled(buf, BUFSZ-PREFIX, "", un) after "potion" is in buf
+            return un ? xcalled_xname(buf, '', un) : buf;
         }
         const dn = objectDescrs[ocl?.oc_descr_idx ?? obj.otyp] || 'clear';
         return `${buf}${dn} potion`;
@@ -468,7 +718,7 @@ function pretty_base(obj) {
         const dn = objectDescrs[ocl?.oc_descr_idx ?? obj.otyp] || null;
         if (!dknown) return 'scroll';
         if (nn) return `scroll of ${actual}`;
-        if (un) return `scroll called ${un}`;
+        if (un) return xcalled_xname('scroll', '', un);
         if (ocl?.oc_magic) return `scroll labeled ${dn || 'something'}`;
         return `${dn || 'unlabeled'} scroll`;
     }
@@ -491,7 +741,7 @@ function pretty_base(obj) {
             // C: SPE_NOVEL tribute arms (partial — hallu/called polish deferred)
             if (!dknown) return 'book';
             if (nn) return actual;
-            if (un) return `novel called ${un}`;
+            if (un) return xcalled_xname('', 'novel', un);
             return `${dn} book`;
         }
         if (!dknown) return 'spellbook';
@@ -499,7 +749,7 @@ function pretty_base(obj) {
             if (n === 'SPE_BOOK_OF_THE_DEAD') return actual;
             return `spellbook of ${actual}`;
         }
-        if (un) return `spellbook called ${un}`;
+        if (un) return xcalled_xname('', 'spellbook', un);
         return `${dn} spellbook`;
     }
     // C ref: objnam.c xname_flags RING_CLASS —
@@ -519,7 +769,7 @@ function pretty_base(obj) {
         const dn = objectDescrs[ocl?.oc_descr_idx ?? obj.otyp] || null;
         if (!dknown) return 'ring';
         if (nn) return `ring of ${actual}`;
-        if (un) return `ring called ${un}`;
+        if (un) return xcalled_xname('', 'ring', un);
         return `${dn || 'strange'} ring`;
     }
     // C ref: objnam.c xname WAND_CLASS —
@@ -539,7 +789,7 @@ function pretty_base(obj) {
         const dn = objectDescrs[ocl?.oc_descr_idx ?? obj.otyp] || null;
         if (!dknown) return 'wand';
         if (nn) return `wand of ${actual}`;
-        if (un) return `wand called ${un}`;
+        if (un) return xcalled_xname('', 'wand', un);
         return `${dn || 'iron'} wand`;
     }
     // C ref: objnam.c xname GEM_CLASS — stone/gem + GemStone " stone"
@@ -558,7 +808,7 @@ function pretty_base(obj) {
         }
         if (!dknown) return rock;
         if (!nn) {
-            if (un) return `${rock} called ${un}`;
+            if (un) return xcalled_xname('', rock, un);
             return `${dn || 'gray'} ${rock}`;
         }
         if (GemStone(obj.otyp)) return `${actual} stone`;
@@ -585,7 +835,7 @@ function pretty_base(obj) {
             return known ? actual : dn;
         }
         if (nn) return actual;
-        if (un) return `amulet called ${un}`;
+        if (un) return xcalled_xname('', 'amulet', un);
         return `${dn} amulet`;
     }
     // C ref: objnam.c xname WEAPON/VENOM/TOOL —
@@ -619,7 +869,7 @@ function pretty_base(obj) {
         if (n === 'LENSES') buf = 'pair of ';
         if (!dknown) buf += dn;
         else if (nn) buf += actual;
-        else if (un) buf += `${dn} called ${un}`;
+        else if (un) buf = xcalled_xname(buf, dn, un);
         else buf += dn;
         return buf;
     }
@@ -654,7 +904,7 @@ function pretty_base(obj) {
             if (typ === SHIELD_OF_REFLECTION) return 'smooth shield';
         }
         if (nn) buf += actual;
-        else if (un) buf += `${dn} called ${un}`; // named omit: armor_simple_name
+        else if (un) buf = xcalled_xname(buf, dn, un); // named omit: armor_simple_name
         else buf += dn;
         return buf;
     }
@@ -715,6 +965,8 @@ export function xname(obj) {
     } else if ((obj.quan || 1) !== 1) {
         base = makeplural(base);
     }
+    // C xname_flags `:971–996` after pluralize, before has_oname
+    base += xname_gameover_suffix(obj);
     // C xname_flags: has_oname && dknown → " named " ONAME
     const onameStr = obj.oextra?.oname;
     if (onameStr && obj.dknown) {
@@ -1565,25 +1817,41 @@ export function makeplural(s) {
     return s + 's';
 }
 
-function just_an(str) {
-    if (!str) return 'a ';
-    // skip leading spaces
-    let i = 0;
-    while (str[i] === ' ') i++;
-    const s = str.slice(i);
+/**
+ * C ref: objnam.c just_an `:2108–2142` — article prefix only ("a "/"an "/"").
+ * x_monnam ARTICLE_A uses this, not an() (C "avoid an() here").
+ * @param {string|null|undefined} str
+ * @returns {string}
+ */
+export function just_an(str) {
+    const s = str == null ? '' : String(str);
     if (!s) return 'a ';
-    const c0 = s[0].toLowerCase();
-    // C: single letter OR letter+' ' (fruit / musical note) → aefhilmnosx
+    const c0 = s.charAt(0).toLowerCase();
+    /* single letter; might be used for named fruit or a musical note */
     if (!s[1] || s[1] === ' ') {
         return 'aefhilmnosx'.includes(c0) ? 'an ' : 'a ';
     }
-    // C: "the "/lava/bars/ice → no article (doname paths deferred for most)
-    if (/^the /i.test(s) || /^molten lava$/i.test(s)
-        || /^iron bars$/i.test(s) || /^ice$/i.test(s)) {
+    const sl = s.toLowerCase();
+    if (sl.startsWith('the ')
+        || sl === 'molten lava'
+        || sl === 'iron bars'
+        || sl === 'ice') {
         return '';
     }
-    // normal vowel/consonant; named omissions: one-/eu-/uke-/unicorn exceptions
-    return 'aeiou'.includes(c0) ? 'an ' : 'a ';
+    const vowels = 'aeiou';
+    /* C strncmpi != 0 → keep "an" path; 0 (match) can block it. */
+    const ncmp = (t, n) => sl.slice(0, n) !== String(t).slice(0, n);
+    const one_ok = ncmp('one', 3) || (s[3] && !'-_ '.includes(s[3]));
+    const use_an = (
+        (vowels.includes(c0)
+            && one_ok
+            && ncmp('eu', 2)
+            && ncmp('uke', 3) && ncmp('ukulele', 7)
+            && ncmp('unicorn', 7) && ncmp('uranium', 7)
+            && ncmp('useful', 6))
+        || (c0 === 'x' && !vowels.includes(s.charAt(1).toLowerCase()))
+    );
+    return use_an ? 'an ' : 'a ';
 }
 
 /** C ref: objnam.c an() — article + string */
@@ -2202,6 +2470,8 @@ export function doname(obj) {
     } else if (quan !== 1) {
         base = makeplural(base);
     }
+    // C doname_base starts at xname_flags: gameover suffix is already in bp
+    base += xname_gameover_suffix(obj);
 
     // C doname_base `:1275–1299` — fruits may be given artifact names
     // (D-1521). bp is xname: fname (+ ick) + optional " named ONAME" then
@@ -2712,7 +2982,7 @@ export function obj_typename(otyp) {
         break;
     case AMULET_CLASS:
         buf = nn ? actualn : 'amulet';
-        if (un) buf += ` called ${un}`;
+        if (un) buf = xcalled(buf, BUFSZ - (dn ? String(dn).length + 3 : 0), '', un);
         if (dn) buf += ` (${dn})`;
         return buf;
     case ARMOR_CLASS:
@@ -2729,14 +2999,14 @@ export function obj_typename(otyp) {
             buf += actualn;
             // C ref: objnam.c obj_typename / xname GemStone
             if (GemStone(otyp)) buf += ' stone';
-            if (un) buf += ` called ${un}`;
+            if (un) buf = xcalled(buf, BUFSZ - (dn ? String(dn).length + 3 : 0), '', un);
             if (dn) buf += ` (${dn})`;
         } else {
             buf += dn || actualn;
             if (ocl.oc_class === GEM_CLASS) {
                 buf += (ocl.oc_material === MINERAL) ? ' stone' : ' gem';
             }
-            if (un) buf += ` called ${un}`;
+            if (un) buf = xcalled(buf, BUFSZ, '', un);
         }
         return buf;
     }
@@ -2745,9 +3015,38 @@ export function obj_typename(otyp) {
         if (ocl.oc_unique) buf = actualn;
         else buf += ` of ${actualn}`;
     }
-    if (un) buf += ` called ${un}`;
+    if (un) buf = xcalled(buf, BUFSZ - (dn ? String(dn).length + 3 : 0), '', un);
     if (dn) buf += ` (${dn})`;
     return buf;
+}
+
+/**
+ * C ref: objnam.c simple_typename `:296–308` — obj_typename with
+ * oc_uname suppressed and the " (description)" tail stripped.
+ */
+export function simple_typename(otyp) {
+    const ocl = game.objects?.[otyp];
+    const save = ocl ? ocl.oc_uname : undefined;
+    if (ocl) ocl.oc_uname = null;
+    let buf = obj_typename(otyp | 0);
+    if (ocl) ocl.oc_uname = save;
+    const pp = buf.indexOf(' (');
+    if (pp >= 0) buf = buf.slice(0, pp);
+    return buf;
+}
+
+/**
+ * C ref: objnam.c mimic_obj_name `:5605–5615` — gold / simple_typename
+ * / "whatcha-may-callit".
+ */
+export function mimic_obj_name(mtmp) {
+    if ((mtmp?.m_ap_type | 0) === M_AP_OBJECT) {
+        if ((mtmp.mappearance | 0) === GOLD_PIECE) return 'gold';
+        if ((mtmp.mappearance | 0) !== STRANGE_OBJECT) {
+            return simple_typename(mtmp.mappearance | 0);
+        }
+    }
+    return 'whatcha-may-callit';
 }
 
 /**

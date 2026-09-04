@@ -2240,6 +2240,11 @@ export async function dobuzz(
     }
 }
 
+/** C ref: zap.c buzz `:4764` — dobuzz(..., TRUE, FALSE, FALSE). */
+export async function buzz(type, nd, sx, sy, dx, dy) {
+    return dobuzz(type, nd, sx, sy, dx, dy, true, false, false);
+}
+
 /** C ref: zap.c ubuzz — exported for music fire/frost horn (D-0974). */
 export async function ubuzz(type, nd) {
     const u = game.u;
@@ -3070,7 +3075,7 @@ export async function revive(corpse, by_hero) {
  * C ref: zap.c unturn_dead — revive invent/minvent eggs+corpses.
  * @returns {Promise<number>} count revived
  */
-async function unturn_dead(mon) {
+export async function unturn_dead(mon) {
     if (!mon) return 0;
     const is_u = mon === game.youmonst || mon._youmonst;
     const youseeit = is_u ? true : canseemon(mon);
@@ -3132,7 +3137,7 @@ async function unturn_dead(mon) {
 /**
  * C ref: zap.c unturn_you — invent unturn_dead + undead shudder/stun.
  */
-async function unturn_you() {
+export async function unturn_you() {
     await unturn_dead(game.youmonst);
     const youdata = game.youmonst?.data;
     if (is_undead(youdata)) {

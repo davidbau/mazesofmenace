@@ -5,11 +5,11 @@
 //        hack.c — spoteffects(), dopickup(), pickup_checks().
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, rnd, d } from './rng.js';
 import {
     objects_at, obj_extract_self, splitobj, weight, add_to_container,
     place_object, hornoplenty, unbless, mergable, delobj, set_corpsenm,
-    unsplitobj,
+    unsplitobj, spot_time_left,
 } from './mkobj.js';
 import {
     look_here, observe_object, dfeature_at, paint_corner_nhw_menu,
@@ -18,12 +18,13 @@ import {
     max_capacity, compactify_invlets, getobj_take_count, getobj_apply_count,
     getobj_from_cmdq, getobj_display_pickinv, freeinv, display_inventory,
     splittable, will_feel_cockatrice, is_worn, not_fully_identified,
-    taking_off, count_unpaid, getobj,
+    taking_off, count_unpaid, getobj, Blind,
 } from './invent.js';
-import { nomul, check_special_room, is_pool, is_lava, in_rooms, dosinkfall, SURFACE_AT, switch_terrain } from './hack.js';
+import { nomul, check_special_room, is_pool, is_lava, in_rooms, dosinkfall, SURFACE_AT, switch_terrain, maybe_half_phys } from './hack.js';
 import {
     flush_screen, pline, newsym, docrt, bot, flush_topl_more, canseemon,
     canspotmon, Hallucination, clear_nhwindow_message, Norep, impossible,
+    sensemon,
 } from './display.js';
 import { addinv } from './u_init.js';
 import {
@@ -60,10 +61,12 @@ import {
     AUTOUNLOCK_APPLY_KEY,
     nothing_seems_to_happen, nothing_happens, something, engulfing_u,
     HAND, FOOT, NO_MINVENT, MM_ADJACENTOK, MM_NOMSG, ONAME_NO_FLAGS,
+    ARTICLE_A, RLOC_NOMSG, TIMEOUT, I_SPECIAL, FAILEDUNTRAP, NO_TRAP,
+    MELT_ICE_AWAY, LEVITATION, WARNING, u_at,
 } from './const.js';
-import { t_at, dotrap, NO_TRAP_FLAGS, drown, lava_effects, instapetrify } from './trap.js';
+import { t_at, dotrap, drown, lava_effects, instapetrify, float_down, ceiling } from './trap.js';
 import { nhgetch } from './input.js';
-import { m_at } from './mon.js';
+import { m_at, mnexto } from './mon.js';
 import { oclass_to_sym, select_menu_pick_any, select_menu_pick_one } from './options.js';
 import {
     objectNames, COIN_CLASS, VENOM_CLASS, POTION_CLASS,
@@ -86,9 +89,13 @@ import { cansee } from './vision.js';
 import { touch_artifact, youmonst } from './artifact.js';
 import { exercise, A_WIS } from './attrib.js';
 import { inv_cnt } from './steal.js';
-import { trycall, Monnam, christen_monst, oname, rndmonnam } from './do_name.js';
+import { trycall, Monnam, christen_monst, oname, rndmonnam, Amonnam, a_monnam, x_monnam } from './do_name.js';
 import { makemon, set_malign } from './makemon.js';
 import { more_experienced, newexplevel } from './exper.js';
+import { hard_helmet } from './do_wear.js';
+import { mdamageu } from './mhitu.js';
+import { is_ice } from './zap.js';
+import { incr_itimeout_HLevitation } from './potion.js';
 
 /** C ref: mondata.h notake — M1_NOTAKE. */
 function notake(ptr) {
@@ -1590,53 +1597,170 @@ export async function pooleffects(newspot) {
     return false;
 }
 
+/* C hack.c spoteffects statics — recursion / fire-trap melt / trap morph. */
+let inspoteffects = 0;
+let spotloc = { x: 0, y: 0 };
+let spotterrain = 0;
+let spottrap = null;
+let spottraptyp = NO_TRAP;
+
+/** C hack.c spoteffects icewarnings — Warning + melting ice. */
+const icewarnings = [
+    'The ice seems very soft and slushy.',
+    'You feel the ice shift beneath you!',
+    'The ice, is gonna BREAK!',
+];
+
 /**
- * C ref: hack.c spoteffects(pick).
- * Ported envelope: dest-typ / MAX_TYPE switch_terrain (D-1268) before
+ * C ref: hack.c spoteffects(pick) `:3311–3462` (D-1799).
+ * Recursion / in_lava_effects guards; dest-typ switch_terrain (D-1268);
  * pooleffects; check_special_room; IS_SINK+Levitation dosinkfall
- * (D-0976); when !in_steed_dismounting — non-pit pickup then dotrap
- * then pit pickup.
- * Deferred: recursion guards, levitation timeout adjust, Warning ice,
- * hidden monster surprise. digactualhole PIT/HOLE is D-1269.
- * **maketrap PIT/HOLE set_levltyp D-1280**.
- * dothrow hurtle / u_on_rndspot / objnam wish still call
- * switch_terrain themselves. set_uinwater is D-1267.
+ * (D-0976); levitation-timeout rn2(2) adjust; when
+ * !in_steed_dismounting — non-pit pickup then dotrap then pit pickup
+ * (D-0220/D-0239) behind spottrap typ guard; Warning ice; hidden
+ * monster / piercer surprise then mnexto.
+ * Named: pooleffects leave-water / Wwalking / steed / ceiling_hider;
+ * dotrap plunge/conj_pit/adj_pit (D-1188); digactualhole PIT/HOLE
+ * D-1269; maketrap PIT/HOLE set_levltyp D-1280; iflags.failing_untrap
+ * writer (trap.c move_into_trap); helm_simple_name clones in
+ * dothrow/mhitu/trap/uhitm (inlined hard_helmet ? helm : hat here);
+ * ceiling in_rooms vault/temple/shop. set_uinwater is D-1267.
  */
 export async function spoteffects(pick) {
     const u = game.u;
-    if (u) {
-        /* C hack.c:3342–3347 — moving onto different terrain may toggle
+    if (!u) return;
+
+    let trap = t_at(u.ux, u.uy);
+    const trapflag = game.iflags?.failing_untrap ? FAILEDUNTRAP : 0;
+    const dest = game.level?.at(u.ux | 0, u.uy | 0);
+    const destTyp = dest?.typ | 0;
+
+    /* C `:3324–3332` — skip re-entry at the same spot unless terrain
+     * or trap type transformed (ice→water, landmine→pit). */
+    if (inspoteffects && u_at(spotloc.x, spotloc.y)
+        && spotterrain === destTyp
+        && (!spottrap || !trap || trap.ttyp === spottraptyp)) {
+        return;
+    }
+    /* C `:3336–3338` — lava_effects defers until back on solid. */
+    if (game.iflags?.in_lava_effects) return;
+
+    inspoteffects++;
+    spotterrain = destTyp;
+    spotloc.x = u.ux | 0;
+    spotloc.y = u.uy | 0;
+
+    try {
+        /* C `:3342–3347` — moving onto different terrain may toggle
          * Lev/Fly. Level change sets <ux0,uy0> to <ux,uy> so dest==origin
          * then, but also sets iflags.terrain_typ = MAX_TYPE. */
-        const dest = game.level?.at(u.ux | 0, u.uy | 0);
         const orig = game.level?.at(u.ux0 | 0, u.uy0 | 0);
-        if ((dest?.typ | 0) !== (orig?.typ | 0)
+        if (destTyp !== (orig?.typ | 0)
             || (game.iflags?.terrain_typ | 0) === MAX_TYPE) {
             await switch_terrain();
         }
-    }
 
-    if (await pooleffects(true)) return;
+        if (await pooleffects(true)) return;
 
-    await check_special_room(false);
+        await check_special_room(false);
 
-    if (u) {
-        const typ = game.level?.at(u.ux | 0, u.uy | 0)?.typ;
-        if (IS_SINK(typ) && Levitation_pe()) {
+        const sinkTyp = game.level?.at(u.ux | 0, u.uy | 0)?.typ;
+        if (IS_SINK(sinkTyp) && Levitation_pe()) {
             await dosinkfall();
             if (game.program_state?.gameover) return;
         }
+
+        /* C `:3356–3402` — pickup/dotrap skipped while dismounting;
+         * Warning ice and monster surprise still run. */
+        if (!game.in_steed_dismounting) {
+            const hlev = (u.HLevitation | 0)
+                | (u.uprops?.[LEVITATION]?.intrinsic | 0);
+            const elev = (u.ELevitation | 0)
+                | (u.uprops?.[LEVITATION]?.extrinsic | 0);
+            if (trap && (hlev & TIMEOUT) === 1
+                && !(elev || (hlev & ~(I_SPECIAL | TIMEOUT)))) {
+                if (rn2(2)) {
+                    incr_itimeout_HLevitation(1);
+                } else if (await float_down(I_SPECIAL | TIMEOUT, 0)) {
+                    trap = null;
+                    pick = false;
+                }
+            }
+            const pit = !!(trap && is_pit(trap.ttyp));
+            if (pick && !pit) await pickup(1);
+            if (trap) {
+                if (!spottrap || spottraptyp !== trap.ttyp) {
+                    spottrap = trap;
+                    spottraptyp = trap.ttyp;
+                    await dotrap(trap, trapflag);
+                    spottrap = null;
+                    spottraptyp = NO_TRAP;
+                }
+            }
+            if (pick && pit) await pickup(1);
+        }
+
+        const warn = u.uprops?.[WARNING];
+        const hasWarning = !!((u.HWarning | 0) || (u.EWarning | 0)
+            || u.Warning
+            || (warn?.intrinsic | 0) || (warn?.extrinsic | 0));
+        if (hasWarning && is_ice(u.ux, u.uy)) {
+            const time_left = spot_time_left(u.ux, u.uy, MELT_ICE_AWAY) | 0;
+            if (time_left && time_left < 15) {
+                const idx = (time_left < 5) ? 2 : (time_left < 10) ? 1 : 0;
+                await pline(icewarnings[idx]);
+            }
+        }
+
+        const mtmp = m_at(u.ux, u.uy);
+        if (mtmp && !u.uswallow) {
+            mtmp.mundetected = 0;
+            mtmp.msleeping = 0;
+            switch (mtmp.data?.mlet) {
+            case 'S_PIERCER':
+                await pline(
+                    `${Amonnam(mtmp)} suddenly drops from the ${ceiling(u.ux, u.uy)}!`,
+                );
+                if (mtmp.mtame) {
+                    /* jumps to greet you, not attack */
+                } else if (hard_helmet(u.uarmh)) {
+                    /* C helm_simple_name ≡ !hard_helmet ? "hat" : "helm" */
+                    await pline(
+                        `Its blow glances off your ${hard_helmet(u.uarmh) ? 'helm' : 'hat'}.`,
+                    );
+                } else if (((u.uac | 0) + 3) <= rnd(20)) {
+                    await pline(`You are almost hit by ${x_monnam(mtmp, ARTICLE_A, 'falling', 0, true)}!`);
+                } else {
+                    await pline(`You are hit by ${x_monnam(mtmp, ARTICLE_A, 'falling', 0, true)}!`);
+                    let dmg = d(4, 6);
+                    dmg = maybe_half_phys(dmg);
+                    await mdamageu(mtmp, dmg);
+                }
+                break;
+            default:
+                if (mtmp.mtame) {
+                    await pline(
+                        `${Amonnam(mtmp)} jumps near you from the ${ceiling(u.ux, u.uy)}.`,
+                    );
+                } else if (mtmp.mpeaceful) {
+                    const whom = Blind() && !sensemon(mtmp)
+                        ? something : a_monnam(mtmp);
+                    await pline(`You surprise ${whom}!`);
+                    mtmp.mpeaceful = 0;
+                } else {
+                    await pline(`${Amonnam(mtmp)} attacks you by surprise!`);
+                }
+                break;
+            }
+            await mnexto(mtmp, RLOC_NOMSG);
+        }
+    } finally {
+        if (!--inspoteffects) {
+            spotterrain = STONE;
+            spotloc.x = 0;
+            spotloc.y = 0;
+        }
     }
-
-    // C: entire pickup/dotrap block gated on !gi.in_steed_dismounting
-    if (game.in_steed_dismounting) return;
-    if (!u) return;
-
-    const trap = t_at(u.ux, u.uy);
-    const pit = !!(trap && is_pit(trap.ttyp));
-    if (pick && !pit) await pickup(1);
-    if (trap) await dotrap(trap, NO_TRAP_FLAGS);
-    if (pick && pit) await pickup(1);
 }
 
 /** C youprop.h Levitation — (H||E) && !B. */

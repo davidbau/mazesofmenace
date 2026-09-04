@@ -4,7 +4,7 @@
 //         uhitm.c mhitm_ad_phys (mhitu bare / weapon subset).
 
 import { game } from './gstate.js';
-import { monnear, mnexto, mtrapped_in_pit, wake_nearto } from './mon.js';
+import { monnear, mnexto, mtrapped_in_pit, wake_nearto, m_at } from './mon.js';
 import {
     Is_rogue_level, NEED_WEAPON, NEED_HTH_WEAPON, NATTK,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
@@ -16,26 +16,29 @@ import {
     MAGICAL_BREATHING, SWIMMING, Is_medusa_level, Is_waterlevel,
     W_ARMS, W_WEP, W_AMUL, W_ARM, BOLT_LIM, STONING, KILLED_BY, M_SEEN_FIRE,
     REFLECTING, A_CHAOTIC, LARGEST_INT,
+    M_AP_NOTHING, M_AP_OBJECT, WORN_HELMET, TELEDS_ALLOW_DRAG,
+    something, Something, u_at,
 } from './const.js';
 import { thrwmu, spitmu, breamu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
 import { destroy_items, resists_drli } from './zap.js';
-import { nomul, stop_occupation, maybe_half_phys, is_pool, losehp } from './hack.js';
+import { nomul, stop_occupation, maybe_half_phys, is_pool, losehp, unmul } from './hack.js';
 import { rnd, d, rn2, rn1 } from './rng.js';
 import {
     pline, pline_mon, set_msg_xy, mon_visible, canspotmon, map_invisible,
     canseemon, newsym, docrt, swallowed, flush_topl_more, tp_sensemon,
     shieldeff, urgent_pline, You_feel, verbalize, impossible,
+    flush_screen, bot, sensemon,
 } from './display.js';
 import { cansee, couldsee, vision_recalc, vision_off_newsym_gbuf } from './vision.js';
 import {
     Monnam, mon_nam, pmname, hliquid, x_monnam, Hallucination,
-    noit_mon_nam, noit_Monnam,
+    noit_mon_nam, noit_Monnam, s_suffix, Ugender, m_monnam, Some_Monnam,
 } from './do_name.js';
 import { MON_WEP, mon_wield_item, dmgval, hitval, drain_weapon_skill } from './weapon.js';
-import { arti_reflects } from './artifact.js';
+import { arti_reflects, is_art } from './artifact.js';
 import { is_pole, welded } from './wield.js';
-import { xname, doname, an, yname, the, simpleonames, safe_qbuf } from './objnam.js';
+import { xname, doname, an, yname, the, simpleonames, safe_qbuf, mimic_obj_name } from './objnam.js';
 import { objectNames, ARMOR_CLASS, COIN_CLASS } from './objects.js';
 import { objects_at } from './mkobj.js';
 import { steal, unresponsive, remove_worn_item } from './steal.js';
@@ -48,13 +51,14 @@ import { y_n } from './getline.js';
 import { getyear, yyyymmdd } from './calendar.js';
 import { pluslvl, losexp } from './exper.js';
 import { mhe } from './fountain.js';
-import { rloc, tele_restrict } from './teleport.js';
-import { monflee } from './monmove.js';
+import { rloc, tele_restrict, enexto, teleds } from './teleport.js';
+import { monflee, set_apparxy } from './monmove.js';
 import {
     is_orc, is_demon, is_were, is_animal, is_whirly, amorphous, unsolid,
     MZ_HUGE, M1_SEE_INVIS, MALE, FEMALE, haseyes, resists_ston,
     hides_under, is_flyer, thick_skinned, nolimbs, touch_petrifies,
     poly_when_stoned, has_head, slithy, amphibious, breathless, is_swimmer,
+    is_hider, likes_gold,
     MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
 } from './monsters.js';
 import { done_in_by, done, finish_losehp_done } from './end.js';
@@ -70,7 +74,7 @@ import {
     m_seenres, cvt_adtyp_to_mseenres, monstseesu, monstunseesu, m_canseeu,
     mhis,
 } from './mondata.js';
-import { which_armor } from './worn.js';
+import { which_armor, find_mac } from './worn.js';
 import {
     makeknown, freeinv, prinv, observe_object, currency, u_carried_gloves,
 } from './invent.js';
@@ -86,10 +90,14 @@ import {
 } from './mhitm.js';
 import { castmu, buzzmu } from './mcastu.js';
 import { rehumanize, polymon, body_part } from './polyself.js';
-import { set_wounded_legs, burnarmor, ignite_items } from './trap.js';
+import { set_wounded_legs, burnarmor, ignite_items, ceiling } from './trap.js';
 import { mon_explodes } from './explode.js';
 import { make_hallucinated, make_confused, make_stunned } from './potion.js';
-import { SetVoice } from './sndprocs.js';
+import { SetVoice, Soundeffect } from './sndprocs.js';
+import { ART_SNICKERSNEE } from './generated/artifacts_data.js';
+import { se_rushing_wind_noise } from './generated/seffects_data.js';
+import { worm_move } from './worm.js';
+import { place_monster, remove_monster } from './steed.js';
 
 /** C ref: monattk.h — passiveum damage types beyond mhitm export set. */
 const AD_STUN = 12;
@@ -100,6 +108,8 @@ const AD_ENCH = 41;
 
 const LOW_BOOTS = objectNames.indexOf('LOW_BOOTS');
 const IRON_SHOES = objectNames.indexOf('IRON_SHOES');
+const EGG = objectNames.indexOf('EGG');
+const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_BLACK_LIGHT = monsterNames.indexOf('PM_BLACK_LIGHT');
@@ -108,6 +118,7 @@ const PM_FLESH_GOLEM = monsterNames.indexOf('PM_FLESH_GOLEM');
 const PM_IRON_GOLEM = monsterNames.indexOf('PM_IRON_GOLEM');
 const PM_ROPE_GOLEM = monsterNames.indexOf('PM_ROPE_GOLEM');
 const PM_MEDUSA = monsterNames.indexOf('PM_MEDUSA');
+const PM_TRAPPER = monsterNames.indexOf('PM_TRAPPER');
 const PM_ARCHON = monsterNames.indexOf('PM_ARCHON');
 const PM_SILVER_DRAGON = monsterNames.indexOf('PM_SILVER_DRAGON');
 const PM_CHROMATIC_DRAGON = monsterNames.indexOf('PM_CHROMATIC_DRAGON');
@@ -217,8 +228,13 @@ function calc_mattacku_vars(mtmp) {
     const muy = mtmp.muy ?? u.uy;
     const ranged = dist2u(mtmp) > 3;
     const range2 = !monnear(mtmp, mux, muy);
-    const foundyou = (u.ux === mux && u.uy === muy);
+    const foundyou = u_at(mux, muy);
     const youseeit = canseemon(mtmp);
+    /* C: do_attack uses bhitpos to set/clear notonhead; do likewise */
+    if (!game.bhitpos) game.bhitpos = {};
+    game.bhitpos.x = u.ux;
+    game.bhitpos.y = u.uy;
+    game.notonhead = false;
     return { ranged, range2, foundyou, youseeit };
 }
 
@@ -252,7 +268,7 @@ export function mswings_verb(mwep, bash) {
 /**
  * C ref: mhitu.c mswings :128–141 — verbose visible weapon swing
  * pline_mon before hit/miss (D-1305). is_art(Snickersnee) bash
- * exemption deferred (caller still omits !is_art).
+ * exemption is applied at the mattacku AT_WEAP caller (D-1795).
  */
 export async function mswings(mtmp, otemp, bash) {
     const u = game.u || {};
@@ -1879,16 +1895,6 @@ export async function mhitm_ad_drin_u(mtmp, mattk, mhm) {
     }
 }
 
-/**
- * C ref: do_name.c Some_Monnam — highc(some_mon_nam).
- * Visible → Monnam; else Someone/Something. AUGMENT_IT in x_monnam
- * is still named (same stand-in as steal.js / dothrow.js).
- */
-function Some_Monnam(mtmp) {
-    if (canspotmon(mtmp)) return Monnam(mtmp);
-    return is_animal(mtmp?.data) ? 'Something' : 'Someone';
-}
-
 /** C youprop.h H/E via flat + uprops[idx] (confer may not mirror E*). */
 function _uprop_he_mhitu(u, flatH, flatE, idx) {
     const prop = u.uprops?.[idx];
@@ -2759,9 +2765,13 @@ export async function mattacku(mtmp) {
     if ((mtmp.mhp | 0) < 1) return 1;
 
     const u = game.u || {};
+    let mdat = mtmp.data;
+    const ym = game.youmonst || (game.youmonst = {});
+
+    /* C mhitu.c mattacku `:516` — Underwater non-swimmer cannot reach */
+    if ((u.uinwater | 0) && !is_swimmer(mdat)) return 0;
 
     // C: mhitu.c — while swallowed, only u.ustuck may attack; pin mux/muy.
-    // Underwater non-swimmer early-out deferred.
     if (u.uswallow | 0) {
         if (mtmp !== u.ustuck) return 0;
         mtmp.mux = u.ux;
@@ -2785,22 +2795,162 @@ export async function mattacku(mtmp) {
         }
     }
 
-    // AC_VALUE(u.uac) + 10 + m_lev (+ helpless / invis / trap deferred deltas)
+    /* C mhitu.c mattacku `:553–662` — hero hidden (ceiling / surface) */
+    if ((u.uundetected | 0) && !range2 && foundyou && !(u.uswallow | 0)) {
+        if (!canspotmon(mtmp)) map_invisible(mtmp.mx, mtmp.my);
+        u.uundetected = 0;
+        if (is_hider(ym.data) && (u.umonnum | 0) !== PM_TRAPPER) {
+            await pline(`You fall from the ${ceiling(u.ux, u.uy)}!`);
+            remove_monster(mtmp.mx, mtmp.my);
+            const cc = { x: u.ux | 0, y: u.uy | 0 };
+            if (!enexto(cc, u.ux, u.uy, ym.data)
+                || (mdat?.mlet === 'S_EEL'
+                    && is_pool(mtmp.mx, mtmp.my)
+                    && !is_pool(u.ux, u.uy))) {
+                place_monster(mtmp, mtmp.mx, mtmp.my);
+                newsym(u.ux, u.uy);
+                await pline_mon(mtmp, `${Monnam(mtmp)} draws back as you drop!`);
+                return 0;
+            }
+            newsym(mtmp.mx, mtmp.my);
+            place_monster(mtmp, u.ux, u.uy);
+            if (mtmp.wormno) {
+                worm_move(mtmp);
+                if (m_at(cc.x, cc.y)) {
+                    enexto(cc, u.ux, u.uy, ym.data);
+                }
+            }
+            await teleds(cc.x, cc.y, TELEDS_ALLOW_DRAG);
+            set_apparxy(mtmp);
+            newsym(u.ux, u.uy);
+
+            if (ym.data?.mlet !== 'S_PIERCER') return 0;
+
+            const helm = which_armor(mtmp, WORN_HELMET);
+            if (hard_helmet(helm)) {
+                await pline(
+                    `Your blow glances off ${s_suffix(mon_nam(mtmp))} ${helm_simple_name(helm)}.`,
+                );
+            } else if (3 + find_mac(mtmp) <= rnd(20)) {
+                await pline(
+                    `${Monnam(mtmp)} is hit by a falling piercer (you)!`,
+                );
+                mtmp.mhp = (mtmp.mhp | 0) - d(3, 6);
+                if ((mtmp.mhp | 0) < 1) await killed(mtmp);
+            } else {
+                await pline(
+                    `${Monnam(mtmp)} is almost hit by a falling piercer (you)!`,
+                );
+            }
+        } else {
+            if (!youseeit) {
+                await pline('It tries to move where you are hiding.');
+            } else {
+                const obj = objects_at(u.ux | 0, u.uy | 0);
+                if (obj || (u.umonnum | 0) === PM_TRAPPER
+                    || (ym.data?.mlet === 'S_EEL' && is_pool(u.ux, u.uy))) {
+                    let save_spe = 0;
+                    if (obj) {
+                        save_spe = obj.spe | 0;
+                        if ((obj.otyp | 0) === EGG) obj.spe = 0;
+                    }
+                    if (ym.data?.mlet === 'S_EEL'
+                        || (u.umonnum | 0) === PM_TRAPPER) {
+                        await pline(
+                            `Wait, ${m_monnam(mtmp)}!  There's a hidden ${pmname(ym.data, Ugender())} named ${game.plname || 'Hero'} there!`,
+                        );
+                    } else {
+                        await pline(
+                            `Wait, ${m_monnam(mtmp)}!  There's a ${pmname(ym.data, Ugender())} named ${game.plname || 'Hero'} hiding under ${doname(obj)}!`,
+                        );
+                    }
+                    if (obj) obj.spe = save_spe;
+                } else {
+                    await impossible('hiding under nothing?');
+                }
+            }
+            newsym(u.ux, u.uy);
+        }
+        return 0;
+    }
+
+    /* C mhitu.c mattacku `:665–681` — hero mimicking via #monster */
+    if (ym.data?.mlet === 'S_MIMIC' && (ym.m_ap_type | 0)
+        && !range2 && foundyou && !(u.uswallow | 0)) {
+        const sticky = sticks(ym.data);
+        if (!canspotmon(mtmp)) map_invisible(mtmp.mx, mtmp.my);
+        if (sticky && !youseeit) {
+            await pline('It gets stuck on you.');
+        } else {
+            await pline(
+                `Wait, ${m_monnam(mtmp)}!  That's a ${pmname(ym.data, Ugender())} named ${game.plname || 'Hero'}!`,
+            );
+        }
+        if (sticky) set_ustuck(mtmp);
+        ym.m_ap_type = M_AP_NOTHING;
+        ym.mappearance = 0;
+        newsym(u.ux, u.uy);
+        return 0;
+    }
+
+    /* C mhitu.c mattacku `:684–708` — hero mimicking an object */
+    if ((ym.m_ap_type | 0) === M_AP_OBJECT && !range2 && foundyou
+        && !(u.uswallow | 0)) {
+        if (!canspotmon(mtmp)) map_invisible(mtmp.mx, mtmp.my);
+        if (!youseeit) {
+            const grab = likes_gold(mdat) && (ym.mappearance | 0) === GOLD_PIECE;
+            await pline(`${Something} ${grab ? 'tries to pick you up' : 'disturbs you'}!`);
+        } else {
+            await pline(
+                `Wait, ${m_monnam(mtmp)}!  That ${mimic_obj_name(ym)} is really ${an(pmname(u.umonnum | 0, Ugender()))} named ${game.plname || 'Hero'}!`,
+            );
+        }
+        if ((game.multi | 0) < 0) {
+            const appear = Upolyd(u)
+                ? an(pmname(ym.data, game.flags?.female ? FEMALE : MALE))
+                : 'yourself';
+            await unmul(`You appear to be ${appear} again.`);
+        }
+        return 0;
+    }
+
+    /* C: AC_VALUE(u.uac) + 10 + m_lev; helpless / Invis / trap */
     let tmp = AC_VALUE(u.uac ?? 10) + 10;
     tmp += mtmp.m_lev | 0;
     if ((game.multi | 0) < 0) tmp += 4;
-    if (!mtmp.mcansee) tmp -= 2;
+    if ((Invis() && !perceives(mdat)) || !mtmp.mcansee) tmp -= 2;
     if (mtmp.mtrapped) tmp -= 2;
     if (tmp <= 0) tmp = 1;
 
+    /* C: make eels visible the moment they hit/miss us */
+    if (mdat?.mlet === 'S_EEL' && mtmp.minvis && cansee(mtmp.mx, mtmp.my)) {
+        mtmp.minvis = 0;
+        newsym(mtmp.mx, mtmp.my);
+    }
+
     // C: mhitu.c summonmu before find_offensive — demon/were help
-    let mdat = mtmp.data;
     if ((mtmp.cham ?? NON_PM) === NON_PM && !mtmp.mcan && !range2
         && (is_demon(mdat) || is_were(mdat))) {
         const already_fleeing = !!(mtmp.mflee | 0);
         await summonmu(mtmp, youseeit);
         if ((mtmp.mflee | 0) && !already_fleeing) return 0;
         mdat = mtmp.data;
+    }
+
+    /* C mhitu.c mattacku `:745–762` — successful prayer: no attacks */
+    if (u.uinvulnerable) {
+        if (mtmp === u.ustuck) {
+            await pline_mon(mtmp, `${Monnam(mtmp)} loosens its grip slightly.`);
+        } else if (!range2) {
+            if (youseeit || sensemon(mtmp)) {
+                await pline(
+                    `${Monnam(mtmp)} starts to attack you, but pulls back.`,
+                );
+            } else {
+                await You_feel(`${something} move nearby.`);
+            }
+        }
+        return 0;
     }
 
     // C: find_offensive / use_offensive before attack loop — potion throw
@@ -2821,12 +2971,12 @@ export async function mattacku(mtmp) {
         if ((mtmp.mhp | 0) < 1) return 1;
         if (i > 0) {
             ({ ranged, range2, foundyou, youseeit } = calc_mattacku_vars(mtmp));
-            void youseeit;
             if (firstfoundyou && !foundyou) continue;
+            if (!u_at(game.bhitpos?.x, game.bhitpos?.y)) continue;
         }
 
-        const mattk = get_mattk(mtmp, i, null); // null = hero defender
-        if (mattk.aatyp === AT_NONE) continue;
+        game.mon_currwep = null;
+        const mattk = get_mattk(mtmp, i, game.youmonst, sum);
         // C: uswallow skips non-ENGL; skipnonmagc skips non-MAGC;
         // skipdrin skips remaining AT_TENT+AD_DRIN (`:787–790`)
         if ((u.uswallow | 0) && (mattk.aatyp | 0) !== AT_ENGL) continue;
@@ -2897,23 +3047,34 @@ export async function mattacku(mtmp) {
             break;
 
         case AT_ENGL:
-            // C: mhitu.c AT_ENGL — rnd(20+i) then gulpmu / missmu
+            // C mhitu.c mattacku `:844–872` — rnd(20+i) then gulpmu / missmu
             if (!range2) {
                 if (foundyou) {
                     let j = 0;
                     if ((u.uswallow | 0)
                         || (!(mtmp.mspec_used | 0)
                             && tmp > (j = rnd(20 + i)))) {
+                        /* C mhitu.c `:849–852` — force swallowing monster
+                         * displayed even when hero is moving away. */
+                        await flush_screen(1);
                         sum[i] = await gulpmu(mtmp, mattk);
                     } else {
                         await missmu(mtmp, tmp === j, mattk);
                     }
                 } else if (digests(mtmp.data)) {
-                    await pline(`${Monnam(mtmp)} gulps some air!`);
+                    await pline_mon(mtmp, `${Monnam(mtmp)} gulps some air!`);
                 } else if (youseeit) {
-                    await pline(`${Monnam(mtmp)} lunges forward and recoils!`);
+                    await pline_mon(
+                        mtmp,
+                        `${Monnam(mtmp)} lunges forward and recoils!`,
+                    );
                 } else {
-                    await pline(`You hear a ${is_whirly(mtmp.data) ? 'rushing noise' : 'splat'} nearby.`);
+                    if (is_whirly(mtmp.data)) {
+                        Soundeffect(se_rushing_wind_noise, 60);
+                    }
+                    await You_hear(
+                        `a ${is_whirly(mtmp.data) ? 'rushing noise' : 'splat'} nearby.`,
+                    );
                 }
             }
             break;
@@ -2929,11 +3090,14 @@ export async function mattacku(mtmp) {
                 }
                 if (foundyou) {
                     const mon_currwep = MON_WEP(mtmp);
+                    game.mon_currwep = mon_currwep;
                     let hittmp = 0;
                     if (mon_currwep) {
                         // C: bash = is_pole && !Snickersnee && m_next2u
-                        const bash = is_pole(mon_currwep) && m_next2u(mtmp);
-                        hittmp = hitval(mon_currwep, null);
+                        const bash = is_pole(mon_currwep)
+                            && !is_art(mon_currwep, ART_SNICKERSNEE)
+                            && m_next2u(mtmp);
+                        hittmp = hitval(mon_currwep, game.youmonst);
                         tmp += hittmp;
                         await mswings(mtmp, mon_currwep, bash);
                     }
@@ -2971,9 +3135,17 @@ export async function mattacku(mtmp) {
             break;
         }
 
+        if (game.flags?.botl || game.disp?.botl) await bot();
+        /* give player a chance of waking up before dying */
+        if (sum[i] === M_ATTK_HIT) {
+            if ((u.usleep | 0) && (u.usleep | 0) < (game.moves | 0)
+                && !rn2(10)) {
+                game.multi = -1;
+                game.nomovemsg = 'The combat suddenly awakens you.';
+            }
+        }
         if (sum[i] & M_ATTK_AGR_DIED) return 1;
         if (sum[i] & M_ATTK_AGR_DONE) break;
-        if (game.program_state?.gameover) return 1;
     }
-    return (mtmp.mhp | 0) < 1 ? 1 : 0;
+    return 0;
 }

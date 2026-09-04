@@ -90,6 +90,15 @@ import {
     WIN_LOCKHISTORY,
     MAX_MSG_HISTORY,
     DUMPLOG_MSG_COUNT,
+    MSGTYP_NORMAL,
+    MSGTYP_NOREP,
+    MSGTYP_NOSHOW,
+    MSGTYP_STOP,
+    PLINE_NOREPEAT,
+    OVERRIDE_MSGTYPE,
+    URGENT_MESSAGE,
+    PLNMSG_UNKNOWN,
+    gp,
 } from './const.js';
 import {
     ILLOBJ_CLASS, WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS,
@@ -114,6 +123,7 @@ import { observe_object, near_capacity } from './invent.js';
 import { visible_region_at, show_region } from './region.js';
 import { see_wsegs, worm_known, level_mon_at } from './worm.js';
 import { SoundSpeak } from './sndprocs.js';
+import { msgtype_type } from './options.js';
 
 const CORPSE_OTYP = objectNames.indexOf('CORPSE');
 const STATUE_OTYP = objectNames.indexOf('STATUE');
@@ -2200,6 +2210,8 @@ let _win_stop = false;
 let _win_nostop = false;
 // C ref: pline.c gp.prevmsg — last message that actually reached putmesg
 let _prevmsg = '';
+// C pline.c execplinehandler — disabled after failed spawn; start enabled.
+let use_pline_handler = true;
 // C ref: wintty.h ttyDisplay->dismiss_more / getline.c morc — extra key
 // accepted at --More-- (message_menu selection letter).
 let _dismiss_more = 0;
@@ -2548,6 +2560,8 @@ export function reset_display_messages() {
     _getmsghistory_nxtidx = 0;
     _saved_plines = new Array(DUMPLOG_MSG_COUNT).fill(null);
     _saved_pline_index = 0;
+    gp.pline_flags = 0;
+    use_pline_handler = true;
 }
 
 /**
@@ -5965,20 +5979,61 @@ export async function verbalize(msg) {
 }
 
 /**
- * C ref: pline.c Norep — PLINE_NOREPEAT → MSGTYP_NOREP; suppress when
- * identical to gp.prevmsg (last shown pline), not a Norep-only cache.
- * Consume msg_loc before the repeat check (C vpline always does).
- * Msgtype-pattern table deferred.
+ * C pline.c execplinehandler `:640–686` — first guard is
+ * `!use_pline_handler || !sysopt.msghandler`. Contest sessions leave
+ * msghandler unset so C returns here. UNIX fork/execv of the handler
+ * is Rule #2 (no exec); the non-UNIX `#else` arm disables the flag.
+ */
+function execplinehandler(line) {
+    if (!use_pline_handler || !game.sysopt?.msghandler) return;
+    use_pline_handler = false;
+    void line;
+}
+
+/**
+ * C pline.c vpline OVERRIDE_MSGTYPE / msgtype_type / URGENT_MESSAGE
+ * suppress. maybe_play_sound sits here under USER_SOUNDS; macosx-minimal
+ * has no `-DUSER_SOUNDS` so C does not call it (js/sounds.js still
+ * exports the C body).
+ * @returns {{ msgtyp: number, suppress: boolean }}
+ */
+function vpline_msgtyp_gate(line) {
+    let msgtyp = MSGTYP_NORMAL;
+    const no_repeat = !!(gp.pline_flags & PLINE_NOREPEAT);
+    if ((gp.pline_flags & OVERRIDE_MSGTYPE) === 0) {
+        msgtyp = msgtype_type(line, no_repeat);
+        if ((gp.pline_flags & URGENT_MESSAGE) === 0
+            && (msgtyp === MSGTYP_NOSHOW
+                || (msgtyp === MSGTYP_NOREP && line === _prevmsg))) {
+            return { msgtyp, suppress: true };
+        }
+    }
+    return { msgtyp, suppress: false };
+}
+
+/** C vpline after putmesg: execplinehandler, last_msg, MSGTYP_STOP more. */
+async function vpline_after_putmesg(line, msgtyp) {
+    execplinehandler(line);
+    if (game.iflags) game.iflags.last_msg = PLNMSG_UNKNOWN;
+    if (msgtyp === MSGTYP_STOP) await more();
+}
+
+/**
+ * C ref: pline.c Norep — PLINE_NOREPEAT then vpline (msgtype_type
+ * default MSGTYP_NOREP; suppress when identical to gp.prevmsg unless
+ * a MSGTYPE= pattern matched first).
  */
 export async function Norep(msg) {
-    msg = vpline_consume_msg_loc(msg);
-    if (msg == null || msg === '') return;
-    if (_prevmsg === String(msg)) return;
-    await pline_after_consume(msg);
+    gp.pline_flags = PLINE_NOREPEAT;
+    try {
+        await pline(msg);
+    } finally {
+        gp.pline_flags = 0;
+    }
 }
 
 // ── pline ──
-// C ref: pline.c vpline — flush_screen before putmesg; topl.c update_topl.
+// C ref: pline.c vpline — msgtype_type then flush_screen before putmesg.
 export async function pline(msg) {
     msg = vpline_consume_msg_loc(msg);
     if (msg == null || msg === '') return;
@@ -5991,6 +6046,8 @@ async function pline_after_consume(msg) {
     // C pline.c vpline DUMPLOG_CORE: dumplogmsg before putmesg when
     // SUPPRESS_HISTORY is off (default). yn ATR_NOHISTORY still named.
     dumplogmsg(line);
+    const { msgtyp, suppress } = vpline_msgtyp_gate(line);
+    if (suppress) return;
     // C pline.c vpline: vision_recalc before flush when dirty (boulder
     // extract / door / light sets vision_full_recalc mid-turn).
     if (game.vision_full_recalc) {
@@ -6020,6 +6077,7 @@ async function pline_after_consume(msg) {
         if (!skip) game._pending_message = _toplines;
         // C: gp.prevmsg = line (new text only, not the concatenated topline)
         _prevmsg = line;
+        await vpline_after_putmesg(line, msgtyp);
         return;
     }
     if (!skip && _toplin === TOPLINE_NEED_MORE) {
@@ -6068,6 +6126,7 @@ async function pline_after_consume(msg) {
             await more();
         }
     }
+    await vpline_after_putmesg(line, msgtyp);
 }
 
 /**
@@ -6084,11 +6143,13 @@ export async function urgent_pline(msg) {
         game._pending_message = '';
     }
     _win_nostop = true;
+    gp.pline_flags = URGENT_MESSAGE;
     try {
         await pline(msg);
     } finally {
         // C: NOSTOP is one-shot after putstr returns
         _win_nostop = false;
+        gp.pline_flags = 0;
     }
 }
 

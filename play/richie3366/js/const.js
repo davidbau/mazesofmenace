@@ -234,6 +234,10 @@ export function DIR_180(dir) { return (dir + 4) % N_DIRS; }
 /** C hack.h DIR_LEFT / DIR_RIGHT — 8-dir wrap. */
 export function DIR_LEFT(dir) { return ((dir) + 7) % N_DIRS; }
 export function DIR_RIGHT(dir) { return ((dir) + 1) % N_DIRS; }
+/** C ref: hack.h DIR_LEFT2 / DIR_RIGHT2 / DIR_CLAMP */
+export function DIR_LEFT2(dir) { return ((dir) + 6) % N_DIRS; }
+export function DIR_RIGHT2(dir) { return ((dir) + 2) % N_DIRS; }
+export function DIR_CLAMP(dir) { return ((dir) + N_DIRS) % N_DIRS; }
 // DIR_ERR lives with other error sentinels below; xytodir uses -1.
 
 /** C ref: cmd.c xytodir — map (dx,dy) to DIR_* or DIR_ERR (-1). */
@@ -417,6 +421,8 @@ export function BZ_VALID_ADTYP(adtyp) {
 }
 /** C ref: hack.h BZ_M_BREATH — monster breath buzz type (-29..-20) */
 export function BZ_M_BREATH(bztyp) { return -20 - (bztyp | 0); }
+/** C ref: hack.h BZ_M_WAND — monster wand buzz type (-39..-30); not -0 */
+export function BZ_M_WAND(bztyp) { return -30 - (bztyp | 0); }
 
 // Room types (mkroom.h)
 export const OROOM = 0;
@@ -489,8 +495,10 @@ export const SUPPRESS_SADDLE = 0x08;
 export const SUPPRESS_MAPPEARANCE = 0x10;
 export const SUPPRESS_NAME = 0x20;
 export const AUGMENT_IT = 0x40;
+/* C hack.h EXACT_NAME 0x1F — IT|INVISIBLE|HALLUCINATION|SADDLE|MAPPEARANCE.
+   Not SUPPRESS_NAME (0x20): m_monnam keeps the given name. */
 export const EXACT_NAME = (SUPPRESS_IT | SUPPRESS_INVISIBLE
-    | SUPPRESS_HALLUCINATION | SUPPRESS_NAME);
+    | SUPPRESS_HALLUCINATION | SUPPRESS_SADDLE | SUPPRESS_MAPPEARANCE);
 
 // Game end type constants (include/hack.h enum game_end_types; src/end.c)
 // Runtime fields:
@@ -539,6 +547,13 @@ export const CMDQ_USER_INPUT = 3;
 export const CMDQ_INT = 4;
 export const CQ_CANNED = 0;
 export const CQ_REPEAT = 1;
+
+// C hack.h enum InputState — program_state.input_state (yn_function
+// resets to otherInp; getdir/readchar/getpos write the others).
+export const otherInp = 0;
+export const commandInp = 1;
+export const getposInp = 2;
+export const getdirInp = 3;
 
 // Transient animation style/opcode constants (include/display.h DISP_*; src/display.c tmp_at)
 // Runtime fields:
@@ -1128,6 +1143,10 @@ export const PLNMSG_HIDE_UNDER = (PLNMSG_GROWL + 1);
 export const PLNMSG_MON_TAKES_OFF_ITEM = (PLNMSG_HIDE_UNDER + 1);
 /** C flag.h PLNMSG_enum — sentinel ('none of the above'). */
 export const PLNMSG_enum = (PLNMSG_MON_TAKES_OFF_ITEM + 1);
+/** C flag.h enum debug_fuzzer_states — iflags.debug_fuzzer. */
+export const fuzzer_off = 0;
+export const fuzzer_impossible_panic = 1;
+export const fuzzer_impossible_continue = 2;
 export const RUN_TPORT = 0;
 export const RUN_LEAP = (RUN_TPORT + 1);
 export const RUN_STEP = (RUN_LEAP + 1);
@@ -2175,12 +2194,15 @@ export const BUC_BLESSED = 1;
 export const BUC_UNCURSED = 2;
 export const BUC_CURSED = 3;
 export const BUC_UNKNOWN = 4;
-export const GETOBJ_EXCLUDE = 0;
+// C hack.h getobj_callback_returns — signed ranks; getobj uses
+// `obj_ok(otmp) <= GETOBJ_EXCLUDE` for gold and `== GETOBJ_EXCLUDE`
+// for silly_thing. DOWNPLAY/SUGGEST stay 1/2.
+export const GETOBJ_EXCLUDE = -3;
+export const GETOBJ_EXCLUDE_NONINVENT = -2;
+export const GETOBJ_EXCLUDE_INACCESS = -1;
+export const GETOBJ_EXCLUDE_SELECTABLE = 0;
 export const GETOBJ_DOWNPLAY = 1;
 export const GETOBJ_SUGGEST = 2;
-export const GETOBJ_EXCLUDE_INACCESS = 3;
-export const GETOBJ_EXCLUDE_SELECTABLE = 4;
-export const GETOBJ_EXCLUDE_NONINVENT = 5;
 export const GETOBJ_ALLOWCNT = 0x01;
 export const GETOBJ_PROMPT = 0x02;
 export const GETOBJ_NOFLAGS = 0;
@@ -2830,7 +2852,12 @@ export const decgraphics = [
 // Note: init functions lost array indices in autotranslation; showsyms/primary_syms/rogue_syms
 // are scalars here (last-write-wins) rather than arrays. Functional but imprecise.
 export const gs = { showsyms: null, symset: [{ name: null, handling: 0, nocolor: 0 }, { name: null, handling: 0, nocolor: 0 }] };
-export const gp = { primary_syms: null, pl_race: null, plinemsg_types: null };
+export const gp = {
+    primary_syms: null,
+    pl_race: null,
+    plinemsg_types: null,
+    pline_flags: 0,
+};
 const gr = { rogue_syms: null };
 
 // init_symbols, init_showsyms, init_primary_symbols, init_rogue_symbols:

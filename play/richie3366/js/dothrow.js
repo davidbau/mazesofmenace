@@ -6,9 +6,8 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
-    flush_screen, flush_topl_more, pline, docrt, newsym, mark_topline_seen,
+    flush_screen, flush_topl_more, pline, newsym, mark_topline_seen,
     canseemon, canspotmon, nh_delay_output, tmp_at, obj_glyph, verbalize,
-    tty_nhbell,
 } from './display.js';
 import { cansee, vision_recalc } from './vision.js';
 import { rn2, rnd, rn1 } from './rng.js';
@@ -23,7 +22,7 @@ import {
 import {
     WEAPON_CLASS, TOOL_CLASS, COIN_CLASS, GEM_CLASS, FOOD_CLASS, ARMOR_CLASS,
     POTION_CLASS, SCROLL_CLASS, RING_CLASS, objectNames, objectNameStrs,
-    is_sword,
+    is_sword, is_axe,
 } from './objects.js';
 import {
     COLNO, ROWNO, IS_SOFT, LOST_THROWN, ZAP_POS, IS_DOOR, D_CLOSED, D_LOCKED,
@@ -46,7 +45,6 @@ import {
     DISP_FLASH, DISP_CHANGE, DISP_END, DISP_TETHER, BACKTRACK, ECMD_TIME,
     DEAF, SHOPBASE, Is_waterlevel,
 } from './const.js';
-import { NO_COLOR } from './terminal.js';
 import { obj_resists, dogfood } from './dogmove.js';
 import {
     ammo_and_launcher, is_ammo, is_missile, doswapweapon, doquiver_core, welded,
@@ -73,7 +71,7 @@ import {
     makeplural, otense,
 } from './objnam.js';
 import { m_at, wakeup, seemimic, wake_nearto, distmin, monnear, m_respond } from './mon.js';
-import { mon_nam, Monnam, hliquid, Hallucination } from './do_name.js';
+import { mon_nam, Monnam, hliquid, Hallucination, Some_Monnam } from './do_name.js';
 import {
     is_domestic, nohands, M1_NOTAKE, MZ_HUGE, MZ_MEDIUM,
     is_unicorn, is_orc, is_elf, your_race, is_animal, is_whirly,
@@ -92,7 +90,7 @@ import {
 } from './trap.js';
 import { in_out_region, m_in_out_region } from './region.js';
 import { u_wipe_engr } from './engrave.js';
-import { getdir_read_dirsym } from './lock.js';
+import { getdir } from './lock.js';
 import { hard_helmet } from './do_wear.js';
 
 const GLASS = 19;
@@ -181,33 +179,6 @@ const VEGGY = 3; // objclass.h
 function cmdq_add_ec(fn) {
     if (!game._cmdq_canned) game._cmdq_canned = [];
     game._cmdq_canned.push(fn);
-}
-
-
-
-const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
-const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
-
-/**
- * C ref: cmd.c movecmd(sym, MV_ANY) — walk/run/rush bindings all yield a
- * direction. Capital HJKLYUBN (run) and Ctrl-dir (rush) count like h/j/…
- * @returns {{dx:number,dy:number,dz?:number}|null}
- */
-function dir_from_key(key, ch) {
-    // C cmd.c movecmd — '<' up / '>' down set zdir, dx=dy=0
-    if (ch === '<') return { dx: 0, dy: 0, dz: -1 };
-    if (ch === '>') return { dx: 0, dy: 0, dz: 1 };
-    if (ch in DIR_DX) return { dx: DIR_DX[ch], dy: DIR_DY[ch], dz: 0 };
-    const low = typeof ch === 'string' ? ch.toLowerCase() : '';
-    if (low in DIR_DX && ch === low.toUpperCase()) {
-        return { dx: DIR_DX[low], dy: DIR_DY[low], dz: 0 };
-    }
-    // rush: C(dir) — keys 1..26 (ICRNL maps CR→LF = C('j'))
-    if (typeof key === 'number' && key >= 1 && key <= 26) {
-        const rushCh = String.fromCharCode(key + 96);
-        if (rushCh in DIR_DX) return { dx: DIR_DX[rushCh], dy: DIR_DY[rushCh], dz: 0 };
-    }
-    return null;
 }
 
 /** C invent getobj ranks used by throw_ok. */
@@ -450,13 +421,6 @@ function is_weptool(obj) {
         || n === 'AKLYS' || n === 'BULLWHIP';
 }
 
-/** C ref: obj.h is_axe. */
-function is_axe(obj) {
-    if (!obj) return false;
-    if (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS) return false;
-    return (game.objects?.[obj.otyp]?.oc_skill | 0) === P_AXE;
-}
-
 /** C ref: obj.h is_spear / is_blade / is_sword. */
 function is_spear(obj) {
     return !!obj && obj.oclass === WEAPON_CLASS
@@ -545,15 +509,6 @@ function Deaf_youprop() {
     const prop = u.uprops?.[DEAF];
     return !!((prop?.intrinsic | 0) || (prop?.extrinsic | 0)
         || u.uroleplay?.deaf);
-}
-
-/**
- * C do_name.c Some_Monnam — highc(some_mon_nam). AUGMENT_IT in x_monnam
- * is still named; visible → Monnam, else Someone/Something.
- */
-function Some_Monnam(mtmp) {
-    if (canspotmon(mtmp)) return Monnam(mtmp);
-    return is_animal(mtmp?.data) ? 'Something' : 'Someone';
 }
 
 /**
@@ -2459,112 +2414,15 @@ export async function throwit(obj, wep_mask = 0, twoweap = false, oldslot = null
 
 
 /**
- * C ref: cmd.c show_direction_keys — hjkl/yubn grid for help_dir.
- * @param {boolean} nodiag grid-bug form (orthogonal only)
- */
-function show_direction_keys_lines(nodiag) {
-    if (nodiag) {
-        return [
-            '             k   ',
-            '             |   ',
-            '          h- . -l',
-            '             |   ',
-            '             j   ',
-        ];
-    }
-    return [
-        '          y  k  u',
-        '           \\ | / ',
-        '          h- . -l',
-        '           / | \\ ',
-        '          b  j  n',
-    ];
-}
-
-/**
- * C ref: cmd.c help_dir — NHW_TEXT cmdassist for invalid getdir / '?'.
- * C tty: display_nhwindow TEXT is blocking; dmore → xwaitforspace(quitchars)
- * so only space/CR/LF/ESC dismiss — other keys bell and keep waiting.
- * Returns true if shown.
- * Prefix-key / ^letter Guidebook branches deferred.
- */
-async function help_dir(msg) {
-    const disp = game.nhDisplay;
-    if (!disp) return false;
-
-    const lines = [];
-    if (msg) {
-        lines.push(`cmdassist: ${msg}`);
-        lines.push('');
-    }
-    lines.push('Valid direction keys are:');
-    lines.push(...show_direction_keys_lines(false));
-    lines.push('');
-    lines.push('          <  up');
-    lines.push('          >  down');
-    lines.push('          .  direct at yourself');
-    if (msg) {
-        lines.push('');
-        lines.push('(Suppress this message with !cmdassist in config file.)');
-    }
-    while (lines.length < 24) lines.push('');
-    lines[23] = '--More--';
-
-    // C: process_text_window fullscreen (offx==0) — clear map/status
-    disp.clearScreen();
-    game._menu_overlay = true;
-    game._pending_message = '';
-    for (let r = 0; r < 24; r++) {
-        const text = lines[r] || '';
-        for (let i = 0; i < text.length && i < disp.cols; i++)
-            disp.setCell(i, r, text[i], NO_COLOR, 0);
-    }
-    disp.setCursor(8, 23);
-    await flush_screen(1);
-    // C: xwaitforspace(quitchars) — space/CR/LF/ESC only; else bell+retry
-    for (;;) {
-        const k = await nhgetch();
-        if (k === 27 || k === 32 || k === 13 || k === 10) break;
-        tty_nhbell();
-    }
-    game._menu_overlay = false;
-    await docrt();
-    return true;
-}
-
-/**
- * C ref: cmd.c getdir via yn_function + help_dir + CQ_REPEAT.
- * Esc / '.' / space / return cancel. '?' shows help and retries.
- * Other invalid keys: cmdassist NHW_TEXT then return cancel (no retry).
- * Returns {dx,dy,dz} or null. '<' / '>' set dz (C movecmd).
- * tty_yn_function already flush_topl_more (D-0093).
+ * C ref: cmd.c getdir — shared lock.js getdir owns help_dir / cmdassist /
+ * strange-direction NEED_MORE / dxdy_moveok. Returns {dx,dy,dz} or null
+ * for throw/fire callers that want a struct instead of game.u.
  */
 export async function getdir_cmdassist(prompt) {
-    for (;;) {
-        const dirsym = await getdir_read_dirsym(prompt);
-        const ch = dirsym;
-        const key = dirsym.charCodeAt(0);
-        // C: NHKF_GETDIR_SELF / SELF2 → dx=dy=dz=0, success (not cancel)
-        if (ch === '.' || ch === 's') return { dx: 0, dy: 0, dz: 0 };
-        // C: strchr(quitchars, dirsym) → return 0 without help_dir
-        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r')
-            return null;
-        // C: movecmd(dirsym, MV_ANY) — walk/run/rush all ok
-        const dir = dir_from_key(key, ch);
-        if (dir) return dir;
-        // C: NHKF_GETDIR_HELP '?' → help_dir then retry
-        if (ch === '?') {
-            await help_dir(null);
-            continue;
-        }
-        // C: iflags.cmdassist → help_dir("Invalid direction key!") then return 0
-        if (game.flags?.cmdassist !== false) {
-            await help_dir('Invalid direction key!');
-        } else {
-            await pline('What a strange direction!');
-        }
-        return null;
-    }
+    const ok = await getdir(prompt);
+    if (!ok) return null;
+    const u = game.u || {};
+    return { dx: u.dx | 0, dy: u.dy | 0, dz: u.dz | 0 };
 }
 
 /**

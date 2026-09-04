@@ -13,7 +13,7 @@ import { cansee, couldsee, howmonseen } from './vision.js';
 import {
     TOOL_CLASS, WAND_CLASS, SPBOOK_CLASS, WEAPON_CLASS, POTION_CLASS,
     COIN_CLASS, GEM_CLASS, FOOD_CLASS, RING_CLASS, RANDOM_CLASS,
-    objectNames, objectNameStrs, objectDescrs,
+    objectNames, objectNameStrs, objectDescrs, is_axe,
 } from './objects.js';
 import {
     P_AXE, P_PICK_AXE, P_POLEARMS, P_LANCE, P_NONE, P_BASIC, P_SKILLED,
@@ -71,7 +71,7 @@ import {
 import { xname, the, The, makeplural, vtense, doname, an, singular, cxname, thesimpleoname, simpleonames, yname, shk_your, Tobjnam, gloves_simple_name } from './objnam.js';
 import { obj_resists } from './dogmove.js';
 import { acurr, A_CHA, A_STR, A_DEX, A_CON, change_luck, Fumbling } from './attrib.js';
-import { Monnam, mon_nam, x_monnam, y_monnam, Hallucination, a_monnam, Amonnam, monverbself } from './do_name.js';
+import { Monnam, mon_nam, x_monnam, y_monnam, Hallucination, a_monnam, Amonnam, monverbself, l_monnam } from './do_name.js';
 import { monflee } from './monmove.js';
 import { nomul, confdir, losehp, maybe_half_phys, is_pool, is_lava, overexertion, in_rooms } from './hack.js';
 import { getpos, getpos_sethilite } from './getpos.js';
@@ -261,19 +261,12 @@ const MS_SILENT = 0;
 /** C apply.c use_mirror SEENMON — NORMAL|SEEINVIS|INFRAVIS. */
 const SEENMON = MONSEEN_NORMAL | MONSEEN_SEEINVIS | MONSEEN_INFRAVIS;
 
-/** C invent getobj callback ranks (hack.h). */
+/** C invent getobj callback ranks (hack.h getobj_callback_returns). */
 const GETOBJ_EXCLUDE = -3;
 const GETOBJ_EXCLUDE_SELECTABLE = 0;
 const GETOBJ_DOWNPLAY = 1;
 const GETOBJ_SUGGEST = 2;
-const GETOBJ_EXCLUDE_INACCESS = 3;
-
-/** C ref: obj.h is_axe — WEAPON/TOOL with P_AXE skill. */
-function is_axe(obj) {
-    if (!obj) return false;
-    if (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS) return false;
-    return (game.objects?.[obj.otyp]?.oc_skill ?? 0) === P_AXE;
-}
+const GETOBJ_EXCLUDE_INACCESS = -1;
 
 /** C ref: obj.h is_pick — WEAPON/TOOL with P_PICK_AXE skill. */
 function is_pick(obj) {
@@ -1353,15 +1346,6 @@ function s_suffix_leash(s) {
     return `${str}'s`;
 }
 
-/** C do_name.c l_monnam — ARTICLE_NONE + called. */
-function l_monnam(mtmp) {
-    return x_monnam(
-        mtmp, ARTICLE_NONE, null,
-        has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0,
-        true,
-    );
-}
-
 /** C you.h mhis — hallu rn2 deferred (leash pull-free msg). */
 function mhis_leash(mtmp) {
     if (mtmp?.female) return 'her';
@@ -2210,7 +2194,7 @@ export async function inaccessible_equipment(obj, verb, only_if_known_cursed) {
 
 /**
  * C ref: apply.c grease_ok — null (hands '-') SUGGEST; COIN_CLASS EXCLUDE
- * (const.js 0, not apply's getobj-clone -3); inaccessible_equipment
+ * (const.js GETOBJ_EXCLUDE = -3); inaccessible_equipment
  * EXCLUDE_INACCESS; else SUGGEST. sit.c special_throne_effect grease
  * spray uses the same COIN_CLASS skip (D-1033/D-1683).
  */
@@ -5673,7 +5657,7 @@ export async function jump(magic) {
     nomul(-1);
     if (!game.multi_reason) game.multi_reason = 'jumping around';
     game.nomovemsg = '';
-    morehungry(rnd(25));
+    await morehungry(rnd(25));
     return ECMD_TIME;
 }
 

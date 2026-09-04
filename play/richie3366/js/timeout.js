@@ -7,12 +7,15 @@ import { game } from './gstate.js';
 import {
     TIMEOUT, FROMOUTSIDE, FUMBLING, FAST, FOOT, ICE, STRAT_WAITMASK,
     UNCHANGING, LAST_PROP, WOUNDED_LEGS, CONFUSION, BLINDED, DEAF,
-    GLIB, I_SPECIAL, ECMD_OK,
+    GLIB, I_SPECIAL, ECMD_OK, NECK, FAINTING, FULL_MOON,
     STUNNED, HALLUC, HALLUC_RES, LEVITATION, FLYING, INVIS, SEE_INVIS,
     CLAIRVOYANT, TELEPORT, REGENERATION, DETECT_MONSTERS,
     INVULNERABLE, STONED, SLIMED, STRANGLED, SICK, SLEEPY, POLYMORPH,
     VOMITING, ACID_RES, STONE_RES, DISPLACED, PASSES_WALLS,
     MAGICAL_BREATHING, WWALKING, FIRE_RES, COLD_RES, SLEEP_RES,
+    ACCESSIBLE, Is_waterlevel, SICK_NONVOMITABLE, M_AP_MONSTER,
+    COLNO, ROWNO, CLOUD,
+    KILLED_BY_AN,
     DISINT_RES, SHOCK_RES, POISON_RES, DRAIN_RES, SICK_RES, ANTIMAGIC,
     BLND_RES, HUNGER, TELEPAT, WARNING, WARN_OF_MON, WARN_UNDEAD,
     SEARCHING, INFRAVISION, ADORNED, STEALTH, AGGRAVATE_MONSTER,
@@ -31,35 +34,40 @@ import {
     has_omid, has_omonst,
 } from './const.js';
 import { heal_legs, float_down } from './trap.js';
-import { stop_occupation, nomul, is_pool } from './hack.js';
+import { stop_occupation, nomul, is_pool, is_lava, carrying, You_hear } from './hack.js';
 import { run_timers, start_timer, stop_timer, weight,
     obj_extract_self, delobj, objects_at, attach_egg_hatch_timeout,
     obj_has_timer, rider_revival_time, rot_corpse, set_corpsenm,
     free_omid, free_omonst,
 } from './mkobj.js';
-import { make_confused, make_slimed } from './potion.js';
+import { make_confused, make_slimed, make_stoned, make_stunned, make_vomiting } from './potion.js';
 import { make_blinded } from './do.js';
-import { Fumbling, Fast, Very_fast } from './attrib.js';
-import { pline, You_feel, newsym, canseemon, verbalize, Norep, see_monsters, impossible } from './display.js';
+import { Fumbling, Fast, Very_fast, exercise, stone_luck, A_STR, A_DEX, A_CON } from './attrib.js';
+import { pline, You_feel, newsym, canseemon, verbalize, Norep, see_monsters, impossible, urgent_pline, Hallucination } from './display.js';
 import { inv_weight, update_inventory, useupall } from './invent.js';
-import { doname, makeplural, xname, an, The } from './objnam.js';
-import { rn2, rnd, d } from './rng.js';
+import { doname, makeplural, xname, an, The, vtense } from './objnam.js';
+import { rn2, rnd, rn1, d } from './rng.js';
 import { objectNames } from './objects.js';
 import {
     G_UNIQ, is_were, mons, is_floater, is_flyer, amorphous, nolimbs,
     M1_SLITHY, MZ_SMALL, is_rider, is_displacer,
+    breathless, monsterNames,
 } from './monsters.js';
-import { little_to_big, big_to_little } from './mondata.js';
-import { dist2, ing_suffix } from './hacklib.js';
+import { little_to_big, big_to_little, mhe, cantvomit } from './mondata.js';
+import { dist2, ing_suffix, strsubst, strstri, upstart } from './hacklib.js';
+import { Popeye, morehungry, vomit } from './eat.js';
+import { phase_of_the_moon, friday_13th } from './calendar.js';
 import { zombie_form } from './mon.js';
 import { cry_sound } from './sounds.js';
+import { Soundeffect } from './sndprocs.js';
+import { se_kaboom_boom_boom } from './generated/seffects_data.js';
 import { rehumanize, body_part } from './polyself.js';
 import { you_unwere } from './were.js';
 import { new_light_source, del_light_source } from './light.js';
 import { cansee } from './vision.js';
 import { is_art } from './artifact.js';
 import { ART_SUNSWORD } from './generated/artifacts_data.js';
-import { Monnam, x_monnam, hcolor } from './do_name.js';
+import { Monnam, x_monnam, hcolor, rndmonnam, hliquid } from './do_name.js';
 import { find_ac } from './u_init.js';
 import { any_visible_region, visible_region_summary } from './region.js';
 
@@ -90,11 +98,23 @@ const TIMEOUT_FLAT = {
     [FAST]: 'HFast',
     [GLIB]: 'Glib',
     [DETECT_MONSTERS]: 'HDetect_monsters',
+    [STONED]: 'Stoned',
+    [SLIMED]: 'Slimed',
+    [VOMITING]: 'Vomiting',
+    [SICK]: 'Sick',
+    [STRANGLED]: 'Strangled',
+    [PASSES_WALLS]: 'HPasses_walls',
 };
 
 /** C ref: weight.h WT_NOISY_INV — inv_weight() threshold for noisy fumbling. */
 const WT_NOISY_INV = 500;
 const ROCK = objectNames.indexOf('ROCK');
+const LUCKSTONE = objectNames.indexOf('LUCKSTONE');
+const FEDORA = objectNames.indexOf('FEDORA');
+const PM_GREEN_SLIME = monsterNames.indexOf('PM_GREEN_SLIME');
+const PM_ARCHEOLOGIST = monsterNames.indexOf('PM_ARCHEOLOGIST');
+const NH_GREEN = 'green';
+const NH_BLUE = 'blue';
 
 /** C ref: youprop.h Unchanging — H || E via flat + uprops. */
 function hero_unchanging(u = game.u || {}) {
@@ -235,10 +255,432 @@ function incr_itimeout_HFumbling(incr) {
     set_HFumbling((cur & ~TIMEOUT) | (val & TIMEOUT));
 }
 
+/** C youprop.h H* / malady — flat or uprops[prop].intrinsic. */
+function intr_bits(u, propId, flat) {
+    return (u[flat] | 0) || (u.uprops?.[propId]?.intrinsic | 0);
+}
+
+/** C youprop.h E* — flat or uprops[prop].extrinsic. */
+function extr_bits(u, propId, flat) {
+    return (u[flat] | 0) || (u.uprops?.[propId]?.extrinsic | 0);
+}
+
+/** C potion.c set_itimeout(&HDeaf, val) — TIMEOUT field only. */
+function set_itimeout_HDeaf(val) {
+    const u = game.u || (game.u = {});
+    u.HDeaf = ((u.HDeaf | 0) & ~TIMEOUT) | (val & TIMEOUT);
+    if (u.uprops?.[DEAF]) {
+        u.uprops[DEAF].intrinsic =
+            ((u.uprops[DEAF].intrinsic | 0) & ~TIMEOUT) | (val & TIMEOUT);
+    }
+}
+
+/** C potion.c incr_itimeout(&HDeaf, incr) — TIMEOUT bits only. */
+function incr_itimeout_HDeaf(incr) {
+    const u = game.u || (game.u = {});
+    const cur = (u.HDeaf | 0) | (u.uprops?.[DEAF]?.intrinsic | 0);
+    let val = (cur & TIMEOUT) + (incr | 0);
+    if (val > TIMEOUT) val = TIMEOUT;
+    if (val < 1) val = 0;
+    set_itimeout_HDeaf((cur & ~TIMEOUT) | (val & TIMEOUT));
+}
+
+/**
+ * Copy TIMEOUT flats (make_stoned etc.) into uprops so the generic
+ * nh_timeout loop decrements the same bits C stores in one field.
+ */
+function sync_timeout_flats(u) {
+    if (!u.uprops) u.uprops = {};
+    for (const [ps, flat] of Object.entries(TIMEOUT_FLAT)) {
+        const p = Number(ps);
+        const fv = u[flat] | 0;
+        if (!(fv & TIMEOUT)) continue;
+        if (!u.uprops[p]) {
+            u.uprops[p] = { intrinsic: fv, extrinsic: 0, blocked: 0 };
+        } else if (!((u.uprops[p].intrinsic | 0) & TIMEOUT)) {
+            u.uprops[p].intrinsic =
+                ((u.uprops[p].intrinsic | 0) & ~TIMEOUT) | (fv & TIMEOUT);
+        }
+    }
+}
+
+/** C youprop.h Breathless — Magical_breathing || breathless(form). */
+function hero_magical_breath() {
+    const u = game.u || {};
+    const p = u.uprops?.[MAGICAL_BREATHING];
+    return !!((p?.intrinsic | 0) || (p?.extrinsic | 0)
+        || (u.HMagical_breathing | 0) || (u.EMagical_breathing | 0)
+        || u.Magical_breathing
+        || (game.youmonst?.data && breathless(game.youmonst.data)));
+}
+
+/* C timeout.c stoned_texts[] — index SIZE-i for remaining TIMEOUT i. */
+const STONED_TEXTS = [
+    'You are slowing down.',
+    'Your limbs are stiffening.',
+    'Your limbs have turned to stone.',
+    'You have turned to stone.',
+    'You are a statue.',
+];
+
+/**
+ * C ref: timeout.c stoned_dialogue `:136–185`.
+ * Message from remaining TIMEOUT; case 5 clears HFast; 4 stops occupation
+ * unless Popeye(STONED); 3 nomul(-3)+heal_legs(2); 2 Deaf bump + stop
+ * vomiting/slime silently. exercise(DEX) every call.
+ */
+async function stoned_dialogue() {
+    const u = game.u || {};
+    const i = intr_bits(u, STONED, 'Stoned') & TIMEOUT;
+    if (i > 0 && i <= STONED_TEXTS.length) {
+        let buf = STONED_TEXTS[STONED_TEXTS.length - i];
+        if (nolimbs(game.youmonst?.data) && strstri(buf, 'limbs')) {
+            buf = strsubst(buf, 'limbs', 'extremities');
+        }
+        await urgent_pline(buf);
+    }
+    switch (i) {
+    case 5:
+        set_HFast(0);
+        if ((game.multi || 0) > 0) nomul(0);
+        break;
+    case 4:
+        if (!Popeye(STONED)) await stop_occupation();
+        if ((game.multi || 0) > 0) nomul(0);
+        break;
+    case 3:
+        await stop_occupation();
+        nomul(-3);
+        game.multi_reason = 'getting stoned';
+        game.nomovemsg = 'You can move again.';
+        if ((intr_bits(u, WOUNDED_LEGS, 'HWounded_legs')
+                || extr_bits(u, WOUNDED_LEGS, 'EWounded_legs'))
+            && !u.usteed) {
+            await heal_legs(2);
+        }
+        break;
+    case 2: {
+        const dt = (u.HDeaf | 0) & TIMEOUT;
+        if (dt > 0 && dt < 5) set_itimeout_HDeaf(5);
+        if (intr_bits(u, VOMITING, 'Vomiting')) {
+            await make_vomiting(0, false);
+        }
+        if (intr_bits(u, SLIMED, 'Slimed')) {
+            await make_slimed(0, null);
+        }
+        break;
+    }
+    default:
+        break;
+    }
+    exercise(A_DEX, false);
+}
+
+/* C timeout.c vomiting_texts[] — You1 suffixes keyed by (TIMEOUT-1). */
+const VOMITING_TEXTS = [
+    'are feeling mildly nauseated.',
+    'feel slightly confused.',
+    "can't seem to think straight.",
+    'feel incredibly sick.',
+    'are about to vomit.',
+];
+
+/**
+ * C ref: timeout.c vomiting_dialogue `:196–265`.
+ * Switch on (Vomiting&TIMEOUT)-1 because nh_timeout has not -- yet.
+ * case 6 FALLTHROUGH 9: stun then confuse. case 0: morehungry+vomit.
+ */
+async function vomiting_dialogue() {
+    const u = game.u || {};
+    let txt = null;
+    const v = intr_bits(u, VOMITING, 'Vomiting') & TIMEOUT;
+    switch ((v - 1) | 0) {
+    case 14:
+        txt = VOMITING_TEXTS[0];
+        break;
+    case 11:
+        txt = VOMITING_TEXTS[1];
+        if (strstri(txt, ' confused')
+            && ((u.HConfusion | 0) || (u.Confusion | 0))) {
+            txt = strsubst(txt, ' confused', ' more confused');
+        }
+        break;
+    case 6:
+        await make_stunned(((u.HStun | 0) & TIMEOUT) + d(2, 4), false);
+        if (!Popeye(VOMITING)) await stop_occupation();
+        /* FALLTHROUGH */
+    case 9:
+        await make_confused(((u.HConfusion | 0) & TIMEOUT) + d(2, 4), false);
+        if ((game.multi || 0) > 0) nomul(0);
+        break;
+    case 8:
+        txt = VOMITING_TEXTS[2];
+        if (strstri(txt, ' think') && ((u.HStun | 0) || (u.Stunned | 0))) {
+            txt = strsubst(txt, "can't seem to ", "can't ");
+        }
+        break;
+    case 5:
+        txt = VOMITING_TEXTS[3];
+        break;
+    case 2:
+        txt = VOMITING_TEXTS[4];
+        if (cantvomit(game.youmonst?.data)) txt = 'gag uncontrollably.';
+        else if (Hallucination()) txt = 'are about to hurl!';
+        break;
+    case 0:
+        await stop_occupation();
+        if (!cantvomit(game.youmonst?.data)) {
+            await morehungry(20);
+            if ((u.uhs | 0) < FAINTING) {
+                await pline(`You ${Hallucination() ? 'hurl chunks' : 'vomit'}!`);
+            }
+        }
+        await vomit();
+        break;
+    default:
+        break;
+    }
+    if (txt) await pline(`You ${txt}`);
+    exercise(A_CON, false);
+}
+
+/* C timeout.c choke_texts[] / choke_texts2[] — Strangled TIMEOUT 1..5. */
+const CHOKE_TEXTS = [
+    'You find it hard to breathe.',
+    "You're gasping for air.",
+    'You can no longer breathe.',
+    "You're turning %s.",
+    'You suffocate.',
+];
+const CHOKE_TEXTS2 = [
+    'Your %s is becoming constricted.',
+    'Your blood is having trouble reaching your brain.',
+    'The pressure on your %s increases.',
+    'Your consciousness is fading.',
+    'You suffocate.',
+];
+
+/**
+ * C ref: timeout.c choke_dialogue `:294–314`.
+ * Breathless or !rn2(50) → neck/constriction table; else choke_texts
+ * (blue hcolor on the %s arm) and stop_occupation.
+ */
+async function choke_dialogue() {
+    const i = intr_bits(game.u || {}, STRANGLED, 'Strangled') & TIMEOUT;
+    if (i > 0 && i <= CHOKE_TEXTS.length) {
+        if (hero_magical_breath() || !rn2(50)) {
+            const fmt = CHOKE_TEXTS2[CHOKE_TEXTS2.length - i];
+            await urgent_pline(
+                fmt.includes('%s') ? fmt.replace('%s', body_part(NECK)) : fmt,
+            );
+        } else {
+            const str = CHOKE_TEXTS[CHOKE_TEXTS.length - i];
+            if (str.includes('%')) {
+                await urgent_pline(str.replace('%s', hcolor(NH_BLUE)));
+            } else {
+                await urgent_pline(str);
+            }
+            await stop_occupation();
+        }
+    }
+    exercise(A_STR, false);
+}
+
+/* C timeout.c sickness_texts[] — odd remaining TIMEOUT, i = j/2. */
+const SICKNESS_TEXTS = [
+    'Your illness feels worse.',
+    'Your illness is severe.',
+    "You are at Death's door.",
+];
+
+/**
+ * C ref: timeout.c sickness_dialogue `:322–345`.
+ * Food poisoning (no SICK_NONVOMITABLE) substitutes "sickness".
+ * Hallu Death's door appends mhe/vtense "inviting you in."
+ */
+async function sickness_dialogue() {
+    const u = game.u || {};
+    const j = intr_bits(u, SICK, 'Sick') & TIMEOUT;
+    const i = (j / 2) | 0;
+    if (i > 0 && i <= SICKNESS_TEXTS.length && (j % 2) !== 0) {
+        let buf = SICKNESS_TEXTS[SICKNESS_TEXTS.length - i];
+        if (((u.usick_type | 0) & SICK_NONVOMITABLE) === 0) {
+            buf = strsubst(buf, 'illness', 'sickness');
+        }
+        if (Hallucination() && strstri(buf, "Death's door")) {
+            let pronoun = mhe(game.youmonst);
+            pronoun = upstart(pronoun);
+            buf += `  ${pronoun} ${vtense(pronoun, 'are')} inviting you in.`;
+        }
+        await urgent_pline(buf);
+    }
+    exercise(A_CON, false);
+}
+
+/* C timeout.c levi_texts[] — last float_down message is not in this table. */
+const LEVI_TEXTS = [
+    'You float slightly lower.',
+    'You wobble unsteadily %s the %s.',
+];
+
+/**
+ * C ref: timeout.c levitation_dialogue `:352–378`.
+ * Skip if ELevitation or not ACCESSIBLE and not pool/lava.
+ * Odd remaining TIMEOUT; %s arm is over/in + surface/air.
+ * Named omit: surface() Underwater "bottom" (use hliquid water/lava).
+ */
+async function levitation_dialogue() {
+    const u = game.u || {};
+    const ht = intr_bits(u, LEVITATION, 'HLevitation') & TIMEOUT;
+    const i = ((ht - 1) / 2) | 0;
+    if (extr_bits(u, LEVITATION, 'ELevitation')) return;
+    const ux = u.ux | 0;
+    const uy = u.uy | 0;
+    const typ = game.level?.at?.(ux, uy)?.typ | 0;
+    const pool_or_lava = is_pool(ux, uy) || is_lava(ux, uy);
+    if (!ACCESSIBLE(typ) && !pool_or_lava) return;
+    if ((ht % 2) && i > 0 && i <= LEVI_TEXTS.length) {
+        const s = LEVI_TEXTS[LEVI_TEXTS.length - i];
+        if (s.includes('%')) {
+            const danger = pool_or_lava && !Is_waterlevel(u.uz);
+            const surf = danger
+                ? (is_lava(ux, uy) ? hliquid('lava') : hliquid('water'))
+                : 'air';
+            await urgent_pline(
+                s.replace('%s', danger ? 'over' : 'in').replace('%s', surf),
+            );
+        } else {
+            await pline(s);
+        }
+        await stop_occupation();
+    }
+}
+
+/* C timeout.c slime_texts[] — odd t, i = t/2, index SIZE-i-1. */
+const SLIME_TEXTS = [
+    'You are turning a little %s.',
+    'Your limbs are getting oozy.',
+    'Your skin begins to peel away.',
+    'You are turning into %s.',
+    'You have become %s.',
+];
+
+/**
+ * C ref: timeout.c slime_dialogue `:388–443`.
+ * t==1 sets green-slime mimic appearance + newsym. i==4 green hcolor
+ * if !Blind; other %s arms an(Hallu rndmonnam else "green slime").
+ * case 3 clears HFast; 2 Deaf bump; 1 make_stoned(0) silent.
+ */
+async function slime_dialogue() {
+    const u = game.u || {};
+    const t = intr_bits(u, SLIMED, 'Slimed') & TIMEOUT;
+    const i = (t / 2) | 0;
+    if (t === 1) {
+        if (!game.youmonst) game.youmonst = {};
+        game.youmonst.m_ap_type = M_AP_MONSTER;
+        game.youmonst.mappearance = PM_GREEN_SLIME;
+        newsym(u.ux | 0, u.uy | 0);
+    }
+    if ((t % 2) !== 0 && i >= 0 && i < SLIME_TEXTS.length) {
+        let buf = SLIME_TEXTS[SLIME_TEXTS.length - i - 1];
+        if (nolimbs(game.youmonst?.data) && strstri(buf, 'limbs')) {
+            buf = strsubst(buf, 'limbs', 'extremities');
+        }
+        if (buf.includes('%')) {
+            if (i === 4) {
+                if (!Blind()) {
+                    await urgent_pline(buf.replace('%s', hcolor(NH_GREEN)));
+                }
+            } else {
+                await urgent_pline(buf.replace(
+                    '%s',
+                    an(Hallucination() ? rndmonnam(null) : 'green slime'),
+                ));
+            }
+        } else {
+            await urgent_pline(buf);
+        }
+    }
+    switch (i) {
+    case 3:
+        set_HFast(0);
+        if (!Popeye(SLIMED)) await stop_occupation();
+        if ((game.multi || 0) > 0) nomul(0);
+        break;
+    case 2: {
+        const dt = (u.HDeaf | 0) & TIMEOUT;
+        if (dt > 0 && dt < 5) set_itimeout_HDeaf(5);
+        break;
+    }
+    case 1:
+        if (intr_bits(u, STONED, 'Stoned')) {
+            await make_stoned(0, null, KILLED_BY_AN, null);
+        }
+        break;
+    default:
+        break;
+    }
+    exercise(A_DEX, false);
+}
+
+/* C timeout.c phaze_texts[] — temporary Passes_walls prayer timeout. */
+const PHAZE_TEXTS = [
+    'You start to feel bloated.',
+    'You are feeling rather flabby.',
+];
+
+/**
+ * C ref: timeout.c phaze_dialogue `:533–543`.
+ * Skip if extrinsic or non-TIMEOUT intrinsic. Odd remaining TIMEOUT.
+ */
+async function phaze_dialogue() {
+    const u = game.u || {};
+    const hp = intr_bits(u, PASSES_WALLS, 'HPasses_walls');
+    const i = ((hp & TIMEOUT) / 2) | 0;
+    if (extr_bits(u, PASSES_WALLS, 'EPasses_walls') || (hp & ~TIMEOUT)) {
+        return;
+    }
+    if (((hp & TIMEOUT) % 2) && i > 0 && i <= PHAZE_TEXTS.length) {
+        await pline(PHAZE_TEXTS[PHAZE_TEXTS.length - i]);
+    }
+}
+
+/**
+ * C timeout.c nh_timeout `:588–623` luck timeout toward baseluck.
+ * moon / friday13 / killed_leader / fedora fedora; stone_luck +
+ * carrying(LUCKSTONE) gate the uluck step every 300 (amulet/angry)
+ * or 600 moves.
+ */
+function nh_timeout_luck(u) {
+    const flags = game.flags || {};
+    const moonphase = flags.moonphase ?? phase_of_the_moon();
+    const friday13 = flags.friday13 ?? friday_13th();
+    let baseluck = moonphase === FULL_MOON ? 1 : 0;
+    if (friday13) baseluck -= 1;
+    if (game.quest_status?.killed_leader) baseluck -= 4;
+    if (((game.urole?.mnum | 0) === PM_ARCHEOLOGIST)
+        && u.uarmh && (u.uarmh.otyp | 0) === FEDORA) {
+        baseluck += 1;
+    }
+    const uluck = u.uluck | 0;
+    const moves = game.moves | 0;
+    const period = (u.uhave?.amulet || u.uhave_amulet || u.ugangr) ? 300 : 600;
+    if (uluck !== baseluck && period && (moves % period) === 0) {
+        const time_luck = stone_luck(false);
+        const nostone = !carrying(LUCKSTONE) && !stone_luck(true);
+        if (uluck > baseluck && (nostone || time_luck < 0)) u.uluck = uluck - 1;
+        else if (uluck < baseluck && (nostone || time_luck > 0)) {
+            u.uluck = uluck + 1;
+        }
+    }
+}
+
 /**
  * C ref: timeout.c nh_timeout — decrement timed intrinsics; on TIMEOUT
  * expiry run property-specific handlers.
- * Envelope: WOUNDED_LEGS → heal_legs(0) + stop_occupation;
+ * Envelope: luck baseluck + stone_luck (D-1792); Stoned/Slimed/Vomiting/
+ * Strangled/Sick/HLevitation/HPasses_walls dialogues before --;
+ * WOUNDED_LEGS → heal_legs(0) + stop_occupation;
  * CONFUSION → set_itimeout(1) + make_confused(0,TRUE) + stop_occupation;
  * BLINDED → set_itimeout(1) + make_blinded(0,TRUE) + stop_occupation (D-0928);
  * FUMBLING → slip_or_trip + nomul(-2) + incr_itimeout rnd(20) (D-0692);
@@ -256,17 +698,33 @@ function incr_itimeout_HFumbling(incr) {
  * Remaining uprops TIMEOUT (incl. INVULNERABLE from #wizintrinsic) —
  * generic -- like C's for (upp = u.uprops; …) (D-0928 #1168); expiry
  * switch cases for those props still deferred (silent clear).
- * Named omissions: luck baseluck; Stoned/Slimed/Sick/… dialogues;
- * STUNNED/SEE_INVIS/HALLUC/SLEEPY/… expiry messages;
- * FLYING timed-land (wizintrinsic); GLIB `make_glib(0)` inventory on expiry; ublesscnt (in allmain); ugallop; delayed
- * killers; defer_decor; full ice/mount slip_or_trip arms;
- * you_unwere callers beyond mtimedone (pray TROUBLE / potion).
- * u.uinvulnerable early-return freezes all TIMEOUT (D-0928 #1171).
+ * Named omissions: region_dialogue / sleep_dialogue; STONED/SLIMED
+ * done_timeout / slimed_to_death; STUNNED/SEE_INVIS/HALLUC/SLEEPY/…
+ * expiry messages; FLYING timed-land (wizintrinsic); GLIB `make_glib(0)`
+ * inventory on expiry; ublesscnt (in allmain); ugallop; delayed killers;
+ * defer_decor; full ice/mount slip_or_trip arms; you_unwere callers
+ * beyond mtimedone (pray TROUBLE / potion); surface() Underwater bottom.
+ * u.uinvulnerable early-return freezes all TIMEOUT (D-0928 #1171) after
+ * luck (C: luck still runs).
  */
 export async function nh_timeout() {
     const u = game.u || (game.u = {});
+    /* C timeout.c :597–621 — luck toward baseluck before invulnerable. */
+    nh_timeout_luck(u);
     // C: if (u.uinvulnerable) return; — freezes ALL TIMEOUT decrement (D-0928 #1171)
     if (u.uinvulnerable) return;
+    /* C timeout.c :623–637 — property dialogues before uprops --. */
+    if (intr_bits(u, STONED, 'Stoned')) await stoned_dialogue();
+    if (intr_bits(u, SLIMED, 'Slimed')) await slime_dialogue();
+    if (intr_bits(u, VOMITING, 'Vomiting')) await vomiting_dialogue();
+    if (intr_bits(u, STRANGLED, 'Strangled')) await choke_dialogue();
+    if (intr_bits(u, SICK, 'Sick')) await sickness_dialogue();
+    if (intr_bits(u, LEVITATION, 'HLevitation') & TIMEOUT) {
+        await levitation_dialogue();
+    }
+    if (intr_bits(u, PASSES_WALLS, 'HPasses_walls') & TIMEOUT) {
+        await phaze_dialogue();
+    }
     // C: for (upp = u.uprops; …) if ((intrinsic & TIMEOUT) && !(--intrinsic & TIMEOUT))
 
     const hw = u.HWounded_legs | 0;
@@ -394,6 +852,7 @@ export async function nh_timeout() {
     // resistances, …) only live in uprops and were never decremented — so
     // #wizintrinsic leftovers like invulnerable [30] never cleared (D-0928).
     if (!u.uprops) u.uprops = {};
+    sync_timeout_flats(u);
     for (let p = 1; p <= LAST_PROP; p++) {
         if (TIMEOUT_DEDICATED.has(p)) continue;
         const prop = u.uprops[p];
@@ -495,6 +954,56 @@ export async function nh_timeout() {
 
     // C: run_timers() at end of nh_timeout — corpse rot / object timers
     await run_timers();
+}
+
+/**
+ * C ref: timeout.c do_storms `:1846–1892` — once-per-turn from
+ * moveloop_core after dosounds. Non-stormy levels return before
+ * any RNG (`!stormy || rn2(8)` short-circuit).
+ * Named omit: `buzz(BZ_M_SPELL(BZ_OFS_AD(AD_ELEC)), 8, …)` /
+ * `dobuzz` (zap.c; lightning bolt). Strike position/dir RNG still
+ * runs when a storm fires.
+ */
+export async function do_storms() {
+    const flags = game.level?.flags;
+    if (!flags?.stormy || rn2(8)) return;
+
+    for (let nstrike = rnd(64); nstrike <= 64; nstrike *= 2) {
+        let count = 0;
+        let x = 0;
+        let y = 0;
+        do {
+            x = rnd(COLNO - 1);
+            y = rn2(ROWNO);
+        } while (++count < 100
+            && game.level?.at?.(x, y)?.typ !== CLOUD);
+
+        if (count < 100) {
+            const dirx = rn2(3) - 1;
+            const diry = rn2(3) - 1;
+            if (dirx !== 0 || diry !== 0) {
+                /* C: gb.buzzer = 0; buzz(BZ_M_SPELL(BZ_OFS_AD(AD_ELEC)), …) */
+                game.buzzer = null;
+            }
+        }
+    }
+
+    const u = game.u || {};
+    if (game.level?.at?.(u.ux | 0, u.uy | 0)?.typ === CLOUD) {
+        Soundeffect(se_kaboom_boom_boom, 80);
+        await pline('Kaboom!!!  Boom!!  Boom!!');
+        incr_itimeout_HDeaf(rn1(20, 30));
+        if (game.disp) game.disp.botl = true;
+        if (game.flags) game.flags.botl = true;
+        if (!u.uinvulnerable) {
+            await stop_occupation();
+            nomul(-3);
+            game.multi_reason = 'hiding from thunderstorm';
+            game.nomovemsg = null;
+        }
+    } else {
+        await You_hear('a rumbling noise.');
+    }
 }
 
 /* ---- light / burn (timeout.c) — D-0978 ---- */

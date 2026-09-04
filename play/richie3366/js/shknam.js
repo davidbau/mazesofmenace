@@ -38,8 +38,9 @@ import {
 } from './monsters.js';
 import { make_engr_at } from './engrave.js';
 import { cvt_sdoor_to_door } from './detect.js';
-import { newsym } from './display.js';
+import { newsym, Hallucination } from './display.js';
 import { obj_resists } from './dogmove.js';
+import { in_town } from './hack.js';
 
 const VEGETARIAN_CLASS = MAXOCLASSES + 1;
 const VEGGY = 3; // objclass.h
@@ -468,6 +469,16 @@ export function Shknam(mtmp) {
     const nam = shkname(mtmp);
     if (!nam) return nam;
     return nam.charAt(0).toUpperCase() + nam.slice(1);
+}
+
+/** C ref: shknam.c is_izchak `:907–924`. Town Izchak; skip "+" like shkname. */
+export function is_izchak(shkp, override_hallucination) {
+    if (Hallucination() && !override_hallucination) return false;
+    if (!shkp?.isshk) return false;
+    if (!in_town(shkp.mx | 0, shkp.my | 0)) return false;
+    let shknm = ESHK(shkp)?.shknam || '';
+    if (shknm && !/[A-Za-z]/.test(shknm[0])) shknm = shknm.slice(1);
+    return shknm === 'Izchak';
 }
 
 /** C ref: shknam.c nameshk */

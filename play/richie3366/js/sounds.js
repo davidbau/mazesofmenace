@@ -5,18 +5,21 @@
 //         growl (pet abuse; D-0836);
 //         set_voice (D-1752; !SND_SPEECH no-op). SetVoice is sndprocs.h.
 //         sound_speak (D-1761; !SND_SPEECH no-op). SoundSpeak is sndprocs.h.
-//         maybe_gasp (D-1762); beg (D-1763).
+//         maybe_gasp (D-1762); beg (D-1763);
+//         maybe_play_sound (D-1807; USER_SOUNDS compiled out);
+//         domonnoise remaps + MS_ORACLE/PRIEST/SELL (D-1808).
 
 import { game } from './gstate.js';
 import {
     pline, canseemon, canspotmon, verbalize, Hallucination, map_invisible,
+    glyph_at, glyph_to_mon,
 } from './display.js';
 import { getdir } from './lock.js';
 import { mon_at } from './uhitm.js';
 import { Monnam } from './do_name.js';
 import { objects_at, noveltitle } from './mkobj.js';
 import { Death_quote } from './files.js';
-import { u_have_novel } from './invent.js';
+import { u_have_novel, currency } from './invent.js';
 import { objectNames } from './generated/objects_data.js';
 import { COIN_CLASS } from './objects.js';
 import { rn2 } from './rng.js';
@@ -43,7 +46,10 @@ import { mhis } from './fountain.js';
 import { could_seduce, SYSOPT_SEDUCE } from './mhitm.js';
 import { doseduce } from './mhitu.js';
 import { SetVoice, voice_death } from './sndprocs.js';
-import { p_coaligned } from './priest.js';
+import { p_coaligned, priest_talk } from './priest.js';
+import { genus } from './mon.js';
+import { doconsult } from './rumors.js';
+import { shk_chat } from './shk.js';
 
 /**
  * C ref: sounds.c set_voice `:2160–2182`. Body is `#ifdef SND_SPEECH`;
@@ -56,6 +62,18 @@ export function set_voice(mtmp, tone, volume, moreinfo) {
     void tone;
     void volume;
     void moreinfo;
+}
+
+/**
+ * C ref: sounds.c maybe_play_sound `:1658–1673` (`#ifdef USER_SOUNDS`).
+ * macosx-minimal has no `-DUSER_SOUNDS`, so C `vpline` does not call
+ * this. When USER_SOUNDS is on, the first check is
+ * `soundprocs.sound_play_usersound`; contest has no SND_LIB so that
+ * pointer is null and the soundmap regex walk never runs.
+ * Named: SOUND= / `add_sound_mapping` / `sound_matches_message`.
+ */
+export function maybe_play_sound(msg) {
+    void msg;
 }
 
 /**
@@ -76,6 +94,8 @@ const PM_HOBBIT = monsterNames.indexOf('PM_HOBBIT');
 const PM_ARCHEOLOGIST = monsterNames.indexOf('PM_ARCHEOLOGIST');
 const PM_TOURIST = monsterNames.indexOf('PM_TOURIST');
 const PM_DEATH = monsterNames.indexOf('PM_DEATH');
+const PM_GECKO = monsterNames.indexOf('PM_GECKO');
+const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
 
 /** C ref: pline.c You_hear — acoustics/Deaf; Unaware/Underwater deferred. */
 async function You_hear(line) {
@@ -775,50 +795,87 @@ function tribute_info() {
     return t;
 }
 
+/** C ref: sounds.c mon_is_gecko `:658–674`. */
+function mon_is_gecko(mon) {
+    if ((mon?.data?.mndx | 0) === PM_GECKO) return true;
+    if ((mon?.data?.mndx | 0) === PM_LONG_WORM) return false;
+    return glyph_to_mon(glyph_at(mon.mx, mon.my)) === PM_GECKO;
+}
+
 /**
- * C ref: sounds.c domonnoise — MS_BARK + MS_SEDUCE + MS_LEADER +
- * MS_HUMANOID (D-1618 peaceful + hostile "threatens you.";
- * D-1606 endgame mplayer_talk) + MS_BOAST hostile giants
- * (D-1626; peaceful FALLTHROUGH into MS_HUMANOID) + MS_RIDER
- * Death tribute (D-1653; u_have_novel / Death_quote / ucase
- * pline). Other MS_* named omitted in C-JS-MAP; unknown →
- * ECMD_OK (silent). FULL_MOON howl needs night() — deferred;
- * falls through to bark. MS_PRIEST priest_talk deferred
- * (non-leader temple priests).
+ * C ref: sounds.c domonnoise `:678–1242` (D-1808 remaps + ORACLE/PRIEST/SELL).
+ * Other MS_* named omitted; unknown still ECMD_TIME. night() howl named.
  */
 export async function domonnoise(mtmp) {
     if (!mtmp) return ECMD_OK;
     if (game.u?.Deaf) return ECMD_OK;
-    let msound = mon_msound(mtmp);
     const ptr = mtmp.data;
-    // C: leader_m_id && msound > MS_ANIMAL → MS_LEADER (poly-safe).
+    // C :691–693 is_silent(ptr) && !isshk before remaps (inline
+    // mondata.h; do not add a named is_silent clone — region.js).
+    if ((ptr?.msound | 0) === MS_SILENT && !mtmp.isshk) return ECMD_OK;
+
+    let msound = ptr?.msound | 0;
     const qs = game.quest_status;
+    // C :697–715 remaps: leader, guardian/genus, isshk, orc, moo, gecko.
     if (qs?.leader_m_id
         && (mtmp.m_id | 0) === (qs.leader_m_id | 0)
         && msound > MS_ANIMAL) {
         msound = MS_LEADER;
+    } else if (msound === MS_GUARDIAN
+        && (ptr?.mndx | 0) !== (game.urole?.guardnum | 0)) {
+        msound = mons(genus(ptr.mndx | 0, 1))?.msound | 0;
+    } else if (mtmp.isshk) {
+        msound = MS_SELL;
     } else if (msound === MS_ORC
         && (same_race(ptr, game.youmonst?.data)
             || same_race(ptr, mons(game.urace?.mnum))
             || Hallucination())) {
-        // C :705–709: orc/gnome speech when same race or Hallu.
         msound = MS_HUMANOID;
+    } else if (msound === MS_MOO && !mtmp.mtame) {
+        msound = MS_BELLOW;
+    } else if (Hallucination() && mon_is_gecko(mtmp)) {
+        msound = MS_SELL;
     }
-    if (msound === 0 && !mtmp.isshk) return ECMD_OK;
+
+    // C :720–721 before talking (monster may teleport).
+    if (!canspotmon(mtmp)) {
+        map_invisible(mtmp.mx, mtmp.my);
+    }
 
     let pline_msg = null;
     let verbl_msg = null;
     const moves = game.moves | 0;
     const hungrytime = mtmp.edog?.hungrytime | 0;
 
-    if (msound === MS_LEADER) {
-        // C: MS_LEADER/NEMESIS/GUARDIAN → quest_chat; then ECMD_TIME
+    if (msound === MS_ORACLE) {
+        return await doconsult(mtmp);
+    }
+    if (msound === MS_PRIEST) {
+        await priest_talk(mtmp);
+        return ECMD_TIME;
+    }
+    if (msound === MS_LEADER || msound === MS_NEMESIS
+        || msound === MS_GUARDIAN) {
         const { quest_chat } = await import('./quest.js');
         await quest_chat(mtmp);
         return ECMD_TIME;
     }
 
-    if (msound === MS_BARK) {
+    if (msound === MS_SELL) {
+        // C :734–743 Hallu GEICO unless silent or isshk && !rn2(2).
+        if (!Hallucination() || (ptr?.msound | 0) === MS_SILENT
+            || (mtmp.isshk && !rn2(2))) {
+            await shk_chat(mtmp);
+        } else {
+            verbl_msg = `15 minutes could save you 15 ${currency(15)}.`;
+        }
+    } else if (msound === MS_MOO) {
+        // C :895–897 Soundeffect compiled out.
+        pline_msg = 'moos.';
+    } else if (msound === MS_BELLOW) {
+        // C :898–903 Soundeffect compiled out.
+        pline_msg = 'bellows!';
+    } else if (msound === MS_BARK) {
         // C: FULL_MOON && night() → "howls." — night() deferred
         if (mtmp.mpeaceful) {
             if (mtmp.mtame
@@ -970,7 +1027,7 @@ export async function domonnoise(mtmp) {
             verbl_msg = 'Who do you think you are, War?';
         }
     }
-    // Other msound cases deferred (guardian/isshk/gecko remaps named)
+    // Other msound cases deferred (vampire / bribe / were night() / …)
 
     // C :1222–1241 pline_msg then mcan verbl_msg_mcan then verbl_msg.
     // verbl_msg_mcan still named (no cancelled-speech arm).
@@ -993,7 +1050,7 @@ export async function domonnoise(mtmp) {
         }
         return ECMD_TIME;
     }
-    return ECMD_OK;
+    return ECMD_TIME;
 }
 
 /**

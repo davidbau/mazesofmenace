@@ -10,11 +10,11 @@ import {
     is_vampshifter, is_watch, is_mind_flayer, is_covetous,
     is_floater, is_flyer, amorphous, nolimbs, M1_SLITHY, MZ_SMALL,
     grounded, telepathic, mons, metallivorous, humanoid, is_neuter, G_UNIQ,
-    corpse_eater,
+    corpse_eater, is_demon,
 } from './monsters.js';
 import { gettrack } from './track.js';
 import { wipe_engr_at } from './engrave.js';
-import { objects_at, obj_extract_self, splitobj, delobj, eaten_stat, is_organic, is_mines_prize, is_soko_prize } from './mkobj.js';
+import { objects_at, obj_extract_self, splitobj, delobj, eaten_stat, is_organic, is_mines_prize, is_soko_prize, g_at, place_object, stackobj } from './mkobj.js';
 import { find_defensive, use_defensive, find_misc, use_misc, find_offensive, searches_for_item } from './muse.js';
 import { hero_conflict, resist_conflict } from './mondata.js';
 import {
@@ -27,7 +27,7 @@ import {
     maketrap,
     count_traps,
 } from './trap.js';
-import { mattacku } from './mhitu.js';
+import { mattacku, unstuck, expels } from './mhitu.js';
 import { mattackm, mdisplacem, monkilled, grow_up } from './mhitm.js';
 import { castmu, AD_SPEL, AD_CLRC } from './mcastu.js';
 import { cansee, couldsee, vision_recalc, recalc_block_point, m_cansee } from './vision.js';
@@ -40,26 +40,27 @@ import {
     P_AXE, P_PICK_AXE, W_WEP, SQSRCHRADIUS, COLNO, ROWNO, NATTK,
     MON_POLE_DIST, AKLYS_LIM, engulfing_u, M_AP_TYPE, M_AP_OBJECT,
     M_AP_FURNITURE, M_AP_NOTHING, M_AP_MONSTER, KILLED_BY_AN,
-    STRAT_WAITFORU, STRAT_WAITMASK, STRAT_CLOSE,
+    STRAT_WAITFORU, STRAT_WAITMASK, STRAT_CLOSE, STRAT_ARRIVE,
+    ROOM, SHOPBASE,
     Upolyd, OBJ_FLOOR, is_pit, Is_waterlevel,
     STAIRS, LADDER, IRONBARS, WEB, W_NONDIGGABLE, ARM, HEAD,
     M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED,
     MON_FLOOR, NORMAL_SPEED, G_GENOD, RLOC_MSG,
 } from './const.js';
-import { is_pool, is_lava, in_town, stop_occupation, noattacks, disturb_buried_zombies, losehp, finish_maybe_wail, dissolve_bars } from './hack.js';
+import { is_pool, is_lava, in_town, stop_occupation, noattacks, disturb_buried_zombies, losehp, finish_maybe_wail, dissolve_bars, SURFACE_AT, in_rooms } from './hack.js';
 import {
     CLOAK_OF_DISPLACEMENT, COIN_CLASS, WEAPON_CLASS, ARMOR_CLASS,
     GEM_CLASS, FOOD_CLASS, AMULET_CLASS, POTION_CLASS, SCROLL_CLASS,
     WAND_CLASS, RING_CLASS, SPBOOK_CLASS, ROCK_CLASS, BALL_CLASS,
-    objectNames,
+    objectNames, is_axe,
 } from './objects.js';
 import {
     Monnam, y_monnam, Adjmonnam, mon_nam, Amonnam, Hallucination,
     type_is_pname,
 } from './do_name.js';
 import { doname, distant_name, ansimpleoname, vtense, an, xname, makeplural } from './objnam.js';
-import { mpickobj } from './makemon.js';
-import { may_dig, mdig_tunnel } from './dig.js';
+import { mpickobj, set_malign } from './makemon.js';
+import { may_dig, mdig_tunnel, bury_an_obj } from './dig.js';
 import { MON_WEP, mon_wield_item, select_rwep } from './weapon.js';
 import { lined_up, m_has_launcher_and_ammo } from './mthrowu.js';
 import { is_pole } from './wield.js';
@@ -74,10 +75,10 @@ import { picking_lock } from './lock.js';
 import { mbodypart } from './polyself.js';
 import {
     newsym, pline, canseemon as display_canseemon, pline_mon, pline_xy,
-    canspotmon as display_canspotmon, sensemon, Norep, verbalize,
+    canspotmon as display_canspotmon, sensemon, Norep, verbalize, set_msg_xy,
 } from './display.js';
 import { dog_move, finish_meating } from './dogmove.js';
-import { worm_move, worm_nomove, see_wsegs, worm_known } from './worm.js';
+import { worm_move, worm_nomove, see_wsegs, worm_known, wormhitu } from './worm.js';
 import { shk_move, gd_move, pri_move } from './shk.js';
 import { tactics } from './wizard.js';
 import { rn2, rnd, d } from './rng.js';
@@ -141,6 +142,8 @@ const AT_SPIT = 10;
 const AT_BREA = 12;
 const AT_GAZE = 15;
 const AT_MAGC = 255;
+/** C ref: monflag.h enum ms_sounds — MS_BRIBE. */
+const MS_BRIBE = 33;
 
 /** C ref: monst.h mon_offmap — mstate != MON_FLOOR */
 export function mon_offmap(mon) {
@@ -152,8 +155,15 @@ function is_obj_mappear(mon, otyp) {
     return M_AP_TYPE(mon) === M_AP_OBJECT && mon?.mappearance === otyp;
 }
 
-/** C ref: steal.c findgold — first GOLD_PIECE on chain (no container walk). */
+/** C ref: steal.c findgold — first GOLD_PIECE on chain (no container walk).
+ *  JS invent is an array (D-1691); minvent stays an nobj chain. */
 function findgold(argchain) {
+    if (Array.isArray(argchain)) {
+        for (const o of argchain) {
+            if (o && o.otyp === GOLD_PIECE) return o;
+        }
+        return null;
+    }
     let chain = argchain;
     while (chain && chain.otyp !== GOLD_PIECE) chain = chain.nobj;
     return chain || null;
@@ -274,7 +284,7 @@ function can_carry(mtmp, otmp) {
  * Named omissions: uball/uchain; unicorn GEMSTONE material gate partial
  * (mlet check only); FOOD searches_for_item corpse/tin/egg arms.
  */
-function mon_would_take_item(mtmp, otmp) {
+export function mon_would_take_item(mtmp, otmp) {
     const ptr = mtmp.data;
     const pctload = Math.trunc((curr_mon_load(mtmp) * 100) / max_mon_load(mtmp));
     if (mtmp.mtame && otmp.cursed) return false;
@@ -460,14 +470,10 @@ function m_search_items(mtmp, gg) {
     return false;
 }
 
-/** C ref: obj.h is_pick / is_axe — dig-tool skill predicates. */
+/** C ref: obj.h is_pick — dig-tool skill predicate. */
 function is_pick(obj) {
     if (!obj) return false;
     return (game.objects?.[obj.otyp]?.oc_skill ?? 0) === P_PICK_AXE;
-}
-function is_axe(obj) {
-    if (!obj) return false;
-    return (game.objects?.[obj.otyp]?.oc_skill ?? 0) === P_AXE;
 }
 
 function closed_door_at(x, y) {
@@ -643,12 +649,10 @@ function closed_door(x, y) {
 
 /**
  * C ref: monmove.c accessible — ACCESSIBLE(SURFACE_AT) && !closed_door.
- * DRAWBRIDGE_UP under-typ deferred (named omission).
+ * SURFACE_AT reports db_under_typ for DRAWBRIDGE_UP (D-1103).
  */
-function accessible(x, y) {
-    const loc = game.level?.at?.(x, y);
-    if (!loc) return false;
-    return ACCESSIBLE(loc.typ) && !closed_door(x, y);
+export function accessible(x, y) {
+    return ACCESSIBLE(SURFACE_AT(x, y)) && !closed_door(x, y);
 }
 
 /**
@@ -1011,7 +1015,7 @@ function can_hide_under_obj(obj) {
  * C ref: mondata.c locomotion — verb for how a monster moves.
  * Used by hideunder You_see ("slither" for snakes).
  */
-function locomotion(ptr, def) {
+export function locomotion(ptr, def) {
     const cap = !!(def && def[0] === def[0].toUpperCase()
         && def[0] !== def[0].toLowerCase());
     const pick = (lo, hi) => (cap ? hi : lo);
@@ -2047,9 +2051,66 @@ export async function mind_blast(mtmp) {
     }
 }
 
+/**
+ * C ref: monmove.c m_arrival `:572–579` — always clear STRAT_ARRIVE.
+ * Returns -1 so dochug continues (no special arrival action).
+ */
+function m_arrival(mon) {
+    mon.mstrategy = (mon.mstrategy | 0) & ~STRAT_ARRIVE;
+    return -1;
+}
+
+/**
+ * C ref: monmove.c release_hero `:361–372`. Swallowed → expels; else
+ * unstuck unless the hero's form sticks. Spends the monster's turn.
+ */
+async function release_hero(mon) {
+    const u = game.u || {};
+    if (mon !== u.ustuck) return;
+    if (u.uswallow) {
+        await expels(mon, mon.data, true);
+    } else if (!sticks(game.youmonst?.data)) {
+        await unstuck(mon);
+        await pline('You get released!');
+    }
+}
+
+/**
+ * C ref: monmove.c leppie_stash `:1153–1171`. After a successful flee
+ * teleport, a leprechaun that cannot see the hero may bury carried gold
+ * on an ordinary ROOM tile. Named: full steal.c mdrop_obj saddle/shop/
+ * flooreffects/extrinsics (this call site is unworn gold on ROOM !t_at).
+ */
+async function leppie_stash(mtmp) {
+    if ((mtmp.data?.mndx | 0) !== PM_LEPRECHAUN) return;
+    if ((mtmp.mhp | 0) < 1) return;
+    if (m_canseeu(mtmp)) return;
+    if (in_rooms(mtmp.mx, mtmp.my, SHOPBASE)) return;
+    const loc = game.level?.at?.(mtmp.mx, mtmp.my);
+    if ((loc?.typ | 0) !== ROOM) return;
+    if (t_at(mtmp.mx, mtmp.my)) return;
+    if (!rn2(4)) return;
+    const gold = findgold(mtmp.minvent);
+    if (!gold) return;
+    // C mdrop_obj(mtmp, gold, FALSE): distant_name before extract
+    distant_name(gold, doname);
+    extract_from_minvent(mtmp, gold, false, true);
+    place_object(gold, mtmp.mx, mtmp.my);
+    stackobj(gold);
+    const floorGold = g_at(mtmp.mx, mtmp.my);
+    if (floorGold) await bury_an_obj(floorGold, null);
+}
+
 // C ref: monmove.c dochug()
 export async function dochug(mtmp) {
-    // C: STRAT_ARRIVE m_arrival deferred
+    const mdat = mtmp.data;
+    let status = MMOVE_NOTHING;
+    let panicattk = false;
+
+    if ((mtmp.mstrategy | 0) & STRAT_ARRIVE) {
+        const res = m_arrival(mtmp);
+        if (res >= 0) return res;
+    }
     // C: clear WAITFORU when hero seen or wounded
     if ((mtmp.mstrategy & STRAT_WAITFORU)
         && (m_canseeu(mtmp) || (mtmp.mhp | 0) < (mtmp.mhpmax | 0))) {
@@ -2087,11 +2148,11 @@ export async function dochug(mtmp) {
     // — teleport costs a turn. rn2(40) always runs when mflee is set.
     // C: rloc(mtmp, RLOC_MSG) — appear pline may --More-- pending topline
     // (D-0886). Must await; flags 0 dropped the post-place message.
-    if (mtmp.mflee && !rn2(40) && can_teleport(mtmp.data)
+    if (mtmp.mflee && !rn2(40) && can_teleport(mdat)
         && !mtmp.iswiz
         && !noteleport_level(mtmp)) {
         if (await rloc(mtmp, RLOC_MSG)) {
-            // leppie_stash deferred
+            await leppie_stash(mtmp);
             return 0;
         }
     }
@@ -2106,10 +2167,18 @@ export async function dochug(mtmp) {
         mtmp.mflee = 0;
     }
 
+    // C: youprop.h Conflict (HConflict||EConflict)
+    const Conflict = hero_conflict();
+    // C: cease conflict-induced swallow/grab once Conflict has ended
+    if (mtmp === game.u?.ustuck && mtmp.mpeaceful && !mtmp.mconf && !Conflict) {
+        await release_hero(mtmp);
+        return 0;
+    }
+
     set_apparxy(mtmp);
     // C: covetous tactics before distfleeck (may mnexto / spend turn via
     // mstate). Named: target_on pursuit / STRAT_HEAL stairs body in wizard.js.
-    if (is_covetous(mtmp.data)) {
+    if (is_covetous(mdat)) {
         await tactics(mtmp);
         // C: if (mtmp->mstate) return 0 — MON_FLOOR is 0
         if (mtmp.mstate) return 0;
@@ -2124,12 +2193,30 @@ export async function dochug(mtmp) {
         if ((await use_misc(mtmp)) !== 0) return 1;
     }
 
-    const mdat = mtmp.data;
-    // C: youprop.h Conflict (HConflict||EConflict) — worn RIN_CONFLICT via
-    // hero_conflict until setworn oc_oprop is ported (D-0406/D-0413).
-    const Conflict = hero_conflict();
+    // C: Demonic Blackmail — mux-mismatch whisper/anger. Named:
+    // minion.c demon_talk (mux==hero, paid-off / demand path).
+    const u0 = game.u || {};
+    if (nearby && (mdat?.msound | 0) === MS_BRIBE && mtmp.mpeaceful
+        && !mtmp.mtame && !u0.uswallow) {
+        if (mtmp.mux !== u0.ux || mtmp.muy !== u0.uy) {
+            await pline(
+                `${cansee(mtmp.mux, mtmp.muy) ? Monnam(mtmp) : 'It'} whispers at thin air.`,
+            );
+            if (is_demon(game.youmonst?.data)) {
+                if (!(await tele_restrict(mtmp))) {
+                    await rloc(mtmp, RLOC_MSG);
+                }
+            } else {
+                mtmp.minvis = mtmp.perminvis = 0;
+                if (display_canseemon(mtmp)) set_msg_xy(mtmp.mx, mtmp.my);
+                await pline(`${Amonnam(mtmp)} gets angry!`);
+                mtmp.mpeaceful = 0;
+                set_malign(mtmp);
+            }
+        }
+        // else demon_talk(mtmp) named omit
+    }
 
-    // C: MS_BRIBE demon_talk deferred (between muse and watch)
     // C ref: monmove.c dochug — watch_on_duty / mind_blast before wield
     if (is_watch(mdat)) {
         await watch_on_duty(mtmp);
@@ -2168,8 +2255,8 @@ export async function dochug(mtmp) {
         if (cres >= 0) return cres;
     }
 
-    // C: short-circuit OR — wanderer rn2(4) is evaluated before mpeaceful
-    // Named omission: S_LEPRECHAUN findgold arm (between minvis and wanderer).
+    // C: short-circuit OR — wanderer rn2(4) is evaluated before mpeaceful.
+    // S_LEPRECHAUN findgold sits between minvis and wanderer (C `:892–894`).
     const want_move = (
         !nearby
         || mtmp.mflee
@@ -2177,14 +2264,14 @@ export async function dochug(mtmp) {
         || mtmp.mconf
         || mtmp.mstun
         || (mtmp.minvis && !rn2(3))
+        || (mdat?.mlet === 'S_LEPRECHAUN' && !findgold(game.invent)
+            && (findgold(mtmp.minvent) || rn2(2)))
         || (is_wanderer(mdat) && !rn2(4))
         || (Conflict && !mtmp.iswiz)
         || (!mtmp.mcansee && !rn2(4))
         || mtmp.mpeaceful
     );
 
-    let status = MMOVE_NOTHING;
-    let panicattk = false;
     // PHASE THREE: move if not adjacent-hostile (attack path)
     if (want_move) {
         // C ref: monmove.c dochug — undirected castmu before m_move
@@ -2217,16 +2304,24 @@ export async function dochug(mtmp) {
         // for NOMOVES/NOTHING/DONE (appearance still changes when idle).
         if (status === MMOVE_NOMOVES || status === MMOVE_NOTHING
             || status === MMOVE_DONE) {
-            // C: vault guard vanished → behave as died (isgd deferred)
-            if (game.u?.Hallucination && mtmp.mx) {
+            // C: vault guard vanished → behave as died
+            if (mtmp.isgd && ((mtmp.mhp | 0) < 1 || !(mtmp.mx | 0))) {
+                return 1;
+            }
+            if (game.u?.Hallucination) {
                 newsym(mtmp.mx, mtmp.my);
             }
         }
         if (status === MMOVE_MOVED) {
-            // C: unstuck grabber / helpless after disturb still named
+            // C: confused grabber wandered off → let go
+            if (mtmp === game.u?.ustuck && mdistu(mtmp) > 2) {
+                await unstuck(mtmp);
+            }
             if (grounded(mdat)) {
                 disturb_buried_zombies(mtmp.mx | 0, mtmp.my | 0);
             }
+            // C: maybe it stepped on a trap and fell asleep
+            if (mtmp.msleeping || !mtmp.mcanmove) return 0;
             /* Monsters can move and then shoot on same turn;
                C: ranged_attk_available || AT_WEAP || find_offensive */
             if (nearby
@@ -2257,7 +2352,15 @@ export async function dochug(mtmp) {
             && uhp > 0) {
             if (await mattacku(mtmp)) return 1;
         }
+        if (mtmp.wormno) {
+            if (await wormhitu(mtmp)) return 1;
+        }
     }
+    // C: special speeches for quest monsters
+    if (!(mtmp.msleeping || !mtmp.mcanmove) && nearby) {
+        await quest_talk(mtmp);
+    }
+    // C: MS_CUSS !rn2(5) cuss() named omit (wizard.c cuss)
     return 0;
 }
 

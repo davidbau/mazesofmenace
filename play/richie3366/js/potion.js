@@ -472,7 +472,7 @@ async function peffect_see_invisible(otmp) {
     if (otmp.otyp === POT_FRUIT_JUICE) {
         u.uhunger = (u.uhunger || 0)
             + (otmp.odiluted ? 5 : 10) * (2 + bcsign(otmp));
-        newuhs(false);
+        await newuhs(false);
         return;
     }
     // POT_SEE_INVISIBLE — make_blinded(0) deferred
@@ -605,6 +605,15 @@ function itimeout_incr(old, incr) {
     return itimeout((old & TIMEOUT) + (incr | 0));
 }
 
+/** C potion.c set_itimeout / incr_itimeout — TIMEOUT bits; slot `{ intrinsic }`. */
+export function set_itimeout(which, val) {
+    if (!which) return;
+    which.intrinsic = ((which.intrinsic | 0) & ~TIMEOUT) | itimeout(val);
+}
+export function incr_itimeout(which, incr) {
+    set_itimeout(which, itimeout_incr(which?.intrinsic | 0, incr));
+}
+
 /** Sync flat HFast with uprops[FAST].intrinsic (HFast ≡ that slot). */
 function set_HFast(val) {
     const u = game.u || (game.u = {});
@@ -689,8 +698,9 @@ function set_itimeout_HLevitation(val) {
 
 /**
  * C potion.c incr_itimeout(&HLevitation, incr) — TIMEOUT bits only.
+ * Caller hack.c spoteffects levitation-timeout defer (D-1799).
  */
-function incr_itimeout_HLevitation(incr) {
+export function incr_itimeout_HLevitation(incr) {
     const cur = hlev_bits();
     set_HLevitation((cur & ~TIMEOUT) | itimeout_incr(cur, incr));
 }
@@ -1432,7 +1442,6 @@ async function peffect_invisibility(otmp) {
  * C ref: potion.c peffect_booze
  * potion_unkn + taste pline; !blessed → make_confused(d(2+uhs,8));
  * !odiluted → healup(1); hunger + newuhs; exercise WIS; cursed pass-out.
- * newuhs hunger messages / faint deferred (field update only).
  */
 async function peffect_booze(otmp) {
     potion_unkn++;
@@ -1450,7 +1459,7 @@ async function peffect_booze(otmp) {
     }
     if (!otmp.odiluted) await healup(1, 0, false, false);
     u.uhunger = (u.uhunger ?? 900) + 10 * (2 + bcsign(otmp));
-    newuhs(false);
+    await newuhs(false);
     exercise(A_WIS, false);
     if (otmp.cursed) {
         await pline('You pass out.');
@@ -1470,7 +1479,7 @@ async function peffect_water(otmp) {
     if (!otmp.blessed && !otmp.cursed) {
         await pline(`This tastes like ${hliquid('water')}.`);
         u.uhunger = (u.uhunger | 0) + rnd(10);
-        newuhs(false);
+        await newuhs(false);
         return;
     }
     potion_unkn++;

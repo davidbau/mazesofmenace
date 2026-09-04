@@ -493,7 +493,7 @@ function temperature_shift(ptr) {
  * C home (mon.js / teleport.js keep cycle clones).
  * Named omit: newmonhp ×3 / grow_up threshold still unnamed users.
  */
-function is_home_elemental(ptr) {
+export function is_home_elemental(ptr) {
     if (ptr?.mlet !== 'S_ELEMENTAL') return false;
     switch (ptr.mndx ?? -1) {
     case pm('AIR_ELEMENTAL'):

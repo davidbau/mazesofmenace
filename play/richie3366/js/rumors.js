@@ -1,15 +1,26 @@
 // rumors.js — Rumor file load + getrumor for graffiti / fortune cookies.
-// C ref: rumors.c getrumor / get_rnd_line / outrumor; makedefs.c padline + xcrypt packing.
+// C ref: rumors.c getrumor / get_rnd_line / outrumor / outoracle / doconsult;
+//         makedefs.c padline + xcrypt packing.
 
-import { rn2 } from './rng.js';
+import { rn2, rnd } from './rng.js';
 import { game } from './gstate.js';
 import { A_WIS, exercise } from './attrib.js';
-import { pline } from './display.js';
+import { pline, verbalize } from './display.js';
+import { SetVoice, voice_oracle } from './sndprocs.js';
+import { Monnam } from './do_name.js';
+import { ynq, y_n } from './getline.js';
+import { currency } from './invent.js';
+import { money_cnt, money2mon } from './shk.js';
+import { record_achievement } from './insight.js';
+import { more_experienced, newexplevel } from './exper.js';
+import { show_text_pages } from './pager.js';
+import { ACH_ORCL, ECMD_OK, ECMD_TIME } from './const.js';
 import {
     TRUE_RUMOR_BUF,
     FALSE_RUMOR_BUF,
     MD_PAD_RUMORS,
 } from './generated/rumors_data.js';
+import { ORACLE_RECORDS } from './generated/oracles_data.js';
 
 export const BY_ORACLE = 0;
 export const BY_COOKIE = 1;
@@ -113,8 +124,12 @@ export async function outrumor(truth, mechanism) {
     if (!line) line = 'NetHack rumors file closed for renovation.';
 
     if (mechanism === BY_ORACLE) {
-        await pline(`True to her word, the Oracle says: `);
-        await pline(line);
+        // C :557–563 nested rn2 short-circuit then SetVoice + verbalize1.
+        const adv = !rn2(4) ? 'offhandedly '
+            : (!rn2(3) ? 'casually ' : (rn2(2) ? 'nonchalantly ' : ''));
+        await pline(`True to her word, the Oracle ${adv}says: `);
+        SetVoice(null, 0, 80, voice_oracle);
+        await verbalize(line);
         return;
     }
     if (mechanism === BY_COOKIE)
@@ -122,4 +137,121 @@ export async function outrumor(truth, mechanism) {
     if (mechanism === BY_COOKIE || mechanism === BY_PAPER)
         await pline('It reads:');
     await pline(line);
+}
+
+/** C rumors.c init_oracles `:576–595`. Index 0 is special_oracle. */
+function init_oracles() {
+    const n = ORACLE_RECORDS.length | 0;
+    game.oracle_cnt = n;
+    game.oracle_loc = [];
+    for (let i = 0; i < n; i++) game.oracle_loc.push(i);
+}
+
+/** C rumors.c outoracle `:638–693`. Rule #2 embed. Named: save/rest oracle_loc. */
+export async function outoracle(special, delphi) {
+    if ((game.oracle_flg | 0) < 0
+        || ((game.oracle_flg | 0) > 0 && (game.oracle_cnt | 0) === 0)) {
+        return;
+    }
+    if ((game.oracle_flg | 0) === 0) {
+        init_oracles();
+        game.oracle_flg = 1;
+        if ((game.oracle_cnt | 0) === 0) return;
+    }
+    if ((game.oracle_cnt | 0) <= 1 && !special) return;
+
+    const loc = game.oracle_loc;
+    let oracle_idx = special ? 0 : rnd((game.oracle_cnt | 0) - 1);
+    const recIdx = loc[oracle_idx] | 0;
+    if (!special) {
+        loc[oracle_idx] = loc[--game.oracle_cnt];
+    }
+    const rec = ORACLE_RECORDS[recIdx] || [];
+    const lines = [];
+    if (delphi) {
+        lines.push(special
+            ? 'The Oracle scornfully takes all your gold and says:'
+            : 'The Oracle meditates for a moment and then intones:');
+    } else {
+        lines.push('The message reads:');
+    }
+    lines.push('');
+    for (const row of rec) lines.push(row);
+    await show_text_pages(lines);
+}
+
+/** C rumors.c doconsult `:695–767`. */
+export async function doconsult(oracl) {
+    game.multi = 0;
+    const umoney = money_cnt(game.invent);
+    const minor_cost = 50;
+    const major_cost = 500 + 50 * (game.u?.ulevel | 0);
+
+    if (!oracl) {
+        await pline('There is no one here to consult.');
+        return ECMD_OK;
+    }
+    if (!oracl.mpeaceful) {
+        await pline(`${Monnam(oracl)} is in no mood for consultations.`);
+        return ECMD_OK;
+    }
+    if (!umoney) {
+        await pline('You have no gold.');
+        return ECMD_OK;
+    }
+
+    const qbuf = `"Wilt thou settle for a minor consultation?" (${minor_cost} ${currency(minor_cost)})`;
+    const ans = await ynq(qbuf);
+    let u_pay;
+    switch (ans) {
+    default:
+    case 'q':
+        return ECMD_OK;
+    case 'y':
+        if (umoney < minor_cost) {
+            await pline("You don't even have enough gold for that!");
+            return ECMD_OK;
+        }
+        u_pay = minor_cost;
+        break;
+    case 'n':
+        if (umoney <= minor_cost
+            || ((game.oracle_cnt | 0) === 1 || (game.oracle_flg | 0) < 0)) {
+            return ECMD_OK;
+        }
+        {
+            const q2 = `"Then dost thou desire a major one?" (${major_cost} ${currency(major_cost)})`;
+            if ((await y_n(q2)) !== 'y') return ECMD_OK;
+            u_pay = umoney < major_cost ? umoney : major_cost;
+        }
+        break;
+    }
+    money2mon(oracl, u_pay);
+    if (game.flags) game.flags.botl = true;
+    const u = game.u || (game.u = {});
+    const ue = u.uevent || (u.uevent = {});
+    if (!ue.major_oracle && !ue.minor_oracle) {
+        record_achievement(ACH_ORCL);
+    }
+    let add_xpts = 0;
+    if (u_pay === minor_cost) {
+        await outrumor(1, BY_ORACLE);
+        if (!ue.minor_oracle) {
+            add_xpts = Math.trunc(u_pay / (ue.major_oracle ? 25 : 10));
+        }
+        ue.minor_oracle = true;
+    } else {
+        const cheapskate = u_pay < major_cost;
+        await outoracle(cheapskate, true);
+        if (!cheapskate && !ue.major_oracle) {
+            add_xpts = Math.trunc(u_pay / (ue.minor_oracle ? 25 : 10));
+        }
+        ue.major_oracle = true;
+        exercise(A_WIS, !cheapskate);
+    }
+    if (add_xpts) {
+        more_experienced(add_xpts, Math.trunc(u_pay / 50));
+        await newexplevel();
+    }
+    return ECMD_TIME;
 }

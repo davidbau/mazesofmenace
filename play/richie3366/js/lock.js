@@ -16,7 +16,7 @@ import {
     AUTOUNLOCK_APPLY_KEY, STRAT_WAITMASK, TT_PIT, M_AP_TYPE,
     M_AP_FURNITURE, M_AP_OBJECT, FINGER,
     CMDQ_DIR, CMDQ_KEY, CQ_CANNED, CQ_REPEAT,
-    xytodir,
+    xytodir, getdirInp,
 } from './const.js';
 import { cmdq_pop, cmdq_clear } from './cmd.js';
 import { rnl, rn2, rnd } from './rng.js';
@@ -33,11 +33,13 @@ import {
 import { doname, xname, cxname, singular } from './objnam.js';
 import { obj_resists } from './dogmove.js';
 import { setuwep } from './wield.js';
-import { PM_ROGUE, PM_WIZARD } from './generated/monsters_data.js';
+import { PM_ROGUE, PM_WIZARD, PM_GRID_BUG } from './generated/monsters_data.js';
 import { m_at, wake_nearto } from './mon.js';
-import { getdir_cmdassist } from './dothrow.js';
 import { b_trapped, t_at } from './trap.js';
 import { currency, cmdq_add_key } from './invent.js';
+import { show_text_pages, dowhatdoes_core } from './pager.js';
+import { visctrl } from './dokeylist.js';
+import { highc } from './hacklib.js';
 
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
@@ -55,8 +57,8 @@ const NUMPAD_DIR = {
 
 /**
  * C ref: cmd.c movecmd(sym, MV_ANY) + GETDIR_SELF/SELF2 + <> + optional numpad.
- * Named omit: mouse `_` getpos; dxdy_moveok grid-bug; trailing confdir
- * (callers that need it, e.g. use_whip, already call confdir).
+ * Named omit: mouse `_` getpos; trailing confdir (callers that need it,
+ * e.g. use_whip / getdir_zap, already call confdir).
  */
 function apply_dirsym(ch, key) {
     const u = game.u || (game.u = {});
@@ -111,6 +113,115 @@ function apply_dirsym(ch, key) {
         }
     }
     return false;
+}
+
+/**
+ * C ref: cmd.c dxdy_moveok `:3901–3907` — NODIAG(u.umonnum) (hack.h:
+ * only PM_GRID_BUG) zeros a diagonal and returns u.dx || u.dy.
+ * getdir `:4112` You_cant when this is false after a horizontal movecmd.
+ */
+export function dxdy_moveok() {
+    const u = game.u || (game.u = {});
+    if (u.dx && u.dy && (u.umonnum | 0) === PM_GRID_BUG) {
+        u.dx = u.dy = 0;
+    }
+    return !!(u.dx || u.dy);
+}
+
+/**
+ * C ref: cmd.c show_direction_keys `:4121–4165` — hjkl/yubn grid for
+ * help_dir. Default !num_pad letters (cmd_from_func named). centerchar
+ * is '.' at getdir (not a prefix) or ' ' after a prefix key.
+ */
+function help_dir_move_lines(centerchar, nodiag) {
+    const c = centerchar || ' ';
+    if (nodiag) {
+        return [
+            '             k   ',
+            '             |   ',
+            `          h- ${c} -l`,
+            '             |   ',
+            '             j   ',
+        ];
+    }
+    return [
+        '          y  k  u',
+        '           \\ | / ',
+        `          h- ${c} -l`,
+        '           / | \\ ',
+        '          b  j  n',
+    ];
+}
+
+/**
+ * C ref: cmd.c help_dir `:4168–4296` — NHW_TEXT cmdassist for invalid
+ * getdir / '?'. Prefix-key messages are #if 0 (nhUse). display_nhwindow
+ * TEXT → dmore → xwaitforspace(quitchars) so only space/CR/LF/ESC
+ * dismiss (NEED_MORE key-eating). Returns true if shown.
+ */
+async function help_dir(sym, spkey, msg) {
+    const disp = game.nhDisplay;
+    if (!disp) return false;
+
+    // C: prefixhandling = (spkey != gc.Cmd.spkeys[NHKF_ESC]); getdir
+    // always passes ESC so this is false.
+    const prefixhandling = (spkey | 0) !== 27;
+    const nodiag = (game.u?.umonnum | 0) === PM_GRID_BUG;
+    const lines = [];
+
+    if (msg) {
+        lines.push(`cmdassist: ${msg}`);
+        lines.push('');
+    }
+
+    const symch = (typeof sym === 'string' && sym.length)
+        ? sym.charAt(0)
+        : (typeof sym === 'number' && sym ? String.fromCharCode(sym) : '\0');
+    const code = symch.charCodeAt(0);
+    // C hacklib.c letter: '@'..'Z' || 'a'..'z'; '[' is extra
+    const is_letter = (code >= 64 && code <= 90) || (code >= 97 && code <= 122);
+    if (!prefixhandling && (is_letter || symch === '[')) {
+        const up = highc(symch);
+        const upch = typeof up === 'string' ? up.charAt(0) : String.fromCharCode(up);
+        const ctrl = (upch.charCodeAt(0) - 65) + 1;
+        const explain = dowhatdoes_core(ctrl);
+        const wiz_only = 'EFGIVW'.includes(upch);
+        const wizard = !!(game.flags?.debug || game.flags?.wizard || game.wizard);
+        if (explain && (!wiz_only || wizard)) {
+            const guide = wiz_only ? '' : ' as specified in the Guidebook';
+            lines.push(`Are you trying to use ^${upch}${guide}?`);
+            lines.push('');
+            lines.push(explain);
+            lines.push('');
+            lines.push('To use that command, hold down the <Ctrl> key as a shift');
+            lines.push(`and press the <${upch}> key.`);
+            lines.push('');
+        }
+    }
+
+    let valid = 'Valid direction keys';
+    if (prefixhandling) valid += ' to do that';
+    if (nodiag) valid += ' in your current form';
+    valid += ' are:';
+    lines.push(valid);
+    lines.push(...help_dir_move_lines(prefixhandling ? ' ' : '.', nodiag));
+
+    if (!prefixhandling) {
+        lines.push('');
+        lines.push('          <  up');
+        lines.push('          >  down');
+        const numPad = !!(game.iflags?.num_pad || game.Cmd?.num_pad);
+        const selfvis = visctrl((numPad ? 's' : '.').charCodeAt(0));
+        lines.push(`       ${selfvis.padStart(4, ' ')}  direct at yourself`);
+    }
+
+    if (msg) {
+        lines.push('');
+        lines.push('(Suppress this message with !cmdassist in config file.)');
+    }
+
+    await show_text_pages(lines);
+    return true;
 }
 
 const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
@@ -359,8 +470,7 @@ function nhgetch_to_dirsym(k) {
  * gi.in_doagain) then yn_function / readchar, clear WIN_MESSAGE, ^R
  * retry, cmdq_add_key(CQ_REPEAT) when !in_doagain. Queue-popped
  * DIR/KEY skip the REPEAT record (goto got_dirsym).
- * Named: mouse `_` getpos; full redraw_cmd bind; readchar_queue;
- * fuzzer; input_state.
+ * Named: mouse `_` getpos; full redraw_cmd bind; readchar_queue; fuzzer.
  * @param {string|null|undefined} prompt
  * @returns {Promise<string>} dirsym
  */
@@ -382,6 +492,9 @@ export async function getdir_read_dirsym(prompt) {
     const query = (prompt && prompt.charAt(0) !== '^')
         ? prompt : 'In what direction?';
     for (;;) {
+        // C `:3981` retry: program_state.input_state = getdirInp
+        if (!game.program_state) game.program_state = {};
+        game.program_state.input_state = getdirInp;
         let dirsym;
         if (game.in_doagain) {
             // C `:3983–3984` — in_doagain || *readchar_queue → readchar
@@ -403,37 +516,77 @@ export async function getdir_read_dirsym(prompt) {
  * yn_function((s && *s != '^') ? s : "In what direction?", NULL, '\0',
  * FALSE) and clear_nhwindow(WIN_MESSAGE). Self ./s; <>; movecmd
  * walk/run/rush; optional numpad when number_pad on.
- * Named omit: mouse `_` getpos; help_dir / cmdassist / "strange
- * direction" (NEED_MORE key-eating; throw path keeps
- * getdir_cmdassist); trailing confdir(FALSE) (use_whip already
- * confdirs; adding it here would double confuse-whip);
- * fuzzer; dxdy_moveok; yn_function_menu; input_state.
+ * Invalid / '?' → help_dir + cmdassist / "What a strange direction!"
+ * (NEED_MORE via NHW_TEXT xwaitforspace). Horizontal move then
+ * dxdy_moveok (grid-bug diagonal You_cant).
+ * Named omit: mouse `_` getpos; trailing confdir(FALSE) (use_whip /
+ * getdir_zap already confdir; adding it here would double);
+ * fuzzer; yn_function_menu.
  */
 export async function getdir(prompt) {
-    const dirsym = await getdir_read_dirsym(prompt);
-    const ch = dirsym || '\0';
-    const key = ch.charCodeAt(0);
-    if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
-        return false;
+    for (;;) {
+        const dirsym = await getdir_read_dirsym(prompt);
+        const ch = dirsym || '\0';
+        const key = ch.charCodeAt(0);
+        if (!game.u) game.u = {};
+        const u = game.u;
+        const numPad = !!(game.iflags?.num_pad || game.Cmd?.num_pad);
+
+        // C `:4023–4025` — NHKF_GETDIR_SELF / SELF2
+        if (ch === '.' || ch === 's' || (numPad && ch === '5')) {
+            u.dx = u.dy = u.dz = 0;
+            return true;
+        }
+
+        const applied = apply_dirsym(ch, key);
+        // C movecmd returns !u.dz — up/down set dz and are not is_mov
+        const is_mov = applied && !(u.dz | 0);
+        if (!applied) {
+            // C movecmd failure zeros dz, leaves leftover dx/dy (D-1387)
+            u.dz = 0;
+        }
+
+        if (!is_mov && !(u.dz | 0)) {
+            // C `:4095–4111` — quitchars return 0 without help_dir
+            if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
+                return false;
+            }
+            const help_requested = ch === '?';
+            let did_help = false;
+            if (help_requested || game.flags?.cmdassist !== false) {
+                const hsym = (prompt && String(prompt).charAt(0) === '^')
+                    ? ch : '\0';
+                did_help = await help_dir(
+                    hsym,
+                    27, // Cmd.spkeys[NHKF_ESC]
+                    help_requested ? null : 'Invalid direction key!',
+                );
+                if (help_requested) continue;
+            }
+            if (!did_help) {
+                await pline('What a strange direction!');
+            }
+            return false;
+        }
+        if (is_mov && !dxdy_moveok()) {
+            await pline("You can't orient yourself that direction.");
+            return false;
+        }
+        // C `:4115–4116` if (!u.dz) confdir(FALSE) — caller-local
+        return true;
     }
-    if (!game.u) game.u = {};
-    return apply_dirsym(ch, key);
 }
 
-/** C ref: cmd.c get_adjacent_loc — getdir (cmdassist) then adjacent cell. */
+/** C ref: cmd.c get_adjacent_loc — getdir then adjacent cell. */
 async function get_adjacent_loc(prompt, emsg) {
     // C: getdir(prompt) — invalid key → help_dir cmdassist then fail
-    const dir = await getdir_cmdassist(prompt);
-    if (!dir) {
+    if (!(await getdir(prompt))) {
         await pline('Never mind.');
         return null;
     }
-    if (!game.u) game.u = {};
-    game.u.dx = dir.dx | 0;
-    game.u.dy = dir.dy | 0;
-    game.u.dz = 0;
-    const x = (game.u.ux || 0) + (game.u.dx || 0);
-    const y = (game.u.uy || 0) + (game.u.dy || 0);
+    const u = game.u || {};
+    const x = (u.ux || 0) + (u.dx || 0);
+    const y = (u.uy || 0) + (u.dy || 0);
     if (x < 1 || x >= COLNO || y < 0 || y >= ROWNO) {
         if (emsg) await pline(emsg);
         return null;
@@ -654,14 +807,10 @@ export async function doclose() {
     }
 
     // C: getdir(NULL) — cmdassist NHW_TEXT on invalid key, then cancel
-    const dir = await getdir_cmdassist(null);
-    if (!dir) return false;
-    u.dx = dir.dx;
-    u.dy = dir.dy;
-    u.dz = 0;
+    if (!(await getdir(null))) return false;
 
-    const x = (u.ux | 0) + (dir.dx | 0);
-    const y = (u.uy | 0) + (dir.dy | 0);
+    const x = (u.ux | 0) + (u.dx | 0);
+    const y = (u.uy | 0) + (u.dy | 0);
     const Passes_walls = !!(u.Passes_walls
         || passes_walls(game.youmonst?.data));
     if (x === (u.ux | 0) && y === (u.uy | 0) && !Passes_walls) {

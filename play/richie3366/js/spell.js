@@ -1401,7 +1401,7 @@ async function spelleffects_check(spell) {
         if (hungr > (game.u.uhunger ?? 900) - 3) {
             hungr = (game.u.uhunger ?? 900) - 3;
         }
-        morehungry(hungr);
+        await morehungry(hungr);
     }
 
     const chance = percent_success(spell);

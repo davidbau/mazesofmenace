@@ -6,7 +6,10 @@
 import { game } from './gstate.js';
 import { rn2, rn1, rnd, d } from './rng.js';
 import { pline, canseemon, canspotmon, verbalize, You_feel, newsym, impossible } from './display.js';
-import { Monnam } from './do_name.js';
+import { Monnam, mon_nam } from './do_name.js';
+import { getlin } from './getline.js';
+import { currency } from './invent.js';
+import { money_cnt, money2mon } from './shk.js';
 import { an } from './objnam.js';
 import { makemon, mkclass, mkclass_aligned, newemin, mongets, mpickobj } from './makemon.js';
 import { is_lminion, enexto } from './teleport.js';
@@ -529,4 +532,35 @@ export async function gain_guardian_angel() {
             }
         }
     }
+}
+
+/** C ref: minion.c bribe `:360–388`. */
+export async function bribe(mtmp, prompt) {
+    const umoney = money_cnt(game.invent);
+    const buf = await getlin(prompt);
+    let offer = 0;
+    const raw = String(buf ?? '');
+    if (raw && raw !== '\x1b') {
+        const n = parseInt(raw, 10);
+        if (Number.isFinite(n)) offer = n;
+    }
+    if (offer < 0) {
+        await pline(`You try to shortchange ${mon_nam(mtmp)}, but fumble.`);
+        return 0;
+    }
+    if (offer === 0) {
+        await pline('You refuse.');
+        return 0;
+    }
+    if (offer >= umoney) {
+        await pline(`You give ${mon_nam(mtmp)} all your gold.`);
+        offer = umoney;
+    } else {
+        await pline(
+            `You give ${mon_nam(mtmp)} ${offer} ${currency(offer)}.`,
+        );
+    }
+    money2mon(mtmp, offer);
+    if (game.flags) game.flags.botl = true;
+    return offer;
 }

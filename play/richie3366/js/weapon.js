@@ -5,7 +5,7 @@
 //         dothrow.c should_mulch_missile / multishot_class_bonus.
 
 import { game } from './gstate.js';
-import { rn2, rnd, rnl } from './rng.js';
+import { rn2, rnd, rnl, d } from './rng.js';
 import {
     flush_topl_more, pline, You_feel, canseemon, bot, pline_mon, newsym,
 } from './display.js';
@@ -16,13 +16,15 @@ import { yn_function } from './getline.js';
 import { Monnam, mon_nam, s_suffix } from './do_name.js';
 import { doname, xname, vtense, The, distant_name, otense } from './objnam.js';
 import {
-    WEAPON_CLASS, GEM_CLASS, TOOL_CLASS, objectNames, objectNameStrs,
+    WEAPON_CLASS, GEM_CLASS, TOOL_CLASS, BALL_CLASS, CHAIN_CLASS,
+    objectNames, objectNameStrs, is_axe, LEATHER, SILVER,
 } from './objects.js';
 import {
-    is_ammo, ammo_and_launcher, is_missile, mwelded,
+    is_ammo, ammo_and_launcher, is_missile, mwelded, is_weptool,
 } from './wield.js';
 import {
     is_lord, is_prince, strongmonst, mon_hates_blessings, mon_hates_silver,
+    bigmonst, thick_skinned, is_wooden, hates_light,
 } from './monsters.js';
 import { which_armor, bypass_obj } from './worn.js';
 import {
@@ -43,7 +45,7 @@ import {
     NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE,
     NO_WEAPON_WANTED, W_WEP, W_ARMS, W_ARMG,
     W_ARM, W_ARMC, W_ARMH, W_ARMF, W_ARMU, W_RINGL, W_RINGR,
-    ECMD_OK, STR18, Upolyd, MAXULEV, HAND,
+    ECMD_OK, STR18, Upolyd, MAXULEV, HAND, WT_IRON_BALL_INCR,
 } from './const.js';
 import { obj_extract_self, place_object, stackobj } from './mkobj.js';
 import { flooreffects } from './do.js';
@@ -61,7 +63,7 @@ import {
     PM_HEALER, PM_CLERIC, PM_WIZARD,
     monsterNames,
 } from './generated/monsters_data.js';
-import { spec_abon, shade_glare } from './artifact.js';
+import { spec_abon, shade_glare, spec_dbon } from './artifact.js';
 
 const PM_PONY = monsterNames.indexOf('PM_PONY');
 const PM_SHADE = monsterNames.indexOf('PM_SHADE');
@@ -167,12 +169,6 @@ async function possibly_unwield_drop(mon, obj, mw_tmp, polyspot) {
     }
 }
 
-/** C ref: obj.h is_weptool */
-function is_weptool(otmp) {
-    return otmp?.oclass === TOOL_CLASS
-        && ((game.objects?.[otmp.otyp]?.oc_skill | 0) !== P_NONE);
-}
-
 /** C hack.c rounddiv */
 function rounddiv(x, y) {
     if (!y) return 0;
@@ -206,10 +202,10 @@ export function hitval(otmp, mon) {
 }
 
 /**
- * C ref: weapon.c dmgval — uses objects[].oc_wsdam / oc_wldam.
- * Shade zero via shade_glare (D-1354; C `:307–308`). Large-monster
- * otyp switch, thick-skin / silver / blessed / axe / iron-ball /
- * artifact_light / spec_dbon / erosion deferred.
+ * C ref: weapon.c dmgval `:215–356` — oc_wsdam/oc_wldam + otyp switch,
+ * spe, thick_skinned/leather, shade_glare (D-1354), heavy iron ball,
+ * blessed/axe/silver/artifact_light bonus rnd(), spec_dbon double-damage
+ * half, greatest_erosion. hitval spec_abon is D-0611, not here.
  */
 export function dmgval(otmp, mon) {
     if (!otmp) return 0;
@@ -219,13 +215,41 @@ export function dmgval(otmp, mon) {
     if (n === 'CREAM_PIE') return 0;
 
     let tmp = 0;
-    // C: bigmonst(mon->data); callers that pass null treat as small (hero).
     const ptr = mon?.data;
-    const big = !!(ptr && ((ptr.msize | 0) >= 3 /* MZ_LARGE */));
-    if (big) {
+    if (bigmonst(ptr)) {
         const wld = od?.oc_wldam | 0;
         if (wld) tmp = rnd(wld);
-        // large-monster otyp switch bonuses deferred
+        switch (n) {
+        case 'IRON_CHAIN':
+        case 'CROSSBOW_BOLT':
+        case 'MORNING_STAR':
+        case 'PARTISAN':
+        case 'RUNESWORD':
+        case 'ELVEN_BROADSWORD':
+        case 'BROADSWORD':
+            tmp++;
+            break;
+        case 'FLAIL':
+        case 'RANSEUR':
+        case 'VOULGE':
+            tmp += rnd(4);
+            break;
+        case 'ACID_VENOM':
+        case 'HALBERD':
+        case 'SPETUM':
+            tmp += rnd(6);
+            break;
+        case 'BATTLE_AXE':
+        case 'BARDICHE':
+        case 'TRIDENT':
+            tmp += d(2, 4);
+            break;
+        case 'TSURUGI':
+        case 'DWARVISH_MATTOCK':
+        case 'TWO_HANDED_SWORD':
+            tmp += d(2, 6);
+            break;
+        }
     } else {
         const wsd = od?.oc_wsdam | 0;
         if (wsd) tmp = rnd(wsd);
@@ -264,12 +288,44 @@ export function dmgval(otmp, mon) {
         tmp += otmp.spe | 0;
         if (tmp < 0) tmp = 0;
     }
-    // C `:304–308` thick_skinned still named; shade after it.
+
+    if ((od?.oc_material | 0) <= LEATHER && thick_skinned(ptr)) tmp = 0;
     if ((ptr?.mndx | 0) === PM_SHADE && !shade_glare(otmp)) tmp = 0;
+
+    if (n === 'HEAVY_IRON_BALL' && tmp > 0) {
+        let wt = od?.oc_weight | 0;
+        if ((otmp.owt | 0) > wt) {
+            wt = Math.trunc(((otmp.owt | 0) - wt) / WT_IRON_BALL_INCR);
+            tmp += rnd(4 * wt);
+            if (tmp > 25) tmp = 25;
+        }
+    }
+
+    if (Is_weapon || otmp.oclass === GEM_CLASS || otmp.oclass === BALL_CLASS
+            || otmp.oclass === CHAIN_CLASS) {
+        let bonus = 0;
+        if (otmp.blessed && mon_hates_blessings(mon)) bonus += rnd(4);
+        if (is_axe(otmp) && is_wooden(ptr)) bonus += rnd(4);
+        if ((od?.oc_material | 0) === SILVER && mon_hates_silver(mon)) {
+            bonus += rnd(20);
+        }
+        if (artifact_light(otmp) && otmp.lamplit && hates_light(ptr)) {
+            bonus += rnd(8);
+        }
+        if (bonus > 1 && otmp.oartifact && spec_dbon(otmp, mon, 25) >= 25) {
+            bonus = Math.trunc((bonus + 1) / 2);
+        }
+        tmp += bonus;
+    }
+
+    if (tmp > 0) {
+        tmp -= greatest_erosion(otmp);
+        if (tmp < 1) tmp = 1;
+    }
     return tmp;
 }
 
-/** C ref: dothrow.c greatest_erosion */
+/** C ref: obj.h greatest_erosion — max(oeroded, oeroded2). */
 function greatest_erosion(obj) {
     const a = obj.oeroded | 0;
     const b = obj.oeroded2 | 0;
@@ -423,7 +479,6 @@ const AXE = objectNames.indexOf('AXE');
 const BATTLE_AXE = objectNames.indexOf('BATTLE_AXE');
 const CORPSE = objectNames.indexOf('CORPSE');
 const CLUB = objectNames.indexOf('CLUB');
-const SILVER = 14; // objclass.h
 const M2_GIANT = 0x00002000; // monflag.h
 
 /** C hwep[] — weapon.c preference order */

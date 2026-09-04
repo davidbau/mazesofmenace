@@ -12,6 +12,7 @@ import {
     STRAT_WAITFORU, AD_SPEL,
     XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
     LL_CONDUCT, Upolyd, P_BARE_HANDED_COMBAT, P_TWO_WEAPON_COMBAT, P_BASIC, P_WHIP,
+    A_CHAOTIC, INTRINSIC, CORPSTAT_BURIED, CORPSTAT_NONE, ONAME_NO_FLAGS,
     P_DAGGER, P_AXE, P_SABER,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, NATTK,
     M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE, M_AP_NOTHING,
@@ -42,7 +43,7 @@ import {
     ammo_and_launcher, is_weptool, is_launcher, is_ammo, is_missile,
     drop_uswapwep,
 } from './wield.js';
-import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI } from './generated/monsters_data.js';
+import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI, PM_ARCHEOLOGIST, PM_WIZARD, PM_HUMAN } from './generated/monsters_data.js';
 import {
     find_mac, get_mattk, make_corpse, monstone, mhitm_knockback, monkilled,
     troll_baned, mhitm_ad_poly, could_seduce, shade_miss,
@@ -58,6 +59,7 @@ import {
     flaming, touch_petrifies, is_vampshifter, is_animal, amphibious,
     is_swimmer, slithy,
     is_whirly, passes_walls, hates_silver, humanoid,
+    is_human, always_hostile, is_unicorn,
     MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
 } from './monsters.js';
 import {
@@ -66,15 +68,15 @@ import {
 import {
     monnear, record_mvitals_died, seemimic, wakeup, setmangry, dist2,
     wake_nearto, m_carrying, healmon, zombie_maker, zombie_form,
-    mtrapped_in_pit,
+    mtrapped_in_pit, LEVEL_SPECIFIC_NOCORPSE,
 } from './mon.js';
-import { monflee, m_move } from './monmove.js';
+import { monflee, m_move, accessible } from './monmove.js';
 import { livelog_printf } from './pline.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { explode, mon_explodes, adtyp_to_expltype } from './explode.js';
 import { rehumanize, body_part, mbodypart } from './polyself.js';
-import { mon_nam, Monnam, x_monnam, x_monnam_tame, Hallucination, type_is_pname, pmname, a_monnam } from './do_name.js';
-import { artifact_hit, youmonst, is_art } from './artifact.js';
+import { mon_nam, Monnam, x_monnam, x_monnam_tame, Hallucination, type_is_pname, pmname, a_monnam, safe_oname } from './do_name.js';
+import { artifact_hit, youmonst, is_art, artifact_exists } from './artifact.js';
 import { xname, vtense, The, An, an, singular, makeplural, cxname, simpleonames, otense } from './objnam.js';
 import { abuse_dog, tamedog } from './dog.js';
 import { makemon, makemon_appear_msg, newcham } from './makemon.js';
@@ -105,6 +107,7 @@ const MZ_HUMAN = MZ_MEDIUM;
 const AT_BOOM = 14; // monattk.h — explode on death
 const NATTK_CC = 6;
 const FIGURINE = objectNames.indexOf('FIGURINE');
+const BOULDER = objectNames.indexOf('BOULDER');
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 const PM_ORACLE = monsterNames.indexOf('PM_ORACLE');
 
@@ -439,7 +442,7 @@ function attacktype_aatyp(ptr, aatyp) {
 /**
  * C ref: mon.c corpse_chance — AT_BOOM then always-TRUE arms then !rn2(tmp).
  * magr + was_swallowed: contained boom inside an engulfer (gulpum D-1264).
- * Named omissions: Vlad/lich dust; gulpmu you-as-mdef boom; LEVEL_SPECIFIC_NOCORPSE.
+ * Named omissions: Vlad/lich dust; gulpmu you-as-mdef boom.
  */
 async function corpse_chance(mon, magr = null, was_swallowed = false) {
     const mdat = mon.data;
@@ -471,7 +474,9 @@ async function corpse_chance(mon, magr = null, was_swallowed = false) {
             return false;
         }
     }
-    // C: LEVEL_SPECIFIC_NOCORPSE deferred
+    // C: must duplicate LEVEL_SPECIFIC_NOCORPSE here (xkilled also
+    // checks it so treasure is skipped too).
+    if (LEVEL_SPECIFIC_NOCORPSE(mdat)) return false;
     // C: ((bigmonst||lizard) && !mcloned) || golem || mplayer || rider || isshk
     if ((((bigmonst(mdat) || (mdat.mndx ?? -1) === PM_LIZARD) && !mon.mcloned)
         || is_golem(mdat) || is_mplayer(mdat) || is_rider(mdat) || mon.isshk)) {
@@ -519,8 +524,7 @@ function first_weapon_hit(weapon) {
 /**
  * C ref: mon.c xkilled treasure drop — mkobj(RANDOM_CLASS) then food/size
  * filters and place. flooreffects pool/lava/hot-potion/boulder omitted
- * (ordinary floor → place). Artifact un-create before oversized delobj
- * deferred.
+ * (ordinary floor → place).
  */
 function xkilled_treasure_drop(mtmp, mdat, mndx, x, y) {
     const mv = game.mvitals?.[mndx]?.mvflags ?? 0;
@@ -538,7 +542,10 @@ function xkilled_treasure_drop(mtmp, mdat, mndx, x, y) {
         delobj(otmp);
     } else if ((mdat?.msize ?? 0) < MZ_HUMAN && otyp !== FIGURINE
         && ((otmp.owt | 0) > 30 || !!(game.objects?.[otyp]?.oc_big))) {
-        // C: artifact_exists un-create deferred — ordinary RANDOM_CLASS
+        // C: artifact_exists(..., FALSE, ONAME_NO_FLAGS) then delobj
+        if (otmp.oartifact) {
+            artifact_exists(otmp, safe_oname(otmp), false, ONAME_NO_FLAGS);
+        }
         delobj(otmp);
     } else {
         // C: !flooreffects(...) → place_object + stackobj
@@ -550,17 +557,19 @@ function xkilled_treasure_drop(mtmp, mdat, mndx, x, y) {
 /**
  * C ref: mon.c xkilled — hero kill; treasure !rn2(6) then corpse_chance
  * → make_corpse; cleanup luck/align before experience.
- * Named omissions: LEVEL_SPECIFIC_NOCORPSE, accessible||is_pool gate,
- * flooreffects non-floor arms, wasinside/burycorpse,
- * human-murder Telepat/luck-2 arm, unicorn coaligned luck-5,
- * quest leader/nemesis/guardian/priest special adjalign arms,
- * artifact un-create on oversized; tame You_hear Soundeffect.
+ * Named omissions: flooreffects non-floor arms, wasinside spoteffects,
+ * floor-boulder nocorpse (sobj_at 12 clones, no export), MAIL_DAEMON,
+ * human-murder Blind_telepat see_monsters, quest leader/nemesis/
+ * guardian/priest special adjalign arms, tame You_hear Soundeffect,
+ * be_sad / vamp_rise_msg / thrownobj-into-engulfer.
  */
 export async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
     const nomsg = (xkill_flags & XKILL_NOMSG) !== 0;
     const nocorpse = (xkill_flags & XKILL_NOCORPSE) !== 0;
     const noconduct = (xkill_flags & XKILL_NOCONDUCT) !== 0;
     const x = mtmp.mx, y = mtmp.my;
+    const wasinside = engulfing_u(mtmp);
+    let burycorpse = false;
     mtmp.mhp = 0;
     if (!noconduct) {
         if (!game.u.uconduct) game.u.uconduct = {};
@@ -577,7 +586,6 @@ export async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
         // !(wasinside || canspotmon) → "it"; !mtame → mon_nam;
         // mtame → x_monnam(..., "poor", ...).
         const verb = nonliving(mtmp.data) ? 'destroy' : 'kill';
-        const wasinside = engulfing_u(mtmp);
         let whom;
         if (!(wasinside || canspotmon(mtmp))) {
             whom = 'it';
@@ -596,6 +604,11 @@ export async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
         }
         await pline(`You ${verb} ${whom}!`);
     }
+    // C: mtrapped && t_at pit: floor boulder → nocorpse (sobj_at named);
+    // carrying boulder → burycorpse. mtrapped_in_pit is the pit gate.
+    if (mtrapped_in_pit(mtmp) && m_carrying(mtmp, BOULDER)) {
+        burycorpse = true;
+    }
     // C: if (gs.stoned) monstone(mtmp); else mondead(mtmp);
     const was_stoned = !!(game.context?.stoned);
     if (was_stoned) {
@@ -610,32 +623,51 @@ export async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
     const mdat = mtmp.data;
     const mndx = mtmp.mnum ?? mdat?.mndx;
     // C: if (gs.stoned) { gs.stoned = FALSE; goto cleanup; }
+    // C: if (nocorpse || LEVEL_SPECIFIC_NOCORPSE(mdat)) goto cleanup;
     if (was_stoned) {
         if (game.context) game.context.stoned = false;
-    } else if (!nocorpse) {
-        // accessible/pool gate deferred — always attempt RNG like floor tile
-        if (!rn2(6)) xkilled_treasure_drop(mtmp, mdat, mndx, x, y);
-        // C: if (!wasinside && corpse_chance(...)) { gz.zombify=...; make_corpse; reset }
-        // wasinside skip still named. mhitm mdamagem monkilled zombify is D-1211.
-        if (await corpse_chance(mtmp)) {
-            game.zombify = (!game.thrownobj && !game.context?.stoned
-                && !game.u?.uwep
-                && zombie_maker(game.youmonst)
-                && zombie_form(mtmp.data) !== NON_PM);
-            make_corpse(mtmp);
-            game.zombify = false;
+    } else if (!(nocorpse || LEVEL_SPECIFIC_NOCORPSE(mdat))) {
+        if (accessible(x, y) || is_pool(x, y)) {
+            if (!rn2(6)) xkilled_treasure_drop(mtmp, mdat, mndx, x, y);
+            // C: if (!wasinside && corpse_chance(...)) { gz.zombify=...; make_corpse; reset }
+            if (!wasinside && await corpse_chance(mtmp)) {
+                game.zombify = (!game.thrownobj && !game.context?.stoned
+                    && !game.u?.uwep
+                    && zombie_maker(game.youmonst)
+                    && zombie_form(mtmp.data) !== NON_PM);
+                await make_corpse(mtmp, burycorpse ? CORPSTAT_BURIED : CORPSTAT_NONE);
+                game.zombify = false;
+            }
         }
+        // C: wasinside → museum copy + spoteffects(TRUE) deferred
+        if (x > 0) newsym(x, y);
     }
-    // C mon.c xkilled: newsym after treasure/corpse — mondead's early
-    // newsym runs before drops, so treasure-only kills need this paint.
-    if (x > 0) newsym(x, y);
 
     // C cleanup: punish bad behavior — before experience
+    if (is_human(mdat)
+        && (!always_hostile(mdat) && (mtmp.malign | 0) <= 0)
+        && (mndx < PM_ARCHEOLOGIST || mndx > PM_WIZARD)
+        && mndx !== PM_HUMAN
+        && (game.u?.ualign?.type | 0) !== A_CHAOTIC) {
+        if (game.u) game.u.HTelepat = (game.u.HTelepat | 0) & ~INTRINSIC;
+        change_luck(-2);
+        await pline('You murderer!');
+        // Blind && !Blind_telepat see_monsters named (3 Blind_telepat clones)
+    }
     // (peaceful && !rn2(2)) || mtame → short-circuit burns rn2 when peaceful
     if ((mtmp.mpeaceful && !rn2(2)) || mtmp.mtame) {
         change_luck(-1);
     }
-    // human-murder / unicorn arms deferred (no RNG when gates fail)
+    if (is_unicorn(mdat)) {
+        const ua = game.u?.ualign?.type | 0;
+        const ma = mdat.maligntyp | 0;
+        const sgnUa = ua < 0 ? -1 : ua > 0 ? 1 : 0;
+        const sgnMa = ma < 0 ? -1 : ma > 0 ? 1 : 0;
+        if (sgnUa === sgnMa) {
+            change_luck(-5);
+            await You_feel('guilty...');
+        }
+    }
 
     const died = game.mvitals?.[mndx]?.died | 0;
     const tmp = experience(mtmp, died);
@@ -2059,7 +2091,7 @@ export async function gulpum(mdef, mattk) {
                 const saver = mlifesaver_you(mdef);
                 if (saver) m_useup_you(mdef, saver);
                 const { newuhs } = await import('./eat.js');
-                newuhs(false);
+                await newuhs(false);
                 game.mswallower = ym;
                 await xkilled(mdef, XKILL_GIVEMSG | XKILL_NOCORPSE);
                 if ((mdef.mhp | 0) >= 1) {

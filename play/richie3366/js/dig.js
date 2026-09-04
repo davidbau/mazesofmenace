@@ -35,7 +35,9 @@ import {
 } from './hack.js';
 import { currency } from './invent.js';
 import { objectNames } from './generated/objects_data.js';
-import { WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, POTION_CLASS, COIN_CLASS } from './objects.js';
+import {
+    WEAPON_CLASS, TOOL_CLASS, GEM_CLASS, POTION_CLASS, COIN_CLASS, is_axe,
+} from './objects.js';
 import { CLR_WHITE } from './terminal.js';
 import {
     is_watch, is_flyer, is_floater, grounded, MZ_HUGE, passes_walls,
@@ -1189,13 +1191,6 @@ function is_pick(obj) {
     if (!obj) return false;
     if (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS) return false;
     return (game.objects?.[obj.otyp]?.oc_skill ?? 0) === P_PICK_AXE;
-}
-
-/** C ref: obj.h is_axe — WEAPON/TOOL with P_AXE skill. */
-function is_axe(obj) {
-    if (!obj) return false;
-    if (obj.oclass !== WEAPON_CLASS && obj.oclass !== TOOL_CLASS) return false;
-    return (game.objects?.[obj.otyp]?.oc_skill ?? 0) === P_AXE;
 }
 
 /** C ref: obj.h bimanual — WEAPON/TOOL with oc_bimanual (oc_big). */

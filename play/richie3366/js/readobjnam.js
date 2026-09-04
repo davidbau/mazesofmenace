@@ -6,6 +6,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
+import { str_start_is } from './hacklib.js';
 import {
     objectNames,
     objectNameStrs,
@@ -137,24 +138,6 @@ function set_wallprop_from_str(bp) {
     if (wall_prop) {
         lev.wall_info = (lev.wall_info | 0) | wall_prop;
         if (lev.flags !== undefined) lev.flags = (lev.flags | 0) | wall_prop;
-    }
-}
-
-/**
- * C ref: hacklib.c str_start_is — caseblind prefix; chkstr may be shorter
- * than str (wish "arrow trap extra" matches trapname "arrow trap").
- */
-function str_start_is(str, chkstr, caseblind) {
-    const s = String(str || '');
-    const c = String(chkstr || '');
-    let i = 0;
-    for (;;) {
-        if (i >= s.length) return i >= c.length;
-        if (i >= c.length) return true;
-        const t1 = caseblind ? s.charAt(i).toLowerCase() : s.charAt(i);
-        const t2 = caseblind ? c.charAt(i).toLowerCase() : c.charAt(i);
-        if (t1 !== t2) return false;
-        i++;
     }
 }
 

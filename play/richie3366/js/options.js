@@ -75,10 +75,15 @@ import {
     WC_PLAYER_SELECTION,
     WC_HILITE_PET,
     WC_MOUSE_SUPPORT,
+    MSGTYP_NORMAL,
+    MSGTYP_NOREP,
+    MSGTYP_NOSHOW,
+    MSGTYP_STOP,
+    gp,
 } from './const.js';
 import { game } from './gstate.js';
 import { rnd } from './rng.js';
-import { str_end_is, highc, strstri, strsubst } from './hacklib.js';
+import { str_end_is, str_start_is, highc, strstri, strsubst } from './hacklib.js';
 import { name_to_mon } from './mondata.js';
 import { nhgetch } from './input.js';
 import { flush_screen, pline, docrt, check_gold_symbol, clear_committed_status } from './display.js';
@@ -150,6 +155,147 @@ export function parseDiscloseOption(val, negated = false) {
         // spaces ignored (C); other chars skipped
     }
     return out.join('');
+}
+
+/**
+ * C ref: options.c msgtype_names `:7677–7687`. First `str_start_is`
+ * match wins (`n` → noshow, not norep).
+ */
+const msgtype_names = [
+    { name: 'show', msgtyp: MSGTYP_NORMAL, descr: 'Show message normally' },
+    { name: 'hide', msgtyp: MSGTYP_NOSHOW, descr: 'Hide message' },
+    { name: 'noshow', msgtyp: MSGTYP_NOSHOW, descr: null },
+    { name: 'stop', msgtyp: MSGTYP_STOP, descr: 'Prompt for more after the message' },
+    { name: 'more', msgtyp: MSGTYP_STOP, descr: null },
+    { name: 'norep', msgtyp: MSGTYP_NOREP, descr: 'Do not repeat the message' },
+];
+
+/**
+ * C ref: sys/share/posixregex.c — POSIX ERE REG_EXTENDED|REG_NOSUB via
+ * JS RegExp (substring match). `[:class:]` POSIX classes mapped;
+ * full POSIX engine still named.
+ */
+function posix_class_pat(s) {
+    return String(s ?? '')
+        .replace(/\[:alnum:\]/g, 'A-Za-z0-9')
+        .replace(/\[:alpha:\]/g, 'A-Za-z')
+        .replace(/\[:blank:\]/g, ' \\t')
+        .replace(/\[:digit:\]/g, '0-9')
+        .replace(/\[:lower:\]/g, 'a-z')
+        .replace(/\[:space:\]/g, ' \\t\\r\\n\\f\\v')
+        .replace(/\[:upper:\]/g, 'A-Z')
+        .replace(/\[:xdigit:\]/g, '0-9A-Fa-f');
+}
+
+function regex_init() {
+    return { jsre: null, err: 0 };
+}
+
+function regex_compile(s, re) {
+    if (!re) return false;
+    try {
+        re.jsre = new RegExp(posix_class_pat(s));
+        re.err = 0;
+        return true;
+    } catch {
+        re.jsre = null;
+        re.err = 1;
+        return false;
+    }
+}
+
+function regex_match(s, re) {
+    if (!re || !re.jsre || s == null) return false;
+    re.jsre.lastIndex = 0;
+    return re.jsre.test(String(s));
+}
+
+function regex_free(re) {
+    if (re) {
+        re.jsre = null;
+        re.err = 0;
+    }
+}
+
+/**
+ * C ref: options.c msgtype_add `:7730–7754` — prepend onto
+ * gp.plinemsg_types. Compile fail → FALSE (config_error_add named).
+ */
+export function msgtype_add(typ, pattern) {
+    const tmp = {
+        msgtype: typ | 0,
+        regex: regex_init(),
+        pattern: String(pattern ?? ''),
+        next: gp.plinemsg_types,
+    };
+    if (!regex_compile(tmp.pattern, tmp.regex)) {
+        regex_free(tmp.regex);
+        return false;
+    }
+    gp.plinemsg_types = tmp;
+    return true;
+}
+
+/**
+ * C ref: options.c msgtype_free `:7756–7769`.
+ */
+export function msgtype_free() {
+    let tmp = gp.plinemsg_types;
+    while (tmp) {
+        const next = tmp.next;
+        regex_free(tmp.regex);
+        tmp.regex = null;
+        tmp = next;
+    }
+    gp.plinemsg_types = null;
+}
+
+/**
+ * C ref: options.c msgtype_type `:7796–7810` — first regex_match wins;
+ * negative msgtype still returned (hide_unhide). Default NOREP iff
+ * `norepeat` (Norep / PLINE_NOREPEAT).
+ */
+export function msgtype_type(msg, norepeat) {
+    let tmp = gp.plinemsg_types;
+    const text = String(msg ?? '');
+    while (tmp) {
+        if (regex_match(text, tmp.regex)) return tmp.msgtype;
+        tmp = tmp.next;
+    }
+    return norepeat ? MSGTYP_NOREP : MSGTYP_NORMAL;
+}
+
+/**
+ * C ref: options.c hide_unhide_msgtypes `:7814–7828` — negate types in
+ * hide_mask so vpline no longer treats them as NOSHOW/NOREP/STOP.
+ */
+export function hide_unhide_msgtypes(hide, hide_mask) {
+    const mask = hide_mask | 0;
+    for (let tmp = gp.plinemsg_types; tmp; tmp = tmp.next) {
+        let mt = tmp.msgtype | 0;
+        if (!hide) mt = -mt;
+        if (mt > 0 && ((1 << mt) & mask)) tmp.msgtype = -tmp.msgtype;
+    }
+}
+
+/**
+ * C ref: options.c msgtype_parse_add `:7843–7866` — sscanf
+ * `%10s \"%255[^\"]\"` then str_start_is on msgtype_names.
+ */
+export function msgtype_parse_add(str) {
+    const m = String(str ?? '').match(/^\s*(\S{1,10})\s+"([^"]{0,255})"/);
+    if (!m) return false;
+    const token = m[1];
+    const pattern = m[2];
+    let typ = -1;
+    for (let i = 0; i < msgtype_names.length; i++) {
+        if (str_start_is(msgtype_names[i].name, token, true)) {
+            typ = msgtype_names[i].msgtyp;
+            break;
+        }
+    }
+    if (typ === -1) return false;
+    return msgtype_add(typ, pattern);
 }
 
 /**
@@ -720,6 +866,9 @@ function parse_iflags_wizmgender(result, value) {
 }
 
 export function parseNethackrc(rc) {
+    // C cfgfiles.c cnf_line_MSGTYPE → msgtype_parse_add onto gp.plinemsg_types.
+    // Free first so a reused Node process does not keep the previous rc list.
+    msgtype_free();
     const result = {
         name: '', role: -1, race: -1, gender: -1, align: -1,
         flags: {}, iflags: {},
@@ -748,6 +897,13 @@ export function parseNethackrc(rc) {
         const wizkitMatch = line.match(/^WIZKIT=(.+)/i);
         if (wizkitMatch) {
             result.wizkit = wizkitMatch[1].trim().slice(0, WIZKIT_MAX - 1);
+            continue;
+        }
+
+        // C cfgfiles.c cnf_line_MSGTYPE `:632–634` — top-level MSGTYPE=
+        const msgtypeMatch = line.match(/^MSGTYPE=(.+)/i);
+        if (msgtypeMatch) {
+            msgtype_parse_add(msgtypeMatch[1]);
             continue;
         }
 

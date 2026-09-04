@@ -165,6 +165,7 @@ import {
     GETOBJ_ALLOWCNT,
     GETOBJ_PROMPT,
     GETOBJ_NOFLAGS,
+    BUFSZ,
     CMDQ_KEY,
     CMDQ_EXTCMD,
     CMDQ_USER_INPUT,
@@ -192,7 +193,7 @@ import {
 } from './attrib.js';
 import { depth, ing_suffix, strstri } from './hacklib.js';
 import { visctrl } from './dokeylist.js';
-import { select_menu_pick_any } from './options.js';
+import { select_menu_pick_any, hide_unhide_msgtypes } from './options.js';
 import { rn2 } from './rng.js';
 import { newuexp } from './exper.js';
 import {
@@ -232,6 +233,8 @@ import {
     HALLUC_RES, SEARCHING, REFLECTING, LIFESAVED,
     FIRE_RES, SHOCK_RES, TELEPAT, WARNING,
     DISPLACED, ANTIMAGIC,
+    LOOKHERE_NOFLAGS,
+    MSGTYP_MASK_REP_SHOW,
 } from './const.js';
 import { align_str, align_gname, u_gname, rank_of } from './roles.js';
 import {
@@ -256,7 +259,7 @@ import {
 const MZ_HUMAN = 2;
 
 /** C youprop.h Blind ≡ (HBlinded || EBlinded) && !BBlinded (+ roleplay). */
-function Blind() {
+export function Blind() {
     const u = game.u || {};
     if (u.uroleplay?.blind) return true;
     return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
@@ -4272,7 +4275,7 @@ function insight_skill_level_name(skill) {
  * (def_oc_syms[].name). Named omissions: ammo/sling/bow/crossbow/flail
  * hook/mattock specials; wet towel; shield of reflection.
  */
-function weapon_descr(obj) {
+export function weapon_descr(obj) {
     const skill = weapon_type(obj);
     if (skill === P_NONE && obj) {
         // C: corpses/tin/egg/statue/boulder/towel/opener → OBJ_NAME;
@@ -6049,9 +6052,12 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
     }
 }
 
-/** C ref: invent.c dolook() */
+/** C ref: invent.c dolook() — hide MSGTYPE norep/noshow around look_here. */
 export async function dolook() {
-    await look_here(0, 0);
+    hide_unhide_msgtypes(true, MSGTYP_MASK_REP_SHOW);
+    const res = await look_here(0, LOOKHERE_NOFLAGS);
+    hide_unhide_msgtypes(false, MSGTYP_MASK_REP_SHOW);
+    return res;
 }
 
 /**
@@ -6658,11 +6664,16 @@ export async function getobj_display_pickinv(ch, rawLets, allowcnt, counted, ctx
  * @param {boolean} cntgiven
  * @param {number} cnt
  * @param {string} [ilet] typed letter (C `ilet`; default `otmp.invlet`)
+ * @param {boolean} [skipSplit=false] C silly_thing runs after REPEAT
+ *   and before split_otmp; live getobj_finish_pick passes true
  * @returns {Promise<null | { retry: true } | object>}
  */
-export async function getobj_apply_count(otmp, word, cntgiven, cnt, ilet) {
+export async function getobj_apply_count(
+    otmp, word, cntgiven, cnt, ilet, skipSplit = false,
+) {
+    const goldish = ilet === GOLD_SYM || !!(otmp && otmp.oclass === COIN_CLASS);
     const coins = !!(otmp && otmp.oclass === COIN_CLASS);
-    if (coins && cntgiven && cnt <= 0) {
+    if (goldish && cntgiven && cnt <= 0) {
         if (cnt < 0) {
             await pline(
                 'The LRS would be very interested to know you have that much.',
@@ -6697,19 +6708,110 @@ export async function getobj_apply_count(otmp, word, cntgiven, cnt, ilet) {
         if (game.in_doagain) return null;
         return { retry: true };
     }
+    if (skipSplit) return otmp;
     return getobj_split_otmp(otmp, cntgiven, cnt);
 }
 
-function getobj_sort_invlets(lets) {
-    lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
-    return lets.join('');
+/**
+ * C invent.c getobj `:1832–1917` — hands/self rank, sortloot
+ * SORTLOOT_INVLET (invletter_value, not charCodeAt), obj_ok switch
+ * into lets/altlets, compactify when suggested>5. Prompt buf is
+ * "- "+lets when SUGGEST hands.
+ * @param {(obj: object|null) => number} obj_ok
+ * @param {number} ctrlflags
+ */
+async function getobj_filter_prompt(obj_ok, ctrlflags) {
+    let forceprompt = !!(ctrlflags & GETOBJ_PROMPT);
+    let allownone = false;
+    let inaccess = 0;
+    let handsSuggest = false;
+
+    const none_rank = obj_ok(null);
+    switch (none_rank) {
+    case GETOBJ_SUGGEST:
+        allownone = true;
+        handsSuggest = true;
+        break;
+    case GETOBJ_DOWNPLAY:
+    case GETOBJ_EXCLUDE_INACCESS:
+    case GETOBJ_EXCLUDE_SELECTABLE:
+        allownone = true;
+        break;
+    case GETOBJ_EXCLUDE_NONINVENT:
+        forceprompt = false;
+        inaccess++;
+        break;
+    default:
+        break;
+    }
+
+    if (!invlet_constant()) reassign();
+
+    const sortedinvent = sortloot(game.invent, SORTLOOT_INVLET, false, null);
+    const lets = [];
+    const alt = [];
+    if (allownone && !handsSuggest) alt.push(HANDS_SYM);
+
+    for (const srtinv of sortedinvent) {
+        const otmp = srtinv.obj;
+        if (!otmp) continue;
+        if (lets.length >= BUFSZ - 1 || alt.length >= BUFSZ - 1) {
+            await impossible('getobj: inventory overflow');
+            break;
+        }
+        const v = obj_ok(otmp);
+        switch (v) {
+        case GETOBJ_EXCLUDE_INACCESS:
+            inaccess++;
+            break;
+        case GETOBJ_EXCLUDE:
+        case GETOBJ_EXCLUDE_SELECTABLE:
+            break;
+        case GETOBJ_DOWNPLAY:
+            forceprompt = true;
+            alt.push(otmp.invlet);
+            break;
+        case GETOBJ_SUGGEST:
+            lets.push(otmp.invlet);
+            break;
+        case GETOBJ_EXCLUDE_NONINVENT:
+        default:
+            await impossible('bad return from getobj callback');
+            break;
+        }
+    }
+
+    const suggested = lets.length;
+    const rawLets = lets.join('');
+    const altLets = alt.join('');
+    const compactLets = suggested > 5 ? compactify_invlets(rawLets) : rawLets;
+    const promptBuf = handsSuggest
+        ? (compactLets ? `${HANDS_SYM} ${compactLets}` : HANDS_SYM)
+        : compactLets;
+    return {
+        forceprompt,
+        allownone,
+        inaccess,
+        handsSuggest,
+        rawLets,
+        altLets,
+        promptBuf,
+        suggested,
+    };
+}
+
+/**
+ * C invent.c getobj `:1921–1922` — gi.in_doagain → readchar(), no yn
+ * prompt. readchar_core fuzzer / readchar_queue / ALTMETA / click are
+ * cmd.c named omits; nhgetch matches getdir_read_dirsym.
+ */
+async function getobj_readchar() {
+    const key = await nhgetch();
+    if (typeof key === 'string') return key.length ? key.charAt(0) : '\0';
+    return String.fromCharCode(key | 0);
 }
 
 function getobj_find_ilet(ch) {
-    if (ch === GOLD_SYM) {
-        return (game.invent || []).find((o) => o && o.oclass === COIN_CLASS)
-            || null;
-    }
     return (game.invent || []).find((o) => o && o.invlet === ch) || null;
 }
 
@@ -6765,14 +6867,18 @@ async function getobj_typed_hands(word, allownone, hands) {
  * xtra_choice/handsbuf when allownone (D-1569).
  * force_invmenu: skip yn_function, auto `?`/`*`, oneloop empty
  * cancel, display_pickinv Special + redo_menu (D-1578).
+ * in_doagain: readchar, not yn_function (`:1921–1922`).
+ * Filter: sortloot SORTLOOT_INVLET + obj_ok switch (`:1832–1917`);
+ * GETOBJ_* ranks are hack.h signed enums.
  * GETOBJ_NOFLAGS + no SUGGEST / hands / DOWNPLAY forceprompt →
  * "don't have anything [else] to WORD" (inaccess from
  * EXCLUDE_NONINVENT / EXCLUDE_INACCESS). GETOBJ_PROMPT still prompts
  * `[*]` when suggested==0.
  * silly_thing on GETOBJ_EXCLUDE is D-1682 (Call Amulet / unknown
- * fake). Named omit: in_doagain readchar (REPEAT cmdq live);
- * sortloot body (invlet sort). mime_action is D-1579. gacc / `'0'`
- * ball is D-1580 (non-wizid pickinv gacc 0). putmsghistory is D-1588.
+ * fake) after CQ_REPEAT, before split_otmp. mime_action is D-1579.
+ * gacc / `'0'` ball is D-1580. putmsghistory is D-1588.
+ * Named omit: display_pickinv body (not this cluster); readchar_core
+ * fuzzer / readchar_queue / ALTMETA; getobj_* clones in other files.
  * @param {string} word
  * @param {(obj: object|null) => number} obj_ok
  * @param {number} ctrlflags
@@ -6780,51 +6886,16 @@ async function getobj_typed_hands(word, allownone, hands) {
  */
 export async function getobj(word, obj_ok, ctrlflags) {
     const allowcnt = !!(ctrlflags & GETOBJ_ALLOWCNT);
-    let forceprompt = !!(ctrlflags & GETOBJ_PROMPT);
-    let allownone = false;
-    let inaccess = 0;
-    let handsSuggest = false;
 
     const { hands_obj } = await import('./weapon.js');
     const cq = getobj_from_cmdq(obj_ok, allowcnt, hands_obj);
     if (!cq.skip) return cq.otmp;
 
-    const none_rank = obj_ok(null);
-    if (none_rank === GETOBJ_SUGGEST) {
-        allownone = true;
-        handsSuggest = true;
-    } else if (
-        none_rank === GETOBJ_DOWNPLAY
-        || none_rank === GETOBJ_EXCLUDE_INACCESS
-        || none_rank === GETOBJ_EXCLUDE_SELECTABLE
-    ) {
-        allownone = true;
-    } else if (none_rank === GETOBJ_EXCLUDE_NONINVENT) {
-        forceprompt = false;
-        inaccess++;
-    }
-
-    if (!invlet_constant()) reassign();
-
-    const suggest = [];
-    const alt = [];
-    // C: DOWNPLAY/EXCLUDE_* hands go to altlets first (HANDS_SYM)
-    if (allownone && !handsSuggest) alt.push(HANDS_SYM);
-    for (const otmp of game.invent || []) {
-        if (!otmp?.invlet) continue;
-        const v = obj_ok(otmp);
-        if (v === GETOBJ_SUGGEST) {
-            suggest.push(otmp.invlet);
-        } else if (v === GETOBJ_DOWNPLAY) {
-            alt.push(otmp.invlet);
-            forceprompt = true;
-        } else if (v === GETOBJ_EXCLUDE_INACCESS) {
-            inaccess++;
-        }
-    }
-    const rawLets = getobj_sort_invlets(suggest);
-    const altLets = getobj_sort_invlets(alt);
-    const suggested = suggest.length;
+    const filtered = await getobj_filter_prompt(obj_ok, ctrlflags);
+    const {
+        forceprompt, allownone, inaccess, handsSuggest,
+        rawLets, altLets, promptBuf, suggested,
+    } = filtered;
 
     if (suggested === 0 && !forceprompt && !allownone) {
         const else_ = inaccess ? 'else ' : '';
@@ -6832,18 +6903,14 @@ export async function getobj(word, obj_ok, ctrlflags) {
         return null;
     }
 
-    // C: buf is "- " + letters when SUGGEST hands; strip trailing space
-    // if no letters. compactify(bp) is letters-only (lets, not buf prefix).
-    const compactLets = suggested > 5 ? compactify_invlets(rawLets) : rawLets;
-    const promptLets = handsSuggest
-        ? (compactLets ? `- ${compactLets}` : '-')
-        : compactLets;
-
     let oneloop = false;
     let msggiven = false;
     let ch = '';
     for (;;) {
-        if (game.iflags?.force_invmenu) {
+        if (game.in_doagain) {
+            // C `:1921–1922` — no yn prompt while repeating
+            ch = await getobj_readchar();
+        } else if (game.iflags?.force_invmenu) {
             // C invent.c getobj `:1923–1931` — skip yn_function.
             // putmsghistory(qbuf, FALSE) once (D-1588).
             if (!oneloop) {
@@ -6855,8 +6922,8 @@ export async function getobj(word, obj_ok, ctrlflags) {
             msggiven = true;
             oneloop = true;
         } else {
-            const query = promptLets
-                ? `What do you want to ${word}? [${promptLets} or ?*]`
+            const query = promptBuf
+                ? `What do you want to ${word}? [${promptBuf} or ?*]`
                 : `What do you want to ${word}? [*]`;
             ch = await yn_function(query, null, '\0', false); // C getobj FALSE
         }
@@ -6939,28 +7006,31 @@ export async function silly_thing(word, otmp) {
 
 /**
  * C invent.c getobj after the letter `:2003–2072` — gold "cannot WORD
- * gold", silly_thing on EXCLUDE, then getobj_apply_count.
+ * gold" (`obj_ok <= GETOBJ_EXCLUDE`), then count/REPEAT, then
+ * silly_thing on EXCLUDE, then split_otmp.
  * @returns {Promise<null | { retry: true } | object>}
  */
 async function getobj_finish_pick(otmp, word, obj_ok, counted, ilet) {
     if (ilet === GOLD_SYM || (otmp && otmp.oclass === COIN_CLASS)) {
-        if (otmp && obj_ok(otmp) === GETOBJ_EXCLUDE) {
+        if (otmp && obj_ok(otmp) <= GETOBJ_EXCLUDE) {
             await pline(`You cannot ${word} gold.`);
             return null;
         }
-    }
-    if (otmp && obj_ok(otmp) === GETOBJ_EXCLUDE) {
-        await silly_thing(word, otmp);
-        return null;
     }
     if (!otmp) {
         await pline("You don't have that object.");
         if (game.in_doagain) return null;
         return { retry: true };
     }
-    return getobj_apply_count(
-        otmp, word, counted.cntgiven, counted.cnt, ilet,
+    const used = await getobj_apply_count(
+        otmp, word, counted.cntgiven, counted.cnt, ilet, true,
     );
+    if (!used || used.retry) return used;
+    if (obj_ok(used) === GETOBJ_EXCLUDE) {
+        await silly_thing(word, used);
+        return null;
+    }
+    return getobj_split_otmp(used, counted.cntgiven, counted.cnt);
 }
 
 /**
@@ -7005,112 +7075,14 @@ function adjust_gold_ok(obj) {
     return GETOBJ_SUGGEST;
 }
 
-/** Non-compacted SUGGEST letters for #adjust (filter from doorganize). */
-function adjust_raw_lets(obj_ok = adjust_ok) {
-    const lets = [];
-    for (const o of game.invent || []) {
-        if (!o || !o.invlet) continue;
-        if (obj_ok(o) !== GETOBJ_SUGGEST) continue;
-        lets.push(o.invlet);
-    }
-    // C getobj sortloot SORTLOOT_INVLET
-    lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
-    return lets.join('');
-}
-
-/** Suggest letters for #adjust getobj prompt (compactify when >5). */
-function adjust_suggest_lets(obj_ok = adjust_ok) {
-    const s = adjust_raw_lets(obj_ok);
-    if (s.length > 5) return compactify_invlets(s);
-    return s;
-}
-
 /**
- * C ref: invent.c getobj("adjust", adjust_filter, GETOBJ_PROMPT|GETOBJ_ALLOWCNT)
- * Count prefix + split_otmp live. Canned CMDQ_INT/KEY live.
- * `?`/`*` → display_pickinv `&ctmp` (D-1559). force_invmenu auto
- * `?`/`*` + redo_menu (D-1578). Typed '-' mime_action (D-1579).
- * doorganize_core nobj-split is D-1621; check_invent_gold filter D-1641.
+ * C invent.c getobj("adjust", adjust_filter, GETOBJ_PROMPT|GETOBJ_ALLOWCNT).
+ * Live getobj — not a second prompt clone. doorganize_core nobj-split
+ * is D-1621; check_invent_gold filter D-1641.
  * @param {(obj: object|null) => number} [obj_ok]
  */
 async function getobj_adjust(obj_ok = adjust_ok) {
-    const cq = getobj_from_cmdq(obj_ok, true);
-    if (!cq.skip) return cq.otmp;
-    if (!invlet_constant()) reassign();
-    let oneloop = false;
-    let msggiven = false;
-    let ch = '';
-    for (;;) {
-        const rawLets = adjust_raw_lets(obj_ok);
-        if (game.iflags?.force_invmenu) {
-            if (!oneloop) {
-                ch = getobj_force_invmenu_ch(rawLets) || '*';
-            }
-            if (!msggiven) {
-                putmsghistory('What do you want to adjust?', false);
-            }
-            msggiven = true;
-            oneloop = true;
-        } else {
-            await flush_topl_more();
-            const lets = adjust_suggest_lets(obj_ok);
-            const query = lets
-                ? `What do you want to adjust? [${lets} or ?*]`
-                : 'What do you want to adjust? [*]';
-            const prompt = `${query} `;
-            game._pending_message = prompt;
-            await flush_screen(1);
-            const disp = game.nhDisplay;
-            if (disp?.setCursor) disp.setCursor(prompt.length, 0);
-
-            const key = await nhgetch();
-            ch = String.fromCharCode(key);
-        }
-        const counted = await getobj_take_count(ch, true);
-        if (counted.retry) continue;
-        ch = counted.ch;
-        if (QUITCHARS.includes(ch) || ch === '\x1b') {
-            if (game.flags?.verbose !== false) await pline(Never_mind);
-            return null;
-        }
-        if (ch === HANDS_SYM) {
-            // C getobj typed '-' ; adjust_ok(NULL) is EXCLUDE → !allownone
-            return getobj_typed_hands('adjust', false, null);
-        }
-        if (ch === '?' || ch === '*') {
-            const ilet = await getobj_display_pickinv(
-                ch, rawLets, true, counted,
-                { word: 'adjust', allownone: false, promptHasHands: false },
-            );
-            if (ilet === '\x1b') {
-                if (game.flags?.verbose !== false) await pline(Never_mind);
-                return null;
-            }
-            if (!ilet) {
-                if (oneloop) return null;
-                continue;
-            }
-            const picked = (game.invent || []).find((o) => o.invlet === ilet);
-            const got = await getobj_finish_pick(
-                picked, 'adjust', obj_ok, counted, ilet,
-            );
-            if (!got) return null;
-            if (got.retry) {
-                ch = ilet;
-                continue;
-            }
-            game._pending_message = '';
-            return got;
-        }
-        const otmp = (game.invent || []).find((o) => o.invlet === ch);
-        const used = await getobj_finish_pick(
-            otmp, 'adjust', obj_ok, counted, ch,
-        );
-        if (!used) return null;
-        if (used.retry) continue;
-        game._pending_message = '';
-        return used;
-    }
+    return getobj('adjust', obj_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
 }
 
 /** C ref: invent.c prinv via doorganize — quan 0 (full stack). */

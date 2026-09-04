@@ -2,7 +2,8 @@
 // C ref: win/tty/getline.c tty_getlin / hooked_tty_getlin / tty_get_ext_cmd
 // plus win/tty/topl.c tty_yn_function (yn ^P is D-1612; post-answer
 // prompt+key is D-1623; tty_nhbell / cw->cury / intr is D-1631)
-// and cmd.c yn_function addcmdq (D-1706) / yn_function_menu (D-1728).
+// and cmd.c yn_function addcmdq (D-1706) / yn_function_menu (D-1728)
+// / remaining body + debug_fuzzer RNG (D-1805).
 // EDIT_GETLIN is D-1624 (`config.h` commented out — live `#else`).
 // kill_char / empty-erase bell / invalid-key bell / getline `intr--`
 // are D-1632. ESC-nonempty fallthrough (else tty_nhbell / doprev) is
@@ -18,8 +19,10 @@ import {
     mark_topline_special_prompt, hooked_getlin_release_prompt,
     hooked_getlin_epilogue, tty_yn_rewrite_toplines, tty_nhbell,
     tty_yn_note_msg_cursor, tty_yn_clean_up_tty,
+    impossible,
 } from './display.js';
-import { key2txt } from './dokeylist.js';
+import { key2txt, visctrl } from './dokeylist.js';
+import { rn2 } from './rng.js';
 import {
     BUFSZ, COLNO, QBUFSZ, PARANOID_CONFIRM,
     ECM_IGNOREAC, ECM_EXACTMATCH, ECM_NO1CHARCMD,
@@ -28,6 +31,7 @@ import {
     CMDQ_KEY, CMDQ_USER_INPUT, CQ_CANNED, CQ_REPEAT, PLNMSG_UNKNOWN,
     ynchars, ynqchars, ynaqchars, rightleftchars, hidespinchars,
     MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED,
+    otherInp, fuzzer_impossible_continue,
 } from './const.js';
 import { select_menu_pick_one } from './options.js';
 import { EXTCMDLIST } from './generated/extcmdlist_data.js';
@@ -1538,10 +1542,13 @@ export function YN(query) {
  * getdir (lock.js + getdir_cmdassist / getdir_zap / dig_getdir) calls
  * this with NULL resp / '\0' def / FALSE (D-1721).
  * Windowport is tty_yn_function after yn_function_menu (D-1728).
- * Named: debug_fuzzer, SND_SPEECH, DUMPLOG_CORE, paniclog/impossible
- * on resp-mismatch, program_state.input_state = otherInp; remaining
- * interned `'yn'`/`'ynq'` callers (not the decl.c tables); hide+web
- * hidespinchars in domonability.
+ * debug_fuzzer USER_INPUT arm (`:5513–5530`) `rn2(20)` then `rn2(ln)`
+ * and ESC retry; resp-mismatch `impossible` unless in_doagain &&
+ * !wizard; `program_state.input_state = otherInp` (D-1805).
+ * Named: SND_SPEECH (no soundlib — compiled out); DUMPLOG_CORE
+ * (D-1776); paniclog file (Rule #2); remaining interned `'yn'`/`'ynq'`
+ * callers (not the decl.c tables); hide+web hidespinchars in
+ * domonability; getdir fuzzer (named omit after D-1806 help_dir).
  *
  * @param {string} query
  * @param {string|String|null} [resp]
@@ -1554,6 +1561,8 @@ export async function yn_function(query, resp = ynchars, def = 'n', addcmdq = tr
     game.iflags.last_msg = PLNMSG_UNKNOWN;
 
     if (typeof query === 'string' && query.length >= QBUFSZ) {
+        // C `:5488–5493` paniclog("Query truncated") then strncpy — file
+        // omit (Rule #2); truncate matches.
         query = `${query.slice(0, QBUFSZ - 1 - 3)}...`;
     }
 
@@ -1570,6 +1579,20 @@ export async function yn_function(query, resp = ynchars, def = 'n', addcmdq = tr
             cmdq_clear(CQ_CANNED);
         }
         addcmdq = false;
+    /* C `:5513` — short-circuit before rn2 when fuzzer is off. */
+    } else if (game.iflags.debug_fuzzer && resp && String(resp).length && rn2(20)) {
+        const respStr = String(resp);
+        const ln = respStr.length;
+        let ridx = rn2(ln);
+        res = respStr.charAt(ridx);
+        if (res === '\x1b') {
+            if (ln > 1) {
+                ridx = (ridx === 0) ? (1 + rn2(ln - 1)) : rn2(ridx);
+                res = respStr.charAt(ridx);
+            } else {
+                res = def;
+            }
+        }
     } else {
         const menuRes = await yn_function_menu(query, resp, def);
         if (menuRes !== null) {
@@ -1582,11 +1605,25 @@ export async function yn_function(query, resp = ynchars, def = 'n', addcmdq = tr
     if (addcmdq) cmdq_add_key(CQ_REPEAT, res);
 
     // C `:5559–5579` — remap after REPEAT record; ESC when !def
-    const hasResp = !!(resp && resp.length);
+    const hasResp = !!(resp && String(resp).length);
     const hasRes = !!(res && res !== '\0');
-    if (hasResp && hasRes && !resp.includes(res)) {
-        res = (def && def !== '\0') ? def : '\x1b';
+    if (hasResp && hasRes && !String(resp).includes(res)) {
+        const altres = (def && def !== '\0') ? def : '\x1b';
+        const wizard = !!(game.flags?.debug || game.flags?.wizard || game.wizard);
+        if (!game.in_doagain || wizard) {
+            const fuzzing = game.iflags.debug_fuzzer;
+            game.iflags.debug_fuzzer = fuzzer_impossible_continue;
+            await impossible(
+                "yn_function() returned '%s'; using '%s' instead",
+                visctrl(res.charCodeAt(0)),
+                visctrl(altres.charCodeAt(0)),
+            );
+            game.iflags.debug_fuzzer = fuzzing;
+        }
+        res = altres;
     }
+    if (!game.program_state) game.program_state = {};
+    game.program_state.input_state = otherInp;
     return res;
 }
 

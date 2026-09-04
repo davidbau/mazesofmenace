@@ -1,21 +1,30 @@
 // priest.js — Temple entry + priest location helpers (partial).
 // C ref: priest.c temple_occupied / findpriest / has_shrine / intemple /
-//   in_your_sanctuary / reset_hostility.
-// Named omissions: mapseen_temple; SetVoice;
-// priest_talk; inhistemple callers beyond findpriest.
+//   in_your_sanctuary / reset_hostility / priest_talk / inhistemple.
+// Named omissions: mapseen_temple; SetVoice pitch in intemple.
 
 import { game } from './gstate.js';
-import { rn2, d } from './rng.js';
+import { rn2, rn1, d } from './rng.js';
 import {
     EPRI, EMIN, TEMPLE, ROOMOFFSET, SPINE, MM_NOMSG, IS_ALTAR, AM_SHRINE,
     Amask2align, ACH_TMPL, In_endgame,
+    CLAIRVOYANT, PROTECTION, FROMOUTSIDE, INTRINSIC, LL_CONDUCT,
 } from './const.js';
-import { pline, You_feel, canseemon, canspotmon, verbalize, newsym } from './display.js';
+import { pline, You_feel, canseemon, canspotmon, verbalize, newsym, Hallucination } from './display.js';
 import { makemon, set_malign } from './makemon.js';
 import { mons, is_rider } from './monsters.js';
 import { monsterNames } from './generated/monsters_data.js';
 import { in_rooms, nomul } from './hack.js';
 import { body_part } from './polyself.js';
+import { SetVoice } from './sndprocs.js';
+import { livelog_printf } from './pline.js';
+import { adjalign, exercise, A_WIS } from './attrib.js';
+import { money_cnt, money2u } from './shk.js';
+import { bribe } from './minion.js';
+import { incr_itimeout } from './potion.js';
+import { currency } from './invent.js';
+import { mhis } from './mondata.js';
+import { Monnam, mon_nam } from './do_name.js';
 
 const PM_GHOST = monsterNames.indexOf('PM_GHOST');
 const PM_HIGH_CLERIC = monsterNames.indexOf('PM_HIGH_CLERIC');
@@ -89,6 +98,13 @@ export function has_shrine(pri) {
     if (!lev || !IS_ALTAR(lev.typ) || !(lev.altarmask & AM_SHRINE)) return false;
     return (epri.shralign | 0)
         === (Amask2align((lev.altarmask | 0) & ~AM_SHRINE) | 0);
+}
+
+/** C ref: priest.c inhistemple `:160–171`. */
+export function inhistemple(priest) {
+    if (!priest || !priest.ispriest) return false;
+    if (!histemple_at(priest, priest.mx, priest.my)) return false;
+    return has_shrine(priest);
 }
 
 /**
@@ -296,6 +312,157 @@ export async function intemple(roomno) {
                 nomul(-3);
                 game.multi_reason = 'being terrified of a ghost';
                 game.nomovemsg = 'You regain your composure.';
+            }
+        }
+    }
+}
+
+const CRANKY_MSG = [
+    "Thou wouldst have words, eh?  I'll give thee a word or two!",
+    'Talk?  Here is what I have to say!',
+    'Pilgrim, I would speak no longer with thee.',
+];
+
+/** C ref: priest.c priest_talk `:557–721`. Caller sounds.c MS_PRIEST. */
+export async function priest_talk(priest) {
+    const coaligned = p_coaligned(priest);
+    const strayed = (game.u?.ualign?.record | 0) < 0;
+    const epri = EPRI(priest);
+    const u = game.u || (game.u = {});
+    if (!u.uconduct) u.uconduct = {};
+    if (!(u.uconduct.gnostic | 0)) {
+        livelog_printf(LL_CONDUCT, 'rejected atheism by consulting with %s',
+            mon_nam(priest));
+    }
+    u.uconduct.gnostic = (u.uconduct.gnostic | 0) + 1;
+
+    if (priest.mflee || (!priest.ispriest && coaligned && strayed)) {
+        await pline(`${Monnam(priest)} doesn't want anything to do with you!`);
+        priest.mpeaceful = 0;
+        return;
+    }
+
+    if (!inhistemple(priest) || !priest.mpeaceful || helpless(priest)) {
+        if (helpless(priest)) {
+            await pline(`${Monnam(priest)} breaks out of ${mhis(priest)} reverie!`);
+            priest.mfrozen = 0;
+            priest.msleeping = 0;
+            priest.mcanmove = 1;
+        }
+        priest.mpeaceful = 0;
+        SetVoice(priest, 0, 80, 0);
+        await verbalize(CRANKY_MSG[rn2(3)]);
+        return;
+    }
+
+    const rooms = in_rooms(priest.mx, priest.my, TEMPLE);
+    if (priest.mpeaceful && rooms && (rooms.charCodeAt(0) | 0)
+        && !has_shrine(priest)) {
+        SetVoice(priest, 0, 80, 0);
+        await verbalize(
+            'Begone!  Thou desecratest this holy place with thy presence.',
+        );
+        priest.mpeaceful = 0;
+        return;
+    }
+    if (!money_cnt(game.invent)) {
+        if (coaligned && !strayed) {
+            const pmoney = money_cnt(priest.minvent);
+            if (pmoney > 0) {
+                const bits = Hallucination()
+                    ? currency(pmoney)
+                    : (pmoney === 1 ? 'bit' : 'bits');
+                await pline(`${Monnam(priest)} gives you ${pmoney === 1 ? 'one ' : 'two '}${bits} for an ale.`);
+                await money2u(priest, pmoney > 1 ? 2 : 1);
+            } else {
+                await pline(`${Monnam(priest)} preaches the virtues of poverty.`);
+            }
+            exercise(A_WIS, true);
+        } else {
+            await pline(`${Monnam(priest)} is not interested.`);
+        }
+        return;
+    }
+
+    const cheap = epri ? (epri.cheapskate_count | 0) : 0;
+    const peak = (u.ulevelpeak | 0) ? (u.ulevelpeak | 0) : 1;
+    const suggested = peak * rn1(101, 150 + cheap * 40);
+    let quan = Math.trunc(money_cnt(game.invent) / (suggested * 3));
+    if (quan < 1) quan = 1;
+    const buf = `How much will you offer (suggested: ${suggested * quan} or ${suggested * quan * 2})?`;
+    if (game.flags?.debug) {
+        await pline(`${Monnam(priest)} asks you for a contribution for the temple (base ${suggested}).`);
+    } else {
+        await pline(`${Monnam(priest)} asks you for a contribution for the temple.`);
+    }
+    const offer = await bribe(priest, buf);
+    if (offer === 0) {
+        SetVoice(priest, 0, 80, 0);
+        await verbalize('Thou shalt regret thine action!');
+        if (coaligned) adjalign(-1);
+        if (epri) epri.cheapskate_count = (epri.cheapskate_count | 0) + 1;
+    } else if (offer < suggested * quan) {
+        if (money_cnt(game.invent) > offer * 2) {
+            SetVoice(priest, 0, 80, 0);
+            await verbalize('Cheapskate.');
+            if (epri) epri.cheapskate_count = (epri.cheapskate_count | 0) + 1;
+        } else {
+            SetVoice(priest, 0, 80, 0);
+            await verbalize('I thank thee for thy contribution.');
+            exercise(A_WIS, true);
+        }
+    } else if (offer < suggested * quan * 2) {
+        SetVoice(priest, 0, 80, 0);
+        await verbalize('Thou art indeed a pious individual.');
+        if (money_cnt(game.invent) < offer * 2) {
+            if (coaligned && (u.ualign?.record | 0) <= ALGN_SINNED) {
+                adjalign(1);
+            }
+        }
+        await verbalize('I bestow upon thee a blessing.');
+        if (!u.uprops) u.uprops = {};
+        const clair = u.uprops[CLAIRVOYANT] || (u.uprops[CLAIRVOYANT] = {
+            intrinsic: 0, extrinsic: 0, blocked: 0,
+        });
+        const span = Math.trunc((500 * offer) / suggested);
+        incr_itimeout(clair, rn1(span, span));
+        u.HClairvoyant = clair.intrinsic;
+    } else if (offer < suggested * quan * 3) {
+        let orig_ublessed = u.ublessed | 0;
+        if (!u.uprops) u.uprops = {};
+        const prot = u.uprops[PROTECTION] || (u.uprops[PROTECTION] = {
+            intrinsic: 0, extrinsic: 0, blocked: 0,
+        });
+        if (!((prot.intrinsic | 0) & INTRINSIC)) {
+            prot.intrinsic |= FROMOUTSIDE;
+            orig_ublessed = -1;
+        }
+        u.HProtection = prot.intrinsic;
+        let remain = offer;
+        for (; remain >= (2 * suggested); remain -= (2 * suggested)) {
+            if (!(u.ublessed | 0)) {
+                u.ublessed = rn1(3, 2);
+            } else if ((u.ublessed | 0) < 20
+                && ((u.ublessed | 0) < 9 || !rn2(u.ublessed | 0))) {
+                u.ublessed = (u.ublessed | 0) + 1;
+            }
+        }
+        SetVoice(priest, 0, 80, 0);
+        if ((u.ublessed | 0) > orig_ublessed) {
+            await verbalize('Thou hast been rewarded for thy devotion.');
+        } else {
+            await verbalize('Thy selfless generosity is deeply appreciated.');
+        }
+    } else {
+        SetVoice(priest, 0, 80, 0);
+        await verbalize('Thy selfless generosity is deeply appreciated.');
+        if (money_cnt(game.invent) < offer * 2 && coaligned) {
+            if (strayed && ((game.moves | 0) - (u.ucleansed | 0)) > 5000) {
+                if (!u.ualign) u.ualign = { type: 0, record: 0, abuse: 0 };
+                u.ualign.record = 0;
+                u.ucleansed = game.moves | 0;
+            } else {
+                adjalign(2);
             }
         }
     }

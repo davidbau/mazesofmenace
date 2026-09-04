@@ -27,7 +27,6 @@ import {
     WARNING,
     FUMBLING,
     TIMEOUT,
-    OBJ_INVENT,
     W_ARMF,
     KILLED_BY,
     KILLED_BY_AN,
@@ -36,8 +35,8 @@ import {
 } from './const.js';
 import { objectNames } from './objects.js';
 import { pline, You_feel } from './display.js';
-import { cxname } from './objnam.js';
-import { what_gives, bare_artifactname } from './artifact.js';
+import { ysimple_name } from './objnam.js';
+import { what_gives, bare_artifactname, confers_luck } from './artifact.js';
 import {
     PM_ARCHEOLOGIST,
     PM_BARBARIAN,
@@ -574,6 +573,25 @@ export function change_luck(n) {
     u.uluck = luck;
 }
 
+/**
+ * C ref: attrib.c stone_luck `:421–437` — sign of luckstone/artifact
+ * luck in invent. Cursed subtracts quan; blessed always adds; uncursed
+ * adds only when `include_uncursed`. Caller nh_timeout luck timeout
+ * uses FALSE then TRUE (carrying(LUCKSTONE) is a separate walk).
+ * @param {boolean} include_uncursed
+ * @returns {number} -1 / 0 / 1 (C sgn)
+ */
+export function stone_luck(include_uncursed) {
+    let bonchance = 0;
+    for (const otmp of game.invent || []) {
+        if (!confers_luck(otmp)) continue;
+        const q = (otmp.quan | 0) || 1;
+        if (otmp.cursed) bonchance -= q;
+        else if (otmp.blessed || include_uncursed) bonchance += q;
+    }
+    return bonchance < 0 ? -1 : (bonchance !== 0 ? 1 : 0);
+}
+
 /** C ref: align.h ALIGNLIM — (10 + moves/200) */
 export function ALIGNLIM() {
     return 10 + Math.trunc((game.moves ?? 0) / 200);
@@ -818,17 +836,6 @@ const PROP_HFIELD = {
     [FIRE_RES]: 'HFire_resistance',
     [WARNING]: 'HWarning',
 };
-
-/**
- * C ref: objnam.c ysimple_name — "your|the" + minimal_xname via cxname.
- * Named omissions: full minimal_xname bareobj suppress; shk ownership.
- */
-function ysimple_name(obj) {
-    if (!obj) return 'something';
-    const carried = obj.where === OBJ_INVENT
-        || (game.invent || []).includes(obj);
-    return `${carried ? 'your' : 'the'} ${cxname(obj)}`;
-}
 
 /**
  * C ref: attrib.c check_innate_abil — role/race table entry if active.

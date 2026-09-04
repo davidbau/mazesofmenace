@@ -19,9 +19,9 @@
 // eatmupdate hallu toggle);
 // tainted Sick; make_blinded body / Hear_again afternmv;
 // sellobj_state on invent-full dropy; costly_alteration COST_BITE;
-// ?/* menu; newuhs hunger messages; gethungry ring/amulet
-// accessorytime + newuhs; losestr setuhpmax / terminal-frailty full
-// death path; timeout.c vomiting_dialog cantvomit/Hallu texts;
+// ?/* menu; gethungry ring/amulet accessorytime polish;
+// losestr setuhpmax / terminal-frailty full death path;
+// timeout.c vomiting_dialog cantvomit/Hallu texts;
 // Fixed_abil Popeye Olive/Bluto;
 // livelog conduct; cprefx polymon stone-golem failure polish.
 // D-0953: floorfood pool/lava reach + vault_gd_watching(GD_EATGOLD).
@@ -35,7 +35,7 @@ import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import {
     pline, You_feel, newsym, see_monsters, more,
-    canspotmon, canseemon,
+    canspotmon, canseemon, bot, Hallucination,
 } from './display.js';
 import { yn_function, paranoid_query } from './getline.js';
 import {
@@ -62,7 +62,7 @@ import {
     is_clinger, breathless, is_flyer,
     PM_LICHEN, PM_ACID_BLOB, PM_MONK, monsterNames, pmnames, G_UNIQ,
     MR_FIRE, MR_COLD, MR_SLEEP, MR_DISINT, MR_ELEC, MR_POISON, MR_ACID, MR_STONE,
-    M1_SEE_INVIS, is_were,
+    M1_SEE_INVIS, M2_SHAPESHIFTER, is_were,
 } from './monsters.js';
 import { same_race, cantvomit } from './mondata.js';
 import { were_beastie, set_ulycn, you_unwere } from './were.js';
@@ -75,8 +75,9 @@ import {
     W_ARMOR, W_TOOL, W_AMUL, W_SADDLE, W_BALL, W_CHAIN,
     HUNGER, CONFLICT, REGENERATION, SLOW_DIGESTION, PROTECTION,
     SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STOMACH, SICK_VOMITABLE,
+    STONED, SICK, VOMITING,
     IS_ALTAR,
-    TIMEOUT, NON_PM, ROTTEN_TIN, HOMEMADE_TIN, SPINACH_TIN, HEALTHY_TIN,
+    TIMEOUT, NON_PM, LOW_PM, ROTTEN_TIN, HOMEMADE_TIN, SPINACH_TIN, HEALTHY_TIN,
     ismnum,
     KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, Has_contents, NO_PART,
     IRONBARS, W_NONDIGGABLE, BEAR_TRAP, TT_BEARTRAP,
@@ -90,7 +91,8 @@ import {
     M_AP_NOTHING, M_AP_OBJECT, DISMOUNT_FELL,
     WWALKING, MAGICAL_BREATHING, FLYING, GD_EATGOLD, Is_waterlevel,
     Is_astralevel,
-    CHOKING, A_LAWFUL, STRANGLED, PARANOID_EATING,
+    CHOKING, STARVING, A_LAWFUL, STRANGLED, PARANOID_EATING,
+    DEAF,
     GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_SELECTABLE,
     GETOBJ_EXCLUDE_NONINVENT, GETOBJ_NOFLAGS, GETOBJ_DOWNPLAY,
 } from './const.js';
@@ -98,7 +100,10 @@ import {
     adjattrib, gainstr, acurr, acurrstr, change_luck, exercise, adjalign,
     A_STR, A_DEX, A_CHA, A_WIS, A_INT, A_CON,
 } from './attrib.js';
-import { nomul, losehp, still_chewing, is_pool, is_lava, stop_occupation } from './hack.js';
+import {
+    nomul, losehp, still_chewing, is_pool, is_lava, stop_occupation,
+    end_running,
+} from './hack.js';
 import { near_capacity, observe_object, makeknown, getobj,
     encumber_msg, update_inventory, useupall, useup, useupf } from './invent.js';
 import {
@@ -110,7 +115,10 @@ import { dropy, dropx, make_blinded, revive_corpse } from './do.js';
 import { type_is_pname, rndmonnam, pmname, Ugender, mon_nam, Monnam } from './do_name.js';
 import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
 import { hands_obj } from './weapon.js';
-import { t_at, deltrap, reset_utrap, b_trapped, self_invis_message, float_up } from './trap.js';
+import {
+    t_at, deltrap, reset_utrap, b_trapped, self_invis_message, float_up,
+    selftouch,
+} from './trap.js';
 import { done, delayed_killer } from './end.js';
 import { polymon, polyself, rehumanize, change_sex, body_part } from './polyself.js';
 import { costly_alteration, costly_spot } from './shk.js';
@@ -124,7 +132,9 @@ import { dismount_steed } from './steed.js';
 import { unpunish } from './read.js';
 import { vault_gd_watching } from './vault.js';
 import { set_mimic_blocking } from './vision.js';
-import { PM_KNIGHT } from './generated/monsters_data.js';
+import {
+    PM_KNIGHT, PM_WIZARD, PM_ELF, PM_VALKYRIE,
+} from './generated/monsters_data.js';
 
 /** C hack.h invlet_basic — a-zA-Z slots before invent-full dropy. */
 const INVLET_BASIC = 52;
@@ -351,6 +361,31 @@ function dmgtype(ptr, adtyp) {
     return false;
 }
 
+/** C monattk.h AD_POLY — genetic-engineer tin/corpse for Popeye(SLIMED). */
+const AD_POLY = 43;
+
+/** C obj.h ofood — corpse, egg, or tin. */
+function ofood(o) {
+    if (!o) return false;
+    const t = o.otyp | 0;
+    return t === CORPSE || t === EGG || t === TIN;
+}
+
+/**
+ * C obj.h polyfood — ofood with a chameleon species or AD_POLY attack.
+ * Inlined here so Popeye does not import makemon.js pm_to_cham
+ * (M2_SHAPESHIFTER is C pm_to_cham's test).
+ */
+function polyfood(obj) {
+    if (!ofood(obj)) return false;
+    const mndx = obj.corpsenm | 0;
+    if (mndx < LOW_PM) return false;
+    const ptr = mons(mndx);
+    if (!ptr) return false;
+    return (((ptr.mflags2 | 0) & M2_SHAPESHIFTER) !== 0)
+        || dmgtype(ptr, AD_POLY);
+}
+
 /** C timeout.h set_itimeout — replace TIMEOUT bits on a long prop. */
 function set_itimeout_prop(u, key, val) {
     u[key] = ((u[key] | 0) & ~TIMEOUT) | ((val | 0) & TIMEOUT);
@@ -406,10 +441,23 @@ function unconscious() {
 
 /**
  * C eat.c is_fainted `:3346–3350` — u.uhs == FAINTED.
- * newuhs still does not set FAINTED (hunger messages / faint named).
  */
 export function is_fainted() {
     return (game.u?.uhs | 0) === FAINTED;
+}
+
+/**
+ * C eat.c unfaint `:3335–3344` — afternmv after fainting.
+ * Hear_again may clear TIMEOUT deafness; clamp uhs back to FAINTING.
+ */
+async function unfaint() {
+    Hear_again();
+    const u = game.u;
+    if (u && (u.uhs | 0) > FAINTING) u.uhs = FAINTING;
+    await stop_occupation();
+    if (game.disp) game.disp.botl = true;
+    if (game.flags) game.flags.botl = true;
+    return 0;
 }
 
 /**
@@ -457,35 +505,165 @@ export async function init_uhunger() {
     }
 }
 
+/** C eat.c newuhs static save_hs / saved_hs — meal-endpoint messages. */
+let save_hs = 0;
+let saved_hs = false;
+
 /**
- * C ref: eat.c newuhs — recompute u.uhs from uhunger thresholds.
- * Field update only this iteration: occupation force_save_hs, hunger
- * messages, end_running, ATEMP WEAK crossover, faint/starve deferred.
- * @param {boolean} _incr true when called from metabolism (message tone)
+ * C eat.c newuhs `:3362–3512` — recompute u.uhs; hunger messages;
+ * ATEMP WEAK crossover; faint / starve; end_running on HUNGRY/WEAK.
+ * Occupation eatfood / force_save_hs stashes the first uhs and returns.
+ * @param {boolean} incr true from metabolism (gethungry / morehungry)
  */
-export function newuhs(_incr) {
+export async function newuhs(incr) {
     const u = game.u;
     if (!u) return;
-    const h = u.uhunger ?? 900;
-    const newhs = (h > 1000)
+    const h = u.uhunger | 0;
+    let newhs = (h > 1000)
         ? SATIATED
         : (h > 150) ? NOT_HUNGRY
             : (h > 50) ? HUNGRY : (h > 0) ? WEAK : FAINTING;
-    if (newhs !== (u.uhs ?? NOT_HUNGRY)) {
-        if (game.flags) game.flags.botl = true;
+
+    // C: go.occupation == eatfood || gf.force_save_hs — first bite
+    // happens before set_occupation (force_save_hs from bite).
+    if (game.occupation === eatfood || game.force_save_hs) {
+        if (!saved_hs) {
+            save_hs = u.uhs | 0;
+            saved_hs = true;
+        }
+        u.uhs = newhs;
+        return;
+    } else if (saved_hs) {
+        u.uhs = save_hs;
+        saved_hs = false;
     }
-    u.uhs = newhs;
-    void _incr;
+
+    if (newhs === FAINTING) {
+        // C: sgn(uhunger) * ((abs(uhunger) + 5) / 10)
+        const uhunger_div_by_10 = sgn(h) * Math.trunc((Math.abs(h) + 5) / 10);
+
+        if (is_fainted()) newhs = FAINTED;
+        // C: u.uhs <= WEAK short-circuits the rn2 faint roll
+        if ((u.uhs | 0) <= WEAK || rn2(20 - uhunger_div_by_10) >= 19) {
+            if (!is_fainted() && (game.multi | 0) >= 0) {
+                const duration = 10 - uhunger_div_by_10;
+                await stop_occupation();
+                await pline('You faint from lack of food.');
+                // C: incr_itimeout(&HDeaf, duration)
+                incr_itimeout_prop(u, 'HDeaf', duration);
+                if (u.uprops?.[DEAF]) u.uprops[DEAF].intrinsic = u.HDeaf | 0;
+                if (game.disp) game.disp.botl = true;
+                if (game.flags) game.flags.botl = true;
+                nomul(-duration);
+                game.multi_reason = 'fainted from lack of food';
+                game.nomovemsg = 'You regain consciousness.';
+                game.afternmv = unfaint;
+                newhs = FAINTED;
+                // C youprop.h Levitation — (H||E) && !B; no named clone
+                const HLev = (u.HLevitation | 0)
+                    || (u.uprops?.[LEVITATION]?.intrinsic | 0);
+                const ELev = (u.ELevitation | 0)
+                    || (u.uprops?.[LEVITATION]?.extrinsic | 0);
+                const BLev = (u.BLevitation | 0)
+                    || (u.uprops?.[LEVITATION]?.blocked | 0);
+                if (!(HLev || ELev) || BLev) {
+                    await selftouch('Falling, you');
+                }
+            }
+        } else if (h < -(100 + 10 * acurr(A_CON))) {
+            u.uhs = STARVED;
+            if (game.disp) game.disp.botl = true;
+            if (game.flags) game.flags.botl = true;
+            await bot();
+            await pline('You die from starvation.');
+            if (!game.killer) game.killer = { name: '', format: 0 };
+            game.killer.format = KILLED_BY;
+            game.killer.name = 'starvation';
+            await done(STARVING);
+            return;
+        }
+    }
+
+    if (newhs !== (u.uhs | 0)) {
+        if (!u.atemp) u.atemp = { a: [0, 0, 0, 0, 0, 0] };
+        if (newhs >= WEAK && (u.uhs | 0) < WEAK) {
+            u.atemp.a[A_STR] = -1;
+        } else if (newhs < WEAK && (u.uhs | 0) >= WEAK) {
+            u.atemp.a[A_STR] = 0;
+        }
+
+        switch (newhs) {
+        case HUNGRY:
+            if (Hallucination()) {
+                await pline(!incr
+                    ? 'You now have a lesser case of the munchies.'
+                    : 'You are getting the munchies.');
+            } else {
+                await pline(`You ${
+                    !incr ? 'only feel hungry now'
+                        : (h < 145) ? 'feel hungry'
+                            : 'are beginning to feel hungry'
+                }.`);
+            }
+            if (incr && game.occupation
+                && game.occupation !== eatfood
+                && game.occupation !== opentin) {
+                await stop_occupation();
+            }
+            end_running(true);
+            break;
+        case WEAK:
+            if (Hallucination()) {
+                await pline(!incr
+                    ? 'You still have the munchies.'
+                    : 'The munchies are interfering with your motor capabilities.');
+            } else if (incr
+                && ((game.urole?.mnum | 0) === PM_WIZARD
+                    || (game.urace?.mnum | 0) === PM_ELF
+                    || (game.urole?.mnum | 0) === PM_VALKYRIE)) {
+                const who = ((game.urole?.mnum | 0) === PM_WIZARD
+                    || (game.urole?.mnum | 0) === PM_VALKYRIE)
+                    ? (game.urole?.name?.m || 'Wizard')
+                    : 'Elf';
+                await pline(`${who} needs food, badly!`);
+            } else {
+                await pline(`You ${
+                    !incr ? 'are still'
+                        : (h < 45) ? 'feel'
+                            : 'are beginning to feel'
+                } weak.`);
+            }
+            if (incr && game.occupation
+                && game.occupation !== eatfood
+                && game.occupation !== opentin) {
+                await stop_occupation();
+            }
+            end_running(true);
+            break;
+        }
+        u.uhs = newhs;
+        if (game.disp) game.disp.botl = true;
+        if (game.flags) game.flags.botl = true;
+        await bot();
+        const hp = Upolyd(u) ? (u.mh | 0) : (u.uhp | 0);
+        if (hp < 1) {
+            await pline('You die from hunger and exhaustion.');
+            if (!game.killer) game.killer = { name: '', format: 0 };
+            game.killer.format = KILLED_BY;
+            game.killer.name = 'exhaustion';
+            await done(STARVING);
+        }
+    }
 }
 
 /**
  * C ref: eat.c gethungry — metabolic uhunger--, accessorytime burns, newuhs.
  * Branch envelope: ordinary diet burn; odd Regen/encumb; even Hunger/
  * Conflict + ring/amulet accessorytime cases 0/4/8/12/16.
- * Named omissions: newuhs messages / faint / ATEMP; +0 RIN_PROTECTION
- * dual-ring MC polish when EProtection unset; meat-ring edge cases.
+ * Named omissions: +0 RIN_PROTECTION dual-ring MC polish when EProtection
+ * unset; meat-ring edge cases.
  */
-export function gethungry() {
+export async function gethungry() {
     if (game.u?.uinvulnerable) return;
     const u = game.u;
 
@@ -577,17 +755,16 @@ export function gethungry() {
             break;
         }
     }
-    newuhs(true);
+    await newuhs(true);
 }
 
 /**
  * C ref: eat.c morehungry — nutrition loss after feats of magic / vomit.
- * newuhs field update; hunger messages / faint deferred.
  */
-export function morehungry(num) {
+export async function morehungry(num) {
     if (!game.u) return;
     game.u.uhunger = (game.u.uhunger ?? 900) - (num | 0);
-    newuhs(true);
+    await newuhs(true);
 }
 
 /**
@@ -678,7 +855,7 @@ async function do_reset_eat() {
         v.doreset = 0;
     }
     await stop_occupation();
-    newuhs(false);
+    await newuhs(false);
 }
 
 /**
@@ -690,7 +867,7 @@ async function do_reset_eat() {
  * !fullwarn) pline + nomovemsg; !eating multi=-2 else fullwarn +
  * paranoid Continue when canchoke && bites remain.
  * Named omissions: adj_victual_nutrition (lembas/cram race); do_reset_eat
- * touchfood/recalc_wt; newuhs occupation messages.
+ * touchfood/recalc_wt.
  */
 export async function lesshungry(num) {
     if (!game.u) return;
@@ -729,7 +906,7 @@ export async function lesshungry(num) {
             }
         }
     }
-    newuhs(false);
+    await newuhs(false);
 }
 
 /**
@@ -1666,7 +1843,7 @@ async function done_eating(message) {
     // C eat.c:548–549 — in_use then occupation=0 so newuhs sees done
     piece.in_use = true;
     game.occupation = null;
-    newuhs(false);
+    await newuhs(false);
     if (message) {
         await pline(`You finish eating ${food_xname(piece, true)}.`);
     }
@@ -2235,7 +2412,7 @@ async function choke(food) {
             return;
         }
         await pline('You stuff yourself and then vomit voluminously.');
-        morehungry(Hunger() ? ((u.uhunger | 0) - 60) : 1000);
+        await morehungry(Hunger() ? ((u.uhunger | 0) - 60) : 1000);
         await vomit();
     } else {
         if (!game.killer) game.killer = { name: '', format: 0 };
@@ -2727,7 +2904,7 @@ export async function eat_brains(magr, mdef, visflag, dmg_p) {
             exercise(A_WIS, false);
             add_brain_dmg(dmg_p, xtra_dmg);
         } else {
-            morehungry(-rnd(30)); // cannot choke
+            await morehungry(-rnd(30)); // cannot choke
             const u = game.u || (game.u = {});
             if (!u.acurr) u.acurr = { a: [10, 10, 10, 10, 10, 10] };
             if (!u.amax) u.amax = { a: [...u.acurr.a] };
@@ -3129,6 +3306,41 @@ async function opentin() {
     }
     await consume_tin('You succeed in opening the tin.');
     return 0;
+}
+
+/**
+ * C ref: eat.c Popeye `:3915–3956` — occupation is opentin and the tin
+ * would save the hero from `threat` (STONED lizard/acid, SLIMED polyfood,
+ * unknown tin assumed helpful). timeout.c stoned/slime/vomiting
+ * dialogues skip stop_occupation while this is true. Named omit: the
+ * HUNGER arm is unused (hunger bypasses stop_occupation).
+ * @param {number} threat prop index (STONED / SLIMED / VOMITING / …)
+ * @returns {boolean}
+ */
+export function Popeye(threat) {
+    if (game.occupation !== opentin) return false;
+    const otin = game.context?.tin?.tin;
+    const u = game.u || {};
+    if (!carried(otin)
+        && (!obj_here(otin, u.ux | 0, u.uy | 0) || !can_reach_floor(true))) {
+        return false;
+    }
+    if (!otin.known) return true;
+    const mndx = otin.corpsenm | 0;
+    switch (threat) {
+    case HUNGER:
+        return mndx !== NON_PM || (otin.spe | 0) === 1;
+    case STONED:
+        return ismnum(mndx) && (mndx === PM_LIZARD || acidic(mons(mndx)));
+    case SLIMED:
+        return polyfood(otin);
+    case SICK:
+    case VOMITING:
+        break;
+    default:
+        break;
+    }
+    return false;
 }
 
 /**

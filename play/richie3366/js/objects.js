@@ -4,13 +4,14 @@
 // Data is generated from upstream headers (js/generated/objects_data.js).
 
 import { game } from './gstate.js';
-import { P_DAGGER, P_SHORT_SWORD, P_SABER, P_SHURIKEN, P_BOW } from './const.js';
+import { P_AXE, P_DAGGER, P_SHORT_SWORD, P_SABER, P_SHURIKEN, P_BOW } from './const.js';
 import {
     createObjectsArray,
     NUM_OBJECTS,
     MAXOCLASSES,
     WEAPON_CLASS,
     ARMOR_CLASS,
+    TOOL_CLASS,
 } from './generated/objects_data.js';
 import { ART_GRIMTOOTH } from './generated/artifacts_data.js';
 
@@ -111,6 +112,20 @@ export function def_char_to_objclass(ch) {
         if (def_oc_syms[i].sym === c) break;
     }
     return i;
+}
+
+/** C objclass.h enum obj_material_types — dmgval leather/silver gates. */
+export const LEATHER = 7;
+export const SILVER = 14;
+
+/**
+ * C obj.h is_axe — WEAPON/TOOL with P_AXE skill. Canonical home; the
+ * apply/dig/dothrow/monmove locals import this instead of cloning.
+ */
+export function is_axe(otmp) {
+    if (!otmp) return false;
+    if (otmp.oclass !== WEAPON_CLASS && otmp.oclass !== TOOL_CLASS) return false;
+    return (game.objects?.[otmp.otyp]?.oc_skill | 0) === P_AXE;
 }
 
 /**

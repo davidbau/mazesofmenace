@@ -35,7 +35,7 @@ import {
     dmgtype, passes_bars,
     is_vampshifter, is_male, is_female, is_neuter, likes_gems,
     is_rider, nonliving, breathless, is_giant, is_minion, is_human,
-    is_elf, is_dwarf, is_undead, amphibious, can_teleport, MR_FIRE,
+    is_elf, is_dwarf, is_gnome, is_orc, is_undead, amphibious, can_teleport, MR_FIRE,
     MR_POISON, mindless, G_UNIQ, is_watch,
     touch_petrifies, flesh_petrifies, slimeproof, resists_ston, vegan,
     montoostrong, monmax_difficulty,
@@ -377,6 +377,37 @@ export function m_carrying(mon, otyp) {
     return null;
 }
 
+/** C ref: mon.c genus `:469–531`. mode 1 → role; 0 → race prototype. */
+export function genus(mndx, mode) {
+    const pm = (name) => monsterNames.indexOf(name);
+    switch (mndx | 0) {
+    case pm('PM_STUDENT'): mndx = mode ? pm('PM_ARCHEOLOGIST') : pm('PM_HUMAN'); break;
+    case pm('PM_CHIEFTAIN'): mndx = mode ? pm('PM_BARBARIAN') : pm('PM_HUMAN'); break;
+    case pm('PM_NEANDERTHAL'): mndx = mode ? pm('PM_CAVE_DWELLER') : pm('PM_HUMAN'); break;
+    case pm('PM_ATTENDANT'): mndx = mode ? pm('PM_HEALER') : pm('PM_HUMAN'); break;
+    case pm('PM_PAGE'): mndx = mode ? pm('PM_KNIGHT') : pm('PM_HUMAN'); break;
+    case pm('PM_ABBOT'): mndx = mode ? pm('PM_MONK') : pm('PM_HUMAN'); break;
+    case pm('PM_ACOLYTE'): mndx = mode ? pm('PM_CLERIC') : pm('PM_HUMAN'); break;
+    case pm('PM_HUNTER'): mndx = mode ? pm('PM_RANGER') : pm('PM_HUMAN'); break;
+    case pm('PM_THUG'): mndx = mode ? pm('PM_ROGUE') : pm('PM_HUMAN'); break;
+    case pm('PM_ROSHI'): mndx = mode ? pm('PM_SAMURAI') : pm('PM_HUMAN'); break;
+    case pm('PM_GUIDE'): mndx = mode ? pm('PM_TOURIST') : pm('PM_HUMAN'); break;
+    case pm('PM_APPRENTICE'): mndx = mode ? pm('PM_WIZARD') : pm('PM_HUMAN'); break;
+    case pm('PM_WARRIOR'): mndx = mode ? pm('PM_VALKYRIE') : pm('PM_HUMAN'); break;
+    default:
+        if (ismnum(mndx)) {
+            const ptr = mons(mndx);
+            if (is_human(ptr)) mndx = pm('PM_HUMAN');
+            else if (is_elf(ptr)) mndx = pm('PM_ELF');
+            else if (is_dwarf(ptr)) mndx = pm('PM_DWARF');
+            else if (is_gnome(ptr)) mndx = pm('PM_GNOME');
+            else if (is_orc(ptr)) mndx = pm('PM_ORC');
+        }
+        break;
+    }
+    return mndx | 0;
+}
+
 /** C ref: worn.c which_armor(W_ARMS) — shield blocks two-hand dig tools. */
 export function mon_has_shield(mon) {
     for (let o = mon?.minvent; o; o = o.nobj) {
@@ -569,6 +600,19 @@ export function dead_species(m_idx, egg) {
     const mv = game.mvitals || [];
     return !!((mv[m_idx]?.mvflags ?? 0) & G_GENOD)
         || !!((mv[alt_idx]?.mvflags ?? 0) & G_GENOD);
+}
+
+/**
+ * C ref: mon.c LEVEL_SPECIFIC_NOCORPSE — rogue, !deathdrops, or
+ * graveyard+undead+rn2(3). Short-circuit matches C so rn2(3) only
+ * runs on the last arm. xkilled goto-cleanup and corpse_chance both
+ * call this (C duplicates the check).
+ */
+export function LEVEL_SPECIFIC_NOCORPSE(mdat) {
+    if (Is_rogue_level(game.u?.uz)) return true;
+    const lf = game.level?.flags;
+    if (!lf?.deathdrops) return true;
+    return !!(lf.graveyard && is_undead(mdat) && rn2(3));
 }
 
 // C ref: mon.c undead_to_corpse — zombie/mummy/vampire → living species for corpses

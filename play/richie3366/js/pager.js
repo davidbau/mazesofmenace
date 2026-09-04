@@ -1692,8 +1692,10 @@ async function whatdoes_help() {
 
 /**
  * C ref: pager.c dowhatdoes_core — key2extcmddesc → "%-8s%s.".
+ * help_dir (cmd.c) looks up the Ctrl-letter for an invalid getdir
+ * key when the prompt is "^".
  */
-function dowhatdoes_core(q) {
+export function dowhatdoes_core(q) {
     const ec = key2extcmddesc(q);
     if (!ec) return null;
     const keybuf = key2txt(q).padEnd(8, ' ');

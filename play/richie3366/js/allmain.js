@@ -5,7 +5,7 @@ import { game } from './gstate.js';
 import { rnd, rn2, rn1 } from './rng.js';
 import { mklev, l_nhcore_init, u_on_upstairs, fumaroles, movebubbles } from './mklev.js';
 import { dobjsfree } from './mkobj.js';
-import { rhack, continue_run, run_active, continue_search, search_repeat_active, dolookaround } from './cmd.js';
+import { rhack, continue_run, run_active, continue_search, search_repeat_active, dolookaround, end_of_input } from './cmd.js';
 import {
     docrt, cls, bot, flush_screen, pline, flush_topl_more, see_monsters,
     see_objects, see_traps, swallowed, Hallucination, Warn_of_mon,
@@ -14,7 +14,7 @@ import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { initrack, settrack } from './track.js';
 import { fastforward_pre_mklev } from './fastforward.js';
 import { init_objects } from './o_init.js';
-import { init_artifacts } from './artifact.js';
+import { init_artifacts, mkot_trap_warn } from './artifact.js';
 import { init_dungeons, find_level } from './dungeon.js';
 import { depth } from './hacklib.js';
 import { schedule_goto, deferred_goto } from './do.js';
@@ -38,7 +38,7 @@ import {
     notice_mon_off, notice_mon_on, notice_all_mons,
 } from './hack.js';
 import { reset_justpicked } from './pickup.js';
-import { set_wear } from './do_wear.js';
+import { set_wear, glibr } from './do_wear.js';
 import { gethungry } from './eat.js';
 import { age_spells } from './spell.js';
 import { near_capacity, paint_corner_nhw_menu, encumber_msg, update_inventory } from './invent.js';
@@ -52,18 +52,18 @@ import { ATR_INVERSE } from './terminal.js';
 import { dosounds } from './sounds.js';
 import { invault } from './vault.js';
 import { u_wipe_engr } from './engrave.js';
-import { nh_timeout } from './timeout.js';
+import { nh_timeout, do_storms } from './timeout.js';
 import { run_regions, any_visible_region } from './region.js';
 import { m_everyturn_effect } from './monmove.js';
 import { tele } from './teleport.js';
-import { polyself } from './polyself.js';
+import { polyself, set_uasmon } from './polyself.js';
 import { you_were } from './were.js';
 import {
     UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     NO_MM_FLAGS, Upolyd, LL_ACHIEVE,
     ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE,
     UTOTYPE_NONE, TIMEOUT, REGENERATION,
-    MAXULEV, ENERGY_REGENERATION, MAGICAL_BREATHING,
+    MAXULEV, ENERGY_REGENERATION, MAGICAL_BREATHING, GLIB,
     TELEPORT, TELEPAT, POLYMORPH, UNCHANGING, NON_PM, POLY_NOFLAGS, ismnum,
     WARNING, HALF_PHDAM, Is_waterlevel, Is_airlevel,
 } from './const.js';
@@ -812,6 +812,13 @@ export async function moveloop_core() {
     if (!g.context) g.context = {};
     if (!g.u) g.u = {};
 
+    // C allmain.c:181–184 — SAFERHANGUP (unixconf.h) done_hup →
+    // end_of_input before get_nh_event / dobjsfree.
+    if (g.program_state?.done_hup) {
+        end_of_input();
+        return;
+    }
+
     // C allmain.c:192–201 — dobjsfree then bypasses / resume_wish named.
     // sanity_check before context.move (opt_in Off; gold/invlet D-1664).
     dobjsfree();
@@ -867,7 +874,10 @@ export async function moveloop_core() {
                     g.flags.time_botl = true;
                 }
 
-                // once-per-turn — C: nh_timeout then run_regions
+                // once-per-turn — C: if (Glib) glibr(); then nh_timeout
+                const glib = (g.u.uprops?.[GLIB]?.intrinsic | 0)
+                    || (g.u.HGlib | 0) || (g.u.Glib | 0);
+                if (glib) await glibr();
                 await nh_timeout();
                 await run_regions();
                 // C allmain.c moveloop: if (u.ublesscnt) u.ublesscnt--;
@@ -909,8 +919,13 @@ export async function moveloop_core() {
                 }
                 // C: if (Warning) warnreveal();
                 if (Warning(g.u)) await warnreveal();
+                // C allmain.c:347–353 — were_changes → set_uasmon;
+                // mkot_trap_warn; dosounds; do_storms.
+                if (g.were_changes) set_uasmon();
+                await mkot_trap_warn();
                 await dosounds();
-                gethungry();
+                await do_storms();
+                await gethungry();
                 age_spells();
                 await exerchk();
                 // C: invault() before wipe_engr / amulet
