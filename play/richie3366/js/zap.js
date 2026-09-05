@@ -527,13 +527,13 @@ function Sleep_resistance() {
 }
 
 /** C ref: youprop.h Fire_resistance */
-function Fire_resistance() {
+export function Fire_resistance() {
     const u = game.u || {};
     return !!(u.Fire_resistance || u.HFire_resistance || u.EFire_resistance);
 }
 
 /** C ref: youprop.h Cold_resistance */
-function Cold_resistance() {
+export function Cold_resistance() {
     const u = game.u || {};
     return !!(u.Cold_resistance || u.HCold_resistance || u.ECold_resistance);
 }
@@ -547,7 +547,7 @@ function Cold_resistance() {
  * skip exploding-wand HP ("You aren't hurt!") and WAN_LIGHTNING
  * self-zap (D-1371 / review 328).
  */
-function Shock_resistance() {
+export function Shock_resistance() {
     const u = game.u || {};
     const e = u.uprops?.[SHOCK_RES];
     return !!((u.Shock_resistance || u.HShock_resistance || u.EShock_resistance)
@@ -583,7 +583,7 @@ function Antimagic() {
  * flats. Caller: zapyourself SPE_DRAIN_LIFE (D-1446). Not
  * resists_drli (that is losexp / bhitm D-1436).
  */
-function Drain_resistance() {
+export function Drain_resistance() {
     const u = game.u || {};
     const e = u.uprops?.[DRAIN_RES];
     return !!((u.Drain_resistance || u.HDrain_resistance || u.EDrain_resistance)
@@ -1403,10 +1403,10 @@ function mon_resists_bit(mon, mrBit) {
         | (mon.mintrinsics | 0);
     return !!(bits & mrBit);
 }
-function resists_fire(mon) { return mon_resists_bit(mon, MR_FIRE); }
-function resists_cold(mon) { return mon_resists_bit(mon, MR_COLD); }
+export function resists_fire(mon) { return mon_resists_bit(mon, MR_FIRE); }
+export function resists_cold(mon) { return mon_resists_bit(mon, MR_COLD); }
 export function resists_elec(mon) { return mon_resists_bit(mon, MR_ELEC); }
-function resists_poison(mon) { return mon_resists_bit(mon, MR_POISON); }
+export function resists_poison(mon) { return mon_resists_bit(mon, MR_POISON); }
 function resists_acid(mon) { return mon_resists_bit(mon, MR_ACID); }
 function resists_disint(mon) { return mon_resists_bit(mon, MR_DISINT); }
 /** C: resists_magm — Antimagic-style; deferred → false (no shield RNG). */

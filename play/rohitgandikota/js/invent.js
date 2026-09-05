@@ -13,6 +13,7 @@ import { ansimpleoname } from './objnam.js';
 import { docrt } from './display.js';
 import { add_menu_heading } from './options.js';
 import { QBUFSZ } from './const.js';
+import { BUFSZ, CONTAINED_SYM } from './const.js';
 import { MINV_PICKMASK } from './const.js';
 import { MINV_ALL } from './const.js';
 import { INCLUDE_HERO } from './const.js';
@@ -52,11 +53,12 @@ import { doname, an, corpse_xname, makeplural, obj_typename, CXN_PFX_THE,
          CXN_ARTICLE, yname } from './objnam.js';
 import { OCLASSES, ONAMES, MATERIALS, SKILLS } from './objects_data.js';
 import { is_pole } from './u_init.js';
+import { throwing_weapon } from './dothrow.js';
 import { OBJ_DESCR, not_fully_identified } from './objnam.js';
 export { not_fully_identified } from './objnam.js';
 import { MONSYMS, NUMMONS, PMNAMES } from './monst_data.js';
 import { erosion_matters, curse, splitobj, clear_splitobjs, extract_nobj,
-         start_glob_timeout } from './mkobj.js';
+         start_glob_timeout, dead_species } from './mkobj.js';
 import { carried, OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT, OBJ_BURIED, Is_container, Is_candle, Is_pudding } from './obj.js';
 import { setworn, setnotworn, recalc_telepat_range } from './worn.js';
 import { is_rider, hideunder } from './makemon.js';
@@ -86,7 +88,9 @@ import { discover_artifact, set_artifact_intrinsic,
 import { ART_MJOLLNIR } from './artilist_data.js';
 import { body_part } from './polyself.js';
 import { HAND } from './const.js';
-import { obj_stop_timers, stop_timer, SHRINK_GLOB, learn_egg_type } from './timeout.js';
+import { obj_stop_timers, stop_timer, SHRINK_GLOB, learn_egg_type,
+         FIG_TRANSFORM, attach_fig_transform_timeout } from './timeout.js';
+import { NON_PM } from './const.js';
 import { obj_merge_light_sources } from './light.js';
 
 // include/hack.h — command result flags. ECMD_TIME means the command consumed
@@ -338,7 +342,10 @@ function addinv_finish(obj, objWasThrown, otherObj) {
             obj.pickup_prev = 1;
             game.invent.splice(index, 0, obj);
             const side = addinv_core2(obj);
-            return side ? side.then(() => obj) : obj;
+            if (side)
+                return side.then(() => { carry_obj_effects(obj); return obj; });
+            carry_obj_effects(obj);
+            return obj;
         }
     }
 
@@ -353,7 +360,10 @@ function addinv_finish(obj, objWasThrown, otherObj) {
         const finish = () => {
             otmp.pickup_prev = 1;
             const side = addinv_core2(otmp);
-            return side ? side.then(() => otmp) : otmp;
+            if (side)
+                return side.then(() => { carry_obj_effects(otmp); return otmp; });
+            carry_obj_effects(otmp);
+            return otmp;
         };
         return (r instanceof Promise) ? r.then(finish) : finish();
     };
@@ -378,7 +388,7 @@ function addinv_finish(obj, objWasThrown, otherObj) {
     if (objWasThrown && game.flags?.pickup_thrown !== false
         && !game.u.uquiver && obj.oartifact !== ART_MJOLLNIR
         && obj.otyp !== ONAMES.AKLYS
-        && (is_missile(obj) || is_ammo(obj)))
+        && (throwing_weapon(obj) || is_ammo(obj)))
         setuqwep(obj);
     return result;
 }
@@ -395,7 +405,10 @@ export function addinv_nomerge(obj) {
     if (game.flags.fixinv !== false)
         reorder_invent();
     const side = addinv_core2(obj);
-    return side ? side.then(() => obj) : obj;
+    if (side)
+        return side.then(() => { carry_obj_effects(obj); return obj; });
+    carry_obj_effects(obj);
+    return obj;
 }
 
 // src/invent.c:1022 addinv_core2() — side effects of an object having
@@ -1036,9 +1049,8 @@ function compactify(str) {
 export async function getobj(word, obj_ok_func, ctrlflags) {
     /* src/invent.c:1779 — a queued CMDQ_KEY picks the object without
        prompting; a failed lookup discards the rest of the canned queue so a
-       broken script cannot run its tail against the wrong object. The
-       CMDQ_INT partial-stack arm and the HANDS_SYM choice have no producer
-       in this port yet and are recorded when reached. */
+       broken script cannot run its tail against the wrong object. Queued
+       hands choices use the same suitability callback as object letters. */
     const allowcnt = !!(ctrlflags & GETOBJ_ALLOWCNT);
     let cnt = 0;
     let cntgiven = false;
@@ -1066,7 +1078,9 @@ export async function getobj(word, obj_ok_func, ctrlflags) {
         let otmp = null;
         if (cmdq.typ === CMDQ_KEY) {
             if (cmdq.key === HANDS_SYM) {
-                note_unported_invent('getobj:cmdq_hands');
+                const v = await obj_ok_func(null);
+                if (v === GETOBJ_SUGGEST || v === GETOBJ_DOWNPLAY)
+                    otmp = hands_obj;
             } else {
                 /* there could be more than one match if key is '#';
                    take first one which passes the obj_ok callback */
@@ -1153,7 +1167,9 @@ export async function getobj(word, obj_ok_func, ctrlflags) {
         if (ilet === '-') {
             /* HANDS_SYM — "your hands" as the object; C returns &hands_obj
                when the filter allows the no-object choice */
-            if (obj_ok_func && obj_ok_func(null) === GETOBJ_SUGGEST)
+            const v = obj_ok_func ? await obj_ok_func(null) : GETOBJ_EXCLUDE;
+            if (v === GETOBJ_SUGGEST || v === GETOBJ_DOWNPLAY
+                || v === GETOBJ_EXCLUDE_INACCESS || v === GETOBJ_EXCLUDE_SELECTABLE)
                 return hands_obj;
             note_unported_invent('getobj:hands');
             return null;
@@ -1838,21 +1854,41 @@ function note_unported_invent(what) {
     (game.unported ||= new Set()).add(what);
 }
 
-// src/invent.c xprname() — one inventory line: "b - a +1 bow".
-//
-// C's format is "%c - %.*s%s": the letter, " - ", the object's name, and a
-// suffix that is "." when the caller asked for a sentence.
+// src/invent.c:2895 xprname()
 export function xprname(obj, txt, let_, dot, cost, quan) {
-    /* if quan is non-0, print that quantity rather than obj->quan */
+    const use_invlet = game.flags.fixinv !== false && obj
+        && let_ !== CONTAINED_SYM && let_ !== HANDS_SYM;
     let savequan = 0;
     if (quan && obj) {
         savequan = obj.quan;
         obj.quan = quan;
     }
-    const name = txt || doname(obj);
+    if (!txt)
+        txt = doname(obj);
+    let txtlen = txt.length, suffix, pad = false;
+    if (cost !== 0 || let_ === '*') {
+        if (dot && use_invlet)
+            let_ = obj.invlet;
+        suffix = `${game.iflags.menu_tab_sep ? '\t' : ' '}${String(cost).padStart(6)} ${currency(cost).slice(0, 50)}`;
+        if (!game.iflags.menu_tab_sep) {
+            pad = true;
+            if (txtlen < 45)
+                txtlen = 45;
+        }
+    } else {
+        if (use_invlet)
+            let_ = obj.invlet;
+        suffix = dot ? '.' : '';
+    }
+    if (txtlen > BUFSZ - 1 - (4 + suffix.length))
+        txtlen = BUFSZ - 1 - (4 + suffix.length);
+    let text = txt.slice(0, txtlen);
+    if (pad)
+        text = text.padEnd(45);
+    const result = `${let_} - ${text}${suffix}`;
     if (savequan)
         obj.quan = savequan;
-    return `${let_} - ${name}${dot ? '.' : ''}`;
+    return result;
 }
 
 // src/invent.c:2861 obj_to_let(); assign floating letters before printing.
@@ -1956,10 +1992,11 @@ export function freeinv_core(obj) {
 
     if (obj.otyp === ONAMES.LOADSTONE)
         curse(obj);
-    else if (confers_luck(obj))
+    else if (confers_luck(obj)) {
         set_moreluck();
-    else if (obj.otyp === ONAMES.FIGURINE && obj.timed)
-        note_unported_invent('freeinv_core:stop_timer');
+        (game.disp ||= {}).botl = true;
+    } else if (obj.otyp === ONAMES.FIGURINE && obj.timed)
+        stop_timer(FIG_TRANSFORM, obj);
 
     if (obj === game.context?.tin?.tin) {
         game.context.tin.tin = null;
@@ -1981,6 +2018,15 @@ export function freeinv(obj) {
     obj.pickup_prev = 0;
     freeinv_core(obj);
     update_inventory();
+}
+
+// src/invent.c:1187 carry_obj_effects()
+export function carry_obj_effects(obj) {
+    if (obj.otyp === ONAMES.FIGURINE) {
+        if (obj.cursed && obj.corpsenm !== NON_PM
+            && !dead_species(obj.corpsenm, true))
+            attach_fig_transform_timeout(obj);
+    }
 }
 
 // src/invent.c:1208 hold_another_object() — add an item to the inventory

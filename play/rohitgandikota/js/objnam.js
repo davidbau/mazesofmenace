@@ -14,7 +14,8 @@
 import { M_AP_OBJECT } from './const.js';
 import { M_AP_TYPE } from './const.js';
 import { ONAME } from './const.js';
-import { get_artifact, find_artifact } from './artifact.js';
+import { get_artifact, find_artifact, artifact_light } from './artifact.js';
+import { arti_light_description } from './light.js';
 import { QBUFSZ } from './const.js';
 import { shk_your } from './shk.js';
 import { carried, is_poisonable, Has_contents, OBJ_FLOOR, OBJ_MINVENT } from './obj.js';
@@ -1210,6 +1211,8 @@ export function doname(obj, vague_quan = false) {
                expose the condition. */
             if (obj === game.u?.uarmg && Glib())
                 bp += '; slippery)';
+            if (!Blind() && obj.lamplit && artifact_light(obj))
+                bp = bp.slice(0, -1) + `, ${arti_light_description(obj)} lit)`;
         }
         /* FALLTHRU */
     case WEAPON_CLASS:
@@ -1317,6 +1320,10 @@ export function doname(obj, vague_quan = false) {
             const relation = obj.otyp === ONAMES.AKLYS ? 'tethered to'
                            : twoweap_primary ? 'wielded in' : 'weapon in';
             bp += ` (${relation} ${hand_s})`;
+            /* src/objnam.c:1606. Lit artifacts describe their current
+               intensity inside the wielded-weapon parentheses. */
+            if (!Blind() && obj.lamplit && artifact_light(obj))
+                bp = bp.slice(0, -1) + `, ${arti_light_description(obj)} lit)`;
         }
     }
     if (obj.owornmask & W_SWAPWEP) {

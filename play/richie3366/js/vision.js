@@ -1,12 +1,12 @@
 // vision.js — C ref: vision.c Algorithm C shadow-casting
-// Partial: pit / underwater view_from named; nv_range circle live (D-1583).
+// Partial: underwater view_from named (pit TT_PIT 3x3 live, D-1863); nv_range circle live (D-1583).
 // mimic_light_blocking See_invisible block/unblock live (D-1587).
 // BOULDER + is_lightblocker_mappear (mimic boulder/door/wall) in does_block.
 
 import { game } from './gstate.js';
 import {
     COLNO, ROWNO, DOOR, SDOOR, TREE, CLOUD, LAVAWALL,
-    D_CLOSED, D_LOCKED, D_TRAPPED,
+    D_CLOSED, D_LOCKED, D_TRAPPED, TT_PIT,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL,
     IS_WALL, IS_WATERWALL, IS_OBSTRUCTED, IS_DOOR,
     ROOMOFFSET, Is_rogue_level, Is_waterlevel, Is_airlevel,
@@ -952,10 +952,24 @@ export function vision_recalc(control = 0) {
             rogue_vision(next, next_rmin, next_rmax);
         } else {
             // C: has_night_vision = 1; Underwater && !Is_waterlevel → 0
-            // and replaces view_from with pool 3×3 (named). Pit TT_PIT
-            // 3×3 IN_SIGHT|COULD_SEE named.
+            // and replaces view_from with pool 3×3 (still named omission).
             const has_night_vision = 1;
-            view_from(u.uy, u.ux, next, next_rmin, next_rmax);
+            if ((u.utrap | 0) && ((u.utraptype | 0) === TT_PIT)) {
+                // C vision.c:609 — in a pit: only the immediate 3×3 is
+                // IN_SIGHT|COULD_SEE (D-1863). xray/night-vision below
+                // still apply, as in C.
+                for (let row = u.uy - 1; row <= u.uy + 1; row++) {
+                    if (row < 0) continue;
+                    if (row >= ROWNO) break;
+                    next_rmin[row] = Math.max(1, u.ux - 1);
+                    next_rmax[row] = Math.min(COLNO - 1, u.ux + 1);
+                    const next_row = next[row];
+                    for (let col = next_rmin[row]; col <= next_rmax[row]; col++)
+                        next_row[col] = IN_SIGHT | COULD_SEE;
+                }
+            } else {
+                view_from(u.uy, u.ux, next, next_rmin, next_rmax);
+            }
             // C vision.c vision_recalc :631–700 — IN_SIGHT for xray then
             // nv_range circle after view_from, before do_light_sources.
             apply_xray_in_sight(next, next_rmin, next_rmax, u);

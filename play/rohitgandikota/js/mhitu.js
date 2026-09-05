@@ -47,7 +47,7 @@ import { poly_gender, body_part, polymon } from './polyself.js';
 import { Blind, Invis, See_invisible, Underwater, Deaf, Levitation, Flying,
          Cold_resistance, Fire_resistance, Hallucination,
          Reflecting, Shock_resistance, Stone_resistance,
-         Unaware, Protection_from_shape_changers } from './youprop.js';
+         Unaware, Protection_from_shape_changers, Detect_monsters } from './youprop.js';
 import { ATTKS, MONSYMS, PMNAMES, MFLAGS } from './monst_data.js';
 import { W_ARMOR, W_AMUL, NON_PM, u_at, is_pit, Upolyd, PRONOUN_HALLU,
          M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
@@ -1291,7 +1291,7 @@ async function hitmu(mtmp, mattk, indx) {
     if (mtmp.mundetected
         && (hides_under(mdat) || mdat.mlet === MONSYMS.S_EEL)) {
         mtmp.mundetected = 0;
-        if (!sensemon(mtmp) && !game.u.uprops?.DETECT_MONSTERS) {
+        if (!sensemon(mtmp) && !Detect_monsters()) {
             const obj = (game.level?.objects || [])
                 .find(o => o.ox === mtmp.mx && o.oy === mtmp.my);
             if (obj) {
@@ -1996,7 +1996,7 @@ async function passiveum_mon_to_stone(mtmp) {
 }
 
 // src/mhitu.c:2616 cloneu()
-export function cloneu() {
+export async function cloneu() {
     const u = game.u;
     let mon;
     const mndx = monsndx(game.youmonst.data);
@@ -2005,7 +2005,7 @@ export function cloneu() {
         return null;
     if (game.mvitals[mndx].mvflags & MFLAGS.G_EXTINCT)
         return null;
-    mon = makemon(game.youmonst.data, u.ux, u.uy,
+    mon = await makemon(game.youmonst.data, u.ux, u.uy,
                   NO_MINVENT | MM_EDOG | MM_NOMSG);
     if (!mon)
         return null;

@@ -477,7 +477,7 @@ export async function intemple(roomno) {
     }
 
     if (!rn2(5)) {
-        const ghost = makemon(game.mons[PMNAMES.PM_GHOST], game.u.ux,
+        const ghost = await makemon(game.mons[PMNAMES.PM_GHOST], game.u.ux,
                               game.u.uy, MMFLAGS.MM_NOMSG);
         if (ghost) {
             const ngen = game.mvitals?.[PMNAMES.PM_GHOST]?.born ?? 0;
@@ -643,20 +643,24 @@ export function mk_roamer(ptr, alignment, x, y, peaceful) {
 
     const roamer = makemon(ptr, x, y, MMFLAGS.MM_ADJACENTOK
                                       | MMFLAGS.MM_EMIN | MMFLAGS.MM_NOMSG);
-    if (!roamer)
-        return null;
+    const finishCreation = (roamer) => {
+        if (!roamer)
+            return null;
 
-    roamer.emin = { min_align: alignment,
-                    renegade: !!(coaligned && !peaceful) };
-    roamer.ispriest = 0;
-    roamer.isminion = 1;
-    /* mon_learns_traps(roamer, ALL_TRAPS) — mtrapseen = ~0L, state only */
-    roamer.mtrapseen = ~0;
-    roamer.mpeaceful = peaceful ? 1 : 0;
-    roamer.msleeping = 0;
-    set_malign(roamer); /* peaceful may have changed */
+        roamer.emin = { min_align: alignment,
+                        renegade: !!(coaligned && !peaceful) };
+        roamer.ispriest = 0;
+        roamer.isminion = 1;
+        /* mon_learns_traps(roamer, ALL_TRAPS) — mtrapseen = ~0L, state only */
+        roamer.mtrapseen = ~0;
+        roamer.mpeaceful = peaceful ? 1 : 0;
+        roamer.msleeping = 0;
+        set_malign(roamer); /* peaceful may have changed */
 
-    return roamer;
+        return roamer;
+    };
+    return roamer instanceof Promise ? roamer.then(finishCreation)
+                                      : finishCreation(roamer);
 }
 
 // src/priest.c:755 reset_hostility() — on the Astral Plane the placeholder

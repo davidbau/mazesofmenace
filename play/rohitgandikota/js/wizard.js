@@ -454,22 +454,8 @@ export async function resurrect() {
         verb = 'kill';
         const { makemon } = await import('./makemon.js');
         const { MM_NOWAIT } = await import('./const.js');
-        mtmp = makemon(game.mons[PMNAMES.PM_WIZARD_OF_YENDOR],
+        mtmp = await makemon(game.mons[PMNAMES.PM_WIZARD_OF_YENDOR],
                        game.u.ux, game.u.uy, MM_NOWAIT);
-        /* makemon.c:1471-1500 — the !in_mklev arrival message this port's
-           sync makemon defers to its caller: "The Wizard of Yendor
-           suddenly appears next to you!" */
-        if (mtmp) {
-            const { canseemon } = await import('./display.js');
-            if (canseemon(mtmp)) {
-                const { Amonnam } = await import('./do_name.js');
-                const { Norep } = await import('./pline.js');
-                const du = distu(mtmp.mx, mtmp.my);
-                await Norep(`${Amonnam(mtmp)} suddenly appears${
-                    du <= 2 ? ' next to you'
-                    : (du <= BOLT_LIM * BOLT_LIM) ? ' close by' : ''}!`);
-            }
-        }
         /* affects experience; he's not coming back from a corpse
            but is subject to repeated killing like a revived corpse */
         if (mtmp)
@@ -727,7 +713,7 @@ export async function nasty(summoner) {
                                game.mons[makeindex]))
                     continue;
 
-                let mtmp = makemon(game.mons[makeindex], bypos.x, bypos.y,
+                let mtmp = await makemon(game.mons[makeindex], bypos.x, bypos.y,
                                    mmflags);
                 if (mtmp) {
                     mtmp.msleeping = 0;
@@ -735,7 +721,7 @@ export async function nasty(summoner) {
                     mtmp.mtame = 0;
                     set_malign(mtmp);
                 } else {
-                    mtmp = makemon(null, bypos.x, bypos.y, mmflags);
+                    mtmp = await makemon(null, bypos.x, bypos.y, mmflags);
                     if (mtmp) {
                         m_cls = mtmp.data.mlet;
                         const capped_spellcaster = difcap > 0
@@ -795,10 +781,10 @@ const wizapp = [
 ];
 
 // src/wizard.c:517 clonewiz(), the Wizard of Yendor makes a double.
-export function clonewiz() {
+export async function clonewiz() {
     let mtmp2;
 
-    if ((mtmp2 = makemon(game.mons[PMNAMES.PM_WIZARD_OF_YENDOR],
+    if ((mtmp2 = await makemon(game.mons[PMNAMES.PM_WIZARD_OF_YENDOR],
                          game.u.ux, game.u.uy, MM_NOWAIT)) != null) {
         mtmp2.msleeping = mtmp2.mtame = mtmp2.mpeaceful = 0;
         if (!game.u.uhave?.amulet && rn2(2)) { /* give clone a fake */

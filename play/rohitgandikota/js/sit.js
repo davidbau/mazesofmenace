@@ -52,7 +52,7 @@ import { heal_legs, schedule_goto, dropy } from './do.js';
 import { makewish } from './zap.js';
 import { courtmon } from './mkroom.js';
 import { makemon } from './makemon.js';
-import { announce_created_monster, do_genocide, seffects } from './read.js';
+import { do_genocide, seffects } from './read.js';
 import { do_mapping } from './detect.js';
 import { aggravate } from './wizard.js';
 import { tele } from './teleport.js';
@@ -181,11 +181,8 @@ async function throne_sit_effect() {
                 await pline('A voice echoes:');
                 /* SetVoice((struct monst *) 0, 0, 80, voice_throne) */
                 await verbalize(`Thine audience hath been summoned, ${game.flags.female ? 'Dame' : 'Sire'}!`);
-                while (cnt--) {
-                    const summoned = makemon(courtmon(), tx, ty, NO_MM_FLAGS);
-                    if (summoned)
-                        await announce_created_monster(summoned, NO_MM_FLAGS);
-                }
+                while (cnt--)
+                    await makemon(courtmon(), tx, ty, NO_MM_FLAGS);
                 break;
             }
         case 8:
@@ -681,9 +678,9 @@ export async function rndcurse() {
             }
 
             if (otmp.blessed)
-                unbless(otmp);
+                await unbless(otmp);
             else
-                curse(otmp);
+                await curse(otmp);
         }
         update_inventory();
     }
@@ -692,9 +689,9 @@ export async function rndcurse() {
     if (u.usteed && !rn2(4) && (otmp = which_armor(u.usteed, W_SADDLE)) != null
         && !otmp.cursed) { /* skip if already cursed */
         if (otmp.blessed)
-            unbless(otmp);
+            await unbless(otmp);
         else
-            curse(otmp);
+            await curse(otmp);
         if (!Blind()) {
             await pline(`${Yobjnam2(otmp, 'glow')} ${hcolor(otmp.cursed ? NH_BLACK : 'brown')}.`);
             otmp.bknown = Hallucination() ? 0 : 1; /* bypass set_bknown() */

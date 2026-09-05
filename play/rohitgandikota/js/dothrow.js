@@ -94,6 +94,7 @@ import { BRK_KNOWN2NOTBREAK } from './const.js';
 import { BRK_KNOWN2BREAK } from './const.js';
 import { BRK_KNOWN_OUTCOME } from './const.js';
 import { BRK_FROM_INV } from './const.js';
+import { IS_ALTAR, TRAPDOOR, HOLE, PIT, SPIKED_PIT } from './const.js';
 import { ship_object, container_impact_dmg } from './dokick.js';
 import { snuff_candle } from './apply.js';
 import { is_flammable } from './mkobj.js';
@@ -565,6 +566,36 @@ export async function throwit_mon_hit(obj, mon) {
     return false;
 }
 
+// src/dothrow.c:606 hitfloor(). Hard impacts test every object's resistance.
+export async function hitfloor(obj, verbosely) {
+    const { dropy, dropz, doaltarobj } = await import('./do.js');
+    const u = game.u;
+    if (IS_SOFT(game.level.at(u.ux, u.uy).typ) || u.uinwater || u.uswallow) {
+        await dropy(obj);
+        return;
+    }
+    if (IS_ALTAR(game.level.at(u.ux, u.uy).typ)) {
+        await doaltarobj(obj);
+    } else if (verbosely) {
+        const verb = obj.otyp === ONAMES.WAN_STRIKING ? 'strike' : 'hit';
+        let surf = surface(u.ux, u.uy);
+        const t = t_at(u.ux, u.uy);
+        if (t && t.tseen) {
+            switch (t.ttyp) {
+            case TRAPDOOR: surf = 'trap door'; break;
+            case HOLE: surf = 'edge of the hole'; break;
+            case PIT: case SPIKED_PIT: surf = 'edge of the pit'; break;
+            }
+        }
+        await pline(`${Doname2(obj)} ${otense(obj, verb)} the ${surf}.`);
+    }
+    if (await hero_breaks(obj, u.ux, u.uy, BRK_FROM_INV))
+        return;
+    if (ship_object(obj, u.ux, u.uy, false))
+        return;
+    await dropz(obj, true);
+}
+
 // src/dothrow.c:1510 throwit() — fly the missile and land it.
 //
 // The reachable spine includes horizontal hand-thrown or launched missiles,
@@ -650,13 +681,12 @@ export async function throwit(obj, wep_mask, twoweap = false,
             } else {
                 note_unported_dothrow('throwit:vertical_throw');
             }
+        } else if (u.dz > 0 && u.usteed && obj.oclass === OCLASSES.POTION_CLASS
+                   && rn2(6)) {
+            const { potionhit } = await import('./potion.js');
+            await potionhit(u.usteed, obj, POTHIT_HERO_THROW);
         } else {
-            if (obj.oclass === OCLASSES.POTION_CLASS) {
-                const { hitfloor } = await import('./do.js');
-                await hitfloor(obj, true);
-            } else {
-                note_unported_dothrow('throwit:vertical_throw');
-            }
+            await hitfloor(obj, true);
         }
         throwit_return(true);
         return;
@@ -1176,9 +1206,7 @@ export function breaktest(obj) {
 }
 
 // src/dothrow.c:breakmsg(), breakobj(), and hero_breaks(), narrowed to
-// potions. Vertical throws call this after breaktest() selects breakage;
-// hitfloor() calls hero_breaks_potion() so the resistance path can still
-// leave the potion intact on the floor.
+// potions. Vertical throws call this after breaktest() selects breakage.
 async function break_potion_after_test(obj, impactX = null, impactY = null) {
     const wasOnFloor = obj.where === OBJ_FLOOR;
     const floorX = obj.ox, floorY = obj.oy;
@@ -1225,15 +1253,8 @@ async function break_potion_after_test(obj, impactX = null, impactY = null) {
         newsym(floorX, floorY);
 }
 
-export async function hero_breaks_potion(obj) {
-    if (obj.oclass !== OCLASSES.POTION_CLASS || !breaktest(obj))
-        return false;
-    await break_potion_after_test(obj);
-    return true;
-}
-
-// src/dothrow.c:63 throwing_weapon() — a weapon meant to be thrown.
-function throwing_weapon(obj) {
+// src/dothrow.c:1430 throwing_weapon() — a weapon meant to be thrown.
+export function throwing_weapon(obj) {
     return (is_missile(obj) || is_spear(obj)
             /* daggers and knife (excludes scalpel) */
             || (is_blade(obj) && !is_sword(obj)
@@ -2024,7 +2045,7 @@ export async function release_camera_demon(obj, x, y) {
     let mtmp;
 
     if (!rn2(3)
-        && (mtmp = makemon(game.mons[rn2(3) ? PMNAMES.PM_HOMUNCULUS
+        && (mtmp = await makemon(game.mons[rn2(3) ? PMNAMES.PM_HOMUNCULUS
                                             : PMNAMES.PM_IMP], x, y,
                            MM_NOMSG)) != null) {
         if (canspotmon(mtmp))

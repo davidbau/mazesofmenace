@@ -10,7 +10,8 @@ import {
 } from './generated/artifacts_data.js';
 import { objectNames, NUM_OBJECTS, objectDescrs, objects } from './objects.js';
 import { obj_shuffle_range } from './o_init.js';
-import { monsterNames, NON_PM, M2_UNDEAD, is_demon, is_dprince, is_dlord } from './monsters.js';
+import { monsterNames, NON_PM, M2_UNDEAD, is_demon, is_dprince, is_dlord, resists_ston } from './monsters.js';
+import { Fire_resistance, Cold_resistance, Shock_resistance, Drain_resistance, resists_fire, resists_cold, resists_elec, resists_poison, resists_drli } from './zap.js';
 import {
     A_NONE,
     ONAME_WISH,
@@ -1655,12 +1656,15 @@ export async function doinvoke() {
 }
 
 /**
- * C ref: artifact.c spec_applies — whether artifact special attacks apply.
- * Branch envelope: PHYS early-return (no DBONUS|ATTK); DMONS/DCLAS/DFLAG2/
- * DALIGN; ATTK Magm/Stun rn2(100)<mr. Named omissions: defended();
- * DFLAG1; hero Fire/Cold/Shock/Poison/Drain/Stone/Antimagic props;
- * mon resists_* via mresists (intrinsic bits only when set elsewhere);
- * DFLAG2 yours/Upolyd/ulycn arms (hero as target).
+ * C ref: artifact.c spec_applies `:1008–1060` — whether artifact special
+ * attacks apply. Branch envelope: PHYS early-return (no DBONUS|ATTK);
+ * DMONS/DCLAS/DFLAG2/DALIGN; ATTK per-adtyp resists (hero props when the
+ * hero is the target, `resists_*` when a monster is). Named omissions:
+ * defended() (artifact/dragon-armor guard before the switch); DFLAG1
+ * mflags1 arm; DFLAG2 yours/Upolyd/ulycn arms (hero as target);
+ * resists_* artifact/worn grants (inherited from the zap.js/monsters.js
+ * bit subsets); hero Poison/Stone read H/E/sticky flats (no uprops
+ * fallback, matching this function's Antimagic arm convention).
  */
 function spec_applies(weap, mtmp) {
     if (!weap) return 0;
@@ -1695,25 +1699,39 @@ function spec_applies(weap, mtmp) {
         return (mal === A_NONE || sgn(mal) !== (weap.alignment | 0)) ? 1 : 0;
     }
     if (spfx & SPFX_ATTK) {
-        // defended(mtmp, adtyp) deferred → treat as undefended
+        // defended(mtmp, adtyp) deferred → treat as undefended (named omit)
         const ad = weap.attk?.adtyp | 0;
+        const u = game.u || {};
         switch (ad) {
         case AD_FIRE:
+            // C: !(yours ? Fire_resistance : resists_fire(mtmp))
+            return (yours ? Fire_resistance() : resists_fire(mtmp)) ? 0 : 1;
         case AD_COLD:
+            // C: !(yours ? Cold_resistance : resists_cold(mtmp))
+            return (yours ? Cold_resistance() : resists_cold(mtmp)) ? 0 : 1;
         case AD_ELEC:
-        case AD_DRST:
-        case AD_DRLI:
-        case AD_STON:
-            // hero *Resistance + mon resists_* deferred → bonus applies
-            return 1;
+            // C: !(yours ? Shock_resistance : resists_elec(mtmp))
+            return (yours ? Shock_resistance() : resists_elec(mtmp)) ? 0 : 1;
         case AD_MAGM:
         case AD_STUN:
             if (yours) {
-                const u = game.u || {};
                 const am = !!(u.Antimagic || u.HAntimagic || u.EAntimagic);
                 return am ? 0 : 1;
             }
             return rn2(100) < (ptr?.mr | 0) ? 0 : 1;
+        case AD_DRST:
+            // C: !(yours ? Poison_resistance : resists_poison(mtmp))
+            return (yours
+                ? !!(u.Poison_resistance || u.HPoison_resistance || u.EPoison_resistance)
+                : resists_poison(mtmp)) ? 0 : 1;
+        case AD_DRLI:
+            // C: !(yours ? Drain_resistance : resists_drli(mtmp))
+            return (yours ? Drain_resistance() : resists_drli(mtmp)) ? 0 : 1;
+        case AD_STON:
+            // C: !(yours ? Stone_resistance : resists_ston(mtmp))
+            return (yours
+                ? !!(u.Stone_resistance || u.HStone_resistance || u.EStone_resistance)
+                : resists_ston(mtmp)) ? 0 : 1;
         default:
             return 0;
         }

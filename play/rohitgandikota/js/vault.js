@@ -609,7 +609,7 @@ export async function invault() {
         return;
 
     const roomidx = vaultroom - ROOMOFFSET;
-    const guard = makemon(game.mons[PMNAMES.PM_GUARD], entry.x, entry.y,
+    const guard = await makemon(game.mons[PMNAMES.PM_GUARD], entry.x, entry.y,
                           MM_EGD | MM_NOMSG);
     if (!guard)
         return;

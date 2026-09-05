@@ -328,7 +328,7 @@ async function mcast_death_touch(mtmp) {
 async function mcast_clone_wiz(mtmp) {
     if (mtmp.iswiz && game.context?.no_of_wizards === 1) {
         await pline('Double Trouble...');
-        clonewiz();
+        await clonewiz();
     } /* else impossible("bad wizard cloning?"); */
 }
 
@@ -553,7 +553,7 @@ async function mcast_insects(mtmp) {
         if (!enexto(bypos, mtmp.mux, mtmp.muy, mtmp.data))
             return;
         if ((pm = mkclass(let_, 0)) != null
-            && (mtmp2 = makemon(pm, bypos.x, bypos.y, MM_ANGRY | MM_NOMSG))
+            && (mtmp2 = await makemon(pm, bypos.x, bypos.y, MM_ANGRY | MM_NOMSG))
             != null) {
             success = true;
             mtmp2.msleeping = mtmp2.mpeaceful = mtmp2.mtame = 0;

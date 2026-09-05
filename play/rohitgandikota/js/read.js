@@ -39,9 +39,8 @@ import { game } from './gstate.js';
 import { getobj, GETOBJ_PROMPT, ECMD_TIME, ECMD_OK } from './invent.js';
 import { ECMD_CANCEL, SPE_LIM, CORR, Is_rogue_level, W_ARMOR, W_ARM, NODIR,
          A_STR, A_CON, W_BALL, W_CHAIN, W_ART, W_ARTI, TT_BURIEDBALL,
-         BY_COOKIE, G_UNIQ, M_AP_TYPE, M_AP_MONSTER, M_AP_OBJECT,
-         M_AP_FURNITURE, MM_FEMALE, MM_MALE, NON_PM, W_SADDLE,
-         OBJ_AT, COLNO, ROWNO, BOLT_LIM, HAND, HEAD, NH_RED,
+         BY_COOKIE, G_UNIQ, MM_FEMALE, MM_MALE, NON_PM, W_SADDLE,
+         OBJ_AT, COLNO, ROWNO, HAND, HEAD, NH_RED,
          NH_PURPLE } from './const.js';
 import { sgn, distu, isok } from './hacklib.js';
 import { valid_cloud_pos } from './region.js';
@@ -51,24 +50,23 @@ import { bcsign, blessorcurse, mkobj, mksobj, place_object,
 import { chwepon } from './wield.js';
 import { erosion_matters } from './mkobj.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
-import { newsym, pline, sensemon, canspotmon } from './display.js';
+import { newsym, pline, canspotmon } from './display.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { getlin } from './cmd.js';
 import { has_head, hides_under, is_hider, is_silent,
          name_to_monplus } from './mondata.js';
 import { is_female, is_male, makemon, mkclass, rndmonst,
          set_malign } from './makemon.js';
-import { canseemon } from './display.js';
-import { Amonnam, hcolor, trycall, upstart } from './do_name.js';
-import { an, makeplural, makesingular, simpleonames, vtense } from './objnam.js';
-import { def_monsyms, defsyms, monexplain } from './drawing_data.js';
+import { hcolor, trycall, upstart } from './do_name.js';
+import { an, makeplural, makesingular, vtense } from './objnam.js';
+import { def_monsyms, monexplain } from './drawing_data.js';
 import { MM_MINVIS, MM_NOEXCLAM } from './const.js';
 import { study_book } from './spell.js';
 import { do_mapping } from './detect.js';
 import { do_clear_area, vision_recalc } from './vision.js';
 import { makeknown } from './o_init.js';
 import { more_experienced } from './exper.js';
-import { Norep, pline_The, set_msg_xy, You, Your, You_feel,
+import { pline_The, You, Your, You_feel,
          You_hear } from './pline.js';
 import { DEADMONSTER } from './monst.js';
 import { NOTELL } from './const.js';
@@ -558,7 +556,7 @@ export async function recharge(obj, curse_bless) {
             if (is_cursed) {
                 if (!obj.cursed) {
                     await p_glow2(obj, NH_BLACK);
-                    curse(obj);
+                    await curse(obj);
                 } else {
                     await pline(`${Yobjnam2(obj, 'vibrate')} briefly.`);
                 }
@@ -569,7 +567,7 @@ export async function recharge(obj, curse_bless) {
                 obj.spe = 7;
                 await p_glow2(obj, !obj.blessed ? NH_LIGHT_BLUE : NH_BLUE);
                 if (!obj.blessed)
-                    bless(obj);
+                    await bless(obj);
             } else {
                 if (obj.spe < 7 || obj.cursed) {
                     n = rnd(2);
@@ -578,7 +576,7 @@ export async function recharge(obj, curse_bless) {
                         await p_glow1(obj);
                     } else {
                         await p_glow2(obj, NH_AMBER);
-                        uncurse(obj);
+                        await uncurse(obj);
                     }
                 } else {
                     await pline(nothing_happens);
@@ -1498,7 +1496,7 @@ export async function do_genocide(how) {
         if (!(mons[mndx].geno & G_UNIQ)
             && !(game.mvitals[mndx].mvflags & (G_GENOD | G_EXTINCT)))
             for (i = rn1(3, 4); i > 0; i--) {
-                if (!makemon(ptr, u.ux, u.uy, NO_MINVENT | MM_NOMSG))
+                if (!await makemon(ptr, u.ux, u.uy, NO_MINVENT | MM_NOMSG))
                     break; /* couldn't make one */
                 ++cnt;
                 if (game.mvitals[mndx].mvflags & G_EXTINCT)
@@ -1612,7 +1610,7 @@ async function seffect_remove_curse(sobj) {
                     obj.bknown = 0;
                 } else if (obj.cursed) {
                     const knew_curse = !!obj.bknown;
-                    uncurse(obj);
+                    await uncurse(obj);
                     if (knew_curse && otyp === ONAMES.SCR_REMOVE_CURSE)
                         learnscrolltyp(ONAMES.SCR_REMOVE_CURSE);
                 }
@@ -1798,9 +1796,9 @@ async function seffect_enchant_armor(sobj) {
             otmp.spe++;
             cap_spe(otmp);
             if (!otmp.blessed)
-                bless(otmp);
+                await bless(otmp);
         } else if (otmp.cursed)
-            uncurse(otmp);
+            await uncurse(otmp);
         otmp.known = 1;
         setworn(otmp, W_ARM);
         if (otmp.unpaid)
@@ -1821,11 +1819,11 @@ async function seffect_enchant_armor(sobj) {
     if (s < 0)
         await costly_alteration(otmp, COST_DECHNT);
     if (scursed && !otmp.cursed)
-        curse(otmp);
+        await curse(otmp);
     else if (sblessed && !otmp.blessed)
-        bless(otmp);
+        await bless(otmp);
     else if (!scursed && otmp.cursed)
-        uncurse(otmp);
+        await uncurse(otmp);
     if (s) {
         const oldspe = otmp.spe;
 
@@ -2346,43 +2344,6 @@ async function parse_create_particular(str) {
     return { valid: false, text: bufp, data: null };
 }
 
-export async function announce_created_monster(mtmp, mmflags) {
-    const appearance = M_AP_TYPE(mtmp);
-    let exclaim = !(mmflags & MM_NOEXCLAM);
-    let what = null;
-
-    if ((canseemon(mtmp) && (!appearance || appearance === M_AP_MONSTER))
-        || sensemon(mtmp)) {
-        what = Amonnam(mtmp);
-        if (appearance === M_AP_MONSTER)
-            exclaim = true;
-    } else if (canseemon(mtmp)) {
-        if (appearance === M_AP_OBJECT) {
-            const fake = mksobj(mtmp.mappearance, false, false);
-            if (fake.oclass === OCLASSES.COIN_CLASS)
-                fake.quan = 2;
-            const simple = simpleonames(fake);
-            what = upstart(fake.quan === 1 ? an(simple) : simple);
-        } else if (appearance === M_AP_FURNITURE) {
-            what = upstart(an(defsyms[mtmp.mappearance]?.explain
-                              || 'something'));
-        } else {
-            what = 'Something';
-        }
-    }
-    if (!what)
-        return;
-
-    const near = Math.abs(mtmp.mx - game.u.ux) <= 1
-              && Math.abs(mtmp.my - game.u.uy) <= 1;
-    const where = near ? ' next to you'
-                : distu(mtmp.mx, mtmp.my) <= BOLT_LIM * BOLT_LIM
-                    ? ' close by' : '';
-    set_msg_xy(mtmp.mx, mtmp.my);
-    await Norep(`${what}${exclaim ? ' suddenly' : ''} ${
-        vtense(what, 'appear')}${where}${exclaim ? '!' : '.'}`);
-}
-
 async function create_particular_creation(d) {
     let whichpm = null, firstchoice = NON_PM;
     let madeany = false;
@@ -2438,14 +2399,13 @@ async function create_particular_creation(d) {
         if (d.invisible)
             mmflags |= MM_MINVIS;
 
-        const mtmp = makemon(whichpm, game.u.ux, game.u.uy, mmflags);
+        const mtmp = await makemon(whichpm, game.u.ux, game.u.uy, mmflags);
         if (!mtmp) {
             if (d.monclass === LIMITS.MAXMCLASSES && !d.randmonst)
                 break;
             continue;
         }
         const mx = mtmp.mx, my = mtmp.my;
-        await announce_created_monster(mtmp, mmflags);
 
         if (d.maketame) {
             const { tamedog } = await import('./dog.js');

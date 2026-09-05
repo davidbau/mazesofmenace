@@ -121,7 +121,7 @@ async function dowatersnakes() {
             await You_hear('something hissing!');
         }
         for (let i = 0; i < num; ++i) {
-            const mtmp = makemon(game.mons[PMNAMES.PM_WATER_MOCCASIN],
+            const mtmp = await makemon(game.mons[PMNAMES.PM_WATER_MOCCASIN],
                                  game.u.ux, game.u.uy, MM_NOMSG);
             if (mtmp && t_at(mtmp.mx, mtmp.my))
                 await mintrap(mtmp, NO_TRAP_FLAGS);
@@ -144,7 +144,7 @@ async function dowaterdemon() {
     const G_GONE = 0x03; /* G_GENOD | G_EXTINCT */
 
     if (!((game.mvitals?.[PMNAMES.PM_WATER_DEMON]?.mvflags ?? 0) & G_GONE)) {
-        const mtmp = makemon(game.mons[PMNAMES.PM_WATER_DEMON],
+        const mtmp = await makemon(game.mons[PMNAMES.PM_WATER_DEMON],
                              game.u.ux, game.u.uy, MM_NOMSG);
         if (mtmp) {
             if (!game.u.ublind)
@@ -178,7 +178,7 @@ async function dowaternymph() {
 
     let mtmp = null;
     if (!((game.mvitals?.[PMNAMES.PM_WATER_NYMPH]?.mvflags ?? 0) & G_GONE)
-        && (mtmp = makemon(game.mons[PMNAMES.PM_WATER_NYMPH],
+        && (mtmp = await makemon(game.mons[PMNAMES.PM_WATER_NYMPH],
                            game.u.ux, game.u.uy, MM_NOMSG))) {
         if (!game.u.ublind)
             await You(`attract ${a_monnam(mtmp)}!`);
@@ -417,7 +417,7 @@ export async function drinkfountain() {
                 for (const obj of [...(game.invent || [])]) {
                     if (obj.oclass !== OCLASSES.COIN_CLASS && !obj.cursed
                         && !rn2(5)) {
-                        curse(obj);
+                        await curse(obj);
                         ++buc_changed;
                     }
                 }
@@ -516,7 +516,7 @@ export async function drinksink() {
             await pline_The('sink seems quite dirty.');
         } else {
             const { makemon } = await import('./makemon.js');
-            const mtmp = makemon(game.mons[PMNAMES.PM_SEWER_RAT],
+            const mtmp = await makemon(game.mons[PMNAMES.PM_SEWER_RAT],
                                  game.u.ux, game.u.uy, MM_NOMSG);
             if (mtmp) {
                 const { canspotmon } = await import('./display.js');
@@ -573,7 +573,7 @@ export async function drinksink() {
         let mtmp = null;
         if (!gone) {
             const { makemon } = await import('./makemon.js');
-            mtmp = makemon(game.mons[PMNAMES.PM_WATER_ELEMENTAL],
+            mtmp = await makemon(game.mons[PMNAMES.PM_WATER_ELEMENTAL],
                            game.u.ux, game.u.uy, MM_NOMSG);
         }
         if (gone || !mtmp)
@@ -654,7 +654,7 @@ export async function dipfountain(obj) {
     switch (rnd(30)) {
     case 16: /* Curse the item */
         if (obj.oclass !== OCLASSES.COIN_CLASS && !obj.cursed) {
-            curse(obj);
+            await curse(obj);
         }
         break;
     case 17:
@@ -664,7 +664,7 @@ export async function dipfountain(obj) {
         if (obj.cursed) {
             if (!game.u.ublind)
                 await pline_The('water glows for a moment.');
-            uncurse(obj);
+            await uncurse(obj);
         } else {
             await pline('A feeling of loss comes over you.');
         }

@@ -22,11 +22,12 @@ import { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
 import { NO_COLOR } from './terminal.js';
 import { NHW_MENU, MENU_BEHAVE_STANDARD, PICK_ONE, PICK_NONE,
          MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED } from './const.js';
-import { OBJ_NAME, OBJ_DESCR } from './objnam.js';
+import { OBJ_NAME, OBJ_DESCR, Tobjnam } from './objnam.js';
 import { ECMD_FAIL } from './const.js';
 import { You, Your, You_feel, You_hear, pline_The } from './pline.js';
 import { acurr, exercise } from './attrib.js';
-import { mksobj } from './mkobj.js';
+import { mksobj, set_bknown } from './mkobj.js';
+import { stop_occupation } from './allmain.js';
 import { weffects, zapyourself } from './zap.js';
 import { fall_asleep } from './timeout.js';
 import { makeknown, observe_object } from './o_init.js';
@@ -288,6 +289,17 @@ async function deadbook(book) {
             await pline('Oh my!  Your name appears in the book!');
             break;
         }
+    }
+}
+
+// src/spell.c:344 book_cursed(). Only active study returns a message promise.
+export function book_cursed(book) {
+    if (book.cursed && game.multi >= 0 && game.occupation === learn
+        && game.context.spbook?.book === book) {
+        return pline(`${Tobjnam(book, 'slam')} shut!`).then(async () => {
+            set_bknown(book, 1);
+            await stop_occupation();
+        });
     }
 }
 

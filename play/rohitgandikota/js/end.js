@@ -493,7 +493,7 @@ async function really_done(how) {
     /* dump_everything: dumplog disabled */
 
     if (bones_ok && taken)
-        drop_upon_death(null, null, repos.x, repos.y);
+        await drop_upon_death(null, null, repos.x, repos.y);
 
     /* grave creation after disclosure */
     if (bones_ok && u.ugrave_arise === -1

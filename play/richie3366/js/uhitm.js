@@ -726,7 +726,7 @@ function bimanual(obj) {
 /**
  * C ref: youprop.h Hate_silver — lycanthrope or poly form hates_silver.
  */
-function Hate_silver() {
+export function Hate_silver() {
     const u = game.u || {};
     return ((u.ulycn ?? NON_PM) | 0) >= LOW_PM
         || hates_silver(game.youmonst?.data);

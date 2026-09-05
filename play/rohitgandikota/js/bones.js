@@ -106,7 +106,7 @@ function likes_stuff(md) {
 // src/bones.c:264 drop_upon_death() — all inventory is dropped, usually
 // cursed; each item draws rn2(5) for the curse and, with no receiving
 // monster or container, rn2(8) for the nearby-scavenger chance.
-export function drop_upon_death(mtmp, cont, x, y) {
+export async function drop_upon_death(mtmp, cont, x, y) {
     let otmp;
     while ((otmp = (game.invent || [])[0]) != null) {
         obj_extract_self(otmp);
@@ -114,7 +114,7 @@ export function drop_upon_death(mtmp, cont, x, y) {
         otmp.owornmask = 0;
 
         if (rn2(5))
-            curse(otmp);
+            await curse(otmp);
         if (mtmp) {
             (mtmp.minvent ||= []).push(otmp);
             otmp.where = 4; /* OBJ_MINVENT */
@@ -162,7 +162,7 @@ export async function savebones(how, corpse) {
 
     if (u.ugrave_arise == null || u.ugrave_arise < 0) {
         /* drop everything, then leave a ghost */
-        drop_upon_death(null, null, u.ux, u.uy);
+        await drop_upon_death(null, null, u.ux, u.uy);
         const { makemon } = await import('./makemon.js');
         game.in_mklev = true; /* allow creation on the hero's square */
         const mtmp = await makemon(game.mons[PMNAMES.PM_GHOST], u.ux, u.uy,

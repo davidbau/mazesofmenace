@@ -261,7 +261,7 @@ async function shkinit(shp, sroom) {
         await rloc(occupant, RLOC_NOMSG); /* insurance */
     }
 
-    const shk = makemon(game.mons[PMNAMES.PM_SHOPKEEPER], sx, sy, MM_ESHK);
+    const shk = await makemon(game.mons[PMNAMES.PM_SHOPKEEPER], sx, sy, MM_ESHK);
     if (!shk)
         return -1;
 

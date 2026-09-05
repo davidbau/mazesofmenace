@@ -16,7 +16,7 @@ import { rank, rank_of, bot_conditions } from './botl.js';
 import { Upolyd } from './const.js';
 import { cansee, couldsee, vision_recalc } from './vision.js';
 import { Blind, Infravision, Hallucination, Invis, See_invisible,
-         Underwater } from './youprop.js';
+         Underwater, Detect_monsters } from './youprop.js';
 import { observe_object } from './o_init.js';
 import { distu } from './hacklib.js';
 import { ACURR } from './attrib.js';
@@ -89,7 +89,7 @@ export function canspotself() {
     return Blind() || !!u.uswallow
            || (!invisible && !u.uundetected)
            || !!u.uprops?.TELEPAT
-           || !!u.uprops?.DETECT_MONSTERS;
+           || Detect_monsters();
 }
 
 /* src/stairs.c:180 known_branch_stairs() and stairway_at() — needed to pick
@@ -1294,7 +1294,7 @@ export function newsym(x, y) {
         const spotMon = !!(mon && (mon_visible(mon)
                                    || (!wormTail && sensemon(mon))));
         const detectedOnly = !!(spotMon && !wormTail
-            && game.u.uprops?.DETECT_MONSTERS && !mon_visible(mon)
+            && Detect_monsters() && !mon_visible(mon)
             && !tp_sensemon(mon) && !match_warn_of_mon(mon));
         /* src/display.c:1029, a warning glyph takes precedence over a
            remembered invisible-monster marker. */
@@ -1401,7 +1401,7 @@ export function newsym(x, y) {
         const mon = m_at(x, y);
         const spotMon = !!(mon && (sensemon(mon)
                     || (see_with_infrared(mon) && mon_visible(mon))));
-        const detectedOnly = !!(spotMon && game.u.uprops?.DETECT_MONSTERS
+        const detectedOnly = !!(spotMon && Detect_monsters()
             && !tp_sensemon(mon) && !match_warn_of_mon(mon)
             && !(see_with_infrared(mon) && mon_visible(mon)));
         if (spotMon) {
@@ -2455,7 +2455,7 @@ export function sensemon(mon) {
     if (Underwater()
         && !(distu(mon.mx, mon.my) <= 2 && is_pool(mon.mx, mon.my)))
         return false;
-    return !!(u.uprops?.DETECT_MONSTERS
+    return !!(Detect_monsters()
               || tp_sensemon(mon)
               || match_warn_of_mon(mon));
 }

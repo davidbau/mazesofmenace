@@ -8,14 +8,14 @@ import { Monnam, Some_Monnam } from './do_name.js';
 import { pline_xy } from './pline.js';
 import { newsym, pline } from './display.js';
 import { place_object, unknow_object } from './mkobj.js';
-import { freeinv, stackobj, obj_extract_self } from './invent.js';
+import { freeinv, stackobj, obj_extract_self, carry_obj_effects } from './invent.js';
 import { flooreffects } from './do.js';
 /* src/light.c obj_sheds_light() == obj_is_burning(): a lit lamp/candle/
    artifact. The port tracks lamplit; artifact light records elsewhere. */
 const obj_sheds_light = (o) => !!o.lamplit;
 import { attacktype, is_animal } from './mondata.js';
 import { ATTKS, MONSYMS, MFLAGS } from './monst_data.js';
-import { canseemon } from './display.js';
+import { canseemon, canspotmon } from './display.js';
 import { merged } from './invent.js';
 import { LOST_NONE, LOST_THROWN, LOST_DROPPED, LOST_STOLEN,
          OBJ_MINVENT, W_ARMOR, W_ACCESSORY, W_WEAPONS,
@@ -146,11 +146,13 @@ async function worn_item_removal(mon, obj) {
 export async function steal(mtmp, objnambuf = null) {
     const u = game.u;
     const monkey_business = is_animal(mtmp.data);
+    const seen = canspotmon(mtmp);
+    let Monnambuf = Some_Monnam(mtmp);
     const inventory = game.invent || [];
     const noncoin = inventory.filter(o => o.oclass !== OCLASSES.COIN_CLASS);
 
     if (!noncoin.length) {
-        await pline(`${Monnam(mtmp)} tries to rob you, but there is nothing to steal!`);
+        await pline(`${Monnambuf} tries to rob you, but there is nothing to steal!`);
         return 1;
     }
 
@@ -201,6 +203,8 @@ export async function steal(mtmp, objnambuf = null) {
         }
         await worn_item_removal(mtmp, otmp);
         named = mtmp.data.mlet === MONSYMS.S_NYMPH;
+        if (!seen && canspotmon(mtmp))
+            Monnambuf = Monnam(mtmp);
     } else if (otmp.owornmask) {
         await worn_item_removal(mtmp, otmp);
         named = mtmp.data.mlet === MONSYMS.S_NYMPH;
@@ -211,7 +215,7 @@ export async function steal(mtmp, objnambuf = null) {
         objnambuf.value = lost_name;
     mtmp.mavenge = 1;
     freeinv(otmp);
-    await pline(`${named ? 'She' : Monnam(mtmp)} stole ${doname(otmp)}.`);
+    await pline(`${named ? 'She' : Monnambuf} stole ${doname(otmp)}.`);
     await encumber_msg();
     otmp.how_lost = LOST_STOLEN;
     mpickobj(mtmp, otmp);
@@ -390,9 +394,7 @@ export function mpickobj(mtmp, otmp) {
             otmp.how_lost = LOST_NONE;
     }
     /* Must do carrying effects on object prior to add_to_minv() */
-    if (otmp.otyp === ONAMES.FIGURINE && otmp.cursed
-        && (otmp.corpsenm ?? -1) !== -1)
-        note_unported_steal('mpickobj:fig_transform');
+    carry_obj_effects(otmp);
     /* add_to_minv (src/mkobj.c:2648): merge if possible, else insert */
     for (const held of (mtmp.minvent || [])) {
         if (merged({ o: held }, { o: otmp }))

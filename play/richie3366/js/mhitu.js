@@ -14,7 +14,7 @@ import {
     LEFT_SIDE, RIGHT_SIDE, LEFT_RING, RIGHT_RING, LEG, HAND, HAIR,
     POOL, DROWNING, KILLED_BY_AN,
     MAGICAL_BREATHING, SWIMMING, Is_medusa_level, Is_waterlevel,
-    W_ARMS, W_WEP, W_AMUL, W_ARM, BOLT_LIM, STONING, KILLED_BY, M_SEEN_FIRE,
+    W_ARMS, W_WEP, W_AMUL, W_ARM, W_ARMG, NEUTRAL, BOLT_LIM, STONING, KILLED_BY, M_SEEN_FIRE,
     M_SEEN_SLEEP,
     REFLECTING, A_CHAOTIC, LARGEST_INT,
     M_AP_NOTHING, M_AP_OBJECT, WORN_HELMET, TELEDS_ALLOW_DRAG,
@@ -35,15 +35,16 @@ import {
 import { cansee, couldsee, vision_recalc, vision_off_newsym_gbuf } from './vision.js';
 import {
     Monnam, mon_nam, pmname, hliquid, x_monnam, Hallucination,
-    noit_mon_nam, noit_Monnam, s_suffix, Ugender, m_monnam, Some_Monnam,
+    noit_mon_nam, noit_Monnam, s_suffix, Ugender, m_monnam, Some_Monnam, Mgender,
 } from './do_name.js';
 import { MON_WEP, mon_wield_item, dmgval, hitval, drain_weapon_skill } from './weapon.js';
-import { arti_reflects, is_art } from './artifact.js';
+import { arti_reflects, artifact_hit, permapoisoned, is_art } from './artifact.js';
 import { is_pole, welded } from './wield.js';
 import { xname, doname, an, yname, the, simpleonames, safe_qbuf, mimic_obj_name, makeplural } from './objnam.js';
-import { objectNames, ARMOR_CLASS, COIN_CLASS } from './objects.js';
+import { objectNames, ARMOR_CLASS, COIN_CLASS, SILVER } from './objects.js';
 import { objects_at } from './mkobj.js';
 import { steal, unresponsive, remove_worn_item } from './steal.js';
+import { cloneu } from './sit.js';
 import {
     stop_donning, setworn, Ring_on, Ring_gone, suit_simple_name, hard_helmet,
 } from './do_wear.js';
@@ -60,7 +61,7 @@ import {
     MZ_HUGE, M1_SEE_INVIS, MALE, FEMALE, haseyes, resists_ston,
     hides_under, is_flyer, thick_skinned, nolimbs, touch_petrifies,
     poly_when_stoned, has_head, slithy, amphibious, breathless, is_swimmer,
-    is_hider, likes_gold,
+    is_hider, likes_gold, mons,
     MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
 } from './monsters.js';
 import { done_in_by, done, finish_losehp_done } from './end.js';
@@ -73,7 +74,7 @@ import {
     A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, adjattrib, exercise,
     poisoned, Fast, adjalign,
 } from './attrib.js';
-import { xkilled, killed } from './uhitm.js';
+import { xkilled, killed, Hate_silver } from './uhitm.js';
 import {
     m_seenres, cvt_adtyp_to_mseenres, monstseesu, monstunseesu, m_canseeu,
     mhis,
@@ -84,7 +85,7 @@ import {
 } from './invent.js';
 import { burn_away_slime } from './timeout.js';
 import {
-    get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mattackm,
+    get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mattackm, rustm,
     could_seduce, SYSOPT_SEDUCE, mon_poly, mondead,
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
     AT_ENGL, AT_GAZE, AT_SPIT, AT_BREA, AT_EXPL, AT_BOOM, AT_TENT, AT_MAGC,
@@ -138,6 +139,13 @@ const SILVER_DRAGON_SCALE_MAIL = objectNames.indexOf('SILVER_DRAGON_SCALE_MAIL')
 const ROBE = objectNames.indexOf('ROBE');
 const MUMMY_WRAPPING = objectNames.indexOf('MUMMY_WRAPPING');
 const ALCHEMY_SMOCK = objectNames.indexOf('ALCHEMY_SMOCK');
+const CORPSE = objectNames.indexOf('CORPSE');
+const GAUNTLETS_OF_POWER = objectNames.indexOf('GAUNTLETS_OF_POWER');
+/** C objclass.h materials — oc_material values for the mhitu silver/pudding arms. */
+const IRON = 11;
+const METAL = 12;
+const PM_BLACK_PUDDING = monsterNames.indexOf('PM_BLACK_PUDDING');
+const PM_BROWN_PUDDING = monsterNames.indexOf('PM_BROWN_PUDDING');
 
 /** C ref: monst.h resists_* — mresists|mextrinsics|mintrinsics bit. */
 function resists_mr(mon, mrBit) {
@@ -657,16 +665,19 @@ async function mhitm_ad_blnd_u(mtmp, mattk, mhm) {
 }
 
 /**
- * C ref: uhitm.c mhitm_ad_phys mhitu branch (mdef == youmonst).
+ * C ref: uhitm.c mhitm_ad_phys mhitu branch (mdef == youmonst) `:4021–4126`.
  * AT_HUGS + !sticks(youmonst): rn2(2) grab / already-ustuck crush
- * (D-1327). Weapon / non-hug hitmsg path otherwise.
- * Corpse / silver / poison / pudding clone deferred.
+ * (D-1327). Weapon arm in C order: petrifying-corpse do_stone_u/done,
+ * dmgval(otmp, youmonst) + Gauntlets-of-Power rn1(4,3) + min 1, artifact_hit-or-hitmsg,
+ * damage-0 return, silver sear, tmp minus rnd(-uac) AC soak, Half,
+ * iron/metal pudding split via cloneu, rustm, dieroll-gated poisoned().
+ * Non-weapon path keeps the magr != u.ustuck disjunct (`:4122–4123`).
  */
 async function mhitm_ad_phys_u(mtmp, mattk, mhm) {
     const pd = game.youmonst?.data;
+    const u = game.u || {};
     // C uhitm.c mhitm_ad_phys `:4023–4037` — hug grab/crush before wep.
     if ((mattk.aatyp | 0) === AT_HUGS && !sticks(pd)) {
-        const u = game.u || {};
         if (!u.ustuck && rn2(2)) {
             if (await u_slip_free(mtmp, mattk)) {
                 mhm.damage = 0;
@@ -685,13 +696,78 @@ async function mhitm_ad_phys_u(mtmp, mattk, mhm) {
         return;
     }
     const otmp = MON_WEP(mtmp);
-    if (mattk.aatyp === AT_WEAP && otmp) {
-        mhm.damage += dmgval(otmp, null);
+    if ((mattk.aatyp | 0) === AT_WEAP && otmp) {
+        // C `:4044–4045` — poison flag read before the corpse arm (no RNG).
+        const was_poisoned = !!(otmp.opoisoned || permapoisoned(otmp));
+        // C `:4047–4060` — petrifying corpse hits for 1, may stone hero done.
+        if ((otmp.otyp | 0) === CORPSE
+            && touch_petrifies(mons(otmp.corpsenm))) {
+            mhm.damage = 1;
+            await pline_mon(
+                mtmp,
+                `${Monnam(mtmp)} hits you with the ${pmname(otmp.corpsenm, NEUTRAL)} corpse.`,
+            );
+            if (!(u.Stoned || u.HStoned) && do_stone_u(mtmp)) {
+                mhm.hitflags = M_ATTK_HIT;
+                mhm.done = true;
+                return;
+            }
+        }
+        // C `:4061–4066` — dmgval(otmp, mdef=&youmonst) then GOP rn1(4,3), min 1.
+        mhm.damage += dmgval(otmp, game.youmonst);
+        const marmg = which_armor(mtmp, W_ARMG);
+        if (marmg && (marmg.otyp | 0) === GAUNTLETS_OF_POWER) {
+            mhm.damage += rn1(4, 3); /* 3..6 */
+        }
         if (mhm.damage <= 0) mhm.damage = 1;
-        // artifact_hit deferred
-        await hitmsg(mtmp, mattk);
-        mhm.hitflags |= M_ATTK_HIT;
-    } else if (mattk.aatyp !== AT_TUCH || mhm.damage !== 0) {
+        // C `:4067–4072` — artifact_hit may speak instead of hitmsg.
+        const dmgBox = { dmg: mhm.damage | 0 };
+        if (!otmp.oartifact
+            || !artifact_hit(mtmp, game.youmonst, otmp, dmgBox,
+                game._mhitu_dieroll | 0)) {
+            await hitmsg(mtmp, mattk);
+            mhm.hitflags |= M_ATTK_HIT;
+        }
+        mhm.damage = dmgBox.dmg | 0;
+        // C `:4073–4074` — no leftover damage, nothing more to do.
+        if (!mhm.damage) return;
+        // C `:4075–4079` — silver sears a silver-hating hero.
+        const mat = game.objects?.[otmp.otyp]?.oc_material ?? 99;
+        if (mat === SILVER && Hate_silver()) {
+            await pline('The silver sears your flesh!');
+            exercise(A_CON, false);
+        }
+        // C `:4080–4089` — soak into tmp before the split check below:
+        // negative-AC rnd(-uac) (the corpus first-diff), min 1, Half.
+        let tmp = mhm.damage | 0;
+        if ((u.uac | 0) < 0) tmp -= rnd(-(u.uac | 0));
+        if (tmp < 1) tmp = 1;
+        tmp = maybe_half_phys(tmp);
+        // C `:4091–4105` — iron/metal vs pudding hero splits now; that
+        // damage was inflicted here so none lands below.
+        if ((u.mh | 0) - tmp > 1
+            && (mat === IRON || mat === METAL)
+            && (((u.umonnum | 0) === PM_BLACK_PUDDING)
+                || ((u.umonnum | 0) === PM_BROWN_PUDDING))) {
+            if (tmp > 1) exercise(A_STR, false);
+            u.mh = (u.mh | 0) - tmp;
+            if (game.disp) game.disp.botl = true;
+            if (game.flags) game.flags.botl = true;
+            mhm.damage = 0; /* don't inflict more damage below */
+            if (await cloneu()) {
+                await pline(`You divide as ${mon_nam(mtmp)} hits you!`);
+            }
+        }
+        // C `:4106` — hero armor may rust from the hitting weapon.
+        await rustm(game.youmonst, otmp);
+        // C `:4107–4121` — poisoned weapons poison on a low dieroll.
+        if (was_poisoned && ((game._mhitu_dieroll | 0) <= 5)) {
+            const buf = `${s_suffix(Monnam(mtmp))} ${mpoisons_subj(mtmp, mattk)}`;
+            await poisoned(buf, A_STR, pmname(mtmp.data, Mgender(mtmp)),
+                10, false);
+        }
+    } else if ((mattk.aatyp | 0) !== AT_TUCH
+               || (mhm.damage | 0) !== 0 || mtmp !== u.ustuck) {
         await hitmsg(mtmp, mattk);
         mhm.hitflags |= M_ATTK_HIT;
     }

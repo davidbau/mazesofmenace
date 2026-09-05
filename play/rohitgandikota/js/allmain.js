@@ -388,7 +388,7 @@ export async function newgame() {
     // side of u_init shifts everything after it.
     u_on_upstairs();
 
-    makedog();
+    await makedog();
 
     // src/u_init.c:1374 — role inventory, race extras and starting gold.
     u_init_inventory();
@@ -637,11 +637,11 @@ async function interrupt_multi(msg) {
 }
 
 // src/allmain.c:158 maybe_generate_rnd_mon()
-function maybe_generate_rnd_mon() {
+async function maybe_generate_rnd_mon() {
     const stronghold = game.special_levels?.stronghold_level;
     const deep = stronghold && depth(game.u.uz) > depth(stronghold);
     if (!rn2(game.u.uevent?.udemigod ? 25 : deep ? 50 : 70))
-        makemon(null, 0, 0, NO_MM_FLAGS);
+        await makemon(null, 0, 0, NO_MM_FLAGS);
 }
 
 // C ref: allmain.c moveloop_core()
@@ -725,7 +725,7 @@ export async function moveloop_core() {
 
                 /* src/allmain.c:238 — after allotment, so a new monster
                    effectively loses its first turn */
-                maybe_generate_rnd_mon();
+                await maybe_generate_rnd_mon();
 
                 u_calc_moveamt(g.mvl_wtcap);
                 /* src/allmain.c:242 — record the square the hero just left, so

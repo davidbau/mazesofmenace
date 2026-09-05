@@ -163,196 +163,200 @@ export function mk_mplayer(ptr, x, y, special) {
         special = false;
 
     const mtmp = makemon(ptr, x, y, special ? MM_NOMSG : NO_MM_FLAGS);
-    if (mtmp) {
-        let otmp;
+    const finishCreation = (mtmp) => {
+        if (mtmp) {
+            let otmp;
 
-        mtmp.m_lev = special ? rn1(16, 15) : rnd(16);
-        mtmp.mhp = mtmp.mhpmax = d(mtmp.m_lev, 10)
-                                 + (special ? (30 + rnd(30)) : 30);
-        if (special) {
-            christen_monst(mtmp, get_mplname(mtmp));
-            /* that's why they are "stuck" in the endgame :-) */
-            mongets(mtmp, O.FAKE_AMULET_OF_YENDOR);
-        }
-        mtmp.mpeaceful = 0;
-        set_malign(mtmp); /* peaceful may have changed again */
-
-        /* default equipment; much of it will be overridden below */
-        let weapon = !rn2(2) ? O.LONG_SWORD : rnd_class(O.SPEAR, O.BULLWHIP);
-        let armor = rnd_class(O.GRAY_DRAGON_SCALE_MAIL,
-                              O.YELLOW_DRAGON_SCALE_MAIL);
-        let cloak = !rn2(8) ? O.STRANGE_OBJECT
-                            : rnd_class(O.OILSKIN_CLOAK,
-                                        O.CLOAK_OF_DISPLACEMENT);
-        let helm = !rn2(8) ? O.STRANGE_OBJECT
-                           : rnd_class(O.ELVEN_LEATHER_HELM,
-                                       O.HELM_OF_TELEPATHY);
-        let shield = !rn2(8) ? O.STRANGE_OBJECT
-                             : rnd_class(O.ELVEN_SHIELD,
-                                         O.SHIELD_OF_REFLECTION);
-
-        switch (mtmp.mnum) {
-        case P.PM_ARCHEOLOGIST:
-            if (rn2(2))
-                weapon = O.BULLWHIP;
-            break;
-        case P.PM_BARBARIAN:
-            if (rn2(2)) {
-                weapon = rn2(2) ? O.TWO_HANDED_SWORD : O.BATTLE_AXE;
-                shield = O.STRANGE_OBJECT;
+            mtmp.m_lev = special ? rn1(16, 15) : rnd(16);
+            mtmp.mhp = mtmp.mhpmax = d(mtmp.m_lev, 10)
+                                     + (special ? (30 + rnd(30)) : 30);
+            if (special) {
+                christen_monst(mtmp, get_mplname(mtmp));
+                /* that's why they are "stuck" in the endgame :-) */
+                mongets(mtmp, O.FAKE_AMULET_OF_YENDOR);
             }
-            if (rn2(2))
-                armor = rnd_class(O.PLATE_MAIL, O.CHAIN_MAIL);
-            if (helm === O.HELM_OF_BRILLIANCE)
-                helm = O.STRANGE_OBJECT;
-            break;
-        case P.PM_CAVE_DWELLER:
-            if (rn2(4))
-                weapon = O.MACE;
-            else if (rn2(2))
-                weapon = O.CLUB;
-            if (helm === O.HELM_OF_BRILLIANCE)
-                helm = O.STRANGE_OBJECT;
-            break;
-        case P.PM_HEALER:
-            if (rn2(4))
-                weapon = O.QUARTERSTAFF;
-            else if (rn2(2))
-                weapon = rn2(2) ? O.UNICORN_HORN : O.SCALPEL;
-            if (rn2(4))
-                helm = rn2(2) ? O.HELM_OF_BRILLIANCE : O.HELM_OF_TELEPATHY;
-            if (rn2(2))
-                shield = O.STRANGE_OBJECT;
-            break;
-        case P.PM_KNIGHT:
-            if (rn2(4))
-                weapon = O.LONG_SWORD;
-            if (rn2(2))
-                armor = rnd_class(O.PLATE_MAIL, O.CHAIN_MAIL);
-            break;
-        case P.PM_MONK:
-            weapon = !rn2(3) ? O.SHURIKEN : O.STRANGE_OBJECT;
-            armor = O.STRANGE_OBJECT;
-            cloak = O.ROBE;
-            if (rn2(2))
-                shield = O.STRANGE_OBJECT;
-            break;
-        case P.PM_CLERIC:
-            if (rn2(2))
-                weapon = O.MACE;
-            if (rn2(2))
-                armor = rnd_class(O.PLATE_MAIL, O.CHAIN_MAIL);
-            if (rn2(4))
+            mtmp.mpeaceful = 0;
+            set_malign(mtmp); /* peaceful may have changed again */
+
+            /* default equipment; much of it will be overridden below */
+            let weapon = !rn2(2) ? O.LONG_SWORD : rnd_class(O.SPEAR, O.BULLWHIP);
+            let armor = rnd_class(O.GRAY_DRAGON_SCALE_MAIL,
+                                  O.YELLOW_DRAGON_SCALE_MAIL);
+            let cloak = !rn2(8) ? O.STRANGE_OBJECT
+                                : rnd_class(O.OILSKIN_CLOAK,
+                                            O.CLOAK_OF_DISPLACEMENT);
+            let helm = !rn2(8) ? O.STRANGE_OBJECT
+                               : rnd_class(O.ELVEN_LEATHER_HELM,
+                                           O.HELM_OF_TELEPATHY);
+            let shield = !rn2(8) ? O.STRANGE_OBJECT
+                                 : rnd_class(O.ELVEN_SHIELD,
+                                             O.SHIELD_OF_REFLECTION);
+
+            switch (mtmp.mnum) {
+            case P.PM_ARCHEOLOGIST:
+                if (rn2(2))
+                    weapon = O.BULLWHIP;
+                break;
+            case P.PM_BARBARIAN:
+                if (rn2(2)) {
+                    weapon = rn2(2) ? O.TWO_HANDED_SWORD : O.BATTLE_AXE;
+                    shield = O.STRANGE_OBJECT;
+                }
+                if (rn2(2))
+                    armor = rnd_class(O.PLATE_MAIL, O.CHAIN_MAIL);
+                if (helm === O.HELM_OF_BRILLIANCE)
+                    helm = O.STRANGE_OBJECT;
+                break;
+            case P.PM_CAVE_DWELLER:
+                if (rn2(4))
+                    weapon = O.MACE;
+                else if (rn2(2))
+                    weapon = O.CLUB;
+                if (helm === O.HELM_OF_BRILLIANCE)
+                    helm = O.STRANGE_OBJECT;
+                break;
+            case P.PM_HEALER:
+                if (rn2(4))
+                    weapon = O.QUARTERSTAFF;
+                else if (rn2(2))
+                    weapon = rn2(2) ? O.UNICORN_HORN : O.SCALPEL;
+                if (rn2(4))
+                    helm = rn2(2) ? O.HELM_OF_BRILLIANCE : O.HELM_OF_TELEPATHY;
+                if (rn2(2))
+                    shield = O.STRANGE_OBJECT;
+                break;
+            case P.PM_KNIGHT:
+                if (rn2(4))
+                    weapon = O.LONG_SWORD;
+                if (rn2(2))
+                    armor = rnd_class(O.PLATE_MAIL, O.CHAIN_MAIL);
+                break;
+            case P.PM_MONK:
+                weapon = !rn2(3) ? O.SHURIKEN : O.STRANGE_OBJECT;
+                armor = O.STRANGE_OBJECT;
                 cloak = O.ROBE;
-            if (rn2(4))
-                helm = rn2(2) ? O.HELM_OF_BRILLIANCE : O.HELM_OF_TELEPATHY;
-            if (rn2(2))
+                if (rn2(2))
+                    shield = O.STRANGE_OBJECT;
+                break;
+            case P.PM_CLERIC:
+                if (rn2(2))
+                    weapon = O.MACE;
+                if (rn2(2))
+                    armor = rnd_class(O.PLATE_MAIL, O.CHAIN_MAIL);
+                if (rn2(4))
+                    cloak = O.ROBE;
+                if (rn2(4))
+                    helm = rn2(2) ? O.HELM_OF_BRILLIANCE : O.HELM_OF_TELEPATHY;
+                if (rn2(2))
+                    shield = O.STRANGE_OBJECT;
+                break;
+            case P.PM_RANGER:
+                if (rn2(2))
+                    weapon = O.ELVEN_DAGGER;
+                break;
+            case P.PM_ROGUE:
+                if (rn2(2))
+                    weapon = rn2(2) ? O.SHORT_SWORD : O.ORCISH_DAGGER;
+                break;
+            case P.PM_SAMURAI:
+                if (rn2(2))
+                    weapon = O.KATANA;
+                break;
+            case P.PM_TOURIST:
+                /* Defaults are just fine */
+                break;
+            case P.PM_VALKYRIE:
+                if (rn2(2))
+                    weapon = O.WAR_HAMMER;
+                if (rn2(2))
+                    armor = rnd_class(O.PLATE_MAIL, O.CHAIN_MAIL);
+                break;
+            case P.PM_WIZARD:
+                if (rn2(4))
+                    weapon = rn2(2) ? O.QUARTERSTAFF : O.ATHAME;
+                if (rn2(2)) {
+                    armor = rn2(2) ? O.BLACK_DRAGON_SCALE_MAIL
+                                   : O.SILVER_DRAGON_SCALE_MAIL;
+                    cloak = O.CLOAK_OF_MAGIC_RESISTANCE;
+                }
+                if (rn2(4))
+                    helm = O.HELM_OF_BRILLIANCE;
                 shield = O.STRANGE_OBJECT;
-            break;
-        case P.PM_RANGER:
-            if (rn2(2))
-                weapon = O.ELVEN_DAGGER;
-            break;
-        case P.PM_ROGUE:
-            if (rn2(2))
-                weapon = rn2(2) ? O.SHORT_SWORD : O.ORCISH_DAGGER;
-            break;
-        case P.PM_SAMURAI:
-            if (rn2(2))
-                weapon = O.KATANA;
-            break;
-        case P.PM_TOURIST:
-            /* Defaults are just fine */
-            break;
-        case P.PM_VALKYRIE:
-            if (rn2(2))
-                weapon = O.WAR_HAMMER;
-            if (rn2(2))
-                armor = rnd_class(O.PLATE_MAIL, O.CHAIN_MAIL);
-            break;
-        case P.PM_WIZARD:
-            if (rn2(4))
-                weapon = rn2(2) ? O.QUARTERSTAFF : O.ATHAME;
-            if (rn2(2)) {
-                armor = rn2(2) ? O.BLACK_DRAGON_SCALE_MAIL
-                               : O.SILVER_DRAGON_SCALE_MAIL;
-                cloak = O.CLOAK_OF_MAGIC_RESISTANCE;
+                break;
+            default:
+                weapon = 0;
+                break;
             }
-            if (rn2(4))
-                helm = O.HELM_OF_BRILLIANCE;
-            shield = O.STRANGE_OBJECT;
-            break;
-        default:
-            weapon = 0;
-            break;
-        }
 
-        if (weapon !== O.STRANGE_OBJECT && weapon) {
-            otmp = mksobj(weapon, true, false);
-            otmp.oeroded = otmp.oeroded2 = 0;
-            otmp.spe = special ? rn1(5, 4) : rn2(4);
-            if (!rn2(3))
-                otmp.oerodeproof = 1;
-            else if (!rn2(2))
-                otmp.greased = 1;
-            if (special && rn2(2))
-                otmp = mk_artifact(otmp, -128 /* A_NONE */, 99, false);
-            /* usually increase stack size if stackable weapon */
-            if (game.objects[otmp.otyp].oc_merge && !otmp.oartifact
-                && monmightthrowwep(otmp))
-                otmp.quan += rn2(is_spear(otmp) ? 4 : 8);
-            otmp.owt = weight(otmp);
-            /* mplayers knew better than to overenchant Magicbane */
-            if (is_art(otmp, ART_MAGICBANE))
-                otmp.spe = rnd(4);
-            mpickobj(mtmp, otmp);
-        }
+            if (weapon !== O.STRANGE_OBJECT && weapon) {
+                otmp = mksobj(weapon, true, false);
+                otmp.oeroded = otmp.oeroded2 = 0;
+                otmp.spe = special ? rn1(5, 4) : rn2(4);
+                if (!rn2(3))
+                    otmp.oerodeproof = 1;
+                else if (!rn2(2))
+                    otmp.greased = 1;
+                if (special && rn2(2))
+                    otmp = mk_artifact(otmp, -128 /* A_NONE */, 99, false);
+                /* usually increase stack size if stackable weapon */
+                if (game.objects[otmp.otyp].oc_merge && !otmp.oartifact
+                    && monmightthrowwep(otmp))
+                    otmp.quan += rn2(is_spear(otmp) ? 4 : 8);
+                otmp.owt = weight(otmp);
+                /* mplayers knew better than to overenchant Magicbane */
+                if (is_art(otmp, ART_MAGICBANE))
+                    otmp.spe = rnd(4);
+                mpickobj(mtmp, otmp);
+            }
 
-        let quan;
-        if (special) {
-            if (!rn2(10))
-                mongets(mtmp, rn2(3) ? O.LUCKSTONE : O.LOADSTONE);
-            mk_mplayer_armor(mtmp, armor);
-            mk_mplayer_armor(mtmp, cloak);
-            mk_mplayer_armor(mtmp, helm);
-            mk_mplayer_armor(mtmp, shield);
-            if (weapon === O.WAR_HAMMER) /* valkyrie: wimpy or Mjollnir */
-                mk_mplayer_armor(mtmp, O.GAUNTLETS_OF_POWER);
-            else if (rn2(8))
-                mk_mplayer_armor(mtmp, rnd_class(O.LEATHER_GLOVES,
-                                                 O.GAUNTLETS_OF_DEXTERITY));
-            if (rn2(8))
-                mk_mplayer_armor(mtmp, rnd_class(O.LOW_BOOTS,
-                                                 O.LEVITATION_BOOTS));
-            m_dowear(mtmp, true);
+            let quan;
+            if (special) {
+                if (!rn2(10))
+                    mongets(mtmp, rn2(3) ? O.LUCKSTONE : O.LOADSTONE);
+                mk_mplayer_armor(mtmp, armor);
+                mk_mplayer_armor(mtmp, cloak);
+                mk_mplayer_armor(mtmp, helm);
+                mk_mplayer_armor(mtmp, shield);
+                if (weapon === O.WAR_HAMMER) /* valkyrie: wimpy or Mjollnir */
+                    mk_mplayer_armor(mtmp, O.GAUNTLETS_OF_POWER);
+                else if (rn2(8))
+                    mk_mplayer_armor(mtmp, rnd_class(O.LEATHER_GLOVES,
+                                                     O.GAUNTLETS_OF_DEXTERITY));
+                if (rn2(8))
+                    mk_mplayer_armor(mtmp, rnd_class(O.LOW_BOOTS,
+                                                     O.LEVITATION_BOOTS));
+                m_dowear(mtmp, true);
 
-            quan = rn2(3) ? rn2(3) : rn2(16);
+                quan = rn2(3) ? rn2(3) : rn2(16);
+                while (quan--)
+                    mongets(mtmp, rnd_class(O.DILITHIUM_CRYSTAL, O.JADE));
+                /* To get the gold "right" would mean a player can double his
+                   gold supply by killing one mplayer.  Not good. */
+                mkmonmoney(mtmp, rn2(1000));
+                quan = rn2(10);
+                while (quan--)
+                    mpickobj(mtmp, mkobj(OCLASSES.RANDOM_CLASS, false));
+            }
+            quan = rnd(3);
             while (quan--)
-                mongets(mtmp, rnd_class(O.DILITHIUM_CRYSTAL, O.JADE));
-            /* To get the gold "right" would mean a player can double his
-               gold supply by killing one mplayer.  Not good. */
-            mkmonmoney(mtmp, rn2(1000));
-            quan = rn2(10);
+                mongets(mtmp, rnd_offensive_item(mtmp));
+            quan = rnd(3);
             while (quan--)
-                mpickobj(mtmp, mkobj(OCLASSES.RANDOM_CLASS, false));
+                mongets(mtmp, rnd_defensive_item(mtmp));
+            quan = rnd(3);
+            while (quan--)
+                mongets(mtmp, rnd_misc_item(mtmp));
         }
-        quan = rnd(3);
-        while (quan--)
-            mongets(mtmp, rnd_offensive_item(mtmp));
-        quan = rnd(3);
-        while (quan--)
-            mongets(mtmp, rnd_defensive_item(mtmp));
-        quan = rnd(3);
-        while (quan--)
-            mongets(mtmp, rnd_misc_item(mtmp));
-    }
 
-    return mtmp;
+        return mtmp;
+    };
+    return mtmp instanceof Promise ? mtmp.then(finishCreation)
+                                      : finishCreation(mtmp);
 }
 
 // src/mplayer.c:325 create_mplayers() — num random mplayers at random free
 // spots.
-export function create_mplayers(num, special) {
+export async function create_mplayers(num, special) {
     while (num) {
         let tryct = 0;
 
@@ -372,7 +376,7 @@ export function create_mplayers(num, special) {
         if (tryct > 50)
             return;
 
-        mk_mplayer(game.mons[pm], x, y, special);
+        await mk_mplayer(game.mons[pm], x, y, special);
         num--;
     }
 }

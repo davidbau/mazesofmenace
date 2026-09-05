@@ -947,7 +947,7 @@ async function throne_sit_effect() {
  * (mhitu→zap→potion→eat→sit). Monster clones use makemon.js
  * clone_mon (D-1078).
  */
-async function cloneu() {
+export async function cloneu() {
     const u = game.u || {};
     if ((u.mh | 0) <= 1) return null;
     const mndx = game.youmonst?.data?.mndx | 0;

@@ -560,7 +560,7 @@ export async function chwepon(otmp, amount) {
                 /* cursed tin opener is wielded in right hand */
                 buf = `Your right ${body_part(HAND)} tingles.`;
             }
-            uncurse(uwep);
+            await uncurse(uwep);
             update_inventory();
         } else {
             buf = `Your ${makeplural(body_part(HAND))} `
@@ -586,7 +586,7 @@ export async function chwepon(otmp, amount) {
             uwep.owt = weight(uwep);
         }
         if (uwep.cursed)
-            uncurse(uwep);
+            await uncurse(uwep);
         /* update shop bill to reflect new higher value */
         if (uwep.unpaid)
             note_unported_wield('chwepon:alter_cost');
@@ -645,7 +645,7 @@ export async function chwepon(otmp, amount) {
     uwep.spe += amount;
     if (amount > 0) {
         if (uwep.cursed)
-            uncurse(uwep);
+            await uncurse(uwep);
         /* update shop bill to reflect new higher price */
         if (uwep.unpaid)
             note_unported_wield('chwepon:alter_cost');
@@ -669,7 +669,7 @@ export async function chwepon(otmp, amount) {
 }
 
 // src/wield.c:800 drop_uswapwep() — the secondary weapon slips away.
-async function drop_uswapwep() {
+export async function drop_uswapwep() {
     const obj = game.u.uswapwep;
 
     /* in order to be dual-wielded the weapon must be one-handed; since

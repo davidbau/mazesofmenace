@@ -957,7 +957,7 @@ export async function retouch_equipment(dropflag) {
         const rings = Number(!!u.uleft) + Number(!!u.uright);
         if (had_rings !== rings && u.uarmg?.cursed) {
             const { uncurse } = await import('./mkobj.js');
-            uncurse(u.uarmg);
+            await uncurse(u.uarmg);
         }
         if (had_gloves && !u.uarmg) {
             const { selftouch } = await import('./trap.js');

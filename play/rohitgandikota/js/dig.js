@@ -686,7 +686,7 @@ export async function dig() {
             if (Is_earthlevel(u.uz) && !rn2(3)) {
                 const mndx = rn2(2) ? PMNAMES.PM_EARTH_ELEMENTAL : PMNAMES.PM_XORN;
 
-                if (makemon(game.mons[mndx], dpx, dpy, MM_NOMSG))
+                if (await makemon(game.mons[mndx], dpx, dpy, MM_NOMSG))
                     await pline_The('debris from your digging comes to life!');
             }
             if (IS_DOOR(lev.typ) && (lev.doormask & D_TRAPPED)) {
@@ -1200,13 +1200,13 @@ async function dig_up_grave(cc) {
         if (!Blind())
             await pline(`${Hallucination() ? 'Dude!  The living dead'
                                            : "The grave's owner is very upset"}!`);
-        makemon(mkclass(MONSYMS.S_ZOMBIE, 0), dig_x, dig_y, MM_NOMSG);
+        await makemon(mkclass(MONSYMS.S_ZOMBIE, 0), dig_x, dig_y, MM_NOMSG);
         break;
     case 3:
         if (!Blind())
             await pline(`${Hallucination() ? 'I want my mummy'
                                            : "You've disturbed a tomb"}!`);
-        makemon(mkclass(MONSYMS.S_MUMMY, 0), dig_x, dig_y, MM_NOMSG);
+        await makemon(mkclass(MONSYMS.S_MUMMY, 0), dig_x, dig_y, MM_NOMSG);
         break;
     default:
         /* No corpse */

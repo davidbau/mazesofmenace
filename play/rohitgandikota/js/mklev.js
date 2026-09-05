@@ -3302,7 +3302,7 @@ async function fill_ordinary_room(croom, bonus_items) {
     /* src/mklev.c:974 — the || SHORT-CIRCUITS: carrying the Amulet skips the
        rn2(3) entirely, so spending it unconditionally is a draw C never makes. */
     if ((game.u?.uhave?.amulet || !rn2(3)) && somexyspace(croom, pos)) {
-        makemon(null, pos.x, pos.y, MM_NOGRP);
+        await makemon(null, pos.x, pos.y, MM_NOGRP);
     }
     // Traps
     const u_depth = g.u?.uz?.dlevel ?? 1;

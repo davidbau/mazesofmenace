@@ -571,7 +571,7 @@ export async function disturb_grave(x, y) {
     } else {
         await You('disturb the undead!');
         lev.disturbed = 1;
-        const ghoul = makemon(game.mons[PMNAMES.PM_GHOUL], x, y, NO_MM_FLAGS);
+        const ghoul = await makemon(game.mons[PMNAMES.PM_GHOUL], x, y, NO_MM_FLAGS);
         if (ghoul && canspotmon(ghoul)) {
             set_msg_xy(ghoul.mx, ghoul.my);
             await Norep(`${Amonnam(ghoul)} suddenly appears next to you!`);

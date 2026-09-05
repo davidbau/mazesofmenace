@@ -19,6 +19,7 @@ import { amphibious, breathless, haseyes, is_flyer, is_swimmer,
 import { Upolyd } from './const.js';
 import { unconscious } from './trap.js';
 import { is_fainted } from './eat.js';
+import { ONAMES } from './objects_data.js';
 
 // include/youprop.h:116 HHallucination — u.uprops[HALLUC].intrinsic.
 // The C comment above it reads "Hallucination is solely a timeout", which is
@@ -47,6 +48,14 @@ export const Deaf = () => !!game.u?.intrinsic?.HDeaf
 export const Blind = () => !!game.u?.ublind
                          || !!(Upolyd(game.u) && game.youmonst?.data
                                && !haseyes(game.youmonst.data));
+
+// include/youprop.h:92 Blinded, :96 Blindfolded, :97 Blindfolded_only.
+export const Blinded = () => !game.u?.blocked?.BLINDED
+    && (!!game.u?.intrinsic?.HBlinded
+        || !!(Upolyd(game.u) && game.youmonst?.data && !haseyes(game.youmonst.data)));
+export const Blindfolded = () => !!game.u?.ublindf
+    && (game.u.ublindf.otyp === ONAMES.BLINDFOLD || game.u.ublindf.otyp === ONAMES.TOWEL);
+export const Blindfolded_only = () => Blindfolded() && !Blinded();
 
 // include/youprop.h:65 Stone_resistance — flat uprops map collapses the
 // intrinsic and extrinsic halves into one read.
@@ -79,6 +88,10 @@ export const Unaware = () =>
 // include/youprop.h:152 See_invisible — (HSee_invisible || ESee_invisible).
 export const See_invisible = () => !!(game.u?.intrinsic?.HSee_invisible
                                       || game.u?.uprops?.SEE_INVIS);
+
+// include/youprop.h:190 Detect_monsters
+export const Detect_monsters = () => !!(game.u?.intrinsic?.HDetect_monsters
+                                        || game.u?.uprops?.DETECT_MONSTERS);
 
 // include/youprop.h:198 Invis — ((HInvis || EInvis) && !BInvis).
 export const Invis = () => !!(game.u?.intrinsic?.HInvis

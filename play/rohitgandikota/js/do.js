@@ -60,7 +60,7 @@ import { Norep, pline_The, There, You, You_cant, You_feel, You_hear, Your }
     from './pline.js';
 import { near_capacity } from './attrib.js';
 import { u_locomotion, losehp, check_special_room } from './hack.js';
-import { ECMD_OK, ECMD_TIME, ECMD_FAIL, LOST_DROPPED, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, W_ARMOR, W_ACCESSORY, W_SADDLE, IS_ALTAR, IS_SOFT, UNENCUMBERED, DIR_DOWN, DIR_UP, SLT_ENCUMBER, is_pit, is_hole, u_at, OBJ_FREE, OBJ_INVENT, OBJ_FLOOR, OBJ_BURIED, VIBRATING_SQUARE, MAGIC_PORTAL, PIT, ROOM, CORR, GRAVE, A_STR, A_DEX, BOTH_SIDES, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, FACE, HAND, BC_BALL, BC_CHAIN, MENU_FULL, ALL_TYPES_SELECTED, Is_rogue_level, Is_waterlevel, IS_WATERWALL, DRAWBRIDGE_UP, DB_UNDER, DB_FLOOR, NH_AMBER, NH_BLACK, NO_MINVENT, MM_NOWAIT, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_MALE, MM_FEMALE, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, NON_PM, RLOC_NOMSG, st_all } from './const.js';
+import { ECMD_OK, ECMD_TIME, ECMD_FAIL, LOST_DROPPED, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, W_ARMOR, W_ACCESSORY, W_SADDLE, IS_ALTAR, UNENCUMBERED, DIR_DOWN, DIR_UP, SLT_ENCUMBER, is_pit, is_hole, u_at, OBJ_FREE, OBJ_INVENT, OBJ_FLOOR, OBJ_BURIED, VIBRATING_SQUARE, MAGIC_PORTAL, PIT, ROOM, CORR, GRAVE, A_STR, A_DEX, BOTH_SIDES, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, FACE, HAND, BC_BALL, BC_CHAIN, MENU_FULL, ALL_TYPES_SELECTED, Is_rogue_level, Is_waterlevel, IS_WATERWALL, DRAWBRIDGE_UP, DB_UNDER, DB_FLOOR, NH_AMBER, NH_BLACK, NO_MINVENT, MM_NOWAIT, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_MALE, MM_FEMALE, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, NON_PM, RLOC_NOMSG, st_all } from './const.js';
 import { t_at, m_at, is_pool, is_lava, delobj_core, m_in_air, mondied,
          seemimic, wake_nearto } from './mon.js';
 import { is_pick } from './mon.js';
@@ -1585,7 +1585,7 @@ async function final_level() {
     /* create some player-monsters */
     const { create_mplayers } = await import('./mplayer.js');
     const { rn1 } = await import('./rng.js');
-    create_mplayers(rn1(4, 3), true);
+    await create_mplayers(rn1(4, 3), true);
 
     /* create a guardian angel next to player, if worthy */
     const { gain_guardian_angel } = await import('./minion.js');
@@ -1730,7 +1730,7 @@ export async function dropy(obj) {
     await dropz(obj, false);
 }
 
-// src/do.c:363 doaltarobj() and src/dothrow.c:606 hitfloor().
+// src/do.c:363 doaltarobj().
 // An object that falls while the hero cannot reach the floor still announces
 // an altar landing, reveals its beatitude, and then enters the floor pile.
 export async function doaltarobj(obj) {
@@ -1759,32 +1759,8 @@ export async function doaltarobj(obj) {
     }
 }
 
-export async function hitfloor(obj, verbosely) {
-    const loc = game.level.at(game.u.ux, game.u.uy);
-    if (IS_SOFT(loc.typ) || game.u.uinwater || game.u.uswallow) {
-        await dropy(obj);
-        return;
-    }
-    if (IS_ALTAR(loc.typ)) {
-        await doaltarobj(obj);
-    } else if (verbosely) {
-        const [{ doname, otense }, { upstart }, { surface }]
-            = await Promise.all([
-                import('./objnam.js'), import('./do_name.js'),
-                import('./dungeon.js'),
-            ]);
-        await pline(`${upstart(doname(obj))} ${otense(obj, 'hit')} the ${surface(game.u.ux, game.u.uy)}.`);
-    }
-    if (obj.oclass === OCLASSES.POTION_CLASS) {
-        const { hero_breaks_potion } = await import('./dothrow.js');
-        if (await hero_breaks_potion(obj))
-            return;
-    }
-    if (ship_object_fn
-        && ship_object_fn(obj, game.u.ux, game.u.uy, false))
-        return;
-    await dropz(obj, true);
-}
+// Keep existing callers compatible with hitfloor's C-owned module.
+export { hitfloor } from './dothrow.js';
 
 // src/do.c dropx() — take it out of inventory, then put it down.
 //

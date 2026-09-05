@@ -181,7 +181,7 @@ export async function msummon(mon) {
     let result = 0;
 
     while (cnt > 0) {
-        const mtmp = makemon(game.mons[dtype], game.u.ux, game.u.uy,
+        const mtmp = await makemon(game.mons[dtype], game.u.ux, game.u.uy,
                              MM_EMIN | MM_NOMSG);
         if (mtmp) {
             ++result;
@@ -281,7 +281,7 @@ export async function lose_guardian_angel(mon) {
         mm.x = game.u.ux;
         mm.y = game.u.uy;
         if (enexto(mm, mm.x, mm.y, game.mons[PMNAMES.PM_ANGEL]))
-            mk_roamer(game.mons[PMNAMES.PM_ANGEL], game.u.ualign.type,
+            await mk_roamer(game.mons[PMNAMES.PM_ANGEL], game.u.ualign.type,
                       mm.x, mm.y, false);
     }
 }
@@ -317,7 +317,7 @@ export async function gain_guardian_angel() {
         mm.y = game.u.uy;
         let mtmp;
         if (enexto(mm, mm.x, mm.y, game.mons[PMNAMES.PM_ANGEL])
-            && (mtmp = mk_roamer(game.mons[PMNAMES.PM_ANGEL],
+            && (mtmp = await mk_roamer(game.mons[PMNAMES.PM_ANGEL],
                                  game.u.ualign.type, mm.x, mm.y,
                                  true)) != null) {
             mtmp.mstrategy = (mtmp.mstrategy | 0) & ~0x80000000; /* APPEARMSG */
@@ -381,7 +381,7 @@ export async function summon_minion(alignment, talk) {
     if (mnum === NON_PM) {
         mon = null;
     } else if (mnum === PMNAMES.PM_ANGEL) {
-        mon = makemon(game.mons[mnum], game.u.ux, game.u.uy, MM_EMIN | MM_NOMSG);
+        mon = await makemon(game.mons[mnum], game.u.ux, game.u.uy, MM_EMIN | MM_NOMSG);
         if (mon) {
             const emin = (mon.mextra ||= {}).emin ||= {};
             mon.emin = emin;
@@ -395,7 +395,7 @@ export async function summon_minion(alignment, talk) {
         /* This was the case before minions were separate from ordinary
            monsters and demons.  Is this test really needed now?  Is it
            appropriate or necessary now that the structures are separate? */
-        mon = makemon(game.mons[mnum], game.u.ux, game.u.uy, MM_EMIN | MM_NOMSG);
+        mon = await makemon(game.mons[mnum], game.u.ux, game.u.uy, MM_EMIN | MM_NOMSG);
         if (mon) {
             const emin = (mon.mextra ||= {}).emin ||= {};
             mon.emin = emin;
@@ -404,7 +404,7 @@ export async function summon_minion(alignment, talk) {
             emin.renegade = false;
         }
     } else {
-        mon = makemon(game.mons[mnum], game.u.ux, game.u.uy, MM_NOMSG);
+        mon = await makemon(game.mons[mnum], game.u.ux, game.u.uy, MM_NOMSG);
     }
     if (mon) {
         if (talk) {

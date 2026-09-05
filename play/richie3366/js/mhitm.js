@@ -1149,8 +1149,8 @@ async function mhitm_really_poison(magr, mattk, mdef, mhm) {
  * shade_miss callee is D-1341. artifact_hit callee is D-0613.
  * rustm callee is mhitm.c :1260–1280.
  * Named omit: youmonst is damageum_ad_phys; mhitu is mhitm_ad_phys_u
- * (was_poisoned + poisoned()); mhitm_ad_drst 1/8; purple worm vs
- * shrieker cap.
+ * (corpse/stone/GOP/artifact/silver/soak/split/rustm/poison ported);
+ * mhitm_ad_drst 1/8; purple worm vs shrieker cap.
  */
 async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
     let mwep = MON_WEP(magr);

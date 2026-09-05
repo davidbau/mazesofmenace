@@ -107,7 +107,7 @@ export function pet_type() {
 }
 
 // src/dog.c:111 makedog()
-export function makedog() {
+export async function makedog() {
     if (game.preferred_pet === 'n') {
         game.context.startingpet_typ = NON_PM;
         return null;
@@ -134,7 +134,7 @@ export function makedog() {
     }
 
     /* NO_MINVENT stops makemon() giving a pony an already-worn saddle */
-    const mtmp = makemon(game.mons[pettype], game.u.ux, game.u.uy,
+    const mtmp = await makemon(game.mons[pettype], game.u.ux, game.u.uy,
                          MM_EDOG | NO_MINVENT);
     if (!mtmp)
         return null;
@@ -238,7 +238,7 @@ export async function make_familiar(otmp, x, y, quietly = false) {
     else if (cgend === CORPSTAT_MALE)
         mmflags |= MM_MALE;
 
-    const mtmp = makemon(game.mons[mndx], x, y, mmflags);
+    const mtmp = await makemon(game.mons[mndx], x, y, mmflags);
     if (!mtmp) {
         if (!quietly)
             await pline('The figurine writhes and then shatters into pieces!');

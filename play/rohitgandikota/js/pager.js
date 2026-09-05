@@ -380,15 +380,15 @@ export function mhidden_description(mon, mhid_flags) {
     let fakeobj;
     const isyou = (mon === game.youmonst);
     const x = isyou ? game.u.ux : mon.mx, y = isyou ? game.u.uy : mon.my;
-    const glyph = (game.level.flags?.hero_memory && !isyou) ? game.level.at(x, y).glyph
+    const glyph = (game.level.flags?.hero_memory && !isyou) ? game.level.at(x, y).remembered_glyph?.glyph
                                                             : glyph_at(x, y);
     let outbuf = '';
 
     const objfrommap = () => {
         otmp = null;
         const res = object_from_map(glyph, x, y);
-        fakeobj = res.fakeobj;
-        otmp = res.obj;
+        fakeobj = res.fake;
+        otmp = res.otmp;
         what = (otmp && otmp.otyp !== ONAMES.STRANGE_OBJECT)
                ? simpleonames(otmp)
                : obj_descr[ONAMES.STRANGE_OBJECT].oc_name;

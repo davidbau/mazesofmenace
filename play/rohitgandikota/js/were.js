@@ -9,9 +9,9 @@ import { set_uasmon } from './polyself.js';
 import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { pline } from './display.js';
-import { Norep, set_msg_xy, You_hear } from './pline.js';
-import { Amonnam, Monnam, pmname } from './do_name.js';
-import { canseemon, canspotmon } from './display.js';
+import { You_hear } from './pline.js';
+import { Monnam, pmname } from './do_name.js';
+import { canseemon } from './display.js';
 import { newsym } from './display.js';
 import { helpless } from './monst.js';
 import { healmon, wake_nearto } from './mon.js';
@@ -20,7 +20,7 @@ import { MFLAGS, PMNAMES } from './monst_data.js';
 import { night } from './calendar.js';
 import { Deaf, Hallucination, Protection_from_shape_changers }
     from './youprop.js';
-import { BOLT_LIM, FROMFORM, FULL_MOON, NON_PM, NO_MM_FLAGS }
+import { FROMFORM, FULL_MOON, NON_PM, NO_MM_FLAGS }
     from './const.js';
 
 /* include/mondata.h:96 is_were() */
@@ -65,20 +65,9 @@ export async function were_summon(ptr, yours) {
         default:
             continue;
         }
-        const helper = makemon(game.mons[typ], game.u.ux, game.u.uy,
+        const helper = await makemon(game.mons[typ], game.u.ux, game.u.uy,
                                NO_MM_FLAGS);
         if (helper) {
-            /* makemon.c:1471 prints this before returning. makemon() is
-               synchronous here, so its async caller supplies the message. */
-            if (canspotmon(helper)) {
-                set_msg_xy(helper.mx, helper.my);
-                const dx = helper.mx - game.u.ux;
-                const dy = helper.my - game.u.uy;
-                const nearby = Math.abs(dx) <= 1 && Math.abs(dy) <= 1;
-                const close = dx * dx + dy * dy <= BOLT_LIM * BOLT_LIM;
-                await Norep(`${Amonnam(helper)} suddenly appears${
-                    nearby ? ' next to you' : close ? ' close by' : ''}!`);
-            }
             total++;
             if (canseemon(helper))
                 visible++;

@@ -631,7 +631,7 @@ export function increment_intrinsic_timeout(key, amount) {
 
 // src/zap.c:1239 cancel_item(). Cancellation removes enchantment and magic
 // from exposed inventory while preserving the few explicitly immune items.
-function cancel_item(obj) {
+async function cancel_item(obj) {
     const otyp = obj.otyp;
     const wornmask = obj.owornmask | 0;
     const abon = (game.u.abon ||= {}).a
@@ -741,8 +741,8 @@ function cancel_item(obj) {
             start_timer(timeout, TIMER_OBJECT, ROT_CORPSE, obj);
         }
     }
-    unbless(obj);
-    uncurse(obj);
+    await unbless(obj);
+    await uncurse(obj);
 }
 
 // src/mon.c:4431 normal_shape(), the cancellation subset. Shapechangers
@@ -786,7 +786,7 @@ export async function cancel_monst(mdef, obj, youattack, allow_cancel_kill,
     if (self_cancel) {
         const inventory = youdefend ? game.invent : (mdef.minvent || []);
         for (const otmp of inventory)
-            cancel_item(otmp);
+            await cancel_item(otmp);
         if (youdefend) {
             (game.disp ||= {}).botl = true;
             find_ac();
@@ -986,7 +986,7 @@ async function montraits(obj, cc, adjacentok) {
         mtmp2.data = game.mons[mtmp2.mnum];
 
         if (mtmp2.mhpmax > 0 || is_rider(mtmp2.data)) {
-            mtmp = makemon(mtmp2.data, cc.x, cc.y,
+            mtmp = await makemon(mtmp2.data, cc.x, cc.y,
                            (NO_MINVENT | MM_NOWAIT | MM_NOCOUNTBIRTH
                             /* in case mtmp2 is a long worm; saved traits for
                                long worm don't include tail segments so don't
@@ -1234,7 +1234,7 @@ export async function revive(corpse, by_hero) {
     if (cant_revive(montype_box, true, corpse)) {
         montype = montype_box.v;
         /* make a new monster */
-        mtmp = makemon(game.mons[montype], x, y, mmflags);
+        mtmp = await makemon(game.mons[montype], x, y, mmflags);
         if (mtmp && !game.in_mklev && game.occupation)
             await dochugw(mtmp, false);
         if (mtmp) {
@@ -1260,7 +1260,7 @@ export async function revive(corpse, by_hero) {
             wary_dog(mtmp, true);
     } else {
         /* make a new monster */
-        mtmp = makemon(mptr, x, y, mmflags | MM_NOCOUNTBIRTH);
+        mtmp = await makemon(mptr, x, y, mmflags | MM_NOCOUNTBIRTH);
         if (mtmp && !game.in_mklev && game.occupation)
             await dochugw(mtmp, false);
     }
@@ -2875,7 +2875,7 @@ export async function bhito(obj, otmp) {
             break;
         case ONAMES.WAN_CANCELLATION:
         case ONAMES.SPE_CANCELLATION:
-            cancel_item(obj);
+            await cancel_item(obj);
             newsym(obj.ox, obj.oy); /* might change color */
             break;
         case ONAMES.SPE_DRAIN_LIFE:
@@ -3839,7 +3839,8 @@ async function disintegrate_mon(mon, type, fltxt) /* type: hero vs other */
 const DMG_DESTROY_SCALE = 5;
 const MAX_ITEMS_DESTROYED = 20;
 
-const destroy_strings = [
+// src/zap.c:5778 destroy_strings[][], also used by trap.c fire_damage().
+export const destroy_strings = [
     ['freezes and shatters', 'freeze and shatter', 'shattered potion'],
     ['boils and explodes', 'boil and explode', 'boiling potion'],
     ['ignites and explodes', 'ignite and explode', 'exploding potion'],

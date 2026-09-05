@@ -1063,6 +1063,13 @@ export async function moveloop_core() {
     }
     // C: if (u.utotype) deferred_goto() after rhack()
     if (g.u?.utotype) await deferred_goto();
+    // C allmain.c:541-542 — after rhack(): consume vision_full_recalc now
+    // so next iteration's monsters see post-hero-action vision (D-1863:
+    // pit fall restricts to 3×3 before the monsters move).
+    if (g.vision_full_recalc) {
+        vision_recalc(0);
+        g.vision_full_recalc = 0;
+    }
     // Message cleared at start of next rhack so pline() survives until the
     // following nhgetch capture (C keeps topline until next command).
 }

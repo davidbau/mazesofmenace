@@ -51,7 +51,7 @@ import { ECMD_OK, ECMD_TIME, ECMD_CANCEL, CQ_CANNED, GETOBJ_NOFLAGS,
     from './const.js';
 import { addinv, addinv_nomerge, carrying, freeinv, getobj, hands_obj,
          hold_another_object, obj_extract_self, update_inventory, useup,
-         useupall, useupf, weight, any_obj_ok, prinv, stackobj }
+         useupall, useupf, weight, any_obj_ok, prinv, stackobj, obfree }
     from './invent.js';
 import { getdir, get_adjacent_loc, cmdq_add_ec, cmdq_add_key, confdir, getlin }
     from './cmd.js';
@@ -68,16 +68,16 @@ import { GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE,
          GETOBJ_PROMPT } from './invent.js';
 import { OCLASSES, MATERIALS } from './objects_data.js';
 import { mstatusline, ustatusline } from './insight.js';
-import { Norep, You_cant, You_hear, You_see, pline_The } from './pline.js';
+import { You_cant, You_hear, You_see, pline_The } from './pline.js';
 import { d, rn1, rn2, rnd, rnl } from './rng.js';
 import { isok, ACCESSIBLE, IS_STWALL, IS_DOOR, D_ISOPEN, IRONBARS, ICE,
-         MAX_OIL_IN_FLASK, BOLT_LIM, NON_PM } from './const.js';
+         MAX_OIL_IN_FLASK, NON_PM } from './const.js';
 import { walk_path } from './dothrow.js';
 import { closed_door } from './cmd.js';
 import { sobj_at } from './invent.js';
 import { ONAMES } from './objects_data.js';
 import { canseemon, canspotmon, glyph_is_invisible_at, map_invisible, newsym,
-         pline, sensemon, unmap_invisible } from './display.js';
+         pline, sensemon, unmap_invisible, vobj_at } from './display.js';
 import { You, There, You_feel, Your } from './pline.js';
 import { dist2, distu, s_suffix } from './hacklib.js';
 import { cansee } from './vision.js';
@@ -88,7 +88,7 @@ import { OBJ_NAME, The, Tobjnam, Yname2, Yobjnam2, an, aobjnam, doname, singular
          cxname, xname, yname, the, thesimpleoname, gloves_simple_name, makeplural,
          otense, vtense } from './objnam.js';
 import { Amonnam, Monnam, a_monnam, hcolor, l_monnam, mon_nam,
-         noit_mon_nam, pmname, upstart, x_monnam, y_monnam }
+         noit_mon_nam, pmname, upstart, x_monnam, y_monnam, m_monnam }
     from './do_name.js';
 import { defsyms } from './drawing_data.js';
 import { bimanual, carried, Is_candle, is_boots, is_gloves,
@@ -97,7 +97,7 @@ import { clear_splitobjs, mkobj, mksobj, place_object, rnd_class, set_bknown,
          splitobj, set_tin_variety, unbless } from './mkobj.js';
 import { attacktype_fordmg, can_blow, has_head, haseyes, nohands, nolimbs,
          breathless, passes_walls, poly_when_stoned, throws_rocks, touch_petrifies,
-         unsolid } from './mondata.js';
+         unsolid, hides_under, locomotion } from './mondata.js';
 import { check_capacity, invocation_pos, losehp, may_passwall } from './hack.js';
 import { tty_yn_function } from './tty/topl.js';
 import { makeknown, observe_object } from './o_init.js';
@@ -109,7 +109,9 @@ import { is_rider, makemon, set_malign, MM_NOMSG, NO_MM_FLAGS }
     from './makemon.js';
 import { ATTKS, PMNAMES } from './monst_data.js';
 import { attach_egg_hatch_timeout, begin_burn, end_burn, HATCH_EGG,
-         stop_timer } from './timeout.js';
+         stop_timer, start_timer, TIMER_OBJECT, FIG_TRANSFORM } from './timeout.js';
+import { impossible } from './pline.js';
+import { make_familiar } from './dog.js';
 import { bhit, obj_resists, zapyourself } from './zap.js';
 import { ceiling, surface } from './dungeon.js';
 import { can_reach_floor, pickup_object } from './pickup.js';
@@ -201,9 +203,6 @@ import { noteleport_level } from './teleport.js';
 import { fill_pit } from './trap.js';
 import { mintrap } from './trap.js';
 import { Trap_Killed_Mon } from './trap.js';
-import { mhidden_description } from './pager.js';
-import { MHID_ARTICLE } from './const.js';
-import { MHID_ALTMON } from './const.js';
 import { poly_gender } from './polyself.js';
 import { Invis } from './youprop.js';
 import { See_invisible } from './youprop.js';
@@ -1242,7 +1241,7 @@ async function use_lamp(obj) {
                 /* struct monst *shkp = shop_keeper(*in_rooms(u.ux, u.uy, SHOPBASE)); SetVoice(shkp, 0, 80, 0); */
 
                 await verbalize(`You burn ${ithem}, you bought ${ithem}!`);
-                bill_dummy_object(obj);
+                await bill_dummy_object(obj);
             }
         }
         await begin_burn(obj, false);
@@ -1297,7 +1296,7 @@ async function light_cocktail(optr) {
         await check_unpaid(obj);
         /* SetVoice(shkp, 0, 80, 0); */
         await verbalize("That's in addition to the cost of the potion, of course.");
-        bill_dummy_object(obj);
+        await bill_dummy_object(obj);
     }
     makeknown(obj.otyp);
 
@@ -1393,7 +1392,7 @@ async function use_bell(optr) {
             && !(game.mvitals[PMNAMES.PM_WOOD_NYMPH].mvflags & G_GONE)
             && !(game.mvitals[PMNAMES.PM_WATER_NYMPH].mvflags & G_GONE)
             && !(game.mvitals[PMNAMES.PM_MOUNTAIN_NYMPH].mvflags & G_GONE)
-            && (mtmp = makemon(mkclass(MONSYMS.S_NYMPH, 0), game.u.ux, game.u.uy,
+            && (mtmp = await makemon(mkclass(MONSYMS.S_NYMPH, 0), game.u.ux, game.u.uy,
                                NO_MINVENT | MM_NOMSG)) != null) {
             await You(`summon ${a_monnam(mtmp)}!`);
             if (!obj_resists(obj, 93, 100)) {
@@ -1894,7 +1893,7 @@ async function use_tinning_kit(obj) {
 
 // src/potion.c:2815 djinni_from_bottle().
 async function djinni_from_bottle(obj) {
-    const mtmp = makemon(game.mons[PMNAMES.PM_DJINNI],
+    const mtmp = await makemon(game.mons[PMNAMES.PM_DJINNI],
                          game.u.ux, game.u.uy, MM_NOMSG);
     if (!mtmp) {
         await pline('It turns out to be empty.');
@@ -2123,8 +2122,6 @@ const BlindedTimeout = () => ((game.u.intrinsic?.HBlinded | 0) & TIMEOUT);
 const Sick = () => !!(game.u.uprops?.SICK);
 const Stunned = () => !!(game.u.intrinsic?.HStun);
 const Confusion = () => !!(game.u.intrinsic?.HConfusion);
-/* include/you.h:558 next2u() */
-const next2u = (px, py) => (distu(px, py) <= 2);
 const Ugender = () => ((Upolyd(game.u) ? game.u.mfemale : game.flags?.female) ? 1 : 0);
 /* the C compares glyph integers; our glyph_at() returns descriptors */
 const glyph_is_monster = (g) => g?.kind === 'mon';
@@ -3005,15 +3002,103 @@ async function use_stethoscope(obj) {
     return res;
 }
 
+// src/apply.c:2398 fig_transform()
+export async function fig_transform(figurine, timeout) {
+    const cc = { x: 0, y: 0 };
+    let redraw = false, suppress_see = false;
+
+    if (!figurine) {
+        await impossible('null figurine in fig_transform()');
+        return;
+    }
+    const silent = timeout !== game.moves;
+    let okay_spot = get_obj_location(figurine, cc, 0);
+    if (figurine.where === OBJ_INVENT || figurine.where === OBJ_MINVENT)
+        okay_spot = enexto(cc, cc.x, cc.y, game.mons[figurine.corpsenm]);
+    if (!okay_spot || !await figurine_location_checks(figurine, cc, true)) {
+        start_timer(rnd(5000), TIMER_OBJECT, FIG_TRANSFORM, figurine);
+        return;
+    }
+
+    const cansee_spot = cansee(cc.x, cc.y);
+    const mtmp = await make_familiar(figurine, cc.x, cc.y, true);
+    if (mtmp) {
+        const mshelter = vobj_at(mtmp.mx, mtmp.my);
+        const monnambuf = an(m_monnam(mtmp));
+        let and_vanish = '';
+        if ((mtmp.minvis && !See_invisible())
+            || (mtmp.data.mlet === MONSYMS.S_MIMIC
+                && M_AP_TYPE(mtmp) !== M_AP_NOTHING))
+            suppress_see = true;
+
+        if (mtmp.mundetected) {
+            if (hides_under(mtmp.data) && mshelter) {
+                and_vanish = ` and ${locomotion(mtmp.data, 'crawl')} under ${doname(mshelter)}`;
+            } else if (mtmp.data.mlet === MONSYMS.S_MIMIC
+                       || mtmp.data.mlet === MONSYMS.S_EEL) {
+                suppress_see = true;
+            } else {
+                and_vanish = ' and vanish';
+            }
+        }
+
+        switch (figurine.where) {
+        case OBJ_INVENT:
+            if (Blind() || suppress_see)
+                await You_feel(`something ${locomotion(mtmp.data, 'drop')} from your pack!`);
+            else
+                await You_see(`${monnambuf} ${locomotion(mtmp.data, 'drop')} out of your pack${and_vanish}!`);
+            break;
+        case OBJ_FLOOR:
+            if (cansee_spot && !silent) {
+                set_msg_xy(cc.x, cc.y);
+                if (suppress_see)
+                    await pline(`${an(xname(figurine))} suddenly vanishes!`);
+                else
+                    await You_see(`a figurine transform into ${monnambuf}${and_vanish}!`);
+                redraw = true;
+            }
+            break;
+        case OBJ_MINVENT:
+            if (cansee_spot && !silent && !suppress_see) {
+                const mon = figurine.ocarry;
+                let carriedby;
+                if (canseemon(mon) && (!mon.wormno || cansee(mon.mx, mon.my)))
+                    carriedby = `${s_suffix(a_monnam(mon))} pack`;
+                else if (is_pool(mon.mx, mon.my))
+                    carriedby = 'empty water';
+                else
+                    carriedby = 'thin air';
+                await You_see(`${monnambuf} ${locomotion(mtmp.data, 'drop')} out of ${carriedby}${and_vanish}!`);
+            }
+            break;
+        default:
+            await impossible(`figurine came to life where? (${figurine.where})`);
+            break;
+        }
+    }
+    if (carried(figurine)) {
+        useup(figurine);
+    } else {
+        obj_extract_self(figurine);
+        await obfree(figurine, null);
+    }
+    if (redraw)
+        newsym(cc.x, cc.y);
+}
+
 // src/apply.c:2511 figurine_location_checks(). A carried figurine can be
 // activated only where its monster can physically fit.
-async function figurine_location_checks(obj, x, y) {
-    if (game.u.uswallow) {
-        await You("don't have enough room in here.");
+async function figurine_location_checks(obj, cc, quietly) {
+    if (carried(obj) && game.u.uswallow) {
+        if (!quietly)
+            await You("don't have enough room in here.");
         return false;
     }
+    const x = cc ? cc.x : game.u.ux, y = cc ? cc.y : game.u.uy;
     if (!isok(x, y)) {
-        await You('cannot put the figurine there.');
+        if (!quietly)
+            await You('cannot put the figurine there.');
         return false;
     }
 
@@ -3021,13 +3106,15 @@ async function figurine_location_checks(obj, x, y) {
     const typ = game.level.at(x, y).typ;
     if (IS_OBSTRUCTED(typ)
         && !(passes_walls(ptr) && may_passwall(x, y))) {
-        await You(`cannot place a figurine in ${IS_TREE(typ)
-            ? 'a tree' : 'solid rock'}!`);
+        if (!quietly)
+            await You(`cannot place a figurine in ${IS_TREE(typ)
+                ? 'a tree' : 'solid rock'}!`);
         return false;
     }
     if (sobj_at(ONAMES.BOULDER, x, y) && !passes_walls(ptr)
         && !throws_rocks(ptr)) {
-        await You('cannot fit the figurine on the boulder.');
+        if (!quietly)
+            await You('cannot fit the figurine on the boulder.');
         return false;
     }
     return true;
@@ -3036,15 +3123,17 @@ async function figurine_location_checks(obj, x, y) {
 // src/apply.c:2544 use_figurine().
 async function use_figurine(obj) {
     if (game.u.uswallow) {
-        await figurine_location_checks(obj, game.u.ux, game.u.uy);
-        return ECMD_OK;
+        if (!await figurine_location_checks(obj, null, false))
+            return ECMD_OK;
     }
-    if (!await getdir(null))
+    if (!await getdir(null)) {
+        game.context.move = game.multi = 0;
         return ECMD_CANCEL;
+    }
 
     const x = game.u.ux + game.u.dx;
     const y = game.u.uy + game.u.dy;
-    if (!await figurine_location_checks(obj, x, y))
+    if (!await figurine_location_checks(obj, { x, y }, false))
         return ECMD_TIME;
 
     let action;
@@ -3059,8 +3148,8 @@ async function use_figurine(obj) {
         action = 'set the figurine on the ground';
 
     await You(`${action} and it ${Blind() ? 'supposedly ' : ''}transforms.`);
-    const { make_familiar } = await import('./dog.js');
     await make_familiar(obj, x, y, false);
+    stop_timer(FIG_TRANSFORM, obj);
     useup(obj);
     if (Blind())
         map_invisible(x, y);
@@ -3275,37 +3364,6 @@ async function use_magic_whistle(obj) {
     }
 }
 
-// src/makemon.c:1471 the arrival message makemon() prints; our makemon()
-// is synchronous so the callers that create visible monsters print it
-async function bagotricks_arrival(mtmp) {
-    let what = null;
-    /* MM_NOEXCLAM is used for #wizgenesis (^G) */
-    let exclaim = true;
-
-    if ((canseemon(mtmp) && (M_AP_TYPE(mtmp) === M_AP_NOTHING
-                             || M_AP_TYPE(mtmp) === M_AP_MONSTER))
-        || sensemon(mtmp)) {
-        what = Amonnam(mtmp);
-        if (M_AP_TYPE(mtmp) === M_AP_MONSTER)
-            exclaim = true;
-    } else if (canseemon(mtmp)) {
-        /* mimic masquerading as furniture or object and not sensed */
-        what = upstart(mhidden_description(mtmp, MHID_ARTICLE | MHID_ALTMON));
-    }
-    if (what) {
-        set_msg_xy(mtmp.mx, mtmp.my);
-        await Norep(`${what}${exclaim ? ' suddenly' : ''} ${
-              /* 'what' might be "gold pieces" so need plural verb */
-              vtense(what, 'appear')}${
-              next2u(mtmp.mx, mtmp.my) ? ' next to you'
-              : (distu(mtmp.mx, mtmp.my) <= (BOLT_LIM * BOLT_LIM)) ? ' close by'
-                : ''}${exclaim ? '!' : '.'}`);
-    }
-    return ((canseemon(mtmp) && (M_AP_TYPE(mtmp) === M_AP_NOTHING
-                                 || M_AP_TYPE(mtmp) === M_AP_MONSTER))
-            || sensemon(mtmp));
-}
-
 // src/makemon.c:2554 bagotricks(), for applying or tipping one charge.
 export async function bagotricks(bag, tipping = false, seenState = null) {
     let moncount = 0;
@@ -3325,21 +3383,12 @@ export async function bagotricks(bag, tipping = false, seenState = null) {
     if (!rn2(23))
         creatcnt += rnd(7);
     do {
-        const oldIds = new Set((game.level?.monsters || []).map((m) => m.m_id));
-        const mtmp = makemon(null, game.u.ux, game.u.uy, NO_MM_FLAGS);
+        const mtmp = await makemon(null, game.u.ux, game.u.uy, NO_MM_FLAGS);
         if (mtmp) {
             moncount++;
-            const made = (game.level?.monsters || [])
-                .filter((m) => !oldIds.has(m.m_id) && m !== mtmp)
-                .reverse();
-            made.push(mtmp);
-            let primaryDiscerned = false;
-            for (const arrival of made) {
-                const discerned = await bagotricks_arrival(arrival);
-                if (arrival === mtmp)
-                    primaryDiscerned = discerned;
-            }
-            if (primaryDiscerned)
+            if ((canseemon(mtmp) && (M_AP_TYPE(mtmp) === M_AP_NOTHING
+                                     || M_AP_TYPE(mtmp) === M_AP_MONSTER))
+                || sensemon(mtmp))
                 seecount++;
         }
     } while (--creatcnt > 0);
@@ -3670,7 +3719,7 @@ export async function doapply() {
                     await pline(`${Yobjnam2(obj, 'glow')} ${hcolor('brown')}.`);
                     set_bknown(obj, 1);
                 }
-                unbless(obj);
+                await unbless(obj);
             }
         } else {
             await use_whistle(obj);
@@ -4693,7 +4742,7 @@ async function do_break_wand(obj) {
             continue;
         } else if (obj.otyp === ONAMES.WAN_CREATE_MONSTER) {
             /* u.ux,u.uy creates it near you--x,y might create it in rock */
-            makemon(null, game.u.ux, game.u.uy, NO_MM_FLAGS);
+            await makemon(null, game.u.ux, game.u.uy, NO_MM_FLAGS);
             continue;
         } else if (x !== game.u.ux || y !== game.u.uy) {
             /*

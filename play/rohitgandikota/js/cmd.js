@@ -3191,18 +3191,25 @@ async function show_inventory(allowed_choices = null, title = null,
 // the matching inventory and optionally enters that item's action menu.
 async function dotypeinv() {
     const invent = game.invent || [];
-    if (!invent.length) {
+    const { doinvbill } = await import('./shk.js');
+    const billx = (game.u.ushops || '').length && await doinvbill(0);
+    if (!invent.length && !billx) {
         await You("aren't carrying anything.");
         return ECMD_OK;
     }
 
-    const picks = await query_inventory_category(invent);
+    const picks = await query_inventory_category(invent, billx);
     if (!picks.length)
         return ECMD_OK;
 
     const choice = picks[0];
     const code = typeof choice === 'string' ? choice.charCodeAt(0) : choice;
     const marker = String.fromCharCode(code);
+    if (marker === 'x') {
+        if (billx)
+            await doinvbill(1);
+        return ECMD_OK;
+    }
     let filter, title = null;
     if (code > 0 && code < OCLASSES.MAXOCLASSES) {
         filter = (obj) => obj.oclass === code;

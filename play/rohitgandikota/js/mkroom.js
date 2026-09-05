@@ -752,7 +752,7 @@ export async function mkundead(mm, revive_corpses, mm_flags) {
             && (!revive_corpses
                 || !(otmp = sobj_at(ONAMES.CORPSE, cc.x, cc.y))
                 || !(await revive(otmp, false))))
-            makemon(mdat, cc.x, cc.y, mm_flags);
+            await makemon(mdat, cc.x, cc.y, mm_flags);
     }
     game.level.flags.graveyard = true; /* reduced chance for undead corpse */
 }

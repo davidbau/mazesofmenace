@@ -654,7 +654,7 @@ async function gcrownu() {
 
     if (game.objects[classGift].oc_class === OCLASSES.SPBOOK_CLASS) {
         obj = mksobj(classGift, true, false);
-        bless(obj);
+        await bless(obj);
         obj.bknown = 1;
         observe_object(obj);
         await at_your_feet(upstart(ansimpleoname(obj)));
@@ -727,7 +727,7 @@ async function gcrownu() {
     }
 
     if (ok_wep(obj)) {
-        bless(obj);
+        await bless(obj);
         obj.oeroded = obj.oeroded2 = 0;
         obj.oerodeproof = 1;
         obj.bknown = obj.rknown = 1;
@@ -781,7 +781,7 @@ async function give_spell() {
         observe_object(obj);
         if (obj.otyp === ONAMES.SPE_BLANK_PAPER || !rn2(100))
             makeknown(obj.otyp);
-        bless(obj);
+        await bless(obj);
         await at_your_feet(upstart(ansimpleoname(obj)));
         place_object(obj, u.ux, u.uy);
         newsym(u.ux, u.uy);
@@ -918,7 +918,7 @@ async function sacrifice_your_race(obj, highaltar, altaralign) {
 
     const pm = dlord(altaralign);
     const dmon = pm !== NON_PM
-        ? makemon(game.mons[pm], game.u.ux, game.u.uy, MM_NOMSG)
+        ? await makemon(game.mons[pm], game.u.ux, game.u.uy, MM_NOMSG)
         : null;
     if (dmon) {
         let name = a_monnam(dmon);
@@ -1391,7 +1391,7 @@ async function pleased(g_align) {
                 } else {
                     await You_feel(`the power of ${align_gname(u.ualign.type)} over ${yname(uwep)}.`);
                 }
-                uncurse(uwep);
+                await uncurse(uwep);
                 uwep.bknown = 1;
                 repair = '';
             } else if (!uwep.blessed) {
@@ -1401,7 +1401,7 @@ async function pleased(g_align) {
                 } else {
                     await You_feel(`the blessing of ${align_gname(u.ualign.type)} over ${yname(uwep)}.`);
                 }
-                bless(uwep);
+                await bless(uwep);
                 uwep.bknown = 1;
                 repair = '';
             }
@@ -1480,7 +1480,7 @@ async function pleased(g_align) {
                     obj.bknown = 1;
                     any++;
                 }
-                uncurse(obj);
+                await uncurse(obj);
             }
             if (any)
                 update_inventory();

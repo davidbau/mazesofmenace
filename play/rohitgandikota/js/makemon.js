@@ -25,7 +25,10 @@ import { closed_door } from './cmd.js';
 import { may_passwall } from './hack.js';
 import { sengr_at } from './engrave.js';
 import { rndghostname, christen_monst, christen_orc, oname,
-         y_monnam } from './do_name.js';
+         y_monnam, Amonnam, upstart } from './do_name.js';
+import { mhidden_description } from './pager.js';
+import { Norep, set_msg_xy } from './pline.js';
+import { vtense } from './objnam.js';
 import { m_dowear, which_armor } from './worn.js';
 import { can_saddle, put_saddle_on_mon } from './steed.js';
 import { rn2, rnd, rn1, d } from './rng.js';
@@ -36,11 +39,12 @@ import {
 import { ONAMES, OCLASSES, SKILLS, MATERIALS } from './objects_data.js';
 import { depth } from './dungeon.js';
 import { next_ident, mksobj, mkobj, place_object, curse, rnd_class, can_be_hatched } from './mkobj.js';
-import { sgn, isok } from './hacklib.js';
+import { sgn, isok, distu } from './hacklib.js';
 import { get_shop_item } from './shknam.js';
 import { canseemon, canspotmon, newsym } from './display.js';
 import { sensemon } from './display.js';
-import { M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER } from './const.js';
+import { M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, MM_NOEXCLAM,
+         MHID_ARTICLE, MHID_ALTMON, BOLT_LIM } from './const.js';
 import { create_particular } from './read.js';
 import { cansee, does_block, block_point } from './vision.js';
 import { COLNO, ROWNO, MFAST } from './const.js';
@@ -50,7 +54,7 @@ import { attacktype, is_neuter, is_floater, emits_light, likes_lava,
 import { is_vampshifter } from './monst.js';
 import { t_at, is_pool, is_lava, m_in_air, resists_ston } from './mon.js';
 import { touch_petrifies } from './mondata.js';
-import { can_hide_under_obj } from './monmove.js';
+import { can_hide_under_obj, dochugw } from './monmove.js';
 import { couldsee } from './vision.js';
 import { is_pit, OBJ_FLOOR, PLNMSG_HIDE_UNDER } from './const.js';
 import { ACCESSIBLE, POOL, LAVAPOOL,
@@ -1643,30 +1647,42 @@ function m_initgrp(mtmp, x, y, n, mmflags) {
         cnt++;
 
     const mm = { x, y };
-    while (cnt--) {
-        if (peace_minded(mtmp.data))
-            continue;
-        /* Don't create groups of peaceful monsters since they'll get
-         * in our way.  If the monster has a percentage chance so some
-         * are peaceful and some are not, the result will just be a
-         * smaller group.
-         */
-        if (enexto_core(mm, mm.x, mm.y, mtmp.data,
-                        GP_CHECKSCARY | mmflags, goodpos)
-            || enexto_core(mm, mm.x, mm.y, mtmp.data, mmflags, goodpos)) {
-            const mon = makemon(mtmp.data, mm.x, mm.y, (mmflags | MM_NOGRP));
-            if (mon) {
-                mon.mpeaceful = false;
-                mon.mavenge = 0;
-                set_malign(mon);
+    const continueGroup = () => {
+        while (cnt--) {
+            if (peace_minded(mtmp.data))
+                continue;
+            /* Don't create groups of peaceful monsters since they'll get
+             * in our way.  If the monster has a percentage chance so some
+             * are peaceful and some are not, the result will just be a
+             * smaller group.
+             */
+            if (enexto_core(mm, mm.x, mm.y, mtmp.data,
+                            GP_CHECKSCARY | mmflags, goodpos)
+                || enexto_core(mm, mm.x, mm.y, mtmp.data, mmflags, goodpos)) {
+                const mon = makemon(mtmp.data, mm.x, mm.y, (mmflags | MM_NOGRP));
+                if (mon instanceof Promise)
+                    return mon.then(created => {
+                        if (created) {
+                            created.mpeaceful = false;
+                            created.mavenge = 0;
+                            set_malign(created);
+                        }
+                        return continueGroup();
+                    });
+                if (mon) {
+                    mon.mpeaceful = false;
+                    mon.mavenge = 0;
+                    set_malign(mon);
+                }
             }
         }
-    }
+    };
+    return continueGroup();
 }
 
 /* include/makemon.h m_initsgrp()/m_initlgrp() */
-function m_initsgrp(mtmp, x, y, mmf) { m_initgrp(mtmp, x, y, 3, mmf); }
-function m_initlgrp(mtmp, x, y, mmf) { m_initgrp(mtmp, x, y, 10, mmf); }
+function m_initsgrp(mtmp, x, y, mmf) { return m_initgrp(mtmp, x, y, 3, mmf); }
+function m_initlgrp(mtmp, x, y, mmf) { return m_initgrp(mtmp, x, y, 10, mmf); }
 /* m_dowear() now lives in js/worn.js, its C home (src/worn.c:757). The copy
    that stood here short-circuited on an empty minvent and recorded otherwise;
    the real one does the slot walk. */
@@ -1766,7 +1782,7 @@ export async function create_critters(cnt, mptr, neverask) {
             && enexto(c, x, y, game.mons[PMNAMES.PM_GIANT_EEL]))
             x = c.x, y = c.y;
 
-        const mon = makemon(mptr, x, y, NO_MM_FLAGS);
+        const mon = await makemon(mptr, x, y, NO_MM_FLAGS);
         if (!mon)
             continue; /* try again [should probably stop instead] */
         if ((canseemon(mon) && (M_AP_TYPE(mon) === M_AP_NOTHING
@@ -2210,6 +2226,7 @@ function makemon_rnd_goodpos(mon, gpflags, cc) {
     return true;
 }
 
+// src/makemon.c:1147 makemon()
 export function makemon(ptr, x, y, mmflags) {
     let mndx, mitem;
     const anymon = !ptr;
@@ -2475,48 +2492,77 @@ export function makemon(ptr, x, y, mmflags) {
     }
     set_malign(mtmp);
 
+    let group;
     if (anymon && !(mmflags & MM_NOGRP)) {
         if ((ptr.geno & G_SGROUP) && rn2(2)) {
-            m_initsgrp(mtmp, mtmp.mx, mtmp.my, mmflags);
+            group = m_initsgrp(mtmp, mtmp.mx, mtmp.my, mmflags);
         } else if (ptr.geno & G_LGROUP) {
             if (rn2(3))
-                m_initlgrp(mtmp, mtmp.mx, mtmp.my, mmflags);
+                group = m_initlgrp(mtmp, mtmp.mx, mtmp.my, mmflags);
             else
-                m_initsgrp(mtmp, mtmp.mx, mtmp.my, mmflags);
+                group = m_initsgrp(mtmp, mtmp.mx, mtmp.my, mmflags);
         }
     }
 
-    if (allow_minvent) {
-        if (is_armed(ptr))
-            m_initweap(mtmp);
-        m_initinv(mtmp);
-        m_dowear(mtmp, true);
+    /* Creation stays synchronous during mklev. Runtime group messages
+       finish before the parent's inventory and appearance are processed. */
+    const finishCreation = () => {
+        if (allow_minvent) {
+            if (is_armed(ptr))
+                m_initweap(mtmp);
+            m_initinv(mtmp);
+            m_dowear(mtmp, true);
 
-        if (!rn2(100) && is_domestic(ptr)
-            && can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE))
-            put_saddle_on_mon(null, mtmp);
-    }
+            if (!rn2(100) && is_domestic(ptr)
+                && can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE))
+                put_saddle_on_mon(null, mtmp);
+        }
 
-    if (ptr.mflags3 && !(mmflags & MM_NOWAIT)) {
-        if (ptr.mflags3 & M3_WAITFORU)
-            mtmp.mstrategy |= STRAT_WAITFORU;
-        if (ptr.mflags3 & M3_CLOSE)
-            mtmp.mstrategy |= STRAT_CLOSE;
-        if (ptr.mflags3 & (M3_WAITMASK | M3_COVETOUS))
-            mtmp.mstrategy |= STRAT_APPEARMSG;
-    }
+        if (ptr.mflags3 && !(mmflags & MM_NOWAIT)) {
+            if (ptr.mflags3 & M3_WAITFORU)
+                mtmp.mstrategy |= STRAT_WAITFORU;
+            if (ptr.mflags3 & M3_CLOSE)
+                mtmp.mstrategy |= STRAT_CLOSE;
+            if (ptr.mflags3 & (M3_WAITMASK | M3_COVETOUS))
+                mtmp.mstrategy |= STRAT_APPEARMSG;
+        }
 
-    if (allow_minvent && (game.migrating_objs || []).length)
-        deliver_obj_to_mon(mtmp, 1, DF_NONE);
-
-    /* src/makemon.c:1472 — "make sure the mon shows up". A monster created
-       mid-game is drawn immediately; during level generation nothing is on
-       screen yet. The arrival MESSAGE that follows this in C is emitted by
-       the create_particular caller instead, because our makemon is sync. */
-    if (!game.in_mklev)
-        newsym(mtmp.mx, mtmp.my);
-
-    return mtmp;
+        if (allow_minvent && (game.migrating_objs || []).length)
+            deliver_obj_to_mon(mtmp, 1, DF_NONE);
+        if (!game.in_mklev) {
+            newsym(mtmp.mx, mtmp.my);
+            let what = null, exclaim = !(mmflags & MM_NOEXCLAM);
+            if (!(mmflags & MM_NOMSG)) {
+                if ((canseemon(mtmp) && (M_AP_TYPE(mtmp) === M_AP_NOTHING
+                                         || M_AP_TYPE(mtmp) === M_AP_MONSTER))
+                    || sensemon(mtmp)) {
+                    what = Amonnam(mtmp);
+                    if (M_AP_TYPE(mtmp) === M_AP_MONSTER)
+                        exclaim = true;
+                } else if (canseemon(mtmp)) {
+                    what = upstart(mhidden_description(mtmp,
+                        MHID_ARTICLE | MHID_ALTMON));
+                }
+            }
+            if (what || game.occupation)
+                return (async () => {
+                    if (what) {
+                        set_msg_xy(mtmp.mx, mtmp.my);
+                        await Norep(`${what}${exclaim ? ' suddenly' : ''} ${
+                            vtense(what, 'appear')}${
+                            distu(x, y) <= 2 ? ' next to you'
+                            : distu(x, y) <= BOLT_LIM * BOLT_LIM ? ' close by'
+                                : ''}${exclaim ? '!' : '.'}`);
+                    }
+                    if (game.occupation)
+                        await dochugw(mtmp, false);
+                    return mtmp;
+                })();
+        }
+        return mtmp;
+    };
+    return group instanceof Promise ? group.then(finishCreation)
+                                    : finishCreation();
 }
 
 // src/makemon.c:2051 grow_up() — a pet levels up from a kill (or a wraith

@@ -1,14 +1,13 @@
 // timeout.js — the timer queue.
 // C ref: src/timeout.c
 //
-// Nothing here draws. The queue exists because several subsystems schedule an
+// The queue exists because several subsystems schedule an
 // effect for a future turn rather than applying it now: buried organics rot,
 // eggs hatch, lit objects burn out. Level generation starts those timers, so a
 // port that skips them looks right at generation time and then never fires the
 // effect.
 //
-// The delay itself is drawn by the CALLER, before start_timer is reached
-// (bury_an_obj spends rnd(250) for ROT_ORGANIC). Only the bookkeeping is here.
+// Delay draws happen before start_timer, in the effect's scheduling function.
 
 import { update_inventory } from './invent.js';
 import { little_to_big } from './mkobj.js';
@@ -602,6 +601,11 @@ export async function run_timers() {
         case HATCH_EGG:
             await hatch_egg(curr.arg, curr.timeout);
             break;
+        case FIG_TRANSFORM: {
+            const { fig_transform } = await import('./apply.js');
+            await fig_transform(curr.arg, curr.timeout);
+            break;
+        }
         case SHRINK_GLOB: {
             const { shrink_glob } = await import('./mkobj.js');
             await shrink_glob(curr.arg, curr.timeout);
@@ -615,6 +619,13 @@ export async function run_timers() {
             break;
         }
     }
+}
+
+// src/timeout.c:1204 attach_fig_transform_timeout()
+export function attach_fig_transform_timeout(figurine) {
+    stop_timer(FIG_TRANSFORM, figurine);
+    const i = rnd(9000) + 200;
+    start_timer(i, TIMER_OBJECT, FIG_TRANSFORM, figurine);
 }
 
 // src/timeout.c:951 fall_asleep() — put the hero to sleep for -how_long turns.
@@ -949,6 +960,11 @@ export async function nh_timeout() {
             }
             break;
         }
+        case 'HDetect_monsters': {
+            const { see_monsters } = await import('./display.js');
+            see_monsters();
+            break;
+        }
         default:
             note_unported_timeout(`nh_timeout:${key}`);
             break;
@@ -1060,7 +1076,7 @@ export async function hatch_egg(egg, timeout) {
             const cc = { x: 0, y: 0 };
             if (!enexto(cc, x, y, ptr))
                 break;
-            mon = makemon(ptr, cc.x, cc.y, NO_MINVENT | MM_NOMSG);
+            mon = await makemon(ptr, cc.x, cc.y, NO_MINVENT | MM_NOMSG);
             if (!mon)
                 break;
 

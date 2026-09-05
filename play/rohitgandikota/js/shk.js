@@ -43,7 +43,7 @@ import { update_inventory } from './invent.js';
 import { game } from './gstate.js';
 import { ESHK, SHOPBASE, IS_DOOR, ROOMOFFSET, NO_ROOM, A_CHA, MAXULEV,
          HUNGRY, PICK_ANY, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE,
-         ECMD_OK, ECMD_TIME, G_GONE, COST_BITE, COST_DSTROY, COST_OPEN, A_WIS,
+         ECMD_OK, ECMD_TIME, G_GONE, A_WIS,
          M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, MIGR_APPROX_XY, RLOC_NOMSG,
          NON_PM, REPAIR_DELAY, BOLT_LIM, D_BROKEN, D_CLOSED, IS_ROOM,
          IS_WALL, SVALL, u_at, HAND, PRONOUN_NO_IT, PRONOUN_HALLU }
@@ -55,7 +55,7 @@ import { move_special } from './priest.js';
 import { addinv, carrying, sobj_at, currency, money_cnt, freeinv,
          contained_gold, hidden_gold, weight } from './invent.js';
 import { m_at, t_at, wake_nearto } from './mon.js';
-import { Blind, Deaf, Invis } from './youprop.js';
+import { Blind, Deaf, Invis, Detect_monsters } from './youprop.js';
 import { ACURR, Fast, adjalign, exercise } from './attrib.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
 import { PMNAMES, MSOUND, MFLAGS } from './monst_data.js';
@@ -68,7 +68,7 @@ import { rn2, rnd } from './rng.js';
 import { bot, pline, canseemon, canspotmon, newsym, sensemon }
     from './display.js';
 import { an, doname, simpleonames, xname, The } from './objnam.js';
-import { next_ident, splitobj } from './mkobj.js';
+import { splitobj, bill_dummy_object } from './mkobj.js';
 import { OBJ_CONTAINED, OBJ_FLOOR, OBJ_FREE, OBJ_INVENT, OBJ_ONBILL }
     from './obj.js';
 import { s_suffix } from './hacklib.js';
@@ -83,6 +83,12 @@ import { arti_cost } from './artifact.js';
 import { block_point, cansee } from './vision.js';
 import { del_engr_at } from './engrave.js';
 import { Norep, You_feel, You_hear } from './pline.js';
+import { COST_SINGLEOBJ, COST_CONTENTS } from './const.js';
+import { has_omid, OMID } from './const.js';
+import { obj_stop_timers } from './timeout.js';
+import { xprname } from './invent.js';
+import { tty_putstr, tty_display_nhwindow, tty_next_page } from './tty/wintty.js';
+import { xwaitforspace } from './tty/getline.js';
 
 
 
@@ -205,6 +211,11 @@ export function find_oid(id) {
     return null;
 }
 
+// src/shk.c:2759 bp_to_obj()
+function bp_to_obj(bp) {
+    return bp.useup ? o_on(bp.bo_id, game.billobjs) : find_oid(bp.bo_id);
+}
+
 // src/shk.c:3198 gem_learned(); reprice matching gem stacks on active bills.
 export function gem_learned(oindx) {
     const monsters = game.level?.monsters || [];
@@ -242,6 +253,29 @@ export function alter_cost(obj, amt) {
             break; /* done */
         }
     }
+}
+
+// src/shk.c:3260 unpaid_cost()
+export async function unpaid_cost(unp_obj, cost_type) {
+    let bp = null, shkp = null, amt = 0;
+    for (const shop of game.u.ushops || '') {
+        shkp = shop_keeper(shop.charCodeAt(0));
+        if (shkp) {
+            bp = onbill(unp_obj, shkp, true);
+            if (bp) {
+                amt = bp.price;
+                if (cost_type !== COST_SINGLEOBJ)
+                    amt *= unp_obj.quan;
+            }
+            if (cost_type === COST_CONTENTS && Has_contents(unp_obj))
+                amt = contained_cost(unp_obj, shkp, amt, false, true);
+            if (bp || (!unp_obj.unpaid && amt))
+                break;
+        }
+    }
+    if (!shkp || (unp_obj.unpaid && !bp))
+        await impossible("unpaid_cost: object wasn't on any bill.");
+    return amt;
 }
 
 // src/shk.c:439 record_price_quote()
@@ -363,7 +397,7 @@ async function deserted_shop(enterstring) {
 
     const blindTelepat = !!(game.u.intrinsic?.HTelepat
                              || game.u.uprops?.TELEPAT);
-    if (Blind() && !(blindTelepat || game.u.uprops?.DETECT_MONSTERS))
+    if (Blind() && !(blindTelepat || Detect_monsters()))
         ++total;
     await pline(`This shop ${seen < total ? 'seems to be' : 'is'} ${
         !total ? 'deserted' : 'untended'}.`);
@@ -655,7 +689,7 @@ async function makekops(origin) {
             continue;
         for (let left = counts[k]; left > 0; --left) {
             if (enexto(spot, spot.x, spot.y, game.mons[mndx])) {
-                makemon(game.mons[mndx], spot.x, spot.y, MM_NOMSG);
+                await makemon(game.mons[mndx], spot.x, spot.y, MM_NOMSG);
             }
         }
     }
@@ -999,9 +1033,23 @@ function add_one_tobill(obj, dummy, shkp) {
         price,
         bquan: obj.quan,
     });
+    if (dummy)
+        add_to_billobjs(obj);
     eshk.billct = eshk.bill_p.length;
     obj.unpaid = 1;
     return true;
+}
+
+// src/shk.c:3368 add_to_billobjs()
+function add_to_billobjs(obj) {
+    if (obj.where !== OBJ_FREE)
+        throw new Error('add_to_billobjs: obj not free');
+    if (obj.timed)
+        obj_stop_timers(obj);
+    (game.billobjs ||= []).unshift(obj);
+    obj.where = OBJ_ONBILL;
+    obj.in_use = 0;
+    obj.bypass = 0;
 }
 
 function append_honorific() {
@@ -1717,49 +1765,8 @@ export function splitbill(obj, otmp) {
     return true;
 }
 
-// src/mkobj.c:712 bill_dummy_object(). Preserve a fully used or altered
-// shop item on the bill while releasing the live object from shop ownership.
-export function bill_dummy_object(obj) {
-    const roomno = game.u.ushops ? game.u.ushops.charCodeAt(0) : NO_ROOM;
-    const shkp = shop_keeper(roomno);
-    if (!shkp || !inhishop(shkp))
-        return false;
-
-    const eshk = shkp.eshk || ESHK(shkp);
-    const original = obj.unpaid
-        ? (eshk.bill_p || []).find(bp => bp.bo_id === obj.o_id)
-        : null;
-    const price = original?.price;
-    const bquan = original?.bquan;
-    if (obj.unpaid)
-        subfrombill(obj, shkp);
-
-    const dummy = {
-        ...obj,
-        oextra: null,
-        o_id: next_ident(),
-        timed: 0,
-        lamplit: 0,
-        owornmask: 0,
-        where: OBJ_FREE,
-        unpaid: 0,
-        ocarry: null,
-        ocontainer: null,
-    };
-    if (!add_one_tobill(dummy, true, shkp))
-        return false;
-    const billed = eshk.bill_p[eshk.bill_p.length - 1];
-    if (original) {
-        billed.price = price;
-        billed.bquan = bquan;
-    }
-    billed.obj = dummy;
-    dummy.where = OBJ_ONBILL;
-    (game.billobjs ||= []).unshift(dummy);
-    obj.no_charge = obj.where === OBJ_FLOOR || obj.where === OBJ_CONTAINED ? 1 : 0;
-    obj.unpaid = 0;
-    return true;
-}
+// Keep existing imports while the implementation lives in its C module.
+export { bill_dummy_object } from './mkobj.js';
 
 // src/shk.c:1187 obfree(), bill and merged-identity arms. Return true when
 // the object must be retained; invent.js completes the deallocation otherwise.
@@ -1792,10 +1799,9 @@ export function obfree_bill(obj, merge = null) {
         bp.useup = true;
         bp.obj = obj;
         obj.unpaid = 0;
-        if (obj.globby && !obj.owt && obj.omid)
-            obj.owt = obj.omid;
-        obj.where = OBJ_ONBILL;
-        (game.billobjs ||= []).unshift(obj);
+        if (obj.globby && !obj.owt && has_omid(obj))
+            obj.owt = OMID(obj);
+        add_to_billobjs(obj);
         return true;
     }
     const bpm = onbill(merge, shkp, false);
@@ -1813,70 +1819,8 @@ export function obfree_bill(obj, merge = null) {
     return false;
 }
 
-// src/mkobj.c:752 costly_alteration(), COST_BITE, COST_OPEN, and COST_DSTROY.
-// Altering shop stock replaces it with a private clone, so the used-up item
-// can still be itemized.
-export async function costly_alteration(obj, alter_type) {
-    const verb = alter_type === COST_BITE ? 'bite'
-               : alter_type === COST_OPEN ? 'open'
-                 : alter_type === COST_DSTROY ? 'destroy' : null;
-    const onFloor = obj.where === OBJ_FLOOR;
-    const floorStock = onFloor && !obj.no_charge && costly_spot(obj.ox, obj.oy);
-    if (!verb || (!obj.unpaid && !floorStock))
-        return;
-
-    const rooms = floorStock ? in_rooms(obj.ox, obj.oy, SHOPBASE)
-                             : game.u.ushops;
-    const roomno = rooms ? rooms.charCodeAt(0) : NO_ROOM;
-    const shkp = shop_keeper(roomno);
-    if (!shkp || !inhishop(shkp))
-        return;
-    const eshk = shkp.eshk || ESHK(shkp);
-    const original = floorStock ? null
-        : (eshk.bill_p || []).find(bp => bp.bo_id === obj.o_id);
-    if (!floorStock && !original)
-        return;
-
-    const those = obj.quan === 1 ? 'that' : 'those';
-    const them = obj.quan === 1 ? 'it' : 'them';
-    if (floorStock) {
-        await pline(`"You ${verb} ${those}, you pay for ${them}!"`);
-    } else {
-        await pline(`"You ${verb} ${those} ${simpleonames(obj)}, you pay for ${them}!"`);
-    }
-
-    let originalPrice = 0;
-    let originalQuan = 0;
-    if (!floorStock) {
-        originalPrice = original.price;
-        originalQuan = original.bquan;
-        subfrombill(obj, shkp);
-    }
-    const dummy = {
-        ...obj,
-        oextra: null,
-        o_id: next_ident(),
-        timed: 0,
-        lamplit: 0,
-        owornmask: 0,
-        where: OBJ_FREE,
-        unpaid: 0,
-        ocarry: null,
-        ocontainer: null,
-    };
-    if (!add_one_tobill(dummy, true, shkp))
-        return;
-    const billed = eshk.bill_p[eshk.bill_p.length - 1];
-    if (!floorStock) {
-        billed.price = originalPrice;
-        billed.bquan = originalQuan;
-    }
-    billed.obj = dummy;
-    dummy.where = OBJ_ONBILL;
-    (game.billobjs ||= []).unshift(dummy);
-    obj.no_charge = floorStock ? 1 : 0;
-    obj.unpaid = 0;
-}
+// Preserve existing imports while the implementation lives in its C module.
+export { costly_alteration } from './mkobj.js';
 
 async function money2u(mon, amount) {
     const minvent = mon.minvent || [];
@@ -2890,6 +2834,64 @@ async function repair_damage(shkp, dam, catchup = false) {
     return 2;
 }
 
+// src/shk.c:4197 doinvbill()
+export async function doinvbill(mode) {
+    const shkp = shop_keeper((game.u.ushops || '').charCodeAt(0));
+    if (!shkp || !inhishop(shkp)) {
+        if (mode !== 0)
+            await impossible('doinvbill: no shopkeeper?');
+        return 0;
+    }
+    const eshkp = shkp.eshk || ESHK(shkp);
+    if (mode === 0) {
+        let cnt = eshkp.debit ? 1 : 0;
+        for (const bp of eshkp.bill_p || []) {
+            const obj = bp.useup ? null : bp_to_obj(bp);
+            if (bp.useup || (obj && obj.quan < bp.bquan))
+                cnt++;
+        }
+        return cnt;
+    }
+    const datawin = tty_create_nhwindow(NHW_MENU);
+    tty_putstr(datawin, 0, 'Unpaid articles already used up:');
+    tty_putstr(datawin, 0, '');
+    let totused = 0;
+    for (const bp of eshkp.bill_p || []) {
+        const obj = bp_to_obj(bp);
+        if (!obj) {
+            await impossible('Bad shopkeeper administration.');
+            tty_destroy_nhwindow(datawin);
+            return 0;
+        }
+        if (bp.useup || bp.bquan > obj.quan) {
+            const uquan = bp.useup ? bp.bquan : bp.bquan - obj.quan;
+            const thisused = bp.price * uquan;
+            totused += thisused;
+            game.iflags.suppress_price = (game.iflags.suppress_price || 0) + 1;
+            const buf = xprname(obj, null, 'x', false, thisused, uquan);
+            game.iflags.suppress_price--;
+            tty_putstr(datawin, 0, buf);
+        }
+    }
+    if (eshkp.debit) {
+        if (totused)
+            tty_putstr(datawin, 0, '');
+        totused += eshkp.debit;
+        tty_putstr(datawin, 0, xprname(null, 'usage charges and/or other fees',
+                                      '$', false, eshkp.debit, 0));
+    }
+    const buf = xprname(null, 'Total:', '*', false, totused, 0);
+    tty_putstr(datawin, 0, '');
+    tty_putstr(datawin, 0, buf);
+    await tty_display_nhwindow(datawin);
+    // tty's text window blocks in dmore() on each page.
+    do {
+        await xwaitforspace(' \r\n\x1b');
+    } while (game.morc !== '\x1b' && tty_next_page(datawin));
+    tty_destroy_nhwindow(datawin);
+    return 0;
+}
+
 // src/shk.c:4556 shk_fixes_damage()
 async function shk_fixes_damage(shkp) {
     const dam = find_damage(shkp);
@@ -3412,7 +3414,7 @@ export async function globby_bill_fixup(obj_absorber, obj_absorbed) {
     if (bp && (obj_absorber.no_charge
                || (floor_absorber && !costly_spot(x, y)))) {
         amount = bp.price;
-        bill_dummy_object(obj_absorbed);
+        await bill_dummy_object(obj_absorbed);
         /* SetVoice(shkp, 0, 80, 0) */
         await verbalize(`You owe me ${amount} ${currency(amount)} for my ${obj_typename(obj_absorbed.otyp)} that you ${!shkp.mpeaceful /* ANGRY(shkp) */ ? 'had the audacity to mix' : 'just mixed'} with your${!shkp.mpeaceful ? ' stinking batch!' : 's.'}`);
         return;
@@ -3494,6 +3496,6 @@ export async function use_unpaid_trapobj(otmp, x, y) {
                 await verbalize('You set it, you buy it!');
             }
         }
-        bill_dummy_object(otmp);
+        await bill_dummy_object(otmp);
     }
 }

@@ -396,7 +396,7 @@ async function stolen_booty() {
     migr_booty_item(rn2(2) ? ONAMES.LONG_SWORD
                             : ONAMES.SILVER_SABER, gang);
 
-    mtmp = makemon(game.mons[PMNAMES.PM_ORC_CAPTAIN], 0, 0, MM_NONAME);
+    mtmp = await makemon(game.mons[PMNAMES.PM_ORC_CAPTAIN], 0, 0, MM_NONAME);
     if (mtmp) {
         christen_monst(mtmp, upstart(gang));
         mtmp.mpeaceful = false;
@@ -417,7 +417,7 @@ async function stolen_booty() {
     for (let i = 0; i < cnt; i++) {
         const mtyp = rn2((PMNAMES.PM_ORC_SHAMAN - PMNAMES.PM_ORC) + 1)
                      + PMNAMES.PM_ORC;
-        mtmp = makemon(game.mons[mtyp], 0, 0, MM_NONAME);
+        mtmp = await makemon(game.mons[mtyp], 0, 0, MM_NONAME);
         if (mtmp) {
             shiny_orc_stuff(mtmp);
             migrate_orc(mtmp, 0, migrate_monster);
