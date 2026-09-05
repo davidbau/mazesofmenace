@@ -952,6 +952,15 @@ export function parseNethackrc(rc) {
                         result.iflags.prevmsg_window = tmp;
                     }
                 }
+                else if (key === 'menuinvertmode') {
+                    // C options.c optfn_menuinvertmode do_set: atoi(op),
+                    // 0-2 else config error (prior value kept).
+                    if (negated) continue;
+                    const mode = Number.parseInt(val, 10);
+                    if (mode === 0 || mode === 1 || mode === 2) {
+                        result.iflags.menuinvertmode = mode;
+                    }
+                }
                 else if (key === 'disclose') {
                     result.flags.end_disclose = parseDiscloseOption(val, negated);
                 }
@@ -1883,15 +1892,17 @@ export async function select_menu_pick_any(rawItems) {
                 for (const it of items) {
                     if (it.selectable) it.selected = false;
                 }
-                game._menu_overlay = false;
-                await docrt();
-                await flush_screen(1);
+                // C wintty.c erase_menu_or_text — corner (offx!=0)
+                // dismiss is docorner(offx, maxrow+1, 0): rows below the
+                // menu (incl. WIN_STATUS) stay painted. docrt()+flush
+                // blanks them while bot is disabled.
+                await dismiss_nhw_menu({ keep_status: true });
                 return [];
             }
             if (key === 13 || key === 10) {
-                game._menu_overlay = false;
-                await docrt();
-                await flush_screen(1);
+                // C wintty.c erase_menu_or_text — corner dismiss keeps
+                // WIN_STATUS (see ESC arm above for the citation).
+                await dismiss_nhw_menu({ keep_status: true });
                 return items.filter((it) => it.selectable && it.selected);
             }
             if (key === 32) {
@@ -1900,9 +1911,7 @@ export async function select_menu_pick_any(rawItems) {
                     continue;
                 }
                 // C: space on last page finishes PICK_ANY
-                game._menu_overlay = false;
-                await docrt();
-                await flush_screen(1);
+                await dismiss_nhw_menu({ keep_status: true });
                 return items.filter((it) => it.selectable && it.selected);
             }
             const ch = String.fromCharCode(key);

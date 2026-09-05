@@ -14,6 +14,7 @@
 // PORT_HELP deferred.
 
 import { game } from './gstate.js';
+import { getversionstring } from './version.js';
 import { rn2, rn2_on_display_rng } from './rng.js';
 import { nhgetch } from './input.js';
 import {
@@ -1219,8 +1220,13 @@ function describe_looked(x, y) {
     // Detected chest: trap glyph, pile still on fobj; C names the trap.
     const glyph = glyph_at(x, y);
     if (glyph_is_trap(glyph)) {
+        // C ref: pager.c do_screen_description — add_cmap_descr `:1220`
+        // first-matches a trap glyph as literally "a trap" (prefix `:1271`
+        // is the `^` glyph + 8 spaces; hit_trap + need_to_look), then the
+        // didlook block `:1611-1614` appends " (lookat)" with
+        // firstmatch = lookat `:718-721` trap_description `:164-181`.
         const nm = trap_description(glyph_to_trap(glyph), x, y);
-        return { out: `^        ${an(nm)}`, first: nm, found: 1 };
+        return { out: `^        a trap (${nm})`, first: nm, found: 1 };
     }
     const mtmp = mon_at(x, y);
     if (mtmp) {
@@ -1527,9 +1533,16 @@ async function whatis_menu_choice() {
                 }
                 continue;
             }
-            if (key === 27 || ch === 'q') {
+            if (key === 27) {
                 await dismiss_nhw_menu();
                 return 'q';
+            }
+            // C wintty.c process_menu_window default arm: 'q' is no
+            // selector, gacc, or page-key in this PICK_ONE menu, so C
+            // tty_nhbell()s and keeps the menu (no reselect, screen-silent).
+            if (ch === 'q') {
+                tty_nhbell();
+                continue;
             }
             if (ch === '\r' || ch === '\n' || ch === ' ') {
                 // C PICK_ONE space on last page finishes with n==0; look-at
@@ -1775,10 +1788,23 @@ export async function doextversion() {
     get_lua_version_shuffle();
     // C getversionstring → nomakedefs.version_id (runner normalizes date).
     const lines = [
-        'MacOS NetHack Version 5.0.0 - last build May  2 2026 12:00:00.',
+        getversionstring(),
         ...doextversion_runtime_lines(),
     ];
     await show_text_pages(lines);
+    return 0;
+}
+
+/**
+ * C ref: version.c doversion `:156–165` — the #versionshort command
+ * (cmd.c key 'V'). menu_requested (m prefix, CMD_M_PREFIX) takes the
+ * doextversion arm; otherwise pline the getversionstring text.
+ * ECMD_OK, no turn, no RNG.
+ * @returns {Promise<number>}
+ */
+export async function doversion() {
+    if (game.iflags?.menu_requested) return doextversion();
+    await pline(getversionstring());
     return 0;
 }
 

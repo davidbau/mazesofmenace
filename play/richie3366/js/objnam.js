@@ -32,7 +32,7 @@ import { BOGUSMON_BUF } from './generated/bogusmon_data.js';
 import { upstart, highc } from './hacklib.js';
 import { genders } from './roles.js';
 import {
-    PM_SAMURAI, PM_CLERIC, PM_LICHEN, PM_ACID_BLOB, PM_LONG_WORM_TAIL,
+    PM_SAMURAI, PM_CLERIC, PM_ARCHEOLOGIST, PM_LICHEN, PM_ACID_BLOB, PM_LONG_WORM_TAIL,
 } from './generated/monsters_data.js';
 import {
     ART_ORB_OF_DETECTION, ART_SUNSWORD, ART_EYES_OF_THE_OVERWORLD,
@@ -49,6 +49,7 @@ import {
     CXN_NORMAL, CXN_SINGULAR, CXN_NO_PFX, CXN_PFX_THE, CXN_ARTICLE,
     CXN_NOCORPSE,
     CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_RANDOM,
+    CORPSTAT_HISTORIC,
     BURN_OBJECT, HAND, FOOT, FINGER, FINGERTIP, RIGHT_HANDED,
     CONTAINED_SYM, HANDS_SYM,
     M_AP_OBJECT,
@@ -662,10 +663,21 @@ function pretty_base(obj) {
     // C: corpse → "<monster> corpse" when corpsenm known
     if (n === 'CORPSE' && obj.corpsenm != null && obj.corpsenm >= 0)
         return `${mon_name(obj.corpsenm)} corpse`;
-    // C ref: objnam.c xname ROCK_CLASS STATUE — "statue of a <pm>"
+    // C ref: objnam.c xname_flags ROCK_CLASS STATUE `:802-814` —
+    // Snprintf "%s%s of %s%s": historic (Role Archeologist + spe HISTORIC),
+    // actualn, then pname → "" / unique → "the " / else just_an over
+    // obj_pmname (gender-aware, not mon_name).
     if (n === 'STATUE' && obj.corpsenm != null && obj.corpsenm >= 0) {
-        const pm = mon_name(obj.corpsenm);
-        return `statue of ${an(pm)}`;
+        const omndx = obj.corpsenm | 0;
+        if (omndx === NON_PM || !ismnum(omndx)) return 'statue';
+        const statue_pmname = obj_pmname_corpse(obj);
+        const ptr = mons(omndx);
+        const pmart = type_is_pname_objnam(ptr) ? ''
+            : the_unique_pm(ptr) ? 'the '
+                : just_an(statue_pmname);
+        const historic = (Role_if(PM_ARCHEOLOGIST)
+            && ((obj.spe | 0) & CORPSTAT_HISTORIC) !== 0) ? 'historic ' : '';
+        return `${historic}statue of ${pmart}${statue_pmname}`;
     }
     // C ref: objnam.c xname POTION_CLASS — known → "potion of X";
     // dknown+!nn → "<descr> potion"; !dknown → "potion"

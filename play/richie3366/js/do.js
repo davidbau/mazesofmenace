@@ -48,7 +48,7 @@ import {
 } from './const.js';
 import {
     seetrap, t_at, delfloortrap, reset_utrap, water_damage, erode_obj,
-    selftouch, uteetering_at_seen_pit, uescaped_shaft, maketrap,
+    selftouch, uteetering_at_seen_pit, uescaped_shaft, maketrap, climb_pit,
 } from './trap.js';
 import {
     COIN_CLASS, SCROLL_CLASS, SPBOOK_CLASS, POTION_CLASS, objectNames,
@@ -2647,7 +2647,7 @@ export async function dodown() {
 /**
  * C ref: do.c doup — '<' go up staircase (ordinary stairs path).
  *
- * Omits: rooted, pit climb_pit, stucksteed, u_stuck_cannot_go, encumbrance
+ * Omits: rooted, stucksteed, u_stuck_cannot_go, encumbrance
  * load gate, ledger 1 escape yn.
  */
 export async function doup() {
@@ -2657,6 +2657,12 @@ export async function doup() {
     u.dz = -1;
     u.dx = 0;
     u.dy = 0;
+
+    /* "up" to get out of a pit... */
+    if ((u.utrap | 0) && (u.utraptype | 0) === TT_PIT) {
+        await climb_pit();
+        return ECMD_TIME;
+    }
 
     const stway = stairway_at(u.ux, u.uy);
     if (!stway || !stway.up) {

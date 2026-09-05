@@ -67,6 +67,7 @@ import {
     ENL_GAMEINPROGRESS,
     P_EXPERT,
     Upolyd,
+    engulfing_u,
     nothing_happens,
     nothing_seems_to_happen,
     Never_mind,
@@ -81,9 +82,13 @@ import {
 import { rn2, rnd, d, rnz } from './rng.js';
 import { nhgetch } from './input.js';
 import {
-    flush_screen, flush_topl_more, pline, You_feel, newsym, see_monsters,
+    flush_screen, flush_topl_more, pline, impossible, You_feel, newsym, see_monsters,
     set_sting_effects, glyph_at, glyph_is_trap,
 } from './display.js';
+import { cansee } from './vision.js';
+import { mon_nam } from './do_name.js';
+import { wake_nearto } from './mon.js';
+import { burn_away_slime } from './timeout.js';
 import { compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, getobj } from './invent.js';
 import { xname, the, vtense, cxname, otense, set_undiscovered_artifact } from './objnam.js';
 import { recalc_telepat_range } from './do_wear.js';
@@ -99,6 +104,8 @@ const SPE_CONE_OF_COLD = objectNames.indexOf('SPE_CONE_OF_COLD');
 const SCR_TAMING = objectNames.indexOf('SCR_TAMING');
 /** C monflag.h MS_NEMESIS */
 const MS_NEMESIS = 37;
+/** C monsters.h PM_WATER_ELEMENTAL — mdef->data identity for the FIRE vaporize arm. */
+const PM_WATER_ELEMENTAL = monsterNames.indexOf('PM_WATER_ELEMENTAL');
 
 export { NROFARTIFACTS };
 import {
@@ -1979,41 +1986,97 @@ export function spec_dbon(otmp, mon, tmp) {
 }
 
 /**
- * C ref: artifact.c artifact_hit — add spec_dbon then elemental/special arms.
- * Ported: damage add via spec_dbon (Grayswandir max(tmp,1) double).
- * Named omissions: realizes_damage plines; destroy_items/ignite on
- * FIRE/COLD/ELEC (still burn their rn2 gates); Mb_hit; SPFX_BEHEAD;
- * SPFX_DRLI; wake_nearto; Slimed burn_away.
+ * C ref: artifact.c artifact_hit :1447–1721 — preamble + four basic
+ * attacks (FIRE/COLD/ELEC/MAGM) with realizes_damage plines.
+ * Ported: spec_dbon add; youattack/youdefend/vis/realizes_damage/hittee;
+ * impossible self-attack; elemental plines in C order; ELEC wake_nearto
+ * when spec_dbon_applies; rn2(4)/rn2(5) gates burned; Slimed burn_away.
+ * Named omissions: destroy_items/ignite_items bodies (gates still burned);
+ * Mb_hit; SPFX_BEHEAD; SPFX_DRLI.
  * @param {object} dmgBox mutable `{ dmg }` (C int *dmgptr)
  * @returns {boolean} whether caller should suppress ordinary hit pline
  */
-export function artifact_hit(magr, mdef, otmp, dmgBox, dieroll) {
-    void magr;
+export async function artifact_hit(magr, mdef, otmp, dmgBox, dieroll) {
     if (!otmp?.oartifact || !dmgBox) return false;
+    const hero = game.youmonst;
+    const isHero = (m) => !!m && (m === hero || m === youmonst || !!m._youmonst);
+    const youattack = isHero(magr);
+    const youdefend = isHero(mdef);
+    const monPos = (m) => {
+        if (!m) return null;
+        if (m === hero || m === youmonst || !!m._youmonst) {
+            const u = game.u || {};
+            if (u.ux == null) return null;
+            return { x: u.ux | 0, y: u.uy | 0 };
+        }
+        if (m.mx == null || m.my == null) return null;
+        return { x: m.mx | 0, y: m.my | 0 };
+    };
+    const pa = monPos(magr);
+    const pd = monPos(mdef);
+    // C :1459–1462 — vis short-circuit order.
+    const vis = ((!youattack && !!magr && !!pa && cansee(pa.x, pa.y))
+        || (!youdefend && !!mdef && !!pd && cansee(pd.x, pd.y))
+        || (!!youattack && !!mdef && engulfing_u(mdef) && !Blind()));
+    const hittee = youdefend ? 'you' : mon_nam(mdef);
     dmgBox.dmg = (dmgBox.dmg | 0) + spec_dbon(otmp, mdef, dmgBox.dmg | 0);
 
-    // Elemental / Magicbane gates — burn C RNG order; bodies deferred.
+    if (youattack && youdefend) {
+        await impossible('attacking yourself with weapon?');
+        return false;
+    }
+    // C :1469–1471 — feel the effect even if not seen; stuck counts.
+    const realizes_damage = !!(youdefend || vis
+        || (youattack && !!mdef && (game.u?.ustuck === mdef)));
+
+    // The four basic attacks: fire, cold, shock and missiles.
     if (attacks(AD_FIRE, otmp)) {
-        if (!rn2(4)) {
-            // destroy_items AD_FIRE + ignite_items deferred
+        if (realizes_damage) {
+            const mndx = (mdef?.data?.mndx ?? mdef?.mnum ?? -1) | 0;
+            const verb = !spec_dbon_applies
+                ? 'hits'
+                : (mndx === PM_WATER_ELEMENTAL ? 'vaporizes part of' : 'burns');
+            await pline(`The fiery blade ${verb} ${hittee}${!spec_dbon_applies ? '.' : '!'}`);
         }
-        return true;
+        if (!rn2(4)) {
+            // destroy_items AD_FIRE + ignite_items deferred (gate still burned)
+        }
+        if (youdefend && (game.u?.Slimed)) await burn_away_slime();
+        return realizes_damage;
     }
     if (attacks(AD_COLD, otmp)) {
-        if (!rn2(4)) {
-            // destroy_items AD_COLD deferred
+        if (realizes_damage) {
+            const verb = !spec_dbon_applies ? 'hits' : 'freezes';
+            await pline(`The ice-cold blade ${verb} ${hittee}${!spec_dbon_applies ? '.' : '!'}`);
         }
-        return true;
+        if (!rn2(4)) {
+            // destroy_items AD_COLD deferred (gate still burned)
+        }
+        return realizes_damage;
     }
     if (attacks(AD_ELEC, otmp)) {
-        // wake_nearto when spec_dbon_applies deferred
-        if (!rn2(5)) {
-            // destroy_items AD_ELEC deferred
+        if (realizes_damage) {
+            if (!spec_dbon_applies) {
+                await pline(`The massive hammer hits ${hittee}.`);
+            } else {
+                await pline(`The massive hammer hits!  Lightning strikes ${hittee}!`);
+            }
         }
-        return true;
+        if (spec_dbon_applies && pd) await wake_nearto(pd.x, pd.y, 4 * 4);
+        if (!rn2(5)) {
+            // destroy_items AD_ELEC deferred (gate still burned)
+        }
+        return realizes_damage;
     }
     if (attacks(AD_MAGM, otmp)) {
-        return true;
+        if (realizes_damage) {
+            if (!spec_dbon_applies) {
+                await pline(`The imaginary widget hits ${hittee}.`);
+            } else {
+                await pline(`The imaginary widget hits!  A hail of magic missiles strikes ${hittee}!`);
+            }
+        }
+        return realizes_damage;
     }
     // C: MB_MAX_DIEROLL 8 — rolls above this aren't magical
     if (attacks(AD_STUN, otmp) && (dieroll | 0) <= 8) {

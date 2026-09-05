@@ -797,10 +797,11 @@ function getpos_help_keyxhelp(lines, k1, k2, gloc) {
 }
 
 /**
- * C ref: getpos.c getpos_help — NHW_MENU putstr + display_nhwindow(TRUE).
- * Default !num_pad move/run/rush keys (hjklyubn / HJKL / G,g). Named:
- * cmd_from_func custom binds; getpos_getvalid/hilite lines; whatis pick
- * variants when goal === what_is_a_location.
+ * C ref: getpos.c getpos_help :167-307 — NHW_MENU putstr +
+ * display_nhwindow(TRUE). Default !num_pad move/run/rush keys
+ * (hjklyubn / HJKL / G,g). Named: cmd_from_func custom binds.
+ * C :258-266 cmdassist Sprintf has no putstr (sbuf overwritten by the
+ * "Type a ..." Snprintf) so it prints no line — none here either.
  */
 async function getpos_help(force, goal) {
     const fastmovemode = ['8 units at a time', 'skipping same glyphs'];
@@ -831,8 +832,9 @@ async function getpos_help(force, goal) {
             GLOC_MONS,
         );
     }
-    // C: if (goal && !strcmp(goal, "a monster")) goto skip_non_mons;
-    if (!(goal && goal === 'a monster')) {
+    // C :205: if (goal && !strcmp(goal, "a monster")) goto skip_non_mons;
+    const skipNonMons = !!(goal && goal === 'a monster');
+    if (!skipNonMons) {
         if (!terrainmode || (terrainmode & TER_OBJ) !== 0) {
             getpos_help_keyxhelp(
                 lines,
@@ -875,13 +877,53 @@ async function getpos_help(force, goal) {
             );
         }
         if (!terrainmode) {
-            // getpos_getvalid / getpos_hilitefunc lines deferred
+            // C :244-249 — getpos_getvalid installed via getpos_sethilite.
+            if (getpos_getvalid) {
+                lines.push(
+                    `Use '${visctrl(getpos_spkey(NHKF_GETPOS_VALID_NEXT))}' or '${visctrl(getpos_spkey(NHKF_GETPOS_VALID_PREV))}' to move to valid locations.`,
+                );
+            }
+            // C :250-255 — getpos_hilitefunc installed via getpos_sethilite.
+            if (getpos_hilitefunc) {
+                lines.push(
+                    `Use '${visctrl(getpos_spkey(NHKF_GETPOS_SHOWVALID))}' to toggle marking of valid locations.`,
+                );
+            }
+            // C :256-257
             lines.push(
                 `Use '${visctrl(getpos_spkey(NHKF_GETPOS_AUTODESC))}' to toggle automatic description.`,
             );
-            // C doing_what_is only when goal == what_is_a_location; travel uses '.'
+            // C :258-266 cmdassist Sprintf: no putstr, prints nothing.
+        }
+    }
+    // C :267 skip_non_mons — inside `if (!terrainmode)` but reached via goto
+    // even when terrainmode != 0, so the tail runs when !terrainmode ||
+    // skipNonMons. doing_what_is is the pointer test goal ==
+    // what_is_a_location ("a monster, object or location", pager.c:1670);
+    // only pager.c:1910 passes that global, so a value compare is exact.
+    if (!terrainmode || skipNonMons) {
+        // C :269-284
+        const doing_what_is = goal === 'a monster, object or location';
+        let kbuf;
+        if (doing_what_is) {
+            kbuf = `'${visctrl(getpos_spkey(NHKF_GETPOS_PICK))}' or '${visctrl(getpos_spkey(NHKF_GETPOS_PICK_Q))}' or '${visctrl(getpos_spkey(NHKF_GETPOS_PICK_O))}' or '${visctrl(getpos_spkey(NHKF_GETPOS_PICK_V))}'`;
+        } else {
+            kbuf = `'${visctrl(getpos_spkey(NHKF_GETPOS_PICK))}'`;
+        }
+        lines.push(`Type a ${kbuf} when you are at the right place.`);
+        if (doing_what_is) {
+            // C :285-299
             lines.push(
-                `Type a '${visctrl(getpos_spkey(NHKF_GETPOS_PICK))}' when you are at the right place.`,
+                `  '${visctrl(getpos_spkey(NHKF_GETPOS_PICK_V))}' describe current spot, show 'more info', move to another spot.`,
+            );
+            lines.push(
+                `  '${visctrl(getpos_spkey(NHKF_GETPOS_PICK))}' describe current spot,${(game.flags?.help !== false) && !force ? " prompt if 'more info'," : ''} move to another spot;`,
+            );
+            lines.push(
+                `  '${visctrl(getpos_spkey(NHKF_GETPOS_PICK_Q))}' describe current spot, move to another spot;`,
+            );
+            lines.push(
+                `  '${visctrl(getpos_spkey(NHKF_GETPOS_PICK_O))}' describe current spot, stop looking at things;`,
             );
         }
     }

@@ -26,6 +26,8 @@ import {
     restore_mapseenchn,
     ledger_no,
     maxledgerno,
+    save_dungeon_topology,
+    restore_dungeon_topology,
 } from './dungeon.js';
 import { rest_track } from './track.js';
 import { restore_timers, restore_light_sources, run_timers, dobjsfree } from './mkobj.js';
@@ -408,6 +410,9 @@ export function dosave0() {
         n_dgns: game.n_dgns | 0,
         branches: game.branches
             ? JSON.parse(JSON.stringify(game.branches)) : null,
+        // C dungeon.c save_dungeon `Sfo_dgn_topology` — every special-level
+        // d_level (castle, sanctum, quest starts …) survives the save.
+        topology_levels: save_dungeon_topology(),
         // C save.c savelev current then other LFILE_EXISTS (D-1697).
         current: serLevel(null),
         current_ledger: currentLedger,
@@ -665,6 +670,15 @@ export async function try_restore_save() {
     game.dungeons = payload.dungeons || game.dungeons;
     game.n_dgns = payload.n_dgns | 0;
     game.branches = payload.branches || game.branches;
+    // C dungeon.c restore_dungeon `Sfi_dgn_topology` — a restore boots from a
+    // fresh game object without init_dungeons/fixup, so the `game.*_level`
+    // fields must come from the save (old saves without the key keep current
+    // values). Without this, `depth(game.stronghold_level)` falls back to
+    // dungeon 0 level 1 and `maybe_generate_rnd_mon` (allmain.c:165) draws
+    // `rn2(50)` where C draws `rn2(70)`.
+    if (payload.topology_levels) {
+        restore_dungeon_topology(payload.topology_levels);
+    }
     if (payload.dungeon_topology) {
         game.dungeon_topology = payload.dungeon_topology;
     }

@@ -13,7 +13,7 @@ import {
 } from './mkobj.js';
 import { mattackm, max_passive_dmg } from './mhitm.js';
 import { mattacku } from './mhitu.js';
-import { newsym, pline, canseemon, pline_mon, pline_xy } from './display.js';
+import { newsym, pline, canseemon, mon_visible, canspotmon, pline_mon, pline_xy } from './display.js';
 import { doname, distant_name } from './objnam.js';
 import { mpickobj } from './makemon.js';
 import { t_at } from './trap.js';
@@ -395,9 +395,12 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
         obj = splitobj(obj, 1) || obj;
     }
 
+    // C ref: dogmove.c dog_eat — sawpet is cansee+mon_visible (not
+    // canseemon: the food square need not be in sight when the pet's
+    // start square is seen); second arm is canspotmon (D-1875).
     const seeobj = cansee(mtmp.mx, mtmp.my);
-    const sawpet = cansee(x, y) && canseemon(mtmp);
-    if (sawpet || (seeobj && canseemon(mtmp))) {
+    const sawpet = cansee(x, y) && mon_visible(mtmp);
+    if (sawpet || (seeobj && canspotmon(mtmp))) {
         const obj_name = doname(obj);
         await pline(
             `${noit_Monnam(mtmp)} ${devour ? 'devours' : 'eats'} ${obj_name}.`,

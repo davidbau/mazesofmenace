@@ -652,7 +652,7 @@ async function dowaternymph() {
 /**
  * C ref: mkroom.c nexttodoor — TRUE if adjacent to door/SDOOR.
  */
-function nexttodoor(sx, sy) {
+export function nexttodoor(sx, sy) {
     for (let dx = -1; dx <= 1; dx++) {
         for (let dy = -1; dy <= 1; dy++) {
             if (!isok(sx + dx, sy + dy)) continue;

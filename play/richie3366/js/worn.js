@@ -5,8 +5,7 @@
 // Named omissions: wear plines when !creation (freeze still applied);
 //   artifact_light begin_burn/end_burn;
 //   dragon-scale altprop beyond alchemy smock;
-//   extract_from_minvent artifact_light/obj_no_longer_held;
-//   youmonst which_armor slot table (hero uses uarm*).
+//   extract_from_minvent artifact_light/obj_no_longer_held.
 // D-0855: nambuf Monnam/mon_nam at m_dowear_type entry (Hallu display RNG).
 
 import { game } from './gstate.js';
@@ -32,7 +31,7 @@ import {
     objectNames,
 } from './objects.js';
 import { curse, obj_extract_self, oc_merge_of } from './mkobj.js';
-import { canseemon, newsym } from './display.js';
+import { canseemon, newsym, impossible } from './display.js';
 import { see_wsegs } from './worm.js';
 import { dist2 } from './hacklib.js';
 import { Monnam, mon_nam } from './do_name.js';
@@ -332,11 +331,27 @@ export function wearslot(obj) {
 }
 
 /**
- * C ref: worn.c which_armor — first minvent obj with owornmask bit.
- * Hero youmonst path deferred (callers use u.uarm*).
+ * C ref: worn.c which_armor `:1006–1036` — youmonst reads the u.uarm*
+ * slot table; monsters scan minvent for the owornmask bit.
  */
 export function which_armor(mon, flag) {
     if (!mon) return null;
+    /* C: mon == &gy.youmonst → uarm* slot table */
+    if (mon === game.youmonst || !!mon._youmonst) {
+        const u = game.u || {};
+        switch (flag) {
+        case W_ARM: return u.uarm || null;
+        case W_ARMC: return u.uarmc || null;
+        case W_ARMH: return u.uarmh || null;
+        case W_ARMS: return u.uarms || null;
+        case W_ARMG: return u.uarmg || null;
+        case W_ARMF: return u.uarmf || null;
+        case W_ARMU: return u.uarmu || null;
+        default:
+            impossible('bad flag in which_armor');
+            return null;
+        }
+    }
     for (let obj = mon.minvent; obj; obj = obj.nobj) {
         if ((obj.owornmask || 0) & flag) return obj;
     }

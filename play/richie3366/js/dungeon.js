@@ -963,6 +963,55 @@ function fixup_level_locations() {
     }
 }
 
+// Branch dungeon numbers kept in the save alongside the level fields
+// (C hack.h `struct dgn_topology` d_tower/sokoban/mines/quest/tutorial_dnum).
+const TOPOLOGY_DNUM_FIELDS = [
+    'quest_dnum', 'sokoban_dnum', 'mines_dnum', 'tower_dnum', 'tutorial_dnum',
+];
+
+/**
+ * C ref: dungeon.c save_dungeon `Sfo_dgn_topology(nhfp, &svd.dungeon_topology)`
+ * (hack.h `struct dgn_topology`) — every special-level d_level survives the
+ * save. JS keeps the same fields as `game.<field>` (LEVEL_MAP, set by
+ * fixup_level_locations) plus the branch dnums; serialize them as one plain
+ * object for the save payload. Missing fields are skipped, never zeroed:
+ * a zeroed castle would read shallower than the hero and flip
+ * `maybe_generate_rnd_mon` from `rn2(70)` to `rn2(50)` (allmain.c:165).
+ */
+export function save_dungeon_topology() {
+    const out = {};
+    for (const [, field] of LEVEL_MAP) {
+        const lv = game[field];
+        if (lv && Number.isFinite(lv.dnum) && Number.isFinite(lv.dlevel)) {
+            out[field] = { dnum: lv.dnum | 0, dlevel: lv.dlevel | 0 };
+        }
+    }
+    for (const field of TOPOLOGY_DNUM_FIELDS) {
+        if (Number.isFinite(game[field])) out[field] = game[field] | 0;
+    }
+    return out;
+}
+
+/**
+ * C ref: dungeon.c restore_dungeon `Sfi_dgn_topology(nhfp, &svd.dungeon_topology)`.
+ * Restore the level fields saved by save_dungeon_topology. A restore boots
+ * from a fresh game object (no init_dungeons/fixup), so without this every
+ * `game.*_level` stays undefined after `S`+restore. Tolerates old saves:
+ * absent keys keep current values.
+ */
+export function restore_dungeon_topology(saved) {
+    if (!saved || typeof saved !== 'object') return;
+    for (const [, field] of LEVEL_MAP) {
+        const lv = saved[field];
+        if (lv && Number.isFinite(lv.dnum) && Number.isFinite(lv.dlevel)) {
+            game[field] = { dnum: lv.dnum | 0, dlevel: lv.dlevel | 0 };
+        }
+    }
+    for (const field of TOPOLOGY_DNUM_FIELDS) {
+        if (Number.isFinite(saved[field])) game[field] = saved[field] | 0;
+    }
+}
+
 // C ref: nhl_init() loads nhlib.lua which shuffles align[].
 // nhlib math.random(i) → 1+nh.rn2(i); Fisher-Yates with rn2(i) matches logged calls.
 // Also used by questpgr.com_pager_core nhl_init before loading quest.lua.

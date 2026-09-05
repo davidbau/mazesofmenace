@@ -36,7 +36,7 @@ import {
     A_LAWFUL, A_NONE, Align2amask, Amask2align, AM_NONE, AM_LAWFUL, AM_NEUTRAL,
     AM_CHAOTIC, AM_MASK, AM_SHRINE, AM_SANCTUM,
     AM_SPLEV_CO, AM_SPLEV_NONCO, AM_SPLEV_RANDOM,
-    MM_EPRI, MM_EMIN, MM_ADJACENTOK,
+    MM_EPRI, MM_EMIN, MM_ADJACENTOK, NO_MM_FLAGS,
     N_DIRS, W_ARMC, RLOC_NOMSG,
     FILL_LVFLAGS, STRAT_WAITFORU, NON_PM, ONAME_LEVEL_DEF,
     MM_NONAME, MIGR_LEFTOVERS, MIGR_RANDOM, has_mgivenname,
@@ -125,7 +125,7 @@ import { name_to_monplus, name_to_mon } from './mondata.js';
 import { fruit_from_name } from './objnam.js';
 import { christen_monst, christen_orc, rndorcname, new_oname, oname, lookup_novel } from './do_name.js';
 import { makeroguerooms, makerogueghost } from './extralev.js';
-import { make_engr_at, make_grave, wipe_engr_at, random_engraving } from './engrave.js';
+import { make_engr_at, make_grave, wipe_engr_at, random_engraving, del_engr_at } from './engrave.js';
 import { cmd_from_ecname } from './dokeylist.js';
 import {
     find_level, dungeon_branch, at_dgn_entrance, insert_branch, get_level,
@@ -138,6 +138,7 @@ import {
 } from './region.js';
 import { Norep } from './display.js';
 import { begin_burn } from './timeout.js';
+import { nexttodoor } from './fountain.js';
 import { ndemon } from './minion.js';
 import { readobjnam, rnd_otyp_by_namedesc } from './readobjnam.js';
 
@@ -213,6 +214,9 @@ const PM_COCKATRICE = monsterNames.indexOf('PM_COCKATRICE');
 const PM_SOLDIER_ANT = monsterNames.indexOf('PM_SOLDIER_ANT');
 const PM_FIRE_ANT = monsterNames.indexOf('PM_FIRE_ANT');
 const PM_GIANT_ANT = monsterNames.indexOf('PM_GIANT_ANT');
+const PM_GIANT_EEL = monsterNames.indexOf('PM_GIANT_EEL');
+const PM_PIRANHA = monsterNames.indexOf('PM_PIRANHA');
+const PM_ELECTRIC_EEL = monsterNames.indexOf('PM_ELECTRIC_EEL');
 const PM_SMALL_MIMIC = monsterNames.indexOf('PM_SMALL_MIMIC');
 const PM_LARGE_MIMIC = monsterNames.indexOf('PM_LARGE_MIMIC');
 const PM_GIANT_MIMIC = monsterNames.indexOf('PM_GIANT_MIMIC');
@@ -20976,6 +20980,59 @@ function mkzoo(type) {
 }
 
 /**
+ * C ref: mkroom.c mkswamp :530-574 — turn up to 5 ordinary rooms swampy.
+ * Own rn2(nroom) pick per try (no pick_room); OROOM + no-stairs gate;
+ * rtype SWAMP; checkerboard POOL with eel on odd cells (first pool cell
+ * always: rn2(5) giant eel, else rn2(2) piranha, else electric eel;
+ * later cells rn2(4)) and rn2(4) moldy fungus on even cells. eelct is
+ * C-local across all 5 tries, not reset per room. has_swamp per swamp.
+ */
+function mkswamp() {
+    const g = game;
+    const nroom = g.level?.nroom | 0;
+    let eelct = 0;
+    for (let i = 0; i < 5; i++) { /* turn up to 5 rooms swampy */
+        const idx = rn2(nroom);
+        const sroom = g.level?.rooms?.[idx];
+        if (!sroom || sroom.hx < 0 || sroom.rtype !== OROOM
+            || has_upstairs(sroom) || has_dnstairs(sroom))
+            continue;
+
+        const rmno = idx + ROOMOFFSET;
+
+        /* satisfied; make a swamp */
+        sroom.rtype = SWAMP;
+        for (let sx = sroom.lx; sx <= sroom.hx; sx++) {
+            for (let sy = sroom.ly; sy <= sroom.hy; sy++) {
+                const loc = g.level.at(sx, sy);
+                if (!loc || !IS_ROOM(loc.typ)
+                    || (loc.roomno | 0) !== rmno)
+                    continue;
+                if (!objects_at(sx, sy) && !m_at(sx, sy) && !t_at(sx, sy)
+                    && !nexttodoor(sx, sy)) {
+                    if ((sx + sy) % 2) {
+                        del_engr_at(sx, sy);
+                        loc.typ = POOL;
+                        if (!eelct || !rn2(4)) {
+                            /* mkclass() won't do, as we might get kraken */
+                            makemon(rn2(5)
+                                ? mons(PM_GIANT_EEL)
+                                : rn2(2)
+                                    ? mons(PM_PIRANHA)
+                                    : mons(PM_ELECTRIC_EEL),
+                                sx, sy, NO_MM_FLAGS);
+                            eelct++;
+                        }
+                    } else if (!rn2(4)) /* swamps tend to be moldy */
+                        makemon(mkclass('S_FUNGUS', 0), sx, sy, NO_MM_FLAGS);
+                }
+            }
+        }
+        g.level.flags.has_swamp = true;
+    }
+}
+
+/**
  * C ref: mkroom.c shrine_pos — center of room; odd width/height may nudge
  * by rn2(2) onto an adjacent cell.
  */
@@ -21137,7 +21194,7 @@ function do_mkroom(roomtype) {
         mktemple();
         break;
     case SWAMP:
-        // mkswamp deferred — no RNG burned (C would pick_room)
+        mkswamp();
         break;
     default:
         break;

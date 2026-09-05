@@ -564,6 +564,17 @@ const EXT_CMDS = [
         },
     },
     {
+        // C: cmd.c "versionshort" IFBURIED|GENERALCMD|CMD_M_PREFIX
+        // (no AUTOCOMPLETE) → doversion
+        name: 'versionshort',
+        wiz: false,
+        autocomplete: false,
+        run: async () => {
+            const { doversion } = await import('./pager.js');
+            return doversion();
+        },
+    },
+    {
         // C: cmd.c "teleport" IFBURIED|CMD_M_PREFIX (no AUTOCOMPLETE) → dotelecmd
         name: 'teleport',
         wiz: false,

@@ -1481,7 +1481,7 @@ export async function toss_up(obj, hitsroof) {
         let dmg = dmgval(obj, game.youmonst);
         if (obj.oartifact && !harmless) {
             const dmgBox = { dmg };
-            artimsg = artifact_hit(null, game.youmonst, obj, dmgBox, rn1(18, 2));
+            artimsg = await artifact_hit(null, game.youmonst, obj, dmgBox, rn1(18, 2));
             dmg = dmgBox.dmg | 0;
         }
         if (!dmg) {
@@ -1752,7 +1752,7 @@ async function throwit_returning_missile(
         }
         if (obj.oartifact) {
             const dmgBox = { dmg };
-            artifact_hit(null, game.youmonst, obj, dmgBox, 0);
+            await artifact_hit(null, game.youmonst, obj, dmgBox, 0);
             dmg = dmgBox.dmg | 0;
         }
         // C dothrow.c:1747–1748 killer_xname + KILLED_BY (D-1346; not xname)

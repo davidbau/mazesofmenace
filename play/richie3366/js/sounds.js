@@ -146,13 +146,15 @@ function mon_in_room(mon, rmtyp) {
 
 /**
  * C ref: mon.c get_iter_mons — first living on-map mon where bfunc is true.
+ * Async (fountain.js/dokick.js precedent): bfunc may print (zoo_msg).
  * Named omission: mon_offmap edge cases beyond mx/my null.
+ * @param {(mtmp: object) => Promise<boolean>|boolean} bfunc
  */
-function get_iter_mons(bfunc) {
+async function get_iter_mons(bfunc) {
     for (const mtmp of game.fmon || []) {
         if (!mtmp || mtmp.mx == null || mtmp.my == null) continue;
         if ((mtmp.mhp | 0) < 1) continue;
-        if (bfunc(mtmp)) return mtmp;
+        if (await bfunc(mtmp)) return mtmp;
     }
     return null;
 }
@@ -245,10 +247,20 @@ function morgue_mon_sound(mtmp) {
     return false;
 }
 
-/** C ref: sounds.c zoo_mon_sound — RNG only. */
-function zoo_mon_sound(mtmp) {
+/**
+ * C ref: sounds.c zoo_mon_sound `:115–128` — (msleeping||animal)+ZOO gate,
+ * then selection = rn2(2)+hallu over zoo_msg[3] via You_hear1, TRUE.
+ * (No Soundeffect on this arm.)
+ */
+async function zoo_mon_sound(mtmp) {
     if ((mtmp.msleeping || is_animal(mtmp.data)) && mon_in_room(mtmp, ZOO)) {
-        rn2(2);
+        const hallu = Hallucination() ? 1 : 0;
+        const zoo_msg = [
+            'a sound reminiscent of an elephant stepping on a peanut.',
+            'a sound reminiscent of a seal barking.',
+            'Doctor Dolittle!',
+        ];
+        await You_hear(zoo_msg[rn2(2) + hallu]);
         return true;
     }
     return false;
@@ -279,8 +291,8 @@ function oracle_sound(mtmp) {
  * barracks/zoo/shop/temple/oracle gates; vault body + You_hear
  * (gd_sound / gold_in_vault / vault_occupied FALLTHROUGH); shop body
  * search_special+tended_shop+You_hear(shop_msg)+noisy_shop;
- * mon_sound RNG-only.
- * Named omissions: swamp You1; barracks/court You_hear plines;
+ * zoo body live (zoo_msg + You_hear); other mon_sound RNG-only.
+ * Named omissions: swamp You1; barracks/court/throne/beehive You_hear plines;
  * findgd migrating_mons; vampshifter morgue; temple_priest body;
  * oracle canseemon; Is_sanctum; Soundeffect.
  */
@@ -313,7 +325,7 @@ export async function dosounds() {
         await You_hear(sink_msg[rn2(2) + hallu]);
     }
     if (lf.has_court && !rn2(200)) {
-        if (get_iter_mons(throne_mon_sound)) return;
+        if (await get_iter_mons(throne_mon_sound)) return;
     }
     if (lf.has_swamp && !rn2(200)) {
         rn2(2); // swamp_msg; C returns after; You1 deferred
@@ -358,10 +370,10 @@ export async function dosounds() {
         return;
     }
     if (lf.has_beehive && !rn2(200)) {
-        if (get_iter_mons(beehive_mon_sound)) return;
+        if (await get_iter_mons(beehive_mon_sound)) return;
     }
     if (lf.has_morgue && !rn2(200)) {
-        if (get_iter_mons(morgue_mon_sound)) return;
+        if (await get_iter_mons(morgue_mon_sound)) return;
     }
     if (lf.has_barracks && !rn2(200)) {
         let count = 0;
@@ -376,7 +388,7 @@ export async function dosounds() {
         }
     }
     if (lf.has_zoo && !rn2(200)) {
-        if (get_iter_mons(zoo_mon_sound)) return;
+        if (await get_iter_mons(zoo_mon_sound)) return;
     }
     if (lf.has_shop && !rn2(200)) {
         const sroom = search_special(ANY_SHOP);
@@ -398,10 +410,10 @@ export async function dosounds() {
     }
     if (lf.has_temple && !rn2(200) && !Is_astralevel(game.u?.uz)) {
         // Is_sanctum deferred (always false → gate may open on sanctum)
-        if (get_iter_mons(temple_priest_sound)) return;
+        if (await get_iter_mons(temple_priest_sound)) return;
     }
     if (Is_oracle_level(game.u?.uz) && !rn2(400)) {
-        if (get_iter_mons(oracle_sound)) return;
+        if (await get_iter_mons(oracle_sound)) return;
     }
 }
 

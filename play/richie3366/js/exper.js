@@ -5,7 +5,7 @@
 
 import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
-import { MAXULEV, NATTK, LARGEST_INT, Upolyd, ismnum } from './const.js';
+import { MAXULEV, NATTK, LARGEST_INT, Upolyd, ismnum, LL_MINORAC } from './const.js';
 import { pline } from './display.js';
 import { acurr, A_WIS, newhp, adjabil } from './attrib.js';
 import { find_mac } from './mhitm.js';
@@ -22,7 +22,8 @@ import {
     PM_BARBARIAN,
     PM_VALKYRIE,
 } from './generated/monsters_data.js';
-import { achieve_rank, record_achievement } from './insight.js';
+import { achieve_rank, count_achievements, record_achievement } from './insight.js';
+import { livelog_printf } from './pline.js';
 
 // C ref: monattk.h — experience() compares against these exact values
 const AT_BUTT = 4;
@@ -150,7 +151,7 @@ export function rndexp(gaining) {
 /**
  * C ref: exper.c pluslvl(incr)
  * incr false: potion / #levelchange / wraith (You_feel + set xp).
- * Achievements / livelog / SoundAchievement deferred.
+ * SoundAchievement deferred (no SND_LIB).
  */
 export async function pluslvl(incr) {
     const u = game.u || (game.u = {});
@@ -181,10 +182,18 @@ export async function pluslvl(incr) {
         await pline(`Welcome ${back}to experience level ${u.ulevel}.`);
         if ((u.ulevelmax | 0) < (u.ulevel | 0)) u.ulevelmax = u.ulevel;
         await adjabil(oldlevel, u.ulevel);
-        // C: SoundAchievement xplevelup deferred
+        // C: SoundAchievement(0, sa2_xplevelup, 0) deferred (no SND_LIB)
+        // C ref: exper.c pluslvl — a new rank achievement logs its own
+        // message via record_achievement; log the simpler minorac line
+        // only when no achievement was added (rank unchanged or regained
+        // level whose rank achievement already exists and is not repeated).
+        const old_ach_cnt = count_achievements();
         const newrank = xlev_to_rank(u.ulevel | 0);
         if (newrank > oldrank) record_achievement(achieve_rank(newrank));
-        // livelog when no new rank achievement deferred
+        if (count_achievements() === old_ach_cnt) {
+            livelog_printf(LL_MINORAC, '%sgained experience level %d',
+                ((u.ulevel | 0) <= (u.ulevelpeak | 0)) ? 're' : '', u.ulevel | 0);
+        }
         if ((u.ulevel | 0) > (u.ulevelpeak | 0)) u.ulevelpeak = u.ulevel;
     }
     if (!game.flags) game.flags = {};
@@ -292,7 +301,7 @@ function resists_drli_you() {
 
 /**
  * C ref: exper.c losexp — drain one experience level.
- * Named omit: level-1 done(DIED); livelog/SoundAchievement; Upolyd
+ * Named omit: level-1 done(DIED); SoundAchievement; Upolyd
  * monhp_per_lvl/rehumanize; uhpmax-up clamp via setuhpmax.
  */
 export async function losexp(drainer) {
@@ -312,10 +321,15 @@ export async function losexp(drainer) {
     if ((u.ulevel | 0) > 1) {
         u.ulevel = (u.ulevel | 0) - 1;
         await adjabil((u.ulevel | 0) + 1, u.ulevel | 0);
+        // C ref: exper.c losexp — livelog the lost level; SoundAchievement
+        // sa2_xpleveldown deferred (no SND_LIB).
+        livelog_printf(LL_MINORAC, 'lost experience level %d', (u.ulevel | 0) + 1);
     } else {
         // C: drainer → done(DIED) (noreturn). Named omit.
         if (drainer) return;
         u.uexp = 0;
+        // C ref: exper.c losexp — divine-anger reset to 0 XP still chronicles.
+        livelog_printf(LL_MINORAC, 'lost all experience');
     }
 
     const olduhpmax = u.uhpmax | 0;

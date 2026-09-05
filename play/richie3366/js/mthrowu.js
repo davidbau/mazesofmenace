@@ -856,7 +856,7 @@ export async function return_from_mtoss(magr, otmp, tethered_weapon) {
             if (otmp.oartifact) {
                 const { artifact_hit } = await import('./artifact.js');
                 const dmgBox = { dmg };
-                artifact_hit(null, magr, otmp, dmgBox, 0);
+                await artifact_hit(null, magr, otmp, dmgBox, 0);
                 dmg = dmgBox.dmg | 0;
             }
             magr.mhp = (magr.mhp | 0) - dmg;

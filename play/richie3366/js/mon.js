@@ -23,9 +23,9 @@ import {
     MON_LIMBO, MON_OBLITERATE, MON_ENDGAME_MIGR, MIGR_APPROX_XY, MIGR_RANDOM,
     has_emin, has_epri, has_eshk, has_mcorpsenm, MCORPSENM,
     Has_contents, RLOC_MSG, RLOC_NOMSG, XKILL_NOMSG,
-    NO_MM_FLAGS, NATTK, PROT_FROM_SHAPE_CHANGERS,
+    NO_MM_FLAGS, NATTK, PROT_FROM_SHAPE_CHANGERS, NO_WEAPON_WANTED, engulfing_u,
 } from './const.js';
-import { t_at, m_harmless_trap, water_damage_chain, fire_damage_chain } from './trap.js';
+import { t_at, m_harmless_trap, water_damage_chain, fire_damage_chain, fixed_tele_trap } from './trap.js';
 import {
     nohands, verysmall, throws_rocks, passes_walls, lays_eggs, mons,
     monsterNames, NON_PM, LOW_PM, mon_knows_traps, tunnels, needspick,
@@ -79,6 +79,9 @@ import { vtense, doname, distant_name } from './objnam.js';
 import { obj_resists } from './dogmove.js';
 import { touch_artifact } from './artifact.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
+import { hastrack } from './track.js';
+import { MON_WEP } from './weapon.js';
+import { is_axe, is_pick } from './objects.js';
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
@@ -2362,15 +2365,22 @@ export function mfndpos(mon, data, flag) {
     // C: thrudoor = (flag & (ALLOW_WALL|BUSTDOOR)) != 0; dig may set too
     let thrudoor = !!(flag & (ALLOW_WALL | BUSTDOOR));
     if (flag & ALLOW_DIG) {
-        // C: !needspick → both; else carrying pick/axe (cursed-mwep gate deferred)
+        // C mon.c mfndpos — !needspick → both; cursed wielded tool while
+        // wanting no weapon → that tool's skill only; else carried tools.
         if (!needspick(mdat)) {
             rockok = true;
             treeok = true;
         } else {
-            rockok = !!(m_carrying(mon, PICK_AXE)
-                || (m_carrying(mon, DWARVISH_MATTOCK) && !mon_has_shield(mon)));
-            treeok = !!(m_carrying(mon, AXE)
-                || (m_carrying(mon, BATTLE_AXE) && !mon_has_shield(mon)));
+            const mw_tmp = MON_WEP(mon);
+            if (mw_tmp && mw_tmp.cursed && (mon.weapon_check | 0) === NO_WEAPON_WANTED) {
+                rockok = is_pick(mw_tmp);
+                treeok = is_axe(mw_tmp);
+            } else {
+                rockok = !!(m_carrying(mon, PICK_AXE)
+                    || (m_carrying(mon, DWARVISH_MATTOCK) && !mon_has_shield(mon)));
+                treeok = !!(m_carrying(mon, AXE)
+                    || (m_carrying(mon, BATTLE_AXE) && !mon_has_shield(mon)));
+            }
         }
         if (rockok || treeok) thrudoor = true;
     }
@@ -2433,11 +2443,16 @@ export function mfndpos(mon, data, flag) {
                                 || dmgtype(mdat, AD_CORR))))) {
                     continue;
                 }
-                if (IS_DOOR(ntyp)) {
+                // C mon.c mfndpos — amorphous (or fog-form) monsters slip
+                // under/through closed doors unless engulfing the hero.
+                // can_fog still deferred — named in C-JS-MAP.
+                if (IS_DOOR(ntyp)
+                    && !((amorphous(mdat) /* || can_fog(mon) */) && !engulfing_u(mon))) {
                     const dm = loc.doormask || 0;
-                    if (((dm & D_CLOSED) && !(flag & OPENDOOR))
-                        || ((dm & D_LOCKED) && !(flag & UNLOCKDOOR))) {
-                        if (!thrudoor) continue;
+                    if ((((dm & D_CLOSED) && !(flag & OPENDOOR))
+                        || ((dm & D_LOCKED) && !(flag & UNLOCKDOOR)))
+                        && !thrudoor) {
+                        continue;
                     }
                 }
                 // C: avoid poison gas when not already in it (glyph == S_poisoncloud)
@@ -2548,7 +2563,12 @@ export function mfndpos(mon, data, flag) {
                 // (mon.c mfndpos). Pets get ALLOW_TRAPS and check in dogmove.
                 const ttmp = t_at(nx, ny);
                 if (ttmp) {
-                    if (!m_harmless_trap(mon, ttmp)) {
+                    // C mon.c mfndpos — corrupt ttyp impossible() named-omit
+                    // (no JS impossible path); fixed-dest tele trap the hero
+                    // used keeps ALLOW_TRAPS when their track crosses it.
+                    if (fixed_tele_trap(ttmp) && hastrack(nx, ny)) {
+                        info |= ALLOW_TRAPS;
+                    } else if (!m_harmless_trap(mon, ttmp)) {
                         if (!(flag & ALLOW_TRAPS)) {
                             if (mon_knows_traps(mon, ttmp.ttyp)) continue;
                         }

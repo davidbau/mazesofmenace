@@ -64,7 +64,7 @@ import { near_capacity, inv_weight, freeinv, weapon_descr } from './invent.js';
 import { record_achievement } from './insight.js';
 import {
     b_trapped, selftouch, t_at, into_vs_onto, immune_to_trap, trapname,
-    sokoban_guilt, feeltrap, deltrap,
+    sokoban_guilt, feeltrap, deltrap, climb_pit,
 } from './trap.js';
 import { paranoid_query } from './getline.js';
 import { is_art, attacks, bare_artifactname } from './artifact.js';
@@ -1682,7 +1682,8 @@ export function crawl_destination(x, y) {
  * (escape still leaves hero on the trap square this turn).
  *
  * Branch envelope this iteration: TT_BEARTRAP full (no steed); TT_WEB
- * decrement+msgs; TT_PIT adjacent-pit continue + climb_pit stub; TT_LAVA /
+ * decrement+msgs; TT_PIT adjacent-pit continue + climb_pit (trap.c);
+ * TT_LAVA /
  * TT_INFLOOR / TT_BURIEDBALL / steed / Sting / buried_ball_to_punishment /
  * surface() culprit text deferred.
  *
@@ -1718,7 +1719,8 @@ export async function trapmove(x, y, desttrap) {
         if (desttrap && desttrap.tseen && is_pit(desttrap.ttyp)) {
             return true; // move into adjacent pit
         }
-        // climb_pit() body deferred — still consume the attempt
+        // C: try to escape; position stays same regardless of success
+        await climb_pit();
         break;
     }
     case TT_WEB: {

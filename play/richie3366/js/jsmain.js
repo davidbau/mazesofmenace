@@ -164,7 +164,13 @@ export class NethackGame {
             }
         }
         // C optlist.h — autodescribe default On (opt_out); rc may negate.
-        g.iflags = { autodescribe: true, prevmsg_window: 's', ...opts.iflags };
+        // C options.c initoptions_init `:7279` — iflags.menuinvertmode = 1:
+        // bulk select/invert skip SKIPINVERT rows unless already set; rc
+        // OPTIONS=menuinvertmode:N (optfn_menuinvertmode do_set, 0-2) overrides.
+        g.iflags = {
+            autodescribe: true, prevmsg_window: 's', menuinvertmode: 1,
+            ...opts.iflags,
+        };
         // C ref: options.c / symbols.c — default Primary ASCII; symset:DECgraphics
         // (or boolean DECgraphics) loads H_DEC showsyms. Never assume DEC.
         const sym = String(opts.symset || '').toLowerCase();

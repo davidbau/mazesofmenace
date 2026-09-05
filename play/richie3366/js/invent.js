@@ -124,6 +124,10 @@ import {
     PICK_NONE,
     PICK_ANY,
     MENU_SEARCH,
+    MENU_FIRST_PAGE,
+    MENU_LAST_PAGE,
+    MENU_NEXT_PAGE,
+    MENU_PREVIOUS_PAGE,
     MENU_BEHAVE_PERMINV,
     MENU_ITEMFLAGS_NONE,
     MENU_ITEMFLAGS_SKIPINVERT,
@@ -2514,7 +2518,9 @@ export async function dismiss_nhw_menu(opts = null) {
 /**
  * C ref: wintty.c tty_end_menu + process_menu_window select_menu(PICK_NONE).
  * entries already include prompt/blank/items (as after tty_end_menu).
- * Pages at lmax = rows-1 (23); ESC/Return dismiss; Space next page or done.
+ * Pages at lmax = rows-1 (23); ESC/Return dismiss; Space next page or done;
+ * '>'/'<'/'^'/'|' turn pages like C `:1621–1649` (PICK_NONE included).
+ * ':' and other keys bell like C `:1701–1703`/`:1738` (screen-silent).
  */
 export async function select_menu_pick_none(entries) {
     // C ref: wintty.c tty_display_nhwindow(NHW_MENU) NEED_MORE flush
@@ -2555,10 +2561,27 @@ export async function select_menu_pick_none(entries) {
             break;
         }
         const ch = String.fromCharCode(key);
-        if (ch === MENU_SEARCH) {
-            await process_menu_search([], PICK_NONE);
+        // C wintty.c process_menu_window `:1621–1649` — page keys work in
+        // every menu including PICK_NONE; '>' never finishes on last page.
+        if (ch === MENU_NEXT_PAGE) {
+            if (curr_page < npages - 1) curr_page++;
             continue;
         }
+        if (ch === MENU_PREVIOUS_PAGE) {
+            if (curr_page > 0) curr_page--;
+            continue;
+        }
+        if (ch === MENU_FIRST_PAGE) {
+            curr_page = 0;
+            continue;
+        }
+        if (ch === MENU_LAST_PAGE) {
+            curr_page = npages - 1;
+            continue;
+        }
+        // C `:1701–1703` MENU_SEARCH bells on PICK_NONE; default `:1738`
+        // bells too (PICK_NONE accepts no letter). Bell is screen-silent.
+        tty_nhbell();
         // other keys: re-prompt same page (C xwaitforspace)
     }
     clear_overlay();
@@ -3123,15 +3146,15 @@ export function free_pickinv_cache() {
  * when getobj !ALLOWCNT.
  * force_invmenu want_reply: Special `*`/`?` (D-1578) + tty_end_menu
  * query (blank + prompt) when opts.query is set. redo_menu lives in
- * getobj_display_pickinv.
+ * getobj_display_pickinv. Page keys '>'/'<'/'^'/'|' per wintty.c
+ * process_menu_window `:1621–1649` (precede gacc/letter match).
  * Group accelerators (D-1580): collect_menu_gacc + `'0'` BALL_CLASS
  * `menu_digit_is_gacc`. getobj want_reply is non-wizid so item gacc
  * is 0 like C `:3323–3325`.
  * SORTLOOT_INUSE when flags.sortloot=='i' (dispinv_with_action): is_inuse
  * filter, inuse_headers, optional fake HANDS_SYM W_WEP (D-1589).
  * perm_invent InvInUse is D-1600 (WIN_INVEN invmode bit, not this path).
- * Named omissions: MENU_PREV/FIRST/LAST. wizid unid_cnt>0 is D-1590.
- * putmsghistory is D-1588.
+ * Named omissions: wizid unid_cnt>0 is D-1590. putmsghistory is D-1588.
  * @param {string|null} lets
  * @param {{ n: number }|null} [out_cnt]
  * @param {{ choice: string, allow: boolean }|null} [xtra] C xtra_choice + allowxtra
@@ -3380,6 +3403,24 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
         // C `:1738–1740` PICK_NONE (want_reply false): any letter bells
         if (!want_reply) {
             tty_nhbell();
+            continue;
+        }
+        // C wintty.c process_menu_window `:1621–1649` — page keys precede
+        // gacc/letter match in every menu ('>' never finishes on last page).
+        if (ch === MENU_NEXT_PAGE) {
+            if (curr_page < npages - 1) curr_page++;
+            continue;
+        }
+        if (ch === MENU_PREVIOUS_PAGE) {
+            if (curr_page > 0) curr_page--;
+            continue;
+        }
+        if (ch === MENU_FIRST_PAGE) {
+            curr_page = 0;
+            continue;
+        }
+        if (ch === MENU_LAST_PAGE) {
+            curr_page = npages - 1;
             continue;
         }
         // C: gacc before page selectors (group_accel, not only current page)
@@ -7252,7 +7293,8 @@ export function build_used_invlets_items(avoidlet = 0) {
  * `?`/`*`. Empty invent → 0. select_menu PICK_ONE: n>0 letter; n==0
  * retry yn; n<0 ESC noadjust. tty_end_menu prepends blank +
  * "Inventory letters used:".
- * Named omit: count-prefix; MENU_PREV/FIRST/LAST.
+ * Page keys '>'/'<'/'^'/'|' per wintty.c process_menu_window `:1621–1649`.
+ * Named omit: count-prefix.
  * @param {string|number} [avoidlet]
  * @returns {Promise<string>} letter, '' (n==0), or '\x1b'
  */
@@ -7315,6 +7357,24 @@ export async function display_used_invlets(avoidlet = 0) {
             return '';
         }
         const ch = String.fromCharCode(key);
+        // C wintty.c process_menu_window `:1621–1649` — page keys precede
+        // letter match in every menu ('>' never finishes on last page).
+        if (ch === MENU_NEXT_PAGE) {
+            if (curr_page < npages - 1) curr_page++;
+            continue;
+        }
+        if (ch === MENU_PREVIOUS_PAGE) {
+            if (curr_page > 0) curr_page--;
+            continue;
+        }
+        if (ch === MENU_FIRST_PAGE) {
+            curr_page = 0;
+            continue;
+        }
+        if (ch === MENU_LAST_PAGE) {
+            curr_page = npages - 1;
+            continue;
+        }
         if (npages > 1) {
             const onPage = page.some((e) => {
                 const t = typeof e === 'string' ? e : e.text;

@@ -70,7 +70,7 @@ import { dotakeoff, doddoremarm, dowear, doputon, doremring } from './do_wear.js
 import { wiz_wish, wiz_genesis, wiz_level_tele, wiz_map } from './wizcmds.js';
 import { dotelecmd } from './teleport.js';
 import { dowield, dowieldquiver, doswapweapon } from './wield.js';
-import { dowhatis, doquickwhatis, dohelp, dowhatdoes } from './pager.js';
+import { dowhatis, doquickwhatis, dohelp, dowhatdoes, doversion } from './pager.js';
 import { visctrl, key2txt, cmdbind_get } from './dokeylist.js';
 import { an, doname } from './objnam.js';
 import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
@@ -2107,6 +2107,7 @@ function rhack_repeat_command(ch, key) {
     case 'S': return dosave;
     case 't': return dothrow;
     case 'T': return dotakeoff;
+    case 'V': return doversion;
     case 'w': return dowield;
     case 'W': return dowear;
     case 'x': return doswapweapon;
@@ -2173,7 +2174,7 @@ function rhack_repeat_txt(ch, key) {
         e: 'eat',
         E: 'engrave', f: 'fire', i: 'inventory', I: 'inventtype', o: 'open', p: 'pay',
         P: 'puton', q: 'quaff', Q: 'quiver', r: 'read', R: 'remove', s: 'search',
-        S: 'save', t: 'throw', T: 'takeoff', w: 'wield', W: 'wear',
+        S: 'save', t: 'throw', T: 'takeoff', V: 'versionshort', w: 'wield', W: 'wear',
         x: 'swap', z: 'zap', Z: 'cast', ',': 'pickup', '.': 'wait',
         '>': 'down', '<': 'up', _: 'travel', ':': 'look', '/': 'whatis',
         ';': 'glance', '?': 'help', '+': 'showspells', '\\': 'known',
@@ -2845,6 +2846,11 @@ export async function rhack(key) {
     } else if (ch === '?') {
         // C ref: pager.c dohelp — ECMD_OK, no turn
         await dohelp();
+        game.context.move = 0;
+    } else if (ch === 'V') {
+        // C ref: version.c doversion / cmd.c 'V' versionshort
+        // (IFBURIED|GENERALCMD|CMD_M_PREFIX) — ECMD_OK, no turn
+        await doversion();
         game.context.move = 0;
     } else if (ch === '#') {
         // C rhack doextcmd: ext_tlist then cmdq_add_ec + cmdq_shift so the

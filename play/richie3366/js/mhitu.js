@@ -18,11 +18,11 @@ import {
     M_SEEN_SLEEP,
     REFLECTING, A_CHAOTIC, LARGEST_INT,
     M_AP_NOTHING, M_AP_OBJECT, WORN_HELMET, TELEDS_ALLOW_DRAG,
-    something, Something, u_at,
+    something, Something, u_at, ERODE_RUST,
 } from './const.js';
 import { thrwmu, spitmu, breamu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
-import { destroy_items, resists_drli } from './zap.js';
+import { destroy_items, resists_drli, Drain_resistance } from './zap.js';
 import { nomul, stop_occupation, maybe_half_phys, is_pool, losehp, unmul, fall_asleep } from './hack.js';
 import { upstart } from './hacklib.js';
 import { rnd, d, rn2, rn1 } from './rng.js';
@@ -86,7 +86,7 @@ import {
 import { burn_away_slime } from './timeout.js';
 import {
     get_mattk, mhitm_knockback, mhitm_mgc_atk_negated, mattackm, rustm,
-    could_seduce, SYSOPT_SEDUCE, mon_poly, mondead,
+    could_seduce, SYSOPT_SEDUCE, mon_poly, mondead, erode_armor,
     AT_NONE, AT_CLAW, AT_KICK, AT_BITE, AT_STNG, AT_TUCH, AT_BUTT, AT_WEAP,
     AT_ENGL, AT_GAZE, AT_SPIT, AT_BREA, AT_EXPL, AT_BOOM, AT_TENT, AT_MAGC,
     AT_HUGS,
@@ -110,6 +110,7 @@ const AD_PLYS = 14;
 const AD_LEGS = 17; /* damages legs (xan) — monattk.h */
 const AD_STON = 18;
 const AD_ENCH = 41;
+const AD_RUST = 24; /* rusts armour (Rust Monster) — monattk.h */
 
 const LOW_BOOTS = objectNames.indexOf('LOW_BOOTS');
 const IRON_SHOES = objectNames.indexOf('IRON_SHOES');
@@ -169,6 +170,7 @@ const CLOAK_OF_DISPLACEMENT = objectNames.indexOf('CLOAK_OF_DISPLACEMENT');
 
 /** C ref: monattk.h — engulf damage types used by gulpmu. */
 const AD_BLND = 11;
+const AD_DRLI = 15; /* drains life levels — monattk.h */
 const AD_CONF = 25; /* umber hulk gaze — monattk.h */
 const AD_HALU = 36; /* monattk.h — black-light AT_EXPL */
 const AD_DREN = 16;
@@ -668,7 +670,7 @@ async function mhitm_ad_blnd_u(mtmp, mattk, mhm) {
  * C ref: uhitm.c mhitm_ad_phys mhitu branch (mdef == youmonst) `:4021–4126`.
  * AT_HUGS + !sticks(youmonst): rn2(2) grab / already-ustuck crush
  * (D-1327). Weapon arm in C order: petrifying-corpse do_stone_u/done,
- * dmgval(otmp, youmonst) + Gauntlets-of-Power rn1(4,3) + min 1, artifact_hit-or-hitmsg,
+ * dmgval + Gauntlets-of-Power rn1(4,3) + min 1, artifact_hit-or-hitmsg,
  * damage-0 return, silver sear, tmp minus rnd(-uac) AC soak, Half,
  * iron/metal pudding split via cloneu, rustm, dieroll-gated poisoned().
  * Non-weapon path keeps the magr != u.ustuck disjunct (`:4122–4123`).
@@ -713,7 +715,8 @@ async function mhitm_ad_phys_u(mtmp, mattk, mhm) {
                 return;
             }
         }
-        // C `:4061–4066` — dmgval(otmp, mdef=&youmonst) then GOP rn1(4,3), min 1.
+        // C `:4061–4066` — dmgval(otmp, mdef) with mdef == &youmonst
+        // (weapon.c:215 derefs mon->data); then Gauntlets of Power rn1(4,3), min 1.
         mhm.damage += dmgval(otmp, game.youmonst);
         const marmg = which_armor(mtmp, W_ARMG);
         if (marmg && (marmg.otyp | 0) === GAUNTLETS_OF_POWER) {
@@ -723,8 +726,8 @@ async function mhitm_ad_phys_u(mtmp, mattk, mhm) {
         // C `:4067–4072` — artifact_hit may speak instead of hitmsg.
         const dmgBox = { dmg: mhm.damage | 0 };
         if (!otmp.oartifact
-            || !artifact_hit(mtmp, game.youmonst, otmp, dmgBox,
-                game._mhitu_dieroll | 0)) {
+            || !(await artifact_hit(mtmp, game.youmonst, otmp, dmgBox,
+                game._mhitu_dieroll | 0))) {
             await hitmsg(mtmp, mattk);
             mhm.hitflags |= M_ATTK_HIT;
         }
@@ -2103,9 +2106,47 @@ async function mhitm_ad_slee_u(mtmp, mattk, mhm) {
 }
 
 /**
+ * C ref: uhitm.c mhitm_ad_drli `:2479–2488` — mhitu (monster→you) arm.
+ * hitmsg always, then !rn2(3) && !Drain_resistance && !mgc_negated(TRUE)
+ * → losexp("life drainage"). Leftover hitmu d() is kept (unlike default zero).
+ */
+async function mhitm_ad_drli_u(mtmp, mattk, mhm) {
+    void mhm;
+    await hitmsg(mtmp, mattk);
+    if (!rn2(3) && !Drain_resistance()
+        && !(await mhitm_mgc_atk_negated(mtmp, null, true))) {
+        await losexp('life drainage');
+    }
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_rust `:2281–2336` — mhitu (monster→you) arm
+ * `:2299–2316`. hitmsg always; cancelled → return; iron-golem hero
+ * (completelyrusts, mondata.h:227) "rust!" + rehumanize; else
+ * erode_armor(youmonst, ERODE_RUST). Base hitmu d() is kept (unlike
+ * default zero). CORR/DCAY mhitu arms still deferred.
+ */
+async function mhitm_ad_rust_u(mtmp, mattk, mhm) {
+    void mhm;
+    await hitmsg(mtmp, mattk);
+    if (mtmp.mcan) {
+        return;
+    }
+    /* C mondata.h:227 completelyrusts(ptr) — ptr == &mons[PM_IRON_GOLEM] */
+    if ((game.youmonst?.data ?? null) === mons[PM_IRON_GOLEM]) {
+        await pline('You rust!');
+        /* C: KMH -- this is okay with unchanging */
+        await rehumanize();
+        return;
+    }
+    await erode_armor(game.youmonst, ERODE_RUST);
+}
+
+/**
  * C ref: uhitm.c mhitm_adtyping — mhitu (monster→you) subset.
  * PHYS + ELEC + COLD + DRST/DRDX/DRCO + SITM/SEDU + SSEX (D-1750) + BLND + STON + LEGS
- * + POLY (D-1004) + DRIN (D-1329) + WRAP (D-1331) + SLEE; other adtyps zero damage.
+ * + POLY (D-1004) + DRIN (D-1329) + WRAP (D-1331) + SLEE + DRLI + RUST;
+ * other adtyps zero damage.
  */
 async function mhitm_adtyping_u(mtmp, mattk, mhm) {
     switch (mattk.adtyp | 0) {
@@ -2150,6 +2191,12 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
         break;
     case AD_SLEE:
         await mhitm_ad_slee_u(mtmp, mattk, mhm);
+        break;
+    case AD_DRLI:
+        await mhitm_ad_drli_u(mtmp, mattk, mhm);
+        break;
+    case AD_RUST:
+        await mhitm_ad_rust_u(mtmp, mattk, mhm);
         break;
     default:
         mhm.damage = 0;

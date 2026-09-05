@@ -878,7 +878,7 @@ async function hmon(mon, obj, thrown, _dieroll) {
         // hmon_hitmon_dmg_recalc (Grayswandir spec_dbon max(tmp,1)).
         if (obj.oartifact) {
             const dmgBox = { dmg };
-            if (artifact_hit(youmonst, mon, obj, dmgBox, _dieroll | 0)) {
+            if (await artifact_hit(youmonst, mon, obj, dmgBox, _dieroll | 0)) {
                 hittxt = true;
             }
             dmg = dmgBox.dmg | 0;

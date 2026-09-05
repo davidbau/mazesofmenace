@@ -31,12 +31,12 @@ import {
     newsym, pline, pline_xy, urgent_pline, mon_visible, see_with_infrared,
     You_feel, unmap_object, glyph_is_invisible, tmp_at, nh_delay_output,
     obj_glyph, flush_topl_more, feel_newsym, canspotmon, map_invisible,
-    set_msg_xy, Hallucination,
+    set_msg_xy, Hallucination, Norep,
 } from './display.js';
 import { doname, an, the, The, xname, yname, cxname, makeplural, vtense, ansimpleoname, safe_qbuf } from './objnam.js';
 import {
     Monnam, mon_nam, x_monnam, x_monnam_tame, y_monnam, noit_Monnam, pmname,
-    christen_monst, rndmonnam, hliquid, rndcolor, mon_pmname,
+    christen_monst, rndmonnam, hliquid, rndcolor, mon_pmname, YMonnam,
 } from './do_name.js';
 import { dist2, distmin, m_at, wakeup, seemimic, m_carrying, LEVEL_SPECIFIC_NOCORPSE, bad_rock } from './mon.js';
 import { cansee, couldsee, m_cansee, recalc_block_point, vision_recalc } from './vision.js';
@@ -856,6 +856,15 @@ function maketrap_unearth_objs(x, y) {
     }
     del_engr_at(x, y);
     newsym(x, y);
+}
+
+/**
+ * C trap.h fixed_tele_trap — teleport trap with a fixed recorded
+ * destination (a TELEP_TRAP the hero used, not a random one).
+ */
+export function fixed_tele_trap(ttmp) {
+    return !!ttmp && ttmp.ttyp === TELEP_TRAP
+        && isok(ttmp.teledest?.x, ttmp.teledest?.y);
 }
 
 // C ref: trap.c maketrap — creation + SQKY_BOARD / HOLE|TRAPDOOR /
@@ -1778,6 +1787,80 @@ async function steedintrap_pit(trap) {
         return Trap_Killed_Mon;
     }
     return 1;
+}
+
+/** C youprop.h Passes_walls (hero intrinsics/extrinsics). */
+function Passes_walls() {
+    const u = game.u || {};
+    return !!(u.Passes_walls || u.HPasses_walls || u.EPasses_walls);
+}
+
+/**
+ * C ref: trap.c m_easy_escape_pit — pit fiend or huge+ escapes easily.
+ * No RNG; pure predicate on the monster data.
+ */
+function m_easy_escape_pit(mtmp) {
+    const data = mtmp?.data;
+    return data === mons[PM_PIT_FIEND] || (data?.msize | 0) >= MZ_HUGE;
+}
+
+/**
+ * C ref: trap.c climb_pit `:4183–4230` — shared pit-escape code for `doup`
+ * (do.c) and `trapmove` (hack.c). Branch and RNG order match C:
+ * Passes_walls ascend; `!rn2(2) && sobj_at(BOULDER)` crevice (the flush
+ * between the two plines is C `display_nhwindow(WIN_MESSAGE, FALSE)`);
+ * Flying/clinger climb-out; `--utrap`-or-easy-escape crawl-out;
+ * `u.dz || verbose` Norep still-in-pit (Hallu short-circuit `!rn2(5)`).
+ * Named omissions: poly-form `locomotion()` verbs (Lev/Fly only, as in the
+ * file-local `u_locomotion_pit`); `clear_nhwindow(WIN_MESSAGE)` past the flush.
+ */
+export async function climb_pit() {
+    const u = game.u || {};
+    if (!(u.utrap | 0) || (u.utraptype | 0) !== TT_PIT) return;
+
+    const pitname = trapname(PIT, false);
+    // C: Sokoban = level.flags.sokoban_rules
+    const Sokoban = !!(game.level?.flags?.sokoban_rules || game.Sokoban);
+    if (Passes_walls()) {
+        /* marked as trapped so they can pick things up */
+        await pline(`You ascend from the ${pitname}.`);
+        reset_utrap(false);
+        fill_pit(u.ux, u.uy);
+        game.vision_full_recalc = 1; /* vision limits change */
+    } else if (!rn2(2) && sobj_at(BOULDER, u.ux, u.uy)) {
+        await pline(`Your ${body_part(LEG)} gets stuck in a crevice.`);
+        await flush_topl_more(); // display_nhwindow(WIN_MESSAGE, FALSE)
+        await pline(`You free your ${body_part(LEG)}.`);
+    } else if ((hero_Flying() || is_clinger(game.youmonst?.data)) && !Sokoban) {
+        /* eg fell in pit, then poly'd to a flying monster;
+           or used '>' to deliberately enter it */
+        await pline(`You ${u_locomotion_pit('climb')} from the ${pitname}.`);
+        reset_utrap(false);
+        fill_pit(u.ux, u.uy);
+        game.vision_full_recalc = 1; /* vision limits change */
+    } else {
+        u.utrap = (u.utrap | 0) - 1;
+        if (!(u.utrap | 0) || m_easy_escape_pit(game.youmonst)) {
+            reset_utrap(false);
+            await pline(`You ${(Sokoban && hero_Levitation())
+                ? 'struggle against the air currents and float'
+                : u.usteed ? 'ride' : 'crawl'} to the edge of the ${pitname}.`);
+            fill_pit(u.ux, u.uy);
+            game.vision_full_recalc = 1; /* vision limits change */
+        } else if ((u.dz | 0) || game.flags?.verbose !== false) {
+            /* these should use 'pitname' rather than "pit" for hallucination
+               but that would nullify Norep (this message can be repeated
+               many times without further user intervention by using a run
+               attempt to keep retrying to escape from the pit) */
+            if (u.usteed) {
+                await Norep(`${YMonnam(u.usteed)} is still in a pit.`);
+            } else if (Hallucination() && !rn2(5)) {
+                await Norep("You've fallen, and you can't get up.");
+            } else {
+                await Norep('You are still in a pit.');
+            }
+        }
+    }
 }
 
 /**
