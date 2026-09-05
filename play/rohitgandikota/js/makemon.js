@@ -7,7 +7,8 @@
 // depends on exactly which monsters pass the filters. Getting a filter wrong
 // changes the number of draws, not just their values.
 
-import { mon_aligntyp } from './monmove.js';
+import { mon_aligntyp } from './priest.js';
+import { newemin } from './minion.js';
 import { is_sword } from './wield.js';
 import { is_mplayer } from './mondata.js';
 import { game } from './gstate.js';
@@ -19,7 +20,7 @@ import { newcham, mon_wire_cham } from './mon.js';
 import { weight as weight_fn, sobj_at } from './invent.js';
 import { In_mines, Is_rogue_level, MIGR_TO_SPECIES, OBJ_FREE,
          W_SADDLE, has_mgivenname, A_LAWFUL, ONAME_RANDOM } from './const.js';
-import { Levitation, Flying } from './youprop.js';
+import { Levitation, Flying, Protection_from_shape_changers } from './youprop.js';
 import { closed_door } from './cmd.js';
 import { may_passwall } from './hack.js';
 import { sengr_at } from './engrave.js';
@@ -2406,7 +2407,7 @@ export function makemon(ptr, x, y, mmflags) {
        chain as the mitem assignments, so it is exclusive with them. */
     else if (mndx === PMNAMES.PM_GHOST && !(mmflags & MMFLAGS.MM_NONAME)) {
         /* christen_monst() copies the name onto the monster; no draw */
-        mtmp.mname = rndghostname();
+        christen_monst(mtmp, rndghostname());
     }
     else if (mndx === PMNAMES.PM_CROESUS)
         mitem = ONAMES.TWO_HANDED_SWORD;
@@ -2421,7 +2422,7 @@ export function makemon(ptr, x, y, mmflags) {
     /* src/makemon.c:1355 — a shapechanger takes a starting form via
        newcham(); Vlad keeps his own shape for the Candelabrum */
     mtmp.cham = -1;
-    if (is_shapeshifter(ptr)) {
+    if (!Protection_from_shape_changers() && is_shapeshifter(ptr)) {
         const mcham = mndx;    /* pm_to_cham: M2_SHAPESHIFTER means itself */
         mtmp.cham = mcham;
         if (mndx !== PMNAMES.PM_VLAD_THE_IMPALER
@@ -2461,6 +2462,17 @@ export function makemon(ptr, x, y, mmflags) {
         }
     }
 
+    // src/makemon.c:1414: ordinary clerics and some Angels become roamers.
+    if ((mndx === PMNAMES.PM_ALIGNED_CLERIC || mndx === PMNAMES.PM_HIGH_CLERIC)
+        ? !(mmflags & (MM_EPRI | MM_EMIN))
+        : (mndx === PMNAMES.PM_ANGEL && !(mmflags & MM_EMIN) && !rn2(3))) {
+        newemin(mtmp);
+        mtmp.isminion = 1;
+        mtmp.emin.min_align = rn2(3) - 1;
+        mtmp.emin.renegade = (mmflags & MM_ANGRY) ? true : !rn2(3);
+        mtmp.mpeaceful = mtmp.emin.min_align === game.u.ualign.type
+            ? !mtmp.emin.renegade : mtmp.emin.renegade;
+    }
     set_malign(mtmp);
 
     if (anymon && !(mmflags & MM_NOGRP)) {

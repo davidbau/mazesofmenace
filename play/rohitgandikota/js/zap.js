@@ -10,7 +10,7 @@ import { M_AP_FURNITURE } from './const.js';
 import { fix_petrification } from './eat.js';
 import { polymon } from './polyself.js';
 import { Drain_resistance } from './youprop.js';
-import { mdistu } from './monmove.js';
+import { mdistu, dochugw } from './monmove.js';
 import { set_msg_xy } from './pline.js';
 import { sgn } from './hacklib.js';
 import { newexplevel } from './exper.js';
@@ -30,6 +30,7 @@ import { urgent_pline } from './display.js';
 import { newsym_force } from './display.js';
 import { hero_breaks } from './dothrow.js';
 import { breaks } from './dothrow.js';
+import { endmultishot, throwit_mon_hit } from './dothrow.js';
 import { unpunish } from './read.js';
 import { obj_stop_timers } from './timeout.js';
 import { rndmonnam } from './do_name.js';
@@ -129,6 +130,7 @@ import { set_uinwater } from './hack.js';
 import { test_move } from './hack.js';
 import { nomul } from './hack.js';
 import { xytodir } from './cmd.js';
+import { xdir, ydir, DIR_LEFT, DIR_RIGHT, RIGHT_HANDED } from './const.js';
 import { slept_monst } from './mhitm.js';
 import { mon_reflects } from './muse.js';
 import { death_inflicted_by } from './mcastu.js';
@@ -162,7 +164,7 @@ import { is_quest_artifact } from './questpgr.js';
 import { mnearto } from './mon.js';
 import { is_pick } from './mon.js';
 import { mlifesaver } from './mon.js';
-import { P_SKILL } from './weapon.js';
+import { P_SKILL, dmgval } from './weapon.js';
 import { spell_skilltype } from './spell.js';
 import { poisoned } from './attrib.js';
 import { ACURR } from './attrib.js';
@@ -228,6 +230,7 @@ import { completelyburns } from './mondata.js';
 import { amphibious } from './mondata.js';
 import { ureflects } from './muse.js';
 import { mintrap } from './trap.js';
+import { thitu } from './trap.js';
 import { noit_Monnam } from './do_name.js';
 import { mstatusline } from './insight.js';
 import { stolen_value, addtobill } from './shk.js';
@@ -369,7 +372,8 @@ import { find_mac } from './worn.js';
 import { Reflecting, Sleep_resistance, Fire_resistance, Cold_resistance,
          Shock_resistance, Blind, Deaf, Unaware, Hallucination,
          Invis, See_invisible, Teleport_control,
-         Underwater, Levitation, Antimagic, Passes_walls } from './youprop.js';
+         Underwater, Levitation, Antimagic, Passes_walls, Fumbling }
+    from './youprop.js';
 import { cmap_names } from './drawing_data.js';
 import { CLR_ORANGE, CLR_WHITE, CLR_BLACK, CLR_GREEN,
          CLR_YELLOW } from './terminal.js';
@@ -991,6 +995,8 @@ async function montraits(obj, cc, adjacentok) {
                                to grow new tail segments */
                             | MM_NOTAIL | MM_NOMSG
                             | (adjacentok ? MM_ADJACENTOK : 0)));
+            if (mtmp && !game.in_mklev && game.occupation)
+                await dochugw(mtmp, false);
         }
         if (!mtmp) {
             /* mtmp2 is a copy of obj's object->oextra->omonst extension
@@ -1229,6 +1235,8 @@ export async function revive(corpse, by_hero) {
         montype = montype_box.v;
         /* make a new monster */
         mtmp = makemon(game.mons[montype], x, y, mmflags);
+        if (mtmp && !game.in_mklev && game.occupation)
+            await dochugw(mtmp, false);
         if (mtmp) {
             /* [oid/omonst ghost-merge and the like shouldn't be
                applied to a shapechanger substitute] */
@@ -1253,6 +1261,8 @@ export async function revive(corpse, by_hero) {
     } else {
         /* make a new monster */
         mtmp = makemon(mptr, x, y, mmflags | MM_NOCOUNTBIRTH);
+        if (mtmp && !game.in_mklev && game.occupation)
+            await dochugw(mtmp, false);
     }
     if (!mtmp)
         return null;
@@ -4054,7 +4064,7 @@ export async function destroy_items(mon, osym, dmg_in) {
         return 0;
 
     const u_carry = mon === game.youmonst;
-    const invent = u_carry ? game.invent : (mon.minvent || []);
+    const invent = u_carry ? (game.invent || []) : (mon.minvent || []);
     const selected = [];
     let eligible = 0;
 
@@ -5162,6 +5172,7 @@ export async function dobuzz(type,     /* 0..29 (by hero) or -39..-10 (by monste
                                         zap_colors[hdmgtype] ?? HI_ZAP, 'zap');
                         beam_cells.push([sx, sy]);
                     }
+                    await flush_screen(0);
                     await game.animationFrame(); /* wait a little */
                 }
 
@@ -5775,6 +5786,8 @@ export async function bhit(ddx, ddy, range,  /* direction and range */
     } else if (weapon !== ZAPPED_WAND && weapon !== INVIS_BEAM)
         flightGlyph = obj ? temporary_object_glyph(obj) : null;
     let flightPos = null;
+    const tetherCells = [];
+    let tetherEnded = false;
     const flashCells = [];
     const endFlight = () => { /* tmp_at(DISP_END, 0) for the flight glyph */
         if (flightPos) {
@@ -5782,6 +5795,27 @@ export async function bhit(ddx, ddy, range,  /* direction and range */
             flightPos = null;
         }
     };
+    const endTether = async (backtrack) => {
+        if (tetherEnded)
+            return;
+        if (backtrack && tetherCells.length > 1) {
+            for (let i = tetherCells.length - 1; i > 0; --i) {
+                newsym(tetherCells[i].x, tetherCells[i].y);
+                display_object_at(obj, tetherCells[i - 1].x,
+                                  tetherCells[i - 1].y, flightGlyph);
+                await flush_screen(0);
+                if (game.animationFrame)
+                    await game.animationFrame();
+            }
+            tetherCells.length = 1;
+        }
+        for (const cell of tetherCells)
+            newsym(cell.x, cell.y);
+        tetherCells.length = 0;
+        tetherEnded = true;
+    };
+    if (tethered_weapon)
+        pobj.endTether = endTether;
 
     while (range-- > 0) {
         let x, y;
@@ -6014,14 +6048,28 @@ export async function bhit(ddx, ddy, range,  /* direction and range */
                     await flush_screen(0);
                     await game.animationFrame();
                 }
+            } else if (tethered_weapon) {
+                if (tetherCells.length) {
+                    const prev = tetherCells[tetherCells.length - 1];
+                    display_cmap_at(zapdir_cmap(sgn(game.u.ux - prev.x),
+                                                sgn(game.u.uy - prev.y)),
+                                    prev.x, prev.y, CLR_WHITE, 'tether');
+                }
+                tetherCells.push({ x, y });
+                display_object_at(obj, x, y, flightGlyph);
+                await flush_screen(0);
+                if (game.animationFrame)
+                    await game.animationFrame();
             } else if (flightGlyph) {
                 endFlight();
                 if (cansee(x, y)) {
                     display_object_at(obj, x, y, flightGlyph);
                     flightPos = { x, y };
                 }
-                if (game.animationFrame)
+                if (game.animationFrame) {
+                    await flush_screen(0);
                     await game.animationFrame();
+                }
             }
             /* kicked objects fall in pools */
             if ((weapon === KICKED_WEAPON) && is_pool_or_lava(x, y))
@@ -6059,16 +6107,20 @@ export async function bhit(ddx, ddy, range,  /* direction and range */
     }
 
     if (!bhit_done) {
-        if ((weapon !== ZAPPED_WAND && weapon !== INVIS_BEAM && !tethered_weapon)
-            || (was_returning && was_returning !== game.iflags?.returning_missile))
+        if (weapon !== ZAPPED_WAND && weapon !== INVIS_BEAM
+            && !tethered_weapon)
             endFlight();
+        else if (was_returning
+                 && was_returning !== game.iflags?.returning_missile)
+            await endTether(false);
 
         if (shopdoor)
             await pay_for_damage('destroy', false);
     }
 
  /* bhit_done: */
-    endFlight();
+    if (!tethered_weapon)
+        endFlight();
     for (const [fx, fy] of flashCells)
         newsym(fx, fy);
     /* note: for FLASHED_LIGHT, _caller_ must call transient_light_cleanup()
@@ -6077,6 +6129,98 @@ export async function bhit(ddx, ddy, range,  /* direction and range */
         await transient_light_cleanup();
 
     return result;
+}
+
+// src/zap.c:4148 boomhit() -- fly a boomerang along its ten-cell curve.
+export async function boomhit(obj, dx, dy) {
+    const counterclockwise = (game.u.uhandedness ?? RIGHT_HANDED)
+                             === RIGHT_HANDED;
+    let direction = xytodir(dx, dy);
+    let boom = counterclockwise ? cmap_names.S_boomleft
+                                : cmap_names.S_boomright;
+    let flightPos = null;
+    let nhits = Math.max(1, (obj.spe | 0) + 1);
+
+    game.bhitpos = { x: game.u.ux, y: game.u.uy };
+    const endFlight = () => {
+        if (flightPos) {
+            newsym(flightPos.x, flightPos.y);
+            flightPos = null;
+        }
+    };
+    const showFlight = async () => {
+        if (cansee(game.bhitpos.x, game.bhitpos.y)) {
+            endFlight();
+            display_cmap_at(boom, game.bhitpos.x, game.bhitpos.y,
+                            defsyms[boom].color, 'boomerang');
+            flightPos = { ...game.bhitpos };
+        }
+        if (game.animationFrame) {
+            await flush_screen(0);
+            await game.animationFrame();
+        }
+    };
+
+    for (let ct = 0; ct < 10; ct++) {
+        direction = ((direction % 8) + 8) % 8;
+        boom = cmap_names.S_boomleft + cmap_names.S_boomright - boom;
+        dx = xdir[direction];
+        dy = ydir[direction];
+        game.bhitpos.x += dx;
+        game.bhitpos.y += dy;
+
+        if (!isok(game.bhitpos.x, game.bhitpos.y)) {
+            game.bhitpos.x -= dx;
+            game.bhitpos.y -= dy;
+            break;
+        }
+
+        const mtmp = m_at(game.bhitpos.x, game.bhitpos.y);
+        if (mtmp) {
+            await m_respond(mtmp);
+            if (nhits-- < 0) {
+                endFlight();
+                return mtmp;
+            }
+            if (await throwit_mon_hit(obj, mtmp) || !game.thrownobj)
+                break;
+        }
+
+        const typ = game.level.at(game.bhitpos.x, game.bhitpos.y).typ;
+        if (!ZAP_POS(typ)
+            || closed_door(game.bhitpos.x, game.bhitpos.y)) {
+            game.bhitpos.x -= dx;
+            game.bhitpos.y -= dy;
+            break;
+        }
+
+        if (u_at(game.bhitpos.x, game.bhitpos.y)) {
+            if (Fumbling() || rn2(20) >= ACURR(A_DEX)) {
+                const dam = dmgval(obj, game.youmonst);
+                await thitu(10 + (obj.spe | 0), Maybe_Half_Phys(dam),
+                            { obj }, 'boomerang');
+                await endmultishot(true);
+                break;
+            }
+            endFlight();
+            await You('skillfully catch the boomerang.');
+            return game.youmonst;
+        }
+
+        await showFlight();
+        if (IS_SINK(typ)) {
+            if (!Deaf())
+                await pline('Klonk!');
+            await wake_nearto(game.bhitpos.x, game.bhitpos.y, 20);
+            break;
+        }
+        if (ct % 5 !== 0)
+            direction = counterclockwise ? DIR_LEFT(direction)
+                                         : DIR_RIGHT(direction);
+    }
+
+    endFlight();
+    return null;
 }
 
 // src/zap.c:3556 hit() / :3571 miss() — the missile/zap contact messages.

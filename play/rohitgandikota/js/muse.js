@@ -44,7 +44,9 @@ import { losehp, nomul, in_rooms, NODIAG } from './hack.js';
 import { stop_occupation } from './allmain.js';
 import { monstseesu, monstunseesu, resists_magm, is_undead, nonliving, is_flyer, poly_when_stoned, touch_petrifies, attacktype_fordmg, is_unicorn, mhim } from './mondata.js';
 import { mon_offmap, is_vampshifter } from './monst.js';
-import { mongone, monkilled, healmon, mcureblindness, m_next2u, m_carrying, seemimic, wakeup, is_pool, is_lava, maybe_unhide_at } from './mon.js';
+import { mongone, monkilled, healmon, mcureblindness, m_next2u, m_carrying,
+         seemimic, wakeup, is_pool, is_lava, maybe_unhide_at,
+         flash_mon } from './mon.js';
 import { paralyze_monst, make_blinded } from './potion.js';
 import { m_useup, unturn_you, bhito, dobuzz, buzz, cancel_monst, lightdamage, resist, exclam, hit, miss, zhitm } from './zap.js';
 import { makemon, is_mercenary, place_monster, remove_monster, set_malign } from './makemon.js';
@@ -1667,6 +1669,7 @@ async function mreadmsg(mtmp, obj) {
         import('./pline.js'), import('./mondata.js'),
     ]);
     const vismon = canseemon(mtmp);
+    let tpindicator = !vismon && sensemon(mtmp);
     if (!vismon && Deaf())
         return false;
 
@@ -1688,10 +1691,15 @@ async function mreadmsg(mtmp, obj) {
         action = action.replace('reading a scroll labeled',
             mtmp.mconf ? 'attempting to incant' : 'incant');
 
-        if (!sensemon(mtmp) && couldsee(mtmp.mx, mtmp.my)
-            && dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy) <= 100)
+        if (sensemon(mtmp)) {
+            tpindicator = true;
+        } else if (couldsee(mtmp.mx, mtmp.my)
+            && dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy) <= 100) {
             map_invisible(mtmp.mx, mtmp.my);
+        }
         await You_hear(`${who} ${action}.`);
+        if (tpindicator)
+            await flash_mon(mtmp);
     }
     if (mtmp.mconf) {
         const who = vismon ? mon_nam(mtmp) : 'it';

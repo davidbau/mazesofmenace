@@ -3,7 +3,7 @@
 //
 // Real mklev.js handles level generation for screen parity.
 
-import { VANQ_MLVL_MNDX } from './const.js';
+import { VANQ_MLVL_MNDX, FROMOUTSIDE } from './const.js';
 import { POLY_NOFLAGS } from './const.js';
 import { set_uasmon } from './polyself.js';
 import { do_vicinity_map } from './detect.js';
@@ -72,7 +72,7 @@ import { ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, A_CURRENT, In_endgame,
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { rhack, domove } from './cmd.js';
 import { lookaround, end_running, unmul, nomul,
-         monster_nearby, in_rooms } from './hack.js';
+         monster_nearby, in_rooms, runmode_delay_output } from './hack.js';
 import { deferred_goto } from './do.js';
 import { You } from './pline.js';
 import {
@@ -338,6 +338,14 @@ export async function newgame() {
         // read [A_ORIGINAL], so the legacy text needs it.
         g.u.ualignbase = [g.u.ualign.type, g.u.ualign.type];
         g.u.uhave = {};
+
+        // src/u_init.c:1027 u_init_misc(), permanent blindness is a source
+        // bit, so removing a temporary timeout must leave it in place.
+        if (g.u.uroleplay?.blind) {
+            (g.u.intrinsic ||= {}).HBlinded =
+                (g.u.intrinsic.HBlinded || 0) | FROMOUTSIDE;
+            g.u.ublind = 1;
+        }
 
         // src/u_init.c:1028 — the last call u_init_misc() makes, and the last
         // thing js/fastforward.js was replaying before mklev(). ^X reports it
@@ -769,9 +777,9 @@ export async function moveloop_core() {
                     const { tele } = await import('./teleport.js');
                     await tele();
                     if (g.u.ux !== oldUx || g.u.uy !== oldUy) {
-                        const { next_to_u } = await import('./apply.js');
+                        const { next_to_u, check_leash } = await import('./apply.js');
                         if (!await next_to_u())
-                            (g.unported ||= new Set()).add('check_leash');
+                            await check_leash(oldUx, oldUy);
                         const { cmdq_clear } = await import('./cmd.js');
                         const { CQ_CANNED, CQ_REPEAT } = await import('./const.js');
                         cmdq_clear(CQ_CANNED);
@@ -868,6 +876,7 @@ export async function moveloop_core() {
 
                 /* src/allmain.c:380 — when immobile, count is in turns */
                 if ((g.multi ?? 0) < 0) {
+                    await runmode_delay_output();
                     if (++g.multi === 0) { /* finished yet? */
                         await unmul(null);
                     }
@@ -936,10 +945,10 @@ export async function moveloop_core() {
            unacknowledged topline ("It is hot here." on the fire-plane
            arrival) gets its --More-- and eats a key BEFORE the wish text;
            skipping it glued both messages onto one line */
-        const { pline, more, TOPLINE_NEED_MORE } = await import('./display.js');
+        const { urgent_pline, more, TOPLINE_NEED_MORE } = await import('./display.js');
         if (g._toplin === TOPLINE_NEED_MORE)
             await more();
-        await pline('The Amulet is bestowing a wish upon you!');
+        await urgent_pline('The Amulet is bestowing a wish upon you!');
         const { makewish } = await import('./zap.js');
         await makewish();
     }
@@ -992,6 +1001,7 @@ export async function moveloop_core() {
                 note_unported_main('moveloop:reset_eat');
         }
         g.context.move = 1;             /* the occupation took this turn */
+        await runmode_delay_output();
         return;
     }
 
@@ -1028,6 +1038,7 @@ export async function moveloop_core() {
      * door, and in an open room those are the only things that stop it. */
     if ((g.multi ?? 0) > 0) {
         await lookaround();
+        await runmode_delay_output();
         if (!g.multi) {
             /* lookaround may clear multi */
             g.context.move = 0;

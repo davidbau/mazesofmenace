@@ -17,7 +17,7 @@ import { urgent_pline } from './display.js';
 import { Unchanging } from './youprop.js';
 import { polyself, rehumanize, udeadinside } from './polyself.js';
 import { uhis } from './mhitu.js';
-import { mongone, kill_genocided_monsters } from './mon.js';
+import { mongone, kill_genocided_monsters, flash_mon } from './mon.js';
 import { list_genocided, num_genocides } from './insight.js';
 import { livelog_printf, verbalize } from './pline.js';
 import { mungspaces } from './hacklib.js';
@@ -2346,7 +2346,7 @@ async function parse_create_particular(str) {
     return { valid: false, text: bufp, data: null };
 }
 
-async function announce_created_monster(mtmp, mmflags) {
+export async function announce_created_monster(mtmp, mmflags) {
     const appearance = M_AP_TYPE(mtmp);
     let exclaim = !(mmflags & MM_NOEXCLAM);
     let what = null;
@@ -2469,6 +2469,8 @@ async function create_particular_creation(d) {
         }
         if (d.sleeping)
             mtmp.msleeping = 1;
+        if ((d.hidden || d.invisible) && !canspotmon(mtmp))
+            await flash_mon(mtmp);
 
         madeany = true;
         if (mtmp.cham !== NON_PM && firstchoice !== NON_PM

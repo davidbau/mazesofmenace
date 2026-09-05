@@ -933,14 +933,14 @@ export async function u_on_rndspot(upflag) {
         note_unported_dungeon('u_on_rndspot:W_tower');
     } else if (up) {
         const r = game.updest || {};
-        place_lregion(r.lx | 0, r.ly | 0, r.hx | 0, r.hy | 0,
-                      r.nlx | 0, r.nly | 0, r.nhx | 0, r.nhy | 0,
-                      LR_UPTELE, null);
+        await place_lregion(r.lx | 0, r.ly | 0, r.hx | 0, r.hy | 0,
+                            r.nlx | 0, r.nly | 0, r.nhx | 0, r.nhy | 0,
+                            LR_UPTELE, null);
     } else {
         const r = game.dndest || {};
-        place_lregion(r.lx | 0, r.ly | 0, r.hx | 0, r.hy | 0,
-                      r.nlx | 0, r.nly | 0, r.nhx | 0, r.nhy | 0,
-                      LR_DOWNTELE, null);
+        await place_lregion(r.lx | 0, r.ly | 0, r.hx | 0, r.hy | 0,
+                            r.nlx | 0, r.nly | 0, r.nhx | 0, r.nhy | 0,
+                            LR_DOWNTELE, null);
     }
     /* switch_terrain() — levitation/flight state versus the new square;
        nothing a fresh arrival needs yet */

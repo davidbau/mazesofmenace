@@ -6,6 +6,7 @@
 // awake monsters spends after the movement allotment.
 
 import { monsndx } from './makemon.js';
+import { mon_aligntyp } from './priest.js';
 import { is_obj_mappear } from './monst.js';
 import { Invis } from './youprop.js';
 import { CORR } from './const.js';
@@ -172,11 +173,6 @@ export async function mb_trapped(mtmp, canseeit) {
 }
 const is_lminion = (mon) =>
     is_minion(game.mons[mon.mnum]) && mon_aligntyp(mon) === A_LAWFUL;
-
-// src/mon.c mon_aligntyp()
-export function mon_aligntyp(mon) {
-    return game.mons[mon.mnum].maligntyp;
-}
 
 /* src/monmove.c:450 flees_light() — gremlins flee an artifact light source.
    Needs artifact_light() and couldsee(), neither of which is ported; a gremlin

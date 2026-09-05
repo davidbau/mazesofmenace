@@ -461,8 +461,10 @@ function slithy(ptr) {
 
 /**
  * C ref: dungeon.c surface — enough for fountain / room floor.
+ * Exported for hack.js moverock_core Sokoban diagonal wording (D-1859);
+ * C has one surface (dungeon.c:1750), this is the shared home.
  */
-function surface(x, y) {
+export function surface(x, y) {
     const loc = game.level?.at(x, y);
     const typ = loc?.typ ?? 0;
     if (IS_AIR(typ)) return typ === CLOUD ? 'cloud' : 'air';

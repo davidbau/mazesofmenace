@@ -22,9 +22,10 @@ import { is_pole } from './u_init.js';
 import { will_weld } from './monmove.js';
 import { hcolor } from './do_name.js';
 import { NH_BLACK, NH_BLUE, NH_AMBER, HAND, A_DEX,
-         invlet_basic } from './const.js';
+         invlet_basic, CXN_PFX_THE } from './const.js';
 import { Yobjnam2, otense, simpleonames, makeplural, an, xname, The,
-         Tobjnam, aobjnam, Yname2, yname, vtense, doname } from './objnam.js';
+         Tobjnam, aobjnam, Yname2, yname, vtense, doname,
+         corpse_xname, killer_xname } from './objnam.js';
 import { body_part } from './polyself.js';
 import { uncurse } from './mkobj.js';
 import { setworn } from './worn.js';
@@ -42,7 +43,8 @@ import { W_QUIVER, W_WEP, W_SWAPWEP, W_ARMOR, W_ACCESSORY, W_SADDLE, P_BOOMERANG
 import { You } from './pline.js';
 import { tty_yn_function } from './tty/topl.js';
 import { ART_OGRESMASHER } from './artilist_data.js';
-import { Blind, Glib } from './youprop.js';
+import { Blind, Glib, Stone_resistance } from './youprop.js';
+import { instapetrify } from './trap.js';
 import { del_light_source, new_light_source, LS_OBJECT } from './light.js';
 
 // include/hack.h:1330 ynq()
@@ -241,13 +243,15 @@ export function empty_handed() {
 }
 
 // src/wield.c:138 cant_wield_corpse() — cockatrice corpse, bare hands.
-function cant_wield_corpse(obj) {
+async function cant_wield_corpse(obj) {
     if (game.u.uarmg || obj.otyp !== ONAMES.CORPSE
-        || !touch_petrifies(game.mons[obj.corpsenm]))
+        || !touch_petrifies(game.mons[obj.corpsenm]) || Stone_resistance())
         return false;
-    /* Stone_resistance and instapetrify are not ported; the message and the
-       petrification are recorded together. */
-    note_unported_wield('cant_wield_corpse:instapetrify');
+
+    await You(`wield ${corpse_xname(obj, null, CXN_PFX_THE)} in your bare `
+        + `${makeplural(body_part(HAND))}.`);
+    const kbuf = `wielding ${killer_xname(obj)} bare-handed`;
+    await instapetrify(kbuf);
     return true;
 }
 
@@ -272,14 +276,14 @@ export async function ready_weapon(wep) {
             res = ECMD_TIME;
         } else
             await You(`are already ${empty_handed()}.`);
-    } else if (wep.otyp === ONAMES.CORPSE && cant_wield_corpse(wep)) {
+    } else if (wep.otyp === ONAMES.CORPSE && await cant_wield_corpse(wep)) {
         /* hero must have been life-saved to get here; use a turn */
         res = ECMD_TIME; /* corpse won't be wielded */
     } else if (game.u.uarms && bimanual(wep)) {
         await You(`cannot wield a two-handed ${is_sword(wep) ? "sword"
                   : wep.otyp === ONAMES.BATTLE_AXE ? "axe" : "weapon"} while wearing a shield.`);
         res = ECMD_FAIL;
-    } else if (!retouch_object(wep, false)) {
+    } else if (!await retouch_object(wep, false)) {
         /* src/wield.c:191 — an artifact that resists handling still costs
            the turn */
         res = ECMD_TIME;
@@ -723,7 +727,7 @@ export async function can_twoweapon() {
         await pline(`${Yobjnam2(game.u.uswapwep, 'resist')} being held`
                     + ' second to another weapon!');
     } else if (game.u.uswapwep.otyp === ONAMES.CORPSE
-               && cant_wield_corpse(game.u.uswapwep)) {
+               && await cant_wield_corpse(game.u.uswapwep)) {
         /* [Note: !TWOWEAPOK() check prevents ever getting here...] */
         ; /* must be life-saved to reach here; return FALSE */
     } else if (Glib() || game.u.uswapwep.cursed) {

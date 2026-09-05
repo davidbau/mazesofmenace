@@ -279,7 +279,7 @@ const turn_destroy_levels = new Map([
 
 // src/pray.c:2581 halu_gname(). Hallucinatory deity names use the display
 // RNG, so choosing one never changes the contest's core random stream.
-function halu_gname(alignment) {
+export function halu_gname(alignment) {
     if (!Hallucination())
         return align_gname(alignment);
 

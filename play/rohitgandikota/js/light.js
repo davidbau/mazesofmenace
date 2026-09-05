@@ -18,7 +18,7 @@ import { DEADMONSTER } from './monst.js';
 import { FM_YOU, FM_FMON, FM_MIGRATE, FM_MYDOGS } from './const.js';
 import { artifact_light } from './artifact.js';
 import { game } from './gstate.js';
-import { COLNO, ROWNO, OBJ_FREE } from './const.js';
+import { COLNO, ROWNO, OBJ_FREE, LS_NONE, LS_OBJECT, LS_MONSTER } from './const.js';
 import { ONAMES } from './objects_data.js';
 /* imported from vision.c, for small circles (src/light.c:56) */
 import { circle_ptr, clear_path, COULD_SEE, TEMP_LIT } from './vision.js';
@@ -28,7 +28,7 @@ import { end_burn } from './timeout.js';
 
 
 // include/vision.h:15 enum ls_sources
-export const LS_NONE = 0, LS_OBJECT = 1, LS_MONSTER = 2;
+export { LS_NONE, LS_OBJECT, LS_MONSTER };
 
 // include/vision.h:59
 export const MAX_RADIUS = 15;
@@ -103,6 +103,23 @@ export function arti_light_radius(obj) {
     else if (obj.otyp === ONAMES.GOLD_DRAGON_SCALE_MAIL) /* DSM but not scales */
         ++res;
     return res;
+}
+
+// src/light.c:916 arti_light_description(), adverb for an artifact's
+// beatitude-dependent light radius.
+export function arti_light_description(obj) {
+    switch (arti_light_radius(obj)) {
+    case 4:
+        return 'radiantly';
+    case 3:
+        return 'brilliantly';
+    case 2:
+        return 'brightly';
+    case 1:
+        return 'dimly';
+    default:
+        return 'strangely';
+    }
 }
 
 // src/mon.c:377 get_mon_location() (the ls resolution arm) — a monster still
@@ -399,10 +416,10 @@ export function candle_light_range(obj) {
 
 // src/light.c:808 obj_merge_light_sources(); candles were attached to the
 // candelabrum (src == dest) or merged into a lit stack
-export async function obj_merge_light_sources(src, dest) {
+export function obj_merge_light_sources(src, dest) {
     /* src == dest implies adding to candelabrum */
     if (src !== dest)
-        await end_burn(src, true); /* extinguish candles */
+        end_burn(src, true); /* extinguish candles */
 
     for (const ls of lights())
         if (ls.type === LS_OBJECT && ls.id === dest.o_id) {

@@ -70,7 +70,7 @@ import { dotakeoff, doddoremarm, dowear, doputon, doremring } from './do_wear.js
 import { wiz_wish, wiz_genesis, wiz_level_tele, wiz_map } from './wizcmds.js';
 import { dotelecmd } from './teleport.js';
 import { dowield, dowieldquiver, doswapweapon } from './wield.js';
-import { dowhatis, doquickwhatis, dohelp } from './pager.js';
+import { dowhatis, doquickwhatis, dohelp, dowhatdoes } from './pager.js';
 import { visctrl, key2txt, cmdbind_get } from './dokeylist.js';
 import { an, doname } from './objnam.js';
 import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
@@ -2829,6 +2829,10 @@ export async function rhack(key) {
     } else if (ch === ':') {
         // C ref: invent.c dolook / lookat
         await dolook();
+        game.context.move = 0;
+    } else if (ch === '&') {
+        // C ref: cmd.c '&' → dowhatdoes (IFBURIED|GENERALCMD) — ECMD_OK, no turn
+        await dowhatdoes();
         game.context.move = 0;
     } else if (ch === '/') {
         // C ref: pager.c dowhatis / do_look — ECMD_OK, no turn

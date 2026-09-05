@@ -129,11 +129,41 @@ export function lua_d(dice, faces) {
 // leave_tutorial (nhlib.lua tutorial_enter/tutorial_leave), whose real work
 // is nh.gamestate(): stash the whole game state on the way in, restore it on
 // the way out.
-export function tutorial(entering) {
+
+/* C keeps these object pointers in decl.c globals, outside `struct you`.
+   The port stores their equivalents on game.u, so they must not be copied
+   into gmst_ubak and later overwrite the pointers rebuilt by setworn(). */
+const tutorial_worn_globals = [
+    'uarm', 'uarmc', 'uarmh', 'uarms', 'uarmg', 'uarmf', 'uarmu', 'uskin',
+    'uleft', 'uright', 'uwep', 'uswapwep', 'uquiver', 'uamul', 'ublindf',
+    'uball', 'uchain',
+];
+
+/* memcpy() gives the C backup independent copies of every nested struct and
+   array in `u`, while retaining its three monster pointers. A shallow JS
+   spread let tutorial mutations leak back into the backup, notably letting
+   setworn() re-add a cloak's extrinsic property before the backup was
+   restored. */
+function clone_tutorial_u(u) {
+    const valueFields = { ...u };
+    for (const field of tutorial_worn_globals)
+        delete valueFields[field];
+    const pointerFields = {};
+    for (const field of ['ustuck', 'usteed', 'umonst']) {
+        if (Object.hasOwn(valueFields, field)) {
+            pointerFields[field] = valueFields[field];
+            delete valueFields[field];
+        }
+    }
+    return Object.assign(JSON.parse(JSON.stringify(valueFields)),
+                         pointerFields);
+}
+
+export async function tutorial(entering) {
     if (entering)
         nhl_gamestate_save();
     else
-        nhl_gamestate_restore();
+        await nhl_gamestate_restore();
     /* nhlib.lua also registers cmd_before (blacklists #save) and end_turn
        (the low-hunger food-ration event) callbacks; the end_turn event
        only acts when u.uhunger < 148, which is recorded when reached */
@@ -157,7 +187,7 @@ function nhl_gamestate_save() {
     g.gmst = {
         moves: g.moves,
         invent,
-        ubak: { ...g.u },
+        ubak: clone_tutorial_u(g.u),
         disco: JSON.parse(JSON.stringify(g.disco ?? [])),
         mvitals: JSON.parse(JSON.stringify(g.mvitals ?? {})),
         /* svs.spl_book: the port keeps it as game.spl_book (spell.js) */
@@ -171,7 +201,7 @@ function nhl_gamestate_save() {
 }
 
 // the restore arm: put everything back, reset time, re-init hunger.
-function nhl_gamestate_restore() {
+async function nhl_gamestate_restore() {
     const g = game;
     if (!g.gmst_stored || !g.gmst)
         return; /* impossible() */
@@ -179,7 +209,7 @@ function nhl_gamestate_restore() {
 
     g.moves = g.gmst.moves;
     /* pline("Resetting time to move #%ld.") is printed by C here */
-    pline_tutorial_reset(g.moves);
+    await pline_tutorial_reset(g.moves);
 
     g.lastinvnr = 51;
     while ((g.invent || []).length)

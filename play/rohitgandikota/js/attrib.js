@@ -12,7 +12,7 @@
 
 import { game } from './gstate.js';
 import { You, Your } from './pline.js';
-import { pline } from './display.js';
+import { pline, see_monsters } from './display.js';
 import { UNENCUMBERED, OVERLOADED , LEFT_SIDE, RIGHT_SIDE,
          FROMEXPER, FROMRACE, FROMOUTSIDE, FROMFORM,
          Is_airlevel, TIMEOUT } from './const.js';
@@ -508,8 +508,9 @@ export async function adjabil(oldlevel, newlevel) {
        bits back to say "innately" vs "because of your experience". */
     const grant = async (table, mask) => {
         for (const [ulevel, ability, gainstr, losestr] of table) {
+            const prevabil = u.intrinsic[ability] | 0;
             if (ulevel > oldlevel && ulevel <= newlevel) {
-                const had = !!u.intrinsic[ability];
+                const had = !!prevabil;
                 u.intrinsic[ability] = (u.intrinsic[ability] | 0) | mask;
                 if (!had && gainstr && oldlevel > 0)
                     await You_feel(`${gainstr}!`);
@@ -522,6 +523,12 @@ export async function adjabil(oldlevel, newlevel) {
                 else if (gainstr && newlevel > 0)
                     await You_feel(`less ${gainstr}!`);
             }
+            /* src/attrib.c:780 postadjabil(). Warning and see-invisible
+               change how existing monsters are drawn immediately. */
+            if (prevabil !== (u.intrinsic[ability] | 0) && u.ulevel
+                && (ability === 'HWarning'
+                    || ability === 'HSee_invisible'))
+                see_monsters();
         }
     };
 

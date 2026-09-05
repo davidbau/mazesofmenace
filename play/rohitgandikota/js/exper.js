@@ -8,7 +8,8 @@ import { PMNAMES, ATTKS as A, MFLAGS, MONSYMS } from './monst_data.js';
 import { rnd, rn1, rn2 } from './rng.js';
 import { ACURR } from './attrib.js';
 import { pline } from './display.js';
-import { A_CON, A_WIS, NORMAL_SPEED, NATTK, LARGEST_INT, Upolyd } from './const.js';
+import { A_CON, A_WIS, NORMAL_SPEED, NATTK, LARGEST_INT, Upolyd,
+         LL_MINORAC } from './const.js';
 import { find_mac } from './worn.js';
 import { Goodbye } from './role.js';
 
@@ -333,15 +334,14 @@ export async function pluslvl(incr) {
         if (game.u.ulevelmax < game.u.ulevel)
             game.u.ulevelmax = game.u.ulevel;
 
-        /* src/exper.c:355 — adjabil() grants the new intrinsics. The tail:
-           SoundAchievement is audio-only and livelog_printf writes the
-           out-of-band log, so neither can touch the terminal; the rank
-           achievement's u.uachieved state has no ported reader and records
-           only when a rank boundary is actually crossed. */
+        /* src/exper.c:355 — adjabil() grants the new intrinsics. A new rank
+           logs its own achievement; every other gain gets the simpler level
+           entry below. SoundAchievement is audio-only. */
         await adjabil(game.u.ulevel - 1, game.u.ulevel); /* give new intrinsics */
         /* src/botl.c xlev_to_rank() */
         const xlev_to_rank = (xlev) =>
             (xlev <= 2) ? 0 : (xlev <= 30) ? Math.trunc((xlev + 2) / 4) : 8;
+        const old_ach_cnt = (game.u.uachieved || []).length;
         const newrank = xlev_to_rank(game.u.ulevel);
         if (newrank > xlev_to_rank(game.u.ulevel - 1)) {
             const { ACH_RNK1, record_achievement } =
@@ -349,9 +349,12 @@ export async function pluslvl(incr) {
             const ach = ACH_RNK1 + newrank - 1;
             record_achievement(game.flags.female ? -ach : ach);
         }
-        if (game.u.ulevel > (game.u.ulevelpeak ?? 0))
-            game.u.ulevelpeak = game.u.ulevel;
-
+        if ((game.u.uachieved || []).length === old_ach_cnt) {
+            const { livelog_printf } = await import('./pline.js');
+            livelog_printf(LL_MINORAC,
+                           `${game.u.ulevel <= (game.u.ulevelpeak ?? 0)
+                               ? 're' : ''}gained experience level ${game.u.ulevel}`);
+        }
         if (game.u.ulevel > (game.u.ulevelpeak ?? 0))
             game.u.ulevelpeak = game.u.ulevel;
     }

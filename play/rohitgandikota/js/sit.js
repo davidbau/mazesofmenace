@@ -52,7 +52,7 @@ import { heal_legs, schedule_goto, dropy } from './do.js';
 import { makewish } from './zap.js';
 import { courtmon } from './mkroom.js';
 import { makemon } from './makemon.js';
-import { do_genocide, seffects } from './read.js';
+import { announce_created_monster, do_genocide, seffects } from './read.js';
 import { do_mapping } from './detect.js';
 import { aggravate } from './wizard.js';
 import { tele } from './teleport.js';
@@ -181,8 +181,11 @@ async function throne_sit_effect() {
                 await pline('A voice echoes:');
                 /* SetVoice((struct monst *) 0, 0, 80, voice_throne) */
                 await verbalize(`Thine audience hath been summoned, ${game.flags.female ? 'Dame' : 'Sire'}!`);
-                while (cnt--)
-                    makemon(courtmon(), tx, ty, NO_MM_FLAGS);
+                while (cnt--) {
+                    const summoned = makemon(courtmon(), tx, ty, NO_MM_FLAGS);
+                    if (summoned)
+                        await announce_created_monster(summoned, NO_MM_FLAGS);
+                }
                 break;
             }
         case 8:

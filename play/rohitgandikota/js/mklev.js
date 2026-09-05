@@ -34,7 +34,7 @@ import { PMNAMES, MONSYMS } from './monst_data.js';
 import { bury_an_obj, fill_special_room, sp_lev_wire_mklev,
          sp_lev_wire_walkfrom, sp_lev_wire_priest, sp_lev_wire_roamer,
          reset_xystart_size } from './sp_lev.js';
-import { walkfrom, mkmaze_wire_mklev, mkportal } from './mkmaze.js';
+import { walkfrom, mazexy, mkmaze_wire_mklev, mkportal } from './mkmaze.js';
 import { enexto_core } from './teleport.js';
 import { goodpos } from './makemon.js';
 import { GP_CHECKSCARY as GP_CHECKSCARY_MK,
@@ -1052,7 +1052,7 @@ sp_lev_wire_mklev({ mkstairs, makecorridors, wallification,
                     mkgold: (amt, x, y) => mkgold(amt, x, y),
                     maketrap });
 sp_lev_wire_walkfrom(walkfrom);
-mkmaze_wire_mklev({ mkstairs, place_branch, wallification, maketrap });
+mkmaze_wire_mklev({ mkstairs, place_branch, wallification, maketrap, mktrap });
 import('./priest.js').then(m => { sp_lev_wire_priest(m.priestini);
                                   sp_lev_wire_roamer(m.mk_roamer); });
 
@@ -1391,13 +1391,14 @@ function themeroom_fill(rm) {
 // src/nhlobj.c l_obj_new_readobjnam(), for the four exact names used by the
 // water-surrounded vault. readobjnam() resolves a full object name through
 // rnd_otyp_by_namedesc() even when only one type can win. xtra_prob is 1, so
-// that lookup spends rn2(oc_prob + 1) before mksobj(). Its implicit count of
-// one also spends rnd(6) for a mergeable object.
+// that lookup spends rn2(oc_prob + 1) before mksobj(). For a mergeable object,
+// normal play tests the implicit count with rnd(6), while wizard mode accepts
+// it through the preceding short-circuit without drawing.
 function themeroom_obj_new(otyp) {
     rn2(game.objects[otyp].oc_prob + 1);
     const otmp = mksobj(otyp, true, false);
     otmp.where = OBJ_FREE;
-    if (game.objects[otyp].oc_merge)
+    if (game.objects[otyp].oc_merge && !game.wizard)
         rnd(6);
     otmp.owt = weight(otmp);
     return otmp;
@@ -3191,8 +3192,7 @@ export function mktrap(num, mktrapflags, croom, tm) {
             if (++tryct > 200)
                 return;
             if ((mktrapflags & MKTRAP_MAZEFLAG) !== 0) {
-                note_unported_lev('mktrap:mazexy');
-                return;
+                mazexy(m);
             } else if (croom && !somexyspace(croom, m)) {
                 return;
             }

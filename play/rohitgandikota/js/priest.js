@@ -13,7 +13,7 @@ import { sgn } from './hacklib.js';
 import { s_suffix } from './hacklib.js';
 import { buzz } from './zap.js';
 import { linedup } from './mthrowu.js';
-import { a_gname_at } from './pray.js';
+import { a_gname_at, halu_gname } from './pray.js';
 import { game } from './gstate.js';
 import { rn2, rn1, d } from './rng.js';
 import { makemon, remove_monster, place_monster,
@@ -27,14 +27,17 @@ import { ROOMOFFSET, W_ARMC, IS_ROOM, NOTONL, ALLOW_M,
          ALLOW_ROCK, SPINE, AM_MASK, AM_SHRINE, IS_ALTAR,
          In_endgame, A_WIS, FROMOUTSIDE, INTRINSIC, OBJ_FREE,
          PRONOUN_HALLU, TEMPLE, TIMEOUT } from './const.js';
-import { mfndpos, mon_allowflags, m_at, setmangry, wakeup } from './mon.js';
+import { mfndpos, mon_allowflags, m_at, setmangry, wakeup, m_next2u } from './mon.js';
 import { monnear, m_canseeu, histemple_at, inhishop,
          inhistemple } from './monmove.js';
 import { dist2, online2 } from './hacklib.js';
 import { newsym, canseemon, canspotmon, pline } from './display.js';
 import { Invis, Deaf, Hallucination } from './youprop.js';
 import { You, You_feel } from './pline.js';
-import { Monnam, mon_nam } from './do_name.js';
+import { Monnam, mon_nam, mon_pmname, rndmonnam, bogon_is_pname } from './do_name.js';
+import { just_an } from './objnam.js';
+import { ARTICLE_NONE, ARTICLE_A, ARTICLE_THE, ARTICLE_YOUR,
+         Is_astralevel, A_NONE, A_LAWFUL, A_CHAOTIC, A_NEUTRAL } from './const.js';
 import { helpless } from './monst.js';
 import { adjalign, exercise } from './attrib.js';
 import { in_rooms } from './hack.js';
@@ -116,9 +119,58 @@ function Amask2align(amask) {
          : (amask & AM_CHAOTIC) ? -1 : 0 /* A_NONE-ish */;
 }
 
-// src/priest.c:370 p_coaligned() and :376 has_shrine().
+// src/priest.c:280 mon_aligntyp(); special alignments override the species.
+export function mon_aligntyp(mon) {
+    const alignment = mon.ispriest
+        ? (mon.epri || mon.mextra.epri).shralign
+        : mon.isminion ? (mon.emin || mon.mextra.emin).min_align : mon.data.maligntyp;
+    return alignment === A_NONE ? A_NONE
+        : alignment > 0 ? A_LAWFUL : alignment < 0 ? A_CHAOTIC : A_NEUTRAL;
+}
+
+// src/priest.c:302 priestname(); priests, roaming clerics and aligned minions.
+export function priestname(mon, article, reveal_high_priest) {
+    const do_hallu = Hallucination();
+    const aligned_priest = mon.data === game.mons[PMNAMES.PM_ALIGNED_CLERIC];
+    const high_priest = mon.data === game.mons[PMNAMES.PM_HIGH_CLERIC];
+    const whatcode = { code: '' };
+    let what = do_hallu ? rndmonnam(whatcode) : mon_pmname(mon);
+    if (!mon.ispriest && !mon.isminion)
+        return what;
+    if (mon.ispriest || aligned_priest || high_priest)
+        what = do_hallu ? 'poohbah' : mon.female ? 'priestess' : 'priest';
+    let name = '';
+    if (article !== ARTICLE_NONE && (!do_hallu || !bogon_is_pname(whatcode.code))) {
+        if (article === ARTICLE_YOUR || (article === ARTICLE_A && high_priest))
+            article = ARTICLE_THE;
+        name = article === ARTICLE_THE ? 'the ' : what === 'Angel' ? 'an ' : just_an(what);
+    }
+    if (mon.minvis) {
+        if (name === 'a ')
+            name = 'an ';
+        name += 'invisible ';
+    }
+    if (mon.isminion && (mon.emin || mon.mextra.emin).renegade) {
+        if (name === 'an ' && !mon.minvis)
+            name = 'a ';
+        name += 'renegade ';
+    }
+    if (mon.ispriest || aligned_priest) {
+        if (high_priest)
+            name += do_hallu ? 'grand ' : 'high ';
+    } else if (mon.mtame && what.toLowerCase() === 'angel') {
+        name += 'guardian ';
+    }
+    name += what;
+    if (do_hallu || !high_priest || reveal_high_priest
+        || !Is_astralevel(game.u.uz) || m_next2u(mon) || game.program_state_gameover)
+        name += ' of ' + halu_gname(mon_aligntyp(mon));
+    return name;
+}
+
+// src/priest.c:382 p_coaligned() and :388 has_shrine().
 export function p_coaligned(priest) {
-    return game.u.ualign.type === priest.epri?.shralign;
+    return game.u.ualign.type === mon_aligntyp(priest);
 }
 
 function has_shrine(priest) {

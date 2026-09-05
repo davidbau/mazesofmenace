@@ -215,7 +215,9 @@ export async function steal(mtmp, objnambuf = null) {
     await encumber_msg();
     otmp.how_lost = LOST_STOLEN;
     mpickobj(mtmp, otmp);
-    return 1;
+    /* src/steal.c:615: a successful theft while the hero is immobilized
+       returns 0, so this attack does not make the thief flee yet. */
+    return ((game.multi || 0) < 0) ? 0 : 1;
 }
 
 // src/steal.c:689 stealamulet(), used by the Wizard and quest nemeses. Quest

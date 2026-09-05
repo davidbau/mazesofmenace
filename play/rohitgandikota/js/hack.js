@@ -17,7 +17,7 @@ import { A_STR, LANDMINE, SPIKED_PIT, PIT, HOLE, TRAPDOOR,
 import { the, xname } from './objnam.js';
 import { costly_spot } from './shk.js';
 import { You_hear, There } from './pline.js';
-import { glyph_at, map_invisible, newsym, unmap_invisible } from './display.js';
+import { flush_screen, glyph_at, map_invisible, newsym, unmap_invisible } from './display.js';
 import { YMonnam, m_monnam, mon_nam } from './do_name.js';
 import { is_flimsy } from './obj.js';
 import { You, You_feel, pline_xy, pline_The, set_msg_xy, Norep } from './pline.js';
@@ -75,6 +75,7 @@ import {
     M_AP_OBJECT, M_AP_FURNITURE, M_AP_TYPE, isok, u_at,
     IRONBARS, IS_DOOR, D_NODOOR, D_BROKEN, WT_SQUEEZABLE_INV,
     WT_TOOMUCH_DIAGONAL, DO_MOVE, TEST_MOVE, TEST_TRAV, TEST_TRAP,
+    RUN_TPORT, RUN_LEAP, RUN_STEP, RUN_CRAWL,
     DIR_W, DIR_N, DIR_E, DIR_S, DIR_NW, DIR_NE, DIR_SE, DIR_SW,
     xdir, ydir, N_DIRS, Upolyd } from './const.js';
 import { sobj_at } from './invent.js';
@@ -93,6 +94,49 @@ import { INTRINSIC } from './const.js';
 import { start_timer, stop_timer, peek_timer, TIMER_OBJECT, ZOMBIFY_MON }
     from './timeout.js';
 import { Hello } from './role.js';
+
+// src/hack.c:2996 runmode_delay_output(). Multi-turn actions and running
+// periodically expose their intermediate screen. The default "run" mode
+// does so every seventh move; "walk" does so every move, "crawl" adds four
+// more delays, and "teleport" suppresses all intermediate updates.
+export async function runmode_delay_output() {
+    const rawMode = game.flags?.runmode;
+    let mode = RUN_LEAP;
+
+    if (rawMode === false) {
+        mode = RUN_TPORT;
+    } else if (Number.isInteger(rawMode)
+               && rawMode >= RUN_TPORT && rawMode <= RUN_CRAWL) {
+        mode = rawMode;
+    } else if (typeof rawMode === 'string') {
+        const value = rawMode.toLowerCase();
+        if ('teleport'.startsWith(value))
+            mode = RUN_TPORT;
+        else if ('run'.startsWith(value))
+            mode = RUN_LEAP;
+        else if ('walk'.startsWith(value))
+            mode = RUN_STEP;
+        else if ('crawl'.startsWith(value))
+            mode = RUN_CRAWL;
+    }
+
+    if (!(game.context?.run || game.multi) || mode === RUN_TPORT)
+        return;
+    if (mode === RUN_LEAP && (game.moves % 7) !== 0)
+        return;
+
+    (game.disp ||= {}).time_botl = !!game.flags?.time;
+    await flush_screen(1); /* curs_on_u() */
+    if (!game.animationFrame)
+        return;
+    await game.animationFrame();
+    if (mode === RUN_CRAWL) {
+        await game.animationFrame();
+        await game.animationFrame();
+        await game.animationFrame();
+        await game.animationFrame();
+    }
+}
 
 // src/hack.c:982 invocation_pos(), the ritual square on the penultimate
 // Gehennom level.
@@ -545,7 +589,8 @@ export async function losehp(n, knam, k_format) {
         if (game.u.uhp === -1 && pending) {
             game._deferred_status_hp_until_more = Math.max(shownHp | 0, 0);
             game._deferred_status_hp_more_count =
-                pending.includes('  ') || pending.includes('wand hits you!')
+                pending.startsWith('Ouch!  That hurts!') ? 2
+                : pending.includes('  ') || pending.includes('wand hits you!')
                     ? 1 : 2;
         } else {
             const { bot } = await import('./display.js');

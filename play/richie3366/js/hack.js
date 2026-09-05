@@ -72,6 +72,7 @@ import { breaktest } from './dothrow.js';
 import { hit_bars } from './mthrowu.js';
 import { setuwep } from './wield.js';
 import { P_SKILL, weapon_type, use_skill } from './weapon.js';
+import { surface } from './sit.js';
 
 export { set_msg_xy };
 
@@ -402,8 +403,9 @@ function moverock_done(sx, sy) {
  * naming (D-1294) + nopick m-dir over/against (D-1262) + clear-dest dopush
  * + monster-behind You_hear/canspotmon + closed_door cannot_push_msg
  * (D-0317) + rumbling disturb_buried_zombies (D-1214) + Blind
- * feel_location on dopush / cannot_push_msg / monster-behind (D-1749).
- * Named omissions: Sokoban diagonal, shop costly, trap/teleport/pool
+ * feel_location on dopush / cannot_push_msg / monster-behind (D-1749)
+ * + Sokoban diagonal won't-roll (D-1859).
+ * Named omissions: shop costly, trap/teleport/pool
  * arms, Levitation (after nopick) Blind feel, verysmall vain-push Blind
  * feel, tunneling chew, revive_nasty, y_monnam steed wording. Giant
  * pickup/maneuver D-1253.
@@ -484,7 +486,19 @@ async function moverock_core(sx, sy) {
             const ttmp = t_at_local(rx, ry);
             const mtmp = m_at(rx, ry);
 
-            // C: Sokoban diagonal / revive_nasty deferred
+            /* C hack.c moverock_core :441–448 — Sokoban never rolls
+               diagonally: Blind feel_location(sx,sy), "%s won't roll
+               diagonally on this %s." via The(xname)/surface(sx,sy),
+               then cannot_push. Before revive_nasty. D-1859. */
+            if (Sokoban_here() && u.dx && u.dy) {
+                if (Blind_im()) feel_location(sx, sy);
+                await pline(
+                    `${The(xname(otmp))} won't roll diagonally on this ${surface(sx, sy)}.`,
+                );
+                return cannot_push(otmp, sx, sy);
+            }
+
+            // C: revive_nasty deferred
 
             // C ref: hack.c moverock_core — monster on far side of boulder
             if (mtmp && !noncorporeal(mtmp.data)

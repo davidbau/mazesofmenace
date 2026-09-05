@@ -4,7 +4,7 @@ import { dobreathe, dospit, doremove, dogaze, dosummon, dohide, dospinweb, domin
 import { pet_ranged_attk } from './dog.js';
 import { is_vampshifter } from './monst.js';
 import { aggravate } from './wizard.js';
-import { use_unicorn_horn } from './apply.js';
+import { use_unicorn_horn, check_leash } from './apply.js';
 import { There } from './pline.js';
 import { dryup } from './fountain.js';
 import { split_mon } from './potion.js';
@@ -43,7 +43,8 @@ import { hides_under, is_hider, verysmall, sticks } from './mondata.js';
 import { bad_rock, cant_squeeze_thru, nomul, domove_attackmon_at, spoteffects,
          domove_bump_mon, dopickup, trapmove, doorless_door,
          could_move_onto_boulder, u_locomotion,
-         disturb_buried_zombies, may_passwall } from './hack.js';
+         disturb_buried_zombies, may_passwall,
+         runmode_delay_output } from './hack.js';
 import { In_sokoban, surface } from './dungeon.js';
 import { Blind, Flying, Hallucination, Levitation, Passes_walls, Stealth }
     from './youprop.js';
@@ -90,7 +91,7 @@ import { is_weptool } from './mkobj.js';
 import { HANDS_SYM } from './const.js';
 import { cmap_names, defsyms } from './drawing_data.js';
 import { x_monnam, y_monnam, YMonnam, docallcmd, donamelevel } from './do_name.js';
-import { You } from './pline.js';
+import { You, You_cant } from './pline.js';
 
 /* js/do.js needs mklev(), and js/sp_lev.js needs mon.js's terrain tests; both
    are cycles when imported directly, so cmd.js -- which already pulls in every
@@ -104,7 +105,7 @@ do_wire_dokick(ship_object);
    do.js into the dungeon module graph */
 import { dungeon_wire_stairway_at } from './dungeon.js';
 dungeon_wire_stairway_at(stairway_at);
-import { wiz_level_change, wiz_level_tele, wiz_wish } from './wizcmds.js';
+import { wiz_level_change, wiz_level_tele, wiz_wish, wiz_identify } from './wizcmds.js';
 import { tty_yn_function, doprev_message } from './tty/topl.js';
 import { extcmdlist, EXTCMD_FLAGS } from './extcmd_data.js';
 import { dodiscovered, doclassdisco } from './o_init.js';
@@ -116,7 +117,6 @@ import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow, tty_next_page,
 import { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, isok, HEADSTONE, xdir, ydir, zdir, N_DIRS, N_DIRS_Z, DIR_ERR, DIR_W, DIR_NW, DIR_N, DIR_NE, DIR_E, DIR_SE, DIR_S, DIR_SW, DOMOVE_WALK, DOMOVE_RUSH, BC_BALL, BC_CHAIN, SLT_ENCUMBER, OBJ_FLOOR, WT_ELF } from './const.js';
 import { doopen, doopen_indir, doclose } from './lock.js';
 import { ECMD_OK, getobj } from './invent.js';
-import { count_unidentified } from './invent.js';
 import { doeat } from './eat.js';
 import { doread, wiz_genesis } from './read.js';
 import { dodrink } from './potion.js';
@@ -142,7 +142,7 @@ import { ACCESSIBLE } from './const.js';
 import { morehungry } from './eat.js';
 import { dohelp, dowhatis, doquickwhatis, dowhatdoes } from './pager.js';
 import { dolook, ECMD_TIME, display_inventory } from './invent.js';
-import { dovspell, docast } from './spell.js';
+import { dovspell, docast, known_spell, spe_Fresh, spelleffects } from './spell.js';
 import { dowieldquiver, dowield, doswapweapon, dotwoweapon } from './wield.js';
 import { dozap } from './zap.js';
 import { dist2, distmin } from './hacklib.js';
@@ -498,6 +498,11 @@ export async function getlin(query, hook) {
        exactly this reason: doengrave's getlin comes right behind it. */
     if (game._toplin === TOPLINE_NEED_MORE && !game._win_stop)
         await more();
+
+    // C clears WIN_STOP and redraws the prompt through custompline/redotoplin.
+    // Replace any physical no-history description left by getpos().
+    game._win_stop = false;
+    game._topline_physical_prefix = '';
 
     for (;;) {
         /* win/tty/getline.c hooked_tty_getlin():
@@ -986,7 +991,7 @@ async function execute_extcmd(name) {
         return await doorganize();
     }
     if (name === 'wizidentify')
-        return await show_wiz_identify();
+        return await wiz_identify();
     if (name === 'genocided') {
         const { dogenocided } = await import('./insight.js');
         return await dogenocided();
@@ -1364,6 +1369,21 @@ export async function doterrain() {
 // trap plumbing; what is ported is the getpos() call at src/apply.c:2063, which
 // is where a session's cursor keys and pick go.
 async function dojump() {
+    const has_jumping = !!game.u.intrinsic?.HJumping
+                        || !!game.u.uprops?.JUMPING;
+
+    /* src/apply.c:1979. Physical #jump casts a fresh jumping spell when the
+       hero lacks the ability, then rejects the command before getpos when no
+       such spell is available. */
+    if (!has_jumping
+        && known_spell(ONAMES.SPE_JUMPING) >= spe_Fresh)
+        return await spelleffects(ONAMES.SPE_JUMPING, false, false);
+
+    if (!has_jumping) {
+        await You_cant('jump very far.');
+        return ECMD_OK;
+    }
+
     await pline('Where do you want to jump?');
 
     const cc = { x: game.u.ux, y: game.u.uy };
@@ -1667,13 +1687,15 @@ export async function rhack(key) {
         ch = CTRL_DIR[ch0];
         movemode = 3;
     }
+    const prefixCommand = cmdbind_table().get(ch0.charCodeAt(0));
 
     /* src/cmd.c:3693-3723 -- g/G only modify movement commands.  C loops
        for the second key inside one rhack() call; this port spans two calls,
-       so reject a nonmovement command before its normal dispatch.  Another
-       prefix is allowed through, matching PREFIXCMD. */
+       so reject a known nonmovement command before its normal dispatch. An
+       unbound key falls through to bad_command, and another prefix is allowed
+       through, matching PREFIXCMD. */
     if ((game.domove_attempting & DOMOVE_RUSH) && !isMovementKey(ch)
-            && !'gGmF'.includes(ch)) {
+            && !'gGmF'.includes(ch) && prefixCommand) {
         const prefix = game.context.run === 3 ? 'G' : 'g';
         const vertical = ch === '<' || ch === '>';
         game.context.run = 0;
@@ -1687,7 +1709,7 @@ export async function rhack(key) {
        A nonmovement key is consumed by the rejected F command rather than
        dispatched as its ordinary command. */
     if (game.context.forcefight && !isMovementKey(ch)
-            && !'gGmF'.includes(ch)) {
+            && !'gGmF'.includes(ch) && prefixCommand) {
         const vertical = ch === '<' || ch === '>';
         game.context.forcefight = 0;
         game.context.move = 0;
@@ -1701,9 +1723,8 @@ export async function rhack(key) {
        entry lacks CMD_M_PREFIX instead of dispatching it normally. */
     if (continuedPrefix && game.iflags.menu_requested
         && !isMovementKey(ch) && !'gGmF'.includes(ch)) {
-        const command = cmdbind_table().get(ch0.charCodeAt(0));
-        if (command && !accept_menu_prefix(command)) {
-            await pline_nohistory(`The ${command.ef_txt} command does not accept 'm' prefix.`);
+        if (prefixCommand && !accept_menu_prefix(prefixCommand)) {
+            await pline_nohistory(`The ${prefixCommand.ef_txt} command does not accept 'm' prefix.`);
             reset_cmd_vars(true);
             return;
         }
@@ -1881,6 +1902,9 @@ export async function rhack(key) {
            the pinned build, so this command always follows its first arm. */
         await pline("Persistent inventory display is not supported by 'tty'.");
         game.context.move = 0;
+    } else if (ch === '\t') {
+        // src/cmd.c cmdlist, ^I invokes wiz_identify().
+        game.context.move = ((await wiz_identify()) === ECMD_TIME ? 1 : 0);
     } else if (ch === '\x18') {
         // src/cmd.c cmdlist — ^X is doattributes, which returns ECMD_OK.
         game.context.move = 0;
@@ -1888,7 +1912,7 @@ export async function rhack(key) {
     } else if (ch === '\\') {
         // src/cmd.c cmdlist — '\\' is dodiscovered, which returns ECMD_OK.
         game.context.move = 0;
-        await show_discoveries();
+        await dodiscovered();
     } else if (ch === '`') {
         // src/o_init.c doclassdisco() filters discoveries by object class.
         game.context.move = ((await doclassdisco()) === ECMD_TIME ? 1 : 0);
@@ -2971,6 +2995,8 @@ async function domove_core() {
         || game.youmonst.data.mlet === MONSYMS.S_EEL || u.dx || u.dy)
         hideunder(game.youmonst);
 
+    await check_leash(game.u.ux0, game.u.uy0);
+
     // Update display
     newsym(oldx, oldy);
     vision_recalc(1);
@@ -3001,6 +3027,8 @@ async function domove_core() {
         game.multi_reason = 'dragging an iron ball';
         game.nomovemsg = '';
     }
+
+    await runmode_delay_output();
 }
 
 // src/hack.c:2098 domove_swap_with_pet() — returns TRUE if places were
@@ -3096,58 +3124,6 @@ const bigmonst = (ptr) => ptr.msize >= MFLAGS.MZ_LARGE;
 // at the NEXT nhgetch() is the one showing it.
 let open_window = null;
 
-// C's display_nhwindow(win, TRUE) BLOCKS inside the window: wintty.c's dmore()
-// waits for a key while the window is on screen, so the frame the recorder
-// captures at that nhgetch() is the window itself. Returning to the move loop
-// instead would let its flush_screen() redraw the map over it before the next
-// capture, which is exactly what a first attempt at this did.
-async function show_discoveries() {
-    const lines = dodiscovered();
-    if (!lines) {
-        await pline("You haven't discovered anything yet...");
-        return;
-    }
-    const win = tty_create_nhwindow(NHW_TEXT);
-    for (const [text, attr] of lines)
-        tty_putstr(win, attr, text);
-    await tty_display_nhwindow(win);      /* draws the page and parks the cursor */
-
-    /* dmore(): block once per page until the player dismisses the window. */
-    await xwaitforspace(' \r\n\x1b');
-    while (game.morc !== '\x1b' && tty_next_page(win))
-        await xwaitforspace(' \r\n\x1b');
-
-    tty_destroy_nhwindow(win);
-}
-
-// src/wizcmds.c wiz_identify(), empty-selection arm of display_inventory().
-async function show_wiz_identify() {
-    if (!game.wizard) {
-        await pline("Unavailable command '#wizidentify'.");
-        return ECMD_OK;
-    }
-
-    const win = tty_create_nhwindow(NHW_MENU);
-    tty_start_menu(win, MENU_BEHAVE_STANDARD);
-    tty_add_menu(win, null, 0, 0, 0, ATR_NONE, NO_COLOR,
-                 'Debug Identify', MENU_ITEMFLAGS_NONE);
-    const unid = count_unidentified(game.invent || []);
-    if (!unid) {
-        tty_add_menu(win, null, 0, 0, 0, ATR_NONE, NO_COLOR,
-                     '(all items are permanently identified already)',
-                     MENU_ITEMFLAGS_NONE);
-    } else {
-        tty_add_menu(win, null, 0, 0, 0, ATR_NONE, NO_COLOR,
-                     `select ${unid === 1 ? 'it' : 'any or all of them'} to permanently identify`,
-                     MENU_ITEMFLAGS_NONE);
-    }
-    tty_end_menu(win, null);
-    await tty_select_menu(win, 0 /* PICK_NONE */);
-    tty_destroy_nhwindow(win);
-    return ECMD_OK;
-}
-
-
 // src/insight.c doattributes() -> enlightenment(BASICENLIGHTENMENT, 0).
 //
 // The window is an NHW_MENU (create_nhwindow(NHW_MENU) with start_menu, so
@@ -3207,7 +3183,7 @@ async function show_inventory(allowed_choices = null, title = null,
     const invlet = String.fromCharCode(picks[0]);
     const obj = (game.invent || []).find(o => o.invlet === invlet);
     if (obj)
-        await show_item_actions(obj);
+        await itemactions(obj);
 }
 
 // src/invent.c dotypeinv(), default MENU_FULL path. The category query only
@@ -3410,7 +3386,7 @@ export async function get_count(allowchars, inkey, maxcount, count, gc_flags) {
 
 /* src/iactions.c:282 itemactions() — the menu of things the hero could do
    with one inventory item, in C's key order. */
-async function show_item_actions(obj) {
+export async function itemactions(obj) {
     const win = tty_create_nhwindow(NHW_MENU);
     tty_start_menu(win, MENU_BEHAVE_STANDARD);
     const u = game.u;

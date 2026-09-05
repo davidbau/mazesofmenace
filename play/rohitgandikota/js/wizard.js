@@ -16,7 +16,7 @@ import { PMNAMES, MONSYMS, ATTKS, MFLAGS, GROWNUPS } from './monst_data.js';
 import { Is_rogue_level, MAGIC_PORTAL, BOLT_LIM, RLOC_MSG,
          STRAT_NONE, STRAT_HEAL, STRAT_PLAYER, STRAT_GROUND, STRAT_MONSTR,
          STRAT_WAITMASK, STRAT_WAITFORU, STRAT_APPEARMSG, STRAT_STRATMASK,
-         STRAT_GOAL, In_endgame } from './const.js';
+         STRAT_GOAL, In_endgame, A_LAWFUL } from './const.js';
 import { distu, isok, sgn } from './hacklib.js';
 import { ONAMES } from './objects_data.js';
 import { attacktype, is_covetous } from './mondata.js';
@@ -543,38 +543,60 @@ const random_malediction = [
     'Verily, thou shalt be one dead',
 ];
 
-// src/wizard.c:846 cuss(), the Wizard's spoken post-attack taunt.
+// src/wizard.c:846 cuss(), spoken taunts for the Wizard, demons, and minions.
 export async function cuss(mtmp) {
     const { Deaf } = await import('./youprop.js');
     if (Deaf())
         return;
 
-    if (!mtmp.iswiz) {
-        note_unported_wizard('cuss:non_wizard');
-        return;
-    }
-
     const { pline } = await import('./display.js');
     const { Monnam } = await import('./do_name.js');
-    const insult = () => random_insult[rn2(random_insult.length)];
-    if (!rn2(5)) {
-        await pline(`${Monnam(mtmp)} laughs fiendishly.`);
-    } else if (game.u.uhave?.amulet && !rn2(random_insult.length)) {
-        await pline(`"Relinquish the amulet, ${insult()}!"`);
-    } else if (game.u.uhp < 5 && !rn2(2)) {
-        const lifeEbbs = !!rn2(2);
-        const victim = insult();
-        await pline(lifeEbbs ? `"Even now thy life force ebbs, ${victim}!"`
-                             : `"Savor thy breath, ${victim}, it be thy last!"`);
-    } else if (mtmp.mhp < 5 && !rn2(2)) {
-        await pline(rn2(2) ? '"I shall return."' : '"I\'ll be back."');
+
+    if (mtmp.iswiz) {
+        const insult = () => random_insult[rn2(random_insult.length)];
+        if (!rn2(5)) {
+            await pline(`${Monnam(mtmp)} laughs fiendishly.`);
+        } else if (game.u.uhave?.amulet && !rn2(random_insult.length)) {
+            await pline(`"Relinquish the amulet, ${insult()}!"`);
+        } else if (game.u.uhp < 5 && !rn2(2)) {
+            const lifeEbbs = !!rn2(2);
+            const victim = insult();
+            await pline(lifeEbbs ? `"Even now thy life force ebbs, ${victim}!"`
+                                 : `"Savor thy breath, ${victim}, it be thy last!"`);
+        } else if (mtmp.mhp < 5 && !rn2(2)) {
+            await pline(rn2(2) ? '"I shall return."' : '"I\'ll be back."');
+        } else {
+            const curse = random_malediction[rn2(random_malediction.length)];
+            await pline(`"${curse} ${insult()}!"`);
+        }
+    } else if (is_lawful_minion_for_cuss(mtmp)
+               && !(mtmp.isminion
+                    && (mtmp.emin?.renegade
+                        ?? mtmp.mextra?.emin?.renegade))) {
+        const { com_pager } = await import('./questpgr.js');
+        await com_pager('angel_cuss');
     } else {
-        const curse = random_malediction[rn2(random_malediction.length)];
-        await pline(`"${curse} ${insult()}!"`);
+        const ptr = game.mons[mtmp.mnum];
+        if (!rn2((ptr.mflags2 & MFLAGS.M2_MINION) ? 100 : 5)) {
+            await pline(`${Monnam(mtmp)} casts aspersions on your ancestry.`);
+        } else {
+            const { com_pager } = await import('./questpgr.js');
+            await com_pager('demon_cuss');
+        }
     }
 
     const { wake_nearto } = await import('./mon.js');
     wake_nearto(mtmp.mx, mtmp.my, 5 * 5);
+}
+
+function is_lawful_minion_for_cuss(mtmp) {
+    const ptr = game.mons[mtmp.mnum];
+    if (!(ptr.mflags2 & MFLAGS.M2_MINION))
+        return false;
+    const alignment = mtmp.isminion
+        ? (mtmp.emin?.min_align ?? mtmp.mextra?.emin?.min_align)
+        : ptr.maligntyp;
+    return alignment === A_LAWFUL;
 }
 
 function note_unported_wizard(what) {

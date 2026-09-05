@@ -234,6 +234,7 @@ const AD_CONF = 25; /* confuses (Umber Hulk gaze / Yeenoghu wep) — monattk.h *
 const AD_BLND = 11; /* blinds — monattk.h (Archon gaze) */
 const AD_STUN = 12; /* stuns — monattk.h */
 const AD_HALU = 36; /* hallucinate (black light AT_EXPL) */
+const AD_SLEE = 4; /* sleep ray — monattk.h */
 const AD_PLYS = 14; /* paralyzes — monattk.h */
 const AD_ENCH = 41; /* remove enchantment (disenchanter) — monattk.h */
 const AD_CORR = 42; /* corrode armor (black pudding) — monattk.h */
@@ -245,6 +246,7 @@ const AD_PEST = 38; /* Pestilence only — monattk.h */
 const AD_FAMN = 39; /* Famine only — monattk.h */
 const MR_FIRE = 0x01;
 const MR_COLD = 0x02;
+const MR_SLEEP = 0x04;
 const MR_ELEC = 0x10;
 const MR_ACID = 0x40;
 
@@ -653,7 +655,7 @@ export {
     AT_SPIT, AT_ENGL, AT_BREA, AT_EXPL, AT_BOOM, AT_GAZE, AT_TENT,
     AT_WEAP, AT_MAGC, AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_ACID,
     AD_BLND, AD_DRDX, AD_DRCO, AD_DRIN, AD_SITM, AD_SEDU, AD_SSEX, AD_POLY,
-    AD_STON, AD_CONF, AD_STUN, AD_WRAP,
+    AD_STON, AD_CONF, AD_STUN, AD_WRAP, AD_SLEE,
     could_seduce,
 };
 
@@ -915,6 +917,95 @@ async function mhitm_ad_wrap(magr, mattk, mdef, mhm) {
         await pline(
             `${Some_Monnam_mm(magr)} brushes against ${some_mon_nam_mm(mdef)}.`,
         );
+    }
+}
+
+/** C ref: youprop.h Blind — (HBlinded||EBlinded)&&!BBlinded. */
+function Blind_slee() {
+    const u = game.u || {};
+    if (u.uroleplay?.blind) return true;
+    if (u.ublind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+
+/** C ref: mhitm.c resists_sleep — MR_SLEEP on data / intrinsics / extrinsics. */
+function resists_sleep_slee(mon) {
+    if (!mon) return false;
+    const bits = (mon.data?.mresists | 0) | (mon.mextrinsics | 0)
+        | (mon.mintrinsics | 0);
+    return !!(bits & MR_SLEEP);
+}
+
+/**
+ * C ref: mhitm.c sleep_monst for how=-1 (uhitm.c mhitm_ad_slee caller).
+ * how>=0 mimic reveal / resist(how) never runs here (amt is rnd(10)).
+ * Named omissions: defended(mon, AD_SLEE) orange-scales/artifact; shieldeff.
+ */
+function sleep_slee_mm(mon, amt) {
+    if (!mon) return 0;
+    if (resists_sleep_slee(mon)) return 0;
+    if (mon.mcanmove) {
+        mon.meating = 0;
+        amt = (amt | 0) + (mon.mfrozen | 0);
+        if (amt > 0) {
+            mon.mcanmove = 0;
+            mon.mfrozen = Math.min(amt, 127);
+        } else {
+            mon.msleeping = 1;
+        }
+        return 1;
+    }
+    return 0;
+}
+
+/**
+ * C ref: mhitm.c slept_monst — sleeping grabber releases (uhitm.c caller).
+ * Named omission: sticks(youmonst.data) engulfer keeps hold (treated as release).
+ */
+async function slept_slee_mm(mon) {
+    const u = game.u || {};
+    if (!mon) return;
+    const helpless = !!(mon.msleeping || !mon.mcanmove);
+    if (helpless && mon === u.ustuck && !u.uswallow) {
+        await pline_mon(mon, `${s_suffix(Monnam(mon))} grip relaxes.`);
+        u.ustuck = null;
+        if (game.youmonst) game.youmonst.ustuck = null;
+    }
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_slee `:3479–3522` — uhitm (you→mon) and mhitm
+ * (mon→mon) arms. Leftover mdamagem/damageum d() is kept in both arms.
+ * uhitm: !msleeping && !mgc_negated(FALSE) && sleep(rnd(10),-1), then
+ * !Blind pline + slept. mhitm: !msleeping && sleep(rnd(10),-1) &&
+ * sleep(rnd(10),-1) (C as written; second always fails once frozen, but
+ * the first still sleeps), then vis&&canspotmon pline + clear WAITFORU +
+ * slept. mhitu (mon→you) arm lives in mhitu.js mhitm_ad_slee_u.
+ * Named omissions: defended(AD_SLEE); shieldeff on resist.
+ */
+export async function mhitm_ad_slee(magr, mattk, mdef, mhm) {
+    void mattk;
+    void mhm;
+    if (is_youmonst(magr)) {
+        if (!mdef.msleeping
+            && !(await mhitm_mgc_atk_negated(magr, mdef, false))
+            && sleep_slee_mm(mdef, rnd(10))) {
+            if (!Blind_slee()) {
+                await pline(`${Monnam(mdef)} is put to sleep by you!`);
+            }
+            await slept_slee_mm(mdef);
+        }
+        return;
+    }
+    if (is_youmonst(mdef)) return;
+    if (!mdef.msleeping
+        && sleep_slee_mm(mdef, rnd(10))
+        && sleep_slee_mm(mdef, rnd(10))) {
+        if (_mm_vis && canspotmon(mdef)) {
+            await pline(`${Monnam(mdef)} is put to sleep by ${mon_nam(magr)}.`);
+        }
+        mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
+        await slept_slee_mm(mdef);
     }
 }
 
@@ -2795,6 +2886,35 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             done: false,
         };
         await mhitm_ad_wrap(magr, mattk, mdef, mhm);
+        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        if (mhm.done) return mhm.hitflags;
+        damage = mhm.damage | 0;
+        hitflags = mhm.hitflags | 0;
+        if (!damage) return hitflags;
+        mdef.mhp -= damage;
+        if (mdef.mhp < 1) {
+            mdef.mhp = 0;
+            await mdamagem_monkilled(magr, mdef, mattk, mwep);
+            if ((mdef.mhp | 0) > 0) return hitflags; /* lifesaved */
+            if (hitflags === M_ATTK_AGR_DIED) {
+                return M_ATTK_DEF_DIED | M_ATTK_AGR_DIED;
+            }
+            const grew = await grow_up(magr, mdef);
+            return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
+        }
+        return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
+    }
+
+    // C: mhitm_adtyping → mhitm_ad_slee for AD_SLEE (uhitm.c:3479–3522
+    // mhitm arm). Leftover d() kept; sleep RNG (rnd(10) x2) burns before
+    // knockback. uhitm arm shares mhitm_ad_slee; mhitu arm is _slee_u.
+    if ((mattk.adtyp | 0) === AD_SLEE) {
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+        };
+        await mhitm_ad_slee(magr, mattk, mdef, mhm);
         mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
         if (mhm.done) return mhm.hitflags;
         damage = mhm.damage | 0;

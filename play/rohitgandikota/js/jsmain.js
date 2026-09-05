@@ -112,6 +112,9 @@ export class NethackGame {
 
         const rc = parseNethackrc(this._nethackrc);
         g.rc = rc;
+        /* src/options.c optfn_boulder() and initoptions_finish(). The active
+           optional override is also used by object detection and farlook. */
+        g.boulder_symbol = (optValue(rc, 'boulder') || '`').charAt(0) || '`';
         /* src/options.c:7596 parsebindings() — BIND=key:command lines rebind
            a command key. txt2key handles the '^X' control form; the map is
            consulted by rhack() before its default dispatch. */
@@ -167,6 +170,8 @@ export class NethackGame {
             uroleplay: {
                 pauper: !!g.flags.pauper,
                 nudist: !!g.flags.nudist || !!g.flags.pauper,
+                blind: !!g.flags.blind,
+                deaf: !!g.flags.deaf,
             },
         };
         g.context = { move: 0 };

@@ -16,8 +16,8 @@ import { COLNO, ROWNO, DUST, ENGRAVE, BURN, MARK, HEADSTONE, ENGR_BLOOD,
 import { getobj, GETOBJ_PROMPT, GETOBJ_SUGGEST, GETOBJ_DOWNPLAY, hands_obj } from './invent.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
 import { is_pool, is_lava } from './mon.js';
-import { You, pline_The } from './pline.js';
-import { pline, newsym } from './display.js';
+import { Norep, You, pline_The, set_msg_xy } from './pline.js';
+import { canspotmon, pline, newsym } from './display.js';
 import { getlin } from './cmd.js';
 import { set_occupation } from './allmain.js';
 import { exercise } from './attrib.js';
@@ -29,6 +29,7 @@ import { IS_GRAVE } from './const.js';
 import { NO_MM_FLAGS } from './const.js';
 import { makemon } from './makemon.js';
 import { PMNAMES } from './monst_data.js';
+import { Amonnam } from './do_name.js';
 
 
 
@@ -570,7 +571,11 @@ export async function disturb_grave(x, y) {
     } else {
         await You('disturb the undead!');
         lev.disturbed = 1;
-        await makemon(game.mons[PMNAMES.PM_GHOUL], x, y, NO_MM_FLAGS);
+        const ghoul = makemon(game.mons[PMNAMES.PM_GHOUL], x, y, NO_MM_FLAGS);
+        if (ghoul && canspotmon(ghoul)) {
+            set_msg_xy(ghoul.mx, ghoul.my);
+            await Norep(`${Amonnam(ghoul)} suddenly appears next to you!`);
+        }
         exercise(A_WIS, false);
     }
 }

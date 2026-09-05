@@ -328,6 +328,9 @@ export function cvt_sdoor_to_door(lev) {
     }
     lev.typ = DOOR;
     lev.doormask = newmask;
+    // C detect.c: lev->arboreal_sdoor = 0 (clears the candig-aliased bit)
+    lev.arboreal_sdoor = 0;
+    lev.candig = 0;
 }
 
 /** Clear counted search / multi — C nomul(0) subset for find paths */

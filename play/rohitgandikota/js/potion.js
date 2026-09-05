@@ -797,7 +797,7 @@ export async function make_hallucinated(xtime, talk, mask = 0) {
 export async function make_blinded(xtime, talk) {
     const u = game.u;
     const intr = (u.intrinsic ||= {});
-    const was_blind = !!u.ublind;
+    const was_blind = Blind();
     const old_timeout = (intr.HBlinded | 0) & TIMEOUT;
     const blindfolded = !!u.ublindf
         && (u.ublindf.otyp === ONAMES.BLINDFOLD
@@ -807,8 +807,10 @@ export async function make_blinded(xtime, talk) {
     if (Unaware())
         talk = false;
 
-    const new_timeout = Math.max(0, xtime | 0);
-    const blind_now = !blocked && (!!new_timeout || blindfolded);
+    const new_timeout = Math.max(0, Math.min(TIMEOUT, xtime));
+    const sources = (intr.HBlinded || 0) & ~TIMEOUT;
+    const blind_now = !blocked && (!!new_timeout || !!sources || blindfolded
+        || (Upolyd(u) && !haseyes(game.youmonst.data)));
 
     if (was_blind && !blind_now && talk) {
         if (Hallucination())
@@ -840,7 +842,7 @@ export async function make_blinded(xtime, talk) {
     /* C does not change HBlinded until after the transition message. If that
        message first blocks on an older --More-- prompt, the old Blind status
        remains visible throughout the wait. */
-    intr.HBlinded = new_timeout;
+    intr.HBlinded = sources | new_timeout;
     u.ublind = blind_now ? 1 : 0;
 
     if (was_blind !== blind_now) {

@@ -6,15 +6,15 @@
 // own combat are not ported. js/shknam.js holds the naming and stocking half
 // (shtypes, nameshk, stock_room), which is src/shknam.c.
 
-import { obfree } from './invent.js';
+import { obfree, o_on } from './invent.js';
 import { obj_extract_self } from './invent.js';
 import { mpickobj } from './steal.js';
 import { flush_screen } from './display.js';
 import { map_invisible } from './display.js';
 import { the } from './objnam.js';
 import { mnearto } from './mon.js';
-import { OBJ_BURIED } from './const.js';
-import { You } from './pline.js';
+import { OBJ_BURIED, LS_OBJECT } from './const.js';
+import { You, impossible } from './pline.js';
 import { angry_guards } from './mon.js';
 import { count_unpaid, count_contents } from './invent.js';
 import { pline_The } from './pline.js';
@@ -148,6 +148,31 @@ export function next_shkp(shkp, withbill) {
     return found;
 }
 
+// src/shk.c:955 same_price(); unpaid stacks must share their owner and quote.
+export function same_price(obj1, obj2) {
+    const mons = game.level?.monsters || [];
+    let shkp1, shkp2, bp1 = null, bp2 = null;
+    for (shkp1 = next_shkp(mons[0] ?? null, true); shkp1;
+         shkp1 = next_shkp(mons[mons.indexOf(shkp1) + 1] ?? null, true)) {
+        if ((bp1 = onbill(obj1, shkp1, true)))
+            break;
+    }
+    if (shkp1 && (bp2 = onbill(obj2, shkp1, true))) {
+        shkp2 = shkp1;
+    } else {
+        for (shkp2 = next_shkp(mons[0] ?? null, true); shkp2;
+             shkp2 = next_shkp(mons[mons.indexOf(shkp2) + 1] ?? null, true)) {
+            if ((bp2 = onbill(obj2, shkp2, true)))
+                break;
+        }
+    }
+    if (!bp1 || !bp2) {
+        void impossible("same_price: object wasn't on any bill!");
+        return false;
+    }
+    return shkp1 === shkp2 && bp1.price === bp2.price;
+}
+
 // src/shk.c:1136 onbill() — the bill entry for obj on this shopkeeper's bill.
 export function onbill(obj, shkp, silent) {
     if (shkp) {
@@ -161,6 +186,43 @@ export function onbill(obj, shkp, silent) {
     }
     /* if (obj->unpaid && !silent) impossible("onbill: unpaid obj %s?", ...) */
     return null;
+}
+
+// src/shk.c:2777 find_oid(); bill-only objects deliberately are not searched.
+export function find_oid(id) {
+    for (const chain of [game.invent, game.level?.objects,
+                         game.level?.buriedobjs, game.migrating_objs]) {
+        const obj = o_on(id, chain);
+        if (obj)
+            return obj;
+    }
+    for (const chain of [game.level?.monsters, game.migrating_mons, game.mydogs])
+        for (const mon of chain || []) {
+            const obj = o_on(id, mon.minvent);
+            if (obj)
+                return obj;
+        }
+    return null;
+}
+
+// src/shk.c:3198 gem_learned(); reprice matching gem stacks on active bills.
+export function gem_learned(oindx) {
+    const monsters = game.level?.monsters || [];
+    for (let shkp = next_shkp(monsters[0] ?? null, true); shkp;
+         shkp = next_shkp(monsters[monsters.indexOf(shkp) + 1] ?? null, true)) {
+        const eshk = shkp.eshk || ESHK(shkp);
+        let index = 0;
+        for (let ct = eshk.billct; --ct >= 0;) {
+            const bp = eshk.bill_p[index];
+            const obj = find_oid(bp.bo_id);
+            if (!obj)
+                continue; // C also leaves bp unchanged for a missing object.
+            if (oindx !== ONAMES.STRANGE_OBJECT ? obj.otyp === oindx
+                : obj.oclass === OCLASSES.GEM_CLASS)
+                bp.price = get_cost(obj, shkp);
+            index++;
+        }
+    }
 }
 
 // src/shk.c:3237 alter_cost() — an unpaid object was changed (enchanted,
@@ -821,6 +883,17 @@ function getprice(obj, shk_buying = false) {
         break;
     }
     return tmp;
+}
+
+// src/shk.c:2864 oid_price_adjustment(); unidentified objects with id%4 == 0
+// get a surcharge, except for glass gems whose price follows another rule.
+export function oid_price_adjustment(obj, oid) {
+    const otyp = obj.otyp;
+    if (!(obj.dknown && game.objects[otyp].oc_name_known)
+        && (obj.oclass !== OCLASSES.GEM_CLASS
+            || game.objects[otyp].oc_material !== MATERIALS.GLASS))
+        return oid % 4 === 0 ? 1 : 0;
+    return 0;
 }
 
 // src/shk.c:2877 get_cost(), what the shopkeeper charges for one item.
@@ -1688,35 +1761,56 @@ export function bill_dummy_object(obj) {
     return true;
 }
 
-// src/shk.c:1187 obfree(), bill arm. A consumed unpaid object must remain
-// available for the itemized bill even though it has left ordinary play.
-// The non-billing lifecycle stays in invent.js, where useupall() calls it.
-export function obfree_bill(obj) {
+// src/shk.c:1187 obfree(), bill and merged-identity arms. Return true when
+// the object must be retained; invent.js completes the deallocation otherwise.
+export function obfree_bill(obj, merge = null) {
     let shkp = null;
     if (obj.unpaid) {
-        shkp = (game.level?.monsters || []).find((mon) => {
-            if (!mon.isshk)
-                return false;
-            const eshk = mon.eshk || ESHK(mon);
-            return (eshk?.bill_p || []).some(bp => bp.bo_id === obj.o_id);
-        }) || null;
+        const mons = game.level?.monsters || [];
+        for (shkp = next_shkp(mons[0] ?? null, true); shkp;
+             shkp = next_shkp(mons[mons.indexOf(shkp) + 1] ?? null, true))
+            if (onbill(obj, shkp, true))
+                break;
     }
     if (!shkp && game.u.ushops)
         shkp = shop_keeper(game.u.ushops.charCodeAt(0));
-    if (!shkp)
+    const bp = onbill(obj, shkp, false);
+    if (!bp) {
+        if (merge && oid_price_adjustment(obj, obj.o_id)
+                     > oid_price_adjustment(merge, merge.o_id)) {
+            // C's light id is an object pointer. Retarget the port's numeric
+            // reference while preserving the same surviving object.
+            for (const light of game.light_sources || [])
+                if (light.type === LS_OBJECT && light.id === merge.o_id)
+                    light.id = obj.o_id;
+            merge.o_id = obj.o_id;
+        }
         return false;
+    }
 
+    if (!merge) {
+        bp.useup = true;
+        bp.obj = obj;
+        obj.unpaid = 0;
+        if (obj.globby && !obj.owt && obj.omid)
+            obj.owt = obj.omid;
+        obj.where = OBJ_ONBILL;
+        (game.billobjs ||= []).unshift(obj);
+        return true;
+    }
+    const bpm = onbill(merge, shkp, false);
+    if (!bpm) {
+        void impossible('obfree: not on bill, otyp,where,quan,unpaid = '
+            + `(${obj.otyp},${obj.where},${obj.quan},${obj.unpaid ? 1 : 0}) `
+            + `(${merge.otyp},${merge.where},${merge.quan},${merge.unpaid ? 1 : 0})?`);
+        return true;
+    }
     const eshk = shkp.eshk || ESHK(shkp);
-    const bp = (eshk?.bill_p || []).find(entry => entry.bo_id === obj.o_id);
-    if (!bp)
-        return false;
-
-    bp.useup = true;
-    bp.obj = obj;
-    obj.unpaid = 0;
-    obj.where = OBJ_ONBILL;
-    (game.billobjs ||= []).unshift(obj);
-    return true;
+    bpm.bquan += bp.bquan;
+    Object.assign(bp, eshk.bill_p[eshk.bill_p.length - 1]);
+    eshk.bill_p.length--;
+    eshk.billct = eshk.bill_p.length;
+    return false;
 }
 
 // src/mkobj.c:752 costly_alteration(), COST_BITE, COST_OPEN, and COST_DSTROY.

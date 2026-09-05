@@ -25,6 +25,7 @@ import { TIMEOUT, FROMOUTSIDE, I_SPECIAL, WT_NOISY_INV, FOOT, NECK,
 import { ONAMES } from './objects_data.js';
 import { PMNAMES, MFLAGS, MONSYMS } from './monst_data.js';
 import { pline } from './display.js';
+import { del_light_source, LS_OBJECT } from './light.js';
 
 // src/timeout.c:187 vomiting_dialogue(). It runs before the property timer is
 // decremented, so every switch value uses the pending timeout minus one.
@@ -319,7 +320,7 @@ export async function begin_burn(obj, already_lit) {
 
 // src/timeout.c:1804 end_burn() plus cleanup_burn(). stop_timer() returns the
 // remaining delay, which is the unused fuel cleanup_burn restores to age.
-export async function end_burn(obj, timer_attached) {
+export function end_burn(obj, timer_attached) {
     if (!obj?.lamplit)
         return;
 
@@ -333,14 +334,11 @@ export async function end_burn(obj, timer_attached) {
         obj.age = (obj.age || 0) + remaining;
     }
 
-    const { del_light_source, LS_OBJECT } = await import('./light.js');
     del_light_source(LS_OBJECT, obj.o_id);
     obj.lamplit = 0;
     game.vision_full_recalc = 1;
-    if (obj.where === OBJ_INVENT) {
-        const { update_inventory } = await import('./invent.js');
+    if (obj.where === OBJ_INVENT)
         update_inventory();
-    }
 }
 
 async function burn_object(obj, timeout) {

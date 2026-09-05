@@ -18,7 +18,8 @@ import { ECMD_OK, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ANY,
          has_mgivenname }
     from './const.js';
 import { rn2 } from './rng.js';
-import { getdir, getlin } from './cmd.js';
+import { getdir, getlin, cmd_from_func } from './cmd.js';
+import { display_pickinv } from './invent.js';
 import { docrt, map_trap, pline, unmap_invisible, canspotmon }
     from './display.js';
 import { pluslvl, losexp } from './exper.js';
@@ -56,6 +57,24 @@ export async function wiz_wish() {
         await encumber_msg();
     } else {
         note_unported_wizcmds('wiz_wish:unavailcmd');
+    }
+    return ECMD_OK;
+}
+
+// src/wizcmds.c:50 wiz_identify(). Revealing the menu doesn't identify items.
+export async function wiz_identify() {
+    if (game.wizard) {
+        let key = cmd_from_func('wizidentify');
+        if (!key || key === '\0')
+            key = '\t';
+        (game.iflags ||= {}).override_ID = key;
+        try {
+            await display_pickinv(null, null, null, false);
+        } finally {
+            game.iflags.override_ID = 0;
+        }
+    } else {
+        await pline("Unavailable command '#wizidentify'.");
     }
     return ECMD_OK;
 }

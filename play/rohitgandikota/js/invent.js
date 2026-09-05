@@ -2,7 +2,7 @@
 // C ref: src/invent.c
 
 import { MON_WEP } from './monst.js';
-import { noit_Monnam } from './do_name.js';
+import { noit_Monnam, oname } from './do_name.js';
 import { engulfing_u } from './const.js';
 import { allow_all } from './pickup.js';
 import { query_objlist } from './pickup.js';
@@ -33,7 +33,8 @@ import { cmdq_pop, cmdq_clear, cmdq_add_key, cmdq_add_int, get_count } from './c
 import { GC_SAVEHIST } from './const.js';
 import { GC_ECHOFIRST, GC_CONDHIST, GETOBJ_NOFLAGS, ECMD_FAIL, ECMD_CANCEL } from './const.js';
 import { delobj, t_at, is_pool, is_lava } from './mon.js';
-import { addtobill, costly_spot, doname_with_price, obfree_bill } from './shk.js';
+import { addtobill, costly_spot, doname_with_price, obfree_bill, same_price } from './shk.js';
+import { ONAME, has_oname, ONAME_SKIP_INVUPD } from './const.js';
 import { u_at, CMDQ_KEY, CMDQ_INT, CQ_CANNED, CQ_REPEAT, FOUNTAIN, THRONE, SINK, GRAVE, ALTAR, TREE,
          ICE, DRAWBRIDGE_DOWN, IRONBARS, Never_mind, LOST_NONE, LOST_THROWN, LOST_EXPLODING, LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE, IS_DOOR, D_NODOOR, D_ISOPEN, D_BROKEN,
          AM_SANCTUM, AM_SHRINE, Amask2align, A_NONE, A_LAWFUL,
@@ -42,17 +43,22 @@ import { hides_under, touch_petrifies, poly_when_stoned } from './mondata.js';
 import { worn } from './do_wear.js';
 import { empty_handed } from './wield.js';
 import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU,
-         W_RINGL, W_RINGR, W_AMUL, W_ART, W_TOOL, W_SADDLE }
+         W_ARMOR, W_WEP, W_QUIVER, W_SWAPWEP, W_WEAPONS,
+         W_RINGL, W_RINGR, W_AMUL, W_ART, W_TOOL, W_ACCESSORY, W_SADDLE }
     from './const.js';
 import { Blind as heroBlind, Hallucination,
          Stone_resistance } from './youprop.js';
 import { doname, an, corpse_xname, makeplural, obj_typename, CXN_PFX_THE,
          CXN_ARTICLE, yname } from './objnam.js';
-import { OCLASSES, ONAMES } from './objects_data.js';
+import { OCLASSES, ONAMES, MATERIALS, SKILLS } from './objects_data.js';
+import { is_pole } from './u_init.js';
+import { OBJ_DESCR, not_fully_identified } from './objnam.js';
+export { not_fully_identified } from './objnam.js';
 import { MONSYMS, NUMMONS, PMNAMES } from './monst_data.js';
-import { erosion_matters, curse, splitobj, start_glob_timeout } from './mkobj.js';
+import { erosion_matters, curse, splitobj, clear_splitobjs, extract_nobj,
+         start_glob_timeout } from './mkobj.js';
 import { carried, OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT, OBJ_BURIED, Is_container, Is_candle, Is_pudding } from './obj.js';
-import { setnotworn, recalc_telepat_range } from './worn.js';
+import { setworn, setnotworn, recalc_telepat_range } from './worn.js';
 import { is_rider, hideunder } from './makemon.js';
 import { Fumbling } from './youprop.js';
 import { st_all, MOD_ENCUMBER, invlet_basic } from './const.js';
@@ -63,14 +69,16 @@ import { place_object } from './mkobj.js';
 import { touch_artifact } from './mon.js';
 import { dropy, dropx } from './do.js';
 import { is_ammo, is_missile, ammo_and_launcher, setuqwep } from './wield.js';
-import { ATR_NONE, ATR_INVERSE, tty_create_nhwindow, tty_putstr, tty_display_nhwindow, tty_next_page, tty_destroy_nhwindow, NHW_MENU } from './tty/wintty.js';
+import { ATR_NONE, ATR_INVERSE, tty_create_nhwindow, tty_putstr,
+         tty_display_nhwindow, tty_next_page, tty_destroy_nhwindow,
+         tty_add_menu, NHW_MENU } from './tty/wintty.js';
 import { nhgetch } from './input.js';
 import { xwaitforspace } from './tty/getline.js';
 import { pline, display_nhwindow_message, temporary_object_glyph,
          see_monsters } from './display.js';
 import { makeknown, observe_object } from './o_init.js';
 import { tty_yn_function } from './tty/topl.js';
-import { You, You_hear, You_see, Your } from './pline.js';
+import { You, You_hear, You_see, Your, impossible } from './pline.js';
 import { cansee, recalc_block_point } from './vision.js';
 import { surface } from './dungeon.js';
 import { discover_artifact, set_artifact_intrinsic,
@@ -78,12 +86,98 @@ import { discover_artifact, set_artifact_intrinsic,
 import { ART_MJOLLNIR } from './artilist_data.js';
 import { body_part } from './polyself.js';
 import { HAND } from './const.js';
-import { obj_stop_timers, stop_timer, SHRINK_GLOB } from './timeout.js';
+import { obj_stop_timers, stop_timer, SHRINK_GLOB, learn_egg_type } from './timeout.js';
+import { obj_merge_light_sources } from './light.js';
 
 // include/hack.h — command result flags. ECMD_TIME means the command consumed
 // a move, which is what makes moveloop advance svm.moves.
 export const ECMD_OK = 0;
 export const ECMD_TIME = 1;
+
+// src/invent.c:149 loot_classify(). Lower values sort before higher values.
+export function loot_classify(sort_item, obj) {
+    const O = OCLASSES, N = ONAMES, P = SKILLS;
+    const def_srt_order = [O.COIN_CLASS, O.AMULET_CLASS, O.RING_CLASS,
+        O.WAND_CLASS, O.POTION_CLASS, O.SCROLL_CLASS, O.SPBOOK_CLASS,
+        O.GEM_CLASS, O.FOOD_CLASS, O.TOOL_CLASS, O.WEAPON_CLASS,
+        O.ARMOR_CLASS, O.ROCK_CLASS, O.BALL_CLASS, O.CHAIN_CLASS];
+    const otyp = obj.otyp, oclass = obj.oclass, oc = game.objects[otyp];
+    const discovered = !!oc.oc_name_known;
+    if (!heroBlind())
+        observe_object(obj);
+    const seen = !!obj.dknown;
+    const classorder = game.flags.sortpack !== false ? inv_order() : def_srt_order;
+    const p = classorder.indexOf(oclass);
+    let k = p >= 0 ? 1 + p
+        : 1 + classorder.length + Number(oclass !== O.VENOM_CLASS);
+    sort_item.orderclass = k;
+    switch (oclass) {
+    case O.ARMOR_CLASS: {
+        const armcat = [7, 4, 1, 2, 3, 5, 6, 8];
+        k = oc.oc_armcat;
+        if (k < 0 || k >= 7)
+            k = 7;
+        k = armcat[k];
+        break;
+    }
+    case O.WEAPON_CLASS:
+        k = oc.oc_skill;
+        k = k < 0 ? (k >= -P.P_CROSSBOW && k <= -P.P_BOW ? 1 : 3)
+            : (k >= P.P_BOW && k <= P.P_CROSSBOW ? 2
+               : k === P.P_SPEAR || k === P.P_DAGGER || k === P.P_KNIFE ? 4
+                 : !is_pole(obj) ? 5 : 6);
+        break;
+    case O.TOOL_CLASS:
+        if (seen && discovered
+            && (otyp === N.BAG_OF_TRICKS || otyp === N.HORN_OF_PLENTY))
+            k = 2;
+        else if (Is_container(obj))
+            k = 1;
+        else
+            switch (otyp) {
+            case N.WOODEN_FLUTE: case N.MAGIC_FLUTE:
+            case N.TOOLED_HORN: case N.FROST_HORN: case N.FIRE_HORN:
+            case N.WOODEN_HARP: case N.MAGIC_HARP: case N.BUGLE:
+            case N.LEATHER_DRUM: case N.DRUM_OF_EARTHQUAKE:
+            case N.HORN_OF_PLENTY:
+                k = 3;
+                break;
+            default:
+                k = 4;
+                break;
+            }
+        break;
+    case O.FOOD_CLASS:
+        switch (otyp) {
+        case N.SLIME_MOLD: k = 1; break;
+        default: k = obj.globby ? 6 : 2; break;
+        case N.TIN: k = 3; break;
+        case N.EGG: k = 4; break;
+        case N.CORPSE: k = 5; break;
+        }
+        break;
+    case O.GEM_CLASS:
+        switch (oc.oc_material) {
+        case MATERIALS.GEMSTONE:
+            k = !seen ? 1 : !discovered ? 2 : 3;
+            break;
+        case MATERIALS.GLASS:
+            k = !seen ? 1 : !discovered ? 2 : 4;
+            break;
+        default:
+            k = !seen ? 5 : otyp !== N.ROCK ? (!discovered ? 6 : 7) : 8;
+            break;
+        }
+        break;
+    default:
+        k = 1;
+        break;
+    }
+    sort_item.subclass = k;
+    k = !seen ? 1 : discovered || !OBJ_DESCR(oc) ? 4 : oc.oc_uname ? 3 : 2;
+    sort_item.disco = k;
+    sort_item.inuse = 0;
+}
 
 // src/invent.c:4334 will_feel_cockatrice()
 export function will_feel_cockatrice(otmp, force_touch = false) {
@@ -203,6 +297,16 @@ export function addinv_core1(obj) {
 // src/invent.c:600 addinv() — merge into an existing stack if possible,
 // otherwise take the next inventory letter.
 export function addinv(obj) {
+    return addinv_core0(obj, null);
+}
+
+// src/invent.c:1160 addinv_before() -- restore a returning weapon ahead of
+// the inventory item which followed it before the throw.
+export function addinv_before(obj, otherObj) {
+    return addinv_core0(obj, otherObj);
+}
+
+function addinv_core0(obj, otherObj) {
     game.invent ||= [];
     if (obj.how_lost === LOST_EXPLODING)
         return null;
@@ -221,11 +325,23 @@ export function addinv(obj) {
     }
 
     const pending = addinv_core1(obj);
-    return pending ? pending.then(() => addinv_finish(obj, objWasThrown))
-                   : addinv_finish(obj, objWasThrown);
+    return pending ? pending.then(() => addinv_finish(obj, objWasThrown,
+                                                       otherObj))
+                   : addinv_finish(obj, objWasThrown, otherObj);
 }
 
-function addinv_finish(obj, objWasThrown) {
+function addinv_finish(obj, objWasThrown, otherObj) {
+    if (otherObj) {
+        const index = game.invent.indexOf(otherObj);
+        if (index > 0) {
+            obj.where = OBJ_INVENT;
+            obj.pickup_prev = 1;
+            game.invent.splice(index, 0, obj);
+            const side = addinv_core2(obj);
+            return side ? side.then(() => obj) : obj;
+        }
+    }
+
     /* src/invent.c addinv_core0 — merging goes through merged(), which
        recomputes the stack's owt. The old inline quan += left every
        merged stack carrying a single item's weight, which under-read
@@ -275,9 +391,9 @@ export function addinv_nomerge(obj) {
     obj.where = 3;                      /* OBJ_INVENT */
     obj.pickup_prev = 1;
     game.invent.push(obj);
-    /* src/invent.c:1117 — flags.invlet_constant defaults On, so the chain
-       is kept in inv_rank order (gold first). */
-    reorder_invent();
+    /* src/invent.c:1117; floating letters preserve insertion order. */
+    if (game.flags.fixinv !== false)
+        reorder_invent();
     const side = addinv_core2(obj);
     return side ? side.then(() => obj) : obj;
 }
@@ -561,11 +677,13 @@ export async function dolook() {
 
 // src/decl.c flags.inv_order — the default packorder.
 export function inv_order() {
+    if (game.flags?.inv_order)
+        return game.flags.inv_order;
     const O = OCLASSES;
     return [O.COIN_CLASS, O.AMULET_CLASS, O.WEAPON_CLASS, O.ARMOR_CLASS,
             O.FOOD_CLASS, O.SCROLL_CLASS, O.SPBOOK_CLASS, O.POTION_CLASS,
             O.RING_CLASS, O.WAND_CLASS, O.TOOL_CLASS, O.GEM_CLASS,
-            O.ROCK_CLASS, O.BALL_CLASS, O.CHAIN_CLASS, O.VENOM_CLASS];
+            O.ROCK_CLASS, O.BALL_CLASS, O.CHAIN_CLASS];
 }
 
 const CLASS_NAMES = {
@@ -641,14 +759,20 @@ export async function display_binventory(x, y, as_if_seen = false) {
 // prefix is NOT built here; tty_add_menu() builds it, exactly as in C, which is
 // what makes the +2 in tty_end_menu()'s width the right rule for this window.
 export function display_inventory(allowed_choices = null) {
+    if (game.flags.fixinv === false)
+        reassign();
     const out = [];
-    for (const oclass of inv_order()) {
+    const wizid = game.wizard && game.iflags?.override_ID;
+    const sortpack = game.flags.sortpack !== false;
+    for (const oclass of sortpack ? inv_order() : [0]) {
         const items = (game.invent || []).filter(
-            o => o.oclass === oclass
-                 && (!allowed_choices || allowed_choices.includes(o.invlet)));
+            o => (!sortpack || o.oclass === oclass)
+                 && (!allowed_choices || allowed_choices.includes(o.invlet))
+                 && (!wizid || not_fully_identified(o)));
         if (!items.length) continue;
         /* add_menu_heading(win, class_header) — iflags.menu_headings */
-        out.push({ heading: true, str: let_to_name(oclass), attr: ATR_INVERSE });
+        if (sortpack)
+            out.push({ heading: true, str: let_to_name(oclass), attr: ATR_INVERSE });
         for (const o of items) {
             /* src/invent.c:1039 — displaying the item observes its type */
             if (!Blind())
@@ -683,6 +807,7 @@ export async function display_pickinv(allowed_choices, handsbuf, menuquery,
 
     if (handsbuf || menuquery)
         note_unported_invent('display_pickinv:hands_or_forcemenu');
+    const wizid = game.wizard && game.iflags?.override_ID;
 
     /* src/invent.c:3130 — count 0, 1, or more-than-1 candidates. With
        exactly one item of interest C uses a message-line "menu" instead of
@@ -693,7 +818,13 @@ export async function display_pickinv(allowed_choices, handsbuf, menuquery,
     {
         const n = allowed_choices ? allowed_choices.length
                   : !game.invent?.length ? 0 : game.invent.length === 1 ? 1 : 2;
-        if (n === 1 && allowed_choices) {
+        if (n === 0) {
+            await pline('Not carrying anything.');
+            return 0;
+        }
+        if (game.flags.fixinv === false)
+            reassign();
+        if (n === 1 && allowed_choices && !wizid) {
             const otmp = (game.invent || [])
                 .find(o => o.invlet === allowed_choices[0]);
             if (otmp) {
@@ -709,6 +840,24 @@ export async function display_pickinv(allowed_choices, handsbuf, menuquery,
 
     const win = tty_create_nhwindow(W_MENU);
     tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    const wizid_fakeobj = {};
+    if (wizid) {
+        const { MENU_ITEMFLAGS_SKIPINVERT } = await import('./const.js');
+        const { visctrl } = await import('./hacklib.js');
+        const unid_cnt = count_unidentified(game.invent);
+        tty_add_menu_str(win, 'Debug Identify' + (unid_cnt
+            ? ` -- unidentified or partially identified item${unid_cnt === 1 ? '' : 's'}` : ''));
+        if (!unid_cnt)
+            tty_add_menu_str(win, '(all items are permanently identified already)');
+        else {
+            const override = game.iflags.override_ID;
+            let prompt = `select ${unid_cnt === 1 ? 'it' : 'any or all of them'} to permanently identify`;
+            if (unid_cnt > 1)
+                prompt += ` (${visctrl(override)} for all)`;
+            tty_add_menu(win, null, wizid_fakeobj, '_', override, A_NONE, NO_COLOR,
+                         prompt, MENU_ITEMFLAGS_SKIPINVERT);
+        }
+    }
     /* src/invent.c:3273 — C applies the `lets` filter FIRST and only then adds
        the class heading, gated on `!classcount`, so a heading appears just
        before the first item of its class that survived the filter. Emitting
@@ -728,7 +877,10 @@ export async function display_pickinv(allowed_choices, handsbuf, menuquery,
                          pending_heading.str, MENU_ITEMFLAGS_NONE);
             pending_heading = null;
         }
-        tty_add_menu(win, e.glyphinfo, e.invlet.charCodeAt(0), e.invlet, 0,
+        const obj = (game.invent || []).find(o => o.invlet === e.invlet);
+        const { def_oc_syms } = await import('./drawing_data.js');
+        tty_add_menu(win, e.glyphinfo, wizid ? obj : e.invlet.charCodeAt(0),
+                     e.invlet, wizid ? def_oc_syms[obj.oclass] : 0,
                      A_NONE, NO_COLOR, e.str, MENU_ITEMFLAGS_NONE);
     }
     /* src/invent.c:3378 — `end_menu(win, (query && *query) ? query : NULL)`.
@@ -736,7 +888,7 @@ export async function display_pickinv(allowed_choices, handsbuf, menuquery,
        this window has NO title; the hardcoded one added a phantom first row. */
     tty_end_menu(win, (menuquery && menuquery.length) ? menuquery : null);
 
-    const picks = await tty_select_menu(win, PICK_ONE);
+    const picks = await tty_select_menu(win, wizid ? 2 /* PICK_ANY */ : PICK_ONE);
     const cancelled = !!tty_get_nhwindow(win)?.cancelled;
     tty_destroy_nhwindow(win);
 
@@ -744,6 +896,22 @@ export async function display_pickinv(allowed_choices, handsbuf, menuquery,
         return '\x1b';
     if (!picks.length)
         return 0;
+    if (wizid) {
+        game.iflags.override_ID = 0;
+        let all_id = false;
+        for (const otmp of picks) {
+            if (otmp === wizid_fakeobj) {
+                await identify_pack(0, false);
+                all_id = true;
+                break;
+            }
+            if (not_fully_identified(otmp))
+                await identify(otmp);
+        }
+        if (!all_id)
+            update_inventory();
+        return 0;
+    }
     return String.fromCharCode(picks[0]);
 }
 
@@ -937,6 +1105,8 @@ export async function getobj(word, obj_ok_func, ctrlflags) {
     /* src/invent.c:1919 — the prompt, then yn_function reads the key. Our
        loop already read a key here; routing it through tty_yn_function adds
        the paint without changing which keys are consumed. */
+    if (game.flags.fixinv === false)
+        reassign();
     let qbuf = `What do you want to ${word}?`;
     const { choices: lets, altChoices, prompt: promptLets, forceprompt,
             inaccess } = getobj_letters(obj_ok_func, ctrlflags | 0);
@@ -1071,9 +1241,23 @@ export async function getobj(word, obj_ok_func, ctrlflags) {
 // scroll of scare monster here" (onscary) got NO from a function that had never
 // src/invent.c:1495 carrying() — first inventory object of the given type.
 export function carrying(type) {
-    for (const otmp of game.invent) {
+    for (const otmp of game.invent || []) {
         if (otmp.otyp === type)
             return otmp;
+    }
+    return null;
+}
+
+// src/invent.c:1587 o_on(); search a chain and its nested container contents.
+export function o_on(id, objchn) {
+    for (const obj of objchn || []) {
+        if (obj.o_id === id)
+            return obj;
+        if (obj.cobj?.length) {
+            const contained = o_on(id, obj.cobj);
+            if (contained)
+                return contained;
+        }
     }
     return null;
 }
@@ -1312,10 +1496,8 @@ export function mergable(otmp, obj) {
     if (obj.otyp === ONAMES.POT_OIL && obj.lamplit)
         return false;
 
-    if (obj.unpaid) {
-        note_unported_invent('mergable:same_price');   /* shop pricing */
+    if (obj.unpaid && !same_price(obj, otmp))
         return false;
-    }
 
     /* some additional information is always incompatible */
     if (obj.omonst || obj.omid || otmp.omonst || otmp.omid)
@@ -1420,7 +1602,8 @@ function absorb_globs(potmp, pobj) {
 // Both arguments are pointers-to-pointers in C because otmp can be REPLACED by
 // oname(); the JS equivalent is a one-element holder so the caller sees it.
 export function merged(potmp, pobj) {
-    const otmp = potmp.o, obj = pobj.o;
+    let otmp = potmp.o;
+    const obj = pobj.o;
 
     if (mergable(otmp, obj)) {
         /* Approximate age. Not done when lit: the burn would have to be
@@ -1439,8 +1622,8 @@ export function merged(potmp, pobj) {
         } else if (!Is_pudding(otmp)) {
             otmp.owt = weight(otmp);
         }
-        if (!otmp.oname && obj.oname)
-            otmp.oname = obj.oname;     /* oname(..., ONAME_SKIP_INVUPD) */
+        if (!has_oname(otmp) && has_oname(obj))
+            otmp = potmp.o = oname(otmp, ONAME(obj), ONAME_SKIP_INVUPD);
 
         obj_extract_self(obj);
 
@@ -1448,7 +1631,7 @@ export function merged(potmp, pobj) {
             otmp.pickup_prev = 1;
 
         if (obj.lamplit)
-            note_unported_invent('merged:light_sources');
+            obj_merge_light_sources(obj, otmp);
         if (obj.timed)
             obj_stop_timers(obj);
 
@@ -1475,44 +1658,74 @@ export function merged(potmp, pobj) {
                 discovered = true;
         }
 
-        if (obj.owornmask && carried(otmp))
-            note_unported_invent('merged:worn_stack');
+        if (obj.owornmask && carried(otmp)) {
+            let wmask = otmp.owornmask | obj.owornmask;
+            /* src/invent.c:892; wielded, alternate, then quivered, in
+               that order, even when both stacks already occupy slots. */
+            if (wmask & W_WEP)
+                wmask = W_WEP;
+            else if (wmask & W_SWAPWEP)
+                wmask = W_SWAPWEP;
+            else if (wmask & W_QUIVER)
+                wmask = W_QUIVER;
+            else {
+                return impossible(`merging strangely worn items (${wmask.toString(16)})`)
+                    .then(() => {
+                        setworn(otmp, otmp.owornmask);
+                        setnotworn(obj);
+                        return finish_merge();
+                    });
+            }
+            if (otmp.owornmask & ~wmask)
+                setnotworn(otmp);
+            setworn(otmp, wmask);
+            setnotworn(obj);
+        }
 
-        if (obj.bypass)
-            otmp.bypass = 1;
+        return finish_merge();
 
-        if (obj.globby) {
-            if (carried(otmp)) {
+        /* The impossible() diagnostic can wait for input. Resume C's
+           remaining merge steps after that message has finished. */
+        function finish_merge() {
+
+            if (obj.bypass)
+                otmp.bypass = 1;
+
+            if (obj.globby) {
+                if (carried(otmp)) {
+                    return (async () => {
+                        await pudding_merge_message(otmp, obj);
+                        absorb_globs(potmp, pobj);
+                        return 1;
+                    })();
+                }
+                void pudding_merge_message(otmp, obj);
+                absorb_globs(potmp, pobj);
+                return 1;
+            }
+
+            /* Print a message if item comparison discovers more
+               information about the items (with the exception of thrown
+               items, where this would be too spammy as such items get
+               unidentified by monsters very frequently). */
+            if (discovered && otmp.where === OBJ_INVENT
+                && obj.how_lost !== LOST_THROWN
+                && otmp.how_lost !== LOST_THROWN) {
+                /* pline() must be awaited but merged() has sync callers on
+                   floor/minvent stacks that can never reach this arm (the
+                   OBJ_INVENT test); hand those callers a plain 1 and hand the
+                   inventory-side callers (addinv) a promise to await. */
                 return (async () => {
-                    await pudding_merge_message(otmp, obj);
-                    absorb_globs(potmp, pobj);
+                    await pline(
+                        'You learn more about your items by comparing them.');
+                    obfree(obj, otmp);
                     return 1;
                 })();
             }
-            void pudding_merge_message(otmp, obj);
-            absorb_globs(potmp, pobj);
+
+            obfree(obj, otmp);
             return 1;
         }
-
-        /* Print a message if item comparison discovers more
-           information about the items (with the exception of thrown
-           items, where this would be too spammy as such items get
-           unidentified by monsters very frequently). */
-        if (discovered && otmp.where === OBJ_INVENT
-            && obj.how_lost !== LOST_THROWN
-            && otmp.how_lost !== LOST_THROWN) {
-            /* pline() must be awaited but merged() has sync callers on
-               floor/minvent stacks that can never reach this arm (the
-               OBJ_INVENT test); hand those callers a plain 1 and hand the
-               inventory-side callers (addinv) a promise to await. */
-            return (async () => {
-                await pline(
-                    'You learn more about your items by comparing them.');
-                return 1;
-            })();
-        }
-
-        return 1;
     }
     return 0;
 }
@@ -1642,6 +1855,15 @@ export function xprname(obj, txt, let_, dot, cost, quan) {
     return `${let_} - ${name}${dot ? '.' : ''}`;
 }
 
+// src/invent.c:2861 obj_to_let(); assign floating letters before printing.
+function obj_to_let(obj) {
+    if (game.flags.fixinv === false) {
+        obj.invlet = '#';
+        reassign();
+    }
+    return obj.invlet;
+}
+
 // src/invent.c prinv() — print one inventory line, optionally prefixed.
 // A partial-stack quantity (a merge added quan to a bigger stack) drops the
 // period and, when flags.verbose, appends " (N in total).".
@@ -1651,7 +1873,7 @@ export async function prinv(prefix, obj, quan) {
     if (!prefix) prefix = '';
     const totalbuf = total_of ? ` (${obj.quan} in total).` : '';
     await pline(`${prefix}${prefix ? ' ' : ''}`
-                + xprname(obj, null, obj.invlet, !total_of, 0, quan)
+                + xprname(obj, null, obj_to_let(obj), !total_of, 0, quan)
                 + (game.flags?.verbose !== false ? totalbuf : ''));
 }
 
@@ -1782,7 +2004,7 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
         /* in case touching this object turns out to be fatal */
         place_object(obj, game.u.ux, game.u.uy);
 
-        if (!touch_artifact(obj, game.youmonst)) {
+        if (!await touch_artifact(obj, game.youmonst)) {
             obj_extract_self(obj); /* remove it from the floor */
             await dropy(obj);      /* now put it back again :-) */
             return obj;
@@ -1864,7 +2086,7 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
 // returns. Objects on a shop bill are retained there; every other object is
 // marked deleted after its timers, light source, and transient references are
 // cleared.
-export function obfree(obj) {
+export function obfree(obj, merge = null) {
     if (obj.otyp === ONAMES.LEASH && obj.leashmon) {
         const mon = (game.level?.monsters || [])
             .find(candidate => candidate.m_id === obj.leashmon);
@@ -1901,7 +2123,7 @@ export function obfree(obj) {
     if (obj.otyp === ONAMES.BOULDER)
         obj.next_boulder = null;
 
-    if (obfree_bill(obj))
+    if (obfree_bill(obj, merge))
         return;
 
     if (obj.owornmask)
@@ -1992,21 +2214,135 @@ export function update_inventory() {
 export async function doprwep() {
     if (!game.u.uwep) {
         await You(`are ${empty_handed()}.`);
-    } else {
+    } else if (!game.iflags?.menu_requested) {
         await prinv(null, game.u.uwep, 0);
         if (game.u.twoweap)
             await prinv(null, game.u.uswapwep, 0);
+    } else {
+        return await dispinv_with_action(
+            [game.u.uwep, game.u.uswapwep, game.u.uquiver].filter(Boolean),
+            true);
     }
     return ECMD_OK;
 }
 
 
-// src/invent.c:2963 dispinv_with_action() — one item prints as a pline
-// ("c - an uncursed +1 leather armor (being worn)."), more open the menu.
-async function dispinv_with_action(objs) {
-    if (objs.length === 1) {
+/* src/invent.c:62 inuse_headers[]. The in-use sort uses these categories
+   instead of object classes, and displays the highest-rated category first. */
+const inuse_headers = [
+    '', 'Miscellaneous', 'Worn Armor',
+    'Wielded/Readied Weapons', 'Accessories',
+];
+
+// src/invent.c:70 inuse_classify().
+function inuse_classify(obj) {
+    const wmask = (obj.owornmask || 0) & (W_ACCESSORY | W_WEAPONS | W_ARMOR);
+    const ratings = [
+        [1, !wmask && obj.otyp === ONAMES.LEASH && obj.leashmon],
+        [1, !wmask && obj.oclass === OCLASSES.TOOL_CLASS && obj.lamplit],
+        [2, wmask & W_ARMU],
+        [2, wmask & W_ARMF],
+        [2, wmask & W_ARMG],
+        [2, wmask & W_ARMH],
+        [2, wmask & W_ARMS],
+        [2, wmask & W_ARMC],
+        [2, wmask & W_ARM],
+        [3, wmask & W_QUIVER],
+        [3, wmask & W_SWAPWEP],
+        [3, wmask & W_WEP],
+        [4, wmask & W_TOOL],
+    ];
+    const urighty = (game.u.uhandedness ?? 0) === 0;
+    ratings.push(
+        [4, wmask & (urighty ? W_RINGL : W_RINGR)],
+        [4, wmask & (urighty ? W_RINGR : W_RINGL)],
+        [4, wmask & W_AMUL],
+    );
+    const found = ratings.findIndex(([, used]) => used);
+    return found < 0 ? { rating: 0, orderclass: -1 }
+                     : { rating: found + 1, orderclass: ratings[found][0] };
+}
+
+// src/invent.c:2159 is_worn(), 2167 is_inuse().
+function is_inuse(obj) {
+    const wornmask = W_ARMOR | W_ACCESSORY | W_SADDLE | W_WEAPONS;
+    return carried(obj)
+        && (!!((obj.owornmask || 0) & wornmask) || tool_being_used(obj));
+}
+
+/* src/invent.c:3060 display_pickinv(), SORTLOOT_INUSE arm. This is also the
+   path that inserts bare or gloved hands into a full in-use listing when the
+   hero has armor or another active item but no primary weapon. */
+async function display_inuse_inventory(objs, altLabel) {
+    const { MENU_ITEMFLAGS_NONE, PICK_ONE } = await import('./const.js');
+    const { NO_COLOR } = await import('./terminal.js');
+    const allowed = objs ? new Set(objs) : null;
+    const entries = (game.invent || [])
+        .filter(is_inuse)
+        .filter(obj => !allowed || allowed.has(obj))
+        .map((obj, index) => ({ obj, index, ...inuse_classify(obj) }));
+
+    if (!game.u.uwep && !allowed) {
+        entries.push({
+            obj: null,
+            index: -1,
+            rating: 12,
+            orderclass: 3,
+        });
+    }
+    entries.sort((a, b) => b.rating - a.rating || a.index - b.index);
+
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    add_menu_heading(win, 'Inventory in use');
+    let previousClass = 0;
+    for (const entry of entries) {
+        if (entry.orderclass !== previousClass) {
+            const heading = entry.orderclass === 4 && altLabel
+                ? altLabel : inuse_headers[entry.orderclass];
+            add_menu_heading(win, heading);
+            previousClass = entry.orderclass;
+        }
+
+        if (!entry.obj) {
+            const hands = makeplural(body_part(HAND));
+            tty_add_menu(win, null, '-'.charCodeAt(0), '-', 0,
+                         ATR_NONE, NO_COLOR,
+                         `${game.u.uarmg ? 'gloved' : 'bare'} ${hands} (no weapon)`,
+                         MENU_ITEMFLAGS_NONE);
+            continue;
+        }
+        if (!Blind())
+            observe_object(entry.obj);
+        const glyphinfo = temporary_object_glyph(entry.obj);
+        tty_add_menu(win, glyphinfo, entry.obj.invlet.charCodeAt(0),
+                     entry.obj.invlet, 0, ATR_NONE, NO_COLOR,
+                     doname(entry.obj), MENU_ITEMFLAGS_NONE);
+    }
+    tty_end_menu(win, null);
+    const picks = await tty_select_menu(win, PICK_ONE);
+    tty_destroy_nhwindow(win);
+
+    if (picks.length) {
+        const invlet = String.fromCharCode(picks[0]);
+        const obj = (game.invent || []).find(o => o.invlet === invlet);
+        if (obj) {
+            const { itemactions } = await import('./cmd.js');
+            await itemactions(obj);
+        }
+    }
+}
+
+// src/invent.c:2963 dispinv_with_action().
+async function dispinv_with_action(objs, useInuseOrdering = false,
+                                   altLabel = null) {
+    const len = objs?.length ?? 0;
+    const menumode = len !== 1 || !!game.iflags?.menu_requested;
+    if (!menumode) {
         const o = objs[0];
         await pline(`${o.invlet} - ${doname(o)}.`);
+    } else if (useInuseOrdering) {
+        await display_inuse_inventory(objs, altLabel);
     } else {
         note_unported_invent('dispinv_with_action:menu');
     }
@@ -2022,7 +2358,7 @@ export async function doprarm() {
         /* noarmor(TRUE) */
         await You('are not wearing any armor.');
     } else {
-        return await dispinv_with_action(lets);
+        return await dispinv_with_action(lets, true);
     }
     return ECMD_OK;
 }
@@ -2031,9 +2367,14 @@ export async function doprarm() {
 export async function doprring() {
     if (!worn(W_RINGL) && !worn(W_RINGR))
         await You('are not wearing any rings.');
-    else
-        return await dispinv_with_action(
-            [worn(W_RINGL), worn(W_RINGR)].filter(Boolean));
+    else {
+        const rings = [worn(W_RINGR), worn(W_RINGL)].filter(Boolean);
+        const useInuseOrdering = rings.length > 1
+            || !!game.iflags?.menu_requested
+            || rings.some(obj => obj.oclass !== OCLASSES.RING_CLASS);
+        return await dispinv_with_action(rings, useInuseOrdering,
+                                         rings.length === 1 ? 'Ring' : 'Rings');
+    }
     return ECMD_OK;
 }
 
@@ -2042,7 +2383,7 @@ export async function dopramulet() {
     if (!worn(W_AMUL))
         await You('are not wearing an amulet.');
     else
-        return await dispinv_with_action([worn(W_AMUL)]);
+        return await dispinv_with_action([worn(W_AMUL)], true, 'Amulet');
     return ECMD_OK;
 }
 
@@ -2062,19 +2403,16 @@ export async function doprtool() {
     if (!tools.length)
         await You('are not using any tools.');
     else
-        return await dispinv_with_action(tools);
+        return await dispinv_with_action(tools, true);
     return ECMD_OK;
 }
 
 // src/invent.c:4740 doprinuse() — the '*' command: everything in use.
 export async function doprinuse() {
-    const ct = (game.invent || []).filter(o => o.owornmask
-                                               || o === game.u.uwep
-                                               || o.lamplit).length;
-    if (!ct)
+    if (!(game.invent || []).some(is_inuse))
         await You('are not wearing or wielding anything.');
     else
-        note_unported_invent('doprinuse:dispinv_with_action');
+        return await dispinv_with_action(null, true);
     return ECMD_OK;
 }
 
@@ -2103,26 +2441,6 @@ export async function doprgold() {
 }
 
 
-// src/objnam.c:1787 not_fully_identified() — is anything about this object
-// still unknown? The rknown tail (erosion-proofing) needs the erodeable
-// predicates and is recorded.
-export function not_fully_identified(otmp) {
-    /* gold doesn't have any interesting attributes */
-    if (otmp.oclass === OCLASSES.COIN_CLASS)
-        return false;
-    if (!otmp.known || !otmp.dknown || !otmp.bknown
-        || !game.objects[otmp.otyp].oc_name_known)
-        return true;
-    /* include/obj.h:338 Is_box() */
-    const Is_box = (o) => o.otyp === ONAMES.LARGE_BOX || o.otyp === ONAMES.CHEST;
-    if ((!otmp.cknown && Is_container(otmp))
-        || (!otmp.lknown && Is_box(otmp)))
-        return true;
-    if (otmp.oartifact)
-        note_unported_invent('not_fully_identified:artifact');
-    return false;
-}
-
 // src/invent.c:2698 count_unidentified()
 export function count_unidentified(objchn) {
     let unid_cnt = 0;
@@ -2140,10 +2458,9 @@ export function fully_identify_obj(otmp) {
         discover_artifact(otmp.oartifact);
     observe_object(otmp);
     otmp.known = otmp.bknown = otmp.rknown = 1;
-    if (Is_container(otmp) || otmp.otyp === ONAMES.STATUE)
-        otmp.cknown = otmp.lknown = 1;
+    set_cknown_lknown(otmp);
     if (otmp.otyp === ONAMES.EGG && (otmp.corpsenm ?? -1) >= 0)
-        note_unported_invent('fully_identify_obj:egg_type');
+        learn_egg_type(otmp.corpsenm);
 }
 
 export async function identify(otmp) {
@@ -2189,19 +2506,107 @@ export function splittable(obj) {
 }
 
 
-// src/invent.c:5060 doorganize()/doorganize_core() — the #adjust command.
-// The splitting (count-prefix) and gold arms are not reachable yet.
-// src/invent.c:4970 adjust_ok() — getobj callback for item to #adjust
+// src/invent.c:3467 display_used_invlets(); omit the source slot when splitting.
+async function display_used_invlets(avoidlet) {
+    if (!game.invent?.length)
+        return 0;
+    const { tty_get_nhwindow } = await import('./tty/wintty.js');
+    const { PICK_ONE, MENU_ITEMFLAGS_NONE } = await import('./const.js');
+    const { NO_COLOR } = await import('./terminal.js');
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    const sortpack = game.flags.sortpack !== false;
+    for (const oclass of sortpack ? inv_order() : [0]) {
+        let classcount = 0;
+        for (const otmp of game.invent) {
+            const ilet = otmp.invlet;
+            if (ilet === avoidlet)
+                continue;
+            if (!sortpack || otmp.oclass === oclass) {
+                if (sortpack && !classcount++)
+                    add_menu_heading(win, let_to_name(oclass));
+                const glyphinfo = temporary_object_glyph(otmp);
+                tty_add_menu(win, glyphinfo, ilet.charCodeAt(0), ilet, 0,
+                             ATR_NONE, NO_COLOR, doname(otmp),
+                             MENU_ITEMFLAGS_NONE);
+            }
+        }
+    }
+    tty_end_menu(win, 'Inventory letters used:');
+    const selected = await tty_select_menu(win, PICK_ONE);
+    const cancelled = !!tty_get_nhwindow(win)?.cancelled;
+    const ret = selected.length ? String.fromCharCode(selected[0])
+              : cancelled ? '\x1b' : 0;
+    tty_destroy_nhwindow(win);
+    return ret;
+}
+
+// src/invent.c:4855 reassign(); floating letters, with gold first in '$'.
+export function reassign() {
+    const invent = game.invent || [];
+    const goldidx = invent.findIndex(obj => obj.oclass === OCLASSES.COIN_CLASS);
+    const goldobj = goldidx >= 0 ? invent.splice(goldidx, 1)[0] : null;
+    let i = 0;
+    for (const obj of invent) {
+        obj.invlet = i < 26 ? String.fromCharCode(97 + i)
+                   : i < 52 ? String.fromCharCode(65 + i - 26) : '#';
+        i++;
+    }
+    if (goldobj) {
+        goldobj.invlet = '$';
+        invent.unshift(goldobj);
+    }
+    game.lastinvnr = Math.min(i, 51);
+}
+
+// src/invent.c:4886 check_invent_gold(); gold is adjustable only if misplaced.
+export async function check_invent_gold(why) {
+    let goldstacks = 0, wrongslot = 0;
+    for (const otmp of game.invent || []) {
+        if (otmp.oclass === OCLASSES.COIN_CLASS) {
+            goldstacks++;
+            if (otmp.invlet !== '$')
+                wrongslot++;
+        }
+    }
+    if (goldstacks > 1 || wrongslot > 0) {
+        await impossible(`${why}: ${wrongslot > 1 ? 'gold in wrong slots'
+            : wrongslot > 0 ? 'gold in wrong slot' : ''}${
+            wrongslot > 0 && goldstacks > 1 ? ' and ' : ''}${
+            goldstacks > 1 ? 'multiple gold stacks' : ''}`);
+        return true;
+    }
+    return false;
+}
+
+// src/invent.c:4917 adjust_ok(); getobj callback for item to #adjust.
 function adjust_ok(obj) {
     if (!obj || obj.oclass === OCLASSES.COIN_CLASS)
         return GETOBJ_EXCLUDE;
     return GETOBJ_SUGGEST;
 }
 
+// src/invent.c:4927 adjust_gold_ok(); allow misplaced gold to be repaired.
+function adjust_gold_ok(obj) {
+    return obj ? GETOBJ_SUGGEST : GETOBJ_EXCLUDE;
+}
+
+// src/invent.c:4981 doorganize().
 export async function doorganize() {
-    const obj = await getobj('adjust', adjust_ok, GETOBJ_NOFLAGS);
-    if (!obj)
+    const invent = game.invent || [];
+    if (!invent.length || (invent.length === 1
+                           && invent[0].oclass === OCLASSES.COIN_CLASS
+                           && invent[0].invlet === '$')) {
+        await You(`aren't carrying anything ${
+            !invent.length ? 'to adjust' : 'adjustable'}.`);
         return ECMD_OK;
+    }
+    if (game.flags.fixinv === false)
+        reassign();
+    const adjust_filter = await check_invent_gold('adjust')
+                          ? adjust_gold_ok : adjust_ok;
+    const obj = await getobj('adjust', adjust_filter,
+                             GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
     return await doorganize_core(obj);
 }
 
@@ -2264,65 +2669,140 @@ export async function adjust_split() {
     return await doorganize_core(split);
 }
 
-// src/invent.c:5068 doorganize_core() — the #adjust letter move
+// src/invent.c:5068 doorganize_core(); array splices represent the nobj chain.
 async function doorganize_core(obj) {
-    const { tty_yn_function } = await import('./tty/topl.js');
+    if (!obj)
+        return ECMD_CANCEL;
+    const isgold = obj.oclass === OCLASSES.COIN_CLASS;
+    const invent = game.invent;
+    const index = invent.indexOf(obj);
+    const splitting = index > 0 && invent[index - 1].invlet === obj.invlet
+                      ? invent[index - 1] : null;
+    let bumped = null, let_;
 
     /* initialize with every letter, then blank the ones in use by
        other (non-mergable) stacks */
-    let lets = '';
-    const used = new Set((game.invent || [])
-        .filter((o) => o !== obj && !merged_test(o, obj))
-        .map((o) => o.invlet));
-    for (let c = 97; c <= 122; c++) {
-        const ch = String.fromCharCode(c);
-        if (!used.has(ch) || ch === obj.invlet)
-            lets += ch;
+    const slots = [...`${isgold ? '$' : ' '}abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ `];
+    const end = game.flags.fixinv === false && inv_cnt(false) < invlet_basic
+                ? inv_cnt(false) + (splitting ? 1 : 2) : slots.length;
+    for (const otmp of invent) {
+        if (otmp !== obj && !mergable(otmp, obj)) {
+            const ch = otmp.invlet;
+            if (ch >= 'a' && ch <= 'z')
+                slots[1 + ch.charCodeAt(0) - 97] = ' ';
+            else if (ch >= 'A' && ch <= 'Z')
+                slots[27 + ch.charCodeAt(0) - 65] = ' ';
+            else if (ch === '#')
+                slots[1 + invlet_basic] = '#';
+        }
     }
-    for (let c = 65; c <= 90; c++) {
-        const ch = String.fromCharCode(c);
-        if (!used.has(ch))
-            lets += ch;
-    }
+    let lets = slots.slice(0, end).filter(ch => ch !== ' ').join('');
     if (lets.length > 5)
         lets = compactify(lets);
 
-    const qbuf = `Adjust letter to what [${lets}]${
-        (game.invent || []).length ? ' (? see used letters)' : ''}?`;
+    const qbuf = `${splitting ? `Split ${obj.quan}` : 'Adjust letter'} to what [${lets}]${
+        invent.length ? ' (? see used letters)' : ''}?`;
+    let ever_mind = false;
     for (let trycnt = 1; ; ++trycnt) {
-        const let_ = await tty_yn_function(qbuf, null, '\0');
+        let_ = isgold ? '$' : await tty_yn_function(qbuf, null, '\0', true);
         if (let_ === '?' || let_ === '*') {
-            note_unported_invent('doorganize:display_used_invlets');
-            continue;
+            let_ = await display_used_invlets(splitting ? obj.invlet : 0);
+            if (!let_)
+                continue;
         }
-        if (' \r\n\x1b'.includes(let_)) {
-            await pline('Never mind.');
-            return ECMD_OK;
+        if (quitchars.includes(let_) || (splitting && let_ === obj.invlet))
+            break;
+        if (let_ === '$' && !isgold) {
+            await pline("Only gold coins may be moved into the '$' slot.");
+            ever_mind = true;
+            break;
         }
-        if (!/[a-zA-Z]/.test(let_)) {
-            if (trycnt === 5) {
-                await pline('Never mind.');
-                return ECMD_OK;
-            }
-            continue;
-        }
-        /* the adjust itself: collect mergable stacks along the way, then
-           swap letters with whatever sits in the destination */
-        const other = (game.invent || []).find((o) => o.invlet === let_);
-        if (other && other !== obj)
-            other.invlet = obj.invlet;
-        obj.invlet = let_;
-        reorder_invent();
-        await prinv('Moving:', obj, 0);
+        if (/^[a-zA-Z]$/.test(let_) || (lets.includes(let_) && let_ !== '-'))
+            break;
+        if (trycnt === 5)
+            break;
+        await pline('Select an inventory slot letter.');
+    }
+    /* C's noadjust label restores a pending split for every cancellation. */
+    if (ever_mind || quitchars.includes(let_) || (splitting && let_ === obj.invlet)
+        || !(/^[a-zA-Z]$/.test(let_) || (lets.includes(let_) && let_ !== '-'))) {
+        if (splitting)
+            await merged({ o: splitting }, { o: obj });
+        if (!ever_mind)
+            await pline(Never_mind);
         return ECMD_OK;
     }
-}
 
-/* mergable-with test used only by doorganize's letter blanking */
-function merged_test(a, b) {
-    return a.otyp === b.otyp && (game.objects[a.otyp]?.oc_merge ?? 0)
-        && a.cursed === b.cursed && a.blessed === b.blessed
-        && (a.spe | 0) === (b.spe | 0);
+    const collect = let_ === obj.invlet;
+    let adj_type = collect ? 'Collecting:' : !splitting ? 'Moving:' : 'Splitting:';
+    /* Directly unlink: freeinv/addinv would touch artifacts, lamps and luck. */
+    extract_nobj(obj, invent);
+    for (let i = 0; i < invent.length;) {
+        const otmp = invent[i];
+        const otmpname = otmp.oname || null;
+        let objname = obj.oname || null;
+        if (collect) {
+            if ((!otmpname || (objname && objname === otmpname))
+                && await merged({ o: otmp }, { o: obj })) {
+                obj = otmp;
+                extract_nobj(obj, invent);
+                continue;
+            }
+        } else if (otmp.invlet === let_) {
+            if ((!otmpname || (objname && objname === otmpname))
+                && await merged({ o: otmp }, { o: obj })) {
+                adj_type = 'Merging:';
+                obj = otmp;
+                extract_nobj(obj, invent);
+                break;
+            }
+            if (!splitting) {
+                adj_type = 'Swapping:';
+                otmp.invlet = obj.invlet;
+            } else {
+                if (objname && !obj.oartifact)
+                    obj.oname = null;
+                if (!mergable(otmp, obj)) {
+                    if (objname)
+                        obj.oname = objname;
+                } else {
+                    objname = null;
+                }
+                if (await merged({ o: otmp }, { o: obj })) {
+                    adj_type = 'Splitting and merging:';
+                    obj = otmp;
+                    extract_nobj(obj, invent);
+                } else if (inv_cnt(false) >= invlet_basic) {
+                    await merged({ o: splitting }, { o: obj });
+                    await Your('pack is too full.');
+                    return ECMD_OK;
+                } else {
+                    bumped = otmp;
+                    extract_nobj(bumped, invent);
+                }
+            }
+            break;
+        }
+        i++;
+    }
+
+    obj.invlet = let_;
+    obj.where = OBJ_INVENT;
+    invent.unshift(obj);
+    reorder_invent();
+    if (bumped) {
+        assigninvlet(bumped);
+        bumped.where = OBJ_INVENT;
+        invent.unshift(bumped);
+        reorder_invent();
+    }
+    await prinv(adj_type, obj, 0);
+    if (bumped)
+        await prinv('Moving:', bumped, 0);
+    if (splitting)
+        clear_splitobjs();
+    update_inventory();
+    return ECMD_OK;
 }
 
 // src/invent.c:1413 delallobj(); destroy every object at <x,y> except the

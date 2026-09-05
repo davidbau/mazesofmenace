@@ -14,7 +14,7 @@
 import { M_AP_OBJECT } from './const.js';
 import { M_AP_TYPE } from './const.js';
 import { ONAME } from './const.js';
-import { get_artifact } from './artifact.js';
+import { get_artifact, find_artifact } from './artifact.js';
 import { QBUFSZ } from './const.js';
 import { shk_your } from './shk.js';
 import { carried, is_poisonable, Has_contents, OBJ_FLOOR, OBJ_MINVENT } from './obj.js';
@@ -41,14 +41,18 @@ import { W_ARMOR, W_TOOL, W_SADDLE, W_RINGR, W_RINGL, W_AMUL, W_QUIVER, W_WEP,
          P_POLEARMS, P_HAMMER, ONAME_WISH, ONAME_NO_FLAGS,
          HAND, ROOMOFFSET, NO_TRAP, TRAPNUM, ROCKTRAP, MAGIC_PORTAL,
          BURN_OBJECT,
-         is_hole, DOOR, SDOOR, IRONBARS, HWALL, VWALL, IS_WALL,
-         W_NONDIGGABLE, W_NONPASSWALL,
+         is_hole, DOOR, SDOOR, IRONBARS, HWALL, VWALL, DBWALL, IS_WALL,
+         IS_DOOR, IS_FURNITURE, IS_FOUNTAIN, IS_GRAVE,
+         W_NONDIGGABLE, W_NONPASSWALL, WM_MASK,
          D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED,
          D_TRAPPED, ALTAR, Align2amask, A_NONE, A_CHAOTIC, A_NEUTRAL,
-         A_LAWFUL, SINK, S_LPUDDING, S_LDWASHER, S_LRING, POOL, MOAT, WATER,
-         LAVAPOOL, LAVAWALL, ROOM, ICE, ICED_POOL, ICED_MOAT,
+         A_LAWFUL, SINK, FOUNTAIN, THRONE, TREE, CLOUD,
+         F_LOOTED, T_LOOTED, TREE_LOOTED, TREE_SWARM,
+         S_LPUDDING, S_LDWASHER, S_LRING, POOL, MOAT, WATER,
+         LAVAPOOL, LAVAWALL, ROOM, CORR, SCORR, ICE, ICED_POOL, ICED_MOAT,
          DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, DB_UNDER, DB_ICE,
-         DB_MOAT } from './const.js';
+         DB_MOAT, DB_LAVA, DB_FLOOR, STAIRS, LADDER, TT_LAVA,
+         MELT_ICE_AWAY, Is_rogue_level } from './const.js';
 import { mons, PMNAMES } from './monst_data.js';
 import { observe_object } from './o_init.js';
 import { ordin, distu, s_suffix } from './hacklib.js';
@@ -85,8 +89,10 @@ const {
 /* The generated obj_descr table stores 0 (a NUMBER) for absent strings, and
    `?? null` passes 0 through — which made "has a description" tests true for
    every descriptionless item the moment one entered the discoveries list. */
-export const OBJ_NAME = (ocl) => obj_descr[ocl.oc_name_idx]?.oc_name || null;
-export const OBJ_DESCR = (ocl) => obj_descr[ocl.oc_descr_idx]?.oc_descr || null;
+export const OBJ_NAME = (ocl) =>
+    (game.obj_descr || obj_descr)[ocl.oc_name_idx]?.oc_name || null;
+export const OBJ_DESCR = (ocl) =>
+    (game.obj_descr || obj_descr)[ocl.oc_descr_idx]?.oc_descr || null;
 
 // include/objclass.h:38-44 — armour category, stored in oc_subtyp.
 export const ARM_SUIT = 0, ARM_SHIELD = 1, ARM_HELM = 2, ARM_GLOVES = 3,
@@ -117,7 +123,7 @@ export function obj_typename(otyp) {
             dn = 'koto';
     }
     const un = ocl.oc_uname || null;
-    const nn = ocl.oc_name_known;
+    let nn = ocl.oc_name_known;
     let buf = '';
 
     switch (ocl.oc_class) {
@@ -126,7 +132,14 @@ export function obj_typename(otyp) {
     case POTION_CLASS: buf = 'potion'; break;
     case SCROLL_CLASS: buf = 'scroll'; break;
     case WAND_CLASS:   buf = 'wand'; break;
-    case SPBOOK_CLASS: buf = 'spellbook'; break;
+    case SPBOOK_CLASS:
+        if (otyp !== ONAMES.SPE_NOVEL)
+            buf = 'spellbook';
+        else {
+            buf = nn ? 'novel' : 'book';
+            nn = 0;
+        }
+        break;
     case RING_CLASS:   buf = 'ring'; break;
     case AMULET_CLASS:
         buf = nn ? actualn : 'amulet';
@@ -149,7 +162,7 @@ export function obj_typename(otyp) {
         } else {
             buf += (dn || actualn);
             if (ocl.oc_class === GEM_CLASS)
-                buf += (ocl.oc_material === 8) ? ' stone' : ' gem';
+                buf += (ocl.oc_material === MATERIALS.MINERAL) ? ' stone' : ' gem';
             if (un) buf += ` called ${un}`;
         }
         return buf;
@@ -289,6 +302,9 @@ export function xname(obj) {
 // src/objnam.c xname_flags()
 export function xname_flags(obj, cxn_flags) {
     const ocl = game.objects[obj.otyp];
+    // src/objnam.c:625, unique articles must not reveal forgotten types.
+    if (!ocl.oc_name_known && ocl.oc_uses_known && ocl.oc_unique)
+        obj.known = 0;
     /* src/objnam.c:627 — naming an object the hero can see observes it:
            if (!Blind && !gd.distantname) observe_object(obj);
        This is where a wished amulet's dknown comes from ("a cubical
@@ -299,7 +315,7 @@ export function xname_flags(obj, cxn_flags) {
     if (game.urole?.mnum === 'PM_CLERIC'
         || game.urole?.mnum === PMNAMES.PM_CLERIC)
         obj.bknown = 1;
-    const nn = ocl.oc_name_known;
+    const nn = game.iflags?.override_ID ? 1 : ocl.oc_name_known;
     let actualn = OBJ_NAME(ocl) ?? 'object?';
     let dn = OBJ_DESCR(ocl) ?? actualn;
     /* src/objnam.c:605 — a Samurai reads these items in Japanese */
@@ -311,7 +327,11 @@ export function xname_flags(obj, cxn_flags) {
     }
     const un = ocl.oc_uname || null;
     let pluralize = (obj.quan !== 1) && !(cxn_flags & CXN_SINGULAR);
-    const dknown = obj.dknown;
+    const dknown = obj.dknown || game.iflags?.override_ID;
+    const known = obj.known || game.iflags?.override_ID;
+    const bknown = obj.bknown || game.iflags?.override_ID;
+    if (obj.oartifact && obj.dknown)
+        find_artifact(obj);
     let buf = '';
 
     /* src/objnam.c:663, jump directly to the personal name once an artifact
@@ -368,7 +388,7 @@ export function xname_flags(obj, cxn_flags) {
             if (nn) {
                 /* src/objnam.c:841 — known blessed/cursed water reads
                    "potion of holy/unholy water" */
-                const holy = (obj.otyp === ONAMES.POT_WATER && obj.bknown
+                const holy = (obj.otyp === ONAMES.POT_WATER && bknown
                               && (obj.blessed || obj.cursed))
                     ? (obj.blessed ? 'holy ' : 'unholy ') : '';
                 buf += ` of ${holy}${actualn}`;
@@ -406,7 +426,7 @@ export function xname_flags(obj, cxn_flags) {
         }
         buf = actualn;
         /* src/objnam.c tin_details(): a tin names its contents once known */
-        if (obj.otyp === ONAMES.TIN && obj.known)
+        if (obj.otyp === ONAMES.TIN && known)
             buf = tin_details(obj);
         break;
     }
@@ -416,7 +436,7 @@ export function xname_flags(obj, cxn_flags) {
         else if (obj.otyp === ONAMES.AMULET_OF_YENDOR
                  || obj.otyp === ONAMES.FAKE_AMULET_OF_YENDOR)
             /* each must be identified individually */
-            buf = obj.known ? actualn : dn;
+            buf = known ? actualn : dn;
         else if (nn)
             buf = actualn;
         else if (un)
@@ -613,7 +633,9 @@ export function minimal_xname(obj) {
     ocl.oc_uname = 0;
     /* suppress actual name if object's description is unknown */
     const save_name_known = ocl.oc_name_known;
-    if (!obj.dknown)
+    if (game.iflags?.override_ID)
+        ocl.oc_name_known = 1;
+    else if (!obj.dknown)
         ocl.oc_name_known = 0;
 
     /* caveat: this makes a lot of assumptions about which fields are
@@ -621,7 +643,7 @@ export function minimal_xname(obj) {
     const bareobj = {
         otyp: otyp,
         oclass: obj.oclass,
-        dknown: obj.dknown ? 1 : 0,
+        dknown: (obj.dknown || game.iflags?.override_ID) ? 1 : 0,
         /* suppress known except for amulets (needed for fakes and real
            A-of-Y); default is "on" for types which don't use it */
         known: (obj.oclass === OCLASSES.AMULET_CLASS)
@@ -755,9 +777,6 @@ export function aobjnam(otmp, verb) {
 
 // src/objnam.c:2262 yobjnam() — yname + aobjnam, "your <count> <name> <verb>".
 //
-// C routes the prefix through shk_your(), whose shop-ownership, monster-
-// ownership and unique-corpse arms are not reached by anything ported; the
-// remaining arm is the_your[carried(obj)], which is what yname() already uses.
 export function yobjnam(obj, verb) {
     const s = aobjnam(obj, verb);
 
@@ -765,7 +784,7 @@ export function yobjnam(obj, verb) {
        unique objects and "foo of bar" quest artifacts */
     if (!carried(obj) || !obj_is_pname(obj)
         || obj.oartifact >= ART_ORB_OF_DETECTION)
-        return `${carried(obj) ? 'your' : 'the'} ` + s;
+        return shk_your(obj) + s;
     return s;
 }
 
@@ -865,20 +884,9 @@ const has_oname = (obj) => obj.oname != null;
 export function obj_is_pname(obj) {
     if (!obj.oartifact || !has_oname(obj))
         return false;
-    if (!game.program_state_gameover && !game.iflags?.override_ID) {
-        const ocl = game.objects[obj.otyp];
-        if (!obj.known || !obj.dknown || !obj.bknown || !ocl.oc_name_known
-            || (obj.oartifact && undiscovered_artifact(obj.oartifact)))
-            return false;
-        if ((!obj.cknown && (Is_container(obj) || obj.otyp === ONAMES.STATUE))
-            || (!obj.lknown && Is_box(obj)))
-            return false;
-        if (!obj.rknown
-            && (obj.oclass === ARMOR_CLASS || obj.oclass === WEAPON_CLASS
-                || is_weptool(obj, game.objects))
-            && is_damageable(obj))
-            return false;
-    }
+    if (!game.program_state_gameover && !game.iflags?.override_ID
+        && not_fully_identified(obj))
+        return false;
     return true;
 }
 
@@ -886,9 +894,9 @@ export function obj_is_pname(obj) {
 // unique object the hero has identified)? The fake amulet lies while
 // unknown.
 export function the_unique_obj(obj) {
-    const known = obj.known;
+    const known = obj.known || game.iflags?.override_ID;
 
-    if (!obj.dknown)
+    if (!obj.dknown && !game.iflags?.override_ID)
         return false;
     else if (obj.otyp === ONAMES.FAKE_AMULET_OF_YENDOR && !known)
         return true; /* lie */
@@ -1090,15 +1098,18 @@ function billed_cost(obj) {
     return { price, found };
 }
 
-export function doname(obj) {
+export function doname(obj, vague_quan = false) {
     const ocl = game.objects[obj.otyp];
     let bp = xname(obj);
     /* xname() can update the object's observed and Priest-known flags. */
-    const known = obj.known, bknown = obj.bknown, dknown = obj.dknown;
+    const override = !!game.iflags?.override_ID;
+    const known = override || obj.known, bknown = override || obj.bknown;
+    const dknown = override || obj.dknown, cknown = override || obj.cknown;
+    const lknown = override || obj.lknown;
     let prefix = '';
 
     if (obj.quan !== 1)
-        prefix = `${obj.quan} `;
+        prefix = vague_quan && !dknown ? 'some ' : `${obj.quan} `;
     else if (obj.otyp === ONAMES.CORPSE)
         ;                              /* corpse_xname supplies the article */
     else if (obj_is_pname(obj) || the_unique_obj(obj))
@@ -1109,7 +1120,7 @@ export function doname(obj) {
     /* src/objnam.c:1300 — "empty" goes at the beginning: a container known
        to have no contents (bag of tricks and horn of plenty key on charges
        instead and are recorded with the charge subsystem) */
-    if (obj.cknown
+    if (cknown
         && ((obj.otyp === ONAMES.BAG_OF_TRICKS
              || obj.otyp === ONAMES.HORN_OF_PLENTY)
             ? (obj.spe === 0 && !known)
@@ -1141,7 +1152,7 @@ export function doname(obj) {
 
     /* src/objnam.c:1358 — a box whose lock state is known says so. This
        runs after the BUC words and before greased, which is where C has it. */
-    if (obj.lknown && Is_box(obj)) {
+    if (lknown && Is_box(obj)) {
         if (obj.obroken)
             /* 3.6.0 used "unlockable" here but that could be misunderstood
                to mean "capable of being unlocked" rather than the intended
@@ -1173,7 +1184,7 @@ export function doname(obj) {
         prefix += is_corrodeable(obj, game.objects) ? 'corroded '
                   : 'rotted ';
     }
-    if (obj.rknown && obj.oerodeproof)
+    if ((obj.rknown || override) && obj.oerodeproof)
         prefix += is_rustprone(obj, game.objects) ? 'rustproof '
                   : is_corrodeable(obj, game.objects) ? 'corrodeproof '
                     : is_flammable(obj, game.objects) ? 'fireproof '
@@ -1183,7 +1194,7 @@ export function doname(obj) {
 
     /* src/objnam.c:1373 -- once a container's contents are known, doname()
        reports the number of separate stacks it holds. */
-    if (obj.cknown && obj.cobj?.length)
+    if (cknown && obj.cobj?.length)
         bp += ` containing ${obj.cobj.length} item${plur(obj.cobj.length)}`;
 
     switch (is_weptool(obj, game.objects) ? WEAPON_CLASS : obj.oclass) {
@@ -1287,25 +1298,25 @@ export function doname(obj) {
         break;
     }
 
-    /* src/objnam.c:1560-1646 — the wield/swap/quiver suffixes. twoweap and
-       the tether/Sting-glow/artifact-light decorations need state this tree
-       does not track; u.twoweap stays falsy throughout. body_part(HAND) is
-       "hand" for every un-polymorphed form and polyself is not ported. */
+    /* src/objnam.c:1560-1646 — the wield/swap/quiver suffixes. */
     if (obj.owornmask & W_WEP) {
+        const twoweap_primary = obj === game.u.uwep && !!game.u.twoweap;
         /* use alternate phrasing for non-weapons and for wielded ammo
            (arrows, bolts), or missiles (darts, shuriken, boomerangs) */
         if (obj.quan !== 1
             || ((obj.oclass === OCLASSES.WEAPON_CLASS)
                 ? (is_ammo(obj) || is_missile(obj))
-                : !is_weptool(obj, game.objects))) {
+                : !is_weptool(obj, game.objects))
+            && !twoweap_primary) {
             bp += ' (wielded)';
         } else {
             const hand_s = bimanual(obj) ? 'hands'
                 : `${((game.u.uhandedness ?? 0) === 0) ? 'right' : 'left'} hand`; /* URIGHTY; RIGHT_HANDED == 0 */
             /* src/objnam.c:1593 — while twoweaponing the primary reads
                "wielded in", matching the secondary's phrasing */
-            const twoweap_primary = !!game.u.twoweap;
-            bp += ` (${twoweap_primary ? 'wielded in' : 'weapon in'} ${hand_s})`;
+            const relation = obj.otyp === ONAMES.AKLYS ? 'tethered to'
+                           : twoweap_primary ? 'wielded in' : 'weapon in';
+            bp += ` (${relation} ${hand_s})`;
         }
     }
     if (obj.owornmask & W_SWAPWEP) {
@@ -1355,6 +1366,32 @@ export function doname(obj) {
         prefix = just_an(rest || bp) + rest;
     }
     return prefix + bp;
+}
+
+// src/objnam.c:1787 not_fully_identified(). Erosion knowledge only matters
+// for vulnerable armor, weapons, weapon-tools and iron balls.
+export function not_fully_identified(otmp) {
+    if (otmp.oclass === COIN_CLASS)
+        return false;
+    if (!otmp.known || !otmp.dknown || !otmp.bknown
+        || !game.objects[otmp.otyp].oc_name_known)
+        return true;
+    if ((!otmp.cknown && (Is_container(otmp) || otmp.otyp === ONAMES.STATUE))
+        || (!otmp.lknown && Is_box(otmp)))
+        return true;
+    if (otmp.oartifact && undiscovered_artifact(otmp.oartifact))
+        return true;
+    if (otmp.rknown
+        || (otmp.oclass !== ARMOR_CLASS && otmp.oclass !== WEAPON_CLASS
+            && !is_weptool(otmp, game.objects) && otmp.oclass !== BALL_CLASS))
+        return false;
+    return !!is_damageable(otmp);
+}
+
+// src/objnam.c:1768 doname_vague_quan(). Farlook uses "some" instead of a
+// precise quantity when the object has not been seen up close.
+export function doname_vague_quan(obj) {
+    return doname(obj, true);
 }
 
 // include/prop.h
@@ -2691,65 +2728,112 @@ function set_wallprop_from_str(bp) {
         game.level.at(game.u.ux, game.u.uy).wall_info |= wall_prop;
 }
 
-// src/objnam.c:3554 wizterrainwish(), supported terrain arms.
+// src/objnam.c:3554 wizterrainwish(), debug wishes for furniture and terrain.
 async function wizterrainwish(d) {
     const x = game.u.ux, y = game.u.uy;
     const lev = game.level?.at(x, y);
     const wanted = d.bp.toLowerCase();
     if (!lev)
         return null;
+
+    let madeTerrain = false, badTerrain = false;
     const oldtyp = lev.typ;
     const isDrawbridge = oldtyp === DRAWBRIDGE_DOWN
         || oldtyp === DRAWBRIDGE_UP;
+    const floorObjects = () => (game.level.objects || [])
+        .filter(obj => obj.ox === x && obj.oy === y);
+    const clearRmFlags = () => {
+        /* C's rm fields below all alias the same five-bit flags member. */
+        lev.flags = lev.doormask = lev.wall_info = lev.altarmask = 0;
+        lev.looted = lev.icedpool = lev.drawbridgemask = lev.ladder = 0;
+        lev.emptygrave = 0;
+    };
+    const drawbridgeTerrainMessage = async (what) => {
+        await pline(`${what} ${lev.typ === DRAWBRIDGE_UP
+            ? 'in front of' : 'under'} the drawbridge.`);
+    };
 
-    if (wanted.endsWith('sink')) {
+    if (wanted.endsWith('fountain')) {
+        lev.typ = FOUNTAIN;
+        if (oldtyp !== FOUNTAIN)
+            game.level.flags.nfountains = (game.level.flags.nfountains || 0) + 1;
+        lev.looted = d.looted ? F_LOOTED : 0;
+        lev.blessedftn = !!(d.blessed || wanted.startsWith('magic '));
+        lev.horizontal = lev.blessedftn;
+        await pline(`A ${lev.blessedftn ? 'magic ' : ''}fountain.`);
+        madeTerrain = true;
+    } else if (wanted.endsWith('throne')) {
+        lev.typ = THRONE;
+        lev.looted = d.looted ? T_LOOTED : 0;
+        await pline('A throne.');
+        madeTerrain = true;
+    } else if (wanted.endsWith('sink')) {
         lev.typ = SINK;
         if (oldtyp !== SINK)
             game.level.flags.nsinks = (game.level.flags.nsinks || 0) + 1;
         lev.looted = d.looted ? S_LPUDDING | S_LDWASHER | S_LRING : 0;
         await pline('A sink.');
+        madeTerrain = true;
+
+    /* "water" matches an object before this terrain fallback. */
     } else if (wanted.endsWith('pool') || wanted.endsWith('moat')
                || wanted.endsWith('wall of water')) {
-        const waterType = wanted.endsWith('pool') ? POOL
-            : wanted.endsWith('moat') ? MOAT : WATER;
+        const ltyp = wanted.endsWith('pool') ? POOL
+                   : wanted.endsWith('moat') ? MOAT : WATER;
         if (!isDrawbridge) {
-            lev.typ = waterType;
-            lev.flags = 0;
+            lev.typ = ltyp;
+            clearRmFlags();
         } else {
             lev.drawbridgemask = ((lev.drawbridgemask ?? 0) & ~DB_UNDER)
                 | DB_MOAT;
         }
         const { del_engr_at } = await import('./engrave.js');
         del_engr_at(x, y);
-        if (isDrawbridge) {
-            await pline(`Moat ${oldtyp === DRAWBRIDGE_UP
-                ? 'in front of' : 'under'} the drawbridge.`);
-        } else {
+        if (!isDrawbridge) {
             const { waterbody_name } = await import('./pager.js');
-            await pline(`${An(waterbody_name(x, y))}.`);
+            const props = (game.u.uprops ||= {});
+            const savedResistance = props.HALLUC_RES;
+            props.HALLUC_RES = 1;
+            const description = waterbody_name(x, y);
+            if (savedResistance === undefined)
+                delete props.HALLUC_RES;
+            else
+                props.HALLUC_RES = savedResistance;
+            await pline(`${An(description)}.`);
+        } else {
+            await drawbridgeTerrainMessage('Moat');
         }
         const { water_damage_chain } = await import('./trap.js');
-        const floorObjects = (game.level.objects || [])
-            .filter(obj => obj.ox === x && obj.oy === y);
-        await water_damage_chain(floorObjects, true);
+        await water_damage_chain(floorObjects(), true);
+        madeTerrain = true;
+
     } else if (wanted.endsWith('lava')) {
-        const wall = wanted.endsWith('wall of lava');
-        lev.typ = wall ? LAVAWALL : LAVAPOOL;
-        lev.flags = 0;
+        const ltyp = wanted.endsWith('wall of lava') ? LAVAWALL : LAVAPOOL;
+        if (!isDrawbridge) {
+            lev.typ = ltyp;
+            clearRmFlags();
+        } else {
+            lev.drawbridgemask = ((lev.drawbridgemask ?? 0) & ~DB_UNDER)
+                | DB_LAVA;
+        }
         const { del_engr_at } = await import('./engrave.js');
         del_engr_at(x, y);
-        await pline(`A ${wall ? 'wall' : 'pool'} of molten lava.`);
-        if ((!Levitation() && !Flying()) || wall) {
-            const { pooleffects } = await import('./hack.js');
-            await pooleffects(false);
+        if (!isDrawbridge) {
+            await pline(`A ${lev.typ === LAVAPOOL ? 'pool' : 'wall'} of molten lava.`);
+            if ((!Levitation() && !Flying()) || lev.typ === LAVAWALL) {
+                const { pooleffects } = await import('./hack.js');
+                await pooleffects(false);
+            }
+        } else {
+            await drawbridgeTerrainMessage('Lava');
         }
-        const floorObjects = (game.level.objects || [])
-            .filter(obj => obj.ox === x && obj.oy === y);
         const { fire_damage_chain } = await import('./trap.js');
-        await fire_damage_chain(floorObjects, true, true, x, y);
+        await fire_damage_chain(floorObjects(), true, true, x, y);
+        madeTerrain = true;
     } else if (wanted.endsWith('ice')) {
         if (!isDrawbridge) {
             lev.typ = ICE;
+            clearRmFlags();
             lev.icedpool = oldtyp === ROOM ? ICED_POOL : ICED_MOAT;
         } else {
             lev.drawbridgemask = ((lev.drawbridgemask ?? 0) & ~DB_UNDER)
@@ -2757,11 +2841,18 @@ async function wizterrainwish(d) {
         }
         const { del_engr_at } = await import('./engrave.js');
         del_engr_at(x, y);
-        if (wanted.startsWith('melting '))
-            note_unported_objnam('wizterrainwish:melting-ice-timer');
-        await pline(isDrawbridge
-            ? `Ice ${oldtyp === DRAWBRIDGE_UP ? 'in front of' : 'under'} the drawbridge.`
-            : 'Solid ice.');
+        if (wanted.startsWith('melting ')) {
+            const { start_melt_ice_timeout } = await import('./zap.js');
+            start_melt_ice_timeout(x, y, 0);
+        }
+        if (!isDrawbridge) {
+            const { ice_descr } = await import('./pager.js');
+            const description = ice_descr(x, y);
+            await pline(`${description.charAt(0).toUpperCase()}${description.slice(1)}.`);
+        } else {
+            await drawbridgeTerrainMessage('Ice');
+        }
+        madeTerrain = true;
     } else if (wanted.endsWith('altar')) {
         const alignment = wanted.startsWith('chaotic ') ? A_CHAOTIC
                         : wanted.startsWith('neutral ') ? A_NEUTRAL
@@ -2774,61 +2865,184 @@ async function wizterrainwish(d) {
         lev.typ = ALTAR;
         lev.altarmask = Align2amask(alignment);
         await pline(`${An(label)} altar.`);
+        madeTerrain = true;
+    } else if (wanted.endsWith('grave') || wanted.endsWith('headstone')) {
+        const { make_grave } = await import('./mklev.js');
+        make_grave(x, y, null);
+        if (IS_GRAVE(lev.typ)) {
+            lev.looted = 0;
+            lev.disturbed = d.looted ? 1 : 0;
+            lev.horizontal = !!lev.disturbed;
+            await pline(`A ${lev.disturbed ? 'disturbed ' : ''}grave.`);
+            madeTerrain = true;
+        } else {
+            await pline("Can't place a grave here.");
+            badTerrain = true;
+        }
+    } else if (wanted.endsWith('tree')) {
+        lev.typ = TREE;
+        lev.looted = d.looted ? TREE_LOOTED | TREE_SWARM : 0;
+        set_wallprop_from_str(d.bp);
+        await pline('A tree.');
+        madeTerrain = true;
     } else if (wanted.endsWith('bars')) {
         lev.typ = IRONBARS;
-        lev.flags = 0;
+        clearRmFlags();
         set_wallprop_from_str(d.bp);
         await pline('Iron bars.');
-    } else if (wanted === 'wall') {
+        madeTerrain = true;
+    } else if (wanted.endsWith('cloud')) {
+        lev.typ = CLOUD;
+        clearRmFlags();
+        await pline('A cloud.');
+        const { del_engr_at } = await import('./engrave.js');
+        del_engr_at(x, y);
+        madeTerrain = true;
+    } else if (wanted.endsWith('door')
+               || (d.doorless && wanted.endsWith('doorway'))) {
+        const secret = wanted.endsWith('secret door');
+        if (lev.typ === DOOR || lev.typ === SDOOR
+            || (IS_WALL(lev.typ) && lev.typ !== DBWALL)
+            || lev.typ === IRONBARS) {
+            const oldWallInfo = lev.typ !== DOOR ? (lev.wall_info || 0) : 0;
+            lev.typ = secret ? SDOOR : DOOR;
+            clearRmFlags();
+            if (Is_rogue_level(game.u.uz)) {
+                d.doorless = 1;
+                d.locked = d.closed = d.open = d.broken = 0;
+            }
+            let mask = d.locked ? D_LOCKED
+                     : (d.doorless || secret) ? D_NODOOR
+                       : d.open ? D_ISOPEN
+                         : d.broken ? D_BROKEN : D_CLOSED;
+            if (secret)
+                mask |= oldWallInfo & WM_MASK;
+            if (d.trapped === 2
+                || (((mask & (D_LOCKED | D_CLOSED)) === 0) && !secret))
+                d.trapped = 0;
+            if (d.trapped)
+                mask |= D_TRAPPED;
+            lev.doormask = mask;
+            if (secret)
+                lev.wall_info = mask;
+
+            const words = [];
+            if (mask & D_TRAPPED) words.push('trapped');
+            if (mask & D_LOCKED) words.push('locked');
+            if (secret) {
+                words.push('secret door');
+            } else {
+                if (mask & D_CLOSED) words.push('closed');
+                if (mask & D_ISOPEN) words.push('open');
+                if (mask & D_BROKEN) words.push('broken');
+                if ((mask & ~D_TRAPPED) === D_NODOOR)
+                    words.push('doorless doorway');
+                else
+                    words.push('door');
+            }
+            await pline(`${An(words.join(' '))}.`);
+            madeTerrain = true;
+        } else {
+            await pline(`${secret ? 'Secret door' : 'Door'} requires door or wall location.`);
+            badTerrain = true;
+        }
+    } else if ((wanted === 'wall' || wanted.endsWith(' wall'))) {
         const north = game.level.at(x, y - 1);
         const south = game.level.at(x, y + 1);
         lev.typ = ((north && IS_WALL(north.typ))
                    || (south && IS_WALL(south.typ))) ? VWALL : HWALL;
-        lev.flags = 0;
-        lev.horizontal = lev.typ === HWALL;
+        clearRmFlags();
+        set_wallprop_from_str(d.bp);
         const { fix_wall_spines } = await import('./mklev.js');
         fix_wall_spines(Math.max(0, x - 1), Math.max(0, y - 1),
                         Math.min(79, x + 1), Math.min(20, y + 1));
-        lev.horizontal = lev.typ === HWALL;
         await pline('A wall.');
-    } else if (wanted === 'door' || wanted.endsWith('secret door')) {
-        const secret = wanted.endsWith('secret door');
-        if (!(lev.typ === DOOR || lev.typ === SDOOR || IS_WALL(lev.typ)
-              || lev.typ === IRONBARS)) {
-            await pline(`${secret ? 'Secret door' : 'Door'} requires door or wall location.`);
-            return hands_obj;
-        }
-        lev.typ = secret ? SDOOR : DOOR;
-        let mask = d.locked ? D_LOCKED
-                   : (d.doorless || secret) ? D_NODOOR
-                     : d.open ? D_ISOPEN
-                       : d.broken ? D_BROKEN : D_CLOSED;
-        if (d.trapped === 1
-            && (secret || (mask & (D_LOCKED | D_CLOSED))))
-            mask |= D_TRAPPED;
-        lev.doormask = mask;
-        const words = [];
-        if (mask & D_TRAPPED) words.push('trapped');
-        if (mask & D_LOCKED) words.push('locked');
-        if (secret) {
-            words.push('secret door');
+        madeTerrain = true;
+    } else if (wanted.endsWith('secret corridor')) {
+        if (lev.typ === CORR) {
+            lev.typ = SCORR;
+            await pline('Secret corridor.');
+            madeTerrain = true;
         } else {
-            if (mask & D_CLOSED) words.push('closed');
-            else if (mask & D_ISOPEN) words.push('open');
-            else if (mask & D_BROKEN) words.push('broken');
-            else words.push('doorless');
-            words.push(mask === D_NODOOR ? 'doorway' : 'door');
+            await pline('Secret corridor requires corridor location.');
+            badTerrain = true;
         }
-        await pline(`${An(words.join(' '))}.`);
-    } else {
-        return null;
+    } else if (wanted.endsWith('room') || wanted.endsWith('floor')
+               || wanted.endsWith('ground')) {
+        const canOverwrite = !!game.iflags?.debug_overwrite_stairs
+            || (oldtyp !== LADDER && oldtyp !== STAIRS);
+        const { is_pool_or_lava } = await import('./dbridge.js');
+        if (oldtyp === ROOM
+            || (IS_FURNITURE(oldtyp) && canOverwrite)
+            || oldtyp === ICE || is_pool_or_lava(x, y)) {
+            lev.typ = ROOM;
+            await pline('Room floor.');
+            if (IS_FURNITURE(oldtyp)) {
+                const { count_level_features } = await import('./mklev.js');
+                count_level_features();
+            }
+            const { t_at } = await import('./mon.js');
+            const trap = t_at(x, y);
+            if (trap && trap.ttyp !== MAGIC_PORTAL) {
+                const { deltrap } = await import('./trap.js');
+                deltrap(trap);
+            }
+            madeTerrain = true;
+        } else if (isDrawbridge) {
+            lev.drawbridgemask = ((lev.drawbridgemask ?? 0) & ~DB_UNDER)
+                | DB_FLOOR;
+            await drawbridgeTerrainMessage('Floor');
+            madeTerrain = true;
+        } else {
+            await pline('Room|floor|ground not allowed here.');
+            badTerrain = true;
+        }
     }
 
-    const { newsym } = await import('./display.js');
-    const { recalc_block_point } = await import('./vision.js');
-    newsym(x, y);
-    recalc_block_point(x, y);
-    return hands_obj;
+    if (madeTerrain) {
+        const { feel_newsym, docrt } = await import('./display.js');
+        const { recalc_block_point } = await import('./vision.js');
+        const { is_pool, is_lava } = await import('./mon.js');
+        feel_newsym(x, y);
+
+        if (game.u.uinwater && !is_pool(game.u.ux, game.u.uy)) {
+            const { set_uinwater } = await import('./hack.js');
+            await set_uinwater(0);
+            await docrt();
+        } else {
+            if (game.u.utrap && game.u.utraptype === TT_LAVA
+                && !is_lava(game.u.ux, game.u.uy)) {
+                const { reset_utrap } = await import('./trap.js');
+                await reset_utrap(false);
+            }
+            recalc_block_point(x, y);
+        }
+
+        if (IS_FOUNTAIN(oldtyp) || oldtyp === SINK) {
+            const { count_level_features } = await import('./mklev.js');
+            count_level_features();
+        }
+        const { is_ice } = await import('./dbridge.js');
+        if (!is_ice(x, y)) {
+            const { spot_stop_timers } = await import('./timeout.js');
+            spot_stop_timers(x, y, MELT_ICE_AWAY);
+        }
+        if (IS_FOUNTAIN(oldtyp) || IS_GRAVE(oldtyp)
+            || IS_WALL(oldtyp) || oldtyp === IRONBARS
+            || IS_DOOR(oldtyp) || oldtyp === SDOOR) {
+            if (!IS_FOUNTAIN(lev.typ) && !IS_GRAVE(lev.typ)
+                && !IS_DOOR(lev.typ) && lev.typ !== SDOOR) {
+                lev.horizontal = false;
+                lev.blessedftn = false;
+                lev.disturbed = false;
+            }
+        }
+        const { switch_terrain } = await import('./hack.js');
+        await switch_terrain();
+    }
+    if (madeTerrain || badTerrain)
+        return hands_obj;
+    return null;
 }
 
 /*
@@ -3040,9 +3254,13 @@ export async function readobjnam(bp, no_wish) {
     if (d.islit && (d.typ === ONAMES.OIL_LAMP || d.typ === ONAMES.MAGIC_LAMP
                     || d.typ === ONAMES.BRASS_LANTERN
                     || Is_candle(d.otmp) || d.typ === ONAMES.POT_OIL)) {
-        /* place_object + begin_burn + obj_extract_self make it a viable
-           light source; burn timers are not ported yet */
-        note_unported_objnam('readobjnam:begin_burn');
+        const { place_object } = await import('./mkobj.js');
+        const { begin_burn } = await import('./timeout.js');
+        const { obj_extract_self } = await import('./invent.js');
+
+        place_object(d.otmp, game.u.ux, game.u.uy); /* viable light source */
+        await begin_burn(d.otmp, false);
+        obj_extract_self(d.otmp); /* release it for caller's use */
     }
 
     if (d.spesgn === 0) {
@@ -3815,7 +4033,7 @@ export function killer_xname(obj) {
     obj.opoisoned = 0;
     /* strip user-supplied name; artifacts keep theirs */
     if (!obj.oartifact && save_oname)
-        obj.oextra.oname = null;
+        obj.oname = null;
     /* temporarily identify the type of object */
     save_ocknown = game.objects[obj.otyp].oc_name_known;
     game.objects[obj.otyp].oc_name_known = 1;
@@ -3834,14 +4052,14 @@ export function killer_xname(obj) {
         buf = xname(obj);
     }
     /* apply an article if appropriate; caller should always use KILLED_BY */
-    if (obj.quan === 1 && !strstri(buf, "'s ") && !strstri(buf, "s' "))
+    if (obj.quan === 1 && strstri(buf, "'s ") < 0 && strstri(buf, "s' ") < 0)
         buf = (obj_is_pname(obj) || the_unique_obj(obj)) ? the(buf) : an(buf);
 
     game.objects[obj.otyp].oc_name_known = save_ocknown;
     game.objects[obj.otyp].oc_uname = save_ocuname;
     Object.assign(obj, save_obj); /* restore object's core settings */
     if (!obj.oartifact && save_oname)
-        obj.oextra.oname = save_oname;
+        obj.oname = save_oname;
 
     return buf;
 }

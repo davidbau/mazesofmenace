@@ -46,7 +46,8 @@ import { ECMD_OK, ECMD_TIME, ECMD_CANCEL, CQ_CANNED, GETOBJ_NOFLAGS,
          SICK_ALL, SICK_NONVOMITABLE,
          NH_RED, plur, HOMEMADE_TIN, COLNO, FLASHED_LIGHT,
          STOMACH, DIGTYP_UNDIGGABLE, N_DIRS_Z, xdir, ydir,
-         TT_WEB, TT_PIT, FOOT, NO_KILLER_PREFIX, IS_WATERWALL, LAVAWALL }
+         TT_WEB, TT_PIT, FOOT, NO_KILLER_PREFIX, XKILL_NOMSG,
+         IS_WATERWALL, LAVAWALL }
     from './const.js';
 import { addinv, addinv_nomerge, carrying, freeinv, getobj, hands_obj,
          hold_another_object, obj_extract_self, update_inventory, useup,
@@ -56,7 +57,8 @@ import { getdir, get_adjacent_loc, cmdq_add_ec, cmdq_add_key, confdir, getlin }
     from './cmd.js';
 import { pick_lock } from './lock.js';
 import { is_pick, is_axe, delobj, m_at, mongone, seemimic, wake_nearby, wakeup,
-         is_pool, is_lava, mnexto, see_monster_closeup } from './mon.js';
+         is_pool, is_lava, mnexto, see_monster_closeup, xkilled }
+    from './mon.js';
 import { is_pole } from './u_init.js';
 import { ECMD_FAIL } from './const.js';
 import { Blind, Fumbling, Glib, Hallucination, Deaf, Stone_resistance,
@@ -94,7 +96,7 @@ import { bimanual, carried, Is_candle, is_boots, is_gloves,
 import { clear_splitobjs, mkobj, mksobj, place_object, rnd_class, set_bknown,
          splitobj, set_tin_variety, unbless } from './mkobj.js';
 import { attacktype_fordmg, can_blow, has_head, haseyes, nohands, nolimbs,
-         passes_walls, poly_when_stoned, throws_rocks, touch_petrifies,
+         breathless, passes_walls, poly_when_stoned, throws_rocks, touch_petrifies,
          unsolid } from './mondata.js';
 import { check_capacity, invocation_pos, losehp, may_passwall } from './hack.js';
 import { tty_yn_function } from './tty/topl.js';
@@ -698,6 +700,66 @@ export async function next_to_u() {
     return true;
 }
 
+// src/apply.c:931 check_leash(). Moving farther from a leashed pet can
+// tighten, choke, or snap the leash. This runs after the hero's coordinates
+// change, so x,y are the square the hero just left.
+export async function check_leash(x, y) {
+    for (const otmp of game.invent || []) {
+        if (otmp.otyp !== ONAMES.LEASH || !otmp.leashmon)
+            continue;
+
+        const mtmp = (game.level?.monsters || []).find((mon) =>
+            !DEADMONSTER(mon) && mon.m_id === otmp.leashmon);
+        if (!mtmp) {
+            /* impossible("leash in use isn't attached to anything?") */
+            otmp.leashmon = 0;
+            continue;
+        }
+
+        if (dist2(game.u.ux, game.u.uy, mtmp.mx, mtmp.my)
+            <= dist2(x, y, mtmp.mx, mtmp.my))
+            continue;
+        if (!um_dist(mtmp.mx, mtmp.my, 3)) {
+            ; /* still close enough */
+        } else if (otmp.cursed && !breathless(mtmp.data)) {
+            if (um_dist(mtmp.mx, mtmp.my, 5)
+                || ((mtmp.mhp -= rnd(2)) <= 0)) {
+                const savePacifism = game.u.uconduct?.killer | 0;
+
+                await Your(`leash chokes ${mon_nam(mtmp)} to death!`);
+                await xkilled(mtmp, XKILL_NOMSG);
+                if (!DEADMONSTER(mtmp)) {
+                    game.u.uconduct ||= {};
+                    game.u.uconduct.killer = savePacifism;
+                }
+            } else {
+                await pline_mon(mtmp, `${Monnam(mtmp)} is choked by the leash!`);
+                if (mtmp.mtame && rn2(mtmp.mtame))
+                    mtmp.mtame--;
+            }
+        } else if (um_dist(mtmp.mx, mtmp.my, 5)) {
+            await pline(`${s_suffix(Monnam(mtmp))} leash snaps loose!`);
+            await m_unleash(mtmp, false);
+        } else {
+            await You('pull on the leash.');
+            if (mtmp.data.msound) {
+                const { growl, yelp, whimper } = await import('./sounds.js');
+                switch (rn2(3)) {
+                case 0:
+                    await growl(mtmp);
+                    break;
+                case 1:
+                    await yelp(mtmp);
+                    break;
+                default:
+                    await whimper(mtmp);
+                    break;
+                }
+            }
+        }
+    }
+}
+
 async function use_leash_core(obj, mtmp, cc, spotmon) {
     if (!spotmon && !glyph_is_invisible_at(cc.x, cc.y)) {
         await You(`fail to ${obj.leashmon ? 'un' : ''}leash something.`);
@@ -880,7 +942,7 @@ async function use_whip(obj) {
             if (gotit) {
                 obj_extract_self(otmp);
                 await possibly_unwield(mtmp, false);
-                setmnotwielded(mtmp, otmp);
+                await setmnotwielded(mtmp, otmp);
 
                 switch (rn2(proficient + 1)) {
                 case 2:
@@ -2632,7 +2694,7 @@ async function use_mirror(obj) {
         setnotworn(obj); /* in case mirror was wielded */
         freeinv(obj);
         await mpickobj(mtmp, obj);
-        if (!tele_restrict(mtmp))
+        if (!(await tele_restrict(mtmp)))
             await rloc(mtmp, RLOC_MSG);
     } else if (!is_unicorn(mtmp.data) && !humanoid(mtmp.data)
                && !is_demon(mtmp.data)
@@ -3515,7 +3577,7 @@ export async function doapply() {
     if (!obj)
         return ECMD_CANCEL;
 
-    if (!retouch_object(obj, false))
+    if (!await retouch_object(obj, false))
         return ECMD_TIME; /* evading your grasp costs a turn; just be
                              grateful that you don't drop it as well */
 

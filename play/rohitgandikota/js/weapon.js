@@ -13,8 +13,8 @@ import { carried, mcarried } from './obj.js';
 import { Yobjnam2 } from './objnam.js';
 import { You } from './pline.js';
 import { game } from './gstate.js';
-import { OBJ_NAME, doname, xname, the, makesingular, Tobjnam,
-         makeplural, distant_name } from './objnam.js';
+import { OBJ_NAME, doname, xname, the, The, makesingular, Tobjnam,
+         makeplural, distant_name, otense } from './objnam.js';
 /* include/defsym.h OBJCLASS rows, the `name` column — C's def_oc_syms[].name
    (js/drawing_data.js keeps only the symbol chars). Index = oclass. Used by
    weapon_descr() below, same as C's object_detect(). */
@@ -58,7 +58,9 @@ import { spell_skilltype } from './spell.js';
 import { discover_object } from './o_init.js';
 import { P_NONE, P_NUM_SKILLS, P_BARE_HANDED_COMBAT, P_RIDING, P_HEALING_SPELL, P_CLERIC_SPELL, P_TWO_WEAPON_COMBAT, P_SKILLED, P_MASTER, P_GRAND_MASTER, P_ATTACK_SPELL, P_ENCHANTMENT_SPELL, P_BOW, P_CROSSBOW } from './const.js';
 import { PMNAMES } from './monst_data.js';
-import { spec_abon } from './artifact.js';
+import { artifact_light, spec_abon } from './artifact.js';
+import { arti_light_description, arti_light_radius, del_light_source,
+         LS_OBJECT, new_light_source } from './light.js';
 
 // include/skills.h:106 practice_needed_to_advance()
 const practice_needed_to_advance = (level) => level * level * 20;
@@ -217,7 +219,8 @@ function note_unported_weapon(what) {
 /* src/weapon.c:514 arwep[] — the throw-and-return weapons. BOOMERANG is
    commented out in the C and is left out here for the same reason. */
 const arwep = [
-    { otyp: ONAMES.AKLYS, range: AKLYS_LIM * AKLYS_LIM, retmult: 1 },
+    { otyp: ONAMES.AKLYS, range: AKLYS_LIM * AKLYS_LIM,
+      retmult: 1, tethered: true },
 ];
 
 // src/weapon.c:520 autoreturn_weapon()
@@ -1016,7 +1019,7 @@ export async function possibly_unwield(mon, polyspot) {
         return;
     }
     if (!attacktype(game.mons[mon.mnum], ATTKS.AT_WEAP)) {
-        setmnotwielded(mon, mw_tmp);
+        await setmnotwielded(mon, mw_tmp);
         mon.weapon_check = NO_WEAPON_WANTED;
         if (cansee(mon.mx, mon.my)) {
             await pline(`${Monnam(mon)} drops ${distant_name(mw_tmp, doname)}.`);
@@ -1114,7 +1117,7 @@ export async function mon_wield_item(mon) {
             return 1;
         }
         mon.mw = obj; /* wield obj */
-        setmnotwielded(mon, mw_tmp);
+        await setmnotwielded(mon, mw_tmp);
         mon.weapon_check = NEED_WEAPON;
         if (canseemon(mon)) {
             await pline(`${Monnam(mon)} wields ${doname(obj)}${
@@ -1139,8 +1142,22 @@ export async function mon_wield_item(mon) {
                 obj.bknown = 1;
             }
         }
-        if (obj.oartifact)
-            note_unported_weapon('mon_wield_item:artifact_light');
+        if (artifact_light(obj) && !obj.lamplit) {
+            obj.lamplit = 1;
+            new_light_source(mon.mx, mon.my, arti_light_radius(obj),
+                             LS_OBJECT, obj.o_id);
+            game.vision_full_recalc = 1;
+            if (canseemon(mon)) {
+                const { mbodypart } = await import('./polyself.js');
+                await pline(`${Tobjnam(obj, 'shine')} ${
+                    arti_light_description(obj)} in ${
+                    s_suffix(mon_nam(mon))} ${mbodypart(mon, HAND)}!`);
+            } else if (cansee(mon.mx, mon.my)) {
+                const dx = mon.mx - game.u.ux, dy = mon.my - game.u.uy;
+                await pline(`Light begins shining ${
+                    dx * dx + dy * dy <= 25 ? 'nearby' : 'in the distance'}.`);
+            }
+        }
         obj.owornmask = W_WEP;
         return 1;
     }
@@ -1150,11 +1167,11 @@ export async function mon_wield_item(mon) {
 
 // src/weapon.c:937 mwepgone() — force monster to stop wielding current
 // weapon, if any.
-export function mwepgone(mon) {
+export async function mwepgone(mon) {
     const mwep = MON_WEP(mon);
 
     if (mwep) {
-        setmnotwielded(mon, mwep);
+        await setmnotwielded(mon, mwep);
         mon.weapon_check = NEED_WEAPON;
     }
 }
@@ -1167,11 +1184,19 @@ function mwelded_weapon(obj) {
 }
 
 // src/weapon.c:1814 setmnotwielded()
-export function setmnotwielded(mon, obj) {
+export async function setmnotwielded(mon, obj) {
     if (!obj)
         return;
-    if (obj.oartifact && obj.lamplit)
-        note_unported_weapon('setmnotwielded:artifact_light');
+    if (artifact_light(obj) && obj.lamplit) {
+        del_light_source(LS_OBJECT, obj.o_id);
+        obj.lamplit = 0;
+        game.vision_full_recalc = 1;
+        if (canseemon(mon)) {
+            const { mbodypart } = await import('./polyself.js');
+            await pline(`${The(xname(obj))} in ${s_suffix(mon_nam(mon))} ${
+                mbodypart(mon, HAND)} ${otense(obj, 'stop')} shining.`);
+        }
+    }
     if (MON_WEP(mon) === obj)
         mon.mw = null; /* MON_NOWEP */
     obj.owornmask = (obj.owornmask ?? 0) & ~W_WEP;

@@ -19,36 +19,36 @@ import { Blind } from './youprop.js';
    carried: the per-turn `test` fields belong to the status line, which is not
    driven from this table yet. */
 export const condtests = [
-    { id: 'bl_bareh',     useropt: 'barehanded',  optin: true,  enabled: false },
-    { id: 'bl_blind',     useropt: 'blind',       optin: false, enabled: true },
-    { id: 'bl_busy',      useropt: 'busy',        optin: true,  enabled: false },
-    { id: 'bl_conf',      useropt: 'conf',        optin: false, enabled: true },
-    { id: 'bl_deaf',      useropt: 'deaf',        optin: false, enabled: true },
-    { id: 'bl_elf_iron',  useropt: 'iron',        optin: false, enabled: true },
-    { id: 'bl_fly',       useropt: 'fly',         optin: false, enabled: true },
-    { id: 'bl_foodpois',  useropt: 'foodPois',    optin: false, enabled: true },
-    { id: 'bl_glowhands', useropt: 'glowhands',   optin: true,  enabled: false },
-    { id: 'bl_grab',      useropt: 'grab',        optin: false, enabled: true },
-    { id: 'bl_hallu',     useropt: 'hallucinat',  optin: false, enabled: true },
-    { id: 'bl_held',      useropt: 'held',        optin: true,  enabled: false },
-    { id: 'bl_icy',       useropt: 'ice',         optin: true,  enabled: false },
-    { id: 'bl_inlava',    useropt: 'lava',        optin: false, enabled: true },
-    { id: 'bl_lev',       useropt: 'levitate',    optin: false, enabled: true },
-    { id: 'bl_parlyz',    useropt: 'paralyzed',   optin: true,  enabled: false },
-    { id: 'bl_ride',      useropt: 'ride',        optin: false, enabled: true },
-    { id: 'bl_sleeping',  useropt: 'sleep',       optin: true,  enabled: false },
-    { id: 'bl_slime',     useropt: 'slime',       optin: false, enabled: true },
-    { id: 'bl_slippery',  useropt: 'slip',        optin: true,  enabled: false },
-    { id: 'bl_stone',     useropt: 'stone',       optin: false, enabled: true },
-    { id: 'bl_strngl',    useropt: 'strngl',      optin: false, enabled: true },
-    { id: 'bl_stun',      useropt: 'stun',        optin: false, enabled: true },
-    { id: 'bl_submerged', useropt: 'submerged',   optin: true,  enabled: false },
-    { id: 'bl_termill',   useropt: 'termIll',     optin: false, enabled: true },
-    { id: 'bl_tethered',  useropt: 'tethered',    optin: true,  enabled: false },
-    { id: 'bl_trapped',   useropt: 'trap',        optin: true,  enabled: false },
-    { id: 'bl_unconsc',   useropt: 'unconscious', optin: true,  enabled: false },
-    { id: 'bl_woundedl',  useropt: 'woundedlegs', optin: true,  enabled: false },
-    { id: 'bl_holding',   useropt: 'holding',     optin: true,  enabled: false },
+    { id: 'bl_bareh',     useropt: 'barehanded',  rank: 20, optin: true,  enabled: false },
+    { id: 'bl_blind',     useropt: 'blind',       rank: 10, optin: false, enabled: true },
+    { id: 'bl_busy',      useropt: 'busy',        rank: 20, optin: true,  enabled: false },
+    { id: 'bl_conf',      useropt: 'conf',        rank: 10, optin: false, enabled: true },
+    { id: 'bl_deaf',      useropt: 'deaf',        rank: 10, optin: false, enabled: true },
+    { id: 'bl_elf_iron',  useropt: 'iron',        rank: 15, optin: false, enabled: true },
+    { id: 'bl_fly',       useropt: 'fly',         rank: 10, optin: false, enabled: true },
+    { id: 'bl_foodpois',  useropt: 'foodPois',    rank: 6,  optin: false, enabled: true },
+    { id: 'bl_glowhands', useropt: 'glowhands',   rank: 20, optin: true,  enabled: false },
+    { id: 'bl_grab',      useropt: 'grab',        rank: 2,  optin: false, enabled: true },
+    { id: 'bl_hallu',     useropt: 'hallucinat',  rank: 10, optin: false, enabled: true },
+    { id: 'bl_held',      useropt: 'held',        rank: 20, optin: true,  enabled: false },
+    { id: 'bl_icy',       useropt: 'ice',         rank: 20, optin: true,  enabled: false },
+    { id: 'bl_inlava',    useropt: 'lava',        rank: 8,  optin: false, enabled: true },
+    { id: 'bl_lev',       useropt: 'levitate',    rank: 10, optin: false, enabled: true },
+    { id: 'bl_parlyz',    useropt: 'paralyzed',   rank: 20, optin: true,  enabled: false },
+    { id: 'bl_ride',      useropt: 'ride',        rank: 10, optin: false, enabled: true },
+    { id: 'bl_sleeping',  useropt: 'sleep',       rank: 20, optin: true,  enabled: false },
+    { id: 'bl_slime',     useropt: 'slime',       rank: 6,  optin: false, enabled: true },
+    { id: 'bl_slippery',  useropt: 'slip',        rank: 20, optin: true,  enabled: false },
+    { id: 'bl_stone',     useropt: 'stone',       rank: 6,  optin: false, enabled: true },
+    { id: 'bl_strngl',    useropt: 'strngl',      rank: 4,  optin: false, enabled: true },
+    { id: 'bl_stun',      useropt: 'stun',        rank: 10, optin: false, enabled: true },
+    { id: 'bl_submerged', useropt: 'submerged',   rank: 15, optin: true,  enabled: false },
+    { id: 'bl_termill',   useropt: 'termIll',     rank: 6,  optin: false, enabled: true },
+    { id: 'bl_tethered',  useropt: 'tethered',    rank: 20, optin: true,  enabled: false },
+    { id: 'bl_trapped',   useropt: 'trap',        rank: 20, optin: true,  enabled: false },
+    { id: 'bl_unconsc',   useropt: 'unconscious', rank: 20, optin: true,  enabled: false },
+    { id: 'bl_woundedl',  useropt: 'woundedlegs', rank: 20, optin: true,  enabled: false },
+    { id: 'bl_holding',   useropt: 'holding',     rank: 20, optin: true,  enabled: false },
 ];
 
 // src/botl.c:298 xlev_to_rank()
@@ -56,6 +56,14 @@ export const condtests = [
 //   1..2 => 0,  3..5 => 1,  6..9 => 2,  10..13 => 3, ... 26..29 => 7, 30 => 8
 export function xlev_to_rank(xlev) {
     return (xlev <= 2) ? 0 : (xlev <= 30) ? Math.trunc((xlev + 2) / 4) : 8;
+}
+
+// src/botl.c:313 rank_to_xlev()
+//
+// Return the first experience level belonging to rank 0..8.
+export function rank_to_xlev(rank) {
+    return (rank < 1) ? 1 : (rank < 2) ? 3
+           : (rank < 8) ? rank * 4 - 2 : 30;
 }
 
 // src/botl.c:332 rank_of()
@@ -111,7 +119,7 @@ export function bot_conditions() {
     let cond = '';
     if (props.STONED) cond += ' Stone';
     if (props.SLIMED) cond += ' Slime';
-    if (props.STRANGLED) cond += ' Strngl';
+    if (intr.HStrangled) cond += ' Strngl';
     const sick_type = game._deferred_status_sick_type ?? u.usick_type;
     if (sick_type & SICK_VOMITABLE) cond += ' FoodPois';
     if (sick_type & SICK_NONVOMITABLE) cond += ' TermIll';
@@ -129,10 +137,10 @@ export function bot_conditions() {
         ? game._deferred_status_blind : Blind();
     if (blind)
         cond += ' Blind';
+    if (intr.HConfusion || props.CONFUSION) cond += ' Conf';
     if (intr.HDeaf || props.DEAF) cond += ' Deaf';
     if ((intr.HHallucination || props.HALLUC) && !props.HALLUC_RES)
         cond += ' Hallu';
-    if (intr.HConfusion || props.CONFUSION) cond += ' Conf';
     if (props.LEVITATION || intr.HLevitation) cond += ' Lev';
     else if (props.FLYING || intr.HFlying
              || (Upolyd(u) && (game.youmonst.data.mflags1 & MFLAGS.M1_FLY)))

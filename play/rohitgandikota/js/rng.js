@@ -1,6 +1,6 @@
 // rng.js — PRNG wrappers around ISAAC64.
 // C ref: rng.c — three RNG contexts: core, display, lua.
-// Contest: only core context is used for parity.
+// Contest: core draws are scored directly; display draws affect screens.
 
 import { isaac64_init, isaac64_next_uint64 } from './isaac64.js';
 import { game } from './gstate.js';
@@ -37,12 +37,10 @@ function RND(x) {
 // src/rnd.c:70 rn2_on_display_rng() — 0 <= x, on a DIFFERENT sequence from the
 // main rn2, for answers that do not affect gameplay.
 //
-// C seeds this context from sys_random_seed() (rnd.c:284), so its values are
-// deliberately not reproducible; that is the whole point of the separate
-// stream, and it is why nothing it decides can ever appear in a scored screen.
-// Seeding it here from the core seed keeps it deterministic for our own
-// debugging without touching the core context, which is what parity depends on.
-// It is NOT logged: the recordings only carry core-context draws.
+// C options.c initializes it through init_random(). The recorder's fixed-seed
+// hook gives it the same initial seed as core. Its draws change hallucinated
+// screens without advancing core RNG. Ordinary recordings omit these draws;
+// NETHACK_RNGLOG_DISP enables them in the C diagnostic trace.
 export function rn2_on_display_rng(x) {
     if (x <= 0) return 0;
     if (!game.dispCtx) {

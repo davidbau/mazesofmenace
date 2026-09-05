@@ -427,6 +427,9 @@ export async function explode(x, y, type, dam, olet, expltype) {
                     continue;
                 xx = x + i - 1;
                 yy = y + j - 1;
+                /* tmp_at(DISP_BEAM) does not paint cells outside sight. */
+                if (!cansee(xx, yy))
+                    continue;
                 display_cmap_at(explosion[i][j], xx, yy,
                                 explodecolors[expltype], 'explosion');
                 starting = false;

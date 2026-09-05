@@ -13,11 +13,31 @@ import { NODIR, IMMEDIATE } from './const.js';
 import { game } from './gstate.js';
 import { PMNAMES } from './monst_data.js';
 import { exercise } from './attrib.js';
+import { gem_learned } from './shk.js';
+import { impossible } from './pline.js';
+import { docall, objtyp_is_callable } from './do_name.js';
+import { BUFSZ } from './const.js';
+import { update_inventory, inv_order, loot_classify } from './invent.js';
+import { disp_artifact_discoveries, dump_artifact_info } from './artifact.js';
+import { Hallucination } from './youprop.js';
 import { A_WIS } from './const.js';
 import { rn2 } from './rng.js';
 import { obj_typename, OBJ_DESCR as objDescrOf, OBJ_NAME,
          Japanese_item_name } from './objnam.js';
-import { ATR_NONE, ATR_INVERSE } from './tty/wintty.js';
+import { ATR_NONE, ATR_INVERSE, tty_create_nhwindow, tty_start_menu,
+         tty_add_menu, tty_add_menu_str, tty_end_menu, tty_select_menu,
+         tty_destroy_nhwindow, tty_putstr, tty_display_nhwindow,
+         tty_next_page, NHW_MENU, NHW_TEXT } from './tty/wintty.js';
+import { NO_COLOR } from './terminal.js';
+import { MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED,
+         PICK_ONE, NON_PM, MENU_TRADITIONAL, MENU_COMBINATION, MENU_PARTIAL
+       } from './const.js';
+import { xwaitforspace } from './tty/getline.js';
+import { tty_yn_function } from './tty/topl.js';
+import { def_oc_syms } from './drawing_data.js';
+import { def_char_to_objclass } from './sp_lev.js';
+import { You } from './pline.js';
+import { tty_clear_nhwindow_message } from './display.js';
 import {
     objects as OBJECTS_INIT, obj_descr as OBJ_DESCR_INIT,
     NUM_OBJECTS, ONAMES, OCLASSES,
@@ -49,6 +69,9 @@ function numericClass(v) {
 export function reset_objects() {
     game.objects = OBJECTS_INIT.map(o => ({ ...o, oc_class: numericClass(o.oc_class) }));
     game.obj_descr = OBJ_DESCR_INIT.map(d => ({ ...d }));
+    // src/options.c:7341 initoptions_finish(), before object use. The table
+    // is per game here; the preferred fruit remains in the separate list.
+    game.obj_descr[ONAMES.SLIME_MOLD].oc_name = 'fruit';
     game.bases = new Array(MAXOCLASSES + 2).fill(0);
     game.oclass_prob_totals = new Array(MAXOCLASSES).fill(0);
     return game.objects;
@@ -325,8 +348,7 @@ export function init_objects() {
 // Discoveries
 // ---------------------------------------------------------------------------
 
-// src/o_init.c:599 — flags.discosort selects the order; 'o' is the default and
-// the only one the corpus uses.
+// src/o_init.c:599 disco_order_let / disco_orders_descr.
 const disco_order_let = 'osca';
 const disco_orders_descr = [
     'by order of discovery within each class',
@@ -335,6 +357,60 @@ const disco_orders_descr = [
     'alphabetical across all classes',
 ];
 
+// src/o_init.c:542 uniq_objs, in C's relic order.
+const uniq_objs = [ONAMES.AMULET_OF_YENDOR, ONAMES.BELL_OF_OPENING,
+                   ONAMES.SPE_BOOK_OF_THE_DEAD, ONAMES.CANDELABRUM_OF_INVOCATION];
+
+// src/o_init.c:554 discovered_cmp(). Ignore the encountered marker.
+function discovered_cmp(s1, s2) {
+    s1 = s1.slice(2).toLowerCase();
+    s2 = s2.slice(2).toLowerCase();
+    return s1 < s2 ? -1 : s1 > s2 ? 1 : 0;
+}
+
+// src/o_init.c:568 sortloot_descr(). The temporary object has no owner.
+function sortloot_descr(otyp) {
+    const oc = game.objects[otyp];
+    const o = { otyp, oclass: oc.oc_class, dknown: 1,
+                known: Number(oc.oc_name_known || !oc.oc_uses_known),
+                corpsenm: NON_PM };
+    if (otyp === ONAMES.SLIME_MOLD)
+        o.spe = game.context.current_fruit;
+    const sl_cookie = {};
+    loot_classify(sl_cookie, o);
+    return String(sl_cookie.orderclass).padStart(2, '0')
+        + String(sl_cookie.subclass).padStart(2, '0') + sl_cookie.disco + ' ';
+}
+
+// src/o_init.c:611 choose_disco_sort(). Choice persists across both commands.
+export async function choose_disco_sort(mode) {
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    for (let i = 0; i < disco_orders_descr.length; i++) {
+        const c = disco_order_let[i];
+        tty_add_menu(win, null, c, c, 0, ATR_NONE, NO_COLOR,
+                     disco_orders_descr[i], c === (game.flags.discosort ?? 'o')
+                         ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+    }
+    if (mode === 2) {
+        tty_add_menu_str(win, '');
+        tty_add_menu_str(win, 'Note: full alphabetical and alphabetical within class');
+        tty_add_menu_str(win, '      are equivalent for single class discovery, but');
+        tty_add_menu_str(win, '      will matter for future use of total discoveries.');
+    }
+    tty_end_menu(win, 'Ordering of discoveries');
+    const selected = await tty_select_menu(win, PICK_ONE);
+    tty_destroy_nhwindow(win);
+    const n = selected.cancelled ? -1 : selected.length;
+    if (n > 0) {
+        let choice = selected[0];
+        if (n > 1 && choice === (game.flags.discosort ?? 'o'))
+            choice = selected[1];
+        game.flags.discosort = choice;
+    }
+    return n;
+}
+
 // src/o_init.c:520 discover_object()
 //
 // src/o_init.c:442 observe_object() — naming an object in view marks its
@@ -342,12 +418,8 @@ const disco_orders_descr = [
 // starting kit ends up '  listed' rather than '* listed' in discoveries.
 export function observe_object(obj) {
     const oindx = obj.otyp;
-    /* skip for generic objects and for STRANGE_OBJECT; FIRST_OBJECT is the
-       first real otyp after the per-class generic dummies.  Hallucination
-       test inlined (uprops.HALLUC && !HALLUC_RES, youprop.h:120) to keep
-       o_init free of higher-level imports. */
-    if (oindx >= 18 /* FIRST_OBJECT */
-        && !(game.u?.uprops?.HALLUC && !game.u?.uprops?.HALLUC_RES)) {
+    /* Skip generic objects and STRANGE_OBJECT. */
+    if (oindx >= ONAMES.FIRST_OBJECT && !Hallucination()) {
         obj.dknown = 1;
         discover_object(oindx, false, true, false);
     }
@@ -359,7 +431,7 @@ export function observe_object(obj) {
 export function discover_object(oindx, mark_as_known, mark_as_encountered,
                                 credit_hero) {
     const objects = game.objects;
-    if (oindx < 1)                    /* FIRST_OBJECT */
+    if (oindx < ONAMES.FIRST_OBJECT)
         return;
 
     if ((!objects[oindx].oc_name_known && mark_as_known)
@@ -387,7 +459,34 @@ export function discover_object(oindx, mark_as_known, mark_as_encountered,
                one rn2(19); re-knowing draws nothing */
             if (credit_hero)
                 exercise(A_WIS, true);
+            if (game.program_state?.in_moveloop && !game.program_state_gameover) {
+                if (objects[oindx].oc_class === GEM_CLASS)
+                    gem_learned(oindx);
+                update_inventory();
+            }
         }
+    }
+}
+
+// src/o_init.c:498 undiscover_object(); preserve identified or encountered types.
+export async function undiscover_object(oindx) {
+    const objects = game.objects;
+    if (!objects[oindx].oc_name_known && !objects[oindx].oc_encountered) {
+        const acls = objects[oindx].oc_class;
+        let found = false, dindx = game.bases[acls];
+        for (; dindx < NUM_OBJECTS && game.disco[dindx]
+               && objects[dindx].oc_class === acls; dindx++) {
+            if (found)
+                game.disco[dindx - 1] = game.disco[dindx];
+            else if (game.disco[dindx] === oindx)
+                found = true;
+        }
+        if (found)
+            game.disco[dindx - 1] = 0;
+        else
+            await impossible('named object not in disco');
+        if (acls === GEM_CLASS)
+            gem_learned(oindx);
     }
 }
 
@@ -432,6 +531,25 @@ function disco_typename(otyp) {
     return result;
 }
 
+// src/o_init.c:694 disco_append_typename(); preserve a trailing appearance
+// when truncating a long type name, and append the price quote only if it fits.
+function disco_append_typename(buf, dis) {
+    const name = disco_typename(dis);
+    const paren = name.lastIndexOf('(');
+    if (buf.length + name.length < BUFSZ) {
+        buf += name;
+    } else if (paren > 0 && name[paren - 1] === ' ' && name.includes(')', paren)) {
+        const suffix = name.slice(paren - 1);
+        buf += name.slice(0, BUFSZ - 1 - buf.length - suffix.length) + suffix;
+    } else {
+        buf += name.slice(0, BUFSZ - 1 - buf.length);
+    }
+    const quote = append_price_quote(dis);
+    if (quote.length < BUFSZ - buf.length - 1)
+        buf += quote;
+    return buf;
+}
+
 // src/shk.c:454 append_price_quote(), used unconditionally by discoveries.
 function append_price_quote(otyp) {
     const oc = game.objects[otyp];
@@ -449,128 +567,300 @@ function append_price_quote(otyp) {
     return parts.length ? ` {${parts.join(' ')}}` : '';
 }
 
-// src/o_init.c:686 dodiscovered() — build the discoveries text.
-//
-// Returns the lines rather than pushing them into a window, so the caller
-// decides which window type to use. The header uses flags.inv_order for the
-// class sequence, and each class heading is let_to_name(oclass).
-export function dodiscovered() {
+// src/o_init.c:725 disco_fmt_uniq(). Unknown relics use their descriptions.
+function disco_fmt_uniq(uidx) {
+    const oc = game.objects[uidx];
+    let buf = '  ' + (oc.oc_name_known ? OBJ_NAME(oc) : objDescrOf(oc));
+    if (!oc.oc_name_known && oc.oc_class === SPBOOK_CLASS)
+        buf += ' spellbook';
+    return buf;
+}
+
+// src/o_init.c:745 disco_output_sorted(). Strip the six-character sort key.
+function disco_output_sorted(tmpwin, sorted_lines, sorted_ct, lootsort) {
+    sorted_lines.sort(discovered_cmp);
+    for (let j = 0; j < sorted_ct; j++) {
+        const p = sorted_lines[j];
+        tty_putstr(tmpwin, 0, lootsort ? p[0] + p.slice(7) : p);
+    }
+    sorted_lines.length = 0;
+}
+
+// src/o_init.c:764 dodiscovered(). Relics and artifacts retain their own order.
+export async function dodiscovered() {
     const objects = game.objects;
-    const sortindx = Math.max(0, disco_order_let.indexOf(game.flags?.discosort || 'o'));
-    const lines = [];
-
-    /* src/o_init.c passes iflags.menu_headings.attr for the class headings,
-       which defaults to ATR_INVERSE (src/options.c:7188). Lines carry
-       [text, attr] so the window layer can render them. */
-    lines.push(['Discoveries, ' + disco_orders_descr[sortindx], ATR_NONE]);
-    lines.push(['', ATR_NONE]);
-
-    let ct = 0;
-    for (const oclass of inv_order()) {
-        let prev_class = -1;
-        for (let i = game.bases[oclass];
-             i < objects.length && objects[i].oc_class === oclass; i++) {
-            const dis = game.disco?.[i];
-            if (dis && interesting_to_discover(dis)) {
-                ct++;
-                if (oclass !== prev_class) {
-                    lines.push([let_to_name(oclass), ATR_INVERSE]);
-                    prev_class = oclass;
-                }
-                lines.push([(objects[dis].oc_encountered ? '  ' : '* ')
-                            + disco_typename(dis) + append_price_quote(dis),
-                            ATR_NONE]);
-            }
+    if (!game.flags.discosort || !disco_order_let.includes(game.flags.discosort))
+        game.flags.discosort = 'o';
+    if (game.iflags?.menu_requested && await choose_disco_sort(1) < 0)
+        return 0;
+    const alphabyclass = game.flags.discosort === 'c';
+    const alphabetized = game.flags.discosort === 'a' || alphabyclass;
+    const lootsort = game.flags.discosort === 's';
+    const sortindx = disco_order_let.indexOf(game.flags.discosort);
+    const heading = game.iflags?.menu_headings?.attr ?? ATR_INVERSE;
+    const win = tty_create_nhwindow(NHW_TEXT);
+    tty_putstr(win, 0, 'Discoveries, ' + disco_orders_descr[sortindx]);
+    tty_putstr(win, 0, '');
+    let uniq_ct = 0;
+    for (const uidx of uniq_objs) {
+        if (objects[uidx].oc_name_known
+            || (objects[uidx].oc_encountered && uidx !== ONAMES.AMULET_OF_YENDOR)) {
+            if (!uniq_ct++)
+                tty_putstr(win, heading, 'Unique items or Relics');
+            tty_putstr(win, 0, disco_fmt_uniq(uidx));
         }
     }
-    return ct ? lines : null;
-}
-
-function discoveries_for_class(oclass) {
-    const found = [];
-    const hi = game.bases[oclass + 1] ?? game.objects.length;
-    for (let i = game.bases[oclass]; i < hi; i++) {
-        const dis = game.disco?.[i];
-        if (dis && interesting_to_discover(dis))
-            found.push(dis);
-    }
-    return found;
-}
-
-// src/o_init.c doclassdisco(), default MENU_FULL path. It first offers only
-// classes which have discoveries, then shows the selected class in an
-// NHW_TEXT window. Unique items and artifacts are added when those discovery
-// stores are ported; ordinary object classes cover every current producer.
-export async function doclassdisco() {
+    const arti_ct = disp_artifact_discoveries(win);
     const classes = [...inv_order()];
     if (!classes.includes(VENOM_CLASS))
         classes.push(VENOM_CLASS);
-    const available = classes.filter((oclass) =>
-        discoveries_for_class(oclass).length > 0);
-
-    if (!available.length) {
-        const { You } = await import('./pline.js');
-        await You("haven't discovered any items yet.");
-        return 0;
+    let ct = uniq_ct + arti_ct;
+    const sorted_lines = [];
+    for (const oclass of classes) {
+        let prev_class = oclass + 1;
+        for (let i = game.bases[oclass];
+             i < NUM_OBJECTS && objects[i].oc_class === oclass; i++) {
+            const dis = game.disco?.[i];
+            if (!dis || !interesting_to_discover(dis))
+                continue;
+            ct++;
+            if (oclass !== prev_class) {
+                if ((alphabyclass || lootsort) && sorted_lines.length)
+                    disco_output_sorted(win, sorted_lines, sorted_lines.length, lootsort);
+                if (!alphabetized || alphabyclass) {
+                    tty_putstr(win, heading, let_to_name(oclass));
+                    prev_class = oclass;
+                }
+            }
+            let buf = objects[dis].oc_encountered ? '  ' : '* ';
+            if (lootsort)
+                buf += sortloot_descr(dis);
+            buf = disco_append_typename(buf, dis);
+            if (!alphabetized && !lootsort)
+                tty_putstr(win, 0, buf);
+            else
+                sorted_lines.push(buf);
+        }
     }
-
-    const {
-        tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
-        tty_select_menu, tty_destroy_nhwindow, tty_putstr,
-        tty_display_nhwindow, tty_next_page, NHW_MENU, NHW_TEXT,
-    } = await import('./tty/wintty.js');
-    const { MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ONE } =
-        await import('./const.js');
-    const { NO_COLOR } = await import('./terminal.js');
-    const { def_oc_syms } = await import('./drawing_data.js');
-    const { xwaitforspace } = await import('./tty/getline.js');
-
-    const menu = tty_create_nhwindow(NHW_MENU);
-    tty_start_menu(menu, MENU_BEHAVE_STANDARD);
-    let selector = 'a';
-    for (const oclass of available) {
-        tty_add_menu(menu, null, oclass, selector, def_oc_syms[oclass],
-                     ATR_NONE, NO_COLOR, let_to_name(oclass).toLowerCase(),
-                     MENU_ITEMFLAGS_NONE);
-        selector = String.fromCharCode(selector.charCodeAt(0) + 1);
-    }
-    tty_end_menu(menu, 'View discoveries for which sort of objects?');
-    const picks = await tty_select_menu(menu, PICK_ONE);
-    tty_destroy_nhwindow(menu);
-    if (!picks.length)
-        return 0;
-
-    const oclass = picks[0];
-    const discoveries = discoveries_for_class(oclass);
-    const sort = game.flags?.discosort || 'o';
-    let lines = discoveries.map((otyp) =>
-        (game.objects[otyp].oc_encountered ? '  ' : '* ')
-        + disco_typename(otyp) + append_price_quote(otyp));
-    if (sort === 'a' || sort === 'c')
-        lines = lines.sort((a, b) => a.localeCompare(b));
-
-    const order = sort === 'o' ? 'order of discovery'
-        : sort === 's' ? "'sortloot' order" : 'alphabetical order';
-    const win = tty_create_nhwindow(NHW_TEXT);
-    tty_putstr(win, ATR_NONE,
-               `Discovered ${let_to_name(oclass)} in ${order}`);
-    for (const line of lines)
-        tty_putstr(win, ATR_NONE, line);
-    await tty_display_nhwindow(win);
-    await xwaitforspace(' \r\n\x1b');
-    while (game.morc !== '\x1b' && tty_next_page(win))
+    if (!ct) {
+        await You("haven't discovered anything yet...");
+    } else {
+        if (sorted_lines.length) {
+            if ((uniq_ct || arti_ct) && alphabetized && !alphabyclass)
+                tty_putstr(win, heading, 'Discovered items');
+            disco_output_sorted(win, sorted_lines, sorted_lines.length, lootsort);
+        }
+        await tty_display_nhwindow(win);
         await xwaitforspace(' \r\n\x1b');
+        while (game.morc !== '\x1b' && tty_next_page(win))
+            await xwaitforspace(' \r\n\x1b');
+    }
     tty_destroy_nhwindow(win);
     return 0;
 }
 
-// src/decl.c flags.inv_order — the default packorder.
-function inv_order() {
-    const O = OCLASSES;
-    return [O.COIN_CLASS, O.AMULET_CLASS, O.WEAPON_CLASS, O.ARMOR_CLASS,
-            O.FOOD_CLASS, O.SCROLL_CLASS, O.SPBOOK_CLASS, O.POTION_CLASS,
-            O.RING_CLASS, O.WAND_CLASS, O.TOOL_CLASS, O.GEM_CLASS,
-            O.ROCK_CLASS, O.BALL_CLASS, O.CHAIN_CLASS, O.VENOM_CLASS];
+// src/o_init.c:879 oclass_to_name().
+function oclass_to_name(oclass) {
+    return let_to_name(oclass).toLowerCase();
+}
+
+// src/o_init.c:891 doclassdisco(), including relic/artifact pseudo-classes.
+export async function doclassdisco() {
+    const prompt = 'View discoveries for which sort of objects?';
+    const unique_items = 'unique items or relics', artifact_items = 'artifacts';
+    if (!game.flags.discosort || !disco_order_let.includes(game.flags.discosort))
+        game.flags.discosort = 'o';
+    if (game.iflags?.menu_requested && await choose_disco_sort(2) < 0)
+        return 0;
+    const alphabetized = game.flags.discosort === 'a' || game.flags.discosort === 'c';
+    const lootsort = game.flags.discosort === 's';
+    const traditional = game.flags.menu_style === MENU_TRADITIONAL
+        || game.flags.menu_style === MENU_COMBINATION;
+    const objects = game.objects;
+    let tmpwin = -1, discosyms = '', menulet = 97;
+    if (!traditional) {
+        tmpwin = tty_create_nhwindow(NHW_MENU);
+        tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    }
+    for (const uidx of uniq_objs) {
+        if (objects[uidx].oc_name_known
+            || (objects[uidx].oc_encountered && uidx !== ONAMES.AMULET_OF_YENDOR)) {
+            discosyms += 'u';
+            if (!traditional)
+                tty_add_menu(tmpwin, null, 'u', String.fromCharCode(menulet++), 'r',
+                             ATR_NONE, NO_COLOR, unique_items, MENU_ITEMFLAGS_NONE);
+            break;
+        }
+    }
+    if (disp_artifact_discoveries(-1) > 0) {
+        discosyms += 'a';
+        if (!traditional)
+            tty_add_menu(tmpwin, null, 'a', String.fromCharCode(menulet++), 0,
+                         ATR_NONE, NO_COLOR, artifact_items, MENU_ITEMFLAGS_NONE);
+    }
+    const allclasses = [...inv_order()];
+    if (!allclasses.includes(VENOM_CLASS))
+        allclasses.push(VENOM_CLASS);
+    for (const oclass of allclasses) {
+        const c = def_oc_syms[oclass];
+        for (let i = game.bases[oclass];
+             i < NUM_OBJECTS && objects[i].oc_class === oclass; i++) {
+            const dis = game.disco?.[i];
+            if (dis && interesting_to_discover(dis) && !discosyms.includes(c)) {
+                discosyms += c;
+                if (!traditional)
+                    tty_add_menu(tmpwin, null, c, String.fromCharCode(menulet++), c,
+                                 ATR_NONE, NO_COLOR, oclass_to_name(oclass),
+                                 MENU_ITEMFLAGS_NONE);
+            }
+        }
+    }
+    if (!discosyms) {
+        await You("haven't discovered any items yet.");
+        if (tmpwin !== -1)
+            tty_destroy_nhwindow(tmpwin);
+        return 0;
+    }
+    let c = '';
+    if (traditional) {
+        let xtras = 0;
+        for (const symbol of [...allclasses.map(cl => def_oc_syms[cl]), 'a', 'u', 'r']) {
+            if (!discosyms.includes(symbol)) {
+                if (!xtras++)
+                    discosyms += '\x1b';
+                discosyms += symbol;
+            }
+        }
+        c = await tty_yn_function(prompt, discosyms, '\0', true);
+        if (!c || c === '\0')
+            tty_clear_nhwindow_message(game._topl_cury || 0);
+    } else {
+        if (discosyms.length === 1 && game.flags.menu_style === MENU_PARTIAL)
+            c = discosyms[0];
+        else {
+            tty_end_menu(tmpwin, prompt);
+            const picks = await tty_select_menu(tmpwin, PICK_ONE);
+            c = picks[0] || '';
+        }
+        tty_destroy_nhwindow(tmpwin);
+    }
+    if (!c || c === '\0')
+        return 0;
+    tmpwin = tty_create_nhwindow(NHW_TEXT);
+    let ct = 0;
+    switch (c) {
+    case 'u': case 'r':
+        tty_putstr(tmpwin, game.iflags?.menu_headings?.attr ?? ATR_INVERSE,
+                   'Unique items or relics');
+        for (const uidx of uniq_objs) {
+            if (objects[uidx].oc_name_known
+                || (objects[uidx].oc_encountered && uidx !== ONAMES.AMULET_OF_YENDOR)) {
+                ct++;
+                tty_putstr(tmpwin, 0, disco_fmt_uniq(uidx));
+            }
+        }
+        if (!ct)
+            await You(`haven't discovered any ${unique_items} yet.`);
+        break;
+    case 'a':
+        if (game.wizard
+            && await tty_yn_function('Dump information about all artifacts?', 'yn', 'n', true) === 'y') {
+            dump_artifact_info(tmpwin);
+            ct = 1;
+            break;
+        }
+        ct = disp_artifact_discoveries(tmpwin);
+        if (!ct)
+            await You(`haven't discovered any ${artifact_items} yet.`);
+        break;
+    default: {
+        const oclass = def_char_to_objclass(c);
+        if (oclass === MAXOCLASSES)
+            impossible(`doclassdisco: invalid object class '${c}'`);
+        const order = game.flags.discosort === 'o' ? 'order of discovery'
+            : game.flags.discosort === 's' ? "'sortloot' order" : 'alphabetical order';
+        tty_putstr(tmpwin, 0, `Discovered ${let_to_name(oclass)} in ${order}`);
+        const sorted_lines = [];
+        for (let i = game.bases[oclass]; i < game.bases[oclass + 1]; i++) {
+            const dis = game.disco?.[i];
+            if (dis && interesting_to_discover(dis)) {
+                ct++;
+                let buf = objects[dis].oc_encountered ? '  ' : '* ';
+                if (lootsort)
+                    buf += sortloot_descr(dis);
+                buf = disco_append_typename(buf, dis);
+                if (!alphabetized && !lootsort)
+                    tty_putstr(tmpwin, 0, buf);
+                else
+                    sorted_lines.push(buf);
+            }
+        }
+        if (!ct)
+            await You(`haven't discovered any ${oclass_to_name(oclass)} yet.`);
+        else if (sorted_lines.length)
+            disco_output_sorted(tmpwin, sorted_lines, sorted_lines.length, lootsort);
+        break;
+    }
+    }
+    if (ct) {
+        await tty_display_nhwindow(tmpwin);
+        await xwaitforspace(' \r\n\x1b');
+        while (game.morc !== '\x1b' && tty_next_page(tmpwin))
+            await xwaitforspace(' \r\n\x1b');
+    }
+    tty_destroy_nhwindow(tmpwin);
+    return 0;
+}
+
+// src/o_init.c:1131 rename_disco(); name a discovered type without an instance.
+export async function rename_disco() {
+    const {
+        tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
+        tty_select_menu, tty_destroy_nhwindow, NHW_MENU,
+    } = await import('./tty/wintty.js');
+    const { MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ONE } =
+        await import('./const.js');
+    const { NO_COLOR } = await import('./terminal.js');
+    const { add_menu_heading } = await import('./options.js');
+    const { You } = await import('./pline.js');
+    const { pline } = await import('./display.js');
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    let ct = 0, mn = 0;
+    for (const oclass of inv_order()) {
+        let prev_class = oclass + 1;
+        for (let i = game.bases[oclass];
+             i < NUM_OBJECTS && game.objects[i].oc_class === oclass; i++) {
+            const dis = game.disco?.[i];
+            if (!dis || !interesting_to_discover(dis))
+                continue;
+            ct++;
+            if (!objtyp_is_callable(dis))
+                continue;
+            mn++;
+            if (oclass !== prev_class) {
+                add_menu_heading(win, let_to_name(oclass));
+                prev_class = oclass;
+            }
+            tty_add_menu(win, null, dis, 0, 0, ATR_NONE, NO_COLOR,
+                         disco_append_typename('', dis), MENU_ITEMFLAGS_NONE);
+        }
+    }
+    if (!ct) {
+        await You("haven't discovered anything yet...");
+    } else if (!mn) {
+        await pline('None of your discoveries can be assigned names...');
+    } else {
+        tty_end_menu(win, 'Pick an object type to name');
+        const picks = await tty_select_menu(win, PICK_ONE);
+        const dis = picks[0] || ONAMES.STRANGE_OBJECT;
+        if (dis !== ONAMES.STRANGE_OBJECT) {
+            const oc = game.objects[dis];
+            await docall({ otyp: dis, oclass: oc.oc_class, quan: 1,
+                           known: !oc.oc_uses_known, dknown: 1 });
+        }
+    }
+    tty_destroy_nhwindow(win);
 }
 
 // src/objnam.c let_to_name() — the plural class heading used in menus.
@@ -607,4 +897,14 @@ export function objdescr_is(obj, descr) {
     if (!objdescr)
         return false; /* no obj description, no match */
     return objdescr === descr;
+}
+
+// src/o_init.c:1210 get_sortdisco(). Invalid stored values reset to default.
+export function get_sortdisco(cnf) {
+    let i = disco_order_let.indexOf(game.flags.discosort || 'o');
+    if (i < 0) {
+        game.flags.discosort = 'o';
+        i = 0;
+    }
+    return cnf ? (game.flags.discosort || 'o') : disco_orders_descr[i];
 }

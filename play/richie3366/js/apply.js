@@ -3362,7 +3362,7 @@ async function kick_steed_apply() {
  * C ref: apply.c use_whip — lash, pit yank, disarm, force_attack.
  * Named omit: #if 0 snatch-to-face thitu; wipe_engr_at body.
  */
-async function use_whip(obj) {
+export async function use_whip(obj) {
     const u = game.u || (game.u = {});
     const res = ECMD_OK;
 
@@ -3822,7 +3822,7 @@ export function could_pole_mon() {
  * Named omit: defsyms furniture explanation; integer glyph IDs.
  * thitmonst weapon hit-vs-miss: D-1041. S_goodpos tmp_at: D-1051.
  */
-async function use_pole(obj, autohit) {
+export async function use_pole(obj, autohit) {
     const thump = 'Thump!  Your blow bounces harmlessly off the %s.';
     const res = ECMD_OK;
     const u = game.u || (game.u = {});

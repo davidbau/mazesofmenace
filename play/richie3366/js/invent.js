@@ -21,6 +21,8 @@
 // D-1580: pickinv gacc collect + BALL `'0'` vs count; def_oc_syms.
 // D-1588: getobj force_invmenu putmsghistory(qbuf) + topl.c remember_topl.
 // D-1589: sortloot SORTLOOT_INUSE + display_pickinv inuse_only / doprinuse.
+// D-1850: display_inventory → display_pickinv_reply (PICK_ONE stays on
+//        non-selector; farlook `i` "Weapons" header).
 // D-1590: display_pickinv wizid unid_cnt>0 PICK_ANY (`_`/^I identify_pack).
 // D-1591: invent.c display_used_invlets (#adjust ?/* used-letters PICK_ONE).
 // D-1599: sortloot SORTLOOT_PETRIFY filter override + will_feel_cockatrice.
@@ -2487,7 +2489,7 @@ export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
  * docrt). Corner (offx!=0): docorner ≡ reprint gbuf only — no newsym /
  * display-RNG burns; once-per-input Hallu see_monsters refreshes next.
  */
-export async function dismiss_nhw_menu() {
+export async function dismiss_nhw_menu(opts = null) {
     const g = game._tty_menu_geom;
     game._menu_overlay = false;
     game._tty_menu_geom = null;
@@ -2497,7 +2499,9 @@ export async function dismiss_nhw_menu() {
         await docrt();
         // C docrt_flags: botlx=TRUE, caller bot() later. JS cache would
         // otherwise repaint WIN_STATUS; D-0467 itemed leftover is blank.
-        clear_committed_status();
+        // display_pickinv select_menu does not blank: bot_disabled wraps
+        // then the next bot() paints (death disclose D-1850).
+        if (!opts?.keep_status) clear_committed_status();
         await flush_screen(1);
         return;
     }
@@ -2866,11 +2870,18 @@ export async function identify_pack(id_limit, learning_id) {
 set_xname_observe(observe_object);
 set_distant_cansee(cansee);
 
+/**
+ * C windows.c add_menu_heading `:1815–1828` — iflags.menu_headings.attr
+ * unless program_state.gameover (end-game disclosure: ATR_NONE).
+ */
+function add_menu_heading_attr() {
+    return game.program_state?.gameover ? 0 : ATR_INVERSE;
+}
+
 export function invent_lines(lets) {
     const inv = game.invent || [];
     const lines = [];
-    // C ref: windows.c add_menu_heading — suppress highlight when gameover
-    const headingAttr = game.program_state?.gameover ? 0 : ATR_INVERSE;
+    const headingAttr = add_menu_heading_attr();
     const filterLets = lets || '';
     for (const oclass of DEF_INV_ORDER) {
         const items = inv.filter((o) => o.oclass === oclass
@@ -2971,6 +2982,7 @@ function pickinv_build_inuse(lets, wizid, opts = null) {
     const pickItems = [];
     let inusecount = 0;
     let prevorderclass = 0;
+    const headingAttr = add_menu_heading_attr();
     for (const srt of sorted) {
         const otmp = srt.obj;
         if (!otmp) continue;
@@ -2979,12 +2991,12 @@ function pickinv_build_inuse(lets, wizid, opts = null) {
             // C `:3277–3280` doing_perm_invent ? "In use" : "Inventory in use"
             entries.push({
                 text: doing_perm_invent ? 'In use' : 'Inventory in use',
-                attr: ATR_INVERSE,
+                attr: headingAttr,
             });
         }
         if (srt.orderclass !== prevorderclass) {
             const hdr = inuse_headers[srt.orderclass];
-            if (hdr) entries.push({ text: hdr, attr: ATR_INVERSE });
+            if (hdr) entries.push({ text: hdr, attr: headingAttr });
             prevorderclass = srt.orderclass;
         }
         const letch = otmp.invlet || '?';
@@ -3133,6 +3145,8 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
     const allowxtra = !!(opts?.allowxtra ?? xtra?.allow);
     const want_reply = opts?.want_reply !== false;
     const inuse_only = game.flags?.sortloot === 'i';
+    // C select_menu(want_reply ? PICK_ONE : PICK_NONE). PICK_NONE bells
+    // on letters (D-1850). ddoinv/dispinv pass menumode as want_reply.
 
     // C: n = lets ? strlen(lets) : invent 0/1/2+; then
     // if (usextra || (n==1 && (!lets || wizid))) ++n — so bare invent
@@ -3193,10 +3207,11 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
     // C display_pickinv wizid = wizard && override_ID; getobj path is 0
     const wizid = false;
     const withsym = !!(game.iflags?.menu_head_objsym);
+    const headingAttr = add_menu_heading_attr();
     if (usextra) {
         // C display_pickinv :3253–3260 — wizard ID and xtra_choice exclusive
         if (game.flags?.sortpack !== false) {
-            entries.push({ text: 'Miscellaneous', attr: ATR_INVERSE });
+            entries.push({ text: 'Miscellaneous', attr: headingAttr });
         }
         byLet.set(HANDS_SYM, { _hands: true });
         pickItems.push({ selector: HANDS_SYM, gselector: '' });
@@ -3220,7 +3235,7 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
             if (!items.length) continue;
             entries.push({
                 text: let_to_name(oclass, false, withsym),
-                attr: ATR_INVERSE,
+                attr: headingAttr,
             });
             for (const otmp of items) {
                 // Prop Blind — sticky u.Blind misses FROMFORM molds (D-0928 #1186).
@@ -3241,7 +3256,7 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
     // C display_pickinv `:3345–3366` — after class items, before end_menu
     const special = force_invmenu_special(lets, allowxtra, usextra);
     if (special) {
-        entries.push({ text: 'Special', attr: ATR_INVERSE });
+        entries.push({ text: 'Special', attr: headingAttr });
         byLet.set(special.ch, { _special: special.ch });
         pickItems.push({ selector: special.ch, gselector: '' });
         entries.push({
@@ -3277,6 +3292,9 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
     let reset_count = true;
 
     const _botPrev = set_bot_disabled(true);
+    // C select_menu restores bot_disabled then caller bot() paints WIN_STATUS.
+    // dismiss_nhw_menu default clear_committed_status is D-0467 itemed leftover.
+    const dismissPickinv = () => dismiss_nhw_menu({ keep_status: true });
     try {
     for (;;) {
         if (reset_count) {
@@ -3313,11 +3331,12 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
         // C process_menu_window '0'..'9': ball class gacc before count
         if (key >= 48 && key <= 57) {
             const dch = String.fromCharCode(key);
-            if (menu_digit_is_gacc(counting, gacc, dch)) {
+            // C `:1353` gacc collected only when how != PICK_NONE
+            if (want_reply && menu_digit_is_gacc(counting, gacc, dch)) {
                 const gsel = menu_take_gacc(pickItems, gacc, dch);
                 if (gsel) {
                     if (out_cnt) out_cnt.n = -1;
-                    await dismiss_nhw_menu();
+                    await dismissPickinv();
                     return gsel;
                 }
             }
@@ -3335,7 +3354,7 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
         if (key === 27) {
             // C: counting → stop count only; else WIN_CANCELLED
             if (counting) continue;
-            await dismiss_nhw_menu();
+            await dismissPickinv();
             return '\x1b';
         }
         // C: Space → next page, or finish (no pick) on last page
@@ -3344,11 +3363,11 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
                 curr_page++;
                 continue;
             }
-            await dismiss_nhw_menu();
+            await dismissPickinv();
             return null;
         }
         if (key === 13 || key === 10) {
-            await dismiss_nhw_menu();
+            await dismissPickinv();
             return null;
         }
         const ch = String.fromCharCode(key);
@@ -3358,11 +3377,16 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
                 out_cnt.n = (counting && count > 0) ? count : -1;
             }
         };
+        // C `:1738–1740` PICK_NONE (want_reply false): any letter bells
+        if (!want_reply) {
+            tty_nhbell();
+            continue;
+        }
         // C: gacc before page selectors (group_accel, not only current page)
         const gsel = menu_take_gacc(pickItems, gacc, ch);
         if (gsel) {
             take();
-            await dismiss_nhw_menu();
+            await dismissPickinv();
             return gsel;
         }
         // C: only current-page selectors are in resp (PICK_ONE)
@@ -3373,12 +3397,12 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
             });
             if (onPage && byLet.has(ch)) {
                 take();
-                await dismiss_nhw_menu();
+                await dismissPickinv();
                 return ch;
             }
         } else if (byLet.has(ch)) {
             take();
-            await dismiss_nhw_menu();
+            await dismissPickinv();
             return ch;
         }
         // C: MENU_SEARCH after explicit page/gacc (PICK_ONE resp_len)
@@ -3389,12 +3413,13 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
             );
             if (res.kind === 'finish' && res.item?.selector) {
                 take();
-                await dismiss_nhw_menu();
+                await dismissPickinv();
                 return res.item.selector;
             }
             continue;
         }
-        // invalid / other-page letter → re-prompt same page
+        // C `:1738–1740` PICK_ONE !strchr(resp, morc) → tty_nhbell; re-prompt
+        tty_nhbell();
     }
     } finally {
         set_bot_disabled(_botPrev);
@@ -3521,17 +3546,14 @@ async function display_pickinv_wizid() {
 }
 
 /**
- * C ref: invent.c display_inventory(NULL, FALSE) / display_pickinv PICK_NONE.
- * C ref: wintty.c tty_end_menu — lmax=rows-1; npages>1 → process_menu_window
- *        "(N of M)" paging (select_menu PICK_NONE). Single-page corner vs
- *        fullscreen still uses "(end) ".
- * Shows invent and waits for a dismiss key (Space advances pages).
- * When wizard && iflags.override_ID → wizid Debug Identify path
- * (unid_cnt>0 PICK_ANY is D-1590).
- * Optional lets (invlets) + want_reply match C display_inventory
- * (`:3428–3452`); ggetobj `'i'` uses want_reply ESC abort (D-1602).
- * Canned CMDQ_KEY (D-1686): cmdq_pop before display_pickinv; matching
- * invent invlet (optional class-sym filter) returns that letter.
+ * C invent.c display_inventory `:3427–3452`.
+ * cmdq_pop KEY matching an invent invlet returns that letter (optional
+ * class-sym filter on `lets`); else cmdq_clear and '\\0'.
+ * Then display_pickinv(lets, 0, 0, FALSE, want_reply, 0): PICK_ONE when
+ * want_reply, PICK_NONE otherwise. A non-selector (farlook `i` then `N`)
+ * bells and stays — it does not dismiss (D-1850).
+ * wizard && override_ID → wizid Debug Identify (PICK_ANY is D-1590).
+ * ggetobj `'i'` uses want_reply ESC abort (D-1602).
  */
 export async function display_inventory(lets, want_reply) {
     /* C invent.c `:3427–3452` — cmdq_pop before display_pickinv. */
@@ -3556,62 +3578,20 @@ export async function display_inventory(lets, want_reply) {
     }
 
     const wizard = !!(game.flags?.debug || game.flags?.wizard);
-    // C display_pickinv `:3140–3147` — n==0 returns before reassign;
-    // then !invlet_constant reassign before wizid / menu.
+    // C display_pickinv `:3145–3147` — !invlet_constant reassign
     if ((game.invent || []).length && !invlet_constant()) reassign();
     if (wizard && (game.iflags?.override_ID | 0)) {
         await display_pickinv_wizid();
         return 0;
     }
 
-    const lines = invent_lines(lets); // includes trailing "(end)"
-    const menuItems = lines.slice(0, -1);
-    const rows = display()?.rows || 24;
-    // C ref: wintty.c tty_end_menu lmax = min(52, rows-1)
-    const lmax = Math.min(52, rows - 1);
-    const nitems = menuItems.length;
-    const npages = Math.max(1, Math.floor((nitems + lmax - 1) / lmax));
-
-    // C: npages>1 → process_menu_window pages with "(1 of 2)" etc.
-    // select_menu_pick_none already matches that path (D-0122).
-    if (npages > 1) {
-        await select_menu_pick_none(menuItems);
-        return 0;
-    }
-
-    const morestr = '(end) ';
-    const { offx } = nhw_menu_geometry(menuItems, morestr);
-    const maxrow = menuItems.length + 1;
-    // C: offx==10 || maxrow>=rows || !menu_overlay → fullscreen (offx forced 0)
-    const fullscreen = offx === 0 || maxrow >= 24;
-
-    if (fullscreen) {
-        // Full-screen menu: leading space on each line, "(end) " on last row,
-        // no status bar. Cursor just past "(end) ".
-        const painted = menuItems.map(e => ({
-            text: ` ${e.text}`,
-            attr: e.attr,
-        }));
-        painted.push({ text: ' (end) ', attr: 0 });
-        paint_overlay(painted, {
-            col: 0,
-            withStatus: false,
-            cursor: [7, menuItems.length],
-        });
-    } else {
-        // Corner NHW_MENU — keep map/status (D-0023 geometry helper).
-        await paint_corner_nhw_menu(menuItems, morestr);
-    }
-    await flush_screen(1);
-    const key = await nhgetch(); // dismiss (Esc / space)
-    // Fullscreen invent sets no corner geom — dismiss → docrt (C).
-    if (fullscreen) game._tty_menu_geom = { offx: 0, endRow: menuItems.length };
-    await dismiss_nhw_menu();
-    if (want_reply) {
-        if (key === 27) return '\x1b';
-        return typeof key === 'number' ? String.fromCharCode(key) : key;
-    }
-    return 0;
+    /* C `:3451–3452` — lets "" ≡ NULL; want_reply selects PICK_ONE vs NONE */
+    const letsArg = (!lets || lets === '') ? null : lets;
+    const picked = await display_pickinv_reply(letsArg, null, null, {
+        want_reply: !!want_reply,
+    });
+    if (picked == null || picked === '') return '';
+    return picked;
 }
 
 /** C hacklib.c s_suffix — it→its, you→your, *s/*z/*x/*ch/*sh → *', else *'s. */

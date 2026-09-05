@@ -23,6 +23,7 @@ import { m_dowear } from './worn.js';
 import { In_endgame, NO_MM_FLAGS, MM_NOMSG } from './const.js';
 import { is_art, mk_artifact } from './artifact.js';
 import { ART_MAGICBANE } from './artilist_data.js';
+import { verbalize } from './pline.js';
 
 function note_unported_mplayer(what) {
     (game.unported ||= new Set()).add('mplayer:' + what);
@@ -374,4 +375,26 @@ export function create_mplayers(num, special) {
         mk_mplayer(game.mons[pm], x, y, special);
         num--;
     }
+}
+
+// src/mplayer.c:356 mplayer_talk() - hostile endgame player-monsters use
+// separate taunts for a hero of the same role and for every other role.
+export async function mplayer_talk(mtmp) {
+    if (mtmp.mpeaceful)
+        return;
+
+    const sameClass = [
+        "I can't win, and neither will you!",
+        "You don't deserve to win!",
+        'Mine should be the honor, not yours!',
+    ];
+    const otherClass = [
+        'The low-life wants to talk, eh?',
+        'Fight, scum!',
+        'Here is what I have to say!',
+    ];
+    const messages = mtmp.mnum === game.urole.mnum ? sameClass : otherClass;
+
+    /* SetVoice(mtmp, 0, 80, 0) has no terminal-visible effect. */
+    await verbalize(`Talk? -- ${messages[rn2(3)]}`);
 }

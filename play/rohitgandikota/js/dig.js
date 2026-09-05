@@ -2190,7 +2190,7 @@ export async function rot_corpse(obj) {
         }
     } else if (obj.where === OBJ_MINVENT) {
         if (obj.owornmask && obj === MON_WEP(obj.ocarry))
-            setmnotwielded(obj.ocarry, obj); /* clears owornmask */
+            await setmnotwielded(obj.ocarry, obj); /* clears owornmask */
     } else if (obj.where === OBJ_MIGRATING) {
         /* clear destination flag so that obfree()'s check for
            freeing a worn object doesn't get a false hit */

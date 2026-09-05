@@ -46,10 +46,10 @@ import {
 import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI, PM_ARCHEOLOGIST, PM_WIZARD, PM_HUMAN } from './generated/monsters_data.js';
 import {
     find_mac, get_mattk, make_corpse, monstone, mhitm_knockback, monkilled,
-    troll_baned, mhitm_ad_poly, could_seduce, shade_miss,
+    troll_baned, mhitm_ad_poly, mhitm_ad_slee, could_seduce, shade_miss,
     AT_NONE, AT_WEAP, AT_KICK, AT_CLAW, AT_SPIT, AT_HUGS,
     AT_TUCH, AT_BITE, AT_BUTT, AT_STNG, AT_MAGC, AT_TENT,
-    AT_EXPL, AT_ENGL, AT_BREA, AT_GAZE, AD_PHYS, AD_POLY, AD_DRIN,
+    AT_EXPL, AT_ENGL, AT_BREA, AT_GAZE, AD_PHYS, AD_POLY, AD_DRIN, AD_SLEE,
 } from './mhitm.js';
 import {
     verysmall, nohands, G_FREQ, G_NOCORPSE, M2_COLLECT, MZ_MEDIUM, MZ_HUGE,
@@ -1195,7 +1195,7 @@ export async function mhitm_ad_wrap(magr, mattk, mdef, mhm) {
 
 /**
  * C ref: uhitm.c mhitm_adtyping youmonst subset for damageum.
- * AD_PHYS + AD_POLY + AD_DRIN skipdrin + AD_WRAP (D-1348) live;
+ * AD_PHYS + AD_POLY + AD_DRIN skipdrin + AD_WRAP (D-1348) + AD_SLEE live;
  * remaining mhitm_ad_* named. mhitm wrap brush is D-1406.
  */
 async function damageum_adtyping(mattk, mdef, mhm) {
@@ -1207,6 +1207,8 @@ async function damageum_adtyping(mattk, mdef, mhm) {
         await mhitm_ad_drin(game.youmonst, mattk, mdef, mhm);
     } else if (adtyp === AD_WRAP) {
         await mhitm_ad_wrap(game.youmonst, mattk, mdef, mhm);
+    } else if (adtyp === AD_SLEE) {
+        await mhitm_ad_slee(game.youmonst, mattk, mdef, mhm);
     }
 }
 

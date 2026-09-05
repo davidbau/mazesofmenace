@@ -7,11 +7,11 @@ import {
     COLNO, ROWNO, DOOR, SDOOR, POOL, TREE, CLOUD, LAVAWALL,
     D_CLOSED, D_LOCKED, D_TRAPPED, IS_OBSTRUCTED, IS_DOOR, IS_WATERWALL,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL,
-    IS_WALL, MAX_RADIUS, TT_PIT,
+    IS_WALL, MAX_RADIUS, TT_PIT, Is_waterlevel,
 } from './const.js';
 import { newsym } from './display.js';
 import { ONAMES } from './objects_data.js';
-import { m_at } from './mon.js';
+import { m_at, is_pool } from './mon.js';
 import { is_lightblocker_mappear } from './monst.js';
 import { Blind, See_invisible, Underwater } from './youprop.js';
 import { is_moat } from './dbridge.js';
@@ -690,7 +690,21 @@ export function vision_recalc(control = 0) {
     }
 
     if (control !== 2) {
-        if (u.utrap && u.utraptype === TT_PIT) {
+        /* src/vision.c:577. Away from the Plane of Water, an underwater
+           hero can only see adjacent squares which are also pools. */
+        if (Underwater() && !Is_waterlevel(u.uz)) {
+            const lo_col = Math.max(u.ux - 1, 1);
+            for (let row = u.uy - 1; row <= u.uy + 1; row++) {
+                for (let col = lo_col; col <= u.ux + 1; col++) {
+                    if (col <= 0 || col >= COLNO || row < 0 || row >= ROWNO
+                        || !is_pool(col, row))
+                        continue;
+                    next_rmin[row] = Math.min(next_rmin[row], col);
+                    next_rmax[row] = Math.max(next_rmax[row], col);
+                    next[row][col] = IN_SIGHT | COULD_SEE;
+                }
+            }
+        } else if (u.utrap && u.utraptype === TT_PIT) {
             for (let row = Math.max(0, u.uy - 1);
                  row <= Math.min(ROWNO - 1, u.uy + 1); row++) {
                 const start = Math.max(1, u.ux - 1);

@@ -925,9 +925,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         if (newdungeon) {
             const { tutorial } = await import('./nhlua.js');
             if (newlevel.dnum === game.tutorial_dnum) {
-                tutorial(true); /* entering tutorial */
+                await tutorial(true); /* entering tutorial */
             } else if (game.u.uz.dnum === game.tutorial_dnum) {
-                tutorial(false); /* leaving tutorial */
+                await tutorial(false); /* leaving tutorial */
                 up = false; /* re-enter level 1 as if starting new game */
             }
         }
@@ -1411,8 +1411,15 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
                 record_achievement(ACH_SOKO);
             }
         } else {
-            if (!familiar_level && Is_rogue_level(game.u.uz))
+            if (!familiar_level && Is_rogue_level(game.u.uz)) {
                 await You('enter what seems to be an older, more primitive world.');
+            } else if (!familiar_level && game.bigroom_level
+                       && game.u.uz.dnum === game.bigroom_level.dnum
+                       && game.u.uz.dlevel === game.bigroom_level.dlevel) {
+                const { ACH_BGRM, record_achievement } =
+                    await import('./insight.js');
+                record_achievement(ACH_BGRM);
+            }
             /* src/do.c:1918, the first arrival at the main-dungeon side
                of the Quest portal carries the leader's telepathic call. */
             const { at_dgn_entrance } = await import('./dungeon.js');

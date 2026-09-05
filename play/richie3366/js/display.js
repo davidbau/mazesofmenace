@@ -1124,6 +1124,18 @@ function remembered_matches_cmap(mem, cmapIdx) {
 }
 
 /**
+ * C display.c newsym `lev->glyph == cmap_to_glyph(idx)`. Prefer the
+ * stored integer id; fall back to tty when older memory omitted it.
+ */
+function memory_is_cmap(mem, cmapIdx) {
+    if (!mem) return false;
+    if (typeof mem.glyph === 'number' && (mem.glyph | 0) !== NO_GLYPH) {
+        return (mem.glyph | 0) === cmap_to_glyph(cmapIdx);
+    }
+    return remembered_matches_cmap(mem, cmapIdx);
+}
+
+/**
  * C ref: display.c newsym :993–998 — paint the cloud and skip the
  * rest of newsym when the cell is accessible or a visible cloud
  * over pool/lava and the monster does not take precedence.
@@ -4643,21 +4655,54 @@ export function newsym(x, y) {
     }
 
     if (loc.remembered_glyph) {
-        // C ref: display.c newsym — out of sight, correct lit memory to
-        // match waslit. With lit_corridor, visible CORR paints as
-        // S_litcorr (CLR_WHITE); when !waslit (or dark_room+color), show
-        // S_corr instead (tty CLR_GRAY → NO_COLOR).
+        // C ref: display.c newsym `:1079–1096` — out of sight, correct
+        // lit memory to match waslit. Rogue unlit ROOM → S_stone; else
+        // !waslit || (dark_room && use_color): S_litcorr→S_corr and
+        // S_room→DARKROOMSYM. lookat then reads defsyms[] (no extra
+        // S_room/S_darkroom arms). Tty for DARKROOMSYM keeps the floor
+        // cell (showsyms[S_darkroom]=showsyms[S_room] when dark_room).
         let mem = loc.remembered_glyph;
         const darkRoomColor = game.flags?.dark_room !== false
             && game.flags?.color !== false
             && game.iflags?.use_color !== false;
-        if (loc.typ === CORR && mem.ch === '#' && mem.color === CLR_WHITE
-            && (!loc.waslit || darkRoomColor)) {
-            mem = {
-                ch: '#', color: NO_COLOR, decgfx: false,
-                glyph: cmap_to_glyph(S_CORR),
-            };
-            loc.remembered_glyph = mem;
+        const isLitcorr = (loc.typ | 0) === CORR && (
+            memory_is_cmap(mem, S_LITCORR)
+            || (mem.ch === '#' && mem.color === CLR_WHITE)
+        );
+        const isRoomFloor = (loc.typ | 0) === ROOM
+            && memory_is_cmap(mem, S_ROOM_CMAP);
+        if (Is_rogue_level(game.u?.uz)) {
+            if (isLitcorr) {
+                mem = {
+                    ch: '#', color: NO_COLOR, decgfx: false,
+                    glyph: cmap_to_glyph(S_CORR),
+                };
+                loc.remembered_glyph = mem;
+            } else if (isRoomFloor && !loc.waslit) {
+                const stone = cmap_idx_to_glyph(S_STONE);
+                mem = {
+                    ch: stone.ch, color: stone.color, decgfx: !!stone.dec,
+                    glyph: cmap_to_glyph(S_STONE),
+                };
+                loc.remembered_glyph = mem;
+            }
+        } else if (!loc.waslit || darkRoomColor) {
+            if (isLitcorr) {
+                mem = {
+                    ch: '#', color: NO_COLOR, decgfx: false,
+                    glyph: cmap_to_glyph(S_CORR),
+                };
+                loc.remembered_glyph = mem;
+            } else if (isRoomFloor) {
+                mem = {
+                    ch: mem.ch,
+                    color: mem.color,
+                    decgfx: !!mem.decgfx,
+                    objpile: mem.objpile,
+                    glyph: cmap_to_glyph(darkroom_sym()),
+                };
+                loc.remembered_glyph = mem;
+            }
         }
         // C: piletop glyph carries MG_OBJPILE; hilite applied at print
         // from current iflags. JS may lack objpile on older memory — also

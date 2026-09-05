@@ -47,7 +47,7 @@ import { omon_adj } from './dothrow.js';
 import { dobuzz, hit, miss, exclam } from './zap.js';
 import { distant_name, mshot_xname, simpleonames, xname, an, the } from './objnam.js';
 import { pline, canspotmon, display_object_at, temporary_object_glyph,
-         newsym } from './display.js';
+         newsym, flush_screen } from './display.js';
 import { pline_The, You } from './pline.js';
 import { seemimic, setmangry, xkilled, mondied } from './mon.js';
 import { dmgval } from './weapon.js';
@@ -477,7 +477,7 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
         /* Remove object from minvent; cannot be done later (the infamous
            2^32-1 orcish dagger bug) */
         if (MON_WEP(mon) === obj)
-            setmnotwielded(mon, obj);
+            await setmnotwielded(mon, obj);
         obj_extract_self(obj);
         singleobj = obj;
         obj = null;
@@ -490,13 +490,21 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
     /* display.c tmp_at() restores the preceding temporary cell whenever the
        missile advances, then leaves the new one painted during messages. */
     const show_missile = async () => {
-        if (tempMissile)
+        if (tempMissile) {
             newsym(tempMissile.x, tempMissile.y);
-        display_object_at(singleobj, game.bhitpos.x, game.bhitpos.y,
-                          missileGlyph);
-        tempMissile = { x: game.bhitpos.x, y: game.bhitpos.y };
-        if (game.animationFrame)
+            tempMissile = null;
+        }
+        /* tmp_at(DISP_FLASH) skips the glyph outside the hero's view, but
+           m_throw() still performs the following delay. */
+        if (cansee(game.bhitpos.x, game.bhitpos.y)) {
+            display_object_at(singleobj, game.bhitpos.x, game.bhitpos.y,
+                              missileGlyph);
+            tempMissile = { x: game.bhitpos.x, y: game.bhitpos.y };
+            await flush_screen(0);
+        }
+        if (game.animationFrame) {
             await game.animationFrame();
+        }
     };
     const end_missile = () => {
         if (tempMissile) {
@@ -535,6 +543,9 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
         return;
     }
     game.mesg_given = 0; /* a 'missile misses' message not yet shown */
+    /* tmp_at(DISP_FLASH, glyph) flushes map updates before the first flight
+       delay, including restoration left buffered by a preceding shot. */
+    await flush_screen(0);
 
     while (range-- > 0) { /* loop is always exited by break */
         game.bhitpos.x += dx;
@@ -1157,4 +1168,3 @@ export async function hits_bars(obj_p, x, y, barsx, barsy, always_hit, whodidit)
 
     return hits;
 }
-

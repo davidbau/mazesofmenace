@@ -17,19 +17,19 @@ import { upstart } from './do_name.js';
 import { monexplain } from './drawing_data.js';
 import { is_rider } from './mondata.js';
 import { NUMMONS, PMNAMES } from './monst_data.js';
-import { VANQ_MLVL_MNDX, VANQ_MSTR_MNDX, VANQ_ALPHA_SEP, VANQ_ALPHA_MIX, VANQ_MCLS_HTOL, VANQ_MCLS_LTOH, VANQ_COUNT_H_L, VANQ_COUNT_L_H, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_NONE, PICK_ONE, ECMD_OK, LOW_PM, NEUTRAL, G_UNIQ, G_GENOD, G_GONE, G_EXTINCT } from './const.js';
+import { VANQ_MLVL_MNDX, VANQ_MSTR_MNDX, VANQ_ALPHA_SEP, VANQ_ALPHA_MIX, VANQ_MCLS_HTOL, VANQ_MCLS_LTOH, VANQ_COUNT_H_L, VANQ_COUNT_L_H, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_NONE, PICK_ONE, ECMD_OK, LOW_PM, NEUTRAL, G_UNIQ, G_GENOD, G_GONE, G_EXTINCT, LL_ACHIEVE, LL_UMONST, LL_MINORAC, LL_SPOILER, LL_DUMP } from './const.js';
 import { NO_COLOR } from './terminal.js';
 import { docrt } from './display.js';
 import { tty_yn_function } from './tty/topl.js';
 import { xwaitforspace } from './tty/getline.js';
 import { tty_create_nhwindow, tty_destroy_nhwindow, tty_putstr, tty_display_nhwindow, tty_next_page, tty_start_menu, tty_add_menu, tty_end_menu, tty_select_menu, NHW_MENU, ATR_NONE, ATR_INVERSE } from './tty/wintty.js';
 import { MONSYMS } from './monst_data.js';
-import { You } from './pline.js';
+import { You, livelog_printf } from './pline.js';
 import { ceiling, surface } from './dungeon.js';
 import { hides_under, is_clinger } from './mondata.js';
 import { waterbody_name } from './pager.js';
 import { is_pool, t_at } from './mon.js';
-import { simple_typename, ansimpleoname } from './objnam.js';
+import { simple_typename, ansimpleoname, OBJ_NAME } from './objnam.js';
 import { M_AP_TYPE, M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, TT_PIT, SPIKED_PIT } from './const.js';
 import { game } from './gstate.js';
 import { P_NONE, P_UNSKILLED, P_SKILLED, P_ISRESTRICTED, FULL_MOON, NEW_MOON, WEAK,
@@ -54,7 +54,7 @@ import { depth, dunlev, endgamelevelname } from './dungeon.js';
 import { In_endgame, In_quest, Is_knox_level } from './const.js';
 import { aligns } from './role_data.js';
 import { A_MAX, ACURR } from './attrib.js';
-import { hu_stat, rank_of } from './botl.js';
+import { hu_stat, rank_of, rank_to_xlev } from './botl.js';
 import { carrying, money_cnt, stone_luck } from './invent.js';
 import { costly_spot } from './shk.js';
 import { newuexp } from './exper.js';
@@ -196,13 +196,80 @@ export const ENL_GAMEINPROGRESS = 0, ENL_GAMEOVERALIVE = 1,
 export const BASICENLIGHTENMENT = 1, MAGICENLIGHTENMENT = 2;
 export const ACH_HELL = 2, ACH_INVK = 5, ACH_ENDG = 7, ACH_ASTR = 8,
              ACH_UWIN = 9, ACH_MINE = 15, ACH_TOWN = 16,
-             ACH_SHOP = 17, ACH_SOKO = 21, ACH_RNK1 = 23;
+             ACH_SHOP = 17, ACH_SOKO = 21, ACH_BGRM = 22,
+             ACH_RNK1 = 23;
+const ACH_MINE_PRIZE = 10, ACH_SOKO_PRIZE = 11, ACH_RNK8 = 30,
+      N_ACH = 32;
 let en_final = 0;
 
+// src/insight.c:50 achieve_msg[]; indexed by enum achievements in you.h.
+const achieve_msg = [
+    [0, ''],
+    [LL_ACHIEVE, 'acquired the Bell of Opening'],
+    [LL_ACHIEVE, 'entered Gehennom'],
+    [LL_ACHIEVE, 'acquired the Candelabrum of Invocation'],
+    [LL_ACHIEVE, 'acquired the Book of the Dead'],
+    [LL_ACHIEVE, 'performed the invocation'],
+    [LL_ACHIEVE, 'acquired The Amulet of Yendor'],
+    [LL_ACHIEVE, 'entered the Elemental Planes'],
+    [LL_ACHIEVE, 'entered the Astral Plane'],
+    [LL_ACHIEVE, 'ascended'],
+    [LL_ACHIEVE | LL_SPOILER, "acquired the Mines' End"],
+    [LL_ACHIEVE | LL_SPOILER, 'acquired the Sokoban'],
+    [LL_ACHIEVE | LL_UMONST, 'killed Medusa'],
+    [0, 'hero was always blond, no, blind'],
+    [0, 'hero never wore armor'],
+    [LL_MINORAC | LL_DUMP, 'entered the Gnomish Mines'],
+    [LL_ACHIEVE, 'reached Mine Town'],
+    [LL_MINORAC, 'entered a shop'],
+    [LL_MINORAC, 'entered a temple'],
+    [LL_ACHIEVE, 'consulted the Oracle'],
+    [LL_MINORAC | LL_DUMP, 'read a Discworld novel'],
+    [LL_ACHIEVE, 'entered Sokoban'],
+    [LL_ACHIEVE, 'entered the Bigroom'],
+    [LL_MINORAC | LL_DUMP, ''],
+    [LL_MINORAC | LL_DUMP, ''],
+    [LL_MINORAC | LL_DUMP, ''],
+    [LL_ACHIEVE, ''],
+    [LL_ACHIEVE, ''],
+    [LL_ACHIEVE, ''],
+    [LL_ACHIEVE, ''],
+    [LL_ACHIEVE, ''],
+    [LL_MINORAC, "learned castle drawbridge's tune"],
+    [0, ''],
+];
+
+// src/insight.c:2405 record_achievement()
 export function record_achievement(achidx) {
+    const absidx = Math.abs(achidx);
+    if ((achidx < 1 && (absidx < ACH_RNK1 || absidx > ACH_RNK8))
+        || achidx >= N_ACH)
+        return;
+
     const achieved = (game.u.uachieved ||= []);
-    if (!achieved.some((entry) => Math.abs(entry) === Math.abs(achidx)))
-        achieved.push(achidx);
+    if (achieved.some((entry) => Math.abs(entry) === absidx))
+        return;
+    achieved.push(achidx);
+
+    /* SoundAchievement is audio-only. C suppresses final-disclosure
+       achievements here because end.c logs the end result separately. */
+    if (game.program_state_gameover)
+        return;
+
+    if (absidx >= ACH_RNK1 && absidx <= ACH_RNK8) {
+        const rank = absidx - (ACH_RNK1 - 1);
+        livelog_printf(achieve_msg[absidx][0],
+                       `attained the rank of ${rank_of(rank_to_xlev(rank),
+                           game.urole, achidx < 0)} (level ${game.u.ulevel})`);
+    } else if (achidx === ACH_SOKO_PRIZE || achidx === ACH_MINE_PRIZE) {
+        const achieveo = game.context.achieveo;
+        const otyp = achidx === ACH_SOKO_PRIZE
+            ? achieveo.soko_prize_otyp : achieveo.mines_prize_otyp;
+        livelog_printf(achieve_msg[achidx][0],
+                       `${achieve_msg[achidx][1]} ${OBJ_NAME(game.objects[otyp])}`);
+    } else {
+        livelog_printf(achieve_msg[absidx][0], achieve_msg[absidx][1]);
+    }
 }
 
 // src/insight.c:135 enlght_line()
@@ -1233,7 +1300,6 @@ export async function do_gamelog() {
             tty_create_nhwindow, tty_destroy_nhwindow, tty_putstr,
             tty_display_nhwindow, tty_next_page, NHW_TEXT,
         } = await import('./tty/wintty.js');
-        const { nhgetch } = await import('./input.js');
         const { docrt } = await import('./display.js');
         const win = tty_create_nhwindow(NHW_TEXT);
         tty_putstr(win, 0, 'Logged events:');
@@ -1244,9 +1310,9 @@ export async function do_gamelog() {
             tty_putstr(win, 0, `${String(e.turn).padStart(5)}: ${e.text}`);
         }
         await tty_display_nhwindow(win);
-        await nhgetch();
-        while (tty_next_page(win))
-            await nhgetch();
+        await xwaitforspace(' \r\n\x1b');
+        while (game.morc !== '\x1b' && tty_next_page(win))
+            await xwaitforspace(' \r\n\x1b');
         tty_destroy_nhwindow(win);
         await docrt();
     } else {

@@ -27,6 +27,7 @@ import { MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED,
          MENU_ITEMFLAGS_SKIPINVERT, MENU_NEXT_PAGE, MENU_PREVIOUS_PAGE,
          MENU_SEARCH, PICK_ONE, PICK_ANY, GOLD_SYM, ROWNO, COLNO } from './../const.js';
 import { pmatch } from './../hacklib.js';
+import { gc_currentgraphics, gs_symset, H_UTF8 } from './../symbols.js';
 
 // include/wintype.h:128-137 — NetHack's attribute numbers. These are NOT the
 // frozen terminal's bit flags; win/tty/wintty.c term_start_attr() translates
@@ -188,6 +189,7 @@ export function tty_add_menu(window, glyphinfo, identifier, ch, gch,
 
     const item = {
         identifier,
+        glyphinfo,
         count: -1,
         selected: !!(itemflags & MENU_ITEMFLAGS_SELECTED),
         itemflags: itemflags | 0,
@@ -404,7 +406,19 @@ function render_page(cw, page, display) {
         for (let c = cw.offx; c < col; c++)
             display.setCell(c, row, ' ', NO_COLOR, 0);
         const attr = term_attr((cw.attrs || [])[start + n] | 0);
-        for (let i = 0; i < line.length && col < COLS; i++, col++)
+        let first = 0;
+        /* wintty.c:1808 pre-increments ttyDisplay->curx, then sends the
+           first byte of each data line through g_putch() under H_UTF8. The
+           recorder's g_putch hook therefore writes it one cell late and the
+           ordinary second byte overwrites it. Preserve that observable
+           one-byte loss for data-backed text windows. */
+        if (line.length
+            && gs_symset[gc_currentgraphics.set]?.handling === H_UTF8) {
+            display.setCell(col, row, ' ', NO_COLOR, 0);
+            col++;
+            first = 1;
+        }
+        for (let i = first; i < line.length && col < COLS; i++, col++)
             display.setCell(col, row, line[i], NO_COLOR, attr);
         /* win/tty/wintty.c calls cl_end() on every window row, so a short
            menu line blanks the rest of the row rather than letting the map
@@ -461,6 +475,19 @@ function process_menu_window(cw, page, display) {
     for (let curr = cw.mlist; curr; n++, curr = curr.next)
         if (Math.floor(n / lmax) === page) items.push(curr);
 
+    /* win/tty/wintty.c:1413; the default shows object symbols only when
+       the entire menu has no headings, including its title. */
+    const menuobjsyms = game.iflags?.menuobjsyms ?? 4;
+    let show_obj_syms = !!(menuobjsyms & (2 | 4));
+    if (menuobjsyms & 4) {
+        for (let curr = cw.mlist; curr; curr = curr.next) {
+            if (!curr.identifier) {
+                show_obj_syms = false;
+                break;
+            }
+        }
+    }
+
     if (!cw.offx) display.clearScreen();
 
     items.forEach((item, lineno) => {
@@ -490,9 +517,16 @@ function process_menu_window(cw, page, display) {
 
         for (let i = 0; i < s.length && col < COLS; i++, col++) {
             const on = (i >= attr_n && !plainrun[i]) ? attr : 0;
-            const ch = (i === 2 && item.identifier && item.selected)
-                       ? (item.count === -1 ? '*' : '#') : s[i];
-            display.setCell(col, row, ch, NO_COLOR, on);
+            let ch = s[i], color = NO_COLOR;
+            if (i === 2 && item.identifier) {
+                if (item.selected)
+                    ch = item.count === -1 ? '*' : '#';
+                else if (show_obj_syms && item.glyphinfo?.ch) {
+                    ch = item.glyphinfo.ch;
+                    color = item.glyphinfo.color;
+                }
+            }
+            display.setCell(col, row, ch, color, on);
         }
         for (let c = col; c < COLS; c++)
             display.setCell(c, row, ' ', NO_COLOR, 0);
@@ -974,19 +1008,20 @@ export function tty_next_page(window) {
 // and redraw the status rows if the window overlapped them.
 function docorner(xmin, ymax, display) {
     let y = 0;
+    const screenX = Math.max(0, xmin - 1);
     for (; y < Math.min(ymax, ROWS); y++) {
         /* the C moves the BASE_WINDOW cursor once per row, and the position it
            is left in is what the NEXT tty_putstr(BASE_WINDOW) writes over. A
            second "Who are you?" after 'a' on the confirmation menu lands on the
            row below the dismissed menu because of exactly this. */
         tty_curs_base(xmin, y);
-        for (let x = xmin; x < COLS; x++)
+        for (let x = screenX; x < COLS; x++)
             display.setCell(x, y, ' ', NO_COLOR, 0);
         /* row_refresh(xmin - offx, COLNO-1, y - offy): terminal row y maps to
-           map row y-1; the first map column whose cell sits at or right of
-           terminal column xmin is x = xmin + 1 */
+           map row y-1. xmin is already the first 1-based map column whose
+           screen cell was cleared by tty_curs(BASE_WINDOW, xmin, y). */
         if (y >= 1 && y - 1 < ROWNO)
-            row_refresh(Math.max(1, xmin + 1), COLNO - 1, y - 1);
+            row_refresh(Math.max(1, xmin), COLNO - 1, y - 1);
     }
     /* "we scribbled over the status line; redraw it" */
     if (ymax >= 22)

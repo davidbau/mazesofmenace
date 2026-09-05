@@ -737,7 +737,7 @@ async function newman() {
     see_monsters();
     await encumber_msg();
 
-    retouch_equipment(2);
+    await retouch_equipment(2);
     if (!u.uarmg)
         await selftouch(no_longer_petrify_resistant);
 }
@@ -1300,7 +1300,7 @@ export async function polymon(mntmp) {
     see_monsters();
     await encumber_msg();
 
-    retouch_equipment(2);
+    await retouch_equipment(2);
     /* this might trigger a recursive call to polymon() [stone golem
        wielding cockatrice corpse and hit by stone-to-flesh, becomes
        flesh golem above, now gets transformed back into stone golem;
@@ -1660,7 +1660,7 @@ export async function rehumanize() {
     if (was_flying && !Flying() && u.usteed)
         await You(`and ${mon_nam(u.usteed)} return gently to the ${
             surface(u.ux, u.uy)}.`);
-    retouch_equipment(2);
+    await retouch_equipment(2);
     if (!u.uarmg)
         await selftouch(no_longer_petrify_resistant);
 }

@@ -18,7 +18,7 @@ import { closed_door } from './cmd.js';
 import { resists_blnd, digests } from './mondata.js';
 import { ATR_INVERSE as TERM_INVERSE } from './terminal.js';
 import { showsym } from './symbols.js';
-import { def_oc_syms } from './drawing_data.js';
+import { def_oc_syms, oc_names as def_oc_names } from './drawing_data.js';
 import { detect_wsegs } from './worm.js';
 import { is_cmap_furniture } from './pager.js';
 import { get_obj_location } from './zap.js';
@@ -861,12 +861,6 @@ const dummytrap = { ttyp: 0, tx: 0, ty: 0, tseen: 0 };
 /* src/decl.c:96 quitchars[], :45 "something" */
 const quitchars = ' \r\n\x1b';
 const something = 'something';
-/* src/drawing.c def_oc_syms[].name, indexed by object class */
-const def_oc_names = [
-    'illegal objects', 'weapon', 'armor', 'ring', 'amulet', 'tool', 'food',
-    'potion', 'scroll', 'spellbook', 'wand', 'coin', 'gem or rock',
-    'boulder or statue', 'iron ball', 'iron chain', 'splash of venom',
-];
 /* include/youprop.h Confusion */
 const Confusion = () => !!(game.u.intrinsic?.HConfusion
                            || game.u.uprops?.CONFUSION);
@@ -1377,9 +1371,9 @@ export async function object_detect(detector, cls_) {
     let ct = 0, ctu = 0;
     let otmp = null;
     let sym, boulder = 0, ter_typ = TER_DETECT | TER_OBJ;
-    /* gs.showsyms[SYM_BOULDER + SYM_OFF_X]: the boulder option is not
-       modelled (js/options.js), so the default (unset) symbol stands */
-    const boulder_sym = 0;
+    /* gs.showsyms[SYM_BOULDER + SYM_OFF_X] */
+    const boulder_sym = game.boulder_symbol
+                        || def_oc_syms[OCLASSES.ROCK_CLASS];
 
     if (cls_ < 0 || cls_ >= def_oc_syms.length) {
         /* impossible("object_detect:  illegal class %d", class); */
@@ -2006,9 +2000,9 @@ export async function use_crystal_ball(obj) {
     }
     return;
 }
-/* gs.showsyms[SYM_BOULDER + SYM_OFF_X]: unset unless the boulder option is
-   used (not modelled, see js/options.js) */
-const boulder_sym_set = () => 0;
+/* gs.showsyms[SYM_BOULDER + SYM_OFF_X] */
+const boulder_sym_set = () => game.boulder_symbol
+    || def_oc_syms[OCLASSES.ROCK_CLASS];
 
 // src/detect.c:1448 do_vicinity_map(), clairvoyance: map the vicinity.
 export async function do_vicinity_map(sobj) {

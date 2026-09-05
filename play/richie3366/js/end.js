@@ -742,7 +742,7 @@ async function disclose(how, taken) {
         if (c === 'y') {
             // C: iflags.force_invmenu = FALSE; display_inventory(NULL, TRUE)
             if (game.iflags) game.iflags.force_invmenu = false;
-            await display_inventory();
+            await display_inventory(null, true);
             await container_contents(invent, true, true, false);
         }
         if (c === 'q') {

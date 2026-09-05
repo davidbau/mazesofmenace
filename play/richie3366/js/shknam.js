@@ -38,6 +38,9 @@ import {
 } from './monsters.js';
 import { make_engr_at } from './engrave.js';
 import { cvt_sdoor_to_door } from './detect.js';
+import { inside_shop } from './shk.js';
+import { in_rooms } from './hack.js';
+import { Is_special } from './dungeon.js';
 import { newsym, Hallucination } from './display.js';
 import { obj_resists } from './dogmove.js';
 import { in_town } from './hack.js';
@@ -269,14 +272,6 @@ function m_at(x, y) {
     return null;
 }
 
-function inside_shop(x, y) {
-    const loc = game.level?.at?.(x, y);
-    if (!loc) return false;
-    const rmno = (loc.roomno | 0) - ROOMOFFSET;
-    if (rmno < 0) return false;
-    const room = game.level.rooms?.[rmno];
-    return !!(room && (room.rtype | 0) >= SHOPBASE);
-}
 
 function ledger_no(lev) {
     const dun = game.dungeons?.[lev?.dnum | 0];
@@ -706,10 +701,14 @@ export function stock_room(shp_indx, sroom) {
             if (inside_shop(sx, sy + 1)) n--;
             else if (inside_shop(sx, sy - 1)) n++;
             make_engr_at(m, n, 'Closed for inventory', null, 0, DUST);
+            // C shknam.c stock_room: the engraving spot (outside the door
+            // per shk.c inside_shop, which treats wall cells — edge — as
+            // outside) becomes ROOM on a special level or inside a room,
+            // else CORR, only when it is neither CORR nor ROOM (SCORR).
             const eloc = game.level.at(m, n);
             if (eloc && eloc.typ !== CORR && eloc.typ !== ROOM) {
-                // Is_special / in_rooms deferred → prefer ROOM
-                eloc.typ = ROOM;
+                eloc.typ = (Is_special(game.u?.uz) || in_rooms(m, n, 0))
+                    ? ROOM : CORR;
             }
         }
     }

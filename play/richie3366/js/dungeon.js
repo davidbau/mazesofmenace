@@ -2012,7 +2012,7 @@ function br_string2(br) {
 }
 
 /** C ref: dungeon.c Is_special — match in sp_levchn. */
-function Is_special(lev) {
+export function Is_special(lev) {
     for (const s of game.sp_levchn || []) {
         if (on_level(lev, s.dlevel)) return s;
     }

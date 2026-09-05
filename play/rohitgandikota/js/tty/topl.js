@@ -70,13 +70,18 @@ export async function update_topl(bp) {
         && n0 + toplines.length + 3 < CO - 8   /* room for --More-- */
         && (notdied = bp.slice(0, 7) !== 'You die')) {
         game._toplines = toplines + '  ' + bp;
-        game._pending_message = game._toplines;
-        const painted = (game._topline_physical_prefix || '')
-            + game._pending_message;
-        game._topl_curx = painted.length;
         if (!skip) {
+            game._pending_message = game._toplines;
+            const painted = (game._topline_physical_prefix || '')
+                + game._pending_message;
+            game._topl_curx = painted.length;
             game._toplin = TOPLINE_NEED_MORE;
             paint_topline();    /* same physical append that addtopl paints */
+        } else {
+            /* C still advances cw->curx by the two separating spaces, but
+               addtopl() is not called, so none of the buffered text becomes
+               terminal output while WIN_STOP is set. */
+            game._topl_curx = (game._topl_curx || 0) + 2;
         }
         return;
     }
@@ -100,14 +105,20 @@ export async function update_topl(bp) {
     const out = wrap_topline(bp.slice(0, TBUFSZ - 1), CO);
 
     game._toplines = out;   /* gt.toplines after strncpy() and wrapping */
-    game._pending_message = out;
     /* "You die" is urgent and lifts an earlier ESC suppression. */
     if (!notdied) {
         game._win_stop = false;
         skip = false;
     }
-    if (!skip)
+    if (!skip) {
+        game._pending_message = out;
         await redotoplin(out);
+    } else {
+        /* gt.toplines retains suppressed text for ^P history, but C does not
+           call redotoplin(), so the physical message window stays empty. */
+        game._pending_message = '';
+        game._topline_physical_prefix = '';
+    }
 }
 
 // win/tty/topl.c:194 addtopl(), physical text without changing history.
@@ -117,13 +128,25 @@ function addtopl(bp) {
                    + (game._pending_message || '')).split('\n');
     let x = game._topl_curx || 0, y = game._topl_cury || 0;
     for (const c of bp) {
-        if (x === columns - 1) {
+        if (c === '\b') {
+            if (x === 0 && y > 0) {
+                x = columns;
+                y--;
+            }
+            x--;
+            continue;
+        }
+        if (c === '\n' || x === columns - 1) {
+            lines[y] = (lines[y] || '').slice(0, x);
             x = 0;
             y++;
         }
+        if (c === '\n')
+            continue;
         lines[y] = (lines[y] || '').slice(0, x).padEnd(x, ' ') + c;
         x++;
     }
+    lines[y] = (lines[y] || '').slice(0, x); // C addtopl(): cl_end(), including after newline/backspace.
     game._pending_message = lines.join('\n');
     game._topline_physical_prefix = '';
     game._topl_curx = x;
@@ -230,13 +253,16 @@ export function show_topl_nohistory(str) {
     if (game._win_stop)
         return;
 
+    if (game._topl_cury && game._toplin === TOPLINE_NON_EMPTY)
+        tty_clear_nhwindow_message(game._topl_cury);
     game._pending_message = '';
-    game._topline_physical_prefix = str;
-    game._topl_curx = str.split('\n').at(-1).length;
-    game._topl_cury = (str.match(/\n/g) || []).length;
+    game._topline_physical_prefix = '';
+    game._topl_curx = game._topl_cury = 0;
+    addtopl(str);
+    game._topline_physical_prefix = game._pending_message;
+    game._pending_message = '';
     game._toplin = game._topl_cury
         ? TOPLINE_NON_EMPTY : TOPLINE_NEED_MORE;
-    paint_topline();
 }
 
 // include/decl.h TBUFSZ
@@ -249,7 +275,7 @@ const TBUFSZ = 300;
 // unacknowledged line, and toplin goes to TOPLINE_SPECIAL_PROMPT, which is
 // what stops the next message from joining onto the prompt text.
 // The response filter and numeric '#' input are ported. The Ctrl-P history
-// interaction and acceptable responses hidden after an ESC byte are not.
+// interaction is not yet ported.
 export async function tty_yn_function(query, resp, def, addcmdq = false) {
     /* src/cmd.c:5487 yn_function(), repeatable questions consume their
        saved answer before invoking the window port. There is deliberately
@@ -296,9 +322,9 @@ export async function tty_yn_function(query, resp, def, addcmdq = false) {
     if (resp) {
         /* win/tty/topl.c builds "<query> [<resp>] " and appends "(<def>) "
            when there is a default. The screen shows it as
-           "... Ready it instead? [ynq] (q)". Acceptable responses after an
-           embedded ESC byte are not yet hidden from the displayed prompt. */
-        prompt += ` [${resp}]`;
+           "... Ready it instead? [ynq] (q)". Choices after ESC remain
+           acceptable but aren't displayed (win/tty/topl.c:410). */
+        prompt += ` [${resp.split('\x1b')[0]}]`;
         if (def && def !== '\0')
             prompt += ` (${def})`;
     }
@@ -380,9 +406,9 @@ export async function tty_yn_function(query, resp, def, addcmdq = false) {
             if (ch === '\x1b') {
                 answer = resp.includes('q') ? 'q'
                        : resp.includes('n') ? 'n'
-                         : (def && def !== '\0') ? def : ch;
+                         : def;
             } else if (quitchars.includes(ch)) {
-                answer = (def && def !== '\0') ? def : ch;
+                answer = def;
             } else if (!resp.includes(ch) && !digit_ok) {
                 /* tty_nhbell(); try again */
             } else if (ch === '#' || digit_ok) {

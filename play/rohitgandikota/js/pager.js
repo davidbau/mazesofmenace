@@ -9,7 +9,7 @@
 // Functions appear in src/pager.c order. dohelp()/doextversion() at the
 // bottom predate this port of the rest of the file.
 
-import { Mgender } from './const.js';
+import { Mgender, NON_PM } from './const.js';
 import { M_AP_MONSTER } from './const.js';
 import { MONSYMS } from './monst_data.js';
 import { visible_region_at } from './region.js';
@@ -27,6 +27,7 @@ import { Levitation } from './youprop.js';
 import { cansee } from './vision.js';
 import { distu } from './hacklib.js';
 import { spot_time_left } from './timeout.js';
+import { obj_stop_timers } from './timeout.js';
 import { db_under_typ } from './dbridge.js';
 import { doextlist } from './cmd.js';
 import { game } from './gstate.js';
@@ -37,7 +38,8 @@ import { COLNO, ROWNO, BOLT_LIM, STONE, SCORR, SDOOR, GRAVE, CORR,
          TER_DETECT, TER_MAP, M_AP_TYPE, M_AP_FURNITURE,
          M_AP_OBJECT, M_AP_FLAG, M_AP_F_DKNOWN, OBJ_FLOOR,
          AM_MASK, AM_SANCTUM, Amask2align, Is_astralevel,
-         A_LAWFUL, A_NEUTRAL, A_CHAOTIC, STRAT_WAITMASK } from './const.js';
+         A_LAWFUL, A_NEUTRAL, A_CHAOTIC, STRAT_WAITMASK,
+         WARNCOUNT, def_warnsyms, I_SPECIAL } from './const.js';
 import { defsyms, monexplain, oc_explain, def_monsyms, def_oc_syms,
          cmap_names } from './drawing_data.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
@@ -51,8 +53,8 @@ import { is_obj_mappear } from './monst.js';
 import { engr_at } from './engrave.js';
 import { x_monnam, upstart, pmname, hliquid } from './do_name.js';
 import { ARTICLE_NONE, MAXTCHARS } from './const.js';
-import { an, the, makesingular, singular, xname, doname,
-         simpleonames, OBJ_NAME } from './objnam.js';
+import { an, the, makesingular, singular, xname, distant_name,
+         doname_vague_quan, simpleonames, OBJ_NAME } from './objnam.js';
 import { mkobj, mksobj } from './mkobj.js';
 import { observe_object } from './o_init.js';
 import { Blind, Hallucination } from './youprop.js';
@@ -70,7 +72,6 @@ import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
          tty_next_page, tty_destroy_nhwindow, tty_start_menu, tty_add_menu,
          tty_add_menu_str, tty_end_menu, tty_select_menu, tty_dismiss_nhwindow,
          NHW_TEXT, NHW_MENU, ATR_NONE } from './tty/wintty.js';
-import { nhgetch } from './input.js';
 import { ok_to_quest } from './quest.js';
 import { costly_spot, doname_with_price } from './shk.js';
 
@@ -146,12 +147,18 @@ function monhealthdescr(mon) {
 // src/pager.c:282 object_from_map() — recover the object represented by a
 // remembered glyph, manufacturing the same temporary object as C when the
 // glyph belongs to a mimic, stale memory, or detection display.
-function object_from_map(glyph, x, y) {
+export function object_from_map(glyph, x, y) {
     const glyphotyp = glyph?.kind === 'obj'
         ? (glyph.otyp ?? ONAMES.STRANGE_OBJECT)
+        : glyph?.kind === 'cmap'
+        ? ((game.level?.objects || []).some(o => o.ox === x && o.oy === y
+            && o.otyp === ONAMES.CHEST) ? ONAMES.CHEST : ONAMES.LARGE_BOX)
         : ONAMES.STRANGE_OBJECT;
     let otmp = (game.level?.objects || [])
         .find(o => o.ox === x && o.oy === y && o.otyp === glyphotyp) || null;
+    if (!otmp)
+        otmp = (game.level?.buriedobjs || [])
+            .find(o => o.ox === x && o.oy === y && o.otyp === glyphotyp) || null;
     let mtmp = m_at(x, y);
     let mimicObj = false;
 
@@ -168,6 +175,8 @@ function object_from_map(glyph, x, y) {
         otmp = OBJ_NAME(objclass)
             ? mksobj(glyphotyp, false, false)
             : mkobj(objclass?.oc_class ?? OCLASSES.ILLOBJ_CLASS, false);
+        if (otmp.timed)
+            obj_stop_timers(otmp);
         fake = true;
 
         if (otmp.oclass === OCLASSES.COIN_CLASS)
@@ -175,11 +184,12 @@ function object_from_map(glyph, x, y) {
         else if (otmp.otyp === ONAMES.SLIME_MOLD)
             otmp.spe = game.context?.current_fruit ?? 1;
 
-        if (mtmp && (mtmp.mcorpsenm ?? -1) >= 0) {
+        const corpsenm = mtmp?.mcorpsenm ?? mtmp?.mextra?.mcorpsenm ?? NON_PM;
+        if (corpsenm !== NON_PM) {
             if (otmp.otyp === ONAMES.SLIME_MOLD)
-                otmp.spe = mtmp.mcorpsenm;
+                otmp.spe = corpsenm;
             else
-                otmp.corpsenm = mtmp.mcorpsenm;
+                otmp.corpsenm = corpsenm;
         } else if (otmp.otyp === ONAMES.CORPSE && glyph?.body) {
             otmp.corpsenm = glyph.corpsenm;
         } else if (otmp.otyp === ONAMES.STATUE && glyph?.statue) {
@@ -187,7 +197,7 @@ function object_from_map(glyph, x, y) {
         }
 
         if (otmp.otyp === ONAMES.LEASH)
-            otmp.corpsenm = 0;
+            otmp.leashmon = 0;
         otmp.where = OBJ_FLOOR;
         otmp.ox = x;
         otmp.oy = y;
@@ -216,7 +226,8 @@ function look_at_object(x, y, glyph) {
     let buf;
     if (otmp) {
         buf = otmp.otyp !== ONAMES.STRANGE_OBJECT
-            ? (otmp.dknown ? doname_with_price(otmp) : doname(otmp))
+            ? distant_name(otmp, otmp.dknown
+                ? doname_with_price : doname_vague_quan)
             : (OBJ_NAME(game.objects[ONAMES.STRANGE_OBJECT])
                || 'strange object');
     } else {
@@ -473,6 +484,10 @@ function lookat(x, y) {
     } else if (glyph.kind === 'trap') {
         note_unported_pager('lookat:trap');
         buf = 'trap';
+    } else if (glyph.kind === 'warn') {
+        buf = def_warnsyms[glyph.wl]?.desc || 'warning';
+    } else if (glyph.kind === 'invis') {
+        buf = invisexplain;
     } else if (glyph.kind === 'nothing') {
         buf = 'dark part of a room';
     } else if (glyph.kind === 'unexplored') {
@@ -959,14 +974,16 @@ export function do_screen_description(cc, looked, sym) {
     }
 
     /* Now check for objects */
+    const boulderSym = game.boulder_symbol
+                       || def_oc_syms[OCLASSES.ROCK_CLASS];
     for (let i = 1; i < def_oc_syms.length; i++) {
         const matched = (i !== OCLASSES.ROCK_CLASS)
             ? (sympair.ch === def_oc_syms[i] && !sympair.dec)
-            : (!!glyph?.statue || (sympair.ch === def_oc_syms[OCLASSES.ROCK_CLASS] && !sympair.dec));
+            : (!!glyph?.statue || (sympair.ch === boulderSym && !sympair.dec));
         if (matched) {
             let oc_ptr = oc_explain[i];
             if (i === OCLASSES.ROCK_CLASS && oc_ptr === 'boulder or statue') {
-                if (sympair.ch === def_oc_syms[OCLASSES.ROCK_CLASS] && !sympair.dec)
+                if (sympair.ch === boulderSym && !sympair.dec)
                     oc_ptr = 'boulder';
                 else if (glyph?.statue)
                     oc_ptr = 'statue';
@@ -988,10 +1005,21 @@ export function do_screen_description(cc, looked, sym) {
         }
     }
 
-    if (sympair.ch === 'I' && !sympair.dec && false) {
-        /* DEF_INVISIBLE: displayed 'I' cells need the invisible-monster
-           memory model; the sym match alone would false-positive on typed
-           'I' lookups which the monster loop already answered */
+    if ((looked && glyph?.kind === 'invis')
+        || (!looked && sympair.ch === 'I' && !sympair.dec)) {
+        /* src/pager.c:1407 DEF_INVISIBLE. Clairvoyance and blindness use
+           the shorter wording; ordinary remembered markers keep C's
+           comma-separated explanation. */
+        const usealt = !!((game.u.uprops?.DETECT_MONSTERS | 0) & I_SPECIAL);
+        const unseen_explain = (usealt || Blind())
+            ? 'unseen creature' : invisexplain;
+        if (!found) {
+            state.out_str = prefix + an(unseen_explain);
+            state.firstmatch = unseen_explain;
+            found++;
+        } else {
+            found += append_str(state, an(unseen_explain));
+        }
     }
     /* src/pager.c:1420 — "the dark part of a room" is offered whenever the
        looked-at symbol is the nothing symbol, an unexplored square
@@ -1050,8 +1078,28 @@ export function do_screen_description(cc, looked, sym) {
         }
     }
 
-    /* warning symbols (def_warnsyms: '0'..'5' by number) draw only from
-       the warning property, which no session has */
+    /* src/pager.c:1511. Warning symbols are descriptions in their own
+       right. A warning glyph also hides a boulder at the same location. */
+    for (let i = 1; i < WARNCOUNT; i++) {
+        const matched = looked
+            ? (glyph?.kind === 'warn' && glyph.wl === i)
+            : (sympair.ch === def_warnsyms[i].ch && !sympair.dec);
+        if (!matched)
+            continue;
+        const x_str = def_warnsyms[i].desc;
+        if (!found) {
+            state.out_str = prefix + x_str;
+            state.firstmatch = x_str;
+            found++;
+        } else {
+            found += append_str(state, x_str);
+        }
+        if (looked && (game.level?.objects || []).some(
+                obj => obj.ox === cc.x && obj.oy === cc.y
+                       && obj.otyp === ONAMES.BOULDER))
+            state.out_str += ' co-located with a boulder';
+        break;
+    }
 
     /* if we ignored venom and the list turned out short, put it back */
     if (skipped_venom && found < 2) {
@@ -1542,9 +1590,9 @@ export async function doextversion() {
     for (const line of ABOUT_RUNTIME_INFO)
         tty_putstr(win, 0, line);
     await tty_display_nhwindow(win);
-    await nhgetch();
-    while (tty_next_page(win))
-        await nhgetch();
+    await xwaitforspace(quitchars);
+    while (game.morc !== '\x1b' && tty_next_page(win))
+        await xwaitforspace(quitchars);
     tty_destroy_nhwindow(win);
     await docrt();
     return ECMD_OK;

@@ -3057,7 +3057,7 @@ async function query_classes(action, objs, here, menu_on_demand) {
                     look_again = true;
                     break;
                 } else if (sym === 'i') {
-                    await display_inventory();
+                    await display_inventory(null, true);
                     look_again = true;
                     break;
                 } else if (sym === 'm') {

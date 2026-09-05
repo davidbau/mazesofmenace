@@ -45,7 +45,7 @@ import { There, You, You_feel, You_cant, Your } from './pline.js';
 import { an, xname, doname, the, Tobjnam, gloves_simple_name,
          boots_simple_name, suit_simple_name, Yname2, makeplural,
          makesingular, otense, corpse_xname, CXN_NOCORPSE,
-         CXN_NOARTICLE, CXN_SINGULAR } from './objnam.js';
+         CXN_NOARTICLE, CXN_SINGULAR, thesimpleoname } from './objnam.js';
 import { makeknown, observe_object } from './o_init.js';
 import { hcolor } from './do_name.js';
 import { ART_OGRESMASHER } from './artilist_data.js';
@@ -789,6 +789,35 @@ export function cancel_don() {
     game.multi = 0;
     tk.delay = 0;
     tk.what = 0;
+}
+
+// src/do_wear.c:1688 stop_donning() -- interrupt the one multi-turn armor
+// wear or removal that can be in progress. A seducer passes null, so an
+// interrupted removal is announced rather than silently treated as theft.
+export async function stop_donning(stolenobj) {
+    const otmp = (game.invent || []).find(
+        obj => (obj.owornmask & W_ARMOR) && donning(obj));
+    if (!otmp)
+        return 0;
+
+    const putting_on = !doffing(otmp);
+    let result = 0;
+    let message = '';
+    if (putting_on || otmp !== stolenobj) {
+        message = `You stop ${putting_on ? 'putting on' : 'taking off'} ${
+            thesimpleoname(otmp)}.`;
+    } else {
+        result = -(game.multi || 0);
+    }
+
+    cancel_don();
+    game.afternmv = null;
+    await unmul(message);
+    if (putting_on) {
+        const { remove_worn_item } = await import('./steal.js');
+        await remove_worn_item(otmp, false);
+    }
+    return result;
 }
 
 // src/do_wear.c:1645 cancel_doff() — called by setworn() for the old item in

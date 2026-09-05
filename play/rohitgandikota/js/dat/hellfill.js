@@ -389,8 +389,10 @@ function init_hell_style(style) {
         lspo_level_flags('mazelevel', 'noflip');
         lspo_level_init({ style: 'mines', fg: '.', bg: wallTerrain,
                           smoothed: true, joined: true, lit: 0 });
-        lspo_terrain(l_selection_grow(l_selection_match('.')), '.');
-        lspo_terrain(l_selection_rect(0, 0, 78, 20), wallTerrain);
+        lspo_terrain({ selection: l_selection_grow(l_selection_match('.')),
+                       typ: '.', lit: 0 });
+        lspo_terrain({ selection: l_selection_rect(0, 0, 78, 20),
+                       typ: wallTerrain, lit: 0 });
         lspo_wallify();
         break;
     }

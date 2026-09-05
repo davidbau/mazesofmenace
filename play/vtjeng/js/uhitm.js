@@ -25,6 +25,7 @@ import {
     M_ATTK_AGR_DONE,
     M_ATTK_HIT,
     RLOC_MSG,
+    M_SEEN_COLD,
     M_SEEN_ELEC,
     NATTK,
     P_BARE_HANDED_COMBAT,
@@ -107,6 +108,7 @@ import {
     mon_hates_silver,
     hates_silver,
     monsndx,
+    monstseesu,
     monstunseesu,
     noncorporeal,
     sticks,
@@ -245,7 +247,8 @@ import { steal } from './steal.js';
 import { noteleport_level, rloc } from './teleport.js';
 import { is_pool } from './trap.js';
 import { CMAP_EXPLANATIONS } from './symbol_data.js';
-import { exclam } from './zap.js';
+import { destroy_items } from './zap_destroy_items.js';
+import { Cold_resistance, exclam } from './zap.js';
 
 function intrinsicProperty(hero, index) {
     return Boolean(hero?.uprops?.[index]?.intrinsic);
@@ -332,7 +335,7 @@ export async function mhitm_mgc_atk_negated(
 // object, monster, blind) choose the format string, and four what-branches
 // (invisible, M_AP_MONSTER, sleeping S_MIMIC, default) choose the substitute.
 // `mimic_flags` carries MIM_REVEAL and MIM_OMIT_WAIT.
-function that_is_a_mimic(mtmp, mimic_flags, state = game, env = {}) {
+async function that_is_a_mimic(mtmp, mimic_flags, state = game, env = {}) {
     const S_trapped_chest = 73; // defsym.h PCHAR 73
     const reveal_it = (mimic_flags & MIM_REVEAL) !== 0;
     const omit_wait = (mimic_flags & 2 /* MIM_OMIT_WAIT */) !== 0;
@@ -401,7 +404,7 @@ function that_is_a_mimic(mtmp, mimic_flags, state = game, env = {}) {
 
     if (what) {
         const i = (omit_wait && fmtbuf.startsWith('Wait!  ')) ? 7 : 0;
-        env.pline?.(fmtbuf.substring(i).replace('%s', what), state);
+        await env.pline?.(fmtbuf.substring(i).replace('%s', what), state);
     }
     if (reveal_it)
         seemimic(mtmp, state);
@@ -412,7 +415,7 @@ function that_is_a_mimic(mtmp, mimic_flags, state = game, env = {}) {
 // message, optionally sticks the hero, wakes the mimic, and marks the square
 // invisible if the hero still cannot spot it.
 async function stumble_onto_mimic(mtmp, state = game, env = {}) {
-    that_is_a_mimic(mtmp, MIM_REVEAL, state, env);
+    await that_is_a_mimic(mtmp, MIM_REVEAL, state, env);
 
     if (!state.u.ustuck && !mtmp.mflee && dmgtype(mtmp.data, AD_STCK)
         && m_next2u(mtmp, state)) {
@@ -1712,6 +1715,52 @@ async function mhitm_ad_sedu(magr, mattk, mdef, mhm, state = game, env = {}) {
     unsupported('uhitm.c mhitm_ad_sedu() mhitm arm');
 }
 
+// C ref: uhitm.c mhitm_ad_cold() (2625-2681). A cold-damage attack across
+// all three combat directions. The mhitu arm (monster attacks hero) is fully
+// ported: it prints hitmsg, checks magic cancellation, reports frost,
+// applies Cold_resistance, and may call destroy_items(AD_COLD) on the hero's
+// inventory when the attacker's level beats rn2(20). The uhitm (hero attacks
+// monster) and mhitm (monster attacks monster) arms use unsupported().
+export async function mhitm_ad_cold(
+    magr,
+    mattk,
+    mdef,
+    mhm,
+    state = game,
+    env = {},
+) {
+    const random = env.random ?? { rn2 };
+    const message = requireAttackOperation(env, 'message');
+    const unsupported = requireAttackOperation(env, 'unsupported');
+    const orig_dmg = mhm.damage;
+
+    if (magr === state.youmonst) {
+        /* uhitm */
+        unsupported("the hero's own cold attack");
+    } else if (mdef === state.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk, state, env);
+        if (!await mhitm_mgc_atk_negated(magr, mdef, true, state, env)) {
+            await message("You're covered in frost!", state);
+            if (Cold_resistance(state)) {
+                await message("The frost doesn't seem cold!", state);
+                monstseesu(M_SEEN_COLD, state);
+                mhm.damage = 0;
+            } else {
+                monstunseesu(M_SEEN_COLD, state);
+            }
+            if (magr.m_lev > random.rn2(20)) {
+                await destroy_items(state.youmonst, AD_COLD, orig_dmg, env);
+            }
+        } else {
+            mhm.damage = 0;
+        }
+    } else {
+        /* mhitm */
+        unsupported('one monster freezing another');
+    }
+}
+
 // C ref: uhitm.c mhitm_ad_elec() (2683-2739), the `mdef == &gy.youmonst` arm.
 // A shock attack landing on the hero: the attack's own message, the magic
 // cancellation test, and the item destruction a high-level attacker adds.
@@ -2024,7 +2073,9 @@ export async function mhitm_adtyping(
         await mhitm_ad_phys(magr, mattk, mdef, mhm, state, env);
         break;
     case AD_FIRE: unported('mhitm_ad_fire'); break;
-    case AD_COLD: unported('mhitm_ad_cold'); break;
+    case AD_COLD:
+        await mhitm_ad_cold(magr, mattk, mdef, mhm, state, env);
+        break;
     case AD_ELEC:
         await mhitm_ad_elec(magr, mattk, mdef, mhm, state, env);
         break;

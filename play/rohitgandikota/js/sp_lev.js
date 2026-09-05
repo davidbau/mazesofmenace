@@ -414,6 +414,17 @@ export function sp_lev_wire(addRoom, addDoor, someXY) {
 // terrain change from a themeroom fill and one from a stamped map produce
 // identical cells.
 export function lspo_terrain(selOrX, mapchrOrY, coordMapchr) {
+    if (selOrX && typeof selOrX === 'object' && 'typ' in selOrX) {
+        const ter = splev_chr2typ(selOrX.typ);
+        if (ter === INVALID_TYPE)
+            return;
+        const tlit = selOrX.lit === undefined
+            ? SET_LIT_NOCHANGE : selOrX.lit;
+        selection_iterate(selOrX.selection,
+                          (x, y) => sel_set_ter(x, y, ter, tlit));
+        return;
+    }
+
     const positional = typeof selOrX === 'number';
     const mapchr = positional ? coordMapchr : mapchrOrY;
     const ter = splev_chr2typ(mapchr);

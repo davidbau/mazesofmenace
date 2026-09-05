@@ -463,7 +463,7 @@ export function u_init_role() {
         ini_inv(TROBJ.Priest);
         if (!rn2(5)) ini_inv(TROBJ.Magicmarker);
         else if (!rn2(10)) ini_inv(TROBJ.Lamp);
-        knows_object(ONAMES.POT_WATER);
+        knows_object(ONAMES.POT_WATER, true); // C: override pauper
         break;
     case PMNAMES.PM_RANGER:
         ini_inv(TROBJ.Ranger);
@@ -548,6 +548,16 @@ export function u_init_race() {
         knows_object(ONAMES.ELVEN_SHIELD);
         knows_object(ONAMES.ELVEN_BOOTS);
         knows_object(ONAMES.ELVEN_CLOAK);
+    }
+    if (race === PMNAMES.PM_DWARF) {
+        /* Dwarves can recognize all dwarvish objects */
+        knows_object(ONAMES.DWARVISH_SPEAR);
+        knows_object(ONAMES.DWARVISH_SHORT_SWORD);
+        knows_object(ONAMES.DWARVISH_MATTOCK);
+        knows_object(ONAMES.DWARVISH_IRON_HELM);
+        knows_object(ONAMES.DWARVISH_MITHRIL_COAT);
+        knows_object(ONAMES.DWARVISH_CLOAK);
+        knows_object(ONAMES.DWARVISH_ROUNDSHIELD);
     }
     if (race === PMNAMES.PM_ORC) {
         if (roleMnum() !== PMNAMES.PM_WIZARD)
@@ -662,6 +672,37 @@ function ini_inv_wield(obj) {
     }
 }
 
+// src/u_init.c:870 pauper_reinit(); replace initial skills with two credits
+// and knowledge of the role's key object, without granting an item or spell.
+function pauper_reinit() {
+    if (!game.u.uroleplay?.pauper)
+        return;
+    for (let skill = 0; skill < SKILLS.P_NUM_SKILLS; skill++) {
+        const entry = game.u.weapon_skills[skill];
+        if (entry.skill > SKILLS.P_UNSKILLED) {
+            entry.skill = SKILLS.P_UNSKILLED;
+            entry.advance = 0;
+        }
+    }
+    game.u.weapon_slots = 2;
+    let preknown = ONAMES.STRANGE_OBJECT;
+    const role = typeof game.urole.mnum === 'string' ? PMNAMES[game.urole.mnum] : game.urole.mnum;
+    switch (role) {
+    case PMNAMES.PM_HEALER: preknown = ONAMES.SPE_HEALING; break;
+    case PMNAMES.PM_CLERIC:
+    case PMNAMES.PM_KNIGHT:
+    case PMNAMES.PM_MONK: preknown = ONAMES.SPE_PROTECTION; break;
+    case PMNAMES.PM_WIZARD: preknown = ONAMES.SPE_FORCE_BOLT; break;
+    case PMNAMES.PM_ARCHEOLOGIST: preknown = ONAMES.TOUCHSTONE; break;
+    case PMNAMES.PM_CAVE_DWELLER: preknown = ONAMES.FLINT; break;
+    case PMNAMES.PM_ROGUE:
+    case PMNAMES.PM_TOURIST: preknown = ONAMES.SACK; break;
+    case PMNAMES.PM_SAMURAI: preknown = ONAMES.FOOD_RATION; break;
+    }
+    if (preknown !== ONAMES.STRANGE_OBJECT)
+        knows_object(preknown, true);
+}
+
 // src/u_init.c:1246 u_init_skills_discoveries()
 export function u_init_skills_discoveries() {
     for (const otmp of game.invent || [])
@@ -671,6 +712,8 @@ export function u_init_skills_discoveries() {
        but u.weapon_skills is what percent_success() reads, and without it the
        rnd(100) comparison in spelleffects_check has no input. */
     skill_init(skills_for_role());
+    if (game.u.uroleplay?.pauper)
+        pauper_reinit();
 
     /* src/u_init.c:1408 — if the hero knows any spell, force starting Pw high
        enough to cast a level 1 one. Without this a Priest's uen sits below

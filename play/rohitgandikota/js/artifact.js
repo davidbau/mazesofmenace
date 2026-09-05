@@ -4,7 +4,7 @@
 // Covers artifact generation, intrinsic effects, and the wish flow's name and
 // existence tracking.
 
-import { OCLASSES } from './objects_data.js';
+import { OCLASSES, MATERIALS } from './objects_data.js';
 import { ATTKS } from './monst_data.js';
 import { NOTELL } from './const.js';
 import { LL_ARTIFACT } from './const.js';
@@ -16,7 +16,8 @@ import { NH_BLACK } from './const.js';
 import { NECK } from './const.js';
 import { Upolyd } from './const.js';
 import { engulfing_u } from './const.js';
-import { nomul } from './hack.js';
+import { losehp, nomul } from './hack.js';
+import { exercise } from './attrib.js';
 import { pline } from './display.js';
 import { map_invisible } from './display.js';
 import { canspotmon } from './display.js';
@@ -52,13 +53,13 @@ import { hcolor } from './do_name.js';
 import { Monnam } from './do_name.js';
 import { mon_nam } from './do_name.js';
 import { Hallucination } from './youprop.js';
-import { Blind } from './youprop.js';
+import { Blind, Levitation } from './youprop.js';
 import { cansee } from './vision.js';
 import { ART_STORMBRINGER } from './artilist_data.js';
 import { ART_VORPAL_BLADE } from './artilist_data.js';
 import { ART_TSURUGI_OF_MURAMASA } from './artilist_data.js';
-import { The } from './objnam.js';
-import { xname } from './objnam.js';
+import { The, the, Tobjnam } from './objnam.js';
+import { xname, yname, killer_xname } from './objnam.js';
 import { distant_name } from './objnam.js';
 import { vtense } from './objnam.js';
 import { bare_artifactname } from './objnam.js';
@@ -74,18 +75,24 @@ import { ONAMES } from './objects_data.js';
 import { artifact_names, artifact_otyps, artifact_records,
          ART_GRIMTOOTH, ART_EXCALIBUR,
          ART_SUNSWORD } from './artilist_data.js';
+import { align_str } from './role.js';
+import { simple_typename } from './objnam.js';
+import { tty_putstr, ATR_INVERSE } from './tty/wintty.js';
 import { PMNAMES, MFLAGS, MONSYMS, ATTKS as ADTYPES } from './monst_data.js';
-import { is_covetous, is_mplayer, defended, resists_fire, resists_cold,
-         resists_elec, resists_poison, resists_ston } from './mondata.js';
+import { is_covetous, is_mplayer, defended, is_demon, resists_fire,
+         resists_cold, resists_elec, resists_poison, resists_ston }
+    from './mondata.js';
 import { is_vampshifter } from './monst.js';
 import { Fire_resistance, Cold_resistance, Shock_resistance,
-         Poison_resistance, Stone_resistance } from './youprop.js';
+         Poison_resistance, Stone_resistance, Antimagic } from './youprop.js';
 import { rn2, rnd, rnz, d } from './rng.js';
 import { ONAME_VIA_NAMING, ONAME_WISH, ONAME_GIFT, ONAME_VIA_DIP,
          ONAME_LEVEL_DEF, ONAME_BONES, ONAME_RANDOM,
          ONAME_KNOW_ARTI, ECMD_OK, ECMD_TIME, ECMD_CANCEL, GETOBJ_PROMPT,
-         nothing_happens, W_ARM, W_WEP, W_ART, W_ARTI, SICK_ALL,
-         TIMEOUT, W_SWAPWEP, W_QUIVER, W_BALL } from './const.js';
+         nothing_happens, A_CON, A_WIS, KILLED_BY, W_ARM, W_WEP, W_ART, W_ARTI,
+         SICK_ALL,
+         TIMEOUT, W_SWAPWEP, W_QUIVER, W_BALL, W_SADDLE,
+         DISMOUNT_THROWN, IS_ALTAR } from './const.js';
 
 /* include/artilist.h — artilist[i].otyp, resolved from the generated
    ONAMES-key table. Index 0 is the dummy (STRANGE_OBJECT == 0). */
@@ -154,6 +161,48 @@ export function discover_artifact(art) {
     const discovered = (game.artidisco ||= []);
     if (art > 0 && !discovered.includes(art))
         discovered.push(art);
+}
+
+// src/artifact.c:151 artiname().
+export function artiname(artinum) {
+    return artinum <= 0 || artinum > NROFARTIFACTS ? '' : artifact_names[artinum];
+}
+
+// src/artifact.c:1149 disp_artifact_discoveries(). WIN_ERR only counts.
+export function disp_artifact_discoveries(tmpwin) {
+    let i;
+    for (i = 0; i < NROFARTIFACTS; i++) {
+        const m = game.artidisco?.[i];
+        if (!m)
+            break;
+        if (tmpwin === -1)
+            continue;
+        if (i === 0)
+            tty_putstr(tmpwin, game.iflags?.menu_headings?.attr ?? ATR_INVERSE,
+                       'Artifacts');
+        let algnstr = align_str(artifact_alignment(artifact_records[m], m));
+        if (algnstr === 'unaligned')
+            algnstr = 'non-aligned';
+        tty_putstr(tmpwin, 0, `  ${artiname(m)} [${algnstr} ${
+            simple_typename(arti_otyp[m])}]`);
+    }
+    return i;
+}
+
+// src/artifact.c:1177 dump_artifact_info(). Preserve creation flag order.
+export function dump_artifact_info(tmpwin) {
+    tty_putstr(tmpwin, game.iflags?.menu_headings?.attr ?? ATR_INVERSE,
+               'Artifacts');
+    for (let m = 1; m <= NROFARTIFACTS; m++) {
+        const a = artiexist()[m];
+        const flags = (a.exists ? 'exists;' : '')
+            + (a.found ? ' hero knows;' : '')
+            + (a.gift ? ' gift' : '') + (a.wish ? ' wish' : '')
+            + (a.named ? ' named' : '') + (a.viadip ? ' viadip' : '')
+            + (a.lvldef ? ' lvldef' : '') + (a.bones ? ' bones' : '')
+            + (a.rndm ? ' random' : '');
+        tty_putstr(tmpwin, 0, `  ${artiname(m).slice(0, 36).padEnd(36)}[${flags}]`);
+    }
 }
 
 // src/artifact.c artifact_exists() — an artifact has just been created or is
@@ -667,20 +716,34 @@ function bane_applies(oart, mon) {
     return false;
 }
 
-// src/artifact.c:907 touch_artifact() — creature (usually hero) tries to
-// touch (pick up or wield) an artifact. 0 means it refuses.
-export function touch_artifact(obj, mon) {
+let touch_blasted = false;
+
+function hates_silver_you() {
+    const ptr = game.youmonst.data;
+    return (game.u.ulycn ?? -1) >= 0
+        || !!(ptr.mflags2 & MFLAGS.M2_WERE)
+        || ptr.mlet === MONSYMS.S_VAMPIRE
+        || is_demon(ptr)
+        || ptr.pmidx === PMNAMES.PM_SHADE
+        || (ptr.mlet === MONSYMS.S_IMP && ptr.pmidx !== PMNAMES.PM_TENGU);
+}
+
+const maybe_half_phys = (dmg) =>
+    (game.u.intrinsic?.HHalf_physical_damage
+     || game.u.uprops?.HALF_PHDAM) ? Math.trunc((dmg + 1) / 2) : dmg;
+
+function artifact_touch_decision(obj, mon) {
     const oart = get_artifact(obj);
     const artinum = obj?.oartifact ?? 0;
     const role = artifact_role(oart, artinum);
     const alignment = artifact_alignment(oart, artinum);
     let badclass, badalign;
 
+    touch_blasted = false;
     if (oart === artifact_records[0])
-        return 1;
+        return { allowed: true, blast: false, oart, self_willed: false };
 
     const yours = (mon === game.youmonst);
-    /* all quest artifacts are self-willed */
     const self_willed = (oart.spfx & SPFX_INTEL) !== 0;
     if (yours) {
         const role_match = role === 'NON_PM' || role_matches(role);
@@ -700,90 +763,210 @@ export function touch_artifact(obj, mon) {
         badalign = (oart.spfx & SPFX_RESTR) !== 0
                    && alignment !== -128
                    && alignment !== Math.sign(mon.data.maligntyp);
-    } else { /* an M3_WANTSxxx monster or a fake player */
+    } else {
         badclass = badalign = false;
     }
-    /* weapons which attack specific categories of monsters are bad for
-       them even if their alignments happen to match */
     if (!badalign)
         badalign = bane_applies(oart, mon);
 
-    if (((badclass || badalign) && self_willed)
-        || (badalign && (!yours || !rn2(4)))) {
-        if (!yours)
-            return 0;
-        /* You("are blasted by %s power!"); losehp(d(...)) */
-        note_unported_art('touch_artifact:blast');
-        return 1;
+    const blast = (((badclass || badalign) && self_willed)
+                   || (badalign && (!yours || !rn2(4))));
+    if (blast && !yours)
+        return { allowed: false, blast: false, oart, self_willed };
+
+    return {
+        allowed: !(badclass && badalign && self_willed),
+        blast,
+        oart,
+        self_willed,
+    };
+}
+
+// src/artifact.c:907 touch_artifact(), creature (usually hero) tries to
+// touch (pick up or wield) an artifact. 0 means it refuses.
+export async function touch_artifact(obj, mon) {
+    const decision = artifact_touch_decision(obj, mon);
+
+    if (decision.blast) {
+        await You(`are blasted by ${s_suffix(the(xname(obj)))} power!`);
+        touch_blasted = true;
+        let dmg = d(Antimagic() ? 2 : 4, decision.self_willed ? 10 : 4);
+        if (game.objects[obj.otyp].oc_material === MATERIALS.SILVER
+            && hates_silver_you())
+            dmg += maybe_half_phys(rnd(10));
+        await losehp(dmg, `touching ${decision.oart.name}`, KILLED_BY);
+        exercise(A_WIS, false);
     }
 
-    /* can pick it up unless you're totally non-synch'd with the artifact */
-    if (badclass && badalign && self_willed) {
-        if (yours)
-            note_unported_art('touch_artifact:evade');
+    if (!decision.allowed) {
+        if (!(game.invent || []).includes(obj))
+            await pline(`${Tobjnam(obj, 'evade')} your grasp!`);
+        else
+            await pline(`${Tobjnam(obj, 'are')} beyond your control!`);
         return 0;
     }
-
     return 1;
+}
+
+/* Monster callers never print or take damage here. Keep their eligibility
+   test synchronous so item-search predicates remain synchronous. */
+export function touch_artifact_mon(obj, mon) {
+    return artifact_touch_decision(obj, mon).allowed ? 1 : 0;
 }
 
 function note_unported_art(what) {
     (game.unported ||= new Set()).add(what);
 }
 
-// src/artifact.c:2508 retouch_object() — check whether the hero can (still)
-// handle an object at wield/wear time. Only the touch check and the
-// clean-handling exit are live; the silver/bane damage and forced-drop arms
-// record until Hate_silver forms and losehp-by-item land.
-export function retouch_object(obj, loseit) {
-    if (touch_artifact(obj, game.youmonst)) {
-        const ag = false;   /* Hate_silver needs lycanthrope/demon/vampire
-                               hero forms, not yet reachable */
+// src/artifact.c:2508 retouch_object(), check whether the hero can still
+// handle an object after a form or alignment change.
+export async function retouch_object(obj, loseit) {
+    if (obj.otyp === ONAMES.BELL_OF_OPENING) {
+        const [{ invocation_pos }, { On_stairs }] = await Promise.all([
+            import('./hack.js'), import('./stairs.js'),
+        ]);
+        if (invocation_pos(game.u.ux, game.u.uy)
+            && !On_stairs(game.u.ux, game.u.uy))
+            return 1;
+    }
+
+    if (await touch_artifact(obj, game.youmonst)) {
+        const ag = game.objects[obj.otyp].oc_material === MATERIALS.SILVER
+                   && hates_silver_you();
         const bane = bane_applies(get_artifact(obj), game.youmonst);
 
-        /* nothing else to do if hero can successfully handle this object */
         if (!ag && !bane)
             return 1;
 
-        note_unported_art('retouch_object:handling_damage');
-        return 1;
+        const { You_cant } = await import('./pline.js');
+        await You_cant(`handle ${yname(obj)}${obj.owornmask
+            ? ' anymore' : ''}!`);
+        if (!touch_blasted) {
+            let what = killer_xname(obj);
+            let dmg = 0;
+
+            if (ag && !obj.oartifact && !bane) {
+                if (obj.oclass === OCLASSES.RING_CLASS)
+                    what = 'a silver ring';
+                else if (obj.oclass === OCLASSES.WAND_CLASS)
+                    what = 'a silver wand';
+            }
+            if (ag)
+                dmg += maybe_half_phys(rnd(10));
+            if (bane)
+                dmg += rnd(10);
+            await losehp(dmg, `handling ${what}`, KILLED_BY);
+            exercise(A_CON, false);
+        }
     }
 
-    if (obj.owornmask || loseit)
-        note_unported_art('retouch_object:drop');
+    if (obj.owornmask) {
+        const { remove_worn_item } = await import('./steal.js');
+        await remove_worn_item(obj, false);
+        if (!(game.invent || []).includes(obj))
+            obj = null;
+    }
+
+    if (loseit && obj) {
+        if (Levitation()) {
+            const [{ freeinv }, { hitfloor }] = await Promise.all([
+                import('./invent.js'), import('./do.js'),
+            ]);
+            freeinv(obj);
+            await hitfloor(obj, true);
+        } else {
+            if (!IS_ALTAR(game.level.at(game.u.ux, game.u.uy).typ)) {
+                const { surface } = await import('./dungeon.js');
+                await pline(`${Tobjnam(obj, 'fall')} to the ${
+                    surface(game.u.ux, game.u.uy)}.`);
+            }
+            const { dropx } = await import('./do.js');
+            await dropx(obj);
+        }
+    }
     return 0;
 }
 
-// src/artifact.c:2640 retouch_equipment(). The common path only retests
-// equipment and carried artifacts; ordinary safe gear has no side effects.
-// retouch_object records the remaining harmful silver and bane branches.
-export function retouch_equipment(dropflag) {
+let retouch_nesting = 0;
+let retouch_checked = null;
+
+// src/artifact.c:2640 retouch_equipment(), retest every active object while
+// rescanning inventory after each removal or drop.
+export async function retouch_equipment(dropflag) {
     const u = game.u;
-    const checked = new Set();
     const wearmask = ~(W_QUIVER | (u.twoweap ? 0 : W_SWAPWEP) | W_BALL);
+    const had_gloves = !!u.uarmg;
+    const had_rings = Number(!!u.uleft) + Number(!!u.uright);
+
+    if (retouch_nesting++ === 0)
+        retouch_checked = new Set();
 
     const active = (obj) => {
         const art = get_artifact(obj);
-        const beingworn = !!((obj.owornmask || 0) & wearmask);
+        const container = obj.otyp >= ONAMES.LARGE_BOX
+                          && obj.otyp <= ONAMES.BAG_OF_TRICKS;
+        const beingworn = !!((obj.owornmask || 0) & wearmask)
+            || (obj.oclass === OCLASSES.TOOL_CLASS
+                && (obj.lamplit || (obj.otyp === ONAMES.LEASH && obj.leashmon)
+                    || (container && obj.cobj?.length)));
         const carryeffect = art !== artifact_records[0]
                             && (!!arti_adtyp(art.cary) || !!art.cspfx);
         const invoked = art !== artifact_records[0] && !!art.inv_prop
                         && !!((u.uprops?.[art.inv_prop] || 0) & W_ARTI);
-        return beingworn || carryeffect || invoked;
+        return { art, beingworn, carryeffect, invoked };
     };
-    const check = (obj, dropit) => {
-        if (!obj || checked.has(obj))
-            return;
-        checked.add(obj);
-        if (active(obj))
-            retouch_object(obj, dropit);
+    const untouchable = async (obj, dropit) => {
+        const state = active(obj);
+        if (!(state.beingworn || state.carryeffect || state.invoked))
+            return false;
+        if (await retouch_object(obj, dropit))
+            return false;
+        if (state.invoked && (game.invent || []).includes(obj))
+            await invoke_property(obj, state.art.inv_prop);
+        return true;
+    };
+    const check = async (obj, dropit) => {
+        if (!obj || retouch_checked.has(obj))
+            return false;
+        retouch_checked.add(obj);
+        return untouchable(obj, dropit);
     };
 
-    if (u.twoweap)
-        check(u.uswapwep, dropflag > 0);
-    check(u.uwep, dropflag > 0);
-    for (const obj of game.invent || [])
-        check(obj, dropflag === 1);
+    try {
+        if (u.twoweap)
+            await check(u.uswapwep, dropflag > 0);
+        await check(u.uwep, dropflag > 0);
+
+        if (u.usteed) {
+            const { which_armor } = await import('./worn.js');
+            const saddle = which_armor(u.usteed, W_SADDLE);
+            if (saddle && await check(saddle, false)) {
+                const { dismount_steed } = await import('./steed.js');
+                await dismount_steed(DISMOUNT_THROWN);
+            }
+        }
+
+        for (;;) {
+            const obj = (game.invent || []).find(item =>
+                !retouch_checked.has(item));
+            if (!obj)
+                break;
+            await check(obj, dropflag === 1);
+        }
+
+        const rings = Number(!!u.uleft) + Number(!!u.uright);
+        if (had_rings !== rings && u.uarmg?.cursed) {
+            const { uncurse } = await import('./mkobj.js');
+            uncurse(u.uarmg);
+        }
+        if (had_gloves && !u.uarmg) {
+            const { selftouch } = await import('./trap.js');
+            await selftouch('After losing your gloves, you');
+        }
+    } finally {
+        if (--retouch_nesting === 0)
+            retouch_checked = null;
+    }
 }
 
 async function nothing_special(obj) {
@@ -1025,7 +1208,7 @@ export async function doinvoke() {
     const obj = await getobj('invoke', invoke_ok, GETOBJ_PROMPT);
     if (!obj)
         return ECMD_CANCEL;
-    if (!retouch_object(obj, false))
+    if (!await retouch_object(obj, false))
         return ECMD_TIME;
 
     const oart = get_artifact(obj);
@@ -1131,7 +1314,6 @@ const FATAL_DAMAGE_MODIFIER = 200;
 const SPFX_BEHEAD = 0x00000400, SPFX_DRLI = 0x00000100;
 /* include/youprop.h */
 const Slimed = () => !!(game.u.intrinsic?.HSlimed);
-const Antimagic = () => !!(game.u.intrinsic?.HAntimagic || game.u.uprops?.ANTIMAGIC);
 /* src/decl.c c_common_strings.c_fakename[]; used so vtense() won't be fooled
    by an assigned name ending in 's' */
 const fakename = ["mon", "you"];

@@ -39,7 +39,7 @@ import { is_metallic, OBJ_FLOOR } from './obj.js';
 import { obj_resists } from './zap.js';
 import { newsym, canspotmon, mon_visible, pline, canseemon } from './display.js';
 import { splitobj, peek_at_iced_corpse_age, place_object } from './mkobj.js';
-import { yelp, growl } from './sounds.js';
+import { yelp, growl, whimper } from './sounds.js';
 import { m_consume_obj, is_pick, check_gear_next_turn, healmon,
          wake_nearto, unstuck } from './mon.js';
 import {
@@ -50,7 +50,7 @@ import {
     IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED, isok,
     IS_STWALL, IS_TREE, W_NONDIGGABLE,
     ALLOW_MDISP, ALLOW_TRAPS, A_CHA, CORPSTAT_GENDER,
-    CORPSTAT_FEMALE, CORPSTAT_MALE, Upolyd,
+    CORPSTAT_FEMALE, CORPSTAT_MALE, Upolyd, xdir, ydir, N_DIRS,
 } from './const.js';
 import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
 import { MFLAGS, MONSYMS, NUMMONS, MSOUND, ATTKS } from './monst_data.js';
@@ -66,7 +66,7 @@ import { ARTICLE_YOUR } from './const.js';
 import { MIGR_RANDOM, MIGR_APPROX_XY, MIGR_EXACT_XY, MIGR_WITH_HERO,
          MIGR_LEFTOVERS, MON_MIGRATING, MON_LIMBO,
          RLOC_NOMSG } from './const.js';
-import { Hallucination } from './youprop.js';
+import { Hallucination, Deaf } from './youprop.js';
 import { night } from './calendar.js';
 import { pline_xy, You, You_feel } from './pline.js';
 import { relobj } from './steal.js';
@@ -77,7 +77,7 @@ import { mattackm } from './mhitm.js';
 import { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED } from './const.js';
 import { PMNAMES } from './monst_data.js';
 import {
-    makemon, MM_EDOG, MM_IGNOREWATER, MM_NOMSG, MM_MALE, MM_FEMALE,
+    makemon, goodpos, MM_EDOG, MM_IGNOREWATER, MM_NOMSG, MM_MALE, MM_FEMALE,
     NO_MINVENT, place_monster, remove_monster, is_rider, mpickobj, set_malign,
     deliver_obj_to_mon, DF_ALL } from './makemon.js';
 import { rloc } from './teleport.js';
@@ -1586,8 +1586,8 @@ export async function dog_move(mtmp, after) {
         if ((mfp.info[i] & ALLOW_TRAPS) && t_at(nx, ny)) {
             const trap = t_at(nx, ny);
             if (mtmp.mleashed) {
-                /* whimper() needs the sound code and the Deaf test */
-                note_unported('dog_move:whimper');
+                if (!Deaf())
+                    await whimper(mtmp);
             } else {
                 if (trap.tseen && rn2(40))
                     continue;
@@ -1732,6 +1732,51 @@ export async function dog_move(mtmp, after) {
         }
         return MMOVE_MOVED;
     }
+    /* src/dogmove.c:1325 check_leash()'s movement counterpart. A leashed pet
+       which could not choose a move and is more than two squares away is
+       pulled to a good square adjacent to the hero. C tests the old proposed
+       destination against regions, then relocates to cc without adding to
+       the pet's movement track. */
+    if (mtmp.mleashed && distu(omx, omy) > 4) {
+        const dx = sgn(omx - game.u.ux), dy = sgn(omy - game.u.uy);
+        let cc = { x: game.u.ux + dx, y: game.u.uy + dy };
+
+        if (!goodpos(cc.x, cc.y, mtmp, 0)) {
+            const dir = xdir.findIndex((vx, i) => i < N_DIRS
+                                                   && vx === dx
+                                                   && ydir[i] === dy);
+            let found = false;
+            for (let j = (dir + 7) % N_DIRS;
+                 j < (dir + 1) % N_DIRS; ++j) {
+                cc = { x: xdir[j], y: ydir[j] };
+                if (goodpos(cc.x, cc.y, mtmp, 0)) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                for (let j = (dir + 6) % N_DIRS;
+                     j < (dir + 2) % N_DIRS; ++j) {
+                    cc = { x: xdir[j], y: ydir[j] };
+                    if (goodpos(cc.x, cc.y, mtmp, 0)) {
+                        found = true;
+                        break;
+                    }
+                }
+            }
+            if (!found)
+                cc = { x: mtmp.mx, y: mtmp.my };
+        }
+
+        const { m_in_out_region } = await import('./region.js');
+        if (!(await m_in_out_region(mtmp, nix, niy)))
+            return MMOVE_MOVED;
+        remove_monster(mtmp.mx, mtmp.my);
+        place_monster(mtmp, cc.x, cc.y);
+        newsym(cc.x, cc.y);
+        set_apparxy(mtmp);
+    }
+
     /* src/dogmove.c:1356 — the STAY case also returns MMOVE_MOVED: the pet
        spent its action, and postmov() then runs mintrap() on the square it
        is standing on. A pony camped on a seen bear trap draws the

@@ -28,8 +28,8 @@ import { CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN
 export function SIZE(arr) { return arr.length; }
 
 // Version (patchlevel.h)
-export const VERSION_MAJOR = 3;
-export const VERSION_MINOR = 7;
+export const VERSION_MAJOR = 5;
+export const VERSION_MINOR = 0;
 export const PATCHLEVEL = 0;
 export const VERSION_STRING = `NetHack ${VERSION_MAJOR}.${VERSION_MINOR}.${PATCHLEVEL} Teleport #${COMMIT_NUMBER}`;
 export const TELEPORT_BANNER_C = `         Version ${VERSION_MAJOR}.${VERSION_MINOR}.${PATCHLEVEL}-134 Teleport JS (experiment ${COMMIT_NUMBER}) ${TELEPORT_BUILD_DATE}.`;
@@ -283,8 +283,8 @@ export const PICK_ONE = 1;
 export const PICK_ANY = 2;
 export const MENU_BEHAVE_STANDARD = 0;
 export const MENU_BEHAVE_PERMINV = 1;
-export const ATR_ULINE = 1;
-export const ATR_BLINK = 4;
+export const ATR_ULINE = 4;
+export const ATR_BLINK = 5;
 export const ATR_URGENT = 16;
 export const ATR_NOHISTORY = 32;
 
@@ -304,7 +304,7 @@ export const SUPPRESS_MAPPEARANCE = 0x10;
 export const SUPPRESS_NAME = 0x20;
 export const AUGMENT_IT = 0x40;
 export const EXACT_NAME = (SUPPRESS_IT | SUPPRESS_INVISIBLE
-    | SUPPRESS_HALLUCINATION | SUPPRESS_NAME);
+    | SUPPRESS_HALLUCINATION | SUPPRESS_SADDLE | SUPPRESS_MAPPEARANCE);
 
 // Game end type constants (include/hack.h enum game_end_types; src/end.c)
 // Runtime fields:
@@ -579,7 +579,10 @@ export const BL_HPMAX = (BL_HP + 1);
 export const BL_LEVELDESC = (BL_HPMAX + 1);
 export const BL_EXP = (BL_LEVELDESC + 1);
 export const BL_CONDITION = (BL_EXP + 1);
-export const BL_VERS = (BL_CONDITION + 1);
+export const BL_WEAPON = (BL_CONDITION + 1);
+export const BL_ARMOR = (BL_WEAPON + 1);
+export const BL_TERRAIN = (BL_ARMOR + 1);
+export const BL_VERS = (BL_TERRAIN + 1);
 export const MAXBLSTATS = (BL_VERS + 1);
 export const NO_LTEQGT = -1;
 export const EQ_VALUE = (NO_LTEQGT + 1);
@@ -588,7 +591,7 @@ export const LE_VALUE = (LT_VALUE + 1);
 export const GE_VALUE = (LE_VALUE + 1);
 export const GT_VALUE = (GE_VALUE + 1);
 export const TXT_VALUE = (GT_VALUE + 1);
-export const CONDITION_COUNT = 0;
+export const CONDITION_COUNT = 30;
 export const HL_UNDEF = 0x00;
 export const HL_NONE = 0x01;
 export const HL_BOLD = 0x02;
@@ -654,18 +657,19 @@ export const NH_BASIC_COLOR = 0x1000000;
 export const NH_ALTPALETTE = 0x2000000;
 
 // ===== patchlevel.h =====
-export const EDITLEVEL = 134;
+export const EDITLEVEL = 0;
 export const NH_STATUS_RELEASED = 0;
 export const NH_STATUS_WIP = 1;
 export const NH_STATUS_BETA = 2;
 export const NH_STATUS_POSTRELEASE = 3;
-export const NH_DEVEL_STATUS = NH_STATUS_WIP;
+export const NH_DEVEL_STATUS = NH_STATUS_RELEASED;
 export const COPYRIGHT_BANNER_A = "NetHack, Copyright 1985-2026";
 export const COPYRIGHT_BANNER_B = "         By Stichting Mathematisch Centrum and M. Stephenson.";
 export const COPYRIGHT_BANNER_D = "         See license for details.";
 
 // ===== tradstdc.h =====
-export const NH_C = 202300;
+// tradstdc.h:359; the reference recorder uses a C99-or-later, pre-C23 compiler.
+export const NH_C = 199900;
 export const NH_PRAGMA_MESSAGE = 1;
 
 // ===== vmsconf.h =====
@@ -909,7 +913,7 @@ export const GFILTER_NONE = 0;
 export const GFILTER_VIEW = (GFILTER_NONE + 1);
 export const GFILTER_AREA = (GFILTER_VIEW + 1);
 export const NUM_GFILTER = (GFILTER_AREA + 1);
-export const WC_COUNT = 0;
+export const WC_COUNT = 4;
 export const PLNMSG_UNKNOWN = 0;
 export const PLNMSG_ONE_ITEM_HERE = (PLNMSG_UNKNOWN + 1);
 export const PLNMSG_TOWER_OF_FLAME = (PLNMSG_ONE_ITEM_HERE + 1);
@@ -1449,7 +1453,9 @@ export const COST_CONTENTS = 1;
 export const COST_SINGLEOBJ = 2;
 export const ARG_DEBUG = 0;
 export const ARG_VERSION = (ARG_DEBUG + 1);
-export const ARG_DUMPGLYPHIDS = (ARG_VERSION + 1);
+export const ARG_SHOWPATHS = (ARG_VERSION + 1);
+export const ARG_DUMPENUMS = (ARG_SHOWPATHS + 1); // NODUMPENUMS is off in the reference.
+export const ARG_DUMPGLYPHIDS = (ARG_DUMPENUMS + 1);
 export const ARG_DUMPMONGEN = (ARG_DUMPGLYPHIDS + 1);
 export const LOOK_TRADITIONAL = 0;
 export const LOOK_QUICK = 1;
@@ -1506,7 +1512,7 @@ export const VANQ_MCLS_LTOH = (VANQ_MCLS_HTOL + 1);
 export const VANQ_COUNT_H_L = (VANQ_MCLS_LTOH + 1);
 export const VANQ_COUNT_L_H = (VANQ_COUNT_H_L + 1);
 export const NUM_VANQ_ORDER_MODES = (VANQ_COUNT_L_H + 1);
-export const NUM_SAVEFORMATS = 0;
+export const NUM_SAVEFORMATS = 3;
 export const TELL = 1;
 export const NOTELL = 0;
 export const ON = 1;
@@ -1894,21 +1900,22 @@ export const DIGTYP_STATUE = 2;
 export const DIGTYP_BOULDER = 3;
 export const DIGTYP_DOOR = 4;
 export const DIGTYP_TREE = 5;
-export const DIGCHECK_PASSED = 0;
-export const DIGCHECK_PASSED_PITONLY = 1;
+// include/hack.h:327 enum digcheck_result.
+export const DIGCHECK_PASSED = 1;
 export const DIGCHECK_PASSED_DESTROY_TRAP = 2;
-export const DIGCHECK_FAILED = 10;
-export const DIGCHECK_FAIL_ONLADDER = 11;
-export const DIGCHECK_FAIL_ONSTAIRS = 12;
-export const DIGCHECK_FAIL_THRONE = 13;
-export const DIGCHECK_FAIL_ALTAR = 14;
-export const DIGCHECK_FAIL_AIRLEVEL = 15;
-export const DIGCHECK_FAIL_WATERLEVEL = 16;
-export const DIGCHECK_FAIL_TOOHARD = 17;
-export const DIGCHECK_FAIL_UNDESTROYABLETRAP = 18;
-export const DIGCHECK_FAIL_CANTDIG = 19;
-export const DIGCHECK_FAIL_BOULDER = 20;
-export const DIGCHECK_FAIL_OBJ_POOL_OR_TRAP = 21;
+export const DIGCHECK_PASSED_PITONLY = 3;
+export const DIGCHECK_FAILED = 4;
+export const DIGCHECK_FAIL_ONSTAIRS = DIGCHECK_FAILED;
+export const DIGCHECK_FAIL_ONLADDER = 5;
+export const DIGCHECK_FAIL_THRONE = 6;
+export const DIGCHECK_FAIL_ALTAR = 7;
+export const DIGCHECK_FAIL_AIRLEVEL = 8;
+export const DIGCHECK_FAIL_WATERLEVEL = 9;
+export const DIGCHECK_FAIL_TOOHARD = 10;
+export const DIGCHECK_FAIL_UNDESTROYABLETRAP = 11;
+export const DIGCHECK_FAIL_CANTDIG = 12;
+export const DIGCHECK_FAIL_BOULDER = 13;
+export const DIGCHECK_FAIL_OBJ_POOL_OR_TRAP = 14;
 
 // Explosion type/source/flag constants (src/explode.c)
 // Runtime fields:
@@ -1922,14 +1929,16 @@ export const EXPL_MAGICAL = 4;
 export const EXPL_FIERY = 5;
 export const EXPL_FROSTY = 6;
 export const EXPL_MAX = 7;
-export const MON_EXPLODE = -1;
-export const BURNING_OIL = -2;
-export const TRAP_EXPLODE = -3;
-export const MAY_HITMON = 0x1;
-export const MAY_HITYOU = 0x2;
-export const MAY_HIT = (0x1 | 0x2);
-export const MAY_DESTROY = 0x4;
-export const MAY_FRACTURE = 0x8;
+// include/objclass.h:154; MAXOCLASSES is 18 in the reference.
+export const BURNING_OIL = 19;
+export const MON_EXPLODE = 20;
+export const TRAP_EXPLODE = 21;
+// include/hack.h:1339; VIS_EFFECTS occupies bit 0.
+export const MAY_HITMON = 0x02;
+export const MAY_HITYOU = 0x04;
+export const MAY_HIT = (MAY_HITMON | MAY_HITYOU);
+export const MAY_DESTROY = 0x08;
+export const MAY_FRACTURE = 0x10;
 
 // include/hack.h:346 dismount_types — causes for no longer riding.
 // (Earlier draft here had invented values; these match the header.)
@@ -1967,10 +1976,10 @@ export const YLIM = 3;
 // Runtime fields:
 // - inventory BUC classification and filters
 // - getobj callback return categories and option flags
-export const BUC_BLESSED = 1;
-export const BUC_UNCURSED = 2;
-export const BUC_CURSED = 3;
-export const BUC_UNKNOWN = 4;
+export const BUC_BLESSED = 0x0100;
+export const BUC_CURSED = 0x0200;
+export const BUC_UNCURSED = 0x0400;
+export const BUC_UNKNOWN = 0x0800;
 export const GETOBJ_EXCLUDE = -3;
 export const GETOBJ_EXCLUDE_NONINVENT = -2;
 export const GETOBJ_EXCLUDE_INACCESS = -1;
@@ -1988,10 +1997,10 @@ export const XL_DOWN = 2;
 export const XL_LEFT = 4;
 export const XL_RIGHT = 8;
 
-// Light-source type tags (src/light.c)
+// Light-source type tags (include/vision.h:15 enum ls_sources).
 // Runtime fields: light_base[] entry type and routing for object/monster lookups.
-export const LS_OBJECT = 0;
-export const LS_MONSTER = 1;
+export const LS_OBJECT = 1;
+export const LS_MONSTER = 2;
 
 // Timeout timer-kind and timer-function enums (src/timeout.c)
 // Runtime fields: timer queue kind/func selectors and timer dispatch.
@@ -2179,10 +2188,10 @@ export const GP_AVOID_MONPOS = 0x01000000;
 // Monster relocation flags (include/hack.h; src/teleport.c rloc/rloc_to)
 // Runtime fields: rloc/rloc_to rlocflags args
 export const RLOC_NONE = 0x0000;
-export const RLOC_NOMSG = 0x0001;
+export const RLOC_NOMSG = 0x0004;
 export const RLOC_MSG = 0x0002;
 export const RLOC_TELE = 0x0004;
-export const RLOC_ERR = 0x0100;
+export const RLOC_ERR = 0x0001;
 
 // Hero teleport placement flags (include/hack.h; src/teleport.c teleds)
 // Runtime fields: teleds/safe_teleds flags args
@@ -2909,9 +2918,9 @@ export function has_edog(mtmp) { return !!EDOG(mtmp); }
 export function has_ebones(mtmp) { return !!mtmp?.mextra?.ebones; }
 
 // Object extra accessors
-// C: ONAME(obj) → ((char *)(obj)->oextra->oname)
-export function ONAME(obj) { return obj?.oextra?.oname || ''; }
-export function has_oname(obj) { return !!obj?.oextra?.oname; }
+// C: ONAME(obj) uses oextra; this port stores names directly on obj.
+export function ONAME(obj) { return obj?.oname || ''; }
+export function has_oname(obj) { return obj?.oname != null; }
 export function OMONST(obj) { return obj?.oextra?.omonst; }
 // include/obj.h:194 OMID(), :197 has_omonst(), :199 has_omid(); mkobj.c
 // free_omonst()/free_omid() drop the saved data

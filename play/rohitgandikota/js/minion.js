@@ -15,7 +15,7 @@ import { ONAMES } from './objects_data.js';
 import { A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, G_GONE, G_UNIQ,
          In_endgame, W_ARMS } from './const.js';
 import { enexto } from './teleport.js';
-import { mk_roamer } from './priest.js';
+import { mk_roamer, mon_aligntyp } from './priest.js';
 import { makemon, mkclass, mkclass_aligned, monsndx, mongets,
          MM_EMIN, MM_NOMSG } from './makemon.js';
 import { mksobj, bless } from './mkobj.js';
@@ -44,14 +44,16 @@ const elementals = [
 const is_dprince = (ptr) => is_demon(ptr) && is_prince(ptr);
 const is_dlord = (ptr) => is_demon(ptr) && is_lord(ptr);
 const is_ndemon = (ptr) => is_demon(ptr) && !is_lord(ptr) && !is_prince(ptr);
-const mon_aligntyp = (mon) => mon.ispriest
-    ? (mon.epri?.shralign ?? mon.mextra?.epri?.shralign ?? A_NONE)
-    : mon.isminion
-        ? (mon.emin?.min_align ?? mon.mextra?.emin?.min_align ?? A_NONE)
-        : mon.data.maligntyp;
 const is_lminion = (mon) =>
     (mon.data.mflags2 & MFLAGS.M2_MINION) !== 0
     && mon_aligntyp(mon) === A_LAWFUL;
+
+// src/minion.c:17 newemin(); allocate the zeroed minion extension once.
+export function newemin(mtmp) {
+    mtmp.mextra ||= { mcorpsenm: NON_PM };
+    mtmp.mextra.emin ||= { parentmid: mtmp.m_id, min_align: 0, renegade: false };
+    mtmp.emin = mtmp.mextra.emin;
+}
 
 // src/minion.c:39 monster_census()
 export function monster_census(spotted) {

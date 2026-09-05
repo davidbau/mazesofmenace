@@ -35,7 +35,7 @@ import { finish_meating } from './dogmove.js';
 import { xytodir, dirtocoord } from './cmd.js';
 import { accessible } from './monmove.js';
 import { distu } from './hacklib.js';
-import { sobj_at } from './invent.js';
+import { sobj_at, fully_identify_obj } from './invent.js';
 import { an } from './objnam.js';
 import { throws_rocks } from './mondata.js';
 import { grounded } from './trap.js';
@@ -252,6 +252,7 @@ export function put_saddle_on_mon(saddle, mtmp) {
         saddle = mksobj(ONAMES.SADDLE, true, false);
         if (!saddle)
             return;
+        fully_identify_obj(saddle);
     }
 
     (mtmp.minvent ||= []).unshift(saddle);      /* mpickobj() */

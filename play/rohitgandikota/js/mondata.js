@@ -96,10 +96,14 @@ export const type_is_pname = (ptr) => (ptr.mflags2 & MFLAGS.M2_PNAME) !== 0;
 export const tunnels    = (d) => (d.mflags1 & MFLAGS.M1_TUNNEL) !== 0;
 export const passes_walls = (d) => (d.mflags1 & MFLAGS.M1_WALLWALK) !== 0;
 export const throws_rocks = (d) => (d.mflags2 & MFLAGS.M2_ROCKTHROW) !== 0;
-export const passes_bars  = (d) => (d.mflags1 & MFLAGS.M1_UNSOLID) !== 0
-                         || (d.mflags1 & MFLAGS.M1_AMORPHOUS) !== 0
-                         || (d.mflags1 & MFLAGS.M1_WALLWALK) !== 0
-                         || d.msize <= MFLAGS.MZ_SMALL;
+// src/mondata.c:554 passes_bars(). MZ_SMALL does not satisfy verysmall;
+// kittens cannot enter bars, while tiny monsters and these special forms can.
+export const passes_bars = (d) => passes_walls(d) || amorphous(d) || unsolid(d)
+                         || is_whirly(d) || verysmall(d)
+                         || dmgtype(d, ATTKS.AD_RUST)
+                         || dmgtype(d, ATTKS.AD_CORR)
+                         || metallivorous(d)
+                         || (slithy(d) && !bigmonst(d));
 
 export const is_displacer = (d) => (d.mflags3 & MFLAGS.M3_DISPLACES) !== 0;
 export const notake = (ptr) => (ptr.mflags1 & MFLAGS.M1_NOTAKE) !== 0;
@@ -453,7 +457,7 @@ export function defended(mon, adtyp) {
 // src/mondata.c:278 resists_blnd_by_arti() — light-blindness resistance from
 // worn or wielded magical equipment.
 export function resists_blnd_by_arti(mon) {
-    const is_you = (mon === game.u || mon === null);
+    const is_you = (mon === game.youmonst || mon === game.u || mon === null);
 
     let o = is_you ? game.u.uwep : MON_WEP(mon);
     if (o && o.oartifact && defends(ATTKS.AD_BLND, o))
@@ -466,9 +470,10 @@ export function resists_blnd_by_arti(mon) {
 }
 
 // src/mondata.c:248 resists_blnd() — resistant to light-induced blindness.
-// Pass game.u (or null) for the hero, mirroring C's &gy.youmonst.
+// game.youmonst mirrors C's &gy.youmonst. Existing callers may also pass
+// game.u or null for the hero.
 export function resists_blnd(mon) {
-    const is_you = (mon === game.u || mon === null);
+    const is_you = (mon === game.youmonst || mon === game.u || mon === null);
     const ptr = is_you ? game.mons[game.u.umonnum] : mon.data;
 
     if (is_you ? (!!game.u.ublind || Unaware())
@@ -970,12 +975,12 @@ export function cantvomit(ptr) {
         || ptr === game.mons?.[PMNAMES.PM_PONY];
 }
 
-// include/mondata.h:200 touch_petrifies() — the two identities C names, not
-// a flag; Medusa is added by flesh_petrifies() at :203 because she petrifies
-// when eaten but not when touched.
+// include/mondata.h:200 touch_petrifies(). pmidx is the canonical identity
+// shared by the static and per-game monster tables. Medusa is added by
+// flesh_petrifies() at :203 because she petrifies when eaten but not touched.
 export const touch_petrifies = (d) =>
-    d === game.mons?.[PMNAMES.PM_COCKATRICE]
-    || d === game.mons?.[PMNAMES.PM_CHICKATRICE];
+    d?.pmidx === PMNAMES.PM_COCKATRICE
+    || d?.pmidx === PMNAMES.PM_CHICKATRICE;
 export const flesh_petrifies = (d) =>
     touch_petrifies(d) || d === game.mons?.[PMNAMES.PM_MEDUSA];
 

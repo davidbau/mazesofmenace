@@ -41,18 +41,21 @@ import {
     W_WEP, W_SWAPWEP, W_QUIVER, STR19, LOST_NONE, SLT_ENCUMBER, Is_airlevel,
     BOLT_LIM, AKLYS_LIM, HAND, THROWN_WEAPON, THROWN_TETHERED_WEAPON,
     xdir, ydir, xytodir, N_DIRS, RIGHT_HANDED, IS_SINK, HI_WOOD, OBJ_MINVENT,
-    DISP_FLASH, DISP_CHANGE, DISP_END, DISP_TETHER, BACKTRACK, ECMD_TIME,
+    DISP_FLASH, DISP_CHANGE, DISP_END, DISP_TETHER, BACKTRACK,
+    ECMD_OK, ECMD_TIME, LARGEST_INT, CQ_CANNED,
     DEAF, SHOPBASE, Is_waterlevel,
     GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GETOBJ_PROMPT,
     GETOBJ_ALLOWCNT,
 } from './const.js';
 import { obj_resists, dogfood } from './dogmove.js';
 import {
-    ammo_and_launcher, is_ammo, is_missile, doswapweapon, doquiver_core, welded,
-    setuwep, setuswapwep, setuqwep, set_twoweap,
+    ammo_and_launcher, is_ammo, is_missile, is_pole, doswapweapon, doquiver_core,
+    welded, setuwep, setuswapwep, setuqwep, set_twoweap, dowield,
 } from './wield.js';
 import { acurr, acurrstr, A_CON, A_DEX, A_STR, change_luck, exercise, Fumbling } from './attrib.js';
-import { calc_capacity, fully_identify_obj, encumber_msg, getobj } from './invent.js';
+import {
+    calc_capacity, fully_identify_obj, encumber_msg, getobj, prinv, cmdq_add_key,
+} from './invent.js';
 import { add_to_minv, mpickobj } from './makemon.js';
 import { finish_quest } from './quest.js';
 import { align_gname } from './roles.js';
@@ -113,6 +116,9 @@ const WAR_HAMMER = objectNames.indexOf('WAR_HAMMER');
 const AKLYS = objectNames.indexOf('AKLYS');
 const WAN_STRIKING = objectNames.indexOf('WAN_STRIKING');
 const BOOMERANG = objectNames.indexOf('BOOMERANG');
+const ROCK = objectNames.indexOf('ROCK');
+const FLINT = objectNames.indexOf('FLINT');
+const BULLWHIP = objectNames.indexOf('BULLWHIP');
 const ELVEN_BOW = objectNames.indexOf('ELVEN_BOW');
 const YUMI = objectNames.indexOf('YUMI');
 const GAUNTLETS_OF_POWER = objectNames.indexOf('GAUNTLETS_OF_POWER');
@@ -149,11 +155,18 @@ function notake(ptr) {
 
 /**
  * C ref: dothrow.c ok_to_throw — shared gate for #throw / #fire.
- * Named omission: check_capacity((char *)0); command_count → shotlimit
- * (caller still passes shotlimit separately).
+ * Named omission: check_capacity((char *)0).
+ * @param {{n:number}|null} [shotlimit_p] C `int *shotlimit_p`
  * @returns {Promise<boolean>} false → ECMD_OK (no time)
  */
-async function ok_to_throw() {
+async function ok_to_throw(shotlimit_p) {
+    // C `:299–300` LIMIT_TO_RANGE_INT(0, LARGEST_INT, gc.command_count); gm.multi=0
+    let n = game.context?.command_count | 0;
+    if (n < 0) n = 0;
+    else if (n > LARGEST_INT) n = LARGEST_INT;
+    if (shotlimit_p) shotlimit_p.n = n;
+    game.multi = 0;
+
     const youdata = game.youmonst?.data;
     if (notake(youdata)) {
         await pline('You are physically incapable of throwing or shooting anything.');
@@ -2342,64 +2355,184 @@ export async function getdir_cmdassist(prompt) {
 }
 
 /**
- * C ref: dothrow.c dofire — quivered ammo; fireassist swap; getdir.
- * Autoquiver / doquiver_core / polearm / find_launcher canned wield deferred.
+ * C ref: dothrow.c autoquiver `:381–441` — fill empty uquiver from invent.
+ */
+function autoquiver() {
+    if (game.u?.uquiver) return;
+    let oammo = null;
+    let omissile = null;
+    let omisc = null;
+    let altammo = null;
+    const uwep = game.u?.uwep || null;
+    const uswapwep = game.u?.uswapwep || null;
+    const objects = game.objects;
+    for (const otmp of game.invent || []) {
+        if ((otmp.owornmask || 0) || otmp.oartifact || !otmp.dknown) {
+            ; /* Skip it */
+        } else if ((otmp.otyp | 0) === ROCK
+                   || ((otmp.otyp | 0) === FLINT && objects?.[otmp.otyp]?.oc_name_known)
+                   || (otmp.oclass === GEM_CLASS
+                       && (objects?.[otmp.otyp]?.oc_material | 0) === GLASS
+                       && objects?.[otmp.otyp]?.oc_name_known)) {
+            if (uslinging()) oammo = otmp;
+            else if (ammo_and_launcher(otmp, uswapwep)) altammo = otmp;
+            else if (!omisc) omisc = otmp;
+        } else if (otmp.oclass === GEM_CLASS) {
+            ; /* skip non-rock gems */
+        } else if (is_ammo(otmp)) {
+            if (ammo_and_launcher(otmp, uwep)) oammo = otmp;
+            else if (ammo_and_launcher(otmp, uswapwep)) altammo = otmp;
+            else omisc = otmp;
+        } else if (is_missile(otmp)) {
+            omissile = otmp;
+        } else if (otmp.oclass === WEAPON_CLASS && throwing_weapon(otmp)) {
+            if ((objects?.[otmp.otyp]?.oc_skill | 0) === P_DAGGER && !omissile) {
+                omissile = otmp;
+            } else if ((otmp.otyp | 0) === AKLYS) {
+                continue;
+            } else {
+                omisc = otmp;
+            }
+        }
+    }
+    if (oammo) setuqwep(oammo);
+    else if (omissile) setuqwep(omissile);
+    else if (altammo) setuqwep(altammo);
+    else if (omisc) setuqwep(omisc);
+}
+
+/**
+ * C ref: dothrow.c find_launcher `:447–465` — invent launcher for ammo;
+ * skip known-cursed; prefer known-BUC.
+ * @param {object|null} ammo
+ * @returns {object|null}
+ */
+function find_launcher(ammo) {
+    if (!ammo) return null;
+    let oX = null;
+    for (const otmp of game.invent || []) {
+        if (otmp.cursed && otmp.bknown) continue;
+        if (ammo_and_launcher(ammo, otmp)) {
+            if (otmp.bknown) return otmp;
+            if (!oX) oX = otmp;
+        }
+    }
+    return oX;
+}
+
+/** cmd.js `f` uses truthy as time; C ECMD_CANCEL is 2. */
+function ecmd_took_time(res) {
+    return ((res | 0) & ECMD_TIME) ? 1 : 0;
+}
+
+/**
+ * C ref: dothrow.c dofire `:469–586` — quiver / throw-and-return / autoquiver
+ * / fireassist / throw_obj. getdir stays in this caller (JS throw_obj
+ * assumes dx/dy already set).
  * @returns {number} 0 no turn (OK/cancel), 1 took time
  */
 export async function dofire() {
-    // C ref: dothrow.c dofire — ok_to_throw before quiver / fireassist
-    if (!(await ok_to_throw())) return 0;
+    const shot = { n: 0 };
+    if (!(await ok_to_throw(shot))) return 0;
+    const shotlimit = shot.n | 0;
 
-    let obj = game.u?.uquiver || null;
+    const u = game.u || (game.u = {});
+    const uwep = u.uwep || null;
+    const uwep_Throw_and_Return = !!(uwep && AutoReturn(uwep, uwep.owornmask || 0)
+        && (!is_art(uwep, ART_MJOLLNIR) || acurr(A_STR) >= STR19(25)));
+    let skip_fireassist = false;
+    let res = ECMD_OK;
+    let obj = u.uquiver || null;
+    const fireassist = game.flags?.fireassist !== false;
 
-    // C: iflags.fireassist default On — swap launcher from uswapwep then retry
-    if (obj && is_ammo(obj) && game.flags?.fireassist !== false) {
-        const uwep = game.u?.uwep || null;
-        const uswap = game.u?.uswapwep || null;
-        if (ammo_and_launcher(obj, uwep)) {
-            // ready to fire
-        } else if (ammo_and_launcher(obj, uswap)) {
-            cmdq_add_ec(doswapweapon);
-            cmdq_add_ec(dofire);
-            return 0; // ECMD_OK — canned swap+fire; no time yet
+    if (uwep_Throw_and_Return && (!obj || is_ammo(obj))) {
+        obj = uwep;
+        skip_fireassist = true;
+    } else if (!obj) {
+        if (!game.flags?.autoquiver) {
+            if (uwep && is_pole(uwep)) {
+                const { use_pole } = await import('./apply.js');
+                return ecmd_took_time(await use_pole(uwep, true));
+            } else if (uwep && (uwep.otyp | 0) === BULLWHIP) {
+                const { use_whip } = await import('./apply.js');
+                return ecmd_took_time(await use_whip(uwep));
+            } else if (fireassist
+                       && u.uswapwep && is_pole(u.uswapwep)
+                       && !(u.uswapwep.cursed && u.uswapwep.bknown)) {
+                cmdq_add_ec(doswapweapon);
+                cmdq_add_ec(dofire);
+                return 0;
+            } else {
+                // C `:527` You("have no ammunition readied.") leaves NEED_MORE.
+                // doquiver_core → getobj_ready flush_topl_more → more() like
+                // C getobj/yn_function. D-0484 mark_topline_seen skipped that
+                // --More-- (corpus first-diff).
+                await pline('You have no ammunition readied.');
+            }
+        } else {
+            autoquiver();
+            obj = u.uquiver || null;
+            if (obj) {
+                u.uquiver.owornmask &= ~W_QUIVER;
+                await prinv('You ready:', obj, 0);
+                u.uquiver.owornmask |= W_QUIVER;
+            } else {
+                await pline('You have nothing appropriate for your quiver.');
+            }
         }
-        // find_launcher / polearm fireassist deferred
     }
 
     if (!obj) {
-        // C: !autoquiver → You("have no ammunition readied.") then
-        // doquiver_core("fire"); autoquiver/polearm/bullwhip/swap deferred.
-        if (!game.flags?.autoquiver) {
-            await pline('You have no ammunition readied.');
-            // C getobj uses yn_function which more()s on NEED_MORE. Session
-            // keystream has invent letter immediately after `f` (no dismiss).
-            // mark_topline_seen ≡ tty_nhgetch NEED_MORE→NON_EMPTY so getobj
-            // can read the letter (D-0484).
-            mark_topline_seen();
-        }
-        const res = await doquiver_core('fire');
-        // C: ECMD_OK / ECMD_TIME continue; other → return. JS uses 0/1.
-        if (res !== 0 && res !== 1) return res;
-        obj = game.u?.uquiver || null;
-        if (!obj) return res | 0;
-        // C: ready pline may leave NEED_MORE; tty_nhgetch/getdir yn_function
-        // does not More-eat the next direction/cancel keys when the prompt
-        // replaces the message. Without this, flush_topl_more eats `=/\r`
-        // and capital `H` is misread as getdir (D-0485 / D-0484 pattern).
-        mark_topline_seen();
+        // C `:545–547` gi.in_doagain = 0 so ^A does not reuse throw dir
+        game.in_doagain = 0;
+        res = await doquiver_core('fire');
+        if (res !== ECMD_OK && res !== ECMD_TIME) return ecmd_took_time(res);
+        obj = u.uquiver || null;
+        // C: ready pline may leave NEED_MORE; getdir yn_function would
+        // more() next. D-0485 keeps the letter/dir key for public traces.
+        if (obj) mark_topline_seen();
     }
-    // C: post-quiver fireassist launcher swap deferred for non-ammo
+
+    if (u.uquiver && is_ammo(u.uquiver) && fireassist && !skip_fireassist) {
+        const apply = await import('./apply.js');
+        if (uwep && is_pole(uwep) && apply.could_pole_mon()) {
+            return ecmd_took_time(await apply.use_pole(uwep, true));
+        }
+        if (ammo_and_launcher(u.uquiver, uwep)) {
+            obj = u.uquiver;
+        } else if (ammo_and_launcher(u.uquiver, u.uswapwep)) {
+            cmdq_add_ec(doswapweapon);
+            cmdq_add_ec(dofire);
+            return ecmd_took_time(res);
+        } else {
+            const olauncher = find_launcher(u.uquiver);
+            if (olauncher) {
+                if (uwep && !game.flags?.pushweapon) {
+                    cmdq_add_ec(doswapweapon);
+                }
+                cmdq_add_ec(dowield);
+                cmdq_add_key(CQ_CANNED, olauncher.invlet);
+                cmdq_add_ec(dofire);
+                return ecmd_took_time(res);
+            }
+        }
+    }
+
+    if (!obj) return (res === ECMD_TIME) ? 1 : 0;
+
     const dir = await getdir_cmdassist('In what direction?');
-    if (!dir) return 0;
-    game.u.dx = dir.dx | 0;
-    game.u.dy = dir.dy | 0;
-    game.u.dz = dir.dz | 0;
-    return await throw_obj(obj, 0);
+    if (!dir) return (res === ECMD_TIME) ? 1 : 0;
+    u.dx = dir.dx | 0;
+    u.dy = dir.dy | 0;
+    u.dz = dir.dz | 0;
+    const altres = await throw_obj(obj, shotlimit);
+    return (res === ECMD_TIME) ? 1 : ecmd_took_time(altres);
 }
 
 export async function dothrow() {
     // C ref: dothrow.c dothrow — ok_to_throw before getobj
-    if (!(await ok_to_throw())) return 0;
+    const shot = { n: 0 };
+    if (!(await ok_to_throw(shot))) return 0;
 
     const obj = await getobj('throw', throw_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
     if (!obj) return 0;
@@ -2411,7 +2544,7 @@ export async function dothrow() {
     game.u.dy = dir.dy | 0;
     game.u.dz = dir.dz | 0;
 
-    return await throw_obj(obj, 0);
+    return await throw_obj(obj, shot.n | 0);
 }
 
 /**

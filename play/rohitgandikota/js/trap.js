@@ -425,6 +425,8 @@ async function dofiretrap(box) {
 
     await pline(`A tower of flame ${box ? 'bursts' : 'erupts'} from ${source}!`);
     if (Fire_resistance()) {
+        await shieldeff(game.u.ux, game.u.uy);
+        monstseesu(M_SEEN_FIRE);
         num = rn2(2);
     } else {
         num = d(2, 4);
@@ -437,6 +439,7 @@ async function dofiretrap(box) {
             game.u.uhpmax = minHp;
         if (game.u.uhp > game.u.uhpmax)
             game.u.uhp = game.u.uhpmax;
+        monstunseesu(M_SEEN_FIRE);
     }
 
     if (!num)
@@ -1324,6 +1327,8 @@ export async function dotrap(trap, trflags) {
         return await trapeffect_level_telep(game.youmonst, trap, trflags);
     if (ttype === TELEP_TRAP)
         return await trapeffect_telep_trap(game.youmonst, trap, trflags);
+    if (ttype === POLY_TRAP)
+        return await trapeffect_poly_trap(game.youmonst, trap, trflags);
     if (ttype === MAGIC_PORTAL)
         return await trapeffect_magic_portal(game.youmonst, trap, trflags);
     if (ttype === WEB)
@@ -1693,8 +1698,10 @@ async function trapeffect_fire_trap(mtmp, trap, trflags) {
     }
 
     if (resists_fire(mtmp)) {
-        if (in_sight)
+        if (in_sight) {
+            await shieldeff(mtmp.mx, mtmp.my);
             await pline(`${Monnam(mtmp)} is uninjured.`);
+        }
     } else {
         let num = orig_dmg;
         let alt = 0;
@@ -2602,7 +2609,7 @@ export async function mselftouch(mon, arg, byplayer) {
     await minstapetrify(mon, byplayer);
     if (!DEADMONSTER(mon) && !which_armor(mon, W_ARMG)
         && !resists_ston(mon)) {
-        mwepgone(mon);
+        await mwepgone(mon);
     }
 }
 
@@ -2676,7 +2683,10 @@ async function trapeffect_telep_trap(mtmp, trap, trflags) {
     seetrap(trap);
     const { noteleport_level, tele, vault_tele } =
         await import('./teleport.js');
-    if (game.u.uprops?.ANTIMAGIC || noteleport_level(game.youmonst)) {
+    if (In_endgame(game.u.uz) || game.u.uprops?.ANTIMAGIC
+        || noteleport_level(game.youmonst)) {
+        if (game.u.uprops?.ANTIMAGIC)
+            await shieldeff(game.u.ux, game.u.uy);
         await You_feel('a wrenching sensation.');
     } else if (trap.once) {
         deltrap(trap);
@@ -2706,6 +2716,8 @@ async function trapeffect_level_telep(mtmp, trap, trflags) {
     const verb = intentional ? 'trigger' : `${u_locomotion('step')} onto`;
     await You(`${verb} a level teleport trap!`);
 
+    if (game.u.uprops?.ANTIMAGIC && !intentional)
+        await shieldeff(game.u.ux, game.u.uy);
     if ((game.u.uprops?.ANTIMAGIC && !intentional)
         || In_endgame(game.u.uz)) {
         await You_feel('a wrenching sensation.');

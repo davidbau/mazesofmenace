@@ -15,6 +15,7 @@ import {
     POOL, DROWNING, KILLED_BY_AN,
     MAGICAL_BREATHING, SWIMMING, Is_medusa_level, Is_waterlevel,
     W_ARMS, W_WEP, W_AMUL, W_ARM, BOLT_LIM, STONING, KILLED_BY, M_SEEN_FIRE,
+    M_SEEN_SLEEP,
     REFLECTING, A_CHAOTIC, LARGEST_INT,
     M_AP_NOTHING, M_AP_OBJECT, WORN_HELMET, TELEDS_ALLOW_DRAG,
     something, Something, u_at,
@@ -22,7 +23,7 @@ import {
 import { thrwmu, spitmu, breamu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
 import { destroy_items, resists_drli } from './zap.js';
-import { nomul, stop_occupation, maybe_half_phys, is_pool, losehp, unmul } from './hack.js';
+import { nomul, stop_occupation, maybe_half_phys, is_pool, losehp, unmul, fall_asleep } from './hack.js';
 import { upstart } from './hacklib.js';
 import { rnd, d, rn2, rn1 } from './rng.js';
 import {
@@ -89,7 +90,7 @@ import {
     AT_ENGL, AT_GAZE, AT_SPIT, AT_BREA, AT_EXPL, AT_BOOM, AT_TENT, AT_MAGC,
     AT_HUGS,
     AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_DRDX, AD_DRCO, AD_ACID,
-    AD_SITM, AD_SEDU, AD_SSEX, AD_POLY, AD_DRIN,
+    AD_SITM, AD_SEDU, AD_SSEX, AD_POLY, AD_DRIN, AD_SLEE,
 } from './mhitm.js';
 import { castmu, buzzmu } from './mcastu.js';
 import { rehumanize, polymon, body_part } from './polyself.js';
@@ -1998,9 +1999,37 @@ export async function mhitm_ad_wrap_u(mtmp, mattk, mhm) {
 }
 
 /**
+ * C ref: uhitm.c mhitm_ad_slee `:3492–3507` — mhitu (monster→you).
+ * hitmsg always, then multi>=0 && !rn2(5) && !mgc_negated(TRUE); Sleep_res
+ * seesu-return else unseesu + fall_asleep(-rnd(10)) + Blind You pline.
+ * Leftover hitmu d() is kept (unlike default zero).
+ */
+async function mhitm_ad_slee_u(mtmp, mattk, mhm) {
+    void mhm;
+    await hitmsg(mtmp, mattk);
+    if ((game.multi | 0) >= 0 && !rn2(5)
+        && !(await mhitm_mgc_atk_negated(mtmp, null, true))) {
+        const u = game.u || {};
+        const Sleep_resistance = !!(u.Sleep_resistance
+            || u.HSleep_resistance || u.ESleep_resistance);
+        if (Sleep_resistance) {
+            monstseesu(M_SEEN_SLEEP);
+            return;
+        }
+        monstunseesu(M_SEEN_SLEEP);
+        fall_asleep(-rnd(10), true);
+        if (Blind()) {
+            await pline('You are put to sleep!');
+        } else {
+            await pline(`You are put to sleep by ${mon_nam(mtmp)}!`);
+        }
+    }
+}
+
+/**
  * C ref: uhitm.c mhitm_adtyping — mhitu (monster→you) subset.
  * PHYS + ELEC + COLD + DRST/DRDX/DRCO + SITM/SEDU + SSEX (D-1750) + BLND + STON + LEGS
- * + POLY (D-1004) + DRIN (D-1329) + WRAP (D-1331); other adtyps zero damage.
+ * + POLY (D-1004) + DRIN (D-1329) + WRAP (D-1331) + SLEE; other adtyps zero damage.
  */
 async function mhitm_adtyping_u(mtmp, mattk, mhm) {
     switch (mattk.adtyp | 0) {
@@ -2042,6 +2071,9 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
         break;
     case AD_WRAP:
         await mhitm_ad_wrap_u(mtmp, mattk, mhm);
+        break;
+    case AD_SLEE:
+        await mhitm_ad_slee_u(mtmp, mattk, mhm);
         break;
     default:
         mhm.damage = 0;
