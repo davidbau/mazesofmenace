@@ -84,6 +84,7 @@ import {
     Upolyd,
     MALE,
     FEMALE,
+    BOTL_NSIZ,
     CORPSTAT_GENDER,
     CORPSTAT_FEMALE,
     DEVTEAM_EMAIL,
@@ -580,6 +581,98 @@ export function cmap_to_glyph(cmap_idx) {
     if (idx < S_arrow_trap + MAXTCHARS) return (idx - S_grave) + GLYPH_CMAP_B_OFF;
     if (idx <= S_goodpos) return (idx - S_digbeam) + GLYPH_CMAP_C_OFF;
     return NO_GLYPH;
+}
+
+/* C defsym.h PCHAR S_sw_tl is the first swallow cmap after S_goodpos. */
+const S_sw_tl = S_goodpos + 1;
+/* C sym.h enum cmap_symbols fencepost after S_expl_br. */
+const MAXPCHARS = S_expl_br + 1;
+
+/** C display.h glyph_is_cmap_main — wall bank at GLYPH_CMAP_MAIN_OFF. */
+function glyph_is_cmap_main(glyph) {
+    const g = glyph | 0;
+    return g >= GLYPH_CMAP_MAIN_OFF && g < (_GLYPH_WALL_SPAN + GLYPH_CMAP_MAIN_OFF);
+}
+function glyph_is_cmap_mines(glyph) {
+    const g = glyph | 0;
+    return g >= GLYPH_CMAP_MINES_OFF && g < (_GLYPH_WALL_SPAN + GLYPH_CMAP_MINES_OFF);
+}
+function glyph_is_cmap_gehennom(glyph) {
+    const g = glyph | 0;
+    return g >= GLYPH_CMAP_GEH_OFF && g < (_GLYPH_WALL_SPAN + GLYPH_CMAP_GEH_OFF);
+}
+function glyph_is_cmap_knox(glyph) {
+    const g = glyph | 0;
+    return g >= GLYPH_CMAP_KNOX_OFF && g < (_GLYPH_WALL_SPAN + GLYPH_CMAP_KNOX_OFF);
+}
+function glyph_is_cmap_sokoban(glyph) {
+    const g = glyph | 0;
+    return g >= GLYPH_CMAP_SOKO_OFF && g < (_GLYPH_WALL_SPAN + GLYPH_CMAP_SOKO_OFF);
+}
+function glyph_is_cmap_a(glyph) {
+    const g = glyph | 0;
+    return g >= GLYPH_CMAP_A_OFF
+        && g < (((S_brdnladder - S_ndoor) + 1) + GLYPH_CMAP_A_OFF);
+}
+function glyph_is_cmap_altar(glyph) {
+    const g = glyph | 0;
+    return g >= GLYPH_ALTAR_OFF && g < (5 + GLYPH_ALTAR_OFF);
+}
+function glyph_is_cmap_b(glyph) {
+    const g = glyph | 0;
+    return g >= GLYPH_CMAP_B_OFF
+        && g < ((S_arrow_trap + MAXTCHARS - S_grave) + GLYPH_CMAP_B_OFF);
+}
+function glyph_is_cmap_zap(glyph) {
+    const g = glyph | 0;
+    return g >= GLYPH_ZAP_OFF && g < ((NUM_ZAP << 2) + GLYPH_ZAP_OFF);
+}
+function glyph_is_cmap_c(glyph) {
+    const g = glyph | 0;
+    return g >= GLYPH_CMAP_C_OFF
+        && g < (((S_goodpos - S_digbeam) + 1) + GLYPH_CMAP_C_OFF);
+}
+function glyph_is_swallow(glyph) {
+    const g = glyph | 0;
+    return g >= GLYPH_SWALLOW_OFF && g < ((NUMMONS << 3) + GLYPH_SWALLOW_OFF);
+}
+function glyph_is_explosion(glyph) {
+    const g = glyph | 0;
+    return g >= GLYPH_EXPLODE_OFF && g < (MAXEXPCHARS + GLYPH_EXPLODE_FROSTY_OFF);
+}
+
+/**
+ * C glyphs.c glyph_to_cmap `:199–231` — peel the cmap / zap / swallow /
+ * explosion banks back to a PCHAR index. lookat `:741` uses this after
+ * glyph_is_cmap. Fencepost MAXPCHARS is a legal defsyms[] index.
+ */
+export function glyph_to_cmap(glyph) {
+    const g = glyph | 0;
+    if (g === GLYPH_CMAP_STONE_OFF) return S_stone;
+    else if (glyph_is_cmap_main(g)) return (g - GLYPH_CMAP_MAIN_OFF) + S_vwall;
+    else if (glyph_is_cmap_mines(g)) return (g - GLYPH_CMAP_MINES_OFF) + S_vwall;
+    else if (glyph_is_cmap_gehennom(g)) return (g - GLYPH_CMAP_GEH_OFF) + S_vwall;
+    else if (glyph_is_cmap_knox(g)) return (g - GLYPH_CMAP_KNOX_OFF) + S_vwall;
+    else if (glyph_is_cmap_sokoban(g)) return (g - GLYPH_CMAP_SOKO_OFF) + S_vwall;
+    else if (glyph_is_cmap_a(g)) return (g - GLYPH_CMAP_A_OFF) + S_ndoor;
+    else if (glyph_is_cmap_altar(g)) return S_altar;
+    else if (glyph_is_cmap_b(g)) return (g - GLYPH_CMAP_B_OFF) + S_grave;
+    else if (glyph_is_cmap_c(g)) return (g - GLYPH_CMAP_C_OFF) + S_digbeam;
+    else if (glyph_is_cmap_zap(g)) return ((g - GLYPH_ZAP_OFF) % 4) + S_vbeam;
+    else if (glyph_is_swallow(g)) return ((g - GLYPH_SWALLOW_OFF) & 0x7) + S_sw_tl;
+    else if (glyph_is_explosion(g)) {
+        const nexpl = (S_expl_br - S_expl_tl) + 1;
+        return ((g - GLYPH_EXPLODE_OFF) % nexpl) + S_expl_tl;
+    }
+    return MAXPCHARS;
+}
+
+/**
+ * C display.h glyph_to_warning — peel GLYPH_WARNING_OFF.
+ * lookat only calls this after glyph_is_warning.
+ */
+export function glyph_to_warning(glyph) {
+    return (glyph | 0) - GLYPH_WARNING_OFF;
 }
 
 /** C display.h warning_to_glyph. */
@@ -3239,6 +3332,10 @@ export function terrain_glyph(loc, x, y) {
         };
     }
     case DOOR:
+        // C init_rogue_symbols: S_ndoor = S_hodoor = S_vodoor = '+'
+        if ((game.currentgraphics | 0) === ROGUESET) {
+            return { ch: '+', color: NO_COLOR, dec: false };
+        }
         // C ref: display.c back_to_glyph DOOR — S_hodoor/S_vodoor when open.
         // DEC: both open-door cmaps are meta-a (checkerboard).
         // ASCII: horizontal → S_hodoor '|'; else S_vodoor '-'.
@@ -3256,6 +3353,10 @@ export function terrain_glyph(loc, x, y) {
             ? { ch: '~', color: NO_COLOR, dec: true }
             : { ch: '.', color: NO_COLOR, dec: false };
     case STAIRS: {
+        // C init_rogue_symbols: S_upstair = S_dnstair = '%'
+        if ((game.currentgraphics | 0) === ROGUESET) {
+            return { ch: '%', color: NO_COLOR, dec: false };
+        }
         // C ref: display.c back_to_glyph STAIRS + defsym.h PCHAR
         // known_branch_stairs → S_br*stair CLR_YELLOW; else S_*stair
         // CLR_GRAY (tty_map_color → NO_COLOR). Direction from ladder flag.
@@ -4177,7 +4278,7 @@ function hero_See_invisible() {
     const u = game.u || {};
     return !!((u.HSee_invisible | 0) || (u.ESee_invisible | 0) || u.See_invisible);
 }
-function hero_Invisible() {
+export function hero_Invisible() {
     // C: Invisible (Invis && !See_invisible)
     return hero_Invis() && !hero_See_invisible();
 }
@@ -4191,7 +4292,7 @@ function senseself() {
     // Unblind_telepat = ETelepat; Detect_monsters = H|E
     return !!(u.ETelepat || u.Unblind_telepat || Detect_monsters());
 }
-function canspotself() {
+export function canspotself() {
     return canseeself() || senseself();
 }
 
@@ -4915,15 +5016,22 @@ function _polyd_rank_title(mndx, gender) {
     return out;
 }
 
-// ── Status lines ──
-function _statusLine1() {
+/**
+ * C botl.c do_statusline1 `:47–98` (dump / !VIA_WINDOWPORT putstr).
+ * Tty `bot()` uses `bot_via_windowport` `:1007` BL_TITLE `"%-30s"` then
+ * INIT_BLSTAT strength `" St:%s"` so "St:" starts at column 31.
+ * @returns {string}
+ */
+export function do_statusline1() {
     const u = game.u;
     if (!u) return '';
+    if (suppress_map_output()) return '';
     let name = game.plname || 'Hero';
     // C ref: botl.c — capitalize first letter of plname for status only
     if (name.length && name.charCodeAt(0) >= 97 && name.charCodeAt(0) <= 122) {
         name = String.fromCharCode(name.charCodeAt(0) - 32) + name.slice(1);
     }
+    if (name.length > BOTL_NSIZ) name = name.slice(0, BOTL_NSIZ);
     // C: Upolyd → pmname(umonnum, Ugender); else rank()
     // Ugender ≡ (Upolyd ? u.mfemale : flags.female)
     let roleTitle;
@@ -4942,12 +5050,17 @@ function _statusLine1() {
     const stats = u.acurr?.a
         ? `St:${get_strength_str()} Dx:${acurr(A_DEX)} Co:${acurr(A_CON)} In:${acurr(A_INT)} Wi:${acurr(A_WIS)} Ch:${acurr(A_CHA)}`
         : 'St:? Dx:? Co:? In:? Wi:? Ch:?';
-    const align = u.ualign?.type === 0 ? 'Neutral' : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
-    // C uses cursor-forward for gap between title and stats
-    // C pads to align stats starting at a fixed column
+    const align = u.ualign?.type === 0 ? 'Neutral'
+        : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
+    // C bot_via_windowport BL_TITLE "%-30s" + " St:%s" → St: at col 31.
+    // Contest capture compresses the pad to CSI CUF when gap > 4.
     const gap = Math.max(1, 31 - title.length);
     if (gap > 4) return `${title}\x1b[${gap}C${stats} ${align}`;
     return `${title}${' '.repeat(gap)}${stats} ${align}`;
+}
+
+function _statusLine1() {
+    return do_statusline1();
 }
 
 // Last bot()-committed status. C paints WIN_STATUS only in bot();
@@ -4956,6 +5069,8 @@ let _lastStatus1 = '';
 let _lastStatus2 = '';
 /** When true, paint blank status (fullscreen menu cleared WIN_STATUS). */
 let _statusSuppressed = false;
+/** C decl.h `gb.bot_disabled` — windows.c `select_menu` / `getlin` wrap. */
+let _bot_disabled = false;
 
 // C ref: botl.c enc_stat[] — also used in insight.c
 const ENC_STAT = [
@@ -5088,6 +5203,17 @@ function _statusLine2() {
 /** C ref: botl.c bot — no-op when u.uhp == -1 (dosave / exact overkill). */
 function _botSuppressed() {
     return (game.u?.uhp | 0) === -1;
+}
+
+/**
+ * C windows.c `select_menu` `:1858–1863` / `getlin` `:1870–1900`.
+ * @param {boolean} v
+ * @returns {boolean} previous value
+ */
+export function set_bot_disabled(v) {
+    const prev = _bot_disabled;
+    _bot_disabled = !!v;
+    return prev;
 }
 
 /**
@@ -5312,7 +5438,18 @@ function _buildScreenOutput() {
 
     // Also write to grid for serialize_terminal_grid
     if (display.grid) {
-        display.clearScreen();
+        const cols = display.cols || 80;
+        // C bot() returns before putstr when gb.bot_disabled; leftover
+        // WIN_STATUS (docorner cl_end from offx) stays. Do not clear or
+        // repaint rows 22–23. Snapshot/restore of those rows is D-1831.
+        if (_bot_disabled) {
+            for (let r = 0; r < 22; r++) {
+                for (let c = 0; c < cols; c++)
+                    display.setCell(c, r, ' ', NO_COLOR, 0);
+            }
+        } else {
+            display.clearScreen();
+        }
         // Message line(s) — --More-- may sit on row 1 when msg is long
         const msg = game._pending_message || '';
         const msgLines = msg.split('\n');
@@ -5357,8 +5494,13 @@ function _buildScreenOutput() {
                 loc.gnew = 0;
             }
         }
-        // Status lines from last bot() (uhp==-1 skip keeps prior)
-        if (!_statusSuppressed) {
+        // Status from last bot() cache. C gb.bot_disabled skips putstr so
+        // leftover tty cells stay; JS clearScreen wipes them, so repaint
+        // the cache unless D-0467 `_statusSuppressed` (fullscreen NHW_MENU
+        // left WIN_STATUS blank) or bot_disabled (docorner leftover).
+        // Do not snapshot/restore grid rows — that copies blanks after a
+        // per-key docrt/cls (D-1831 regression).
+        if (!_statusSuppressed && !_bot_disabled) {
             const s1 = _lastStatus1 || s1raw.replace(/\x1b\[[0-9;]*[A-Za-z]/g, m =>
                 m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2), 10) || 0) : '');
             for (let c = 0; c < Math.min(s1.length, display.cols); c++)
@@ -5417,13 +5559,31 @@ function _paintToplineOnly() {
 }
 
 /**
+ * C getline.c show_topl / topl_putsym wrap at CO-1: cl_end the wrapped
+ * message row so a corner menu's first item does not stay beside the
+ * continuation. Ordinary `_paintToplineOnly` must not blank map row 1.
+ */
+function _paintToplineOnlyOverOverlay() {
+    _paintToplineOnly();
+    const display = game?.nhDisplay;
+    if (!display?.grid || !display.setCell) return;
+    const msg = game._pending_message || '';
+    if (!msg.includes('\n')) return;
+    const cols = display.cols || 80;
+    const line1 = msg.split('\n')[1] || '';
+    for (let c = line1.length; c < cols; c++)
+        display.setCell(c, 1, ' ', NO_COLOR, 0);
+}
+
+/**
  * C mid-goto_level: gbuf still holds prior map while level is detached;
  * refresh message + status only (do not clearScreen blank the map).
  */
 function _paintToplineAndStatus() {
     _paintToplineOnly();
     const display = game?.nhDisplay;
-    if (!display?.grid || !display.setCell || _statusSuppressed) return;
+    // C bot() returns before putstr when gb.bot_disabled.
+    if (!display?.grid || !display.setCell || _statusSuppressed || _bot_disabled) return;
     const cols = display.cols || 80;
     const s1 = _lastStatus1 || '';
     const s2 = _lastStatus2 || '';
@@ -5471,6 +5631,67 @@ export function paint_gbuf_level_to_terminal(level) {
     return last;
 }
 
+/**
+ * One gbuf cell onto the Terminal (C print_glyph / row_refresh).
+ * @param {number} mx map x (1..COLNO-1)
+ * @param {number} my map y (0..ROWNO-1)
+ * @param {number} sc screen column
+ * @param {number} sr screen row
+ */
+function _paint_gbuf_cell(mx, my, sc, sr) {
+    const display = game?.nhDisplay;
+    const loc = game.level?.at(mx, my);
+    if (!display?.setCell || !loc) return;
+    if (loc.disp_ch == null || loc.disp_ch === '') return;
+    let ch = loc.disp_ch;
+    if (loc.disp_decgfx) {
+        const uni = DEC_TO_UNICODE[ch];
+        if (uni && ch !== '{' && ch !== '`' && ch !== 'g'
+            && ch !== '|' && ch !== 'o' && ch !== 's')
+            ch = uni;
+    }
+    display.setCell(sc, sr, ch, loc.disp_color ?? NO_COLOR, loc.disp_attr ?? 0);
+}
+
+/**
+ * C wintty.c docorner `:3650–3720` — cl_end from xmin, row_refresh the
+ * map, then bot() when ymax reaches WIN_STATUS. bot() returns immediately
+ * when gb.bot_disabled, so leftover WIN_STATUS left of xmin stays.
+ * Named: TTY_PERM_INVENT; ystart_between_menu_pages paging repair (D-1832).
+ * @param {number} xmin
+ * @param {number} ymax exclusive, C `cw->maxrow + 1`
+ * @param {number} [ystart]
+ */
+export async function docorner(xmin, ymax, ystart = 0) {
+    const display = game?.nhDisplay;
+    if (!display?.grid || !display.setCell) return;
+    const cols = display.cols || 80;
+    // C tty_curs(BASE_WINDOW, xmin, y): cw->curx = --x (1-based), so
+    // cl_end starts at xmin-1. Menu paint uses tty_curs(MENU, 1)+offx
+    // (screen = offx). That one-column shift turns invent "St (end)"
+    // into leftover "S" on the item-action frame.
+    const x0 = Math.max(0, (xmin | 0) - 1);
+    const y0 = Math.max(0, ystart | 0);
+    const y1 = Math.max(y0, ymax | 0);
+    for (let y = y0; y < y1; y++) {
+        for (let c = x0; c < cols; c++)
+            display.setCell(c, y, ' ', NO_COLOR, 0);
+        // C: y < WIN_MAP.offy || y > ROWNO → skip board
+        if (y < 1 || y > ROWNO) continue;
+        const my = y - 1;
+        for (let c = x0; c < cols; c++) {
+            const mx = c + 1;
+            if (mx < 1 || mx >= COLNO) continue;
+            _paint_gbuf_cell(mx, my, c, y);
+        }
+    }
+    // C: ymax >= wins[WIN_STATUS]->offy → disp.botlx = TRUE; bot();
+    if (y1 >= 22) {
+        if (game.flags) game.flags.botlx = true;
+        await bot();
+    }
+}
+
 // ── flush_screen ──
 // C ref: display.c flush_screen — mode -1 toggles postpone; while postponed,
 // map/botl flushes are no-ops (message paints still allowed for more()).
@@ -5478,7 +5699,16 @@ export function paint_gbuf_level_to_terminal(level) {
 export async function flush_screen(mode) {
     // Menu/text overlays paint the Terminal grid directly; don't clobber them.
     // C ref: invent display / NHW_MENU / NHW_TEXT stay until dismissed.
-    if (game._menu_overlay) return;
+    // C process_menu_window MENU_SEARCH → tty_getlin: custompline writes
+    // WIN_MESSAGE (home+cl_end the full message row) while the corner
+    // menu stays. Overlay skip would leave the menu header on row 0.
+    if (game._menu_overlay) {
+        // C process_menu_window MENU_SEARCH → tty_getlin: show_topl
+        // home+cl_end row 0; wrap at CO-1 cl_end the next message row
+        // (first corner-menu item). Overlay skip would leave the header.
+        if (_toplin === TOPLINE_SPECIAL_PROMPT) _paintToplineOnlyOverOverlay();
+        return;
+    }
     if (mode === -1) {
         _delay_flushing = !_delay_flushing;
         if (_delay_flushing) return;
@@ -5576,8 +5806,11 @@ export async function cls() {
 }
 
 // ── bot ──
-// C ref: botl.c bot — no-op body when u.uhp == -1; always clear botl flags.
+// C ref: botl.c bot — no-op body when u.uhp == -1; always clear botl flags
+// after the disabled check (disabled returns without clearing).
 export async function bot() {
+    // C botl.c `:255–256` — gb.bot_disabled returns before uhp / putstr.
+    if (_bot_disabled) return;
     _statusSuppressed = false;
     if (!_botSuppressed()) _commitStatusLines();
     if (game.flags) {
@@ -5590,9 +5823,11 @@ export async function bot() {
 /**
  * C ref: botl.c timebot — status update when only svm.moves changed.
  * VIA_WINDOWPORT → stat_update_time deferred; tty path → full bot().
- * Named omissions: gb.bot_disabled; hangup done_hup in suppress_map_output.
+ * Named omissions: hangup done_hup in suppress_map_output.
  */
 export async function timebot() {
+    // C botl.c `:277–278` — gb.bot_disabled returns before time update.
+    if (_bot_disabled) return;
     const flags = game.flags || {};
     const iflags = game.iflags || {};
     // C: status_updates defaults TRUE; treat undefined as enabled

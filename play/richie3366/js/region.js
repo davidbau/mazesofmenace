@@ -76,6 +76,15 @@ export function valid_cloud_pos(x, y) {
 }
 
 /**
+ * C ref: region.c reg_damg — per-turn damage of a visible region.
+ * ttl == -2 is the expire-in-progress sentinel (not damaging).
+ */
+export function reg_damg(reg) {
+    if (!reg || !reg.visible || reg.ttl === -2) return 0;
+    return reg.arg | 0;
+}
+
+/**
  * C ref: region.c visible_region_at — first visible region covering (x,y).
  */
 export function visible_region_at(x, y) {

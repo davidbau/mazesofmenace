@@ -1,16 +1,17 @@
 // were.js — Lycanthrope shape change (partial).
-// C ref: were.c were_change / new_were / counter_were / set_ulycn /
-//        were_beastie / you_were / you_unwere.
+// C ref: were.c were_change / new_were / counter_were / were_summon /
+//        set_ulycn / were_beastie / you_were / you_unwere.
 // Branch envelope: ParanoidWerechange getlin via paranoid_query (D-1001);
-// mon were_change / new_were; set_ulycn Drain_resistance.
-// Named omissions: were_summon; howl You_hear + wake_nearto; mon_break_armor;
+// mon were_change / new_were; set_ulycn Drain_resistance; were_summon
+// (mhitu summonmu; tamedog when yours).
+// Named omissions: howl You_hear + wake_nearto; mon_break_armor;
 // mon_poly monster-defender via mhitm (D-1006). possibly_unwield D-1744.
 // Callers wired: allmain Poly/ulycn (D-1002); potion peffect_water /
 // potionbreathe + pray TROUBLE_LYCANTHROPE + mon_poly youmonst (D-1004);
 // eat wolfsbane you_unwere.
 
 import { game } from './gstate.js';
-import { rn2, rn1 } from './rng.js';
+import { rn2, rn1, rnd } from './rng.js';
 import { night, FULL_MOON } from './calendar.js';
 import {
     is_were, is_human, mons, LOW_PM, NON_PM, NEUTRAL,
@@ -24,7 +25,12 @@ import { set_uasmon, polymon, rehumanize } from './polyself.js';
 import { monster_nearby } from './hack.js';
 import { an } from './objnam.js';
 import { paranoid_query } from './getline.js';
-import { PARANOID_WERECHANGE, POLYMORPH_CONTROL, UNCHANGING } from './const.js';
+import { tamedog } from './dog.js';
+import { makemon } from './makemon.js';
+import {
+    PARANOID_WERECHANGE, POLYMORPH_CONTROL, UNCHANGING, NO_MM_FLAGS,
+    PROT_FROM_SHAPE_CHANGERS,
+} from './const.js';
 
 const PM_WEREWOLF = monsterNames.indexOf('PM_WEREWOLF');
 const PM_HUMAN_WEREWOLF = monsterNames.indexOf('PM_HUMAN_WEREWOLF');
@@ -43,12 +49,14 @@ const PM_WARG = monsterNames.indexOf('PM_WARG');
 const PM_WINTER_WOLF = monsterNames.indexOf('PM_WINTER_WOLF');
 const PM_WINTER_WOLF_CUB = monsterNames.indexOf('PM_WINTER_WOLF_CUB');
 
-/** C ref: youprop.h Protection_from_shape_changers */
-function Protection_from_shape_changers() {
+/** C ref: youprop.h Protection_from_shape_changers — H || E */
+export function Protection_from_shape_changers() {
     const u = game.u || {};
+    const p = u.uprops?.[PROT_FROM_SHAPE_CHANGERS];
     return !!(u.HProtection_from_shape_changers
         || u.EProtection_from_shape_changers
-        || u.Protection_from_shape_changers);
+        || u.Protection_from_shape_changers
+        || (p?.intrinsic | 0) || (p?.extrinsic | 0));
 }
 
 /** C ref: youprop.h Polymorph_control — H || E via flat + uprops. */
@@ -162,6 +170,50 @@ export function new_were(mon) {
     newsym(mon.mx, mon.my);
     // C :130 possibly_unwield(mon, FALSE); mon_break_armor / monflee named
     return possibly_unwield(mon, false);
+}
+
+/**
+ * C ref: were.c were_summon `:142–189` — horde of species-matched helpers.
+ * `visible` is `{ n }` (C `int *`); `genbuf` is `{ s }` or null (C `char *`).
+ * `yours` tames via `tamedog(mtmp, NULL, FALSE)` (polyself #monster).
+ */
+export async function were_summon(ptr, yours, visible, genbuf) {
+    const u = game.u || {};
+    const pm = ptr?.mndx | 0;
+    let total = 0;
+
+    if (visible) visible.n = 0;
+    if (Protection_from_shape_changers() && !yours) return 0;
+    for (let i = rnd(5); i > 0; i--) {
+        let typ;
+        switch (pm) {
+        case PM_WERERAT:
+        case PM_HUMAN_WERERAT:
+            typ = rn2(3) ? PM_SEWER_RAT
+                : rn2(3) ? PM_GIANT_RAT : PM_RABID_RAT;
+            if (genbuf) genbuf.s = 'rat';
+            break;
+        case PM_WEREJACKAL:
+        case PM_HUMAN_WEREJACKAL:
+            typ = rn2(7) ? PM_JACKAL : rn2(3) ? PM_COYOTE : PM_FOX;
+            if (genbuf) genbuf.s = 'jackal';
+            break;
+        case PM_WEREWOLF:
+        case PM_HUMAN_WEREWOLF:
+            typ = rn2(5) ? PM_WOLF : rn2(2) ? PM_WARG : PM_WINTER_WOLF;
+            if (genbuf) genbuf.s = 'wolf';
+            break;
+        default:
+            continue;
+        }
+        const mtmp = makemon(mons(typ), u.ux | 0, u.uy | 0, NO_MM_FLAGS);
+        if (mtmp) {
+            total++;
+            if (canseemon(mtmp) && visible) visible.n += 1;
+        }
+        if (yours && mtmp) await tamedog(mtmp, null, false);
+    }
+    return total;
 }
 
 /**

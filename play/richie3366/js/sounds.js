@@ -633,7 +633,7 @@ function helpless(mtmp) {
 /**
  * C ref: sounds.c growl_sound — non-Hallu growl verb from msound.
  */
-function growl_sound(mtmp) {
+export function growl_sound(mtmp) {
     switch (mon_msound(mtmp)) {
     case MS_MEW:
     case MS_HISS:

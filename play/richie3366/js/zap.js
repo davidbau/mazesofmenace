@@ -97,7 +97,7 @@
 // + bhitm spell_damage_bonus (D-1388; Knight questart dbldam named).
 // zap_map lateral drawbridge + bhit ZAPPED_WAND zap_map (D-1489);
 // Named omissions: zap_map uswallow pile;
-// force_decor ice/furniture; draft_message
+// draft_message
 // Rogue SDOOR; Invocation_lev vibrating-square "the";
 // bhito opening chain / uchain unpunish is D-1481;
 // bhito poly-arm boxlock reset_pick is D-1483;
@@ -5647,7 +5647,7 @@ async function maybe_explode_trap(ttmp, otmp, learn) {
  * then !u.dz lateral drawbridge (D-1489; `:3685–3717`) then
  * WAN_PROBING terrain/trap (D-1444). Caller zap_updown down
  * (D-1444/D-1485) and bhit ZAPPED_WAND (D-1489 `:3919–3924`).
- * Named: force_decor ice/furniture; draft_message Rogue SDOOR;
+ * Named: draft_message Rogue SDOOR;
  * Invocation_lev vibrating-square "the".
  */
 async function zap_map(x, y, obj) {
@@ -5773,7 +5773,8 @@ async function zap_map(x, y, obj) {
             learn.v = true;
         } else if (ltyp === ICE || IS_FURNITURE(ltyp)) {
             if ((game.u?.dz | 0) > 0) {
-                /* force_decor(TRUE) named */
+                const { force_decor } = await import('./pickup.js');
+                await force_decor(true);
                 learn.v = true;
             }
         }

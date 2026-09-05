@@ -7,7 +7,7 @@ import { nhgetch } from './input.js';
 import { pline, newsym, canseemon, pline_mon, clear_nhwindow_message } from './display.js';
 import { yn_function } from './getline.js';
 import { vision_recalc, recalc_block_point, cansee } from './vision.js';
-import { stop_occupation, in_rooms } from './hack.js';
+import { stop_occupation, in_rooms, closed_door } from './hack.js';
 import {
     COLNO, ROWNO, IS_DOOR, ECMD_OK, ECMD_TIME, OBJ_FLOOR, OBJ_FREE,
     DOOR, SDOOR, Is_rogue_level, SHOPBASE,
@@ -16,7 +16,7 @@ import {
     AUTOUNLOCK_APPLY_KEY, STRAT_WAITMASK, TT_PIT, M_AP_TYPE,
     M_AP_FURNITURE, M_AP_OBJECT, FINGER,
     CMDQ_DIR, CMDQ_KEY, CQ_CANNED, CQ_REPEAT,
-    xytodir, getdirInp,
+    xytodir, getdirInp, u_at,
 } from './const.js';
 import { cmdq_pop, cmdq_clear } from './cmd.js';
 import { rnl, rn2, rnd } from './rng.js';
@@ -40,6 +40,7 @@ import { currency, cmdq_add_key } from './invent.js';
 import { show_text_pages, dowhatdoes_core } from './pager.js';
 import { visctrl } from './dokeylist.js';
 import { highc } from './hacklib.js';
+import { doloot } from './pickup.js';
 
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
@@ -582,7 +583,7 @@ export async function getdir(prompt) {
 }
 
 /** C ref: cmd.c get_adjacent_loc — getdir then adjacent cell. */
-async function get_adjacent_loc(prompt, emsg) {
+export async function get_adjacent_loc(prompt, emsg) {
     // C: getdir(prompt) — invalid key → help_dir cmdassist then fail
     if (!(await getdir(prompt))) {
         await pline('Never mind.');
@@ -610,8 +611,8 @@ export async function doopen() {
  * C ref: lock.c doopen_indir — open a CLOSED door at (x,y).
  * Autoopen callers pass door coordinates (x > 0). Interactive `o`
  * uses get_adjacent_loc → getdir ("In what direction?").
- * Named omissions: loot-at-feet (u_at → doloot); pit reach; door-mimic
- * stumble; Confusion/Stunned always-TIME; portcullis/drawbridge;
+ * Named omissions: pit "Open where? [.>]"; door-mimic stumble;
+ * Confusion/Stunned always-TIME; portcullis/drawbridge;
  * feel_newsym mapseen gating; AUTOUNLOCK_KICK canned dokick.
  * Returns true when C would return ECMD_TIME (open attempt / lock setup).
  */
@@ -633,7 +634,12 @@ export async function doopen_indir(x, y) {
         if (!cc) return false; // Never mind. already plined
     }
 
-    // C: u_at(cc) && (u.dz > 0 || !closed_door) → doloot() — deferred
+    // C lock.c doopen_indir `:808–811` — open at yourself/up/down:
+    // switch to loot unless a closed door is here and direction isn't down
+    const u = game.u || {};
+    if (u_at(cc.x, cc.y) && ((u.dz | 0) > 0 || !closed_door(u.ux, u.uy))) {
+        return (await doloot()) === ECMD_TIME;
+    }
     // C: u.utrap TT_PIT reach — deferred
     // C: stumble_on_door_mimic — deferred
 

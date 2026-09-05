@@ -2432,7 +2432,7 @@ export function reset_utrap(_msg) {
  * Named omissions: ice_descr / surface / Levitation-Flying preposition
  * matrix beyond solid-ground default.
  */
-async function back_on_ground(rescued) {
+export async function back_on_ground(rescued) {
     const prefix = rescued ? 'You find yourself' : 'You are back';
     await pline(`${prefix} on solid ground.`);
     if (!game.iflags) game.iflags = {};

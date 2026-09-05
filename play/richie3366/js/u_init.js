@@ -74,6 +74,7 @@ import {
 } from './monsters.js';
 import { skill_init } from './weapon.js';
 import { set_artifact_intrinsic } from './artifact.js';
+import { reset_justpicked } from './pickup.js';
 
 // C ref: objclass.h ARM_* — oc_skill / oc_subtyp / oc_armcat for armor
 const ARM_SUIT = 0;
@@ -891,6 +892,12 @@ function reorder_invent() {
 // globby/pudding; lamplit timers; questart/artitouch; addinv_core2 luck.
 export async function addinv(obj) {
     if (!game.invent) game.invent = [];
+    // C invent.c addinv_core0 `:1077–1080` — first #loot addinv clears
+    // pickup_prev so the new take is the justpicked set
+    if (game.loot_reset_justpicked) {
+        game.loot_reset_justpicked = false;
+        reset_justpicked(game.invent);
+    }
     // C invent.c addinv_core1 `:984–991` — before merge/link
     if (obj?.oartifact) set_artifact_intrinsic(obj, true, W_ART);
     for (const otmp of game.invent) {

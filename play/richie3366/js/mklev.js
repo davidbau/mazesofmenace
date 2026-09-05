@@ -24,6 +24,7 @@ import {
     SHOPBASE, COURT, ZOO, BEEHIVE, MORGUE, BARRACKS, SWAMP, TEMPLE,
     LEPREHALL, COCKNEST, ANTHOLE,
     FOODSHOP, TOOLSHOP, CANDLESHOP, FODDERSHOP, WANDSHOP, BOOKSHOP,
+    WEAPONSHOP, ARMORSHOP,
     W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY, W_RANDOM, D_SECRET,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL,
@@ -56,7 +57,7 @@ import {
     In_mines,
     In_quest,
     In_endgame,
-    ZOMBIFY_MON, TIMER_OBJECT,
+    ZOMBIFY_MON, TIMER_OBJECT, TIMER_LEVEL, MELT_ICE_AWAY,
     Is_rogue_level,
     Is_knox_level,
     Is_botlevel,
@@ -93,7 +94,8 @@ import {
     mkobj, mksobj, mksobj_at, mksobj_migr_to_species, mkobj_at, mkgold,
     mkcorpstat, next_ident,
     curse, bless, uncurse, blessorcurse, place_object, add_to_buried, weight, OBJ,
-    set_corpsenm, obj_stop_timers, start_timer, obj_extract_self,
+    set_corpsenm, obj_stop_timers, start_timer, spot_stop_timers,
+    obj_extract_self,
     add_to_container, objects_at, stackobj, oc_merge_of, dealloc_obj,
 } from './mkobj.js';
 import {
@@ -1423,13 +1425,12 @@ function reset_xystart_size() {
  * soko1-2, soko2-1, soko2-2, soko3-1, soko3-2, soko4-1, soko4-2, tower1, tower2,
  * tower3, fire, air, water, astral, minend-1, minend-2, minend-3, minetn-1, minetn-2, minetn-3,
  * minetn-4, minetn-5, minetn-6, minetn-7, medusa-1, medusa-2, medusa-3, medusa-4, oracle, castle, valley,
- * sanctum, asmodeus, juiblex, baalz, orcus, wizard1–3, Wiz-strt, Wiz-loca,
- * Wiz-fila, Wiz-filb, Wiz-goal,
+ * sanctum, asmodeus, juiblex, baalz, orcus, wizard1–3, fakewiz1, fakewiz2,
+ * Wiz-strt, Wiz-loca, Wiz-fila, Wiz-filb, Wiz-goal,
  * Pri-fila, Pri-filb, hellfill, minetn-1/2/3/4/5/6/7,
  * Kni-strt, Kni-loca, Kni-fila, Kni-filb, Kni-goal,
  * Rog-strt, Rog-loca, Rog-fila, Rog-filb, Rog-goal.
  * Named omissions:
- * fakewiz;
  * create_maze makemaz("") fallback; hellfill rnd_hell_prefab; dmonsfree.
  */
 async function makemaz(s) {
@@ -1832,6 +1833,14 @@ function load_special_proto(protofile) {
         load_wizard3();
         return true;
     }
+    if (protofile === 'fakewiz1') {
+        load_fakewiz1();
+        return true;
+    }
+    if (protofile === 'fakewiz2') {
+        load_fakewiz2();
+        return true;
+    }
     if (protofile === 'hellfill') {
         load_hellfill();
         return true;
@@ -1870,6 +1879,9 @@ function splev_apply_centered_map(mapstr) {
             const mptyp = mapfrag_get(mf, xx - xstart, yy - ystart);
             if (mptyp === INVALID_TYPE || mptyp >= MAX_TYPE) continue;
             sel_set_ter(xx, yy, mptyp, false);
+            // C lspo_map string form: lit defaults FALSE → set_levltyp_lit
+            const loc = game.level.at(xx, yy);
+            if (loc && !IS_LAVA(mptyp)) loc.lit = false;
             // C lspo_map: SpLev_Map[x][y] = 1 for each map cell written
             game.SpLev_Map.add(`${xx},${yy}`);
         }
@@ -1894,6 +1906,9 @@ function splev_apply_map_at(mapstr, x, y) {
             const mptyp = mapfrag_get(mf, xx - x, yy - y);
             if (mptyp === INVALID_TYPE || mptyp >= MAX_TYPE) continue;
             sel_set_ter(xx, yy, mptyp, false);
+            // C lspo_map table form: lit defaults FALSE unless lua sets it
+            const loc = game.level.at(xx, yy);
+            if (loc && !IS_LAVA(mptyp)) loc.lit = false;
             game.SpLev_Map.add(`${xx},${yy}`);
         }
     }
@@ -1943,7 +1958,8 @@ function soko_load_epilogue(allowFlips = 3) {
 
 /**
  * C ref: dat/bigrm-2.lua via load_special.
- * Named omissions: darkness choice 0–2 ice replace (selection:grow);
+ * Darkness choice 0–2 `des.region(...,"unlit")` live (D-1846). Named
+ * omissions: ice replace `selection:grow` after percent(25);
  * flip_level_rnd (noflip); ensure_way_out / solidify / premap.
  */
 function load_bigrm_2() {
@@ -1984,11 +2000,26 @@ function load_bigrm_2() {
     // des.region(selection.area(01,01,73,16),"lit") → light_region expands walls
     light_region(xstart + 1, ystart + 1, xstart + 73, ystart + 16, true);
 
-    // math.random(0,3) → nh.random(0,4) → 0+rn2(4); choice==3 → no darkness
+    // math.random(0,3) → nh.random(0,4) → 0+rn2(4); choice==3 → no darkness.
+    // C bigrm-2.lua :34–48 — argc=2 unlit does not grow (lspo_region).
     const choice = lua_random2(0, 3);
     if (choice === 0 || choice === 1 || choice === 2) {
-        // darkness regions + percent(25) ice replace — named omission envelope:
-        // still burn choice RNG; leave lit (wrong for 0–2, rare for this seed).
+        const unlit = (x1, y1, x2, y2) => {
+            light_region(
+                xstart + x1, ystart + y1, xstart + x2, ystart + y2, false,
+            );
+        };
+        if (choice === 0) {
+            unlit(1, 7, 22, 9);
+            unlit(24, 1, 50, 5);
+            unlit(24, 11, 50, 16);
+            unlit(52, 7, 73, 9);
+        } else if (choice === 1) {
+            unlit(24, 1, 50, 16);
+        } else {
+            unlit(1, 1, 22, 16);
+            unlit(52, 1, 73, 16);
+        }
         if (percent(25)) {
             /* ice replace deferred with selection:grow */
         }
@@ -15047,6 +15078,36 @@ function splev_create_trap(type) {
 }
 
 /**
+ * C ref: mklev.c mktrap with tm set — pool/lava abort, specified kind,
+ * hole→ROCKTRAP, maketrap, then spider/SEEN/victim (mktrap_seen_victim).
+ */
+function splev_mktrap_at(kind, x, y, opts = {}) {
+    if (!isok(x, y)) return null;
+    const typ = game.level.at(x, y)?.typ;
+    if (typ != null && (IS_POOL(typ) || IS_LAVA(typ))) return null;
+    let k = kind | 0;
+    if (!(k > NO_TRAP && k < TRAPNUM)) return null;
+    if (is_hole(k) && !Can_fall_thru(game.u?.uz)) k = ROCKTRAP;
+    const trap = maketrap(x, y, k);
+    mktrap_seen_victim(trap, opts);
+    return trap;
+}
+
+/**
+ * C ref: sp_lev.c create_trap with croom — get_free_room_loc then mktrap(tm).
+ * abs cells from selection.room() are converted to room-relative like
+ * l_selection_iterate + cvt_to_relcoord, then origin is added back.
+ */
+function splev_create_trap_coord(croom, kind, absX, absY, opts = {}) {
+    const rx = (absX | 0) - (croom?.lx | 0);
+    const ry = (absY | 0) - (croom?.ly | 0);
+    const pos = croom
+        ? get_free_room_loc_coord(croom, rx, ry)
+        : get_location_coord(DRY, null, rx, ry);
+    return splev_mktrap_at(kind, pos.x, pos.y, opts);
+}
+
+/**
  * C ref: sp_lev.c get_location with croom — somexy until humidity ok.
  * Optional ok_fn mirrors set_ok_location_func (stairs).
  */
@@ -15079,6 +15140,24 @@ function get_free_room_loc(croom) {
     do {
         const c = { x: -1, y: -1 };
         // C get_room_loc random → somexy
+        if (!somexy(croom, c)) break;
+        pos = { x: c.x, y: c.y };
+        if (game.level.at(pos.x, pos.y)?.typ === ROOM) return pos;
+    } while (++trycnt <= 100);
+    return pos;
+}
+
+/**
+ * C ref: sp_lev.c get_free_room_loc with packed coord.
+ * Specified cell if ROOM; else get_room_loc (somexy) until ROOM.
+ * create_trap starts x=y=-1 so the retry arm always somexy-random.
+ */
+function get_free_room_loc_coord(croom, rx, ry) {
+    let pos = get_location_coord(DRY, croom, rx, ry);
+    if (game.level.at(pos.x, pos.y)?.typ === ROOM) return pos;
+    let trycnt = 0;
+    do {
+        const c = { x: -1, y: -1 };
         if (!somexy(croom, c)) break;
         pos = { x: c.x, y: c.y };
         if (game.level.at(pos.x, pos.y)?.typ === ROOM) return pos;
@@ -15164,6 +15243,7 @@ function splev_roomtype(name, defval = OROOM) {
     if (!name) return defval;
     const map = {
         ordinary: OROOM,
+        themed: THEMEROOM,
         temple: TEMPLE,
         morgue: MORGUE,
         delphi: DELPHI,
@@ -15176,6 +15256,8 @@ function splev_roomtype(name, defval = OROOM) {
         'food shop': FOODSHOP,
         'health food shop': FODDERSHOP,
         'candle shop': CANDLESHOP,
+        'weapon shop': WEAPONSHOP,
+        'armor shop': ARMORSHOP,
     };
     return map[String(name).toLowerCase()] ?? defval;
 }
@@ -15364,7 +15446,8 @@ function splev_build_room(opts, parent) {
     const h = opts.h ?? -1;
     const xalign = opts.xalign ?? -1;
     const yalign = opts.yalign ?? -1;
-    const needfill = opts.filled ?? 1;
+    // C lspo_room: filled default 0 in themed rooms, else 1
+    const needfill = opts.filled ?? (g.in_mk_themerooms ? 0 : 1);
     const joined = opts.joined ?? true;
 
     let ok = false;
@@ -17307,7 +17390,7 @@ function load_orcus() {
 /**
  * C ref: dat/wizard1.lua via load_special — top (real) Wizard's Tower.
  * mazegrid + center map + east mazewalk + morgue secret door + hell_tweaks.
- * Named omissions: hellfill/fakewiz; ensure_way_out;
+ * Named omissions: hellfill rnd_hell_prefab; ensure_way_out;
  * arrival_room special migrate flag beyond ordinary OROOM.
  */
 function load_wizard1() {
@@ -17613,7 +17696,7 @@ function load_wizard1() {
 /**
  * C ref: dat/wizard2.lua via load_special — middle Wizard's Tower stage.
  * mazegrid + center map + east mazewalk + zoo FILL_NORMAL + ladders +
- * hell_tweaks. Named omissions: hellfill/fakewiz; ensure_way_out;
+ * hell_tweaks. Named omissions: hellfill rnd_hell_prefab; ensure_way_out;
  * arrival_room migrate flag beyond ordinary OROOM.
  */
 function load_wizard2() {
@@ -17883,8 +17966,8 @@ function load_wizard2() {
  * C ref: dat/wizard3.lua via load_special — bottom Wizard's Tower stage.
  * mazegrid + center map + portal→fakewiz1 + east mazewalk + morgue
  * FILL_LVFLAGS + beehive FILL_NORMAL + arrival secret door + hell_tweaks.
- * Named omissions: hellfill/fakewiz; ensure_way_out; arrival_room migrate
- * flag beyond ordinary OROOM; flip_level lregion coord remap.
+ * Named omissions: hellfill rnd_hell_prefab; ensure_way_out; arrival_room
+ * migrate flag beyond ordinary OROOM.
  */
 function load_wizard3() {
     const g = game;
@@ -18212,6 +18295,150 @@ function load_wizard3() {
             }
         }
     }
+    fixup_special();
+}
+
+/**
+ * C ref: dat/fakewiz1.lua via load_special — fake Wizard's Tower (portal
+ * to wizard3). mazegrid + center 9×9 island + east mazewalk + hell_tweaks.
+ */
+function load_fakewiz1() {
+    load_fakewiz_tower(true);
+}
+
+/**
+ * C ref: dat/fakewiz2.lua via load_special — second fake Wizard's Tower
+ * (amulet, no portal). Same island as fakewiz1.
+ */
+function load_fakewiz2() {
+    load_fakewiz_tower(false);
+}
+
+/**
+ * C ref: dat/fakewiz{1,2}.lua via load_special.
+ * mazegrid + center map + east mazewalk + Lich / vampire lord / kraken /
+ * four board traps + hell_tweaks. fakewiz1 also portal→wizard3 and
+ * irregular arrival_room; fakewiz2 places des.object("\"", 04,04).
+ * Named omissions: ensure_way_out; arrival_room migrate flag beyond
+ * ordinary OROOM; humidity-aware get_location; count_level_features.
+ */
+function load_fakewiz_tower(isFake1) {
+    const g = game;
+    nhlib_shuffle_align();
+
+    // des.level_init({ style="mazegrid", bg ="-" })
+    splev_initlev({
+        init_style: LVLINIT_MAZEGRID,
+        bg: HWALL,
+    });
+    if (!g.level.flags) g.level.flags = {};
+    g.level.flags.is_maze_lev = true;
+
+    // C fakewiz*.lua: selection.match("-") → fillrect bounds2 (before map).
+    const tmpbounds = selection_match_mapfrag('-');
+    const bx = g.splev_xstart | 0;
+    const by = g.splev_ystart | 0;
+    const bounds2 = selection_fillrect(
+        tmpbounds.lx + bx,
+        (tmpbounds.ly + 1) + by,
+        (tmpbounds.hx - 2) + bx,
+        (tmpbounds.hy - 1) + by,
+    );
+
+    const FAKEWIZ_MAP = `
+.........
+.}}}}}}}.
+.}}---}}.
+.}--.--}.
+.}|...|}.
+.}--.--}.
+.}}---}}.
+.}}}}}}}.
+.........
+`.replace(/^\n/, '');
+    const mf = mapfrag_fromstr(FAKEWIZ_MAP);
+    const { xstart, ystart } = splev_map_aligned_start(
+        mf.wid, mf.hei, 'center', 'center',
+    );
+    g.splev_xstart = xstart;
+    g.splev_ystart = ystart;
+    g.splev_xsize = mf.wid;
+    g.splev_ysize = mf.hei;
+    if (!g.SpLev_Map) g.SpLev_Map = new Set();
+    const island = selection_new();
+    for (let yy = ystart; yy < Math.min(ROWNO, ystart + mf.hei); yy++) {
+        for (let xx = xstart; xx < Math.min(COLNO, xstart + mf.wid); xx++) {
+            const mptyp = mapfrag_get(mf, xx - xstart, yy - ystart);
+            if (mptyp === INVALID_TYPE || mptyp >= MAX_TYPE) continue;
+            sel_set_ter(xx, yy, mptyp, false);
+            g.SpLev_Map.add(`${xx},${yy}`);
+            selection_setpoint(xx, yy, island, 1);
+        }
+    }
+
+    // levregions while map origin is set (C lspo_levregion / levregion_add)
+    l_levregion({
+        region: [1, 0, 79, 20], region_islev: 1,
+        exclude: [0, 0, 8, 8], type: 'stair-up',
+    });
+    l_levregion({
+        region: [1, 0, 79, 20], region_islev: 1,
+        exclude: [0, 0, 8, 8], type: 'stair-down',
+    });
+    l_levregion({
+        region: [1, 0, 79, 20], region_islev: 1,
+        exclude: [0, 0, 8, 8], type: 'branch',
+    });
+    l_teleport_region({
+        region: [1, 0, 79, 20], region_islev: 1,
+        exclude: [2, 2, 6, 6],
+    });
+    if (isFake1) {
+        // des.levregion({ region={4,4,4,4}, type="portal", name="wizard3" })
+        l_levregion({
+            region: [4, 4, 4, 4], type: 'portal', name: 'wizard3',
+        });
+    }
+
+    // des.mazewalk(08,05,"east") — stocked default true
+    splev_mazewalk(8, 5, W_EAST, true);
+
+    if (isFake1) {
+        // des.region({ region={04,03,06,06},lit=0,type="ordinary",irregular=1,arrival_room=true })
+        splev_irregular_oroom(xstart + 4, ystart + 3, false);
+    }
+
+    // des.monster("L",04,04) / vampire lord / kraken
+    splev_create_monster('L', undefined, { rx: 4, ry: 4 });
+    splev_create_monster('vampire lord', undefined, { rx: 3, ry: 4 });
+    splev_create_monster('kraken', undefined, { rx: 6, ry: 6 });
+
+    // des.trap("board", …)
+    splev_mktrap_at(SQKY_BOARD, xstart + 4, ystart + 3);
+    splev_mktrap_at(SQKY_BOARD, xstart + 4, ystart + 5);
+    splev_mktrap_at(SQKY_BOARD, xstart + 3, ystart + 4);
+    splev_mktrap_at(SQKY_BOARD, xstart + 5, ystart + 4);
+
+    if (!isFake1) {
+        // des.object("\"",04,04)
+        mkobj_at(AMULET_CLASS, xstart + 4, ystart + 4, true);
+    }
+
+    // C lspo_map contents end → reset_xystart_size (keep SpLev_Map)
+    splev_reset_xystart_size_keep_spmap();
+
+    // protected = bounds2:negate() | fakewiz*; hell_tweaks(protected)
+    const protectedSel = selection_or(selection_not(bounds2), island);
+    hell_tweaks(protectedSel);
+
+    // C load_special: link_doors → remove_boundary → map_cleanup →
+    // wallify → flip → fixup (lregions remapped by flip)
+    link_doors_rooms();
+    remove_boundary_syms();
+    map_cleanup();
+    if (!g.level.flags.corrmaze)
+        wallification(1, 0, COLNO - 1, ROWNO - 1);
+    flip_level_rnd(3, false);
     fixup_special();
 }
 
@@ -21065,6 +21292,140 @@ function themeroom_nesting_contents(croom) {
     if (!mid && game.in_mk_themerooms) game.themeroom_failed = true;
 }
 
+/** C lspo_room: nested des.room fail sets gt.themeroom_failed. */
+function themeroom_nested_room(opts, parent, contentsFn) {
+    const inner = splev_des_room(opts, parent, contentsFn);
+    if (!inner && game.in_mk_themerooms) game.themeroom_failed = true;
+    return inner;
+}
+
+/**
+ * C ref: themerms.lua "Fake Delphi" contents after outer des.room —
+ * inner ordinary 3×3 at (4,3) + random door.
+ */
+function themeroom_fake_delphi_contents(croom) {
+    themeroom_nested_room(
+        { type: 'ordinary', x: 4, y: 3, w: 3, h: 3, filled: 1 },
+        croom,
+        (inner) => {
+            splev_room_door(inner, 'random', 'all');
+        },
+    );
+}
+
+/**
+ * C ref: themerms.lua "Room in a room" contents — nested ordinary +
+ * random door (outer is fully-random create_room).
+ */
+function themeroom_room_in_room_contents(croom) {
+    themeroom_nested_room(
+        { type: 'ordinary' },
+        croom,
+        (inner) => {
+            splev_room_door(inner, 'random', 'all');
+        },
+    );
+}
+
+/**
+ * C ref: themerms.lua "Huge room with another room inside" contents —
+ * percent(90) nested ordinary + random door, optional second door.
+ */
+function themeroom_huge_contents(croom) {
+    if (!percent(90)) return;
+    themeroom_nested_room(
+        { type: 'ordinary', filled: 1 },
+        croom,
+        (inner) => {
+            splev_room_door(inner, 'random', 'all');
+            if (percent(50)) splev_room_door(inner, 'random', 'all');
+        },
+    );
+}
+
+/**
+ * C ref: themerms.lua "Mausoleum" contents — 1×1 themed cell at center,
+ * mummy/vampire/lich/zombie or human corpse, optional secret door.
+ */
+function themeroom_mausoleum_contents(croom) {
+    const rmWidth = 1 + (croom.hx - croom.lx);
+    const rmHeight = 1 + (croom.hy - croom.ly);
+    // Lua (rm.width-1)/2 is an integral float for odd outer sizes.
+    const cx = Math.trunc((rmWidth - 1) / 2);
+    const cy = Math.trunc((rmHeight - 1) / 2);
+    themeroom_nested_room(
+        { type: 'themed', x: cx, y: cy, w: 1, h: 1, joined: false },
+        croom,
+        (inner) => {
+            if (percent(50)) {
+                const mons = ['M', 'V', 'L', 'Z'];
+                nhlib_shuffle(mons);
+                splev_create_monster(mons[0], undefined, {
+                    croom: inner, rx: 0, ry: 0, waiting: 1,
+                });
+            } else {
+                l_create_object(
+                    { id: 'corpse', montype: '@', coord: [0, 0] },
+                    null,
+                    inner,
+                );
+            }
+            if (percent(20)) splev_room_door(inner, 'secret', 'all');
+        },
+    );
+}
+
+/**
+ * C ref: themerms.lua "Twin businesses" contents — eight aisle placements
+ * (percent walls at table-build), swapped shops, two 3×3 joined=false
+ * nested rooms with shopdoorstate doors.
+ */
+function themeroom_twin_businesses_contents(croom) {
+    const southeast = () => (percent(50) ? 'south' : 'east');
+    const northeast = () => (percent(50) ? 'north' : 'east');
+    const northwest = () => (percent(50) ? 'north' : 'west');
+    const southwest = () => (percent(50) ? 'south' : 'west');
+    // Lua table constructor order: each southeast()/… call as written.
+    const placements = [
+        { lx: 1, ly: 1, rx: 4, ry: 1, lwall: 'south', rwall: southeast() },
+        { lx: 1, ly: 2, rx: 4, ry: 2, lwall: 'north', rwall: northeast() },
+        { lx: 1, ly: 1, rx: 5, ry: 1, lwall: southeast(), rwall: southwest() },
+        { lx: 1, ly: 1, rx: 5, ry: 2, lwall: southeast(), rwall: northwest() },
+        { lx: 1, ly: 2, rx: 5, ry: 1, lwall: northeast(), rwall: southwest() },
+        { lx: 1, ly: 2, rx: 5, ry: 2, lwall: northeast(), rwall: northwest() },
+        { lx: 2, ly: 1, rx: 5, ry: 1, lwall: southwest(), rwall: 'south' },
+        { lx: 2, ly: 2, rx: 5, ry: 2, lwall: northwest(), rwall: 'north' },
+    ];
+    let ltype = 'weapon shop';
+    let rtype = 'armor shop';
+    if (percent(50)) {
+        const tmp = ltype;
+        ltype = rtype;
+        rtype = tmp;
+    }
+    const shopdoorstate = () => {
+        if (percent(1)) return 'locked';
+        if (percent(50)) return 'closed';
+        return 'open';
+    };
+    // C: p = placements[d(#placements)] — Lua 1-based d(n)=1+rn2(n)
+    const p = placements[rn2(placements.length)];
+    themeroom_nested_room(
+        { type: ltype, x: p.lx, y: p.ly, w: 3, h: 3, filled: 1, joined: false },
+        croom,
+        (left) => {
+            splev_room_door(left, shopdoorstate(), p.lwall);
+        },
+    );
+    themeroom_nested_room(
+        { type: rtype, x: p.rx, y: p.ry, w: 3, h: 3, filled: 1, joined: false },
+        croom,
+        (right) => {
+            splev_room_door(right, shopdoorstate(), p.rwall);
+        },
+    );
+}
+
 /**
  * C ref: themerms.lua "Pillars" contents + sp_lev.c lspo_terrain /
  * nhlib.lua shuffle — 7-char terr Fisher–Yates then 2×2 pillar blocks
@@ -21093,6 +21454,88 @@ function themeroom_pillars_contents(croom) {
             }
         }
     }
+}
+
+/**
+ * C ref: nhlua.c nhl_timer_start_at — cvt_to_abscoord then
+ * spot_stop_timers + start_timer(TIMER_LEVEL, MELT_ICE_AWAY).
+ * Iterate already yields absolute cells (JS analogue of rel+cvt).
+ */
+function nhl_start_timer_at(x, y, when) {
+    if (!isok(x, y)) return;
+    const where = (((x | 0) & 0xffff) << 16) | ((y | 0) & 0xffff);
+    spot_stop_timers(x, y, MELT_ICE_AWAY);
+    start_timer(when | 0, TIMER_LEVEL, MELT_ICE_AWAY, where);
+}
+
+/**
+ * C ref: themerms.lua "Ice room" — selection.room then des.terrain(ice, "I");
+ * percent(25) then iterate nh.start_timer_at melt-ice (mintime+rn2(1000)).
+ * C set_levltyp keeps roomno; do not use JS sel_set_ter (clears it).
+ */
+function themeroom_fill_ice(croom) {
+    const ice = selection_from_mkroom(croom);
+    selection_iterate(ice, (x, y) => {
+        const loc = game.level.at(x, y);
+        if (loc) loc.typ = ICE;
+    });
+    if (percent(25)) {
+        const mintime = 1000 - (level_difficulty() * 100);
+        selection_iterate_lua(ice, (x, y) => {
+            nhl_start_timer_at(x, y, mintime + rn2(1000));
+        });
+    }
+}
+
+/**
+ * C ref: themerms.lua "Boulder room" — selection.room():percentage(30)
+ * then iterate: percent(50) ? des.object("boulder",x,y)
+ * : des.trap("rolling boulder",x,y). Lua iterate is y-outer.
+ */
+function themeroom_fill_boulder(croom) {
+    const locs = selection_filter_percent(selection_from_mkroom(croom), 30);
+    selection_iterate_lua(locs, (x, y) => {
+        if (percent(50)) {
+            create_object({
+                id: BOULDER,
+                class: ROCK_CLASS,
+                rx: x - croom.lx,
+                ry: y - croom.ly,
+            }, croom);
+        } else {
+            splev_create_trap_coord(croom, ROLLING_BOULDER_TRAP, x, y);
+        }
+    });
+}
+
+/**
+ * C ref: themerms.lua "Spider nest" — percentage(30) then des.trap web
+ * with spider_on_web = (difficulty>8) and percent(80) (Lua and-short-circuit).
+ */
+function themeroom_fill_spider(croom) {
+    const spooders = level_difficulty() > 8;
+    const locs = selection_filter_percent(selection_from_mkroom(croom), 30);
+    selection_iterate_lua(locs, (x, y) => {
+        const spider_on_web = spooders && percent(80);
+        splev_create_trap_coord(croom, WEB, x, y, { nospider: !spider_on_web });
+    });
+}
+
+/**
+ * C ref: themerms.lua "Trap room" — shuffle eight trap names, percentage(30),
+ * iterate des.trap(traps[1], x, y). nhlib shuffle then Lua 1-based first slot.
+ */
+function themeroom_fill_trap(croom) {
+    const traps = [
+        ARROW_TRAP, DART_TRAP, ROCKTRAP, BEAR_TRAP,
+        LANDMINE, SLP_GAS_TRAP, RUST_TRAP, ANTI_MAGIC,
+    ];
+    nhlib_shuffle(traps);
+    const kind = traps[0];
+    const locs = selection_filter_percent(selection_from_mkroom(croom), 30);
+    selection_iterate_lua(locs, (x, y) => {
+        splev_create_trap_coord(croom, kind, x, y);
+    });
 }
 
 /**
@@ -21363,6 +21806,10 @@ const THEMEROOM_FILL_BODIES = {
     'Temple of the gods': themeroom_fill_temple_of_the_gods,
     'Cloud room': themeroom_fill_cloud,
     'Light source': themeroom_fill_light_source,
+    'Ice room': themeroom_fill_ice,
+    'Boulder room': themeroom_fill_boulder,
+    'Spider nest': themeroom_fill_spider,
+    'Trap room': themeroom_fill_trap,
 };
 
 // C ref: themerms.lua themeroom_fill() — reservoir + dispatched fill bodies
@@ -21381,8 +21828,7 @@ function themeroom_fill(croom) {
     croom._themeroom_fill = pick.name;
     const body = THEMEROOM_FILL_BODIES[pick.name];
     if (body) body(croom);
-    // Named omission: other fill contents (Ice/Boulder/Spider/Trap/
-    // Garden/Buried treasure/Massacre/Statuary/…)
+    // Named omission: Garden / Buried treasure / Massacre / Statuary / …
 }
 
 // C ref: themerms.lua filler_region + sp_lev.c lspo_region irregular path
@@ -21756,11 +22202,9 @@ async function themerooms_generate(difficulty) {
             needfill = FILL_NORMAL;
             do_themed_fill = true;
         }
-        // Named omission: Room-in-room nested create_subroom/door; Fake Delphi /
-        // Huge / Mausoleum / Twin nested bodies; Random-feature center
-        // terrain. Nesting nested body done (D-0916). Pillars terrain
-        // done (D-0901). Water vault map+contents done (D-0690). Blocked
-        // center map+replace_terrain done (D-0243).
+        // Named omission: Random-feature center terrain. Nesting nested
+        // body is D-0916. Pillars terrain D-0901. Water vault D-0690.
+        // Blocked center map+replace_terrain D-0243.
 
         // C build_room: chance defaults to 100 → always burns rn2(100)
         // (after contents arg RNG such as Nesting rn2(4) size rolls)
@@ -21773,16 +22217,20 @@ async function themerooms_generate(difficulty) {
             if (aroom) {
                 topologize(aroom);
                 aroom.needfill = needfill;
-                // C lspo_room: contents(themeroom_fill) after build_room
+                // C lspo_room: contents after build_room, then add_doors_to_room
                 if (do_themed_fill) themeroom_fill(aroom);
-                // C themerms.lua Pillars contents after des.room/build_room
-                if (pick.name === 'Pillars') themeroom_pillars_contents(aroom);
-                // C themerms.lua Nesting rooms nested create_subroom/door
-                if (pick.name === 'Nesting rooms') {
-                    themeroom_nesting_contents(aroom);
-                    // C lspo_room: add_doors_to_room after contents
-                    add_doors_to_room(aroom);
+                else if (pick.name === 'Pillars') themeroom_pillars_contents(aroom);
+                else if (pick.name === 'Nesting rooms') themeroom_nesting_contents(aroom);
+                else if (pick.name === 'Fake Delphi') themeroom_fake_delphi_contents(aroom);
+                else if (pick.name === 'Room in a room') themeroom_room_in_room_contents(aroom);
+                else if (pick.name === 'Huge room with another room inside') {
+                    themeroom_huge_contents(aroom);
+                } else if (pick.name === 'Mausoleum') {
+                    themeroom_mausoleum_contents(aroom);
+                } else if (pick.name === 'Twin businesses') {
+                    themeroom_twin_businesses_contents(aroom);
                 }
+                add_doors_to_room(aroom);
             }
         } else if (g.in_mk_themerooms) {
             g.themeroom_failed = true;
@@ -22274,7 +22722,7 @@ function dosdoor(x, y, aroom, type) {
     const shdoor = in_rooms(x, y, 0).length > 0;
     if (!IS_WALL(loc.typ)) type = DOOR;
     loc.typ = type;
-        if (type === DOOR) {
+    if (type === DOOR) {
             if (!rn2(3)) {
                 if (!rn2(5)) loc.flags = D_ISOPEN;
                 else if (!rn2(6)) loc.flags = D_LOCKED;
@@ -22285,6 +22733,8 @@ function dosdoor(x, y, aroom, type) {
             } else {
                 loc.flags = shdoor ? D_ISOPEN : D_NODOOR;
             }
+            // C mklev.c :647–648 — Rogue first so trapped-door mimics skip
+            if (Is_rogue_level(game.u?.uz)) loc.flags = D_NODOOR;
             if (loc.flags & D_TRAPPED) {
                 // C ref: mklev.c dosdoor — trapped door may become mimic
                 if (level_difficulty() >= 9 && !rn2(5)

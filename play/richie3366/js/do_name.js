@@ -52,6 +52,7 @@ import {
     has_oname, ONAME, CLR_MAX, BUFSZ, u_at, OBJ_FREE, OBJ_INVENT, HAND,
     isok, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPMASK, has_ebones,
     NON_PM, Is_astralevel, In_endgame,
+    EPRI, EMIN, A_NONE, A_LAWFUL, A_CHAOTIC, A_NEUTRAL,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import { shkname } from './shknam.js';
@@ -65,7 +66,7 @@ import { getlin } from './getline.js';
 import { getpos } from './getpos.js';
 import { object_from_map } from './pager.js';
 import { objects_at, SIR_TERRY_NOVELS } from './mkobj.js';
-import { rank_of, genders } from './roles.js';
+import { rank_of, genders, align_gname } from './roles.js';
 import {
     an, just_an, xname, simpleonames, ansimpleoname, set_y_monnam, set_noit_mon_nam,
     The, is_plural, safe_qbuf, body_part_latebound, vtense, makeplural,
@@ -80,7 +81,7 @@ import { get_rnd_text } from './rumors.js';
 import { BOGUSMON_BUF } from './generated/bogusmon_data.js';
 import { m_at } from './mon.js';
 import { cansee } from './vision.js';
-import { fuzzymatch, strstri, highc, lcase } from './hacklib.js';
+import { fuzzymatch, strstri, highc, lcase, distmin } from './hacklib.js';
 import { pronoun_gender, PRONOUN_HALLU } from './mondata.js';
 import { beautiful } from './apply.js';
 import { mhe, mhis } from './fountain.js';
@@ -90,6 +91,7 @@ const PM_GHOST = monsterNames.indexOf('PM_GHOST');
 const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
 const PM_SHOPKEEPER = monsterNames.indexOf('PM_SHOPKEEPER');
 const PM_HIGH_CLERIC = monsterNames.indexOf('PM_HIGH_CLERIC');
+const PM_ALIGNED_CLERIC = monsterNames.indexOf('PM_ALIGNED_CLERIC');
 const PM_JUIBLEX = monsterNames.indexOf('PM_JUIBLEX');
 const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
 const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
@@ -742,12 +744,84 @@ export function distant_monnam(mtmp, article = ARTICLE_THE) {
 }
 
 /**
+ * C ref: priest.c mon_aligntyp `:280–289` — epri.shralign / emin.min_align
+ * else mdat.maligntyp; A_NONE stays; else sign → LAWFUL/CHAOTIC/NEUTRAL.
+ */
+function mon_aligntyp_nam(mon) {
+    let algn = mon?.ispriest ? (EPRI(mon)?.shralign)
+        : mon?.isminion ? (EMIN(mon)?.min_align)
+          : (mon?.data?.maligntyp);
+    algn = algn | 0;
+    if (algn === A_NONE) return A_NONE;
+    return (algn > 0) ? A_LAWFUL : (algn < 0) ? A_CHAOTIC : A_NEUTRAL;
+}
+
+/**
+ * C ref: priest.c priestname `:302–367` — aligned priest / minion name
+ * with `" of "` + `halu_gname(mon_aligntyp)`. Hallu `rndmonnam` /
+ * poohbah; high priestess; renegade; Astral conceal unless
+ * `reveal_high_priest` / adjacent / gameover.
+ */
+function priestname(mon, article, reveal_high_priest) {
+    const do_hallu = Hallucination();
+    const mndx = mon?.data?.mndx ?? (mon?.mnum | 0);
+    const aligned_priest = mndx === PM_ALIGNED_CLERIC;
+    const high_priest = mndx === PM_HIGH_CLERIC;
+    const whatcode = { c: '' };
+    let what = do_hallu ? rndmonnam(whatcode) : mon_pmname(mon);
+
+    if (!mon.ispriest && !mon.isminion) return what;
+
+    if (mon.ispriest || aligned_priest || high_priest) {
+        what = do_hallu ? 'poohbah' : (mon.female ? 'priestess' : 'priest');
+    }
+
+    let pname = '';
+    if (article !== ARTICLE_NONE && (!do_hallu || !bogon_is_pname(whatcode.c))) {
+        if (article === ARTICLE_YOUR || (article === ARTICLE_A && high_priest)) {
+            article = ARTICLE_THE;
+        }
+        if (article === ARTICLE_THE) {
+            pname = 'the ';
+        } else if (what === 'Angel') {
+            pname = 'an ';
+        } else {
+            pname = just_an(what);
+        }
+    }
+    if (mon.minvis) {
+        if (pname === 'a ') pname = 'an ';
+        pname += 'invisible ';
+    }
+    if (mon.isminion && EMIN(mon)?.renegade) {
+        if (pname === 'an ' && !mon.minvis) pname = 'a ';
+        pname += 'renegade ';
+    }
+
+    if (mon.ispriest || aligned_priest) {
+        if (high_priest) pname += do_hallu ? 'grand ' : 'high ';
+    } else if (mon.mtame && what.toLowerCase() === 'angel') {
+        pname += 'guardian ';
+    }
+
+    pname += what;
+    const u = game.u || {};
+    const next2u = distmin(u.ux | 0, u.uy | 0, mon.mx | 0, mon.my | 0) <= 1;
+    if (do_hallu || !high_priest || reveal_high_priest
+        || !Is_astralevel(u.uz) || next2u
+        || game.program_state?.gameover) {
+        pname += ' of ';
+        pname += align_gname(game.urole, mon_aligntyp_nam(mon));
+    }
+    return pname;
+}
+
+/**
  * C ref: do_name.c x_monnam `:826–1032` — generic monster naming.
  * nextmbuf ring, youmonst, AUGMENT_IT someone/something (hallu `rn2(2)`),
  * M_AP_MONSTER mappear, invis/saddle adjectives, is_mplayer rank_of+lcase
  * and " the " split, ARTICLE_* via just_an, M2_PNAME / Wizard article.
- * Named omissions: priest/minion `priestname` (no JS priestname yet —
- * fall through to ordinary arms).
+ * Priest/minion `priestname` (`priest.c` `:302–367`) live (D-1846).
  *
  * @param {object} mtmp
  * @param {number} article ARTICLE_NONE|THE|A|YOUR
@@ -791,6 +865,7 @@ export function x_monnam(mtmp, article, adjective, suppress = 0, called = false)
         && !(supp & SUPPRESS_IT);
     const do_saddle = !(supp & SUPPRESS_SADDLE);
     const do_mappear = mappear_as_mon && !(supp & SUPPRESS_MAPPEARANCE);
+    const do_exact = (supp & EXACT_NAME) === EXACT_NAME;
     const do_name = !(supp & SUPPRESS_NAME) || type_is_pname(mdat);
     const augment_it = (supp & AUGMENT_IT) !== 0;
 
@@ -807,7 +882,19 @@ export function x_monnam(mtmp, article, adjective, suppress = 0, called = false)
         return ret(nam);
     }
 
-    /* priests and minions: C priestname. Named omit — fall through. */
+    /* C `:886–904` priests and minions: priestname, not the generic arms */
+    if ((mtmp.ispriest || mtmp.isminion) && !do_mappear) {
+        const u = game.u || {};
+        const save_prop = u.EHalluc_resistance | 0;
+        const save_invis = mtmp.minvis;
+        if (!do_hallu) u.EHalluc_resistance = 1;
+        if (!do_invis) mtmp.minvis = 0;
+        let name = priestname(mtmp, art, do_exact);
+        u.EHalluc_resistance = save_prop;
+        mtmp.minvis = save_invis;
+        if (art === ARTICLE_NONE && name.startsWith('the ')) name = name.slice(4);
+        return ret(name);
+    }
 
     /* 'pm_name' is the base part of most names */
     const pm_name = do_mappear
@@ -1048,7 +1135,7 @@ export function Amonnam(mtmp) {
 
 /**
  * C ref: do_name.c Adjmonnam — ARTICLE_THE + adjective, then highc.
- * Unseen still "It" (x_monnam do_it). Named: priestname polish.
+ * Unseen still "It" (x_monnam do_it).
  */
 export function Adjmonnam(mtmp, adj) {
     return highc_name(x_monnam(

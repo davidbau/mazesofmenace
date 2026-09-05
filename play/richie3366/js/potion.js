@@ -112,7 +112,7 @@ import {
 import {
     makeknown, compactify_invlets, enlightenment, observe_object,
     hold_another_object, update_inventory, near_capacity, freeinv_core,
-    prinv, getobj_display_pickinv, useupall,
+    prinv, getobj_display_pickinv, useupall, getobj,
 } from './invent.js';
 import { yn_function } from './getline.js';
 import {
@@ -145,7 +145,7 @@ import {
     COST_UNCURS, COST_UNBLSS, PLNMSG_OBJ_GLOWS,
     P_CROSSBOW, P_NONE, FINGER, LL_CONDUCT,
     GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_INACCESS,
-    GETOBJ_EXCLUDE_NONINVENT,
+    GETOBJ_EXCLUDE_NONINVENT, GETOBJ_NOFLAGS,
     HANDS_SYM,
 } from './const.js';
 import { hands_obj, P_SKILL } from './weapon.js';
@@ -271,22 +271,6 @@ function drink_ok(obj) {
     return GETOBJ_EXCLUDE;
 }
 
-/**
- * Invent letters of drinkable potions (C drink_ok → GETOBJ_SUGGEST).
- * Returns non-compacted string for `?` menus (C `lets[]`).
- * Prompt uses compactify when suggested > 5 (C `buf` / D-0455).
- */
-function drinkable_lets() {
-    const inv = game.invent || [];
-    const lets = [];
-    for (const o of inv) {
-        if (drink_ok(o) === GETOBJ_SUGGEST && o.invlet) lets.push(o.invlet);
-    }
-    // C getobj sortloot SORTLOOT_INVLET
-    lets.sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
-    return lets.join('');
-}
-
 /** C invent.c getobj: if (suggested > 5) compactify(bp) for prompt only. */
 function drink_prompt_lets(raw) {
     if (!raw || raw.length <= 5) return raw;
@@ -332,79 +316,6 @@ function dippable_lets() {
     }
     lets.sort();
     return compact_lets(lets);
-}
-
-/**
- * C ref: invent.c getobj("drink", drink_ok, GETOBJ_NOFLAGS)
- * Called after fountain/sink prompts (or when menu_requested).
- * `?`/`*` → display_pickinv_reply (D-0430); missing letter → continue.
- * Empty suggest + !GETOBJ_PROMPT → no key read (C invent.c suggested==0).
- */
-async function getobj_drink() {
-    // C: suggested == 0 && !forceprompt && !allownone → You don't have…
-    // (drink_ok_extra / EXCLUDE_INACCESS "else " deferred)
-    if (!drinkable_lets()) {
-        await pline("You don't have anything to drink.");
-        return null;
-    }
-    for (;;) {
-        const rawLets = drinkable_lets();
-        const lets = drink_prompt_lets(rawLets);
-        const query = `What do you want to drink? [${lets} or ?*]`;
-        const prompt = `${query} `;
-
-        game._pending_message = prompt;
-        const disp = game.nhDisplay;
-        await flush_screen(1);
-        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
-
-        const key = await nhgetch();
-        const ch = String.fromCharCode(key);
-
-        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
-            if (game.flags?.verbose !== false) await pline('Never mind.');
-            return null;
-        }
-        if (ch === '?' || ch === '*') {
-            // C: display_pickinv(lets, ...) uses non-compacted lets[]
-            const counted = { cnt: 0, cntgiven: false };
-            const picked = await getobj_display_pickinv(
-                ch, rawLets, false, counted,
-                { word: 'drink', allownone: false, promptHasHands: false },
-            );
-            if (picked === '\x1b') {
-                if (game.flags?.verbose !== false) await pline('Never mind.');
-                return null;
-            }
-            if (!picked) {
-                if (game.iflags?.force_invmenu) return null;
-                continue;
-            }
-            const otmp = (game.invent || []).find(o => o.invlet === picked);
-            if (!otmp) {
-                await pline("You don't have that object.");
-                continue;
-            }
-            if (otmp.oclass !== POTION_CLASS) {
-                await pline('That is a silly thing to drink.');
-                return null;
-            }
-            game._pending_message = '';
-            return otmp;
-        }
-
-        const otmp = (game.invent || []).find(o => o.invlet === ch);
-        if (!otmp) {
-            await pline("You don't have that object.");
-            continue;
-        }
-        if (otmp.oclass !== POTION_CLASS) {
-            await pline('That is a silly thing to drink.');
-            return null;
-        }
-        game._pending_message = '';
-        return otmp;
-    }
 }
 
 /** C ref: invent.c useup() — consume one from a stack / remove if gone. */
@@ -2234,6 +2145,7 @@ export async function dodrink() {
     const loc = game.level?.at(u.ux, u.uy);
     const here = loc?.typ ?? 0;
 
+    drink_ok_extra = 0;
     // C: !menu_requested → fountain / sink / underwater prompts first
     if (!game.iflags?.menu_requested) {
         if (IS_FOUNTAIN(here) && can_reach_floor(false)) {
@@ -2241,7 +2153,7 @@ export async function dodrink() {
                 await drinkfountain();
                 return ECMD_TIME;
             }
-            // drink_ok_extra++ deferred (affects getobj empty-suggest only)
+            drink_ok_extra++;
         }
         // C: kitchen sink yn → drinksink
         if (IS_SINK(here) && can_reach_floor(false)) {
@@ -2249,12 +2161,12 @@ export async function dodrink() {
                 await drinksink();
                 return ECMD_TIME;
             }
-            // drink_ok_extra++ deferred
+            drink_ok_extra++;
         }
         // underwater prompts deferred
     }
 
-    const otmp = await getobj_drink();
+    const otmp = await getobj('drink', drink_ok, GETOBJ_NOFLAGS);
     if (!otmp) return ECMD_CANCEL;
 
     otmp.in_use = true;
@@ -2349,85 +2261,18 @@ function cmdq_pop_getobj_key(obj_ok) {
 
 /**
  * C invent.c getobj(word, drink_ok, GETOBJ_NOFLAGS).
- * CMDQ_KEY before prompt (itemed #altdip / leftover canned).
- * Empty + !GETOBJ_PROMPT → no key (C suggested==0).
  * drink_ok_extra / EXCLUDE_NONINVENT → "else " in the empty message.
  */
 async function getobj_drink_ok(word) {
-    const canned = cmdq_pop_getobj_key(drink_ok);
-    if (canned !== undefined) return canned;
-
-    if (!drinkable_lets()) {
-        await pline(`You don't have anything ${
-            drink_ok_extra ? 'else ' : ''}to ${word}.`);
-        return null;
-    }
-    for (;;) {
-        const rawLets = drinkable_lets();
-        const lets = drink_prompt_lets(rawLets);
-        const query = `What do you want to ${word}? [${lets} or ?*]`;
-        const prompt = `${query} `;
-
-        game._pending_message = prompt;
-        const disp = game.nhDisplay;
-        await flush_screen(1);
-        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
-
-        const key = await nhgetch();
-        const ch = String.fromCharCode(key);
-
-        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
-            if (game.flags?.verbose !== false) await pline('Never mind.');
-            return null;
-        }
-        if (ch === '?' || ch === '*') {
-            const counted = { cnt: 0, cntgiven: false };
-            const picked = await getobj_display_pickinv(
-                ch, rawLets, false, counted,
-                { word, allownone: false, promptHasHands: false },
-            );
-            if (picked === '\x1b') {
-                if (game.flags?.verbose !== false) await pline('Never mind.');
-                return null;
-            }
-            if (!picked) {
-                if (game.iflags?.force_invmenu) return null;
-                continue;
-            }
-            const otmp = (game.invent || []).find((o) => o.invlet === picked);
-            if (!otmp) {
-                await pline("You don't have that object.");
-                continue;
-            }
-            if (drink_ok(otmp) === GETOBJ_EXCLUDE) {
-                await pline(`That is a silly thing to ${word}.`);
-                return null;
-            }
-            game._pending_message = '';
-            return otmp;
-        }
-
-        const otmp = (game.invent || []).find((o) => o.invlet === ch);
-        if (!otmp) {
-            await pline("You don't have that object.");
-            continue;
-        }
-        if (drink_ok(otmp) === GETOBJ_EXCLUDE) {
-            await pline(`That is a silly thing to ${word}.`);
-            return null;
-        }
-        game._pending_message = '';
-        return otmp;
-    }
+    return getobj(word, drink_ok, GETOBJ_NOFLAGS);
 }
 
 /**
  * C ref: invent.c getobj("dip <obj> into", drink_ok, GETOBJ_NOFLAGS)
- * after dodip floor yn. Empty + !GETOBJ_PROMPT → no key (C suggested==0).
- * drink_ok_extra → "else " in the empty message (D-1457).
+ * after dodip floor yn.
  */
 async function getobj_dip_into(dipname) {
-    return getobj_drink_ok(`dip ${dipname} into`);
+    return getobj(`dip ${dipname} into`, drink_ok, GETOBJ_NOFLAGS);
 }
 
 /**

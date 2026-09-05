@@ -23,6 +23,7 @@ import { thrwmu, spitmu, breamu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
 import { destroy_items, resists_drli } from './zap.js';
 import { nomul, stop_occupation, maybe_half_phys, is_pool, losehp, unmul } from './hack.js';
+import { upstart } from './hacklib.js';
 import { rnd, d, rn2, rn1 } from './rng.js';
 import {
     pline, pline_mon, set_msg_xy, mon_visible, canspotmon, map_invisible,
@@ -38,7 +39,7 @@ import {
 import { MON_WEP, mon_wield_item, dmgval, hitval, drain_weapon_skill } from './weapon.js';
 import { arti_reflects, is_art } from './artifact.js';
 import { is_pole, welded } from './wield.js';
-import { xname, doname, an, yname, the, simpleonames, safe_qbuf, mimic_obj_name } from './objnam.js';
+import { xname, doname, an, yname, the, simpleonames, safe_qbuf, mimic_obj_name, makeplural } from './objnam.js';
 import { objectNames, ARMOR_CLASS, COIN_CLASS } from './objects.js';
 import { objects_at } from './mkobj.js';
 import { steal, unresponsive, remove_worn_item } from './steal.js';
@@ -48,13 +49,13 @@ import {
 import { mpickobj } from './makemon.js';
 import { money2mon } from './shk.js';
 import { y_n } from './getline.js';
-import { getyear, yyyymmdd } from './calendar.js';
+import { getyear, yyyymmdd, night } from './calendar.js';
 import { pluslvl, losexp } from './exper.js';
 import { mhe } from './fountain.js';
 import { rloc, tele_restrict, enexto, teleds } from './teleport.js';
 import { monflee, set_apparxy } from './monmove.js';
 import {
-    is_orc, is_demon, is_were, is_animal, is_whirly, amorphous, unsolid,
+    is_orc, is_demon, is_were, is_human, is_animal, is_whirly, amorphous, unsolid,
     MZ_HUGE, M1_SEE_INVIS, MALE, FEMALE, haseyes, resists_ston,
     hides_under, is_flyer, thick_skinned, nolimbs, touch_petrifies,
     poly_when_stoned, has_head, slithy, amphibious, breathless, is_swimmer,
@@ -64,6 +65,8 @@ import {
 import { done_in_by, done, finish_losehp_done } from './end.js';
 import { make_blinded } from './do.js';
 import { msummon, Inhell } from './minion.js';
+import { new_were, were_summon, Protection_from_shape_changers } from './were.js';
+import { growl_sound } from './sounds.js';
 import { monsterNames } from './generated/monsters_data.js';
 import {
     A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, adjattrib, exercise,
@@ -2303,10 +2306,9 @@ async function hitmu(mtmp, mattk) {
 }
 
 /**
- * C ref: mhitu.c summonmu — demon help / were change+summon.
+ * C ref: mhitu.c summonmu `:956–1030` — demon help / were change+summon.
  * Caller verified !mcan, cham==NON_PM, !range2.
- * Named omissions: were new_were / were_summon / Protection_from_shape_changers /
- * night() / Deaf growl plines (demon arm returns first).
+ * Named omissions: msummon is_lminion/angel (demon arm otherwise live).
  */
 async function summonmu(mtmp, youseeit) {
     let mdat = mtmp.data;
@@ -2317,8 +2319,57 @@ async function summonmu(mtmp, youseeit) {
         }
         return; // no demon were
     }
-    // is_were arm deferred
-    void youseeit;
+
+    if (is_were(mdat)) {
+        /* C: Protection_from_shape_changers: human→beast no-op; beast→human ok */
+        if (is_human(mdat)) {
+            if (!Protection_from_shape_changers()
+                && !rn2(5 - ((night() ? 1 : 0) * 2))) {
+                new_were(mtmp);
+            }
+        } else {
+            if (Protection_from_shape_changers() || !rn2(30)) {
+                new_were(mtmp);
+            }
+        }
+        mdat = mtmp.data;
+
+        if (!rn2(10)) {
+            const genericwere = { s: 'creature' };
+            const numseen = { n: 0 };
+            if (youseeit) {
+                await pline_mon(mtmp, `${Monnam(mtmp)} summons help!`);
+            }
+            const numhelp = await were_summon(mdat, false, numseen, genericwere);
+            if (youseeit) {
+                if (numhelp > 0) {
+                    if (numseen.n === 0) await You_feel('hemmed in.');
+                } else {
+                    await pline('But none comes.');
+                }
+            } else {
+                let from_nowhere;
+                if (!hero_Deaf()) {
+                    await pline(
+                        `${Something} ${makeplural(growl_sound(mtmp))}!`,
+                    );
+                    from_nowhere = '';
+                } else {
+                    from_nowhere = ' from nowhere';
+                }
+                if (numhelp > 0) {
+                    if (numseen.n < 1) {
+                        await You_feel('hemmed in.');
+                    } else {
+                        const buf = numseen.n === 1
+                            ? `${an(genericwere.s)} appears`
+                            : `${makeplural(genericwere.s)} appear`;
+                        await pline(`${upstart(buf)}${from_nowhere}!`);
+                    }
+                }
+            }
+        }
+    }
 }
 
 /**

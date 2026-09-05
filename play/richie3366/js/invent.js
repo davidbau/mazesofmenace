@@ -49,7 +49,9 @@ import {
     flush_screen, flush_topl_more, pline, docrt, status_line_2, message_menu,
     endgamelevelname, obj_glyph, suppress_map_output,
     putmsghistory, impossible, tty_nhbell, tty_wait_synch,
-    clear_nhwindow_message, Hallucination,
+    clear_nhwindow_message, Hallucination, set_bot_disabled,
+    clear_committed_status,
+    docorner,
 } from './display.js';
 import { xprname, an, vtense, doname, distant_name, Japanese_item_name, xname, cxname_singular, set_xname_observe, set_distant_cansee, ansimpleoname, simpleonames, set_not_fully_identified, makeplural, body_part_latebound, corpse_xname, killer_xname } from './objnam.js';
 import { yn_function, getlin, mungspaces } from './getline.js';
@@ -245,6 +247,8 @@ import {
 } from './const.js';
 import { stairway_at, stairs_description } from './mklev.js';
 import { objects_at } from './mkobj.js';
+import { t_at, trapname } from './trap.js';
+import { visible_region_at, reg_damg } from './region.js';
 import { PM_SAMURAI, PM_MONK, PM_CLERIC } from './generated/monsters_data.js';
 import { humanoid, strongmonst, mons, touch_petrifies, poly_when_stoned, hides_under } from './monsters.js';
 import { hideunder } from './mon.js';
@@ -2390,8 +2394,9 @@ export function dismiss_chargen_nhw_menu() {
 
 /**
  * C ref: wintty.c process_menu_window corner path — tty_curs(1)+offx, cl_end,
- *        putchar(' '), then item text; morestr on final row; cursor at
- *        strlen(morestr)+2 (+offx). Does not clear the map (unlike fullscreen).
+ *        putchar(' '), then item text; morestr on final row; extra lines
+ *        to maxrow cl_end from offx; cursor at strlen(morestr)+2 (+offx).
+ *        Does not clear the map or the left of WIN_STATUS (unlike fullscreen).
  * entries: {text, attr}[] or string[]; morestr default "(end) ".
  */
 export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
@@ -2401,6 +2406,12 @@ export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
     const disp = display();
     if (!disp) return null;
     const { offx } = nhw_menu_geometry(entries, morestr);
+    // C cw->maxrow is per-window (tty_end_menu). JS geom is global;
+    // reuse it only while this overlay is still up (later shorter pages).
+    const continuingMaxrow = (game._menu_overlay
+        && game._tty_menu_geom?.maxrow > 0)
+        ? game._tty_menu_geom.maxrow
+        : 0;
     // C clears WIN_MESSAGE before menu; keep map/status for corner only.
     game._pending_message = '';
     game._menu_overlay = false;
@@ -2453,11 +2464,20 @@ export async function paint_corner_nhw_menu(entries, morestr = '(end) ') {
     for (let i = 0; i < morestr.length && offx + 1 + i < disp.cols; i++)
         disp.setCell(offx + 1 + i, endRow, morestr[i], NO_COLOR, 0);
 
+    // C process_menu_window `:1501–1505` — extra lines from last page:
+    // tty_curs(1, n); cl_end() from offx for n = page_lines+1 .. maxrow-1.
+    // maxrow is this window's tty_end_menu size, not a prior menu.
+    const maxrow = continuingMaxrow > 0 ? continuingMaxrow : endRow + 1;
+    for (let n = endRow + 1; n < maxrow; n++) {
+        for (let c = offx; c < disp.cols; c++)
+            disp.setCell(c, n, ' ', NO_COLOR, 0);
+    }
+
     // C: tty_curs(..., strlen(morestr)+2, page_lines) with offx added
     const cursorCol = offx + morestr.length + 1;
     disp.setCursor(cursorCol, endRow);
     game._menu_overlay = true;
-    game._tty_menu_geom = { offx, endRow };
+    game._tty_menu_geom = { offx, endRow, maxrow };
     return { offx, endRow, cursorCol };
 }
 
@@ -2475,9 +2495,16 @@ export async function dismiss_nhw_menu() {
     // offx==0 (C fullscreen erase_menu_or_text → docrt).
     if (!g || g.offx === 0) {
         await docrt();
+        // C docrt_flags: botlx=TRUE, caller bot() later. JS cache would
+        // otherwise repaint WIN_STATUS; D-0467 itemed leftover is blank.
+        clear_committed_status();
+        await flush_screen(1);
+        return;
     }
-    // Corner: skip docrt; flush_screen rebuilds the terminal from gbuf.
-    await flush_screen(1);
+    // C erase_menu_or_text: docorner(offx, maxrow+1, 0). bot() inside
+    // docorner no-ops while gb.bot_disabled, so leftover WIN_STATUS stays.
+    const maxrow = (g.maxrow > 0 ? g.maxrow : (g.endRow | 0) + 1);
+    await docorner(g.offx | 0, maxrow + 1, 0);
 }
 
 /**
@@ -2487,6 +2514,9 @@ export async function dismiss_nhw_menu() {
  */
 export async function select_menu_pick_none(entries) {
     // C ref: wintty.c tty_display_nhwindow(NHW_MENU) NEED_MORE flush
+    // C windows.c select_menu `:1858–1863` gb.bot_disabled wrap.
+    const _botPrev = set_bot_disabled(true);
+    try {
     await flush_topl_more();
     const rows = display()?.rows || 24;
     const lmax = Math.min(52, rows - 1);
@@ -2530,6 +2560,9 @@ export async function select_menu_pick_none(entries) {
     clear_overlay();
     await docrt();
     await flush_screen(1);
+    } finally {
+        set_bot_disabled(_botPrev);
+    }
 }
 
 /**
@@ -3243,6 +3276,8 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
     let count = 0;
     let reset_count = true;
 
+    const _botPrev = set_bot_disabled(true);
+    try {
     for (;;) {
         if (reset_count) {
             counting = false;
@@ -3360,6 +3395,9 @@ export async function display_pickinv_reply(lets, out_cnt = null, xtra = null, o
             continue;
         }
         // invalid / other-page letter → re-prompt same page
+    }
+    } finally {
+        set_bot_disabled(_botPrev);
     }
 }
 
@@ -5902,8 +5940,8 @@ export function dfeature_at(x, y) {
  * (D-0220); **observe_object before doname** (D-0399; C xname_flags).
  * **doname_with_price** (D-0460). **feel_cockatrice** D-1599 (skip_objects
  * / single / multi `doname...` then feel). Named omissions: altar/ice
- * Blind variants beyond floor, trap+region, engulfer stomach minvent
- * feel; blanket xname observe / distant_name. Furniture with ct==0 uses
+ * Blind variants beyond floor, engulfer stomach minvent feel; blanket
+ * xname observe / distant_name. Furniture with ct==0 uses
  * pickup.describe_decor (D-0356), not this path.
  */
 export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
@@ -5920,6 +5958,23 @@ export async function look_here(obj_cnt = 0, lookhere_flags = 0) {
     // pile_limit is unset or obj_cnt is below it.
     const pile_limit = game.flags?.pile_limit ?? 5;
     const skip_objects = pile_limit > 0 && obj_cnt >= pile_limit;
+
+    // C invent.c look_here `:4162–4177` — seen trap / visible region
+    // before dfeature ("There is a pit here." then the object list).
+    if (!skip_objects) {
+        const reg = visible_region_at(u?.ux, u?.uy);
+        let trap = t_at(u?.ux, u?.uy);
+        if (trap && !trap.tseen) trap = null;
+        if (reg || trap) {
+            const regbuf = reg
+                ? `a ${reg_damg(reg) ? 'poison gas' : 'vapor'} cloud`
+                : '';
+            const trapstr = trap ? an(trapname(trap.ttyp, false)) : '';
+            await pline(
+                `There is ${regbuf}${reg && trap ? ' and ' : ''}${trapstr} here.`,
+            );
+        }
+    }
 
     const otmp = objects_at(u?.ux, u?.uy);
     let dfeature = dfeature_at(u?.ux, u?.uy);
@@ -6890,7 +6945,8 @@ async function getobj_typed_hands(word, allownone, hands) {
  * fake) after CQ_REPEAT, before split_otmp. mime_action is D-1579.
  * gacc / `'0'` ball is D-1580. putmsghistory is D-1588.
  * Named omit: display_pickinv body (not this cluster); readchar_core
- * fuzzer / readchar_queue / ALTMETA; getobj_* clones in other files.
+ * fuzzer / readchar_queue / ALTMETA; getobj_* clones in drop/wield/
+ * apply/write/takeoff/dip (wear/puton/throw/drink use this getobj).
  * @param {string} word
  * @param {(obj: object|null) => number} obj_ok
  * @param {number} ctrlflags
@@ -7235,6 +7291,8 @@ export async function display_used_invlets(avoidlet = 0) {
     const npages = Math.max(1, Math.floor((entries.length + lmax - 1) / lmax));
     let curr_page = 0;
 
+    const _botPrev = set_bot_disabled(true);
+    try {
     for (;;) {
         const start = curr_page * lmax;
         const page = entries.slice(start, start + lmax);
@@ -7300,6 +7358,9 @@ export async function display_used_invlets(avoidlet = 0) {
             continue;
         }
         // invalid / other-page letter → re-prompt (C nhbell)
+    }
+    } finally {
+        set_bot_disabled(_botPrev);
     }
 }
 

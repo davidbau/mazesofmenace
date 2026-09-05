@@ -9,15 +9,17 @@
 // IA_UNWIELD / IA_NAME_OBJ / IA_NAME_OTYP / IA_EAT_OBJ /
 // IA_ENGRAVE_OBJ (D-1675) + IA_BUY_OBJ shop pay (D-1676) +
 // IA_TWOWEAPON (D-1677) + IA_RUB_OBJ / IA_SWAPWEAPON / IA_WHATIS_OBJ
-// (D-1686).
-// Named omissions: full apply catalogue; doengrave non-hands stylus
-// body; Traditional itemize yn. `'i'` getobj is D-1681.
+// (D-1686). Corner process_menu_window cl_end from offx (D-1831).
+// Named omissions: W already-wearing armor_simple_name; dungeon.c
+// surface terrain nouns; cantwield skip of `'w'`; doengrave non-hands
+// stylus body; Traditional itemize yn. `'i'` getobj is D-1681.
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { flush_screen, docrt, clear_committed_status } from './display.js';
-import { paint_corner_nhw_menu, inuse_headers_accessories, inuse_headers_set_accessories, check_invent_gold } from './invent.js';
+import { flush_screen, set_bot_disabled, tty_nhbell } from './display.js';
+import { paint_corner_nhw_menu, dismiss_nhw_menu, inuse_headers_accessories, inuse_headers_set_accessories, check_invent_gold, process_menu_search } from './invent.js';
 import { cxname, the, xname, makeplural, singular, is_plural, the_unique_obj } from './objnam.js';
+import { body_part } from './polyself.js';
 import { ia_checkfile } from './pager.js';
 import { call_ok, name_ok } from './do_name.js';
 import { ammo_and_launcher, could_twoweap, TWOWEAPOK, bimanual } from './wield.js';
@@ -32,6 +34,7 @@ import {
     CMDQ_EXTCMD,
     W_ARMOR, W_ACCESSORY, W_AMUL, W_RING, W_TOOL, Is_container,
     Has_contents, has_oname, ONAME, HANDS_SYM, IS_ALTAR, SHOPBASE,
+    MENU_SEARCH, PICK_ONE, HAND, FINGER, P_DAGGER, P_SABER,
 } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
 
@@ -315,10 +318,53 @@ const BLINDFOLD = objectNames.indexOf('BLINDFOLD');
 const LENSES = objectNames.indexOf('LENSES');
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
+const CREAM_PIE = objectNames.indexOf('CREAM_PIE');
+const BULLWHIP = objectNames.indexOf('BULLWHIP');
+const GRAPPLING_HOOK = objectNames.indexOf('GRAPPLING_HOOK');
+const BAG_OF_TRICKS = objectNames.indexOf('BAG_OF_TRICKS');
+const CAN_OF_GREASE = objectNames.indexOf('CAN_OF_GREASE');
+const LOCK_PICK = objectNames.indexOf('LOCK_PICK');
+const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
+const SKELETON_KEY = objectNames.indexOf('SKELETON_KEY');
+const TINNING_KIT = objectNames.indexOf('TINNING_KIT');
+const LEASH = objectNames.indexOf('LEASH');
+const SADDLE = objectNames.indexOf('SADDLE');
+const MAGIC_WHISTLE = objectNames.indexOf('MAGIC_WHISTLE');
+const TIN_WHISTLE = objectNames.indexOf('TIN_WHISTLE');
+const EUCALYPTUS_LEAF = objectNames.indexOf('EUCALYPTUS_LEAF');
+const STETHOSCOPE = objectNames.indexOf('STETHOSCOPE');
+const MIRROR = objectNames.indexOf('MIRROR');
+const BELL = objectNames.indexOf('BELL');
+const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
+const CANDELABRUM_OF_INVOCATION = objectNames.indexOf('CANDELABRUM_OF_INVOCATION');
+const WAX_CANDLE = objectNames.indexOf('WAX_CANDLE');
+const TALLOW_CANDLE = objectNames.indexOf('TALLOW_CANDLE');
+const POT_OIL = objectNames.indexOf('POT_OIL');
+const EXPENSIVE_CAMERA = objectNames.indexOf('EXPENSIVE_CAMERA');
+const FIGURINE = objectNames.indexOf('FIGURINE');
+const UNICORN_HORN = objectNames.indexOf('UNICORN_HORN');
+const WOODEN_FLUTE = objectNames.indexOf('WOODEN_FLUTE');
+const DRUM_OF_EARTHQUAKE = objectNames.indexOf('DRUM_OF_EARTHQUAKE');
+const LAND_MINE = objectNames.indexOf('LAND_MINE');
+const BEARTRAP = objectNames.indexOf('BEARTRAP');
+const PICK_AXE = objectNames.indexOf('PICK_AXE');
+const DWARVISH_MATTOCK = objectNames.indexOf('DWARVISH_MATTOCK');
+const FORTUNE_COOKIE = objectNames.indexOf('FORTUNE_COOKIE');
+const T_SHIRT = objectNames.indexOf('T_SHIRT');
+const ALCHEMY_SMOCK = objectNames.indexOf('ALCHEMY_SMOCK');
+const HAWAIIAN_SHIRT = objectNames.indexOf('HAWAIIAN_SHIRT');
+const SCR_MAIL = objectNames.indexOf('SCR_MAIL');
+const SCR_BLANK_PAPER = objectNames.indexOf('SCR_BLANK_PAPER');
 
-/** C ref: objnam.c simpleonames — type name without quan/BUC (xname quan=1). */
+/**
+ * C ref: objnam.c simpleonames — minimal_xname, then makeplural if
+ * quan != 1. Local clone (pickup.js also); the objnam export omits
+ * makeplural (pretty_base only). Do not add another clone.
+ */
 function simpleonames(obj) {
-    return singular(obj, xname);
+    let n = singular(obj, xname);
+    if ((obj?.quan ?? 1) !== 1) n = makeplural(n);
+    return n;
 }
 
 /**
@@ -354,10 +400,29 @@ function item_naming_classification(obj, onamebuf, ocallbuf) {
 function item_reading_classification(obj, out) {
     const otyp = obj.otyp;
     out.s = '';
+    /* C iactions.c `:91–124` cookie/shirt/apron/hawaiian before scroll. */
+    if (otyp === FORTUNE_COOKIE) {
+        out.s = 'Read the message inside this cookie';
+        return IA_READ_OBJ;
+    }
+    if (otyp === T_SHIRT) {
+        out.s = 'Read the slogan on the shirt';
+        return IA_READ_OBJ;
+    }
+    if (otyp === ALCHEMY_SMOCK) {
+        out.s = 'Read the slogan on the apron';
+        return IA_READ_OBJ;
+    }
+    if (otyp === HAWAIIAN_SHIRT) {
+        out.s = 'Look at the pattern on the shirt';
+        return IA_READ_OBJ;
+    }
     if (obj.oclass === SCROLL_CLASS) {
         const ocl = game.objects?.[otyp] || objects[otyp];
+        /* C MAIL_STRUCTURES: SCR_MAIL is not "magic". */
         const magic = (obj.dknown
-            && (otyp !== objectNames.indexOf('SCR_BLANK_PAPER')
+            && otyp !== SCR_MAIL
+            && (otyp !== SCR_BLANK_PAPER
                 || !ocl?.oc_name_known))
             ? ' to activate its magic' : '';
         out.s = `Read this scroll${magic}`;
@@ -373,7 +438,6 @@ function item_reading_classification(obj, out) {
         out.s = `${verb} this ${what}`;
         return IA_READ_OBJ;
     }
-    // cookie / shirt slogan branches deferred
     return IA_NONE;
 }
 
@@ -399,7 +463,9 @@ function MAYBETWOWEAPON(obj) {
 
 /**
  * C ref: iactions.c itemactions — NHW_MENU PICK_ONE of context actions.
- * Named omissions: full apply-otyp catalogue polish.
+ * Named omissions: W already-wearing `armor_simple_name`;
+ * dungeon.c `surface` terrain nouns (ROOM → "floor" here, matching
+ * the four existing `surface` stubs). `cantwield` skip of `'w'`.
  * O/T/V pushkeys are D-1665. Unwield/name/eat/engrave are D-1675.
  * Shop pay is D-1676. Two-weapon `'X'` is D-1677. Rub/swap/whatis
  * pushkeys are D-1686.
@@ -410,10 +476,6 @@ export async function itemactions(otmp) {
     const already_worn = ((otmp.owornmask || 0) & (W_ARMOR | W_ACCESSORY)) !== 0;
     const light = otmp.lamplit ? 'Extinguish' : 'Light';
     const items = []; // { act, let, text }
-
-    // C: after fullscreen invent destroy, WIN_STATUS stays blank until
-    // bot() when this menu closes (D-0467).
-    clear_committed_status();
 
     const add = (act, letch, txt) => {
         items.push({ act, let: letch, text: `${letch} - ${txt}` });
@@ -430,31 +492,92 @@ export async function itemactions(otmp) {
         add(IA_UNWIELD, '-', `${verb} '${HANDS_SYM}' to ${action} ${which} ${whats}`);
     }
 
-    // a: apply — subset of common tools; full catalogue deferred
+    // a: apply — C iactions.c `:309–400` otyp catalogue (order matters)
+    const ocl_a = game.objects?.[otmp.otyp] || objects[otmp.otyp];
     if (otmp.oclass === COIN_CLASS) {
         add(IA_APPLY_OBJ, 'a', 'Flip a coin');
+    } else if (otmp.otyp === CREAM_PIE) {
+        add(IA_APPLY_OBJ, 'a', 'Hit yourself with this cream pie');
+    } else if (otmp.otyp === BULLWHIP) {
+        add(IA_APPLY_OBJ, 'a', 'Lash out with this whip');
+    } else if (otmp.otyp === GRAPPLING_HOOK) {
+        add(IA_APPLY_OBJ, 'a', 'Grapple something with this hook');
+    } else if (otmp.otyp === BAG_OF_TRICKS && ocl_a?.oc_name_known) {
+        add(IA_APPLY_OBJ, 'a', 'Reach into this bag');
     } else if (Is_container(otmp)) {
-        const ocl = game.objects?.[otmp.otyp] || objects[otmp.otyp];
-        if (objectNames[otmp.otyp] === 'BAG_OF_TRICKS' && ocl?.oc_name_known) {
-            add(IA_APPLY_OBJ, 'a', 'Reach into this bag');
+        add(IA_APPLY_OBJ, 'a', 'Open this container');
+    } else if (otmp.otyp === CAN_OF_GREASE) {
+        add(IA_APPLY_OBJ, 'a', 'Use the can to grease an item');
+    } else if (otmp.otyp === LOCK_PICK
+        || otmp.otyp === CREDIT_CARD
+        || otmp.otyp === SKELETON_KEY) {
+        add(IA_APPLY_OBJ, 'a', 'Use this tool to pick a lock');
+    } else if (otmp.otyp === TINNING_KIT) {
+        add(IA_APPLY_OBJ, 'a', 'Use this kit to tin a corpse');
+    } else if (otmp.otyp === LEASH) {
+        add(IA_APPLY_OBJ, 'a', 'Tie a pet to this leash');
+    } else if (otmp.otyp === SADDLE) {
+        add(IA_APPLY_OBJ, 'a', 'Place this saddle on a pet');
+    } else if (otmp.otyp === MAGIC_WHISTLE || otmp.otyp === TIN_WHISTLE) {
+        add(IA_APPLY_OBJ, 'a', 'Blow this whistle');
+    } else if (otmp.otyp === EUCALYPTUS_LEAF) {
+        add(IA_APPLY_OBJ, 'a', 'Use this leaf as a whistle');
+    } else if (otmp.otyp === STETHOSCOPE) {
+        add(IA_APPLY_OBJ, 'a', 'Listen through the stethoscope');
+    } else if (otmp.otyp === MIRROR) {
+        add(IA_APPLY_OBJ, 'a', 'Show something its reflection');
+    } else if (otmp.otyp === BELL || otmp.otyp === BELL_OF_OPENING) {
+        add(IA_APPLY_OBJ, 'a', 'Ring the bell');
+    } else if (otmp.otyp === CANDELABRUM_OF_INVOCATION) {
+        add(IA_APPLY_OBJ, 'a', `${light} the candelabrum`);
+    } else if (otmp.otyp === WAX_CANDLE || otmp.otyp === TALLOW_CANDLE) {
+        const multiple = (otmp.quan ?? 1) !== 1;
+        const s = multiple ? 'these' : 'this';
+        const { carrying } = await import('./hack.js');
+        const o = carrying(CANDELABRUM_OF_INVOCATION);
+        if (o && (o.spe | 0) < 7) {
+            add(
+                IA_APPLY_OBJ,
+                'a',
+                `Attach ${s} to your candelabrum, or ${!otmp.lamplit ? 'light' : 'extinguish'} ${multiple ? 'them' : 'it'}`,
+            );
         } else {
-            add(IA_APPLY_OBJ, 'a', 'Open this container');
+            add(IA_APPLY_OBJ, 'a', `${light} ${s} ${simpleonames(otmp)}`);
         }
-    } else if (otmp.oclass === WAND_CLASS) {
-        add(IA_APPLY_OBJ, 'a', 'Break this wand');
+    } else if (otmp.otyp === OIL_LAMP || otmp.otyp === MAGIC_LAMP
+        || otmp.otyp === BRASS_LANTERN) {
+        add(IA_APPLY_OBJ, 'a', `${light} this light source`);
+    } else if (otmp.otyp === POT_OIL && ocl_a?.oc_name_known) {
+        add(IA_APPLY_OBJ, 'a', `${light} this oil`);
     } else if (otmp.oclass === POTION_CLASS) {
         add(
             IA_DIP_OBJ,
             'a',
-            `Dip something into ${is_plural(otmp) ? 'one of these' : 'this'} potion${(otmp.quan || 1) !== 1 ? 's' : ''}`,
+            `Dip something into ${is_plural(otmp) ? 'one of these' : 'this'} potion${(otmp.quan ?? 1) === 1 ? '' : 's'}`,
         );
-    } else if (
-        otmp.otyp === OIL_LAMP || otmp.otyp === MAGIC_LAMP
-        || otmp.otyp === BRASS_LANTERN
-    ) {
-        add(IA_APPLY_OBJ, 'a', `${light} this light source`);
+    } else if (otmp.otyp === EXPENSIVE_CAMERA) {
+        add(IA_APPLY_OBJ, 'a', 'Take a photograph');
+    } else if (otmp.otyp === TOWEL) {
+        add(IA_APPLY_OBJ, 'a', 'Clean yourself off with this towel');
+    } else if (otmp.otyp === CRYSTAL_BALL) {
+        add(IA_APPLY_OBJ, 'a', 'Peer into this crystal ball');
+    } else if (otmp.otyp === MAGIC_MARKER) {
+        add(IA_APPLY_OBJ, 'a', 'Write on something with this marker');
+    } else if (otmp.otyp === FIGURINE) {
+        add(IA_APPLY_OBJ, 'a', 'Make this figurine transform');
+    } else if (otmp.otyp === UNICORN_HORN) {
+        add(IA_APPLY_OBJ, 'a', 'Use this unicorn horn');
+    } else if (otmp.otyp === HORN_OF_PLENTY && ocl_a?.oc_name_known) {
+        add(IA_APPLY_OBJ, 'a', 'Blow into the horn of plenty');
+    } else if (otmp.otyp >= WOODEN_FLUTE && otmp.otyp <= DRUM_OF_EARTHQUAKE) {
+        add(IA_APPLY_OBJ, 'a', 'Play this musical instrument');
+    } else if (otmp.otyp === LAND_MINE || otmp.otyp === BEARTRAP) {
+        add(IA_APPLY_OBJ, 'a', 'Arm this trap');
+    } else if (otmp.otyp === PICK_AXE || otmp.otyp === DWARVISH_MATTOCK) {
+        add(IA_APPLY_OBJ, 'a', 'Dig with this digging tool');
+    } else if (otmp.oclass === WAND_CLASS) {
+        add(IA_APPLY_OBJ, 'a', 'Break this wand');
     }
-    // other apply otyps deferred
 
     // c / C: name / call
     const oname = { s: '' };
@@ -489,7 +612,7 @@ export async function itemactions(otmp) {
         }
     }
 
-    // E: engrave
+    // E: engrave — C iactions.c `:429–445` is_blade / wand / oc_tough
     if (otmp.otyp === TOWEL) {
         add(IA_ENGRAVE_OBJ, 'E', 'Wipe the floor with this towel');
     } else if (otmp.otyp === MAGIC_MARKER) {
@@ -498,10 +621,21 @@ export async function itemactions(otmp) {
         otmp.oclass === WEAPON_CLASS || otmp.oclass === WAND_CLASS
         || otmp.oclass === GEM_CLASS || otmp.oclass === RING_CLASS
     ) {
+        const ocl_e = game.objects?.[otmp.otyp] || objects[otmp.otyp];
+        const skill = ocl_e?.oc_skill | 0;
+        /* C obj.h is_blade: WEAPON_CLASS && P_DAGGER..P_SABER. Inline the
+           macro at this one site; objects.js is_blade stays the export. */
+        const blade = otmp.oclass === WEAPON_CLASS
+            && skill >= P_DAGGER && skill <= P_SABER;
+        const verb = (blade || otmp.oclass === WAND_CLASS
+            || ((otmp.oclass === GEM_CLASS || otmp.oclass === RING_CLASS)
+                && ocl_e?.oc_tough)) ? 'Engrave' : 'Write';
+        /* dungeon.c surface: ROOM → "floor"; full terrain is the four
+           existing stubs (always "floor"). Do not add clone #5. */
         add(
             IA_ENGRAVE_OBJ,
             'E',
-            `Write on the floor with ${(otmp.quan || 1) > 1 ? 'one of these items' : 'this item'}`,
+            `${verb} on the floor with ${(otmp.quan ?? 1) > 1 ? 'one of these items' : 'this item'}`,
         );
     }
 
@@ -558,7 +692,7 @@ export async function itemactions(otmp) {
         } else if (otmp.oclass === RING_CLASS || otmp.otyp === MEAT_RING) {
             buf = (!u.uleft || !u.uright)
                 ? 'Put this ring on'
-                : '[both ring fingers in use]';
+                : `[both ring ${makeplural(body_part(FINGER))} in use]`;
         } else if (
             otmp.otyp === BLINDFOLD || otmp.otyp === TOWEL || otmp.otyp === LENSES
         ) {
@@ -652,17 +786,18 @@ export async function itemactions(otmp) {
         add(IA_INVOKE_OBJ, 'V', 'Try to invoke a unique power of this object');
     }
 
-    // w: wield
+    // w: wield — C iactions.c `:606–630` skip uwep / cantwield named
     if (otmp === u.uwep) {
-        // already wielded — skip
+        /* already wielded — skip. cantwield(youmonst.data) named omit. */
     } else if (
         otmp.oclass === WEAPON_CLASS || is_weptool(otmp)
+        || (otmp.otyp === TOWEL && (otmp.spe | 0) > 0) /* is_wet_towel */
         || otmp.otyp === HEAVY_IRON_BALL
     ) {
         add(
             IA_WIELD_OBJ,
             'w',
-            `Wield this ${(otmp.quan || 1) > 1 ? 'stack' : 'item'} as your weapon`,
+            `Wield this ${(otmp.quan ?? 1) > 1 ? 'stack' : 'item'} as your weapon`,
         );
     } else if (otmp.otyp === TIN_OPENER) {
         add(IA_WIELD_OBJ, 'w', 'Wield the tin opener to easily open tins');
@@ -670,7 +805,7 @@ export async function itemactions(otmp) {
         add(
             IA_WIELD_OBJ,
             'w',
-            `Wield this ${(otmp.quan || 1) > 1 ? 'stack' : 'item'} in your hands`,
+            `Wield this ${(otmp.quan ?? 1) > 1 ? 'stack' : 'item'} in your ${makeplural(body_part(HAND))}`,
         );
     }
 
@@ -724,32 +859,53 @@ export async function itemactions(otmp) {
     for (const it of items) byLet.set(it.let, it);
 
     // C tty_end_menu: prompt ATR_INVERSE, blank, then items.
-    // After fullscreen invent, WIN_STATUS stays blank until bot() after
-    // this menu closes (clear_committed_status from display_pickinv_reply).
-    for (;;) {
-        const entries = [
-            { text: prompt, attr: ATR_INVERSE },
-            { text: '', attr: 0 },
-            ...items.map((it) => ({ text: it.text, attr: 0 })),
-        ];
+    // C windows.c select_menu `:1858–1863` gb.bot_disabled; wintty.c
+    // process_menu_window `:1329–1768` loops on tty_nhgetch without
+    // redraw on an unhandled key (default: tty_nhbell). Corner cl_end
+    // from offx; leftover WIN_STATUS stays. D-0467 fullscreen blank
+    // is `_statusSuppressed`, not a per-key docrt/cls.
+    const entries = [
+        { text: prompt, attr: ATR_INVERSE },
+        { text: '', attr: 0 },
+        ...items.map((it) => ({ text: it.text, attr: 0 })),
+    ];
+    const _botPrev = set_bot_disabled(true);
+    try {
         await paint_corner_nhw_menu(entries, '(end) ');
         await flush_screen(1);
-        const key = await nhgetch();
-        game._menu_overlay = false;
-        await docrt();
-        await flush_screen(1);
-
-        if (key === 27 || key === 13 || key === 10 || key === 32) {
-            // cancel — docrt/flush above restored status via bot()
-            return ECMD_OK;
+        for (;;) {
+            const key = await nhgetch();
+            const ch = String.fromCharCode(key);
+            // C process_menu_window MENU_SEARCH `:1698–1731` before dismiss.
+            if (ch === MENU_SEARCH) {
+                const searchItems = items.map((it) => ({
+                    selectable: true,
+                    selector: it.let,
+                    menuStr: it.text,
+                    act: it.act,
+                }));
+                const res = await process_menu_search(searchItems, PICK_ONE);
+                if (res.kind === 'finish' && res.item) {
+                    await dismiss_nhw_menu();
+                    await itemactions_pushkeys(res.item.act, otmp);
+                    return ECMD_OK;
+                }
+                continue;
+            }
+            if (key === 27 || key === 13 || key === 10 || key === 32) {
+                await dismiss_nhw_menu();
+                return ECMD_OK;
+            }
+            if (byLet.has(ch)) {
+                await dismiss_nhw_menu();
+                await itemactions_pushkeys(byLet.get(ch).act, otmp);
+                return ECMD_OK;
+            }
+            // C process_menu_window default: tty_nhbell(); page_start stays.
+            tty_nhbell();
         }
-        const ch = String.fromCharCode(key);
-        if (byLet.has(ch)) {
-            await itemactions_pushkeys(byLet.get(ch).act, otmp);
-            return ECMD_OK;
-        }
-        // invalid → re-prompt; keep status blank like C select_menu
-        clear_committed_status();
+    } finally {
+        set_bot_disabled(_botPrev);
     }
 }
 

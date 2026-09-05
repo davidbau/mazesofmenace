@@ -29,7 +29,16 @@ import {
 import {
     ART_ORB_OF_DETECTION,
     ART_HEART_OF_AHRIMAN,
+    ART_SCEPTRE_OF_MIGHT,
+    ART_STAFF_OF_AESCULAPIUS,
+    ART_MAGIC_MIRROR_OF_MERLIN,
+    ART_EYES_OF_THE_OVERWORLD,
     ART_MITRE_OF_HOLINESS,
+    ART_MASTER_KEY_OF_THIEVERY,
+    ART_LONGBOW_OF_DIANA,
+    ART_TSURUGI_OF_MURAMASA,
+    ART_YENDORIAN_EXPRESS_CARD,
+    ART_ORB_OF_FATE,
     ART_EYE_OF_THE_AETHIOPICA,
 } from './generated/artifacts_data.js';
 import { game } from './gstate.js';
@@ -82,10 +91,11 @@ export const roles = [
         // C: { 7, 10, 10, 7, 7, 7 } / { 20, 20, 20, 10, 20, 10 }
         attrbase: [7, 10, 10, 7, 7, 7],
         attrdist: [20, 20, 20, 10, 20, 10],
-        // C role.c: homebase / intermed / ldrnum for quest talk / convert_arg
+        // C role.c: homebase / intermed / ldrnum / guardnum / questarti
         homebase: 'the College of Archeology',
         intermed: 'the Tomb of the Toltec Kings',
         ldrnum: pm('PM_LORD_CARNARVON'),
+        guardnum: pm('PM_STUDENT'),
         questarti: ART_ORB_OF_DETECTION,
         xlev: 14,
         initrecord: 10,
@@ -120,10 +130,11 @@ export const roles = [
         lgod: 'Mitra',
         ngod: 'Crom',
         cgod: 'Set',
-        // C role.c: homebase / intermed / ldrnum for questpgr convert_arg
+        // C role.c: homebase / intermed / ldrnum / guardnum / questarti
         homebase: 'the Camp of the Duali Tribe',
         intermed: 'the Duali Oasis',
         ldrnum: pm('PM_PELIAS'),
+        guardnum: pm('PM_CHIEFTAIN'),
         questarti: ART_HEART_OF_AHRIMAN,
         // C: { 16, 7, 7, 15, 16, 6 } / { 30, 6, 7, 20, 30, 7 }
         attrbase: [16, 7, 7, 15, 16, 6],
@@ -160,6 +171,12 @@ export const roles = [
         lgod: 'Anu',
         ngod: '_Ishtar',
         cgod: 'Anshar',
+        // C role.c: homebase / intermed / ldrnum / guardnum / questarti
+        homebase: 'the Caves of the Ancestors',
+        intermed: "the Dragon's Lair",
+        ldrnum: pm('PM_SHAMAN_KARNOV'),
+        guardnum: pm('PM_NEANDERTHAL'),
+        questarti: ART_SCEPTRE_OF_MIGHT,
         // C: { 10, 7, 7, 7, 8, 6 } / { 30, 6, 7, 20, 30, 7 }
         attrbase: [10, 7, 7, 7, 8, 6],
         attrdist: [30, 6, 7, 20, 30, 7],
@@ -196,6 +213,12 @@ export const roles = [
         lgod: '_Athena',
         ngod: 'Hermes',
         cgod: 'Poseidon',
+        // C role.c: homebase / intermed / ldrnum / guardnum / questarti
+        homebase: 'the Temple of Epidaurus',
+        intermed: 'the Temple of Coeus',
+        ldrnum: pm('PM_HIPPOCRATES'),
+        guardnum: pm('PM_ATTENDANT'),
+        questarti: ART_STAFF_OF_AESCULAPIUS,
         // C: { 7, 7, 13, 7, 11, 16 } / { 15, 20, 20, 15, 25, 5 }
         attrbase: [7, 7, 13, 7, 11, 16],
         attrdist: [15, 20, 20, 15, 25, 5],
@@ -231,6 +254,12 @@ export const roles = [
         lgod: 'Lugh',
         ngod: '_Brigit',
         cgod: 'Manannan Mac Lir',
+        // C role.c: homebase / intermed / ldrnum / guardnum / questarti
+        homebase: 'Camelot Castle',
+        intermed: 'the Isle of Glass',
+        ldrnum: pm('PM_KING_ARTHUR'),
+        guardnum: pm('PM_PAGE'),
+        questarti: ART_MAGIC_MIRROR_OF_MERLIN,
         // C: { 13, 7, 14, 8, 10, 17 } / { 30, 15, 15, 10, 20, 10 }
         attrbase: [13, 7, 14, 8, 10, 17],
         attrdist: [30, 15, 15, 10, 20, 10],
@@ -266,6 +295,12 @@ export const roles = [
         lgod: 'Shan Lai Ching',
         ngod: 'Chih Sung-tzu',
         cgod: 'Huan Ti',
+        // C role.c: homebase / intermed / ldrnum / guardnum / questarti
+        homebase: 'the Monastery of Chan-Sune',
+        intermed: 'the Monastery of the Earth-Lord',
+        ldrnum: pm('PM_GRAND_MASTER'),
+        guardnum: pm('PM_ABBOT'),
+        questarti: ART_EYES_OF_THE_OVERWORLD,
         // C: { 10, 7, 8, 8, 7, 7 } / { 25, 10, 20, 20, 15, 10 }
         attrbase: [10, 7, 8, 8, 7, 7],
         attrdist: [25, 10, 20, 20, 15, 10],
@@ -343,6 +378,12 @@ export const roles = [
         lgod: 'Issek',
         ngod: 'Mog',
         cgod: 'Kos',
+        // C role.c: homebase / intermed / ldrnum / guardnum / questarti
+        homebase: "the Thieves' Guild Hall",
+        intermed: "the Assassins' Guild Hall",
+        ldrnum: pm('PM_MASTER_OF_THIEVES'),
+        guardnum: pm('PM_THUG'),
+        questarti: ART_MASTER_KEY_OF_THIEVERY,
         attrbase: [7, 7, 7, 10, 7, 6],
         attrdist: [20, 10, 10, 30, 20, 10],
         // C: xlev 11, initrecord 10
@@ -377,6 +418,12 @@ export const roles = [
         lgod: 'Mercury',
         ngod: '_Venus',
         cgod: 'Mars',
+        // C role.c: homebase / intermed / ldrnum / guardnum / questarti
+        homebase: "Orion's camp",
+        intermed: 'the cave of the wumpus',
+        ldrnum: pm('PM_ORION'),
+        guardnum: pm('PM_HUNTER'),
+        questarti: ART_LONGBOW_OF_DIANA,
         // C: { 13, 13, 13, 9, 13, 7 } / { 30, 10, 10, 20, 20, 10 }
         attrbase: [13, 13, 13, 9, 13, 7],
         attrdist: [30, 10, 10, 20, 20, 10],
@@ -412,6 +459,12 @@ export const roles = [
         lgod: '_Amaterasu Omikami',
         ngod: 'Raijin',
         cgod: 'Susanowo',
+        // C role.c: homebase / intermed / ldrnum / guardnum / questarti
+        homebase: 'the Castle of the Taro Clan',
+        intermed: "the Shogun's Castle",
+        ldrnum: pm('PM_LORD_SATO'),
+        guardnum: pm('PM_ROSHI'),
+        questarti: ART_TSURUGI_OF_MURAMASA,
         // C: { 10, 8, 7, 10, 17, 6 } / { 30, 10, 8, 30, 14, 8 }
         attrbase: [10, 8, 7, 10, 17, 6],
         attrdist: [30, 10, 8, 30, 14, 8],
@@ -447,6 +500,12 @@ export const roles = [
         lgod: 'Blind Io',
         ngod: '_The Lady',
         cgod: 'Offler',
+        // C role.c: homebase / intermed / ldrnum / guardnum / questarti
+        homebase: 'Ankh-Morpork',
+        intermed: "the Thieves' Guild Hall",
+        ldrnum: pm('PM_TWOFLOWER'),
+        guardnum: pm('PM_GUIDE'),
+        questarti: ART_YENDORIAN_EXPRESS_CARD,
         attrbase: [7, 10, 6, 7, 7, 10],
         attrdist: [15, 10, 10, 15, 30, 20],
         xlev: 14,
@@ -480,6 +539,12 @@ export const roles = [
         lgod: 'Tyr',
         ngod: 'Odin',
         cgod: 'Loki',
+        // C role.c: homebase / intermed / ldrnum / guardnum / questarti
+        homebase: 'the Shrine of Destiny',
+        intermed: 'the cave of Surtur',
+        ldrnum: pm('PM_NORN'),
+        guardnum: pm('PM_WARRIOR'),
+        questarti: ART_ORB_OF_FATE,
         // C: { 10, 7, 7, 7, 10, 7 } / { 30, 6, 7, 20, 30, 7 }
         attrbase: [10, 7, 7, 7, 10, 7],
         attrdist: [30, 6, 7, 20, 30, 7],

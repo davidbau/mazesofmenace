@@ -86,7 +86,7 @@ import { rnd } from './rng.js';
 import { str_end_is, str_start_is, highc, strstri, strsubst } from './hacklib.js';
 import { name_to_mon } from './mondata.js';
 import { nhgetch } from './input.js';
-import { flush_screen, pline, docrt, check_gold_symbol, clear_committed_status } from './display.js';
+import { flush_screen, pline, docrt, check_gold_symbol, clear_committed_status, set_bot_disabled } from './display.js';
 import { paint_corner_nhw_menu, dismiss_nhw_menu, collect_menu_gacc, process_menu_search, reassign, update_inventory, invlet_constant, perm_invent_toggled } from './invent.js';
 import { ATR_INVERSE } from './terminal.js';
 import {
@@ -1598,6 +1598,7 @@ function format_simple_opt_line(opt, nameWidth) {
  * @returns {Promise<{kind:'pick'|'cancel', item?:object}>}
  */
 export async function select_menu_pick_one(rawItems) {
+    const _botPrev = set_bot_disabled(true);
     const rows = 24;
     const lmax = Math.min(52, rows - 1);
     // Clone and assign selectors like C tty_end_menu
@@ -1710,6 +1711,7 @@ export async function select_menu_pick_one(rawItems) {
         // invalid → re-prompt same page (C nhbell)
     }
     } finally {
+        set_bot_disabled(_botPrev);
         if (npages > 1) {
             if (prevOverlay === undefined) delete game.flags.menu_overlay;
             else game.flags.menu_overlay = prevOverlay;
@@ -1851,6 +1853,7 @@ export async function select_menu_pick_any(rawItems) {
     const npages = Math.max(1, Math.floor((items.length + lmax - 1) / lmax));
     let currPage = 0;
     const prevOverlay = game.flags?.menu_overlay;
+    const _botPrev = set_bot_disabled(true);
     if (npages > 1) {
         if (!game.flags) game.flags = {};
         game.flags.menu_overlay = false;
@@ -1979,6 +1982,7 @@ export async function select_menu_pick_any(rawItems) {
             }
         }
     } finally {
+        set_bot_disabled(_botPrev);
         if (npages > 1) {
             if (prevOverlay === undefined) delete game.flags.menu_overlay;
             else game.flags.menu_overlay = prevOverlay;

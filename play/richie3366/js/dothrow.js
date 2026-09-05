@@ -4,9 +4,8 @@
 // throw_obj u_wipe_engr(2) D-1374 (C `:138`).
 
 import { game } from './gstate.js';
-import { nhgetch } from './input.js';
 import {
-    flush_screen, flush_topl_more, pline, newsym, mark_topline_seen,
+    flush_screen, pline, newsym, mark_topline_seen,
     canseemon, canspotmon, nh_delay_output, tmp_at, obj_glyph, verbalize,
 } from './display.js';
 import { cansee, vision_recalc } from './vision.js';
@@ -44,6 +43,8 @@ import {
     xdir, ydir, xytodir, N_DIRS, RIGHT_HANDED, IS_SINK, HI_WOOD, OBJ_MINVENT,
     DISP_FLASH, DISP_CHANGE, DISP_END, DISP_TETHER, BACKTRACK, ECMD_TIME,
     DEAF, SHOPBASE, Is_waterlevel,
+    GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GETOBJ_PROMPT,
+    GETOBJ_ALLOWCNT,
 } from './const.js';
 import { obj_resists, dogfood } from './dogmove.js';
 import {
@@ -51,7 +52,7 @@ import {
     setuwep, setuswapwep, setuqwep, set_twoweap,
 } from './wield.js';
 import { acurr, acurrstr, A_CON, A_DEX, A_STR, change_luck, exercise, Fumbling } from './attrib.js';
-import { calc_capacity, fully_identify_obj, encumber_msg, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv } from './invent.js';
+import { calc_capacity, fully_identify_obj, encumber_msg, getobj } from './invent.js';
 import { add_to_minv, mpickobj } from './makemon.js';
 import { finish_quest } from './quest.js';
 import { align_gname } from './roles.js';
@@ -76,7 +77,7 @@ import {
     is_domestic, nohands, M1_NOTAKE, MZ_HUGE, MZ_MEDIUM,
     is_unicorn, is_orc, is_elf, your_race, is_animal, is_whirly,
     touch_petrifies, poly_when_stoned, hates_silver, mon_hates_blessings,
-    haseyes, passes_walls, unsolid, mons,
+    haseyes, passes_walls, unsolid, mons, throws_rocks,
 } from './monsters.js';
 import { tamedog } from './dog.js';
 import { hmon, passive_obj } from './uhitm.js';
@@ -181,14 +182,36 @@ function cmdq_add_ec(fn) {
     game._cmdq_canned.push(fn);
 }
 
-/** C invent getobj ranks used by throw_ok. */
-const THROW_SUGGEST = 1;
-const THROW_DOWNPLAY = 2;
-
 /**
- * C dothrow.c AutoReturn — uwep aklys / Valkyrie Mjollnir, or any boomerang.
- * wep_mask is captured before freeinv (throw_obj).
+ * C dothrow.c throw_ok `:316–348` — SUGGEST AutoReturn / coins /
+ * weapons when !uslinging / gems when uslinging / boulder when
+ * throws_rocks. Lone uwep and known-welded are DOWNPLAY. Hands
+ * GETOBJ_EXCLUDE (not EXCLUDE_SELECTABLE).
+ * @param {object|null} obj
+ * @returns {number} GETOBJ_*
  */
+function throw_ok(obj) {
+    if (!obj) return GETOBJ_EXCLUDE;
+    const u = game.u || {};
+    if (obj.bknown && welded(obj)) return GETOBJ_DOWNPLAY;
+    if (AutoReturn(obj, obj.owornmask || 0)
+        && (!is_art(obj, ART_MJOLLNIR) || acurr(A_STR) >= STR19(25))) {
+        return GETOBJ_SUGGEST;
+    }
+    if ((obj.quan || 1) === 1
+        && (obj === u.uwep || (obj === u.uswapwep && u.twoweap))) {
+        return GETOBJ_DOWNPLAY;
+    }
+    if (obj.oclass === COIN_CLASS) return GETOBJ_SUGGEST;
+    if (!uslinging() && obj.oclass === WEAPON_CLASS) return GETOBJ_SUGGEST;
+    if (uslinging() && obj.oclass === GEM_CLASS) return GETOBJ_SUGGEST;
+    if (throws_rocks(game.youmonst?.data) && obj.otyp === BOULDER) {
+        return GETOBJ_SUGGEST;
+    }
+    return GETOBJ_DOWNPLAY;
+}
+
+/** C dothrow.c AutoReturn — uwep aklys / Valkyrie Mjollnir, or any boomerang. */
 function AutoReturn(o, wmsk) {
     if (!o) return false;
     const wep = ((wmsk | 0) & W_WEP) !== 0;
@@ -235,113 +258,6 @@ function throwit_tethered_weapon(obj, wep_mask) {
 async function throwit_tether_end(tethered_weapon, backtrack) {
     if (!tethered_weapon) return;
     await tmp_at(DISP_END, backtrack ? BACKTRACK : 0);
-}
-
-/**
- * C ref: dothrow.c throw_ok — SUGGEST coins + weapons (!uslinging);
- * AutoReturn (wielded aklys / Valk Mjollnir / boomerang) before lone-uwep
- * DOWNPLAY (D-1282). Named omit: gem-sling uslinging.
- * @returns {0|1|2} 0 exclude, 1 suggest, 2 downplay
- */
-function throw_ok(obj) {
-    if (!obj) return 0;
-    const u = game.u || {};
-    if (obj.bknown && welded(obj)) return THROW_DOWNPLAY;
-    if (AutoReturn(obj, obj.owornmask || 0)
-        && (!is_art(obj, ART_MJOLLNIR) || acurr(A_STR) >= STR19(25))) {
-        return THROW_SUGGEST;
-    }
-    if ((obj.quan || 1) === 1
-        && (obj === u.uwep || (obj === u.uswapwep && u.twoweap))) {
-        return THROW_DOWNPLAY;
-    }
-    if (obj.oclass === COIN_CLASS) return THROW_SUGGEST;
-    if (obj.oclass === WEAPON_CLASS) return THROW_SUGGEST;
-    return THROW_DOWNPLAY;
-}
-
-/** Invent-order SUGGEST letters (C getobj; DOWNPLAY selectable but hidden). */
-function throwable_lets() {
-    const lets = [];
-    for (const o of game.invent || []) {
-        if (o?.invlet && throw_ok(o) === THROW_SUGGEST) lets.push(o.invlet);
-    }
-    return lets.join('');
-}
-
-/**
- * C ref: invent.c getobj("throw", throw_ok, GETOBJ_PROMPT|GETOBJ_ALLOWCNT).
- * Count prefix: gold may use a count; other stacks can only throw one
- * (C `:2028–2047`) then split_otmp. `?`/`*` → display_pickinv `&ctmp`
- * (D-1559). Canned CMDQ_INT then KEY (need_more_cq) live; canned skip throw-one.
- */
-async function getobj_throw() {
-    const cq = getobj_from_cmdq(throw_ok, true);
-    if (!cq.skip) return cq.otmp;
-
-    for (;;) {
-        await flush_topl_more();
-        const lets = throwable_lets();
-        const query = lets
-            ? `What do you want to throw? [${lets} or ?*]`
-            : 'What do you want to throw? [*]';
-        const prompt = `${query} `;
-        game._pending_message = prompt;
-        await flush_screen(1);
-        const disp = game.nhDisplay;
-        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
-
-        const key = await nhgetch();
-        let ch = String.fromCharCode(key);
-        const counted = await getobj_take_count(ch, true);
-        if (counted.retry) continue;
-        ch = counted.ch;
-        if (ch.charCodeAt(0) === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
-            if (game.flags?.verbose !== false) await pline('Never mind.');
-            return null;
-        }
-        if (ch === '?' || ch === '*') {
-            const ilet = await getobj_display_pickinv(ch, lets, true, counted);
-            if (ilet === '\x1b') {
-                if (game.flags?.verbose !== false) await pline('Never mind.');
-                return null;
-            }
-            if (!ilet) continue;
-            const picked = (game.invent || []).find((o) => o.invlet === ilet);
-            if (!picked) {
-                await pline("You don't have that object.");
-                continue;
-            }
-            if (!throw_ok(picked)) {
-                await pline('You cannot throw that!');
-                return null;
-            }
-            const got = await getobj_apply_count(
-                picked, 'throw', counted.cntgiven, counted.cnt,
-            );
-            if (!got) return null;
-            if (got.retry) continue;
-            game._pending_message = '';
-            return got;
-        }
-        const otmp = (game.invent || []).find(o => o.invlet === ch);
-        if (!otmp) {
-            // C: You("don't have that object."); continue;
-            await pline("You don't have that object.");
-            continue;
-        }
-        if (!throw_ok(otmp)) {
-            await pline('You cannot throw that!');
-            return null;
-        }
-        const got = await getobj_apply_count(
-            otmp, 'throw', counted.cntgiven, counted.cnt,
-        );
-        if (!got) return null;
-        if (got.retry) continue;
-        game._pending_message = '';
-        return got;
-    }
 }
 
 function freeinv(otmp) {
@@ -2485,7 +2401,7 @@ export async function dothrow() {
     // C ref: dothrow.c dothrow — ok_to_throw before getobj
     if (!(await ok_to_throw())) return 0;
 
-    const obj = await getobj_throw();
+    const obj = await getobj('throw', throw_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
     if (!obj) return 0;
 
     // C: getdir — cmdassist on invalid keys (same as dofire)

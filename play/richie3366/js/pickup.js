@@ -9,7 +9,7 @@ import { rn2, rnd, d } from './rng.js';
 import {
     objects_at, obj_extract_self, splitobj, weight, add_to_container,
     place_object, hornoplenty, unbless, mergable, delobj, set_corpsenm,
-    unsplitobj, spot_time_left,
+    unsplitobj, spot_time_left, nxtobj,
 } from './mkobj.js';
 import {
     look_here, observe_object, dfeature_at, paint_corner_nhw_menu,
@@ -17,10 +17,14 @@ import {
     let_to_name, DEF_INV_ORDER, prinv, near_capacity, calc_capacity,
     max_capacity, compactify_invlets, getobj_take_count, getobj_apply_count,
     getobj_from_cmdq, getobj_display_pickinv, freeinv, display_inventory,
-    splittable, will_feel_cockatrice, is_worn, not_fully_identified,
-    taking_off, count_unpaid, getobj, Blind,
+    splittable, will_feel_cockatrice, feel_cockatrice, is_worn,
+    not_fully_identified,
+    taking_off, count_unpaid, getobj, Blind, hold_another_object,
 } from './invent.js';
-import { nomul, check_special_room, is_pool, is_lava, in_rooms, dosinkfall, SURFACE_AT, switch_terrain, maybe_half_phys } from './hack.js';
+import {
+    nomul, check_special_room, is_pool, is_lava, in_rooms, dosinkfall,
+    SURFACE_AT, switch_terrain, maybe_half_phys, waterbody_name,
+} from './hack.js';
 import {
     flush_screen, pline, newsym, docrt, bot, flush_topl_more, canseemon,
     canspotmon, Hallucination, clear_nhwindow_message, Norep, impossible,
@@ -40,8 +44,9 @@ import {
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT,
     OBJ_FREE, OBJ_CONTAINED,
     is_pit, LOST_DROPPED,
-    STONE, ICE, MAX_TYPE,
+    STONE, ICE, MAX_TYPE, STAIRS, HOLE, TRAPDOOR,
     IS_POOL, IS_LAVA, IS_FURNITURE, IS_WATERWALL, IS_SINK,
+    IS_THRONE, IS_FOUNTAIN, IS_DOOR, IS_ALTAR, D_ISOPEN,
     LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE, LOOKHERE_NOFLAGS,
     Has_contents, Is_container, Is_box,
     Never_mind,
@@ -61,10 +66,16 @@ import {
     AUTOUNLOCK_APPLY_KEY,
     nothing_seems_to_happen, nothing_happens, something, engulfing_u,
     HAND, FOOT, NO_MINVENT, MM_ADJACENTOK, MM_NOMSG, ONAME_NO_FLAGS,
-    ARTICLE_A, RLOC_NOMSG, TIMEOUT, I_SPECIAL, FAILEDUNTRAP, NO_TRAP,
-    MELT_ICE_AWAY, LEVITATION, WARNING, u_at,
+    ARTICLE_A, ARTICLE_THE, RLOC_NOMSG, TIMEOUT, I_SPECIAL, FAILEDUNTRAP,
+    NO_TRAP,
+    MELT_ICE_AWAY, LEVITATION, WARNING, u_at, FUMBLING, PLNMSG_BACK_ON_GROUND,
+    IS_GRAVE, W_SADDLE, SUPPRESS_SADDLE, ynqchars,
+    P_RIDING, P_BASIC, Is_waterlevel, WWALKING, FLYING, MAGICAL_BREATHING,
 } from './const.js';
-import { t_at, dotrap, drown, lava_effects, instapetrify, float_down, ceiling } from './trap.js';
+import {
+    t_at, dotrap, drown, lava_effects, instapetrify, float_down, ceiling,
+    back_on_ground, uteetering_at_seen_pit, uescaped_shaft,
+} from './trap.js';
 import { nhgetch } from './input.js';
 import { m_at, mnexto } from './mon.js';
 import { oclass_to_sym, select_menu_pick_any, select_menu_pick_one } from './options.js';
@@ -78,8 +89,10 @@ import {
     remote_burglary,
 } from './shk.js';
 import {
-    nohands, M1_NOTAKE, touch_petrifies, poly_when_stoned, is_rider, mons,
+    nohands, nolimbs, M1_NOTAKE, touch_petrifies, poly_when_stoned, is_rider,
+    mons,
     monsterNames,
+    is_floater, is_clinger, likes_lava, is_flyer, breathless,
 } from './monsters.js';
 import { welded, weldmsg, setuwep, setuswapwep, setuqwep } from './wield.js';
 import { yn_function, getlin } from './getline.js';
@@ -89,13 +102,17 @@ import { cansee } from './vision.js';
 import { touch_artifact, youmonst } from './artifact.js';
 import { exercise, A_WIS } from './attrib.js';
 import { inv_cnt } from './steal.js';
-import { trycall, Monnam, christen_monst, oname, rndmonnam, Amonnam, a_monnam, x_monnam } from './do_name.js';
+import { trycall, Monnam, christen_monst, oname, rndmonnam, Amonnam, a_monnam, x_monnam, mon_nam, s_suffix, hliquid } from './do_name.js';
 import { makemon, set_malign } from './makemon.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { hard_helmet } from './do_wear.js';
-import { mdamageu } from './mhitu.js';
+import { mdamageu, digests } from './mhitu.js';
+import { P_SKILL } from './weapon.js';
+import { rider_cant_reach } from './steed.js';
 import { is_ice } from './zap.js';
 import { incr_itimeout_HLevitation } from './potion.js';
+import { which_armor, extract_from_minvent } from './worn.js';
+import { get_adjacent_loc } from './lock.js';
 
 /** C ref: mondata.h notake — M1_NOTAKE. */
 function notake(ptr) {
@@ -790,11 +807,51 @@ function tally_BUCX_list(objs, here) {
 }
 
 /**
- * C ref: pickup.c describe_decor — mention_decor feedback for features.
- * Branch envelope: dfeature_at + skip open door/doorway; furniture/typ
- * change gate; verbose "There is %s here." Named omissions: Fumbling
- * deferred_decor, waterbody_name swamp/pool rename, ice Norep,
- * back_on_ground after pool/lava/ice, decor_fumble/levitate overrides.
+ * C ref: pickup.c force_decor — wand-of-probing / Blind-ice look_here.
+ * Sets decor_fumble_override + optional levitate override, pretends the
+ * previous terrain was STONE, then describe_decor. Named: ice_descr thaw
+ * details behind gd.decor_levitate_override.
+ */
+export async function force_decor(via_probing) {
+    const u = game.u;
+    game.decor_fumble_override = true;
+    game.decor_levitate_override = !!via_probing;
+    if (!game.iflags) game.iflags = {};
+    game.iflags.prev_decor = STONE;
+    await describe_decor();
+    game.decor_fumble_override = false;
+    game.decor_levitate_override = false;
+    const loc = u && game.level?.at(u.ux, u.uy);
+    if (loc && game.lastseentyp?.[u.ux]) {
+        game.lastseentyp[u.ux][u.uy] = loc.typ;
+    }
+}
+
+/**
+ * C ref: pickup.c deferred_decor — mention_decor ice/fumble sequencing.
+ * setup True: remember to catch up; False: describe_decor then clear.
+ */
+export async function deferred_decor(setup) {
+    if (!game.iflags) game.iflags = {};
+    if (!game.flags?.mention_decor) {
+        game.iflags.defer_decor = false;
+    } else if (setup) {
+        game.iflags.defer_decor = true;
+    } else {
+        await describe_decor();
+        game.iflags.defer_decor = false;
+    }
+}
+
+/**
+ * C ref: pickup.c describe_decor `:350–426`.
+ * Branch envelope: Fumbling TIMEOUT==1 defer; dfeature_at skip open
+ * door/doorway; pool/ice from previous; furniture/typ change gate;
+ * waterbody_name when "pool of water"; verbose "There is %s here.";
+ * ICE+mention_decor Norep; back_on_ground after pool/lava/ice.
+ * Named: ice_descr thicker/thinner ice; dfeature_at ice/pool/lava/
+ * throne/drawbridge still partial (so waterhere is rare until those
+ * arms land).
  */
 export async function describe_decor() {
     const u = game.u;
@@ -803,6 +860,14 @@ export async function describe_decor() {
     if (!game.iflags) game.iflags = {};
     const iflags = game.iflags;
     if (iflags.prev_decor == null) iflags.prev_decor = STONE;
+
+    // C: (HFumbling & TIMEOUT) == 1L && !defer_decor && !fumble_override
+    const hf = (u.HFumbling | 0) | (u.uprops?.[FUMBLING]?.intrinsic | 0);
+    if ((hf & TIMEOUT) === 1 && !iflags.defer_decor
+        && !game.decor_fumble_override) {
+        await deferred_decor(true);
+        return false;
+    }
 
     // C: SURFACE_AT (rm.h) via db_under_typ for DRAWBRIDGE_UP (D-1103)
     const ltyp = SURFACE_AT(u.ux, u.uy);
@@ -821,8 +886,7 @@ export async function describe_decor() {
     if (ltyp === iflags.prev_decor && !IS_FURNITURE(ltyp)) {
         res = false;
     } else if (dfeature) {
-        // waterbody_name deferred — keep "pool of water"
-        void waterhere;
+        if (waterhere) dfeature = waterbody_name(u.ux, u.uy);
         if (dfeature !== 'swamp' && ltyp !== ICE) {
             dfeature = an(dfeature);
         }
@@ -832,10 +896,19 @@ export async function describe_decor() {
         } else {
             outbuf = `${upstart(dfeature)}.`;
         }
-        // C: ICE + mention_decor → Norep; use pline for all (Norep deferred)
-        await pline(outbuf);
+        if (ltyp === ICE && game.flags?.mention_decor) {
+            await Norep(outbuf);
+        } else {
+            await pline(outbuf);
+        }
     } else if (!u.Underwater) {
-        // C: back_on_ground when leaving pool/lava/ice — deferred
+        if (IS_POOL(iflags.prev_decor)
+            || IS_LAVA(iflags.prev_decor)
+            || iflags.prev_decor === ICE) {
+            if (iflags.last_msg !== PLNMSG_BACK_ON_GROUND) {
+                await back_on_ground(false);
+            }
+        }
     }
 
     // C: only persist prev_decor when mention_decor is On
@@ -1381,7 +1454,9 @@ function autopick_testobj(otmp) {
 /**
  * C ref: pickup.c pickup(what).
  * Ported envelope: autopickup && (nopick / !OBJ_AT / pool / lava) →
- * describe_decor + read_engr_at; **multi/!pickup/notake** share one
+ * describe_decor + read_engr_at; **can_reach_floor(pit)** describe_decor
+ * even when !mention_decor + read_engr on multi/!pickup/teetering;
+ * **multi/!pickup/notake** share one
  * gate (C pickup.c) so notake still plines under autopickup when
  * `flags.pickup` is off (D-0928 #1127); autopick filter (D-0368) then
  * **always** check_here(n_picked>0) (D-0387); manual `,`
@@ -1400,25 +1475,36 @@ export async function pickup(what) {
     // C: gp.pickup_encumbrance = 0 — used by pickup_object for load feedback
     game.pickup_encumbrance = 0;
 
-    // C: autopickup && (nopick || !OBJ_AT || pool || lava)
-    if (autopickup) {
-        const loc = game.level?.at(u.ux, u.uy);
-        const typ = loc?.typ;
-        const poolish = IS_POOL(typ) && !u.Underwater;
-        const lavaish = IS_LAVA(typ);
-        if (game.context?.nopick || !objects_at(u.ux, u.uy)
-            || poolish || lavaish) {
-            if (game.flags?.mention_decor) await describe_decor();
-            const { read_engr_at } = await import('./engrave.js');
-            await read_engr_at(u.ux, u.uy);
+    // C pickup.c:698–719 — floor arms only when !uswallow
+    if (!u.uswallow) {
+        // C: autopickup && (nopick || !OBJ_AT || pool || lava)
+        if (autopickup) {
+            const loc = game.level?.at(u.ux, u.uy);
+            const typ = loc?.typ;
+            const poolish = IS_POOL(typ) && !u.Underwater;
+            const lavaish = IS_LAVA(typ);
+            if (game.context?.nopick || !objects_at(u.ux, u.uy)
+                || poolish || lavaish) {
+                if (game.flags?.mention_decor) await describe_decor();
+                const { read_engr_at } = await import('./engrave.js');
+                await read_engr_at(u.ux, u.uy);
+                return 0;
+            }
+        }
+
+        // C: can_reach_floor(t && is_pit(t->ttyp)); describe_decor even
+        // when !mention_decor; read_engr if multi/!pickup/teetering/shaft
+        const t = t_at(u.ux, u.uy);
+        if (!can_reach_floor(!!(t && is_pit(t.ttyp)))) {
+            await describe_decor();
+            if (((game.multi | 0) && !game.context?.run)
+                || (autopickup && !game.flags?.pickup)
+                || (t && (uteetering_at_seen_pit(t) || uescaped_shaft(t)))) {
+                const { read_engr_at } = await import('./engrave.js');
+                await read_engr_at(u.ux, u.uy);
+            }
             return 0;
         }
-    }
-
-    if (!can_reach_floor(true)) {
-        // C: describe_decor even when !mention_decor; read_engr arms partial
-        await describe_decor();
-        return 0;
     }
 
     // C ref: pickup.c pickup — multi/!pickup/notake share one gate so
@@ -1528,42 +1614,135 @@ export async function pickup(what) {
 }
 
 /**
- * C ref: hack.c pickup_checks — preflight for #pickup / `,`.
- * Returns >=0 → dopickup done (1=TIME, 0=OK); -1 → normal pickup;
- * -2 engulfer loot deferred as 0.
- * Named omissions: pool/lava dive plines; furniture-specific nothing msgs
- * (generic "nothing here" used); engulfer tongue/loot_mon.
+ * C ref: hack.c pickup_checks `:3788–3872` — preflight for #pickup / `,`.
+ * 1 = cannot pickup, time taken; 0 = cannot, no time; -1 = normal pickup;
+ * -2 = loot the engulfer.
+ * Named: dungeon.c `surface` (reach-fail default "floor"; HOLE/TRAPDOOR
+ * override live).
  */
-function pickup_checks() {
+async function pickup_checks() {
     const u = game.u;
     if (!u) return 0;
 
+    /* C `:3792–3813` uswallow: empty minvent tongue/feel, else loot_mon. */
     if (u.uswallow) {
-        // loot_mon / tongue paths deferred
+        const stuck = u.ustuck;
+        if (!stuck?.minvent) {
+            if (digests(stuck?.data)) {
+                await pline(
+                    `You pick up ${s_suffix(mon_nam(stuck))} tongue.`,
+                );
+                await pline("But it's kind of slimy, so you drop it.");
+            } else {
+                await pline(
+                    `You don't ${Blind() ? 'feel' : 'see'} anything in here to pick up.`,
+                );
+            }
+            return 1;
+        }
+        return -2;
+    }
+
+    const youdata = game.youmonst?.data;
+    const propW = u.uprops?.[WWALKING];
+    const wwalking = !!(((propW?.intrinsic | 0) || (propW?.extrinsic | 0)
+        || (u.HWwalking | 0) || (u.EWwalking | 0)) && !Is_waterlevel(u.uz));
+    const propF = u.uprops?.[FLYING];
+    const blockedF = (u.BFlying | 0) || (propF?.blocked | 0);
+    const flying = !!(((u.HFlying | 0) || (u.EFlying | 0)
+        || (propF?.intrinsic | 0) || (propF?.extrinsic | 0)
+        || (u.usteed && is_flyer(u.usteed.data))) && !blockedF);
+    const propB = u.uprops?.[MAGICAL_BREATHING];
+    const heroBreathless = !!((propB?.intrinsic | 0) || (propB?.extrinsic | 0)
+        || (u.HMagical_breathing | 0) || (u.EMagical_breathing | 0)
+        || breathless(youdata));
+    /* C: Wwalking || is_floater || is_clinger || (Flying && !Breathless) */
+    const reachAbove = wwalking || is_floater(youdata)
+        || is_clinger(youdata) || (flying && !heroBreathless);
+    const underwater = !!(u.uinwater);
+
+    if (is_pool(u.ux, u.uy)) {
+        if (reachAbove) {
+            await pline(
+                `You cannot dive into the ${hliquid('water')} to pick things up.`,
+            );
+            return 0;
+        } else if (!underwater) {
+            await pline(
+                `You can't even see the bottom, let alone pick up ${something}.`,
+            );
+            return 0;
+        }
+    }
+    if (is_lava(u.ux, u.uy)) {
+        if (reachAbove) {
+            await pline("You can't reach the bottom to pick things up.");
+            return 0;
+        } else if (!likes_lava(youdata)) {
+            await pline('You would burn to a crisp trying to pick things up.');
+            return 0;
+        }
+    }
+    if (!objects_at(u.ux, u.uy)) {
+        const lev = game.level?.at(u.ux, u.uy);
+        const typ = lev?.typ | 0;
+        if (IS_THRONE(typ)) {
+            await pline(`It must weigh${lev?.looted ? ' almost' : ''} a ton!`);
+        } else if (IS_SINK(typ)) {
+            await pline('The plumbing connects it to the floor.');
+        } else if (IS_GRAVE(typ)) {
+            await pline("You don't need a gravestone.  Yet.");
+        } else if (IS_FOUNTAIN(typ)) {
+            await pline(`You could drink the ${hliquid('water')}...`);
+        } else if (IS_DOOR(typ) && ((lev?.doormask | 0) & D_ISOPEN)) {
+            await pline("It won't come off the hinges.");
+        } else if (IS_ALTAR(typ)) {
+            await pline('Moving the altar would be a very bad idea.');
+        } else if (typ === STAIRS) {
+            await pline('The stairs are solidly affixed.');
+        } else {
+            await pline('There is nothing here to pick up.');
+        }
         return 0;
     }
-    if (!objects_at(u.ux, u.uy)) return 0; // nothing / furniture → ECMD_OK
-    if (!can_reach_floor(true)) return 0;
+    const traphere = t_at(u.ux, u.uy);
+    if (!can_reach_floor(!!(traphere && is_pit(traphere.ttyp)))) {
+        if (traphere && uteetering_at_seen_pit(traphere)) {
+            await pline('You cannot reach the bottom of the pit.');
+        } else if (u.usteed && P_SKILL(P_RIDING) < P_BASIC) {
+            await rider_cant_reach();
+        } else if (Blind()) {
+            await pline('You cannot reach anything here.');
+        } else {
+            let surf = 'floor';
+            if (traphere) {
+                if ((traphere.ttyp | 0) === HOLE) surf = 'edge of the hole';
+                else if ((traphere.ttyp | 0) === TRAPDOOR) surf = 'trap door';
+            }
+            await pline(`You cannot reach the ${surf}.`);
+        }
+        return 0;
+    }
     return -1;
 }
 
 /**
- * C ref: hack.c dopickup — `#pickup` / `,` command.
- * Clears multi + command_count; pickup_checks then pickup(-count).
+ * C ref: hack.c dopickup `:3876–3892` — `#pickup` / `,`.
+ * Clears multi; pickup_checks then loot_mon (-2) or pickup(-count).
  */
 export async function dopickup() {
     const count = (game.context?.command_count | 0);
     if (game.context) game.context.command_count = 0;
     game.multi = 0;
 
-    const ret = pickup_checks();
+    const ret = await pickup_checks();
     if (ret >= 0) {
-        if (ret === 0 && !objects_at(game.u?.ux, game.u?.uy)) {
-            await pline('There is nothing here to pick up.');
-        }
         return ret ? ECMD_TIME : ECMD_OK;
+    } else if (ret === -2) {
+        const tmpcount = { value: -count };
+        const timepassed = await loot_mon(game.u?.ustuck, tmpcount, null);
+        return timepassed ? ECMD_TIME : ECMD_OK;
     }
-    // ret == -1: normal floor pickup
     const tried = await pickup(-count);
     return tried ? ECMD_TIME : ECMD_OK;
 }
@@ -3513,6 +3692,18 @@ async function loot_floor_containers(x, y) {
     if (!(await able_to_loot(x, y, true))) {
         return { timepassed: 0, c: -1, blocked: true };
     }
+    // C doloot_core `:2228–2240` Blind && !uarmg feel_cockatrice before
+    // asking about containers
+    if (Blind() && !game.u?.uarmg) {
+        let nobj = objects_at(x, y);
+        while (nobj && (nobj.otyp | 0) !== CORPSE) nobj = nobj.nexthere;
+        for (; nobj; nobj = nxtobj(nobj, CORPSE, true)) {
+            if (will_feel_cockatrice(nobj, false)) {
+                await feel_cockatrice(nobj, false);
+                return { timepassed: 1, c: -1, felt: true };
+            }
+        }
+    }
     let timepassed = 0;
     if (num_conts > 1) {
         const pick = await loot_which_containers_menu(x, y);
@@ -3538,19 +3729,100 @@ async function loot_floor_containers(x, y) {
     return { timepassed, c: anyfound ? 'y' : -1 };
 }
 
+/** C youprop.h Confusion / Stunned for doloot_core lootmon. */
+function doloot_Confusion() {
+    const u = game.u || {};
+    return !!((u.HConfusion | 0) || u.Confusion);
+}
+function doloot_Stunned() {
+    const u = game.u || {};
+    return !!((u.HStun | 0) || u.Stunned);
+}
+
 /**
- * C ref: pickup.c doloot / doloot_core — loot container underfoot.
- * Branch envelope: capacity; nohands; lootcont (able_to_loot +
- * num_conts>1 PICK_ANY + do_loot_cont cindex/ccount more_containers);
- * directional lootmon underfoot → lootcont.
- * Named omissions: capacity pline path; Confusion reverse_loot;
- * iflags.menu_requested skip-to-lootmon; grave; saddle; cockatrice;
- * AUTOUNLOCK_FORCE; lootcont→lootmon fallthrough after empty multi-pick;
- * PICK_ANY @ invert / pages / >26 containers.
+ * C ref: pickup.c loot_mon `:2430–2481` — saddle off adjacent mon, then
+ * swallowed `pickup(count)`.
+ * @param {object|null} mtmp
+ * @param {{value:number}|null} [passed_info]
+ * @param {{value:boolean}|null} [prev_loot]
+ * @returns {Promise<number>} timepassed
+ */
+export async function loot_mon(mtmp, passed_info, prev_loot) {
+    let c = -1;
+    let timepassed = 0;
+    const u = game.u || {};
+
+    if (mtmp && mtmp !== u.usteed) {
+        const otmp = which_armor(mtmp, W_SADDLE);
+        if (otmp) {
+            if (passed_info) passed_info.value = 1;
+            const qbuf = `Do you want to remove the saddle from ${
+                x_monnam(mtmp, ARTICLE_THE, null, SUPPRESS_SADDLE, false)
+            }?`;
+            c = await yn_function(qbuf, ynqchars, 'n', true);
+            if (c === 'y') {
+                if (nolimbs(game.youmonst?.data)) {
+                    await pline("You can't do that without limbs.");
+                    return 0;
+                }
+                if (otmp.cursed) {
+                    await pline(
+                        `You can't.  The saddle seems to be stuck to ${
+                            x_monnam(mtmp, ARTICLE_THE, null, SUPPRESS_SADDLE, false)
+                        }.`,
+                    );
+                    return 1;
+                }
+                extract_from_minvent(mtmp, otmp, true, false);
+                if (game.flags?.verbose !== false) {
+                    await pline(
+                        `You take ${thesimpleoname(otmp)} off of ${mon_nam(mtmp)}.`,
+                    );
+                }
+                await hold_another_object(
+                    otmp, 'You drop %s!', doname(otmp), null,
+                );
+                timepassed = rnd(3);
+                if (prev_loot) prev_loot.value = true;
+            } else if (c === 'q') {
+                return 0;
+            }
+        }
+    }
+    if (u.uswallow) {
+        const count = passed_info ? (passed_info.value | 0) : 0;
+        timepassed = await pickup(count);
+    }
+    return timepassed;
+}
+
+/**
+ * C ref: pickup.c doloot `:2166–2174` — set loot_reset_justpicked around
+ * doloot_core (addinv_core0 resets pickup_prev once).
  */
 export async function doloot() {
+    game.loot_reset_justpicked = true;
+    const res = await doloot_core();
+    game.loot_reset_justpicked = false;
+    return res;
+}
+
+/**
+ * C ref: pickup.c doloot_core `:2178–2346` — lootcont then lootmon.
+ * Named omissions: Confusion reverse_loot; AUTOUNLOCK_FORCE;
+ * PICK_ANY @ invert / pages / >26 containers.
+ */
+async function doloot_core() {
     const u = game.u;
     if (!u) return ECMD_OK;
+
+    let c = -1;
+    let timepassed = 0;
+    let cc = { x: u.ux, y: u.uy };
+    let underfoot = true;
+    const dont_find_anything = "don't find anything";
+    const prev_inquiry = { value: 0 };
+    const prev_loot = { value: false };
 
     // C: ga.abort_looting = FALSE;
     game.abort_looting = false;
@@ -3568,44 +3840,83 @@ export async function doloot() {
         await pline('You have no hands!');
         return ECMD_OK;
     }
+    // C: Confusion rn2(6)&&reverse_loot / rn2(2) "Being confused…" — named omit
 
-    const floor = await loot_floor_containers(u.ux, u.uy);
-    if (floor.blocked) return ECMD_OK;
-    if (floor.aborted) return floor.timepassed ? ECMD_TIME : ECMD_OK;
-    let timepassed = floor.timepassed | 0;
-    const c = floor.c;
+    cc = { x: u.ux, y: u.uy };
+    // C: if (iflags.menu_requested) goto lootmon
+    let at_lootmon = !!(game.iflags?.menu_requested);
 
-    // C: doloot_core lootmon — get_adjacent_loc when mon_beside
-    if (c !== 'y' && (mon_beside(u.ux, u.uy) || game.flags?.menu_requested)) {
-        const { getdir_cmdassist } = await import('./dothrow.js');
-        const dir = await getdir_cmdassist('Loot in what direction?');
-        if (!dir) {
-            await pline('Never mind.');
-            return timepassed ? ECMD_TIME : ECMD_OK;
-        }
-        const cc = { x: u.ux + dir.dx, y: u.uy + dir.dy };
-        const underfoot = cc.x === u.ux && cc.y === u.uy;
-        if (underfoot && container_at(cc.x, cc.y, false)) {
-            // C: goto lootcont
-            const again = await loot_floor_containers(cc.x, cc.y);
-            if (again.blocked) return ECMD_OK;
-            timepassed |= again.timepassed;
-            return timepassed ? ECMD_TIME : ECMD_OK;
-        }
-        for (let o = objects_at(cc.x, cc.y); o; o = o.nexthere) {
-            if (Is_container(o)) {
-                await pline('You have to be at a container to loot it.');
-                return timepassed ? ECMD_TIME : ECMD_OK;
+    for (;;) {
+        if (!at_lootmon) {
+            const floor = await loot_floor_containers(cc.x, cc.y);
+            if (floor.felt) return ECMD_TIME;
+            if (floor.blocked) return ECMD_OK;
+            if (floor.aborted) return floor.timepassed ? ECMD_TIME : ECMD_OK;
+            timepassed |= floor.timepassed | 0;
+            c = floor.c;
+            if (c === -1 && !container_at(cc.x, cc.y, false)) {
+                const loc = game.level?.at(cc.x, cc.y);
+                if (IS_GRAVE(loc?.typ)) {
+                    await pline(
+                        'You need to dig up the grave to effectively loot it...',
+                    );
+                }
             }
         }
-        await pline(
-            `You don't find anything ${underfoot ? 'here' : 'there'} to loot.`,
-        );
-        return timepassed ? ECMD_TIME : ECMD_OK;
-    }
+        at_lootmon = false;
 
-    if (c !== 'y' && c !== 'n') {
-        await pline("You don't find anything here to loot.");
+        // C lootmon `:2296–2344`
+        if (c !== 'y' && (mon_beside(u.ux, u.uy) || game.iflags?.menu_requested)) {
+            let looted_mon = false;
+            const adj = await get_adjacent_loc(
+                'Loot in what direction?',
+                'Invalid loot location',
+            );
+            if (!adj) return ECMD_OK;
+            cc = adj;
+            underfoot = u_at(cc.x, cc.y);
+            if (underfoot && container_at(cc.x, cc.y, false)) {
+                continue; // C: goto lootcont
+            }
+            if ((u.dz | 0) < 0) {
+                await pline(
+                    `You ${dont_find_anything} to loot on the ${ceiling(cc.x, cc.y)}.`,
+                );
+                return ECMD_TIME;
+            }
+            const mtmp = m_at(cc.x, cc.y);
+            if (mtmp) {
+                timepassed = await loot_mon(mtmp, prev_inquiry, prev_loot);
+                if (timepassed) looted_mon = true;
+            }
+            if (doloot_Confusion() || doloot_Stunned()) timepassed = 1;
+
+            if (!looted_mon) {
+                if (!underfoot && container_at(cc.x, cc.y, false)) {
+                    if (mtmp) {
+                        await pline(
+                            `You can't loot anything ${
+                                prev_inquiry.value ? 'else ' : ''
+                            }there with ${mon_nam(mtmp)} in the way.`,
+                        );
+                        return timepassed ? ECMD_TIME : ECMD_OK;
+                    }
+                    await pline('You have to be at a container to loot it.');
+                } else {
+                    await pline(
+                        `You ${dont_find_anything} ${
+                            prev_inquiry.value || prev_loot.value ? 'else ' : ''
+                        }${!underfoot ? 't' : ''}here to loot.`,
+                    );
+                    return timepassed ? ECMD_TIME : ECMD_OK;
+                }
+            }
+        } else if (c !== 'y' && c !== 'n') {
+            await pline(
+                `You ${dont_find_anything} ${underfoot ? 'here' : 'there'} to loot.`,
+            );
+        }
+        break;
     }
     return timepassed ? ECMD_TIME : ECMD_OK;
 }

@@ -14,17 +14,23 @@
 // PORT_HELP deferred.
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, rn2_on_display_rng } from './rng.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, docrt, more,
     mon_glyph, obj_glyph, look_shown_at, terrain_glyph, Hallucination,
     glyph_to_obj_at, glyph_at, glyph_is_trap, glyph_to_trap,
+    glyph_is_monster, glyph_is_object, glyph_is_warning,
+    glyph_is_invisible_id, glyph_is_nothing, glyph_is_unexplored,
+    glyph_is_cmap, glyph_to_cmap, glyph_to_obj, glyph_to_warning,
+    canspotself, mon_to_glyph, hero_Invisible,
+    set_bot_disabled, tty_nhbell,
 } from './display.js';
 import { howmonseen } from './vision.js';
 import { getlin, yn_function } from './getline.js';
 import {
-    paint_corner_nhw_menu, dfeature_at, display_inventory, observe_object,
+    paint_corner_nhw_menu, dismiss_nhw_menu, dfeature_at, display_inventory,
+    observe_object, process_menu_search,
 } from './invent.js';
 import { stairway_at, known_branch_stairs } from './mklev.js';
 import {
@@ -37,11 +43,15 @@ import {
     doname, an, xname, singular, ansimpleoname, distant_name, simpleonames,
     makeplural,
 } from './objnam.js';
-import { distant_monnam_none, pmname, Ugender } from './do_name.js';
+import { distant_monnam_none, pmname, Ugender, mon_nam, rndmonnam } from './do_name.js';
 import { hides_under, is_hider, is_clinger, is_flyer, mons,
     M2_HUMAN, M2_ELF, M2_ORC, M2_DEMON,
 } from './monsters.js';
-import { is_pool } from './hack.js';
+import { is_pool, waterbody_name } from './hack.js';
+import { altarmask_at } from './pray.js';
+import { align_str } from './roles.js';
+import { is_drawbridge_wall } from './dbridge.js';
+import { PM_WIZARD, PM_GNOME } from './generated/monsters_data.js';
 import { visible_region_at } from './region.js';
 import { engr_at } from './engrave.js';
 import { option_help_lines } from './options.js';
@@ -54,17 +64,19 @@ import {
     objectNames, objectNameStrs, COIN_CLASS,
 } from './objects.js';
 import {
-    BOLT_LIM, COLNO, ROWNO, STAIRS, LA_DOWN, ROOM, CORR, STONE, SCORR, TREE,
-    CLOUD,
+    BOLT_LIM, COLNO, ROWNO, STAIRS, LA_DOWN, ROOM, CORR, STONE, SCORR,
     GPCOORDS_NONE, GPCOORDS_MAP, GPCOORDS_COMPASS, GPCOORDS_SCREEN,
-    STRAT_WAITMASK, IS_WALL, Upolyd, Is_airlevel,
+    STRAT_WAITMASK, IS_WALL, Upolyd, Is_airlevel, Is_waterlevel, Is_astralevel,
+    u_at, TER_MON, Amask2align, AM_SANCTUM, AM_MASK, D_BROKEN, D_TRAPPED,
+    S_altar, S_ndoor, S_cloud, S_pool, S_water, S_lava, S_lavawall, S_ice,
+    S_engroom, S_engrcorr, S_stone, S_room, S_darkroom, def_warnsyms,
     OBJ_FREE, OBJ_FLOOR, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER,
     M_AP_TYPMASK, M_AP_F_DKNOWN,
     MCORPSENM, has_mcorpsenm, MALE, FEMALE,
     MHID_PREFIX, MHID_ARTICLE, MHID_ALTMON, MHID_REGION,
     MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT,
     MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON,
-    CMDQ_KEY,
+    CMDQ_KEY, MENU_SEARCH, PICK_ONE,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR, DEC_TO_UNICODE } from './terminal.js';
 import { DAT_TEXT } from './generated/dat_text.js';
@@ -959,76 +971,184 @@ export function mhidden_description(mon, mhid_flags) {
 }
 
 /**
+ * C pager.c invisexplain — remembered unseen creature (lookat `:727`).
+ */
+const INVIS_EXPLAIN = 'remembered, unseen, creature';
+
+/**
+ * C ref: pager.c lookat `:656–802`.
+ * Fills firstmatch for auto_describe / whatis getpos (do_screen_description
+ * overwrites firstmatch with this buf when found>1 || need_to_look).
+ * Glyph-first: GLYPH_UNEXPLORED → "unexplored area"; cmap S_stone +
+ * !seenv → "unexplored". Returns { buf, monbuf, pm }.
+ */
+export function lookat(x, y) {
+    const u = game.u || {};
+    let buf = '';
+    let monbuf = '';
+    let pm = null;
+    const glyph = glyph_at(x, y);
+    const terrainmode = game.iflags?.terrainmode | 0;
+    const save_uswallow = !!(game.iflags?.save_uswallow);
+
+    if (
+        u_at(x, y) && canspotself()
+        && !(save_uswallow
+            && u.ustuck
+            && glyph === mon_to_glyph(u.ustuck, rn2_on_display_rng))
+        && (!terrainmode || (terrainmode & TER_MON) !== 0)
+    ) {
+        buf = self_lookat();
+        /* file lookup can't distinguish "gnomish wizard" vs the role */
+        if (
+            (game.urole?.mnum | 0) === PM_WIZARD
+            && (game.urace?.mnum | 0) === PM_GNOME
+            && !Upolyd(u)
+        ) {
+            pm = mons(PM_WIZARD);
+        }
+        if (
+            (hero_Invisible() || u.uundetected)
+            && !Blind_look()
+            && !(u.uswallow || save_uswallow)
+        ) {
+            let how = 0;
+            if ((u.HInfravision | 0) || (u.EInfravision | 0) || u.Infravision) {
+                how |= 1;
+            }
+            if ((u.ETelepat | 0) || u.Unblind_telepat) how |= 2;
+            if (
+                (u.HDetect_monsters | 0)
+                || (u.EDetect_monsters | 0)
+                || u.Detect_monsters
+            ) {
+                how |= 4;
+            }
+            if (how) {
+                buf += ` [seen: ${how & 1 ? 'infravision' : ''}${
+                    (how & 3) > 2 ? ', ' : ''}${
+                    how & 2 ? 'telepathy' : ''}${
+                    (how & 7) > 4 ? ', ' : ''}${
+                    how & 4 ? 'monster detection' : ''}]`;
+            }
+        }
+    } else if (u.uswallow) {
+        buf = `interior of ${mon_nam(u.ustuck)}`;
+        pm = u.ustuck?.data || null;
+    } else if (glyph_is_monster(glyph)) {
+        const mtmp = mon_at(x, y);
+        if (mtmp) {
+            buf = look_at_monster_buf(mtmp);
+            monbuf = howmonseen_look_buf(mtmp);
+            pm = mtmp.data || null;
+        } else if (Hallucination()) {
+            buf = rndmonnam(null);
+        }
+    } else if (glyph_is_object(glyph)) {
+        buf = look_at_object(x, y, glyph_to_obj(glyph));
+    } else if (glyph_is_trap(glyph)) {
+        buf = trap_description(glyph_to_trap(glyph), x, y);
+    } else if (glyph_is_warning(glyph)) {
+        const warnindx = glyph_to_warning(glyph);
+        buf = def_warnsyms[warnindx]?.desc
+            || def_warnsyms[warnindx]?.explanation
+            || 'unknown creature causing you worry';
+    } else if (glyph_is_invisible_id(glyph)) {
+        buf = INVIS_EXPLAIN;
+    } else if (glyph_is_nothing(glyph)) {
+        buf = 'dark part of a room';
+    } else if (glyph_is_unexplored(glyph)) {
+        if (u.Underwater && !Is_waterlevel(u.uz)) {
+            buf = next2u_look(x, y) ? 'land' : 'unknown';
+        } else {
+            buf = 'unexplored area';
+        }
+    } else if (glyph_is_cmap(glyph)) {
+        const loc = game.level?.at?.(x, y);
+        const symidx = glyph_to_cmap(glyph);
+        switch (symidx) {
+        case S_altar: {
+            const amsk = altarmask_at(x, y);
+            const algn = Amask2align(amsk & AM_MASK);
+            const high = (amsk & AM_SANCTUM) ? 'high ' : '';
+            const aligned = (Is_astralevel(u.uz) && !next2u_look(x, y)
+                && (amsk & AM_SANCTUM))
+                ? 'aligned'
+                : align_str(algn);
+            buf = `${aligned} ${high}altar`;
+            break;
+        }
+        case S_ndoor:
+            if (is_drawbridge_wall(x, y) >= 0) {
+                buf = 'open drawbridge portcullis';
+            } else if (((loc?.doormask | 0) & ~D_TRAPPED) === D_BROKEN) {
+                buf = 'broken door';
+            } else {
+                buf = 'doorway';
+            }
+            break;
+        case S_cloud:
+            buf = Is_airlevel(u.uz) ? 'cloudy area' : 'fog/vapor cloud';
+            break;
+        case S_pool:
+        case S_water:
+        case S_lava:
+        case S_lavawall:
+        case S_ice:
+            buf = waterbody_name(x, y);
+            break;
+        case S_engroom:
+        case S_engrcorr:
+            buf = 'engraving';
+            break;
+        case S_room:
+        case S_darkroom:
+            /* C lookat default → defsyms[S_room]/[S_darkroom]. JS gbuf
+             * often stores S_room for both (DARKROOMSYM paint). Reconstruct
+             * C newsym: !cansee && (!waslit || dark_room) → S_darkroom
+             * (D-0812). */
+            buf = room_cmap_explanation(x, y, loc);
+            break;
+        case S_stone:
+            if (!loc?.seenv) {
+                buf = 'unexplored';
+                break;
+            } else if (u.Underwater && !Is_waterlevel(u.uz)) {
+                buf = next2u_look(x, y) ? 'land' : 'unknown';
+                break;
+            } else if ((loc?.typ | 0) === STONE || (loc?.typ | 0) === SCORR) {
+                buf = 'stone';
+                break;
+            }
+            /* FALLTHROUGH — remembered S_stone on other typ */
+            buf = defsym_explanation(symidx);
+            break;
+        default:
+            buf = defsym_explanation(symidx);
+            break;
+        }
+    } else {
+        buf = 'unexplored area';
+    }
+    return {
+        buf,
+        monbuf,
+        pm: (pm && !Hallucination()) ? pm : null,
+    };
+}
+
+/**
  * C ref: getpos.c auto_describe — prints firstmatch after
  * do_screen_description(+lookat), not the full out_str / dfeature_at.
  * Stairs: DECgraphics showsyms keep '<'/'>' for stairs while ladders use
  * ≤/≥, so cmap match is ordinary+branch staircase only; lookat overwrites
  * firstmatch with S_br* / S_*stair explanation.
  *
- * C ref: pager.c lookat — trap glyph before cmap; cmap default
- * defsyms[].explanation for walls/floors (not stairs_description /
- * dfeature_at destination text).
+ * C do_screen_description didlook: blocked-staircase rewrite after lookat.
  */
 function brief_at(x, y) {
-    const u = game.u || {};
-    if (u.ux === x && u.uy === y) {
-        return self_lookat();
-    }
-    // C lookat `:718–721` — trap tnum is the gbuf glyph, not ftrap.
-    // Dummytrap chests/doors are map_trap only; maketrap returns null.
-    const glyph = glyph_at(x, y);
-    if (glyph_is_trap(glyph)) {
-        return trap_description(glyph_to_trap(glyph), x, y);
-    }
-    // C lookat: glyph_is_monster then glyph_is_object (getpos describeAt)
-    const objTyp = glyph_to_obj_at(x, y);
-    const mtmp = mon_at(x, y);
-    if (mtmp && objTyp < 0) {
-        return look_at_monster_buf(mtmp);
-    }
-    if (objTyp >= 0) return look_at_object(x, y, objTyp);
-    // C do_screen_description: lookat stairs then blocked rewrite
-    if (is_stair_spot(x, y)) {
-        return maybe_blocked_staircase_down(stair_cmap_explanation(x, y));
-    }
-    const feat = dfeature_at(x, y);
-    if (feat) return feat;
-    const e = engr_at(x, y);
-    if (e?.engr_txt) return 'engraving';
-    const loc = game.level?.at?.(x, y);
-    if (!loc) return 'dark part of a room';
-    // C lookat glyph_at before typ: blank showsym may be S_stone even when
-    // levl.typ is CORR (memory lastseentyp STONE). case S_stone + seenv →
-    // "stone" (STONE|SCORR or fallthrough defsyms[S_stone].explanation).
-    const ch = loc.disp_ch;
-    if (!ch || ch === ' ') {
-        if (!loc.seenv) return 'unexplored';
-        const last = game.lastseentyp?.[x]?.[y] | 0;
-        if (
-            last === STONE || last === SCORR
-            || loc.typ === STONE || loc.typ === SCORR
-        ) {
-            return 'stone';
-        }
-    }
-    // C lookat glyph_is_cmap → defsyms[].explanation
-    if (IS_WALL(loc.typ)) return 'wall';
-    // C lookat case S_cloud — Is_airlevel ? "cloudy area" : "fog/vapor cloud"
-    if (loc.typ === CLOUD) {
-        return Is_airlevel(game.u?.uz) ? 'cloudy area' : 'fog/vapor cloud';
-    }
-    // C lookat: displayed S_room vs S_darkroom / NOTHING (D-0812)
-    if (loc.typ === ROOM) return room_cmap_explanation(x, y, loc);
-    if (loc.typ === CORR) {
-        return loc.lit || game.flags?.lit_corridor ? 'lit corridor' : 'corridor';
-    }
-    // C defsym.h PCHAR S_tree → "tree" (lookat default arm)
-    if (loc.typ === TREE) return 'tree';
-    if (loc.typ === STONE) {
-        if (!loc.seenv) return 'unexplored';
-        return 'stone';
-    }
-    return '';
+    const { buf } = lookat(x, y);
+    return maybe_blocked_staircase_down(buf);
 }
 
 /**
@@ -1374,19 +1494,58 @@ async function whatis_menu_choice() {
         { text: 'e - nearby engravings', attr: 0 },
         { text: 'E - all seen or remembered engravings', attr: 0 },
     ];
-    for (;;) {
+    const searchItems = entries
+        .filter((e) => e.text && e.text[1] === ' ' && e.text[0] !== '')
+        .filter((e) => '/i?mMoOtTeE'.includes(e.text[0]))
+        .map((e) => ({
+            selectable: true,
+            selector: e.text[0],
+            menuStr: e.text,
+        }));
+    // C windows.c select_menu gb.bot_disabled wrap.
+    const _botPrev = set_bot_disabled(true);
+    try {
         await paint_corner_nhw_menu(entries, '(end) ');
-        const key = await nhgetch();
-        game._menu_overlay = false;
-        await docrt();
         await flush_screen(1);
-        const ch = String.fromCharCode(key);
-        if (key === 27 || ch === 'q') return 'q';
-        if (ch === '\r' || ch === '\n' || ch === ' ') continue;
-        // lootabc false: y ≡ /, n ≡ ?
-        if (ch === 'y') return '/';
-        if (ch === 'n') return '?';
-        if ('/i?mMoOtTeE'.includes(ch)) return ch;
+        for (;;) {
+            const key = await nhgetch();
+            const ch = String.fromCharCode(key);
+            // C process_menu_window MENU_SEARCH `:1698–1731` before dismiss.
+            if (ch === MENU_SEARCH) {
+                const res = await process_menu_search(searchItems, PICK_ONE);
+                if (res.kind === 'finish' && res.item) {
+                    await dismiss_nhw_menu();
+                    return res.item.selector;
+                }
+                continue;
+            }
+            if (key === 27 || ch === 'q') {
+                await dismiss_nhw_menu();
+                return 'q';
+            }
+            if (ch === '\r' || ch === '\n' || ch === ' ') {
+                // C PICK_ONE space on last page finishes with n==0; look-at
+                // treats that as re-prompt. Do not docrt/cls.
+                continue;
+            }
+            // lootabc false: y ≡ /, n ≡ ?
+            if (ch === 'y') {
+                await dismiss_nhw_menu();
+                return '/';
+            }
+            if (ch === 'n') {
+                await dismiss_nhw_menu();
+                return '?';
+            }
+            if ('/i?mMoOtTeE'.includes(ch)) {
+                await dismiss_nhw_menu();
+                return ch;
+            }
+            // C process_menu_window default: tty_nhbell(); no redraw.
+            tty_nhbell();
+        }
+    } finally {
+        set_bot_disabled(_botPrev);
     }
 }
 
@@ -1795,19 +1954,23 @@ export async function dohelp() {
         ...items.map(it => ({ text: `${it.key} - ${it.text}`, attr: 0 })),
     ];
 
+    await paint_corner_nhw_menu(entries, '(end) ');
+    await flush_screen(1);
     for (;;) {
-        await paint_corner_nhw_menu(entries, '(end) ');
         const key = await nhgetch();
-        game._menu_overlay = false;
-        await docrt();
-        await flush_screen(1);
         const ch = String.fromCharCode(key);
-        if (key === 27 || ch === 'q') return 0;
+        if (key === 27 || ch === 'q') {
+            await dismiss_nhw_menu();
+            return 0;
+        }
         if (ch === '\r' || ch === '\n' || ch === ' ') continue;
         const it = items.find(x => x.key === ch);
         if (it) {
+            await dismiss_nhw_menu();
             await it.fn();
             return 0;
         }
+        // C process_menu_window default: tty_nhbell(); no docrt/cls.
+        tty_nhbell();
     }
 }

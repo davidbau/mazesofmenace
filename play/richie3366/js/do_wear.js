@@ -5,9 +5,8 @@
 // armoroff, *_off.
 
 import { game } from './gstate.js';
-import { nhgetch } from './input.js';
 import {
-    flush_screen, flush_topl_more, pline, You_feel, mark_topline_prompt,
+    flush_topl_more, pline, You_feel, mark_topline_prompt,
     newsym, see_monsters, urgent_pline, impossible,
 } from './display.js';
 import { yn_function } from './getline.js';
@@ -26,7 +25,7 @@ import { cmdq_pop, cmdq_clear } from './cmd.js';
 import { set_occupation } from './engrave.js';
 import {
     makeknown, observe_object, ggetobj, is_worn, silly_thing, update_inventory,
-    weapon_descr,
+    weapon_descr, getobj,
 } from './invent.js';
 import { w_blocks } from './worn.js';
 import { monstunseesu_prop } from './mondata.js';
@@ -57,6 +56,8 @@ import {
     BUCX_TYPES, SIGNAL_NOMENU, USE_INVLET, INVORDER_SORT, PICK_ANY,
     HAND, FOOT, FINGER, TT_BEARTRAP, TT_INFLOOR, P_SHORT_SWORD, P_SABER,
     rightleftchars, RIGHT_HANDED,
+    GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_INACCESS, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST,
+    GETOBJ_NOFLAGS,
 } from './const.js';
 import { x_monnam } from './do_name.js';
 import {
@@ -1226,6 +1227,28 @@ export async function dotakeoff() {
 }
 
 /**
+ * C do_wear.c doremring `:1873–1889` — 'R' remove accessory.
+ * count_worn_stuff(TRUE); getobj when Naccessories!=1 or ParanoidRemove
+ * or canned. Named omit: uskin merged-with-skin (dotakeoff).
+ * @returns {Promise<number>} 0 cancel, 1 took time
+ */
+export async function doremring() {
+    let otmp = count_worn_stuff(true);
+    if (!Naccessories && !Narmorpieces) {
+        await pline('Not wearing any accessories or armor.');
+        return 0;
+    }
+    const paranoid = !!(game.flags?.paranoid_confirm?.remove
+        || game.flags?.paranoid_remove);
+    const canned = !!(game._cmdq_canned && game._cmdq_canned.length);
+    if (Naccessories !== 1 || paranoid || canned) {
+        otmp = await getobj('remove', remove_ok, GETOBJ_NOFLAGS);
+    }
+    if (!otmp) return 0;
+    return armor_or_accessory_off(otmp);
+}
+
+/**
  * C ref: invent.c wearing_armor — any armor slot occupied.
  */
 function wearing_armor() {
@@ -1751,111 +1774,91 @@ export async function canwearobj(otmp, maskOut, noisy) {
     return !err ? 1 : 0;
 }
 
-async function wear_lets() {
-    // C wear_ok / equip_ok(FALSE, accessory=FALSE): SUGGEST wearable armor;
-    // accessories are GETOBJ_DOWNPLAY (letter still works, not in prompt).
-    const lets = [];
-    for (const o of game.invent || []) {
-        if (!o?.invlet) continue;
-        if ((o.owornmask || 0) & (W_ARMOR | W_ACCESSORY)) continue;
-        if (o.oclass === ARMOR_CLASS) {
-            const dummy = { mask: 0 };
-            if (await canwearobj(o, dummy, false)) lets.push(o.invlet);
-        }
-    }
-    return lets.sort().join('');
+/**
+ * C do_wear.c canwearobj `:2029–2206` with noisy=FALSE — slot occupancy
+ * only (equip_ok DOWNPLAY). Named omit vs full C: polyform
+ * cantweararm/horns/slithy/centaur, welded bimanual, shield+twoweap,
+ * utrap boots, Glib gloves.
+ * @param {object} otmp
+ * @returns {number} 1 fit, 0 no
+ */
+function canwearobj_silent(otmp) {
+    const u = game.u || {};
+    if ((otmp.owornmask || 0) & W_ARMOR) return 0;
+    if (is_helmet(otmp)) return u.uarmh ? 0 : 1;
+    if (is_shield(otmp)) return u.uarms ? 0 : 1;
+    if (is_boots(otmp)) return u.uarmf ? 0 : 1;
+    if (is_gloves(otmp)) return u.uarmg ? 0 : 1;
+    if (is_shirt(otmp)) return (u.uarm || u.uarmc || u.uarmu) ? 0 : 1;
+    if (is_cloak(otmp)) return u.uarmc ? 0 : 1;
+    if (is_suit(otmp)) return (u.uarmc || u.uarm) ? 0 : 1;
+    return 0;
 }
 
-/** C ref: invent.c getobj("wear", wear_ok, GETOBJ_NOFLAGS) */
-async function getobj_wear() {
-    for (;;) {
-        await flush_topl_more();
-        const lets = await wear_lets();
-        // C invent.c getobj: empty suggested buf → " [*]" (not "[*?]");
-        // DOWNPLAY accessories set forceprompt so the prompt still appears.
-        const query = lets
-            ? `What do you want to wear? [${lets} or ?*]`
-            : 'What do you want to wear? [*]';
-        const prompt = `${query} `;
-        game._pending_message = prompt;
-        await flush_screen(1);
-        const disp = game.nhDisplay;
-        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
-
-        const key = await nhgetch();
-        const ch = String.fromCharCode(key);
-        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
-            if (game.flags?.verbose !== false) await pline('Never mind.');
-            return null;
+/**
+ * C do_wear.c equip_ok `:3403–3447` — wear/puton/takeoff getobj ranks.
+ * Worn XOR removing → EXCLUDE_INACCESS ("else"). Accessory vs armor
+ * class → DOWNPLAY (forceprompt). Unwearable armor → DOWNPLAY.
+ * Removing + covering cloak/suit/gloves → EXCLUDE_INACCESS.
+ * @param {object|null} obj
+ * @param {boolean} removing
+ * @param {boolean} accessory
+ * @returns {number} GETOBJ_*
+ */
+function equip_ok(obj, removing, accessory) {
+    if (!obj) return GETOBJ_EXCLUDE;
+    const is_worn = ((obj.owornmask || 0) & (W_ARMOR | W_ACCESSORY)) !== 0;
+    if (removing !== is_worn) return GETOBJ_EXCLUDE_INACCESS;
+    if (obj.oclass !== ARMOR_CLASS && obj.oclass !== RING_CLASS
+        && obj.oclass !== AMULET_CLASS) {
+        if (obj.otyp !== MEAT_RING && obj.otyp !== BLINDFOLD
+            && obj.otyp !== TOWEL && obj.otyp !== LENSES) {
+            return GETOBJ_EXCLUDE;
         }
-        if (ch === '?' || ch === '*') {
-            await pline('Never mind.');
-            return null;
-        }
-        const otmp = (game.invent || []).find((o) => o.invlet === ch);
-        if (!otmp) {
-            await pline("You don't have that object.");
-            continue;
-        }
-        game._pending_message = '';
-        return otmp;
     }
+    if (accessory !== (obj.oclass !== ARMOR_CLASS)) return GETOBJ_DOWNPLAY;
+    if (obj.oclass === ARMOR_CLASS && !removing && !canwearobj_silent(obj)) {
+        return GETOBJ_DOWNPLAY;
+    }
+    /* C `:3438–3443` — removing inaccessible (cloak/suit/gloves). */
+    if (removing && !game.item_action_in_progress) {
+        if (equip_inaccessible(obj, obj.oclass === RING_CLASS)) {
+            return GETOBJ_EXCLUDE_INACCESS;
+        }
+    }
+    return GETOBJ_SUGGEST;
 }
 
-async function puton_lets() {
-    // C puton_ok / equip_ok(FALSE, accessory=TRUE): SUGGEST accessories;
-    // armor is GETOBJ_DOWNPLAY (letter still works, not in prompt).
-    const lets = [];
-    for (const o of game.invent || []) {
-        if (!o?.invlet) continue;
-        if ((o.owornmask || 0) & (W_ARMOR | W_ACCESSORY)) continue;
-        if (
-            o.oclass === RING_CLASS
-            || o.oclass === AMULET_CLASS
-            || o.otyp === BLINDFOLD
-            || o.otyp === TOWEL
-            || o.otyp === LENSES
-            || o.otyp === MEAT_RING
-        ) {
-            lets.push(o.invlet);
-        }
-    }
-    return lets.sort().join('');
+/**
+ * C do_wear.c inaccessible_equipment `:3340–3400` with verb=NULL.
+ * Suit under cloak, shirt under suit/cloak, ring under gloves.
+ * @param {object} obj
+ * @param {boolean} only_if_known_cursed
+ */
+function equip_inaccessible(obj, only_if_known_cursed) {
+    if (!obj || !obj.owornmask) return false;
+    const u = game.u || {};
+    const anycovering = !only_if_known_cursed;
+    const blocks = (x) => !!(x && (anycovering || (x.cursed && x.bknown)));
+    if (obj === u.uarm && blocks(u.uarmc)) return true;
+    if (obj === u.uarmu && (blocks(u.uarm) || blocks(u.uarmc))) return true;
+    if ((obj === u.uleft || obj === u.uright) && blocks(u.uarmg)) return true;
+    return false;
 }
 
-/** C ref: invent.c getobj("put on", puton_ok, GETOBJ_NOFLAGS) */
-async function getobj_puton() {
-    for (;;) {
-        await flush_topl_more();
-        const lets = await puton_lets();
-        // C invent.c getobj: empty suggested buf → " [*]" (not "[*?]")
-        const query = lets
-            ? `What do you want to put on? [${lets} or ?*]`
-            : 'What do you want to put on? [*]';
-        const prompt = `${query} `;
-        game._pending_message = prompt;
-        await flush_screen(1);
-        const disp = game.nhDisplay;
-        if (disp?.setCursor) disp.setCursor(prompt.length, 0);
+/** C do_wear.c wear_ok `:3464–3468`. */
+function wear_ok(obj) {
+    return equip_ok(obj, false, false);
+}
 
-        const key = await nhgetch();
-        const ch = String.fromCharCode(key);
-        if (key === 27 || ch === ' ' || ch === '\n' || ch === '\r') {
-            if (game.flags?.verbose !== false) await pline('Never mind.');
-            return null;
-        }
-        if (ch === '?' || ch === '*') {
-            await pline('Never mind.');
-            return null;
-        }
-        const otmp = (game.invent || []).find((o) => o.invlet === ch);
-        if (!otmp) {
-            await pline("You don't have that object.");
-            continue;
-        }
-        game._pending_message = '';
-        return otmp;
-    }
+/** C do_wear.c puton_ok `:3450–3454`. */
+function puton_ok(obj) {
+    return equip_ok(obj, false, true);
+}
+
+/** C do_wear.c remove_ok `:3457–3461`. */
+function remove_ok(obj) {
+    return equip_ok(obj, true, true);
 }
 
 /**
@@ -2148,7 +2151,7 @@ export async function dowear() {
         await pline('You are already wearing a full complement of armor.');
         return 0;
     }
-    const otmp = await getobj_wear();
+    const otmp = await getobj('wear', wear_ok, GETOBJ_NOFLAGS);
     if (!otmp) return 0;
     return accessory_or_armor_on(otmp);
 }
@@ -2168,7 +2171,7 @@ export async function doputon() {
         );
         return 0;
     }
-    const otmp = await getobj_puton();
+    const otmp = await getobj('put on', puton_ok, GETOBJ_NOFLAGS);
     if (!otmp) return 0;
     return accessory_or_armor_on(otmp);
 }

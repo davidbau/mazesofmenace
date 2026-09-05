@@ -66,7 +66,7 @@ import { doopen, doopen_indir, doclose } from './lock.js';
 import { doextcmd, getlin, mungspaces, extcmd_run_by_txt } from './getline.js';
 import { strstri, strsubst } from './hacklib.js';
 import { dosearch, doterrain } from './detect.js';
-import { dotakeoff, doddoremarm, dowear, doputon } from './do_wear.js';
+import { dotakeoff, doddoremarm, dowear, doputon, doremring } from './do_wear.js';
 import { wiz_wish, wiz_genesis, wiz_level_tele, wiz_map } from './wizcmds.js';
 import { dotelecmd } from './teleport.js';
 import { dowield, dowieldquiver, doswapweapon } from './wield.js';
@@ -2102,6 +2102,7 @@ function rhack_repeat_command(ch, key) {
     case 'q': return dodrink;
     case 'Q': return dowieldquiver;
     case 'r': return doread;
+    case 'R': return doremring;
     case 's': return dosearch;
     case 'S': return dosave;
     case 't': return dothrow;
@@ -2171,7 +2172,7 @@ function rhack_repeat_txt(ch, key) {
         a: 'apply', A: 'takeoffall', c: 'close', d: 'drop', D: 'droptype',
         e: 'eat',
         E: 'engrave', f: 'fire', i: 'inventory', I: 'inventtype', o: 'open', p: 'pay',
-        P: 'puton', q: 'quaff', Q: 'quiver', r: 'read', s: 'search',
+        P: 'puton', q: 'quaff', Q: 'quiver', r: 'read', R: 'remove', s: 'search',
         S: 'save', t: 'throw', T: 'takeoff', w: 'wield', W: 'wear',
         x: 'swap', z: 'zap', Z: 'cast', ',': 'pickup', '.': 'wait',
         '>': 'down', '<': 'up', _: 'travel', ':': 'look', '/': 'whatis',
@@ -2647,6 +2648,11 @@ export async function rhack(key) {
     } else if (ch === 'T') {
         // C ref: do_wear.c dotakeoff — take off armor/accessory
         const tookTime = await dotakeoff();
+        game.context.move = tookTime ? 1 : 0;
+        if (tookTime) game.kickedloc = { x: 0, y: 0 };
+    } else if (ch === 'R') {
+        // C ref: do_wear.c doremring — 'R' remove accessory
+        const tookTime = await doremring();
         game.context.move = tookTime ? 1 : 0;
         if (tookTime) game.kickedloc = { x: 0, y: 0 };
     } else if (ch === 'A') {

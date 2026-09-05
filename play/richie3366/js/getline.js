@@ -19,7 +19,7 @@ import {
     mark_topline_special_prompt, hooked_getlin_release_prompt,
     hooked_getlin_epilogue, tty_yn_rewrite_toplines, tty_nhbell,
     tty_yn_note_msg_cursor, tty_yn_clean_up_tty,
-    impossible,
+    impossible, set_bot_disabled,
 } from './display.js';
 import { key2txt, visctrl } from './dokeylist.js';
 import { rn2 } from './rng.js';
@@ -241,6 +241,7 @@ const EDIT_GETLIN = false;
  * @param {string} [bufp]
  */
 export async function getlin(query, bufp) {
+    const _botPrev = set_bot_disabled(true);
     await flush_topl_more();
     clear_win_stop();
     hooked_getlin_begin();
@@ -291,6 +292,7 @@ export async function getlin(query, bufp) {
         hooked_getlin_epilogue(false);
         hooked_getlin_end();
         game._pending_message = '';
+        set_bot_disabled(_botPrev);
     }
 }
 

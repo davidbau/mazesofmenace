@@ -23,7 +23,7 @@ import {
     OBJ_FREE, SLT_ENCUMBER, EXT_ENCUMBER, TT_BURIEDBALL,
     DIED, NO_KILLER_PREFIX,
     is_hole, is_pit, Is_stronghold, Is_botlevel, Is_knox_level,
-    In_endgame, In_sokoban, In_quest, Is_waterlevel,
+    In_endgame, In_sokoban, In_quest, In_mines, Is_waterlevel,
     Is_airlevel, Is_firelevel, Is_earthlevel,
     HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP,
     MAGIC_PORTAL, VIBRATING_SQUARE, RLOC_MSG, RLOC_NOMSG, RLOC_ERR, NO_TRAP_FLAGS,
@@ -56,7 +56,7 @@ import { makeknown, prinv, near_capacity, paint_corner_nhw_menu } from './invent
 import { nhgetch } from './input.js';
 import { ATR_INVERSE } from './terminal.js';
 import { more_experienced } from './exper.js';
-import { getlin, yn_function } from './getline.js';
+import { getlin, yn_function, ynq } from './getline.js';
 import {
     get_level, find_hell, In_W_tower, On_W_tower_level, In_tutorial,
     lev_by_name,
@@ -2194,9 +2194,10 @@ export function random_teleport_level() {
  * past-main-dungeon → find_hell (D-0904); heaven `u_left_shop` /
  * Cloud 9 / fly-or-plummet / done(DIED) / escape dlevel 0 (D-1764);
  * buried_ball_to_punishment before next_to_u. **lev_by_name D-1780**
- * (`dungeon.c:2096–2170` via `js/dungeon.js`). Named omissions:
- * bymenu=FALSE print_dungeon; Quest/mines/sanctum
- * deepest clamp + invoked gate; Nowhere suicide yn; debug_fuzzer.
+ * (`dungeon.c:2096–2170` via `js/dungeon.js`). Nowhere ynq + Quest/
+ * mines/sanctum deepest clamp + invoked `"Sorry..."` + `"anywhere"`/
+ * `"here"` You_cant (D-1846). Named omissions: bymenu=FALSE
+ * print_dungeon; debug_fuzzer.
  */
 export async function level_tele() {
     const u = game.u || {};
@@ -2297,7 +2298,31 @@ export async function level_tele() {
                     // C: goto random_levtport
                     use_random = true;
                 } else {
-                    // Nowhere suicide yn deferred — cancel
+                    // C teleport.c :1254–1276 — Nowhere ynq suicide.
+                    const ans = await ynq('Go to Nowhere.  Are you sure?');
+                    if (ans !== 'y') return;
+                    const silent = ((game.youmonst?.data?.msound | 0) === 0);
+                    await pline(
+                        `You ${silent ? 'writhe' : 'scream'} in agony as your body begins to warp...`,
+                    );
+                    await flush_topl_more();
+                    await pline('You cease to exist.');
+                    const hasInv = !!(game.invent && game.invent.length);
+                    if (hasInv) {
+                        await pline(
+                            'Your possessions land on the floor with a thud.',
+                        );
+                    }
+                    if (!game.killer) game.killer = { name: '', format: 0 };
+                    game.killer.format = NO_KILLER_PREFIX;
+                    game.killer.name = 'committed suicide';
+                    const { done } = await import('./end.js');
+                    await done(DIED);
+                    if (game.program_state?.gameover) return;
+                    await pline('An energized cloud of dust begins to coalesce.');
+                    await pline(
+                        `Your body rematerializes${hasInv ? ', and you gather up all your possessions' : ''}.`,
+                    );
                     return;
                 }
             } else if (single_level_branch(u.uz) && newlev > 0) {
@@ -2419,7 +2444,8 @@ export async function level_tele() {
         newlevel.dlevel = 0; /* escape the dungeon */
     } else if (!force_dest) {
         // C: medusa's dungeon (main) && newlev past last main depth
-        // → find_hell (valley); else get_level (+ deepest clamps deferred)
+        // → find_hell (valley); else get_level after Quest/mines/sanctum
+        // deepest clamp + invoked gate (`teleport.c` :1388–1422).
         const medusa = game.medusa_level;
         const dun = game.dungeons?.[u.uz?.dnum | 0];
         const pastMain = medusa
@@ -2428,11 +2454,24 @@ export async function level_tele() {
         if (pastMain) {
             find_hell(newlevel);
         } else {
+            const qbranch = In_quest(u.uz) ? game.qstart_level
+                : In_mines(u.uz) ? game.mineend_level
+                  : game.sanctum_level;
+            const qdun = game.dungeons?.[qbranch?.dnum | 0];
+            const deepest = ((qdun?.depth_start | 0)
+                + dunlevs_in_dungeon(qbranch || u.uz) - 1) | 0;
+            if (!wizard && Inhell() && !u.uevent?.invoked && newlev >= deepest) {
+                newlev = deepest - 1;
+                await pline('Sorry...');
+            }
+            if (In_quest(u.uz) && newlev < depth(game.qstart_level)) {
+                newlev = depth(game.qstart_level);
+            }
             get_level(newlevel, newlev);
-            if ((newlevel.dnum | 0) === (u.uz?.dnum | 0)
-                && (newlevel.dlevel | 0) === (u.uz?.dlevel | 0)
-                && newlev !== depth(u.uz)) {
-                await pline("You can't get there from here.");
+            if (on_level(newlevel, u.uz) && newlev !== depth(u.uz)) {
+                await pline(
+                    `You can't get there from ${newlev > deepest ? 'anywhere' : 'here'}.`,
+                );
                 return;
             }
         }

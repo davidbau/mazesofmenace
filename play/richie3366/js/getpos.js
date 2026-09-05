@@ -3,52 +3,54 @@
 //
 // Branch envelope: verbose instruction pline, first-use getpos tip
 // (nhcore show_getpos_tip PICK_NONE loop), hjklyubn walk + HJKLYUBN/Ctrl-dir
-// rush (8×; '\n'==C('j') rushes — movecmd before quitchars), seenv-gated
-// feature-char matching (stairs + furniture/traps subset; D-0779/D-0818),
-// NHKF_GETPOS_SHOWVALID '$' before matching (D-0928 #1176),
-// `?` / redraw_cmd(^R) → getpos_help? + getpos_refresh + show_goal_msg
-// (D-0928 #1187; D-0819 help), mMoOdDxX gather_locs cycle (D-0928 #1189),
-// autodescribe topline, force unknown-direction pline, '.' →
-// LOOK_TRADITIONAL, ESC → -1.
-// getpos_menu / GFILTER_AREA / aA interesting cycle / S_goodpos tmp_at
-// hilite / getloc_moveskip glyph-skip / engraving full showsyms /
-// docrtRefresh redraw_map-only deferred. getpos_getvalid `(invalid
-// target)` live (D-0899).
+// rush (8× / getloc_moveskip glyph-skip; '\n'==C('j') rushes — movecmd
+// before quitchars), matching[] from defsyms (stairs + furniture/traps
+// + zap/swallow/expl; D-0779/D-0818; '/' → Can't find…),
+// NHKF_GETPOS_SHOWVALID '$' / AUTODESC '#' / LIMITVIEW / MENU / MOVESKIP
+// before matching, `?` / redraw_cmd(^R) → getpos_help? + getpos_refresh
+// + show_goal_msg, mMoOdDxXaAzZ gather_locs cycle (D-0928 #1189),
+// autodescribe topline, force unknown-direction pline, pick_chars
+// LOOK_*, ESC → -1.
+// getpos_menu / GFILTER_AREA flood / S_goodpos tmp_at hilite /
+// engraving full showsyms / docrtRefresh redraw_map-only deferred.
+// getpos_getvalid `(invalid target)` live (D-0899).
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_screen_getpos_dirty, pline, docrt, terrain_glyph,
-    look_shown_at, newsym_force, glyph_is_invisible, glyph_to_obj_at,
-    glyph_at, glyph_is_trap, glyph_to_trap,
+    look_shown_at, newsym_force, glyph_is_invisible,
+    glyph_at, glyph_is_cmap, glyph_to_cmap, back_to_glyph,
 } from './display.js';
 import { cansee } from './vision.js';
-import { ansimpleoname } from './objnam.js';
-import { look_at_object, trap_description } from './pager.js';
+import { lookat } from './pager.js';
 import {
     COLNO, ROWNO, isok, TER_MON, TER_OBJ, TER_MAP, TER_DETECT,
     GLOC_MONS, GLOC_OBJS, GLOC_DOOR, GLOC_EXPLORE, GLOC_INTERESTING, GLOC_VALID,
-    GFILTER_VIEW,
-    NHKF_GETPOS_SELF, NHKF_GETPOS_PICK, NHKF_GETPOS_SHOWVALID,
+    NUM_GLOCS, NUM_GFILTER, GFILTER_VIEW, MAXTCHARS,
+    NHKF_GETPOS_SELF, NHKF_GETPOS_PICK, NHKF_GETPOS_PICK_Q,
+    NHKF_GETPOS_PICK_O, NHKF_GETPOS_PICK_V, NHKF_GETPOS_SHOWVALID,
     NHKF_GETPOS_AUTODESC,
     NHKF_GETPOS_MON_NEXT, NHKF_GETPOS_MON_PREV,
     NHKF_GETPOS_OBJ_NEXT, NHKF_GETPOS_OBJ_PREV,
     NHKF_GETPOS_DOOR_NEXT, NHKF_GETPOS_DOOR_PREV,
     NHKF_GETPOS_UNEX_NEXT, NHKF_GETPOS_UNEX_PREV,
     NHKF_GETPOS_INTERESTING_NEXT, NHKF_GETPOS_INTERESTING_PREV,
+    NHKF_GETPOS_VALID_NEXT, NHKF_GETPOS_VALID_PREV,
     NHKF_GETPOS_MOVESKIP, NHKF_GETPOS_MENU, NHKF_GETPOS_LIMITVIEW,
-    M_AP_TYPE, M_AP_OBJECT, M_AP_FURNITURE, STRAT_WAITMASK,
+    S_stone, S_trwall, S_ndoor, S_vodoor, S_hcdoor, S_room, S_darkroom,
+    S_corr, S_litcorr, S_engroom, S_engrcorr, S_arrow_trap,
+    S_expl_br, S_altar, S_tree, S_bars, S_pool, S_lava, S_lavawall,
+    S_water, S_ice,
     STAIRS, LADDER, LA_DOWN, ROOM, CORR, STONE, SCORR, TREE, CLOUD, IS_WALL,
-    DOOR, IS_DOOR, IS_DRAWBRIDGE, D_NODOOR, D_ISOPEN, D_BROKEN,
+    DOOR, IS_DOOR, IS_DRAWBRIDGE,
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE, IRONBARS, AIR,
     FOUNTAIN, SINK, THRONE, GRAVE, ALTAR, VIBRATING_SQUARE,
-    ROGUESET, Upolyd, Is_airlevel, Is_rogue_level,
+    ROGUESET, Is_rogue_level,
 } from './const.js';
 import { paint_corner_nhw_menu } from './invent.js';
-import { distant_monnam_none, pmname, Ugender } from './do_name.js';
-import { stairway_at, known_branch_stairs } from './mklev.js';
 import { t_at } from './trap.js';
-import { waterbody_name, invocation_pos } from './hack.js';
+import { invocation_pos } from './hack.js';
 import { is_valid_travelpt } from './cmd.js';
 import { ok_to_quest } from './quest.js';
 import { visctrl } from './dokeylist.js';
@@ -176,25 +178,103 @@ function use_dec_syms() {
     return !!game.iflags?.decgraphics;
 }
 
+// C sym.h MAXPCHARS — fencepost after S_expl_br.
+const MAXPCHARS = S_expl_br + 1;
+
+/** C defsym.h PCHAR `ch` column; index is cmap S_*. */
+const DEFSYMS_CH = [
+    ' ', '|', '-', '-', '-', '-', '-', '-', '-', '-', '|', '|',
+    '.', '-', '|', '+', '+',
+    '#', '#',
+    '.', '.', '`',
+    '#', '#', '#',
+    '<', '>', '<', '>', '<', '>', '<', '>',
+    '_',
+    '|', '\\', '{', '{', '}', '.', '}', '}', '.', '.', '#', '#', ' ', '#', '}',
+    '^', '^', '^', '^', '^', '^', '^', '^', '^', '^', '^', '^', '^', '^', '^', '^', '^',
+    '"',
+    '^', '^', '^', '^',
+    '~', '^', '^',
+    '|', '-', '\\', '/',
+    '*', '!', ')', '(',
+    '0', '#', '@', '*',
+    '#', '$',
+    '/', '-', '\\', '|', '|', '\\', '-', '/',
+    '/', '-', '\\', '|', ' ', '|', '\\', '-', '/',
+];
+
+/** C sym.h is_cmap_wall / room / corr / door / trap / engraving. */
+function is_cmap_wall(i) {
+    return i >= S_stone && i <= S_trwall;
+}
+function is_cmap_room(i) {
+    return i >= S_room && i <= S_darkroom;
+}
+function is_cmap_corr(i) {
+    return i >= S_corr && i <= S_litcorr;
+}
+function is_cmap_door(i) {
+    return i >= S_vodoor && i <= S_hcdoor;
+}
+function is_cmap_trap(i) {
+    return i >= S_arrow_trap && i < S_arrow_trap + MAXTCHARS;
+}
+function is_cmap_engraving(i) {
+    return i === S_engroom || i === S_engrcorr;
+}
+
 /**
  * C ref: getpos.c matching[] build — defsyms[].sym / showsyms[] for
- * feature cmaps (walls/room/corr/door/ndoor skipped). Returns tag set;
- * empty ⇒ C k==0 → unknown-direction.
- * Named deferred: engraving/drawbridge/air full MAXPCHARS table.
+ * feature cmaps (walls/room/corr/door/ndoor skipped). k==0 → unknown
+ * direction. Named: full gs.showsyms[] table (DEC extras below).
+ */
+function build_feature_matching(ch) {
+    const matching = new Uint8Array(MAXPCHARS);
+    let k = 0;
+    const engroom = DEFSYMS_CH[S_engroom];
+    for (let sidx = 0; sidx < MAXPCHARS; sidx++) {
+        if (is_cmap_wall(sidx) || is_cmap_room(sidx)
+            || is_cmap_corr(sidx) || is_cmap_door(sidx)
+            || sidx === S_ndoor) {
+            continue;
+        }
+        if (ch === DEFSYMS_CH[sidx]
+            || (ch === '^' && is_cmap_trap(sidx))
+            || (ch === engroom && is_cmap_engraving(sidx))) {
+            matching[sidx] = ++k;
+        }
+    }
+    // DEC showsyms approximations (drawing.c Primary vs DECgraphics).
+    if (use_dec_syms()) {
+        if (ch === '{' && !matching[S_altar]) matching[S_altar] = ++k;
+        if (ch === 'g') matching[S_tree] = ++k;
+        if (ch === '|') matching[S_bars] = ++k;
+        if (ch === '`') {
+            matching[S_pool] = ++k;
+            matching[S_lava] = ++k;
+            matching[S_lavawall] = ++k;
+            matching[S_water] = ++k;
+        }
+        if (ch === '~') matching[S_ice] = ++k;
+    }
+    return { matching, k };
+}
+
+/**
+ * Terrain tags for the seenv fallback scanner (stairs/furniture/traps).
+ * Effect-only matching[] slots (S_rslant `/`, swallow, expl) have no tag
+ * — C still scans, then "Can't find dungeon feature".
  */
 function feature_match_tags(ch) {
     const tags = new Set();
     const dec = use_dec_syms();
 
-    // Stairs / ladder (defsyms always '<' / '>')
     if (ch === '>') tags.add('dnfeature');
     if (ch === '<') tags.add('upfeature');
 
-    // Altar: defsyms '_'; DECgraphics showsyms '{'
     if (ch === '_') tags.add('altar');
     if (ch === '{' && dec) tags.add('altar');
 
-    // Furniture defsyms
     if (ch === '{') {
         tags.add('sink');
         tags.add('fountain');
@@ -202,14 +282,17 @@ function feature_match_tags(ch) {
     if (ch === '|') tags.add('grave');
     if (ch === '\\') tags.add('throne');
 
-    // Tree / bars / cloud defsyms are '#', but NHKF_GETPOS_AUTODESC is
-    // also '#' and is handled before matching[] in C — do not claim '#'
-    // here until that toggle is ported (would steal the spkey).
-    // DEC tree showsym 'g' / bars '|' can still match when typed.
+    // '#' is NHKF_GETPOS_AUTODESC before matching[] (default bind).
+    // matching[] still counts tree/bars/cloud; this tag path is for
+    // a rebound key. DEC 'g' / '|' still match when typed.
+    if (ch === '#') {
+        tags.add('tree');
+        tags.add('bars');
+        tags.add('cloud');
+    }
     if (ch === 'g' && dec) tags.add('tree');
     if (ch === '|' && dec) tags.add('bars');
 
-    // Water bodies — defsyms '}'; DEC showsyms '`'
     if (ch === '}') {
         tags.add('pool');
         tags.add('lava');
@@ -223,19 +306,20 @@ function feature_match_tags(ch) {
         tags.add('water');
     }
 
-    // Ice: defsyms '.'; DEC '~' — '.' is pick_chars (never reaches here)
     if (ch === '~' && dec) tags.add('ice');
 
-    // Traps: '^' matches every trap cmap; '~' also VS special below
     if (ch === '^') tags.add('trap');
     if (ch === '~') tags.add('trap_vs');
 
-    // Zap/effect cmaps still enter matching[] (walls/room/corr/door skipped).
-    // S_ss1 defsym '0' — rarely on map → "Can't find dungeon feature '0'."
-    // (D-0928 #1135 seed4500 @136). Other ss/beam/expl glyphs still deferred.
     if (ch === '0') tags.add('ss1');
 
     return tags;
+}
+
+function matching_glyph(matching, glyph) {
+    if (!glyph_is_cmap(glyph)) return false;
+    const sidx = glyph_to_cmap(glyph);
+    return sidx >= 0 && sidx < matching.length && matching[sidx] !== 0;
 }
 
 /**
@@ -314,7 +398,7 @@ function remembered_feature_match(loc, x, y, tags, ch) {
  * from cursor (pass0 past current to SE; pass1 NW through current).
  * Returns {x,y} or null.
  */
-function find_dungeon_feature(cx, cy, ch, tags) {
+function find_dungeon_feature(cx, cy, ch, tags, matching) {
     for (let pass = 0; pass <= 1; pass++) {
         const loY = pass === 0 ? cy : 0;
         const hiY = pass === 0 ? ROWNO - 1 : cy;
@@ -326,24 +410,35 @@ function find_dungeon_feature(cx, cy, ch, tags) {
                 const loc = game.level?.at?.(tx, ty);
                 if (!loc) continue;
                 // C: glyph_at cmap, then memory glyph, then ~ VS, then seenv
+                if (matching && matching_glyph(matching, glyph_at(tx, ty))) {
+                    return { x: tx, y: ty };
+                }
                 if (visible_feature_match(loc, tx, ty, tags, ch)) {
                     return { x: tx, y: ty };
                 }
                 if (
                     game.level?.flags?.hero_memory !== false
                     && !(game.iflags?.terrainmode | 0)
-                    && remembered_feature_match(loc, tx, ty, tags, ch)
                 ) {
-                    return { x: tx, y: ty };
-                }
-                if (ch === '~') {
-                    const t = t_at(tx, ty);
-                    if (t && (t.ttyp | 0) === VIBRATING_SQUARE && t.tseen) {
+                    const memg = loc.glyph;
+                    if (matching && typeof memg === 'number'
+                        && matching_glyph(matching, memg)) {
+                        return { x: tx, y: ty };
+                    }
+                    if (remembered_feature_match(loc, tx, ty, tags, ch)) {
                         return { x: tx, y: ty };
                     }
                 }
-                if ((loc.seenv | 0) && terrain_matches_tags(loc, tx, ty, tags, ch)) {
+                if (ch === '~' && known_vibrating_square_at(tx, ty)) {
                     return { x: tx, y: ty };
+                }
+                if (loc.seenv | 0) {
+                    if (matching && matching_glyph(matching, back_to_glyph(tx, ty))) {
+                        return { x: tx, y: ty };
+                    }
+                    if (terrain_matches_tags(loc, tx, ty, tags, ch)) {
+                        return { x: tx, y: ty };
+                    }
                 }
             }
         }
@@ -377,88 +472,6 @@ function truncate_to_map(cx, cy, dx, dy) {
         dy = (ROWNO - 1) - y;
     }
     return { x: x + dx, y: y + dy };
-}
-
-function mon_at_xy(x, y) {
-    for (const m of game.fmon || []) {
-        if ((m.mhp | 0) < 1) continue;
-        if ((m.mx | 0) === x && (m.my | 0) === y) return m;
-    }
-    return null;
-}
-
-/**
- * C ref: pager.c self_lookat — race + pmname + called plname + Punished
- * chained suffix. Steed / mhidden / utrap deferred (same as pager.js).
- */
-function self_lookat_brief() {
-    const u = game.u || {};
-    let race = '';
-    if (!Upolyd(u)) {
-        const adj = game.urace?.adj || game.urace?.noun || 'human';
-        race = `${String(adj)} `;
-    }
-    const mndx = u.umonnum ?? game.urole?.mnum;
-    const form = pmname(mndx, Ugender());
-    const plname = game.plname || 'hero';
-    const invis =
-        u.Invis && (u.senseself || !u.Blind) ? 'invisible ' : '';
-    let buf = `${invis}${race}${form} called ${plname}`;
-    // C: if (Punished) … uball ? ansimpleoname(uball) : "nothing?"
-    // C: Punished ≡ (uball != 0)
-    if (u.uball) {
-        buf += `, chained to ${ansimpleoname(u.uball)}`;
-    }
-    return buf;
-}
-
-/**
- * C ref: pager.c look_at_monster + mhidden_description subset.
- * Detect browse shows mon glyphs; M_AP_OBJECT without object glyph →
- * ", mimicking something".
- */
-function look_at_monster_brief(mtmp) {
-    if (!mtmp) return 'monster';
-    const name = distant_monnam_none(mtmp);
-    let buf = '';
-    if (mtmp.mtame) buf = 'tame ';
-    else if (mtmp.mpeaceful) buf = 'peaceful ';
-    buf += name;
-    if (mtmp.mfrozen) {
-        buf += ", can't move (paralyzed or sleeping or busy)";
-    } else if (mtmp.msleeping) {
-        buf += ', asleep';
-    } else if ((mtmp.mstrategy || 0) & STRAT_WAITMASK) {
-        buf += ', meditating';
-    }
-    const ap = M_AP_TYPE(mtmp);
-    if (ap === M_AP_OBJECT || ap === M_AP_FURNITURE) {
-        // Full object_from_map / defsyms furniture names deferred
-        buf += ', mimicking something';
-    } else if (mtmp.mundetected) {
-        buf += ', hiding';
-    }
-    return buf;
-}
-
-/**
- * C ref: pager.c lookat cmap → defsyms[].explanation for stairs/ladder
- * (S_*stair / S_*ladder / S_br*). Same strings as display back_to_glyph.
- */
-function stair_ladder_explanation(x, y) {
-    const sway = stairway_at(x, y);
-    const loc = game.level?.at?.(x, y);
-    if (!sway && !(loc && (loc.typ === STAIRS || loc.typ === LADDER))) {
-        return '';
-    }
-    const up = sway ? !!sway.up : !!(loc && !(loc.ladder & LA_DOWN));
-    const isLadder = !!(sway?.isladder) || (loc?.typ === LADDER);
-    if (known_branch_stairs(sway)) {
-        if (isLadder) return up ? 'branch ladder up' : 'branch ladder down';
-        return up ? 'branch staircase up' : 'branch staircase down';
-    }
-    if (isLadder) return up ? 'ladder up' : 'ladder down';
-    return up ? 'staircase up' : 'staircase down';
 }
 
 /** C dungeon.h on_level — dnum+dlevel equality. */
@@ -508,174 +521,23 @@ export function room_cmap_explanation(x, y, loc) {
 }
 
 /**
- * C ref: pager.c lookat glyph_is_cmap doors — S_ndoor special +
- * defsyms S_vodoor/S_hodoor/S_vcdoor/S_hcdoor explanations; invent.c
- * dfeature_at doormask switch (same strings). Named: drawbridge
- * portcullis override (`is_drawbridge_wall`); D_TRAPPED exact-mask
- * quirks beyond invent/default closed.
- */
-function door_cmap_explanation(loc) {
-    // C invent.c dfeature_at / lookat S_ndoor + defsyms door explanations
-    switch (loc.doormask ?? D_NODOOR) {
-    case D_NODOOR:
-        return 'doorway';
-    case D_ISOPEN:
-        return 'open door';
-    case D_BROKEN:
-        return 'broken door';
-    default:
-        // D_CLOSED / D_LOCKED (+ optional D_TRAPPED) → "closed door"
-        return 'closed door';
-    }
-}
-
-/**
- * C ref: pager.c lookat glyph_is_cmap → defsyms[].explanation (default
- * arm) + S_pool/S_water/S_lava/S_ice → waterbody_name. Used by getpos
- * auto_describe firstmatch after stairs/traps.
- * Named omissions: S_altar special (`align_str` / AM_SANCTUM "high ");
- * engraving; drawbridge portcullis; underwater unreconnoitered; object
- * glyphs; Hallucination waterbody; arboreal STONE→S_tree; gas-cloud
- * region glyph overlay on non-CLOUD typ (lookat uses glyph_at); AIR /
- * drawbridge lowered/raised defsyms.
- */
-function cmap_defsym_explanation(x, y, loc) {
-    if (!loc) return '';
-    const typ = loc.typ;
-    // C lookat case S_pool/S_water/S_lava/S_lavawall/S_ice → waterbody_name
-    if (typ === POOL || typ === MOAT || typ === WATER
-        || typ === LAVAPOOL || typ === LAVAWALL || typ === ICE) {
-        return waterbody_name(x, y);
-    }
-    // C lookat case S_cloud (pager.c) — air plane vs ordinary fog/vapor
-    if (typ === CLOUD) {
-        return Is_airlevel(game.u?.uz) ? 'cloudy area' : 'fog/vapor cloud';
-    }
-    // C lookat cmap doors (S_ndoor / S_*odoor / S_*cdoor) via defsyms
-    if (IS_DOOR(typ) || typ === DOOR) return door_cmap_explanation(loc);
-    // C lookat cmap default → defsyms[symidx].explanation
-    if (IS_WALL(typ)) return 'wall';
-    if (typ === ROOM) return room_cmap_explanation(x, y, loc);
-    if (typ === CORR) {
-        return loc.lit || game.flags?.lit_corridor ? 'lit corridor' : 'corridor';
-    }
-    // C defsym.h PCHAR — furniture default arm (S_fountain..S_bars / tree)
-    if (typ === FOUNTAIN) return 'fountain';
-    if (typ === SINK) return 'sink';
-    if (typ === THRONE) return 'opulent throne'; // PCHAR2 explanation
-    if (typ === GRAVE) return 'grave';
-    if (typ === IRONBARS) return 'iron bars';
-    // C defsym.h PCHAR S_tree → "tree" (lookat default arm)
-    if (typ === TREE) return 'tree';
-    // C lookat case S_stone: !seenv → "unexplored"; else if STONE|SCORR → "stone"
-    if (typ === STONE || typ === SCORR) {
-        if (!loc.seenv) return 'unexplored';
-        return 'stone';
-    }
-    return '';
-}
-
-/**
  * C ref: getpos.c auto_describe → do_screen_description firstmatch /
- * pager.c lookat. Uses displayed glyph (loc.disp_*), not map memory —
- * required for TER_DETECT after clear_glyph_buffer.
+ * pager.c lookat. firstmatch is lookat's buf after the didlook
+ * blocked-staircase rewrite (ice_descr sibling named).
  *
  * Named omissions: full do_screen_description symbol table, coord_desc,
- * underwater unreconnoitered, special cmap arms (altar; doors D-0815;
- * cloud typ D-0811). Object: lookat glyph_is_object → look_at_object
- * (D-1547; fakeobj via object_from_map D-1524). doname_with_price /
- * doname_vague_quan, buried/embedded suffixes deferred. Trap: lookat
- * glyph_is_trap(glyph_at) → trap_description(glyph_to_trap) (D-1787;
- * no tseen / ftrap). Travel:
+ * underwater unreconnoitered (didlook skip), doname_with_price /
+ * doname_vague_quan, buried/embedded suffixes. Travel:
  * " (no travel path)" via is_valid_travelpt when getloc_travelmode
  * (D-0809). getpos_getvalid "(invalid target)" live (D-0899); S_goodpos
  * hilite glyphs deferred.
  */
 export function auto_describe_text(cx, cy) {
-    const u = game.u || {};
-    const terrainmode = game.iflags?.terrainmode | 0;
-    if (
-        (u.ux | 0) === cx && (u.uy | 0) === cy
-        && (!terrainmode || (terrainmode & TER_MON) !== 0)
-    ) {
-        return self_lookat_brief();
-    }
-
-    // C lookat `:718–721` — trap tnum is glyph_to_trap(glyph_at), not t_at.
-    // Dummytrap chest/door: trap glyph, floor pile still present.
-    const glyph = glyph_at(cx, cy);
-    if (glyph_is_trap(glyph)) {
-        return trap_description(glyph_to_trap(glyph), cx, cy);
-    }
-
-    // C lookat: glyph_is_monster then glyph_is_object (gbuf, not occupancy).
-    const objTyp = glyph_to_obj_at(cx, cy);
-
-    const mtmp = mon_at_xy(cx, cy);
-    if (
-        mtmp
-        && objTyp < 0
-        && (!terrainmode || (terrainmode & TER_MON) !== 0)
-    ) {
-        const loc = game.level?.at?.(cx, cy);
-        const ch = loc?.disp_ch;
-        // Detect/map may blank a cell while mon still exists in fmon —
-        // only describe when the mon glyph is actually shown (or no TER_DETECT).
-        if (!(terrainmode & TER_DETECT) || (ch && ch !== ' ')) {
-            return look_at_monster_brief(mtmp);
-        }
-    }
-
-    // C lookat glyph_is_object → look_at_object (before trap/cmap)
-    if (objTyp >= 0 && (!terrainmode || (terrainmode & TER_OBJ) !== 0)) {
-        // Named: with_price / vague_quan / buried-embedded suffixes
-        return look_at_object(cx, cy, objTyp);
-    }
-
-    const loc = game.level?.at?.(cx, cy);
-    const ch = loc?.disp_ch;
-    // Blank showsyms may be unexplored or S_stone (space). C lookat uses
-    // glyph_at: glyph_is_unexplored → "unexplored area"; cmap S_stone +
-    // seenv + typ STONE|SCORR → "stone" (pager.c). TER_DETECT after
-    // clear_glyph_buffer forces gbuf unexplored even when memory is
-    // stone (D-0390 / seed0012) — do not promote those blanks.
-    // lastseentyp gates overmarked JS seenv (D-0813); travelmode not
-    // required (^T getpos / farlook share the same lookat arm).
-    if (!ch || ch === ' ') {
-        if (terrainmode & TER_DETECT) {
-            // C: gbuf unexplored after clear_glyph_buffer
-            return 'unexplored area';
-        }
-        const last = game.lastseentyp?.[cx]?.[cy] | 0;
-        // C lookat case S_stone: seenv → "stone" for STONE|SCORR, else
-        // fallthrough defsyms[S_stone] ("stone") even when typ is CORR but
-        // glyph memory is stone (lastseentyp STONE|SCORR). Bare blank→stone
-        // without last/typ gate breaks seed0012 (D-0813/D-0817).
-        if (
-            loc
-            && loc.seenv
-            && (
-                last === STONE || last === SCORR
-                || loc.typ === STONE || loc.typ === SCORR
-            )
-        ) {
-            return 'stone';
-        }
-        // C lookat glyph_is_unexplored → "unexplored area"
-        return 'unexplored area';
-    }
-
-    // C lookat glyph_is_cmap stairs/ladder → defsyms explanation (firstmatch)
-    // then do_screen_description blocked-stair rewrite (D-0814)
-    const stair = stair_ladder_explanation(cx, cy);
-    if (stair) return maybe_blocked_staircase_down(stair);
-
-    // C lookat glyph_is_cmap → defsyms / waterbody_name (ROOM/moat/wall…)
-    const cmap = cmap_defsym_explanation(cx, cy, loc);
-    if (cmap) return cmap;
-
-    // Remaining special cmap under TER_* browse still deferred
-    return 'unexplored area';
+    // C auto_describe → do_screen_description firstmatch after lookat
+    // overwrite (`pager.c` didlook). Blocked-stair rewrite is didlook,
+    // not lookat itself.
+    const { buf } = lookat(cx, cy);
+    return maybe_blocked_staircase_down(buf);
 }
 
 /**
@@ -867,6 +729,9 @@ function gather_locs(gloc) {
 const GETPOS_SPKEY_DEFAULT = {
     [NHKF_GETPOS_SELF]: '@'.charCodeAt(0),
     [NHKF_GETPOS_PICK]: '.'.charCodeAt(0),
+    [NHKF_GETPOS_PICK_Q]: ','.charCodeAt(0),
+    [NHKF_GETPOS_PICK_O]: ';'.charCodeAt(0),
+    [NHKF_GETPOS_PICK_V]: ':'.charCodeAt(0),
     // cmd.c spkeys_binds: NHKF_GETPOS_SHOWVALID '$' (before matching[])
     [NHKF_GETPOS_SHOWVALID]: '$'.charCodeAt(0),
     [NHKF_GETPOS_AUTODESC]: '#'.charCodeAt(0),
@@ -880,6 +745,8 @@ const GETPOS_SPKEY_DEFAULT = {
     [NHKF_GETPOS_UNEX_PREV]: 'X'.charCodeAt(0),
     [NHKF_GETPOS_INTERESTING_NEXT]: 'a'.charCodeAt(0),
     [NHKF_GETPOS_INTERESTING_PREV]: 'A'.charCodeAt(0),
+    [NHKF_GETPOS_VALID_NEXT]: 'z'.charCodeAt(0),
+    [NHKF_GETPOS_VALID_PREV]: 'Z'.charCodeAt(0),
     [NHKF_GETPOS_MOVESKIP]: '*'.charCodeAt(0),
     [NHKF_GETPOS_MENU]: '!'.charCodeAt(0),
     [NHKF_GETPOS_LIMITVIEW]: '"'.charCodeAt(0),
@@ -1095,11 +962,17 @@ export async function getpos(ccp, force, goal, describeAt) {
     // C: getpos_hilitefunc(TRUE) after sethilite when HiliteGoodposSymbol —
     // glyph highlight deferred; getvalid still active for auto_describe.
 
+    // C: schar udx = u.dx, udy = u.dy, udz = u.dz;
+    const udx = g.u?.dx | 0;
+    const udy = g.u?.dy | 0;
+    const udz = g.u?.dz | 0;
+
+    try {
     // C getpos: garr[NUM_GLOCS] / gidx / gcount for mMoOdDxX cycling
     /** @type {(Array<{x:number,y:number}>|null)[]} */
-    const garr = [null, null, null, null]; // MONS..EXPLORE
-    const gcount = [0, 0, 0, 0];
-    const gidx = [0, 0, 0, 0];
+    const garr = Array.from({ length: NUM_GLOCS }, () => null);
+    const gcount = Array(NUM_GLOCS).fill(0);
+    const gidx = Array(NUM_GLOCS).fill(0);
 
     if (g.flags.verbose !== false) {
         await pline("(For instructions type a '?')");
@@ -1115,6 +988,20 @@ export async function getpos(ccp, force, goal, describeAt) {
     // First nhgetch uses the pre-loop dirty flush; later iterations need a
     // full flush + curs like the prior port (topline / map sync).
     let need_full_flush = false;
+
+    const pick_nhkf = [
+        NHKF_GETPOS_PICK, NHKF_GETPOS_PICK_Q,
+        NHKF_GETPOS_PICK_O, NHKF_GETPOS_PICK_V,
+    ];
+    const pick_ret = [LOOK_TRADITIONAL, LOOK_QUICK, LOOK_ONCE, LOOK_VERBOSE];
+    const mMoOdDxX_nhkf = [
+        NHKF_GETPOS_MON_NEXT, NHKF_GETPOS_MON_PREV,
+        NHKF_GETPOS_OBJ_NEXT, NHKF_GETPOS_OBJ_PREV,
+        NHKF_GETPOS_DOOR_NEXT, NHKF_GETPOS_DOOR_PREV,
+        NHKF_GETPOS_UNEX_NEXT, NHKF_GETPOS_UNEX_PREV,
+        NHKF_GETPOS_INTERESTING_NEXT, NHKF_GETPOS_INTERESTING_PREV,
+        NHKF_GETPOS_VALID_NEXT, NHKF_GETPOS_VALID_PREV,
+    ];
 
     for (;;) {
         // C getpos: show_goal_msg / auto_describe then curs then readchar.
@@ -1164,13 +1051,16 @@ export async function getpos(ccp, force, goal, describeAt) {
             return -1;
         }
 
-        if (ch === '.' || ch === ',' || ch === ':' || ch === ';') {
-            ccp.x = cx;
-            ccp.y = cy;
-            if (getpos_hilitefunc) getpos_hilitefunc(false);
-            getpos_sethilite(null, null);
-            // '.' → LOOK_TRADITIONAL (continue whatis loop); ',' often LOOK_ONCE
-            return ch === ',' ? LOOK_ONCE : LOOK_TRADITIONAL;
+        // C pick_chars_def: . LOOK_TRADITIONAL, , QUICK, ; ONCE, : VERBOSE
+        {
+            const pick_i = pick_nhkf.findIndex((nhkf) => key === getpos_spkey(nhkf));
+            if (pick_i >= 0) {
+                ccp.x = cx;
+                ccp.y = cy;
+                if (getpos_hilitefunc) getpos_hilitefunc(false);
+                getpos_sethilite(null, null);
+                return pick_ret[pick_i];
+            }
         }
 
         // C ref: getpos.c movecmd before quitchars. C('j')=='\n' is bound
@@ -1193,10 +1083,30 @@ export async function getpos(ccp, force, goal, describeAt) {
         if (walk) {
             let dx = DIR_DX[walk];
             let dy = DIR_DY[walk];
+            if (g.u) {
+                g.u.dx = dx;
+                g.u.dy = dy;
+                g.u.dz = 0;
+            }
             if (rush) {
-                // C: iflags.getloc_moveskip Off → 8*u.dx (glyph-skip omitted)
-                dx *= 8;
-                dy *= 8;
+                if (g.iflags?.getloc_moveskip) {
+                    // C: skip same glyphs while next+1 is still that glyph
+                    const glyph = glyph_at(cx, cy);
+                    const sdx = DIR_DX[walk];
+                    const sdy = DIR_DY[walk];
+                    while (
+                        isok(cx + dx, cy + dy)
+                        && glyph === glyph_at(cx + dx, cy + dy)
+                        && isok(cx + dx + sdx, cy + dy + sdy)
+                        && glyph === glyph_at(cx + dx + sdx, cy + dy + sdy)
+                    ) {
+                        dx += sdx;
+                        dy += sdy;
+                    }
+                } else {
+                    dx *= 8;
+                    dy *= 8;
+                }
             }
             const next = truncate_to_map(cx, cy, dx, dy);
             cx = next.x;
@@ -1243,6 +1153,54 @@ export async function getpos(ccp, force, goal, describeAt) {
             continue;
         }
 
+        // C getpos.c NHKF_GETPOS_AUTODESC ('#') — before matching[] (tree/bars).
+        if (key === getpos_spkey(NHKF_GETPOS_AUTODESC)) {
+            if (!g.iflags) g.iflags = {};
+            g.iflags.autodescribe = !g.iflags.autodescribe;
+            await pline(
+                `Automatic description ${
+                    g.flags?.verbose ? 'of features under cursor ' : ''
+                }is ${g.iflags.autodescribe ? 'on' : 'off'}.`,
+            );
+            if (!g.iflags.autodescribe) show_goal_msg = true;
+            msg_given = true;
+            continue;
+        }
+
+        // C getpos.c NHKF_GETPOS_LIMITVIEW ('"') — cycle GFILTER_*; free garr.
+        // GFILTER_AREA flood-fill still named (gather treats it like NONE).
+        if (key === getpos_spkey(NHKF_GETPOS_LIMITVIEW)) {
+            if (!g.iflags) g.iflags = {};
+            g.iflags.getloc_filter = ((g.iflags.getloc_filter | 0) + 1) % NUM_GFILTER;
+            for (let i = 0; i < NUM_GLOCS; i++) {
+                garr[i] = null;
+                gidx[i] = 0;
+                gcount[i] = 0;
+            }
+            const view_filters = [
+                'Not limiting targets',
+                'Limiting targets to those in sight',
+                'Limiting targets to those in same area',
+            ];
+            await pline(`${view_filters[g.iflags.getloc_filter]}.`);
+            msg_given = true;
+            continue;
+        }
+
+        // C getpos.c NHKF_GETPOS_MENU ('!') — toggle getloc_usemenu.
+        // getpos_menu listing still named; m|M still cycle when the flag is on.
+        if (key === getpos_spkey(NHKF_GETPOS_MENU)) {
+            if (!g.iflags) g.iflags = {};
+            g.iflags.getloc_usemenu = !g.iflags.getloc_usemenu;
+            await pline(
+                `${g.iflags.getloc_usemenu ? 'Using' : 'Not using'} a menu to show possible targets${
+                    g.iflags.getloc_usemenu ? " for 'm|M', 'o|O', 'd|D', and 'x|X'" : ''
+                }.`,
+            );
+            msg_given = true;
+            continue;
+        }
+
         // C ref: getpos.c NHKF_GETPOS_SELF ('@') — reset cycle indices to hero
         if (key === getpos_spkey(NHKF_GETPOS_SELF)) {
             for (let i = 0; i < garr.length; i++) gidx[i] = 0;
@@ -1251,14 +1209,23 @@ export async function getpos(ccp, force, goal, describeAt) {
             continue;
         }
 
-        // C ref: getpos.c mMoOdDxX — gather_locs + next/prev cycle (gloc 0..3).
-        // getloc_usemenu → getpos_menu deferred (use cycle path).
+        // C getpos.c NHKF_GETPOS_MOVESKIP ('*') — toggle glyph-skip fastmove.
+        if (key === getpos_spkey(NHKF_GETPOS_MOVESKIP)) {
+            if (!g.iflags) g.iflags = {};
+            g.iflags.getloc_moveskip = !g.iflags.getloc_moveskip;
+            await pline(
+                `${g.iflags.getloc_moveskip ? 'S' : 'Not s'}kipping over similar terrain when fastmoving the cursor.`,
+            );
+            msg_given = true;
+            continue;
+        }
+
+        // C ref: getpos.c mMoOdDxX — gather_locs + next/prev (gloc 0..5).
+        // getloc_usemenu → getpos_menu named omitted (cycle path).
         {
-            const mMoOdDxX = 'mMoOdDxX';
-            const cp = mMoOdDxX.indexOf(ch);
-            if (cp >= 0) {
-                const gtmp = cp; // 0..7
-                const gloc = gtmp >> 1; // 0..3 MONS/OBJS/DOOR/EXPLORE
+            const gtmp = mMoOdDxX_nhkf.findIndex((nhkf) => key === getpos_spkey(nhkf));
+            if (gtmp >= 0) {
+                const gloc = gtmp >> 1; // 0..5 MONS..VALID
                 if (!garr[gloc]) {
                     const gathered = gather_locs(gloc);
                     garr[gloc] = gathered.arr;
@@ -1267,10 +1234,8 @@ export async function getpos(ccp, force, goal, describeAt) {
                 }
                 if (gcount[gloc] > 0) {
                     if (!(gtmp & 1)) {
-                        // next: m o d x
                         gidx[gloc] = (gidx[gloc] + 1) % gcount[gloc];
                     } else {
-                        // prev: M O D X
                         gidx[gloc] -= 1;
                         if (gidx[gloc] < 0) gidx[gloc] = gcount[gloc] - 1;
                     }
@@ -1285,9 +1250,10 @@ export async function getpos(ccp, force, goal, describeAt) {
         // C ref: getpos.c — non-dir key may match dungeon-feature symbols
         // (defsyms/showsyms matching[]); scan or "Can't find…"; else unknown.
         if (!' \r\n\x1b'.includes(ch)) {
-            const tags = feature_match_tags(ch);
-            if (tags.size > 0) {
-                const found = find_dungeon_feature(cx, cy, ch, tags);
+            const fm = build_feature_matching(ch);
+            if (fm.k) {
+                const tags = feature_match_tags(ch);
+                const found = find_dungeon_feature(cx, cy, ch, tags, fm.matching);
                 if (found) {
                     cx = found.x;
                     cy = found.y;
@@ -1311,11 +1277,20 @@ export async function getpos(ccp, force, goal, describeAt) {
         await pline(`Unknown direction: '${visctrl(key)}' (${note}).`);
         msg_given = true;
         if (force) continue;
+        await pline('Done.');
         ccp.x = -1;
-        ccp.y = -1;
+        ccp.y = 0;
         g._pending_message = '';
         if (getpos_hilitefunc) getpos_hilitefunc(false);
         getpos_sethilite(null, null);
-        return -1;
+        return 0; // C: result = 0 (not -1)
+    }
+    } finally {
+        if (g.u) {
+            g.u.dx = udx;
+            g.u.dy = udy;
+            g.u.dz = udz;
+        }
     }
 }
+

@@ -714,7 +714,7 @@ function nh_timeout_luck(u) {
  * done_timeout / slimed_to_death; STUNNED/SEE_INVIS/HALLUC/SLEEPY/…
  * expiry messages; FLYING timed-land (wizintrinsic); GLIB `make_glib(0)`
  * inventory on expiry; ublesscnt (in allmain); ugallop; delayed killers;
- * defer_decor; full ice/mount slip_or_trip arms; you_unwere callers
+ * full ice/mount slip_or_trip arms; you_unwere callers
  * beyond mtimedone (pray TROUBLE / potion); surface() Underwater bottom.
  * u.uinvulnerable early-return freezes all TIMEOUT (D-0928 #1171) after
  * luck (C: luck still runs).
@@ -844,7 +844,11 @@ export async function nh_timeout() {
             if (Fumbling()) {
                 incr_itimeout_HFumbling(rnd(20));
             }
-            // defer_decor deferred
+            // C timeout.c:926–930 — mention_decor catch-up after slip
+            if (game.iflags?.defer_decor) {
+                const { deferred_decor } = await import('./pickup.js');
+                await deferred_decor(false);
+            }
         }
     }
 
