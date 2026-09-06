@@ -32,6 +32,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VIBRATING_SQUARE,
          PARANOID_TRAP,
          LARGEST_INT, GC_NOFLAGS, GC_SAVEHIST, GC_CONDHIST, GC_ECHOFIRST,
+         In_sokoban,
          } from './const.js';
 import { FOOD_CLASS, objectNames } from './objects.js';
 import { EXTCMDLIST } from './generated/extcmdlist_data.js';
@@ -39,9 +40,11 @@ import { PM_GRID_BUG } from './generated/monsters_data.js';
 
 const STATUE_OTYP = objectNames.indexOf('STATUE');
 const BOULDER_OTYP = objectNames.indexOf('BOULDER');
+const PICK_AXE_OTYP = objectNames.indexOf('PICK_AXE');
+const DWARVISH_MATTOCK_OTYP = objectNames.indexOf('DWARVISH_MATTOCK');
 const AT_EXPL = 13; // monattk.h — fight_empty Upolyd explode
 import { dist2, bad_rock, cant_squeeze_thru, wake_nearto } from './mon.js';
-import { is_hider } from './monsters.js';
+import { is_hider, tunnels, needspick } from './monsters.js';
 import { vision_recalc, couldsee, cansee } from './vision.js';
 import {
     ddoinv, dodiscovered, doattributes, dolook, doprgold, doprwep, doprarm,
@@ -90,7 +93,7 @@ import {
     test_move_run_blocked_by_boulder, test_move_boulder_is_blocking,
     test_move_hero_passes_bars, test_move_hero_chews_bars, still_chewing,
     could_move_onto_boulder, Passes_walls_prop,
-    end_running,
+    end_running, carrying,
     water_turbulence, move_out_of_bounds, avoid_running_into_trap_or_liquid,
     domove_fight_ironbars, domove_fight_web,
 } from './hack.js';
@@ -1066,6 +1069,88 @@ function travel_blocks_tight_diag(ux, uy, nx, ny) {
     return cant_squeeze_thru(ym) !== 0;
 }
 
+/**
+ * C ref: hack.c test_move :989–1255, TEST_TRAV arms in C order — the edge
+ * test findtravelpath calls per direction (`test_move(x, y, nx-x, ny-y,
+ * TEST_TRAV)` at :1400/:1427). Replaces the blocksMove / boulder_at /
+ * travel_avoids_cell / tight-diag stand-in chain in the travel BFS.
+ * C consequences, all preserved: closed doors are passable (orthogonal;
+ * diagonal falls into `testdiag` :1139); single boulders are enterable
+ * leaves (two-in-a-row gate on expansion, :1238); diagonal intact doorways
+ * are banned both into (:1139–1147) and out of (:1205–1213) the door cell.
+ * Named omissions: Passes_walls+may_passwall rock (:1014); Underwater rock
+ * (outcome identical — blocked); worm_cross (:1172); block_entry (matches
+ * the domove :3217 deferral); WAN_DIGGING-unknown arm of the two-in-row
+ * gate (no JS objects[].oc_name_known — treated as not carrying);
+ * Known_wwalking/Known_lwalking/WATERWALL/LAVAWALL (ride inside
+ * travel_avoids_cell).
+ */
+function travel_test_move(ux, uy, dx, dy) {
+    const x = (ux | 0) + (dx | 0);
+    const y = (uy | 0) + (dy | 0);
+    if (!isok(x, y)) return false;
+    const loc = game.level?.at(x, y);
+    if (!loc) return false;
+    const typ = loc.typ | 0;
+    const passWalls = Passes_walls_prop();
+    const ym = game.youmonst;
+    const ydat = ym?.data;
+    if (IS_OBSTRUCTED(typ) || typ === IRONBARS) {
+        // C :1011–1073. Blind feel_location, autodig/use_pick_axe2 and the
+        // drawbridge/Sokoban/mention_walls plines are DO_MOVE-only.
+        if (typ === IRONBARS) {
+            if (!(passWalls || test_move_hero_passes_bars())) return false;
+        } else if (!(ydat && tunnels(ydat) && !needspick(ydat))) {
+            return false;
+        }
+        // tunnels(youmonst)+!needspick eats the rock: pass.
+    } else if (IS_DOOR(typ)) {
+        // C :1074–1167. Passes_walls / ooze / Underwater / tunneling pass a
+        // closed door; TEST_TRAV takes `goto testdiag` (:1149) — orthogonal
+        // falls through (pass; the delay arm prefers other routes), diagonal
+        // needs doorless_door (block_door rides along).
+        if (closed_door_at(x, y)) {
+            if (passWalls || can_ooze(ym)) { /* pass */ } else if ((game.u?.uinwater | 0)) {
+                return false;
+            } else if (ydat && tunnels(ydat) && !needspick(ydat)) { /* pass */ } else if ((dx | 0) && (dy | 0)
+                && (!doorless_door(x, y) || block_door(x, y))) {
+                return false;
+            }
+        } else if ((dx | 0) && (dy | 0) && !passWalls
+            && (!doorless_door(x, y) || block_door(x, y))) {
+            return false;
+        }
+    }
+    // C squeeze (:1153): bad_rock flanks + cant_squeeze_thru (worm_cross :1172
+    // deferred — named above).
+    if (travel_blocks_tight_diag(ux, uy, x, y)) return false;
+    // C :1181–1200 run==8 trap/liquid: C returns (mode==TEST_TRAP), FALSE
+    // under TEST_TRAV — shared travel_avoids_cell (hero cell excluded there).
+    if (((game.context?.run | 0) === 8) && travel_avoids_cell(x, y)) return false;
+    // C :1205–1213 diagonal out of a doorway that still has a door.
+    if ((dx | 0) && (dy | 0) && !passWalls) {
+        const from = game.level?.at(ux, uy);
+        if (from && IS_DOOR(from.typ | 0)
+            && (!doorless_door(ux, uy) || false /* block_entry deferred */)) {
+            return false;
+        }
+    }
+    // C :1216–1252 boulder TEST_TRAV: never in Sokoban; two boulders in a
+    // row need Passes_walls / giant-tiny maneuver / tunneling / a carried
+    // digger; else assume the push works — the cell is enterable and the
+    // gate above blocks expansion out of it (D-0412/D-0700 leaf).
+    if (boulder_at(x, y) && (In_sokoban() || !passWalls)) {
+        if (In_sokoban()) return false;
+        if (boulder_at(ux, uy) && !passWalls
+            && !could_move_onto_boulder(ux, uy)
+            && !(ydat && tunnels(ydat) && !needspick(ydat))
+            && !carrying(PICK_AXE_OTYP) && !carrying(DWARVISH_MATTOCK_OTYP)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // C ref: hack.c doorless_door — only D_NODOOR / D_BROKEN (no intact door)
 function doorless_door(x, y) {
     const loc = game.level?.at(x, y);
@@ -1675,13 +1760,10 @@ function findtravelpath_bfs(fromX, fromY, toX, toY, guessMode, couldseeOnly = fa
                         continue;
                     }
                 }
-                if (blocksMove(nx, ny)) continue;
-                // C TEST_TRAV: never enter boulder as a path node (tourist)
-                if (boulder_at(nx, ny)) continue;
-                // C test_move TEST_TRAV + run==8: seen traps / known liquids
-                if (travel_avoids_cell(nx, ny)) continue;
-                // C test_move: tight diagonal + cant_squeeze_thru (load)
-                if (travel_blocks_tight_diag(x, y, nx, ny)) continue;
+                // C test_move TEST_TRAV edge (:1400): closed doors pass,
+                // single boulders are enterable leaves, diagonal intact
+                // doorways banned both ways (travel_test_move).
+                if (!travel_test_move(x, y, nx - x, ny - y)) continue;
 
                 if (nx === toX && ny === toY) {
                     // Path reached hero from neighbor (x,y) → step onto it
@@ -1756,7 +1838,8 @@ function findtravelpath_travel(couldseeOnly = false) {
  * C ref: hack.c findtravelpath(TRAVP_GUESS) — BFS from hero through
  * couldsee cells, pick matrix cell closest to u.tx/u.ty, then
  * TRAVP_TRAVEL from that pick back to hero.
- * Named omissions: travelmap visited stop; full door/boulder delay re-queue.
+ * Named omissions: travelmap visited stop; travel_test_move arms
+ * (may_passwall, worm_cross, block_entry, wand-unknown, Known_*walking).
  */
 function findtravelpath_guess() {
     const u = game.u;
@@ -1796,10 +1879,8 @@ function findtravelpath_guess() {
                         continue;
                     }
                 }
-                if (blocksMove(nx, ny)) continue;
-                if (boulder_at(nx, ny)) continue;
-                if (travel_avoids_cell(nx, ny)) continue;
-                if (travel_blocks_tight_diag(x, y, nx, ny)) continue;
+                // C test_move TEST_TRAV edge, same as the TRAVEL loop.
+                if (!travel_test_move(x, y, nx - x, ny - y)) continue;
                 // C: reaching dest under GUESS does not return / enqueue
                 if (nx === destX && ny === destY) continue;
                 const key = `${nx},${ny}`;

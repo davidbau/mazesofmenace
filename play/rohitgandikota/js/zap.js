@@ -6287,6 +6287,9 @@ export async function fracture_rock(obj) /* no texts here! */
     obj.dknown = obj.bknown = obj.rknown = 0;
     obj.known = game.objects[obj.otyp].oc_uses_known ? 0 : 1;
     obj.oextra = null; /* dealloc_oextra(obj) */
+    delete obj.oname;
+    delete obj.omonst;
+    delete obj.omid;
 
     if (obj.where === OBJ_FLOOR) {
         obj_extract_self(obj); /* move rocks back on top */
@@ -6316,6 +6319,10 @@ export async function break_statue(obj) {
     /* drop any objects contained inside the statue */
     while ((item = (obj.cobj || [])[0]) != null) {
         obj_extract_self(item);
+        // C place_object applies this to each released object. The shared
+        // JS placement helper currently only updates the floor chain.
+        const { obj_no_longer_held } = await import('./do.js');
+        await obj_no_longer_held(item);
         place_object(item, obj.ox, obj.oy);
     }
     if (by_you && Role_if(PMNAMES.PM_ARCHEOLOGIST)

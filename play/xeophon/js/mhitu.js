@@ -4,7 +4,7 @@ import { game } from './gstate.js';
 import { d, rnd, rn1, rn2 } from './rng.js';
 import { W_ARMG } from './const.js';
 import { pmOf, hitvalMonsterWeapon, dmgvalMonsterWeapon, selectHwep } from './mhitm.js';
-import { AD_PHYS, AD_COLD, AD_MAGM, AD_STUN, AD_CONF, AD_PLYS, AD_SAMU, AD_SPEL, AD_CLRC, AT_MAGC, AT_WEAP, AT_CLAW,
+import { AD_PHYS, AD_COLD, AD_MAGM, AD_STUN, AD_CONF, AD_PLYS, AD_SAMU, AD_BLND, AD_SPEL, AD_CLRC, AT_MAGC, AT_WEAP, AT_CLAW, AT_GAZE,
     AT_KICK, AT_BITE, AT_BUTT, AT_TUCH, AT_STNG, AT_TENT, perceives, thick_skinned } from './permonst.js';
 
 const CONTACT_ATTACKS = new Set([AT_WEAP, AT_CLAW, AT_KICK, AT_BITE, AT_BUTT, AT_TUCH, AT_STNG, AT_TENT]);
@@ -22,7 +22,8 @@ export function supportsMonsterAttackSlots(mon) {
     const attacks = pmOf(mon)?.attacks || [];
     return attacks.some(attack => attack.aatyp === AT_MAGC)
         && attacks.every(attack => !attack.aatyp
-            || (attack.aatyp === AT_MAGC ? MAGIC_DAMAGE.has(attack.adtyp)
+            || (attack.aatyp === AT_GAZE ? attack.adtyp === AD_BLND
+                : attack.aatyp === AT_MAGC ? MAGIC_DAMAGE.has(attack.adtyp)
                 : CONTACT_ATTACKS.has(attack.aatyp) && CONTACT_DAMAGE.has(attack.adtyp)));
 }
 
@@ -54,6 +55,10 @@ export async function advanceMonsterAttackSlots(state, D) {
                 continue;
             }
             state.found = found;
+            if (state.attack.aatyp === AT_GAZE) {
+                state.phase = 'gaze';
+                continue;
+            }
             if (state.attack.aatyp === AT_MAGC) {
                 // mattacku recalculates range after theft can teleport its
                 // attacker. buzzmu rejects non-ray spell types immediately.
@@ -77,6 +82,12 @@ export async function advanceMonsterAttackSlots(state, D) {
                 continue;
             }
             state.phase = state.attack.aatyp === AT_WEAP ? 'weapon' : 'roll';
+        }
+        if (state.phase === 'gaze') {
+            if (!await D.gaze(state)) return false;
+            // gazemu returns MISS even when blindness or stun took effect.
+            state.hits[state.index] = false;
+            state.phase = 'afterSlot';
         }
         if (state.phase === 'cast') {
             state.phase = 'afterCast';

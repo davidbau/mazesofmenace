@@ -16,7 +16,7 @@ import { Upolyd, plur } from './const.js';
 import { You_cant } from './pline.js';
 import { touch_petrifies } from './dog.js';
 import { bimanual, is_plural, pair_of } from './obj.js';
-import { is_weptool, set_bknown, splitobj, clear_splitobjs } from './mkobj.js';
+import { is_weptool, set_bknown, splitobj, clear_splitobjs, unsplitobj } from './mkobj.js';
 import { reset_remarm } from './do_wear.js';
 import { is_pole } from './u_init.js';
 import { will_weld } from './monmove.js';
@@ -51,6 +51,7 @@ import { del_light_source, new_light_source, LS_OBJECT } from './light.js';
 const ynq = (query) => tty_yn_function(query, 'ynq', 'q');
 import { P_BOW, P_CROSSBOW } from './const.js';
 import { OCLASSES, ONAMES, SKILLS } from './objects_data.js';
+import { Shk_Your } from './shk.js';
 
 
 
@@ -102,42 +103,183 @@ export const ammo_and_launcher = (a, l) => is_ammo(a) && matching_launcher(a, l)
 
 // src/wield.c:512 doquiver_core() — "ready" or "fire".
 export async function doquiver_core(verb) {
+    let qbuf;
+    let newquiver;
+    let res;
+    let was_uwep = false;
+    const was_twoweap = !!game.u.twoweap;
+    let flow = '';
+
+    /* Since the quiver isn't in your hands, don't check cantwield(),
+       will_weld(), touch_petrifies(), etc. */
+    game.multi = 0;
     if (!(game.invent || []).length) {
+        /* could accept '-' to empty quiver, but there's no point since
+           inventory is empty so uquiver is already Null */
         await You('have nothing to ready for firing.');
         return ECMD_OK;
     }
 
-    const newquiver = await getobj(verb, ready_ok,
-                                   GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
-    if (!newquiver)
+    /* forget last splitobj() before calling getobj() with GETOBJ_ALLOWCNT */
+    clear_splitobjs();
+    /* Prompt for a new quiver: "What do you want to {ready|fire}?" */
+    newquiver = await getobj(verb, ready_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
+
+    if (!newquiver) {
+        /* Cancelled */
         return ECMD_CANCEL;
-
-    /* src/wield.c:633 — readying the ALTERNATE weapon needs confirmation.
-       The wording tracks two/one-handed use and singular/plural. */
-    if (newquiver === game.u.uswapwep) {
-        const use_plural = false;       /* is_plural/pair_of need objnam */
-        const qbuf = `${!use_plural ? 'That is' : 'Those are'} your `
-                   + `${game.u.twoweap ? 'second' : 'alternate'} weapon.  `
-                   + `Ready ${!use_plural ? 'it' : 'them'} instead?`;
-
-        if (await ynq(qbuf) !== 'y') {
-            note_unported_wield('doquiver_core:decline message');
-            return ECMD_OK;
+    } else if (newquiver === hands_obj) { /* no object */
+        /* Explicitly nothing */
+        if (game.u.uquiver) {
+            await You('now have no ammunition readied.');
+            /* skip 'quivering: prinv()' */
+            setuqwep(null);
+        } else {
+            await You('already have no ammunition readied!');
         }
-        /* src/wield.c:648 — quivering the alternate weapon, so no more
-           uswapwep. This must go through setuswapwep(), which clears
-           W_SWAPWEP from the object's owornmask; nulling the pointer alone
-           left the mask set, so doname kept appending
-           "(alternate weapon; not wielded)" alongside "(at the ready)". */
-        setuswapwep(null);
-        untwoweapon();
+        return ECMD_OK;
+    } else if (newquiver.o_id === game.context?.objsplit?.child_oid) {
+        /* if newquiver is the result of supplying a count to getobj()
+           we don't want to split something already in the quiver;
+           for any other item, we need to give it its own inventory slot */
+        if (game.u.uquiver && game.u.uquiver.o_id === game.context.objsplit.parent_oid) {
+            unsplitobj(newquiver);
+            flow = 'already_quivered';
+        } else if (newquiver.oclass === OCLASSES.COIN_CLASS) {
+            /* don't allow splitting a stack of coins into quiver */
+            await You("can't ready only part of your gold.");
+            unsplitobj(newquiver);
+            return ECMD_OK;
+        } else {
+            finish_splitting(newquiver);
+        }
+    } else if (newquiver === game.u.uquiver) {
+        flow = 'already_quivered';
+    }
+    if (flow === 'already_quivered') {
+ /* already_quivered: */
+        await pline('That ammunition is already readied!');
+        return ECMD_OK;
+    } else if (flow === '' && newquiver.o_id !== game.context?.objsplit?.child_oid) {
+        const uwep = game.u.uwep, uswapwep = game.u.uswapwep;
+
+        if (newquiver.owornmask & (W_ARMOR | W_ACCESSORY | W_SADDLE)) {
+            await You(`cannot ${verb} that!`);
+            return ECMD_OK;
+        } else if (newquiver === uwep) {
+            const weld_res = !uwep.bknown;
+
+            if (welded(uwep)) {
+                await weldmsg(uwep);
+                reset_remarm(); /* same as dowield() */
+                return weld_res ? ECMD_TIME : ECMD_OK;
+            }
+            /* offer to split stack if wielding more than 1 */
+            if (uwep.quan > 1 && inv_cnt(false) < invlet_basic
+                                        && splittable(uwep)) {
+                qbuf = `You are wielding ${uwep.quan} ${simpleonames(uwep)}.  Ready ${
+                        uwep.quan - 1} of them?`;
+                switch (await ynq(qbuf)) {
+                case 'q':
+                    return ECMD_OK;
+                case 'y':
+                    /* leave 1 wielded, split rest off and put into quiver */
+                    newquiver = splitobj(uwep, uwep.quan - 1);
+                    finish_splitting(newquiver);
+                    flow = 'quivering';
+                    break;
+                default:
+                    break;
+                }
+                qbuf = 'Ready all of them instead?';
+            } else {
+                const use_plural = (is_plural(uwep) || pair_of(uwep));
+
+                qbuf = `You are wielding ${!use_plural ? 'that' : 'those'}.  Ready ${
+                        !use_plural ? 'it' : 'them'} instead?`;
+            }
+            if (flow !== 'quivering') {
+                /* require confirmation to ready the main weapon */
+                if (await ynq(qbuf) !== 'y') {
+                    qbuf = Shk_Your(uwep); /* replace qbuf[] contents */
+                    await pline(`${qbuf}${simpleonames(uwep)} ${otense(uwep, 'remain')} wielded.`);
+                    return ECMD_OK;
+                }
+                /* quivering main weapon, so no longer wielding it */
+                setuwep(null);
+                untwoweapon();
+                was_uwep = true;
+            }
+        } else if (newquiver === uswapwep) {
+            if (uswapwep.quan > 1 && inv_cnt(false) < invlet_basic
+                && splittable(uswapwep)) {
+                qbuf = `${game.u.twoweap ? 'You are dual wielding'
+                                         : 'Your alternate weapon is'} ${
+                        uswapwep.quan} ${simpleonames(uswapwep)}.  Ready ${
+                        uswapwep.quan - 1} of them?`;
+                switch (await ynq(qbuf)) {
+                case 'q':
+                    return ECMD_OK;
+                case 'y':
+                    /* leave 1 alt-wielded, split rest off and put into quiver */
+                    newquiver = splitobj(uswapwep, uswapwep.quan - 1);
+                    finish_splitting(newquiver);
+                    flow = 'quivering';
+                    break;
+                default:
+                    break;
+                }
+                qbuf = 'Ready all of them instead?';
+            } else {
+                const use_plural = (is_plural(uswapwep) || pair_of(uswapwep));
+
+                qbuf = `${!use_plural ? 'That is' : 'Those are'} your ${
+                        game.u.twoweap ? 'second' : 'alternate'} weapon.  Ready ${
+                        !use_plural ? 'it' : 'them'} instead?`;
+            }
+            if (flow !== 'quivering') {
+                /* require confirmation to ready the alternate weapon */
+                if (await ynq(qbuf) !== 'y') {
+                    qbuf = Shk_Your(uswapwep); /* replace qbuf[] contents */
+                    await pline(`${qbuf}${simpleonames(uswapwep)} ${
+                                otense(uswapwep, 'remain')} ${
+                                game.u.twoweap ? 'wielded' : 'as secondary weapon'}.`);
+                    return ECMD_OK;
+                }
+                /* quivering alternate weapon, so no more uswapwep */
+                setuswapwep(null);
+                untwoweapon();
+            }
+        }
     }
 
-    /* src/wield.c:652 — place the item in the quiver BEFORE printing, so the
-       inventory line already reads "(at the ready)". */
-    setuqwep(newquiver);
-    await prinv(null, newquiver, 0);
-    return ECMD_OK;
+ /* quivering: */
+    if (verb === 'ready') {
+        /* place item in quiver before printing so that inventory feedback
+           includes "(at the ready)" */
+        setuqwep(newquiver);
+        await prinv(null, newquiver, 0);
+    } else { /* verb=="fire", manually refilling quiver during 'f'ire */
+        /* prefix item with description of action, so don't want that to
+           include "(at the ready)" */
+        await prinv('You ready:', newquiver, 0);
+        setuqwep(newquiver);
+    }
+
+    /* quiver is a convenience slot and manipulating it ordinarily
+       consumes no time, but unwielding primary or secondary weapon
+       should take time (perhaps we're adjacent to a rust monster
+       or disenchanter and want to hit it immediately, but not with
+       something we're wielding that's vulnerable to its damage) */
+    res = 0;
+    if (was_uwep) {
+        await You(`are now ${empty_handed()}.`);
+        res = 1;
+    } else if (was_twoweap && !game.u.twoweap) {
+        await You(`${are_no_longer_twoweap}.`);
+        res = 1;
+    }
+    return res ? ECMD_TIME : ECMD_OK;
 }
 
 // src/wield.c:505 dowieldquiver() — the 'Q' command.

@@ -198,8 +198,11 @@ export const ACH_HELL = 2, ACH_INVK = 5, ACH_ENDG = 7, ACH_ASTR = 8,
              ACH_UWIN = 9, ACH_MINE = 15, ACH_TOWN = 16,
              ACH_SHOP = 17, ACH_SOKO = 21, ACH_BGRM = 22,
              ACH_RNK1 = 23;
-const ACH_MINE_PRIZE = 10, ACH_SOKO_PRIZE = 11, ACH_RNK8 = 30,
-      N_ACH = 32;
+/* include/you.h enum achivements */
+const ACH_BELL = 1, ACH_CNDL = 3, ACH_BOOK = 4, ACH_AMUL = 6,
+      ACH_MINE_PRIZE = 10, ACH_SOKO_PRIZE = 11, ACH_MEDU = 12, ACH_BLND = 13,
+      ACH_NUDE = 14, ACH_TMPL = 18, ACH_ORCL = 19, ACH_NOVL = 20,
+      ACH_RNK8 = 30, ACH_TUNE = 31, N_ACH = 32;
 let en_final = 0;
 
 // src/insight.c:50 achieve_msg[]; indexed by enum achievements in you.h.
@@ -238,6 +241,172 @@ const achieve_msg = [
     [LL_MINORAC, "learned castle drawbridge's tune"],
     [0, ''],
 ];
+
+// src/insight.c:2243 show_achievements() — appended to the conduct window
+// (C's ge.en_win); 'put', 'cmsg' and 'have_X' are show_conduct()'s
+// enlght_out(), enl_msg() and you_have_X()
+function show_achievements_into(put, cmsg, have_X, final) {
+    let i, achidx, absidx, acnt;
+    let buf;
+
+    /* unfortunately we can't show the achievements (at least not all of
+       them) while the game is in progress because it would give away the
+       ID of luckstone (at Mine's End) and of real Amulet of Yendor */
+    if (!final && !game.wizard)
+        return;
+
+    /* first, figure whether any achievements have been accomplished
+       so that we don't show the header for them if the resulting list
+       below it would be empty */
+    if ((acnt = count_achievements()) === 0)
+        return;
+
+    put(''); /* end of game disclosure window: putstr(awin, 0, "") */
+    put(`Achievement${plur(acnt)}:`);
+
+    /* display achievements in the order in which they were recorded;
+       lone exception is to defer the Amulet if we just ascended;
+       it warrants alternate wording when given away during ascension,
+       but the Amulet achievement is always attained before entering
+       endgame and the alternate wording looks strange if shown before
+       "reached endgame" and "reached Astral" */
+    if (remove_achievement(ACH_UWIN)) { /* UWIN == Ascended! */
+        /* for ascension, force it to be last and Amulet next to last
+           by taking them out and then adding them back */
+        if (remove_achievement(ACH_AMUL)) /* should always be True here */
+            record_achievement(ACH_AMUL);
+        record_achievement(ACH_UWIN);
+    }
+    const uhave = game.u.uhave || {};
+    for (i = 0; i < acnt; ++i) {
+        achidx = game.u.uachieved[i];
+        absidx = Math.abs(achidx);
+
+        switch (absidx) {
+        case ACH_BLND:
+            cmsg('are exploring', 'explored', ' without being able to see');
+            break;
+        case ACH_NUDE:
+            cmsg('have gone', 'went', ' without any armor');
+            break;
+        case ACH_MINE:
+            have_X('entered the Gnomish Mines');
+            break;
+        case ACH_TOWN:
+            have_X('entered Minetown');
+            break;
+        case ACH_SHOP:
+            have_X('entered a shop');
+            break;
+        case ACH_TMPL:
+            have_X('entered a temple');
+            break;
+        case ACH_ORCL:
+            have_X('consulted the Oracle of Delphi');
+            break;
+        case ACH_NOVL:
+            have_X('read from a Discworld novel');
+            break;
+        case ACH_SOKO:
+            have_X('entered Sokoban');
+            break;
+        case ACH_SOKO_PRIZE: /* hard to reach guaranteed bag or amulet */
+            have_X('completed Sokoban');
+            break;
+        case ACH_MINE_PRIZE: /* hidden guaranteed luckstone */
+            have_X('completed the Gnomish Mines');
+            break;
+        case ACH_BGRM:
+            have_X('entered the Big Room');
+            break;
+        case ACH_MEDU:
+            have_X('defeated Medusa');
+            break;
+        case ACH_TUNE:
+            have_X("learned the tune to open and close the Castle's drawbridge");
+            break;
+        case ACH_BELL:
+            /* alternate phrasing for present vs past and also for
+               possessing the item vs once held it */
+            cmsg(uhave.bell ? 'have' : 'have handled',
+                 uhave.bell ? 'had' : 'handled',
+                 ' the Bell of Opening');
+            break;
+        case ACH_HELL:
+            cmsg('have ', '', 'entered Gehennom');
+            break;
+        case ACH_CNDL:
+            cmsg(uhave.menorah ? 'have' : 'have handled',
+                 uhave.menorah ? 'had' : 'handled',
+                 ' the Candelabrum of Invocation');
+            break;
+        case ACH_BOOK:
+            cmsg(uhave.book ? 'have' : 'have handled',
+                 uhave.book ? 'had' : 'handled',
+                 ' the Book of the Dead');
+            break;
+        case ACH_INVK:
+            have_X("gained access to Moloch's Sanctum");
+            break;
+        case ACH_AMUL:
+            /* alternate wording for ascended (always past tense) since
+               hero had it until #offer forced it to be relinquished */
+            cmsg(uhave.amulet ? 'have' : 'have obtained',
+                 game.u.uevent?.ascended ? 'delivered'
+                  : uhave.amulet ? 'had' : 'had obtained',
+                 ' the Amulet of Yendor');
+            break;
+
+        /* reaching Astral makes feedback about reaching the Planes
+           be redundant and ascending makes both be redundant, but
+           we display all that apply */
+        case ACH_ENDG:
+            have_X('reached the Elemental Planes');
+            break;
+        case ACH_ASTR:
+            have_X('reached the Astral Plane');
+            break;
+        case ACH_UWIN:
+            /* the ultimate achievement... */
+            put(' You ascended!');
+            break;
+
+        /* rank 0 is the starting condition, not an achievement; 8 is Xp 30 */
+        case ACH_RNK1: case ACH_RNK1 + 1: case ACH_RNK1 + 2: case ACH_RNK1 + 3:
+        case ACH_RNK1 + 4: case ACH_RNK1 + 5: case ACH_RNK1 + 6: case ACH_RNK8:
+            buf = `attained the rank of ${
+                   rank_of(rank_to_xlev(absidx - (ACH_RNK1 - 1)),
+                           game.urole, (achidx < 0) ? true : false)}`;
+            have_X(buf);
+            break;
+
+        default:
+            buf = ` [Unexpected achievement #${achidx}.]`;
+            put(buf);
+            break;
+        } /* switch */
+    } /* for */
+}
+
+// src/insight.c:2434 count_achievements()
+export function count_achievements() {
+    return (game.u.uachieved || []).length;
+}
+
+// src/insight.c:2444 remove_achievement()
+export function remove_achievement(achidx) {
+    const achieved = game.u.uachieved || [];
+    let i;
+
+    for (i = 0; i < achieved.length; ++i)
+        if (Math.abs(achieved[i]) === Math.abs(achidx))
+            break; /* stop when found */
+    if (i >= achieved.length) /* not found */
+        return false;
+    /* list is 0 terminated so any beyond the removed one move up a slot */
+    achieved.splice(i, 1);
+    return true;
+}
 
 // src/insight.c:2405 record_achievement()
 export function record_achievement(achidx) {
@@ -1426,30 +1595,7 @@ export async function show_conduct(final) {
             cmsg('have not wished ', 'did not wish ', 'for any artifacts');
     }
 
-    const achieved = game.u.uachieved || [];
-    if ((fin || game.wizard) && achieved.length) {
-        put('');
-        put(`Achievement${achieved.length === 1 ? '' : 's'}:`);
-        for (const signed of achieved) {
-            const ach = Math.abs(signed);
-            if (ach >= ACH_RNK1 && ach <= ACH_RNK1 + 7) {
-                const rank = ach - ACH_RNK1 + 1;
-                const xlev = rank < 2 ? 3 : rank < 8 ? rank * 4 - 2 : 30;
-                have_X(`attained the rank of ${
-                    rank_of(xlev, game.urole, signed < 0)}`);
-            } else if (ach === ACH_HELL) {
-                have_X('entered Gehennom');
-            } else if (ach === ACH_MINE) {
-                have_X('entered the Gnomish Mines');
-            } else if (ach === ACH_TOWN) {
-                have_X('entered Minetown');
-            } else if (ach === ACH_SHOP) {
-                have_X('entered a shop');
-            } else if (ach === ACH_SOKO) {
-                have_X('entered Sokoban');
-            }
-        }
-    }
+    show_achievements_into(put, cmsg, have_X, fin);
 
     await tty_display_nhwindow(win);
     await xwaitforspace(' \r\n\x1b');

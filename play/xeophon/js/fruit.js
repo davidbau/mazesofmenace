@@ -1,3 +1,4 @@
+import { makePlural, makeSingular } from './objnam.js';
 import { game } from './gstate.js';
 
 export const SLIME_MOLD_OTYP = 11009;
@@ -10,18 +11,11 @@ function compactFruitName(name) {
 }
 
 export function singularFruitName(name) {
-    const text = compactFruitName(name);
-    if (/\bies$/i.test(text)) return text.replace(/ies$/i, 'y');
-    if (/\b(?:sses|xes|zes|ches|shes)$/i.test(text)) return text.replace(/es$/i, '');
-    if (/\bs$/i.test(text) && !/\bss$/i.test(text)) return text.slice(0, -1);
-    return text;
+    return makeSingular(compactFruitName(name));
 }
 
 export function pluralFruitName(name) {
-    const text = singularFruitName(name);
-    if (/[^aeiou]y$/i.test(text)) return `${text.slice(0, -1)}ies`;
-    if (/(?:s|x|z|ch|sh)$/i.test(text)) return `${text}es`;
-    return `${text}s`;
+    return makePlural(singularFruitName(name));
 }
 
 function fruitRegistry() {

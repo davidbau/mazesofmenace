@@ -32,7 +32,8 @@ import { TIMEOUT, FROMOUTSIDE, I_SPECIAL, WT_NOISY_INV, FOOT, NECK,
          M_AP_MONSTER, NH_GREEN, G_GENOD, Upolyd, PLNMSG_OK_DONT_DIE,
          PLNMSG_ONE_ITEM_HERE, FULL_MOON, FAINTING, MV_KNOWS_EGG,
          NO_MINVENT, MM_NOMSG, OBJ_FLOOR, OBJ_INVENT, OBJ_MINVENT,
-         CONTAINED_TOO, BURIED_TOO, ACID_RES, STONE_RES }
+         CONTAINED_TOO, BURIED_TOO, ACID_RES, STONE_RES,
+         OBJ_MIGRATING, OBJ_BURIED, OBJ_CONTAINED, RANGE_GLOBAL }
     from './const.js';
 import { ONAMES } from './objects_data.js';
 import { PMNAMES, MFLAGS, MONSYMS } from './monst_data.js';
@@ -42,6 +43,7 @@ import { artifact_light } from './artifact.js';
 import { get_obj_location } from './zap.js';
 import { impossible } from './pline.js';
 import { xname } from './objnam.js';
+import { find_oid } from './shk.js';
 
 // src/timeout.c:129 stoned_texts[], :138 stoned_dialogue()
 const stoned_texts = [
@@ -292,6 +294,89 @@ function insert_timer(gnu) {
     while (i < base.length && base[i].timeout < gnu.timeout)
         i++;
     base.splice(i, 0, gnu);
+}
+
+// src/timeout.c mon_is_local/obj_is_local/timer_is_local(). Migrating pets
+// and the hero's possessions retain their timers across level changes.
+function mon_is_local(mon) {
+    return !(game.migrating_mons || []).includes(mon)
+        && !(game.mydogs || []).includes(mon);
+}
+
+export function obj_is_local(obj) {
+    switch (obj.where) {
+    case OBJ_INVENT:
+    case OBJ_MIGRATING:
+        return false;
+    case OBJ_FLOOR:
+    case OBJ_BURIED:
+        return true;
+    case OBJ_CONTAINED:
+        return obj_is_local(obj.ocontainer);
+    case OBJ_MINVENT:
+        return mon_is_local(obj.ocarry);
+    default:
+        throw new Error('obj_is_local');
+    }
+}
+
+function timer_is_local(timer) {
+    switch (timer.kind) {
+    case TIMER_LEVEL: return true;
+    case TIMER_GLOBAL: return false;
+    case TIMER_OBJECT: return obj_is_local(timer.arg);
+    case TIMER_MONSTER: return mon_is_local(timer.arg);
+    default: throw new Error('timer_is_local');
+    }
+}
+
+// src/timeout.c write_timer/save_timers(), encode owner IDs without changing
+// the live owner or its timed count. Array length represents the saved count.
+function write_timer(timer) {
+    const saved = {...timer};
+    if (!saved.needs_fixup && (saved.kind === TIMER_OBJECT
+                              || saved.kind === TIMER_MONSTER)) {
+        saved.arg = saved.kind === TIMER_OBJECT ? saved.arg.o_id : saved.arg.m_id;
+        saved.needs_fixup = 1;
+    }
+    return saved;
+}
+
+// src/timeout.c:2668 save_timers()
+export function save_timers(range, release = false) {
+    const local = range !== RANGE_GLOBAL;
+    const selected = (game.timer_base || []).filter(t => timer_is_local(t) === local);
+    const saved = {timers: selected.map(write_timer)};
+    if (range === RANGE_GLOBAL)
+        saved.timer_id = game.timer_id;
+    if (release)
+        game.timer_base = (game.timer_base || []).filter(t => !selected.includes(t));
+    return saved;
+}
+
+// src/timeout.c:2707 restore_timers(). Insertion reverses equal-time
+// entries just as the C queue does. Starting new timers here would alter IDs
+// and double the owners' timed counts.
+export function restore_timers(saved, range, ghostly = false, adjust = 0) {
+    if (range === RANGE_GLOBAL)
+        game.timer_id = saved.timer_id;
+    for (const timer of saved?.timers || [])
+        insert_timer({...timer, timeout: timer.timeout + (ghostly ? adjust : 0)});
+}
+
+// src/timeout.c:2751 relink_timers()
+export function relink_timers(ghostly, idmap) {
+    for (const timer of game.timer_base || []) {
+        if (!timer.needs_fixup)
+            continue;
+        if (timer.kind !== TIMER_OBJECT)
+            throw new Error('relink_timers: no monster timer implemented');
+        const id = ghostly ? idmap.get(timer.arg) : timer.arg;
+        timer.arg = find_oid(id);
+        if (!timer.arg)
+            throw new Error(`relink_timers: cannot find object ${id}`);
+        timer.needs_fixup = 0;
+    }
 }
 
 // src/timeout.c:2247 start_timer() — schedule `func_index` for `arg` in `when`

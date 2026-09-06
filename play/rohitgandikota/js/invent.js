@@ -1052,7 +1052,8 @@ export async function display_binventory(x, y, as_if_seen = false) {
 // selector and no identifier, an item carries its inventory letter. The "a - "
 // prefix is NOT built here; tty_add_menu() builds it, exactly as in C, which is
 // what makes the +2 in tty_end_menu()'s width the right rule for this window.
-export function display_inventory(allowed_choices = null, want_reply = false) {
+// (display_inventory() itself is the C wrapper further down.)
+export function display_pickinv_entries(allowed_choices = null, want_reply = false) {
     if (game.flags.fixinv === false)
         reassign();
     const out = [];
@@ -1323,12 +1324,12 @@ export function this_type_only(obj) {
 // The hands entry, force_invmenu's extra query line and the count field are
 // recorded; nothing ported reaches them.
 export async function display_pickinv(allowed_choices, handsbuf, menuquery,
-                                      allownone) {
+                                      allownone, want_reply = true) {
     const { tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
             tty_select_menu, tty_destroy_nhwindow, tty_get_nhwindow,
             ATR_NONE: A_NONE, ATR_INVERSE: A_INV, NHW_MENU: W_MENU }
         = await import('./tty/wintty.js');
-    const { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, PICK_ONE }
+    const { MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, PICK_NONE, PICK_ONE }
         = await import('./const.js');
     const { NO_COLOR } = await import('./terminal.js');
 
@@ -1359,7 +1360,8 @@ export async function display_pickinv(allowed_choices, handsbuf, menuquery,
                 /* xprname(otmp, NULL, lets[0], TRUE, 0, 0) */
                 const line = `${otmp.invlet} - ${doname(otmp)}.`;
                 const r = await tty_message_menu(otmp.invlet,
-                                                 1 /* PICK_ONE */, line);
+                                                 want_reply ? PICK_ONE : PICK_NONE,
+                                                 line);
                 return (r === '\0' || r === 0) ? 0 : r;
             }
         }
@@ -1391,7 +1393,7 @@ export async function display_pickinv(allowed_choices, handsbuf, menuquery,
        headings up front instead listed every empty class: quaffing showed
        Coins/Weapons/Armor/... around a lone Potions section. */
     let pending_heading = null;
-    for (const e of display_inventory(allowed_choices, !wizid)) {
+    for (const e of display_pickinv_entries(allowed_choices, want_reply)) {
         if (e.heading) {
             pending_heading = e;
             continue;
@@ -1415,7 +1417,8 @@ export async function display_pickinv(allowed_choices, handsbuf, menuquery,
        this window has NO title; the hardcoded one added a phantom first row. */
     tty_end_menu(win, (menuquery && menuquery.length) ? menuquery : null);
 
-    const picks = await tty_select_menu(win, wizid ? 2 /* PICK_ANY */ : PICK_ONE);
+    const picks = await tty_select_menu(win, wizid ? 2 /* PICK_ANY */
+                                             : want_reply ? PICK_ONE : PICK_NONE);
     const cancelled = !!tty_get_nhwindow(win)?.cancelled;
     tty_destroy_nhwindow(win);
 
@@ -1440,6 +1443,32 @@ export async function display_pickinv(allowed_choices, handsbuf, menuquery,
         return 0;
     }
     return String.fromCharCode(picks[0]);
+}
+
+// src/invent.c:3428 display_inventory()
+//
+// If lets == NULL or "", list all objects in the inventory.  Otherwise,
+// list all objects with object classes that match the order in lets.
+//
+// Returns the letter identifier of a selected item, or 0 if nothing
+// was selected.
+export async function display_inventory(lets, want_reply) {
+    const cmdq = cmdq_pop();
+
+    if (cmdq) {
+        if (cmdq.typ === CMDQ_KEY) {
+            for (const otmp of game.invent || [])
+                if (otmp.invlet === cmdq.key
+                    && (!lets || !lets.length
+                        || lets.includes(def_oc_syms[otmp.oclass])))
+                    return otmp.invlet;
+        }
+
+        /* cmdq not a key, or did not find the object, abort */
+        cmdq_clear(CQ_CANNED);
+        return 0;
+    }
+    return display_pickinv(lets, null, null, false, want_reply);
 }
 
 // src/decl.c:96 quitchars — the keys that abandon a prompt.

@@ -1,8 +1,17 @@
+import { heroCarriedWeight, heroEncumbranceForWeight, movementIsPoolAt } from './cmd.js';
+import { REGENERATION, SLEEPY, ENERGY_REGENERATION, MAGICAL_BREATHING, HALF_PHDAM } from './const.js';
+import { S_EEL, breathless } from './permonst.js';
+import { hasWoundedLegs } from './do.js';
+import { beginHeroLegHealing, finishHeroLegHealing, encumberMsg } from './cmd.js';
+import { WOUNDED_LEGS } from './const.js';
+import { heroCarryCapacity } from './cmd.js';
+import { currentHeroAttribute } from './attrib.js';
 import { findAc, setArmorWorn } from './do_wear.js';
+import { FUMBLING, TIMEOUT, FROMOUTSIDE } from './const.js';
 import { ARMOR_MAGIC_NEGATION } from './armor.js';
 import { initializeSkills, ROLE_SKILL_LIMITS, spellSkillType } from './skills.js';
 import { setArtifactEquipmentLight } from './artifact.js';
-import { monsterCastSpell, afterMeltHeroSpotEffects, runMonsterAttackTurn } from './cmd.js';
+import { monsterCastSpell, afterMeltHeroSpotEffects, runMonsterAttackTurn, finishArmorBonusChange } from './cmd.js';
 import { supportsMonsterAttackSlots } from './mhitu.js';
 import { clearHeroSickness, adjustHeroAttribute, heroCanSpotMonster, heroIsBlind, hcolor } from './cmd.js';
 import { AT_BOOM, AT_MAGC, AD_SPEL, AD_CLRC, is_hider } from './permonst.js';
@@ -13,10 +22,11 @@ import { AT_BOOM, AT_MAGC, AD_SPEL, AD_CLRC, is_hider } from './permonst.js';
 import { game } from './gstate.js';
 import { amulet as wizardAmuletTurn, demigodTurnHook, clonewiz, noOfWizards, aggravate as wizardAggravate } from './wizard.js';
 import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, maketrap, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, STONE_RESISTANT_MONSTERS, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty, chameleonAnimalForm, doppelgangerHumanoidForm, noteleportLevelForMonster, rlocNoMsg, rlocToCoreNoMsg, somexyspace, fumaroles, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, add_to_minv, putSaddleOnMonster } from './mklev.js';
-import { rhack, travelStepEndsAtTarget, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, triggerPickDigTrapUnderHero, billDigShopTerrainDamage, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, takeOffGlovesPetrifyingSelfTouchMessages, addBootsOffSideEffects, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, brokenPotionBreathe, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, monsterPolyTrapEffect, stoneMonster, CORPSE_TIMER_HANDLERS, runOrganicRotTimer, shrinkGlob, addDelayedFoodBiteNutrition, addShopTerrainDamage, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger, applyHeroFireExplosionInventoryDamage, applyHeroColdExplosionInventoryDamage, applyHeroElectricExplosionInventoryDamage, applyChestTrapPayload, applyLifeSavingOrFatalCommandMode, processHeroLavaSinkingTurn, randomTeleportDepth, levelTeleportNumericTarget, downGateAt, impactDropFloorObjects, queueImpactDroppedObjects, maybeTurnPolyselfIntoStoneGolem, randomMonsterPolymorphTarget, applyMonsterPolymorphTarget, heroMeleeFireInventoryBurn, coldTouchDestroyItemsProgram } from './cmd.js';
+import { rhack, travelStepEndsAtTarget, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, triggerPickDigTrapUnderHero, billDigShopTerrainDamage, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, takeOffGlovesPetrifyingSelfTouchMessages, addBootsOffSideEffects, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, brokenPotionBreathe, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, monsterPolyTrapEffect, stoneMonster, CORPSE_TIMER_HANDLERS, runOrganicRotTimer, shrinkGlob, addDelayedFoodBiteNutrition, addShopTerrainDamage, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger, applyHeroFireExplosionInventoryDamage, applyHeroColdExplosionInventoryDamage, applyHeroElectricExplosionInventoryDamage, applyChestTrapPayload, applyLifeSavingOrFatalCommandMode, processHeroLavaSinkingTurn, randomTeleportDepth, levelTeleportNumericTarget, downGateAt, impactDropFloorObjects, queueImpactDroppedObjects, maybeTurnPolyselfIntoStoneGolem, randomMonsterPolymorphTarget, applyMonsterPolymorphTarget, heroMeleeFireInventoryBurn, coldTouchDestroyItemsProgram } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, view_from } from './vision.js';
 import { init_objects } from './o_init.js';
+import { setTinVariety } from './eat.js';
 import { alignGodName, GOD_VOICES } from './offer.js';
 import { init_dungeons_rng } from './dungeon.js';
 import { rn2, rn2_on_display_rng, rnd, rn1, rnl, rne, rnz, d, getRngLog } from './rng.js';
@@ -59,7 +69,7 @@ import { advanceFireBreathRay, finishHeroTargetedBreath, fireBreathDamageMonster
 import { attachFigurineTransformTimeout, figurineLocationCheck, isFigurineObject, makeFigurineFamiliar, stopFigurineTransformTimeout } from './figurine.js';
 import { meltIceAway, removedFromIcebox } from './ice.js';
 import { runObjectBurnTimer } from './cmd.js';
-import { BURN_OBJECT, HATCH_EGG, FIG_TRANSFORM, ROT_ORGANIC, SHRINK_GLOB, MELT_ICE_AWAY, runTimers, splitObjectTimers } from './timeout.js';
+import { BURN_OBJECT, HATCH_EGG, FIG_TRANSFORM, ROT_ORGANIC, SHRINK_GLOB, MELT_ICE_AWAY, runTimers, splitObjectTimers, fallAsleep } from './timeout.js';
 import { objectLocations } from './obj_location.js';
 import { restoreLifeSavedBody } from './end.js';
 import { SLIME_MOLD_OTYP, applySlimeMoldFruitFields } from './fruit.js';
@@ -1037,13 +1047,15 @@ function initFoodFromRoll(roll) {
     if (roll > 925) {
         if (rn2(6)) {
             const monster = rndmonnumLevelOne();
-            rn2(15);
+            obj.corpsenm = MONS.find(mon => mon.name === monster);
+            setTinVariety(obj);
             const meat = monster === 'lichen' ? monster : `${monster} meat`;
             obj.kind = `tin:${monster}`;
             obj.singular = `tin of ${meat}`;
             obj.plural = `tins of ${meat}`;
         } else {
             obj.kind = 'tin:spinach';
+            setTinVariety(obj, -1);
             obj.singular = 'tin of spinach';
             obj.plural = 'tins of spinach';
         }
@@ -1270,12 +1282,14 @@ function initInventoryObject(item, state, recordInventory = true, stackQuan = 1)
     const obj = item.random ? initRandomObject(item.cls, state) : initSpecificObject(item);
     applyRaceInventorySubstitution(obj, state.raceName);
     if ((obj.cls === 'weapon' || obj.cls === 'armor' || obj.kind === 'pick-axe') && obj.spe == null) obj.spe = 0;
-    if (obj.cls === 'weapon' || obj.cls === 'armor' || obj.kind === 'pick-axe') obj.known = true;
+    // C mksobj initializes non-uses_known types; ini_inv sets the rest.
+    obj.known = true;
     if (item.blessed !== undefined) {
         obj.blessed = item.blessed;
         obj.cursed = false;
     }
     obj.cursed = false;
+    if (state.roleName === 'Samurai' && obj.kind === 'splint mail') obj.oerodeproof = true;
     if (obj.cls !== 'coin') {
         obj.dknown = true;
         obj.bknown = true;
@@ -2858,11 +2872,11 @@ function covetousMonsterNextToHero(mon) {
 function exerciseAttribute(attr, increase) {
     const u = game.u;
     if (!u || attr === A_INT || attr === A_CHA) return;
-    if (u._polyself_base && attr !== A_WIS) return;
+    if (u._polyself_form && attr !== A_WIS) return;
     u._aexe ??= Array(A_MAX).fill(0);
     if (Math.abs(u._aexe[attr] || 0) >= AVAL) return;
 
-    const current = u.acurr?.a?.[attr] ?? 10;
+    const current = currentHeroAttribute(attr);
     if (increase) u._aexe[attr] += rn2(19) > current ? 1 : 0;
     else u._aexe[attr] -= rn2(2);
 }
@@ -2876,7 +2890,7 @@ function addHeroStatusSuffix(status) {
 
 function removeHeroStatusSuffix(status) {
     if (!game.u) return;
-    const parts = String(game.u._statusSuffix || '').trim().split(/\s+/).filter(part => part !== status);
+    const parts = String(game.u._statusSuffix || '').trim().split(/\s+/).filter(part => part && part !== status);
     game.u._statusSuffix = parts.length ? ` ${parts.join(' ')}` : '';
 }
 
@@ -3434,14 +3448,9 @@ function stopStoningOccupations() {
 }
 
 function silentlyHealHeroWoundedLegsForStoning() {
-    if (!game.u || game.u.usteed || !(game.u._woundedLegTurns || 0)) return;
-    game.u._woundedLegTurns = 0;
-    game.u._woundedLegSide = '';
-    if (game.u._woundedDexPenalty && game.u.acurr?.a) {
-        game.u.acurr.a[A_DEX]++;
-        game.u._woundedDexPenalty = 0;
-    }
-    game.u._statusSuffix = (game.u._statusSuffix || '').replace(' Burdened', '');
+    if (!game.u || game.u.usteed || !hasWoundedLegs()) return;
+    beginHeroLegHealing(2);
+    finishHeroLegHealing(2);
 }
 
 function applyStoningDialogueSideEffects(timeout) {
@@ -3541,7 +3550,7 @@ function processAttributeExercise() {
             if (item.letter === '$' || item.cls === 'coin' || item.otyp === 'coin') continue;
             carriedWeight += objectWeight(item) * (item.quan || 1);
         }
-        const capacity = Math.min(1000, 25 * ((u.acurr?.a?.[A_STR] ?? 10) + (u.acurr?.a?.[A_CON] ?? 10)) + 50);
+        const capacity = heroCarryCapacity();
         const burden = carriedWeight - capacity;
         const encumbrance = burden <= 0 ? 0 : Math.min(Math.trunc(burden * 2 / capacity) + 1, OVERLOADED);
         if (encumbrance === MOD_ENCUMBER) exerciseAttribute(A_STR, true);
@@ -3560,7 +3569,7 @@ function processAttributeExercise() {
         if (u.regenerating) exerciseAttribute(A_STR, true);
         if (u.sick || u.vomiting || status.includes('Sick')) exerciseAttribute(A_CON, false);
         if (status.includes('Conf') || status.includes('Hallu')) exerciseAttribute(A_WIS, false);
-        if ((u._woundedLegTurns || 0) > 0 || u.fumbling || status.includes('Stun')) exerciseAttribute(A_DEX, false);
+        if ((hasWoundedLegs() && !u.usteed) || u.fumbling || status.includes('Stun')) exerciseAttribute(A_DEX, false);
     }
     if (!skipPeriodicExercise) game._last_periodic_exercise_turn = turn;
     if (oneShotExerciseTurnOffset) game._exercise_turn_offset = 0;
@@ -3896,6 +3905,8 @@ export async function processPickDigOccupation() {
         if (fumble.dropItem) pickDigDropItem(item);
         if (fumble.wake) wakeNearbyForDig();
         addToplineMessage(fumble.message);
+        const loadMessage = encumberMsg();
+        if (loadMessage) addToplineMessage(loadMessage);
         return;
     }
 
@@ -4331,7 +4342,7 @@ function maybeShapeshiftVampire(mon) {
 
 export async function processMonsterTurns() {
     if (game._monster_attack_continuation) return false;
-    if (game._turn_tail_phase === 'timers') {
+    if (['timers', 'legs', 'exertion'].includes(game._turn_tail_phase)) {
         game._deferred_monster_turn_tail = 0;
         return await finishMonsterTurnTail();
     }
@@ -7978,7 +7989,7 @@ if (attack.adtyp === 'steal') {
                                     }
                                     continue;
                                 }
-                                const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
+                                const catchChance = 100 - (currentHeroAttribute(A_DEX))
                                     - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
                                 const caught = heroCanAttemptThrownObjectCatch(thrownMissile)
                                     && rn2(Math.max(1, catchChance)) === 0;
@@ -8485,7 +8496,7 @@ if (attack.adtyp === 'steal') {
                         } else if (interveningTarget) {
                             finishEggInterveningHit(interveningTarget);
                         } else {
-                            const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
+                            const catchChance = 100 - (currentHeroAttribute(A_DEX))
                                 - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
                             const caught = heroCanAttemptThrownObjectCatch(thrownMissile)
                                 && rn2(Math.max(1, catchChance)) === 0;
@@ -8922,7 +8933,7 @@ if (attack.adtyp === 'steal') {
                         });
                         game._clear_transient_projectiles_after_more = 1;
                         newsym(flightX, flightY);
-                        const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
+                        const catchChance = 100 - (currentHeroAttribute(A_DEX))
                             - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
                         const caught = heroCanAttemptThrownObjectCatch(thrownMissile)
                             && rn2(Math.max(1, catchChance)) === 0;
@@ -9091,7 +9102,7 @@ if (attack.adtyp === 'steal') {
                             });
                             addMonsterThrownFloorMessages(floorMessages, throwerVisible || targetVisible);
                         } else {
-                            const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
+                            const catchChance = 100 - (currentHeroAttribute(A_DEX))
                                 - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
                             const caught = heroCanAttemptThrownObjectCatch(thrownMissile)
                                 && rn2(Math.max(1, catchChance)) === 0;
@@ -9243,7 +9254,7 @@ if (attack.adtyp === 'steal') {
                             });
                             addMonsterThrownFloorMessages(floorMessages, throwerVisible);
                         } else {
-                            const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
+                            const catchChance = 100 - (currentHeroAttribute(A_DEX))
                                 - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
                             const caught = heroCanAttemptThrownObjectCatch(thrownMissile)
                                 && rn2(Math.max(1, catchChance)) === 0;
@@ -9386,7 +9397,7 @@ if (attack.adtyp === 'steal') {
                             });
                             addMonsterThrownFloorMessages(floorMessages, throwerVisible);
                         } else {
-                            const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
+                            const catchChance = 100 - (currentHeroAttribute(A_DEX))
                                 - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
                             const caught = heroCanAttemptThrownObjectCatch(thrownMissile)
                                 && rn2(Math.max(1, catchChance)) === 0;
@@ -9529,7 +9540,7 @@ if (attack.adtyp === 'steal') {
                             });
                             addMonsterThrownFloorMessages(floorMessages, throwerVisible);
                         } else {
-                            const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
+                            const catchChance = 100 - (currentHeroAttribute(A_DEX))
                                 - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
                             const caught = heroCanAttemptThrownObjectCatch(thrownMissile)
                                 && rn2(Math.max(1, catchChance)) === 0;
@@ -9671,7 +9682,7 @@ if (attack.adtyp === 'steal') {
                             newsym(projectileX, projectileY);
                         }
 
-                        const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
+                        const catchChance = 100 - (currentHeroAttribute(A_DEX))
                             - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
                         const caught = heroCanAttemptThrownObjectCatch(thrownPotion)
                             && rn2(Math.max(1, catchChance)) === 0;
@@ -9807,7 +9818,7 @@ if (attack.adtyp === 'steal') {
                                     });
                                 }
                             } else {
-                                const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
+                                const catchChance = 100 - (currentHeroAttribute(A_DEX))
                                     - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
                                 const caught = heroCanAttemptThrownObjectCatch(thrownMissile)
                                     && rn2(Math.max(1, catchChance)) === 0;
@@ -9965,7 +9976,7 @@ if (attack.adtyp === 'steal') {
                             });
                             addMonsterThrownFloorMessages(floorMessages, throwerVisible);
                         } else {
-                            const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
+                            const catchChance = 100 - (currentHeroAttribute(A_DEX))
                                 - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
                             const caught = heroCanAttemptThrownObjectCatch(thrownMissile)
                                 && rn2(Math.max(1, catchChance)) === 0;
@@ -10225,7 +10236,7 @@ if (attack.adtyp === 'steal') {
                             } else if (interveningTarget) {
                                 finishDartInterveningHit(interveningTarget);
                             } else {
-                                const catchChance = 100 - (game.u?.acurr?.a?.[A_DEX] ?? 10)
+                                const catchChance = 100 - (currentHeroAttribute(A_DEX))
                                     - (game._startup_role === 'Monk' || game._startup_role === 'Rogue' ? 20 : 0);
                                 const caught = heroCanAttemptThrownObjectCatch(thrownMissile)
                                     && rn2(Math.max(1, catchChance)) === 0;
@@ -10385,6 +10396,7 @@ if (attack.adtyp === 'steal') {
         game._refresh_monsters_for_turn_tail_once = 0;
         mons = [...(game.level?.monsters || [])].reverse();
     }
+    game._turn_wtcap = heroEncumbranceForWeight(heroCarriedWeight());
     const liveMons = new Set(game.level?.monsters || []);
     if (!game._monster_turns_started && !finishingQueuedDeadTurn) {
         for (const mon of mons) {
@@ -10537,34 +10549,7 @@ if (attack.adtyp === 'steal') {
         await makemon(null, 0, 0, NO_MM_FLAGS);
         mons = [...(game.level?.monsters || [])].reverse();
     }
-    let heroMoveAmount = NORMAL_SPEED;
-    if (game.u?.usteed && game.u.umoved) {
-        const steed = game.u.usteed;
-        let mmove = steed.data?.mmove ?? NORMAL_SPEED;
-        // C allmain.c:u_calc_moveamt uses mcalcmove for a ridden move,
-        // including the steed's speed and gallop before random rounding.
-        if (steed.mspeed === 'slow' || steed.mspeed === MSLOW || steed.mspeed === -1)
-            mmove = mmove < NORMAL_SPEED ? Math.trunc((2 * mmove + 1) / 3)
-                : 4 + Math.trunc(mmove / 3);
-        else if (steed.mspeed === 'fast' || steed.mspeed === MFAST)
-            mmove = Math.trunc((4 * mmove + 2) / 3);
-        if (game.u.ugallop && game.context?.mv)
-            mmove = Math.trunc(((rn2(2) ? 4 : 5) * mmove) / 3);
-        heroMoveAmount = mmove - (mmove % NORMAL_SPEED);
-        if (rn2(NORMAL_SPEED) < (mmove % NORMAL_SPEED)) heroMoveAmount += NORMAL_SPEED;
-    } else {
-        heroMoveAmount = game.u?._monsterMove ?? NORMAL_SPEED;
-        // C: allmain.c:u_calc_moveamt augments the current form's speed
-        // using the live PRNG, including forms with zero base movement.
-        if (game.u?.veryfast) {
-            if (rn2(3)) heroMoveAmount += NORMAL_SPEED;
-        } else if (game.u?.fast) {
-            if (!rn2(3)) heroMoveAmount += NORMAL_SPEED;
-        }
-    }
-    if ((game.u?._statusSuffix || '').includes('Burdened'))
-        heroMoveAmount -= Math.trunc(heroMoveAmount / 4);
-    game.u.umovement = Math.max(0, (game.u.umovement || 0) + heroMoveAmount);
+    allocateHeroMovement(game._turn_wtcap);
     if (game._prime_newt_movement_after_turn_tail) {
         const newt = (game.level?.monsters || []).find(mon => mon.data?.name === 'newt');
         if (newt) newt.movement = Math.max(newt.movement || 0, game._prime_newt_movement_after_turn_tail);
@@ -10591,14 +10576,137 @@ if (attack.adtyp === 'steal') {
 	    return result;
 	}
 
+// allmain.c:u_calc_moveamt applies load fractions after hero or steed speed.
+export function allocateHeroMovement(wtcap) {
+    let heroMoveAmount = NORMAL_SPEED;
+    if (game.u?.usteed && game.u.umoved) {
+        const steed = game.u.usteed;
+        let mmove = steed.data?.mmove ?? NORMAL_SPEED;
+        // C allmain.c:u_calc_moveamt uses mcalcmove for a ridden move,
+        // including the steed's speed and gallop before random rounding.
+        if (steed.mspeed === 'slow' || steed.mspeed === MSLOW || steed.mspeed === -1)
+            mmove = mmove < NORMAL_SPEED ? Math.trunc((2 * mmove + 1) / 3)
+                : 4 + Math.trunc(mmove / 3);
+        else if (steed.mspeed === 'fast' || steed.mspeed === MFAST)
+            mmove = Math.trunc((4 * mmove + 2) / 3);
+        if (game.u.ugallop && game.context?.mv)
+            mmove = Math.trunc(((rn2(2) ? 4 : 5) * mmove) / 3);
+        heroMoveAmount = mmove - (mmove % NORMAL_SPEED);
+        if (rn2(NORMAL_SPEED) < (mmove % NORMAL_SPEED)) heroMoveAmount += NORMAL_SPEED;
+    } else {
+        heroMoveAmount = game.u?._monsterMove ?? NORMAL_SPEED;
+        // C: allmain.c:u_calc_moveamt augments the current form's speed
+        // using the live PRNG, including forms with zero base movement.
+        if (game.u?.veryfast) {
+            if (rn2(3)) heroMoveAmount += NORMAL_SPEED;
+        } else if (game.u?.fast) {
+            if (!rn2(3)) heroMoveAmount += NORMAL_SPEED;
+        }
+    }
+    switch (wtcap) {
+    case 1: heroMoveAmount -= Math.trunc(heroMoveAmount / 4); break;
+    case MOD_ENCUMBER: heroMoveAmount -= Math.trunc(heroMoveAmount / 2); break;
+    case HVY_ENCUMBER: heroMoveAmount -= Math.trunc(heroMoveAmount * 3 / 4); break;
+    case EXT_ENCUMBER: heroMoveAmount -= Math.trunc(heroMoveAmount * 7 / 8); break;
+    }
+    game.u.umovement = Math.max(0, (game.u.umovement || 0) + heroMoveAmount);
+    return heroMoveAmount;
+}
+
+// hack.c:overexert_hp waits for the fainting message before exercise and sleep.
+// The caller retains this state when a More prompt suspends the current turn.
+export function overexertHeroHp(state = {}) {
+    if (state.phase === 'done') return true;
+    const u = game.u;
+    const poly = u._polyself_form || u.Upolyd || u.polymorphed;
+    const key = poly && u.mh != null ? 'mh' : 'uhp';
+    if (!state.phase) {
+        if (u[key] > 1) {
+            u[key]--;
+            (game.disp ??= {}).botl = true;
+            state.phase = 'done';
+            return true;
+        }
+        state.phase = 'afterMessage';
+        if (!addToplineMessage('You pass out from exertion!')) return false;
+    }
+    exerciseAttribute(A_CON, false);
+    fallAsleep(-10, false, stopHeroOccupation);
+    state.phase = 'done';
+    return true;
+}
+
+// allmain.c:regen_hp. Monster HP is distinct from the inactive human body;
+// older runtime forms keep their active HP in uhp until canonical mh exists.
+export function regenerateHeroHealth(wtcap) {
+    const u = game.u, form = u._polyself_form || ((u.Upolyd || u.polymorphed) && MONS[u.umonnum]);
+    const hpKey = form && u.mh != null ? 'mh' : 'uhp';
+    const maxKey = hpKey === 'mh' ? 'mhmax' : 'uhpmax';
+    if (u.uinvulnerable || !(u[hpKey] > 0)) return false;
+    const regen = u.uprops?.[REGENERATION], sleepy = u.uprops?.[SLEEPY];
+    const regenerating = regen ? !!(regen.intrinsic || regen.extrinsic)
+        : !!(u.regeneration || u.regenerating || heroWearsRingNamed('regeneration'));
+    const sleepingRegen = !!(u.usleep && (sleepy ? sleepy.intrinsic || sleepy.extrinsic
+        : u.sleepy || u.sleepyTimeout || (game.inventory || []).some(item => item.worn
+            && (item.amuletIndex === 3 || (item.actualKind || item.kind) === 'amulet of restful sleep'))));
+    const canRegen = regenerating || sleepingRegen;
+    const encumbranceOk = wtcap < MOD_ENCUMBER || !u.umoved;
+    let heal = 0;
+    if (form) {
+        const species = monsterSpecies({ data: form }) || form;
+        const breathing = u.uprops?.[MAGICAL_BREATHING];
+        const magicBreathing = breathing ? !!(breathing.intrinsic || breathing.extrinsic)
+            : u.magicalBreathing || (game.inventory || []).some(item => item.worn
+                && (item.actualKind || item.kind) === 'amulet of magical breathing');
+        if ((species.mlet === S_EEL || form.mlet === 'eel')
+            && !movementIsPoolAt(u.ux,u.uy) && !Is_waterlevel(u.uz)
+            && !(magicBreathing || u.breathless || u.Breathless || form.breathless || breathless(species))) {
+            const half = u.uprops?.[HALF_PHDAM];
+            const halfPhysical = half ? !!(half.intrinsic || half.extrinsic)
+                : u.halfPhysicalDamage || u.half_physical_damage || u.halfPhysical;
+            if (u[hpKey] > 1 && !regenerating && rn2(u[hpKey]) > rn2(8)
+                && (!halfPhysical || game.moves % 2 === 0)) heal = -1;
+        } else if (u[hpKey] < u[maxKey] && (canRegen || encumbranceOk && game.moves % 20 === 0)) heal = 1;
+    } else if (u.uhp < u.uhpmax && (encumbranceOk || canRegen)) {
+        heal = Number((u.ulevel + currentHeroAttribute(A_CON)) > rn2(100));
+        if (canRegen) heal++;
+        if (sleepingRegen) heal++;
+    }
+    if (!heal) return false;
+    u[hpKey] = Math.min(u[maxKey], u[hpKey] + heal);
+    (game.disp ??= {}).botl = true;
+    return u[hpKey] === u[maxKey];
+}
+
+// allmain.c:regen_pw grants the breathing bonus only for an extrinsic source.
+export function regenerateHeroPower(wtcap) {
+    const u = game.u;
+    if (u.uen >= u.uenmax) return false;
+    const role = game.urole?.name?.m || game._startup_role;
+    const interval = Math.trunc((38 - u.ulevel) * (role === 'Wizard' ? 3 : 4) / 6);
+    const energy = u.uprops?.[ENERGY_REGENERATION];
+    const regenerating = energy ? !!(energy.intrinsic || energy.extrinsic) : u.energy_regeneration;
+    if (!(wtcap < MOD_ENCUMBER && game.moves % interval === 0 || regenerating)) return false;
+    const breathing = u.uprops?.[MAGICAL_BREATHING];
+    const extrinsicBreathing = breathing ? !!breathing.extrinsic : (game.inventory || []).some(item =>
+        item.worn && (item.actualKind || item.kind) === 'amulet of magical breathing');
+    const upper = Math.trunc((currentHeroAttribute(A_WIS) + currentHeroAttribute(A_INT)) / 15)
+        + 1 + (extrinsicBreathing ? 2 : 0);
+    u.uen = Math.min(u.uenmax, u.uen + rn1(upper, 1));
+    (game.disp ??= {}).botl = true;
+    return u.uen === u.uenmax;
+}
+
 async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
     // A More prompt inside movemon must return before C starts a new turn.
     if (game._turn_setup_pending) {
         game._turn_setup_pending = 0;
         // C allmain.c:244: all once-per-turn effects observe the new turn.
         game.moves = (game.moves || 1) + 1;
-        if (game.u?.fumbling) {
+        if (!game.u?.uinvulnerable && (game.u?._fumblingTimeout || 0) > 0) {
             game.u._fumblingTimeout = Math.max(0, (game.u._fumblingTimeout ?? 0) - 1);
+            const prop = game.u.uprops?.[FUMBLING];
+            if (prop) prop.intrinsic = ((prop.intrinsic || 0) & ~TIMEOUT) | game.u._fumblingTimeout;
             if (!game.u._fumblingTimeout) {
                 if (game.u.umoved && !game.u.levitating && !game.u.flying) {
                     const roll = rn2(4);
@@ -10643,7 +10751,8 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
             }
         }
     }
-    const resumeTimers = game._turn_tail_phase === 'timers';
+    const resumeTimers = ['timers', 'legs', 'exertion'].includes(game._turn_tail_phase);
+    const resumeExertion = game._turn_tail_phase === 'exertion';
     const resumeAfterSounds = !!game._resume_monster_turn_tail_after_sounds;
     game._resume_monster_turn_tail_after_sounds = 0;
     let sleepingHunger = false;
@@ -10690,7 +10799,13 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
         }
         if (game._finish_fumble_timeout) {
             game._finish_fumble_timeout = 0;
+            const prop = game.u?.uprops?.[FUMBLING];
+            if (prop) {
+                prop.intrinsic &= ~FROMOUTSIDE;
+                game.u.fumbling = !!(prop.intrinsic || prop.extrinsic);
+            }
             if (game.u?.fumbling) game.u._fumblingTimeout = rnd(20);
+            if (prop) prop.intrinsic = ((prop.intrinsic || 0) & ~TIMEOUT) | game.u._fumblingTimeout;
         }
         if (!game.u?.uinvulnerable) {
             if ((game.u?._veryfastTimeout || 0) > 0) {
@@ -10782,7 +10897,7 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
             u._sicknessTimeout = 0;
             if (!u._sickTimeout) {
                 const foodPoisoning = !(u.usick_type & 2);
-                if (foodPoisoning && rn2(100) < (u.acurr?.a?.[A_CON] ?? 10)) {
+                if (foodPoisoning && rn2(100) < (currentHeroAttribute(A_CON))) {
                     addToplineMessage('You have recovered from your illness.');
                     clearHeroSickness();
                     u.usick_type = 0;
@@ -10899,96 +11014,75 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
                 if (!game.u._deafTimeout)
                     game.u._statusSuffix = (game.u._statusSuffix || '').replace(' Deaf', '');
             }
-            if ((game.u?._woundedLegTurns || 0) > 0) {
-                game.u._woundedLegTurns--;
-                if (!game.u._woundedLegTurns && game.u._woundedDexPenalty && game.u.acurr?.a) {
-                    const wasBurdened = (game.u._statusSuffix || '').includes('Burdened');
-                    game.u.acurr.a[3]++;
-                    game.u._woundedDexPenalty = 0;
-                    game.u._statusSuffix = (game.u._statusSuffix || '').replace(' Burdened', '');
-                    addToplineMessage('Your leg feels better.');
-                    if (wasBurdened) addToplineMessage('Your movements are now unencumbered.');
+            const wounds = game.u?.uprops?.[WOUNDED_LEGS];
+            if (wounds?.intrinsic & TIMEOUT) {
+                wounds.intrinsic--;
+                game.u._woundedLegTurns = wounds.intrinsic & TIMEOUT;
+                if (!game.u._woundedLegTurns) {
+                    game._turn_tail_phase = 'legs';
+                    game._leg_healing_tail = { cleared: false };
+                    const message = beginHeroLegHealing();
+                    if (message && !addToplineMessage(message)) {
+                        game._deferred_monster_turn_tail = 1;
+                        game._resume_time_after_more = 1;
+                        game._process_time_with_more = 0;
+                        return 'defer-tail';
+                    }
                 }
             }
         }
-        if (!game.u?.uinvulnerable || resumeTimers) {
+        if (game._turn_tail_phase === 'legs') {
+            if (!game._leg_healing_tail.cleared) {
+                game._leg_healing_tail.cleared = true;
+                const message = finishHeroLegHealing();
+                if (message && !addToplineMessage(message)) {
+                    game._deferred_monster_turn_tail = 1;
+                    game._resume_time_after_more = 1;
+                    game._process_time_with_more = 0;
+                    return 'defer-tail';
+                }
+            }
+            game._leg_healing_tail = null;
             game._turn_tail_phase = 'timers';
-            for (const message of await processGameTimers(game)) addToplineMessage(message);
-            if (game._timer_callback_pending) {
+            stopHeroOccupation();
+            if (game._message_more && !game._process_time_with_more) {
+                game._deferred_monster_turn_tail = 1;
+                game._resume_time_after_more = 1;
+                return 'defer-tail';
+            }
+        }
+        const wtcap = game.u.uinvulnerable ? 0 : (game._turn_wtcap ?? heroEncumbranceForWeight(heroCarriedWeight()));
+        if (!resumeExertion) {
+            if (!game.u?.uinvulnerable || resumeTimers) {
+                game._turn_tail_phase = 'timers';
+                for (const message of await processGameTimers(game)) addToplineMessage(message);
+                if (game._timer_callback_pending) {
+                    game._deferred_monster_turn_tail = 1;
+                    game._resume_time_after_more = 1;
+                    game._process_time_with_more = 0;
+                    return 'defer-tail';
+                }
+                game._turn_tail_phase = null;
+            }
+            advanceRegions(game);
+            if (game.u?.ublesscnt) game.u.ublesscnt--;
+            game._turn_reached_full_hp = regenerateHeroHealth(wtcap);
+        }
+        if (resumeExertion || wtcap > MOD_ENCUMBER && game.u.umoved && game.moves % (wtcap < EXT_ENCUMBER ? 30 : 10) === 0) {
+            game._turn_tail_phase = 'exertion';
+            game._overexertion_turn_state ??= {};
+            if (!overexertHeroHp(game._overexertion_turn_state)) {
                 game._deferred_monster_turn_tail = 1;
                 game._resume_time_after_more = 1;
                 game._process_time_with_more = 0;
                 return 'defer-tail';
             }
+            game._overexertion_turn_state = null;
             game._turn_tail_phase = null;
         }
-        advanceRegions(game);
-        if (game.u?.ublesscnt) game.u.ublesscnt--;
-	        let reachedFullHp = false;
-        let reachedFullPower = false;
-        if (process.env.WEREDBG) console.error(`WEREDBG regen-eval moves=${game.moves} uhp=${game.u?.uhp}/${game.u?.uhpmax} rngidx=${getRngLog().length} dp=${!!game._death_pending_confirm} poly=${!!game.u?._polyself_form}`);
-        if (game.u?._polyself_form) {
-            // C ref: allmain.c regen_hp() — the Upolyd branch (allmain.c:630-644)
-            // heals every 20 turns (or via Regeneration) with NO rn2(100)
-            // roll; that roll exists only in the !Upolyd branch
-            // (allmain.c:659).
-            if (!game.u?.uinvulnerable && (game.u?.uhp || 0) > 0 && (game.u?.uhp || 0) < (game.u?.uhpmax || 0)) {
-                const polyRegenerating = (game.inventory || []).some(item =>
-                    item.worn && (item.actualKind === 'ring of regeneration'
-                        || item.kind === 'ring of regeneration'
-                        || item.ringRoll === 7));
-                if (polyRegenerating || (game.moves || 1) % 20 === 0) {
-                    game.u.uhp = Math.min(game.u.uhp + 1, game.u.uhpmax);
-                    reachedFullHp = (game.u?.uhp || 0) === (game.u?.uhpmax || 0);
-                }
-            }
-        } else if (!game.u?.uinvulnerable && (game.u?.uhp || 0) > 0
-                   // C ref: allmain.c:655-659 / end.c:2137-2173 — when the
-                   // hero just died and wizard/explore mode would offer the
-                   // "Die?" cheat, C's done()->die() runs synchronously and
-                   // savelife() (end.c:2040-2068) restores HP before any later
-                   // regen_hp() call.  restoreHeroHpForUnresolvedWizardDeath()
-                   // reproduces that at the point the fatal blow is queued, so
-                   // only a truly-zero u.uhp (not yet healed) suppresses the roll.
-                   && (game.u?.uhp || 0) < (game.u?.uhpmax || 0)) {
-            const con = game.u?.acurr?.a?.[4] ?? 10;
-            if (process.env.WEREDBG) console.error(`WEREDBG regen moves=${game.moves} uhp=${game.u.uhp}/${game.u.uhpmax} rngidx=${getRngLog().length}`);
-            const regenRoll = rn2(100);
-            const suppressHpRegen = !!game._suppress_next_hp_regen;
-            game._suppress_next_hp_regen = 0;
-            const regenerating = (game.inventory || []).some(item =>
-                item.worn && (item.actualKind === 'ring of regeneration'
-                    || item.kind === 'ring of regeneration'
-                    || item.ringRoll === 7));
-            if ((game.u?.uhp || 0) < (game.u?.uhpmax || 0)
-                && !suppressHpRegen
-                && (game.u?.ulevel || 1) + con > regenRoll)
-                game.u.uhp = Math.min(game.u.uhp + 1, game.u.uhpmax);
-            if (regenerating && !suppressHpRegen && (game.u?.uhp || 0) < (game.u?.uhpmax || 0))
-                game.u.uhp = Math.min(game.u.uhp + 1, game.u.uhpmax);
-            reachedFullHp = (game.u?.uhp || 0) === (game.u?.uhpmax || 0);
-        }
-        if ((game.u?.uen || 0) < (game.u?.uenmax || 0)) {
-            const stats = game.u?.acurr?.a || [];
-            let carriedWeight = Math.trunc(((game._goldCount || 0) + 50) / 100);
-            for (const item of game.inventory || []) carriedWeight += objectWeight(item) * (item.quan || 1);
-            const capacity = Math.min(1000, 25 * ((stats[A_STR] ?? 10) + (stats[A_CON] ?? 10)) + 50);
-            const burden = carriedWeight - capacity;
-            const wtcap = (game.u?._statusSuffix || '').includes('Overloaded')
-                ? OVERLOADED
-                : burden <= 0 ? 0 : Math.min(Math.trunc(burden * 2 / capacity) + 1, OVERLOADED);
-            const roleName = game.urole?.name?.m || game._startup_role || '';
-            const interval = Math.trunc(((30 + 8 - (game.u?.ulevel || 1)) * (roleName === 'Wizard' ? 3 : 4)) / 6);
-            const energyRegeneration = !!game.u?.energy_regeneration;
-            if ((wtcap < MOD_ENCUMBER && !((game.moves || 1) % interval)) || energyRegeneration) {
-                const magicalBreathing = (game.inventory || []).some(item =>
-                    item.worn && (item.actualKind === 'amulet of magical breathing'
-                        || item.kind === 'amulet of magical breathing'));
-                const upper = Math.trunc(((stats[A_WIS] ?? 10) + (stats[A_INT] ?? 10)) / 15) + 1 + (magicalBreathing ? 2 : 0);
-                game.u.uen = Math.min(game.u.uenmax, game.u.uen + rn1(upper, 1));
-                reachedFullPower = (game.u?.uen || 0) === (game.u?.uenmax || 0);
-            }
-        }
+        const reachedFullHp = game._turn_reached_full_hp;
+        game._turn_reached_full_hp = false;
+        const reachedFullPower = regenerateHeroPower(wtcap);
         if (game._counted_repeat_interruptible && (reachedFullHp || reachedFullPower)) {
             game._pending_time_passed = 0;
             game._skip_pending_time_decrement = 1;
@@ -11279,6 +11373,17 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
 	        game.u._statusSuffix = (game.u._statusSuffix || '').replace(' Satiated', '');
 	    if (sleepingHunger && !game._helpless_time) game._sleeping_time = 0;
     processAttributeExercise();
+		    // C ref: allmain.c:358-368 — amulet(), then the u_wipe_engr roll,
+	    // then the demigod harassment driver, in moveloop_core order.
+	    if (game.u?.uhave?.amulet) {
+	        for (const amuMessage of wizardAmuletTurn())
+	            if (amuMessage) addToplineMessage(amuMessage);
+	    }
+	    if (!rn2(40 + currentHeroAttribute(A_DEX) * 3)) rnd(3);
+	    if (game.u?.uevent?.udemigod && !game.u?.uinvulnerable) {
+	        for (const harassMessage of await demigodTurnHook())
+	            if (harassMessage) addToplineMessage(harassMessage);
+	    }
     const delaySwallowedArmorFinish = game.u?.uswallow && game._armor_wear_occupation
         && game._pending_time_passed && /You are freezing to death!/.test(game._pending_message || '');
     if (game._armor_wear_occupation && !delaySwallowedArmorFinish) {
@@ -11312,6 +11417,7 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
                     game._message_more = 1;
                     game._process_time_with_more = 0;
                 } else if (item && item.worn && occupation.acBonus != null) {
+                    finishArmorBonusChange(item, false);
                     item.worn = false;
                     item.line = `${item.letter || occupation.itemLetter || '?'} - ${occupation.baseName || pickupObjectName(item)}`;
                     if (game.u) setArmorWorn(item, false);
@@ -11323,7 +11429,6 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
                         setBlueDragonArmorFast(game, false);
                         if (!game.u?.veryfast) message += '  You slow down.';
                     }
-                    updateGauntletsOfPowerStrength(occupation.kind, false);
                     if (occupation.kind && /boots$/.test(occupation.kind)) {
                         const bootMessages = [];
                         const bootFallout = addBootsOffSideEffects(item, bootMessages);
@@ -11345,21 +11450,6 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
                 if (occupation.wornLine) item.line = occupation.wornLine;
                 if (game.u) setArmorWorn(item, true);
                 if (occupation.reflecting && game.u) game.u.reflecting = true;
-                updateGauntletsOfPowerStrength(occupation.kind, true);
-                if (occupation.kind === 'gauntlets of power') {
-                    if (item) {
-                        item.known = true;
-                        recordArmorDiscoveryByKind(occupation.kind, false);
-                    }
-                    game._gauntlets_power_exercise_after_turn_tail = 1;
-                }
-            }
-            if (occupation.action !== 'takeoff' && occupation.kind === 'gauntlets of power') {
-                if (item) {
-                    item.known = true;
-                    recordArmorDiscoveryByKind(occupation.kind, false);
-                }
-                game._gauntlets_power_exercise_after_turn_tail = 1;
             }
             if (occupation.action !== 'takeoff' && isBlueDragonArmorKind(occupation.kind)) {
                 const alreadyFast = !!(game.u?.fast || game.u?.veryfast);
@@ -11381,8 +11471,7 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
                     item.line = wornSpeedBootsLine(item);
                 }
             }
-            if (occupation.action !== 'takeoff' && occupation.kind === 'fumble boots')
-                game._pending_fumble_boots_timeout = 1;
+
             if (!game._armor_takeoff_after_more) {
                 const lightMessage = setArtifactEquipmentLight(item, occupation.action !== 'takeoff');
                 if (lightMessage) message += '  ' + lightMessage;
@@ -11407,9 +11496,9 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
             if (occupation.action !== 'takeoff' && item) {
                 // unmul prints its completion message before Armor_on learns
                 // enchantment; a full preceding topline suspends that callback.
-                if (game._armor_finish_after_more && !item.chargeKnown)
+                if (game._armor_finish_after_more)
                     game._armor_don_knowledge_after_more = item;
-                else item.chargeKnown = true;
+                else game._armor_don_after_turn_tail = item;
             }
             if (armorFinishNeedsMore) {
                 game._message_more = 1;
@@ -11424,28 +11513,10 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
             }
         }
     }
-		    // C ref: allmain.c:358-368 — amulet(), then the u_wipe_engr roll,
-	    // then the demigod harassment driver, in moveloop_core order.
-	    if (game.u?.uhave?.amulet) {
-	        for (const amuMessage of wizardAmuletTurn())
-	            if (amuMessage) addToplineMessage(amuMessage);
-	    }
-	    if (!rn2(40 + ((game.u?.acurr?.a?.[3] ?? 14) * 3))) rnd(3);
-	    if (game.u?.uevent?.udemigod && !game.u?.uinvulnerable) {
-	        for (const harassMessage of await demigodTurnHook())
-	            if (harassMessage) addToplineMessage(harassMessage);
-	    }
-    if (game._gauntlets_power_exercise_after_turn_tail) {
-        game._gauntlets_power_exercise_after_turn_tail = 0;
-        exerciseAttribute(A_CON, true);
-    }
-    if (game._pending_fumble_boots_timeout) {
-        game._pending_fumble_boots_timeout = 0;
-        const timeout = rnd(20);
-        if (game.u) {
-            game.u.fumbling = true;
-            game.u._fumblingTimeout = timeout;
-        }
+    if (game._armor_don_after_turn_tail) {
+        const item = game._armor_don_after_turn_tail;
+        game._armor_don_after_turn_tail = null;
+        finishArmorBonusChange(item, true);
     }
     if (game._ball_drag_subtract_after_forced_tail) {
         game._ball_drag_subtract_after_forced_tail = 0;
@@ -15642,7 +15713,7 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
     const apparentY = mon.muy ?? game.u?.uy ?? mon.my;
     const throwRange = game.u?._polyself_base?.throwsRocks
         ? 20
-        : Math.trunc((game.u?.acurr?.a?.[A_STR] ?? 10) / 2) + 1;
+        : Math.trunc((currentHeroAttribute(A_STR)) / 2) + 1;
     const inLine = canSearchItemsThisTurn && !peacefulWander && monsterLinedUp(mon, apparentX, apparentY);
     const inThrowRange = Math.max(Math.abs(mon.mx - apparentX), Math.abs(mon.my - apparentY)) <= throwRange;
     const searchItems = canSearchItemsThisTurn
@@ -16598,7 +16669,7 @@ async function movePet(mon, resumeAfterInventory = false, conflictActive = false
     if (conflictActive) {
         rnd(20);
         const monLevel = mon.m_lev ?? mon.data?.hpLevel ?? mon.data?.mlevel ?? 0;
-        const resistChance = Math.min(19, (game.u?.acurr?.a?.[5] ?? 10) - monLevel + (game.u?.ulevel || 1));
+        const resistChance = Math.min(19, (currentHeroAttribute(5)) - monLevel + (game.u?.ulevel || 1));
         allowHeroAttack = rnd(20) <= resistChance;
     }
     const rawCandidates = mfndpos(mon, monsterAllowFlags(mon, allowHeroAttack, conflictActive));
@@ -18041,6 +18112,7 @@ export async function moveloop_core() {
                 if (occupation.action === 'takeoff') {
                     message = `You finish taking off your ${occupation.simpleName || pickupObjectName(item || {})}.`;
                     if (item && item.worn && occupation.acBonus != null) {
+                        finishArmorBonusChange(item, false);
                         item.worn = false;
                         item.line = `${item.letter || occupation.itemLetter || '?'} - ${occupation.baseName || pickupObjectName(item)}`;
                         if (g.u) setArmorWorn(item, false, g);
@@ -18052,7 +18124,6 @@ export async function moveloop_core() {
                             setBlueDragonArmorFast(g, false);
                             if (!g.u?.veryfast) message += '  You slow down.';
                         }
-                        updateGauntletsOfPowerStrength(occupation.kind, false);
                         if (occupation.kind && /boots$/.test(occupation.kind)) {
                             const bootMessages = [];
                             const bootFallout = addBootsOffSideEffects(item, bootMessages);
@@ -18074,23 +18145,8 @@ export async function moveloop_core() {
                     if (occupation.wornLine) item.line = occupation.wornLine;
                     if (g.u) setArmorWorn(item, true, g);
                     if (occupation.reflecting && g.u) g.u.reflecting = true;
-                    updateGauntletsOfPowerStrength(occupation.kind, true);
-                    if (occupation.kind === 'gauntlets of power') {
-                        if (item) {
-                            item.known = true;
-                            recordArmorDiscoveryByKind(occupation.kind, false);
-                        }
-                        g._gauntlets_power_exercise_after_turn_tail = 1;
-                    }
                 }
-                if (occupation.action !== 'takeoff' && item) item.chargeKnown = true;
-                if (occupation.action !== 'takeoff' && occupation.kind === 'gauntlets of power') {
-                    if (item) {
-                        item.known = true;
-                        recordArmorDiscoveryByKind(occupation.kind, false);
-                    }
-                    g._gauntlets_power_exercise_after_turn_tail = 1;
-                }
+                if (occupation.action !== 'takeoff' && item) finishArmorBonusChange(item, true);
                 if (occupation.action !== 'takeoff' && isBlueDragonArmorKind(occupation.kind)) {
                     const alreadyFast = !!(g.u?.fast || g.u?.veryfast);
                     if (!g.u?.veryfast)
@@ -18111,7 +18167,7 @@ export async function moveloop_core() {
                         item.line = wornSpeedBootsLine(item, g);
                     }
                 }
-                if (occupation.action !== 'takeoff' && occupation.kind === 'fumble boots') g._pending_fumble_boots_timeout = 1;
+
                 const lightMessage = setArtifactEquipmentLight(item, occupation.action !== 'takeoff');
                 if (lightMessage) message += '  ' + lightMessage;
                 g._pending_message = message;

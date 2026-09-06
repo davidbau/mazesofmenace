@@ -459,13 +459,25 @@ export function mkclass_poly(klass) {
     return first;
 }
 
-// src/mkobj.c:395 rndmonnum_adj() — Plan A is a level-appropriate common
-// monster; the fallback paths are not ported yet.
+// src/mkobj.c:395 rndmonnum_adj()
 export function rndmonnum_adj(minadj, maxadj) {
-    const ptr = rndmonst_adj(minadj, maxadj);
+    let ptr;
+    let i;
+    let excludeflags;
+
+    /* Plan A: get a level-appropriate common monster */
+    ptr = rndmonst_adj(minadj, maxadj);
     if (ptr)
         return monsndx(ptr);
-    return NON_PM;
+
+    /* Plan B: get any common monster */
+    excludeflags = MFLAGS.G_UNIQ | MFLAGS.G_NOGEN | (Inhell() ? MFLAGS.G_NOHELL : MFLAGS.G_HELL);
+    do {
+        i = rn1(SPECIAL_PM - LOW_PM, LOW_PM);
+        ptr = game.mons[i];
+    } while ((ptr.geno & excludeflags) !== 0);
+
+    return i;
 }
 
 // src/mkobj.c:387 rndmonnum()
@@ -1628,9 +1640,8 @@ export function set_mimic_sym(mtmp) {
         game.flags.made_fruit = true;
     } else if (ap_type === M_AP_FURNITURE && appear === MONSYMS.S_altar) {
         const algn = rn2(3) - 1; /* -1 chaos, 0 neutral, +1 law */
-        const inhell = game.u?.uz?.dnum === game.hell_dnum;
         /* include/align.h:50 Align2amask */
-        mtmp.mcorpsenm = (inhell && rn2(3)) ? 0 /* AM_NONE */
+        mtmp.mcorpsenm = (Inhell() && rn2(3)) ? 0 /* AM_NONE */
             : (algn === 1) ? 4 /* AM_LAWFUL */ : algn + 2;
     } else if (mtmp.mcorpsenm !== undefined) {
         /* don't retain stale value from a previously mimicked shape */

@@ -3100,6 +3100,21 @@ export function set_residency(shkp, zero_out) {
     }
 }
 
+// src/shk.c:290 restshk(). bill_p already owns the serialized bill array in JS.
+export function restshk(shkp, ghostly) {
+    if (!game.u.uz.dlevel)
+        return;
+    const eshk = shkp.eshk || ESHK(shkp);
+    if (eshk.bill_p !== -1000)
+        eshk.bill_p ||= [];
+    if (ghostly) {
+        eshk.shoplevel = {...game.u.uz};
+        if (!shkp.mpeaceful
+            && eshk.customer.toLowerCase() !== game.plname.toLowerCase())
+            pacify_shk(shkp, true);
+    }
+}
+
 /* src/shk.c:632 credit_report()'s static credit_snap[][] */
 const credit_snap = [[0, 0, 0], [0, 0, 0]];
 const BEFORE = 0, NOW = 1;

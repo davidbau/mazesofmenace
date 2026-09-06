@@ -47,32 +47,89 @@ export function getnow() {
     return Math.floor(Date.now() / 1000);
 }
 
+function isLeapYear(y) {
+    return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+}
+
+function daysInMonth(y, mo0) {
+    switch (mo0) {
+        case 1: return isLeapYear(y) ? 29 : 28;
+        case 3: case 5: case 8: case 10: return 30;
+        default: return 31;
+    }
+}
+
+// Weekday (0=Sun) of a civil date via UTC decomposition (host-TZ independent).
+function weekdayOf(y, mo0, d) {
+    return new Date(Date.UTC(y, mo0, d)).getUTCDay();
+}
+
 /**
- * C ref: calendar.c getlt() via getnow() + localtime.
- * Contest: game.datetime is YYYYMMDDHHMMSS (NETHACK_FIXED_DATETIME).
- * Components are treated as civil local date (no TZ shift).
+ * C ref: US DST transitions for America/New_York as UTC epoch seconds.
+ * Pre-2007 (covers 2000): first Sun Apr 02:00 EST (07:00 UTC) → last Sun
+ * Oct 02:00 EDT (06:00 UTC). 2007+: second Sun Mar 02:00 EST → first Sun
+ * Nov 02:00 EDT. Plain arithmetic (Rule #2: no Intl / node TZ APIs).
  */
-export function getlt() {
-    const d = String(game.datetime || '19700101000000');
-    const year = parseInt(d.slice(0, 4), 10) || 1970;
-    const mon = (parseInt(d.slice(4, 6), 10) || 1) - 1;
-    const mday = parseInt(d.slice(6, 8), 10) || 1;
-    const hour = parseInt(d.slice(8, 10), 10) || 0;
-    const min = parseInt(d.slice(10, 12), 10) || 0;
-    const sec = parseInt(d.slice(12, 14), 10) || 0;
-    const utc = Date.UTC(year, mon, mday, hour, min, sec);
-    const yday = Math.floor((utc - Date.UTC(year, 0, 1)) / 86400000);
-    const wday = new Date(utc).getUTCDay();
+function nyTransitionsUTC(year) {
+    let springDay, fallDay, springMon, fallMon;
+    if (year >= 2007) {
+        springMon = 2; // March
+        springDay = 1 + ((7 - weekdayOf(year, 2, 1)) % 7) + 7; // second Sunday
+        fallMon = 10; // November
+        fallDay = 1 + ((7 - weekdayOf(year, 10, 1)) % 7); // first Sunday
+    } else {
+        springMon = 3; // April
+        springDay = 1 + ((7 - weekdayOf(year, 3, 1)) % 7); // first Sunday
+        fallMon = 9; // October
+        const last = daysInMonth(year, 9);
+        fallDay = last - (weekdayOf(year, 9, last) % 7); // last Sunday
+    }
+    return {
+        springUTC: Math.floor(Date.UTC(year, springMon, springDay, 7, 0, 0) / 1000),
+        fallUTC: Math.floor(Date.UTC(year, fallMon, fallDay, 6, 0, 0) / 1000),
+    };
+}
+
+// C ref: localtime() offset under America/New_York — EST (UTC-5) / EDT (UTC-4).
+function nyOffsetSecs(epoch) {
+    const utcYear = new Date(epoch * 1000).getUTCFullYear();
+    const { springUTC, fallUTC } = nyTransitionsUTC(utcYear);
+    return epoch >= springUTC && epoch < fallUTC ? -4 * 3600 : -5 * 3600;
+}
+
+// C ref: struct tm from an epoch under America/New_York.
+function nyLocaltime(epoch) {
+    const off = nyOffsetSecs(epoch);
+    const d = new Date((epoch + off) * 1000);
+    const year = d.getUTCFullYear();
+    const mon = d.getUTCMonth();
+    const mday = d.getUTCDate();
+    let yday = mday - 1;
+    for (let m = 0; m < mon; m++) yday += daysInMonth(year, m);
     return {
         tm_year: year - 1900,
         tm_mon: mon,
         tm_mday: mday,
-        tm_hour: hour,
-        tm_min: min,
-        tm_sec: sec,
+        tm_hour: d.getUTCHours(),
+        tm_min: d.getUTCMinutes(),
+        tm_sec: d.getUTCSeconds(),
         tm_yday: yday,
-        tm_wday: wday,
+        tm_wday: d.getUTCDay(),
+        tm_isdst: off === -4 * 3600 ? 1 : 0,
     };
+}
+
+/**
+ * C ref: calendar.c getlt() `:40–46` — `localtime(getnow())`.
+ * Contest patch 001 `time_from_yyyymmddhhmmss` fills `struct tm` from the
+ * recording machine's current `localtime` (tm_isdst = 1, EDT at record
+ * time) then `mktime`, so `getnow()` for a winter civil stamp is the
+ * stamp-as-EDT epoch (`time_from_yyyymmddhhmmss` above, UTC-4); `getlt`
+ * re-reads it under America/New_York, landing one hour earlier in EST
+ * (e.g. `2000-02-06 00:00` → Feb 5 23:00, tm_yday −1 → moon phase 0).
+ */
+export function getlt() {
+    return nyLocaltime(getnow());
 }
 
 /**
@@ -104,22 +161,13 @@ export function friday_13th() {
 
 /**
  * C ref: calendar.c yyyymmdd / hhmmss / yyyymmddhhmmss — date==0 →
- * getlt(); else localtime(&date). Contest time_from_yyyymmddhhmmss
- * treats civil stamps as UTC-4, so invert with the same offset.
+ * getlt(); else localtime(&date) under America/New_York (same DST
+ * rules as getlt above, not a fixed offset).
  * @param {number} [date]
  */
 function lt_for_date(date) {
     if (!date) return getlt();
-    const utcMs = (Number(date) - 4 * 3600) * 1000;
-    const d = new Date(utcMs);
-    return {
-        tm_year: d.getUTCFullYear() - 1900,
-        tm_mon: d.getUTCMonth(),
-        tm_mday: d.getUTCDate(),
-        tm_hour: d.getUTCHours(),
-        tm_min: d.getUTCMinutes(),
-        tm_sec: d.getUTCSeconds(),
-    };
+    return nyLocaltime(Number(date));
 }
 
 /** C ref: calendar.c yyyymmdd / yyyymmddhhmmss tm_year < 70 → +2000. */

@@ -85,7 +85,7 @@
 
 import { game } from './gstate.js';
 import { pline, urgent_pline, newsym, You_feel, verbalize, canspotmon, tmp_at, cmap_to_glyph, map_invisible } from './display.js';
-import { xname, makeplural, an, vtense, otyp_is_charged, Yname2, Yobjnam2, doname } from './objnam.js';
+import { xname, makeplural, an, vtense, otense, otyp_is_charged, Yname2, Yobjnam2, doname } from './objnam.js';
 import {
     SCROLL_CLASS, SPBOOK_CLASS, COIN_CLASS, WEAPON_CLASS, GEM_CLASS,
     ARMOR_CLASS, BALL_CLASS, CHAIN_CLASS, WAND_CLASS, RING_CLASS, TOOL_CLASS,

@@ -6,7 +6,7 @@
 import { slept_monst } from './mhitm.js';
 import { POLY_NOFLAGS, POLY_CONTROLLED, POLY_LOW_CTRL } from './const.js';
 import { polyself } from './polyself.js';
-import { Unchanging } from './youprop.js';
+import { Unchanging, Invisible } from './youprop.js';
 import { clone_mon } from './makemon.js';
 import { cloneu } from './mhitu.js';
 import { object_detect } from './detect.js';
@@ -16,7 +16,7 @@ import { fruitname, makeplural, xname, vtense } from './objnam.js';
 import { hliquid, trycall } from './do_name.js';
 import { newuhs } from './eat.js';
 import { game } from './gstate.js';
-import { canseemon, canspotmon, map_invisible, newsym, pline, see_monsters,
+import { canseemon, canspotmon, map_invisible, newsym, pline, see_monsters, set_mimic_blocking,
          glyph_is_invisible_at, unmap_object }
     from './display.js';
 import { You, You_feel, pline_The } from './pline.js';
@@ -1806,18 +1806,41 @@ export async function dodrink(drink_ok) {
 // returns early after its hunger bump. The see-invisible effects proper are
 // recorded.
 async function peffect_see_invisible(otmp) {
+    const msg = Invisible() && !Blind();
+    const permchance = 10 - (game.u.intrinsic?.HInvis ? 3 : 0)
+                       - (game.u.intrinsic?.HSee_invisible ? 6 : 0);
+
     game.potion_unkn++;
     if (otmp.cursed)
-        await pline('Yecch!  This tastes rotten.');
+        await pline(`Yecch!  This tastes ${Hallucination() ? 'overripe' : 'rotten'}.`);
     else
-        await pline(`This tastes like ${otmp.odiluted ? 'reconstituted ' : ''}${
-            fruitname(true)}.`);
+        await pline(Hallucination()
+                    ? `This tastes like 10% real ${otmp.odiluted ? 'reconstituted ' : ''}${
+                        fruitname(true)} all-natural beverage.`
+                    : `This tastes like ${otmp.odiluted ? 'reconstituted ' : ''}${
+                        fruitname(true)}.`);
     if (otmp.otyp === ONAMES.POT_FRUIT_JUICE) {
         game.u.uhunger += (otmp.odiluted ? 5 : 10) * (2 + bcsign(otmp));
         await newuhs(false);
         return;
     }
-    note_unported_potion('peffect_see_invisible:see_invisible');
+    if (!otmp.cursed) {
+        /* Tell them they can see again immediately, which
+         * will help them identify the potion...
+         */
+        await make_blinded(0, true);
+    }
+    if (otmp.blessed && !rn2(permchance))
+        (game.u.intrinsic ||= {}).HSee_invisible = (game.u.intrinsic.HSee_invisible | 0) | FROMOUTSIDE;
+    else
+        incr_itimeout('HSee_invisible', rn1(100, 750));
+    set_mimic_blocking(); /* do special mimic handling */
+    see_monsters();       /* see invisible monsters */
+    newsym(game.u.ux, game.u.uy);   /* see yourself! */
+    if (msg && !Blind()) {  /* Blind possible if polymorphed */
+        await You('can see through yourself, but you are visible!');
+        game.potion_unkn--;
+    }
 }
 
 // src/potion.c peffect_paralysis() — the hero freezes for rn1(10, 25) turns,

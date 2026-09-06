@@ -20,7 +20,7 @@ import { selection_iterate, selection_new, selection_clone,
          selection_do_randline, selection_clear,
          selection_not, selection_rndcoord } from './selvar.js';
 import { rn1, rn2, rnd } from './rng.js';
-import { isok, distmin } from './hacklib.js';
+import { isok, distmin, swapbits } from './hacklib.js';
 import { sobj_at, weight, obj_extract_self, stackobj } from './invent.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
 import { mkobj_at, mksobj_at, add_to_container, set_corpsenm } from './mkobj.js';
@@ -34,7 +34,7 @@ import { start_timer, TIMER_OBJECT, ROT_ORGANIC,
 import { new_light_source, LS_OBJECT } from './light.js';
 import { make_engr_at, engr_at, del_engr } from './engrave.js';
 import { oname, christen_monst } from './do_name.js';
-import { ONAME_LEVEL_DEF } from './const.js';
+import { ONAME_LEVEL_DEF, is_pit } from './const.js';
 import { DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, STRAT_WAITFORU,
          MM_NOCOUNTBIRTH, MM_NOMSG, G_UNIQ, G_EXTINCT, G_GONE } from './const.js';
 
@@ -2688,6 +2688,23 @@ function map_cleanup() {
         }
 }
 
+// src/sp_lev.c:499 flip_encoded_dir_bits() — transpose an encoded direction
+function flip_encoded_dir_bits(flp, val) {
+    /* these depend on xdir[] and ydir[] order */
+    if (flp & 1) {
+        val = swapbits(val, 1, 7);
+        val = swapbits(val, 2, 6);
+        val = swapbits(val, 3, 5);
+    }
+    if (flp & 2) {
+        val = swapbits(val, 1, 3);
+        val = swapbits(val, 0, 4);
+        val = swapbits(val, 7, 5);
+    }
+
+    return val;
+}
+
 // src/sp_lev.c:967 flip_level_rnd() — one rn2(2) per allowed axis.
 function flip_level_rnd(flp) {
     let c = 0;
@@ -2747,10 +2764,27 @@ export function flip_level(flp, extras) {
     }
 
     /* traps */
-    for (const t of (game.level?.traps || [])) {
-        if (!inFlipArea(t.tx, t.ty)) continue;
-        if (flp & 1) t.ty = FlipY(t.ty);
-        if (flp & 2) t.tx = FlipX(t.tx);
+    for (const ttmp of (game.level?.traps || [])) {
+        if (!inFlipArea(ttmp.tx, ttmp.ty))
+            continue;
+        if (flp & 1) {
+            ttmp.ty = FlipY(ttmp.ty);
+            if (ttmp.ttyp === ROLLING_BOULDER_TRAP) {
+                ttmp.launch.y = FlipY(ttmp.launch.y);
+                ttmp.launch2.y = FlipY(ttmp.launch2.y);
+            } else if (is_pit(ttmp.ttyp) && ttmp.conjoined) {
+                ttmp.conjoined = flip_encoded_dir_bits(flp, ttmp.conjoined);
+            }
+        }
+        if (flp & 2) {
+            ttmp.tx = FlipX(ttmp.tx);
+            if (ttmp.ttyp === ROLLING_BOULDER_TRAP) {
+                ttmp.launch.x = FlipX(ttmp.launch.x);
+                ttmp.launch2.x = FlipX(ttmp.launch2.x);
+            } else if (is_pit(ttmp.ttyp) && ttmp.conjoined) {
+                ttmp.conjoined = flip_encoded_dir_bits(flp, ttmp.conjoined);
+            }
+        }
     }
 
     /* objects */
@@ -3621,7 +3655,6 @@ export function lspo_region_full(opts) {
         troom.needfill = needfill;
         /* src/sp_lev.c:5674 — needjoining defaults TRUE */
         troom.needjoining = opts.joined ?? true;
-        game.level.flags.is_maze_lev = true;
         /* src/sp_lev.c:5697 — the room goes on the coder stack while its
            contents closure runs, exactly like lspo_room */
         if (opts.contents) {

@@ -14,7 +14,9 @@ import { Yobjnam2 } from './objnam.js';
 import { You } from './pline.js';
 import { game } from './gstate.js';
 import { OBJ_NAME, doname, xname, the, The, makesingular, Tobjnam,
-         makeplural, distant_name, otense } from './objnam.js';
+         makeplural, distant_name, otense, Yname2 } from './objnam.js';
+import { pline_mon } from './pline.js';
+import { mhis } from './mondata.js';
 /* include/defsym.h OBJCLASS rows, the `name` column — C's def_oc_syms[].name
    (js/drawing_data.js keeps only the symbol chars). Index = oclass. Used by
    weapon_descr() below, same as C's object_detect(). */
@@ -1047,10 +1049,6 @@ export async function possibly_unwield(mon, polyspot) {
 // based on mon->weapon_check. Returns 1 if the monster took time to do it,
 // 0 if it did not.
 //
-// The NEED_HTH_WEAPON and pick/axe arms are ported; NEED_RANGED_WEAPON needs
-// select_rwep() (the throwing subsystem) and is recorded. The messages for a
-// welded (cursed) weapon need Tobjnam/mbodypart and are recorded, but the
-// state changes they accompany still happen.
 export async function mon_wield_item(mon) {
     let obj;
     let exclaim = true; /* assume mon is planning to attack */
@@ -1110,9 +1108,22 @@ export async function mon_wield_item(mon) {
          * Still....
          */
         if (mw_tmp && mwelded_weapon(mw_tmp)) {
-            if (canseemon(mon))
-                note_unported_weapon('mon_wield_item:welded_msg');
-            mw_tmp.bknown = 1;
+            if (canseemon(mon)) {
+                const { mbodypart } = await import('./polyself.js');
+                let hand = mbodypart(mon, HAND);
+                if (bimanual(mw_tmp))
+                    hand = makeplural(hand);
+                const welded = `${otense(mw_tmp, 'are')} welded to ${mhis(mon)} ${hand}`;
+                if (obj.otyp === ONAMES.PICK_AXE) {
+                    await pline(`Since ${s_suffix(mon_nam(mon))} weapon${
+                        mw_tmp.quan === 1 ? '' : 's'} ${welded},`);
+                    await pline(`${mon_nam(mon)} cannot wield that ${xname(obj)}.`);
+                } else {
+                    await pline_mon(mon, `${Monnam(mon)} tries to wield ${doname(obj)}.`);
+                    await pline(`${Yname2(mw_tmp)} ${welded}!`);
+                }
+                mw_tmp.bknown = 1;
+            }
             mon.weapon_check = NO_WEAPON_WANTED;
             return 1;
         }

@@ -338,6 +338,11 @@ export async function tty_yn_function(query, resp, def, addcmdq = false) {
        hard-wraps before column CO rather than using update_topl()'s word
        wrapping. */
     const promptText = prompt + ' ';
+    /* win/tty/topl.c:428 custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY,
+       "%s", prompt): src/pline.c:282 vpline() records the prompt as the
+       previous message, so a Norep() of the message shown before the
+       prompt is no longer a repeat */
+    game._prevmsg = promptText;
     const promptWidth = columns - 1;
     const promptLines = [];
     for (let start = 0; start < promptText.length; start += promptWidth)

@@ -20,7 +20,7 @@ import { t_at } from './mon.js';
 import { You_hear } from './pline.js';
 import { vision_recalc } from './vision.js';
 import { cansee } from './vision.js';
-import { Is_rogue_level } from './const.js';
+import { Is_rogue_level, P_NONE, P_DAGGER, P_FLAIL, P_LANCE } from './const.js';
 import { SHOPBASE } from './const.js';
 import { DOOR } from './const.js';
 import { SDOOR } from './const.js';
@@ -851,7 +851,6 @@ function Role_if_rogue() {
 const Is_box = (o) => o.otyp === ONAMES.LARGE_BOX || o.otyp === ONAMES.CHEST;
 
 /* include/skills.h — the ranks u_have_forceable_weapon() compares against. */
-const P_NONE = 0, P_DAGGER = 1, P_FLAIL = 13, P_LANCE = 24;
 
 /* include/objclass.h — the materials chest_shatter_msg() switches on. */
 const PAPER = 5, WAX = 8, VEGGY = 9, FLESH = 10, GLASS = 16, WOOD = 13;

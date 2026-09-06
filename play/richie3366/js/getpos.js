@@ -24,6 +24,7 @@ import {
 } from './display.js';
 import { cansee } from './vision.js';
 import { lookat } from './pager.js';
+import { NO_COLOR } from './terminal.js';
 import {
     COLNO, ROWNO, isok, TER_MON, TER_OBJ, TER_MAP, TER_DETECT,
     GLOC_MONS, GLOC_OBJS, GLOC_DOOR, GLOC_EXPLORE, GLOC_INTERESTING, GLOC_VALID,
@@ -48,6 +49,7 @@ import {
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE, IRONBARS, AIR,
     FOUNTAIN, SINK, THRONE, GRAVE, ALTAR, VIBRATING_SQUARE,
     ROGUESET, Is_rogue_level,
+    HI_ZAP,
 } from './const.js';
 import { paint_corner_nhw_menu } from './invent.js';
 import { t_at } from './trap.js';
@@ -70,11 +72,15 @@ let getpos_hilitefunc = null;
 /** @type {((x: number, y: number) => boolean) | null} */
 let getpos_getvalid = null;
 
-// C ref: getpos.c enum getposHiliteState — bgcolors Off → 2 states.
+// C ref: getpos.c enum getposHiliteState `:30–34` — bgcolors Off → 2
+// states (Normal, GoodposSymbol); bgcolors On → 3, defaulting to Background.
 const HiliteNormalMap = 0;
 const HiliteGoodposSymbol = 1;
+const HiliteBackground = 2;
 /** @type {number} */
 let getpos_hilite_state = HiliteNormalMap;
+/** @type {number} C `defaultHiliteState`, recomputed on every sethilite. */
+let defaultHiliteState = HiliteNormalMap;
 
 /**
  * C ref: getpos.c getpos_getvalids_selection + selection_force_newsyms —
@@ -99,22 +105,30 @@ function redraw_cmd(key) {
 }
 
 /**
- * C ref: getpos.c getpos_refresh — clear GoodposSymbol hilite, then
- * docrt_flags(docrtRefresh) → redraw_map (resend gbuf; no vision_recalc/
- * cls). HiliteBackground re-paint deferred. JS uses flush_screen(1) —
+ * C ref: getpos.c getpos_refresh `:753–765` — clear GoodposSymbol hilite
+ * back to defaultHiliteState, then docrt_flags(docrtRefresh) →
+ * redraw_map (resend gbuf; no vision_recalc/cls), then re-sethilite when
+ * HiliteBackground so valid-spot frames redraw. JS uses flush_screen(1) —
  * full docrt() under Blind regressed farlook describe (stone/corridor).
  */
 async function getpos_refresh() {
     if (getpos_hilitefunc && getpos_hilite_state === HiliteGoodposSymbol) {
         getpos_hilitefunc(false); // tmp_at(DISP_END)
-        getpos_hilite_state = HiliteNormalMap; // defaultHiliteState
+        getpos_hilite_state = defaultHiliteState; // C `:757`
     }
     await flush_screen(1);
+    // C `:762–765` resetting to the current values draws valid-spot
+    // highlighting when the Background state is active.
+    if (getpos_hilitefunc && getpos_hilite_state === HiliteBackground) {
+        getpos_sethilite(getpos_hilitefunc, getpos_getvalid);
+    }
 }
 
 /**
- * C ref: getpos.c getpos_toggle_hilite_state — cycle Normal↔Goodpos
- * (HiliteBackground deferred until iflags.bgcolors path is live).
+ * C ref: getpos.c getpos_toggle_hilite_state `:72–91` — finish the
+ * GoodposSymbol tmp_at, cycle the state (`% (bgcolors ? 3 : 2)`), reset
+ * the callbacks through getpos_sethilite (which maintains the
+ * map_frame_color store), then begin the new GoodposSymbol tmp_at.
  */
 function getpos_toggle_hilite_state() {
     if (!getpos_hilitefunc) return;
@@ -131,20 +145,40 @@ function getpos_toggle_hilite_state() {
 }
 
 /**
- * C ref: getpos.c getpos_sethilite — install/clear getvalid + hilite callbacks.
- * When getvalid changes, force-newsym old∪new valid cells (selvar path).
- * Hilite glyph painting (HiliteGoodposSymbol tmp_at) deferred; getvalid
- * drives "(invalid target)" and the dirty-cell cursor side-effect.
+ * C ref: getpos.c getpos_sethilite `:41–64` — install/clear getvalid +
+ * hilite callbacks, recompute defaultHiliteState from iflags.bgcolors,
+ * reset hilite_state to it when getvalid changes, gather old∪new valid
+ * cells, store the HiliteBackground frame color (HI_ZAP) or NO_COLOR,
+ * and force-newsym the gathered cells when getvalid or the stored color
+ * changed. Hilite glyph painting (HiliteGoodposSymbol tmp_at) stays with
+ * the caller; getvalid drives "(invalid target)" and the dirty-cell
+ * cursor side-effect.
  */
 export function getpos_sethilite(hilitef, getvalidf) {
     const old_getvalid = getpos_getvalid;
-    // C: getvalid change resets hilite_state to default (Normal without bgcolors)
-    if ((typeof getvalidf === 'function' ? getvalidf : null) !== old_getvalid) {
-        getpos_hilite_state = HiliteNormalMap;
+    // C `:46` old_map_frame_color; the store inits NO_COLOR (decl.c:820).
+    const old_map_frame_color = game.gw?.wsettings?.map_frame_color ?? NO_COLOR;
+    const new_getvalid = typeof getvalidf === 'function' ? getvalidf : null;
+    // C `:49` defaultHiliteState recomputed on every call.
+    defaultHiliteState = game.iflags?.bgcolors ? HiliteBackground : HiliteNormalMap;
+    // C `:50–51` a getvalid change resets hilite_state to the default.
+    if (new_getvalid !== old_getvalid) {
+        getpos_hilite_state = defaultHiliteState;
     }
     getpos_hilitefunc = typeof hilitef === 'function' ? hilitef : null;
-    getpos_getvalid = typeof getvalidf === 'function' ? getvalidf : null;
-    if (getpos_getvalid !== old_getvalid) {
+    getpos_getvalid = new_getvalid;
+    // C `:57–58` store the frame color for the Background state. C home
+    // is `gw.wsettings` (wintype.h:258–261); `wdmode` stays unset (tiled
+    // mode unsupported) while the frame store is maintained exactly.
+    const new_map_frame_color = getpos_hilite_state === HiliteBackground
+        ? HI_ZAP : NO_COLOR;
+    if (!game.gw) game.gw = {};
+    if (!game.gw.wsettings) game.gw.wsettings = { map_frame_color: NO_COLOR };
+    game.gw.wsettings.map_frame_color = new_map_frame_color;
+    // C `:60–62` force-newsym the old∪new valid cells (C gathers both
+    // into one selvar; the force_getvalid_newsyms loop is that union).
+    if (getpos_getvalid !== old_getvalid
+        || new_map_frame_color !== old_map_frame_color) {
         force_getvalid_newsyms(old_getvalid);
         force_getvalid_newsyms(getpos_getvalid);
     }
@@ -156,6 +190,20 @@ export function getpos_sethilite(hilitef, getvalidf) {
 export function getpos_validate(x, y) {
     if (!getpos_getvalid) return true;
     return !!getpos_getvalid(x, y);
+}
+
+/**
+ * C ref: getpos.c mapxy_valid `:93–99` — the installed getpos validity
+ * callback, or FALSE when no getpos prompt is active (normal map paint).
+ * display.c get_bkglyph_and_framecolor `:2575` reads this for the frame
+ * color arm. Unlike getpos_validate (which defaults true), C returns
+ * FALSE here when no callback is installed — kept exactly.
+ * @param {number} x map x, C coordxy
+ * @param {number} y map y, C coordxy
+ */
+export function mapxy_valid(x, y) {
+    if (typeof getpos_getvalid === 'function') return !!getpos_getvalid(x, y);
+    return false;
 }
 
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };

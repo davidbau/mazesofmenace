@@ -173,6 +173,42 @@ export function remove_region(reg) {
     }
 }
 
+// src/region.c:741 save_regions(), callbacks are numeric indices.
+export function save_regions() {
+    return {moves: game.moves, regions: structuredClone(game.regions || [])};
+}
+
+// src/region.c:799 rest_regions()
+export function rest_regions(saved, ghostly, idmap) {
+    game.regions = structuredClone(saved?.regions || []);
+    const elapsed = ghostly ? 0 : game.moves - (saved?.moves ?? game.moves);
+    for (const reg of game.regions) {
+        if (reg.ttl >= 0)
+            reg.ttl = Math.max(0, reg.ttl - elapsed);
+        if (ghostly)
+            reg.player_flags = (reg.player_flags & ~REG_HERO_INSIDE) | REG_NOT_HEROS;
+        reg.max_monst = reg.n_monst;
+        reg.monsters.length = reg.n_monst;
+    }
+    for (let i = game.regions.length - 1; i >= 0; i--) {
+        const reg = game.regions[i];
+        if (reg.ttl === 0) {
+            remove_region(reg);
+        } else if (ghostly) {
+            // reset_region_mids swaps the last entry into a missing one's
+            // slot, so a filtered copy would change later callback order.
+            let j = 0;
+            while (j < reg.n_monst) {
+                const id = idmap.get(reg.monsters[j]);
+                if (id)
+                    reg.monsters[j++] = id;
+                else
+                    reg.monsters[j] = reg.monsters[--reg.n_monst];
+            }
+        }
+    }
+}
+
 // src/region.c:414 run_regions(), age regions and apply inside callbacks.
 export async function run_regions() {
     const rs = game.regions || [];

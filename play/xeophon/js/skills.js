@@ -425,6 +425,46 @@ export function objectWeaponSkill(obj) {
     return OBJECT_SKILLS.get(JAPANESE_ITEM_ALIASES.get(name) || name) || C.P_NONE;
 }
 
+// C weapon.c:weapon_hit_bonus and weapon_dam_bonus share the same category
+// selection. Two-weapon penalties depend on object identity, not weapon kind.
+export function weaponSkillBonuses(obj, level = skill => game.u.weapon_skills?.[skill]?.skill || 0) {
+    const u = game.u, weaponType = Math.abs(objectWeaponSkill(obj));
+    const primary = u.uwep || game.inventory?.find(item => item.wielded);
+    const secondary = u.uswapwep || game.inventory?.find(item => item.alternate);
+    const dual = u.twoweap && obj && (obj === primary || obj === secondary);
+    const type = dual ? C.P_TWO_WEAPON_COMBAT : weaponType;
+    let skill = level(type), hit = 0, damage = 0;
+    if (dual) skill = Math.min(skill, level(weaponType));
+    if (type && (type <= C.P_LAST_WEAPON || dual)) {
+        const rank = Math.max(C.P_UNSKILLED, Math.min(C.P_EXPERT, skill)) - 1;
+        hit = (dual ? [-9, -7, -5, -3] : [-4, 0, 2, 3])[rank];
+        damage = (dual ? [-3, -1, 0, 1] : [-2, 0, 1, 2])[rank];
+    } else if (type === C.P_BARE_HANDED_COMBAT) {
+        const rank = Math.max(C.P_UNSKILLED, skill) - 1;
+        const martial = ['Monk', 'Samurai'].includes(game.urole?.name?.m || game._startup_role);
+        hit = Math.trunc((rank + 2) * (martial ? 2 : 1) / 2);
+        damage = Math.trunc((rank + 1) * (martial ? 3 : 1) / 2);
+    }
+    if (u.usteed) {
+        const riding = level(C.P_RIDING);
+        if (riding <= C.P_UNSKILLED) hit -= 2;
+        else if (riding === C.P_BASIC) hit--;
+        if (u.twoweap) hit -= 2;
+        if (!dual && riding >= C.P_SKILLED) damage += riding - C.P_BASIC;
+    }
+    return { hit, damage };
+}
+
+// C steed.c:exercise_steed counts movement attempts which reach domove's
+// tentative-position phase, including a subsequently refused pet displacement.
+export function exerciseSteed() {
+    if (!game.u.usteed) return '';
+    game.u.urideturns = (game.u.urideturns || 0) + 1;
+    if (game.u.urideturns < 100) return '';
+    game.u.urideturns = 0;
+    return useSkill(C.P_RIDING, 1);
+}
+
 export function skillPracticeNeeded(level) {
     return level * level * 20;
 }

@@ -1,5 +1,5 @@
 import { DEADMONSTER } from './monst.js';
-import { M_AP_TYPE } from './const.js';
+import { M_AP_TYPE, CXN_PFX_THE, HAND } from './const.js';
 import { TT_BURIEDBALL } from './const.js';
 import { TT_INFLOOR } from './const.js';
 import { TT_LAVA } from './const.js';
@@ -45,7 +45,7 @@ import { set_apparxy } from './monmove.js';
 import { place_monster } from './makemon.js';
 import { remove_monster } from './makemon.js';
 import { goodpos } from './makemon.js';
-import { Flying } from './youprop.js';
+import { Flying, Stone_resistance } from './youprop.js';
 import { is_moat } from './dbridge.js';
 import { is_waterwall } from './dbridge.js';
 import { vision_recalc } from './vision.js';
@@ -117,7 +117,7 @@ import { costly_spot } from './shk.js';
 import { potionbreathe } from './potion.js';
 import { explode, explode_oil } from './explode.js';
 import { is_crackable, erode_obj } from './trap.js';
-import { An, Doname2, armor_simple_name, vtense } from './objnam.js';
+import { An, Doname2, armor_simple_name, vtense, corpse_xname } from './objnam.js';
 import { canspotmon } from './display.js';
 import { MM_NOMSG, ERODE_CRACK, EF_DESTROY, EF_VERBOSE, ER_DESTROYED, EXPL_FIERY, ismnum } from './const.js';
 import { makemon, set_malign } from './makemon.js';
@@ -180,6 +180,7 @@ import { helpless } from './monst.js';
 import { ceiling } from './dungeon.js';
 import { body_part } from './polyself.js';
 
+import { u_wipe_engr } from './engrave.js';
 // include/mondata.h:255 befriend_with_obj(). This predicate is checked before
 // dogfood(), so a domestic monster offered normal food does not spend
 // dogfood()'s obj_resists draw until tamedog() inspects the meal.
@@ -276,13 +277,17 @@ export async function throw_obj(obj, shotlimit) {
         await You('cannot throw an object at yourself.');
         return ECMD_OK;
     }
-    /* u_wipe_engr(2) — draws only when an engraving is underfoot */
-    if ((game.level?.engravings || []).some(e => e.engr_x === u.ux
-                                                && e.engr_y === u.uy))
-        note_unported_dothrow('throw_obj:u_wipe_engr');
+    u_wipe_engr(2);
 
-    if (obj.otyp === ONAMES.CORPSE && !game.u.uarmg)
-        note_unported_dothrow('throw_obj:petrify_check');
+    if (!game.u.uarmg && obj.otyp === ONAMES.CORPSE
+        && touch_petrifies(game.mons[obj.corpsenm]) && !Stone_resistance()) {
+        await You(`throw ${corpse_xname(obj, null, CXN_PFX_THE)} with your bare ${
+            /* throwing with one hand, but pluralize since the
+               expression "with your bare hands" sounds better */
+            makeplural(body_part(HAND))}.`);
+        /* Sprintf(svk.killer.name, "throwing %s bare-handed", killer_xname(obj)) */
+        await instapetrify(`throwing ${killer_xname(obj)} bare-handed`);
+    }
 
     /* welded(obj) needs cursed-weld state; nothing wields cursed yet */
 

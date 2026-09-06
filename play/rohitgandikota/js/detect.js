@@ -20,7 +20,7 @@ import { do_clear_area, IN_SIGHT, COULD_SEE } from './vision.js';
 import { closed_door } from './cmd.js';
 import { resists_blnd, digests } from './mondata.js';
 import { ATR_INVERSE as TERM_INVERSE } from './terminal.js';
-import { showsym } from './symbols.js';
+import { showsym, showsym_mon, showsym_oc, showsym_other, SYM_BOULDER } from './symbols.js';
 import { def_oc_syms, oc_names as def_oc_names } from './drawing_data.js';
 import { detect_wsegs } from './worm.js';
 import { is_cmap_furniture } from './pager.js';
@@ -920,7 +920,7 @@ function mon_cell(mtmp) { /* mon_to_glyph(mtmp, rn2_on_display_rng) */
     const shown = game.mons[Hallucination() ? rn2_on_display_rng(NUMMONS)
                             : (M_AP_TYPE(mtmp) === M_AP_MONSTER
                                ? mtmp.mappearance : mtmp.mnum)];
-    return { ch: def_monsyms[shown.mlet] || '?', color: shown.mcolor ?? NO_COLOR,
+    return { ch: showsym_mon(shown.mlet) || '?', color: shown.mcolor ?? NO_COLOR,
              decgfx: false, glyph: { kind: 'mon', mon: mtmp } };
 }
 function invis_cell() { /* GLYPH_INVISIBLE */
@@ -948,7 +948,7 @@ function map_monst(mtmp, showtail) {
     const attr = (detected && game.flags?.use_inverse !== false)
                  ? TERM_INVERSE : 0;
 
-    show_glyph_cell(mtmp.mx, mtmp.my, def_monsyms[shown.mlet] || '?',
+    show_glyph_cell(mtmp.mx, mtmp.my, showsym_mon(shown.mlet) || '?',
                     shown.mcolor ?? NO_COLOR, false, attr,
                     { kind: 'mon', mon: mtmp });
     if (showtail && mtmp.data.pmidx === PMNAMES.PM_LONG_WORM)
@@ -1402,8 +1402,7 @@ export async function object_detect(detector, cls_) {
     let otmp = null;
     let sym, boulder = 0, ter_typ = TER_DETECT | TER_OBJ;
     /* gs.showsyms[SYM_BOULDER + SYM_OFF_X] */
-    const boulder_sym = game.boulder_symbol
-                        || def_oc_syms[OCLASSES.ROCK_CLASS];
+    const boulder_sym = showsym_other(SYM_BOULDER);
 
     if (cls_ < 0 || cls_ >= def_oc_syms.length) {
         /* impossible("object_detect:  illegal class %d", class); */
@@ -1416,7 +1415,7 @@ export async function object_detect(detector, cls_) {
      * detect.  Rather than trump anything, show both possibilities.
      * We can exclude checking the buried obj chain for boulders below.
      */
-    sym = cls_ ? def_oc_syms[cls_] : 0;
+    sym = cls_ ? showsym_oc(cls_) : 0;
     if (sym && sym === boulder_sym)
         boulder = OCLASSES.ROCK_CLASS;
 
@@ -2031,8 +2030,7 @@ export async function use_crystal_ball(obj) {
     return;
 }
 /* gs.showsyms[SYM_BOULDER + SYM_OFF_X] */
-const boulder_sym_set = () => game.boulder_symbol
-    || def_oc_syms[OCLASSES.ROCK_CLASS];
+const boulder_sym_set = () => showsym_other(SYM_BOULDER);
 
 // src/detect.c:1448 do_vicinity_map(), clairvoyance: map the vicinity.
 export async function do_vicinity_map(sobj) {

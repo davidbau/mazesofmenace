@@ -1,3 +1,4 @@
+import { currentHeroAttribute } from './attrib.js';
 // Player spell effects for the Z (cast) command.
 //
 // C refs:
@@ -22,15 +23,15 @@ import {
     D_LOCKED, D_NODOOR, D_TRAPPED, D_ISOPEN, IS_OBSTRUCTED, IS_ROOM, IS_TREE, IS_WALL, IS_STWALL,
     Is_airlevel, Is_earthlevel, Is_waterlevel, MM_EDOG, MM_IGNOREWATER,
     MM_NOMSG, NO_MINVENT, P_SKILLED, ROOM, SCORR, SDOOR, STAIRS, STONE,
-    STATUE_TRAP, W_NONDIGGABLE, ZAP_POS, xdir, ydir,
+    STATUE_TRAP, STRAT_WAITMASK, W_NONDIGGABLE, ZAP_POS, xdir, ydir,
 } from './const.js';
 import { newsym } from './display.js';
 import { cansee, couldsee } from './vision.js';
-import { explodeSpell } from './explode.js';
+import { explodeSpell, resumeSpellExplosion } from './explode.js';
 import { resumeChainLightning } from './chain_lightning.js';
 import { lightDamageHero } from './flash.js';
 import { fallAsleep } from './timeout.js';
-import { findMac, resistsFire, resistsCold } from './mhitm.js';
+import { findMac, resistsFire, resistsCold, sleepMonst } from './mhitm.js';
 import { aggravate } from './wizard.js';
 import { newWere, isWereData, isWereHumanForm } from './were.js';
 import { makemon, monsterByRndName, rlocNoMsg } from './mklev.js';
@@ -84,7 +85,7 @@ function spellName(spell) {
 // C ref: zap.c:spell_damage_bonus() — hero INT (and level) adjustment.
 export function spellDamageBonus(dmg) {
     const u = game.u || {};
-    const intell = u.acurr?.a?.[1] ?? 10;
+    const intell = currentHeroAttribute(1);
     const ulevel = u.ulevel || 1;
     if (intell <= 9) {
         if (dmg > 1) dmg = dmg <= 3 ? 1 : dmg - 3;
@@ -100,7 +101,7 @@ export function spellDamageBonus(dmg) {
 function spellHitBonus(spell, D) {
     const skill = D.spellRoleSkillLevel(spell);
     let hitBon = skill >= 4 ? 3 : skill === 3 ? 2 : skill === 2 ? 0 : -4;
-    const dex = game.u?.acurr?.a?.[2] ?? 10;
+    const dex = currentHeroAttribute(3);
     if (dex < 4) hitBon -= 3;
     else if (dex < 6) hitBon -= 2;
     else if (dex < 8) hitBon -= 1;
@@ -300,20 +301,9 @@ async function spellZapYourself(spell, D) {
     const messages = [];
     const push = (...parts) => { for (const p of parts) if (p) messages.push(p); };
     switch (name) {
-    case 'fireball': {
-        const result = await explodeSpell(u.ux, u.uy, 'fire', d(6, 6), D, { wand: true });
-        result.messages.unshift('You explode a fireball on top of yourself!');
-        return result;
-    }
-    case 'cone of cold': {
-        const original = d(12, 6);
-        const resistant = D.heroHasColdResistance();
-        push(resistant ? 'You feel a little chill.' : 'You imitate a popsicle!');
-        D.observeHeroElementResistance('cold', resistant);
-        const result = await D.spellElementalHeroDamage('cold', original, resistant ? 0 : original,
-            `zapped ${game.flags?.female ? 'herself' : 'himself'} with a spell`, messages);
-        return { messages, ...result };
-    }
+    case 'fireball':
+    case 'cone of cold':
+        return resumeSelfZap({ name, phase: 'init' }, D);
     case 'force bolt': {
         // C zap.c:zapyourself() case SPE_FORCE_BOLT (ordinary=TRUE)
         if (D.heroHasAntimagic()) {
@@ -339,16 +329,8 @@ async function spellZapYourself(spell, D) {
         }
         return { messages };
     }
-    case 'sleep': {
-        if (D.heroHasSleepResistance()) push('You don\'t feel sleepy!');
-        else {
-            push('The sleep ray hits you!');
-            const sleepTime = rnd(50); // C fall_asleep(-rnd(50), TRUE)
-            fallAsleep(-sleepTime, true, D.stopHeroOccupation);
-            return { messages, sleepTurns: sleepTime };
-        }
-        return { messages };
-    }
+    case 'sleep':
+        return resumeSelfZap({ name, phase: 'init' }, D);
     case 'slow monster': {
         // C zap.c:zapyourself() case SPE_SLOW_MONSTER: only acts when Fast.
         if (u.fast || u.veryfast || (u._veryfastTimeout || 0) > 0) {
@@ -857,19 +839,13 @@ async function spellImmediateBeam(spell, dir, D) {
 // ---------------------------------------------------------------------------
 // C ref: zap.c:dobuzz() — reflected rays; fireball uses explosion targeting.
 // ---------------------------------------------------------------------------
-async function spellRayHitMonster(spell, mon, nd, D, messages, swallowed = false) {
-    const name = spellName(spell);
+async function rayHitMonster(state, mon, D, messages, swallowed = false) {
+    const { name, spell, nd } = state;
     const data = SPELL_MONSTERS_BY_NAME.get(monsterName(mon).toLowerCase()) || mon.data;
     let damage = 0;
     let absorbed = false;
     if (name === 'sleep') {
-        const amount = d(nd, 25);
-        const resisted = D.monsterResistsSleepEffect(mon) || D.monsterResistsEffect(mon, game.u?.ulevel || 1);
-        if (!resisted && mon.mcanmove !== false && mon.mcanmove !== 0) {
-            mon.mcanmove = false;
-            mon.mfrozen = Math.min(127, amount + (mon.mfrozen || 0));
-            D.sleptMonster(mon);
-        }
+        if (sleepMonst(mon, d(nd, 25), spell ? 0 : 10) && !swallowed) state.slept = mon;
     } else if (name === 'finger of death') {
         if (data.pm === PM_DEATH) {
             mon.mhpmax = Math.min(999, mon.mhpmax + Math.trunc(mon.mhpmax / 2));
@@ -880,7 +856,7 @@ async function spellRayHitMonster(spell, mon, nd, D, messages, swallowed = false
     } else if (name === 'fireball' || name === 'cone of cold') {
         const fire = name === 'fireball';
         if (!(fire ? resistsFire(mon) || D.monsterResistsFire(mon) : resistsCold(mon) || D.monsterResistsCold(mon))) {
-            const original = spellDamageBonus(d(nd, 6));
+            const original = spell ? spellDamageBonus(d(nd, 6)) : d(nd, 6);
             damage = original;
             if (fire ? resistsCold(mon) || D.monsterResistsCold(mon) : resistsFire(mon) || D.monsterResistsFire(mon))
                 damage += fire ? 7 : d(nd, 3);
@@ -890,10 +866,10 @@ async function spellRayHitMonster(spell, mon, nd, D, messages, swallowed = false
                 if (fire) D.igniteMonsterFireInventoryItems(mon, messages, D.visibleMonsterForScroll(mon));
             }
         }
-    } else if (!D.monsterResistsMagm(mon)) damage = spellDamageBonus(d(nd, 6));
+    } else if (!D.monsterResistsMagm(mon)) damage = spell ? spellDamageBonus(d(nd, 6)) : d(nd, 6);
     if (name !== 'finger of death') {
-        if (D.heroIsKnightWithQuestArtifact()) damage *= 2;
-        if (damage > 0 && D.monsterResistsEffect(mon, game.u?.ulevel || 1)) damage = Math.trunc(damage / 2);
+        if (spell && D.heroIsKnightWithQuestArtifact()) damage *= 2;
+        if (damage > 0 && D.monsterResistsEffect(mon, spell ? game.u?.ulevel || 1 : 12)) damage = Math.trunc(damage / 2);
     }
     mon.mhp -= damage;
     if (swallowed) messages.push(`The ${spellRayName(name, D)} rips into ${D.monsterTheName(mon)}${damage > 4 ? '!' : '.'}`);
@@ -910,19 +886,20 @@ async function spellRayHitMonster(spell, mon, nd, D, messages, swallowed = false
     return absorbed;
 }
 
-async function spellRay(spell, dir, D) {
-    const name = spellName(spell), u = game.u;
-    const nd = Math.trunc((u.ulevel || 1) / 2) + 1;
-    const hitBon = spellHitBonus(spell, D);
+export async function heroRay({ spell = null, item = null, name = spellName(spell) }, dir, D) {
+    const u = game.u;
+    const nd = spell ? Math.trunc((u.ulevel || 1) / 2) + 1 : name === 'magic missile' ? 2 : 6;
+    const hitBon = spell ? spellHitBonus(spell, D) : 0;
     const displayed = D.heroIsHallucinating() ? rn2(6)
         : name === 'sleep' ? 3 : name === 'cone of cold' ? 2 : name === 'fireball' ? 1 : name === 'finger of death' ? 4 : 0;
     if (u.uswallow && u.ustuck) {
         const messages = [];
-        await spellRayHitMonster(spell, u.ustuck, nd, D, messages, true);
+        await rayHitMonster({ spell, name, nd }, u.ustuck, D, messages, true);
+        if (item) D.learnRayItem(item, name, { experience: true });
         return { messages, fatal: !!messages.fatal, lifeSaving: !!messages.lifeSaving };
     }
     const range = rn1(7, 7);
-    return resumeSpellRay({ spell, name, nd, hitBon,
+    return resumeHeroRay({ spell, item, name, nd, hitBon,
         rayName: name === 'sleep' ? 'sleep ray' : name,
         color: [12, 9, 15, 12, 8, 15][displayed],
         range: dir.dx || dir.dy ? range : 1, sx: u.ux, sy: u.uy, dx: dir.dx, dy: dir.dy,
@@ -931,16 +908,25 @@ async function spellRay(spell, dir, D) {
 
 // zap.c:dobuzz/zhitu. Each phase resumes after the source operation that
 // displayed a message; no range, hit or damage roll is repeated after input.
-export async function resumeSpellRay(state, D) {
+export async function resumeHeroRay(state, D) {
     const { spell, name, nd, rayName } = state;
     const pending = { published: true, pending: true, messages: state.messages,
-        afterHeroDamage: { kind: 'spellRay', state } };
+        afterHeroDamage: { kind: 'heroRay', state } };
     while (!game.program_state?.gameover) {
         while (state.output.length) {
             const text = state.output.shift(); state.messages.push(text);
             if (!D.say(text)) return pending;
         }
         if (D.waiting()) return pending;
+        if (state.releaseGrip) {
+            D.releaseHeroHold();
+            state.releaseGrip = null;
+        }
+        if (state.slept) {
+            const mon = state.slept; state.slept = null;
+            if (D.sleptMonster(mon, state.output, { deferRelease: true })) state.releaseGrip = mon;
+            if (state.output.length) continue;
+        }
         if (state.observation) {
             D.observeHeroRayResistance(state.observation.kind, state.observation.resisted);
             state.observation = null;
@@ -971,6 +957,7 @@ export async function resumeSpellRay(state, D) {
             if (mon) {
                 state.mon = mon;
                 if (name === 'fireball') { state.phase = 'end'; continue; }
+                mon.mstrategy = (mon.mstrategy || 0) & ~STRAT_WAITMASK;
                 if (spellZapHit(findMac(mon), state.hitBon)) {
                     state.range -= 2;
                     state.reflection = D.monsterReflectionSource(mon);
@@ -979,7 +966,7 @@ export async function resumeSpellRay(state, D) {
                         if (D.visibleMonsterForScroll(mon)) state.output.push(`The ${spellRayName(name, D)} hits ${D.monsterTheName(mon)}.`);
                     } else {
                         const messages = [];
-                        if (await spellRayHitMonster(spell, mon, nd, D, messages)) state.phase = 'end';
+                        if (await rayHitMonster(state, mon, D, messages)) state.phase = 'end';
                         state.output.push(...messages);
                     }
                 } else if (D.visibleMonsterForScroll(mon)) state.output.push(`The ${spellRayName(name, D)} misses ${D.monsterTheName(mon)}.`);
@@ -1064,7 +1051,7 @@ export async function resumeSpellRay(state, D) {
             if (state.inventory && !D.heroColdInventoryDamage(state.inventory)) return pending;
             state.phase = 'afterZhitu';
             const messages = [], result = D.damageHero(messages, D.halfSpellDamage(state.damage),
-                `killed by a ${rayName} cast by ${game.flags?.female ? 'herself' : 'himself'}`);
+                `killed by a ${rayName} ${spell ? 'cast' : 'zapped'} by ${game.flags?.female ? 'herself' : 'himself'}`);
             if (!D.publishDamageResult(messages, result)) return pending;
         }
         if (state.phase === 'afterZhitu') {
@@ -1122,9 +1109,12 @@ export async function resumeSpellRay(state, D) {
         if (state.phase === 'end') {
             game._transient_beam_cells = null;
             game.bhitpos = state.savedBhitpos;
+            if (state.item) {
+                D.learnRayItem(state.item, name, { experience: true });
+                state.item = null;
+            }
             if (name === 'fireball' && !state.vanished) {
-                const blast = await explodeSpell(state.sx, state.sy, 'fire', d(12, 6), D);
-                return { ...blast, messages: [game._pending_message, ...blast.messages].filter(Boolean) };
+                return explodeSpell(state.sx, state.sy, 'fire', d(12, 6), D);
             }
             return { published: true, messages: state.messages };
         }
@@ -1244,13 +1234,60 @@ export async function resumeReleasedSpell(state, D) {
     return { ...result, released: !result.published };
 }
 
+export async function resumeSelfZap(state, D) {
+    const pending = () => ({ published: true, pending: true, messages: [],
+        afterHeroDamage: { kind: 'selfZap', state } });
+    if (state.phase === 'init') {
+        state.phase = 'effect';
+        if (state.name === 'fireball') {
+            if (!D.say('You explode a fireball on top of yourself!')) return pending();
+        } else if (state.name === 'sleep') {
+            state.resistant = D.heroHasSleepResistance();
+            if (!D.say(state.resistant ? "You don't feel sleepy!" : 'The sleep ray hits you!')) return pending();
+        } else {
+            state.original = d(12, 6);
+            state.resistant = D.heroHasColdResistance();
+            if (!D.say(state.resistant ? 'You feel a little chill.' : 'You imitate a popsicle!')) return pending();
+        }
+    }
+    if (state.phase === 'effect') {
+        if (state.name === 'fireball') return explodeSpell(game.u.ux, game.u.uy, 'fire', d(6, 6), D, { wand: true });
+        if (state.name === 'sleep') {
+            D.observeHeroRayResistance('sleep', state.resistant);
+            if (!state.resistant) fallAsleep(-rnd(50), true, D.stopHeroOccupation);
+            state.phase = 'learn';
+        } else {
+            D.observeHeroElementResistance('cold', state.resistant);
+            state.phase = 'inventory';
+        }
+    }
+    if (state.phase === 'inventory') {
+        if (!D.heroColdInventoryDamage(state.inventory ??= { original: state.original })) return pending();
+        state.phase = 'learn';
+    }
+    if (state.phase === 'learn') {
+        if (state.item) D.learnRayItem(state.item, state.name);
+        state.phase = state.name === 'sleep' ? 'done' : 'damage';
+    }
+    if (state.phase === 'damage') {
+        state.phase = 'done';
+        if (!state.resistant) {
+            const amount = state.item ? D.maybeHalfPhysicalDamage(state.original) : state.original;
+            const messages = [], result = D.damageHero(messages, amount,
+                `zapped ${game.flags?.female ? 'herself' : 'himself'} with a ${state.item ? `wand of ${state.name}` : 'spell'}`);
+            if (!D.publishDamageResult(messages, result)) return pending();
+        }
+    }
+    return { published: true, messages: [] };
+}
+
 async function castSpellBeamDispatch(spell, dir, D) {
     const name = spellName(spell);
     // C zap.c:weffects(): exercise(A_WIS, TRUE) precedes every beam effect.
     D.exerciseAttribute(A_WIS, true);
     if (SPELL_DIR[name] === 'ray') {
         if (name === 'dig') return spellDigBeam(spell, dir, D);
-        return spellRay(spell, dir, D);
+        return heroRay({ spell }, dir, D);
     }
     return spellImmediateBeam(spell, dir, D);
 }
@@ -1270,7 +1307,6 @@ export async function castSpellExplosionEffect(spell, target, D) {
         return { messages: ['The spell dissipates over the distance!'] };
     if (u.uswallow) {
         messages.push('The spell is cut short!');
-        D.exerciseAttribute(A_WIS, false);
         x = y = 0;
     } else {
         const mon = (game.level?.monsters || []).find(candidate => candidate.mx === x && candidate.my === y && !candidate.dead);
@@ -1292,27 +1328,52 @@ export async function castSpellExplosionEffect(spell, target, D) {
         }
         x = px; y = py;
     }
-    const centerX = x, centerY = y;
-    const dz = game._last_spell_dir?.dz || 0;
-    const count = rnd(8) + 1;
-    let result = {};
-    let lifeSaving = false;
-    for (let i = 0; i < count; i++) {
-        result = !x && !y && !dz ? await spellZapYourself(spell, D)
-            : await explodeSpell(x, y, spellName(spell) === 'fireball' ? 'fire' : 'cold',
-                spellDamageBonus(Math.trunc((u.ulevel || 1) / 2) + 1), D);
-        messages.push(...result.messages);
-        lifeSaving ||= !!result.lifeSaving;
-        if (result.fatal) break;
-        x = centerX + rnd(3) - 2;
-        y = centerY + rnd(3) - 2;
-        if (x < 1 || x >= COLNO || y < 0 || y >= ROWNO || !cansee(x, y)
-            || IS_STWALL(game.level?.at(x, y)?.typ ?? STONE) || u.uswallow) {
-            x = centerX; y = centerY;
+    return resumeSpellBursts({ spell, centerX: x, centerY: y, x, y,
+        dz: game._last_spell_dir?.dz || 0, cutShort: !!u.uswallow, phase: 'count', output: messages }, D);
+}
+
+// spelleffects scatters after every completed blast, even the last. A nested
+// done() must return before those draws or the next explosion can occur.
+export async function resumeSpellBursts(state, D) {
+    const pending = () => ({ published: true, pending: true, messages: [],
+        afterHeroDamage: { kind: 'spellBursts', state } });
+    while (!game.gameover) {
+        while (state.output.length) if (!D.say(state.output.shift())) return pending();
+        if (D.waiting()) return pending();
+        if (state.phase === 'count') {
+            if (state.cutShort) D.exerciseAttribute(A_WIS, false);
+            state.count = rnd(8) + 1; state.index = 0; state.phase = 'blast';
+        }
+        if (state.phase === 'blast' || state.phase === 'child') {
+            let result;
+            if (state.phase === 'child') {
+                result = state.child.kind === 'spellExplosion'
+                    ? await resumeSpellExplosion(state.child.state, D)
+                    : await resumeSelfZap(state.child.state, D);
+            } else if (!state.x && !state.y && !state.dz) {
+                result = await resumeSelfZap({ name: spellName(state.spell), phase: 'init' }, D);
+            } else {
+                result = await explodeSpell(state.x, state.y, spellName(state.spell) === 'fireball' ? 'fire' : 'cold',
+                    spellDamageBonus(Math.trunc((game.u.ulevel || 1) / 2) + 1), D);
+            }
+            if (result.pending) {
+                state.child = result.afterHeroDamage; state.phase = 'child'; return pending();
+            }
+            state.child = null; state.phase = 'scatter';
+        }
+        if (state.phase === 'scatter') {
+            state.x = state.centerX + rnd(3) - 2;
+            state.y = state.centerY + rnd(3) - 2;
+            if (state.x < 1 || state.x >= COLNO || state.y < 0 || state.y >= ROWNO || !cansee(state.x, state.y)
+                || IS_STWALL(game.level?.at(state.x, state.y)?.typ ?? STONE) || game.u.uswallow) {
+                state.x = state.centerX; state.y = state.centerY;
+            }
+            game._last_spell_dir = { dx: state.x, dy: state.y, dz: state.dz };
+            if (++state.index >= state.count) return { published: true, messages: [] };
+            state.phase = 'blast';
         }
     }
-    game._last_spell_dir = { dx: x, dy: y, dz };
-    return { ...result, messages, lifeSaving: !result.fatal && lifeSaving };
+    return { published: true, messages: [] };
 }
 
 // C ref: detect.c:findit() via zap.c:zapnodir() case SPE_DETECT_UNSEEN.
@@ -1434,12 +1495,9 @@ function spellIdentifyEffect(spell, D) {
     let identifyLimit = 1;
     if (blessed || !rn2(5)) {
         identifyLimit = rn2(5);
-        if (identifyLimit === 1 && blessed && (game.u?.uluck || 0) > 0) identifyLimit++;
+        if (identifyLimit === 1 && blessed && (game.u?.uluck || 0) + (game.u?.moreluck || 0) > 0) identifyLimit++;
     }
-    const unidentified = D.unidentifiedInventoryItems();
-    const identified = identifyLimit ? unidentified.slice(0, identifyLimit) : unidentified;
-    for (const invItem of identified) D.identifyInventoryItem(invItem);
-    return { messages: [], identifiedItems: identified };
+    return { messages: [], identifyLimit };
 }
 
 // C ref: read.c:seffect_taming() (SPE_CHARM_MONSTER routes through seffects).

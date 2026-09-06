@@ -11,12 +11,12 @@ import { game } from './gstate.js';
 import { pline, canspotmon, tty_clear_nhwindow_message } from './display.js';
 import { You, Your, You_feel, pline_The } from './pline.js';
 import { carrying, hidden_gold, money_cnt, useup } from './invent.js';
-import { depth, dunlevs_in_dungeon } from './dungeon.js';
+import { depth, dunlevs_in_dungeon, single_level_branch } from './dungeon.js';
 import { G_GENOD, G_UNIQ, In_endgame, In_quest, Is_astralevel,
          KILLED_BY_AN, KILLED_BY, A_CURRENT, A_ORIGINAL,
          LOW_PM, M_AP_MONSTER, M_AP_TYPE, MGIVENNAME, NHW_TEXT, NHW_MENU,
-         OBJ_FREE,
-         NON_PM, A_CON, has_mgivenname, Upolyd } from './const.js';
+         OBJ_FREE, BUFSZ,
+         NON_PM, LEAVESTATUE, A_CON, has_mgivenname, Upolyd } from './const.js';
 import { PMNAMES, MONSYMS } from './monst_data.js';
 import { ONAMES } from './objects_data.js';
 import { pmname } from './do_name.js';
@@ -197,13 +197,10 @@ export async function done_in_by(mtmp, how) {
     await done(how);
 }
 
-// src/end.c:1855 formatkiller() — final death description. Only the
-// NO_KILLER_PREFIX and KILLED_BY* forms are live; the fuller article logic
-// follows svk.killer.format the same way.
-export function formatkiller(how, incl_helpless) {
+// src/topten.c formatkiller(), bounded death text for records and graves.
+export function formatkiller(how, incl_helpless, size = BUFSZ) {
     const k = game.killer || {};
-    let name = k.name || deaths[how] || 'died';
-    name = name.replaceAll(',', ';').replaceAll('=', '_').replaceAll('\t', ' ');
+    let name = k.name || '';
     /* src/topten.c:103 killed_by_prefix[] — the verb depends on `how` */
     const killed_by_prefix = [
         /* DIED, CHOKING, POISONING, STARVING, */
@@ -216,19 +213,29 @@ export function formatkiller(how, incl_helpless) {
         /* PANICKED, TRICKED, QUIT, ESCAPED, ASCENDED */
         '', '', '', '', '',
     ];
-    const prefix = killed_by_prefix[how] ?? 'killed by ';
+    let prefix = '';
     /* KILLED_BY_AN = 0, KILLED_BY = 1, NO_KILLER_PREFIX = 2 */
     switch (k.format ?? 0) {
-    case 2:
-        return name;
     case 0:
-        /* an() before the prefix attaches */
-        name = (/^[aeiou]/i.test(name) ? 'an ' : 'a ') + name;
+        name = an(name);
         /* FALLTHRU */
     case 1:
+        prefix = killed_by_prefix[how];
+        break;
     default:
-        return prefix + name;
+        break;
     }
+    name = name.replaceAll(',', ';').replaceAll('=', '_').replaceAll('\t', ' ');
+    let buf = (prefix + name).slice(0, size - 1);
+    if (incl_helpless && game.multi < 0) {
+        const reason = game.multi_reason && `, while ${game.multi_reason}`;
+        const remaining = size - 1 - buf.length;
+        if (reason && reason.length <= remaining)
+            buf += reason;
+        else if (', while helpless'.length <= remaining)
+            buf += ', while helpless';
+    }
+    return buf;
 }
 
 // src/end.c:1596 container_contents(); disclosure and the loot ':' choice.
@@ -492,6 +499,7 @@ async function really_done(how) {
     let umoney;
     let taken = false;
     let repos = null;
+    let endtime;
 
     /* src/end.c:1144 — the game is now over; disclosure windows read this
        (add_menu_heading drops its highlight, hallucination stops, &c) */
@@ -499,7 +507,8 @@ async function really_done(how) {
     if (!game.program_state?.panicking)
         await done_object_cleanup();
     {
-        const { night, midnight } = await import('./calendar.js');
+        const { night, midnight, getnow } = await import('./calendar.js');
+        endtime = getnow();
         (game.iflags ||= {}).at_night = night();
         game.iflags.at_midnight = midnight();
     }
@@ -518,7 +527,10 @@ async function really_done(how) {
     else if (how === BURNING || how === DISSOLVED)
         u.ugrave_arise = -3;           /* NON_PM - 2 */
     else if (how === STONING)
-        u.ugrave_arise = -100;         /* LEAVESTATUE; not modelled */
+        u.ugrave_arise = LEAVESTATUE;
+    else if (how === TURNED_SLIME
+        && !(game.mvitals[PMNAMES.PM_GREEN_SLIME].mvflags & G_GENOD))
+        u.ugrave_arise = PMNAMES.PM_GREEN_SLIME;
     else
         u.ugrave_arise = u.ugrave_arise ?? -1;   /* NON_PM */
 
@@ -597,19 +609,16 @@ async function really_done(how) {
     /* grave creation after disclosure */
     if (bones_ok && u.ugrave_arise === -1
         && !((game.mvitals?.[u.umonnum]?.mvflags ?? 0) & 0x10 /* G_NOCORPSE */)) {
-        const mnum = game.urace?.mnum ?? PMNAMES.PM_HUMAN;
-        const { mkcorpstat } = await import('./mklev.js');
+        const mnum = Upolyd(u) ? u.umonnum : game.urace.mnum;
+        const { mk_named_object } = await import('./mkobj.js');
+        const { make_grave } = await import('./mklev.js');
         const { ONAMES } = await import('./objects_data.js');
-        const { CORPSTAT_INIT } = await import('./const.js');
-        corpse = mkcorpstat(ONAMES.CORPSE, null, mnum, u.ux, u.uy,
-                            CORPSTAT_INIT);
-        if (corpse && game.plname) {
-            /* mk_named_object: oname(corpse, plname) */
-            corpse.oname = game.plname;
-        }
-        /* make_grave: headstone terrain is not modelled; the level is not
-           redrawn after death so it has no screen effect here */
-        note_unported_end('really_done:make_grave');
+        const { GRAVE } = await import('./const.js');
+        const was_grave = game.level.at(u.ux, u.uy).typ === GRAVE;
+        corpse = mk_named_object(ONAMES.CORPSE, mnum, u.ux, u.uy, game.plname);
+        make_grave(u.ux, u.uy, `${game.plname}, ${formatkiller(how, true)}`);
+        if (game.level.at(u.ux, u.uy).typ === GRAVE && !was_grave)
+            game.level.at(u.ux, u.uy).emptygrave = 1;
     }
 
     /* calculate score, before creating bones [container gold] */
@@ -638,14 +647,20 @@ async function really_done(how) {
         }
     }
 
-    if (u.ugrave_arise >= 0)
-        note_unported_end('really_done:body rises');
+    if (u.ugrave_arise >= 0 && u.ugrave_arise < game.mons.length
+        && !game.done_stopprint) {
+        const text = u.ugrave_arise === PMNAMES.PM_GREEN_SLIME
+            ? 'revenant persists' : 'body rises from the dead';
+        await Your(`${text} as ${an(pmname(game.mons[u.ugrave_arise],
+                                         game.flags.female ? 1 : 0))}...`);
+        await display_nhwindow_message(false);
+    }
 
     if (bones_ok) {
         /* wizard mode asks; normal play saves unconditionally */
         if (!game.wizard
             || (await tty_yn_function('Save bones?', 'yn', 'n')) === 'y')
-            await savebones(how, corpse);
+            await savebones(how, corpse, endtime);
         corpse = null;
     }
 
@@ -692,10 +707,10 @@ async function really_done(how) {
                 pbuf = `You ${u.uz.dlevel < 0 ? 'passed away' : ends[how]}`
                        + ' beyond the confines of the dungeon';
             } else {
-                const where = game.dungeons?.[u.uz.dnum]?.dname
-                              || 'The Dungeons of Doom';
+                const where = Is_astralevel(u.uz) ? 'The Astral Plane'
+                    : game.dungeons[u.uz.dnum].dname;
                 pbuf = `You ${ends[how]} in ${where}`;
-                if (!In_endgame(u.uz))
+                if (!In_endgame(u.uz) && !single_level_branch(u.uz))
                     pbuf += ` on dungeon level ${
                         In_quest(u.uz) ? u.uz.dlevel : depth(u.uz)}`;
             }
@@ -713,11 +728,13 @@ async function really_done(how) {
         await tty_display_nhwindow(endwin, true);
     }
     if (!game.done_stopprint) {
-        /* the text window's --More-- accepts only space/return/ESC */
+        /* the text window's --More-- accepts only space/return/ESC;
+           wintty.c process_text_window(): ESC at a page's --More-- sets
+           WIN_CANCEL and stops paging instead of showing the next page */
         const { xwaitforspace } = await import('./tty/getline.js');
         const { tty_next_page } = await import('./tty/wintty.js');
         await xwaitforspace(' ');
-        while (tty_next_page(endwin))
+        while (game.morc !== '\x1b' && tty_next_page(endwin))
             await xwaitforspace(' ');
     }
     tty_destroy_nhwindow(endwin);
@@ -821,7 +838,7 @@ async function disclose(how, taken) {
             : 'Do you want your possessions identified?';
         c = ask ? await tty_yn_function(qbuf, 'ynq', defquery) : defquery;
         if (c === 'y') {
-            const { display_inventory } = await import('./invent.js');
+            const { display_pickinv_entries } = await import('./invent.js');
             const { tty_start_menu, tty_add_menu, tty_end_menu,
                     tty_next_page } = await import('./tty/wintty.js');
             const { MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE } =
@@ -831,7 +848,7 @@ async function disclose(how, taken) {
             const { docrt } = await import('./display.js');
             const win = tty_create_nhwindow(NHW_MENU);
             tty_start_menu(win, MENU_BEHAVE_STANDARD);
-            for (const item of display_inventory()) {
+            for (const item of display_pickinv_entries()) {
                 tty_add_menu(win, item.glyphinfo ?? null,
                              item.heading ? 0 : 1,
                              item.invlet || 0, 0, 0, NO_COLOR, item.str,
@@ -865,17 +882,20 @@ async function disclose(how, taken) {
             const { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
                     tty_destroy_nhwindow, tty_next_page } =
                 await import('./tty/wintty.js');
-            const { nhgetch } = await import('./input.js');
+            const { xwaitforspace } = await import('./tty/getline.js');
             const win = tty_create_nhwindow(NHW_MENU);
             for (const l of enlightenment(
                      BASICENLIGHTENMENT | MAGICENLIGHTENMENT,
                      (how >= PANICKED) ? ENL_GAMEOVERALIVE
                                        : ENL_GAMEOVERDEAD))
                 tty_putstr(win, 0, l);
+            /* display_nhwindow(ge.en_win, TRUE): win/tty/wintty.c
+               process_text_window() pages with dmore(quitchars), so only
+               space, return and ESC turn a page */
             await tty_display_nhwindow(win);
-            await nhgetch();
-            while (tty_next_page(win))
-                await nhgetch();
+            await xwaitforspace(' \r\n\x1b');
+            while (game.morc !== '\x1b' && tty_next_page(win))
+                await xwaitforspace(' \r\n\x1b');
             tty_destroy_nhwindow(win);
         }
         if (c === 'q')

@@ -1,3 +1,7 @@
+// Object identities shared by creation, equipment and attribute consumers.
+export const GAUNTLETS_OF_POWER = 10112;
+export const DUNCE_CAP = 10212;
+
 // objects.h:422-730 a_can values. Unlisted armor has no magic cancellation.
 export const ARMOR_MAGIC_NEGATION = {
     cornuthaum: 1,

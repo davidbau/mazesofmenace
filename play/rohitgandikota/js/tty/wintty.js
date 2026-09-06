@@ -1084,3 +1084,24 @@ export function reset_windows() {
 export function tty_raw_print(str) {
     tty_putstr_base(str ?? '');
 }
+
+// win/tty/wintty.c:344 bail() — give up before the game starts: close the
+// windows and exit
+export async function bail(mesg) {
+    /* clearlocks() has no counterpart in this port */
+    /* tty_exit_nhwindows(mesg): tty_suspend_nhwindows() -> settty() ->
+       end_screen() clears the terminal and homes the cursor, then prints
+       mesg if there is one; a null mesg prints an empty raw line */
+    const { cls } = await import('./../display.js');
+    await cls();
+    tty_curs_base(0, 0);
+    if (mesg)
+        tty_raw_print(mesg);
+    else
+        tty_raw_print('');
+    /* nh_terminate(EXIT_SUCCESS): unwind the way src/end.c does */
+    game.program_state_gameover = true;
+    const sig = new Error('nh_terminate');
+    sig.__nh_gameover = true;
+    throw sig;
+}

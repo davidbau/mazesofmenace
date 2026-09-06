@@ -3,6 +3,34 @@ import * as pm from './permonst.js';
 import { ARMOR_AC_BONUS } from './armor.js';
 import { W_AMUL, W_ARMU, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARM, W_WEP, MFAST } from './const.js';
 import { beginBurn, endBurn, artifactLight } from './burn.js';
+import { game } from './gstate.js';
+import { objectLocations } from './obj_location.js';
+
+// worn.c:clear_bypasses also resets polymorphed worms and objects which left
+// the traversed chain. Saved levels are not part of C's live object lists.
+export function clearBypasses(g = game) {
+    for (const [obj, location] of objectLocations(g)) {
+        if (location.source === 'minvent' && (location.owner.dead || location.owner.mhp <= 0)) continue;
+        obj.bypass = 0;
+    }
+    const clear = list => {
+        for (const obj of list || []) {
+            obj.bypass = 0;
+            clear(obj.contents);
+            if (obj.cobj !== obj.contents) clear(obj.cobj);
+        }
+    };
+    clear(g.billobjs);
+    clear(g.objs_deleted);
+    for (const mon of g.mydogs || []) clear(mon.minvent);
+    for (const mon of g.level?.monsters || []) {
+        if (!mon.dead && !(mon.mhp <= 0) && mon.data?.name === 'long worm' && mon.mextra?.mcorpsenm != null)
+            mon.mextra.mcorpsenm = -1;
+    }
+    if (g.u?.uball) g.u.uball.bypass = 0;
+    if (g.u?.uchain) g.u.uchain.bypass = 0;
+    g.context.bypasses = false;
+}
 
 const SPECIES = new Map(pm.MONS.flatMap(mon => [mon.name, ...(mon.names || [])].map(name => [name.toLowerCase(), mon])));
 const RESISTANCE_GEAR = {
@@ -114,4 +142,3 @@ export function dressMonster(mon) {
     mon.minvis = invisible && !blocked;
     mon.mspeed = speedBoots ? 'fast' : mon.permspeed || 0;
 }
-

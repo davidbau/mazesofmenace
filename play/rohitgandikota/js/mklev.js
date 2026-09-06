@@ -198,7 +198,7 @@ import { christen_monst, roguename } from './do_name.js';
 var mklev_mon;
 export function mklev_wire_mon(fns) { mklev_mon = fns; }
 import { depth as depth_of_level, Is_special, insert_branch } from './dungeon.js';
-import { Is_oracle_level, Is_rogue_level, In_mines } from './const.js';
+import { Is_oracle_level, Is_rogue_level, Is_earthlevel, In_mines } from './const.js';
 
 /* include/dungeon.h In_hell(): any dungeon flagged hellish. */
 const In_hell = (lev) =>
@@ -212,7 +212,7 @@ import {
     SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, ALTAR, GRAVE,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     IS_WALL, IS_STWALL, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL,
-    SPACE_POS, isok, W_NONDIGGABLE, FILL_NONE, FILL_NORMAL,
+    SPACE_POS, isok, W_NONDIGGABLE, W_NONPASSWALL, FILL_NONE, FILL_NORMAL,
     MKTRAP_NOFLAGS, MKTRAP_SEEN, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB,
     MKTRAP_NOVICTIM,
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL,
@@ -688,8 +688,8 @@ async function getbones() {
     if (game.discover) return false;      /* src/bones.c:639 */
     if ((game.flags || {}).bones === false) return false;
     if (rn2(3) && !game.wizard) return false;
-    /* no_bones_level: the early levels the sessions reach all allow them */
-    const { getbones_load } = await import('./bones.js');
+    const { getbones_load, no_bones_level } = await import('./bones.js');
+    if (no_bones_level(game.u.uz)) return false;
     return await getbones_load();
 }
 
@@ -3575,6 +3575,7 @@ function mineralize(kelp_pool, kelp_moat, goldprob, gemprob, skip_lvl_checks) {
 // Level finalize topology
 // ============================================================
 
+// src/mkmaze.c:1353 get_level_extends()
 export function get_level_extends() {
     const map = game.level;
     let xmin = 0, xmax = COLNO - 1, ymin = 0, ymax = ROWNO - 1;
@@ -3586,6 +3587,7 @@ export function get_level_extends() {
         }
     }
     xmin -= (nonwall || !game.level?.flags?.is_maze_lev) ? 2 : 1;
+    if (xmin < 0) xmin = 0;
     found = false; nonwall = false;
     for (xmax = COLNO - 1; !found && xmax >= 0; xmax--) {
         for (let y = 0; y <= ROWNO - 1; y++) {
@@ -3594,6 +3596,7 @@ export function get_level_extends() {
         }
     }
     xmax += (nonwall || !game.level?.flags?.is_maze_lev) ? 2 : 1;
+    if (xmax >= COLNO) xmax = COLNO - 1;
     found = false; nonwall = false;
     for (ymin = 0; !found && ymin <= ROWNO - 1; ymin++) {
         for (let x = xmin; x <= xmax; x++) {
@@ -3613,15 +3616,21 @@ export function get_level_extends() {
     return { xmin, xmax, ymin, ymax };
 }
 
-function bound_digging() {
+// src/mkmaze.c:1441 bound_digging()
+export function bound_digging() {
+    if (Is_earthlevel(game.u.uz))
+        return;
     const map = game.level;
     const { xmin, xmax, ymin, ymax } = get_level_extends();
     for (let x = 0; x < COLNO; x++)
         for (let y = 0; y < ROWNO; y++) {
             const loc = map.at(x, y);
             if (!loc) continue;
-            if (IS_STWALL(loc.typ) && (y <= ymin || y >= ymax || x <= xmin || x >= xmax)) {
-                loc.wall_info = (loc.wall_info || 0) | W_NONDIGGABLE;
+            if (IS_STWALL(loc.typ)) {
+                if (y <= ymin || y >= ymax || x <= xmin || x >= xmax)
+                    loc.wall_info |= W_NONDIGGABLE;
+                if (y < ymin || y > ymax || x < xmin || x > xmax)
+                    loc.wall_info |= W_NONPASSWALL;
             }
         }
 }

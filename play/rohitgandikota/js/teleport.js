@@ -16,19 +16,19 @@ import { rn1 } from './rng.js';
 import { update_player_regions, update_monster_region } from './region.js';
 import { m_into_limbo } from './mon.js';
 import { unstuck } from './mon.js';
-import { engulfing_u } from './const.js';
+import { engulfing_u, In_mines, NO_KILLER_PREFIX, DIED } from './const.js';
 import { place_object } from './mkobj.js';
-import { stolen_value } from './shk.js';
+import { stolen_value, u_left_shop } from './shk.js';
 import { addtobill } from './shk.js';
 import { subfrombill } from './shk.js';
 import { costly_adjacent } from './shk.js';
 import { costly_spot } from './shk.js';
 import { find_objowner } from './shk.js';
-import { On_W_tower_level } from './dungeon.js';
+import { On_W_tower_level, surface, single_level_branch } from './dungeon.js';
 import { obj_extract_self } from './invent.js';
 import { flooreffects } from './do.js';
 import { revive_corpse } from './do.js';
-import { is_rider } from './mondata.js';
+import { is_rider, is_silent } from './mondata.js';
 import { make_stunned } from './potion.js';
 import { UTOTYPE_PORTAL } from './const.js';
 import { UTOTYPE_ATSTAIRS } from './const.js';
@@ -43,11 +43,11 @@ import { control_teleport } from './mondata.js';
 import { ledger_no } from './dungeon.js';
 import { onscary } from './monmove.js';
 import { MONSYMS } from './monst_data.js';
-import { is_home_elemental } from './makemon.js';
+import { is_home_elemental, Inhell } from './makemon.js';
 import { mon_has_amulet } from './wizard.js';
 import { clamp_hole_destination, seetrap, Trap_Effect_Finished, Trap_Moved_Mon } from './trap.js';
 import { NO_TRAP, HOLE, TRAPDOOR, MAGIC_PORTAL, MIGR_RANDOM, MIGR_PORTAL, is_xport, Is_stronghold, Is_botlevel } from './const.js';
-import { Your, pline_mon } from './pline.js';
+import { Your, pline_mon, verbalize } from './pline.js';
 import { yelp } from './sounds.js';
 import { get_mleash, m_unleash } from './apply.js';
 import { game } from './gstate.js';
@@ -61,7 +61,7 @@ import { COLNO, ROWNO, In_endgame, In_quest, In_sokoban, GP_CHECKSCARY,
          MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED } from './const.js';
 import { rnl } from './rng.js';
 import { pline, see_nearby_objects, canspotmon, canseemon,
-         sensemon, see_monsters } from './display.js';
+         sensemon, see_monsters, display_nhwindow_message } from './display.js';
 import { Blind, Hallucination, Teleport_control, Teleportation }
     from './youprop.js';
 import { is_demon, is_lord, is_prince, is_covetous,
@@ -102,6 +102,10 @@ import { mon_offmap } from './monst.js';
 import { m_next2u } from './mon.js';
 import { DEADMONSTER } from './monst.js';
 import { noit_mon_nam } from './do_name.js';
+import { uhis } from './mhitu.js';
+import { Levitation, Flying } from './youprop.js';
+import { done } from './end.js';
+import { tty_yn_function } from './tty/topl.js';
 
 
 
@@ -261,6 +265,7 @@ export async function level_tele() {
     let newlev = 0;
     const newlevel = { dnum: 0, dlevel: 0 };
     let force_dest = false;
+    let escape_by_flying = null;
     let buf = '';
     let random_port = false;    /* C: goto random_levtport */
 
@@ -326,13 +331,47 @@ export async function level_tele() {
         } while (!newlev && !isdigit(buf[0])
                  && (buf[0] !== '-' || !isdigit(buf[1])) && trycnt < 10);
 
-        if (!random_port) {
-            if (newlev === 0) {
-                /* "Go to Nowhere" and the suicide it performs */
-                note_unported_tele('level_tele:Nowhere');
+        /* no dungeon escape via this route */
+        if (!random_port && newlev === 0) {
+            if (trycnt >= 10) {
+                random_port = true; /* goto random_levtport */
+            } else {
+                if (await ynq('Go to Nowhere.  Are you sure?') !== 'y')
+                    return;
+                await You(`${is_silent(game.youmonst.data) ? 'writhe' : 'scream'
+                          } in agony as your body begins to warp...`);
+                await display_nhwindow_message();
+                await You('cease to exist.');
+                if ((game.invent || []).length)
+                    await Your(`possessions land on the ${
+                               surface(game.u.ux, game.u.uy)} with a thud.`);
+                (game.killer ||= {}).format = NO_KILLER_PREFIX;
+                game.killer.name = 'committed suicide';
+                await done(DIED);
+                await pline('An energized cloud of dust begins to coalesce.');
+                await Your(`body rematerializes${
+                           (game.invent || []).length
+                               ? ', and you gather up all your possessions' : ''}.`);
                 return;
             }
+        }
 
+        if (!random_port) {
+            /* if in Knox and the requested level > 0, stay put.
+             * we let negative values requests fall into the "heaven" loop.
+             */
+            if (single_level_branch(game.u.uz) && newlev > 0 && !force_dest) {
+                await You('shudder for a moment.');
+                return;
+            }
+            /* if in Quest, the player sees "Home 1", etc., on the status
+             * line, instead of the logical depth of the level.  controlled
+             * level teleport request is likely to be relativized to the
+             * status line, and consequently it should be incremented to
+             * the value of the logical depth of the target level.
+             *
+             * we let negative values requests fall into the "heaven" handling.
+             */
             if (In_quest(game.u.uz) && newlev > 0)
                 newlev = newlev + game.dungeons[game.u.uz.dnum].depth_start - 1;
         }
@@ -369,25 +408,101 @@ export async function level_tele() {
         return;
     }
 
+    (game.killer ||= {}).name = ''; /* still alive, so far... */
+
     if (newlev < 0 && !force_dest) {
-        /* heaven, Cloud 9, and the plummet; all of them kill or escape */
-        note_unported_tele('level_tele:above the dungeon');
-        return;
+        if (game.u.ushops0) {
+            /* take unpaid inventory items off of shop bills */
+            game.in_mklev = true; /* suppress map update */
+            await u_left_shop(game.u.ushops0, true);
+            /* you're now effectively out of the shop */
+            game.u.ushops0 = game.u.ushops = '';
+            game.in_mklev = false;
+        }
+        if (newlev <= -10) {
+            await You('arrive in heaven.');
+            /* SetVoice((struct monst *) 0, 0, 80, voice_deity); */
+            await verbalize("Thou art early, but we'll admit thee.");
+            game.killer.format = NO_KILLER_PREFIX;
+            game.killer.name = 'went to heaven prematurely';
+        } else if (newlev === -9) {
+            await You_feel('deliriously happy.');
+            await pline("(In fact, you're on Cloud 9!)");
+            await display_nhwindow_message();
+        } else
+            await You('are now high above the clouds...');
+
+        if (game.killer.name) {
+            ; /* arrival in heaven is pending */
+        } else if (Levitation()) {
+            escape_by_flying = 'float gently down to earth';
+        } else if (Flying()) {
+            escape_by_flying = 'fly down to the ground';
+        } else {
+            await pline("Unfortunately, you don't know how to fly.");
+            await You('plummet a few thousand feet to your death.');
+            game.killer.name = `teleported out of the dungeon and fell to ${uhis()} death`;
+            game.killer.format = NO_KILLER_PREFIX;
+        }
     }
 
-    if (force_dest) {
+    if (game.killer.name) { /* the chosen destination was not survivable */
+        /* set specific death location; this also suppresses bones */
+        const lsav = { dnum: game.u.uz.dnum, dlevel: game.u.uz.dlevel }; /* save current level; see below */
+        game.u.uz.dnum = 0; /* main dungeon */
+        game.u.uz.dlevel = (newlev <= -10) ? -10 : 0; /* heaven or surface */
+        await done(DIED);
+        /* can only get here via life-saving (or declining to die in
+           explore|debug mode); the hero has now left the dungeon... */
+        escape_by_flying = 'find yourself back on the surface';
+        game.u.uz.dnum = lsav.dnum; /* restore u.uz so escape code works */
+        game.u.uz.dlevel = lsav.dlevel;
+    }
+
+    /* calls done(ESCAPED) if newlevel==0 */
+    if (escape_by_flying) {
+        await You(`${escape_by_flying}.`);
+        /* [dlevel used to be set to 1, but it doesn't make sense to
+            teleport out of the dungeon and float or fly down to the
+            surface but then actually arrive back inside the dungeon] */
+        newlevel.dnum = 0;   /* specify main dungeon */
+        newlevel.dlevel = 0; /* escape the dungeon */
+    } else if (force_dest) {
         /* wizard mode menu; no further validation needed */
+        ;
     } else if (game.u.uz.dnum === game.medusa_level?.dnum
                && newlev >= game.dungeons[game.u.uz.dnum].depth_start
                             + dunlevs_in_dungeon(game.u.uz)) {
         find_hell(newlevel);
     } else {
+        /* FIXME: we should avoid using hard-coded knowledge of
+           which branches don't connect to anything deeper;
+           mainly used to distinguish "can't get there from here"
+           vs "from anywhere" rather than to control destination */
+        const qbranch = In_quest(game.u.uz) ? game.qstart_level
+                        : In_mines(game.u.uz) ? game.mineend_level
+                          : game.sanctum_level;
+        const deepest = game.dungeons[qbranch.dnum].depth_start
+                        + dunlevs_in_dungeon(qbranch) - 1;
+
+        /* if invocation did not yet occur, teleporting into
+         * the last level of Gehennom is forbidden.
+         */
+        if (!game.wizard && Inhell() && !game.u.uevent?.invoked && newlev >= deepest) {
+            newlev = deepest - 1;
+            await pline('Sorry...');
+        }
+        /* no teleporting out of quest dungeon */
+        if (In_quest(game.u.uz) && newlev < depth(game.qstart_level))
+            newlev = depth(game.qstart_level);
+        /* the player thinks of levels purely in logical terms, so
+         * we must translate newlev to a number relative to the
+         * current dungeon.
+         */
         get_level(newlevel, newlev);
 
-        if (newlevel.dnum === game.u.uz.dnum
-            && newlevel.dlevel === game.u.uz.dlevel
-            && newlev !== depth(game.u.uz)) {
-            await You_cant('get there from here.');
+        if (on_level(newlevel, game.u.uz) && newlev !== depth(game.u.uz)) {
+            await You_cant(`get there from ${(newlev > deepest) ? 'anywhere' : 'here'}.`);
             return;
         }
     }
@@ -404,6 +519,8 @@ async function next_to_u() {
 }
 
 const isdigit = (c) => c >= '0' && c <= '9';
+/* include/hack.h:1330 ynq() */
+const ynq = (query) => tty_yn_function(query, 'ynq', 'q');
 const Stunned = () => !!game.u?.uprops?.STUNNED;
 const Confusion = () => !!game.u?.uprops?.CONFUSION;
 

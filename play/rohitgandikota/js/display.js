@@ -54,7 +54,7 @@ import { nhgetch } from './input.js';
 import { update_lastseentyp } from './dungeon.js';
 import { def_monsyms, def_oc_syms, cmap_names, defsyms } from './drawing_data.js';
 import { PMNAMES, mons, NUMMONS, MFLAGS } from './monst_data.js';
-import { showsym } from './symbols.js';
+import { showsym, showsym_mon, showsym_oc, showsym_other, SYM_BOULDER } from './symbols.js';
 import { boolean_option } from './options.js';
 import { coord_desc } from './getpos.js';
 import { GPCOORDS_NONE, GPCOORDS_COMFULL } from './const.js';
@@ -958,7 +958,7 @@ function floor_object_glyph(obj, x, y, piletop = true,
             rn2_on_display_rng(2);
             const mptr = game.mons?.[mnum];
             return {
-                ch: mptr ? (def_monsyms[mptr.mlet] || '?') : '?',
+                ch: mptr ? (showsym_mon(mptr.mlet) || '?') : '?',
                 color: mptr?.mcolor ?? NO_COLOR,
                 dec: false,
                 glyph: { kind: 'mon', hallucinated_statue: true, mnum },
@@ -994,11 +994,11 @@ function floor_object_glyph(obj, x, y, piletop = true,
     const oc = game.objects?.[glyphOtyp];
     const glyphClass = oc?.oc_class ?? obj.oclass;
     let color = oc?.oc_color ?? NO_COLOR;
-    let sym = def_oc_syms[glyphClass] || '?';
+    let sym = showsym_oc(glyphClass) || '?';
     /* src/display.c:2806 map_glyphinfo(). A configured boulder symbol
        replaces the ordinary rock-class symbol for boulders only. */
     if (obj.otyp === ONAMES.BOULDER)
-        sym = game.boulder_symbol || sym;
+        sym = showsym_other(SYM_BOULDER) || sym;
     /* the glyph descriptor mirrors C's obj_to_glyph(): a statue and a corpse
        get their own glyph ranges (GLYPH_STATUE_OFF / GLYPH_BODY_OFF), which
        is what glyph_is_statue() tests in do_screen_description() */
@@ -1026,7 +1026,7 @@ function floor_object_glyph(obj, x, y, piletop = true,
            grid bug's magenta. */
         const mptr = game.mons?.[obj.corpsenm];
         if (mptr)
-            sym = def_monsyms[mptr.mlet] || sym;
+            sym = showsym_mon(mptr.mlet) || sym;
         color = game.objects?.[ONAMES.STATUE]?.oc_color ?? color;
     } else if (obj.otyp === ONAMES.CORPSE && obj.corpsenm >= 0) {
         color = game.mons?.[obj.corpsenm]?.mcolor ?? color;
@@ -1224,7 +1224,7 @@ export function newsym(x, y) {
             const self = game.youmonst?.data;
             show_glyph_cell(x, y,
                             Upolyd(game.u)
-                                ? (def_monsyms[self.mlet] || '?') : '@',
+                                ? (showsym_mon(self.mlet) || '?') : '@',
                             Upolyd(game.u) ? self.mcolor : CLR_WHITE,
                             false, 0, { kind: 'hero' });
         }
@@ -1269,11 +1269,20 @@ export function newsym(x, y) {
            include/display.h:246 maybe_display_usteed() — while riding, the
            hero's square shows the STEED's glyph, not '@'. */
         const under = covers_objects(x, y) ? null : vobj_at(x, y);
-        /* src/display.c:422 map_location(): objects, then the engraving,
-           then the background */
+        /* src/display.c:455 _map_location(): objects, then a seen trap,
+           then the engraving, then the background. The trap arm matters
+           here when the hero is blind on a trap just triggered (seetrap()
+           ran before the blindness): feel_location() remembers '^', which
+           is what the square shows once the hero steps off it. */
+        const trapHere = !under ? t_at(x, y) : null;
+        const trapg = (trapHere && trapHere.tseen && !covers_traps(x, y))
+            ? trap_glyph(trapHere) : null;
         const mapped = under ? mapped_object_glyphs(under, x, y) : null;
         const tg = mapped?.shown
-                   ?? (engraving_glyph(loc, x, y) ?? terrain_glyph(loc, x, y));
+                   ?? (trapg ? { ...trapg,
+                                 glyph: { kind: 'cmap', cmap: trapg.cmap } }
+                             : (engraving_glyph(loc, x, y)
+                                ?? terrain_glyph(loc, x, y)));
         const memg = mapped?.remembered ?? tg;
         if (canspotself())
             display_self(); /* the steed, the disguise, or the hero */
@@ -1399,7 +1408,7 @@ export function newsym(x, y) {
             const attr = detectedOnly && !(mon.mtame && !Hallucination())
                          && game.flags?.use_inverse !== false
                 ? TERM_INVERSE : 0;
-            show_glyph_cell(x, y, def_monsyms[shown.mlet] || '?',
+            show_glyph_cell(x, y, showsym_mon(shown.mlet) || '?',
                             shown.mcolor ?? NO_COLOR, false, attr,
                             { kind: 'mon', mon });
             return;
@@ -1427,7 +1436,7 @@ export function newsym(x, y) {
                          && game.flags?.use_inverse !== false
                 ? TERM_INVERSE : 0;
             clear_invisible_memory(x, y);
-            show_glyph_cell(x, y, def_monsyms[shown.mlet] || '?',
+            show_glyph_cell(x, y, showsym_mon(shown.mlet) || '?',
                             shown.mcolor ?? NO_COLOR, false, attr,
                             { kind: 'mon', mon });
             return;

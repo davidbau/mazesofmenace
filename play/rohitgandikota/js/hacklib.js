@@ -229,3 +229,30 @@ export function visctrl(ch) {
     }
     return ccc;
 }
+
+// src/hacklib.c:123 upwords() — capitalize the first letter of each word
+export function upwords(s) {
+    let out = '';
+    let space = true;
+
+    for (const ch of s) {
+        if (ch === ' ') {
+            space = true;
+        } else if (space && /[A-Za-z]/.test(ch)) {
+            out += ch.toUpperCase();
+            space = false;
+            continue;
+        } else {
+            space = false;
+        }
+        out += ch;
+    }
+    return out;
+}
+
+// src/hacklib.c:832 swapbits() — swap bit a with bit b in val
+export function swapbits(val, bita, bitb) {
+    const tmp = ((val >> bita) & 1) ^ ((val >> bitb) & 1);
+
+    return (val ^ ((tmp << bita) | (tmp << bitb)));
+}

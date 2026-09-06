@@ -1,3 +1,4 @@
+import { currentHeroAttribute } from './attrib.js';
 // js/mhitm.js — Port of NetHack 5.0 src/mhitm.c monster-vs-monster combat core.
 //
 // C references are paths under nethack-c/upstream:
@@ -36,11 +37,12 @@
 
 import { rn2, rnd, rn1, d, getRngLog } from './rng.js';
 import { game } from './gstate.js';
-import { ARMOR_AC_BONUS, ARMOR_MAGIC_NEGATION, armorBonus } from './armor.js';
+import { ARMOR_AC_BONUS, ARMOR_MAGIC_NEGATION, armorBonus, armorSlot } from './armor.js';
 import { IDENTIFIED_AMULET_NAMES } from './o_init.js';
+import { objectTypeData } from './object_knowledge.js';
 import {
     Is_stronghold, STRAT_WAITMASK, STRAT_WAITFORU,
-    NO_WEAPON_WANTED, NEED_WEAPON, NEED_HTH_WEAPON, W_ARMS,
+    NO_WEAPON_WANTED, NEED_WEAPON, NEED_HTH_WEAPON, W_ARMS, M_AP_TYPE, M_AP_OBJECT, M_AP_FURNITURE,
 } from './const.js';
 import {
     MONS, NATTK, NORMAL_SPEED, G_UNIQ,
@@ -58,7 +60,7 @@ import {
     PM_GRAY_DRAGON, PM_BLUE_DRAGON, PM_YELLOW_DRAGON, PM_HIGH_CLERIC, PM_ALIGNED_CLERIC,
     PM_ELF_ZOMBIE, PM_HUMAN_ZOMBIE, PM_DWARF_ZOMBIE, PM_GNOME_ZOMBIE,
     S_ZOMBIE, S_KOBOLD, S_ORC, S_GIANT, S_HUMAN, S_KOP, S_HUMANOID, S_GNOME, S_NYMPH,
-    S_XORN, S_DRAGON, S_JABBERWOCK, S_NAGA,
+    S_XORN, S_DRAGON, S_JABBERWOCK, S_NAGA, S_MIMIC,
     MZ_HUGE, MZ_LARGE,
     bigmonst, is_elf, is_orc, is_dwarf, unsolid, haseyes, perceives, is_rider, nonliving,
     is_animal, is_golem, is_whirly, touch_petrifies, acidic, is_undead, is_demon, is_were,
@@ -296,7 +298,7 @@ function mm2wayAggression(magr, mdef) {
 
 /* src/mondata.c:1607-1613 resist_conflict(). */
 export function resistConflict(mon) {
-    const cha = game.u?.acurr?.a?.[5] ?? 10;
+    const cha = currentHeroAttribute(5);
     const resistChance = Math.min(19, cha - mLevel(mon) + (game.u?.ulevel || 1));
     return rnd(20) > resistChance;
 }
@@ -374,15 +376,32 @@ export function paralyzeMonst(mon, amt) {
     if (mon.mstrategy != null) mon.mstrategy &= ~STRAT_WAITFORU;
 }
 
-/* src/mhitm.c:1172-1197 sleep_monst(): returns 1 if affected.  how >= 0
- * adds a resist() roll; how == -1 (from sleep wand breaths/here) skips it. */
+/* mhitm.c:sleep_monst. how is the existing JS class tag (wand=10),
+ * zero for a spell, or -1 to bypass the magic-resistance roll. */
 export function sleepMonst(mon, amt, how = -1) {
-    const pm = pmOf(mon);
-    /* seemimic-on-reveal for mimics skipped: mimicry display lives in allmain. */
-    if (resistsSleep(mon) || (how >= 0 && resistMon(mon, how, 0)))
+    const pm = pmOf(mon) || mon.data || {};
+    if (how >= 0 && !mon.msleeping && !mon.mfrozen && pm.mlet === S_MIMIC
+        && [M_AP_FURNITURE, M_AP_OBJECT].includes(M_AP_TYPE(mon))) {
+        mon.m_ap_type = 0;
+        mon.mappearance = 0;
+        mon.appearObj = null; mon.appearGlyph = null; mon.appearColor = null;
+        hooks.newsym?.(mon.mx, mon.my);
+    }
+    const armor = (mon.minvent || []).find(item => item.owornmask != null
+        ? item.owornmask & W_ARM : item.worn && armorSlot(item) === 'body');
+    const armorName = armor && (objectTypeData(armor)?.name || monsterObjectKind(armor));
+    if (resistsSleep(mon) || mon.sleepResistance || mon.resistsSleep || mon.data?.sleepResistance
+        || mon.data?.resistsSleep || mon.data?.defendsSleep
+        || armorName === 'orange dragon scale mail' || armorName === 'orange dragon scales'
+        || (how >= 0 && resistMon(mon, how, 0)))
         return 0; /* shieldeff is a visual-only effect */
     if (mon.mcanmove !== 0 && mon.mcanmove !== false) {
         mon.meating = 0;
+        if (M_AP_TYPE(mon) && pm.mlet !== S_MIMIC) {
+            mon.m_ap_type = 0; mon.mappearance = 0;
+            mon.appearObj = null; mon.appearGlyph = null; mon.appearColor = null;
+            hooks.newsym?.(mon.mx, mon.my);
+        }
         amt += (mon.mfrozen || 0);
         if (amt > 0) {
             mon.mcanmove = 0;
@@ -412,7 +431,7 @@ export function resistMon(mon, oclass, _damage) {
     if (dlev > 50) dlev = 50;
     else if (dlev < 1) dlev = 1;
     const pm = pmOf(mon);
-    return rn2(100 + alev - dlev) < (pm?.mr ?? 0);
+    return rn2(100 + alev - dlev) < (pm?.mr ?? mon.data?.mr ?? 0);
 }
 
 /* src/mhitm.c failed_grab() port: unsolid targets can't be held.

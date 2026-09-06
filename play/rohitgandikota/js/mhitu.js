@@ -20,7 +20,7 @@ import { pline_The, pline_mon, verbalize } from './pline.js';
 import { update_inventory } from './invent.js';
 import { cloak_simple_name, helm_simple_name, Ring_gone, Ring_on,
          stop_donning } from './do_wear.js';
-import { mhitm_ad_poly, mhitm_ad_deth, mhitm_ad_tlpt } from './uhitm.js';
+import { mhitm_ad_poly, mhitm_ad_deth, mhitm_ad_tlpt, mhitm_ad_curs } from './uhitm.js';
 import { monsndx } from './makemon.js';
 import { split_mon } from './potion.js';
 import { Your } from './pline.js';
@@ -82,7 +82,7 @@ import { mon_nam, Some_Monnam } from './do_name.js';
 import { Inhell, remove_monster, place_monster, makemon } from './makemon.js';
 import { swallowed } from './display.js';
 import { vision_recalc } from './vision.js';
-import { ACURR, adjalign, adjattrib, exercise } from './attrib.js';
+import { ACURR, adjalign, adjattrib, exercise, Fast } from './attrib.js';
 import { A_CON, A_STR, A_DEX } from './const.js';
 import { sobj_at } from './invent.js';
 import { s_suffix } from './hacklib.js';
@@ -181,6 +181,16 @@ const AC_VALUE = (AC) => (AC >= 0 ? AC : -rnd(-AC));
 // pointer (mattk == gh.hitmsg_prev + 1). The slot index plays that role for
 // attacks from the monster table. A getmattk() substitution uses one shared C
 // scratch slot instead, so it can never be adjacent to the previous attack.
+// src/mhitu.c:163 u_slow_down()
+export async function u_slow_down() {
+    (game.u.intrinsic ||= {}).HFast = 0;
+    if (!Fast())
+        await You('slow down.');
+    else /* speed boots */
+        await Your('quickness feels less natural.');
+    exercise(A_DEX, false);
+}
+
 export async function hitmsg(mtmp, mattk, indx) {
     const A = ATTKS;
     let compat;
@@ -1415,6 +1425,8 @@ async function hitmu(mtmp, mattk, indx) {
         } else {
             await mhitm_ad_sedu(mtmp, mattk, game.youmonst, mhm);
         }
+    } else if (mattk[1] === A.AD_CURS) {
+        await mhitm_ad_curs(mtmp, mattk, game.youmonst, mhm);
     } else {
         note_unported_mhitu(`hitmu:adtyp=${mattk[1]}`);
         /* the generic arms still print the plain hit message */

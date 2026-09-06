@@ -1,3 +1,7 @@
+import { objectIsFullyIdentified } from './object_knowledge.js';
+import { setTinVariety } from './eat.js';
+import { OBJECT_DATA } from './object_data.js';
+import { GAUNTLETS_OF_POWER, DUNCE_CAP } from './armor.js';
 // mklev.js — Level generation.
 // C ref: mklev.c — makelevel, makerooms, makecorridors, generate_stairs.
 // Also includes parts of sp_lev.c (create_room) and mkmap.c (litstate_rnd).
@@ -164,7 +168,6 @@ const ELVEN_SHIELD = 10208;
 const URUK_HAI_SHIELD = 10209;
 const ORCISH_SHIELD = 10210;
 const CORNUTHAUM = 10211;
-const DUNCE_CAP = 10212;
 const ELVEN_LEATHER_HELM = 10213;
 const HELM_OF_CAUTION = 10214;
 const HELM_OF_OPPOSITE_ALIGNMENT = 10215;
@@ -472,7 +475,7 @@ const WEAPON_NONERODIBLE_ROLLS = [
     [96, 122], [373, 374], [445, 447], [553, 558], [768, 769],
 ];
 
-const WEAPON_ROLL_KINDS = [
+export const WEAPON_ROLL_KINDS = [
     [55, 'arrow', 1], [75, 'elven arrow', 1, 'runed arrow'],
     [95, 'orcish arrow', 1, 'crude arrow'], [107, 'silver arrow', 1],
     [122, 'ya', 1, 'bamboo arrow'], [177, 'crossbow bolt', 1],
@@ -1509,7 +1512,6 @@ const HIGH_BOOTS = 10049;
 const LEATHER_GLOVES = 10050;
 const LEATHER_CLOAK = 10051;
 const CLOAK_OF_DISPLACEMENT = 10111;
-const GAUNTLETS_OF_POWER = 10112;
 const GAUNTLETS_OF_FUMBLING = 10114;
 const GAUNTLETS_OF_DEXTERITY = 10115;
 const MUMMY_WRAPPING = 10202;
@@ -4097,6 +4099,7 @@ function applyArtifactFields(otmp, def, extra = {}) {
     Object.assign(otmp, artifactBaseFields(def), {
         kind: artifactObjectNameForDef(def),
         artifact: def.name,
+        known: otmp.known ?? false,
     }, extra);
     recordArtifactExistence(def.name);
     return otmp;
@@ -4108,8 +4111,23 @@ function artifactObjectNameForDef(def) {
 }
 
 export function artifactObjectName(obj) {
-    const def = ARTIFACT_DEFS.find(candidate => candidate.name === obj?.artifact);
-    return def ? artifactObjectNameForDef(def) : (obj?.kind || '');
+    const def = artifactDefinitionForName(obj?.artifact || obj?.oartifact);
+    if (!def) return obj?.kind || '';
+    if (obj._identify_override || objectIsFullyIdentified(obj)) return def.name.replace(/^The /, '');
+    let base = def.base;
+    // xname uses the base type's description until that type is discovered.
+    // Seeing or naming an artifact does not identify its underlying type.
+    const typeKnown = obj.dknown !== false && (obj.known !== false || (game._discoveries || []).some(entry =>
+        entry.name === base && (entry.known || entry.starred)));
+    if (!typeKnown) {
+        const data = OBJECT_DATA.find(type => type.name === def.base);
+        base = data?.description || base;
+        if (def.cls === 'amulet') base = `${game._object_descriptions?.amulets?.[0] || base} amulet`;
+        if (def.cls === 'gem') base += ' stone';
+    }
+    if (def.base === 'lenses') base = 'pair of ' + base;
+    if (obj.dknown === false) return def.cls === 'amulet' ? 'amulet' : base;
+    return `${base} named ${def.name.replace(/^The /, 'the ')}`;
 }
 
 export function makeArtifactWishObject(name, options = {}) {
@@ -4434,6 +4452,7 @@ function mksobj_init(otmp, otyp, artif) {
         otmp.spe = 1;
         blessorcurse(otmp, 2);
     } else if (otyp === TIN) {
+        otmp.corpsenm = -1;
         if (rn2(6)) {
             for (let tryct = 200; tryct > 0; tryct--) {
                 const ptr = rndmonnum();
@@ -4441,13 +4460,13 @@ function mksobj_init(otmp, otyp, artif) {
                 const corpse = corpseName
                     ? (RANDOM_MONSTER_BY_NAME.get(corpseName) || { name: corpseName, neuter: false })
                     : (ptr.corpse || ptr);
-                if (!corpse.noCorpse) {
+                if (!corpse.noCorpse && questSpecies.MONS.find(mon => mon.name === corpse.name)?.nutrition) {
                     otmp.corpsenm = corpse;
-                    rn2(15);
+                    setTinVariety(otmp);
                     break;
                 }
             }
-        }
+        } else setTinVariety(otmp, -1);
         blessorcurse(otmp, 10);
         if (!rn2(6)) otmp.quan = 2;
     } else if (otyp === CANDY_BAR) {
@@ -9546,7 +9565,7 @@ function equipmentInRange(oclass, first, last) {
     return table.find(row => roll <= row[0])[1];
 }
 
-function namedEquipment(name, init = true, artif = false) {
+export function namedEquipment(name, init = true, artif = false) {
     if (name === 'walking shoes') name = 'low boots'; // objects.h non-shuffled description.
     for (const [oclass, table] of [[WEAPON_CLASS, WEAPON_ROLL_KINDS], [ARMOR_CLASS, ARMOR_ROLL_KINDS]]) {
         const row = table.find(entry => entry[1].toLowerCase() === name.toLowerCase());

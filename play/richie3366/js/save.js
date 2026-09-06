@@ -35,6 +35,7 @@ import { vision_reset } from './vision.js';
 import { setworn } from './do_wear.js';
 import { setuwep, setuswapwep, setuqwep } from './wield.js';
 import { restore_artifacts } from './artifact.js';
+import { save_oracles, restore_oracles } from './rumors.js';
 import {
     serObj,
     serObjChain,
@@ -356,7 +357,7 @@ function restWornFromInvent(invent) {
 /**
  * C ref: save.c dosave0 — write current game to VFS (JSON subset of savelev).
  * Named omissions: binary NHFILE format; hangup arms; overwrite yn;
- * compress; uid/nhuuid/urealtime/wreserve; save_oracles/save_killers;
+ * compress; uid/nhuuid/urealtime/wreserve; save_killers;
  * save_bc loose ball when swallowed.
  * mapseenchn cemetery JSON is save_dungeon/save_mapseen (D-1685);
  * current-level bonesinfo is savelev savecemetery.
@@ -436,6 +437,8 @@ export function dosave0() {
             ? [...game.artiexist] : null,
         // C save.c save_artifacts artidisco; restore_artifacts hack_artifacts
         artidisco: game.artidisco ? [...game.artidisco] : null,
+        // C save.c `:321` save_oracles oracle_cnt + live oracle_loc deck.
+        oracles: save_oracles(),
         quest_status: game.quest_status
             ? JSON.parse(JSON.stringify(game.quest_status)) : null,
         pl_fruit: game.pl_fruit || null,
@@ -702,6 +705,9 @@ export async function try_restore_save() {
     if (payload.pl_fruit != null) game.pl_fruit = payload.pl_fruit;
     loadFruitchn(payload.ffruit);
     restore_artifacts(payload.artidisco);
+    // C restore.c `:712` restore_oracles (flg=1 when cnt nonzero; old
+    // saves without the key keep the fresh-boot flg 0 → init_oracles).
+    restore_oracles(payload.oracles);
 
     const invent = deserInventArray(payload.invent);
     game.invent = invent;

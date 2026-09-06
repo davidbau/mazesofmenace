@@ -310,7 +310,8 @@ async function fatal_corpse_mistake(obj, remotely) {
     await pline(`Touching ${corpse_xname(
         obj, null, CXN_SINGULAR | CXN_ARTICLE)} is a fatal mistake.`);
     const { instapetrify } = await import('./trap.js');
-    await instapetrify(corpse_xname(obj, null, CXN_SINGULAR));
+    const { killer_xname } = await import('./objnam.js');
+    await instapetrify(killer_xname(obj));
     return true;
 }
 
@@ -986,6 +987,10 @@ export async function pickup_object(obj, count, telekinesis) {
         obj = splitobj(obj, count);
     obj = await pick_obj(obj);
     await pickup_prinv(obj, count, 'lifting');
+    if (obj.ghostly) {
+        const { fix_ghostly_obj } = await import('./bones.js');
+        await fix_ghostly_obj(obj);
+    }
     return 1;
 }
 

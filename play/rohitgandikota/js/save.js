@@ -18,6 +18,19 @@ import { ECMD_OK } from './const.js';
 import { GameMap } from './game.js';
 import { set_playmode } from './options.js';
 import { role_init } from './role.js';
+import { save_engravings, rest_engravings } from './engrave.js';
+import { loadfruitchn } from './restore.js';
+
+// src/save.c:951 savefruitchn()
+export function savefruitchn(release = false) {
+    const saved = [];
+    for (let f = game.ffruit; f; f = f.nextf)
+        if (f.fid >= 0)
+            saved.push({fname: f.fname, fid: f.fid});
+    if (release)
+        game.ffruit = null;
+    return saved;
+}
 
 /* keys on the game object that are per-process infrastructure or static
    data, never game state; the restoring boot provides fresh ones */
@@ -190,6 +203,7 @@ export function dosave0() {
     try {
         // src/save.c:168 savelev(), also marks the current level VISITED.
         (game.visited_ledgers ||= new Set()).add(`${game.u.uz.dnum}:${game.u.uz.dlevel}`);
+        save_engravings();
         const snap = gamestate_encode(game);
         game.storage.setItem(save_key(), JSON.stringify(snap));
         return true;
@@ -245,6 +259,8 @@ export function dorecover() {
     /* restore.c:705 recalculates this process-local movement sequence from
        the restored turn. It is not carried across the save boundary. */
     game.hero_seq = game.moves * 8;
+    rest_engravings(game.level.lev_engr);
+    game.ffruit = loadfruitchn(savefruitchn());
 
     // src/restore.c:903, debug/explore saves await the unixmain prompt.
     if (!game.wizard && !game.discover)

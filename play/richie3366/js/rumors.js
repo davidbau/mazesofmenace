@@ -147,7 +147,7 @@ function init_oracles() {
     for (let i = 0; i < n; i++) game.oracle_loc.push(i);
 }
 
-/** C rumors.c outoracle `:638–693`. Rule #2 embed. Named: save/rest oracle_loc. */
+/** C rumors.c outoracle `:638–693`. Rule #2 embed. Save/rest is save_oracles/restore_oracles below. */
 export async function outoracle(special, delphi) {
     if ((game.oracle_flg | 0) < 0
         || ((game.oracle_flg | 0) > 0 && (game.oracle_cnt | 0) === 0)) {
@@ -178,6 +178,40 @@ export async function outoracle(special, delphi) {
     lines.push('');
     for (const row of rec) lines.push(row);
     await show_text_pages(lines);
+}
+
+/**
+ * C ref: rumors.c save_oracles `:598–620` (called from save.c `:321`).
+ * JSON analogue of Sfo_unsigned oracle_cnt + Sfo_ulong oracle_loc[0..cnt):
+ * persist the live swap-remove deck prefix. C entries are dlb file offsets;
+ * JS entries are ORACLE_RECORDS indices (Rule #2 embed) — same deck role.
+ * The `release_data` FREEING arm (zero + free after write) is omitted:
+ * JSON VFS always writes and in-memory state stays (save_msghistory precedent).
+ * @returns {{ oracle_cnt: number, oracle_loc: number[] }}
+ */
+export function save_oracles() {
+    const cnt = game.oracle_cnt | 0;
+    const loc = game.oracle_loc || [];
+    return {
+        oracle_cnt: cnt,
+        oracle_loc: cnt ? loc.slice(0, cnt).map((x) => x | 0) : [],
+    };
+}
+
+/**
+ * C ref: rumors.c restore_oracles `:623–636` (called from restore.c `:712`).
+ * JSON analogue of Sfi_unsigned + Sfi_ulong loop. Missing/zero cnt = old
+ * save: leave oracle_flg at its fresh-boot 0 so the next outoracle runs
+ * init_oracles, exactly as C does when it reads cnt 0 (no flg assignment).
+ */
+export function restore_oracles(saved) {
+    const cnt = saved?.oracle_cnt | 0;
+    if (!cnt) return;
+    const loc = Array.isArray(saved?.oracle_loc) ? saved.oracle_loc : [];
+    game.oracle_cnt = cnt;
+    game.oracle_loc = loc.slice(0, cnt).map((x) => x | 0);
+    while (game.oracle_loc.length < cnt) game.oracle_loc.push(0);
+    game.oracle_flg = 1; /* no need to call init_oracles() */
 }
 
 /** C rumors.c doconsult `:695–767`. */

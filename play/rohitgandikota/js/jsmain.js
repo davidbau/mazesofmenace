@@ -17,7 +17,9 @@ import { newgame, newgame_moveloop_preamble, moveloop_core,
          maybe_do_tutorial } from './allmain.js';
 import { wd_message, restore_savefile_prompt } from './unixmain.js';
 import { parseNethackrc, optValue, set_fruit_name, set_menuobjsyms_flags } from './options.js';
-import { assign_graphics } from './symbols.js';
+import { assign_graphics, init_ov_primary_symbols, init_ov_rogue_symbols,
+         savedsym_free, go_ov_primary_syms, go_ov_rogue_syms, SYM_BOULDER,
+         SYM_OFF_X } from './symbols.js';
 import { flush_screen } from './display.js';
 import { GameDisplay } from './game_display.js';
 import { reset_windows } from './tty/wintty.js';
@@ -113,11 +115,22 @@ export class NethackGame {
         // it ran.
         g.fixed_datetime = this._datetime;
 
+        /* src/symbols.c:85 init_symbols(): the SYMBOLS= overrides start
+           empty before the config file is read */
+        init_ov_primary_symbols();
+        init_ov_rogue_symbols();
+        savedsym_free();
         const rc = parseNethackrc(this._nethackrc);
         g.rc = rc;
         /* src/options.c optfn_boulder() and initoptions_finish(). The active
            optional override is also used by object detection and farlook. */
         g.boulder_symbol = (optValue(rc, 'boulder') || '`').charAt(0) || '`';
+        /* src/options.c optfn_boulder(): the option is stored as the
+           S_boulder override of both symbol sets */
+        if (optValue(rc, 'boulder'))
+            go_ov_primary_syms[SYM_BOULDER + SYM_OFF_X]
+                = go_ov_rogue_syms[SYM_BOULDER + SYM_OFF_X]
+                = String(optValue(rc, 'boulder')).charCodeAt(0);
         /* src/options.c:7596 parsebindings() — BIND=key:command lines rebind
            a command key. txt2key handles the '^X' control form; the map is
            consulted by rhack() before its default dispatch. */
@@ -345,6 +358,10 @@ export async function runSegment(input) {
     try {
         await nhGame.start();
     } catch (e) {
+        /* win/tty/wintty.c bail(): a refused character selection exits the
+           program before the move loop; the remaining keys go nowhere */
+        if (e && e.__nh_gameover)
+            return nhGame;
         if (!String(e?.message || '').includes('Input queue empty'))
             throw e;
         return nhGame;

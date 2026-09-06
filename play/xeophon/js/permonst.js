@@ -3970,3 +3970,14 @@ export const touch_petrifies = (x) => { const m = M(x); return m.pm === PM_COCKA
 /* mondata.h:166-170 note + macro */ export const is_placeholder = (x) => { const p = M(x).pm; return p === PM_ORC || p === PM_GIANT || p === PM_ELF || p === PM_HUMAN; };
 
 /* src/monst.c damage-dice helper parity: max per-attack base damage is damn*damd. */
+
+// mondata.h:vegetarian includes vegan species and all puddings except black
+// pudding. This describes what their bodies contain, not what they can eat.
+export function vegetarian(mon) {
+    const data = M(mon);
+    return [S_BLOB, S_JELLY, S_FUNGUS, S_VORTEX, S_LIGHT].includes(data.mlet)
+        || data.mlet === S_ELEMENTAL && data.pm !== PM_STALKER
+        || data.mlet === S_GOLEM && ![PM_FLESH_GOLEM, PM_LEATHER_GOLEM].includes(data.pm)
+        || noncorporeal(data)
+        || data.mlet === S_PUDDING && data.pm !== PM_BLACK_PUDDING;
+}

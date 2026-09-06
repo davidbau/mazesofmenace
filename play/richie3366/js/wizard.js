@@ -6,7 +6,7 @@
 import { game } from './gstate.js';
 import { makemon, set_malign, pick_nasty } from './makemon.js';
 import {
-    mons, is_covetous, M3_WANTSAMUL, M3_WANTSBELL, M3_WANTSBOOK,
+    mons, is_covetous, is_minion, M3_WANTSAMUL, M3_WANTSBELL, M3_WANTSBOOK,
     M3_WANTSCAND,
 } from './monsters.js';
 import { monsterNames } from './generated/monsters_data.js';
@@ -16,13 +16,15 @@ import { add_to_minv, mksobj } from './mkobj.js';
 import {
     MM_NOWAIT, MM_NOMSG, NO_MM_FLAGS, STRAT_WAITMASK, STRAT_WAITFORU,
     STRAT_APPEARMSG, STRAT_NONE, STRAT_HEAL, RLOC_MSG, In_endgame,
-    M_AP_MONSTER,
+    M_AP_MONSTER, EMIN,
 } from './const.js';
 import { pline, verbalize, Norep, newsym } from './display.js';
 import { Monnam } from './do_name.js';
 import { rn1, rn2, rnd } from './rng.js';
-import { noteleport_level, enexto } from './teleport.js';
-import { mnexto } from './mon.js';
+import { noteleport_level, enexto, is_lminion } from './teleport.js';
+import { mnexto, wake_nearto } from './mon.js';
+import { SetVoice } from './sndprocs.js';
+import { com_pager } from './questpgr.js';
 import { inhishop } from './shk.js';
 import { msummon, monster_census, Inhell } from './minion.js';
 import { builds_up } from './hacklib.js';
@@ -425,4 +427,83 @@ export async function resurrect() {
             await verbalize(`So thou thought thou couldst ${verb} me, fool.`);
         }
     }
+}
+
+/**
+ * C ref: wizard.c random_insult `:824–833` — WoY cuss noun pool (28).
+ * ROLL_FROM (`hack.h :1493`) picks `array[rn2(SIZE(array))]`; callers
+ * use `.length` for the same bound.
+ */
+const random_insult = [
+    'antic', 'blackguard', 'caitiff', 'chucklehead',
+    'coistrel', 'craven', 'cretin', 'cur',
+    'dastard', 'demon fodder', 'dimwit', 'dolt',
+    'fool', 'footpad', 'imbecile', 'knave',
+    'maledict', 'miscreant', 'niddering', 'poltroon',
+    'rattlepate', 'reprobate', 'scapegrace', 'varlet',
+    'villein', /* (sic.) */
+    'wittol', 'worm', 'wretch',
+];
+
+/**
+ * C ref: wizard.c random_malediction `:835–843` — WoY cuss opener pool
+ * (11). Same ROLL_FROM bound convention as random_insult.
+ */
+const random_malediction = [
+    'Hell shall soon claim thy remains,', 'I chortle at thee, thou pathetic',
+    'Prepare to die, thou', 'Resistance is useless,',
+    'Surrender or die, thou', 'There shall be no mercy, thou',
+    'Thou shalt repent of thy cunning,', 'Thou art as a flea to me,',
+    'Thou art doomed,', 'Thy fate is sealed,',
+    'Verily, thou shalt be one dead',
+];
+
+/**
+ * C ref: wizard.c cuss `:845–883` — insult/intimidate behind MS_CUSS
+ * (`sounds.c :1146–1156`) and monmove retaliation. Deaf silence;
+ * iswiz amulet/panic/parthian/malediction arms (clang L→R: the message
+ * rn2 burns before the ROLL_FROM insult); co-aligned-minion angel
+ * pager; minion-gated aspersions vs demon pager; always
+ * wake_nearto(5*5). Async: pline/verbalize/com_pager/wake_nearto await.
+ */
+export async function cuss(mtmp) {
+    const u = game.u || {};
+    const Deaf = !!((u.HDeaf | 0) || (u.EDeaf | 0)
+        || u.uroleplay?.deaf || u.Deaf);
+    if (Deaf) {
+        return;
+    }
+    if (mtmp.iswiz) {
+        if (!rn2(5)) { /* typical bad guy action */
+            await pline(`${Monnam(mtmp)} laughs fiendishly.`);
+        } else if (u.uhave?.amulet && !rn2(random_insult.length)) {
+            SetVoice(mtmp, 0, 80, 0);
+            await verbalize(`Relinquish the amulet, ${random_insult[rn2(random_insult.length)]}!`);
+        } else if ((u.uhp | 0) < 5 && !rn2(2)) { /* Panic */
+            SetVoice(mtmp, 0, 80, 0);
+            const ebbs = rn2(2);
+            const insult = random_insult[rn2(random_insult.length)];
+            await verbalize(ebbs
+                ? `Even now thy life force ebbs, ${insult}!`
+                : `Savor thy breath, ${insult}, it be thy last!`);
+        } else if ((mtmp.mhp | 0) < 5 && !rn2(2)) { /* Parthian shot */
+            SetVoice(mtmp, 0, 80, 0);
+            await verbalize(rn2(2) ? 'I shall return.' : "I'll be back.");
+        } else {
+            SetVoice(mtmp, 0, 80, 0);
+            await verbalize(`${random_malediction[rn2(random_malediction.length)]} ${random_insult[rn2(random_insult.length)]}!`);
+        }
+    } else if (is_lminion(mtmp)
+        && !(mtmp.isminion && EMIN(mtmp)?.renegade)) {
+        await com_pager('angel_cuss'); /* TODO: the Hallucination msg */
+        /*com_pager(rn2(QTN_ANGELIC - 1 + (Hallucination ? 1 : 0))
+          + QT_ANGELIC);*/
+    } else {
+        if (!rn2(is_minion(mtmp.data) ? 100 : 5)) {
+            await pline(`${Monnam(mtmp)} casts aspersions on your ancestry.`);
+        } else {
+            await com_pager('demon_cuss');
+        }
+    }
+    await wake_nearto(mtmp.mx, mtmp.my, 5 * 5);
 }

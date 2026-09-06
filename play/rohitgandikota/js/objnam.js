@@ -319,7 +319,7 @@ export function xname_flags(obj, cxn_flags) {
         obj.bknown = 1;
     const nn = game.iflags?.override_ID ? 1 : ocl.oc_name_known;
     let actualn = OBJ_NAME(ocl) ?? 'object?';
-    let dn = OBJ_DESCR(ocl) ?? actualn;
+    let dn = OBJ_DESCR(ocl);
     /* src/objnam.c:605 — a Samurai reads these items in Japanese */
     if (game.urole?.mnum === 'PM_SAMURAI'
         || game.urole?.mnum === mons_PM_SAMURAI) {
@@ -327,6 +327,10 @@ export function xname_flags(obj, cxn_flags) {
         if (obj.otyp === ONAMES.WOODEN_HARP || obj.otyp === ONAMES.MAGIC_HARP)
             dn = 'koto';
     }
+    /* C keeps dn NULL and writes "dn ? dn : actualn" at each use; the
+       fallback has to see the substituted actualn */
+    if (dn == null)
+        dn = actualn;
     const un = ocl.oc_uname || null;
     let pluralize = (obj.quan !== 1) && !(cxn_flags & CXN_SINGULAR);
     const dknown = obj.dknown || game.iflags?.override_ID;
@@ -834,6 +838,62 @@ export function fruitname(juice) {
     const i = pl_fruit.indexOf(' of ');
     const fruit_nam = (i >= 0) ? pl_fruit.slice(i + 4) : pl_fruit;
     return makesingular(fruit_nam) + (juice ? ' juice' : '');
+}
+
+// src/objnam.c:431 fruit_from_indx()
+export function fruit_from_indx(indx) {
+    for (let f = game.ffruit; f; f = f.nextf)
+        if (f.fid === indx)
+            return f;
+    return null;
+}
+
+// src/objnam.c:443 fruit_from_name()
+export function fruit_from_name(fname, exact, highest_fid) {
+    if (highest_fid)
+        highest_fid.v = 0;
+    for (let f = game.ffruit; f; f = f.nextf) {
+        if (f.fname === fname)
+            return f;
+        if (highest_fid && f.fid > highest_fid.v)
+            highest_fid.v = f.fid;
+    }
+
+    let f = null;
+    if (!exact) {
+        let tentativef = null;
+        for (let candidate = game.ffruit; candidate; candidate = candidate.nextf) {
+            const k = candidate.fname.length;
+            if (fname.startsWith(candidate.fname)
+                && (!fname[k] || fname[k] === ' ')
+                && (!tentativef || k > tentativef.fname.length))
+                tentativef = candidate;
+        }
+        f = tentativef;
+    }
+    if (!f) {
+        const altfname = makesingular(fname);
+        for (f = game.ffruit; f; f = f.nextf)
+            if (f.fname === altfname)
+                break;
+    }
+    if (!f && !exact) {
+        let tentativef = null;
+        const fname_k = fname.length;
+        for (f = game.ffruit; f; f = f.nextf) {
+            let k = f.fname.length;
+            const p = fname.indexOf(' ', k);
+            if (fname_k >= k && p >= 0) {
+                const altfname = makesingular(fname.slice(0, p));
+                k = altfname.length;
+                if (f.fname === altfname
+                    && (!tentativef || k > tentativef.fname.length))
+                    tentativef = f;
+            }
+        }
+        f = tentativef;
+    }
+    return f || null;
 }
 
 /* src/decl.c:111 vowels[] */

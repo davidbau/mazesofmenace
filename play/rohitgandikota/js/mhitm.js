@@ -72,10 +72,11 @@ import { mhitm_ad_phys, mhitm_ad_fire, mhitm_ad_cold, mhitm_ad_elec,
          mhitm_ad_sedu, mhitm_ad_drli, mhitm_ad_drin,
          mhitm_ad_ston, mhitm_ad_wrap, mhitm_ad_heal,
          mhitm_ad_plys, mhitm_ad_slee, mhitm_ad_slim, attk_protection,
-         mhitm_knockback } from './uhitm.js';
+         mhitm_ad_were, mhitm_ad_dren, mhitm_ad_stck, mhitm_ad_slow,
+         mhitm_ad_curs, mhitm_knockback } from './uhitm.js';
 import { grow_up, goodpos, remove_monster, place_monster } from './makemon.js';
 import { M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE } from './const.js';
-import { spitmm } from './mthrowu.js';
+import { spitmm, thrwmm } from './mthrowu.js';
 import { closed_door } from './cmd.js';
 import { minstapetrify } from './trap.js';
 
@@ -302,11 +303,15 @@ export async function mattackm(magr, mdef) {
         switch (mattk[0]) {
         case A.AT_WEAP:
             if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1) {
-                /* D: Do a ranged attack here! — thrwmm needs the throwing
-                   subsystem */
-                note_unported_mhitm('mattackm:thrwmm');
-                strike = 0;
-                attk = 0;
+                /* D: Do a ranged attack here! */
+                strike = ((await thrwmm(magr, mdef)) === M_ATTK_MISS) ? 0 : 1;
+                if (strike)
+                    /* don't really know if we hit or not; pretend we did */
+                    res[i] |= M_ATTK_HIT;
+                if (DEADMONSTER(mdef))
+                    res[i] = M_ATTK_DEF_DIED;
+                if (DEADMONSTER(magr))
+                    res[i] |= M_ATTK_AGR_DIED;
                 break;
             }
             if (magr.weapon_check === NEED_WEAPON || !MON_WEP(magr)) {
@@ -673,6 +678,16 @@ export async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
                || mattk[1] === A.AD_SEDU
                || mattk[1] === A.AD_SSEX) {
         await mhitm_ad_sedu(magr, mattk, mdef, mhm);
+    } else if (mattk[1] === A.AD_WERE) {
+        await mhitm_ad_were(magr, mattk, mdef, mhm);
+    } else if (mattk[1] === A.AD_DREN) {
+        await mhitm_ad_dren(magr, mattk, mdef, mhm);
+    } else if (mattk[1] === A.AD_STCK) {
+        await mhitm_ad_stck(magr, mattk, mdef, mhm);
+    } else if (mattk[1] === A.AD_SLOW) {
+        await mhitm_ad_slow(magr, mattk, mdef, mhm);
+    } else if (mattk[1] === A.AD_CURS) {
+        await mhitm_ad_curs(magr, mattk, mdef, mhm);
     } else {
         note_unported_mhitm(`mdamagem:adtyp=${mattk[1]}`);
     }

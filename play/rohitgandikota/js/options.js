@@ -15,14 +15,14 @@ import {
     PICK_ONE, PICK_ANY, ECMD_OK,
     AUTOUNLOCK_APPLY_KEY, MENU_TRADITIONAL, MENU_COMBINATION,
     GPCOORDS_NONE, GPCOORDS_COMPASS, GPCOORDS_COMFULL, GPCOORDS_MAP,
-    GPCOORDS_SCREEN, COLNO, ROWNO,
+    GPCOORDS_SCREEN, COLNO, ROWNO, PL_FSIZ, ismnum,
 } from './const.js';
 import { NO_COLOR } from './terminal.js';
 import { allopt, findOption } from './optlist.js';
 import { condtests } from './botl.js';
 import {
     assign_graphics, gs_symset, gc_currentgraphics, known_handling,
-    primary_symsets, PRIMARYSET,
+    primary_symsets, PRIMARYSET, ROGUESET, parsesymbols, switch_symbols,
 } from './symbols.js';
 import { def_char_to_objclass } from './sp_lev.js';
 import { OCLASSES } from './objects_data.js';
@@ -33,45 +33,105 @@ import { reassign, update_inventory, inv_order } from './invent.js';
 import { def_oc_syms } from './drawing_data.js';
 import { choose_disco_sort, get_sortdisco } from './o_init.js';
 import { mungspaces } from './hacklib.js';
+import { fruit_from_name, makesingular, OBJ_NAME } from './objnam.js';
+import { name_to_mon } from './mondata.js';
+import { sanitize_name } from './bones.js';
+import { rnd } from './rng.js';
 
 function note_unported_options(what) {
     (game.unported ||= new Set()).add('options:' + what);
 }
 
-// src/options.c fruitadd(), keep the preferred name, its fruit id, and the
-// replace-before-use behavior in sync.
+// src/options.c optfn_fruit() and initoptions_finish().
 export function set_fruit_name(value, initial = false) {
-    const previous = game.svp?.pl_fruit || 'slime mold';
-    const name = String(value ?? '').trim().replace(/\s+/g, ' ')
-                 || 'slime mold';
+    const name = mungspaces(value ?? '');
     if (initial)
         game.ffruit = null;
-
-    let highest = 0;
-    let existing = null;
-    let replace = null;
-    for (let fruit = game.ffruit; fruit; fruit = fruit.nextf) {
-        highest = Math.max(highest, fruit.fid | 0);
-        if (fruit.fname === name)
-            existing = fruit;
-        if (!initial && !game.flags?.made_fruit && fruit.fname === previous)
-            replace = fruit;
+    let forig = null;
+    if (!initial) {
+        const fnum = {v: 0};
+        if (!fruit_from_name(name, false, fnum)) {
+            if (!game.flags.made_fruit)
+                forig = fruit_from_name(game.svp.pl_fruit, false, null);
+            if (!forig && fnum.v >= 100) {
+                config_error_add(game.rc,
+                    "Doing that so many times isn't very fruitful.");
+                return game.svp.pl_fruit;
+            }
+        }
     }
-
     game.svp ||= {};
-    game.svp.pl_fruit = name;
-    let current = replace || existing;
-    if (replace) {
-        replace.fname = name;
-    } else if (!current) {
-        current = { fname: name, fid: highest + 1, nextf: game.ffruit };
-        game.ffruit = current;
-    }
-    game.context ||= {};
-    game.context.current_fruit = current.fid;
-    if (game.flags)
+    game.svp.pl_fruit = sanitize_name(nmcpy(name, PL_FSIZ)) || 'slime mold';
+    fruitadd(game.svp, forig);
+    return game.svp.pl_fruit;
+}
+
+// src/options.c:6861 nmcpy(), strings return the destination contents.
+function nmcpy(src, maxlen) {
+    return src.split(',')[0].slice(0, maxlen - 1);
+}
+
+// src/options.c:8170 fruitadd(). Passing svp preserves pl_fruit buffer identity;
+// an ordinary string represents a name from bones or an orc gang.
+export function fruitadd(str, replace_fruit) {
+    const user_specified = str === game.svp;
+    let altname = '';
+    if (user_specified) {
+        game.svp.pl_fruit = nmcpy(makesingular(game.svp.pl_fruit), PL_FSIZ);
+        const name = game.svp.pl_fruit;
+        const globpfx = name.startsWith('small ') || name.startsWith('large ') ? 6
+            : name.startsWith('medium ') ? 7 : name.startsWith('very large ') ? 11 : 0;
+        let found = false, numeric = false;
+        // Before init_objects(), C's food-class base is still zero.
+        for (let i = game.bases?.[OCLASSES.FOOD_CLASS] || 0;
+             game.objects?.[i]?.oc_class === OCLASSES.FOOD_CLASS; i++) {
+            if (OBJ_NAME(game.objects[i]) === name
+                || (globpfx > 0 && OBJ_NAME(game.objects[i]) === name.slice(globpfx))) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            let c = 0;
+            while (name[c] >= '0' && name[c] <= '9')
+                c++;
+            if (!name[c] || /[ \t\r\n\v\f]/.test(name[c]))
+                numeric = true;
+        }
+        if (found || numeric
+            || name.startsWith('cursed ') || name.startsWith('uncursed ')
+            || name.startsWith('blessed ') || name.startsWith('partly eaten ')
+            || (name.startsWith('tin of ')
+                && (name.slice(7) === 'spinach' || ismnum(name_to_mon(name.slice(7), null))))
+            || name === 'empty tin' || name === 'glob'
+            || (globpfx > 0 && name.slice(globpfx) === 'glob')
+            || ((name.endsWith(' corpse') || name.endsWith(' egg'))
+                && ismnum(name_to_mon(name, null))))
+            game.svp.pl_fruit = 'candied ' + nmcpy(name, PL_FSIZ - 8);
+
         game.flags.made_fruit = false;
-    return name;
+        if (replace_fruit) {
+            replace_fruit.fname = game.svp.pl_fruit.slice(0, PL_FSIZ - 1);
+            game.context.current_fruit = replace_fruit.fid;
+            return replace_fruit.fid;
+        }
+        str = game.svp.pl_fruit;
+    } else {
+        altname = sanitize_name(str.slice(0, PL_FSIZ - 1));
+        game.flags.made_fruit = true;
+    }
+    const highest_fruit_id = {v: 0};
+    let f = fruit_from_name(altname || str, false, highest_fruit_id);
+    if (!f) {
+        if (highest_fruit_id.v >= 127)
+            return rnd(127);
+        f = {fname: (altname || str).slice(0, PL_FSIZ - 1),
+             fid: highest_fruit_id.v + 1, nextf: game.ffruit};
+        game.ffruit = f;
+    }
+    if (user_specified)
+        game.context.current_fruit = f.fid;
+    return f.fid;
 }
 
 // src/options.c:489 parseoptions()
@@ -128,6 +188,13 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
 
     const opt = findOption(name);
     if (!opt) {
+        /* src/options.c:663 — Is it a symbol? */
+        if (opts.startsWith('S_') && parsesymbols(opts, PRIMARYSET)) {
+            switch_symbols(true);
+            /* check_gold_symbol() only re-derives the status line's gold
+               symbol, which this tty model reads at display time */
+            return true;
+        }
         /* An unrecognised option is reported, never silently dropped — a
            held-out session may legitimately set something we have not wired
            up yet, and we want to see it. */
@@ -374,7 +441,16 @@ export function parseNethackrc(rc) {
             parseoptions(rest, true, true, result);
             break;
         case 'SYMBOLS':
+            /* src/cfgfiles.c:1202 cnf_line_SYMBOLS() */
             result.symbols.push(rest);
+            if (!parsesymbols(rest, PRIMARYSET))
+                config_error_add(result, `Error in SYMBOLS definition '${rest}'`);
+            break;
+        case 'ROGUESYMBOLS':
+            /* src/cfgfiles.c:1191 cnf_line_ROGUESYMBOLS() */
+            result.symbols.push(rest);
+            if (!parsesymbols(rest, ROGUESET))
+                config_error_add(result, `Error in ROGUESYMBOLS definition '${rest}'`);
             break;
         case 'BIND':
         case 'BINDI':

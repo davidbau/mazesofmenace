@@ -272,7 +272,7 @@ async function m_calcdistress(mtmp) {
 var gs_somebody_can_move = false;
 
 // src/mon.c:2487 dmonsfree(): unlink monsters detached during the sweep.
-function dmonsfree() {
+export function dmonsfree() {
     const monsters = game.level?.monsters;
     if (!monsters)
         return;
@@ -995,7 +995,7 @@ export function healmon(mtmp, amt, overheal) {
 }
 
 // src/mon.c:1726 mon_give_prop(); give an intrinsic to a monster
-function mon_give_prop(mtmp, prop, msgbox) {
+export function mon_give_prop(mtmp, prop, msgbox) {
     let msg = null;
     let intrinsic = 0; /* MR_* constant */
 

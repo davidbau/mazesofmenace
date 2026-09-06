@@ -5,7 +5,7 @@
 // seffects and stay recorded after their prompt keys are consumed.
 
 import { unique_corpstat } from './mondata.js';
-import { has_omonst } from './const.js';
+import { has_omonst, SDOOR, something } from './const.js';
 import { monster_census } from './minion.js';
 import { monsndx, NO_MINVENT, MM_NOMSG } from './makemon.js';
 import { pmname } from './do_name.js';
@@ -19,18 +19,18 @@ import { polyself, rehumanize, udeadinside } from './polyself.js';
 import { uhis } from './mhitu.js';
 import { mongone, kill_genocided_monsters, flash_mon } from './mon.js';
 import { list_genocided, num_genocides } from './insight.js';
-import { livelog_printf, verbalize } from './pline.js';
-import { mungspaces } from './hacklib.js';
+import { livelog_printf, verbalize, You_cant } from './pline.js';
+import { mungspaces, upwords } from './hacklib.js';
 import { LOW_PM, NEUTRAL, G_GENOD, G_EXTINCT, LL_GENOCIDE, LL_CONDUCT, KILLED_BY, GENOCIDED, POLYMORPH, POLY_REVERT, Upolyd, plur, thats_enough_tries, MALE, FEMALE } from './const.js';
 import { NUMMONS, MSOUND } from './monst_data.js';
 import { vampshifted } from './monst.js';
 import { name_to_mon, is_human, is_demon } from './mondata.js';
 import { readmail } from './mail.js';
-import { trap_detect, gold_detect, food_detect } from './detect.js';
-import { actualoname } from './objnam.js';
+import { trap_detect, gold_detect, food_detect, cvt_sdoor_to_door } from './detect.js';
+import { actualoname, suit_simple_name, simpleonames, singular } from './objnam.js';
 import { TIMEOUT } from './const.js';
 import { make_stunned } from './potion.js';
-import { disintegrate_arm, any_worn_armor_ok, destroy_arm } from './do_wear.js';
+import { disintegrate_arm, any_worn_armor_ok, destroy_arm, greatest_erosion } from './do_wear.js';
 import { set_bc } from './cmd.js';
 import { dropy, placebc } from './do.js';
 import { is_whirly } from './mondata.js';
@@ -44,7 +44,7 @@ import { ECMD_CANCEL, SPE_LIM, CORR, Is_rogue_level, W_ARMOR, W_ARM, NODIR,
          NH_PURPLE } from './const.js';
 import { sgn, distu, isok } from './hacklib.js';
 import { ACCESSIBLE } from './const.js';
-import { cansee } from './vision.js';
+import { cansee, unblock_point } from './vision.js';
 import { bcsign, blessorcurse, mkobj, mksobj, place_object,
          uncurse } from './mkobj.js';
 import { chwepon } from './wield.js';
@@ -75,10 +75,10 @@ import { resist } from './zap.js';
 import { create_critters } from './makemon.js';
 import { some_armor, adj_abon } from './do_wear.js';
 import { remove_worn_item } from './steal.js';
-import { alter_cost, costly_alteration } from './shk.js';
+import { alter_cost, costly_alteration, shk_your } from './shk.js';
 import { arti_light_radius } from './light.js';
 import { maybe_adjust_light, curse, bless } from './mkobj.js';
-import { artifact_light } from './artifact.js';
+import { artifact_light, is_art } from './artifact.js';
 import { is_elven_armor } from './worn.js';
 import { Is_dragon_scales } from './mondata.js';
 import { is_shield } from './obj.js';
@@ -122,8 +122,147 @@ import { body_part } from './polyself.js';
 import { Blind, Hallucination, Invisible, Confusion } from './youprop.js';
 import { make_confused } from './potion.js';
 
+import { ART_ORB_OF_FATE } from './artilist_data.js';
 function note_unported_read(what) {
     (game.unported ||= new Set()).add('read:' + what);
+}
+
+// src/read.c:89 erode_obj_text()
+function erode_obj_text(otmp, buf) {
+    const erosion = greatest_erosion(otmp);
+
+    if (erosion) {
+        /* wipeout_text(buf, strlen(buf) * erosion / (2 * MAX_ERODE),
+           o_id ^ ubirthday): the seed folds in ubirthday, the recording
+           machine's mktime() of the fixed datetime, which is not modelled
+           (NOTES "ubirthday"), so an eroded shirt's text is not derivable */
+        note_unported_read('erode_obj_text:ubirthday');
+    }
+    return buf;
+}
+
+// src/read.c:100 tshirt_text()
+function tshirt_text(tshirt) {
+    const shirt_msgs = [
+        "I explored the Dungeons of Doom and all I got was this lousy T-shirt!",
+        "Is that Mjollnir in your pocket or are you just happy to see me?",
+        "It's not the size of your sword, it's how #enhance'd you are with it.",
+        "Madame Elvira's House O' Succubi Lifetime Customer",
+        "Madame Elvira's House O' Succubi Employee of the Month",
+        "Ludios Vault Guards Do It In Small, Dark Rooms",
+        "Yendor Military Soldiers Do It In Large Groups",
+        "I survived Yendor Military Boot Camp",
+        "Ludios Accounting School Intra-Mural Lacrosse Team",
+        "Oracle TM  Fountains 10th Annual Wet T-Shirt Contest",
+        "Hey, black dragon!  Disintegrate THIS!",
+        "I'm With Stupid -->",
+        "Don't blame me, I voted for Izchak!",
+        "Don't Panic",
+        "Furinkan High School Athletic Dept.",
+        "Hel-LOOO, Nurse!",
+        "=^.^=",
+        "100% goblin hair - do not wash",
+        "Aberzombie and Fitch",
+        "cK -- Cockatrice touches the Kop",
+        "Don't ask me, I only adventure here",
+        "Down with pants!",
+        "d, your dog or a killer?",
+        "FREE PUG AND NEWT!",
+        "Go team ant!",
+        "Got newt?",
+        "Hello, my darlings!",
+        "Hey!  Nymphs!  Steal This T-Shirt!",
+        "I <3 Dungeon of Doom",
+        "I <3 Maud",
+        "I am a Valkyrie.  If you see me running, try to keep up.",
+        "I am not a pack rat - I am a collector",
+        "I bounced off a rubber tree",
+        "Plunder Island Brimstone Beach Club",
+        "If you can read this, I can hit you with my polearm",
+        "I'm confused!",
+        "I scored with the princess",
+        "I want to live forever or die in the attempt.",
+        "Lichen Park",
+        "LOST IN THOUGHT - please send search party",
+        "Meat is Mordor",
+        "Minetown Better Business Bureau",
+        "Minetown Watch",
+        "Ms. Palm's House of Negotiable Affection--A Very Reputable House Of Disrepute",
+        "Protection Racketeer",
+        "Real men love Crom",
+        "Somebody stole my Mojo!",
+        "The Hellhound Gang",
+        "The Werewolves",
+        "They Might Be Storm Giants",
+        "Weapons don't kill people, I kill people",
+        "White Zombie",
+        "You're killing me!",
+        "Anhur State University - Home of the Fighting Fire Ants!",
+        "FREE HUGS",
+        "Serial Ascender",
+        "Real men are valkyries",
+        "Young Men's Cavedigging Association",
+        "Occupy Fort Ludios",
+        "I couldn't afford this T-shirt so I stole it!",
+        "Mind flayers suck",
+        "I'm not wearing any pants",
+        "Down with the living!",
+        "Pudding farmer",
+        "Vegetarian",
+        "Hello, I'm War!",
+        "It is better to light a candle than to curse the darkness",
+        "It is easier to curse the darkness than to light a candle",
+        "rock--paper--scissors--lizard--Spock!",
+        "/Valar morghulis/ -- /Valar dohaeris/",
+    ];
+
+    return erode_obj_text(tshirt, shirt_msgs[tshirt.o_id % shirt_msgs.length]);
+}
+
+// src/read.c:190 hawaiian_motif() and
+// :224 hawaiian_design() hash o_id with ubirthday (motif = o_id ^ ubirthday,
+// bg = o_id ^ ~ubirthday) and are not derivable without it; doread's
+// HAWAIIAN_SHIRT arm records them as unported.
+
+// src/read.c:254 apron_text()
+function apron_text(apron) {
+    const apron_msgs = [
+        "Kiss the cook",
+        "I'm making SCIENCE!",
+        "Don't mess with the chef",
+        "Don't make me poison you",
+        "Gehennom's Kitchen",
+        "Rat: The other white meat",
+        "If you can't stand the heat, get out of Gehennom!",
+        "If we weren't meant to eat animals, why are they made out of meat?",
+        "If you don't like the food, I'll stab you",
+        "I am an alchemist; if you see me running, try to catch up...",
+    ];
+
+    return erode_obj_text(apron, apron_msgs[apron.o_id % apron_msgs.length]);
+}
+
+// src/read.c:283 candy_wrappers[]
+const candy_wrappers = [
+    "",
+    "Apollo",
+    "Moon Crunchy",
+    "Snacky Cake",
+    "Chocolate Nuggie",
+    "The Small Bar",
+    "Crispy Yum Yum",
+    "Nilla Crunchie",
+    "Berry Bar",
+    "Choco Nummer",
+    "Om-nom",
+    "Fruity Oaty",
+    "Wonka Bar",
+];
+
+// src/read.c:296 candy_wrapper_text() — the text of a candy bar's wrapper
+export function candy_wrapper_text(obj) {
+    /* modulo operation is just bullet proofing; 'spe' is already in range */
+    return candy_wrappers[obj.spe % candy_wrappers.length];
 }
 
 // src/read.c:315 read_ok() — getobj filter for 'r'; lives in js/cmd.js
@@ -153,16 +292,185 @@ export async function doread(read_ok) {
         return ECMD_TIME;
     }
 
-    /* shirts / candy wrapper arms */
+    /* src/read.c:332 find_any_braille */
+    const find_any_braille = 'feel any Braille writing.';
+
     if (otyp === ONAMES.T_SHIRT || otyp === ONAMES.ALCHEMY_SMOCK
-        || otyp === ONAMES.HAWAIIAN_SHIRT
-        || otyp === ONAMES.APRON || otyp === ONAMES.CANDY_BAR) {
-        note_unported_read('doread:novelty_text');
+        || otyp === ONAMES.HAWAIIAN_SHIRT) {
+        if (Blind()) {
+            await You_cant(find_any_braille);
+            return ECMD_OK;
+        }
+        /* can't read shirt worn under suit (under cloak is ok though) */
+        if ((otyp === ONAMES.T_SHIRT || otyp === ONAMES.HAWAIIAN_SHIRT)
+            && game.u.uarm && scroll === game.u.uarmu) {
+            await pline(`${scroll.unpaid ? 'That' : 'Your'} shirt is obscured by ${
+                shk_your(game.u.uarm)}${suit_simple_name(game.u.uarm)}.`);
+            return ECMD_OK;
+        }
+        if (otyp === ONAMES.HAWAIIAN_SHIRT) {
+            /* pline("%s features %s.", verbose ? "The design" : "It",
+                     hawaiian_design(scroll, buf)) — see hawaiian_motif above */
+            note_unported_read('hawaiian_design:ubirthday');
+            return ECMD_TIME;
+        }
+        game.u.uconduct = game.u.uconduct || {};
+        if (!(game.u.uconduct.literate || 0))
+            livelog_printf(LL_CONDUCT, `became literate by reading ${
+                (scroll.otyp === ONAMES.T_SHIRT) ? 'a T-shirt' : 'an apron'}`);
+        game.u.uconduct.literate = (game.u.uconduct.literate || 0) + 1;
+
+        /* populate 'buf[]' */
+        const mesg = (otyp === ONAMES.T_SHIRT) ? tshirt_text(scroll)
+                                               : apron_text(scroll);
+        let endpunct = '';
+        if (game.flags.verbose) {
+            const ln = mesg.length;
+
+            /* we will be displaying a sentence; need ending punctuation */
+            if (ln > 0 && !'.!?'.includes(mesg[ln - 1]))
+                endpunct = '.';
+            await pline('It reads:');
+        }
+        await pline(`"${mesg}"${endpunct}`);
         return ECMD_TIME;
-    }
-    if (scroll.oclass !== OCLASSES.SCROLL_CLASS
-        && scroll.oclass !== OCLASSES.SPBOOK_CLASS) {
-        await pline("That is a silly thing to read.");
+    } else if ((otyp === ONAMES.DUNCE_CAP || otyp === ONAMES.CORNUTHAUM)
+               /* note: "DUNCE" isn't directly connected to tourists but
+                  if everyone could read it, they would always be able to
+                  trivially distinguish between the two types of conical hat;
+                  limiting this to tourists is better than rejecting it */
+               && Role_if(PMNAMES.PM_TOURIST)) {
+        const cap_text = (otyp === ONAMES.DUNCE_CAP) ? 'DUNCE' : 'WIZZARD';
+
+        if (scroll.o_id % 3) {
+            /* no need to vary this when blind; "on this ___" is important
+               because it suggests that there might be something on others */
+            await You_cant(`find anything to read on this ${simpleonames(scroll)}.`);
+            return ECMD_OK;
+        }
+        await pline(`${!Blind() ? 'There is writing' : 'You feel lettering'} on the ${
+            simpleonames(scroll)}.  It reads:  ${cap_text}.`);
+        game.u.uconduct = game.u.uconduct || {};
+        if (!(game.u.uconduct.literate || 0))
+            livelog_printf(LL_CONDUCT, `became literate by reading ${
+                (otyp === ONAMES.DUNCE_CAP) ? 'a dunce cap' : 'a cornuthaum'}`);
+        game.u.uconduct.literate = (game.u.uconduct.literate || 0) + 1;
+
+        /* yet another note: despite the fact that player will recognize
+           the object type, don't make it become a discovery for hero */
+        await trycall(scroll);
+        return ECMD_TIME;
+    } else if (otyp === ONAMES.CREDIT_CARD) {
+        const card_msgs = [
+        "Leprechaun Gold Tru$t - Shamrock Card",
+        "Magic Memory Vault Charge Card",
+        "Larn National Bank",
+        "First Bank of Omega",
+        "Bank of Zork - Frobozz Magic Card",
+        "Ankh-Morpork Merchant's Guild Barter Card",
+        "Ankh-Morpork Thieves' Guild Unlimited Transaction Card",
+        "Ransmannsby Moneylenders Association",
+        "Bank of Gehennom - 99% Interest Card",
+        "Yendorian Express - Copper Card",
+        "Yendorian Express - Silver Card",
+        "Yendorian Express - Gold Card",
+        "Yendorian Express - Mithril Card",
+        "Yendorian Express - Platinum Card",
+    ];
+
+        if (Blind()) {
+            await You('feel the embossed numbers:');
+        } else {
+            if (game.flags.verbose)
+                await pline('It reads:');
+            await pline(`"${scroll.oartifact
+                              ? card_msgs[card_msgs.length - 1]
+                              : card_msgs[scroll.o_id % (card_msgs.length - 1)]}"`);
+        }
+        /* Make a credit card number */
+        const o_id = scroll.o_id;
+        await pline(`"${(o_id % 89) + 10}0${o_id % 4} ${
+            ((o_id * 499) % 899999) + 100000}${o_id % 10}1 0${
+            !(o_id % 3) ? 1 : 0}${(o_id * 7) % 10}0"${
+            (game.flags.verbose || Blind()) ? '.' : ''}`);
+        game.u.uconduct = game.u.uconduct || {};
+        if (!(game.u.uconduct.literate || 0))
+            livelog_printf(LL_CONDUCT, 'became literate by reading a credit card');
+        game.u.uconduct.literate = (game.u.uconduct.literate || 0) + 1;
+
+        return ECMD_TIME;
+    } else if (otyp === ONAMES.CAN_OF_GREASE) {
+        await pline(`This ${singular(scroll, xname)} has no label.`);
+        return ECMD_OK;
+    } else if (otyp === ONAMES.MAGIC_MARKER) {
+        const red_mons = [
+            PMNAMES.PM_FIRE_ANT, PMNAMES.PM_PYROLISK, PMNAMES.PM_HELL_HOUND, PMNAMES.PM_IMP,
+            PMNAMES.PM_LARGE_MIMIC, PMNAMES.PM_LEOCROTTA, PMNAMES.PM_SCORPION, PMNAMES.PM_XAN,
+            PMNAMES.PM_GIANT_BAT, PMNAMES.PM_WATER_MOCCASIN, PMNAMES.PM_FLESH_GOLEM,
+            PMNAMES.PM_BARBED_DEVIL, PMNAMES.PM_MARILITH, PMNAMES.PM_PIRANHA
+        ];
+        const pm = game.mons[red_mons[scroll.o_id % red_mons.length]];
+
+        if (Blind()) {
+            await You_cant(find_any_braille);
+            return ECMD_OK;
+        }
+        if (game.flags.verbose)
+            await pline('It reads:');
+        await pline(`"Magic Marker(TM) ${upwords(pmname(pm, NEUTRAL))
+                    } Red Ink Marker Pen.  Water Soluble."`);
+        game.u.uconduct = game.u.uconduct || {};
+        if (!(game.u.uconduct.literate || 0))
+            livelog_printf(LL_CONDUCT, 'became literate by reading a magic marker');
+        game.u.uconduct.literate = (game.u.uconduct.literate || 0) + 1;
+
+        return ECMD_TIME;
+    } else if (scroll.oclass === OCLASSES.COIN_CLASS) {
+        if (Blind())
+            await You('feel the embossed words:');
+        else if (game.flags.verbose)
+            await You('read:');
+        await pline('"1 Zorkmid.  857 GUE.  In Frobs We Trust."');
+        game.u.uconduct = game.u.uconduct || {};
+        if (!(game.u.uconduct.literate || 0))
+            livelog_printf(LL_CONDUCT, "became literate by reading a coin's engravings");
+        game.u.uconduct.literate = (game.u.uconduct.literate || 0) + 1;
+
+        return ECMD_TIME;
+    } else if (is_art(scroll, ART_ORB_OF_FATE)) {
+        if (Blind())
+            await You('feel the engraved signature:');
+        else
+            await pline('It is signed:');
+        await pline('"Odin."');
+        game.u.uconduct = game.u.uconduct || {};
+        if (!(game.u.uconduct.literate || 0))
+            livelog_printf(LL_CONDUCT,
+                   'became literate by reading the divine signature of Odin');
+        game.u.uconduct.literate = (game.u.uconduct.literate || 0) + 1;
+
+        return ECMD_TIME;
+    } else if (otyp === ONAMES.CANDY_BAR) {
+        const wrapper = candy_wrapper_text(scroll);
+
+        if (Blind()) {
+            await You_cant(find_any_braille);
+            return ECMD_OK;
+        }
+        if (!wrapper) {
+            await pline("The candy bar's wrapper is blank.");
+            return ECMD_OK;
+        }
+        await pline(`The wrapper reads: "${wrapper}".`);
+        game.u.uconduct = game.u.uconduct || {};
+        if (!(game.u.uconduct.literate || 0))
+            livelog_printf(LL_CONDUCT, 'became literate by reading a candy bar wrapper');
+        game.u.uconduct.literate = (game.u.uconduct.literate || 0) + 1;
+
+        return ECMD_TIME;
+    } else if (scroll.oclass !== OCLASSES.SCROLL_CLASS
+               && scroll.oclass !== OCLASSES.SPBOOK_CLASS) {
+        await pline('That is a silly thing to read.');
         return ECMD_OK;
     }
     if (game.u.ublind && otyp !== ONAMES.SPE_BOOK_OF_THE_DEAD) {
@@ -310,7 +618,7 @@ function charge_ok(obj) {
 }
 
 // src/read.c:2414 wand_explode() — a wand blows up in the hero's hands.
-async function wand_explode(obj, chg /* recharging */) {
+export async function wand_explode(obj, chg /* recharging */) {
     const expl = !chg ? 'suddenly' : 'vibrates violently and';
     let dmg, n, k;
 
@@ -2147,26 +2455,55 @@ async function seffect_teleportation(sobj) {
     }
 }
 
-// src/read.c:2100 seffect_magic_mapping()
+// src/read.c:2102 seffect_magic_mapping()
 async function seffect_magic_mapping(sobj) {
-    const sblessed = !!sobj.blessed, scursed = !!sobj.cursed;
-    const confused = !!game.u.uprops?.CONFUSION?.intrinsic;
+    const is_scroll = (sobj.oclass === OCLASSES.SCROLL_CLASS);
+    const sblessed = !!sobj.blessed;
+    const scursed = !!sobj.cursed;
+    const confused = !!Confusion();
+    let cval;
+
+    if (is_scroll) {
+        if (game.level?.flags?.nommap) {
+            await Your('mind is filled with crazy lines!');
+            if (Hallucination())
+                await pline('Wow!  Modern art.');
+            else
+                await Your(`${body_part(HEAD)} spins in bewilderment.`);
+            await make_confused((game.u.intrinsic?.HConfusion | 0) + rnd(30), false);
+            return;
+        }
+        if (sblessed) {
+            let x, y;
+
+            for (x = 1; x < COLNO; x++)
+                for (y = 0; y < ROWNO; y++)
+                    if (game.level.at(x, y).typ === SDOOR) {
+                        cvt_sdoor_to_door(game.level.at(x, y));
+                        if (Is_rogue_level(game.u.uz))
+                            unblock_point(x, y);
+                    }
+            /* do_mapping() already reveals secret passages */
+        }
+        game.known = true;
+    }
 
     if (game.level?.flags?.nommap) {
-        note_unported_read('seffect_magic_mapping:nommap');
+        await Your(`${body_part(HEAD)} spins as ${something} blocks the spell!`);
+        await make_confused((game.u.intrinsic?.HConfusion | 0) + rnd(30), false);
         return;
     }
-    if (sblessed)
-        note_unported_read('seffect_magic_mapping:blessed_reveal');
-    game.known = true;
-
     await pline('A map coalesces in your mind!');
-    const cval = (scursed && !confused);
+    cval = (scursed && !confused);
     if (cval)
-        note_unported_read('seffect_magic_mapping:cursed_confusion');
-    /* notice_mon_off/_on wrap the mapping so newly drawn monsters are not
-       announced */
+        (game.u.intrinsic ||= {}).HConfusion = 1; /* to screw up map */
+    /* notice_mon_off() / notice_mon_on() wrap the mapping so newly drawn
+       monsters are not announced */
     await do_mapping();
+    if (cval) {
+        game.u.intrinsic.HConfusion = 0; /* restore */
+        await pline("Unfortunately, you can't grasp the details.");
+    }
 }
 
 
@@ -2444,17 +2781,16 @@ export async function create_particular() {
 
     do {
         const buf = await getlin(prompt);
-        if (buf === null || buf === '\x1b')
+        const bufp = mungspaces(buf === null ? '' : buf);
+        if (bufp[0] === '\x1b')
             return false;
-        /* C's getlin prompt separates this command from the preceding Norep
-           message. Our prompt renderer does not feed _prevmsg, so clear it
-           before the first creation announcement. */
-        game._prevmsg = null;
-        const parsed = await parse_create_particular(buf);
+
+        const parsed = await parse_create_particular(bufp);
         if (parsed.valid)
             return create_particular_creation(parsed.data);
 
-        if (parsed.text || altmsg || tryct < 2) {
+        /* no good; try again... */
+        if (bufp || altmsg || tryct < 2) {
             await pline("I've never heard of such monsters.");
         } else {
             await pline('Try again (type * for random, ESC to cancel).');
@@ -2463,6 +2799,9 @@ export async function create_particular() {
         if (tryct === CP_TRYLIM)
             prompt += ' [type name or symbol]';
     } while (--tryct > 0);
+
+    if (!tryct)
+        await pline("That's enough tries!"); /* thats_enough_tries */
 
     return false;
 }

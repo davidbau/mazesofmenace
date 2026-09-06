@@ -1,5 +1,5 @@
 import { allow_all } from './pickup.js';
-import { PICK_ANY } from './const.js';
+import { PICK_ANY, In_endgame, ESCAPED } from './const.js';
 import { USE_INVLET, MENU_TRADITIONAL, MENU_COMBINATION, ALL_FINISHED, INCLUDE_VENOM, SELL_DELIBERATE, SELL_NORMAL } from './const.js';
 import { INVORDER_SORT } from './const.js';
 import { Has_contents, bimanual } from './obj.js';
@@ -99,6 +99,7 @@ import { mpickobj } from './steal.js';
 import { newcham, healmon, mcureblindness, delobj } from './mon.js';
 import { minstapetrify } from './trap.js';
 import { grow_up } from './makemon.js';
+import { ledger_no, dunlevs_in_dungeon } from './dungeon.js';
 
 
 
@@ -935,16 +936,31 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
        lev.dnum == tutorial_dnum; entering stashes the whole game state
        (inventory included) via nhcore's enter_tutorial, leaving restores
        it and re-enters level 1 as if starting a new game. */
+    if (newlevel.dlevel > dunlevs_in_dungeon(newlevel))
+        newlevel.dlevel = dunlevs_in_dungeon(newlevel);
     {
         if (newdungeon) {
             const { tutorial } = await import('./nhlua.js');
-            if (newlevel.dnum === game.tutorial_dnum) {
+            if (In_endgame(newlevel)) { /* 1st Endgame Level !!! */
+                if (!game.u.uhave?.amulet)
+                    return;  /* must have the Amulet */
+                if (!game.wizard) { /* wizard ^V can bypass Earth level */
+                    newlevel.dnum = game.earth_level.dnum; /* (redundant) */
+                    newlevel.dlevel = game.earth_level.dlevel;
+                }
+            } else if (newlevel.dnum === game.tutorial_dnum) {
                 await tutorial(true); /* entering tutorial */
             } else if (game.u.uz.dnum === game.tutorial_dnum) {
                 await tutorial(false); /* leaving tutorial */
                 up = false; /* re-enter level 1 as if starting new game */
             }
         }
+    }
+    /* src/do.c:1517 */
+    const new_ledger = ledger_no(newlevel);
+    if (new_ledger <= 0) {
+        const { done } = await import('./end.js');
+        await done(ESCAPED); /* in fact < 0 is impossible */
     }
 
     /* src/do.c:1541: while carrying the real Amulet, one quarter of early
@@ -1075,6 +1091,16 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
            the whole level instead of the scripted destination area. */
         game.level._saved_updest = { ...(game.updest || {}) };
         game.level._saved_dndest = { ...(game.dndest || {}) };
+        const { save_engravings } = await import('./engrave.js');
+        game.level._saved_engravings = save_engravings();
+        // src/save.c savelev(), local timers and lights remain on this level.
+        {
+            const { save_timers } = await import('./timeout.js');
+            const { save_light_sources } = await import('./light.js');
+            const { RANGE_LEVEL } = await import('./const.js');
+            game.level._saved_timers = save_timers(RANGE_LEVEL, true);
+            game.level._saved_lights = save_light_sources(RANGE_LEVEL, true);
+        }
         (game.saved_levels ||= new Map())
             .set(`${game.u.uz.dnum}:${game.u.uz.dlevel}`, game.level);
         (game.visited_ledgers ||= new Set())
@@ -1153,6 +1179,17 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         }
         game.updest = { ...(game.level._saved_updest || game.updest) };
         game.dndest = { ...(game.level._saved_dndest || game.dndest) };
+        const { rest_engravings } = await import('./engrave.js');
+        rest_engravings(game.level._saved_engravings);
+        {
+            const { restore_timers, relink_timers } = await import('./timeout.js');
+            const { restore_light_sources, relink_light_sources } = await import('./light.js');
+            const { RANGE_LEVEL } = await import('./const.js');
+            restore_timers(game.level._saved_timers, RANGE_LEVEL);
+            restore_light_sources(game.level._saved_lights);
+            relink_timers(false);
+            relink_light_sources(false);
+        }
         const { oinit } = await import('./o_init.js');
         oinit();
         const { DEADMONSTER } = await import('./monst.js');
@@ -1210,7 +1247,6 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         await flush_screen(-1);
     }
 
-    const { In_endgame } = await import('./const.js');
     if (portal && !In_endgame(game.u.uz)) {
         /* src/do.c:1722, portal travel lands on the matching portal without
            a random-position draw. Quest expulsion relies on this path. */
@@ -1302,6 +1338,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     /* C runs ordinary migrating-object delivery here before monster arrivals.
        Species-targeted loot is delivered through makemon()/mon_arrive(). */
     await losedogs();
+
+    // src/do.c:1823, expired level timers run after their owners arrive.
+    const { run_timers } = await import('./timeout.js');
+    await run_timers();
 
     /* src/do.c:1826 — hero might be arriving at a spot containing a
        monster; u_collide_m moves one or the other */
@@ -1523,8 +1563,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     /* src/do.c:1969 save_currentstate(), a checkpoint marks VISITED. */
     {
         const { boolean_option } = await import('./options.js');
-        if (boolean_option('checkpoint'))
+        if (boolean_option('checkpoint')) {
             game.visited_ledgers.add(ledger);
+            const { save_engravings } = await import('./engrave.js');
+            save_engravings();
+        }
     }
 
     /* src/do.c:1974, a saved overview annotation is repeated on arrival,

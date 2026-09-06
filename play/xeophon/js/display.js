@@ -2,6 +2,7 @@
 // C refs: src/display.c, src/botl.c, win/tty.
 
 import { game } from './gstate.js';
+import { objectTypeIsKnown } from './object_knowledge.js';
 import { mindless } from './permonst.js';
 import { pmOf } from './mhitm.js';
 import {
@@ -572,7 +573,7 @@ function addObservedDiscovery(section, name, text = name) {
     if (!section || !name || !text) return;
     game._discoveries ??= [];
     if ((game._discoveries || []).some(entry => entry.section === section && entry.name === name)) return;
-    const entry = { section, name, text, starred: false };
+    const entry = { section, name, text, starred: false, known: false };
     if (section === 'Armor' && /^pair of /.test(name)) {
         const index = game._discoveries.findIndex(item =>
             item.section === 'Armor' && !item.starred && !/^pair of /.test(item.name || ''));
@@ -591,6 +592,7 @@ function debugPriestDiscoveryExtras() {
 
 export function recordObservedObjectDiscovery(obj) {
     if (!obj || (game.u?._statusSuffix || '').includes('Hallu')) return;
+    if (objectTypeIsKnown(obj)) return;
     const priestDebugExtras = debugPriestDiscoveryExtras();
     if (obj.otyp === SCROLL_CLASS || obj.cls === 'scroll') {
         if (!priestDebugExtras) return;
@@ -617,7 +619,7 @@ export function recordObservedObjectDiscovery(obj) {
     }
     if (obj.cls === 'amulet' || obj.glyph === '"') {
         const appearance = String(obj.appearance || '').trim();
-        if (appearance) addObservedDiscovery('Amulets', 'amulet', `amulet (${appearance})`);
+        if (appearance) addObservedDiscovery('Amulets', String(obj.actualKind || obj.kind || `amulet (${appearance})`).toLowerCase(), `amulet (${appearance})`);
         return;
     }
     if (obj.cls === 'ring' || obj.glyph === '=') {
@@ -1415,6 +1417,9 @@ function drawGrid() {
             if (game._command_mode === 'extendedCommand') {
                 d.setCursor(2 + String(game._extended_command || '').length, 0);
                 cursorSet = true;
+            } else if (game._command_mode === 'identifyCategory') {
+                setCursorAfter(0, pendingMessage.length, '');
+                cursorSet = true;
             } else if (game._command_mode === 'instrumentTuneText'
                        || game._command_mode === 'wizardWish'
                        || game._command_mode === 'wizGenesisMonster'
@@ -1518,6 +1523,9 @@ function drawGrid() {
             cursorSet = true;
         } else if (game._command_mode === 'extendedCommand' && !extendedWrap) {
             d.setCursor(2 + String(game._extended_command || '').length, 0);
+            cursorSet = true;
+        } else if (game._command_mode === 'identifyCategory') {
+            setCursorAfter(0, displayMessage.length, '');
             cursorSet = true;
         } else if (game._command_mode === 'instrumentTuneText'
                    || game._command_mode === 'wizardWish'

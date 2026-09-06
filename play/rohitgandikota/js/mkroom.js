@@ -47,6 +47,40 @@ function note_unported_mkroom(what) {
     (game.unported ||= new Set()).add(`mkroom:${what}`);
 }
 
+// src/mkroom.c:844 save_room(). JSON stores the room tree; resident
+// pointers are rebuilt from restored shopkeepers, as in rest_rooms/getlev.
+function save_room(room) {
+    return {...room, resident: null,
+        sbrooms: (room.sbrooms || []).map(save_room)};
+}
+
+// src/mkroom.c:863 save_rooms()
+export function save_rooms() {
+    return game.level.rooms.slice(0, game.level.nroom).map(save_room);
+}
+
+// src/mkroom.c:875 rest_room(). Subrooms share the objects referenced
+// by their parents, rather than becoming independent copies of each other.
+function rest_room(saved) {
+    const room = {...saved, resident: null, sbrooms: []};
+    for (const sub of saved.sbrooms || []) {
+        const child = rest_room(sub);
+        room.sbrooms.push(child);
+        game.level.subrooms.push(child);
+    }
+    return room;
+}
+
+// src/mkroom.c:893 rest_rooms()
+export function rest_rooms(saved) {
+    const level = game.level;
+    level.subrooms = [];
+    level.rooms = (saved || []).filter(r => r.hx >= 0).map(rest_room);
+    level.nroom = level.rooms.length;
+    level.nsubroom = level.subrooms.length;
+    level.rooms.push({hx: -1});
+}
+
 /* shtypes[] now lives in js/shknam.js, its C home, next to
    get_shop_item() which reads the other half of the same table. */
 

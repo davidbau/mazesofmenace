@@ -2112,7 +2112,7 @@ async function use_royal_jelly(jelly) {
 
 /* src/apply.c no_elbow_room[] */
 const no_elbow_room = "don't have enough elbow-room to maneuver.";
-const is_wet_towel = (obj) => obj.otyp === ONAMES.TOWEL && obj.spe > 0;
+export const is_wet_towel = (obj) => obj.otyp === ONAMES.TOWEL && obj.spe > 0;
 /* include/youprop.h: Blinded (timed or a worn blindfold/towel), its timeout,
    Sick, Stunned, Confusion; include/you.h Ugender */
 const Blinded = () => !!((game.u.intrinsic?.HBlinded | 0)
@@ -2131,7 +2131,7 @@ const glyph_is_cmap = (g) => g?.kind === 'cmap';
 const glyph_to_cmap = (g) => g.cmap;
 const glyph_to_obj = (g) => (g?.kind === 'obj' ? g.otyp : -1);
 
-async function dry_a_towel(obj, amount, verbose) {
+export async function dry_a_towel(obj, amount, verbose) {
     const newspe = amount < 0 ? obj.spe + amount : amount;
     if (newspe < obj.spe && verbose) {
         await pline(`${Yobjnam2(obj, null)} dries${newspe ? '' : ' out'}.`);

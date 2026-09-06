@@ -6,7 +6,7 @@ import { MONS, PM_HUMAN, PM_GREMLIN, PM_GRID_BUG, PM_LONG_WORM, PM_LONG_WORM_TAI
     S_LIGHT, haseyes, AD_BLND, AT_EXPL, AT_GAZE } from './permonst.js';
 import { pmOf } from './mhitm.js';
 import { artifactDefinitionForName } from './mklev.js';
-import { W_WEP, COLNO, ROWNO, ZAP_POS, DOOR, D_CLOSED, D_LOCKED,
+import { W_WEP, COLNO, ROWNO, ZAP_POS, DOOR, D_CLOSED, D_LOCKED, BLND_RES,
     M_AP_TYPE, M_AP_OBJECT, M_AP_MONSTER } from './const.js';
 
 import { CMAP_EXPLANATIONS as FLASH_CMAP_EXPLANATIONS } from './defsym.js';
@@ -61,11 +61,12 @@ export function flashResistance(mon, D) {
     const weapon = hero ? game.u.uwep || (game.inventory || []).find(obj => obj.wielded || (obj.owornmask & W_WEP))
         : mon.mw || (mon.minvent || []).find(obj => obj.wielded || (obj.owornmask & W_WEP));
     const artifact = artifactDefinitionForName(weapon?.artifact || weapon?.oartifact)?.name === 'Sunsword';
-    const blind = hero ? D.heroIsBlind() || (game._helpless_time > 0 && game._sleeping_time > 0)
+    const blind = hero ? D.heroIsBlind() || D.heroIsUnaware?.() || (game._helpless_time > 0 && game._sleeping_time > 0)
         : mon.mblinded || mon.mcansee === false || mon.mcansee === 0 || mon.msleeping;
     const innate = (species.attacks || []).some(atk => atk.adtyp === AD_BLND
         && (atk.aatyp === AT_EXPL || atk.aatyp === AT_GAZE));
-    return { resists: !!(blind || !haseyes(species) || innate || artifact), artifact };
+    const prop = hero && game.u.uprops?.[BLND_RES];
+    return { resists: !!(blind || !haseyes(species) || innate || artifact || prop?.intrinsic || prop?.extrinsic), artifact };
 }
 
 export async function lightDamageHero(item, amount, messages, D) {

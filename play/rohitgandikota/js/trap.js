@@ -5447,11 +5447,32 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
     let used_up = false;
     game.bhitpos = { x, y };
 
-    if ((style & LAUNCH_KNOWN) !== 0)
+    /* src/trap.c:3318 — the style switch; its delaycnt/tmp_at arms are
+       animation only and the temporary glyph is handled above */
+    switch (style) {
+    case ROLL | LAUNCH_UNSEEN:
+        if (otyp === ONAMES.BOULDER) {
+            if (cansee(x1, y1)) {
+                await You_see(`${an(xname(singleobj))} start to roll.`);
+            } else if (Hallucination()) {
+                /* Soundeffect(se_someone_bowling, 60); */
+                await You_hear('someone bowling.');
+            } else {
+                /* Soundeffect(se_rumbling, 60); */
+                await You_hear(`rumbling ${(distu(x1, y1) <= 4 * 4)
+                                            ? 'nearby' : 'in the distance'}.`);
+            }
+        }
+        style &= ~LAUNCH_UNSEEN;
+        break; /* goto roll */
+    case ROLL | LAUNCH_KNOWN:
+        /* use otrapped as a flag to ohitmon */
         singleobj.otrapped = 1;
-    /* LAUNCH_UNSEEN only changes sound and animation, neither draws from the
-       core RNG. Keep the flag consumed so the remaining style is ROLL. */
-    style &= ~(LAUNCH_UNSEEN | LAUNCH_KNOWN);
+        style &= ~LAUNCH_KNOWN;
+        break; /* FALLTHRU to ROLL */
+    default:
+        break;
+    }
 
     while (dist-- > 0 && !used_up) {
         /* C advances tmp_at at the start of each animation iteration. If a

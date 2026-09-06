@@ -1,5 +1,6 @@
 // options.js — Parse .nethackrc options.
 // C ref: options.c — handles OPTIONS=, BIND=, etc.
+import { DEFAULT_PACK_ORDER } from './inventory_sort.js';
 import { COMMAND_KEYS } from './command_keys.js';
 
 export function parseNethackrc(rc) {
@@ -125,6 +126,19 @@ export function parseNethackrc(rc) {
                 }
                 else if (key === 'symset') result.symset = val;
                 else if (key === 'suppress_alert') result.flags.suppress_alert = val;
+                else if (key === 'sortloot') {
+                    if (['n', 'l', 'f'].includes(val[0]?.toLowerCase())) result.flags.sortloot = val[0].toLowerCase();
+                } else if (key === 'menuinvertmode') {
+                    const mode = Number.parseInt(val, 10) || 0;
+                    if (mode >= 0 && mode <= 2) result.iflags.menuinvertmode = mode;
+                } else if (key === 'packorder') {
+                    const old = result.flags.packorder || DEFAULT_PACK_ORDER;
+                    let order = val.includes('$') ? '' : '$';
+                    for (const [index, symbol] of [...val].entries())
+                        if (old.includes(symbol) && !val.slice(index + 1).includes(symbol)) order += symbol;
+                    for (const symbol of old) if (!order.includes(symbol)) order += symbol;
+                    result.flags.packorder = order;
+                }
                 else if (key === 'msg_window') result.iflags.prevmsg_window = val;
                 else result.flags[key] = val;
             } else {

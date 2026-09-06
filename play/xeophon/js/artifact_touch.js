@@ -78,64 +78,100 @@ export function artifactTouchStatus(def) {
     return { selfWilled, badClass, badAlign, bane, hatesSilver };
 }
 
+// touch_artifact permits contact unless both class and alignment conflict.
+// Its caller owns the continuation: touching a floor object during a wish
+// must return before addinv, whereas retouch_object may then remove equipment.
+export async function touchArtifactObject(item, D, state = {}) {
+    const messages = [];
+    const result = extra => ({ ok: false, messages, ...extra });
+    if (!state.phase) {
+        state.definition = artifactDefinitionForName(item?.artifact || item?.oartifact);
+        state.status = artifactTouchStatus(state.definition);
+        state.blasted = false;
+        state.phase = 'touch';
+    }
+    const { definition, status } = state;
+    if (!definition) return result({ ok: true });
+    if (state.phase === 'touch') {
+        const { badClass, badAlign, selfWilled } = status;
+        state.phase = 'refusal';
+        if (((badClass || badAlign) && selfWilled) || (badAlign && !rn2(4))) {
+            const name = D.touchName?.(item) || definition.name.replace(/^The /, 'the ');
+            const message = `You are blasted by ${name}${name.endsWith('s') ? "'" : "'s"} power!`;
+            state.blasted = true;
+            state.phase = 'blastDamage';
+            if (D.message) {
+                if (!D.message(message)) return result({ pending: true });
+            } else messages.push(message);
+        }
+    }
+    if (state.phase === 'blastDamage') {
+        let damage = d(D.antimagic() ? 2 : 4, status.selfWilled ? 10 : 4);
+        if (D.isSilver(item) && status.hatesSilver) damage += D.halfPhysical(rnd(10));
+        state.phase = 'afterBlast';
+        const damageResult = await D.damageHero(messages, damage, `touching ${definition.name}`);
+        if (damageResult.fatal || damageResult.lifeSaving || damageResult.pending)
+            return result({ ...damageResult, pending: true });
+    }
+    if (state.phase === 'afterBlast') {
+        D.exercise(A_WIS, false);
+        state.phase = 'refusal';
+    }
+    if (state.phase === 'refusal') {
+        state.ok = !(status.badClass && status.badAlign && status.selfWilled);
+        state.phase = 'done';
+        if (!state.ok) {
+            const carried = (game.inventory || []).includes(item);
+            const message = D.refusalMessage?.(item, carried) || `${definition.name} ${carried
+                ? 'is beyond your control!' : 'evades your grasp!'}`;
+            if (D.message) {
+                if (!D.message(message)) return result({ pending: true });
+            } else messages.push(message);
+        }
+    }
+    return result({ ok: state.ok });
+}
+
 // A fatal damage call suspends inside losehp. On revival, resume after that
 // exact call so its damage and exercise draws are never performed twice.
 export async function retouchArtifactObject(item, D, { resume = false } = {}) {
     const messages = [];
     const definition = artifactDefinitionForName(item?.artifact || item?.oartifact);
-    const state = resume ? game._artifact_touch_state : { phase: 'touch', item, definition,
-        status: artifactTouchStatus(definition), blasted: false };
+    const state = resume ? game._artifact_touch_state : { phase: 'touch', item, touch: {} };
     const result = extra => ({ ok: false, messages, ...extra });
     if (!state || state.item !== item) throw new Error('Missing artifact touch continuation');
     if (state.phase === 'touch') {
         if (D.invocationBellAllowed(item)) return result({ ok: true });
-        const { badClass, badAlign, selfWilled, hatesSilver } = state.status;
-        if (((badClass || badAlign) && selfWilled) || (badAlign && !rn2(4))) {
-            const name = (definition?.name || D.objectName(item)).replace(/^The /, 'the ');
-            messages.push(`You are blasted by ${name}'s power!`);
-            state.blasted = true;
-            let damage = d(D.antimagic() ? 2 : 4, selfWilled ? 10 : 4);
-            if (D.isSilver(item) && hatesSilver) damage += D.halfPhysical(rnd(10));
-            state.phase = 'afterBlast';
-            const damageResult = await D.damageHero(messages, damage, `touching ${definition.name}`);
+        const touch = await touchArtifactObject(item, D, state.touch);
+        messages.push(...touch.messages);
+        if (touch.pending) {
+            game._artifact_touch_state = state;
+            return result({ ...touch, messages });
+        }
+        state.phase = touch.ok ? 'handling' : 'unwear';
+    }
+    if (state.phase === 'handling') {
+        const current = artifactTouchStatus(definition);
+        const silver = D.isSilver(item) && current.hatesSilver;
+        if (!silver && !current.bane) {
+            game._artifact_touch_state = null;
+            return result({ ok: true });
+        }
+        messages.push(`You can't handle ${D.objectName(item)}${D.isWorn(item) ? ' anymore' : ''}!`);
+        state.phase = 'unwear';
+        if (!state.touch.blasted) {
+            let damage = silver ? D.halfPhysical(rnd(10)) : 0;
+            if (current.bane) damage += rnd(10);
+            state.phase = 'afterHandlingDamage';
+            const name = silver && !definition
+                ? item.cls === 'ring' ? 'a silver ring' : item.cls === 'wand' ? 'a silver wand' : D.killerName(item)
+                : D.killerName(item);
+            const damageResult = await D.damageHero(messages, damage, `handling ${name}`);
             if (damageResult.fatal || damageResult.lifeSaving || damageResult.pending) {
                 game._artifact_touch_state = state;
                 return result({ ...damageResult, pending: true });
             }
-        } else state.phase = 'handling';
-    }
-    if (state.phase === 'afterBlast') {
-        D.exercise(A_WIS, false);
-        state.phase = 'handling';
-    }
-    if (state.phase === 'handling') {
-        const { badClass, badAlign, selfWilled } = state.status;
-        if (badClass && badAlign && selfWilled) {
-            messages.push(`${definition.name} ${(game.inventory || []).includes(item)
-                ? 'is beyond your control!' : 'evades your grasp!'}`);
-        } else {
-            const current = artifactTouchStatus(definition);
-            const silver = D.isSilver(item) && current.hatesSilver;
-            if (!silver && !current.bane) {
-                game._artifact_touch_state = null;
-                return result({ ok: true });
-            }
-            messages.push(`You can't handle ${D.objectName(item)}${D.isWorn(item) ? ' anymore' : ''}!`);
-            if (!state.blasted) {
-                let damage = silver ? D.halfPhysical(rnd(10)) : 0;
-                if (current.bane) damage += rnd(10);
-                state.phase = 'afterHandlingDamage';
-                const name = silver && !definition
-                    ? item.cls === 'ring' ? 'a silver ring' : item.cls === 'wand' ? 'a silver wand' : D.killerName(item)
-                    : D.killerName(item);
-                const damageResult = await D.damageHero(messages, damage, `handling ${name}`);
-                if (damageResult.fatal || damageResult.lifeSaving || damageResult.pending) {
-                    game._artifact_touch_state = state;
-                    return result({ ...damageResult, pending: true });
-                }
-            }
         }
-        if (state.phase === 'handling') state.phase = 'unwear';
     }
     if (state.phase === 'afterHandlingDamage') {
         D.exercise(A_CON, false);

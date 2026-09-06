@@ -419,6 +419,12 @@ export function ledger_no(lev) {
     return lev.dlevel + (game.dungeons[lev.dnum]?.ledger_start ?? 0);
 }
 
+// src/dungeon.c maxledgerno(), the last entry in the level bookkeeping.
+export function maxledgerno() {
+    const dungeon = game.dungeons[game.n_dgns - 1];
+    return dungeon.ledger_start + dungeon.num_dunlevs;
+}
+
 export function depth(dlev) {
     return game.dungeons[dlev.dnum].depth_start + dlev.dlevel - 1;
 }
@@ -569,6 +575,12 @@ function init_castle_tune() {
 
 // src/dungeon.c:1204 init_dungeons()
 export function init_dungeons() {
+    // src/dungeon.c clears WIN_MAP before loading the dungeon description.
+    // This also clears the startup banner before a first-level bones prompt.
+    if (game.nhDisplay) {
+        game.nhDisplay.clearScreen();
+        (game.disp ||= {}).botlx = true;
+    }
     const pd = {
         tmpdungeon: [], tmplevel: [], tmpbranch: [],
         final_lev: [],

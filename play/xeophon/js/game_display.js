@@ -12,6 +12,7 @@
 //   // display.topMessage, display.putstr_message are NetHack-specific
 
 import { game } from './gstate.js';
+import { currentHeroAttribute } from './attrib.js';
 import {
     TUTORIAL,
     In_endgame, Is_airlevel, Is_astralevel, Is_earthlevel, Is_firelevel, Is_waterlevel,
@@ -136,7 +137,7 @@ export class GameDisplay {
         const genderKey = game.flags?.female ? 'f' : 'm';
         const role = game.urole?.rank?.[genderKey] || game.urole?.rank?.m
             || game.urole?.name?.[genderKey] || game.urole?.name?.m || 'Adventurer';
-        const stats = u.acurr?.a || [];
+        const stats = Array.from({ length: 6 }, (_, index) => currentHeroAttribute(index));
         const align = u.ualign?.type > 0 ? 'Lawful' : u.ualign?.type < 0 ? 'Chaotic' : 'Neutral';
         const title = `${name} the ${role}`.padEnd(31, ' ');
         const str = u._strDisplay || (
@@ -147,20 +148,17 @@ export class GameDisplay {
         );
         const line1 = `${title}St:${str} Dx:${stats[3] || '?'} Co:${stats[4] || '?'} In:${stats[1] || '?'} Wi:${stats[2] || '?'} Ch:${stats[5] || '?'} ${align}`;
 
-        // C ref: mhitu.c mdamageu() -> end.c done()/die() — between the fatal
-        // blow and the wizard-mode "Die?" refusal, C's status line shows the
-        // hp floor of 0 even though the pending refusal will revive via
-        // savelife() (end.c:704-758).  The JS revival restores u.uhp early
-        // (mid-burst chain rng depends on it), so hold the *display* at 0
-        // until the prompt resolves (_death_pending_confirm cleared there).
+        // done can flush status before clearing HP (for example, a death
+        // ray bypasses losehp). Retain that snapshot through its prompt;
+        // botl.c always displays negative HP as zero.
         const deathMoreHp = (game._death_status_hp_before_zero != null
                 && (game._command_mode === 'deathDieMore'
                     || game._queued_messages_after_more?.some(message => message.fatal || message.lifeSaving)
                     || game._queued_message_after_more === 'You die...'
                     || game._pending_message === 'You die...'))
             || game._death_pending_confirm;
-        const hp = deathMoreHp ? (game._death_pending_confirm && game._death_status_hp_before_zero == null
-            ? 0 : game._death_status_hp_before_zero) : u.uhp || 0;
+        const hp = Math.max(0, deathMoreHp ? (game._death_pending_confirm && game._death_status_hp_before_zero == null
+            ? 0 : game._death_status_hp_before_zero) : u.uhp || 0);
         const heldUac = game._message_more && game._status_uac_before_more != null;
         // newgame prints the initial status before skills/discoveries call
         // find_ac. The legacy story retains that screen while internal AC is current.

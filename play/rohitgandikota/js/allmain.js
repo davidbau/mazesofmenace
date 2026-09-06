@@ -67,17 +67,17 @@ import { ask_do_tutorial, set_playmode, optfn_playmode } from './options.js';
 import { ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, A_CURRENT, In_endgame,
          FULL_MOON, NEW_MOON, COLNO, A_CON, A_WIS, A_INT, MOD_ENCUMBER,
          UNENCUMBERED, SLT_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, A_DEX,
-         Upolyd, Is_waterlevel, Is_airlevel, FROMFORM, TT_LAVA, NON_PM }
+         Upolyd, Is_waterlevel, Is_airlevel, FROMFORM, TT_LAVA, NON_PM, RLOC_NOMSG }
          from './const.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
 import { rhack, domove, enter_explore_mode } from './cmd.js';
 import { clear_bypasses } from './worn.js';
 import { lookaround, end_running, unmul, nomul,
-         monster_nearby, in_rooms, runmode_delay_output } from './hack.js';
+         monster_nearby, in_rooms, runmode_delay_output, check_special_room } from './hack.js';
 import { deferred_goto } from './do.js';
 import { You } from './pline.js';
 import {
-    docrt, cls, bot, flush_screen, pline, see_monsters, see_objects,
+    docrt, cls, bot, timebot, flush_screen, pline, see_monsters, see_objects,
     see_traps, swallowed, newsym,
     TOPLINE_EMPTY,
 } from './display.js';
@@ -108,7 +108,7 @@ function init_sound_disp_gamewindows() {
 
 // include/you.h:441-442
 const RIGHT_HANDED = 0x00, LEFT_HANDED = 0x01;
-import { mcalcmove, mcalcdistress, movemon, NORMAL_SPEED, is_pool } from './mon.js';
+import { mcalcmove, mcalcdistress, movemon, NORMAL_SPEED, is_pool, m_at, mnexto } from './mon.js';
 import { breathless } from './mondata.js';
 import { MONSYMS } from './monst_data.js';
 import { m_everyturn_effect } from './monmove.js';
@@ -205,8 +205,14 @@ export async function newgame() {
         await plnamesuffix();
 
         if (g.flags.initrole < 0 || g.flags.initrace < 0
-            || g.flags.initgend < 0 || g.flags.initalign < 0)
-            await player_selection();
+            || g.flags.initgend < 0 || g.flags.initalign < 0) {
+            /* win/tty/wintty.c:634 tty_player_selection(): a refused
+               selection ('q' or ESC) bails out of the game */
+            if (!(await player_selection())) {
+                const { bail } = await import('./tty/wintty.js');
+                await bail(null);
+            }
+        }
     }
 
     /* sys/unix/unixmain.c — after the name is final, try to restore a
@@ -281,6 +287,11 @@ export async function newgame() {
     // Builds g.dungeons, g.sp_levchn and g.branches for real; nothing may
     // overwrite them afterwards.
     init_dungeons();
+
+    /* src/u_init.c:949 u_init_misc() starts with flags.female =
+       flags.initgend, the facet chargen settled on; it runs before mklev()
+       and before the legacy blurb, whose text and status line read it */
+    g.flags.female = (g.flags.initgend === 1);
 
     // src/u_init.c:996-997 — u.uhp = newhp(); u.uen = newpw();
     // newhp() draws nothing at level 0 because every role and race has
@@ -381,6 +392,8 @@ export async function newgame() {
 
     // Real mklev generates the level with correct room positions
     // Structural phase consumes RNG for rooms/corridors/doors/stairs
+    init_vision_globals();
+    game._newsym_ref = newsym;
     await mklev();
 
     // Room filling and mineralize both run for real inside mklev() now, as
@@ -393,6 +406,11 @@ export async function newgame() {
     // collect_coords ring shuffle from enexto), so putting it on the wrong
     // side of u_init shifts everything after it.
     u_on_upstairs();
+    vision_reset();
+    await check_special_room(false);
+    const at_start = m_at(g.u.ux, g.u.uy);
+    if (at_start)
+        await mnexto(at_start, RLOC_NOMSG);
 
     await makedog();
 
@@ -421,9 +439,6 @@ export async function newgame() {
     // src/allmain.c:816-818 — docrt(); flush_screen(1); bot(); all run BEFORE
     // u_init_skills_discoveries() and the legacy pager, which is why the legacy
     // window is drawn over a map and a status line rather than a blank screen.
-    init_vision_globals();
-    game._newsym_ref = newsym;
-    vision_reset();
     vision_recalc(0);
     /* src/allmain.c:756 display_nhwindow(WIN_MESSAGE, FALSE) — the NON-blocking
        arm, which win/tty/wintty.c:1879 shows sets toplin back to TOPLINE_EMPTY.
@@ -466,20 +481,17 @@ export async function newgame() {
        dozen lines above. The status line reads them directly, so every
        session showed a Tourist's numbers. */
     g.u.uexp = 0;
-    /* src/u_init.c:949 — flags.female comes from flags.initgend, the facet
-       chargen actually settled on. Reading it back out of the rc option
-       instead threw away a randomly picked gender: seed0004's player answers
-       "y" to "shall I pick for you", pick_gend chooses female, and this line
-       overwrote it with male because the rc names no gender. */
-    g.flags.female = (g.flags.initgend === 1);
     g.plname = g.plname || 'Contestant';
 
     /* src/allmain.c:838 save_currentstate(), INSURANCE is enabled in C.
        Track its VISITED bit separately from the parked level map. */
     g.visited_ledgers = new Set();
     const { boolean_option } = await import('./options.js');
-    if (boolean_option('checkpoint'))
+    if (boolean_option('checkpoint')) {
         g.visited_ledgers.add(`${g.u.uz.dnum}:${g.u.uz.dlevel}`);
+        const { save_engravings } = await import('./engrave.js');
+        save_engravings();
+    }
 
     // src/allmain.c welcome() — the new-game branch. The alignment, the race
     // adjective and the role name were all hardcoded here ("neutral", "human",
@@ -995,7 +1007,16 @@ export async function moveloop_core() {
         if (g.vision_full_recalc)
             vision_recalc(0);
     }
-    await flush_screen(1);
+    /* src/allmain.c:474 — the once-per-input flush only happens when the
+       status line needs redrawing; a queued command (cmdq) therefore runs
+       over an unflushed map, and parse() flushes before reading a key */
+    if (g.disp?.botl || g.disp?.botlx) {
+        await bot();
+        await flush_screen(1); /* curs_on_u() */
+    } else if (g.disp?.time_botl) {
+        timebot();
+        await flush_screen(1); /* curs_on_u() */
+    }
 
     /* src/allmain.c:481, every living hero form gets its once-per-input
        monster effect before occupations and command reading. Fog clouds use

@@ -15,7 +15,8 @@
 // serializer can round-trip without pointer fixups.
 
 import { DEADMONSTER } from './monst.js';
-import { FM_YOU, FM_FMON, FM_MIGRATE, FM_MYDOGS } from './const.js';
+import { FM_YOU, FM_FMON, FM_MIGRATE, FM_MYDOGS,
+         FM_EVERYWHERE, RANGE_LEVEL } from './const.js';
 import { artifact_light } from './artifact.js';
 import { game } from './gstate.js';
 import { COLNO, ROWNO, OBJ_FREE, LS_NONE, LS_OBJECT, LS_MONSTER } from './const.js';
@@ -23,7 +24,7 @@ import { ONAMES } from './objects_data.js';
 /* imported from vision.c, for small circles (src/light.c:56) */
 import { circle_ptr, clear_path, COULD_SEE, TEMP_LIT } from './vision.js';
 import { Is_candle, ignitable } from './obj.js';
-import { end_burn } from './timeout.js';
+import { end_burn, obj_is_local } from './timeout.js';
 import { find_oid } from './shk.js';
 import { impossible } from './pline.js';
 
@@ -37,6 +38,7 @@ export const MAX_RADIUS = 15;
 
 // src/light.c:41 flags
 const LSF_SHOW = 0x1; /* display the light source */
+const LSF_NEEDS_FIXUP = 0x2;
 
 function note_unported_light(what) {
     (game.unported ||= new Set()).add('light:' + what);
@@ -44,6 +46,53 @@ function note_unported_light(what) {
 
 function lights() {
     return (game.light_sources ||= []);
+}
+
+// src/light.c:361 discard_flashes(). Owner IDs are already
+// numeric in JS, but ghostly restoration must map them into the new game.
+function discard_flashes() {
+    for (const source of [...lights()])
+        if (source.type === LS_OBJECT && !source.id)
+            del_light_source(source.type, source.id);
+}
+
+// src/light.c:421 save_light_sources()
+export function save_light_sources(range, release = false) {
+    discard_flashes();
+    game.vision_full_recalc = 0;
+    const selected = lights().filter(source => {
+        const local = source.type === LS_OBJECT
+            ? obj_is_local(find_oid(source.id))
+            : find_mid(source.id, FM_EVERYWHERE).mx > 0;
+        return local === (range === RANGE_LEVEL);
+    });
+    const saved = selected.map(source =>
+        ({...source, flags: source.flags | LSF_NEEDS_FIXUP}));
+    if (release)
+        game.light_sources = lights().filter(source => !selected.includes(source));
+    return saved;
+}
+
+// src/light.c:479 restore_light_sources(). Restoring the
+// saved chain prepends each element, reversing its saved order.
+export function restore_light_sources(saved) {
+    for (const source of saved || [])
+        lights().unshift({...source});
+}
+
+// src/light.c:517 relink_light_sources()
+export function relink_light_sources(ghostly, idmap) {
+    for (const source of lights()) {
+        if (!(source.flags & LSF_NEEDS_FIXUP))
+            continue;
+        const id = ghostly ? idmap.get(source.id) : source.id;
+        const owner = source.type === LS_OBJECT
+            ? find_oid(id) : find_mid(id, FM_EVERYWHERE);
+        if (!owner)
+            throw new Error(`relink_light_sources: cannot find owner ${id}`);
+        source.id = id;
+        source.flags &= ~LSF_NEEDS_FIXUP;
+    }
 }
 
 // src/light.c:63 new_light_source() — caller passes the owner's id number.

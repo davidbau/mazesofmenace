@@ -46,6 +46,7 @@ import { tty_start_menu, tty_add_menu, tty_end_menu, tty_select_menu,
          ATR_NONE } from './tty/wintty.js';
 import { NO_COLOR } from './terminal.js';
 import { xwaitforspace } from './tty/getline.js';
+import { what_is_a_location } from './pager.js';
 
 const CM = cmap_names;
 
@@ -130,7 +131,20 @@ async function getpos_help(force, goal) {
     if (getpos_getvalid)
         put("Use 'z' or 'Z' to move to valid locations.");
     put("Use '#' to toggle automatic description.");
-    put("Type a '.' when you are at the right place.");
+    /* disgusting hack; the alternate selection characters work for any
+       getpos call, but only matter for dowhatis (and doquickwhatis,
+       also for dotherecmdmenu's simulated mouse) */
+    const doing_what_is = (goal === what_is_a_location);
+    const kbuf = doing_what_is ? "'.' or ',' or ';' or ':'" : "'.'";
+    put(`Type a ${kbuf} when you are at the right place.`);
+    if (doing_what_is) {
+        put("  ':' describe current spot, show 'more info', move to another spot.");
+        put(`  '.' describe current spot,${
+            (game.flags?.help !== false && !force) ? " prompt if 'more info'," : ''
+            } move to another spot;`);
+        put("  ',' describe current spot, move to another spot;");
+        put("  ';' describe current spot, stop looking at things;");
+    }
     if (!force)
         put("Type Space or Escape when you're done.");
     put('');
@@ -362,7 +376,7 @@ export async function getpos(ccp, force, goal) {
                 }
             } else {
                 if (!garr[gloc]) {
-                    garr[gloc] = gather_locs(gloc);
+                    garr[gloc] = await gather_locs(gloc);
                     gcount[gloc] = garr[gloc].length;
                     gidx[gloc] = 0; /* garr[][0] is hero's spot */
                 }
@@ -464,16 +478,19 @@ export async function getpos(ccp, force, goal) {
                         await pline(`Can't find dungeon feature '${ch}'.`);
                         msg_given = true;
                     }
+                    /* src/getpos.c:1113 goto nxtc, for found and not found */
+                    curs_map(c.x, c.y);
+                    flush_screen(0);
+                    continue;
                 } else {
                     const note = !force
                         ? 'aborted'
                         : "use 'h', 'j', 'k', 'l' or '.'";
                     await pline(`Unknown direction: '${visctrl(ch)}' (${note}).`);
                     msg_given = true;
+                    /* no goto here: an unknown key falls through to the
+                       "Done." arm below unless 'force' keeps the picker up */
                 }
-                curs_map(c.x, c.y);
-                flush_screen(0);
-                continue;
             }
             /* quitchars: space/enter dismiss the picker */
             if (force) {
@@ -600,7 +617,7 @@ function IS_UNEXPLORED_LOC(x, y) {
 }
 
 // src/getpos.c:438 gather_locs_interesting()
-function gather_locs_interesting(x, y, gloc) {
+async function gather_locs_interesting(x, y, gloc) {
     const filter = game.iflags?.getloc_filter | 0;
     if (filter === GFILTER_VIEW && !cansee(x, y))
         return false;
@@ -644,10 +661,10 @@ function gather_locs_interesting(x, y, gloc) {
                     || IS_UNEXPLORED_LOC(x, y - 1)));
     case GLOC_VALID:
         if (getpos_getvalid)
-            return !!getpos_getvalid(x, y);
+            return !!(await getpos_getvalid(x, y));
         /*FALLTHRU*/
     case GLOC_INTERESTING:
-        return (gather_locs_interesting(x, y, GLOC_DOOR)
+        return ((await gather_locs_interesting(x, y, GLOC_DOOR))
                 || !((sym !== -1
                       && (is_cmap_wall(sym)
                           || sym === CM.S_tree
@@ -669,13 +686,13 @@ function gather_locs_interesting(x, y, gloc) {
 // src/getpos.c:513 gather_locs() — every interesting spot of the requested
 // kind plus the hero's own, sorted by distance from the hero. The hero's
 // spot always sorts to [0] (distance 0).
-function gather_locs(gloc) {
+async function gather_locs(gloc) {
     gloc_filter_init();
     const arr = [];
     for (let x = 1; x < COLNO; x++)
         for (let y = 0; y < ROWNO; y++)
             if ((x === game.u.ux && y === game.u.uy)
-                || gather_locs_interesting(x, y, gloc))
+                || await gather_locs_interesting(x, y, gloc))
                 arr.push({ x, y });
     arr.sort(cmp_coord_distu);
     gloc_filter_done();
@@ -757,7 +774,7 @@ const gloc_filtertxt = ['', ' in view', ' in this area'];
 
 // src/getpos.c:665 getpos_menu() — pick a gathered target from a menu
 async function getpos_menu(ccp, gloc) {
-    const garr = gather_locs(gloc);
+    const garr = await gather_locs(gloc);
     const gcount = garr.length;
     const filter = game.iflags?.getloc_filter | 0;
 

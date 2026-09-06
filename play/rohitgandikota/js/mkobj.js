@@ -1667,6 +1667,14 @@ export function special_corpse(num) {
         || is_rider(game.mons[num]);
 }
 
+// src/mkobj.c obj_attach_mid(), connect remains to the individual's ghost.
+export function obj_attach_mid(obj, mid) {
+    if (!mid || !obj)
+        return null;
+    (obj.oextra ||= {}).omid = mid;
+    return obj;
+}
+
 // src/mkobj.c:2157 save_mtraits() -- keep an individual's monster record on
 // its corpse or statue while dropping live-map and inventory pointers.
 function save_mtraits(obj, mtmp) {
@@ -1742,6 +1750,15 @@ export function mkcorpstat(objtype, mtmp, ptr, x, y, corpstatflags) {
         }
     }
     return otmp;
+}
+
+// src/mkobj.c mk_named_object(), statues start without random contents.
+export function mk_named_object(objtype, ptr, x, y, name) {
+    let obj = mkcorpstat(objtype, null, ptr, x, y,
+                        objtype === ONAMES.STATUE ? 0 : CORPSTAT_INIT);
+    if (name != null)
+        obj = oname(obj, name, ONAME_NO_FLAGS);
+    return obj;
 }
 
 // src/mkobj.c:2227 mk_tt_object() — a corpse or statue named for a player

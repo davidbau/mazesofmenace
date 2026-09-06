@@ -14,7 +14,7 @@ import { W_AMUL } from './const.js';
 import { Breathless } from './youprop.js';
 import { monsndx } from './makemon.js';
 import { M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_POISON, M_SEEN_ACID } from './const.js';
-import { PMNAMES, MONSYMS, MFLAGS, MSOUND, ATTKS, GROWNUPS } from './monst_data.js';
+import { PMNAMES, MONSYMS, MFLAGS, MSOUND, ATTKS, GROWNUPS, mons as MONS_INIT } from './monst_data.js';
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import { Hallucination, Invis, Underwater, Unaware } from './youprop.js';
@@ -33,7 +33,17 @@ import { MON_WEP } from './monst.js';
 import { which_armor } from './worn.js';
 import { W_ARM, FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES,
          POISON_RES, ACID_RES, STONE_RES, ANTIMAGIC, DRAIN_RES,
-         BLND_RES } from './const.js';
+         BLND_RES, INTRINSIC } from './const.js';
+
+// src/mondata.c give_u_to_m_resistances(), permanent hero intrinsics only.
+export function give_u_to_m_resistances(mon) {
+    const keys = ['HFire_resistance', 'HCold_resistance', 'HSleep_resistance',
+        'HDisint_resistance', 'HShock_resistance', 'HPoison_resistance',
+        'HAcid_resistance', 'HStone_resistance'];
+    for (let i = 0; i < keys.length; i++)
+        if ((game.u.intrinsic?.[keys[i]] || 0) & INTRINSIC)
+            mon.mintrinsics = (mon.mintrinsics || 0) | (1 << i);
+}
 
 // src/mondata.c:13 set_mon_data(); set up an individual monster's base type
 // (initial creation, shapechange)
@@ -929,9 +939,11 @@ export function name_to_monplus(in_str, rest_box, gender_name_var) {
     }
 
     let mntmp = NON_PM, len = 0, matchgend = -1, exact_match = false;
-    for (let i = LOW_PM; i < (game.mons?.length || 0); i++) {
+    // C's compiled monster names also exist during initial option parsing.
+    const mons = game.mons || MONS_INIT;
+    for (let i = LOW_PM; i < mons.length; i++) {
         for (let mgend = 0; mgend < 3; mgend++) {
-            const nm = game.mons[i]?.pmnames?.[mgend];
+            const nm = mons[i]?.pmnames?.[mgend];
             if (!nm) continue;
             const m_i_len = nm.length;
             if (m_i_len > len && low.startsWith(nm.toLowerCase())) {

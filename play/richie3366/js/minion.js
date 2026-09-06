@@ -6,18 +6,22 @@
 import { game } from './gstate.js';
 import { rn2, rn1, rnd, d } from './rng.js';
 import { pline, canseemon, canspotmon, verbalize, You_feel, newsym, impossible } from './display.js';
-import { Monnam, mon_nam } from './do_name.js';
+import { Monnam, mon_nam, x_monnam } from './do_name.js';
 import { getlin } from './getline.js';
 import { currency } from './invent.js';
 import { money_cnt, money2mon } from './shk.js';
 import { an } from './objnam.js';
-import { makemon, mkclass, mkclass_aligned, newemin, mongets, mpickobj } from './makemon.js';
-import { is_lminion, enexto } from './teleport.js';
+import { makemon, mkclass, mkclass_aligned, newemin, mongets, mpickobj, set_malign } from './makemon.js';
+import { is_lminion, enexto, tele_restrict, rloc } from './teleport.js';
 import { mongone } from './mon.js';
+import { nomul, stop_occupation, unmul } from './hack.js';
+import { mon_has_amulet } from './apply.js';
+import { livelog_printf } from './pline.js';
+import { acurr, A_CHA } from './attrib.js';
 import { select_hwep } from './weapon.js';
 import { which_armor, m_dowear } from './worn.js';
 import { bless, mksobj } from './mkobj.js';
-import { Hear_again } from './eat.js';
+import { Hear_again, is_fainted, reset_faint } from './eat.js';
 import { mk_roamer } from './mklev.js';
 import { show_transient_light, transient_light_cleanup } from './light.js';
 import {
@@ -25,9 +29,10 @@ import {
 } from './monsters.js';
 import {
     NON_PM, A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, G_GONE, MM_EMIN, MM_NOMSG,
-    GEHENNOM, In_endgame, STRAT_APPEARMSG, W_ARMS,
+    GEHENNOM, In_endgame, STRAT_APPEARMSG, W_ARMS, RLOC_MSG, LL_UMONST,
+    ARTICLE_A, EXACT_NAME,
 } from './const.js';
-import { ART_DEMONBANE } from './generated/artifacts_data.js';
+import { ART_EXCALIBUR, ART_DEMONBANE } from './generated/artifacts_data.js';
 import { monsterNames } from './generated/monsters_data.js';
 import { objectNames } from './generated/objects_data.js';
 import { align_gname } from './roles.js';
@@ -563,4 +568,116 @@ export async function bribe(mtmp, prompt) {
     money2mon(mtmp, offer);
     if (game.flags) game.flags.botl = true;
     return offer;
+}
+
+/**
+ * C ref: minion.c demon_talk `:262–358` — peaceful-demon blackmail behind
+ * MS_BRIBE (`sounds.c :1142–1145`). Excalibur/Demonbane anger; faint wake
+ * vs stop_occupation + nomul/unmul; dprince invis reveal; S_DEMON kin
+ * greeting + rloc; cash/demand blackmail with bribe offer and the
+ * charisma fallback; livelog + mongone on payoff. rnd(80) burns before
+ * the no-gold early return, as in C. Async: pline/You_feel/reset_faint/
+ * stop_occupation/unmul/tele_restrict/rloc/bribe/mongone all await.
+ * @returns {Promise<number>} 1 when the demon leaves satisfied, else 0
+ */
+export async function demon_talk(mtmp) {
+    const u = game.u || {};
+    // C `:267–276` — lawful blades enrage the demon.
+    if (u_wield_art(ART_EXCALIBUR) || u_wield_art(ART_DEMONBANE)) {
+        if (canspotmon(mtmp)) {
+            await pline(`${Amonnam(mtmp)} looks very angry.`);
+        } else {
+            await You_feel('tension building.');
+        }
+        mtmp.mpeaceful = 0;
+        mtmp.mtame = 0;
+        set_malign(mtmp);
+        newsym(mtmp.mx, mtmp.my);
+        return 0;
+    }
+
+    // C `:278–286` — fainted heroes wake instead of stopping occupation.
+    if (is_fainted()) {
+        await reset_faint(); /* if fainted - wake up */
+    } else {
+        await stop_occupation();
+        if ((game.multi | 0) > 0) {
+            nomul(0);
+            await unmul(null);
+        }
+    }
+
+    /* Slight advantage given. */
+    // C `:289–298` — emergence of a hidden demon prince.
+    if (is_dprince(mtmp.data) && mtmp.minvis) {
+        const wasunseen = !canspotmon(mtmp);
+        mtmp.minvis = 0;
+        mtmp.perminvis = 0;
+        if (wasunseen && canspotmon(mtmp)) {
+            await pline(`${Amonnam(mtmp)} appears before you.`);
+            mtmp.mstrategy = (mtmp.mstrategy | 0) & ~STRAT_APPEARMSG;
+        }
+        newsym(mtmp.mx, mtmp.my);
+    }
+    // C `:299–307` — won't blackmail their own kind.
+    if (game.youmonst?.data?.mlet === 'S_DEMON') {
+        const Deaf = !!((u.HDeaf | 0) || (u.EDeaf | 0)
+            || u.uroleplay?.deaf || u.Deaf);
+        if (!Deaf) {
+            await pline(`${Amonnam(mtmp)} says, "Good hunting, ${game.flags?.female ? 'Sister' : 'Brother'}."`);
+        } else if (canseemon(mtmp)) {
+            await pline(`${Amonnam(mtmp)} says something.`);
+        }
+        if (!(await tele_restrict(mtmp))) {
+            await rloc(mtmp, RLOC_MSG);
+        }
+        return 1;
+    }
+    const cash = money_cnt(game.invent);
+    // C minion.c `:259` Athome ≡ Inhell && cham == NON_PM.
+    const cham = (mtmp.cham == null) ? NON_PM : (mtmp.cham | 0);
+    const athome = Inhell() && cham === NON_PM;
+    // C `:308–310` — rnd(80) burns even when cash is 0 (checked below).
+    let demand = Math.floor((cash * (rnd(80) + 20 * (athome ? 1 : 0)))
+        / (100 * (1 + (sgn(u.ualign?.type | 0) === sgn(mtmp.data?.maligntyp | 0) ? 1 : 0))));
+
+    // C `:312–316` — no gold or unable to move means a fight.
+    if (!demand || (game.multi | 0) < 0) {
+        mtmp.mpeaceful = 0;
+        set_malign(mtmp);
+        return 0;
+    }
+    // C `:318–337` — Amulet holders and Deaf heroes get an unmeetable
+    // demand (125 covers maximum possible charisma); otherwise the
+    // spoken demand, the bribe offer, and the charisma fallback.
+    {
+        const Deaf = !!((u.HDeaf | 0) || (u.EDeaf | 0)
+            || u.uroleplay?.deaf || u.Deaf);
+        if (mon_has_amulet(mtmp) || Deaf) {
+            /* 125: 5*25 in case hero has maximum possible charisma */
+            demand = cash + rn1(1000, 125);
+        }
+        if (!Deaf) {
+            await pline(`${Amonnam(mtmp)} demands ${demand} ${currency(demand)} for safe passage.`);
+        } else if (canseemon(mtmp)) {
+            await pline(`${Amonnam(mtmp)} seems to be demanding something.`);
+        }
+        let offer = 0;
+        if (!Deaf && (offer = await bribe(mtmp, 'How much will you offer?')) >= demand) {
+            await pline(`${Amonnam(mtmp)} vanishes, laughing about cowardly mortals.`);
+        } else if (offer > 0 && rnd(5 * acurr(A_CHA)) > (demand - offer)) {
+            await pline(`${Amonnam(mtmp)} scowls at you menacingly, then vanishes.`);
+        } else {
+            await pline(`${Amonnam(mtmp)} gets angry...`);
+            mtmp.mpeaceful = 0;
+            set_malign(mtmp);
+            return 0;
+        }
+        // C `:340–344` — chronicle the payoff, then remove the demon.
+        livelog_printf(LL_UMONST, 'bribed %s with %ld %s for safe passage',
+            x_monnam(mtmp, ARTICLE_A, null, EXACT_NAME, false),
+            offer, (offer === 1) ? 'zorkmid' : 'zorkmids');
+        await mongone(mtmp);
+        return 1;
+    }
 }

@@ -88,7 +88,7 @@ import {
     ALL_TRAPS, NO_TRAP,
     G_GENOD, TRAPPED_DOOR, KILLED_BY_AN,
 } from './const.js';
-import { is_rider } from './makemon.js';
+import { is_rider, Inhell } from './makemon.js';
 import { MMOVE_NOTHING, MMOVE_MOVED, MMOVE_DIED, MMOVE_DONE,
          MMOVE_NOMOVES, engulfing_u, NEED_WEAPON, NEED_HTH_WEAPON,
          NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE,
@@ -974,11 +974,7 @@ export function onscary(x, y, mtmp) {
         && !(mtmp.isshk || mtmp.isgd || !mtmp.mcansee
              || mtmp.mpeaceful
              || mtmp.mnum === PMNAMES.PM_MINOTAUR
-             /* include/dungeon.h In_hell(); the helper is private to
-                trap.js and mklev.js (duplicate-definition debt in NOTES),
-                so the one-liner is used directly rather than adding a third
-                copy. */
-             || game.u.uz?.dnum === game.hell_dnum
+             || Inhell()
              || In_endgame(game.u.uz));
 }
 

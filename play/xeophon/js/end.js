@@ -1,10 +1,11 @@
+import { currentHeroAttribute } from './attrib.js';
 // end.js — game-over UX & scoring helpers.
 // C refs: src/end.c (done()/really_done()/disclose() tables and score
 // arithmetic), src/role.c Goodbye(), src/objnam.c just_an()/an() articles.
 
 import { game } from './gstate.js';
 import { depth as depthOfLevel } from './hacklib.js';
-import { A_CON } from './const.js';
+import { A_CON, A_MAX } from './const.js';
 
 // end.c:savelife and attrib.c:minuhpmax/setuhpmax. Callers apply any amulet
 // Constitution loss first and handle status cures, expulsion and messages.
@@ -16,7 +17,7 @@ export function restoreLifeSavedBody(u = game.u) {
         u.uhpmax = minimum;
         u.uhppeak = Math.max(u.uhppeak || 0, minimum);
     }
-    const con = u.acurr?.a?.[A_CON] ?? 10;
+    const con = currentHeroAttribute(A_CON, u === game.u ? game : { u });
     const givehp = 50 + 10 * Math.trunc(con / 2);
     u.uhp = Math.min(u.uhpmax, givehp);
     if ((u._polyself_form || u.Upolyd || u.polymorphed) && u.mhmax != null)
@@ -258,7 +259,7 @@ export function deathSummary() {
     const race = game.urace?.adj || game._startup_race || 'human';
     const gender = game.flags?.female ? 'female' : 'male';
     const align = game.u?.ualign?.type > 0 ? 'lawful' : game.u?.ualign?.type < 0 ? 'chaotic' : 'neutral';
-    const stats = game.u?.acurr?.a || [];
+    const stats = Array.from({ length: A_MAX }, (_, index) => currentHeroAttribute(index));
     const dungeon = game.level?.flags?.tutorial_level
         ? 'The Tutorial'
         : game.dungeons?.[game.u?.uz?.dnum ?? 0]?.name || 'The Dungeons of Doom';

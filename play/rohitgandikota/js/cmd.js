@@ -147,7 +147,7 @@ import { rnd, rn2 } from './rng.js';
 import { ACCESSIBLE } from './const.js';
 import { morehungry } from './eat.js';
 import { dohelp, dowhatis, doquickwhatis, dowhatdoes } from './pager.js';
-import { dolook, ECMD_TIME, display_inventory } from './invent.js';
+import { dolook, ECMD_TIME, display_pickinv_entries } from './invent.js';
 import { dovspell, docast, known_spell, spe_Fresh, spelleffects } from './spell.js';
 import { dowieldquiver, dowield, doswapweapon, dotwoweapon } from './wield.js';
 import { dozap } from './zap.js';
@@ -505,6 +505,10 @@ export async function getlin(query, hook) {
     // Replace any physical no-history description left by getpos().
     game._win_stop = false;
     game._topline_physical_prefix = '';
+    /* custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY, "%s ", query) goes
+       through src/pline.c:282 vpline(), which records the prompt as the
+       previous message for Norep() */
+    game._prevmsg = query + ' ';
 
     for (;;) {
         /* win/tty/getline.c hooked_tty_getlin():
@@ -1096,37 +1100,8 @@ async function execute_extcmd(name) {
         return await donamelevel();
     }
     if (name === 'version') {
-        /* src/version.c:169 doextversion() — the options text substitutes
-           :LUAVERSION:, and get_lua_version() boots a Lua state the FIRST
-           time, which loads nhlib.lua and spends its 3-item align shuffle
-           (rn2(3), rn2(2)). Cached in gl.lua_ver afterwards. The pager
-           display itself is recorded. */
-        if (!game._lua_ver_known) {
-            game._lua_ver_known = true;
-            const themedAlign = [0, 1, 2];
-            for (let i = themedAlign.length; i > 1; i--) {
-                const j = rn2(i);
-                [themedAlign[i - 1], themedAlign[j]] =
-                    [themedAlign[j], themedAlign[i - 1]];
-            }
-        }
-        /* the pager window: banner line, then the compiled-options text
-           (build data, js/version_data.js) */
-        {
-            const { VERSION_BANNER_LINE, VERSION_OPTIONS_TEXT } =
-                await import('./version_data.js');
-            const win = tty_create_nhwindow(NHW_TEXT);
-            tty_putstr(win, 0, VERSION_BANNER_LINE);
-            for (const line of VERSION_OPTIONS_TEXT)
-                tty_putstr(win, 0, line);
-            await tty_display_nhwindow(win);
-            await nhgetch();
-            while (tty_next_page(win))
-                await nhgetch();
-            tty_destroy_nhwindow(win);
-            await docrt();
-        }
-        return ECMD_OK;
+        const { doextversion } = await import('./pager.js');
+        return await doextversion();
     }
     if (name === 'wizwish')
         return await wiz_wish();
@@ -1703,8 +1678,13 @@ export async function rhack(key) {
        so reject a known nonmovement command before its normal dispatch. An
        unbound key falls through to bad_command, and another prefix is allowed
        through, matching PREFIXCMD. */
-    if ((game.domove_attempting & DOMOVE_RUSH) && !isMovementKey(ch)
-            && !'gGmF'.includes(ch) && prefixCommand) {
+    /* src/cmd.c:2024 the rush and run table entries carry CMD_M_PREFIX
+       only ("accept m prefix but not g/G/F"), so a shifted or control
+       direction after g/G/F is refused like any other bound non-movement
+       command. */
+    if ((game.domove_attempting & DOMOVE_RUSH)
+        && (movemode !== 0
+            || (!isMovementKey(ch) && !'gGmF-'.includes(ch) && prefixCommand))) {
         const prefix = game.context.run === 3 ? 'G' : 'g';
         const vertical = ch === '<' || ch === '>';
         game.context.run = 0;
@@ -1717,8 +1697,9 @@ export async function rhack(key) {
     /* src/cmd.c:3693-3723 applies the same prefix validation to do_fight.
        A nonmovement key is consumed by the rejected F command rather than
        dispatched as its ordinary command. */
-    if (game.context.forcefight && !isMovementKey(ch)
-            && !'gGmF'.includes(ch) && prefixCommand) {
+    if (game.context.forcefight
+        && (movemode !== 0
+            || (!isMovementKey(ch) && !'gGmF-'.includes(ch) && prefixCommand))) {
         const vertical = ch === '<' || ch === '>';
         game.context.forcefight = 0;
         game.context.move = 0;
@@ -1731,7 +1712,7 @@ export async function rhack(key) {
        selected nonmovement commands. Reject a known command whose cmdlist
        entry lacks CMD_M_PREFIX instead of dispatching it normally. */
     if (continuedPrefix && game.iflags.menu_requested
-        && !isMovementKey(ch) && !'gGmF'.includes(ch)) {
+        && !isMovementKey(ch) && !'gGmF-'.includes(ch)) {
         if (prefixCommand && !accept_menu_prefix(prefixCommand)) {
             await pline_nohistory(`The ${prefixCommand.ef_txt} command does not accept 'm' prefix.`);
             reset_cmd_vars(true);
@@ -1958,8 +1939,11 @@ export async function rhack(key) {
             game._cmd_prefix_pending = true;
         }
         game.context.move = 0;
-    } else if (ch === 'F') {
+    } else if (ch === 'F' || ch === '-') {
         // src/cmd.c:1622 do_fight — a PREFIX. It sets context.forcefight and
+        // returns WITHOUT reading another key. commands_init() (cmd.c:2772)
+        // also binds '-' to it, in both number_pad modes; the prefix message
+        // still names 'F' because cmd_from_func() skips '-' for !num_pad.
         // returns WITHOUT reading another key; the direction that follows is a
         // normal movement command that attacks instead of moving. Leaving 'F'
         // unhandled therefore did not misalign keys, it displaced the HERO:
@@ -3145,7 +3129,7 @@ async function show_attributes() {
 // and trailing space. seed8000 records the window at column 32 with the cursor
 // at [38,20].
 async function show_inventory() {
-    const items = display_inventory(null, true);
+    const items = display_pickinv_entries(null, true);
     if (!items.length) {
         await pline('Not carrying anything.');
         return;
@@ -4217,9 +4201,31 @@ export function movecmd(sym, mode) {
     let bound = game.rc_key_bindings?.[sym];
 
     if (bound === undefined) {
-        const dk = KEY_TO_DIR[sym];
+        /* src/cmd.c:3462 reset_commands(): dirchars walk; without
+           number_pad highc(dirchar) runs and C(dirchar) rushes (^J/^L/^N
+           override their default commands); with number_pad the digits
+           walk and M(digit) runs ("can't bind highc() or C() of digits") */
+        const num_pad = !!game.iflags?.num_pad;
+        const ndir = '47896321', sdir = 'hykulnjb';
+        const code = sym.length === 1 ? sym.charCodeAt(0) : -1;
+        const letter_of = (ch) => {
+            if (!num_pad)
+                return ch;
+            const i = ndir.indexOf(ch);
+            return i >= 0 ? sdir[i] : null;
+        };
+        let dk = KEY_TO_DIR[letter_of(sym)];
         if (dk !== undefined)
             bound = move_funcs[dk][MV_WALK];
+        else if (!num_pad && code >= 0x41 && code <= 0x5a
+                 && (dk = KEY_TO_DIR[sym.toLowerCase()]) !== undefined)
+            bound = move_funcs[dk][MV_RUN];     /* highc(dirchar) */
+        else if (!num_pad && code >= 0 && code < 0x20
+                 && (dk = KEY_TO_DIR[String.fromCharCode(code | 0x60)]) !== undefined)
+            bound = move_funcs[dk][MV_RUSH];    /* C(dirchar) */
+        else if (num_pad && code >= 0x80
+                 && (dk = KEY_TO_DIR[letter_of(String.fromCharCode(code & 0x7f))]) !== undefined)
+            bound = move_funcs[dk][MV_RUN];     /* M(digit) */
         else if (sym === '<')
             bound = 'up';
         else if (sym === '>')

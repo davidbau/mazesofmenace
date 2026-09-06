@@ -1,3 +1,4 @@
+import { currentHeroAttribute } from './attrib.js';
 // offer.js — #offer command: sacrificing corpses on altars.
 // C ref: src/pray.c:dosacrifice(), offer_corpse(), eval_offering(),
 // sacrifice_value(), consume_offering(), offer_different_alignment_altar(),
@@ -173,7 +174,7 @@ function exerciseWisdom(increase) {
     if (!u) return;
     u._aexe ??= Array(A_MAX).fill(0);
     if (Math.abs(u._aexe[A_WIS] || 0) >= 50) return;
-    const current = u.acurr?.a?.[A_WIS] ?? 10;
+    const current = currentHeroAttribute(A_WIS);
     if (increase) u._aexe[A_WIS] += rn2(19) > current ? 1 : 0;
     else u._aexe[A_WIS] -= rn2(2);
 }
