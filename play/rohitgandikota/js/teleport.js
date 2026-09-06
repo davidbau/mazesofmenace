@@ -13,6 +13,7 @@
 // is placed.
 
 import { rn1 } from './rng.js';
+import { update_player_regions, update_monster_region } from './region.js';
 import { m_into_limbo } from './mon.js';
 import { unstuck } from './mon.js';
 import { engulfing_u } from './const.js';
@@ -67,7 +68,7 @@ import { is_demon, is_lord, is_prince, is_covetous,
          passes_walls, can_teleport } from './mondata.js';
 import { You, You_feel, You_cant } from './pline.js';
 import { getlin, preparePunishmentMove, finishPunishmentMove } from './cmd.js';
-import { get_level, find_hell, depth, print_dungeon,
+import { get_level, find_hell, depth, print_dungeon, lev_by_name,
          dunlevs_in_dungeon } from './dungeon.js';
 import { rnd } from './rng.js';
 import { Is_knox_level } from './const.js';
@@ -396,15 +397,6 @@ export async function level_tele() {
                       ? 'You materialize on a different level!' : null);
 }
 
-// src/dungeon.c lev_by_name() — a level's name ("medusa", "castle") to its
-// depth. The name table needs the dungeon overview data; nothing that reaches
-// here today passes a name.
-function lev_by_name(nam) {
-    if (nam && !/^[-0-9]/.test(nam))
-        note_unported_tele('level_tele:lev_by_name');
-    return 0;
-}
-
 // src/apply.c next_to_u(), loaded lazily to avoid the apply/monster cycle.
 async function next_to_u() {
     const apply = await import('./apply.js');
@@ -623,6 +615,7 @@ export async function rloc_to_core(mtmp, x, y, rlocflags) {
     const { mon_track_clear, set_apparxy } = await import('./monmove.js');
     mon_track_clear(mtmp);
     place_monster(mtmp, x, y);
+    update_monster_region(mtmp);
     newsym(x, y);
     set_apparxy(mtmp);
 
@@ -780,6 +773,8 @@ export async function teleds(nux, nuy, teleds_flags) {
     else if (ballUnplaced)
         await placebc();
 
+    // src/teleport.c:529, teleport updates membership without entry callbacks.
+    update_player_regions();
     newsym(ux0, uy0);           /* clear the old position */
     see_monsters();             /* clear or redraw old sensing glyphs */
     vision_recalc(0);           /* vision before effects */

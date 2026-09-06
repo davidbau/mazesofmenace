@@ -46,7 +46,7 @@ export async function nemesis_stinks(mx, my) {
     game.context.mon_moving = true;
     try {
         const { create_gas_cloud } = await import('./region.js');
-        create_gas_cloud(mx, my, 5, 8);
+        await create_gas_cloud(mx, my, 5, 8);
     } finally {
         game.context.mon_moving = saveMonMoving;
     }

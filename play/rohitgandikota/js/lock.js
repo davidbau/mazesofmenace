@@ -11,6 +11,8 @@ import { add_damage } from './shk.js';
 import { in_rooms } from './hack.js';
 import { wake_nearto } from './mon.js';
 import { distu, s_suffix } from './hacklib.js';
+import { could_untrap, untrap } from './trap.js';
+import { safe_qbuf, ysimple_name } from './objnam.js';
 import { Deaf } from './youprop.js';
 import { Unaware } from './youprop.js';
 import { mb_trapped } from './monmove.js';
@@ -79,6 +81,19 @@ import { COST_BRKLCK } from './const.js';
 import { obfree } from './invent.js';
 import { currency } from './invent.js';
 import { start_corpse_timeout } from './mkobj.js';
+import { is_magic_key, touch_artifact } from './artifact.js';
+import { any_quest_artifact, is_quest_artifact } from './questpgr.js';
+import { ansimpleoname, simple_typename } from './objnam.js';
+import { hliquid } from './do_name.js';
+import { impossible, verbalize } from './pline.js';
+import { maybe_absorb_item } from './steal.js';
+import { SHOP_DOOR_COST, A_WIS } from './const.js';
+import { Confusion, Stunned, Passes_walls } from './youprop.js';
+import { feel_newsym } from './display.js';
+import { cant_reach_floor } from './engrave.js';
+import { cmdq_add_ec, cmdq_add_dir } from './cmd.js';
+import { CQ_CANNED } from './const.js';
+import { dokick } from './dokick.js';
 
 
 
@@ -105,14 +120,16 @@ import { start_corpse_timeout } from './mkobj.js';
 
 
 
-
-function note_unported_lock(what) {
-    (game.unported ||= new Set()).add(what);
-}
 
 // include/mondata.h verysmall()
 function verysmall(ptr) {
     return ptr.msize < 1; /* MZ_SMALL */
+}
+
+// C rm.glyph stores remembered terrain or objects, not the displayed monster.
+// An unset JS memory has C's default cmap_to_glyph(S_stone).
+function remembered_glyph(loc) {
+    return JSON.stringify(loc.remembered_glyph?.glyph ?? { kind: 'cmap', cmap: 0 });
 }
 
 // src/lock.c doopen_indir() — open the door in the chosen direction.
@@ -163,18 +180,18 @@ export async function doopen_indir(x, y) {
 
     /* when choosing a direction is impaired, use a turn
        regardless of whether a door is successfully targeted */
-    if (game.u.uprops?.CONFUSION || game.u.uprops?.STUNNED)
+    if (Confusion() || Stunned())
         res = ECMD_TIME;
 
     const door = game.level.at(cc.x, cc.y);
     const portcullis = (is_drawbridge_wall(cc.x, cc.y) >= 0);
     /* this used to be 'if (Blind)' but using a key skips that so we do too */
     {
-        const oldglyph = door.glyph;
+        const oldglyph = remembered_glyph(door);
         const oldlastseentyp = update_mapseen_for(cc.x, cc.y);
 
         newsym(cc.x, cc.y);
-        if (door.glyph !== oldglyph
+        if (remembered_glyph(door) !== oldglyph
             || game.level.at(cc.x, cc.y)?.lastseentyp !== oldlastseentyp)
             res = ECMD_TIME; /* learned something */
     }
@@ -224,10 +241,11 @@ export async function doopen_indir(x, y) {
                 res = (await pick_lock(unlocktool, cc.x, cc.y, null))
                       ? ECMD_TIME : ECMD_OK;
             } else if ((autounlock & AUTOUNLOCK_KICK) !== 0
-                       && !game.u.usteed) {
-                /* "Kick it?" then a canned dokick through the command
-                   queue; no recorded rc turns Kick on */
-                note_unported_lock('doopen_indir:autounlock_kick');
+                       && !game.u.usteed && await ynq('Kick it?') === 'y') {
+                cmdq_add_ec(CQ_CANNED, dokick);
+                cmdq_add_dir(CQ_CANNED, Math.sign(cc.x - game.u.ux),
+                             Math.sign(cc.y - game.u.uy), 0);
+                res = ECMD_OK;
             }
         }
         return res;
@@ -246,10 +264,12 @@ export async function doopen_indir(x, y) {
             const { FINGER } = await import('./const.js');
             await b_trapped('door', FINGER);
             door.doormask = D_NODOOR;
+            if (in_rooms(cc.x, cc.y, SHOPBASE).length)
+                add_damage(cc.x, cc.y, SHOP_DOOR_COST);
         } else {
             door.doormask = D_ISOPEN;
         }
-        newsym(cc.x, cc.y); /* feel_newsym: the hero knows she opened it */
+        feel_newsym(cc.x, cc.y);
         recalc_block_point(cc.x, cc.y); /* vision: new see through there */
     } else {
         exercise(A_STR, true);
@@ -322,26 +342,38 @@ export async function doclose() {
 
     const x = game.u.ux + game.u.dx;
     const y = game.u.uy + game.u.dy;
-    if (x === game.u.ux && y === game.u.uy) {
+    if (u_at(x, y) && !Passes_walls()) {
         await You("are in the way!");
         return ECMD_TIME;
     }
 
-    let nodoor = !isok(x, y);
+    if (!isok(x, y)) {
+        await You(`${Blind() ? 'feel' : 'see'} no door there.`);
+        return res;
+    }
 
-    if (!nodoor && await stumble_on_door_mimic(x, y))
+    if (await stumble_on_door_mimic(x, y))
         return ECMD_TIME;
 
-    /* Confusion/Stunned would set res = ECMD_TIME; both unreachable yet.
-       The Blind feel_location arm is recorded. */
-    if (game.u?.ublind)
-        note_unported_lock('doclose:blind_feel');
+    if (Confusion() || Stunned())
+        res = ECMD_TIME;
 
-    const door = nodoor ? null : game.level.at(x, y);
-    /* drawbridges are not generated yet; the portcullis arms are recorded
-       when a drawbridge tile is ever seen */
-    if (nodoor || !IS_DOOR(door.typ)) {
-        await You(`${game.u?.ublind ? "feel" : "see"} no door there.`);
+    const door = game.level.at(x, y);
+    const portcullis = is_drawbridge_wall(x, y) >= 0;
+    if (Blind()) {
+        const oldglyph = remembered_glyph(door);
+        const oldlastseentyp = update_mapseen_for(x, y);
+        feel_location(x, y);
+        if (remembered_glyph(door) !== oldglyph || door.lastseentyp !== oldlastseentyp)
+            res = ECMD_TIME;
+    }
+    if (portcullis || !IS_DOOR(door.typ)) {
+        if (is_db_wall(x, y) || door.typ === DRAWBRIDGE_UP)
+            await pline_The('drawbridge is already closed.');
+        else if (portcullis || door.typ === DRAWBRIDGE_DOWN)
+            await There('is no obvious way to close the drawbridge.');
+        else
+            await You(`${Blind() ? 'feel' : 'see'} no door there.`);
         return res;
     }
 
@@ -359,12 +391,15 @@ export async function doclose() {
     }
 
     if (door.doormask === D_ISOPEN) {
-        /* verysmall(youmonst.data) cannot fire un-polymorphed */
+        if (verysmall(game.youmonst.data) && !game.u.usteed) {
+            await pline("You're too small to push the door closed.");
+            return res;
+        }
         if (game.u.usteed
-            || rn2(25) < (acurrstr() + ACURR(A_DEX) + ACURR(A_CON)) / 3) {
+            || rn2(25) < Math.trunc((acurrstr() + ACURR(A_DEX) + ACURR(A_CON)) / 3)) {
             await pline_The("door closes.");
             door.doormask = D_CLOSED;
-            newsym(x, y); /* feel_newsym: the hero knows she closed it */
+            feel_newsym(x, y);
             block_point(x, y); /* vision:  no longer see there */
         } else {
             exercise(A_STR, true);
@@ -429,7 +464,7 @@ export async function picklock() {
         }
     }
 
-    if (xl.usedtime++ >= 50 /* || nohands: un-polymorphed hero has hands */) {
+    if (xl.usedtime++ >= 50 || nohands(game.youmonst.data)) {
         await You(`give up your attempt at ${lock_action()}.`);
         exercise(A_DEX, true); /* even if you don't succeed */
         return (xl.usedtime = 0);
@@ -438,12 +473,32 @@ export async function picklock() {
     if (rn2(100) >= xl.chance)
         return 1; /* still busy */
 
-    /* the Master Key of Thievery finds traps; no artifacts exist yet so
-       xl.magic_key is only ever false, and D_TRAPPED doors/otrapped boxes
-       take the b_trapped arms below */
     if ((!xl.door ? xl.box.otrapped : (xl.door.doormask & D_TRAPPED) !== 0)
         && xl.magic_key) {
-        note_unported_lock('picklock:magic_key_disarm');
+        xl.chance += 20;
+        if (!xl.door) {
+            if (!xl.box.tknown) await You('find a trap!');
+            xl.box.tknown = 1;
+        }
+        if (await tty_yn_function('Do you want to try to disarm it?', 'yn', 'n') === 'y') {
+            let what, alreadyunlocked;
+            if (xl.door) {
+                xl.door.doormask &= ~D_TRAPPED;
+                what = 'door';
+                alreadyunlocked = !(xl.door.doormask & D_LOCKED);
+            } else {
+                xl.box.otrapped = 0;
+                xl.box.tknown = 0;
+                what = xl.box.otyp === ONAMES.CHEST ? 'chest' : 'box';
+                alreadyunlocked = !xl.box.olocked;
+            }
+            await You(`succeed in disarming the trap.  The ${what} is still ${alreadyunlocked ? 'un' : ''}locked.`);
+            exercise(A_WIS, true);
+        } else {
+            await You(`stop ${lock_action()}.`);
+            exercise(A_WIS, false);
+        }
+        return (xl.usedtime = 0);
     }
 
     await You(`succeed in ${lock_action()}.`);
@@ -454,6 +509,8 @@ export async function picklock() {
             await b_trapped('door', FINGER);
             xl.door.doormask = D_NODOOR;
             unblock_point(u.ux + u.dx, u.uy + u.dy);
+            if (in_rooms(u.ux + u.dx, u.uy + u.dy, SHOPBASE))
+                add_damage(u.ux + u.dx, u.uy + u.dy, SHOP_DOOR_COST);
             newsym(u.ux + u.dx, u.uy + u.dy);
         } else if (xl.door.doormask & D_LOCKED)
             xl.door.doormask = D_CLOSED;
@@ -477,13 +534,19 @@ export async function picklock() {
 export function autokey(opening) {
     /* mundane item or regular artifact or own role's quest artifact */
     let key = null, pick = null, card = null;
-    /* other role's quest artifact (Rogue's Key or Tourist's Credit Card):
-       no artifacts are generated yet, so o.oartifact is always 0 and the
-       akey/apick/acard split never diverges from the plain one */
+    let akey = null, apick = null, acard = null;
     for (const o of game.invent || []) {
+        if (any_quest_artifact(o) && !is_quest_artifact(o)) {
+            switch (o.otyp) {
+            case ONAMES.SKELETON_KEY: if (!akey) akey = o; break;
+            case ONAMES.LOCK_PICK: if (!apick) apick = o; break;
+            case ONAMES.CREDIT_CARD: if (!acard) acard = o; break;
+            }
+            continue;
+        }
         switch (o.otyp) {
         case ONAMES.SKELETON_KEY:
-            if (!key /* || is_magic_key(): artifact, never yet */)
+            if (!key || is_magic_key(game.youmonst, o))
                 key = o;
             break;
         case ONAMES.LOCK_PICK:
@@ -499,31 +562,52 @@ export function autokey(opening) {
         }
     }
     if (!opening)
-        card = null;
+        card = acard = null;
+    if (!key && !pick && !card) key = akey;
+    if (!pick && !card) pick = apick;
+    if (!card) card = acard;
     return key ? key : pick ? pick : card ? card : null;
 }
 
-// src/lock.c:358 pick_lock() — apply a key, lock pick or credit card.
-//
-// The reachable slice is the door arms: no lock on this terrain, "This
-// doorway has no door.", "You cannot lock an open door.", "This door is
-// broken.", each of which teaches something and so takes the turn. The
-// container arm, the resume-an-interrupted-attempt arm and the real picking
-// occupation (its ynq prompt and chance rolls) are recorded when reached.
+// src/lock.c:363 pick_lock(), including interrupted attempts and automatic use.
 export async function pick_lock(pick, rx, ry, container) {
+    const dummypick = { otyp: ONAMES.STRANGE_OBJECT };
+    if (!pick) pick = dummypick;
     const picktyp = pick.otyp;
     const cc = { x: 0, y: 0 };
     const autounlock = (rx !== 0 && rx != null) || container != null;
 
     /* check whether we're resuming an interrupted previous attempt */
     if (game.xlock?.usedtime && picktyp === game.xlock?.picktyp) {
-        /* the nohands and uswallow "can no longer" refusals cannot fire
-           un-polymorphed and unswallowed */
+        if (nohands(game.youmonst.data)) {
+            const what = picktyp === ONAMES.LOCK_PICK ? 'pick'
+                : picktyp === ONAMES.CREDIT_CARD ? 'card' : 'key';
+            await pline(`Unfortunately, you can no longer hold the ${what}.`);
+            reset_pick();
+            return PICKLOCK_LEARNED_SOMETHING;
+        } else if (game.u.uswallow || (game.xlock.box && !can_reach_floor(true))) {
+            await pline('Unfortunately, you can no longer reach the lock.');
+            reset_pick();
+            return PICKLOCK_LEARNED_SOMETHING;
+        }
         const action = lock_action();
         await You(`resume your attempt at ${action}.`);
-        game.xlock.magic_key = false;   /* is_magic_key(): no artifacts yet */
+        game.xlock.magic_key = is_magic_key(game.youmonst, pick);
         set_occupation(picklock, action, 0);
         return PICKLOCK_DID_SOMETHING;
+    }
+
+    if (nohands(game.youmonst.data)) {
+        await You_cant(`hold ${doname(pick)} -- you have no hands!`);
+        return PICKLOCK_DID_NOTHING;
+    } else if (game.u.uswallow) {
+        await You_cant(`${picktyp === ONAMES.CREDIT_CARD ? '' : 'lock or '}unlock ${mon_nam(game.u.ustuck)}.`);
+        return PICKLOCK_DID_NOTHING;
+    }
+    if (pick !== dummypick && picktyp !== ONAMES.SKELETON_KEY
+        && picktyp !== ONAMES.LOCK_PICK && picktyp !== ONAMES.CREDIT_CARD) {
+        await impossible(`picking lock with object ${picktyp}?`);
+        return PICKLOCK_DID_NOTHING;
     }
 
     if (rx !== 0 && rx != null) { /* autounlock; caller has coordinates */
@@ -543,7 +627,7 @@ export async function pick_lock(pick, rx, ry, container) {
             await pline(`Doing that would probably melt ${yname(pick)}.`);
             return PICKLOCK_LEARNED_SOMETHING;
         } else if (is_pool(game.u.ux, game.u.uy) && !game.u.uinwater) {
-            await pline_The('water has no lock.');
+            await pline_The(`${hliquid('water')} has no lock.`);
             return PICKLOCK_LEARNED_SOMETHING;
         }
 
@@ -576,23 +660,26 @@ export async function pick_lock(pick, rx, ry, container) {
                 verb = 'pick';
 
             const au = game.flags?.autounlock ?? AUTOUNLOCK_APPLY_KEY;
-            if (autounlock && (au & AUTOUNLOCK_UNTRAP) !== 0) {
-                /* could_untrap/untrap on containers is not ported; the
-                   default autounlock setting never includes Untrap */
-                note_unported_lock('pick_lock:container_untrap');
-            }
-            if (autounlock && (au & AUTOUNLOCK_APPLY_KEY) !== 0) {
+            if (autounlock && (au & AUTOUNLOCK_UNTRAP) !== 0
+                && await could_untrap(false, true)
+                && (c = otmp.tknown ? (otmp.otrapped ? 'y' : 'n')
+                    : await ynq(safe_qbuf('Check ', ' for a trap?', otmp,
+                                        yname, ysimple_name, 'this'))) !== 'n') {
+                if (c === 'q') return PICKLOCK_DID_NOTHING;
+                await untrap(false, 0, 0, otmp);
+                return PICKLOCK_DID_SOMETHING;
+            } else if (autounlock && (au & AUTOUNLOCK_APPLY_KEY) !== 0) {
                 c = 'q';
-                if (pick) {
+                if (pick !== dummypick) {
                     c = await ynq(`Unlock it with ${yname(pick)}?`);
                 }
                 if (c !== 'y')
                     return PICKLOCK_DID_NOTHING;
             } else {
-                /* "There is <a box> here; <verb> <it|its lock>?" */
+                const qbuf = safe_qbuf('There is ', ` here; ${verb} ${it ? 'it' : 'its lock'}?`,
+                    otmp, doname, ansimpleoname, 'a box');
                 otmp.lknown = 1;
-                c = await ynq(`There is ${doname(otmp)} here; `
-                              + `${verb} ${it ? 'it' : 'its lock'}?`);
+                c = await ynq(qbuf);
                 if (c === 'q')
                     return PICKLOCK_DID_NOTHING;
                 if (c === 'n')
@@ -600,18 +687,14 @@ export async function pick_lock(pick, rx, ry, container) {
             }
 
             if (otmp.obroken) {
-                /* You_cant("fix its broken lock with %s.",
-                   ansimpleoname(pick)) — ansimpleoname is not in
-                   js/objnam.js yet */
-                note_unported_lock('pick_lock:fix_broken_lock');
+                await You_cant(`fix its broken lock with ${ansimpleoname(pick)}.`);
                 return PICKLOCK_LEARNED_SOMETHING;
             } else if (picktyp === ONAMES.CREDIT_CARD && !otmp.olocked) {
-                /* credit cards are only good for unlocking;
-                   simple_typename is not in js/objnam.js yet */
-                note_unported_lock('pick_lock:credit_card_lock');
+                await You_cant(`do that with ${an(simple_typename(picktyp))}.`);
                 return PICKLOCK_LEARNED_SOMETHING;
+            } else if (autounlock && !await touch_artifact(pick, game.youmonst)) {
+                return PICKLOCK_DID_SOMETHING;
             }
-            /* touch_artifact: 'pick' is never an artifact yet */
             switch (picktyp) {
             case ONAMES.CREDIT_CARD:
                 ch = ACURR(A_DEX) + 20 * (Role_if_rogue() ? 1 : 0);
@@ -643,7 +726,7 @@ export async function pick_lock(pick, rx, ry, container) {
         game.context.move = 0;
         xl.chance = ch;
         xl.picktyp = picktyp;
-        xl.magic_key = false;       /* is_magic_key(): no artifacts yet */
+        xl.magic_key = is_magic_key(game.youmonst, pick);
         xl.usedtime = 0;
         set_occupation(picklock, lock_action(), 0);
         return PICKLOCK_DID_SOMETHING;
@@ -658,29 +741,30 @@ export async function pick_lock(pick, rx, ry, container) {
     const mtmp = m_at(cc.x, cc.y);
     if (mtmp && canseemon(mtmp) && M_AP_TYPE(mtmp) !== M_AP_FURNITURE
         && M_AP_TYPE(mtmp) !== M_AP_OBJECT) {
-        /* shopkeeper/Oracle credit-card quip needs a shk; plain refusal */
-        if (picktyp === ONAMES.CREDIT_CARD && mtmp.isshk)
-            note_unported_lock('pick_lock:no_checks_no_credit');
+        if (picktyp === ONAMES.CREDIT_CARD
+            && (mtmp.isshk || mtmp.mnum === PMNAMES.PM_ORACLE))
+            // SetVoice is compiled out in the reference recorder.
+            await verbalize('No checks, no credit, no problem.');
         else
             await pline(`I don't think ${mon_nam(mtmp)} would appreciate that.`);
         return PICKLOCK_LEARNED_SOMETHING;
     } else if (mtmp && is_door_mappear(mtmp)) {
-        note_unported_lock('pick_lock:door_mimic');
+        await stumble_onto_mimic(mtmp);
+        await maybe_absorb_item(mtmp, pick, 50, 10);
         return PICKLOCK_LEARNED_SOMETHING;
     }
 
-    const door = game.level?.at(cc.x, cc.y);
-    if (!door || !IS_DOOR(door.typ)) {
+    const door = game.level.at(cc.x, cc.y);
+    if (!IS_DOOR(door.typ)) {
         /* src/lock.c:578-593 — the attempt FEELS the location; if the map
            memory changes, the hero learned something and time passes. */
         let res = PICKLOCK_DID_NOTHING;
-        const before = JSON.stringify(door?.remembered_glyph ?? null);
-        const beforetyp = door?.lastseentyp;
+        const before = remembered_glyph(door);
+        const beforetyp = update_mapseen_for(cc.x, cc.y);
         feel_location(cc.x, cc.y);
-        if (JSON.stringify(door?.remembered_glyph ?? null) !== before
-            || door?.lastseentyp !== beforetyp)
+        if (remembered_glyph(door) !== before || door.lastseentyp !== beforetyp)
             res = PICKLOCK_LEARNED_SOMETHING;
-        await You(`see no ${is_drawbridge_wall(cc.x, cc.y) >= 0
+        await You(`${Blind() ? 'feel' : 'see'} no ${is_drawbridge_wall(cc.x, cc.y) >= 0
                             ? 'lock on the drawbridge' : 'door there'}.`);
         return res;
     }
@@ -696,12 +780,15 @@ export async function pick_lock(pick, rx, ry, container) {
         await pline('This door is broken.');
         return PICKLOCK_LEARNED_SOMETHING;
     default: {
-        /* AUTOUNLOCK_UNTRAP is not in the default autounlock setting and
-           could_untrap needs trap-detection machinery; record if an rc
-           ever turns it on */
-        if (((game.flags?.autounlock ?? AUTOUNLOCK_APPLY_KEY)
-             & AUTOUNLOCK_UNTRAP) !== 0)
-            note_unported_lock('pick_lock:autounlock_untrap');
+        if ((game.flags.autounlock & AUTOUNLOCK_UNTRAP) !== 0
+            && await could_untrap(false, false)) {
+            const c = await ynq('Check this door for a trap?');
+            if (c !== 'n') {
+                if (c === 'q') return PICKLOCK_DID_NOTHING;
+                await untrap(false, cc.x, cc.y, null);
+                return PICKLOCK_DID_SOMETHING;
+            }
+        }
 
         /* credit cards are only good for unlocking */
         if (picktyp === ONAMES.CREDIT_CARD && !(door.doormask & D_LOCKED)) {
@@ -716,7 +803,8 @@ export async function pick_lock(pick, rx, ry, container) {
         if (c !== 'y')
             return PICKLOCK_DID_NOTHING;
 
-        /* touch_artifact: 'pick' is never an artifact yet */
+        if (autounlock && !await touch_artifact(pick, game.youmonst))
+            return PICKLOCK_DID_SOMETHING;
 
         switch (picktyp) {
         case ONAMES.CREDIT_CARD:
@@ -738,7 +826,7 @@ export async function pick_lock(pick, rx, ry, container) {
         game.context.move = 0;
         xl.chance = ch;
         xl.picktyp = picktyp;
-        xl.magic_key = false;       /* is_magic_key(): no artifacts yet */
+        xl.magic_key = is_magic_key(game.youmonst, pick);
         xl.usedtime = 0;
         set_occupation(picklock, lock_action(), 0);
         return PICKLOCK_DID_SOMETHING;
@@ -777,6 +865,17 @@ export function reset_pick() {
     xl.box = null;
 }
 
+// src/lock.c:17 picking_lock()
+export function picking_lock(cc) {
+    if (game.occupation === picklock) {
+        cc.x = game.u.ux + game.u.dx;
+        cc.y = game.u.uy + game.u.dy;
+        return true;
+    }
+    cc.x = cc.y = 0;
+    return false;
+}
+
 // src/lock.c picking_at(); is the hero currently picking the lock at <x,y>?
 export function picking_at(x, y) {
     return (game.occupation === picklock
@@ -790,7 +889,7 @@ function is_weptool(o) {
 }
 
 // src/lock.c:660 u_have_forceable_weapon()
-function u_have_forceable_weapon() {
+export function u_have_forceable_weapon() {
     const uwep = game.u.uwep;
     if (!uwep)
         return false;
@@ -801,11 +900,8 @@ function u_have_forceable_weapon() {
     return uwep.oclass === OCLASSES.ROCK_CLASS;
 }
 
-/* src/objnam.c greatest_erosion() — the worse of the two erosion counters,
-   unless the object is erodeproof. */
+/* include/obj.h:126 greatest_erosion() */
 function greatest_erosion(otmp) {
-    if (otmp.oerodeproof)
-        return 0;
     const e1 = otmp.oeroded | 0, e2 = otmp.oeroded2 | 0;
     return (e1 > e2) ? e1 : e2;
 }
@@ -918,7 +1014,7 @@ export async function forcelock() {
     if (xl.box.ox !== game.u.ux || xl.box.oy !== game.u.uy)
         return (xl.usedtime = 0); /* you or it moved */
 
-    if (xl.usedtime++ >= 50 || !uwep) {
+    if (xl.usedtime++ >= 50 || !uwep || nohands(game.youmonst.data)) {
         await You('give up your attempt to force the lock.');
         if (xl.usedtime >= 50) /* you made the effort */
             exercise(xl.picktyp ? A_DEX : A_STR, true);
@@ -973,7 +1069,7 @@ export async function doforce() {
         return ECMD_OK;
     }
     if (!can_reach_floor(true)) {
-        note_unported_lock('doforce:cant_reach_floor');
+        await cant_reach_floor(game.u.ux, game.u.uy, false, true, false);
         return ECMD_OK;
     }
 
@@ -999,10 +1095,10 @@ export async function doforce() {
             otmp.lknown = 1;
             continue;
         }
-        /* safe_qbuf(qbuf, "There is ", " here; force its lock?", otmp,
-                     doname, ansimpleoname, "a box") */
+        const qbuf = safe_qbuf('There is ', ' here; force its lock?', otmp,
+                               doname, ansimpleoname, 'a box');
         otmp.lknown = 1;
-        const c = await ynq(`There is ${doname(otmp)} here; force its lock?`);
+        const c = await ynq(qbuf);
         if (c === 'q')
             return ECMD_OK;
         if (c === 'n')
@@ -1238,7 +1334,7 @@ export async function doorlock(otmp, x, y) {
             res = false;
         break;
     default:
-        /* impossible("magic (%d) attempted on door.", otmp->otyp) */
+        await impossible(`magic (${otmp.otyp}) attempted on door.`);
         break;
     }
     if (msg && cansee(x, y))

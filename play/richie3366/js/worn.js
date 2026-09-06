@@ -139,7 +139,7 @@ function is_boots(obj) {
 }
 
 /** C ref: obj.h is_flimsy */
-function is_flimsy(otmp) {
+export function is_flimsy(otmp) {
     const mat = game.objects?.[otmp?.otyp]?.oc_material ?? 99;
     return mat <= LEATHER || (otmp?.otyp | 0) === RUBBER_HOSE;
 }

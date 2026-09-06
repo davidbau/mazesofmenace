@@ -64,6 +64,7 @@ import { noit_mhim } from './mondata.js';
 import { hliquid } from './do_name.js';
 import { a_monnam } from './do_name.js';
 import { pmname } from './do_name.js';
+import { mon_nam } from './do_name.js';
 import { x_monnam } from './do_name.js';
 import { map_invisible } from './display.js';
 import { glyph_at } from './display.js';
@@ -74,6 +75,8 @@ import { t_at } from './mon.js';
 import { m_at } from './mon.js';
 import { wake_nearto } from './mon.js';
 import { touch_petrifies } from './mondata.js';
+import { digests, is_whirly, is_animal } from './mondata.js';
+import { s_suffix } from './hacklib.js';
 import { bigmonst } from './mondata.js';
 import { inv_weight } from './attrib.js';
 import { weight_cap } from './attrib.js';
@@ -464,7 +467,7 @@ function throwit_return(clear_thrownobj) {
 async function swallowit(obj) {
     if (obj !== game.u.uball) {
         const { mpickobj } = await import('./steal.js');
-        mpickobj(game.u.ustuck, obj); /* clears game.thrownobj */
+        await mpickobj(game.u.ustuck, obj); /* clears game.thrownobj */
         throwit_return(false);
     } else {
         throwit_return(true);
@@ -882,7 +885,7 @@ export async function throwit(obj, wep_mask, twoweap = false,
         if (game.u.ushops || obj.unpaid)
             await check_shop_obj(obj, bx, by, false);
         const { mpickobj } = await import('./steal.js');
-        mpickobj(mon, obj); /* may merge and free obj */
+        await mpickobj(mon, obj); /* may merge and free obj */
         throwit_return(true);
         return;
     }
@@ -972,7 +975,7 @@ async function gem_accept(mon, obj) {
         if (game.u.ushops || obj.unpaid)
             await check_shop_obj(obj, mon.mx, mon.my, true);
         const { mpickobj } = await import('./steal.js');
-        mpickobj(mon, obj);
+        await mpickobj(mon, obj);
     } else {
         message += ' is not interested in your junk.';
     }
@@ -1067,7 +1070,7 @@ export async function thitmonst(mon, obj) {
                 if (game.u.ushops || obj.unpaid) /* not very likely... */
                     await check_shop_obj(obj, mon.mx, mon.my, false);
                 const { mpickobj } = await import('./steal.js');
-                mpickobj(mon, obj);
+                await mpickobj(mon, obj);
             } else {
                 const { finish_quest } = await import('./quest.js');
                 await finish_quest(obj);
@@ -1157,6 +1160,22 @@ export async function thitmonst(mon, obj) {
             await tmiss(obj, mon, false);
             mon.msleeping = 0;
             mon.mstrategy &= ~STRAT_WAITMASK;
+        } else if (guaranteed_hit) {
+            const md = u.ustuck.data;
+            await wakeup(mon, true);
+            if (obj.otyp === ONAMES.CORPSE
+                && touch_petrifies(game.mons[obj.corpsenm]) && is_animal(md)) {
+                await minstapetrify(u.ustuck, true);
+                if (!u.uswallow) {
+                    delobj(obj);
+                    return 1;
+                }
+            }
+            const trail = digests(md) ? ' entrails' : is_whirly(md) ? ' currents' : '';
+            let monname = mon_nam(mon);
+            if (trail)
+                monname = s_suffix(monname);
+            await pline(`${Tobjnam(obj, 'vanish')} into ${monname}${trail}.`);
         } else {
             await tmiss(obj, mon, true);
         }

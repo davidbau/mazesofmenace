@@ -36,6 +36,8 @@
 
 import { rn2, rnd, rn1, d, getRngLog } from './rng.js';
 import { game } from './gstate.js';
+import { ARMOR_AC_BONUS, ARMOR_MAGIC_NEGATION, armorBonus } from './armor.js';
+import { IDENTIFIED_AMULET_NAMES } from './o_init.js';
 import {
     Is_stronghold, STRAT_WAITMASK, STRAT_WAITFORU,
     NO_WEAPON_WANTED, NEED_WEAPON, NEED_HTH_WEAPON, W_ARMS,
@@ -45,23 +47,24 @@ import {
     AT_NONE, AT_CLAW, AT_BITE, AT_KICK, AT_BUTT, AT_TUCH, AT_STNG, AT_HUGS,
     AT_SPIT, AT_ENGL, AT_BREA, AT_EXPL, AT_BOOM, AT_GAZE, AT_TENT, AT_WEAP, AT_MAGC,
     AD_PHYS, AD_FIRE, AD_COLD, AD_SLEE, AD_ELEC, AD_DRST, AD_DRDX, AD_DRCO, AD_ACID,
-    AD_BLND, AD_STUN, AD_PLYS, AD_STCK, AD_WRAP, AD_DGST, AD_WERE, AD_ENCH,
+    AD_BLND, AD_SLOW, AD_CONF, AD_STUN, AD_PLYS, AD_STCK, AD_WRAP, AD_DGST, AD_WERE, AD_ENCH,
     AD_HEAL, AD_DISE, AD_SSEX, AD_SEDU, AD_SITM, AD_STON, AD_SLIM, AD_POLY,
     MR_FIRE, MR_COLD, MR_SLEEP, MR_POISON, MR_ELEC, MR_ACID, MR_STONE,
     PM_GRID_BUG, PM_PURPLE_WORM, PM_BABY_PURPLE_WORM, PM_SHRIEKER,
     PM_FLOATING_EYE, PM_GELATINOUS_CUBE, PM_MEDUSA, PM_SHADE, PM_GHOUL,
     PM_SKELETON, PM_STONE_GOLEM, PM_AMOROUS_DEMON,
     PM_KOBOLD_ZOMBIE, PM_ORC_ZOMBIE, PM_GIANT_ZOMBIE, PM_ETTIN, PM_ETTIN_ZOMBIE,
-    PM_ARCHON, PM_WRAITH, PM_STEAM_VORTEX,
+    PM_ARCHON, PM_RAVEN, PM_WRAITH, PM_STEAM_VORTEX,
+    PM_GRAY_DRAGON, PM_BLUE_DRAGON, PM_YELLOW_DRAGON, PM_HIGH_CLERIC, PM_ALIGNED_CLERIC,
     PM_ELF_ZOMBIE, PM_HUMAN_ZOMBIE, PM_DWARF_ZOMBIE, PM_GNOME_ZOMBIE,
     S_ZOMBIE, S_KOBOLD, S_ORC, S_GIANT, S_HUMAN, S_KOP, S_HUMANOID, S_GNOME, S_NYMPH,
     S_XORN, S_DRAGON, S_JABBERWOCK, S_NAGA,
     MZ_HUGE, MZ_LARGE,
     bigmonst, is_elf, is_orc, is_dwarf, unsolid, haseyes, perceives, is_rider, nonliving,
     is_animal, is_golem, is_whirly, touch_petrifies, acidic, is_undead, is_demon, is_were,
-    is_giant, thick_skinned, PM_WOOD_GOLEM,
+    is_giant, is_minion, thick_skinned, PM_WOOD_GOLEM,
 } from './permonst.js';
-import { W_ARMC, W_ARMG, W_ARMH, W_ARMF } from './const.js';
+import { W_ARM, W_ARMOR, W_ACCESSORY, W_AMUL, W_WEP, W_ARMC, W_ARMG, W_ARMH, W_ARMF, MSLOW, MFAST, G_GENOD, PROTECTION } from './const.js';
 
 /* include/monattk.h:108-112 combat result bits. */
 export const M_ATTK_MISS = 0x0;    /* aggressor missed */
@@ -196,20 +199,20 @@ export function monnear(mon, x, y) {
     return distance < 3;
 }
 
-/* src/worn.c find_mac(): base AC minus worn armor bonuses.  JS runtime
- * monsters carry no armor-AC table on the data side; worn-piece bonuses
- * are approximated by hooks-free zero unless the monster actually wears
- * armor with an explicit ac value. */
+/* worn.c find_mac(): only equipped pieces count; erosion cannot remove
+ * enchantment, and the amulet of guarding always contributes two points. */
 export function findMac(mon) {
     const pm = pmOf(mon);
-    let base = pm?.ac ?? mon?.data?.mac ?? 10;
+    let base = pm?.ac ?? mon?.data?.ac ?? mon?.data?.mac ?? 10;
     for (const obj of mon?.minvent || []) {
-        if (obj.worn && (obj.cls === 'armor' || obj.armor)) {
-            const ac = obj.a_ac ?? obj.acBonus ?? 0;
-            if (ac > 0) base -= ac;
-        }
+        const kind = monsterObjectKind(obj);
+        const worn = obj.owornmask != null ? (obj.owornmask & (mon.misc_worn_check ?? ~W_WEP))
+            : obj.worn && (obj.cls === 'armor' || obj.armor || Object.hasOwn(ARMOR_AC_BONUS, kind) || kind === 'amulet of guarding');
+        if (!worn) continue;
+        if (kind === 'amulet of guarding') { base -= 2; continue; }
+        base -= armorBonus(obj, kind);
     }
-    return base;
+    return Math.max(-99, Math.min(99, base));
 }
 
 /* include/monst.h:270 mon_resistancebits(): data->mresists | mextrinsics |
@@ -345,7 +348,7 @@ export function attkProtection(aatyp) {
 function polyWhenStoned(mon) {
     const pm = pmOf(mon);
     return !!pm && is_golem(pm) && pm.pm !== PM_STONE_GOLEM
-        && !(game.mvitals?.[PM_STONE_GOLEM] & 0x4000 /* G_GENOD-ish */);
+        && !(game.mvitals?.[PM_STONE_GOLEM]?.mvflags & G_GENOD);
 }
 
 /* src/mon.c healmon() port (hp and maxhp deltas). */
@@ -392,18 +395,17 @@ export function sleepMonst(mon, amt, how = -1) {
     return 0;
 }
 
-/* src/zap.c:5391-5440 resist(): magic-resistance vs attack-level roll.
- * WAND_CLASS == 5 in objects.h ('/'), TOOL_CLASS 12 etc; only the level
- * vs mr roll is needed here. */
-function resistMon(mon, oclass, _damage) {
+/* zap.c:6100-6158 resist(): the source class chooses attack level;
+ * callers apply the resulting damage and death effects. */
+export function resistMon(mon, oclass, _damage) {
     let alev;
     switch (oclass) {
-    case 5: alev = 12; break;   /* WAND_CLASS */
-    case 8: alev = 10; break;   /* TOOL_CLASS */
-    case 3: alev = 10; break;   /* WEAPON_CLASS */
-    case 9: alev = 9; break;    /* SCROLL_CLASS */
-    case 6: alev = 6; break;    /* POTION_CLASS */
-    case 10: alev = 5; break;   /* RING_CLASS */
+    case 10: alev = 12; break;  /* WAND_CLASS */
+    case 12: alev = 10; break;  /* TOOL_CLASS */
+    case 1: alev = 10; break;   /* WEAPON_CLASS */
+    case 8: alev = 9; break;    /* SCROLL_CLASS */
+    case 9: alev = 6; break;    /* POTION_CLASS */
+    case 3: alev = 5; break;    /* RING_CLASS */
     default: alev = game.u?.ulevel || 1; break;
     }
     let dlev = mLevel(mon);
@@ -471,11 +473,10 @@ function mhis(mon) { return mon.female ? 'her' : 'its'; }
 /* identity is matched by real kind name.                             */
 /* ------------------------------------------------------------------ */
 
-/* Real object kind of a monster-held weapon.  mongets() items carry
- * kind='scimitar'-style names; some paths store the unidentified
- * appearance in .kind with the real kind in .actualKind. */
-function weaponRealKind(obj) {
-    return String(obj?.actualKind || obj?.kind || obj?.name || '').toLowerCase();
+/* Monster equipment stores identity as an amulet index, a real name,
+ * or actualKind when kind contains only its unidentified appearance. */
+function monsterObjectKind(obj) {
+    return String(IDENTIFIED_AMULET_NAMES[obj?.amuletIndex] || obj?.actualKind || obj?.kind || obj?.name || '').toLowerCase();
 }
 
 /* include/objects.h WEAPON(name, descr, known, mkprob, bimanual, prob,
@@ -578,7 +579,7 @@ export function selectHwep(magr) {
     const minvent = magr.minvent || [];
     if (is_giant(pmOf(magr) || {})) {
         /* giants love clubs (weapon.c:720-721) */
-        const club = minvent.find(o => weaponRealKind(o) === 'club');
+        const club = minvent.find(o => monsterObjectKind(o) === 'club');
         if (club) return club;
     }
     /* balrog bullwhip-greed (weapon.c:722-723) needs the hero's wielded
@@ -587,7 +588,7 @@ export function selectHwep(magr) {
         const bimanual = !!MONWPN[kind]?.[2];
         if (!((strong && !wearingShield) || !bimanual)) continue;
         if (MONWPN[kind]?.[4] && monHatesSilver(magr)) continue;
-        const otmp = minvent.find(o => weaponRealKind(o) === kind);
+        const otmp = minvent.find(o => monsterObjectKind(o) === kind);
         if (otmp) return otmp;
     }
     return null;
@@ -601,24 +602,47 @@ export function monWieldItem(magr) {
     const obj = selectHwep(magr);
     if (obj) {
         const cur = magr.mw || null;
-        if (cur && weaponRealKind(cur) === weaponRealKind(obj)) {
+        if (cur && monsterObjectKind(cur) === monsterObjectKind(obj)) {
             /* already wielding it (weapon.c:845-849) */
             magr.weapon_check = NEED_WEAPON;
             return 0;
         }
-        /* cursed-weapon-weld block (weapon.c:853-868): JS monster items
-         * carry no weld-curse state; documented gap. */
+        // wield.c:mwelded requires both the weapon slot and a cursed
+        // weapon, weapon-tool, punishment item, or tin opener.
+        const currentKind = monsterObjectKind(cur);
+        if (cur?.cursed && ((cur.owornmask & W_WEP) || cur.wielded)
+            && (cur.cls === 'weapon' || MONWPN[currentKind]
+                || ['heavy iron ball', 'iron chain', 'tin opener'].includes(currentKind))) {
+            if (canseemon(magr)) {
+                const name = hooks.donameMonsterWeapon ? hooks.donameMonsterWeapon(obj)
+                    : `a ${monsterObjectKind(obj)}`;
+                pline(`${MONNAM(magr)} tries to wield ${name}.`);
+                pline(`The ${currentKind} is welded to ${magr.female ? 'her' : 'his'} ${MONWPN[currentKind]?.[2] ? 'hands' : 'hand'}!`);
+                cur.bknown = true;
+            }
+            magr.weapon_check = NO_WEAPON_WANTED;
+            return 1;
+        }
         magr.mw = obj;
+        if (cur) {
+            cur.owornmask = (cur.owornmask || 0) & ~W_WEP;
+            cur.wielded = false;
+        }
         magr.weapon_check = NEED_WEAPON;
         if (canseemon(magr)) {
             /* weapon.c:870-896: "The FOO wields BAR!" (exclaim variant) */
             const name = hooks.donameMonsterWeapon ? hooks.donameMonsterWeapon(obj)
-                : `a ${weaponRealKind(obj)}`;
+                : `a ${monsterObjectKind(obj)}`;
             pline(`${MONNAM(magr)} wields ${name}!`);
+            if (obj.cursed) {
+                pline(`The ${monsterObjectKind(obj)} welds itself to ${s_suffix(mon_nam(magr))} ${MONWPN[monsterObjectKind(obj)]?.[2] ? 'hands' : 'hand'}!`);
+                obj.bknown = true;
+            }
         }
+        obj.owornmask = W_WEP;
         return 1;
     }
-    magr.weapon_check = NO_WEAPON_WANTED;
+    magr.weapon_check = NEED_WEAPON;
     return 0;
 }
 
@@ -629,7 +653,7 @@ export function monWieldItem(magr) {
 /* weapon.c:1267-1300 hitval(): weapon to-hit bonus — deterministic,
  * consumes no RNG. */
 export function hitvalMonsterWeapon(otmp, mdef) {
-    const kind = weaponRealKind(otmp);
+    const kind = monsterObjectKind(otmp);
     const info = MONWPN[kind];
     let tmp = 0;
     if (info) tmp += (otmp.spe || 0) + (info[3] || 0);
@@ -648,7 +672,7 @@ export function hitvalMonsterWeapon(otmp, mdef) {
 
 /* weapon.c:216-355 dmgval(): weapon damage roll vs a target. */
 export function dmgvalMonsterWeapon(otmp, mdef) {
-    const kind = weaponRealKind(otmp);
+    const kind = monsterObjectKind(otmp);
     const info = MONWPN[kind];
     if (!info) return 0; /* not a weapon: no weapon-dice portion */
     const [ws, wl] = info;
@@ -715,12 +739,37 @@ function placeMonsterCorpseDrop(mon) {
 /* ------------------------------------------------------------------ */
 /* Per-attack-type damage resolution (uhitm.c mhitm branches)          */
 /* ------------------------------------------------------------------ */
+export function monsterMagicNegation(mon, kindOf = monsterObjectKind) {
+    // mhitu.c:1089-1145. Protection augments the best worn armor once;
+    // innate priest/minion protection only supplies a minimum of MC1.
+    const pm = pmOf(mon);
+    const hero = !!mon.isHero, u = game.u || {};
+    let mc = 0, viaAmulet = false, protection = hero
+        ? !!(u.EProtection || u.uprops?.[PROTECTION]?.extrinsic) : pm?.pm === PM_HIGH_CLERIC;
+    for (const obj of (hero ? game.inventory : mon.minvent) || []) {
+        const kind = kindOf(obj);
+        const wornArmor = (obj.owornmask & W_ARMOR) || (obj.worn && obj.cls === 'armor');
+        const wornAmulet = (obj.owornmask & W_AMUL) || (obj.worn && obj.cls === 'amulet');
+        if (wornArmor) mc = Math.max(mc, ARMOR_MAGIC_NEGATION[kind] || 0);
+        else if (wornAmulet) viaAmulet = kind === 'amulet of guarding';
+        if (protection) continue;
+        const wearmask = W_ARMOR | W_ACCESSORY
+            | (obj.cls === 'weapon' || MONWPN[kind] ? W_WEP : 0);
+        const worn = !!((obj.owornmask & wearmask) || obj.worn || (mon.mw === obj && (wearmask & W_WEP)));
+        const artifact = String(obj.artifact || obj.oartifact || '').toLowerCase().replace(/^the /, '');
+        if (worn && (['cloak of protection', 'ring of protection', 'amulet of guarding'].includes(kind)
+            || ['mitre of holiness', 'tsurugi of muramasa'].includes(artifact))) protection = true;
+    }
+    if (protection) return Math.min(3, mc + (viaAmulet ? 2 : 1));
+    if (mc < 1 && (hero ? ((u.HProtection || u.uprops?.[PROTECTION]?.intrinsic) && u.ublessed > 0) || u.uspellprot
+        : pm?.pm === PM_ALIGNED_CLERIC || is_minion(pm || {}))) mc = 1;
+    return mc;
+}
+
 function mhitmMgcAtkNegated(magr, mdef, verbosely) {
-    /* uhitm.c:73-90 mhitm_mgc_atk_negated(): monsters carry no magical
-     * cancellation on the JS data side (armor MC unported), so armpro = 0;
-     * the rn2(10) roll is still consumed exactly as C. */
-    if (magr.mcan && !monIsHero(magr)) return true;
-    const negated = !(rn2(10) >= 0);
+    // uhitm.c:73-90 cancellation skips armor and its random draw.
+    if (magr.mcan) return true;
+    const negated = rn2(10) < 3 * monsterMagicNegation(mdef);
     if (negated) {
         if (verbosely && visNow && canseemon(mdef))
             pline(`${MONNAM(mdef)} avoids harm.`);
@@ -728,13 +777,104 @@ function mhitmMgcAtkNegated(magr, mdef, verbosely) {
     }
     return false;
 }
-const monIsHero = () => false;
 
 /* uhitm.c mhitm_ad_* monster-vs-monster branches.  Returns true when the
  * handler set mhm.done (caller must skip hp application). */
 function mhitmAdtyping(magr, mattk, mdef, mhm) {
     const pa = pmOf(magr), pd = pmOf(mdef);
     switch (mattk.adtyp) {
+    case AD_BLND: {
+        /* mondata.c:can_blnd, with no projectile object on the melee path. */
+        const blind = mdef.mcansee === false || mdef.mcansee === 0;
+        let canBlind = haseyes(pd || {}) && !(blind && !mdef.mblinded)
+            && !(pa?.pm === PM_RAVEN && pd?.pm === PM_RAVEN);
+        switch (mattk.aatyp) {
+        case AT_EXPL: case AT_BOOM: case AT_GAZE: case AT_MAGC: case AT_BREA:
+            /* resists_blnd(): light emitters and temporarily blinded or
+             * sleeping targets resist light; physical attacks can extend it.
+             * Artifact light resistance remains part of the artifact gap. */
+            canBlind &&= !magr.mcan && !blind && !mdef.mblinded && !mdef.msleeping
+                && !attackList(mdef).some(a => a.adtyp === AD_BLND
+                    && (a.aatyp === AT_EXPL || a.aatyp === AT_GAZE));
+            break;
+        case AT_WEAP: case AT_SPIT: case AT_NONE:
+            canBlind = false;
+            break;
+        case AT_ENGL:
+            canBlind &&= !mdef.msleeping;
+            break;
+        case AT_CLAW:
+            canBlind &&= !(mdef.minvent || []).some(obj => {
+                if (!(obj.owornmask & W_ARMH) && !obj.worn) return false;
+                const index = ['helmet', 'helm of caution', 'helm of opposite alignment',
+                    'helm of telepathy'].indexOf(monsterObjectKind(obj));
+                const description = game._object_descriptions?.helms?.[index]
+                    ?? obj.appearance;
+                return description === 'visored helmet';
+            });
+            break;
+        case AT_TUCH: case AT_STNG:
+            canBlind &&= !magr.mcan;
+            break;
+        }
+        if (canBlind) {
+            if (visNow && !blind && canspotmon(mdef))
+                pline(`${MONNAM(mdef)} is blinded.`);
+            /* uhitm.c:mhitm_ad_blnd rolls again instead of using HP damage. */
+            mdef.mblinded = Math.min(127, (mdef.mblinded || 0) + d(mattk.damn, mattk.damd));
+            mdef.mcansee = false;
+            mdef.mstrategy = (mdef.mstrategy || 0) & ~STRAT_WAITFORU;
+        }
+        mhm.damage = 0;
+        return false;
+    }
+    case AD_SLOW: {
+        /* uhitm.c:mhitm_ad_slow retains ordinary attack damage. */
+        const negated = mhitmMgcAtkNegated(magr, mdef, false);
+        /* mondata.c:defended treats adult dragons as their own scales;
+         * artifact.c:defends gives blue scales protection from slowing. */
+        const adultDragon = pd?.pm >= PM_GRAY_DRAGON && pd?.pm <= PM_YELLOW_DRAGON;
+        const defended = adultDragon ? pd.pm === PM_BLUE_DRAGON
+            : (mdef.minvent || []).some(obj => ((obj.owornmask & W_ARM) || obj.worn)
+                && ['blue dragon scales', 'blue dragon scale mail'].includes(monsterObjectKind(obj)));
+        if (defended) return false;
+        if (!negated && !['slow', MSLOW, -1].includes(mdef.mspeed)) {
+            const oldSpeed = mdef.mspeed || 0;
+            const permanent = mdef.permspeed ?? oldSpeed;
+            /* worn.c:mon_adjust_speed(-1) removes intrinsic haste first;
+             * worn speed boots still determine the effective speed. */
+            mdef.permspeed = permanent === 'fast' || permanent === MFAST ? 0 : 'slow';
+            const boots = (mdef.minvent || []).some(obj => (obj.owornmask || obj.worn)
+                && monsterObjectKind(obj) === 'speed boots');
+            mdef.mspeed = boots ? 'fast' : mdef.permspeed;
+            const changed = mdef.mspeed !== oldSpeed && !(oldSpeed === MFAST && mdef.mspeed === 'fast');
+            if (changed && !game.in_mklev && (pd?.mmove ?? mdef.data?.mmove) && !mdef.mfrozen
+                && !mdef.msleeping && canseemon(mdef))
+                pline(`${MONNAM(mdef)} seems to be moving slower.`);
+            mdef.mstrategy = (mdef.mstrategy || 0) & ~STRAT_WAITFORU;
+            if (changed && visNow && canspotmon(mdef))
+                pline(`${MONNAM(mdef)} slows down.`);
+        }
+        return false;
+    }
+    case AD_CONF:
+        /* uhitm.c:mhitm_ad_conf checks, but never sets, attacker cooldown. */
+        if (!magr.mcan && !mdef.mconf && !magr.mspec_used) {
+            if (visNow && canseemon(mdef)) pline(`${MONNAM(mdef)} looks confused.`);
+            mdef.mconf = 1;
+            mdef.mstrategy = (mdef.mstrategy || 0) & ~STRAT_WAITFORU;
+        }
+        return false;
+    case AD_STCK:
+        /* uhitm.c:mhitm_ad_stck only attaches to the hero, never another monster. */
+        if (mhitmMgcAtkNegated(magr, mdef, false)) mhm.damage = 0;
+        return false;
+    case AD_WRAP:
+        /* uhitm.c:mhitm_ad_wrap uses cancellation without an armor MC roll. */
+        if (magr.mcan) mhm.damage = 0;
+        if (!mhm.damage && (canseemon(magr) || canseemon(mdef)))
+            pline(`${MONNAM(magr)} brushes against ${mon_nam(mdef)}.`);
+        return false;
     case AD_STUN: {
         /* uhitm.c:4374-4396 mhitm branch */
         if (magr.mcan) return false;
@@ -792,7 +932,7 @@ function mhitmAdtyping(magr, mattk, mdef, mhm) {
          * +rn1(10,6) poison damage (no stat loss for monsters in 5.0 here:
          * mhitm_really_poison only adds damage). */
         if (!magr.mcan) {
-            if (!mhitmMgcAtkNegated0(magr, mdef) && !rn2(8)) {
+            if (!mhitmMgcAtkNegated(magr, mdef, false) && !rn2(8)) {
                 if (visNow && canspotmon(magr))
                     pline(`${s_suffix(MONNAM(magr))} sting was poisoned!`);
                 if (resistsPoison(mdef)) {
@@ -834,7 +974,7 @@ function mhitmAdtyping(magr, mattk, mdef, mhm) {
     case AD_PLYS: {
         /* uhitm.c:3468-3479 mhitm branch: floating eye-style active paralysis. */
         if (mdef.mcanmove !== 0 && !magr.mcan) {
-            if (!rn2(3) && !mhitmMgcAtkNegated0(magr, mdef)) {
+            if (!rn2(3) && !mhitmMgcAtkNegated(magr, mdef, false)) {
                 if (visNow && canspotmon(mdef))
                     pline(`${MONNAM(mdef)} is frozen by ${mon_nam(magr)}.`);
                 paralyzeMonst(mdef, rnd(10));
@@ -847,11 +987,6 @@ function mhitmAdtyping(magr, mattk, mdef, mhm) {
         mhm.damage = 0;
         return false;
     }
-}
-/* Non-verbose negation (mhitm_ad_* call sites that pass verbosely=FALSE). */
-function mhitmMgcAtkNegated0(magr, _mdef) {
-    if (magr.mcan) return true;
-    return !(rn2(10) >= 0);
 }
 function staggers(pd) {
     /* C stagger(mondata "stagger"): quadrupeds "stagger", others generic;
@@ -899,7 +1034,7 @@ function monWep(mon) { return mon?.mw || null; }
 /* uhitm.c:5247+ mhitm_knockback(): the rn2(3)/rn2(6) preamble ALWAYS
  * consumes draws; only the physical displacement (needs enexto/move
  * placement) is JS-unported.  Returns false: no reposition applied. */
-function mhitmKnockback(magr, _mdef, mattk) {
+export function mhitmKnockback(magr, _mdef, mattk) {
     const knockdistance = !rn2(3) ? 2 : 1; /* rn2(3) ? 1 : 2 */
     let chance = 6;
     void knockdistance;
@@ -956,7 +1091,7 @@ export function mdamagem(magr, mdef, mattk, mwep = null, dieroll = 0) {
     mhitmKnockback(magr, mdef, mattk);
 
     if (mhm.done) return mhm.hitflags;
-    if (!mhm.damage) return deriveHitflags(mhm.hitflags);
+    if (!mhm.damage) return mhm.hitflags;
 
     mdef.mhp = (mdef.mhp ?? 1) - mhm.damage;
     if (mdef.mhp < 1) {
@@ -1043,14 +1178,23 @@ export function gazemm(magr, mdef, mattk) {
         pline(`${MONNAM(magr)} gazes at ${canspotmon(mdef) ? mon_nam(mdef) : 'something'}...`);
         void alt;
     }
-    if (magr.mcan || mdef.mcansee === false
-        || (archon ? false : magr.mcansee === false)
+    if (magr.mcan || mdef.mcansee === false || mdef.mcansee === 0
+        || (!archon && (magr.mcansee === false || magr.mcansee === 0))
         || (magr.minvis && !(pmOf(mdef) && perceives(pmOf(mdef))))
         || mdef.msleeping) {
         if (visNow && canspotmon(mdef)) pline('but nothing happens.');
         return M_ATTK_MISS;
     }
-    if (archon && rn2(2)) mdef.mstun = 1; /* mhitm_ad_blnd stun roll */
+    if (archon) {
+        /* mhitm.c:gazemm blinds before the stun and ordinary damage rolls.
+         * Light resistance prevents both effects without consuming RNG. */
+        mhitmAdtyping(magr, mattk, mdef, { damage: 0 });
+        if (mdef.mcansee !== false) {
+            if (visNow && canspotmon(mdef)) pline('but nothing happens.');
+            return M_ATTK_MISS;
+        }
+        if (rn2(2)) mdef.mstun = 1;
+    }
     return mdamagem(magr, mdef, mattk, null, 0);
 }
 

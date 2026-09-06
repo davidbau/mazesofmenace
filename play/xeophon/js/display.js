@@ -2,6 +2,8 @@
 // C refs: src/display.c, src/botl.c, win/tty.
 
 import { game } from './gstate.js';
+import { mindless } from './permonst.js';
+import { pmOf } from './mhitm.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -483,12 +485,12 @@ function itemIsWorn(item) {
     return !!(item?.worn || /\(being worn\)/.test(item?.line || ''));
 }
 
-function telepathySourceCount() {
+export function telepathySourceCount() {
     let count = 0;
     for (const item of game.inventory || []) {
         if (!itemIsWorn(item)) continue;
         const name = `${item.kind || ''} ${item.actualKind || ''} ${item.line || ''}`.toLowerCase();
-        if (/\bamulet of (?:esp|telepathy)\b/.test(name)
+        if (item.amuletIndex === 0 || /\bamulet of (?:esp|telepathy)\b/.test(name)
             || /\bhelm(?:et)? of (?:telepathy|esp)\b/.test(name))
             count++;
     }
@@ -525,7 +527,7 @@ function seeObjectsActive() {
 }
 
 export function sensesTelepathically(mon) {
-    if (!mon || mon.mindless || mon.data?.mindless) return false;
+    if (!mon || mon.mindless || mon.data?.mindless || mindless(pmOf(mon) || mon.data || {})) return false;
     const sources = telepathySourceCount();
     const intrinsic = !!(game.u?.telepathy || game.u?.telepathetic || game.u?.HTelepat);
     if (game.u?.blind) return sources > 0 || intrinsic;
@@ -1563,10 +1565,6 @@ function drawGrid() {
             setCursorAfter(0, 0, displayMessage, 1);
             cursorSet = true;
         }
-    }
-    if (!cursorSet && game._sanctum_script_cursor && game._pending_message) {
-        d.setCursor(game._sanctum_script_cursor[0], game._sanctum_script_cursor[1]);
-        cursorSet = true;
     }
     if (!cursorSet && game._cursor_override) {
         d.setCursor(game._cursor_override[0], game._cursor_override[1]);

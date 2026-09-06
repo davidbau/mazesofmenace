@@ -11,8 +11,8 @@
 // + show_goal_msg, mMoOdDxXaAzZ gather_locs cycle (D-0928 #1189),
 // autodescribe topline, force unknown-direction pline, pick_chars
 // LOOK_*, ESC → -1.
-// getpos_menu / GFILTER_AREA flood / S_goodpos tmp_at hilite /
-// engraving full showsyms / docrtRefresh redraw_map-only deferred.
+// getpos_menu / S_goodpos tmp_at hilite / engraving full showsyms /
+// docrtRefresh redraw_map-only deferred.
 // getpos_getvalid `(invalid target)` live (D-0899).
 
 import { game } from './gstate.js';
@@ -27,7 +27,7 @@ import { lookat } from './pager.js';
 import {
     COLNO, ROWNO, isok, TER_MON, TER_OBJ, TER_MAP, TER_DETECT,
     GLOC_MONS, GLOC_OBJS, GLOC_DOOR, GLOC_EXPLORE, GLOC_INTERESTING, GLOC_VALID,
-    NUM_GLOCS, NUM_GFILTER, GFILTER_VIEW, MAXTCHARS,
+    NUM_GLOCS, NUM_GFILTER, GFILTER_VIEW, GFILTER_AREA, MAXTCHARS,
     NHKF_GETPOS_SELF, NHKF_GETPOS_PICK, NHKF_GETPOS_PICK_Q,
     NHKF_GETPOS_PICK_O, NHKF_GETPOS_PICK_V, NHKF_GETPOS_SHOWVALID,
     NHKF_GETPOS_AUTODESC,
@@ -40,6 +40,7 @@ import {
     NHKF_GETPOS_MOVESKIP, NHKF_GETPOS_MENU, NHKF_GETPOS_LIMITVIEW,
     S_stone, S_trwall, S_ndoor, S_vodoor, S_hcdoor, S_room, S_darkroom,
     S_corr, S_litcorr, S_engroom, S_engrcorr, S_arrow_trap,
+    S_upstair, S_fountain,
     S_expl_br, S_altar, S_tree, S_bars, S_pool, S_lava, S_lavawall,
     S_water, S_ice,
     STAIRS, LADDER, LA_DOWN, ROOM, CORR, STONE, SCORR, TREE, CLOUD, IS_WALL,
@@ -221,6 +222,16 @@ function is_cmap_trap(i) {
 }
 function is_cmap_engraving(i) {
     return i === S_engroom || i === S_engrcorr;
+}
+/** C sym.h is_cmap_furniture / water / lava (for gloc_filter_classify_glyph). */
+function is_cmap_furniture(i) {
+    return i >= S_upstair && i <= S_fountain;
+}
+function is_cmap_water(i) {
+    return i === S_pool || i === S_water;
+}
+function is_cmap_lava(i) {
+    return i === S_lava || i === S_lavawall;
 }
 
 /**
@@ -648,13 +659,136 @@ function shown_boring_cmap(x, y) {
 }
 
 /**
+ * C ref: getpos.c gloc_filter_classify_glyph `:340-361` — cmap class of a
+ * glyph for GFILTER_AREA matching: room/furniture → 1, wall/tree → 2,
+ * corr → 3, water → 4, lava → 5, everything else → 0.
+ */
+function gloc_filter_classify_glyph(glyph) {
+    if (!glyph_is_cmap(glyph)) return 0;
+    const c = glyph_to_cmap(glyph) | 0;
+    if (is_cmap_room(c) || is_cmap_furniture(c)) return 1;
+    else if (is_cmap_wall(c) || c === S_tree) return 2;
+    else if (is_cmap_corr(c)) return 3;
+    else if (is_cmap_water(c)) return 4;
+    else if (is_cmap_lava(c)) return 5;
+    return 0;
+}
+
+/**
+ * C ref: getpos.c gloc_filter_floodfill_matcharea `:363-379` — selvar
+ * floodfill predicate for the area map: unseen cells never match; the
+ * seed glyph itself or its classify class matches.
+ */
+function gloc_filter_floodfill_matcharea(x, y) {
+    const glyph = back_to_glyph(x, y) | 0;
+    const loc = game.level?.at?.(x, y);
+    if (!(loc?.seenv | 0)) return false;
+    if (glyph === (game.gloc_filter_floodfill_match_glyph | 0)) return true;
+    return gloc_filter_classify_glyph(glyph)
+        === gloc_filter_classify_glyph(game.gloc_filter_floodfill_match_glyph | 0);
+}
+
+/**
+ * C ref: getpos.c GLOC_SAME_AREA `:336-339` — in-bounds cell present in
+ * the GFILTER_AREA flood map (`selection_getpoint`, 0 on a null map).
+ */
+function gloc_same_area(x, y) {
+    if (!isok(x, y)) return false;
+    const sel = game.gloc_filter_map;
+    if (!sel) return false;
+    return sel.has(`${x},${y}`);
+}
+
+/**
+ * C ref: getpos.c gloc_filter_floodfill `:381-388` + selvar.c
+ * `selection_floodfill` (`:395-440`) — seed joins unconditionally (C
+ * SEL_FLOOD pushes it with no predicate; `isok` gates the pop), then
+ * 4-neighbours (`diagonals` FALSE) join via matcharea. The local
+ * `visited` set stands in for C's `tmp` selection (queued ∪ popped);
+ * the matcharea closure stands in for the `set_selection_floodfillchk`
+ * global, which never holds anything else on this path. The map is a
+ * Set of `x,y` keys per the look_sel/mklev selection idiom.
+ */
+function gloc_filter_floodfill(x, y) {
+    const ov = game.gloc_filter_map;
+    if (!ov) return;
+    game.gloc_filter_floodfill_match_glyph = back_to_glyph(x, y) | 0;
+    const visited = new Set([`${x},${y}`]);
+    const stackX = [x];
+    const stackY = [y];
+    while (stackX.length) {
+        const cx = stackX.pop();
+        const cy = stackY.pop();
+        if (isok(cx, cy)) {
+            ov.add(`${cx},${cy}`);
+            if (!visited.has(`${cx + 1},${cy}`) && gloc_filter_floodfill_matcharea(cx + 1, cy)) {
+                visited.add(`${cx + 1},${cy}`);
+                stackX.push(cx + 1);
+                stackY.push(cy);
+            }
+            if (!visited.has(`${cx - 1},${cy}`) && gloc_filter_floodfill_matcharea(cx - 1, cy)) {
+                visited.add(`${cx - 1},${cy}`);
+                stackX.push(cx - 1);
+                stackY.push(cy);
+            }
+            if (!visited.has(`${cx},${cy + 1}`) && gloc_filter_floodfill_matcharea(cx, cy + 1)) {
+                visited.add(`${cx},${cy + 1}`);
+                stackX.push(cx);
+                stackY.push(cy + 1);
+            }
+            if (!visited.has(`${cx},${cy - 1}`) && gloc_filter_floodfill_matcharea(cx, cy - 1)) {
+                visited.add(`${cx},${cy - 1}`);
+                stackX.push(cx);
+                stackY.push(cy - 1);
+            }
+        }
+    }
+}
+
+/**
+ * C ref: getpos.c gloc_filter_init `:390-409` — under GFILTER_AREA,
+ * flood the hero's area into `gg.gloc_filter_map` (allocated when null);
+ * standing in a doorway with a direction, flood the far side instead
+ * (C TODO: both sides — nothing).
+ */
+function gloc_filter_init() {
+    if ((game.iflags?.getloc_filter | 0) !== GFILTER_AREA) return;
+    if (!game.gloc_filter_map) game.gloc_filter_map = new Set();
+    const u = game.u || {};
+    const ux = u.ux | 0;
+    const uy = u.uy | 0;
+    if (IS_DOOR((game.level?.at?.(ux, uy)?.typ) | 0)) {
+        const dx = u.dx | 0;
+        const dy = u.dy | 0;
+        if ((dx || dy) && isok(ux + dx, uy + dy)) {
+            gloc_filter_floodfill(ux + dx, uy + dy);
+        }
+    } else {
+        gloc_filter_floodfill(ux, uy);
+    }
+}
+
+/**
+ * C ref: getpos.c gloc_filter_done `:411-419` — `selection_free(map, TRUE)`.
+ */
+function gloc_filter_done() {
+    if (game.gloc_filter_map) {
+        game.gloc_filter_map = null;
+    }
+}
+
+/**
  * C ref: getpos.c gather_locs_interesting — GLOC_MONS/OBJS/DOOR/EXPLORE
- * plus GLOC_INTERESTING / GLOC_VALID FALLTHROUGH (D-1217). GFILTER_AREA
- * (needs gloc_filter_map) still named.
+ * plus GLOC_INTERESTING / GLOC_VALID FALLTHROUGH (D-1217) and the
+ * GFILTER_AREA same-area gate (`:446-449`).
  */
 export function gather_locs_interesting(x, y, gloc) {
     const filter = game.iflags?.getloc_filter | 0;
     if (filter === GFILTER_VIEW && !cansee(x, y)) return false;
+    if (filter === GFILTER_AREA
+        && !gloc_same_area(x, y)
+        && !gloc_same_area(x - 1, y) && !gloc_same_area(x, y - 1)
+        && !gloc_same_area(x + 1, y) && !gloc_same_area(x, y + 1)) return false;
 
     switch (gloc) {
     case GLOC_MONS: {
@@ -706,13 +840,17 @@ export function gather_locs_interesting(x, y, gloc) {
 }
 
 /**
- * C ref: getpos.c gather_locs — always include hero; qsort by distu.
- * Returns { arr, count } with arr[0] === hero after sort.
+ * C ref: getpos.c gather_locs `:513-548` — always include hero; two
+ * passes (count then fill) around one scan; qsort by distu. JS builds
+ * one array (same order, same comparator) between gloc_filter_init
+ * and gloc_filter_done. Returns { arr, count } with arr[0] === hero
+ * after sort.
  */
 function gather_locs(gloc) {
     const u = game.u || {};
     const ux = u.ux | 0;
     const uy = u.uy | 0;
+    gloc_filter_init();
     const arr = [];
     for (let x = 1; x < COLNO; x++) {
         for (let y = 0; y < ROWNO; y++) {
@@ -722,6 +860,7 @@ function gather_locs(gloc) {
         }
     }
     arr.sort(cmp_coord_distu);
+    gloc_filter_done();
     return { arr, count: arr.length };
 }
 
@@ -1210,7 +1349,7 @@ export async function getpos(ccp, force, goal, describeAt) {
         }
 
         // C getpos.c NHKF_GETPOS_LIMITVIEW ('"') — cycle GFILTER_*; free garr.
-        // GFILTER_AREA flood-fill still named (gather treats it like NONE).
+        // GFILTER_AREA floods via gloc_filter_init in gather_locs.
         if (key === getpos_spkey(NHKF_GETPOS_LIMITVIEW)) {
             if (!g.iflags) g.iflags = {};
             g.iflags.getloc_filter = ((g.iflags.getloc_filter | 0) + 1) % NUM_GFILTER;

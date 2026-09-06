@@ -1,5 +1,9 @@
 import { NODIAG } from './hack.js';
-import { MV_ANY, MV_RUN, MV_RUSH, MV_WALK, CMDQ_INT, IRONBARS, DO_MOVE } from './const.js';
+import { MV_ANY, MV_RUN, MV_RUSH, MV_WALK, CMDQ_INT, CMDQ_DIR, DIR_DOWN, DIR_UP, IRONBARS, DO_MOVE } from './const.js';
+import { impossible } from './pline.js';
+import { can_ooze } from './monmove.js';
+import { Confusion, Stunned, Fumbling, Underwater } from './youprop.js';
+import { tunnels, needspick, amorphous } from './mondata.js';
 import { dobreathe, dospit, doremove, dogaze, dosummon, dohide, dospinweb, domindblast, dopoly } from './polyself.js';
 import { pet_ranged_attk } from './dog.js';
 import { is_vampshifter } from './monst.js';
@@ -26,7 +30,7 @@ import { seemimic } from './mon.js';
 import { game } from './gstate.js';
 import { dodrop, doddrop } from './do.js';
 import { any_obj_ok, doprwep, doprarm, doprring, dopramulet, doprtool,
-         doprinuse, doprgold, obj_extract_self } from './invent.js';
+         doprinuse, doprgold, obj_extract_self, dotypeinv } from './invent.js';
 import { dodown, doup, do_wire_mklev, do_wire_dokick, stairway_at } from './do.js';
 import { dokick_wire, ship_object, dokick } from './dokick.js';
 import { mklev, mklev_wire_mon } from './mklev.js';
@@ -42,20 +46,22 @@ import { PMNAMES, MFLAGS, MONSYMS } from './monst_data.js';
 import { hides_under, is_hider, verysmall, sticks } from './mondata.js';
 import { bad_rock, cant_squeeze_thru, nomul, domove_attackmon_at, spoteffects,
          domove_bump_mon, dopickup, trapmove, doorless_door,
-         could_move_onto_boulder, u_locomotion,
+         could_move_onto_boulder,
          disturb_buried_zombies, may_passwall,
-         runmode_delay_output } from './hack.js';
+         runmode_delay_output, avoid_trap_andor_region } from './hack.js';
 import { In_sokoban, surface } from './dungeon.js';
 import { Blind, Flying, Hallucination, Levitation, Passes_walls, Stealth }
     from './youprop.js';
 import { u_on_newpos } from './teleport.js';
-import { doloot, dotip, query_inventory_category } from './pickup.js';
+import { in_out_region } from './region.js';
+import { m_postmove_effect } from './monmove.js';
+import { doloot, dotip } from './pickup.js';
 import { curr_mon_load } from './mon.js';
 import { ECMD_FAIL, ECMD_CANCEL, Never_mind, A_DEX, A_CON, M_AP_TYPE,
          M_AP_FURNITURE, M_AP_OBJECT, OVERLOADED, Is_airlevel,
          Upolyd } from './const.js';
 import { ACURR, exercise, near_capacity } from './attrib.js';
-import { is_pit, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, GETOBJ_DOWNPLAY, W_ARMOR, W_ACCESSORY, GETOBJ_EXCLUDE_INACCESS, ARTICLE_YOUR, ARTICLE_THE, CQ_CANNED, CQ_REPEAT, CMDQ_EXTCMD, CMDQ_KEY, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, PIT, SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL, WEB } from './const.js';
+import { is_pit, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, GETOBJ_DOWNPLAY, W_ARMOR, W_ACCESSORY, GETOBJ_EXCLUDE_INACCESS, ARTICLE_YOUR, ARTICLE_THE, CQ_CANNED, CQ_REPEAT, CMDQ_EXTCMD, CMDQ_KEY, PIT, HOLE, WEB } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
 import { an, cxname, simpleonames, the, makeplural, singular, xname,
          the_unique_obj, armor_simple_name } from './objnam.js';
@@ -73,7 +79,7 @@ import { is_launcher } from './u_init.js';
 import { could_twoweap, cantwield } from './mondata.js';
 import { is_blade } from './mon.js';
 import { checkfile, chkfilIaCheck, chkfilDontAsk } from './pager.js';
-import { worn, ia_dotakeoff, remarm_swapwep } from './do_wear.js';
+import { worn, ia_dotakeoff, remarm_swapwep, reset_remarm } from './do_wear.js';
 import { name_ok, call_ok } from './do_name.js';
 import { wearmask_to_obj, armcat_to_wornmask } from './worn.js';
 import { doorganize, adjust_split } from './invent.js';
@@ -128,7 +134,7 @@ import { get_valid_jump_position, is_valid_jump_pos } from './apply.js';
 import { dowear, doputon, dotakeoff, doremring, doddoremarm,
          canwearobj_core } from './do_wear.js';
 import { boolean_option, show_menu_controls, paranoia_bits,
-         PARANOID_CONFIRM, PARANOID_QUIT, PARANOID_TRAP } from './options.js';
+         PARANOID_CONFIRM, PARANOID_QUIT } from './options.js';
 import { xwaitforspace } from './tty/getline.js';
 import { NO_COLOR } from './terminal.js';
 import { nhgetch } from './input.js';
@@ -151,12 +157,10 @@ import { place_object } from './mkobj.js';
 // Direction deltas: y u k
 //                   h . l
 //                   b j n
-const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 /* include/hack.h — sdir order "hykulnjb" indexes xdir/ydir; the same DIR
    codes set_move_cmd() receives from the do_move_/do_run_/do_rush_ family. */
 const KEY_TO_DIR = { h: DIR_W, y: DIR_NW, k: DIR_N, u: DIR_NE,
                      l: DIR_E, n: DIR_SE, j: DIR_S, b: DIR_SW };
-const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
 
 function isMovementKey(ch) {
     return 'hjklyubn'.includes(ch);
@@ -209,11 +213,16 @@ async function blocksMove(x, y, dx, dy) {
     }
     if (IS_OBSTRUCTED(loc.typ)
         && !(Passes_walls() && may_passwall(x, y))) return true;
-    if (loc.typ === DOOR && (loc.doormask & (D_CLOSED | D_LOCKED))
-        && !Passes_walls()) return true;
+    if (closed_door(x, y)) {
+        if (Passes_walls() || can_ooze(game.youmonst)) {
+            const { test_move } = await import('./hack.js');
+            return !(await test_move(game.u.ux, game.u.uy, dx, dy, DO_MOVE));
+        }
+        return true;
+    }
     /* src/hack.c:1140 test_move() — diagonal moves into an intact doorway
        are not allowed (block_door boulder check needs Sokoban state) */
-    if (dx && dy && IS_DOOR(loc.typ)) {
+    if (dx && dy && !Passes_walls() && IS_DOOR(loc.typ)) {
         if (!doorless_door(x, y))
             return true;
         const { block_door } = await import('./shk.js');
@@ -222,7 +231,7 @@ async function blocksMove(x, y, dx, dy) {
     }
     /* src/hack.c:1208 — nor diagonal moves OUT of one */
     const ust = game.level?.at(game.u.ux, game.u.uy);
-    if (dx && dy && ust && IS_DOOR(ust.typ)
+    if (dx && dy && !Passes_walls() && ust && IS_DOOR(ust.typ)
         && !doorless_door(game.u.ux, game.u.uy)) return true;
     return false;
 }
@@ -367,10 +376,8 @@ export function set_move_cmd(dir, run) {
 
 // src/cmd.c getdir() — read a direction key and set u.dx/u.dy/u.dz.
 //
-// Only the plain movement-key path is reachable from a recorded session; the
-// mouse, help and fuzzer arms all need input this port does not receive. The
-// key IS consumed either way, so a caller that skips getdir leaves the session
-// one keystroke out of step, not merely one draw.
+// Queued directions bypass the live prompt. Both paths use the movement
+// bindings and form restrictions. Mouse, help-retry and redraw remain partial.
 export async function getdir(s) {
     /* src/cmd.c getdir():
          dirsym = yn_function((s && *s != '^') ? s : "In what direction?",
@@ -380,33 +387,31 @@ export async function getdir(s) {
        key is consumed. A caller-supplied string starting with '^' is a
        key-hint, not a prompt, and is ignored here as C ignores it. */
     let dirsym;
-    /* This port's canned action builders predate CMDQ_DIR and can leave the
-       next top-level command at the head while a live getdir prompt runs.
-       Only repetition currently supplies a saved direction key here. */
-    const queued = game.in_doagain ? cmdq_pop() : null;
+    const queued = cmdq_pop();
     if (queued) {
-        if (queued.typ === CMDQ_KEY) {
+        if (queued.typ === CMDQ_DIR) {
+            dirsym = cmd_from_dir(queued.dirz
+                ? (queued.dirz > 0 ? DIR_DOWN : DIR_UP)
+                : xytodir(queued.dirx, queued.diry), MV_WALK);
+        } else if (queued.typ === CMDQ_KEY) {
             dirsym = queued.key;
         } else {
             /* src/cmd.c:3974, a non-direction entry is a broken canned
                command. C discards the canned tail and treats it as NUL. */
             cmdq_clear(CQ_CANNED);
             dirsym = '\0';
+            await impossible('getdir: command queue had no dir?');
         }
     } else {
         dirsym = await tty_yn_function(
             (s && s[0] !== '^') ? s : 'In what direction?', null, '\0', false);
+        tty_clear_nhwindow_message(game._topl_cury || 0);
+        game._pending_message = '';
         /* src/cmd.c:4017, getdir records the literal answer itself. Its
            yn_function call uses addcmdq=FALSE so the key appears once. */
         if (!game.in_doagain)
             cmdq_add_key(CQ_REPEAT, dirsym);
     }
-
-    /* src/cmd.c:4011 — "remove the prompt string so caller won't have to":
-       clear_nhwindow(WIN_MESSAGE) physically blanks the topline on every
-       exit path, so the answered prompt is gone by the next boundary. */
-    tty_clear_nhwindow_message(game._topl_cury || 0);
-    game._pending_message = '';
 
     if (dirsym === '.' || dirsym === 's') {
         game.u.dx = game.u.dy = game.u.dz = 0;
@@ -416,18 +421,14 @@ export async function getdir(s) {
         confdir(false);
         return true;
     }
-    if (dirsym === '<' || dirsym === '>') {
-        game.u.dx = game.u.dy = 0;
-        game.u.dz = (dirsym === '<') ? -1 : 1;
-        return true;
-    }
-    if (!isMovementKey(dirsym)) {
+    const is_mov = movecmd(dirsym, MV_ANY);
+    if (!is_mov && !game.u.dz) {
         /* src/cmd.c:4095-4110 — a key in quitchars (" \r\n\033",
            src/decl.c:96) cancels quietly; anything else gets the cmdassist
            help panel (iflags.cmdassist is opt_out, default On) or the
            "What a strange direction!" pline when assistance is off. The
            '?' help-request retry is recorded; no recorded session asks. */
-        if (!" \r\n\x1b".includes(dirsym)) {
+        if (!"\0 \r\n\x1b".includes(dirsym)) {
             let did_help = false;
             if (dirsym === '?' || boolean_option('cmdassist')) {
                 did_help = await help_dir('\0', "Invalid direction key!");
@@ -439,9 +440,10 @@ export async function getdir(s) {
         }
         return false;
     }
-    game.u.dx = DIR_DX[dirsym];
-    game.u.dy = DIR_DY[dirsym];
-    game.u.dz = 0;
+    if (is_mov && !dxdy_moveok()) {
+        await You_cant('orient yourself that direction.');
+        return false;
+    }
 
     if (!game.u.dz)
         confdir(false);
@@ -915,10 +917,8 @@ export async function domonability() {
     return ECMD_OK;
 }
 
-// The individual commands are not ported. What IS ported is reading the whole
-// name off the input, because a session that issues one and does not have it
-// consumed runs every later keystroke against the wrong command.
-async function enter_explore_mode() {
+// src/cmd.c enter_explore_mode(), also used for a deferred restore request.
+export async function enter_explore_mode() {
     if (game.discover) {
         await You('are already in explore mode.');
         return ECMD_OK;
@@ -986,6 +986,11 @@ async function execute_extcmd(name) {
     }
     if (name === 'terrain')
         return await doterrain();
+    // src/cmd.c:1780..1784, the named options commands share the O handlers.
+    if (name === 'options' || name === 'optionsfull') {
+        const { doset_simple, doset } = await import('./options.js');
+        return await (name === 'options' ? doset_simple() : doset());
+    }
     if (name === 'adjust') {
         const { doorganize } = await import('./invent.js');
         return await doorganize();
@@ -1009,10 +1014,8 @@ async function execute_extcmd(name) {
         return await do_gamelog();
     }
     if (name === 'overview') {
-        /* src/dungeon.c:3339 show_overview() — the ^O window */
-        const { show_overview } = await import('./dungeon.js');
-        await show_overview();
-        return ECMD_OK;
+        const { dooverview } = await import('./dungeon.js');
+        return await dooverview();
     }
     if (name === 'wizwhere') {
         const { print_dungeon } = await import('./dungeon.js');
@@ -1471,7 +1474,7 @@ async function do_repeat() {
     if (game.in_doagain)
         return 0;
     if (!cmdq_peek(CQ_REPEAT)) {
-        await pline('There is no command available to repeat.');
+        await Norep('There is no command available to repeat.');
         return ECMD_FAIL;
     }
 
@@ -1612,7 +1615,7 @@ export async function rhack(key) {
             game._toplin = TOPLINE_EMPTY;
             game.command_count = 0;
             game.last_command_count = 0;
-            game.context.move = 0;
+            reset_cmd_vars(true);
             return;
         }
         game.command_count = cnt;
@@ -1627,6 +1630,12 @@ export async function rhack(key) {
         tty_clear_nhwindow_message(game._topl_cury || 0);
         game._pending_message = '';
         game._toplin = TOPLINE_EMPTY;
+    }
+
+    // src/cmd.c:3662, an absent command or escape clears both queues.
+    if (!key || key === 255 || key === 27) {
+        reset_cmd_vars(true);
+        return;
     }
 
     const parsedKey = ch0;
@@ -1778,7 +1787,7 @@ export async function rhack(key) {
         game.context.move = ((await doswapweapon()) === ECMD_TIME ? 1 : 0);
     } else if (ch === 'Z') {
         // src/cmd.c cmdlist — 'Z' is docast.
-        game.context.move = ((await docast()) === ECMD_TIME ? 1 : 0);
+        useResult(await docast());
     } else if (ch === '\x16') {
         // src/cmd.c:1970 — C('v') is wizlevelport / wiz_level_tele.
         game.context.move = ((await wiz_level_tele()) === ECMD_TIME ? 1 : 0);
@@ -1868,8 +1877,8 @@ export async function rhack(key) {
         game.context.move = ((await do_gamelog()) === ECMD_TIME ? 1 : 0);
     } else if (ch === '\x0f') {
         // src/cmd.c cmdlist, C('o') is the dungeon overview.
-        const { show_overview } = await import('./dungeon.js');
-        await show_overview();
+        const { dooverview } = await import('./dungeon.js');
+        await dooverview();
         game.context.move = 0;
     } else if (ch === '\x01') {
         // src/cmd.c cmdlist, C('a') is #repeat / do_repeat.
@@ -2659,11 +2668,17 @@ async function domove_core() {
        never needs to press 'o' for this draw to happen; it fires on the first
        step into a doorway. */
     if (closed_door(newx, newy)
+        && !Passes_walls() && !can_ooze(game.youmonst) && !Underwater()
+        && !(tunnels(game.youmonst.data) && !needspick(game.youmonst.data))
         && flags_autoopen() && !game.context.run
-        && !game.u.uprops?.CONFUSION && !game.u.uprops?.STUNNED
-        && !game.u.uprops?.FUMBLING) {
-        await doopen_indir(newx, newy);
-        game.context.door_opened = !closed_door(newx, newy);
+        && !Confusion() && !Stunned() && !Fumbling()) {
+        if (amorphous(game.youmonst.data))
+            await You("try to ooze under the door, but can't squeeze your possessions through.");
+        const result = await doopen_indir(newx, newy);
+        const queued = cmdq_peek(CQ_CANNED);
+        game.context.door_opened = (result === ECMD_OK
+            && queued?.typ === CMDQ_EXTCMD && queued.fn === dokick)
+            || !closed_door(newx, newy);
         game.context.move = 0; /* (ux != u.ux || uy != u.uy) */
         return;
     }
@@ -2757,6 +2772,10 @@ async function domove_core() {
        replace the marker in map memory. */
     unmap_invisible(newx, newy);
 
+    // src/hack.c:2826, confirm hazards before struggling out of a trap.
+    if (await avoid_trap_andor_region(newx, newy))
+        return;
+
     /* src/hack.c:2831 — when u.utrap is true the struggle may consume the
        move: trapmove() returns FALSE to stay put (time passes), TRUE when
        the hero escaped or may proceed. */
@@ -2780,41 +2799,6 @@ async function domove_core() {
             game.context.move = 0;
             nomul(0);
             return;
-        }
-    }
-
-    /* src/hack.c:2549, ask before walking into a known harmful trap.
-       The default paranoid setting uses a single y/n answer. */
-    {
-        const bits = paranoia_bits();
-        const trap = t_at(newx, newy);
-        const groundTypes = new Set([
-            BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, PIT, SPIKED_PIT,
-            HOLE, TRAPDOOR,
-        ]);
-        const clearlyImmune = groundTypes.has(trap?.ttyp)
-            && (Levitation() || Flying());
-        if ((bits & PARANOID_TRAP) && !game.u.uprops?.STUNNED
-            && !game.u.uprops?.CONFUSION
-            && (!game.context.nopick || game.context.run)
-            && trap?.tseen && !clearlyImmune) {
-            const intoTypes = new Set([
-                BEAR_TRAP, PIT, SPIKED_PIT, HOLE, TELEP_TRAP,
-                LEVEL_TELEP, MAGIC_PORTAL, WEB,
-            ]);
-            const cmap = cmap_names.S_arrow_trap + trap.ttyp - 1;
-            const explanation = defsyms[cmap]?.explain || 'trap';
-            if (bits & PARANOID_CONFIRM)
-                note_unported_cmd('domove:paranoid_confirm_words');
-            const answer = await tty_yn_function(
-                `Really ${u_locomotion('step')} ${
-                    intoTypes.has(trap.ttyp) ? 'into' : 'onto'} that ${
-                    explanation}?`, 'yn', 'n');
-            if (answer !== 'y') {
-                game.context.move = 0;
-                nomul(0);
-                return;
-            }
         }
     }
 
@@ -2935,10 +2919,17 @@ async function domove_core() {
             return;
     }
 
+    // src/hack.c:2867, check regions before tentatively moving the hero.
+    if (!(await in_out_region(newx, newy)))
+        return;
+
     // Move the hero
     const oldx = u.ux, oldy = u.uy;
     u.ux = newx;
     u.uy = newy;
+
+    // src/hack.c:2877 m_postmove_effect()
+    await m_postmove_effect(game.youmonst);
 
     /* src/hack.c:2919 — with a safe monster at the destination, move it to
        the hero's previous square. This is the ELSE-IF arm of the
@@ -3153,22 +3144,15 @@ async function show_attributes() {
 // offx: 80 - (maxcol) - 1, and js/tty/wintty.js adds the +2 for the leading
 // and trailing space. seed8000 records the window at column 32 with the cursor
 // at [38,20].
-async function show_inventory(allowed_choices = null, title = null,
-                              show_class_headings = true) {
-    const items = display_inventory(allowed_choices);
+async function show_inventory() {
+    const items = display_inventory(null, true);
     if (!items.length) {
         await pline('Not carrying anything.');
         return;
     }
     const win = tty_create_nhwindow(NHW_MENU);
     tty_start_menu(win, MENU_BEHAVE_STANDARD);
-    /* query_objlist() uses gt.this_title as an ordinary first menu line.
-       It is deliberately not the highlighted end_menu prompt. */
-    if (title)
-        tty_add_menu_str(win, title);
     for (const it of items) {
-        if (it.heading && !show_class_headings)
-            continue;
         tty_add_menu(win, it.glyphinfo ?? null,
                      it.heading ? 0 : it.invlet.charCodeAt(0),
                      it.invlet || 0, 0,
@@ -3184,58 +3168,6 @@ async function show_inventory(allowed_choices = null, title = null,
     const obj = (game.invent || []).find(o => o.invlet === invlet);
     if (obj)
         await itemactions(obj);
-}
-
-// src/invent.c dotypeinv(), default MENU_FULL path. The category query only
-// offers classes and BUC states which are present, then query_objlist shows
-// the matching inventory and optionally enters that item's action menu.
-async function dotypeinv() {
-    const invent = game.invent || [];
-    const { doinvbill } = await import('./shk.js');
-    const billx = (game.u.ushops || '').length && await doinvbill(0);
-    if (!invent.length && !billx) {
-        await You("aren't carrying anything.");
-        return ECMD_OK;
-    }
-
-    const picks = await query_inventory_category(invent, billx);
-    if (!picks.length)
-        return ECMD_OK;
-
-    const choice = picks[0];
-    const code = typeof choice === 'string' ? choice.charCodeAt(0) : choice;
-    const marker = String.fromCharCode(code);
-    if (marker === 'x') {
-        if (billx)
-            await doinvbill(1);
-        return ECMD_OK;
-    }
-    let filter, title = null;
-    if (code > 0 && code < OCLASSES.MAXOCLASSES) {
-        filter = (obj) => obj.oclass === code;
-    } else if (marker === 'B') {
-        filter = (obj) => !!obj.bknown && !!obj.blessed;
-        title = 'Items known to be blessed:';
-    } else if (marker === 'U') {
-        filter = (obj) => !!obj.bknown && !obj.blessed && !obj.cursed;
-        title = 'Items known to be uncursed:';
-    } else if (marker === 'C') {
-        filter = (obj) => !!obj.bknown && !!obj.cursed;
-        title = 'Items known to be cursed:';
-    } else if (marker === 'X') {
-        filter = (obj) => !obj.bknown;
-        title = 'Items whose blessed/uncursed/cursed status is unknown:';
-    } else if (marker === 'P') {
-        filter = (obj) => !!obj.pickup_prev;
-        title = 'Items that were just picked up:';
-    } else {
-        return ECMD_OK;
-    }
-
-    const letters = invent.filter(filter).map((obj) => obj.invlet).join('');
-    if (letters)
-        await show_inventory(letters, title);
-    return ECMD_OK;
 }
 
 function add_item_action(win, action, text) {
@@ -3834,12 +3766,7 @@ function queue_item_action(action, obj) {
     }
 }
 
-// src/do_wear.c reset_remarm() — forget a partly-finished take-off.
-export function reset_remarm() {
-    const t = (game.context.takeoff ||= {});
-    t.what = t.mask = 0;
-    t.disrobing = '';
-}
+export { reset_remarm } from './do_wear.js';
 
 // src/lock.c:259 reset_pick() — forget a partly-finished lock pick or force.
 export function reset_pick() {
@@ -3897,6 +3824,13 @@ export function cmdq_add_key(q, key) {
 // src/cmd.c:283 cmdq_add_int() — add an integer (a count) to the command queue.
 export function cmdq_add_int(q, intval) {
     ((game.command_queue ||= [])[q] ||= []).push({ typ: CMDQ_INT, intval });
+}
+
+// src/cmd.c:294 cmdq_add_dir()
+export function cmdq_add_dir(q, dx, dy, dz) {
+    ((game.command_queue ||= [])[q] ||= []).push({
+        typ: CMDQ_DIR, dirx: dx, diry: dy, dirz: dz,
+    });
 }
 
 // src/cmd.c:410 cmdq_pop() — pop the topmost command. The queue popped

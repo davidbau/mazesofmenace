@@ -57,8 +57,8 @@ import { carried } from './obj.js';
 import { find_ac } from './do_wear.js';
 import { done, DIED, ESCAPED, ASCENDED } from './end.js';
 import { roles } from './role_data.js';
-import { PMNAMES, MONSYMS, MFLAGS } from './monst_data.js';
-import { is_undead, is_demon, is_silent, has_head, is_human } from './mondata.js';
+import { PMNAMES, MONSYMS } from './monst_data.js';
+import { is_undead, is_demon, can_chant, is_human } from './mondata.js';
 import { is_vampshifter, DEADMONSTER } from './monst.js';
 import { couldsee } from './vision.js';
 import { mdistu, monflee } from './monmove.js';
@@ -313,16 +313,6 @@ export function halu_gname(alignment) {
     if (!gnam)
         gnam = 'your Friend the Computer';
     return gnam[0] === '_' ? gnam.slice(1) : gnam;
-}
-
-// src/mondata.c:580 can_chant().
-function can_chant(mon) {
-    const data = mon?.data;
-    const strangled = mon === game.youmonst
-        && !!(game.u.intrinsic?.HStrangled || game.u.uprops?.STRANGLED);
-    return !!data && !strangled && !is_silent(data) && has_head(data)
-        && data.msound !== MFLAGS.MS_BUZZ
-        && data.msound !== MFLAGS.MS_BURBLE;
 }
 
 // src/pray.c:2378 maybe_turn_mon_iter().

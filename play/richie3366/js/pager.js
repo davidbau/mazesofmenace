@@ -61,7 +61,7 @@ import { dokeylist_lines, domenucontrols_lines } from './dokeylist.js';
 import { trapname } from './trap.js';
 import { trapped_chest_at, trapped_door_at } from './detect.js';
 import { costly_spot } from './shk.js';
-import { cmdq_pop, cmdq_clear } from './cmd.js';
+import { cmdq_pop, cmdq_clear, pmatch } from './cmd.js';
 import {
     objectNames, objectNameStrs, COIN_CLASS, def_oc_syms,
     ROCK_CLASS, VENOM_CLASS,
@@ -634,13 +634,17 @@ function lookup_data_base(query) {
             i++;
             continue;
         }
-        // Collect key block until body
+        // Collect key block until body. Keys keep file case: C matches
+        // them with case-sensitive pmatch (strutil.c:144-148) against
+        // lcase(dbase_str) (pager.c:866), so q is lowered but keys are
+        // not (measured: dat/data.base has a single uppercase key,
+        // `A.S*`, which C matches only against un-lowered pass-1 alt).
         const keys = [];
         while (i < lines.length) {
             const k = lines[i];
             if (!k || k.startsWith('#')) { i++; continue; }
             if (k.startsWith('\t') || k.startsWith(' ')) break;
-            keys.push(k.trim().toLowerCase());
+            keys.push(k.trim());
             i++;
         }
         const body = [];
@@ -662,30 +666,20 @@ function lookup_data_base(query) {
             body.push(tp);
             i++;
         }
+        // C pager.c:1024 checkfile pass-0 arm: pmatch(key, dbase_str).
+        // pmatch with no wildcards is exact equality, so no fast path
+        // is needed — the call below is the C call (D-1954).
         let matched = false;
         for (const key of keys) {
             if (key.startsWith('~')) continue;
-            if (key.includes('*') || key.includes('?')) {
-                const re = new RegExp(
-                    `^${key.replace(/[.+^${}()|[\]\\]/g, '\\$&')
-                        .replace(/\*/g, '.*').replace(/\?/g, '.')}$`,
-                );
-                if (re.test(q)) { matched = true; break; }
-            } else if (key === q) {
-                matched = true;
-                break;
-            }
+            if (pmatch(key, q)) { matched = true; break; }
         }
-        // Leading ~ keys exclude
+        // Leading ~ keys exclude (C chk_skip arm, pager.c:1023-1029:
+        // a matching ~ key skips the entry).
         if (matched) {
             for (const key of keys) {
                 if (!key.startsWith('~')) continue;
-                const pat = key.slice(1);
-                const re = new RegExp(
-                    `^${pat.replace(/[.+^${}()|[\]\\]/g, '\\$&')
-                        .replace(/\*/g, '.*').replace(/\?/g, '.')}$`,
-                );
-                if (re.test(q)) { matched = false; break; }
+                if (pmatch(key.slice(1), q)) { matched = false; break; }
             }
         }
         if (matched) return body;

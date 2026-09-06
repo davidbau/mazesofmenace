@@ -1066,20 +1066,30 @@ export function obj_split_timers(src, dest) {
 }
 
 /**
- * C ref: timeout.c spot_time_left — remaining turns for a TIMER_LEVEL
- * action at (x,y), or 0 if none.
+ * C ref: timeout.c:2444-2456 spot_time_expires — absolute timeout for the
+ * TIMER_LEVEL timer of type func_index at (x,y), or 0L if none. First match
+ * on the global queue wins (queue is timeout-ordered by insert_timer).
  */
-export function spot_time_left(x, y, action) {
+export function spot_time_expires(x, y, action) {
     const where = (((x | 0) & 0xffff) << 16) | ((y | 0) & 0xffff);
-    const moves = game.moves | 0;
     for (let curr = timer_base()._timer_base; curr; curr = curr.next) {
         if ((curr.kind | 0) === TIMER_LEVEL
             && curr.action === action
             && (curr.a_long | 0) === where) {
-            return ((curr.timeout | 0) - moves) | 0;
+            return curr.timeout | 0;
         }
     }
     return 0;
+}
+
+/**
+ * C ref: timeout.c:2458-2463 spot_time_left — remaining turns for a
+ * TIMER_LEVEL action at (x,y), or 0 if none. C delegates to
+ * spot_time_expires, then subtracts moves.
+ */
+export function spot_time_left(x, y, action) {
+    const expires = spot_time_expires(x, y, action);
+    return expires > 0 ? ((expires - (game.moves | 0)) | 0) : 0;
 }
 
 /**

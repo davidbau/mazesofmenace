@@ -29,6 +29,20 @@ import { IS_GRAVE } from './const.js';
 import { NO_MM_FLAGS } from './const.js';
 import { makemon } from './makemon.js';
 import { PMNAMES } from './monst_data.js';
+import { welded } from './wield.js';
+import { bimanual } from './obj.js';
+
+// src/engrave.c:297 engr_can_be_felt()
+export function engr_can_be_felt(ep) {
+    switch (ep.engr_type) {
+    case ENGRAVE:
+    case HEADSTONE:
+    case BURN:
+        return true;
+    default:
+        return false;
+    }
+}
 import { Amonnam } from './do_name.js';
 
 
@@ -355,6 +369,12 @@ export function sengr_at(s, x, y, strict) {
 
 function note_unported_engrave(what) {
     (game.unported ||= new Set()).add(what);
+}
+
+// src/engrave.c:473 freehand()
+export function freehand() {
+    return (!game.u.uwep || !welded(game.u.uwep)
+            || (!bimanual(game.u.uwep) && (!game.u.uarms || !game.u.uarms.cursed)));
 }
 
 // src/engrave.c:481 stylus_ok() — getobj filter for 'E'.

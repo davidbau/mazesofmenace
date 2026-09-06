@@ -1,17 +1,43 @@
 // botl.js — the bottom status lines.
 // C ref: src/botl.c
 //
-// Only rank_of() so far, which both the status line and the ^X window need.
-// It used to be approximated as `urole.rank.m` against a stub role record; the
-// real table in js/role_data.js is an array of nine tiers.
+// Level descriptions, rank names, and status conditions.
 
 import { game } from './gstate.js';
 import { roles } from './role_data.js';
 import { near_capacity } from './attrib.js';
 import { NOT_HUNGRY, UNENCUMBERED, SICK_VOMITABLE, SICK_NONVOMITABLE,
-         TT_LAVA, Upolyd } from './const.js';
-import { MFLAGS } from './monst_data.js';
-import { Blind } from './youprop.js';
+         TT_LAVA } from './const.js';
+import { Blind, Deaf, Levitation, Flying } from './youprop.js';
+import { Is_knox_level, In_quest, In_endgame, In_tutorial } from './const.js';
+import { depth, endgamelevelname } from './dungeon.js';
+
+// src/botl.c describe_level(), return the output buffer and classification.
+// The optional level replaces C callers' temporary assignment to u.uz.
+export function describe_level(dflgs, lev = game.u.uz) {
+    const addspace = !!(dflgs & 1);
+    let addbranch = !!(dflgs & 2), text, special = 1;
+    if (Is_knox_level(lev)) {
+        text = game.dungeons[lev.dnum].dname;
+        addbranch = false;
+    } else if (In_quest(lev)) {
+        text = `Home ${lev.dlevel}`;
+    } else if (In_endgame(lev)) {
+        text = endgamelevelname(depth(lev));
+        if (!addbranch)
+            text = text.replace('Plane of ', '');
+        addbranch = false;
+    } else {
+        text = addbranch ? `level ${depth(lev)}`
+            : `${In_tutorial(lev) ? 'Tutorial' : 'Dlvl'}:${String(depth(lev)).padEnd(2)}`;
+        special = 0;
+    }
+    if (addbranch)
+        text = `${text}, ${game.dungeons[lev.dnum].dname}`.replace('The ', 'the ');
+    if (addspace)
+        text += ' ';
+    return { text, special };
+}
 
 /* src/botl.c:817 condtests[] — one row per status condition. `enabled`
    defaults to !opt_in and the 'status condition fields' option edits it; the
@@ -111,18 +137,13 @@ export const enc_stat = [
     "Strained", "Overtaxed", "Overloaded"
 ];
 
-// src/botl.c:164 bot2str() condition tail — worst ones first.
+// src/botl.c:781 conditions[]/:1333 cond_cmp(), tty/wintty.c:5150.
+// Conditions follow hunger and capacity, sorted by rank then useroption.
 export function bot_conditions() {
     const u = game.u;
     const intr = u.intrinsic || {};
     const props = u.uprops || {};
     let cond = '';
-    if (props.STONED) cond += ' Stone';
-    if (props.SLIMED) cond += ' Slime';
-    if (intr.HStrangled) cond += ' Strngl';
-    const sick_type = game._deferred_status_sick_type ?? u.usick_type;
-    if (sick_type & SICK_VOMITABLE) cond += ' FoodPois';
-    if (sick_type & SICK_NONVOMITABLE) cond += ' TermIll';
     if (u.uhs != null && u.uhs !== NOT_HUNGRY)
         cond += ' ' + hu_stat[u.uhs].trimEnd();
     /* encumber_msg() prints before botl is marked dirty.  The tty therefore
@@ -133,20 +154,24 @@ export function bot_conditions() {
         ? game._deferred_status_capacity
         : game._encumber_status_stale ? game.oldcap : near_capacity();
     if (cap > UNENCUMBERED) cond += ' ' + enc_stat[cap];
+    if (intr.HStrangled) cond += ' Strngl';
+    const sick_type = game._deferred_status_sick_type ?? u.usick_type;
+    if (sick_type & SICK_VOMITABLE) cond += ' FoodPois';
+    if (props.SLIMED) cond += ' Slime';
+    if (props.STONED) cond += ' Stone';
+    if (sick_type & SICK_NONVOMITABLE) cond += ' TermIll';
+    if (u.utrap && u.utraptype === TT_LAVA) cond += ' InLava';
     const blind = typeof game._deferred_status_blind === 'boolean'
         ? game._deferred_status_blind : Blind();
     if (blind)
         cond += ' Blind';
     if (intr.HConfusion || props.CONFUSION) cond += ' Conf';
-    if (intr.HDeaf || props.DEAF) cond += ' Deaf';
+    if (Deaf()) cond += ' Deaf';
+    if (Flying()) cond += ' Fly';
     if ((intr.HHallucination || props.HALLUC) && !props.HALLUC_RES)
         cond += ' Hallu';
-    if (props.LEVITATION || intr.HLevitation) cond += ' Lev';
-    else if (props.FLYING || intr.HFlying
-             || (Upolyd(u) && (game.youmonst.data.mflags1 & MFLAGS.M1_FLY)))
-        cond += ' Fly';
+    if (Levitation()) cond += ' Lev';
     if (u.usteed) cond += ' Ride';
     if (intr.HStun || props.STUNNED) cond += ' Stun';
-    if (u.utrap && u.utraptype === TT_LAVA) cond += ' InLava';
     return cond;
 }

@@ -2,11 +2,12 @@
 // C ref: src/invent.c
 
 import { MON_WEP } from './monst.js';
-import { noit_Monnam, oname } from './do_name.js';
+import { noit_Monnam, mon_nam, oname } from './do_name.js';
 import { engulfing_u } from './const.js';
-import { allow_all } from './pickup.js';
-import { query_objlist } from './pickup.js';
-import { s_suffix } from './hacklib.js';
+import { allow_all, add_valid_menu_class, menu_class_present, allow_category,
+         collect_obj_classes, count_justpicked, container_gone } from './pickup.js';
+import { query_objlist, query_category } from './pickup.js';
+import { s_suffix, mungspaces } from './hacklib.js';
 import { strsubst } from './hacklib.js';
 import { safe_qbuf } from './objnam.js';
 import { ansimpleoname } from './objnam.js';
@@ -14,11 +15,19 @@ import { docrt } from './display.js';
 import { add_menu_heading } from './options.js';
 import { QBUFSZ } from './const.js';
 import { BUFSZ, CONTAINED_SYM } from './const.js';
+import { def_oc_syms } from './drawing_data.js';
 import { MINV_PICKMASK } from './const.js';
 import { MINV_ALL } from './const.js';
 import { INCLUDE_HERO } from './const.js';
 import { INVORDER_SORT } from './const.js';
+import { MENU_FULL, MENU_PARTIAL, UNPAID_TYPES, BILLED_TYPES,
+         JUSTPICKED, INCLUDE_VENOM, PICK_ONE, COST_NOCONTENTS } from './const.js';
 import { PICK_NONE } from './const.js';
+import { PICK_ANY, SIGNAL_NOMENU, SIGNAL_ESCAPE, USE_INVLET,
+         MENU_TRADITIONAL, thats_enough_tries, ALL_FINISHED,
+         SORTLOOT_PACK, SORTLOOT_INVLET, SORTLOOT_LOOT, SORTLOOT_INUSE,
+         SORTLOOT_PETRIFY, BUC_BLESSED, BUC_UNCURSED, BUC_CURSED,
+         BUC_UNKNOWN } from './const.js';
 import { MENU_BEHAVE_STANDARD } from './const.js';
 import { tty_select_menu } from './tty/wintty.js';
 import { tty_end_menu } from './tty/wintty.js';
@@ -28,13 +37,15 @@ import { Has_contents } from './obj.js';
 import { get_obj_location } from './zap.js';
 import { unpunish } from './read.js';
 import { game } from './gstate.js';
+import { visible_region_at, reg_damg } from './region.js';
 import { read_engr_at } from './engrave.js';
 import { stairway_at, stairs_description } from './stairs.js';
-import { cmdq_pop, cmdq_clear, cmdq_add_key, cmdq_add_int, get_count } from './cmd.js';
+import { cmdq_pop, cmdq_clear, cmdq_add_key, cmdq_add_int, get_count, itemactions } from './cmd.js';
 import { GC_SAVEHIST } from './const.js';
 import { GC_ECHOFIRST, GC_CONDHIST, GETOBJ_NOFLAGS, ECMD_FAIL, ECMD_CANCEL } from './const.js';
 import { delobj, t_at, is_pool, is_lava } from './mon.js';
-import { addtobill, costly_spot, doname_with_price, obfree_bill, same_price } from './shk.js';
+import { addtobill, costly_spot, doname_with_price, obfree_bill, same_price,
+         shop_keeper, inside_shop, inhishop, unpaid_cost, doinvbill } from './shk.js';
 import { ONAME, has_oname, ONAME_SKIP_INVUPD } from './const.js';
 import { u_at, CMDQ_KEY, CMDQ_INT, CQ_CANNED, CQ_REPEAT, FOUNTAIN, THRONE, SINK, GRAVE, ALTAR, TREE,
          ICE, DRAWBRIDGE_DOWN, IRONBARS, Never_mind, LOST_NONE, LOST_THROWN, LOST_EXPLODING, LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE, IS_DOOR, D_NODOOR, D_ISOPEN, D_BROKEN,
@@ -50,7 +61,7 @@ import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU,
 import { Blind as heroBlind, Hallucination,
          Stone_resistance } from './youprop.js';
 import { doname, an, corpse_xname, makeplural, obj_typename, CXN_PFX_THE,
-         CXN_ARTICLE, yname } from './objnam.js';
+         CXN_ARTICLE, yname, xname, distant_name } from './objnam.js';
 import { OCLASSES, ONAMES, MATERIALS, SKILLS } from './objects_data.js';
 import { is_pole } from './u_init.js';
 import { throwing_weapon } from './dothrow.js';
@@ -58,9 +69,10 @@ import { OBJ_DESCR, not_fully_identified } from './objnam.js';
 export { not_fully_identified } from './objnam.js';
 import { MONSYMS, NUMMONS, PMNAMES } from './monst_data.js';
 import { erosion_matters, curse, splitobj, clear_splitobjs, extract_nobj,
-         start_glob_timeout, dead_species } from './mkobj.js';
+         start_glob_timeout, dead_species, unsplitobj, unknwn_contnr_contents } from './mkobj.js';
 import { carried, OBJ_FREE, OBJ_FLOOR, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT, OBJ_BURIED, Is_container, Is_candle, Is_pudding } from './obj.js';
-import { setworn, setnotworn, recalc_telepat_range } from './worn.js';
+import { setworn, setnotworn, recalc_telepat_range, bypass_objlist,
+         nxt_unbypassed_loot, clear_bypasses } from './worn.js';
 import { is_rider, hideunder } from './makemon.js';
 import { Fumbling } from './youprop.js';
 import { st_all, MOD_ENCUMBER, invlet_basic } from './const.js';
@@ -76,7 +88,7 @@ import { ATR_NONE, ATR_INVERSE, tty_create_nhwindow, tty_putstr,
          tty_add_menu, NHW_MENU } from './tty/wintty.js';
 import { nhgetch } from './input.js';
 import { xwaitforspace } from './tty/getline.js';
-import { pline, display_nhwindow_message, temporary_object_glyph,
+import { pline, tty_clear_nhwindow_message, display_nhwindow_message, temporary_object_glyph,
          see_monsters } from './display.js';
 import { makeknown, observe_object } from './o_init.js';
 import { tty_yn_function } from './tty/topl.js';
@@ -86,12 +98,50 @@ import { surface } from './dungeon.js';
 import { discover_artifact, set_artifact_intrinsic,
          artifact_confers_luck } from './artifact.js';
 import { ART_MJOLLNIR } from './artilist_data.js';
-import { body_part } from './polyself.js';
-import { HAND } from './const.js';
+import { body_part, mbodypart } from './polyself.js';
+import { HAND, STOMACH } from './const.js';
 import { obj_stop_timers, stop_timer, SHRINK_GLOB, learn_egg_type,
          FIG_TRANSFORM, attach_fig_transform_timeout } from './timeout.js';
 import { NON_PM } from './const.js';
 import { obj_merge_light_sources } from './light.js';
+import { def_char_to_objclass } from './sp_lev.js';
+import { cxname_singular } from './objnam.js';
+import { greatest_erosion } from './do_wear.js';
+
+// src/invent.c:70 inuse_classify()
+function inuse_classify(sort_item, obj) {
+    const w_mask = obj.owornmask & (W_ACCESSORY | W_WEAPONS | W_ARMOR);
+    let rating = 0, altclass = 0;
+    const urighty = (game.u.uhandedness ?? 0) === 0;
+
+    assign_rating: {
+        ++altclass;
+        ++rating; if (!w_mask && obj.otyp === ONAMES.LEASH && obj.leashmon) break assign_rating;
+        ++rating; if (!w_mask && obj.oclass === OCLASSES.TOOL_CLASS && obj.lamplit) break assign_rating;
+        ++altclass;
+        ++rating; if (w_mask & W_ARMU) break assign_rating;
+        ++rating; if (w_mask & W_ARMF) break assign_rating;
+        ++rating; if (w_mask & W_ARMG) break assign_rating;
+        ++rating; if (w_mask & W_ARMH) break assign_rating;
+        ++rating; if (w_mask & W_ARMS) break assign_rating;
+        ++rating; if (w_mask & W_ARMC) break assign_rating;
+        ++rating; if (w_mask & W_ARM) break assign_rating;
+        ++altclass;
+        ++rating; if (w_mask & W_QUIVER) break assign_rating;
+        ++rating; if (w_mask & W_SWAPWEP) break assign_rating;
+        ++rating; if (w_mask & W_WEP) break assign_rating;
+        ++altclass;
+        ++rating; if (w_mask & W_TOOL) break assign_rating;
+        ++rating; if (w_mask & (urighty ? W_RINGL : W_RINGR)) break assign_rating;
+        ++rating; if (w_mask & (urighty ? W_RINGR : W_RINGL)) break assign_rating;
+        ++rating; if (w_mask & W_AMUL) break assign_rating;
+        rating = 0;
+        altclass = -1;
+    }
+    sort_item.inuse = rating;
+    sort_item.orderclass = altclass;
+    sort_item.subclass = sort_item.disco = 0;
+}
 
 // include/hack.h — command result flags. ECMD_TIME means the command consumed
 // a move, which is what makes moveloop advance svm.moves.
@@ -183,6 +233,151 @@ export function loot_classify(sort_item, obj) {
     sort_item.inuse = 0;
 }
 
+// src/invent.c:309 loot_xname()
+function loot_xname(obj) {
+    const saveo = { odiluted: obj.odiluted, blessed: obj.blessed,
+                    cursed: obj.cursed, spe: obj.spe, owt: obj.owt };
+    const save_oname = has_oname(obj) ? ONAME(obj) : null;
+    const save_debug = game.wizard;
+    if (obj.oclass === OCLASSES.POTION_CLASS) {
+        obj.odiluted = 0;
+        if (obj.otyp === ONAMES.POT_WATER)
+            obj.blessed = obj.cursed = 0;
+    }
+    if (obj.otyp === ONAMES.TOWEL)
+        obj.spe = 0;
+    if (obj.globby)
+        obj.owt = 20;
+    if (save_oname && !obj.oartifact)
+        obj.oname = null;
+    if (game.wizard) {
+        (game.program_state ||= {}).something_worth_saving = 0;
+        game.flags.debug = game.wizard = false;
+    }
+    let res = cxname_singular(obj);
+    if (save_debug) {
+        game.flags.debug = game.wizard = true;
+        game.program_state.something_worth_saving = 1;
+    }
+    if (obj.oclass === OCLASSES.POTION_CLASS) {
+        obj.odiluted = saveo.odiluted;
+        if (obj.otyp === ONAMES.POT_WATER) {
+            obj.blessed = saveo.blessed;
+            obj.cursed = saveo.cursed;
+        }
+    }
+    if (obj.otyp === ONAMES.TOWEL) {
+        obj.spe = saveo.spe;
+        res += obj.spe > 0 ? (obj.spe >= 3 ? 'x' : 'y') : 'z';
+    }
+    if (obj.globby) {
+        obj.owt = saveo.owt;
+        res += obj.owt <= 100 ? 'a' : obj.owt <= 300 ? 'b'
+            : obj.owt <= 500 ? 'c' : 'd';
+    }
+    if (save_oname && !obj.oartifact)
+        obj.oname = save_oname;
+    return res;
+}
+
+// src/invent.c:391 invletter_value()
+function invletter_value(c) {
+    return c >= 'a' && c <= 'z' ? c.charCodeAt(0) - 97 + 2
+        : c >= 'A' && c <= 'Z' ? c.charCodeAt(0) - 65 + 2 + 26
+          : c === '$' ? 1 : c === '#' ? 1 + invlet_basic + 1
+            : 1 + invlet_basic + 1 + 1;
+}
+
+// src/invent.c:403 sortloot_cmp()
+function sortloot_cmp(sli1, sli2) {
+    const obj1 = sli1.obj, obj2 = sli2.obj;
+    let val1, val2;
+    tiebreak: {
+        if (game.sortlootmode & SORTLOOT_INUSE) {
+            if (!sli1.orderclass) inuse_classify(sli1, obj1);
+            if (!sli2.orderclass) inuse_classify(sli2, obj2);
+            val1 = sli1.inuse;
+            val2 = sli2.inuse;
+            if (val1 !== val2) return val2 - val1;
+            break tiebreak;
+        }
+        if ((game.sortlootmode & (SORTLOOT_PACK | SORTLOOT_INVLET)) !== SORTLOOT_INVLET) {
+            if (!sli1.orderclass) loot_classify(sli1, obj1);
+            if (!sli2.orderclass) loot_classify(sli2, obj2);
+            val1 = sli1.orderclass;
+            val2 = sli2.orderclass;
+            if (val1 !== val2) return val1 - val2;
+            if (!(game.sortlootmode & SORTLOOT_INVLET)) {
+                val1 = sli1.subclass;
+                val2 = sli2.subclass;
+                if (val1 !== val2) return val1 - val2;
+                val1 = sli1.disco;
+                val2 = sli2.disco;
+                if (val1 !== val2) return val1 - val2;
+            }
+        }
+        if (game.sortlootmode & SORTLOOT_INVLET) {
+            val1 = invletter_value(obj1.invlet);
+            val2 = invletter_value(obj2.invlet);
+            if (val1 !== val2) return val1 - val2;
+        }
+        if (!(game.sortlootmode & SORTLOOT_LOOT))
+            break tiebreak;
+        if (!sli1.str) sli1.str = loot_xname(obj1);
+        if (!sli2.str) sli2.str = loot_xname(obj2);
+        const nam1 = sli1.str.toLowerCase(), nam2 = sli2.str.toLowerCase();
+        const namcmp = nam1 < nam2 ? -1 : nam1 > nam2 ? 1 : 0;
+        if (namcmp) return namcmp;
+        val1 = obj1.bknown ? (obj1.blessed ? 3 : !obj1.cursed ? 2 : 1) : 0;
+        val2 = obj2.bknown ? (obj2.blessed ? 3 : !obj2.cursed ? 2 : 1) : 0;
+        if (val1 !== val2) return val2 - val1;
+        val1 = obj1.greased | 0;
+        val2 = obj2.greased | 0;
+        if (val1 !== val2) return val2 - val1;
+        val1 = greatest_erosion(obj1);
+        val2 = greatest_erosion(obj2);
+        if (val1 !== val2) return val1 - val2;
+        val1 = Number(!!(obj1.rknown && obj1.oerodeproof));
+        val2 = Number(!!(obj2.rknown && obj2.oerodeproof));
+        if (val1 !== val2) return val2 - val1;
+        if (game.objects[obj1.otyp].oc_uses_known && obj1.oclass !== OCLASSES.FOOD_CLASS) {
+            val1 = obj1.known ? obj1.spe : -1000;
+            val2 = obj2.known ? obj2.spe : -1000;
+            if (val1 !== val2) return val2 - val1;
+        }
+    }
+    return sli1.indx - sli2.indx;
+}
+
+// src/invent.c:593 sortloot(); lists already carry nobj/nexthere order.
+export function sortloot(olist, mode, by_nexthere, filterfunc) {
+    const sliarray = [];
+    const augment_filter = !!(mode & SORTLOOT_PETRIFY);
+    mode &= ~SORTLOOT_PETRIFY;
+    for (const o of olist || []) {
+        if (filterfunc && !filterfunc(o)
+            && (!augment_filter || o.otyp !== ONAMES.CORPSE
+                || !touch_petrifies(game.mons[o.corpsenm])))
+            continue;
+        sliarray.push({ obj: o, indx: sliarray.length, orderclass: 0,
+                        subclass: 0, disco: 0, inuse: 0, str: null });
+    }
+    if (mode && sliarray.length > 1) {
+        game.sortlootmode = mode;
+        sliarray.sort(sortloot_cmp);
+        game.sortlootmode = 0;
+        for (const sli of sliarray)
+            sli.str = null;
+    }
+    sliarray.push({ obj: null, indx: -1 });
+    return sliarray;
+}
+
+// src/invent.c:647 unsortloot(); release the temporary array reference.
+export function unsortloot(loot_array_p) {
+    loot_array_p.length = 0;
+}
+
 // src/invent.c:4334 will_feel_cockatrice()
 export function will_feel_cockatrice(otmp, force_touch = false) {
     return !!((heroBlind() || force_touch) && !game.u.uarmg
@@ -207,6 +402,30 @@ export async function feel_cockatrice(otmp, force_touch = false) {
     const { instapetrify } = await import('./trap.js');
     await instapetrify(killer);
     return true;
+}
+
+// src/invent.c:775 merge_choice(); predict merging after pickup billing.
+export function merge_choice(objlist, obj) {
+    if (!objlist?.length || obj.otyp === ONAMES.SCR_SCARE_MONSTER)
+        return null;
+    const save_nocharge = obj.no_charge;
+    let shkp;
+    if (objlist === game.invent && obj.where === OBJ_FLOOR
+        && (shkp = shop_keeper(inside_shop(obj.ox, obj.oy))) !== null) {
+        if (obj.no_charge)
+            obj.no_charge = 0;
+        else if (inhishop(shkp))
+            return null;
+    }
+    let candidate = null;
+    for (const item of objlist) {
+        if (mergable(item, obj)) {
+            candidate = item;
+            break;
+        }
+    }
+    obj.no_charge = save_nocharge;
+    return candidate;
 }
 
 /* src/invent.c:735 inv_rank() — invlet ^ 040, which sorts '$' (gold) before
@@ -447,6 +666,47 @@ export function count_unpaid(list) {
     return count;
 }
 
+// src/invent.c:3548 count_buc()
+export function count_buc(list, type, filterfunc = null) {
+    let count = 0;
+    for (const obj of list || []) {
+        if (Role_if(PM_CLERIC))
+            obj.bknown = Number(obj.oclass !== OCLASSES.COIN_CLASS);
+        if (filterfunc && !filterfunc(obj))
+            continue;
+        if (obj.oclass === OCLASSES.COIN_CLASS) {
+            if (type === (game.flags.goldX ? BUC_UNKNOWN : BUC_UNCURSED))
+                ++count;
+            continue;
+        }
+        if (!obj.bknown ? type === BUC_UNKNOWN
+            : obj.blessed ? type === BUC_BLESSED
+              : obj.cursed ? type === BUC_CURSED : type === BUC_UNCURSED)
+            ++count;
+    }
+    return count;
+}
+
+// src/invent.c:3580 tally_BUCX(); lists already carry the requested chain order.
+export function tally_BUCX(list, by_nexthere, bcp, ucp, ccp, xcp, ocp, jcp) {
+    bcp.v = ucp.v = ccp.v = xcp.v = ocp.v = jcp.v = 0;
+    for (const obj of list || []) {
+        if (Role_if(PM_CLERIC))
+            obj.bknown = obj.oclass !== OCLASSES.COIN_CLASS ? 1 : 0;
+        if (obj.pickup_prev)
+            ++jcp.v;
+        if (obj.oclass === OCLASSES.COIN_CLASS) {
+            if (game.flags.goldX) ++xcp.v;
+            else ++ucp.v;
+            continue;
+        }
+        if (!obj.bknown) ++xcp.v;
+        else if (obj.blessed) ++bcp.v;
+        else if (obj.cursed) ++ccp.v;
+        else ++ucp.v;
+    }
+}
+
 // src/invent.c:3620 count_contents()
 export function count_contents(container, nested, quantity, everything, newdrop) {
     let topc;
@@ -535,9 +795,8 @@ function dfeature_with_article(dfeature) {
 
 // src/invent.c:4104 look_here()
 //
-// The engulfed arm and gas regions are recorded when hit. Blind floor reach
-// and floor-pile cockatrice contact are live. The dungeon-feature description
-// carries only the stairway arm.
+// Includes engulfer contents, visible regions, blind floor reach and
+// floor-pile cockatrice contact.
 export async function look_here(obj_cnt, lhflags) {
     const Blind = heroBlind();
     const verb = Blind ? 'feel' : 'see';
@@ -549,16 +808,33 @@ export async function look_here(obj_cnt, lhflags) {
     const skip_objects = (pile_limit > 0 && obj_cnt >= pile_limit);
 
     if (game.u?.uswallow) {
-        note_unported_invent('look_here:uswallow');
+        const mtmp = game.u.ustuck;
+        let fbuf = `Contents of ${s_suffix(mon_nam(mtmp))} ${mbodypart(mtmp, STOMACH)}`;
+        await You(`${Blind ? 'try' : 'look around'} to ${verb} what is lying in ${fbuf.slice(12)}.`);
+        if (mtmp.minvent?.length) {
+            for (const otmp of mtmp.minvent) {
+                if (otmp.otyp === ONAMES.CORPSE)
+                    await feel_cockatrice(otmp, false);
+            }
+            if (Blind)
+                fbuf = 'You feel';
+            await display_minventory(mtmp, MINV_ALL | PICK_NONE, `${fbuf}:`);
+        } else {
+            await You(`${verb} no objects here.`);
+        }
         return Blind ? ECMD_TIME : ECMD_OK;
     }
 
     if (!skip_objects) {
-        /* visible_region_at for gas clouds remains separate. */
-        const trap = t_at(game.u.ux, game.u.uy);
-        if (trap && trap.tseen) {
+        const reg = visible_region_at(game.u.ux, game.u.uy);
+        let trap = t_at(game.u.ux, game.u.uy);
+        if (trap && !trap.tseen)
+            trap = null;
+        if (reg || trap) {
             const { trapname } = await import('./trap.js');
-            await pline(`There is ${an(trapname(trap.ttyp, false))} here.`);
+            const regbuf = reg ? `a ${reg_damg(reg) ? 'poison gas' : 'vapor'} cloud` : '';
+            await pline(`There is ${regbuf}${reg && trap ? ' and ' : ''}${
+                trap ? an(trapname(trap.ttyp, false)) : ''} here.`);
         }
     }
 
@@ -707,10 +983,15 @@ const CLASS_NAMES = {
     ROCK_CLASS: 'Boulders/Statues', BALL_CLASS: 'Iron balls',
     CHAIN_CLASS: 'Chains', VENOM_CLASS: 'Venoms',
 };
-export function let_to_name(oclass) {
-    for (const [k, v] of Object.entries(OCLASSES))
-        if (v === oclass && CLASS_NAMES[k]) return CLASS_NAMES[k];
-    return '';
+// src/invent.c:4800 let_to_name(), including unpaid and class-symbol headings.
+export function let_to_name(oclass, unpaid = false, showsym = false) {
+    const key = Object.keys(OCLASSES).find(k => OCLASSES[k] === oclass);
+    const class_name = CLASS_NAMES[key]
+        || (oclass === CONTAINED_SYM ? 'Bagged/Boxed items' : 'Illegal objects');
+    let result = (unpaid ? 'Unpaid ' : '') + class_name;
+    if (typeof oclass === 'number' && oclass >= 1 && oclass < OCLASSES.MAXOCLASSES && showsym)
+        result += ' '.repeat(Math.max(0, 7 - class_name.length)) + `  ('${def_oc_syms[oclass]}')`;
+    return result;
 }
 
 // src/invent.c:5489 display_binventory() shows objects hidden below the
@@ -771,13 +1052,13 @@ export async function display_binventory(x, y, as_if_seen = false) {
 // selector and no identifier, an item carries its inventory letter. The "a - "
 // prefix is NOT built here; tty_add_menu() builds it, exactly as in C, which is
 // what makes the +2 in tty_end_menu()'s width the right rule for this window.
-export function display_inventory(allowed_choices = null) {
+export function display_inventory(allowed_choices = null, want_reply = false) {
     if (game.flags.fixinv === false)
         reassign();
     const out = [];
     const wizid = game.wizard && game.iflags?.override_ID;
     const sortpack = game.flags.sortpack !== false;
-    for (const oclass of sortpack ? inv_order() : [0]) {
+    for (const oclass of sortpack ? [...inv_order(), OCLASSES.VENOM_CLASS] : [0]) {
         const items = (game.invent || []).filter(
             o => (!sortpack || o.oclass === oclass)
                  && (!allowed_choices || allowed_choices.includes(o.invlet))
@@ -785,7 +1066,10 @@ export function display_inventory(allowed_choices = null) {
         if (!items.length) continue;
         /* add_menu_heading(win, class_header) — iflags.menu_headings */
         if (sortpack)
-            out.push({ heading: true, str: let_to_name(oclass), attr: ATR_INVERSE });
+            out.push({ heading: true,
+                       str: let_to_name(oclass, false,
+                           want_reply && game.iflags.menu_head_objsym),
+                       attr: ATR_INVERSE });
         for (const o of items) {
             /* src/invent.c:1039 — displaying the item observes its type */
             if (!Blind())
@@ -798,6 +1082,236 @@ export function display_inventory(allowed_choices = null) {
         }
     }
     return out;
+}
+
+// src/invent.c:3021 find_unpaid(), a recursive cursor over unpaid objects.
+export function find_unpaid(list, last_found) {
+    for (const obj of list || []) {
+        if (obj.unpaid) {
+            if (last_found.v) {
+                if (obj === last_found.v)
+                    last_found.v = null;
+            } else {
+                last_found.v = obj;
+                return obj;
+            }
+        }
+        if (Has_contents(obj)) {
+            const found = find_unpaid(obj.cobj, last_found);
+            if (found)
+                return found;
+        }
+    }
+    return null;
+}
+
+// src/invent.c:3654 dounpaid(), including hidden contents and floor totals.
+export async function dounpaid(count, floorcount, buriedcount) {
+    let otmp = null, contnr = null;
+    const marker = { v: null }, xtracount = floorcount + buriedcount;
+    if (count === 1 && !xtracount) {
+        otmp = find_unpaid(game.invent, marker);
+        contnr = unknwn_contnr_contents(otmp);
+    }
+    if (otmp && !contnr) {
+        const cost = await unpaid_cost(otmp, COST_NOCONTENTS);
+        game.iflags.suppress_price = (game.iflags.suppress_price || 0) + 1;
+        await pline(xprname(otmp, distant_name(otmp, doname),
+            carried(otmp) ? otmp.invlet : CONTAINED_SYM, true, cost, 0));
+        game.iflags.suppress_price--;
+        return;
+    }
+
+    const win = tty_create_nhwindow(NHW_MENU);
+    let totcost = 0, num_so_far = 0;
+    if (game.flags.fixinv === false)
+        reassign();
+    const sortpack = game.flags.sortpack !== false;
+    for (const oclass of sortpack ? inv_order() : [0]) {
+        let classcount = 0;
+        for (const obj of game.invent || []) {
+            if (obj.unpaid && (!sortpack || obj.oclass === oclass)) {
+                if (sortpack && !classcount++)
+                    tty_putstr(win, 0, let_to_name(oclass, true, false));
+                const cost = await unpaid_cost(obj, COST_NOCONTENTS);
+                totcost += cost;
+                game.iflags.suppress_price = (game.iflags.suppress_price || 0) + 1;
+                tty_putstr(win, 0, xprname(obj, distant_name(obj, doname),
+                    obj.invlet, true, cost, 0));
+                game.iflags.suppress_price--;
+                num_so_far++;
+            }
+        }
+    }
+    if (count > num_so_far) {
+        if (sortpack)
+            tty_putstr(win, 0, let_to_name(CONTAINED_SYM, true, false));
+        for (const obj of game.invent || []) {
+            if (Has_contents(obj)) {
+                let contcost = 0;
+                marker.v = null;
+                while (find_unpaid(obj.cobj, marker)) {
+                    const cost = await unpaid_cost(marker.v, COST_NOCONTENTS);
+                    totcost += cost;
+                    contcost += cost;
+                    if (obj.cknown) {
+                        game.iflags.suppress_price = (game.iflags.suppress_price || 0) + 1;
+                        tty_putstr(win, 0, xprname(marker.v, distant_name(marker.v, doname),
+                            CONTAINED_SYM, true, cost, 0));
+                        game.iflags.suppress_price--;
+                    }
+                }
+                if (!obj.cknown)
+                    tty_putstr(win, 0, xprname(null, `${s_suffix(xname(obj))} contents`,
+                        CONTAINED_SYM, true, contcost, 0));
+            }
+        }
+    }
+    if (count > 0) {
+        tty_putstr(win, 0, '');
+        tty_putstr(win, 0, xprname(null, 'Total:', '*', false, totcost, 0));
+    }
+    if (xtracount > 0) {
+        const verb = xtracount > 1 ? 'are' : 'is';
+        const where = !buriedcount ? 'on the floor'
+            : !floorcount ? 'under the floor' : 'on or under the floor';
+        if (!count) {
+            await You(`aren't carrying any unpaid items but there ${verb} ${xtracount} ${where}.`);
+        } else {
+            tty_putstr(win, 0, '');
+            tty_putstr(win, 0, `(There ${verb} ${xtracount} more unpaid object${
+                xtracount === 1 ? '' : 's'} ${where}.)`);
+        }
+    }
+    if (count > 0) {
+        await tty_display_nhwindow(win);
+        do {
+            await xwaitforspace(' \r\n\x1b');
+        } while (game.morc !== '\x1b' && tty_next_page(win));
+    }
+    tty_destroy_nhwindow(win);
+}
+
+// src/invent.c:3827 dotypeinv(), traditional prompts and category menus.
+export async function dotypeinv() {
+    const prompt = 'What type of object do you want an inventory of?';
+    const invent = game.invent || [];
+    const billx = !!((game.u.ushops || '').length && await doinvbill(0));
+    game.this_type = 0;
+    game.this_title = null;
+ doI: {
+        if (!invent.length && !billx) {
+            await You("aren't carrying anything.");
+            break doI;
+        }
+        const u_carried = count_unpaid(invent), u_floor = count_unpaid(game.level.objects),
+            u_buried = count_unpaid(game.level.buriedobjs);
+        const any_unpaid = u_carried + u_floor + u_buried;
+        const b = {}, u = {}, c = {}, x = {}, o = {}, j = {};
+        tally_BUCX(invent, false, b, u, c, x, o, j);
+        let choice = '\0', types = '', traditional = true;
+        if (game.flags.menu_style === MENU_FULL || game.flags.menu_style === MENU_PARTIAL) {
+            traditional = false;
+            const flags = UNPAID_TYPES | (billx ? BILLED_TYPES : 0)
+                | (b.v ? BUC_BLESSED : 0) | (u.v ? BUC_UNCURSED : 0)
+                | (c.v ? BUC_CURSED : 0) | (x.v ? BUC_UNKNOWN : 0)
+                | (j.v ? JUSTPICKED : 0) | INCLUDE_VENOM;
+            const picks = await query_category(prompt, invent, flags, PICK_ONE);
+            if (!picks.length)
+                break doI;
+            game.this_type = picks[0];
+            choice = String.fromCharCode(picks[0]);
+        }
+        if (traditional) {
+            const classes = [], itemcount = {};
+            let class_count = collect_obj_classes(classes, invent, false, null, itemcount);
+            types = classes.join('');
+            for (const [include,letter] of [[any_unpaid || billx || b.v+c.v+u.v+x.v || j.v,' '],
+                [any_unpaid,'u'],[billx,'x'],[b.v,'B'],[u.v,'U'],[c.v,'C'],[x.v,'X'],[j.v,'P']]) {
+                if (include) {
+                    types += letter;
+                    class_count++;
+                }
+            }
+            types += '\x1b';
+            for (const [present,letter] of [[any_unpaid,'u'],[billx,'x'],[b.v,'B'],
+                [u.v,'U'],[c.v,'C'],[x.v,'X'],[j.v,'P']])
+                if (!present)
+                    types += letter;
+            for (const symbol of def_oc_syms)
+                if (!types.includes(symbol))
+                    types += symbol;
+            if (class_count > 1) {
+                choice = await tty_yn_function(prompt, types, '\0', true);
+                if (choice === '\0') {
+                    tty_clear_nhwindow_message();
+                    break doI;
+                }
+            } else {
+                choice = any_unpaid ? 'u' : billx ? 'x' : types[0];
+            }
+        }
+        if (choice === 'x' || (choice === 'X' && billx && !x.v)) {
+            if (billx)
+                await doinvbill(1);
+            else
+                await pline(`No used-up objects${any_unpaid ? ' on your shopping bill' : ''}.`);
+            break doI;
+        }
+        if (choice === 'u' || (choice === 'U' && any_unpaid && !u.v)) {
+            if (any_unpaid)
+                await dounpaid(u_carried, u_floor, u_buried);
+            else
+                await You('are not carrying any unpaid objects.');
+            break doI;
+        }
+        let before = '', after = '';
+        switch (choice) {
+        case 'B': before = 'known to be blessed '; break;
+        case 'U': before = 'known to be uncursed '; break;
+        case 'C': before = 'known to be cursed '; break;
+        case 'X': after = ' whose blessed/uncursed/cursed status is unknown'; break;
+        case 'P': after = ' that were just picked up'; break;
+        default: before = 'such '; break;
+        }
+        if (traditional) {
+            if (types.indexOf(choice) > types.indexOf('\x1b')) {
+                await You(`have no ${before}objects${after}.`);
+                break doI;
+            }
+            game.this_type = 'BUCXP'.includes(choice)
+                ? choice.charCodeAt(0) : def_char_to_objclass(choice);
+        }
+        if ('BUCXP'.includes(choice))
+            game.this_title = mungspaces(`Items ${before || after}`) + ':';
+        const picks = await query_objlist(null, invent,
+            (game.flags.fixinv !== false ? USE_INVLET : 0) | INVORDER_SORT | INCLUDE_VENOM,
+            PICK_ONE, this_type_only);
+        if (picks.length)
+            await itemactions(picks[0]);
+    }
+    game.this_type = 0;
+    game.this_title = null;
+    return ECMD_OK;
+}
+
+// src/invent.c:3793 this_type_only(), including the goldX classification.
+export function this_type_only(obj) {
+    const type = game.this_type;
+    if (type === 'P'.charCodeAt(0))
+        return !!obj.pickup_prev;
+    if (obj.oclass === OCLASSES.COIN_CLASS) {
+        if (type && 'BUCX'.includes(String.fromCharCode(type)))
+            return type === (game.flags.goldX ? 'X' : 'U').charCodeAt(0);
+    } else {
+        switch (String.fromCharCode(type)) {
+        case 'B': return !!(obj.bknown && obj.blessed);
+        case 'U': return !!(obj.bknown && !(obj.blessed || obj.cursed));
+        case 'C': return !!(obj.bknown && obj.cursed);
+        case 'X': return !obj.bknown;
+        }
+    }
+    return obj.oclass === type;
 }
 
 // src/invent.c:3220 display_pickinv() — the menu getobj's '?' and '*' open.
@@ -877,7 +1391,7 @@ export async function display_pickinv(allowed_choices, handsbuf, menuquery,
        headings up front instead listed every empty class: quaffing showed
        Coins/Weapons/Armor/... around a lone Potions section. */
     let pending_heading = null;
-    for (const e of display_inventory(allowed_choices)) {
+    for (const e of display_inventory(allowed_choices, !wizid)) {
         if (e.heading) {
             pending_heading = e;
             continue;
@@ -966,19 +1480,30 @@ function getobj_letters(obj_ok, ctrlflags) {
     let altbuf = '';
     let forceprompt = (ctrlflags & GETOBJ_PROMPT) !== 0;
 
-    if (forceprompt || !obj_ok) {
-        const v = obj_ok ? obj_ok(null) : GETOBJ_EXCLUDE;
-        if (v === GETOBJ_SUGGEST)
-            buf += HANDS_SYM + ' ';
+    let allownone = false;
+    let inaccess = 0;
+    /* src/invent.c:1838, classify hands and declined floor alternatives. */
+    switch (obj_ok ? obj_ok(null) : GETOBJ_EXCLUDE) {
+    case GETOBJ_SUGGEST:
+        allownone = true;
+        buf += HANDS_SYM + ' ';
+        break;
+    case GETOBJ_DOWNPLAY:
+    case GETOBJ_EXCLUDE_INACCESS:
+    case GETOBJ_EXCLUDE_SELECTABLE:
+        allownone = true;
+        altbuf += HANDS_SYM;
+        break;
+    case GETOBJ_EXCLUDE_NONINVENT:
+        forceprompt = false;
+        inaccess++;
+        break;
+    default:
+        break;
     }
 
-    /* the chain is kept in inv_rank order by reorder_invent(), so a plain
-       walk yields the letters in prompt order, as C's gi.invent walk does */
+    /* The chain is kept in inv_rank order by reorder_invent(). */
     let suggested = 0;
-    /* src/invent.c:1860 — inaccessible items (e.g. already-worn gear for
-       'P') are removed from the suggestions, but unlike plain exclusions
-       they turn "anything to ___" into "anything else to ___" */
-    let inaccess = 0;
     for (const otmp of (game.invent || [])) {
         const v = obj_ok ? obj_ok(otmp) : GETOBJ_SUGGEST;
         if (v === GETOBJ_SUGGEST) {
@@ -993,6 +1518,8 @@ function getobj_letters(obj_ok, ctrlflags) {
             forceprompt = true;
         }
     }
+    if (!suggested && buf.endsWith(' '))
+        buf = buf.slice(0, -1);
     /* src/invent.c:1908 — "if (suggested > 5) compactify" — five letters
        stay verbatim, six or more compress */
     /* src/invent.c:1907 copies the complete letter list into `lets` before
@@ -1005,6 +1532,7 @@ function getobj_letters(obj_ok, ctrlflags) {
         prompt: suggested > 5 ? compactify(buf) : buf,
         forceprompt,
         inaccess,
+        allownone,
     };
 }
 
@@ -1123,11 +1651,11 @@ export async function getobj(word, obj_ok_func, ctrlflags) {
         reassign();
     let qbuf = `What do you want to ${word}?`;
     const { choices: lets, altChoices, prompt: promptLets, forceprompt,
-            inaccess } = getobj_letters(obj_ok_func, ctrlflags | 0);
+            inaccess, allownone } = getobj_letters(obj_ok_func, ctrlflags | 0);
 
     /* src/invent.c:1911 — nothing suggested, no forced prompt, no '-'
        choice: refuse up front. */
-    if (!lets && obj_ok_func && !(ctrlflags & GETOBJ_PROMPT) && !forceprompt) {
+    if (!lets && !forceprompt && !allownone) {
         await You(`don't have anything ${inaccess ? 'else ' : ''}to ${word}.`);
         return null;
     }
@@ -2092,10 +2620,10 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
                 obj = splitobj(obj, oquan);
             drop_it = true;
         } else {
-            if (near_capacity() !== old_encumbr) {
-                /* C does not repaint the new capacity condition until
-                   encumber_msg() has announced it. Keep the pre-add status
-                   while prinv() is blocked at a More prompt. */
+            if (near_capacity() !== old_encumbr
+                && !game.disp?.botl && !game.disp?.botlx) {
+                /* prinv() flushes dirty status, including newly added gold.
+                   Otherwise the old condition lasts until encumber_msg(). */
                 game._encumber_status_stale = true;
                 game._deferred_status_capacity = old_encumbr;
             }
@@ -2280,42 +2808,6 @@ const inuse_headers = [
     'Wielded/Readied Weapons', 'Accessories',
 ];
 
-// src/invent.c:70 inuse_classify().
-function inuse_classify(obj) {
-    const wmask = (obj.owornmask || 0) & (W_ACCESSORY | W_WEAPONS | W_ARMOR);
-    const ratings = [
-        [1, !wmask && obj.otyp === ONAMES.LEASH && obj.leashmon],
-        [1, !wmask && obj.oclass === OCLASSES.TOOL_CLASS && obj.lamplit],
-        [2, wmask & W_ARMU],
-        [2, wmask & W_ARMF],
-        [2, wmask & W_ARMG],
-        [2, wmask & W_ARMH],
-        [2, wmask & W_ARMS],
-        [2, wmask & W_ARMC],
-        [2, wmask & W_ARM],
-        [3, wmask & W_QUIVER],
-        [3, wmask & W_SWAPWEP],
-        [3, wmask & W_WEP],
-        [4, wmask & W_TOOL],
-    ];
-    const urighty = (game.u.uhandedness ?? 0) === 0;
-    ratings.push(
-        [4, wmask & (urighty ? W_RINGL : W_RINGR)],
-        [4, wmask & (urighty ? W_RINGR : W_RINGL)],
-        [4, wmask & W_AMUL],
-    );
-    const found = ratings.findIndex(([, used]) => used);
-    return found < 0 ? { rating: 0, orderclass: -1 }
-                     : { rating: found + 1, orderclass: ratings[found][0] };
-}
-
-// src/invent.c:2159 is_worn(), 2167 is_inuse().
-function is_inuse(obj) {
-    const wornmask = W_ARMOR | W_ACCESSORY | W_SADDLE | W_WEAPONS;
-    return carried(obj)
-        && (!!((obj.owornmask || 0) & wornmask) || tool_being_used(obj));
-}
-
 /* src/invent.c:3060 display_pickinv(), SORTLOOT_INUSE arm. This is also the
    path that inserts bare or gloved hands into a full in-use listing when the
    hero has armor or another active item but no primary weapon. */
@@ -2326,17 +2818,21 @@ async function display_inuse_inventory(objs, altLabel) {
     const entries = (game.invent || [])
         .filter(is_inuse)
         .filter(obj => !allowed || allowed.has(obj))
-        .map((obj, index) => ({ obj, index, ...inuse_classify(obj) }));
+        .map((obj, index) => {
+            const entry = { obj, index };
+            inuse_classify(entry, obj);
+            return entry;
+        });
 
     if (!game.u.uwep && !allowed) {
         entries.push({
             obj: null,
             index: -1,
-            rating: 12,
+            inuse: 12,
             orderclass: 3,
         });
     }
-    entries.sort((a, b) => b.rating - a.rating || a.index - b.index);
+    entries.sort((a, b) => b.inuse - a.inuse || a.index - b.index);
 
     const win = tty_create_nhwindow(NHW_MENU);
     tty_start_menu(win, MENU_BEHAVE_STANDARD);
@@ -2401,8 +2897,7 @@ export async function doprarm() {
         .map(m => worn(m)).filter(Boolean);
 
     if (!lets.length) {
-        /* noarmor(TRUE) */
-        await You('are not wearing any armor.');
+        await noarmor(true);
     } else {
         return await dispinv_with_action(lets, true);
     }
@@ -2496,6 +2991,261 @@ export function count_unidentified(objchn) {
     return unid_cnt;
 }
 
+// src/invent.c:2135 ckvalidcat()
+function ckvalidcat(otmp) {
+    return Number(allow_category(otmp));
+}
+
+// src/invent.c:2142 ckunpaid()
+function ckunpaid(otmp) {
+    return Number(!!(otmp.unpaid || (Has_contents(otmp) && count_unpaid(otmp.cobj))));
+}
+
+// src/invent.c:2148 wearing_armor()
+export function wearing_armor() {
+    const u = game.u;
+    return !!(u.uarm || u.uarmc || u.uarmf || u.uarmg
+              || u.uarmh || u.uarms || u.uarmu);
+}
+
+// src/invent.c:2156 is_worn()
+export function is_worn(otmp) {
+    return !!(otmp.owornmask & (W_ARMOR | W_ACCESSORY | W_SADDLE | W_WEAPONS));
+}
+
+// src/invent.c:2167 is_inuse()
+function is_inuse(obj) {
+    return carried(obj) && (is_worn(obj) || tool_being_used(obj));
+}
+
+// src/invent.c:2182 safeq_xprname()
+function safeq_xprname(obj) {
+    const ctx = game.safeq_xprn_ctx;
+    return xprname(obj, null, ctx.let, ctx.dot, 0, 0);
+}
+
+// src/invent.c:2190 safeq_shortxprname()
+function safeq_shortxprname(obj) {
+    const ctx = game.safeq_xprn_ctx;
+    return xprname(obj, ansimpleoname(obj), ctx.let, ctx.dot, 0, 0);
+}
+
+const removeables = [OCLASSES.ARMOR_CLASS, OCLASSES.WEAPON_CLASS,
+                     OCLASSES.RING_CLASS, OCLASSES.AMULET_CLASS,
+                     OCLASSES.TOOL_CLASS];
+
+// src/invent.c:2202 ggetobj()
+export async function ggetobj(word, fn, mx, combo, resultflags) {
+    let ckfn = null, ofilter = null;
+    if (!game.invent?.length) {
+        await You(`have nothing to ${word}.`);
+        if (resultflags) resultflags.v = ALL_FINISHED;
+        return 0;
+    }
+    if (resultflags) resultflags.v = 0;
+    let takeoff = false, ident = false, allflag = false, m_seen = false;
+    add_valid_menu_class(0);
+    if (taking_off(word)) {
+        takeoff = true;
+        ofilter = is_worn;
+    } else if (word === 'identify') {
+        ident = true;
+        ofilter = not_fully_identified;
+    }
+    const ilets = [], itemcount = { v: 0 };
+    let iletct = collect_obj_classes(ilets, game.invent, false, ofilter, itemcount);
+    const unpaid = count_unpaid(game.invent);
+    if (ident && !iletct) {
+        return -1;
+    } else if (game.invent.length) {
+        ilets[iletct++] = ' ';
+        if (unpaid) ilets[iletct++] = 'u';
+        if (count_buc(game.invent, BUC_BLESSED, ofilter)) ilets[iletct++] = 'B';
+        if (count_buc(game.invent, BUC_UNCURSED, ofilter)) ilets[iletct++] = 'U';
+        if (count_buc(game.invent, BUC_CURSED, ofilter)) ilets[iletct++] = 'C';
+        if (count_buc(game.invent, BUC_UNKNOWN, ofilter)) ilets[iletct++] = 'X';
+        if (count_justpicked(game.invent)) ilets[iletct++] = 'P';
+        ilets[iletct++] = 'a';
+    }
+    ilets[iletct++] = 'i';
+    if (!combo) ilets[iletct++] = 'm';
+
+    const { getlin } = await import('./cmd.js');
+    let buf;
+    for (;;) {
+        buf = await getlin(`What kinds of thing do you want to ${word}? [${ilets.join('')}]`);
+        if (buf[0] === '\x1b') return 0;
+        if (buf.includes('i')) {
+            let ailets = '';
+            if (ofilter)
+                for (const otmp of [...game.invent])
+                    if (ofilter(otmp) && !ailets.includes(otmp.invlet))
+                        ailets += otmp.invlet;
+            if (await display_pickinv(ailets || null, null, null, false) === '\x1b')
+                return 0;
+        } else {
+            break;
+        }
+    }
+    const extra_removeables = [];
+    if (takeoff) {
+        if (game.u.uwep) extra_removeables.push(game.u.uwep.oclass);
+        if (game.u.uswapwep) extra_removeables.push(game.u.uswapwep.oclass);
+        if (game.u.uquiver) extra_removeables.push(game.u.uquiver.oclass);
+    }
+    const olets = [];
+    for (const sym of buf) {
+        if (sym === ' ') continue;
+        const oc_of_sym = def_char_to_objclass(sym);
+        if (takeoff && oc_of_sym !== OCLASSES.MAXOCLASSES) {
+            if (extra_removeables.includes(oc_of_sym)) {
+                // Skip the rest of the takeoff checks.
+            } else if (!removeables.includes(oc_of_sym)) {
+                await pline('Not applicable.');
+                return 0;
+            } else if (oc_of_sym === OCLASSES.ARMOR_CLASS && !wearing_armor()) {
+                await noarmor(false);
+                return 0;
+            } else if (oc_of_sym === OCLASSES.WEAPON_CLASS && !game.u.uwep
+                       && !game.u.uswapwep && !game.u.uquiver) {
+                await You('are not wielding anything.');
+                return 0;
+            } else if (oc_of_sym === OCLASSES.RING_CLASS && !game.u.uright && !game.u.uleft) {
+                await You('are not wearing rings.');
+                return 0;
+            } else if (oc_of_sym === OCLASSES.AMULET_CLASS && !game.u.uamul) {
+                await You('are not wearing an amulet.');
+                return 0;
+            } else if (oc_of_sym === OCLASSES.TOOL_CLASS && !game.u.ublindf) {
+                await You('are not wearing a blindfold.');
+                return 0;
+            }
+        }
+        if (sym === 'a') {
+            allflag = true;
+        } else if (sym === 'A') {
+            // Same as the default.
+        } else if (sym === 'u') {
+            add_valid_menu_class('u');
+            ckfn = ckunpaid;
+        } else if ('BUCXP'.includes(sym)) {
+            add_valid_menu_class(sym);
+            ckfn = ckvalidcat;
+        } else if (sym === 'm') {
+            m_seen = true;
+        } else if (oc_of_sym === OCLASSES.MAXOCLASSES) {
+            await You(`don't have any ${sym}'s.`);
+        } else if (!olets.includes(oc_of_sym)) {
+            add_valid_menu_class(oc_of_sym);
+            olets.push(oc_of_sym);
+        }
+    }
+    if (m_seen) {
+        return allflag || (!olets.length && ckfn !== ckunpaid && ckfn !== ckvalidcat) ? -2 : -3;
+    } else if (game.flags.menu_style !== MENU_TRADITIONAL && combo && !allflag) {
+        return 0;
+    } else {
+        const cnt = await askchain(game.invent, olets, allflag, fn, ckfn, mx, word);
+        if (combo && allflag && resultflags)
+            resultflags.v |= ALL_FINISHED;
+        return cnt;
+    }
+}
+
+// src/invent.c:2377 askchain(); object chains are mutable arrays.
+export async function askchain(objchn, olets, allflag, fn, ckfn, mx, word) {
+    let cnt = 0, dud = 0;
+    const takeoff = taking_off(word), ident = word === 'identify';
+    const take_out = word === 'take out', put_in = word === 'put in';
+    const nodot = word === 'nodot' || word === 'drop' || ident
+        || takeoff || take_out || put_in;
+    const ininv = objchn === game.invent;
+    const bycat = menu_class_present('u') || menu_class_present('B')
+        || menu_class_present('U') || menu_class_present('C')
+        || menu_class_present('X') || menu_class_present('P');
+    const sortedchn = sortloot(objchn, SORTLOOT_INVLET, false, null);
+    let first = true, classIndex = 0;
+    ret: {
+        do {
+            let ilet = 96;
+            if (objchn?.[0]?.oclass === OCLASSES.COIN_CLASS) --ilet;
+            bypass_objlist(objchn, false);
+            let otmp;
+            while ((otmp = nxt_unbypassed_loot(sortedchn, objchn)) !== null) {
+                if (ilet === 122) ilet = 65;
+                else if (ilet === 90) ilet = 35;
+                else ++ilet;
+                if (olets?.length && otmp.oclass !== olets[classIndex]) continue;
+                if (takeoff && !is_worn(otmp)) continue;
+                if (ident && !not_fully_identified(otmp)) continue;
+                if (ckfn && !ckfn(otmp)) continue;
+                if (bycat && !ckvalidcat(otmp)) continue;
+                let sym;
+                if (!allflag) {
+                    game.safeq_xprn_ctx = { let: String.fromCharCode(ilet), dot: !nodot };
+                    let qpfx = '';
+                    if (first) {
+                        if (take_out || put_in)
+                            qpfx = word[0].toUpperCase() + word.slice(1) + ': ';
+                        first = false;
+                    }
+                    const qbuf = safe_qbuf(qpfx, '?', otmp,
+                        ininv ? safeq_xprname : doname,
+                        ininv ? safeq_shortxprname : ansimpleoname, 'item');
+                    sym = await tty_yn_function(qbuf,
+                        takeoff || ident || otmp.quan < 2 ? 'ynaq' : 'yn#aq', 'n', false);
+                } else {
+                    sym = 'y';
+                }
+                const otmpo = otmp;
+                if (sym === '#') {
+                    if (!game.yn_number) {
+                        sym = 'n';
+                    } else {
+                        sym = 'y';
+                        if (game.yn_number < otmp.quan && splittable(otmp))
+                            otmp = splitobj(otmp, game.yn_number);
+                    }
+                }
+                switch (sym) {
+                case 'a':
+                    allflag = 1;
+                    // FALLTHROUGH
+                case 'y': {
+                    const tmp = await fn(otmp);
+                    if (tmp <= 0) {
+                        if (container_gone(fn)) {
+                            otmp = null;
+                        } else if (otmp && otmp !== otmpo) {
+                            await unsplitobj(otmp);
+                        }
+                        if (tmp < 0) break ret;
+                    }
+                    cnt += tmp;
+                    if (--mx === 0) break ret;
+                    // FALLTHROUGH
+                }
+                case 'n':
+                    if (nodot) ++dud;
+                    // FALLTHROUGH
+                default:
+                    break;
+                case 'q':
+                    if (ident) cnt = -1;
+                    break ret;
+                }
+            }
+        } while (olets?.length && ++classIndex < olets.length);
+        if (!takeoff && (dud || cnt))
+            await pline('That was all.');
+        else if (!dud && !cnt)
+            await pline('No applicable objects.');
+    }
+    unsortloot(sortedchn);
+    clear_bypasses();
+    return cnt;
+}
+
 // src/invent.c:2673 fully_identify_obj() and :2687 identify().
 // identify() gives immediate feedback after updating every object-level flag.
 export function fully_identify_obj(otmp) {
@@ -2513,6 +3263,42 @@ export async function identify(otmp) {
     fully_identify_obj(otmp);
     await prinv(null, otmp, 0);
     return 1;
+}
+
+// src/invent.c:2660 menu_identify()
+async function menu_identify(id_limit) {
+    let first = 1, tryct = 5;
+
+    while (id_limit) {
+        const buf = `What would you like to identify ${first ? 'first' : 'next'}?`;
+        const pick_list = await query_objlist(buf, game.invent,
+            SIGNAL_NOMENU | SIGNAL_ESCAPE | USE_INVLET | INVORDER_SORT,
+            PICK_ANY, not_fully_identified);
+        let n = Array.isArray(pick_list) ? pick_list.length : pick_list;
+
+        if (n > 0) {
+            if (n > id_limit)
+                n = id_limit;
+            for (let i = 0; i < n; i++, id_limit--)
+                await identify(pick_list[i]);
+            if (id_limit) {
+                // tty_wait_synch's active-map arm, before opening another menu.
+                const { flush_screen } = await import('./display.js');
+                await flush_screen(0);
+            }
+            first = 0;
+        } else if (n === -2) {
+            break;
+        } else if (n === -1) {
+            await pline('That was all.');
+            break;
+        } else if (!--tryct) {
+            await pline(thats_enough_tries);
+            break;
+        } else {
+            await pline('Choose an item; use ESC to decline.');
+        }
+    }
 }
 
 // src/invent.c:2711 identify_pack() — identify up to id_limit items.
@@ -2536,7 +3322,14 @@ export async function identify_pack(id_limit, learning_id) {
             }
         }
     } else {
-        note_unported_invent('identify_pack:menu');
+        let n = 0;
+        if (game.flags.menu_style === MENU_TRADITIONAL)
+            do {
+                n = await ggetobj('identify', identify, id_limit, false, null);
+                if (n < 0) break;
+            } while ((id_limit -= n) > 0);
+        if (n === 0 || n < -1)
+            await menu_identify(id_limit);
     }
     update_inventory();
 }
@@ -2549,6 +3342,27 @@ import { welded } from './wield.js';
 export function splittable(obj) {
     return !((obj.otyp === ONAMES.LOADSTONE && obj.cursed)
              || (obj === game.u.uwep && welded(game.u.uwep)));
+}
+
+// src/invent.c:1672 taking_off()
+function taking_off(action) {
+    return action === 'take off' || action === 'remove';
+}
+
+// src/invent.c:4578 noarmor()
+async function noarmor(report_uskin) {
+    if (!game.u.uskin || !report_uskin) {
+        await You('are not wearing any armor.');
+    } else {
+        const { simpleonames } = await import('./objnam.js');
+        let uskinname = simpleonames(game.u.uskin);
+        if (uskinname.slice(0, 7).toLowerCase() === 'set of ')
+            uskinname = uskinname.slice(7);
+        const p = uskinname.toLowerCase().indexOf(' dragon ');
+        if (p >= 0)
+            uskinname = uskinname.slice(0, p + 1) + uskinname.slice(p + 8);
+        await You(`are not wearing armor but have ${uskinname} embedded in your skin.`);
+    }
 }
 
 
@@ -3016,6 +3830,14 @@ export async function display_minventory(mon,    /* monster whose minvent we're 
     else
         ret = null;
     return ret;
+}
+
+// src/invent.c:1602 obj_here()
+export function obj_here(obj, x, y) {
+    for (const otmp of game.level?.objects || [])
+        if (otmp.ox === x && otmp.oy === y && obj === otmp)
+            return true;
+    return false;
 }
 
 // src/invent.c g_at(); the gold on the floor at <x,y>, if any

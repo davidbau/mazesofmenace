@@ -14,6 +14,8 @@ import {
     MENU_BEHAVE_STANDARD,
     PICK_ONE, PICK_ANY, ECMD_OK,
     AUTOUNLOCK_APPLY_KEY, MENU_TRADITIONAL, MENU_COMBINATION,
+    GPCOORDS_NONE, GPCOORDS_COMPASS, GPCOORDS_COMFULL, GPCOORDS_MAP,
+    GPCOORDS_SCREEN, COLNO, ROWNO,
 } from './const.js';
 import { NO_COLOR } from './terminal.js';
 import { allopt, findOption } from './optlist.js';
@@ -143,7 +145,9 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
     }
     if (value === null && opt.type !== 'BoolOpt' && opt.valok === 'Yes'
         && opt.name !== 'packorder' && opt.name !== 'pickup_types'
+        && opt.name !== 'menu_objsyms' && opt.name !== 'autounlock'
         && !(opt.name === 'menustyle' && (negated || opts.length <= 5))
+        && !(opt.name === 'whatis_coord' && negated)
         && !(opt.name === 'paranoid_confirmation' && negated)) {
         config_error_add(result, `Missing value for '${opt.name}'`);
         return false;
@@ -197,6 +201,47 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
                 }
             }
         }
+    } else if (opt.name === 'autounlock') {
+        // src/options.c:1066 optfn_autounlock(), do_set arm.
+        if (!value) {
+            result.opts.autounlock = negated ? 0 : AUTOUNLOCK_APPLY_KEY;
+        } else {
+            let op = value, newflags = 0;
+            const separator = op.includes('+') ? '+' : ' ';
+            while (op !== null) {
+                op = op.trim();
+                const i = op.indexOf(separator);
+                const next = i < 0 ? null : op.slice(i + 1);
+                if (i >= 0)
+                    op = op.slice(0, i).trim();
+                let matched = false;
+                if ('none'.startsWith(op.toLowerCase())) {
+                    negated = true;
+                    matched = true;
+                }
+                for (const [name] of unlocktypes) {
+                    if (matched) break;
+                    if (name.startsWith(op.toLowerCase())
+                        || op.replace(/[ _-]/g, '').toLowerCase() === name.replace(/-/g, '')) {
+                        const bit = 'uakf'.indexOf(op[0]);
+                        if (bit >= 0) {
+                            newflags |= 1 << bit;
+                            matched = true;
+                        }
+                    }
+                }
+                if (!matched) {
+                    config_error_add(result, `Invalid value for "autounlock": "${op}"`);
+                    return false;
+                }
+                op = next;
+            }
+            if (negated && newflags !== 0) {
+                config_error_add(result, `Invalid value combination for "autounlock": 'none' with some`);
+                return false;
+            }
+            result.opts.autounlock = newflags;
+        }
     } else if (opt.name === 'menustyle') {
         // src/options.c:2320 optfn_menustyle(), do_set arm.
         const order = value ? opts.slice(sep + 1) : '';
@@ -209,6 +254,47 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
         }
         result.opts.menu_style = style;
         result.opts.menustyle = menutype[style];
+    } else if (opt.name === 'menu_objsyms') {
+        // src/options.c:2225 optfn_menu_objsyms(), do_set arm.
+        const op = sep < 0 ? '' : opts.slice(sep + 1);
+        let osyms = 0;
+        if (negated) {
+            osyms = 0;
+        } else if (!op) {
+            osyms = opts.startsWith('use_menu_glyphs') ? 2 : 1;
+        } else if (/^[0-9]/.test(op)) {
+            osyms = parseInt(op, 10);
+            if (osyms >= objsymvals.length) {
+                config_error_add(result, `Illegal menu_objsyms parameter '${op}'`);
+                return false;
+            }
+        } else {
+            for (let i = 0; i < objsymvals.length; i++) {
+                const name = objsymvals[i];
+                const l = op.length >= 4 ? op.length : name.length;
+                if (name.slice(0, l).toLowerCase() === op.slice(0, l).toLowerCase()
+                    || (i === 5 && op.toLowerCase().startsWith('one-or-the-other'))) {
+                    osyms = i;
+                    break;
+                }
+            }
+        }
+        result.opts.menuobjsyms = osyms;
+    } else if (opt.name === 'whatis_coord') {
+        // src/options.c:4703 optfn_whatis_coord(), do_set arm.
+        if (negated) {
+            result.opts.getpos_coords = GPCOORDS_NONE;
+        } else if (value) {
+            const c = value[0].toLowerCase();
+            if ('ncfms'.includes(c))
+                result.opts.getpos_coords = c;
+            else {
+                config_error_add(result, `Unknown whatis_coord parameter '${value}'`);
+                return false;
+            }
+        } else {
+            return false;
+        }
     } else if (opt.name === 'sortdiscoveries') {
         // src/options.c:3863 optfn_sortdiscoveries(), initial do_set arm.
         if (negated) {
@@ -291,6 +377,10 @@ export function parseNethackrc(rc) {
             result.symbols.push(rest);
             break;
         case 'BIND':
+        case 'BINDI':
+        case 'BINDIN':
+        case 'BINDING':
+        case 'BINDINGS':
             result.bindings.push(rest);
             break;
         default:
@@ -411,6 +501,7 @@ export function set_playmode() {
         game.plname = 'wizard';
         game.plnamelen = game.plname.length;
         game.discover = !game.wizard;
+        (game.iflags ||= {}).deferred_X = false;
     }
 }
 
@@ -1233,6 +1324,10 @@ async function doset_simple_menu() {
                 await choose_disco_sort(0);
             } else if (allopt[k].name === 'menustyle') {
                 await handler_menustyle();
+            } else if (allopt[k].name === 'autounlock') {
+                await handler_autounlock();
+            } else if (allopt[k].name === 'menu_objsyms') {
+                await handler_menu_objsyms();
             } else {
                 note_unported_options(`doset_simple:set=${allopt[k].name}`);
             }
@@ -1266,9 +1361,11 @@ export async function doset_simple() {
 
     /* select and change one option at a time, then reprocess the menu
        with updated settings to offer chance for further change */
+    game.give_opt_msg = false;
     do {
         pickedone = await doset_simple_menu();
     } while (pickedone > 0);
+    game.give_opt_msg = true;
     await reset_needed_visuals();
     return ECMD_OK;
 }
@@ -1778,6 +1875,12 @@ export async function doset() {
                 await choose_disco_sort(0);
             } else if (o.hasHandler === 'Yes' && o.name === 'menustyle') {
                 await handler_menustyle();
+            } else if (o.hasHandler === 'Yes' && o.name === 'autounlock') {
+                await handler_autounlock();
+            } else if (o.hasHandler === 'Yes' && o.name === 'menu_objsyms') {
+                await handler_menu_objsyms();
+            } else if (o.hasHandler === 'Yes' && o.name === 'whatis_coord') {
+                await handler_whatis_coord();
             } else if (o.name === 'bind keys') {
                 await handler_rebind_keys();
             } else if (o.name === 'status condition fields') {
@@ -1834,6 +1937,104 @@ async function reset_needed_visuals() {
    display site, and nothing here needs the numbers), so the table is spelled
    with the symbols def_oc_syms[] gives those classes. */
 const def_inv_order = '$")[%?+!=/(*`0_';
+
+// src/options.c:7446 set_menuobjsyms_flags().
+export function set_menuobjsyms_flags(newobjsyms) {
+    game.iflags.menuobjsyms = newobjsyms;
+    game.iflags.menu_head_objsym = !!(newobjsyms & 1);
+    game.iflags.use_menu_glyphs = !!(newobjsyms & (2 | 4));
+}
+
+// src/options.c:5624 handler_autounlock(), select any combination of actions.
+export async function handler_autounlock() {
+    const oldflags = game.flags.autounlock;
+    const sep = game.iflags.menu_tab_sep ? '\t' : ' ';
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    for (let i = 0; i < unlocktypes.length; i++) {
+        const [name, description] = unlocktypes[i];
+        tty_add_menu(win, null, i + 1, name[0], 0, ATR_NONE, NO_COLOR,
+            name.padEnd(10) + sep + description,
+            oldflags & (1 << i) ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+    }
+    tty_end_menu(win, "Select 'autounlock' actions:");
+    const picks = await tty_select_menu(win, PICK_ANY);
+    if (picks.length) {
+        let newflags = 0;
+        for (const pick of picks) newflags |= 1 << (pick - 1);
+        game.flags.autounlock = newflags;
+    } else if (!picks.cancelled) {
+        game.flags.autounlock = 0;
+    }
+    tty_destroy_nhwindow(win);
+    const chngd = game.flags.autounlock !== oldflags;
+    if ((chngd || game.flags.verbose) && game.give_opt_msg !== false) {
+        const value = get_option_value({name: 'autounlock'});
+        await pline(`'autounlock' ${chngd ? 'changed to' : 'is still'} '${value}'.`);
+    }
+    return 0;
+}
+
+// src/options.c:5795 handler_menu_objsyms().
+export async function handler_menu_objsyms() {
+    const descriptions = [
+        "don't show object symbols in menus",
+        'show object symbols in menu header lines',
+        'show object symbols in individual menu entries',
+        'show object symbols in headers and menu entries',
+        'show objsyms in entries if no headers are shown',
+        'show objsyms in header, in entries if no header',
+    ];
+    const sep = game.iflags.menu_tab_sep ? '\t' : ' ';
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    for (let i = 0; i < objsymvals.length; i++) {
+        const buf = objsymvals[i].padEnd(12) + sep + descriptions[i];
+        tty_add_menu(win, null, i + 1, String(i), buf[0], ATR_NONE, NO_COLOR, buf,
+                     i === game.iflags.menuobjsyms
+                         ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+    }
+    tty_end_menu(win, 'Set object symbols in menus to what?');
+    const picks = await tty_select_menu(win, PICK_ONE);
+    if (picks.length) {
+        let i = picks[0] - 1;
+        if (picks.length > 1 && i === game.iflags.menuobjsyms)
+            i = picks[1] - 1;
+        set_menuobjsyms_flags(i);
+    }
+    tty_destroy_nhwindow(win);
+    return 0;
+}
+
+// src/options.c:6206 handler_whatis_coord(), the pinned tty window port.
+export async function handler_whatis_coord() {
+    const old = game.iflags.getpos_coords;
+    const entries = [
+        [GPCOORDS_COMPASS, "compass ('east' or '3s' or '2n,4w')"],
+        [GPCOORDS_COMFULL, "full compass ('east' or '3south' or '2north,4west')"],
+        [GPCOORDS_MAP, 'map <x,y>'],
+        [GPCOORDS_SCREEN, 'screen [row,column]'],
+        [GPCOORDS_NONE, 'none (no coordinates displayed)'],
+    ];
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    for (const [mode, label] of entries)
+        tty_add_menu(win, null, mode, mode, 0, ATR_NONE, NO_COLOR, label,
+                     old === mode ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+    tty_add_menu_str(win, '');
+    tty_add_menu_str(win, `map: upper-left: <1,0>, lower-right: <${COLNO - 1},${ROWNO - 1}>${game.flags.verbose ? '; column 0 unused, off left edge' : ''}`);
+    tty_add_menu_str(win, `screen: upper-left: [02,01], lower-right: [${ROWNO + 1},${COLNO - 1}]${COLNO === 80 && game.flags.verbose ? '; column 80 is not used' : ''}`);
+    tty_add_menu_str(win, '');
+    tty_end_menu(win, 'Select coordinate display when auto-describing a map position:');
+    const picks = await tty_select_menu(win, PICK_ONE);
+    if (picks.length) {
+        game.iflags.getpos_coords = picks[0];
+        if (picks.length > 1 && picks[0] === old)
+            game.iflags.getpos_coords = picks[1];
+    }
+    tty_destroy_nhwindow(win);
+    return 0;
+}
 
 // src/options.c:5544 handler_menustyle().
 async function handler_menustyle() {

@@ -166,8 +166,11 @@ async function itemactions_pushkeys(act, otmp) {
         break;
     }
     case IA_TAKEOFF_OBJ: {
-        const { dotakeoff } = await import('./do_wear.js');
-        cmdq_add_ec(dotakeoff);
+        /* C iactions.c `:230–232` — cmdq_add_ec(ia_dotakeoff) looks up
+           INTERNALCMD "alttakeoff" (cmd.c `:2064`); invlet answers
+           getobj takeoff_ok with covered armor SUGGESTed. */
+        const { ia_dotakeoff } = await import('./do_wear.js');
+        cmdq_add_ec_entry('alttakeoff', ia_dotakeoff);
         cmdq_add_key(otmp.invlet);
         break;
     }

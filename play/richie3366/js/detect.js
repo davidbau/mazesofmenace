@@ -7,7 +7,7 @@
 // cmd.c doterrain; vision.c do_clear_area (hero-centered).
 //
 // Branch envelope: 8-neighbour SDOOR/SCORR/trap search with fund
-// (lenses); findit clear-area reveal of SDOOR/SCORR/unseen traps +
+// (lenses + artifact SPFX_SEARCH spe); findit clear-area reveal of SDOOR/SCORR/unseen traps +
 // empty "don't find anything" path; do_mapping hero_memory path
 // (no browse_map) + show_map_spot SCORR uncover / seenv=SVALL /
 // magic_map_background; **#terrain / doterrain** View which? PICK_ONE
@@ -27,7 +27,7 @@
 // (D-1391; caller spell.c SPE_CLAIRVOYANCE). allmain seer_turn still named.
 // **gold_detect** (D-1773; caller read.c seffect_gold_detection).
 // Named omissions: Hallucination/cls
-// map_trap wait; artifact SPFX_SEARCH;
+// map_trap wait;
 // map_trap + map_engraving after furniture (D-0928 #1158); oldglyph
 // trap/object restore deferred; unconstrain still named for
 // do_mapping/reveal_terrain/monster_detect (do_vicinity_map D-1391
@@ -118,6 +118,7 @@ import {
     ARTICLE_YOUR, ARTICLE_THE, SUPPRESS_SADDLE,
 } from './const.js';
 import { room_discovered } from './dungeon.js';
+import { spec_ability, SPFX_SEARCH } from './artifact.js';
 
 const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
 
@@ -441,8 +442,10 @@ export async function dosearch0(aflag) {
         return 1;
     }
 
-    // Artifact SPFX_SEARCH fund deferred (no artifact table wired yet) → 0.
-    let fund = 0;
+    // C detect.c:2027 — `(uwep && uwep->oartifact && spec_ability(uwep,
+    // SPFX_SEARCH)) ? uwep->spe : 0`, C short-circuit order.
+    const uwep = game.u?.uwep;
+    let fund = (uwep && uwep.oartifact && spec_ability(uwep, SPFX_SEARCH)) ? (uwep.spe | 0) : 0;
     const ublindf = u.ublindf;
     const isBlind = Blind();
     if (ublindf && ublindf.otyp === LENSES && !isBlind) fund += 2;

@@ -15,7 +15,8 @@
 // digactualhole altar → desecrate_altar; angrygods 0–8 + default zap
 // (punish/attrcurse/rndcurse/summon_minion/god_zaps_you);
 // #offer corpse → offer_corpse (D-1678).
-// Named omissions: pleased pat_on_head gifts / crown / give_spell;
+// Named omissions: pleased pat_on_head gift-switch wiring (gcrownu /
+// at_your_feet live below, unwired) / give_spell;
 // p_type -2/-1/1/2 outcome bodies beyond water_prayer scan;
 // pray_revive; offer_different_alignment_altar / bestow_artifact /
 // angry_priest from sacrifice_your_race; offer_too_soon /
@@ -34,19 +35,27 @@
 import { game } from './gstate.js';
 import { rn2, rn1, rnl, rnz, rnd, d } from './rng.js';
 import { pline, verbalize, You_feel, newsym } from './display.js';
-import { nomul } from './hack.js';
+import { nomul, carrying } from './hack.js';
+import { upstart } from './hacklib.js';
+import { weapon_type, unrestrict_weapon_skill, add_weapon_skill } from './weapon.js';
+import {
+    ART_EXCALIBUR,
+    ART_STORMBRINGER,
+    ART_VORPAL_BLADE,
+} from './generated/artifacts_data.js';
 import { m_at } from './mon.js';
 import {
     A_WIS, A_STR, A_MAX, change_luck, adjattrib, adjalign, exercise,
     ALIGNLIM,
 } from './attrib.js';
-import { align_gname, align_str, xlev_to_rank, uhim, u_gname } from './roles.js';
+import { align_gname, align_str, xlev_to_rank, uhim, u_gname, uhis } from './roles.js';
 import {
     objects_at, uncurse, peek_at_iced_corpse_age, eaten_stat, get_mtraits,
+    mksobj, bless,
 } from './mkobj.js';
 import { yn_function, paranoid_query } from './getline.js';
 import { livelog_printf } from './pline.js';
-import { can_chant } from './spell.js';
+import { can_chant, known_spell, spe_Unknown } from './spell.js';
 import { couldsee } from './vision.js';
 import { monflee } from './monmove.js';
 import { set_malign, makemon } from './makemon.js';
@@ -56,14 +65,22 @@ import { aggravate } from './wizard.js';
 import { setuhpmax } from './exper.js';
 import { done } from './end.js';
 import { monstseesu, monstunseesu } from './mondata.js';
-import { mon_nam, Monnam, a_monnam } from './do_name.js';
+import { mon_nam, Monnam, a_monnam, oname, s_suffix } from './do_name.js';
 import { disintegrate_arm, setworn, stuck_ring, unchanger } from './do_wear.js';
 import { summon_minion, dlord } from './minion.js';
-import { near_capacity, encumber_msg, feel_cockatrice, useup, useupf } from './invent.js';
+import {
+    near_capacity, encumber_msg, feel_cockatrice, useup, useupf,
+    observe_object, update_inventory,
+} from './invent.js';
 import { punish, unpunish } from './read.js';
 import { attrcurse, rndcurse } from './sit.js';
-import { An, an, xname, makeplural, vtense, corpse_xname } from './objnam.js';
-import { objectNames, POT_WATER, POTION_CLASS } from './objects.js';
+import {
+    An, an, xname, makeplural, vtense, corpse_xname,
+    ansimpleoname, simpleonames,
+} from './objnam.js';
+import {
+    objectNames, POT_WATER, POTION_CLASS, WEAPON_CLASS, SPBOOK_CLASS,
+} from './objects.js';
 import {
     is_undead as mon_is_undead,
     is_demon as mon_is_demon,
@@ -77,6 +94,8 @@ import {
     PM_KNIGHT,
     PM_CLERIC,
     PM_ACID_BLOB,
+    PM_WIZARD,
+    PM_MONK,
 } from './generated/monsters_data.js';
 import { you_unwere } from './were.js';
 import {
@@ -89,17 +108,21 @@ import { rider_corpse_revival } from './pickup.js';
 import { region_danger, region_safety } from './region.js';
 import { safe_teleds } from './teleport.js';
 import { reset_utrap, rescued_from_terrain, heal_legs } from './trap.js';
-import { welded } from './wield.js';
+import { welded, is_weptool } from './wield.js';
 import { which_armor } from './worn.js';
-import { rehumanize, body_part } from './polyself.js';
-import { make_blinded } from './do.js';
+import { rehumanize, body_part, mbodypart } from './polyself.js';
+import { make_blinded, dropy } from './do.js';
 import { buried_ball_to_freedom } from './dig.js';
-import { confers_luck } from './artifact.js';
+import {
+    confers_luck, u_wield_art, exist_artifact, artiname, is_art,
+    discover_artifact,
+} from './artifact.js';
 import {
     IS_ALTAR, Amask2align, AM_MASK, AM_SHRINE, AM_SANCTUM, AM_CHAOTIC,
     A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, GEHENNOM, ECMD_OK, ECMD_TIME,
-    PARANOID_PRAY, PARANOID_CONFIRM, LL_CONDUCT, CXN_ARTICLE, FROMOUTSIDE,
-    LUCKMAX, has_omonst, NON_PM, ROOM, FOOT, something,
+    PARANOID_PRAY, PARANOID_CONFIRM, LL_CONDUCT, LL_DIVINEGIFT, LL_ARTIFACT,
+    LL_SPOILER, CXN_ARTICLE, FROMOUTSIDE,
+    LUCKMAX, has_omonst, NON_PM, ROOM, FOOT, something, Something,
     STRAT_APPEARMSG, MM_NOMSG,
     M_AP_TYPE, M_AP_FURNITURE, has_mcorpsenm, MCORPSENM,
     LL_MINORAC, BOLT_LIM, MAXULEV, TELL, NOTELL, Upolyd, ismnum,
@@ -110,6 +133,7 @@ import {
     XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
     EXT_ENCUMBER, HVY_ENCUMBER, TIMEOUT, isok, IS_OBSTRUCTED,
     SDOOR, SCORR, W_SADDLE, EYE, STOMACH,
+    P_LONG_SWORD, P_BROAD_SWORD, ONAME_GIFT, ONAME_KNOW_ARTI,
     nothing_happens,
 } from './const.js';
 
@@ -131,6 +155,11 @@ const LOADSTONE = objectNames.indexOf('LOADSTONE');
 const HELM_OF_OPPOSITE_ALIGNMENT = objectNames.indexOf('HELM_OF_OPPOSITE_ALIGNMENT');
 const SADDLE = objectNames.indexOf('SADDLE');
 const BOULDER = objectNames.indexOf('BOULDER');
+const LONG_SWORD = objectNames.indexOf('LONG_SWORD');
+const RUNESWORD = objectNames.indexOf('RUNESWORD');
+const SPE_FINGER_OF_DEATH = objectNames.indexOf('SPE_FINGER_OF_DEATH');
+const SPE_RESTORE_ABILITY = objectNames.indexOf('SPE_RESTORE_ABILITY');
+const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
 const PM_WRAITH = monsterNames.indexOf('PM_WRAITH');
 
 const MOLOCH = 'Moloch';
@@ -1356,6 +1385,253 @@ async function pleased(g_align) {
     let kick_on_butt = u.uevent?.udemigod ? 1 : 0;
     if (u.uevent?.uhand_of_elbereth) kick_on_butt++;
     if (kick_on_butt) u.ublesscnt += kick_on_butt * rnz(1000);
+}
+
+/** C ref: pline.c Your — prefix "Your " (file-local like artifact.js/zap.js). */
+async function Your(rest) {
+    await pline(`Your ${rest}`);
+}
+
+/**
+ * C ref: pray.c at_your_feet `:788–802` — helper printing "str appears at
+ * your feet": Blind sees Something; swallowed drops into the swallower's
+ * stomach; else beneath/at + feet.
+ * @param {string} str
+ */
+export async function at_your_feet(str) {
+    const u = game.u || {};
+    if (Blind()) str = Something;
+    if (u.uswallow) {
+        // barrier between you and the floor
+        await pline(
+            `${str} ${vtense(str, 'drop')} into ${s_suffix(mon_nam(u.ustuck))} ${mbodypart(u.ustuck, STOMACH)}.`,
+        );
+    } else {
+        await pline(
+            `${str} ${vtense(str, Blind() ? 'land' : 'appear')} ${u.Levitation ? 'beneath' : 'at'} your ${makeplural(body_part(FOOT))}!`,
+        );
+    }
+}
+
+/**
+ * C ref: pray.c gcrownu `:805–996` — crowning for high-devotion prayer:
+ * outside intrinsics + godvoice; wizard/monk class-gift spellbook;
+ * lawful Hand of Elbereth / neutral Vorpal Blade / chaotic Stormbringer
+ * (wielded bless, Excalibur transform, or floor gift); weapon enhance;
+ * extra skill slot via add_weapon_skill(1).
+ * Caller wiring (pleased pat_on_head case 7/8) deferred — see header.
+ * Named omissions: SetVoice pitch; objnam.c actualoname (override_ID +
+ * xname inline; minimal_xname has no JS export).
+ */
+export async function gcrownu() {
+    const u = game.u || (game.u = {});
+    if (!u.uevent) u.uevent = {};
+    // C: ok_wep(o) ((o) && ((o)->oclass == WEAPON_CLASS || is_weptool(o)))
+    const ok_wep = (o) => !!(o && (o.oclass === WEAPON_CLASS || is_weptool(o)));
+
+    u.HSee_invisible = (u.HSee_invisible | 0) | FROMOUTSIDE;
+    u.HFire_resistance = (u.HFire_resistance | 0) | FROMOUTSIDE;
+    u.HCold_resistance = (u.HCold_resistance | 0) | FROMOUTSIDE;
+    u.HShock_resistance = (u.HShock_resistance | 0) | FROMOUTSIDE;
+    u.HSleep_resistance = (u.HSleep_resistance | 0) | FROMOUTSIDE;
+    u.HPoison_resistance = (u.HPoison_resistance | 0) | FROMOUTSIDE;
+    await godvoice(u.ualign?.type | 0, null);
+
+    let class_gift = STRANGE_OBJECT;
+    // 3.3.[01] had this in the A_NEUTRAL case,
+    // preventing chaotic wizards from receiving a spellbook
+    if (Role_if(PM_WIZARD)
+        && !u_wield_art(ART_VORPAL_BLADE)
+        && !u_wield_art(ART_STORMBRINGER)
+        && !carrying(SPE_FINGER_OF_DEATH)) {
+        class_gift = SPE_FINGER_OF_DEATH;
+    } else if (Role_if(PM_MONK) && (!u.uwep || !u.uwep.oartifact)
+        && !carrying(SPE_RESTORE_ABILITY)) {
+        // monks rarely wield a weapon
+        class_gift = SPE_RESTORE_ABILITY;
+    }
+
+    let obj = ok_wep(u.uwep) ? u.uwep : null;
+    let already_exists = false;
+    let in_hand = false;
+    switch (u.ualign?.type | 0) {
+    case A_LAWFUL:
+        u.uevent.uhand_of_elbereth = 1;
+        // C: SetVoice(0, 0, 80, voice_deity) — pitch deferred
+        await verbalize('I crown thee...  The Hand of Elbereth!');
+        livelog_printf(
+            LL_DIVINEGIFT,
+            'was crowned "The Hand of Elbereth" by %s',
+            u_gname(game.urole, u.ualign?.type),
+        );
+        break;
+    case A_NEUTRAL:
+        u.uevent.uhand_of_elbereth = 2;
+        in_hand = u_wield_art(ART_VORPAL_BLADE);
+        already_exists = exist_artifact(LONG_SWORD, artiname(ART_VORPAL_BLADE));
+        // C: SetVoice — pitch deferred
+        await verbalize('Thou shalt be my Envoy of Balance!');
+        livelog_printf(
+            LL_DIVINEGIFT,
+            'became %s Envoy of Balance',
+            s_suffix(u_gname(game.urole, u.ualign?.type)),
+        );
+        break;
+    case A_CHAOTIC:
+        u.uevent.uhand_of_elbereth = 3;
+        in_hand = u_wield_art(ART_STORMBRINGER);
+        already_exists = exist_artifact(RUNESWORD, artiname(ART_STORMBRINGER));
+        {
+            const what = (((already_exists && !in_hand) || class_gift !== STRANGE_OBJECT)
+                ? 'take lives'
+                : 'steal souls');
+            // C: SetVoice — pitch deferred
+            await verbalize(`Thou art chosen to ${what} for My Glory!`);
+            livelog_printf(
+                LL_DIVINEGIFT,
+                'was chosen to %s for the Glory of %s',
+                what,
+                u_gname(game.urole, u.ualign?.type),
+            );
+        }
+        break;
+    }
+
+    if ((game.objects?.[class_gift]?.oc_class | 0) === SPBOOK_CLASS) {
+        let bbuf;
+        obj = mksobj(class_gift, true, false);
+        // get book type before dropping (don't think that could destroy
+        // the book because we need to be on an altar in order to become
+        // crowned, but be paranoid about it)
+        // C: Strcpy(bbuf, actualoname(obj)) — objnam.c:2490 override_ID +
+        // minimal_xname; xname under override_ID is the live equivalent.
+        if (!game.iflags) game.iflags = {};
+        const savedID = game.iflags.override_ID | 0;
+        game.iflags.override_ID = 1;
+        try {
+            bbuf = xname(obj);
+        } finally {
+            game.iflags.override_ID = savedID;
+        }
+        bless(obj);
+        obj.bknown = 1; // ok to skip set_bknown()
+        observe_object(obj);
+        await at_your_feet(upstart(ansimpleoname(obj)));
+        await dropy(obj);
+        u.ugifts = (u.ugifts | 0) + 1;
+        // not an artifact, but treat like one for this situation;
+        // classify as a spoiler in case player hasn't IDed the book yet
+        livelog_printf(
+            LL_DIVINEGIFT | LL_ARTIFACT | LL_SPOILER,
+            'was bestowed with %s',
+            bbuf,
+        );
+
+        // when getting a new book for known spell, enhance
+        // currently wielded weapon rather than the book
+        if (known_spell(class_gift) !== spe_Unknown && ok_wep(u.uwep)) {
+            obj = u.uwep; // to be blessed,&c
+        }
+    }
+
+    switch (u.ualign?.type | 0) {
+    case A_LAWFUL:
+        if (class_gift !== STRANGE_OBJECT) {
+            // already got bonus above
+        } else if (obj && (obj.otyp | 0) === LONG_SWORD && !obj.oartifact) {
+            const lbuf = simpleonames(obj); // before transformation
+            if (!Blind()) {
+                await Your('sword shines brightly for a moment.');
+            }
+            obj = oname(obj, artiname(ART_EXCALIBUR), ONAME_GIFT | ONAME_KNOW_ARTI);
+            if (is_art(obj, ART_EXCALIBUR)) {
+                u.ugifts = (u.ugifts | 0) + 1;
+                livelog_printf(
+                    LL_DIVINEGIFT | LL_ARTIFACT,
+                    'had %s wielded %s transformed into %s',
+                    uhis(),
+                    lbuf,
+                    artiname(ART_EXCALIBUR),
+                );
+            }
+        }
+        // acquire Excalibur's skill regardless of weapon or gift
+        unrestrict_weapon_skill(P_LONG_SWORD);
+        if (is_art(obj, ART_EXCALIBUR)) discover_artifact(ART_EXCALIBUR);
+        break;
+    case A_NEUTRAL:
+        if (class_gift !== STRANGE_OBJECT) {
+            // already got bonus above
+        } else if (obj && in_hand) {
+            await Your(`${xname(obj)} goes snicker-snack!`);
+            observe_object(obj);
+        } else if (!already_exists) {
+            obj = mksobj(LONG_SWORD, false, false);
+            obj = oname(obj, artiname(ART_VORPAL_BLADE), ONAME_GIFT | ONAME_KNOW_ARTI);
+            obj.spe = 1;
+            await at_your_feet('A sword');
+            await dropy(obj);
+            u.ugifts = (u.ugifts | 0) + 1;
+            livelog_printf(
+                LL_DIVINEGIFT | LL_ARTIFACT,
+                'was bestowed with %s',
+                artiname(ART_VORPAL_BLADE),
+            );
+        }
+        // acquire Vorpal Blade's skill regardless of weapon or gift
+        unrestrict_weapon_skill(P_LONG_SWORD);
+        if (is_art(obj, ART_VORPAL_BLADE)) discover_artifact(ART_VORPAL_BLADE);
+        break;
+    case A_CHAOTIC: {
+        const swordbuf = `${hcolor('black')} sword`;
+        if (class_gift !== STRANGE_OBJECT) {
+            // already got bonus above
+        } else if (obj && in_hand) {
+            await Your(`${swordbuf} hums ominously!`);
+            observe_object(obj);
+        } else if (!already_exists) {
+            obj = mksobj(RUNESWORD, false, false);
+            obj = oname(obj, artiname(ART_STORMBRINGER), ONAME_GIFT | ONAME_KNOW_ARTI);
+            obj.spe = 1;
+            await at_your_feet(An(swordbuf));
+            await dropy(obj);
+            u.ugifts = (u.ugifts | 0) + 1;
+            livelog_printf(
+                LL_DIVINEGIFT | LL_ARTIFACT,
+                'was bestowed with %s',
+                artiname(ART_STORMBRINGER),
+            );
+        }
+        // acquire Stormbringer's skill regardless of weapon or gift
+        unrestrict_weapon_skill(P_BROAD_SWORD);
+        if (is_art(obj, ART_STORMBRINGER)) discover_artifact(ART_STORMBRINGER);
+        break;
+    }
+    default:
+        obj = null; // lint
+        break;
+    }
+
+    // enhance weapon regardless of alignment or artifact status
+    if (ok_wep(obj)) {
+        bless(obj);
+        obj.oeroded = 0;
+        obj.oeroded2 = 0;
+        obj.oerodeproof = 1;
+        obj.bknown = 1; // ok to skip set_bknown()
+        obj.rknown = 1;
+        if ((obj.spe | 0) < 1) obj.spe = 1;
+        // acquire skill in this weapon
+        unrestrict_weapon_skill(weapon_type(obj));
+    } else if (class_gift === STRANGE_OBJECT) {
+        // opportunity knocked, but there was nobody home...
+        await You_feel('unworthy.');
+    }
+    update_inventory();
+
+    // lastly, confer an extra skill slot/credit beyond the
+    // up-to-29 you can get from gaining experience levels
+    await add_weapon_skill(1);
 }
 
 /**

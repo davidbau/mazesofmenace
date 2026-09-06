@@ -48,7 +48,8 @@ import { mongone, monkilled, healmon, mcureblindness, m_next2u, m_carrying,
          seemimic, wakeup, is_pool, is_lava, maybe_unhide_at,
          flash_mon } from './mon.js';
 import { paralyze_monst, make_blinded } from './potion.js';
-import { m_useup, unturn_you, bhito, dobuzz, buzz, cancel_monst, lightdamage, resist, exclam, hit, miss, zhitm } from './zap.js';
+import { unturn_you, bhito, dobuzz, buzz, cancel_monst, lightdamage, resist, exclam, hit, miss, zhitm } from './zap.js';
+import { m_useup } from './mthrowu.js';
 import { makemon, is_mercenary, place_monster, remove_monster, set_malign } from './makemon.js';
 import { enexto, tele_restrict, random_teleport_level, rloc, tele } from './teleport.js';
 import { objdescr_is, observe_object, makeknown } from './o_init.js';
@@ -297,7 +298,7 @@ async function mon_consume_unstone(mon, obj, by_you, stoning) {
     } else if (!Deaf())
         await You_hear(`${(obj.oclass === OCLASSES.POTION_CLASS) ? 'drinking' : 'chewing'}.`);
 
-    m_useup(mon, obj);
+    await m_useup(mon, obj);
     /* obj is now gone */
 
     if (acid && !tinned && !resists_acid(mon)) {
@@ -714,7 +715,7 @@ export async function use_offensive(mtmp) {
         /* [do this before the scroll is used up, since if the monster is
            killed by a boulder landing on its own head, m_useup() might
            destroy the scroll while it is still being processed] */
-        m_useup(mtmp, otmp);
+        await m_useup(mtmp, otmp);
         for (x = mmx - 1; x <= mmx + 1; x++) {
             for (y = mmy - 1; y <= mmy + 1; y++) {
                 /* Is this a suitable spot? */
@@ -916,16 +917,6 @@ export function find_misc(mtmp) {
     return !!game.m.has_misc;
 }
 
-function m_useup_misc(mtmp, obj) {
-    if ((obj.quan ?? 1) > 1) {
-        obj.quan--;
-        return;
-    }
-    const at = (mtmp.minvent || []).indexOf(obj);
-    if (at >= 0)
-        mtmp.minvent.splice(at, 1);
-}
-
 // src/muse.c:2250 muse_newcham_mon(). Polymorph items normally choose a
 // level-suitable monster. Worn dragon body armor instead forces the matching
 // dragon, preserving the C ordering before newcham() changes equipment.
@@ -1009,7 +1000,7 @@ export async function mloot_container(mon, container, vismon) {
             }
             if (container.otyp === ONAMES.ICE_BOX)
                 await removed_from_icebox(xobj);
-            mpickobj(mon, xobj);
+            await mpickobj(mon, xobj);
             result = 2;
         } else {
             const alreadyNomerge = !!xobj.nomerge;
@@ -1364,7 +1355,7 @@ async function precheck(mon, obj) {
                 if (!enexto(cc, mon.mx, mon.my, game.mons[PMNAMES.PM_GHOST]))
                     return 0;
                 await mquaffmsg(mon, obj);
-                m_useup(mon, obj);
+                await m_useup(mon, obj);
                 mtmp = await makemon(game.mons[PMNAMES.PM_GHOST], cc.x, cc.y, MM_NOMSG);
                 if (!mtmp) {
                     if (vis)
@@ -1386,7 +1377,7 @@ async function precheck(mon, obj) {
             if (!enexto(cc, mon.mx, mon.my, game.mons[PMNAMES.PM_DJINNI]))
                 return 0;
             await mquaffmsg(mon, obj);
-            m_useup(mon, obj);
+            await m_useup(mon, obj);
             mtmp = await makemon(game.mons[PMNAMES.PM_DJINNI], cc.x, cc.y, MM_NOMSG);
             if (!mtmp) {
                 if (vis)
@@ -1426,7 +1417,7 @@ async function precheck(mon, obj) {
             await You_hear(`a zap and an explosion ${
                            (mdistu(mon) <= range * range) ? 'nearby' : 'in the distance'}.`);
         }
-        m_useup(mon, obj);
+        await m_useup(mon, obj);
         mon.mhp -= dam;
         if (DEADMONSTER(mon)) {
             await monkilled(mon, '', ATTKS.AD_RBRE);
@@ -1787,7 +1778,7 @@ export async function use_defensive(mtmp) {
            lands in lava or on a fire trap) so take it out in advance */
         if (otmp.quan > 1)
             otmp = splitobj(otmp, 1);
-        extract_from_minvent(mtmp, otmp, false, false);
+        await extract_from_minvent(mtmp, otmp, false, false);
         /* set last_msg to something other than PLNMSG_UNKNOWN; messages
            are issued by mreadmsg(), 'if (vismon) pline()', or m_tele() */
         (game.iflags ||= {}).last_msg = PLNMSG_enum;
@@ -1921,7 +1912,7 @@ export async function use_defensive(mtmp) {
             makeknown(ONAMES.SCR_CREATE_MONSTER);
         else
             await trycall(otmp);
-        m_useup(mtmp, otmp);
+        await m_useup(mtmp, otmp);
         return 2;
     }
     case MUSE_TRAPDOOR:
@@ -2050,7 +2041,7 @@ export async function use_defensive(mtmp) {
             await pline_mon(mtmp, `${Monnam(mtmp)} looks better.`);
         if (oseen)
             makeknown(ONAMES.POT_HEALING);
-        m_useup(mtmp, otmp);
+        await m_useup(mtmp, otmp);
         return 2;
     case MUSE_POT_EXTRA_HEALING:
         await mquaffmsg(mtmp, otmp);
@@ -2062,7 +2053,7 @@ export async function use_defensive(mtmp) {
             await pline_mon(mtmp, `${Monnam(mtmp)} looks much better.`);
         if (oseen)
             makeknown(ONAMES.POT_EXTRA_HEALING);
-        m_useup(mtmp, otmp);
+        await m_useup(mtmp, otmp);
         return 2;
     case MUSE_POT_FULL_HEALING:
         await mquaffmsg(mtmp, otmp);
@@ -2075,7 +2066,7 @@ export async function use_defensive(mtmp) {
             await pline_mon(mtmp, `${Monnam(mtmp)} looks completely healed.`);
         if (oseen)
             makeknown(otmp.otyp);
-        m_useup(mtmp, otmp);
+        await m_useup(mtmp, otmp);
         return 2;
     case MUSE_LIZARD_CORPSE:
         /* not actually called for its unstoning effect */
@@ -2100,6 +2091,9 @@ const PLNMSG_enum = -2;
 // drawing, consumes one potion, and spends the monster's action.
 export async function use_misc(mtmp) {
     const obj = game.m?.misc || null;
+    const i = await precheck(mtmp, obj);
+    if (i !== 0)
+        return i;
 
     switch (game.m?.has_misc || 0) {
     case MUSE_POT_GAIN_LEVEL: {
@@ -2124,7 +2118,7 @@ export async function use_misc(mtmp) {
                             ceiling(mtmp.mx, mtmp.my)}!`);
                         await trycall(obj);
                     }
-                    m_useup_misc(mtmp, obj);
+                    await m_useup(mtmp, obj);
                     const { migrate_monster } = await import('./trap.js');
                     migrate_monster(mtmp, tolevel, MIGR_RANDOM);
                     return 2;
@@ -2134,7 +2128,7 @@ export async function use_misc(mtmp) {
                 await pline(`${Monnam(mtmp)} looks uneasy.`);
                 await trycall(obj);
             }
-            m_useup_misc(mtmp, obj);
+            await m_useup(mtmp, obj);
             return 2;
         }
         const { canseemon, pline } = await import('./display.js');
@@ -2146,7 +2140,7 @@ export async function use_misc(mtmp) {
             const { makeknown } = await import('./o_init.js');
             makeknown(ONAMES.POT_GAIN_LEVEL);
         }
-        m_useup_misc(mtmp, obj);
+        await m_useup(mtmp, obj);
         const { grow_up } = await import('./makemon.js');
         return grow_up(mtmp, null) ? 2 : 1;
     }
@@ -2220,7 +2214,7 @@ export async function use_misc(mtmp) {
             learnwand(obj);
         }
 
-        m_useup_misc(mtmp, obj);
+        await m_useup(mtmp, obj);
         return 2;
     }
     case MUSE_WAN_MAKE_INVISIBLE:
@@ -2273,7 +2267,7 @@ export async function use_misc(mtmp) {
         if (obj.otyp === ONAMES.POT_INVISIBILITY) {
             if (obj.cursed)
                 await you_aggravate(mtmp);
-            m_useup_misc(mtmp, obj);
+            await m_useup(mtmp, obj);
         }
         return 2;
     }
@@ -2306,7 +2300,7 @@ export async function use_misc(mtmp) {
         const oseen = vismon;
 
         await mquaffmsg(mtmp, obj);
-        m_useup_misc(mtmp, obj);
+        await m_useup(mtmp, obj);
         if (vismon)
             await pline(`${Monnam(mtmp)} suddenly mutates!`);
         await newcham(mtmp, await muse_newcham_mon(mtmp), NC_SHOW_MSG);
@@ -2426,7 +2420,7 @@ export async function use_misc(mtmp) {
             break;
         case 3:
             await pline(`${Monnam(mtmp)} snatches ${the_weapon}!`);
-            mpickobj(mtmp, target);
+            await mpickobj(mtmp, target);
             break;
         default:
             break;
@@ -2760,12 +2754,12 @@ async function muse_unslime(mon, obj, trap, by_you) {
                 await pline('Oh, what a pretty fire!');
             if (vis)
                 await trycall(obj);
-            m_useup(mon, obj); /* after trycall() */
+            await m_useup(mon, obj); /* after trycall() */
             vis = false;       /* skip makeknown() below */
             res = false;       /* failed to cure sliming */
         } else {
             dmg = Math.trunc((2 * (rn1(3, 3) + 2 * bcsign(obj)) + 1) / 3);
-            m_useup(mon, obj); /* before explode() */
+            await m_useup(mon, obj); /* before explode() */
             /* -11 => monster's fireball */
             await explode(mon.mx, mon.my, -11, dmg, OCLASSES.SCROLL_CLASS,
                           /* by_you: override -11 to get "caught in
@@ -2800,7 +2794,7 @@ async function muse_unslime(mon, obj, trap, by_you) {
             makeknown(ONAMES.POT_OIL);
         }
         dmg = d(3, 4); /* [**TEMP** (different from hero)] */
-        m_useup(mon, obj);
+        await m_useup(mon, obj);
     } else { /* wand/horn of fire w/ positive charge count */
         if (obj.otyp === ONAMES.FIRE_HORN)
             await mplayhorn(mon, obj, true);

@@ -63,7 +63,7 @@ export async function update_topl(bp) {
     /* win/tty/topl.c:257 — WIN_STOP means the player pressed ESC at a
        --More-- this turn: buffer the text but do not paint it and do not
        prompt again. "You die" lifts the suppression. */
-    let skip = !!game._win_stop;
+    let skip = !!game._win_stop && !game._win_nostop;
 
     if ((game._toplin === TOPLINE_NEED_MORE || skip)
         && cury === 0
@@ -250,8 +250,9 @@ export async function doprev_message() {
 // can append logically while the no-history prefix remains painted.
 export function show_topl_nohistory(str) {
     remember_topl();
-    if (game._win_stop)
+    if (game._win_stop && !game._win_nostop)
         return;
+    game._win_stop = game._win_nostop = false;
 
     if (game._topl_cury && game._toplin === TOPLINE_NON_EMPTY)
         tty_clear_nhwindow_message(game._topl_cury);
@@ -302,9 +303,9 @@ export async function tty_yn_function(query, resp, def, addcmdq = false) {
     /* win/tty/topl.c:391-393 — the pending-message more() is SKIPPED while
        WIN_STOP is set (the player already ESCed this turn's messages), and
        the flag is lifted either way: a question needs an answer. */
-    if (game._toplin === TOPLINE_NEED_MORE && !game._win_stop)
+    if (game._toplin === TOPLINE_NEED_MORE && (!game._win_stop || game._win_nostop))
         await more();
-    game._win_stop = false;
+    game._win_stop = game._win_nostop = false;
 
     /* custompline() prepares the map after any pending --More-- has been
        acknowledged. This ordering preserves temporary effects under the
@@ -376,14 +377,6 @@ export async function tty_yn_function(query, resp, def, addcmdq = false) {
         }
         return q;
     };
-
-    /* src/botl.c — a status field dirtied this turn (Pw after a cast's
-       energy deduction) repaints before the prompt blocks for input; C gets
-       this from the pre-input flush's `if (disp.botl) bot()`. */
-    {
-        const { bot } = await import('../display.js');
-        await bot();
-    }
 
     /* win/tty/topl.c:430 — with a resp string the answer is lowercased
        unless the allowed responses contain an uppercase letter; ESC picks

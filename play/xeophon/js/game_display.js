@@ -155,13 +155,16 @@ export class GameDisplay {
         // until the prompt resolves (_death_pending_confirm cleared there).
         const deathMoreHp = (game._death_status_hp_before_zero != null
                 && (game._command_mode === 'deathDieMore'
+                    || game._queued_messages_after_more?.some(message => message.fatal || message.lifeSaving)
                     || game._queued_message_after_more === 'You die...'
                     || game._pending_message === 'You die...'))
             || game._death_pending_confirm;
         const hp = deathMoreHp ? (game._death_pending_confirm && game._death_status_hp_before_zero == null
             ? 0 : game._death_status_hp_before_zero) : u.uhp || 0;
         const heldUac = game._message_more && game._status_uac_before_more != null;
-        const displayAc = heldUac ? game._status_uac_before_more : u.uac ?? 10;
+        // newgame prints the initial status before skills/discoveries call
+        // find_ac. The legacy story retains that screen while internal AC is current.
+        const displayAc = game._intro_lines ? 0 : heldUac ? game._status_uac_before_more : u.uac ?? 10;
         let line2;
         const statusTurn = () => {
             let turn = game.moves || 1;
@@ -181,9 +184,6 @@ export class GameDisplay {
             if (game._status_turn_display_ahead_moves != null
                 && game._status_turn_display_ahead_moves === (game.moves || 1))
                 turn++;
-            if (game._sanctum_status_turn_offset
-                && turn >= (game._sanctum_status_turn_offset_start || Infinity))
-                turn = Math.max(1, turn - game._sanctum_status_turn_offset);
             return turn;
         };
         if (u.uz?.dnum === TUTORIAL) {

@@ -72,7 +72,7 @@ import {
 } from './generated/monsters_data.js';
 import {
     xname, killer_xname, singular, an, the, vtense, doname, thesimpleoname,
-    makeplural, otense,
+    makeplural, otense, mshot_xname,
 } from './objnam.js';
 import { m_at, wakeup, seemimic, wake_nearto, distmin, monnear, m_respond } from './mon.js';
 import { mon_nam, Monnam, hliquid, Hallucination, Some_Monnam } from './do_name.js';
@@ -320,11 +320,11 @@ async function miss_missile(str, mtmp) {
 }
 
 /**
- * C ref: dothrow.c tmiss — miss message + maybe_wakeup `!rn2(3)` → wakeup.
- * mshot_xname multi-shot "Nth" prefix deferred → xname.
+ * C ref: dothrow.c tmiss :1951-1969 — miss message + maybe_wakeup
+ * `!rn2(3)` → wakeup; missile via mshot_xname (objnam.c:1090-1102).
  */
 async function tmiss(obj, mon, maybe_wakeup) {
-    const missile = xname(obj); // C: mshot_xname(obj)
+    const missile = mshot_xname(obj); // C dothrow.c:1953
     if (!canseemon(mon)
         || (M_AP_TYPE(mon) && M_AP_TYPE(mon) !== M_AP_MONSTER)) {
         await pline(`${The(missile)} ${otense(obj, 'miss')}.`);
@@ -2764,7 +2764,7 @@ export async function hurtle(dx, dy, range, verbose) {
 /**
  * C ref: dothrow.c will_hurtle — size/stuck/trap + goodpos gate.
  */
-function will_hurtle(mon, x, y) {
+export function will_hurtle(mon, x, y) {
     if (!isok(x, y)) return false;
     if ((mon.data?.msize | 0) >= MZ_HUGE
         || mon === game.u?.ustuck || (mon.mtrapped | 0)) {

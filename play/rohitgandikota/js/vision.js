@@ -689,7 +689,7 @@ export function vision_recalc(control = 0) {
         next_rmax[y] = 0;
     }
 
-    if (control !== 2) {
+    if (!u.uswallow && control !== 2) {
         /* src/vision.c:577. Away from the Plane of Water, an underwater
            hero can only see adjacent squares which are also pools. */
         if (Underwater() && !Is_waterlevel(u.uz)) {
@@ -721,7 +721,7 @@ export function vision_recalc(control = 0) {
 
     /* src/vision.c:552. A blind hero still has COULD_SEE geometry so
        monsters can see the hero, but none of those cells are IN_SIGHT. */
-    if (Blind() && control !== 2) {
+    if (!u.uswallow && Blind() && control !== 2) {
         const old_array = game.viz_array;
         const old_rmin = game._viz_rmin;
         const old_rmax = game._viz_rmax;
@@ -789,7 +789,7 @@ export function vision_recalc(control = 0) {
     /* src/vision.c:631, the Eyes of the Overworld see every square in a
        radius-three circle, including through walls. */
     const xray = u.xray_range ?? -1;
-    if (xray >= 0) {
+    if (!u.uswallow && control !== 2 && xray >= 0) {
         const ranges = circle_data.slice(circle_start[xray]);
         for (let row = Math.max(0, uy - xray);
              row <= Math.min(ROWNO - 1, uy + xray); row++) {

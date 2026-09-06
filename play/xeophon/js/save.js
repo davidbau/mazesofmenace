@@ -2,11 +2,28 @@
 
 import { game } from './gstate.js';
 import { GameMap } from './game.js';
-import { NORMAL_SPEED } from './const.js';
+import { HOLE, NORMAL_SPEED } from './const.js';
 import { updateMonsterTrack } from './montrack.js';
+import { MONS, SPECIAL_PM } from './permonst.js';
 
 const FIGURINE = 795;
 const STATUE = 472;
+const CORPSE = 471;
+
+// C: objects.h oc_uses_known is set for every weapon, armor, and wand,
+// and only these specific types in the remaining classes.
+const BONES_USES_KNOWN = new Set([
+    'adornment', 'gain strength', 'gain constitution', 'increase accuracy',
+    'increase damage', 'protection', 'amulet of yendor',
+    'cheap plastic imitation of the amulet of yendor', 'bag of tricks',
+    'expensive camera', 'crystal ball', 'tinning kit', 'can of grease',
+    'magic marker', 'magic flute', 'frost horn', 'fire horn', 'horn of plenty',
+    'magic harp', 'drum of earthquake', 'pick-axe', 'grappling hook',
+    'unicorn horn', 'candelabrum of invocation', 'bell of opening',
+    'egg', 'tin', 'novel', 'book of the dead',
+]);
+const BONES_SPECIAL_CORPSES = new Set(MONS.slice(SPECIAL_PM)
+    .flatMap(mon => [mon.name, ...(mon.names || [])]).map(name => name.toLowerCase()));
 
 const SKIP_KEYS = new Set([
     'coreCtx',
@@ -18,35 +35,55 @@ const SKIP_KEYS = new Set([
     '_preNhgetchHook',
 ]);
 
-export function encodeSaveState() {
-    const state = {};
-    for (const [key, value] of Object.entries(game)) {
-        if (SKIP_KEYS.has(key)) continue;
-        state[key] = value instanceof Map ? { __type: 'Map', entries: [...value.entries()] } : value;
-    }
-    const seen = new WeakSet();
-    return JSON.stringify(state, (key, value) => {
+// C restore.c relinks equipment, occupation objects, and monster pointers.
+// Keep those identities in JSON by pointing repeated values at their first path.
+function encodeSaveGraph(state) {
+    const paths = new WeakMap();
+    return JSON.stringify(state, function (key, value) {
         if (SKIP_KEYS.has(key) || typeof value === 'function') return undefined;
         if (typeof value === 'bigint') return Number(value);
         if (!value || typeof value !== 'object') return value;
-        if (value instanceof Map) return { __type: 'Map', entries: [...value.entries()] };
-        if (seen.has(value)) return undefined;
-        seen.add(value);
+        if (paths.has(value)) return { __type: 'Reference', path: [...paths.get(value)] };
+        const path = paths.has(this) ? [...paths.get(this), key] : [];
+        paths.set(value, path);
+        if (value instanceof Map) {
+            const wrapper = { __type: 'Map', entries: [...value.entries()] };
+            paths.set(wrapper, path);
+            return wrapper;
+        }
         return value;
     });
 }
 
+function decodeSaveGraph(content, rootTarget = null) {
+    const root = JSON.parse(content);
+    const decoded = new WeakMap();
+    function restore(value) {
+        if (!value || typeof value !== 'object') return value;
+        if (value.__type === 'Reference')
+            return restore(value.path.reduce((target, key) => target[key], root));
+        if (decoded.has(value)) return decoded.get(value);
+        const result = value === root && rootTarget ? rootTarget
+            : value.__type === 'Map' ? new Map() : Array.isArray(value) ? [] : {};
+        decoded.set(value, result);
+        if (result === rootTarget)
+            for (const key of Object.keys(result)) delete result[key];
+        if (result instanceof Map) {
+            for (const [key, item] of value.entries || []) result.set(restore(key), restore(item));
+        } else {
+            for (const [key, item] of Object.entries(value)) result[key] = restore(item);
+        }
+        return result;
+    }
+    return restore(root);
+}
+
+export function encodeSaveState() {
+    return encodeSaveGraph(game);
+}
+
 function saveClone(value) {
-    const seen = new WeakSet();
-    return JSON.parse(JSON.stringify(value, (key, item) => {
-        if (SKIP_KEYS.has(key) || typeof item === 'function') return undefined;
-        if (typeof item === 'bigint') return Number(item);
-        if (!item || typeof item !== 'object') return item;
-        if (item instanceof Map) return { __type: 'Map', entries: [...item.entries()] };
-        if (seen.has(item)) return undefined;
-        seen.add(item);
-        return item;
-    }));
+    return decodeSaveGraph(encodeSaveGraph(value));
 }
 
 function countObjects(objects = []) {
@@ -67,6 +104,47 @@ function countRestoreIdentities(level) {
         count += countObjects(mon.minvent || []);
     }
     return count;
+}
+
+// C: bones.c resetobjs(FALSE). Only the cloned bones object chains are
+// modified; pointers back to containers or monsters are not traversal edges.
+function resetBonesObjects(objects = []) {
+    for (let index = objects.length - 1; index >= 0; index--) {
+        const obj = objects[index];
+        resetBonesObjects(obj.cobj || obj.contents || []);
+        if (obj.in_use || obj.inUse) {
+            objects.splice(index, 1);
+            continue;
+        }
+        const kind = String(obj.actualKind || obj.kind || '')
+            .replace(/ named .*$/i, '').trim().toLowerCase();
+        if (['weapon', 'armor', 'wand'].includes(obj.cls || obj.oclass)
+            || [')', '[', '/'].includes(obj.glyph)
+            || [1, 2, 10, 10001, 10004].includes(obj.otyp) // port class IDs, egg, tin
+            || (obj.ringRoll >= 1 && obj.ringRoll <= 6)
+            || BONES_USES_KNOWN.has(kind.replace(/^ring of /, '')))
+            obj.known = false;
+        for (const field of ['dknown', 'bknown', 'rknown', 'lknown', 'cknown', 'tknown', 'no_charge'])
+            obj[field] = false;
+        obj.invlet = 0;
+        obj.how_lost = 0;
+        // These are the port's cached equivalents of the old inventory letter
+        // and doname() output, which include the previous hero's observations.
+        delete obj.letter;
+        delete obj.line;
+
+        const corpse = obj.otyp === CORPSE || obj.otyp === 'corpse' || kind.endsWith('corpse');
+        const specialCorpse = corpse && (Number(obj.corpsenm?.pm ?? obj.corpsenm) >= SPECIAL_PM
+            || BONES_SPECIAL_CORPSES.has(String(obj.corpsenm?.name || '').toLowerCase()));
+        const keepName = obj.oartifact || obj.artifact || obj.otyp === STATUE
+            || kind === 'statue' || kind === 'novel' || specialCorpse;
+        if (!keepName) {
+            delete obj.oname;
+            delete obj._wish_object_name;
+            if (obj.oextra) delete obj.oextra.oname;
+            if (obj.kind) obj.kind = obj.kind.replace(/ named .*$/i, '');
+        }
+    }
 }
 
 function stripHeroDroppedFigurineTimer(obj) {
@@ -105,17 +183,9 @@ export function encodeBonesLevel() {
     const ux = game.u?.ux || 0;
     const uy = game.u?.uy || 0;
     level.monsters = (level.monsters || []).filter(Boolean);
-    for (const mon of level.monsters || []) {
-        mon.mlstmv = 0;
-        updateMonsterTrack(mon);
-        // C ref: bones.c savebones() — only tame monsters are stripped of
-        // tameness/peacefulness; other monsters keep their saved state and
-        // getbones()/getlev() recompute it against the next hero at load time.
-        if (mon.mtame || mon.pet) {
-            mon.mtame = 0;
-            mon.pet = false;
-            mon.mpeaceful = 0;
-        }
+    for (const trap of level.traps || []) {
+        trap.madeby_u = false;
+        trap.tseen = trap.ttyp === HOLE;
     }
     level.objects ??= [];
     const heroStatue = game._death_bones_body === 'statue' ? findHeroDeathStatue(level, ux, uy) : null;
@@ -142,7 +212,23 @@ export function encodeBonesLevel() {
         level.monsters ??= [];
         level.monsters.push(saveClone(game._bones_ghost));
     }
-    return JSON.stringify({
+    resetBonesObjects(level.objects);
+    resetBonesObjects(level.buriedobjlist);
+    for (const mon of level.monsters) {
+        resetBonesObjects(mon.minvent);
+        mon.mlstmv = 0;
+        mon.seen_resistance = 0;
+        updateMonsterTrack(mon);
+        // C ref: bones.c savebones() — only tame monsters are stripped of
+        // tameness/peacefulness; other monsters keep their saved state and
+        // getbones()/getlev() recompute it against the next hero at load time.
+        if (mon.mtame || mon.pet) {
+            mon.mtame = 0;
+            mon.pet = false;
+            mon.mpeaceful = 0;
+        }
+    }
+    return encodeSaveGraph({
         dnum: game.u?.uz?.dnum ?? 0,
         dlevel: game.u?.uz?.dlevel ?? 1,
         owner: game.plname || '',
@@ -154,10 +240,7 @@ export function encodeBonesLevel() {
 }
 
 export function restoreBonesLevel(content) {
-    const restored = JSON.parse(content, (_key, value) => {
-        if (value?.__type === 'Map') return new Map(value.entries || []);
-        return value;
-    });
+    const restored = decodeSaveGraph(content);
     if (!restored.level) return false;
     Object.setPrototypeOf(restored.level, GameMap.prototype);
     for (const column of restored.level.locations || []) {
@@ -185,25 +268,14 @@ export function restoreBonesLevel(content) {
 }
 
 export function restoreSaveState(content) {
-    const restored = JSON.parse(content, (_key, value) => {
-        if (value?.__type === 'Map') return new Map(value.entries || []);
-        return value;
-    });
-    for (const key of Object.keys(game)) delete game[key];
-    Object.assign(game, restored);
+    // Root references must resolve to the live game, including Map keys.
+    decodeSaveGraph(content, game);
     game.program_state = {};
     if (game.level) Object.setPrototypeOf(game.level, GameMap.prototype);
     if (game._saved_levels instanceof Map) {
         for (const saved of game._saved_levels.values()) {
             if (saved.level) Object.setPrototypeOf(saved.level, GameMap.prototype);
         }
-    }
-    if (game.u?.usteed && game.level?.monsters?.length) {
-        const steed = game.level.monsters.find(mon =>
-            mon.mx === game.u.usteed.mx
-            && mon.my === game.u.usteed.my
-            && mon.data?.name === game.u.usteed.data?.name);
-        if (steed) game.u.usteed = steed;
     }
 }
 

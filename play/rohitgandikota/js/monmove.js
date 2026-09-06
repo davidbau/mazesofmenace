@@ -8,7 +8,7 @@
 import { monsndx } from './makemon.js';
 import { mon_aligntyp } from './priest.js';
 import { is_obj_mappear } from './monst.js';
-import { Invis } from './youprop.js';
+import { Invis, Displaced, Underwater } from './youprop.js';
 import { CORR } from './const.js';
 import { ROOM } from './const.js';
 import { switch_terrain } from './hack.js';
@@ -40,7 +40,8 @@ import { ACCESSIBLE, DOOR, D_LOCKED, D_CLOSED, D_ISOPEN, D_NODOOR,
 import { is_vampshifter } from './monst.js';
 import { newsym, canseemon, canspotmon, sensemon, pline } from './display.js';
 import { You, You_see, You_hear } from './pline.js';
-import { create_gas_cloud, visible_region_at } from './region.js';
+import { create_gas_cloud, visible_region_at, m_in_out_region } from './region.js';
+import { worm_move, worm_nomove } from './worm.js';
 import { Adjmonnam, Monnam, mon_nam, y_monnam, upstart } from './do_name.js';
 import { Blind, Deaf } from './youprop.js';
 import { Is_rogue_level as IRL_const, D_TRAPPED } from './const.js';
@@ -108,6 +109,11 @@ import { mbodypart } from './polyself.js';
 import { HEAD } from './const.js';
 import { ARM } from './const.js';
 import { makeplural } from './objnam.js';
+import { picking_lock } from './lock.js';
+import { is_digging, watch_dig } from './dig.js';
+import { angry_guards } from './mon.js';
+import { stop_occupation } from './allmain.js';
+import { IS_DOOR, D_WARNED } from './const.js';
 
 
 
@@ -130,12 +136,28 @@ const is_watch = (ptr) => ptr.pmidx === PMNAMES.PM_WATCHMAN
 
 // src/monmove.c:176 watch_on_duty() — a peaceful Minetown watch member has
 // a one-in-three chance to notice lock picking or digging in town.
-function watch_on_duty(mtmp) {
+export async function watch_on_duty(mtmp) {
     if (mtmp.mpeaceful
         && in_town(game.u.ux + game.u.dx, game.u.uy + game.u.dy)
         && mtmp.mcansee && m_canseeu(mtmp) && !rn2(3)) {
-        if (game.occtxt === 'picking the lock' || game.occtxt === 'digging')
-            note_unported_monmove('watch_on_duty:warning');
+        const cc = { x: 0, y: 0 };
+        if (picking_lock(cc) && IS_DOOR(game.level.at(cc.x, cc.y).typ)
+            && (game.level.at(cc.x, cc.y).doormask & D_LOCKED)) {
+            if (couldsee(mtmp.mx, mtmp.my)) {
+                const door = game.level.at(cc.x, cc.y);
+                if (door.looted & D_WARNED) {
+                    await mon_yells(mtmp, "Halt, thief!  You're under arrest!");
+                    await angry_guards(Deaf());
+                } else {
+                    await mon_yells(mtmp, 'Hey, stop picking that lock!');
+                    door.looted |= D_WARNED;
+                }
+                await stop_occupation();
+            }
+        } else if (is_digging()) {
+            await watch_dig(mtmp, game.context.digging.pos.x,
+                            game.context.digging.pos.y, false);
+        }
     }
 }
 
@@ -155,7 +177,7 @@ const is_minion = (ptr) => (ptr.mflags2 & MFLAGS.M2_MINION) !== 0;
 export async function mb_trapped(mtmp, canseeit) {
     if (game.flags?.verbose) {
         if (canseeit && !Unaware())
-            await pline('KABOOM!!  You see a door explode.');
+            await pline_mon(mtmp, 'KABOOM!!  You see a door explode.');
         else if (!Deaf())
             await You_hear(`a ${distu(mtmp.mx, mtmp.my) > 7 * 7
                                 ? 'distant' : 'nearby'} explosion.`);
@@ -238,7 +260,7 @@ export function histemple_at(priest, x, y) {
 }
 
 // src/priest.c findpriest()
-function findpriest(roomno) {
+export function findpriest(roomno) {
     for (const mtmp of game.level.monsters || []) {
         if (DEADMONSTER(mtmp))
             continue;
@@ -739,7 +761,7 @@ export function monnear(mon, x, y) {
 // src/monmove.c:2316 stuff_prevents_passage(). Bulky carried objects stop an
 // amorphous monster, or a vampire in fog form, from passing under a door.
 function stuff_prevents_passage(mtmp) {
-    for (const obj of (mtmp.minvent || [])) {
+    for (const obj of (mtmp === game.youmonst ? game.invent : mtmp.minvent) || []) {
         const typ = obj.otyp;
         if (typ === OCLASSES.COIN_CLASS && obj.quan > 100)
             return true;
@@ -995,7 +1017,7 @@ export async function monflee(mtmp, fleetime, first, fleemsg) {
         /* src/monmove.c:521 — a vrock covers its escape in a stench cloud */
         if (mtmp.mnum === PMNAMES.PM_VROCK && !mtmp.mspec_used) {
             mtmp.mspec_used = 75 + rn2(25);
-            create_gas_cloud(mtmp.mx, mtmp.my, 5, 8);
+            await create_gas_cloud(mtmp.mx, mtmp.my, 5, 8);
         }
 
         mtmp.mflee = 1;
@@ -1014,6 +1036,7 @@ export async function monflee(mtmp, fleetime, first, fleemsg) {
 export function set_apparxy(mtmp) {
     let mx = mtmp.mux, my = mtmp.muy;
     let displ;
+    const umoney = money_cnt(game.invent);
 
     /* pet knows your smell; grabber still has hold of you; monsters which
        know where you are don't suddenly forget, if you haven't moved away */
@@ -1024,19 +1047,14 @@ export function set_apparxy(mtmp) {
         return;
     }
 
-    const Invis = !!game.u.uprops?.INVIS;
-    const Displaced = !!game.u.uprops?.DISPLACED;
-    const Underwater = !!game.u.uinwater;
+    const notseen = (!mtmp.mcansee || (Invis() && !perceives(game.mons[mtmp.mnum])));
+    const notthere = (Displaced() && mtmp.mnum !== PMNAMES.PM_DISPLACER_BEAST);
 
-    const notseen = (!mtmp.mcansee || (Invis && !perceives(game.mons[mtmp.mnum])));
-    const notthere = (Displaced && mtmp.mnum !== PMNAMES.PM_DISPLACER_BEAST);
-
-    if (Underwater) {
+    if (Underwater()) {
         displ = 1;
     } else if (notseen) {
         /* Xorns can smell quantities of valuable metal like that in solid
            gold coins, treat as seen */
-        const umoney = money_cnt(game.invent);
         displ = (mtmp.mnum === PMNAMES.PM_XORN && umoney) ? 0 : 1;
     } else if (notthere) {
         displ = couldsee(mx, my) ? 2 : 1;
@@ -1115,14 +1133,8 @@ function closed_door_mm(x, y) {
 }
 
 // src/monmove.c:2356 can_ooze() — squeeze under a door.
-// stuff_prevents_passage() needs the inventory-bulk rules; it is recorded
-// rather than assumed, since assuming FALSE would let a laden monster ooze.
 export function can_ooze(mtmp) {
-    if (!amorphous(game.mons[mtmp.mnum]))
-        return false;
-    if (mtmp.minvent && mtmp.minvent.length)
-        note_unported('can_ooze:stuff_prevents_passage');
-    return true;
+    return amorphous(mtmp.data) && !stuff_prevents_passage(mtmp);
 }
 
 // src/monmove.c:532 distfleeck()
@@ -1310,15 +1322,15 @@ export async function dochug(mtmp) {
 
     /* src/monmove.c:794, defensive actions take priority over utility. */
     if (find_defensive(mtmp, false)) {
-        await use_defensive(mtmp);
-        return 0;
+        if (await use_defensive(mtmp) !== 0)
+            return 1;
     } else if (find_misc(mtmp)) {
-        await use_misc(mtmp);
-        return 0;
+        if (await use_misc(mtmp) !== 0)
+            return 1;
     }
 
     if (is_watch(mdat)) {
-        watch_on_duty(mtmp);
+        await watch_on_duty(mtmp);
     } else if ((mdat.pmidx === PMNAMES.PM_MIND_FLAYER
                 || mdat.pmidx === PMNAMES.PM_MASTER_MIND_FLAYER)
                && !rn2(20)) {
@@ -1590,7 +1602,9 @@ export async function m_move(mtmp, after) {
     }
 
     /* hides_under comes next in C; it needs an object underfoot. */
-    if (hides_under(ptr) && OBJ_AT(omx, omy) && rn2(10))
+    if (hides_under(ptr) && OBJ_AT(omx, omy)
+        && can_hide_under_obj(objects_at(omx, omy)[0])
+        && rn2(10))
         return MMOVE_NOTHING;      /* do not leave hiding place */
 
     /* src/monmove.c:1761 — "Where does 'mtmp' think you are?  Not necessary
@@ -1860,14 +1874,20 @@ export async function m_move(mtmp, after) {
         if ((mfp.info[chi] & ALLOW_M)
             || (nix === mtmp.mux && niy === mtmp.muy))
             return await m_move_aggress(mtmp, nix, niy);
+        // src/monmove.c:2039, update the selected region membership.
+        if (!(await m_in_out_region(mtmp, nix, niy)))
+            return MMOVE_DONE;
         /* src/monmove.c:2047 — postmove effects run BEFORE the location
            changes (monsters have no "previous location" field) */
-        m_postmove_effect(mtmp);
+        await m_postmove_effect(mtmp);
         /* src/monmove.c:2051 — remove then place, so level.monsters[][] tracks
            the move. Writing mx/my alone leaves m_at() answering with the old
            square. */
         remove_monster(omx, omy);
         place_monster(mtmp, nix, niy);
+        // src/monmove.c:2057, reconnect the moved head to its tail.
+        if (mtmp.wormno)
+            worm_move(mtmp);
         maybe_unhide_at_mon(mtmp);
         /* the newsym for the vacated square is in postmov(), not here --
            src/monmove.c:1508 sits inside postmov so that EVERY path returning
@@ -1878,13 +1898,17 @@ export async function m_move(mtmp, after) {
            the matching remembered square, so an unmaintained track makes
            every match land on j=0 and draws the wrong modulus. */
         mon_track_add(mtmp, omx, omy);
-    } else if (is_unicorn(ptr) && rn2(2)) {
-        /* A unicorn which cannot find an acceptable step may teleport. */
-        const { rloc, tele_restrict } = await import('./teleport.js');
-        if (!await tele_restrict(mtmp)) {
-            await rloc(mtmp, RLOC_MSG);
-            return MMOVE_MOVED;
+    } else {
+        if (is_unicorn(ptr) && rn2(2)) {
+            /* A unicorn which cannot find an acceptable step may teleport. */
+            const { rloc, tele_restrict } = await import('./teleport.js');
+            if (!await tele_restrict(mtmp)) {
+                await rloc(mtmp, RLOC_MSG);
+                return MMOVE_MOVED;
+            }
         }
+        if (mtmp.wormno)
+            worm_nomove(mtmp);
     }
 
     return await postmov(mtmp, ptr, omx, omy, mmoved, can_tunnel);
@@ -2269,10 +2293,10 @@ function m_balks_at_approaching(oldappr, mtmp, prange) {
     return oldappr;
 }
 
-// include/vision.h:50 m_canseeu() — Invis and Underwater are hero states the
-// port does not have yet, so this reduces to line of sight.
+// include/vision.h:50 m_canseeu(), the active macro without buried-state tests.
 export function m_canseeu(mtmp) {
-    return couldsee(mtmp.mx, mtmp.my);
+    return (!Invis() || perceives(mtmp.data))
+        && !Underwater() && couldsee(mtmp.mx, mtmp.my);
 }
 
 // src/mhitu.c:2413 ranged_attk_available() — does this monster have any attack
@@ -2390,7 +2414,7 @@ function finish_meating(mtmp) {
 // src/monmove.c:650 m_everyturn_effect() — called every turn for each
 // living monster (and the hero): a fog cloud sheds a harmless vapor trail
 // where it stands (this is what fills the Valley with drifting mist).
-export function m_everyturn_effect(mtmp) {
+export async function m_everyturn_effect(mtmp) {
     const is_u = (mtmp === game.youmonst);
     const x = is_u ? game.u.ux : mtmp.mx,
           y = is_u ? game.u.uy : mtmp.my;
@@ -2399,19 +2423,21 @@ export function m_everyturn_effect(mtmp) {
         /* don't leave a vapor cloud if some other gas cloud is already
            present, or when flowing under closed doors */
         if (!closed_door_mm(x, y) && !visible_region_at(x, y))
-            create_gas_cloud(x, y, 1, 0);       /* harmless vapor */
+            await create_gas_cloud(x, y, 1, 0);       /* harmless vapor */
     }
 }
 
 // src/monmove.c:672 m_postmove_effect() — effects a monster leaves at the
 // square it is ABOUT to vacate: hezrou stench and steam-vortex vapor.
-export function m_postmove_effect(mtmp) {
-    const x = mtmp.mx, y = mtmp.my;
+export async function m_postmove_effect(mtmp) {
+    const is_u = mtmp === game.youmonst;
+    const x = is_u ? game.u.ux0 : mtmp.mx;
+    const y = is_u ? game.u.uy0 : mtmp.my;
 
     if (mtmp.mnum === PMNAMES.PM_HEZROU)        /* stench */
-        create_gas_cloud(x, y, 1, 8);
+        await create_gas_cloud(x, y, 1, 8);
     else if (mtmp.mnum === PMNAMES.PM_STEAM_VORTEX && !mtmp.mcan)
-        create_gas_cloud(x, y, 1, 0);           /* harmless vapor */
+        await create_gas_cloud(x, y, 1, 0);           /* harmless vapor */
 }
 
 // src/monmove.c mon_yells(); a monster shouts (a watchman's warning)

@@ -43,7 +43,7 @@ import { ECMD_CANCEL, SPE_LIM, CORR, Is_rogue_level, W_ARMOR, W_ARM, NODIR,
          OBJ_AT, COLNO, ROWNO, HAND, HEAD, NH_RED,
          NH_PURPLE } from './const.js';
 import { sgn, distu, isok } from './hacklib.js';
-import { valid_cloud_pos } from './region.js';
+import { ACCESSIBLE } from './const.js';
 import { cansee } from './vision.js';
 import { bcsign, blessorcurse, mkobj, mksobj, place_object,
          uncurse } from './mkobj.js';
@@ -53,7 +53,7 @@ import { OCLASSES, ONAMES } from './objects_data.js';
 import { newsym, pline, canspotmon } from './display.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { getlin } from './cmd.js';
-import { has_head, hides_under, is_hider, is_silent,
+import { can_chant, hides_under, is_hider,
          name_to_monplus } from './mondata.js';
 import { is_female, is_male, makemon, mkclass, rndmonst,
          set_malign } from './makemon.js';
@@ -116,25 +116,14 @@ import { A_WIS } from './const.js';
 import { outrumor } from './rumors.js';
 import { setworn, which_armor } from './worn.js';
 import { LIMITS, MFLAGS, MONSYMS, PMNAMES, mons_name } from './monst_data.js';
-import { delobj, is_pool, m_at, setmangry } from './mon.js';
+import { delobj, is_pool, is_lava, m_at, setmangry } from './mon.js';
 import { roles } from './role_data.js';
 import { body_part } from './polyself.js';
-import { Blind, Hallucination, Invisible } from './youprop.js';
+import { Blind, Hallucination, Invisible, Confusion } from './youprop.js';
 import { make_confused } from './potion.js';
 
 function note_unported_read(what) {
     (game.unported ||= new Set()).add('read:' + what);
-}
-
-// src/mondata.c:580 can_chant().
-function can_chant(mtmp) {
-    const data = mtmp?.data;
-    const strangled = mtmp === game.youmonst
-        && !!(game.u.intrinsic?.HStrangled || game.u.uprops?.STRANGLED);
-
-    return !!data && !strangled && !is_silent(data) && has_head(data)
-        && data.msound !== MFLAGS.MS_BUZZ
-        && data.msound !== MFLAGS.MS_BURBLE;
 }
 
 // src/read.c:315 read_ok() — getobj filter for 'r'; lives in js/cmd.js
@@ -1634,6 +1623,13 @@ async function seffect_remove_curse(sobj) {
 // a read scroll yet; they record. The plain arm runs destroy_arm() with
 // its rn2(4)+1 hit rolls, or gives the "Your skin itches." strange
 // feeling with no armor.
+// src/read.c:1069 valid_cloud_pos()
+export function valid_cloud_pos(x, y) {
+    if (!isok(x, y))
+        return false;
+    return ACCESSIBLE(game.level.at(x, y).typ) || is_pool(x, y) || is_lava(x, y);
+}
+
 // src/read.c:1080 can_center_cloud()
 function can_center_cloud(x, y) {
     if (!valid_cloud_pos(x, y))
@@ -1664,7 +1660,7 @@ async function do_stinking_cloud(sobj, mention_stinking) {
         return;
     }
     const { create_gas_cloud } = await import('./region.js');
-    create_gas_cloud(cc.x, cc.y, 15 + 10 * bcsign(sobj),
+    await create_gas_cloud(cc.x, cc.y, 15 + 10 * bcsign(sobj),
                      8 + 4 * bcsign(sobj));
 }
 
@@ -2093,31 +2089,27 @@ function cap_spe(obj) {
     }
 }
 
-// src/read.c:2055 seffect_identify() — the scroll arm.
-//
-// The scroll is used up BEFORE the messages, and the cval roll only happens
-// on the blessed or lucky path: `sblessed || (!scursed && !rn2(5))`, so an
-// ordinary uncursed scroll spends one rn2(5) and usually identifies one item.
-// identify_pack's menu needs the inventory-selection path and is recorded.
-// Returns true because the scroll has already been used up.
+// src/read.c:2055 seffect_identify()
 async function seffect_identify(sobj) {
     const otyp = sobj.otyp;
+    const is_scroll = sobj.oclass === OCLASSES.SCROLL_CLASS;
     const sblessed = !!sobj.blessed;
     const scursed = !!sobj.cursed;
-    const confused = !!game.u.uprops?.CONFUSION?.intrinsic
-                     || !!game.u.intrinsic?.HConfusion;
-    const already_known = !!game.objects[otyp].oc_name_known;
+    const confused = Confusion();
+    const already_known = sobj.oclass === OCLASSES.SPBOOK_CLASS
+        || !!game.objects[otyp].oc_name_known;
 
-    useup(sobj);
-
-    if (confused || (scursed && !already_known))
-        await You('identify this as an identify scroll.');
-    else if (!already_known)
-        await pline('This is an identify scroll.');
-    if (!already_known)
-        learnscrolltyp(ONAMES.SCR_IDENTIFY);
-    if (confused || (scursed && !already_known))
-        return true;
+    if (is_scroll) {
+        useup(sobj);
+        if (confused || (scursed && !already_known))
+            await You('identify this as an identify scroll.');
+        else if (!already_known)
+            await pline('This is an identify scroll.');
+        if (!already_known)
+            learnscrolltyp(ONAMES.SCR_IDENTIFY);
+        if (confused || (scursed && !already_known))
+            return true;
+    }
 
     if ((game.invent || []).length) {
         let cval = 1;
@@ -2128,8 +2120,10 @@ async function seffect_identify(sobj) {
                 ++cval;
         }
         await identify_pack(cval, !already_known);
+    } else {
+        await pline(`You're not carrying anything${is_scroll ? ' else' : ''} to be identified.`);
     }
-    return true;
+    return is_scroll;
 }
 
 // src/read.c:2015 seffect_teleportation()

@@ -9,6 +9,7 @@ import { rhack, continue_run, run_active, continue_search, search_repeat_active,
 import {
     docrt, cls, bot, flush_screen, pline, flush_topl_more, see_monsters,
     see_objects, see_traps, swallowed, Hallucination, Warn_of_mon,
+    clear_glyph_buffer,
 } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals } from './vision.js';
 import { initrack, settrack } from './track.js';
@@ -41,7 +42,7 @@ import { reset_justpicked } from './pickup.js';
 import { set_wear, glibr } from './do_wear.js';
 import { gethungry } from './eat.js';
 import { age_spells } from './spell.js';
-import { near_capacity, paint_corner_nhw_menu, encumber_msg, update_inventory } from './invent.js';
+import { near_capacity, paint_corner_nhw_menu, encumber_msg, update_inventory, prepare_perminvent } from './invent.js';
 import { sanity_check } from './wizcmds.js';
 import { com_pager_legacy } from './questpgr.js';
 import { snapshot_status_lines } from './display.js';
@@ -66,6 +67,8 @@ import {
     MAXULEV, ENERGY_REGENERATION, MAGICAL_BREATHING, GLIB,
     TELEPORT, TELEPAT, POLYMORPH, UNCHANGING, NON_PM, POLY_NOFLAGS, ismnum,
     WARNING, HALF_PHDAM, Is_waterlevel, Is_airlevel,
+    WIN_ERR, MENU_BEHAVE_STANDARD, MENU_BEHAVE_PERMINV,
+    WC2_HILITE_STATUS, WC2_FLUSH_STATUS,
 } from './const.js';
 
 // C ref: allmain.c static mvl_change — delayed polyself(1) / you_were(2).
@@ -133,6 +136,112 @@ async function maybe_tele_poly_were() {
             mvl_change = 0;
         }
     }
+}
+
+/**
+ * C ref: allmain.c init_sound_disp_gamewindows `:699–763` — window-system
+ * init singleton. Called once from `unixmain.c:217` after `vision_init`,
+ * before `attempt_restore`; JS caller is `jsmain.js start()` after
+ * `window_inited` is set, before `try_restore_save` (same relative order).
+ * C creates WIN_MESSAGE / WIN_STATUS-or-windowport-status / WIN_MAP /
+ * WIN_INVEN (`:719–726`), styles the inventory prompt (`:727–728`), runs
+ * the empty `start_menu`/`end_menu` Qt pacify (`:738`), then displays
+ * MESSAGE, clears the glyph buffer, and displays MAP (`:756–758`).
+ * JS has no `create_nhwindow` for MESSAGE/STATUS/MAP (the terminal grid in
+ * `display.js`/`game_display.js` is the window); the WIN_* fields below are
+ * the same sentinel-id stand-in pattern as `invent.js` `WIN_INVEN_ID = 20`
+ * for `create_nhwindow(NHW_MENU)` (not `WIN_ERR`). No RNG draws in C, so
+ * this stays sync — `display_nhwindow(..., FALSE)` never blocks.
+ * Named omissions: `activate_chosen_soundlib` (`sounds.c:1779–1796`, no
+ * SND_LIB in the scored port — cf. `exper.js`/`insight.js` SoundAchievement
+ * debt); both `SoundAchievement` arms (`sndprocs.h:232–241` no-op without
+ * `iflags.sounds` + achievement procs); `#ifdef CHANGE_COLOR`
+ * `change_palette` (`coloratt.c:1098–1108`, compiled out — `windconf.h`
+ * leaves `CHANGE_COLOR` commented); `adjust_menu_promptstyle` ctrl relay
+ * (`windows.c:1769–1778`, JS menus read `iflags.menu_headings` directly);
+ * `start_menu`/`end_menu` empty-menu Qt pacify (no Qt window to pacify);
+ * the three `display_nhwindow(..., FALSE)` paints (at init there is no
+ * pending `--More--`, no level yet for MAP, and status is repainted by the
+ * later `newgame`/`dorecover` `docrt`+`bot`; porting C control flow, never
+ * a grid snapshot/restore per D-1831); `#ifndef STATUS_HILITES`
+ * `display_nhwindow(WIN_STATUS)` (compiled out — `STATUS_HILITES` is
+ * defined in `config.h:616`); `#ifdef TTY_PERM_INVENT`
+ * `check_perm_invent_again` (`options.c:5532–5542`, `perm_invent_pending`
+ * is falsy at init — the later `sync_perminvent` TOO_EARLY arm sets it).
+ */
+export function init_sound_disp_gamewindows() {
+    let menu_behavior = MENU_BEHAVE_STANDARD | 0;
+
+    // C `:703` activate_chosen_soundlib() — soundlib table switch + init;
+    // scored port has no SND_LIB (named above), so no state to switch.
+    // C `:705–710` if (iflags.wc_splash_screen && !flags.randomall)
+    // SoundAchievement(0, sa2_splashscreen, 0) else SoundAchievement(0,
+    // sa2_newgame_nosplash, 0) — both arms no-op without sound procs, but
+    // keep the C condition reads in order (no short-circuit change).
+    const wantSplash = !!((game.iflags?.wc_splash_screen) && !(game.flags?.randomall | 0));
+    void wantSplash;
+
+    // C `:712–717` #ifdef CHANGE_COLOR change_palette() — compiled out in
+    // this build (see header comment); ga.altpalette stays all-zero so the
+    // per-color win_change_color loop would no-op anyway.
+    // C `:719` WIN_MESSAGE = create_nhwindow(NHW_MESSAGE) — sentinel id.
+    game.WIN_MESSAGE = 10;
+    // C `:720–724` if (VIA_WINDOWPORT()) status_initialize(FALSE) else
+    // WIN_STATUS = create_nhwindow(NHW_STATUS). VIA_WINDOWPORT() is
+    // botl.h:213 wincap2 & (WC2_HILITE_STATUS|WC2_FLUSH_STATUS); contest
+    // JS sets no wincap2, so the else arm runs like the tty build.
+    const wincap2 = game.windowprocs?.wincap2 | 0;
+    const viaWindowport = (wincap2 & (WC2_HILITE_STATUS | WC2_FLUSH_STATUS)) !== 0;
+    if (viaWindowport) {
+        // C botl.c:1683–1720 status_initialize(FALSE): init_blstats +
+        // win_status_init + per-field enable + update_all + botlx. JS status
+        // fields are enabled implicitly; keep the observable tail.
+        if (game.flags) game.flags.botlx = true;
+    } else {
+        game.WIN_STATUS = 11;
+    }
+    // C `:725` WIN_MAP = create_nhwindow(NHW_MAP) — sentinel id.
+    game.WIN_MAP = 12;
+    // C `:726` WIN_INVEN = create_nhwindow(NHW_MENU) — 20 matches the
+    // invent.js WIN_INVEN_ID stand-in (any non-WIN_ERR id satisfies the
+    // `:727`/`sync_perminvent` gates the same way).
+    game.WIN_INVEN = 20;
+    // C `:727–728` if (WIN_INVEN != WIN_ERR)
+    // adjust_menu_promptstyle(WIN_INVEN, &iflags.menu_headings) — the ctrl
+    // relay is implicit in JS (menus read menu_headings directly, cf.
+    // invent.js add_menu_heading); keep the opt_need_promptstyle clear.
+    if ((game.WIN_INVEN ?? WIN_ERR) !== WIN_ERR) {
+        if (!game.go) game.go = {};
+        game.go.opt_need_promptstyle = false;
+    }
+    // C `:730–735` #ifdef TTY_PERM_INVENT if (WINDOWPORT(tty) &&
+    // WIN_INVEN != WIN_ERR) { menu_behavior = MENU_BEHAVE_PERMINV;
+    // prepare_perminvent(WIN_INVEN); } — contest JS is tty
+    // (options.js windowport_tty() always true); invent.js prepare_perminvent
+    // is live, so wire it in C order. Default perminv_mode InvOptNone keeps
+    // it a no-op until the mode changes (D-1600).
+    const isTty = (game.windowprocs?.name ?? 'tty') === 'tty';
+    if (isTty && (game.WIN_INVEN ?? WIN_ERR) !== WIN_ERR) {
+        menu_behavior = MENU_BEHAVE_PERMINV | 0;
+        prepare_perminvent(game.WIN_INVEN);
+    }
+    // C `:738` start_menu(WIN_INVEN, menu_behavior), end_menu(WIN_INVEN,
+    // (char *) 0) — empty menu so an early quit never destroys an unused
+    // Qt window. JS has no Qt window and no start/end_menu exports; the
+    // WIN_INVEN id above is the pacify. menu_behavior is consumed here so
+    // the PERMINV assignment is not dead state.
+    void menu_behavior;
+    // C `:753–755` #ifndef STATUS_HILITES display_nhwindow(WIN_STATUS,
+    // FALSE) — compiled out (STATUS_HILITES defined); status paints via bot().
+    // C `:756` display_nhwindow(WIN_MESSAGE, FALSE) — nothing pending at
+    // init; later welcome/docrt flush paints. Intentionally no grid touch.
+    // C `:757` clear_glyph_buffer() — live; no-ops when no level yet, same
+    // as C forcing an empty gbuf before the first mklev.
+    clear_glyph_buffer();
+    // C `:758` display_nhwindow(WIN_MAP, FALSE) — no level yet; the newgame
+    // / dorecover docrt paints the map. Intentionally no grid touch.
+    // C `:759–762` #ifdef TTY_PERM_INVENT if (iflags.perm_invent_pending)
+    // check_perm_invent_again() — falsy at init (named above).
 }
 
 // C ref: allmain.c moveloop_preamble() — moon/friday; new-game RNG only when !resuming

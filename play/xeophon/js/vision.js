@@ -1,7 +1,5 @@
 // vision.js — C ref: vision.c Algorithm C shadow-casting
-// Stripped-down port for the contest skeleton: no light sources, boulders,
-// mimics, underwater, blindness, or pit handling.
-// Contestants should port the full vision.c for complete parity.
+// Temporary light sources use the same circle and path geometry as vision.
 
 import { game } from './gstate.js';
 import {
@@ -10,7 +8,9 @@ import {
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
     IS_WALL, TEMP_LIT,
 } from './const.js';
+import { S_LIGHT } from './permonst.js';
 import { newsym } from './display.js';
+import { artifactLight } from './burn.js';
 
 const COULD_SEE = 0x1;
 const IN_SIGHT = 0x2;
@@ -63,12 +63,64 @@ const LIGHT_SOURCE_MONSTERS = new Set([
     'baby gold dragon', 'fire vortex', 'fire elemental', 'gold dragon',
 ]);
 
-function markMonsterLightSources(next) {
-    for (const mon of game.level?.monsters || []) {
-        if (!LIGHT_SOURCE_MONSTERS.has(mon.data?.name)) continue;
-        for (let y = Math.max(0, mon.my - 1); y <= Math.min(ROWNO - 1, mon.my + 1); y++)
-            for (let x = Math.max(1, mon.mx - 1); x <= Math.min(COLNO - 1, mon.mx + 1); x++)
-                next[y][x] |= TEMP_LIT;
+// C: timeout.c begin_burn(), light.c candle_light_range()/arti_light_radius().
+export function objectLightRadius(obj) {
+    if (!(obj.lamplit || obj.burning)) return 0;
+    const name = String(obj.actualKind || obj.kind || '').toLowerCase();
+    if ([370, 371].includes(obj.otyp) || ['tallow candle', 'wax candle'].includes(name))
+        return Math.min(15, 1 + Math.floor(Math.sqrt(obj.quan || 1)));
+    if (obj.otyp === 10076 || name === 'candelabrum of invocation')
+        return obj.spe < 4 ? 2 : obj.spe < 7 ? 3 : 4;
+    const goldMail = obj.otyp === 10140 || name === 'gold dragon scale mail';
+    if (artifactLight(obj)) {
+        if (obj === game.u?.uskin || obj.embedded) return 1;
+        return (obj.blessed ? 3 : obj.cursed ? 1 : 2) + (goldMail ? 1 : 0);
+    }
+    if (obj.otyp === 252 || name === 'potion of oil') return 1;
+    if ([226, 227, 228].includes(obj.otyp) || ['brass lantern', 'oil lamp', 'magic lamp'].includes(name)) return 3;
+    return Math.min(15, Math.max(0, Math.trunc(obj.litRadius || 0)));
+}
+
+// C: light.c do_light_sources(), zap.c get_obj_location()/get_mon_location().
+// Only top-level inventories/floor objects shine; containers and burial hide light.
+function markLightSources(next) {
+    const u = game.u;
+    const sources = [];
+    // Camera/Sunsword flashes remain lit until the entire ray is resolved.
+    for (const { x, y } of game._transientFlashSpots || [])
+        if (next[y]?.[x] & COULD_SEE) next[y][x] |= TEMP_LIT;
+    const monsters = (game.level?.monsters || [])
+        .filter(mon => !mon.dead && !(mon.mhp != null && mon.mhp <= 0));
+    if (u.usteed && !monsters.includes(u.usteed)) monsters.push(u.usteed);
+    const inventories = [{ objects: game.inventory, x: u.ux, y: u.uy }, { objects: game.level?.objects }];
+    const heroForm = u._polyself_form || u.youmonst?.data || u.data;
+    if (LIGHT_SOURCE_MONSTERS.has(heroForm?.name) || heroForm?.mlet === S_LIGHT)
+        sources.push({ x: u.ux, y: u.uy, radius: 1 });
+    for (const mon of monsters) {
+        const x = mon === u.usteed ? u.ux : mon.mx;
+        const y = mon === u.usteed ? u.uy : mon.my;
+        if (!(x > 0)) continue;
+        inventories.push({ objects: mon.minvent, x, y });
+        if (!mon.mburied && (LIGHT_SOURCE_MONSTERS.has(mon.data?.name) || mon.data?.mlet === S_LIGHT))
+            sources.push({ x, y, radius: 1 });
+    }
+    for (const inventory of inventories) {
+        for (const obj of inventory.objects || []) {
+            if (obj.contained || obj.buried || obj.transientProjectile) continue;
+            const radius = objectLightRadius(obj);
+            if (radius) sources.push({ x: inventory.x ?? obj.ox, y: inventory.y ?? obj.oy, radius });
+        }
+    }
+    for (const { x: sx, y: sy, radius } of sources) {
+        if (!(sx > 0 && sx < COLNO && sy >= 0 && sy < ROWNO)) continue;
+        const atHero = sx === u.ux && sy === u.uy;
+        for (let y = Math.max(0, sy - radius); y <= Math.min(ROWNO - 1, sy + radius); y++) {
+            const extent = circle_data[circle_start[radius] + Math.abs(y - sy)];
+            for (let x = Math.max(1, sx - extent); x <= Math.min(COLNO - 1, sx + extent); x++) {
+                if (atHero ? (next[y][x] & COULD_SEE) : clear_path(sx, sy, x, y))
+                    next[y][x] |= TEMP_LIT;
+            }
+        }
     }
 }
 
@@ -244,6 +296,14 @@ function q4_path(srow, scol, y2, x2) {
     return 1;
 }
 
+// C: vision.c clear_path() excludes both endpoints from obstruction checks.
+export function clear_path(col1, row1, col2, row2) {
+    if (col1 === col2 && row1 === row2) return true;
+    if (col1 < col2)
+        return !!(row1 > row2 ? q1_path(row1, col1, row2, col2) : q4_path(row1, col1, row2, col2));
+    return !!(row1 > row2 ? q2_path(row1, col1, row2, col2) : q3_path(row1, col1, row2, col2));
+}
+
 // C ref: vision.c right_side()
 function right_side(row, left, right_mark, limitsIdx) {
     const nrow = row + game.vis_step;
@@ -271,9 +331,7 @@ function right_side(row, left, right_mark, limitsIdx) {
 
         if (left !== game.vis_start_col) {
             for (; left <= right_edge; left++) {
-                const result = game.vis_step < 0
-                    ? q1_path(game.vis_start_row, game.vis_start_col, row, left)
-                    : q4_path(game.vis_start_row, game.vis_start_col, row, left);
+                const result = clear_path(game.vis_start_col, game.vis_start_row, left, row);
                 if (result) break;
             }
             if (left > lim_max) return;
@@ -287,9 +345,7 @@ function right_side(row, left, right_mark, limitsIdx) {
         let right;
         if (right_mark < right_edge) {
             for (right = right_mark; right <= right_edge; right++) {
-                const result = game.vis_step < 0
-                    ? q1_path(game.vis_start_row, game.vis_start_col, row, right)
-                    : q4_path(game.vis_start_row, game.vis_start_col, row, right);
+                const result = clear_path(game.vis_start_col, game.vis_start_row, right, row);
                 if (!result) break;
             }
             right--;
@@ -337,9 +393,7 @@ function left_side(row, left_mark, right, limitsIdx) {
 
         if (right !== game.vis_start_col) {
             for (; right >= left_edge; right--) {
-                const result = game.vis_step < 0
-                    ? q2_path(game.vis_start_row, game.vis_start_col, row, right)
-                    : q3_path(game.vis_start_row, game.vis_start_col, row, right);
+                const result = clear_path(game.vis_start_col, game.vis_start_row, right, row);
                 if (result) break;
             }
             if (right < lim_min) return;
@@ -353,9 +407,7 @@ function left_side(row, left_mark, right, limitsIdx) {
         let left;
         if (left_mark > left_edge) {
             for (left = left_mark; left >= left_edge; left--) {
-                const result = game.vis_step < 0
-                    ? q2_path(game.vis_start_row, game.vis_start_col, row, left)
-                    : q3_path(game.vis_start_row, game.vis_start_col, row, left);
+                const result = clear_path(game.vis_start_col, game.vis_start_row, left, row);
                 if (!result) break;
             }
             left++;
@@ -455,8 +507,6 @@ export function vision_recalc(control = 0) {
         if (game.level?.flags?.rogue_level) rogue_vision(next, next_rmin, next_rmax);
         else view_from(u.uy, u.ux, next, next_rmin, next_rmax);
     }
-    markMonsterLightSources(next);
-
     if (game.u?.blind) {
         const old_array = game.viz_array;
         game.viz_array = next;
@@ -478,6 +528,7 @@ export function vision_recalc(control = 0) {
         game._viz_rmax = next_rmax;
         return;
     }
+    markLightSources(next);
 
     // Compute IN_SIGHT from COULD_SEE + lighting
     const level = game.level;

@@ -285,3 +285,15 @@ export function strsubst(bp, orig, replacement) {
 }
 
 // C ref: rn2(x) already in rng.js — re-export not needed
+
+/**
+ * C ref: hacklib.c ordin — 1st/2nd/3rd/11th (teen exception).
+ * Canonical home (C is one global function); dothrow.js keeps a matching
+ * file-local clone used by endmultishot.
+ */
+export function ordin(n) {
+    const nn = n | 0;
+    const dd = nn % 10;
+    return (dd === 0 || dd > 3 || Math.trunc((nn % 100) / 10) === 1)
+        ? 'th' : (dd === 1) ? 'st' : (dd === 2) ? 'nd' : 'rd';
+}

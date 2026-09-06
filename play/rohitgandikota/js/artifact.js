@@ -17,7 +17,9 @@ import { NECK } from './const.js';
 import { Upolyd } from './const.js';
 import { engulfing_u } from './const.js';
 import { losehp, nomul } from './hack.js';
-import { exercise } from './attrib.js';
+import { nxtobj } from './invent.js';
+import { ART_MASTER_KEY_OF_THIEVERY } from './artilist_data.js';
+import { exercise, Role_if } from './attrib.js';
 import { pline } from './display.js';
 import { map_invisible } from './display.js';
 import { canspotmon } from './display.js';
@@ -91,7 +93,7 @@ import { ONAME_VIA_NAMING, ONAME_WISH, ONAME_GIFT, ONAME_VIA_DIP,
          ONAME_KNOW_ARTI, ECMD_OK, ECMD_TIME, ECMD_CANCEL, GETOBJ_PROMPT,
          nothing_happens, A_CON, A_WIS, KILLED_BY, W_ARM, W_WEP, W_ART, W_ARTI,
          SICK_ALL,
-         TIMEOUT, W_SWAPWEP, W_QUIVER, W_BALL, W_SADDLE,
+         I_SPECIAL, TIMEOUT, W_SWAPWEP, W_QUIVER, W_BALL, W_SADDLE,
          DISMOUNT_THROWN, IS_ALTAR } from './const.js';
 
 /* include/artilist.h — artilist[i].otyp, resolved from the generated
@@ -117,6 +119,28 @@ function artiexist() {
 // include/artifact.h:87 is_art()
 export function is_art(obj, art) {
     return !!(obj && obj.oartifact === art);
+}
+
+
+// src/artifact.c:2775 is_magic_key(), role and beatitude requirements.
+export function is_magic_key(mon, obj) {
+    if (is_art(obj, ART_MASTER_KEY_OF_THIEVERY)) {
+        if (mon === game.youmonst ? Role_if(PMNAMES.PM_ROGUE)
+                                  : mon && mon.data === game.mons[PMNAMES.PM_ROGUE])
+            return !obj.cursed;
+        return !!obj.blessed;
+    }
+    return false;
+}
+
+// src/artifact.c:2790 has_magic_key(), including a non-key first object.
+export function has_magic_key(mon) {
+    const key = ONAMES[artifact_otyps[ART_MASTER_KEY_OF_THIEVERY]];
+    if (!mon) mon = game.youmonst;
+    let obj = (mon === game.youmonst ? game.invent : mon.minvent)?.[0];
+    for (; obj; obj = nxtobj(obj, key, false))
+        if (is_magic_key(mon, obj)) return obj;
+    return null;
 }
 
 // src/artifact.c:2837 permapoisoned() — currently only Grimtooth.
@@ -362,6 +386,7 @@ function artifact_alignment(rec, artinum) {
 }
 
 /* include/artifact.h SPFX_* bits used below */
+export { SPFX_SEARCH };
 const SPFX_INTEL = 0x04, SPFX_RESTR = 0x02, SPFX_SPEAK = 0x08,
       SPFX_WARN = 0x20,
       SPFX_ATTK = 0x40, SPFX_SEARCH = 0x00000200,
@@ -1061,6 +1086,16 @@ async function invoke_energy_boost(obj) {
     return ECMD_TIME;
 }
 
+// src/artifact.c:1838 invoke_untrap(), cancellation refunds the cooldown.
+export async function invoke_untrap(obj) {
+    const { untrap } = await import('./trap.js');
+    if (!await untrap(true, 0, 0, null)) {
+        obj.age = 0;
+        return ECMD_CANCEL;
+    }
+    return ECMD_TIME;
+}
+
 // src/artifact.c:1918 invoke_create_ammo(). The new arrows inherit the
 // Longbow's beatitude, then pass through normal inventory merging.
 async function invoke_create_ammo(obj) {
@@ -1122,6 +1157,19 @@ async function invoke_enlightening() {
     tty_destroy_nhwindow(win);
     await docrt();
     return ECMD_TIME;
+}
+
+// src/artifact.c:2236 finesse_ahriman(), whether freeinv will end levitation.
+export function finesse_ahriman(obj) {
+    const oart = get_artifact(obj);
+    const e = game.u.uprops?.LEVITATION || 0;
+    if (!Levitation() || oart === artifact_records[ART_NONARTIFACT]
+        || oart.inv_prop !== 'LEVITATION' || !(e & W_ARTI))
+        return false;
+    /* Probe the property bits cleared by arti_invoke(off), without changing
+       the live property. C saves and restores the whole prop record. */
+    const h = (game.u.intrinsic?.HLevitation || 0) & ~(I_SPECIAL | TIMEOUT);
+    return !(h || (e & ~W_ARTI));
 }
 
 // src/artifact.c:2131 arti_invoke(), ordinary property powers. These toggle
@@ -1234,6 +1282,8 @@ export async function doinvoke() {
         return invoke_healing(obj);
     case 'ENERGY_BOOST':
         return invoke_energy_boost(obj);
+    case 'UNTRAP':
+        return invoke_untrap(obj);
     case 'CREATE_AMMO':
         return invoke_create_ammo(obj);
     case 'ENLIGHTENING':

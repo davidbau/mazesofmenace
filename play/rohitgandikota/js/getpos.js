@@ -719,7 +719,7 @@ function dxdy_to_dist_descr(dx, dy, fulldir) {
 }
 
 // src/getpos.c:595 coord_desc() — coordinate formatting for 'whatis_coord'
-function coord_desc(x, y, cmode) {
+export function coord_desc(x, y, cmode) {
     switch (cmode) {
     default:
         return '';

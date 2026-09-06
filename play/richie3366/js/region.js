@@ -166,11 +166,29 @@ export function is_poisoncloud_region(reg) {
     return !!reg && reg.glyph === 'S_poisoncloud';
 }
 
-function inside_region(reg, x, y) {
+/**
+ * C ref: nethack-c/upstream/src/region.c:53-57 inside_rect —
+ * inclusive rect containment. `| 0` int idiom.
+ */
+export function inside_rect(r, x, y) {
+    return ((x | 0) >= (r.lx | 0) && (x | 0) <= (r.hx | 0)
+        && (y | 0) >= (r.ly | 0) && (y | 0) <= (r.hy | 0));
+}
+
+/**
+ * C ref: nethack-c/upstream/src/region.c:62-73 inside_region —
+ * null/bounding-box early-out (`reg == 0 ||
+ * !inside_rect(&bounding_box)` short-circuit) then per-rect
+ * inside_rect. JS regs carry `rects` without a separate nrects
+ * (create_region not yet ported), so the loop runs over the array;
+ * bounding_box is stored when present, else recomputed by
+ * region_bounding_box (C stores it at create_region).
+ */
+export function inside_region(reg, x, y) {
+    if (!reg || !inside_rect(reg.bounding_box ?? region_bounding_box(reg), x, y)) return false;
     const rects = reg.rects || [];
-    for (const r of rects) {
-        if (x >= r.lx && x <= r.hx && y >= r.ly && y <= r.hy) return true;
-    }
+    for (let i = 0; i < rects.length; i++)
+        if (inside_rect(rects[i], x, y)) return true;
     return false;
 }
 

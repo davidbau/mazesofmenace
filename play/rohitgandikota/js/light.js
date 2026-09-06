@@ -22,8 +22,10 @@ import { COLNO, ROWNO, OBJ_FREE, LS_NONE, LS_OBJECT, LS_MONSTER } from './const.
 import { ONAMES } from './objects_data.js';
 /* imported from vision.c, for small circles (src/light.c:56) */
 import { circle_ptr, clear_path, COULD_SEE, TEMP_LIT } from './vision.js';
-import { Is_candle } from './obj.js';
+import { Is_candle, ignitable } from './obj.js';
 import { end_burn } from './timeout.js';
+import { find_oid } from './shk.js';
+import { impossible } from './pline.js';
 
 
 
@@ -46,12 +48,20 @@ function lights() {
 
 // src/light.c:63 new_light_source() — caller passes the owner's id number.
 export function new_light_source(x, y, range, type, id) {
+    new_light_core(x, y, range, type, id);
+}
+
+// src/light.c:70 new_light_core()
+function new_light_core(x, y, range, type, id) {
     if (range > MAX_RADIUS || range < 0
         || (range === 0 && (type !== LS_OBJECT || id))) {
-        /* impossible("new_light_source: illegal range %d", range) */
-        return;
+        void impossible(`new_light_source:  illegal range ${range}`);
+        return null;
     }
-    lights().push({ x, y, range, flags: 0, type, id });
+    const ls = { x, y, range, flags: 0, type, id };
+    lights().unshift(ls);
+    game.vision_full_recalc = 1;
+    return ls;
 }
 
 // src/light.c:117 del_light_source() — find the (type, id) source and unlink
@@ -60,8 +70,10 @@ export function new_light_source(x, y, range, type, id) {
 export function del_light_source(type, id) {
     const ls = lights();
     const i = ls.findIndex((s) => s.type === type && s.id === id);
-    if (i >= 0)
+    if (i >= 0) {
         ls.splice(i, 1);
+        game.vision_full_recalc = 1; // src/light.c:160 delete_ls()
+    }
 }
 
 // src/light.c:826 obj_adjust_light_radius() — an artifact's light changed
@@ -311,23 +323,29 @@ export function any_light_source(type = null) {
                         : sources.some((source) => source.type === type);
 }
 
-// src/light.c:657 snuff_light_source() — extinguish a burning object at
-// x,y (fire traps, blessed-book blasts). Needs begin/end_burn; recorded
-// until burn timers land.
+// src/light.c:729 snuff_light_source()
 export function snuff_light_source(x, y) {
-    note_unported_light('snuff_light_source');
+    for (const ls of lights()) {
+        if (ls.type === LS_OBJECT && ls.x === x && ls.y === y) {
+            const obj = find_oid(ls.id);
+            if (obj_is_burning(obj)) {
+                if (artifact_light(obj))
+                    continue;
+                end_burn(obj, obj.otyp !== ONAMES.MAGIC_LAMP);
+                return;
+            }
+        }
+    }
 }
 
-// src/light.c:766 obj_sheds_light() / :776 obj_is_burning() — an object
-// lights its surroundings while it burns. Burn timers (begin_burn /
-// end_burn, src/timeout.c:2266+) are not ported, so no object source is
-// ever created yet; these exist for their callers' shape.
+// src/light.c:763 obj_sheds_light()
 export function obj_sheds_light(obj) {
     return obj_is_burning(obj);
 }
 
+// src/light.c:771 obj_is_burning()
 export function obj_is_burning(obj) {
-    return !!(obj && obj.lamplit);
+    return !!(obj && obj.lamplit && (ignitable(obj) || artifact_light(obj)));
 }
 
 // src/light.c:779 obj_split_light_source(). Copy the source entry to the

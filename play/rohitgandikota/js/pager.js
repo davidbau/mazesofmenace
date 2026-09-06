@@ -39,7 +39,8 @@ import { COLNO, ROWNO, BOLT_LIM, STONE, SCORR, SDOOR, GRAVE, CORR,
          M_AP_OBJECT, M_AP_FLAG, M_AP_F_DKNOWN, OBJ_FLOOR,
          AM_MASK, AM_SANCTUM, Amask2align, Is_astralevel,
          A_LAWFUL, A_NEUTRAL, A_CHAOTIC, STRAT_WAITMASK,
-         WARNCOUNT, def_warnsyms, I_SPECIAL } from './const.js';
+         WARNCOUNT, def_warnsyms, I_SPECIAL,
+         NO_TRAP, BEAR_TRAP, WEB, is_pit } from './const.js';
 import { defsyms, monexplain, oc_explain, def_monsyms, def_oc_syms,
          cmap_names } from './drawing_data.js';
 import { OCLASSES, ONAMES } from './objects_data.js';
@@ -74,6 +75,7 @@ import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
          NHW_TEXT, NHW_MENU, ATR_NONE } from './tty/wintty.js';
 import { ok_to_quest } from './quest.js';
 import { costly_spot, doname_with_price } from './shk.js';
+import { trapname } from './trap.js';
 
 function note_unported_pager(what) {
     (game.unported ||= new Set()).add('pager:' + what);
@@ -264,8 +266,14 @@ function look_at_monster(mtmp, x, y) {
         buf += ', meditating';
     if (mtmp.mleashed)
         buf += ', leashed to you';
-    if (mtmp.mtrapped)
-        note_unported_pager('look_at_monster:mtrapped');
+    if (mtmp.mtrapped && cansee(mtmp.mx, mtmp.my)) {
+        const t = t_at(mtmp.mx, mtmp.my);
+        const tt = t ? t.ttyp : NO_TRAP;
+        if (tt === BEAR_TRAP || is_pit(tt) || tt === WEB) {
+            buf += `, trapped in ${an(trapname(tt, false))}`;
+            t.tseen = 1;
+        }
+    }
     const appearance = M_AP_TYPE(mtmp);
     if (appearance === M_AP_FURNITURE) {
         const what = defsyms[mtmp.mappearance]?.explain || 'something';
@@ -1320,7 +1328,7 @@ export async function doquickwhatis() {
 /* display_inventory((char *)0, TRUE) — the PICK_ONE inventory browse the
    'i' arm of do_look uses. Reuses invent.js's menu-entry builder. */
 async function display_inventory_pickone() {
-    const entries = display_inventory();
+    const entries = display_inventory(null, true);
     if (!entries.length) {
         await pline('Not carrying anything.');
         return 0;

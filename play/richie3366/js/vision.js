@@ -1,5 +1,6 @@
 // vision.js — C ref: vision.c Algorithm C shadow-casting
-// Partial: underwater view_from named (pit TT_PIT 3x3 live, D-1863); nv_range circle live (D-1583).
+// Partial: underwater view_from named (pit TT_PIT 3x3 live, D-1863); nv_range circle live (D-1583);
+// `new_angle` live-macro live, all 3 main-loop sites wired (D-1955; EXTEND_SPINE body compiled out, named).
 // mimic_light_blocking See_invisible block/unblock live (D-1587).
 // BOULDER + is_lightblocker_mappear (mimic boulder/door/wall) in does_block.
 
@@ -39,6 +40,15 @@ const seenv_matrix = [
     [SV3, 0,   SV7],
     [SV4, SV5, SV6],
 ];
+
+// C ref: vision.c:461 — the live `new_angle` is the `#else` macro `(*sv)`
+// ("The other parameters are not used"). The `#ifdef EXTEND_SPINE`
+// staticfn body (`:413-451`) is compiled out (`:366` keeps
+// `/*#define EXTEND_SPINE*/` commented), so only the identity ships;
+// callers pass the seenv bit value (C `*sv`) straight through.
+export function new_angle(lev, sv, row, col) {
+    return sv | 0;
+}
 
 // Circle data for range limits (C vision.c:27-70)
 const circle_data = [
@@ -1046,7 +1056,7 @@ export function vision_recalc(control = 0) {
                 if (nv & IN_SIGHT) {
                     const oldseenv = loc.seenv || 0;
                     const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
-                    loc.seenv = (loc.seenv || 0) | sv;
+                    loc.seenv = (loc.seenv || 0) | new_angle(loc, sv, row, col);
                     if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv) {
                         newsym(col, row);
                     }
@@ -1059,7 +1069,7 @@ export function vision_recalc(control = 0) {
                             next_row[col] |= IN_SIGHT;
                             const oldseenv = loc.seenv || 0;
                             const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
-                            loc.seenv = (loc.seenv || 0) | sv;
+                            loc.seenv = (loc.seenv || 0) | new_angle(loc, sv, row, col);
                             if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv)
                                 newsym(col, row);
                         }
@@ -1067,7 +1077,7 @@ export function vision_recalc(control = 0) {
                         next_row[col] |= IN_SIGHT;
                         const oldseenv = loc.seenv || 0;
                         const sv = seenv_matrix[dy + 1][(col < ux) ? 0 : (col > ux ? 2 : 1)];
-                        loc.seenv = (loc.seenv || 0) | sv;
+                        loc.seenv = (loc.seenv || 0) | new_angle(loc, sv, row, col);
                         if (!(ov & IN_SIGHT) || oldseenv !== loc.seenv)
                             newsym(col, row);
                     }

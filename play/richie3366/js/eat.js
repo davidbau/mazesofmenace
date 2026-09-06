@@ -7,7 +7,8 @@
 //         eat_brains (D-1306);
 //         (metabolic uhunger-- + accessorytime Regen/encumb/Hunger/Conflict);
 //         doeat_nonfood / eatspecial / foodword;
-//         start_tin / opentin / consume_tin / tin_variety / use_up_tin;
+//         start_tin / opentin / consume_tin / tin_variety / tin_variety_txt /
+//         use_up_tin;
 //         invent.c getobj / useup / useupf (D-1771 carried hybrid);
 //         attrib.c poison_strdmg / gainstr;
 //         potion.c make_vomiting / make_glib;
@@ -135,6 +136,7 @@ import { set_mimic_blocking } from './vision.js';
 import {
     PM_KNIGHT, PM_WIZARD, PM_ELF, PM_VALKYRIE,
 } from './generated/monsters_data.js';
+import { str_start_is } from './hacklib.js';
 
 /** C hack.h invlet_basic — a-zA-Z slots before invent-full dropy. */
 const INVLET_BASIC = 52;
@@ -2224,6 +2226,35 @@ function tin_variety(obj, displ) {
         r = HOMEMADE_TIN;
     }
     return r;
+}
+
+/**
+ * C ref: eat.c tin_variety_txt(s, tinvariety) `:1405–1421` — match the
+ * "adjective " prefix of a "tin of <variety> <monster>" wish against
+ * tintxts[] (TTSZ-1 skips the trailing "" sentinel). `!strncmpi` is the
+ * C-home `str_start_is(s, txt, true)` (ASCII caseblind, no 4th clone);
+ * `strlen(s) > l` + `s[l] == ' '` stay explicit so bare "rotten" and
+ * "rottenx …" do not match. Writes the variety index (or -1) into
+ * out.tinvariety (C `int *tinvariety`, `{tinvariety}` per the
+ * `artifact_name` out-idiom) and returns chars to skip past the
+ * adjective + space (C `l + 1`), or 0 with no match / null args.
+ * Caller wiring (function live, unwired): objnam.c `:4386` readobjnam
+ * "tin of " arm (spinach strcmpi / contents / tvariety / name_to_mon /
+ * typ=TIN) has no JS counterpart yet — see the map.
+ */
+export function tin_variety_txt(s, out) {
+    if (s != null && out) {
+        out.tinvariety = -1;
+        for (let k = 0; k < TTSZ - 1; ++k) {
+            const l = tintxts[k].txt.length;
+            if (str_start_is(s, tintxts[k].txt, true)
+                && s.length > l && s[l] === ' ') {
+                out.tinvariety = k;
+                return l + 1;
+            }
+        }
+    }
+    return 0;
 }
 
 /**

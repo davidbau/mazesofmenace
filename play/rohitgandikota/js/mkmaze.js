@@ -982,7 +982,7 @@ export async function fumaroles() {
 
         if (game.level.at(x, y)?.typ === LAVAPOOL) {
             const { create_gas_cloud } = await import('./region.js');
-            const r = create_gas_cloud(x, y, rn1(10, sizemin), rn1(10, 5));
+            const r = await create_gas_cloud(x, y, rn1(10, sizemin), rn1(10, 5));
 
             /* include/region.h:22 clear_heros_fault(): not the hero's doing */
             if (r)
@@ -1005,8 +1005,8 @@ export async function fumaroles() {
  * Special waterlevel stuff in endgame (TH) — src/mkmaze.c:1520.
  *
  * C keeps the bubble list on svb.bbubbles/ge.ebubbles, the bounds in
- * svx/svy fields and hero_bubble/up in file-scope statics; one session is
- * one game process, so module state has the same lifetime. The list is
+ * svx/svy fields and hero_bubble/up in file-scope statics. Each segment starts
+ * a new C process, so reset this module's state at the same boundary. The list is
  * written to (and read back from) the in-memory saved level by
  * save_waterlevel()/restore_waterlevel(), where C uses the level file.
  */
@@ -1059,6 +1059,12 @@ function set_whole_rm(loc, typ, lit, memglyph) {
 // and Air (clouds); called from goto_level() when arriving and
 // moveloop_core() when on the level.
 let movebubbles_up = false;         /* static boolean up = FALSE */
+
+export function reset_mkmaze() {
+    wlev_xmin = wlev_ymin = wlev_xmax = wlev_ymax = 0;
+    bbubbles = ebubbles = hero_bubble = null;
+    movebubbles_up = false;
+}
 
 export async function movebubbles() {
     const g = game;

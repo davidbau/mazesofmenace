@@ -14,7 +14,7 @@ import { game, resetGame } from './gstate.js';
 import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { setStorageForTesting } from './storage.js';
 import { pushKey, nhgetch } from './input.js';
-import { newgame, moveloop_core, welcome, moveloop_preamble } from './allmain.js';
+import { newgame, moveloop_core, welcome, moveloop_preamble, init_sound_disp_gamewindows } from './allmain.js';
 import { try_restore_save } from './save.js';
 import { vision_recalc, init_vision_globals } from './vision.js';
 import { parseNethackrc, set_playmode, init_fruit_chain } from './options.js';
@@ -235,6 +235,10 @@ export class NethackGame {
         // C ref: unixmain → plnamesuffix → askname when no -u / OPTIONS=name
         await askname_if_needed();
         if (!g.plname) g.plname = 'Hero';
+
+        // C ref: unixmain.c:217 init_sound_disp_gamewindows() after
+        // vision_init, before attempt_restore (allmain.c:699–763).
+        init_sound_disp_gamewindows();
 
         // C ref: unixmain attempt_restore — try save before player_selection/newgame
         if (await try_restore_save()) {

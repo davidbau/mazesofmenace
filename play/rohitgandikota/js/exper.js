@@ -441,8 +441,11 @@ export function more_experienced(exper, rexp) {
           newexp = oldexp + exper,
           newrexp = oldrexp + 4 * exper + rexp;
 
-    if (newexp !== oldexp)
+    if (newexp !== oldexp) {
         game.u.uexp = newexp;
+        if (game.flags.showexp)
+            (game.disp ||= {}).botl = true;
+    }
     if (newrexp !== oldrexp)
         game.u.urexp = newrexp;
     /* flags.beginner gates some feedback wording; harmless to track */

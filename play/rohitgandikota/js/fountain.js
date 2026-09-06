@@ -596,9 +596,7 @@ export async function drinksink() {
     case 13: {
         await pline('Ew, what a stench!');
         const { create_gas_cloud } = await import('./region.js');
-        create_gas_cloud(game.u.ux, game.u.uy, 1, 4);
-        newsym(game.u.ux, game.u.uy);
-        await You('are enveloped in a cloud of noxious gas!');
+        await create_gas_cloud(game.u.ux, game.u.uy, 1, 4);
         break;
     }
     case 11:

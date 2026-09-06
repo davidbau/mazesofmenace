@@ -31,7 +31,7 @@ import { stop_occupation } from './allmain.js';
 import { weffects, zapyourself } from './zap.js';
 import { fall_asleep } from './timeout.js';
 import { makeknown, observe_object } from './o_init.js';
-import { getdir } from './cmd.js';
+import { getdir, cmdq_pop, cmdq_add_key } from './cmd.js';
 import { update_inventory } from './invent.js';
 import { obfree } from './invent.js';
 import { use_skill } from './weapon.js';
@@ -44,6 +44,12 @@ import { ECMD_TIME } from './const.js';
 import { A_STR, A_INT } from './const.js';
 import { W_ARM, W_ARMC, W_ARMS, W_ARMH, W_ARMG, W_ARMF, W_WEP,
          P_CLERIC_SPELL, P_UNSKILLED, P_ISRESTRICTED } from './const.js';
+import { CMDQ_KEY, CQ_REPEAT, MENU_TRADITIONAL, TIMEOUT } from './const.js';
+import { Stunned, Confusion } from './youprop.js';
+import { can_chant } from './mondata.js';
+import { freehand } from './engrave.js';
+import { check_capacity } from './hack.js';
+import { make_confused, make_stunned } from './potion.js';
 
 // src/spell.c — NO_SPELL sentinel and the spell list accessor.
 const NO_SPELL = 0;
@@ -545,16 +551,23 @@ export function num_spells() {
     return MAXSPELL;
 }
 
+// src/spell.c:687 rejectcasting()
+async function rejectcasting() {
+    if (Stunned()) {
+        await You('are too impaired to cast a spell.');
+        return true;
+    } else if (!can_chant(game.youmonst)) {
+        await You('are unable to chant the incantation.');
+        return true;
+    } else if (!freehand()
+               && !(game.u.uwep && game.u.uwep.otyp === ONAMES.QUARTERSTAFF)) {
+        await Your('arms are not free to cast!');
+        return true;
+    }
+    return false;
+}
+
 // src/spell.c:715 getspell() — choose a spell to cast.
-//
-// Only the MENU_TRADITIONAL arm is ported, which is the one the recorded
-// sessions take: seed0501 sends 'Z' then 'a'. It builds the letter range into
-// the prompt, so a hero with three spells is asked "[a-c *?]" and one with a
-// single spell "[a *?]" -- the text differs per hero and is on screen.
-//
-// The retry_limit of 10 is C's, and "That's enough tries." is a real message
-// that ends the loop; '*' or '?' would break out to the menu, which is not
-// ported.
 export async function getspell(spell_noRef) {
     const nspells = num_spells();
 
@@ -562,12 +575,23 @@ export async function getspell(spell_noRef) {
         await You("don't know any spells right now.");
         return false;
     }
-    if (rejectcasting())
+    if (await rejectcasting())
         return false;
 
-    /* src/spell.c:744 — MENU_TRADITIONAL asks on the topline; every other
-       menustyle (the default is MENU_FULL) opens the cast menu. */
-    if ((game.rc?.opts?.menustyle || '').toLowerCase().startsWith('t')) {
+    const cmdq = cmdq_pop();
+    if (cmdq) {
+        if (cmdq.typ === CMDQ_KEY) {
+            const idx = spell_let_to_idx(cmdq.key);
+            if (idx < 0 || idx >= nspells)
+                return false;
+            spell_noRef.v = idx;
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    if (game.flags.menu_style === MENU_TRADITIONAL) {
         let lets;
         if (nspells === 1) lets = 'a';
         else if (nspells < 27) lets = 'a-' + String.fromCharCode(96 + nspells);
@@ -581,7 +605,7 @@ export async function getspell(spell_noRef) {
                 await pline("That's enough tries.");
                 return false;
             }
-            const ilet = await tty_yn_function(qbuf, null, '\0');
+            const ilet = await tty_yn_function(qbuf, null, '\0', true);
             if (ilet === '*' || ilet === '?')
                 break;                  /* use menu mode */
             if (quitchars.includes(ilet)) {
@@ -606,11 +630,11 @@ export async function getspell(spell_noRef) {
     return false;
 }
 
-// src/spell.c docast() — the 'Z' command.
+// src/spell.c:820 docast() — the 'Z' command.
 export async function docast() {
     const ref = { v: 0 };
     if (await getspell(ref)) {
-        /* cmdq_add_key(CQ_REPEAT, spellet(spell_no)) is the repeat queue */
+        cmdq_add_key(CQ_REPEAT, spellet(ref.v));
         return await spelleffects(game.spl_book[ref.v].sp_id, false, false);
     }
     return ECMD_FAIL;
@@ -911,26 +935,44 @@ function spellknow(spidx) {
     return game.spl_book?.[spidx]?.sp_know ?? 0;
 }
 
-// src/spell.c:1220 spelleffects_check() — everything that can stop a cast
-// before it happens. Returns TRUE when the cast is rejected.
-//
-// The DRAW is the last line: `rnd(100) > percent_success(spell)`. Everything
-// above it is a gate, and two of those gates draw too -- rnd(*energy) when the
-// hero's knowledge of the spell has run out, and rnd(2 * *energy) when the
-// Amulet drains them.
-//
-// Returns { rejected, res, energy } because C uses two out-parameters.
+// src/spell.c:1181 spell_backfire()
+async function spell_backfire(spell) {
+    const duration = (spellev(spell) + 1) * 3;
+    const old_stun = (game.u.intrinsic?.HStun || 0) & TIMEOUT;
+    const old_conf = (game.u.intrinsic?.HConfusion || 0) & TIMEOUT;
+
+    switch (rn2(10)) {
+    case 0:
+    case 1:
+    case 2:
+    case 3:
+        await make_confused(old_conf + duration, false);
+        break;
+    case 4:
+    case 5:
+    case 6:
+        await make_confused(old_conf + Math.trunc(2 * duration / 3), false);
+        await make_stunned(old_stun + Math.trunc(duration / 3), false);
+        break;
+    case 7:
+    case 8:
+        await make_stunned(old_stun + Math.trunc(2 * duration / 3), false);
+        await make_confused(old_conf + Math.trunc(duration / 3), false);
+        break;
+    case 9:
+        await make_stunned(old_stun + duration, false);
+        break;
+    }
+}
+
+// src/spell.c:1220 spelleffects_check()
 export async function spelleffects_check(spell, energyRef) {
     let res = ECMD_OK;
-    const confused = !!game.u?.uprops?.CONFUSION;
+    const confused = Confusion();
 
     energyRef.v = 0;
 
-    if (spell === UNKNOWN_SPELL) {
-        return { rejected: true, res: ECMD_OK };
-    }
-    /* rejectcasting() covers Stunned and having no free hands */
-    if (rejectcasting()) {
+    if (spell === UNKNOWN_SPELL || await rejectcasting()) {
         return { rejected: true, res: ECMD_OK };
     }
 
@@ -939,9 +981,10 @@ export async function spelleffects_check(spell, energyRef) {
     if (spellknow(spell) <= 0) {
         await Your('knowledge of this spell is twisted.');
         await pline('It invokes nightmarish images in your mind...');
-        note_unported_spell('spell_backfire');
+        await spell_backfire(spell);
         game.u.uen -= rnd(energyRef.v);
         if (game.u.uen < 0) game.u.uen = 0;
+        (game.disp ||= {}).botl = true;
         return { rejected: true, res: ECMD_TIME };
     } else if (spellknow(spell) <= KEEN / 200) {
         await You('strain to recall the spell.');
@@ -959,14 +1002,16 @@ export async function spelleffects_check(spell, energyRef) {
     } else if (ACURR(A_STR) < 4 && spellid(spell) !== ONAMES.SPE_RESTORE_ABILITY) {
         await You('lack the strength to cast spells.');
         return { rejected: true, res: ECMD_OK };
+    } else if (await check_capacity(
+                   'Your concentration falters while carrying so much stuff.')) {
+        return { rejected: true, res: ECMD_TIME };
     }
-    /* check_capacity() needs the encumbrance message plumbing; it draws
-       nothing and only fires when the hero is carrying near their limit. */
 
     if (game.u.uhave?.amulet && game.u.uen >= energyRef.v) {
         await You_feel('the amulet draining your energy away.');
         game.u.uen -= rnd(2 * energyRef.v);
         if (game.u.uen < 0) game.u.uen = 0;
+        (game.disp ||= {}).botl = true;
         res = ECMD_TIME;                /* time is used even if the cast fails */
     }
 
@@ -976,45 +1021,49 @@ export async function spelleffects_check(spell, energyRef) {
                      : (energyRef.v > (game.u.uenpeak ?? 0)) ? ' yet'
                      : ' anymore') + '.');
         return { rejected: true, res };
-    }
+    } else {
+        if (spellid(spell) !== ONAMES.SPE_DETECT_FOOD) {
+            let hungr = energyRef.v * 2;
 
-    if (spellid(spell) !== ONAMES.SPE_DETECT_FOOD) {
-        let hungr = energyRef.v * 2;
+            /* a Wizard's Intelligence reduces the hunger cost */
+            let intell = acurr(A_INT);
+            if (!Role_if(PMNAMES.PM_WIZARD))
+                intell = 10;
+            switch (intell) {
+            case 25:
+            case 24:
+            case 23:
+            case 22:
+            case 21:
+            case 20:
+            case 19:
+            case 18:
+            case 17:
+                hungr = 0;
+                break;
+            case 16:
+                hungr = Math.trunc(hungr / 4);
+                break;
+            case 15:
+                hungr = Math.trunc(hungr / 2);
+                break;
+            }
 
-        /* a Wizard's Intelligence reduces the hunger cost */
-        let intell = acurr(A_INT);
-        if (!Role_if(PMNAMES.PM_WIZARD))
-            intell = 10;
-        if (intell >= 17)
-            hungr = 0;
-        else if (intell === 16)
-            hungr = Math.trunc(hungr / 4);
-        else if (intell === 15)
-            hungr = Math.trunc(hungr / 2);
-
-        /* do not put the hero quite into fainting */
-        if (hungr > game.u.uhunger - 3)
-            hungr = game.u.uhunger - 3;
-        await morehungry(hungr);
+            /* do not put the hero quite into fainting */
+            if (hungr > game.u.uhunger - 3)
+                hungr = game.u.uhunger - 3;
+            await morehungry(hungr);
+        }
     }
 
     const chance = percent_success(spell);
     if (confused || (rnd(100) > chance)) {
         await You('fail to cast the spell correctly.');
         game.u.uen -= Math.trunc(energyRef.v / 2);
+        (game.disp ||= {}).botl = true;
         return { rejected: true, res: ECMD_TIME };
     }
     return { rejected: false, res };
-}
-
-// src/spell.c rejectcasting() — Stunned, or no free hands.
-function rejectcasting() {
-    if (game.u?.uprops?.STUNNED) {
-        note_unported_spell('rejectcasting:Stunned message');
-        return true;
-    }
-    /* the no-free-hands arm needs cantwield/welded on the hero's weapon */
-    return false;
 }
 
 // include/spell.h:9 UNKNOWN_SPELL — MINUS ONE. Written as 0 here first,
@@ -1283,7 +1332,7 @@ export function losespells() {
     /* lose anywhere from zero to all known spells;
        if confused, use the worse of two die rolls */
     nzap = rn2(n + 1);
-    if (game.u.uprops?.CONFUSION) {
+    if (Confusion()) {
         i = rn2(n + 1);
         if (i > nzap)
             nzap = i;

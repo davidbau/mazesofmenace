@@ -55,3 +55,76 @@ export function findRace(name) {
     const lc = name.toLowerCase();
     return races.find(r => r.name.toLowerCase() === lc);
 }
+
+// C role.c rank names, shared by hero status and monster-player names.
+export const ROLE_RANKS = {
+    Archeologist: [
+        ['Digger'], ['Field Worker'], ['Investigator'], ['Exhumer'], ['Excavator'],
+        ['Spelunker'], ['Speleologist'], ['Collector'], ['Curator'],
+    ],
+    Barbarian: [
+        ['Plunderer', 'Plunderess'], ['Pillager'], ['Bandit'], ['Brigand'], ['Raider'],
+        ['Reaver'], ['Slayer'], ['Chieftain', 'Chieftainess'], ['Conqueror', 'Conqueress'],
+    ],
+    Caveman: [
+        ['Troglodyte'], ['Aborigine'], ['Wanderer'], ['Vagrant'], ['Wayfarer'],
+        ['Roamer'], ['Nomad'], ['Rover'], ['Pioneer'],
+    ],
+    Healer: [
+        ['Rhizotomist'], ['Empiric'], ['Embalmer'], ['Dresser'], ['Medicus ossium', 'Medica ossium'],
+        ['Herbalist'], ['Magister', 'Magistra'], ['Physician'], ['Chirurgeon'],
+    ],
+    Knight: [
+        ['Gallant'], ['Esquire'], ['Bachelor'], ['Sergeant'], ['Knight'],
+        ['Banneret'], ['Chevalier', 'Chevaliere'], ['Seignieur', 'Dame'], ['Paladin'],
+    ],
+    Monk: [
+        ['Candidate'], ['Novice'], ['Initiate'], ['Student of Stones'], ['Student of Waters'],
+        ['Student of Metals'], ['Student of Winds'], ['Student of Fire'], ['Master'],
+    ],
+    Priest: [
+        ['Aspirant'], ['Acolyte'], ['Adept'], ['Priest', 'Priestess'], ['Curate'],
+        ['Canon', 'Canoness'], ['Lama'], ['Patriarch', 'Matriarch'], ['High Priest', 'High Priestess'],
+    ],
+    Ranger: [
+        ['Tenderfoot'], ['Lookout'], ['Trailblazer'], ['Reconnoiterer', 'Reconnoiteress'], ['Scout'],
+        ['Arbalester'], ['Archer'], ['Sharpshooter'], ['Marksman', 'Markswoman'],
+    ],
+    Rogue: [
+        ['Footpad'], ['Cutpurse'], ['Rogue'], ['Pilferer'], ['Robber'],
+        ['Burglar'], ['Filcher'], ['Magsman', 'Magswoman'], ['Thief'],
+    ],
+    Samurai: [
+        ['Hatamoto'], ['Ronin'], ['Ninja', 'Kunoichi'], ['Joshu'], ['Ryoshu'],
+        ['Kokushu'], ['Daimyo'], ['Kuge'], ['Shogun'],
+    ],
+    Tourist: [
+        ['Rambler'], ['Sightseer'], ['Excursionist'], ['Peregrinator', 'Peregrinatrix'], ['Traveler'],
+        ['Journeyer'], ['Voyager'], ['Explorer'], ['Adventurer'],
+    ],
+    Valkyrie: [
+        ['Stripling'], ['Skirmisher'], ['Fighter'], ['Man-at-arms', 'Woman-at-arms'], ['Warrior'],
+        ['Swashbuckler'], ['Hero', 'Heroine'], ['Champion'], ['Lord', 'Lady'],
+    ],
+    Wizard: [
+        ['Evoker'], ['Conjurer'], ['Thaumaturge'], ['Magician'], ['Enchanter', 'Enchantress'],
+        ['Sorcerer', 'Sorceress'], ['Necromancer'], ['Wizard'], ['Mage'],
+    ],
+};
+
+// C role.c:roles[]: quest leader, guardian, and nemesis species names.
+export const QUEST_ROLE_MONSTERS = {
+    Archeologist: ['Lord Carnarvon', 'student', 'Minion of Huhetotl'],
+    Barbarian: ['Pelias', 'chieftain', 'Thoth Amon'],
+    Caveman: ['Shaman Karnov', 'neanderthal', 'Chromatic Dragon'],
+    Healer: ['Hippocrates', 'attendant', 'Cyclops'],
+    Knight: ['King Arthur', 'page', 'Ixoth'],
+    Monk: ['Grand Master', 'abbot', 'Master Kaen'],
+    Priest: ['Arch Priest', 'acolyte', 'Nalzok'],
+    Ranger: ['Orion', 'hunter', 'Scorpius'],
+    Rogue: ['Master of Thieves', 'thug', 'Master Assassin'],
+    Samurai: ['Lord Sato', 'roshi', 'Ashikaga Takauji'],
+    Tourist: ['Twoflower', 'guide', 'Master of Thieves'],
+    Valkyrie: ['Norn', 'warrior', 'Lord Surtur'],
+    Wizard: ['Neferet the Green', 'apprentice', 'Dark One'],
+};

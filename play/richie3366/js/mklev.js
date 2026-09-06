@@ -362,6 +362,12 @@ export function stairway_at(x, y) {
     return null;
 }
 
+/** C ref: stairs.c On_ladder `:154-159` — stairway_at != NULL && isladder. */
+export function On_ladder(x, y) {
+    const stway = stairway_at(x | 0, y | 0);
+    return !!(stway && stway.isladder);
+}
+
 /** C ref: stairs.c stairway_find_dir — first stairway with matching up. */
 function stairway_find_dir(up) {
     const want = !!up;
@@ -2575,10 +2581,22 @@ function load_bigrm_6() {
 }
 
 /**
- * C ref: nhlsel.c l_selection_iterate — y-outer, x from max(1,lx).
- * Lua iterate converts to map-relative then des.* adds xstart back.
+ * C ref: nhlsel.c l_selection_iterate `:924–957` (`"iterate"` method
+ * table `:1002`) — y-outer, x from max(1,lx), getpoint-guarded callback.
+ * C first requires argc==2 with a LUA_TFUNCTION second arg, else
+ * nhl_error("wrong parameters") (fatal — the JS guard throws likewise,
+ * cf. find_objtype). An empty selection's getbounds is the full map whose
+ * getpoint walk fires nothing, so the early return matches. Each set cell
+ * is cvt_to_relcoord'd (sp_lev.c `:4793–4803` — minus xstart/ystart or the
+ * coder-room origin) before the Lua call, and des.* adds the origin back
+ * (cvt_to_abscoord), so the JS absolute analogue skips the round-trip
+ * (reviews 791/810). A failing pcall aborts both loops (`goto out`);
+ * the per-row lua_gc has no JS counterpart. Callbacks are sync and run
+ * in C order.
  */
-function selection_iterate_lua(sel, fn) {
+export function selection_iterate_lua(sel, fn) {
+    if (typeof fn !== 'function')
+        throw new Error('l_selection_iterate: wrong parameters');
     if (!sel?.pts?.size) return;
     for (let y = sel.ly; y <= sel.hy; y++) {
         for (let x = Math.max(1, sel.lx); x <= sel.hx; x++) {
@@ -9148,10 +9166,11 @@ function load_tou_loca() {
             selection_fillrect(mx + 0, my + 0, mx + 75, my + 19),
             selection_match_mapfrag('.'),
         );
-        validtraps = selection_and(validtraps,
-            selection_not(selection_fillrect(mx + 15, my + 3, mx + 20, my + 5)));
-        validtraps = selection_and(validtraps,
-            selection_not(selection_fillrect(mx + 62, my + 3, mx + 71, my + 4)));
+        // C Tou-loca.lua:131 `validtraps - (area + area)` (`__sub` of the
+        // `__add` union): points in validtraps but not in either shop rect.
+        validtraps = selection_sub(validtraps, selection_or(
+            selection_fillrect(mx + 15, my + 3, mx + 20, my + 5),
+            selection_fillrect(mx + 62, my + 3, mx + 71, my + 4)));
         for (let i = 0; i < 9; i++) {
             const pos = selection_rndcoord(validtraps, true);
             if (!pos) continue;
@@ -9332,8 +9351,9 @@ function load_tou_goal() {
             selection_fillrect(mx + 0, my + 0, mx + 75, my + 19),
             selection_match_mapfrag('.'),
         );
-        validtraps = selection_and(validtraps,
-            selection_not(selection_fillrect(mx + 60, my + 14, mx + 71, my + 18)));
+        // C Tou-goal.lua:112 `validtraps - selection.area(60,14,71,18)`.
+        validtraps = selection_sub(validtraps,
+            selection_fillrect(mx + 60, my + 14, mx + 71, my + 18));
         for (let i = 0; i < 6; i++) {
             const pos = selection_rndcoord(validtraps, true);
             if (!pos) continue;
@@ -13575,7 +13595,7 @@ AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 /**
  * C ref: dat/water.lua via load_special — Plane of Water (endgame 4 of 5).
  * Bubbles: mkmaze.c setup_waterlevel after flip, before lregions.
- * Named omissions: water cons pickup / maybe_adjust_hero_bubble;
+ * Named omissions: water obj/mon/trap cons pickup+deposit;
  * humidity-aware get_location; ensure_way_out / solidify; astral.
  */
 function load_water() {
@@ -16068,7 +16088,24 @@ export function movebubbles() {
             }
         }
     }
-    // water bubble cons pickup deferred
+    // C: movebubbles water arm resets hero_bubble, then the cons-pickup loop
+    // records the bubble containing the hero (last overlapping match wins).
+    // Named omission: obj/mon/trap cons pickup+deposit stays deferred; track
+    // only hero membership so maybe_adjust_hero_bubble gates its rn2(2) like C.
+    // Placed before the up-toggle: C scans with the pre-toggle direction.
+    g.hero_bubble = null;
+    if (Is_waterlevel(uz) && !((g.u || {}).uswallow | 0)) {
+        const u = g.u || {};
+        const upOld = !!g.movebubbles_up;
+        const ux = u.ux | 0, uy = u.uy | 0;
+        for (let b = upOld ? g.bbubbles : g.ebubbles; b; b = upOld ? b.next : b.prev) {
+            const i = ux - (b.x | 0), j = uy - (b.y | 0);
+            if (i >= 0 && j >= 0 && i < (b.bm[0] | 0) && j < (b.bm[1] | 0)
+                && ((b.bm[j + 2] | 0) & (1 << i))) {
+                g.hero_bubble = b;
+            }
+        }
+    }
 
     g.movebubbles_up = !g.movebubbles_up;
     const up = !!g.movebubbles_up;
@@ -16133,6 +16170,24 @@ function mv_bubble_move(b, dx, dy, gbxmin, gbymin, gbxmax, gbymax, ini) {
             b.dy = 1 - rn2(3);
         }
         break;
+    }
+}
+
+/**
+ * C ref: mkmaze.c maybe_adjust_hero_bubble `:1929–1941` — on the Plane of
+ * Water, after a successful move, with 1/2 chance steer the hero's bubble
+ * along the hero's direction. Short-circuit order is C's: Is_waterlevel,
+ * then u.dx/u.dy, then the hero_bubble-gated rn2(2), so the draw fires only
+ * when movebubbles() found the hero inside a bubble (cons-pickup arm).
+ */
+export function maybe_adjust_hero_bubble() {
+    const g = game;
+    const u = g.u;
+    if (!Is_waterlevel(u?.uz)) return;
+    if (!u.dx && !u.dy) return;
+    if (g.hero_bubble && !rn2(2)) {
+        g.hero_bubble.dx = u.dx;
+        g.hero_bubble.dy = u.dy;
     }
 }
 
@@ -25296,6 +25351,59 @@ function selection_not(sel) {
     return out;
 }
 
+/**
+ * C ref: selvar.c selection_recalc_bounds — recompute the tight boundary
+ * rect from membership (C scans left/right/top/bottom columns and rows).
+ * C returns early when bounds_dirty is false; the JS Set model has no
+ * dirty flag (set expands bounds, delete never shrinks), so recompute
+ * unconditionally — the endpoints are identical either way. Empty keeps
+ * the C reset shape (lx=COLNO, ly=ROWNO, hx=hy=0).
+ */
+function selection_recalc_bounds(sel) {
+    if (!sel) return;
+    let lx = COLNO, ly = ROWNO, hx = 0, hy = 0;
+    if (sel.pts?.size) {
+        for (const key of sel.pts) {
+            const comma = key.indexOf(',');
+            const x = Number(key.slice(0, comma));
+            const y = Number(key.slice(comma + 1));
+            if (x < lx) lx = x;
+            if (y < ly) ly = y;
+            if (x > hx) hx = x;
+            if (y > hy) hy = y;
+        }
+    }
+    sel.lx = lx;
+    sel.ly = ly;
+    sel.hx = hx;
+    sel.hy = hy;
+}
+
+/**
+ * C ref: nhlsel.c l_selection_sub (`-`, `__sub`) — points in sela but
+ * not in selb. C loops the rect.c rect_bounds union setting
+ * `(a ^ b) & a` per cell, then selection_recalc_bounds (the 0-writes
+ * dirty the fresh result's bounds, so the recalc is load-bearing
+ * there). The Set model iterates sela membership directly — the same
+ * set as the C cell loop — and recalcs so bounds stay tight like C
+ * (a clone-then-delete would keep sela's wider bounds). No RNG.
+ * Live Lua callers: Tou-goal.lua:112 `validtraps - selection.area()`,
+ * Tou-loca.lua:131 `validtraps - (area + area)`.
+ */
+function selection_sub(sela, selb) {
+    const selr = selection_new();
+    if (!sela?.pts?.size) return selr;
+    for (const key of sela.pts) {
+        if (!selb?.pts?.has(key)) {
+            const comma = key.indexOf(',');
+            selection_setpoint(Number(key.slice(0, comma)),
+                Number(key.slice(comma + 1)), selr, 1);
+        }
+    }
+    selection_recalc_bounds(selr);
+    return selr;
+}
+
 /** C ref: nhlsel.c l_selection_numpoints. */
 function selection_numpoints(sel) {
     return sel?.pts?.size | 0;
@@ -27493,9 +27601,9 @@ function place_branch(branchp, x = 0, y = 0) {
 // Wallification
 // ============================================================
 
-function isSolidTile(x, y) {
-    if (!isok(x, y)) return true;
-    return IS_STWALL(game.level?.at(x, y)?.typ ?? STONE);
+/* C ref: mkmaze.c is_solid `:70-73` — TRUE if out of bounds, wall or rock. */
+export function is_solid(x, y) {
+    return !isok(x | 0, y | 0) || IS_STWALL(game.level?.at(x | 0, y | 0)?.typ ?? STONE);
 }
 function isWallOrStone(x, y) {
     if (!isok(x, y)) return 1;
@@ -27533,9 +27641,9 @@ function wall_cleanup(x1, y1, x2, y2) {
             const loc = map.at(x, y);
             const typ = loc?.typ ?? STONE;
             if (!(IS_WALL(typ) && typ !== DBWALL)) continue;
-            if (isSolidTile(x-1,y-1) && isSolidTile(x-1,y) && isSolidTile(x-1,y+1)
-                && isSolidTile(x,y-1) && isSolidTile(x,y+1)
-                && isSolidTile(x+1,y-1) && isSolidTile(x+1,y) && isSolidTile(x+1,y+1))
+            if (is_solid(x-1,y-1) && is_solid(x-1,y) && is_solid(x-1,y+1)
+                && is_solid(x,y-1) && is_solid(x,y+1)
+                && is_solid(x+1,y-1) && is_solid(x+1,y) && is_solid(x+1,y+1))
                 loc.typ = STONE;
         }
 }
@@ -27574,6 +27682,34 @@ export function fix_wall_spines(x1, y1, x2, y2) {
 function wallification(x1, y1, x2, y2) {
     wall_cleanup(x1, y1, x2, y2);
     fix_wall_spines(x1, y1, x2, y2);
+}
+
+/* C ref: mkmaze.c mazexy `:1316-1350` — random ROOM point (CORR on corrmaze),
+ * so populate_maze/makemaz don't create items in moats, bunkers, or walls. */
+export function mazexy(cc) {
+    const allowedtyp = game.level?.flags?.corrmaze ? CORR : ROOM;
+    let cpt = 0;
+    let x, y;
+    do {
+        /* C comment: 1+rn2(N) is rnd(N); outer boundary walls waste attempts. */
+        x = rnd(X_MAZE_MAX);
+        y = rnd(Y_MAZE_MAX);
+        if ((game.level?.at(x, y)?.typ ?? STONE) === allowedtyp) {
+            cc.x = x;
+            cc.y = y;
+            return;
+        }
+    } while (++cpt < 100);
+    /* 100 random attempts failed; systematically try every possibility */
+    for (x = 1; x <= X_MAZE_MAX; x++)
+        for (y = 1; y <= Y_MAZE_MAX; y++)
+            if ((game.level?.at(x, y)?.typ ?? STONE) === allowedtyp) {
+                cc.x = x;
+                cc.y = y;
+                return;
+            }
+    /* C: panic("mazexy: can't find a place!"); loud throw ≡ C panic. */
+    throw new Error("mazexy: can't find a place!");
 }
 
 // ============================================================

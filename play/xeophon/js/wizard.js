@@ -11,16 +11,17 @@
 // best-effort and annotated inline.
 
 import { game } from './gstate.js';
+import { monCatchupElapsedTime } from './dog.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { newsym } from './display.js';
 import {
     M_AP_MONSTER, STRAT_WAITMASK, STRAT_WAITFORU, STRAT_APPEARMSG,
     STRAT_NONE, M3_WANTSAMUL, M3_WANTSBELL, M3_WANTSCAND, M3_WANTSBOOK,
     M3_WANTSARTI, MM_NOWAIT, MM_NOMSG, NO_MM_FLAGS, MAGIC_PORTAL, IN_SIGHT,
-    Is_astralevel, Is_rogue_level,
+    Is_astralevel, Is_rogue_level, LARGEST_INT,
 } from './const.js';
 import {
-    makemon, monsterByRndName, set_malign, add_to_minv,
+    makemon, mksobj, monsterByRndName, set_malign, add_to_minv,
     enextoMonsterSpot, resurrectWizardOfYendor, NASTY_MONSTER_NAMES,
     pickNasty,
 } from './mklev.js';
@@ -222,10 +223,10 @@ export function strategy(mon) {
 // Aggravation (wizard.c:496-540).
 // ---------------------------------------------------------------------------
 
-// Best-effort In_W_tower: the JS wizard-tower special levels flag the whole
-// level; the C form is rectangle-scoped (dungeon.c On_W_tower_level test).
-function inWizardTowerLevel() {
-    return !!game.level?.flags?.wizard_tower_level;
+function inWizardTower(x, y) {
+    const bounds = game.level?.wizardTowerBounds;
+    return !!(game.level?.flags?.wizard_tower_level && bounds
+        && x >= bounds.lx && x <= bounds.hx && y >= bounds.ly && y <= bounds.hy);
 }
 
 function monIsHelpless(mon) {
@@ -235,10 +236,11 @@ function monIsHelpless(mon) {
 
 // C ref: wizard.c:496-520 (has_aggravatables).
 export function hasAggravatables(mon) {
-    const inTower = !!(mon?.wizardTowerLevel || inWizardTowerLevel());
-    if (inTower !== inWizardTowerLevel()) return false; /* hero/mon tower split */
+    const inTower = inWizardTower(mon?.mx, mon?.my);
+    if (inTower !== inWizardTower(game.u?.ux, game.u?.uy)) return false;
     for (const other of game.level?.monsters || []) {
         if (other.dead || (other.mhp != null && other.mhp <= 0)) continue;
+        if (inTower !== inWizardTower(other.mx, other.my)) continue;
         if ((typeof other.mstrategy === 'number' && (other.mstrategy & STRAT_WAITFORU))
             || other.mstrategy === 'waitforu' || other.waiting
             || monIsHelpless(other))
@@ -249,8 +251,10 @@ export function hasAggravatables(mon) {
 
 // C ref: wizard.c:522-540 (aggravate).
 export function aggravate() {
-    for (const mon of game.level?.monsters || []) {
+    const inTower = inWizardTower(game.u?.ux, game.u?.uy);
+    for (const mon of [...(game.level?.monsters || [])].reverse()) {
         if (mon.dead || (mon.mhp != null && mon.mhp <= 0)) continue;
+        if (inTower !== inWizardTower(mon.mx, mon.my)) continue;
         if (typeof mon.mstrategy === 'number') mon.mstrategy &= ~(STRAT_WAITFORU | STRAT_APPEARMSG);
         else if (mon.mstrategy === 'waitforu') mon.mstrategy = 0;
         mon.waiting = false;
@@ -288,9 +292,10 @@ function heroHasAmuletOfYendorLocal() {
 }
 
 // C ref: mksobj(FAKE_AMULET_OF_YENDOR, TRUE, FALSE) — otyp-specific amulet
-// creation consumes no RNG in mkobj.c mksobj_init, so build it directly.
-function mkFakeAmuletOfYendor() {
+// creation uses the normal amulet blessing rolls in mkobj.c:1059-1068.
+export function mkFakeAmuletOfYendor() {
     return {
+        ...mksobj(15, true, false),
         cls: 'amulet',
         glyph: '"',
         kind: 'Amulet of Yendor',
@@ -651,12 +656,13 @@ export async function resurrect() {
         for (let i = 0; i < queue.length; i++) {
             const cand = queue[i];
             if (!cand?.iswiz || monHasAmulet(cand)) continue;
-            let elapsed = Math.max(0, (game.moves || 1) - (cand.mlstmv || 0));
+            let elapsed = (game.moves || 1) - (cand.mlstmv || 0);
             if (!(elapsed > 0)) continue;
-            elapsed = Math.trunc(elapsed / 50);
+            monCatchupElapsedTime(cand, elapsed);
+            elapsed = Math.trunc(Math.min(elapsed, LARGEST_INT - 1) / 50);
             if (cand.msleeping && rn2(elapsed + 1)) cand.msleeping = 0;
             if (cand.mfrozen === 1) { cand.mfrozen = 0; cand.mcanmove = 1; }
-            if (cand.mfrozen || cand.mcanmove === 0) continue;
+            if (cand.msleeping || cand.mfrozen || cand.mcanmove === 0 || cand.mcanmove === false) continue;
             queue.splice(i, 1);
             /* mon_arrive(mtmp, -1) — Wiz_arrive: place near the hero. */
             const spot = enextoMonsterSpot(game.u?.ux || 0, game.u?.uy || 0, cand.data || {});

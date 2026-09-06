@@ -10,8 +10,11 @@ import { def_char_to_objclass } from './sp_lev.js';
 import { def_char_is_furniture, def_char_to_monclass } from './drawing.js';
 import { tty_yn_function } from './tty/topl.js';
 import { losehp } from './hack.js';
+import { room_discovered } from './hack.js';
+import { ROOMOFFSET } from './const.js';
 import { consume_obj_charge } from './apply.js';
 import { is_quest_artifact } from './questpgr.js';
+import { spec_ability, SPFX_SEARCH } from './artifact.js';
 import { depth } from './dungeon.js';
 import { do_clear_area, IN_SIGHT, COULD_SEE } from './vision.js';
 import { closed_door } from './cmd.js';
@@ -32,7 +35,7 @@ import { x_monnam, Monnam, hcolor } from './do_name.js';
 import { money_cnt, hidden_gold, currency, useup, sobj_at } from './invent.js';
 import { findgold } from './makemon.js';
 import { wake_nearto } from './mon.js';
-import { Your, You_see, pline_The, There, Norep } from './pline.js';
+import { Your, You_see, pline_The, There, Norep, set_msg_xy } from './pline.js';
 import { rnd, rn2_on_display_rng } from './rng.js';
 import { I_SPECIAL, A_INT, u_at, OBJ_AT, Has_contents, TRAPPED_CHEST, TRAPPED_DOOR, BEAR_TRAP, D_BROKEN, D_ISOPEN, DRAWBRIDGE_UP, IS_DOOR, M_AP_OBJECT, M_AP_MONSTER, ARTICLE_YOUR, ARTICLE_THE, SUPPRESS_SADDLE, FOOT, NOSE, TOE, TIMEOUT, KILLED_BY_AN, BURIED_TOO, CONTAINED_TOO, NO_PART, BOLT_LIM, TOPLINE_EMPTY, TOPLINE_NEED_MORE } from './const.js';
 import { display_self, more, unmap_object, glyph_at, see_monsters, covers_objects, flash_glyph_at } from './display.js';
@@ -45,7 +48,9 @@ import { game } from './gstate.js';
 import { rnl } from './rng.js';
 import { isok } from './hacklib.js';
 import { newsym, cls, docrt, canspotmon, sensemon, map_invisible,
-         glyph_is_invisible_at, unmap_invisible, feel_location } from './display.js';
+         glyph_is_invisible_at, unmap_invisible, feel_location,
+         warning_of, display_nhwindow_message, feel_newsym } from './display.js';
+import { visible_region_at } from './region.js';
 import { cmap_names, def_monsyms, defsyms } from './drawing_data.js';
 import { You, You_feel } from './pline.js';
 import { m_at, t_at, seemimic } from './mon.js';
@@ -233,12 +238,12 @@ export { trapname };
 
 // src/detect.c:1964 mfind0() — reveal a hidden/mimicking/unseen monster
 // found by searching. Returns -1 skip, 0 nothing, 1 found (uses the turn).
-async function mfind0(mtmp, via_warning) {
+export async function mfind0(mtmp, via_warning) {
     const x = mtmp.mx, y = mtmp.my;
     let found_something = false;
 
-    if (via_warning)
-        return -1;      /* warning_of() is not ported; dosearch0 passes 0 */
+    if (via_warning && !warning_of(mtmp))
+        return -1;
 
     if (M_AP_TYPE(mtmp)) {
         seemimic(mtmp);
@@ -250,6 +255,12 @@ async function mfind0(mtmp, via_warning) {
         if (mtmp.mundetected && (is_hider(mtmp.data)
                                  || hides_under(mtmp.data)
                                  || mtmp.data.mlet === MONSYMS.S_EEL)) {
+            if (via_warning && found_something) {
+                set_msg_xy(x, y);
+                await Your(`danger sense causes you to take a second ${
+                    Blind() ? 'to check nearby' : 'look close by'}.`);
+                await display_nhwindow_message();
+            }
             mtmp.mundetected = 0;
             found_something = true;
         }
@@ -262,8 +273,10 @@ async function mfind0(mtmp, via_warning) {
         exercise(A_WIS, true);
         if (!canspotmon(mtmp)) {
             map_invisible(x, y);
+            set_msg_xy(x, y);
             await You_feel('an unseen monster!');
         } else if (!sensemon(mtmp)) {
+            set_msg_xy(x, y);
             await You(`find ${mtmp.mtame ? y_monnam(mtmp)
                                          : a_monnam(mtmp)}.`);
         }
@@ -277,14 +290,15 @@ export async function dosearch0(aflag) {
     let x, y;
 
     if (u.uswallow) {
-        /* Norep("What are you looking for?  The exit?") — no draw */
+        if (!aflag)
+            await Norep('What are you looking for?  The exit?');
         return 1;
     }
 
-    /* fund: artifact search bonus plus lenses. Neither is reachable until
-       artifacts and eyewear are ported, so it is 0 here; the expression is
-       kept in the C's shape so the bonus slots in where C puts it. */
-    let fund = 0;
+    let fund = (u.uwep && u.uwep.oartifact && spec_ability(u.uwep, SPFX_SEARCH))
+        ? u.uwep.spe : 0;
+    if (u.ublindf && u.ublindf.otyp === ONAMES.LENSES && !Blind())
+        fund += 2;
     if (fund > 5)
         fund = 5;
 
@@ -301,7 +315,7 @@ export async function dosearch0(aflag) {
             /* src/detect.c:2040: blind searching first refreshes each
                adjacent square by touch. This clears stale invisible-monster
                glyphs before mfind0 decides whether a monster is newly found. */
-            if (!aflag && Blind())
+            if (!aflag && (Blind() || visible_region_at(x, y)))
                 feel_location(x, y);
 
             if (loc.typ === SDOOR) {
@@ -318,7 +332,8 @@ export async function dosearch0(aflag) {
                 recalc_block_point(x, y);
                 exercise(A_WIS, true);
                 nomul(0);
-                newsym(x, y);   /* feel_location: make sure it shows up */
+                feel_location(x, y);
+                set_msg_xy(x, y);
                 await You('find a hidden door.');
             } else if (loc.typ === SCORR) {
                 if (rnl(7 - fund))
@@ -327,7 +342,8 @@ export async function dosearch0(aflag) {
                 unblock_point(x, y);    /* vision */
                 exercise(A_WIS, true);
                 nomul(0);
-                newsym(x, y);   /* feel_newsym: make sure it shows up */
+                feel_newsym(x, y);
+                set_msg_xy(x, y);
                 await You('find a hidden passage.');
             } else {
                 /* Be careful not to find anything in an SCORR or SDOOR */
@@ -372,6 +388,18 @@ export async function dosearch() {
                                     'already_found_flag'))
         return 0;                      /* ECMD_OK — no time passes */
     return dosearch0(0);
+}
+
+// src/detect.c:2107 warnreveal()
+export async function warnreveal() {
+    for (let x = game.u.ux - 1; x <= game.u.ux + 1; x++)
+        for (let y = game.u.uy - 1; y <= game.u.uy + 1; y++) {
+            if (!isok(x, y) || u_at(x, y))
+                continue;
+            const mtmp = m_at(x, y);
+            if (mtmp && warning_of(mtmp) && mtmp.mundetected)
+                await mfind0(mtmp, true);
+        }
 }
 
 /* src/vision.c:27 circle_data start offsets — circle_ptr(z) */
@@ -602,6 +630,8 @@ export function show_map_spot(x, y, cnf) {
            object glyphs (magic_map_background skips them) and newsym shows
            remembered glyphs for unseen cells */
     }
+    if (!cnf && loc.roomno >= ROOMOFFSET)
+        room_discovered(loc.roomno - ROOMOFFSET);
 }
 
 // src/detect.c:2124 skip_premap_detect() — areas outside the Sokoban map:

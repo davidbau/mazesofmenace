@@ -16,7 +16,7 @@ import { G_GENOD, G_UNIQ, In_endgame, In_quest, Is_astralevel,
          KILLED_BY_AN, KILLED_BY, A_CURRENT, A_ORIGINAL,
          LOW_PM, M_AP_MONSTER, M_AP_TYPE, MGIVENNAME, NHW_TEXT, NHW_MENU,
          OBJ_FREE,
-         NON_PM, A_CON, has_mgivenname } from './const.js';
+         NON_PM, A_CON, has_mgivenname, Upolyd } from './const.js';
 import { PMNAMES, MONSYMS } from './monst_data.js';
 import { ONAMES } from './objects_data.js';
 import { pmname } from './do_name.js';
@@ -30,6 +30,29 @@ import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
 import { tty_yn_function } from './tty/topl.js';
 import { makeknown } from './o_init.js';
 import { ACURR, adjattrib } from './attrib.js';
+import { minuhpmax } from './attrib.js';
+import { setuhpmax } from './exper.js';
+import { init_uhunger } from './eat.js';
+import { make_sick } from './potion.js';
+import { TIMEOUT, SICK_ALL, TT_LAVA, PLNMSG_OK_DONT_DIE } from './const.js';
+import { reset_utrap } from './trap.js';
+import { endmultishot } from './dothrow.js';
+import { expels } from './mhitu.js';
+import { unstuck } from './mon.js';
+import { sticks } from './mondata.js';
+import { mon_nam, Monnam } from './do_name.js';
+import { flush_screen } from './display.js';
+import { Is_container, Has_contents, SchroedingersBox } from './obj.js';
+import { update_inventory, sortloot, unsortloot } from './invent.js';
+import { the, xname, thesimpleoname } from './objnam.js';
+import { doname_with_price } from './shk.js';
+import { discover_object } from './o_init.js';
+import { upstart } from './do_name.js';
+import { SORTLOOT_LOOT, SORTLOOT_PACK } from './const.js';
+import { boolean_option } from './options.js';
+import { tty_next_page } from './tty/wintty.js';
+import { xwaitforspace } from './tty/getline.js';
+import { docrt, display_nhwindow_message } from './display.js';
 
 function note_unported_end(what) {
     (game.unported ||= new Set()).add('end:' + what);
@@ -208,6 +231,60 @@ export function formatkiller(how, incl_helpless) {
     }
 }
 
+// src/end.c:1596 container_contents(); disclosure and the loot ':' choice.
+export async function container_contents(list, identified, all_containers, reportempty) {
+    const dumping = !!game.iflags?.in_dumplog;
+    for (const box of list || []) {
+        if (Is_container(box) || box.otyp === ONAMES.STATUE) {
+            if (!box.cknown || (identified && !box.lknown)) {
+                box.cknown = 1;
+                if (identified) box.lknown = 1;
+                update_inventory();
+            }
+            if (box.otyp === ONAMES.BAG_OF_TRICKS) {
+                continue;
+            } else if (Has_contents(box)) {
+                const tmpwin = tty_create_nhwindow(NHW_MENU);
+                const cat = SchroedingersBox(box);
+                tty_putstr(tmpwin, 0, `Contents of ${the(xname(box))}:`);
+                if (!dumping) tty_putstr(tmpwin, 0, '');
+                if (!cat) {
+                    const sortloot_option = String(game.flags.sortloot ?? 'l').charAt(0);
+                    const sortflags = ((sortloot_option === 'l' || sortloot_option === 'f')
+                        ? SORTLOOT_LOOT : 0) | (boolean_option('sortpack') ? SORTLOOT_PACK : 0);
+                    const sortedcobj = sortloot(box.cobj, sortflags, false, null);
+                    for (const { obj } of sortedcobj) {
+                        if (!obj) break;
+                        if (identified) {
+                            discover_object(obj.otyp, true, true, false);
+                            obj.dknown = obj.known = obj.bknown = obj.rknown = 1;
+                            if (Is_container(obj) || obj.otyp === ONAMES.STATUE)
+                                obj.cknown = obj.lknown = 1;
+                        }
+                        tty_putstr(tmpwin, 0, `  ${doname_with_price(obj)}`);
+                    }
+                    unsortloot(sortedcobj);
+                } else {
+                    tty_putstr(tmpwin, 0, "  Schroedinger's cat!");
+                }
+                if (dumping) tty_putstr(0, 0, '');
+                await tty_display_nhwindow(tmpwin);
+                do {
+                    await xwaitforspace(' \r\n\x1b');
+                } while (game.morc !== '\x1b' && tty_next_page(tmpwin));
+                tty_destroy_nhwindow(tmpwin);
+                await docrt();
+                if (all_containers)
+                    await container_contents(box.cobj, identified, true, reportempty);
+            } else if (reportempty) {
+                await pline(`${upstart(thesimpleoname(box))} is empty.`);
+                await display_nhwindow_message();
+            }
+        }
+        if (!all_containers) break;
+    }
+}
+
 // src/end.c:1721 delayed_killer() — remember the cause of a pending death
 // (stoning, sliming, strangling, ...) so done() can name it when it comes.
 export function delayed_killer(id, format, killername) {
@@ -250,31 +327,47 @@ export function dealloc_killer(kptr) {
 }
 
 // src/end.c:704 savelife() — explore/wizard "OK, so you don't die."
-function savelife(how) {
+export async function savelife(how) {
     const u = game.u;
     const acon = ACURR(A_CON);
     const givehp = 50 + 10 * ((acon / 2) | 0);
 
     if (u.ulevel < 1)
         u.ulevel = 1;
-    /* minuhpmax(10) */
-    if (u.uhpmax < 10)
-        u.uhpmax = 10;
+    const uhpmin = minuhpmax(10);
+    if (u.uhpmax < uhpmin)
+        setuhpmax(uhpmin, true);
     u.uhp = Math.min(u.uhpmax, givehp);
+    if (Upolyd(u))
+        u.mh = Math.min(u.mhmax, givehp);
     if (u.uhunger < 500 || how === CHOKING) {
-        u.uhunger = 900;   /* init_uhunger() */
-        u.uhs = 1;         /* NOT_HUNGRY */
+        init_uhunger();
     }
+    if (((u.uprops?.SICK || 0) & TIMEOUT) === 1)
+        await make_sick(0, null, false, SICK_ALL);
     game.nomovemsg = 'You survived that attempt on your life.';
     (game.context ||= {}).move = 0;
     game.multi = -1; /* can't move again during the current turn */
     game.multi_reason = game.urole?.mnum === PMNAMES.PM_TOURIST
         ? 'being toyed with by Fate' : 'attempting to cheat Death';
+    if (u.utrap && u.utraptype === TT_LAVA)
+        await reset_utrap(false);
     game.disp = game.disp || {};
     game.disp.botl = true;
     u.ugrave_arise = NON_PM;
-    if (u.uprops)
-        delete u.uprops.UNCHANGING;
+    (u.intrinsic ||= {}).HUnchanging = 0;
+    await flush_screen(1); /* curs_on_u() */
+    if (!game.context.mon_moving)
+        await endmultishot(false);
+    if (u.uswallow) {
+        await expels(u.ustuck, u.ustuck.data, true);
+    } else if (u.ustuck) {
+        if (Upolyd(u) && sticks(game.youmonst.data))
+            await You(`release ${mon_nam(u.ustuck)}.`);
+        else
+            await pline(`${Monnam(u.ustuck)} releases you.`);
+        await unstuck(u.ustuck);
+    }
 }
 
 // src/end.c done() — the hero's game is over.
@@ -308,8 +401,8 @@ export async function done(how) {
 
     if (how < PANICKED) {
         u.umortality = (u.umortality || 0) + 1;
-        if (u.uhp !== 0) {
-            u.uhp = 0;
+        if (u.uhp !== 0 || (Upolyd(u) && u.mh !== 0)) {
+            u.uhp = u.mh = 0;
             game.disp.botl = true;
         }
     }
@@ -322,10 +415,10 @@ export async function done(how) {
         await You_feel('much better!');
         await pline_The('medallion crumbles to dust!');
         if (u.uamul)
-            useup(u.uamul);
+            await useup(u.uamul);
 
         await adjattrib(A_CON, -1, true);
-        savelife(how);
+        await savelife(how);
         if (how === GENOCIDED) {
             await pline('Unfortunately you are still genocided...');
         } else {
@@ -338,7 +431,8 @@ export async function done(how) {
         const c = await tty_yn_function('Die?', 'yn', 'n');
         if (c !== 'y') {
             await pline(`OK, so you don't ${how === CHOKING ? 'choke' : 'die'}.`);
-            savelife(how);
+            (game.iflags ||= {}).last_msg = PLNMSG_OK_DONT_DIE;
+            await savelife(how);
             survive = true;
         }
     }
@@ -472,6 +566,11 @@ async function really_done(how) {
                 repos = { x: u.ux || u.ux0, y: u.uy || u.uy0 };
         }
     }
+
+    // src/end.c really_done(), acknowledge the message window before
+    // disclosure. An already-read prompt keeps its pixels until overwritten.
+    const { display_nhwindow_message } = await import('./display.js');
+    await display_nhwindow_message();
 
     /* discover everything in inventory for disclosure and dumplog */
     const { discover_object } = await import('./o_init.js');

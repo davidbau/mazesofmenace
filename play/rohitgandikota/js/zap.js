@@ -160,6 +160,7 @@ import { explode } from './explode.js';
 import { setnotworn } from './worn.js';
 import { which_armor } from './worn.js';
 import { extract_from_minvent } from './worn.js';
+import { m_useup } from './mthrowu.js';
 import { is_quest_artifact } from './questpgr.js';
 import { mnearto } from './mon.js';
 import { is_pick } from './mon.js';
@@ -1257,7 +1258,7 @@ export async function revive(corpse, by_hero) {
         xy.x = x, xy.y = y;
         mtmp = await montraits(corpse, xy, false);
         if (mtmp && mtmp.mtame && !mtmp.isminion)
-            wary_dog(mtmp, true);
+            await wary_dog(mtmp, true);
     } else {
         /* make a new monster */
         mtmp = await makemon(mptr, x, y, mmflags | MM_NOCOUNTBIRTH);
@@ -1365,7 +1366,7 @@ export async function revive(corpse, by_hero) {
         delobj_core(corpse, true); /* for floor, also calls newsym() */
         break;
     case OBJ_MINVENT:
-        m_useup(corpse.ocarry, corpse);
+        await m_useup(corpse.ocarry, corpse);
         break;
     case OBJ_CONTAINED:
         obj_extract_self(corpse);
@@ -3825,7 +3826,7 @@ async function disintegrate_mon(mon, type, fltxt) /* type: hero vs other */
 
     for (const otmp of [...(mon.minvent || [])]) {
         if (!oresist_disintegration(otmp)) {
-            extract_from_minvent(mon, otmp, true, true);
+            await extract_from_minvent(mon, otmp, true, true);
             obfree(otmp, null);
         }
     }
@@ -3886,19 +3887,6 @@ export function inventory_resistance_check(dmgtyp) {
         probability = 90;
     return probability ? rn2(100) < probability : false;
 }
-
-export function m_useup(mon, obj) {
-    if (obj.quan > 1) {
-        obj.quan--;
-        obj.owt = weight(obj);
-    } else {
-        obj_extract_self(obj);
-        const at = mon.minvent?.indexOf(obj) ?? -1;
-        if (at >= 0)
-            mon.minvent.splice(at, 1);
-    }
-}
-
 
 async function maybe_destroy_item(carrier, obj, dmgtyp) {
     let i, cnt, quan;
@@ -4030,7 +4018,7 @@ async function maybe_destroy_item(carrier, obj, dmgtyp) {
             if (u_carry)
                 useup(obj);
             else
-                m_useup(carrier, obj);
+                await m_useup(carrier, obj);
         }
         if (dmg) {
             if (!u_carry) {
@@ -4182,15 +4170,15 @@ export async function zhitm(mon, type, nd, ootmp = { v: null }) /* ootmp: worn a
                 /* destroy suit, also cloak if present */
                 ootmp.v = which_armor(mon, W_ARM);
                 if ((otmp2 = which_armor(mon, W_ARMC)) != null)
-                    m_useup(mon, otmp2);
+                    await m_useup(mon, otmp2);
             } else {
                 /* no suit, victim dies; destroy cloak
                    and shirt now in case target gets life-saved */
                 tmp = MAGIC_COOKIE;
                 if ((otmp2 = which_armor(mon, W_ARMC)) != null)
-                    m_useup(mon, otmp2);
+                    await m_useup(mon, otmp2);
                 if ((otmp2 = which_armor(mon, W_ARMU)) != null)
-                    m_useup(mon, otmp2);
+                    await m_useup(mon, otmp2);
             }
             type = -1; /* no saving throw wanted */
             break;     /* not ordinary damage */
@@ -4694,7 +4682,7 @@ export async function zap_over_floor(
             /* don't create steam clouds on Plane of Water; air bubble
                movement and gas regions don't understand each other */
             if (!on_water_level) {
-                create_gas_cloud(x, y, rnd(5), 0); /* 1..5, no damg */
+                await create_gas_cloud(x, y, rnd(5), 0); /* 1..5, no damg */
                 if (game.iflags.last_msg === PLNMSG_ENVELOPED_IN_GAS)
                     msggiven = true;
             }
@@ -4739,7 +4727,7 @@ export async function zap_over_floor(
                 }
             }
         } else if (IS_FOUNTAIN(lev.typ)) {
-            create_gas_cloud(x, y, rnd(3), 0); /* 1..3, no damage */
+            await create_gas_cloud(x, y, rnd(3), 0); /* 1..3, no damage */
             if (see_it)
                 await pline('Steam billows from the fountain.');
             rangemod -= 1;
@@ -4848,7 +4836,7 @@ export async function zap_over_floor(
            caller is placing a series of 1x1 clouds along the zap's path;
            <x,y> for wall locations might be included--reject those */
         if (ZAP_POS(lev.typ))
-            create_gas_cloud(x, y, 1, 8);
+            await create_gas_cloud(x, y, 1, 8);
         break;
 
     case ZT_LIGHTNING:
@@ -5133,7 +5121,7 @@ export async function dobuzz(type,     /* 0..29 (by hero) or -39..-10 (by monste
                         if (canseemon(mon))
                             await pline(`${s_suffix(Monnam(mon))} ${
                                 distant_name(otmp.v, xname)} is disintegrated!`);
-                        m_useup(mon, otmp.v);
+                        await m_useup(mon, otmp.v);
                     }
                     if (mon_could_move && !mon.mcanmove) /* ZT_SLEEP */
                         await slept_monst(mon);

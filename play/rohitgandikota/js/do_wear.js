@@ -4,12 +4,15 @@
 // Initial u.uac is 0 when the first startup status is drawn. u_init's later
 // find_ac() computes the real value before welcome and moveloop paging.
 
-import { W_ARMOR, GETOBJ_SUGGEST, GETOBJ_EXCLUDE } from './const.js';
+import { BUFSZ, W_ARMOR, GETOBJ_SUGGEST, GETOBJ_EXCLUDE } from './const.js';
 import { obj_resists } from './zap.js';
-import { selftouch } from './trap.js';
+import { selftouch, instapetrify } from './trap.js';
+import { remove_worn_item } from './steal.js';
 import { shirt_simple_name, shield_simple_name, vtense } from './objnam.js';
 import { urgent_pline } from './display.js';
 import { artifact_light } from './artifact.js';
+import { condtests } from './botl.js';
+import { make_glib, make_hallucinated } from './potion.js';
 import { end_burn } from './timeout.js';
 import { setnotworn, which_armor } from './worn.js';
 import { game } from './gstate.js';
@@ -24,15 +27,15 @@ import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_TOOL,
          A_CHA, A_MAX, A_CURRENT, A_CHAOTIC, A_LAWFUL, A_NEUTRAL, NH_BLACK,
          INTRINSIC, HEAD, HAND, FINGER, CQ_CANNED, st_corpse,
          st_petrifies, MENU_TRADITIONAL, MENU_COMBINATION, MENU_FULL,
-         MENU_PARTIAL,
-         Is_airlevel, Is_astralevel } from './const.js';
+         ALL_TYPES_SELECTED, ALL_FINISHED, SIGNAL_NOMENU, USE_INVLET, INVORDER_SORT, PICK_ANY,
+         FROMOUTSIDE, Is_astralevel } from './const.js';
 import { setworn } from './worn.js';
 import { welded, is_sword, setuwep, setuswapwep, setuqwep, empty_handed }
     from './wield.js';
 import { bimanual, is_metallic } from './obj.js';
 import { nolimbs, nohands, touch_petrifies, verysmall } from './mondata.js';
 import { sgn } from './hacklib.js';
-import { erode_obj, float_down, is_flammable, is_rustprone, is_crackable, is_rottable,
+import { erode_obj, float_up, float_down, is_flammable, is_rustprone, is_crackable, is_rottable,
          is_corrodeable, is_damageable } from './trap.js';
 import { curse, erosion_matters, set_bknown } from './mkobj.js';
 import { rn1, rn2, rnd } from './rng.js';
@@ -41,27 +44,29 @@ import { ERODE_BURN, ERODE_RUST, ERODE_CRACK, ERODE_ROT, ERODE_CORRODE,
          ER_DESTROYED } from './const.js';
 import { set_occupation, stop_occupation } from './allmain.js';
 import { newsym, pline, see_monsters } from './display.js';
-import { There, You, You_feel, You_cant, Your } from './pline.js';
+import { There, You, You_feel, You_cant, Your, impossible } from './pline.js';
 import { an, xname, doname, the, Tobjnam, gloves_simple_name,
          boots_simple_name, suit_simple_name, Yname2, makeplural,
          makesingular, otense, corpse_xname, CXN_NOCORPSE,
-         CXN_NOARTICLE, CXN_SINGULAR, thesimpleoname } from './objnam.js';
+         CXN_NOARTICLE, CXN_SINGULAR, CXN_ARTICLE, thesimpleoname,
+         simpleonames, killer_xname, obj_is_pname,
+         ARM_SUIT, ARM_SHIELD, ARM_HELM, ARM_GLOVES, ARM_BOOTS,
+         ARM_CLOAK, ARM_SHIRT } from './objnam.js';
 import { makeknown, observe_object } from './o_init.js';
 import { hcolor } from './do_name.js';
 import { ART_OGRESMASHER } from './artilist_data.js';
 import { cmdq_pop } from './cmd.js';
 import { CMDQ_KEY, ECMD_FAIL } from './const.js';
-import { prinv, update_inventory, useup, ECMD_OK, display_inventory, xprname }
+import { prinv, update_inventory, useup, ECMD_OK, ggetobj, is_worn, wearing_armor }
     from './invent.js';
 import { nomul, spoteffects, unmul } from './hack.js';
 import { tty_yn_function } from './tty/topl.js';
 import { ACURR, adjalign, change_luck, encumber_msg, Fast,
          Very_fast } from './attrib.js';
 import { paranoia_bits, PARANOID_REMOVE } from './options.js';
-import { Blind, Flying, Glib, Hallucination, Invis, Levitation,
+import { Blind, Flying, Glib, Hallucination, Invis, Levitation, Stone_resistance,
          Protection_from_shape_changers, See_invisible, Detect_monsters } from './youprop.js';
-import { body_part, change_sex, poly_gender } from './polyself.js';
-import { def_oc_syms } from './drawing_data.js';
+import { body_part, change_sex, poly_gender, float_vs_flight } from './polyself.js';
 import { surface } from './dungeon.js';
 
 
@@ -200,6 +205,167 @@ export async function glibr() {
     }
 }
 
+// src/do_wear.c:608 wielding_corpse()
+export async function wielding_corpse(obj, how, voluntary) {
+    const u = game.u;
+    if (!obj || obj.otyp !== ONAMES.CORPSE || u.uarmg)
+        return;
+    if (obj !== u.uwep && (obj !== u.uswapwep || !u.twoweap))
+        return;
+
+    if (touch_petrifies(game.mons[obj.corpsenm]) && !Stone_resistance()) {
+        await You(`${how && is_gloves(how) ? 'now wield' : 'are wielding'} ${
+            corpse_xname(obj, null, CXN_ARTICLE)} in your bare ${makeplural(body_part(HAND))}.`);
+        const hbuf = how
+            ? `${voluntary ? 'removing' : 'losing'} ${is_gloves(how)
+                ? gloves_simple_name(how) : simpleonames(how).replace('set of ', '')}`
+            : 'resistance timing out';
+        await instapetrify(`${hbuf} while wielding ${killer_xname(obj)}`.slice(0, BUFSZ - 1));
+        if (!Stone_resistance())
+            await remove_worn_item(obj, false);
+    }
+}
+
+// src/do_wear.c:646 Gloves_off()
+export async function Gloves_off() {
+    const u = game.u;
+    const gloves = u.uarmg;
+    const props = (u.uprops ||= {});
+    const intrinsic = (u.intrinsic ||= {});
+    const oldprop = (props[PROP_KEYS[objects[gloves.otyp].oc_oprop]] || 0)
+        & ~WORN_GLOVES;
+    const on_purpose = !game.context.mon_moving && !gloves.in_use;
+    const takeoff = (game.context_takeoff ||= {});
+    takeoff.mask &= ~W_ARMG;
+
+    switch (gloves.otyp) {
+    case ONAMES.LEATHER_GLOVES:
+        break;
+    case ONAMES.GAUNTLETS_OF_FUMBLING:
+        if (!oldprop && !((intrinsic.HFumbling || 0) & ~TIMEOUT)) {
+            intrinsic.HFumbling = 0;
+            delete props.FUMBLING;
+        }
+        break;
+    case ONAMES.GAUNTLETS_OF_POWER:
+        makeknown(gloves.otyp);
+        (game.disp ||= {}).botl = true;
+        break;
+    case ONAMES.GAUNTLETS_OF_DEXTERITY:
+        if (!takeoff.cancelled_don)
+            adj_abon(gloves, -gloves.spe);
+        break;
+    default:
+        await impossible(`Unknown type of gloves (${gloves.otyp})`);
+    }
+    setworn(null, W_ARMG);
+    takeoff.cancelled_don = false;
+    await encumber_msg();
+
+    if (Glib())
+        make_glib(0);
+    if (u.uwep && u.uwep.otyp === ONAMES.CORPSE)
+        await wielding_corpse(u.uwep, gloves, on_purpose);
+    if (u.twoweap && u.uswapwep && u.uswapwep.otyp === ONAMES.CORPSE)
+        await wielding_corpse(u.uswapwep, gloves, on_purpose);
+    if (condtests.find(c => c.id === 'bl_bareh').enabled)
+        (game.disp ||= {}).botl = true;
+    return 0;
+}
+
+// src/do_wear.c:798 dragon_armor_handling()
+async function dragon_armor_handling(otmp, puton, on_purpose) {
+    if (!otmp)
+        return;
+    const props = (game.u.uprops ||= {});
+
+    switch (otmp.otyp) {
+    case ONAMES.BLACK_DRAGON_SCALES:
+    case ONAMES.BLACK_DRAGON_SCALE_MAIL:
+        if (puton) {
+            props.DRAIN_RES = (props.DRAIN_RES || 0) | W_ARM;
+        } else {
+            props.DRAIN_RES &= ~W_ARM;
+            if (!props.DRAIN_RES)
+                delete props.DRAIN_RES;
+        }
+        break;
+    case ONAMES.BLUE_DRAGON_SCALES:
+    case ONAMES.BLUE_DRAGON_SCALE_MAIL:
+        if (puton) {
+            if (!Very_fast())
+                await You(`speed up${Fast() ? ' a bit more' : ''}.`);
+            props.FAST = (props.FAST || 0) | W_ARM;
+        } else {
+            props.FAST &= ~W_ARM;
+            if (!props.FAST)
+                delete props.FAST;
+            if (!Very_fast() && !game.context_takeoff?.cancelled_don)
+                await You('slow down.');
+        }
+        break;
+    case ONAMES.GREEN_DRAGON_SCALES:
+    case ONAMES.GREEN_DRAGON_SCALE_MAIL:
+        if (puton) {
+            props.SICK_RES = (props.SICK_RES || 0) | W_ARM;
+        } else {
+            props.SICK_RES &= ~W_ARM;
+            if (!props.SICK_RES)
+                delete props.SICK_RES;
+        }
+        break;
+    case ONAMES.RED_DRAGON_SCALES:
+    case ONAMES.RED_DRAGON_SCALE_MAIL:
+        if (puton) {
+            props.INFRAVISION = (props.INFRAVISION || 0) | W_ARM;
+        } else {
+            props.INFRAVISION &= ~W_ARM;
+            if (!props.INFRAVISION)
+                delete props.INFRAVISION;
+        }
+        see_monsters();
+        break;
+    case ONAMES.GOLD_DRAGON_SCALES:
+    case ONAMES.GOLD_DRAGON_SCALE_MAIL:
+        await make_hallucinated(puton ? 0 : 1, !game.program_state?.restoring, W_ARM);
+        break;
+    case ONAMES.ORANGE_DRAGON_SCALES:
+    case ONAMES.ORANGE_DRAGON_SCALE_MAIL:
+        if (puton) {
+            props.FREE_ACTION = (props.FREE_ACTION || 0) | W_ARM;
+        } else {
+            props.FREE_ACTION &= ~W_ARM;
+            if (!props.FREE_ACTION)
+                delete props.FREE_ACTION;
+        }
+        break;
+    case ONAMES.YELLOW_DRAGON_SCALES:
+    case ONAMES.YELLOW_DRAGON_SCALE_MAIL:
+        if (puton) {
+            props.STONE_RES = (props.STONE_RES || 0) | W_ARM;
+        } else {
+            props.STONE_RES &= ~W_ARM;
+            if (!props.STONE_RES)
+                delete props.STONE_RES;
+            await wielding_corpse(game.u.uwep, otmp, on_purpose);
+            await wielding_corpse(game.u.uswapwep, otmp, on_purpose);
+        }
+        break;
+    case ONAMES.WHITE_DRAGON_SCALES:
+    case ONAMES.WHITE_DRAGON_SCALE_MAIL:
+        if (puton) {
+            props.SLOW_DIGESTION = (props.SLOW_DIGESTION || 0) | W_ARM;
+        } else {
+            props.SLOW_DIGESTION &= ~W_ARM;
+            if (!props.SLOW_DIGESTION)
+                delete props.SLOW_DIGESTION;
+        }
+        break;
+    default:
+        break;
+    }
+}
+
 // src/do_wear.c Armor_on() — called when a suit becomes worn.
 //
 // The core is two lines and it is SCREEN-VISIBLE: setting uarm.known makes
@@ -216,7 +382,7 @@ export async function Armor_on() {
         game.u.uarm.known = 1; /* +/- evident because of status line AC */
         note_unported_do_wear('Armor_on:update_inventory');
     }
-    await dragon_armor_handling(game.u.uarm, true);
+    await dragon_armor_handling(game.u.uarm, true, true);
     if (is_gold_dragon_armor(game.u.uarm) && !game.u.uarm.lamplit)
         await begin_gold_dragon_light(game.u.uarm);
     else if (game.u.uarm.oartifact)
@@ -261,85 +427,6 @@ async function end_gold_dragon_light(obj) {
     update_inventory();
     if (!Blind())
         await pline(`${Tobjnam(obj, 'stop')} shining.`);
-}
-
-// src/do_wear.c dragon_armor_handling(). The armor's primary property is
-// managed by setworn(); this switch supplies its second property.
-async function dragon_armor_handling(obj, putOn) {
-    const props = (game.u.uprops ||= {});
-    let secondary = null;
-
-    switch (obj.otyp) {
-    case ONAMES.BLACK_DRAGON_SCALES:
-    case ONAMES.BLACK_DRAGON_SCALE_MAIL:
-        secondary = 'DRAIN_RES';
-        break;
-    case ONAMES.BLUE_DRAGON_SCALES:
-    case ONAMES.BLUE_DRAGON_SCALE_MAIL: {
-        const hfast = game.u.intrinsic?.HFast | 0;
-        const efast = props.FAST | 0;
-        if (putOn) {
-            const fast = !!(hfast || efast);
-            const very_fast = !!((hfast & TIMEOUT) || efast);
-            if (!very_fast)
-                await You(`speed up${fast ? ' a bit more' : ''}.`);
-            props.FAST = efast | W_ARM;
-        } else {
-            set_dragon_secondary(props, 'FAST', false);
-            if (!Very_fast() && !game.context_takeoff?.cancelled_don)
-                await You('slow down.');
-        }
-        return;
-    }
-    case ONAMES.GREEN_DRAGON_SCALES:
-    case ONAMES.GREEN_DRAGON_SCALE_MAIL:
-        secondary = 'SICK_RES';
-        break;
-    case ONAMES.RED_DRAGON_SCALES:
-    case ONAMES.RED_DRAGON_SCALE_MAIL:
-        secondary = 'INFRAVISION';
-        break;
-    case ONAMES.GOLD_DRAGON_SCALES:
-    case ONAMES.GOLD_DRAGON_SCALE_MAIL: {
-        const { make_hallucinated } = await import('./potion.js');
-        await make_hallucinated(putOn ? 0 : 1, true, W_ARM);
-        return;
-    }
-    case ONAMES.ORANGE_DRAGON_SCALES:
-    case ONAMES.ORANGE_DRAGON_SCALE_MAIL:
-        secondary = 'FREE_ACTION';
-        break;
-    case ONAMES.YELLOW_DRAGON_SCALES:
-    case ONAMES.YELLOW_DRAGON_SCALE_MAIL:
-        secondary = 'STONE_RES';
-        break;
-    case ONAMES.WHITE_DRAGON_SCALES:
-    case ONAMES.WHITE_DRAGON_SCALE_MAIL:
-        secondary = 'SLOW_DIGESTION';
-        break;
-    default:
-        return;
-    }
-
-    set_dragon_secondary(props, secondary, putOn);
-    if (secondary === 'INFRAVISION')
-        see_monsters();
-    if (!putOn && secondary === 'STONE_RES'
-        && [game.u.uwep, game.u.uswapwep].some(
-            item => item?.otyp === ONAMES.CORPSE))
-        note_unported_do_wear('dragon_armor_handling:wielding_corpse');
-}
-
-function set_dragon_secondary(props, prop, putOn) {
-    if (putOn) {
-        props[prop] = (props[prop] | 0) | W_ARM;
-    } else {
-        const left = (props[prop] | 0) & ~W_ARM;
-        if (left)
-            props[prop] = left;
-        else
-            delete props[prop];
-    }
 }
 
 /* Every armor-slot on-handler ends by revealing the item's enchantment: the
@@ -399,7 +486,9 @@ async function Cloak_on() {
     return reveal_worn_armor(W_ARMC);
 }
 
-export async function Cloak_off(otmp) {
+// src/do_wear.c:383 Cloak_off()
+export async function Cloak_off() {
+    const otmp = game.u.uarmc;
     const prop = PROP_KEYS[objects[otmp.otyp].oc_oprop];
     const oldprop = prop
         ? (game.u.uprops?.[prop] || 0) & ~WORN_CLOAK : 0;
@@ -510,7 +599,9 @@ function adjust_helmet_brilliance(obj, delta) {
     (game.disp ||= {}).botl = true;
 }
 
-export async function Helmet_off(otmp) {
+// src/do_wear.c:518 Helmet_off()
+export async function Helmet_off() {
+    const otmp = game.u.uarmh;
     (game.context_takeoff ||= {}).mask &= ~W_ARMH;
     switch (otmp.otyp) {
     case ONAMES.FEDORA:
@@ -738,20 +829,20 @@ export function doffing(otmp) {
     let result = false;
 
     /* 'T' (or 'R' used for armor) sets ga.afternmv, 'A' sets takeoff.what */
-    if (otmp === game.u.uarmf)
-        result = (what === WORN_BOOTS);   /* Boots_off is not an afternmv */
-    else if (otmp === game.u.uarm)
-        result = (what === WORN_ARMOR);
+    if (otmp === game.u.uarm)
+        result = (game.afternmv === Armor_off || what === WORN_ARMOR);
     else if (otmp === game.u.uarmu)
-        result = (what === WORN_SHIRT);
+        result = (game.afternmv === Shirt_off || what === WORN_SHIRT);
     else if (otmp === game.u.uarmc)
-        result = (what === WORN_CLOAK);
+        result = (game.afternmv === Cloak_off || what === WORN_CLOAK);
+    else if (otmp === game.u.uarmf)
+        result = (game.afternmv === Boots_off || what === WORN_BOOTS);
     else if (otmp === game.u.uarmh)
-        result = (what === WORN_HELMET);
+        result = (game.afternmv === Helmet_off || what === WORN_HELMET);
     else if (otmp === game.u.uarmg)
-        result = (what === WORN_GLOVES);
+        result = (game.afternmv === Gloves_off || what === WORN_GLOVES);
     else if (otmp === game.u.uarms)
-        result = (what === WORN_SHIELD);
+        result = (game.afternmv === Shield_off || what === WORN_SHIELD);
     /* these 1-turn items don't need 'ga.afternmv' checks */
     else if (otmp === game.u.uamul)
         result = (what === WORN_AMUL);
@@ -803,15 +894,15 @@ export async function stop_donning(stolenobj) {
     const putting_on = !doffing(otmp);
     let result = 0;
     let message = '';
+    cancel_don();
+    game.afternmv = null;
     if (putting_on || otmp !== stolenobj) {
         message = `You stop ${putting_on ? 'putting on' : 'taking off'} ${
             thesimpleoname(otmp)}.`;
     } else {
-        result = -(game.multi || 0);
+        result = -(game.multi | 0) | 0;
     }
 
-    cancel_don();
-    game.afternmv = null;
     await unmul(message);
     if (putting_on) {
         const { remove_worn_item } = await import('./steal.js');
@@ -837,7 +928,8 @@ async function off_msg(otmp) {
 }
 
 async function on_msg(otmp) {
-    if ((otmp.owornmask & (W_RINGL | W_RINGR | W_AMUL)) !== 0) {
+    if ((otmp.owornmask & (W_RINGL | W_RINGR | W_AMUL)) !== 0
+        || ((otmp.owornmask & W_TOOL) !== 0 && !game.flags.verbose)) {
         await prinv(null, otmp, 0);
         return;
     }
@@ -845,8 +937,7 @@ async function on_msg(otmp) {
         const otmp_name = xname(otmp);
         const how = otmp.otyp === ONAMES.TOWEL
             ? ` around your ${body_part(HEAD)}` : '';
-        /* obj_is_pname() only for artifacts */
-        await You(`are now wearing ${an(otmp_name)}${how}.`);
+        await You(`are now wearing ${obj_is_pname(otmp) ? the(otmp_name) : an(otmp_name)}${how}.`);
     }
 }
 
@@ -880,13 +971,15 @@ export async function Boots_on() {
         break;
     case ONAMES.LEVITATION_BOOTS:
         if (!oldprop && !game.u.intrinsic?.HLevitation
-            && !game.u.blocked?.LEVITATION) {
+            && !((game.u.blocked?.LEVITATION | 0) & FROMOUTSIDE)) {
             uarmf.known = 1;
             (game.disp ||= {}).botl = true;
             makeknown(uarmf.otyp);
-            await float_up_from_wearable('Boots_on');
+            await float_up();
             if (Levitation())
                 await spoteffects(false);
+        } else {
+            float_vs_flight();
         }
         break;
     case ONAMES.FUMBLE_BOOTS: {
@@ -905,8 +998,9 @@ export async function Boots_on() {
     }
 }
 
-// src/do_wear.c:239 Boots_off()
-export async function Boots_off(otmp) {
+// src/do_wear.c:262 Boots_off()
+export async function Boots_off() {
+    const otmp = game.u.uarmf;
     const prop = PROP_KEYS[objects[otmp.otyp].oc_oprop];
     const oldprop = prop
         ? (game.u.uprops?.[prop] || 0) & ~WORN_BOOTS : 0;
@@ -1086,7 +1180,7 @@ export async function Armor_off() {
         if (!Blind())
             await pline(`${Tobjnam(otmp, 'stop')} shining.`);
     }
-    await dragon_armor_handling(otmp, false);
+    await dragon_armor_handling(otmp, false, true);
     return 0;
 }
 
@@ -1109,7 +1203,7 @@ export async function Armor_gone() {
         if (!Blind())
             await pline(`${Tobjnam(otmp, 'stop')} shining.`);
     }
-    await dragon_armor_handling(otmp, false);
+    await dragon_armor_handling(otmp, false, false);
     return 0;
 }
 
@@ -1203,31 +1297,6 @@ function adjust_ring_attribute(ring, which, amount) {
     if (observable || !extreme_ring_attribute(which))
         learnring(ring, observable);
     (game.disp ||= {}).botl = true;
-}
-
-// src/trap.c float_up(), for the states currently represented by the port.
-// Traps, engulfers, and mounted levitation retain explicit reachability marks
-// until their source-specific state transitions are available here.
-async function float_up_from_wearable(source) {
-    (game.disp ||= {}).botl = true;
-    if (game.u.utrap) {
-        note_unported_do_wear(`${source}:levitation_trap`);
-    } else if (game.u.uinwater) {
-        await spoteffects(true);
-    } else if (game.u.uswallow) {
-        note_unported_do_wear(`${source}:levitation_swallowed`);
-    } else if (Hallucination()) {
-        await pline("Up, up, and awaaaay!  You're walking on air!");
-    } else if (Is_airlevel(game.u.uz)) {
-        await You('gain control over your movements.');
-    } else {
-        await You('start to float in the air!');
-    }
-    if (game.u.usteed)
-        note_unported_do_wear(`${source}:levitation_steed`);
-    if (Flying())
-        await You('are no longer able to control your flight.');
-    await encumber_msg();
 }
 
 // src/do_wear.c toggle_stealth().  A visible change in stealth identifies
@@ -1335,11 +1404,13 @@ export async function Ring_on(obj) {
         break;
     case ONAMES.RIN_LEVITATION:
         if (!oldprop && !game.u.intrinsic?.HLevitation
-            && !game.u.blocked?.LEVITATION) {
-            await float_up_from_wearable('Ring_on');
+            && !((game.u.blocked?.LEVITATION | 0) & FROMOUTSIDE)) {
+            await float_up();
             learnring(obj, true);
             if (Levitation())
                 await spoteffects(false);
+        } else {
+            float_vs_flight();
         }
         break;
     case ONAMES.RIN_STEALTH:
@@ -1930,343 +2001,151 @@ async function take_off() {
     return 1;
 }
 
-async function query_worn_items(allow) {
-    const eligible = (game.invent || []).filter((obj) =>
-        !!obj.owornmask && allow(obj));
-    if (!eligible.length)
-        return null;
-
-    const letters = eligible.map((obj) => obj.invlet).join('');
-    const entries = display_inventory(letters);
-    const {
-        tty_create_nhwindow, tty_start_menu, tty_add_menu, tty_end_menu,
-        tty_select_menu, tty_destroy_nhwindow, NHW_MENU,
-    } = await import('./tty/wintty.js');
-    const { MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ANY } =
-        await import('./const.js');
-    const { NO_COLOR } = await import('./terminal.js');
-
-    const win = tty_create_nhwindow(NHW_MENU);
-    tty_start_menu(win, MENU_BEHAVE_STANDARD);
-    for (const entry of entries) {
-        tty_add_menu(win, entry.glyphinfo ?? null,
-                     entry.heading ? 0 : entry.invlet.charCodeAt(0),
-                     entry.invlet || 0, 0, entry.attr, NO_COLOR, entry.str,
-                     MENU_ITEMFLAGS_NONE);
-    }
-    tty_end_menu(win, 'What do you want to take off?');
-    const picks = await tty_select_menu(win, PICK_ANY);
-    tty_destroy_nhwindow(win);
-    return picks.map((id) => (game.invent || [])
-        .find((obj) => obj.invlet.charCodeAt(0) === id)).filter(Boolean);
-}
-
-const removable_mask = W_WEAPONS | W_ARM | W_ARMC | W_ARMH | W_ARMS
-                     | W_ARMG | W_ARMF | W_ARMU | W_RINGL | W_RINGR
-                     | W_AMUL | W_TOOL;
-
-function takeoff_menu_style() {
-    const raw = game.flags?.menu_style ?? game.flags?.menustyle
-              ?? game.rc?.opts?.menustyle;
-    if (typeof raw === 'number')
-        return raw;
-    switch (String(raw || 'full').toLowerCase()[0]) {
-    case 't': return MENU_TRADITIONAL;
-    case 'c': return MENU_COMBINATION;
-    case 'p': return MENU_PARTIAL;
-    default: return MENU_FULL;
-    }
-}
-
-function is_worn_for_takeoff(obj) {
-    return !!(obj?.owornmask & removable_mask);
-}
-
-function takeoff_buc(obj) {
-    /* Priests know the BUC state of carried objects. */
-    if (game.urole?.mnum === 'PM_CLERIC' && !obj.bknown)
-        obj.bknown = 1;
-    return !obj.bknown ? 'X' : obj.blessed ? 'B' : obj.cursed ? 'C' : 'U';
-}
-
-function has_unpaid(olist) {
-    return (olist || []).some((obj) => obj.unpaid || has_unpaid(obj.cobj));
-}
-
-/* src/invent.c ggetobj("take off", ...). Traditional mode performs the
-   selection itself. Combination mode only gathers filters unless the player
-   chose lowercase 'a', which is the direct all-items shortcut. */
-async function ggetobj_takeoff(combo) {
-    const invent = game.invent || [];
-    const eligible = invent.filter(is_worn_for_takeoff);
-    const classes = [];
-    for (const obj of eligible) {
-        const symbol = def_oc_syms[obj.oclass];
-        if (symbol && !classes.includes(symbol))
-            classes.push(symbol);
-    }
-
-    let choices = `${classes.join('')} `;
-    if (has_unpaid(invent))
-        choices += 'u';
-    for (const buc of 'BUCX') {
-        if (eligible.some((obj) => takeoff_buc(obj) === buc))
-            choices += buc;
-    }
-    if (invent.some((obj) => obj.pickup_prev))
-        choices += 'P';
-    choices += 'ai';
-    if (!combo)
-        choices += 'm';
-
-    const { getlin } = await import('./cmd.js');
-    let answer;
-    for (;;) {
-        answer = await getlin(
-            `What kinds of thing do you want to take off? [${choices}]`);
-        if (answer === '\x1b')
-            return { result: 0, allFinished: false };
-        if (!answer.includes('i'))
-            break;
-
-        /* display_inventory(..., TRUE) permits a letter to dismiss the
-           inventory. Its return value is intentionally ignored here. */
-        const { display_pickinv } = await import('./invent.js');
-        const letters = eligible.map((obj) => obj.invlet).join('');
-        const picked = await display_pickinv(letters, null, null, false);
-        if (picked === '\x1b')
-            return { result: 0, allFinished: false };
-    }
-
-    const { add_valid_menu_class, allow_category } = await import('./pickup.js');
-    const classNumbers = new Map(def_oc_syms.map((symbol, i) => [symbol, i]));
-    const removeableClasses = new Set([
-        OCLASSES.ARMOR_CLASS, OCLASSES.WEAPON_CLASS, OCLASSES.RING_CLASS,
-        OCLASSES.AMULET_CLASS, OCLASSES.TOOL_CLASS,
-    ]);
-    const extraClasses = new Set(eligible
-        .filter((obj) => obj.owornmask & W_WEAPONS)
-        .map((obj) => obj.oclass));
-    const selectedClasses = [];
-    let allflag = false, menuSeen = false;
-
-    for (const symbol of answer) {
-        if (symbol === ' ')
-            continue;
-        const oclass = classNumbers.get(symbol);
-        if (oclass !== undefined && oclass !== OCLASSES.MAXOCLASSES
-            && !extraClasses.has(oclass)) {
-            if (!removeableClasses.has(oclass)) {
-                await pline('Not applicable.');
-                return { result: 0, allFinished: false };
-            }
-            if (oclass === OCLASSES.ARMOR_CLASS
-                && !eligible.some((obj) => obj.oclass === oclass)) {
-                await You('are not wearing any armor.');
-                return { result: 0, allFinished: false };
-            }
-            if (oclass === OCLASSES.WEAPON_CLASS
-                && !eligible.some((obj) => obj.owornmask & W_WEAPONS)) {
-                await You('are not wielding anything.');
-                return { result: 0, allFinished: false };
-            }
-            if (oclass === OCLASSES.RING_CLASS
-                && !eligible.some((obj) => obj.owornmask & (W_RINGL | W_RINGR))) {
-                await You('are not wearing rings.');
-                return { result: 0, allFinished: false };
-            }
-            if (oclass === OCLASSES.AMULET_CLASS
-                && !eligible.some((obj) => obj.owornmask & W_AMUL)) {
-                await You('are not wearing an amulet.');
-                return { result: 0, allFinished: false };
-            }
-            if (oclass === OCLASSES.TOOL_CLASS
-                && !eligible.some((obj) => obj.owornmask & W_TOOL)) {
-                await You('are not wearing a blindfold.');
-                return { result: 0, allFinished: false };
-            }
-        }
-
-        if (symbol === 'a') {
-            allflag = true;
-        } else if (symbol === 'A') {
-            /* default item-by-item behavior */
-        } else if ('uBUCXP'.includes(symbol)) {
-            add_valid_menu_class(symbol);
-        } else if (symbol === 'm') {
-            menuSeen = true;
-        } else if (oclass === undefined) {
-            await You(`don't have any ${symbol}'s.`);
-        } else if (!selectedClasses.includes(oclass)) {
-            selectedClasses.push(oclass);
-            add_valid_menu_class(oclass);
-        }
-    }
-
-    if (menuSeen) {
-        const filtered = selectedClasses.length
-            || [...answer].some((symbol) => 'uBUCXP'.includes(symbol));
-        return { result: (allflag || !filtered) ? -2 : -3,
-                 allFinished: false };
-    }
-    if (combo && !allflag)
-        return { result: 0, allFinished: false };
-
-    let candidates = [];
-    const byCategory = [...answer].some((symbol) => 'uBUCXP'.includes(symbol));
-    const addCandidates = (oclass) => {
-        for (const obj of eligible) {
-            if ((oclass === null || obj.oclass === oclass)
-                && (!byCategory || allow_category(obj))
-                && !candidates.includes(obj))
-                candidates.push(obj);
-        }
-    };
-    if (selectedClasses.length) {
-        for (const oclass of selectedClasses)
-            addCandidates(oclass);
-    } else {
-        addCandidates(null);
-    }
-    candidates.sort((a, b) => a.invlet.localeCompare(b.invlet));
-
-    let sawCandidate = false;
-    for (const obj of candidates) {
-        sawCandidate = true;
-        let choice = 'y';
-        if (!allflag) {
-            choice = await tty_yn_function(
-                `${xprname(obj, null, obj.invlet, false, 0, 0)}?`,
-                'ynaq', 'n');
-        }
-        if (choice === 'q')
-            break;
-        if (choice === 'a')
-            allflag = true;
-        if (allflag || choice === 'y')
-            await select_off(obj);
-    }
-    if (!sawCandidate)
-        await pline('No applicable objects.');
-    return { result: 0, allFinished: combo && allflag };
-}
-
-// src/do_wear.c menu_remarm(), all four menu styles.
-async function menu_remarm(retry = 0) {
-    const {
-        query_remove_categories, add_valid_menu_class, allow_category,
-    } = await import('./pickup.js');
-    /* A negative retry comes from Traditional ggetobj(). Keep the class and
-       BUC filters it just collected until query_worn_items() consumes them. */
-    if (!retry)
-        add_valid_menu_class(0);
-    try {
-        const style = takeoff_menu_style();
-        let all_worn = true;
-        if (retry) {
-            all_worn = retry === -2;
-        } else if (style === MENU_FULL) {
-            const categories = await query_remove_categories(game.invent || []);
-            if (!categories.length)
-                return;
-
-            all_worn = false;
-            for (const category of categories) {
-                if (category === -2)
-                    all_worn = true;
-                else
-                    add_valid_menu_class(category);
-            }
-            if (categories.some((category) => {
-                const ch = typeof category === 'number'
-                    ? String.fromCharCode(category) : category;
-                return 'uBUCX'.includes(ch);
-            }))
-                all_worn = false;
-        } else if (style === MENU_COMBINATION) {
-            const selection = await ggetobj_takeoff(true);
-            if (selection.allFinished)
-                return;
-            all_worn = selection.result === -2;
-        }
-
-        const selected = await query_worn_items(
-            all_worn ? () => true : allow_category);
-        if (selected === null) {
-            if (style !== MENU_COMBINATION)
-                await There('is nothing else you can remove or unwield.');
-            return;
-        }
-        for (const obj of selected)
-            await select_off(obj);
-    } finally {
-        add_valid_menu_class(0);
-    }
-}
-
-// src/do_wear.c doddoremarm(), the 'A' command.
+// src/do_wear.c:3024 doddoremarm()
 export async function doddoremarm() {
     const doff = game.context_takeoff ||= {
         mask: 0, what: 0, delay: 0, disrobing: '',
     };
+    let result = 0;
+    const u = game.u;
     if (doff.what || doff.mask) {
         await You(`continue ${doff.disrobing}.`);
         set_occupation(take_off, doff.disrobing, 0);
         return ECMD_OK;
-    }
-
-    const any_worn = (game.invent || []).some(is_worn_for_takeoff);
-    if (!any_worn) {
+    } else if (!u.uwep && !u.uswapwep && !u.uquiver && !u.uamul
+               && !u.ublindf && !u.uleft && !u.uright && !wearing_armor()) {
         await You('are not wearing anything.');
         return ECMD_OK;
     }
-
     const { add_valid_menu_class } = await import('./pickup.js');
     add_valid_menu_class(0);
-    const style = takeoff_menu_style();
-    if (style === MENU_TRADITIONAL) {
-        const selection = await ggetobj_takeoff(false);
-        if (selection.result < -1)
-            await menu_remarm(selection.result);
-    } else {
-        await menu_remarm();
-    }
-    add_valid_menu_class(0);
+    if (game.flags.menu_style !== MENU_TRADITIONAL
+        || (result = await ggetobj('take off', select_off, 0, false, null)) < -1)
+        await menu_remarm(result);
     if (doff.mask) {
-        doff.disrobing = (doff.mask & ~W_WEAPONS)
-            ? 'disrobing' : 'disarming';
+        doff.disrobing = doff.mask & ~W_WEAPONS ? 'disrobing' : 'disarming';
         await take_off();
     }
     return ECMD_OK;
 }
 
-// src/do_wear.c:76 armoroff()
-async function armoroff(otmp) {
-    const delay = -(objects[otmp.otyp].oc_delay || 0);
+// src/do_wear.c:3091 menu_remarm()
+async function menu_remarm(retry) {
+    const { query_remove_categories, add_valid_menu_class, menu_class_present,
+            query_objlist, is_worn_by_type } = await import('./pickup.js');
+    let all_worn_categories = true;
+    if (retry) {
+        all_worn_categories = retry === -2;
+    } else if (game.flags.menu_style === MENU_FULL) {
+        all_worn_categories = false;
+        const pick_list = await query_remove_categories(game.invent);
+        if (!pick_list.length) return 0;
+        for (const pick of pick_list) {
+            if (pick === ALL_TYPES_SELECTED)
+                all_worn_categories = true;
+            else
+                add_valid_menu_class(pick);
+        }
+    } else if (game.flags.menu_style === MENU_COMBINATION) {
+        const ggofeedback = { v: 0 };
+        const i = await ggetobj('take off', select_off, 0, true, ggofeedback);
+        if (ggofeedback.v & ALL_FINISHED) return 0;
+        all_worn_categories = i === -2;
+    }
+    if (menu_class_present('u') || menu_class_present('B')
+        || menu_class_present('U') || menu_class_present('C') || menu_class_present('X'))
+        all_worn_categories = false;
+    const pick_list = await query_objlist('What do you want to take off?', game.invent,
+        SIGNAL_NOMENU | USE_INVLET | INVORDER_SORT, PICK_ANY,
+        all_worn_categories ? is_worn : is_worn_by_type);
+    const n = Array.isArray(pick_list) ? pick_list.length : pick_list;
+    if (n > 0) {
+        for (const obj of pick_list)
+            await select_off(obj);
+    } else if (n < 0 && game.flags.menu_style !== MENU_COMBINATION) {
+        await There('is nothing else you can remove or unwield.');
+    }
+    return 0;
+}
+
+// src/do_wear.c:1920 armoroff()
+export async function armoroff(otmp) {
+    const delay = -objects[otmp.otyp].oc_delay;
+    let what = null;
 
     if (await cursed(otmp))
         return 0;
-    const cat = objects[otmp.otyp].oc_subtyp;
-    const names = ['suit', 'shield', 'helmet', 'gloves', 'boots',
-                   'cloak', 'shirt'];
-    let what = names[cat] || 'armor';
-    if (cat === 0) what = suit_simple_name(otmp);
-    if (cat === 5) what = cloak_simple_name(otmp);
-    if (cat === 2) what = helm_simple_name(otmp);
-    if (cat === 3) what = gloves_simple_name(otmp);
-    if (cat === 4) what = boots_simple_name(otmp);
-
     if (delay) {
         nomul(delay);
         game.multi_reason = 'disrobing';
-        game.afternmv = async () => {
-            await slot_off(otmp);
-        };
-        game.nomovemsg = `You finish taking off your ${what}.`;
+        switch (objects[otmp.otyp].oc_subtyp) {
+        case ARM_SUIT:
+            what = suit_simple_name(otmp);
+            game.afternmv = Armor_off;
+            break;
+        case ARM_SHIELD:
+            what = shield_simple_name(otmp);
+            game.afternmv = Shield_off;
+            break;
+        case ARM_HELM:
+            what = helm_simple_name(otmp);
+            game.afternmv = Helmet_off;
+            break;
+        case ARM_GLOVES:
+            what = gloves_simple_name(otmp);
+            game.afternmv = Gloves_off;
+            break;
+        case ARM_BOOTS:
+            what = boots_simple_name(otmp);
+            game.afternmv = Boots_off;
+            break;
+        case ARM_CLOAK:
+            what = cloak_simple_name(otmp);
+            game.afternmv = Cloak_off;
+            break;
+        case ARM_SHIRT:
+            what = shirt_simple_name(otmp);
+            game.afternmv = Shirt_off;
+            break;
+        default:
+            await impossible(`Taking off unknown armor (${otmp.otyp}: ${
+                objects[otmp.otyp].oc_subtyp}), delay ${delay}`);
+            break;
+        }
+        if (what)
+            game.nomovemsg = `You finish taking off your ${what}.`.slice(0, 59);
     } else {
-        await slot_off(otmp);
+        switch (objects[otmp.otyp].oc_subtyp) {
+        case ARM_SUIT:
+            await Armor_off();
+            break;
+        case ARM_SHIELD:
+            await Shield_off();
+            break;
+        case ARM_HELM:
+            await Helmet_off();
+            break;
+        case ARM_GLOVES:
+            await Gloves_off();
+            break;
+        case ARM_BOOTS:
+            await Boots_off();
+            break;
+        case ARM_CLOAK:
+            await Cloak_off();
+            break;
+        case ARM_SHIRT:
+            await Shirt_off();
+            break;
+        default:
+            await impossible(`Taking off unknown armor (${otmp.otyp}: ${
+                objects[otmp.otyp].oc_subtyp}), no delay`);
+            break;
+        }
         await off_msg(otmp);
     }
+    const takeoff = (game.context_takeoff ||= {});
+    takeoff.mask = takeoff.what = 0;
     return 1;
 }
 
@@ -2292,44 +2171,10 @@ async function slot_off(otmp) {
         return;
     }
     if (otmp.owornmask & W_ARM) {
-        /* Armor_off clears setworn's primary property before removing the
-           second property supplied by dragon armor. */
-        const wasGoldLight = is_gold_dragon_armor(otmp) && !!otmp.lamplit;
-        setworn(null, W_ARM);
-        if (wasGoldLight)
-            await end_gold_dragon_light(otmp);
-        await dragon_armor_handling(otmp, false);
+        await Armor_off();
     } else {
         setworn(null, mask); /* each C *_off handler clears its own slot */
     }
-}
-
-export async function Gloves_off(otmp) {
-    switch (otmp.otyp) {
-    case ONAMES.GAUNTLETS_OF_POWER:
-        makeknown(otmp.otyp);
-        (game.disp ||= {}).botl = true;
-        break;
-    case ONAMES.GAUNTLETS_OF_DEXTERITY:
-        if (!game.context_takeoff?.cancelled_don && otmp.spe) {
-            makeknown(otmp.otyp);
-            attribute_bonus_array()[A_DEX] -= otmp.spe;
-        }
-        (game.disp ||= {}).botl = true;
-        break;
-    case ONAMES.GAUNTLETS_OF_FUMBLING: {
-        const oldprop = (game.u.uprops?.FUMBLING || 0) & ~WORN_GLOVES;
-        const intrinsic = (game.u.intrinsic ||= {});
-        if (!oldprop && !((intrinsic.HFumbling || 0) & ~TIMEOUT)) {
-            intrinsic.HFumbling = 0;
-            if (game.u.uprops)
-                delete game.u.uprops.FUMBLING;
-        }
-        break;
-    }
-    }
-    setworn(null, W_ARMG);
-    await encumber_msg();
 }
 
 // src/do_wear.c:1771 armor_or_accessory_off()

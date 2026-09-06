@@ -76,7 +76,7 @@ import { visctrl, key2txt, cmdbind_get } from './dokeylist.js';
 import { an, doname } from './objnam.js';
 import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
 import { objects_at } from './mkobj.js';
-import { stairway_at, u_on_newpos } from './mklev.js';
+import { stairway_at, u_on_newpos, maybe_adjust_hero_bubble } from './mklev.js';
 import { In_tutorial } from './dungeon.js';
 import { ATR_INVERSE } from './terminal.js';
 import { dopay } from './shk.js';
@@ -98,6 +98,7 @@ import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
 import { drag_ball, move_bc } from './ball.js';
 import { in_out_region } from './region.js';
 import { m_postmove_effect, can_ooze } from './monmove.js';
+import { exercise_steed } from './steed.js';
 
 /** C cmd.c command_queue[CQ_*] — JS arrays on game. */
 function cmdq_qname(q) {
@@ -358,8 +359,15 @@ export async function can_do_extcmd(extcmd) {
 }
 
 /**
- * C strutil.c pmatch_internal `:103–141` — '*' / '?' (ci via lowc).
- * doextlist search uses pmatchi (ci true, no skip-set).
+ * C strutil.c pmatch_internal `:104–141` — '*' matches 0+ chars, '?'
+ * matches any single char (ci folds via lowc, A–Z only); C `goto
+ * pmatch_top` tail recursion is the `for (;;)` loop; `s`/`p` are read
+ * with pre-advance (`*strng++`, `*patrn++`), so `*` recurses on
+ * `strng - 1` / `patrn - 1` exactly as C does.
+ * `sk` skip-set arm (`:119–127` fuzzy variant) omitted: no C caller
+ * passes non-null sk — both live wrappers pass `(const char *) 0`
+ * (`pmatchz` is declared `extern.h:1265` but never defined in pinned C).
+ * doextlist search uses pmatchi (ci true); checkfile keys use pmatch.
  * @param {string} patrn
  * @param {string} strng
  * @param {boolean} ci
@@ -394,7 +402,17 @@ function pmatch_internal(patrn, strng, ci) {
     return rec(0, 0);
 }
 
-/** C strutil.c pmatchi `:151–155`. */
+/**
+ * C strutil.c pmatch `:144–148` — case-sensitive wildcard match.
+ * Live C callers: pager.c checkfile `:1024–1025` data-base keys
+ * (against `lcase(dbase_str)`, `:866`), files.c debugcore `:3154`
+ * (`#ifdef DEBUG`, no JS counterpart — see map).
+ */
+export function pmatch(patrn, strng) {
+    return pmatch_internal(patrn, strng, false);
+}
+
+/** C strutil.c pmatchi `:150–155`. */
 export function pmatchi(patrn, strng) {
     return pmatch_internal(patrn, strng, true);
 }
@@ -3340,6 +3358,9 @@ async function domove(dx, dy) {
     if (u.usteed) {
         u.usteed.mx = newx;
         u.usteed.my = newy;
+        /* C hack.c:2883 [if move attempt ends up being blocked, should
+         * training count?] exercise_steed(); train riding skill */
+        exercise_steed();
     }
 
     if (mtmp && is_safemon(mtmp)
@@ -3427,6 +3448,12 @@ async function domove(dx, dy) {
                 smudgeCoords.oldx, smudgeCoords.oldy,
                 smudgeCoords.newx, smudgeCoords.newy,
             );
+        }
+        // C ref: hack.c domove `:2702–2705` — maybe_adjust_hero_bubble on the
+        // same RUSH|WALK gate, independent of smudgeCoords; runs after
+        // spoteffects like C (domove_core `:2979–2980` precedes it).
+        if (((game.domove_succeeded || 0) & (DOMOVE_RUSH | DOMOVE_WALK)) !== 0) {
+            maybe_adjust_hero_bubble();
         }
         game.domove_attempting = 0;
     }

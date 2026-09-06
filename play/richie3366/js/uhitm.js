@@ -32,7 +32,7 @@ import {
 import { exercise, A_STR, A_DEX, A_WIS, A_CON, acurr, adjalign, change_luck } from './attrib.js';
 import { overexertion, nomul, losehp, is_pool, maybe_half_phys } from './hack.js';
 import { ing_suffix } from './hacklib.js';
-import { pline, pline_mon, newsym, canseemon, canspotmon, map_invisible, unmap_object, memory_glyph_is_invisible, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph } from './display.js';
+import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, map_invisible, unmap_object, memory_glyph_is_invisible, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph } from './display.js';
 import { cansee } from './vision.js';
 import {
     dmgval, hitval, P_SKILL, weapon_hit_bonus, martial_bonus,
@@ -58,7 +58,7 @@ import {
     is_demon, NON_PM, NUMMONS, has_head, mindless, unsolid, breathless, mons,
     flaming, touch_petrifies, is_vampshifter, is_animal, amphibious,
     is_swimmer, slithy,
-    is_whirly, passes_walls, hates_silver, humanoid,
+    amorphous, noncorporeal, is_whirly, passes_walls, hates_silver, humanoid,
     is_human, always_hostile, is_unicorn,
     MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
 } from './monsters.js';
@@ -77,7 +77,7 @@ import { explode, mon_explodes, adtyp_to_expltype } from './explode.js';
 import { rehumanize, body_part, mbodypart } from './polyself.js';
 import { mon_nam, Monnam, x_monnam, x_monnam_tame, Hallucination, type_is_pname, pmname, a_monnam, safe_oname } from './do_name.js';
 import { artifact_hit, youmonst, is_art, artifact_exists } from './artifact.js';
-import { xname, vtense, The, An, an, singular, makeplural, cxname, simpleonames, otense } from './objnam.js';
+import { xname, vtense, The, An, an, singular, makeplural, cxname, simpleonames, otense, mshot_xname } from './objnam.js';
 import { abuse_dog, tamedog } from './dog.js';
 import { makemon, makemon_appear_msg, newcham } from './makemon.js';
 import { ndemon } from './minion.js';
@@ -358,6 +358,44 @@ function Luck() {
 /** C ref: you.h helpless — msleeping || !mcanmove */
 function helpless(mtmp) {
     return !!(mtmp?.msleeping || mtmp?.mcanmove === 0);
+}
+
+/**
+ * C ref: uhitm.c backstabbable :921–931 — rogue backstab victim check.
+ * Short-circuit order kept: amorphous → whirly → noncorporeal →
+ * mlet blob/eye/fungus → canseemon → fleeing or helpless.
+ * Caller hmon_hitmon_weapon_melee rogue arm (uhitm.c:960) deferred.
+ */
+export function backstabbable(mon) {
+    const data = mon?.data;
+    return !amorphous(data)
+        && !is_whirly(data)
+        && !noncorporeal(data)
+        && data?.mlet !== 'S_BLOB'
+        && data?.mlet !== 'S_EYE'
+        && data?.mlet !== 'S_FUNGUS'
+        && canseemon(mon)
+        && !!(mon?.mflee || helpless(mon));
+}
+
+/**
+ * C ref: uhitm.c disguised_as_mon :6308–6312 — mimicry appearing
+ * as a monster (M_AP_MONSTER). Caller zap.c:197 bhitm STRIKING
+ * resists_magm arm (wired in js/zap.js).
+ */
+export function disguised_as_mon(mtmp) {
+    const ap = M_AP_TYPE(mtmp) | 0;
+    return ap !== 0 && ap === M_AP_MONSTER;
+}
+
+/**
+ * C ref: uhitm.c disguised_as_non_mon :6300–6305 — unsensed mimicry
+ * appearing as furniture/object. Caller zap.c:4953–4955 dobuzz
+ * miss arm (wired in js/zap.js).
+ */
+export function disguised_as_non_mon(mtmp) {
+    const ap = M_AP_TYPE(mtmp) | 0;
+    return !sensemon(mtmp) && ap !== 0 && ap !== M_AP_MONSTER;
 }
 
 /**
@@ -927,7 +965,8 @@ async function hmon(mon, obj, thrown, _dieroll) {
     }
 
     mon.mhp = (mon.mhp | 0) - dmg;
-    const destroyed = (mon.mhp | 0) < 1;
+    // C: hmd.destroyed — knockback below (uhitm.c:1928) may set it via trap kill
+    let destroyed = (mon.mhp | 0) < 1;
     if (destroyed) mon.mhp = 0;
 
     // C: hmon_hitmon_pet — after mhp damage, before msg_hit / killed
@@ -949,8 +988,8 @@ async function hmon(mon, obj, thrown, _dieroll) {
                 await pline('You hit it.');
             }
         } else if (thrown) {
-            // C: thrown/kicked/applied → hit(mshot_xname); mshot deferred
-            const missile = xname(obj);
+            // C uhitm.c:1646-1647: thrown/kicked/applied → hit(mshot_xname)
+            const missile = mshot_xname(obj);
             const bx = game.bhitpos?.x ?? mon.mx;
             const by = game.bhitpos?.y ?? mon.my;
             const whom = ((cansee(bx, by) || canspotmon(mon))
@@ -972,8 +1011,8 @@ async function hmon(mon, obj, thrown, _dieroll) {
         game.mkcorpstat_norevive = false;
         return false; // died
     }
-    // C: !destroyed → wakeup; maybe_knockback → mhitm_knockback
-    // (rn2(3)+rn2(chance) before gates; hurtle body still stubbed)
+    // C uhitm.c:1926-1932 — !destroyed → wakeup; maybe_knockback →
+    // mhitm_knockback (may kill via trap before known_hitum)
     await wakeup(mon, true);
     if (maybe_knockback) {
         let mattk = get_mattk(game.youmonst, 0, mon);
@@ -981,9 +1020,13 @@ async function hmon(mon, obj, thrown, _dieroll) {
         if (mattk.aatyp === AT_NONE) {
             mattk = { aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 0, damd: 0 };
         }
-        mhitm_knockback(game.youmonst, mon, mattk, M_ATTK_HIT, true);
+        const kbm = { hitflags: M_ATTK_HIT };
+        if (await mhitm_knockback(game.youmonst, mon, mattk, kbm, true)
+            && ((kbm.hitflags & M_ATTK_DEF_DIED) !== 0)) {
+            destroyed = true;
+        }
     }
-    return true;
+    return !destroyed;
 }
 
 export { hmon, passive_obj };
@@ -2458,7 +2501,13 @@ export async function hmonas(mon) {
             const died = sum[i] === M_ATTK_DEF_DIED || (mon.mhp | 0) < 1;
             await passive(mon, weapon, sum[i] !== M_ATTK_MISS, !died, aatyp,
                 false);
-            if (mhitm_knockback(ym, mon, mattk, sum[i], weapon_used)) break;
+            {
+                // C uhitm.c:5833 — knockback writes sum[i] via &sum[i], TRUE breaks
+                const kbm = { hitflags: sum[i] };
+                const kb = await mhitm_knockback(ym, mon, mattk, kbm, weapon_used);
+                sum[i] = kbm.hitflags;
+                if (kb) break;
+            }
         }
         // C passivedone: cursed uswapwep drops instead of welding; then
         // DEADMONSTER (deferred until after the drop).

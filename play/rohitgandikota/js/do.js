@@ -1,18 +1,22 @@
 import { allow_all } from './pickup.js';
 import { PICK_ANY } from './const.js';
-import { USE_INVLET } from './const.js';
+import { USE_INVLET, MENU_TRADITIONAL, MENU_COMBINATION, ALL_FINISHED, INCLUDE_VENOM, SELL_DELIBERATE, SELL_NORMAL } from './const.js';
 import { INVORDER_SORT } from './const.js';
 import { Has_contents, bimanual } from './obj.js';
 import { COST_DEGRD } from './const.js';
-import { costly_alteration } from './shk.js';
-import { distu } from './hacklib.js';
+import { costly_alteration, sellobj_state } from './shk.js';
+import { distu, s_suffix } from './hacklib.js';
 import { Tobjnam } from './objnam.js';
-import { breakobj } from './dothrow.js';
+import { breakobj, hitfloor } from './dothrow.js';
+import { finesse_ahriman } from './artifact.js';
+import { W_ART, W_ARTI, I_SPECIAL, TIMEOUT } from './const.js';
+import { float_down } from './trap.js';
 import { obj_resists } from './zap.js';
 import { is_plural } from './obj.js';
 import { pudding_merge_message, obj_meld } from './mkobj.js';
 import { WT_SPLASH_THRESHOLD, ER_DESTROYED, HMON_THROWN, TRAPDOOR, HOLE, NO_TRAP } from './const.js';
-import { weight } from './invent.js';
+import { weight, ggetobj } from './invent.js';
+import { bypass_objlist, nxt_unbypassed_obj } from './worn.js';
 import { map_background } from './display.js';
 import { bury_objs } from './dig.js';
 import { Passes_walls, Underwater, Flying } from './youprop.js';
@@ -71,7 +75,7 @@ import { OCLASSES } from './objects_data.js';
 import { rn2, rnd, d } from './rng.js';
 import { can_reach_floor, u_safe_from_fatal_corpse,
          add_valid_menu_class, allow_category,
-         query_drop_categories, query_objlist } from './pickup.js';
+         query_drop_categories, query_objlist, count_justpicked, find_justpicked } from './pickup.js';
 import { body_part } from './polyself.js';
 import { dmgtype, is_displacer } from './mondata.js';
 import { ATTKS, PMNAMES, MFLAGS } from './monst_data.js';
@@ -85,6 +89,16 @@ import { LEFT_SIDE } from './const.js';
 import { RIGHT_SIDE } from './const.js';
 import { LEG } from './const.js';
 import { makeplural } from './objnam.js';
+import { digests, touch_petrifies } from './mondata.js';
+import { polyfood } from './obj.js';
+import { is_unpaid, stolen_value } from './shk.js';
+import { doname, yobjnam } from './objnam.js';
+import { mbodypart } from './polyself.js';
+import { STOMACH, NC_SHOW_MSG, NO_NC_FLAGS } from './const.js';
+import { mpickobj } from './steal.js';
+import { newcham, healmon, mcureblindness, delobj } from './mon.js';
+import { minstapetrify } from './trap.js';
+import { grow_up } from './makemon.js';
 
 
 
@@ -1063,6 +1077,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         game.level._saved_dndest = { ...(game.dndest || {}) };
         (game.saved_levels ||= new Map())
             .set(`${game.u.uz.dnum}:${game.u.uz.dlevel}`, game.level);
+        (game.visited_ledgers ||= new Set())
+            .add(`${game.u.uz.dnum}:${game.u.uz.dlevel}`);
         /* src/save.c savelev() — leaving a Plane of Water/Air parks the
            bubble/cloud list with the level (and frees the live copy) */
         {
@@ -1177,8 +1193,6 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         }
     } else {
         familiar_level = false;         /* src/do.c "new" is the inverse */
-        game.visited_ledgers.add(ledger);
-
         /* entering this level for the first time; make it now */
         await mklev_fn();
     }
@@ -1506,6 +1520,12 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 
     /* src/do.c:1967 — reset u.uz0 */
     game.u.uz0 = { dnum: game.u.uz.dnum, dlevel: game.u.uz.dlevel };
+    /* src/do.c:1969 save_currentstate(), a checkpoint marks VISITED. */
+    {
+        const { boolean_option } = await import('./options.js');
+        if (boolean_option('checkpoint'))
+            game.visited_ledgers.add(ledger);
+    }
 
     /* src/do.c:1974, a saved overview annotation is repeated on arrival,
        before room messages and the automatic pickup pass. */
@@ -1693,9 +1713,8 @@ export async function deferred_goto() {
 // encumber_msg() runs at the very end and OUTSIDE the swallow branch, so
 // dropping while engulfed still reports the weight change.
 //
-// The engulfer branch, flooreffects, container impact, zombie disturbance,
-// ball dropping, shop selling, stackobj and the blind-levitation map_object
-// are recorded.
+// Container impact, ball landing and blind levitation mapping still have
+// incomplete floor handling below.
 export async function dropz(obj, with_impact) {
     if (obj === game.u.uwep)
         await setuwep_with_feedback(null); /* src/do.c:810 */
@@ -1705,7 +1724,12 @@ export async function dropz(obj, with_impact) {
         setuswapwep(null);      /* src/do.c:814 */
 
     if (game.u.uswallow) {
-        note_unported_do('dropz:engulfer_branch');
+        if (obj !== game.u.uball) {
+            if (is_unpaid(obj))
+                await stolen_value(obj, game.u.ux, game.u.uy, true, false);
+            if (!await engulfer_digests_food(obj))
+                await mpickobj(game.u.ustuck, obj);
+        }
     } else {
         if (await flooreffects(obj, game.u.ux, game.u.uy, 'drop'))
             return;
@@ -1713,7 +1737,7 @@ export async function dropz(obj, with_impact) {
         if (with_impact)
             note_unported_do('dropz:container_impact_dmg');
         impact_disturbs_zombies(obj, with_impact);
-        if (obj === game.uball)
+        if (obj === game.u.uball)
             note_unported_do('dropz:drop_ball');
         else if (game.level?.flags?.has_shop) {
             const { sellobj } = await import('./shk.js');
@@ -1728,6 +1752,41 @@ export async function dropz(obj, with_impact) {
 // src/do.c dropy() — dropz with no impact.
 export async function dropy(obj) {
     await dropz(obj, false);
+}
+
+// src/do.c:853 engulfer_digests_food(); only animal engulfers digest these
+// meat objects immediately, with corpse effects applied before deletion.
+export async function engulfer_digests_food(obj) {
+    if (digests(game.u.ustuck.data)
+        && (obj.otyp === ONAMES.CORPSE || obj.globby
+            || obj.otyp === ONAMES.MEATBALL || obj.otyp === ONAMES.ENORMOUS_MEATBALL
+            || obj.otyp === ONAMES.MEAT_RING || obj.otyp === ONAMES.MEAT_STICK)) {
+        let could_petrify = false, could_poly = false, could_slime = false,
+            could_grow = false, could_heal = false;
+        if (obj.otyp === ONAMES.CORPSE) {
+            could_petrify = touch_petrifies(game.mons[obj.corpsenm]);
+            could_poly = polyfood(obj);
+            could_grow = obj.corpsenm === PMNAMES.PM_WRAITH;
+            could_heal = obj.corpsenm === PMNAMES.PM_NURSE;
+        } else if (obj.otyp === ONAMES.GLOB_OF_GREEN_SLIME) {
+            could_slime = true;
+        }
+        await pline(`${Tobjnam(obj, 'are')} instantly digested!`);
+        if (could_poly || could_slime)
+            await newcham(game.u.ustuck, could_slime ? game.mons[PMNAMES.PM_GREEN_SLIME] : null,
+                could_slime ? NC_SHOW_MSG : NO_NC_FLAGS);
+        else if (could_petrify)
+            await minstapetrify(game.u.ustuck, true);
+        else if (could_grow)
+            await grow_up(game.u.ustuck, null);
+        else if (could_heal) {
+            healmon(game.u.ustuck, game.u.ustuck.mhpmax, 0);
+            await mcureblindness(game.u.ustuck, false);
+        }
+        delobj(obj);
+        return true;
+    }
+    return false;
 }
 
 // src/do.c:363 doaltarobj().
@@ -1799,9 +1858,8 @@ export async function dropx(obj) {
 // how_lost = LOST_DROPPED is set immediately before dropx so the object
 // records how it left inventory; bones and shop code read it.
 //
-// The engulfed branch, the Heart of Ahriman levitation dance (ELevitation is
-// forced so hitfloor happens before float_down), doname messages, canletgo,
-// welded/weldmsg and hitfloor are recorded.
+// Engulfed drops transfer ownership or digest food. High drops retain
+// levitation until impact when releasing the invoked Heart of Ahriman.
 async function better_not_try_to_drop_that(obj) {
     if (obj.otyp !== ONAMES.CORPSE
         || u_safe_from_fatal_corpse(obj, st_all))
@@ -1832,13 +1890,28 @@ export async function drop(obj) {
         setuswapwep(null);
 
     if (game.u.uswallow) {
-        note_unported_do('drop:engulfed_branch');
+        if (game.flags.verbose) {
+            let mnam = mon_nam(game.u.ustuck);
+            if (digests(game.u.ustuck.data))
+                mnam = `${s_suffix(mnam)} ${mbodypart(game.u.ustuck, STOMACH)}`;
+            const onam = is_unpaid(obj) ? yobjnam(obj, null) : doname(obj);
+            await You(`drop ${onam} into ${mnam}.`);
+        }
     } else {
         /* src/do.c:747 — the sink-ring and can't-reach-floor (levitation)
            arms come first; on the ordinary path the drop is announced
            unless it lands on an altar (doaltarobj speaks there) */
         if (!can_reach_floor(true)) {
-            note_unported_do('drop:levitation');
+            const levhack = finesse_ahriman(obj);
+            if (levhack)
+                (game.u.uprops ||= {}).LEVITATION = W_ART;
+            if (game.flags.verbose)
+                await You(`drop ${doname(obj)}.`);
+            freeinv(obj);
+            await hitfloor(obj, true);
+            if (levhack)
+                await float_down(I_SPECIAL | TIMEOUT, W_ARTI | W_ART);
+            return ECMD_TIME;
         } else if (!IS_ALTAR(game.level.at(game.u.ux, game.u.uy)?.typ)
                    && game.flags?.verbose !== false) {
             const { You } = await import('./pline.js');
@@ -1915,68 +1988,87 @@ async function menudrop_split(obj, count) {
     return drop(selected);
 }
 
+// src/do.c:924 doddrop()
 export async function doddrop() {
+    let result = ECMD_OK;
     if (!game.invent?.length) {
         await You('have nothing to drop.');
         return ECMD_OK;
     }
-
     add_valid_menu_class(0);
-    if (game.u.ushops?.length) {
-        const { sellobj_state } = await import('./shk.js');
-        sellobj_state(1); // SELL_DELIBERATE
-    }
+    if (game.u.ushops?.length) sellobj_state(SELL_DELIBERATE);
+    if (game.flags.menu_style !== MENU_TRADITIONAL
+        || (result = await ggetobj('drop', drop, 0, false, null)) < -1)
+        result = await menu_drop(result);
+    if (game.u.ushops?.length) sellobj_state(SELL_NORMAL);
+    if (result) reset_occupations();
+    return result;
+}
 
-    let result = ECMD_OK;
-    if ((game.flags?.menu_style ?? MENU_FULL) === MENU_FULL) {
-        let all_categories = false;
-        let drop_everything = false;
-        let autopick = false;
-        const categories = await query_drop_categories(game.invent);
-
-        for (const category of categories) {
-            if (category === ALL_TYPES_SELECTED) {
-                all_categories = true;
-            } else if (category === 'A'.charCodeAt(0)) {
-                drop_everything = autopick = true;
-            } else {
-                add_valid_menu_class(category);
-                drop_everything = false;
-            }
-        }
-
-        let dropped = 0;
-        if (autopick) {
-            for (const obj of [...game.invent]) {
-                if (drop_everything || all_categories || allow_category(obj))
-                    dropped += (await drop(obj)) === ECMD_TIME ? 1 : 0;
-            }
-        } else if (categories.length) {
-            const eligible = game.invent.filter(
-                (obj) => all_categories || allow_category(obj));
-            const objects = await query_objlist(
-                'What would you like to drop?', eligible,
-                INVORDER_SORT | USE_INVLET, PICK_ANY, allow_all);
-            for (const obj of objects) {
-                if (game.invent.includes(obj)) {
-                    const count = objects.counts?.get(obj) ?? obj.quan;
-                    dropped += (await menudrop_split(obj, count)) === ECMD_TIME
-                        ? 1 : 0;
+// src/do.c:982 menu_drop()
+async function menu_drop(retry) {
+    let n_dropped = 0;
+    let all_categories = true, drop_everything = false, autopick = false;
+    let drop_justpicked = false, justpicked_quan = 0;
+    drop_done: {
+        if (retry) {
+            all_categories = retry === -2;
+        } else if (game.flags.menu_style === MENU_FULL) {
+            all_categories = false;
+            const pick_list = await query_drop_categories(game.invent);
+            if (!pick_list.length) break drop_done;
+            for (const pick of pick_list) {
+                if (pick === ALL_TYPES_SELECTED) {
+                    all_categories = true;
+                } else if (pick === 65) {
+                    drop_everything = autopick = true;
+                } else if (pick === 80) {
+                    justpicked_quan = Math.max(0, pick_list.counts?.get(pick) ?? 0);
+                    drop_justpicked = true;
+                    drop_everything = false;
+                    add_valid_menu_class(pick);
+                } else {
+                    add_valid_menu_class(pick);
+                    drop_everything = false;
                 }
             }
+        } else if (game.flags.menu_style === MENU_COMBINATION) {
+            const ggoresults = { v: 0 };
+            all_categories = false;
+            const i = await ggetobj('drop', drop, 0, true, ggoresults);
+            if (i === -2) all_categories = true;
+            if (ggoresults.v & ALL_FINISHED) {
+                n_dropped = i;
+                break drop_done;
+            }
         }
-        result = dropped ? ECMD_TIME : ECMD_OK;
-    } else {
-        note_unported_do('doddrop:non_full_menu_style');
+        if (autopick) {
+            bypass_objlist(game.invent, false);
+            let otmp;
+            while ((otmp = nxt_unbypassed_obj(game.invent)) !== null)
+                if (drop_everything || all_categories || allow_category(otmp))
+                    n_dropped += (await drop(otmp) & ECMD_TIME) ? 1 : 0;
+            bypass_objlist(game.invent, false);
+        } else if (drop_justpicked && count_justpicked(game.invent) === 1) {
+            const otmp = find_justpicked(game.invent);
+            if (otmp)
+                n_dropped += (await menudrop_split(otmp, justpicked_quan) & ECMD_TIME) ? 1 : 0;
+        } else {
+            const pick_list = await query_objlist('What would you like to drop?', game.invent,
+                USE_INVLET | INVORDER_SORT | INCLUDE_VENOM, PICK_ANY,
+                all_categories ? allow_all : allow_category);
+            if (pick_list.length > 0) {
+                bypass_objlist(game.invent, true);
+                for (const otmp of pick_list) {
+                    if (!game.invent.includes(otmp) || !otmp.bypass) continue;
+                    n_dropped += (await menudrop_split(otmp,
+                        pick_list.counts?.get(otmp) ?? -1) & ECMD_TIME) ? 1 : 0;
+                }
+                bypass_objlist(game.invent, false);
+            }
+        }
     }
-
-    if (game.u.ushops?.length) {
-        const { sellobj_state } = await import('./shk.js');
-        sellobj_state(0); // SELL_NORMAL
-    }
-    if (result)
-        reset_occupations();
-    return result;
+    return n_dropped ? ECMD_TIME : ECMD_OK;
 }
 
 // src/do.c:665 canletgo() — may this object leave the hero's hands?

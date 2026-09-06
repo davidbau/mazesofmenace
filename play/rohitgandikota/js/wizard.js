@@ -394,7 +394,7 @@ export async function tactics(mtmp) {
                     const { obj_extract_self } = await import('./invent.js');
                     const { mpickobj } = await import('./steal.js');
                     obj_extract_self(otmp);
-                    mpickobj(mtmp, otmp);
+                    await mpickobj(mtmp, otmp);
                     return 1;
                 } else
                     return 0;

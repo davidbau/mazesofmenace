@@ -102,7 +102,7 @@ function monname(idx) {
 }
 
 // src/questpgr.c:50 ldrname(), :121 neminame(), :131 guardname()
-function ldrname() { return monname(game.urole.ldrnum); }
+export function ldrname() { return monname(game.urole.ldrnum); }
 function neminame() { return monname(game.urole.neminum); }
 function guardname() {
     const pm = mons[game.urole.guardnum];

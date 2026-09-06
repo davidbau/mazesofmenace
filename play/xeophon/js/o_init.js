@@ -20,6 +20,14 @@ const DESCRIPTION_SHUFFLE_LENGTHS = [
     7,  // boots: speed boots through levitation boots
 ];
 
+// Canonical identities are separate from the shuffled appearance strings.
+export const IDENTIFIED_AMULET_NAMES = [
+    'amulet of esp', 'amulet of life saving', 'amulet of strangulation',
+    'amulet of restful sleep', 'amulet versus poison', 'amulet of change',
+    'amulet of unchanging', 'amulet of reflection', 'amulet of magical breathing',
+    'amulet of guarding', 'amulet of flying',
+];
+
 const AMULET_DESCRIPTIONS = [
     'circular', 'spherical', 'oval', 'triangular', 'pyramidal', 'square',
     'concave', 'hexagonal', 'octagonal', 'perforated', 'cubical',
@@ -193,3 +201,20 @@ export function init_objects() {
     };
     rn2(2); // WAN_NOTHING direction.
 }
+
+// C objnam.c:Japanese_items: localized display names retain their object identity.
+export const JAPANESE_ITEM_ALIASES = new Map([
+    ['wakizashi', 'short sword'],
+    ['ninja-to', 'broadsword'],
+    ['nunchaku', 'flail'],
+    ['naginata', 'glaive'],
+    ['osaku', 'lock pick'],
+    ['koto', 'wooden harp'],
+    ['magic koto', 'magic harp'],
+    ['shito', 'knife'],
+    ['tanko', 'plate mail'],
+    ['kabuto', 'helmet'],
+    ['yugake', 'leather gloves'],
+    ['gunyoki', 'food ration'],
+    ['sake', 'potion of booze'],
+]);

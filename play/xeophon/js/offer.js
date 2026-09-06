@@ -81,7 +81,7 @@ export function isHighAltarAt(x = game.u?.ux || 0, y = game.u?.uy || 0) {
 
 // Pantheon table matching the GODS_BY_ROLE copies in cmd.js/allmain.js.
 // C ref: src/pray.c:align_gname() via role pantheons (prayer.c rolegod.h data).
-const OFFER_GODS_BY_ROLE = {
+export const OFFER_GODS_BY_ROLE = {
     Archeologist: ['Quetzalcoatl', 'Camaxtli', 'Huhetotl'],
     Barbarian: ['Mitra', 'Crom', 'Set'],
     Caveman: ['Anu', 'Ishtar', 'Anshar'],

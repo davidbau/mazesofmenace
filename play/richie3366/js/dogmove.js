@@ -30,6 +30,7 @@ import { FOOD_CLASS, BALL_CLASS, CHAIN_CLASS, ROCK_CLASS, COIN_CLASS, objectName
 import {
     monsterNames, mons, carnivorous, herbivorous, vegan, acidic, poisonous,
     is_swimmer, likes_lava, throws_rocks, is_rider,
+    unsolid, nolimbs, has_head, LOW_PM, NUMMONS,
     PM_LICHEN, MZ_TINY, MZ_SMALL, MZ_MEDIUM, MZ_LARGE, MZ_HUGE,
 } from './monsters.js';
 import { m_cansee, couldsee, cansee, do_clear_area } from './vision.js';
@@ -44,6 +45,7 @@ import { dismount_steed } from './steed.js';
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_GELATINOUS_CUBE = monsterNames.indexOf('PM_GELATINOUS_CUBE');
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
+const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
 
 /** C ref: monflag.h enum ms_sounds — pal/target tests (D-1093). */
 const MS_LEADER = 36;
@@ -1043,4 +1045,20 @@ export function finish_meating(mtmp) {
     if (!mtmp) return;
     mtmp.meating = 0;
     // M_AP_NOTHING / mappearance reset for non-mimic quickmimic deferred
+}
+
+/**
+ * C ref: dogmove.c:1460-1469 mnum_leashable — variation of leashable() that
+ * takes a PM_ index (quickmimic leash-slack check); HIGH_PM is NUMMONS-1
+ * per permonst.h:22. `| 0` int idiom; `||`/`&&` short-circuit so mons() is
+ * never read out of range. Named: caller wiring — quickmimic unwired
+ * (comment-only refs in js/dogmove.js and js/mon.js).
+ */
+export function mnum_leashable(mnum) {
+    const m = mnum | 0;
+    return ((m >= LOW_PM && m <= NUMMONS - 1)
+            && m !== PM_LONG_WORM && !unsolid(mons(m))
+            && (!nolimbs(mons(m)) || has_head(mons(m))))
+        ? true
+        : false;
 }

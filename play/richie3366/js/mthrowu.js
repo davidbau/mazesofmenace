@@ -1,7 +1,7 @@
 // mthrowu.js — Monster ranged throw/shoot (partial).
 // C ref: mthrowu.c thrwmu / monshoot / m_throw / ohitmon / thitu /
 //         lined_up / m_lined_up / spitmm / spitmu / breamm / breamu /
-//         u_catch_thrown_obj / drop_throw / return_from_mtoss.
+//         u_catch_thrown_obj / ucatchgem / drop_throw / return_from_mtoss.
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
@@ -27,7 +27,7 @@ import {
     place_object, splitobj, stackobj, obj_extract_self, delobj, objects_at,
     mksobj, weight, is_flammable,
 } from './mkobj.js';
-import { observe_object } from './invent.js';
+import { observe_object, makeknown, hold_another_object } from './invent.js';
 import {
     MON_WEP, select_rwep, mon_wield_item, monmulti, dmgval, hitval,
     should_mulch_missile,
@@ -43,11 +43,12 @@ import {
     pline, mon_visible, see_with_infrared, tmp_at, obj_glyph,
     nh_delay_output, newsym, canspotmon,
 } from './display.js';
-import { Monnam, mon_nam } from './do_name.js';
+import { Monnam, mon_nam, s_suffix as s_suffix_ucatch } from './do_name.js';
 import {
     nohands, mons, throws_rocks, MZ_MEDIUM, MZ_TINY, nonliving,
+    is_unicorn,
 } from './monsters.js';
-import { xname, singular, an, vtense, the, makeplural } from './objnam.js';
+import { xname, singular, an, vtense, the, makeplural, mshot_xname } from './objnam.js';
 import { mbodypart, body_part } from './polyself.js';
 import {
     VENOM_CLASS, POTION_CLASS, WEAPON_CLASS, GEM_CLASS, TOOL_CLASS,
@@ -96,6 +97,9 @@ const BAG_OF_HOLDING = objectNames.indexOf('BAG_OF_HOLDING');
 const WAN_STRIKING = objectNames.indexOf('WAN_STRIKING');
 const BLINDING_VENOM = objectNames.indexOf('BLINDING_VENOM');
 const ACID_VENOM = objectNames.indexOf('ACID_VENOM');
+/** C ref: objects.h FIRST_GLASS_GEM / LAST_GLASS_GEM (mhitm.js idiom). */
+const FIRST_GLASS_GEM = objectNames.indexOf('WORTHLESS_WHITE_GLASS');
+const LAST_GLASS_GEM = objectNames.indexOf('WORTHLESS_VIOLET_GLASS');
 /** C objclass.h arm_gloves + materials.h. */
 const ARM_GLOVES = 3;
 const LEATHER = 7;
@@ -504,7 +508,8 @@ export async function breamu(mtmp, mattk) {
 
 /**
  * C ref: mthrowu.c thitu — hit/miss vs hero AC; onm via an(xname)/mshot.
- * Multishot mshot_xname "the Nth" prefix deferred (single-shot path).
+ * C mthrowu.c:89-90: quan>1 → doname, else mshot_xname (objnam.c:1090-1102).
+ * doname stays deferred (singular keeps the old quan>1 wording).
  */
 export async function thitu(tlev, dam, objp, name) {
     const obj = objp ? objp.obj : null;
@@ -514,8 +519,8 @@ export async function thitu(tlev, dam, objp, name) {
     let onmbuf;
     if (!name) {
         if (!obj) throw new Error('thitu: name & obj both null');
-        // quan>1 → doname deferred; single missile uses xname (mshot_xname)
-        onmbuf = singular(obj, xname) || xname(obj) || 'missile';
+        onmbuf = ((obj.quan | 0) > 1 ? singular(obj, xname) : mshot_xname(obj))
+            || 'missile';
         name = onmbuf;
     } else {
         onmbuf = name;
@@ -569,6 +574,33 @@ function u_catch_thrown_obj(otmp) {
         && calc_capacity(otmp.owt || 0) <= SLT_ENCUMBER
         && !rn2(catch_chance)) {
         // hold_another_object deferred — object leaves flight path
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: mthrowu.c ucatchgem `:505–529` — hero poly'd into a unicorn
+ * catches a thrown gem before the generic catch / potionhit arms.
+ * Caller has verified gem.oclass === GEM_CLASS. Glass (FIRST..LAST)
+ * is caught then dropped (makeknown + dropy); real gems go through
+ * hold_another_object. Rock / gray stone (otyp > LAST) never caught.
+ * C is sync; JS is async (pline / dropy / hold_another_object await).
+ */
+export async function ucatchgem(gem, mon) {
+    if (((gem?.otyp | 0) <= LAST_GLASS_GEM) && is_unicorn(game.youmonst?.data)) {
+        const gem_xname = xname(gem);
+        const mon_s_name = s_suffix_ucatch(mon_nam(mon));
+        if ((gem.otyp | 0) >= FIRST_GLASS_GEM) {
+            await pline(`You catch the ${gem_xname}.`);
+            await pline(`You are not interested in ${mon_s_name} junk.`);
+            makeknown(gem.otyp | 0);
+            const { dropy } = await import('./do.js');
+            await dropy(gem);
+        } else {
+            await pline(`You accept ${mon_s_name} gift in the spirit in which it was intended.`);
+            await hold_another_object(gem, 'You catch, but drop, %s.', gem_xname, 'You catch:');
+        }
         return true;
     }
     return false;
@@ -996,6 +1028,10 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
             const u = game.u || {};
             if (u.ux === bx && u.uy === by) {
                 if (game.multi) nomul(0);
+                // C mthrowu.c:692 — hero poly'd into unicorn catches gems
+                // before the generic catch; C breaks (not returns).
+                if (singleobj.oclass === GEM_CLASS && await ucatchgem(singleobj, mon))
+                    break;
                 // C :695 — tethered cannot be caught
                 if (!tethered_weapon && u_catch_thrown_obj(singleobj)) {
                     if (sym) tmp_at(DISP_END, 0);

@@ -137,6 +137,7 @@ import {
     is_mplayer,
     is_rider,
     monster_resists_element,
+    monstseesu,
     monstunseesu,
     nonliving,
     nohands,
@@ -200,7 +201,7 @@ import { healup } from './potion.js';
 import { d, rn1, rn2, rnd, rne, rnl, rnz } from './rng.js';
 import { monkilled, wakeup, xkilled } from './mon.js';
 import { m_at } from './monst.js';
-import { mon_reflects } from './muse.js';
+import { mon_reflects, ureflects } from './muse.js';
 import { check_unpaid, inside_shop } from './shk.js';
 import { canSpotMonster, messageAt } from './startup_a11y.js';
 import { closed_door } from './monmove.js';
@@ -215,6 +216,7 @@ import { burn_away_slime, fall_asleep } from './timeout.js';
 import { ttyPline, ttyUrgentPline } from './tty_message.js';
 import { burn_floor_objects, destroy_items } from './zap_destroy_items.js';
 import { ignite_items } from './apply_catch_lit.js';
+import { note_unported } from './unported.js';
 
 // The wish parser raises every other refusal, so the class lives with it.
 export { UnsupportedWishError };
@@ -615,7 +617,7 @@ export function resist(mtmp, oclass, damage, tell, state = game, random = { rn2 
 // damage is fatal. Returns the damage dealt. Sets *ootmp (here returned as
 // the second element) to a piece of armor to disintegrate when appropriate.
 //
-// Only the ZT_COLD branch is ported; every other damage type throws.
+// The ZT_FIRE and ZT_COLD branches are ported; every other damage type throws.
 // `is_hero_spell(type)` is `type >= 10 && type < 20`. For a wand zap (type
 // 0-9), `spellcaster` is false and `spell_damage_bonus` is never called.
 export async function zhitm(mon, type, nd, state = game, random = { d, rn2 }) {
@@ -626,6 +628,28 @@ export async function zhitm(mon, type, nd, state = game, random = { d, rn2 }) {
     const spellcaster = type >= 10 && type < 20; /* is_hero_spell(type) */
 
     switch (damgtype) {
+    case ZT_FIRE:
+        if (monster_resists_element(mon, FIRE_RES, state)
+            || defended(mon, AD_FIRE, state)) {
+            sho_shieldeff = true;
+            break;
+        }
+        tmp = random.d(nd, 6);
+        if (spellcaster) {
+            throw new UnsupportedZapError(
+                'spell_damage_bonus() for a fire spell a hero cast',
+            );
+        }
+        /* includes spell bonus but not monster vuln to fire */
+        {
+            const orig_dmg = tmp;
+            if (monster_resists_element(mon, COLD_RES, state))
+                tmp += 7;
+            /* burnarmor(mon) for a monster victim is not ported yet;
+               skip the burnarmor/destroy_items/ignite_items block */
+            note_unported('trap_erode_obj.c burnarmor monster arm');
+        }
+        break;
     case ZT_COLD:
         if (monster_resists_element(mon, COLD_RES, state)
             || defended(mon, AD_COLD, state)) {
@@ -1590,9 +1614,8 @@ async function zap_over_floor(
 // armor-disintegration sub-arms throw because no witness exercises them.
 //
 // The arms that still stop, each before it changes state, draws or writes:
-// u.uswallow (4802-4820), u.usteed (4959-4961), Reflecting (4966-4976),
-// flashburn() (4988-4989), Is_airlevel (5008-5013) and pay_for_damage()
-// (5028-5035).
+// u.uswallow (4802-4820), u.usteed (4959-4961), flashburn() (4988-4989),
+// Is_airlevel (5008-5013) and pay_for_damage() (5028-5035).
 export async function dobuzz(
     type,               /* 0..29 (by hero) or -39..-10 (by monster) */
     nd,                 /* damage strength ('number of dice') */
@@ -1828,9 +1851,22 @@ export async function dobuzz(
                         state,
                     );
                     if (Reflecting(state)) {
-                        throw new UnsupportedZapError(
-                            'ureflects() for a hero the bolt bounces off',
-                        );
+                        if (!heroIsBlind(state)) {
+                            await ureflects(
+                                'But %s reflects from your %s!', 'it', state,
+                            );
+                        } else {
+                            await ttyPline(
+                                'For some reason you are not affected.',
+                                state,
+                            );
+                        }
+                        monstseesu(M_SEEN_REFL, state);
+                        dx = negate(dx);
+                        dy = negate(dy);
+                        // shieldeff(sx, sy) is a visual animation;
+                        // skipped because it has no game-state or RNG effect.
+                        gas_hit = false;
                     } else {
                         /* flash_str here only used for killer; suppress
                          * hallucination */

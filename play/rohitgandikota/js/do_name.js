@@ -709,25 +709,12 @@ export async function docallcmd() {
     return ECMD_OK;
 }
 
-// src/dungeon.c:2520 query_annotation() and :2571 donamelevel().
+// src/dungeon.c donamelevel(), the menu prefix selects a level first.
 export async function donamelevel() {
-    const key = `${game.u.uz.dnum}:${game.u.uz.dlevel}`;
-    const old = game.level_annotations?.[key] || '';
-    const prompt = old
-        ? `Replace annotation "${old.slice(0, 30)}${old.length > 30 ? '...' : ''}" with?`
-        : 'What do you want to call this dungeon level?';
-    const { getlin } = await import('./cmd.js');
-    const raw = await getlin(prompt);
-
-    if (raw == null || raw === '' || raw[0] === '\x1b')
-        return ECMD_OK;
-
-    const annotation = raw.replace(/[ \t]+/g, ' ').trim();
-    const annotations = (game.level_annotations ||= {});
-    if (annotation)
-        annotations[key] = annotation;
-    else
-        delete annotations[key];
+    const { dooverview, query_annotation } = await import('./dungeon.js');
+    if (game.iflags.menu_requested)
+        return await dooverview();
+    await query_annotation(null);
     return ECMD_OK;
 }
 

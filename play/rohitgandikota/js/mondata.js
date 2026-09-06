@@ -14,7 +14,7 @@ import { W_AMUL } from './const.js';
 import { Breathless } from './youprop.js';
 import { monsndx } from './makemon.js';
 import { M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_POISON, M_SEEN_ACID } from './const.js';
-import { PMNAMES, MONSYMS, MFLAGS, ATTKS, GROWNUPS } from './monst_data.js';
+import { PMNAMES, MONSYMS, MFLAGS, MSOUND, ATTKS, GROWNUPS } from './monst_data.js';
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
 import { Hallucination, Invis, Underwater, Unaware } from './youprop.js';
@@ -617,22 +617,38 @@ export function attacktype(ptr, atyp) {
 
 // include/mondata.h:26 breathless()
 export const breathless = (d) => (d.mflags1 & MFLAGS.M1_BREATHLESS) !== 0;
+// include/mondata.h:28 cant_drown()
+export const cant_drown = (ptr) => is_swimmer(ptr) || amphibious(ptr) || breathless(ptr);
+// include/mondata.h:16 immune_poisongas()
+export const immune_poisongas = (ptr) => ptr.pmidx === PMNAMES.PM_HEZROU
+    || ptr.pmidx === PMNAMES.PM_VROCK;
 // include/mondata.h:55 has_head() — note the sense: NOHEAD CLEAR means it has one
 export const has_head   = (d) => (d.mflags1 & MFLAGS.M1_NOHEAD) === 0;
 // include/mondata.h:62 is_silent()
-export const is_silent  = (d) => d.msound === MFLAGS.MS_SILENT;
+export const is_silent  = (d) => d.msound === MSOUND.MS_SILENT;
 
 // src/mondata.c:567 can_blow() — can this monster blow a horn?
 //
 export function can_blow(mtmp) {
-    const d = game.mons[mtmp.mnum];
+    const d = mtmp.data;
 
-    if ((is_silent(d) || d.msound === MFLAGS.MS_BUZZ)
+    if ((is_silent(d) || d.msound === MSOUND.MS_BUZZ)
         && (breathless(d) || verysmall(d) || !has_head(d)
             || d.mlet === MONSYMS.S_EEL))
         return false;
     if (mtmp === game.youmonst
         && (game.u.intrinsic?.HStrangled || game.u.uprops?.STRANGLED))
+        return false;
+    return true;
+}
+
+// src/mondata.c:580 can_chant()
+export function can_chant(mtmp) {
+    if ((mtmp === game.youmonst
+         && (game.u.intrinsic?.HStrangled || game.u.uprops?.STRANGLED))
+        || is_silent(mtmp.data) || !has_head(mtmp.data)
+        || mtmp.data.msound === MSOUND.MS_BUZZ
+        || mtmp.data.msound === MSOUND.MS_BURBLE)
         return false;
     return true;
 }
@@ -1074,6 +1090,10 @@ import { objdescr_is } from './o_init.js';
 // include/mondata.h:71 digests() — swallow-and-digest engulfer (purple worm).
 export const digests = (ptr) =>
     dmgtype_fromattack(ptr, ATTKS.AD_DGST, ATTKS.AT_ENGL) != null;
+
+// include/mondata.h:73 enfolds()
+export const enfolds = (ptr) =>
+    dmgtype_fromattack(ptr, ATTKS.AD_WRAP, ATTKS.AT_ENGL) != null;
 
 // src/mondata.c:1522 cvt_adtyp_to_mseenres(), damage type to the
 // "monster has seen hero resist this" bit.

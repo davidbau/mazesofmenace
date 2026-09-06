@@ -10,7 +10,7 @@
 
 import { dirtocoord } from './cmd.js';
 import { PLINE_VERBALIZE, BUFSZ, DEVTEAM_EMAIL, URGENT_MESSAGE } from './const.js';
-import { pline } from './display.js';
+import { pline, message_with_location } from './display.js';
 import { game } from './gstate.js';
 import { Deaf, Unaware, Underwater } from './youprop.js';
 
@@ -106,9 +106,7 @@ export function set_msg_dir(dir) {
 
 // src/pline.c:93 set_msg_xy() — where the NEXT message is considered to happen.
 //
-// This feeds a11y.msg_loc, which only the accessibility message-location
-// feature reads. It touches no cell of the 24x80 grid, so it is invisible to
-// scoring; it exists so pline_xy below reads the way C reads.
+// The next message consumes this location, even when accessiblemsg is off.
 export function set_msg_xy(x, y) {
     (game.a11y ||= {}).msg_loc = { x, y };
 }
@@ -140,6 +138,7 @@ export async function There(line) {
 // individual message. gp.prevmsg is separate from the tty's combined top
 // line, which can contain several messages joined with two spaces.
 export async function Norep(line) {
+    line = message_with_location(line);
     if ((game._prevmsg || '') !== line)
         await pline(line);
 }

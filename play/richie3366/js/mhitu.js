@@ -2433,7 +2433,7 @@ async function hitmu(mtmp, mattk) {
 
     await mhitm_adtyping_u(mtmp, mattk, mhm);
     // C ref: mhitu.c hitmu — knockback(mtmp, &youmonst, mattk, &hitflags, MON_WEP!=0)
-    mhitm_knockback(mtmp, game.youmonst, mattk, mhm.hitflags, MON_WEP(mtmp) != null);
+    await mhitm_knockback(mtmp, game.youmonst, mattk, mhm, MON_WEP(mtmp) != null);
 
     if (mhm.done) return mhm.hitflags;
 

@@ -11,14 +11,14 @@ import { d, rn1, rn2, rnd } from './rng.js';
 import {
     ALTAR, A_DEX, A_MAX, A_STR, A_WIS, BEAR_TRAP, COLNO, CORR, DBWALL, DIGTYP_BOULDER,
     DIGTYP_DOOR, DIGTYP_ROCK, DIGTYP_STATUE, DIGTYP_TREE, DIGTYP_UNDIGGABLE,
-    DOOR, D_BROKEN, D_CLOSED, D_LOCKED, D_NODOOR, D_TRAPPED, DRAWBRIDGE_DOWN,
+    DIR_180, DOOR, D_BROKEN, D_CLOSED, D_LOCKED, D_NODOOR, D_TRAPPED, DRAWBRIDGE_DOWN,
     FOUNTAIN, GRAVE,
     HOLE, ICE, IRONBARS, IS_DOOR, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_WALL,
     Is_airlevel, Is_botlevel, Is_earthlevel, Is_rogue_level, Is_waterlevel,
-    LANDMINE, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MM_NOMSG, MOAT, PIT,
+    LANDMINE, LAVAPOOL, LAVAWALL, MAGIC_PORTAL, MM_NOMSG, MOAT, N_DIRS, PIT,
     POOL, ROOM, ROOMOFFSET, ROWNO, SCORR, SDOOR, SHARED, SHARED_PLUS,
     SHOPBASE, SPIKED_PIT, STAIRS, STONE, THRONE, TRAPDOOR, TREE, TT_PIT,
-    VIBRATING_SQUARE, WATER, WEB, W_NONDIGGABLE, isok,
+    VIBRATING_SQUARE, WATER, WEB, W_NONDIGGABLE, isok, xdir, ydir,
 } from './const.js';
 
 export { DIGTYP_BOULDER, DIGTYP_DOOR, DIGTYP_ROCK, DIGTYP_STATUE, DIGTYP_TREE, DIGTYP_UNDIGGABLE } from './const.js';
@@ -94,6 +94,31 @@ function closedDoorAt(x, y) {
     return !!loc && loc.typ === DOOR && !!(loc.doormask & (D_CLOSED | D_LOCKED));
 }
 
+// C ref: trap.c conjoined_pits() — each pit records its side of the shared edge.
+export function conjoinedPits(target, origin) {
+    if (!target || !origin || !isok(target.tx, target.ty) || !isok(origin.tx, origin.ty))
+        return false;
+    if ((target.ttyp !== PIT && target.ttyp !== SPIKED_PIT)
+        || (origin.ttyp !== PIT && origin.ttyp !== SPIKED_PIT)) return false;
+    const dx = Math.sign(target.tx - origin.tx);
+    const dy = Math.sign(target.ty - origin.ty);
+    const direction = xdir.findIndex((x, index) => index < N_DIRS && x === dx && ydir[index] === dy);
+    return direction >= 0 && !!(origin.conjoined & (1 << direction))
+        && !!(target.conjoined & (1 << DIR_180(direction)));
+}
+
+// C trap.c:clear_conjoined_pits removes both sides when a pit disappears.
+export function clearConjoinedPits(trap) {
+    if (!trap || (trap.ttyp !== PIT && trap.ttyp !== SPIKED_PIT)) return;
+    for (let direction = 0; direction < N_DIRS; direction++) {
+        if (!(trap.conjoined & (1 << direction))) continue;
+        const neighbor = digTrapAt(trap.tx + xdir[direction], trap.ty + ydir[direction]);
+        if (neighbor && (neighbor.ttyp === PIT || neighbor.ttyp === SPIKED_PIT))
+            neighbor.conjoined &= ~(1 << DIR_180(direction));
+        trap.conjoined &= ~(1 << direction);
+    }
+}
+
 // C ref: dig.c pick_can_reach() — one-handed picks can't reach statues or
 // boulders resting in (non-conjoined) pits unless the hero is in one too.
 export function pickCanReach(pick, x, y) {
@@ -101,9 +126,8 @@ export function pickCanReach(pick, x, y) {
     const targetInPit = !!trap && (trap.ttyp === PIT || trap.ttyp === SPIKED_PIT) && !!trap.tseen;
     if (heroInPit()) {
         if (targetInPit) {
-            // conjoined_pits() approximation: JS tracks conjoined bits on traps.
             const heroTrap = digTrapAt(game.u?.ux || 0, game.u?.uy || 0);
-            return !!(trap.conjoined && heroTrap?.conjoined);
+            return conjoinedPits(trap, heroTrap);
         }
         return digToolBimanual(pick);
     }
@@ -624,7 +648,13 @@ export function horizontalUndiggableResult(item, x, y) {
     if (heroInPit()) {
         const heroTrap = digTrapAt(game.u?.ux || 0, game.u?.uy || 0);
         if (trap && (trap.ttyp === PIT || trap.ttyp === SPIKED_PIT)
-            && heroTrap && !(trap.conjoined && heroTrap.conjoined)) {
+            && heroTrap && !conjoinedPits(trap, heroTrap)) {
+            const dx = Math.sign(x - game.u.ux);
+            const dy = Math.sign(y - game.u.uy);
+            const direction = xdir.findIndex((dirX, index) => index < N_DIRS && dirX === dx && ydir[index] === dy);
+            if (direction < 0) return result;
+            heroTrap.conjoined |= 1 << direction;
+            trap.conjoined |= 1 << DIR_180(direction);
             result.message = 'You clear some debris from between the pits.';
             return result;
         }

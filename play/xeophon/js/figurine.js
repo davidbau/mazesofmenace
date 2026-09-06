@@ -3,10 +3,13 @@ import { limitedMonsterBirthLimit, makemon, monsterNameExtinct, set_malign } fro
 import { newsym } from './display.js';
 import {
     CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_MALE,
-    IS_OBSTRUCTED, IS_TREE, MM_EDOG, MM_FEMALE, MM_IGNOREWATER,
-    MM_MALE, MM_NOMSG, NO_MINVENT, isok,
+    IS_OBSTRUCTED, IS_STWALL, IS_TREE, MM_EDOG, MM_FEMALE, MM_IGNOREWATER,
+    MM_MALE, MM_NOMSG, NO_MINVENT, W_NONPASSWALL, isok,
 } from './const.js';
 import { rn2, rnd } from './rng.js';
+import { FIG_TRANSFORM, TIMER_OBJECT, startTimer, stopTimer } from './timeout.js';
+import { pmOf } from './mhitm.js';
+import { passes_walls, throws_rocks } from './permonst.js';
 
 const FIGURINE = 795;
 const BOULDER = 465;
@@ -16,17 +19,20 @@ export function isFigurineObject(obj) {
     return obj?.otyp === FIGURINE || kind === 'figurine';
 }
 
-export function attachFigurineTransformTimeout(figurine, delay = null) {
+export function attachFigurineTransformTimeout(figurine, delay = null, g = game) {
     if (!isFigurineObject(figurine) || !figurine.corpsenm) return false;
+    stopFigurineTransformTimeout(figurine, g);
     const when = delay ?? (rnd(9000) + 200);
-    figurine.figurineTransformTurn = (game.moves || 1) + when;
-    figurine._figurine_transform_seq = game._fig_transform_timer_seq =
-        (game._fig_transform_timer_seq || 0) + 1;
+    startTimer(when, TIMER_OBJECT, FIG_TRANSFORM, figurine, g);
+    figurine.figurineTransformTurn = (g.moves || 0) + when;
+    figurine._figurine_transform_seq = g._fig_transform_timer_seq =
+        (g._fig_transform_timer_seq || 0) + 1;
     return true;
 }
 
-export function stopFigurineTransformTimeout(figurine) {
+export function stopFigurineTransformTimeout(figurine, g = game) {
     if (!figurine) return;
+    stopTimer(FIG_TRANSFORM, figurine, {}, g);
     delete figurine.figurineTransformTurn;
     delete figurine._figurine_transform_seq;
 }
@@ -48,10 +54,14 @@ export function syncCarriedFigurineTransformTimer(figurine) {
 }
 
 export function figurineLocationCheck(figurine, x, y) {
+    if (game.inventory?.includes(figurine) && game.u?.uswallow)
+        return { ok: false, message: "You don't have enough room in here." };
     if (!isok(x, y)) return { ok: false, message: 'You cannot put the figurine there.' };
     const loc = game.level?.at?.(x, y);
     const data = figurine?.corpsenm || {};
-    const mayPassRock = !!data.passWalls;
+    const species = pmOf({ data });
+    const passWalls = !!data.passWalls || !!(species && passes_walls(species));
+    const mayPassRock = passWalls && !(IS_STWALL(loc?.typ) && (loc?.wall_info & W_NONPASSWALL));
     if (IS_OBSTRUCTED(loc?.typ) && !mayPassRock) {
         return {
             ok: false,
@@ -59,7 +69,7 @@ export function figurineLocationCheck(figurine, x, y) {
         };
     }
     const boulder = (game.level?.objects || []).some(obj => obj.otyp === BOULDER && obj.ox === x && obj.oy === y);
-    if (boulder && !data.passWalls && !data.throwsRocks)
+    if (boulder && !passWalls && !data.throwsRocks && !(species && throws_rocks(species)))
         return { ok: false, message: 'You cannot fit the figurine on the boulder.' };
     return { ok: true };
 }

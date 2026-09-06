@@ -6,7 +6,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rn1, rnd, d, rn2_on_display_rng } from './rng.js';
-import { cansee, couldsee, unblock_point } from './vision.js';
+import { cansee, couldsee, unblock_point, recalc_block_point } from './vision.js';
 import {
     pline, mon_visible, see_with_infrared, pline_mon, verbalize,
     map_invisible, newsym, sensemon, flash_glyph_at, mon_to_glyph,
@@ -31,7 +31,8 @@ import {
     is_animal, mindless, nohands, is_floater, needspick, nonliving,
     is_vampshifter, is_mercenary, monsterNames, mons, haseyes, mon_hates_silver,
     verysmall, throws_rocks, passes_walls, is_bat, acidic, resists_acid,
-    slimeproof, resists_ston, touch_petrifies,
+    slimeproof, resists_ston, touch_petrifies, is_unicorn, poly_when_stoned,
+    is_flyer,
     G_UNIQ, mon_learns_traps, mon_knows_traps, amorphous, noncorporeal,
     unsolid, is_undead,
 } from './monsters.js';
@@ -41,11 +42,11 @@ import {
 } from './objects.js';
 import { observe_object, makeknown } from './invent.js';
 import {
-    losehp, nomul, in_rooms, You_hear, is_pool, closed_door, carrying,
+    losehp, nomul, in_rooms, You_hear, is_pool, is_lava, closed_door, carrying,
     stop_occupation, maybe_half_phys,
 } from './hack.js';
 import { doorlock } from './lock.js';
-import { find_drawbridge } from './dbridge.js';
+import { find_drawbridge, is_drawbridge_wall } from './dbridge.js';
 import { finish_losehp_done } from './end.js';
 import {
     m_seenres, monstseesu, monstunseesu, same_race, mhe, mhim, can_blow,
@@ -62,7 +63,7 @@ import {
 import { dropy, make_blinded, flooreffects } from './do.js';
 import {
     learnwand, lightdamage, buzz, dobuzz, unturn_you, unturn_dead, resist,
-    zhitm,
+    zhitm, is_ice,
 } from './zap.js';
 import {
     BOLT_LIM, MSLOW, MFAST, isok, u_at, ZAP_POS, IS_DOOR,
@@ -75,6 +76,8 @@ import {
     MIGR_RANDOM, MIGR_STAIRS_DOWN, MIGR_STAIRS_UP,
     MIGR_LADDER_DOWN, MIGR_LADDER_UP, MIGR_SSTAIRS,
     In_endgame, In_sokoban, Is_container, ismnum, Is_rogue_level, Is_earthlevel,
+    Can_dig_down, IS_FURNITURE, IS_DRAWBRIDGE, W_NONDIGGABLE,
+    PIT, HOLE, WEB, BEAR_TRAP, something,
     ARTICLE_A, SUPPRESS_IT, SUPPRESS_INVISIBLE, SUPPRESS_SADDLE, AUGMENT_IT,
     PLNMSG_enum, NORMAL_SPEED, STRAT_WAITFORU, EDOG, STAIRS, LADDER, CORR, SCORR,
     is_hole, Can_fall_thru, Is_botlevel, TELEP_TRAP, FIRE_TRAP, FORCETRAP,
@@ -88,7 +91,7 @@ import { MON_WEP, dmgval, hands_obj } from './weapon.js';
 import { welded, setuwep, setuswapwep, mwelded } from './wield.js';
 import { depth, strsubst, upstart } from './hacklib.js';
 import { get_level, dunlevs_in_dungeon, On_W_tower_level } from './dungeon.js';
-import { seetrap, t_at, trapname, mintrap, ceiling, wearing_iron_shoes } from './trap.js';
+import { seetrap, t_at, trapname, mintrap, ceiling, wearing_iron_shoes, maketrap, Trap_Killed_Mon } from './trap.js';
 import { stairway_at } from './mklev.js';
 import { place_monster, remove_monster } from './steed.js';
 import {
@@ -108,6 +111,11 @@ import { dog_nutrition } from './dogmove.js';
 import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
 import { CLR_GREEN, CLR_BRIGHT_GREEN } from './terminal.js';
 import { explode } from './explode.js';
+import { fill_pit } from './dig.js';
+import { surface } from './sit.js';
+import { Soundeffect } from './sndprocs.js';
+import { se_bugle_playing_reveille, se_crash_through_floor } from './generated/seffects_data.js';
+import { awaken_soldiers } from './music.js';
 
 const POT_PARALYSIS = objectNames.indexOf('POT_PARALYSIS');
 const POT_BLINDNESS = objectNames.indexOf('POT_BLINDNESS');
@@ -165,6 +173,8 @@ const PM_GIANT_EEL = monsterNames.indexOf('PM_GIANT_EEL');
 const PM_CROCODILE = monsterNames.indexOf('PM_CROCODILE');
 const PM_ACID_BLOB = monsterNames.indexOf('PM_ACID_BLOB');
 const PM_GRID_BUG = monsterNames.indexOf('PM_GRID_BUG');
+const PM_VLAD = monsterNames.indexOf('PM_VLAD_THE_IMPALER');
+const BUGLE = objectNames.indexOf('BUGLE');
 const CORPSE = objectNames.indexOf('CORPSE');
 const ROCK = objectNames.indexOf('ROCK');
 const TIN = objectNames.indexOf('TIN');
@@ -1787,15 +1797,14 @@ function m_use_healing(mtmp) {
 }
 
 /**
- * C ref: muse.c find_defensive `:439`.
- * Named omit: unicorn horn; tryescape Is_knox m_next2m; undead-turning;
- * bugle; wand dig/tele/create/undead (later scroll may win vs C wand).
+ * C ref: muse.c find_defensive `:439–750` — horn/undead/bugle/wand
+ * dig/tele/create selection + D-1809 stairs/trap/scroll/heal envelope.
+ * Named omit: tryescape Is_knox m_next2m.
  */
 /**
  * C ref: muse.c m_sees_sleepy_soldier `:361` — a mercenary bugler wakes when
- * a non-guard mercenary nearby is helpless. Ported for the find_defensive
- * MUSE_BUGLE selection arm; selection stays omitted until the MUSE_BUGLE
- * use arm lands (needs the monster-bugler awaken_soldiers envelope).
+ * a non-guard mercenary nearby is helpless. Serves the find_defensive
+ * MUSE_BUGLE selection arm; the use arm calls music.js awaken_soldiers.
  */
 function m_sees_sleepy_soldier(mtmp) {
     const x = mtmp.mx | 0, y = mtmp.my | 0;
@@ -1834,7 +1843,26 @@ export function find_defensive(mtmp, tryescape) {
     // C tryescape && Is_knox && !m_next2u && m_next2m — m_next2m named omit
     if (game.u?.uswallow && mtmp === game.u?.ustuck) return false;
 
-    // Unicorn horn (mconf/mstun/blind) named omit
+    /* C: unicorn horns don't get used up; a cursed horn would be retried
+     * round after round, so skip cursed horns. Unicorns use their own
+     * horns (excluded from inventory scanning by nohands); ki-rin too. */
+    if (mtmp.mconf || mtmp.mstun || !mtmp.mcansee) {
+        let horn = null;
+        if (!nohands(mtmp.data)) {
+            for (let obj = mtmp.minvent; obj; obj = obj.nobj) {
+                if ((obj.otyp | 0) === UNICORN_HORN && !obj.cursed) {
+                    horn = obj;
+                    break;
+                }
+            }
+        }
+        if (horn || is_unicorn(mtmp.data)
+            || (mtmp.data?.mndx ?? mtmp.mnum) === PM_KI_RIN) {
+            m.defensive = horn;
+            m.has_defense = MUSE_UNICORN_HORN;
+            return true;
+        }
+    }
     if (mtmp.mconf || mtmp.mstun) {
         let liztin = null;
         for (let obj = mtmp.minvent; obj; obj = obj.nobj) {
@@ -1858,7 +1886,27 @@ export function find_defensive(mtmp, tryescape) {
         && (mtmp.data?.mndx ?? mtmp.mnum) !== PM_PESTILENCE) {
         if (m_use_healing(mtmp)) return true;
     }
-    // WAN_UNDEAD_TURNING named omit
+    /* C: monsters aren't given wands of undead turning but if they happen
+     * to have picked one up, use it against a corpse wielder; when
+     * applicable, use it now even if 'mtmp' isn't wounded. */
+    {
+        const u = game.u || {};
+        const uwep = u.uwep;
+        if (!mtmp.mpeaceful && !nohands(mtmp.data)
+            && uwep && (uwep.otyp | 0) === CORPSE
+            && touch_petrifies(mons(uwep.corpsenm))
+            && !poly_when_stoned(mtmp.data) && !resists_ston(mtmp)
+            && lined_up(mtmp)) {
+            for (let obj = mtmp.minvent; obj; obj = obj.nobj) {
+                if ((obj.otyp | 0) === WAN_UNDEAD_TURNING
+                    && (obj.spe | 0) > 0) {
+                    m.defensive = obj;
+                    m.has_defense = MUSE_WAN_UNDEAD_TURNING;
+                    return true;
+                }
+            }
+        }
+    }
 
     if (!tryescape) {
         const ulevel = game.u?.ulevel | 0;
@@ -1952,14 +2000,60 @@ export function find_defensive(mtmp, tryescape) {
     }
 
     if (nohands(mtmp.data)) return m.has_defense !== 0;
-    // bugle named omit (m_sees_sleepy_soldier live; MUSE_BUGLE select+use
-    // needs monster-bugler awaken_soldiers)
+    if (is_mercenary(mtmp.data)) {
+        const horn = m_carrying(mtmp, BUGLE);
+        if (horn && m_sees_sleepy_soldier(mtmp)) {
+            m.defensive = horn;
+            m.has_defense = MUSE_BUGLE;
+        }
+    }
+
+    /* C: use immediate physical escape prior to attempting magic */
     if (m.has_defense) return true;
 
+    /* C: kludge to cut down on trap destruction (particularly portals) */
+    let digt = t_at(x, y);
+    if (digt && (is_pit(digt.ttyp) || (digt.ttyp | 0) === WEB
+        || (digt.ttyp | 0) === BEAR_TRAP)) {
+        digt = null;
+    }
+    /* C monst.h is_Vlad: Vlad might be vampshifted, so data alone is
+     * insufficient; cham counts too. */
+    const isVlad = ((mtmp.data?.mndx ?? mtmp.mnum) === PM_VLAD
+        || (mtmp.cham ?? NON_PM) === PM_VLAD);
+    const dlev = game.level?.at?.(x, y);
     const isPest = (mtmp.mnum ?? mtmp.data?.mndx) === PM_PESTILENCE;
     for (let obj = mtmp.minvent; obj; obj = obj.nobj) {
         if (m.has_defense && !rn2(3)) break;
-        // WAN_DIGGING / WAN_TELEPORTATION named omit
+        /* C: nomore(MUSE_WAN_DIGGING) is a break, not a continue */
+        if (m.has_defense === MUSE_WAN_DIGGING) break;
+        if ((obj.otyp | 0) === WAN_DIGGING && (obj.spe | 0) > 0
+            && !stuck && !digt
+            && !mtmp.isshk && !mtmp.isgd && !mtmp.ispriest
+            && !is_floater(mtmp.data)
+            /* C: monsters digging in Sokoban can ruin things */
+            && !In_sokoban(game.u?.uz)
+            /* C: digging wouldn't be effective; assume they know that */
+            && (((dlev?.wall_info | 0) | (dlev?.flags | 0)) & W_NONDIGGABLE) === 0
+            && !(Is_botlevel(game.u?.uz) || In_endgame(game.u?.uz))
+            && !(is_ice(x, y) || is_pool(x, y) || is_lava(x, y))
+            && !(isVlad && In_V_tower(game.u?.uz))) {
+            m.defensive = obj;
+            m.has_defense = MUSE_WAN_DIGGING;
+        }
+        if (m.has_defense === MUSE_WAN_TELEPORTATION_SELF) continue;
+        if (m.has_defense === MUSE_WAN_TELEPORTATION) continue;
+        if ((obj.otyp | 0) === WAN_TELEPORTATION && (obj.spe | 0) > 0) {
+            /* C: use the TELEP_TRAP bit to determine if they know about
+             * noteleport on this level; avoids ineffective re-use. */
+            if (!noteleport_level(mtmp)
+                || !mon_knows_traps(mtmp, TELEP_TRAP)) {
+                m.defensive = obj;
+                m.has_defense = mon_has_amulet(mtmp)
+                    ? MUSE_WAN_TELEPORTATION
+                    : MUSE_WAN_TELEPORTATION_SELF;
+            }
+        }
         if (m.has_defense === MUSE_SCR_TELEPORTATION) continue;
         if ((obj.otyp | 0) === SCR_TELEPORTATION && mtmp.mcansee
             && haseyes(mtmp.data)
@@ -1983,16 +2077,30 @@ export function find_defensive(mtmp, tryescape) {
                 m.defensive = obj;
                 m.has_defense = MUSE_POT_EXTRA_HEALING;
             }
-            // WAN_CREATE_MONSTER named omit
+            if (m.has_defense === MUSE_WAN_CREATE_MONSTER) continue;
+            if ((obj.otyp | 0) === WAN_CREATE_MONSTER && (obj.spe | 0) > 0) {
+                m.defensive = obj;
+                m.has_defense = MUSE_WAN_CREATE_MONSTER;
+            }
             if (m.has_defense === MUSE_POT_HEALING) continue;
             if (obj.otyp === POT_HEALING) {
                 m.defensive = obj;
                 m.has_defense = MUSE_POT_HEALING;
             }
-        } else if (obj.otyp === POT_SICKNESS) {
-            if (m.has_defense === MUSE_POT_FULL_HEALING) continue;
-            m.defensive = obj;
-            m.has_defense = MUSE_POT_FULL_HEALING;
+        } else {
+            /* C Pestilence branch: sickness counts as full healing, and
+             * create-monster wands are still usable. */
+            if (m.has_defense !== MUSE_POT_FULL_HEALING
+                && (obj.otyp | 0) === POT_SICKNESS) {
+                m.defensive = obj;
+                m.has_defense = MUSE_POT_FULL_HEALING;
+            }
+            if (m.has_defense !== MUSE_WAN_CREATE_MONSTER
+                && (obj.otyp | 0) === WAN_CREATE_MONSTER
+                && (obj.spe | 0) > 0) {
+                m.defensive = obj;
+                m.has_defense = MUSE_WAN_CREATE_MONSTER;
+            }
         }
         if (m.has_defense === MUSE_SCR_CREATE_MONSTER) continue;
         if ((obj.otyp | 0) === SCR_CREATE_MONSTER) {
@@ -2253,8 +2361,10 @@ async function precheck(mon, obj) {
 }
 
 /**
- * C ref: muse.c use_defensive `:795`.
- * Named omit: unicorn horn, bugle, wand dig/tele/create/undead.
+ * C ref: muse.c use_defensive `:796–1219` — horn/bugle/wand
+ * dig/tele-self/tele/undead/create arms + D-1809 scroll/stair/trap/
+ * heal/lizard envelope. `default` returns 2 (dead while find_defensive
+ * stays honest; C `impossible`s then returns 0).
  */
 export async function use_defensive(mtmp) {
     const m = museState();
@@ -2270,6 +2380,67 @@ export async function use_defensive(mtmp) {
         : 0;
 
     switch (m.has_defense) {
+    case MUSE_UNICORN_HORN:
+        /* C: unlike most defensive cases, unicorn horn object is optional */
+        if (vismon) {
+            if (otmp) {
+                await pline_mon(mtmp,
+                    `${Monnam(mtmp)} uses a unicorn horn!`);
+            } else {
+                await pline(`The tip of ${mon_nam(mtmp)}'s horn glows!`);
+            }
+        }
+        if (!mtmp.mcansee) {
+            await mcureblindness(mtmp, vismon);
+        } else if (mtmp.mconf || mtmp.mstun) {
+            mtmp.mconf = 0;
+            mtmp.mstun = 0;
+            if (vismon) {
+                await pline_mon(mtmp,
+                    `${Monnam(mtmp)} seems steadier now.`);
+            }
+        } else {
+            await impossible('No need for unicorn horn?');
+        }
+        return 2;
+    case MUSE_BUGLE: {
+        if (!otmp) return 0;
+        if (vismon) {
+            await pline_mon(mtmp,
+                `${Monnam(mtmp)} plays ${doname(otmp)}!`);
+        } else {
+            const bu = game.u || {};
+            const bdeaf = (bu.HDeaf | 0) || (bu.EDeaf | 0)
+                || bu.uroleplay?.deaf || bu.Deaf;
+            if (!bdeaf) {
+                Soundeffect(se_bugle_playing_reveille, 100);
+                await You_hear('a bugle playing reveille!');
+            }
+        }
+        await awaken_soldiers(mtmp);
+        return 2;
+    }
+    case MUSE_WAN_TELEPORTATION_SELF: {
+        if (!otmp) return 0;
+        if ((mtmp.isshk && inhishop(mtmp)) || mtmp.isgd || mtmp.ispriest) {
+            return 2;
+        }
+        await m_flee(mtmp, fleetim);
+        await mzapwand(mtmp, otmp, true);
+        await m_tele(mtmp, vismon, oseen, WAN_TELEPORTATION);
+        return 2;
+    }
+    case MUSE_WAN_TELEPORTATION: {
+        if (!otmp) return 0;
+        game._zap_oseen = oseen;
+        await mzapwand(mtmp, otmp, false);
+        game.m_using = true;
+        await mbhit(mtmp, rn1(8, 6), otmp);
+        /* C: monster learns that teleportation isn't useful here */
+        if (noteleport_level(mtmp)) mon_learns_traps(mtmp, TELEP_TRAP);
+        game.m_using = false;
+        return 2;
+    }
     case MUSE_SCR_TELEPORTATION: {
         if (!otmp) return 0;
         const obj_is_cursed = !!otmp.cursed;
@@ -2307,6 +2478,88 @@ export async function use_defensive(mtmp) {
             await trycall(otmp);
         }
         obfree(otmp, null);
+        return 2;
+    }
+    case MUSE_WAN_DIGGING: {
+        if (!otmp) return 0;
+        await m_flee(mtmp, fleetim);
+        await mzapwand(mtmp, otmp, false);
+        if (oseen) makeknown(WAN_DIGGING);
+        const mx = mtmp.mx | 0, my = mtmp.my | 0;
+        const dloc = game.level?.at?.(mx, my);
+        if (IS_FURNITURE(dloc?.typ | 0) || IS_DRAWBRIDGE(dloc?.typ | 0)
+            || is_drawbridge_wall(mx, my) >= 0
+            || stairway_at(mx, my)) {
+            await pline('The digging ray is ineffective.');
+            return 2;
+        }
+        if (!Can_dig_down(game.u?.uz) && !dloc?.candig) {
+            /* C: can't dig further if there's already a pit (or other
+             * trap) here, or if pit creation fails for some reason */
+            let dt = t_at(mx, my);
+            if (dt || !(dt = maketrap(mx, my, PIT))) {
+                if (vismon) {
+                    await pline(
+                        `The ${surface(mx, my)} here is too hard to dig in.`);
+                }
+                return 2;
+            }
+            /* C: pit creation succeeded */
+            if (vis) {
+                seetrap(dt);
+                await pline_mon(mtmp,
+                    `${Monnam(mtmp)} has made a pit in the ${surface(mx, my)}.`);
+            }
+            fill_pit(mx, my);
+            recalc_block_point(mx, my);
+            return (await mintrap(mtmp, FORCEBUNGLE)) === Trap_Killed_Mon
+                ? 1 : 2;
+        }
+        const hole = maketrap(mx, my, HOLE);
+        if (!hole) return 2;
+        recalc_block_point(mx, my);
+        seetrap(hole);
+        if (vis) {
+            await pline_mon(mtmp,
+                `${Monnam(mtmp)} has made a hole in the ${surface(mx, my)}.`);
+            await pline_mon(mtmp,
+                `${Monnam(mtmp)} ${is_flyer(mtmp.data) ? 'dives' : 'falls'} through...`);
+        } else {
+            const hu = game.u || {};
+            const hdeaf = (hu.HDeaf | 0) || (hu.EDeaf | 0)
+                || hu.uroleplay?.deaf || hu.Deaf;
+            if (!hdeaf) {
+                Soundeffect(se_crash_through_floor, 100);
+                await You_hear(
+                    `${something} crash through the ${surface(mx, my)}.`);
+            }
+        }
+        fill_pit(mx, my);
+        /* C: we made sure that there is a level for mtmp to go to */
+        migrate_to_level(mtmp, ledger_no(game.u?.uz) + 1, MIGR_RANDOM, null);
+        return 2;
+    }
+    case MUSE_WAN_UNDEAD_TURNING: {
+        if (!otmp) return 0;
+        game._zap_oseen = oseen;
+        await mzapwand(mtmp, otmp, false);
+        game.m_using = true;
+        await mbhit(mtmp, rn1(8, 6), otmp);
+        game.m_using = false;
+        return 2;
+    }
+    case MUSE_WAN_CREATE_MONSTER: {
+        /* C: pm 0 => random, eel => aquatic, croc => amphibious */
+        if (!otmp) return 0;
+        const wpm = !is_pool(mtmp.mx, mtmp.my) ? null
+            : mons(game.u?.uinwater ? PM_GIANT_EEL : PM_CROCODILE);
+        const wcc = { x: 0, y: 0 };
+        if (!enexto(wcc, mtmp.mx, mtmp.my, wpm)) return 0;
+        await mzapwand(mtmp, otmp, false);
+        const wmon = makemon(null, wcc.x, wcc.y, NO_MM_FLAGS);
+        if (wmon && canspotmon(wmon) && oseen) {
+            makeknown(WAN_CREATE_MONSTER);
+        }
         return 2;
     }
     case MUSE_SCR_CREATE_MONSTER: {
@@ -2480,7 +2733,7 @@ export async function use_defensive(mtmp) {
     case 0:
         return 0;
     default:
-        // horn / bugle / remaining wands — named omit
+        // Dead while find_defensive only sets ported codes (C impossible).
         return 2;
     }
 }

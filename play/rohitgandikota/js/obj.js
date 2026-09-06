@@ -11,7 +11,10 @@
 import { game } from './gstate.js';
 import { OCLASSES, ONAMES, MATERIALS, SKILLS, objects } from './objects_data.js';
 import { MFLAGS, PMNAMES, MONSYMS } from './monst_data.js';
-import { humanoid, noncorporeal } from './mondata.js';
+import { humanoid, noncorporeal, dmgtype } from './mondata.js';
+import { pm_to_cham } from './mon.js';
+import { LOW_PM, NON_PM } from './const.js';
+import { ATTKS } from './monst_data.js';
 import { permapoisoned } from './artifact.js';
 
 // include/objclass.h:36 enum obj_armor_types
@@ -65,6 +68,13 @@ export const carried = (o) => o.where === OBJ_INVENT;
 // include/obj.h:333
 export const mcarried = (o) => o.where === OBJ_MINVENT;
 
+// include/obj.h:317 ofood(), :321 polyfood()
+export const ofood = (o) => o.otyp === ONAMES.CORPSE
+    || o.otyp === ONAMES.EGG || o.otyp === ONAMES.TIN;
+export const polyfood = (obj) => ofood(obj) && obj.corpsenm >= LOW_PM
+    && (pm_to_cham(obj.corpsenm) !== NON_PM
+        || dmgtype(game.mons[obj.corpsenm], ATTKS.AD_POLY));
+
 // include/obj.h:327 Is_pudding() — the four glob types by NAME, not by the
 // globby flag. mksobj sets globby for exactly these, so the two agree today,
 // but the flag is a consequence of being a glob rather than the definition of
@@ -77,9 +87,26 @@ export const Is_pudding = (o) =>
 export const Is_container = (o) =>
     o.otyp >= ONAMES.LARGE_BOX && o.otyp <= ONAMES.BAG_OF_TRICKS;
 
+// include/obj.h:340 SchroedingersBox()
+export const SchroedingersBox = (o) => o.otyp === ONAMES.LARGE_BOX && o.spe === 1;
+
+// include/obj.h:388 age_is_relative(); magic lamps use absolute age.
+export const age_is_relative = (o) => o.otyp === ONAMES.BRASS_LANTERN
+    || o.otyp === ONAMES.OIL_LAMP || o.otyp === ONAMES.CANDELABRUM_OF_INVOCATION
+    || o.otyp === ONAMES.TALLOW_CANDLE || o.otyp === ONAMES.WAX_CANDLE
+    || o.otyp === ONAMES.POT_OIL;
+
 // include/obj.h:382 Is_candle()
 export const Is_candle = (o) =>
     o.otyp === ONAMES.TALLOW_CANDLE || o.otyp === ONAMES.WAX_CANDLE;
+
+// include/obj.h:397 ignitable()
+export const ignitable = (otmp) =>
+    otmp.otyp === ONAMES.BRASS_LANTERN || otmp.otyp === ONAMES.OIL_LAMP
+    || (otmp.otyp === ONAMES.MAGIC_LAMP && otmp.spe > 0)
+    || otmp.otyp === ONAMES.CANDELABRUM_OF_INVOCATION
+    || otmp.otyp === ONAMES.TALLOW_CANDLE || otmp.otyp === ONAMES.WAX_CANDLE
+    || otmp.otyp === ONAMES.POT_OIL;
 
 // include/obj.h:334 Has_contents()
 export const Has_contents = (o) => !!(o.cobj && o.cobj.length);

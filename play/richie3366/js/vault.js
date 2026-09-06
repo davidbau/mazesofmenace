@@ -4,7 +4,8 @@
 //        vault_gd_watching (D-0953); vault_summon_gd (D-1007);
 //        uleftvault (D-1140);
 //        hidden_gold (D-1731; vault.c :1256–1268; doprgold FALSE);
-//        paygd (D-1812; vault.c :1204–1247; really_done).
+//        paygd (D-1812; vault.c :1204–1247; really_done);
+//        move_gold (D-1946; vault.c :632–643; live, wallify_vault unwired).
 // Named omissions: migrating_mons findgd park;
 // wallify_vault body (cleanup calls stub); Croesus mon_wield;
 // fracture_rock boulder shatter; reset_faint; SetVoice; spot_stop_timers;
@@ -30,6 +31,7 @@ import { cansee, couldsee, recalc_block_point } from './vision.js';
 import { COIN_CLASS } from './objects.js';
 import { del_engr_at, make_grave } from './engrave.js';
 import { t_at, deltrap } from './trap.js';
+import { place_object, stackobj, obj_extract_self } from './mkobj.js';
 import {
     VAULT, VAULT_GUARD_TIME, ROOMOFFSET, COLNO, ROWNO,
     ROOM, CORR, SCORR, STONE, HWALL, VWALL, DOOR, D_NODOOR,
@@ -257,9 +259,35 @@ function parkguard(grd) {
 }
 
 /**
+ * C ref: vault.c move_gold `:632–643` (D-1946).
+ * Floor gold at a wallified boundary cell is lifted and re-placed at the
+ * vault's near corner (`rooms[vroom].lx + rn2(2)`, `ly + rn2(2)`), then
+ * merged into any pile there. C order: remove_object → newsym(old) →
+ * rn2(2) ×2 → place_object → stackobj → newsym(new).
+ * C `remove_object` ≡ JS `obj_extract_self` floor arm (mkobj.c; see
+ * ball.js note): unlink nexthere + nobj(fobj), boulder recalc, timed
+ * check. ox/oy are saved before extract (C preserves them; JS does too).
+ */
+export function move_gold(gold, vroom) {
+    if (!gold) return;
+    const ox = gold.ox | 0;
+    const oy = gold.oy | 0;
+    obj_extract_self(gold);
+    newsym(ox, oy);
+    const rooms = game.level?.rooms || [];
+    const rm = rooms[vroom | 0] || {};
+    const nx = (rm.lx | 0) + rn2(2);
+    const ny = (rm.ly | 0) + rn2(2);
+    place_object(gold, nx, ny);
+    stackobj(gold);
+    newsym(nx, ny);
+}
+
+/**
  * C ref: vault.c wallify_vault — restore vault-room boundary walls.
  * Stub: cleanup still parks + restfakecorr + Suddenly; wall repair /
  * whisper / distant-chant / gold-move plines deferred.
+ * (move_gold above is live; the wallify_vault body that calls it is stub.)
  */
 function wallify_vault(_grd) {
     /* deferred */

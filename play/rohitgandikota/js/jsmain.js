@@ -10,18 +10,20 @@
 // For browser play, see nethack.js (uses NethackGame directly).
 
 import { game, resetGame } from './gstate.js';
+import { MENU_FULL, AUTOUNLOCK_APPLY_KEY } from './const.js';
 import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { pushKey, nhgetch } from './input.js';
 import { newgame, newgame_moveloop_preamble, moveloop_core,
          maybe_do_tutorial } from './allmain.js';
-import { wd_message } from './unixmain.js';
-import { parseNethackrc, optValue, set_fruit_name } from './options.js';
+import { wd_message, restore_savefile_prompt } from './unixmain.js';
+import { parseNethackrc, optValue, set_fruit_name, set_menuobjsyms_flags } from './options.js';
 import { assign_graphics } from './symbols.js';
 import { flush_screen } from './display.js';
 import { GameDisplay } from './game_display.js';
 import { reset_windows } from './tty/wintty.js';
 import { init_rect_globals } from './rect.js';
 import { reset_role_globals } from './role.js';
+import { reset_mkmaze } from './mkmaze.js';
 
 // ── NethackGame ──
 // Wraps a single game session with replay infrastructure.
@@ -101,6 +103,7 @@ export class NethackGame {
         reset_windows();
         init_rect_globals();
         reset_role_globals();
+        reset_mkmaze();
 
         // Parse nethackrc. `rc.opts` is keyed by canonical option name, as
         // resolved against the generated table in js/optlist.js.
@@ -153,9 +156,13 @@ export class NethackGame {
         /* pickup_thrown is opt_out initval On (optlist.h:579), like the
            other two defaults */
         g.flags = { verbose: true, implicit_uncursed: true, legacy: true,
+                    menu_style: MENU_FULL, // src/options.c:7258
+                    autounlock: AUTOUNLOCK_APPLY_KEY, // options.c:1074
+                    sortpack: true, sortloot: 'l', // optlist.h and options.c:7208
                     pickup_thrown: true,
                     ...rc.opts };
-        g.iflags = {};
+        g.iflags = { getpos_coords: rc.opts.getpos_coords ?? 'n' };
+        set_menuobjsyms_flags(rc.opts.menuobjsyms ?? 4);
         const pettype = optValue(rc, 'pettype');
         if (pettype) g.preferred_pet = pettype[0];
         if ('tutorial' in rc.opts) g.tutorial_set_in_config = true;
@@ -218,6 +225,8 @@ export class NethackGame {
         /* sys/unix/unixmain.c:317 — "newgame(); wd_message();": the play-mode
            notice lands between welcome() and the tutorial query. */
         await wd_message();
+        if (resuming)
+            await restore_savefile_prompt();
 
         /* src/allmain.c moveloop() enters its preamble after unixmain's
            wd_message(). Initial pickup and its engraving feedback therefore

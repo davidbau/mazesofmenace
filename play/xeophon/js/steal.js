@@ -35,7 +35,8 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
-import { add_to_minv } from './mklev.js';
+import { add_to_minv, artifactDefinitionForName, AMULET_OF_YENDOR } from './mklev.js';
+import { W_ARM, W_ARMC, W_ARMU, W_ARMG, W_RINGL, W_RINGR, W_WEP, W_SWAPWEP } from './const.js';
 
 // C ref: include/objects.h enum + objects.c rocks section: BOULDER otyp.
 export const BOULDER_OTYP = 465;
@@ -460,10 +461,10 @@ function clearStealState(g) {
 function subjectName(mon) { return `The ${mon?.data?.name || mon?.name || 'creature'}`; }
 
 function stripWornState(obj) {
-    const stolen = { ...obj };
-    delete stolen.worn; delete stolen.wielded; delete stolen.alternate;
-    stolen.wasStolen = true;
-    return stolen;
+    delete obj.worn; delete obj.wielded; delete obj.alternate;
+    obj.owornmask = 0;
+    obj.wasStolen = true;
+    return obj;
 }
 
 function removeHeroInventoryItem(g, obj) {
@@ -512,7 +513,7 @@ export function stealgold(mon, {
 
 // ---------------------------------------------------------------------------
 // stealamulet() — covetous quest-artifact / Amulet / invocation grab
-// (steal.c:640-682; caller mhitm_ad_samu uhitm.c:4584-4591: 1/20 per hit).
+// (steal.c:689-787; caller mhitm_ad_samu: 1/20 per hit).
 // ---------------------------------------------------------------------------
 export function stealamulet(mon, {
     items = game.inventory || [],
@@ -527,15 +528,14 @@ export function stealamulet(mon, {
     if (!target) {
         // steal.c:659-677 — Amulet / Bell / Book / Candelabrum fallbacks.
         let real = null, fake = null;
-        if (uhave.amulet) { real = 'amulet of Yendor'; fake = 'amulet of Yendor'; }
-        else if (uhave.bell) { real = 'Bell of Opening'; fake = 'bell'; }
-        else if (uhave.book) { real = 'Book of the Dead'; }
-        else if (uhave.menorah) { real = 'Candelabrum of Invocation'; }
+        if (uhave.amulet) { real = 'amulet'; fake = 'fakeAmulet'; }
+        else if (uhave.bell) { real = 'bell'; fake = 'ordinaryBell'; }
+        else if (uhave.book) { real = 'book'; }
+        else if (uhave.menorah) { real = 'menorah'; }
         else return { target: null };
         const matches = it => {
-            const id = `${it.kind || ''} ${it.name || ''} ${it.actualKind || ''}`;
-            if (real && new RegExp(real.replace(/ /g, '\\s'), 'i').test(id)) return true;
-            return !!(fake && !mon?.iswiz && new RegExp(`^.*${fake}`, 'i').test(id));
+            const type = specialObjectType(it);
+            return type === real || (fake && !mon?.iswiz && type === fake);
         };
         candidates = items.filter(matches);
         if (candidates.length > 1)
@@ -547,21 +547,44 @@ export function stealamulet(mon, {
 }
 
 function defaultQuestArtifactTest(item) {
-    return !!(item?.questArtifact || item?.artifact
-        && /quest/i.test(String(item.artifactSource || item.artifactClass || '')));
+    return !!(artifactDefinitionForName(item?.artifact || item?.oartifact)?.questArtifact || item?.questArtifact);
+}
+
+// Resolve the repository's object identities; a personal name never changes
+// an ordinary object's type. Fake and real Amulets share their appearance.
+export function specialObjectType(item) {
+    const kind = String(item?.actualKind || item?.kind || '').toLowerCase();
+    if (item?.fakeAmuletOfYendor || kind === 'cheap plastic imitation of the amulet of yendor') return 'fakeAmulet';
+    if (item?.otyp === AMULET_OF_YENDOR || item?.realAmuletOfYendor || kind === 'amulet of yendor') return 'amulet';
+    if (kind === 'bell of opening' || (item?.otyp === 358 && kind === 'silver bell')) return 'bell';
+    if (kind === 'bell') return 'ordinaryBell';
+    if (item?.otyp === 10097 || kind === 'book of the dead') return 'book';
+    if (item?.otyp === 10076 || kind === 'candelabrum of invocation') return 'menorah';
+    return null;
 }
 
 // steal.c:667-676 — gear stripping order for a worn covetous target:
 // cloak first (over suit/shirt), then suit (over shirt), then weapon(s)
 // (blocking gloves), then gloves (blocking rings), then the target itself.
 export function stealamuletStripOrder(items, target) {
-    const gloves = wornGlovesIn(items), cloak = wornCloakIn(items),
-        suit = wornSuitIn(items), weapon = wieldedWeaponIn(items);
-    const isRingR = target === wornRingIn(items, 'right') || target === wornRingIn(items, 'left');
+    const slot = (field, mask, fallback) => items.find(obj => obj === game.u?.[field])
+        || items.find(obj => obj.owornmask & mask) || fallback(items);
+    const gloves = slot('uarmg', W_ARMG, wornGlovesIn), cloak = slot('uarmc', W_ARMC, wornCloakIn),
+        suit = slot('uarm', W_ARM, wornSuitIn), shirt = slot('uarmu', W_ARMU, wornShirtIn),
+        weapon = slot('uwep', W_WEP, wieldedWeaponIn);
+    const isRingR = target.owornmask & (W_RINGL | W_RINGR)
+        || target === game.u?.uright || target === game.u?.uleft
+        || target === wornRingIn(items, 'right') || target === wornRingIn(items, 'left');
     const strips = [];
-    if ((target === suit || target === wornShirtIn(items)) && cloak) strips.push(cloak);
-    if (target === wornShirtIn(items) && suit) strips.push(suit);
-    if ((target === gloves || (isRingR && gloves)) && weapon) strips.push(weapon);
+    if ((target === suit || target === shirt) && cloak) strips.push(cloak);
+    if (target === shirt && suit) strips.push(suit);
+    if ((target === gloves || (isRingR && gloves)) && weapon) {
+        if (game.u?.twoweap || game._twoweapon) {
+            const alternate = items.find(obj => obj === game.u?.uswapwep || (obj.owornmask & W_SWAPWEP) || obj.alternate);
+            if (alternate) strips.push(alternate);
+        }
+        strips.push(weapon);
+    }
     if (isRingR && gloves) strips.push(gloves);
     strips.push(target);
     return strips;

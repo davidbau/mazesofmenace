@@ -10,7 +10,7 @@ import { rn2, rn1 } from './rng.js';
 
 const DUNGEON_DATA = [
     {
-        name: 'The Dungeons of Doom', base: 25, range: 5,
+        name: 'The Dungeons of Doom', boneid: 'D', base: 25, range: 5,
         branches: [
             { name: 'The Gnomish Mines', base: 2, range: 3 },
             { name: 'Sokoban', chainlevel: 'oracle', base: 1, direction: 'up' },
@@ -20,42 +20,42 @@ const DUNGEON_DATA = [
             { name: 'The Elemental Planes', base: 1, branchtype: 'no_down', direction: 'up' },
         ],
         levels: [
-            { name: 'rogue', base: 15, range: 4 },
-            { name: 'oracle', base: 5, range: 5 },
-            { name: 'bigrm', base: 10, range: 3, chance: 40 },
+            { name: 'rogue', boneid: 'R', base: 15, range: 4 },
+            { name: 'oracle', boneid: 'O', base: 5, range: 5 },
+            { name: 'bigrm', boneid: 'B', base: 10, range: 3, chance: 40 },
             { name: 'medusa', base: -5, range: 4 },
             { name: 'castle', base: -1 },
         ],
     },
     {
-        name: 'Gehennom', base: 20, range: 5,
+        name: 'Gehennom', boneid: 'G', hellish: true, base: 20, range: 5,
         branches: [{ name: "Vlad's Tower", base: 9, range: 5, direction: 'up' }],
         levels: [
-            { name: 'valley', base: 1 },
+            { name: 'valley', boneid: 'V', base: 1 },
             { name: 'sanctum', base: -1 },
-            { name: 'juiblex', base: 4, range: 4 },
-            { name: 'baalz', base: 6, range: 4 },
-            { name: 'asmodeus', base: 2, range: 6 },
+            { name: 'juiblex', boneid: 'J', base: 4, range: 4 },
+            { name: 'baalz', boneid: 'B', base: 6, range: 4 },
+            { name: 'asmodeus', boneid: 'A', base: 2, range: 6 },
             { name: 'wizard1', base: 11, range: 6 },
-            { name: 'wizard2', chainlevel: 'wizard1', base: 1 },
-            { name: 'wizard3', chainlevel: 'wizard1', base: 2 },
-            { name: 'orcus', base: 10, range: 6 },
-            { name: 'fakewiz1', base: -6, range: 4 },
-            { name: 'fakewiz2', base: -6, range: 4 },
+            { name: 'wizard2', boneid: 'X', chainlevel: 'wizard1', base: 1 },
+            { name: 'wizard3', boneid: 'Y', chainlevel: 'wizard1', base: 2 },
+            { name: 'orcus', boneid: 'O', base: 10, range: 6 },
+            { name: 'fakewiz1', boneid: 'F', base: -6, range: 4 },
+            { name: 'fakewiz2', boneid: 'G', base: -6, range: 4 },
         ],
     },
     {
-        name: 'The Gnomish Mines', base: 8, range: 2,
+        name: 'The Gnomish Mines', boneid: 'M', base: 8, range: 2,
         levels: [
-            { name: 'minetn', base: 3, range: 2, nlevels: 7 },
+            { name: 'minetn', boneid: 'T', base: 3, range: 2, nlevels: 7 },
             { name: 'minend', base: -1, nlevels: 3 },
         ],
     },
     {
-        name: 'The Quest', base: 5, range: 2,
+        name: 'The Quest', boneid: 'Q', base: 5, range: 2,
         levels: [
             { name: 'x-strt', base: 1, range: 1 },
-            { name: 'x-loca', base: 3, range: 1 },
+            { name: 'x-loca', boneid: 'L', base: 3, range: 1 },
             { name: 'x-goal', base: -1 },
         ],
     },
@@ -68,9 +68,9 @@ const DUNGEON_DATA = [
             { name: 'soko4', base: 4 },
         ],
     },
-    { name: 'Fort Ludios', base: 1, levels: [{ name: 'knox', base: -1 }] },
+    { name: 'Fort Ludios', boneid: 'K', base: 1, levels: [{ name: 'knox', boneid: 'K', base: -1 }] },
     {
-        name: "Vlad's Tower", base: 3, entry: -1,
+        name: "Vlad's Tower", boneid: 'T', base: 3, entry: -1,
         levels: [
             { name: 'tower1', base: 1 },
             { name: 'tower2', base: 2 },
@@ -78,7 +78,7 @@ const DUNGEON_DATA = [
         ],
     },
     {
-        name: 'The Elemental Planes', base: 6, entry: -2,
+        name: 'The Elemental Planes', boneid: 'E', base: 6, entry: -2,
         levels: [
             { name: 'astral', base: 1 },
             { name: 'water', base: 2 },
@@ -205,7 +205,7 @@ export function init_dungeons_rng() {
         const levelStart = pd.levels.length;
         const levels = [];
         for (const srcLevel of (src.levels || [])) {
-            const level = { ...srcLevel, chain: -1 };
+            const level = { ...srcLevel, boneid: srcLevel.boneid || '', chain: -1 };
             if (level.chainlevel) {
                 level.chain = [...pd.levels, ...levels].findIndex(prior => prior.name === level.chainlevel);
             }
@@ -220,7 +220,7 @@ export function init_dungeons_rng() {
         pd.branches.push(...branchesForDungeon);
         pd.dungeons[dgn] = { name: src.name, branches: branchesForDungeon };
 
-        const dungeon = { name: src.name };
+        const dungeon = { name: src.name, boneid: src.boneid || '', flags: { hellish: !!src.hellish } };
         dungeon.num_dunlevs = src.range ? rn1(src.range, src.base) : src.base;
         dungeon.ledger_start = dgn ? dungeons[dgn - 1].ledger_start + dungeons[dgn - 1].num_dunlevs : 0;
         dungeon.depth_start = dgn ? 0 : 1;

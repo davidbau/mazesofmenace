@@ -120,7 +120,7 @@ import {
     lays_eggs, humanoid, likes_lava, is_hider, monsterNames,
     eyecount,
 } from './monsters.js';
-import { get_artifact, SPFX_INTEL } from './artifact.js';
+import { spec_ability, SPFX_INTEL } from './artifact.js';
 import { ART_MAGICBANE } from './generated/artifacts_data.js';
 import { A_MAX, A_CON, A_STR, A_WIS, adjattrib, exercise, change_luck } from './attrib.js';
 import { losexp } from './exper.js';
@@ -305,12 +305,11 @@ export async function rndcurse() {
             }
             if (!otmp || otmp.cursed) continue;
 
-            if (otmp.oartifact) {
-                const oart = get_artifact(otmp);
-                if (oart && ((oart.spfx | 0) & SPFX_INTEL) && rn2(10) < 8) {
-                    await pline(`${Tobjnam(otmp, 'resist')}!`);
-                    continue;
-                }
+            // C sit.c:609 — `otmp->oartifact && spec_ability(otmp, SPFX_INTEL)`
+            // in C short-circuit order (rn2 last).
+            if (otmp.oartifact && spec_ability(otmp, SPFX_INTEL) && rn2(10) < 8) {
+                await pline(`${Tobjnam(otmp, 'resist')}!`);
+                continue;
             }
 
             if (otmp.blessed) unbless(otmp);

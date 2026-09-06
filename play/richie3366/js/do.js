@@ -22,7 +22,7 @@ import {
     VISITED, LFILE_EXISTS, RANGE_LEVEL, REST_LEVELS,
     WRITING, FREEING,
     UNENCUMBERED, KILLED_BY, DISMOUNT_FELL, NO_KILLER_PREFIX, ESCAPED,
-    MAGIC_PORTAL, TIMEOUT, BLINDED, RLOC_NOMSG, EYE, FROMOUTSIDE,
+    MAGIC_PORTAL, TIMEOUT, BLINDED, RLOC_NOMSG, EYE, HAND, FROMOUTSIDE,
     WARN_OF_MON, TELEPAT, INFRAVISION,
     ACH_HELL, ACH_MINE, ACH_SOKO, ACH_ENDG, ACH_ASTR, ACH_BGRM,
     LL_ACHIEVE, LL_DEBUG,
@@ -59,7 +59,7 @@ import {
     You_feel, canseemon, canspotmon, impossible, describe_level,
     see_monsters,
 } from './display.js';
-import { yn_function } from './getline.js';
+import { yn_function, paranoid_ynq } from './getline.js';
 import { vision_recalc, vision_reset, recalc_block_point, cansee, couldsee } from './vision.js';
 import { clear_regions, in_out_region } from './region.js';
 import {
@@ -103,7 +103,7 @@ import { place_object, stackobj, weight, delobj, obj_extract_self,
 import { ship_object, obj_delivery, container_impact_dmg } from './dokick.js';
 import {
     doname, xname, the, The, vtense, an, yname, corpse_xname, is_plural,
-    otense, makeplural, body_part_latebound,
+    otense, makeplural, body_part_latebound, obj_pmname_corpse,
 } from './objnam.js';
 import { Monnam, Amonnam, Adjmonnam, mon_nam } from './do_name.js';
 import { revive } from './zap.js';
@@ -116,11 +116,13 @@ import { can_reach_floor, set_occupation } from './engrave.js';
 import {
     pickup, query_category, query_objlist, add_valid_menu_class,
     allow_category, allow_all, count_justpicked, find_justpicked,
+    u_safe_from_fatal_corpse, st_all,
 } from './pickup.js';
 import { Fumbling } from './attrib.js';
 import {
     welded, setuwep, setuswapwep, setuqwep, set_twoweap,
 } from './wield.js';
+import { body_part } from './polyself.js';
 import {
     setworn, confer_oc_oprop, recalc_telepat_range, reset_remarm,
     cancel_doff,
@@ -2264,13 +2266,39 @@ export async function dropx(obj) {
 }
 
 /**
- * C ref: do.c drop — canletgo, unwield, verbose pline, dropx.
- * Named omissions: corpse better_not_try; sink rings; Heart of
- * Ahriman finesse_ahriman/float_down; swallowed digests path.
+ * C ref: do.c better_not_try_to_drop_that (:946–962) — corpse-drop guard.
+ * A CORPSE that is not safe from fatal-corpse touch (gloves / non-corpse /
+ * non-petrifying / stone resistance via st_all) prompts
+ * "Drop the %s corpse without %s protection on?" through paranoid_ynq;
+ * anything but 'y' aborts the drop. u_safe_from_fatal_corpse/st_all are
+ * imported from pickup.js (no clone #2); obj_pmname_corpse from objnam.js
+ * is the C-faithful obj_pmname (aligned-cleric remap; trap.js keeps its
+ * subset clone for the wielded-corpse touch path).
+ */
+export async function better_not_try_to_drop_that(otmp) {
+    const CORPSE = objectNames.indexOf('CORPSE');
+    /* C: u_safe_from_fatal_corpse() with st_all checks for gloves and
+     * stoning resistance before bothering to prompt you. */
+    if ((otmp?.otyp | 0) === CORPSE && !u_safe_from_fatal_corpse(otmp, st_all)) {
+        const buf = `Drop the ${obj_pmname_corpse(otmp)} corpse without ${body_part(HAND)} protection on?`;
+        return (await paranoid_ynq(true, buf, false)) !== 'y';
+    }
+    return false;
+}
+
+/**
+ * C ref: do.c drop — canletgo, corpse better_not_try guard (:720), unwield,
+ * verbose pline, dropx.
+ * Named omissions: sink rings; Heart of Ahriman finesse_ahriman/float_down;
+ * swallowed digests path.
  */
 export async function drop(obj) {
     if (!obj) return ECMD_FAIL;
     if (!(await canletgo(obj, 'drop'))) return ECMD_FAIL;
+    const CORPSE_DROP = objectNames.indexOf('CORPSE');
+    if ((obj.otyp | 0) === CORPSE_DROP && (await better_not_try_to_drop_that(obj))) {
+        return ECMD_FAIL;
+    }
 
     const u = game.u || {};
     if (obj === u.uwep) {

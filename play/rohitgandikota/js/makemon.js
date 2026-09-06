@@ -38,7 +38,8 @@ import {
 } from './monst_data.js';
 import { ONAMES, OCLASSES, SKILLS, MATERIALS } from './objects_data.js';
 import { depth } from './dungeon.js';
-import { next_ident, mksobj, mkobj, place_object, curse, rnd_class, can_be_hatched } from './mkobj.js';
+import { next_ident, mksobj, mkobj, place_object, curse, rnd_class, can_be_hatched,
+         set_corpsenm, add_to_container } from './mkobj.js';
 import { sgn, isok, distu } from './hacklib.js';
 import { get_shop_item } from './shknam.js';
 import { canseemon, canspotmon, newsym } from './display.js';
@@ -54,7 +55,7 @@ import { attacktype, is_neuter, is_floater, emits_light, likes_lava,
 import { is_vampshifter } from './monst.js';
 import { t_at, is_pool, is_lava, m_in_air, resists_ston } from './mon.js';
 import { touch_petrifies } from './mondata.js';
-import { can_hide_under_obj, dochugw } from './monmove.js';
+import { can_hide_under_obj, dochugw, set_apparxy } from './monmove.js';
 import { couldsee } from './vision.js';
 import { is_pit, OBJ_FLOOR, PLNMSG_HIDE_UNDER } from './const.js';
 import { ACCESSIBLE, POOL, LAVAPOOL,
@@ -67,7 +68,7 @@ import { mon_track_clear, onscary } from './monmove.js';
 /* questpgr.js has no imports back into makemon.js at module level except
    through the mkclass wire below (set at this module's top level). */
 import { qt_montype, questpgr_wire_mkclass } from './questpgr.js';
-import { start_timer, TIMER_OBJECT, BURN_OBJECT } from './timeout.js';
+import { start_timer, TIMER_OBJECT, BURN_OBJECT, stop_timer, ROT_CORPSE } from './timeout.js';
 
 
 // include/permonst.h:15,23
@@ -983,11 +984,19 @@ function m_initinv(mtmp) {
         }
         break;
     case S_QUANTMECH:
-        /* src/makemon.c:776 — a quantum mechanic may carry Schroedinger's
-           box. The draw happens for every S_QUANTMECH; the box and its
-           cat corpse are recorded. */
-        if (!rn2(20) && ptr.pmidx === PMNAMES.PM_QUANTUM_MECHANIC)
-            note_unported('m_initinv:schroedingers_box');
+        // src/makemon.c:777, the unobserved cat corpse has no rot timer.
+        if (!rn2(20) && ptr.pmidx === PMNAMES.PM_QUANTUM_MECHANIC) {
+            const otmp = mksobj(ONAMES.LARGE_BOX, false, false);
+            const catcorpse = mksobj(ONAMES.CORPSE, true, false);
+            if (catcorpse) {
+                otmp.spe = 1;
+                set_corpsenm(catcorpse, PMNAMES.PM_HOUSECAT);
+                stop_timer(ROT_CORPSE, catcorpse);
+                add_to_container(otmp, catcorpse);
+                otmp.owt = weight_fn(otmp);
+            }
+            mpickobj(mtmp, otmp);
+        }
         break;
     case S_DEMON:
         /* src/makemon.c:800 — moved here from m_initweap() because these
@@ -2302,12 +2311,9 @@ export function makemon(ptr, x, y, mmflags) {
         /* C zeroes the whole struct (cg.zeromonst); movement in particular
            must start at 0, or movemon() lets the monster act on turn 1 when
            C makes it wait for its first allotment. */
-        movement: 0, mspeed: 0, permspeed: 0,
-        /* mux/muy are where the monster THINKS the hero is. set_apparxy()
-           assigns them each turn and is not ported; until it is, they have to
-           read as C's zeroed 0 rather than undefined, because monlineu() feeds
-           them to online2() where undefined makes every delta NaN and `!dy`
-           then answers true for EVERY square. */
+        movement: 0, mspeed: 0, permspeed: 0, mblinded: 0, mspec_used: 0,
+        seen_resistance: 0,
+        /* C zeroes the apparent hero position before set_apparxy(). */
         mux: 0, muy: 0,
         female: 0, msleeping: 0, mpeaceful: 0, mtame: 0,
         minvent: null, mgold: 0, data: ptr, mnum: mndx,
@@ -2467,6 +2473,7 @@ export function makemon(ptr, x, y, mmflags) {
         /* src/makemon.c:1391. Creation beside the hero draws the monster
            once here and again in the common arrival block below. */
         newsym(mtmp.mx, mtmp.my);
+        set_apparxy(mtmp);
     }
 
     /* src/makemon.c:1404 — a long worm grows a random tail at creation */

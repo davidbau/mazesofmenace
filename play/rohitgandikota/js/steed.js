@@ -9,7 +9,7 @@ import { game } from './gstate.js';
 import { MONSYMS, MFLAGS } from './monst_data.js';
 import { humanoid, amorphous, noncorporeal, is_whirly,
          unsolid, verysmall, bigmonst, is_swimmer, is_floater,
-         is_flyer } from './mondata.js';
+         is_flyer, cant_drown, likes_lava } from './mondata.js';
 import { which_armor } from './worn.js';
 import { mksobj } from './mkobj.js';
 import { ONAMES } from './objects_data.js';
@@ -19,17 +19,18 @@ import { W_SADDLE, ECMD_OK, ECMD_TIME, ECMD_CANCEL, isok, SLT_ENCUMBER,
          TT_BEARTRAP, TT_PIT, TT_WEB, TEST_MOVE,
          DISMOUNT_GENERIC, DISMOUNT_FELL, DISMOUNT_THROWN, DISMOUNT_KNOCKED,
          DISMOUNT_POLY, DISMOUNT_ENGULFED, DISMOUNT_BONES, DISMOUNT_BYCHOICE,
-         has_mgivenname } from './const.js';
+         has_mgivenname, RLOC_ERR, RLOC_NOMSG, KILLED_BY_AN } from './const.js';
 import { OBJ_MINVENT, is_metallic } from './obj.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { newsym, pline } from './display.js';
 import { You, You_cant, Your } from './pline.js';
-import { Monnam, mon_nam, pmname } from './do_name.js';
-import { m_at, is_pool, is_lava, t_at } from './mon.js';
+import { Monnam, mon_nam, pmname, hliquid, y_monnam } from './do_name.js';
+import { m_at, is_pool, is_lava, t_at, killed, monkilled } from './mon.js';
 import { remove_monster, place_monster } from './makemon.js';
-import { near_capacity, encumber_msg } from './attrib.js';
-import { losehp, test_move } from './hack.js';
-import { teleds, enexto } from './teleport.js';
+import { near_capacity, encumber_msg, adjalign } from './attrib.js';
+import { losehp, test_move, u_locomotion } from './hack.js';
+import { teleds, enexto, rloc_to, rloc } from './teleport.js';
+import { surface } from './dungeon.js';
 import { helpless, DEADMONSTER } from './monst.js';
 import { finish_meating } from './dogmove.js';
 import { xytodir, dirtocoord } from './cmd.js';
@@ -38,10 +39,10 @@ import { distu } from './hacklib.js';
 import { sobj_at, fully_identify_obj } from './invent.js';
 import { an } from './objnam.js';
 import { throws_rocks } from './mondata.js';
-import { grounded } from './trap.js';
+import { grounded, sokoban_guilt } from './trap.js';
 import { is_pole } from './mhitu.js';
 import { PMNAMES } from './monst_data.js';
-import { Glib } from './youprop.js';
+import { Glib, Flying, Levitation, Half_physical_damage, Stealth, Hallucination } from './youprop.js';
 import { greatest_erosion } from './do_wear.js';
 import { u_handsy } from './pickup.js';
 import { Underwater } from './youprop.js';
@@ -62,7 +63,8 @@ import { Mgender } from './const.js';
 import { canspotmon } from './display.js';
 import { touch_petrifies } from './dog.js';
 import { poly_when_stoned } from './mondata.js';
-import { polymon } from './polyself.js';
+import { polymon, steed_vs_stealth } from './polyself.js';
+import { ATTKS } from './monst_data.js';
 import { instapetrify } from './trap.js';
 import { exercise } from './attrib.js';
 import { ACURR } from './attrib.js';
@@ -71,6 +73,11 @@ import { P_SKILL } from './weapon.js';
 import { objdescr_is } from './o_init.js';
 import { remove_worn_item } from './steal.js';
 import { freeinv } from './invent.js';
+
+// src/steed.c:17 rider_cant_reach().
+export async function rider_cant_reach() {
+    await You(`aren't skilled enough to reach from ${y_monnam(game.u.usteed)}.`);
+}
 
 
 
@@ -581,6 +588,10 @@ export async function dismount_steed(reason) {
     /* Sanity check */
     if (!mtmp) /* Just return silently */
         return;
+    game.u.usteed = null;
+    const ufly = Flying(), ulev = Levitation();
+    let verb = u_locomotion('fall');
+    game.u.usteed = mtmp;
 
     /* Check the reason for dismounting */
     const otmp = which_armor(mtmp, W_SADDLE);
@@ -588,15 +599,15 @@ export async function dismount_steed(reason) {
     case DISMOUNT_THROWN:
     case DISMOUNT_KNOCKED:
     case DISMOUNT_FELL: {
-        /* u_locomotion("fall") with u.usteed nulled for the Fly test */
-        const verb = reason === DISMOUNT_THROWN ? 'are thrown' : 'fall';
+        if (reason === DISMOUNT_THROWN)
+            verb = 'are thrown';
         await You(`${verb} off of ${mon_nam(mtmp)}!`);
         if (!have_spot)
             have_spot = await landing_spot(cc, reason, 1);
-        const ufly = !!game.u.uprops?.FLYING;
-        const ulev = !!game.u.uprops?.LEVITATION;
         if (!ulev && !ufly) {
-            await losehp(rn1(10, 10), 'riding accident', 1 /* KILLED_BY_AN */);
+            const damage = rn1(10, 10);
+            await losehp(Half_physical_damage() ? Math.trunc((damage + 1) / 2)
+                : damage, 'riding accident', KILLED_BY_AN);
             const { set_wounded_legs } = await import('./do.js');
             await set_wounded_legs(LEFT_SIDE | RIGHT_SIDE,
                                    (game.u.intrinsic?.HWounded_legs || 0)
@@ -631,8 +642,8 @@ export async function dismount_steed(reason) {
             return;
         }
         if (!has_mgivenname(mtmp)) {
-            await pline(`You've been through the dungeon on ${an(pmname(mtmp.data, 2))} with no name.`);
-            if (game.u.uprops?.HALLUC)
+            await pline(`You've been through the dungeon on ${an(pmname(mtmp.data, Mgender(mtmp)))} with no name.`);
+            if (Hallucination())
                 await pline('It felt good to get out of the rain.');
         } else {
             await You(`dismount ${mon_nam(mtmp)}.`);
@@ -648,8 +659,10 @@ export async function dismount_steed(reason) {
     /* Release the steed */
     game.u.usteed = null;
     game.u.ugallop = 0;
-    if (game.u.uprops?.STEALTH)
-        note_unported_steed('dismount:steed_vs_stealth');
+    const was_stealthy = Stealth();
+    steed_vs_stealth();
+    if (Stealth() && !was_stealthy)
+        await You('seem less noisy now.');
 
     if (game.u.utraptype === TT_BEARTRAP
         || game.u.utraptype === TT_PIT
@@ -661,8 +674,9 @@ export async function dismount_steed(reason) {
     if (m_at(game.u.ux, game.u.uy)) {
         /* hero's spot has a monster in it; hero must have been plucked
            from saddle as engulfer moved into his spot */
-        if (!enexto(steedcc, game.u.ux, game.u.uy, mtmp.data))
-            note_unported_steed('dismount:engulfer_no_spot');
+        if (!enexto(steedcc, game.u.ux, game.u.uy, mtmp.data)
+            && !enexto(steedcc, game.u.ux, game.u.uy, game.mons[PMNAMES.PM_BAT]))
+            enexto(steedcc, game.u.ux, game.u.uy, game.mons[PMNAMES.PM_GHOST]);
     }
     if (!DEADMONSTER(mtmp)) {
         game.in_steed_dismounting = (game.in_steed_dismounting || 0) + 1;
@@ -670,7 +684,10 @@ export async function dismount_steed(reason) {
         game.in_steed_dismounting--;
 
         if (reason === DISMOUNT_BONES) {
-            note_unported_steed('dismount:bones_steed_move');
+            if (enexto(cc, game.u.ux, game.u.uy, mtmp.data))
+                await rloc_to(mtmp, cc.x, cc.y);
+            else
+                await rloc(mtmp, RLOC_ERR | RLOC_NOMSG);
             return;
         }
 
@@ -682,9 +699,18 @@ export async function dismount_steed(reason) {
             /* The steed may drop into water/lava */
             if (grounded(mdat)) {
                 if (is_pool(game.u.ux, game.u.uy)) {
-                    note_unported_steed('dismount:steed_falls_in_pool');
+                    if (!Underwater())
+                        await pline(`${Monnam(mtmp)} falls into the ${surface(game.u.ux, game.u.uy)}!`);
+                    if (!cant_drown(mdat)) {
+                        await killed(mtmp);
+                        adjalign(-1);
+                    }
                 } else if (is_lava(game.u.ux, game.u.uy)) {
-                    note_unported_steed('dismount:steed_in_lava');
+                    await pline(`${Monnam(mtmp)} is pulled into the ${hliquid('lava')}!`);
+                    if (!likes_lava(mdat)) {
+                        await killed(mtmp);
+                        adjalign(-1);
+                    }
                 }
             }
             /* [ALI] No need to move the player if the steed died. */
@@ -693,9 +719,8 @@ export async function dismount_steed(reason) {
                  * teleds() clears u.utrap */
                 game.in_steed_dismounting = true;
                 await teleds(cc.x, cc.y, TELEDS_ALLOW_DRAG);
-                if (sobj_at(ONAMES.BOULDER, cc.x, cc.y)
-                    && game.level?.flags?.sokoban_rules)
-                    note_unported_steed('dismount:sokoban_guilt');
+                if (sobj_at(ONAMES.BOULDER, cc.x, cc.y))
+                    await sokoban_guilt();
                 game.in_steed_dismounting = false;
 
                 /* Put your steed in your trap */
@@ -707,10 +732,14 @@ export async function dismount_steed(reason) {
         /* Couldn't move hero... try moving the steed. */
         } else if (enexto(cc, game.u.ux, game.u.uy, mtmp.data)) {
             /* Keep player here, move the steed to cc */
-            note_unported_steed('dismount:rloc_to_steed');
+            await rloc_to(mtmp, cc.x, cc.y);
         /* Otherwise, steed goes bye-bye. */
         } else {
-            note_unported_steed('dismount:no_room_kill_steed');
+            if (reason === DISMOUNT_BYCHOICE) {
+                await killed(mtmp);
+                adjalign(-1);
+            } else
+                await monkilled(mtmp, '', -ATTKS.AD_PHYS);
         }
     } /* !DEADMONST(mtmp) */
 

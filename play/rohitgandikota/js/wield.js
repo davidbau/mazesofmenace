@@ -897,13 +897,6 @@ export function uqwepgone() {
     }
 }
 
-// src/wield.c freehand(); the hero has a free hand (nothing welded, or a
-// one-handed weapon with an unwelded shield)
-export function freehand() {
-    return (!game.u.uwep || !welded(game.u.uwep)
-            || (!bimanual(game.u.uwep) && (!game.u.uarms || !game.u.uarms.cursed)));
-}
-
 // src/wield.c:1078 mwelded(); a monster's wielded weapon is welded to it
 export function mwelded(obj) {
     /* caller is responsible for making sure this is a monster's item */

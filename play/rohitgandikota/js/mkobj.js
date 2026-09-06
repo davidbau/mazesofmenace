@@ -17,7 +17,7 @@ import { arti_light_radius, obj_adjust_light_radius } from './light.js';
 import { get_obj_location } from './zap.js';
 import { Blind } from './youprop.js';
 import { cansee } from './vision.js';
-import { Yname2, otense } from './objnam.js';
+import { Yname2, otense, Doname2, The, aobjnam, vtense } from './objnam.js';
 import { pline } from './display.js';
 import { mk_artifact, nartifact_exist } from './artifact.js';
 // mkobj.js — object creation.
@@ -48,14 +48,14 @@ import { mk_artifact, nartifact_exist } from './artifact.js';
 import { game } from './gstate.js';
 import { start_timer, stop_timer, TIMER_OBJECT,
          ROT_CORPSE as TIMEOUT_ROT_CORPSE,
-         REVIVE_MON as TIMEOUT_REVIVE_MON,
+         REVIVE_MON as TIMEOUT_REVIVE_MON, ZOMBIFY_MON,
          SHRINK_GLOB,
          obj_stop_timers, obj_split_timers, FIG_TRANSFORM,
          attach_fig_transform_timeout } from './timeout.js';
 import { attach_egg_hatch_timeout } from './timeout.js';
 import { Is_rogue_level, MAX_OIL_IN_FLASK, NODIR, OBJ_FLOOR, OBJ_INVENT,
          OBJ_BURIED, ICE, DRAWBRIDGE_UP, DB_UNDER, DB_ICE,
-         In_quest, MON_DETACH, isok } from './const.js';
+         In_quest, MON_DETACH, isok, Is_airlevel, Is_waterlevel, IRONBARS, IS_ALTAR, nothing_happens } from './const.js';
 import { rnd, rn1, rn2, rne, rnz } from './rng.js';
 import { OCLASSES, ONAMES, SKILLS, obj_descr } from './objects_data.js';
 import {
@@ -66,7 +66,7 @@ import { PMNAMES, MONSYMS, MFLAGS, GROWNUPS } from './monst_data.js';
    Both sides export function DECLARATIONS, which hoist, so each module sees the
    other's bindings by the time anything is called. */
 import { merged, mergable, weight, update_inventory,
-         obj_extract_self, confers_luck, set_moreluck } from './invent.js';
+         obj_extract_self, confers_luck, set_moreluck, hold_another_object } from './invent.js';
 import { reset_remarm } from './do_wear.js';
 import { drop_uswapwep } from './wield.js';
 import { book_cursed } from './spell.js';
@@ -82,7 +82,7 @@ import { billable, costly_spot, stolen_value, unpaid_cost, subfrombill,
          shop_keeper, addtobill, alter_cost } from './shk.js';
 import { copy_mextra } from './mon.js';
 import { ONAME, has_oname, has_omid, OMID, free_omid, ONAME_SKIP_INVUPD,
-         COST_SINGLEOBJ, OBJ_DELETED } from './const.js';
+         COST_SINGLEOBJ, OBJ_DELETED, OBJ_LUAFREE, OBJ_ONBILL } from './const.js';
 import { in_rooms } from './hack.js';
 import { impossible, verbalize } from './pline.js';
 import { simpleonames } from './objnam.js';
@@ -206,18 +206,11 @@ function nextoid(oldobj, newobj) {
 }
 
 
-// src/mkobj.c:457 splitobj() — split num items off obj into a new object.
-//
-// Draws nothing. Ported for dog_eat(), which splits a single item off a food
-// stack so a pet eats one ration rather than the whole pile.
-//
-// Not ported, each recorded rather than faked: splitbill (shops), the timer
-// and light-source splits, and the Lua reference bookkeeping. copy_oextra is
-// approximated by carrying the fields our object model actually has.
+// src/mkobj.c:457 splitobj(); insert the split child after its parent.
 export function splitobj(obj, num) {
     /* can't split containers; C panics here */
-    if (obj.cobj || num <= 0 || obj.quan <= num)
-        note_unported_obj('splitobj:panic');
+    if (obj.cobj?.length || num <= 0 || obj.quan <= num)
+        throw new Error(`splitobj [cobj=${obj.cobj?.length ? 'non-empty container' : '(null)'} num=${num} quan=${obj.quan}]`);
 
     const otmp = { ...obj };        /* *otmp = *obj -- copies whole structure */
     otmp.oextra = null;
@@ -229,27 +222,34 @@ export function splitobj(obj, num) {
     obj.owt = weight(obj);
     otmp.quan = num;
     otmp.owt = weight(otmp);
+    otmp.lua_ref_cnt = 0;
     otmp.pickup_prev = 0;
 
     game.context.objsplit = game.context.objsplit || {};
     game.context.objsplit.parent_oid = obj.o_id;
     game.context.objsplit.child_oid = otmp.o_id;
 
-    /* C inserts the child immediately after the parent in both floor chains.
-     * The port represents those chains with one level object array. */
-    if (obj.where === OBJ_FLOOR) {
-        const objects = game.level?.objects;
-        const index = objects?.indexOf(obj) ?? -1;
-        if (index >= 0)
-            objects.splice(index + 1, 0, otmp);
-    } else if (obj.where === OBJ_INVENT) {
-        const index = (game.invent || []).indexOf(obj);
-        if (index >= 0)
-            game.invent.splice(index + 1, 0, otmp);
+    let chain;
+    switch (obj.where) {
+    case OBJ_FLOOR: chain = game.level?.objects; break;
+    case OBJ_INVENT: chain = game.invent; break;
+    case OBJ_MINVENT: chain = obj.ocarry?.minvent; break;
+    case OBJ_CONTAINED: chain = obj.ocontainer?.cobj; break;
+    case OBJ_MIGRATING: chain = game.migrating_objs; break;
+    case OBJ_BURIED: chain = game.level?.buriedobjs; break;
+    case OBJ_ONBILL: chain = game.billobjs; break;
     }
+    const index = chain?.indexOf(obj) ?? -1;
+    if (index >= 0)
+        chain.splice(index + 1, 0, otmp);
+    if (otmp.where === OBJ_LUAFREE)
+        otmp.where = OBJ_FREE;
 
     if (obj.unpaid)
         splitbill(obj, otmp);
+    copy_oextra(otmp, obj);
+    if (has_omid(otmp))
+        free_omid(otmp);
     if (obj.timed)
         obj_split_timers(obj, otmp);
     if (obj_sheds_light(obj))
@@ -373,6 +373,18 @@ export function bcsign(otmp) {
 // src/mkobj.c:626 clear_splitobjs() — forget the last splitobj() pair.
 export function clear_splitobjs() {
     game.context.objsplit = { parent_oid: 0, child_oid: 0 };
+}
+
+// src/mkobj.c:684 unknwn_contnr_contents(), the outermost unknown container.
+export function unknwn_contnr_contents(obj) {
+    let result = null;
+    while (obj.where === OBJ_CONTAINED) {
+        const parent = obj.ocontainer;
+        if (!parent.cknown)
+            result = parent;
+        obj = parent;
+    }
+    return result;
 }
 
 // src/mkobj.c:712 bill_dummy_object()
@@ -803,7 +815,7 @@ const FIRE_RES = 1;               /* include/prop.h:15 */
 
 
 // src/mkobj.c is_flammable()
-export function is_flammable(otmp, objects) {
+export function is_flammable(otmp, objects = game.objects) {
     const o = objects[otmp.otyp];
     const omat = o.oc_material;
     /* candles burn but take no fire damage and cannot be fireproofed */
@@ -815,18 +827,18 @@ export function is_flammable(otmp, objects) {
 }
 
 // src/mkobj.c is_rottable()
-export function is_rottable(otmp, objects) {
+export function is_rottable(otmp, objects = game.objects) {
     const omat = objects[otmp.otyp].oc_material;
     return (omat <= WOOD && omat !== LIQUID) || omat === DRAGON_HIDE;
 }
 
 // include/objclass.h:200-211
-export const is_rustprone  = (o, objs) => objs[o.otyp].oc_material === IRON;
-export const is_crackable  = (o, objs) => objs[o.otyp].oc_material === GLASS
+export const is_rustprone  = (o, objs = game.objects) => objs[o.otyp].oc_material === IRON;
+export const is_crackable  = (o, objs = game.objects) => objs[o.otyp].oc_material === GLASS
                                 && o.oclass === ARMOR_CLASS;
-export const is_corrodeable = (o, objs) => objs[o.otyp].oc_material === COPPER
+export const is_corrodeable = (o, objs = game.objects) => objs[o.otyp].oc_material === COPPER
                                  || objs[o.otyp].oc_material === IRON;
-const is_damageable = (o, objs) =>
+export const is_damageable = (o, objs = game.objects) =>
     is_rustprone(o, objs) || is_flammable(o, objs) || is_rottable(o, objs)
     || is_corrodeable(o, objs) || is_crackable(o, objs);
 
@@ -1704,6 +1716,7 @@ export function mkcorpstat(objtype, mtmp, ptr, x, y, corpstatflags) {
     }
     /* record gender and 'historic statue' in overloaded enchantment field */
     otmp.spe = corpstatflags & CORPSTAT_SPE_VAL;
+    otmp.norevive = game.mkcorpstat_norevive || 0;
 
     if (mtmp) {
         /* save_mtraits() keeps the individual's stats with the remains */
@@ -1721,7 +1734,7 @@ export function mkcorpstat(objtype, mtmp, ptr, x, y, corpstatflags) {
         otmp.corpsenm = ptr.pmidx ?? game.mons.indexOf(ptr);
         otmp.owt = weight(otmp);
         if (otmp.otyp === ONAMES.CORPSE
-            && (special_corpse(old_corpsenm)
+            && (game.zombify || special_corpse(old_corpsenm)
                 || special_corpse(otmp.corpsenm))) {
             /* obj_stop_timers + start_corpse_timeout */
             obj_stop_timers(otmp);
@@ -1944,6 +1957,10 @@ export function start_corpse_timeout(body) {
                 when = a;
                 break;
             }
+    } else if (game.zombify && zombie_form(game.mons[body.corpsenm]) !== NON_PM
+               && !body.norevive) {
+        action = ZOMBIFY_MON;
+        when = rn1(15, 5);
     }
     /* src/mkobj.c:1440 — start_timer(when, TIMER_OBJECT, ROT_CORPSE, body).
        Scheduling was missing: the rnz above drew but the corpse never
@@ -2150,6 +2167,75 @@ export function corpse_revive_type(obj) {
     return revivetype;
 }
 
+// src/mkobj.c:2847 hornoplenty(); create one item for application or tipping.
+export async function hornoplenty(horn, tipping = false, targetbox = null) {
+    if (!horn || horn.otyp !== ONAMES.HORN_OF_PLENTY) {
+        await impossible("bad horn o' plenty");
+        return 0;
+    }
+    if (horn.spe < 1) {
+        await pline(nothing_happens);
+        if (!horn.cknown) {
+            horn.cknown = 1;
+            update_inventory();
+        }
+        return 0;
+    }
+    await consume_obj_charge(horn, !tipping);
+    let obj, what;
+    if (!rn2(13)) {
+        obj = mkobj(OCLASSES.POTION_CLASS, false);
+        if (game.objects[obj.otyp].oc_magic) {
+            do {
+                obj.otyp = rnd_class(ONAMES.POT_BOOZE, ONAMES.POT_WATER);
+            } while (obj.otyp === ONAMES.POT_SICKNESS);
+            if (obj.otyp === ONAMES.POT_OIL)
+                fixup_oil(obj, null);
+        }
+        what = obj.quan > 1 ? 'Some potions' : 'A potion';
+    } else {
+        obj = mkobj(OCLASSES.FOOD_CLASS, false);
+        if (obj.otyp === ONAMES.FOOD_RATION && !rn2(7))
+            obj.otyp = ONAMES.LUMP_OF_ROYAL_JELLY;
+        what = 'Some food';
+    }
+    await pline(`${what} ${vtense(what, 'spill')} out.`);
+    obj.blessed = horn.blessed;
+    obj.cursed = horn.cursed;
+    obj.owt = weight(obj);
+    if (horn.unpaid)
+        await addtobill(obj, false, false, tipping);
+    game.iflags.suppress_price = (game.iflags.suppress_price || 0) + 1;
+    if (!tipping) {
+        const typ = game.level.at(game.u.ux, game.u.uy).typ;
+        const dropFmt = game.u.uswallow
+            ? 'Oops!  %s out of your reach!'
+            : (Is_airlevel(game.u.uz) || Is_waterlevel(game.u.uz)
+               || typ < IRONBARS || typ >= ICE)
+                ? 'Oops!  %s away from you!' : 'Oops!  %s to the floor!';
+        await hold_another_object(obj, dropFmt, The(aobjnam(obj, 'slip')), null);
+    } else if (targetbox) {
+        add_to_container(targetbox, obj);
+        targetbox.owt = weight(targetbox);
+        if (carried(targetbox)) {
+            await encumber_msg();
+            update_inventory();
+        }
+    } else if (!can_reach_floor(true)) {
+        await hitfloor(obj, true);
+    } else {
+        if (IS_ALTAR(game.level.at(game.u.ux, game.u.uy).typ))
+            await doaltarobj(obj);
+        else
+            await pline(`${Doname2(obj)} ${otense(obj, 'drop')} to the ${surface(game.u.ux, game.u.uy)}.`);
+        await dropy(obj);
+    }
+    game.iflags.suppress_price--;
+    if (horn.dknown)
+        makeknown(ONAMES.HORN_OF_PLENTY);
+    return 1;
+}
+
 // src/mkobj.c fixup_oil(); potions of oil use obj->age differently
 export function fixup_oil(potion, /* potion that just had its otyp changed */
                           source) /* item used to create potion; might be Null */
@@ -2304,3 +2390,11 @@ export function obj_nexto(otmp) {
     }
     return obj_nexto_xy(otmp, otmp.ox, otmp.oy, true);
 }
+
+import { consume_obj_charge } from './apply.js';
+import { can_reach_floor } from './pickup.js';
+import { hitfloor } from './dothrow.js';
+import { dropy, doaltarobj } from './do.js';
+import { encumber_msg } from './attrib.js';
+import { surface } from './dungeon.js';
+import { makeknown } from './o_init.js';

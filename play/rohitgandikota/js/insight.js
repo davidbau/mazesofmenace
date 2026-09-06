@@ -804,8 +804,12 @@ function status_enlightenment() {
     /* C reports 'nudity' when no armour slot is filled. A Tourist wears the
        Hawaiian shirt, so this must NOT fire — emitting it would push every
        following row down one and lose the frame. */
-    if (!wearing_any_armor())
-        you_are('not wearing any armor');
+    if (!wearing_any_armor()) {
+        if (game.u.uroleplay?.nudist)
+            enl_msg('You ', 'do', 'did', ' not wear any armor', '');
+        else
+            you_are('not wearing any armor');
+    }
 }
 
 function wearing_any_armor() {

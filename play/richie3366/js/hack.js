@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import {
     Upolyd, KILLED_BY, M_AP_FURNITURE, M_AP_OBJECT, M_AP_NOTHING,
-    M_AP_TYPMASK, M_AP_TYPE, isok, u_at, TIP_UNTRAP_MON,
+    M_AP_TYPMASK, M_AP_TYPE, isok, u_at, TIP_ENHANCE, TIP_UNTRAP_MON,
     IS_OBSTRUCTED, IRONBARS, IS_DOOR, IS_WALL, IS_TREE, IS_STWALL,
     D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED,
     NO_ROOM, SHARED, SHARED_PLUS, ROOMOFFSET, SHOPBASE, COLNO, ROWNO,
@@ -49,7 +49,6 @@ import {
 import { objectNames } from './generated/objects_data.js';
 import { WEAPON_CLASS, TOOL_CLASS, COIN_CLASS, is_blade } from './objects.js';
 import { xname, the, The, makeplural, an } from './objnam.js';
-import { oclass_to_sym } from './options.js';
 import { A_STR, A_CON, A_DEX, acurr, acurrstr, exercise } from './attrib.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import { ing_suffix } from './hacklib.js';
@@ -73,6 +72,7 @@ import { hit_bars } from './mthrowu.js';
 import { setuwep } from './wield.js';
 import { P_SKILL, weapon_type, use_skill } from './weapon.js';
 import { surface } from './sit.js';
+import { autopick_testobj } from './pickup.js';
 
 export { set_msg_xy };
 
@@ -266,17 +266,8 @@ export function test_move_run_blocked_by_boulder(x, y) {
     return true;
 }
 
-/**
- * C pickup.c autopick_testobj — pickup_types symbol filter.
- * calc_costly TRUE unused: costly_spot / thrown/stolen/dropped named omit
- * (same envelope as pickup.js).
- */
-function autopick_testobj(otmp, _calc_costly) {
-    const otypes = String(game.flags?.pickup_types || '');
-    if (!otypes) return true;
-    const sym = oclass_to_sym(otmp.oclass);
-    return !!(sym && otypes.includes(sym));
-}
+/* C pickup.c autopick_testobj is extern (hack.c cannot_push passes TRUE):
+ * use the canonical js/pickup.js export — no local clone (D-1849). */
 
 /**
  * C hack.c inv_cnt — count invent entries; !inclgold skips coins.
@@ -1470,8 +1461,9 @@ function u_simple_floortyp(x, y) {
 }
 
 /**
- * C ref: hack.c handle_tip — tips option + once-per-bit context.tips.
- * TIP_ENHANCE / TIP_GETPOS (lua NHCORE) named.
+ * C ref: hack.c handle_tip `:1852–1882` — tips option + once-per-bit
+ * context.tips. Arms in C switch order: TIP_ENHANCE, TIP_SWIM,
+ * TIP_UNTRAP_MON. TIP_GETPOS (lua NHCORE `l_nhcore_call`) named.
  */
 export async function handle_tip(tip) {
     if (game.flags?.tips === false) return false;
@@ -1480,6 +1472,10 @@ export async function handle_tip(tip) {
     const bits = game.context.tips | 0;
     if (bits & (1 << tip)) return false;
     game.context.tips = bits | (1 << tip);
+    if (tip === TIP_ENHANCE) {
+        await pline('(Tip: use the #enhance command to advance them.)');
+        return true;
+    }
     if (tip === TIP_SWIM) {
         // C: visctrl(cmd_from_func(do_reqmenu)) → 'm' under default binds
         await pline("(Tip: use 'm' prefix to step in if you really want to.)");

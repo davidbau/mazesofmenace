@@ -12,7 +12,7 @@ import { cloneu } from './mhitu.js';
 import { object_detect } from './detect.js';
 import { mon_set_minvis, mon_adjust_speed, which_armor } from './worn.js';
 import { SLIMED, M_AP_MONSTER, M_AP_NOTHING } from './const.js';
-import { fruitname, makeplural, xname } from './objnam.js';
+import { fruitname, makeplural, xname, vtense } from './objnam.js';
 import { hliquid, trycall } from './do_name.js';
 import { newuhs } from './eat.js';
 import { game } from './gstate.js';
@@ -767,8 +767,8 @@ export async function make_confused(xtime, talk) {
     if ((xtime && !old) || (!xtime && old))
         (game.disp ||= {}).botl = true;
 
-    (game.u.intrinsic ||= {}).HConfusion = xtime;
-    if (xtime)
+    set_itimeout('HConfusion', xtime);
+    if (game.u.intrinsic.HConfusion)
         (game.u.uprops ||= {}).CONFUSION = 1;
     else if (game.u.uprops)
         delete game.u.uprops.CONFUSION;
@@ -794,8 +794,8 @@ export async function make_stunned(xtime, talk) {
     if ((!xtime && old) || (xtime && !old))
         (game.disp ||= {}).botl = true;
 
-    (game.u.intrinsic ||= {}).HStun = xtime;
-    if (xtime)
+    set_itimeout('HStun', xtime);
+    if (game.u.intrinsic.HStun)
         (game.u.uprops ||= {}).STUNNED = 1;
     else if (game.u.uprops)
         delete game.u.uprops.STUNNED;
@@ -922,9 +922,18 @@ export async function make_blinded(xtime, talk) {
             await pline('Far out!  Everything is all cosmic again!');
         else
             await You('can see again.');
-    } else if (old_timeout && !new_timeout && talk && blocked) {
-        await Your(`vision seems to brighten for a moment but is ${
-            Hallucination() ? 'sadder' : 'normal'} now.`);
+    } else if (old_timeout && !new_timeout && talk) {
+        if (!haseyes(game.youmonst.data) || (intr.HBlinded & FROMOUTSIDE)) {
+            await strange_feeling(null, null);
+        } else if (blindfolded) {
+            let eyes = body_part(EYE);
+            if (eyecount(game.youmonst.data) !== 1)
+                eyes = makeplural(eyes);
+            await Your(`${eyes} momentarily ${vtense(eyes, 'itch')}.`);
+        } else {
+            await Your(`vision seems to brighten for a moment but is ${
+                Hallucination() ? 'sadder' : 'normal'} now.`);
+        }
     }
 
     if (!was_blind && blind_now && talk) {
@@ -932,9 +941,18 @@ export async function make_blinded(xtime, talk) {
             await pline('Oh, bummer!  Everything is dark!  Help!');
         else
             await pline('A cloud of darkness falls upon you.');
-    } else if (!old_timeout && new_timeout && talk && blocked) {
-        await Your(`vision seems to dim for a moment but is ${
-            Hallucination() ? 'happier' : 'normal'} now.`);
+    } else if (!old_timeout && new_timeout && talk) {
+        if (!haseyes(game.youmonst.data) || (intr.HBlinded & FROMOUTSIDE)) {
+            await strange_feeling(null, null);
+        } else if (blindfolded) {
+            let eyes = body_part(EYE);
+            if (eyecount(game.youmonst.data) !== 1)
+                eyes = makeplural(eyes);
+            await Your(`${eyes} momentarily ${vtense(eyes, 'twitch')}.`);
+        } else {
+            await Your(`vision seems to dim for a moment but is ${
+                Hallucination() ? 'happier' : 'normal'} now.`);
+        }
     }
 
     /* src/potion.c:308: capture the glyphs under an attached ball and chain
@@ -1399,7 +1417,6 @@ async function peffect_hallucination(otmp) {
                 = await import('./const.js');
             const { NO_COLOR, ATR_NONE } = await import('./terminal.js');
             const { xwaitforspace } = await import('./tty/getline.js');
-            const { docrt } = await import('./display.js');
             const win = tty_create_nhwindow(NHW_MENU);
             tty_start_menu(win, MENU_BEHAVE_STANDARD);
             for (const line of enlightenment(MAGICENLIGHTENMENT,
@@ -1412,7 +1429,6 @@ async function peffect_hallucination(otmp) {
             while (game.morc !== '\x1b' && tty_next_page(win))
                 await xwaitforspace(' \r\n\x1b');
             tty_destroy_nhwindow(win);
-            await docrt();
         }
         await Your('awareness re-normalizes.');
         exercise(A_WIS, true);
@@ -2387,12 +2403,12 @@ export async function split_mon(mon, mtmp) {
     return mtmp2;
 }
 
-// src/potion.c itimeout(); clamp a timeout value to the TIMEOUT field
+// src/potion.c:57 itimeout()
 export function itimeout(val) {
-    if (val < 0)
-        val = 0;
-    else if (val > TIMEOUT)
+    if (val >= TIMEOUT)
         val = TIMEOUT;
+    else if (val < 1)
+        val = 0;
     return val;
 }
 

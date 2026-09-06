@@ -101,6 +101,10 @@ export const Invis = () => !!(game.u?.intrinsic?.HInvis
 // include/youprop.h:199 Invisible, invisibility the hero cannot see.
 export const Invisible = () => Invis() && !See_invisible();
 
+// include/youprop.h:205 Displaced
+export const Displaced = () => !!(game.u?.intrinsic?.HDisplaced
+                                  || game.u?.uprops?.DISPLACED);
+
 // include/youprop.h:240 Levitation — ((HLevitation || ELevitation) && !BLevitation).
 export const Levitation = () =>
     !!(game.u?.intrinsic?.HLevitation || game.u?.uprops?.LEVITATION)
@@ -109,10 +113,9 @@ export const Levitation = () =>
 // include/youprop.h:253 Flying — note the steed term: riding a flying mount
 // counts, which is why this cannot be a plain uprops read.
 export const Flying = () =>
-    !!game.u?.intrinsic?.HFlying
-    || !!game.u?.uprops?.FLYING
-    || !!(Upolyd(game.u) && is_flyer(game.youmonst.data))
-    || !!(game.u?.usteed && is_flyer(game.u.usteed.data));
+    !!(game.u?.intrinsic?.HFlying || game.u?.uprops?.FLYING
+       || (game.u?.usteed && is_flyer(game.u.usteed.data)))
+    && !game.u?.blocked?.FLYING;
 
 // include/youprop.h Fire_resistance — (HFire_resistance || EFire_resistance).
 // The H word carries the FROMEXPER/FROMRACE/FROMOUTSIDE source bits (role
@@ -148,6 +151,17 @@ export const Drain_resistance = () =>
     !!(game.u?.intrinsic?.HDrain_resistance || game.u?.uprops?.DRAIN_RES);
 export const Sick_resistance = () =>
     !!(game.u?.intrinsic?.HSick_resistance || game.u?.uprops?.SICK_RES);
+// include/youprop.h:291/341
+export const Slow_digestion = () =>
+    !!(game.u?.intrinsic?.HSlow_digestion || game.u?.uprops?.SLOW_DIGESTION);
+export const Half_physical_damage = () =>
+    !!(game.u?.intrinsic?.HHalf_physical_damage || game.u?.uprops?.HALF_PHDAM);
+// include/youprop.h:405 Half_gas_damage
+export const Half_gas_damage = () => !!game.u?.ublindf
+    && game.u.ublindf.otyp === ONAMES.TOWEL && game.u.ublindf.spe > 0;
+// include/youprop.h:81/84
+export const Stunned = () => !!(game.u?.intrinsic?.HStun || game.u?.uprops?.STUNNED);
+export const Confusion = () => !!(game.u?.intrinsic?.HConfusion || game.u?.uprops?.CONFUSION);
 export const Antimagic = () =>
     !!(game.u?.intrinsic?.HAntimagic || game.u?.uprops?.ANTIMAGIC);
 /* #define Stealth ((HStealth || EStealth) && !BStealth) — nothing that sets

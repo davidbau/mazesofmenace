@@ -1,6 +1,7 @@
 // do_wear.js — Wear / take-off / put-on (partial).
 // C ref: do_wear.c — dowear, doputon, canwearobj, accessory_or_armor_on,
-// Amulet_on, Amulet_off, Armor_on, dotakeoff, doddoremarm, take_off,
+// Amulet_on, Amulet_off, Armor_on, Armor_gone, count_worn_armor,
+// any_worn_armor_ok, dotakeoff, doddoremarm, take_off,
 // do_takeoff, remarm_swapwep, menu_remarm, armor_or_accessory_off,
 // armoroff, *_off.
 
@@ -10,7 +11,7 @@ import {
     newsym, see_monsters, urgent_pline, impossible,
 } from './display.js';
 import { yn_function } from './getline.js';
-import { an, doname, the, xname, xprname, vtense, makeplural, makesingular, otense, gloves_simple_name, simpleonames, body_part_latebound } from './objnam.js';
+import { an, doname, the, xname, xprname, vtense, makeplural, makesingular, otense, gloves_simple_name, simpleonames, body_part_latebound, Tobjnam } from './objnam.js';
 import { find_ac } from './u_init.js';
 import {
     A_STR, A_CON, A_CHA, acurr, extremeattr, change_luck, Fast, Very_fast,
@@ -34,7 +35,7 @@ import {
     is_worn_by_type,
 } from './pickup.js';
 import { obj_resists } from './dogmove.js';
-import { toggle_blindness, dropx, canletgo } from './do.js';
+import { toggle_blindness, dropx, canletgo, setnotworn } from './do.js';
 import { set_bc } from './ball.js';
 import {
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_ARMOR,
@@ -70,6 +71,7 @@ import {
     erosion_matters, is_damageable, is_metallic,
 } from './mkobj.js';
 import { erode_obj, selftouch } from './trap.js';
+import { artifact_light, end_burn } from './timeout.js';
 import { rn2, rnd } from './rng.js';
 import { set_mimic_blocking } from './vision.js';
 import { restartcham, rescham } from './mon.js';
@@ -611,6 +613,40 @@ export async function Armor_off() {
     clear_worn(W_ARM);
     // C: setworn(NULL) then dragon_armor_handling(otmp, FALSE, TRUE)
     await dragon_armor_handling(otmp, false, true);
+    return 0;
+}
+
+/**
+ * C ref: do_wear.c Armor_gone `:939–960` — suit shed on the polymorph
+ * break/slip path (the gone family never re-wears via life saving,
+ * unlike *_off): snapshot uarm, takeoff.mask clear + setnotworn +
+ * cancelled_don reset, gold-DSM arti_light end_burn + "stop shining"
+ * before the potentially fatal dragon_armor_handling(otmp, FALSE, FALSE).
+ * The was_arti_light snapshot must precede setnotworn: unwearing clears
+ * the W_ARM bit that artifact_light reads on gold DSM/scales, and a
+ * prior end_burn (polyself break_armor's lamplit gate) suppresses the
+ * message the same way C's does.
+ * Named omissions: caller wiring — polyself break_armor still does
+ * setworn+dropx (js/polyself.js); read.c destroy-armor arms.
+ * @returns {Promise<number>} 0
+ */
+export async function Armor_gone() {
+    const otmp = game.u?.uarm;
+    const was_arti_light = !!(otmp && otmp.lamplit && artifact_light(otmp));
+    if (game.context?.takeoff) {
+        game.context.takeoff.mask =
+            (game.context.takeoff.mask | 0) & ~W_ARM;
+    }
+    setnotworn(game.u?.uarm);
+    if (game.context?.takeoff) {
+        game.context.takeoff.cancelled_don = false;
+    }
+    /* C: non-fatal arti_light change before the potentially fatal handling. */
+    if (was_arti_light && !artifact_light(otmp)) {
+        end_burn(otmp, false);
+        if (!Blind()) await pline(`${Tobjnam(otmp, 'stop')} shining.`);
+    }
+    await dragon_armor_handling(otmp, false, false);
     return 0;
 }
 
@@ -1238,62 +1274,16 @@ async function armor_or_accessory_off(obj) {
     return 0;
 }
 
-function takeoff_lets() {
-    // C takeoff_ok / equip_ok(removing, accessory=FALSE): SUGGEST worn
-    // armor only; accessories are GETOBJ_DOWNPLAY (selectable, not listed).
-    const inv = game.invent || [];
-    const lets = [];
-    for (const o of inv) {
-        if (!o?.invlet) continue;
-        if ((o.owornmask || 0) & W_ARMOR) lets.push(o.invlet);
-    }
-    lets.sort();
-    if (!lets.length) return '';
-    return lets.join('');
-}
-
 /**
- * C ref: invent.c getobj("take off", takeoff_ok, GETOBJ_NOFLAGS)
- * via yn_function(qbuf, NULL, '\0'). Leave gt.toplines on success —
- * delayed armoroff has no off_msg until afternmv; parse clears after
- * next-command nhgetch (same as getobj_drop).
- */
-async function getobj_takeoff() {
-    for (;;) {
-        await flush_topl_more();
-        const lets = takeoff_lets();
-        const query = lets
-            ? `What do you want to take off? [${lets} or ?*]`
-            : 'What do you want to take off? [*]';
-        // C invent.c getobj → yn_function(qbuf, (char *)0, '\0', FALSE)
-        const ch = await yn_function(query, null, '\0', false);
-        if (ch === '\x1b' || ch === ' ' || ch === '\n' || ch === '\r') {
-            if (game.flags?.verbose !== false) await pline('Never mind.');
-            return null;
-        }
-        if (ch === '?' || ch === '*') {
-            // ?/* pickinv deferred — cancel like prior stub
-            await pline('Never mind.');
-            return null;
-        }
-        const otmp = (game.invent || []).find((o) => o.invlet === ch);
-        if (!otmp) {
-            // C invent.c getobj: You("don't have that object."); continue;
-            await pline("You don't have that object.");
-            continue;
-        }
-        if (!((otmp.owornmask || 0) & (W_ARMOR | W_ACCESSORY))) {
-            await pline('You are not wearing that.');
-            return null;
-        }
-        // C: leave gt.toplines for parse clear_nhwindow(WIN_MESSAGE)
-        mark_topline_prompt(game._pending_message);
-        return otmp;
-    }
-}
-
-/**
- * C ref: do_wear.c dotakeoff — 'T' command.
+ * C do_wear.c dotakeoff `:1831–1852` — 'T' command.
+ * Live invent.c getobj("take off", takeoff_ok, GETOBJ_NOFLAGS) covers the
+ * prompt/filter arms the clone missed: sortloot SORTLOOT_INVLET order (not
+ * charCode sort), compactify past 5, DOWNPLAY accessories in altlets with
+ * forceprompt (not dropped), EXCLUDE_INACCESS covering cloak/suit/gloves
+ * feeding the "else" in "don't have anything else to take off", ?/* via
+ * display_pickinv, in_doagain readchar, force_invmenu ?/*, digit
+ * No-count, HANDS mime_action, gold/throw/botl/CQ_REPEAT, silly_thing and
+ * split_otmp. uskin merged-with-skin stays a named omit (see doremring).
  * @returns {number} 0 = no turn, 1 = took time
  */
 export async function dotakeoff() {
@@ -1304,11 +1294,31 @@ export async function dotakeoff() {
     }
     const paranoid = !!(game.flags?.paranoid_confirm?.remove
         || game.flags?.paranoid_remove);
-    if (Narmorpieces !== 1 || paranoid) {
-        otmp = await getobj_takeoff();
+    if (Narmorpieces !== 1 || paranoid || game.item_action_in_progress) {
+        otmp = await getobj('take off', takeoff_ok, GETOBJ_NOFLAGS);
     }
     if (!otmp) return 0;
     return armor_or_accessory_off(otmp);
+}
+
+/**
+ * C do_wear.c ia_dotakeoff `:1862–1870` — 'i'/`I[` + invlet then 'T'.
+ * Plain dotakeoff() would not give any feedback when picking suit covered
+ * by cloak, or shirt covered by suit and/or cloak, due to equip_ok()
+ * skipping inaccessible items; the flag forces the getobj prompt (C
+ * `:1849`) and SUGGESTs covered armor (C `:3439` gate). Canned via
+ * INTERNALCMD "alttakeoff" (cmd.c `:2064`; iactions.c `:230–232`).
+ * @returns {Promise<number>} dotakeoff result
+ */
+export async function ia_dotakeoff() {
+    game.item_action_in_progress = true;
+    let res;
+    try {
+        res = await dotakeoff();
+    } finally {
+        game.item_action_in_progress = false;
+    }
+    return res;
 }
 
 /**
@@ -1915,6 +1925,40 @@ function equip_ok(obj, removing, accessory) {
 }
 
 /**
+ * C ref: do_wear.c any_worn_armor_ok `:3480–3485` — getobj callback for
+ * blessed destroy-armor: suggest any worn armor, even if covered by
+ * other armor.
+ * Named omissions: caller wiring — read.c gets_choice getobj arm still
+ * deferred (js/read.js seffect_destroy_armor).
+ * @param {object|null} obj
+ * @returns {number} GETOBJ_SUGGEST or GETOBJ_EXCLUDE
+ */
+export function any_worn_armor_ok(obj) {
+    if (obj && ((obj.owornmask | 0) & W_ARMOR)) return GETOBJ_SUGGEST;
+    return GETOBJ_EXCLUDE;
+}
+
+/**
+ * C ref: do_wear.c count_worn_armor `:3489–3502` — number of armor pieces
+ * worn by hero (suit, cloak, helm, shield, gloves, boots, shirt).
+ * Named omissions: caller wiring — read.c blessed gets_choice
+ * `count_worn_armor() > 1` gate still deferred (js/read.js).
+ * @returns {number} worn armor count
+ */
+export function count_worn_armor() {
+    const u = game.u || {};
+    let ret = 0;
+    if (u.uarm) ret++;
+    if (u.uarmc) ret++;
+    if (u.uarmh) ret++;
+    if (u.uarms) ret++;
+    if (u.uarmg) ret++;
+    if (u.uarmf) ret++;
+    if (u.uarmu) ret++;
+    return ret;
+}
+
+/**
  * C do_wear.c inaccessible_equipment `:3340–3400` with verb=NULL.
  * Suit under cloak, shirt under suit/cloak, ring under gloves.
  * @param {object} obj
@@ -1944,6 +1988,11 @@ function puton_ok(obj) {
 /** C do_wear.c remove_ok `:3457–3461`. */
 function remove_ok(obj) {
     return equip_ok(obj, true, true);
+}
+
+/** C do_wear.c takeoff_ok `:3471–3475` — getobj filter for the T command. */
+function takeoff_ok(obj) {
+    return equip_ok(obj, true, false);
 }
 
 /**

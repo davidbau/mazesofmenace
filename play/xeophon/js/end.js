@@ -4,6 +4,43 @@
 
 import { game } from './gstate.js';
 import { depth as depthOfLevel } from './hacklib.js';
+import { A_CON } from './const.js';
+
+// end.c:savelife and attrib.c:minuhpmax/setuhpmax. Callers apply any amulet
+// Constitution loss first and handle status cures, expulsion and messages.
+export function restoreLifeSavedBody(u = game.u) {
+    if (!u) return;
+    u.ulevel = Math.max(1, u.ulevel || 1);
+    const minimum = Math.max(u.ulevel, 10);
+    if ((u.uhpmax || 0) < minimum) {
+        u.uhpmax = minimum;
+        u.uhppeak = Math.max(u.uhppeak || 0, minimum);
+    }
+    const con = u.acurr?.a?.[A_CON] ?? 10;
+    const givehp = 50 + 10 * Math.trunc(con / 2);
+    u.uhp = Math.min(u.uhpmax, givehp);
+    if ((u._polyself_form || u.Upolyd || u.polymorphed) && u.mhmax != null)
+        u.mh = Math.min(u.mhmax, givehp);
+    u.unchanging = false; // HUnchanging only; worn amulets remain active.
+}
+
+// end.c:727-736: done returns into its caller, with unmul due this turn.
+export function scheduleLifeSavingRecovery() {
+    game.context ??= {};
+    game.context.move = 0;
+    game.multi = -1;
+    game._helpless_time = 1;
+    game._wake_message = 'You survived that attempt on your life.';
+    game.multi_reason = game._startup_role === 'Tourist'
+        ? 'being toyed with by Fate' : 'attempting to cheat Death';
+    if (game._queued_explore_lifesaving_message) {
+        game._queued_message_after_more = '';
+        game._queued_explore_lifesaving_message = 0;
+        game._pending_explore_lifesaving_message = 0;
+        game._survivor_emit_after_moves = 0;
+        game._survivor_via_search_stop = 0;
+    }
+}
 
 const GOLD_PIECE = 466; // object id for gold zorkmids (mirrors allmain.js/cmd.js)
 

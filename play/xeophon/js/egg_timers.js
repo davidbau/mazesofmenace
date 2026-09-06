@@ -1,5 +1,8 @@
 import { game } from './gstate.js';
 import { monsterByRndName } from './mklev.js';
+import { rnd } from './rng.js';
+import { HATCH_EGG, TIMER_OBJECT, peekTimer, startTimer, stopTimer } from './timeout.js';
+import { objectLocations } from './obj_location.js';
 
 const EGG = 10001;
 
@@ -73,69 +76,48 @@ export function eggHatchMonsterData(egg, g = game) {
     return eggHatchBlockedAtTimeout(egg, g) ? null : eggHatchlingMonsterData(egg);
 }
 
-export function eggHasHatchTimer(egg) {
-    return egg?.eggHatchTurn != null;
+export function eggHasHatchTimer(egg, g = game) {
+    return !!peekTimer(HATCH_EGG, egg, g);
 }
 
-export function killEggHatchTimer(egg) {
+export function attachEggHatchTimeout(egg, when = 0, g = game) {
+    killEggHatchTimer(egg, g);
+    if (!when) {
+        for (let i = 151; i <= 200; i++) {
+            if (rnd(i) > 150) {
+                when = i;
+                break;
+            }
+        }
+    }
+    if (!when) return false;
+    startTimer(when, TIMER_OBJECT, HATCH_EGG, egg, g);
+    egg.eggHatchTurn = (g.moves || 0) + when;
+    egg._egg_hatch_consumed = true;
+    egg._egg_hatch_seq = g._egg_hatch_timer_seq = (g._egg_hatch_timer_seq || 0) + 1;
+    return true;
+}
+
+export function killEggHatchTimer(egg, g = game) {
     if (!egg) return false;
-    const hadTimer = eggHasHatchTimer(egg) || egg._egg_hatch_seq != null || egg._egg_hatch_consumed != null;
+    const hadTimer = eggHasHatchTimer(egg, g) || egg.eggHatchTurn != null;
+    stopTimer(HATCH_EGG, egg, {}, g);
     delete egg.eggHatchTurn;
     delete egg._egg_hatch_seq;
     delete egg._egg_hatch_consumed;
     return hadTimer;
 }
 
-function objectContents(obj) {
-    const lists = [];
-    if (Array.isArray(obj?.contents)) lists.push(obj.contents);
-    if (Array.isArray(obj?.cobj) && obj.cobj !== obj.contents) lists.push(obj.cobj);
-    return lists.flat();
-}
-
-function scanObjectListForEggs(objects, callback, seen) {
-    if (!Array.isArray(objects)) return;
-    for (const obj of objects) {
-        if (!obj || seen.has(obj)) continue;
-        seen.add(obj);
-        if (isEggObject(obj)) callback(obj);
-        scanObjectListForEggs(objectContents(obj), callback, seen);
-    }
-}
-
-function scanLevelForEggs(level, callback, seen) {
-    if (!level) return;
-    scanObjectListForEggs(level.objects, callback, seen);
-    scanObjectListForEggs(level.buriedobjlist, callback, seen);
-    for (const mon of Array.isArray(level.monsters) ? level.monsters : [])
-        scanObjectListForEggs(mon?.minvent, callback, seen);
-}
-
-function scanMigrationQueuesForEggs(g, callback, seen) {
-    if (g._impact_drop_migrations instanceof Map) {
-        for (const objects of g._impact_drop_migrations.values())
-            scanObjectListForEggs(objects, callback, seen);
-    }
-    scanObjectListForEggs(g.migrating_objs, callback, seen);
-    scanObjectListForEggs(g._migrating_objs, callback, seen);
-}
-
 export function scanEggObjects(g = game, callback = () => {}) {
-    const seen = new Set();
-    scanObjectListForEggs(g.inventory, callback, seen);
-    scanLevelForEggs(g.level, callback, seen);
-    if (g._saved_levels instanceof Map) {
-        for (const saved of g._saved_levels.values())
-            scanLevelForEggs(saved?.level || saved, callback, seen);
-    }
-    scanMigrationQueuesForEggs(g, callback, seen);
+    for (const obj of objectLocations(g, true).keys())
+        if (isEggObject(obj)) callback(obj);
 }
 
 export function killDeadSpeciesEggHatchTimers(g = game) {
     let stopped = 0;
     scanEggObjects(g, egg => {
-        if (!eggHasHatchTimer(egg) || !eggSpeciesGenocidedForHatching(egg, g)) return;
-        if (killEggHatchTimer(egg)) stopped++;
+        if (!eggHasHatchTimer(egg, g) || !eggSpeciesGenocidedForHatching(egg, g)) return;
+        if (killEggHatchTimer(egg, g)) stopped++;
     });
     return stopped;
 }

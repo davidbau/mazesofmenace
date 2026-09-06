@@ -70,8 +70,8 @@ import { OCLASSES, MATERIALS } from './objects_data.js';
 import { mstatusline, ustatusline } from './insight.js';
 import { You_cant, You_hear, You_see, pline_The } from './pline.js';
 import { d, rn1, rn2, rnd, rnl } from './rng.js';
-import { isok, ACCESSIBLE, IS_STWALL, IS_DOOR, D_ISOPEN, IRONBARS, ICE,
-         MAX_OIL_IN_FLASK, NON_PM } from './const.js';
+import { isok, ACCESSIBLE, IS_STWALL, IS_DOOR, D_ISOPEN, ICE,
+         NON_PM } from './const.js';
 import { walk_path } from './dothrow.js';
 import { closed_door } from './cmd.js';
 import { sobj_at } from './invent.js';
@@ -84,7 +84,7 @@ import { cansee } from './vision.js';
 import { wield_tool, welded } from './wield.js';
 import { body_part, mbodypart } from './polyself.js';
 import { FACE, FINGER, HAND } from './const.js';
-import { OBJ_NAME, The, Tobjnam, Yname2, Yobjnam2, an, aobjnam, doname, singular,
+import { OBJ_NAME, The, Tobjnam, Yname2, Yobjnam2, an, doname, singular,
          cxname, xname, yname, the, thesimpleoname, gloves_simple_name, makeplural,
          otense, vtense } from './objnam.js';
 import { Amonnam, Monnam, a_monnam, hcolor, l_monnam, mon_nam,
@@ -93,7 +93,7 @@ import { Amonnam, Monnam, a_monnam, hcolor, l_monnam, mon_nam,
 import { defsyms } from './drawing_data.js';
 import { bimanual, carried, Is_candle, is_boots, is_gloves,
          is_flimsy } from './obj.js';
-import { clear_splitobjs, mkobj, mksobj, place_object, rnd_class, set_bknown,
+import { clear_splitobjs, mkobj, mksobj, place_object, hornoplenty, set_bknown,
          splitobj, set_tin_variety, unbless } from './mkobj.js';
 import { attacktype_fordmg, can_blow, has_head, haseyes, nohands, nolimbs,
          breathless, passes_walls, poly_when_stoned, throws_rocks, touch_petrifies,
@@ -118,7 +118,7 @@ import { can_reach_floor, pickup_object } from './pickup.js';
 import { use_pick_axe } from './dig.js';
 import { dbon, do_attack } from './uhitm.js';
 import { possibly_unwield, setmnotwielded } from './weapon.js';
-import { freehand } from './wield.js';
+import { freehand } from './engrave.js';
 import { mwelded } from './wield.js';
 import { fingers_or_gloves } from './do_wear.js';
 import { dowrite } from './write.js';
@@ -2111,7 +2111,7 @@ async function use_royal_jelly(jelly) {
 }
 
 /* src/apply.c no_elbow_room[] */
-const no_elbow_room = 'have no elbow-room to maneuver.';
+const no_elbow_room = "don't have enough elbow-room to maneuver.";
 const is_wet_towel = (obj) => obj.otyp === ONAMES.TOWEL && obj.spe > 0;
 /* include/youprop.h: Blinded (timed or a worn blindfold/towel), its timeout,
    Sick, Stunned, Confusion; include/you.h Ugender */
@@ -3406,81 +3406,6 @@ export async function bagotricks(bag, tipping = false, seenState = null) {
     return moncount;
 }
 
-// src/mkobj.c:2847 hornoplenty(), for applying one charge. Tipping sends the
-// created object to the floor and defers the horn's usage fee to the caller.
-export async function hornoplenty(horn, tipping = false) {
-    if (horn.spe < 1) {
-        await pline(nothing_happens);
-        if (!horn.cknown) {
-            horn.cknown = 1;
-            update_inventory();
-        }
-        return 0;
-    }
-
-    if (horn.unpaid && !tipping) {
-        const { check_unpaid } = await import('./shk.js');
-        await check_unpaid(horn);
-    }
-    horn.spe--;
-    if (horn.known)
-        update_inventory();
-
-    let obj, what;
-    if (!rn2(13)) {
-        obj = mkobj(OCLASSES.POTION_CLASS, false);
-        if (game.objects[obj.otyp].oc_magic) {
-            do {
-                obj.otyp = rnd_class(ONAMES.POT_BOOZE, ONAMES.POT_WATER);
-            } while (obj.otyp === ONAMES.POT_SICKNESS);
-            if (obj.otyp === ONAMES.POT_OIL)
-                obj.age = MAX_OIL_IN_FLASK;
-        }
-        what = obj.quan > 1 ? 'Some potions' : 'A potion';
-    } else {
-        obj = mkobj(OCLASSES.FOOD_CLASS, false);
-        if (obj.otyp === ONAMES.FOOD_RATION && !rn2(7))
-            obj.otyp = ONAMES.LUMP_OF_ROYAL_JELLY;
-        what = 'Some food';
-    }
-
-    await pline(`${what} ${vtense(what, 'spill')} out.`);
-    obj.blessed = horn.blessed;
-    obj.cursed = horn.cursed;
-    obj.owt = weight(obj);
-
-    if (horn.unpaid) {
-        const { addtobill } = await import('./shk.js');
-        await addtobill(obj, false, false, true);
-    }
-
-    if (tipping) {
-        game.iflags.suppress_price = (game.iflags.suppress_price || 0) + 1;
-        const name = doname(obj);
-        game.iflags.suppress_price -= 1;
-        await pline(`${upstart(name)} ${otense(obj, 'drop')} to the ${
-            surface(game.u.ux, game.u.uy)}.`);
-        place_object(obj, game.u.ux, game.u.uy);
-        stackobj(obj);
-        if (horn.dknown)
-            makeknown(ONAMES.HORN_OF_PLENTY);
-        return 1;
-    }
-
-    const typ = game.level.at(game.u.ux, game.u.uy).typ;
-    const dropFmt = game.u.uswallow
-        ? 'Oops!  %s out of your reach!'
-        : (Is_airlevel(game.u.uz) || Is_waterlevel(game.u.uz)
-           || typ < IRONBARS || typ >= ICE)
-            ? 'Oops!  %s away from you!'
-            : 'Oops!  %s to the floor!';
-    await hold_another_object(obj, dropFmt, The(aobjnam(obj, 'slip')), null);
-
-    if (horn.dknown)
-        makeknown(ONAMES.HORN_OF_PLENTY);
-    return 1;
-}
-
 // src/apply.c:2259 use_unicorn_horn(). A cursed horn adds one random timed
 // ailment. A noncursed horn shuffles the timed ailments and cures a random
 // prefix, with a blessed horn able to cure more of them.
@@ -3674,7 +3599,9 @@ export async function doapply() {
     case ONAMES.BAG_OF_HOLDING:
     case ONAMES.OILSKIN_SACK: {
         const { use_container } = await import('./pickup.js');
-        res = await use_container(obj, true, false);
+        const objp = { o: obj };
+        res = await use_container(objp, true, false);
+        obj = objp.o;
         break;
     }
     case ONAMES.BAG_OF_TRICKS:

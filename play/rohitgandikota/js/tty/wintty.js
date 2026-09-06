@@ -1024,8 +1024,10 @@ function docorner(xmin, ymax, display) {
             row_refresh(Math.max(1, xmin), COLNO - 1, y - 1);
     }
     /* "we scribbled over the status line; redraw it" */
-    if (ymax >= 22)
+    if (ymax >= 22) {
+        (game.disp ||= {}).botlx = true;
         bot();
+    }
 }
 
 // win/tty/wintty.c:966 erase_menu_or_text()

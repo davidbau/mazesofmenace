@@ -399,12 +399,14 @@ async function calm_nymphs(distance) {
 }
 
 /**
- * C ref: music.c awaken_soldiers — mercs ready; else awaken_scare nearby.
+ * C ref: music.c awaken_soldiers `:161` — bugler==&youmonst ? ulevel/mdistu
+ * : bugler mlevel/dist2. Hero callers pass null (D-0974); the MUSE_BUGLE
+ * use arm passes the monster bugler.
  */
-async function awaken_soldiers(_bugler) {
+export async function awaken_soldiers(bugler) {
     const u = game.u || {};
-    // Hero bugler only this envelope (monster bugler deferred)
-    const distance = (u.ulevel | 0) * 30;
+    const distance = (bugler
+        ? (bugler.data?.mlevel | 0) : (u.ulevel | 0)) * 30;
     for (const mtmp of game.fmon || []) {
         if (!mtmp || (mtmp.mhp | 0) <= 0) continue;
         if (is_mercenary(mtmp.data)
@@ -422,7 +424,10 @@ async function awaken_soldiers(_bugler) {
                 );
             }
         } else {
-            const distm = mdistu(mtmp);
+            const distm = bugler
+                ? dist2(bugler.mx | 0, bugler.my | 0,
+                    mtmp.mx | 0, mtmp.my | 0)
+                : mdistu(mtmp);
             if (distm < distance) {
                 await awaken_scare(mtmp, distm < Math.floor(distance / 3));
             }

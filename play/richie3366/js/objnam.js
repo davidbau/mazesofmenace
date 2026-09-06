@@ -29,7 +29,7 @@ import {
     pmnames, MALE, FEMALE, NEUTRAL, NON_PM, NUMMONS, LOW_PM, NUM_MGENDERS,
 } from './monsters.js';
 import { BOGUSMON_BUF } from './generated/bogusmon_data.js';
-import { upstart, highc } from './hacklib.js';
+import { upstart, highc, ordin } from './hacklib.js';
 import { genders } from './roles.js';
 import {
     PM_SAMURAI, PM_CLERIC, PM_ARCHEOLOGIST, PM_LICHEN, PM_ACID_BLOB, PM_LONG_WORM_TAIL,
@@ -954,6 +954,11 @@ export function xname(obj) {
     if (!Blind() && !(game.distantname | 0) && _xname_observe) {
         _xname_observe(obj);
     }
+    // C xname_flags `:661` (`:652–672`): maybe find a previously unseen
+    // artifact. Real obj->dknown, not the override_ID variant, so wizard
+    // ^I on a blind-picked artifact does not mark it found. After
+    // observe_object (which can set dknown), before obj_is_pname.
+    if (obj?.oartifact && obj?.dknown && _find_artifact) _find_artifact(obj);
     const n = objectNames[obj.otyp];
     if (n === 'CORPSE') {
         let base = 'corpse';
@@ -991,6 +996,23 @@ export function xname(obj) {
         base = base.slice(4);
     }
     return base;
+}
+
+/**
+ * C ref: objnam.c mshot_xname :1090-1102 — "the Nth <xname>" while a
+ * multishot volley of the same otyp is in flight (gm.m_shot.n > 1,
+ * gm.m_shot.o == obj->otyp); bare xname otherwise. The "the " prefix is
+ * for an()/The(), which handle it. C strprepend (objnam.c staticfn :123)
+ * is plain prefix concat in JS.
+ */
+export function mshot_xname(obj) {
+    let onm = xname(obj);
+    const ms = game.m_shot;
+    if (ms && (ms.n | 0) > 1 && (ms.o | 0) === (obj.otyp | 0)) {
+        const i = ms.i | 0;
+        onm = `the ${i}${ordin(i)} ` + onm;
+    }
+    return onm;
 }
 
 /**
@@ -1065,7 +1087,7 @@ function mungspaces_objnam(s) {
  * Aligned-cleric + CORPSTAT_RANDOM remaps to PM_CLERIC (avoid "aligned").
  * Named omit: omonst traits (#if 0 in C).
  */
-function obj_pmname_corpse(obj) {
+export function obj_pmname_corpse(obj) {
     const otypName = objectNames[obj?.otyp];
     const omndx = obj?.corpsenm;
     if ((otypName === 'CORPSE' || otypName === 'STATUE' || otypName === 'FIGURINE')
@@ -2153,6 +2175,16 @@ export function set_undiscovered_artifact(fn) {
 }
 
 /**
+ * Late-bound from artifact.js — C artifact.c find_artifact `:422–459`.
+ * Default null (no livelog) until artifact.js registers.
+ * Avoids static objnam→artifact (artifact already imports objnam; D-1521).
+ */
+let _find_artifact = null;
+export function set_find_artifact(fn) {
+    _find_artifact = fn;
+}
+
+/**
  * C ref: obj.h is_plural — quan != 1L, or discovered Eyes of the Overworld.
  * "the Eyes of the Overworld" are plural; "a pair of lenses named …" is not.
  */
@@ -2422,6 +2454,15 @@ export function yname(obj) {
  */
 export function Yname2(obj) {
     return upstart(yname(obj));
+}
+
+/**
+ * C ref: objnam.c Doname2 `:2303–2309` — highc first character of doname.
+ * Canonical export for pickup `mbag_item_gone` (D-1938); pre-existing
+ * local clones (do/dokick/dothrow) stay.
+ */
+export function Doname2(obj) {
+    return upstart(doname(obj));
 }
 
 /** C objnam.c aobjnam — cxname + optional otense (quan prefix via xname). */

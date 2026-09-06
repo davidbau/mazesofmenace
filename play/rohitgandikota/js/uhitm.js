@@ -25,10 +25,21 @@ import { locomotion } from './mondata.js';
 import { mdistu } from './monmove.js';
 import { steal } from './steal.js';
 import { rloc } from './teleport.js';
-import { tele_restrict } from './teleport.js';
+import { tele_restrict, tele, u_teleport_mon } from './teleport.js';
 import { could_seduce } from './mhitu.js';
 import { u_slip_free } from './mhitu.js';
-import { failed_grab, sleep_monst, slept_monst } from './mhitm.js';
+import { failed_grab, sleep_monst, slept_monst, engulf_target,
+         xdrainenergym } from './mhitm.js';
+import { snuff_lit } from './apply.js';
+import { eating_conducts, newuhs, Finish_digestion } from './eat.js';
+import { m_useup } from './mthrowu.js';
+import { done } from './end.js';
+import { touch_of_death } from './mcastu.js';
+import { explode, adtyp_to_expltype } from './explode.js';
+import { rehumanize } from './polyself.js';
+import { is_vampshifter } from './monst.js';
+import { DISP_ALWAYS, DISP_END, NO_NC_FLAGS, NO_KILLER_PREFIX, DIED,
+         STOMACH, XKILL_GIVEMSG, MON_EXPLODE } from './const.js';
 import { drain_weapon_skill } from './weapon.js';
 import { silver_sears } from './weapon.js';
 import { polymon } from './polyself.js';
@@ -38,7 +49,7 @@ import { gender } from './mondata.js';
 import { is_animal } from './mondata.js';
 import { can_be_strangled } from './mondata.js';
 import { stagger } from './mondata.js';
-import { make_stoned } from './potion.js';
+import { make_stoned, make_slimed } from './potion.js';
 import { potionhit } from './potion.js';
 import { hold_another_object } from './invent.js';
 import { freeinv } from './invent.js';
@@ -82,7 +93,10 @@ import { game } from './gstate.js';
 import { helpless, MON_WEP } from './monst.js';
 import { rn1 } from './rng.js';
 import { dmgtype, monstseesu, monstunseesu } from './mondata.js';
-import { touch_petrifies, abuse_dog } from './dog.js';
+import { touch_petrifies, abuse_dog, slimeproof } from './dog.js';
+import { munslime } from './muse.js';
+import { delayed_killer } from './end.js';
+import { SLIMED, NC_SHOW_MSG } from './const.js';
 import { which_armor, extract_from_minvent } from './worn.js';
 import { hitmsg, magic_negation, mdamageu, mpoisons_subj, mhis } from './mhitu.js';
 import { You, Your, You_feel, You_hear, livelog_add, pline_The,
@@ -96,13 +110,15 @@ import { destroy_items, drain_item, exclam, hit, obj_resists,
 import { Acid_resistance, Antimagic, Blind, Cold_resistance, Deaf,
          Fire_resistance, Free_action, Fumbling, Hallucination, Flying, Levitation,
          Invisible, Shock_resistance, Swimming, Amphibious, Breathless,
-         Sleep_resistance, Stone_resistance } from './youprop.js';
+         Sleep_resistance, Stone_resistance, Sick_resistance,
+         Slow_digestion, Unchanging, Teleport_control, Stunned } from './youprop.js';
 import { canseemon, canspotmon, glyph_at, sensemon, newsym, pline, shieldeff,
          flush_screen, glyph_is_invisible_at, map_invisible,
-         unmap_invisible, urgent_pline } from './display.js';
+         unmap_invisible, urgent_pline, map_location, mon_to_glyph,
+         tmp_at } from './display.js';
 import { wakeup, wake_nearto, killed, xkilled, seemimic, setmangry, mongone,
          shieldeff_mon, is_pool, m_carrying, t_at, minliquid,
-         healmon, monstone, mondied } from './mon.js';
+         healmon, monstone, mondied, newcham, mlifesaver, corpse_chance } from './mon.js';
 import { DEADMONSTER } from './monst.js';
 import { is_pole } from './u_init.js';
 import { bimanual, carried, is_plural, is_flimsy, is_shield,
@@ -118,10 +134,10 @@ import { an, aobjnam, yname, cxname, xname, The, makeplural, simpleonames,
          obj_is_pname, otense, mshot_xname, Yname2, Yobjnam2,
          doname } from './objnam.js';
 import { mintrap, instapetrify, minstapetrify, mselftouch, erode_obj,
-         ignite_items } from './trap.js';
+         ignite_items, unconscious } from './trap.js';
 import { clone_mon, goodpos, place_monster, remove_monster,
-         is_rider, grow_up } from './makemon.js';
-import { rn2, rnd, d } from './rng.js';
+         is_rider, grow_up, monsndx } from './makemon.js';
+import { rn2, rnd, d, rn2_on_display_rng } from './rng.js';
 import { is_safemon } from './display.js';
 import { monflee, set_apparxy } from './monmove.js';
 import { monnear } from './monmove.js';
@@ -148,7 +164,8 @@ import { is_orc, is_elf, unsolid, noncorporeal, nonliving, amorphous,
          resists_acid, resists_poison, resists_drli, resists_ston,
          defended, completelyburns,
          noattacks, poly_when_stoned, flesh_petrifies, slithy,
-         is_swimmer, amphibious, breathless } from './mondata.js';
+         is_swimmer, amphibious, breathless, digests, enfolds, flaming,
+         can_blnd } from './mondata.js';
 import { mon_hates_silver } from './dog.js';
 import { s_suffix } from './hacklib.js';
 import { vtense } from './objnam.js';
@@ -320,7 +337,7 @@ async function steal_it(mdef, mattk) {
 
     while ((otmp = (mdef.minvent || [])[0]) != null) {
         if (gold) /* put 'mdef's gold back after remembering mdef->minvent */
-            mpickobj(mdef, gold), gold = null;
+            await mpickobj(mdef, gold), gold = null;
         if (!Upolyd(game.u))
             break; /* no longer have ability to steal */
         unwornmask = otmp.owornmask;
@@ -330,7 +347,7 @@ async function steal_it(mdef, mattk) {
         if (otmp.oartifact && !Blind())
             find_artifact(otmp);
         /* take the object away from the monster */
-        extract_from_minvent(mdef, otmp, true, false);
+        await extract_from_minvent(mdef, otmp, true, false);
         /* special message for final item; no need to check owornmask because
          * ustealo is only set on objects with (owornmask & W_ARM) */
         if (otmp === ustealo)
@@ -367,7 +384,7 @@ async function steal_it(mdef, mattk) {
        (so will be present in mdef's minvent for bones, or in its statue
        now if it has just been turned into one) */
     if (gold)
-        mpickobj(mdef, gold);
+        await mpickobj(mdef, gold);
 }
 
 // src/uhitm.c:6425 light_hits_gremlin()
@@ -952,18 +969,250 @@ export function double_punch() {
     return false;
 }
 
-// src/uhitm.c:5198 missum() — the hero's attack misses.
-//
-// Draws nothing itself. Its three messages need pline plumbing and are
-// recorded, but the WAKEUP is behaviour, not a message: a monster that was
-// asleep stops being asleep, and wakeup() in turn calls setmangry(), which
-// makes a peaceful monster hostile. That is state a later turn depends on.
-//
-// wakeup() is not ported -- it opens a chain through wake_msg, seemimic,
-// finish_meating, growl, setmangry, ghod_hitsu and hot_pursuit -- so it is
-// recorded here rather than approximated. Approximating it by just clearing
-// msleeping would leave a peaceful monster peaceful after being attacked,
-// which is a worse wrong answer than doing nothing.
+// src/uhitm.c:4891 explum()
+export async function explum(mdef, mattk) {
+    const tmp = d(mattk[2], mattk[3]);
+    switch (mattk[1]) {
+    case ATTKS.AD_BLND:
+        if (mdef && !resists_blnd(mdef)) {
+            await pline(`${Monnam(mdef)} is blinded by your flash of light!`);
+            mdef.mblinded = Math.min(mdef.mblinded + tmp, 127);
+            mdef.mcansee = 0;
+        }
+        break;
+    case ATTKS.AD_HALU:
+        if (mdef && haseyes(mdef.data) && mdef.mcansee) {
+            await pline(`${Monnam(mdef)} is affected by your flash of light!`);
+            mdef.mconf = 1;
+        }
+        break;
+    case ATTKS.AD_COLD:
+    case ATTKS.AD_FIRE:
+    case ATTKS.AD_ELEC:
+        await explode(game.u.ux, game.u.uy, mattk[1] - 1 + 20, tmp,
+            MON_EXPLODE, adtyp_to_expltype(mattk[1]));
+        if (mdef && DEADMONSTER(mdef))
+            return M_ATTK_DEF_DIED;
+        break;
+    }
+    await wake_nearto(game.u.ux, game.u.uy, 7 * 7);
+    return M_ATTK_HIT;
+}
+
+// src/uhitm.c:4931 start_engulf()
+async function start_engulf(mdef) {
+    const u_digest = digests(game.youmonst.data);
+    const u_enfold = enfolds(game.youmonst.data);
+    if (!Invisible()) {
+        map_location(game.u.ux, game.u.uy, true);
+        await tmp_at(DISP_ALWAYS, mon_to_glyph(game.youmonst, rn2_on_display_rng));
+        await tmp_at(mdef.mx, mdef.my);
+    }
+    await You(`${u_digest ? 'swallow' : u_enfold ? 'enclose' : 'engulf'} ${
+        mon_nam(mdef)}${u_digest ? ' whole' : ''}!`);
+    if (game.animationFrame) {
+        await game.animationFrame();
+        await game.animationFrame();
+    }
+}
+
+// src/uhitm.c:4949 end_engulf()
+async function end_engulf() {
+    if (!Invisible()) {
+        await tmp_at(DISP_END, 0);
+        newsym(game.u.ux, game.u.uy);
+    }
+}
+
+// src/uhitm.c:4958 gulpum()
+export async function gulpum(mdef, mattk) {
+    let msgbuf, tmp, otmp;
+    let dam = d(mattk[2], mattk[3]);
+    const u_digest = digests(game.youmonst.data);
+    const u_enfold = enfolds(game.youmonst.data);
+    const pd = mdef.data;
+    const expel_verb = u_digest ? 'regurgitate' : u_enfold ? 'release' : 'expel';
+
+    if (!engulf_target(game.youmonst, mdef))
+        return M_ATTK_MISS;
+    if (!(u_digest && game.u.uhunger >= 1500) && !game.u.uswallow) {
+        if (!flaming(game.youmonst.data)) {
+            for (otmp of mdef.minvent || [])
+                await snuff_lit(otmp);
+        }
+        if (is_vampshifter(mdef)
+            && await newcham(mdef, game.mons[mdef.cham], NO_NC_FLAGS)) {
+            await You(`${u_digest ? 'swallow' : u_enfold ? 'enclose' : 'engulf'} it, then ${expel_verb} it.`);
+            if (canspotmon(mdef)) {
+                await pline(`It turns into ${x_monnam(mdef, ARTICLE_A, null,
+                    SUPPRESS_NAME | SUPPRESS_IT | SUPPRESS_INVISIBLE, false)}.`);
+            } else {
+                map_invisible(mdef.mx, mdef.my);
+            }
+            return M_ATTK_HIT;
+        }
+        const fatal_gulp = (touch_petrifies(pd) && !Stone_resistance())
+            || (mattk[1] === ATTKS.AD_DGST
+                && (is_rider(pd) || (monsndx(pd) === PMNAMES.PM_MEDUSA
+                                     && !Stone_resistance())));
+        if (mattk[1] === ATTKS.AD_DGST && (!Slow_digestion() || fatal_gulp))
+            await eating_conducts(pd);
+        if (fatal_gulp && !is_rider(pd)) {
+            let mnam = pmname(pd, Mgender(mdef));
+            if (!type_is_pname(pd))
+                mnam = an(mnam);
+            await You(`${u_digest ? 'englut' : 'engulf'} ${mon_nam(mdef)}.`);
+            await instapetrify(`${u_digest ? 'swallowing' : u_enfold ? 'enclosing'
+                : 'engulfing'} ${mnam}${u_digest ? ' whole' : ''}`);
+        } else {
+            await start_engulf(mdef);
+            switch (mattk[1]) {
+            case ATTKS.AD_DGST:
+                if (is_rider(pd)) {
+                    await pline('Unfortunately, digesting any of it is fatal.');
+                    await end_engulf();
+                    (game.killer ||= {}).name = `unwisely tried to eat ${pmname(pd, Mgender(mdef))}`;
+                    game.killer.format = NO_KILLER_PREFIX;
+                    await done(DIED);
+                    return M_ATTK_MISS;
+                }
+                if (Slow_digestion()) {
+                    dam = 0;
+                    break;
+                }
+                if ((otmp = mlifesaver(mdef)))
+                    await m_useup(mdef, otmp);
+                await newuhs(false);
+                game.mswallower = game.youmonst;
+                await xkilled(mdef, XKILL_GIVEMSG | XKILL_NOCORPSE);
+                if (!DEADMONSTER(mdef)) {
+                    await You(`hurriedly regurgitate the sizzling in your ${body_part(STOMACH)}.`);
+                } else {
+                    tmp = 1 + (pd.cwt >> 8);
+                    if (await corpse_chance(mdef, game.youmonst, true)
+                        && !(game.mvitals[monsndx(pd)].mvflags & MFLAGS.G_NOCORPSE)) {
+                        game.u.uhunger += Math.trunc((pd.cnutrit + 1) / 2);
+                    } else {
+                        tmp = 0;
+                    }
+                    msgbuf = `You totally digest ${mon_nam(mdef)}.`;
+                    if (tmp !== 0) {
+                        await You(`digest ${mon_nam(mdef)}.`);
+                        if (Slow_digestion())
+                            tmp *= 2;
+                        nomul(-tmp);
+                        game.multi_reason = 'digesting something';
+                        game.nomovemsg = msgbuf;
+                        game.corpsenm_digested = monsndx(pd);
+                        game.afternmv = Finish_digestion;
+                    } else {
+                        await pline(msgbuf);
+                    }
+                    if (monsndx(pd) === PMNAMES.PM_GREEN_SLIME) {
+                        msgbuf = `${The(pmname(pd, Mgender(mdef)))} isn't sitting well with you.`;
+                        /* C's nomovemsg points into this same static buffer. */
+                        if (tmp !== 0)
+                            game.nomovemsg = msgbuf;
+                        if (!Unchanging())
+                            await make_slimed(5, null);
+                    } else {
+                        await exercise(A_CON, true);
+                    }
+                }
+                game.mswallower = null;
+                await end_engulf();
+                return M_ATTK_DEF_DIED;
+            case ATTKS.AD_PHYS:
+                if (game.youmonst.mnum === PMNAMES.PM_FOG_CLOUD) {
+                    await pline(`${Monnam(mdef)} is laden with your moisture.`);
+                    if ((breathless(pd) || amphibious(pd)) && !flaming(pd)) {
+                        dam = 0;
+                        await pline(`${Monnam(mdef)} seems unharmed.`);
+                    }
+                } else {
+                    await pline(`${Monnam(mdef)} is ${enfolds(game.youmonst.data)
+                        ? 'being squashed' : 'pummeled with your debris'}!`);
+                }
+                break;
+            case ATTKS.AD_ACID:
+                await pline(`${Monnam(mdef)} is covered with your goo!`);
+                if (resists_acid(mdef)) {
+                    await pline(`It seems harmless to ${mon_nam(mdef)}.`);
+                    dam = 0;
+                }
+                break;
+            case ATTKS.AD_BLND:
+                if (can_blnd(game.youmonst, mdef, mattk[0], null)) {
+                    if (mdef.mcansee)
+                        await pline(`${Monnam(mdef)} can't see in there!`);
+                    mdef.mcansee = 0;
+                    dam += mdef.mblinded;
+                    if (dam > 127)
+                        dam = 127;
+                    mdef.mblinded = dam;
+                }
+                dam = 0;
+                break;
+            case ATTKS.AD_ELEC:
+                if (rn2(2)) {
+                    await pline_The(`air around ${mon_nam(mdef)} crackles with electricity.`);
+                    if (resists_elec(mdef)) {
+                        await pline(`${Monnam(mdef)} seems unhurt.`);
+                        dam = 0;
+                    }
+                    await golemeffects(mdef, mattk[1], dam);
+                } else {
+                    dam = 0;
+                }
+                break;
+            case ATTKS.AD_COLD:
+                if (rn2(2)) {
+                    if (resists_cold(mdef)) {
+                        await pline(`${Monnam(mdef)} seems mildly chilly.`);
+                        dam = 0;
+                    } else {
+                        await pline(`${Monnam(mdef)} is freezing to death!`);
+                    }
+                    await golemeffects(mdef, mattk[1], dam);
+                } else {
+                    dam = 0;
+                }
+                break;
+            case ATTKS.AD_FIRE:
+                if (rn2(2)) {
+                    if (resists_fire(mdef)) {
+                        await pline(`${Monnam(mdef)} seems mildly hot.`);
+                        dam = 0;
+                    } else {
+                        await pline(`${Monnam(mdef)} is burning to a crisp!`);
+                    }
+                    await golemeffects(mdef, mattk[1], dam);
+                } else {
+                    dam = 0;
+                }
+                break;
+            case ATTKS.AD_DREN:
+                if (!rn2(4))
+                    await xdrainenergym(mdef, true);
+                dam = 0;
+                break;
+            }
+            await end_engulf();
+            mdef.mhp -= dam;
+            if (DEADMONSTER(mdef)) {
+                await killed(mdef);
+                if (DEADMONSTER(mdef))
+                    return M_ATTK_DEF_DIED;
+            }
+            await You(`${expel_verb} ${mon_nam(mdef)}!`);
+            if ((Slow_digestion() || is_animal(game.youmonst.data)) && u_digest)
+                await pline(`Obviously, you didn't like ${s_suffix(mon_nam(mdef))} taste.`);
+        }
+    }
+    return M_ATTK_MISS;
+}
+
+// src/uhitm.c:5199 missum()
 export async function missum(mdef, mattk, wouldhavehit) {
     if (wouldhavehit)   /* a monk missing due to the body-armour penalty */
         await Your('armor is rather cumbersome...');
@@ -1280,6 +1529,32 @@ export async function hmonas(mon) {
                 await missum(mon, mattk_row(mattk),
                              tmp + roll.role_roll_penalty > dieroll);
             }
+        } else if (aatyp === ATTKS.AT_EXPL) {
+            dhit = -1;
+            await wakeup(mon, true);
+            await You('explode!');
+            sum[i] = await explum(mon, mattk);
+        } else if (aatyp === ATTKS.AT_ENGL) {
+            const tmp = await find_roll_to_hit(mon, aatyp, null, roll);
+            mon_maybe_unparalyze(mon);
+            dhit = tmp > rnd(20 + i);
+            if (dhit) {
+                await wakeup(mon, true);
+                if (mon.mnum === PMNAMES.PM_SHADE) {
+                    await Your(`attempt to surround ${mon_nam(mon)} is harmless.`);
+                } else if (!(await failed_grab(game.youmonst, mon, mattk))) {
+                    sum[i] = await gulpum(mon, mattk);
+                    if (sum[i] === M_ATTK_DEF_DIED
+                        && (mon.data.mlet === MONSYMS.S_ZOMBIE
+                            || mon.data.mlet === MONSYMS.S_MUMMY)
+                        && rn2(5) && !Sick_resistance()) {
+                        await You_feel(`${game.u.uprops?.SICK ? 'very ' : ''}sick.`);
+                        await mdamageu(mon, rnd(8));
+                    }
+                }
+            } else {
+                await missum(mon, mattk_row(mattk), false);
+            }
         } else if (aatyp === ATTKS.AT_HUGS) {
             let specialdmg;
             const silverhit = { v: 0 };
@@ -1366,6 +1641,10 @@ export async function hmonas(mon) {
             continue;
         }
 
+        if (dhit === -1) {
+            game.u.mh = -1;
+            await rehumanize();
+        }
         await passive(mon, weapon, sum[i] !== M_ATTK_MISS,
                       !DEADMONSTER(mon), aatyp, false);
         const mhm = { hitflags: sum[i] };
@@ -1449,6 +1728,11 @@ export async function damageum(mon, mattk, specialdmg) {
                           specialdmg, done: false };
             await mhitm_ad_wrap(game.youmonst, mattk, mon, mhm);
             damage = mhm.damage;
+        } else if (mattk[1] === ATTKS.AD_TLPT) {
+            const mhm = { damage, hitflags: M_ATTK_MISS, permdmg: 0,
+                          specialdmg, done: false };
+            await mhitm_ad_tlpt(game.youmonst, mattk, mon, mhm);
+            damage = mhm.damage;
         } else if (mattk[1] === ATTKS.AD_POLY) {
             const mhm = { damage, hitflags: M_ATTK_MISS, permdmg: 0,
                           specialdmg, done: false };
@@ -1473,6 +1757,13 @@ export async function damageum(mon, mattk, specialdmg) {
                           specialdmg, done: false };
             await mhitm_ad_slee(game.youmonst, mattk, mon, mhm);
             damage = mhm.damage;
+        } else if (mattk[1] === ATTKS.AD_SLIM) {
+            const mhm = { damage, hitflags: M_ATTK_MISS, permdmg: 0,
+                          specialdmg, done: false };
+            await mhitm_ad_slim(game.youmonst, mattk, mon, mhm);
+            damage = mhm.damage;
+            if (mhm.done)
+                return mhm.hitflags;
         } else {
             note_unported_uhitm(`damageum:adtyp=${mattk[1]}`);
         }
@@ -3071,6 +3362,69 @@ const Maybe_Half_Phys = (dmg) =>
     (game.u.intrinsic?.HHalf_physical_damage || game.u.uprops?.HALF_PHDAM)
         ? Math.trunc((dmg + 1) / 2) : dmg;
 
+// src/uhitm.c:3524 mhitm_ad_slim()
+export async function mhitm_ad_slim(magr, mattk, mdef, mhm) {
+    const negated = await mhitm_mgc_atk_negated(magr, mdef, false);
+    let pd = mdef.data;
+    if (magr === game.youmonst) {
+        if (negated)
+            return;
+        if (!rn2(4) && !slimeproof(pd)) {
+            if (!(await munslime(mdef, true)) && !DEADMONSTER(mdef)) {
+                await You(`turn ${mon_nam(mdef)} into slime.`);
+                if (await newcham(mdef, game.mons[PMNAMES.PM_GREEN_SLIME], NO_NC_FLAGS))
+                    pd = mdef.data;
+            }
+            if (DEADMONSTER(mdef)) {
+                mhm.hitflags = M_ATTK_DEF_DIED;
+                mhm.done = true;
+                return;
+            }
+            mhm.damage = 0;
+        }
+    } else if (mdef === game.youmonst) {
+        await hitmsg(magr, mattk);
+        if (negated) {
+            if (!magr.mcan)
+                await You('escape harm.');
+            return;
+        }
+        if (flaming(pd)) {
+            await pline_The('slime burns away!');
+            mhm.damage = 0;
+        } else if (Unchanging() || noncorporeal(pd)
+                   || monsndx(pd) === PMNAMES.PM_GREEN_SLIME) {
+            await You('are unaffected.');
+            mhm.damage = 0;
+        } else if (!game.u.uprops?.SLIMED) {
+            await You("don't feel very well.");
+            await make_slimed(10, null);
+            delayed_killer(SLIMED, KILLED_BY_AN, pmname(magr.data, Mgender(magr)));
+        } else {
+            await pline('Yuck!');
+        }
+    } else {
+        if (negated)
+            return;
+        if (!rn2(4) && !slimeproof(pd)) {
+            if (!(await munslime(mdef, false)) && !DEADMONSTER(mdef)) {
+                let ncflags = NO_NC_FLAGS;
+                if (game.vis && canseemon(mdef))
+                    ncflags |= NC_SHOW_MSG;
+                if (await newcham(mdef, game.mons[PMNAMES.PM_GREEN_SLIME], ncflags))
+                    pd = mdef.data;
+                mdef.mstrategy &= ~STRAT_WAITFORU;
+                mhm.hitflags = M_ATTK_HIT;
+            }
+            if (DEADMONSTER(magr))
+                mhm.hitflags |= M_ATTK_AGR_DIED;
+            if (DEADMONSTER(mdef))
+                mhm.hitflags |= M_ATTK_DEF_DIED;
+            mhm.damage = 0;
+        }
+    }
+}
+
 // src/uhitm.c:3729 mhitm_ad_poly()
 export async function mhitm_ad_poly(magr, mattk, mdef, mhm) {
     const negated = (await mhitm_mgc_atk_negated(magr, mdef, false))
@@ -3111,6 +3465,48 @@ export async function mhitm_ad_poly(magr, mattk, mdef, mhm) {
             mhm.hitflags |= M_ATTK_HIT;
             mhm.done = true;
         }
+    }
+}
+
+// src/uhitm.c:3838 mhitm_ad_deth()
+export async function mhitm_ad_deth(magr, mattk, mdef, mhm) {
+    const pd = mdef.data;
+    if (magr !== game.youmonst && mdef === game.youmonst) {
+        await pline_mon(magr, `${Monnam(magr)} reaches out with its deadly touch.`);
+        if (is_undead(pd)) {
+            mhm.damage = Math.trunc((mhm.damage + 1) / 2);
+            await pline('Was that the touch of death?');
+            return;
+        }
+        switch (rn2(20)) {
+        case 19:
+        case 18:
+        case 17:
+            if (!Antimagic()) {
+                await touch_of_death(magr);
+                mhm.damage = 0;
+                return;
+            }
+            // fall through
+        default:
+            await You_feel('your life force draining away...');
+            mhm.permdmg = 1;
+            return;
+        case 4:
+        case 3:
+        case 2:
+        case 1:
+        case 0:
+            if (Antimagic())
+                await shieldeff(game.u.ux, game.u.uy);
+            await pline("Lucky for you, it didn't work!");
+            mhm.damage = 0;
+            return;
+        }
+    } else {
+        if (is_undead(pd) && mhm.damage > 1)
+            mhm.damage = rnd(Math.trunc(mhm.damage / 2));
+        await mhitm_ad_drli(magr, mattk, mdef, mhm);
     }
 }
 
@@ -3164,6 +3560,75 @@ export async function mhitm_ad_drli(magr, mattk, mdef, mhm) {
                 mhm.damage = mdef.mhp;
             else
                 mdef.m_lev--;
+        }
+    }
+}
+
+// src/uhitm.c:2859 mhitm_ad_tlpt(), teleportation attacks in all three
+// combat directions. A successful teleport must leave its target alive.
+export async function mhitm_ad_tlpt(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        if (mhm.damage <= 0)
+            mhm.damage = 1;
+        if (await mhitm_mgc_atk_negated(magr, mdef, true)) {
+            await pline(`${Monnam(mdef)} is not affected.`);
+        } else {
+            const u_saw_mon = canseemon(mdef) || engulfing_u(mdef);
+            const nambuf = Monnam(mdef);
+            if (await u_teleport_mon(mdef, false) && u_saw_mon
+                && !(canseemon(mdef) || engulfing_u(mdef)))
+                await pline(`${nambuf} suddenly disappears!`);
+            if (mhm.damage >= mdef.mhp) {
+                if (mdef.mhp === 1)
+                    ++mdef.mhp;
+                mhm.damage = mdef.mhp - 1;
+            }
+        }
+    } else if (mdef === game.youmonst) {
+        await hitmsg(magr, mattk, mhm.indx);
+        if (await mhitm_mgc_atk_negated(magr, mdef, false)) {
+            await You('are not affected.');
+        } else {
+            if (game.flags.verbose)
+                await Your(`position suddenly seems ${
+                    Teleport_control() && !Stunned() && !unconscious()
+                        ? '' : 'very '}uncertain!`);
+            await tele();
+            const tmphp = Upolyd(game.u) ? game.u.mh : game.u.uhp;
+            if ((Half_physical_damage() ? Math.trunc((mhm.damage - 1) / 2)
+                                       : mhm.damage) >= tmphp) {
+                mhm.damage = tmphp - 1;
+                if (Half_physical_damage())
+                    mhm.damage *= 2;
+                if (mhm.damage < 1) {
+                    mhm.damage = 1;
+                    if (Upolyd(game.u) && game.u.mh === 1)
+                        ++game.u.mh;
+                    else if (!Upolyd(game.u) && game.u.uhp === 1)
+                        ++game.u.uhp;
+                }
+            }
+        }
+    } else {
+        if (magr.mcan || mhm.damage >= mdef.mhp
+            || await tele_restrict(mdef)) {
+            // C emits no negation message on these early exits.
+        } else if (await mhitm_mgc_atk_negated(magr, mdef, true)) {
+            if (game.vis)
+                await pline_mon(mdef, `${Monnam(mdef)} is not affected.`);
+        } else {
+            const wasseen = canspotmon(mdef);
+            const mdef_Monnam = game.vis && wasseen ? Monnam(mdef) : '';
+            mdef.mstrategy &= ~STRAT_WAITFORU;
+            await rloc(mdef, RLOC_NOMSG);
+            if (game.vis && wasseen && !canspotmon(mdef)
+                && mdef !== game.u.usteed)
+                await pline(`${mdef_Monnam} suddenly disappears!`);
+            if (mhm.damage >= mdef.mhp) {
+                if (mdef.mhp === 1)
+                    ++mdef.mhp;
+                mhm.damage = mdef.mhp - 1;
+            }
         }
     }
 }
@@ -3249,10 +3714,10 @@ export async function mhitm_ad_sedu(magr, mattk, mdef, mhm) {
             await dismount_steed(DISMOUNT_POLY);
         }
 
-        extract_from_minvent(mdef, obj, true);
+        await extract_from_minvent(mdef, obj, true);
         const objectName = game.vis ? doname(obj) : '';
         const { mpickobj } = await import('./steal.js');
-        mpickobj(magr, obj);
+        await mpickobj(magr, obj);
         const attackerName = Monnam(magr);
         if (game.vis && canseemon(mdef)) {
             await pline(`${attackerName} steals ${objectName} from ${

@@ -7,7 +7,8 @@
 //         sound_speak (D-1761; !SND_SPEECH no-op). SoundSpeak is sndprocs.h.
 //         maybe_gasp (D-1762); beg (D-1763);
 //         maybe_play_sound (D-1807; USER_SOUNDS compiled out);
-//         domonnoise remaps + MS_ORACLE/PRIEST/SELL (D-1808).
+//         domonnoise remaps + MS_ORACLE/PRIEST/SELL (D-1808) +
+//         MS_WERE/BARK FULL_MOON + animal MS_MEW..MS_ORC (this D).
 
 import { game } from './gstate.js';
 import {
@@ -36,8 +37,10 @@ import {
     ANY_SHOP, ANY_TYPE, OROOM, SHOPBASE, ROOMOFFSET, VAULT,
     COURT, BEEHIVE, MORGUE, BARRACKS, ZOO,
     ESHK, EMIN, has_emin, Is_astralevel, Is_oracle_level, In_endgame,
-    STRAT_WAITMASK, PLNMSG_GROWL,
+    STRAT_WAITMASK, PLNMSG_GROWL, FULL_MOON,
 } from './const.js';
+import { night } from './calendar.js';
+import { aggravate } from './wizard.js';
 import { mplayer_talk } from './mplayer.js';
 import { vault_occupied, findgd } from './vault.js';
 import { t_at } from './trap.js';
@@ -96,6 +99,9 @@ const PM_TOURIST = monsterNames.indexOf('PM_TOURIST');
 const PM_DEATH = monsterNames.indexOf('PM_DEATH');
 const PM_GECKO = monsterNames.indexOf('PM_GECKO');
 const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');
+const PM_HUMAN_WERERAT = monsterNames.indexOf('PM_HUMAN_WERERAT');
+const PM_DINGO = monsterNames.indexOf('PM_DINGO');
+const PM_RAVEN = monsterNames.indexOf('PM_RAVEN');
 
 /** C ref: pline.c You_hear — acoustics/Deaf; Unaware/Underwater deferred. */
 async function You_hear(line) {
@@ -445,7 +451,12 @@ const MS_GRUNT = 11;
 const MS_NEIGH = 12;
 const MS_MOO = 13;
 const MS_WAIL = 14;
+const MS_GURGLE = 15;
+const MS_BURBLE = 16;
+const MS_TRUMPET = 17;
 const MS_ANIMAL = 17;
+const MS_SHRIEK = 18;
+const MS_BONES = 19;
 const MS_LAUGH = 20;
 const MS_MUMBLE = 21;
 const MS_IMITATE = 22;
@@ -815,8 +826,12 @@ function mon_is_gecko(mon) {
 }
 
 /**
- * C ref: sounds.c domonnoise `:678–1242` (D-1808 remaps + ORACLE/PRIEST/SELL).
- * Other MS_* named omitted; unknown still ECMD_TIME. night() howl named.
+ * C ref: sounds.c domonnoise `:678–1242` (D-1808 remaps + ORACLE/PRIEST/SELL;
+ * this D adds MS_WERE `:824–841` FULL_MOON howl + MS_BARK `:842–860` FULL_MOON
+ * fix + animal MS_MEW..MS_ORC `:861–1003` in C order).
+ * Remaining named: MS_VAMPIRE / MS_DJINNI / MS_ARREST / MS_BRIBE+MS_CUSS
+ * (demon_talk/cuss absent) / MS_SPELL / MS_NURSE / MS_GUARD / MS_SOLDIER /
+ * verbl_msg_mcan / save-rest oracle_loc. Unknown still ECMD_TIME.
  */
 export async function domonnoise(mtmp) {
     if (!mtmp) return ECMD_OK;
@@ -887,21 +902,142 @@ export async function domonnoise(mtmp) {
     } else if (msound === MS_BELLOW) {
         // C :898–903 Soundeffect compiled out.
         pline_msg = 'bellows!';
+    } else if (msound === MS_WERE) {
+        // C sounds.c MS_WERE `:824–841` — FULL_MOON && (night() ^ !rn2(13))
+        // immediate howl/shriek pline + wake_nearto(11*11), else whisper.
+        // Soundeffect compiled out (no SND_LIB). Short-circuit preserves RNG.
+        if (((game.flags?.moonphase | 0) === FULL_MOON)
+            && (night() ^ !rn2(13))) {
+            await pline(
+                `${Monnam(mtmp)} throws back ${mhis(mtmp)} head and lets out a blood curdling ${((ptr?.mndx | 0) === PM_HUMAN_WERERAT) ? 'shriek' : 'howl'}!`,
+            );
+            await wake_nearto(mtmp.mx, mtmp.my, 11 * 11);
+        } else {
+            pline_msg = 'whispers inaudibly.  All you can make out is "moon".';
+        }
     } else if (msound === MS_BARK) {
-        // C: FULL_MOON && night() → "howls." — night() deferred
-        if (mtmp.mpeaceful) {
+        // C sounds.c MS_BARK `:842–860` — FULL_MOON && night() howls;
+        // peaceful whines/yips/barks (dingos do not bark), else growls.
+        if (((game.flags?.moonphase | 0) === FULL_MOON) && night()) {
+            pline_msg = 'howls.';
+        } else if (mtmp.mpeaceful) {
             if (mtmp.mtame
                 && (mtmp.mconf || mtmp.mflee || mtmp.mtrapped
                     || moves > hungrytime || (mtmp.mtame | 0) < 5)) {
                 pline_msg = 'whines.';
             } else if (mtmp.mtame && hungrytime > moves + 1000) {
                 pline_msg = 'yips.';
-            } else if (ptr?.name !== 'PM_DINGO') {
+            } else if (((ptr?.mndx | 0) !== PM_DINGO)) {
                 pline_msg = 'barks.';
             }
         } else {
             pline_msg = 'growls.';
         }
+    } else if (msound === MS_MEW && mtmp.mtame) {
+        // C sounds.c MS_MEW `:861–883` tame yowl/meow/purr/mew (Soundeffect
+        // compiled out). Untame FALLTHROUGH to GROWL below.
+        if (mtmp.mconf || mtmp.mflee || mtmp.mtrapped
+            || (mtmp.mtame | 0) < 5) {
+            pline_msg = 'yowls.';
+        } else if (moves > hungrytime) {
+            pline_msg = 'meows.';
+        } else if (hungrytime > moves + 1000) {
+            pline_msg = 'purrs.';
+        } else {
+            pline_msg = 'mews.';
+        }
+    } else if (msound === MS_GROWL || msound === MS_MEW) {
+        // C sounds.c MS_GROWL `:884–888` (incl. untame MS_MEW FALLTHROUGH).
+        // Soundeffect compiled out.
+        pline_msg = mtmp.mpeaceful ? 'snarls.' : 'growls!';
+    } else if (msound === MS_ROAR) {
+        // C sounds.c MS_ROAR `:889–893`. Soundeffect compiled out.
+        pline_msg = mtmp.mpeaceful ? 'snarls.' : 'roars!';
+    } else if (msound === MS_SQEEK) {
+        // C sounds.c MS_SQEEK `:894–897`. Soundeffect compiled out.
+        pline_msg = 'squeaks.';
+    } else if (msound === MS_SQAWK) {
+        // C sounds.c MS_SQAWK `:898–905` — hostile raven Nevermore, else squawk.
+        if (((ptr?.mndx | 0) === PM_RAVEN) && !mtmp.mpeaceful) {
+            verbl_msg = 'Nevermore!';
+        } else {
+            pline_msg = 'squawks.';
+        }
+    } else if (msound === MS_HISS) {
+        // C sounds.c MS_HISS `:906–913` — hostile hisses, peaceful silent ECMD_OK.
+        if (!mtmp.mpeaceful) {
+            pline_msg = 'hisses!';
+        } else {
+            return ECMD_OK;
+        }
+    } else if (msound === MS_BUZZ) {
+        // C sounds.c MS_BUZZ `:914–917`. Soundeffect compiled out.
+        pline_msg = mtmp.mpeaceful ? 'drones.' : 'buzzes angrily.';
+    } else if (msound === MS_GRUNT) {
+        // C sounds.c MS_GRUNT `:918–921`. Soundeffect compiled out.
+        pline_msg = 'grunts.';
+    } else if (msound === MS_NEIGH) {
+        // C sounds.c MS_NEIGH `:922–933` — mtame<5 neighs, hungry whinnies,
+        // else whickers. Soundeffect compiled out.
+        if ((mtmp.mtame | 0) < 5) {
+            pline_msg = 'neighs.';
+        } else if (moves > hungrytime) {
+            pline_msg = 'whinnies.';
+        } else {
+            pline_msg = 'whickers.';
+        }
+    } else if (msound === MS_CHIRP) {
+        // C sounds.c MS_CHIRP `:941–944`. Soundeffect compiled out.
+        pline_msg = 'chirps.';
+    } else if (msound === MS_WAIL) {
+        // C sounds.c MS_WAIL `:945–948`. Soundeffect compiled out.
+        pline_msg = 'wails mournfully.';
+    } else if (msound === MS_GROAN) {
+        // C sounds.c MS_GROAN `:949–954` — silent unless !rn2(3).
+        if (!rn2(3)) {
+            pline_msg = 'groans.';
+        }
+    } else if (msound === MS_GURGLE) {
+        // C sounds.c MS_GURGLE `:955–958`. Soundeffect compiled out.
+        pline_msg = 'gurgles.';
+    } else if (msound === MS_BURBLE) {
+        // C sounds.c MS_BURBLE `:959–962`. Soundeffect compiled out.
+        pline_msg = 'burbles.';
+    } else if (msound === MS_TRUMPET) {
+        // C sounds.c MS_TRUMPET `:963–968` — pline_msg then wake_nearto
+        // before the epilogue print. Soundeffect compiled out.
+        pline_msg = 'trumpets!';
+        await wake_nearto(mtmp.mx, mtmp.my, 11 * 11);
+    } else if (msound === MS_SHRIEK) {
+        // C sounds.c MS_SHRIEK `:969–974` — pline_msg then aggravate()
+        // before the epilogue print. Soundeffect compiled out.
+        pline_msg = 'shrieks.';
+        aggravate();
+    } else if (msound === MS_IMITATE) {
+        // C sounds.c MS_IMITATE `:975–977`.
+        pline_msg = 'imitates you.';
+    } else if (msound === MS_BONES) {
+        // C sounds.c MS_BONES `:978–988` — immediate rattle pline + You
+        // freeze + nomul(-2) + multi_reason, then silent ECMD_TIME.
+        // Soundeffect compiled out.
+        await pline(`${Monnam(mtmp)} rattles noisily.`);
+        await pline('You freeze for a moment.');
+        nomul(-2);
+        game.multi_reason = 'scared by rattling';
+        game.nomovemsg = 0;
+        return ECMD_TIME;
+    } else if (msound === MS_LAUGH) {
+        // C sounds.c MS_LAUGH `:989–996` laugh_msg[rn2(4)].
+        // Soundeffect compiled out.
+        const laugh_msg = ['giggles.', 'chuckles.', 'snickers.', 'laughs.'];
+        pline_msg = laugh_msg[rn2(4)];
+    } else if (msound === MS_MUMBLE) {
+        // C sounds.c MS_MUMBLE `:997–999`.
+        pline_msg = 'mumbles incomprehensibly.';
+    } else if (msound === MS_ORC) {
+        // C sounds.c MS_ORC `:1000–1003` (distinct from GRUNT since 3.6).
+        // Soundeffect compiled out.
+        pline_msg = 'grunts.';
     } else if (msound === MS_SEDUCE) {
         // C sounds.c MS_SEDUCE :1106–1128 — SYSOPT default on;
         // non-nymph could_seduce==1 → doseduce then break (ECMD_TIME).
@@ -1039,7 +1175,8 @@ export async function domonnoise(mtmp) {
             verbl_msg = 'Who do you think you are, War?';
         }
     }
-    // Other msound cases deferred (vampire / bribe / were night() / …)
+    // Other msound cases deferred (vampire / djinn / arrest / bribe+cuss /
+    // spell / nurse / guard / soldier).
 
     // C :1222–1241 pline_msg then mcan verbl_msg_mcan then verbl_msg.
     // verbl_msg_mcan still named (no cancelled-speech arm).

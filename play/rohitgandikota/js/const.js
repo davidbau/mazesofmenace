@@ -366,6 +366,8 @@ export const DISP_CHANGE = -6;
 export const DISP_END = -7;
 export const DISP_FREEMEM = -8;
 export const BACKTRACK = -1;
+// include/display.h, zap glyph groups.
+export const NUM_ZAP = 8;
 
 // Body-part selector enum (include/hack.h enum bodypart_types; src/polyself.c)
 // Runtime fields:
@@ -2957,6 +2959,7 @@ export function ismnum(pm) {
 
 // ── Level classification predicates (C: dungeon.h macros) ──
 export function In_quest(uz) { return (uz ?? game?.u?.uz)?.dnum === game?.quest_dnum; }
+export function In_tutorial(uz) { return (uz ?? game?.u?.uz)?.dnum === game?.tutorial_dnum; }
 export function In_endgame(uz) { const lev = uz ?? game?.u?.uz; const al = game?.astral_level; return !!lev && !!al && lev.dnum === al.dnum; }
 export function Is_astralevel(uz) { return In_endgame(uz) && (uz ?? game?.u?.uz)?.dlevel === 1; }
 export function Is_waterlevel(uz) { const lev = uz ?? game?.u?.uz; const wl = game?.water_level; return !!lev && !!wl && lev.dnum === wl.dnum && lev.dlevel === wl.dlevel; }

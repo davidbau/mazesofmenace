@@ -5699,6 +5699,52 @@ function _paint_gbuf_cell(mx, my, sc, sr) {
 }
 
 /**
+ * C ref: display.c row_refresh `:2147–2186` — repaint one gbuf row segment
+ * after the tty row was erased (spaces, not necessarily S_unexplored).
+ * C computes `force` from `map_glyphinfo(0, 0, GLYPH_UNEXPLORED, 0)` vs
+ * `nul_gbuf.glyphinfo` (`:2163–2173`), then for `x = start..stop` reads
+ * `gg.gbuf[y][x].glyphinfo.glyph`, calls
+ * `get_bkglyph_and_framecolor(x, y, &bkglyph, &framecolor)` (`:2178–2179`),
+ * and calls `print_glyph(WIN_MAP, x, y, Glyphinfo_at(x, y, glyph),
+ * &bkglyphinfo)` iff `force || glyph != GLYPH_UNEXPLORED`
+ * `|| framecolor != NO_COLOR` (`:2180–2184`).
+ * JS: gbuf is `loc.disp_glyph`/`disp_ch` (D-1767); nul rendering is
+ * `' '`/`NO_COLOR` (`clear_glyph_buffer`), identical to the UNEXPLORED
+ * rendering, so `force` is false (tile/symset `map_glyphinfo` arms that
+ * could flip it stay named). JS has no background glyph / frame color,
+ * so `framecolor` is always `NO_COLOR` (named: `get_bkglyph_and_framecolor`
+ * SCORR/STONE/ROOM/CORR seenv + `map_frame_color` arms). `print_glyph` /
+ * `Glyphinfo_at` is `_paint_gbuf_cell` at screen `(x - 1, y + 1)`
+ * (WIN_MAP offx 0 / offy 1, as `docorner` maps `mx = c + 1`).
+ * Named omissions: `map_glyphinfo` tile/rogue/hero/accessibility arms;
+ * `get_bkglyph_and_framecolor` background + frame arms; CLIPPING
+ * `clipx`/`clipy` start adjustment (caller passes map coords).
+ * @param {number} start map x, C `coordxy start`
+ * @param {number} stop map x inclusive, C `coordxy stop`
+ * @param {number} y map y, C `coordxy y`
+ */
+export function row_refresh(start, stop, y) {
+    const s = start | 0;
+    const e = stop | 0;
+    const yy = y | 0;
+    // C `:2163–2173` force from UNEXPLORED rendering vs nul_gbuf; JS
+    // nul and UNEXPLORED both render as ' '/NO_COLOR, so never forced.
+    const force = false;
+    for (let x = s; x <= e; x++) {
+        const xi = x | 0;
+        const loc = game.level?.at(xi, yy);
+        const glyph = loc?.disp_glyph ?? GLYPH_UNEXPLORED;
+        // C `:2178–2179` get_bkglyph_and_framecolor; JS: always NO_COLOR.
+        const framecolor = NO_COLOR;
+        if (force || glyph !== GLYPH_UNEXPLORED || framecolor !== NO_COLOR) {
+            // C `:2182–2184` print_glyph(WIN_MAP, x, y,
+            // Glyphinfo_at(x, y, glyph), &bkglyphinfo).
+            _paint_gbuf_cell(xi, yy, xi - 1, yy + 1);
+        }
+    }
+}
+
+/**
  * C wintty.c docorner `:3650–3720` — cl_end from xmin, row_refresh the
  * map, then bot() when ymax reaches WIN_STATUS. bot() returns immediately
  * when gb.bot_disabled, so leftover WIN_STATUS left of xmin stays.
@@ -5723,12 +5769,12 @@ export async function docorner(xmin, ymax, ystart = 0) {
             display.setCell(c, y, ' ', NO_COLOR, 0);
         // C: y < WIN_MAP.offy || y > ROWNO → skip board
         if (y < 1 || y > ROWNO) continue;
-        const my = y - 1;
-        for (let c = x0; c < cols; c++) {
-            const mx = c + 1;
-            if (mx < 1 || mx >= COLNO) continue;
-            _paint_gbuf_cell(mx, my, c, y);
-        }
+        // C `:3704` row_refresh(xmin + clipx - offx, COLNO - 1,
+        // y + clipy - offy); JS offx 0 / offy 1, no CLIPPING: xmin is
+        // x0 + 1, so the map segment is [x0 + 1, COLNO - 1] at y - 1.
+        // row_refresh skips UNEXPLORED cells C would skip, leaving the
+        // cl_end blank — visually identical, no redundant setCell.
+        row_refresh(x0 + 1, COLNO - 1, y - 1);
     }
     // C: ymax >= wins[WIN_STATUS]->offy → disp.botlx = TRUE; bot();
     if (y1 >= 22) {

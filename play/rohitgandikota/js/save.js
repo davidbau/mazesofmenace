@@ -7,10 +7,8 @@
 // the per-process infrastructure (display, RNG contexts, storage handle,
 // static data tables) which the restoring boot rebuilds itself.
 //
-// A restore draws almost nothing: C re-initializes the Lua core, which
-// replays nhlib.lua's 3-element align shuffle (rn2(3), rn2(2)), and then
-// play continues from the restored state. That pair is the whole visible
-// cost, exactly what the save/restore recordings show.
+// A restore reinitializes role-specific monster data and the Lua core.
+// Both can draw from the fresh process's RNG before play resumes.
 
 import { game } from './gstate.js';
 import { pline, tty_clear_nhwindow_message } from './display.js';
@@ -18,6 +16,8 @@ import { tty_yn_function } from './tty/topl.js';
 import { nomul } from './hack.js';
 import { ECMD_OK } from './const.js';
 import { GameMap } from './game.js';
+import { set_playmode } from './options.js';
+import { role_init } from './role.js';
 
 /* keys on the game object that are per-process infrastructure or static
    data, never game state; the restoring boot provides fresh ones */
@@ -38,6 +38,12 @@ const SKIP_KEYS = new Set([
 
 function save_key() {
     return `save:${game.plname || 'anonymous'}`;
+}
+
+// src/files.c delete_savefile().
+export function delete_savefile() {
+    try { game.storage?.removeItem(save_key()); } catch (e) {}
+    return 0;
 }
 
 // cycle-aware structural encoder
@@ -182,6 +188,8 @@ export function dosave0() {
     if (!game.storage)
         return false;
     try {
+        // src/save.c:168 savelev(), also marks the current level VISITED.
+        (game.visited_ledgers ||= new Set()).add(`${game.u.uz.dnum}:${game.u.uz.dlevel}`);
         const snap = gamestate_encode(game);
         game.storage.setItem(save_key(), JSON.stringify(snap));
         return true;
@@ -207,6 +215,8 @@ export function dorecover() {
         return false;
     }
 
+    const bootWizard = !!game.wizard, bootDiscover = !!game.discover;
+
     /* reinstall everything except the per-process keys, which keep the
        fresh boot's values */
     for (const k of Object.keys(game)) {
@@ -218,11 +228,26 @@ export function dorecover() {
             game[k] = v;
     }
 
+    // src/restore.c restgamestate(), startup debug mode overrides the save.
+    (game.iflags ||= {}).deferred_X = bootDiscover && !game.discover;
+    if (bootWizard) {
+        game.wizard = true;
+        game.discover = game.iflags.deferred_X = false;
+    } else if (game.wizard || game.discover) {
+        set_playmode();
+    }
+    // role_init precedes the saved quest-status record in C. Its random
+    // gender draws still happen, but the saved genders win afterwards.
+    const savedGenders = [game.quest_ldrgend, game.quest_nemgend];
+    role_init(game.flags.initrole, game.flags.initalign);
+    [game.quest_ldrgend, game.quest_nemgend] = savedGenders;
+
     /* restore.c:705 recalculates this process-local movement sequence from
        the restored turn. It is not carried across the save boundary. */
     game.hero_seq = game.moves * 8;
 
-    /* C deletes the save file once restored */
-    try { game.storage.removeItem(save_key()); } catch (e) {}
+    // src/restore.c:903, debug/explore saves await the unixmain prompt.
+    if (!game.wizard && !game.discover)
+        delete_savefile();
     return true;
 }

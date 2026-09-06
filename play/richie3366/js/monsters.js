@@ -336,6 +336,15 @@ export function hates_light(ptr) {
     return (ptr?.mndx | 0) === PM_GREMLIN;
 }
 
+/**
+ * C ref: mondata.c mon_hates_light :547–550 — hates_light(mon->data).
+ * JS uses mndx (mons() is not a stable &mons[PM] pointer); mon is
+ * NONNULLARG1 in C, so the `?.` only guards foreign callers.
+ */
+export function mon_hates_light(mon) {
+    return hates_light(mon?.data);
+}
+
 // C ref: mondata.h nohands()
 export function nohands(ptr) {
     return !!((ptr?.mflags1 ?? 0) & M1_NOHANDS);

@@ -12,6 +12,8 @@ import { docrt, flush_screen, newsym, pline } from './display.js';
 import { cansee } from './vision.js';
 import { vfsDeleteFile, vfsReadFile } from './storage.js';
 import { restoreBonesLevel } from './save.js';
+import { beginBurn, endBurn, artifactLight, cleanupBurn } from './burn.js';
+import { BURN_OBJECT, MELT_ICE_AWAY, ZOMBIFY_MON, SHRINK_GLOB, TIMER_LEVEL, peekTimer, stopObjectTimers } from './timeout.js';
 import { createGasCloud, createGasCloudSelection } from './region.js';
 import { rn2, rn2_on_display_rng, rnd, rn1, d, rne, rnz, getRngLog } from './rng.js';
 import {
@@ -24,8 +26,25 @@ import { depth as depth_of_level } from './hacklib.js';
 import { NOLIMBS_MONSTERS, RNDMONST_COMMON_MONSTERS } from './monster_data.js';
 import { datFileText } from './dat_files.js';
 import { TRIBUTE_NOVEL_TITLES } from './tribute.js';
-import { clearBuriedOrganicRotTimer, clearCorpseTimeout, freezeObjectInIcebox, objectIceEffect, restoreBuriedBallIfNeeded, startCorpseTimeout } from './ice.js';
+import { clearBuriedOrganicRotTimer, clearCorpseTimeout, freezeObjectInIcebox, objectIceEffect, restoreBuriedBallIfNeeded, scheduleMeltIceTimeout, scheduleCorpseTimeout, startGlobShrinkTimeout, stopGlobShrinkTimeout, startCorpseTimeout } from './ice.js';
 import { applySlimeMoldFruitFields } from './fruit.js';
+import { attachEggHatchTimeout } from './egg_timers.js';
+import { QUEST_FILLERS } from './quest_filler_data.js';
+import { ROLE_RANKS, QUEST_ROLE_MONSTERS } from './roles.js';
+import { mkFakeAmuletOfYendor } from './wizard.js';
+import { dressMonster } from './worn.js';
+import { mdropSpecialObjs } from './steal.js';
+import { objectLocations } from './obj_location.js';
+import { clearConjoinedPits } from './dig.js';
+import { selectHwep } from './mhitm.js';
+import { QUEST_LEVELS } from './quest_level_data.js';
+import { DEFSYMS } from './defsym.js';
+import { canSaddle } from './mondata.js';
+import { monCatchupElapsedTime } from './dog.js';
+import { heroProtectionFromShapeChangers } from './were.js';
+import * as questSpecies from './permonst.js';
+import { MONS as QUEST_MONSTERS, is_swimmer, amphibious, is_flyer, is_floater,
+    passes_walls, noncorporeal, is_male, is_female } from './permonst.js';
 import {
     COLNO, ROWNO, MAX_TYPE, INVALID_TYPE, STONE, ROOM, CORR, DOOR, STAIRS, LADDER, AIR,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -35,9 +54,10 @@ import {
     COCKNEST, ANTHOLE, VAULT, TEMPLE, THEMEROOM, ROOMOFFSET, MAXNROFROOMS, SHARED, SHARED_PLUS, SHOPBASE,
     DELPHI,
     SDOOR, SCORR, IRONBARS, FOUNTAIN, SINK, THRONE, ALTAR, GRAVE,
+    F_LOOTED, F_WARNED, S_LPUDDING, S_LDWASHER, S_LRING, T_LOOTED, TREE_LOOTED, TREE_SWARM,
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL, IS_LAVA,
-    ACCESSIBLE, IN_SIGHT,
+    ACCESSIBLE, IN_SIGHT, W_ARMH, W_ARMS, W_SADDLE, M_AP_FURNITURE,
     SPACE_POS, ZAP_POS, isok, W_RANDOM, W_NORTH, W_SOUTH, W_EAST, W_WEST, W_ANY,
     W_NONDIGGABLE, W_NONPASSWALL, FILL_NORMAL,
     ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DB_DIR, DB_WEST, TREE, CLOUD,
@@ -45,16 +65,17 @@ import {
     A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, AM_SHRINE, AM_SANCTUM, Align2amask, Amask2align,
     FOODSHOP, RINGSHOP, WANDSHOP, TOOLSHOP, BOOKSHOP, FODDERSHOP, CANDLESHOP,
     ARMORSHOP, WEAPONSHOP,
-    NO_MINVENT, MM_NOGRP, MM_ANGRY, MM_NONAME, MM_NOCOUNTBIRTH, MM_NOMSG, MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT,
-    STRAT_WAITFORU, STRAT_APPEARMSG,
+    NO_MINVENT, MM_NOGRP, MM_EMIN, MM_ANGRY, MM_NONAME, MM_NOCOUNTBIRTH, MM_NOMSG, MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT,
+    STRAT_WAITFORU, STRAT_CLOSE, STRAT_APPEARMSG, STRAT_ARRIVE,
+    MIGR_RANDOM, MIGR_APPROX_XY, MON_LIMBO, MON_MIGRATING, MAX_NUM_WORMS,
     CORPSTAT_FEMALE, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_HISTORIC,
     LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_BRANCH,
-    DB_EAST, DB_UNDER, DB_FLOOR, DB_MOAT,
+    DB_EAST, DB_NORTH, DB_SOUTH, DB_UNDER, DB_FLOOR, DB_MOAT, DB_LAVA,
     WM_MASK, WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_W_BOTTOM,
     WM_T_LONG, WM_T_BL, WM_T_BR,
     WM_C_OUTER, WM_C_INNER,
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
-    TAINT_AGE,
+    TAINT_AGE, DRY, WET, HOT, SOLID,
     In_endgame, In_mines, In_quest, Is_airlevel, Is_firelevel, Is_rogue_level,
 } from './const.js';
 
@@ -219,6 +240,7 @@ const LOADSTONE = 10165;
 const LENSES = 10128;
 const CREDIT_CARD = 10129;
 const AMULET_OF_ESP = 10130;
+export const AMULET_OF_YENDOR = 11015;
 const GRAY_DRAGON_SCALE_MAIL = 10085;
 const SILVER_DRAGON_SCALE_MAIL = 10086;
 const SPEED_BOOTS = 10087;
@@ -1651,40 +1673,41 @@ const ARMOR_AC_BONUS = new Map([
     [GREEN_DRAGON_SCALES, 3], [YELLOW_DRAGON_SCALES, 3],
     [HAWAIIAN_SHIRT, 0], [T_SHIRT, 0],
 ]);
-const ARTIFACT_DEFS = Object.freeze([
-    { name: 'Excalibur', otyp: LONG_SWORD, cls: 'weapon', glyph: ')', base: 'long sword', questArtifact: false },
-    { name: 'Stormbringer', otyp: RUNESWORD, cls: 'weapon', glyph: ')', base: 'runesword', questArtifact: false },
-    { name: 'Mjollnir', otyp: WAR_HAMMER, cls: 'weapon', glyph: ')', base: 'war hammer', questArtifact: false },
-    { name: 'Cleaver', otyp: BATTLE_AXE, cls: 'weapon', glyph: ')', base: 'battle-axe', questArtifact: false },
-    { name: 'Grimtooth', otyp: ORCISH_DAGGER, cls: 'weapon', glyph: ')', base: 'orcish dagger', questArtifact: false },
-    { name: 'Orcrist', otyp: ELVEN_BROADSWORD, cls: 'weapon', glyph: ')', base: 'elven broadsword', questArtifact: false, nameable: true },
-    { name: 'Sting', otyp: ELVEN_DAGGER, cls: 'weapon', glyph: ')', base: 'elven dagger', questArtifact: false, nameable: true },
-    { name: 'Magicbane', otyp: ATHAME, cls: 'weapon', glyph: ')', base: 'athame', questArtifact: false },
-    { name: 'Frost Brand', otyp: LONG_SWORD, cls: 'weapon', glyph: ')', base: 'long sword', questArtifact: false },
-    { name: 'Fire Brand', otyp: LONG_SWORD, cls: 'weapon', glyph: ')', base: 'long sword', questArtifact: false },
-    { name: 'Dragonbane', otyp: BROADSWORD, cls: 'weapon', glyph: ')', base: 'broadsword', questArtifact: false },
-    { name: 'Demonbane', otyp: SILVER_MACE, cls: 'weapon', glyph: ')', base: 'silver mace', questArtifact: false },
-    { name: 'Werebane', otyp: SILVER_SABER, cls: 'weapon', glyph: ')', base: 'silver saber', questArtifact: false },
-    { name: 'Grayswandir', otyp: SILVER_SABER, cls: 'weapon', glyph: ')', base: 'silver saber', questArtifact: false, restricted: true, alignment: 'lawful' },
-    { name: 'Giantslayer', otyp: LONG_SWORD, cls: 'weapon', glyph: ')', base: 'long sword', questArtifact: false },
-    { name: 'Ogresmasher', otyp: WAR_HAMMER, cls: 'weapon', glyph: ')', base: 'war hammer', questArtifact: false },
-    { name: 'Trollsbane', otyp: MORNING_STAR, cls: 'weapon', glyph: ')', base: 'morning star', questArtifact: false },
-    { name: 'Vorpal Blade', otyp: LONG_SWORD, cls: 'weapon', glyph: ')', base: 'long sword', questArtifact: false },
-    { name: 'Snickersnee', otyp: KATANA, cls: 'weapon', glyph: ')', base: 'katana', questArtifact: false },
-    { name: 'Sunsword', otyp: LONG_SWORD, cls: 'weapon', glyph: ')', base: 'long sword', questArtifact: false },
-    { name: 'The Orb of Detection', otyp: CRYSTAL_BALL, cls: 'tool', glyph: '(', base: 'crystal ball', questArtifact: true, questRole: 'Archeologist' },
-    { name: 'The Heart of Ahriman', otyp: LUCKSTONE, cls: 'gem', glyph: '*', base: 'luckstone', questArtifact: true, questRole: 'Barbarian' },
-    { name: 'The Sceptre of Might', otyp: MACE, cls: 'weapon', glyph: ')', base: 'mace', questArtifact: true, questRole: 'Caveman' },
-    { name: 'The Staff of Aesculapius', otyp: QUARTERSTAFF, cls: 'weapon', glyph: ')', base: 'quarterstaff', questArtifact: true, questRole: 'Healer' },
-    { name: 'The Magic Mirror of Merlin', otyp: MIRROR, cls: 'tool', glyph: '(', base: 'mirror', questArtifact: true, questRole: 'Knight' },
-    { name: 'The Eyes of the Overworld', otyp: LENSES, cls: 'tool', glyph: '(', base: 'lenses', questArtifact: true, questRole: 'Monk' },
-    { name: 'The Mitre of Holiness', otyp: HELM_OF_BRILLIANCE, cls: 'armor', glyph: '[', base: 'helm of brilliance', questArtifact: true, questRole: 'Priest' },
-    { name: 'The Longbow of Diana', otyp: BOW, cls: 'weapon', glyph: ')', base: 'bow', questArtifact: true, questRole: 'Ranger' },
-    { name: 'The Master Key of Thievery', otyp: SKELETON_KEY, cls: 'tool', glyph: '(', base: 'skeleton key', questArtifact: true, questRole: 'Rogue' },
-    { name: 'The Tsurugi of Muramasa', otyp: TSURUGI, cls: 'weapon', glyph: ')', base: 'tsurugi', questArtifact: true, questRole: 'Samurai' },
-    { name: 'The Platinum Yendorian Express Card', otyp: CREDIT_CARD, cls: 'tool', glyph: '(', base: 'credit card', questArtifact: true, questRole: 'Tourist' },
-    { name: 'The Orb of Fate', otyp: CRYSTAL_BALL, cls: 'tool', glyph: '(', base: 'crystal ball', questArtifact: true, questRole: 'Valkyrie' },
-    { name: 'The Eye of the Aethiopica', otyp: AMULET_OF_ESP, cls: 'amulet', glyph: '"', base: 'amulet of ESP', questArtifact: true, questRole: 'Wizard' },
+// Canonical order and intrinsic costs from include/artilist.h (disabled artifacts excluded).
+export const ARTIFACT_DEFS = Object.freeze([
+    { name: 'Excalibur', cost: 4000, otyp: LONG_SWORD, cls: 'weapon', glyph: ')', base: 'long sword', questArtifact: false },
+    { name: 'Stormbringer', cost: 8000, otyp: RUNESWORD, cls: 'weapon', glyph: ')', base: 'runesword', questArtifact: false },
+    { name: 'Mjollnir', cost: 4000, otyp: WAR_HAMMER, cls: 'weapon', glyph: ')', base: 'war hammer', questArtifact: false },
+    { name: 'Cleaver', cost: 1500, otyp: BATTLE_AXE, cls: 'weapon', glyph: ')', base: 'battle-axe', questArtifact: false },
+    { name: 'Grimtooth', cost: 1200, otyp: ORCISH_DAGGER, cls: 'weapon', glyph: ')', base: 'orcish dagger', questArtifact: false },
+    { name: 'Orcrist', cost: 2000, otyp: ELVEN_BROADSWORD, cls: 'weapon', glyph: ')', base: 'elven broadsword', questArtifact: false, nameable: true },
+    { name: 'Sting', cost: 800, otyp: ELVEN_DAGGER, cls: 'weapon', glyph: ')', base: 'elven dagger', questArtifact: false, nameable: true },
+    { name: 'Magicbane', cost: 3500, otyp: ATHAME, cls: 'weapon', glyph: ')', base: 'athame', questArtifact: false },
+    { name: 'Frost Brand', cost: 3000, otyp: LONG_SWORD, cls: 'weapon', glyph: ')', base: 'long sword', questArtifact: false },
+    { name: 'Fire Brand', cost: 3000, otyp: LONG_SWORD, cls: 'weapon', glyph: ')', base: 'long sword', questArtifact: false },
+    { name: 'Dragonbane', cost: 500, otyp: BROADSWORD, cls: 'weapon', glyph: ')', base: 'broadsword', questArtifact: false },
+    { name: 'Demonbane', cost: 2500, otyp: SILVER_MACE, cls: 'weapon', glyph: ')', base: 'silver mace', questArtifact: false },
+    { name: 'Werebane', cost: 1500, otyp: SILVER_SABER, cls: 'weapon', glyph: ')', base: 'silver saber', questArtifact: false },
+    { name: 'Grayswandir', cost: 8000, otyp: SILVER_SABER, cls: 'weapon', glyph: ')', base: 'silver saber', questArtifact: false, restricted: true, alignment: 'lawful' },
+    { name: 'Giantslayer', cost: 200, otyp: LONG_SWORD, cls: 'weapon', glyph: ')', base: 'long sword', questArtifact: false },
+    { name: 'Ogresmasher', cost: 200, otyp: WAR_HAMMER, cls: 'weapon', glyph: ')', base: 'war hammer', questArtifact: false },
+    { name: 'Trollsbane', cost: 200, otyp: MORNING_STAR, cls: 'weapon', glyph: ')', base: 'morning star', questArtifact: false },
+    { name: 'Vorpal Blade', cost: 4000, otyp: LONG_SWORD, cls: 'weapon', glyph: ')', base: 'long sword', questArtifact: false },
+    { name: 'Snickersnee', cost: 1200, otyp: KATANA, cls: 'weapon', glyph: ')', base: 'katana', questArtifact: false },
+    { name: 'Sunsword', cost: 1500, otyp: LONG_SWORD, cls: 'weapon', glyph: ')', base: 'long sword', questArtifact: false },
+    { name: 'The Orb of Detection', cost: 2500, otyp: CRYSTAL_BALL, cls: 'tool', glyph: '(', base: 'crystal ball', questArtifact: true, questRole: 'Archeologist' },
+    { name: 'The Heart of Ahriman', cost: 2500, otyp: LUCKSTONE, cls: 'gem', glyph: '*', base: 'luckstone', questArtifact: true, questRole: 'Barbarian' },
+    { name: 'The Sceptre of Might', cost: 2500, otyp: MACE, cls: 'weapon', glyph: ')', base: 'mace', questArtifact: true, questRole: 'Caveman' },
+    { name: 'The Staff of Aesculapius', cost: 5000, otyp: QUARTERSTAFF, cls: 'weapon', glyph: ')', base: 'quarterstaff', questArtifact: true, questRole: 'Healer' },
+    { name: 'The Magic Mirror of Merlin', cost: 1500, otyp: MIRROR, cls: 'tool', glyph: '(', base: 'mirror', questArtifact: true, questRole: 'Knight' },
+    { name: 'The Eyes of the Overworld', cost: 2500, otyp: LENSES, cls: 'tool', glyph: '(', base: 'lenses', questArtifact: true, questRole: 'Monk' },
+    { name: 'The Mitre of Holiness', cost: 2000, otyp: HELM_OF_BRILLIANCE, cls: 'armor', glyph: '[', base: 'helm of brilliance', questArtifact: true, questRole: 'Priest' },
+    { name: 'The Longbow of Diana', cost: 4000, otyp: BOW, cls: 'weapon', glyph: ')', base: 'bow', questArtifact: true, questRole: 'Ranger' },
+    { name: 'The Master Key of Thievery', cost: 3500, otyp: SKELETON_KEY, cls: 'tool', glyph: '(', base: 'skeleton key', questArtifact: true, questRole: 'Rogue' },
+    { name: 'The Tsurugi of Muramasa', cost: 4500, otyp: TSURUGI, cls: 'weapon', glyph: ')', base: 'tsurugi', questArtifact: true, questRole: 'Samurai' },
+    { name: 'The Platinum Yendorian Express Card', cost: 7000, otyp: CREDIT_CARD, cls: 'tool', glyph: '(', base: 'credit card', questArtifact: true, questRole: 'Tourist' },
+    { name: 'The Orb of Fate', cost: 3500, otyp: CRYSTAL_BALL, cls: 'tool', glyph: '(', base: 'crystal ball', questArtifact: true, questRole: 'Valkyrie' },
+    { name: 'The Eye of the Aethiopica', cost: 4000, otyp: AMULET_OF_ESP, cls: 'amulet', glyph: '"', base: 'amulet of ESP', questArtifact: true, questRole: 'Wizard' },
 ]);
 function artifactKey(name) {
     return String(name || '')
@@ -1701,29 +1724,29 @@ const FOOD_RATION = 143;
 const CRAM_RATION = 145;
 const LEMBAS_WAFER = 146;
 const SPECIFIC_FOOD_INFO = new Map([
-    [KELP_FROND, ['kelp frond', 'kelp fronds', CLR_GREEN]],
-    [FOOD_RATION, ['food ration', 'food rations', CLR_BROWN]],
-    [CRAM_RATION, ['cram ration', 'cram rations', CLR_BROWN]],
-    [LEMBAS_WAFER, ['lembas wafer', 'lembas wafers', CLR_WHITE]],
-    [K_RATION, ['K-ration', 'K-rations', CLR_BROWN]],
-    [C_RATION, ['C-ration', 'C-rations', CLR_BROWN]],
-    [EUCALYPTUS_LEAF, ['eucalyptus leaf', 'eucalyptus leaves', CLR_GREEN]],
-    [APPLE, ['apple', 'apples', CLR_RED]],
-    [ORANGE, ['orange', 'oranges', CLR_ORANGE]],
-    [PEAR, ['pear', 'pears', CLR_BRIGHT_GREEN]],
-    [MELON, ['melon', 'melons', CLR_BRIGHT_GREEN]],
-    [BANANA, ['banana', 'bananas', CLR_YELLOW]],
-    [CARROT, ['carrot', 'carrots', CLR_ORANGE]],
-    [SPRIG_OF_WOLFSBANE, ['sprig of wolfsbane', 'sprigs of wolfsbane', CLR_GREEN]],
-    [CLOVE_OF_GARLIC, ['clove of garlic', 'cloves of garlic', CLR_WHITE]],
-    [SLIME_MOLD, ['slime mold', 'slime molds', CLR_BROWN]],
-    [LUMP_OF_ROYAL_JELLY, ['lump of royal jelly', 'lumps of royal jelly', CLR_YELLOW]],
-    [CREAM_PIE, ['cream pie', 'cream pies', CLR_WHITE]],
-    [FORTUNE_COOKIE, ['fortune cookie', 'fortune cookies', CLR_YELLOW]],
-    [PANCAKE, ['pancake', 'pancakes', CLR_YELLOW]],
-    [MEATBALL, ['meatball', 'meatballs', CLR_BROWN]],
-    [MEAT_STICK, ['meat stick', 'meat sticks', CLR_BROWN]],
-    [ENORMOUS_MEATBALL, ['enormous meatball', 'enormous meatballs', CLR_BROWN]],
+    [KELP_FROND, ['kelp frond', 'kelp fronds', CLR_GREEN, 1]],
+    [FOOD_RATION, ['food ration', 'food rations', CLR_BROWN, 20]],
+    [CRAM_RATION, ['cram ration', 'cram rations', CLR_BROWN, 15]],
+    [LEMBAS_WAFER, ['lembas wafer', 'lembas wafers', CLR_WHITE, 5]],
+    [K_RATION, ['K-ration', 'K-rations', CLR_BROWN, 10]],
+    [C_RATION, ['C-ration', 'C-rations', CLR_BROWN, 10]],
+    [EUCALYPTUS_LEAF, ['eucalyptus leaf', 'eucalyptus leaves', CLR_GREEN, 1]],
+    [APPLE, ['apple', 'apples', CLR_RED, 2]],
+    [ORANGE, ['orange', 'oranges', CLR_ORANGE, 2]],
+    [PEAR, ['pear', 'pears', CLR_BRIGHT_GREEN, 2]],
+    [MELON, ['melon', 'melons', CLR_BRIGHT_GREEN, 5]],
+    [BANANA, ['banana', 'bananas', CLR_YELLOW, 2]],
+    [CARROT, ['carrot', 'carrots', CLR_ORANGE, 2]],
+    [SPRIG_OF_WOLFSBANE, ['sprig of wolfsbane', 'sprigs of wolfsbane', CLR_GREEN, 1]],
+    [CLOVE_OF_GARLIC, ['clove of garlic', 'cloves of garlic', CLR_WHITE, 1]],
+    [SLIME_MOLD, ['slime mold', 'slime molds', CLR_BROWN, 5]],
+    [LUMP_OF_ROYAL_JELLY, ['lump of royal jelly', 'lumps of royal jelly', CLR_YELLOW, 2]],
+    [CREAM_PIE, ['cream pie', 'cream pies', CLR_WHITE, 10]],
+    [FORTUNE_COOKIE, ['fortune cookie', 'fortune cookies', CLR_YELLOW, 1]],
+    [PANCAKE, ['pancake', 'pancakes', CLR_YELLOW, 2]],
+    [MEATBALL, ['meatball', 'meatballs', CLR_BROWN, 1]],
+    [MEAT_STICK, ['meat stick', 'meat sticks', CLR_BROWN, 1]],
+    [ENORMOUS_MEATBALL, ['enormous meatball', 'enormous meatballs', CLR_BROWN, 400]],
 ]);
 const VEGETARIAN_FOOD_PROBS = [
     [85, EGG],
@@ -3749,6 +3772,37 @@ function bad_location(x, y, nlx, nly, nhx, nhy) {
     return false;
 }
 
+// mkmaze.c:put_lregion_here removes a misplaced, destroyable trap when the
+// entrance has only one possible square or has reached its exhaustive scan.
+function putLregionHere(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
+    if (bad_location(x, y, nlx, nly, nhx, nhy) || is_exclusion_zone(rtype, x, y)) {
+        if (!oneshot) return false;
+        const trap = t_at(x, y);
+        if (trap && !undestroyable_trap(trap.ttyp)) {
+            const mon = game.level.monsters?.find(mon => mon.mx === x && mon.my === y);
+            if (mon) mon.mtrapped = 0;
+            clearConjoinedPits(trap);
+            game.level.traps.splice(game.level.traps.indexOf(trap), 1);
+        }
+        if (bad_location(x, y, nlx, nly, nhx, nhy) || is_exclusion_zone(rtype, x, y)) return false;
+    }
+    if (rtype === LR_TELE || rtype === LR_UPTELE || rtype === LR_DOWNTELE) {
+        const mon = monster_at(x, y);
+        if (mon) {
+            if (!oneshot) return false;
+            if (!rlocNoMsg(mon)) mIntoLimbo(mon);
+        }
+        if (rtype === LR_TELE) game._mklev_lregion_arrival = true;
+        u_on_newpos(x, y);
+    } else if (rtype === LR_BRANCH) place_branch(is_branchlev(), x, y);
+    else if (rtype === LR_UPSTAIR || rtype === LR_DOWNSTAIR) mkstairs(x, y, rtype === LR_UPSTAIR, null);
+    else if (rtype === LR_PORTAL) {
+        game.level.traps ??= [];
+        game.level.traps.push({ tx: x, ty: y, ttyp: MAGIC_PORTAL, tseen: false, once: false, launch: { x: 0, y: 0 }, dst: lev });
+    }
+    return true;
+}
+
 function add_exclusion_zone(zonetype, lx, ly, hx, hy) {
     if (!game.level) return null;
     game.level.exclusionZones ??= [];
@@ -3799,51 +3853,12 @@ export function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, lev) {
             const loc = game.level?.at(x, y);
             console.error(`DBG place_lregion rtype=${rtype} args=${JSON.stringify([lx,ly,hx,hy,nlx,nly,nhx,nhy])} try=${trycnt} cand=(${x},${y}) typ=${loc?.typ} occupied=${occupied(x,y)}`);
         }
-        const occupiedByMonster = rtype >= LR_TELE && rtype <= LR_DOWNTELE
-            && game.level?.monsters?.some(mon => mon.mx === x && mon.my === y);
-        if (!bad_location(x, y, nlx, nly, nhx, nhy)
-            && !is_exclusion_zone(rtype, x, y)
-            && !occupiedByMonster) {
-            if (rtype === LR_BRANCH) {
-                place_branch(is_branchlev(), x, y);
-                return;
-            }
-            if (rtype === LR_UPSTAIR || rtype === LR_DOWNSTAIR) {
-                mkstairs(x, y, rtype === LR_UPSTAIR, null);
-                return;
-            }
-            if (rtype === LR_PORTAL) {
-                game.level.traps ??= [];
-                game.level.traps.push({ tx: x, ty: y, ttyp: MAGIC_PORTAL, tseen: false, once: false, launch: { x: 0, y: 0 }, dst: lev });
-                return;
-            }
-            if (rtype === LR_TELE) game._mklev_lregion_arrival = true;
-            u_on_newpos(x, y);
-            return;
-        }
+        if (putLregionHere(x, y, nlx, nly, nhx, nhy, rtype, lx === hx && ly === hy, lev)) return;
     }
-    // Deterministic fallback
+    // The exhaustive pass may relocate a blocking monster on each candidate.
     for (let x = lx; x <= hx; x++)
         for (let y = ly; y <= hy; y++)
-            if (!bad_location(x, y, nlx, nly, nhx, nhy)
-                && !is_exclusion_zone(rtype, x, y)) {
-                if (rtype === LR_BRANCH) {
-                    place_branch(is_branchlev(), x, y);
-                    return;
-                }
-                if (rtype === LR_UPSTAIR || rtype === LR_DOWNSTAIR) {
-                    mkstairs(x, y, rtype === LR_UPSTAIR, null);
-                    return;
-                }
-                if (rtype === LR_PORTAL) {
-                    game.level.traps ??= [];
-                    game.level.traps.push({ tx: x, ty: y, ttyp: MAGIC_PORTAL, tseen: false, once: false, launch: { x: 0, y: 0 }, dst: lev });
-                    return;
-                }
-                if (rtype === LR_TELE) game._mklev_lregion_arrival = true;
-                u_on_newpos(x, y);
-                return;
-            }
+            if (putLregionHere(x, y, nlx, nly, nhx, nhy, rtype, true, lev)) return;
 }
 
 // C ref: stairs.c u_on_upstairs — place hero on upstairs or fallback
@@ -4006,9 +4021,9 @@ function mkobj_erosion_rolls(otmp) {
     if (!rn2(1000) && otmp) otmp.greased = true;
 }
 
-function maybeMkArtifact(otmp, artifactKey, chanceBase) {
+function maybeMkArtifact(otmp, artifactKey, chanceBase, forced = false) {
     const chance = chanceBase + 10 * (game._artifact_count || 0);
-    if (rn2(chance)) return;
+    if (!forced && rn2(chance)) return;
 
     const artifacts = RANDOM_ARTIFACTS_BY_WEAPON.get(artifactKey) || [];
     const existing = Array.isArray(game._artifacts_exist) ? game._artifacts_exist : [];
@@ -4020,13 +4035,14 @@ function maybeMkArtifact(otmp, artifactKey, chanceBase) {
     recordArtifactExistence(artifact.name);
     otmp.artifact = artifact.name;
 
-    if (artifact.genSpe) {
+    if (!forced && artifact.genSpe) {
         const spe = (otmp.spe || 0) + artifact.genSpe;
         if (spe >= -10 && spe < 10) otmp.spe = spe;
     }
 }
 
 export function artifactDefinitionForName(name) {
+    if (typeof name === 'number') return ARTIFACT_DEFS[name - 1] || null;
     return ARTIFACTS_BY_KEY.get(artifactKey(name)) || null;
 }
 
@@ -4153,15 +4169,21 @@ export function mksobj(otyp, init, artif) {
     if (init) {
         mksobj_init(otmp, otyp, artif);
     }
+    if (otyp === AMULET_OF_YENDOR) Object.assign(otmp, {
+        cls: 'amulet', glyph: '"', kind: 'Amulet of Yendor', actualKind: 'Amulet of Yendor',
+        appearance: 'Amulet of Yendor', realAmuletOfYendor: true, unique: true,
+        material: 'mithril', owt: 20, known: false,
+    });
     const specificFood = SPECIFIC_FOOD_INFO.get(otyp);
     if (specificFood) {
-        const [singular, plural, color] = specificFood;
+        const [singular, plural, color, mass] = specificFood;
         Object.assign(otmp, {
             cls: 'food',
             kind: singular,
             singular,
             plural,
             _display_color: color,
+            owt: mass * otmp.quan,
             age: otmp.age ?? Math.max(game.moves || 0, 1),
         });
         if (otyp === SLIME_MOLD) applySlimeMoldFruitFields(otmp, otmp.spe || undefined);
@@ -4209,7 +4231,7 @@ export function mksobj(otyp, init, artif) {
 // objects created during mklev.
 // C ref: mkobj.c — scroll identities implied by specific otyps; index is the
 // JS SCROLL_NAMES order (allmain.js:622), not the raw otyp value.
-const SCROLL_INDEX_BY_OTYP = new Map([[SCR_TELEPORTATION, 10]]);
+const SCROLL_INDEX_BY_OTYP = new Map([[SCR_TELEPORTATION, 10], [SCR_CREATE_MONSTER, 6], [SCR_EARTH, 17]]);
 
 function mksobj_init(otmp, otyp, artif) {
     // For BOULDER, GOLD_PIECE: no extra init RNG
@@ -4529,6 +4551,7 @@ function mksobj_init(otmp, otyp, artif) {
         || otyp === WAN_POLYMORPH || otyp === WAN_LIGHT) {
         const wandIndex = game._mkobj_wand_index;
         game._mkobj_wand_index = null;
+        if (otyp !== WAND_CLASS) Object.assign(otmp, { cls: 'wand', glyph: '/', wandIndex: wandIndexForObject(otmp) });
         if (otyp === WAND_CLASS && wandIndex === 4) {
             otmp.spe = 1;
             blessorcurse(otmp, 17);
@@ -4538,8 +4561,9 @@ function mksobj_init(otmp, otyp, artif) {
         else if (otyp === WAN_CREATE_MONSTER || otyp === WAN_LIGHT) otmp.spe = rn1(5, 11);
         else otmp.spe = rn1(5, otyp === WAND_CLASS && wandIndex <= 3 ? 11 : 4);
         blessorcurse(otmp, 17);
-    } else if (otyp === AMULET_CLASS) {
-        const badAmulet = !!game._mkobj_bad_amulet;
+    } else if (otyp === AMULET_CLASS || otyp === AMULET_OF_YENDOR) {
+        if (otyp === AMULET_OF_YENDOR) (game.context ??= {}).made_amulet = true;
+        const badAmulet = otyp === AMULET_CLASS && !!game._mkobj_bad_amulet;
         game._mkobj_bad_amulet = false;
         if (rn2(10) && badAmulet) curse(otmp);
         else blessorcurse(otmp, 10);
@@ -4682,6 +4706,11 @@ function wandIndexForObject(otmp) {
     if (otmp.otyp === WAN_TELEPORTATION) return 14;
     if (otmp.otyp === WAN_DIGGING) return 18;
     if (otmp.otyp === WAN_MAGIC_MISSILE) return 19;
+    if (otmp.otyp === WAN_FIRE) return 20;
+    if (otmp.otyp === WAN_COLD) return 21;
+    if (otmp.otyp === WAN_SLEEP) return 22;
+    if (otmp.otyp === WAN_DEATH) return 23;
+    if (otmp.otyp === WAN_LIGHTNING) return 24;
     return null;
 }
 
@@ -4722,7 +4751,7 @@ export function object_display(otmp) {
         return { glyph: '[', color: displayColor ?? otmp._armor_color ?? SPECIFIC_ARMOR_COLORS.get(otyp) ?? NO_COLOR };
     if (otyp === RING_CLASS || otyp === RIN_LEVITATION)
         return { glyph: '=', color: RING_APPEARANCE_COLORS.get(game._object_descriptions?.rings?.[(otmp.ringRoll || 1) - 1]) ?? CLR_WHITE };
-    if (otyp === AMULET_CLASS || otyp === AMULET_OF_ESP) return { glyph: '"', color: CLR_CYAN };
+    if (otyp === AMULET_CLASS || otyp === AMULET_OF_ESP || otyp === AMULET_OF_YENDOR) return { glyph: '"', color: CLR_CYAN };
     if (otyp === CORPSE) {
         const corpseColors = {
             orc: CLR_RED, dwarf: CLR_RED, gnome: CLR_BROWN, human: CLR_WHITE, elf: CLR_WHITE,
@@ -4795,6 +4824,84 @@ function mksobj_at(otyp, x, y, init, artif) {
     return place_object(mksobj(otyp, init, artif), x, y);
 }
 
+// Construct a chosen type using the same class initialization as mkobj.
+function makeEquipment(oclass, roll, init, artif) {
+    if (oclass === ARMOR_CLASS) {
+        const glassArmor = (roll >= 31 && roll <= 36) || (roll >= 107 && roll <= 116);
+        const copperArmor = roll >= 117 && roll <= 139;
+        const nonErodingArmor = (roll >= 263 && roll <= 287) || (roll >= 827 && roll <= 833);
+        if (init) {
+            game._mkobj_armor_autocurse = (roll >= 53 && roll <= 62)
+                || (roll >= 849 && roll <= 856)
+                || roll >= 977;
+            game._mkobj_armor_erosion = {
+                primary: !nonErodingArmor && !copperArmor,
+                secondary: !nonErodingArmor && !glassArmor,
+            };
+        }
+        const otmp = mksobj(ARMOR_CLASS, init, artif);
+        otmp.cls = 'armor';
+        otmp.kind = ARMOR_ROLL_KINDS.find(([max]) => roll <= max)?.[1] || 'armor';
+        const colorKey = ARMOR_APPEARANCE_COLOR_KEYS[otmp.kind];
+        otmp._display_color = colorKey
+            ? game._object_descriptions?.[colorKey[0]]?.[colorKey[1]] ?? objectColorForRoll(roll, ARMOR_ROLL_COLORS)
+            : objectColorForRoll(roll, ARMOR_ROLL_COLORS);
+        return otmp;
+    }
+    if (oclass === WEAPON_CLASS) {
+        const weapon = WEAPON_ROLL_KINDS.find(([upper]) => roll <= upper);
+        if (init) {
+            game._mkobj_weapon_multigen = roll <= 272;
+            game._mkobj_weapon_poisonable = roll <= 272;
+            game._mkobj_weapon_erodible = !WEAPON_NONERODIBLE_ROLLS.some(([lo, hi]) => roll >= lo && roll <= hi);
+            game._mkobj_weapon_actual_kind = weapon?.[1] || null;
+        }
+        const otmp = mksobj(WEAPON_CLASS, init, artif);
+        otmp._display_color = objectColorForRoll(roll, WEAPON_ROLL_COLORS);
+        if (weapon) {
+            const [, name, weight, appearance] = weapon;
+            Object.assign(otmp, {
+                cls: 'weapon',
+                kind: appearance || name,
+                actualKind: name,
+                owt: weight * otmp.quan,
+            });
+        }
+        return otmp;
+    }
+}
+
+function makeTool(roll, init = true, artif = false) {
+    game._mkobj_tool_roll = roll;
+    const otmp = mksobj(TOOL_CLASS, init, artif);
+    otmp.toolRoll = roll;
+    const nameEntry = TOOL_ROLL_NAMES.find(([upper]) => roll <= upper);
+    if (nameEntry) {
+        otmp.cls = 'tool';
+        otmp.kind = nameEntry[1];
+        otmp.actualKind = nameEntry[2] || nameEntry[1];
+    }
+    if (otmp.kind === 'saddle') otmp.owt = 200 * otmp.quan; // objects.h:SADDLE
+    otmp._display_color = objectColorForRoll(roll, TOOL_ROLL_COLORS);
+    return otmp;
+}
+
+// steed.c:put_saddle_on_mon also serves default makemon equipment and des
+// inventory callbacks, so every saddle has the same carrier and worn links.
+export function putSaddleOnMonster(mon, saddle = null) {
+    if (!canSaddle(mon) || (mon.minvent || []).some(obj => obj.owornmask & W_SADDLE)) return false;
+    if (!saddle) {
+        saddle = makeTool(615);
+        Object.assign(saddle, { known: true, dknown: true, bknown: true, rknown: true });
+    }
+    add_to_minv(mon, saddle);
+    Object.assign(saddle, { owornmask: W_SADDLE, leashmon: mon.m_id, worn: true, oslot: 'saddle' });
+    mon.misc_worn_check = (mon.misc_worn_check || 0) | W_SADDLE;
+    mon.saddled = true;
+    mon.hasInventory = true;
+    return true;
+}
+
 export function mkobj(oclass, artif) {
     if (oclass === RANDOM_CLASS) {
         let tprob = rnd(100);
@@ -4808,47 +4915,8 @@ export function mkobj(oclass, artif) {
             if (tprob <= 0) { oclass = cls; break; }
         }
     }
-    if (oclass === ARMOR_CLASS) {
-        const roll = rnd(1000);
-        const glassArmor = (roll >= 31 && roll <= 36) || (roll >= 107 && roll <= 116);
-        const copperArmor = roll >= 117 && roll <= 139;
-        const nonErodingArmor = (roll >= 263 && roll <= 287) || (roll >= 827 && roll <= 833);
-        game._mkobj_armor_autocurse = (roll >= 53 && roll <= 62)
-            || (roll >= 849 && roll <= 856)
-            || roll >= 977;
-        game._mkobj_armor_erosion = {
-            primary: !nonErodingArmor && !copperArmor,
-            secondary: !nonErodingArmor && !glassArmor,
-        };
-        const otmp = mksobj(ARMOR_CLASS, true, artif);
-        otmp.cls = 'armor';
-        otmp.kind = ARMOR_ROLL_KINDS.find(([max]) => roll <= max)?.[1] || 'armor';
-        const colorKey = ARMOR_APPEARANCE_COLOR_KEYS[otmp.kind];
-        otmp._display_color = colorKey
-            ? game._object_descriptions?.[colorKey[0]]?.[colorKey[1]] ?? objectColorForRoll(roll, ARMOR_ROLL_COLORS)
-            : objectColorForRoll(roll, ARMOR_ROLL_COLORS);
-        return otmp;
-    }
-    if (oclass === WEAPON_CLASS) {
-        const roll = rnd(1002);
-        const weapon = WEAPON_ROLL_KINDS.find(([upper]) => roll <= upper);
-        game._mkobj_weapon_multigen = roll <= 272;
-        game._mkobj_weapon_poisonable = roll <= 272;
-        game._mkobj_weapon_erodible = !WEAPON_NONERODIBLE_ROLLS.some(([lo, hi]) => roll >= lo && roll <= hi);
-        game._mkobj_weapon_actual_kind = weapon?.[1] || null;
-        const otmp = mksobj(WEAPON_CLASS, true, artif);
-        otmp._display_color = objectColorForRoll(roll, WEAPON_ROLL_COLORS);
-        if (weapon) {
-            const [, name, weight, appearance] = weapon;
-            Object.assign(otmp, {
-                cls: 'weapon',
-                kind: appearance || name,
-                actualKind: name,
-                owt: weight,
-            });
-        }
-        return otmp;
-    }
+    if (oclass === ARMOR_CLASS || oclass === WEAPON_CLASS)
+        return makeEquipment(oclass, rnd(oclass === ARMOR_CLASS ? 1000 : 1002), true, artif);
     if (oclass === GEM_CLASS) {
         const prob = rnd(1000);
         const otmp = mksobj(GEM_CLASS, false, artif);
@@ -4887,6 +4955,8 @@ export function mkobj(oclass, artif) {
             otmp.plural = food?.[2] || 'food rations';
         }
         otmp.foodRoll = prob;
+        const info = [...SPECIFIC_FOOD_INFO.values()].find(row => row[0] === food?.[1]);
+        if (info) otmp.owt = info[3] * otmp.quan;
         otmp._display_color = objectColorForRoll(prob, FOOD_ROLL_COLORS);
         return otmp;
     }
@@ -4929,20 +4999,7 @@ export function mkobj(oclass, artif) {
         rnd(1000);
         return mksobj(GOLD_PIECE, true, artif);
     }
-    if (oclass === TOOL_CLASS) {
-        const roll = rnd(1000);
-        game._mkobj_tool_roll = roll;
-        const otmp = mksobj(TOOL_CLASS, true, artif);
-        otmp.toolRoll = roll;
-        const nameEntry = TOOL_ROLL_NAMES.find(([upper]) => roll <= upper);
-        if (nameEntry) {
-            otmp.cls = 'tool';
-            otmp.kind = nameEntry[1];
-            otmp.actualKind = nameEntry[2] || nameEntry[1];
-        }
-        otmp._display_color = objectColorForRoll(roll, TOOL_ROLL_COLORS);
-        return otmp;
-    }
+    if (oclass === TOOL_CLASS) return makeTool(rnd(1000), true, artif);
     if (oclass === SPBOOK_CLASS || oclass === SPBOOK_no_NOVEL) {
         const includeNovel = oclass === SPBOOK_CLASS;
         const roll = rnd(includeNovel ? 1000 : 999);
@@ -5063,10 +5120,12 @@ function isCandleMergeObject(obj) {
 function objectHowLostKey(obj) {
     return obj?.how_lost ?? 0;
 }
-function objectMergeableByCMetadata(obj) {
+export function objectMergeableByCMetadata(obj) {
     if (!obj) return false;
     if (obj.ocMerge === false) return false;
     const otyp = obj.otyp;
+    const kind = objectKindKey(obj);
+    if (otyp === BOULDER || otyp === STATUE || kind === 'boulder' || kind === 'statue') return false;
     if (otyp === GOLD_PIECE || otyp === COIN_CLASS || obj.cls === 'coin') return true;
     if (isFoodMergeObject(obj)) return true;
     if (otyp === POTION_CLASS || obj.cls === 'potion') return true;
@@ -5074,7 +5133,8 @@ function objectMergeableByCMetadata(obj) {
     if (otyp === ROCK || otyp === GEM_CLASS || otyp === RUBY || otyp === TOUCHSTONE || obj.cls === 'gem' || obj.cls === 'rock') return true;
     if (isCandleMergeObject(obj)) return true;
     if (otyp >= 230 && otyp < 300) return true;
-    if (['arrow', 'bolt', 'dart', 'dagger', 'knife', 'spear', 'javelin', 'shuriken', 'boomerang'].some(name => objectKindKey(obj).includes(name)))
+    if (['ya', 'athame', 'scalpel', 'stiletto', 'worm tooth'].includes(kind)) return true;
+    if (['arrow', 'bolt', 'dart', 'dagger', 'knife', 'spear', 'javelin', 'shuriken', 'boomerang'].some(name => kind.includes(name)))
         return true;
     return false;
 }
@@ -5114,6 +5174,8 @@ function hasAttachedMergeData(obj) {
     return !!(obj?.omonst || obj?.omid || obj?.oextra?.omonst || obj?.oextra?.omid);
 }
 function clearMergedSourceTimers(obj) {
+    stopObjectTimers(obj, { [BURN_OBJECT]: { cleanup: cleanupBurn } });
+    if (obj.lamplit || obj.burning) endBurn(obj, false);
     delete obj.eggHatchTurn;
     delete obj._egg_hatch_seq;
     delete obj._egg_hatch_consumed;
@@ -5123,7 +5185,7 @@ function clearMergedSourceTimers(obj) {
     delete obj.figurineTransformTurn;
     delete obj._figurine_transform_seq;
 }
-function mergeStackableObject(existing, otmp) {
+export function mergeStackableObject(existing, otmp) {
     const existingCount = Math.max(1, Math.trunc(Number(existing.quan || 1)));
     const objCount = Math.max(1, Math.trunc(Number(otmp.quan || 1)));
     if (!otmp.lamplit && (existing.age != null || otmp.age != null)) {
@@ -5249,18 +5311,8 @@ function t_at(x, y) {
     return game.level?.traps?.find(trap => trap.tx === x && trap.ty === y) || null;
 }
 
-// set_corpsenm stub
 function set_corpsenm(otmp, pm) {
-    if (otmp?.otyp === EGG && otmp.corpsenm) {
-        for (let i = 151; i <= 200; i++) {
-            if (rnd(i) > 150) {
-                otmp.eggHatchTurn = (game.moves || 1) + i;
-                otmp._egg_hatch_consumed = true;
-                otmp._egg_hatch_seq = game._egg_hatch_timer_seq = (game._egg_hatch_timer_seq || 0) + 1;
-                break;
-            }
-        }
-    }
+    if (otmp?.otyp === EGG && otmp.corpsenm) attachEggHatchTimeout(otmp);
 }
 
 function savedMonsterTraitsForCorpstat(mtmp) {
@@ -5405,9 +5457,8 @@ function globMeldWeight(obj) {
 }
 
 function globMeldRemainingTurns(obj) {
-    const turn = obj?.globShrinkTurn;
-    if (typeof turn !== 'number') return 25;
-    return Math.max(1, turn - (game.moves || 0));
+    const turn = peekTimer(SHRINK_GLOB, obj);
+    return turn ? (turn - (game.moves || 0)) || 25 : 25;
 }
 
 function syncGlobObjectFields(obj) {
@@ -5468,7 +5519,9 @@ function absorbGlobObject(absorber, absorbed) {
     absorber.age = moves - Math.trunc((((moves - age1) * w1) + ((moves - age2) * w2)) / (w1 + w2));
     absorber.owt = Math.max(1, absorber.owt || w1) + w2;
     if (absorber.oeaten || absorbed.oeaten) absorber.oeaten = w1 + w2;
-    absorber.globShrinkTurn = moves + Math.trunc((globMeldRemainingTurns(absorber) + globMeldRemainingTurns(absorbed) + 1) / 2);
+    const nextShrink = Math.trunc((globMeldRemainingTurns(absorber) + globMeldRemainingTurns(absorbed) + 1) / 2);
+    stopGlobShrinkTimeout(absorbed);
+    startGlobShrinkTimeout(absorber, nextShrink);
     syncGlobObjectFields(absorber);
     if (game.level?.objects?.includes(absorbed))
         game.level.objects = game.level.objects.filter(candidate => candidate !== absorbed);
@@ -5516,13 +5569,9 @@ function floorGlobMeldSurvivor(obj, target) {
     return absorber;
 }
 
-function globShrinkDelay() {
-    return 25 + rn2(5) - 2;
-}
-
 function monsterDeathGlobObject(mon, corpseData, globType, x, y) {
     const monsterName = globType.name.replace(/^glob of /, '');
-    return {
+    const obj = {
         id: next_ident(),
         otyp: globType.otyp,
         cls: 'food',
@@ -5540,10 +5589,11 @@ function monsterDeathGlobObject(mon, corpseData, globType, x, y) {
         owt: 20,
         age: game.moves || 0,
         corpsenm: corpseData || mon?.data || monsterByRndName(monsterName) || { name: monsterName, neuter: true },
-        globShrinkTurn: Math.max(game.moves || 0, 1) + globShrinkDelay(),
         ox: x,
         oy: y,
     };
+    startGlobShrinkTimeout(obj);
+    return obj;
 }
 
 function meldDeathGlobOnFloor(obj, messages = null) {
@@ -6526,6 +6576,7 @@ function mongets(otyp, erodes = true) {
     else if (otyp === WAN_POLYMORPH) Object.assign(otmp, { cls: 'wand', kind: 'polymorph', wandIndex: 12 });
     else if (otyp === WAN_NOTHING) Object.assign(otmp, { cls: 'wand', kind: 'nothing' });
     else if (otyp === WAN_WISHING) Object.assign(otmp, { cls: 'wand', glyph: '/', kind: 'wishing', wand: 'wishing', wandIndex: 4, known: false });
+    else if (otyp === AMULET_CLASS) Object.assign(otmp, { cls: 'amulet', kind: 'amulet of life saving', actualKind: 'amulet of life saving', amuletIndex: 1 });
     if (game._mongets_target) {
         game._mongets_target.minvent = [otmp, ...(game._mongets_target.minvent || [])];
         game._mongets_target.hasInventory = true;
@@ -6541,13 +6592,13 @@ export function dropMonsterInventory(mon, { floorEffects = null, verb = 'fall' }
     if (!inventory.length) return;
     for (const otmp of inventory) {
         if ((otmp.quan || 1) <= 0) continue;
-        Object.assign(otmp, { ox: mon.mx, oy: mon.my });
+        Object.assign(otmp, { ox: mon.mx, oy: mon.my, ocarry: null });
         if (floorEffects?.(otmp, otmp.ox, otmp.oy, verb))
             continue;
         const stack = game.level.objects.find(obj => obj.ox === otmp.ox && obj.oy === otmp.oy
-            && obj.kind === otmp.kind && obj.otyp === otmp.otyp && obj.cls === otmp.cls);
+            && sameStackableObject(obj, otmp));
         if (stack) {
-            stack.quan = (stack.quan || 1) + (otmp.quan || 1);
+            mergeStackableObject(stack, otmp);
             continue;
         }
         game.level.objects.push(otmp);
@@ -6650,12 +6701,21 @@ function rnd_misc_item(ptr, mon = null) {
     return 0;
 }
 
-function rnd_offensive_item(ptr) {
+function rnd_offensive_item(ptr, mon = game._mongets_target) {
     if (noRandomMonsterItemRolls(ptr)) return 0;
     const difficulty = ptr.difficulty ?? ptr.hpLevel ?? ptr.mlevel ?? 0;
     if (difficulty > 7 && !rn2(35)) return WAN_DEATH;
     switch (rn2(9 - (difficulty < 4 ? 1 : 0) + 4 * (difficulty > 6 ? 1 : 0))) {
-    case 0:
+    case 0: {
+        const helmet = mon?.minvent?.find(obj => obj.owornmask & W_ARMH);
+        const kind = helmet?.actualKind || helmet?.kind || '';
+        const hardHelmet = ['helmet', 'orcish helm', 'dwarvish iron helm', 'helm of brilliance',
+            'helm of opposite alignment', 'helm of telepathy'].includes(kind);
+        const data = QUEST_MONSTERS[ptr.pm] || QUEST_MONSTERS.find(row => row.name === ptr.name);
+        if (hardHelmet || (data && (questSpecies.amorphous(data) || passes_walls(data)
+            || noncorporeal(data) || questSpecies.unsolid(data)))) return SCR_EARTH;
+    }
+    // C muse.c:2053 falls through when a falling rock would hurt the user.
     case 1:
         return WAN_STRIKING;
     case 2:
@@ -6795,7 +6855,11 @@ function peaceMinded(ptr) {
 export function set_malign(mon) {
     const ptr = mon?.data || {};
     let mal = ptr.maligntyp ?? 0;
-    if (mon?.ispriest && mon.shrine?.align != null) mal = mon.shrine.align * 5;
+    if (mon?.ispriest || mon?.isminion) {
+        mal = mon.ispriest ? mon.shrine?.align ?? mal
+            : mon.min_align ?? mon.emin?.min_align ?? mon.mextra?.emin?.min_align ?? mal;
+        if (mal !== A_NONE) mal *= 5;
+    }
     const coaligned = Math.sign(mal) === Math.sign(game.u?.ualign?.type ?? A_NEUTRAL);
     const flags = RNDMONST_FLAGS_BY_NAME.get(ptr.name) || '';
     const alwaysPeaceful = ptr.alwaysPeaceful || flags.includes('P');
@@ -6980,6 +7044,118 @@ export function rlocNoMsg(mon, { allowUnset = false } = {}) {
     return true;
 }
 
+// mon.c:m_into_limbo/migrate_mon and dog.c:migrate_to_level. A failed
+// relocation preserves this monster for a later arrival on the same level.
+export function mIntoLimbo(mon) {
+    const { mx, my } = mon;
+    const level = game.u.uz;
+    if (mx) {
+        if (game.u.ustuck === mon) {
+            game.u.ustuck = null;
+            if (game.u.uswallow) {
+                game.u.uswallow = false;
+                game.u.ux = mx; game.u.uy = my;
+                game.mswallower = null;
+                game.vision_full_recalc = 1;
+            }
+            const species = QUEST_MONSTERS.find(species => species.name === mon.data?.name);
+            if (!mon.mspec_used && species?.attacks.some(attack => attack.adtyp === questSpecies.AD_STCK
+                || attack.aatyp === questSpecies.AT_ENGL || attack.aatyp === questSpecies.AT_HUGS)) mon.mspec_used = rnd(2);
+        }
+        const rescued = mdropSpecialObjs(mon, {
+            objResists: obj => {
+                const corpse = typeof obj.corpsenm === 'number' ? QUEST_MONSTERS[obj.corpsenm] : obj.corpsenm;
+                if (['Amulet of Yendor', 'Book of the Dead', 'Candelabrum of Invocation', 'Bell of Opening'].includes(obj.actualKind || obj.kind)
+                    || (obj.otyp === CORPSE && ['Death', 'Famine', 'Pestilence'].includes(corpse?.name))) return true;
+                rn2(100);
+                return false;
+            },
+            isQuestArtifact: obj => isCurrentRoleQuestArtifact(artifactDefinitionForName(obj.artifact || obj.oartifact)),
+        });
+        for (const obj of rescued) {
+            if (obj.owornmask && obj.lamplit && artifactLight(obj)) endBurn(obj, false);
+            mon.misc_worn_check = (mon.misc_worn_check || 0) & ~(obj.owornmask || 0);
+            if (mon.mw === obj) mon.mw = null;
+            if (mon.weapon === obj) mon.weapon = null;
+            obj.owornmask = 0; obj.worn = obj.wielded = false;
+            delete obj.ocarry;
+            mon.minvent.splice(mon.minvent.indexOf(obj), 1);
+            stack_floor_object(place_object(obj, mx, my));
+        }
+    }
+    if (mon.mleashed) {
+        mon.mtame--;
+        for (const leash of game.inventory || []) if (leash.leashmon === mon.m_id) leash.leashmon = 0;
+        mon.mleashed = false;
+    }
+    for (const obj of objectLocations({ inventory: mon.minvent || [] }).keys()) obj.no_charge = 0;
+    for (const room of game.level.rooms || []) if (room.resident === mon) room.resident = null;
+    mon.wormno = Math.min(mon.wormSegments?.length || 0, MAX_NUM_WORMS - 1);
+    mon.wormSegments = [];
+    const bounds = game.level.wizardTowerBounds;
+    const tower = game.level.flags?.wizard_tower_level && bounds
+        && mx >= bounds.lx && mx <= bounds.hx && my >= bounds.ly && my <= bounds.hy;
+    mon.mtrack = [{ x: MIGR_APPROX_XY, y: tower ? 2 : 0 }, { x: mx, y: my }, { x: level.dnum, y: level.dlevel }];
+    mon.mux = level.dnum; mon.muy = level.dlevel;
+    mon.mx = mon.my = 0;
+    mon.mlstmv = game.moves;
+    mon.mstate = (mon.mstate || 0) | MON_MIGRATING | MON_LIMBO;
+    game.level.monsters = game.level.monsters.filter(other => other !== mon);
+    game.migrating_mons ??= [];
+    if (!game.migrating_mons.includes(mon)) game.migrating_mons.push(mon);
+    if (mx) newsym(mx, my);
+}
+
+// dog.c:mon_arrive's independent RANDOM and APPROX_XY destinations. Limbo
+// uses the latter, with elapsed-time wandering before near-position placement.
+export function arriveMigratingMonsters() {
+    const queue = game.migrating_mons;
+    if (!queue?.length || !game.level) return;
+    for (const mon of [...queue]) {
+        if (!mon || mon.mux !== game.u.uz.dnum || mon.muy !== game.u.uz.dlevel) continue;
+        const xyloc = mon.mtrack?.[0]?.x;
+        if (xyloc !== MIGR_RANDOM && xyloc !== MIGR_APPROX_XY) continue;
+        const xyflags = mon.mtrack?.[0]?.y || 0;
+        let x = xyloc === MIGR_APPROX_XY ? mon.mtrack?.[1]?.x || 0 : 0;
+        let y = xyloc === MIGR_APPROX_XY ? mon.mtrack?.[1]?.y || 0 : 0;
+        queue.splice(queue.indexOf(mon), 1);
+        game.level.monsters.push(mon);
+        for (const room of game.level.rooms || [])
+            if (mon.isshk && (room.roomnoidx ?? game.level.rooms.indexOf(room)) + ROOMOFFSET === mon.shoproom) room.resident = mon;
+        const segments = mon.wormno || 0;
+        mon.wormSegments = mon.data?.name === 'long worm' ? Array.from({ length: segments }, () => ({ x: 0, y: 0 })) : [];
+        mon.wormno = mon.data?.name === 'long worm' ? segments : 0;
+        mon.mstate = (mon.mstate || 0) & ~(MON_MIGRATING | MON_LIMBO);
+        mon.mstrategy = (mon.mstrategy || 0) | STRAT_ARRIVE;
+        mon.mux = game.u.ux; mon.muy = game.u.uy;
+        mon.mtrack = [];
+        const elapsed = Math.max(0, (game.moves || 1) - 1 - (mon.mlstmv || 0));
+        if (elapsed) monCatchupElapsedTime(mon, elapsed);
+        if (x && elapsed) {
+            const room = roomByRoomno(in_rooms(x, y, 0)[0]);
+            if (room) {
+                const spot = {};
+                if (somexy(room, spot)) { x = spot.x; y = spot.y; }
+                else x = y = 0;
+            } else {
+                const wander = Math.min(elapsed, 8);
+                let low = Math.max(1, x - wander), high = Math.min(COLNO - 1, x + wander);
+                x = rn1(high - low, low);
+                low = Math.max(0, y - wander); high = Math.min(ROWNO - 1, y + wander);
+                y = rn1(high - low, low);
+            }
+        }
+        mon.mx = 0; mon.my = xyflags;
+        let placed;
+        if (x) {
+            const spot = rlocGoodpos(mon, x, y) ? { x, y } : enextoMonsterSpot(x, y, mon.data, true);
+            placed = !!spot;
+            if (spot) rlocToCoreNoMsg(mon, spot.x, spot.y);
+        } else placed = rlocNoMsg(mon, { allowUnset: true });
+        if (!placed) mIntoLimbo(mon);
+    }
+}
+
 function placeLongWormTailRandomly(mon, x, y, segmentCount) {
     const segments = [];
     mon.wormSegments = [];
@@ -7070,7 +7246,15 @@ function m_initweap(ptr) {
             game._mongets_target.minvent = [otmp, ...(game._mongets_target.minvent || [])];
             game._mongets_target.hasInventory = true;
         }
-    } else if (ptr.guardian && ptr.name === 'chieftain') {
+    } else if (ptr.name === 'ninja') {
+        const missile = namedEquipment(rn2(4) ? 'shuriken' : 'dart');
+        Object.assign(missile, object_display(missile));
+        if (game._mongets_target) {
+            game._mongets_target.minvent = [missile, ...(game._mongets_target.minvent || [])];
+            game._mongets_target.hasInventory = true;
+        }
+        mongets(rn2(4) ? SHORT_SWORD : AXE);
+    } else if (ptr.guardian && ['chieftain', 'page', 'roshi', 'warrior'].includes(ptr.name)) {
         mongets(rn2(3) ? LONG_SWORD : SHORT_SWORD);
         mongets(rn2(3) ? CHAIN_MAIL : LEATHER_ARMOR);
         if (rn2(2)) mongets(rn2(2) ? LOW_BOOTS : HIGH_BOOTS);
@@ -7079,11 +7263,24 @@ function m_initweap(ptr) {
             mongets(BOW);
             m_initthrow(ARROW, 12);
         }
-    } else if (ptr.guardian && (ptr.name === 'student' || ptr.name === 'apprentice' || ptr.name === 'acolyte')) {
+    } else if (ptr.guardian && ['student', 'attendant', 'abbot', 'acolyte', 'guide', 'apprentice'].includes(ptr.name)) {
         if (rn2(2)) mongets(rn2(3) ? DAGGER : KNIFE);
         if (rn2(5)) mongets(rn2(3) ? LEATHER_JACKET : LEATHER_CLOAK);
         if (rn2(3)) mongets(rn2(3) ? LOW_BOOTS : HIGH_BOOTS);
         if (rn2(3)) mongets(POT_HEALING);
+    } else if (ptr.guardian && ptr.name === 'hunter') {
+        mongets(rn2(3) ? SHORT_SWORD : DAGGER);
+        if (rn2(2)) mongets(rn2(2) ? LEATHER_JACKET : LEATHER_ARMOR);
+        mongets(BOW);
+        m_initthrow(ARROW, 12);
+    } else if (ptr.guardian && ptr.name === 'thug') {
+        mongets(CLUB);
+        mongets(rn2(3) ? DAGGER : KNIFE);
+        if (rn2(2)) mongets(LEATHER_GLOVES);
+        mongets(rn2(2) ? LEATHER_JACKET : LEATHER_ARMOR);
+    } else if (ptr.guardian && ptr.name === 'neanderthal') {
+        mongets(CLUB);
+        mongets(LEATHER_ARMOR);
     } else if (ptr.elf) {
         if (rn2(2)) mongets(rn2(2) ? ELVEN_MITHRIL_COAT : ELVEN_CLOAK);
         if (rn2(2)) mongets(ELVEN_LEATHER_HELM);
@@ -7832,7 +8029,10 @@ export async function makemon(mdat, x, y, mmflags) {
                 mkmonmoney(mon, d(level_difficulty(), mon.minvent?.length ? 5 : 10));
             }
         }
-        rn2(100);
+        if (!rn2(100)) {
+            const species = QUEST_MONSTERS.find(species => species.name === ptr.name);
+            if (species && questSpecies.is_domestic(species)) putSaddleOnMonster(mon);
+        }
     }
 
     // C ref: makemon.c:1370-1375 — every makemon() of the Wizard of Yendor is
@@ -8525,6 +8725,14 @@ export async function getbones() {
     if (flags.bones === false) return false;
     if (rn2(3) && !game.flags?.debug) return false;
     const uz = game.u?.uz || { dnum: 0, dlevel: 1 };
+    // bones.c:no_bones_level runs after the discovery roll, before opening
+    // any file. A branch's first level is an entrance, not a multiway level.
+    const dungeon = game.dungeons?.[uz.dnum];
+    const special = game.specialLevels?.find(level => level.dnum === uz.dnum && level.dlevel === uz.dlevel);
+    if ((special && !special.boneid) || (dungeon && !dungeon.boneid)
+        || uz.dlevel === dungeon?.num_dunlevs
+        || (uz.dlevel > 1 && is_branchlev())
+        || (dungeon?.flags?.hellish && uz.dlevel === dungeon.num_dunlevs - 1)) return false;
     const bonesPath = `/bones/${uz.dnum}:${uz.dlevel}`;
     const bonesContent = vfsReadFile(bonesPath);
     if (bonesContent === null) return false;
@@ -8726,8 +8934,20 @@ export async function mklev() {
         await specialQuestBuilder();
         return;
     }
+    const questProgram = QUEST_LEVELS[g.urole?.name?.m || g._startup_role || '']?.[special?.name];
+    if (questProgram) {
+        await make_quest_filler_level(questProgram);
+        return;
+    }
     if (!special && g.dungeons?.[g.u?.uz?.dnum]?.name === 'The Quest' && questBuilder?.fill) {
         await questBuilder.fill(g.u?.uz?.dlevel ?? 1);
+        return;
+    }
+    const fillers = QUEST_FILLERS[g.urole?.name?.m || g._startup_role || ''];
+    if (!special && g.dungeons?.[g.u?.uz?.dnum]?.name === 'The Quest' && fillers) {
+        const locate = g.specialLevels?.find(level => level.name === 'x-loca'
+            && level.dnum === g.u.uz.dnum)?.dlevel ?? 3;
+        await make_quest_filler_level(fillers[g.u.uz.dlevel < locate ? 'a' : 'b']);
         return;
     }
     if (await getbones()) return;
@@ -9038,17 +9258,17 @@ function barFillObject() {
     mkobj_at(RANDOM_CLASS, pos.x, pos.y, true);
 }
 
-async function barFillTrap() {
+async function barFillTrap(kind = null, locate = barFillDryLocation) {
     let pos, trycnt = 0;
     do {
-        pos = barFillDryLocation();
+        pos = locate();
+        if (!pos) return;
         const typ = game.level.at(pos.x, pos.y)?.typ;
         if (typ !== STAIRS && typ !== LADDER) break;
     } while (++trycnt <= 100);
     if (trycnt > 100) return;
 
-    let kind;
-    do { kind = traptype_rnd(); } while (kind === NO_TRAP);
+    if (kind == null) do { kind = traptype_rnd(); } while (kind === NO_TRAP);
     const dungeon = game.dungeons?.[game.u?.uz?.dnum ?? 0];
     const canFallThru = (game.u?.uz?.dlevel ?? 1) < (dungeon?.num_dunlevs ?? 1);
     if (is_hole(kind) && !canFallThru) kind = ROCKTRAP;
@@ -9239,6 +9459,921 @@ async function make_bar_loca_level() {
     flipSpecialLevelRnd(1, 0, COLNO - 2, BAR_YSTART + BAR_HEIGHT - 1, true);
     recount_level_features();
     level_finalize_topology({ mineralizeLevel: false, mineralizeKelp: true });
+}
+
+// sp_lev.c:get_location and is_ok_location, shared by the declarative fillers.
+function questFillerLocation(area, croom = null, humidity = DRY, stairs = false, coord = null) {
+    const bounds = croom || area;
+    const point = parseSelectionPoint(coord);
+    if (point && point.x >= 0 && point.y >= 0)
+        return { x: bounds.lx + point.x, y: bounds.ly + point.y };
+    const good = (x, y) => {
+        const typ = game.level.at(x, y)?.typ;
+        if (stairs) return typ === ROOM || typ === CORR || typ === ICE;
+        return ((humidity & SOLID) && IS_OBSTRUCTED(typ))
+            || ((humidity & DRY) && SPACE_POS(typ) && ((humidity & SOLID) || !sobj_at(BOULDER, x, y)))
+            || ((humidity & WET) && IS_POOL(typ)) || ((humidity & HOT) && IS_LAVA(typ));
+    };
+    for (let attempt = 0; attempt < 100; attempt++) {
+        const pos = { x: 0, y: 0 };
+        if (croom) somexy(croom, pos);
+        else {
+            pos.x = bounds.lx + rn2(bounds.hx - bounds.lx + 1);
+            pos.y = bounds.ly + rn2(bounds.hy - bounds.ly + 1);
+        }
+        if (good(pos.x, pos.y)) return pos;
+    }
+    for (let x = bounds.lx; x <= bounds.hx; x++)
+        for (let y = bounds.ly; y <= bounds.hy; y++)
+            if (good(x, y)) return { x, y };
+    return null;
+}
+
+// The random-generation metadata omits quest-only species. Adapt their full
+// canonical rows to the legacy fields consumed by makemon and combat.
+function questMonsterData(data) {
+    // C role.c:role_init changes these species for the chosen quest. The same
+    // Master of Thieves is a Rogue leader and a Tourist nemesis.
+    const [leader, guardian, nemesis] = QUEST_ROLE_MONSTERS[game._startup_role || game.urole?.name?.m] || [];
+    if (data.name === leader || data.name === guardian) {
+        data = { ...data, m2: data.m2 | questSpecies.M2_PEACEFUL,
+            align: (game.u?.ualignbase?.[0] ?? game.u?.ualign?.type ?? 0) * 3 };
+        if (data.name === leader) data = { ...data, sound: questSpecies.MS_LEADER, m3: data.m3 | questSpecies.M3_CLOSE };
+    }
+    if (data.name === nemesis) data = { ...data, sound: questSpecies.MS_NEMESIS,
+        m2: (data.m2 & ~questSpecies.M2_PEACEFUL) | questSpecies.M2_NASTY | questSpecies.M2_STALK | questSpecies.M2_HOSTILE,
+        m3: (data.m3 & ~questSpecies.M3_CLOSE) | questSpecies.M3_WANTSARTI | questSpecies.M3_WAITFORU };
+
+    const attackCodes = new Map(Object.entries(questSpecies).filter(([key]) => key.startsWith('AT_')).map(([key, val]) => [val, key.slice(3).toLowerCase()]));
+    const damageCodes = new Map(Object.entries(questSpecies).filter(([key]) => key.startsWith('AD_')).map(([key, val]) => [val, key.slice(3).toLowerCase()]));
+    return {
+        ...data, mlet: RNDMONST_MLET_BY_GLYPH.get(data.sym) || data.sym, glyph: data.sym,
+        mlevel: data.lvl, hpLevel: adjustedMonsterLevel({ mlevel: data.lvl }),
+        mac: data.ac, maligntyp: data.align, randomInventory: true,
+        mplayer: data.pm >= questSpecies.PM_ARCHEOLOGIST && data.pm <= questSpecies.PM_WIZARD,
+        male: is_male(data), female: is_female(data), neuter: questSpecies.is_neuter(data),
+        unique: !!(data.geno & questSpecies.G_UNIQ), noCorpse: !!(data.geno & questSpecies.G_NOCORPSE),
+        msound: data.sound === questSpecies.MS_LEADER ? 'leader' : data.sound,
+        guardian: data.sound === questSpecies.MS_GUARDIAN,
+        nemesis: data.sound === questSpecies.MS_NEMESIS, waiting: !!(data.m3 & questSpecies.M3_WAITFORU),
+        alwaysHostile: questSpecies.always_hostile(data), alwaysPeaceful: questSpecies.always_peaceful(data),
+        strong: questSpecies.strongmonst(data), nasty: questSpecies.extra_nasty(data),
+        armed: data.attacks.some(attack => attack.aatyp === questSpecies.AT_WEAP),
+        nohands: questSpecies.nohands(data), noeyes: !questSpecies.haseyes(data),
+        big: questSpecies.bigmonst(data), animal: questSpecies.is_animal(data),
+        inAir: is_flyer(data), swimmer: is_swimmer(data), passWalls: passes_walls(data),
+        covetous: questSpecies.is_covetous(data), seeInvisible: questSpecies.perceives(data),
+        likesGold: questSpecies.likes_gold(data), likesGems: questSpecies.likes_gems(data),
+        likesMagic: questSpecies.likes_magic(data), throwsRocks: questSpecies.throws_rocks(data),
+        resistsFire: !!(data.mres & questSpecies.MR_FIRE), resistsCold: !!(data.mres & questSpecies.MR_COLD),
+        resistsElec: !!(data.mres & questSpecies.MR_ELEC),
+        attacks: data.attacks.filter(attack => attack.aatyp || attack.damn || attack.damd).map(attack => ({
+            dice: attack.damn, sides: attack.damd, aatyp: attackCodes.get(attack.aatyp), adtyp: damageCodes.get(attack.adtyp),
+            verb: ({ [questSpecies.AT_BITE]: 'bites', [questSpecies.AT_KICK]: 'kicks',
+                [questSpecies.AT_STNG]: 'stings', [questSpecies.AT_TUCH]: 'touches you' })[attack.aatyp] || 'hits',
+        })),
+    };
+}
+
+// C ref: objnam.c:rnd_class. The roll tables store cumulative object
+// probabilities; range selection must not add a second random-type roll.
+function equipmentInRange(oclass, first, last) {
+    const table = oclass === WEAPON_CLASS ? WEAPON_ROLL_KINDS : ARMOR_ROLL_KINDS;
+    const start = table.findIndex(row => row[1] === first);
+    const end = table.findIndex(row => row[1] === last);
+    const lower = table[start - 1]?.[0] || 0;
+    const roll = lower + rnd(table[end][0] - lower);
+    return table.find(row => roll <= row[0])[1];
+}
+
+function namedEquipment(name, init = true, artif = false) {
+    if (name === 'walking shoes') name = 'low boots'; // objects.h non-shuffled description.
+    for (const [oclass, table] of [[WEAPON_CLASS, WEAPON_ROLL_KINDS], [ARMOR_CLASS, ARMOR_ROLL_KINDS]]) {
+        const row = table.find(entry => entry[1].toLowerCase() === name.toLowerCase());
+        if (row) return makeEquipment(oclass, row[0], init, artif);
+    }
+    const dragon = { 'gray dragon scale mail': GRAY_DRAGON_SCALE_MAIL, 'gold dragon scale mail': GOLD_DRAGON_SCALE_MAIL,
+        'silver dragon scale mail': SILVER_DRAGON_SCALE_MAIL, 'red dragon scale mail': RED_DRAGON_SCALE_MAIL,
+        'white dragon scale mail': WHITE_DRAGON_SCALE_MAIL, 'orange dragon scale mail': ORANGE_DRAGON_SCALE_MAIL,
+        'black dragon scale mail': BLACK_DRAGON_SCALE_MAIL, 'blue dragon scale mail': BLUE_DRAGON_SCALE_MAIL,
+        'green dragon scale mail': GREEN_DRAGON_SCALE_MAIL, 'yellow dragon scale mail': YELLOW_DRAGON_SCALE_MAIL }[name];
+    if (dragon) {
+        const obj = mksobj(dragon, init, artif);
+        Object.assign(obj, { cls: 'armor', kind: name, actualKind: name, owt: 40 }, object_display(obj));
+        return obj;
+    }
+    // These weapons have zero random-generation probability and therefore
+    // have no interval in the class roll table (objects.h).
+    const fixed = {
+        athame: [ATHAME, 10, null], scalpel: [WEAPON_CLASS, 5, null],
+        yumi: [WEAPON_CLASS, 30, 'long bow'], tsurugi: [TSURUGI, 60, 'long samurai sword'],
+        runesword: [RUNESWORD, 40, 'runed broadsword'],
+        'unicorn horn': [TOOL_CLASS, 20, null],
+    }[name];
+    if (!fixed) return null;
+    const [otyp, mass, appearance] = fixed;
+    if (otyp === WEAPON_CLASS && init) {
+        game._mkobj_weapon_multigen = false;
+        game._mkobj_weapon_poisonable = false;
+        game._mkobj_weapon_erodible = true;
+        game._mkobj_weapon_actual_kind = name;
+    }
+    const obj = mksobj(otyp, init && otyp !== TOOL_CLASS, artif);
+    Object.assign(obj, { cls: otyp === TOOL_CLASS ? 'tool' : 'weapon',
+        kind: appearance || name, actualKind: name, owt: mass, _display_color: CLR_CYAN });
+    Object.assign(obj, object_display(obj));
+    return obj;
+}
+
+// C ref: mplayer.c:116-329. Armor choices consume RNG even for ordinary
+// players, who keep their makemon inventory but receive no enhanced armor.
+export async function mk_mplayer(ptr, x, y, special = false) {
+    const data = ptr && (QUEST_MONSTERS[ptr.pm] || QUEST_MONSTERS.find(mon => mon.name === ptr.name));
+    if (!data || data.pm < questSpecies.PM_ARCHEOLOGIST || data.pm > questSpecies.PM_WIZARD) return null;
+    if (ptr.mlevel == null) ptr = questMonsterData(data);
+    const occupant = game.level.monsters.find(mon => mon.mx === x && mon.my === y);
+    if (occupant) rlocNoMsg(occupant);
+    special = special && In_endgame(game.u?.uz);
+    const mon = await makemon(ptr, x, y, special ? MM_NOMSG : 0);
+    if (!mon) return null;
+    dressMonster(mon);
+    mon.m_lev = special ? rn1(16, 15) : rnd(16);
+    mon.mhp = mon.mhpmax = d(mon.m_lev, 10) + (special ? 30 + rnd(30) : 30);
+    if (special) {
+        nameMonsterPlayer(mon, data);
+        add_to_minv(mon, mkFakeAmuletOfYendor());
+    }
+    mon.mpeaceful = 0;
+    set_malign(mon);
+
+    let weapon = !rn2(2) ? 'long sword' : equipmentInRange(WEAPON_CLASS, 'spear', 'bullwhip');
+    let armor = ['gray', 'gold', 'silver', 'red', 'white', 'orange', 'black', 'blue', 'green', 'yellow'][rn2(10)] + ' dragon scale mail';
+    let cloak = rn2(8) ? equipmentInRange(ARMOR_CLASS, 'oilskin cloak', 'cloak of displacement') : null;
+    let helm = rn2(8) ? equipmentInRange(ARMOR_CLASS, 'elven leather helm', 'helm of telepathy') : null;
+    let shield = rn2(8) ? equipmentInRange(ARMOR_CLASS, 'elven shield', 'shield of reflection') : null;
+    switch (data.pm) {
+    case questSpecies.PM_ARCHEOLOGIST:
+        if (rn2(2)) weapon = 'bullwhip';
+        break;
+    case questSpecies.PM_BARBARIAN:
+        if (rn2(2)) { weapon = rn2(2) ? 'two-handed sword' : 'battle-axe'; shield = null; }
+        if (rn2(2)) armor = equipmentInRange(ARMOR_CLASS, 'plate mail', 'chain mail');
+        if (helm === 'helm of brilliance') helm = null;
+        break;
+    case questSpecies.PM_CAVE_DWELLER:
+        if (rn2(4)) weapon = 'mace';
+        else if (rn2(2)) weapon = 'club';
+        if (helm === 'helm of brilliance') helm = null;
+        break;
+    case questSpecies.PM_HEALER:
+        if (rn2(4)) weapon = 'quarterstaff';
+        else if (rn2(2)) weapon = rn2(2) ? 'unicorn horn' : 'scalpel';
+        if (rn2(4)) helm = rn2(2) ? 'helm of brilliance' : 'helm of telepathy';
+        if (rn2(2)) shield = null;
+        break;
+    case questSpecies.PM_KNIGHT:
+        if (rn2(4)) weapon = 'long sword';
+        if (rn2(2)) armor = equipmentInRange(ARMOR_CLASS, 'plate mail', 'chain mail');
+        break;
+    case questSpecies.PM_MONK:
+        weapon = !rn2(3) ? 'shuriken' : null;
+        armor = null; cloak = 'robe';
+        if (rn2(2)) shield = null;
+        break;
+    case questSpecies.PM_CLERIC:
+        if (rn2(2)) weapon = 'mace';
+        if (rn2(2)) armor = equipmentInRange(ARMOR_CLASS, 'plate mail', 'chain mail');
+        if (rn2(4)) cloak = 'robe';
+        if (rn2(4)) helm = rn2(2) ? 'helm of brilliance' : 'helm of telepathy';
+        if (rn2(2)) shield = null;
+        break;
+    case questSpecies.PM_RANGER:
+        if (rn2(2)) weapon = 'elven dagger';
+        break;
+    case questSpecies.PM_ROGUE:
+        if (rn2(2)) weapon = rn2(2) ? 'short sword' : 'orcish dagger';
+        break;
+    case questSpecies.PM_SAMURAI:
+        if (rn2(2)) weapon = 'katana';
+        break;
+    case questSpecies.PM_VALKYRIE:
+        if (rn2(2)) weapon = 'war hammer';
+        if (rn2(2)) armor = equipmentInRange(ARMOR_CLASS, 'plate mail', 'chain mail');
+        break;
+    case questSpecies.PM_WIZARD:
+        if (rn2(4)) weapon = rn2(2) ? 'quarterstaff' : 'athame';
+        if (rn2(2)) {
+            armor = rn2(2) ? 'black dragon scale mail' : 'silver dragon scale mail';
+            cloak = 'cloak of magic resistance';
+        }
+        if (rn2(4)) helm = 'helm of brilliance';
+        shield = null;
+        break;
+    }
+    if (weapon) {
+        const obj = namedEquipment(weapon);
+        obj.oeroded = obj.oeroded2 = 0;
+        obj.spe = special ? rn1(5, 4) : rn2(4);
+        if (!rn2(3)) obj.oerodeproof = true;
+        else if (!rn2(2)) obj.greased = true;
+        if (special && rn2(2)) maybeMkArtifact(obj, weapon, 0, true);
+        // weapon.c:rwep excludes tridents, athames, scalpels and boomerangs.
+        if (!obj.artifact && (/spear$/.test(weapon) || ['javelin', 'shuriken', 'ya', 'silver arrow', 'elven arrow', 'arrow',
+            'orcish arrow', 'crossbow bolt', 'silver dagger', 'elven dagger', 'dagger', 'orcish dagger', 'knife', 'dart'].includes(weapon))) {
+            obj.quan += rn2(/spear$/.test(weapon) || weapon === 'javelin' ? 4 : 8);
+            obj.owt *= obj.quan;
+        }
+        if (obj.artifact === 'Magicbane') obj.spe = rnd(4);
+        Object.assign(obj, object_display(obj));
+        add_to_minv(mon, obj);
+    }
+    if (special) {
+        if (!rn2(10)) {
+            const loadstone = !rn2(3);
+            const stone = mksobj(loadstone ? LOADSTONE : LUCKSTONE, true, false);
+            Object.assign(stone, { cls: 'gem', glyph: '*', kind: loadstone ? 'loadstone' : 'luckstone',
+                actualKind: loadstone ? 'loadstone' : 'luckstone', gemDescription: 'gray stone' });
+            add_to_minv(mon, stone);
+        }
+        for (const kind of [armor, cloak, helm, shield]) mplayerArmor(mon, kind);
+        if (weapon === 'war hammer') mplayerArmor(mon, 'gauntlets of power');
+        else if (rn2(8)) mplayerArmor(mon, equipmentInRange(ARMOR_CLASS, 'leather gloves', 'gauntlets of dexterity'));
+        if (rn2(8)) mplayerArmor(mon, equipmentInRange(ARMOR_CLASS, 'low boots', 'levitation boots'));
+        dressMonster(mon);
+        for (let count = rn2(3) ? rn2(3) : rn2(16); count > 0; count--) {
+            const gem = gemInfoForRoll(rnd(171));
+            const obj = mksobj(GEM_CLASS, true, false);
+            Object.assign(obj, { cls: 'gem', glyph: '*', kind: gem.name, actualKind: gem.name,
+                gemDescription: gem.description, color: gem.color, owt: obj.quan });
+            add_to_minv(mon, obj);
+        }
+        mkmonmoney(mon, rn2(1000));
+        for (let count = rn2(10); count > 0; count--) add_to_minv(mon, mkobj(RANDOM_CLASS, false));
+    }
+    const previous = game._mongets_target;
+    game._mongets_target = mon;
+    try {
+        for (const choose of [() => rnd_offensive_item(ptr, mon), () => rnd_defensive_item(mon), () => rnd_misc_item(ptr, mon)]) {
+            for (let count = rnd(3); count > 0; count--) {
+                const otyp = choose();
+                if (otyp) mongets(otyp);
+            }
+        }
+    } finally {
+        game._mongets_target = previous;
+    }
+    mon.hasInventory = !!mon.minvent?.length;
+    return mon;
+}
+
+
+// mplayer.c:17-84: duplicates in the developer list are intentional weights.
+const MPLAYER_DEVELOPERS = ["Alex", "Dave", "Dean", "Derek", "Eric", "Izchak", "Janet", "Jessie", "Ken", "Kevin", "Michael", "Mike", "Pasi", "Pat", "Patric", "Paul", "Sean", "Steve", "Timo", "Warwick", "Bill", "Eric", "Keizo", "Ken", "Kevin", "Michael", "Mike", "Paul", "Stephen", "Steve", "Timo", "Yitzhak", "Andy", "Gregg", "Janne", "Keni", "Mike", "Olaf", "Richard", "Andy", "Chris", "Dean", "Jon", "Jonathan", "Kevin", "Wang", "Eric", "Marvin", "Warwick", "Alex", "Dion", "Michael", "Helge", "Ron", "Timo", "Joshua", "Pat", ""];
+
+function nameMonsterPlayer(mon, data) {
+    let name = null;
+    for (let tries = 0; tries < 100; tries++) {
+        const candidate = MPLAYER_DEVELOPERS[rn2(MPLAYER_DEVELOPERS.length)];
+        const used = game.level.monsters.some(other => {
+            const species = QUEST_MONSTERS[other.data?.pm] || QUEST_MONSTERS.find(row => row.name === other.data?.name);
+            return species?.pm >= questSpecies.PM_ARCHEOLOGIST && species.pm <= questSpecies.PM_WIZARD
+                && String(other.givenName || '').startsWith(candidate);
+        });
+        if (!used) { name = candidate; break; }
+    }
+    const femaleKind = is_female(data);
+    if (name == null) name = femaleKind ? 'Eve' : 'Adam';
+    else if (femaleKind && name !== 'Janet') name = rn2(2) ? 'Maud' : 'Eve';
+    mon.female = femaleKind || name === 'Janet';
+    const role = Object.keys(ROLE_RANKS)[data.pm - questSpecies.PM_ARCHEOLOGIST];
+    const rankIndex = mon.m_lev <= 2 ? 0 : mon.m_lev <= 30 ? Math.trunc((mon.m_lev + 2) / 4) : 8;
+    const rank = ROLE_RANKS[role][rankIndex];
+    mon.givenName = name + ' the ' + (mon.female && rank[1] || rank[0]);
+}
+
+function mplayerArmor(mon, kind) {
+    if (!kind) return;
+    const obj = namedEquipment(kind, false, false);
+    obj.oeroded = obj.oeroded2 = 0;
+    if (!rn2(3)) obj.oerodeproof = true;
+    if (!rn2(3)) curse(obj);
+    if (!rn2(3)) bless(obj);
+    obj.spe = rn2(10) ? (rn2(3) ? rn2(5) : rn1(4, 4)) : -rnd(3);
+    Object.assign(obj, object_display(obj));
+    add_to_minv(mon, obj);
+}
+
+// C: mplayer.c:create_mplayers, with a bounded coordinate search per player.
+export async function create_mplayers(count, special = false) {
+    while (count-- > 0) {
+        const data = questMonsterData(QUEST_MONSTERS[rn1(13, questSpecies.PM_ARCHEOLOGIST)]);
+        let tries = 0, x, y;
+        do { x = rn1(COLNO - 4, 2); y = rnd(ROWNO - 2); }
+        while (!makemon_goodpos(data, x, y) && tries++ <= 50);
+        if (tries > 50) return;
+        await mk_mplayer(data, x, y, special);
+    }
+}
+
+// C do.c:final_level and minion.c:gain_guardian_angel. Only the first arrival
+// on Astral calls this, after migrating monsters and the first map redraw.
+export async function finalLevel({ conflict = false, blind = false } = {}) {
+    const u = game.u;
+    for (const mon of game.level.monsters) {
+        if (!mon.isminion || !['Angel', 'aligned cleric'].includes(mon.data?.name)) continue;
+        const align = mon.min_align ?? mon.emin?.min_align ?? mon.mextra?.emin?.min_align;
+        if (align !== u.ualign.type) {
+            mon.mpeaceful = mon.mtame = 0;
+            mon.pet = false;
+            set_malign(mon);
+        }
+        newsym(mon.mx, mon.my);
+    }
+    await create_mplayers(rn1(4, 3), true);
+    // eat.c:Hear_again attempts this even when the hero is not deaf.
+    if (!rn2(2)) {
+        u._deafTimeout = 0;
+        u._statusSuffix = (u._statusSuffix || '').replace(/\bDeaf\b/g, '').trim();
+    }
+    const deaf = (u._deafTimeout || 0) > 0 || (u._statusSuffix || '').includes('Deaf');
+    const messages = [];
+    if (!conflict && (u.ualign.record || 0) <= 8) return messages;
+    messages.push(conflict ? (deaf ? 'You feel a booming voice:' : 'A voice booms:')
+        : (deaf ? 'You feel a soft voice:' : 'A voice whispers:'));
+    messages.push(conflict ? '"Thy desire for conflict shall be fulfilled!"' : '"Thou hast been worthy of me!"');
+    const ptr = questMonsterData(QUEST_MONSTERS[questSpecies.PM_ANGEL]);
+    for (let count = conflict ? rn1(3, 2) : 1; count > 0; count--) {
+        const spot = enextoMonsterSpot(u.ux, u.uy, ptr);
+        if (!spot) continue;
+        const mon = await makemon(ptr, spot.x, spot.y, MM_ADJACENTOK | MM_EMIN | MM_NOMSG);
+        if (!mon) continue;
+        dressMonster(mon);
+        initRoamerMonster(mon, u.ualign.type, !conflict);
+        if (conflict) continue;
+        mon.mstrategy = (mon.mstrategy || 0) & ~STRAT_APPEARMSG;
+        // A guardian has minion data, not an edog. Petless conduct is kept.
+        if (u.uconduct?.pets) {
+            mon.mtame = 10;
+            mon.pet = true;
+            u.uconduct.pets++;
+        }
+        newsym(mon.mx, mon.my);
+        messages.push(blind ? 'You feel the presence of a friendly angel near you.' : 'An angel appears near you.');
+        mon.m_lev = rn1(8, 15);
+        mon.mhp = mon.mhpmax = d(mon.m_lev, 10) + 30 + rnd(30);
+        let weapon = selectHwep(mon);
+        if (!weapon) {
+            weapon = namedEquipment('silver saber', false, false);
+            add_to_minv(mon, weapon);
+        }
+        bless(weapon);
+        if (weapon.spe < 4) weapon.spe += rnd(4);
+        const shield = mon.minvent.find(obj => obj.owornmask & W_ARMS);
+        if ((shield?.actualKind || shield?.kind) !== 'shield of reflection') {
+            const amulet = mksobj(AMULET_CLASS, true, false);
+            Object.assign(amulet, { cls: 'amulet', glyph: '"', kind: 'amulet of reflection',
+                actualKind: 'amulet of reflection', amuletIndex: 7 });
+            add_to_minv(mon, amulet);
+            dressMonster(mon);
+        }
+    }
+    return messages;
+}
+
+async function questFillerMonster(spec, area, croom, coord = null) {
+    const name = typeof spec === 'string' ? spec : spec.id || spec.class;
+    const named = name.length > 1;
+    let ptr = named ? monsterByRndName(name) : null;
+    let pm = named ? QUEST_MONSTERS.find(mon => mon.name === name || mon.names?.includes(name)) : null;
+    const roleMonsters = QUEST_ROLE_MONSTERS[game._startup_role || game.urole?.name?.m] || [];
+    if (pm && (!ptr || roleMonsters.includes(pm.name))) ptr = { ...ptr, ...questMonsterData(pm) };
+    const mplayer = pm?.pm >= questSpecies.PM_ARCHEOLOGIST && pm?.pm <= questSpecies.PM_WIZARD;
+    const aliasGender = pm?.names?.indexOf(name) ?? -1;
+    const gender = !named ? 0 : !pm ? 2 : is_female(pm) ? 1 : is_male(pm) ? 0
+        : aliasGender === 0 || aliasGender === 1 ? aliasGender : rn2(2);
+    // sp_lev.c:find_montype precedes create_monster's alignment and class rolls.
+    inducedAlign80();
+    if (named && (pm?.geno & questSpecies.G_UNIQ) && monsterNameExtinct(name)) return null;
+    if (named && (monsterNameGenocided(name) || monsterNameExtinct(name))) {
+        ptr = null;
+        pm = null;
+    }
+    if (!named) {
+        ptr = mkclassAligned(name, false, null, true);
+        pm = QUEST_MONSTERS.find(mon => mon.name === ptr?.name);
+    }
+    let humidity = DRY;
+    if (pm && (is_swimmer(pm) || amphibious(pm))) humidity = WET;
+    if (pm && (is_flyer(pm) || is_floater(pm))) humidity |= HOT | WET;
+    if (pm && (passes_walls(pm) || noncorporeal(pm))) humidity |= SOLID;
+    if (['fire elemental', 'salamander', 'fire vortex', 'flaming sphere'].includes(pm?.name)) humidity |= HOT;
+    coord = coord || spec.coord || (spec.x != null ? [spec.x, spec.y] : null);
+    let pos = questFillerLocation(area, croom, humidity, false, coord);
+    // get_location_coord retries the same humidity before create_monster
+    // permits dry land for water-loving species with no water available.
+    if (!pos) pos = questFillerLocation(area, croom, humidity);
+    if (!pos) pos = questFillerLocation(area, croom, humidity | DRY);
+    if (!pos) return;
+    if (game.level.monsters.some(mon => mon.mx === pos.x && mon.my === pos.y))
+        pos = enextoMonsterSpot(pos.x, pos.y, ptr || {});
+    if (!pos || (croom && !splevInsideRoom(croom, pos.x, pos.y))) return;
+    const mon = mplayer ? await mk_mplayer(ptr, pos.x, pos.y) : await makemon(ptr, pos.x, pos.y, 0);
+    if (mon) {
+        // create_monster applies this after makemon's ordinary mimic choice.
+        if (spec.appear_as?.startsWith('ter:') && (pm?.mlet === questSpecies.S_MIMIC || ptr?.mlet === 'm')
+            && !heroProtectionFromShapeChangers(game)) {
+            const index = DEFSYMS.findIndex(symbol => symbol.explanation === spec.appear_as.slice(4));
+            if (index >= 0) Object.assign(mon, { m_ap_type: M_AP_FURNITURE, mappearance: index,
+                appearObj: null, appearGlyph: DEFSYMS[index].ch, appearColor: DEFSYMS[index].color });
+        }
+        mon.female = !!gender;
+        setMonsterPeaceful(mon, typeof spec === 'string' ? null : spec.peaceful);
+        if (spec.asleep != null) mon.msleeping = spec.asleep ? 1 : 0;
+        if (spec.name) mon.givenName = spec.name;
+        if (ptr?.m3) {
+            if (ptr.m3 & questSpecies.M3_WAITFORU) mon.mstrategy = (mon.mstrategy || 0) | STRAT_WAITFORU;
+            if (ptr.m3 & questSpecies.M3_CLOSE) mon.mstrategy = (mon.mstrategy || 0) | STRAT_CLOSE;
+            if (ptr.m3 & (questSpecies.M3_WAITMASK | questSpecies.M3_COVETOUS))
+                mon.mstrategy = (mon.mstrategy || 0) | STRAT_APPEARMSG;
+        }
+        dressMonster(mon);
+    }
+    return mon;
+}
+
+// sp_lev.c:create_monster discards the default inventory only after makemon
+// has created it. Invocation objects and this role's quest artifact survive.
+function discardQuestMonsterInventory(mon) {
+    const rescued = new Set(mdropSpecialObjs(mon, {
+        objResists: obj => {
+            const kind = obj.actualKind || obj.kind;
+            const corpse = typeof obj.corpsenm === 'number' ? QUEST_MONSTERS[obj.corpsenm] : obj.corpsenm;
+            if (['Amulet of Yendor', 'Book of the Dead', 'Candelabrum of Invocation', 'Bell of Opening'].includes(kind)
+                || (obj.otyp === CORPSE && ['Death', 'Famine', 'Pestilence'].includes(corpse?.name))) return true;
+            rn2(100); // zap.c:obj_resists still rolls when both chances are zero.
+            return false;
+        },
+        isQuestArtifact: obj => isCurrentRoleQuestArtifact(artifactDefinitionForName(obj.artifact || obj.oartifact)),
+    }));
+    const discarded = [];
+    for (const obj of mon.minvent || []) {
+        if (obj.owornmask && obj.lamplit && artifactLight(obj)) endBurn(obj, false);
+        delete obj.ocarry;
+        obj.owornmask = 0;
+        obj.worn = false;
+        if (rescued.has(obj)) stack_floor_object(place_object(obj, mon.mx, mon.my));
+        else discarded.push(obj);
+    }
+    for (const obj of objectLocations({ inventory: discarded }).keys()) {
+        stopObjectTimers(obj, { [BURN_OBJECT]: { cleanup: cleanupBurn } });
+        const def = artifactDefinitionForName(obj.artifact || obj.oartifact);
+        if (def) clearArtifactExistence(def.name);
+    }
+    mon.minvent = [];
+    mon.hasInventory = false;
+    mon.misc_worn_check = 0;
+    mon.saddled = false;
+    delete mon.saddle;
+    mon.mw = mon.weapon = null;
+    dressMonster(mon);
+}
+
+// nhlib.lua and nhlsel.c: expressions run when their des statement is reached,
+// so geometry choices and generated inhabitants consume one ordered RNG stream.
+function questLuaValue(value, state, croom) {
+    if (value == null || typeof value !== 'object') return value;
+    if (Array.isArray(value)) return value.map(item => questLuaValue(item, state, croom));
+    if (value.operations) return value;
+    const vars = state.variables;
+    const bounds = croom || state.area;
+    if (value.lua === 'var') {
+        if (!vars.has(value.name)) throw new Error(`Unknown quest variable ${value.name}`);
+        return vars.get(value.name);
+    }
+    if (value.lua === 'index') {
+        const table = questLuaValue(value.value, state, croom), key = questLuaValue(value.index, state, croom);
+        return table[Array.isArray(table) ? key - 1 : key];
+    }
+    if (value.lua === 'unary') {
+        const operand = questLuaValue(value.operand, state, croom);
+        return value.op === '#' ? operand.length : -operand;
+    }
+    if (value.lua === 'binary') {
+        const left = questLuaValue(value.left, state, croom), right = questLuaValue(value.right, state, croom);
+        if (left instanceof SplevSelection) return value.op === '-' ? left.subtract(right) : left.or(right);
+        return value.op === '+' ? left + right : left - right;
+    }
+    if (value.lua === 'call') {
+        const args = value.args.map(arg => questLuaValue(arg, state, croom));
+        if (value.name === 'nh.rn2') return rn2(args[0]);
+        if (value.name === 'math.random') return args.length === 1 ? 1 + rn2(args[0]) : args[0] + rn2(args[1] + 1 - args[0]);
+        if (value.name === 'percent') return rn2(100) < args[0];
+        if (value.name === 'd') {
+            const count = args.length === 1 ? 1 : args[0], sides = args.at(-1);
+            let sum = 0;
+            for (let i = 0; i < count; i++) sum += 1 + rn2(sides);
+            return sum;
+        }
+        if (value.name === 'shuffle') {
+            const list = args[0];
+            for (let i = list.length; i > 1; i--) {
+                const j = rn2(i);
+                [list[i - 1], list[j]] = [list[j], list[i - 1]];
+            }
+            return;
+        }
+        throw new Error(`Unsupported quest call ${value.name}`);
+    }
+    if (value.selection || value.lua === 'method') {
+        const name = value.selection || value.name;
+        const receiver = value.lua === 'method' ? questLuaValue(value.value, state, croom) : null;
+        const args = value.args.map(arg => questLuaValue(arg, state, croom));
+        if (receiver) args.unshift(receiver);
+        if (name === 'area') return SplevSelection.area(args[0] + bounds.lx, args[1] + bounds.ly, args[2] + bounds.lx, args[3] + bounds.ly);
+        if (name === 'new') return new SplevSelection();
+        if (name === 'negate') return SplevSelection.area(0, 0, COLNO - 1, ROWNO - 1).subtract(args[0] || new SplevSelection());
+        if (name === 'clone') return args[0].clone();
+        if (name === 'grow') return args[0].grow(args[1]);
+        if (name === 'filter_mapchar') return args[0].filterMapchar(args[1], args[2]);
+        if (name === 'floodfill') return new SplevSelection(barFloodfillSelection(bounds.lx + args[0], bounds.ly + args[1]));
+        if (name === 'rndcoord') {
+            const pos = args[0].rndcoord(!!args[1]);
+            return pos.x < 0 ? pos : { x: pos.x - bounds.lx, y: pos.y - bounds.ly };
+        }
+        if (name === 'set') {
+            const sel = args[0] instanceof SplevSelection ? args.shift() : new SplevSelection();
+            const pos = args.length ? { x: bounds.lx + args[0], y: bounds.ly + args[1] }
+                : { x: bounds.lx + rn2(bounds.hx - bounds.lx + 1), y: bounds.ly + rn2(bounds.hy - bounds.ly + 1) };
+            return sel.set(pos.x, pos.y, args[2] ?? true);
+        }
+        throw new Error(`Unsupported quest selection ${name}`);
+    }
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, questLuaValue(item, state, croom)]));
+}
+
+// dbridge.c:create_drawbridge: the span points toward its adjacent portcullis.
+function createSpecialDrawbridge(x, y, dir, open) {
+    const dx = dir === DB_EAST ? 1 : dir === DB_WEST ? -1 : 0;
+    const dy = dir === DB_SOUTH ? 1 : dir === DB_NORTH ? -1 : 0;
+    const span = game.level.at(x, y), wall = game.level.at(x + dx, y + dy);
+    if (!wall || !IS_WALL(wall.typ)) return false;
+    const lava = span.typ === LAVAPOOL;
+    span.typ = open ? DRAWBRIDGE_DOWN : DRAWBRIDGE_UP;
+    span.horizontal = !!dx;
+    span.flags = dir | (lava ? DB_LAVA : DB_MOAT);
+    wall.typ = open ? DOOR : DBWALL;
+    if (open) wall.doormask = D_NODOOR;
+    else wall.wall_info = W_NONDIGGABLE;
+    wall.horizontal = !dx;
+    return true;
+}
+
+// Ordered des operations extracted from the upstream Lua source. Existing
+// room, cavern, object, trap and monster builders own the generated entities.
+async function make_quest_filler_level(program) {
+    if (await getbones()) return;
+    game.in_mklev = true;
+    oinit();
+    clear_level_structures();
+    l_nhcore_init();
+    const state = { area: { lx: 1, ly: 0, hx: COLNO - 1, hy: ROWNO - 1 },
+        map: new Set(), variables: new Map(), levregions: [], noflip: false, icedpools: false };
+    await questFillerOperations(program.operations, state);
+    // sp_lev.c removes temporary room boundaries and objects/traps on liquid
+    // after the Lua program has finished, before wallification and flipping.
+    for (const key of state.map) {
+        const [x, y] = key.split(',').map(Number);
+        if (x >= COLNO - 1 || y >= ROWNO - 1) continue;
+        if (game.level.at(x, y).typ === CROSSWALL) game.level.at(x, y).typ = ROOM;
+    }
+    const liquid = (x, y) => IS_POOL(game.level.at(x, y)?.typ) || IS_LAVA(game.level.at(x, y)?.typ);
+    game.level.objects = game.level.objects.filter(obj => obj.otyp !== BOULDER || !liquid(obj.ox, obj.oy));
+    game.level.traps = game.level.traps.filter(trap => undestroyable_trap(trap.ttyp) || !liquid(trap.tx, trap.ty));
+    game.level.engravings = (game.level.engravings || []).filter(engr => !liquid(engr.x, engr.y));
+    wallification(1, 0, COLNO - 1, ROWNO - 1);
+    const flips = state.noflip ? null : flipSpecialLevelRnd();
+    for (const region of state.levregions) {
+        const include = flipLevregionCoords(flips, ...region.include);
+        const exclude = flipLevregionCoords(flips, ...region.exclude);
+        place_lregion(...include, ...exclude, region.type, region.target);
+    }
+    for (const room of game.level.rooms) {
+        await fill_special_room(room);
+        // FILL_SPECIAL requests level flags without adding inhabitants.
+        if (room.needfill) {
+            const flag = ({ [TEMPLE]: 'has_temple', [COURT]: 'has_court', [MORGUE]: 'has_morgue',
+                [BARRACKS]: 'has_barracks', [ZOO]: 'has_zoo', [SWAMP]: 'has_swamp',
+                [VAULT]: 'has_vault', [BEEHIVE]: 'has_beehive' })[room.rtype];
+            if (flag) game.level.flags[flag] = true;
+        }
+    }
+    recount_level_features();
+    level_finalize_topology();
+}
+
+async function questFillerOperations(operations, state, croom = null) {
+    for (const [operation, ...raw] of operations) {
+        if (operation === '@local' || operation === '@assign') {
+            state.variables.set(raw[0], questLuaValue(raw[1], state, croom));
+            continue;
+        }
+        if (operation === '@if') {
+            const branch = questLuaValue(raw[0], state, croom) ? raw[1] : raw[2];
+            await questFillerOperations(branch, { ...state, variables: new Map(state.variables) }, croom);
+            continue;
+        }
+        if (operation === '@for') {
+            const [name, from, to, step, body] = raw;
+            const start = questLuaValue(from, state, croom), end = questLuaValue(to, state, croom), stride = questLuaValue(step, state, croom);
+            for (let i = start; stride > 0 ? i <= end : i >= end; i += stride) {
+                const variables = new Map(state.variables); variables.set(name, i);
+                await questFillerOperations(body, { ...state, variables }, croom);
+            }
+            continue;
+        }
+        const [arg, ...rest] = raw.map(value => questLuaValue(value, state, croom));
+        switch (operation) {
+        case '@call':
+            break;
+        case 'level_init': {
+            state.initialized = true;
+            const fg = SPECIAL_TERRAIN[arg.fg];
+            if (arg.style === 'mines') {
+                splevMinesLevelInit(fg, SPECIAL_TERRAIN[arg.bg], { ...arg, icedpools: state.icedpools });
+            } else {
+                const lit = arg.lit ?? rn2(2);
+                // lvlfill_solid uses the even maze bounds (decl.c); it does
+                // not assign icedpool for ICE, unlike des.map/terrain.
+                for (let x = 2; x <= ((COLNO - 1) & ~1); x++)
+                    for (let y = 0; y <= ((ROWNO - 1) & ~1); y++) {
+                        if (setSpecialTerrainLit(x, y, fg, lit))
+                            Object.assign(game.level.at(x, y), { flags: 0, horizontal: false, roomno: 0, edge: 0 });
+                    }
+            }
+            break;
+        }
+        case 'level_flags':
+            for (const flag of [arg, ...rest]) {
+                if (flag === 'mazelevel') game.level.flags.is_maze_lev = true;
+                else if (['noteleport', 'hardfloor', 'shortsighted', 'arboreal', 'nommap'].includes(flag)) game.level.flags[flag] = true;
+                else state[flag] = true;
+            }
+            break;
+        case 'room':
+            await splevBuildRoom({ rtype: OROOM }, null, room => questFillerOperations(arg, state, room));
+            break;
+        case 'random_corridors':
+            await makecorridors();
+            break;
+        case 'map': {
+            const spec = typeof arg === 'string' || Array.isArray(arg) ? { map: arg, halign: 'center', valign: 'center' } : arg;
+            const rows = typeof spec.map === 'string' ? spec.map.split('\n') : spec.map;
+            const width = Math.max(...rows.map(row => row.length)), height = rows.length;
+            const xmax = (COLNO - 1) & ~1, ymax = (ROWNO - 1) & ~1;
+            let lx = spec.coord?.[0] ?? spec.x, ly = spec.coord?.[1] ?? spec.y;
+            if ((spec.halign && spec.halign !== 'none') || (spec.valign && spec.valign !== 'none')) {
+                lx = ({ left: state.initialized ? 1 : 3, 'half-left': 2 + Math.trunc((xmax - 2 - width) / 4),
+                    center: 2 + Math.trunc((xmax - 2 - width) / 2), 'half-right': 2 + Math.trunc((xmax - 2 - width) * 3 / 4),
+                    right: xmax - width - 1 })[spec.halign] ?? state.area.lx;
+                ly = ({ top: 3, center: 2 + Math.trunc((ymax - 2 - height) / 2), bottom: ymax - height - 1 })[spec.valign] ?? state.area.ly;
+                if (!(lx % 2)) lx++;
+                if (!(ly % 2)) ly++;
+            } else if (croom) { lx += croom.lx; ly += croom.ly; }
+            if (!Number.isInteger(lx) || !Number.isInteger(ly)) throw new Error('Quest map needs alignment or coordinates');
+            if (ly < 0 || ly + height > ROWNO) {
+                ly += ly > 0 ? -2 : 2;
+                if (height === ROWNO || ly < 0 || ly + height > ROWNO) ly = 0;
+            }
+            state.area = { lx, ly, hx: lx + width - 1, hy: ly + height - 1 };
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const ch = rows[y][x] || ' ';
+                    if (ch === 'x') continue;
+                    const loc = game.level.at(lx + x, ly + y);
+                    state.map.add(`${lx + x},${ly + y}`);
+                    Object.assign(loc, {
+                        typ: splevMapCharToTyp(ch),
+                        doormask: ch === 'S' ? D_CLOSED : D_NODOOR, lit: ch === 'L' || !!spec.lit, flags: 0,
+                        horizontal: ch === '-' || ch === 'F', roomno: 0, edge: 0,
+                    });
+                    if ('+S'.includes(ch) && x && (IS_WALL(game.level.at(lx + x - 1, ly + y).typ)
+                        || game.level.at(lx + x - 1, ly + y).horizontal)) loc.horizontal = true;
+                    if (ch === 'I') loc.icedpool = state.icedpools ? ICED_POOL : ICED_MOAT;
+                }
+            }
+            break;
+        }
+        case 'region': {
+            if (arg instanceof SplevSelection) {
+                const selection = rest[0] === 'lit' ? arg.grow('all') : arg;
+                selection.iterate((x, y) => { game.level.at(x, y).lit = IS_LAVA(game.level.at(x, y).typ) || rest[0] === 'lit'; });
+                break;
+            }
+            const bounds = arg.region || arg;
+            const [lx, ly, hx, hy] = [bounds[0] + state.area.lx, bounds[1] + state.area.ly,
+                bounds[2] + state.area.lx, bounds[3] + state.area.ly];
+            if (!arg.region) spDesSelectionLit(lx, ly, hx, hy, rest[0] === 'lit');
+            else {
+                const lit = litstate_rnd(arg.lit ?? -1);
+                const rtype = ({ ordinary: OROOM, temple: TEMPLE, throne: COURT, morgue: MORGUE,
+                    barracks: BARRACKS, zoo: ZOO, shop: SHOPBASE })[arg.type || 'ordinary'];
+                if (rtype == null) throw new Error(`Unsupported quest room ${arg.type}`);
+                if (rtype === OROOM && !arg.irregular && !arg.arrival_room) spDesLightRegion(lx, ly, hx, hy, lit);
+                else if (arg.irregular) spDesIrregularRoom(lx, ly, rtype, lit, arg.filled || 0);
+                else spDesRectRoom(lx, ly, hx, hy, rtype, lit, arg.filled || 0);
+            }
+            break;
+        }
+        case 'non_diggable':
+        case 'non_passwall': {
+            const selection = arg || SplevSelection.area(0, 0, COLNO - 1, ROWNO - 1);
+            selection.iterate((x, y) => spDesWallProperty(x, y, x, y, operation === 'non_diggable' ? W_NONDIGGABLE : W_NONPASSWALL));
+            break;
+        }
+        case 'wallify':
+            wallify_map(state.area.lx - 1, state.area.ly - 1, state.area.hx + 2, state.area.hy + 2);
+            break;
+        case 'replace_terrain': {
+            const bounds = arg.region;
+            replaceDesTerrain({ ...arg, region: bounds && [bounds[0] + state.area.lx, bounds[1] + state.area.ly,
+                bounds[2] + state.area.lx, bounds[3] + state.area.ly] });
+            break;
+        }
+        case 'terrain': {
+            const selection = arg instanceof SplevSelection ? arg : null;
+            const typ = splevMapCharToTyp(rest[0]);
+            if (selection) selection.iterate((x, y) => setSpecialTerrainLit(x, y, typ));
+            else {
+                const pos = questFillerLocation(state.area, croom, DRY, false, arg);
+                setSpecialTerrainLit(pos.x, pos.y, typ);
+            }
+            break;
+        }
+        case 'levregion': {
+            const types = { 'stair-up': LR_UPSTAIR, 'stair-down': LR_DOWNSTAIR, branch: LR_BRANCH, portal: LR_PORTAL };
+            if (types[arg.type] == null) throw new Error(`Unsupported quest levregion ${arg.type}`);
+            const include = arg.region.map((coord, i) => coord + (arg.region_islev ? 0 : i % 2 ? state.area.ly : state.area.lx));
+            const exclude = arg.exclude ? arg.exclude.map((coord, i) => coord + (arg.exclude_islev ? 0 : i % 2 ? state.area.ly : state.area.lx)) : [-1, -1, -1, -1];
+            const target = arg.name ? game.specialLevels.find(level => level.name === arg.name) : null;
+            state.levregions.push({ include, exclude, type: types[arg.type], target });
+            break;
+        }
+        case 'feature': {
+            const spec = typeof arg === 'string' ? { type: arg, coord: rest.length === 1 ? rest[0] : rest.length ? rest : null } : arg;
+            const typ = ({ fountain: FOUNTAIN, sink: SINK, pool: POOL, throne: THRONE, tree: TREE })[spec.type];
+            if (!Number.isInteger(typ)) throw new Error(`Unsupported quest feature ${spec.type}`);
+            const pos = questFillerLocation(state.area, croom, DRY, false, spec.coord || (spec.x != null ? [spec.x, spec.y] : null));
+            if (!pos) break;
+            const loc = game.level.at(pos.x, pos.y);
+            if (!IS_FURNITURE(loc.typ)) loc.typ = typ;
+            if (loc.typ !== typ) break;
+            const flags = ({ [FOUNTAIN]: { looted: F_LOOTED, warned: F_WARNED },
+                [SINK]: { pudding: S_LPUDDING, dishwasher: S_LDWASHER, ring: S_LRING },
+                [THRONE]: { looted: T_LOOTED }, [TREE]: { looted: TREE_LOOTED, swarm: TREE_SWARM } })[typ] || {};
+            for (const [name, mask] of Object.entries(flags)) {
+                if (spec[name] === true) loc.flags = (loc.flags || 0) | mask;
+                else if (spec[name] === false) loc.flags = (loc.flags || 0) & ~mask;
+            }
+            break;
+        }
+        case 'drawbridge': {
+            const pos = questFillerLocation(state.area, croom, DRY | WET | HOT, false, arg.coord || [arg.x, arg.y]);
+            const dir = ({ north: DB_NORTH, south: DB_SOUTH, west: DB_WEST, east: DB_EAST })[arg.dir];
+            const open = arg.state === 'random' || arg.state == null ? !rn2(2) : arg.state === 'open';
+            if (dir == null || !createSpecialDrawbridge(pos.x, pos.y, dir, open)) throw new Error('Cannot create quest drawbridge');
+            state.map.add(`${pos.x},${pos.y}`);
+            break;
+        }
+        case 'door': {
+            const doorState = arg === 'random' ? ['nodoor', 'broken', 'open', 'closed', 'locked'][rn2(5)] : arg;
+            spDesDoor(doorState, state.area.lx + rest[0], state.area.ly + rest[1]);
+            break;
+        }
+        case 'stair': {
+            const coord = typeof arg === 'object' ? arg.coord || [arg.x, arg.y] : rest.length === 1 ? rest[0] : rest.length ? rest : null;
+            const dir = typeof arg === 'object' ? arg.dir : arg;
+            const pos = questFillerLocation(state.area, croom, DRY, true, coord);
+            if (pos) {
+                game.level.traps = game.level.traps.filter(trap => trap.tx !== pos.x || trap.ty !== pos.y);
+                mkstairs(pos.x, pos.y, dir === 'up', croom);
+            }
+            break;
+        }
+        case 'object': {
+            const spec = typeof arg === 'string' ? { id: arg, coord: rest.length === 1 ? rest[0] : rest.length ? rest : null } : arg || {};
+            const coord = spec.coord || (spec.x != null ? [spec.x, spec.y] : null);
+            const pos = questFillerLocation(state.area, croom, DRY, false, coord);
+            if (!pos) break;
+            const def = artifactDefinitionForName(spec.name);
+            const types = { chest: CHEST, tin: TIN, 'blank paper': SCR_BLANK_PAPER, 'wand of lightning': WAN_LIGHTNING, 'scroll of teleportation': SCR_TELEPORTATION };
+            const otyp = def?.otyp ?? types[spec.id] ?? [...SPECIFIC_FOOD_INFO].find(([, info]) => info[0] === spec.id)?.[0];
+            const classes = { ')': WEAPON_CLASS, '[': ARMOR_CLASS, '*': GEM_CLASS, '(': TOOL_CLASS,
+                '%': FOOD_CLASS, '!': POTION_CLASS, '?': SCROLL_CLASS, '/': WAND_CLASS, '=': RING_CLASS,
+                '"': AMULET_CLASS, '+': SPBOOK_CLASS };
+            const oclass = classes[spec.class || spec.id];
+            let obj;
+            if (spec.id && otyp == null && oclass == null) {
+                obj = namedEquipment(spec.id, true, !spec.name);
+                const tool = TOOL_ROLL_NAMES.find(([, name, actual]) => spec.id === (actual || name));
+                if (!obj && tool) obj = makeTool(tool[0], true, !spec.name);
+                if (!obj) throw new Error(`Unsupported quest object ${spec.id}`);
+                place_object(obj, pos.x, pos.y);
+            } else obj = otyp != null ? mksobj_at(otyp, pos.x, pos.y, true, !spec.name)
+                : mkobj_at(oclass ?? RANDOM_CLASS, pos.x, pos.y, !spec.name);
+            if (otyp === WAN_LIGHTNING) Object.assign(obj, { kind: 'lightning', cls: 'wand', wandIndex: 24,
+                glyph: '/', color: game._object_descriptions?.wands?.[24]?.color ?? CLR_BROWN });
+            if (otyp === SCR_TELEPORTATION) Object.assign(obj, { kind: 'scroll of teleportation', cls: 'scroll', scrollIndex: 10 });
+            if (otyp === SCR_BLANK_PAPER) Object.assign(obj, { kind: 'scroll of blank paper', cls: 'scroll', scrollIndex: 21 });
+            if (otyp === TIN) {
+                Object.assign(obj, { kind: 'tin', cls: 'food', singular: 'tin', plural: 'tins', owt: 10 * obj.quan, spe: spec.montype === 'spinach' ? 1 : 0 });
+                if (spec.montype) obj.corpsenm = ['spinach', 'empty'].includes(spec.montype) ? null : monsterByRndName(spec.montype);
+            }
+            if (spec.spe != null) obj.spe = spec.spe;
+            if (spec.buc === 'blessed') bless(obj);
+            else if (spec.buc === 'cursed') curse(obj);
+            else if (spec.buc === 'uncursed') { unbless(obj); uncurse(obj); }
+            else if (spec.buc === 'not-cursed') uncurse(obj);
+            if (def && !artifactExists(def.name)) applyArtifactFields(obj, def, { dknown: false });
+            else if (spec.name) obj.oname = spec.name;
+            obj.oeroded = spec.eroded > 0 ? spec.eroded % 4 : 0;
+            obj.oeroded2 = spec.eroded > 0 ? (spec.eroded >> 2) % 4 : 0;
+            obj.oerodeproof = spec.eroded < 0;
+            if (spec.quantity > 0 && objectMergeableByCMetadata(obj)) {
+                obj.owt = (obj.owt || 0) / obj.quan * spec.quantity;
+                obj.quan = spec.quantity;
+            }
+            if (state.carrier) {
+                game.level.objects.splice(game.level.objects.indexOf(obj), 1);
+                if (obj.kind === 'saddle' && canSaddle(state.carrier)) putSaddleOnMonster(state.carrier, obj);
+                else add_to_minv(state.carrier, obj);
+                state.carrier.hasInventory = true;
+            } else stack_floor_object(obj);
+            break;
+        }
+        case 'engraving': {
+            const spec = rest.length ? { coord: arg, type: rest[0], text: rest[1] } : arg;
+            const pos = questFillerLocation(state.area, croom, DRY, false, spec.coord || [spec.x, spec.y]);
+            const type = ({ dust: DUST, engrave: ENGRAVE, burn: BURN, mark: MARK, blood: ENGR_BLOOD })[spec.type || 'engrave'];
+            make_engr_at(pos.x, pos.y, spec.text, false, 0, type);
+            Object.assign(engr_at(pos.x, pos.y), { nowipeout: spec.degrade === false, guardobjects: !!spec.guardobjects });
+            break;
+        }
+        case 'altar': {
+            const coord = arg.coord || [arg.x, arg.y];
+            const pos = questFillerLocation(state.area, croom, DRY, false, coord);
+            const original = game.u.ualignbase?.[0] ?? game.u.ualign?.type ?? A_NEUTRAL;
+            let align = ({ law: A_LAWFUL, lawful: A_LAWFUL, neutral: A_NEUTRAL,
+                chaos: A_CHAOTIC, chaotic: A_CHAOTIC, noalign: A_NONE, coaligned: original })[arg.align];
+            if (arg.align === 'noncoaligned') {
+                const k = rn2(2);
+                align = original ? (k ? -original : 0) : (k ? -1 : 1);
+            }
+            const mask = align == null ? inducedAlign80() : Align2amask(align);
+            Object.assign(game.level.at(pos.x, pos.y), { typ: ALTAR, flags: mask });
+            const roomno = game.level.at(pos.x, pos.y).roomno - ROOMOFFSET;
+            const temple = game.level.rooms[roomno];
+            if (arg.type === 'shrine' && temple?.rtype === TEMPLE)
+                await splevAltarShrine(temple, pos.x - temple.lx, pos.y - temple.ly, Amask2align(mask));
+            break;
+        }
+        case 'trap': {
+            const kinds = { arrow: ARROW_TRAP, dart: DART_TRAP, 'falling rock': ROCKTRAP,
+                board: SQKY_BOARD, bear: BEAR_TRAP, 'land mine': LANDMINE,
+                'rolling boulder': ROLLING_BOULDER_TRAP, 'sleep gas': SLP_GAS_TRAP,
+                rust: RUST_TRAP, fire: FIRE_TRAP, pit: PIT, 'spiked pit': SPIKED_PIT,
+                hole: HOLE, 'trap door': TRAPDOOR, teleport: TELEP_TRAP, 'level teleport': LEVEL_TELEP,
+                'magic portal': MAGIC_PORTAL, web: WEB, statue: STATUE_TRAP,
+                magic: MAGIC_TRAP, 'anti magic': ANTI_MAGIC, polymorph: POLY_TRAP,
+                'vibrating square': VIBRATING_SQUARE };
+            if (arg && typeof arg === 'object') {
+                const pos = questFillerLocation(state.area, croom, DRY, false, arg.coord || arg);
+                await barFillTrap(arg.type ? kinds[arg.type] : null, () => pos);
+                break;
+            }
+            if (arg != null && kinds[arg] == null) throw new Error(`Unsupported quest trap ${arg}`);
+            if (rest.length) {
+                const pos = questFillerLocation(state.area, croom, DRY, false, rest.length === 1 ? rest[0] : rest);
+                await spDesFixedTrap(kinds[arg], pos.x, pos.y);
+            }
+            else if (croom) await oracleRoomTrap(croom);
+            else await barFillTrap(kinds[arg] ?? null, () => questFillerLocation(state.area));
+            break;
+        }
+        case 'monster': {
+            const mon = await questFillerMonster(arg, state.area, croom, rest.length === 1 ? rest[0] : rest.length ? rest : null);
+            if (mon && (arg.keep_default_invent === false || (arg.inventory && arg.keep_default_invent !== true)))
+                discardQuestMonsterInventory(mon);
+            if (arg.inventory) {
+                await questFillerOperations(arg.inventory.operations, { ...state, carrier: mon,
+                    variables: new Map(state.variables) }, croom);
+                if (mon) dressMonster(mon);
+            }
+            break;
+        }
+        default:
+            throw new Error(`Unsupported quest filler operation: ${operation}`);
+        }
+    }
 }
 
 async function make_bar_fill_level(spec) {
@@ -15158,8 +16293,17 @@ function flipSpecialLevelRnd(xminArg = null, yminArg = null, xmaxArg = null, yma
         for (let y = ymin; y <= ymax; y++)
             refs.set(`${x},${y}`, map.locations[x][y]);
     for (let x = xmin; x <= xmax; x++)
-        for (let y = ymin; y <= ymax; y++)
+        for (let y = ymin; y <= ymax; y++) {
             map.locations[x][y] = refs.get(`${fx(x)},${fy(y)}`);
+            const loc = map.locations[x][y];
+            // sp_lev.c:flip_dbridge_* rotates the span's portcullis direction.
+            if (loc.typ === DRAWBRIDGE_UP || loc.typ === DRAWBRIDGE_DOWN) {
+                let dir = loc.flags & DB_DIR;
+                if (flipY && (dir === DB_NORTH || dir === DB_SOUTH)) dir ^= 1;
+                if (flipX && (dir === DB_EAST || dir === DB_WEST)) dir ^= 1;
+                loc.flags = (loc.flags & ~DB_DIR) | dir;
+            }
+        }
 
     const point = (obj, xkey, ykey) => {
         if (!obj || obj[xkey] < xmin || obj[xkey] > xmax || obj[ykey] < ymin || obj[ykey] > ymax) return;
@@ -15179,6 +16323,13 @@ function flipSpecialLevelRnd(xminArg = null, yminArg = null, xmaxArg = null, yma
         }
     }
     for (const trap of map.traps || []) point(trap, 'tx', 'ty');
+    for (const timer of game.timers || []) {
+        if (timer.kind !== TIMER_LEVEL || timer.func !== MELT_ICE_AWAY || timer.level !== map) continue;
+        const coord = { x: (timer.arg >>> 16) & 0xffff, y: timer.arg & 0xffff };
+        point(coord, 'x', 'y');
+        timer.arg = (coord.x << 16) | coord.y;
+    }
+    for (const timer of map.meltIceTimers || []) point(timer, 'x', 'y');
     for (const trap of map.traps || []) {
         point(trap.launch, 'x', 'y');
         point(trap.launch2, 'x', 'y');
@@ -15379,7 +16530,7 @@ async function make_sanctum_level() {
         });
         const previousMongetsTarget = game._mongets_target;
         game._mongets_target = priest;
-        mongets(AMULET_CLASS);
+        mongets(AMULET_OF_YENDOR);
         game._mongets_target = previousMongetsTarget;
         givePriestSpellbooks(priest);
         if (rn2(2)) {
@@ -17612,11 +18763,10 @@ async function splevMonster(croom, name, peaceful = null) {
     return mon;
 }
 
-async function splevAltarShrine(croom, x, y) {
+async function splevAltarShrine(croom, x, y, align = game.splev_align?.[0] ?? A_NEUTRAL) {
     const pos = splevSpecificLocation(croom, x, y);
     const loc = game.level.at(pos.x, pos.y);
     if (!loc) return;
-    const align = game.splev_align?.[0] ?? A_NEUTRAL;
     loc.typ = ALTAR;
     loc.flags = Align2amask(align);
     const si = rn2(8);
@@ -19981,12 +21131,18 @@ function collectEnextoCoords(x, y, maxradius) {
     return coords;
 }
 
-export function enextoMonsterSpot(x, y, ptr = {}) {
-    const near = collectEnextoCoords(x, y, 3);
-    const spot = near.find(candidate => makemon_goodpos(ptr, candidate.x, candidate.y));
-    if (spot) return spot;
-    const all = collectEnextoCoords(x, y, 0);
-    return all.slice(near.length).find(candidate => makemon_goodpos(ptr, candidate.x, candidate.y)) || null;
+export function enextoMonsterSpot(x, y, ptr = {}, checkScary = false) {
+    for (const scary of checkScary ? [true, false] : [false]) {
+        const good = candidate => checkScary ? rlocGoodpos({ data: ptr }, candidate.x, candidate.y, scary)
+            : makemon_goodpos(ptr, candidate.x, candidate.y);
+        const near = collectEnextoCoords(x, y, 3);
+        const spot = near.find(good);
+        if (spot) return spot;
+        const all = collectEnextoCoords(x, y, 0);
+        const far = all.slice(near.length).find(good);
+        if (far) return far;
+    }
+    return null;
 }
 
 function setSpecialTerrainLit(x, y, typ, lit = SET_LIT_NOCHANGE) {
@@ -22418,7 +23574,7 @@ function themeroom_buried_zombies(croom) {
         startCorpseTimeout(corpse, { zombify: false });
         clearCorpseTimeout(corpse);
         rn2(100);
-        corpse.zombifyTurn = Math.max(game.moves || 0, 1) + rn1(21, 990);
+        scheduleCorpseTimeout(corpse, ZOMBIFY_MON, rn1(21, 990));
         corpse.buried = true;
         corpse.hidden = true;
         Object.assign(corpse, object_display(corpse), { ox: x, oy: y });
@@ -22514,21 +23670,13 @@ function themeroom_light_source(croom) {
     const pos = { x: 0, y: 0 };
     if (!somexyspace(croom, pos)) return null;
     const lamp = mksobj_at(OIL_LAMP, pos.x, pos.y, true, false);
-    lamp.lamplit = true;
+    beginBurn(lamp);
     lamp.lit = true;
     return lamp;
 }
 
 function startThemeroomMeltIceTimer(x, y, timeout) {
-    const loc = game.level?.at(x, y);
-    if (!loc) return;
-    const turn = (game.moves || 0) + Math.trunc(timeout);
-    loc.meltIceTurn = turn;
-    loc.meltIceTimeout = turn;
-    loc.meltIceAwayTurn = turn;
-    game.level.meltIceTimers ??= [];
-    game._meltIceTimerSeq = (game._meltIceTimerSeq || 0) + 1;
-    game.level.meltIceTimers.push({ x, y, turn, seq: game._meltIceTimerSeq });
+    scheduleMeltIceTimeout(x, y, Math.trunc(timeout));
 }
 
 function themeroom_ice_room(croom) {
@@ -22661,6 +23809,13 @@ async function themeroom_storeroom(croom) {
 }
 
 export const __mklevTestHooks = {
+    flipSpecialLevelRnd,
+    questFillerOperations,
+    questMonsterData,
+    discardQuestMonsterInventory,
+    dressMonster,
+    rnd_offensive_item,
+    mplayerArmor,
     mkmap_init,
     mkmap_run_passes,
     mkmap_finish,

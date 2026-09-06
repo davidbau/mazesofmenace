@@ -14,6 +14,10 @@ import { emits_light } from './mondata.js';
 import { ledger_to_dnum, ledger_to_dlev, depth, In_W_tower } from './dungeon.js';
 import { relmon } from './mon.js';
 import { m_unleash } from './apply.js';
+import { pline_mon } from './pline.js';
+import { body_part } from './polyself.js';
+import { EYE, DISMOUNT_THROWN } from './const.js';
+import { dismount_steed } from './steed.js';
 import { count_wsegs, wormgone } from './worm.js';
 import { picked_container, set_residency } from './shk.js';
 import { Has_contents, MAX_NUM_WORMS, W_ARMS } from './const.js';
@@ -1882,7 +1886,7 @@ export async function dog_invent(mtmp, edog, udist) {
                         }
                         obj_extract_self(otmp);
                         newsym(omx, omy);
-                        mpickobj(mtmp, otmp);
+                        await mpickobj(mtmp, otmp);
                         if (attacktype(mtmp.data, ATTKS.AT_WEAP)
                             && mtmp.weapon_check === NEED_WEAPON) {
                             mtmp.weapon_check = NEED_HTH_WEAPON;
@@ -2273,7 +2277,7 @@ export async function abuse_dog(mtmp) {
 
 // src/dog.c:1292 wary_dog() -- revived pets can lose tameness based on how
 // they died and how they were treated.  Revival calls this quietly.
-export function wary_dog(mtmp, was_dead) {
+export async function wary_dog(mtmp, was_dead) {
     const edog = !mtmp.isminion ? mtmp.edog : null;
 
     finish_meating(mtmp);
@@ -2291,6 +2295,13 @@ export function wary_dog(mtmp, was_dead) {
         if (edog.abuse >= 0 && edog.abuse < 10
             && !rn2(edog.abuse + 1))
             mtmp.mpeaceful = 1;
+        if (!was_dead && cansee(mtmp.mx, mtmp.my) && haseyes(game.youmonst.data)) {
+            if (haseyes(mtmp.data))
+                await pline_mon(mtmp, `${Monnam(mtmp)} ${mtmp.mpeaceful
+                    ? 'seems unable' : 'refuses'} to look you in the ${body_part(EYE)}.`);
+            else
+                await pline_mon(mtmp, `${Monnam(mtmp)} avoids your gaze.`);
+        }
     } else {
         mtmp.mtame = rn2(mtmp.mtame + 1);
         if (!mtmp.mtame)
@@ -2298,9 +2309,14 @@ export function wary_dog(mtmp, was_dead) {
     }
 
     if (!mtmp.mtame) {
-        if (!was_dead)
-            note_unported('wary_dog:life_saved_feedback');
+        if (!was_dead && canspotmon(mtmp))
+            await pline_mon(mtmp, `${Monnam(mtmp)} ${mtmp.mpeaceful
+                ? 'is no longer tame' : 'has become feral'}.`);
         newsym(mtmp.mx, mtmp.my);
+        if (mtmp.mleashed)
+            await m_unleash(mtmp, true);
+        if (mtmp === game.u.usteed)
+            await dismount_steed(DISMOUNT_THROWN);
     } else if (edog) {
         edog.revivals = (edog.revivals | 0) + 1;
         edog.killed_by_u = 0;

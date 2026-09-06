@@ -3,7 +3,8 @@
 // put_saddle_on_mon, can_ride, doride, mount_steed,
 // landing_spot (KNOCKED preferred-dir + enexto D-1640),
 // dismount_steed (BYCHOICE + DISMOUNT_THROWN/KNOCKED/FELL HP D-1627),
-// kick_steed (D-1362), place_monster (D-1565; rm.h grid).
+// kick_steed (D-1362), place_monster (D-1565; rm.h grid),
+// exercise_steed (riding-skill training every 100 turns).
 
 import { game } from './gstate.js';
 import { mksobj, objects_at } from './mkobj.js';
@@ -52,7 +53,7 @@ import { acurr, exercise, Fumbling, adjalign } from './attrib.js';
 import { surface } from './sit.js';
 import { killed } from './uhitm.js';
 import { monkilled } from './mhitm.js';
-import { P_SKILL } from './weapon.js';
+import { P_SKILL, use_skill } from './weapon.js';
 import { welded, is_pole } from './wield.js';
 import { level_mon_at } from './worm.js';
 import { mhe } from './mondata.js';
@@ -120,13 +121,13 @@ function accessible_cell(x, y) {
  * Includes diagonal-into/out-of intact doorway ban (testdiag).
  * NODIAG poly / boulder push / shop block_door deferred.
  */
-function doorless_door(x, y) {
+export function doorless_door(x, y) {
     const loc = game.level?.at?.(x, y);
     if (!loc || !IS_DOOR(loc.typ)) return false;
     return !((loc.doormask || 0) & ~(D_NODOOR | D_BROKEN));
 }
 
-function test_move_ok(x, y, dx, dy) {
+export function test_move_ok(x, y, dx, dy) {
     const nx = x + dx;
     const ny = y + dy;
     if (!isok(nx, ny)) return false;
@@ -413,6 +414,25 @@ export function steed_vs_stealth() {
         u.BStealth = (u.BStealth || 0) | FROMOUTSIDE;
     } else {
         u.BStealth = (u.BStealth || 0) & ~FROMOUTSIDE;
+    }
+}
+
+/**
+ * C ref: steed.c exercise_steed `:386–398` — you and your steed have moved.
+ * ++urideturns; every 100th riding turn trains P_RIDING by 1.
+ * Called from domove right after the tentative occupy + usteed mx/my set
+ * (hack.c:2880–2884), even when the move later bounces on a safemon swap.
+ */
+export function exercise_steed() {
+    const u = game.u || {};
+    if (!u.usteed) return;
+    // C: ++u.urideturns >= 100 → reset + use_skill(P_RIDING, 1).
+    // `| 0` covers fresh JS saves where urideturns was never set (C decl
+    // zero-init).
+    u.urideturns = ((u.urideturns | 0) + 1);
+    if ((u.urideturns | 0) >= 100) {
+        u.urideturns = 0;
+        use_skill(P_RIDING, 1);
     }
 }
 

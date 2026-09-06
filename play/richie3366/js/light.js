@@ -15,7 +15,7 @@ import {
 } from './display.js';
 import { dist2 } from './hacklib.js';
 import { place_object, obj_extract_self } from './mkobj.js';
-import { simpleonames, otense } from './objnam.js';
+import { simpleonames, otense, xname } from './objnam.js';
 import { monsterNames } from './monsters.js';
 import { ignitable, artifact_light } from './timeout.js';
 
@@ -78,6 +78,32 @@ export function del_light_source(type, id) {
         list.splice(idx, 1);
         game.vision_full_recalc = 1;
     }
+}
+
+/**
+ * C ref: light.c obj_adjust_light_radius `:825–838` — light source `obj`
+ * is being made brighter or dimmer. Linear scan of `game.light_base`
+ * (C `gl.light_base` list); first LS_OBJECT entry with pointer-identical
+ * id wins (C assumes one source per object); sets
+ * `game.vision_full_recalc` only when the range actually changes
+ * (C `gv.vision_full_recalc`), then returns. Falls through to
+ * `impossible(xname(obj))` when no entry matches (async pline in JS,
+ * hence async). `| 0` int idiom on the range compare/assign.
+ * Caller mkobj.c maybe_adjust_light stays named (bless/curse wiring).
+ */
+export async function obj_adjust_light_radius(obj, new_radius) {
+    const nr = new_radius | 0;
+    const list = game.light_base;
+    if (list) {
+        for (const ls of list) {
+            if (ls.type === LS_OBJECT && ls.id === obj) {
+                if (nr !== (ls.range | 0)) game.vision_full_recalc = 1;
+                ls.range = nr;
+                return;
+            }
+        }
+    }
+    await impossible(`obj_adjust_light_radius: can't find ${xname(obj)}`);
 }
 
 /**

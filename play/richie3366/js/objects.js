@@ -4,7 +4,7 @@
 // Data is generated from upstream headers (js/generated/objects_data.js).
 
 import { game } from './gstate.js';
-import { P_AXE, P_PICK_AXE, P_DAGGER, P_SHORT_SWORD, P_SABER, P_SHURIKEN, P_BOW } from './const.js';
+import { P_AXE, P_PICK_AXE, P_DAGGER, P_SHORT_SWORD, P_SABER, P_SHURIKEN, P_BOW, P_SPEAR } from './const.js';
 import {
     createObjectsArray,
     NUM_OBJECTS,
@@ -136,6 +136,15 @@ export function is_pick(otmp) {
     if (!otmp) return false;
     if (otmp.oclass !== WEAPON_CLASS && otmp.oclass !== TOOL_CLASS) return false;
     return (game.objects?.[otmp.otyp]?.oc_skill | 0) === P_PICK_AXE;
+}
+
+/**
+ * C obj.h is_spear — WEAPON_CLASS with P_SPEAR skill. Canonical home;
+ * dothrow/u_init keep file-local clones (named debt).
+ */
+export function is_spear(otmp) {
+    if (!otmp || otmp.oclass !== WEAPON_CLASS) return false;
+    return (game.objects?.[otmp.otyp]?.oc_skill | 0) === P_SPEAR;
 }
 
 /**

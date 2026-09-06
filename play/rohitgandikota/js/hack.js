@@ -1,5 +1,5 @@
 import { maybe_unhide_at } from './mon.js';
-import { is_rider } from './mondata.js';
+import { is_rider, locomotion } from './mondata.js';
 import { goodpos } from './makemon.js';
 import { rloc_to, enexto } from './teleport.js';
 import { revive_corpse } from './do.js';
@@ -8,27 +8,30 @@ import { spot_time_left, spot_stop_timers, MELT_ICE_AWAY } from './timeout.js';
 import { float_vs_flight } from './polyself.js';
 import { float_up } from './trap.js';
 import { You_cant } from './pline.js';
-import { FROMOUTSIDE, DRAWBRIDGE_UP, DB_UNDER, DB_ICE } from './const.js';
+import { FROMOUTSIDE, DRAWBRIDGE_UP, DB_UNDER, DB_ICE, MAX_TYPE } from './const.js';
 import { obj_extract_self } from './invent.js';
 import { place_object } from './mkobj.js';
 import { exercise } from './attrib.js';
 import { A_STR, LANDMINE, SPIKED_PIT, PIT, HOLE, TRAPDOOR,
          LEVEL_TELEP, TELEP_TRAP, ROLLING_BOULDER_TRAP } from './const.js';
-import { the, xname } from './objnam.js';
+import { the, xname, ansimpleoname } from './objnam.js';
 import { costly_spot } from './shk.js';
 import { You_hear, There } from './pline.js';
-import { flush_screen, glyph_at, map_invisible, newsym, unmap_invisible } from './display.js';
+import { flush_screen, glyph_at, map_invisible, newsym, unmap_invisible,
+         unmap_object, map_object, back_to_glyph } from './display.js';
 import { YMonnam, m_monnam, mon_nam } from './do_name.js';
 import { is_flimsy } from './obj.js';
 import { You, You_feel, pline_xy, pline_The, set_msg_xy, Norep } from './pline.js';
 import { feel_location } from './display.js';
-import { can_ooze } from './monmove.js';
+import { can_ooze, accessible } from './monmove.js';
+import { dig_typ, use_pick_axe2 } from './dig.js';
 import { worm_cross } from './worm.js';
 import { block_door, block_entry, u_entered_shop, u_left_shop } from './shk.js';
 import { curr_mon_load } from './mon.js';
 import { inv_weight, weight_cap } from './attrib.js';
 import { carrying } from './invent.js';
-import { a_monnam, upstart } from './do_name.js';
+import { a_monnam, upstart, pmname } from './do_name.js';
+import { an } from './objnam.js';
 import { is_door_mappear, helpless, DEADMONSTER } from './monst.js';
 import { dist2, distmin } from './hacklib.js';
 import { Levitation, Flying, Fire_resistance, Underwater,
@@ -38,15 +41,20 @@ import { is_pool_or_lava } from './dbridge.js';
 import { is_pool, is_lava, t_at, m_at, is_pick, seemimic,
          wake_msg } from './mon.js';
 import { hliquid } from './do_name.js';
-import { Is_waterlevel, WATER, LAVAPOOL, POOL } from './const.js';
+import { Is_waterlevel, WATER, LAVAPOOL, POOL, AIR } from './const.js';
 import { waterbody_name } from './pager.js';
 import { surface, recalc_mapseen } from './dungeon.js';
-import { pickup, can_reach_floor } from './pickup.js';
-import { dotrap } from './trap.js';
+import { pickup, can_reach_floor, loot_mon } from './pickup.js';
+import { dotrap, immune_to_trap, into_vs_onto } from './trap.js';
 import { is_pit, EXT_ENCUMBER, HVY_ENCUMBER, IS_FURNITURE, STAIRS, ECMD_OK, ECMD_TIME, OBJ_AT, GOLD_SYM, TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL } from './const.js';
 import { near_capacity } from './attrib.js';
 import { gethungry } from './eat.js';
-import { cmdq_clear, closed_door } from './cmd.js';
+import { cmdq_clear, closed_door, paranoid_query } from './cmd.js';
+import { paranoia_bits, boolean_option } from './options.js';
+import { PARANOID_TRAP, PARANOID_CONFIRM, TRAPNUM, TRAP_CLEARLY_IMMUNE } from './const.js';
+import { Blind, Stunned, Confusion } from './youprop.js';
+import { visible_region_at, reg_damg } from './region.js';
+import { defsyms } from './drawing_data.js';
 // hack.js — the hero's movement and the terrain predicates that go with it.
 // C ref: src/hack.c
 //
@@ -57,12 +65,15 @@ import { cmdq_clear, closed_door } from './cmd.js';
 // None of them draws.
 
 import { game } from './gstate.js';
-import { do_attack } from './uhitm.js';
-import { sensemon, is_safemon, mon_visible, pline, canspotmon } from './display.js';
+import { do_attack, explum } from './uhitm.js';
+import { rehumanize } from './polyself.js';
+import { wake_nearto } from './mon.js';
+import { attacktype, attacktype_fordmg } from './mondata.js';
+import { sensemon, is_safemon, mon_visible, pline, urgent_pline, canspotmon } from './display.js';
 import { hides_under, noattacks, is_hider } from './mondata.js';
 import { onscary } from './monmove.js';
 import { PMNAMES, MONSYMS, ATTKS } from './monst_data.js';
-import { rn2 } from './rng.js';
+import { rn2, rnd } from './rng.js';
 import {
     IS_STWALL, IS_TREE, IS_OBSTRUCTED,
     W_NONDIGGABLE, W_NONPASSWALL,
@@ -94,6 +105,13 @@ import { INTRINSIC } from './const.js';
 import { start_timer, stop_timer, peek_timer, TIMER_OBJECT, ZOMBIFY_MON }
     from './timeout.js';
 import { Hello } from './role.js';
+import { digests, is_floater, is_clinger, likes_lava } from './mondata.js';
+import { Wwalking } from './youprop.js';
+import { s_suffix } from './hacklib.js';
+import { uteetering_at_seen_pit } from './trap.js';
+import { P_SKILL } from './weapon.js';
+import { P_RIDING, P_BASIC } from './const.js';
+import { rider_cant_reach } from './steed.js';
 
 // src/hack.c:2996 runmode_delay_output(). Multi-turn actions and running
 // periodically expose their intermediate screen. The default "run" mode
@@ -557,14 +575,20 @@ async function maybe_wail() {
     }
 }
 
-// src/hack.c:4256 losehp() — the hero takes damage, and dies if it reaches 0.
-//
-// This is the main route into done(). It draws nothing itself; showdamage and
-// end_running are display and movement bookkeeping.
+// src/hack.c:4247 showdamage().
+export async function showdamage(dmg) {
+    if (!boolean_option('showdamage') || !dmg)
+        return;
+    await pline(`[HP ${-dmg}, ${Upolyd(game.u) ? game.u.mh : game.u.uhp} left]`);
+}
+
+// src/hack.c:4256 losehp().
 export async function losehp(n, knam, k_format) {
     (game.disp ||= {}).botl = true;
+    end_running(true);
     if (Upolyd(game.u)) {
         game.u.mh -= n;
+        await showdamage(n);
         if (game.u.mh > game.u.mhmax)
             game.u.mhmax = game.u.mh;
         if (game.u.mh < 1) {
@@ -578,27 +602,14 @@ export async function losehp(n, knam, k_format) {
         return;
     }
 
-    const shownHp = game.u.uhp;
     game.u.uhp -= n;
+    await showdamage(n);
     if (game.u.uhp > game.u.uhpmax)
         game.u.uhpmax = game.u.uhp;     /* perhaps n was negative */
 
     if (game.u.uhp < 1) {
-        game.killer = { format: k_format, name: knam };
-        const pending = game._pending_message || '';
-        if (game.u.uhp === -1 && pending) {
-            game._deferred_status_hp_until_more = Math.max(shownHp | 0, 0);
-            game._deferred_status_hp_more_count =
-                pending.startsWith('Ouch!  That hurts!') ? 2
-                : pending.includes('  ') || pending.includes('wand hits you!')
-                    ? 1 : 2;
-        } else {
-            const { bot } = await import('./display.js');
-            await bot();
-        }
-        /* src/hack.c:4287 urgent_pline() can block on a pending message before
-           done() repaints the status, so that More frame keeps the old HP. */
-        await pline('You die...');
+        game.killer = { format: k_format, name: knam || '' };
+        await urgent_pline('You die...');
         await done(DIED);
     } else if (n > 0 && game.u.uhp * 10 < game.u.uhpmax) {
         await maybe_wail();
@@ -915,51 +926,111 @@ export function in_town(x, y) {
 }
 
 
-// src/hack.c:2228 domove_fight_empty() — force-fight a square with nothing
-// to fight. Wastes the turn with the "harmlessly attack" line.
+// src/hack.c:2229 domove_fight_empty()
 export async function domove_fight_empty(x, y) {
+    const unknown_obstacle = 'an unknown obstacle';
     const off_edge = !isok(x, y);
-    let buf;
-
+    let glyph = !off_edge ? glyph_at(x, y) : { kind: 'unexplored' };
     if (off_edge) {
-        /* treat as if solid rock, even on planes' levels */
-        buf = 'an unknown obstacle';
-    } else {
-        const loc = game.level.at(x, y);
-        const solid = (!ACCESSIBLE(loc?.typ ?? 0) || IS_FURNITURE(loc?.typ));
-        const boulder = sobj_at(ONAMES.BOULDER, x, y);
-        /* the statue-attack, underwater and pick-digging arms are recorded */
-        if (boulder) {
-            const { xname } = await import('./objnam.js');
-            const nm = await xname(boulder);
-            buf = ('aeiouAEIOU'.includes(nm[0]) ? 'an ' : 'a ') + nm;
-        } else if (solid) {
-            if (loc?.seenv || IS_STWALL(loc?.typ)
-                || loc?.typ === SCORR || IS_SDOOR(loc?.typ)) {
-                const { back_to_glyph } = await import('./display.js');
-                const { defsyms } = await import('./drawing_data.js');
-                const g = back_to_glyph(loc, x, y);
-                const expl = defsyms[g.cmap]?.explain || 'wall';
-                buf = `the ${expl}`;
-            } else {
-                buf = 'an unknown obstacle';
-            }
+        x = 0; y = 1;
+    }
+    if (game.context.forcefight
+        || (glyph.kind === 'invis' && !m_at(x, y) && !game.context.nopick)) {
+        let boulder = null;
+        const explo = Upolyd(game.u) && attacktype(game.youmonst.data, ATTKS.AT_EXPL);
+        const solid = off_edge || !accessible(x, y)
+            || IS_FURNITURE(game.level.at(x, y).typ);
+        let buf;
+        if (off_edge) {
+            buf = unknown_obstacle;
         } else {
-            buf = 'thin air';
+            const loc = game.level.at(x, y);
+            if (!Underwater()) {
+                boulder = sobj_at(ONAMES.BOULDER, x, y);
+                if ((glyph.kind === 'obj' && glyph.statue)
+                    || (Hallucination() && glyph.kind === 'mon'))
+                    boulder = sobj_at(ONAMES.STATUE, x, y);
+                if (game.context.forcefight && game.u.uwep
+                    && dig_typ(game.u.uwep, x, y)
+                    && glyph.kind !== 'invis' && glyph.kind !== 'mon') {
+                    await use_pick_axe2(game.u.uwep);
+                    return true;
+                }
+            }
+            /* Clear remembered objects even while blind. */
+            unmap_object(x, y);
+            if (boulder)
+                map_object(boulder, true);
+            newsym(x, y);
+            glyph = glyph_at(x, y);
+            if (boulder) {
+                buf = ansimpleoname(boulder);
+            } else if (Underwater() && !is_pool(x, y)) {
+                buf = Is_waterlevel(game.u.uz) && loc.typ === AIR
+                    ? 'an air bubble' : 'nothing';
+            } else if (solid) {
+                if (loc.seenv || IS_STWALL(loc.typ) || IS_SDOOR(loc.typ)
+                    || loc.typ === SCORR) {
+                    glyph = back_to_glyph(loc, x, y);
+                    buf = the(defsyms[glyph.cmap].explain);
+                } else {
+                    buf = unknown_obstacle;
+                }
+            } else {
+                buf = 'thin air';
+            }
         }
-        /* src/hack.c removes a stale invisible-monster marker before drawing
-           and reporting the empty-square attack. newsym restores any real
-           terrain or object which was hidden underneath it. */
-        unmap_invisible(x, y);
-        newsym(x, y);
-        const solid_or_boulder = !!(boulder || solid);
-        await You(`${solid_or_boulder ? 'harmlessly ' : ''}attack ${buf}.`);
+        await You(`${!(boulder || solid) ? '' : !explo ? 'harmlessly ' : 'futilely '}${
+            explo ? 'explode at' : 'attack'} ${buf}.`);
         nomul(0);
+        if (explo) {
+            const attk = attacktype_fordmg(game.youmonst.data, ATTKS.AT_EXPL, ATTKS.AD_ANY);
+            await wake_nearto(game.u.ux, game.u.uy, 7 * 7);
+            if (attk)
+                await explum(null, attk);
+            game.u.mh = -1;
+            await rehumanize();
+        }
         return true;
     }
-    await You(`harmlessly attack ${buf}.`);
-    nomul(0);
-    return true;
+    return false;
+}
+
+// src/hack.c:2515 avoid_trap_andor_region()
+export async function avoid_trap_andor_region(x, y) {
+    const bits = paranoia_bits();
+    let newreg, oldreg, trap;
+    if ((bits & PARANOID_TRAP) && !Blind() && !Stunned() && !Confusion() && !Hallucination()
+        && (!game.context.nopick || game.context.run)
+        && (newreg = visible_region_at(x, y))
+        && (!(oldreg = visible_region_at(game.u.ux, game.u.uy))
+            || (reg_damg(newreg) > 0 && reg_damg(oldreg) === 0))
+        && await test_move(game.u.ux, game.u.uy, game.u.dx, game.u.dy, TEST_MOVE)) {
+        const qbuf = `${u_locomotion('step')} into that ${reg_damg(newreg) > 0
+            ? 'poison gas' : 'vapor'} cloud?`;
+        if (!(await paranoid_query(bits & PARANOID_CONFIRM, upstart(qbuf)))) {
+            nomul(0);
+            game.context.move = 0;
+            return true;
+        }
+    }
+    if ((bits & PARANOID_TRAP) && !Stunned() && !Confusion()
+        && (!game.context.nopick || game.context.run)
+        && (trap = t_at(x, y)) && trap.tseen
+        && await test_move(game.u.ux, game.u.uy, game.u.dx, game.u.dy, TEST_MOVE)
+        && ((await immune_to_trap(game.youmonst, trap.ttyp)) !== TRAP_CLEARLY_IMMUNE
+            || Hallucination())) {
+        const traptype = Hallucination() ? rnd(TRAPNUM - 1) : trap.ttyp;
+        const into = into_vs_onto(traptype);
+        const qbuf = `Really ${u_locomotion('step')} ${into ? 'into' : 'onto'} that ${
+            defsyms[cmap_names.S_arrow_trap + traptype - 1].explain}?`;
+        if (!(await paranoid_query(bits & PARANOID_CONFIRM, qbuf))) {
+            nomul(0);
+            game.context.move = 0;
+            return true;
+        }
+    }
+    return false;
 }
 
 // src/hack.c domove_attackmon_at() — the gate between walking into a square
@@ -1154,13 +1225,15 @@ export async function pooleffects(newspot) {
 
 // src/hack.c:3312 spoteffects() — what happens on the square just moved onto.
 //
-// The reachable slice is the pickup(1) call, ordered around a pit trap the
-// way C orders it. switch_terrain, pooleffects, dosinkfall and the
-// levitation-timeout deferral are tied to terrain state the current levels
-// never put under the hero; dotrap and the special-room announcements are
-// recorded when their state is underfoot.
+// Terrain changes and pool effects precede pickup and trap activation.
+// Sink handling, recursion guards and levitation-timeout deferral remain partial.
 export async function spoteffects(pick) {
     const trap = t_at(game.u.ux, game.u.uy);
+    const trapflag = game.iflags.failing_untrap ? 0x40 /* FAILEDUNTRAP */ : 0;
+    // src/hack.c:3342, moving out of rock restores blocked Lev/Fly.
+    if (game.level.at(game.u.ux, game.u.uy).typ !== game.level.at(game.u.ux0, game.u.uy0).typ
+        || game.iflags.terrain_typ === MAX_TYPE)
+        await switch_terrain();
 
     /* src/hack.c:3349 — pooleffects first; when the hero is carried off by
        water or lava (drown/lava_effects moved them), the rest is skipped */
@@ -1182,7 +1255,7 @@ export async function spoteffects(pick) {
         if (pick && !pit)
             await pickup(1);
         if (trap)
-            await dotrap(trap, 0);
+            await dotrap(trap, trapflag);
         if (pick && pit)
             await pickup(1);
     }
@@ -1256,8 +1329,6 @@ export function nomul(nval) {
 //
 // THE CLEAR-BEFORE-CALL on afternmv IS LOAD-BEARING and C comments it: a
 // callback that sets afternmv again must not be clobbered after it returns.
-// The polymorph-reminder arm cannot fire (Upolyd is impossible here) and the
-// life-saving message never arises, so only the plain wake path is live.
 export async function unmul(msg_override) {
     (game.disp ||= {}).botl = true;
     game.multi = 0; /* caller will usually have done this already */
@@ -1270,8 +1341,11 @@ export async function unmul(msg_override) {
     /* and dereferences it here (`if (*gn.nomovemsg)`), so "" prints nothing.
        Collapsing the two states made every nomovemsg="" caller -- jump is
        one -- announce "You can move again." where C stays silent. */
-    if (game.nomovemsg)
+    if (game.nomovemsg) {
         await pline(game.nomovemsg);
+        if (Upolyd(game.u) && /^You survived that /i.test(game.nomovemsg))
+            await You(`are ${an(pmname(game.mons[game.u.umonnum], game.u.mfemale ? 1 : 0))}.`);
+    }
     game.nomovemsg = null;
     if (game.u)
         game.u.usleep = 0;
@@ -1662,18 +1736,13 @@ export function monster_nearby() {
     return false;
 }
 
-// src/hack.c:1817 u_locomotion() — the verb for the hero's own movement.
-//
-// Levitation and Flying override the polyform's; locomotion() would need the
-// hero's monster data, which for an unpolymorphed hero always yields `def`.
+// src/hack.c:1817 u_locomotion(), effective flight and form-specific movement.
 export function u_locomotion(def) {
-    const capitalize = (def[0] === def[0].toUpperCase());
-
-    return game.u.uprops?.LEVITATION ? (capitalize ? 'Float' : 'float')
-         : game.u.uprops?.FLYING ? (capitalize ? 'Fly' : 'fly')
-         : def;
+    const capitalize = def[0] === def[0].toUpperCase();
+    return Levitation() ? (capitalize ? 'Float' : 'float')
+        : Flying() ? (capitalize ? 'Fly' : 'fly')
+        : locomotion(game.youmonst.data, def);
 }
-
 
 // src/hack.c:4399 check_capacity() — refuse an action when overloaded.
 export async function check_capacity(str) {
@@ -1704,14 +1773,38 @@ export async function overexertion() {
 // engulfer's inventory, and -1 for "go ahead and pick up".
 //
 // Draws nothing; every arm is a message.
-async function pickup_checks() {
+export async function pickup_checks() {
     if (game.u.uswallow) {
-        note_unported_hack('pickup_checks:uswallow');
-        return 1;
+        if (!game.u.ustuck.minvent?.length) {
+            if (digests(game.u.ustuck.data)) {
+                await You(`pick up ${s_suffix(mon_nam(game.u.ustuck))} tongue.`);
+                await pline("But it's kind of slimy, so you drop it.");
+            } else {
+                await You(`don't ${Blind() ? 'feel' : 'see'} anything in here to pick up.`);
+            }
+            return 1;
+        }
+        return -2;
     }
-    if (is_pool(game.u.ux, game.u.uy) || is_lava(game.u.ux, game.u.uy)) {
-        note_unported_hack('pickup_checks:pool_or_lava');
-        return 0;
+    if (is_pool(game.u.ux, game.u.uy)) {
+        if (Wwalking() || is_floater(game.youmonst.data) || is_clinger(game.youmonst.data)
+            || (Flying() && !Breathless())) {
+            await You(`cannot dive into the ${hliquid('water')} to pick things up.`);
+            return 0;
+        } else if (!Underwater()) {
+            await You_cant('even see the bottom, let alone pick up something.');
+            return 0;
+        }
+    }
+    if (is_lava(game.u.ux, game.u.uy)) {
+        if (Wwalking() || is_floater(game.youmonst.data) || is_clinger(game.youmonst.data)
+            || (Flying() && !Breathless())) {
+            await You_cant('reach the bottom to pick things up.');
+            return 0;
+        } else if (!likes_lava(game.youmonst.data)) {
+            await You('would burn to a crisp trying to pick things up.');
+            return 0;
+        }
     }
     if (!OBJ_AT(game.u.ux, game.u.uy)) {
         const lev = game.level?.at(game.u.ux, game.u.uy);
@@ -1726,7 +1819,7 @@ async function pickup_checks() {
         else if (lev.typ === GRAVE)
             await You("don't need a gravestone.  Yet.");
         else if (lev.typ === FOUNTAIN)
-            await You('could drink the water...');
+            await You(`could drink the ${hliquid('water')}...`);
         else if (IS_DOOR(lev.typ) && (lev.doormask & D_ISOPEN))
             await pline("It won't come off the hinges.");
         else if (lev.typ === ALTAR)
@@ -1739,7 +1832,20 @@ async function pickup_checks() {
     }
     const traphere = t_at(game.u.ux, game.u.uy);
     if (!can_reach_floor(!!(traphere && is_pit(traphere.ttyp)))) {
-        note_unported_hack('pickup_checks:cannot_reach');
+        if (traphere && uteetering_at_seen_pit(traphere)) {
+            await You('cannot reach the bottom of the pit.');
+        } else if (game.u.usteed && P_SKILL(P_RIDING) < P_BASIC) {
+            await rider_cant_reach();
+        } else if (Blind()) {
+            await You('cannot reach anything here.');
+        } else {
+            let surf = surface(game.u.ux, game.u.uy);
+            if (traphere?.ttyp === HOLE)
+                surf = 'edge of the hole';
+            else if (traphere?.ttyp === TRAPDOOR)
+                surf = 'trap door';
+            await You(`cannot reach the ${surf}.`);
+        }
         return 0;
     }
     return -1; /* can do normal pickup */
@@ -1754,8 +1860,7 @@ export async function dopickup() {
     if (ret >= 0)
         return ret ? ECMD_TIME : ECMD_OK;
     if (ret === -2) {
-        note_unported_hack('dopickup:loot_mon');
-        return ECMD_OK;
+        return await loot_mon(game.u.ustuck, { v: -count }, null) ? ECMD_TIME : ECMD_OK;
     }
     /* else ret == -1 */
     return (await pickup(-count)) ? ECMD_TIME : ECMD_OK;

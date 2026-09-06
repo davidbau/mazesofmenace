@@ -342,7 +342,7 @@ export async function gain_guardian_angel() {
             let otmp = select_hwep(mtmp);
             if (!otmp) {
                 otmp = mksobj(ONAMES.SILVER_SABER, false, false);
-                if (mpickobj(mtmp, otmp))
+                if (await mpickobj(mtmp, otmp))
                     throw new Error('merged weapon?');
             }
             bless(otmp);

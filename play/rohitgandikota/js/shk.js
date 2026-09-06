@@ -16,7 +16,7 @@ import { mnearto } from './mon.js';
 import { OBJ_BURIED, LS_OBJECT } from './const.js';
 import { You, impossible } from './pline.js';
 import { angry_guards } from './mon.js';
-import { count_unpaid, count_contents } from './invent.js';
+import { count_unpaid, count_contents, merge_choice } from './invent.js';
 import { pline_The } from './pline.js';
 import { obj_typename } from './objnam.js';
 import { upstart } from './do_name.js';
@@ -89,6 +89,25 @@ import { obj_stop_timers } from './timeout.js';
 import { xprname } from './invent.js';
 import { tty_putstr, tty_display_nhwindow, tty_next_page } from './tty/wintty.js';
 import { xwaitforspace } from './tty/getline.js';
+import { is_pick } from './mon.js';
+import { haseyes } from './mondata.js';
+
+// src/shk.c:921 pick_pick(); one reaction per turn to a concealed pick.
+export async function pick_pick(obj) {
+    if (obj.unpaid || !is_pick(obj)) return;
+    const shkp = shop_keeper((game.u.ushops || '\0').charCodeAt(0));
+    if (shkp && inhishop(shkp)) {
+        if (game.moves !== (game.pickmovetime || 0)) {
+            if (!Deaf() && !muteshk(shkp)) {
+                // SetVoice is compiled out in the reference recorder.
+                await verbalize(`You sneaky ${cad(false)}!  Get out of here with that pick!`);
+            } else {
+                await pline(`${Shknam(shkp)} ${haseyes(shkp.data) ? 'glares at' : 'is dismayed because of'} your pick!`);
+            }
+        }
+        game.pickmovetime = game.moves;
+    }
+}
 
 
 
@@ -1822,20 +1841,30 @@ export function obfree_bill(obj, merge = null) {
 // Preserve existing imports while the implementation lives in its C module.
 export { costly_alteration } from './mkobj.js';
 
-async function money2u(mon, amount) {
-    const minvent = mon.minvent || [];
-    const gold = minvent.find(obj => obj.oclass === OCLASSES.COIN_CLASS);
-    if (!gold || amount <= 0 || gold.quan < amount)
-        return 0;
-
-    const paidGold = gold.quan > amount ? splitobj(gold, amount) : gold;
-    if (paidGold === gold)
-        minvent.splice(minvent.indexOf(gold), 1);
-    paidGold.where = OBJ_FREE;
-    paidGold.ocarry = null;
-    await addinv(paidGold);
-    (game.disp ||= {}).botl = true;
-    return amount;
+// src/shk.c:186 money2u(); split gold stays linked until extraction.
+export async function money2u(mon, amount) {
+    let mongold = (mon.minvent || []).find(obj => obj.oclass === OCLASSES.COIN_CLASS);
+    if (amount <= 0) {
+        await impossible(`${amount ? 'negative' : 'zero'} payment in money2u!`);
+        return;
+    }
+    if (!mongold || mongold.quan < amount) {
+        const { a_monnam } = await import('./do_name.js');
+        await impossible(`${a_monnam(mon)} paying without ${mongold ? 'enough' : ''} gold?`);
+        return;
+    }
+    if (mongold.quan > amount) mongold = splitobj(mongold, amount);
+    obj_extract_self(mongold);
+    const { inv_cnt } = await import('./hack.js');
+    const { invlet_basic } = await import('./const.js');
+    if (!merge_choice(game.invent, mongold) && inv_cnt(false) >= invlet_basic) {
+        await You('have no room for the gold!');
+        const { dropy } = await import('./do.js');
+        await dropy(mongold);
+    } else {
+        await addinv(mongold);
+        (game.disp ||= {}).botl = true;
+    }
 }
 
 export async function donate_gold(amount, shkp, selling) {
@@ -2063,7 +2092,7 @@ async function money2mon(mon, amount) {
     freeinv(paidGold);
     paidGold.where = OBJ_FREE;
     const { mpickobj } = await import('./steal.js');
-    mpickobj(mon, paidGold);
+    await mpickobj(mon, paidGold);
     (game.disp ||= {}).botl = true;
     return amount;
 }

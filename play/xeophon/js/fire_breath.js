@@ -199,7 +199,7 @@ function erodeMonsterArmorByFire(item, slot) {
     return true;
 }
 
-function burnMonsterArmorFromFire(mon) {
+export function burnMonsterArmorFromFire(mon) {
     dryWetTowelFromFire(mon.minvent || []);
     const wornArmor = (mon.minvent || []).filter(item => item.worn || item.owornmask);
     for (;;) {

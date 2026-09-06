@@ -78,6 +78,11 @@ import {
     IS_DOOR,
     D_TRAPPED,
     Is_container,
+    OBJ_FLOOR,
+    OBJ_CONTAINED,
+    OBJ_MINVENT,
+    NO_ROOM,
+    LL_ARTIFACT,
 } from './const.js';
 import { rn2, rnd, d, rnz } from './rng.js';
 import { nhgetch } from './input.js';
@@ -90,9 +95,11 @@ import { mon_nam } from './do_name.js';
 import { wake_nearto } from './mon.js';
 import { burn_away_slime } from './timeout.js';
 import { compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, getobj } from './invent.js';
-import { xname, the, vtense, cxname, otense, set_undiscovered_artifact } from './objnam.js';
+import { xname, the, vtense, cxname, otense, set_undiscovered_artifact, set_find_artifact, simple_typename } from './objnam.js';
 import { recalc_telepat_range } from './do_wear.js';
 import { t_at } from './trap.js';
+import { livelog_printf } from './pline.js';
+import { inside_shop } from './shk.js';
 
 const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
 const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
@@ -118,16 +125,23 @@ import {
     ART_MASTER_KEY_OF_THIEVERY,
 } from './generated/artifacts_data.js';
 import { PM_KNIGHT, PM_ROGUE } from './generated/monsters_data.js';
-import { aligns } from './roles.js';
+import { aligns, align_str } from './roles.js';
+import { ATR_INVERSE } from './terminal.js';
 export { ART_NONARTIFACT, ART_EXCALIBUR, ART_GRIMTOOTH, ART_ORCRIST, ART_STING, ART_GRAYSWANDIR };
 
-// C ref: include/artifact.h — subset used by touch/wish / spec_applies
+// C ref: include/artifact.h `:14–43` — SPFX_* bits used by touch/wish /
+// spec_applies / spec_ability callers (BEHEAD/DRLI arms still deferred).
 export const SPFX_NOGEN = 0x00000001;
 export const SPFX_RESTR = 0x00000002;
 export const SPFX_INTEL = 0x00000004;
+export const SPFX_SPEAK = 0x00000008;
+export const SPFX_SEEK = 0x00000010;
 export const SPFX_WARN = 0x00000020;
 export const SPFX_ATTK = 0x00000040;
+export const SPFX_DEFN = 0x00000080;
+export const SPFX_DRLI = 0x00000100;
 export const SPFX_SEARCH = 0x00000200;
+export const SPFX_BEHEAD = 0x00000400;
 export const SPFX_HALRES = 0x00000800;
 export const SPFX_ESP = 0x00001000;
 export const SPFX_STLTH = 0x00002000;
@@ -145,6 +159,7 @@ export const SPFX_DALIGN = 0x01000000;
 export const SPFX_DBONUS = 0x01F00000;
 export const SPFX_XRAY = 0x02000000;
 export const SPFX_REFLECT = 0x04000000;
+export const SPFX_PROTECT = 0x08000000;
 const SILVER = 14; /* objclass.h */
 
 // C artifact.h enum invoke_prop_types — TAMING = LAST_PROP+1 … BLINDING_RAY
@@ -396,6 +411,103 @@ export function undiscovered_artifact(m) {
 set_undiscovered_artifact(undiscovered_artifact);
 
 /**
+ * C ref: artifact.c disp_artifact_discoveries `:1147–1175` — list discovered
+ * artifacts from artidisco[] (empty slot ends the list); return the count.
+ * C takes a text window, or WIN_ERR to count only. JS lines-array model:
+ * pass null to count (WIN_ERR). A_NONE prints "non-aligned": C remaps
+ * align_str's "unaligned"; JS align_str (roles.js) has no unaligned arm.
+ * @param {Array|null} lines text-window lines, or null (WIN_ERR) to count
+ * @returns {number} discovered artifact count
+ */
+export function disp_artifact_discoveries(lines) {
+    const artidisco = game.artidisco || [];
+    const list = artilist();
+    let i = 0;
+    for (; i < NROFARTIFACTS; i++) {
+        if ((artidisco[i] | 0) === 0) break; /* empty slot implies end */
+        if (lines == null) continue; /* WIN_ERR: just count */
+        if (i === 0) lines.push({ text: 'Artifacts', attr: ATR_INVERSE });
+        const m = artidisco[i] | 0;
+        const entry = list[m] || {};
+        const otyp = entry.otyp | 0;
+        const algn = entry.alignment | 0;
+        const algnstr = algn === A_NONE ? 'non-aligned' : align_str(algn);
+        lines.push({
+            text: `  ${artiname(m)} [${algnstr} ${simple_typename(otyp)}]`,
+            attr: 0,
+        });
+    }
+    return i;
+}
+
+/**
+ * C ref: artifact.c dump_artifact_info `:1177–1215` — wizard-mode dump of
+ * all artifacts and their exist/found/gift/wish/named/viadip/lvldef/bones
+ * flags. The `#if 0` tab-sep arm is dead in C; port the live `"  %-36.36s%s"`
+ * shape. game.artiexist uses `rnd` for C `.rndm`.
+ * @param {Array} lines text-window lines
+ */
+export function dump_artifact_info(lines) {
+    lines.push({ text: 'Artifacts', attr: ATR_INVERSE });
+    for (let m = 1; m <= NROFARTIFACTS; m++) {
+        const ae = game.artiexist?.[m] || {};
+        const bits = '['
+            + (ae.exists ? 'exists;' : '')
+            + (ae.found ? ' hero knows;' : '')
+            + (ae.gift ? ' gift' : '')
+            + (ae.wish ? ' wish' : '')
+            + (ae.named ? ' named' : '')
+            + (ae.viadip ? ' viadip' : '')
+            + (ae.lvldef ? ' lvldef' : '')
+            + (ae.bones ? ' bones' : '')
+            + (ae.rnd ? ' random' : '')
+            + ']';
+        lines.push({ text: `  ${artiname(m).slice(0, 36).padEnd(36)}${bits}`, attr: 0 });
+    }
+}
+
+/**
+ * C ref: artifact.c found_artifact `:409–417` — mark artiexist[a].found.
+ * Sync: the two C impossible() error arms are a named omit (async pline
+ * in JS; C continues without setting found, which the early returns keep).
+ * Callers are sync (notably objnam.c xname_flags `:661`).
+ * @param {number} a artifact index (1-based)
+ */
+export function found_artifact(a) {
+    const i = a | 0;
+    if (i < 1 || i > NROFARTIFACTS) return;
+    if (!game.artiexist) artifacts_globals_init();
+    if (!(game.artiexist[i]?.exists | 0)) return;
+    game.artiexist[i].found = 1;
+}
+
+/**
+ * C ref: artifact.c find_artifact `:422–459` — first-sighting livelog.
+ * `if (a && !found)`: found_artifact(a), then where by obj->where in C
+ * ternary order (OBJ_FLOOR → inside_shop shop/floor; OBJ_CONTAINED;
+ * OBJ_MINVENT; catchall invent/hero ""), then livelog LL_ARTIFACT
+ * `found %s%s` with bare_artifactname. inside_shop (not costly_spot)
+ * covers the shop "free spot" before the door, per the C comment.
+ * @param {object} otmp artifact object
+ */
+export function find_artifact(otmp) {
+    const a = otmp?.oartifact | 0;
+    if (!a) return;
+    if (!game.artiexist) artifacts_globals_init();
+    if (game.artiexist[a]?.found | 0) return;
+    found_artifact(a); /* artiexist[a].found = 1 */
+    const where = ((otmp?.where | 0) === OBJ_FLOOR)
+        ? ((inside_shop(otmp?.ox | 0, otmp?.oy | 0) !== NO_ROOM)
+            ? ' in a shop'
+            : ' on the floor')
+        : ((otmp?.where | 0) === OBJ_CONTAINED) ? ' in a container'
+            : ((otmp?.where | 0) === OBJ_MINVENT) ? ' carried by a monster'
+                : '';
+    livelog_printf(LL_ARTIFACT, 'found %s%s', bare_artifactname(otmp), where);
+}
+set_find_artifact(find_artifact);
+
+/**
  * C ref: artifact.c arti_cost `:2308–2317` — zorkmid value.
  * !oartifact → objects[otyp].oc_cost; else artilist[oartifact].cost if
  * nonzero, else 100 * oc_cost. Caller shk.c getprice `/4` when buying.
@@ -435,18 +547,31 @@ export function spec_m2(otmp) {
 const LUCKSTONE_OTYP = objectNames.indexOf('LUCKSTONE');
 
 /**
- * C ref: artifact.c confers_luck — LUCKSTONE or artifact SPFX_LUCK.
+ * C ref: artifact.c spec_ability `:516–522` — non-artifact identity gate
+ * (`arti != &artilist[ART_NONARTIFACT]`, C short-circuit order) plus the
+ * spfx bit test. Live callers routed here: confers_luck SPFX_LUCK;
+ * sit.c rndcurse SPFX_INTEL; detect.c dosearch0 SPFX_SEARCH.
+ * artifact_hit SPFX_BEHEAD/SPFX_DRLI arms stay deferred (named there).
+ * @param {object} otmp
+ * @param {number} abil SPFX_* bit mask
+ * @returns {boolean}
+ */
+export function spec_ability(otmp, abil) {
+    const arti = get_artifact(otmp);
+    const list = artilist();
+    return arti !== list[ART_NONARTIFACT] && ((arti.spfx | 0) & (abil | 0)) !== 0;
+}
+
+/**
+ * C ref: artifact.c confers_luck — LUCKSTONE or artifact SPFX_LUCK
+ * (`obj->oartifact && spec_ability(obj, SPFX_LUCK)`, C short-circuit order).
  * @param {object} obj
  * @returns {boolean}
  */
 export function confers_luck(obj) {
     if (!obj) return false;
     if ((obj.otyp | 0) === LUCKSTONE_OTYP) return true;
-    if (!obj.oartifact) return false;
-    const arti = get_artifact(obj);
-    const list = artilist();
-    if (arti === list[0]) return false;
-    return ((arti.spfx | 0) & SPFX_LUCK) !== 0;
+    return Boolean(obj.oartifact && spec_ability(obj, SPFX_LUCK));
 }
 
 /**

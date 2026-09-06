@@ -1815,12 +1815,15 @@ function Passes_walls() {
 }
 
 /**
- * C ref: trap.c m_easy_escape_pit — pit fiend or huge+ escapes easily.
- * No RNG; pure predicate on the monster data.
+ * C ref: trap.c m_easy_escape_pit `:3726–3730` — `mtmp->data == &mons[PM_PIT_FIEND]
+ * || mtmp->data->msize >= MZ_HUGE`. No RNG; pure predicate on the monster data.
+ * C compares the data pointer; JS `mons()` allocates a fresh snapshot per call
+ * (see js/do.js chew-swallower arm), so compare `data.mndx` — the monsndx
+ * equivalent — instead of object identity.
  */
 function m_easy_escape_pit(mtmp) {
     const data = mtmp?.data;
-    return data === mons[PM_PIT_FIEND] || (data?.msize | 0) >= MZ_HUGE;
+    return (data?.mndx | 0) === PM_PIT_FIEND || (data?.msize | 0) >= MZ_HUGE;
 }
 
 /**

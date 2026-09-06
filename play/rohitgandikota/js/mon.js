@@ -14,8 +14,14 @@ import { MIGR_APPROX_XY } from './const.js';
 import { NATTK } from './const.js';
 import { c_obj_colors } from './const.js';
 import { W_AMUL } from './const.js';
+import { end_burn } from './timeout.js';
+import { extract_from_minvent } from './worn.js';
+import { m_useup } from './mthrowu.js';
+import { wary_dog } from './dog.js';
+import { makeknown } from './o_init.js';
+import { unmap_object, glyph_is_invisible_at } from './display.js';
 import { is_vampshifter } from './monst.js';
-import { revive_corpse } from './do.js';
+import { revive_corpse, placebc } from './do.js';
 import { monsndx } from './makemon.js';
 import { kill_egg } from './timeout.js';
 import { Has_contents } from './obj.js';
@@ -46,6 +52,7 @@ import { mdistu, mon_track_clear, m_everyturn_effect,
 // with the wrong number of monsters desynchronises on its very first turn.
 
 import { game } from './gstate.js';
+import { set_mon_data } from './mondata.js';
 import { get_wormno, initworm, place_worm_tail_randomly,
          worm_cross, worm_wire } from './worm.js';
 import { adjalign, change_luck, exercise } from './attrib.js';
@@ -88,7 +95,8 @@ import { MON_DETACH, P_DAGGER, P_SABER, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, S
          PLNMSG_UNKNOWN, PLNMSG_GROWL } from './const.js';
 import { NO_MM_FLAGS } from './const.js';
 import { PMNAMES, MONSYMS, MFLAGS, ATTKS, MSOUND, NUMMONS } from './monst_data.js';
-import { def_monsyms } from './drawing_data.js';
+import { def_monsyms, cmap_names } from './drawing_data.js';
+import { visible_region_at } from './region.js';
 import { NO_COLOR } from './terminal.js';
 
 import { has_ceiling, surface } from './dungeon.js';
@@ -115,17 +123,18 @@ import { bigmonst, amorphous, is_whirly, noncorporeal, slithy, needspick, nohand
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
 import { distant_name, doname, makeplural } from './objnam.js';
 import { You, You_feel, You_hear } from './pline.js';
-import { Blind, Hallucination, Deaf } from './youprop.js';
+import { digests, sticks } from './mondata.js';
+import { u_locomotion } from './hack.js';
+import { Blind, Hallucination, Deaf, Breathless, Underwater, Poison_resistance } from './youprop.js';
+import { immune_poisongas, attacktype_fordmg,
+         resists_poison as resists_poison_gas } from './mondata.js';
+import { M_POISONGAS_OK, M_POISONGAS_MINOR, M_POISONGAS_BAD } from './const.js';
 /* include/obj.h:321 polyfood(), mlevelgain(), mhealup(), ofood();
    src/mon.c:1384 mstoning(); include/mondata.h:28 cant_drown();
    src/mon.c:44 LEVEL_SPECIFIC_NOCORPSE(); src/mon.c:549 KEEPTRAITS();
    include/you.h ALIGNLIM; include/youprop.h Blind_telepat;
    include/mondata.h always_hostile(); include/prop.h:25 res_to_mr() */
-const ofood = (o) => (o.otyp === ONAMES.CORPSE || o.otyp === ONAMES.EGG || o.otyp === ONAMES.TIN);
-const polyfood = (obj) =>
-    (ofood(obj) && obj.corpsenm >= LOW_PM
-     && (pm_to_cham(obj.corpsenm) !== NON_PM
-         || dmgtype(game.mons[obj.corpsenm], ATTKS.AD_POLY)));
+import { ofood, polyfood } from './obj.js';
 const mlevelgain = (obj) => (ofood(obj) && obj.corpsenm === PMNAMES.PM_WRAITH);
 const mhealup = (obj) => (ofood(obj) && obj.corpsenm === PMNAMES.PM_NURSE);
 const mstoning = (obj) =>
@@ -309,6 +318,27 @@ export async function movemon() {
     return gs_somebody_can_move;
 }
 
+// src/mon.c:330 m_poisongas_ok()
+export function m_poisongas_ok(mtmp) {
+    const is_you = mtmp === game.youmonst;
+    if (nonliving(mtmp.data) || is_vampshifter(mtmp)
+        || breathless(mtmp.data) || immune_poisongas(mtmp.data))
+        return M_POISONGAS_OK;
+    const px = is_you ? game.u.ux : mtmp.mx;
+    const py = is_you ? game.u.uy : mtmp.my;
+    if ((mtmp.data.mlet === MONSYMS.S_EEL || Is_waterlevel(game.u.uz))
+        && is_pool(px, py))
+        return M_POISONGAS_OK;
+    if (attacktype_fordmg(mtmp.data, ATTKS.AT_BREA, ATTKS.AD_DRST)
+        || attacktype_fordmg(mtmp.data, ATTKS.AT_BREA, ATTKS.AD_RBRE))
+        return M_POISONGAS_OK;
+    if (is_you && (game.u.uinvulnerable || Breathless() || Underwater()))
+        return M_POISONGAS_OK;
+    if (is_you ? Poison_resistance() : resists_poison_gas(mtmp))
+        return M_POISONGAS_MINOR;
+    return M_POISONGAS_BAD;
+}
+
 // src/mon.c:1214 movemon_singlemon()
 async function movemon_singlemon(mtmp) {
     /* src/mon.c:1219 — end monster movement early if hero is flagged to
@@ -324,7 +354,7 @@ async function movemon_singlemon(mtmp) {
 
     /* src/mon.c:1248 m_everyturn_effect() — fog clouds shed harmless
        vapor where they stand, before the movement-energy gate */
-    m_everyturn_effect(mtmp);
+    await m_everyturn_effect(mtmp);
 
     if (globalThis.__dog_trace && mtmp.mtame)
         console.error(`DOGNRG turn=${game.moves} mv=${mtmp.movement}`);
@@ -668,6 +698,9 @@ export function mfndpos(mon, data, flag) {
         lavaok = false;
     let rockok = false, treeok = false, mw_tmp;
     let thrudoor = ((flag & (ALLOW_WALL | BUSTDOOR)) !== 0);
+    const poisongas_ok = m_poisongas_ok(mon) === M_POISONGAS_OK;
+    let gas_reg = visible_region_at(x, y);
+    const in_poisongas = !!gas_reg && gas_reg.glyph_cmap === cmap_names.S_poisoncloud;
 
     if (flag & ALLOW_DIG) {
         /* need to be specific about what can currently be dug */
@@ -739,6 +772,12 @@ export function mfndpos(mon, data, flag) {
                     && (((loc.doormask & D_CLOSED) && !(flag & OPENDOOR))
                         || ((loc.doormask & D_LOCKED) && !(flag & UNLOCKDOOR)))
                     && !thrudoor)
+                    continue;
+
+                // src/mon.c:2240, avoid entering poison gas from outside it.
+                if (!poisongas_ok && !in_poisongas
+                    && (gas_reg = visible_region_at(nx, ny))
+                    && gas_reg.glyph_cmap === cmap_names.S_poisoncloud)
                     continue;
 
                 /* first diagonal checks (tight squeezes handled below) */
@@ -1326,7 +1365,7 @@ export async function meatobj(mtmp) {
             else if (ecount === 2)
                 engulf_message = `${Monnam(mtmp)} engulfs several objects.`;
             obj_extract_self(otmp);
-            mpickobj(mtmp, otmp);
+            await mpickobj(mtmp, otmp);
         } else {
             count++;
             if (cansee(mtmp.mx, mtmp.my)) {
@@ -1995,6 +2034,8 @@ export function can_touch_safely(mtmp, otmp) {
    include/monst.h:279 via src/mondata.c:129. */
 
 
+import { thiefdead } from './steal.js';
+
 // src/mon.c:2734 m_detach() — take a monster off the map.
 //
 // C does NOT unlink from the fmon chain here: it flags MON_DETACH and bumps
@@ -2036,6 +2077,9 @@ export function m_detach(mtmp, mptr, due_to_death) {
     }
 
     mtmp.mhp = 0;               /* simplify some tests: force mhp to 0 */
+
+    if (mtmp.m_id === game.stealmid)
+        thiefdead();
 
     /* src/mon.c:2790, a removed shopkeeper no longer owns a shop */
     if (mtmp.isshk)
@@ -2084,7 +2128,12 @@ export async function monstone(mdef) {
     const x = mdef.mx, y = mdef.my;
     let remains;
 
+    if (!await vamp_stone(mdef))
+        return;
     mdef.mhp = 0;
+    await lifesaved_monster(mdef);
+    if (!DEADMONSTER(mdef))
+        return;
     mdef.mtrapped = 0;
 
     const statueChance = 2
@@ -2093,11 +2142,14 @@ export async function monstone(mdef) {
         const held = [];
         while ((mdef.minvent || []).length) {
             const obj = mdef.minvent[0];
-            obj.owornmask = 0;
-            obj_extract_self(obj);
+            await extract_from_minvent(mdef, obj, true, true);
             if (obj.otyp === ONAMES.BOULDER || obj_resists(obj, 0, 0)) {
+                if (await flooreffects(obj, x, y, 'fall'))
+                    continue;
                 place_object(obj, x, y);
             } else {
+                if (obj.lamplit)
+                    end_burn(obj, true);
                 held.unshift(obj);
             }
         }
@@ -2110,10 +2162,10 @@ export async function monstone(mdef) {
         if (mdef.data.geno & G_UNIQ)
             flags |= CORPSTAT_HISTORIC;
 
-        remains = mkcorpstat(ONAMES.STATUE, mdef, mdef.mnum,
+        remains = mkcorpstat(ONAMES.STATUE, mdef, mdef.data,
                              x, y, flags);
         if (mdef.mgivenname)
-            remains.oname = mdef.mgivenname;
+            remains = oname(remains, mdef.mgivenname, ONAME_NO_FLAGS);
         for (const obj of held)
             add_to_container(remains, obj);
         remains.owt = weight(remains);
@@ -2122,10 +2174,14 @@ export async function monstone(mdef) {
     }
 
     stackobj(remains);
+    if (glyph_is_invisible_at(x, y))
+        unmap_object(x, y);
     if (cansee(x, y))
         newsym(x, y);
+    const wasinside = engulfing_u(mdef);
     await mondead(mdef);
-    return remains;
+    if (wasinside && digests(mdef.data))
+        await You(`${u_locomotion('jump')} through an opening in the new ${xname(remains)}.`);
 }
 
 /* mon_resistancebits lives in js/mondata.js, its C home. */
@@ -2166,7 +2222,8 @@ export async function unstuck(mtmp) {
             game.mswallower = null;
             game.u.ux = mtmp.mx;
             game.u.uy = mtmp.my;
-            /* Punished ball&chain placebc: no session is punished */
+            if (game.u.uball && game.u.uchain.where !== OBJ_FLOOR)
+                await placebc();
             game.vision_full_recalc = 1;
             const { docrt } = await import('./display.js');
             await docrt();
@@ -2833,7 +2890,7 @@ export async function wake_msg(mtmp, interesting) {
     if (mtmp.msleeping && canseemon(mtmp)) {
         const alive = mtmp.mnum === PMNAMES.PM_FLESH_GOLEM
             ? " It's alive!" : '';
-        await pline(`${Monnam(mtmp)} wakes up${interesting ? '!' : '.'}${alive}`);
+        await pline_mon(mtmp, `${Monnam(mtmp)} wakes up${interesting ? '!' : '.'}${alive}`);
     }
 }
 
@@ -2985,10 +3042,8 @@ export async function mpickstuff(mtmp) {
                     await pline(`${Monnam(mtmp)} picks up ${otmpname}.`);
             }
             obj_extract_self(otmp3);        /* remove from floor */
-            /* src/steal.c:618 mpickobj() may merge and free otmp3. Its
-               conditional markers cover the unported billing, light, and
-               figurine branches without flagging every ordinary pickup. */
-            mpickobj(mtmp, otmp3);
+            /* src/steal.c:618 mpickobj() may merge and free otmp3. */
+            await mpickobj(mtmp, otmp3);
             check_gear_next_turn(mtmp);
             newsym(mtmp.mx, mtmp.my);
             return true;                    /* pick only one object */
@@ -3310,8 +3365,24 @@ export async function mondead(mdef) {
         game.iflags.sad_feeling = false;
 
     mdef.mhp = 0;
+    await lifesaved_monster(mdef);
+    if (!DEADMONSTER(mdef))
+        return;
     if (be_sad)
         await You('have a sad feeling for a moment, then it passes.');
+    const mptr = mdef.data; /* saved for m_detach light cleanup */
+    /* src/mon.c:3113, the remains and death count use the true species. */
+    if (ismnum(mdef.cham)) {
+        set_mon_data(mdef, game.mons[mdef.cham]);
+        mdef.cham = NON_PM;
+    } else if (mdef.mnum === PMNAMES.PM_WEREJACKAL) {
+        set_mon_data(mdef, game.mons[PMNAMES.PM_HUMAN_WEREJACKAL]);
+    } else if (mdef.mnum === PMNAMES.PM_WEREWOLF) {
+        set_mon_data(mdef, game.mons[PMNAMES.PM_HUMAN_WEREWOLF]);
+    } else if (mdef.mnum === PMNAMES.PM_WERERAT) {
+        set_mon_data(mdef, game.mons[PMNAMES.PM_HUMAN_WERERAT]);
+    }
+
     /* src/mon.c:3134 — mvitals[].died doubles as the total-dead count and
        the experience factor; #vanquished reads it */
     {
@@ -3340,7 +3411,7 @@ export async function mondead(mdef) {
     unmap_invisible(mx, my);
     /* src/mon.c:3177 m_detach(). A dead glowing monster must not leave an
        orphaned source that forces vision recalculation on later turns. */
-    if (mx > 0 && emits_light(mdef.data))
+    if (mx > 0 && emits_light(mptr))
         del_light_source(LS_MONSTER, mdef.m_id);
     /* src/mon.c:2757 m_detach(): mon_leaving_level() takes mtmp off the map
        (remove_monster/remove_worm, fill_pit, newsym) */
@@ -3371,6 +3442,8 @@ export async function mondead(mdef) {
         const { relobj } = await import('./steal.js');
         await relobj(mdef, 1, false);
     }
+    if (mdef.m_id === game.stealmid)
+        thiefdead();
     if (mdef.isshk)
         shkgone(mdef);
     /* src/mon.c:2808 m_detach(): a dead steed immediately stops being the
@@ -4024,15 +4097,17 @@ async function usmellmon(mdat) {
 }
 
 // src/mon.c:5278 newcham(). The no-message creation path remains synchronous
-// for makemon(); NC_SHOW_MSG callers await the conditional promise below.
+// for makemon(); message and hero-release paths return a conditional promise.
 export function newcham(mtmp, mdat, ncflags) {
     let mndx = -1;
-    const msg = !!(ncflags & NC_SHOW_MSG);
-    const seenorsensed = msg ? canspotmon(mtmp) : false;
+    let msg = !!(ncflags & NC_SHOW_MSG);
+    const seenorsensed = canspotmon(mtmp);
     const oldname = msg
         ? upstart(x_monnam(mtmp, mtmp.mtame ? ARTICLE_YOUR : ARTICLE_THE,
                            null, SUPPRESS_SADDLE, false))
         : '';
+    const l_oldname = x_monnam(mtmp, ARTICLE_THE, null,
+                              has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, false);
 
     if (!mdat) {
         let tryct = 20;
@@ -4064,8 +4139,7 @@ export function newcham(mtmp, mdat, ncflags) {
 
     /* take on the new form */
     const olddata = game.mons[mtmp.mnum];
-    mtmp.mnum = mndx;
-    mtmp.data = mdat;
+    set_mon_data(mtmp, mdat);
 
     const leashNeedsRelease = mtmp.mleashed
         && (mtmp.mnum === PMNAMES.PM_LONG_WORM
@@ -4073,6 +4147,18 @@ export function newcham(mtmp, mdat, ncflags) {
             || (nolimbs(mtmp.data) && !has_head(mtmp.data)));
     if (mtmp.mleashed && !leashNeedsRelease)
         update_inventory();
+
+    const finishDisplay = () => {
+        if (mdat === game.mons[PMNAMES.PM_LONG_WORM]
+            && (mtmp.wormno = get_wormno()) !== 0) {
+            worm_wire(goodpos);
+            initworm(mtmp, rn2(5));
+            place_worm_tail_randomly(mtmp, mtmp.mx, mtmp.my);
+        }
+
+        mtmp.meverseen = 0;
+        newsym(mtmp.mx, mtmp.my);
+    };
 
     const finishChange = () => {
         if (emits_light(olddata) !== emits_light(mdat)) {
@@ -4083,15 +4169,37 @@ export function newcham(mtmp, mdat, ncflags) {
                                  LS_MONSTER, mtmp.m_id);
         }
 
-        if (mdat === game.mons[PMNAMES.PM_LONG_WORM]
-            && (mtmp.wormno = get_wormno()) !== 0) {
-            worm_wire(goodpos);
-            initworm(mtmp, rn2(5));
-            place_worm_tail_randomly(mtmp, mtmp.mx, mtmp.my);
+        if (game.u.ustuck === mtmp) {
+            return (async () => {
+                if (game.u.uswallow) {
+                    if (!attacktype(mdat, ATTKS.AT_ENGL)) {
+                        if (!noncorporeal(mdat) && !is_whirly(mdat)
+                            && !(amorphous(mdat) || mdat.mlet === MONSYMS.S_LIGHT)) {
+                            const msgtrail = is_vampshifter(mtmp)
+                                ? ` which was a shapeshifted ${noname_monnam(mtmp, ARTICLE_NONE)}`
+                                : digests(mdat) ? "'s stomach" : '';
+                            await You(`${amorphous(olddata) || is_whirly(olddata)
+                                ? 'emerge from' : 'break out of'} ${l_oldname}${msgtrail}!`);
+                            msg = false;
+                            mtmp.mhp = 1;
+                        }
+                        const { expels } = await import('./mhitu.js');
+                        await expels(mtmp, olddata, false);
+                    } else {
+                        const { swallowed } = await import('./display.js');
+                        await swallowed(0);
+                    }
+                } else if ((!sticks(mdat) && !sticks(game.youmonst.data))
+                           || unsolid(mdat)) {
+                    await unstuck(mtmp);
+                }
+                finishDisplay();
+                return await finishPostChange();
+            })();
         }
 
-        mtmp.meverseen = 0;
-        newsym(mtmp.mx, mtmp.my);
+        finishDisplay();
+        return msg ? finishPostChange() : 1;
     };
 
     const showChange = async () => {
@@ -4137,13 +4245,11 @@ export function newcham(mtmp, mdat, ncflags) {
                 update_inventory();
             }
             mtmp.mleashed = 0;
-            finishChange();
-            return msg ? await finishPostChange() : 1;
+            return await finishChange();
         })();
     }
 
-    finishChange();
-    return msg ? finishPostChange() : 1;
+    return finishChange();
 }
 
 // src/mon.c:4367 wake_nearby() / wake_nearto_core() — noise wakes monsters
@@ -4451,6 +4557,45 @@ export function mlifesaver(mon) {
             return otmp;
     }
     return null;
+}
+
+// src/mon.c:2808 set_mon_min_mhpmax()
+function set_mon_min_mhpmax(mon, minimum_mhpmax) {
+    if (mon.mhpmax < mon.m_lev + 1)
+        mon.mhpmax = mon.m_lev + 1;
+    if (mon.mhpmax < minimum_mhpmax)
+        mon.mhpmax = minimum_mhpmax;
+}
+
+// src/mon.c:2839 lifesaved_monster()
+async function lifesaved_monster(mtmp) {
+    const lifesave = mlifesaver(mtmp);
+    if (!lifesave)
+        return;
+    if (cansee(mtmp.mx, mtmp.my)) {
+        await pline('But wait...');
+        await pline(`${s_suffix(Monnam(mtmp))} medallion begins to glow!`);
+        makeknown(ONAMES.AMULET_OF_LIFE_SAVING);
+        if (canseemon(mtmp)) {
+            await pline(`${Monnam(mtmp)} ${attacktype(mtmp.data, ATTKS.AT_EXPL)
+                || attacktype(mtmp.data, ATTKS.AT_BOOM) ? 'reconstitutes' : 'looks much better'}!`);
+        }
+        await pline_The('medallion crumbles to dust!');
+    }
+    await m_useup(mtmp, lifesave);
+    check_gear_next_turn(mtmp);
+    const surviver = !(game.mvitals[monsndx(mtmp.data)].mvflags & G_GENOD);
+    mtmp.mcanmove = 1;
+    mtmp.mfrozen = 0;
+    if (mtmp.mtame && !mtmp.isminion)
+        await wary_dog(mtmp, !surviver);
+    set_mon_min_mhpmax(mtmp, 10);
+    mtmp.mhp = mtmp.mhpmax;
+    if (!surviver) {
+        if (cansee(mtmp.mx, mtmp.my))
+            await pline(`Unfortunately, ${mon_nam(mtmp)} is still genocided...`);
+        mtmp.mhp = 0;
+    }
 }
 
 // src/mon.c mimic_hit_msg(); a disguised mimic hit by healing magic

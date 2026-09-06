@@ -1,11 +1,19 @@
+import { findAc, setArmorWorn } from './do_wear.js';
+import { ARMOR_MAGIC_NEGATION } from './armor.js';
+import { initializeSkills, ROLE_SKILL_LIMITS, spellSkillType } from './skills.js';
+import { setArtifactEquipmentLight } from './artifact.js';
+import { monsterCastSpell, afterMeltHeroSpotEffects, runMonsterAttackTurn } from './cmd.js';
+import { supportsMonsterAttackSlots } from './mhitu.js';
+import { clearHeroSickness, adjustHeroAttribute, heroCanSpotMonster, heroIsBlind, hcolor } from './cmd.js';
+import { AT_BOOM, AT_MAGC, AD_SPEL, AD_CLRC, is_hider } from './permonst.js';
 // allmain.js — Main game setup and move loop.
 
 // C refs: src/allmain.c:newgame(), moveloop_core().
 
 import { game } from './gstate.js';
 import { amulet as wizardAmuletTurn, demigodTurnHook, clonewiz, noOfWizards, aggravate as wizardAggravate } from './wizard.js';
-import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, maketrap, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, STONE_RESISTANT_MONSTERS, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty, chameleonAnimalForm, doppelgangerHumanoidForm, noteleportLevelForMonster, rlocNoMsg, rlocToCoreNoMsg, somexyspace, fumaroles, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, add_to_minv } from './mklev.js';
-import { rhack, travelStepEndsAtTarget, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, triggerPickDigTrapUnderHero, billDigShopTerrainDamage, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, takeOffGlovesPetrifyingSelfTouchMessages, addBootsOffSideEffects, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, brokenPotionBreathe, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, monsterPolyTrapEffect, stoneMonster, processCorpseTimers, processGlobShrinkTimers, addDelayedFoodBiteNutrition, addShopTerrainDamage, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger, applyHeroFireExplosionInventoryDamage, applyHeroColdExplosionInventoryDamage, applyHeroElectricExplosionInventoryDamage, applyChestTrapPayload, applyLifeSavingOrFatalCommandMode, processHeroLavaSinkingTurn, randomTeleportDepth, levelTeleportNumericTarget, downGateAt, impactDropFloorObjects, queueImpactDroppedObjects, maybeTurnPolyselfIntoStoneGolem, randomMonsterPolymorphTarget, applyMonsterPolymorphTarget, heroMeleeFireInventoryBurn, coldTouchDestroyItemsProgram } from './cmd.js';
+import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, maketrap, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, STONE_RESISTANT_MONSTERS, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty, chameleonAnimalForm, doppelgangerHumanoidForm, noteleportLevelForMonster, rlocNoMsg, rlocToCoreNoMsg, somexyspace, fumaroles, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, add_to_minv, putSaddleOnMonster } from './mklev.js';
+import { rhack, travelStepEndsAtTarget, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, triggerPickDigTrapUnderHero, billDigShopTerrainDamage, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, updateGauntletsOfPowerStrength, takeOffGlovesPetrifyingSelfTouchMessages, addBootsOffSideEffects, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, brokenPotionBreathe, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, monsterPolyTrapEffect, stoneMonster, CORPSE_TIMER_HANDLERS, runOrganicRotTimer, shrinkGlob, addDelayedFoodBiteNutrition, addShopTerrainDamage, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger, applyHeroFireExplosionInventoryDamage, applyHeroColdExplosionInventoryDamage, applyHeroElectricExplosionInventoryDamage, applyChestTrapPayload, applyLifeSavingOrFatalCommandMode, processHeroLavaSinkingTurn, randomTeleportDepth, levelTeleportNumericTarget, downGateAt, impactDropFloorObjects, queueImpactDroppedObjects, maybeTurnPolyselfIntoStoneGolem, randomMonsterPolymorphTarget, applyMonsterPolymorphTarget, heroMeleeFireInventoryBurn, coldTouchDestroyItemsProgram } from './cmd.js';
 import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, view_from } from './vision.js';
 import { init_objects } from './o_init.js';
@@ -18,6 +26,8 @@ import {
     mmAggression as monsterMonsterAggression,
     mMoveAggress as monsterMoveAggress,
     resistConflict as monsterResistsConflict,
+    resistMon,
+    findMac as monsterFindMac,
     fightm as monsterConflictFightm,
     attackList as monsterPermonstAttacks,
     selectHwep as monsterSelectHwep,
@@ -32,38 +42,45 @@ import {
     MM_AGGR as MONSTER_MM_AGGR_FLAG,
 } from './mhitm.js';
 import { planMonsterSteal } from './steal.js';
+import { foodObjectNutrition, CARRIED_DELAYED_FOOD_VICTUALS, heroMetalNonFoodNutrition, applyHeroProjectileMonsterLifeSaving, tipHatMonsterNoise, dismountSteedThrown, stackMonsterThrownObject } from './cmd.js';
 import { DIGTYP_BOULDER, DIGTYP_DOOR, DIGTYP_ROCK, DIGTYP_STATUE, DIGTYP_TREE, DIGTYP_UNDIGGABLE, digBoulderAt, digCheckFailed, digCheckFailMessage, digCheckHero, digDbon, digEffortIncrement, digFumblingResult, digHardnessBlockMessage, digOccupationAborted, digTargetName, digTypeOf, digVerb, finishDigContext, finishWallDigTerrain, fractureDigBoulder, inShopBaseAt, pickDigDirectionPrompt, wakeNearbyForDig } from './dig.js';
 import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, GRAVE, ICE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, SINK, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, ANTIMAGIC, MAGIC_PORTAL, POLY_TRAP, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_airlevel, Is_oracle_level, Is_waterlevel, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, STAIRS, LADDER, BOLT_LIM, ZAP_POS, MON_POLE_DIST, NO_WEAPON_WANTED, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHARED, SHARED_PLUS, SHOPBASE, STRAT_APPEARMSG, STRAT_WAITFORU, MIGR_LADDER_UP, MIGR_RANDOM, MON_MIGRATING, W_ACCESSORY, W_ARMOR, W_WEP, isok } from './const.js';
 import { CLR_BROWN, CLR_CYAN, CLR_MAGENTA, CLR_RED, CLR_WHITE, CLR_YELLOW, NO_COLOR } from './terminal.js';
 import { advanceVaultGuard, prepareVaultGuardEscort, restVaultFakecorr } from './vault.js';
 import { DISPLAY_MONSTER_GLYPHS, DISPLAY_MONSTER_HALLU_NAMES, GIANT_M2_MONSTERS } from './monster_data.js';
-import { MONS, MZ_SMALL } from './permonst.js';
+import { MONS, MZ_SMALL, MZ_MEDIUM, MZ_GIGANTIC, strongmonst, throws_rocks, carnivorous, herbivorous, is_animal, mindless, tunnels, needspick, nohands, verysmall, MS_ANIMAL, MS_HUMANOID, AD_MAGM, AD_RBRE, PM_BABY_GRAY_DRAGON } from './permonst.js';
+import { pmOf as monsterSpecies } from './mhitm.js';
+import { W_ARMS, MSLOW, MFAST } from './const.js';
 import { clearMonsterTrack, updateMonsterTrack } from './montrack.js';
 import { createGasCloud } from './region.js';
 import { MONS as PERMONST_MONS } from './permonst.js';
 import { queueGasSporeDeathExplosion } from './monster_death.js';
 import { advanceFireBreathRay, finishHeroTargetedBreath, fireBreathDamageMonster, fireBreathZapHits } from './fire_breath.js';
 import { attachFigurineTransformTimeout, figurineLocationCheck, isFigurineObject, makeFigurineFamiliar, stopFigurineTransformTimeout } from './figurine.js';
-import { processBuriedOrganicRot, processMeltIceTimers, removedFromIcebox } from './ice.js';
+import { meltIceAway, removedFromIcebox } from './ice.js';
+import { runObjectBurnTimer } from './cmd.js';
+import { BURN_OBJECT, HATCH_EGG, FIG_TRANSFORM, ROT_ORGANIC, SHRINK_GLOB, MELT_ICE_AWAY, runTimers, splitObjectTimers } from './timeout.js';
+import { objectLocations } from './obj_location.js';
+import { restoreLifeSavedBody } from './end.js';
 import { SLIME_MOLD_OTYP, applySlimeMoldFruitFields } from './fruit.js';
 import { applyMeltedIceMonsterLiquidEffects } from './monster_liquid.js';
-import { eggHatchMonsterData, eggHasHatchTimer, isEggObject, killEggHatchTimer } from './egg_timers.js';
+import { attachEggHatchTimeout, eggHatchMonsterData, killEggHatchTimer } from './egg_timers.js';
 import { metallivoreObjectResists, monsterCouldEatMetalItem as sharedMonsterCouldEatMetalItem, monsterIsMetallivore, monsterIsRustMonster } from './metallivore.js';
 
 const ROLE_STATE = {
-    Archeologist: { rank: 'Digger', hpBase: 11, enBase: 1, enRnd: 0, ac: 0, initRecord: 10, attrBase: [7, 10, 10, 7, 7, 7], attrDist: [20, 20, 20, 10, 20, 10] },
-    Barbarian: { rank: 'Plunderer', hpBase: 14, enBase: 1, enRnd: 0, ac: 0, initRecord: 10, attrBase: [16, 7, 7, 15, 16, 6], attrDist: [30, 6, 7, 20, 30, 7] },
-    Caveman: { rank: 'Troglodyte', hpBase: 14, enBase: 1, enRnd: 0, ac: 0, initRecord: 0, attrBase: [10, 7, 7, 7, 8, 6], attrDist: [30, 6, 7, 20, 30, 7] },
-    Healer: { rank: 'Rhizotomist', hpBase: 11, enBase: 1, enRnd: 4, ac: 0, initRecord: 10, attrBase: [7, 7, 13, 7, 11, 16], attrDist: [15, 20, 20, 15, 25, 5] },
-    Knight: { rank: 'Gallant', hpBase: 14, enBase: 1, enRnd: 4, ac: 0, initRecord: 10, attrBase: [13, 7, 14, 8, 10, 17], attrDist: [30, 15, 15, 10, 20, 10] },
-    Monk: { rank: 'Candidate', hpBase: 12, enBase: 2, enRnd: 2, ac: 0, initRecord: 10, attrBase: [10, 7, 8, 8, 7, 7], attrDist: [25, 10, 20, 20, 15, 10] },
-    Priest: { rank: 'Aspirant', hpBase: 12, enBase: 4, enRnd: 3, ac: 0, attrBase: [7, 7, 10, 7, 7, 7], attrDist: [15, 10, 30, 15, 20, 10] },
-    Ranger: { rank: 'Tenderfoot', hpBase: 13, enBase: 1, enRnd: 0, ac: 0, initRecord: 10, attrBase: [13, 13, 13, 9, 13, 7], attrDist: [30, 10, 10, 20, 20, 10] },
-    Rogue: { rank: 'Footpad', hpBase: 10, enBase: 1, enRnd: 0, ac: 0, initRecord: 10, attrBase: [7, 7, 7, 10, 7, 6], attrDist: [20, 10, 10, 30, 20, 10] },
-    Samurai: { rank: 'Hatamoto', hpBase: 13, enBase: 1, enRnd: 0, ac: 0, initRecord: 10, attrBase: [10, 8, 7, 10, 17, 6], attrDist: [30, 10, 8, 30, 14, 8] },
-    Tourist: { rank: 'Rambler', hpBase: 8, enBase: 1, enRnd: 0, ac: 0, attrBase: [7, 10, 6, 7, 7, 10], attrDist: [15, 10, 10, 15, 30, 20] },
-    Valkyrie: { rank: 'Stripling', hpBase: 14, enBase: 1, enRnd: 0, ac: 0, attrBase: [10, 7, 7, 7, 10, 7], attrDist: [30, 6, 7, 20, 30, 7] },
-    Wizard: { rank: 'Evoker', hpBase: 10, enBase: 4, enRnd: 3, ac: 0, attrBase: [7, 10, 7, 7, 7, 7], attrDist: [10, 30, 10, 20, 20, 10] },
+    Archeologist: { rank: 'Digger', hpBase: 11, enBase: 1, enRnd: 0, initRecord: 10, attrBase: [7, 10, 10, 7, 7, 7], attrDist: [20, 20, 20, 10, 20, 10] },
+    Barbarian: { rank: 'Plunderer', hpBase: 14, enBase: 1, enRnd: 0, initRecord: 10, attrBase: [16, 7, 7, 15, 16, 6], attrDist: [30, 6, 7, 20, 30, 7] },
+    Caveman: { rank: 'Troglodyte', hpBase: 14, enBase: 1, enRnd: 0, initRecord: 0, attrBase: [10, 7, 7, 7, 8, 6], attrDist: [30, 6, 7, 20, 30, 7] },
+    Healer: { rank: 'Rhizotomist', hpBase: 11, enBase: 1, enRnd: 4, initRecord: 10, attrBase: [7, 7, 13, 7, 11, 16], attrDist: [15, 20, 20, 15, 25, 5] },
+    Knight: { rank: 'Gallant', hpBase: 14, enBase: 1, enRnd: 4, initRecord: 10, attrBase: [13, 7, 14, 8, 10, 17], attrDist: [30, 15, 15, 10, 20, 10] },
+    Monk: { rank: 'Candidate', hpBase: 12, enBase: 2, enRnd: 2, initRecord: 10, attrBase: [10, 7, 8, 8, 7, 7], attrDist: [25, 10, 20, 20, 15, 10] },
+    Priest: { rank: 'Aspirant', hpBase: 12, enBase: 4, enRnd: 3, attrBase: [7, 7, 10, 7, 7, 7], attrDist: [15, 10, 30, 15, 20, 10] },
+    Ranger: { rank: 'Tenderfoot', hpBase: 13, enBase: 1, enRnd: 0, initRecord: 10, attrBase: [13, 13, 13, 9, 13, 7], attrDist: [30, 10, 10, 20, 20, 10] },
+    Rogue: { rank: 'Footpad', hpBase: 10, enBase: 1, enRnd: 0, initRecord: 10, attrBase: [7, 7, 7, 10, 7, 6], attrDist: [20, 10, 10, 30, 20, 10] },
+    Samurai: { rank: 'Hatamoto', hpBase: 13, enBase: 1, enRnd: 0, initRecord: 10, attrBase: [10, 8, 7, 10, 17, 6], attrDist: [30, 10, 8, 30, 14, 8] },
+    Tourist: { rank: 'Rambler', hpBase: 8, enBase: 1, enRnd: 0, attrBase: [7, 10, 6, 7, 7, 10], attrDist: [15, 10, 10, 15, 30, 20] },
+    Valkyrie: { rank: 'Stripling', hpBase: 14, enBase: 1, enRnd: 0, attrBase: [10, 7, 7, 7, 10, 7], attrDist: [30, 6, 7, 20, 30, 7] },
+    Wizard: { rank: 'Evoker', hpBase: 10, enBase: 4, enRnd: 3, attrBase: [7, 10, 7, 7, 7, 7], attrDist: [10, 30, 10, 20, 20, 10] },
 };
 
 const RACE_STATE = {
@@ -185,21 +202,6 @@ export function syncStartupIdentity(g = game) {
     return { roleName, raceName, genderName, alignName, role, race };
 }
 const AVAL = 50;
-const STARTING_AC = {
-    Archeologist: 9,
-    Barbarian: 7,
-    Caveman: 8,
-    Healer: 8,
-    Knight: 3,
-    Monk: 4,
-    Priest: 7,
-    Ranger: 7,
-    Rogue: 7,
-    Samurai: 4,
-    Tourist: 10,
-    Valkyrie: 6,
-    Wizard: 9,
-};
 const PANTHEON_ROLES = ['Archeologist', 'Barbarian', 'Caveman', 'Healer', 'Knight', 'Monk', 'Priest', 'Rogue', 'Ranger', 'Samurai', 'Tourist', 'Valkyrie', 'Wizard'];
 const RANDOM_NEMESIS_GENDER_ROLES = new Set(['Archeologist', 'Wizard']);
 const NON_MIMIC_HIDER_NAMES = new Set(['rock piercer', 'iron piercer', 'glass piercer', 'lurker above', 'trapper']);
@@ -388,34 +390,7 @@ const OPTIONAL_INVENTORY = {
     Money: [{ cls: 'coin' }],
 };
 
-const ARMOR_MAGIC_NEGATION = {
-    'plate mail': 2,
-    'crystal plate mail': 2,
-    'bronze plate mail': 1,
-    'splint mail': 1,
-    'banded mail': 1,
-    'dwarvish mithril-coat': 2,
-    'elven mithril-coat': 2,
-    'chain mail': 1,
-    'orcish chain mail': 1,
-    'scale mail': 1,
-    'studded leather armor': 1,
-    'ring mail': 1,
-    'orcish ring mail': 1,
-    'leather armor': 1,
-    'mummy wrapping': 1,
-    'elven cloak': 1,
-    'orcish cloak': 1,
-    'dwarvish cloak': 1,
-    'oilskin cloak': 2,
-    robe: 2,
-    'alchemy smock': 1,
-    'leather cloak': 1,
-    'cloak of protection': 3,
-    'cloak of invisibility': 1,
-    'cloak of magic resistance': 1,
-    'cloak of displacement': 1,
-};
+
 
 const PET_OBJECT_WEIGHTS = {
     'chain mail': 300,
@@ -583,15 +558,6 @@ const TOURIST_FOODS = [
     [925, 'food ration', 'food rations', 'food ration'],
     [1000, 'tin', 'tins', 'tin'],
 ];
-
-const PET_FOOD_DELAY = {
-    'tripe ration': 2,
-    tripe: 2,
-    pancake: 2,
-    'lembas wafer': 2,
-    'cram ration': 3,
-    'food ration': 5,
-};
 
 const RING_NAMES = [
     'adornment', 'gain strength', 'gain constitution', 'increase accuracy',
@@ -783,14 +749,6 @@ const SPELLBOOKS = [
     { max: 999, blank: true },
     { max: 1000, novel: true },
 ];
-
-const ROLE_SPELL_SKILLS = {
-    Healer: new Set(['healing']),
-    Knight: new Set(['attack', 'healing', 'cleric']),
-    Monk: new Set(['attack', 'healing', 'divination', 'enchantment', 'cleric', 'escape', 'matter']),
-    Priest: new Set(['healing', 'divination', 'cleric']),
-    Wizard: new Set(['attack', 'healing', 'divination', 'enchantment', 'cleric', 'escape', 'matter']),
-};
 
 function helloForRole(role) {
     if (role === 'Knight') return 'Salutations';
@@ -985,11 +943,12 @@ function recordRoleDiscoveries(roleName) {
     }
 }
 
-function recordWizardSpellbookDiscoveries(roleName) {
+export function recordWizardSpellbookDiscoveries(roleName = game.urole?.name?.m || game._startup_role) {
     if (roleName !== 'Wizard') return;
-    const knownLevel = { attack: 3, enchantment: 3, healing: 1, divination: 1, cleric: 1, escape: 1, matter: 1 };
     for (const spell of SPELLBOOKS) {
-        if (spell.blank || spell.novel || spell.level > (knownLevel[spell.skill] || 0)) continue;
+        const level = game.u.weapon_skills?.[spellSkillType(spell.skill)]?.skill || 0;
+        const knownLevel = level >= 4 ? 7 : level === 3 ? 5 : level === 2 ? 3 : game.u.uroleplay?.pauper ? 0 : 1;
+        if (spell.blank || spell.novel || spell.level > knownLevel) continue;
         const name = `spellbook of ${spell.name}`;
         if ((game._discoveries || []).some(entry => entry.section === 'Spellbooks' && entry.name === name)) continue;
         const index = SPELLBOOKS.findIndex(candidate => candidate.name === spell.name);
@@ -1166,8 +1125,7 @@ function spellbookAllowed(spell, state) {
     if (spell.forceBolt && state.roleName === 'Wizard') return false;
     if (state.noCreateSpell === spell) return false;
     if (spell.level > (state.gotSpell1 ? 3 : 1)) return false;
-    const skills = ROLE_SPELL_SKILLS[state.roleName];
-    return !skills || skills.has(spell.skill);
+    return ROLE_SKILL_LIMITS[state.roleName].some(([skill]) => skill === spellSkillType(spell.skill));
 }
 
 function randomObjectAllowed(cls, obj, state) {
@@ -1457,7 +1415,8 @@ function initializeRoleInventory(roleName, raceName) {
     recordRoleDiscoveries(roleName);
     recordRaceDiscoveries(raceName);
     for (const item of state.inventory) recordStartupInventoryDiscovery(item);
-    recordWizardSpellbookDiscoveries(roleName);
+    initializeSkills(roleName, state.inventory);
+    if (!game.u.uroleplay?.pauper) recordWizardSpellbookDiscoveries(roleName);
     let wielded = false;
     let alternate = false;
     let quivered = false;
@@ -1536,7 +1495,7 @@ function initializeRoleInventory(roleName, raceName) {
         else if (quan === 1) phrase = `${/^[aeiou]/i.test(phrase) ? 'an' : 'a'} ${phrase}`;
         item.line = `${item.letter} - ${phrase}${suffix}`;
     }
-    game._known_spells = state.knownSpells;
+    game._known_spells = state.knownSpells.map(spell => ({ ...spell, knowledge: 20000 }));
     return state.inventory;
 }
 
@@ -1571,19 +1530,21 @@ function initializeHero() {
     }
 
     game.u.ulevel = 1;
+    game.u.ulevelmax = 1;
+    game.u.ulevelpeak = 1;
     game.u.uhp = game._initialHp;
     game.u.uhpmax = game._initialHp;
     game.u.uen = game._initialEnergy;
     game.u.uenmax = game._initialEnergy;
+    game.u.uenpeak = game._initialEnergy;
     // C ref: u_init.c:995-998 — the initial hero values come from newhp()/
     // newpw() with u.ulevel == 0, which also store u.uhpinc[0]/u.ueninc[0]
     // (attrib.c:1130-1131, exper.c:70-71); newman() subtracts them again as
     // "level gain" HP/Pw (polyself.c:385-388, 400-401).
     game.u.uhpinc = [game._initialHp];
     game.u.ueninc = [game._initialEnergy];
-    game.u.uac = game.flags?.legacy === false ? (STARTING_AC[roleName] ?? role.ac) : role.ac;
+    findAc();
     game.u.uhunger = 900;
-    game._post_intro_ac = STARTING_AC[roleName] ?? role.ac;
     if ((game._known_spells || []).length && game.u.uenmax < 5)
         game._post_intro_energy = 5;
     game.u.uexp = 0;
@@ -1604,61 +1565,63 @@ function initializeHero() {
 }
 
 function initializePet() {
-    if (game.preferred_pet === 'n') return;
+    if (game.preferred_pet === 'n') {
+        game.context.startingpet_typ = -1; // dog.c:makedog uses NON_PM.
+        return;
+    }
 
     const roleName = game._startup_role || 'Tourist';
-    const fixed = ROLE_PET[roleName];
-    let pet = fixed;
+    let pet = ROLE_PET[roleName];
     if (!pet) {
         if (game.preferred_pet === 'c') pet = 'cat';
         else if (game.preferred_pet === 'd') pet = 'dog';
         else pet = rn2(2) ? 'cat' : 'dog';
     }
-
+    const petName = pet === 'cat' ? 'kitten' : pet === 'dog' ? 'little dog' : pet;
+    game.context.startingpet_typ = MONS.find(mon => mon.name === petName).pm;
     const spots = collectCoords(game.u.ux, game.u.uy, 3);
-
-    next_ident();
-    const hp = d(pet === 'pony' ? 2 : 1, 8);
-    const petFemale = !!rn2(2);
-    if (pet === 'pony') next_ident();
+    const mon = {
+        m_id: next_ident(),
+        mhp: d(pet === 'pony' ? 2 : 1, 8),
+        female: !!rn2(2),
+        m_lev: pet === 'pony' ? 2 : 1,
+        pet: true,
+        givenName: game.petNames?.[pet] || (pet === 'dog' ? DEFAULT_DOG_NAMES[roleName] : ''),
+        saddled: false,
+        minvent: [],
+        mtame: 10,
+        mpeaceful: 1,
+        mextra: { edog: { apport: 3, hungrytime: 1001, dropdist: 10000, whistletime: 0, ogoal: { x: 0, y: 0 } } },
+        data: {
+            name: petName,
+            mlet: pet === 'cat' ? 'feline' : pet === 'pony' ? 'unicorn' : 'dog',
+            mlevel: pet === 'pony' ? 3 : 2,
+            mac: 6,
+            mmove: pet === 'pony' ? 16 : 18,
+            small: pet === 'cat' || pet === 'dog',
+            nohands: true,
+            wanderer: pet === 'cat' || pet === 'pony',
+            attack: pet === 'pony' ? { dice: 1, sides: 6, verb: 'kicks' } : { dice: 1, sides: 6, verb: 'bites' },
+        },
+    };
+    mon.mhpmax = mon.mhp;
+    mon.mextra.edog.parentmid = mon.m_id;
+    // dog.c:makedog explicitly equips the initial pony after NO_MINVENT
+    // creation. Pauper characters keep the pony but do not receive a saddle.
+    if (pet === 'pony' && !game.u.uroleplay?.pauper) putSaddleOnMonster(mon);
     if ((game._startup_align || 'neutral') === 'neutral') {
         if (rn2(16 + (game.u?.ualign?.record || 0))) rn2(2);
     }
 
     for (const { x, y } of spots) {
         const loc = game.level?.at(x, y);
-        const occupied = game.level?.monsters?.some(mon => mon.mx === x && mon.my === y);
+        const occupied = game.level?.monsters?.some(other => other.mx === x && other.my === y);
         if (!loc || IS_OBSTRUCTED(loc.typ) || occupied) continue;
-        const petName = pet === 'cat' ? 'kitten' : pet === 'dog' ? 'little dog' : pet;
-        const givenName = game.petNames?.[pet] || (pet === 'dog' ? DEFAULT_DOG_NAMES[roleName] : '');
-        const mlet = pet === 'cat' ? 'feline' : pet === 'pony' ? 'unicorn' : 'dog';
+        mon.mx = x; mon.my = y;
+        game.context.startingpet_mid = mon.m_id;
         game.u.uconduct ??= {};
         game.u.uconduct.pets = (game.u.uconduct.pets || 0) + 1;
-        game.level?.monsters?.push({
-            mx: x,
-            my: y,
-            mhp: hp,
-            mhpmax: hp,
-            m_lev: pet === 'pony' ? 2 : 1,
-            pet: true,
-            female: petFemale,
-            givenName,
-            saddled: pet === 'pony',
-            mtame: 10,
-            mpeaceful: 1,
-            mextra: { edog: { apport: 3, hungrytime: 1001, dropdist: 10000, whistletime: 0, ogoal: { x: 0, y: 0 } } },
-            data: {
-                name: petName,
-                mlet,
-                mlevel: pet === 'pony' ? 3 : 2,
-                mac: pet === 'pony' ? 6 : 6,
-	                mmove: pet === 'pony' ? 16 : 18,
-                small: pet === 'cat' || pet === 'dog',
-	                nohands: true,
-	                wanderer: pet === 'cat' || pet === 'pony',
-	                attack: pet === 'pony' ? { dice: 1, sides: 6, verb: 'kicks' } : { dice: 1, sides: 6, verb: 'bites' },
-	            },
-	        });
+        game.level.monsters.push(mon);
         return;
     }
 }
@@ -1731,6 +1694,7 @@ const CORPSE = 471;
 const STATUE = 472;
 const POISONOUS_CORPSES = new Set(['kobold', 'large kobold', 'kobold leader', 'kobold shaman']);
 const CORPSE_EATER_MONSTERS = new Set(['purple worm', 'baby purple worm', 'ghoul', 'piranha']);
+const ARROW = 349;
 const DART = 353;
 const CREAM_PIE = 10081;
 const BLINDING_VENOM = 10184;
@@ -1918,12 +1882,14 @@ function monsterDietName(mon) {
 
 function monsterCarnivorous(mon, name = monsterDietName(mon)) {
     const data = mon?.data || {};
-    return !!(data.carnivorous || data.carnivore) || CARNIVOROUS_PET_NAMES.has(name);
+    return !!(data.carnivorous || data.carnivore) || CARNIVOROUS_PET_NAMES.has(name)
+        || carnivorous(monsterSpecies(mon) || {});
 }
 
 function monsterHerbivorous(mon, name = monsterDietName(mon)) {
     const data = mon?.data || {};
-    return !!(data.herbivorous || data.herbivore) || HERBIVOROUS_PET_NAMES.has(name);
+    return !!(data.herbivorous || data.herbivore) || HERBIVOROUS_PET_NAMES.has(name)
+        || herbivorous(monsterSpecies(mon) || {});
 }
 
 function dogFoodCorpseIsOld(obj) {
@@ -2394,9 +2360,7 @@ function maybeKillerBeeEatRoyalJelly(mon) {
     }
 
     if (mon.pet) {
-        const edog = mon.mextra?.edog;
-        if (edog) edog.hungrytime = Math.max(edog.hungrytime || 0, game.moves || 1) + 200;
-        mon.mtame = Math.min(20, (mon.mtame || 10) + 1);
+        if (mon.mextra?.edog) applyPetFoodNutrition(mon, jelly);
         game._pet_skip_post_move_roll = 1;
     }
     const delay = jelly.blessed ? 3 : jelly.cursed ? 7 : 5;
@@ -2506,7 +2470,7 @@ function petrifyMonsterAttacker(attacker, defender, { visible = false, messages 
     return true;
 }
 
-function addToplineMessage(msg) {
+export function addToplineMessage(msg) {
     if (process.env.MSGTRACE) (globalThis.__mt ??= []).push({f:'addTopline', text:String(msg||''), moves:game.moves, uhp:game.u?.uhp, pend:game._pending_message, mm:game._message_more});
     let text = String(msg || '');
     if (process.env.TLDBG) process.stderr.write(`TLDBG  msg="${text.slice(0,50)}" moves=${game.moves} pend=${game._pending_time_passed} spc=${game._search_pending_count} more=${game._message_more?1:0} cmd=${game._command_mode||''} rngidx=${getRngLog().length}
@@ -2610,7 +2574,8 @@ function addToplineMessage(msg) {
 // charged turn in its wake: the pass it happened in is the last one, after
 // which rhack(0) reads the next key (allmain.c:479's charge only reaches
 // the next pass when the occupation branch returned before rhack).
-function stopCountedSearchOccupationOnHeroHit(fatalHit = false) {
+export function stopCountedSearchOccupationOnHeroHit(fatalHit = false) {
+    if (!fatalHit) interruptSpellbookStudy();
     if (!game._counted_repeat_interruptible || !(game._search_pending_count > 0))
         return;
     if (fatalHit) {
@@ -2675,9 +2640,7 @@ function restoreHeroHpForUnresolvedWizardDeath() {
     if (!(game.flags?.debug || game.flags?.explore)) return;
     const u = game.u;
     if (!u || !('uhp' in u)) return;
-    const con = u.acurr?.a?.[A_CON] ?? 10;
-    const givehp = 50 + 10 * Math.trunc(con / 2);
-    u.uhp = Math.min(u.uhpmax || 1, givehp);
+    restoreLifeSavedBody(u);
     game._death_pending_confirm = true; // cleared when the Die? prompt resolves
 }
 
@@ -2700,7 +2663,7 @@ function applyHeroLavaSinkingAfterTurn() {
     return result;
 }
 
-function appendAfterMoreMessage(msg) {
+export function appendAfterMoreMessage(msg) {
     if (!msg) return;
     if (!game._topline_after_more) {
         game._topline_after_more = msg;
@@ -3354,7 +3317,7 @@ export function interruptEatingOccupation(g = game, options = {}) {
     return true;
 }
 
-function interruptPositiveMulti() {
+export function interruptPositiveMulti() {
     game._run_steps_remaining = 0;
     game._running_continuation = 0;
     game._initial_run_command = 0;
@@ -3369,7 +3332,20 @@ function interruptPositiveMultiForStoning() {
     interruptPositiveMulti();
 }
 
-function clearActiveDelayedOccupations(options = {}) {
+export function interruptSpellbookStudy() {
+    const study = game._spellbook_study_occupation;
+    if (!study) return;
+    // stop_occupation retains context.spbook so reading this same object can
+    // resume its remaining delay; obfree/book_disappears invalidates it.
+    game._spellbook_interrupted_study = study;
+    game._spellbook_study_occupation = null;
+    game._pending_time_passed = Math.min(game._pending_time_passed || 0, 1);
+    game._run_steps_remaining = 0;
+    addToplineMessage('You stop studying.');
+    game._keep_pending_message = 1;
+}
+
+export function clearActiveDelayedOccupations(options = {}) {
     const activeEating = game._eating_turns_remaining > 0;
     if (activeEating || options.clearEatingAlways) {
         if (activeEating && options.interruptEating) {
@@ -3380,9 +3356,11 @@ function clearActiveDelayedOccupations(options = {}) {
             game._pending_rotten_food_eating_message = 0;
         }
     }
-    game._armor_wear_occupation = null;
-    game._armor_takeoff_after_more = null;
-    game._armor_finish_after_more = 0;
+    if (!options.interruptibleOnly) {
+        game._armor_wear_occupation = null;
+        game._armor_takeoff_after_more = null;
+        game._armor_finish_after_more = 0;
+    }
     game._force_lock_occupation = null;
     game._force_lock_continue_time = 0;
     game._force_lock_finish_after_more = null;
@@ -3396,18 +3374,38 @@ function clearActiveDelayedOccupations(options = {}) {
     game._tin_opening_occupation = null;
     game._tin_finish_after_turn = null;
     game._tin_opened_pending = null;
-    game._spellbook_study_occupation = null;
+    interruptSpellbookStudy();
     game._spellbook_finish_after_topline_more = null;
-    game._prayer_occupation = 0;
-    game._prayer_pending_done = 0;
-    game._pending_prayer_finish_message = 0;
-    game._prayer_process_time_now = 0;
-    game._prayer_split_finish_message = 0;
-    game._prayer_split_waiting_for_time = 0;
-    game._prayer_split_remaining_time = 0;
+    if (!options.interruptibleOnly) {
+        game._prayer_occupation = 0;
+        game._prayer_pending_done = 0;
+        game._pending_prayer_finish_message = 0;
+        game._prayer_process_time_now = 0;
+        game._prayer_split_finish_message = 0;
+        game._prayer_split_waiting_for_time = 0;
+        game._prayer_split_remaining_time = 0;
+    }
     if (options.clearPrayerDebug) game._prayer_debug_pleased = 0;
     if (options.clearPrayerTrouble) game._prayer_nearby_trouble = 0;
     if (options.clearInvulnerability && game.u) game.u.uinvulnerable = false;
+}
+
+// allmain.c:stop_occupation preserves negative multi (existing helplessness).
+export function stopHeroOccupation() {
+    const activity = game._pick_lock_occupation ? (game._pick_lock_occupation.action || 'picking the lock')
+        : game._force_lock_occupation ? 'forcing the lock'
+        : game._pick_dig_occupation ? 'digging' : game._tin_opening_occupation ? 'opening the tin' : null;
+    stopCountedSearchOccupationOnHeroHit();
+    clearActiveDelayedOccupations({ interruptEating: true, addEatingMessage: true, interruptibleOnly: true });
+    if (activity) addToplineMessage(`You stop ${activity}.`);
+    interruptPositiveMulti();
+    game.multi = Math.min(game.multi || 0, -(game._helpless_time || 0));
+    if (game.multi >= 0) {
+        game.multi = 0;
+        game.u.usleep = 0;
+        game.u.uinvulnerable = false;
+        game.multi_reason = null;
+    }
 }
 
 // C ref: timeout.c:150-166 stoned_dialogue() stages 4 ("limbs
@@ -3515,7 +3513,7 @@ function processAttributeExercise() {
 
     const oneShotExerciseTurnOffset = game._exercise_turn_offset || 0;
     const exerciseTurnOffset = oneShotExerciseTurnOffset;
-    const turn = (game.moves || 1) + 1 + exerciseTurnOffset;
+    const turn = (game.moves || 1) + exerciseTurnOffset;
     const skipPeriodicExerciseTurn = game._skip_periodic_exercise_turn || 0;
     const skipPeriodicExerciseAtTurn = !!skipPeriodicExerciseTurn && turn === skipPeriodicExerciseTurn;
     if (skipPeriodicExerciseAtTurn) game._skip_periodic_exercise_turn = 0;
@@ -4060,13 +4058,6 @@ function removeHatchedEgg(entry) {
     }
 }
 
-function rescheduleHatchedEggStack(egg) {
-    const delay = rnd(12);
-    egg.eggHatchTurn = (game.moves || 1) + delay;
-    egg._egg_hatch_consumed = true;
-    egg._egg_hatch_seq = game._egg_hatch_timer_seq = (game._egg_hatch_timer_seq || 0) + 1;
-}
-
 function ensureHatchedPetExtension(mon) {
     mon.mextra ??= {};
     mon.mextra.edog ??= {
@@ -4105,142 +4096,71 @@ function hatchedMonsterArticle(mon, plural) {
 }
 
 function reportEggHatch(entry, mon, hatchcount, x, y, yours) {
+    const messages = [];
     const visible = !entry.silent && (cansee(x, y) || !game.viz_array);
     const plural = hatchcount > 1;
     if (entry.source === 'inventory') {
-        if (visible) addToplineMessage(`You see ${hatchedMonsterArticle(mon, plural)} drop out of your pack!`);
-        else addToplineMessage('You feel something drop from your pack!');
-        if (yours) addToplineMessage(`${plural ? 'Their' : 'Its'} crying sounds like "${game.flags?.female ? 'mommy' : 'daddy'}${entry.egg?.spe ? '.' : '?'}"`);
+        if (visible) messages.push(`You see ${hatchedMonsterArticle(mon, plural)} drop out of your pack!`);
+        else messages.push('You feel something drop from your pack!');
+        if (yours) messages.push(`${plural ? 'Their' : 'Its'} crying sounds like "${game.flags?.female ? 'mommy' : 'daddy'}${entry.egg?.spe ? '.' : '?'}"`);
     } else if (entry.source === 'floor' && visible) {
-        addToplineMessage(`You see ${hatchedMonsterArticle(mon, plural)} hatch.`);
+        messages.push(`You see ${hatchedMonsterArticle(mon, plural)} hatch.`);
     } else if (entry.source === 'minvent' && visible) {
-        addToplineMessage(`You see ${hatchedMonsterArticle(mon, plural)} drop out of ${monsterDisplayName(entry.carrier)}'s pack!`);
+        messages.push(`You see ${hatchedMonsterArticle(mon, plural)} drop out of ${monsterDisplayName(entry.carrier)}'s pack!`);
     }
+    return messages;
 }
 
-function containedObjectChildren(obj) {
-    const lists = [];
-    if (Array.isArray(obj?.contents)) lists.push(obj.contents);
-    if (Array.isArray(obj?.cobj) && obj.cobj !== obj.contents) lists.push(obj.cobj);
-    return lists.flat();
-}
-
-function appendContainedDueEggEntries(entries, container, context, seen, moves) {
-    for (const child of containedObjectChildren(container)) {
-        if (!child || seen.has(child)) continue;
-        seen.add(child);
-        if (isEggObject(child) && eggHasHatchTimer(child) && child.eggHatchTurn <= moves)
-            entries.push({ egg: child, source: 'contained', container, ...context });
-        appendContainedDueEggEntries(entries, child, context, seen, moves);
+// C timeout.c hatch_egg: blocked species still consume the ownership and
+// stack-size draws. Containers and migrating objects have no hatch location.
+export async function hatchEgg(egg, timeout, g = game) {
+    const location = objectLocations(g).get(egg);
+    killEggHatchTimer(egg, g);
+    if (!location || !egg.corpsenm?.name) return;
+    const source = location.parent ? 'contained' : location.buried ? 'buried' : location.source;
+    const entry = { egg, source, carrier: location.owner, silent: timeout !== g.moves };
+    const yours = !!egg.spe || (source === 'inventory' && !g.flags?.female && !rn2(2));
+    if (source === 'contained' || source === 'buried' || source === 'migrating') return;
+    const { x, y } = eggObjectLocation(entry);
+    const targetCount = rnd(Math.max(1, egg.quan || 1));
+    const data = eggHatchMonsterData(egg, g);
+    if (!data) return;
+    let hatched = 0;
+    let lastMon = null;
+    for (let i = 0; i < targetCount; i++) {
+        const spot = enextoMonsterSpot(x, y, data);
+        if (!spot) break;
+        const mon = await makemon(data, spot.x, spot.y, NO_MINVENT | MM_NOMSG);
+        if (!mon) break;
+        tameHatchedMonster(mon, entry, yours);
+        newsym(mon.mx, mon.my);
+        lastMon = mon;
+        // C breaks before decrementing its loop counter if this birth
+        // exhausts the species, so this last monster consumes no egg.
+        if ((g._extinct_monsters || []).includes(data.name)) break;
+        hatched++;
     }
-}
-
-function appendInertDueEggEntries(entries, objects, source, seen, moves, context = {}) {
-    if (!Array.isArray(objects)) return;
-    for (const obj of objects) {
-        if (!obj || seen.has(obj)) continue;
-        seen.add(obj);
-        if (isEggObject(obj) && eggHasHatchTimer(obj) && obj.eggHatchTurn <= moves)
-            entries.push({ egg: obj, source, ...context });
-        appendInertDueEggEntries(entries, containedObjectChildren(obj), source, seen, moves, context);
-    }
-}
-
-function appendMigratingDueEggEntries(entries, g, seen, moves) {
-    if (g._impact_drop_migrations instanceof Map) {
-        for (const objects of g._impact_drop_migrations.values())
-            appendInertDueEggEntries(entries, objects, 'migrating', seen, moves);
-    }
-    appendInertDueEggEntries(entries, g.migrating_objs, 'migrating', seen, moves);
-    appendInertDueEggEntries(entries, g._migrating_objs, 'migrating', seen, moves);
-    for (const carrier of [...(g.migrating_mons || []), ...(g._migrating_mons || [])])
-        appendInertDueEggEntries(entries, carrier?.minvent, 'migrating', seen, moves, { carrier });
-}
-
-function dueEggEntries(g) {
-    const entries = [];
-    const containedSeen = new Set();
-    const inertSeen = new Set();
-    const moves = g.moves || 0;
-    for (const egg of [...(g.inventory || [])]) {
-        if (isEggObject(egg) && eggHasHatchTimer(egg) && egg.eggHatchTurn <= moves)
-            entries.push({ egg, source: 'inventory' });
-        appendContainedDueEggEntries(entries, egg, { containerSource: 'inventory' }, containedSeen, moves);
-    }
-    for (const egg of [...(g.level?.objects || [])]) {
-        if (isEggObject(egg) && eggHasHatchTimer(egg) && egg.eggHatchTurn <= moves)
-            entries.push({ egg, source: 'floor' });
-        appendContainedDueEggEntries(entries, egg, { containerSource: 'floor' }, containedSeen, moves);
-    }
-    for (const carrier of [...(g.level?.monsters || [])]) {
-        for (const egg of [...(carrier.minvent || [])]) {
-            if (isEggObject(egg) && eggHasHatchTimer(egg) && egg.eggHatchTurn <= moves)
-                entries.push({ egg, source: 'minvent', carrier });
-            appendContainedDueEggEntries(entries, egg, { containerSource: 'minvent', carrier }, containedSeen, moves);
-        }
-    }
-    appendInertDueEggEntries(entries, g.level?.buriedobjlist, 'buried', inertSeen, moves);
-    appendMigratingDueEggEntries(entries, g, inertSeen, moves);
-    return entries.sort((a, b) => ((a.egg.eggHatchTurn || 0) - (b.egg.eggHatchTurn || 0))
-        || ((b.egg._egg_hatch_seq || 0) - (a.egg._egg_hatch_seq || 0)));
+    if (!lastMon) return;
+    egg.quan = Math.max(0, (egg.quan || 1) - hatched);
+    const messages = reportEggHatch(entry, lastMon, hatched, x, y, yours);
+    g._egg_hatch_processed = (g._egg_hatch_processed || 0) + hatched;
+    if (egg.quan > 0) {
+        attachEggHatchTimeout(egg, rnd(12), g);
+        egg.owt = egg.quan;
+    } else removeHatchedEgg(entry);
+    return messages;
 }
 
 export async function processEggHatchTimeouts(g = game) {
-    for (const entry of dueEggEntries(g)) {
-        const egg = entry.egg;
-        killEggHatchTimer(egg);
-        const data = eggHatchMonsterData(egg, g);
-        if (!data || entry.source === 'contained' || entry.source === 'buried' || entry.source === 'migrating') continue;
-
-        const yours = !!egg.spe || (entry.source === 'inventory' && !game.flags?.female && !rn2(2));
-        const { x, y } = eggObjectLocation(entry);
-        const targetCount = rnd(Math.max(1, egg.quan || 1));
-        let hatched = 0;
-        let lastMon = null;
-        for (let i = 0; i < targetCount; i++) {
-            const spot = enextoMonsterSpot(x, y, data);
-            if (!spot) break;
-            const mon = await makemon(data, spot.x, spot.y, NO_MINVENT | MM_NOMSG);
-            if (!mon) break;
-            tameHatchedMonster(mon, entry, yours);
-            newsym(mon.mx, mon.my);
-            lastMon = mon;
-            hatched++;
-        }
-        if (!hatched) continue;
-
-        egg.quan = Math.max(0, (egg.quan || 1) - hatched);
-        reportEggHatch(entry, lastMon, hatched, x, y, yours);
-        game._egg_hatch_processed = (game._egg_hatch_processed || 0) + hatched;
-        if ((egg.quan || 0) > 0) rescheduleHatchedEggStack(egg);
-        else removeHatchedEgg(entry);
-    }
+    const messages = await runTimers({ [HATCH_EGG]: { run: hatchEgg } }, g,
+        timer => timer.func === HATCH_EGG && !objectLocations(g, true).get(timer.arg)?.saved);
+    return messages.flat();
 }
 
 function figurineTransformLocation(entry) {
     if (entry.source === 'inventory') return { x: game.u?.ux || 0, y: game.u?.uy || 0 };
     if (entry.source === 'minvent') return { x: entry.carrier?.mx || 0, y: entry.carrier?.my || 0 };
     return { x: entry.figurine.ox || 0, y: entry.figurine.oy || 0 };
-}
-
-function dueFigurineEntries(g) {
-    const entries = [];
-    for (const figurine of [...(g.inventory || [])]) {
-        if (isFigurineObject(figurine) && figurine.figurineTransformTurn && figurine.figurineTransformTurn <= g.moves)
-            entries.push({ figurine, source: 'inventory' });
-    }
-    for (const figurine of [...(g.level?.objects || [])]) {
-        if (isFigurineObject(figurine) && figurine.figurineTransformTurn && figurine.figurineTransformTurn <= g.moves)
-            entries.push({ figurine, source: 'floor' });
-    }
-    for (const carrier of [...(g.level?.monsters || [])]) {
-        for (const figurine of [...(carrier.minvent || [])]) {
-            if (isFigurineObject(figurine) && figurine.figurineTransformTurn && figurine.figurineTransformTurn <= g.moves)
-                entries.push({ figurine, source: 'minvent', carrier });
-        }
-    }
-    return entries.sort((a, b) => ((a.figurine.figurineTransformTurn || 0) - (b.figurine.figurineTransformTurn || 0))
-        || ((b.figurine._figurine_transform_seq || 0) - (a.figurine._figurine_transform_seq || 0)));
 }
 
 function removeTransformedFigurine(entry) {
@@ -4265,56 +4185,82 @@ function removeTransformedFigurine(entry) {
 }
 
 function reportFigurineTransform(entry, mon, x, y, silent) {
-    if (!mon || (silent && entry.source !== 'inventory')) return;
+    const messages = [];
+    if (!mon || (silent && entry.source !== 'inventory')) return messages;
     const article = hatchedMonsterArticle(mon, false);
     if (entry.source === 'inventory') {
-        if (game.u?.blind || mon.minvis) addToplineMessage('You feel something drop from your pack!');
-        else addToplineMessage(`You see ${article} drop out of your pack!`);
+        if (game.u?.blind || mon.minvis) messages.push('You feel something drop from your pack!');
+        else messages.push(`You see ${article} drop out of your pack!`);
     } else if (entry.source === 'floor') {
-        if (cansee(x, y)) addToplineMessage(`You see a figurine transform into ${article}!`);
+        if (cansee(x, y)) messages.push(`You see a figurine transform into ${article}!`);
     } else if (entry.source === 'minvent') {
         if (cansee(x, y))
-            addToplineMessage(`You see ${article} drop out of ${monsterDisplayName(entry.carrier)}'s pack!`);
+            messages.push(`You see ${article} drop out of ${monsterDisplayName(entry.carrier)}'s pack!`);
     }
+    return messages;
 }
 
-async function processFigurineTransformTimeouts(g) {
-    for (const entry of dueFigurineEntries(g)) {
-        const figurine = entry.figurine;
-        const timeout = figurine.figurineTransformTurn;
-        stopFigurineTransformTimeout(figurine);
-        let { x, y } = figurineTransformLocation(entry);
-        if (entry.source === 'inventory' || entry.source === 'minvent') {
-            const spot = enextoMonsterSpot(x, y, figurine.corpsenm || {});
-            if (!spot) {
-                attachFigurineTransformTimeout(figurine, rnd(5000));
-                continue;
-            }
-            x = spot.x;
-            y = spot.y;
-        }
-        const check = figurineLocationCheck(figurine, x, y);
-        if (!check.ok) {
-            attachFigurineTransformTimeout(figurine, rnd(5000));
-            continue;
-        }
-        const result = await makeFigurineFamiliar(figurine, x, y, { quietly: true });
-        removeTransformedFigurine(entry);
-        reportFigurineTransform(entry, result.mon, x, y, timeout !== g.moves);
+export async function transformFigurine(figurine, timeout, g = game) {
+    const location = objectLocations(g).get(figurine);
+    stopFigurineTransformTimeout(figurine, g);
+    if (!location) return;
+    if (location.parent || location.buried || location.source === 'migrating') {
+        attachFigurineTransformTimeout(figurine, rnd(5000), g);
+        return;
     }
+    const entry = { figurine, source: location.source, carrier: location.owner };
+    let { x, y } = figurineTransformLocation(entry);
+    if (entry.source === 'inventory' || entry.source === 'minvent') {
+        const spot = enextoMonsterSpot(x, y, figurine.corpsenm || {});
+        if (!spot) {
+            attachFigurineTransformTimeout(figurine, rnd(5000), g);
+            return;
+        }
+        x = spot.x;
+        y = spot.y;
+    }
+    if (!figurineLocationCheck(figurine, x, y).ok) {
+        attachFigurineTransformTimeout(figurine, rnd(5000), g);
+        return;
+    }
+    const result = await makeFigurineFamiliar(figurine, x, y, { quietly: true });
+    removeTransformedFigurine(entry);
+    return reportFigurineTransform(entry, result.mon, x, y, timeout !== g.moves);
+}
+
+export async function processGameTimers(g = game) {
+    if (g._timer_callback_pending) {
+        if (!g._water_operation_resumed) return [];
+        g._monster_moving = g._timer_callback_pending.monsterMoving;
+        g.context.mon_moving = g._timer_callback_pending.contextMoving;
+        g._timer_callback_pending = null;
+        g._water_operation_resumed = 0;
+    }
+    const handlers = {
+        ...CORPSE_TIMER_HANDLERS,
+        [ROT_ORGANIC]: { run: runOrganicRotTimer },
+        [SHRINK_GLOB]: { run: shrinkGlob },
+        [HATCH_EGG]: { run: hatchEgg },
+        [FIG_TRANSFORM]: { run: transformFigurine },
+        [BURN_OBJECT]: { run: runObjectBurnTimer },
+        [MELT_ICE_AWAY]: { run: (where, time) => meltIceAway(where, time, {
+            afterMelt: async (x, y, result) => {
+                if (!result.becameLiquid) return [];
+                const messages = applyMeltedIceMonsterLiquidEffects(x, y, { recordKill: recordVanquished });
+                const hero = await afterMeltHeroSpotEffects(x, y);
+                messages.push(...hero.messages);
+                applyLifeSavingOrFatalCommandMode(hero);
+                return { messages, pending: hero.pending };
+            },
+        }, g) },
+    };
+    const results = await runTimers(handlers, g,
+        timer => handlers[timer.func] && !objectLocations(g, true).get(timer.arg)?.saved,
+        () => !!g._timer_callback_pending || !!g.program_state?.gameover);
+    return results.flat();
 }
 
 async function afterMoveTurn(g, includeHeroTime = true) {
-    for (const msg of processMeltIceTimers(g, {
-        afterMelt: (x, y, result) => result.becameLiquid
-            ? applyMeltedIceMonsterLiquidEffects(x, y, { recordKill: recordVanquished })
-            : [],
-    })) addToplineMessage(msg);
-    for (const msg of await processCorpseTimers(g)) addToplineMessage(msg);
-    for (const msg of processGlobShrinkTimers(g)) addToplineMessage(msg);
-    processBuriedOrganicRot(g);
-    await processEggHatchTimeouts(g);
-    await processFigurineTransformTimeouts(g);
     if (includeHeroTime && g.moves >= (g.context.seer_turn || 0)) {
         if (g._prayer_debug_pleased && (g._prayer_pending_done && (g._pending_time_passed || 0) <= 1
             || (g._pending_prayer_finish_message
@@ -4384,6 +4330,19 @@ function maybeShapeshiftVampire(mon) {
 }
 
 export async function processMonsterTurns() {
+    if (game._monster_attack_continuation) return false;
+    if (game._turn_tail_phase === 'timers') {
+        game._deferred_monster_turn_tail = 0;
+        return await finishMonsterTurnTail();
+    }
+    if (game._pending_feral_steed_dismount) {
+        const steed = game._pending_feral_steed_dismount;
+        game._pending_feral_steed_dismount = null;
+        if (steed === game.u?.usteed) {
+            await dismountSteedThrown([]);
+            if (game._message_more) return false;
+        }
+    }
     // C ref: the tty pauses inside pline() while the lich frost-touch chain
     // (destroy_items shatters, zap.c:5906) and the follow-on castmu() effect
     // lines (mcastu.c:822-834) are pending — the rest of movemon()'s monster
@@ -4430,7 +4389,7 @@ export async function processMonsterTurns() {
             monsterDisplayName(mon, true);
         }
     }
-    const conflictActive = (game.inventory || []).some(item => item.cls === 'ring' && item.worn
+    const conflictActive = !!game.u?.conflict || (game.inventory || []).some(item => item.cls === 'ring' && item.worn
         && ((item.ringRoll || item.roll) === 14 || item.actualKind === 'ring of conflict'));
     let somebodyCanMove = game._monster_resume_somebody_can_move || false;
     let startIndex = adjustedMonsterResumeIndexForRecordedRemovals(game._monster_resume_index || 0);
@@ -4705,11 +4664,18 @@ export async function processMonsterTurns() {
                 }
                 if (mon === game.u?.usteed) {
                     rn2(5);
-                    if ((mon.data?.name === 'kitten' || mon.data?.name === 'pony')
-                        && (mon.mx - (game.u?.ux || 0)) ** 2 + (mon.my - (game.u?.uy || 0)) ** 2 <= 2) {
-                        rn2(4);
+                    if (mon.meating) {
+                        mon.meating--;
+                        rn2(5);
+                        continue;
                     }
-                    rn2(5);
+                    if (conflictActive && !monsterResistsConflict(mon)) {
+                        await dismountSteedThrown([]);
+                        continue;
+                    }
+                    await movePet(mon);
+                    if (!game._pet_skip_post_move_roll) rn2(5);
+                    game._pet_skip_post_move_roll = 0;
                     continue;
                 }
                 if (mon.isgd && mon._vault_escort_active) {
@@ -4945,7 +4911,7 @@ export async function processMonsterTurns() {
                                     // hits_you — magic resistance bounces the strike;
                                     // mwandexp is only set after mbhit() returns
                                     // (muse.c:1890), so a monster's very first zap
-                                    // always hits but still rolls rnd(20).
+                                    // always misses but still rolls rnd(20).
                                     strikingBeamRange -= 3;
                                     if (heroHasAntimagic()) {
                                         const shieldMessage = 'Boing!';
@@ -4980,15 +4946,41 @@ export async function processMonsterTurns() {
                                         if (!addToplineMessage(missMessage) && !zapShown)
                                             game._topline_after_more = `${zapMessage}  ${missMessage}`;
                                     }
-                                } else if ((game.level?.monsters || []).some(other =>
-                                    other !== mon && (other.mhp == null || other.mhp > 0)
-                                    && other.mx === beamX && other.my === beamY)) {
-                                    // C ref: muse.c:1759 — a beam square holding a
-                                    // monster shortens the remaining range by 3; the
-                                    // mbhitm() monster branch (resists_magm()/rnd(20)/
-                                    // d(2, 12), muse.c:1634-1646) is not ported because
-                                    // the recorded probes never zap a second monster.
-                                    strikingBeamRange -= 3;
+                                } else {
+                                    const target = monsterAtFlightSquare(beamX, beamY, mon);
+                                    if (target) {
+                                        // muse.c:1597-1652 mbhitm wakes and reveals
+                                        // targets before accuracy, resistance, and damage.
+                                        target.msleeping = 0;
+                                        revealProjectileHitMimicAppearance(target);
+                                        const visible = monsterVisibleToHero(target);
+                                        let learn = false;
+                                        if (monsterResistsMagic(target)) {
+                                            addToplineMessage('Boing!');
+                                            learn = true;
+                                        } else if (rnd(20) < 10 + monsterFindMac(target)) {
+                                            let damage = d(2, 12);
+                                            addToplineMessage(visible
+                                                ? `The wand hits ${monsterDisplayName(target).replace(/^The\b/, 'the')}${damage > 4 ? '!' : '.'}`
+                                                : `It is hit${damage > 4 ? '!' : '.'}`);
+                                            if (resistMon(target, WAND_CLASS, damage)) damage = Math.trunc((damage + 1) / 2);
+                                            target.mhp -= damage;
+                                            if (target.mhp < 1) killMonsterFromThrownInterveningHit(target, visible);
+                                            learn = true;
+                                        } else addToplineMessage(visible
+                                            ? `The wand misses ${monsterDisplayName(target).replace(/^The\b/, 'the')}.`
+                                            : 'It is missed.');
+                                        if (learn && monsterVisibleToHero(mon) && cansee(beamX, beamY)) {
+                                            recordWandDiscovery('striking', true);
+                                            strikingWand.known = true;
+                                        }
+                                        if (target.mhp > 0 && cansee(beamX, beamY) && !monsterVisibleToHero(target)) {
+                                            const loc = game.level.at(beamX, beamY);
+                                            loc.map_invisible = true;
+                                            newsym(beamX, beamY);
+                                        }
+                                        strikingBeamRange -= 3;
+                                    }
                                 }
                                 // C ref: muse.c:1773 fhito_loc() -> zap.c:2275 bhito()
                                 // case WAN_STRIKING: boulders crumble and statues
@@ -5218,9 +5210,9 @@ export async function processMonsterTurns() {
                 if (mon.pet) {
                     if (resumingPetInventory) {
                         game._pet_inventory_resume = null;
-                        movePet(mon, true, conflictActive);
+                        await movePet(mon, true, conflictActive);
                     } else {
-                        movePet(mon, false, conflictActive);
+                        await movePet(mon, false, conflictActive);
                     }
                     const stopPetRepeat = game._pet_kill_no_repeat;
                     if (stopPetRepeat) game._pet_kill_no_repeat = 0;
@@ -5956,6 +5948,10 @@ export async function processMonsterTurns() {
                         if (game.u?.blind && !hiddenBullwhip) {
                             if (attackLoc) attackLoc.map_invisible = true;
                             newsym(mon.mx, mon.my);
+                        }
+                        if (supportsMonsterAttackSlots(mon)) {
+                            if (!await runMonsterAttackTurn(mon, { resumeIndex: monIndex + 1, somebodyCanMove })) return false;
+                            continue;
                         }
                         /* mhitu.c:894-898: fighting with no weapon wielded
                          * triggers weapon.c:801 mon_wield_item -> select_hwep,
@@ -10516,7 +10512,14 @@ if (attack.adtyp === 'steal') {
         if (mon.mblinded && !--mon.mblinded) mon.mcansee = true;
         if (mon.mspec_used) mon.mspec_used--;
         let mmove = mon.data?.mmove ?? NORMAL_SPEED;
-        if (mon.mspeed === 'fast') mmove = Math.trunc((4 * mmove + 2) / 3);
+        // C mon.c:mcalcmove slows naturally fast species more strongly.
+        if (mon.mspeed === 'slow' || mon.mspeed === MSLOW || mon.mspeed === -1)
+            mmove = mmove < NORMAL_SPEED ? Math.trunc((2 * mmove + 1) / 3)
+                : 4 + Math.trunc(mmove / 3);
+        else if (mon.mspeed === 'fast' || mon.mspeed === MFAST)
+            mmove = Math.trunc((4 * mmove + 2) / 3);
+        if (mon === game.u?.usteed && game.u.ugallop && game.context?.mv)
+            mmove = Math.trunc(((rn2(2) ? 4 : 5) * mmove) / 3);
         const base = mmove - (mmove % NORMAL_SPEED);
         const movementRoll = rn2(NORMAL_SPEED);
         const extra = movementRoll < (mmove % NORMAL_SPEED) ? NORMAL_SPEED : 0;
@@ -10536,27 +10539,27 @@ if (attack.adtyp === 'steal') {
     }
     let heroMoveAmount = NORMAL_SPEED;
     if (game.u?.usteed && game.u.umoved) {
-        const mmove = game.u.usteed.data?.mmove ?? NORMAL_SPEED;
+        const steed = game.u.usteed;
+        let mmove = steed.data?.mmove ?? NORMAL_SPEED;
+        // C allmain.c:u_calc_moveamt uses mcalcmove for a ridden move,
+        // including the steed's speed and gallop before random rounding.
+        if (steed.mspeed === 'slow' || steed.mspeed === MSLOW || steed.mspeed === -1)
+            mmove = mmove < NORMAL_SPEED ? Math.trunc((2 * mmove + 1) / 3)
+                : 4 + Math.trunc(mmove / 3);
+        else if (steed.mspeed === 'fast' || steed.mspeed === MFAST)
+            mmove = Math.trunc((4 * mmove + 2) / 3);
+        if (game.u.ugallop && game.context?.mv)
+            mmove = Math.trunc(((rn2(2) ? 4 : 5) * mmove) / 3);
         heroMoveAmount = mmove - (mmove % NORMAL_SPEED);
         if (rn2(NORMAL_SPEED) < (mmove % NORMAL_SPEED)) heroMoveAmount += NORMAL_SPEED;
     } else {
         heroMoveAmount = game.u?._monsterMove ?? NORMAL_SPEED;
-        // The recorded C turn cadence for a xorn-form hero (u_calc_moveamt,
-        // allmain.c:114-157 with youmonst.data->mmove) advances 8 movement
-        // points per new turn here, not the xorn's nominal mmove of 9; that
-        // cadence is what makes the two monster cycles land on the recorded
-        // turn boundaries (moves 5->7 across the staircase move).
-        if (game.u?._polyself_form?.name === 'xorn') heroMoveAmount = 8;
+        // C: allmain.c:u_calc_moveamt augments the current form's speed
+        // using the live PRNG, including forms with zero base movement.
         if (game.u?.veryfast) {
-            const speedRoll = game.u._monsterMoveRollQueue?.length
-                ? (rn2(3), game.u._monsterMoveRollQueue.shift())
-                : rn2(3);
-            if (speedRoll) heroMoveAmount += NORMAL_SPEED;
+            if (rn2(3)) heroMoveAmount += NORMAL_SPEED;
         } else if (game.u?.fast) {
-            const speedRoll = game.u._monsterMoveRollQueue?.length
-                ? (rn2(3), game.u._monsterMoveRollQueue.shift())
-                : rn2(3);
-            if (!speedRoll) heroMoveAmount += NORMAL_SPEED;
+            if (!rn2(3)) heroMoveAmount += NORMAL_SPEED;
         }
     }
     if ((game.u?._statusSuffix || '').includes('Burdened'))
@@ -10574,51 +10577,7 @@ if (attack.adtyp === 'steal') {
         game._utrack.push({ x: game.u?.ux || 0, y: game.u?.uy || 0 });
         if (game._utrack.length > 100) game._utrack.shift();
     }
-    if (game.u?.fumbling) {
-        game.u._fumblingTimeout = Math.max(0, (game.u._fumblingTimeout ?? 0) - 1);
-        if (!game.u._fumblingTimeout) {
-            if (game.u.umoved && !game.u.levitating && !game.u.flying) {
-                const roll = rn2(4);
-                const message = roll === 1 ? 'You trip over your own feet.'
-                    : roll === 2 ? 'You slip and nearly fall.'
-                        : roll === 3 ? 'You flounder.' : 'You stumble.';
-                game._fumble_turn_message_pending = 1;
-                game._last_fumble_turn_message = message;
-                game._last_fumble_turn_move = game.moves || 0;
-                game._last_fumble_from_run = !!(game._running_continuation || game._initial_run_command || game._run_steps_remaining > 0);
-                game._last_fumble_keep_flushes = game._last_fumble_from_run ? 2 : 0;
-                const pendingBeforeFumble = !!game._pending_message;
-                const pendingStartedWithMonsterNoise = !!game._pending_starts_monster_noise_message;
-                if (pendingBeforeFumble && !game._keep_pending_message && !game._message_more)
-                    game._pending_message = '';
-                if (game._pending_fumble_turn_message && game._pending_fumble_message_roll === roll) {
-                    game._pending_fumble_turn_message = 1;
-                    game._pending_fumble_turn_message_starts = 1;
-                    game._keep_pending_message = 1;
-                } else if (addToplineMessage(message)) {
-                    game._pending_fumble_turn_message = 1;
-                    game._pending_fumble_message_roll = roll;
-                    if (!pendingBeforeFumble) game._pending_fumble_turn_message_starts = 1;
-                    if (pendingStartedWithMonsterNoise) game._pending_fumble_after_monster_noise_message = 1;
-                } else {
-                    game._topline_after_more_fumble_turn_message = 1;
-                    game._topline_after_more_fumble_turn_message_starts = 1;
-                    game._topline_after_more_fumble_message_roll = roll;
-                }
-                game._run_steps_remaining = 0;
-                game._travel_keys = [];
-                game._running_continuation = 0;
-                game._initial_run_command = 0;
-                game._pending_time_passed = Math.max(game._pending_time_passed || 0, 2);
-                game._helpless_time = Math.max(game._helpless_time || 0, 2);
-                game._finish_fumble_timeout = 1;
-                if (game._message_more && !game._process_time_with_more && game._topline_after_more === message) {
-                    game._deferred_monster_turn_tail = 1;
-                    return 'defer-tail';
-                }
-            } else game._finish_fumble_timeout = 1;
-        }
-    }
+    game._turn_setup_pending = 1;
 	    if (game._message_more && !game._process_time_with_more && !game._swallow_cold_more_allows_tail) {
 	        game._deferred_monster_turn_tail = 1;
 	        return 'defer-tail';
@@ -10633,17 +10592,79 @@ if (attack.adtyp === 'steal') {
 	}
 
 async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
+    // A More prompt inside movemon must return before C starts a new turn.
+    if (game._turn_setup_pending) {
+        game._turn_setup_pending = 0;
+        // C allmain.c:244: all once-per-turn effects observe the new turn.
+        game.moves = (game.moves || 1) + 1;
+        if (game.u?.fumbling) {
+            game.u._fumblingTimeout = Math.max(0, (game.u._fumblingTimeout ?? 0) - 1);
+            if (!game.u._fumblingTimeout) {
+                if (game.u.umoved && !game.u.levitating && !game.u.flying) {
+                    const roll = rn2(4);
+                    const message = roll === 1 ? 'You trip over your own feet.'
+                        : roll === 2 ? 'You slip and nearly fall.'
+                            : roll === 3 ? 'You flounder.' : 'You stumble.';
+                    game._fumble_turn_message_pending = 1;
+                    game._last_fumble_turn_message = message;
+                    game._last_fumble_turn_move = game.moves || 0;
+                    game._last_fumble_from_run = !!(game._running_continuation || game._initial_run_command || game._run_steps_remaining > 0);
+                    game._last_fumble_keep_flushes = game._last_fumble_from_run ? 2 : 0;
+                    const pendingBeforeFumble = !!game._pending_message;
+                    const pendingStartedWithMonsterNoise = !!game._pending_starts_monster_noise_message;
+                    if (pendingBeforeFumble && !game._keep_pending_message && !game._message_more)
+                        game._pending_message = '';
+                    if (game._pending_fumble_turn_message && game._pending_fumble_message_roll === roll) {
+                        game._pending_fumble_turn_message = 1;
+                        game._pending_fumble_turn_message_starts = 1;
+                        game._keep_pending_message = 1;
+                    } else if (addToplineMessage(message)) {
+                        game._pending_fumble_turn_message = 1;
+                        game._pending_fumble_message_roll = roll;
+                        if (!pendingBeforeFumble) game._pending_fumble_turn_message_starts = 1;
+                        if (pendingStartedWithMonsterNoise) game._pending_fumble_after_monster_noise_message = 1;
+                    } else {
+                        game._topline_after_more_fumble_turn_message = 1;
+                        game._topline_after_more_fumble_turn_message_starts = 1;
+                        game._topline_after_more_fumble_message_roll = roll;
+                    }
+                    game._run_steps_remaining = 0;
+                    game._travel_keys = [];
+                    game._running_continuation = 0;
+                    game._initial_run_command = 0;
+                    game._pending_time_passed = Math.max(game._pending_time_passed || 0, 2);
+                    game._helpless_time = Math.max(game._helpless_time || 0, 2);
+                    game._finish_fumble_timeout = 1;
+                    if (game._message_more && !game._process_time_with_more && game._topline_after_more === message) {
+                        game._deferred_monster_turn_tail = 1;
+                        return 'defer-tail';
+                    }
+                } else game._finish_fumble_timeout = 1;
+            }
+        }
+    }
+    const resumeTimers = game._turn_tail_phase === 'timers';
     const resumeAfterSounds = !!game._resume_monster_turn_tail_after_sounds;
     game._resume_monster_turn_tail_after_sounds = 0;
     let sleepingHunger = false;
     if (!resumeAfterSounds) {
-    // Resume-after-stoning-death: the pre-nh_timeout()/run_regions prefix
-    // (blind/veryfast/invulnerable decrements, regions, fumble — moveloop
-    // once-per-turn items between allmain.c:267 and :294) already ran inside
-    // the aborted tail call; C continues nh_timeout()'s decrement loop from
-    // done_timeout()'s return and only the items AFTER the STONED expiry
-    // still execute.  Skip the prefix here.
-    if (!resumeAfterStoningDeath) {
+    // C resumes nh_timeout after a refused death or a suspended timer.
+    // Neither continuation repeats the earlier intrinsic decrements.
+    if (!resumeTimers && !resumeAfterStoningDeath) {
+        // timeout.c:650: spell protection decays before property timeouts,
+        // so blindness expiring later this turn still hides the haze change.
+        if (!game.u?.uinvulnerable && game.u.usptime) {
+            if (--game.u.usptime === 0 && game.u.uspellprot) {
+                game.u.usptime = game.u.uspmtime;
+                game.u.uspellprot--;
+                findAc();
+                if (!heroIsBlind()) {
+                    const message = `The ${hcolor('golden')} haze around you ${
+                        game.u.uspellprot ? 'becomes less dense' : 'disappears'}.`;
+                    if (game._norep_prevmsg !== message) addToplineMessage(message);
+                }
+            }
+        }
         // C ref: allmain.c:273-274 — nh_timeout() runs BEFORE run_regions()
         // in moveloop_core; its BLINDED expiry (timeout.c:744-750 ->
         // make_blinded(0L, TRUE), potion.c) decrements the timeout and, on
@@ -10667,7 +10688,6 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
                 game.vision_full_recalc = 1;
             }
         }
-        advanceRegions(game);
         if (game._finish_fumble_timeout) {
             game._finish_fumble_timeout = 0;
             if (game.u?.fumbling) game.u._fumblingTimeout = rnd(20);
@@ -10694,7 +10714,7 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
         // exercise(A_DEX, FALSE) costs one rn2(2) draw (attrib.c:509)
         // every turn, before regen_hp()'s rn2(100) (allmain.c:659).
     } /* !resumeAfterStoningDeath prefix */
-        if (!resumeAfterStoningDeath && (game.u?._stonedTimeout || 0) > 0) {
+        if (!resumeTimers && !resumeAfterStoningDeath && !game.u?.uinvulnerable && (game.u?._stonedTimeout || 0) > 0) {
             addHeroStatusSuffix('Stone');
             const stonedStage = game.u._stonedTimeout;
             const stonedMessage = STONED_TEXTS[5 - stonedStage];
@@ -10715,17 +10735,11 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
                     : `petrified by ${articleFor(killer)} ${killer}`;
                 game._death_current_move = 1;
                 if (consumeLifeSavingAmulet({ clearStoning: true })) {
+                    game._resume_turn_tail_after_stoning_death = 1;
                     armHeroLifeSavingMore();
                     return false;
                 }
                 game._death_bones_body = 'statue';
-                // C ref: allmain.c:243-244 — svm.moves++ clocks in at the
-                // death turn's setup (before nh_timeout()), so the corpse
-                // count/status (T field) shows T+1 during the whole
-                // --More--/"Die?" chain; the aborted JS tail below loses the
-                // pass's post-turn increment — restore it at the arm point
-                // so stoning-death bookkeeping stays phase-locked with C.
-                game.moves = (game.moves || 1) + 1;
                 // C ref: end.c:726-735 die() -> savelife() — the refused
                 // petrification stomps gm.multi to -1 and rewrites
                 // gn.nomovemsg to "You survived that attempt on your
@@ -10749,6 +10763,167 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
                 return false;
             }
         }
+        // C timeout.c:sickness_dialogue()/nh_timeout(): warnings and
+        // constitution exercise precede expiry, which precedes HP regen.
+        const sickTime = game.u?._sickTimeout || game.u?._sicknessTimeout || 0;
+        if (!resumeTimers && !resumeAfterStoningDeath && !game.u?.uinvulnerable && sickTime > 0) {
+            const u = game.u;
+            let warning = { 7: 'Your illness feels worse.', 5: 'Your illness is severe.', 3: "You are at Death's door." }[sickTime];
+            if (warning) {
+                if (!(u.usick_type & 2)) warning = warning.replace('illness', 'sickness');
+                if (sickTime === 3 && (u.hallucinating || u.hallu || (u._statusSuffix || '').includes('Hallu'))) {
+                    const pronoun = ['He', 'She', 'It', 'They'][rn2(4)];
+                    warning += `  ${pronoun} ${pronoun === 'They' ? 'are' : 'is'} inviting you in.`;
+                }
+                addToplineMessage(warning);
+            }
+            exerciseAttribute(A_CON, false);
+            u._sickTimeout = sickTime - 1;
+            u._sicknessTimeout = 0;
+            if (!u._sickTimeout) {
+                const foodPoisoning = !(u.usick_type & 2);
+                if (foodPoisoning && rn2(100) < (u.acurr?.a?.[A_CON] ?? 10)) {
+                    addToplineMessage('You have recovered from your illness.');
+                    clearHeroSickness();
+                    u.usick_type = 0;
+                    delete u._sicknessCause;
+                    exerciseAttribute(A_CON, false);
+                    adjustHeroAttribute(A_CON, -1);
+                } else {
+                    addToplineMessage('You die from your illness.');
+                    game._death_cause = `killed by ${u._sicknessCause || 'an illness'}`;
+                    game._death_current_move = 1;
+                    const lifeSaved = consumeLifeSavingAmulet();
+                    // Timed deaths do not lower HP; the common death/life
+                    // saving prompt restores or finalizes it after --More--.
+                    if (lifeSaved) {
+                        clearHeroSickness();
+                        u.usick_type = 0;
+                        delete u._sicknessCause;
+                        game._resume_turn_tail_after_stoning_death = 1;
+                        armHeroLifeSavingMore();
+                    } else {
+                        game._sickness_expired = 1;
+                        game._resume_turn_tail_after_stoning_death = 1;
+                        armHeroDeathMore('');
+                    }
+                    return false;
+                }
+            }
+        }
+        if (!resumeTimers && !game.u?.uinvulnerable) {
+            if ((game.u?._confusionTimeout || 0) > 0) {
+                game.u._confusionTimeout--;
+                if (!game.u._confusionTimeout) {
+                    game.u._statusSuffix = (game.u._statusSuffix || '').replace(' Conf', '');
+                    addToplineMessage((game.u?._statusSuffix || '').includes('Hallu')
+                        ? 'You feel less trippy now.'
+                        : 'You feel less confused now.');
+                }
+            }
+            if ((game.u?._stunTimeout || 0) > 0) {
+                game.u._stunTimeout--;
+                if (!game.u._stunTimeout) clearHeroStunTimeout();
+            }
+            if ((game.u?._halluTimeout || 0) > 0) {
+                game.u._halluTimeout--;
+                if (!game.u._halluTimeout) clearHeroHallucinationTimeout();
+            }
+            if ((game.u?._slimingTimeout || 0) > 0) {
+                addHeroStatusSuffix('Slime');
+                game.u.sliming = true;
+                game.u._slimingTimeout--;
+                const timeout = game.u._slimingTimeout;
+                const message = SLIME_TEXTS.get(timeout);
+                if (message) addToplineMessage(message);
+                applySlimingDialogueSideEffects(timeout);
+                if (!game.u._slimingTimeout) {
+                    game.u.sliming = false;
+                    removeHeroStatusSuffix('Slime');
+                    game.u.uhp = 0;
+                    game._death_cause = 'turned into green slime';
+                    game._death_current_move = 1;
+                    if (consumeLifeSavingAmulet()) {
+                        armHeroLifeSavingMore();
+                        return false;
+                    }
+                    armHeroDeathMore();
+                    return false;
+                }
+            }
+            if ((game.u?._acidResistanceTimeout || 0) > 0) {
+                game.u._acidResistanceTimeout--;
+                if (!game.u._acidResistanceTimeout) {
+                    if (!game.u._acidResistanceBase) game.u.acidResistance = false;
+                    delete game.u._acidResistanceBase;
+                }
+            }
+            if ((game.u?._temporaryFireResistanceTimeout || 0) > 0) {
+                game.u._temporaryFireResistanceTimeout--;
+                if (!game.u._temporaryFireResistanceTimeout) {
+                    if (!game.u._temporaryFireResistanceBase) game.u.fireResistance = false;
+                    delete game.u._temporaryFireResistanceBase;
+                    addToplineMessage('Your temporary ability to survive burning has ended.');
+                }
+            }
+            if ((game.u?._temporaryWaterWalkingTimeout || 0) > 0) {
+                game.u._temporaryWaterWalkingTimeout--;
+                if (!game.u._temporaryWaterWalkingTimeout) {
+                    if (!game.u._temporaryWaterWalkingBase) {
+                        game.u.waterWalking = false;
+                        game.u.Wwalking = false;
+                    }
+                    delete game.u._temporaryWaterWalkingBase;
+                    addToplineMessage('Your temporary ability to walk on liquid has ended.');
+                }
+            }
+            if ((game.u?._stoneResistanceTimeout || 0) > 0) {
+                game.u._stoneResistanceTimeout--;
+                if (!game.u._stoneResistanceTimeout) {
+                    if (!game.u._stoneResistanceBase) game.u.stoneResistance = false;
+                    delete game.u._stoneResistanceBase;
+                }
+            }
+            if ((game.u?._vomitingTimeout || 0) > 0) {
+                addHeroStatusSuffix('Vom');
+                game.u.vomiting = true;
+                game.u._vomitingTimeout--;
+                if (!game.u._vomitingTimeout) {
+                    game.u.vomiting = false;
+                    removeHeroStatusSuffix('Vom');
+                    addToplineMessage('You vomit!');
+                }
+            }
+            if ((game.u?._deafTimeout || 0) > 0) {
+                game.u._deafTimeout--;
+                if (!game.u._deafTimeout)
+                    game.u._statusSuffix = (game.u._statusSuffix || '').replace(' Deaf', '');
+            }
+            if ((game.u?._woundedLegTurns || 0) > 0) {
+                game.u._woundedLegTurns--;
+                if (!game.u._woundedLegTurns && game.u._woundedDexPenalty && game.u.acurr?.a) {
+                    const wasBurdened = (game.u._statusSuffix || '').includes('Burdened');
+                    game.u.acurr.a[3]++;
+                    game.u._woundedDexPenalty = 0;
+                    game.u._statusSuffix = (game.u._statusSuffix || '').replace(' Burdened', '');
+                    addToplineMessage('Your leg feels better.');
+                    if (wasBurdened) addToplineMessage('Your movements are now unencumbered.');
+                }
+            }
+        }
+        if (!game.u?.uinvulnerable || resumeTimers) {
+            game._turn_tail_phase = 'timers';
+            for (const message of await processGameTimers(game)) addToplineMessage(message);
+            if (game._timer_callback_pending) {
+                game._deferred_monster_turn_tail = 1;
+                game._resume_time_after_more = 1;
+                game._process_time_with_more = 0;
+                return 'defer-tail';
+            }
+            game._turn_tail_phase = null;
+        }
+        advanceRegions(game);
+        if (game.u?.ublesscnt) game.u.ublesscnt--;
 	        let reachedFullHp = false;
         let reachedFullPower = false;
         if (process.env.WEREDBG) console.error(`WEREDBG regen-eval moves=${game.moves} uhp=${game.u?.uhp}/${game.u?.uhpmax} rngidx=${getRngLog().length} dp=${!!game._death_pending_confirm} poly=${!!game.u?._polyself_form}`);
@@ -10805,7 +10980,7 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
             const roleName = game.urole?.name?.m || game._startup_role || '';
             const interval = Math.trunc(((30 + 8 - (game.u?.ulevel || 1)) * (roleName === 'Wizard' ? 3 : 4)) / 6);
             const energyRegeneration = !!game.u?.energy_regeneration;
-            if ((wtcap < MOD_ENCUMBER && !(((game.moves || 1) + 1) % interval)) || energyRegeneration) {
+            if ((wtcap < MOD_ENCUMBER && !((game.moves || 1) % interval)) || energyRegeneration) {
                 const magicalBreathing = (game.inventory || []).some(item =>
                     item.worn && (item.actualKind === 'amulet of magical breathing'
                         || item.kind === 'amulet of magical breathing'));
@@ -10901,6 +11076,9 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
             applyAccessoryHunger(accessorytime);
         }
     }
+    // C spell.c:age_spells runs once per full turn, including helplessness.
+    for (const spell of game._known_spells || [])
+        spell.knowledge = Math.max(0, (spell.knowledge ?? 20000) - 1);
     if (pendingVaultRoom) {
         let guardX = null, guardY = null;
         for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) {
@@ -11100,104 +11278,6 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
 	    if (game.u && (game.u._statusSuffix || '').includes('Satiated') && (game.u.uhunger ?? 900) <= 1001)
 	        game.u._statusSuffix = (game.u._statusSuffix || '').replace(' Satiated', '');
 	    if (sleepingHunger && !game._helpless_time) game._sleeping_time = 0;
-    if ((game.u?._confusionTimeout || 0) > 0) {
-        game.u._confusionTimeout--;
-        if (!game.u._confusionTimeout) {
-            game.u._statusSuffix = (game.u._statusSuffix || '').replace(' Conf', '');
-            addToplineMessage((game.u?._statusSuffix || '').includes('Hallu')
-                ? 'You feel less trippy now.'
-                : 'You feel less confused now.');
-        }
-    }
-    if ((game.u?._stunTimeout || 0) > 0) {
-        game.u._stunTimeout--;
-        if (!game.u._stunTimeout) clearHeroStunTimeout();
-    }
-    if ((game.u?._halluTimeout || 0) > 0) {
-        game.u._halluTimeout--;
-        if (!game.u._halluTimeout) clearHeroHallucinationTimeout();
-    }
-    if ((game.u?._slimingTimeout || 0) > 0) {
-        addHeroStatusSuffix('Slime');
-        game.u.sliming = true;
-        game.u._slimingTimeout--;
-        const timeout = game.u._slimingTimeout;
-        const message = SLIME_TEXTS.get(timeout);
-        if (message) addToplineMessage(message);
-        applySlimingDialogueSideEffects(timeout);
-        if (!game.u._slimingTimeout) {
-            game.u.sliming = false;
-            removeHeroStatusSuffix('Slime');
-            game.u.uhp = 0;
-            game._death_cause = 'turned into green slime';
-            game._death_current_move = 1;
-            if (consumeLifeSavingAmulet()) {
-                armHeroLifeSavingMore();
-                return false;
-            }
-            armHeroDeathMore();
-            return false;
-        }
-    }
-    if ((game.u?._acidResistanceTimeout || 0) > 0) {
-        game.u._acidResistanceTimeout--;
-        if (!game.u._acidResistanceTimeout) {
-            if (!game.u._acidResistanceBase) game.u.acidResistance = false;
-            delete game.u._acidResistanceBase;
-        }
-    }
-    if ((game.u?._temporaryFireResistanceTimeout || 0) > 0) {
-        game.u._temporaryFireResistanceTimeout--;
-        if (!game.u._temporaryFireResistanceTimeout) {
-            if (!game.u._temporaryFireResistanceBase) game.u.fireResistance = false;
-            delete game.u._temporaryFireResistanceBase;
-            addToplineMessage('Your temporary ability to survive burning has ended.');
-        }
-    }
-    if ((game.u?._temporaryWaterWalkingTimeout || 0) > 0) {
-        game.u._temporaryWaterWalkingTimeout--;
-        if (!game.u._temporaryWaterWalkingTimeout) {
-            if (!game.u._temporaryWaterWalkingBase) {
-                game.u.waterWalking = false;
-                game.u.Wwalking = false;
-            }
-            delete game.u._temporaryWaterWalkingBase;
-            addToplineMessage('Your temporary ability to walk on liquid has ended.');
-        }
-    }
-    if ((game.u?._stoneResistanceTimeout || 0) > 0) {
-        game.u._stoneResistanceTimeout--;
-        if (!game.u._stoneResistanceTimeout) {
-            if (!game.u._stoneResistanceBase) game.u.stoneResistance = false;
-            delete game.u._stoneResistanceBase;
-        }
-    }
-    if ((game.u?._vomitingTimeout || 0) > 0) {
-        addHeroStatusSuffix('Vom');
-        game.u.vomiting = true;
-        game.u._vomitingTimeout--;
-        if (!game.u._vomitingTimeout) {
-            game.u.vomiting = false;
-            removeHeroStatusSuffix('Vom');
-            addToplineMessage('You vomit!');
-        }
-    }
-    if ((game.u?._deafTimeout || 0) > 0) {
-        game.u._deafTimeout--;
-        if (!game.u._deafTimeout)
-            game.u._statusSuffix = (game.u._statusSuffix || '').replace(' Deaf', '');
-    }
-    if ((game.u?._woundedLegTurns || 0) > 0) {
-        game.u._woundedLegTurns--;
-        if (!game.u._woundedLegTurns && game.u._woundedDexPenalty && game.u.acurr?.a) {
-            const wasBurdened = (game.u._statusSuffix || '').includes('Burdened');
-            game.u.acurr.a[3]++;
-            game.u._woundedDexPenalty = 0;
-            game.u._statusSuffix = (game.u._statusSuffix || '').replace(' Burdened', '');
-            addToplineMessage('Your leg feels better.');
-            if (wasBurdened) addToplineMessage('Your movements are now unencumbered.');
-        }
-    }
     processAttributeExercise();
     const delaySwallowedArmorFinish = game.u?.uswallow && game._armor_wear_occupation
         && game._pending_time_passed && /You are freezing to death!/.test(game._pending_message || '');
@@ -11212,7 +11292,7 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
             if (occupationItem && !occupationItem.worn && game._armor_wear_occupation.acBonus != null) {
                 occupationItem.worn = true;
                 if (game._armor_wear_occupation.wornLine) occupationItem.line = game._armor_wear_occupation.wornLine;
-                if (game.u) game.u.uac = (game.u.uac ?? 10) - game._armor_wear_occupation.acBonus;
+                if (game.u) setArmorWorn(occupationItem, true);
                 if (game._armor_wear_occupation.reflecting && game.u) game.u.reflecting = true;
             }
         }
@@ -11234,7 +11314,7 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
                 } else if (item && item.worn && occupation.acBonus != null) {
                     item.worn = false;
                     item.line = `${item.letter || occupation.itemLetter || '?'} - ${occupation.baseName || pickupObjectName(item)}`;
-                    if (game.u) game.u.uac = (game.u.uac ?? 10) + occupation.acBonus;
+                    if (game.u) setArmorWorn(item, false);
                     if (occupation.kind === 'speed boots' && game.u) {
                         game.u.veryfast = false;
                         syncHeroSpeedState(game);
@@ -11263,7 +11343,7 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
             } else if (item && !item.worn && occupation.acBonus != null) {
                 item.worn = true;
                 if (occupation.wornLine) item.line = occupation.wornLine;
-                if (game.u) game.u.uac = (game.u.uac ?? 10) - occupation.acBonus;
+                if (game.u) setArmorWorn(item, true);
                 if (occupation.reflecting && game.u) game.u.reflecting = true;
                 updateGauntletsOfPowerStrength(occupation.kind, true);
                 if (occupation.kind === 'gauntlets of power') {
@@ -11303,6 +11383,10 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
             }
             if (occupation.action !== 'takeoff' && occupation.kind === 'fumble boots')
                 game._pending_fumble_boots_timeout = 1;
+            if (!game._armor_takeoff_after_more) {
+                const lightMessage = setArtifactEquipmentLight(item, occupation.action !== 'takeoff');
+                if (lightMessage) message += '  ' + lightMessage;
+            }
             if (game._pending_message && game._message_more) {
                 game._queued_message_after_more ||= message;
                 game._armor_finish_after_more = 1;
@@ -11319,6 +11403,13 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
                 game._armor_finish_after_more = 1;
             } else if (!addToplineMessage(message) && game._message_more) {
                 game._armor_finish_after_more = 1;
+            }
+            if (occupation.action !== 'takeoff' && item) {
+                // unmul prints its completion message before Armor_on learns
+                // enchantment; a full preceding topline suspends that callback.
+                if (game._armor_finish_after_more && !item.chargeKnown)
+                    game._armor_don_knowledge_after_more = item;
+                else item.chargeKnown = true;
             }
             if (armorFinishNeedsMore) {
                 game._message_more = 1;
@@ -11356,10 +11447,36 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
             game.u._fumblingTimeout = timeout;
         }
     }
-    await processSpellbookStudyOccupation();
     if (game._ball_drag_subtract_after_forced_tail) {
         game._ball_drag_subtract_after_forced_tail = 0;
         if (game.u) game.u.umovement = Math.max(0, (game.u.umovement || 0) - NORMAL_SPEED);
+    }
+    // C allmain.c counts immobility once per full turn, including slow-hero
+    // turns reached recursively before the hero earns another action.
+    if (game._helpless_time > 0) {
+        game._helpless_time--;
+        game.multi = -game._helpless_time || 0;
+        if (game._sleeping_time > 0) game._sleeping_time--;
+        if (!game._helpless_time && game._wake_message) {
+            game._sleeping_time = 0;
+            if (game._hear_again_after_wake) {
+                game._hear_again_after_wake = 0;
+                if (!rn2(2) && game.u) {
+                    game.u._deafTimeout = 0;
+                    game.u._statusSuffix = (game.u._statusSuffix || '').replace(' Deaf', '');
+                }
+            }
+            const wakeMessage = game._wake_message;
+            const shown = addToplineMessage(wakeMessage);
+            // hack.c:unmul clears these after its pline returns.
+            if (shown) {
+                game.u.usleep = 0;
+                game.multi_reason = null;
+            } else game._unmul_after_more = wakeMessage;
+            if (!shown && game._message_more && game._topline_after_more === wakeMessage)
+                game._turn_tail_topline_more = 1;
+            game._wake_message = '';
+        }
     }
     const armBallDragForceTail = !!game._ball_drag_force_tail_after_first_turn;
     if (armBallDragForceTail) game._ball_drag_force_tail_after_first_turn = 0;
@@ -11374,9 +11491,7 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
     // the immobile-hero extra monster phase here; the next keyed pass owns it.
     if (resumeAfterStoningDeath) return true;
     if ((game.u?.umovement ?? 0) < NORMAL_SPEED && !collapsedDoubleMiss && !suppressImmobileExtraTurns) {
-        game.moves = (game.moves || 1) + 1;
         await afterMoveTurn(game, false);
-        if (game.u?.ublesscnt) game.u.ublesscnt--;
         if (armBallDragForceTail) {
             game._force_monster_turn_tail_once = 1;
             game._ball_drag_subtract_after_forced_tail = 1;
@@ -11774,7 +11889,9 @@ function splitMonsterThrownInventoryObject(mon, index) {
     const missileQuan = Math.max(1, Math.trunc(Number(missile.quan || 1)));
     if (missileQuan > 1) {
         missile.quan = missileQuan - 1;
-        const thrown = { ...missile, id: next_ident(), quan: 1 };
+        const thrown = { ...missile, id: next_ident(), quan: 1, timed: 0, owornmask: 0 };
+        splitObjectTimers(missile, thrown);
+        delete thrown.o_id;
         delete thrown.letter;
         delete thrown.line;
         return thrown;
@@ -12633,6 +12750,18 @@ function killMonsterFromThrownInterveningHit(target, visible, { afterMore = fals
     const message = `${subject} is ${destroyed ? 'destroyed' : 'killed'}!`;
     if (afterMore) appendAfterMoreMessage(message);
     else addToplineMessage(message);
+    const lifeSavingMessages = [];
+    if (applyHeroProjectileMonsterLifeSaving(target, lifeSavingMessages, { unseenMaybeNot: false })) {
+        for (const line of lifeSavingMessages) {
+            if (afterMore) appendAfterMoreMessage(line);
+            else addToplineMessage(line);
+        }
+        return;
+    }
+    for (const line of lifeSavingMessages) {
+        if (afterMore) appendAfterMoreMessage(line);
+        else addToplineMessage(line);
+    }
     if (reviveVampshifterFromProjectileKill(target, visible, afterMore)) return;
 
     const data = target.data || {};
@@ -12915,6 +13044,23 @@ function monsterPickupClass(obj) {
     return obj.otyp;
 }
 
+// mon.c:curr_mon_load/max_mon_load. Equipment contributes to weight even
+// when droppables() keeps it, and species strength determines capacity.
+function monsterCarryingLoad(mon) {
+    const data = mon.data || {};
+    const species = monsterSpecies(mon);
+    const weight = species?.weight ?? data.cwt ?? MONSTER_BODY_WEIGHTS.get(data.name) ?? 1450;
+    const strong = species ? strongmonst(species) : !!data.strong;
+    let maximum = !weight ? Math.trunc(1000 * (species?.size ?? data.msize ?? MZ_MEDIUM) / MZ_MEDIUM)
+        : !strong || weight > 1450 ? Math.trunc(1000 * weight / 1450) : 1000;
+    if (!strong) maximum = Math.trunc(maximum / 2);
+    const throwsBoulders = species ? throws_rocks(species) : !!data.throwsRocks;
+    let current = 0;
+    for (const obj of mon.minvent || [])
+        if (obj.otyp !== BOULDER || !throwsBoulders) current += objectWeight(obj);
+    return { current, maximum: Math.max(maximum, 1) };
+}
+
 function monsterWouldTakeItem(mon, obj) {
     if (!obj || obj.transientProjectile) return false;
     const cubeWantsObject = isGelatinousCube(mon) && !gelatinousCubeUntouchableObject(mon, obj);
@@ -12925,13 +13071,7 @@ function monsterWouldTakeItem(mon, obj) {
 
     const cls = monsterPickupClass(obj);
     const data = mon.data || {};
-    const bodyWeight = data.cwt ?? MONSTER_BODY_WEIGHTS.get(data.name) ?? 1450;
-    let maxLoad = (!data.strong || bodyWeight > 1450)
-        ? Math.trunc((1000 * bodyWeight) / 1450)
-        : 1000;
-    if (!data.strong) maxLoad = Math.trunc(maxLoad / 2);
-    let currentLoad = 0;
-    for (const held of mon.minvent || []) currentLoad += objectWeight(held);
+    const { current: currentLoad, maximum: maxLoad } = monsterCarryingLoad(mon);
     const pctLoad = Math.trunc((currentLoad * 100) / Math.max(maxLoad, 1));
     if (!mon.isshk && currentLoad + objectWeight(obj) > Math.max(maxLoad, 1)) return false;
     if (cubeWantsObject) return true;
@@ -13223,7 +13363,7 @@ function monsterTrapHarmless(mon, trap) {
     }
     if (ttyp === RUST_TRAP) return data.name !== 'iron golem';
     if (ttyp === WEB) return monsterWebPassesThrough(data);
-    if (ttyp === ANTI_MAGIC) return monsterResistsAntiMagicTrap(mon);
+    if (ttyp === ANTI_MAGIC) return monsterResistsMagic(mon);
     return ttyp === STATUE_TRAP || ttyp === MAGIC_TRAP || ttyp === VIBRATING_SQUARE;
 }
 
@@ -13313,11 +13453,14 @@ function monsterCarriesAntiMagicDefendingArtifact(mon) {
         MONSTER_CARRIED_ANTIMAGIC_DEFENSE_ARTIFACTS.has(monsterArtifactKey(item)));
 }
 
-function monsterResistsAntiMagicTrap(mon) {
+export function monsterResistsMagic(mon) {
     const data = mon?.data || {};
+    const species = monsterSpecies(mon);
     return !!(mon?.magicResistance || mon?.resistsMagic || mon?.resists_magm
         || data.magicResistance || data.resistsMagic || data.resists_magm
         || data.defendsMagic || data.defends_magm
+        || species?.pm === PM_BABY_GRAY_DRAGON
+        || monsterPermonstAttacks(mon).some(attack => attack.adtyp === AD_MAGM || attack.adtyp === AD_RBRE)
         || monsterWearsAntiMagicItem(mon)
         || monsterWieldsAntiMagicDefendingArtifact(mon)
         || monsterCarriesAntiMagicDefendingArtifact(mon));
@@ -13432,7 +13575,7 @@ function ensureMonsterTrack(mon) {
     return mon.mtrack;
 }
 
-function migrateMonsterToLevelRandom(mon, targetLevel, sourceX, sourceY, { skipPetPostMoveRoll = false } = {}) {
+export function migrateMonsterToLevelRandom(mon, targetLevel, sourceX, sourceY, { skipPetPostMoveRoll = false } = {}) {
     if (!mon || !targetLevel) return false;
     const current = game.u?.uz || { dnum: 0, dlevel: 1 };
     const fromLevel = { dnum: current.dnum ?? 0, dlevel: current.dlevel ?? 1 };
@@ -13591,7 +13734,7 @@ function monsterAntiMagicTrapEffect(mon, trap, { skipPetPostMoveRoll = false } =
 
     const inSight = monsterVisibleToHero(mon) || mon === game.u?.usteed;
     const seeIt = couldSeeCoord(mon.mx, mon.my);
-    if (!monsterResistsAntiMagicTrap(mon)) {
+    if (!monsterResistsMagic(mon)) {
         if (!mon.mcan && monsterHasAntiMagicDrainAttack(mon)) {
             mon.mspec_used = (mon.mspec_used || 0) + d(2, 6);
             if (inSight) {
@@ -13666,18 +13809,79 @@ function monsterSqueakyBoardTrapEffect(mon, trap) {
     return true;
 }
 
-function trapDartDamage(dart, mon) {
+function trapMissileDamage(missile, mon) {
     const data = mon?.data || {};
-    const die = mon?.big || mon?.bigmonst || data.big || data.bigmonst ? 2 : 3;
-    let damage = rnd(die) + Math.trunc(Number(dart?.spe || 0));
+    const large = monsterObjectHitSizeValue(mon) >= 3 || mon?.big || mon?.bigmonst || data.big || data.bigmonst;
+    const die = missile.otyp === ARROW ? 6 : large ? 2 : 3;
+    let damage = rnd(die) + Math.trunc(Number(missile?.spe || 0));
     if (damage < 0) damage = 0;
-    damage += monsterThrownObjectBlessedHitDamage(mon, dart);
+    damage += monsterThrownObjectBlessedHitDamage(mon, missile);
     if (damage > 0) {
-        const erosion = Math.max(0, Math.trunc(Number(dart?.oeroded || 0)),
-            Math.trunc(Number(dart?.oeroded2 || 0)), Math.trunc(Number(dart?.erosion || 0)));
+        const erosion = Math.max(0, Math.trunc(Number(missile?.oeroded || 0)),
+            Math.trunc(Number(missile?.oeroded2 || 0)), Math.trunc(Number(missile?.erosion || 0)));
         damage = Math.max(1, damage - erosion);
     }
     return Math.max(1, damage);
+}
+
+// trap.c:t_missile and trapeffect_arrow/dart_trap call thitm even when the
+// monster is unseen. A missed missile is placed directly, without drop_throw.
+function monsterMissileTrapEffect(mon, trap, { skipPetPostMoveRoll = false } = {}) {
+    if (![ARROW_TRAP, DART_TRAP].includes(trap?.ttyp) || monsterTrapHarmless(mon, trap)) return false;
+    if (monsterAvoidsKnownTrapBeforeEffect(mon, trap)) return true;
+    monsterTriggerTrap(mon, trap);
+    if (trap.madeby_u && rnl(5)) mon.mpeaceful = false;
+    const inSight = monsterVisibleToHero(mon) || mon === game.u?.usteed;
+    const seeIt = !game.u?.blind && cansee(mon.mx, mon.my);
+    if (trap.once && trap.tseen && !rn2(15)) {
+        if (inSight && seeIt) addToplineMessage(`${monsterDisplayName(mon)} triggers a trap but nothing happens.`);
+        game.level.traps = (game.level.traps || []).filter(item => item !== trap);
+        newsym(mon.mx, mon.my);
+        return true;
+    }
+    trap.once = true;
+    const arrow = trap.ttyp === ARROW_TRAP;
+    const missile = mksobj(arrow ? ARROW : DART, true, false);
+    // Both arrow and dart have unit weight 1 in objects.h.
+    Object.assign(missile, { quan: 1, owt: 1, opoisoned: false, ox: trap.tx, oy: trap.ty });
+    if (!arrow) missile.opoisoned = !rn2(6);
+    if (inSight) trap.tseen = true;
+    const hit = monsterFindMac(mon) + (arrow ? 8 : 7) + (missile.spe || 0) <= rnd(20);
+    if (seeIt) {
+        const name = pickupObjectName(missile);
+        addToplineMessage(`${monsterDisplayName(mon)} is ${hit ? '' : 'almost '}hit by ${articleFor(name)} ${name}!`);
+    }
+    if (hit) {
+        mon.mhp -= trapMissileDamage(missile, mon);
+        if (mon.mhp < 1) {
+            if (seeIt) addToplineMessage(`${monsterDisplayName(mon)} is ${monsterProjectileDeathIsDestroyed(mon, true) ? 'destroyed' : 'killed'}!`);
+            const messages = [];
+            const saved = applyHeroProjectileMonsterLifeSaving(mon, messages, { unseenMaybeNot: false, visibleSquare: seeIt });
+            for (const message of messages) addToplineMessage(message);
+            if (!saved && !reviveVampshifterFromProjectileKill(mon, seeIt)) {
+                if (!seeIt && mon.mtame) addToplineMessage('You have a sad feeling for a moment, then it passes.');
+                mon.dead = true;
+                mon.mhp = 0;
+                if (mon.mleashed) {
+                    const leash = (game.inventory || []).find(obj => obj.leashmon === (mon.m_id ?? mon.id));
+                    if (leash) leash.leashmon = 0;
+                    mon.mleashed = false;
+                }
+                finishTrapKilledMonster(mon, { skipPetPostMoveRoll });
+            }
+        }
+    } else {
+        missile.petFetchable = true;
+        const stacked = stackMonsterThrownObject(missile);
+        if (stacked === missile) game.level.objects.push(missile);
+        else stacked.owt = stacked.quan;
+        newsym(mon.mx, mon.my);
+    }
+    if (skipPetPostMoveRoll && game._message_more) {
+        game._pet_delayed_post_move_roll = 1;
+        game._pet_skip_post_move_roll = 1;
+    }
+    return true;
 }
 
 function monsterPossessiveName(mon) {
@@ -15046,12 +15250,13 @@ function monsterPickStuff(mon, monIndex = null, somebodyCanMove = false, forceMo
     const dragonStack = (mon.data?.mlet === 'D' || mon.data?.glyph === 'D')
         && (cls === GOLD_PIECE || cls === GEM_CLASS);
     const carryAmount = mon.data?.nohands && quan > 1 && !dragonStack ? 1 : quan;
-    const pickedObj = carryAmount < quan ? { ...obj, quan: carryAmount } : obj;
+    const pickedObj = carryAmount < quan ? { ...obj, quan: carryAmount, timed: 0 } : obj;
     if (pickedObj === obj) {
         const idx = objects.indexOf(obj);
         if (idx >= 0) objects.splice(idx, 1);
     } else {
         pickedObj.id = next_ident();
+        splitObjectTimers(obj, pickedObj);
         obj.quan -= carryAmount;
     }
     pickedObj.seen = false;
@@ -15068,282 +15273,24 @@ function monsterPickStuff(mon, monIndex = null, somebodyCanMove = false, forceMo
     return true;
 }
 
-const WIZARD_MONSTER_SPELLS = [
-    { name: 'psiBolt', level: 0, indirect: false, hostile: true, sight: true },
-    { name: 'cureSelf', level: 1, indirect: true },
-    { name: 'hasteSelf', level: 2, indirect: true },
-    { name: 'stunYou', level: 3, indirect: false, hostile: true, sight: true },
-    { name: 'disappear', level: 4, indirect: true },
-    { name: 'weakenYou', level: 6, indirect: false, hostile: true, sight: true },
-    { name: 'destroyArmor', level: 8, indirect: false, hostile: true, sight: true },
-    { name: 'curseItems', level: 10, indirect: false, hostile: true, sight: true },
-    { name: 'aggravation', level: 13, indirect: true, hostile: true, sight: true },
-    { name: 'summonMons', level: 15, indirect: true, hostile: true, sight: true },
-    { name: 'cloneWiz', level: 18, indirect: true, hostile: true, sight: true },
-    { name: 'deathTouch', level: 20, indirect: false, hostile: true, sight: true },
-];
-
 function monsterCastsWizardSpells(data) {
-    return data.name === 'gnomish wizard' || data.mlet === 'L';
+    return monsterPermonstAttacks({ data }).some(attack => attack.aatyp === AT_MAGC && attack.adtyp === AD_SPEL);
 }
 
 function monsterHasMagicAttack(data) {
-    return monsterCastsWizardSpells(data) || data.spellcaster || data.magic || data.priest;
+    return monsterPermonstAttacks({ data }).some(attack => attack.aatyp === AT_MAGC);
 }
 
-function monsterSpellWouldBeUseless(mon, spell) {
-    if (spell.hostile && mon.mpeaceful) return true;
-    if (spell.sight && !couldSeeCoord(mon.mx, mon.my)) return true;
-
-    switch (spell.name) {
-    case 'cloneWiz':
-        // C ref: mcastu.c:941-945 — only the Wizard may clone, and only when
-        // at most one of him exists.
-        return !mon.iswiz || noOfWizards() > 1;
-    case 'cureSelf':
-        return (mon.mhp || 0) >= (mon.mhpmax || 0);
-    case 'disappear':
-        return !!mon.minvis || !!mon.invis_blkd || (!!mon.mpeaceful && !game.u?.seeInvisible);
-    case 'hasteSelf':
-        return mon.permspeed === 'fast';
-    default:
-        return false;
-    }
-}
-
-function chooseWizardMonsterSpell(mon) {
-    const level = Math.max(1, mon.m_lev || mon.data?.hpLevel || mon.data?.mlevel || 1);
-    const maxSpellLevel = WIZARD_MONSTER_SPELLS[WIZARD_MONSTER_SPELLS.length - 1].level;
-    let spellval = rn2(level);
-    if (spellval > maxSpellLevel && rn2(maxSpellLevel))
-        spellval = rn2(maxSpellLevel);
-    for (let i = WIZARD_MONSTER_SPELLS.length - 1; i >= 0; --i) {
-        const spell = WIZARD_MONSTER_SPELLS[i];
-        if (spell.level <= spellval && !monsterSpellWouldBeUseless(mon, spell))
-            return spell;
-    }
-    return WIZARD_MONSTER_SPELLS[0];
-}
-
-function currentLevelInHell() {
-    return game.dungeons?.[game.u?.uz?.dnum]?.name === 'Gehennom';
-}
-
-function alignSign(maligntyp) {
-    return maligntyp > 0 ? 1 : maligntyp < 0 ? -1 : 0;
-}
-
-async function summonNastiesForMonster(summoner) {
-    const before = (game.level?.monsters || []).length;
-    if (!rn2(10) && currentLevelInHell()) {
-        // msummon() demon-prince handling is still unported; this path is rare
-        // and not the current Sanctum summon frontier.
-        return 0;
-    }
-
-    let count = 0;
-    const maxNasties = 10;
-    const summonerClass = summoner.data?.mlet || '';
-    const castalign = alignSign(summoner.data?.maligntyp || 0);
-    let difcap = summoner.data?.difficulty || 0;
-    const outer = rnd((game.u?.ulevel || 1) > 3 ? Math.trunc((game.u?.ulevel || 1) / 3) : 1);
-    for (let i = outer; i > 0 && count < maxNasties; --i) {
-        for (let j = 0; j < 20; ++j) {
-            let makeData = null;
-            let trylimit = 11;
-            do {
-                if (!--trylimit) break;
-                makeData = pickNasty(difcap);
-            } while (makeData
-                && ((difcap > 0 && (makeData.difficulty || 0) >= difcap && monsterHasMagicAttack(makeData))
-                    || (summonerClass === '&' && makeData.mlet === 'A')
-                    || (summonerClass === 'A' && makeData.mlet === '&')));
-            if (!trylimit || !makeData) continue;
-
-            const targetX = summoner.mux ?? game.u?.ux ?? summoner.mx;
-            const targetY = summoner.muy ?? game.u?.uy ?? summoner.my;
-            const spot = enextoMonsterSpot(targetX, targetY, makeData);
-            if (!spot) continue;
-            const mon = await makemon(makeData, spot.x, spot.y, MM_NOMSG);
-            if (!mon) continue;
-            mon.msleeping = 0;
-            mon.mpeaceful = 0;
-            mon.mtame = 0;
-            set_malign(mon);
-            mon.mspec_used = rnd(4);
-            if (mon.data?.name === 'minotaur')
-                mon.data = { ...mon.data, color: CLR_BROWN };
-            newsym(mon.mx, mon.my);
-
-            if (mon.data?.name === 'arch-lich' || mon.data?.name === 'Archon') {
-                const cap = 26;
-                if (!difcap || difcap > cap) difcap = cap;
-            }
-            count = (game.level?.monsters || []).length - before;
-            if (count >= maxNasties
-                || (mon.data?.maligntyp || 0) === 0
-                || alignSign(mon.data?.maligntyp || 0) === castalign)
-                break;
-        }
-    }
-    return count;
-}
-
+// monmove.c:889-917 visits each magic slot when a monster elects to move.
+// castmu selects once in this mode and rejects directed spells immediately.
 async function maybeCastUndirectedMonsterSpell(mon) {
-    const data = mon.data || {};
-    const clericCaster = data.priest || data.name === 'acolyte';
-    const wizardCaster = !clericCaster
-        && (monsterCastsWizardSpells(data) || data.spellcaster || data.magic);
-    const caster = wizardCaster || clericCaster;
-    if (mon.mspec_used || !caster) return false;
-    if ((mon.mx - (game.u?.ux || 0)) ** 2 + (mon.my - (game.u?.uy || 0)) ** 2 > 49) return false;
-    if (wizardCaster) {
-        const spell = chooseWizardMonsterSpell(mon);
-        if (!spell.indirect || monsterSpellWouldBeUseless(mon, spell)) return false;
-        mon.mspec_used = (mon.m_lev || 0) < 8 ? 10 - (mon.m_lev || 0) : 2;
-        if (rn2(Math.max(1, (mon.m_lev || 1) * 10)) < (mon.mconf ? 100 : 20))
-            return false;
-        if (spell.name !== 'summonMons'
-            && couldSeeCoord(mon.mx, mon.my) && !game.u?.blind && !mon.minvis && !mon.mundetected)
-            addToplineMessage(`${monsterDisplayName(mon)} casts a spell!`);
-        if (spell.name === 'summonMons') {
-            const count = await summonNastiesForMonster(mon);
-            if (count) {
-                addToplineMessage(`${count === 1 ? 'A monster appears' : 'Monsters appear'} from nowhere!`);
-                if (game._sanctum_summon_ready) {
-                    game._sanctum_summon_ready = 0;
-                    game._sanctum_summon_script_phase = 'afterSummon';
-                    game._refresh_monsters_for_turn_tail_once = 1;
-                    if (game.u) game.u.uhunger = 899;
-                }
-            }
-            rn2(5);
+    if (mon.mspec_used || (mon.mx - game.u.ux) ** 2 + (mon.my - game.u.uy) ** 2 > 49) return false;
+    for (const attack of monsterPermonstAttacks(mon)) {
+        if (attack.aatyp !== AT_MAGC || (attack.adtyp !== AD_SPEL && attack.adtyp !== AD_CLRC)) continue;
+        if (await monsterCastSpell(mon, { thinksFound: false, found: false, attack })) {
+            rn2(5); // dochug's post-cast distfleeck recalculation.
             return true;
         }
-        if (spell.name === 'disappear') {
-            const wasVisible = couldSeeCoord(mon.mx, mon.my)
-                && !game.u?.blind && !mon.minvis && !mon.mundetected;
-            mon.minvis = 1;
-            if (wasVisible) {
-                addToplineMessage(`${monsterDisplayName(mon)} suddenly ${game.u?.seeInvisible ? 'becomes transparent' : 'disappears'}!`);
-                if (!game.u?.seeInvisible) {
-                    const loc = game.level?.at(mon.mx, mon.my);
-                    if (loc) loc.map_invisible = true;
-                }
-            }
-            newsym(mon.mx, mon.my);
-        } else if (spell.name === 'hasteSelf') {
-            mon.permspeed = 'fast';
-            mon.mspeed = 'fast';
-        } else if (spell.name === 'cureSelf') {
-            mon.mhp = Math.min(mon.mhpmax || mon.mhp || 1, (mon.mhp || 1) + Math.max(1, Math.trunc((mon.m_lev || 1) / 2) + 1));
-        } else if (spell.name === 'cloneWiz') {
-            // C ref: mcastu.c:413-418 (mcast_clone_wiz) — Double Trouble;
-            // clonewiz() may equip the clone with a fake Amulet
-            // (wizard.c:543-560).
-            if (mon.iswiz && noOfWizards() === 1) {
-                addToplineMessage('Double Trouble...');
-                await clonewiz();
-            }
-        } else if (spell.name === 'aggravation') {
-            // C ref: mcastu.c:826-830 (MCAST_AGGRAVATION/wizard.c:522 aggravate).
-            addToplineMessage('You feel that monsters are aware of your presence.');
-            wizardAggravate();
-        }
-        rn2(5);
-        return true;
-    }
-    const level = Math.max(1, mon.m_lev || mon.data?.hpLevel || mon.data?.mlevel || 1);
-    const cleric = clericCaster;
-
-    /* C ref: mcastu.c:130-260 castmu() for a non-attacking (undirected)
-     * AD_CLRC caster, reached from dochug()'s idle-caster gate
-     * (monmove.c:889-907).  Spell selection calls choose_monster_spell()
-     * once (mcastu.c:90-120): rn2(m_lev), then if the roll exceeds the
-     * list's highest spell level (13 — MCAST_GEYSER), optionally one or two
-     * rn2(13) rerolls (mcastu.c:109-110); then the descending scan picks the
-     * highest-level spell that is not useless (MFC hostility vs peaceful,
-     * MCF_SIGHT blocking when the hero is unseen, CURE_SELF useless at full
-     * hp, etc.).  When the selected spell is directed (not MCF_INDIRECT),
-     * castmu() returns without casting (mcastu.c:155-168): the hero never
-     * notices.  On an undirected, useful spell the cast proceeds:
-     * mspec_used = 2 for level >= 8 casters (mcastu.c:180-181), then a
-     * fumble roll rn2(ml*10) vs 20/100 for confused (mcastu.c:206). */
-    if (cleric && mon.ispriest && mon.shrine) {
-        const MCAST_LIST = [ // mon_cleric_spells (mcastu.c:28-31) with levels
-            { name: 'openWounds', level: 0, indirect: false },
-            { name: 'cureSelf', level: 1, indirect: true },
-            { name: 'confuseYou', level: 2, indirect: false },
-            { name: 'paralyzeYou', level: 4, indirect: false },
-            { name: 'blindYou', level: 6, indirect: false },
-            { name: 'insects', level: 8, indirect: true },
-            { name: 'curseItems', level: 10, indirect: false },
-            { name: 'lightning', level: 11, indirect: false },
-            { name: 'firePillar', level: 12, indirect: false },
-            { name: 'geyser', level: 13, indirect: false },
-        ];
-        const spellWouldBeUseless = (name) => {
-            const flags = { // MCF_HOSTILE / MCF_SIGHT from mcastu.h
-                openWounds: true, confuseYou: true, paralyzeYou: true,
-                blindYou: true, insects: true, curseItems: true,
-                lightning: true, firePillar: true, geyser: true, cureSelf: false,
-            };
-            const spectral = { insects: true }; /* MCF_INDIRECT among hostile */
-            const sp = MCAST_LIST.find(entry => entry.name === name);
-            const hostile = !!flags[name];
-            const needsSight = !!flags[name];
-            if (hostile && (mon.mpeaceful || mon.mtame)) return true;
-            if (needsSight && !spectral[name] && name !== 'insects'
-                && !couldSeeCoord(mon.mx, mon.my)) {
-                /* hero invisible to caster — modeled loosely; valley heroities
-                 * are always visible; refine when a recording says otherwise */
-            }
-            if (name === 'cureSelf' && (mon.mhp ?? 1) >= (mon.mhpmax ?? mon.mhp ?? 1)) return true;
-            return false;
-        };
-        let spellval = rn2(level);
-        if (spellval > 13 && rn2(13))
-            spellval = rn2(13);
-        let spell = null;
-        for (let i = MCAST_LIST.length - 1; i >= 0; i--) {
-            if (MCAST_LIST[i].level <= spellval && !spellWouldBeUseless(MCAST_LIST[i].name)) {
-                spell = MCAST_LIST[i];
-                break;
-            }
-        }
-        if (!spell) spell = MCAST_LIST[0];
-        if (!spell.indirect) return false;
-
-        mon.mspec_used = (mon.m_lev || 0) < 8 ? 10 - (mon.m_lev || 0) : 2;
-        if (rn2(Math.max(1, level * 10)) < (mon.mconf ? 100 : 20))
-            return false; /* fumbled — C prints air-crackles only if seen */
-        if (spell.name === 'cureSelf') {
-            if (monsterVisibleToHero(mon))
-                addToplineMessage(`${monsterDisplayName(mon)} casts a spell!`);
-            /* C ref: mcastu.c:300-317 m_cure_self(): healmon(mtmp, d(3,6), 0)
-             * with "looks better." printed when the hero can see the monster. */
-            if ((mon.mhp ?? 1) < (mon.mhpmax ?? mon.mhp ?? 1)) {
-                if (monsterVisibleToHero(mon))
-                    addToplineMessage(`${monsterDisplayName(mon)} looks better.`);
-                const heal = d(3, 6);
-                mon.mhp = Math.min(mon.mhpmax ?? mon.mhp ?? 1, (mon.mhp ?? 1) + heal);
-            }
-        }
-        /* C ref: monmove.c:913-917 — after a cast that sets status =
-         * MMOVE_DONE (castmu returned M_ATTK_HIT), dochug()'s unconditional
-         * status!=MMOVE_DIED branch runs distfleeck() again (the bravegremlin
-         * rn2(5) at monmove.c:544) before the switch(status) tail.  Emit that
-         * recalc roll here so the dochug-level caller's `continue` still
-         * matches C's rng consumption. */
-        rn2(5);
-        return true;
-    }
-    const maxSpellLevel = cleric ? 13 : 20;
-    const attackCount = data.name === 'Arch Priest' ? 2 : 1;
-    for (let i = 0; i < attackCount; i++) {
-        const spellLevel = rn2(level);
-        if (spellLevel > maxSpellLevel && rn2(maxSpellLevel))
-            rn2(maxSpellLevel);
     }
     return false;
 }
@@ -16057,43 +16004,7 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
     }
     if (monsterPitTrapEffect(mon, trap, { cavernTunnelRoom })) return done();
     if (monsterHoleTrapEffect(mon, trap)) return done();
-    if (trap?.ttyp === DART_TRAP && !monsterTrapHarmless(mon, trap)) {
-        if (monsterAvoidsKnownTrapBeforeEffect(mon, trap)) return done();
-        if (trap.once && trap.tseen && !rn2(15)) {
-            game.level.traps = (game.level?.traps || []).filter(item => item !== trap);
-            newsym(mon.mx, mon.my);
-            return done();
-        }
-        monsterTriggerTrap(mon, trap);
-        trap.once = true;
-        const dart = mksobj(DART, true, false);
-        dart.quan = 1;
-        dart.opoisoned = !rn2(6);
-        const inSight = !game.u?.blind && couldSeeCoord(mon.mx, mon.my) && !mon.minvis && !mon.mundetected;
-        if (inSight) trap.tseen = true;
-        const hit = (mon.data?.mac ?? 10) + 7 + Math.trunc(Number(dart.spe || 0)) <= rnd(20);
-        if (hit) {
-            mon.mhp = (mon.mhp || 1) - trapDartDamage(dart, mon);
-            if (inSight) addToplineMessage(`${monsterDisplayName(mon, true)} is hit by a dart!`);
-            if (mon.mhp < 1) {
-                if (inSight) addToplineMessage(`${monsterDisplayName(mon)} is killed!`);
-                finishTrapKilledMonster(mon);
-            }
-        } else {
-            Object.assign(dart, {
-                kind: 'dart',
-                ox: mon.mx,
-                oy: mon.my,
-                glyph: ')',
-                color: CLR_CYAN,
-                petFetchable: true,
-            });
-            game.level.objects.push(dart);
-            if (inSight) addToplineMessage(`${monsterDisplayName(mon, true)} is almost hit by a dart!`);
-            newsym(mon.mx, mon.my);
-        }
-        return done();
-    }
+    if (monsterMissileTrapEffect(mon, trap)) return done();
     if (monsterLandmineTrapEffect(mon, trap)) return done();
     if (monsterSqueakyBoardTrapEffect(mon, trap)) return done();
     if (monsterRollingBoulderTrapEffect(mon, trap)) return done();
@@ -16182,7 +16093,158 @@ function petAttacksMonsterPorted(mon, target) {
     }
 }
 
-function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
+// dogmove.c:28-132. Keep one useful digging tool, horn, and unlocking
+// tool; retain equipped objects even when they precede a droppable one.
+function petDroppable(mon) {
+    const data = monsterSpecies(mon) || mon.data || {};
+    const unused = { artifact: true };
+    const weapon = mon.mw;
+    let pick = null, horn = null, key = null;
+    if (is_animal(data) || mindless(data) || mon.data?.animal || mon.data?.mindless) {
+        pick = horn = key = unused;
+    } else {
+        if (!(tunnels(data) || mon.data?.tunnels) || !(needspick(data) || mon.data?.needspick)) pick = unused;
+        if (nohands(data) || verysmall(data) || mon.data?.nohands || mon.data?.verysmall) key = unused;
+    }
+    const weaponKind = String(weapon?.actualKind || weapon?.kind || '').toLowerCase();
+    if (weaponKind === 'pick-axe' || weaponKind === 'dwarvish mattock') pick = weapon;
+    if (weaponKind === 'unicorn horn') horn = weapon;
+    for (const obj of mon.minvent || []) {
+        const kind = String(obj.actualKind || obj.kind || '').toLowerCase();
+        const artifact = !!(obj.artifact || obj.oartifact);
+        if (kind === 'dwarvish mattock' || kind === 'pick-axe') {
+            const shield = !!((mon.misc_worn_check || 0) & W_ARMS);
+            if (!(kind === 'dwarvish mattock' && shield)) {
+                if (kind === 'dwarvish mattock' && (pick?.actualKind || pick?.kind) === 'pick-axe'
+                    && pick !== weapon && (!(pick.artifact || pick.oartifact) || artifact)) return pick;
+                if (!pick || (artifact && !(pick.artifact || pick.oartifact))) {
+                    if (pick) return pick;
+                    pick = obj;
+                    continue;
+                }
+            }
+        } else if (kind === 'unicorn horn') {
+            if (!obj.cursed && (!horn || (artifact && !(horn.artifact || horn.oartifact)))) {
+                if (horn) return horn;
+                horn = obj;
+                continue;
+            }
+        } else if (['skeleton key', 'lock pick', 'credit card'].includes(kind)) {
+            const keyKind = key?.actualKind || key?.kind;
+            if (key && (!(key.artifact || key.oartifact) || artifact)) {
+                if (kind === 'skeleton key' && keyKind === 'lock pick') return key;
+                if (kind !== 'credit card' && keyKind === 'credit card') return key;
+            }
+            if (!key || (artifact && !(key.artifact || key.oartifact))) {
+                if (key) return key;
+                key = obj;
+                continue;
+            }
+        }
+        if (!(obj.owornmask || obj.worn || obj.wielded) && obj !== weapon) return obj;
+    }
+    return null;
+}
+
+// dogmove.c:156-251: pet size changes nutrition, while partial food
+// scales both nutrition and eating time against the untouched food.
+function applyPetFoodNutrition(mon, obj) {
+    const edog = mon.mextra.edog;
+    const kind = String(obj.actualKind || obj.kind || '').toLowerCase().replace(/^partly eaten /, '');
+    const corpse = obj.otyp === 'corpse' || obj.otyp === CORPSE;
+    let nutrition;
+    if (corpse || obj.cls === 'food' || obj.otyp === FOOD_CLASS || obj.foodRoll || obj.globby) {
+        const species = corpse ? monsterSpecies({ data: obj.corpsenm }) : null;
+        const full = corpse ? (species?.nutrition ?? obj.corpsenm?.cnutrit ?? 0) : foodObjectNutrition(obj);
+        const delay = CARRIED_DELAYED_FOOD_VICTUALS.get(kind)?.delay
+            ?? [...CARRIED_DELAYED_FOOD_VICTUALS.values()].find(food => food.otyp != null && food.otyp === obj.otyp)?.delay;
+        mon.meating = corpse ? 3 + ((species?.weight ?? obj.corpsenm?.cwt ?? objectWeight(obj)) >> 6)
+            : obj.globby ? 2 : kind.startsWith('tin') ? 0 : delay ?? 1;
+        const size = monsterSpecies(mon)?.size ?? mon.data?.msize ?? mon.data?.size ?? MZ_MEDIUM;
+        const multiplier = size === 0 ? 8 : size === MZ_GIGANTIC ? 2 : 7 - size;
+        nutrition = (obj.globby ? 20 : full) * multiplier;
+        if (obj.oeaten) {
+            const remaining = Math.min(obj.oeaten, full);
+            mon.meating = Math.max(1, full ? Math.trunc(mon.meating * remaining / full) : 0);
+            nutrition = Math.max(1, full ? Math.trunc(nutrition * remaining / full) : 0);
+        }
+    } else if (obj.cls === 'coin' || obj.glyph === '$') {
+        mon.meating = Math.trunc((obj.quan || 1) / 2000) + 1;
+        nutrition = Math.trunc((obj.quan || 1) / 20);
+    } else {
+        mon.meating = Math.trunc(objectWeight(obj) / 20) + 1;
+        nutrition = 5 * heroMetalNonFoodNutrition(obj);
+    }
+    edog.hungrytime = Math.max(edog.hungrytime || 0, game.moves || 1) + nutrition;
+    mon.mconf = 0;
+    mon.mhpmax += edog.mhpmax_penalty || 0;
+    edog.mhpmax_penalty = 0;
+    if (mon.mflee && mon.mfleetim > 1) mon.mfleetim = Math.trunc(mon.mfleetim / 2);
+    if (mon.mtame < 20) mon.mtame++;
+}
+
+// dogmove.c:348-393,1011: weakness precedes the pet's inventory and
+// movement decisions; starvation is a monster death without hero credit.
+async function applyPetHunger(mon) {
+    const edog = mon.mtame && !mon.isminion ? mon.mextra?.edog : null;
+    if (!edog || (game.moves || 1) <= edog.hungrytime + 500) return false;
+    const data = monsterSpecies(mon) || mon.data || {};
+    if (!(carnivorous(data) || herbivorous(data) || monsterCarnivorous(mon) || monsterHerbivorous(mon))) {
+        edog.hungrytime = (game.moves || 1) + 500;
+        return false;
+    }
+    if (!edog.mhpmax_penalty) {
+        const hpmax = Math.trunc(mon.mhpmax / 3);
+        mon.mconf = 1;
+        edog.mhpmax_penalty = mon.mhpmax - hpmax;
+        mon.mhpmax = hpmax;
+        mon.mhp = Math.min(mon.mhp, hpmax);
+        if (mon.mhp > 0) {
+            if (cansee(mon.mx, mon.my)) addToplineMessage(`${monsterDisplayName(mon)} is confused from hunger.`);
+            else if (couldsee(mon.mx, mon.my)) {
+                if (data.sound && data.sound <= MS_ANIMAL) {
+                    const noise = tipHatMonsterNoise(mon);
+                    if (noise.message) addToplineMessage(noise.message);
+                } else if (data.sound >= MS_HUMANOID) {
+                    if (!heroIsDeafForMonsterNoise()) addToplineMessage('"I\'m hungry."');
+                } else if (monsterVisibleToHero(mon)) addToplineMessage(`${monsterDisplayName(mon)} seems famished.`);
+            } else addToplineMessage(`You feel worried about ${mon.givenName || `your ${mon.data?.name || 'pet'}`}.`);
+            stopCountedSearchOccupationOnHeroHit();
+            clearActiveDelayedOccupations({ interruptEating: true, interruptibleOnly: true });
+            return false;
+        }
+    } else if ((game.moves || 1) <= edog.hungrytime + 750 && mon.mhp > 0) return false;
+
+    if (mon.mleashed && mon !== game.u?.usteed) addToplineMessage('Your leash goes slack.');
+    else if (cansee(mon.mx, mon.my)) addToplineMessage(`${monsterDisplayName(mon)} starves.`);
+    else addToplineMessage(`You feel ${heroIsHallucinatingForMonsterFeedback() ? 'bummed' : 'sad'} for a moment.`);
+    game._pet_skip_post_move_roll = 1;
+    const messages = [];
+    if (applyHeroProjectileMonsterLifeSaving(mon, messages, { unseenMaybeNot: false })) {
+        if (game._pending_feral_steed_dismount === mon && mon === game.u?.usteed) {
+            game._pending_feral_steed_dismount = null;
+            await dismountSteedThrown([game._pending_message, ...messages].filter(Boolean));
+        } else addMonsterConsumeMessages(messages);
+    } else {
+        addMonsterConsumeMessages(messages);
+        mon.mhp = 0;
+        mon.dead = true;
+        if (mon.mleashed) {
+            const leash = (game.inventory || []).find(obj => obj.leashmon === (mon.m_id ?? mon.id ?? mon.mid));
+            if (leash) leash.leashmon = 0;
+        }
+        mon.mleashed = false;
+        if (mon === game.u?.usteed) {
+            game.u.usteed = null;
+            game.u.ugallop = 0;
+        }
+        finishTrapKilledMonster(mon, { skipPetPostMoveRoll: true });
+    }
+    return true;
+}
+
+async function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
+    if (!resumeAfterInventory && await applyPetHunger(mon)) return;
     game._pet_map_redraw_pending = 1;
     const realUx = game.u?.ux ?? mon.mx;
     const realUy = game.u?.uy ?? mon.my;
@@ -16192,7 +16254,7 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
 	    const edog = mon.mextra?.edog || { apport: 3, whistletime: 0 };
 	    edog.ogoal ??= { x: 0, y: 0 };
 		    const whappr = (game.moves || 1) - (edog.whistletime || 0) < 5;
-    const udist = (mon.mx - ux) ** 2 + (mon.my - uy) ** 2;
+    const udist = mon === game.u?.usteed ? 1 : (mon.mx - ux) ** 2 + (mon.my - uy) ** 2;
     const objects = game.level?.objects || [];
     let inMastersSight = couldSeeCoord(mon.mx, mon.my);
     const skipClosePetRoll = mon.mflee;
@@ -16223,18 +16285,19 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
 
     let droppedThisTurn = false;
     let pickedUpThisTurn = false;
-    // C ref: dogmove.c:28-132 droppables() — worn gear (saddle) doesn't
-    // count as something the pet might drop.
-    const petCarriesDroppables = (mon.minvent || []).some(o => !(o.owornmask || o.worn));
-    if (!resumeAfterInventory && petCarriesDroppables) {
-        if (!rn2(udist + 1) || !rn2(edog.apport || 3)) {
-            if (rn2(10) < (edog.apport || 3)) {
-                const dropped = mon.minvent.shift();
-                Object.assign(dropped, { ox: mon.mx, oy: mon.my });
+    const petCarriesDroppables = !!petDroppable(mon);
+    if ((!resumeAfterInventory && petCarriesDroppables) || mon._pet_dropping) {
+        const dropNow = mon._pet_dropping
+            || ((!rn2(udist + 1) || !rn2(edog.apport || 3)) && rn2(10) < (edog.apport || 3));
+        if (dropNow) {
+            mon._pet_dropping = true;
+            let dropped;
+            while ((dropped = petDroppable(mon))) {
                 if (dropped.kind === 'magic lamp' && (dropped.color == null || dropped.color === NO_COLOR))
                     dropped.color = CLR_YELLOW;
-                objects.push(dropped);
-                if ((edog.apport || 3) > 1) edog.apport = (edog.apport || 3) - 1;
+                const dropMessages = [];
+                dropMonsterObject(mon, dropped, dropMessages);
+                addMonsterConsumeMessages(dropMessages);
                 const dropVisible = !game.u?.blind && !!(game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT);
                 const eatingMessagePending = game._eating_finish_message
                     && game._pending_rotten_food_eating_message;
@@ -16261,9 +16324,13 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
                         return;
                     }
                 }
-                droppedThisTurn = true;
                 if (mon.minvis && dropVisible) newsym(mon.mx, mon.my);
             }
+            mon._pet_dropping = false;
+            if (edog.apport > 1) edog.apport--;
+            edog.dropdist = udist;
+            edog.droptime = game.moves || 1;
+            droppedThisTurn = true;
         }
     }
 
@@ -16293,30 +16360,19 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
                     : `${hereObj.blessed ? 'blessed ' : hereObj.cursed ? 'cursed ' : 'uncursed '}${hereObj.kind || 'food'}`;
             const article = /^[aeiou]/i.test(foodName) ? 'an' : 'a';
             if (couldSeeCoord(mon.mx, mon.my)) addToplineMessage(`${petName} eats ${article} ${foodName}.`);
-            edog.hungrytime = Math.max(edog.hungrytime || 0, game.moves || 1) + 1200;
-            mon.mtame = Math.min(20, (mon.mtame || 10) + 1);
-            mon.meating = (hereObj.otyp === 'corpse' || hereObj.otyp === CORPSE)
-                ? 3 + (objectWeight(hereObj) >> 6)
-                : PET_FOOD_DELAY[hereObj.kind] || 1;
+            applyPetFoodNutrition(mon, hereObj);
             const splitStackAccounted = (hereObj.quan || 1) > 1 && hereObj.cls === 'food';
             if (splitStackAccounted) next_ident();
-            rn2(100);
+            if (dogFood(mon, hereObj) === DOGFOOD && (hereObj.invlet || hereObj.letter))
+                edog.apport += Math.trunc(200 / (edog.dropdist + (game.moves || 1) - (edog.droptime || 0)));
             rn2(100);
             const consumeMessages = [];
             consumeMonsterEatenObject(mon, hereObj, objects, consumeMessages, { splitStackAccounted });
             addMonsterConsumeMessages(consumeMessages);
             return;
         }
-        const petBodyWeight = mon.data?.cwt ?? MONSTER_BODY_WEIGHTS.get(mon.data?.name) ?? 1450;
         const hereWeight = objectWeight(hereObj);
-        let petLoad = 0;
-        for (const held of mon.minvent || []) {
-            petLoad += objectWeight(held);
-        }
-        let maxLoad = (!mon.data?.strong || petBodyWeight > 1450)
-            ? Math.trunc((1000 * petBodyWeight) / 1450)
-            : 1000;
-        if (!mon.data?.strong) maxLoad = Math.trunc(maxLoad / 2);
+        const { current: petLoad, maximum: maxLoad } = monsterCarryingLoad(mon);
         const unresolvedHereObject = hereObj.otyp === WEAPON_CLASS && !hereObj.cls && !hereObj.kind;
         let carryAmount = 0;
         if (!unresolvedHereObject
@@ -16330,13 +16386,14 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
         if (hereFood !== UNDEF && carryAmount > 0 && rn2(20) < (edog.apport || 3) + 3) {
                 if (rn2(udist) || !rn2(edog.apport || 3)) {
                     const pickedObj = carryAmount < (hereObj.quan || 1)
-                        ? { ...hereObj, quan: carryAmount }
+                        ? { ...hereObj, quan: carryAmount, timed: 0 }
                         : hereObj;
                     if (pickedObj === hereObj) {
                         const idx = objects.indexOf(hereObj);
                         if (idx >= 0) objects.splice(idx, 1);
                     } else {
                         pickedObj.id = next_ident();
+                        splitObjectTimers(hereObj, pickedObj);
                         hereObj.quan -= carryAmount;
                     }
                     pickedObj.seen = false;
@@ -16380,6 +16437,8 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
                 }
             }
     }
+
+    if (mon === game.u?.usteed) return;
 
     let goal = { x: ux, y: uy };
     let gtyp = UNDEF;
@@ -16430,20 +16489,12 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
                 goal = { x: obj.ox, y: obj.oy };
                 gtyp = food;
             }
-        } else if (gtyp === UNDEF && !(mon.minvent?.length) && inMastersSight
+        } else if (gtyp === UNDEF && !petDroppable(mon) && inMastersSight
                    && (!(game.level?.at(mon.mx, mon.my)?.lit) || game.level?.at(ux, uy)?.lit)) {
             const unresolvedObject = obj.otyp === WEAPON_CLASS && !obj.cls && !obj.kind
                 || game.level?.flags?.sokoban_rules && typeof obj.otyp === 'string' && obj.otyp.startsWith('soko-random-');
-            const petBodyWeight = mon.data?.cwt ?? MONSTER_BODY_WEIGHTS.get(mon.data?.name) ?? 1450;
             const targetWeight = objectWeight(obj);
-            let petLoad = 0;
-            for (const held of mon.minvent || []) {
-                petLoad += objectWeight(held);
-            }
-            let maxLoad = (!mon.data?.strong || petBodyWeight > 1450)
-                ? Math.trunc((1000 * petBodyWeight) / 1450)
-                : 1000;
-            if (!mon.data?.strong) maxLoad = Math.trunc(maxLoad / 2);
+            const { current: petLoad, maximum: maxLoad } = monsterCarryingLoad(mon);
             let carryAmount = 0;
             if (!unresolvedObject && obj.otyp !== LARGE_BOX && obj.otyp !== CHEST) {
                 const noHandsStack = mon.data?.nohands && (obj.quan || 1) > 1;
@@ -16465,7 +16516,7 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
         if (udist > 1) {
             // C ref: dogmove.c:573-576 — the apport fallback only rolls for a
             // pet carrying DROPPABLES (worn gear like a saddle doesn't count).
-            const dogHasMinvent = (mon.minvent || []).some(o => !(o.owornmask || o.worn));
+            const dogHasMinvent = !!petDroppable(mon);
             if (!IS_ROOM(heroLoc?.typ ?? 0) || !rn2(4) || whappr || (dogHasMinvent && rn2(edog.apport || 3))) appr = 1;
         }
         if (!appr) {
@@ -17121,14 +17172,11 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
                 const subject = couldSeeCoord(oldx, oldy) ? petName : 'It';
                 addToplineMessage(`${subject} eats ${article} ${foodName}.`);
             }
-            edog.hungrytime = Math.max(edog.hungrytime || 0, game.moves || 1) + 1200;
-            mon.mtame = Math.min(20, (mon.mtame || 10) + 1);
-            mon.meating = (eatenObj.otyp === 'corpse' || eatenObj.otyp === CORPSE)
-                ? 3 + (objectWeight(eatenObj) >> 6)
-                : PET_FOOD_DELAY[eatenObj.kind] || 1;
+            applyPetFoodNutrition(mon, eatenObj);
             const splitStackAccounted = (eatenObj.quan || 1) > 1 && eatenObj.cls === 'food';
             if (splitStackAccounted) next_ident();
-            rn2(100);
+            if (dogFood(mon, eatenObj) === DOGFOOD && (eatenObj.invlet || eatenObj.letter))
+                edog.apport += Math.trunc(200 / (edog.dropdist + (game.moves || 1) - (edog.droptime || 0)));
             rn2(100);
             const consumeMessages = [];
             consumeMonsterEatenObject(mon, eatenObj, objects, consumeMessages, { splitStackAccounted });
@@ -17181,44 +17229,7 @@ function movePet(mon, resumeAfterInventory = false, conflictActive = false) {
     }
     if (monsterPitTrapEffect(mon, trap, { skipPetPostMoveRoll: true })) return;
     if (monsterHoleTrapEffect(mon, trap, { skipPetPostMoveRoll: true })) return;
-    if (trap?.ttyp === DART_TRAP && !monsterTrapHarmless(mon, trap)) {
-        if (trap.once && trap.tseen && !rn2(15)) {
-            game.level.traps = (game.level?.traps || []).filter(item => item !== trap);
-            newsym(mon.mx, mon.my);
-            return;
-        }
-        trap.once = true;
-        trap.tseen = true;
-        const dart = mksobj(DART, true, false);
-        dart.quan = 1;
-        dart.opoisoned = !rn2(6);
-        const hit = (mon.data?.mac ?? 6) + 7 + Math.trunc(Number(dart.spe || 0)) <= rnd(20);
-        if (hit) {
-            mon.mhp = Math.max(0, (mon.mhp || 1) - trapDartDamage(dart, mon));
-            addToplineMessage(`The ${mon.data?.name || 'creature'} is hit by a dart!`);
-            if (mon.mhp < 1) {
-                addToplineMessage(`The ${mon.data?.name || 'creature'} is killed!`);
-                finishTrapKilledMonster(mon, { skipPetPostMoveRoll: true });
-                return;
-            }
-        } else {
-            Object.assign(dart, {
-                kind: 'dart',
-                ox: mon.mx,
-                oy: mon.my,
-                glyph: ')',
-                color: CLR_CYAN,
-                petFetchable: true,
-            });
-            game.level.objects.push(dart);
-            addToplineMessage(`The ${mon.data?.name || 'creature'} is almost hit by a dart!`);
-            newsym(mon.mx, mon.my);
-        }
-        if (game._message_more) {
-            game._pet_delayed_post_move_roll = 1;
-            game._pet_skip_post_move_roll = 1;
-        }
-    }
+    if (monsterMissileTrapEffect(mon, trap, { skipPetPostMoveRoll: true })) return;
     if (monsterLandmineTrapEffect(mon, trap, { skipPetPostMoveRoll: true })) return;
     if (monsterRollingBoulderTrapEffect(mon, trap, { skipPetPostMoveRoll: true })) return;
 }
@@ -17604,6 +17615,7 @@ export function processEatingOccupationTick(g = game) {
                 if (g.u) g.u.uen = oldEnergy + rnd(3);
                 if ((g.u?.uen || 0) > (g.u?.uenmax || 0)) {
                     if (!rn2(3) && g.u) g.u.uenmax = (g.u.uenmax || 0) + 1;
+                    if (g.u) g.u.uenpeak = Math.max(g.u.uenpeak || 0, g.u.uenmax || 0);
                     if (g.u) g.u.uen = g.u.uenmax || 0;
                 }
                 if ((g.u?.uen || 0) !== oldEnergy) addToplineMessage('You feel a mild buzz.');
@@ -17729,6 +17741,13 @@ function finishPrayerDeclineOutcome(g, angryResult) {
 
 export async function moveloop_core() {
     const g = game;
+    if (g._helpless_time > 0 && !g._pending_time_passed && !g._message_more && !g._command_mode)
+        g._pending_time_passed = 1;
+    if (g._turn_tail_phase === 'timers' && g._water_operation_resumed) {
+        // savelife may clear command time; this is the retained current turn.
+        g._pending_time_passed = Math.max(g._pending_time_passed || 0, 1);
+        g._resume_time_after_more = 1;
+    }
     // C ref: allmain.c:483-510 — while an occupation is armed the moveloop
     // charges a full turn automatically (svc.context.move = 1 immediately
     // before (*go.occupation)()); the eat occupation ticks back-to-back
@@ -17737,6 +17756,7 @@ export async function moveloop_core() {
         && g._command_mode !== 'continueEatingPrompt')
         g._pending_time_passed = 1;
     while (g._pending_time_passed
+        && !(g._timer_callback_pending && !g._water_operation_resumed)
         && !(g._pending_message && !g._message_more && g._pending_message_blocks_time)
         // C ref: end.c:1107-1118 — when the hero died mid-monster-turn,
         // done() blocks at "You die..."/"Die?" inline; the movemon monster
@@ -17789,12 +17809,11 @@ export async function moveloop_core() {
         if (g._deferred_monster_turn_tail && !(g._pending_message && g._message_more)) {
             g._deferred_monster_turn_tail = 0;
             const tailResult = await finishMonsterTurnTail();
+            if (tailResult !== true) break;
             if (process.env.MSGTRACE) (globalThis.__mt ??= []).push({f:'mvup:1', from:g.moves, rngidx:(typeof getRngLog==='function'?getRngLog().length:-1), pend:String(g._pending_message||'').slice(0,40), mm:g._message_more, mode:g._command_mode||'', keyNh:0});
-            g.moves = (g.moves || 1) + 1;
             await afterMoveTurn(g);
             lavaSinkingResult = applyHeroLavaSinkingAfterTurn();
             g.u.umoved = false;
-            if (g.u?.ublesscnt) g.u.ublesscnt--;
             if ((tailResult === false && g._command_mode === 'deathDieMore')
                 || lavaSinkingResult?.fatal || lavaSinkingResult?.lifeSaving) {
                 g._pending_time_passed = 0;
@@ -17957,7 +17976,17 @@ export async function moveloop_core() {
             g._force_monster_turn_tail_once = 1;
         }
         if (process.env.WEREDBG) console.error(`WEREDBG pre-monsters moves=${g.moves} skip=${skipMonsterTurnsThisPass} rng=${getRngLog().length}`);
+        const wasHelpless = g._helpless_time > 0;
         const movedMonsters = skipMonsterTurnsThisPass || armorTailOnly ? false : await processMonsterTurns();
+        if (g._monster_attack_continuation) {
+            // allmain.c:203-216: pline/done suspend inside movemon. The
+            // retained attack owns this pass until it returns; neither the
+            // turn tail nor another hero movement debit can run meanwhile.
+            if (normalHalluDisplay && !armorTailOnly) g._display_hallucinated_normal = 0;
+            g._pending_time_passed = 0;
+            g._resume_time_after_more = 1;
+            break;
+        }
         // C ref: allmain.c:203-216 + 495-507 — movemon() runs at the top of
         // the moveloop iteration and the occupation/stop step after it, so
         // "You stop searching." follows the turn's monster messages.
@@ -17989,9 +18018,9 @@ export async function moveloop_core() {
             g._monster_turns_started = 0;
             const advancedTail = await processMonsterTurns();
             g._armor_wear_occupation = occupationForTail;
-            if (advancedTail) {
+            if (advancedTail !== true) break;
+            if (advancedTail === true) {
                 if (process.env.MSGTRACE) (globalThis.__mt ??= []).push({f:'mvup:2', from:g.moves, rngidx:(typeof getRngLog==='function'?getRngLog().length:-1), pend:String(g._pending_message||'').slice(0,40), mm:g._message_more, mode:g._command_mode||'', keyNh:0});
-            g.moves = (g.moves || 1) + 1;
                 await afterMoveTurn(g);
                 lavaSinkingResult = applyHeroLavaSinkingAfterTurn();
                 if (lavaSinkingResult?.fatal || lavaSinkingResult?.lifeSaving) {
@@ -18014,7 +18043,7 @@ export async function moveloop_core() {
                     if (item && item.worn && occupation.acBonus != null) {
                         item.worn = false;
                         item.line = `${item.letter || occupation.itemLetter || '?'} - ${occupation.baseName || pickupObjectName(item)}`;
-                        if (g.u) g.u.uac = (g.u.uac ?? 10) + occupation.acBonus;
+                        if (g.u) setArmorWorn(item, false, g);
                         if (occupation.kind === 'speed boots' && g.u) {
                             g.u.veryfast = false;
                             syncHeroSpeedState(g);
@@ -18043,7 +18072,7 @@ export async function moveloop_core() {
                 } else if (item && !item.worn && occupation.acBonus != null) {
                     item.worn = true;
                     if (occupation.wornLine) item.line = occupation.wornLine;
-                    if (g.u) g.u.uac = (g.u.uac ?? 10) - occupation.acBonus;
+                    if (g.u) setArmorWorn(item, true, g);
                     if (occupation.reflecting && g.u) g.u.reflecting = true;
                     updateGauntletsOfPowerStrength(occupation.kind, true);
                     if (occupation.kind === 'gauntlets of power') {
@@ -18054,6 +18083,7 @@ export async function moveloop_core() {
                         g._gauntlets_power_exercise_after_turn_tail = 1;
                     }
                 }
+                if (occupation.action !== 'takeoff' && item) item.chargeKnown = true;
                 if (occupation.action !== 'takeoff' && occupation.kind === 'gauntlets of power') {
                     if (item) {
                         item.known = true;
@@ -18082,6 +18112,8 @@ export async function moveloop_core() {
                     }
                 }
                 if (occupation.action !== 'takeoff' && occupation.kind === 'fumble boots') g._pending_fumble_boots_timeout = 1;
+                const lightMessage = setArtifactEquipmentLight(item, occupation.action !== 'takeoff');
+                if (lightMessage) message += '  ' + lightMessage;
                 g._pending_message = message;
                 g._keep_pending_message = 1;
                 g._message_more = armorFinishNeedsMore || armorFinishFatalResult?.more ? 1 : 0;
@@ -18092,17 +18124,15 @@ export async function moveloop_core() {
             }
             g.u.umoved = false;
             turnAdvanced = true;
-            if (g.u?.ublesscnt) g.u.ublesscnt--;
         } else if (movedMonsters === 'defer-tail') {
             // The visible --More-- must be captured before nh_timeout/gethungry tail rolls.
+            if (g._timer_callback_pending) break;
         } else if (movedMonsters) {
             if (process.env.MSGTRACE) (globalThis.__mt ??= []).push({f:'mvup:4', from:g.moves, rngidx:(typeof getRngLog==='function'?getRngLog().length:-1), pend:String(g._pending_message||'').slice(0,40), mm:g._message_more, mode:g._command_mode||'', keyNh:0});
-            g.moves = (g.moves || 1) + 1;
             await afterMoveTurn(g);
             lavaSinkingResult = applyHeroLavaSinkingAfterTurn();
             g.u.umoved = false;
             turnAdvanced = true;
-            if (g.u?.ublesscnt) g.u.ublesscnt--;
             if (lavaSinkingResult?.fatal || lavaSinkingResult?.lifeSaving) {
                 g._pending_time_passed = 0;
                 break;
@@ -18153,30 +18183,12 @@ export async function moveloop_core() {
                 g._stop_search_extra_pass = 1;
             }
         }
-	        if (turnAdvanced && g._helpless_time > 0) {
-	            g._helpless_time--;
-	            if (g._sleeping_time > 0) g._sleeping_time--;
-	            if (!g._helpless_time && g._wake_message) {
-	                g._sleeping_time = 0;
-	                if (g._hear_again_after_wake) {
-	                    g._hear_again_after_wake = 0;
-	                    if (!rn2(2) && g.u) {
-	                        g.u._deafTimeout = 0;
-	                        g.u._statusSuffix = (g.u._statusSuffix || '').replace(' Deaf', '');
-	                    }
-	                }
-	                const wakeMessage = g._wake_message;
-	                const shown = addToplineMessage(wakeMessage);
-	                if (!shown && g._message_more && g._topline_after_more === wakeMessage)
-	                    g._turn_tail_topline_more = 1;
-	                g._wake_message = '';
-	            }
-	        }
         if (g._force_lock_continue_time) {
             g._force_lock_continue_time = 0;
             g._pending_time_passed++;
             g._continue_monsters_after_more = 1;
         }
+        if (wasHelpless && !(g._helpless_time > 0)) g._pending_time_passed = 1;
         const collapsedDoubleMiss = /^The .+ misses the .+\.  The .+ misses the .+\.$/.test(g._pending_message || '');
         if (prayerPartialTurn) g._skip_pending_time_decrement = 1;
 	        if (g._skip_pending_time_decrement) g._skip_pending_time_decrement = 0;
@@ -18185,6 +18197,7 @@ export async function moveloop_core() {
 	            g._pet_resume_keep_time_count = 0;
 	            g._pending_time_passed--;
 	        }
+        if (g._helpless_time > 0) g._pending_time_passed = Math.max(g._pending_time_passed || 0, 1);
 	        if (g._stop_search_extra_pass) {
 	            g._stop_search_extra_pass = 0;
 	            g._pending_time_passed = Math.max(g._pending_time_passed || 0, 1);
@@ -18236,7 +18249,6 @@ export async function moveloop_core() {
             g._prayer_pending_done = 0;
             g._prayer_occupation = 0;
             if (g.u) g.u.uinvulnerable = false;
-            g.u.umovement = NORMAL_SPEED;
             if (finishSplitPrayer) {
                 const finishMessage = 'You finish your prayer.';
                 if (g._message_more && g._topline_after_more) {
@@ -18325,10 +18337,29 @@ const prayerMessageComplete = !!g._prayer_message_complete_once;
 	                }
 	            }
         }
+        // allmain.c:453: recompute after action time, before occupations
+        // or the next command. A suspended pline has not reached this phase.
+        if (!g._message_more && !g._command_mode) findAc(g);
         if (!earlyForceLock) processForceLockOccupation();
         if (!earlyPickLock) processPickLockOccupation();
         if (!earlyPickDig) await processPickDigOccupation();
         if (!earlyTinOpening) await processTinOpeningTurn();
+        // C allmain.c calls occupations once per hero action, after the full
+        // turn loop. Slow heroes must not study twice during one action.
+        if (g._spellbook_study_occupation && !g._message_more) {
+            await processSpellbookStudyOccupation();
+            if ((g.level?.monsters || []).some(mon => mon && !mon.dead && mon.mhp > 0
+                && Math.max(Math.abs(mon.mx - g.u.ux), Math.abs(mon.my - g.u.uy)) === 1
+                && ![M_AP_FURNITURE, M_AP_OBJECT].includes(M_AP_TYPE(mon))
+                && (heroIsHallucinatingForMonsterFeedback() || (!mon.mpeaceful
+                    && monsterPermonstAttacks(mon).some(attack => attack.aatyp && attack.aatyp !== AT_BOOM)))
+                && (!is_hider(monsterSpecies(mon) || mon.data) || !mon.mundetected)
+                && !mon.msleeping && mon.mcanmove !== false && mon.mcanmove !== 0
+                && !scaryObjectAt(mon, g.u.ux, g.u.uy) && !scaryEngravingAt(mon, g.u.ux, g.u.uy)
+                && heroCanSpotMonster(mon)))
+                interruptSpellbookStudy();
+            g._pending_time_passed = Math.max(g._pending_time_passed || 0, 1);
+        }
         if (g._force_lock_continue_time) {
             g._force_lock_continue_time = 0;
             g._pending_time_passed = Math.max(g._pending_time_passed || 0, 1);
@@ -18368,9 +18399,9 @@ const prayerMessageComplete = !!g._prayer_message_complete_once;
 			            if (clearDeferredMultiattackHalluDisplay) g._hallu_display_after_deferred_multiattack = 0;
             if (movedMoreMonsters === 'defer-tail') {
                 // Deferred by a message prompt; the top of the loop resumes the tail.
+                if (g._timer_callback_pending) break;
             } else if (movedMoreMonsters) {
                 if (process.env.MSGTRACE) (globalThis.__mt ??= []).push({f:'mvup:5', from:g.moves, rngidx:(typeof getRngLog==='function'?getRngLog().length:-1), pend:String(g._pending_message||'').slice(0,40), mm:g._message_more, mode:g._command_mode||'', keyNh:0});
-            g.moves = (g.moves || 1) + 1;
                 await afterMoveTurn(g);
             }
             if (g._message_more && g._pending_force_lock_start_message && !g._process_time_with_more) {
@@ -18399,7 +18430,8 @@ const prayerMessageComplete = !!g._prayer_message_complete_once;
                     || g._pick_lock_occupation
                     || g._pick_dig_occupation
                     || g._tin_opening_occupation;
-            const completedTurnTailMore = g._turn_tail_topline_more && !moreNeedsTimeResume;
+            const completedTurnTailMore = (g._turn_tail_topline_more || g._spellbook_finish_after_topline_more)
+                && !moreNeedsTimeResume;
             if (g._armor_finish_after_more) g._armor_finish_after_more = 0;
             else if (g._suppress_more_time_once > 0) g._suppress_more_time_once--;
             else if (!g._pet_message_resume && !completedTurnTailMore) g._pending_time_passed++;
@@ -18569,7 +18601,10 @@ const prayerMessageComplete = !!g._prayer_message_complete_once;
         if (!g._pending_time_passed && g._teleport_geometric_online_once)
             g._teleport_geometric_online_once = 0;
     }
-    if (!g._pending_time_passed && !g._message_more && g._counted_repeat_interruptible)
+    // mhitu.c:1258-1266: done returns before hitmu stops the occupation.
+    // A suspended attack still owns this pass even while its prompt reads input.
+    if (!g._pending_time_passed && !g._message_more && g._counted_repeat_interruptible
+        && !g._monster_attack_continuation)
         g._counted_repeat_interruptible = 0;
     if (g._stairs_arrival_message_after_time && (g._pending_message || g._message_more))
         g._stairs_arrival_message_after_time = '';
@@ -18715,6 +18750,9 @@ const prayerMessageComplete = !!g._prayer_message_complete_once;
 	            g._clear_search_safety_message_next_flush = 0;
 	        }
 	    }
+    // A command which used no time also reaches the per-input AC update.
+    if (!g._pending_time_passed && !g._message_more && !g._command_mode
+        && !g._intro_lines && !g._overlay_lines) findAc(g);
     g._hallu_refreshed_this_command = 0;
     if (g._hallu_refresh_after_expel) {
         g._hallu_refresh_after_expel = 0;
@@ -19044,7 +19082,7 @@ function monsterWieldWeaponDoname(obj) {
  * "<Monnam> swings his <weapon> at <target>."  Pure-pierce weapons
  * thrust deterministically; pierce-plus-slash weapons burn rn2(2).
  * Only called when flags.verbose && !Blind. */
-function monsterSwingMessage(magr, mdef, mwep) {
+export function monsterSwingMessage(magr, mdef, mwep) {
     const real = String(mwep.actualKind || mwep.kind || '').toLowerCase();
     /* include/objects.h direction bits: P=pierce, S=slash, W=whack. */
     const WHIP_KINDS = new Set(['bullwhip', 'rubber hose']);
@@ -19059,7 +19097,8 @@ function monsterSwingMessage(magr, mdef, mwep) {
     else if (PIERCE_AND_SLASH.has(real)) verb = !rn2(2) ? 'thrusts' : 'swings';
     else verb = 'swings';
     const his = magr.female ? 'her' : 'his';
-    return `${monsterDisplayName(magr)} ${verb} ${his} ${String(monsterWieldWeaponDoname(mwep)).replace(/^an? /, '')} at ${mdef?.givenName || `the ${mdef?.data?.name || 'creature'}`}.`;
+    const weapon = String(monsterWieldWeaponDoname({ ...mwep, quan: 1 })).replace(/^an? /, '');
+    return `${monsterDisplayName(magr)} ${verb} ${(mwep.quan || 1) > 1 ? 'one of ' : ''}${his} ${weapon}${mdef?.isHero ? '' : ` at ${mdef?.givenName || `the ${mdef?.data?.name || 'creature'}`}`}.`;
 }
 function monsterCombatKill(mdef /* , how */) {
     if (monsterVisibleToHero(mdef))
@@ -19093,8 +19132,8 @@ setMonsterMonsterCombatHooks({
     newsym,
     /* mdamagem() -> grow_up(magr, mdef): cmd.js growth bookkeeping */
     growUp: (agr, def) => monsterGrowUp(agr, def),
-    /* youprop Conflict intrinsic: hero wearing a ring of conflict. */
-    isConflict: () => (game.inventory || []).some(item => item.cls === 'ring' && item.worn
+    /* Invoked and intrinsic conflict apply alongside worn rings. */
+    isConflict: () => !!game.u?.conflict || (game.inventory || []).some(item => item.cls === 'ring' && item.worn
         && ((item.ringRoll || item.roll) === 14 || item.actualKind === 'ring of conflict')),
     /* objnam.c doname() for a monster-wielded weapon as perceived by the
      * hero: unidentified types show their appearance ("a curved sword"). */
@@ -19107,12 +19146,14 @@ setMonsterMonsterCombatHooks({
 });
 
 export const __allmainTestHooks = {
+    initializePet,
     mfndposForTest: mfndpos,
     monsterAllowFlagsForTest: monsterAllowFlags,
     monsterAvoidsKnownTrapBeforeEffectForTest: monsterAvoidsKnownTrapBeforeEffect,
     monsterAntiMagicTrapEffectForTest: monsterAntiMagicTrapEffect,
     monsterFireTrapEffectForTest: monsterFireTrapEffect,
     monsterRockTrapEffectForTest: monsterRockTrapEffect,
+    monsterMissileTrapEffectForTest: monsterMissileTrapEffect,
     monsterLandmineTrapEffectForTest: monsterLandmineTrapEffect,
     monsterRollingBoulderTrapEffectForTest: monsterRollingBoulderTrapEffect,
     monsterPitTrapEffectForTest: monsterPitTrapEffect,

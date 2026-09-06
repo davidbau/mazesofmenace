@@ -1,4 +1,9 @@
 import { game } from './gstate.js';
+import { endBurn, cleanupBurn, lightObjectKind } from './burn.js';
+import { TIMER_LEVEL, TIMER_OBJECT, ROT_ORGANIC, ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON,
+    SHRINK_GLOB, BURN_OBJECT, MELT_ICE_AWAY, startTimer, stopTimer, peekTimer,
+    stopObjectTimers, stopSpotTimers, spotTimerExpires, runTimers } from './timeout.js';
+import { objectLocations } from './obj_location.js';
 import {
     BEAR_TRAP, BLCORNER, BRCORNER, COLNO, CROSSWALL, DB_FLOOR, DB_ICE,
     DB_LAVA, DB_MOAT, DB_UNDER, DBWALL, DOOR, DRAWBRIDGE_DOWN, D_CLOSED,
@@ -12,6 +17,9 @@ import {
 import { rn1, rn2, rnd, rnz } from './rng.js';
 import { newsym } from './display.js';
 import { vision_recalc } from './vision.js';
+
+const RELATIVE_AGE_KINDS = new Set(['brass lantern', 'oil lamp', 'candelabrum of invocation',
+    'tallow candle', 'wax candle', 'potion of oil']);
 
 const BOULDER = 465;
 const CORPSE = 471;
@@ -52,14 +60,17 @@ function isGlobbyObject(obj) {
         || /^glob of /.test(String(obj?.kind || obj?.actualKind || obj?.globName || '').toLowerCase()));
 }
 
-function stopGlobShrinkTimeout(obj) {
+export function stopGlobShrinkTimeout(obj, g = game) {
+    stopTimer(SHRINK_GLOB, obj, {}, g);
     delete obj.globShrinkTurn;
 }
 
-function startGlobShrinkTimeout(obj) {
+export function startGlobShrinkTimeout(obj, when = 0, g = game) {
     if (!isGlobbyObject(obj)) return;
-    const delay = 25 + rn2(5) - 2;
-    obj.globShrinkTurn = Math.max(game.moves || 0, 1) + delay;
+    stopGlobShrinkTimeout(obj, g);
+    const delay = when > 0 ? when : 25 + rn2(5) - 2;
+    startTimer(delay, TIMER_OBJECT, SHRINK_GLOB, obj, g);
+    obj.globShrinkTurn = (g.moves || 0) + delay;
 }
 
 export function isIceAt(x, y) {
@@ -87,6 +98,7 @@ function heroPassesRocks() {
 }
 
 function stopMeltTimers(x, y) {
+    stopSpotTimers(x, y, MELT_ICE_AWAY);
     const loc = game.level?.at(x, y);
     if (loc) {
         delete loc.meltIceTurn;
@@ -107,18 +119,13 @@ function removeMeltTimers(loc, x, y) {
 }
 
 export function spotMeltIceTimeLeft(x, y) {
-    const lvl = game.level;
-    if (!lvl?.meltIceTimers?.length) return 0;
-    const timer = lvl.meltIceTimers
-        .filter(item => item.x === x && item.y === y)
-        .sort((a, b) => (a.turn || 0) - (b.turn || 0))[0];
-    return timer ? Math.max(0, (timer.turn || 0) - (game.moves || 0)) : 0;
+    const expiry = spotTimerExpires(x, y, MELT_ICE_AWAY);
+    return expiry ? expiry - (game.moves || 0) : 0;
 }
 
 export function startMeltIceTimeout(x, y, minTime = 0) {
     const loc = game.level?.at(x, y);
     if (!loc) return 0;
-    stopMeltTimers(x, y);
 
     let when = Math.trunc(minTime || 0);
     if (when < MIN_ICE_TIME - 1) when = MIN_ICE_TIME - 1;
@@ -127,7 +134,15 @@ export function startMeltIceTimeout(x, y, minTime = 0) {
     }
     if (when > MAX_ICE_TIME) return 0;
 
+    return scheduleMeltIceTimeout(x, y, when);
+}
+
+// Source scripts can supply a fixed duration; ordinary freezing rolls above.
+export function scheduleMeltIceTimeout(x, y, when) {
+    const loc = game.level?.at(x, y);
+    if (!loc) return 0;
     const turn = (game.moves || 0) + when;
+    if (!startTimer(when, TIMER_LEVEL, MELT_ICE_AWAY, (x << 16) | y)) return 0;
     loc.meltIceTurn = turn;
     loc.meltIceTimeout = turn;
     loc.meltIceAwayTurn = turn;
@@ -137,31 +152,38 @@ export function startMeltIceTimeout(x, y, minTime = 0) {
     return turn;
 }
 
-export function processMeltIceTimers(g = game, { afterMelt = null } = {}) {
-    const lvl = g.level;
-    if (!lvl?.meltIceTimers?.length) return [];
-    const due = [];
-    const pending = [];
-    for (const timer of lvl.meltIceTimers) {
-        if ((timer.turn || 0) <= (g.moves || 0)) due.push(timer);
-        else pending.push(timer);
+export async function meltIceAway(where, timeout, { afterMelt = null } = {}, g = game) {
+    const x = (where >>> 16) & 0xffff;
+    const y = where & 0xffff;
+    const moving = g._monster_moving;
+    const contextMoving = g.context?.mon_moving;
+    g._monster_moving = true;
+    (g.context ??= {}).mon_moving = true;
+    try {
+        stopMeltTimers(x, y);
+        const result = meltIceAt(x, y, { message: ICE_TIMER_MELT_MESSAGE });
+        if (afterMelt) {
+            const effects = await afterMelt(x, y, result);
+            result.messages.push(...(effects.messages || effects));
+            // C keeps mon_moving set while spoteffects waits for input.
+            // Save only data so a suspended drowning callback can be saved.
+            if (effects.pending) {
+                g._water_operation_resumed = 0;
+                g._timer_callback_pending = { monsterMoving: moving, contextMoving };
+            }
+        }
+        return result.messages;
+    } finally {
+        if (!g._timer_callback_pending) {
+            g._monster_moving = moving;
+            g.context.mon_moving = contextMoving;
+        }
     }
-    if (!due.length) return [];
-    lvl.meltIceTimers = pending;
-    due.sort((a, b) => ((a.turn || 0) - (b.turn || 0)) || ((a.seq || 0) - (b.seq || 0)));
+}
 
-    const messages = [];
-    for (const timer of due) {
-        const loc = lvl.at(timer.x, timer.y);
-        if (!loc) continue;
-        delete loc.meltIceTurn;
-        delete loc.meltIceTimeout;
-        delete loc.meltIceAwayTurn;
-        const result = meltIceAt(timer.x, timer.y, { message: ICE_TIMER_MELT_MESSAGE });
-        messages.push(...result.messages);
-        if (afterMelt) messages.push(...afterMelt(timer.x, timer.y, result));
-    }
-    return messages;
+export async function processMeltIceTimers(g = game, options = {}) {
+    return (await runTimers({ [MELT_ICE_AWAY]: { run: (arg, time) => meltIceAway(arg, time, options, g) } },
+        g, timer => timer.func === MELT_ICE_AWAY)).flat();
 }
 
 function isCorpseObject(obj) {
@@ -207,10 +229,21 @@ export function zombieFormNameForCorpse(obj) {
     return '';
 }
 
-export function clearCorpseTimeout(obj) {
-    delete obj.rotAwayTurn;
-    delete obj.reviveTurn;
-    delete obj.zombifyTurn;
+export const CORPSE_TIMER_FIELDS = {
+    [ROT_CORPSE]: 'rotAwayTurn', [REVIVE_MON]: 'reviveTurn', [ZOMBIFY_MON]: 'zombifyTurn',
+};
+
+export function clearCorpseTimeout(obj, g = game) {
+    for (const [func, field] of Object.entries(CORPSE_TIMER_FIELDS)) {
+        stopTimer(Number(func), obj, {}, g);
+        delete obj[field];
+    }
+}
+
+export function scheduleCorpseTimeout(obj, func, when, g = game) {
+    stopTimer(func, obj, {}, g);
+    startTimer(when, TIMER_OBJECT, func, obj, g);
+    obj[CORPSE_TIMER_FIELDS[func]] = (g.moves || 0) + when;
 }
 
 function corpseRotDelay(obj) {
@@ -219,41 +252,38 @@ function corpseRotDelay(obj) {
     const age = moves - (obj.age ?? moves);
     let timeout = age > ROT_AGE ? rotAdjust : ROT_AGE - age;
     timeout += rnz(rotAdjust) - rotAdjust;
-    return Math.max(1, timeout);
+    return timeout;
 }
 
 export function startCorpseTimeout(obj, { zombify = obj?.zombifying } = {}) {
     clearCorpseTimeout(obj);
     if (!isCorpseObject(obj) || corpseHasNoTimeout(obj)) return;
-    const moves = Math.max(game.moves || 0, 1);
-    let action = 'rot';
+    let action = ROT_CORPSE;
     let delay = corpseRotDelay(obj);
 
     if (obj?.corpsenm?.rider || RIDER_CORPSE_NAMES.has(corpseName(obj))) {
-        action = 'revive';
+        action = REVIVE_MON;
         delay = riderRevivalDelay(obj, false);
     } else if (corpseUsesRevivePath(obj)) {
         for (let age = 2; age <= TAINT_AGE; age++) {
             if (!rn2(TROLL_REVIVE_CHANCE)) {
-                action = 'revive';
+                action = REVIVE_MON;
                 delay = age;
                 break;
             }
         }
     } else if (zombify && zombieFormNameForCorpse(obj) && !obj.norevive) {
-        action = 'zombify';
+        action = ZOMBIFY_MON;
         delay = rn1(15, 5);
     }
 
-    if (action === 'revive') obj.reviveTurn = moves + Math.max(1, delay);
-    else if (action === 'zombify') obj.zombifyTurn = moves + Math.max(1, delay);
-    else obj.rotAwayTurn = moves + Math.max(1, delay);
+    scheduleCorpseTimeout(obj, action, delay);
 }
 
 function restartCorpseRotTimeout(obj) {
     clearCorpseTimeout(obj);
     if (!isCorpseObject(obj) || corpseHasNoTimeout(obj)) return;
-    obj.rotAwayTurn = Math.max(game.moves || 0, 1) + corpseRotDelay(obj);
+    scheduleCorpseTimeout(obj, ROT_CORPSE, corpseRotDelay(obj));
 }
 
 export function freezeObjectInIcebox(obj) {
@@ -261,9 +291,11 @@ export function freezeObjectInIcebox(obj) {
     obj.inIceBox = true;
     obj.fromIceBox = true;
     if (isGlobbyObject(obj)) stopGlobShrinkTimeout(obj);
+    // C obj.h:age_is_relative excludes only fuel ages. Other absolute ages,
+    // including future artifact cooldowns, become a possibly negative offset.
+    if (!RELATIVE_AGE_KINDS.has(lightObjectKind(obj)))
+        obj.age = (game.moves || 0) - (obj.age ?? (game.moves || 0));
     if (!isCorpseObject(obj)) return;
-    const moves = Math.max(game.moves || 0, 1);
-    obj.age = Math.max(0, moves - (obj.age ?? moves));
     clearCorpseTimeout(obj);
     setCorpseOnIce(obj, false);
 }
@@ -271,11 +303,10 @@ export function freezeObjectInIcebox(obj) {
 export function removedFromIcebox(obj) {
     if (!obj) return;
     const moves = Math.max(game.moves || 0, 1);
+    if ((obj.inIceBox || obj.fromIceBox)
+        && !RELATIVE_AGE_KINDS.has(lightObjectKind(obj)))
+        obj.age = moves - (obj.age ?? 0);
     if (isCorpseObject(obj)) {
-        const frozenAge = obj.inIceBox || obj.fromIceBox
-            ? Math.max(0, obj.age ?? 0)
-            : Math.max(0, moves - (obj.age ?? moves));
-        obj.age = moves - frozenAge;
         const name = corpseName(obj);
         if (name) obj.norevive = name !== 'ice troll';
         setCorpseOnIce(obj, false);
@@ -295,33 +326,30 @@ function setCorpseOnIce(obj, value) {
     obj.on_ice = value ? 1 : 0;
 }
 
-function objectTimerKey(obj) {
-    if (obj?.rotAwayTurn) return 'rotAwayTurn';
-    if (obj?.reviveTurn) return 'reviveTurn';
-    return null;
-}
-
 function adjustCorpseIceTimer(obj, x, y, { onLevel = true } = {}) {
     if (!isCorpseObject(obj)) return;
-    const key = objectTimerKey(obj);
-    if (!key) return;
-
-    const moves = game.moves || 0;
     const nowOnIce = onLevel && isIceAt(x, y);
-    const wasOnIce = corpseOnIce(obj);
-    let tleft = Math.trunc((obj[key] || 0) - moves);
-    if (tleft <= 0) return;
-
-    const ageElapsed = Math.trunc(moves - (obj.age ?? moves));
-    if (nowOnIce && !wasOnIce) {
-        setCorpseOnIce(obj, true);
-        obj[key] = moves + (tleft * ROT_ICE_ADJUSTMENT);
-        obj.age = moves - (ageElapsed * ROT_ICE_ADJUSTMENT);
-    } else if (wasOnIce && !nowOnIce) {
-        setCorpseOnIce(obj, false);
-        obj[key] = moves + Math.trunc(tleft / ROT_ICE_ADJUSTMENT);
+    if (!nowOnIce && !corpseOnIce(obj)) return;
+    let action = ROT_CORPSE;
+    let tleft = stopTimer(action, obj);
+    delete obj.rotAwayTurn;
+    if (!tleft) {
+        action = REVIVE_MON;
+        tleft = stopTimer(action, obj);
+        delete obj.reviveTurn;
+    }
+    if (!tleft) return;
+    const moves = game.moves || 0;
+    const ageElapsed = moves - (obj.age ?? moves);
+    setCorpseOnIce(obj, nowOnIce);
+    if (nowOnIce) {
+        tleft *= ROT_ICE_ADJUSTMENT;
+        obj.age = moves - ageElapsed * ROT_ICE_ADJUSTMENT;
+    } else {
+        tleft = Math.trunc(tleft / ROT_ICE_ADJUSTMENT);
         obj.age = (obj.age ?? moves) + Math.trunc(ageElapsed * (ROT_ICE_ADJUSTMENT - 1) / ROT_ICE_ADJUSTMENT);
     }
+    scheduleCorpseTimeout(obj, action, tleft);
 }
 
 export function objectIceEffect(obj, x = obj?.ox, y = obj?.oy, options = {}) {
@@ -655,6 +683,7 @@ function isOrganicObject(obj) {
 
 export function clearBuriedOrganicRotTimer(obj) {
     if (!obj) return;
+    stopTimer(ROT_ORGANIC, obj);
     delete obj.buriedOrganicRotTurn;
     delete obj.rotOrganicTurn;
     delete obj.rotOrganicTimeout;
@@ -671,14 +700,12 @@ function maybeStartBuriedOrganicRot(obj, underIce) {
     obj.rotOrganicTurn = turn;
     obj.rotOrganicTimeout = turn;
     obj._buriedOrganicTimed = true;
+    startTimer(turn - (game.moves || 0), TIMER_OBJECT, ROT_ORGANIC, obj);
 }
 
 function stopObjectBurningForBurial(obj) {
     if (!(obj?.lamplit || obj?.burning) || isPotionOfOilObject(obj)) return;
-    obj.lamplit = false;
-    obj.burning = false;
-    delete obj._burnTimer;
-    delete obj.litRadius;
+    endBurn(obj);
 }
 
 function unleashObjectForBurial(obj) {
@@ -758,42 +785,39 @@ export function buryObjectsAt(x, y, { ignore = null } = {}) {
     return messages;
 }
 
-export function processBuriedOrganicRot(g = game) {
+export function rotOrganic(obj, timeout, { remove = null } = {}, g = game) {
+    const entry = objectLocations(g).get(obj);
+    if (!entry) return [];
     const lvl = g.level;
-    if (!lvl?.buriedobjlist?.length) return [];
-    const remaining = [];
-    const rotted = [];
-    const newlyBuried = [];
-    const savedList = lvl.buriedobjlist;
-    lvl.buriedobjlist = newlyBuried;
-    for (const obj of savedList) {
-        if (obj?.buriedOrganicRotTurn && obj.buriedOrganicRotTurn <= (g.moves || 0)) {
-            const x = obj.ox;
-            const y = obj.oy;
-            for (const content of containedObjects(obj)) {
-                content.ox = x;
-                content.oy = y;
-                const outcome = buryOneObject(content, x, y, lvl, isIceAt(x, y));
-                if (outcome === 'floor') {
-                    clearBuriedOrganicRotTimer(content);
-                    content.buried = false;
-                    content.hidden = false;
-                    if (!lvl.objects.includes(content)) lvl.objects.push(content);
-                }
-            }
-            if (Array.isArray(obj.contents)) obj.contents = [];
-            if (Array.isArray(obj.cobj)) obj.cobj = [];
-            clearBuriedOrganicRotTimer(obj);
-            obj.buried = false;
-            obj.hidden = false;
-            rotted.push(obj);
-        } else {
-            remaining.push(obj);
+    lvl.buriedobjlist ??= [];
+    for (const content of containedObjects(obj)) {
+        content.ox = obj.ox;
+        content.oy = obj.oy;
+        const outcome = buryOneObject(content, obj.ox, obj.oy, lvl, isIceAt(obj.ox, obj.oy));
+        if (outcome === 'floor') {
+            clearBuriedOrganicRotTimer(content);
+            content.buried = false;
+            content.hidden = false;
+            if (!lvl.objects.includes(content)) lvl.objects.push(content);
         }
     }
-    lvl.buriedobjlist = remaining.concat(newlyBuried);
-    for (const obj of rotted) newsym(obj.ox, obj.oy);
-    return rotted;
+    if (Array.isArray(obj.contents)) obj.contents = [];
+    if (Array.isArray(obj.cobj)) obj.cobj = [];
+    clearBuriedOrganicRotTimer(obj);
+    stopObjectTimers(obj, { [BURN_OBJECT]: { cleanup: cleanupBurn } }, g);
+    if (remove) remove(entry);
+    else {
+        const index = entry.list.indexOf(obj);
+        if (index >= 0) entry.list.splice(index, 1);
+    }
+    obj.buried = false;
+    obj.hidden = false;
+    return [];
+}
+
+export async function processBuriedOrganicRot(g = game) {
+    return runTimers({ [ROT_ORGANIC]: { run: (obj, time) => rotOrganic(obj, time, {}, g) } }, g,
+        timer => timer.func === ROT_ORGANIC && !objectLocations(g, true).get(timer.arg)?.saved);
 }
 
 function isSolidTile(x, y) {
@@ -951,7 +975,10 @@ export function applyColdRayTerrain(x, y, { buriedMerchandiseDebtMessage = null 
 
     if (isIceAt(x, y)) {
         const meltTime = spotMeltIceTimeLeft(x, y);
-        if (meltTime) startMeltIceTimeout(x, y, meltTime);
+        if (meltTime) {
+            stopMeltTimers(x, y);
+            startMeltIceTimeout(x, y, meltTime);
+        }
         return { handled: true, messages: [], rangeMod: 0, stopped: false };
     }
 
@@ -1034,7 +1061,9 @@ export function applyColdRayTerrain(x, y, { buriedMerchandiseDebtMessage = null 
 
 export function meltIceAt(x, y, { message = ICE_MELT_MESSAGE, buriedMerchandiseDebtMessage = null } = {}) {
     const loc = game.level?.at(x, y);
-    if (!loc || !isIceAt(x, y)) return { melted: false, messages: [], becameLiquid: false };
+    // A lowered drawbridge covers the ice, but its underlying moat still thaws.
+    const coveredIce = loc?.typ === DRAWBRIDGE_DOWN && ((loc.flags || 0) & DB_UNDER) === DB_ICE;
+    if (!loc || (!isIceAt(x, y) && !coveredIce)) return { melted: false, messages: [], becameLiquid: false };
 
     if (loc.typ === DRAWBRIDGE_UP || loc.typ === DRAWBRIDGE_DOWN) {
         loc.flags = ((loc.flags || 0) & ~DB_UNDER) | DB_MOAT;

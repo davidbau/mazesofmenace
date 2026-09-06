@@ -1,9 +1,7 @@
 // worm.js — long worm tails.
 // C ref: src/worm.c
 //
-// Only the creation path is here: what a long worm spends from the stream
-// when makemon builds one (the tail segments and their random placement).
-// Worm movement, cutting and hp bookkeeping are recorded when reached.
+// Creation, movement, cutting and tail bookkeeping follow src/worm.c.
 
 import { You } from './pline.js';
 import { Monnam } from './do_name.js';
@@ -15,17 +13,17 @@ import { d } from './rng.js';
 import { rnd } from './rng.js';
 import { clone_mon } from './makemon.js';
 import { remove_monster } from './makemon.js';
-import { m_at } from './mon.js';
+import { m_at, mcalcmove } from './mon.js';
 import { NO_COLOR, ATR_INVERSE as TERM_INVERSE } from './terminal.js';
 import { def_monsyms } from './drawing_data.js';
 import { show_glyph_cell } from './display.js';
 import { NUMMONS } from './monst_data.js';
 import { rn2_on_display_rng } from './rng.js';
 import { Hallucination } from './youprop.js';
-import { NON_PM } from './const.js';
+import { NON_PM, NORMAL_SPEED, MHPMAX } from './const.js';
 import { PMNAMES } from './monst_data.js';
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2, rn1 } from './rng.js';
 import { newsym } from './display.js';
 import { cansee } from './vision.js';
 
@@ -89,13 +87,12 @@ export function initworm(worm, wseg_count) {
     w.wgrowtime[wnum] = 0;
 }
 
-// src/worm.c:~50 count_wsegs() — segments excluding the head.
+// src/worm.c:836 count_wsegs()
 export function count_wsegs(mtmp) {
     const w = wstate();
     let count = 0;
     if (mtmp.wormno) {
-        for (let curr = w.wtails[mtmp.wormno];
-             curr && curr !== w.wheads[mtmp.wormno]; curr = curr.nseg)
+        for (let curr = w.wtails[mtmp.wormno].nseg; curr; curr = curr.nseg)
             count++;
     }
     return count;
@@ -316,6 +313,68 @@ export function shrink_worm(wnum) { /* worm number */
     w.wtails[wnum] = seg.nseg;
     seg.nseg = null;
     toss_wsegs(seg, true);
+}
+
+// src/worm.c:196 worm_move()
+export function worm_move(worm) {
+    const w = wstate(), wnum = worm.wormno;
+    const seg = w.wheads[wnum];
+    place_worm_seg(worm, seg.wx, seg.wy);
+    newsym(seg.wx, seg.wy);
+    const new_seg = { wx: worm.mx, wy: worm.my, nseg: null };
+    seg.nseg = new_seg;
+    w.wheads[wnum] = new_seg;
+
+    if (w.wgrowtime[wnum] <= game.moves) {
+        let wsegs = count_wsegs(worm);
+        if (!w.wgrowtime[wnum]) {
+            w.wgrowtime[wnum] = game.moves + rnd(5);
+        } else {
+            const mmove = mcalcmove(worm, false);
+            let incr = rn1(10, 2);
+            incr = Math.trunc((incr * NORMAL_SPEED) / Math.max(mmove, 1));
+            w.wgrowtime[wnum] = game.moves + incr;
+        }
+        let whplimit = !worm.m_lev ? 4 : 8 * worm.m_lev;
+        if (wsegs > 33) {
+            whplimit += 2 * (wsegs - 33);
+            wsegs = 33;
+        }
+        if (wsegs > 22) {
+            whplimit += 4 * (wsegs - 22);
+            wsegs = 22;
+        }
+        if (wsegs > 11) {
+            whplimit += 6 * (wsegs - 11);
+            wsegs = 11;
+        }
+        whplimit += 8 * wsegs;
+        if (whplimit > MHPMAX)
+            whplimit = MHPMAX;
+        const prev_mhp = worm.mhp;
+        worm.mhp += d(2, 2);
+        const whpcap = Math.max(whplimit, worm.mhpmax);
+        if (worm.mhp < whpcap) {
+            if (worm.mhp > whplimit)
+                worm.mhp = Math.max(prev_mhp, whplimit);
+            if (worm.mhp > worm.mhpmax)
+                worm.mhpmax = worm.mhp;
+        } else if (worm.mhp > worm.mhpmax) {
+            worm.mhp = worm.mhpmax;
+        }
+    } else {
+        shrink_worm(wnum);
+    }
+}
+
+// src/worm.c:288 worm_nomove()
+export function worm_nomove(worm) {
+    shrink_worm(worm.wormno);
+    if (worm.mhp > count_wsegs(worm)) {
+        worm.mhp -= d(2, 2);
+        if (worm.mhp < 1)
+            worm.mhp = 1;
+    }
 }
 
 // src/worm.c place_wsegs()

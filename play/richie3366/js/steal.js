@@ -5,6 +5,9 @@
 // Branch envelope (this peel): nymph AD_SITM/AD_SEDU via mhitm_ad_sedu —
 // weighted invent pick, worn accessory clear, non-delay armor, freeinv+mpickobj;
 // somegold proportional gold (dipfountain bath / stealgold).
+// **stealamulet** (D-1945): quest-artifact sweep else uhave amulet/bell/book/
+// menorah otyp sweep, outer-gear strip, shop subfrombill, mpickobj steal
+// pline, teleporter rloc(RLOC_MSG), encumber_msg.
 // **remove_worn_item** (D-1086): W_ARMOR → do_wear.c *_off; leftover
 // owornmask → setnotworn pointer-walk; W_BALL|W_CHAIN + unchain → unpunish;
 // W_WEAPONS → *gone. Named omit: donning/cancel_don; in_use; uskin
@@ -15,19 +18,22 @@
 // full armor_simple_name / yname polish; stop_donning.
 
 import { game } from './gstate.js';
-import { rn2, rn1 } from './rng.js';
+import { rn2, rn1, rnd } from './rng.js';
 import {
     W_ARMOR, W_ACCESSORY, W_WEAPONS,
     W_AMUL, W_RING, W_TOOL, W_RINGL, W_RINGR, W_BALL, W_CHAIN,
     LEFT_RING, RIGHT_RING, ADORNED, LOST_STOLEN,
-    LARGEST_INT, PLNMSG_MON_TAKES_OFF_ITEM, FAINTED,
+    LARGEST_INT, PLNMSG_MON_TAKES_OFF_ITEM, FAINTED, RLOC_MSG,
 } from './const.js';
 import {
     COIN_CLASS, ARMOR_CLASS, TOOL_CLASS, AMULET_CLASS, RING_CLASS,
     FOOD_CLASS, objectNames,
 } from './objects.js';
 import { monnear } from './mon.js';
-import { is_animal, throws_rocks } from './monsters.js';
+import { is_animal, throws_rocks, can_teleport } from './monsters.js';
+import { subfrombill, shop_keeper } from './shk.js';
+import { tele_restrict, rloc } from './teleport.js';
+import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
 import { canspotmon, pline } from './display.js';
 import { Monnam, Some_Monnam } from './do_name.js';
 import { doname } from './objnam.js';
@@ -43,6 +49,13 @@ import { encumber_msg, freeinv_core } from './invent.js';
 import { hero_conflict } from './mondata.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
+// stealamulet quest/invocation targets (C otyp constants via objects[] index)
+const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
+const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
+const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
+const BELL = objectNames.indexOf('BELL');
+const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
+const CANDELABRUM_OF_INVOCATION = objectNames.indexOf('CANDELABRUM_OF_INVOCATION');
 
 /**
  * C ref: steal.c findgold `:44–52` — first GOLD_PIECE on an nobj chain
@@ -394,6 +407,120 @@ export async function steal(mtmp, objnambuf) {
     mpickobj(mtmp, otmp);
     // petrify corpse arm deferred
     return (game.multi | 0) < 0 ? 0 : 1;
+}
+
+/**
+ * C ref: steal.c stealamulet `:688–767` — Wizard/quest-nemesis snatch
+ * (uhitm.c mhitm_ad_samu `!rn2(20)` arm; caller wiring named below).
+ * C order: quest-artifact sweep (random pick past the first so invent
+ * order can't influence the theft) else uhave amulet/bell/book/menorah
+ * otyp sweep (fake amulet/bell count unless mtmp iswiz); outer-gear
+ * strip (suit cloak, shirt armor, gloves via weapon first + twoweap
+ * swap, ring gloves); worn target strip; shop subfrombill; freeinv;
+ * doname captured before mpickobj (merge may free otmp); steal pline;
+ * teleporter rloc(RLOC_MSG); encumber_msg.
+ * `any_quest_artifact` is the obj.h macro (`oartifact >=
+ * ART_ORB_OF_DETECTION`), inlined at both sweeps per the muse.js idiom.
+ */
+export async function stealamulet(mtmp) {
+    const u = game.u || {};
+    const invent = game.invent || [];
+    let otmp = null;
+    let real = 0, fake = 0, n = 0;
+
+    /* target every quest artifact, not just current role's;
+       if hero has more than one, choose randomly so that player
+       can't use inventory ordering to influence the theft */
+    for (const obj of invent) {
+        if ((obj.oartifact | 0) >= ART_ORB_OF_DETECTION) {
+            ++n;
+            otmp = obj;
+        }
+    }
+    if (n > 1) {
+        n = rnd(n);
+        for (const obj of invent) {
+            if (((obj.oartifact | 0) >= ART_ORB_OF_DETECTION) && !--n) {
+                otmp = obj;
+                break;
+            }
+        }
+    }
+
+    if (!otmp) {
+        /* if we didn't find any quest artifact, find another valuable item */
+        const uhave = u.uhave || {};
+        if (uhave.amulet) {
+            real = AMULET_OF_YENDOR;
+            fake = FAKE_AMULET_OF_YENDOR;
+        } else if (uhave.bell) {
+            real = BELL_OF_OPENING;
+            fake = BELL;
+        } else if (uhave.book) {
+            real = SPE_BOOK_OF_THE_DEAD;
+        } else if (uhave.menorah) {
+            real = CANDELABRUM_OF_INVOCATION;
+        } else {
+            return; /* you have nothing of special interest */
+        }
+
+        /* If we get here, real and fake have been set up. */
+        for (const obj of invent) {
+            if (obj.otyp === real || (obj.otyp === fake && !mtmp.iswiz)) {
+                ++n;
+                otmp = obj;
+            }
+        }
+        if (n > 1) {
+            n = rnd(n);
+            for (const obj of invent) {
+                if ((obj.otyp === real
+                     || (obj.otyp === fake && !mtmp.iswiz)) && !--n) {
+                    otmp = obj;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (otmp) { /* we have something to snatch */
+        /* take off outer gear if we're targeting [hypothetical]
+           quest artifact suit, shirt, gloves, or rings */
+        if ((otmp === u.uarm || otmp === u.uarmu) && u.uarmc) {
+            await worn_item_removal(mtmp, u.uarmc);
+        }
+        if (otmp === u.uarmu && u.uarm) {
+            await worn_item_removal(mtmp, u.uarm);
+        }
+        if ((otmp === u.uarmg || ((otmp === u.uright || otmp === u.uleft) && u.uarmg))
+            && u.uwep) {
+            /* gloves are about to be unworn; unwield weapon(s) first */
+            if (u.twoweap) { /* remove_worn_item(uswapwep) indirectly */
+                await worn_item_removal(mtmp, u.uswapwep); /* clears u.twoweap */
+            }
+            await worn_item_removal(mtmp, u.uwep);
+        }
+        if ((otmp === u.uright || otmp === u.uleft) && u.uarmg) {
+            /* calls Gloves_off() to handle wielded cockatrice corpse */
+            await worn_item_removal(mtmp, u.uarmg);
+        }
+
+        /* finally, steal the target item */
+        if (otmp.owornmask) {
+            await worn_item_removal(mtmp, otmp);
+        }
+        if (otmp.unpaid) {
+            subfrombill(otmp, shop_keeper((u.ushops || '')[0]));
+        }
+        freeinv(otmp);
+        const buf = doname(otmp);
+        mpickobj(mtmp, otmp); /* could merge and free otmp but won't */
+        await pline(`${Some_Monnam(mtmp)} steals ${buf}!`);
+        if (can_teleport(mtmp.data) && !(await tele_restrict(mtmp))) {
+            await rloc(mtmp, RLOC_MSG);
+        }
+        await encumber_msg();
+    }
 }
 
 function Blind_steal() {

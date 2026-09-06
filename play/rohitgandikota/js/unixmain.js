@@ -7,6 +7,15 @@
 import { game } from './gstate.js';
 import { You } from './pline.js';
 import { pline } from './display.js';
+import { tty_yn_function } from './tty/topl.js';
+import { delete_savefile } from './save.js';
+
+// sys/unix/unixmain.c:267, after wd_message() on a successful restore.
+export async function restore_savefile_prompt() {
+    if ((game.discover || game.wizard)
+        && await tty_yn_function('Do you want to keep the save file?', 'yn', 'n', true) === 'n')
+        delete_savefile();
+}
 
 // sys/unix/unixmain.c:656 wd_message() — report the play mode after newgame().
 //

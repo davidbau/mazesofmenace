@@ -130,6 +130,7 @@ import {
     DELPHI,
     VIBRATING_SQUARE,
     Is_astralevel,
+    Is_earthlevel,
     Is_knox,
     Is_rogue_level,
     Is_stronghold,
@@ -892,6 +893,24 @@ export function In_W_tower(x, y, lev) {
     if (!d || !(d.nlx | 0)) return false;
     return (x | 0) >= (d.nlx | 0) && (x | 0) <= (d.nhx | 0)
         && (y | 0) >= (d.nly | 0) && (y | 0) <= (d.nhy | 0);
+}
+
+/**
+ * C ref: dungeon.c has_ceiling `:1689–1698` — only the endgame
+ * off-earth (the Planes above Earth) lacks a ceiling.
+ */
+export function has_ceiling(lev) {
+    if (In_endgame(lev) && !Is_earthlevel(lev)) return false;
+    return true;
+}
+
+/**
+ * C ref: dungeon.c avoid_ceiling `:1701–1711` — quest levels are
+ * partly open, so callers must avoid the word "ceiling" there.
+ */
+export function avoid_ceiling(lev) {
+    if (In_quest(lev) || !has_ceiling(lev)) return true;
+    return false;
 }
 
 function dname_to_dnum(s) {

@@ -209,7 +209,7 @@ async function money2mon(mon, amount) {
     freeinv(paid);
     paid.where = OBJ_FREE;
     paid.ocarry = null;
-    mpickobj(mon, paid);
+    await mpickobj(mon, paid);
     (game.disp ||= {}).botl = true;
     return amount;
 }

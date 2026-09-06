@@ -11,14 +11,14 @@ import {
 import { game } from './gstate.js';
 import { pline, pline_mon, newsym, canspotmon, canseemon, map_invisible, unmap_object, memory_glyph_is_invisible, You_feel, flush_screen, verbalize, sensemon, shieldeff, mon_visible } from './display.js';
 import { cansee } from './vision.js';
-import { dist2 } from './hacklib.js';
+import { dist2, isok } from './hacklib.js';
 import { resist_conflict, set_mon_data, on_fire, mhis, mhe, little_to_big } from './mondata.js';
 import { MON_WEP, mon_wield_item, hitval, dmgval, possibly_unwield } from './weapon.js';
 import { arti_reflects, artifact_hit, permapoisoned, is_art } from './artifact.js';
-import { find_mac, which_armor, bypass_obj } from './worn.js';
+import { find_mac, which_armor, bypass_obj, is_flimsy } from './worn.js';
 import { update_monster_region } from './region.js';
 import { remove_worm, place_worm_tail_randomly, worm_known } from './worm.js';
-import { place_monster, remove_monster } from './steed.js';
+import { place_monster, remove_monster, dismount_steed, doorless_door, test_move_ok } from './steed.js';
 import {
     M_ATTK_MISS,
     M_ATTK_HIT,
@@ -81,6 +81,9 @@ import {
     W_ARMF,
     W_ARMU,
     W_AMUL,
+    W_SADDLE,
+    DISMOUNT_KNOCKED,
+    Is_rogue_level,
     ERODE_NONE,
     ERODE_BURN,
     ERODE_RUST,
@@ -100,8 +103,8 @@ import {
     is_male, is_female, is_shapeshifter, has_head, mon_hates_silver,
     noncorporeal, MR_POISON,
 } from './monsters.js';
-import { objectNames } from './objects.js';
-import { ART_TROLLSBANE, ART_STORMBRINGER, ART_VORPAL_BLADE, ART_SNICKERSNEE } from './generated/artifacts_data.js';
+import { objectNames, WEAPON_CLASS } from './objects.js';
+import { ART_TROLLSBANE, ART_STORMBRINGER, ART_VORPAL_BLADE, ART_SNICKERSNEE, ART_OGRESMASHER } from './generated/artifacts_data.js';
 import {
     relobj_on_death, mkcorpstat, stackobj, mksobj_at, obj_nexto,
     obj_meld, pudding_merge_message, place_object, add_to_container,
@@ -110,7 +113,7 @@ import {
 } from './mkobj.js';
 import { findgold } from './steal.js';
 import { munslime } from './muse.js';
-import { Monnam, mon_nam, mon_nam_too, Adjmonnam, oname, pmname, x_monnam, hliquid, YMonnam, s_suffix, free_mgivenname, a_monnam } from './do_name.js';
+import { Monnam, mon_nam, mon_nam_too, Adjmonnam, oname, pmname, x_monnam, hliquid, YMonnam, s_suffix, free_mgivenname, a_monnam, y_monnam, some_mon_nam } from './do_name.js';
 import { an, xname, makeplural, cxname, vtense, The, simpleonames } from './objnam.js';
 import { mon_explodes } from './explode.js';
 import { newcham, pm_to_cham, is_home_elemental, clone_mon } from './makemon.js';
@@ -120,9 +123,12 @@ import { rloc, tele_restrict, tele, goodpos } from './teleport.js';
 import { m_unleash } from './apply.js';
 import { update_inventory } from './invent.js';
 import { bury_an_obj } from './dig.js';
-import { is_pole } from './wield.js';
-import { mswings_verb, Conflict } from './mhitu.js';
-import { mon_offmap } from './monmove.js';
+import { is_pole, is_weptool } from './wield.js';
+import { mswings_verb, Conflict, unstuck } from './mhitu.js';
+import { mon_offmap, set_apparxy } from './monmove.js';
+import { hurtle, mhurtle, will_hurtle } from './dothrow.js';
+import { make_stunned } from './potion.js';
+import { m_is_steadfast } from './uhitm.js';
 import { mintrap } from './trap.js';
 import { breamm, spitmm } from './mthrowu.js';
 
@@ -1966,23 +1972,177 @@ export async function mhitm_mgc_atk_negated(magr, mdef, verbosely) {
     return false;
 }
 
-// C ref: uhitm.c mhitm_knockback — burn RNG in C order; hurtle body deferred.
-// Called from mhitu hitmu, mhitm mdamagem, and uhitm hmon (maybe_knockback).
-export function mhitm_knockback(magr, mdef, mattk, hitflags, weapon_used) {
-    // C: knockdistance = rn2(3) ? 1 : 2; then if (rn2(chance)) return
-    // (chance=6 unless ART_OGRESMASHER; artifact arm deferred)
-    rn2(3);
-    rn2(6);
-    if (!(mattk.aatyp === AT_CLAW || mattk.aatyp === AT_KICK
-            || mattk.aatyp === AT_BUTT || mattk.aatyp === AT_WEAP)) {
+/** C ref: obj.h is_blunt_weapon — WEAPON_CLASS/weptool with oc_dir & WHACK.
+ * No JS port exists (WHACK=4, objclass.h:81); file-local to mhitm_knockback. */
+function is_blunt_weapon_mm(o) {
+    if (!o) return false;
+    if (o.oclass !== WEAPON_CLASS && !is_weptool(o)) return false;
+    return (((game.objects?.[o.otyp]?.oc_dir | 0) & 4) !== 0);
+}
+
+/**
+ * C ref: uhitm.c mhitm_knockback :5247–5420 — attacker/defender may be hero.
+ * mhm carries hitflags in/out (repo idiom for C `int *hitflags`); returns
+ * C's boolean. RNG order kept: rn2(3) distance, rn2(chance) gate, message
+ * rn2(2)+rn2(2), effect rn2(4) stun. Called from mhitu hitmu, mhitm mdamagem,
+ * and uhitm hmon (maybe_knockback).
+ * Named omissions: full hack.c test_move arms for the hero-defender gate
+ * (passes-walls/ooze/tunnel/boulder/water/trap — steed.js test_move_ok is the
+ * live TEST_MOVE terrain/doorway subset); rogue-level arm of doorless_door
+ * is inlined here (steed.js clone omits it).
+ */
+export async function mhitm_knockback(magr, mdef, mattk, mhm, weapon_used) {
+    const sgn1 = (v) => ((v | 0) < 0 ? -1 : ((v | 0) > 0 ? 1 : 0));
+    // C: knockdistance = rn2(3) ? 1 : 2 (67% 1 step, 33% 2 steps)
+    const knockdistance = rn2(3) ? 1 : 2;
+    // C: 1/6 chance of knockback (1/2 with Ogresmasher)
+    let chance = 6;
+    const u_agr = is_youmonst(magr);
+    let u_def = is_youmonst(mdef);
+    let was_u = false;
+    let dismount = false;
+    const wep = weapon_used
+        ? (u_agr ? (game.u?.uwep || null) : MON_WEP(magr))
+        : null;
+
+    if (wep && is_art(wep, ART_OGRESMASHER)) chance = 2;
+
+    if (rn2(chance)) return false;
+
+    // C: only certain attacks qualify for knockback
+    if (!mattk || (mattk.adtyp | 0) !== AD_PHYS) return false;
+    const aatyp = mattk.aatyp | 0;
+    if (!(aatyp === AT_CLAW || aatyp === AT_KICK
+            || aatyp === AT_BUTT || aatyp === AT_WEAP)) {
         return false;
     }
-    void magr;
-    void mdef;
-    void weapon_used;
-    void hitflags;
-    // Named omission: size/weapon/steadfast gates + hurtle/mhurtle body
-    return false;
+
+    // C: don't knockback if attacker also wants to grab or engulf
+    // (sticks() is mondata.c:653-659: AD_STCK, AD_WRAP w/o AT_ENGL, AT_HUGS)
+    const pa = magr?.data;
+    if (attacktype_mm(pa, AT_ENGL) || attacktype_mm(pa, AT_HUGS)
+        || dmgtype(pa, AD_STCK)
+        || (dmgtype(pa, AD_WRAP) && !attacktype_mm(pa, AT_ENGL))) {
+        return false;
+    }
+
+    // C: decide where the first step will place the target
+    const defx = u_def ? (game.u?.ux | 0) : (mdef.mx | 0);
+    const defy = u_def ? (game.u?.uy | 0) : (mdef.my | 0);
+    const agrx = u_agr ? (game.u?.ux | 0) : (magr.mx | 0);
+    const agry = u_agr ? (game.u?.uy | 0) : (magr.my | 0);
+    const dx = sgn1(defx - agrx);
+    const dy = sgn1(defy - agry);
+
+    // C: can't move most targets into or out of a doorway diagonally
+    if (u_def) {
+        if (!test_move_ok(defx, defy, dx, dy)) return false;
+    } else {
+        // C: subset of test_move()
+        if (!isok(defx + dx, defy + dy)) return false;
+        const curloc = game.level?.at?.(defx, defy);
+        if (curloc && IS_DOOR(curloc.typ) && dx && dy
+            && (Is_rogue_level(game.u?.uz) || !doorless_door(defx, defy))) {
+            return false;
+        }
+    }
+
+    // C: if hero is stuck to a cursed saddle, knock the steed back
+    if (u_def && game.u?.usteed) {
+        const saddle = which_armor(game.u.usteed, W_SADDLE);
+        if (saddle && saddle.cursed) {
+            mdef = game.u.usteed;
+            was_u = true;
+            u_def = false;
+        } else {
+            // C: saddle is not cursed; knock hero out of it
+            dismount = true;
+        }
+    }
+
+    // C: monsters must be alive
+    if ((!u_agr && deadmonster(magr)) || (!u_def && deadmonster(mdef))) {
+        return false;
+    }
+
+    // C: attacker must be much larger than defender
+    if (!((magr?.data?.msize | 0) > ((mdef?.data?.msize | 0) + 1))) {
+        return false;
+    }
+
+    // C: no knockback with a flimsy or non-blunt weapon
+    if (wep && (is_flimsy(wep) || !is_blunt_weapon_mm(wep))) return false;
+
+    // C: needs a solid physical hit
+    if (unsolid(magr?.data)) return false;
+
+    // C: the attack must have hit (mon-vs-mon path doesn't set hitflags)
+    if ((u_agr || u_def) && !(mhm.hitflags & M_ATTK_HIT)) return false;
+
+    // C: steadfast defender cannot be pushed around
+    if (m_is_steadfast(mdef)) {
+        if (u_def || (game.u?.usteed && mdef === game.u.usteed)) {
+            let buf = '';
+            if (game.u?.usteed) buf = `and ${y_monnam(game.u.usteed)} `;
+            await pline(`You ${buf}don't budge.`);
+        } else if (canseemon(mdef)) {
+            await pline(`${Monnam(mdef)} doesn't budge.`);
+        }
+        return false;
+    }
+
+    // C: subtly vary the message text if monster won't actually move
+    const knockedhow = dismount ? 'out of your saddle'
+        : will_hurtle(mdef, defx + dx, defy + dy) ? 'backward'
+        : 'back';
+
+    // C: give the message (uhitm/mhitu/mhitm arms share one pline)
+    if (u_def || canseemon(mdef)) {
+        const magrbuf = u_agr ? 'You' : Monnam(magr);
+        let mdefbuf = (u_def || was_u) ? 'you' : y_monnam(mdef);
+        if (was_u) mdefbuf += ` and ${y_monnam(game.u.usteed)}`;
+        // C vtense("You","knock") keeps plural "knock" (in-code message:
+        // "You knock the gnome back with a powerful blow!"); JS vtense
+        // has no you-arm, so keep the verb for the hero attacker here.
+        await pline(`${magrbuf} ${u_agr ? 'knock' : vtense(magrbuf, 'knock')} ${mdefbuf} ${knockedhow} with a ${rn2(2) ? 'forceful' : 'powerful'} ${rn2(2) ? 'blow' : 'strike'}!`);
+    } else if (u_agr) {
+        // C: hero knocks unseen foe back; noticed by touch
+        await You_feel(`${some_mon_nam(mdef)} be knocked ${knockedhow}!`);
+    }
+
+    if (game.u?.ustuck && (u_def || u_agr)) await unstuck(game.u.ustuck);
+
+    // C: do the actual knockback effect
+    if (u_def) {
+        if (dismount) {
+            // C: u.dx,u.dy pass preferred direction to dismount_steed
+            // for DISMOUNT_KNOCKED only
+            game.u.dx = dx;
+            game.u.dy = dy;
+            await dismount_steed(DISMOUNT_KNOCKED);
+        } else {
+            await hurtle(dx, dy, knockdistance, false);
+            mhm.hitflags |= M_ATTK_HIT;
+        }
+        set_apparxy(magr); // C: update magr's idea of where you are
+        if (!game.u?.Stunned && !rn2(4)) {
+            await make_stunned((knockdistance | 0) + 1, true); // C: 2 or 3
+        }
+    } else {
+        await mhurtle(mdef, dx, dy, knockdistance);
+        if (!u_agr) mhm.hitflags |= M_ATTK_HIT;
+        if (deadmonster(mdef)) {
+            if (!was_u) mhm.hitflags |= M_ATTK_DEF_DIED;
+        } else if (!rn2(4)) {
+            mdef.mstun = 1;
+            // C: if steed and hero were knocked back, update attacker's
+            // idea of where hero is
+            if (mdef === game.u?.usteed) set_apparxy(magr);
+        }
+    }
+    if (!u_agr && deadmonster(magr)) mhm.hitflags |= M_ATTK_AGR_DIED;
+
+    return true;
 }
 
 /** C ref: mondata.h attacktype — any mattk slot matches aatyp. */
@@ -2802,7 +2962,11 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             done: false,
         };
         await mhitm_ad_poly(magr, mattk, mdef, mhm);
-        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
+        if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
+            && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {
+            return mhm.hitflags;
+        }
         if (mhm.done) return mhm.hitflags;
         damage = mhm.damage | 0;
         hitflags = mhm.hitflags | 0;
@@ -2827,7 +2991,11 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             done: false,
         };
         await mhitm_ad_dgst(magr, mattk, mdef, mhm);
-        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
+        if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
+            && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {
+            return mhm.hitflags;
+        }
         if (mhm.done) return mhm.hitflags;
         damage = mhm.damage | 0;
         hitflags = mhm.hitflags | 0;
@@ -2853,7 +3021,11 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             done: false,
         };
         await mhitm_ad_drin(magr, mattk, mdef, mhm);
-        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
+        if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
+            && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {
+            return mhm.hitflags;
+        }
         if (mhm.done) return mhm.hitflags;
         damage = mhm.damage | 0;
         hitflags = mhm.hitflags | 0;
@@ -2881,7 +3053,11 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             done: false,
         };
         await mhitm_ad_blnd(magr, mattk, mdef, mhm);
-        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
+        if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
+            && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {
+            return mhm.hitflags;
+        }
         if (mhm.done) return mhm.hitflags;
         damage = mhm.damage | 0;
         hitflags = mhm.hitflags | 0;
@@ -2908,7 +3084,11 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             done: false,
         };
         await mhitm_ad_halu(magr, mattk, mdef, mhm);
-        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
+        if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
+            && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {
+            return mhm.hitflags;
+        }
         if (mhm.done) return mhm.hitflags;
         damage = mhm.damage | 0;
         hitflags = mhm.hitflags | 0;
@@ -2936,7 +3116,11 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             done: false,
         };
         await mhitm_ad_ston(magr, mattk, mdef, mhm);
-        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
+        if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
+            && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {
+            return mhm.hitflags;
+        }
         if (mhm.done) return mhm.hitflags;
         damage = mhm.damage | 0;
         hitflags = mhm.hitflags | 0;
@@ -2964,7 +3148,11 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             done: false,
         };
         await mhitm_ad_conf(magr, mattk, mdef, mhm);
-        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
+        if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
+            && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {
+            return mhm.hitflags;
+        }
         if (mhm.done) return mhm.hitflags;
         damage = mhm.damage | 0;
         hitflags = mhm.hitflags | 0;
@@ -2992,7 +3180,11 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             done: false,
         };
         await mhitm_ad_stun(magr, mattk, mdef, mhm);
-        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
+        if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
+            && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {
+            return mhm.hitflags;
+        }
         if (mhm.done) return mhm.hitflags;
         damage = mhm.damage | 0;
         hitflags = mhm.hitflags | 0;
@@ -3021,7 +3213,11 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             done: false,
         };
         await mhitm_ad_fire(magr, mattk, mdef, mhm);
-        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
+        if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
+            && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {
+            return mhm.hitflags;
+        }
         if (mhm.done) return mhm.hitflags;
         damage = mhm.damage | 0;
         hitflags = mhm.hitflags | 0;
@@ -3050,7 +3246,11 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             done: false,
         };
         await mhitm_ad_wrap(magr, mattk, mdef, mhm);
-        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
+        if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
+            && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {
+            return mhm.hitflags;
+        }
         if (mhm.done) return mhm.hitflags;
         damage = mhm.damage | 0;
         hitflags = mhm.hitflags | 0;
@@ -3079,7 +3279,11 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             done: false,
         };
         await mhitm_ad_slee(magr, mattk, mdef, mhm);
-        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
+        if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
+            && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {
+            return mhm.hitflags;
+        }
         if (mhm.done) return mhm.hitflags;
         damage = mhm.damage | 0;
         hitflags = mhm.hitflags | 0;
@@ -3108,7 +3312,11 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             done: false,
         };
         await mhitm_ad_sgld(magr, mattk, mdef, mhm);
-        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
+        if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
+            && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {
+            return mhm.hitflags;
+        }
         if (mhm.done) return mhm.hitflags;
         damage = mhm.damage | 0;
         hitflags = mhm.hitflags | 0;
@@ -3137,7 +3345,11 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             done: false,
         };
         await mhitm_ad_tlpt(magr, mattk, mdef, mhm);
-        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
+        if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
+            && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {
+            return mhm.hitflags;
+        }
         if (mhm.done) return mhm.hitflags;
         damage = mhm.damage | 0;
         hitflags = mhm.hitflags | 0;
@@ -3167,7 +3379,11 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             dieroll: dieroll | 0,
         };
         await mhitm_ad_were(magr, mattk, mdef, mhm);
-        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
+        if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
+            && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {
+            return mhm.hitflags;
+        }
         if (mhm.done) return mhm.hitflags;
         damage = mhm.damage | 0;
         hitflags = mhm.hitflags | 0;
@@ -3196,7 +3412,11 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             done: false,
         };
         await mhitm_ad_slim(magr, mattk, mdef, mhm);
-        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
+        if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
+            && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {
+            return mhm.hitflags;
+        }
         if (mhm.done) return mhm.hitflags;
         damage = mhm.damage | 0;
         hitflags = mhm.hitflags | 0;
@@ -3233,12 +3453,21 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
         damage = mhm.damage | 0;
         hitflags = mhm.hitflags | 0;
         if (mhm.done || !damage) {
-            mhitm_knockback(magr, mdef, mattk, hitflags, !!mwep);
-            return hitflags;
+            // C mhitm.c:1061 — knockback still runs; every path here returns hitflags
+            await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep);
+            return mhm.hitflags;
         }
     }
 
-    mhitm_knockback(magr, mdef, mattk, hitflags, !!mwep);
+    {
+        // C mhitm.c:1061-1065 — knockback mutates hitflags, preempts damage
+        const kbm = { hitflags };
+        const kb = await mhitm_knockback(magr, mdef, mattk, kbm, !!mwep);
+        hitflags = kbm.hitflags | 0;
+        if (kb && (((hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {
+            return hitflags;
+        }
+    }
 
     if (!damage) return hitflags === M_ATTK_AGR_DIED ? M_ATTK_AGR_DIED : M_ATTK_HIT;
 

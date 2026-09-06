@@ -76,7 +76,7 @@
 // Yobjnam2 glow; update_inventory; enchant-weapon confused erodeproof
 // Yobjnam2/hcolor polish; twoweapon secondary; shop costly_alteration on
 // proof strip; enchant-armor adj_abon / maybe_adjust_light;
-// mail readmail delivery; create_particular class-letter / * random /
+// mail readmail (mail.js D-1958); create_particular class-letter / * random /
 // cant_revive yn / tame|peaceful|hostile|saddled|sleeping|invisible|hidden
 // prefixes / create_particular → makemon_appear_msg (makemon in-body still
 // deferred; mimic mhidden_description / set_msg_xy / dochugw omit);
@@ -119,7 +119,7 @@ import {
     GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_ALLOWCNT,
     LEFT_RING, RIGHT_RING, COST_UNCHRG, COST_DECHNT, COST_DEGRD, NOTELL,
     ALL_SPELLS, DISP_BEAM, DISP_END, S_goodpos, Never_mind,
-    In_quest, In_endgame, Is_earthlevel, IS_OBSTRUCTED, IS_AIR,
+    In_endgame, Is_earthlevel, IS_OBSTRUCTED, IS_AIR,
 } from './const.js';
 import { vision_recalc, do_clear_area, cansee } from './vision.js';
 import { valid_cloud_pos, create_gas_cloud } from './region.js';
@@ -149,6 +149,8 @@ import { mondied } from './mhitm.js';
 import { losehp } from './hack.js';
 import { done } from './end.js';
 import { ART_SUNSWORD } from './generated/artifacts_data.js';
+import { readmail } from './mail.js';
+import { has_ceiling, avoid_ceiling } from './dungeon.js';
 
 const SCR_MAGIC_MAPPING = objectNames.indexOf('SCR_MAGIC_MAPPING');
 const SPE_MAGIC_MAPPING = objectNames.indexOf('SPE_MAGIC_MAPPING');
@@ -1555,12 +1557,10 @@ async function seffect_earth(sobj) {
     const u = game.u || (game.u = {});
     const confused = !!((u.HConfusion | 0) || (u.Confusion | 0));
     const uz = u.uz;
-    const hasCeiling = !(In_endgame(uz) && !Is_earthlevel(uz));
-    const avoidCeiling = In_quest(uz) || !hasCeiling;
-    if (!Is_rogue_level(uz) && hasCeiling && (!In_endgame(uz) || Is_earthlevel(uz))) {
+    if (!Is_rogue_level(uz) && has_ceiling(uz) && (!In_endgame(uz) || Is_earthlevel(uz))) {
         if (u.uswallow) {
             await You_hear('rumbling.');
-        } else if (!avoidCeiling) {
+        } else if (!avoid_ceiling(uz)) {
             await pline(`The ${ceiling(u.ux | 0, u.uy | 0)} rumbles ${sblessed ? 'around' : 'above'} you!`);
         } else {
             const word = sblessed ? 'avalanches' : 'avalanche';
@@ -1622,7 +1622,7 @@ async function seffect_stinking_cloud(sobj) {
     await do_stinking_cloud(sobj, already_known);
 }
 
-/** C read.c seffect_mail `:2157–2188`. Omits: readmail delivery (mail.c). */
+/** C read.c seffect_mail `:2157–2188`. Default arm is mail.c readmail (MAIL defined). */
 async function seffect_mail(sobj) {
     const odd = ((sobj.o_id | 0) % 2) === 1;
     known = true;
@@ -1634,8 +1634,9 @@ async function seffect_mail(sobj) {
         await pline(`This seems to be ${odd ? 'a chain letter threatening your luck' : 'junk mail addressed to the finder of the Eye of Larn'}.`);
         break;
     default:
-        // readmail(mail.c) deferred — C #else when MAIL undefined
-        await pline('That was a scroll of mail?');
+        // C `#ifdef MAIL` arm: readmail(sobj) (mail.c:703–733); the #else
+        // "That was a scroll of mail?" text is for MAIL-undefined builds.
+        await readmail(sobj);
         break;
     }
 }

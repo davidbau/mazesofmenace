@@ -204,7 +204,12 @@ function regex_compile(s, re) {
     }
 }
 
-function regex_match(s, re) {
+/**
+ * C ref: options.c regex_match — test compiled pattern against a string.
+ * Shared with pickup.c check_autopickup_exceptions (autopickup exception
+ * list entries carry a compiled regex + grab flag).
+ */
+export function regex_match(s, re) {
     if (!re || !re.jsre || s == null) return false;
     re.jsre.lastIndex = 0;
     return re.jsre.test(String(s));

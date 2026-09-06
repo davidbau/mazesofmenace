@@ -70,7 +70,8 @@ import { ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, A_CURRENT, In_endgame,
          Upolyd, Is_waterlevel, Is_airlevel, FROMFORM, TT_LAVA, NON_PM }
          from './const.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
-import { rhack, domove } from './cmd.js';
+import { rhack, domove, enter_explore_mode } from './cmd.js';
+import { clear_bypasses } from './worn.js';
 import { lookaround, end_running, unmul, nomul,
          monster_nearby, in_rooms, runmode_delay_output } from './hack.js';
 import { deferred_goto } from './do.js';
@@ -113,7 +114,7 @@ import { MONSYMS } from './monst_data.js';
 import { m_everyturn_effect } from './monmove.js';
 import { u_wipe_engr } from './engrave.js';
 import { dosounds } from './sounds.js';
-import { dosearch0 } from './detect.js';
+import { dosearch0, warnreveal } from './detect.js';
 import { run_regions } from './region.js';
 import { nh_timeout, do_storms } from './timeout.js';
 import { age_spells } from './spell.js';
@@ -131,6 +132,9 @@ import { pickup } from './pickup.js';
 // welcome line is the one waiting at --More--, then the engraving is shown.
 export async function newgame_moveloop_preamble(resuming = false) {
     const g = game;
+
+    if (resuming && g.iflags.deferred_X)
+        await enter_explore_mode();
 
     /* side-effects from the real world */
     g.flags.moonphase = phase_of_the_moon();
@@ -207,8 +211,7 @@ export async function newgame() {
 
     /* sys/unix/unixmain.c — after the name is final, try to restore a
        saved game. A successful recover reinstalls the whole game state;
-       the only draws are nhlib.lua's align shuffle from the fresh Lua
-       core, and play continues where the save left off. */
+       role initialization and the fresh Lua core draw before play resumes. */
     {
         const { dorecover } = await import('./save.js');
         if (dorecover()) {
@@ -224,6 +227,9 @@ export async function newgame() {
                 await pline(`${Hello(null)} ${g.plname}, the ${g.urace.adj} `
                             + `${role_name}, welcome back to NetHack!`);
             }
+            // src/allmain.c:927 welcome(FALSE), remind after the greeting.
+            const { print_level_annotation } = await import('./dungeon.js');
+            await print_level_annotation();
             return true;
         }
     }
@@ -407,6 +413,10 @@ export async function newgame() {
     init_uhunger();
     /* src/u_init.c:1005 — "no prayers just yet" */
     g.u.ublesscnt = 300;
+    // src/u_init.c:1016, initialize ordinary sight and disable special ranges.
+    g.u.nv_range = 1;
+    g.u.xray_range = -1;
+    g.u.unblind_telepat_range = -1;
 
     // src/allmain.c:816-818 — docrt(); flush_screen(1); bot(); all run BEFORE
     // u_init_skills_discoveries() and the legacy pager, which is why the legacy
@@ -463,6 +473,13 @@ export async function newgame() {
        overwrote it with male because the rc names no gender. */
     g.flags.female = (g.flags.initgend === 1);
     g.plname = g.plname || 'Contestant';
+
+    /* src/allmain.c:838 save_currentstate(), INSURANCE is enabled in C.
+       Track its VISITED bit separately from the parked level map. */
+    g.visited_ledgers = new Set();
+    const { boolean_option } = await import('./options.js');
+    if (boolean_option('checkpoint'))
+        g.visited_ledgers.add(`${g.u.uz.dnum}:${g.u.uz.dlevel}`);
 
     // src/allmain.c welcome() — the new-game branch. The alignment, the race
     // adjective and the role name were all hardcoded here ("neutral", "human",
@@ -681,6 +698,9 @@ export async function moveloop_core() {
         return;
     }
 
+    if (g.context?.bypasses)
+        clear_bypasses();
+
     if (g.context?.move) {
         /* src/allmain.c:205 — actual time passed */
         g.u.umovement = (g.u.umovement || 0) - NORMAL_SPEED;
@@ -822,6 +842,9 @@ export async function moveloop_core() {
                 if ((g.u.intrinsic?.HSearching || g.u.uprops?.SEARCHING)
                     && !g.level?.flags?.noautosearch && (g.multi ?? 0) >= 0)
                     await dosearch0(1);
+
+                if (g.u.uprops?.WARNING || g.u.intrinsic?.HWarning)
+                    await warnreveal();
 
                 if (g.were_changes) {
                     const { set_ulycn } = await import('./were.js');
@@ -972,13 +995,12 @@ export async function moveloop_core() {
         if (g.vision_full_recalc)
             vision_recalc(0);
     }
-    await bot();
     await flush_screen(1);
 
     /* src/allmain.c:481, every living hero form gets its once-per-input
        monster effect before occupations and command reading. Fog clouds use
        this to leave a harmless one-square vapor trail. */
-    m_everyturn_effect(g.youmonst);
+    await m_everyturn_effect(g.youmonst);
 
     /* src/allmain.c:485 — an active occupation CONSUMES the turn instead of
        reading a command. It runs once per turn until it returns 0, and a

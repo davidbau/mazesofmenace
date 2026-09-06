@@ -1278,6 +1278,40 @@ async function themerooms_generate(difficulty) {
             } }, create_room, topologize);
         };
         break;
+    case 'Twin businesses':
+        // dat/themerms.lua:818, evaluate every placement's door choices
+        // before choosing which placement to use.
+        roomW = 9;
+        roomH = 5;
+        rtype = THEMEROOM;
+        needfill = FILL_NONE;
+        contents = () => {
+            const southeast = () => percent(50) ? 'south' : 'east';
+            const northeast = () => percent(50) ? 'north' : 'east';
+            const northwest = () => percent(50) ? 'north' : 'west';
+            const southwest = () => percent(50) ? 'south' : 'west';
+            const placements = [
+                [1, 1, 4, 1, 'south', southeast()],
+                [1, 2, 4, 2, 'north', northeast()],
+                [1, 1, 5, 1, southeast(), southwest()],
+                [1, 1, 5, 2, southeast(), northwest()],
+                [1, 2, 5, 1, northeast(), southwest()],
+                [1, 2, 5, 2, northeast(), northwest()],
+                [2, 1, 5, 1, southwest(), 'south'],
+                [2, 2, 5, 2, northwest(), 'north'],
+            ];
+            let ltype = 'weapon shop', rtype = 'armor shop';
+            if (percent(50))
+                [ltype, rtype] = [rtype, ltype];
+            const doorstate = () => percent(1) ? 'locked'
+                : percent(50) ? 'closed' : 'open';
+            const [lx, ly, rx, ry, lwall, rwall] = placements[rn2(placements.length)];
+            for (const [type, x, y, wall] of [[ltype, lx, ly, lwall], [rtype, rx, ry, rwall]])
+                lspo_room({ type, x, y, w: 3, h: 3, filled: 1, joined: false,
+                    contents: () => lspo_door({ state: doorstate(), wall }),
+                }, create_room, topologize);
+        };
+        break;
     case 'Random dungeon feature in the middle of an odd-sized room':
         /* dat/themerms.lua:446. The odd dimensions are evaluated before
            des.room() spends its chance draw. The five feature symbols are
@@ -3404,6 +3438,7 @@ async function fill_ordinary_room(croom, bonus_items) {
                     }
                     add_to_container(supply_chest, otmp);
                 }
+                supply_chest.owt = weight(supply_chest);
             }
             skip_chests = true;
         }
