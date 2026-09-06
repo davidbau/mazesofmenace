@@ -222,6 +222,7 @@
 import { game } from './gstate.js';
 import { rn1, rn2, rnd, d } from './rng.js';
 import { getlin, yn_function } from './getline.js';
+import { livelog_printf } from './pline.js';
 import {
     flush_screen, flush_topl_more, pline, pline_dir, pline_mon, Norep, You_feel, newsym,
     tmp_at, zapdir_to_glyph, nh_delay_output, canseemon, canspotmon, shieldeff,
@@ -237,7 +238,7 @@ import {
 import { mstatusline, ustatusline } from './insight.js';
 import { setnotworn } from './do.js';
 import { doname, xname, yname, distant_name, vtense, The, the, an, An, killer_xname, ansimpleoname, makeplural } from './objnam.js';
-import { uhim } from './roles.js';
+import { uhim, uhis } from './roles.js';
 import { fix_wall_spines } from './mklev.js';
 import {
     A_WIS, A_STR, A_CON, A_DEX, A_INT, A_CHA, exercise, acurr, adjalign,
@@ -293,7 +294,7 @@ import { dryup } from './fountain.js';
 import { explode } from './explode.js';
 import { unpunish, litroom } from './read.js';
 import { engr_at, del_engr, make_engr_at, wipe_engr_at, random_engraving, rloc_engr } from './engrave.js';
-import { bare_artifactname, defends, defends_when_carried } from './artifact.js';
+import { bare_artifactname, defends, defends_when_carried, artifact_origin } from './artifact.js';
 import {
     Ring_gone, Ring_off, Ring_on, setworn, set_wear, hard_helmet,
 } from './do_wear.js';
@@ -360,6 +361,7 @@ import {
     VIBRATING_SQUARE, MAGIC_PORTAL, HEADSTONE, TRAP_EXPLODE, is_magical_trap,
     GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS,
     has_mcorpsenm,
+    LL_WISH, LL_CONDUCT, LL_ARTIFACT, ONAME_WISH, ONAME_KNOW_ARTI,
 } from './const.js';
 
 const MZ_HUMAN = MZ_MEDIUM;
@@ -6344,10 +6346,13 @@ export async function dozap() {
  * C ref: zap.c makewish — prompt + readobjnam + hold_another_object.
  * Terrain wish via readobjnam_wish → wizterrainwish traps (D-1289) +
  * door/wall (D-1290) + secret corridor (D-1304) + switch_terrain
- * (D-1279). Help / history / livelog still named.
+ * (D-1279). Help / history still named; wish livelog arms live (D-1892).
  */
 export async function makewish() {
     const nothing = NOTHING_OBJ;
+    // C zap.c makewish: long oldwisharti = u.uconduct.wisharti — snapshot
+    // before readobjnam, which is where the wisharti conduct is handled.
+    const oldwisharti = game.u?.uconduct?.wisharti | 0;
     let tries = 0;
     let buf = '';
 
@@ -6384,12 +6389,39 @@ export async function makewish() {
         // C: after MAXWISHTRY, random readobjnam(NULL) — deferred
         return;
     }
-    if (otmp === nothing) return;
-    if (otmp === HANDS_OBJ) return;
+    if (otmp === nothing) {
+        // C zap.c makewish: explicitly wished for "nothing" — retain
+        // wishless conduct, log the decline.
+        livelog_printf(LL_WISH, 'declined to make a wish');
+        return;
+    }
+    if (otmp === HANDS_OBJ) {
+        // C zap.c makewish: wizard-mode terrain wish — wish_history_add,
+        // then return with no livelog event. History still deferred (header).
+        return;
+    }
 
     if (!game.u) game.u = {};
     if (!game.u.uconduct) game.u.uconduct = {};
-    game.u.uconduct.wishes = (game.u.uconduct.wishes | 0) + 1;
+    // C zap.c makewish: wish_history_add(bufcpy) deferred (see header).
+    if (otmp.oartifact) {
+        // C: update artifact bookkeeping; doesn't produce a livelog event.
+        artifact_origin(otmp, ONAME_WISH | ONAME_KNOW_ARTI);
+    }
+    // C: wisharti conduct handled in readobjnam().
+    const maybe_LL_arti = (oldwisharti < (game.u.uconduct.wisharti | 0)) ? LL_ARTIFACT : 0;
+    // C: Snprintf(wish, sizeof wish, "\"%s\", got \"%s\"", bufcpy, doname(otmp)).
+    const wish = `"${buf}", got "${doname(otmp)}"`;
+    // C: KMH, conduct — post-increment: the first wish ever logs the
+    // "made %s first wish" arm, the first artifact wish its own arm.
+    const oldWishes = game.u.uconduct.wishes | 0;
+    game.u.uconduct.wishes = oldWishes + 1;
+    if (!oldWishes)
+        livelog_printf(LL_CONDUCT | LL_WISH | maybe_LL_arti, 'made %s first wish - %s', uhis(), wish);
+    else if (!oldwisharti && game.u.uconduct.wisharti)
+        livelog_printf(LL_CONDUCT | LL_WISH | LL_ARTIFACT, 'made %s first artifact wish - %s', uhis(), wish);
+    else
+        livelog_printf(LL_WISH | maybe_LL_arti, 'wished for %s', wish);
 
     // C: hold_another_object(otmp, oops_msg, The(aobjnam(...)), NULL)
     // Simplified message path: prinv via hold when successful.

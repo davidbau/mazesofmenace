@@ -280,6 +280,38 @@ export function wearmask_to_obj(wornmask) {
 }
 
 /**
+ * C ref: worn.c armcat_to_wornmask `:249–278` — oc_armcat (JS: oc_skill
+ * on armor) to the worn-slot mask. No default arm: mask stays 0.
+ */
+export function armcat_to_wornmask(cat) {
+    let mask = 0;
+    switch (cat | 0) {
+    case ARM_SUIT:
+        mask = W_ARM;
+        break;
+    case ARM_CLOAK:
+        mask = W_ARMC;
+        break;
+    case ARM_HELM:
+        mask = W_ARMH;
+        break;
+    case ARM_SHIELD:
+        mask = W_ARMS;
+        break;
+    case ARM_GLOVES:
+        mask = W_ARMG;
+        break;
+    case ARM_BOOTS:
+        mask = W_ARMF;
+        break;
+    case ARM_SHIRT:
+        mask = W_ARMU;
+        break;
+    }
+    return mask | 0;
+}
+
+/**
  * C ref: worn.c wearslot — bitmask of slots obj might occupy. Caller
  * zap.c poly_obj worn remap (D-1510). Wield/quiver of non-weapons is
  * the caller's job (poly_obj keeps old W_WEAPONS bits).

@@ -5,7 +5,7 @@
 
 import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
-import { MAXULEV, NATTK, LARGEST_INT, Upolyd, ismnum, LL_MINORAC } from './const.js';
+import { MAXULEV, NATTK, LARGEST_INT, Upolyd, ismnum, LL_MINORAC, KILLED_BY, DIED } from './const.js';
 import { pline } from './display.js';
 import { acurr, A_WIS, newhp, adjabil } from './attrib.js';
 import { find_mac } from './mhitm.js';
@@ -24,6 +24,7 @@ import {
 } from './generated/monsters_data.js';
 import { achieve_rank, count_achievements, record_achievement } from './insight.js';
 import { livelog_printf } from './pline.js';
+import { done } from './end.js';
 
 // C ref: monattk.h — experience() compares against these exact values
 const AT_BUTT = 4;
@@ -300,9 +301,13 @@ function resists_drli_you() {
 }
 
 /**
- * C ref: exper.c losexp — drain one experience level.
- * Named omit: level-1 done(DIED); SoundAchievement; Upolyd
- * monhp_per_lvl/rehumanize; uhpmax-up clamp via setuhpmax.
+ * C ref: exper.c losexp `:207–293` — drain one experience level.
+ * Level-1 drain with a drainer is fatal `:232–237` (killer.format
+ * KILLED_BY, killer.name=drainer, done(DIED)); done() returns on
+ * Lifesaved or a declined wizard/explore "Die?", then play continues
+ * below like C (D-1894).
+ * Named omit: SoundAchievement; Upolyd monhp_per_lvl/rehumanize;
+ * uhpmax-up clamp via setuhpmax.
  */
 export async function losexp(drainer) {
     const u = game.u || (game.u = {});
@@ -325,8 +330,18 @@ export async function losexp(drainer) {
         // sa2_xpleveldown deferred (no SND_LIB).
         livelog_printf(LL_MINORAC, 'lost experience level %d', (u.ulevel | 0) + 1);
     } else {
-        // C: drainer → done(DIED) (noreturn). Named omit.
-        if (drainer) return;
+        // C exper.c:232-237 — level-1 drain with a drainer is fatal:
+        // killer.format=KILLED_BY, killer.name=drainer, done(DIED).
+        // done() returns when Lifesaved or when wizard/explore declines
+        // the "Die?" prompt; play then continues below like C.
+        if (drainer) {
+            if (!game.killer) game.killer = { name: '', format: 0 };
+            game.killer.format = KILLED_BY;
+            if (game.killer.name !== drainer) game.killer.name = drainer;
+            await done(DIED);
+            // C :239-243 — debug-fuzz savelife can raise ulevel past 1.
+            if ((u.ulevel | 0) > 1) return;
+        }
         u.uexp = 0;
         // C ref: exper.c losexp — divine-anger reset to 0 XP still chronicles.
         livelog_printf(LL_MINORAC, 'lost all experience');

@@ -611,7 +611,7 @@ function throne_to_room(tx, ty) {
  * Case 6 grease spray (D-1683): COIN_CLASS skip as grease_ok, then
  * make_glib(rn1(101,100)) and update_inventory (`:278`).
  * Case 10: HConfusion only (D-1048; C Confusion ≡ HConfusion).
- * Named omit: losexp Upolyd/level-1 done; Punished unpunish in
+ * Named omit: losexp Upolyd mh-strip (level-1 done(DIED) live, D-1894); Punished unpunish in
  * seffects; SetVoice. rndcurse `update_inventory` still named.
  */
 export async function special_throne_effect(effect) {

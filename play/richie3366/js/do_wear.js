@@ -10,7 +10,7 @@ import {
     newsym, see_monsters, urgent_pline, impossible,
 } from './display.js';
 import { yn_function } from './getline.js';
-import { an, doname, the, xname, xprname, vtense, makeplural, makesingular, otense, gloves_simple_name, body_part_latebound } from './objnam.js';
+import { an, doname, the, xname, xprname, vtense, makeplural, makesingular, otense, gloves_simple_name, simpleonames, body_part_latebound } from './objnam.js';
 import { find_ac } from './u_init.js';
 import {
     A_STR, A_CON, A_CHA, acurr, extremeattr, change_luck, Fast, Very_fast,
@@ -62,7 +62,7 @@ import {
 import { x_monnam } from './do_name.js';
 import {
     ARMOR_CLASS, RING_CLASS, AMULET_CLASS, WEAPON_CLASS, TOOL_CLASS,
-    objectNames, objectNameStrs, is_sword,
+    objectNames, objectNameStrs, objectDescrs, is_sword,
 } from './objects.js';
 import { PM_ARCHEOLOGIST, PM_MONK, nolimbs, nohands, verysmall } from './monsters.js';
 import {
@@ -80,6 +80,10 @@ const GAUNTLETS_OF_POWER = objectNames.indexOf('GAUNTLETS_OF_POWER');
 const GAUNTLETS_OF_FUMBLING = objectNames.indexOf('GAUNTLETS_OF_FUMBLING');
 const CLOAK_OF_PROTECTION = objectNames.indexOf('CLOAK_OF_PROTECTION');
 const CLOAK_OF_DISPLACEMENT = objectNames.indexOf('CLOAK_OF_DISPLACEMENT');
+const ROBE = objectNames.indexOf('ROBE');
+const MUMMY_WRAPPING = objectNames.indexOf('MUMMY_WRAPPING');
+const ALCHEMY_SMOCK = objectNames.indexOf('ALCHEMY_SMOCK');
+const SHIELD_OF_REFLECTION = objectNames.indexOf('SHIELD_OF_REFLECTION');
 const AKLYS = objectNames.indexOf('AKLYS');
 /** C hack.h c_sword — class name when is_sword. */
 const c_sword = 'sword';
@@ -958,6 +962,86 @@ export function suit_simple_name(suit) {
     if (suitnm.length > 5 && suitnm.endsWith(' mail')) return 'mail';
     if (suitnm.length > 7 && suitnm.endsWith(' jacket')) return 'jacket';
     return 'suit';
+}
+
+/**
+ * C ref: objnam.c cloak_simple_name `:5491–5509` — robe / wrapping /
+ * smock-or-apron, else cloak.
+ */
+function cloak_simple_name(cloak) {
+    if (cloak) {
+        if (cloak.otyp === ROBE) return 'robe';
+        if (cloak.otyp === MUMMY_WRAPPING) return 'wrapping';
+        if (cloak.otyp === ALCHEMY_SMOCK) {
+            return (game.objects?.[cloak.otyp]?.oc_name_known && cloak.dknown)
+                ? 'smock'
+                : 'apron';
+        }
+    }
+    return 'cloak';
+}
+
+/**
+ * C ref: objnam.c boots_simple_name `:5550–5566` — dknown "shoes"
+ * (descr match, else actual match once the type is known), else boots.
+ */
+function boots_simple_name(boots) {
+    if (boots && boots.dknown) {
+        const otyp = boots.otyp | 0;
+        const ocl = game.objects?.[otyp];
+        const actualn = objectNameStrs[otyp] || '';
+        const descrpn = objectDescrs[ocl?.oc_descr_idx ?? otyp] || '';
+        if (descrpn.toLowerCase().includes('shoes')
+            || (ocl?.oc_name_known
+                && actualn.toLowerCase().includes('shoes'))) {
+            return 'shoes';
+        }
+    }
+    return 'boots';
+}
+
+/**
+ * C ref: objnam.c shield_simple_name `:5569–5596` — a shield of
+ * reflection reads silver once known, smooth before; else shield.
+ * (The `#if 0` heavy/light split stays cut, as in C.)
+ */
+function shield_simple_name(shield) {
+    if (shield && shield.otyp === SHIELD_OF_REFLECTION) {
+        return shield.dknown ? 'silver shield' : 'smooth shield';
+    }
+    return 'shield';
+}
+
+/**
+ * C ref: objnam.c armor_simple_name `:5434–5468` — per-category simple
+ * noun for the itemactions "already wearing …" row. Suit reuses
+ * suit_simple_name (dragon mail/scales deferred there); gloves reuse
+ * the canonical objnam.js gloves_simple_name; helm keys off
+ * hard_helmet like C (`:5512–5528`); shirt is C `:5599–5603`.
+ * Default is simpleonames + impossible, as in C.
+ */
+export function armor_simple_name(armor) {
+    switch (armcat(armor)) {
+    case ARM_SUIT:
+        return suit_simple_name(armor);
+    case ARM_CLOAK:
+        return cloak_simple_name(armor);
+    case ARM_HELM:
+        return hard_helmet(armor) ? 'helm' : 'hat';
+    case ARM_GLOVES:
+        return gloves_simple_name(armor);
+    case ARM_BOOTS:
+        return boots_simple_name(armor);
+    case ARM_SHIELD:
+        return shield_simple_name(armor);
+    case ARM_SHIRT:
+        return 'shirt';
+    default:
+        break;
+    }
+    const result = simpleonames(armor);
+    impossible(`unknown armor category (${result} => ${armcat(armor)})`);
+    return result;
 }
 
 /** C ref: objnam.c cloak/helm/gloves/boots/shield/shirt_simple_name — subset */

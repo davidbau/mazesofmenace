@@ -10,15 +10,15 @@
 // IA_ENGRAVE_OBJ (D-1675) + IA_BUY_OBJ shop pay (D-1676) +
 // IA_TWOWEAPON (D-1677) + IA_RUB_OBJ / IA_SWAPWEAPON / IA_WHATIS_OBJ
 // (D-1686). Corner process_menu_window cl_end from offx (D-1831).
-// Named omissions: W already-wearing armor_simple_name; dungeon.c
-// surface terrain nouns; cantwield skip of `'w'`; doengrave non-hands
-// stylus body; Traditional itemize yn. `'i'` getobj is D-1681.
+// Named omissions: dungeon.c surface terrain nouns; cantwield skip of
+// `'w'`; doengrave non-hands stylus body; Traditional itemize yn.
+// `'i'` getobj is D-1681.
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, set_bot_disabled, tty_nhbell } from './display.js';
 import { paint_corner_nhw_menu, dismiss_nhw_menu, inuse_headers_accessories, inuse_headers_set_accessories, check_invent_gold, process_menu_search } from './invent.js';
-import { cxname, the, xname, makeplural, singular, is_plural, the_unique_obj } from './objnam.js';
+import { cxname, the, xname, makeplural, singular, is_plural, the_unique_obj, an } from './objnam.js';
 import { body_part } from './polyself.js';
 import { ia_checkfile } from './pager.js';
 import { call_ok, name_ok } from './do_name.js';
@@ -463,9 +463,9 @@ function MAYBETWOWEAPON(obj) {
 
 /**
  * C ref: iactions.c itemactions — NHW_MENU PICK_ONE of context actions.
- * Named omissions: W already-wearing `armor_simple_name`;
- * dungeon.c `surface` terrain nouns (ROOM → "floor" here, matching
- * the four existing `surface` stubs). `cantwield` skip of `'w'`.
+ * Named omissions: dungeon.c `surface` terrain nouns (ROOM → "floor"
+ * here, matching the four existing `surface` stubs). `cantwield` skip
+ * of `'w'`.
  * O/T/V pushkeys are D-1665. Unwield/name/eat/engrave are D-1675.
  * Shop pay is D-1676. Two-weapon `'X'` is D-1677. Rub/swap/whatis
  * pushkeys are D-1686.
@@ -809,9 +809,20 @@ export async function itemactions(otmp) {
         );
     }
 
-    // W: wear armor — deferred slot-occupied polish
+    /* W: wear armor — C iactions.c `:631–647`. When otmp's slot is already
+       populated, offer 'W' anyway (it will fail) with "[already wearing
+       <simple-armor>]" so the menu teaches the command. */
     if (!already_worn && otmp.oclass === ARMOR_CLASS) {
-        add(IA_WEAR_OBJ, 'W', 'Wear this armor');
+        const { armcat_to_wornmask, wearmask_to_obj } = await import('./worn.js');
+        const { armor_simple_name } = await import('./do_wear.js');
+        const ocl_w = game.objects?.[otmp.otyp] || objects[otmp.otyp];
+        const Wmask = armcat_to_wornmask(ocl_w?.oc_skill | 0);
+        const o = wearmask_to_obj(Wmask);
+        add(
+            IA_WEAR_OBJ,
+            'W',
+            !o ? 'Wear this armor' : `[already wearing ${an(armor_simple_name(o))}]`,
+        );
     }
 
     // x: swap weapon
