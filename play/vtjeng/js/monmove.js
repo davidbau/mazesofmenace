@@ -152,7 +152,7 @@ import {
     something,
 } from './const.js';
 import { artifactTouchable, artifact_light } from './artifacts.js';
-import { effective_attribute } from './attrib.js';
+import { acurr } from './attrib.js';
 import { obj_resists } from './bury.js';
 import { newsym, vobj_at } from './display.js';
 import { capitalizedMonsterName } from './do_name.js';
@@ -272,7 +272,9 @@ import {
     S_VAMPIRE,
 } from './monsters.js';
 import { lined_up } from './mthrowu.js';
-import { find_offensive, searches_for_item } from './muse.js';
+import {
+    find_defensive, find_offensive, searches_for_item, use_defensive,
+} from './muse.js';
 import { isCandle, isContainer, objectType, sobj_at } from './obj.js';
 import {
     AMULET_CLASS,
@@ -2824,7 +2826,7 @@ export async function m_move(monster, rawEnv = {}) {
         const linedUp = (rawEnv.itemSearchInLine ?? lined_up)(monster, env);
         const throwRange = throws_rocks(state.youmonst?.data)
             ? 20
-            : Math.trunc(effective_attribute(state, A_STR) / 2) + 1;
+            : Math.trunc(acurr(state, A_STR) / 2) + 1;
         const inLine = linedUp
             && distmin(oldX, oldY, monster.mux, monster.muy) <= throwRange;
         getItems = approach !== 1 || !inLine;
@@ -2868,7 +2870,14 @@ export async function m_move(monster, rawEnv = {}) {
         mon_allowflags(monster, env),
         { ...env, resistsTrapEffect },
     );
-    if (!count && !is_unicorn(monster.data)) return MMOVE_NOMOVES;
+    if (!count && !is_unicorn(monster.data)) {
+        // C ref: monmove.c:1927. A trapped monster with no movement options
+        // attempts a defensive escape before giving up.
+        const escape = find_defensive(monster, true, env);
+        if (escape && await use_defensive(monster, escape, state, env))
+            return MMOVE_DONE;
+        return MMOVE_NOMOVES;
+    }
 
     let nextX = oldX;
     let nextY = oldY;

@@ -1762,12 +1762,189 @@ export function makesingular(oldstr) {
     return bp + excess;
 }
 
+// C ref: decl.c vowels[] `:111` — "aeiouAEIOU"; makeplural lowc's first.
+const MAKEPLURAL_VOWELS = 'aeiou';
+
+/** C ref: hacklib.c lowc — ASCII 'A'..'Z' |= 040. */
+function plural_lowc(c) {
+    const code = c.charCodeAt(0);
+    return (code >= 65 && code <= 90) ? String.fromCharCode(code | 0x20) : c;
+}
+
 /**
- * C ref: objnam.c makeplural — pronouns, then irregular one_off +
- * singplur_compound + ya.
- * Named omissions: already_plural ae/eaux; man→men;
- * as_is collective; singplur_lookup mongoose/slice edges;
- * full case-preserve polish beyond matched-suffix first letter.
+ * C ref: hacklib.c letter() — '@'..'Z' or 'a'..'z' ('@' classes as letter,
+ * so '[', '\\', ']', '^', '_' count as letters too).
+ */
+function plural_letter(c) {
+    return (c >= '@' && c <= 'Z') || (c >= 'a' && c <= 'z');
+}
+
+/** C ref: hacklib.c strcmpi/strncmpi — ASCII case-insensitive equality. */
+function eqCI(a, b) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (plural_lowc(a[i]) !== plural_lowc(b[i])) return false;
+    }
+    return true;
+}
+
+/** C ref: hacklib.c chrcasecpy `:300–313` — convert nc into oc's case. */
+function chrcasecpy(oc, nc) {
+    if (oc >= 'a' && oc <= 'z') {
+        if (nc >= 'A' && nc <= 'Z') return String.fromCharCode(nc.charCodeAt(0) + 32);
+    } else if (oc >= 'A' && oc <= 'Z') {
+        if (nc >= 'a' && nc <= 'z') return String.fromCharCode(nc.charCodeAt(0) - 32);
+    }
+    return nc;
+}
+
+/**
+ * C ref: hacklib.c strcasecpy `:322–341` — overwrite at `at` with `src`,
+ * each char taking the case of the char it replaces; overrun past the old
+ * end takes the case of the last old char (C reads dst[-1] when dst starts
+ * empty — unreachable here: every append arm has a non-empty head).
+ */
+function strcasecpy_at(base, at, src) {
+    let out = base.slice(0, at);
+    for (let i = 0; i < src.length; i++) {
+        const ref = (at + i < base.length) ? base[at + i] : base[at - 1];
+        out += chrcasecpy(ref, src[i]);
+    }
+    return out;
+}
+
+// C ref: objnam.c as_is[] `:2689–2713` — collective nouns kept as-is.
+// (The first 8 live in AS_IS_PLURALS above; these are the rest.)
+const AS_IS_COLLECTIVE = [
+    'bison', 'deer', 'elk', 'fish', 'fowl',
+    'tuna', 'yaki', '-hai', 'krill', 'manes',
+    'moose', 'ninja', 'sheep', 'ronin', 'roshi',
+    'shito', 'tengu', 'ki-rin', 'Nazgul', 'gunyoki',
+    'piranha', 'samurai', 'shuriken', 'haggis', 'Bordeaux',
+];
+
+// C ref: objnam.c already_plural[] `:2905–2909` (ae, eaux, matzot).
+const ALREADY_PLURAL = ['ae', 'eaux', 'matzot'];
+
+// C ref: objnam.c badman no_men[] `:3197–3203` — *man without a *men plural.
+const NO_MEN_PREFIX = [
+    'albu', 'antihu', 'anti', 'ata', 'auto', 'bildungsro', 'cai', 'cay',
+    'ceru', 'corner', 'decu', 'des', 'dura', 'fir', 'hanu', 'het',
+    'infrahu', 'inhu', 'nonhu', 'otto', 'out', 'prehu', 'protohu',
+    'subhu', 'superhu', 'talis', 'unhu', 'sha',
+    'hu', 'un', 'le', 're', 'so', 'to', 'at', 'a',
+];
+
+// C ref: objnam.c badman no_man[] `:3205–3210` — *men without a *man singular.
+const NO_MAN_PREFIX = [
+    'abdo', 'acu', 'agno', 'ceru', 'cogno', 'cycla', 'fleh', 'grava',
+    'hegu', 'preno', 'sonar', 'speci', 'dai', 'exa', 'fla', 'sta', 'teg',
+    'tegu', 'vela', 'da', 'hy', 'lu', 'no', 'nu', 'ra', 'ru', 'se', 'vi',
+    'ya', 'o', 'a',
+];
+
+/**
+ * C ref: objnam.c badman `:3193–3239` — the *man prefix has no *men plural
+ * (to_plural) or the *men prefix has no *man singular (!to_plural).
+ * The prefix must sit at the string start or right after a space
+ * (C `spot == basestr || *(spot - 1) == ' '`).
+ */
+function badman(base, to_plural) {
+    if (!base || base.length < 4) return false;
+    const list = to_plural ? NO_MEN_PREFIX : NO_MAN_PREFIX;
+    const end = base.length;
+    for (const p of list) {
+        const spot = end - (p.length + 3);
+        if (spot < 0) continue; // C BSTRNCMPI `(ptr) < base`
+        let match = true;
+        for (let i = 0; i < p.length; i++) {
+            if (plural_lowc(base[spot + i]) !== plural_lowc(p[i])) {
+                match = false;
+                break;
+            }
+        }
+        if (match && (spot === 0 || base[spot - 1] === ' ')) return true;
+    }
+    return false;
+}
+
+// C ref: objnam.c ch_ksound ch_k[] `:3169–3174` — *ch with a k-sound.
+const CH_K_SOUND = [
+    'monarch', 'poch', 'tech', 'mech', 'stomach', 'psych',
+    'amphibrach', 'anarch', 'atriarch', 'azedarach', 'broch',
+    'gastrotrich', 'isopach', 'loch', 'oligarch', 'peritrich',
+    'sandarach', 'sumach', 'symposiarch',
+];
+
+/**
+ * C ref: objnam.c ch_ksound `:3167–3191` — k-sound *ch words pluralize
+ * with 's', not 'es' (stomachs, monarchs — but arches).
+ */
+function ch_ksound(base) {
+    if (!base || base.length < 4) return false;
+    const lo = base.toLowerCase();
+    for (const k of CH_K_SOUND) {
+        if (lo.endsWith(k)) return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: objnam.c singplur_lookup `:2707–2779`, to_plural arm —
+ * as_is `:2719`, alt_as_is `:2724`, craft `:2732`, slice/mongoose `:2739`,
+ * ox `:2746` (fox→foxes, muskox excepted), badman man `:2753`,
+ * one_off same-stays / sing-transforms `:2764`.
+ * C mutates in place and returns boolean; here the new head, or null.
+ */
+function singplur_lookup_plural(head) {
+    const len = head.length;
+    for (const as of AS_IS_PLURALS) {
+        // C BSTRCMPI `:66` — (ptr < base || strcmpi): short heads skip.
+        if (len >= as.length && eqCI(head.slice(len - as.length), as)) return head;
+    }
+    for (const as of AS_IS_COLLECTIVE) {
+        if (len >= as.length && eqCI(head.slice(len - as.length), as)) return head;
+    }
+    for (const as of ALREADY_PLURAL) {
+        if (len >= as.length && eqCI(head.slice(len - as.length), as)) return head;
+    }
+    // C `:2732` — "craft" suffix stays (aircraft); bare "craft" (len 5) does not.
+    if (len > 5 && eqCI(head.slice(len - 5), 'craft')) return head;
+    // C `:2739` — whole-word only (strcmpi, not suffix): slice→slices.
+    if (eqCI(head, 'slice') || eqCI(head, 'mongoose')) {
+        return strcasecpy_at(head, len, 's');
+    }
+    // C `:2746` — *ox→*oxes unless muskox (which reaches one_off ox→oxen).
+    if (len > 2 && eqCI(head.slice(len - 2), 'ox')
+        && !(len > 5 && eqCI(head.slice(len - 6), 'muskox'))) {
+        return strcasecpy_at(head, len, 'es');
+    }
+    // C `:2753` — badman *man words (human, shaman) just take s.
+    if (len > 2 && eqCI(head.slice(len - 3), 'man') && badman(head, true)) {
+        return strcasecpy_at(head, len, 's');
+    }
+    for (const [sing, plur] of ONE_OFF_PLURALS) {
+        if (len >= plur.length && eqCI(head.slice(len - plur.length), plur)) {
+            return head; // already plural: children, feet, mice …
+        }
+        if (len >= sing.length && eqCI(head.slice(len - sing.length), sing)) {
+            return strcasecpy_at(head, len - sing.length, plur);
+        }
+    }
+    return null;
+}
+
+/**
+ * C ref: objnam.c makeplural `:2836–3022` — pronoun block, "pair of" skip,
+ * singplur_compound head/excess split, trailing-blank strip, single-letter
+ * / non-letter "'s", already_plural + ya, man→men (badman guard), f→ves
+ * ([aeioulr]f, erf exclusion), ium→ia, alga-type +e, us→i (lotus/wumpus
+ * keep es), sis→ses, eau→eaux (bureau keeps s), matzoh/matza→matzot,
+ * dex/dix/tex→ices (index keeps es), z/x/s/ch/sh+es (ch_ksound k-words keep
+ * s) + tomato/dingo kludge, consonant-y→ies, default +s — all through
+ * Strcasecpy case-preserving overwrite.
+ * Named omission: impossible("plural of null?") `:2841` log on null/empty
+ * (async pline chain; sync makeplural keeps C's "s" return).
  */
 export function makeplural(s) {
     if (s == null || s === '') return 's';
@@ -1790,43 +1967,98 @@ export function makeplural(s) {
             return str;
         }
     }
-    // C: skip "pair of " → keep as-is (objects use collective "pair")
+    // C `:2879` — "pair of" stays collective ("3 pair of boots").
     if (/^pair of /i.test(s)) return s;
-    // C: singplur_compound — pluralize head only ("scrolls labeled KIRJE")
+    // C `:2883–2892` — pluralize the compound head only, re-append excess.
+    let head = s, excess = '';
     const cmpIdx = singplur_compound(s);
     if (cmpIdx >= 0) {
-        return makeplural(s.slice(0, cmpIdx)) + s.slice(cmpIdx);
+        head = s.slice(0, cmpIdx);
+        excess = s.slice(cmpIdx);
     }
-    // C: "ya" stays "ya" (Samurai bamboo arrows)
-    if (s.length === 2 && s.toLowerCase() === 'ya') return s;
-    if (s.endsWith(' ya')) return s;
-
-    // C: fox → foxes (not oxen); muskox still reaches one_off ox→oxen
-    const lower = s.toLowerCase();
-    if (lower.length > 2 && lower.endsWith('ox')
-        && !(lower.length > 5 && lower.endsWith('muskox'))) {
-        return s + 'es';
+    // C `:2891–2896` — strip blanks from end; `spot > str` keeps a lone blank.
+    let end = head.length - 1;
+    while (end > 0 && head[end] === ' ') end--;
+    head = head.slice(0, end + 1);
+    const len = head.length;
+    // C `:2897–2903` — single letters and non-letter endings take "'s".
+    if (len === 1 || !plural_letter(head[len - 1])) {
+        return head + "'s" + excess;
     }
-
-    for (const [sing, plur] of ONE_OFF_PLURALS) {
-        const sl = sing.toLowerCase();
-        // C singplur_lookup: suffix match on one_off; "ox" alone is len 2
-        if (lower === sl || lower.endsWith(sl)) {
-            const stem = s.slice(0, s.length - sing.length);
-            const matched = s.slice(s.length - sing.length);
-            let pl = plur;
-            if (matched[0] >= 'A' && matched[0] <= 'Z') {
-                pl = plur[0].toUpperCase() + plur.slice(1);
-            }
-            return stem + pl;
+    // C `:2905–2916` — already-plural words stay via singplur_lookup.
+    const looked = singplur_lookup_plural(head);
+    if (looked !== null) return looked + excess;
+    // C `:2917` — "ya" (Samurai bamboo arrows) never pluralizes.
+    if ((len === 2 && eqCI(head, 'ya'))
+        || (len >= 3 && eqCI(head.slice(len - 3), ' ya'))) {
+        return head + excess;
+    }
+    // C `:2922–2926` — man→men ("Wiped out all cavemen"); badman keeps s.
+    if (len >= 3 && eqCI(head.slice(len - 3), 'man') && !badman(head, true)) {
+        return strcasecpy_at(head, len - 2, 'en') + excess;
+    }
+    // C `:2928–2938` — [aeioulr]f→ves (staff rides one_off); erf falls through.
+    if (plural_lowc(head[len - 1]) === 'f') {
+        const fprev = plural_lowc(head[len - 2]);
+        if (!(len >= 3 && eqCI(head.slice(len - 3), 'erf'))
+            && (fprev === 'l' || fprev === 'r' || MAKEPLURAL_VOWELS.includes(fprev))) {
+            return strcasecpy_at(head, len - 1, 'ves') + excess;
         }
     }
-
-    if (s.endsWith('s') || s.endsWith('x') || s.endsWith('ch') || s.endsWith('sh'))
-        return s + 'es';
-    if (s.endsWith('y') && s.length > 1 && !'aeiou'.includes(s[s.length - 2]))
-        return s.slice(0, -1) + 'ies';
-    return s + 's';
+    // C `:2940–2943` — ium→ia (mycelia, baluchitheria).
+    if (len >= 3 && eqCI(head.slice(len - 3), 'ium')) {
+        return strcasecpy_at(head, len - 3, 'ia') + excess;
+    }
+    // C `:2944–2952` — alga/larva/hypha/amoeba/vertebra take +e.
+    if ((len >= 4 && eqCI(head.slice(len - 4), 'alga'))
+        || (len >= 5 && (eqCI(head.slice(len - 5), 'hypha') || eqCI(head.slice(len - 5), 'larva')))
+        || (len >= 6 && eqCI(head.slice(len - 6), 'amoeba'))
+        || (len >= 8 && eqCI(head.slice(len - 8), 'vertebra'))) {
+        return strcasecpy_at(head, len, 'e') + excess;
+    }
+    // C `:2954–2960` — us→i, but lotuses and wumpuses keep es.
+    if (len > 3 && eqCI(head.slice(len - 2), 'us')
+        && !((len >= 5 && eqCI(head.slice(len - 5), 'lotus'))
+            || (len >= 6 && eqCI(head.slice(len - 6), 'wumpus')))) {
+        return strcasecpy_at(head, len - 2, 'i') + excess;
+    }
+    // C `:2962–2965` — sis→ses (nemesis rides one_off; oases here).
+    if (len >= 3 && eqCI(head.slice(len - 3), 'sis')) {
+        return strcasecpy_at(head, len - 2, 'es') + excess;
+    }
+    // C `:2967–2971` — eau→eaux, but the common "bureaus" keeps s.
+    if (len >= 3 && eqCI(head.slice(len - 3), 'eau')
+        && (len < 6 || !eqCI(head.slice(len - 6), 'bureau'))) {
+        return strcasecpy_at(head, len, 'x') + excess;
+    }
+    // C `:2973–2985` — matzoh/matzah→matzot; matzo/matza→matzot.
+    if (len >= 6 && (eqCI(head.slice(len - 6), 'matzoh') || eqCI(head.slice(len - 6), 'matzah'))) {
+        return strcasecpy_at(head, len - 2, 'ot') + excess;
+    }
+    if (len >= 5 && (eqCI(head.slice(len - 5), 'matzo') || eqCI(head.slice(len - 5), 'matza'))) {
+        return strcasecpy_at(head, len - 1, 'ot') + excess;
+    }
+    const lo_c = plural_lowc(head[len - 1]);
+    // C `:2987–2997` — codex→codices and the like (but indexes).
+    if (len >= 5
+        && (eqCI(head.slice(len - 3), 'dex') || eqCI(head.slice(len - 3), 'dix') || eqCI(head.slice(len - 3), 'tex'))
+        && !eqCI(head.slice(len - 5), 'index')) {
+        return strcasecpy_at(head, len - 2, 'ices') + excess;
+    }
+    // C `:3000–3009` — z/x/s/ch/sh take es (k-sound ch keeps s) + tomato/dingo.
+    if ('zxs'.includes(lo_c)
+        || (len >= 2 && lo_c === 'h' && 'cs'.includes(plural_lowc(head[len - 2]))
+            && !(len >= 4 && plural_lowc(head[len - 2]) === 'c' && ch_ksound(head)))
+        || (len >= 4 && eqCI(head.slice(len - 3), 'ato'))
+        || (len >= 5 && eqCI(head.slice(len - 5), 'dingo'))) {
+        return strcasecpy_at(head, len, 'es') + excess;
+    }
+    // C `:3011–3014` — consonant-y→ies (quy keeps s: u is a vowel).
+    if (lo_c === 'y' && !MAKEPLURAL_VOWELS.includes(plural_lowc(head[len - 2]))) {
+        return strcasecpy_at(head, len - 1, 'ies') + excess;
+    }
+    // C `:3016` — default: append s (case follows the last letter).
+    return strcasecpy_at(head, len, 's') + excess;
 }
 
 /**

@@ -24,7 +24,7 @@ import {
     glyph_is_monster, glyph_is_object, glyph_is_statue, glyph_is_warning,
     glyph_is_invisible_id, glyph_is_nothing, glyph_is_unexplored,
     glyph_is_cmap, glyph_to_cmap, glyph_to_obj, glyph_to_warning,
-    canspotself, mon_to_glyph, hero_Invisible,
+    canspotself, mon_to_glyph, hero_Invisible, NO_GLYPH,
     set_bot_disabled, tty_nhbell,
 } from './display.js';
 import { howmonseen } from './vision.js';
@@ -41,9 +41,10 @@ import {
 import { mon_at, defsym_explanation } from './uhitm.js';
 import { objects_at, mksobj, mkobj, obj_stop_timers } from './mkobj.js';
 import {
-    doname, an, xname, singular, ansimpleoname, distant_name, simpleonames,
+    doname, an, the, xname, singular, ansimpleoname, distant_name, simpleonames,
     makeplural,
 } from './objnam.js';
+import { strstri } from './hacklib.js';
 import { distant_monnam_none, pmname, Ugender, mon_nam, rndmonnam } from './do_name.js';
 import { hides_under, is_hider, is_clinger, is_flyer, mons,
     M2_HUMAN, M2_ELF, M2_ORC, M2_DEMON,
@@ -71,7 +72,11 @@ import {
     STRAT_WAITMASK, IS_WALL, Upolyd, Is_airlevel, Is_waterlevel, Is_astralevel,
     u_at, TER_MON, Amask2align, AM_SANCTUM, AM_MASK, D_BROKEN, D_TRAPPED,
     S_altar, S_ndoor, S_cloud, S_pool, S_water, S_lava, S_lavawall, S_ice,
-    S_engroom, S_engrcorr, S_stone, def_warnsyms,
+    S_engroom, S_engrcorr, S_stone, S_grave, S_arrow_trap, S_vibrating_square,
+    S_vodbridge, S_hcdbridge, MAXTCHARS, VIBRATING_SQUARE, def_warnsyms,
+    POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE,
+    HELP, SHELP, HISTORY, LICENSE, OPTIONFILE, OPTMENUHELP, USAGEHELP, DEBUGHELP,
+    ECMD_OK, BUFSZ,
     OBJ_FREE, OBJ_FLOOR, OBJ_BURIED, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER,
     M_AP_TYPMASK, M_AP_F_DKNOWN,
     MCORPSENM, has_mcorpsenm, MALE, FEMALE,
@@ -197,8 +202,9 @@ export function compress_str(str, co = 80) {
  * C ref: win/tty/wintty.c tty_putstr NHW_TEXT arm — after compress_str, a
  * stored line with n0 = strlen+1 > CO is word-wrapped: scan back from
  * str[CO-1] for ' ' (or '\n'); the stored fragment keeps the break space
- * (`data[++i] = 0`) and the remainder re-enters tty_putstr (compress +
- * wrap again, so a short tail keeps its leading space). No break point →
+ * (`data[++i] = 0`) and the remainder re-enters tty_putstr from AFTER the
+ * break space (`&str[i]` post-`++i`, so the space is consumed, not kept).
+ * No break point →
  * stored whole (paint truncates). Returns the display lines in order.
  * @param {string} str raw putstr line
  * @param {number} [co=80] terminal columns (C global CO)
@@ -213,7 +219,7 @@ export function wrap_text_window_line(str, co = 80) {
         while (i && s[i] !== ' ' && s[i] !== '\n') i--;
         if (!i) { out.push(s); break; } // no break point: stored whole
         out.push(s.slice(0, i + 1)); // keeps the break space (C data[++i]=0)
-        s = compress_str(s.slice(i), co); // C: tty_putstr recursion
+        s = compress_str(s.slice(i + 1), co); // C: &str[i] after ++i — break space consumed
     }
     return out;
 }
@@ -743,13 +749,193 @@ export function ia_checkfile(otmp) {
     return !!(body && body.length);
 }
 
-function look_region(nearby) {
+/**
+ * C ref: pager.c look_region_nearby `:1966–1974` — `/M` nearby window is
+ * u±BOLT_LIM clamped (lo_x≥1, lo_y≥0, hi≤COLNO-1/ROWNO-1), else whole map.
+ * C writes through coordxy pointers in lo_y/lo_x/hi_y/hi_x order; JS takes
+ * a holder object (pointer equivalent) and mutates it, returning void.
+ */
+export function look_region_nearby(out, nearby) {
     const u = game.u || {};
-    const lo_y = nearby ? Math.max((u.uy || 0) - BOLT_LIM, 0) : 0;
-    const lo_x = nearby ? Math.max((u.ux || 1) - BOLT_LIM, 1) : 1;
-    const hi_y = nearby ? Math.min((u.uy || 0) + BOLT_LIM, ROWNO - 1) : ROWNO - 1;
-    const hi_x = nearby ? Math.min((u.ux || 1) + BOLT_LIM, COLNO - 1) : COLNO - 1;
-    return { lo_x, lo_y, hi_x, hi_y };
+    const ux = u.ux | 0;
+    const uy = u.uy | 0;
+    out.lo_y = nearby ? Math.max(uy - BOLT_LIM, 0) : 0;
+    out.lo_x = nearby ? Math.max(ux - BOLT_LIM, 1) : 1;
+    out.hi_y = nearby ? Math.min(uy + BOLT_LIM, ROWNO - 1) : ROWNO - 1;
+    out.hi_x = nearby ? Math.min(ux + BOLT_LIM, COLNO - 1) : COLNO - 1;
+}
+
+function look_region(nearby) {
+    const out = {};
+    look_region_nearby(out, !!nearby);
+    return out;
+}
+
+/**
+ * C ref: pager.c append_str `:82–106` — append " or "+new_str unless new_str
+ * already occurs in buf (case-insensitive strstri). BUFSZ-capped: at most
+ * BUFSZ-1 chars total; sep then truncated new_str. Returns 1 if anything
+ * was appended (even a partial " or "), else 0.
+ */
+export function append_str(bufHolder, new_str) {
+    if (strstri(bufHolder.s, new_str)) return 0;
+    const oldlen = bufHolder.s.length;
+    if (oldlen >= BUFSZ - 1) return 0;
+    const space_left = BUFSZ - 1 - oldlen;
+    const sep = ' or ';
+    bufHolder.s += sep.slice(0, space_left);
+    if (space_left > sep.length) {
+        bufHolder.s += String(new_str).slice(0, space_left - sep.length);
+    }
+    return 1;
+}
+
+/** C ref: include/sym.h `:98` is_cmap_trap — trap cmap range. */
+function is_cmap_trap(idx) {
+    return (idx | 0) >= S_arrow_trap && (idx | 0) < S_arrow_trap + MAXTCHARS;
+}
+
+/** C ref: include/sym.h `:99` is_cmap_drawbridge — drawbridge cmap range. */
+function is_cmap_drawbridge(idx) {
+    return (idx | 0) >= S_vodbridge && (idx | 0) <= S_hcdbridge;
+}
+
+/** C ref: dungeon.c In_hell `:1941–1945` via dungeon.h Inhell — dungeon hellish flag. */
+function Inhell_pager() {
+    return !!(game.dungeons?.[game.u?.uz?.dnum | 0]?.flags?.hellish);
+}
+
+/**
+ * C ref: pager.c add_cmap_descr `:1133–1245` (extracted from
+ * do_screen_description) — fold one cmap defsym match into out_str.
+ * C signature (found, idx, glyph, article, cc, x_str, prefix, *hit_trap,
+ * **firstmatch, *out_str) returns found; JS holders ({v}/{s}) stand in for
+ * the C out-pointers and are mutated in place. Branch/short-circuit order,
+ * waterbody override with levl+typ save/restore and EHalluc_resistance=1,
+ * "pool"→"pool"/"molten lava"→"lava" shortening, the article-suppression
+ * prefix list, first-match "a trap" arm, and the hit_trap/drawbridge/
+ * vibrating-square append guards are all preserved.
+ */
+export function add_cmap_descr(
+    found, idx, glyph, article, cc, x_str, prefix, hitTrap, firstMatch, outStr,
+) {
+    const absidx = Math.abs(idx | 0);
+    idx = idx | 0;
+    glyph = glyph | 0;
+
+    if (glyph === NO_GLYPH) {
+        if (x_str === 'water') {
+            if (idx === S_pool) {
+                x_str = 'pool of water';
+            } else if (idx === S_water) {
+                x_str = !Is_waterlevel(game.u?.uz) ? 'wall of water' : 'limitless water';
+            }
+        }
+        if (absidx === S_pool) idx = S_pool;
+    } else if (
+        absidx === S_pool || idx === S_water
+        || idx === S_lava || idx === S_lavawall || idx === S_ice
+    ) {
+        const u = game.u || {};
+        const loc = game.level?.at?.(cc.x, cc.y);
+        const save_ltyp = loc ? loc.typ : null;
+        const save_prop = u.EHalluc_resistance | 0;
+        if (loc) {
+            if (absidx === S_pool) {
+                loc.typ = idx === S_pool ? POOL : MOAT;
+                idx = S_pool;
+            } else {
+                loc.typ = idx === S_water ? WATER
+                    : idx === S_lava ? LAVAPOOL
+                    : idx === S_lavawall ? LAVAWALL
+                    : ICE;
+            }
+        } else if (absidx === S_pool) {
+            idx = S_pool;
+        }
+        // C grabs mon_nam(&gy.youmonst) as a scratch buffer for *firstmatch;
+        // JS strings are values, so no scratch buffer is needed.
+        u.EHalluc_resistance = 1;
+        let mbuf = waterbody_name(cc.x, cc.y);
+        u.EHalluc_resistance = save_prop;
+        if (loc && save_ltyp !== null) loc.typ = save_ltyp;
+
+        if (mbuf === 'pool of water') mbuf = 'pool';
+        else if (mbuf === 'molten lava') mbuf = 'lava';
+        x_str = mbuf;
+        const sp = x_str.indexOf(' ');
+        const iceSuffix = sp !== -1 && x_str.slice(sp).toLowerCase() === ' ice';
+        article = !(
+            x_str.startsWith('water')
+            || x_str.startsWith('ice')
+            || x_str.startsWith('pool')
+            || x_str.startsWith('moat')
+            || x_str.startsWith('lava')
+            || x_str.startsWith('swamp')
+            || x_str.startsWith('molten')
+            || x_str.startsWith('shallow')
+            || x_str.startsWith('limitless')
+            || x_str.startsWith('wall of lava')
+            || x_str.startsWith('wall of water')
+            || x_str.startsWith('frozen')
+            || iceSuffix
+        ) ? 1 : 0;
+        // C overwrites article here, so the `article === 2` arm below is dead
+        // on this path per C (waterbody matches never emit "the").
+    }
+
+    if (!found) {
+        if (is_cmap_trap(idx) && idx !== S_vibrating_square) {
+            outStr.s = `${prefix}a trap`;
+            hitTrap.v = true;
+        } else {
+            outStr.s = `${prefix}${article === 2 ? the(x_str) : article === 1 ? an(x_str) : x_str}`;
+        }
+        firstMatch.v = x_str;
+        found = 1;
+    } else if (
+        !(hitTrap.v && is_cmap_trap(idx))
+        && !(found >= 3 && is_cmap_drawbridge(idx))
+        && (idx !== S_vibrating_square || Inhell_pager()
+            || (glyph_is_trap(glyph) && glyph_to_trap(glyph) === VIBRATING_SQUARE))
+    ) {
+        found += append_str(
+            outStr, article === 2 ? the(x_str) : article === 1 ? an(x_str) : x_str,
+        );
+        if (is_cmap_trap(idx) && idx !== S_vibrating_square) hitTrap.v = true;
+    }
+    return found;
+}
+
+/**
+ * C ref: pager.c add_quoted_engraving `:1631–1667` — append the remembered
+ * (or unread) engraving text to a " (engraving" / " (grave" look buffer.
+ * bufHolder ({s}) is the C char* buf, mutated with BUFSZ strncat capping;
+ * returns TRUE when text was appended. Short-circuit order preserved:
+ * no-engraving → non-floor/non-grave without force → eread remembered-text
+ * vs unread; caller supplies the closing paren.
+ */
+export function add_quoted_engraving(x, y, bufHolder, force) {
+    const buf = bufHolder.s;
+    const ep = engr_at(x, y);
+    const floorengr = buf === ' (engraving';
+    const headstone = buf === ' (grave';
+
+    if (!ep) return false;
+    if (!floorengr && !headstone && !force) return false;
+
+    const txt = typeof ep.engr_txt === 'string'
+        ? ep.engr_txt
+        : (ep.engr_txt?.remembered_text ?? ep.engr_txt?.actual_text ?? '');
+    let temp_buf;
+    if (ep.eread) {
+        temp_buf = ` with ${headstone ? 'headstone reading' : 'remembered text'}: "${txt}"`;
+    } else {
+        temp_buf = ` ${headstone ? 'whose headstone' : 'that'} you haven't read`;
+    }
+    const space = BUFSZ - bufHolder.s.length - 1;
+    if (space > 0) bufHolder.s += temp_buf.slice(0, space);
+    return true;
 }
 
 /**
@@ -2026,37 +2212,105 @@ export async function dowhatdoes() {
 }
 
 /**
+ * C ref: pager.c dispfile_help `:2748–2752` — display_file(HELP, TRUE).
+ */
+async function dispfile_help() {
+    await display_file(HELP, true);
+}
+
+/** C ref: pager.c dispfile_shelp `:2754–2758` — display_file(SHELP, TRUE). */
+async function dispfile_shelp() {
+    await display_file(SHELP, true);
+}
+
+/** C ref: pager.c dispfile_optionfile `:2760–2764`. */
+async function dispfile_optionfile() {
+    await display_file(OPTIONFILE, true);
+}
+
+/** C ref: pager.c dispfile_optmenu `:2766–2770`. */
+async function dispfile_optmenu() {
+    await display_file(OPTMENUHELP, true);
+}
+
+/** C ref: pager.c dispfile_license `:2772–2776`. */
+async function dispfile_license() {
+    await display_file(LICENSE, true);
+}
+
+/** C ref: pager.c dispfile_debughelp `:2778–2782`. */
+async function dispfile_debughelp() {
+    await display_file(DEBUGHELP, true);
+}
+
+/** C ref: pager.c dispfile_usagehelp `:2784–2788`. */
+async function dispfile_usagehelp() {
+    await display_file(USAGEHELP, true);
+}
+
+/**
+ * C ref: pager.c dohistory `:2961–2965` — the 'V' command; display HISTORY.
+ */
+export async function dohistory() {
+    await display_file(HISTORY, true);
+    return ECMD_OK;
+}
+
+/** C ref: pager.c hmenu_doextversion `:2790–2794` — (void) doextversion(). */
+async function hmenu_doextversion() {
+    await doextversion();
+}
+
+/** C ref: pager.c hmenu_dohistory `:2796–2800` — (void) dohistory(). */
+async function hmenu_dohistory() {
+    await dohistory();
+}
+
+/** C ref: pager.c hmenu_dowhatis `:2802–2805` — (void) dowhatis(). */
+async function hmenu_dowhatis() {
+    await dowhatis();
+}
+
+/** C ref: pager.c hmenu_dowhatdoes `:2808–2812` — (void) dowhatdoes(). */
+async function hmenu_dowhatdoes() {
+    await dowhatdoes();
+}
+
+/** C ref: pager.c hmenu_doextlist `:2814–2818` — (void) doextlist(). */
+async function hmenu_doextlist() {
+    const { doextlist } = await import('./cmd.js');
+    await doextlist();
+}
+
+/**
  * C ref: pager.c dohelp — help menu.
  */
 export async function dohelp() {
     await flush_topl_more();
     const items = [
-        { key: 'a', text: 'About NetHack (version information).', fn: doextversion },
-        { key: 'b', text: 'Long description of the game and commands.', fn: () => display_file('help', true) },
-        { key: 'c', text: 'List of game commands.', fn: () => display_file('hh', true) },
-        { key: 'd', text: 'Concise history of NetHack.', fn: () => display_file('history', true) },
-        { key: 'e', text: 'Info on a character in the game display.', fn: dowhatis },
-        { key: 'f', text: 'Info on what a given key does.', fn: dowhatdoes },
+        { key: 'a', text: 'About NetHack (version information).', fn: hmenu_doextversion },
+        { key: 'b', text: 'Long description of the game and commands.', fn: dispfile_help },
+        { key: 'c', text: 'List of game commands.', fn: dispfile_shelp },
+        { key: 'd', text: 'Concise history of NetHack.', fn: hmenu_dohistory },
+        { key: 'e', text: 'Info on a character in the game display.', fn: hmenu_dowhatis },
+        { key: 'f', text: 'Info on what a given key does.', fn: hmenu_dowhatdoes },
         // C ref: options.c option_help via pager.c dohelp help_menu
         { key: 'g', text: 'List of game options.', fn: async () => {
             await show_text_pages(option_help_lines());
         } },
-        { key: 'h', text: 'Longer explanation of game options.', fn: () => display_file('opthelp', true) },
-        { key: 'i', text: "Using the '#optionsfull' or 'm O' command to set options.", fn: () => display_file('optmenu', true) },
+        { key: 'h', text: 'Longer explanation of game options.', fn: dispfile_optionfile },
+        { key: 'i', text: "Using the '#optionsfull' or 'm O' command to set options.", fn: dispfile_optmenu },
         // C ref: cmd.c dokeylist
         { key: 'j', text: 'Full list of keyboard commands.', fn: async () => {
             await show_text_pages(dokeylist_lines());
         } },
-        { key: 'k', text: 'List of extended commands.', fn: async () => {
-            const { doextlist } = await import('./cmd.js');
-            return doextlist();
-        } },
+        { key: 'k', text: 'List of extended commands.', fn: hmenu_doextlist },
         // C ref: pager.c domenucontrols → options.c show_menu_controls
         { key: 'l', text: 'List menu control keys.', fn: async () => {
             await show_text_pages(domenucontrols_lines());
         } },
-        { key: 'm', text: "Description of NetHack's command line.", fn: () => display_file('usagehlp', true) },
-        { key: 'n', text: 'The NetHack license.', fn: () => display_file('license', true) },
+        { key: 'm', text: "Description of NetHack's command line.", fn: dispfile_usagehelp },
+        { key: 'n', text: 'The NetHack license.', fn: dispfile_license },
         // C ref: pager.c docontact
         { key: 'o', text: 'Support information.', fn: async () => {
             await show_text_pages([
@@ -2072,7 +2326,7 @@ export async function dohelp() {
         items.push({
             key: 'p',
             text: 'List of wizard-mode commands.',
-            fn: () => display_file('wizhelp', true),
+            fn: dispfile_debughelp,
         });
     }
 

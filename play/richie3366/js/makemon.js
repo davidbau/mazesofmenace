@@ -7,7 +7,9 @@ import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { depth as depth_of_level, level_difficulty as level_difficulty_of, upstart } from './hacklib.js';
 import { put_saddle_on_mon, can_saddle, place_monster } from './steed.js';
-import { m_dowear, which_armor, check_gear_next_turn } from './worn.js';
+import {
+    m_dowear, which_armor, check_gear_next_turn, bypass_obj, mon_break_armor,
+} from './worn.js';
 import { possibly_unwield } from './weapon.js';
 import {
     LOW_PM,
@@ -116,8 +118,10 @@ import {
 import {
     mksobj, mkobj, mkobj_at, weight, objects_at, curse, bless, is_crackable,
     set_corpsenm, stop_timer, add_to_container, add_to_minv, rnd_class,
-    carry_obj_effects,
+    carry_obj_effects, obj_extract_self, place_object,
 } from './mkobj.js';
+import { flooreffects } from './do.js';
+import { monst_to_any } from './hack.js';
 
 export { add_to_minv };
 
@@ -1402,9 +1406,10 @@ function newcham_post_set_mon_data(mtmp, olddata, mdat, pfsc) {
     const old_light = emits_light(olddata);
     const new_light = emits_light(mtmp.data);
     if (old_light !== new_light) {
-        if (old_light) del_light_source(LS_MONSTER, mtmp);
+        /* C: monst_to_any(mtmp) — light.c keys by monst identity (hack.c) */
+        if (old_light) del_light_source(LS_MONSTER, monst_to_any(mtmp));
         if (new_light) {
-            new_light_source(mtmp.mx, mtmp.my, new_light, LS_MONSTER, mtmp);
+            new_light_source(mtmp.mx, mtmp.my, new_light, LS_MONSTER, monst_to_any(mtmp));
         }
     }
     // C mondata.h pm_invisible — stalker / black light (macro, not a clone)
@@ -1434,14 +1439,53 @@ function newcham_post_set_mon_data(mtmp, olddata, mdat, pfsc) {
         mtmp.cham = pm_to_cham(mdat.mndx ?? NON_PM);
     }
 
-    // mon_break_armor / mselftouch named omit
+    // W_ARMG mselftouch still named (mon_break_armor runs in after_armor)
     check_gear_next_turn(mtmp);
-    // boulder drop / poly_steed named omit
+    // poly_steed still named (boulders run in after_boulder)
 }
 
 /**
- * Rest of newcham after mleashed. SHOW_MSG and Elbereth monflee may
- * return a Promise; NO_NC_FLAGS without those stays boolean true.
+ * C ref: mon.c newcham former-giant boulder drop — ex-giants that no
+ * longer throw rocks cannot carry boulders: polyspot bypass keeps each
+ * out of this-turn pile zaps, flooreffects may consume it (a boulder
+ * falling where it reacts), else it lands at the monster's square.
+ * flooreffects can kill mtmp, ending the loop (DEADMONSTER).
+ * Sync-or-async like possibly_unwield: a minvent pre-scan stays
+ * non-Promise when no boulder is carried (the common case), so
+ * NO_NC_FLAGS keeps its boolean contract (D-1648).
+ * @returns {null|Promise<void>}
+ */
+function newcham_drop_boulders(mtmp, mdat, polyspot) {
+    if (!mtmp.minvent || throws_rocks(mdat)) return null;
+    let found = false;
+    for (let o = mtmp.minvent; o; o = o.nobj) {
+        if ((o.otyp | 0) === BOULDER) { found = true; break; }
+    }
+    if (!found) return null;
+    return (async () => {
+        for (let otmp = mtmp.minvent; otmp && (mtmp.mhp | 0) >= 1;) {
+            /* DEADMONSTER: flooreffects() may have killed mtmp */
+            const otmp2 = otmp.nobj;
+            if ((otmp.otyp | 0) === BOULDER) {
+                /* C: keep otmp out of this zap's polymorph when polyspot */
+                if (polyspot) bypass_obj(otmp);
+                obj_extract_self(otmp);
+                /* C: "probably ought to give some drop message here" — none */
+                if (await flooreffects(otmp, mtmp.mx, mtmp.my, '')) {
+                    otmp = otmp2;
+                    continue;
+                }
+                place_object(otmp, mtmp.mx, mtmp.my);
+            }
+            otmp = otmp2;
+        }
+    })();
+}
+
+/**
+ * Rest of newcham after mleashed. SHOW_MSG, mon_break_armor, boulders
+ * and Elbereth monflee may return a Promise; NO_NC_FLAGS without those
+ * stays boolean true.
  */
 function newcham_after_unleash(
     mtmp, olddata, mdat, msg, oldname, seenorsensed, pfsc, polyspot,
@@ -1458,11 +1502,24 @@ function newcham_after_unleash(
         }
         return true;
     };
+    const after_boulder = () => {
+        // C boulder loop after check_gear, before poly_steed.
+        const bd = newcham_drop_boulders(mtmp, mdat, polyspot);
+        if (bd) return Promise.resolve(bd).then(after_pu);
+        return after_pu();
+    };
+    const after_armor = () => {
+        // C :5485 mon_break_armor(mtmp, polyspot) after possibly_unwield
+        // (W_ARMG mselftouch arm still named).
+        const mba = mon_break_armor(mtmp, polyspot);
+        if (mba) return Promise.resolve(mba).then(after_boulder);
+        return after_boulder();
+    };
     const after_msg = () => {
         // C :5484 possibly_unwield after SHOW_MSG / vampire cham.
         const pu = possibly_unwield(mtmp, polyspot);
-        if (pu) return Promise.resolve(pu).then(after_pu);
-        return after_pu();
+        if (pu) return Promise.resolve(pu).then(after_armor);
+        return after_armor();
     };
     if (msg) return newcham_show_msg(mtmp, oldname, seenorsensed, mdat).then(after_msg);
     return after_msg();
@@ -1484,10 +1541,11 @@ function newcham_after_unleash(
  * `if (newcham())` is not Promise-truthy. Vampire cham + check_gear
  * run before awaiting More (C does the pline first; cham unused by
  * the message; gear is next-turn).
- * Named omissions: NC_VIA_WAND_OR_SPELL mon_break_armor / boulder
- * bypass+flooreffects still named; possibly_unwield is D-1744;
- * ustuck expels/unstuck (async; l_oldname still captured for Hallu
- * RNG); poly_steed.
+ * mon_break_armor (worn.c `:1177–1335`, NC_VIA_WAND_OR_SPELL polyspot;
+ * D-1914) + boulder bypass+flooreffects (D-1914); possibly_unwield is
+ * D-1744;
+ * Named omissions: W_ARMG mselftouch; ustuck expels/unstuck (async;
+ * l_oldname still captured for Hallu RNG); poly_steed.
  * @returns {boolean|Promise<boolean>} true if form changed
  */
 export function newcham(mtmp, mdat, ncflags = 0) {

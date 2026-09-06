@@ -35,6 +35,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          } from './const.js';
 import { FOOD_CLASS, objectNames } from './objects.js';
 import { EXTCMDLIST } from './generated/extcmdlist_data.js';
+import { PM_GRID_BUG } from './generated/monsters_data.js';
 
 const STATUE_OTYP = objectNames.indexOf('STATUE');
 const BOULDER_OTYP = objectNames.indexOf('BOULDER');
@@ -88,6 +89,7 @@ import {
     hero_mimic_unhide_after_move, domove_swap_with_pet,
     test_move_run_blocked_by_boulder, test_move_boulder_is_blocking,
     test_move_hero_passes_bars, test_move_hero_chews_bars, still_chewing,
+    could_move_onto_boulder, Passes_walls_prop,
     end_running,
     water_turbulence, move_out_of_bounds, avoid_running_into_trap_or_liquid,
     domove_fight_ironbars, domove_fight_web,
@@ -95,7 +97,7 @@ import {
 import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
 import { drag_ball, move_bc } from './ball.js';
 import { in_out_region } from './region.js';
-import { m_postmove_effect } from './monmove.js';
+import { m_postmove_effect, can_ooze } from './monmove.js';
 
 /** C cmd.c command_queue[CQ_*] — JS arrays on game. */
 function cmdq_qname(q) {
@@ -987,6 +989,22 @@ function closed_door_at(x, y) {
         && (loc.doormask & (D_CLOSED | D_LOCKED)));
 }
 
+/**
+ * C ref: hack.c findtravelpath :1403–1407 — closed doors and boulders on the
+ * CURRENT cell usually cause a delay (prefer another path), not a block:
+ * (!Passes_walls && !can_ooze(youmonst) && closed_door(x,y)) ||
+ * (sobj_at(BOULDER,x,y) && !could_move_onto_boulder(x,y)).
+ * The TEST_TRAP third arm (seen trap / known liquid on the target) rides at
+ * the call site via travel_avoids_cell gated on run==8; TEST_TRAV still
+ * rejects those cells after the delay expires, matching C.
+ */
+function travel_delay_current(x, y) {
+    if (!Passes_walls_prop() && !can_ooze(game.youmonst)
+        && closed_door_at(x, y)) return true;
+    if (boulder_at(x, y) && !could_move_onto_boulder(x, y)) return true;
+    return false;
+}
+
 /** Local t_at — avoid cmd.js ↔ trap.js cycle. */
 function travel_t_at(x, y) {
     const traps = game.level?.traps;
@@ -1606,21 +1624,39 @@ function findtravelpath_bfs(fromX, fromY, toX, toY, guessMode, couldseeOnly = fa
     const u = game.u;
     const travel = new Map();
     let cur = [{ x: fromX, y: fromY }];
-    travel.set(`${fromX},${fromY}`, 1);
+    // C: memset travel 0 — the start cell matrix stays 0 (only discovered
+    // cells get radius); unvisited ≡ 0, so the start may be re-discovered.
     let radius = 1;
+    // C hack.c :1330 — no diagonal movement for grid bugs (NODIAG);
+    // dirs_ord is cardinals-first, so drop the diagonal half (D-1897).
+    const dirs = (((u?.umonnum) | 0) === PM_GRID_BUG)
+        ? DIRS_ORD.slice(0, 4) : DIRS_ORD;
 
     while (cur.length) {
         const next = [];
         for (const { x, y } of cur) {
-            // C: closed door / boulder on *current* cell → delay (full
-            // travel[x][y] > radius-3 re-queue deferred — skip expand).
-            if (closed_door_at(x, y) || boulder_at(x, y)) continue;
+            // C hack.c :1412–1420 — door/boulder/trap delay: re-queue this
+            // cell once per round (matrix untouched) while
+            // travel[x][y] > radius-3; open paths win, delayed routes
+            // still resolve once the delay expires (D-1897).
+            let alreadyRepeated = false;
 
-            for (const dir of DIRS_ORD) {
+            for (const dir of dirs) {
                 const nx = x + xdir[dir];
                 const ny = y + ydir[dir];
                 if (!isok(nx, ny)) continue;
                 if (guessMode && !couldsee(nx, ny)) continue;
+                if (travel_delay_current(x, y)
+                    || (((game.context?.run | 0) === 8)
+                        && travel_avoids_cell(nx, ny))) {
+                    if ((travel.get(`${x},${y}`) | 0) > radius - 3) {
+                        if (!alreadyRepeated) {
+                            next.push({ x, y });
+                            alreadyRepeated = true;
+                        }
+                        continue;
+                    }
+                }
                 if (blocksMove(nx, ny)) continue;
                 // C TEST_TRAV: never enter boulder as a path node (tourist)
                 if (boulder_at(nx, ny)) continue;
@@ -1715,17 +1751,33 @@ function findtravelpath_guess() {
     const travel = new Map();
     let cur = [{ x: u.ux | 0, y: u.uy | 0 }];
     let radius = 1;
+    // C hack.c :1330 — grid-bug NODIAG; same cardinals-first prefix (D-1897).
+    const dirs = (((u?.umonnum) | 0) === PM_GRID_BUG)
+        ? DIRS_ORD.slice(0, 4) : DIRS_ORD;
 
     while (cur.length) {
         const next = [];
         for (const { x, y } of cur) {
-            if (closed_door_at(x, y) || boulder_at(x, y)) continue;
-            for (const dir of DIRS_ORD) {
+            // C hack.c :1412–1420 — same door/boulder/trap delay arm as the
+            // TRAVEL loop (one shared C body, one mode flag).
+            let alreadyRepeated = false;
+            for (const dir of dirs) {
                 const nx = x + xdir[dir];
                 const ny = y + ydir[dir];
                 if (!isok(nx, ny)) continue;
                 // C GUESS: !couldsee → continue (before test_move)
                 if (!couldsee(nx, ny)) continue;
+                if (travel_delay_current(x, y)
+                    || (((game.context?.run | 0) === 8)
+                        && travel_avoids_cell(nx, ny))) {
+                    if ((travel.get(`${x},${y}`) | 0) > radius - 3) {
+                        if (!alreadyRepeated) {
+                            next.push({ x, y });
+                            alreadyRepeated = true;
+                        }
+                        continue;
+                    }
+                }
                 if (blocksMove(nx, ny)) continue;
                 if (boulder_at(nx, ny)) continue;
                 if (travel_avoids_cell(nx, ny)) continue;

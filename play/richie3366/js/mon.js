@@ -1776,7 +1776,7 @@ function m_in_air(mtmp) {
 }
 
 /** C ref: mondata.h cant_drown */
-function cant_drown(ptr) {
+export function cant_drown(ptr) {
     return is_swimmer(ptr) || amphibious(ptr) || breathless(ptr);
 }
 

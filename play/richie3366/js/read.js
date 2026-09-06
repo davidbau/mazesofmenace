@@ -19,11 +19,18 @@
 // SPE_MAGIC_MAPPING seffects (D-1407; callee seffect_magic_mapping) +
 // seffect_taming SCR_TAMING/SPE_CHARM_MONSTER + recharge/charge_ok (D-1502) +
 // seffect_gold_detection SCR_GOLD_DETECTION (D-1773) +
-// seffect_food_detection SCR_FOOD_DETECTION / SPE_DETECT_FOOD (D-1781).
+// seffect_food_detection SCR_FOOD_DETECTION / SPE_DETECT_FOOD (D-1781) +
+// seffect_mail SCR_MAIL + seffect_enchant_armor SCR_ENCHANT_ARMOR +
+// seffect_confuse_monster SCR/SPE_CONFUSE_MONSTER +
+// seffect_scare_monster SCR_SCARE_MONSTER/SPE_CAUSE_FEAR +
+// seffect_charging SCR_CHARGING + seffect_amnesia SCR_AMNESIA (forget) +
+// seffect_earth SCR_EARTH (drop_boulder_on_player/monster) +
+// seffect_stinking_cloud SCR_STINKING_CLOUD (do_stinking_cloud,
+// can_center_cloud, display_stinking_cloud_positions, p_glow3).
 // Named omissions: fortune/credit-card/marker/coin/orb/Braille Blind
 // gates; doread T_SHIRT/ALCHEMY_SMOCK/HAWAIIAN_SHIRT (hawaiian_design);
 // study_book novel / dull sleep (occupation learn D-0907);
-// other seffect_*; SCR_IDENTIFY SPE_IDENTIFY cast; menu_identify traditional
+// SCR_FIRE / SCR_BLANK_PAPER seffects; SCR_IDENTIFY SPE_IDENTIFY cast; menu_identify traditional
 // ggetobj; discover_artifact / learn_egg_type in fully_identify_obj;
 // SCR_DESTROY_ARMOR confused erodeproof / cursed vibrate+stun /
 // blessed getobj choice / disintegrate_cursed_armor; Rogue unblock_point
@@ -54,8 +61,8 @@
 // Named omissions: fortune/credit-card/marker/coin/orb/Braille Blind
 // gates; doread T_SHIRT/ALCHEMY_SMOCK/HAWAIIAN_SHIRT (hawaiian_design);
 // study_book novel / dull sleep (occupation learn D-0907);
-// other seffect_*; SCR_IDENTIFY SPE_IDENTIFY cast; menu_identify traditional
-// ggetobj; discover_artifact / learn_egg_type in fully_identify_obj;
+// SCR_FIRE seffect_fire; SCR_BLANK_PAPER; SCR_IDENTIFY SPE_IDENTIFY cast;
+// menu_identify traditional ggetobj; discover_artifact / learn_egg_type;
 // SCR_DESTROY_ARMOR confused erodeproof / cursed vibrate+stun /
 // blessed getobj choice / disintegrate_cursed_armor; Rogue unblock_point
 // vs vision_recalc on blessed SDOOR; can_chant poly silent/
@@ -68,22 +75,23 @@
 // costly_alteration; Punished/unpunish; buried_ball_to_freedom; steed saddle
 // Yobjnam2 glow; update_inventory; enchant-weapon confused erodeproof
 // Yobjnam2/hcolor polish; twoweapon secondary; shop costly_alteration on
-// proof strip; create_particular class-letter / * random / cant_revive yn /
-// tame|peaceful|hostile|saddled|sleeping|invisible|hidden prefixes /
-// create_particular → makemon_appear_msg (makemon in-body still deferred;
-// mimic mhidden_description / set_msg_xy / dochugw omit);
+// proof strip; enchant-armor adj_abon / maybe_adjust_light;
+// mail readmail delivery; create_particular class-letter / * random /
+// cant_revive yn / tame|peaceful|hostile|saddled|sleeping|invisible|hidden
+// prefixes / create_particular → makemon_appear_msg (makemon in-body still
+// deferred; mimic mhidden_description / set_msg_xy / dochugw omit);
 // punish Blind set_bc is D-1769; flooreffects on placebc; HEAVY_IRON_BALL reuse
 // from angrygods.
 
 import { game } from './gstate.js';
-import { pline, urgent_pline, newsym, You_feel, verbalize, canspotmon } from './display.js';
-import { xname, makeplural, an, vtense, otyp_is_charged } from './objnam.js';
+import { pline, urgent_pline, newsym, You_feel, verbalize, canspotmon, tmp_at, cmap_to_glyph, map_invisible } from './display.js';
+import { xname, makeplural, an, vtense, otyp_is_charged, Yname2, Yobjnam2, doname } from './objnam.js';
 import {
     SCROLL_CLASS, SPBOOK_CLASS, COIN_CLASS, WEAPON_CLASS, GEM_CLASS,
     ARMOR_CLASS, BALL_CLASS, CHAIN_CLASS, WAND_CLASS, RING_CLASS, TOOL_CLASS,
     NODIR, objectNames,
 } from './objects.js';
-import { weight, uncurse, curse, bless, blessorcurse, mkobj, delobj, oc_merge_of } from './mkobj.js';
+import { weight, uncurse, curse, bless, blessorcurse, mkobj, mksobj, place_object, stackobj, delobj, oc_merge_of } from './mkobj.js';
 import { A_WIS, A_STR, A_CON, exercise, adjalign } from './attrib.js';
 import {
     makeknown, getobj, identify_pack, near_capacity,
@@ -92,34 +100,53 @@ import { more_experienced } from './exper.js';
 import {
     do_mapping, cvt_sdoor_to_door, gold_detect, trap_detect, food_detect,
 } from './detect.js';
-import { study_book, can_chant } from './spell.js';
+import { study_book, can_chant, losespells } from './spell.js';
 import { scrolltele, level_tele } from './teleport.js';
-import { trycall, hcolor } from './do_name.js';
+import { trycall, hcolor, Monnam, mon_nam, s_suffix } from './do_name.js';
 import { chwepon, is_weptool } from './wield.js';
-import { destroy_arm, some_armor, setworn } from './do_wear.js';
-import { dropy } from './do.js';
+import { destroy_arm, some_armor, setworn, hard_helmet } from './do_wear.js';
+import { dropy, flooreffects } from './do.js';
 import { placebc, set_bc } from './ball.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import {
     COLNO, ROWNO, SDOOR, CORR, ROOMOFFSET, Is_rogue_level, Is_waterlevel,
-    HEAD, isok,
-    W_BALL, W_CHAIN, W_ART, W_ARTI, W_SADDLE, P_SLING, SPE_LIM, MM_NOEXCLAM,
+    HEAD, HAND, STOMACH, isok, ACCESSIBLE,
+    W_BALL, W_CHAIN, W_ART, W_ARTI, W_SADDLE, W_ARM, W_ARMH, P_SLING, SPE_LIM, MM_NOEXCLAM,
     NO_MM_FLAGS, WT_IRON_BALL_INCR, thats_enough_tries, EXT_ENCUMBER,
     GENOCIDED, KILLED_BY, KILLED_BY_AN, NO_MINVENT, MM_NOMSG, Upolyd,
     nothing_happens, G_GENOD, G_EXTINCT, UNCHANGING,
     GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GETOBJ_PROMPT,
-    GETOBJ_EXCLUDE_SELECTABLE,
-    LEFT_RING, RIGHT_RING, COST_UNCHRG, COST_DECHNT, NOTELL,
+    GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_ALLOWCNT,
+    LEFT_RING, RIGHT_RING, COST_UNCHRG, COST_DECHNT, COST_DEGRD, NOTELL,
+    ALL_SPELLS, DISP_BEAM, DISP_END, S_goodpos, Never_mind,
+    In_quest, In_endgame, Is_earthlevel, IS_OBSTRUCTED, IS_AIR,
 } from './const.js';
-import { vision_recalc, do_clear_area } from './vision.js';
+import { vision_recalc, do_clear_area, cansee } from './vision.js';
+import { valid_cloud_pos, create_gas_cloud } from './region.js';
+import { getpos, getpos_sethilite } from './getpos.js';
+import { bcsign } from './rumors.js';
+import { dist2 } from './hacklib.js';
+import { You_hear, closed_door, maybe_half_phys } from './hack.js';
+import { Soundeffect } from './sndprocs.js';
+import { se_maniacal_laughter, se_sad_wailing } from './generated/seffects_data.js';
+import { resist } from './zap.js';
+import { monflee } from './monmove.js';
+import { which_armor } from './worn.js';
+import { alter_cost, costly_alteration, obfree } from './shk.js';
+import { sokoban_guilt, ceiling } from './trap.js';
+import { drain_weapon_skill, dmgval } from './weapon.js';
+import { mhim } from './mondata.js';
 import { getlin } from './getline.js';
 import { name_to_mon, name_to_monclass } from './mondata.js';
-import { mons, NON_PM, LOW_PM, NUMMONS, amorphous, is_whirly, unsolid,
+import { mons, NON_PM, LOW_PM, NUMMONS, amorphous, passes_walls, noncorporeal, is_whirly, unsolid,
     G_GENO, G_UNIQ, G_NOCORPSE, is_human, is_demon, pmnames, NEUTRAL,
     M2_PNAME, monsterNames, nonliving, weirdnonliving, PM_ACID_BLOB,
 } from './monsters.js';
 import { makemon, makemon_appear_msg, rndmonst, create_critters } from './makemon.js';
-import { kill_genocided_monsters, mongone, m_at, setmangry } from './mon.js';
+import { kill_genocided_monsters, mongone, m_at, setmangry, wake_nearto, wakeup } from './mon.js';
+import { killed } from './uhitm.js';
+import { mondied } from './mhitm.js';
+import { losehp } from './hack.js';
 import { done } from './end.js';
 import { ART_SUNSWORD } from './generated/artifacts_data.js';
 
@@ -150,6 +177,17 @@ const SLING = objectNames.indexOf('SLING');
 const POT_WATER = objectNames.indexOf('POT_WATER');
 const _on = (n) => objectNames.indexOf(n);
 const SCR_TAMING = _on('SCR_TAMING'), SPE_CHARM_MONSTER = _on('SPE_CHARM_MONSTER');
+const SCR_MAIL = _on('SCR_MAIL'), SCR_ENCHANT_ARMOR = _on('SCR_ENCHANT_ARMOR');
+const SCR_CONFUSE_MONSTER = _on('SCR_CONFUSE_MONSTER'), SPE_CONFUSE_MONSTER = _on('SPE_CONFUSE_MONSTER');
+const SCR_SCARE_MONSTER = _on('SCR_SCARE_MONSTER'), SPE_CAUSE_FEAR = _on('SPE_CAUSE_FEAR');
+const SCR_CHARGING = _on('SCR_CHARGING'), SCR_AMNESIA = _on('SCR_AMNESIA');
+const SCR_EARTH = _on('SCR_EARTH'), SCR_STINKING_CLOUD = _on('SCR_STINKING_CLOUD'), SCR_FIRE = _on('SCR_FIRE');
+const ROCK = _on('ROCK'), BOULDER = _on('BOULDER'), CORNUTHAUM = _on('CORNUTHAUM');
+const ELVEN_LEATHER_HELM = _on('ELVEN_LEATHER_HELM'), ELVEN_MITHRIL_COAT = _on('ELVEN_MITHRIL_COAT'), ELVEN_CLOAK = _on('ELVEN_CLOAK'), ELVEN_SHIELD = _on('ELVEN_SHIELD'), ELVEN_BOOTS = _on('ELVEN_BOOTS');
+const BLACK_DRAGON_SCALE_MAIL = _on('BLACK_DRAGON_SCALE_MAIL'), BLACK_DRAGON_SCALES = _on('BLACK_DRAGON_SCALES'), SILVER_DRAGON_SCALE_MAIL = _on('SILVER_DRAGON_SCALE_MAIL'), SILVER_DRAGON_SCALES = _on('SILVER_DRAGON_SCALES'), SHIELD_OF_REFLECTION = _on('SHIELD_OF_REFLECTION');
+const GRAY_DRAGON_SCALES = _on('GRAY_DRAGON_SCALES'), YELLOW_DRAGON_SCALES = _on('YELLOW_DRAGON_SCALES'), GRAY_DRAGON_SCALE_MAIL = _on('GRAY_DRAGON_SCALE_MAIL');
+const PM_WIZARD = monsterNames.indexOf('PM_WIZARD');
+const NH_RED = 'red', NH_GOLDEN = 'golden', NH_SILVER = 'silver', NH_PURPLE = 'purple';
 const WAN_WISHING = _on('WAN_WISHING'), WAN_CANCELLATION = _on('WAN_CANCELLATION');
 const WAN_DEATH = _on('WAN_DEATH'), WAN_POLYMORPH = _on('WAN_POLYMORPH');
 const WAN_UNDEAD_TURNING = _on('WAN_UNDEAD_TURNING'), WAN_COLD = _on('WAN_COLD');
@@ -579,6 +617,51 @@ async function p_glow2(otmp, color, feeble) {
     const glow = Yobjnam2_read(otmp, blind ? 'vibrate' : 'glow');
     const extra = blind ? '' : ` ${hcolor(color)}`;
     await pline(`${glow}${feeble ? ' feebly' : ''}${extra} for a moment.`);
+}
+
+/** C read.c p_glow3 `:680–685` — feeble glow (wishing recharge). */
+async function p_glow3(otmp, color) {
+    const blind = Blind_read();
+    await pline(
+        `${Yobjnam2_read(otmp, blind ? 'vibrate' : 'glow')} feebly${blind ? '' : ' '}${blind ? '' : hcolor(color)} for a moment.`,
+    );
+}
+
+/** C read.c forget `:1020–1040` — bc_felt, losespells, drain skill, meverseen. */
+function forget(howmuch) {
+    const u = game.u || {};
+    if (u.uball) u.bc_felt = 0; // C: Punished ≡ uball
+    if ((howmuch | 0) & ALL_SPELLS) losespells();
+    drain_weapon_skill(rnd(howmuch ? 5 : 3));
+    for (const mtmp of game.fmon || []) {
+        if (mtmp !== u.usteed && mtmp !== u.ustuck) mtmp.meverseen = 0;
+    }
+    for (const mtmp of game.migrating_mons || []) mtmp.meverseen = 0;
+}
+
+/** C read.c can_center_cloud `:1079–1085` — valid pos + cansee + distu<32. */
+function can_center_cloud(x, y) {
+    if (!valid_cloud_pos(x, y)) return false;
+    const u = game.u || {};
+    return !!(cansee(x, y) && dist2(x, y, u.ux | 0, u.uy | 0) < 32);
+}
+
+/** C read.c display_stinking_cloud_positions `:1087–1112` — getpos hilite. */
+function display_stinking_cloud_positions(on_off) {
+    const u = game.u || {};
+    const ux = u.ux | 0, uy = u.uy | 0;
+    if (on_off) {
+        tmp_at(DISP_BEAM, cmap_to_glyph(S_goodpos));
+        for (let dx = -6; dx <= 6; dx++) {
+            for (let dy = -6; dy <= 6; dy++) {
+                const x = ux + dx, y = uy + dy;
+                if (x === ux && y === uy) continue;
+                if (can_center_cloud(x, y)) tmp_at(x, y);
+            }
+        }
+    } else {
+        tmp_at(DISP_END, 0);
+    }
 }
 
 /** C ref: read.c wand_explode :2414–2457. */
@@ -1122,6 +1205,441 @@ async function seffect_identify(sobj) {
     return null; // used up when scroll
 }
 
+/** C read.c seffect_charging `:1788–1827` — confused uen else learn/useup/getobj+recharge. */
+async function seffect_charging(sobj) {
+    const otyp = sobj.otyp | 0;
+    const sblessed = !!sobj.blessed;
+    const scursed = !!sobj.cursed;
+    const u = game.u || (game.u = {});
+    const confused = !!((u.HConfusion | 0) || (u.Confusion | 0));
+    const already_known = sobj.oclass === SPBOOK_CLASS
+        || !!game.objects?.[otyp]?.oc_name_known;
+    if (confused) {
+        if (scursed) {
+            await pline('You feel discharged.');
+            u.uen = 0;
+        } else {
+            await pline('You feel charged up!');
+            u.uen = (u.uen | 0) + d(sblessed ? 6 : 4, 4);
+            if ((u.uen | 0) > (u.uenmax | 0)) u.uenmax = u.uen;
+            else u.uen = u.uenmax;
+        }
+        if (game.disp) game.disp.botl = true;
+        if (game.flags) game.flags.botl = true;
+        return sobj;
+    }
+    if (!already_known) {
+        await pline('This is a charging scroll.');
+        learnscroll(sobj);
+    }
+    useup(sobj);
+    const otmp = await getobj('charge', charge_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
+    if (otmp) await recharge(otmp, scursed ? -1 : sblessed ? 1 : 0);
+    return null;
+}
+
+/** C read.c seffect_amnesia `:1830–1847` — forget + Hallu/Maud lines + WIS. */
+async function seffect_amnesia(sobj) {
+    const sblessed = !!sobj.blessed;
+    const u = game.u || {};
+    known = true;
+    forget(!sblessed ? ALL_SPELLS : 0);
+    const Hallucination = !!((u.HHallucination | 0) || (u.Hallucination | 0));
+    const plname = game.plname || u.plname || '';
+    if (Hallucination) {
+        await pline('Your mind releases itself from mundane concerns.');
+    } else if (String(plname).slice(0, 4).toLowerCase() === 'maud') {
+        await pline('As your mind turns inward on itself, you forget everything else.');
+    } else if (rn2(2)) {
+        await pline('Who was that Maud person anyway?');
+    } else {
+        await pline('Thinking of Maud you forget everything else.');
+    }
+    exercise(A_WIS, false);
+}
+
+/** C read.c seffect_confuse_monster `:1399–1451` — mlet/cursed/confused/umconf arms. */
+async function seffect_confuse_monster(sobj) {
+    const sblessed = !!sobj.blessed;
+    const scursed = !!sobj.cursed;
+    const u = game.u || (game.u = {});
+    const confused = !!((u.HConfusion | 0) || (u.Confusion | 0));
+    const Blind = !!((u.Blinded | 0) || u.Blind || u.ublind);
+    const { body_part } = await import('./polyself.js');
+    const { make_confused } = await import('./potion.js');
+    const hands = makeplural(body_part(HAND));
+    const youmonst_data = game.youmonst?.data;
+    // C: gy.youmonst.data->mlet != S_HUMAN (JS mlet is 'S_HUMAN' string)
+    const isHuman = !youmonst_data || youmonst_data.mlet === 'S_HUMAN';
+    if (!isHuman || scursed) {
+        if (!(u.HConfusion | 0)) await pline('You feel confused.');
+        await make_confused((u.HConfusion | 0) + rnd(100), false);
+    } else if (confused) {
+        if (!sblessed) {
+            const altfeedback = Blind || !!u.Invisible;
+            if (altfeedback) {
+                await pline(`Your ${hands} begin to tingle.`);
+            } else {
+                await pline(`Your ${hands} begin to glow ${hcolor(NH_PURPLE)}.`);
+            }
+            await make_confused((u.HConfusion | 0) + rnd(100), false);
+        } else {
+            const altfeedback = Blind || !!u.Invisible;
+            if (altfeedback) {
+                await pline(`A faint buzz surrounds your ${body_part(HEAD)}.`);
+            } else {
+                await pline(`A ${hcolor(NH_RED)} glow surrounds your ${body_part(HEAD)}.`);
+            }
+            await make_confused(0, true);
+        }
+    } else {
+        let incr = (sobj.oclass === SCROLL_CLASS) ? 3 : 0;
+        const altfeedback = Blind || !!u.Invisible;
+        if (!sblessed) {
+            if (altfeedback) {
+                await pline(`Your ${hands} tingle${u.umconf ? ' even more' : ''}.`);
+            } else if (!u.umconf) {
+                await pline(`Your ${hands} begin to glow ${hcolor(NH_RED)}.`);
+            } else {
+                await pline(`The ${hcolor(NH_RED)} glow of your ${hands} intensifies.`);
+            }
+            incr += rnd(2);
+        } else {
+            if (altfeedback) {
+                await pline(`Your ${hands} tingle ${u.umconf ? 'even more' : 'very'} sharply.`);
+            } else {
+                await pline(`Your ${hands} glow ${u.umconf ? 'an even more' : 'a'} brilliant ${hcolor(NH_RED)}.`);
+            }
+            incr += rn1(8, 2);
+        }
+        if ((u.umconf | 0) >= 40) incr = 1;
+        u.umconf = (u.umconf | 0) + incr;
+    }
+}
+
+/** C read.c seffect_scare_monster `:1454–1486` — seen mons flee/unfreeze + laugh. */
+async function seffect_scare_monster(sobj) {
+    const otyp = sobj.otyp | 0;
+    const scursed = !!sobj.cursed;
+    const u = game.u || {};
+    const confused = !!((u.HConfusion | 0) || (u.Confusion | 0));
+    let ct = 0;
+    for (const mtmp of game.fmon || []) {
+        if ((mtmp.mhp | 0) < 1) continue;
+        if (cansee(mtmp.mx | 0, mtmp.my | 0)) {
+            if (confused || scursed) {
+                mtmp.mflee = 0;
+                mtmp.mfrozen = 0;
+                mtmp.msleeping = 0;
+                mtmp.mcanmove = 1;
+            } else if (!(await resist(mtmp, sobj.oclass, 0, NOTELL))) {
+                await monflee(mtmp, 0, false, false);
+            }
+            if (!mtmp.mtame) ct++;
+        }
+    }
+    if (otyp === SCR_SCARE_MONSTER || !ct) {
+        if (confused || scursed) Soundeffect(se_sad_wailing, 50);
+        else Soundeffect(se_maniacal_laughter, 50);
+        await You_hear(`${(confused || scursed) ? 'sad wailing' : 'maniacal laughter'} ${!ct ? 'in the distance' : 'close by'}.`);
+    }
+}
+
+/** C read.c seffect_enchant_armor `:1115–1290`. Omits: adj_abon, maybe_adjust_light. */
+async function seffect_enchant_armor(sobj) {
+    const sblessed = !!sobj.blessed;
+    const scursed = !!sobj.cursed;
+    const u = game.u || {};
+    const confused = !!((u.HConfusion | 0) || (u.Confusion | 0));
+    const Blind = Blind_read();
+    const otmp = some_armor(game.youmonst);
+    if (!otmp) {
+        await strange_feeling_scroll(sobj, !Blind
+            ? 'Your skin glows then fades.'
+            : 'Your skin feels warm for a moment.');
+        exercise(A_CON, !scursed);
+        exercise(A_STR, !scursed);
+        return null;
+    }
+    if (confused) {
+        const old_erodeproof = !!otmp.oerodeproof;
+        const new_erodeproof = !scursed;
+        otmp.oerodeproof = 0;
+        if (Blind) {
+            otmp.rknown = 0;
+            await pline(`${Yobjnam2(otmp, 'feel')} warm for a moment.`);
+        } else {
+            otmp.rknown = 1;
+            const otyp = otmp.otyp | 0;
+            const isShield = (game.objects?.[otyp]?.oc_skill === 1);
+            await pline(`${Yobjnam2(otmp, 'are')} covered by a ${scursed ? 'mottled' : 'shimmering'} ${hcolor(scursed ? NH_BLACK : NH_GOLDEN)} ${scursed ? 'glow' : (isShield ? 'layer' : 'shield')}!`);
+        }
+        if (new_erodeproof && ((otmp.oeroded | 0) || (otmp.oeroded2 | 0))) {
+            otmp.oeroded = 0;
+            otmp.oeroded2 = 0;
+            await pline(`${Yobjnam2(otmp, Blind ? 'feel' : 'look')} as good as new!`);
+        }
+        if (old_erodeproof && !new_erodeproof) {
+            otmp.oerodeproof = 1;
+            await costly_alteration(otmp, COST_DEGRD);
+        }
+        otmp.oerodeproof = new_erodeproof ? 1 : 0;
+        return sobj;
+    }
+    const otyp = otmp.otyp | 0;
+    const special_armor = (otyp === ELVEN_LEATHER_HELM || otyp === ELVEN_MITHRIL_COAT
+        || otyp === ELVEN_CLOAK || otyp === ELVEN_SHIELD || otyp === ELVEN_BOOTS)
+        || (Role_if(PM_WIZARD) && otyp === CORNUTHAUM);
+    let same_color;
+    if (scursed) {
+        same_color = (otyp === BLACK_DRAGON_SCALE_MAIL || otyp === BLACK_DRAGON_SCALES);
+    } else {
+        same_color = (otyp === SILVER_DRAGON_SCALE_MAIL || otyp === SILVER_DRAGON_SCALES
+            || otyp === SHIELD_OF_REFLECTION);
+    }
+    if (Blind) same_color = false;
+    let s = scursed ? -(otmp.spe | 0) : (otmp.spe | 0);
+    if (s > (special_armor ? 5 : 3) && rn2(s)) {
+        otmp.in_use = true;
+        await pline(`${Yname2(otmp)} violently ${otense(otmp, Blind ? 'vibrate' : 'glow')}${(!Blind && !same_color) ? ' ' : ''}${(Blind || same_color) ? '' : hcolor(scursed ? NH_BLACK : NH_SILVER)} for a while, then ${otense(otmp, 'evaporate')}.`);
+        const { remove_worn_item } = await import('./steal.js');
+        await remove_worn_item(otmp, false);
+        useup(otmp);
+        return sobj;
+    }
+    if (s < -100) s = -100;
+    s = ((4 - s) / 2) | 0;
+    if (special_armor) ++s;
+    if (!game.objects?.[otyp]?.oc_magic) ++s;
+    if (sblessed) ++s;
+    if (s <= 0) {
+        s = 0;
+        if ((otmp.spe | 0) > 0 && !rn2(otmp.spe | 0)) s = 1;
+    } else {
+        s = rnd(s);
+    }
+    if (s > 11) s = 11;
+    if (scursed) s = -s;
+    if (s >= 0 && otyp >= GRAY_DRAGON_SCALES && otyp <= YELLOW_DRAGON_SCALES) {
+        await pline(`${Yname2(otmp)} merges and hardens!`);
+        setworn(null, W_ARM);
+        otmp.otyp = otyp + (GRAY_DRAGON_SCALE_MAIL - GRAY_DRAGON_SCALES);
+        otmp.lamplit = 0;
+        if (sblessed) {
+            otmp.spe = (otmp.spe | 0) + 1;
+            cap_spe(otmp);
+            if (!otmp.blessed) bless(otmp);
+        } else if (otmp.cursed) {
+            uncurse(otmp);
+        }
+        otmp.known = 1;
+        setworn(otmp, W_ARM);
+        if (otmp.unpaid) alter_cost(otmp, 0);
+        // maybe_adjust_light deferred (light radius)
+        return sobj;
+    }
+    await pline(`${Yname2(otmp)} ${s === 0 ? 'violently ' : ''}${otense(otmp, Blind ? 'vibrate' : 'glow')}${(!Blind && !same_color) ? ' ' : ''}${(Blind || same_color) ? '' : hcolor(scursed ? NH_BLACK : NH_SILVER)} for a ${(s * s > 1) ? 'while' : 'moment'}.`);
+    if (s < 0) await costly_alteration(otmp, COST_DECHNT);
+    if (scursed && !otmp.cursed) curse(otmp);
+    else if (sblessed && !otmp.blessed) bless(otmp);
+    else if (!scursed && otmp.cursed) uncurse(otmp);
+    if (s) {
+        const oldspe = otmp.spe | 0;
+        otmp.spe = oldspe + s;
+        cap_spe(otmp);
+        const applied = (otmp.spe | 0) - oldspe;
+        // adj_abon deferred (DEX/INT/WIS armor bonus)
+        void applied;
+        known = otmp.known ? true : known;
+        if (applied > 0 && otmp.unpaid) alter_cost(otmp, 0);
+    }
+    if ((otmp.spe | 0) > (special_armor ? 5 : 3) && (special_armor || !rn2(7))) {
+        await pline(`${Yobjnam2(otmp, 'suddenly vibrate')} ${Blind ? 'again' : 'unexpectedly'}.`);
+    }
+    return sobj;
+}
+
+/** C read.c drop_boulder_on_player `:2294–2338`. */
+async function drop_boulder_on_player(confused, helmet_protects, byu, skip_uswallow) {
+    const u = game.u || {};
+    if (u.uswallow && !skip_uswallow) {
+        await drop_boulder_on_monster(u.ux | 0, u.uy | 0, confused, byu);
+        return;
+    }
+    const otmp2 = mksobj(confused ? ROCK : BOULDER, false, false);
+    if (!otmp2) return;
+    otmp2.quan = confused ? rn1(5, 2) : 1;
+    otmp2.owt = weight(otmp2);
+    let dmg = 0;
+    const youdat = game.youmonst?.data;
+    if (!amorphous(youdat) && !passes_walls(youdat)
+        && !noncorporeal(youdat) && !unsolid(youdat)) {
+        await pline(`You are hit by ${doname(otmp2)}!`);
+        dmg = ((dmgval(otmp2, game.youmonst) | 0) * (otmp2.quan | 0)) | 0;
+        if (u.uarmh && helmet_protects) {
+            if (hard_helmet(u.uarmh)) {
+                await pline('Fortunately, you are wearing a hard helmet.');
+                if (dmg > 2) dmg = 2;
+            } else if (game.flags?.verbose !== false) {
+                await pline(`${Yname2(u.uarmh)} does not protect you.`);
+            }
+        }
+    }
+    await wake_nearto(u.ux | 0, u.uy | 0, 16);
+    if (!(await flooreffects(otmp2, u.ux | 0, u.uy | 0, 'fall'))) {
+        place_object(otmp2, u.ux | 0, u.uy | 0);
+        stackobj(otmp2);
+        newsym(u.ux | 0, u.uy | 0);
+    }
+    if (dmg) losehp(maybe_half_phys(dmg), 'scroll of earth', KILLED_BY_AN);
+}
+
+/** C read.c drop_boulder_on_monster `:2341–2410`. */
+async function drop_boulder_on_monster(x, y, confused, byu) {
+    const otmp2 = mksobj(confused ? ROCK : BOULDER, false, false);
+    if (!otmp2) return false;
+    otmp2.quan = confused ? rn1(5, 2) : 1;
+    otmp2.owt = weight(otmp2);
+    const mtmp = m_at(x, y);
+    if (mtmp && !amorphous(mtmp.data) && !passes_walls(mtmp.data)
+        && !noncorporeal(mtmp.data) && !unsolid(mtmp.data)) {
+        const helmet = which_armor(mtmp, W_ARMH);
+        if (cansee(mtmp.mx | 0, mtmp.my | 0)) {
+            await pline(`${Monnam(mtmp)} is hit by ${doname(otmp2)}!`);
+            if (mtmp.minvis && !canspotmon(mtmp)) map_invisible(mtmp.mx | 0, mtmp.my | 0);
+        } else if (mtmp === game.u?.ustuck && game.u?.uswallow) {
+            const { body_part, mbodypart } = await import('./polyself.js');
+            await You_hear(`something hit ${s_suffix(mon_nam(mtmp))} ${mbodypart(mtmp, STOMACH)} over your ${body_part(HEAD)}!`);
+        }
+        let mdmg = ((dmgval(otmp2, mtmp) | 0) * (otmp2.quan | 0)) | 0;
+        if (helmet) {
+            if (hard_helmet(helmet)) {
+                if (canspotmon(mtmp)) {
+                    await pline(`Fortunately, ${mon_nam(mtmp)} is wearing a hard helmet.`);
+                } else if (!game.u?.Deaf) {
+                    await You_hear('a clanging sound.');
+                }
+                if (mdmg > 2) mdmg = 2;
+            } else if (canspotmon(mtmp)) {
+                await pline(`${Monnam(mtmp)}'s ${xname(helmet)} does not protect ${mhim(mtmp)}.`);
+            }
+        }
+        mtmp.mhp = (mtmp.mhp | 0) - mdmg;
+        if ((mtmp.mhp | 0) < 1) {
+            if (byu) await killed(mtmp);
+            else {
+                await pline(`${Monnam(mtmp)} is killed.`);
+                await mondied(mtmp);
+            }
+        } else {
+            await wakeup(mtmp, byu);
+        }
+        await wake_nearto(x, y, 16);
+    } else if (mtmp && mtmp === game.u?.ustuck && game.u?.uswallow) {
+        obfree(otmp2, null);
+        await drop_boulder_on_player(confused, true, false, true);
+        return true;
+    }
+    if (!(await flooreffects(otmp2, x, y, 'fall'))) {
+        place_object(otmp2, x, y);
+        stackobj(otmp2);
+        newsym(x, y);
+    }
+    return true;
+}
+
+/** C read.c seffect_earth `:1919–1973`. */
+async function seffect_earth(sobj) {
+    const sblessed = !!sobj.blessed;
+    const scursed = !!sobj.cursed;
+    const u = game.u || (game.u = {});
+    const confused = !!((u.HConfusion | 0) || (u.Confusion | 0));
+    const uz = u.uz;
+    const hasCeiling = !(In_endgame(uz) && !Is_earthlevel(uz));
+    const avoidCeiling = In_quest(uz) || !hasCeiling;
+    if (!Is_rogue_level(uz) && hasCeiling && (!In_endgame(uz) || Is_earthlevel(uz))) {
+        if (u.uswallow) {
+            await You_hear('rumbling.');
+        } else if (!avoidCeiling) {
+            await pline(`The ${ceiling(u.ux | 0, u.uy | 0)} rumbles ${sblessed ? 'around' : 'above'} you!`);
+        } else {
+            const word = sblessed ? 'avalanches' : 'avalanche';
+            const art = sblessed ? word : an(word);
+            const verb = vtense(word, 'materialize');
+            await pline(`${art[0].toUpperCase()}${art.slice(1)} of boulders ${verb} ${sblessed ? 'around' : 'above'} you!`);
+        }
+        known = true;
+        sokoban_guilt();
+        let nboulders = 0;
+        if (!scursed) {
+            for (let x = (u.ux | 0) - 1; x <= (u.ux | 0) + 1; x++) {
+                for (let y = (u.uy | 0) - 1; y <= (u.uy | 0) + 1; y++) {
+                    if (!isok(x, y) || closed_door(x, y)) continue;
+                    const loc = game.level?.at(x, y);
+                    if (!loc || IS_OBSTRUCTED(loc.typ) || IS_AIR(loc.typ)) continue;
+                    if (x === (u.ux | 0) && y === (u.uy | 0)) continue;
+                    if (await drop_boulder_on_monster(x, y, confused, true)) nboulders++;
+                }
+            }
+        }
+        if (!sblessed) {
+            await drop_boulder_on_player(confused, !scursed, true, false);
+        } else if (!nboulders) {
+            await pline('But nothing else happens.');
+        }
+    }
+}
+
+/** C read.c do_stinking_cloud `:3082–3105`. */
+async function do_stinking_cloud(sobj, mention_stinking) {
+    const u = game.u || {};
+    await pline(`Where do you want to center the ${mention_stinking ? 'stinking ' : ''}cloud?`);
+    const cc = { x: u.ux | 0, y: u.uy | 0 };
+    getpos_sethilite(display_stinking_cloud_positions, can_center_cloud);
+    const gp = await getpos(cc, true, 'the desired position');
+    if (gp < 0) {
+        await pline(Never_mind);
+        return;
+    } else if (!can_center_cloud(cc.x | 0, cc.y | 0)) {
+        const Hallucination = !!((u.HHallucination | 0) || (u.Hallucination | 0));
+        if (Hallucination) {
+            await pline('Ugh... someone cut the cheese.');
+        } else {
+            await pline(`${sobj.oclass === SCROLL_CLASS ? 'The scroll crumbles with' : 'You smell'} a whiff of rotten eggs.`);
+        }
+        return;
+    }
+    await create_gas_cloud(cc.x | 0, cc.y | 0, 15 + 10 * bcsign(sobj), 8 + 4 * bcsign(sobj));
+}
+
+/** C read.c seffect_stinking_cloud `:1991–2002`. */
+async function seffect_stinking_cloud(sobj) {
+    const otyp = sobj.otyp | 0;
+    const already_known = sobj.oclass === SPBOOK_CLASS
+        || !!game.objects?.[otyp]?.oc_name_known;
+    if (!already_known) await pline('You have found a scroll of stinking cloud!');
+    known = true;
+    await do_stinking_cloud(sobj, already_known);
+}
+
+/** C read.c seffect_mail `:2157–2188`. Omits: readmail delivery (mail.c). */
+async function seffect_mail(sobj) {
+    const odd = ((sobj.o_id | 0) % 2) === 1;
+    known = true;
+    switch (sobj.spe | 0) {
+    case 2:
+        await pline(`This scroll is marked "${odd ? 'Postage Due' : 'Return to Sender'}".`);
+        break;
+    case 1:
+        await pline(`This seems to be ${odd ? 'a chain letter threatening your luck' : 'junk mail addressed to the finder of the Eye of Larn'}.`);
+        break;
+    default:
+        // readmail(mail.c) deferred — C #else when MAIL undefined
+        await pline('That was a scroll of mail?');
+        break;
+    }
+}
+
 /**
  * C ref: read.c unpunish — remove ball & chain (chain destroyed, ball freed).
  * Named omissions: delobj newsym / monster-under-chain polish.
@@ -1311,6 +1829,36 @@ export async function seffects(sobj) {
         if (!kept) return 1;
         break;
     }
+    case SCR_MAIL:
+        await seffect_mail(sobj);
+        break;
+    case SCR_ENCHANT_ARMOR: {
+        const kept = await seffect_enchant_armor(sobj);
+        if (!kept) return 1;
+        break;
+    }
+    case SCR_CONFUSE_MONSTER:
+    case SPE_CONFUSE_MONSTER:
+        await seffect_confuse_monster(sobj);
+        break;
+    case SCR_SCARE_MONSTER:
+    case SPE_CAUSE_FEAR:
+        await seffect_scare_monster(sobj);
+        break;
+    case SCR_CHARGING: {
+        const kept = await seffect_charging(sobj);
+        if (!kept) return 1;
+        break;
+    }
+    case SCR_AMNESIA:
+        await seffect_amnesia(sobj);
+        break;
+    case SCR_EARTH:
+        await seffect_earth(sobj);
+        break;
+    case SCR_STINKING_CLOUD:
+        await seffect_stinking_cloud(sobj);
+        break;
     default:
         // Other seffect_* deferred — do not useup
         await pline('That scroll is not implemented yet.');
@@ -1366,7 +1914,11 @@ export async function doread() {
         && otyp !== SCR_DESTROY_ARMOR && otyp !== SCR_IDENTIFY
         && otyp !== SCR_PUNISHMENT && otyp !== SCR_GENOCIDE
         && otyp !== SCR_CREATE_MONSTER && otyp !== SCR_GOLD_DETECTION
-        && otyp !== SCR_FOOD_DETECTION) {
+        && otyp !== SCR_FOOD_DETECTION && otyp !== SCR_MAIL
+        && otyp !== SCR_ENCHANT_ARMOR && otyp !== SCR_CONFUSE_MONSTER
+        && otyp !== SCR_SCARE_MONSTER && otyp !== SCR_CHARGING
+        && otyp !== SCR_AMNESIA && otyp !== SCR_EARTH
+        && otyp !== SCR_STINKING_CLOUD) {
         await pline('That scroll is not implemented yet.');
         return 0;
     }

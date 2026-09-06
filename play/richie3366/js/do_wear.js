@@ -966,9 +966,10 @@ export function suit_simple_name(suit) {
 
 /**
  * C ref: objnam.c cloak_simple_name `:5491–5509` — robe / wrapping /
- * smock-or-apron, else cloak.
+ * smock-or-apron, else cloak. Exported for worn.c mon_break_armor
+ * (D-1914); mhitu/uhitm/trap locals predate it.
  */
-function cloak_simple_name(cloak) {
+export function cloak_simple_name(cloak) {
     if (cloak) {
         if (cloak.otyp === ROBE) return 'robe';
         if (cloak.otyp === MUMMY_WRAPPING) return 'wrapping';

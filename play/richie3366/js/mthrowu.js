@@ -63,6 +63,7 @@ import { dobuzz } from './zap.js';
 import {
     m_seenres, cvt_adtyp_to_mseenres, get_atkdam_type, mhim,
 } from './mondata.js';
+import { extract_from_minvent } from './worn.js';
 
 const BOULDER = objectNames.indexOf('BOULDER');
 const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
@@ -113,6 +114,23 @@ const BREATHWEP = [
     'lightning', 'poison gas', 'acid', 'strange breath #8',
     'strange breath #9',
 ];
+
+/**
+ * C ref: mthrowu.c m_useup `:1161–1170` + m_useupall `:1153–1158` —
+ * quan>1 decrements (+weight); else extract_from_minvent(TRUE, FALSE)
+ * + obfree (JS has no manual free; detached object is GC'd, like the
+ * muse/zap/mhitm/uhitm locals which inline only the unlink loop and
+ * skip the extrinsics update — those predate this export).
+ */
+export function m_useup(mon, obj) {
+    if (!mon || !obj) return;
+    if ((obj.quan | 0) > 1) {
+        obj.quan = (obj.quan | 0) - 1;
+        obj.owt = weight(obj);
+    } else {
+        extract_from_minvent(mon, obj, true, false);
+    }
+}
 
 /** C ref: hacklib.c s_suffix — local for cancelled-spit dry rattle. */
 function s_suffix(s) {

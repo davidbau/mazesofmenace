@@ -17,6 +17,7 @@ import {
     OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED, DEAF,
 } from './const.js';
 import { qt_pager, com_pager } from './questpgr.js';
+import { create_gas_cloud } from './region.js';
 import { pline, verbalize } from './display.js';
 import { yn_function } from './getline.js';
 import { nomul } from './hack.js';
@@ -426,4 +427,50 @@ export async function quest_talk(mtmp) {
 export function quest_stat_check(mtmp) {
     // Full MS_NEMESIS in_battle deferred
     void mtmp;
+}
+
+/**
+ * C ref: quest.c nemdead `:106–113` — nemesis killed: latch
+ * killed_nemesis and page the role's killed_nemesis text.
+ * Caller: mon.c mongone/mondead on MS_NEMESIS death.
+ */
+export async function nemdead() {
+    const qs = game.quest_status || (game.quest_status = {});
+    if (!qs.killed_nemesis) {
+        qs.killed_nemesis = true;
+        await qt_pager('killed_nemesis');
+    }
+}
+
+/**
+ * C ref: quest.c leaddead `:115–122` — quest leader killed: latch
+ * killed_leader. C carries a TODO for a killed_leader page; no pager
+ * call ships until C adds one.
+ * Caller: mon.c mongone/mondead on MS_LEADER death.
+ */
+export function leaddead() {
+    const qs = game.quest_status || (game.quest_status = {});
+    if (!qs.killed_leader) {
+        qs.killed_leader = true;
+        /* TODO: qt_pager("killed_leader"); ? */
+    }
+}
+
+/**
+ * C ref: quest.c nemesis_stinks `:425–438` — a stinky nemesis (caller
+ * picked via stinky_nemesis) leaves a noxious cloud on death. C runs
+ * the cloud under mon_moving so the hero is never blamed for it.
+ * Caller: mon.c mongone/mondead MS_NEMESIS arm.
+ */
+export async function nemesis_stinks(mx, my) {
+    if (!game.context) game.context = {};
+    const save_mon_moving = game.context.mon_moving;
+    /*
+     * Some nemeses (determined by caller) release a cloud of noxious
+     * gas when they die.  Don't make the hero be responsible for such
+     * a cloud even if hero has just killed nemesis.
+     */
+    game.context.mon_moving = true;
+    await create_gas_cloud(mx | 0, my | 0, 5, 8);
+    game.context.mon_moving = save_mon_moving;
 }

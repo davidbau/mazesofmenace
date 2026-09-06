@@ -16,7 +16,7 @@ import {
 import { worm_known, worm_move } from './worm.js';
 import {
     Monnam, mon_nam, monverbself, Hallucination, x_monnam, trycall,
-    Some_Monnam, noit_mon_nam, s_suffix,
+    Some_Monnam, noit_mon_nam, s_suffix, hcolor,
 } from './do_name.js';
 import {
     doname, singular, an, xname, the, makeplural, ansimpleoname,
@@ -29,8 +29,9 @@ import {
 import { lined_up, m_throw } from './mthrowu.js';
 import {
     is_animal, mindless, nohands, is_floater, needspick, nonliving,
-    is_vampshifter, monsterNames, mons, haseyes, mon_hates_silver,
+    is_vampshifter, is_mercenary, monsterNames, mons, haseyes, mon_hates_silver,
     verysmall, throws_rocks, passes_walls, is_bat, acidic, resists_acid,
+    slimeproof, resists_ston, touch_petrifies,
     G_UNIQ, mon_learns_traps, mon_knows_traps, amorphous, noncorporeal,
     unsolid, is_undead,
 } from './monsters.js';
@@ -61,6 +62,7 @@ import {
 import { dropy, make_blinded, flooreffects } from './do.js';
 import {
     learnwand, lightdamage, buzz, dobuzz, unturn_you, unturn_dead, resist,
+    zhitm,
 } from './zap.js';
 import {
     BOLT_LIM, MSLOW, MFAST, isok, u_at, ZAP_POS, IS_DOOR,
@@ -68,20 +70,21 @@ import {
     KILLED_BY_AN, ANTIMAGIC, M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD,
     M_SEEN_ELEC, M_SEEN_SLEEP, M_SEEN_ACID, M_SEEN_REFL, TIMEOUT,
     OBJ_FLOOR, G_GONE, MM_NOMSG, NO_MM_FLAGS,
-    W_ARMOR, W_ACCESSORY, W_SADDLE, W_ARMH, W_ARM,
+    W_ARMOR, W_ACCESSORY, W_SADDLE, W_ARMH, W_ARM, W_ARMG,
     Has_contents, NON_PM, NC_SHOW_MSG, NC_VIA_WAND_OR_SPELL, POLY_TRAP,
     MIGR_RANDOM, MIGR_STAIRS_DOWN, MIGR_STAIRS_UP,
     MIGR_LADDER_DOWN, MIGR_LADDER_UP, MIGR_SSTAIRS,
-    In_endgame, In_sokoban, Is_container, Is_rogue_level, Is_earthlevel,
+    In_endgame, In_sokoban, Is_container, ismnum, Is_rogue_level, Is_earthlevel,
     ARTICLE_A, SUPPRESS_IT, SUPPRESS_INVISIBLE, SUPPRESS_SADDLE, AUGMENT_IT,
-    PLNMSG_enum, NORMAL_SPEED, EDOG, STAIRS, LADDER, CORR, SCORR,
-    is_hole, Can_fall_thru, Is_botlevel, TELEP_TRAP, FORCETRAP,
+    PLNMSG_enum, NORMAL_SPEED, STRAT_WAITFORU, EDOG, STAIRS, LADDER, CORR, SCORR,
+    is_hole, Can_fall_thru, Is_botlevel, TELEP_TRAP, FIRE_TRAP, FORCETRAP,
+    EXPL_FIERY,
     RLOC_MSG, XKILL_NOMSG, XKILL_NOCONDUCT, COULD_SEE, IN_SIGHT,
     P_DAGGER, P_KNIFE, NOTELL, TEMPLE, IS_OBSTRUCTED, IS_AIR,
     BZ_M_WAND, BZ_OFS_AD, DIR_LEFT2, DIR_RIGHT2, DIR_CLAMP, xytodir,
     dirtocoord, engulfing_u,
 } from './const.js';
-import { MON_WEP, dmgval } from './weapon.js';
+import { MON_WEP, dmgval, hands_obj } from './weapon.js';
 import { welded, setuwep, setuswapwep, mwelded } from './wield.js';
 import { depth, strsubst, upstart } from './hacklib.js';
 import { get_level, dunlevs_in_dungeon, On_W_tower_level } from './dungeon.js';
@@ -93,16 +96,18 @@ import {
     can_carry,
 } from './monmove.js';
 import { SchroedingersBox } from './pickup.js';
-import { age_is_relative } from './timeout.js';
+import { age_is_relative, begin_burn } from './timeout.js';
 import { Inhell } from './minion.js';
 import { mon_has_amulet } from './apply.js';
 import { extract_from_minvent, which_armor } from './worn.js';
 import { hard_helmet } from './do_wear.js';
 import { obfree, inhishop } from './shk.js';
-import { xkilled, killed } from './uhitm.js';
-import { mondead, mondied } from './mhitm.js';
+import { xkilled, killed, attacktype_fordmg } from './uhitm.js';
+import { mondead, mondied, monkilled } from './mhitm.js';
 import { dog_nutrition } from './dogmove.js';
 import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
+import { CLR_GREEN, CLR_BRIGHT_GREEN } from './terminal.js';
+import { explode } from './explode.js';
 
 const POT_PARALYSIS = objectNames.indexOf('POT_PARALYSIS');
 const POT_BLINDNESS = objectNames.indexOf('POT_BLINDNESS');
@@ -155,6 +160,7 @@ const PM_PESTILENCE = monsterNames.indexOf('PM_PESTILENCE');
 const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 const PM_STALKER = monsterNames.indexOf('PM_STALKER');
+const PM_GUARD = monsterNames.indexOf('PM_GUARD');
 const PM_GIANT_EEL = monsterNames.indexOf('PM_GIANT_EEL');
 const PM_CROCODILE = monsterNames.indexOf('PM_CROCODILE');
 const PM_ACID_BLOB = monsterNames.indexOf('PM_ACID_BLOB');
@@ -166,10 +172,16 @@ const TIN_OPENER = objectNames.indexOf('TIN_OPENER');
 const BOULDER = objectNames.indexOf('BOULDER');
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
+const POT_OIL = objectNames.indexOf('POT_OIL');
+const GLOB_OF_GREEN_SLIME = objectNames.indexOf('GLOB_OF_GREEN_SLIME');
+const EGG = objectNames.indexOf('EGG');
+const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
 const CANDELABRUM_OF_INVOCATION =
     objectNames.indexOf('CANDELABRUM_OF_INVOCATION');
 const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
 const AT_GAZE = 15;
+const AT_BREA = 12; // monattk.h
+const NH_GREEN = 'green'; // c_color_names.c_green (decl.h NH_GREEN)
 const RAY = 3; // objclass.h oc_dir
 const AD_FIRE = 2; // monattk.h
 const AD_COLD = 3;
@@ -398,9 +410,22 @@ export function searches_for_item(mon, obj) {
         }
         if (typ === EXPENSIVE_CAMERA) return (obj.spe | 0) > 0;
         break;
-    case FOOD_CLASS:
-        // corpse/tin/egg arms deferred
+    case FOOD_CLASS: {
+        // C ref: muse.c searches_for_item — petrify-cure corpse/tin/egg arms
+        if (typ === CORPSE) {
+            return ((((mon.misc_worn_check | 0) & W_ARMG) !== 0)
+                    && !!touch_petrifies(mons(obj.corpsenm)))
+                || (!resists_ston(mon) && cures_stoning(mon, obj, false));
+        }
+        if (typ === TIN) {
+            return mcould_eat_tin(mon)
+                && !resists_ston(mon) && cures_stoning(mon, obj, true);
+        }
+        if (typ === EGG && ismnum(obj.corpsenm)) {
+            return !!touch_petrifies(mons(obj.corpsenm));
+        }
         break;
+    }
     default:
         break;
     }
@@ -1456,6 +1481,266 @@ async function mon_consume_unstone(mon, obj, by_you, stoning) {
     mon.mlstmv = game.moves | 0;
 }
 
+/**
+ * C ref: muse.c cures_stoning `:2985` — potion of acid, slime glob (for the
+ * slimeproof), lizard or acidic corpse, or openable lizard/acidic tin.
+ * Also used when picking up (searches_for_item FOOD_CLASS arms).
+ */
+function cures_stoning(mon, obj, tinok) {
+    if ((obj.otyp | 0) === POT_ACID) return true;
+    if ((obj.otyp | 0) === GLOB_OF_GREEN_SLIME) {
+        return !!slimeproof(mon.data);
+    }
+    if ((obj.otyp | 0) !== CORPSE && ((obj.otyp | 0) !== TIN || !tinok)) {
+        return false;
+    }
+    /* corpse, or tin that mon can open */
+    if ((obj.corpsenm | 0) === NON_PM) return false; /* empty/special tin */
+    return (obj.corpsenm | 0) === PM_LIZARD
+        || !!acidic(mons(obj.corpsenm));
+}
+
+/**
+ * C ref: muse.c cures_sliming `:3246` — scroll of fire (needs eyes + hands),
+ * potion of oil (needs hands; lit later), or charged wand / blowable horn
+ * of fire. Called from munslime's inventory scan.
+ */
+function cures_sliming(mon, obj) {
+    /* scroll of fire */
+    if ((obj.otyp | 0) === SCR_FIRE) {
+        return !!(haseyes(mon.data) && mon.mcansee && !nohands(mon.data));
+    }
+
+    /* potion of oil; will be set burning if not already */
+    if ((obj.otyp | 0) === POT_OIL) return !nohands(mon.data);
+
+    /* non-empty wand or horn of fire;
+       hero doesn't need hands or even limbs to zap, so mon doesn't either */
+    return (((obj.otyp | 0) === WAN_FIRE
+        || ((obj.otyp | 0) === FIRE_HORN && can_blow(mon)))
+        && (obj.spe | 0) > 0);
+}
+
+/**
+ * C ref: muse.c green_mon `:3269` — TRUE if the monster appears green, by
+ * display color. The `#if 0` name approximation is compiled out in C.
+ */
+function green_mon(mon) {
+    if (Hallucination()) return false;
+    const mc = mon.data?.mcolor;
+    return mc === CLR_GREEN || mc === CLR_BRIGHT_GREEN;
+}
+
+/**
+ * C ref: muse.c munslime `:3031` — monster avoids turning into green slime:
+ * fire breath on self, an inventory cure, or a step onto a fire trap.
+ * Async: the cure path (muse_unslime) can zap, explode, or trap-kill.
+ * No live JS caller yet; the uhitm.c mhitm_ad_slim arms own the calls.
+ */
+export async function munslime(mon, by_you) {
+    const mptr = mon.data;
+
+    /*
+     * muse_unslime() gives "mon starts turning green", "mon zaps
+     * itself with a wand of fire", and "mon's slime burns away"
+     * messages.  Monsters who don't get any chance at that just have
+     * (via our caller) newcham()'s "mon turns into slime" feedback.
+     */
+    if (slimeproof(mptr)) return false;
+    /* C monst.h helpless() macro: msleeping || !mcanmove */
+    if (mon.meating || mon.msleeping || !mon.mcanmove) return false;
+    mon.mstrategy = (mon.mstrategy | 0) & ~STRAT_WAITFORU;
+
+    /* if monster can breathe fire, do so upon self */
+    if (!mon.mcan && !mon.mspec_used
+        && attacktype_fordmg(mptr, AT_BREA, AD_FIRE)) {
+        const odummy = { otyp: STRANGE_OBJECT }; /* C: cg.zeroobj */
+        return await muse_unslime(mon, odummy, null, by_you);
+    }
+
+    /* same MUSE criteria as use_defensive() */
+    if (!is_animal(mptr) && !mindless(mptr)) {
+        let t = t_at(mon.mx, mon.my);
+
+        for (let obj = mon.minvent; obj; obj = obj.nobj) {
+            if (cures_sliming(mon, obj)) {
+                return await muse_unslime(mon, obj, null, by_you);
+            }
+        }
+
+        if ((!t || (t.ttyp | 0) !== FIRE_TRAP)
+            && (mptr?.mmove | 0) && !mon.mtrapped) {
+            const ux = game.u?.ux | 0, uy = game.u?.uy | 0;
+            const xs = [], ys = [];
+            for (let x = (mon.mx | 0) - 1; x <= (mon.mx | 0) + 1; ++x) {
+                for (let y = (mon.my | 0) - 1; y <= (mon.my | 0) + 1; ++y) {
+                    if (isok(x, y) && accessible(x, y)
+                        && !m_at(x, y) && (x !== ux || y !== uy)) {
+                        xs.push(x);
+                        ys.push(y);
+                    }
+                }
+            }
+            /* C: partial Fisher-Yates via rn1(nxy - idx, idx) */
+            for (let idx = 0; idx < xs.length; ++idx) {
+                const ridx = rn1(xs.length - idx, idx);
+                if (ridx !== idx) {
+                    const sx = xs[idx];
+                    xs[idx] = xs[ridx];
+                    xs[ridx] = sx;
+                    const sy = ys[idx];
+                    ys[idx] = ys[ridx];
+                    ys[ridx] = sy;
+                }
+                t = t_at(xs[idx], ys[idx]);
+                if (t && (t.ttyp | 0) === FIRE_TRAP) break;
+            }
+        }
+        if (t && (t.ttyp | 0) === FIRE_TRAP) {
+            return await muse_unslime(mon, hands_obj, t, by_you);
+        }
+    }
+
+    return false;
+}
+
+/**
+ * C ref: muse.c muse_unslime `:3104` — burn off slime via fire trap, fire
+ * breath, fire scroll, burning oil, or wand/horn of fire. A fatal burn
+ * credits by_you via xkilled. Async: mintrap/zhitm/explode/xkilled/monkilled.
+ */
+async function muse_unslime(mon, obj, trap, by_you) {
+    /* [by_you not honored if 'mon' triggers fire trap]. */
+    const otyp = obj.otyp | 0;
+    let dmg = 0;
+    let vis = canseemon(mon);
+    let res = true;
+
+    if (vis) {
+        await pline_mon(mon, `${Monnam(mon)} starts turning ${
+            green_mon(mon) ? 'into ooze' : hcolor(NH_GREEN)}.`);
+    }
+    /* -4 => sliming, causes quiet loss of enhanced speed */
+    await mon_adjust_speed(mon, -4, null);
+
+    if (trap) {
+        const Mnam = vis ? Monnam(mon) : null;
+
+        if ((mon.mx | 0) === (trap.tx | 0)
+            && (mon.my | 0) === (trap.ty | 0)) {
+            if (vis) {
+                await pline(
+                    `${Mnam} triggers ${trap.tseen ? 'the' : 'a'} fire trap!`);
+            }
+        } else {
+            remove_monster(mon.mx, mon.my);
+            newsym(mon.mx, mon.my);
+            place_monster(mon, trap.tx, trap.ty);
+            if (mon.wormno) worm_move(mon); /* won't happen; worms don't MUSE */
+            newsym(mon.mx, mon.my);
+            if (vis) {
+                await pline(`${Mnam} ${
+                    vtense(null, locomotion(mon.data, 'move'))
+                } ${is_floater(mon.data) ? 'over' : 'onto'} ${
+                    trap.tseen ? 'the' : 'a'} fire trap!`);
+            }
+        }
+        await mintrap(mon, FORCETRAP);
+    } else if (otyp === STRANGE_OBJECT) {
+        /* monster is using fire breath on self */
+        if (vis) {
+            await pline_mon(mon,
+                `${monverbself(mon, Monnam(mon), 'breath', 'fire on')}.`);
+        }
+        if (!rn2(3)) mon.mspec_used = rn1(10, 5);
+        /* -21 => monster's fire breath; 1 => # of damage dice */
+        dmg = await zhitm(mon, by_you ? 21 : -21, 1, { otmp: null });
+    } else if (otyp === SCR_FIRE) {
+        await mreadmsg(mon, obj);
+        if (mon.mconf) {
+            if (cansee(mon.mx, mon.my)) {
+                await pline('Oh, what a pretty fire!');
+            }
+            if (vis) await trycall(obj);
+            m_useup(mon, obj); /* after trycall() */
+            vis = false; /* skip makeknown() below */
+            res = false; /* failed to cure sliming */
+        } else {
+            dmg = Math.trunc((2 * (rn1(3, 3) + 2 * bcsign(obj)) + 1) / 3);
+            m_useup(mon, obj); /* before explode() */
+            /* -11 => monster's fireball */
+            await explode(mon.mx, mon.my, -11, dmg, SCROLL_CLASS,
+                by_you ? -EXPL_FIERY : EXPL_FIERY);
+            dmg = 0; /* damage has been applied by explode() */
+        }
+    } else if (otyp === POT_OIL) {
+        const was_lit = obj.lamplit ? true : false;
+        let saw_lit = false;
+        /*
+         * If not already lit, requires two actions.  We cheat and let
+         * monster do both rather than render the potion unusable.
+         */
+        if ((obj.quan | 0) > 1) {
+            const split = splitobj(obj, 1);
+            if (split) obj = split;
+        }
+        if (vis && !was_lit) {
+            await pline_mon(mon,
+                `${Monnam(mon)} ignites ${ansimpleoname(obj)}.`);
+            saw_lit = true;
+        }
+        begin_burn(obj, was_lit);
+        vis = vis || canseemon(mon); /* burning potion may improve visibility */
+        if (vis) {
+            if (!Unaware()) observe_object(obj);
+            await pline(
+                `${saw_lit ? upstart(mhe(mon)) : Monnam(mon)} quaffs a burning ${
+                    simpleonames(obj)}`);
+            makeknown(POT_OIL);
+        }
+        dmg = d(3, 4); /* [**TEMP** (different from hero)] */
+        m_useup(mon, obj);
+    } else { /* wand/horn of fire w/ positive charge count */
+        if ((obj.otyp | 0) === FIRE_HORN) await mplayhorn(mon, obj, true);
+        else await mzapwand(mon, obj, true);
+        /* -1 => monster's wand of fire; 2 => # of damage dice */
+        dmg = await zhitm(mon, by_you ? 1 : -1, 2, { otmp: null });
+    }
+
+    if (dmg) {
+        /* zhitm() applies damage but doesn't kill creature off */
+        if ((mon.mhp | 0) < 1) { /* DEADMONSTER(mon) */
+            if (by_you) {
+                /* mon killed self but hero gets credit and blame (except
+                   for pacifist conduct) */
+                if (vis) {
+                    await pline_mon(mon, `${Monnam(mon)} is ${
+                        nonliving(mon.data) ? 'destroyed' : 'killed'
+                    } by the fire!`);
+                }
+                await xkilled(mon, XKILL_NOMSG | XKILL_NOCONDUCT);
+            } else {
+                await monkilled(mon, 'fire', AD_FIRE);
+            }
+        } else if (vis) {
+            /* non-fatal damage occurred; C zap.c exclam(): <0 "?", <=4 ".", else "!" */
+            const bang = dmg < 0 ? '?' : dmg <= 4 ? '.' : '!';
+            await pline_mon(mon, `${Monnam(mon)} is burned${bang}`);
+        }
+    }
+    if (vis) {
+        if (res && (mon.mhp | 0) >= 1) {
+            await pline_mon(mon,
+                `${s_suffix(Monnam(mon))} slime is burned away!`);
+        }
+        if (otyp !== STRANGE_OBJECT) makeknown(otyp);
+    }
+    /* use up monster's next move */
+    mon.movement = (mon.movement | 0) - NORMAL_SPEED;
+    mon.mlstmv = game.moves | 0;
+    return res;
+}
+
 /** C muse.c m_flee macro — fleetim && !iswiz then monflee. */
 async function m_flee(m, fleetim) {
     if (fleetim && !m.iswiz) await monflee(m, fleetim, false, false);
@@ -1506,6 +1791,34 @@ function m_use_healing(mtmp) {
  * Named omit: unicorn horn; tryescape Is_knox m_next2m; undead-turning;
  * bugle; wand dig/tele/create/undead (later scroll may win vs C wand).
  */
+/**
+ * C ref: muse.c m_sees_sleepy_soldier `:361` — a mercenary bugler wakes when
+ * a non-guard mercenary nearby is helpless. Ported for the find_defensive
+ * MUSE_BUGLE selection arm; selection stays omitted until the MUSE_BUGLE
+ * use arm lands (needs the monster-bugler awaken_soldiers envelope).
+ */
+function m_sees_sleepy_soldier(mtmp) {
+    const x = mtmp.mx | 0, y = mtmp.my | 0;
+
+    /* Distance is arbitrary.  What we really want to do is
+     * have the soldier play the bugle when it sees or
+     * remembers soldiers nearby...
+     */
+    for (let xx = x - 3; xx <= x + 3; xx++) {
+        for (let yy = y - 3; yy <= y + 3; yy++) {
+            if (!isok(xx, yy) || (xx === x && yy === y)) continue;
+            const mon = m_at(xx, yy);
+            /* C monst.h helpless() macro: msleeping || !mcanmove */
+            if (mon && is_mercenary(mon.data)
+                && (mon.data?.mndx ?? -1) !== PM_GUARD
+                && (mon.msleeping || !mon.mcanmove)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 export function find_defensive(mtmp, tryescape) {
     const m = museState();
     m.defensive = null;
@@ -1639,7 +1952,8 @@ export function find_defensive(mtmp, tryescape) {
     }
 
     if (nohands(mtmp.data)) return m.has_defense !== 0;
-    // bugle named omit
+    // bugle named omit (m_sees_sleepy_soldier live; MUSE_BUGLE select+use
+    // needs monster-bugler awaken_soldiers)
     if (m.has_defense) return true;
 
     const isPest = (mtmp.mnum ?? mtmp.data?.mndx) === PM_PESTILENCE;

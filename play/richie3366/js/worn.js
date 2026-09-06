@@ -12,7 +12,7 @@ import { game } from './gstate.js';
 import {
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_AMUL, W_WEP,
     W_RINGL, W_RINGR, W_SWAPWEP, W_QUIVER, W_TOOL, W_BALL, W_CHAIN, W_SADDLE,
-    I_SPECIAL, AC_MAX, OBJ_MINVENT, NEED_WEAPON, P_NONE,
+    I_SPECIAL, AC_MAX, OBJ_MINVENT, NEED_WEAPON, P_NONE, DISMOUNT_FELL,
     INVIS, FAST, ANTIMAGIC, REFLECTING, PROTECTION, CLAIRVOYANT, STEALTH,
     TELEPAT, LEVITATION, FLYING, WWALKING, DISPLACED, FUMBLING, JUMPING,
     FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES,
@@ -20,7 +20,7 @@ import {
 } from './const.js';
 import {
     verysmall, nohands, is_animal, mindless, humanoid, noncorporeal,
-    bigmonst, is_whirly, M1_SLITHY, MZ_SMALL, MZ_HUGE,
+    bigmonst, is_whirly, touch_petrifies, M1_SLITHY, MZ_SMALL, MZ_HUGE,
     monsterNames, PM_WIZARD,
 } from './monsters.js';
 import { is_art } from './artifact.js';
@@ -30,11 +30,32 @@ import {
     RING_CLASS, FOOD_CLASS, GEM_CLASS, BALL_CLASS, CHAIN_CLASS,
     objectNames,
 } from './objects.js';
-import { curse, obj_extract_self, oc_merge_of } from './mkobj.js';
-import { canseemon, newsym, impossible } from './display.js';
+import {
+    curse, obj_extract_self, oc_merge_of, place_object,
+} from './mkobj.js';
+import {
+    canseemon, newsym, impossible, pline, pline_mon,
+} from './display.js';
 import { see_wsegs } from './worm.js';
 import { dist2 } from './hacklib.js';
-import { Monnam, mon_nam } from './do_name.js';
+import {
+    Monnam, mon_nam, s_suffix, pmname, Mgender,
+} from './do_name.js';
+import { cansee } from './vision.js';
+import { mhim, mhis } from './mondata.js';
+import { an } from './objnam.js';
+import { rnl } from './rng.js';
+import { Soundeffect } from './sndprocs.js';
+import {
+    se_cracking_sound, se_ripping_sound, se_thud, se_clank,
+} from './generated/seffects_data.js';
+import { surface } from './sit.js';
+import { MON_WEP } from './weapon.js';
+import { m_useup } from './mthrowu.js';
+import { cloak_simple_name } from './do_wear.js';
+import { can_saddle, can_ride, dismount_steed } from './steed.js';
+import { instapetrify } from './trap.js';
+import { You_hear } from './hack.js';
 
 const ARM_SUIT = 0;
 const ARM_SHIELD = 1;
@@ -81,6 +102,13 @@ const PM_WHITE_UNICORN = monsterNames.indexOf('PM_WHITE_UNICORN');
 const PM_GRAY_UNICORN = monsterNames.indexOf('PM_GRAY_UNICORN');
 const PM_BLACK_UNICORN = monsterNames.indexOf('PM_BLACK_UNICORN');
 const PM_KI_RIN = monsterNames.indexOf('PM_KI_RIN');
+
+/** C obj.h dragon-scale/mail ranges; muse.js muse_newcham_mon inlines same. */
+const GRAY_DRAGON_SCALES = objectNames.indexOf('GRAY_DRAGON_SCALES');
+const YELLOW_DRAGON_SCALES = objectNames.indexOf('YELLOW_DRAGON_SCALES');
+const GRAY_DRAGON_SCALE_MAIL = objectNames.indexOf('GRAY_DRAGON_SCALE_MAIL');
+const YELLOW_DRAGON_SCALE_MAIL = objectNames.indexOf('YELLOW_DRAGON_SCALE_MAIL');
+const PM_GRAY_DRAGON = monsterNames.indexOf('PM_GRAY_DRAGON');
 
 const MZ_HUMAN = 2; // monflag.h — MZ_HUMAN ≡ MZ_MEDIUM
 
@@ -388,6 +416,189 @@ export function which_armor(mon, flag) {
         if ((obj.owornmask || 0) & flag) return obj;
     }
     return null;
+}
+
+/**
+ * C ref: worn.c m_lose_armor `:1039–1051` (static) — extract from
+ * minvent, drop at the monster's square, polyspot bypass so this-turn
+ * pile zaps skip it, newsym. ("Call stackobj() if we ever drop anything
+ * that can merge" — armor never can.)
+ */
+function m_lose_armor(mon, obj, polyspot) {
+    extract_from_minvent(mon, obj, true, false);
+    place_object(obj, mon.mx, mon.my);
+    if (polyspot) bypass_obj(obj);
+    newsym(mon.mx, mon.my);
+}
+
+/**
+ * C ref: worn.c mon_break_armor `:1177–1335` — armor a polymorphed
+ * monster can no longer wear: breakarm destroys suit/cloak/shirt,
+ * sliparm drops them, handless/tiny drops gloves+shield, horns spill
+ * non-flimsy helms, slithy/centaur spill boots, unsaddlable spill
+ * saddles, unridable dismounts (DISMOUNT_FELL + touch-petrify risk).
+ * Caller: mon.c newcham `:5485` with the NC_VIA_WAND_OR_SPELL polyspot.
+ * Sync-or-async like weapon.c possibly_unwield: every C message/await
+ * site is captured as a thunk (text computed inline, in C order) while
+ * sync mutations (m_useup / m_lose_armor / noride flag) run inline;
+ * thunks flush sequentially. No thunks ⟺ C awaits nothing, so the
+ * return stays non-Promise and newcham NO_NC_FLAGS keeps its boolean
+ * contract (D-1648). Soundeffect is a contest no-op (sndprocs.js).
+ * @returns {void|Promise<void>}
+ */
+export function mon_break_armor(mon, polyspot) {
+    const mdat = mon.data;
+    const vis = cansee(mon.mx, mon.my);
+    const handless_or_tiny = nohands(mdat) || verysmall(mdat);
+    const pronoun = mhim(mon), ppronoun = mhis(mon);
+    const pending = [];
+    const later = (fn, ...args) => pending.push(() => fn(...args));
+    let noride = false;
+
+    if (breakarm(mdat)) {
+        const mndx = mdat?.mndx ?? -1;
+        let otmp = which_armor(mon, W_ARM);
+        if (otmp) {
+            const t = otmp.otyp | 0;
+            /* C obj.h Is_dragon_scales/mail + Dragon_*_to_pm: melded
+               dragons keep the armor silently, previous form is gone */
+            const merged = (t >= GRAY_DRAGON_SCALES && t <= YELLOW_DRAGON_SCALES
+                    && mndx === PM_GRAY_DRAGON + t - GRAY_DRAGON_SCALES)
+                || (t >= GRAY_DRAGON_SCALE_MAIL && t <= YELLOW_DRAGON_SCALE_MAIL
+                    && mndx === PM_GRAY_DRAGON + t - GRAY_DRAGON_SCALE_MAIL);
+            if (!merged) {
+                Soundeffect(se_cracking_sound, 100);
+                if (vis) {
+                    later(pline_mon, mon, `${Monnam(mon)} breaks out of ${ppronoun} armor!`);
+                } else later(You_hear, 'a cracking sound.');
+            }
+            m_useup(mon, otmp);
+        }
+        otmp = which_armor(mon, W_ARMC);
+        /* C: mummy wrapping adapts to small and very big sizes */
+        if (otmp && (otmp.otyp !== MUMMY_WRAPPING || !WrappingAllowed(mdat))) {
+            if (otmp.oartifact) {
+                if (vis) {
+                    later(pline_mon, mon, `${s_suffix(Monnam(mon))} ${cloak_simple_name(otmp)} falls off!`);
+                }
+                m_lose_armor(mon, otmp, polyspot);
+            } else {
+                Soundeffect(se_ripping_sound, 100);
+                if (vis) {
+                    later(pline_mon, mon, `${s_suffix(Monnam(mon))} ${cloak_simple_name(otmp)} tears apart!`);
+                } else later(You_hear, 'a ripping sound.');
+                m_useup(mon, otmp);
+            }
+        }
+        otmp = which_armor(mon, W_ARMU);
+        if (otmp) {
+            if (vis) {
+                later(pline_mon, mon, `${s_suffix(Monnam(mon))} shirt rips to shreds!`);
+            } else later(You_hear, 'a ripping sound.');
+            m_useup(mon, otmp);
+        }
+    } else if (sliparm(mdat)) {
+        /* C: sliparm covers whirly, noncorporeal, and small or under */
+        const passes_thru_clothes = !((mdat?.msize ?? 99) <= MZ_SMALL);
+        let otmp = which_armor(mon, W_ARM);
+        if (otmp) {
+            Soundeffect(se_thud, 50);
+            if (vis) {
+                later(pline_mon, mon, `${s_suffix(Monnam(mon))} armor falls around ${pronoun}!`);
+            } else later(You_hear, 'a thud.');
+            m_lose_armor(mon, otmp, polyspot);
+        }
+        otmp = which_armor(mon, W_ARMC);
+        if (otmp && (otmp.otyp !== MUMMY_WRAPPING || !WrappingAllowed(mdat))) {
+            if (vis) {
+                if (is_whirly(mon.data)) {
+                    later(pline_mon, mon, `${s_suffix(Monnam(mon))} ${cloak_simple_name(otmp)} falls, unsupported!`);
+                } else {
+                    later(pline_mon, mon, `${Monnam(mon)} shrinks out of ${ppronoun} ${cloak_simple_name(otmp)}!`);
+                }
+            }
+            m_lose_armor(mon, otmp, polyspot);
+        }
+        otmp = which_armor(mon, W_ARMU);
+        if (otmp) {
+            if (vis) {
+                if (passes_thru_clothes) {
+                    later(pline_mon, mon, `${Monnam(mon)} seeps right through ${ppronoun} shirt!`);
+                } else {
+                    later(pline_mon, mon, `${Monnam(mon)} becomes much too small for ${ppronoun} shirt!`);
+                }
+            }
+            m_lose_armor(mon, otmp, polyspot);
+        }
+    }
+    if (handless_or_tiny) {
+        /* C: [caller needs to handle weapon checks] — newcham already
+           ran possibly_unwield before us */
+        let otmp = which_armor(mon, W_ARMG);
+        if (otmp) {
+            if (vis) {
+                later(pline_mon, mon, `${Monnam(mon)} drops ${ppronoun} gloves${MON_WEP(mon) ? ' and weapon' : ''}!`);
+            }
+            m_lose_armor(mon, otmp, polyspot);
+        }
+        otmp = which_armor(mon, W_ARMS);
+        if (otmp) {
+            Soundeffect(se_clank, 50);
+            if (vis) {
+                later(pline_mon, mon, `${Monnam(mon)} can no longer hold ${ppronoun} shield!`);
+            } else later(You_hear, 'a clank.');
+            m_lose_armor(mon, otmp, polyspot);
+        }
+    }
+    if (handless_or_tiny || has_horns(mdat)) {
+        const otmp = which_armor(mon, W_ARMH);
+        /* C: flimsy test for horns matches polyself handling */
+        if (otmp && (handless_or_tiny || !is_flimsy(otmp))) {
+            if (vis) {
+                later(pline_mon, mon, `${s_suffix(Monnam(mon))} helmet falls to the ${surface(mon.mx, mon.my)}!`);
+            } else later(You_hear, 'a clank.');
+            m_lose_armor(mon, otmp, polyspot);
+        }
+    }
+    if (handless_or_tiny || slithy(mdat) || mdat?.mlet === 'S_CENTAUR') {
+        const otmp = which_armor(mon, W_ARMF);
+        if (otmp) {
+            if (vis) {
+                if (is_whirly(mon.data)) {
+                    later(pline_mon, mon, `${s_suffix(Monnam(mon))} boots fall away!`);
+                } else {
+                    later(pline_mon, mon, `${s_suffix(Monnam(mon))} boots ${verysmall(mdat) ? 'slide' : 'are pushed'} off ${ppronoun} feet!`);
+                }
+            }
+            m_lose_armor(mon, otmp, polyspot);
+        }
+    }
+    if (!can_saddle(mon)) {
+        const otmp = which_armor(mon, W_SADDLE);
+        if (otmp) {
+            m_lose_armor(mon, otmp, polyspot);
+            if (vis) {
+                later(pline_mon, mon, `${s_suffix(Monnam(mon))} saddle falls off.`);
+            }
+        }
+        if (mon === game.u?.usteed) noride = true;
+    }
+    if (noride || (mon === game.u?.usteed && !can_ride(mon))) {
+        /* C You(): steed.js/makemon.js use pline('You ...') (no You clone) */
+        later(pline, `You can no longer ride ${mon_nam(mon)}.`);
+        const u = game.u || {};
+        const stone_res = !!(u.Stone_resistance || u.HStone_resistance
+            || u.EStone_resistance);
+        if (touch_petrifies(game.u?.usteed?.data) && !stone_res && rnl(3)) {
+            later(pline, `You touch ${mon_nam(game.u.usteed)}.`);
+            later(instapetrify, `falling off ${an(pmname(game.u.usteed.data, Mgender(game.u.usteed)))}`);
+        }
+        later(dismount_steed, DISMOUNT_FELL);
+    }
+    if (!pending.length) return;
+    return (async () => {
+        for (const run of pending) await run();
+    })();
 }
 
 /**

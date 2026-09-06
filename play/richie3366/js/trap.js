@@ -28,17 +28,17 @@ import {
 import { find_mac, make_corpse, mon_to_stone, vamp_stone, monstone } from './mhitm.js';
 import { mon_explodes, scatter } from './explode.js';
 import {
-    newsym, pline, pline_xy, urgent_pline, mon_visible, see_with_infrared,
+    newsym, pline, pline_mon, pline_xy, urgent_pline, mon_visible, see_with_infrared,
     You_feel, unmap_object, glyph_is_invisible, tmp_at, nh_delay_output,
     obj_glyph, flush_topl_more, feel_newsym, canspotmon, map_invisible,
     set_msg_xy, Hallucination, Norep,
 } from './display.js';
 import { doname, an, the, The, xname, yname, cxname, makeplural, vtense, ansimpleoname, safe_qbuf } from './objnam.js';
 import {
-    Monnam, mon_nam, x_monnam, x_monnam_tame, y_monnam, noit_Monnam, pmname,
+    Amonnam, Monnam, mon_nam, x_monnam, x_monnam_tame, y_monnam, noit_Monnam, pmname,
     christen_monst, rndmonnam, hliquid, rndcolor, mon_pmname, YMonnam,
 } from './do_name.js';
-import { dist2, distmin, m_at, wakeup, seemimic, m_carrying, LEVEL_SPECIFIC_NOCORPSE, bad_rock } from './mon.js';
+import { dist2, distmin, m_at, wakeup, seemimic, m_carrying, LEVEL_SPECIFIC_NOCORPSE, bad_rock, setmangry } from './mon.js';
 import { cansee, couldsee, m_cansee, recalc_block_point, vision_recalc } from './vision.js';
 import { del_engr_at, can_reach_floor } from './engrave.js';
 import {
@@ -51,7 +51,7 @@ import {
     bigmonst, is_golem, is_mplayer, is_rider,
     nohands, extra_nasty, acidic, poly_when_stoned, touch_petrifies,
     resists_ston, MALE, FEMALE, NEUTRAL, nonliving, is_vampshifter,
-    hides_under,
+    hides_under, metallivorous,
 } from './monsters.js';
 import {
     DART_TRAP, ARROW_TRAP, ROCKTRAP, FORCETRAP, NOWEBMSG, FORCEBUNGLE, RECURSIVETRAP,
@@ -153,6 +153,7 @@ import { rider_cant_reach, dismount_steed } from './steed.js';
 import { fill_pit, bury_an_obj } from './dig.js';
 import { u_wield_art, attacks, bare_artifactname, has_magic_key } from './artifact.js';
 import { ART_STING } from './generated/artifacts_data.js';
+import { maybe_unhide_at } from './monmove.js';
 
 const AD_ELEC = 6;
 const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
@@ -1689,12 +1690,17 @@ export function immune_to_trap(mon, ttype) {
 }
 
 /**
- * C ref: trap.c dotrap — hero steps on a trap.
- * Envelope: nomul(0); floor_trigger+in_air skip; already_seen escape rn2(5);
- * mons_see_trap; trapeffect_selector(youmonst). Named omissions: Sokoban
- * air-currents, undestroyable/ANTI_MAGIC/Fumbling force, conj/adj pit
- * escape, steed mon_learns; FORCETRAP morph recursion; hero slp_gas/
- * anti-magic/…  Hero pit/hole via trapeffect_pit / trapeffect_hole.
+ * C ref: trap.c dotrap `:2996–3060` — hero steps on a trap.
+ * C order: forcetrap=FORCETRAP||FAILEDUNTRAP; plunged=TOOKPLUNGE;
+ * conj_pit=conjoined_pits(trap,t_at(ux0,uy0),TRUE); adj_pit;
+ * nomul(0); fixed_tele_trap forces FORCETRAP; Sokoban pit/hole
+ * air-currents pline then fall through; else !forcetrap floor_trigger+
+ * check_in_air step-over and already_seen escape (!Fumbling,
+ * !undestroyable, !=ANTI_MAGIC, !forcebungle, !plunged, !conj/adj,
+ * !rn2(5)||(is_pit&&is_clinger)); steed mon_learns_traps; mons_see_trap;
+ * trapeffect_selector(youmonst) with updated trflags.
+ * Step-over verb via file-local u_locomotion_pit (Lev/Fly only; poly
+ * locomotion() deferred as in that helper).
  */
 export async function dotrap(trap, trflags = NO_TRAP_FLAGS) {
     if (!trap) return;
@@ -1702,27 +1708,40 @@ export async function dotrap(trap, trflags = NO_TRAP_FLAGS) {
     if (!u) return;
     const ttype = trap.ttyp;
     const already_seen = !!trap.tseen;
-    const forcetrap = (trflags & FORCETRAP) !== 0;
+    let forcetrap = ((trflags & FORCETRAP) !== 0
+        || (trflags & FAILEDUNTRAP) !== 0);
     const forcebungle = (trflags & FORCEBUNGLE) !== 0;
+    const plunged = (trflags & TOOKPLUNGE) !== 0;
+    const conj_pit = conjoined_pits(trap, t_at(u.ux0, u.uy0), true);
+    const adj_pit = adj_nonconjoined_pit(trap);
     const a_your = ['a', 'your'];
+    const Sokoban = !!(game.level?.flags?.sokoban_rules || game.Sokoban);
 
     nomul(0);
 
-    if (!forcetrap) {
+    if (fixed_tele_trap(trap)) {
+        trflags |= FORCETRAP;
+        forcetrap = true;
+    }
+
+    /* KMH -- You can't escape the Sokoban level traps */
+    if (Sokoban && (is_pit(ttype) || is_hole(ttype))) {
+        await pline(`Air currents pull you down into ${a_your[trap.madeby_u ? 1 : 0]} ${trapname(ttype, true)}!`);
+        /* then proceed to normal trap effect */
+    } else if (!forcetrap) {
         if (floor_trigger(ttype)
             && check_in_air(game.youmonst || { _youmonst: true }, trflags)) {
             if (already_seen) {
                 const art = (ttype === ARROW_TRAP && !trap.madeby_u)
                     ? 'an' : a_your[trap.madeby_u ? 1 : 0];
-                await pline(`You step over ${art} ${trapname(ttype, false)}.`);
+                await pline(`You ${u_locomotion_pit('step')} over ${art} ${trapname(ttype, false)}.`);
             }
             return;
         }
-        // plunge / conj_pit / adj_pit still named
-        if (already_seen && !u.Fumbling && !undestroyable_trap(ttype)
-            && ttype !== ANTI_MAGIC
-            && !forcebungle
-            && !rn2(5)) {
+        if (already_seen && !Fumbling() && !undestroyable_trap(ttype)
+            && ttype !== ANTI_MAGIC && !forcebungle && !plunged
+            && !conj_pit && !adj_pit
+            && (!rn2(5) || (is_pit(ttype) && is_clinger(game.youmonst?.data)))) {
             const art = (ttype === ARROW_TRAP && !trap.madeby_u)
                 ? 'an' : a_your[trap.madeby_u ? 1 : 0];
             await pline(`You escape ${art} ${trapname(ttype, false)}.`);
@@ -1730,7 +1749,7 @@ export async function dotrap(trap, trflags = NO_TRAP_FLAGS) {
         }
     }
 
-    // C: steed mon_learns_traps deferred; mons_see_trap before effect
+    if (u.usteed) mon_learns_traps(u.usteed, ttype);
     mons_see_trap(trap);
     const you = game.youmonst || { _youmonst: true };
     await trapeffect_selector(you, trap, trflags);
@@ -4634,10 +4653,15 @@ async function trapeffect_statue_trap(mtmp, trap, _trflags) {
 }
 
 /**
- * C ref: trap.c mintrap() — monster steps on a trap.
- * Early-session envelope: dart / rock / pit / sqky / hole|trapdoor /
- * magic|fire learn+effect; already_seen rn2(4) skip when mon_knows_traps
- * or HOLE && !mindless (D-0703). Other types and escape paths partial.
+ * C ref: trap.c mintrap `:3733–3840` — monster-trapped dispatch body.
+ * Trapped arm: seetrap reveal; `!rn2(40) || (is_pit && m_easy_escape_pit)`;
+ * boulder-in-pit `!rn2(2)` pulls-free (pline_mon) + fill_pit, else
+ * set_msg_xy + climbs `easily ` / pulls-free pline; metallivorous
+ * bear-trap eat (deltrap, meating=5) / spiked-pit munch (ttyp=PIT).
+ * Fresh arm: fixed_tele_trap forces FORCETRAP; usteed and Sokoban
+ * pit/hole skip the floor_trigger+check_in_air / already_seen rn2(4)
+ * gates; mon_learns_traps + mons_see_trap; madeby_u && rnl(5) setmangry;
+ * trapeffect_selector; unhide+appears envelope.
  */
 export async function mintrap(mtmp, mintrapflags = NO_TRAP_FLAGS) {
     const trap = t_at(mtmp.mx, mtmp.my);
@@ -4646,40 +4670,77 @@ export async function mintrap(mtmp, mintrapflags = NO_TRAP_FLAGS) {
         return Trap_Effect_Finished;
     }
     if (mtmp.mtrapped) {
-        // C trap.c mintrap — already in trap: maybe reveal, then rn2(40)
-        // escape (or easy pit). Boulder-in-pit / metallivorous chew deferred.
+        // C: a monster sitting in an obvious trap reveals it to you
         if (!trap.tseen && cansee(mtmp.mx, mtmp.my) && canseemon(mtmp)
             && (is_pit(trap.ttyp) || trap.ttyp === BEAR_TRAP
                 || trap.ttyp === HOLE || trap.ttyp === WEB)) {
             seetrap(trap);
         }
-        // m_easy_escape_pit arm deferred — only rn2(40) gate for now
-        if (!rn2(40)) {
-            if (canseemon(mtmp)) {
-                if (is_pit(trap.ttyp)) {
-                    await pline(`${Monnam(mtmp)} climbs out of the pit.`);
-                } else if (trap.ttyp === BEAR_TRAP || trap.ttyp === WEB) {
-                    await pline(
-                        `${Monnam(mtmp)} pulls free of the ${trapname(trap.ttyp, false)}.`,
-                    );
+        // C: `!rn2(40) || (is_pit(trap->ttyp) && m_easy_escape_pit(mtmp))`
+        if (!rn2(40) || (is_pit(trap.ttyp) && m_easy_escape_pit(mtmp))) {
+            if (sobj_at(BOULDER, mtmp.mx, mtmp.my) && is_pit(trap.ttyp)) {
+                // C: the boulder fills the pit as the monster pulls free
+                if (!rn2(2)) {
+                    mtmp.mtrapped = 0;
+                    if (canseemon(mtmp))
+                        await pline_mon(mtmp, `${Monnam(mtmp)} pulls free...`);
+                    fill_pit(mtmp.mx, mtmp.my);
                 }
+            } else {
+                if (canseemon(mtmp)) {
+                    set_msg_xy(mtmp.mx, mtmp.my);
+                    if (is_pit(trap.ttyp)) {
+                        await pline(`${Monnam(mtmp)} climbs ${m_easy_escape_pit(mtmp) ? 'easily ' : ''}out of the pit.`);
+                    } else if (trap.ttyp === BEAR_TRAP || trap.ttyp === WEB) {
+                        await pline(
+                            `${Monnam(mtmp)} pulls free of the ${trapname(trap.ttyp, false)}.`,
+                        );
+                    }
+                }
+                mtmp.mtrapped = 0;
             }
-            mtmp.mtrapped = 0;
+        } else if (metallivorous(mtmp.data)) {
+            // C: metal-eaters chew through bear traps / pit spikes
+            if (trap.ttyp === BEAR_TRAP) {
+                if (canseemon(mtmp))
+                    await pline_mon(mtmp, `${Monnam(mtmp)} eats a bear trap!`);
+                deltrap(trap);
+                mtmp.meating = 5;
+                mtmp.mtrapped = 0;
+            } else if (trap.ttyp === SPIKED_PIT) {
+                if (canseemon(mtmp))
+                    await pline_mon(mtmp, `${Monnam(mtmp)} munches on some spikes!`);
+                trap.ttyp = PIT;
+                mtmp.meating = 5;
+            }
         }
         return mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
     }
 
-    const forcetrap = (mintrapflags & FORCETRAP) !== 0;
-    const forcebungle = (mintrapflags & FORCEBUNGLE) !== 0;
+    // C: tt / forcetrap+forcebungle from flags / already_seen; a fixed
+    // teleport trap always triggers (mintrapflags |= FORCETRAP)
+    let trflags = mintrapflags;
+    let forcetrap = (trflags & FORCETRAP) !== 0;
+    const forcebungle = (trflags & FORCEBUNGLE) !== 0;
     const tt = trap.ttyp;
     const mptr = mtmp.data;
     // C: mon_knows_traps || (HOLE && !mindless) — holes are obvious
     const already_seen = mon_knows_traps(mtmp, tt)
         || (tt === HOLE && !mindless(mptr));
 
-    if (!forcetrap) {
-        // C: Sokoban pit/hole messaging deferred; floor_trigger+in_air skip
-        if (floor_trigger(tt) && check_in_air(mtmp, mintrapflags)) {
+    if (fixed_tele_trap(trap)) {
+        trflags |= FORCETRAP;
+        forcetrap = true;
+    }
+
+    // C: Sokoban = level.flags.sokoban_rules
+    const Sokoban = !!(game.level?.flags?.sokoban_rules || game.Sokoban);
+    if (mtmp === game.u?.usteed) {
+        ; /* true when called from dotrap, inescapable is not an option */
+    } else if (Sokoban && (is_pit(tt) || is_hole(tt)) && !trap.madeby_u) {
+        ; /* nothing here, the trap effects will handle messaging */
+    } else if (!forcetrap) {
+        if (floor_trigger(tt) && check_in_air(mtmp, trflags)) {
             return Trap_Effect_Finished;
         }
         if (already_seen && rn2(4) && !forcebungle) {
@@ -4687,11 +4748,23 @@ export async function mintrap(mtmp, mintrapflags = NO_TRAP_FLAGS) {
         }
     }
 
-    // C: mon_learns_traps then mons_see_trap then trapeffect_selector
     mon_learns_traps(mtmp, tt);
     mons_see_trap(trap);
-    // madeby_u rnl setmangry deferred (RNG on that arm only)
-    return await trapeffect_selector(mtmp, trap, mintrapflags);
+
+    // C: the monster is aggravated by being trapped by you
+    if (trap.madeby_u && rnl(5))
+        await setmangry(mtmp, false);
+
+    const trap_result = await trapeffect_selector(mtmp, trap, trflags);
+
+    // C: a trapped monster can't stay hiding under an object in non-pit
+    if ((mtmp.mhp | 0) > 0 && mtmp.mtrapped) {
+        const alreadyspotted = canspotmon(mtmp);
+        await maybe_unhide_at(mtmp.mx, mtmp.my);
+        if (!alreadyspotted && canseemon(mtmp))
+            await pline_mon(mtmp, `${Amonnam(mtmp)} appears.`);
+    }
+    return trap_result;
 }
 
 const POT_WATER = objectNames.indexOf('POT_WATER');
@@ -4985,33 +5058,262 @@ export async function drown() {
 }
 
 /**
- * C ref: trap.c lava_effects — enter lava/lavawall.
- * Branch envelope: d(6,6) always; non-resistant fall + burn-to-crisp done(BURNING).
- * Named omissions: Fire_resistance/Wwalking survive; invent burn flags;
- * boots burst; life-save/teleds loop; boil-away poly; sink_into_lava.
+ * C ref: trap.c lava_effects `:6794–6987` — fall/sink into lava, burn gear,
+ * life-save teleds loop, Wwalking/Fire sink-or-burn envelope.
+ * Branch envelope: d(6,6) always (before in_lava early-out); feel_newsym +
+ * burn_away_slime + likes_lava early FALSE; !usurvive invent in_use flags;
+ * boots burst first (Boots_off + useup); !Fire: Wwalking burn + losehp→burn_stuff
+ * else fall + Lifesaved/discover/wizard survive, invent burn (Book glow spared,
+ * worn burst + remove + useupall), burn summary, boil-away poly, 2x done(BURNING)
+ * + safe_teleds loop, double-fail timeout countermeasures→burn_stuff,
+ * rescued_from_terrain + spoteffects(FALSE) TRUE; Fire+!Wwalking+!trapped sink
+ * (rn1 set_utrap, monstseesu, losehp); burn_stuff destroy_items(AD_FIRE,dmg) +
+ * ignite_items FALSE.
+ * C macros: Fire_resistance ≡ uprops[FIRE_RES].intrinsic||extrinsic (youprop.h:28);
+ * Wwalking ≡ (HWwalking||EWwalking) && !Is_waterlevel (youprop.h:260);
+ * post-boots Wwalking re-read live (boots burst clears the slot; entry
+ * snapshot kept only for entry usurvive + the flag loop).
+ * Lifesaved ≡ uprops[LIFESAVED].extrinsic (:387); wizard ≡ flags.debug,
+ * discover ≡ flags.explore (flag.h:30,33). JS flats (u.HFire_resistance etc)
+ * cover dual storage alongside uprops slots.
+ * Dynamics for zap/pickup/timeout match file pattern (trap↔zap cycle);
+ * same-edge helpers via dynamic to keep this port to one locus edit
+ * (imports.mjs: hoisted functions cycle-safe).
  * @returns {Promise<boolean>} true if relocated (life-save); noreturn on death
  */
 export async function lava_effects() {
+    /* C: const int dmg = d(6, 6); — drawn before every early-out. */
+    const dmg = d(6, 6);
     const u = game.u;
     if (!u) return false;
-    if (game.iflags?.in_lava_effects) return false;
+    if (game.iflags?.in_lava_effects) return false; /* C debugpline0 debug-only */
+    /* Monattk AD_FIRE=2; otyp/poly indices via already-imported tables. */
+    const AD_FIRE = 2;
+    const SCR_FIRE = objectNames.indexOf('SCR_FIRE');
+    const SPE_FIREBALL = objectNames.indexOf('SPE_FIREBALL');
+    const SPE_BOOK = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
+    const PM_WATER_ELEMENTAL = monsterNames.indexOf('PM_WATER_ELEMENTAL');
+    const PM_STEAM_VORTEX = monsterNames.indexOf('PM_STEAM_VORTEX');
+    const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
+    const { WWALKING, LIFESAVED, TELEDS_TELEPORT, M_SEEN_FIRE } = await import('./const.js');
+    const { burn_away_slime } = await import('./timeout.js');
+    const { likes_lava } = await import('./monsters.js');
+    const { is_organic } = await import('./mkobj.js');
+    const { obj_resists } = await import('./dogmove.js');
+    const { Yobjnam2, simpleonames } = await import('./objnam.js');
+    const { hcolor } = await import('./do_name.js');
+    const { Boots_off } = await import('./do_wear.js');
+    const { useup, useupall } = await import('./invent.js');
+    const { impossible } = await import('./display.js');
+    const { safe_teleds } = await import('./teleport.js');
+    const { destroy_items } = await import('./zap.js');
+    const { spoteffects } = await import('./pickup.js');
 
-    // C: const int dmg = d(6, 6); /* only applicable for water walking */
-    const dmg = d(6, 6);
-    void dmg;
+    feel_newsym(u.ux, u.uy); /* in case Blind, map the lava here */
+    await burn_away_slime();
+    if (likes_lava(game.youmonst?.data)) return false;
 
-    // likes_lava / Fire_resistance / Wwalking survive arms deferred
-    await pline(`You fall into the ${waterbody_name(u.ux, u.uy)}!`);
+    /* C: usurvive = Fire_resistance || (Wwalking && dmg < u.uhp); */
+    const fireSlot = u.uprops?.[FIRE_RES];
+    const heroFireRes = !!((u.HFire_resistance | 0) || (u.EFire_resistance | 0)
+        || u.Fire_resistance
+        || (fireSlot?.intrinsic | 0) || (fireSlot?.extrinsic | 0));
+    const wwalkSlot = u.uprops?.[WWALKING];
+    const heroWwalking = !!(((u.HWwalking | 0) || (u.EWwalking | 0) || u.Wwalking
+        || (wwalkSlot?.intrinsic | 0) || (wwalkSlot?.extrinsic | 0))
+        && !Is_waterlevel(u.uz));
+    let usurvive = heroFireRes || (heroWwalking && (dmg < (u.uhp | 0)));
+    /* C re-reads the Wwalking macro (youprop.h:260) after the boots-burst:
+     * burnable WW boots clear uprops[WWALKING].extrinsic synchronously via
+     * Boots_off→clear_worn→setworn→confer_oc_oprop (do_wear.js), so the three
+     * post-burn reads below must observe the flip. The entry snapshot stays
+     * for entry usurvive + the flag loop, where C also reads pre-burn values. */
+    const liveWwalking = () => !!(((u.HWwalking | 0) || (u.EWwalking | 0) || u.Wwalking
+        || ((u.uprops?.[WWALKING]?.intrinsic) | 0) || ((u.uprops?.[WWALKING]?.extrinsic) | 0))
+        && !Is_waterlevel(u.uz));
 
-    // invent burn / Boots_off deferred (empty invent on this path)
-    u.uhp = -1;
-    if (!game.killer) game.killer = { name: '', format: 0 };
-    game.killer.format = KILLED_BY;
-    game.killer.name = 'molten lava';
-    await pline('You burn to a crisp...');
-    const { done } = await import('./end.js');
-    await done(BURNING);
-    return false;
+    /*
+     * Flag items before any message so a hangup at --More-- cannot save
+     * before destruction. One in_use item is protected (steal mid-flight).
+     */
+    let protect_oid = 0;
+    if (!usurvive) {
+        const snapshot = [...(game.invent || [])];
+        for (const obj of snapshot) {
+            const nextobj = obj.nobj;
+            void nextobj;
+            if (obj.in_use) {
+                if (!protect_oid) {
+                    protect_oid = obj.o_id | 0;
+                    obj.in_use = 0;
+                } else {
+                    await impossible(
+                        "lava_effects: '%s' (#%d) is already in use; so is #%d.",
+                        simpleonames(obj), obj.o_id | 0, protect_oid | 0,
+                    );
+                }
+                continue;
+            }
+            /* set in_use for items which will be destroyed below */
+            if ((is_organic(obj) || (obj.oclass | 0) === POTION_CLASS)
+                && !obj.oerodeproof
+                && ((game.objects?.[obj.otyp | 0]?.oc_oprop | 0) !== FIRE_RES)
+                && (obj.otyp | 0) !== SCR_FIRE && (obj.otyp | 0) !== SPE_FIREBALL
+                && !obj_resists(obj, 0, 0)) obj.in_use = 1;
+        }
+    }
+
+    /* Burn boots first so sinking knows whether water walking survives. */
+    let burncount = 0;
+    let burnmesgcount = 0;
+    const uarmf = u.uarmf;
+    if (uarmf && (uarmf.in_use || (is_organic(uarmf) && !uarmf.oerodeproof))) {
+        const boots = uarmf;
+        await pline(`${Yobjnam2(boots, 'burst')} into flame!`);
+        ++burnmesgcount;
+        if (!game.iflags) game.iflags = {};
+        game.iflags.in_lava_effects = (game.iflags.in_lava_effects | 0) + 1;
+        await Boots_off();
+        if ((boots.o_id | 0) !== (protect_oid | 0)) useup(boots);
+        game.iflags.in_lava_effects = (game.iflags.in_lava_effects | 0) - 1;
+        ++burncount;
+    }
+
+    const lava_killer = 'molten lava';
+    const gotoBurnStuff = async () => {
+        await destroy_items(game.youmonst || { _youmonst: true }, AD_FIRE, dmg);
+        if (game._losehp_needs_done || game.program_state?.gameover) {
+            const { finish_losehp_done } = await import('./end.js');
+            await finish_losehp_done();
+            if (game.program_state?.gameover) return false;
+        }
+        await ignite_items(game.invent);
+        return false;
+    };
+
+    if (!heroFireRes) {
+        /* C: if (Wwalking) — re-read: the boots-burst above may have cleared it. */
+        if (liveWwalking()) {
+            await pline(`The ${hliquid('lava')} here burns you!`);
+            if (usurvive) {
+                losehp(dmg, lava_killer, KILLED_BY); /* lava damage */
+                if (await finish_hero_losehp()) return false;
+                return gotoBurnStuff();
+            }
+        } else {
+            await pline(`You fall into the ${waterbody_name(u.ux, u.uy)}!`);
+        }
+
+        const lifesaved = !!((u.uprops?.[LIFESAVED]?.extrinsic | 0));
+        const discover = !!((game.flags?.explore) || (game.flags?.discover));
+        const wizard = !!((game.flags?.debug) || (game.flags?.wizard));
+        usurvive = lifesaved || discover;
+        if (wizard) usurvive = true;
+
+        /* Block Boots_off→spoteffects→lava_effects recursion deletes. */
+        if (!game.iflags) game.iflags = {};
+        game.iflags.in_lava_effects = (game.iflags.in_lava_effects | 0) + 1;
+
+        for (const obj of [...(game.invent || [])]) {
+            const obj2 = obj.nobj;
+            void obj2;
+            if ((obj.o_id | 0) === (protect_oid | 0) && (protect_oid | 0) !== 0) {
+                obj.in_use = 1; /* was cleared when setting protect_oid */
+            } else if ((obj.otyp | 0) === SPE_BOOK) {
+                if (usurvive && !Blind()) {
+                    await pline(`${The(xname(obj))} glows a strange ${hcolor('dark red')}, but remains intact.`);
+                }
+            } else if (obj.in_use) {
+                if (obj.owornmask) {
+                    if (usurvive) {
+                        await pline(`${Yobjnam2(obj, 'burst')} into flame!`);
+                        ++burnmesgcount;
+                    }
+                    await remove_worn_item(obj, true);
+                }
+                useupall(obj);
+                ++burncount;
+            }
+        }
+        if (usurvive && burncount > burnmesgcount) {
+            const silent = burncount - burnmesgcount;
+            const head = burnmesgcount > 0
+                ? (silent === 1 ? 'Another' : 'Other')
+                : (burncount === 1 ? 'An' : 'Some');
+            await pline(`${head} item${silent === 1 ? '' : 's'} in your inventory ${silent === 1 ? 'has' : 'have'} been destroyed.`);
+        }
+
+        /* s/he died... */
+        let boil_away = (u.umonnum | 0) === PM_WATER_ELEMENTAL
+            || (u.umonnum | 0) === PM_STEAM_VORTEX
+            || (u.umonnum | 0) === PM_FOG_CLOUD;
+        void boil_away;
+        for (burncount = 0; burncount < 2; ++burncount) {
+            u.uhp = -1;
+            if (!game.killer) game.killer = { name: '', format: 0 };
+            game.killer.format = KILLED_BY;
+            game.killer.name = lava_killer;
+            const isBoil = (u.umonnum | 0) === PM_WATER_ELEMENTAL
+                || (u.umonnum | 0) === PM_STEAM_VORTEX
+                || (u.umonnum | 0) === PM_FOG_CLOUD;
+            await urgent_pline(`You ${isBoil ? 'boil away' : 'burn to a crisp'}...`);
+            await done(BURNING);
+            if (game.program_state?.gameover) return false;
+            if (await safe_teleds(TELEDS_ALLOW_DRAG | TELEDS_TELEPORT)) break;
+            await pline("You're still burning.");
+        }
+
+        game.iflags.in_lava_effects = (game.iflags.in_lava_effects | 0) - 1;
+
+        if (burncount === 2) {
+            if (!heroFireRes) {
+                if (!u.uprops) u.uprops = {};
+                const slot = u.uprops[FIRE_RES]
+                    || (u.uprops[FIRE_RES] = { intrinsic: 0, extrinsic: 0, blocked: 0 });
+                slot.intrinsic = ((slot.intrinsic | 0) & ~TIMEOUT) | 5;
+                set_itimeout_prop('HFire_resistance', 5);
+            }
+            /* C: if (!Wwalking) — re-read post-burn value. */
+            if (!liveWwalking()) {
+                if (!u.uprops) u.uprops = {};
+                const slot = u.uprops[WWALKING]
+                    || (u.uprops[WWALKING] = { intrinsic: 0, extrinsic: 0, blocked: 0 });
+                slot.intrinsic = ((slot.intrinsic | 0) & ~TIMEOUT) | 5;
+                set_itimeout_prop('HWwalking', 5);
+            }
+            return gotoBurnStuff();
+        }
+        await rescued_from_terrain(BURNING);
+
+        /* spoteffects() was no-op under in_lava_effects; land without pickup. */
+        await spoteffects(false);
+        return true;
+    /* C: else if (!Wwalking …) — re-read: Fire-case sink needs post-burn value. */
+    } else if (!liveWwalking() && (!(u.utrap | 0) || (u.utraptype | 0) !== TT_LAVA)) {
+        const boil_away = !heroFireRes;
+        /* C rn1 short-circuit: rn1(4,12) only when NOT boiling away. */
+        const base = rn1(4, 4);
+        const hi = boil_away ? 2 : rn1(4, 12);
+        set_utrap(base + ((hi | 0) << 8), TT_LAVA);
+        await pline(`You sink into the ${waterbody_name(u.ux, u.uy)}${!boil_away ? ', but it only burns slightly' : ' and are about to be immolated'}!`);
+        if (heroFireRes) monstseesu(M_SEEN_FIRE);
+        else monstunseesu(M_SEEN_FIRE);
+        if ((u.uhp | 0) > 1) {
+            losehp(!boil_away ? 1 : ((u.uhp | 0) / 2) | 0, lava_killer, KILLED_BY);
+            if (await finish_hero_losehp()) return false;
+        }
+    }
+
+ burn_stuff_tail: {
+        await destroy_items(game.youmonst || { _youmonst: true }, AD_FIRE, dmg);
+        if (game._losehp_needs_done || game.program_state?.gameover) {
+            const { finish_losehp_done } = await import('./end.js');
+            await finish_losehp_done();
+            if (game.program_state?.gameover) return false;
+        }
+        await ignite_items(game.invent);
+        return false;
+    }
 }
 
 /**

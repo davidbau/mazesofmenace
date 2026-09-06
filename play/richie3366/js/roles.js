@@ -45,6 +45,9 @@ import { game } from './gstate.js';
 import {
     A_NONE, A_CHAOTIC, A_NEUTRAL, A_LAWFUL, A_INT, A_WIS,
     MH_HUMAN, MH_ELF, MH_DWARF, MH_GNOME, MH_ORC,
+    ROLE_NONE, ROLE_RANDOM, ROLE_GENDERS, ROLE_ALIGNS,
+    ROLE_MALE, ROLE_FEMALE, ROLE_NEUTER,
+    ROLE_LAWFUL, ROLE_NEUTRAL, ROLE_CHAOTIC,
 } from './const.js';
 
 function pm(name) {
@@ -831,4 +834,155 @@ export function align_gtitle(urole, a) {
 
 export function u_gname(urole, ualignType) {
     return align_gname(urole, ualignType ?? A_NEUTRAL);
+}
+
+// C ref: role.c roles[].filecode — 3-letter quest-proto codes ("Arc".."Wiz"),
+// index-aligned with roles[] above (C struct field; attached here so the table
+// diff stays one line per role). u_init.js keeps its own ROLE_FILECODE copy
+// for quest fixup; consolidating it onto roles[].filecode is deferred.
+const ROLE_FILECODES = [
+    'Arc', 'Bar', 'Cav', 'Hea', 'Kni', 'Mon', 'Pri',
+    'Rog', 'Ran', 'Sam', 'Tou', 'Val', 'Wiz',
+];
+for (let i = 0; i < roles.length && i < ROLE_FILECODES.length; i++) {
+    roles[i].filecode = ROLE_FILECODES[i];
+}
+
+// C ref: role.c randomstr `:710` — static "random"; every str2* below accepts
+// "*" / "@" (length 1) or any case-insensitive prefix of this word.
+const randomstr = 'random';
+
+/**
+ * C ref: role.c str2role `:746–775` — prefix match (Strlen(str) bytes,
+ * case-insensitive) on the male name, then the female name, then an exact
+ * case-insensitive filecode match; "*", "@" or a prefix of "random" yields
+ * ROLE_RANDOM; null/empty yields ROLE_NONE. Roles are checked before the
+ * random fallback, so "r" finds Rogue. No strncmpi helper is imported: the
+ * three local clones (insight/vault/write) return boolean, not C int, so the
+ * comparison is written out to preserve the C 0-on-match order.
+ */
+export function str2role(str) {
+    if (typeof str !== 'string' || str.length === 0) return ROLE_NONE;
+    const len = str.length;
+    const low = str.toLowerCase();
+    for (let i = 0; i < roles.length; i++) {
+        // Does it match the male name?
+        if (low === roles[i].name.m.slice(0, len).toLowerCase()) return i;
+        // Or the female name?
+        if (roles[i].name.f && low === roles[i].name.f.slice(0, len).toLowerCase())
+            return i;
+        // Or the filecode?
+        if (low === (roles[i].filecode || '').toLowerCase()) return i;
+    }
+    if ((len === 1 && (str === '*' || str === '@'))
+        || low === randomstr.slice(0, len).toLowerCase())
+        return ROLE_RANDOM;
+    // Couldn't find anything appropriate
+    return ROLE_NONE;
+}
+
+/**
+ * C ref: role.c str2race `:812–841` — same envelope over races[i].noun, then
+ * races[i].adj ("elven"/"dwarven"/"gnomish"/"orcish"), then the filecode.
+ */
+export function str2race(str) {
+    if (typeof str !== 'string' || str.length === 0) return ROLE_NONE;
+    const len = str.length;
+    const low = str.toLowerCase();
+    for (let i = 0; i < races.length; i++) {
+        // Does it match the noun?
+        if (low === races[i].noun.slice(0, len).toLowerCase()) return i;
+        // check adjective too
+        if (races[i].adj && low === races[i].adj.slice(0, len).toLowerCase())
+            return i;
+        // Or the filecode?
+        if (low === (races[i].filecode || '').toLowerCase()) return i;
+    }
+    if ((len === 1 && (str === '*' || str === '@'))
+        || low === randomstr.slice(0, len).toLowerCase())
+        return ROLE_RANDOM;
+    // Couldn't find anything appropriate
+    return ROLE_NONE;
+}
+
+/**
+ * C ref: role.c str2gend `:879–904` — loops i < ROLE_GENDERS (2), so only
+ * male/female are reachable; neuter/group (genders[2..3]) never match here.
+ */
+export function str2gend(str) {
+    if (typeof str !== 'string' || str.length === 0) return ROLE_NONE;
+    const len = str.length;
+    const low = str.toLowerCase();
+    for (let i = 0; i < ROLE_GENDERS; i++) {
+        // Does it match the adjective?
+        if (low === genders[i].adj.slice(0, len).toLowerCase()) return i;
+        // Or the filecode?
+        if (low === (genders[i].filecode || '').toLowerCase()) return i;
+    }
+    if ((len === 1 && (str === '*' || str === '@'))
+        || low === randomstr.slice(0, len).toLowerCase())
+        return ROLE_RANDOM;
+    // Couldn't find anything appropriate
+    return ROLE_NONE;
+}
+
+/**
+ * C ref: role.c str2align `:942–967` — loops i < ROLE_ALIGNS (3): lawful,
+ * neutral, chaotic. Only the adjective and filecode participate (C never
+ * matches aligns[i].name "law"/"balance"/"chaos" here).
+ */
+export function str2align(str) {
+    if (typeof str !== 'string' || str.length === 0) return ROLE_NONE;
+    const len = str.length;
+    const low = str.toLowerCase();
+    for (let i = 0; i < ROLE_ALIGNS; i++) {
+        // Does it match the adjective?
+        if (low === aligns[i].adj.slice(0, len).toLowerCase()) return i;
+        // Or the filecode?
+        if (low === (aligns[i].filecode || '').toLowerCase()) return i;
+    }
+    if ((len === 1 && (str === '*' || str === '@'))
+        || low === randomstr.slice(0, len).toLowerCase())
+        return ROLE_RANDOM;
+    // Couldn't find anything appropriate
+    return ROLE_NONE;
+}
+
+/**
+ * C ref: role.c validrole `:712–716` — IndexOkT(rolenum, roles): a live index
+ * into roles[] (the C table's terminator is excluded; roles.length already is).
+ */
+export function validrole(rolenum) {
+    return Number.isInteger(rolenum) && rolenum >= 0 && rolenum < roles.length;
+}
+
+/**
+ * C ref: role.c role_gendercount `:1398–1412` (staticfn; exported for the
+ * Shall-I-pick prompt builder) — counts ROLE_MALE/FEMALE/NEUTER allow bits.
+ */
+export function role_gendercount(rolenum) {
+    let gendcount = 0;
+    if (validrole(rolenum)) {
+        if (roles[rolenum].allow & ROLE_MALE) ++gendcount;
+        if (roles[rolenum].allow & ROLE_FEMALE) ++gendcount;
+        if (roles[rolenum].allow & ROLE_NEUTER) ++gendcount;
+    }
+    return gendcount;
+}
+
+/**
+ * C ref: role.c race_alignmentcount `:1414–1428` (staticfn; exported for the
+ * prompt builder) — counts ROLE_CHAOTIC/LAWFUL/NEUTRAL allow bits. The C body
+ * guards only NONE/RANDOM; the index-range guard is a JS memory-safety
+ * adaptation (C would read out of bounds; JS has no out-of-bounds struct).
+ */
+export function race_alignmentcount(racenum) {
+    let aligncount = 0;
+    if (racenum !== ROLE_NONE && racenum !== ROLE_RANDOM
+        && Number.isInteger(racenum) && racenum >= 0 && racenum < races.length) {
+        if (races[racenum].allow & ROLE_CHAOTIC) ++aligncount;
+        if (races[racenum].allow & ROLE_LAWFUL) ++aligncount;
+        if (races[racenum].allow & ROLE_NEUTRAL) ++aligncount;
+    }
+    return aligncount;
 }

@@ -5,8 +5,12 @@
 
 import { game } from './gstate.js';
 import { makemon, set_malign, pick_nasty } from './makemon.js';
-import { mons, is_covetous } from './monsters.js';
+import {
+    mons, is_covetous, M3_WANTSAMUL, M3_WANTSBELL, M3_WANTSBOOK,
+    M3_WANTSCAND,
+} from './monsters.js';
 import { monsterNames } from './generated/monsters_data.js';
+import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
 import { objectNames } from './objects.js';
 import { add_to_minv, mksobj } from './mkobj.js';
 import {
@@ -16,7 +20,7 @@ import {
 } from './const.js';
 import { pline, verbalize, Norep, newsym } from './display.js';
 import { Monnam } from './do_name.js';
-import { rn2, rnd } from './rng.js';
+import { rn1, rn2, rnd } from './rng.js';
 import { noteleport_level, enexto } from './teleport.js';
 import { mnexto } from './mon.js';
 import { inhishop } from './shk.js';
@@ -24,6 +28,10 @@ import { msummon, monster_census, Inhell } from './minion.js';
 import { builds_up } from './hacklib.js';
 import { stairway_find_type_dir } from './mklev.js';
 
+const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
+const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
+const CANDELABRUM_OF_INVOCATION = objectNames.indexOf('CANDELABRUM_OF_INVOCATION');
+const SPE_BOOK_OF_THE_DEAD = objectNames.indexOf('SPE_BOOK_OF_THE_DEAD');
 const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
 const PM_ARCH_LICH = monsterNames.indexOf('PM_ARCH_LICH');
 const PM_ARCHON = monsterNames.indexOf('PM_ARCHON');
@@ -192,6 +200,89 @@ export function clonewiz() {
             mtmp2.mappearance = wizapp[rn2(wizapp.length)];
         }
         newsym(mtmp2.mx, mtmp2.my);
+    }
+}
+
+/**
+ * C ref: wizard.c which_arti `:141–157` — covetous mask to invocation
+ * object type. Default 0 signifies the quest artifact (M3_WANTSARTI and
+ * any combined mask fall here, as in C's switch).
+ */
+export function which_arti(mask) {
+    switch (mask | 0) {
+    case M3_WANTSAMUL:
+        return AMULET_OF_YENDOR;
+    case M3_WANTSBELL:
+        return BELL_OF_OPENING;
+    case M3_WANTSCAND:
+        return CANDELABRUM_OF_INVOCATION;
+    case M3_WANTSBOOK:
+        return SPE_BOOK_OF_THE_DEAD;
+    default:
+        break; /* 0 signifies quest artifact */
+    }
+    return 0;
+}
+
+/**
+ * C ref: wizard.c mon_has_arti `:164–177` — minvent holds otyp, or (otyp
+ * 0) any quest artifact. obj.h any_quest_artifact: oartifact at or above
+ * ART_ORB_OF_DETECTION.
+ */
+export function mon_has_arti(mtmp, otyp) {
+    for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
+        if (otyp) {
+            if ((otmp.otyp | 0) === (otyp | 0)) return 1;
+        } else if ((otmp.oartifact | 0) >= ART_ORB_OF_DETECTION) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/**
+ * C ref: wizard.c other_mon_has_arti `:183–195` — first other monster
+ * holding otyp (or any quest artifact when otyp is 0), else null.
+ * C walks fmon with no DEADMONSTER check (the dead carry nothing);
+ * game.fmon is the JS array side of that list.
+ */
+export function other_mon_has_arti(mtmp, otyp) {
+    for (const mtmp2 of game.fmon || []) {
+        /* no need for !DEADMONSTER check here since they have no inventory */
+        if (mtmp2 !== mtmp && mon_has_arti(mtmp2, otyp)) return mtmp2;
+    }
+    return null;
+}
+
+/**
+ * C ref: wizard.c on_ground `:201–213` — first floor object of otyp,
+ * or (otyp 0) of any quest artifact, else null. game.fobj is the JS
+ * head of the floor chain.
+ */
+export function on_ground(otyp) {
+    for (let otmp = game.fobj; otmp; otmp = otmp.nobj) {
+        if (otyp) {
+            if ((otmp.otyp | 0) === (otyp | 0)) return otmp;
+        } else if ((otmp.oartifact | 0) >= ART_ORB_OF_DETECTION) {
+            return otmp;
+        }
+    }
+    return null;
+}
+
+/**
+ * C ref: wizard.c wizdeadorgone `:813–822` — Wizard gone (killed or left
+ * alive): drop the census count and, until demigod, set udemigod with a
+ * rn1(250, 50) doom clock. Caller: mon.c mongone/mondead.
+ */
+export function wizdeadorgone() {
+    if (!game.context) game.context = {};
+    game.context.no_of_wizards = (game.context.no_of_wizards | 0) - 1;
+    const u = game.u || {};
+    if (!u.uevent) u.uevent = {};
+    if (!u.uevent.udemigod) {
+        u.uevent.udemigod = 1;
+        u.udg_cnt = rn1(250, 50);
     }
 }
 

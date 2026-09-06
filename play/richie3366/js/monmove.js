@@ -659,7 +659,7 @@ export function accessible(x, y) {
  * C ref: monmove.c can_ooze — amorphous && !stuff_prevents_passage.
  * stuff_prevents_passage body deferred → treat as empty invent (ok).
  */
-function can_ooze(mtmp) {
+export function can_ooze(mtmp) {
     return !!((mtmp?.data?.mflags1 ?? 0) & M1_AMORPHOUS);
 }
 

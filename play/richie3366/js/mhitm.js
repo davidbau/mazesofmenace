@@ -9,10 +9,10 @@ import {
     mtrapped_in_pit, LEVEL_SPECIFIC_NOCORPSE,
 } from './mon.js';
 import { game } from './gstate.js';
-import { pline, pline_mon, newsym, canspotmon, canseemon, map_invisible, unmap_object, memory_glyph_is_invisible, You_feel, flush_screen, verbalize, sensemon, shieldeff } from './display.js';
+import { pline, pline_mon, newsym, canspotmon, canseemon, map_invisible, unmap_object, memory_glyph_is_invisible, You_feel, flush_screen, verbalize, sensemon, shieldeff, mon_visible } from './display.js';
 import { cansee } from './vision.js';
 import { dist2 } from './hacklib.js';
-import { resist_conflict, set_mon_data, on_fire } from './mondata.js';
+import { resist_conflict, set_mon_data, on_fire, mhis, mhe, little_to_big } from './mondata.js';
 import { MON_WEP, mon_wield_item, hitval, dmgval, possibly_unwield } from './weapon.js';
 import { arti_reflects, artifact_hit, permapoisoned, is_art } from './artifact.js';
 import { find_mac, which_armor, bypass_obj } from './worn.js';
@@ -24,6 +24,7 @@ import {
     M_ATTK_HIT,
     M_ATTK_DEF_DIED,
     M_ATTK_AGR_DIED,
+    M_ATTK_AGR_DONE,
     CORPSTAT_INIT,
     CORPSTAT_FEMALE,
     CORPSTAT_MALE,
@@ -63,6 +64,7 @@ import {
     SUPPRESS_INVISIBLE,
     TELL,
     RLOC_MSG,
+    RLOC_NOMSG,
     XKILL_GIVEMSG,
     XKILL_NOCORPSE,
     nothing_happens,
@@ -92,28 +94,37 @@ import {
     bigmonst, is_golem, is_mplayer, is_rider, monsterNames, mons, NUMMONS,
     is_animal, M1_SEE_INVIS, is_vampshifter, MZ_TINY, MZ_SMALL, MZ_HUGE, amorphous,
     is_flyer, is_floater, slithy, nolimbs, MR_STONE, MALE, FEMALE, NEUTRAL, can_teleport,
-    touch_petrifies, poly_when_stoned, resists_ston, humanoid,
+    touch_petrifies, poly_when_stoned, resists_ston, humanoid, is_elf, is_orc,
     thick_skinned,
     unsolid, is_whirly, passes_walls, haseyes, flaming, slimeproof,
     is_male, is_female, is_shapeshifter, has_head, mon_hates_silver,
     noncorporeal, MR_POISON,
 } from './monsters.js';
 import { objectNames } from './objects.js';
-import { ART_TROLLSBANE, ART_STORMBRINGER, ART_VORPAL_BLADE } from './generated/artifacts_data.js';
+import { ART_TROLLSBANE, ART_STORMBRINGER, ART_VORPAL_BLADE, ART_SNICKERSNEE } from './generated/artifacts_data.js';
 import {
     relobj_on_death, mkcorpstat, stackobj, mksobj_at, obj_nexto,
     obj_meld, pudding_merge_message, place_object, add_to_container,
     weight, mksobj, set_corpsenm, obj_stop_timers, mkgold, clear_dknown,
+    obj_extract_self, add_to_minv,
 } from './mkobj.js';
-import { Monnam, mon_nam, mon_nam_too, Adjmonnam, oname, pmname, x_monnam, hliquid, y_monnam, s_suffix, free_mgivenname } from './do_name.js';
+import { findgold } from './steal.js';
+import { munslime } from './muse.js';
+import { Monnam, mon_nam, mon_nam_too, Adjmonnam, oname, pmname, x_monnam, hliquid, YMonnam, s_suffix, free_mgivenname, a_monnam } from './do_name.js';
 import { an, xname, makeplural, cxname, vtense, The, simpleonames } from './objnam.js';
 import { mon_explodes } from './explode.js';
-import { newcham, pm_to_cham, is_home_elemental } from './makemon.js';
+import { newcham, pm_to_cham, is_home_elemental, clone_mon } from './makemon.js';
 import { polyself } from './polyself.js';
 import { you_were, you_unwere } from './were.js';
 import { rloc, tele_restrict, tele, goodpos } from './teleport.js';
 import { m_unleash } from './apply.js';
+import { update_inventory } from './invent.js';
 import { bury_an_obj } from './dig.js';
+import { is_pole } from './wield.js';
+import { mswings_verb, Conflict } from './mhitu.js';
+import { mon_offmap } from './monmove.js';
+import { mintrap } from './trap.js';
+import { breamm, spitmm } from './mthrowu.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
 const GAUNTLETS_OF_POWER = objectNames.indexOf('GAUNTLETS_OF_POWER');
@@ -125,6 +136,8 @@ const IRON_CHAIN = objectNames.indexOf('IRON_CHAIN');
 const MIRROR = objectNames.indexOf('MIRROR');
 const CLOVE_OF_GARLIC = objectNames.indexOf('CLOVE_OF_GARLIC');
 const SILVER = 14; /* objclass.h SILVER */
+const IRON = 11; /* objclass.h:24 IRON (Fe, incl. steel) */
+const METAL = 12; /* objclass.h:25 METAL (Sn, &c.) */
 const GLOB_OF_BLACK_PUDDING = objectNames.indexOf('GLOB_OF_BLACK_PUDDING');
 const PM_GRAY_OOZE = monsterNames.indexOf('PM_GRAY_OOZE');
 const PM_BROWN_PUDDING = monsterNames.indexOf('PM_BROWN_PUDDING');
@@ -244,6 +257,10 @@ const AD_DREN = 16; /* drains magic energy — monattk.h */
 const AD_DISE = 33; /* confers diseases — monattk.h */
 const AD_PEST = 38; /* Pestilence only — monattk.h */
 const AD_FAMN = 39; /* Famine only — monattk.h */
+const AD_SGLD = 20; /* steals gold (leprechaun) — monattk.h */
+const AD_TLPT = 23; /* teleports victim (quantum mechanic) — monattk.h */
+const AD_WERE = 29; /* confers lycanthropy — monattk.h */
+const AD_SLIM = 40; /* turns victim into green slime — monattk.h */
 const MR_FIRE = 0x01;
 const MR_COLD = 0x02;
 const MR_SLEEP = 0x04;
@@ -656,7 +673,8 @@ export {
     AT_WEAP, AT_MAGC, AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_ACID,
     AD_BLND, AD_DRDX, AD_DRCO, AD_DRIN, AD_SITM, AD_SEDU, AD_SSEX, AD_POLY,
     AD_STON, AD_CONF, AD_STUN, AD_WRAP, AD_SLEE,
-    could_seduce,
+    AD_SGLD, AD_TLPT, AD_WERE, AD_SLIM,
+    could_seduce, failed_grab,
 };
 
 function deadmonster(m) {
@@ -1007,6 +1025,127 @@ export async function mhitm_ad_slee(magr, mattk, mdef, mhm) {
         mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
         await slept_slee_mm(mdef);
     }
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_sgld `:2790–2857` — mhitm (mon→mon) arm.
+ * Zeroes leftover dice; cancelled attacker keeps dice and returns.
+ * Gold moves via findgold/obj_extract_self/add_to_minv; defender drops
+ * WAITFORU; vis&&canseemon pline, then !tele_restrict teleports the
+ * attacker away (hitflags AGR_DONE) with a disappears pline when seen.
+ * Named omissions: uhitm you-as-agr (hero inventory merge_choice/inv_cnt/
+ * addinv/dropy + exercise envelope); mhitu you-as-def (hitmsg + stealgold).
+ */
+export async function mhitm_ad_sgld(magr, mattk, mdef, mhm) {
+    void mattk;
+    if (is_youmonst(magr)) return;
+    if (is_youmonst(mdef)) return;
+    mhm.damage = 0;
+    if (magr.mcan) return;
+    {
+        const gold = findgold(mdef.minvent);
+        if (!gold) return;
+        obj_extract_self(gold);
+        add_to_minv(magr, gold);
+    }
+    mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
+    const buf = Monnam(magr);
+    if (_mm_vis && canseemon(mdef)) {
+        await pline(`${buf} steals some gold from ${mon_nam(mdef)}.`);
+    }
+    if (!(await tele_restrict(magr))) {
+        const couldspot = !!canspotmon(magr);
+        mhm.hitflags = M_ATTK_AGR_DONE;
+        await rloc(magr, RLOC_NOMSG);
+        if (_mm_vis && couldspot && !canspotmon(magr)) {
+            await pline(`${buf} suddenly disappears!`);
+        }
+    }
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_tlpt `:2859–2955` — mhitm (mon→mon) arm.
+ * Short-circuit first (mcan || damage>=mhp || tele_restrict: no message,
+ * no RNG), then mhitm_mgc_atk_negated(TRUE) with a vis-gated
+ * "not affected" pline_mon, else rloc the defender (WAITFORU cleared,
+ * name saved first) with a disappears pline when seen, then clamp
+ * leftover damage below mhp (bumping 1-HP defenders to 2 first,
+ * as in mhitu hitmu).
+ * Named omissions: uhitm you-as-agr (u_teleport_mon + disappears pline);
+ * mhitu you-as-def (hitmsg + tele() + half-physical-damage fatal clamp).
+ */
+export async function mhitm_ad_tlpt(magr, mattk, mdef, mhm) {
+    void mattk;
+    if (is_youmonst(magr)) return;
+    if (is_youmonst(mdef)) return;
+    if (magr.mcan || (mhm.damage | 0) >= (mdef.mhp | 0)
+        || (await tele_restrict(mdef))) {
+        return;
+    }
+    if (await mhitm_mgc_atk_negated(magr, mdef, true)) {
+        if (_mm_vis) {
+            await pline_mon(mdef, `${Monnam(mdef)} is not affected.`);
+        }
+        return;
+    }
+    const wasseen = !!canspotmon(mdef);
+    let saved = null;
+    if (_mm_vis && wasseen) saved = Monnam(mdef);
+    mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
+    await rloc(mdef, RLOC_NOMSG);
+    if (_mm_vis && wasseen && !canspotmon(mdef)
+        && mdef !== game.u?.usteed) {
+        await pline(`${saved} suddenly disappears!`);
+    }
+    if ((mhm.damage | 0) >= (mdef.mhp | 0)) {
+        if ((mdef.mhp | 0) === 1) mdef.mhp = 2;
+        mhm.damage = (mdef.mhp | 0) - 1;
+    }
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_slim `:3526–3599` — mhitm (mon→mon) arm.
+ * Negation (FALSE: physical damage only) burns before the rn2(4) gate,
+ * in C order. Slimeproof defenders skip. Else munslime(FALSE) cure
+ * attempt, then newcham to green slime (NC_SHOW_MSG when vis&&canseemon),
+ * WAITFORU cleared, hitflags HIT; attacker/defender deaths OR into
+ * hitflags; leftover dice zeroed.
+ * Named omissions: uhitm you-as-agr (You() turn-to-slime + newcham);
+ * mhitu you-as-def (hitmsg + flaming/Unchanging/Slimed/make_slimed envelope).
+ */
+export async function mhitm_ad_slim(magr, mattk, mdef, mhm) {
+    void mattk;
+    if (is_youmonst(magr)) return;
+    if (is_youmonst(mdef)) return;
+    const negated = await mhitm_mgc_atk_negated(magr, mdef, false);
+    let pd = mdef?.data;
+    if (negated) return;
+    if (!rn2(4) && !slimeproof(pd)) {
+        if (!(await munslime(mdef, false)) && !deadmonster(mdef)) {
+            let ncflags = NO_NC_FLAGS;
+            if (_mm_vis && canseemon(mdef)) ncflags |= NC_SHOW_MSG;
+            if (await newcham(mdef, mons[PM_GREEN_SLIME], ncflags)) {
+                pd = mdef?.data;
+            }
+            mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
+            mhm.hitflags = M_ATTK_HIT;
+        }
+        if (deadmonster(magr)) mhm.hitflags |= M_ATTK_AGR_DIED;
+        if (deadmonster(mdef)) mhm.hitflags |= M_ATTK_DEF_DIED;
+        mhm.damage = 0;
+    }
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_were `:4265–4293` — mhitm (mon→mon) arm.
+ * Delegates to mhitm_ad_phys; done propagates via mhm (caller checks).
+ * uhitm you-as-agr shares this shape. Named omission: mhitu you-as-def
+ * (hitmsg + rn2(4) lycanthropy: Protection_from_shape_changers /
+ * defends(AD_WERE) / mgc-negated / set_ulycn / retouch_equipment).
+ */
+export async function mhitm_ad_were(magr, mattk, mdef, mhm) {
+    if (is_youmonst(mdef)) return;
+    await mhitm_ad_phys(magr, mattk, mdef, mhm);
 }
 
 /**
@@ -2385,88 +2524,112 @@ export async function monkilled(mdef, fltxt, how) {
     else await mondied(mdef);
 }
 
-// C ref: makemon.c grow_up() — HP gain from kill; null victim = wraith/potion.
-// Killer bee + !victim → queen (D-1246; not in little_to_big). Named omit:
-// little_to_big form change; mplayer/golem/home-elemental caps; mleashed
-// update_inventory.
+// C ref: makemon.c grow_up() `:2049–2178` — monster earned experience: HP gain
+// from a kill (victim), or a level gain from a gain-level potion / wraith
+// corpse (no victim). Killer bee + !victim → queen (D-1246; not in
+// little_to_big). Branch order, RNG order (rnd then rn2), lev_limit caps and
+// the sanity tail all follow C.
 export async function grow_up(mtmp, victim) {
+    let ptr = mtmp.data;
+    // Monster died after killing enemy but before calling this function
+    // (currently possible if killing a gas spore)
     if (deadmonster(mtmp)) return null;
-    const oldtype = mtmp.data?.mndx ?? mtmp.mnum ?? NON_PM;
+
+    const oldtype = ptr?.mndx ?? mtmp.mnum ?? NON_PM;
     const newtype = (oldtype === PM_KILLER_BEE && !victim)
         ? PM_QUEEN_BEE
-        : oldtype;
+        : little_to_big(oldtype);
 
-    if (!victim) {
-        const gain = rnd(8);
-        mtmp.mhpmax += gain;
-        mtmp.mhp += gain;
-        let lev = (mtmp.m_lev | 0) + 1;
-        if (lev > 50) lev = 50;
-        mtmp.m_lev = lev;
-    } else {
-        let hp_threshold = (mtmp.m_lev || 0) * 8;
+    let max_increase, cur_increase, lev_limit, hp_threshold;
+    if (victim) {
+        // Killed a monster. The HP threshold is the maximum HP for the
+        // current level; once exceeded, a level will be gained.
+        hp_threshold = (mtmp.m_lev | 0) * 8; // normal limit
         if (!mtmp.m_lev) hp_threshold = 4;
-        let max_increase = rnd((victim.m_lev || 0) + 1);
+        else if (is_golem(ptr)) hp_threshold = Math.trunc(mtmp.mhpmax / 10) * 10 + 10 - 1; // strange creatures
+        else if (is_home_elemental(ptr)) hp_threshold *= 3;
+        lev_limit = Math.trunc((3 * (ptr?.mlevel | 0)) / 2); // same as adj_lev()
+        // If they can grow up, be sure the level is high enough for that
+        if (oldtype !== newtype && (mons(newtype)?.mlevel | 0) > lev_limit) {
+            lev_limit = mons(newtype).mlevel | 0;
+        }
+        // Number of HP to gain; unlike for the player, the limit sits at the
+        // bottom of the next level rather than the top
+        max_increase = rnd((victim.m_lev | 0) + 1);
         if (mtmp.mhpmax + max_increase > hp_threshold + 1) {
             max_increase = Math.max((hp_threshold + 1) - mtmp.mhpmax, 0);
         }
-        const cur_increase = max_increase > 1 ? rn2(max_increase) : 0;
-        mtmp.mhpmax += max_increase;
-        mtmp.mhp += cur_increase;
-        if (mtmp.mhpmax <= hp_threshold) return mtmp.data;
-        mtmp.m_lev = (mtmp.m_lev || 0) + 1;
+        cur_increase = max_increase > 1 ? rn2(max_increase) : 0;
+    } else {
+        // A gain level potion or wraith corpse; always go up a level unless
+        // already at maximum (49 is hard upper limit except for demon lords,
+        // who start at 50 and can't go any higher)
+        max_increase = rnd(8);
+        cur_increase = max_increase;
+        hp_threshold = 0; // smaller than `mhpmax + max_increase'
+        lev_limit = 50; // recalc below
     }
 
-    // C: ++m_lev >= mons[newtype].mlevel && newtype != oldtype
-    if (newtype !== oldtype
-        && (mtmp.m_lev | 0) >= (mons(newtype)?.mlevel | 0)) {
-        const ptr = mons(newtype);
+    mtmp.mhpmax += max_increase;
+    mtmp.mhp += cur_increase;
+    if (mtmp.mhpmax <= hp_threshold) return ptr; // doesn't gain a level
+
+    if (is_mplayer(ptr)) lev_limit = 30; // same as player
+    else if (lev_limit < 5) lev_limit = 5; // arbitrary
+    else if (lev_limit > 49) lev_limit = ((ptr?.mlevel | 0) > 49 ? 50 : 49);
+
+    // C `(int) ++mtmp->m_lev >= mons[newtype].mlevel && newtype != oldtype`:
+    // the increment always happens; the form change is conditional.
+    mtmp.m_lev = (mtmp.m_lev | 0) + 1;
+    if (mtmp.m_lev >= (mons(newtype)?.mlevel | 0) && newtype !== oldtype) {
+        ptr = mons(newtype);
+        // New form might force gender change
         const fem = is_male(ptr) ? 0 : is_female(ptr) ? 1 : (mtmp.female ? 1 : 0);
-        if (((game.mvitals?.[newtype]?.mvflags ?? 0) & G_GENOD) !== 0) {
+
+        if (((game.mvitals?.[newtype]?.mvflags ?? 0) & G_GENOD) !== 0) { // allow G_EXTINCT
             if (canspotmon(mtmp)) {
-                const who = mon_nam(mtmp);
-                const into = an(pmname(ptr, mtmp.female ? FEMALE : MALE));
-                const dies = nonliving(ptr) ? 'expires' : 'dies';
+                // C monst.h Mgender: female ? FEMALE : MALE; C you.h mhe.
                 await pline(
-                    `As ${who} grows up into ${into}, ${mhe_grow(mtmp)} ${dies}!`,
+                    `As ${mon_nam(mtmp)} grows up into ${an(pmname(ptr, mtmp.female ? FEMALE : MALE))}, ${mhe(mtmp)} ${nonliving(ptr) ? 'expires' : 'dies'}!`,
                 );
             }
-            set_mon_data(mtmp, ptr);
+            set_mon_data(mtmp, ptr); // keep game.mvitals accurate
             await mondied(mtmp);
             return null;
-        }
-        if (canspotmon(mtmp)) {
+        } else if (canspotmon(mtmp)) {
+            // 3.6.1: temporary (?) hack to fix growing into opposite gender.
             const genderAdj = (mtmp.female && !fem) ? 'male '
+                // (male gnome becoming a gnome lady can't happen with 3.6.0
+                // mons[], but prepared for it all the same)
                 : (fem && !mtmp.female) ? 'female ' : '';
             const buf = `${genderAdj}${pmname(ptr, fem ? FEMALE : MALE)}`;
-            const verb = (fem !== (mtmp.female ? 1 : 0))
-                ? 'changes into'
-                : humanoid(ptr) ? 'becomes' : 'grows up into';
-            await pline_mon(mtmp, `${YMonnam_grow(mtmp)} ${verb} ${an(buf)}.`);
+            await pline_mon(
+                mtmp,
+                `${YMonnam(mtmp)} ${(fem !== (mtmp.female ? 1 : 0)) ? 'changes into' : humanoid(ptr) ? 'becomes' : 'grows up into'} ${an(buf)}.`,
+            );
         }
         set_mon_data(mtmp, ptr);
         if ((mtmp.cham | 0) === oldtype && is_shapeshifter(ptr)) {
-            mtmp.cham = newtype;
+            mtmp.cham = newtype; // vampire growing into vampire lord
         }
-        newsym(mtmp.mx, mtmp.my);
-        mtmp.female = fem;
-        // mleashed update_inventory named
-        if ((mtmp.mhpmax | 0) > 50 * 8) mtmp.mhpmax = 50 * 8;
-        if ((mtmp.mhp | 0) > (mtmp.mhpmax | 0)) mtmp.mhp = mtmp.mhpmax;
+        newsym(mtmp.mx, mtmp.my); // color may change
+        lev_limit = mtmp.m_lev | 0; // never undo increment
+
+        mtmp.female = fem; // gender might be changing
+        // If 'mtmp' is leashed, persistent inventory window needs updating
+        if (mtmp.mleashed) update_inventory(); // x - leash (attached to a <mon>)
     }
-    return deadmonster(mtmp) ? null : mtmp.data;
-}
 
-/** C do_name.c YMonnam — highc(y_monnam). */
-function YMonnam_grow(mtmp) {
-    const s = y_monnam(mtmp) || '';
-    if (!s) return s;
-    return s.charAt(0).toUpperCase() + s.slice(1);
-}
+    // Sanity checks
+    if ((mtmp.m_lev | 0) > lev_limit) {
+        mtmp.m_lev = (mtmp.m_lev | 0) - 1; // undo increment
+        // HP might have been allowed to grow when it shouldn't
+        if (mtmp.mhpmax === hp_threshold + 1) mtmp.mhpmax -= 1;
+    }
+    if (mtmp.mhpmax > 50 * 8) mtmp.mhpmax = 50 * 8; // absolute limit
+    if (mtmp.mhp > mtmp.mhpmax) mtmp.mhp = mtmp.mhpmax;
 
-/** C you.h mhe — genders[pronoun_gender].he; Hallu named. */
-function mhe_grow(mtmp) {
-    return ['he', 'she', 'it'][gender(mtmp)] || 'it';
+    return ptr;
 }
 
 // C ref: mhitm.c pre_mm_attack — reveal + map_invisible when gv.vis
@@ -2916,6 +3079,123 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             done: false,
         };
         await mhitm_ad_slee(magr, mattk, mdef, mhm);
+        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        if (mhm.done) return mhm.hitflags;
+        damage = mhm.damage | 0;
+        hitflags = mhm.hitflags | 0;
+        if (!damage) return hitflags;
+        mdef.mhp -= damage;
+        if (mdef.mhp < 1) {
+            mdef.mhp = 0;
+            await mdamagem_monkilled(magr, mdef, mattk, mwep);
+            if ((mdef.mhp | 0) > 0) return hitflags; /* lifesaved */
+            if (hitflags === M_ATTK_AGR_DIED) {
+                return M_ATTK_DEF_DIED | M_ATTK_AGR_DIED;
+            }
+            const grew = await grow_up(magr, mdef);
+            return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
+        }
+        return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
+    }
+
+    // C: mhitm_adtyping → mhitm_ad_sgld for AD_SGLD (uhitm.c:2790–2857
+    // mhitm arm). Leftover dice zeroed; gold stolen then attacker
+    // teleports away (AGR_DONE). uhitm/mhitu arms named in the callee.
+    if ((mattk.adtyp | 0) === AD_SGLD) {
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+        };
+        await mhitm_ad_sgld(magr, mattk, mdef, mhm);
+        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        if (mhm.done) return mhm.hitflags;
+        damage = mhm.damage | 0;
+        hitflags = mhm.hitflags | 0;
+        if (!damage) return hitflags;
+        mdef.mhp -= damage;
+        if (mdef.mhp < 1) {
+            mdef.mhp = 0;
+            await mdamagem_monkilled(magr, mdef, mattk, mwep);
+            if ((mdef.mhp | 0) > 0) return hitflags; /* lifesaved */
+            if (hitflags === M_ATTK_AGR_DIED) {
+                return M_ATTK_DEF_DIED | M_ATTK_AGR_DIED;
+            }
+            const grew = await grow_up(magr, mdef);
+            return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
+        }
+        return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
+    }
+
+    // C: mhitm_adtyping → mhitm_ad_tlpt for AD_TLPT (uhitm.c:2859–2955
+    // mhitm arm). Defender rloc'd; leftover clamped below mhp.
+    // uhitm/mhitu arms named in the callee.
+    if ((mattk.adtyp | 0) === AD_TLPT) {
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+        };
+        await mhitm_ad_tlpt(magr, mattk, mdef, mhm);
+        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        if (mhm.done) return mhm.hitflags;
+        damage = mhm.damage | 0;
+        hitflags = mhm.hitflags | 0;
+        if (!damage) return hitflags;
+        mdef.mhp -= damage;
+        if (mdef.mhp < 1) {
+            mdef.mhp = 0;
+            await mdamagem_monkilled(magr, mdef, mattk, mwep);
+            if ((mdef.mhp | 0) > 0) return hitflags; /* lifesaved */
+            if (hitflags === M_ATTK_AGR_DIED) {
+                return M_ATTK_DEF_DIED | M_ATTK_AGR_DIED;
+            }
+            const grew = await grow_up(magr, mdef);
+            return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
+        }
+        return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
+    }
+
+    // C: mhitm_adtyping → mhitm_ad_were for AD_WERE (uhitm.c:4265–4293
+    // mhitm arm). Delegates to mhitm_ad_phys; done propagates via mhm.
+    // mhitu lycanthropy arm named in the callee.
+    if ((mattk.adtyp | 0) === AD_WERE) {
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+            dieroll: dieroll | 0,
+        };
+        await mhitm_ad_were(magr, mattk, mdef, mhm);
+        mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
+        if (mhm.done) return mhm.hitflags;
+        damage = mhm.damage | 0;
+        hitflags = mhm.hitflags | 0;
+        if (!damage) return hitflags;
+        mdef.mhp -= damage;
+        if (mdef.mhp < 1) {
+            mdef.mhp = 0;
+            await mdamagem_monkilled(magr, mdef, mattk, mwep);
+            if ((mdef.mhp | 0) > 0) return hitflags; /* lifesaved */
+            if (hitflags === M_ATTK_AGR_DIED) {
+                return M_ATTK_DEF_DIED | M_ATTK_AGR_DIED;
+            }
+            const grew = await grow_up(magr, mdef);
+            return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
+        }
+        return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
+    }
+
+    // C: mhitm_adtyping → mhitm_ad_slim for AD_SLIM (uhitm.c:3526–3599
+    // mhitm arm). Negation then rn2(4) gate; sliming zeroes leftover.
+    // uhitm/mhitu arms named in the callee.
+    if ((mattk.adtyp | 0) === AD_SLIM) {
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+        };
+        await mhitm_ad_slim(magr, mattk, mdef, mhm);
         mhitm_knockback(magr, mdef, mattk, mhm.hitflags, !!mwep);
         if (mhm.done) return mhm.hitflags;
         damage = mhm.damage | 0;
@@ -3457,18 +3737,61 @@ export async function explmm(magr, mdef, mattk) {
 }
 
 /**
+ * C ref: mhitm.c mswingsm `:1282–1297` (staticfn) — verbose weapon-swing
+ * pline for mon-vs-mon. `flags.verbose && !Blind && mon_visible(magr)`;
+ * polearm bash (Snickersnee excluded) at dist2<=2; "one of" for quan>1.
+ * Async: pline may await --More--.
+ */
+async function mswingsm(magr, mdef, otemp) {
+    if (game.flags?.verbose === false || Blind_slee() || !mon_visible(magr)) {
+        return;
+    }
+    const bash = !!(is_pole(otemp) && !is_art(otemp, ART_SNICKERSNEE)
+        && dist2(magr.mx, magr.my, mdef.mx, mdef.my) <= 2);
+    await pline(
+        `${Monnam(magr)} ${mswings_verb(otemp, bash)} `
+        + `${((otemp.quan | 0) > 1) ? 'one of ' : ''}${mhis(magr)}${xname(otemp)} `
+        + `at ${mon_nam(mdef)}.`,
+    );
+}
+
+/**
  * C ref: mhitm.c mattackm()
  * Returns M_ATTK_* bitmask. Async: combat pline may await --More--.
  */
 export async function mattackm(magr, mdef) {
     if (!magr || !mdef) return M_ATTK_MISS;
     if (helpless(magr)) return M_ATTK_MISS;
+    const pa = magr.data;
+    const pd = mdef.data;
+
+    // C ref: mhitm.c mattackm `:316–317` — grid bugs cannot attack at an angle.
+    if ((pa?.mndx | 0) === PM_GRID_BUG && magr.mx !== mdef.mx
+        && magr.my !== mdef.my) {
+        return M_ATTK_MISS;
+    }
 
     let tmp = find_mac(mdef) + (magr.m_lev || 0);
     if (mdef.mconf || helpless(mdef)) {
         tmp += 4;
         mdef.msleeping = 0;
     }
+
+    // C ref: mhitm.c mattackm `:327–352` — an attacked mundetected monster
+    // becomes un-hidden (newsym) and is noticed when seen but not sensed.
+    // Named omits: Unaware "dream of %s" arm (Unaware state absent in js/);
+    // HIDE_UNDER / last_hider arms (`iflags.last_msg`, `gl.last_hider`
+    // absent in js/) — the generic notice arm below covers the message.
+    if (mdef.mundetected) {
+        mdef.mundetected = 0;
+        newsym(mdef.mx, mdef.my);
+        if (canseemon(mdef) && !sensemon(mdef)) {
+            await pline(`Suddenly, you notice ${a_monnam(mdef)}.`);
+        }
+    }
+
+    // C ref: mhitm.c mattackm `:354–355` — elves hate orcs.
+    if (is_elf(pa) && is_orc(pd)) tmp++;
 
     // C: gv.vis — see attacker or defender (canspotmon)
     _mm_vis = ((cansee(magr.mx, magr.my) && canspotmon(magr))
@@ -3516,8 +3839,12 @@ export async function mattackm(magr, mdef) {
                     }
                 }
                 await possibly_unwield(magr, false);
-                // mswingsm deferred
                 mwep = MON_WEP(magr);
+                // C ref: mhitm.c mattackm `:413–414` — swing pline when seen.
+                // Named omit: ranged thrwmm arm (mthrowu `monshoot` is a
+                // local clone there, not an export; distant AT_WEAP stays
+                // a miss until it is exported).
+                if (mwep && _mm_vis) await mswingsm(magr, mdef, mwep);
                 if (mwep) tmp += hitval(mwep, mdef);
                 // FALLTHROUGH to melee hit roll
             }
@@ -3535,11 +3862,49 @@ export async function mattackm(magr, mdef) {
                     continue;
                 }
                 if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1) continue;
+                // C ref: mhitm.c mattackm `:434–439` — wielders skip the
+                // physical swing at a petrifier (Cockatrice) rather than
+                // risk it; players get no such instinct. `break` leaves
+                // strike 0 with attk set, so passivemm still runs below.
+                if (!magr.mconf && !Conflict() && mwep
+                    && (mattk.aatyp | 0) !== AT_WEAP
+                    && touch_petrifies(mdef.data)) {
+                    strike = 0;
+                    break;
+                }
                 const dieroll = rnd(20 + i);
                 strike = tmp > dieroll ? 1 : 0;
+                // C: KMH — don't accumulate to-hit bonuses.
                 if (mwep) tmp -= hitval(mwep, mdef);
                 if (strike) {
+                    // C ref: mhitm.c mattackm `:447–453` — an eel AT_TUCH
+                    // can't grab an unsolid target (cheap pre-check before
+                    // failed_grab does the full test).
+                    if (unsolid(mdef.data)
+                        && await failed_grab(magr, mdef, mattk)) {
+                        strike = 0;
+                        break;
+                    }
                     res[i] = await hitmm(magr, mdef, mattk, mwep, dieroll);
+                    // C ref: mhitm.c mattackm `:455–472` — an iron/metal
+                    // weapon splitting a live non-cancelled pudding divides
+                    // it (clone_mon + mintrap for the clone).
+                    if (((mdef.data?.mndx ?? mdef.mnum) === PM_BLACK_PUDDING
+                        || (mdef.data?.mndx ?? mdef.mnum) === PM_BROWN_PUDDING)
+                        && mwep && (((game.objects?.[mwep.otyp]?.oc_material | 0) === IRON)
+                            || ((game.objects?.[mwep.otyp]?.oc_material | 0) === METAL))
+                        && (mdef.mhp | 0) > 1 && !mdef.mcan) {
+                        const mclone = await clone_mon(mdef, 0, 0);
+                        if (mclone) {
+                            if (_mm_vis && canspotmon(mdef)) {
+                                await pline(
+                                    `${Monnam(mdef)} divides as ${mon_nam(magr)} hits it!`,
+                                );
+                            }
+                            await mintrap(mclone, NO_TRAP_FLAGS);
+                            if (deadmonster(magr)) res[i] |= M_ATTK_AGR_DIED;
+                        }
+                    }
                 } else {
                     await missmm(magr, mdef, mattk);
                 }
@@ -3613,9 +3978,27 @@ export async function mattackm(magr, mdef) {
                 }
                 break;
             }
-            // AT_SPIT/AT_BREA: spitmm/breamm live in mthrowu; mon-mon spit
-            // deferred to avoid mhitm↔mthrowu import cycle (hero spitmu wired
-            // in mhitu). Same point-blank skip as C when near.
+            case AT_BREA:
+            case AT_SPIT: {
+                // C ref: mhitm.c mattackm `:538–559` — ranged breath/spit is
+                // barred at point-blank range (monnear: pets and dragon
+                // tactics assume it). Not adjacent, so no distmin>1 skip:
+                // breamm/spitmm (mthrowu.js, same-SCC hoisted imports) pick
+                // the target; a non-MISS return counts as a pretended hit.
+                if (!monnear(magr, mdef.mx, mdef.my)) {
+                    const mmtmp = ((mattk.aatyp | 0) === AT_BREA)
+                        ? await breamm(magr, mattk, mdef)
+                        : await spitmm(magr, mattk, mdef);
+                    strike = (mmtmp === M_ATTK_MISS) ? 0 : 1;
+                    if (strike) res[i] |= M_ATTK_HIT;
+                    if (deadmonster(mdef)) res[i] = M_ATTK_DEF_DIED;
+                    if (deadmonster(magr)) res[i] |= M_ATTK_AGR_DIED;
+                } else {
+                    strike = 0;
+                    attk = 0;
+                }
+                break;
+            }
             default:
                 strike = 0;
                 attk = 0;
@@ -3630,6 +4013,11 @@ export async function mattackm(magr, mdef) {
 
         if (res[i] & M_ATTK_DEF_DIED) return res[i];
         if (res[i] & M_ATTK_AGR_DIED) return res[i];
+        // C ref: mhitm.c mattackm `:581–586` — stop when the aggressor is
+        // done (passivemm AGR_DONE), helpless, or the defender left the map
+        // (e.g. knocked into a level-teleport trap).
+        if ((res[i] & M_ATTK_AGR_DONE) || helpless(magr)) return res[i];
+        if (mon_offmap(mdef)) return res[i];
         if (res[i] & M_ATTK_HIT) struck = 1;
     }
 

@@ -21,7 +21,7 @@ import {
     has_mgivenname, ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR, SUPPRESS_SADDLE,
     SUPPRESS_NAME, SUPPRESS_IT, SUPPRESS_INVISIBLE, EXACT_NAME,
     HAND, LEG, A_LAWFUL, Is_airlevel, Is_waterlevel, PARANOID_HIT, LOW_PM,
-    W_ARM, W_ARMC, W_ARMH, W_ARMU, W_ARMG, W_RINGL, W_RINGR, W_AMUL,
+    W_ARM, W_ARMC, W_ARMH, W_ARMU, W_ARMG, W_RINGL, W_RINGR, W_ARMF, W_AMUL,
     MON_EXPLODE, NO_MM_FLAGS, DISP_ALWAYS, DISP_END, STOMACH, DIED, NO_KILLER_PREFIX,
     KILLED_BY_AN, PASSES_WALLS, SLOW_DIGESTION, MALE, FEMALE, MMOVE_DIED,
 } from './const.js';
@@ -46,7 +46,7 @@ import {
 import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI, PM_ARCHEOLOGIST, PM_WIZARD, PM_HUMAN } from './generated/monsters_data.js';
 import {
     find_mac, get_mattk, make_corpse, monstone, mhitm_knockback, monkilled,
-    troll_baned, mhitm_ad_poly, mhitm_ad_slee, could_seduce, shade_miss,
+    troll_baned, mhitm_ad_poly, mhitm_ad_slee, could_seduce, failed_grab, shade_miss,
     AT_NONE, AT_WEAP, AT_KICK, AT_CLAW, AT_SPIT, AT_HUGS,
     AT_TUCH, AT_BITE, AT_BUTT, AT_STNG, AT_MAGC, AT_TENT,
     AT_EXPL, AT_ENGL, AT_BREA, AT_GAZE, AD_PHYS, AD_POLY, AD_DRIN, AD_SLEE,
@@ -2218,6 +2218,12 @@ export async function gulpum(mdef, mattk) {
  * mhitu AD_DRIN D-1329. mhitm AD_DRIN D-1330. mhitu AD_WRAP D-1331.
  * uhitm AD_WRAP m_slips_free D-1348. mhitm wrap brush D-1406.
  * Named: remaining mhitm_ad_*.
+ * D-1916: weaponless silver/shade/verb envelope (`:5597–5668` odd_claw /
+ * multi_claw ring alternation, per-aatyp verb, shade `attack` override,
+ * failed_grab, silver_sears, specialdmg into damageum) + WEAP odd_claw
+ * toggle + per-arm dhit discipline + knockback break + strange-attack
+ * impossible. failed_grab is the canonical mhitm.js export (C one
+ * function); failed_grab_you stays for the hugs/ENGL callers.
  */
 export async function hmonas(mon) {
     const u = game.u || {};
@@ -2226,15 +2232,22 @@ export async function hmonas(mon) {
     let weapon = null;
     let weapon_used = false;
     let altwep = false;
+    let odd_claw = true;
     let multi_weap = 0;
+    let multi_claw_n = 0;
     let dhit = 0;
     const attk_count = { v: 0 };
     const role_roll_penalty = { v: 0 };
 
     for (let i = 0; i < NATTK; i++) {
-        const pre = get_mattk(ym, i, mon);
+        const pre = get_mattk(ym, i, mon, sum);
         if (pre.aatyp === AT_WEAP) multi_weap++;
+        if (pre.aatyp === AT_WEAP
+            || pre.aatyp === AT_CLAW || pre.aatyp === AT_TUCH) {
+            multi_claw_n++;
+        }
     }
+    const multi_claw = multi_claw_n > 1;
     gt_twohits = 0;
 
     // C uhitm.c hmonas `:5451` — [see mattackm]
@@ -2245,7 +2258,7 @@ export async function hmonas(mon) {
             const bp = game.bhitpos || {};
             if (m_at(bp.x, bp.y) !== mon || (mon.mhp | 0) < 1) continue;
         }
-        const mattk = get_mattk(ym, i, mon);
+        const mattk = get_mattk(ym, i, mon, sum);
         // C `:5464` — skip remaining tentacle-DRIN after skipdrin
         if (game.skipdrin && (mattk.aatyp | 0) === AT_TENT
             && (mattk.adtyp | 0) === AD_DRIN) {
@@ -2262,6 +2275,8 @@ export async function hmonas(mon) {
                 && (mlet === 'S_KOBOLD' || mlet === 'S_ORC' || mlet === 'S_GNOME'));
 
         if (use_wep) {
+            // C `use_weapon:` — toggle before the bimanual gate
+            odd_claw = !odd_claw;
             if (weapon_used && (sum[i - 1] > M_ATTK_MISS)
                 && u.uwep && bimanual(u.uwep)) {
                 continue;
@@ -2276,21 +2291,22 @@ export async function hmonas(mon) {
                 role_roll_penalty);
             mon_maybe_unparalyze(mon);
             const dieroll = rnd(20);
-            const wep_dhit = (tmp > dieroll || !!u.uswallow) ? 1 : 0;
+            // C sets the shared dhit (not a per-arm local)
+            dhit = (tmp > dieroll || !!u.uswallow) ? 1 : 0;
             if (multi_weap > 1) gt_twohits++;
-            const survived = await known_hitum(mon, weapon, { v: wep_dhit }, tmp,
+            const survived = await known_hitum(mon, weapon, { v: dhit }, tmp,
                 role_roll_penalty.v, mattk, dieroll);
             // C: weapon = *originalweapon after known_hitum (destroyed → null)
             weapon = u[origSlot] || null;
             if (!survived) {
                 sum[i] = M_ATTK_DEF_DIED;
             } else {
-                sum[i] = wep_dhit ? M_ATTK_HIT : M_ATTK_MISS;
+                sum[i] = dhit ? M_ATTK_HIT : M_ATTK_MISS;
                 // C: worm cut in half → i=NATTK; goto passivedone
                 if (m_at((u.ux | 0) + (u.dx | 0), (u.uy | 0) + (u.dy | 0))
                     !== mon) {
                     skip_passive = true;
-                } else if (wep_dhit && mattk.adtyp !== AD_SPEL
+                } else if (dhit && mattk.adtyp !== AD_SPEL
                     && mattk.adtyp !== AD_PHYS) {
                     sum[i] = await damageum(mon, mattk, 0);
                 }
@@ -2306,40 +2322,84 @@ export async function hmonas(mon) {
                 role_roll_penalty);
             mon_maybe_unparalyze(mon);
             const dieroll = rnd(20);
-            const dhit = (tmp > dieroll || !!u.uswallow) ? 1 : 0;
+            // C sets the shared dhit here too (EXPL's -1 must not leak)
+            dhit = (tmp > dieroll || !!u.uswallow) ? 1 : 0;
             if (dhit) {
-                if (!u.uswallow) {
-                    const compat = could_seduce(ym, mon, mattk);
-                    if (compat) {
-                        const see = mon.mcansee && haseyes(mon.data);
-                        await pline(
-                            `You ${see ? 'smile at' : 'talk to'} ${mon_nam(mon)} ${compat === 2 ? 'engagingly' : 'seductively'}.`,
-                        );
-                        sum[i] = await damageum(mon, mattk, 0);
-                    } else if ((mon.mnum ?? mon.data?.mndx) === PM_SHADE) {
-                        await wakeup(mon, true);
-                        await pline(
-                            `Your hit passes harmlessly through ${mon_nam(mon)}.`,
-                        );
-                        sum[i] = M_ATTK_MISS;
-                    } else {
-                        await wakeup(mon, true);
-                        if (aatyp === AT_TENT) {
-                            await pline(`Your tentacles suck ${mon_nam(mon)}.`);
-                        } else {
-                            let verb = 'hit';
-                            if (aatyp === AT_TUCH) verb = 'touch';
-                            else if (aatyp === AT_KICK) verb = 'kick';
-                            else if (aatyp === AT_BITE) verb = 'bite';
-                            else if (aatyp === AT_STNG) verb = 'sting';
-                            else if (aatyp === AT_BUTT) verb = 'head butt';
-                            await pline(`You ${verb} ${mon_nam(mon)}.`);
-                        }
-                        sum[i] = await damageum(mon, mattk, 0);
-                    }
+                // C `:5582–5594` — seduce wastes the hit (no wakeup)
+                const compat = !u.uswallow ? could_seduce(ym, mon, mattk) : 0;
+                if (compat) {
+                    const see = mon.mcansee && haseyes(mon.data);
+                    await pline(
+                        `You ${see ? 'smile at' : 'talk to'} ${mon_nam(mon)} ${compat === 2 ? 'engagingly' : 'seductively'}.`,
+                    );
+                    sum[i] = await damageum(mon, mattk, 0);
                 } else {
                     await wakeup(mon, true);
-                    sum[i] = await damageum(mon, mattk, 0);
+                    // C `:5597–5643` — per-aatyp verb + silver/blessed bonus
+                    let verb;
+                    let specialdmg = 0;
+                    const silverhit = { v: 0 };
+                    switch (aatyp) {
+                    case AT_CLAW:
+                    case AT_TUCH:
+                        verb = (aatyp === AT_TUCH) ? 'touch' : 'claws';
+                        odd_claw = !odd_claw;
+                        specialdmg = special_dmgval(game.youmonst, mon,
+                            W_ARMG
+                            | ((odd_claw || !multi_claw) ? W_RINGL : 0)
+                            | ((!odd_claw || !multi_claw) ? W_RINGR : 0),
+                            silverhit);
+                        break;
+                    case AT_TENT:
+                        verb = 'tentacles';
+                        break;
+                    case AT_KICK:
+                        verb = 'kick';
+                        specialdmg = special_dmgval(game.youmonst, mon,
+                            W_ARMF, silverhit);
+                        break;
+                    case AT_BUTT:
+                        verb = 'head butt';
+                        specialdmg = special_dmgval(game.youmonst, mon,
+                            W_ARMH, silverhit);
+                        break;
+                    case AT_BITE:
+                        verb = 'bite';
+                        break;
+                    case AT_STNG:
+                        verb = 'sting';
+                        break;
+                    default:
+                        verb = 'hit';
+                        break;
+                    }
+                    if ((mon.mnum ?? mon.data?.mndx) === PM_SHADE
+                        && !specialdmg) {
+                        // C `:5645–5650` — harmless pass-through
+                        if (verb === 'hit'
+                            || (aatyp === AT_CLAW && humanoid(mon.data))) {
+                            verb = 'attack';
+                        }
+                        await pline(
+                            `Your ${verb} ${vtense(verb, 'pass')} harmlessly through ${mon_nam(mon)}.`,
+                        );
+                    } else {
+                        // C `:5651–5668` — unsolid grab miss, then hit
+                        if (await failed_grab(game.youmonst, mon, mattk)) {
+                            // miss; message already given; passive still runs
+                        } else if (aatyp === AT_TENT) {
+                            await pline(`Your tentacles suck ${mon_nam(mon)}.`);
+                            sum[i] = await damageum(mon, mattk, specialdmg);
+                        } else {
+                            if (aatyp === AT_CLAW) verb = 'hit';
+                            await pline(`You ${verb} ${mon_nam(mon)}.`);
+                            if (silverhit.v && game.flags?.verbose !== false) {
+                                await silver_sears(game.youmonst, mon,
+                                    silverhit.v);
+                            }
+                            sum[i] = await damageum(mon, mattk, specialdmg);
+                        }
+                    }
                 }
             } else {
                 await missum(mon, mattk, (tmp + role_roll_penalty.v > dieroll));
@@ -2382,9 +2442,12 @@ export async function hmonas(mon) {
             || aatyp === AT_MAGC) {
             continue;
         } else if (aatyp === AT_BREA || aatyp === AT_SPIT || aatyp === AT_GAZE) {
+            // C `:5812–5816` — handled via #monster; dhit=0 then passive
+            dhit = 0;
             sum[i] = M_ATTK_MISS;
         } else {
-            continue;
+            // C `:5818` — strange attack; impossible, then passive runs
+            await impossible('strange attack of yours (%d)', aatyp);
         }
 
         if (!skip_passive) {
@@ -2395,7 +2458,7 @@ export async function hmonas(mon) {
             const died = sum[i] === M_ATTK_DEF_DIED || (mon.mhp | 0) < 1;
             await passive(mon, weapon, sum[i] !== M_ATTK_MISS, !died, aatyp,
                 false);
-            mhitm_knockback(ym, mon, mattk, sum[i], weapon_used);
+            if (mhitm_knockback(ym, mon, mattk, sum[i], weapon_used)) break;
         }
         // C passivedone: cursed uswapwep drops instead of welding; then
         // DEADMONSTER (deferred until after the drop).

@@ -1,27 +1,41 @@
 // attrib.js — hero attributes, advancement, exercise, and adjustment.
 // C ref: src/attrib.c the innate-ability tables, role_abil(), postadjabil(),
-// adjabil(), newhp(), setuhpmax(), init_attr(), vary_init_attr(), exercise(),
-// exerper(), adjattrib(), exerchk(), poisontell(), poisoned(), and
-// adjuhploss().
+// adjabil(), newhp(), setuhpmax(), rnd_attr(), init_attr_role_redist(),
+// init_attr(), redist_attr(), vary_init_attr(), exercise(), exerper(), adjattrib(),
+// exerchk(), gainstr(), losestr(), poison_strdmg(), poisontell(), poisoned(),
+// stone_luck(), set_moreluck(), restore_attrib(), adjuhploss(),
+// check_innate_abil(), innately(), is_innate(), from_what(), acurr(),
+// and uchangealign().
 
 import {
+    A_CG_CONVERT,
+    A_CG_HELM_ON,
+    A_CG_HELM_OFF,
     A_CHA,
     A_CON,
+    A_CURRENT,
     A_DEX,
     A_INT,
+    A_NEUTRAL,
     A_STR,
     A_WIS,
+    BLINDED,
+    BLND_RES,
     CLAIRVOYANT,
     COLD_RES,
     CONFUSION,
+    DEAF,
     DIED,
+    DRAIN_RES,
     EXT_ENCUMBER,
+    FACE,
     FAINTED,
     FAINTING,
     FAST,
     FIRE_RES,
     FIXED_ABIL,
     FROMEXPER,
+    FROMFORM,
     FROMOUTSIDE,
     FROM_RACE,
     FUMBLING,
@@ -31,8 +45,11 @@ import {
     HVY_ENCUMBER,
     INFRAVISION,
     INTRINSIC,
+    INVIS,
+    JUMPING,
     KILLED_BY,
     KILLED_BY_AN,
+    LUCKADD,
     MAXULEV,
     MOD_ENCUMBER,
     NOT_HUNGRY,
@@ -47,28 +64,42 @@ import {
     SICK,
     SLEEP_RES,
     STEALTH,
+    STR18,
     STR19,
+    STRANGLED,
     STUNNED,
     TELEPORT_CONTROL,
+    TIMEOUT,
     Upolyd,
     VOMITING,
+    W_ARMC,
+    W_ARMF,
+    W_ARMH,
     WARNING,
     WEAK,
     WOUNDED_LEGS,
+    Is_astralevel,
     ismnum,
+    something,
 } from './const.js';
-import { SPFX_LUCK } from './artifacts.js';
-// js/display.js imports effective_attribute() from this file; both sides use
-// the other's exports only inside function bodies, so the cycle resolves.
+import {
+    ART_EYES_OF_THE_OVERWORLD,
+    ART_OGRESMASHER,
+    SPFX_LUCK,
+} from './artifacts.js';
+// js/display.js imports acurr() from this file; both sides use the other's
+// exports only inside function bodies, so the cycle resolves.
 import { see_monsters } from './display.js';
 import { game } from './gstate.js';
 import { strstri } from './hacklib.js';
+// js/invent.js does not import from this file, so no cycle.
+import { carrying } from './invent.js';
 // js/mon.js imports adjalign() from this file; both sides use the other's
 // exports only inside function bodies, so the cycle resolves.
 import { adj_erinys } from './mon.js';
-// js/mondata.js imports effective_attribute() from this file; both sides use
-// the other's exports only inside function bodies, so the cycle resolves.
-import { name_to_mon, type_is_pname } from './mondata.js';
+// js/mondata.js imports acurr() from this file; both sides use the other's
+// exports only inside function bodies, so the cycle resolves.
+import { haseyes, name_to_mon, type_is_pname } from './mondata.js';
 import {
     G_UNIQ,
     PM_AMOROUS_DEMON,
@@ -76,8 +107,11 @@ import {
     PM_BARBARIAN,
     PM_CAVE_DWELLER,
     PM_CLERIC,
+    PM_DWARF,
     PM_ELF,
+    PM_GNOME,
     PM_HEALER,
+    PM_HUMAN,
     PM_KNIGHT,
     PM_MONK,
     PM_ORC,
@@ -89,10 +123,22 @@ import {
     PM_WIZARD,
     S_NYMPH,
 } from './monsters.js';
-import { DUNCE_CAP, LUCKSTONE } from './objects.js';
-import { the } from './objnam.js';
+import { objectType } from './obj.js';
+import {
+    DUNCE_CAP, GAUNTLETS_OF_POWER, HELM_OF_OPPOSITE_ALIGNMENT, LUCKSTONE,
+} from './objects.js';
+import { the, ysimple_name } from './objnam.js';
+// js/polyself.js imports exercise() from this file; both sides use the
+// other's exports only inside function bodies, so the cycle resolves.
+import { body_part } from './polyself.js';
+// js/potion.js imports adjattrib, exercise, poisontell from this file;
+// both sides use the other's exports only inside function bodies, so the
+// cycle resolves.
+import { make_confused } from './potion.js';
 import { d, rn1, rn2, rnd } from './rng.js';
 import { aligns } from './roles.js';
+import { ttyPline } from './tty_message.js';
+import { note_unported } from './unported.js';
 import { add_weapon_skill } from './weapon.js';
 
 const EXERCISE_LIMIT = 50;
@@ -209,20 +255,25 @@ const wiz_abil = Object.freeze([
     innate(17, TELEPORT_CONTROL, 'controlled', 'uncontrolled'),
 ]);
 
-// The race tables adjabil()'s own switch selects. C also defines dwa_abil[],
-// gno_abil[] and the empty hum_abil[], but that switch folds PM_DWARF,
-// PM_GNOME and PM_HUMAN into its `default: rabil = 0` arm, so a dwarf or gnome
-// never gains infravision through adjabil(). Only check_innate_abil(), which
-// answers where an already-held intrinsic came from and has no consumer here,
-// reads those three.
+// The race tables. adjabil()'s own switch selects only elf_abil and orc_abil
+// (PM_DWARF, PM_GNOME, PM_HUMAN fall through to its `default: rabil = 0` arm).
+// check_innate_abil() reads all five when answering where an already-held
+// intrinsic came from.
+const dwa_abil = Object.freeze([
+    innate(1, INFRAVISION, '', ''),
+]);
 const elf_abil = Object.freeze([
     innate(1, INFRAVISION, '', ''),
     innate(4, SLEEP_RES, 'awake', 'tired'),
+]);
+const gno_abil = Object.freeze([
+    innate(1, INFRAVISION, '', ''),
 ]);
 const orc_abil = Object.freeze([
     innate(1, INFRAVISION, '', ''),
     innate(1, POISON_RES, '', ''),
 ]);
+const hum_abil = Object.freeze([]);
 
 // C ref: attrib.c role_abil(). C walks a local roleabils[] array and returns
 // the null `abil` of its terminating entry for a monster number that is not a
@@ -255,6 +306,204 @@ function race_abil(raceMnum) {
     case PM_ORC: return orc_abil;
     default: return null;
     }
+}
+
+// C ref: attrib.c's local FROM_* #defines (856-862), return codes for
+// innately()/is_innate(). C names them FROM_NONE through FROM_LYCN; JS
+// prefixes with INNATE_ to avoid colliding with the bitmask constants
+// FROM_RACE (0x02000000) and FROM_FORM (0x10000000) that const.js exports.
+const INNATE_NONE = 0;
+const INNATE_ROLE = 1; // from experience at level 1
+const INNATE_RACE = 2;
+const INNATE_INTR = 3; // intrinsically (eating corpse or prayer reward)
+const INNATE_EXP  = 4; // from experience for level > 1
+const INNATE_FORM = 5;
+const INNATE_LYCN = 6;
+
+// C ref: attrib.c check_innate_abil() (818-863). Searches the innate-ability
+// tables for a specific property. For FROMEXPER it walks the role's table; for
+// FROM_RACE (C's FROMRACE) it walks the race's table. Returns the matching
+// entry when the hero's level is at or above the entry's threshold, or null.
+function check_innate_abil(ability, frommask, state = game) {
+    let abil = null;
+    if (frommask === FROMEXPER)
+        abil = role_abil(state.urole?.mnum);
+    else if (frommask === FROM_RACE) {
+        switch (state.urace?.mnum) {
+        case PM_DWARF: abil = dwa_abil; break;
+        case PM_ELF:   abil = elf_abil; break;
+        case PM_GNOME: abil = gno_abil; break;
+        case PM_ORC:   abil = orc_abil; break;
+        case PM_HUMAN: abil = hum_abil; break;
+        default: break;
+        }
+    }
+    if (!abil) return null;
+    for (let i = 0; i < abil.length; i++) {
+        if (abil[i].ability === ability && state.u.ulevel >= abil[i].ulevel)
+            return abil[i];
+    }
+    return null;
+}
+
+// C ref: attrib.c innately() (864-879). Determines how a particular ability was
+// obtained by checking role tables, race tables, and intrinsic flags.
+function innately(ability, intrinsicValue, state = game) {
+    let entry;
+    if ((entry = check_innate_abil(ability, FROMEXPER, state)) !== null)
+        return entry.ulevel === 1 ? INNATE_ROLE : INNATE_EXP;
+    if ((entry = check_innate_abil(ability, FROM_RACE, state)) !== null)
+        return INNATE_RACE;
+    if ((intrinsicValue & FROMOUTSIDE) !== 0)
+        return INNATE_INTR;
+    if ((intrinsicValue & FROMFORM) !== 0)
+        return INNATE_FORM;
+    return INNATE_NONE;
+}
+
+// C ref: attrib.c is_innate() (880-904). Returns an INNATE_* constant
+// indicating the innate source of a property, or INNATE_NONE.
+export function is_innate(propidx, state = game) {
+    const u = state.u;
+    // innately() would report INNATE_FORM for this; caller wants specificity
+    if (propidx === DRAIN_RES && ismnum(u.ulycn))
+        return INNATE_LYCN;
+    // C ref: youprop.h:377 Very_fast = ((HFast & ~INTRINSIC) || EFast)
+    const propFast = u.uprops?.[FAST] ?? {};
+    if (propidx === FAST
+        && ((propFast.intrinsic & ~INTRINSIC) || propFast.extrinsic))
+        return INNATE_NONE; // can't become very fast innately
+    const innateness = innately(
+        propidx, u.uprops?.[propidx]?.intrinsic ?? 0, state,
+    );
+    if (innateness !== INNATE_NONE)
+        return innateness;
+    if (propidx === JUMPING && state.urole?.mnum === PM_KNIGHT
+        // knight has intrinsic jumping, but extrinsic is more versatile so
+        // ignore innateness if equipment is going to claim responsibility
+        && !u.uprops?.[propidx]?.extrinsic)
+        return INNATE_ROLE;
+    if ((propidx === BLINDED && !haseyes(state.youmonst?.data))
+        || (propidx === BLND_RES
+            && ((u.uprops?.[BLND_RES]?.intrinsic ?? 0) & FROMFORM) !== 0))
+        return INNATE_FORM;
+    return INNATE_NONE;
+}
+
+// C ref: attrib.c from_what()'s trailing cleanup (969-975). C modifies its
+// static buffer in place; here we trim the returned string. Removes
+// " pair of " to reduce verbosity, and truncates " of strangulation" when the
+// property is STRANGLED.
+function from_what_trim(buf, propidx) {
+    let result = buf;
+    const pairIdx = strstri(result, ' pair of ');
+    if (pairIdx >= 0) {
+        result = result.slice(0, pairIdx + 1) + result.slice(pairIdx + 9);
+    } else if (propidx === STRANGLED) {
+        const strangIdx = strstri(result, ' of strangulation');
+        if (strangIdx >= 0) result = result.slice(0, strangIdx);
+    }
+    return result;
+}
+
+// C ref: attrib.c from_what() (905-1005). Returns a diagnostic string
+// describing the source of a property. Wizard-mode only; returns '' otherwise.
+export function from_what(propidx, state = game) {
+    if (!state.wizard) return '';
+
+    if (propidx >= 0) {
+        const u = state.u;
+        const innateness = is_innate(propidx, state);
+
+        if ((propidx === BLINDED && u.uroleplay?.blind)
+            || (propidx === DEAF && u.uroleplay?.deaf))
+            return ' from birth';
+        if (innateness === INNATE_ROLE || innateness === INNATE_RACE)
+            return ' innately';
+        if (innateness === INNATE_INTR)
+            return ' intrinsically';
+        if (innateness === INNATE_EXP)
+            return ' because of your experience';
+        if (innateness === INNATE_LYCN)
+            return ' due to your lycanthropy';
+        if (innateness === INNATE_FORM)
+            return ' from your creature form';
+
+        // C ref: youprop.h:377 Very_fast = ((HFast & ~INTRINSIC) || EFast)
+        const propFast = u.uprops?.[FAST] ?? {};
+        const HFast = propFast.intrinsic ?? 0;
+        const EFast = propFast.extrinsic ?? 0;
+        const Very_fast = (HFast & ~INTRINSIC) || EFast;
+        if (propidx === FAST && Very_fast) {
+            let source;
+            if ((HFast & TIMEOUT) !== 0)
+                source = 'a potion or spell';
+            else if ((EFast & W_ARMF) !== 0 && state.uarmf?.dknown
+                     && objectType(state.uarmf, state).oc_name_known)
+                source = ysimple_name(state.uarmf, state); // speed boots
+            else if (EFast)
+                source = 'worn equipment';
+            else
+                source = something;
+            return from_what_trim(` because of ${source}`, propidx);
+        }
+
+        // C ref: what_gives(&u.uprops[propidx].extrinsic) identifies the worn
+        // or carried object providing the property. Not yet ported.
+        if (state.wizard && (u.uprops?.[propidx]?.extrinsic ?? 0) !== 0) {
+            note_unported('artifact.c what_gives');
+            // Skip the branch that calls what_gives and bare_artifactname;
+            // the result would name the equipment source, but what_gives and
+            // bare_artifactname are not ported yet.
+        }
+
+        // C ref: youprop.h:96 Blindfolded = EBlinded (W_TOOL)
+        // Blindfolded_only = Blindfolded && !Blinded
+        // where Blinded = HBlinded && !BBlinded
+        const propBlind = u.uprops?.[BLINDED] ?? {};
+        const HBlinded = propBlind.intrinsic ?? 0;
+        const EBlinded = propBlind.extrinsic ?? 0;
+        const BBlinded = propBlind.blocked ?? 0;
+        const Blindfolded = EBlinded;
+        const Blinded = HBlinded && !BBlinded;
+        const Blindfolded_only = Blindfolded && !Blinded;
+        if (propidx === BLINDED && Blindfolded_only)
+            return from_what_trim(
+                ` because of ${ysimple_name(state.ublindf, state)}`, propidx,
+            );
+        const BlindedTimeout = HBlinded & TIMEOUT;
+        if (propidx === BLINDED && u.ucreamed
+            && BlindedTimeout === u.ucreamed
+            && !EBlinded && !(HBlinded & ~TIMEOUT))
+            return `due to goop covering your ${body_part(FACE, state.youmonst)}`;
+    } else {
+        // negative property index: blocking capabilities
+        const u = state.u;
+        switch (-propidx) {
+        case BLINDED: {
+            const propBlind = u.uprops?.[BLINDED] ?? {};
+            const BBlinded = propBlind.blocked ?? 0;
+            if (BBlinded && state.ublindf
+                && state.ublindf.oartifact === ART_EYES_OF_THE_OVERWORLD) {
+                // bare_artifactname for an artifact: lowercased artiname
+                note_unported('objnam.c bare_artifactname');
+                // The C would return ` because of ${bare_artifactname(ublindf)}`
+                // but bare_artifactname is not ported; fall through to empty.
+            }
+            break;
+        }
+        case INVIS:
+            if ((u.uprops?.[INVIS]?.blocked ?? 0) & W_ARMC)
+                return ` because of ${ysimple_name(state.uarmc, state)}`; // mummy wrapping
+            break;
+        case CLAIRVOYANT:
+            if (state.wizard
+                && ((u.uprops?.[CLAIRVOYANT]?.blocked ?? 0) & W_ARMH))
+                return ` because of ${ysimple_name(state.uarmh, state)}`; // cornuthaum
+            break;
+        }
+    }
+    return '';
 }
 
 // Thrown where attrib.c reaches an ability transition this port has not
@@ -421,7 +670,7 @@ export function newhp(state = game, random = { rnd }) {
         if (roleRandom > 0) hp += random.rnd(roleRandom);
         if (raceRandom > 0) hp += random.rnd(raceRandom);
 
-        const constitution = effective_attribute(state, A_CON);
+        const constitution = acurr(state, A_CON);
         if (constitution <= 3) hp -= 2;
         else if (constitution <= 6) hp -= 1;
         else if (constitution <= 14) hp += 0;
@@ -494,29 +743,49 @@ function attributeArray(value) {
     return Array.isArray(value) ? value : value?.a;
 }
 
-// C ref: attrib.c acurr(). The shared arithmetic here owns the
-// base/bonus/temporary sum, the source caps, and the A_CHA floor of 18 for a
-// nymph or amorous demon. Three of acurr()'s special cases are unported, and
-// each needs a different owner:
-//   A_STR, gauntlets of power forcing STR19(25)   -> worn items
-//   A_INT and A_WIS, dunce cap forcing 6          -> worn items
-//   A_CON, u_wield_art(ART_OGRESMASHER) forcing 25 -> wielded artifacts
-// The A_CON case is a wielded artifact rather than worn gear, so the worn-item
-// subsystem will not reach it. A hero wielding Ogresmasher gets the plain
-// 3..25 clamp here.
-export function effective_attribute(state = game, index) {
+// C ref: attrib.c acurr().  Returns the effective current value of the
+// attribute at chridx, accounting for base, bonus, temporary adjustments,
+// worn items (gauntlets of power, dunce cap), wielded artifacts
+// (Ogresmasher), and polymorphed form (nymph / amorous demon charisma).
+export function acurr(state = game, chridx) {
     const u = state.u;
-    const base = Math.trunc(u?.acurr?.a?.[index] ?? 0);
-    const bonus = Math.trunc(attributeArray(u?.abon)?.[index] ?? 0);
-    const temporary = Math.trunc(attributeArray(u?.atemp)?.[index] ?? 0);
-    const total = base + bonus + temporary;
-    if (index === A_STR) return Math.max(3, Math.min(total, 125));
-    if (index === A_CHA && total < 18
-        && (state.youmonst?.data?.mlet === S_NYMPH
-            || state.u?.umonnum === PM_AMOROUS_DEMON)) {
-        return 18;
+    const base = Math.trunc(u?.acurr?.a?.[chridx] ?? 0);
+    const bonus = Math.trunc(attributeArray(u?.abon)?.[chridx] ?? 0);
+    const temporary = Math.trunc(attributeArray(u?.atemp)?.[chridx] ?? 0);
+    const tmp = base + bonus + temporary;
+    let result = 0;
+
+    if (chridx === A_STR) {
+        // Strength: 3..125 encoded range.  Gauntlets of power force max.
+        if (tmp >= STR19(25)
+            || (state.uarmg && state.uarmg.otyp === GAUNTLETS_OF_POWER)) {
+            result = STR19(25); // 125
+        } else {
+            result = Math.max(tmp, 3);
+        }
+    } else if (chridx === A_CHA) {
+        if (tmp < 18
+            && (state.youmonst?.data?.mlet === S_NYMPH
+                || u?.umonnum === PM_AMOROUS_DEMON)) {
+            result = 18;
+        }
+    } else if (chridx === A_CON) {
+        // u_wield_art(ART_OGRESMASHER) => uwep && uwep->oartifact == art
+        if (state.uwep && state.uwep.oartifact === ART_OGRESMASHER) {
+            result = 25;
+        }
+    } else if (chridx === A_INT || chridx === A_WIS) {
+        if (state.uarmh && state.uarmh.otyp === DUNCE_CAP) {
+            result = 6;
+        }
     }
-    return Math.max(3, Math.min(total, 25));
+    // else chridx === A_DEX: no special cases
+
+    if (result === 0) {
+        // None of the special cases applied; clamp to 3..25.
+        result = tmp >= 25 ? 25 : tmp <= 3 ? 3 : tmp;
+    }
+    return result;
 }
 
 // C ref: attrib.c acurrstr(), the ACURRSTR macro's implementation. It folds
@@ -524,13 +793,13 @@ export function effective_attribute(state = game, index) {
 // Strength uses: 18/01..18/31 become 19, 18/32..18/81 become 20,
 // 18/82..18/100 and 19..21 become 21, and 22..25 come back from 122..125.
 export function acurrstr(state = game) {
-    const str = effective_attribute(state, A_STR);
+    const str = acurr(state, A_STR);
     if (str <= 18) return Math.max(str, 3);
     if (str <= 121) return 19 + Math.trunc(str / 50);
     return Math.min(str, 125) - 100;
 }
 
-function randomAttribute(role, random) {
+function rnd_attr(role, random) {
     let value = random.rn2(100);
     for (let i = 0; i < NUM_ATTRS; i++) {
         value -= Math.trunc(role.attrdist?.[i] ?? 0);
@@ -539,14 +808,14 @@ function randomAttribute(role, random) {
     return NUM_ATTRS;
 }
 
-function redistributeInitialAttributes(state, points, addition, random) {
+function init_attr_role_redist(state, points, addition, random) {
     const { role, race } = roleAndRace(state);
     const attrs = attributeArrays(state.u);
     let tries = 0;
     const adjustment = addition ? 1 : -1;
 
     while ((addition ? points > 0 : points < 0) && tries < 100) {
-        const index = randomAttribute(role, random);
+        const index = rnd_attr(role, random);
         const limit = addition
             ? Math.trunc(race.attrmax?.[index] ?? attrs.base[index])
             : Math.trunc(race.attrmin?.[index] ?? attrs.base[index]);
@@ -575,8 +844,44 @@ export function init_attr(points, state = game, random = { rn2 }) {
         attrs.temp[i] = attrs.time[i] = 0;
         remaining -= base;
     }
-    remaining = redistributeInitialAttributes(state, remaining, true, random);
-    return redistributeInitialAttributes(state, remaining, false, random);
+    remaining = init_attr_role_redist(state, remaining, true, random);
+    return init_attr_role_redist(state, remaining, false, random);
+}
+
+// C ref: attrib.c redist_attr() (740-763). Redistribute attribute points when
+// polymorphing into a new human form (newman). Adjusts every attribute except
+// A_INT and A_WIS by rn2(5)-2, clamps to racial bounds, and scales ABASE
+// proportionally. The caller is responsible for calling encumber_msg().
+//
+// Cycle avoidance: uasmon_maxStr() lives in polyself.js, which imports from
+// this file. To avoid a circular dependency it is injected through env.
+export function redist_attr(state = game, env = {}) {
+    const random = env.random ?? { rn2 };
+    const { race } = roleAndRace(state);
+    const attrs = attributeArrays(state.u);
+
+    for (let i = 0; i < NUM_ATTRS; i++) {
+        if (i === A_INT || i === A_WIS)
+            continue;
+        /* Polymorphing doesn't change your mind */
+        const tmp = attrs.max[i];
+        attrs.max[i] += (random.rn2(5) - 2);
+        // ATTRMAX: for A_STR when polymorphed, use the monster form's max
+        // strength; otherwise use the racial maximum.
+        const attrmax = (i === A_STR && Upolyd(state.u) && env.uasmon_maxStr)
+            ? env.uasmon_maxStr(state)
+            : Math.trunc(race.attrmax?.[i] ?? attrs.max[i]);
+        const attrmin = Math.trunc(race.attrmin?.[i] ?? attrs.base[i]);
+        if (attrs.max[i] > attrmax)
+            attrs.max[i] = attrmax;
+        if (attrs.max[i] < attrmin)
+            attrs.max[i] = attrmin;
+        attrs.base[i] = Math.trunc(attrs.base[i] * attrs.max[i] / tmp);
+        /* ABASE(i) > ATTRMAX(i) is impossible */
+        if (attrs.base[i] < attrmin)
+            attrs.base[i] = attrmin;
+    }
+    /* encumber_msg(); -- caller needs to do this */
 }
 
 function adjustInitialAttribute(state, index, increment, random) {
@@ -643,7 +948,7 @@ function exerciseAttribute(index, increase, state, random, encumberMessage) {
     let adjustment = 0;
     if (Math.abs(attrs.exercise[index]) < EXERCISE_LIMIT) {
         adjustment = increase
-            ? (random.rn2(19) > effective_attribute(state, index) ? 1 : 0)
+            ? (random.rn2(19) > acurr(state, index) ? 1 : 0)
             : -random.rn2(2);
         attrs.exercise[index] += adjustment;
     }
@@ -840,7 +1145,7 @@ export async function adjattrib(
 
     const random = env.random ?? { rn2 };
     const attrs = attributeArrays(state.u);
-    const oldCurrent = effective_attribute(state, index);
+    const oldCurrent = acurr(state, index);
     const oldBase = attrs.base[index];
     const oldMaximum = attrs.max[index];
     const racialMinimum = Math.trunc(
@@ -876,7 +1181,7 @@ export async function adjattrib(
         bonusOpposesChange = attributeBonus(state.u, index) > 0;
     }
 
-    if (effective_attribute(state, index) === oldCurrent) {
+    if (acurr(state, index) === oldCurrent) {
         if (messageMode === 0 && state.flags?.verbose) {
             if (attrs.base[index] === oldBase
                 && attrs.max[index] === oldMaximum) {
@@ -1024,6 +1329,69 @@ export function adjalign(n, state = game) {
     }
 }
 
+// C ref: youprop.h Hallucination macro. TRUE when the hero is hallucinating
+// and does not have hallucination resistance.
+function Hallucination(state) {
+    const halluc = state.u?.uprops?.[HALLUC];
+    const resistance = state.u?.uprops?.[HALLUC_RES];
+    return Boolean(halluc?.intrinsic)
+        && !(resistance?.intrinsic || resistance?.extrinsic);
+}
+
+// C ref: attrib.c uchangealign() (1320-1365). Change the hero's alignment
+// type, possibly losing use of artifacts. `reason` is A_CG_CONVERT (altar
+// conversion), A_CG_HELM_ON (putting on helm of opposite alignment), or
+// A_CG_HELM_OFF (taking it off).
+//
+// livelog_printf() writes a file this port does not produce; the calls are
+// omitted.
+export async function uchangealign(newalign, reason, state = game) {
+    const oldalign = state.u.ualign.type;
+
+    state.u.ublessed = 0; /* lose divine protection */
+    // You/Your/pline messages call flush_screen(), triggering bot(),
+    // so the actual data change needs to come before the message.
+    state.disp ??= {};
+    state.disp.botl = true;
+    if (reason === A_CG_CONVERT) {
+        /* conversion via altar */
+        // livelog_printf(LL_ALIGNMENT, "permanently converted to %s", ...)
+        state.u.ualignbase[A_CURRENT] = newalign;
+        /* worn helm of opposite alignment might block change */
+        if (!state.uarmh
+            || state.uarmh.otyp !== HELM_OF_OPPOSITE_ALIGNMENT)
+            state.u.ualign.type = state.u.ualignbase[A_CURRENT];
+        await ttyPline(
+            `You have a ${(state.u.ualign.type !== oldalign) ? 'sudden ' : ''}sense of a new direction.`,
+            state,
+        );
+    } else {
+        /* putting on or taking off a helm of opposite alignment */
+        state.u.ualign.type = newalign;
+        if (reason === A_CG_HELM_ON) {
+            adjalign(-7, state); /* for abuse -- record will be cleared shortly */
+            await ttyPline(
+                `Your mind oscillates ${Hallucination(state) ? 'wildly' : 'briefly'}.`,
+                state,
+            );
+            await make_confused(rn1(2, 3), false, state);
+            if (Is_astralevel(state.u?.uz)
+                || (rn2(50) < state.u.ualign.abuse))
+                note_unported('makemon.c summon_furies');
+            // livelog_printf(LL_ALIGNMENT, "used a helm to turn %s", ...)
+        } else if (reason === A_CG_HELM_OFF) {
+            await ttyPline(
+                `Your mind is ${Hallucination(state) ? 'much of a muchness' : 'back in sync with your body'}.`,
+                state,
+            );
+        }
+    }
+    if (state.u.ualign.type !== oldalign) {
+        state.u.ualign.record = 0; /* slate is wiped clean */
+        note_unported('artifact.c retouch_equipment');
+    }
+}
+
 function confersLuck(object, state) {
     if (object.otyp === LUCKSTONE) return true;
     if (!object.oartifact) return false;
@@ -1041,6 +1409,150 @@ export function stone_luck(includeUncursed, state = game) {
         else if (object.blessed || includeUncursed) bonus += quantity;
     }
     return Math.sign(bonus);
+}
+
+// C ref: attrib.c set_moreluck() (441-453). Recalculates u.moreluck from
+// inventory. Called when a luck-conferring item enters or leaves inventory or
+// changes BUC status. The result feeds into Luck (= u.uluck + u.moreluck),
+// which rnl() draws use.
+export function set_moreluck(state = game) {
+    const luckbon = stone_luck(true, state);
+    if (!luckbon && !carrying(LUCKSTONE, state))
+        state.u.moreluck = 0;
+    else if (luckbon >= 0)
+        state.u.moreluck = LUCKADD;
+    else
+        state.u.moreluck = -LUCKADD;
+}
+
+// C ref: attrib.c restore_attrib() (455-487). "(not used)" -- ATIME() is
+// never set to non-zero anywhere in the C source, so the countdown body never
+// fires. Ported for completeness; no caller exists.
+export async function restore_attrib(state = game, env = {}) {
+    const u = state.u;
+    const attrs = attributeArrays(u);
+    for (let i = 0; i < NUM_ATTRS; i++) {
+        const woundedLegs = u.uprops?.[WOUNDED_LEGS]?.intrinsic
+            || u.uprops?.[WOUNDED_LEGS]?.extrinsic;
+        const equilibrium = ((i === A_STR && u.uhs >= WEAK)
+            || (i === A_DEX && woundedLegs)) ? -1 : 0;
+        if (attrs.temp[i] !== equilibrium && attrs.time[i] !== 0) {
+            if (!(--attrs.time[i])) { /* countdown for change */
+                attrs.temp[i] += (attrs.temp[i] > 0) ? -1 : 1;
+                state.disp ??= {};
+                state.disp.botl = true;
+                if (attrs.temp[i]) /* reset timer */
+                    attrs.time[i] = Math.trunc(
+                        100 / acurr(state, A_CON),
+                    );
+            }
+        }
+    }
+    // C checks `disp.botl` here, which covers both changes this function
+    // made and any flag the caller left set. Since the function is dead code
+    // (ATIME is never non-zero), the distinction is academic.
+    if (state.disp?.botl) {
+        const encumberMessage = env.encumberMessage;
+        if (typeof encumberMessage !== 'function')
+            throw new Error('restore_attrib requires encumber_msg');
+        await encumberMessage(state);
+    }
+}
+
+// C ref: attrib.c gainstr() (203-220). Strength gain, typically from eating a
+// giant corpse, spinach from a tin, or royal jelly. When incr is 0 the amount
+// depends on current strength; a cursed object reverses the direction.
+//
+// Cycle avoidance: adjattrib() needs pickup.c encumber_msg(), which lives in a
+// file that imports this one. The caller supplies it through env.
+export async function gainstr(otmp, incr, givemsg, state = game, env = {}) {
+    const random = env.random ?? { rn2, rnd };
+    let num = incr;
+
+    if (!num) {
+        if (state.u.acurr.a[A_STR] < 18)
+            num = (random.rn2(4) ? 1 : random.rnd(6));
+        else if (state.u.acurr.a[A_STR] < STR18(85))
+            num = random.rnd(10);
+        else
+            num = 1;
+    }
+    await adjattrib(A_STR, (otmp && otmp.cursed) ? -num : num,
+                    givemsg ? -1 : 1, state, env);
+}
+
+// C ref: attrib.c losestr() (218-270). Strength loss that may kill; the cause
+// is poison or a monster like 'a'. Each point that would push ABASE(A_STR)
+// below the race's minimum is converted into rn1(4, 3) hit points of damage
+// instead, and only the points that fit reach adjattrib().
+//
+// Cycle avoidance follows poisoned() below: hack.c losehp() lives in a file
+// that imports this one, and pickup.c encumber_msg(), which adjattrib() spends
+// on a Strength change, lives in a file that imports that one. Both arrive
+// through env.
+export async function losestr(num, knam, k_format, state = game, env = {}) {
+    const random = env.random ?? { rn1, rn2 };
+    const losehp = requiredOperation(env, 'losehp');
+    const encumberMessage = requiredOperation(env, 'encumberMessage');
+    const u = state.u;
+    const attrmin = Math.trunc(state.urace?.attrmin?.[A_STR] ?? 0);
+    const uhpmin = minuhpmax(1, state);
+    let ustr = u.acurr.a[A_STR] - num;
+    const waspolyd = Upolyd(u);
+
+    if (num <= 0 || u.acurr.a[A_STR] < attrmin) {
+        // C reports impossible("losestr: %d - %d", ABASE(A_STR), num) and
+        // returns. Both conditions mean the caller asked for a loss the hero
+        // cannot take, so there is nothing to spend here either way.
+        return;
+    }
+    let dmg = 0;
+    while (ustr < attrmin) {
+        ++ustr;
+        --num;
+        /* (0..(4-1))+3 => 3..6; used to use flat 6 here */
+        dmg += random.rn1(4, 3);
+    }
+    if (dmg) {
+        /* in case damage is fatal and caller didn't supply killer reason */
+        if (!knam) {
+            knam = 'terminal frailty';
+            k_format = KILLED_BY;
+        }
+        await losehp(dmg, knam, k_format);
+
+        if (Upolyd(u)) {
+            /* when still poly'd, reduce you-as-monst maxHP; never below 1 */
+            setuhpmax(Math.max(u.mhmax - dmg, 1), false, state);
+        } else if (!waspolyd) {
+            /* not polymorphed now and didn't rehumanize when taking damage;
+               reduce max HP, but not below uhpmin */
+            if (u.uhpmax > uhpmin)
+                setuhpmax(Math.max(u.uhpmax - dmg, uhpmin), false, state);
+        }
+        state.disp.botl = true;
+    }
+    // C's `#if 0` arm (256-262), which would clamp u.uhpmax back down to
+    // uhpmin and call losexp(), is compiled out; nhUse(olduhpmax) is all that
+    // is left of C's `olduhpmax`, so this port never reads it either.
+
+    /* 'num' could have been reduced to 0 in the minimum strength loop;
+       '(Upolyd || !waspolyd)' is True unless damage caused rehumanization */
+    if (num > 0 && (Upolyd(u) || !waspolyd))
+        await adjattrib(
+            A_STR, -num, 1, state, { ...env, random, encumberMessage },
+        );
+}
+
+// C ref: attrib.c poison_strdmg() (272-278). Combined strength loss and damage
+// from some poisons. The strength loss runs first and can already have killed
+// the hero through losestr()'s own losehp().
+export async function poison_strdmg(
+    strloss, dmg, knam, k_format, state = game, env = {},
+) {
+    const losehp = requiredOperation(env, 'losehp');
+    await losestr(strloss, knam, k_format, state, env);
+    await losehp(dmg, knam, k_format);
 }
 
 // C ref: attrib.c poiseff[] (280-290). Each entry's delivery function controls
@@ -1063,9 +1575,9 @@ const POISON_EFFECT_MESSAGES = Object.freeze([
 export async function poisontell(typ, exclaim, state = game, env = {}) {
     const effect = POISON_EFFECT_MESSAGES[typ];
     let msg = effect.msg;
-    if (typ === A_STR && effective_attribute(state, A_STR) === STR19(25))
+    if (typ === A_STR && acurr(state, A_STR) === STR19(25))
         msg = 'innately weaker';
-    else if (typ === A_CON && effective_attribute(state, A_CON) === 25)
+    else if (typ === A_CON && acurr(state, A_CON) === 25)
         msg = 'sick inside';
     const message = requiredOperation(env, 'message');
     await message(`${effect.prefix} ${msg}${exclaim ? '!' : '.'}`, state);
@@ -1200,6 +1712,6 @@ export async function poisoned(
 }
 
 export const _attribInternals = Object.freeze({
-    randomAttribute,
-    redistributeInitialAttributes,
+    rnd_attr,
+    init_attr_role_redist,
 });

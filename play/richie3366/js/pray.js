@@ -191,8 +191,8 @@ function Antimagic() {
     return !!(u.Antimagic || u.HAntimagic || u.EAntimagic);
 }
 
-/** C: Punished ≡ uball != 0. */
-function Punished() {
+/** C: Punished ≡ uball != 0. Exported for polyself.c doremove. */
+export function Punished() {
     return !!(game.u?.uball);
 }
 

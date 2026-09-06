@@ -3,10 +3,29 @@
 
 import { game } from './gstate.js';
 import { rn2, rn1, d, rnd } from './rng.js';
-import { pline, urgent_pline, newsym, see_monsters } from './display.js';
-import { getlin } from './getline.js';
+import { dist2 } from './hacklib.js';
+import {
+    pline, urgent_pline, newsym, see_monsters, impossible,
+} from './display.js';
+import { getlin, yn_function } from './getline.js';
+import { getdir } from './lock.js';
 import { an, set_body_part } from './objnam.js';
-import { pmname } from './do_name.js';
+import {
+    pmname, mon_nam, s_suffix, Ugender,
+} from './do_name.js';
+import { attacktype_fordmg, killed } from './uhitm.js';
+import {
+    AT_SPIT, AT_GAZE, AD_BLND, AD_DRST, AD_ACID,
+} from './mhitm.js';
+import { mksobj } from './mkobj.js';
+import { throwit } from './dothrow.js';
+import { were_summon } from './were.js';
+import { unpunish } from './read.js';
+import { surface, split_mon } from './sit.js';
+import { dryup } from './fountain.js';
+import { aggravate } from './wizard.js';
+import { wakeup } from './mon.js';
+import { Punished } from './pray.js';
 import { name_to_mon, set_mon_data } from './mondata.js';
 import {
     exercise, acurr, A_STR, A_CON, A_WIS, adjabil, redist_attr, newhp,
@@ -20,7 +39,7 @@ import { dropx, canletgo, make_blinded } from './do.js';
 import { setuwep, setuswapwep } from './wield.js';
 import { races } from './roles.js';
 import { encumber_msg } from './invent.js';
-import { losehp, nomul } from './hack.js';
+import { losehp, nomul, is_pool } from './hack.js';
 import { finish_losehp_done, done } from './end.js';
 import { steed_vs_stealth } from './steed.js';
 import {
@@ -47,6 +66,13 @@ import {
     is_floater,
     is_vampire,
     is_vampshifter,
+    is_were,
+    webmaker,
+    is_hider,
+    hides_under,
+    is_mind_flayer,
+    mindless,
+    telepathic,
     haseyes,
     MZ_SMALL,
     M1_SLITHY,
@@ -95,6 +121,10 @@ import {
     ACID_RES,
     STONE_RES,
     KILLED_BY_AN,
+    BOLT_LIM,
+    ECMD_CANCEL,
+    IS_FOUNTAIN,
+    hidespinchars,
     ismnum,
     POLYMORPH_CONTROL,
     UNCHANGING,
@@ -129,6 +159,9 @@ const PM_SHARK = monsterNames.indexOf('PM_SHARK');
 const PM_JELLYFISH = monsterNames.indexOf('PM_JELLYFISH');
 const PM_KRAKEN = monsterNames.indexOf('PM_KRAKEN');
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
+const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
+const BLINDING_VENOM = objectNames.indexOf('BLINDING_VENOM');
+const ACID_VENOM = objectNames.indexOf('ACID_VENOM');
 const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
 const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
 const PM_RAVEN = monsterNames.indexOf('PM_RAVEN');
@@ -139,6 +172,17 @@ const PM_STALKER = monsterNames.indexOf('PM_STALKER');
 // C ref: monattk.h AT_BREA / AT_CLAW
 const AT_BREA = 12;
 const AT_CLAW = 1;
+
+/** C ref: monflag.h MS_SHRIEK — shrieker msound (mon.js keeps its own copy). */
+const MS_SHRIEK = 18;
+
+/**
+ * C ref: hack.h mdistu — distu(mx, my), squared distance from hero.
+ */
+function mdistu(mtmp) {
+    const u = game.u || {};
+    return dist2(u.ux | 0, u.uy | 0, mtmp?.mx | 0, mtmp?.my | 0);
+}
 
 function mungspaces(s) {
     return String(s || '').trim().replace(/\s+/g, ' ');
@@ -1141,29 +1185,213 @@ export async function dobreathe() {
 }
 
 /**
+ * C ref: polyself.c dospit — hero spit attack while poly'd.
+ * Envelope: getdir; venom by adtyp (BLND/DRST → blinding, ACID → acid);
+ * spe=1 yours; throwit.
+ * @returns {Promise<number>} ECMD_CANCEL | ECMD_TIME
+ */
+export async function dospit() {
+    if (!(await getdir(null))) return ECMD_CANCEL;
+    // C: attacktype_fordmg(data, AT_SPIT, AD_ANY); AD_ANY is -1 (monattk.h)
+    const mattk = attacktype_fordmg(game.youmonst?.data, AT_SPIT, -1);
+    if (!mattk) {
+        await impossible('bad spit attack?');
+    } else {
+        let otmp;
+        switch (mattk.adtyp | 0) {
+        case AD_BLND:
+        case AD_DRST:
+            otmp = mksobj(BLINDING_VENOM, true, false);
+            break;
+        default:
+            await impossible('bad attack type in dospit');
+            /* FALLTHROUGH */
+        case AD_ACID:
+            otmp = mksobj(ACID_VENOM, true, false);
+            break;
+        }
+        otmp.spe = 1; /* to indicate it's yours */
+        await throwit(otmp, 0, false, null);
+    }
+    return ECMD_TIME;
+}
+
+/**
+ * C ref: polyself.c doremove — #monster while poly'd as nymph: unpunish.
+ * @returns {Promise<number>} ECMD_OK | ECMD_TIME
+ */
+export async function doremove() {
+    const u = game.u || {};
+    if (!Punished()) {
+        if (u.utrap && (u.utraptype | 0) === TT_BURIEDBALL) {
+            await pline(`The ball and chain are buried firmly in the ${surface(u.ux, u.uy)}.`);
+            return ECMD_OK;
+        }
+        await pline('You are not chained to anything!');
+        return ECMD_OK;
+    }
+    unpunish();
+    return ECMD_TIME;
+}
+
+/**
+ * C ref: polyself.c dosummon — #monster while poly'd as were-creature.
+ * Envelope: uen<10 refuse; uen-=10 + botl; were_summon tame-by-you.
+ * @returns {Promise<number>} ECMD_OK | ECMD_TIME
+ */
+export async function dosummon() {
+    const u = game.u || (game.u = {});
+    if ((u.uen | 0) < 10) {
+        await pline('You lack the energy to send forth a call for help!');
+        return ECMD_OK;
+    }
+    u.uen = (u.uen | 0) - 10;
+    if (!game.flags) game.flags = {};
+    game.flags.botl = true;
+    if (game.disp) game.disp.botl = true;
+    await pline('You call upon your brethren for help!');
+    exercise(A_WIS, true);
+    // C: were_summon(data, TRUE, &placeholder, NULL); visible is { n }
+    if (!(await were_summon(game.youmonst?.data, true, { n: 0 }, null))) {
+        await pline('But none arrive.');
+    }
+    return ECMD_TIME;
+}
+
+/**
+ * C ref: polyself.c dopoly — #monster while poly'd as vampire: re-poly.
+ * @returns {Promise<number>} ECMD_TIME
+ */
+export async function dopoly() {
+    const u = game.u || {};
+    const savedat = game.youmonst?.data;
+    if (is_vampire(game.youmonst?.data) || is_vampshifter(game.youmonst)) {
+        await polyself(POLY_MONSTER);
+        if (savedat !== game.youmonst?.data) {
+            await pline(`You transform into ${an(pmname(game.youmonst?.data, Ugender()))}.`);
+            newsym(u.ux, u.uy);
+        }
+    }
+    return ECMD_TIME;
+}
+
+/**
+ * C ref: polyself.c domindblast :1893–1938 — #monster while poly'd as mind flayer.
+ * Envelope: uen<10 refuse; uen-=10 + botl; BOLT_LIM range, !peaceful,
+ * !mindless, telepathy/rn2 gates; wakeup-before-blast hostility rule.
+ * C never calls passive() here: gaze retaliation (floating eye, Medusa)
+ * fires on melee only (review 868).
+ * @returns {Promise<number>} ECMD_OK | ECMD_TIME
+ */
+export async function domindblast() {
+    const u = game.u || (game.u = {});
+    if ((u.uen | 0) < 10) {
+        await pline('You concentrate but lack the energy to maintain doing so.');
+        return ECMD_OK;
+    }
+    u.uen = (u.uen | 0) - 10;
+    if (!game.flags) game.flags = {};
+    game.flags.botl = true;
+    if (game.disp) game.disp.botl = true;
+    await pline('You concentrate.');
+    await pline('A wave of psychic energy pours out.');
+    // C saves nmon before the body (killed() can unlink); snapshot matches
+    for (const mtmp of [...(game.fmon || [])]) {
+        if ((mtmp.mhp | 0) < 1) continue; /* DEADMONSTER */
+        if (mdistu(mtmp) > BOLT_LIM * BOLT_LIM) continue;
+        if (mtmp.mpeaceful) continue;
+        if (mindless(mtmp.data)) continue;
+        const u_sen = telepathic(mtmp.data) && !mtmp.mcansee;
+        if (u_sen || (telepathic(mtmp.data) && rn2(2)) || !rn2(10)) {
+            const dmg = rnd(15);
+            /* wake it up first, to bring hidden monster out of hiding;
+               but in case it is currently peaceful, don't make it hostile
+               unless it will survive the psychic blast, otherwise hero
+               would avoid the penalty for killing it while peaceful */
+            await wakeup(mtmp, dmg > (mtmp.mhp | 0));
+            await pline(`You lock in on ${s_suffix(mon_nam(mtmp))} ${
+                u_sen ? 'telepathy'
+                : telepathic(mtmp.data) ? 'latent telepathy' : 'mind'}.`);
+            mtmp.mhp = (mtmp.mhp | 0) - dmg;
+            if ((mtmp.mhp | 0) < 1) await killed(mtmp);
+        }
+    }
+    return ECMD_TIME;
+}
+
+/**
  * C ref: cmd.c domonability — #monster special ability while poly'd.
- * Envelope: can_breathe → dobreathe; is_unicorn → use_unicorn_horn(null);
- * Upolyd reflexive; !Upolyd normal.
- * Named omissions: spit/nymph/gaze/were/hide/web/mindflayer/gremlin/
- * shriek/vampire/steed-breath; hide+web yn_function.
+ * Envelope: hide/web prompt; breathe → spit → nymph → gaze → were →
+ * hide → web → mindflayer → gremlin → unicorn → shriek → vampire →
+ * steed → reflexive/normal.
+ * Named omissions: dogaze, dohide, dospinweb (polyself.c arms, queued);
+ * steed breath via pet_ranged_attk (missing). Deferred arms keep the
+ * old reflexive/normal fallthrough.
  * @returns {Promise<number>} ECMD_OK | ECMD_TIME
  */
 export async function domonability() {
     const u = game.u || {};
     const uptr = game.youmonst?.data;
+    const tail = async () => {
+        if (Upolyd(u)) {
+            await pline('Any special ability you may have is purely reflexive.');
+        } else {
+            await pline("You don't have a special ability in your normal form!");
+        }
+        return ECMD_OK;
+    };
+    // C: might_hide prompt rides before every arm
+    const might_hide = is_hider(uptr) || hides_under(uptr);
+    let c = '\0';
+    if (might_hide && webmaker(uptr)) {
+        c = await yn_function('Hide [h] or spin a web [s]?',
+            hidespinchars, 'q', true);
+        if (c === 'q' || c === '\x1b') return ECMD_OK;
+    }
     if (can_breathe(uptr)) {
         return dobreathe();
-    }
-    // C cmd.c: is_unicorn(uptr) → use_unicorn_horn(NULL); ECMD_TIME (D-1030)
-    if (is_unicorn(uptr)) {
+    } else if (attacktype(uptr, AT_SPIT)) {
+        return dospit();
+    } else if ((uptr?.mlet) === 'S_NYMPH') {
+        return doremove();
+    } else if (attacktype(uptr, AT_GAZE)) {
+        return tail(); // dogaze deferred
+    } else if (is_were(uptr)) {
+        return dosummon();
+    } else if (c ? c === 'h' : might_hide) {
+        return tail(); // dohide deferred
+    } else if (c ? c === 's' : webmaker(uptr)) {
+        return tail(); // dospinweb deferred
+    } else if (is_mind_flayer(uptr)) {
+        return domindblast();
+    } else if ((u.umonnum | 0) === PM_GREMLIN) {
+        if (IS_FOUNTAIN(game.level?.at(u.ux, u.uy)?.typ)) {
+            if (await split_mon(game.youmonst, null)) {
+                await dryup(u.ux, u.uy, true);
+            }
+        } else if (is_pool(u.ux, u.uy)) {
+            /* is_pool: might be wearing water walking boots or amulet
+               of magical breathing */
+            await split_mon(game.youmonst, null);
+        } else {
+            await pline('There is no fountain here.');
+        }
+    } else if (is_unicorn(uptr)) {
+        // C cmd.c: is_unicorn(uptr) → use_unicorn_horn(NULL) (D-1030)
         const { use_unicorn_horn } = await import('./apply.js');
         await use_unicorn_horn(null);
         return ECMD_TIME;
+    } else if (((uptr?.msound) | 0) === MS_SHRIEK) {
+        await pline('You shriek.');
+        if (u.uburied) {
+            await pline('Unfortunately sound does not carry well through rock.');
+        } else {
+            aggravate();
+        }
+    } else if (is_vampire(uptr) || is_vampshifter(game.youmonst)) {
+        return dopoly();
+    } else if (u.usteed && can_breathe(u.usteed?.data)) {
+        return tail(); // steed breath via pet_ranged_attk deferred
     }
-    if (Upolyd(u)) {
-        await pline('Any special ability you may have is purely reflexive.');
-    } else {
-        await pline("You don't have a special ability in your normal form!");
-    }
-    return ECMD_OK;
+    return tail();
 }

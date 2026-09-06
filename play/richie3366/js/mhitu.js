@@ -51,13 +51,14 @@ import {
 import { mpickobj } from './makemon.js';
 import { money2mon } from './shk.js';
 import { y_n } from './getline.js';
-import { getyear, yyyymmdd, night } from './calendar.js';
+import { getyear, yyyymmdd, night, midnight } from './calendar.js';
 import { pluslvl, losexp } from './exper.js';
 import { mhe } from './fountain.js';
 import { rloc, tele_restrict, enexto, teleds } from './teleport.js';
 import { monflee, set_apparxy } from './monmove.js';
 import {
     is_orc, is_demon, is_were, is_human, is_animal, is_whirly, amorphous, unsolid,
+    is_undead, is_vampshifter, mon_hates_blessings,
     MZ_HUGE, M1_SEE_INVIS, MALE, FEMALE, haseyes, resists_ston,
     hides_under, is_flyer, thick_skinned, nolimbs, touch_petrifies,
     poly_when_stoned, has_head, slithy, amphibious, breathless, is_swimmer,
@@ -69,10 +70,10 @@ import { make_blinded } from './do.js';
 import { msummon, Inhell } from './minion.js';
 import { new_were, were_summon, Protection_from_shape_changers } from './were.js';
 import { growl_sound } from './sounds.js';
-import { monsterNames } from './generated/monsters_data.js';
+import { monsterNames, PM_CLERIC } from './generated/monsters_data.js';
 import {
     A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, adjattrib, exercise,
-    poisoned, Fast, adjalign,
+    poisoned, Fast, adjalign, minuhpmax,
 } from './attrib.js';
 import { xkilled, killed, Hate_silver } from './uhitm.js';
 import {
@@ -191,7 +192,7 @@ function perceives(ptr) {
  * C ref: youprop.h Conflict — HConflict || EConflict.
  * Worn RIN_CONFLICT EConflict via setworn oc_oprop still named.
  */
-function Conflict() {
+export function Conflict() {
     const u = game.u || {};
     if (u.HConflict || u.EConflict) return true;
     const prop = u.uprops?.[CONFLICT];
@@ -2373,10 +2374,6 @@ async function passiveum(olduasmon, mtmp, mattk) {
     return assess_dmg(mtmp, tmp);
 }
 
-/**
- * C ref: mhitu.c hitmu — base d() + adtyping + knockback + AC/Half + mdamageu
- * + passiveum. Undead midnight extra, permdmg deferred.
- */
 /** C ref: do_name.c Amonnam — highc(a_monnam). */
 function Amonnam(mtmp) {
     const s = x_monnam(mtmp, ARTICLE_A, null, 0, false);
@@ -2384,8 +2381,9 @@ function Amonnam(mtmp) {
 }
 
 /**
- * C ref: mhitu.c hitmu — base d() + adtyping + knockback + AC/Half + mdamageu
- * + passiveum. Undead midnight extra, permdmg deferred.
+ * C ref: mhitu.c hitmu `:1144–1267` — base d() + midnight undead extra +
+ * adtyping + knockback + AC + Half/Mitre + permdmg hpmax cut + mdamageu
+ * + passiveum. Named: full mhitm_adtyping arms beyond mhitm_adtyping_u.
  */
 async function hitmu(mtmp, mattk) {
     const mhm = {
@@ -2428,10 +2426,14 @@ async function hitmu(mtmp, mattk) {
     }
 
     mhm.damage = d(mattk.damn | 0, mattk.damd | 0);
-    // midnight undead extra d() deferred
+    // C ref: mhitu.c hitmu — undead/vampshifter at midnight roll bonus dice
+    if ((is_undead(mdat) || is_vampshifter(mtmp)) && midnight()) {
+        mhm.damage += d(mattk.damn | 0, mattk.damd | 0);
+    }
 
     await mhitm_adtyping_u(mtmp, mattk, mhm);
-    mhitm_knockback(mtmp, null, mattk, mhm.hitflags, MON_WEP(mtmp) != null);
+    // C ref: mhitu.c hitmu — knockback(mtmp, &youmonst, mattk, &hitflags, MON_WEP!=0)
+    mhitm_knockback(mtmp, game.youmonst, mattk, mhm.hitflags, MON_WEP(mtmp) != null);
 
     if (mhm.done) return mhm.hitflags;
 
@@ -2447,7 +2449,45 @@ async function hitmu(mtmp, mattk) {
     }
 
     if (mhm.damage > 0) {
-        // Half_physical_damage / Mitre deferred (maybe_half_phys when wired)
+        // C ref: mhitu.c hitmu — Half_physical_damage / Cleric Mitre halve
+        // (Mitre even if not blessed); not applied to permdmg below.
+        const halfPhys = !!((u.HHalf_physical_damage | 0) || (u.EHalf_physical_damage | 0));
+        const wantQarti = game.urole?.questarti | 0;
+        const hasMitre = ((game.urole?.mnum | 0) === (PM_CLERIC | 0)) && !!u.uarmh
+            && wantQarti !== 0 && ((u.uarmh.oartifact | 0) === wantQarti)
+            && mon_hates_blessings(mtmp);
+        if (halfPhys || hasMitre) {
+            mhm.damage = Math.trunc((mhm.damage + 1) / 2);
+        }
+
+        // C ref: mhitu.c hitmu — Death's life-force drain cuts hpmax too.
+        if (mhm.permdmg) {
+            mhm.permdmg = rn2(Math.trunc(mhm.damage / 2) + 1);
+            if (Upolyd(u) || (u.uhpmax | 0) > 25 * (u.ulevel | 0)) {
+                mhm.permdmg = mhm.damage;
+            } else if ((u.uhpmax | 0) > 10 * (u.ulevel | 0)) {
+                mhm.permdmg += Math.trunc(mhm.damage / 2);
+            } else if ((u.uhpmax | 0) > 5 * (u.ulevel | 0)) {
+                mhm.permdmg += Math.trunc(mhm.damage / 4);
+            }
+            let lowerlimit;
+            if (Upolyd(u)) {
+                lowerlimit = Math.min(
+                    game.youmonst?.data?.mlevel | 0, u.ulevel | 0,
+                );
+                u.mhmax = u.mhmax | 0;
+                if (u.mhmax - mhm.permdmg > lowerlimit) u.mhmax -= mhm.permdmg;
+                else if (u.mhmax > lowerlimit) u.mhmax = lowerlimit;
+            } else {
+                lowerlimit = minuhpmax(1);
+                u.uhpmax = u.uhpmax | 0;
+                if (u.uhpmax - mhm.permdmg > lowerlimit) u.uhpmax -= mhm.permdmg;
+                else if (u.uhpmax > lowerlimit) u.uhpmax = lowerlimit;
+            }
+            if (game.disp) game.disp.botl = true;
+            if (game.flags) game.flags.botl = true;
+        }
+
         await mdamageu(mtmp, mhm.damage);
     }
 

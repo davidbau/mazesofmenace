@@ -4,7 +4,7 @@
 // Branch envelope: ParanoidWerechange getlin via paranoid_query (D-1001);
 // mon were_change / new_were; set_ulycn Drain_resistance; were_summon
 // (mhitu summonmu; tamedog when yours).
-// Named omissions: howl You_hear + wake_nearto; mon_break_armor;
+// Named omissions: howl You_hear + wake_nearto;
 // mon_poly monster-defender via mhitm (D-1006). possibly_unwield D-1744.
 // Callers wired: allmain Poly/ulycn (D-1002); potion peffect_water /
 // potionbreathe + pray TROUBLE_LYCANTHROPE + mon_poly youmonst (D-1004);
@@ -21,6 +21,7 @@ import { canseemon, newsym, pline, You_feel } from './display.js';
 import { Monnam } from './do_name.js';
 import { set_mon_data } from './mondata.js';
 import { possibly_unwield } from './weapon.js';
+import { mon_break_armor } from './worn.js';
 import { set_uasmon, polymon, rehumanize } from './polyself.js';
 import { monster_nearby } from './hack.js';
 import { an } from './objnam.js';
@@ -130,9 +131,10 @@ export function counter_were(pm) {
 
 /**
  * C ref: were.c new_were — flip human ↔ beast form.
- * Named omissions: mon_break_armor; monflee onscary
+ * Named omissions: monflee onscary
  * (svc.context.mon_moving + mux/muy scary near); Soundeffect.
- * possibly_unwield is D-1744.
+ * possibly_unwield is D-1744; mon_break_armor wired here D-1917
+ * (canonical js/worn.js export, C :129 order before possibly_unwield).
  */
 export function new_were(mon) {
     if (!mon?.data) return;
@@ -168,8 +170,14 @@ export function new_were(mon) {
     const lost = ((mon.mhpmax | 0) - (mon.mhp | 0)) >> 2;
     if (lost > 0) mon.mhp = (mon.mhp | 0) + lost;
     newsym(mon.mx, mon.my);
-    // C :130 possibly_unwield(mon, FALSE); mon_break_armor / monflee named
-    return possibly_unwield(mon, false);
+    // C :129 mon_break_armor(mon, FALSE) before possibly_unwield — same
+    // sync-or-async chaining as newcham after_armor (D-1914): armor
+    // mutations run inline, message thunks flush first, then unwield.
+    // monflee onscary stays named.
+    const mba = mon_break_armor(mon, false);
+    const after_armor = () => possibly_unwield(mon, false);
+    if (mba) return Promise.resolve(mba).then(after_armor);
+    return after_armor();
 }
 
 /**

@@ -141,6 +141,9 @@ import { begin_burn } from './timeout.js';
 import { nexttodoor } from './fountain.js';
 import { ndemon } from './minion.js';
 import { readobjnam, rnd_otyp_by_namedesc } from './readobjnam.js';
+// C mkmap.c envelope lives in ./mkmap.js; splev_initlev MINES awaits it.
+// Cycle-safe: mkmap only calls back into mklev function declarations.
+import { mkmap } from './mkmap.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 const ROCK = objectNames.indexOf('ROCK');
@@ -1500,7 +1503,7 @@ async function makemaz(s) {
         g.ransacked = true;
 
     g.in_mk_themerooms = false;
-    if (load_special_proto(protofile)) {
+    if (await load_special_proto(protofile)) {
         // C: dmonsfree() after successful load_special
         return;
     }
@@ -1511,11 +1514,11 @@ async function makemaz(s) {
  * C ref: sp_lev.c load_special — dispatch known JS-ported .lua specials.
  * @returns {boolean} true if loaded (C load_special success)
  */
-function load_special_proto(protofile) {
+async function load_special_proto(protofile) {
     // C ref: sp_lev.c create_des_coder / reset_xystart_size at load start
     reset_xystart_size();
     if (protofile === 'minefill') {
-        load_minefill();
+        await load_minefill();
         return true;
     }
     if (protofile === 'tut-1') {
@@ -1623,11 +1626,11 @@ function load_special_proto(protofile) {
         return true;
     }
     if (protofile === 'Pri-loca') {
-        load_pri_loca();
+        await load_pri_loca();
         return true;
     }
     if (protofile === 'Pri-goal') {
-        load_pri_goal();
+        await load_pri_goal();
         return true;
     }
     if (protofile === 'Pri-fila') {
@@ -1651,11 +1654,11 @@ function load_special_proto(protofile) {
         return true;
     }
     if (protofile === 'Bar-fila') {
-        load_bar_fila();
+        await load_bar_fila();
         return true;
     }
     if (protofile === 'Bar-filb') {
-        load_bar_filb();
+        await load_bar_filb();
         return true;
     }
     if (protofile === 'Bar-goal') {
@@ -1675,19 +1678,19 @@ function load_special_proto(protofile) {
         return true;
     }
     if (protofile === 'Kni-strt') {
-        load_kni_strt();
+        await load_kni_strt();
         return true;
     }
     if (protofile === 'Kni-loca') {
-        load_kni_loca();
+        await load_kni_loca();
         return true;
     }
     if (protofile === 'Kni-fila') {
-        load_kni_fila();
+        await load_kni_fila();
         return true;
     }
     if (protofile === 'Kni-filb') {
-        load_kni_filb();
+        await load_kni_filb();
         return true;
     }
     if (protofile === 'Kni-goal') {
@@ -1719,19 +1722,19 @@ function load_special_proto(protofile) {
         return true;
     }
     if (protofile === 'Val-loca') {
-        load_val_loca();
+        await load_val_loca();
         return true;
     }
     if (protofile === 'Val-fila') {
-        load_val_fila();
+        await load_val_fila();
         return true;
     }
     if (protofile === 'Val-filb') {
-        load_val_filb();
+        await load_val_filb();
         return true;
     }
     if (protofile === 'Val-goal') {
-        load_val_goal();
+        await load_val_goal();
         return true;
     }
     if (protofile === 'Sam-strt') {
@@ -1743,7 +1746,7 @@ function load_special_proto(protofile) {
         return true;
     }
     if (protofile === 'Sam-fila') {
-        load_sam_fila();
+        await load_sam_fila();
         return true;
     }
     if (protofile === 'Sam-filb') {
@@ -1759,19 +1762,19 @@ function load_special_proto(protofile) {
         return true;
     }
     if (protofile === 'Hea-loca') {
-        load_hea_loca();
+        await load_hea_loca();
         return true;
     }
     if (protofile === 'Hea-fila') {
-        load_hea_fila();
+        await load_hea_fila();
         return true;
     }
     if (protofile === 'Hea-filb') {
-        load_hea_filb();
+        await load_hea_filb();
         return true;
     }
     if (protofile === 'Hea-goal') {
-        load_hea_goal();
+        await load_hea_goal();
         return true;
     }
     if (protofile === 'Tou-strt') {
@@ -1783,11 +1786,11 @@ function load_special_proto(protofile) {
         return true;
     }
     if (protofile === 'Tou-fila') {
-        load_tou_fila();
+        await load_tou_fila();
         return true;
     }
     if (protofile === 'Tou-filb') {
-        load_tou_filb();
+        await load_tou_filb();
         return true;
     }
     if (protofile === 'Tou-goal') {
@@ -1795,7 +1798,7 @@ function load_special_proto(protofile) {
         return true;
     }
     if (protofile === 'Ran-strt') {
-        load_ran_strt();
+        await load_ran_strt();
         return true;
     }
     if (protofile === 'Ran-loca') {
@@ -1807,11 +1810,11 @@ function load_special_proto(protofile) {
         return true;
     }
     if (protofile === 'Ran-fila') {
-        load_ran_fila();
+        await load_ran_fila();
         return true;
     }
     if (protofile === 'Ran-filb') {
-        load_ran_filb();
+        await load_ran_filb();
         return true;
     }
     if (protofile === 'Mon-strt') {
@@ -1823,7 +1826,7 @@ function load_special_proto(protofile) {
         return true;
     }
     if (protofile === 'Mon-goal') {
-        load_mon_goal();
+        await load_mon_goal();
         return true;
     }
     if (protofile === 'Mon-fila') {
@@ -1847,11 +1850,11 @@ function load_special_proto(protofile) {
         return true;
     }
     if (protofile === 'Cav-fila') {
-        load_cav_fila();
+        await load_cav_fila();
         return true;
     }
     if (protofile === 'Cav-filb') {
-        load_cav_filb();
+        await load_cav_filb();
         return true;
     }
     if (protofile === 'knox') {
@@ -1935,7 +1938,7 @@ function load_special_proto(protofile) {
         return true;
     }
     if (protofile === 'minetn-1') {
-        load_minetn_1();
+        await load_minetn_1();
         return true;
     }
     if (protofile === 'minetn-2') {
@@ -1955,7 +1958,7 @@ function load_special_proto(protofile) {
         return true;
     }
     if (protofile === 'minetn-6') {
-        load_minetn_6();
+        await load_minetn_6();
         return true;
     }
     if (protofile === 'minetn-7') {
@@ -2015,7 +2018,7 @@ function load_special_proto(protofile) {
         return true;
     }
     if (protofile === 'hellfill') {
-        load_hellfill();
+        await load_hellfill();
         return true;
     }
     return false;
@@ -5144,8 +5147,8 @@ function load_wiz_goal() {
         curse_state: 1,
     }, null);
 
-    // des.object() × 15
-    for (let i = 0; i < 15; i++) splev_create_object(null);
+    // des.object() × 14 — C dat/wiz-goal.lua :74–87 (:73 is the named Eye)
+    for (let i = 0; i < 14; i++) splev_create_object(null);
 
     // des.trap() × 6
     for (let i = 0; i < 6; i++) splev_create_trap();
@@ -5404,7 +5407,7 @@ function load_pri_strt() {
  * spo_end_moninvent m_dowear; add_doors_to_room mid-region (doors are
  * linked once via link_doors_rooms before wallify, ≡ C load_special).
  */
-function load_pri_loca() {
+async function load_pri_loca() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -5421,7 +5424,7 @@ function load_pri_loca() {
 
     // des.level_init mines: fg=".", bg=".", smoothed=false, joined=false,
     // lit=1, walled=false — kludge for a lit open field (fg==bg)
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: ROOM, filling: ROOM,
         lit: 1, smoothed: false, joined: false, walled: false,
@@ -5600,7 +5603,7 @@ function load_pri_loca() {
  * Named omissions: humidity get_location beyond HOT for lava-likers;
  * spo_end_moninvent m_dowear; Pri-fila/filb.
  */
-function load_pri_goal() {
+async function load_pri_goal() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -5616,7 +5619,7 @@ function load_pri_goal() {
 
     // des.level_init mines: fg="L", bg=".", lit=0, smoothed/joined/walled false
     // C: filling defaults to fg when omitted (sp_lev.c get_table_mapchr_opt)
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: LAVAPOOL, bg: ROOM, filling: LAVAPOOL,
         lit: 0, smoothed: false, joined: false, walled: false,
@@ -6299,7 +6302,7 @@ function load_arc_goal() {
  * flip_level lregion coord update (branch at pre-flip map offsets);
  * light_region wall expansion; ensure_way_out / map_cleanup.
  */
-function load_kni_strt() {
+async function load_kni_strt() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -6317,7 +6320,7 @@ function load_kni_strt() {
 
     // des.level_init mines: fg=".", bg=".", smoothed=false, joined=false,
     // lit=1, walled=false — kludge for a lit open field (fg==bg)
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: ROOM, filling: ROOM,
         lit: 1, smoothed: false, joined: false, walled: false,
@@ -6518,7 +6521,7 @@ function load_kni_strt() {
  * Named omissions: humidity get_location; spo_end_moninvent m_dowear;
  * ensure_way_out / map_cleanup; light_region wall expansion.
  */
-function load_kni_loca() {
+async function load_kni_loca() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -6535,7 +6538,7 @@ function load_kni_loca() {
 
     // des.level_init mines: fg=".", bg="P", smoothed=false, joined=true,
     // lit=1, walled=false — filling defaults to fg (ROOM)
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: POOL, filling: ROOM,
         lit: 1, smoothed: false, joined: true, walled: false,
@@ -6645,7 +6648,7 @@ xxxxxxxxx.......xxxxxx.....xxxxxxxxxxxxx
  * Mines swamp (fg="." bg="P" joined lit=1); noflip.
  * Named omissions: humidity get_location; ensure_way_out.
  */
-function load_kni_fila() {
+async function load_kni_fila() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -6661,7 +6664,7 @@ function load_kni_fila() {
 
     // des.level_init mines: fg=".", bg="P", smoothed=false, joined=true,
     // lit=1, walled=false
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: POOL, filling: ROOM,
         lit: 1, smoothed: false, joined: true, walled: false,
@@ -6687,7 +6690,7 @@ function load_kni_fila() {
  * Same mines swamp as Kni-fila; more objects and ochre jellies; noflip.
  * Named omissions: humidity get_location; ensure_way_out.
  */
-function load_kni_filb() {
+async function load_kni_filb() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -6700,7 +6703,7 @@ function load_kni_filb() {
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
 
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: POOL, filling: ROOM,
         lit: 1, smoothed: false, joined: true, walled: false,
@@ -7467,7 +7470,7 @@ xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
  * + class a + 2 hostile H + 7 hostile fire giants.
  * Named omissions: humidity get_location; ensure_way_out.
  */
-function load_val_loca() {
+async function load_val_loca() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -7484,7 +7487,7 @@ function load_val_loca() {
 
     // des.level_init mines: fg=".", bg="I", smoothed, joined=false,
     // lit=1, walled=false — filling defaults to fg (ROOM)
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: ICE, filling: ROOM,
         lit: 1, smoothed: true, joined: false, walled: false,
@@ -7558,7 +7561,7 @@ xPPPPxx                         xxxxPPPP
  * ants, class a, 10 fixed + 2 random hostile fire giants, hostile H.
  * Named omissions: humidity get_location; ensure_way_out.
  */
-function load_val_goal() {
+async function load_val_goal() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -7574,7 +7577,7 @@ function load_val_goal() {
 
     // des.level_init mines: fg=".", bg="L", smoothed, joined=true,
     // lit=1, walled=false — filling defaults to fg (ROOM)
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: LAVAPOOL, filling: ROOM,
         lit: 1, smoothed: true, joined: true, walled: false,
@@ -7676,7 +7679,7 @@ xxxxxxxxx..................xxxxxxxx
  * giant; 7 random traps.
  * Named omissions: humidity get_location; ensure_way_out.
  */
-function load_val_fila() {
+async function load_val_fila() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -7692,7 +7695,7 @@ function load_val_fila() {
 
     // des.level_init mines: fg=".", bg="I", smoothed, joined=true,
     // lit=1, walled=false
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: ICE, filling: ROOM,
         lit: 1, smoothed: true, joined: true, walled: false,
@@ -7720,7 +7723,7 @@ function load_val_fila() {
  * giants; 5 fire + 2 random traps.
  * Named omissions: humidity get_location; ensure_way_out.
  */
-function load_val_filb() {
+async function load_val_filb() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -7736,7 +7739,7 @@ function load_val_filb() {
 
     // des.level_init mines: fg=".", bg="L", smoothed, joined=true,
     // lit=1, walled=false
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: LAVAPOOL, filling: ROOM,
         lit: 1, smoothed: true, joined: true, walled: false,
@@ -8194,7 +8197,7 @@ ${' '.repeat(45)}
  * Named omissions: humidity-aware get_location for water-likers;
  * ensure_way_out.
  */
-function load_sam_fila() {
+async function load_sam_fila() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -8210,7 +8213,7 @@ function load_sam_fila() {
 
     // des.level_init mines: fg=".", bg="P", smoothed, joined=true,
     // walled=true (no lit key in lua) — filling defaults to fg (ROOM)
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: POOL, filling: ROOM,
         smoothed: true, joined: true, walled: true,
@@ -8460,7 +8463,7 @@ PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP
  * Named omissions: humidity-aware get_location for water-likers;
  * spo_end_moninvent m_dowear; ensure_way_out.
  */
-function load_hea_loca() {
+async function load_hea_loca() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -8477,7 +8480,7 @@ function load_hea_loca() {
 
     // des.level_init mines: fg=".", bg="P", smoothed=true, joined=true,
     // lit=1, walled=false — filling defaults to fg (ROOM)
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: POOL, filling: ROOM,
         lit: 1, smoothed: true, joined: true, walled: false,
@@ -8597,7 +8600,7 @@ PPPPPPPPPPP........PPPPPPPPPPPP
  * Named omissions: humidity-aware get_location for water-likers;
  * ensure_way_out.
  */
-function load_hea_goal() {
+async function load_hea_goal() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -8613,7 +8616,7 @@ function load_hea_goal() {
 
     // des.level_init mines: fg=".", bg="P", smoothed=false, joined=true,
     // lit=1, walled=false — filling defaults to fg (ROOM)
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: POOL, filling: ROOM,
         lit: 1, smoothed: false, joined: true, walled: false,
@@ -8691,7 +8694,7 @@ PPP..................................PPP.
  * Named omissions: humidity-aware get_location for water-likers;
  * ensure_way_out.
  */
-function load_hea_fila() {
+async function load_hea_fila() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -8707,7 +8710,7 @@ function load_hea_fila() {
 
     // des.level_init mines: fg=".", bg="P", smoothed=false, joined=true,
     // lit=1, walled=false — filling defaults to fg (ROOM)
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: POOL, filling: ROOM,
         lit: 1, smoothed: false, joined: true, walled: false,
@@ -8739,7 +8742,7 @@ function load_hea_fila() {
  * Named omissions: humidity-aware get_location for water-likers;
  * ensure_way_out.
  */
-function load_hea_filb() {
+async function load_hea_filb() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -8755,7 +8758,7 @@ function load_hea_filb() {
 
     // des.level_init mines: fg=".", bg="P", smoothed=false, joined=true,
     // lit=1, walled=false — filling defaults to fg (ROOM)
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: POOL, filling: ROOM,
         lit: 1, smoothed: false, joined: true, walled: false,
@@ -9393,7 +9396,7 @@ function load_tou_goal() {
  * Named omissions: humidity-aware get_location for water-likers;
  * ensure_way_out.
  */
-function load_tou_fila() {
+async function load_tou_fila() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -9409,7 +9412,7 @@ function load_tou_fila() {
 
     // des.level_init mines: fg=".", bg=" " (no lit key in lua),
     // smoothed/joined/walled — filling defaults to fg (ROOM)
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         smoothed: true, joined: true, walled: true,
@@ -9438,7 +9441,7 @@ function load_tou_fila() {
  * Named omissions: humidity-aware get_location for water-likers;
  * ensure_way_out.
  */
-function load_tou_filb() {
+async function load_tou_filb() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -9454,7 +9457,7 @@ function load_tou_filb() {
 
     // des.level_init mines: fg=".", bg=" " (no lit key in lua),
     // smoothed/joined/walled — filling defaults to fg (ROOM)
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         smoothed: true, joined: true, walled: true,
@@ -9494,7 +9497,7 @@ function load_tou_filb() {
  * Named omissions: humidity-aware get_location for water-likers;
  * ensure_way_out.
  */
-function load_ran_strt() {
+async function load_ran_strt() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -9513,7 +9516,7 @@ function load_ran_strt() {
 
     // des.level_init mines: fg=".", bg=".", smoothed=true, joined=true,
     // lit=1, walled=false — filling defaults to fg (ROOM)
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: ROOM, filling: ROOM,
         lit: 1, smoothed: true, joined: true, walled: false,
@@ -9914,7 +9917,7 @@ function load_ran_goal() {
  * Named omissions: humidity-aware get_location for water-likers;
  * ensure_way_out.
  */
-function load_ran_fila() {
+async function load_ran_fila() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -9930,7 +9933,7 @@ function load_ran_fila() {
 
     // des.level_init mines: fg=".", bg="T", smoothed=true, joined=true,
     // walled=true (no lit key in lua) — filling defaults to fg (ROOM)
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: TREE, filling: ROOM,
         smoothed: true, joined: true, walled: true,
@@ -9960,7 +9963,7 @@ function load_ran_fila() {
  * Named omissions: humidity-aware get_location for water-likers;
  * ensure_way_out.
  */
-function load_ran_filb() {
+async function load_ran_filb() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -9976,7 +9979,7 @@ function load_ran_filb() {
 
     // des.level_init mines: fg=".", bg=" ", smoothed=true, joined=true,
     // walled=true (no lit key in lua) — filling defaults to fg (ROOM)
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         smoothed: true, joined: true, walled: true,
@@ -10341,7 +10344,7 @@ function load_mon_loca() {
  * Named omissions: humidity get_location beyond HOT for lava-likers;
  * spo_end_moninvent m_dowear.
  */
-function load_mon_goal() {
+async function load_mon_goal() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -10351,7 +10354,7 @@ function load_mon_goal() {
 
     // des.level_init mines: fg="L", bg=".", lit=0, smoothed/joined/walled false
     // C: filling defaults to fg when omitted (sp_lev.c get_table_mapchr_opt)
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: LAVAPOOL, bg: ROOM, filling: LAVAPOOL,
         lit: 0, smoothed: false, joined: false, walled: false,
@@ -11016,7 +11019,7 @@ function load_cav_goal() {
  * Named omissions: humidity-aware get_location for water-likers;
  * ensure_way_out.
  */
-function load_cav_fila() {
+async function load_cav_fila() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -11032,7 +11035,7 @@ function load_cav_fila() {
 
     // des.level_init mines: fg=".", bg=" ", smoothed=true, joined=true,
     // walled=true (no lit key in lua) — filling defaults to fg (ROOM)
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         smoothed: true, joined: true, walled: true,
@@ -11061,7 +11064,7 @@ function load_cav_fila() {
  * Named omissions: humidity-aware get_location for water-likers;
  * ensure_way_out.
  */
-function load_cav_filb() {
+async function load_cav_filb() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -11077,7 +11080,7 @@ function load_cav_filb() {
 
     // des.level_init mines: fg=".", bg=" ", smoothed=true, joined=true,
     // walled=true (no lit key in lua) — filling defaults to fg (ROOM)
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         smoothed: true, joined: true, walled: true,
@@ -11620,7 +11623,7 @@ function load_bar_goal() {
         curse_state: 1,
     }, null);
 
-    // des.object() × 14 — C dat/Bar-goal.lua :44–57 (not Wiz-goal's 15)
+    // des.object() × 14 — C dat/Bar-goal.lua :44–57 (1 named Heart + 14 empty, same shape as Wiz-goal :73–87)
     for (let i = 0; i < 14; i++) splev_create_object(null);
 
     // des.trap() × 6
@@ -14657,7 +14660,7 @@ function load_minend_3() {
  * map_cleanup; count_level_features; dog leftovers. add_to_minv merge is D-1492.
  * minetn-6 is D-1503. minetn-7 is D-1504.
  */
-function load_minetn_1() {
+async function load_minetn_1() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -14668,7 +14671,7 @@ function load_minetn_1() {
 
     // des.level_init({ style="mines", fg=".", bg=" ", smoothed=true,
     // joined=true, walled=true }) — filling defaults to fg; lit BOOL_RANDOM
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         lit: BOOL_RANDOM, smoothed: true, joined: true, walled: true,
@@ -15524,7 +15527,7 @@ function load_minetn_5() {
  * link_doors_rooms extras; ensure_way_out (lua inaccessibles flag);
  * map_cleanup; count_level_features. minetn-7 is D-1504.
  */
-function load_minetn_6() {
+async function load_minetn_6() {
     const g = game;
     nhlib_shuffle_align();
     const align = g.splev_align || ['law', 'neutral', 'chaos'];
@@ -15543,7 +15546,7 @@ function load_minetn_6() {
 
     // des.level_init({ style="mines", fg=".", bg="-", smoothed=true,
     // joined=true, lit=1, walled=true }) — filling defaults to fg
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: HWALL, filling: ROOM,
         lit: 1, smoothed: true, joined: true, walled: true,
@@ -17543,114 +17546,7 @@ function lvlfill_solid(filling, lit) {
     }
 }
 
-/** C ref: mkmap.c init_map */
-function mkmap_init_map(bg_typ) {
-    const map = game.level;
-    for (let x = 1; x < COLNO; x++) {
-        for (let y = 0; y < ROWNO; y++) {
-            const loc = map.at(x, y);
-            if (!loc) continue;
-            loc.roomno = NO_ROOM;
-            loc.typ = bg_typ;
-            loc.lit = false;
-        }
-    }
-}
-
-/** C ref: mkmap.c init_fill */
-function mkmap_init_fill(bg_typ, fg_typ) {
-    const map = game.level;
-    const limit = (MKMAP_WIDTH * MKMAP_HEIGHT * 2) / 5;
-    let count = 0;
-    while (count < limit) {
-        const x = rn1(MKMAP_WIDTH - 1, 2);
-        const y = rnd(MKMAP_HEIGHT - 1);
-        const loc = map.at(x, y);
-        if (loc && loc.typ === bg_typ) {
-            loc.typ = fg_typ;
-            count++;
-        }
-    }
-}
-
-const MKMAP_DIRS = [
-    -1, -1, -1, 0, -1, 1, 0, -1,
-    0, 1, 1, -1, 1, 0, 1, 1,
-];
-
-function mkmap_get(col, row, bg_typ) {
-    if (col <= 0 || row < 0 || col > MKMAP_WIDTH || row >= MKMAP_HEIGHT)
-        return bg_typ;
-    return game.level.at(col, row)?.typ ?? bg_typ;
-}
-
-function mkmap_pass_one(bg_typ, fg_typ) {
-    const map = game.level;
-    for (let x = 2; x <= MKMAP_WIDTH; x++) {
-        for (let y = 1; y < MKMAP_HEIGHT; y++) {
-            let count = 0;
-            for (let dr = 0; dr < 8; dr++) {
-                if (mkmap_get(x + MKMAP_DIRS[dr * 2], y + MKMAP_DIRS[dr * 2 + 1], bg_typ)
-                    === fg_typ)
-                    count++;
-            }
-            const loc = map.at(x, y);
-            if (!loc) continue;
-            if (count <= 2) loc.typ = bg_typ;
-            else if (count >= 5) loc.typ = fg_typ;
-        }
-    }
-}
-
-function mkmap_pass_two(bg_typ, fg_typ) {
-    const map = game.level;
-    const neu = new Array((MKMAP_WIDTH + 1) * MKMAP_HEIGHT);
-    for (let x = 2; x <= MKMAP_WIDTH; x++) {
-        for (let y = 1; y < MKMAP_HEIGHT; y++) {
-            let count = 0;
-            for (let dr = 0; dr < 8; dr++) {
-                if (mkmap_get(x + MKMAP_DIRS[dr * 2], y + MKMAP_DIRS[dr * 2 + 1], bg_typ)
-                    === fg_typ)
-                    count++;
-            }
-            neu[y * (MKMAP_WIDTH + 1) + x] = (count === 5)
-                ? bg_typ
-                : mkmap_get(x, y, bg_typ);
-        }
-    }
-    for (let x = 2; x <= MKMAP_WIDTH; x++) {
-        for (let y = 1; y < MKMAP_HEIGHT; y++) {
-            const loc = map.at(x, y);
-            if (loc) loc.typ = neu[y * (MKMAP_WIDTH + 1) + x];
-        }
-    }
-}
-
-function mkmap_pass_three(bg_typ, fg_typ) {
-    const map = game.level;
-    const neu = new Array((MKMAP_WIDTH + 1) * MKMAP_HEIGHT);
-    for (let x = 2; x <= MKMAP_WIDTH; x++) {
-        for (let y = 1; y < MKMAP_HEIGHT; y++) {
-            let count = 0;
-            for (let dr = 0; dr < 8; dr++) {
-                if (mkmap_get(x + MKMAP_DIRS[dr * 2], y + MKMAP_DIRS[dr * 2 + 1], bg_typ)
-                    === fg_typ)
-                    count++;
-            }
-            neu[y * (MKMAP_WIDTH + 1) + x] = (count < 3)
-                ? bg_typ
-                : mkmap_get(x, y, bg_typ);
-        }
-    }
-    for (let x = 2; x <= MKMAP_WIDTH; x++) {
-        for (let y = 1; y < MKMAP_HEIGHT; y++) {
-            const loc = map.at(x, y);
-            if (loc) loc.typ = neu[y * (MKMAP_WIDTH + 1) + x];
-        }
-    }
-}
-
-function mkmap_flood_fill_rm(sx, sy, rmno, lit, anyroom, bounds) {
+export function mkmap_flood_fill_rm(sx, sy, rmno, lit, anyroom, bounds) {
     const map = game.level;
     const fg_typ = map.at(sx, sy)?.typ;
     if (fg_typ == null) return;
@@ -17762,84 +17658,8 @@ function map_cleanup() {
     }
 }
 
-function join_map_cleanup() {
-    const g = game;
-    for (let x = 1; x < COLNO; x++) {
-        for (let y = 0; y < ROWNO; y++) {
-            const loc = g.level.at(x, y);
-            if (loc) loc.roomno = NO_ROOM;
-        }
-    }
-    g.level.nroom = 0;
-    g.level.rooms = [{ hx: -1 }];
-}
-
-function join_map_dig_pass(bg_typ, fg_typ) {
-    const g = game;
-    const rooms = g.level.rooms;
-    const nroom = g.level.nroom;
-    let ci = 0;
-    let cj = 1;
-    while (cj < nroom) {
-        const croom = rooms[ci];
-        const croom2 = rooms[cj];
-        if (!croom || !croom2) break;
-        const sm = { x: 0, y: 0 };
-        const em = { x: 0, y: 0 };
-        if (!somexy(croom, sm) || !somexy(croom2, em)) {
-            sm.x = croom.lx + ((croom.hx - croom.lx) / 2 | 0);
-            sm.y = croom.ly + ((croom.hy - croom.ly) / 2 | 0);
-            em.x = croom2.lx + ((croom2.hx - croom2.lx) / 2 | 0);
-            em.y = croom2.ly + ((croom2.hy - croom2.ly) / 2 | 0);
-        }
-        dig_corridor(sm, em, null, false, fg_typ, bg_typ);
-        if (croom2.lx > croom.hx
-            || ((croom2.ly > croom.hy || croom2.hy < croom.ly) && rn2(3))) {
-            ci = cj;
-        }
-        cj++;
-    }
-}
-
-/** C ref: mkmap.c join_map */
-function join_map_fixed(bg_typ, fg_typ) {
-    const g = game;
-    outer:
-    for (let x = 2; x <= MKMAP_WIDTH; x++) {
-        for (let y = 1; y < MKMAP_HEIGHT; y++) {
-            const loc = g.level.at(x, y);
-            if (!loc || loc.typ !== fg_typ || loc.roomno !== NO_ROOM) continue;
-            const bounds = {
-                min_rx: x, max_rx: x, min_ry: y, max_ry: y, n_filled: 0,
-            };
-            mkmap_flood_fill_rm(x, y, g.level.nroom + ROOMOFFSET, false, false, bounds);
-            if (bounds.n_filled > 3) {
-                add_room(bounds.min_rx, bounds.min_ry, bounds.max_rx, bounds.max_ry,
-                    false, OROOM, true);
-                const croom = g.level.rooms[g.level.nroom - 1];
-                if (croom) croom.irregular = true;
-                if (g.level.nroom >= MAXNROFROOMS * 2) break outer;
-            } else {
-                const rmno = /* room index before add */ (g.level.nroom + ROOMOFFSET);
-                // flood used nroom+ROOMOFFSET without incrementing nroom
-                for (let sx = bounds.min_rx; sx <= bounds.max_rx; sx++) {
-                    for (let sy = bounds.min_ry; sy <= bounds.max_ry; sy++) {
-                        const cell = g.level.at(sx, sy);
-                        if (cell && cell.roomno === rmno) {
-                            cell.typ = bg_typ;
-                            cell.roomno = NO_ROOM;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    join_map_dig_pass(bg_typ, fg_typ);
-    join_map_cleanup();
-}
-
 /** C ref: sp_lev.c wallify_map */
-function wallify_map(x1, y1, x2, y2) {
+export function wallify_map(x1, y1, x2, y2) {
     const map = game.level;
     y1 = Math.max(y1, 0);
     x1 = Math.max(x1, 1);
@@ -17865,62 +17685,6 @@ function wallify_map(x1, y1, x2, y2) {
                 }
             }
         }
-    }
-}
-
-function finish_map(fg_typ, bg_typ, lit, walled, icedpools) {
-    const map = game.level;
-    if (walled) wallify_map(1, 0, COLNO - 1, ROWNO - 1);
-    if (lit) {
-        for (let x = 1; x < COLNO; x++) {
-            for (let y = 0; y < ROWNO; y++) {
-                const loc = map.at(x, y);
-                if (!loc) continue;
-                if ((!IS_OBSTRUCTED(fg_typ) && loc.typ === fg_typ)
-                    || (!IS_OBSTRUCTED(bg_typ) && loc.typ === bg_typ)
-                    || (bg_typ === TREE && loc.typ === bg_typ)
-                    || (walled && IS_WALL(loc.typ)))
-                    loc.lit = true;
-            }
-        }
-        for (let i = 0; i < (game.level.nroom | 0); i++) {
-            if (game.level.rooms[i]) game.level.rooms[i].rlit = 1;
-        }
-    }
-    for (let x = 1; x < COLNO; x++) {
-        for (let y = 0; y < ROWNO; y++) {
-            const loc = map.at(x, y);
-            if (!loc) continue;
-            if (loc.typ === LAVAPOOL) loc.lit = true;
-            else if (loc.typ === ICE) loc.icedpool = icedpools ? 1 : 2;
-        }
-    }
-}
-
-/** C ref: mkmap.c mkmap */
-function mkmap(init_lev) {
-    const bg_typ = init_lev.bg;
-    const fg_typ = init_lev.fg;
-    const smooth = !!init_lev.smoothed;
-    const join = !!init_lev.joined;
-    let lit = init_lev.lit;
-    const walled = !!init_lev.walled;
-
-    lit = litstate_rnd(lit) ? 1 : 0;
-
-    mkmap_init_map(bg_typ);
-    mkmap_init_fill(bg_typ, fg_typ);
-    mkmap_pass_one(bg_typ, fg_typ);
-    mkmap_pass_two(bg_typ, fg_typ);
-    if (smooth) {
-        mkmap_pass_three(bg_typ, fg_typ);
-        mkmap_pass_three(bg_typ, fg_typ);
-    }
-    if (join) join_map_fixed(bg_typ, fg_typ);
-    finish_map(fg_typ, bg_typ, lit, walled, !!init_lev.icedpools);
-    if (walled && join) {
-        game.level.flags.is_maze_lev = false;
-        game.level.flags.is_cavernous_lev = true;
     }
 }
 
@@ -17979,7 +17743,7 @@ function lvlfill_swamp(fg, bg, lit) {
 }
 
 /** C ref: sp_lev.c splev_initlev — SOLIDFILL + MAZEGRID + MAZE + MINES + SWAMP */
-function splev_initlev(linit) {
+async function splev_initlev(linit) {
     switch (linit.init_style) {
     case LVLINIT_SOLIDFILL:
         if (linit.lit === BOOL_RANDOM) linit.lit = rn2(2);
@@ -18000,7 +17764,7 @@ function splev_initlev(linit) {
     case LVLINIT_MINES:
         if (linit.lit === BOOL_RANDOM) linit.lit = rn2(2);
         if (linit.filling > -1) lvlfill_solid(linit.filling, 0);
-        mkmap(linit);
+        await mkmap(linit);
         break;
     case LVLINIT_SWAMP:
         if (linit.lit === BOOL_RANDOM) linit.lit = rn2(2);
@@ -23073,13 +22837,13 @@ function load_sanctum() {
  * Named omissions: rnd_hell_prefab (styles 2/4/6 percent arms);
  * hellobjects/hellmonsters (defined but unused in Lua).
  */
-function load_hellfill() {
+async function load_hellfill() {
     const g = game;
     nhlib_shuffle_align();
 
     // hellfill.lua:431 — math.random(1, #hells) → 1+rn2(7)
     const hellno = lua_random2(1, 7);
-    hellfill_run_style(hellno);
+    await hellfill_run_style(hellno);
 
     splev_create_stair(true);
     // hellfill.lua:437 — u.invocation_level → des.trap("vibrating square")
@@ -23141,10 +22905,10 @@ function hellfill_replace_terrain_all(fromtyp, totyp, chance = 100) {
     }
 }
 
-function hellfill_run_style(hellno) {
+async function hellfill_run_style(hellno) {
     switch (hellno | 0) {
     case 1:
-        hellfill_style_mines_lava();
+        await hellfill_style_mines_lava();
         break;
     case 2:
         hellfill_style_mazegrid_tweaks();
@@ -23162,7 +22926,7 @@ function hellfill_run_style(hellno) {
         hellfill_style_cold_maze();
         break;
     case 7:
-        hellfill_style_open_cavern();
+        await hellfill_style_open_cavern();
         break;
     default:
         hellfill_style_maze_wt1();
@@ -23171,14 +22935,14 @@ function hellfill_run_style(hellno) {
 }
 
 /** hellfill.lua hells[1] — mines style with lava. */
-function hellfill_style_mines_lava() {
+async function hellfill_style_mines_lava() {
     splev_initlev({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: 0,
     });
     hellfill_set_mazelevel_noflip();
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         lit: 0, smoothed: true, joined: true, walled: true,
@@ -23349,7 +23113,7 @@ function hellfill_style_cold_maze() {
 }
 
 /** hellfill.lua hells[7] — open cavern mines. */
-function hellfill_style_open_cavern() {
+async function hellfill_style_open_cavern() {
     const wter = percent(50) ? STONE : LAVAPOOL;
     splev_initlev({
         init_style: LVLINIT_SOLIDFILL,
@@ -23357,7 +23121,7 @@ function hellfill_style_open_cavern() {
         lit: 0,
     });
     hellfill_set_mazelevel_noflip();
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: wter, filling: ROOM,
         lit: 0, smoothed: true, joined: true, walled: false,
@@ -23389,7 +23153,7 @@ function hellfill_style_open_cavern() {
 /**
  * C ref: dat/minefill.lua via load_special — JS port of the fill script.
  */
-function load_minefill() {
+async function load_minefill() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -23401,7 +23165,7 @@ function load_minefill() {
 
     g.level.flags.is_maze_lev = true;
 
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         lit: BOOL_RANDOM, smoothed: true, joined: true, walled: true,
@@ -23443,7 +23207,7 @@ function load_minefill() {
  * C ref: dat/Bar-fila.lua via load_special — quest filler above locate.
  * Named omissions: other-role *-fila; humidity get_location.
  */
-function load_bar_fila() {
+async function load_bar_fila() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -23458,7 +23222,7 @@ function load_bar_fila() {
     g.level.flags.is_maze_lev = true;
 
     // des.level_init mines: fg=".", bg=".", lit=0, walled=false
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: ROOM, filling: ROOM,
         lit: 0, smoothed: true, joined: true, walled: false,
@@ -23484,7 +23248,7 @@ function load_bar_fila() {
  * C ref: dat/Bar-filb.lua via load_special — quest filler below locate.
  * Named omissions: other-role *-filb; humidity get_location.
  */
-function load_bar_filb() {
+async function load_bar_filb() {
     const g = game;
     nhlib_shuffle_align();
 
@@ -23498,7 +23262,7 @@ function load_bar_filb() {
     g.level.flags.is_maze_lev = true;
 
     // des.level_init mines: fg=".", bg=" ", lit=0, walled=true
-    splev_initlev({
+    await splev_initlev({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         lit: 0, smoothed: true, joined: true, walled: true,
@@ -27126,7 +26890,7 @@ function maybe_sdoor(chance) {
 }
 
 // C ref: sp_lev.c dig_corridor()
-function dig_corridor(org, dest, npoints_out, nxcor, ftyp, btyp) {
+export function dig_corridor(org, dest, npoints_out, nxcor, ftyp, btyp) {
     const map = game.level;
     let dx = 0, dy = 0;
     let xx = org.x, yy = org.y;
@@ -27379,7 +27143,7 @@ function inside_room(croom, x, y) {
 }
 
 // C ref: mkroom.c somexy() — irregular rejects bbox cells with edge/wrong roomno
-function somexy(croom, c) {
+export function somexy(croom, c) {
     let try_cnt = 0;
 
     if (croom.irregular) {
