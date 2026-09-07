@@ -10,6 +10,7 @@
 // For browser play, see nethack.js (uses NethackGame directly).
 
 import { game, resetGame } from './gstate.js';
+import { reset_commands } from './cmd.js';
 import { MENU_FULL, AUTOUNLOCK_APPLY_KEY } from './const.js';
 import { initRng, enableRngLog, getRngLog } from './rng.js';
 import { pushKey, nhgetch } from './input.js';
@@ -174,7 +175,10 @@ export class NethackGame {
                     sortpack: true, sortloot: 'l', // optlist.h and options.c:7208
                     pickup_thrown: true,
                     ...rc.opts };
-        g.iflags = { getpos_coords: rc.opts.getpos_coords ?? 'n' };
+        /* MENUCOLOR= lines in the rc have already set iflags.use_menu_color
+           (coloratt.js add_menu_coloring_parsed()); keep what the parse left */
+        g.iflags = { ...(g.iflags || {}),
+                     getpos_coords: rc.opts.getpos_coords ?? 'n' };
         /* optlist.h homes some booleans in iflags; keep them where their
            readers and the 'O' menu look (see iflag_boolean_options) */
         for (const name of iflag_boolean_options) {
@@ -182,6 +186,17 @@ export class NethackGame {
                 g.iflags[name] = rc.opts[name];
                 delete g.flags[name];
             }
+        }
+        /* src/options.c:2622 optfn_number_pad() writes iflags.num_pad and
+           iflags.num_pad_mode; initoptions_init() ran reset_commands(TRUE)
+           beforehand and the option's do_set tail reruns it */
+        reset_commands(true);
+        if ('num_pad' in rc.opts) {
+            g.iflags.num_pad = rc.opts.num_pad;
+            g.iflags.num_pad_mode = rc.opts.num_pad_mode;
+            delete g.flags.num_pad;
+            delete g.flags.num_pad_mode;
+            reset_commands(false);
         }
         set_menuobjsyms_flags(rc.opts.menuobjsyms ?? 4);
         const pettype = optValue(rc, 'pettype');

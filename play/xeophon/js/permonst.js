@@ -3973,11 +3973,13 @@ export const touch_petrifies = (x) => { const m = M(x); return m.pm === PM_COCKA
 
 // mondata.h:vegetarian includes vegan species and all puddings except black
 // pudding. This describes what their bodies contain, not what they can eat.
-export function vegetarian(mon) {
+export function vegan(mon) {
     const data = M(mon);
     return [S_BLOB, S_JELLY, S_FUNGUS, S_VORTEX, S_LIGHT].includes(data.mlet)
         || data.mlet === S_ELEMENTAL && data.pm !== PM_STALKER
         || data.mlet === S_GOLEM && ![PM_FLESH_GOLEM, PM_LEATHER_GOLEM].includes(data.pm)
-        || noncorporeal(data)
-        || data.mlet === S_PUDDING && data.pm !== PM_BLACK_PUDDING;
+        || noncorporeal(data);
 }
+
+export const vegetarian = mon => vegan(mon)
+    || M(mon).mlet === S_PUDDING && M(mon).pm !== PM_BLACK_PUDDING;

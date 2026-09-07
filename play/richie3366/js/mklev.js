@@ -57,7 +57,7 @@ import {
     In_mines,
     In_quest,
     In_endgame,
-    ZOMBIFY_MON, TIMER_OBJECT, TIMER_LEVEL, MELT_ICE_AWAY,
+    ZOMBIFY_MON, TIMER_OBJECT, TIMER_LEVEL, MELT_ICE_AWAY, ROT_ORGANIC,
     Is_rogue_level,
     Is_knox_level,
     Is_botlevel,
@@ -96,7 +96,7 @@ import {
     mkcorpstat, next_ident,
     curse, bless, uncurse, blessorcurse, place_object, add_to_buried, weight, OBJ,
     set_corpsenm, obj_stop_timers, start_timer, spot_stop_timers,
-    obj_extract_self,
+    obj_extract_self, is_organic,
     add_to_container, objects_at, stackobj, oc_merge_of, dealloc_obj,
 } from './mkobj.js';
 import {
@@ -25913,6 +25913,95 @@ function themeroom_fill_buried_zombies(croom) {
 }
 
 /**
+ * C ref: themerms.lua "Massacre" `:173–190` — 27-name pool, initial
+ * `math.random(#mon)` (1-based → `lua_random2(1, 27)`), count `d(5,5)` as
+ * five `math.random(1,5)` draws (nhlib `d`, not rnd.c `d()`), then per
+ * corpse `percent(10)` with a re-pick on success. Each corpse is
+ * `des.object({ id = "corpse", montype })` with no coord → DRY in croom.
+ */
+function themeroom_fill_massacre(croom) {
+    const mon = [
+        'apprentice', 'warrior', 'ninja', 'thug',
+        'hunter', 'acolyte', 'abbot', 'page',
+        'attendant', 'neanderthal', 'chieftain',
+        'student', 'wizard', 'valkyrie', 'tourist',
+        'samurai', 'rogue', 'ranger', 'priestess',
+        'priest', 'monk', 'knight', 'healer',
+        'cavewoman', 'caveman', 'barbarian',
+        'archeologist',
+    ];
+    // C: local idx = math.random(#mon) — single-arg → 1 + rn2(27)
+    let idx = lua_random2(1, mon.length) - 1;
+    // C: for i = 1, d(5,5) — nhlib d sums math.random(1,5) per die
+    let n = 0;
+    for (let k = 0; k < 5; k++) n += lua_random2(1, 5);
+    for (let i = 0; i < n; i++) {
+        if (rn2(100) < 10) idx = lua_random2(1, mon.length) - 1;
+        l_create_object({ id: CORPSE, montype: mon[idx] }, null, croom);
+    }
+}
+
+/**
+ * C ref: themerms.lua "Statuary" `:192–200` — `d(5,5)` random statues
+ * (nhlib per-die draws, no montype) then `d(3)` statue traps. Objects go
+ * through `des.object` (DRY in croom); traps through `des.trap` → DRY in
+ * croom with the stairs/ladder retry `create_trap` applies (no stairs
+ * exist at fill time, so one DRY pick matches).
+ */
+function themeroom_fill_statuary(croom) {
+    let n = 0;
+    for (let k = 0; k < 5; k++) n += lua_random2(1, 5);
+    for (let i = 0; i < n; i++) {
+        l_create_object({ id: STATUE }, null, croom);
+    }
+    const m = lua_random2(1, 3);
+    for (let i = 0; i < m; i++) {
+        const pos = get_location_coord_in_room(croom, DRY);
+        if (pos.x < 0 || !isok(pos.x, pos.y)) continue;
+        splev_mktrap_at(STATUE_TRAP, pos.x, pos.y, {});
+    }
+}
+
+/**
+ * C ref: themerms.lua "Buried treasure" `:134–148` + sp_lev.c
+ * `create_object` `:2428–2437` (`o->buried` → `bury_an_obj`) + lua
+ * `make_dig_engraving` postprocess. The chest is buried before its
+ * container contents are made (C buries inside `create_object`, then the
+ * lua `contents` callback runs with the container still pushed), so the
+ * bury draws precede the `d(3,4)` + inner `des.object()` draws here too.
+ * Inner empties stay container contents (no floor placement); the
+ * engraving fires at `post_level_generate` from the chest coords.
+ */
+function themeroom_fill_buried_treasure(croom) {
+    l_create_object({ id: CHEST }, (chest) => {
+        // C bury_an_obj(dig.c:1984): obj_resists(0,0) draw, extract, then
+        // organic rot arm (chest is wooden → is_organic; not under ice at
+        // fill time) with obj_resists(5,95) + 250+rnd(250) ROT_ORGANIC.
+        // A resisted chest stays on the floor but keeps its engraving and
+        // contents (the lua `if` guards only the postprocess push).
+        if (chest && !obj_resists(chest, 0, 0)) {
+            obj_extract_self(chest);
+            if (is_organic(chest) && !obj_resists(chest, 5, 95)) {
+                start_timer(250 + rnd(250), TIMER_OBJECT, ROT_ORGANIC, chest);
+            }
+            add_to_buried(chest);
+        }
+        if (chest) {
+            themerms_postprocess.push({
+                handler: 'make_dig_engraving',
+                data: { x: chest.ox, y: chest.oy },
+            });
+        }
+        // C: for i = 1, d(3,4) do des.object(); end — container contents,
+        // made even when the chest is gone (C frees them via the NULL
+        // container arm, but every mkobj draw still burns).
+        let n = 0;
+        for (let k = 0; k < 3; k++) n += lua_random2(1, 4);
+        for (let i = 0; i < n; i++) l_create_object({}, null, croom);
+    }, croom);
+}
+
+/**
  * C ref: themerms.lua "Light source" `:204–209` + sp_lev.c create_object
  * `o->lit` after stackobj (D-1533). Lua eligible is `rm.lit == false`
  * (`THEMEROOM_FILLS` needs_unlit; `l_push_mkroom_table` lit←rlit).
@@ -26137,6 +26226,28 @@ function make_garden_walls_postprocess(data) {
     }
 }
 
+// C ref: themerms.lua make_dig_engraving `:1052–1070` — negate-all then
+// filter "." (JS selection_all_room_floors), rndcoord(0) without removal,
+// then "Dig" + directional words from (data.x - pos.x - 1, data.y - pos.y).
+// The -1 mirrors the lua; stored postprocess coords are absolute level
+// cells (chest ox/oy), same frame as the negate selection.
+function make_dig_engraving_postprocess(data) {
+    if (!data) return;
+    const floors = selection_all_room_floors();
+    const pos = selection_rndcoord(floors, false);
+    if (!pos) return;
+    const tx = (data.x | 0) - pos.x - 1;
+    const ty = (data.y | 0) - pos.y;
+    let dig = '';
+    if (tx === 0 && ty === 0) {
+        dig = ' here';
+    } else {
+        if (tx !== 0) dig += ` ${Math.abs(tx)} ${tx > 0 ? 'east' : 'west'}`;
+        if (ty !== 0) dig += ` ${Math.abs(ty)} ${ty > 0 ? 'south' : 'north'}`;
+    }
+    make_engr_at(pos.x, pos.y, `Dig${dig}`, null, 0, BURN);
+}
+
 // C ref: themerms.lua post_level_generate + mklev.c themerooms_post_level_generate
 function run_themerms_post_level_generate() {
     // C mklev.c themerooms_post_level_generate — reset before lua
@@ -26145,6 +26256,7 @@ function run_themerms_post_level_generate() {
     for (const v of themerms_postprocess) {
         if (v.handler === 'make_a_trap') make_a_trap_postprocess(v.data);
         else if (v.handler === 'make_garden_walls') make_garden_walls_postprocess(v.data);
+        else if (v.handler === 'make_dig_engraving') make_dig_engraving_postprocess(v.data);
     }
     themerms_postprocess.length = 0;
 }
@@ -26155,6 +26267,9 @@ const THEMEROOM_FILL_BODIES = {
     'Teleportation hub': themeroom_fill_teleport_hub,
     'Storeroom': themeroom_fill_storeroom,
     'Buried zombies': themeroom_fill_buried_zombies,
+    'Buried treasure': themeroom_fill_buried_treasure,
+    'Massacre': themeroom_fill_massacre,
+    'Statuary': themeroom_fill_statuary,
     'Temple of the gods': themeroom_fill_temple_of_the_gods,
     'Cloud room': themeroom_fill_cloud,
     'Light source': themeroom_fill_light_source,
@@ -26180,7 +26295,8 @@ function themeroom_fill(croom) {
     croom._themeroom_fill = pick.name;
     const body = THEMEROOM_FILL_BODIES[pick.name];
     if (body) body(croom);
-    // Named omission: Buried treasure / Massacre / Statuary / …
+    // Every THEMEROOM_FILLS entry now has a body (incl. Buried treasure /
+    // Massacre / Statuary + make_dig_engraving postprocess above).
 }
 
 // C ref: themerms.lua filler_region + sp_lev.c lspo_region irregular path

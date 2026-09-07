@@ -6859,7 +6859,7 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
     if (obj.oartifact) {
         const u = game.u || {};
         place_object(obj, u.ux, u.uy);
-        if (!touch_artifact(obj, youmonst)) {
+        if (!(await touch_artifact(obj, youmonst))) {
             obj_extract_self(obj);
             // dropy deferred — leave on floor (C dropy after extract)
             await hold_drop_msg();

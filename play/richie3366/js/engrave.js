@@ -9,7 +9,9 @@
 // Branch envelope: u_can_engrave floor gate + live getobj("write with",
 // stylus_ok, GETOBJ_PROMPT) (hands `-` SUGGEST; canned IA_ENGRAVE_OBJ
 // KEY D-1675) + DUST fingertip You/getlin + literate bump + DUST/blood/
-// Blind/Confusion/Stunned/Hallu mix-up + set_occupation one-tick finish
+// Blind/Confusion/Stunned/Hallu mix-up + set_occupation `engrave`
+// `:1267–1493` (teleport/invent stops, carving/marker rate, dull/marker
+// wear, BUFSZ room, truncate, `finish %s.` iff multi-action)
 // via make_engr_at (Elbereth → exercise(A_WIS,TRUE)); look_here/`:` via
 // read_engr_at (DUST/ENGRAVE/BURN/MARK/blood non-Blind); `u_wipe_engr`
 // → can_reach_floor(TRUE)+wipe_engr_at (D-1051 apply pole/grapple);
@@ -21,7 +23,7 @@
 // **doengrave non-hands stylus sfx** (D-1689: wand/weapon/marker/towel/
 // gem oc_tough / boots / large/silly); canned KEY was D-1675.
 // Named omissions: altar/jello/swallow/lava/pool; yn add-to (same-type
-// defaults append); multi-turn dulling / marker ink occupation; livelog;
+// defaults append); livelog;
 // allmain DEX timeout D-1372; dokick(2) D-1360;
 // uhitm do_attack(3) D-1373; dothrow throw_obj(2) D-1374;
 // dig.c still stubbed;
@@ -40,9 +42,10 @@
 
 import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
-import { pline, newsym } from './display.js';
+import { pline, newsym, impossible } from './display.js';
 import { getlin } from './getline.js';
-import { getobj, useup } from './invent.js';
+import { getobj, useup, hold_another_object, prinv, update_inventory } from './invent.js';
+import { splitobj, obj_extract_self } from './mkobj.js';
 import { A_WIS, exercise } from './attrib.js';
 import { getrumor, get_rnd_text, xcrypt } from './rumors.js';
 import { ENGRAVE_BUF, MD_PAD_ENGRAVE } from './generated/engrave_data.js';
@@ -87,6 +90,7 @@ const PM_GHOUL = monsterNames.indexOf('PM_GHOUL');
 
 const TOWEL = objectNames.indexOf('TOWEL');
 const MAGIC_MARKER = objectNames.indexOf('MAGIC_MARKER');
+const ATHAME = objectNames.indexOf('ATHAME');
 
 /** C: decl.h Something */
 const Something = 'Something';
@@ -967,66 +971,217 @@ export function set_occupation(fn, txt, xtime = 0) {
     game.occtime = 0;
 }
 
-/** C engrave.c engrave() occupation. Named: carving rate / marker ink / dull. */
-function engrave_occupation() {
+/**
+ * C engrave.c engrave `:1267–1493` — occupation callback for engraving text.
+ * Full port in exact C order: teleport stop, stylus invent walk, actionct++,
+ * sanity impossibles, carving/marker rate (Step 1), non-space rate scan
+ * (Step 2), dulling-weapon split/dull + marker ink (Step 3), finishverb
+ * switch, BUFSZ room check, truncate print, make_engr_at + eread/erevealed,
+ * continue (`return 1`) vs finish (`finish %s.` iff multi-action).
+ * C `nextc` is a pointer into `text`; JS keeps `nextc` as the remaining
+ * suffix, so C `*endc = '\0'` is `eng.text = consumed + chunk`.
+ */
+async function engrave() {
     const eng = game.context?.engraving;
     if (!eng) return 0;
     const u = game.u || {};
-    if (eng.pos?.x !== u.ux || eng.pos?.y !== u.uy) {
-        // pline deferred for rare teleport mid-engrave
+    if ((eng.pos?.x | 0) !== (u.ux | 0) || (eng.pos?.y | 0) !== (u.uy | 0)) {
+        /* teleported? */
+        await pline('You are unable to continue engraving.');
         return 0;
     }
-    // C: stylus == &hands_obj → NULL; else invent walk; gone → stop
-    if (eng.stylus && !is_hands_stylus(eng.stylus)) {
-        if (!(game.invent || []).includes(eng.stylus)) return 0;
+    /* Stylus might have been taken out of inventory and destroyed somehow.
+     * Not safe to dereference stylus until after this. */
+    let stylus;
+    if (eng.stylus && is_hands_stylus(eng.stylus)) {
+        /* bare finger */
+        stylus = null;
+    } else {
+        stylus = null;
+        for (const obj of game.invent || []) {
+            if (obj === eng.stylus) {
+                stylus = obj;
+                break;
+            }
+        }
+        if (!stylus) {
+            await pline('You are unable to continue engraving.');
+            return 0;
+        }
     }
 
-    const firsttime = (eng.actionct || 0) === 0;
-    const neweng = firsttime;
-    eng.actionct = (eng.actionct || 0) + 1;
+    const carving = eng.type === ENGRAVE || eng.type === HEADSTONE;
+    const dulling_wep = carving && stylus && stylus.oclass === WEAPON_CLASS
+        && (stylus.otyp !== ATHAME || !!stylus.cursed);
+    const marker = !!stylus && stylus.otyp === MAGIC_MARKER
+        && eng.type === MARK;
 
-    let rate = 10;
-    // carving/marker rate deferred — finger DUST keeps 10
+    const firsttime = (eng.actionct | 0) === 0;
+    const neweng = (eng.actionct | 0) === 0;
+    eng.actionct = (eng.actionct | 0) + 1;
+
+    /* sanity checks */
+    if (dulling_wep && !is_blade(stylus)) {
+        await impossible('carving with non-bladed weapon');
+    } else if (eng.type === MARK && !marker) {
+        await impossible('making graffiti with non-marker stylus');
+    }
+
+    /* Step 1: Compute rate. */
+    let rate = 10; /* # characters that can be engraved in this action */
+    if (carving && stylus
+        && (dulling_wep || stylus.oclass === RING_CLASS
+            || stylus.oclass === GEM_CLASS)) {
+        /* slow engraving methods */
+        rate = 1;
+    } else if (marker) {
+        /* one charge / 2 letters */
+        rate = Math.min(rate, (stylus.spe | 0) * 2);
+    }
+
+    /* Step 2: Compute last character that can be engraved this action. */
     const nextc = eng.nextc || '';
-    let i = rate;
+    let ri = rate;
     let end = 0;
-    for (; end < nextc.length && i > 0; end++) {
-        if (nextc[end] !== ' ') i--;
+    for (; end < nextc.length && ri > 0; end++) {
+        if (nextc[end] !== ' ') ri--;
     }
-    const chunk = nextc.slice(0, end);
-    const rest = nextc.slice(end);
+    let truncate = false;
 
+    /* Step 3: affect stylus from engraving - it might wear out. */
+    if (dulling_wep) {
+        let splitstack = false;
+        let dulled = false;
+        /* 'dulling_wep' guarantees a weapon not welded to the hand(s) */
+        if ((stylus.quan | 0) > 1) {
+            if (firsttime) await pline(`One of ${yname(stylus)} gets dull.`);
+            stylus = eng.stylus = splitobj(stylus, 1);
+            /* if stack is wielded or quivered, the split-off one isn't */
+            if (stylus) stylus.owornmask = 0;
+            splitstack = true;
+        } else {
+            /* normal case: stylus->quan==1 */
+            if (firsttime) await pline(`${Yname2(stylus)} gets dull.`);
+        }
+        /* Dull at -1 enchantment per 2 characters, rounding down. */
+        if ((eng.actionct | 0) % 2 === 1) { /* 1st,3rd,... action */
+            const rest0 = nextc.slice(end);
+            if ((stylus.spe | 0) <= -3) {
+                if (firsttime) {
+                    await impossible('<= -3 weapon valid for engraving');
+                }
+                truncate = true;
+            } else if (rest0 || eng.actionct === 1) {
+                stylus.spe = (stylus.spe | 0) - 1;
+                dulled = true;
+            }
+        }
+        if (splitstack) {
+            obj_extract_self(stylus);
+            stylus = await hold_another_object(
+                stylus, 'You drop one %s!', doname(stylus), null,
+            );
+        } else if (dulled && stylus.known) {
+            /* reflect change in stylus->spe */
+            await prinv(null, stylus, 1);
+            update_inventory();
+        }
+    } else if (marker) {
+        let ink_cost = Math.max(Math.floor(rate / 2), 1); /* no free art */
+        if ((stylus.spe | 0) < ink_cost) {
+            await impossible('overly dry marker valid for graffiti?');
+            ink_cost = stylus.spe | 0;
+            truncate = true;
+        }
+        stylus.spe = (stylus.spe | 0) - ink_cost;
+        update_inventory();
+        if ((stylus.spe | 0) === 0) {
+            /* can't engrave any further; truncate the string */
+            await pline('Your marker dries out.');
+            truncate = true;
+        }
+    }
+
+    let finishverb;
+    switch (eng.type) {
+    default:
+        finishverb = 'your weird engraving';
+        break;
+    case DUST:
+        finishverb = is_ice(u.ux, u.uy) ? 'writing in the frost'
+            : 'writing in the dust';
+        break;
+    case HEADSTONE:
+    case ENGRAVE:
+        finishverb = 'engraving';
+        break;
+    case BURN:
+        finishverb = is_ice(u.ux, u.uy) ? 'melting your message into the ice'
+            : 'burning your message into the floor';
+        break;
+    case MARK:
+        finishverb = 'defacing the dungeon';
+        break;
+    case ENGR_BLOOD:
+        finishverb = 'scrawling';
+        break;
+    }
+
+    /* actions that happen at the end of every engraving action go here */
     const oep = engr_at(u.ux, u.uy);
-    const prev = oep?.engr_txt?.actual_text || '';
-    const buf = prev + chunk;
-    const ep = make_engr_at(
-        u.ux, u.uy, buf, null,
-        (game.moves || 0) - (game.multi || 0),
-        eng.type || DUST,
-    );
-    if (ep) {
-        ep.eread = 1;
-        ep.erevealed = 1;
+    let buf = '';
+    if (oep) buf = oep.engr_txt?.actual_text || ''; /* add to existing */
+
+    const space_left = BUFSZ - buf.length - 1;
+    if (end > space_left) {
+        await pline('You run out of room to write.');
+        end = Math.max(space_left, 0);
+        truncate = true;
+    }
+
+    /* If the stylus did wear out mid-engraving, truncate the input so that
+     * we can't go any further. */
+    let chunk = nextc.slice(0, end);
+    let rest = nextc.slice(end);
+    if (truncate && rest) {
+        rest = '';
+        /* C: *endc = '\0' truncates engraving.text at endc */
+        const consumed = String(eng.text || '').slice(
+            0, Math.max(String(eng.text || '').length - nextc.length, 0),
+        );
+        eng.text = consumed + chunk;
+        await pline(`You are only able to write "${eng.text}".`);
+    } else {
+        /* input was not truncated; stylus may still have worn out on the
+         * last character, though */
+        truncate = false;
+    }
+
+    buf += chunk; /* C: strncat(buf, nextc, min(space_left, endc-nextc)) */
+    make_engr_at(u.ux, u.uy, buf, null,
+        (game.moves | 0) - (game.multi | 0), eng.type);
+    const oep2 = engr_at(u.ux, u.uy);
+    if (oep2) {
+        oep2.eread = 1;
+        oep2.erevealed = 1;
     }
 
     if (rest) {
         eng.nextc = rest;
         if (neweng) newsym(eng.pos.x, eng.pos.y);
-        return 1;
+        return 1; /* not yet finished this turn */
     }
-
-    // finished — multi-action "You finish …" deferred (firsttime path silent)
-    if (game.context) {
-        game.context.engraving = {
-            text: '',
-            nextc: '',
-            stylus: null,
-            type: 0,
-            pos: { x: 0, y: 0 },
-            actionct: 0,
-        };
+    /* finished engraving */
+    if (truncate) {
+        await pline('You cannot write any more.');
+    } else if (!firsttime) {
+        /* only print this if engraving took multiple actions */
+        await pline(`You finish ${finishverb}.`);
     }
-    if (neweng) newsym(u.ux, u.uy);
+    eng.text = '';
+    eng.nextc = null;
+    eng.stylus = null;
+    if (neweng) newsym(eng.pos.x, eng.pos.y);
     return 0;
 }
 
@@ -1220,7 +1375,7 @@ export async function doengrave() {
         pos: { x: u.ux, y: u.uy },
         actionct: 0,
     };
-    set_occupation(engrave_occupation, 'engraving');
+    set_occupation(engrave, 'engraving');
 
     if (de.post_engr_text) await pline(de.post_engr_text);
     if (de.doblind && !(Blind() || u.Unaware)) {

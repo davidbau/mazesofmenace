@@ -322,6 +322,8 @@ function wiz_intrinsic_timeout(key) {
         return (game.u.uprops?.[key] || 0) & TIMEOUT;
     if (key === 'UNCHANGING')
         return (game.u.intrinsic?.HUnchanging || 0) & TIMEOUT;
+    if (key === 'STRANGLED')
+        return (game.u.intrinsic?.HStrangled || 0) & TIMEOUT;
     if (key === 'CONFUSION')
         return game.u.intrinsic?.HConfusion | 0;
     if (key === 'HALLUC')
@@ -428,6 +430,15 @@ export async function wiz_intrinsic() {
             const { make_vomiting } = await import('./potion.js');
             await make_vomiting(oldtimeout + amount, false);
             await pline(`You are${oldtimeout ? ' still' : ''} vomiting.`);
+        } else if (key === 'STRANGLED') {
+            /* wizcmds.c:1071 default: incr_itimeout(&u.uprops[p].intrinsic);
+               the port keeps the strangulation timer in intrinsic.HStrangled
+               (timeout.js, botl.js) */
+            const { incr_itimeout } = await import('./potion.js');
+            incr_itimeout('HStrangled', amount);
+            (game.disp ||= {}).botl = true;
+            await pline(`Timeout for ${name} ${oldtimeout
+                ? 'increased by' : 'set to'} ${amount}.`);
         } else if (key === 'UNCHANGING') {
             const { incr_itimeout } = await import('./potion.js');
             incr_itimeout('HUnchanging', amount);
@@ -489,6 +500,20 @@ export async function wiz_intrinsic() {
             (game.disp ||= {}).botl = true;
             await pline(`Timeout for ${name} ${oldtimeout
                 ? 'increased by' : 'set to'} ${amount}.`);
+        }
+        /* src/wizcmds.c:1080 — this has to be after incr_itimeout() */
+        if (key === 'LEVITATION' || key === 'FLYING') {
+            const { float_vs_flight } = await import('./polyself.js');
+            float_vs_flight();
+        } else if (key === 'PROT_FROM_SHAPE_CHANGERS') {
+            const { rescham } = await import('./mon.js');
+            await rescham();
+        }
+        if (key === 'WWALKING' || key === 'LEVITATION' || key === 'FLYING') {
+            if (game.u.uinwater) {
+                const { pooleffects } = await import('./hack.js');
+                await pooleffects(false);
+            }
         }
     }
     await docrt();

@@ -15,7 +15,7 @@ import {
     POOL, DROWNING, KILLED_BY_AN,
     MAGICAL_BREATHING, SWIMMING, Is_medusa_level, Is_waterlevel,
     W_ARMS, W_WEP, W_AMUL, W_ARM, W_ARMG, NEUTRAL, BOLT_LIM, STONING, KILLED_BY, M_SEEN_FIRE,
-    M_SEEN_SLEEP,
+    M_SEEN_SLEEP, STUNNED, TELEPORT_CONTROL,
     REFLECTING, A_CHAOTIC, LARGEST_INT,
     M_AP_NOTHING, M_AP_OBJECT, WORN_HELMET, TELEDS_ALLOW_DRAG,
     something, Something, u_at, ERODE_RUST,
@@ -54,7 +54,7 @@ import { y_n } from './getline.js';
 import { getyear, yyyymmdd, night, midnight } from './calendar.js';
 import { pluslvl, losexp } from './exper.js';
 import { mhe } from './fountain.js';
-import { rloc, tele_restrict, enexto, teleds } from './teleport.js';
+import { rloc, tele_restrict, enexto, teleds, tele, unconscious } from './teleport.js';
 import { monflee, set_apparxy } from './monmove.js';
 import {
     is_orc, is_demon, is_were, is_human, is_animal, is_whirly, amorphous, unsolid,
@@ -78,7 +78,7 @@ import {
 import { xkilled, killed, Hate_silver } from './uhitm.js';
 import {
     m_seenres, cvt_adtyp_to_mseenres, monstseesu, monstunseesu, m_canseeu,
-    mhis,
+    mhis, on_fire,
 } from './mondata.js';
 import { which_armor, find_mac } from './worn.js';
 import {
@@ -92,7 +92,7 @@ import {
     AT_ENGL, AT_GAZE, AT_SPIT, AT_BREA, AT_EXPL, AT_BOOM, AT_TENT, AT_MAGC,
     AT_HUGS,
     AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_DRDX, AD_DRCO, AD_ACID,
-    AD_SITM, AD_SEDU, AD_SSEX, AD_POLY, AD_DRIN, AD_SLEE,
+    AD_SITM, AD_SEDU, AD_SSEX, AD_POLY, AD_DRIN, AD_SLEE, AD_TLPT,
 } from './mhitm.js';
 import { castmu, buzzmu } from './mcastu.js';
 import { rehumanize, polymon, body_part } from './polyself.js';
@@ -148,6 +148,9 @@ const IRON = 11;
 const METAL = 12;
 const PM_BLACK_PUDDING = monsterNames.indexOf('PM_BLACK_PUDDING');
 const PM_BROWN_PUDDING = monsterNames.indexOf('PM_BROWN_PUDDING');
+const PM_BARBED_DEVIL = monsterNames.indexOf('PM_BARBED_DEVIL');
+const PM_PAPER_GOLEM = monsterNames.indexOf('PM_PAPER_GOLEM');
+const PM_STRAW_GOLEM = monsterNames.indexOf('PM_STRAW_GOLEM');
 
 /** C ref: monst.h resists_* — mresists|mextrinsics|mintrinsics bit. */
 function resists_mr(mon, mrBit) {
@@ -214,6 +217,45 @@ function Displaced() {
 /** C ref: youprop.h Invis — match monmove: u.Invis flag. */
 function Invis() {
     return !!(game.u?.Invis);
+}
+
+/** C ref: pline.c Your — prefix "Your " (file-local like zap.js/artifact.js). */
+async function Your(rest) {
+    await pline(`Your ${rest}`);
+}
+
+/**
+ * C ref: youprop.h Teleport_control — H || E (flats + uprops mirrors,
+ * invent.js hero_Teleport_control idiom; confer writes uprops only).
+ */
+function Teleport_control() {
+    const u = game.u || {};
+    return !!(
+        (u.HTeleport_control | 0)
+        || (u.ETeleport_control | 0)
+        || u.Teleport_control
+        || (u.uprops?.[TELEPORT_CONTROL]?.intrinsic | 0)
+        || (u.uprops?.[TELEPORT_CONTROL]?.extrinsic | 0)
+    );
+}
+
+/**
+ * C ref: youprop.h Stunned — HStun ≡ uprops[STUNNED].intrinsic
+ * (zap.js Stunned idiom; sticky u.Stunned kept for JS gates).
+ */
+function Stunned() {
+    const u = game.u || {};
+    const e = u.uprops?.[STUNNED];
+    return !!((u.HStun | 0) || u.Stunned || (e?.intrinsic | 0));
+}
+
+/**
+ * C ref: youprop.h Free_action — uprops[FREE_ACTION].extrinsic
+ * (potion.js Free_action idiom; flat mirrors kept for JS gates).
+ */
+function Free_action() {
+    const u = game.u || {};
+    return !!(u.Free_action || u.HFree_action || u.EFree_action);
 }
 
 /** C ref: you.h m_next2u — squared dist to hero ≤ 2. */
@@ -827,6 +869,81 @@ async function mhitm_ad_cold_u(mtmp, mattk, mhm) {
         }
     } else {
         mhm.damage = 0;
+    }
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_fire `:2561–2587` — mhitu (monster→you) arm.
+ * hitmsg, then the mhitm_mgc_atk_negated(TRUE) gate (negated → damage 0);
+ * on_fire pline, paper/straw-golem burn-up + rehumanize, Fire_resistance
+ * zero, m_lev > rn2(20) destroy + ignite, burn_away_slime.
+ * monst[un]seesu(M_SEEN_FIRE) are live (mondata.js) and RNG-free, kept
+ * per C (elec_u/cold_u still defer theirs).
+ */
+async function mhitm_ad_fire_u(mtmp, mattk, mhm) {
+    const orig_dmg = mhm.damage;
+    await hitmsg(mtmp, mattk);
+    if (!(await mhitm_mgc_atk_negated(mtmp, null, true))) {
+        const pd = game.youmonst?.data;
+        await pline(`You're ${on_fire(pd, mattk)}!`);
+        /* C mondata.h:223 completelyburns — paper or straw golem hero */
+        if ((pd ?? null) === mons[PM_PAPER_GOLEM]
+            || (pd ?? null) === mons[PM_STRAW_GOLEM]) {
+            await pline('You go up in flames!');
+            monstunseesu(M_SEEN_FIRE);
+            /* C: KMH -- this is okay with unchanging */
+            await rehumanize();
+            return;
+        } else if (Fire_resistance()) {
+            await pline("The fire doesn't feel hot!");
+            monstseesu(M_SEEN_FIRE);
+            mhm.damage = 0;
+        } else {
+            monstunseesu(M_SEEN_FIRE);
+        }
+        // C: if ((int) magr->m_lev > rn2(20)) destroy_items + ignite_items
+        if ((mtmp.m_lev | 0) > rn2(20)) {
+            const you = game.youmonst || { _youmonst: true };
+            // C: (void) — return unused when mon is the player (zap.c:5962)
+            await destroy_items(you, AD_FIRE, orig_dmg);
+            await ignite_items(game.invent);
+        }
+        await burn_away_slime();
+    } else {
+        mhm.damage = 0;
+    }
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_tlpt `:2884–2927` — mhitu (monster→you) arm.
+ * hitmsg, then the mhitm_mgc_atk_negated(FALSE) gate (negated →
+ * "not affected"); verbose uncertain-position line, tele(), and the
+ * non-fatal damage clamp (Half_physical_damage halves first).
+ */
+async function mhitm_ad_tlpt_u(mtmp, mattk, mhm) {
+    await hitmsg(mtmp, mattk);
+    if (await mhitm_mgc_atk_negated(mtmp, null, false)) {
+        await pline('You are not affected.');
+    } else {
+        const u = game.u || {};
+        if (game.flags?.verbose !== false) {
+            await Your(`position suddenly seems ${
+                (Teleport_control() && !Stunned() && !unconscious()) ? '' : 'very '
+            }uncertain!`);
+        }
+        await tele();
+        /* C 3.6.2+: teleported hero must survive the leftover damage */
+        const half = !!((u.HHalf_physical_damage | 0) || (u.EHalf_physical_damage | 0));
+        const curhp = Upolyd(u) ? (u.mh | 0) : (u.uhp | 0);
+        if ((half ? Math.trunc((mhm.damage - 1) / 2) : mhm.damage) >= curhp) {
+            mhm.damage = curhp - 1;
+            if (half) mhm.damage *= 2;
+            if (mhm.damage < 1) {
+                mhm.damage = 1;
+                if (Upolyd(u) && (u.mh | 0) === 1) u.mh = (u.mh | 0) + 1;
+                else if (!Upolyd(u) && (u.uhp | 0) === 1) u.uhp = (u.uhp | 0) + 1;
+            }
+        }
     }
 }
 
@@ -2150,10 +2267,56 @@ async function mhitm_ad_rust_u(mtmp, mattk, mhm) {
 }
 
 /**
+ * C ref: uhitm.c mhitm_ad_stck `:3321–3328` — mhitu (monster→you) arm.
+ * The mhitm_mgc_atk_negated(FALSE) gate burns first (function top, all
+ * three C branches); hitmsg, then stick (set_ustuck) when !negated,
+ * hero not already stuck, and hero form lacks sticks(); barbed devils
+ * add the barbs line. Damage untouched.
+ */
+async function mhitm_ad_stck_u(mtmp, mattk, mhm) {
+    void mhm;
+    const negated = await mhitm_mgc_atk_negated(mtmp, null, false);
+    const pd = game.youmonst?.data;
+    const barbs = (((mtmp.data?.mndx ?? mtmp.mnum) | 0) === PM_BARBED_DEVIL);
+    await hitmsg(mtmp, mattk);
+    const u = game.u || {};
+    if (!negated && !u.ustuck && !sticks(pd)) {
+        set_ustuck(mtmp);
+        if (barbs) await pline('The barbs stick to you!');
+    }
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_plys `:3443–3462` — mhitu (monster→you) arm.
+ * hitmsg, then multi >= 0 && !rn2(3) && !mgc_negated(TRUE) (rn2 before
+ * the gate per C short-circuit); Free_action stiffens, else freeze with
+ * nomul(-rnd(10)), nomovemsg, multi_reason, DEX exercise.
+ */
+async function mhitm_ad_plys_u(mtmp, mattk, mhm) {
+    void mhm;
+    await hitmsg(mtmp, mattk);
+    if ((game.multi | 0) >= 0 && !rn2(3)
+        && !(await mhitm_mgc_atk_negated(mtmp, null, true))) {
+        if (Free_action()) {
+            await pline('You momentarily stiffen.');
+        } else {
+            if (Blind()) await pline('You are frozen!');
+            else await pline(`You are frozen by ${mon_nam(mtmp)}!`);
+            game.nomovemsg = 'You can move again.';
+            nomul(-rnd(10));
+            /* C dynamic_multi_reason "paralyzed by <mon>"; static
+               'paralyzed by a monster' is the mcastu.c precedent */
+            game.multi_reason = 'paralyzed by a monster';
+            exercise(A_DEX, false);
+        }
+    }
+}
+
+/**
  * C ref: uhitm.c mhitm_adtyping — mhitu (monster→you) subset.
- * PHYS + ELEC + COLD + DRST/DRDX/DRCO + SITM/SEDU + SSEX (D-1750) + BLND + STON + LEGS
- * + POLY (D-1004) + DRIN (D-1329) + WRAP (D-1331) + SLEE + DRLI + RUST;
- * other adtyps zero damage.
+ * PHYS + ELEC + COLD + FIRE + TLPT + DRST/DRDX/DRCO + SITM/SEDU + SSEX (D-1750)
+ * + BLND + STON + LEGS + POLY (D-1004) + DRIN (D-1329) + WRAP (D-1331) + SLEE
+ * + DRLI + RUST + STCK + PLYS; other adtyps zero damage.
  */
 async function mhitm_adtyping_u(mtmp, mattk, mhm) {
     switch (mattk.adtyp | 0) {
@@ -2165,6 +2328,12 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
         break;
     case AD_COLD:
         await mhitm_ad_cold_u(mtmp, mattk, mhm);
+        break;
+    case AD_FIRE:
+        await mhitm_ad_fire_u(mtmp, mattk, mhm);
+        break;
+    case AD_TLPT:
+        await mhitm_ad_tlpt_u(mtmp, mattk, mhm);
         break;
     case AD_DRST:
     case AD_DRDX:
@@ -2204,6 +2373,12 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
         break;
     case AD_RUST:
         await mhitm_ad_rust_u(mtmp, mattk, mhm);
+        break;
+    case AD_STCK:
+        await mhitm_ad_stck_u(mtmp, mattk, mhm);
+        break;
+    case AD_PLYS:
+        await mhitm_ad_plys_u(mtmp, mattk, mhm);
         break;
     default:
         mhm.damage = 0;

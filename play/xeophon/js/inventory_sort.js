@@ -1,6 +1,7 @@
 // invent.c:sortloot, loot_classify, loot_xname and inuse_classify.
 import { game } from './gstate.js';
 import { objectTypeData, objectTypeIsKnown } from './object_knowledge.js';
+import { corpseName } from './objnam.js';
 import { P_BOW, P_CROSSBOW, P_DAGGER, P_KNIFE, P_SPEAR, P_POLEARMS, P_LANCE,
     W_ACCESSORY, W_WEAPONS, W_ARMOR, W_ARMU, W_ARMF, W_ARMG, W_ARMH,
     W_ARMS, W_ARMC, W_ARM, W_QUIVER, W_SWAPWEP, W_WEP, W_TOOL,
@@ -67,7 +68,8 @@ export function lootSortName(item, D) {
         view.oname = view.o_name = view.userName = view._wish_object_name = null;
         if (typeof view.kind === 'string') view.kind = view.kind.replace(/ named .+$/, '');
     }
-    let name = D.xname(view);
+    // C uses cxname_singular here: corpses include their monster species.
+    let name = type?.symbol === 'CORPSE' ? corpseName(view, '', { singular: true }) : D.xname(view);
     if (type?.symbol === 'TOWEL') name += (item.spe || 0) > 0 ? item.spe >= 3 ? 'x' : 'y' : 'z';
     if (item.globby) name += item.owt <= 100 ? 'a' : item.owt <= 300 ? 'b' : item.owt <= 500 ? 'c' : 'd';
     return name.toLowerCase();

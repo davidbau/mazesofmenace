@@ -20,7 +20,9 @@ import { newcham, mon_wire_cham } from './mon.js';
 import { weight as weight_fn, sobj_at, update_inventory } from './invent.js';
 import { In_mines, Is_rogue_level, MIGR_TO_SPECIES, OBJ_FREE,
          W_SADDLE, has_mgivenname, A_LAWFUL, ONAME_RANDOM } from './const.js';
-import { Levitation, Flying, Protection_from_shape_changers } from './youprop.js';
+import { Levitation, Flying, Protection_from_shape_changers, See_invisible } from './youprop.js';
+import { u_wield_art } from './artifact.js';
+import { ART_EXCALIBUR, ART_DEMONBANE } from './artilist_data.js';
 import { closed_door } from './cmd.js';
 import { may_passwall } from './hack.js';
 import { sengr_at } from './engrave.js';
@@ -97,7 +99,7 @@ const { S_GOLEM, S_DRAGON, S_MIMIC, S_SPIDER, S_SNAKE, S_LIGHT, S_ELEMENTAL,
         S_HUMAN, S_GIANT, S_WRAITH, S_LICH, S_MUMMY, S_QUANTMECH,
         S_DEMON, S_GNOME, S_ANGEL, S_HUMANOID, S_KOP, S_OGRE, S_TROLL,
         S_KOBOLD, S_CENTAUR, S_ZOMBIE, S_LIZARD, S_TRAPPER } = MONSYMS;
-const { MS_LEADER, MS_GUARDIAN, MS_NEMESIS, MS_PRIEST } = MSOUND;
+const { MS_LEADER, MS_GUARDIAN, MS_NEMESIS, MS_PRIEST, MS_BRIBE } = MSOUND;
 const { AT_WEAP, AD_ANY } = ATTKS;
 
 // include/global.h:411, include/align.h:22
@@ -1144,7 +1146,7 @@ export function rnd_misc_item(mtmp) {
             return 0;
         return rn2(6) ? O.POT_SPEED : O.WAN_SPEED_MONSTER;
     case 1:
-        if (mtmp.mpeaceful && !game.u.uprops?.SEE_INVIS)
+        if (mtmp.mpeaceful && !See_invisible())
             return 0;
         return rn2(6) ? O.POT_INVISIBILITY : O.WAN_MAKE_INVISIBLE;
     case 2:
@@ -1717,6 +1719,8 @@ const extra_nasty = (ptr) => (ptr.mflags2 & MFLAGS.M2_NASTY) !== 0;
 const strongmonst = (ptr) => (ptr.mflags2 & M2_STRONG) !== 0;
 const is_lord = (ptr) => (ptr.mflags2 & MFLAGS.M2_LORD) !== 0;
 const is_prince = (ptr) => (ptr.mflags2 & MFLAGS.M2_PRINCE) !== 0;
+// include/mondata.h:141 is_dprince()
+const is_dprince = (ptr) => is_demon(ptr) && is_prince(ptr);
 
 /* quest_mon_represents_role() now has its real body above (makemon.c:11);
    the old always-false stub assumed quest leaders could never be generated,
@@ -2500,6 +2504,17 @@ export function makemon(ptr, x, y, mmflags) {
         newsym(mtmp.mx, mtmp.my);
         set_apparxy(mtmp);
     }
+    /* src/makemon.c:1397 — bribable demon princes start out peaceful and
+       invisible unless the hero wields Excalibur or Demonbane */
+    if (is_dprince(ptr) && ptr.msound === MS_BRIBE) {
+        mtmp.mpeaceful = mtmp.minvis = mtmp.perminvis = 1;
+        mtmp.mavenge = 0;
+        if (u_wield_art(ART_EXCALIBUR) || u_wield_art(ART_DEMONBANE))
+            mtmp.mpeaceful = mtmp.mtame = false;
+    }
+    if (mndx === PMNAMES.PM_RAVEN && game.u.uwep
+        && game.u.uwep.otyp === ONAMES.BEC_DE_CORBIN)
+        mtmp.mpeaceful = true;
 
     /* src/makemon.c:1404 — a long worm grows a random tail at creation */
     if (mndx === PMNAMES.PM_LONG_WORM) {

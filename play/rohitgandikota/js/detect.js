@@ -219,7 +219,7 @@ export async function find_trap(trap) {
     const trapcmap = CM.S_arrow_trap + trap.ttyp - 1;
     if (Hallucination() || loc?.remembered_glyph?.glyph?.cmap !== trapcmap) {
         await cls();
-        newsym(trap.tx, trap.ty);   /* map_trap(trap, 1) */
+        map_trap(trap, 1);
         newsym(game.u.ux, game.u.uy);   /* display_self() */
         cleared = true;
     }

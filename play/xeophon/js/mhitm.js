@@ -40,9 +40,16 @@ import { game } from './gstate.js';
 import { ARMOR_AC_BONUS, ARMOR_MAGIC_NEGATION, armorBonus, armorSlot } from './armor.js';
 import { IDENTIFIED_AMULET_NAMES } from './o_init.js';
 import { objectTypeData } from './object_knowledge.js';
+import { monsterCanTouchArtifact } from './artifact_touch.js';
+import { artifactLight, beginBurn } from './burn.js';
+import { objectLightRadius } from './vision.js';
+import { bodyPart } from './mondata.js';
+import { makePlural } from './objnam.js';
+import { monsterReflectionSource } from './worn.js';
 import {
     Is_stronghold, STRAT_WAITMASK, STRAT_WAITFORU,
-    NO_WEAPON_WANTED, NEED_WEAPON, NEED_HTH_WEAPON, W_ARMS, M_AP_TYPE, M_AP_OBJECT, M_AP_FURNITURE,
+    NO_WEAPON_WANTED, NEED_WEAPON, NEED_HTH_WEAPON, NEED_RANGED_WEAPON, W_ARMS, M_AP_TYPE, M_AP_OBJECT, M_AP_FURNITURE,
+    P_BOW, P_SLING, P_CROSSBOW,
 } from './const.js';
 import {
     MONS, NATTK, NORMAL_SPEED, G_UNIQ,
@@ -54,7 +61,7 @@ import {
     MR_FIRE, MR_COLD, MR_SLEEP, MR_POISON, MR_ELEC, MR_ACID, MR_STONE,
     PM_GRID_BUG, PM_PURPLE_WORM, PM_BABY_PURPLE_WORM, PM_SHRIEKER,
     PM_FLOATING_EYE, PM_GELATINOUS_CUBE, PM_MEDUSA, PM_SHADE, PM_GHOUL,
-    PM_SKELETON, PM_STONE_GOLEM, PM_AMOROUS_DEMON,
+    PM_SKELETON, PM_STONE_GOLEM, PM_AMOROUS_DEMON, PM_BALROG,
     PM_KOBOLD_ZOMBIE, PM_ORC_ZOMBIE, PM_GIANT_ZOMBIE, PM_ETTIN, PM_ETTIN_ZOMBIE,
     PM_ARCHON, PM_RAVEN, PM_WRAITH, PM_STEAM_VORTEX,
     PM_GRAY_DRAGON, PM_BLUE_DRAGON, PM_YELLOW_DRAGON, PM_HIGH_CLERIC, PM_ALIGNED_CLERIC,
@@ -64,7 +71,7 @@ import {
     MZ_HUGE, MZ_LARGE,
     bigmonst, is_elf, is_orc, is_dwarf, unsolid, haseyes, perceives, is_rider, nonliving,
     is_animal, is_golem, is_whirly, touch_petrifies, acidic, is_undead, is_demon, is_were,
-    is_giant, is_minion, thick_skinned, PM_WOOD_GOLEM,
+    is_giant, is_minion, thick_skinned, PM_WOOD_GOLEM, throws_rocks, likes_gems, mindless,
 } from './permonst.js';
 import { W_ARM, W_ARMOR, W_ACCESSORY, W_AMUL, W_WEP, W_ARMC, W_ARMG, W_ARMH, W_ARMF, MSLOW, MFAST, G_GENOD, PROTECTION } from './const.js';
 
@@ -95,6 +102,8 @@ let hooks = {
     monkilled: null,          /* (mon, how) => void, C monkilled() sans fltxt */
     monstone: null,           /* (mon) => void, C monstone() */
     newsym: null,             /* (x, y) => void */
+    recordReflection: null,   /* (source) => void, C mon_reflects makeknown */
+    munstone: null,           /* (mon) => boolean, attempt carried stoning cure */
     wakeNear: null,           /* (x, y, distsq) => void, C wake_nearto */
 };
 
@@ -104,8 +113,8 @@ const pline = (msg) => hooks.pline && hooks.pline(msg);
 const cansee = (x, y) => (hooks.cansee ? !!hooks.cansee(x, y) : true);
 const canseemon = (m) => (hooks.canseemon ? !!hooks.canseemon(m) : !m.minvis);
 const canspotmon = (m) => (hooks.canspotmon ? !!hooks.canspotmon(m) : canseemon(m));
-const MONNAM = (m) => (hooks.Monnam ? hooks.Monnam(m) : `The ${nameOf(m)}`);
-const mon_nam = (m) => (hooks.mon_nam ? hooks.mon_nam(m) : theName(m));
+const MONNAM = (m, hallucinate = false) => (hooks.Monnam ? hooks.Monnam(m, hallucinate) : `The ${nameOf(m)}`);
+const mon_nam = (m, hallucinate = false) => (hooks.mon_nam ? hooks.mon_nam(m, hallucinate) : theName(m));
 const s_suffix = (s) => (/s$/.test(s) ? `${s}'` : `${s}'s`);
 
 /* C gv.vis during mhitm: mhitm.c:327-329. */
@@ -495,7 +504,8 @@ function mhis(mon) { return mon.female ? 'her' : 'its'; }
 /* Monster equipment stores identity as an amulet index, a real name,
  * or actualKind when kind contains only its unidentified appearance. */
 function monsterObjectKind(obj) {
-    return String(IDENTIFIED_AMULET_NAMES[obj?.amuletIndex] || obj?.actualKind || obj?.kind || obj?.name || '').toLowerCase();
+    return String(IDENTIFIED_AMULET_NAMES[obj?.amuletIndex] || obj?.actualKind || obj?.kind
+        || (obj && objectTypeData(obj)?.name) || obj?.name || '').toLowerCase();
 }
 
 /* include/objects.h WEAPON(name, descr, known, mkprob, bimanual, prob,
@@ -557,12 +567,9 @@ const MONWPN = {
     'crossbow':            [ 2,  2, 0,  0, false],
 };
 
-/* weapon.c:691-703 hwep[] — melee weapon preference order for
- * select_hwep().  CORPSE leads the C list (cockatrice corpse pseudo-
- * weapon); JS monsters never carry corpse weapons though (documented
- * gap), so the entry is intentionally absent here. */
+/* weapon.c:691-703 hwep[] — melee weapon preference order. */
 const HWEP_ORDER = [
-    'tsurugi', 'runesword', 'dwarvish mattock', 'two-handed sword',
+    'corpse', 'tsurugi', 'runesword', 'dwarvish mattock', 'two-handed sword',
     'battle-axe', 'katana', 'unicorn horn', 'crysknife', 'trident',
     'long sword', 'elven broadsword', 'broadsword', 'scimitar',
     'silver saber', 'morning star', 'elven short sword',
@@ -590,35 +597,124 @@ function monHatesSilver(mon) {
 }
 const monHatesBlessings = monHatesSilver;
 
+// weapon.c:475-496 oselect and mon.c:1958-1975 can_touch_safely.
+// Selection preserves inventory order, including differently enchanted stacks.
+function selectMonsterObject(mon, kind) {
+    return (mon.minvent || []).find(obj => {
+        if (monsterObjectKind(obj) !== kind) return false;
+        if (kind === 'corpse' || kind === 'egg') {
+            const corpse = typeof obj.corpsenm === 'number' ? MONS[obj.corpsenm]
+                : pmOf({ data: obj.corpsenm });
+            if (!corpse || !touch_petrifies(corpse)) return false;
+            if (kind === 'corpse' && !(mon.misc_worn_check & W_ARMG) && !resistsSton(mon)) return false;
+        }
+        return !(objectTypeData(obj)?.material === 14 && monHatesSilver(mon))
+            && monsterCanTouchArtifact(obj, mon);
+    }) || null;
+}
+
+function monsterWeaponWelded(obj) {
+    const type = obj && objectTypeData(obj);
+    return !!(obj?.cursed && ((obj.owornmask & W_WEP) || obj.wielded)
+        && (type?.class === 2 || type?.class === 6 && type.subtype !== 0
+            || [15, 16].includes(type?.class) || type?.symbol === 'TIN_OPENER'));
+}
+
+// weapon.c:498-674 select_rwep. Propellor is returned with the missile so
+// callers can distinguish a thrown object from one requiring a launcher.
+export function selectRwep(mon, couldSee = () => true) {
+    const data = pmOf(mon) || {};
+    let obj = selectMonsterObject(mon, 'egg');
+    if (obj) return { object: obj, propellor: null };
+    if (data.mlet === S_KOP && (obj = selectMonsterObject(mon, 'cream pie')))
+        return { object: obj, propellor: null };
+    if (throws_rocks(data) && (obj = selectMonsterObject(mon, 'boulder')))
+        return { object: obj, propellor: null };
+    const strong = strongMonst(mon), shield = !!(mon.misc_worn_check & W_ARMS);
+    const current = mon.mw;
+    const wieldOnly = monsterWeaponWelded(current) && mon.weapon_check === NO_WEAPON_WANTED;
+    const distance = (mon.mx - (mon.mux ?? game.u?.ux)) ** 2 + (mon.my - (mon.muy ?? game.u?.uy)) ** 2;
+    if (distance <= 13 && couldSee(mon.mx, mon.my)) {
+        if (/^(?:the )?snickersnee$/i.test(current?.artifact || current?.oartifact || ''))
+            return { object: current, propellor: current };
+        for (const kind of ['halberd', 'bardiche', 'spetum', 'bill-guisarme', 'voulge', 'ranseur',
+            'guisarme', 'glaive', 'lucern hammer', 'bec de corbin', 'fauchard', 'partisan', 'lance']) {
+            obj = selectMonsterObject(mon, kind);
+            if (obj && ((strong && !shield) || !objectTypeData(obj)?.big)
+                && (obj === current || !wieldOnly)) return { object: obj, propellor: obj };
+        }
+    }
+    if (!mindless(data) && !is_animal(data) && !wieldOnly && distance <= 16
+        && couldSee(mon.mx, mon.my) && (obj = selectMonsterObject(mon, 'aklys'))
+        && (!shield || !objectTypeData(obj)?.big)) return { object: obj, propellor: obj };
+    for (const kind of ['dwarvish spear', 'silver spear', 'elven spear', 'spear', 'orcish spear',
+        'javelin', 'shuriken', 'ya', 'silver arrow', 'elven arrow', 'arrow', 'orcish arrow',
+        'crossbow bolt', 'silver dagger', 'elven dagger', 'dagger', 'orcish dagger', 'knife',
+        'flint', 'rock', 'loadstone', 'luckstone', 'dart', 'cream pie']) {
+        const sling = (mon.minvent || []).find(item => monsterObjectKind(item) === 'sling');
+        if (kind === 'dart' && !likes_gems(data) && sling) {
+            obj = (mon.minvent || []).find(item => objectTypeData(item)?.class === 13
+                && (monsterObjectKind(item) !== 'loadstone' || !item.cursed));
+            if (obj) return { object: obj, propellor: sling };
+        }
+        obj = selectMonsterObject(mon, kind);
+        if (!obj) continue;
+        let propellor = null;
+        const skill = objectTypeData(obj)?.subtype || 0;
+        if (skill < 0) {
+            const launchers = ({ [P_BOW]: ['yumi', 'elven bow', 'bow', 'orcish bow'],
+                [P_SLING]: ['sling'], [P_CROSSBOW]: ['crossbow'] })[-skill] || [];
+            for (const kind of launchers) if ((propellor = selectMonsterObject(mon, kind))) break;
+            if (!propellor || (monsterWeaponWelded(current) && current !== propellor
+                && mon.weapon_check === NO_WEAPON_WANTED)) continue;
+        }
+        if (kind === 'loadstone') {
+            obj = (mon.minvent || []).find(item => monsterObjectKind(item) === kind && !item.cursed);
+            if (obj) return { object: obj, propellor };
+        } else if (!obj.artifact && !obj.oartifact && !(obj === current && monsterWeaponWelded(obj)))
+            return { object: obj, propellor };
+    }
+    return null;
+}
+
 /* weapon.c:705-744 select_hwep(): best melee weapon from inventory.
  * No RNG. */
 export function selectHwep(magr) {
     const strong = strongMonst(magr);
     const wearingShield = ((magr.misc_worn_check || 0) & W_ARMS) !== 0;
     const minvent = magr.minvent || [];
+    for (const obj of minvent) {
+        const type = objectTypeData(obj);
+        if (type?.class === 2 && (obj.artifact || obj.oartifact)
+            && monsterCanTouchArtifact(obj, magr)
+            && ((strong && !wearingShield) || !type.big)) return obj;
+    }
     if (is_giant(pmOf(magr) || {})) {
         /* giants love clubs (weapon.c:720-721) */
-        const club = minvent.find(o => monsterObjectKind(o) === 'club');
+        const club = selectMonsterObject(magr, 'club');
         if (club) return club;
+    } else if (pmOf(magr)?.pm === PM_BALROG
+        && (game.u?.uwep || (game.inventory || []).some(item => item.wielded))) {
+        const whip = selectMonsterObject(magr, 'bullwhip');
+        if (whip) return whip;
     }
-    /* balrog bullwhip-greed (weapon.c:722-723) needs the hero's wielded
-     * weapon; not modeled (documented gap). */
     for (const kind of HWEP_ORDER) {
         const bimanual = !!MONWPN[kind]?.[2];
         if (!((strong && !wearingShield) || !bimanual)) continue;
         if (MONWPN[kind]?.[4] && monHatesSilver(magr)) continue;
-        const otmp = minvent.find(o => monsterObjectKind(o) === kind);
+        const otmp = selectMonsterObject(magr, kind);
         if (otmp) return otmp;
     }
     return null;
 }
 
 /* weapon.c:801-955 mon_wield_item(), NEED_HTH_WEAPON slice (the
- * pick-axe/dig branches live in allmain's dig code).  No RNG.
+ * pick-axe/dig branches live in allmain's dig code). Names use display RNG.
  * Returns 1 when wielding took time (the pending attack is aborted). */
-export function monWieldItem(magr) {
+export function monWieldItem(magr, couldSee) {
     if (magr.weapon_check === NO_WEAPON_WANTED) return 0; /* weapon.c:807-808 */
-    const obj = selectHwep(magr);
+    const obj = magr.weapon_check === NEED_RANGED_WEAPON
+        ? selectRwep(magr, couldSee)?.propellor : selectHwep(magr);
     if (obj) {
         const cur = magr.mw || null;
         if (cur && monsterObjectKind(cur) === monsterObjectKind(obj)) {
@@ -629,14 +725,14 @@ export function monWieldItem(magr) {
         // wield.c:mwelded requires both the weapon slot and a cursed
         // weapon, weapon-tool, punishment item, or tin opener.
         const currentKind = monsterObjectKind(cur);
-        if (cur?.cursed && ((cur.owornmask & W_WEP) || cur.wielded)
-            && (cur.cls === 'weapon' || MONWPN[currentKind]
-                || ['heavy iron ball', 'iron chain', 'tin opener'].includes(currentKind))) {
+        if (monsterWeaponWelded(cur)) {
             if (canseemon(magr)) {
                 const name = hooks.donameMonsterWeapon ? hooks.donameMonsterWeapon(obj)
                     : `a ${monsterObjectKind(obj)}`;
-                pline(`${MONNAM(magr)} tries to wield ${name}.`);
-                pline(`The ${currentKind} is welded to ${magr.female ? 'her' : 'his'} ${MONWPN[currentKind]?.[2] ? 'hands' : 'hand'}!`);
+                pline(`${MONNAM(magr, true)} tries to wield ${name}.`);
+                const plural = (cur.quan || 1) > 1;
+                const hand = bodyPart(pmOf(magr), 'hand');
+                pline(`The ${plural ? makePlural(currentKind) : currentKind} ${plural ? 'are' : 'is'} welded to ${magr.female ? 'her' : 'his'} ${MONWPN[currentKind]?.[2] ? makePlural(hand) : hand}!`);
                 cur.bknown = true;
             }
             magr.weapon_check = NO_WEAPON_WANTED;
@@ -652,10 +748,28 @@ export function monWieldItem(magr) {
             /* weapon.c:870-896: "The FOO wields BAR!" (exclaim variant) */
             const name = hooks.donameMonsterWeapon ? hooks.donameMonsterWeapon(obj)
                 : `a ${monsterObjectKind(obj)}`;
-            pline(`${MONNAM(magr)} wields ${name}!`);
-            if (obj.cursed) {
-                pline(`The ${monsterObjectKind(obj)} welds itself to ${s_suffix(mon_nam(magr))} ${MONWPN[monsterObjectKind(obj)]?.[2] ? 'hands' : 'hand'}!`);
+            pline(`${MONNAM(magr, true)} wields ${name}!`);
+            if (monsterObjectKind(obj) === 'aklys')
+                pline(`${MONNAM(magr, true)} secures the tether on the aklys.`);
+            obj.owornmask = (obj.owornmask || 0) | W_WEP;
+            const welded = monsterWeaponWelded(obj);
+            obj.owornmask &= ~W_WEP;
+            if (welded) {
+                const plural = (obj.quan || 1) > 1;
+                const kind = monsterObjectKind(obj), hand = bodyPart(pmOf(magr), 'hand');
+                pline(`The ${plural ? makePlural(kind) : kind} ${plural ? 'weld themselves' : 'welds itself'} to ${s_suffix(mon_nam(magr, true))} ${MONWPN[kind]?.[2] ? makePlural(hand) : hand}!`);
                 obj.bknown = true;
+            }
+        }
+        if (artifactLight(obj) && !obj.lamplit) {
+            beginBurn(obj);
+            if (canseemon(magr)) {
+                const brightness = ['strangely', 'dimly', 'brightly', 'brilliantly', 'radiantly'][objectLightRadius(obj)];
+                const name = hooks.donameMonsterWeapon ? hooks.donameMonsterWeapon(obj) : `a ${monsterObjectKind(obj)}`;
+                pline(`${name.replace(/^an? /, 'The ')} shines ${brightness} in ${s_suffix(mon_nam(magr, true))} ${bodyPart(pmOf(magr), 'hand')}!`);
+            } else if (cansee(magr.mx, magr.my)) {
+                const close = (magr.mx - game.u.ux) ** 2 + (magr.my - game.u.uy) ** 2 <= 25;
+                pline(`Light begins shining ${close ? 'nearby' : 'in the distance'}.`);
             }
         }
         obj.owornmask = W_WEP;
@@ -802,6 +916,29 @@ function mhitmMgcAtkNegated(magr, mdef, verbosely) {
 function mhitmAdtyping(magr, mattk, mdef, mhm) {
     const pa = pmOf(magr), pd = pmOf(mdef);
     switch (mattk.adtyp) {
+    case AD_STON: {
+        // uhitm.c:mhitm_ad_ston/do_stone_mon tries a cure before conversion
+        // or resistance. A cure can itself kill the target through acid.
+        if (magr.mcan) return false;
+        if (!hooks.munstone?.(mdef)) {
+            if (polyWhenStoned(mdef)) {
+                if (hooks.polyToStone) hooks.polyToStone(mdef); else transformToStoneGolem(mdef);
+                mhm.damage = 0;
+                return false;
+            }
+            if (resistsSton(mdef)) { mhm.damage = 0; return false; }
+            if (visNow && canseemon(mdef)) pline(`${MONNAM(mdef)} turns to stone!`);
+            if (hooks.monstone) hooks.monstone(mdef); else defaultMonKilled(mdef);
+        }
+        mhm.done = true;
+        if (!deadMonster(mdef)) mhm.hitflags = M_ATTK_MISS;
+        else {
+            if (mdef.mtame && !visNow) pline('You have a peculiarly sad feeling for a moment, then it passes.');
+            const grown = hooks.growUp ? hooks.growUp(magr, mdef) : true;
+            mhm.hitflags = M_ATTK_DEF_DIED | (grown ? 0 : M_ATTK_AGR_DIED);
+        }
+        return true;
+    }
     case AD_BLND: {
         /* mondata.c:can_blnd, with no projectile object on the melee path. */
         const blind = mdef.mcansee === false || mdef.mcansee === 0;
@@ -1187,8 +1324,18 @@ export function hitmm(magr, mdef, mattk, mwep = null, dieroll = 0) {
     return mdamagem(magr, mdef, mattk, mwep, dieroll);
 }
 
-/* mhitm.c:445+ gazemm (non-Medusa subset; mon_reflects/artifact mirrors
- * are not wired — documented in the audit). */
+function monsterReflects(mon, message = null) {
+    const reflection = monsterReflectionSource(mon);
+    if (!reflection) return false;
+    if (message) {
+        pline(message(s_suffix(mon_nam(mon)), reflection.source));
+        hooks.recordReflection?.(reflection);
+    }
+    return true;
+}
+
+/* mhitm.c:gazemm: Medusa can receive her own gaze or have it reflected
+ * again; these cases return before ordinary attack damage and growth. */
 export function gazemm(magr, mdef, mattk) {
     const archon = pmIndex(magr) === PM_ARCHON && mattk.adtyp === AD_BLND;
     if (mdef.mundetected) mdef.mundetected = 0;
@@ -1203,6 +1350,20 @@ export function gazemm(magr, mdef, mattk) {
         || mdef.msleeping) {
         if (visNow && canspotmon(mdef)) pline('but nothing happens.');
         return M_ATTK_MISS;
+    }
+    if (pmIndex(magr) === PM_MEDUSA && monsterReflects(mdef)) {
+        if (canseemon(mdef)) monsterReflects(mdef, (owner, source) => `The gaze is reflected away by ${owner} ${source}.`);
+        if (monsterReflects(magr)) {
+            if (canseemon(magr)) monsterReflects(magr, (owner, source) => `The gaze is reflected away by ${owner} ${source}.`);
+            return M_ATTK_MISS;
+        }
+        if (mdef.minvis && !perceives(pmOf(magr))) {
+            if (canseemon(magr)) pline(`${MONNAM(magr)} doesn't seem to notice that ${mhis(magr)} gaze was reflected.`);
+            return M_ATTK_MISS;
+        }
+        if (canseemon(magr)) pline(`${MONNAM(magr)} is turned to stone!`);
+        if (hooks.monstone) hooks.monstone(magr); else defaultMonKilled(magr);
+        return deadMonster(magr) ? M_ATTK_AGR_DIED : M_ATTK_MISS;
     }
     if (archon) {
         /* mhitm.c:gazemm blinds before the stun and ordinary damage rolls.
@@ -1339,10 +1500,12 @@ export function passivemm(magr, mdef, mhitb, mdead, mwep = null) {
             if (tmp > 127) tmp = 127;
             if (pmIndex(mdef) === PM_FLOATING_EYE) {
                 if (!rn2(4)) tmp = 127;
-                if (magr.mcansee !== false && haseyes(pa || {})
-                    && mdef.mcansee !== false
+                if (magr.mcansee !== false && magr.mcansee !== 0 && haseyes(pa || {})
+                    && mdef.mcansee !== false && mdef.mcansee !== 0
                     && ((pa && perceives(pa)) || !mdef.minvis)) {
-                    /* mon_reflects() unported: no reflection for monsters. */
+                    if (monsterReflects(magr, canseemon(magr)
+                        ? (owner, source) => `${s_suffix(MONNAM(mdef))} gaze is reflected by ${owner} ${source}.` : null))
+                        return (mdead | mhit);
                     if (canseemon(magr))
                         pline(`${MONNAM(magr)} is frozen by ${s_suffix(mon_nam(mdef))} gaze!`);
                     paralyzeMonst(magr, tmp);

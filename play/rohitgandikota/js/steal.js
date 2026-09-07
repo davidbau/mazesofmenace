@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { cansee } from './vision.js';
-import { doname, armor_simple_name, yname, simpleonames, Tobjnam, makeplural, otense } from './objnam.js';
+import { doname, armor_simple_name, yname, simpleonames, Tobjnam, makeplural, otense , distant_name } from './objnam.js';
 import { Monnam, Some_Monnam, Adjmonnam, pmname, upstart } from './do_name.js';
 import { pline_xy, You, impossible } from './pline.js';
 import { newsym, pline, urgent_pline } from './display.js';
@@ -517,10 +517,10 @@ export async function maybe_absorb_item(mon, obj, ochance, achance) {
 export async function mdrop_obj(mon, obj, verbosely) {
     const omx = mon.mx, omy = mon.my;
     const unwornmask = obj.owornmask || 0;
-    /* C calls distant_name(obj, doname) BEFORE extraction for its possible
-       side-effects (find_artifact); this tree has no artifact discovery, so
-       doname supplies the name the pline uses. */
-    const obj_name = doname(obj);
+    /* obj_name; do this before extracting obj from minvent: distant_name()
+       leaves dknown unset for an object more than two squares away, so a far
+       pet drops "a wand", a near one "an iron wand" */
+    const obj_name = distant_name(obj, doname);
 
     /* extract_from_minvent(mon, obj, FALSE, TRUE) — unlink, keep intrinsics
        for the update_mon_extrinsics call below. */

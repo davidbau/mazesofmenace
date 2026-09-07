@@ -6,6 +6,7 @@
 
 import { ATTKS } from './monst_data.js';
 import { BZ_OFS_AD } from './const.js';
+import { Amask2align } from './const.js';
 import { IS_DOOR } from './const.js';
 import { u_at } from './const.js';
 import { EPRI } from './const.js';
@@ -15,6 +16,7 @@ import { buzz } from './zap.js';
 import { linedup } from './mthrowu.js';
 import { a_gname_at, halu_gname } from './pray.js';
 import { game } from './gstate.js';
+import { impossible } from './pline.js';
 import { rn2, rn1, d } from './rng.js';
 import { makemon, remove_monster, place_monster,
          set_malign, mongets } from './makemon.js';
@@ -102,7 +104,7 @@ export function priestini(lvl, sroom, sx, sy, sanctum) {
            itself (fake towers pass sanctum=FALSE) */
         {
             const sl = game.special_levels?.sanctum_level;
-            if (sanctum && priest.epri.shralign === 0
+            if (sanctum && priest.epri.shralign === A_NONE
                 && sl && game.u.uz.dnum === sl.dnum
                 && game.u.uz.dlevel === sl.dlevel)
                 mongets(priest, ONAMES.AMULET_OF_YENDOR);
@@ -120,12 +122,6 @@ export function priestini(lvl, sroom, sx, sy, sanctum) {
     }
 }
 
-/* include/align.h Amask2align() */
-function Amask2align(amask) {
-    const AM_LAWFUL = 4, AM_NEUTRAL = 2, AM_CHAOTIC = 1;
-    return (amask & AM_LAWFUL) ? 1 : (amask & AM_NEUTRAL) ? 0
-         : (amask & AM_CHAOTIC) ? -1 : 0 /* A_NONE-ish */;
-}
 
 // src/priest.c:280 mon_aligntyp(); special alignments override the species.
 export function mon_aligntyp(mon) {
@@ -258,6 +254,19 @@ function incr_intrinsic_timeout(name, increment) {
 }
 
 // src/priest.c:558 priest_talk(), including ordinary temple donations.
+// src/priest.c:545 forget_temple_entry() — reset the priest's temple
+// entry timers; leaving the level and then returning yields a fresh start
+export function forget_temple_entry(priest) {
+    const epri_p = priest.ispriest ? priest.epri : null;
+
+    if (!epri_p) {
+        impossible('attempting to manipulate shrine data for non-priest?');
+        return;
+    }
+    epri_p.intone_time = epri_p.enter_time = epri_p.peaceful_time =
+        epri_p.hostile_time = 0;
+}
+
 export async function priest_talk(priest) {
     const { currency, money_cnt } = await import('./invent.js');
     const coaligned = p_coaligned(priest);

@@ -243,6 +243,10 @@ export async function getpos_sethilite(gp_hilitefunc, gp_getvalidfunc) {
     }
 }
 
+/* C compares glyph numbers; this port's glyphs are records, so equal records
+   stand in for equal numbers (the same comparison dokick.js uses) */
+const same_glyph = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
 // src/getpos.c:729 truncate_to_map() — clamp a step to the map, adjusting the
 // other axis so a diagonal that hits an edge slides along it rather than
 // stopping.
@@ -345,7 +349,26 @@ export async function getpos(ccp, force, goal) {
                iflags.getloc_moveskip defaults off, so the cursor jumps 8
                squares. */
             const dir = CTRL_DIR[ch] ?? ch.toLowerCase();
-            truncate_to_map(c, 8 * DIR_DX[dir], 8 * DIR_DY[dir]);
+            let dx, dy;
+            if (game.iflags?.getloc_moveskip) {
+                /* skip same glyphs */
+                const glyph = glyph_at(c.x, c.y);
+                const udx = DIR_DX[dir], udy = DIR_DY[dir];
+
+                dx = udx;
+                dy = udy;
+                while (isok(c.x + dx, c.y + dy)
+                       && same_glyph(glyph, glyph_at(c.x + dx, c.y + dy))
+                       && isok(c.x + dx + udx, c.y + dy + udy)
+                       && same_glyph(glyph, glyph_at(c.x + dx + udx, c.y + dy + udy))) {
+                    dx += udx;
+                    dy += udy;
+                }
+            } else {
+                dx = 8 * DIR_DX[dir];
+                dy = 8 * DIR_DY[dir];
+            }
+            truncate_to_map(c, dx, dy);
         } else if (ch === '?' || ch === '\x12') {
             if (ch === '\x12')
                 await docrt();
@@ -656,9 +679,12 @@ async function gather_locs_interesting(x, y, gloc) {
         return (glyph.kind === 'mon'
                 && glyph.mon?.mnum !== PMNAMES.PM_LONG_WORM_TAIL);
     case GLOC_OBJS:
+        /* objnum_to_glyph(BOULDER)/(ROCK) are the plain object glyphs; a
+           boulder or rock shown as the top of a pile carries the piletop
+           glyph offset and so is not excluded */
         return (glyph.kind === 'obj'
-                && glyph.otyp !== ONAMES.BOULDER
-                && glyph.otyp !== ONAMES.ROCK);
+                && !(glyph.otyp === ONAMES.BOULDER && !glyph.pile)
+                && !(glyph.otyp === ONAMES.ROCK && !glyph.pile));
     case GLOC_DOOR:
         return (sym !== -1
                 && (is_cmap_door(sym)

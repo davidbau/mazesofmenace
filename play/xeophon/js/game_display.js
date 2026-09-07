@@ -132,6 +132,24 @@ export class GameDisplay {
 
     renderStatus(player = game.u) {
         const u = player || {};
+        // botl.c:bot treats human HP -1 as the completed-save sentinel and
+        // skips both status rows, even when losehp accidentally reaches it.
+        // done later zeros HP; tty's pending dying pline still owns its old
+        // status until the next prompt/pline flushes the updated state.
+        const dyingMessagePending = game._command_mode === 'deathDieMore'
+            || game._queued_message_after_more === 'You die...'
+            || game._queued_messages_after_more?.some(message => message.fatal || message.lifeSaving);
+        const heldStatus = u.uhp === -1 ? game._last_rendered_status
+            : dyingMessagePending ? game._death_minus_one_status : null;
+        if (heldStatus) {
+            for (let row = 0; row < 2; row++) {
+                this.clearRow(22 + row);
+                this.putstr(0, 22 + row, heldStatus[row], NO_COLOR);
+            }
+            return heldStatus;
+        }
+        if (u.uhp === -1) return [];
+        game._death_minus_one_status = null;
         const rawName = game.plname || 'Hero';
         const name = rawName ? rawName[0].toUpperCase() + rawName.slice(1) : 'Hero';
         const genderKey = game.flags?.female ? 'f' : 'm';
@@ -197,7 +215,8 @@ export class GameDisplay {
             const turn = game.flags?.time ? ` T:${statusTurn()}` : '';
             const ride = u.usteed ? ' Ride' : '';
             const blind = u.blind && !u._blindAfterStatus ? ' Blind' : '';
-            const statusSuffix = `${u._statusSuffix || ''}${u.blind && u._blindAfterStatus ? ' Blind' : ''}`;
+            const suffix = u.blind ? (u._statusSuffix || '').replace(/ Blind\b/g, '') : u._statusSuffix || '';
+            const statusSuffix = `${suffix}${u.blind && u._blindAfterStatus ? ' Blind' : ''}`;
             const goldSymbol = game.level?.flags?.rogue_level ? '*' : '$';
             const levelName = endgameStatusName(u.uz)
                 || (dungeon?.name === 'The Quest' ? `Home ${u.uz?.dlevel || 1}` : `Dlvl:${level}`);
@@ -224,7 +243,7 @@ export class GameDisplay {
         this.clearRow(23);
         this.putstr(0, 22, line1, NO_COLOR);
         this.putstr(0, 23, line2, NO_COLOR);
-        return [line1, line2];
+        return game._last_rendered_status = [line1, line2];
     }
 
     moveCursorTo(col, row = 0) {

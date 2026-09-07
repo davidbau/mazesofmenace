@@ -24,9 +24,11 @@ import { nhgetch } from './../input.js';
 import { NO_COLOR, ATR_INVERSE as TERM_INVERSE, ATR_BOLD as TERM_BOLD,
          ATR_UNDERLINE as TERM_UNDERLINE } from './../terminal.js';
 import { MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED,
+         MENU_ITEMFLAGS_SKIPMENUCOLORS,
          MENU_ITEMFLAGS_SKIPINVERT, MENU_NEXT_PAGE, MENU_PREVIOUS_PAGE,
          MENU_SEARCH, PICK_ONE, PICK_ANY, GOLD_SYM, ROWNO, COLNO } from './../const.js';
 import { pmatch } from './../hacklib.js';
+import { get_menu_coloring } from './../windows.js';
 import { gc_currentgraphics, gs_symset, H_UTF8 } from './../symbols.js';
 
 // include/wintype.h:128-137 — NetHack's attribute numbers. These are NOT the
@@ -66,11 +68,28 @@ export function tty_putstr_base(str, attr = 0) {
     const display = game?.nhDisplay;
     if (!display) return;
     const s = String(str ?? '');
-    for (let i = 0, col = 0; col < COLS; i++, col++)
-        display.setCell(col, base.cury, i < s.length ? s[i] : ' ', NO_COLOR,
-                        i < s.length ? attr : 0);
+    /* win/tty/wintty.c tty_putstr(), NHW_BASE: the characters are put at the
+       window cursor and nothing past them is touched (no cl_end), wrapping
+       to the next row at the last column; then curx = 0, cury++ */
+    let col = base.curx;
+    for (let i = 0; i < s.length; i++) {
+        if (col >= COLS - 1) {
+            col = 0;
+            base.cury++;
+        }
+        display.setCell(col, base.cury, s[i], NO_COLOR, attr);
+        col++;
+    }
     base.curx = 0;
     base.cury++;
+}
+
+/* win/tty/termcap.c cl_end() on the base window's row */
+export function tty_cl_end_base() {
+    const display = game?.nhDisplay;
+    if (!display) return;
+    for (let c = base.curx; c < COLS; c++)
+        display.setCell(c, base.cury, ' ', NO_COLOR, 0);
 }
 
 // win/tty/wintty.c tty_raw_print_bold() — standout raw line.
@@ -181,6 +200,22 @@ export function tty_add_menu(window, glyphinfo, identifier, ch, gch,
                              attr, clr, str, itemflags) {
     const cw = windows[window];
     if (!cw || str == null) return;
+
+    /* src/windows.c:1805 add_menu(): the core wrapper applies the menu
+       colorings before handing the entry to the window port's add_menu().
+       This port's callers reach tty_add_menu() directly, so the wrapper's
+       work is done here. */
+    if (game.iflags?.menucolors) { /* iflags.use_menu_color */
+        if ((itemflags & MENU_ITEMFLAGS_SKIPMENUCOLORS) === 0) {
+            const mc = get_menu_coloring(str);
+            if (mc) {
+                clr = mc.color;
+                attr = mc.attr;
+            }
+        }
+    }
+    /* this is the only function that cared about this flag; remove it now */
+    itemflags &= ~MENU_ITEMFLAGS_SKIPMENUCOLORS;
 
     cw.nitems = (cw.nitems | 0) + 1;
     let newstr = String(str);
@@ -825,6 +860,22 @@ export async function tty_select_menu(window, how) {
         const explicitIndex = explicitItems.findIndex(
             item => item.identifier && item.selector === morc);
 
+        /* win/tty/wintty.c:1548 dmore()/xwaitforspace(resp): only the page's
+           selectors, the group accelerators, ' ', digits, ESC, RET, the menu
+           commands and the dismiss_more letter come back to the menu loop;
+           any other key rings the bell and keeps waiting, so it leaves a
+           pending count untouched (after "9s" an ESC only stops the count,
+           and a second ESC is needed to cancel the menu) */
+        {
+            const dm = game.ttyDisplay?.dismiss_more;
+            if (!(explicitIndex >= 0 || gacc.includes(morc) || morc === ' '
+                  || /^[0-9]$/.test(morc) || morc === '\x1b'
+                  || morc === '\n' || morc === '\r' || c === 0
+                  || '^|><.-@,\\~:'.includes(morc)
+                  || (dm && morc === dm) || (dm === '\n' && morc === '\r')))
+                continue;
+        }
+
         if (/^[0-9]$/.test(morc) && explicitIndex < 0
             && !(!counting && gacc.includes(morc))) {
             count = Math.min(Number.MAX_SAFE_INTEGER,
@@ -1069,6 +1120,11 @@ function erase_menu_or_text(cw, display, clear) {
             display.clearScreen();
             for (let y = 0; y < ROWNO; y++)
                 row_refresh(1, COLNO - 1, y);
+            /* docrt() forces the bottom lines (disp.botlx) and flush_screen(1)
+               calls bot(); inside select_menu() bot() is disabled
+               (windows.c:1860), so the flag stays up and the next flush
+               repaints the status rows once the menu call has returned */
+            (game.disp ||= {}).botlx = true;
             bot();
             if (game.u?.ux > 0)
                 display.setCursor(game.u.ux - 1, game.u.uy + 1);

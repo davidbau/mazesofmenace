@@ -81,6 +81,7 @@ import { dog_move, finish_meating } from './dogmove.js';
 import { worm_move, worm_nomove, see_wsegs, worm_known, wormhitu } from './worm.js';
 import { shk_move, gd_move, pri_move } from './shk.js';
 import { tactics } from './wizard.js';
+import { Invis } from './timeout.js';
 import { rn2, rnd, d } from './rng.js';
 import { game } from './gstate.js';
 import {
@@ -703,9 +704,11 @@ export function set_apparxy(mtmp) {
         return;
     }
 
-    const Invis = !!(u.Invis);
+    // C: youprop.h Invis macro is live ((HInvis||EInvis) && !BInvis;
+    // monmove.c:2223). The u.Invis flat is stale (only the magic-trap
+    // toggle syncs it), so call the live timeout.js Invis().
     const Underwater = !!(u.Underwater);
-    const notseen = (!mtmp.mcansee || (Invis && !perceives(mtmp.data)));
+    const notseen = (!mtmp.mcansee || (Invis() && !perceives(mtmp.data)));
     const notthere = (
         Displaced() && mtmp.data?.mndx !== PM_DISPLACER_BEAST
     );
@@ -1685,11 +1688,11 @@ export async function m_move(mtmp, after) {
             && (!!goalLoc?.lit || !monLoc?.lit)
             && dist2(omx, omy, ggx, ggy) <= 36
         );
-        const Invis = !!(u?.Invis);
         const youmonst = game.youmonst;
         // Short-circuit OR matches C: Invis rn2(11) before peaceful / stalker.
+        // Live Invis() (youprop.h; monmove.c:1866), not the stale u.Invis flat.
         if (!mtmp.mcansee
-            || (should_see && Invis && !perceives(ptr) && rn2(11))
+            || (should_see && Invis() && !perceives(ptr) && rn2(11))
             || is_obj_mappear(youmonst, STRANGE_OBJECT) || u?.uundetected
             || (is_obj_mappear(youmonst, GOLD_PIECE) && !likes_gold(ptr))
             || (mtmp.mpeaceful && !mtmp.isshk)

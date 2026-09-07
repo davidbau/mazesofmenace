@@ -1,10 +1,12 @@
 // C: worn.c m_dowear(creation=TRUE), m_dowear_type and update_mon_extrinsics.
 import * as pm from './permonst.js';
 import { ARMOR_AC_BONUS } from './armor.js';
-import { W_AMUL, W_ARMU, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARM, W_WEP, MFAST } from './const.js';
+import { W_AMUL, W_ARMU, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARM, W_WEP, W_ART, MFAST } from './const.js';
 import { beginBurn, endBurn, artifactLight } from './burn.js';
 import { game } from './gstate.js';
 import { objectLocations } from './obj_location.js';
+import { objectTypeData } from './object_knowledge.js';
+import { artifactDefinitionForName } from './mklev.js';
 
 // worn.c:clear_bypasses also resets polymorphed worms and objects which left
 // the traversed chain. Saved levels are not part of C's live object lists.
@@ -60,6 +62,29 @@ function armorMask(obj) {
     if (/\b(?:boots|shoes)\b/.test(name)) return W_ARMF;
     if (/\b(?:shield|roundshield)\b/.test(name)) return W_ARMS;
     return 0;
+}
+
+// muse.c:mon_reflects checks worn slots in this order. artifact.c:arti_reflects
+// requires the wielded artifact's worn mask; neither artifact reflects carried.
+export function monsterReflectionSource(mon) {
+    const inventory = mon.minvent || [];
+    const shield = inventory.find(obj => obj.owornmask & W_ARMS);
+    if (shield && objectTypeData(shield)?.symbol === 'SHIELD_OF_REFLECTION')
+        return { source: 'shield', item: shield, kind: 'shield of reflection' };
+    const weapon = mon.mw ?? mon.weapon ?? mon.mwep ?? inventory.find(obj => obj.owornmask & W_WEP);
+    if (weapon && (weapon.owornmask & ~W_ART)
+        && ['Dragonbane', 'The Longbow of Diana'].includes(artifactDefinitionForName(weapon.artifact || weapon.oartifact)?.name))
+        return { source: 'weapon', item: weapon };
+    const amulet = inventory.find(obj => obj.owornmask & W_AMUL);
+    if (amulet && objectTypeData(amulet)?.symbol === 'AMULET_OF_REFLECTION')
+        return { source: 'amulet', item: amulet, kind: 'amulet of reflection' };
+    const armor = inventory.find(obj => obj.owornmask & W_ARM);
+    if (armor && ['SILVER_DRAGON_SCALES', 'SILVER_DRAGON_SCALE_MAIL'].includes(objectTypeData(armor)?.symbol))
+        return { source: 'armor', item: armor };
+    const data = SPECIES.get(String(mon.data?.name || mon.name || '').toLowerCase());
+    if (data?.pm === pm.PM_SILVER_DRAGON || data?.pm === pm.PM_CHROMATIC_DRAGON)
+        return { source: 'scales', item: null };
+    return null;
 }
 
 // At creation, fitting armor takes no time and produces no wear messages.

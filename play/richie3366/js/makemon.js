@@ -904,10 +904,13 @@ function newmonhp(mon, ptr) {
     mon.m_lev = adj_lev(ptr);
     let basehp = 0;
     const mndx = ptr.mndx | 0;
-    // Named omission: is_rider d(10,8); is_home_elemental ×3
     if (is_golem(ptr)) {
         // C: golems have fixed HP via golemhp(mndx) — no d(m_lev,8)
         mon.mhpmax = mon.mhp = golemhp(mndx);
+    } else if (is_rider(ptr)) {
+        // C: low HP but high mlevel so they attack well; basehp=10
+        basehp = 10; /* minimum is 1 per false (weaker) level */
+        mon.mhpmax = mon.mhp = d(basehp, 8);
     } else if ((ptr.mlevel | 0) > 49) {
         // C: "special" fixed hp — encoded in mlevel (Asmodeus et al.)
         mon.mhpmax = mon.mhp = 2 * ((ptr.mlevel | 0) - 6);
@@ -924,6 +927,8 @@ function newmonhp(mon, ptr) {
     } else {
         basehp = mon.m_lev | 0;
         mon.mhpmax = mon.mhp = d(basehp, 8);
+        if (is_home_elemental(ptr))
+            mon.mhpmax = (mon.mhp *= 3); /* leave 'basehp' as-is */
     }
     if (mon.mhpmax === basehp) {
         mon.mhpmax += 1;
@@ -2967,7 +2972,10 @@ export function makemon(mdat, x, y, mmflags = 0) {
         }
     } else if (byyou) {
         // C: !in_mklev && byyou → newsym + set_apparxy before invent
+        // (makemon.c:1393-1394; set_apparxy draws gotu rn2(3)/rn2(4) here,
+        // before m_initweap/m_initinv — skipping it misaligns all later RNG)
         newsym(mtmp.mx, mtmp.my);
+        set_apparxy(mtmp);
     }
 
     // C: makemon.c :1397–1404 after in_mklev sleep / byyou newsym,

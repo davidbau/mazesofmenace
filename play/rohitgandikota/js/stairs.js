@@ -7,6 +7,33 @@
 import { game } from './gstate.js';
 
 // src/stairs.c:40 stairway_at()
+// src/stairs.c:50 stairway_find() — the stairway leading to fromdlev
+export function stairway_find(fromdlev) {
+    let tmp = game.stairs;
+
+    while (tmp) {
+        if (tmp.tolev.dnum === fromdlev.dnum
+            && tmp.tolev.dlevel === fromdlev.dlevel)
+            break; /* return */
+        tmp = tmp.next;
+    }
+    return tmp;
+}
+
+// src/stairs.c:64 stairway_find_from() — the stair or ladder to fromdlev
+export function stairway_find_from(fromdlev, isladder) {
+    let tmp = game.stairs;
+
+    while (tmp) {
+        if (tmp.tolev.dnum === fromdlev.dnum
+            && tmp.tolev.dlevel === fromdlev.dlevel
+            && !!tmp.isladder === !!isladder)
+            break; /* return */
+        tmp = tmp.next;
+    }
+    return tmp;
+}
+
 export function stairway_at(x, y) {
     let tmp = game.stairs;
     while (tmp && !(tmp.sx === x && tmp.sy === y))

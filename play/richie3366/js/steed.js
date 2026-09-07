@@ -38,6 +38,7 @@ import { objectNames, objectDescrs } from './objects.js';
 import { rnd, rn2, rn1 } from './rng.js';
 import { pline, newsym, canspotmon, describe_level, impossible } from './display.js';
 import { getdir } from './lock.js';
+import { y_n } from './getline.js';
 import { m_at, cant_drown } from './mon.js';
 import { isok } from './hacklib.js';
 import { Monnam, mon_nam, monverbself, pmname, y_monnam, Hallucination, hliquid } from './do_name.js';
@@ -1022,9 +1023,13 @@ export async function doride() {
         return ECMD_TIME;
     }
     if ((await getdir(null)) && isok((u.ux | 0) + (u.dx | 0), (u.uy | 0) + (u.dy | 0))) {
-        // wizard force yn deferred
+        // C steed.c:185 — wizard force arm before mount_steed
+        let forcemount = false;
+        if ((game.flags?.debug || game.flags?.wizard)
+            && (await y_n('Force the mount to succeed?')) === 'y')
+            forcemount = true;
         const mtmp = m_at((u.ux | 0) + (u.dx | 0), (u.uy | 0) + (u.dy | 0));
-        return (await mount_steed(mtmp, false)) ? ECMD_TIME : ECMD_OK;
+        return (await mount_steed(mtmp, forcemount)) ? ECMD_TIME : ECMD_OK;
     }
     return ECMD_CANCEL;
 }

@@ -55,7 +55,7 @@ import {
     currency, free_pickinv_cache,
 } from './invent.js';
 import {
-    list_vanquished, list_genocided, show_conduct,
+    list_vanquished, list_genocided, show_conduct, count_achievements,
 } from './insight.js';
 import { show_overview } from './dungeon.js';
 import { A_CON, acurr, adjattrib } from './attrib.js';
@@ -788,15 +788,20 @@ async function disclose(how, taken) {
     }
 
     if (!stop()) {
+        // C ref: end.c:664-680 — Sprintf "conduct%s?" with " and achievements"
+        // iff count_achievements() > 0; yn asked only when should_query 'c'.
         const { ask, defquery } = should_query_disclose_option('c');
-        // count_achievements deferred — always "conduct" not "and achievements"
-        const c = ask
-            ? await yn_function(
-                'Do you want to see your conduct?',
-                'ynq',
-                defquery,
-            )
-            : defquery;
+        let c;
+        if (ask) {
+            const acnt = count_achievements();
+            const qbuf =
+                'Do you want to see your conduct' +
+                (acnt > 0 ? ' and achievements' : '') +
+                '?';
+            c = await yn_function(qbuf, 'ynq', defquery);
+        } else {
+            c = defquery;
+        }
         if (c === 'y') {
             await show_conduct(
                 (how >= PANICKED) ? ENL_GAMEOVERALIVE : ENL_GAMEOVERDEAD,

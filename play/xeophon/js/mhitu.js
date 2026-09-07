@@ -3,12 +3,12 @@
 import { game } from './gstate.js';
 import { d, rnd, rn1, rn2 } from './rng.js';
 import { W_ARMG } from './const.js';
-import { pmOf, hitvalMonsterWeapon, dmgvalMonsterWeapon, selectHwep } from './mhitm.js';
-import { AD_PHYS, AD_COLD, AD_MAGM, AD_STUN, AD_CONF, AD_PLYS, AD_SAMU, AD_BLND, AD_SPEL, AD_CLRC, AT_MAGC, AT_WEAP, AT_CLAW, AT_GAZE,
+import { pmOf, mLevel, hitvalMonsterWeapon, dmgvalMonsterWeapon, selectHwep } from './mhitm.js';
+import { AD_PHYS, AD_COLD, AD_MAGM, AD_STON, AD_STUN, AD_CONF, AD_PLYS, AD_SAMU, AD_BLND, AD_SPEL, AD_CLRC, AT_MAGC, AT_WEAP, AT_CLAW, AT_GAZE,
     AT_KICK, AT_BITE, AT_BUTT, AT_TUCH, AT_STNG, AT_TENT, perceives, thick_skinned } from './permonst.js';
 
 const CONTACT_ATTACKS = new Set([AT_WEAP, AT_CLAW, AT_KICK, AT_BITE, AT_BUTT, AT_TUCH, AT_STNG, AT_TENT]);
-const CONTACT_DAMAGE = new Set([AD_PHYS, AD_COLD, AD_STUN, AD_CONF, AD_PLYS, AD_SAMU]);
+const CONTACT_DAMAGE = new Set([AD_PHYS, AD_COLD, AD_STON, AD_STUN, AD_CONF, AD_PLYS, AD_SAMU]);
 const MAGIC_DAMAGE = new Set([AD_SPEL, AD_CLRC, AD_MAGM, AD_COLD]);
 const HIT_VERBS = new Map([[AT_BITE, 'bites'], [AT_KICK, 'kicks'], [AT_BUTT, 'butts'],
     [AT_TUCH, 'touches you'], [AT_STNG, 'stings']]);
@@ -20,7 +20,7 @@ export function supportsMonsterAttackSlots(mon) {
     const weapon = mon.mw || selectHwep(mon);
     if (weapon?.artifact || weapon?.oartifact || weapon?.opoisoned || weapon?.permapoisoned) return false;
     const attacks = pmOf(mon)?.attacks || [];
-    return attacks.some(attack => attack.aatyp === AT_MAGC)
+    return attacks.some(attack => attack.aatyp)
         && attacks.every(attack => !attack.aatyp
             || (attack.aatyp === AT_GAZE ? attack.adtyp === AD_BLND
                 : attack.aatyp === AT_MAGC ? MAGIC_DAMAGE.has(attack.adtyp)
@@ -32,9 +32,12 @@ export async function advanceMonsterAttackSlots(state, D) {
     if (!state.phase) {
         const u = game.u;
         const ac = u.uac < 0 ? -rnd(-u.uac) : u.uac ?? 10;
-        const helpless = (game._helpless_time || 0) > 0 || game.multi < 0;
-        state.toHit = Math.max(1, ac + 10 + (mon.m_lev ?? pmOf(mon)?.mlevel ?? 0)
-            + (helpless ? 4 : 0) - ((D.invisible() && !perceives(pmOf(mon))) || !mon.mcansee ? 2 : 0)
+        // Armor dressing and prayer still store their nomul delays separately.
+        const helpless = (game._helpless_time || 0) > 0 || game.multi < 0
+            || game._armor_wear_occupation || game._prayer_occupation;
+        state.toHit = Math.max(1, ac + 10 + mLevel(mon)
+            + (helpless ? 4 : 0) - ((D.invisible() && !perceives(pmOf(mon)))
+                || mon.mcansee === false || mon.mcansee === 0 ? 2 : 0)
             - (mon.mtrapped ? 2 : 0));
         state.index = 0;
         state.firstX = u.ux; state.firstY = u.uy;
@@ -47,7 +50,7 @@ export async function advanceMonsterAttackSlots(state, D) {
             const attacks = pmOf(mon)?.attacks || [];
             if (state.index >= attacks.length) return true;
             state.attack = attacks[state.index];
-            state.damage = 0; state.effect = null;
+            state.damage = 0; state.effect = null; state.hitDone = false;
             const found = mon.mux === game.u.ux && mon.muy === game.u.uy;
             if (!state.attack.aatyp || (state.index > 0 && (state.firstX !== game.u.ux || state.firstY !== game.u.uy
                 || (state.firstFound && !found)))) {
@@ -142,6 +145,12 @@ export async function advanceMonsterAttackSlots(state, D) {
         }
         if (state.phase === 'damage') {
             await D.knockback(state);
+            if (state.hitDone) {
+                // hitmu returns mhm.hitflags after knockback when adtyping
+                // completed the hit, before HP damage or stop_occupation.
+                state.phase = 'afterSlot';
+                continue;
+            }
             if (state.damage && game.u.uac < 0) state.damage = Math.max(1, state.damage - rnd(-game.u.uac));
             state.damage = D.halfPhysical(state.damage);
             state.phase = 'afterHit';
@@ -152,6 +161,9 @@ export async function advanceMonsterAttackSlots(state, D) {
             if (!await D.afterHit(state)) return false;
         }
         if (state.phase === 'afterSlot') {
+            // mattacku refreshes status between attacks, including a hit
+            // resumed after savelife and followed immediately by another hit.
+            D.status?.();
             if (state.hits[state.index] && game.u.usleep && game.u.usleep < game.moves && !rn2(10)) {
                 game.multi = -1;
                 game._helpless_time = 1;

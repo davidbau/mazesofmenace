@@ -1,5 +1,6 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
+import { objectMaterial, MATERIAL_NAMES } from './object_knowledge.js';
 
 const WEAPON_CLASS = 1;
 const ARMOR_CLASS = 2;
@@ -200,6 +201,8 @@ function wandMaterialForMetallivore(obj) {
 }
 
 export function objectMaterialForMetallivore(obj) {
+    const canonical = objectMaterial(obj);
+    if (canonical != null) return MATERIAL_NAMES[canonical];
     const explicit = normalizeMetallivoreMaterial(obj?.material || obj?.oc_material);
     if (explicit) return explicit;
     const kind = metallivoreObjectKind(obj);

@@ -11,17 +11,18 @@
 
 import { vision_recalc } from './vision.js';
 import { emits_light } from './mondata.js';
-import { ledger_to_dnum, ledger_to_dlev, depth, In_W_tower } from './dungeon.js';
+import { ledger_to_dnum, ledger_to_dlev, depth, In_W_tower, builds_up, Is_qstart } from './dungeon.js';
 import { relmon, mondied } from './mon.js';
 import { m_unleash } from './apply.js';
 import { pline_mon, Your, verbalize } from './pline.js';
 import { body_part } from './polyself.js';
-import { EYE, DISMOUNT_THROWN, STRAT_WAITFORU, NO_TRAP_FLAGS, DISMOUNT_GENERIC } from './const.js';
+import { EYE, DISMOUNT_THROWN, STRAT_WAITFORU, NO_TRAP_FLAGS, DISMOUNT_GENERIC, In_endgame } from './const.js';
 import { dismount_steed } from './steed.js';
 import { count_wsegs, wormgone } from './worm.js';
 import { picked_container, set_residency } from './shk.js';
 import { Has_contents, MAX_NUM_WORMS, W_ARMS } from './const.js';
 import { game } from './gstate.js';
+import { impossible } from './pline.js';
 import { which_armor } from './worn.js';
 import { DEADMONSTER, is_vampshifter, MON_WEP } from './monst.js';
 import { mnexto, mnearto } from './mon.js';
@@ -38,7 +39,8 @@ import { perceives, is_domestic, is_undead, needspick, nohands, verysmall,
          max_passive_dmg, is_flyer, is_floater, regenerates, resist_conflict,
          is_covetous, is_human, sticks } from './mondata.js';
 import { sobj_at, eaten_stat, obj_extract_self } from './invent.js';
-import { may_dig } from './hack.js';
+import { may_dig, in_rooms } from './hack.js';
+import { stairway_find_dir, somexy } from './mklev.js';
 import { is_metallic, OBJ_FLOOR } from './obj.js';
 import { obj_resists } from './zap.js';
 import { newsym, canspotmon, mon_visible, pline, canseemon } from './display.js';
@@ -60,7 +62,7 @@ import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
 import { MFLAGS, MONSYMS, NUMMONS, MSOUND, ATTKS } from './monst_data.js';
 
 const { WOOD, IRON, SILVER, MITHRIL } = MATERIALS;
-import { rn2, rnd, getRngLog } from './rng.js';
+import { rn2, rnd, rn1, getRngLog } from './rng.js';
 import { dist2, sgn, s_suffix } from './hacklib.js';
 import { couldsee, clear_path, cansee } from './vision.js';
 import { distant_name, doname, xname, the, The } from './objnam.js';
@@ -69,7 +71,10 @@ import { Monnam, noit_Monnam, christen_monst, x_monnam,
 import { ARTICLE_YOUR } from './const.js';
 import { MIGR_RANDOM, MIGR_APPROX_XY, MIGR_EXACT_XY, MIGR_WITH_HERO,
          MIGR_LEFTOVERS, MON_MIGRATING, MON_LIMBO,
-         RLOC_NOMSG } from './const.js';
+         RLOC_NOMSG, MIGR_STAIRS_UP, MIGR_STAIRS_DOWN, MIGR_LADDER_UP,
+         MIGR_LADDER_DOWN, MIGR_SSTAIRS, MIGR_PORTAL,
+         ROOMOFFSET } from './const.js';
+import { stairway_find, stairway_find_from } from './stairs.js';
 import { Hallucination, Deaf } from './youprop.js';
 import { night } from './calendar.js';
 import { pline_xy, You, You_feel } from './pline.js';
@@ -2248,6 +2253,8 @@ export async function mon_arrive(mtmp, when) {
     const xyflags = mtmp.mtrack?.[0]?.y ?? 0;
     let xlocale = mtmp.mtrack?.[1]?.x ?? 0;
     let ylocale = mtmp.mtrack?.[1]?.y ?? 0;
+    const fromdlev = { dnum: mtmp.mtrack?.[2]?.x ?? 0,
+                       dlevel: mtmp.mtrack?.[2]?.y ?? 0 };
     mtmp.mux = game.u.ux;
     mtmp.muy = game.u.uy;
     mon_track_clear_dog(mtmp);
@@ -2276,17 +2283,65 @@ export async function mon_arrive(mtmp, when) {
         wander = Math.min(elapsed, 8);
     }
 
+    let stway;
     switch (xyloc) {
-    case MIGR_APPROX_XY:
+    case MIGR_APPROX_XY: /* {x,y}locale set above */
+        break;
     case MIGR_EXACT_XY:
-        if (xyloc === MIGR_EXACT_XY)
-            wander = 0;
+        wander = 0;
         break;
     case MIGR_WITH_HERO:
-        xlocale = game.u.ux;
-        ylocale = game.u.uy;
+        xlocale = game.u.ux, ylocale = game.u.uy;
         break;
+    case MIGR_STAIRS_UP:
+    case MIGR_STAIRS_DOWN:
+        if ((stway = stairway_find_from(fromdlev, false))) {
+            xlocale = stway.sx;
+            ylocale = stway.sy;
+        }
+        break;
+    case MIGR_LADDER_UP:
+    case MIGR_LADDER_DOWN:
+        if ((stway = stairway_find_from(fromdlev, true))) {
+            xlocale = stway.sx;
+            ylocale = stway.sy;
+        }
+        break;
+    case MIGR_SSTAIRS:
+        if ((stway = stairway_find(fromdlev))) {
+            xlocale = stway.sx;
+            ylocale = stway.sy;
+        }
+        break;
+    case MIGR_PORTAL: {
+        if (In_endgame(game.u.uz)) {
+            /* there is no arrival portal for endgame levels */
+            /* BUG[?]: for simplicity, this code relies on the fact
+               that we know that the current endgame levels always
+               build upwards and never have any exclusion subregion
+               inside their TELEPORT_REGION settings. */
+            xlocale = rn1(game.updest.hx - game.updest.lx + 1, game.updest.lx);
+            ylocale = rn1(game.updest.hy - game.updest.ly + 1, game.updest.ly);
+            break;
+        }
+        /* find the arrival portal */
+        const t = (game.level.traps || []).find((tr) => tr.ttyp === MAGIC_PORTAL);
+        if (t) {
+            xlocale = t.tx, ylocale = t.ty;
+            break;
+        } else if (game.iflags?.debug_fuzzer
+                   && (stway = stairway_find_dir(!builds_up(game.u.uz)))) {
+            /* debugfuzzer returns from or enters another branch */
+            xlocale = stway.sx, ylocale = stway.sy;
+            break;
+        } else if (!(game.u.uevent?.qexpelled
+                     && (Is_qstart(game.u.uz0) || Is_qstart(game.u.uz)))) {
+            await impossible('mon_arrive: no corresponding portal?');
+        }
+    }
+        /*FALLTHRU*/
     default:
+    case MIGR_RANDOM:
         xlocale = ylocale = 0;
         break;
     }
@@ -2294,8 +2349,30 @@ export async function mon_arrive(mtmp, when) {
     if ((mtmp.migflags || 0) & MIGR_LEFTOVERS)
         deliver_obj_to_mon(mtmp, 0, DF_ALL);
 
-    if (xlocale && wander)
-        note_unported('mon_arrive:wander_near_arrival');
+    if (xlocale && wander) {
+        /* monster moved a bit; pick a nearby location */
+        /* mnearto() deals w/stone, et al */
+        const r = in_rooms(xlocale, ylocale, 0);
+
+        if (r && r.length) {
+            const c = { x: 0, y: 0 };
+
+            /* somexy() handles irregular rooms */
+            if (somexy(game.level.rooms[r.charCodeAt(0) - ROOMOFFSET], c))
+                xlocale = c.x, ylocale = c.y;
+            else
+                xlocale = ylocale = 0;
+        } else { /* not in a room */
+            let i, j;
+
+            i = Math.max(1, xlocale - wander);
+            j = Math.min(COLNO - 1, xlocale + wander);
+            xlocale = rn1(j - i, i);
+            i = Math.max(0, ylocale - wander);
+            j = Math.min(ROWNO - 1, ylocale + wander);
+            ylocale = rn1(j - i, i);
+        }
+    } /* moved a bit */
 
     mtmp.mx = 0;
     mtmp.my = xyflags;

@@ -271,7 +271,11 @@ export function makeplural(s) {
     const head = sp >= 0 ? s.slice(0, sp + 1) : '';
     let w = sp >= 0 ? s.slice(sp + 1) : s;
 
-    if (/(s|x|z|ch|sh)$/i.test(w)) w += 'es';
+    /* src/objnam.c:2920 man/men ("Wiped out all cavemen."), excluding
+       shamans and humans etc via badman(); Strcasecpy keeps the case */
+    if (w.length >= 3 && /man$/i.test(w) && !badman(w, true))
+        w = w.slice(0, -2) + (w.slice(-2) === 'AN' ? 'EN' : 'en');
+    else if (/(s|x|z|ch|sh)$/i.test(w)) w += 'es';
     else if (/[^aeiou]y$/i.test(w)) w = w.slice(0, -1) + 'ies';
     else if (/(f)$/i.test(w)) w = w.slice(0, -1) + 'ves';
     else w += 's';

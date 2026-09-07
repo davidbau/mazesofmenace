@@ -22,7 +22,8 @@ import {
     VISITED, LFILE_EXISTS, RANGE_LEVEL, REST_LEVELS,
     WRITING, FREEING,
     UNENCUMBERED, KILLED_BY, DISMOUNT_FELL, NO_KILLER_PREFIX, ESCAPED,
-    MAGIC_PORTAL, TIMEOUT, BLINDED, RLOC_NOMSG, EYE, HAND, FROMOUTSIDE,
+    MAGIC_PORTAL, TIMEOUT, BLINDED, STONED, SLIMED, STRANGLED, SICK,
+    RLOC_NOMSG, EYE, HAND, FROMOUTSIDE,
     WARN_OF_MON, TELEPAT, INFRAVISION,
     ACH_HELL, ACH_MINE, ACH_SOKO, ACH_ENDG, ACH_ASTR, ACH_BGRM,
     LL_ACHIEVE, LL_DEBUG,
@@ -59,7 +60,7 @@ import {
     You_feel, canseemon, canspotmon, impossible, describe_level,
     see_monsters,
 } from './display.js';
-import { yn_function, paranoid_ynq } from './getline.js';
+import { yn_function, paranoid_ynq, y_n } from './getline.js';
 import { vision_recalc, vision_reset, recalc_block_point, cansee, couldsee } from './vision.js';
 import { clear_regions, in_out_region } from './region.js';
 import {
@@ -1119,18 +1120,27 @@ export async function tutorial(entering) {
 }
 
 /**
- * C ref: do.c danger_uprops — Stoned/Slimed/Strangled/Sick.
- * Props not fully wired; return false until those states exist.
+ * C ref: do.c:2318–2322 danger_uprops — `Stoned || Slimed || Strangled
+ * || Sick`, i.e. `u.uprops[PROP].intrinsic` (youprop.h). JS keeps two
+ * stores for the same C value: make_sick/make_stoned/make_slimed write
+ * the flats (`u.Sick`/`u.Stoned`/`u.Slimed`), while incr_prop_timeout
+ * (e.g. wiz_intrinsic STRANGLED via the default arm) writes
+ * `u.uprops[PROP].intrinsic` only — so check both, like the status
+ * cond (display.js) and prop_old_timeout (wizcmds.js) already do.
  */
 function danger_uprops() {
     const u = game.u || {};
-    return !!(u.Stoned || u.Slimed || u.Strangled || u.Sick);
+    const intr = (p) => ((u.uprops?.[p]?.intrinsic | 0) !== 0);
+    return !!((u.Stoned | 0) || intr(STONED)
+        || (u.Slimed | 0) || intr(SLIMED)
+        || (u.Strangled | 0) || intr(STRANGLED)
+        || (u.Sick | 0) || intr(SICK));
 }
 
 /**
  * C ref: do.c cmd_safety_prevention — block wait/search beside hostiles.
  * safe_wait default On; menu_requested (`m` prefix) and multi skip the gate.
- * Named omissions: full danger_uprops bodies; visctrl/cmd_from_func beyond 'm'.
+ * Named omissions: visctrl/cmd_from_func beyond 'm'.
  *
  * @param {string} ucverb
  * @param {string} cmddesc
@@ -2676,7 +2686,7 @@ export async function dodown() {
  * C ref: do.c doup — '<' go up staircase (ordinary stairs path).
  *
  * Omits: rooted, stucksteed, u_stuck_cannot_go, encumbrance
- * load gate, ledger 1 escape yn.
+ * load gate (ledger 1 escape yn live).
  */
 export async function doup() {
     const u = game.u;
@@ -2698,11 +2708,12 @@ export async function doup() {
         return ECMD_OK;
     }
 
-    // C: ledger_no(&u.uz) == 1 → escape yn — not taken when climbing to Dlvl1
-    // from below; surface escape deferred.
+    // C do.c :1330–1335 — ledger 1: no return; 'y' climbs out (prev_level
+    // escapes via goto_level ledger<=0 → done(ESCAPED)), else stay.
     if (ledger_no(u.uz) === 1) {
-        await pline("You can't go up here.");
-        return ECMD_OK;
+        if (game.iflags?.debug_fuzzer) return ECMD_OK;
+        if ((await y_n('Beware, there will be no return!  Still climb?')) !== 'y')
+            return ECMD_OK;
     }
 
     // C: next_to_u — leashed pet may hold hero back (D-1005)

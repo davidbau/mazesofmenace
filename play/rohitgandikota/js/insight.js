@@ -29,12 +29,14 @@ import { ceiling, surface, Is_bigroom } from './dungeon.js';
 import { hides_under, is_clinger } from './mondata.js';
 import { waterbody_name } from './pager.js';
 import { is_pool, t_at } from './mon.js';
-import { simple_typename, ansimpleoname, OBJ_NAME, ysimple_name } from './objnam.js';
-import { M_AP_TYPE, M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, TT_PIT, SPIKED_PIT } from './const.js';
+import { simple_typename, ansimpleoname, OBJ_NAME, ysimple_name, the } from './objnam.js';
+import { M_AP_TYPE, M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, TT_PIT, SPIKED_PIT, TT_BURIEDBALL, TT_LAVA, TT_INFLOOR } from './const.js';
+import { trapname } from './trap.js';
 import { game } from './gstate.js';
 import { P_NONE, P_UNSKILLED, P_SKILLED, P_ISRESTRICTED, FULL_MOON, NEW_MOON, WEAK,
          P_TWO_WEAPON_COMBAT, ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE,
-         ARTICLE_YOUR, SUPPRESS_IT, SUPPRESS_INVISIBLE, STRAT_WAITMASK,
+         ARTICLE_YOUR, ARTICLE_THE, SUPPRESS_IT, SUPPRESS_INVISIBLE, STRAT_WAITMASK,
+         SUPPRESS_SADDLE, SUPPRESS_HALLUCINATION,
          MSLOW, MFAST, A_NONE, A_CURRENT, A_ORIGINAL, TIMEOUT,
          W_ARM, W_ARMC, W_ARMH, W_ARMS,
          W_ARMG, W_ARMF, W_ARMU, W_AMUL, W_RINGL, W_RINGR,
@@ -64,7 +66,7 @@ import { MFLAGS } from './monst_data.js';
 import { inv_weight, near_capacity } from './attrib.js';
 import { ONAMES } from './objects_data.js';
 import { pline } from './display.js';
-import { a_monnam, x_monnam, pmname } from './do_name.js';
+import { a_monnam, x_monnam, pmname, hliquid } from './do_name.js';
 import { find_mac } from './worn.js';
 import { Fast, Very_fast, from_what as innate_source } from './attrib.js';
 import { Fire_resistance, Cold_resistance, Sleep_resistance,
@@ -763,6 +765,39 @@ function full_direction(dx, dy) {
 
 // src/insight.c:1180 status_enlightenment() — only the last-resort entries a
 // fresh hero reaches.
+// src/insight.c:233 trap_predicament() — describe u.utraptype; used by
+// status_enlightenment() and self_lookat()
+export function trap_predicament(final, wizxtra) {
+    const u = game.u;
+    let outbuf = '';
+
+    /* caller has verified u.utrap */
+    switch (u.utraptype) {
+    case TT_BURIEDBALL:
+        outbuf = 'tethered to something buried';
+        break;
+    case TT_LAVA:
+        outbuf = `sinking into ${final ? 'lava' : hliquid('lava')}`;
+        break;
+    case TT_INFLOOR:
+        outbuf = `stuck in ${the(surface(u.ux, u.uy))}`;
+        break;
+    default: { /* TT_BEARTRAP, TT_PIT, or TT_WEB */
+        outbuf = 'trapped';
+        const t = t_at(u.ux, u.uy);
+        if (t) /* should never be null */
+            outbuf += ` in ${an(trapname(t.ttyp, false))}`;
+        break;
+    }
+    }
+    if (wizxtra) { /* give extra information for wizard mode enlightenment */
+        /* curly braces: u.utrap is an escape attempt counter rather than a
+           turn timer so use different ornamentation than usual parentheses */
+        outbuf += ` {${u.utrap}}`;
+    }
+    return outbuf;
+}
+
 function status_enlightenment() {
     const u = game.u;
     out('');
@@ -809,6 +844,23 @@ function status_enlightenment() {
             : 'punished';
         you_are(punishment);
     }
+    if (u.utrap) {
+        const anchored = (u.utraptype === TT_BURIEDBALL);
+
+        const predicament = trap_predicament(en_final, game.wizard);
+        if (u.usteed) { /* not `Riding' here */
+            const steedname = x_monnam(u.usteed,
+                                       u.usteed.mtame ? ARTICLE_YOUR : ARTICLE_THE,
+                                       null,
+                                       (SUPPRESS_SADDLE | SUPPRESS_HALLUCINATION),
+                                       false);
+            let buf = `${anchored ? 'you and ' : ''}${steedname} `;
+            buf = highc(buf[0]) + buf.slice(1);
+            enl_msg(buf, (anchored ? 'are ' : 'is '),
+                    (anchored ? 'were ' : 'was '), predicament, '');
+        } else
+            you_are(predicament, '');
+    } /* (u.utrap) */
 
     if (game.u.ustuck && !game.u.uswallow) {
         const holder = game.u.ustuck;
@@ -1623,6 +1675,21 @@ export async function show_conduct(final) {
             cmsg('have not wished ', 'did not wish ', 'for any artifacts');
     }
 
+    /* only report Sokoban conduct if the Sokoban branch has been entered */
+    if (sokoban_in_play()) {
+        let presentverb = 'have violated', pastverb = 'violated';
+        let buf;
+
+        if (!c.sokocheat) {
+            presentverb = 'have not violated';
+            pastverb = 'did not violate';
+            buf = 'any of the special Sokoban rules';
+        } else {
+            buf = 'the special Sokoban rules ' + N_times(c.sokocheat);
+        }
+        cmsg(presentverb + ' ', pastverb + ' ', buf);
+    }
+
     show_achievements_into(put, cmsg, have_X, fin);
 
     await tty_display_nhwindow(win);
@@ -1634,6 +1701,15 @@ export async function show_conduct(final) {
     return 0;
 }
 
+
+// src/insight.c:2517 sokoban_in_play() — relies on the entered-sokoban
+// achievement
+function sokoban_in_play() {
+    for (let achidx = 0; (game.u.uachieved || [])[achidx]; ++achidx)
+        if (game.u.uachieved[achidx] === ACH_SOKO)
+            return true;
+    return false;
+}
 
 // src/insight.c:362 N_times()
 function N_times(n) {

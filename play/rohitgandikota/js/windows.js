@@ -19,6 +19,7 @@ import { oc_explain } from './drawing_data.js';
    where the level loader needed it first. */
 import { def_char_to_objclass } from './sp_lev.js';
 import { game } from './gstate.js';
+import { regex_match } from './posixregex.js';
 
 // src/windows.c:1644 choose_classes_menu()
 //
@@ -122,4 +123,15 @@ export async function choose_classes_menu(prompt, category, way,
         ret = 0;
     }
     return ret;
+}
+
+// src/windows.c:1841 get_menu_coloring() — the first pattern that matches
+// str, as { color, attr }, or null; the C fills two out-parameters.
+// iflags.use_menu_color is game.iflags.menucolors here.
+export function get_menu_coloring(str) {
+    if (game.iflags?.menucolors)
+        for (const tmpmc of game.menu_colorings || [])
+            if (regex_match(str, tmpmc.match))
+                return { color: tmpmc.color, attr: tmpmc.attr };
+    return null;
 }

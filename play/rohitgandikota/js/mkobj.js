@@ -46,6 +46,7 @@ import { mk_artifact, nartifact_exist } from './artifact.js';
 // js/o_init.js init_objects().
 
 import { game } from './gstate.js';
+import { forget_temple_entry } from './priest.js';
 import { start_timer, stop_timer, TIMER_OBJECT,
          ROT_CORPSE as TIMEOUT_ROT_CORPSE,
          REVIVE_MON as TIMEOUT_REVIVE_MON, ZOMBIFY_MON,
@@ -1678,6 +1679,8 @@ export function obj_attach_mid(obj, mid) {
 // src/mkobj.c:2157 save_mtraits() -- keep an individual's monster record on
 // its corpse or statue while dropping live-map and inventory pointers.
 function save_mtraits(obj, mtmp) {
+    if (mtmp.ispriest)
+        forget_temple_entry(mtmp); /* EPRI() */
     const saved = structuredClone({
         ...mtmp,
         data: null,

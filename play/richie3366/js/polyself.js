@@ -76,6 +76,8 @@ import {
     is_hider,
     hides_under,
     is_mind_flayer,
+    lays_eggs,
+    eggs_in_water,
     mindless,
     telepathic,
     haseyes,
@@ -165,6 +167,8 @@ const PM_JELLYFISH = monsterNames.indexOf('PM_JELLYFISH');
 const PM_KRAKEN = monsterNames.indexOf('PM_KRAKEN');
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
+const PM_GIANT_EEL = monsterNames.indexOf('PM_GIANT_EEL');
+const PM_ELECTRIC_EEL = monsterNames.indexOf('PM_ELECTRIC_EEL');
 const BLINDING_VENOM = objectNames.indexOf('BLINDING_VENOM');
 const ACID_VENOM = objectNames.indexOf('ACID_VENOM');
 const ROBE = objectNames.indexOf('ROBE');
@@ -956,11 +960,11 @@ async function break_armor() {
  * Envelope: geno abort; conduct; CON/WIS exercise; sex_change_ok rn2(10);
  * turn-into pline; rn1(500,500) mtimedone; set_uasmon; STR clamp;
  * mhmax (dragon / golem / d(mlvl,8)); break_armor; drop_weapon;
- * find_ac; newsym; botl; see_monsters; encumber_msg; verbose breath tip.
+ * find_ac; newsym; botl; see_monsters; encumber_msg; verbose ability tips.
  * Named omissions: Stoned/Sick/Slimed/strangle/glib; hideunder; utrap;
  * Blind restore; egg learn; swallow expel; light sources;
  * full skinback; livelog first-poly text; break_armor horns /
- * flimsy-helm pierce / ublindf; retouch_equipment; non-breath verbose tips.
+ * flimsy-helm pierce / ublindf; retouch_equipment.
  * @param {number} mntmp
  * @returns {Promise<number>} 1 on success, 0 on geno abort
  */
@@ -1075,15 +1079,55 @@ export async function polymon(mntmp) {
     find_ac();
     find_ac(); /* C repeats */
     // retouch_equipment / selftouch deferred
-    // C: polyself.c polymon — flags.verbose ability tips after encumber
+    // C: polyself.c:1030–1070 — flags.verbose ability tips after encumber
     // (breath tip forces --More-- on the encumber pline; D-0725).
+    // Branch order matches C; the #sit arm keeps the giant/electric-eel
+    // exclusion (JS compares mndx; mons() allocates, so no &mons[] eq).
     if (flags.verbose !== false) {
         const uptr = game.youmonst?.data;
+        const might_hide = !!(is_hider(uptr) || hides_under(uptr));
         if (can_breathe(uptr)) {
             await pline('Use the command #monster to use your breath weapon.');
         }
-        // spit/nymph/gaze/hide/web/were/gremlin/unicorn/mindflayer/
-        // shriek/vampire/sit-egg tips deferred
+        if (attacktype(uptr, AT_SPIT)) {
+            await pline('Use the command #monster to spit venom.');
+        }
+        if (uptr?.mlet === 'S_NYMPH') {
+            await pline('Use the command #monster to remove an iron ball.');
+        }
+        if (attacktype(uptr, AT_GAZE)) {
+            await pline('Use the command #monster to gaze at monsters.');
+        }
+        if (might_hide && webmaker(uptr)) {
+            await pline('Use the command #monster to hide or to spin a web.');
+        } else if (might_hide) {
+            await pline('Use the command #monster to hide.');
+        } else if (webmaker(uptr)) {
+            await pline('Use the command #monster to spin a web.');
+        }
+        if (is_were(uptr)) {
+            await pline('Use the command #monster to summon help.');
+        }
+        if ((u.umonnum | 0) === PM_GREMLIN) {
+            await pline('Use the command #monster to multiply in a fountain.');
+        }
+        if (is_unicorn(uptr)) {
+            await pline('Use the command #monster to use your horn.');
+        }
+        if (is_mind_flayer(uptr)) {
+            await pline('Use the command #monster to emit a mental blast.');
+        }
+        if (((uptr?.msound) | 0) === MS_SHRIEK) {
+            await pline('Use the command #monster to shriek.');
+        }
+        if (is_vampire(uptr) || is_vampshifter(game.youmonst)) {
+            await pline('Use the command #monster to change shape.');
+        }
+        if (lays_eggs(uptr) && flags.female
+            && (uptr?.mndx !== PM_GIANT_EEL
+                && uptr?.mndx !== PM_ELECTRIC_EEL)) {
+            await pline(`Use the command #sit to ${eggs_in_water(uptr) ? 'spawn in the water' : 'lay an egg'}.`);
+        }
     }
     return 1;
 }

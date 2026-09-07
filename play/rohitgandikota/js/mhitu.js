@@ -11,7 +11,7 @@ import { unmul, losehp, showdamage } from './hack.js';
 import { mimic_obj_name } from './objnam.js';
 import { set_ustuck, m_next2u } from './mon.js';
 import { m_monnam } from './do_name.js';
-import { likes_gold } from './mondata.js';
+import { likes_gold, completelyrots, completelyrusts } from './mondata.js';
 import { Something } from './const.js';
 import { M_AP_OBJECT } from './const.js';
 import { M_AP_NOTHING } from './const.js';
@@ -21,7 +21,7 @@ import { update_inventory } from './invent.js';
 import { cloak_simple_name, helm_simple_name, Ring_gone, Ring_on,
          stop_donning } from './do_wear.js';
 import { mhitm_ad_poly, mhitm_ad_deth, mhitm_ad_tlpt, mhitm_ad_curs, mhitm_ad_acid, mhitm_ad_drin, mhitm_ad_dren, mhitm_ad_slow } from './uhitm.js';
-import { monsndx } from './makemon.js';
+import { monsndx, is_home_elemental } from './makemon.js';
 import { split_mon } from './potion.js';
 import { Your } from './pline.js';
 import { ugolemeffects } from './polyself.js';
@@ -62,7 +62,7 @@ import { W_ARMOR, W_AMUL, NON_PM, u_at, is_pit, Upolyd, PRONOUN_HALLU,
          TT_PIT, TT_WEB, DISMOUNT_ENGULFED, WATER, P_WHIP, P_POLEARMS, NEED_WEAPON,
          NEED_HTH_WEAPON, LEFT_SIDE, RIGHT_SIDE, LEG,
          MON_EXPLODE, XKILL_NOMSG, SICK_NONVOMITABLE, STONING,
-         KILLED_BY, W_ARMG, ERODE_CORRODE, EF_GREASE, EF_VERBOSE,
+         KILLED_BY, W_ARMG, ERODE_CORRODE, ERODE_RUST, ERODE_ROT, EF_GREASE, EF_VERBOSE,
          STRAT_WAITFORU, NO_MINVENT, MM_EDOG, MM_NOMSG, A_CHAOTIC,
          A_INT, A_WIS, A_CHA, HAND, HAIR, LEFT_RING, RIGHT_RING,
          RLOC_MSG, OBJ_FREE, LARGEST_INT, BOLT_LIM, TIMEOUT,
@@ -105,7 +105,8 @@ import { find_offensive, use_offensive, mon_reflects } from './muse.js';
 import { buzzmu, castmu } from './mcastu.js';
 import { burnarmor, erode_obj, ignite_items, reset_utrap, minstapetrify } from './trap.js';
 import { destroy_items, drain_item } from './zap.js';
-import { defends, retouch_equipment } from './artifact.js';
+import { defends, retouch_equipment, is_art } from './artifact.js';
+import { ART_STORMBRINGER, ART_VORPAL_BLADE } from './artilist_data.js';
 import { set_ulycn } from './were.js';
 import { can_blnd } from './mondata.js';
 import { currency, freeinv, money_cnt, prinv } from './invent.js';
@@ -667,10 +668,16 @@ export async function gazemu(mtmp, mattk) {
 export function getmattk(magr, mdef, indx, prev_result) {
     const A = ATTKS;
     const mptr = game.mons[magr.mnum];
-    const attk = mptr.mattk[indx];
+    let attk = mptr.mattk[indx];
+    const weap = (magr === game.youmonst) ? game.u.uwep : MON_WEP(magr);
+    const udefend = mdef === game.youmonst;
 
     if (mptr.mattk[0][1] === A.AD_SSEX || attk[1] === A.AD_SSEX)
         note_unported_mhitu('getmattk:SEDUCE');
+
+    /* prevent a monster with two consecutive disease or hunger attacks
+       from hitting with both of them on the same turn; if the first has
+       already hit, switch to a stun attack for the second */
     if (indx > 0 && prev_result[indx - 1] > M_ATTK_MISS
         && (attk[1] === A.AD_DISE || attk[1] === A.AD_PEST
             || attk[1] === A.AD_FAMN)
@@ -678,14 +685,12 @@ export function getmattk(magr, mdef, indx, prev_result) {
         const alt = [...attk];
         alt.getmattk_alternate = true;
         alt[1] = A.AD_STUN;
-        return alt;
-    }
-
+        attk = alt;
     /* src/mhitu.c:349. Energy-vortex drain scales with the hero's current
        and maximum energy. At level 30 with 99 energy, the ordinary 2d6
        attack becomes 1d6; retaining 2d6 changes both the drained amount and
        the RNG modulus for every later action. */
-    if (attk[1] === A.AD_DREN && mdef === game.youmonst) {
+    } else if (attk[1] === A.AD_DREN && udefend) {
         const alt = [...attk];
         alt.getmattk_alternate = true;
         const ulev = Math.max(game.u.ulevel | 0, 6);
@@ -699,15 +704,13 @@ export function getmattk(magr, mdef, indx, prev_result) {
             if ((game.u.uenmax | 0) > 20 * ulev)
                 alt[3] += 3;
         }
-        return alt;
-    }
-
+        attk = alt;
     /* src/mhitu.c:368, a holder or engulfer which just released its target
        temporarily substitutes a weak touch or claw attack. */
-    if (magr.mspec_used && (attk[0] === A.AT_ENGL
-                            || attk[0] === A.AT_HUGS
-                            || attk[1] === A.AD_STCK
-                            || attk[1] === A.AD_POLY)) {
+    } else if (magr.mspec_used && (attk[0] === A.AT_ENGL
+                                   || attk[0] === A.AT_HUGS
+                                   || attk[1] === A.AD_STCK
+                                   || attk[1] === A.AD_POLY)) {
         const alt = [...attk];
         alt.getmattk_alternate = true;
         const wimpy = alt[3] === 0;
@@ -725,24 +728,54 @@ export function getmattk(magr, mdef, indx, prev_result) {
             alt[0] = A.AT_TUCH;
             alt[2] = alt[3] = 0;
         }
-        return alt;
-    }
-
-    /* src/mhitu.c:416: a lich uses weaker physical touch damage when its
-       target resists cold, unless the target is a shade. */
-    const cold_resistant_target = mdef === game.youmonst
-        ? Cold_resistance() : resists_cold(mdef);
-    if (indx === 0 && attk[0] === A.AT_TUCH && attk[1] === A.AD_COLD
-        && cold_resistant_target
-        && mdef.data.pmidx !== PMNAMES.PM_SHADE) {
+        attk = alt;
+    /* src/mhitu.c:399: barrow wight, Nazgul, erinys have weapon attack for
+       non-physical damage; force physical damage if attacker has been
+       cancelled or if weapon is sufficiently interesting; a few unique
+       creatures have two weapon attacks where one does physical damage and
+       other doesn't--avoid forcing physical damage for those */
+    } else if (indx === 0 && magr !== game.youmonst
+               && attk[0] === A.AT_WEAP && attk[1] !== A.AD_PHYS
+               && !(mptr.mattk[1][0] === A.AT_WEAP
+                    && mptr.mattk[1][1] === A.AD_PHYS)
+               && (magr.mcan
+                   || (weap && ((weap.otyp === ONAMES.CORPSE
+                                 && touch_petrifies(game.mons[weap.corpsenm]))
+                                || is_art(weap, ART_STORMBRINGER)
+                                || is_art(weap, ART_VORPAL_BLADE))))) {
         const alt = [...attk];
         alt.getmattk_alternate = true;
         alt[1] = A.AD_PHYS;
+    /* src/mhitu.c:416: a lich uses weaker physical touch damage when its
+       target resists cold, unless the target is a shade. */
+    } else if (indx === 0 && attk[0] === A.AT_TUCH && attk[1] === A.AD_COLD
+               && (udefend ? Cold_resistance() : resists_cold(mdef))
+               /* don't substitute if target is immune to normal damage */
+               && mdef.data.pmidx !== PMNAMES.PM_SHADE) {
+        const alt = [...attk];
+        alt.getmattk_alternate = true;
+        alt[1] = A.AD_PHYS;
+        /* lessen new physical damage compared to old cold damage:
+         *        before  after
+         * lich:    1d10  1d6
+         * demi:    3d4   2d4
+         * master:  3d6   2d6
+         * arch-:   5d6   3d6
+         */
         alt[2] = Math.trunc((alt[2] + 1) / 2);
         if (alt[3] === 10)
             alt[3] = 6;
-        return alt;
+        attk = alt;
     }
+
+    /* src/mhitu.c:436 elementals on their home plane do double damage */
+    if (!attk.getmattk_alternate && is_home_elemental(mptr)) {
+        const alt = [...attk];
+        alt.getmattk_alternate = true;
+        alt[2] *= 2;
+        attk = alt;
+    }
+
     return attk;
 }
 
@@ -1435,6 +1468,32 @@ async function hitmu(mtmp, mattk, indx) {
         }
     } else if (mattk[1] === A.AD_CURS) {
         await mhitm_ad_curs(mtmp, mattk, game.youmonst, mhm);
+    } else if (mattk[1] === A.AD_RUST) {
+        // src/uhitm.c mhitm_ad_rust(), the mhitu arm
+        await hitmsg(mtmp, mattk, indx);
+        if (!mtmp.mcan) {
+            if (completelyrusts(game.youmonst.data)) {
+                await You('rust!');
+                /* KMH -- this is okay with unchanging */
+                const { rehumanize } = await import('./polyself.js');
+                await rehumanize();
+            } else {
+                await erode_armor(game.youmonst, ERODE_RUST);
+            }
+        }
+    } else if (mattk[1] === A.AD_DCAY) {
+        // src/uhitm.c mhitm_ad_dcay(), the mhitu arm
+        await hitmsg(mtmp, mattk, indx);
+        if (!mtmp.mcan) {
+            if (completelyrots(game.youmonst.data)) {
+                await You('rot!');
+                /* KMH -- this is okay with unchanging */
+                const { rehumanize } = await import('./polyself.js');
+                await rehumanize();
+            } else {
+                await erode_armor(game.youmonst, ERODE_ROT);
+            }
+        }
     } else {
         note_unported_mhitu(`hitmu:adtyp=${mattk[1]}`);
         /* the generic arms still print the plain hit message */

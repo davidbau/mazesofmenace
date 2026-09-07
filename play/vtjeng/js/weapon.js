@@ -7,6 +7,7 @@ import {
     artifactTouchable,
     artifact_light,
     shade_glare,
+    spec_abon,
 } from './artifacts.js';
 import { acurr } from './attrib.js';
 import {
@@ -385,11 +386,7 @@ export function hitval(otmp, mon, state = game, env = {}) {
     if (is_pick(otmp, state) && passes_walls(ptr) && thick_skinned(ptr))
         tmp += 2;
 
-    if (otmp.oartifact) {
-        requiredOperation(env, 'unsupported', 'hitval')(
-            'spec_abon() artifact to-hit bonus',
-        );
-    }
+    if (otmp.oartifact) tmp += spec_abon(otmp, mon, state);
     return tmp;
 }
 
@@ -1504,6 +1501,23 @@ export function add_weapon_skill(n, state = game) {
         if (can_advance(i, false, state)) after++;
     if (before < after)
         throw new UnsupportedWeaponSkillError('give_may_advance_msg(P_NONE)');
+}
+
+// C ref: weapon.c arwep[] (513-516). Throw-and-return weapon table: each
+// entry gives the object type, squared range limit, and a tethered flag.
+// Currently the only entry is the aklys.
+const arwep = Object.freeze([
+    { otyp: AKLYS, range: AKLYS_LIM * AKLYS_LIM, tethered: 1 },
+]);
+
+// C ref: weapon.c autoreturn_weapon() (520-528). Returns the arwep entry
+// for the given object, or null if it is not a throw-and-return weapon.
+export function autoreturn_weapon(obj) {
+    for (let i = 0; i < arwep.length; i++) {
+        if (obj.otyp === arwep[i].otyp)
+            return arwep[i];
+    }
+    return null;
 }
 
 // Thrown where weapon.c reaches a skill branch this port has not ported.

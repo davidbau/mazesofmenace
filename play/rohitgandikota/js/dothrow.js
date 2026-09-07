@@ -149,7 +149,7 @@ import { rn2, rnd } from './rng.js';
 import { bhit, boomhit, obj_resists, miss } from './zap.js';
 import { is_pool, is_lava, wakeup } from './mon.js';
 import { is_blade } from './mon.js';
-import { is_missile, is_sword } from './wield.js';
+import { is_missile, is_sword , welded } from './wield.js';
 import { cansee } from './vision.js';
 import { newsym, canseemon } from './display.js';
 import { Levitation, Blind, Underwater, Fumbling } from './youprop.js';
@@ -1324,11 +1324,21 @@ function AutoReturn(obj, wep_mask) {
 // The '-' choice is EXCLUDED outright, so the prompt has no "- " prefix the
 // way the quiver's does. A wielded single item is downplayed but still
 // selectable; coins and weapons are suggested, gems only when slinging.
+// include/obj.h:269 uslinging()
+function uslinging() {
+    return !!game.u.uwep
+           && game.objects[game.u.uwep.otyp].oc_skill === SKILLS.P_SLING;
+}
+
 function throw_ok(obj) {
     if (!obj)
         return GETOBJ_EXCLUDE;
 
+    if (obj.bknown && welded(obj)) /* not a candidate if known to be stuck */
+        return GETOBJ_DOWNPLAY;
+
     if (AutoReturn(obj, obj.owornmask || 0)
+        /* to get here, obj is boomerang or is uwep and (alkys or Mjollnir) */
         && (obj.oartifact !== ART_MJOLLNIR
             || ACURR(A_STR) >= STR19(25)))
         return GETOBJ_SUGGEST;
@@ -1339,16 +1349,14 @@ function throw_ok(obj) {
     if (obj.oclass === OCLASSES.COIN_CLASS)
         return GETOBJ_SUGGEST;
 
-    /* uslinging() needs the wielded launcher's skill; a sling is rare enough
-       that the not-slinging arm is the one every recorded session takes. */
-    if (obj.oclass === OCLASSES.WEAPON_CLASS)
+    if (!uslinging() && obj.oclass === OCLASSES.WEAPON_CLASS)
+        return GETOBJ_SUGGEST;
+    /* Possible extension: exclude weapons that make no sense to throw,
+       such as whips, bows, slings, rubber hoses. */
+    if (uslinging() && obj.oclass === OCLASSES.GEM_CLASS)
         return GETOBJ_SUGGEST;
 
-    /* gy.youmonst.data is the hero's current form; this port keeps it as
-       u.umonnum indexing game.mons. Guarded because the boulder arm is only
-       reachable for a rock-throwing polyform. */
-    const uptr = game.mons?.[game.u?.umonnum];
-    if (uptr && throws_rocks(uptr) && obj.otyp === ONAMES.BOULDER)
+    if (throws_rocks(game.youmonst.data) && obj.otyp === ONAMES.BOULDER)
         return GETOBJ_SUGGEST;
 
     return GETOBJ_DOWNPLAY;

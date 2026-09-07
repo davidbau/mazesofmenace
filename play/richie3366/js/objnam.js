@@ -987,8 +987,12 @@ export function xname(obj) {
     // C xname_flags: has_oname && dknown → " named " ONAME
     const onameStr = obj.oextra?.oname;
     if (onameStr && obj.dknown) {
+        const nameStart = base.length + ' named '.length;
         base += ` named ${onameStr}`;
-        // C: artifact "The …" → downcase leading T — deferred
+        /* C objnam.c:1006–1008 — downcase "The" in "<item> named The ..." */
+        if (obj.oartifact && base.slice(nameStart, nameStart + 4) === 'The ') {
+            base = `${base.slice(0, nameStart)}t${base.slice(nameStart + 1)}`;
+        }
     }
     // C xname_flags `:1011–1012` — doname_base artifact_name(bp) sees
     // this stripped pointer (D-1521 fake_arti).
@@ -2766,6 +2770,13 @@ export function doname(obj) {
         ? String(obj.oextra.oname) : '';
     let bpForArti = onameStrForArti
         ? `${base} named ${onameStrForArti}` : base;
+    /* C objnam.c:1006–1008 — bp is xname here, already downcased "The". */
+    if (onameStrForArti && obj.oartifact
+        && bpForArti.slice(base.length + ' named '.length,
+            base.length + ' named '.length + 4) === 'The ') {
+        const ns = base.length + ' named '.length;
+        bpForArti = `${bpForArti.slice(0, ns)}t${bpForArti.slice(ns + 1)}`;
+    }
     if (bpForArti.length >= 4
         && bpForArti.slice(0, 4).toLowerCase() === 'the ') {
         bpForArti = bpForArti.slice(4);
@@ -2926,7 +2937,12 @@ export function doname(obj) {
     // C: has_oname && dknown → " named Foo"
     const onameStr = obj.oextra?.oname;
     if (onameStr && obj.dknown) {
+        const nameStart = bp.length + ' named '.length;
         bp += ` named ${onameStr}`;
+        /* C objnam.c:1006–1008 — downcase "The" in "<item> named The ..." */
+        if (obj.oartifact && bp.slice(nameStart, nameStart + 4) === 'The ') {
+            bp = `${bp.slice(0, nameStart)}t${bp.slice(nameStart + 1)}`;
+        }
     }
     // C doname_base FOOD EGG Concat(bp, " (laid by you)") after xname
     // (xname already includes " named ").

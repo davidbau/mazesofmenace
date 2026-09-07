@@ -859,7 +859,7 @@ export async function mon_poly(magr, mdef, dmg) {
                 else
                     await monkilled(mdef, '', ATTKS.AD_RBRE);
             }
-        } else if (newcham(mdef, null, NO_NC_FLAGS)) {
+        } else if (await newcham(mdef, null, NO_NC_FLAGS)) {
             if (game.vis) { /* either seen or adjacent */
                 const was_seen = Before.toLowerCase() !== 'it',
                       verbosely = game.flags.verbose || !was_seen;

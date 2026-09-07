@@ -3,15 +3,17 @@
 // include/optlist.h into js/optlist.js by tools/gen-optlist.mjs.
 
 import { game } from './gstate.js';
-import { pline, docrt, bot } from './display.js';
+import { reset_commands } from './cmd.js';
+import { set_vanq_order } from './insight.js';
+import { pline, docrt, bot, reglyph_darkroom } from './display.js';
 import {
     NHW_MENU, ATR_NONE, ATR_INVERSE,
     tty_create_nhwindow, tty_destroy_nhwindow, tty_start_menu, tty_add_menu,
     tty_add_menu_str, tty_end_menu, tty_display_nhwindow, tty_select_menu, tty_wait_synch } from './tty/wintty.js';
 import {
     MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_SKIPINVERT,
-    MENU_BEHAVE_STANDARD,
-    PICK_ONE, PICK_ANY, ECMD_OK,
+    MENU_ITEMFLAGS_SKIPMENUCOLORS, MENU_BEHAVE_STANDARD, BUFSZ,
+    PICK_NONE, PICK_ONE, PICK_ANY, ECMD_OK,
     AUTOUNLOCK_APPLY_KEY, MENU_TRADITIONAL, MENU_COMBINATION,
     GPCOORDS_NONE, GPCOORDS_COMPASS, GPCOORDS_COMFULL, GPCOORDS_MAP,
     GPCOORDS_SCREEN, COLNO, ROWNO, PL_FSIZ, ismnum,
@@ -25,14 +27,21 @@ import {
 } from './symbols.js';
 import { def_char_to_objclass } from './sp_lev.js';
 import { OCLASSES } from './objects_data.js';
-import { color_attr_to_str, attr2attrname } from './coloratt.js';
+import {
+    color_attr_to_str, attr2attrname, clr2colorname, count_menucolors,
+    add_menu_coloring, add_menu_coloring_parsed, free_one_menu_coloring,
+    query_color, query_attr,
+} from './coloratt.js';
 import { roles, races, genders, aligns, ROLE_RANDOM } from './role.js';
 import { vision_recalc } from './vision.js';
 import { reassign, update_inventory, inv_order } from './invent.js';
 import { def_oc_syms } from './drawing_data.js';
 import { choose_disco_sort, get_sortdisco } from './o_init.js';
-import { mungspaces } from './hacklib.js';
-import { fruit_from_name, makesingular, OBJ_NAME } from './objnam.js';
+import { mungspaces, strNsubst } from './hacklib.js';
+import {
+    regex_init, regex_compile, regex_error_desc, regex_free,
+} from './posixregex.js';
+import { fruit_from_name, makesingular, makeplural, OBJ_NAME } from './objnam.js';
 import { name_to_mon } from './mondata.js';
 import { sanitize_name } from './bones.js';
 import { rnd } from './rng.js';
@@ -53,8 +62,7 @@ export function set_fruit_name(value, initial = false) {
             if (!game.flags.made_fruit)
                 forig = fruit_from_name(game.svp.pl_fruit, false, null);
             if (!forig && fnum.v >= 100) {
-                config_error_add(game.rc,
-                    "Doing that so many times isn't very fruitful.");
+                config_error_add("Doing that so many times isn't very fruitful.");
                 return game.svp.pl_fruit;
             }
         }
@@ -166,7 +174,7 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
     opts = opts.replace(/^\s+/, '').replace(/\s+$/, '');
 
     if (!opts) {
-        config_error_add(result, 'Empty statement');
+        config_error_add('Empty statement');
         return false;
     }
 
@@ -197,16 +205,16 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
         /* An unrecognised option is reported, never silently dropped — a
            held-out session may legitimately set something we have not wired
            up yet, and we want to see it. */
-        config_error_add(result, `Unknown option '${name}'`);
+        config_error_add(`Unknown option '${name}'`);
         return false;
     }
 
     if (negated && opt.negateok === 'No') {
-        config_error_add(result, `Negating '${opt.name}' is not allowed`);
+        config_error_add(`Negating '${opt.name}' is not allowed`);
         return false;
     }
     if (value !== null && opt.valok === 'No') {
-        config_error_add(result, `Value not allowed for '${opt.name}'`);
+        config_error_add(`Value not allowed for '${opt.name}'`);
         return false;
     }
     if (value === null && opt.type !== 'BoolOpt' && opt.valok === 'Yes'
@@ -214,8 +222,9 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
         && opt.name !== 'menu_objsyms' && opt.name !== 'autounlock'
         && !(opt.name === 'menustyle' && (negated || opts.length <= 5))
         && !(opt.name === 'whatis_coord' && negated)
-        && !(opt.name === 'paranoid_confirmation' && negated)) {
-        config_error_add(result, `Missing value for '${opt.name}'`);
+        && !(opt.name === 'paranoid_confirmation' && negated)
+        && !(opt.name === 'number_pad' && (opts.length <= 10 || negated || tinitial))) {
+        config_error_add(`Missing value for '${opt.name}'`);
         return false;
     }
 
@@ -235,7 +244,7 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
             u: 0, b: 1, s: 2, n: 3, o: 4, t: 4, l: 5,
         })[value?.charAt(0).toLowerCase()];
         if (burden === undefined) {
-            config_error_add(result, `Unknown pickup_burden parameter '${value}'`);
+            config_error_add(`Unknown pickup_burden parameter '${value}'`);
             return false;
         }
         result.opts[opt.name] = burden;
@@ -245,7 +254,7 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
         let op = sep < 0 ? '' : opts.slice(sep + 1);
         if (!op) {
             if (tinitial && opts.length > 6)
-                config_error_add(result, `Missing parameter for '${opts}'`);
+                config_error_add(`Missing parameter for '${opts}'`);
             result.opts.autopickup = !negated;
         } else {
             while (op[0] === ' ')
@@ -262,7 +271,7 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
                 }
                 if (badopt) {
                     // C reports op after advancing it to the terminator.
-                    config_error_add(result, "Unknown pickup_types parameter ''");
+                    config_error_add("Unknown pickup_types parameter ''");
                     retval = false;
                 }
             }
@@ -297,13 +306,13 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
                     }
                 }
                 if (!matched) {
-                    config_error_add(result, `Invalid value for "autounlock": "${op}"`);
+                    config_error_add(`Invalid value for "autounlock": "${op}"`);
                     return false;
                 }
                 op = next;
             }
             if (negated && newflags !== 0) {
-                config_error_add(result, `Invalid value combination for "autounlock": 'none' with some`);
+                config_error_add(`Invalid value combination for "autounlock": 'none' with some`);
                 return false;
             }
             result.opts.autounlock = newflags;
@@ -315,7 +324,7 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
         const style = c === 'n' || c === 't' ? 0 : c === 'c' ? 1
             : c === 'f' ? 2 : c === 'p' ? 3 : -1;
         if (style < 0) {
-            config_error_add(result, `Unknown menustyle parameter '${order}'`);
+            config_error_add(`Unknown menustyle parameter '${order}'`);
             return false;
         }
         result.opts.menu_style = style;
@@ -331,7 +340,7 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
         } else if (/^[0-9]/.test(op)) {
             osyms = parseInt(op, 10);
             if (osyms >= objsymvals.length) {
-                config_error_add(result, `Illegal menu_objsyms parameter '${op}'`);
+                config_error_add(`Illegal menu_objsyms parameter '${op}'`);
                 return false;
             }
         } else {
@@ -355,7 +364,7 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
             if ('ncfms'.includes(c))
                 result.opts.getpos_coords = c;
             else {
-                config_error_add(result, `Unknown whatis_coord parameter '${value}'`);
+                config_error_add(`Unknown whatis_coord parameter '${value}'`);
                 return false;
             }
         } else {
@@ -372,7 +381,7 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
             if (i >= 0 || 'osca'.includes(c))
                 result.opts.discosort = i >= 0 ? 'osca'[i] : c;
             else {
-                config_error_add(result, `Unknown sortdiscoveries parameter '${order}'`);
+                config_error_add(`Unknown sortdiscoveries parameter '${order}'`);
                 return false;
             }
         } else {
@@ -396,11 +405,109 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
         if (op !== '')
             itmp = parseInt(op, 10) || 0;
         if (itmp < 2 || itmp > 3) {
-            config_error_add(result,
-                             `'${opt.name}:${op}' is invalid; must be 2 or 3`);
+            config_error_add(`'${opt.name}:${op}' is invalid; must be 2 or 3`);
             return false;
         }
         result.opts.statuslines = itmp;
+    } else if (opt.name === 'number_pad') {
+        /* src/options.c:2622 optfn_number_pad(), the do_set arm. A bare
+           "number_pad" is number_pad:1 for backwards compatibility; -1..4
+           set iflags.num_pad and the num_pad_mode bits (1 = MSDOS
+           compatible or y/z swapped, 2 = phone layout). */
+        const compat = (opts.length <= 10);
+        const op = value ?? '';    /* string_for_opt(opts, compat || !opt_initial) */
+        if (op === '') {
+            if (compat || negated || tinitial) {
+                /* for backwards compatibility, "number_pad" without a
+                   value is a synonym for number_pad:1 */
+                result.opts.num_pad = !negated;
+                result.opts.num_pad_mode = 0;
+            }
+        } else if (negated) {
+            config_error_add(`The ${opt.name} option may not both have a value and be negated.`);
+            return false;
+        } else {
+            const mode = parseInt(op, 10) || 0;     /* atoi() */
+            if (mode < -1 || mode > 4 || (mode === 0 && op[0] !== '0')) {
+                config_error_add(`Illegal ${opt.name} parameter '${op}'`);
+                return false;
+            } else if (mode <= 0) {
+                result.opts.num_pad = false;
+                /* German keyboard; y and z keys swapped */
+                result.opts.num_pad_mode = (mode < 0) ? 1 : 0; /* 0 or 1 */
+            } else {                              /* mode > 0 */
+                result.opts.num_pad = true;
+                result.opts.num_pad_mode = 0;
+                /* PC Hack / MSDOS compatibility */
+                if (mode === 2 || mode === 4)
+                    result.opts.num_pad_mode |= 1;
+                /* phone keypad layout */
+                if (mode === 3 || mode === 4)
+                    result.opts.num_pad_mode |= 2;
+            }
+        }
+        /* reset_commands(FALSE) runs once the live iflags hold these (see
+           jsmain and parseoptions_interactive()); number_pad() only emits
+           the terminal's keypad-mode strings, which have no screen cells */
+        result.opts[opt.name] = negated ? null : value;
+    } else if (opt.name === 'disclose') {
+        /* src/options.c:1447 optfn_disclose(), the do_set arm: the value is a
+           run of category letters (iavgco; k->v and d->o) each optionally
+           preceded by one of the y/n/?/+/-/# settings; a bare "disclose" or
+           "all" prompts for everything, "none" disables it all. */
+        const op = value ?? '';  /* string_for_opt(opts, TRUE) */
+        if (op !== '' && negated) {
+            /* bad_negation(allopt[optidx].name, TRUE) */
+            config_error_add(`The ${opt.name} option may not both have a value and be negated.`);
+            return false;
+        }
+        const disclosure_options = 'iavgco';        /* decl.c:54 */
+        /* "disclose" without a value means "all with prompting"
+           and negated means "none without prompting" */
+        if (op === '' || op.toLowerCase() === 'all'
+            || op.toLowerCase() === 'none') {
+            if (op !== '' && op.toLowerCase() === 'none')
+                negated = true;
+            result.opts.end_disclose = (negated ? '-' : 'y')
+                                       .repeat(disclosure_options.length);
+            result.opts[opt.name] = negated ? null : value;
+            return retval;
+        }
+        /* flags.end_disclose is edited in place; options.c:7211 starts it
+           at DISCLOSE_PROMPT_DEFAULT_NO for every category */
+        const end = (result.opts.end_disclose ?? game.flags?.end_disclose
+                     ?? 'nnnnnn').split('');
+        let prefix_val = -1;
+        for (const ch of op) {
+            let c = ch.toLowerCase();
+            if (c === 'k')
+                c = 'v'; /* killed -> vanquished */
+            if (c === 'd')
+                c = 'o'; /* dungeon -> overview */
+            const idx = disclosure_options.indexOf(c);
+            if (idx >= 0) {
+                if (prefix_val !== -1) {
+                    if (c !== 'v' && c !== 'g') {
+                        if (prefix_val === '?')
+                            prefix_val = 'y';
+                        if (prefix_val === '#')
+                            prefix_val = '+';
+                    }
+                    end[idx] = prefix_val;
+                    prefix_val = -1;
+                } else
+                    end[idx] = '+';
+            } else if ('yn?+-#'.includes(c)) {
+                prefix_val = c;
+            } else if (c === ' ') {
+                ; /* do nothing */
+            } else {
+                config_error_add(`Unknown ${opt.name} parameter '${ch}'`);
+                return false;
+            }
+        }
+        result.opts.end_disclose = end.join('');
+        result.opts[opt.name] = value;
     } else {
         result.opts[opt.name] = negated ? null : value;
     }
@@ -416,10 +523,33 @@ function firstSeparator(s) {
     return Math.min(c, e);
 }
 
-// src/cfgfiles.c config_error_add() — collected rather than printed, so the
-// caller can decide what to do and so tests can assert on them.
-function config_error_add(result, msg) {
-    result.errors.push(msg);
+// src/cfgfiles.c:1544 config_erradd() — while an rc or an option string is
+// being parsed the messages collect on the parse result (C's
+// config_error_data, set up by config_error_init()); otherwise the player
+// gave a bad value at an interactive prompt and the message is shown.
+let config_error_data = null;
+
+async function config_erradd(buf) {
+    if (!buf)
+        buf = 'Unknown error';
+
+    /* if buf[] doesn't end in a period, exclamation point, or question mark,
+       we'll include a period (in the message, not appended to buf[]) */
+    const punct = /[.!?]$/.test(buf) ? '' : '.';
+
+    if (!config_error_data) {
+        /* either very early, where pline() will use raw_print(), or
+           player gave bad value when prompted by interactive 'O' command */
+        await pline(`${buf}${punct}`);
+        await tty_wait_synch();
+        return;
+    }
+    config_error_data.errors.push(buf);
+}
+
+// src/cfgfiles.c:1865 config_error_add()
+export function config_error_add(msg) {
+    return config_erradd(msg);
 }
 
 // Entry point used by js/jsmain.js: parse a whole rc blob.
@@ -437,6 +567,7 @@ export function parseNethackrc(rc) {
         errors: [],
     };
     if (!rc) return result;
+    config_error_data = result; /* src/cfgfiles.c config_error_init() */
 
     for (const rawLine of rc.split('\n')) {
         const line = rawLine.trim();
@@ -458,13 +589,18 @@ export function parseNethackrc(rc) {
             /* src/cfgfiles.c:1202 cnf_line_SYMBOLS() */
             result.symbols.push(rest);
             if (!parsesymbols(rest, PRIMARYSET))
-                config_error_add(result, `Error in SYMBOLS definition '${rest}'`);
+                config_error_add(`Error in SYMBOLS definition '${rest}'`);
             break;
         case 'ROGUESYMBOLS':
             /* src/cfgfiles.c:1191 cnf_line_ROGUESYMBOLS() */
             result.symbols.push(rest);
             if (!parsesymbols(rest, ROGUESET))
-                config_error_add(result, `Error in ROGUESYMBOLS definition '${rest}'`);
+                config_error_add(`Error in ROGUESYMBOLS definition '${rest}'`);
+            break;
+        case 'MENUCOLOR':
+            /* src/cfgfiles.c:1164 cnf_line_MENUCOLOR(); parse_config_line()
+               has mungspaces()d the line and stepped past '=' */
+            add_menu_coloring(mungspaces(rest));
             break;
         case 'BIND':
         case 'BINDI':
@@ -478,6 +614,7 @@ export function parseNethackrc(rc) {
             break;
         }
     }
+    config_error_data = null; /* config_error_done() */
     return result;
 }
 
@@ -885,6 +1022,7 @@ function longest_option_name(startpass, endpass) {
 export const iflag_boolean_options = new Set([
     'autodescribe', 'cmdassist', 'fireassist', 'menu_overlay', 'menu_tab_sep',
     'debug_hunger', 'debug_mongen', 'debug_overwrite_stairs',
+    'menucolors', /* iflags.use_menu_color */
 ]);
 
 function bool_opt_store(name) {
@@ -1015,8 +1153,7 @@ const paranoia_parameters = [
 function parse_paranoia_setting(value, negated, current, result) {
     if (negated) {
         if (value !== null) {
-            config_error_add(result,
-                             '!paranoid_confirmation does not accept a value');
+            config_error_add('!paranoid_confirmation does not accept a value');
             return { bits: current, ok: false };
         }
         return { bits: 0, ok: true };
@@ -1042,8 +1179,7 @@ function parse_paranoia_setting(value, negated, current, result) {
         const entry = paranoia_parameters.find(([, names]) => names.some(
             ([name, min]) => lower.length >= min && name.startsWith(lower)));
         if (!entry) {
-            config_error_add(result,
-                             `Unknown paranoid_confirmation parameter '${token}'`);
+            config_error_add(`Unknown paranoid_confirmation parameter '${token}'`);
             return { bits, ok: false };
         }
         const mask = entry[0];
@@ -1275,7 +1411,7 @@ function get_option_value(o) {
     case 'autopickup exceptions':
         return n_currently_set((game.apelist || []).length);
     case 'menu colors':
-        return n_currently_set((game.menucolors || []).length);
+        return n_currently_set(count_menucolors());
     case 'status condition fields':
         return n_currently_set(count_cond());
     case 'status highlight rules':
@@ -1411,6 +1547,14 @@ async function doset_simple_menu() {
                 await choose_disco_sort(0);
             } else if (allopt[k].name === 'menustyle') {
                 await handler_menustyle();
+            } else if (allopt[k].name === 'msg_window') {
+                await handler_msg_window();
+            } else if (allopt[k].name === 'runmode') {
+                await handler_runmode();
+            } else if (allopt[k].name === 'number_pad') {
+                await handler_number_pad();
+            } else if (allopt[k].name === 'sortvanquished') {
+                await optfn_sortvanquished();
             } else if (allopt[k].name === 'autounlock') {
                 await handler_autounlock();
             } else if (allopt[k].name === 'menu_objsyms') {
@@ -1763,7 +1907,7 @@ export function add_menu_heading(tmpwin, buf) {
     if (game.program_state_gameover)
         attr = ATR_NONE, color = NO_COLOR;
     tty_add_menu(tmpwin, null, 0, 0, 0, attr, color, buf,
-                 MENU_ITEMFLAGS_NONE);
+                 MENU_ITEMFLAGS_SKIPMENUCOLORS);
 }
 
 /* src/options.c:5330 — the case-switch run after a boolean option is
@@ -1796,9 +1940,14 @@ function boolopt_side_effects(name) {
             reassign();
         update_inventory();
         break;
+    case 'menucolors': case 'guicolor':
+        /* src/options.c:5417 — go.opt_need_promptstyle only feeds the
+           curses prompt style */
+        update_inventory();
+        break;
     default:
-        /* customcolors/customsymbols/menucolors touch palette machinery
-           this port does not have */
+        /* customcolors/customsymbols touch palette machinery this port
+           does not have */
         break;
     }
 }
@@ -1967,12 +2116,23 @@ export async function doset() {
                 await choose_disco_sort(0);
             } else if (o.hasHandler === 'Yes' && o.name === 'menustyle') {
                 await handler_menustyle();
+            } else if (o.hasHandler === 'Yes' && o.name === 'msg_window') {
+                await handler_msg_window();
+            } else if (o.hasHandler === 'Yes' && o.name === 'runmode') {
+                await handler_runmode();
+            } else if (o.hasHandler === 'Yes' && o.name === 'number_pad') {
+                await handler_number_pad();
+            } else if (o.hasHandler === 'Yes' && o.name === 'sortvanquished') {
+                await optfn_sortvanquished();
             } else if (o.hasHandler === 'Yes' && o.name === 'autounlock') {
                 await handler_autounlock();
             } else if (o.hasHandler === 'Yes' && o.name === 'menu_objsyms') {
                 await handler_menu_objsyms();
             } else if (o.hasHandler === 'Yes' && o.name === 'whatis_coord') {
                 await handler_whatis_coord();
+            } else if (o.name === 'menu colors') {
+                /* src/options.c:8383 optfn_o_menu_colors() do_handler */
+                await handler_menu_colors();
             } else if (o.name === 'bind keys') {
                 await handler_rebind_keys();
             } else if (o.name === 'status condition fields') {
@@ -2012,6 +2172,7 @@ export async function doset() {
 // refreshes the option changes queued up.
 async function reset_needed_visuals() {
     if (game.opt_need_redraw) {
+        reglyph_darkroom(); /* src/options.c:8999, with check_gold_symbol() */
         await docrt();
         game.opt_need_redraw = false;
     }
@@ -2126,7 +2287,285 @@ export async function handler_whatis_coord() {
     return 0;
 }
 
+// src/options.c:6407 handler_menu_colors()
+async function handler_menu_colors() {
+    const clr = NO_COLOR;
+
+    for (;;) { /* menucolors_again: */
+        const nmc = count_menucolors();
+        const opt_idx = await handle_add_list_remove('menucolor', nmc);
+        if (opt_idx === 3) { /* done */
+            /* menucolors_done: in case we've made a change which impacts
+               current persistent inventory window; we don't track whether
+               an actual changed occurred, so just assume there was one and
+               that it matters; if we're wrong, a redundant update is
+               cheap... */
+            if (game.iflags?.menucolors) {
+                if (game.iflags?.perm_invent)
+                    update_inventory();
+            }
+            return 0; /* optn_ok */
+
+        } else if (opt_idx === 0) { /* add new */
+            const { getlin } = await import('./cmd.js');
+            const mcbuf = await getlin('What new menucolor pattern?');
+            if (mcbuf === null || mcbuf[0] === '\x1b') {
+                /* goto menucolors_done */
+                if (game.iflags?.menucolors && game.iflags?.perm_invent)
+                    update_inventory();
+                return 0;
+            }
+            let mcclr, mcattr;
+            if (mcbuf
+                && await test_regex_pattern(mcbuf, 'MENUCOLORS regex')
+                && (mcclr = await query_color(null, NO_COLOR)) !== -1
+                    && (mcattr = await query_attr(null, ATR_NONE)) !== -1
+                && !add_menu_coloring_parsed(mcbuf, mcclr, mcattr)) {
+                await pline('Error adding the menu color.');
+                await tty_wait_synch();
+            }
+            continue; /* goto menucolors_again */
+
+        } else { /* list (1) or remove (2) */
+            const tmpwin = tty_create_nhwindow(NHW_MENU);
+            tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+            let mc_idx = 0;
+            for (const tmp of game.menu_colorings || []) {
+                const sattr = attr2attrname(tmp.attr);
+                const sclr = strNsubst(clr2colorname(tmp.color), ' ', '-', 0);
+                const any = ++mc_idx;
+                /* construct suffix */
+                const buf = `""=${sclr}${tmp.attr !== ATR_NONE ? '&' : ''}${
+                    tmp.attr !== ATR_NONE ? sattr : ''}`;
+                /* now main string */
+                const ln = BUFSZ - buf.length - 1; /* length available */
+                let mcbuf = '"';
+                if (tmp.origstr.length > ln)
+                    mcbuf += tmp.origstr.slice(0, ln - 3) + '...';
+                else
+                    mcbuf += tmp.origstr;
+                /* combine main string and suffix */
+                mcbuf += buf.slice(1); /* skip buf[]'s initial quote */
+                tty_add_menu(tmpwin, null, any, 0, 0,
+                             ATR_NONE, clr, mcbuf, MENU_ITEMFLAGS_NONE);
+            }
+            tty_end_menu(tmpwin, `${(opt_idx === 1) ? 'List of' : 'Remove which'} menu colors`);
+            const pick_list = await tty_select_menu(tmpwin,
+                                                    (opt_idx === 1) ? PICK_NONE : PICK_ANY);
+            const pick_cnt = pick_list.cancelled ? -1 : pick_list.length;
+            if (pick_cnt > 0) {
+                for (let pick_idx = 0; pick_idx < pick_cnt; ++pick_idx)
+                    free_one_menu_coloring(pick_list[pick_idx] - 1 - pick_idx);
+            }
+            tty_destroy_nhwindow(tmpwin);
+            if (pick_cnt >= 0)
+                continue; /* goto menucolors_again */
+        }
+        return 0; /* optn_ok */
+    }
+}
+
+// src/options.c:7871 test_regex_pattern()
+async function test_regex_pattern(str, errmsg) {
+    const def_errmsg = 'NHregex error';
+
+    if (!str)
+        return false;
+    if (!errmsg)
+        errmsg = def_errmsg;
+
+    const match = regex_init();
+    if (!match) {
+        await config_error_add(errmsg);
+        return false;
+    }
+
+    const retval = regex_compile(str, match);
+    /* get potential error message before freeing regexp and free regexp
+       before issuing message in case the error is "ran out of memory"
+       since message delivery might need to allocate some memory */
+    const re_error_desc = !retval ? regex_error_desc(match) : null;
+    /* discard regexp; caller will re-parse it after validating other stuff */
+    regex_free(match);
+    /* if returning failure, tell player */
+    if (!retval)
+        await config_error_add(`${errmsg}: ${re_error_desc}`);
+
+    return retval;
+}
+
+// src/options.c:9208 handle_add_list_remove() — the add/list/remove/exit
+// picker shared by the list-valued option handlers; returns the index of
+// the action chosen (3 = exit)
+async function handle_add_list_remove(optname, numtotal) {
+    const action_titles = [
+        ['a', 'add new %s'],         /* [0] */
+        ['l', 'list %s'],            /* [1] */
+        ['r', 'remove existing %s'], /* [2] */
+        ['x', 'exit this menu'],     /* [3] */
+    ];
+    const clr = NO_COLOR;
+    let opt_idx;
+
+    const tmpwin = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    let any = 0;
+    for (let i = 0; i < action_titles.length; i++) {
+        any++;
+        /* omit list and remove if there aren't any yet */
+        if (!numtotal && (i === 1 || i === 2))
+            continue;
+        const tmpbuf = action_titles[i][1].replace(
+            '%s', (i === 1) ? makeplural(optname) : optname);
+        tty_add_menu(tmpwin, null, any, action_titles[i][0],
+                     0, ATR_NONE, clr, tmpbuf,
+                     (i === 3) ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+    }
+    tty_end_menu(tmpwin, 'Do what?');
+    const pick_list = await tty_select_menu(tmpwin, PICK_ONE);
+    const pick_cnt = pick_list.cancelled ? -1 : pick_list.length;
+    if (pick_cnt > 0) {
+        opt_idx = pick_list[0] - 1;
+        if (pick_cnt > 1 && opt_idx === 3)
+            opt_idx = pick_list[1] - 1;
+    } else
+        opt_idx = 3; /* none selected, exit menu */
+    tty_destroy_nhwindow(tmpwin);
+    return opt_idx;
+}
+
 // src/options.c:5544 handler_menustyle().
+// src/options.c optfn_sortvanquished(), the do_handler arm
+async function optfn_sortvanquished() {
+    const optname = 'sortvanquished';
+    const prev_sortmode = game.flags.vanq_sortmode ?? 0;
+
+    /* return handler_sortvanquished(); */
+    await set_vanq_order(true); /* insight.c */
+    const mode = game.flags.vanq_sortmode ?? 0;
+    await pline(`'${optname}' ${(mode === prev_sortmode)
+                                 ? 'not changed, still' : 'changed to'} "${
+                vanqorders[mode][0]}: ${vanqorders[mode][1]}".`);
+    return 0;
+}
+
+// src/options.c handler_number_pad()
+async function handler_number_pad() {
+    const npchoices = [
+        ' 0 (off)', ' 1 (on)', ' 2 (on, MSDOS compatible)',
+        ' 3 (on, phone-style digit layout)',
+        ' 4 (on, phone-style layout, MSDOS compatible)',
+        "-1 (off, 'z' to move upper-left, 'y' to zap wands)",
+    ];
+    const tmpwin = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    for (let i = 0; i < npchoices.length; i++)
+        tty_add_menu(tmpwin, null, i + 1, String.fromCharCode(97 + i),
+                     String.fromCharCode(48 + i), ATR_NONE, NO_COLOR,
+                     npchoices[i], MENU_ITEMFLAGS_NONE);
+    tty_end_menu(tmpwin, 'Select number_pad mode:');
+    const mode_pick = await tty_select_menu(tmpwin, PICK_ONE);
+    if (mode_pick.length > 0) {
+        const iflags = (game.iflags ||= {});
+        switch (mode_pick[0] - 1) {
+        case 0:
+            iflags.num_pad = false;
+            iflags.num_pad_mode = 0;
+            break;
+        case 1:
+            iflags.num_pad = true;
+            iflags.num_pad_mode = 0;
+            break;
+        case 2:
+            iflags.num_pad = true;
+            iflags.num_pad_mode = 1;
+            break;
+        case 3:
+            iflags.num_pad = true;
+            iflags.num_pad_mode = 2;
+            break;
+        case 4:
+            iflags.num_pad = true;
+            iflags.num_pad_mode = 3;
+            break;
+        /* last menu choice: number_pad == -1 */
+        case 5:
+            iflags.num_pad = false;
+            iflags.num_pad_mode = 1;
+            break;
+        }
+        reset_commands(false);
+        /* number_pad(iflags.num_pad ? 1 : 0): tty_number_pad() only writes
+           the termcap keypad strings, which have no screen cells */
+    }
+    tty_destroy_nhwindow(tmpwin);
+    return 0;
+}
+
+// src/options.c handler_runmode()
+async function handler_runmode() {
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    for (let i = 0; i < runmodes.length; i++) {
+        const mode_name = runmodes[i];
+        tty_add_menu(win, null, i + 1, mode_name[0], 0, ATR_NONE, NO_COLOR,
+                     mode_name, MENU_ITEMFLAGS_NONE);
+    }
+    tty_end_menu(win, 'Select run/travel display mode:');
+    const picks = await tty_select_menu(win, PICK_ONE);
+    if (picks.length)
+        game.flags.runmode = picks[0] - 1;
+    tty_destroy_nhwindow(win);
+    return 0;
+}
+
+// src/options.c handler_msg_window() — by Christian W. Cooper
+async function handler_msg_window() {
+    const msgwind = [ /* 'msg_window' settings */
+        ['single',      '[show one old message at a time,',
+                        ' most recent first]'],
+        ['combination', '[for consecutive ^P requests, use',
+                        " 'single' for first two, then 'full']"],
+        ['full',        '[show all available messages,',
+                        ' oldest first and most recent last]'],
+        ['reversed',    '[show all available messages,',
+                        ' most recent first]'],
+    ];
+    const sep = game.iflags?.menu_tab_sep ? '\t' : ' ';
+    const old_prevmsg_window = game.iflags?.prevmsg_window ?? 's';
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    for (const [name, d1, d2] of msgwind) {
+        /* Sprintf(buf, "%-12.12s%c%.60s", ...) */
+        const buf = name.slice(0, 12).padEnd(12) + sep + d1.slice(0, 60);
+        const c = name[0];
+        tty_add_menu(win, null, c, buf[0], 0, ATR_NONE, NO_COLOR, buf,
+                     (c === old_prevmsg_window) ? MENU_ITEMFLAGS_SELECTED
+                                               : MENU_ITEMFLAGS_NONE);
+        /* second line is prefixed by spaces that "c - " would use */
+        tty_add_menu_str(win, ' '.repeat(4) + ' '.repeat(12) + sep
+                              + d2.slice(0, 60));
+    }
+    tty_end_menu(win, 'Select message history display type:');
+    const picks = await tty_select_menu(win, PICK_ONE);
+    if (picks.length) {
+        let c = picks[0];
+        /* if there are two picks, use the one that wasn't pre-selected */
+        if (picks.length > 1 && c === old_prevmsg_window)
+            c = picks[1];
+        (game.iflags ||= {}).prevmsg_window = c;
+    }
+    tty_destroy_nhwindow(win);
+    const now = game.iflags?.prevmsg_window ?? 's';
+    const chngd = now !== old_prevmsg_window;
+    if (chngd || game.flags.verbose !== false) {
+        const buf = (now === 's') ? 'single' : (now === 'c') ? 'combination'
+                    : (now === 'f') ? 'full' : 'reversed';
+        await pline(`'msg_window' ${chngd ? 'changed to' : 'is still'} "${buf}".`);
+    }
+    return 0;
+}
+
 async function handler_menustyle() {
     const old_menu_style = game.flags.menu_style ?? 2;
     const descriptions = [
@@ -2177,7 +2616,7 @@ function change_inv_order(op, result) {
         else if (op.includes(symbol, i + 1))
             error = `Duplicate object class '${symbol}'`;
         if (error) {
-            config_error_add(result, error);
+            config_error_add(error);
             ok = false;
         } else {
             order.push(oclass);
@@ -2201,10 +2640,15 @@ async function parseoptions_interactive(buf) {
     const result = { opts: {}, errors: [] };
     if (game.flags?.inv_order) /* change_inv_order()'s "previous" is live */
         result.opts.inv_order = game.flags.inv_order;
+    config_error_data = result; /* config_error_init() */
     parseoptions(buf, false, false, result);
+    config_error_data = null;
     for (const [name, value] of Object.entries(result.opts)) {
         if (name === 'fruit') {
             set_fruit_name(value);
+        } else if (name === 'num_pad' || name === 'num_pad_mode') {
+            /* optfn_number_pad() writes iflags */
+            (game.iflags ||= {})[name] = value;
         } else if (name === 'statuslines') {
             /* iflags.wc2_statuslines; the 3-line status layout itself is
                not ported, so a changed value is only recorded */
@@ -2215,6 +2659,8 @@ async function parseoptions_interactive(buf) {
             game.flags[name] = value;
         }
     }
+    if ('num_pad' in result.opts)
+        reset_commands(false);      /* optfn_number_pad() do_set tail */
     for (const error of result.errors) {
         await pline(error + (/[.!?]$/.test(error) ? '' : '.'));
         await tty_wait_synch();
@@ -2227,7 +2673,9 @@ async function set_packorder(value) {
     if (!value)
         return; // optfn_packorder rejects empty_optstr without changing order.
     const result = { opts: game.flags, errors: [] };
+    config_error_data = result;
     change_inv_order(value, result);
+    config_error_data = null;
     game.flags.packorder = value;
     for (const error of result.errors)
         await pline(error + (/[.!?]$/.test(error) ? '' : '.'));
@@ -2267,7 +2715,9 @@ async function optfn_pickup_types() {
     while (op[0] === ' ')
         op = op.slice(1);
     const result = { opts: game.flags, errors: [] };
+    config_error_data = result;
     parseoptions('pickup_types:' + (op || 'a'), false, false, result);
+    config_error_data = null;
     for (const error of result.errors)
         await pline(error + (/[.!?]$/.test(error) ? '' : '.'));
 }

@@ -1,4 +1,5 @@
 import { PL_NSIZ, PICK_ONE } from './const.js';
+import { pmatchi } from './hacklib.js';
 // plselect.js — interactive character selection.
 // C ref: src/role.c genl_player_setup() (:2206) and tty_askname().
 //
@@ -40,6 +41,7 @@ import {
     tty_get_nhwindow, tty_start_menu, tty_add_menu, tty_add_menu_str,
     tty_end_menu, tty_display_nhwindow, set_item_state, menu_page_items,
     NHW_MENU, ATR_NONE, tty_select_menu } from './tty/wintty.js';
+import { tty_cl_end_base } from './tty/wintty.js';
 import { NO_COLOR } from './terminal.js';
 
 const ROWS = 24;
@@ -84,8 +86,7 @@ async function tty_askname() {
             tty_curs_base(1, tty_base_pos().y - 1);
             tty_putstr_base('Enter a name for your character...');
             tty_curs_base(1, tty_base_pos().y);
-            tty_putstr_base(''); /* cl_end() */
-            tty_curs_base(1, tty_base_pos().y - 1);
+            tty_cl_end_base();
         }
         tty_putstr_base(WHO_ARE_YOU);
         tty_curs_base(WHO_ARE_YOU.length + 1, tty_base_pos().y - 1);
@@ -482,10 +483,46 @@ async function select_menu_pick_one(win) {
         if (c === ' ' || c === '\n' || c === '\r') {
             for (let it = cw.mlist; it; it = it.next)
                 if (it.identifier && it.selected) return it.identifier;
-            return ROLE_NONE;
+            /* src/role.c:2341 — select_menu() returned n == 0 (nothing
+               chosen): "choice = (n == 0) ? ROLE_RANDOM : ROLE_NONE" */
+            return ROLE_RANDOM;
+        }
+        if (c === ':') {
+            /* win/tty/wintty.c MENU_SEARCH: prompt on the top line, then
+               the first entry whose text matches *pattern* is chosen
+               (toggle_menu_curr, and PICK_ONE finishes); an empty or
+               escaped line leaves the menu waiting */
+            const { getlin } = await import('./cmd.js');
+            const tmpbuf = await getlin('Search for:', null);
+            /* back to the menu: dmore() parks the cursor after the footer */
+            {
+                const items = menu_page_items(win, cw.curr_page || 0);
+                const morestr = (cw.npages > 1)
+                    ? `(${cw.curr_page + 1} of ${cw.npages})` : cw.morestr;
+                game?.nhDisplay?.setCursor(cw.offx + 1 + morestr.length,
+                                           cw.offy + items.length);
+            }
+            if (!tmpbuf || tmpbuf[0] === '\x1b') continue;
+            const searchbuf = `*${tmpbuf}*`;
+            for (let it = cw.mlist; it; it = it.next)
+                if (it.identifier && pmatchi(searchbuf, it.str))
+                    return it.identifier;
+            continue;
         }
         for (let it = cw.mlist; it; it = it.next)
             if (it.identifier && it.selector === c) return it.identifier;
+        /* win/tty/wintty.c:1348 — group accelerators (the capital letters
+           setup_*menu() pass as gch) are accepted for PICK_ONE only when
+           they match exactly one entry; invert_all() then selects it and
+           the menu finishes */
+        let match = null, nmatch = 0;
+        for (let it = cw.mlist; it; it = it.next)
+            if (it.identifier && it.gselector && it.gselector !== it.selector
+                && it.gselector === c) {
+                match = it;
+                nmatch++;
+            }
+        if (nmatch === 1) return match.identifier;
         /* anything else is ignored and the menu waits for another key */
     }
 }

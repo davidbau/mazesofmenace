@@ -19,6 +19,9 @@ export function pushKeys(keys) {
 // In replay mode, reads from the input queue.
 // In browser mode, waits for a real keypress.
 export async function nhgetch() {
+    // tty_nhgetch clears WIN_STOP before every new input boundary.
+    game._tty_message_stop = false;
+    game._tty_stopped_topline = null;
     // Fire the capture hook before reading the next key
     const hook = game._preNhgetchHook;
     if (hook) await hook();
@@ -36,6 +39,11 @@ export async function nhgetch() {
         throw new Error('Input queue empty - test may be missing keystrokes');
     };
     const key = await readOne();
+    // wintty.c:tty_nhgetch marks the displayed topline as already seen.
+    // A subsequent message replaces it; it cannot require another More.
+    // More resumes the message which was waiting to be printed; that line
+    // remains unread even when its text equals the line being dismissed.
+    game._tty_seen_topline = game._message_more ? null : game._pending_message;
     if (game._message_more
         && [' ', '\x1b', '\r', '\n'].includes(String.fromCharCode(key)))
         flushDeferredWereTransforms();

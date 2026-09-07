@@ -94,8 +94,8 @@ import {
     ECMD_OK, ECMD_TIME,
     IS_FOUNTAIN, IS_AIR, IS_ALTAR, IS_GRAVE, IS_ROOM, IS_WALL, IS_DOOR,
     IS_THRONE, IS_SINK, In_V_tower, ROOM, CLOUD, FOUNTAIN, STAIRS, LADDER,
-    ICE, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, DB_UNDER, DB_ICE,
-    Is_waterlevel,
+    ICE, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, DB_UNDER, DB_ICE, SDOOR,
+    Is_waterlevel, Is_earthlevel,
     G_EXTINCT, NO_MINVENT, MM_EDOG, MM_NOMSG,
     INTRINSIC, TIMEOUT, FROMOUTSIDE, W_SADDLE,
     FIRE_RES, COLD_RES, POISON_RES, TELEPAT, TELEPORT, INVIS, SEE_INVIS,
@@ -127,7 +127,7 @@ import { losexp } from './exper.js';
 import { find_hell } from './dungeon.js';
 import { yn_function, getlin } from './getline.js';
 import { t_at, dotrap, water_damage, uteetering_at_seen_pit, uescaped_shaft } from './trap.js';
-import { losehp, finish_maybe_wail, is_pool, is_lava } from './hack.js';
+import { losehp, finish_maybe_wail, is_pool, is_lava, On_stairs, db_under_typ } from './hack.js';
 import { burn_away_slime } from './timeout.js';
 import { hliquid, christen_monst, mon_nam, Monnam } from './do_name.js';
 import { mhis } from './mondata.js';
@@ -459,20 +459,43 @@ function slithy(ptr) {
 }
 
 /**
- * C ref: dungeon.c surface — enough for fountain / room floor.
- * Exported for hack.js moverock_core Sokoban diagonal wording (D-1859);
- * C has one surface (dungeon.c:1750), this is the shared home.
+ * C ref: dungeon.c surface `:1750–1788` in exact C branch order (D-2008).
+ * `typ` is rm.h:146 SURFACE_AT (DRAWBRIDGE_UP looks through via live
+ * hack.js db_under_typ); only the bridge arm reads the raw lev->typ.
+ * Stairs arm via stairs.c:148 On_stairs (hack.js stairway_at walk):
+ * STAIRS >= ROOM so IS_ROOM alone misread stairs as 'floor' — the
+ * scen-poly-Ranger-92133 step-91 break_armor helm fall (`to the floor`
+ * vs C `to the stairs`). Swallow maw/husk arm named: digests/enfolds
+ * live in mhitu.js, which sit cannot statically import (header cycle
+ * note); it fires only while swallowed by an animal.
+ * Exported for polyself.js break_armor helm fall + hack.js
+ * moverock_core Sokoban diagonal wording (D-1859); C has one surface
+ * (dungeon.c:1750), this is the shared home.
  */
 export function surface(x, y) {
+    const u = game.u || {};
     const loc = game.level?.at(x, y);
-    const typ = loc?.typ ?? 0;
-    if (IS_AIR(typ)) return typ === CLOUD ? 'cloud' : 'air';
-    if (IS_FOUNTAIN(typ)) return 'fountain';
+    const rawtyp = loc?.typ ?? 0;
+    const typ = rawtyp === DRAWBRIDGE_UP
+        ? db_under_typ(loc.drawbridgemask) : rawtyp;
+    if (IS_AIR(typ)) {
+        return Is_waterlevel(u.uz) ? 'air bubble'
+            : typ === CLOUD ? 'cloud' : 'air';
+    }
+    if (is_pool(x, y)) {
+        return (Underwater() && !Is_waterlevel(u.uz))
+            ? 'bottom' : hliquid('water');
+    }
+    if (is_ice(x, y)) return 'ice';
+    if (is_lava(x, y)) return hliquid('lava');
+    if (rawtyp === DRAWBRIDGE_DOWN) return 'bridge';
     if (IS_ALTAR(typ)) return 'altar';
     if (IS_GRAVE(typ)) return 'headstone';
-    if (IS_WALL(typ)) return 'wall';
+    if (IS_FOUNTAIN(typ)) return 'fountain';
+    if (On_stairs(x, y)) return 'stairs';
+    if (IS_WALL(typ) || typ === SDOOR) return 'wall';
     if (IS_DOOR(typ)) return 'doorway';
-    if (IS_ROOM(typ)) return 'floor';
+    if (IS_ROOM(typ) && !Is_earthlevel(u.uz)) return 'floor';
     return 'ground';
 }
 

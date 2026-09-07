@@ -6,15 +6,17 @@ import {
     COLNO, ROWNO, DOOR, SDOOR, POOL, WATER, LAVAWALL, TREE, CLOUD,
     D_CLOSED, D_LOCKED, D_TRAPPED,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7,
-    IS_WALL, TEMP_LIT,
+    IS_WALL, TEMP_LIT, M_AP_OBJECT, M_AP_FURNITURE,
 } from './const.js';
 import { S_LIGHT } from './permonst.js';
+import { DEFSYMS } from './defsym.js';
 import { newsym } from './display.js';
 import { artifactLight } from './burn.js';
 
 const COULD_SEE = 0x1;
 const IN_SIGHT = 0x2;
 const BOULDER = 465;
+const FIRST_DOOR_SYMBOL = DEFSYMS.findIndex(symbol => symbol.name === 'S_ndoor');
 
 // C ref: vision.c seenv_matrix
 const seenv_matrix = [
@@ -150,6 +152,16 @@ function _blocks(level, x, y) {
     if ((game.level?.objects || []).some(obj =>
         !obj.transientProjectile && obj.otyp === BOULDER && obj.ox === x && obj.oy === y))
         return true;
+    // C does_block() includes opaque mimic disguises. Invisible mimics block
+    // only when See_invisible makes their apparent obstruction visible.
+    const mon = level.monsters?.find(mon => !mon.dead && mon.mx === x && mon.my === y);
+    if (mon && (!(mon.minvis || mon.invis || mon.invisible) || game.u?.seeInvisible)) {
+        const appearanceType = mon.m_ap_type ?? (mon.appearObj != null ? M_AP_OBJECT : 0);
+        if (appearanceType === M_AP_OBJECT && (mon.mappearance ?? mon.appearObj) === BOULDER) return true;
+        const furniture = appearanceType === M_AP_FURNITURE && DEFSYMS[mon.mappearance];
+        if (furniture && (mon.mappearance < FIRST_DOOR_SYMBOL
+            || ['S_hcdoor', 'S_vcdoor', 'S_tree'].includes(furniture.name))) return true;
+    }
     if ((game.level?.regions || []).some(reg =>
         reg.visible !== false && reg.ttl !== -2
         && reg.coords?.some(coord => coord.x === x && coord.y === y)))
@@ -579,23 +591,6 @@ export function vision_recalc(control = 0) {
         }
     }
 
-    const boulderShadowCells = [];
-    const boulders = (game.level?.objects || [])
-        .filter(obj => !obj.transientProjectile && obj.otyp === BOULDER);
-    for (const boulder of boulders) {
-        const row = boulder.oy;
-        if (row < 0 || row >= ROWNO || row === uy) continue;
-        const dir = Math.sign(boulder.ox - ux);
-        if (!dir) continue;
-        for (let col = boulder.ox + dir; col > 0 && col < COLNO; col += dir) {
-            const monBehindBoulder = game.level?.monsters?.some(mon => mon.mx === col && mon.my === row);
-            if (monBehindBoulder && next[row]?.[col]) {
-                next[row][col] &= ~(COULD_SEE | IN_SIGHT);
-                boulderShadowCells.push({ x: col, y: row });
-            }
-        }
-    }
-
     // Swap viz_array and run newsym updates
     const old_array = game.viz_array;
     game.viz_array = next;
@@ -661,7 +656,6 @@ export function vision_recalc(control = 0) {
             }
         }
         if (ux > 0) newsym(ux, uy);
-        for (const cell of boulderShadowCells) newsym(cell.x, cell.y);
     }
 
     game._viz_rmin = next_rmin;

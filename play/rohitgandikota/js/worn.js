@@ -51,6 +51,9 @@ import { INVIS, FAST, ANTIMAGIC, REFLECTING, PROTECTION, CLAIRVOYANT,
          STEALTH, TELEPAT, LEVITATION, FLYING, WWALKING, DISPLACED,
          FUMBLING, JUMPING, FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES,
          SHOCK_RES, POISON_RES, ACID_RES, STONE_RES } from './const.js';
+import { You, You_hear } from './pline.js';
+import { surface } from './dungeon.js';
+import { can_saddle, can_ride } from './steed.js';
 
 /* src/worn.c:14 — the worn[] table: each W_* slot mask and the hero global
    holding what is worn there. C stores `struct obj **w_obj` pointers to
@@ -703,12 +706,8 @@ async function m_lose_armor(mon, obj, polyspot) {
 // bursts, drops armor it slips out of, and sheds gear its new body cannot use.
 // The order is visible because several messages can share one topline.
 export async function mon_break_armor(mon, polyspot) {
-    const [{ cansee }, { newsym, pline }, { You, You_hear }, { surface },
-           { can_saddle, can_ride, dismount_steed }]
-        = await Promise.all([
-            import('./vision.js'), import('./display.js'), import('./pline.js'),
-            import('./dungeon.js'), import('./steed.js'),
-        ]);
+    /* no await before the pronouns: newcham() reaches here from makemon()'s
+       synchronous level creation and the C rolls them on entry */
     const mdat = mon.data;
     const vis = cansee(mon.mx, mon.my);
     const handless_or_tiny = nohands(mdat) || verysmall(mdat);

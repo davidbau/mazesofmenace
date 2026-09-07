@@ -1855,7 +1855,7 @@ export async function meatmetal(mtmp) {
             continue;
         }
         if (is_metallic(otmp) && !obj_resists(otmp, 5, 95)
-            && touch_artifact(otmp, mtmp)) {
+            && (await touch_artifact(otmp, mtmp))) {
             if (rustmon && otmp.oerodeproof) {
                 if (vis) {
                     const otmpname = distant_name(otmp, doname);
@@ -1974,7 +1974,7 @@ export async function meatobj(mtmp) {
             otmp = otmp2;
             continue;
         } else if (!is_organic(otmp) || obj_resists(otmp, 5, 95)
-                   || !touch_artifact(otmp, mtmp)
+                   || !(await touch_artifact(otmp, mtmp))
                    || ((otmp.otyp | 0) === AMULET_OF_STRANGULATION
                        || (otmp.otyp | 0) === RIN_SLOW_DIGESTION)
                    || (otmp.opoisoned && !resists_poison(mtmp))

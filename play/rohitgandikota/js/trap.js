@@ -32,6 +32,7 @@ import { add_damage } from './shk.js';
 import { ECMD_TIME, TEST_MOVE, WT_TOOMUCH_DIAGONAL, P_RIDING, P_BASIC,
          A_LAWFUL, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT,
          D_NODOOR, D_ISOPEN, D_TRAPPED, DISP_FLASH, DISP_END, POTHIT_OTHER_THROW, M_SEEN_ACID } from './const.js';
+import { IS_OBSTRUCTED } from './const.js';
 import { ALL_TRAPS } from './const.js';
 import { t_at, mon_to_stone } from './mon.js';
 import { mon_adjust_speed } from './worn.js';
@@ -2221,7 +2222,7 @@ async function trapeffect_poly_trap(mtmp, trap, trflags) {
         } else if (resists_magm(mtmp)) {
             await shieldeff_mon(mtmp);
         } else if (!await resist(mtmp, OCLASSES.WAND_CLASS, 0, NOTELL)) {
-            newcham(mtmp, null, NC_SHOW_MSG);
+            await newcham(mtmp, null, NC_SHOW_MSG);
             if (in_sight)
                 seetrap(trap);
         }
@@ -3346,8 +3347,9 @@ async function trapeffect_telep_trap(mtmp, trap, trflags) {
     }
 
     seetrap(trap);
-    const { noteleport_level, tele, vault_tele } =
+    const { noteleport_level, tele, vault_tele, enexto, rloc_to } =
         await import('./teleport.js');
+    const { settrack } = await import('./track.js');
     if (In_endgame(game.u.uz) || game.u.uprops?.ANTIMAGIC
         || noteleport_level(game.youmonst)) {
         if (game.u.uprops?.ANTIMAGIC)
@@ -3358,7 +3360,25 @@ async function trapeffect_telep_trap(mtmp, trap, trflags) {
         newsym(game.u.ux, game.u.uy);
         await vault_tele();
     } else if (isok(trap.teledest?.x ?? 0, trap.teledest?.y ?? 0)) {
-        await teleds(trap.teledest.x, trap.teledest.y, TELEDS_TELEPORT);
+        /* src/teleport.c:1512 tele_trap(): the departure square goes on the
+           hero's trail, and a monster on the fixed destination is moved
+           aside first */
+        const cc = { x: 0, y: 0 };
+        let mtmp = m_at(trap.teledest.x, trap.teledest.y);
+
+        settrack();
+        if (mtmp) {
+            if (!enexto(cc, mtmp.mx, mtmp.my, mtmp.data)) {
+                /* could not find some other place to put mtmp; the level must
+                 * be nearly or completely full */
+                await You('shudder for a moment.');
+            } else {
+                await rloc_to(mtmp, cc.x, cc.y);
+                mtmp = null; /* no longer a monster at dest */
+            }
+        }
+        if (!mtmp)
+            await teleds(trap.teledest.x, trap.teledest.y, TELEDS_TELEPORT);
     } else {
         await tele();
     }
@@ -5473,11 +5493,11 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
         obj_extract_self(singleobj);
     }
     newsym(x1, y1);
-    /* Removing a boulder schedules a vision update; C's flush_screen()
-       settles it before the tmp_at() flash below is drawn, so do the same
-       here or pline() would repaint the floor over the temporary glyph. */
-    if (game.vision_full_recalc)
-        vision_recalc(0);
+    /* Removing the boulder only schedules a vision update (unblock_point
+       sets vision_full_recalc); C's flush_screen() does not recalc, so
+       the flight and flooreffects() below see the map as it was with the
+       boulder still blocking the view: a pit it falls into behind that
+       line is "You hear a boulder fall." (s40-33). The moveloop recalcs. */
 
     let dist = Math.max(Math.abs(x2 - x1), Math.abs(y2 - y1));
     let x = x1, y = y1;
@@ -5574,8 +5594,12 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
             const otmp2 = otyp === ONAMES.BOULDER
                 ? sobj_at(ONAMES.BOULDER, x, y) : null;
             if (otmp2) {
-                await You_hear(`a loud crash${cansee(x, y)
-                    ? ' as one boulder sets another in motion' : ''}!`);
+                let bmsg = ' as one boulder sets another in motion';
+                const fx = x + dx, fy = y + dy;
+                if (!isok(fx, fy) || !dist
+                    || IS_OBSTRUCTED(game.level.at(fx, fy).typ))
+                    bmsg = ' as one boulder hits another';
+                await You_hear(`a loud crash${cansee(x, y) ? bmsg : ''}!`);
                 obj_extract_self(otmp2);
                 otmp2.otrapped = singleobj.otrapped;
                 singleobj.otrapped = 0;
@@ -5807,7 +5831,7 @@ export async function steedintrap(trap, otmp) {
         break;
     case POLY_TRAP:
         if (!resists_magm(steed) && !await resist(steed, OCLASSES.WAND_CLASS, 0, NOTELL)) {
-            newcham(steed, null, NC_SHOW_MSG);
+            await newcham(steed, null, NC_SHOW_MSG);
         }
         steedhit = true;
         break;

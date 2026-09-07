@@ -31,23 +31,19 @@ import { explodeSpell, resumeSpellExplosion } from './explode.js';
 import { resumeChainLightning } from './chain_lightning.js';
 import { lightDamageHero } from './flash.js';
 import { fallAsleep } from './timeout.js';
+import { resumeHeroGolemEffects } from './polyself.js';
+import { GOLEM_HP } from './makemon.js';
 import { findMac, resistsFire, resistsCold, sleepMonst } from './mhitm.js';
 import { aggravate } from './wizard.js';
 import { newWere, isWereData, isWereHumanForm } from './were.js';
 import { makemon, monsterByRndName, rlocNoMsg } from './mklev.js';
 import {
-    MONS, MR_COLD, MR_FIRE, PM_BLACK_DRAGON, PM_DEATH,
+    MONS, MR_COLD, MR_FIRE, AD_FIRE, AD_COLD, PM_BLACK_DRAGON, PM_DEATH,
     PM_GRAY_DRAGON, S_DRAGON, nonliving, perceives, is_demon, is_golem, is_undead, is_were,
 } from './permonst.js';
 
 const SPELL_MONSTERS_BY_NAME = new Map(MONS.flatMap(mon =>
     [mon.name, ...(mon.names || [])].map(name => [name.toLowerCase(), mon])));
-// C makemon.c:golemhp(): fixed species HP, independent of current HP/level.
-const GOLEM_HP = new Map([
-    ['straw golem', 20], ['paper golem', 20], ['rope golem', 30], ['gold golem', 60],
-    ['leather golem', 40], ['wood golem', 50], ['flesh golem', 40], ['clay golem', 70],
-    ['stone golem', 100], ['glass golem', 80], ['iron golem', 120],
-]);
 
 // C objects.h SPELL(...) oc_dir for the spells routed through the
 // wand-duplicate group in spelleffects().  NODIR spells never prompt.
@@ -226,7 +222,7 @@ const HALLUCINATED_BLASTS = [
     "zorkmids"
 ];
 
-function spellRayName(name, D) {
+function rayMessageName(name, D) {
     return D.heroIsHallucinating() ? `blast of ${HALLUCINATED_BLASTS[rn2(HALLUCINATED_BLASTS.length)]}`
         : name === 'sleep' ? 'sleep ray' : name;
 }
@@ -303,32 +299,8 @@ async function spellZapYourself(spell, D) {
     switch (name) {
     case 'fireball':
     case 'cone of cold':
-        return resumeSelfZap({ name, phase: 'init' }, D);
-    case 'force bolt': {
-        // C zap.c:zapyourself() case SPE_FORCE_BOLT (ordinary=TRUE)
-        if (D.heroHasAntimagic()) {
-            push('Boing!');
-        } else {
-            push('You bash yourself!');
-            const damage = D.maybeHalfPhysicalDamage(d(2, 12));
-            D.exerciseAttribute(A_STR, false);
-            const result = D.damageHero(messages, damage,
-                `zapped ${game.flags?.female ? 'herself' : 'himself'} with a spell`);
-            return { messages, ...result };
-        }
-        return { messages };
-    }
-    case 'magic missile': {
-        if (D.heroHasAntimagic()) push('The missiles bounce!');
-        else {
-            const damage = D.maybeHalfPhysicalDamage(d(4, 6));
-            push('Idiot!  You\'ve shot yourself!');
-            const result = D.damageHero(messages, damage,
-                `zapped ${game.flags?.female ? 'herself' : 'himself'} with a spell`);
-            return { messages, ...result };
-        }
-        return { messages };
-    }
+    case 'force bolt':
+    case 'magic missile':
     case 'sleep':
         return resumeSelfZap({ name, phase: 'init' }, D);
     case 'slow monster': {
@@ -839,22 +811,34 @@ async function spellImmediateBeam(spell, dir, D) {
 // ---------------------------------------------------------------------------
 // C ref: zap.c:dobuzz() — reflected rays; fireball uses explosion targeting.
 // ---------------------------------------------------------------------------
+function rayShield(state, x, y) {
+    if (game.flags?.sparkle === false || game.flags?.sparkle === 0 || !cansee(x, y)) return;
+    // display.c:shieldeff ends with newsym, replacing the ray at this square.
+    // Remove every earlier crossing; a later ray step can draw here again.
+    for (let i = state.beamCells.length - 1; i >= 0; i--) {
+        const cell = state.beamCells[i];
+        if (cell.x === x && cell.y === y) state.beamCells.splice(i, 1);
+    }
+    newsym(x, y);
+}
+
 async function rayHitMonster(state, mon, D, messages, swallowed = false) {
-    const { name, spell, nd } = state;
+    const { name, spell, nd, damgtype, rayName } = state;
     const data = SPELL_MONSTERS_BY_NAME.get(monsterName(mon).toLowerCase()) || mon.data;
     let damage = 0;
     let absorbed = false;
-    if (name === 'sleep') {
+    if (damgtype === 3) {
         if (sleepMonst(mon, d(nd, 25), spell ? 0 : 10) && !swallowed) state.slept = mon;
-    } else if (name === 'finger of death') {
+    } else if (damgtype === 4) {
         if (data.pm === PM_DEATH) {
             mon.mhpmax = Math.min(999, mon.mhpmax + Math.trunc(mon.mhpmax / 2));
             mon.mhp = mon.mhpmax;
             absorbed = true;
         } else if (!nonliving(data) && !is_demon(data)
             && !D.monsterIsVampireShifterForLifeSaving(mon) && !D.monsterResistsMagm(mon)) damage = mon.mhp + 1;
-    } else if (name === 'fireball' || name === 'cone of cold') {
-        const fire = name === 'fireball';
+        else rayShield(state, mon.mx, mon.my);
+    } else if (damgtype === 1 || damgtype === 2) {
+        const fire = damgtype === 1;
         if (!(fire ? resistsFire(mon) || D.monsterResistsFire(mon) : resistsCold(mon) || D.monsterResistsCold(mon))) {
             const original = spell ? spellDamageBonus(d(nd, 6)) : d(nd, 6);
             damage = original;
@@ -865,51 +849,46 @@ async function rayHitMonster(state, mon, D, messages, swallowed = false) {
                     : D.monsterColdInventoryDamage(mon, original, messages, D.visibleMonsterForScroll(mon));
                 if (fire) D.igniteMonsterFireInventoryItems(mon, messages, D.visibleMonsterForScroll(mon));
             }
-        }
+        } else rayShield(state, mon.mx, mon.my);
     } else if (!D.monsterResistsMagm(mon)) damage = spell ? spellDamageBonus(d(nd, 6)) : d(nd, 6);
-    if (name !== 'finger of death') {
+    else rayShield(state, mon.mx, mon.my);
+    if (damgtype !== 4) {
         if (spell && D.heroIsKnightWithQuestArtifact()) damage *= 2;
         if (damage > 0 && D.monsterResistsEffect(mon, spell ? game.u?.ulevel || 1 : 12)) damage = Math.trunc(damage / 2);
     }
     mon.mhp -= damage;
-    if (swallowed) messages.push(`The ${spellRayName(name, D)} rips into ${D.monsterTheName(mon)}${damage > 4 ? '!' : '.'}`);
+    if (swallowed) messages.push(`The ${rayMessageName(rayName, D)} rips into ${D.monsterTheName(mon)}${damage > 4 ? '!' : '.'}`);
     if (mon.mhp <= 0) {
-        await D.killMonsterFromHeroProjectileHit(mon, messages, D.monsterTheName(mon));
+        await D.killMonsterFromHeroProjectileHit(mon, messages, D.monsterTheName(mon),
+            { noCorpse: damgtype === 1 && ['paper golem', 'straw golem'].includes(monsterName(mon).toLowerCase()) });
     } else if (!swallowed) {
         if (D.visibleMonsterForScroll(mon)) {
-            messages.push(`The ${spellRayName(name, D)} hits ${D.monsterTheName(mon)}${damage > 4 ? '!' : '.'}`);
+            messages.push(`The ${rayMessageName(rayName, D)} hits ${D.monsterTheName(mon)}${damage > 4 ? '!' : '.'}`);
             if (absorbed) messages.push(`${D.monsterTheName(mon, true)} absorbs the deadly ray!`, 'It seems even stronger than before.');
         }
-        if (name !== 'sleep') D.directMeleeNonlethalWakeupTail(mon, messages, { ...mon },
+        if (damgtype !== 3) D.directMeleeNonlethalWakeupTail(mon, messages, { ...mon },
             { ordinaryMelee: true, visible: D.visibleMonsterForScroll(mon) });
     }
     return absorbed;
 }
 
-export async function heroRay({ spell = null, item = null, name = spellName(spell) }, dir, D) {
+export async function heroRay({ spell = null, item = null, name = spellName(spell), instrument = false, prefix = [] }, dir, D) {
     const u = game.u;
-    const nd = spell ? Math.trunc((u.ulevel || 1) / 2) + 1 : name === 'magic missile' ? 2 : 6;
+    const damgtype = { 'magic missile': 0, fire: 1, fireball: 1, cold: 2,
+        'cone of cold': 2, sleep: 3, death: 4, 'finger of death': 4, lightning: 5 }[name];
+    const rayName = spell ? name === 'sleep' ? 'sleep ray' : name
+        : ['magic missile', 'bolt of fire', 'bolt of cold', 'sleep ray', 'death ray', 'bolt of lightning'][damgtype];
     const hitBon = spell ? spellHitBonus(spell, D) : 0;
-    const displayed = D.heroIsHallucinating() ? rn2(6)
-        : name === 'sleep' ? 3 : name === 'cone of cold' ? 2 : name === 'fireball' ? 1 : name === 'finger of death' ? 4 : 0;
-    if (u.uswallow && u.ustuck) {
-        const messages = [];
-        await rayHitMonster({ spell, name, nd }, u.ustuck, D, messages, true);
-        if (item) D.learnRayItem(item, name, { experience: true });
-        return { messages, fatal: !!messages.fatal, lifeSaving: !!messages.lifeSaving };
-    }
-    const range = rn1(7, 7);
-    return resumeHeroRay({ spell, item, name, nd, hitBon,
-        rayName: name === 'sleep' ? 'sleep ray' : name,
-        color: [12, 9, 15, 12, 8, 15][displayed],
-        range: dir.dx || dir.dy ? range : 1, sx: u.ux, sy: u.uy, dx: dir.dx, dy: dir.dy,
-        beamCells: [], phase: 'step', output: [], messages: [], savedBhitpos: game.bhitpos ? { ...game.bhitpos } : null }, D);
+    return resumeHeroRay({ spell, item, name, hitBon, rayName, damgtype, instrument,
+        sx: u.ux, sy: u.uy, dx: dir.dx, dy: dir.dy,
+        beamCells: [], phase: 'blast', output: [...prefix], messages: [], savedBhitpos: game.bhitpos ? { ...game.bhitpos } : null }, D);
 }
 
 // zap.c:dobuzz/zhitu. Each phase resumes after the source operation that
 // displayed a message; no range, hit or damage roll is repeated after input.
 export async function resumeHeroRay(state, D) {
-    const { spell, name, nd, rayName } = state;
+    const { spell, name, rayName, damgtype } = state;
+    let { nd } = state;
     const pending = { published: true, pending: true, messages: state.messages,
         afterHeroDamage: { kind: 'heroRay', state } };
     while (!game.program_state?.gameover) {
@@ -932,6 +911,28 @@ export async function resumeHeroRay(state, D) {
             state.observation = null;
         }
         const u = game.u;
+        if (state.phase === 'blast') {
+            state.phase = 'init';
+            if (state.instrument && !D.heroIsBlind())
+                state.output.push(`A ${rayMessageName(rayName, D)} blasts out of the horn!`);
+            continue;
+        }
+        if (state.phase === 'init') {
+            nd = state.nd = state.instrument ? rn1(6, 6)
+                : spell ? Math.trunc((u.ulevel || 1) / 2) + 1 : damgtype === 0 ? 2 : 6;
+            const displayed = D.heroIsHallucinating() ? rn2(6) : damgtype;
+            state.color = [12, 9, 15, 12, 8, 15][displayed];
+            if (u.uswallow && u.ustuck) {
+                state.swallowed = true;
+                state.phase = 'end';
+                await rayHitMonster(state, u.ustuck, D, state.output, true);
+            } else {
+                const range = rn1(7, 7);
+                state.range = state.dx || state.dy ? range : 1;
+                state.phase = 'step';
+            }
+            continue;
+        }
         if (state.phase === 'step') {
             if (state.range-- <= 0) { state.phase = 'end'; continue; }
             state.lsx = state.sx; state.lsy = state.sy;
@@ -944,12 +945,20 @@ export async function resumeHeroRay(state, D) {
             state.beamCells.push({ x: sx, y: sy, ch: !state.dx && !state.dy ? '\\' : beamGlyph(state.dx, state.dy), color: state.color });
             if (!D.heroIsBlind()) game._transient_beam_cells = state.beamCells;
             state.phase = 'target';
-            if (name === 'cone of cold') {
+            if (damgtype === 2) {
                 const terrain = D.applyColdRayTerrain(sx, sy);
                 state.output.push(...terrain.messages); state.range += terrain.rangeMod;
-                if (terrain.stopped || state.range < 0) state.phase = 'end';
+            } else if (damgtype === 1 && name !== 'fireball') {
+                state.terrain = { x: sx, y: sy, spell: !!spell, rangeMod: 0 };
+                state.phase = 'fireTerrain';
             }
             continue;
+        }
+        if (state.phase === 'fireTerrain') {
+            if (!D.heroFireRayTerrain(state.terrain)) return pending;
+            state.range += state.terrain.rangeMod;
+            state.shopDamage ||= state.terrain.shopDamage;
+            state.terrain = null; state.phase = 'target';
         }
         if (state.phase === 'target') {
             state.phase = 'obstacle';
@@ -963,29 +972,34 @@ export async function resumeHeroRay(state, D) {
                     state.reflection = D.monsterReflectionSource(mon);
                     if (state.reflection) {
                         state.phase = 'monsterReflection';
-                        if (D.visibleMonsterForScroll(mon)) state.output.push(`The ${spellRayName(name, D)} hits ${D.monsterTheName(mon)}.`);
+                        if (cansee(mon.mx, mon.my)) state.output.push(`The ${rayMessageName(rayName, D)} hits ${D.monsterTheName(mon)}.`);
                     } else {
                         const messages = [];
                         if (await rayHitMonster(state, mon, D, messages)) state.phase = 'end';
                         state.output.push(...messages);
                     }
-                } else if (D.visibleMonsterForScroll(mon)) state.output.push(`The ${spellRayName(name, D)} misses ${D.monsterTheName(mon)}.`);
+                } else if (D.visibleMonsterForScroll(mon)) state.output.push(`The ${rayMessageName(rayName, D)} misses ${D.monsterTheName(mon)}.`);
             } else if (name !== 'fireball' && state.sx === u.ux && state.sy === u.uy && state.range >= 0) {
                 state.phase = 'afterHero';
                 if (spellZapHit(u.uac ?? 10, 0)) {
                     state.range -= 2; state.phase = 'heroEffect';
-                    state.output.push(`The ${spellRayName(name, D)} hits you!`);
-                } else if (!D.heroIsBlind()) state.output.push(`The ${spellRayName(name, D)} whizzes by you!`);
+                    state.output.push(`The ${rayMessageName(rayName, D)} hits you!`);
+                } else if (!D.heroIsBlind()) state.output.push(`The ${rayMessageName(rayName, D)} whizzes by you!`);
             }
             continue;
         }
         if (state.phase === 'monsterReflection') {
             state.dx = -state.dx; state.dy = -state.dy; state.phase = 'obstacle';
-            if (D.visibleMonsterForScroll(state.mon)) {
-                D.recordMonsterReflectionDiscovery(state.reflection);
+            if (cansee(state.mon.mx, state.mon.my)) {
+                rayShield(state, state.mon.mx, state.mon.my);
                 state.output.push(`But it reflects from ${D.monsterPossessiveName(state.mon)} ${state.reflection.source}!`);
+                state.phase = 'monsterReflectionLearn';
             }
             continue;
+        }
+        if (state.phase === 'monsterReflectionLearn') {
+            D.recordMonsterReflectionDiscovery(state.reflection);
+            state.phase = 'obstacle';
         }
         if (state.phase === 'heroEffect') {
             state.phase = 'heroInventory'; state.damage = 0; state.inventory = null;
@@ -996,39 +1010,47 @@ export async function resumeHeroRay(state, D) {
                     : `But it reflects from your ${reflection}!`);
                 continue;
             }
-            if (name === 'sleep') {
+            if (damgtype === 3) {
                 const resisted = D.heroHasSleepResistance();
                 if (resisted) {
+                    rayShield(state, state.sx, state.sy);
                     state.output.push("You don't feel sleepy.");
                     state.observation = { kind: 'sleep', resisted: true };
                 } else {
                     D.observeHeroRayResistance('sleep', false);
                     fallAsleep(-d(nd, 25), true, D.stopHeroOccupation);
                 }
-            } else if (name === 'cone of cold') {
+            } else if (damgtype === 1 || damgtype === 2) {
+                const fire = damgtype === 1, kind = fire ? 'fire' : 'cold';
                 state.original = d(nd, 6);
-                const resisted = D.heroHasColdResistance();
+                const resisted = fire ? D.heroHasFireResistance() : D.heroHasColdResistance();
+                state.resistant = resisted;
                 if (resisted) {
-                    state.output.push("You don't feel cold.");
-                    state.observation = { kind: 'cold', resisted: true };
+                    rayShield(state, state.sx, state.sy);
+                    state.output.push(fire ? "You don't feel hot!" : "You don't feel cold.");
+                    state.observation = { kind, resisted: true };
                 } else {
                     state.damage = state.original;
-                    D.observeHeroRayResistance('cold', false);
+                    D.observeHeroRayResistance(kind, false);
                 }
-                state.phase = 'coldSelection';
-            } else if (name === 'finger of death') {
+                state.phase = 'heroGolem';
+            } else if (damgtype === 4) {
                 const form = SPELL_MONSTERS_BY_NAME.get(String(u._polyself_form?.name || '').toLowerCase());
-                if (form && (nonliving(form) || is_demon(form))) state.output.push('You seem unaffected.');
+                if (form && (nonliving(form) || is_demon(form))) {
+                    rayShield(state, state.sx, state.sy); state.output.push('You seem unaffected.');
+                }
                 else if (D.heroHasAntimagic()) {
+                    rayShield(state, state.sx, state.sy);
                     D.observeHeroRayResistance('magic', true); state.output.push("You aren't affected.");
                 } else {
                     D.observeHeroRayResistance('magic', false); state.phase = 'afterZhitu';
-                    const messages = [], result = D.killHero(messages, 'killed by a finger of death');
+                    const messages = [], result = D.killHero(messages, `killed by a ${rayName}`);
                     if (!D.publishDamageResult(messages, result)) return pending;
                 }
             } else {
                 const resisted = D.heroHasAntimagic();
                 if (resisted) {
+                    rayShield(state, state.sx, state.sy);
                     state.output.push('The missiles bounce off!');
                     state.observation = { kind: 'magic', resisted: true };
                 } else {
@@ -1042,16 +1064,30 @@ export async function resumeHeroRay(state, D) {
             if (!D.heroIsBlind()) D.discoverHeroRayReflection(state.reflection);
             D.observeHeroRayResistance('reflection', true);
             state.dx = -state.dx; state.dy = -state.dy; state.phase = 'afterHero';
+            rayShield(state, state.sx, state.sy);
+        }
+        if (state.phase === 'heroGolem') {
+            if (state.resistant && !resumeHeroGolemEffects(state.golem ??= {
+                damtype: damgtype === 1 ? AD_FIRE : AD_COLD, damage: state.original,
+            }, D)) return pending;
+            state.golem = null; state.phase = damgtype === 1 ? 'fireSlime' : 'coldSelection';
+        }
+        if (state.phase === 'fireSlime') {
+            state.inventory = { original: state.original, mode: 'ray' };
+            state.phase = 'heroInventory';
+            D.burnAwayHeroSlime(state.output);
+            continue;
         }
         if (state.phase === 'coldSelection') {
             state.inventory = !rn2(3) ? { original: state.original } : null;
             state.phase = 'heroInventory';
         }
         if (state.phase === 'heroInventory') {
-            if (state.inventory && !D.heroColdInventoryDamage(state.inventory)) return pending;
+            if (state.inventory && !(damgtype === 1 ? await D.heroFireInventoryDamage(state.inventory)
+                : D.heroColdInventoryDamage(state.inventory))) return pending;
             state.phase = 'afterZhitu';
             const messages = [], result = D.damageHero(messages, D.halfSpellDamage(state.damage),
-                `killed by a ${rayName} ${spell ? 'cast' : 'zapped'} by ${game.flags?.female ? 'herself' : 'himself'}`);
+                `killed by a ${rayName} ${spell ? 'cast' : state.instrument ? 'played' : 'zapped'} by ${game.flags?.female ? 'herself' : 'himself'}`);
             if (!D.publishDamageResult(messages, result)) return pending;
         }
         if (state.phase === 'afterZhitu') {
@@ -1076,11 +1112,11 @@ export async function resumeHeroRay(state, D) {
             state.phase = 'bounceDirection';
             if ((--state.range > 0 && lsx >= 1 && lsx < COLNO && lsy >= 0 && lsy < ROWNO && cansee(lsx, lsy)) || name === 'fireball') {
                 if (Is_airlevel(u.uz)) {
-                    state.output.push(`The ${spellRayName(name, D)} vanishes into the aether!`);
+                    state.output.push(`The ${rayMessageName(rayName, D)} vanishes into the aether!`);
                     state.phase = 'end'; state.vanished = true;
                 } else if (name === 'fireball') {
                     state.sx = lsx; state.sy = lsy; state.phase = 'end';
-                } else state.output.push(`The ${spellRayName(name, D)} bounces!`);
+                } else state.output.push(`The ${rayMessageName(rayName, D)} bounces!`);
             }
             continue;
         }
@@ -1108,12 +1144,17 @@ export async function resumeHeroRay(state, D) {
         }
         if (state.phase === 'end') {
             game._transient_beam_cells = null;
+            if (state.shopDamage) {
+                state.shopDamage = false;
+                D.payForCurrentShopTerrainDamage(damgtype === 1 ? 'burn away' : 'shatter', state.output);
+                continue;
+            }
             game.bhitpos = state.savedBhitpos;
             if (state.item) {
-                D.learnRayItem(state.item, name, { experience: true });
+                D.learnRayItem(state.item, name, { experience: !state.instrument, forceType: state.instrument });
                 state.item = null;
             }
-            if (name === 'fireball' && !state.vanished) {
+            if (name === 'fireball' && !state.vanished && !state.swallowed) {
                 return explodeSpell(state.sx, state.sy, 'fire', d(12, 6), D);
             }
             return { published: true, messages: state.messages };
@@ -1237,32 +1278,68 @@ export async function resumeReleasedSpell(state, D) {
 export async function resumeSelfZap(state, D) {
     const pending = () => ({ published: true, pending: true, messages: [],
         afterHeroDamage: { kind: 'selfZap', state } });
+    const striking = state.name === 'striking' || state.name === 'force bolt';
+    const magic = striking || state.name === 'magic missile';
     if (state.phase === 'init') {
         state.phase = 'effect';
-        if (state.name === 'fireball') {
+        if (magic) {
+            state.resistant = D.heroHasAntimagic();
+            if (state.resistant) {
+                rayShield({ beamCells: [] }, game.u.ux, game.u.uy);
+                if (!D.say(striking ? 'Boing!' : 'The missiles bounce!')) return pending();
+            } else if (striking) {
+                // zapyourself rolls striking damage after its pline returns.
+                if (state.ordinary !== false && !D.say('You bash yourself!')) return pending();
+            } else {
+                state.original = d(4, 6);
+                if (!D.say("Idiot!  You've shot yourself!")) return pending();
+            }
+        } else if (state.name === 'fireball') {
             if (!D.say('You explode a fireball on top of yourself!')) return pending();
         } else if (state.name === 'sleep') {
             state.resistant = D.heroHasSleepResistance();
             if (!D.say(state.resistant ? "You don't feel sleepy!" : 'The sleep ray hits you!')) return pending();
         } else {
             state.original = d(12, 6);
-            state.resistant = D.heroHasColdResistance();
-            if (!D.say(state.resistant ? 'You feel a little chill.' : 'You imitate a popsicle!')) return pending();
+            const fire = state.name === 'fire';
+            state.resistant = fire ? D.heroHasFireResistance() : D.heroHasColdResistance();
+            const text = fire ? state.resistant ? 'You feel rather warm.' : "You've set yourself afire!"
+                : state.resistant ? 'You feel a little chill.' : 'You imitate a popsicle!';
+            if (!D.say(text)) return pending();
         }
     }
     if (state.phase === 'effect') {
         if (state.name === 'fireball') return explodeSpell(game.u.ux, game.u.uy, 'fire', d(6, 6), D, { wand: true });
-        if (state.name === 'sleep') {
+        if (magic) {
+            if (striking && !state.resistant) {
+                state.original = state.ordinary === false ? d(1 + state.item.spe, 6) : d(2, 12);
+                D.exerciseAttribute(A_STR, false);
+            }
+            D.observeHeroRayResistance('magic', state.resistant);
+            state.phase = 'learn';
+        } else if (state.name === 'sleep') {
             D.observeHeroRayResistance('sleep', state.resistant);
             if (!state.resistant) fallAsleep(-rnd(50), true, D.stopHeroOccupation);
             state.phase = 'learn';
         } else {
-            D.observeHeroElementResistance('cold', state.resistant);
-            state.phase = 'inventory';
+            D.observeHeroElementResistance(state.name === 'fire' ? 'fire' : 'cold', state.resistant);
+            state.phase = 'golem';
+        }
+    }
+    if (state.phase === 'golem') {
+        if (state.resistant && !resumeHeroGolemEffects(state.golem ??= {
+            damtype: state.name === 'fire' ? AD_FIRE : AD_COLD, damage: state.original,
+        }, D)) return pending();
+        state.phase = 'inventory';
+        if (state.name === 'fire') {
+            const messages = [];
+            D.burnAwayHeroSlime(messages);
+            for (const text of messages) if (!D.say(text)) return pending();
         }
     }
     if (state.phase === 'inventory') {
-        if (!D.heroColdInventoryDamage(state.inventory ??= { original: state.original })) return pending();
+        const inventory = state.inventory ??= { original: state.original, mode: 'self' };
+        if (!(state.name === 'fire' ? await D.heroFireInventoryDamage(inventory) : D.heroColdInventoryDamage(inventory))) return pending();
         state.phase = 'learn';
     }
     if (state.phase === 'learn') {
@@ -1271,12 +1348,19 @@ export async function resumeSelfZap(state, D) {
     }
     if (state.phase === 'damage') {
         state.phase = 'done';
-        if (!state.resistant) {
-            const amount = state.item ? D.maybeHalfPhysicalDamage(state.original) : state.original;
+        if (!state.resistant && state.original) {
+            const amount = !state.instrument && (state.item || striking)
+                ? D.maybeHalfPhysicalDamage(state.original) : state.original;
+            const cause = state.instrument ? `killed by using a magical horn on ${game.flags?.female ? 'herself' : 'himself'}`
+                : `zapped ${game.flags?.female ? 'herself' : 'himself'} with a ${state.item ? `wand of ${state.name}` : 'spell'}`;
             const messages = [], result = D.damageHero(messages, amount,
-                `zapped ${game.flags?.female ? 'herself' : 'himself'} with a ${state.item ? `wand of ${state.name}` : 'spell'}`);
+                cause);
             if (!D.publishDamageResult(messages, result)) return pending();
         }
+    }
+    if (state.phase === 'done' && state.instrument && !state.typeLearned) {
+        state.typeLearned = true;
+        D.learnRayItem(state.item, state.name, { forceType: true });
     }
     return { published: true, messages: [] };
 }

@@ -1123,8 +1123,11 @@ function BInvis() {
 
 /**
  * C youprop.h Invis — (HInvis || EInvis) && !BInvis
+ * Exported for monmove.c set_apparxy / m_move (C macro is live; the
+ * u.Invis flat is only synced by the magic-trap toggle, so readers of
+ * quaff/spell/wand invisibility must call this — D-1999).
  */
-function Invis() {
+export function Invis() {
     const u = game.u || {};
     const p = u.uprops?.[INVIS];
     const H = (u.HInvis | 0) || (p?.intrinsic | 0);

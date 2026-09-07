@@ -1276,7 +1276,7 @@ export async function pickup_object(obj, count, telekinesis) {
         await pline(`You can't pick ${ysimple_name(obj)} up.`);
         return 0;
     }
-    if (obj.oartifact && !touch_artifact(obj, youmonst)) return 0;
+    if (obj.oartifact && !(await touch_artifact(obj, youmonst))) return 0;
 
     if ((obj.otyp | 0) === CORPSE) {
         if (await fatal_corpse_mistake(obj, remotely)
@@ -4185,13 +4185,100 @@ async function able_to_loot(x, y, looting) {
 }
 
 /**
- * C ref: pickup.c tipcontainer — empty box onto floor (no target bag).
+ * C ref: pickup.c tipcontainer_gettarget `:3871–3948` — NHW_MENU PICK_ONE
+ * `Where to tip the contents of <doname(box)>`: '-' "on the floor"
+ * preselected dummy + blank + invent containers in invent order (skip box,
+ * non-containers, known bag of tricks); first other container triggers
+ * u_handsy() (may print); locked-known or no-hands rows excluded
+ * (a_obj 0, 4-space indent, no invlet). n>1 dummy-first quirk;
+ * n==-1 (ESC) sets cancelled.
+ * @param {object} box
+ * @returns {Promise<{target:object|null, cancelled:boolean}>}
+ */
+async function tipcontainer_gettarget(box) {
+    const dummyobj = {};
+    const rows = [];
+    // C: tip-to-floor row first, MENU_ITEMFLAGS_SELECTED; blank separator.
+    rows.push({
+        obj: dummyobj, isDummy: true, selected: true, selector: '-', text: 'on the floor',
+    });
+    rows.push({ kind: 'blank' });
+    let n_conts = 0;
+    let hands_available = true;
+    const ocKnown = (otyp) => !!(game.objects?.[otyp]?.oc_name_known);
+    for (const otmp of (game.invent || [])) {
+        if (!otmp || otmp === box) continue;
+        // C: skip non-containers; known bag of tricks fails Is_container use.
+        if (!Is_container(otmp)) continue;
+        if ((otmp.otyp | 0) === BAG_OF_TRICKS && otmp.dknown && ocKnown(otmp.otyp)) continue;
+        if (!n_conts++) hands_available = await u_handsy();
+        // C: container-to-container needs free hands; locked-known excluded.
+        const exclude = !hands_available || !!(otmp.olocked && otmp.lknown);
+        let sel = '';
+        if (!exclude) {
+            sel = (typeof otmp.invlet === 'string') ? otmp.invlet
+                : (otmp.invlet ? String.fromCharCode(otmp.invlet) : '');
+        }
+        rows.push({
+            obj: exclude ? null : otmp,
+            selected: false,
+            selector: sel,
+            text: `${exclude ? '    ' : ''}${doname(otmp)}`,
+        });
+    }
+    // C: Sprintf(buf, "Where to tip the contents of %s", doname(box)).
+    const title = `Where to tip the contents of ${doname(box)}`;
+    let cancelled = false;
+    for (;;) {
+        const entries = [{ text: title, attr: ATR_INVERSE }, { text: '', attr: 0 }];
+        for (const row of rows) {
+            if (row.kind === 'blank') {
+                entries.push({ text: '', attr: 0 });
+                continue;
+            }
+            if (!row.obj) {
+                entries.push({ text: row.text, attr: 0 });
+                continue;
+            }
+            const mark = row.selected ? '*' : '-';
+            entries.push({ text: `${row.selector} ${mark} ${row.text}`, attr: 0 });
+        }
+        await paint_corner_nhw_menu(entries, '(end) ');
+        await flush_screen(1);
+        const key = await nhgetch();
+        await dismiss_nhw_menu();
+        if (key === 27) {
+            cancelled = true;
+            break;
+        }
+        // C: \n \r space finish without toggling (tty select_menu PICK_ONE).
+        if (key === 13 || key === 10 || key === 32) break;
+        const ch = String.fromCharCode(key);
+        const hit = rows.find((r) => r.obj && r.selector === ch);
+        if (!hit) continue; // C nhbell; stay open
+        hit.selected = !hit.selected;
+        // C PICK_ONE: letter toggles then menu finishes.
+        break;
+    }
+    if (cancelled) return { target: null, cancelled: true };
+    const pick_list = rows.filter((r) => r.obj && r.selected);
+    const n = pick_list.length;
+    let otmp = n <= 0 ? null : pick_list[0].obj;
+    // C: PICK_ONE with preselected item might return 2; take non-dummy.
+    if (n > 1 && otmp === dummyobj) otmp = pick_list[1].obj;
+    if (otmp === dummyobj) otmp = null; // floor
+    return { target: otmp, cancelled: false };
+}
+
+/**
+ * C ref: pickup.c tipcontainer — `:3693–3760` gettarget menu first, then
+ * tipcontainer_checks, then spill/transfer.
  * highdrop = !can_reach_floor(TRUE); swallowed clears it; then
  * how_lost LOST_DROPPED + hitfloor(TRUE) (D-1273).
- * Named omissions: tipcontainer_gettarget menu; bag-of-holding explode;
- * ice-box thaw; shop billing; altarizing doaltarobj; cursed mbag
- * item-gone; otrapped chest_trap; invent getobj tip; dropy terse
- * comma-list; toss_up; subfrombill after floor shop BoT/horn.
+ * Named omissions: bag-of-holding explode; ice-box thaw; shop billing;
+ * altarizing doaltarobj; cursed mbag item-gone; otrapped chest_trap;
+ * dropy terse comma-list; toss_up; subfrombill after floor shop BoT/horn;
+ * targetbox shop-bill per-item addtobill; BoT-target apply.
  * SchroedingersBox is observe_quantum_cat before spill.
  * @param {object} box
  */
@@ -4199,6 +4286,9 @@ export async function tipcontainer(box) {
     if (!box) return;
     const ox = (box.ox | 0) || (game.u?.ux | 0);
     const oy = (box.oy | 0) || (game.u?.uy | 0);
+    // C tipcontainer `:3706` — target menu before any checks, even when empty.
+    const { target: targetbox, cancelled } = await tipcontainer_gettarget(box);
+    if (cancelled) return;
     // C tipcontainer_checks: discover lock, refuse locked/empty
     if (!box.lknown) box.lknown = 1;
     if (box.olocked) {
@@ -4233,7 +4323,7 @@ export async function tipcontainer(box) {
                 const n = await bagotricks(box, true, seencount);
                 seen = seencount.n | 0;
                 if (!n) break;
-            } else if (!(await hornoplenty(box, true, null))) {
+            } else if (!(await hornoplenty(box, true, targetbox))) {
                 break;
             }
             totseen += seen;
@@ -4274,14 +4364,39 @@ export async function tipcontainer(box) {
     let highdrop = !can_reach_floor(true);
     if (u.uswallow) highdrop = false;
     const multi = !!(box.cobj?.nobj);
+    // C tipcontainer `:3748–3756` — targetbox header vs floor spill header.
     // C: terse = !(highdrop || altarizing || costly_spot). Altar/shop
     // named, so highdrop is the live terse-breaker. Non-highdrop keeps
     // fortress colon + per-item doname (C comma-list still named).
-    await pline(
-        `${multi ? 'Objects spill' : 'An object spills'} out${
-            highdrop ? '.' : ':'
-        }`,
-    );
+    if (targetbox) {
+        await pline(
+            `${box.cobj?.nobj ? 'Objects tumble' : 'An object tumbles'} into ${theArt(xname(targetbox))}.`,
+        );
+    } else {
+        await pline(
+            `${multi ? 'Objects spill' : 'An object spills'} out${
+                highdrop ? '.' : ':'
+            }`,
+        );
+    }
+    if (targetbox) {
+        // C tipcontainer `:3796–3803` container-to-container arm:
+        // add_to_container per item (BoH explode/shop billing still named).
+        let nxt = box.cobj;
+        while (nxt) {
+            const otmp = nxt;
+            nxt = otmp.nobj;
+            obj_extract_self(otmp);
+            otmp.ox = box.ox | 0;
+            otmp.oy = box.oy | 0;
+            add_to_container(targetbox, otmp);
+        }
+        box.cobj = null;
+        if (typeof box.owt === 'number') box.owt = weight(box);
+        if (typeof targetbox.owt === 'number') targetbox.owt = weight(targetbox);
+        newsym(ox, oy);
+        return;
+    }
     let next = box.cobj;
     while (next) {
         const otmp = next;
@@ -4423,8 +4538,7 @@ function tip_ok(obj) {
  * Ported: floor ynq (D-1654); m-prefix skip / TRADITIONAL boxes>1 gate;
  * getobj("tip", tip_ok, GETOBJ_PROMPT) + container/horn tipcontainer
  * (D-1665); choose_tip_container_menu when boxes>1 (D-1679).
- * Named omissions: candle/oil/grease/food/venom spill; tiphat; statue;
- * tipcontainer_gettarget.
+ * Named omissions: candle/oil/grease/food/venom spill; tiphat; statue.
  * @returns {Promise<number>} ECMD_*
  */
 export async function dotip() {

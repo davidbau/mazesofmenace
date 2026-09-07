@@ -11,7 +11,7 @@ import { You_cant, pline_dir } from './pline.js';
 import { FROMOUTSIDE, TIMEOUT, A_DEX, Is_airlevel, DRAWBRIDGE_UP, DB_UNDER, DB_ICE, MAX_TYPE, OBJ_FLOOR, IN_SIGHT, MIGR_RANDOM, ROLL, LAUNCH_KNOWN, xFLOOR, xGROUND, xOPENDOOR, xSHUTDOOR, xSWAMP, xSUBMERGED, xSEA, xWATERWALL, TREE, DOOR, D_TRAPPED, MOAT, Is_earthlevel, Is_juiblex_level } from './const.js';
 import { obj_extract_self, useupf } from './invent.js';
 import { place_object } from './mkobj.js';
-import { exercise } from './attrib.js';
+import { exercise, ACURR } from './attrib.js';
 import { A_STR, LANDMINE, SPIKED_PIT, PIT, HOLE, TRAPDOOR,
          LEVEL_TELEP, TELEP_TRAP, ROLLING_BOULDER_TRAP } from './const.js';
 import { the, xname, ansimpleoname, Tobjnam, otense } from './objnam.js';
@@ -19,7 +19,7 @@ import { costly_spot, stolen_value } from './shk.js';
 import { You_hear, There } from './pline.js';
 import { flush_screen, glyph_at, map_invisible, newsym, unmap_invisible,
          unmap_object, map_object, back_to_glyph } from './display.js';
-import { YMonnam, m_monnam, mon_nam } from './do_name.js';
+import { YMonnam, m_monnam, mon_nam, y_monnam } from './do_name.js';
 import { is_flimsy } from './obj.js';
 import { You, You_feel, pline_xy, pline_The, set_msg_xy, Norep } from './pline.js';
 import { feel_location } from './display.js';
@@ -52,7 +52,7 @@ import { gethungry } from './eat.js';
 import { cmdq_clear, closed_door, paranoid_query, xytodir } from './cmd.js';
 import { paranoia_bits, boolean_option } from './options.js';
 import { PARANOID_TRAP, PARANOID_CONFIRM, TRAPNUM, TRAP_CLEARLY_IMMUNE } from './const.js';
-import { Blind, Stunned, Confusion, Cold_resistance } from './youprop.js';
+import { Blind, Stunned, Confusion, Cold_resistance, Fumbling } from './youprop.js';
 import { visible_region_at, reg_damg } from './region.js';
 import { defsyms } from './drawing_data.js';
 // hack.js — the hero's movement and the terrain predicates that go with it.
@@ -415,7 +415,38 @@ export async function test_move(ux, uy, dx, dy, mode) {
             } else {
                 let through_testdiag = false;
                 if (mode === DO_MOVE) {
-                    note_unported_hack('test_move:do_move_closed_door');
+                    if (amorphous(game.youmonst.data))
+                        await You('try to ooze under the door,'
+                                  + " but can't squeeze your possessions through.");
+                    if ((game.flags?.autoopen !== false) && !game.context.run
+                        && !Confusion() && !Stunned() && !Fumbling()) {
+                        /* src/hack.c:1101 doopen_indir() arm: this port
+                           runs it before domove() (js/cmd.js, the closed
+                           door pre-check), so a walk that qualifies never
+                           reaches test_move() */
+                        ;
+                    } else if (x === ux || y === uy) {
+                        if (Blind() || Stunned() || ACURR(A_DEX) < 10
+                            || Fumbling()) {
+                            if (game.u.usteed) {
+                                await You_cant(`lead ${y_monnam(game.u.usteed)} through that closed door.`);
+                            } else {
+                                await pline('Ouch!  You bump into a door.');
+                                exercise(A_DEX, false);
+                            }
+                            /* use current move; needed for the "ouch" case
+                               but done for steed case too for consistency;
+                               we haven't opened a door but we're going to
+                               return False and without having 'door_opened'
+                               set, 'move' would get reset by caller */
+                            game.context.door_opened = true;
+                            game.context.move = 1;
+                            /* since we've just lied about successfully
+                               moving, we need to manually stop running */
+                            nomul(0);
+                        } else
+                            await pline('That door is closed.');
+                    }
                 } else if (mode === TEST_TRAV || mode === TEST_TRAP) {
                     /* C: goto testdiag — on survival, control falls out of
                        the door branch into the squeeze tests below */

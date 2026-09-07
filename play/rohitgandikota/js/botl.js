@@ -139,7 +139,7 @@ export const enc_stat = [
 
 // src/botl.c:781 conditions[]/:1333 cond_cmp(), tty/wintty.c:5150.
 // Conditions follow hunger and capacity, sorted by rank then useroption.
-export function bot_conditions() {
+export function bot_conditions(shrinklvl = 0) {
     const u = game.u;
     const intr = u.intrinsic || {};
     const props = u.uprops || {};
@@ -154,25 +154,48 @@ export function bot_conditions() {
         ? game._deferred_status_capacity
         : game._encumber_status_stale ? game.oldcap : near_capacity();
     if (cap > UNENCUMBERED) cond += ' ' + enc_stat[cap];
-    if (intr.HStrangled) cond += ' Strngl';
+    /* src/botl.c:781 conditions[] — ranking, useroption (tie-break),
+       and the three text widths the tty falls back through when the row
+       does not fit (wintty.c cond_shrinklvl 0..2) */
     const sick_type = game._deferred_status_sick_type ?? u.usick_type;
-    if (sick_type & SICK_VOMITABLE) cond += ' FoodPois';
-    if (props.SLIMED) cond += ' Slime';
-    if (props.STONED) cond += ' Stone';
-    if (sick_type & SICK_NONVOMITABLE) cond += ' TermIll';
-    if (u.utrap && u.utraptype === TT_LAVA) cond += ' InLava';
     const blind = typeof game._deferred_status_blind === 'boolean'
         ? game._deferred_status_blind : Blind();
+    const active = [];
+    const add = (rank, useroption, texts) => active.push({ rank, useroption, texts });
+    if (intr.HStrangled)
+        add(4, 'strngl', ['Strngl', 'Stngl', 'Str']);
+    if (sick_type & SICK_VOMITABLE)
+        add(6, 'foodPois', ['FoodPois', 'Fpois', 'Poi']);
+    if (props.SLIMED)
+        add(6, 'slime', ['Slime', 'Slim', 'Slm']);
+    if (props.STONED)
+        add(6, 'stone', ['Stone', 'Ston', 'Sto']);
+    if (sick_type & SICK_NONVOMITABLE)
+        add(6, 'termIll', ['TermIll', 'Ill', 'Ill']);
+    if (u.utrap && u.utraptype === TT_LAVA)
+        add(8, 'lava', ['InLava', 'Lav', 'La']);
     if (blind)
-        cond += ' Blind';
-    if (intr.HConfusion || props.CONFUSION) cond += ' Conf';
-    if (Deaf()) cond += ' Deaf';
-    if (Flying()) cond += ' Fly';
+        add(10, 'blind', ['Blind', 'Blnd', 'Bl']);
+    if (intr.HConfusion || props.CONFUSION)
+        add(10, 'conf', ['Conf', 'Cnf', 'Cf']);
+    if (Deaf())
+        add(10, 'deaf', ['Deaf', 'Def', 'Df']);
+    if (Flying())
+        add(10, 'fly', ['Fly', 'Fly', 'Fl']);
     if ((intr.HHallucination || props.HALLUC) && !props.HALLUC_RES)
-        cond += ' Hallu';
-    if (Levitation()) cond += ' Lev';
-    if (u.usteed) cond += ' Ride';
-    if (intr.HStun || props.STUNNED) cond += ' Stun';
+        add(10, 'hallucinat', ['Hallu', 'Hal', 'Hl']);
+    if (Levitation())
+        add(10, 'levitate', ['Lev', 'Lev', 'Lv']);
+    if (u.usteed)
+        add(10, 'ride', ['Ride', 'Rid', 'Rd']);
+    if (intr.HStun || props.STUNNED)
+        add(10, 'stun', ['Stun', 'Stun', 'St']);
+    /* src/botl.c:1333 cond_cmp(): ranking, then case-insensitive useroption */
+    active.sort((a, b) => (a.rank - b.rank)
+        || (a.useroption.toLowerCase() < b.useroption.toLowerCase() ? -1
+            : a.useroption.toLowerCase() > b.useroption.toLowerCase() ? 1 : 0));
+    for (const c of active)
+        cond += ' ' + c.texts[shrinklvl];
     return cond;
 }
 

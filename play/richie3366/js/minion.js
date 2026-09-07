@@ -518,7 +518,7 @@ export async function gain_guardian_angel() {
                 mtmp.m_lev = rn1(8, 15);
                 mtmp.mhp = mtmp.mhpmax =
                     d(mtmp.m_lev | 0, 10) + 30 + rnd(30);
-                let otmp = select_hwep(mtmp);
+                let otmp = await select_hwep(mtmp);
                 if (!otmp) {
                     otmp = mksobj(SILVER_SABER, false, false);
                     if (mpickobj(mtmp, otmp)) {

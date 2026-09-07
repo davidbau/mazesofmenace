@@ -5,6 +5,9 @@ import { game } from './gstate.js';
 import { objectTypeIsKnown } from './object_knowledge.js';
 import { mindless } from './permonst.js';
 import { pmOf } from './mhitm.js';
+import { heroProtectionFromShapeChangers } from './were.js';
+import { heroSensingAllowsMonster, heroDetectsMonster,
+    heroWarnsOfMonsterType } from './sense.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -460,7 +463,6 @@ function rawMonsterAt(x, y) {
         candidate.mx === x && candidate.my === y
         && !candidate._hide_for_bones_prompt);
     if (mon?._hide_for_door_open) return undefined;
-    if (mon?._hide_for_bullwhip_more) return undefined;
     if (mon?._hide_for_web_more) return undefined;
     if (mon?._hide_for_queued_kill_more) return undefined;
     const stalePet = game._stale_queued_kill_pet;
@@ -738,7 +740,7 @@ export function monsterGlyph(mon, detected = false) {
     if (mon.pet) return { ch: mon.data?.mlet?.[0] || 'd', color: mon.data?.name === 'pony' ? CLR_BROWN : CLR_WHITE, dec: false };
     if (mon.data?.name === 'guard') return { ch: '@', color: CLR_BLUE, dec: false };
     const color = mon.data?.color ?? MONSTER_COLORS[mon.data?.name] ?? CLR_WHITE;
-    if (mon.data?.glyph) return { ch: mon.data.glyph, color, dec: false };
+    if (mon.data?.glyph || mon.data?.sym) return { ch: mon.data.glyph || mon.data.sym, color, dec: false };
     if (mon.data?.mlet === 'fungus') return { ch: 'F', color, dec: false };
     if (mon.data?.mlet === 'lizard') return { ch: ':', color, dec: false };
     if (mon.data?.mlet === 'zombie') return { ch: 'Z', color, dec: false };
@@ -878,10 +880,13 @@ export function newsym(x, y) {
     const infraredHidden = INFRARED_HIDDEN_MLETS.has(mon?.data?.mlet || mon?.mlet);
     const seesInfrared = mon && canSee && !monsterVisible && !game.u?.blind && hasInfravision
         && !infraredHidden && !mon.data?.mindless && !mon.data?.nonliving && !mon.data?.name?.endsWith(' golem');
-    const seesTelepathically = sensesTelepathically(rawMon);
+    const seesTelepathically = rawMon && heroSensingAllowsMonster(rawMon) && sensesTelepathically(rawMon);
+    const sensesSpecies = heroWarnsOfMonsterType(rawMon);
+    const detectsMonster = heroDetectsMonster(rawMon);
+    const sensesMonster = seesTelepathically || sensesSpecies || detectsMonster;
     const warningOnlyMonster = warningMon && !mon && !game.u?.blind;
     if ((!visible || warningMon?.mundetected || warningOnlyMonster)
-        && warning && !seesInfrared && !seesTelepathically) {
+        && warning && !seesInfrared && !sensesMonster) {
         if (hallucinatesDisplay()) warning = def_warnsyms[rn2_on_display_rng(def_warnsyms.length - 1) + 1];
         show_glyph_cell(x, y, warning.ch, warning.color, false);
         return;
@@ -897,7 +902,7 @@ export function newsym(x, y) {
             return;
         }
     }
-    if (!remembered && !seesInfrared && !seesTelepathically) {
+    if (!remembered && !seesInfrared && !sensesMonster) {
         show_glyph_cell(x, y, ' ', NO_COLOR, false);
         return;
     }
@@ -924,29 +929,23 @@ export function newsym(x, y) {
             const glyph = objectGlyph(obj);
             visibleObjectGlyph = glyph;
             loc.remembered_glyph = { ch: glyph.ch, color: glyph.color, dec: glyph.dec, statueGlyph: !!glyph.statueGlyph };
-        } else {
-            // C ref: display.c _map_location — seeing an object-disguised
-            // monster (mimic) leaves an object memory, just like seeing a
-            // real object; it is what gets shown once the spot is out of
-            // sight again.
-            const disguise = monsterVisible && mon?.appearGlyph ? monsterGlyph(mon) : null;
-            loc.remembered_glyph = disguise
-                ? { ch: disguise.ch, color: disguise.color, dec: disguise.dec, statueGlyph: !!disguise.statueGlyph }
-                : null;
+        } else loc.remembered_glyph = null;
+        // display_monster(PHYSICALLY_SEEN) records a mimic's disguise even
+        // when sensing reveals its identity. Detection alone does not do so;
+        // outside sight, only an already observed disguise is remembered.
+        if (rawMon && (monsterVisible && mon || seesTelepathically || sensesSpecies)
+            && (rawMon.appearGlyph || rawMon.appearObj != null)) {
+            const disguise = monsterGlyph(rawMon);
+            loc.remembered_glyph = { ch: disguise.ch, color: disguise.color,
+                dec: disguise.dec, statueGlyph: !!disguise.statueGlyph };
         }
     }
-    const displayedMon = seesTelepathically ? rawMon : mon;
-    if (displayedMon && (!game.u?.blind || seesTelepathically) && (monsterVisible || seesInfrared || seesTelepathically)) {
+    const displayedMon = sensesMonster ? rawMon : mon;
+    if (displayedMon && (!game.u?.blind || sensesMonster) && (monsterVisible || seesInfrared || sensesMonster)) {
         if (monsterVisible || seesInfrared) recordVisibleMonsterInventoryDiscovery(displayedMon);
-        const glyph = monsterGlyph(displayedMon);
+        const glyph = monsterGlyph(displayedMon, sensesMonster || heroProtectionFromShapeChangers(game));
         show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.dec,
             game._hilite_pet && displayedMon.pet ? 1 : 0, glyph);
-        return;
-    }
-    if (mon?.appearGlyph && remembered
-        && Math.max(Math.abs(x - (game.u?.ux ?? 0)), Math.abs(y - (game.u?.uy ?? 0))) <= 2) {
-        const glyph = monsterGlyph(mon);
-        show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.dec, 0, glyph);
         return;
     }
     if (loc.map_invisible) {
@@ -977,7 +976,7 @@ export function newsym(x, y) {
 
     const region = visible ? visibleRegionAt(x, y) : null;
     if (region?.type === 'gas_cloud') {
-        show_glyph_cell(x, y, '#', region.damage ? CLR_GREEN : CLR_GRAY, false);
+        show_glyph_cell(x, y, '#', region.damage ? CLR_BRIGHT_GREEN : CLR_GRAY, false);
         return;
     }
 
@@ -1423,7 +1422,7 @@ function drawGrid() {
             } else if (game._command_mode === 'instrumentTuneText'
                        || game._command_mode === 'wizardWish'
                        || game._command_mode === 'wizGenesisMonster'
-                       || game._command_mode === 'polyselfMonster'
+                       || (game._command_mode === 'polyselfMonster' || game._command_mode === 'zapPolyselfMonster')
                        || game._command_mode === 'engraveText'
                        || game._command_mode === 'annotateText'
                        || game._command_mode === 'callPotionText'
@@ -1438,7 +1437,7 @@ function drawGrid() {
                     const entry = game._command_mode === 'instrumentTuneText' ? game._instrument_tune_text
                         : game._command_mode === 'wizardWish' ? game._wish_text
                         : game._command_mode === 'wizGenesisMonster' ? game._wizgenesis_text
-                        : game._command_mode === 'polyselfMonster' ? game._polyself_text
+                        : (game._command_mode === 'polyselfMonster' || game._command_mode === 'zapPolyselfMonster') ? game._polyself_text
                         : game._command_mode === 'engraveText' ? game._engrave_text
                         : game._command_mode === 'annotateText' ? game._annotate_text
                         : game._command_mode === 'callPotionText' ? game._call_potion_text
@@ -1530,7 +1529,7 @@ function drawGrid() {
         } else if (game._command_mode === 'instrumentTuneText'
                    || game._command_mode === 'wizardWish'
                    || game._command_mode === 'wizGenesisMonster'
-                   || game._command_mode === 'polyselfMonster'
+                   || (game._command_mode === 'polyselfMonster' || game._command_mode === 'zapPolyselfMonster')
                    || game._command_mode === 'engraveText'
                    || game._command_mode === 'annotateText'
                    || game._command_mode === 'callPotionText'
@@ -1547,7 +1546,7 @@ function drawGrid() {
                 const entry = game._command_mode === 'instrumentTuneText' ? game._instrument_tune_text
                     : game._command_mode === 'wizardWish' ? game._wish_text
                     : game._command_mode === 'wizGenesisMonster' ? game._wizgenesis_text
-                    : game._command_mode === 'polyselfMonster' ? game._polyself_text
+                    : (game._command_mode === 'polyselfMonster' || game._command_mode === 'zapPolyselfMonster') ? game._polyself_text
                     : game._command_mode === 'engraveText' ? game._engrave_text
                     : game._command_mode === 'annotateText' ? game._annotate_text
                     : game._command_mode === 'callPotionText' ? game._call_potion_text
@@ -1614,6 +1613,7 @@ export async function bot() {}
 
 export async function pline(msg) {
     const text = String(msg || '');
+    game._tty_seen_topline = null;
     game._last_pline_message = text;
     game._pending_message = text;
     game._message_more = 0;

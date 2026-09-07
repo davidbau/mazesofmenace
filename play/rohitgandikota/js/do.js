@@ -1,4 +1,5 @@
 import { allow_all } from './pickup.js';
+import { TOOKPLUNGE } from './const.js';
 import { PICK_ANY, In_endgame, ESCAPED } from './const.js';
 import { USE_INVLET, MENU_TRADITIONAL, MENU_COMBINATION, ALL_FINISHED, INCLUDE_VENOM, SELL_DELIBERATE, SELL_NORMAL } from './const.js';
 import { INVORDER_SORT } from './const.js';
@@ -51,6 +52,7 @@ import { obfree, stackobj, useupf } from './invent.js';
 // the first draw the new level makes; the missing piece is everything above it.
 
 import { game } from './gstate.js';
+import { forget_temple_entry } from './priest.js';
 import { paranoid_ynq, reset_occupations, set_move_cmd } from './cmd.js';
 import { welded } from './wield.js';
 import { ONAMES } from './objects_data.js';
@@ -59,7 +61,7 @@ import { freeinv, getobj, any_obj_ok, obj_extract_self, useup }
     from './invent.js';
 import { place_object, rider_revival_time, set_bknown, set_corpsenm,
          splitobj, zombie_form, obj_nexto_xy } from './mkobj.js';
-import { canseemon, cls, docrt, pline, newsym } from './display.js';
+import { canseemon, cls, docrt, pline, newsym, reglyph_darkroom } from './display.js';
 import { Norep, pline_The, There, You, You_cant, You_feel, You_hear, Your }
     from './pline.js';
 import { near_capacity } from './attrib.js';
@@ -860,9 +862,9 @@ export async function dodown() {
        in C; none is reachable without those subsystems */
     if (!stairs_down && !ladder_down) {
         const trap = t_at(game.u.ux, game.u.uy);
-        if (trap && is_pit(trap.ttyp) && trap.tseen) {
-            /* C: uteetering_at_seen_pit/uescaped_shaft -> dotrap(TOOKPLUNGE) */
-            note_unported_do('dodown:pit_plunge');
+        if (trap && (uteetering_at_seen_pit(trap) || uescaped_shaft(trap))) {
+            const { dotrap } = await import('./trap.js');
+            await dotrap(trap, TOOKPLUNGE);
             return ECMD_TIME;
         } else if (!trap || !is_hole(trap.ttyp) || !trap.tseen) {
             if (game.flags.autodig && !game.context?.nopick
@@ -1101,6 +1103,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             game.level._saved_timers = save_timers(RANGE_LEVEL, true);
             game.level._saved_lights = save_light_sources(RANGE_LEVEL, true);
         }
+        /* src/save.c:893 savemonchn(): a priest forgets its temple entry
+           timers when its level is saved */
+        for (const mtmp of game.level.monsters || [])
+            if (mtmp.ispriest)
+                forget_temple_entry(mtmp);
         (game.saved_levels ||= new Map())
             .set(`${game.u.uz.dnum}:${game.u.uz.dlevel}`, game.level);
         (game.visited_ledgers ||= new Set())
@@ -1234,6 +1241,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         await mklev_fn();
     }
 
+    reglyph_darkroom(); /* src/do.c:1715 */
     /* src/do.c:1716-1720 — do this prior to level-change pline messages:
        clear the old level's line-of-sight and POSTPONE all map flushes.
        Every pline between here and the closing flush_screen(-1) paints its

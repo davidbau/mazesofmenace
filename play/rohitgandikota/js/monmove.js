@@ -1234,6 +1234,79 @@ async function mind_blast(mtmp) {
     }
 }
 
+// src/monmove.c:380 find_pmmonst() — first live monster of the given type
+function find_pmmonst(pm) {
+    for (const mtmp of game.level?.monsters || []) {
+        if (DEADMONSTER(mtmp))
+            continue;
+        if (mtmp.mnum === pm)
+            return mtmp;
+    }
+    return null;
+}
+
+/* include/obj.h is_organic() */
+const is_organic = (o) => game.objects[o.otyp].oc_material <= MATERIALS.WOOD;
+
+// src/monmove.c:394 bee_eat_jelly() — killer bee 'mon' is on a spot
+// containing lump of royal jelly 'obj' and will eat it if there is no queen
+// bee on the level; return 1: mon died, 0: mon ate jelly and lived, -1: mon
+// didn't eat jelly to use its move
+async function bee_eat_jelly(mon, obj) {
+    const { splitobj } = await import('./mkobj.js');
+    const { delobj } = await import('./mon.js');
+    const { grow_up } = await import('./makemon.js');
+    const { an, xname } = await import('./objnam.js');
+    const mtmp = find_pmmonst(PMNAMES.PM_QUEEN_BEE);
+
+    /* if there's no queen on the level, eat the royal jelly and become one */
+    if (!mtmp) {
+        const m_delay = obj.blessed ? 3 : !obj.cursed ? 5 : 7;
+        if (obj.quan > 1)
+            obj = splitobj(obj, 1);
+        if (canseemon(mon))
+            await pline_mon(mon, `${Monnam(mon)} eats ${an(xname(obj))}.`);
+        delobj(obj);
+
+        if (mon.m_lev < game.mons[PMNAMES.PM_QUEEN_BEE].mlevel - 1)
+            mon.m_lev = game.mons[PMNAMES.PM_QUEEN_BEE].mlevel - 1;
+        /* there should be delay after eating, but that's too much
+           hassle; transform immediately, then have a short delay */
+        await grow_up(mon, null);
+
+        if (DEADMONSTER(mon))
+            return 1; /* dead; apparently queen bees have been genocided */
+        mon.mfrozen = m_delay, mon.mcanmove = 0;
+        return 0; /* bee used its move */
+    }
+    return -1; /* a queen is already present; ordinary bee hasn't moved yet */
+}
+
+// src/monmove.c:430 gelcube_digests() — gelatinous cube eats something
+// from its inventory
+async function gelcube_digests(mtmp) {
+    if (mtmp.meating || !(mtmp.minvent || []).length)
+        return -1;
+    let otmp = null;
+    for (const o of mtmp.minvent) {
+        if (is_organic(o) && !o.oartifact
+            && !is_mines_prize(o) && !is_soko_prize(o)) {
+            otmp = o;
+            break;
+        }
+    }
+    if (!otmp)
+        return -1;
+
+    const { eaten_stat } = await import('./invent.js');
+    const { extract_from_minvent } = await import('./worn.js');
+    const { m_consume_obj } = await import('./mon.js');
+    mtmp.meating = eaten_stat(mtmp.meating, otmp);
+    await extract_from_minvent(mtmp, otmp, true, true);
+    await m_consume_obj(mtmp, otmp);
+    return 0; /* used a move */
+}
+
 // src/monmove.c:700 dochug() — one monster's turn.
 export async function dochug(mtmp) {
     /* src/monmove.c:711 — a waiting monster stops waiting once it can see
@@ -1364,6 +1437,20 @@ export async function dochug(mtmp) {
             if (await mon_wield_item(mtmp) !== 0)
                 return 0;
         }
+    }
+
+    /* src/monmove.c:866 — a killer bee may eat honey in order to turn into
+       a queen bee, costing it a move */
+    if (mdat.pmidx === PMNAMES.PM_KILLER_BEE) {
+        const otmp = sobj_at(ONAMES.LUMP_OF_ROYAL_JELLY, mtmp.mx, mtmp.my);
+        let res;
+        if (otmp && (res = await bee_eat_jelly(mtmp, otmp)) >= 0)
+            return res;
+    }
+    if (mdat.pmidx === PMNAMES.PM_GELATINOUS_CUBE) {
+        const res = await gelcube_digests(mtmp);
+        if (res >= 0)
+            return res;
     }
 
     /* src/monmove.c:882 — a monster only gets to move if it passes this. Each

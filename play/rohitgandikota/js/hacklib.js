@@ -196,6 +196,39 @@ export function strsubst(bp, orig, replacement) {
     return bp;
 }
 
+// src/hacklib.c:557 strNsubst() — replace the Nth occurrence of orig (0 =
+// all) in inoutbuf; with an empty orig, insert in front of the Nth char.
+// C edits the buffer in place and returns the substitution count; this port
+// returns the edited string.
+export function strNsubst(inoutbuf, orig, replacement, n) {
+    const len = orig.length;
+    let ocount = 0, /* number of times 'orig' has been matched */
+        rcount = 0; /* number of substitutions made */
+    let out = '', bp = 0;
+
+    while (bp < inoutbuf.length) {
+        if ((!len || inoutbuf.startsWith(orig, bp))
+            && (++ocount === n || n === 0)) {
+            /* Nth match found */
+            out += replacement;
+            ++rcount;
+            if (len) {
+                bp += len; /* skip 'orig' */
+                continue;
+            }
+        }
+        /* no match (or len==0) so retain current character */
+        out += inoutbuf[bp++];
+    }
+    if (!len && n === ocount + 1) {
+        /* special case: orig=="" (!len) and n==strlen(inoutbuf)+1,
+           insert in front of terminator (in other words, append) */
+        out += replacement;
+        ++rcount;
+    }
+    return rcount ? out : inoutbuf;
+}
+
 // src/hacklib.c ordin() — ordinal suffix; n should be non-negative.
 export function ordin(n) {
     const dd = n % 10;

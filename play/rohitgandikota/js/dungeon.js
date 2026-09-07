@@ -1129,6 +1129,11 @@ export function Is_bigroom(lev) {
               && lev.dlevel === game.bigroom_level.dlevel);
 }
 
+// include/dungeon.h:132 Is_qstart() — Lcheck against qstart_level
+export function Is_qstart(x) {
+    return Lcheck(x, game.qstart_level);
+}
+
 // include/dungeon.h Is_medusa_level() — Lcheck against medusa_level
 export function Is_medusa_level(lev) {
     return !!(game.medusa_level && lev.dnum === game.medusa_level.dnum

@@ -5,7 +5,8 @@ import { A_STR, COLNO, ROWNO, MFAST, MSLOW } from './const.js';
 import { cansee } from './vision.js';
 import { newsym } from './display.js';
 import { pmOf, resistsFire, resistsCold, digests } from './mhitm.js';
-import { AT_ENGL, AT_HUGS, AD_STCK, AD_WRAP } from './permonst.js';
+import { AT_ENGL, AT_HUGS, AD_STCK, AD_WRAP, AD_FIRE, AD_COLD } from './permonst.js';
+import { resumeHeroGolemEffects } from './polyself.js';
 
 export async function explodeSpell(x, y, element, damage, D, { wand = false } = {}) {
     return resumeSpellExplosion({ x, y, element, damage, wand, phase: 'init', output: [] }, D);
@@ -148,17 +149,11 @@ export async function resumeSpellExplosion(state, D) {
             continue;
         }
         if (state.phase === 'heroGolem') {
+            if (!resumeHeroGolemEffects(state.golem ??= {
+                damtype: element === 'fire' ? AD_FIRE : AD_COLD, damage: state.heroDamage,
+            }, D)) return pending();
             state.phase = 'heroInjury';
-            const form = pmOf({ data: u._polyself_form }) || u._polyself_form;
-            if (element === 'fire' && form?.name === 'iron golem' && state.heroDamage && u.mh < u.mhmax) {
-                u.mh = Math.min(u.mhmax, u.mh + state.heroDamage);
-                state.phase = 'heroGolemExercise';
-                state.output.push('Strangely, you feel better than before.');
-            }
             continue;
-        }
-        if (state.phase === 'heroGolemExercise') {
-            D.exerciseAttribute(A_STR, true); state.phase = 'heroInjury'; continue;
         }
         if (state.phase === 'heroInjury') {
             if (!await D.explosionHeroInjury(state, description)) return pending();

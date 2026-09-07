@@ -28,6 +28,7 @@ import {
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level } from './hacklib.js';
 import { NOLIMBS_MONSTERS, RNDMONST_COMMON_MONSTERS } from './monster_data.js';
+import { GOLEM_HP } from './makemon.js';
 import { datFileText } from './dat_files.js';
 import { TRIBUTE_NOVEL_TITLES } from './tribute.js';
 import { clearBuriedOrganicRotTimer, clearCorpseTimeout, freezeObjectInIcebox, objectIceEffect, restoreBuriedBallIfNeeded, scheduleMeltIceTimeout, scheduleCorpseTimeout, startGlobShrinkTimeout, stopGlobShrinkTimeout, startCorpseTimeout } from './ice.js';
@@ -6469,7 +6470,7 @@ export function monster_hp(ptr, hpLevel = ptr.hpLevel ?? adjustedMonsterLevel(pt
     if (process.env.HPDBG && getRngLog().length >= 3600 && getRngLog().length <= 3700)
         console.error(`HPDBG rng=${getRngLog().length} ${ptr.name} mlevel=${ptr.mlevel} ptr.hpLevel=${ptr.hpLevel} hpLevel=${hpLevel} ld=${level_difficulty()} ulev=${game.u?.ulevel}`);
     if ((ptr.mlevel || 0) > 49) return 2 * (ptr.mlevel - 6);
-    if (ptr.name?.endsWith(' golem')) return ptr.hpLevel || 1;
+    if (GOLEM_HP.has(ptr.name)) return GOLEM_HP.get(ptr.name);
     if (ptr.glyph === 'D' && !ptr.name?.startsWith('baby '))
         return In_endgame(game.u?.uz) ? (8 * hpLevel) : (4 * hpLevel + d(hpLevel, 4));
     const hp = hpLevel ? d(hpLevel, 8) : rnd(4);
@@ -14707,19 +14708,28 @@ async function make_air_level() {
 const ELVENKING = { name: 'Elvenking', mlet: '@', glyph: '@', color: CLR_MAGENTA, mlevel: 9, difficulty: 11, mmove: 12, mac: 10, maligntyp: -10, male: true, strong: true, armed: true, sleepResistance: true, seeInvisible: true };
 const CROESUS = { name: 'Croesus', mlet: '@', glyph: '@', color: CLR_MAGENTA, mlevel: 20, difficulty: 22, mmove: 15, mac: 0, maligntyp: 15, male: true, strong: true, nasty: true, armed: true, randomInventory: true, greedy: true, likesGold: true, likesGems: true, seeInvisible: true, alwaysHostile: true };
 
+export async function makemonWithScriptGender(ptr, x, y, mmflags = 0, female = false) {
+    const mon = await makemon(ptr, x, y, mmflags);
+    // sp_lev.c:create_monster assigns the script gender after makemon,
+    // including its random gender roll. Unspecified random monsters use male.
+    if (mon) mon.female = !!female;
+    return mon;
+}
+
 // C ref: sp_lev.c create_monster() for a named monster at a fixed coordinate.
 // find_montype() consumes the gender roll during argument parsing unless the
 // species is single-gender, then sp_amask_to_amask(AM_SPLEV_RANDOM) ->
 // induced_align(80) consumes rn2(3) inside create_monster().
 async function spDesNamedMonsterAt(ptr, x, y, { hostile = false } = {}) {
     if (!ptr) return null;
-    if (!ptr.male && !ptr.female && !ptr.skipFindGender) rn2(2);
+    let female = !!ptr.female;
+    if (!ptr.male && !ptr.female && !ptr.skipFindGender) female = !!rn2(2);
     rn2(3);
     if (monster_at(x, y)) {
         const spot = enextoMonsterSpot(x, y, ptr);
         if (spot) { x = spot.x; y = spot.y; }
     }
-    const mon = await makemon(ptr, x, y, 0);
+    const mon = await makemonWithScriptGender(ptr, x, y, 0, female);
     if (mon && hostile) {
         mon.mpeaceful = 0;
         set_malign(mon);
@@ -14736,7 +14746,7 @@ async function spDesClassMonsterAt(glyph, x, y, { hostile = false } = {}) {
         const spot = enextoMonsterSpot(x, y, ptr || {});
         if (spot) { x = spot.x; y = spot.y; }
     }
-    const mon = ptr ? await makemon(ptr, x, y, 0) : null;
+    const mon = ptr ? await makemonWithScriptGender(ptr, x, y) : null;
     if (mon && hostile) {
         mon.mpeaceful = 0;
         set_malign(mon);
@@ -17103,7 +17113,7 @@ export async function make_bigrm8_level() {
     if (variant === 3) {
         for (const [mx, my] of BIGRM3_MONSTER_COORDS) {
             rn2(3);
-            await makemon(null, xstart + mx, ystart + my, 0);
+            await makemonWithScriptGender(null, xstart + mx, ystart + my);
         }
     } else {
         for (let i = 0; i < 28; i++) {
@@ -17114,7 +17124,7 @@ export async function make_bigrm8_level() {
                 if (spot) loc = { ...loc, x: spot.x, y: spot.y, preX: spot.x, preY: spot.y };
             }
             g._bigrm_preflip_location = loc;
-            await makemon(null, loc.x, loc.y, 0);
+            await makemonWithScriptGender(null, loc.x, loc.y);
             g._bigrm_preflip_location = null;
         }
     }
@@ -22160,12 +22170,12 @@ function minefill_object(kind) {
 
 async function minefill_monster(name) {
     let ptr;
-    let gender = null;
+    let gender = 0;
     if (name.length === 1) {
         rn2(3);
         ptr = mkclassAligned(name);
     } else {
-        gender = name === 'gnome lord' ? null : rn2(2);
+        gender = name === 'gnome lord' ? 0 : rn2(2);
         ptr = monsterByRndName(RANDOM_MONSTER_ALIASES.get(name) || name);
         rn2(3);
     }
@@ -22174,8 +22184,7 @@ async function minefill_monster(name) {
         || (raceAdj === 'gnomish' && ptr?.name?.startsWith('gnome'));
     if (yourRace && rn2(3)) ptr = null;
     const pos = minefill_location();
-    const mon = await makemon(ptr, pos.x, pos.y, 0);
-    if (mon && gender != null) mon.female = !!gender;
+    await makemonWithScriptGender(ptr, pos.x, pos.y, 0, gender);
 }
 
 async function minefill_trap() {
@@ -23828,6 +23837,7 @@ async function themeroom_storeroom(croom) {
 }
 
 export const __mklevTestHooks = {
+    minefill_monster,
     flipSpecialLevelRnd,
     questFillerOperations,
     questMonsterData,

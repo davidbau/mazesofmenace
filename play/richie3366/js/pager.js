@@ -53,7 +53,7 @@ import { is_pool, is_lava, closed_door, waterbody_name } from './hack.js';
 import { altarmask_at } from './pray.js';
 import { align_str } from './roles.js';
 import { is_drawbridge_wall } from './dbridge.js';
-import { PM_WIZARD, PM_GNOME } from './generated/monsters_data.js';
+import { PM_WIZARD, PM_GNOME, PM_HUMAN, PM_ELF } from './generated/monsters_data.js';
 import { visible_region_at } from './region.js';
 import { engr_at } from './engrave.js';
 import { option_help_lines } from './options.js';
@@ -1468,8 +1468,16 @@ function describe_looked(x, y) {
     if (u.ux === x && u.uy === y) {
         // C lookat → self_lookat firstmatch (pmname + Ugender)
         const first = self_lookat();
-        const out = `@        a human or elf (${first})`;
-        return { out, first, found: 1 };
+        // C pager.c:1346–1353 — '@' that refers to you when your race
+        // isn't normally shown as '@': tack on "or you" via
+        // found += append_str(out_str, "you") (pager.c:82–104 returns 1,
+        // so C found goes 1→2); do_look :1941 (found == 1) then skips
+        // checkfile. u_at is this branch; the '@' sym is its existing prefix.
+        const raceMnum = game.urace?.mnum | 0;
+        const orYou = (raceMnum !== PM_HUMAN && raceMnum !== PM_ELF
+            && !Upolyd(u)) ? ' or you' : '';
+        const out = `@        a human or elf${orYou} (${first})`;
+        return { out, first, found: orYou ? 2 : 1 };
     }
     // C lookat `:718–721` — gbuf trap glyph before floor objects.
     // Detected chest: trap glyph, pile still on fobj; C names the trap.

@@ -7,7 +7,7 @@ import { mklev, l_nhcore_init, u_on_upstairs, fumaroles, movebubbles } from './m
 import { dobjsfree } from './mkobj.js';
 import { rhack, continue_run, run_active, continue_search, search_repeat_active, dolookaround, end_of_input } from './cmd.js';
 import {
-    docrt, cls, bot, flush_screen, pline, flush_topl_more, see_monsters,
+    docrt, cls, bot, flush_screen, pline, Norep, flush_topl_more, see_monsters,
     see_objects, see_traps, swallowed, Hallucination, Warn_of_mon,
     clear_glyph_buffer,
 } from './display.js';
@@ -35,7 +35,7 @@ import {
 import { dosearch0, warnreveal } from './detect.js';
 import { nhgetch } from './input.js';
 import {
-    unmul, monster_nearby, stop_occupation, overexert_hp, is_pool,
+    unmul, nomul, monster_nearby, stop_occupation, overexert_hp, is_pool,
     notice_mon_off, notice_mon_on, notice_all_mons,
 } from './hack.js';
 import { reset_justpicked } from './pickup.js';
@@ -390,22 +390,24 @@ function u_can_regen() {
 }
 
 /**
- * C ref: allmain.c interrupt_multi() — stop voluntary multi-turn activity.
- * Norep message deferred; only clears multi when not travel/run.
+ * C ref: allmain.c:975–983 interrupt_multi(msg) — stop voluntary multi-turn
+ * activity via nomul(0), then verbose-gated Norep(msg).
  */
-function interrupt_multi(_msg) {
+async function interrupt_multi(msg) {
     const ctx = game.context || {};
     if ((game.multi || 0) > 0 && !ctx.travel && !ctx.run) {
-        game.multi = 0;
+        nomul(0);
+        // C: if (flags.verbose && msg) Norep("%s", msg) — verbose defaults on.
+        if (msg && (game.flags?.verbose !== false)) await Norep(msg);
     }
 }
 
 /**
- * C ref: allmain.c regen_hp(wtcap) — maybe recover HP once/turn;
+ * C ref: allmain.c:624–679 regen_hp(wtcap) — maybe recover HP once/turn;
  * Upolyd eel out of water may lose hp (rn2(mh) > rn2(8)).
  * Named omit: rehumanize on mh<1 (polyself path deferred at this locus).
  */
-function regen_hp(wtcap) {
+async function regen_hp(wtcap) {
     const u = game.u || (game.u = {});
     let heal = 0;
     let reached_full = false;
@@ -457,13 +459,13 @@ function regen_hp(wtcap) {
         }
     }
 
-    if (reached_full) interrupt_multi('You are in full health.');
+    if (reached_full) await interrupt_multi('You are in full health.');
 }
 
 /**
  * C ref: allmain.c regen_pw(wtcap) — maybe recover Pw once/turn.
  */
-function regen_pw(wtcap) {
+async function regen_pw(wtcap) {
     const u = game.u || (game.u = {});
     if ((u.uen | 0) >= (u.uenmax | 0)) return;
 
@@ -497,7 +499,7 @@ function regen_pw(wtcap) {
     if (!game.flags) game.flags = {};
     game.flags.botl = true;
     if (u.uen === (u.uenmax | 0)) {
-        interrupt_multi('You feel full of energy.');
+        await interrupt_multi('You feel full of energy.');
     }
 }
 
@@ -1022,7 +1024,7 @@ export async function moveloop_core() {
                         : ((g.u.mh || 0) < (g.u.mhmax || 0)
                             || game.youmonst?.data?.mlet === 'S_EEL')
                 ) {
-                    regen_hp(mvl_wtcap);
+                    await regen_hp(mvl_wtcap);
                 }
                 // C: moving around while encumbered is hard work
                 if (mvl_wtcap > MOD_ENCUMBER && g.u.umoved) {
@@ -1035,7 +1037,7 @@ export async function moveloop_core() {
                     }
                 }
                 // C: regen_pw(mvl_wtcap) always; gates + rn1 inside
-                regen_pw(mvl_wtcap);
+                await regen_pw(mvl_wtcap);
                 // C: !uinvulnerable Teleportation / Polymorph / ulycn arms
                 await maybe_tele_poly_were();
                 // C: Searching && !noautosearch && multi >= 0 → dosearch0(1)

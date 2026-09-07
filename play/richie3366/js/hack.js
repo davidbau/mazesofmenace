@@ -2519,10 +2519,11 @@ export function carrying(otyp) {
 }
 
 /**
- * C stairs.c On_stairs — stairway_at != NULL. Walk game.stairs
+ * C stairs.c On_stairs — stairway_at != NULL (`:148`). Walk game.stairs
  * (mklev.js stairway_at) so hack.js does not import mklev.
+ * Exported for sit.js dungeon.c surface() stairs arm (D-2008).
  */
-function On_stairs(x, y) {
+export function On_stairs(x, y) {
     const sx = x | 0;
     const sy = y | 0;
     for (let s = game.stairs; s; s = s.next) {

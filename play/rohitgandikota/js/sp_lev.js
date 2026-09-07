@@ -2810,16 +2810,25 @@ export function flip_level(flp, extras) {
         if (flp & 2) o.ox = FlipX(o.ox);
     }
 
-    /* monsters. Re-key the positional grid: m_at()/MON_AT reads
-       level.monAt, and a stale key makes makemon() see the flipped
-       square as free (fill_zoo then creates a monster on top). */
+    /* monsters. C flips level.monsters[][] as a grid together with the
+       terrain cells (sp_lev.c:835), so only a monster that is on the grid
+       moves on it: a detached monster (a statue's mongone() template, kept
+       on fmon until dmonsfree()) has its stale mx,my flipped like every
+       other fmon entry but stays off the grid. level.monAt is that grid
+       here, so take the on-grid monsters off first, flip everyone, then
+       re-key only those. */
+    const on_grid = [];
     for (const m of (game.level?.monsters || [])) {
         if (!inFlipArea(m.mx, m.my)) continue;
-        if (game.level.monAt?.get(`${m.mx},${m.my}`) === m)
+        if (game.level.monAt?.get(`${m.mx},${m.my}`) === m) {
             game.level.monAt.delete(`${m.mx},${m.my}`);
+            on_grid.push(m);
+        }
+    }
+    for (const m of (game.level?.monsters || [])) {
+        if (!inFlipArea(m.mx, m.my)) continue;
         if (flp & 1) m.my = FlipY(m.my);
         if (flp & 2) m.mx = FlipX(m.mx);
-        (game.level.monAt ||= new Map()).set(`${m.mx},${m.my}`, m);
 
         /* mgoal is not modelled. */
         if (m.ispriest) {
@@ -2836,6 +2845,8 @@ export function flip_level(flp, extras) {
                 flip_worm_segs_horizontal(m, minx, maxx);
         }
     }
+    for (const m of on_grid)
+        (game.level.monAt ||= new Map()).set(`${m.mx},${m.my}`, m);
 
     /* engravings */
     for (const e of (game.level?.lev_engr || [])) {

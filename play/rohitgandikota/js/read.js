@@ -2774,7 +2774,7 @@ async function create_particular_creation(d) {
         if (mtmp.cham !== NON_PM && firstchoice !== NON_PM
             && mtmp.cham !== firstchoice) {
             const { newcham } = await import('./mon.js');
-            newcham(mtmp, game.mons[firstchoice], 0);
+            await newcham(mtmp, game.mons[firstchoice], 0);
         }
     }
     return madeany;

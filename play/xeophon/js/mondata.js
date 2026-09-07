@@ -3,6 +3,13 @@
 import { game } from './gstate.js';
 import * as pm from './permonst.js';
 
+// mondata.c:set_mon_data prorates unused movement only when the new form is
+// slower. The multiplication is stored in C's signed short before division.
+export function movementAfterFormChange(movement, oldSpeed, newSpeed) {
+    return movement && newSpeed < oldSpeed
+        ? (((movement * newSpeed << 16) >> 16) / oldSpeed) | 0 : movement;
+}
+
 const MONSTER_BY_NAME = new Map(pm.MONS.flatMap(mon =>
     [mon.name, ...(mon.names || [])].map(name => [name.toLowerCase(), mon])));
 const PARTS = ['arm', 'eye', 'face', 'finger', 'fingertip', 'foot', 'hand', 'handed',

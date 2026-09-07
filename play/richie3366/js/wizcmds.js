@@ -2,14 +2,14 @@
 // C ref: wizcmds.c
 
 import { game } from './gstate.js';
-import { pline, docrt, impossible, flush_topl_more } from './display.js';
+import { pline, docrt, impossible, flush_topl_more, Warn_of_mon } from './display.js';
 import { getlin } from './getline.js';
 import { pluslvl, losexp } from './exper.js';
 import { makewish } from './zap.js';
 import { create_particular } from './read.js';
 import { level_tele } from './teleport.js';
 import {
-    ECMD_OK, MAXULEV, TIMEOUT,
+    ECMD_OK, MAXULEV, TIMEOUT, KILLED_BY, SICK_VOMITABLE, SICK_NONVOMITABLE,
     INVULNERABLE, STONED, SLIMED, STRANGLED, SICK, STUNNED, CONFUSION,
     HALLUC, HALLUC_RES, BLINDED, DEAF, VOMITING, GLIB, WOUNDED_LEGS,
     SLEEPY, TELEPORT, POLYMORPH, LEVITATION, FAST, CLAIRVOYANT,
@@ -26,8 +26,13 @@ import {
 } from './const.js';
 import { ATR_INVERSE } from './terminal.js';
 import { make_blinded } from './do.js';
-import { m_at } from './mon.js';
+import { m_at, rescham } from './mon.js';
 import { check_invent_gold } from './invent.js';
+import { rn2 } from './rng.js';
+import { float_vs_flight } from './polyself.js';
+import { pooleffects } from './pickup.js';
+import { mons } from './monsters.js';
+import { PM_GRID_BUG } from './generated/monsters_data.js';
 
 /** C timeout.c propertynames[] — wizard #wizintrinsic menu order. */
 const PROPERTYNAMES = [
@@ -149,17 +154,26 @@ function incr_prop_timeout(p, amt) {
 }
 
 /**
- * C ref: wizcmds.c wiz_intrinsic — #wizintrinsic
- * Envelope: propertynames menu + HALLUC → make_hallucinated;
- * DEAF → make_deaf(newtimeout, TRUE) (D-1817; C wizcmds.c:1029);
- * BLINDED → make_blinded(newtimeout, TRUE) — not incr_prop_timeout
- * (D-0928 #1171; HBlinded from raven/cream must not be overwritten via
- * stale uprops[BLINDED]).
- * Named omissions: sick/stoned/stunned/vomiting/glib
- * special arms (SLIMED arm ported D-1995); count-prefix menu digits;
- * float_vs_flight / rescham /
- * pooleffects; WARN_OF_MON species; SICK rn2 vomit-type; unavailcmd
- * ecname wording; make_blinded Blindfolded/Eyes talk variants.
+ * C ref: wizcmds.c wiz_intrinsic `:948–1096` — #wizintrinsic
+ * Envelope: propertynames menu + per-prop switch in C order —
+ * HALLUC → make_hallucinated; DEAF → make_deaf(newtimeout, TRUE)
+ * (D-1817; C `:1029`); BLINDED → make_blinded(newtimeout, TRUE) — not
+ * incr_prop_timeout (D-0928 #1171; HBlinded from raven/cream must not
+ * be overwritten via stale uprops[BLINDED]); SICK → rn2(2) vomit-type
+ * + make_sick(newtimeout, "#wizintrinsic", TRUE, typ) (C `:1036–1038`);
+ * SLIMED → make_slimed(newtimeout, buf) (D-1995); STONED →
+ * make_stoned(newtimeout, buf, KILLED_BY, "#wizintrinsic") (C
+ * `:1044–1047`); STUNNED → make_stunned(newtimeout, TRUE) (C
+ * `:1049–1051`); VOMITING → make_vomiting(newtimeout, FALSE) +
+ * pline(buf) (C `:1053–1057`); WARN_OF_MON → grid-bug default species
+ * then def_feedback (C `:1059–1066`); GLIB → make_glib + Timeout pline
+ * with no incr (C `:1067–1072` FALLTHROUGH); default (incl. CONFUSION —
+ * its make_confused case is `#if 0`'d out, C `:1023–1028`) →
+ * incr + `Timeout for %s …` pline; post-arm float_vs_flight /
+ * rescham / pooleffects tail (C `:1080–1087`).
+ * Named omissions: count-prefix menu digits; unavailcmd ecname wording;
+ * make_blinded Blindfolded/Eyes talk variants; make_sick KILLED_BY vs
+ * KILLED_BY_AN `#wizintrinsic` cause polish (potion.js always AN).
  */
 export async function wiz_intrinsic() {
     if (!(game.flags?.debug || game.flags?.wizard)) {
@@ -168,7 +182,8 @@ export async function wiz_intrinsic() {
     }
     const { select_menu_pick_any } = await import('./options.js');
     const {
-        make_hallucinated, make_confused, make_deaf, make_slimed,
+        make_hallucinated, make_deaf, make_slimed,
+        make_sick, make_stoned, make_stunned, make_vomiting, make_glib,
     } = await import('./potion.js');
 
     const raw = [
@@ -206,10 +221,9 @@ export async function wiz_intrinsic() {
             && oldtimeout > 0 && newtimeout > oldtimeout) {
             newtimeout = oldtimeout;
         }
+        // C wizcmds.c:1017–1078 switch in C order.
         if (p === HALLUC) {
             await make_hallucinated(newtimeout, true, 0);
-        } else if (p === CONFUSION) {
-            await make_confused(newtimeout, true);
         } else if (p === DEAF) {
             // C wizcmds.c:1029 — make_deaf(newtimeout, TRUE).
             await make_deaf(newtimeout, true);
@@ -219,11 +233,14 @@ export async function wiz_intrinsic() {
             // (cream pie / AD_BLND set HBlinded only). Already Blind +
             // increasing → silent (no generic Timeout pline).
             await make_blinded(newtimeout, true);
+        } else if (p === SICK) {
+            // C wizcmds.c:1036-1038 — vomit-type roll before make_sick.
+            const typ = !rn2(2) ? SICK_VOMITABLE : SICK_NONVOMITABLE;
+            await make_sick(newtimeout, '#wizintrinsic', true, typ);
         } else if (p === SLIMED) {
             // C wizcmds.c:953,1040-1043 — fmt "You are%s %s." via
             // make_slimed (sets botl, plines on 0↔nonzero change); no
-            // generic "Timeout for …" line. SICK/STONED arms still deferred
-            // (see the wiz_intrinsic Open row).
+            // generic "Timeout for …" line.
             const uu = game.u || {};
             const slimedNow = !!((uu.Slimed | 0)
                 || (uu.uprops?.[SLIMED]?.intrinsic | 0));
@@ -231,12 +248,73 @@ export async function wiz_intrinsic() {
                 newtimeout,
                 `You are${slimedNow ? ' still' : ''} turning into slime.`,
             );
-        } else {
+        } else if (p === STONED) {
+            // C wizcmds.c:1044-1047 — fmt "You are%s %s." via make_stoned.
+            const uu = game.u || {};
+            const stonedNow = !!((uu.Stoned | 0)
+                || (uu.uprops?.[STONED]?.intrinsic | 0));
+            await make_stoned(
+                newtimeout,
+                `You are${stonedNow ? ' still' : ''} turning into stone.`,
+                KILLED_BY,
+                '#wizintrinsic',
+            );
+        } else if (p === STUNNED) {
+            // C wizcmds.c:1049-1051 — make_stunned(newtimeout, TRUE).
+            await make_stunned(newtimeout, true);
+        } else if (p === VOMITING) {
+            // C wizcmds.c:1053-1057 — fmt "You are%s %s."; make_vomiting
+            // with talk=FALSE is silent, then pline(buf).
+            const uu = game.u || {};
+            const vomitingNow = !!((uu.Vomiting | 0)
+                || (uu.uprops?.[VOMITING]?.intrinsic | 0));
+            await make_vomiting(newtimeout, false);
+            await pline(`You are${vomitingNow ? ' still' : ''} vomiting.`);
+        } else if (p === WARN_OF_MON) {
+            // C wizcmds.c:1059-1066 — default warn species is grid bug
+            // when not already warned, then def_feedback.
+            if (!Warn_of_mon()) {
+                const ctx = game.context || (game.context = {});
+                const wt = ctx.warntype
+                    || (ctx.warntype = {
+                        obj: 0, polyd: 0, species: null, speciesidx: 0,
+                    });
+                wt.speciesidx = PM_GRID_BUG;
+                wt.species = mons(PM_GRID_BUG);
+            }
             incr_prop_timeout(p, amt);
             if (game.flags) game.flags.botl = true;
             await pline(
                 `Timeout for ${propname} ${oldtimeout ? 'increased by' : 'set to'} ${amt}.`,
             );
+        } else if (p === GLIB) {
+            // C wizcmds.c:1067-1072 — make_glib then FALLTHROUGH: the
+            // Timeout pline fires with no incr_itimeout.
+            make_glib(newtimeout | 0);
+            if (game.flags) game.flags.botl = true;
+            await pline(
+                `Timeout for ${propname} ${oldtimeout ? 'increased by' : 'set to'} ${amt}.`,
+            );
+        } else {
+            // C default (C wizcmds.c:1073-1079 def_feedback) — covers
+            // CONFUSION too: its make_confused case is #if 0'd out
+            // (C wizcmds.c:1023-1028) since make_confused only gives
+            // feedback when confusion ends.
+            incr_prop_timeout(p, amt);
+            if (game.flags) game.flags.botl = true;
+            await pline(
+                `Timeout for ${propname} ${oldtimeout ? 'increased by' : 'set to'} ${amt}.`,
+            );
+        }
+        // C wizcmds.c:1080-1087 — post-arm position/shape/water effects.
+        // This has to be after incr_itimeout().
+        if (p === LEVITATION || p === FLYING) {
+            float_vs_flight();
+        } else if (p === PROT_FROM_SHAPE_CHANGERS) {
+            await rescham();
+        }
+        if (p === WWALKING || p === LEVITATION || p === FLYING) {
+            if ((game.u?.uinwater | 0)) await pooleffects(false);
         }
     }
     await docrt();

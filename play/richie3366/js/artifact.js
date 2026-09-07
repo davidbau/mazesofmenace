@@ -10,7 +10,7 @@ import {
 } from './generated/artifacts_data.js';
 import { objectNames, NUM_OBJECTS, objectDescrs, objects } from './objects.js';
 import { obj_shuffle_range } from './o_init.js';
-import { monsterNames, NON_PM, M2_UNDEAD, is_demon, is_dprince, is_dlord, resists_ston } from './monsters.js';
+import { monsterNames, NON_PM, M2_UNDEAD, is_demon, is_dprince, is_dlord, resists_ston, hates_silver } from './monsters.js';
 import { Fire_resistance, Cold_resistance, Shock_resistance, Drain_resistance, resists_fire, resists_cold, resists_elec, resists_poison, resists_drli } from './zap.js';
 import {
     A_NONE,
@@ -83,6 +83,8 @@ import {
     OBJ_MINVENT,
     NO_ROOM,
     LL_ARTIFACT,
+    KILLED_BY,
+    LOW_PM,
 } from './const.js';
 import { rn2, rnd, d, rnz } from './rng.js';
 import { nhgetch } from './input.js';
@@ -91,15 +93,17 @@ import {
     set_sting_effects, glyph_at, glyph_is_trap,
 } from './display.js';
 import { cansee } from './vision.js';
-import { mon_nam } from './do_name.js';
+import { mon_nam, s_suffix } from './do_name.js';
 import { wake_nearto } from './mon.js';
 import { burn_away_slime } from './timeout.js';
 import { compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, getobj } from './invent.js';
-import { xname, the, vtense, cxname, otense, set_undiscovered_artifact, set_find_artifact, simple_typename } from './objnam.js';
+import { xname, the, vtense, cxname, otense, set_undiscovered_artifact, set_find_artifact, simple_typename, Tobjnam } from './objnam.js';
 import { recalc_telepat_range } from './do_wear.js';
 import { t_at } from './trap.js';
 import { livelog_printf } from './pline.js';
 import { inside_shop } from './shk.js';
+import { losehp, maybe_half_phys } from './hack.js';
+import { exercise, A_WIS } from './attrib.js';
 
 const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
 const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
@@ -298,6 +302,27 @@ function artilist() {
 /** C ref: you.h Role_if / Role_switch — urole.mnum. */
 function Role_if(pm) {
     return (game.urole?.mnum | 0) === (pm | 0);
+}
+
+/** C ref: you.h Race_if — urace.mnum (artifact.c touch_artifact badclass). */
+function Race_if(pm) {
+    return (game.urace?.mnum | 0) === (pm | 0);
+}
+
+/* C ref: artifact.c touch_blasted — static, for retouch_object(). */
+let touch_blasted = false;
+
+/** C ref: youprop.h Hate_silver — ulycn or poly form hates_silver. */
+function Hate_silver_hero() {
+    const u = game.u || {};
+    return ((u.ulycn ?? NON_PM) | 0) >= (LOW_PM | 0)
+        || hates_silver(game.youmonst?.data);
+}
+
+/** C ref: youprop.h Antimagic — HAntimagic || EAntimagic (flat + H/E). */
+function Antimagic_hero() {
+    const u = game.u || {};
+    return !!((u.Antimagic | 0) || (u.HAntimagic | 0) || (u.EAntimagic | 0));
 }
 
 function Role_switch() {
@@ -1062,43 +1087,75 @@ export function artifact_exists(otmp, name, mod, flgs) {
 }
 
 /**
- * C ref: artifact.c touch_artifact — hero path subset.
- * Returns 1 if held, 0 if refused. Blast `d()`/`losehp` deferred when
- * the rn2(4) gate fires; gate itself matches C (short-circuit order).
+ * C ref: artifact.c bane_applies `:992–1005` — DBONUS-only copy through
+ * spec_applies (same-file, C order). No RNG on the hero path.
  */
-export function touch_artifact(obj, mon) {
+function bane_applies(oart, mon) {
+    const list = artilist();
+    if (oart !== list[0] && ((oart.spfx | 0) & SPFX_DBONUS) !== 0) {
+        const atmp = { ...oart, spfx: (oart.spfx | 0) & SPFX_DBONUS };
+        if (spec_applies(atmp, mon)) return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: artifact.c touch_artifact `:907–974` — hero blast + refuse arms
+ * in exact C order (touch_blasted reset, NONART gate, yours/self_willed,
+ * badclass/badalign, bane, blast gate, evade/control). Monster
+ * covetous/mplayer role/align arms stay deferred (named below).
+ * Returns 1 if held, 0 if refused.
+ */
+export async function touch_artifact(obj, mon) {
     const oart = get_artifact(obj);
     const list = artilist();
+    touch_blasted = false;
     if (oart === list[0]) return 1;
 
-    const yours = mon === youmonst || mon == null;
+    const hero = game.youmonst;
+    const yours = mon === youmonst || mon === hero || !!mon?._youmonst || mon == null;
     const self_willed = (oart.spfx & SPFX_INTEL) !== 0;
     let badclass = false;
     let badalign = false;
 
     if (yours) {
-        const u = game.u || {};
-        const rolePm = u.umonster ?? u.role_mnum ?? NON_PM;
-        const racePm = u.urace?.mnum ?? NON_PM;
         badclass = self_willed
-            && ((oart.role !== NON_PM && oart.role !== rolePm)
-                || (oart.race !== NON_PM && oart.race !== racePm));
+            && ((oart.role !== NON_PM && !Role_if(oart.role))
+                || (oart.race !== NON_PM && !Race_if(oart.race)));
+        const u = game.u || {};
         const atype = u.ualign?.type;
         const arec = u.ualign?.record ?? 0;
         badalign = ((oart.spfx & SPFX_RESTR) !== 0
             && oart.alignment !== A_NONE
             && (oart.alignment !== atype || arec < 0));
     }
-    // bane_applies deferred → leave badalign as-is for non-bane arts
+    /* C covetous/mplayer role/align arms deferred → monster badclass/
+       badalign stay false; bane below still applies to monsters. */
+    if (!badalign) badalign = bane_applies(oart, mon);
 
     if (((badclass || badalign) && self_willed)
         || (badalign && (!yours || !rn2(4)))) {
+        let dmg;
+        let tmp;
         if (!yours) return 0;
-        // C: You("are blasted…"); d(Antimagic?2:4, self_willed?10:4); losehp;
-        // exercise(A_WIS,FALSE); touch_blasted=TRUE. Deferred when rn2(4)==0.
+        await pline(`You are blasted by ${s_suffix(the(xname(obj)))} power!`);
+        touch_blasted = true;
+        dmg = d(Antimagic_hero() ? 2 : 4, self_willed ? 10 : 4);
+        /* C: add half (maybe quarter) of the usual silver damage bonus */
+        if ((objects()?.[obj.otyp | 0]?.oc_material | 0) === SILVER && Hate_silver_hero()) {
+            tmp = rnd(10);
+            dmg += maybe_half_phys(tmp);
+        }
+        losehp(dmg, `touching ${oart.name}`, KILLED_BY);
+        exercise(A_WIS, false);
     }
 
+    /* C: can pick it up unless totally non-synch'd with the artifact */
     if (badclass && badalign && self_willed) {
+        if (yours) {
+            if (!carried(obj)) await pline(`${Tobjnam(obj, 'evade')} your grasp!`);
+            else await pline(`${Tobjnam(obj, 'are')} beyond your control!`);
+        }
         return 0;
     }
     return 1;
@@ -1106,13 +1163,13 @@ export function touch_artifact(obj, mon) {
 
 /**
  * C ref: artifact.c retouch_object — hero wield/wear touch gate.
- * Silver-hate / bane damage and drop paths deferred. Blast `d()`/`losehp`
- * deferred inside touch_artifact when rn2(4)==0.
+ * touch_artifact blast now live (above); silver-hate / bane damage and
+ * drop paths deferred (named below).
  * @returns {number} 1 ok, 0 refused
  */
-export function retouch_object(obj, _loseit) {
+export async function retouch_object(obj, _loseit) {
     if (!obj) return 1;
-    if (touch_artifact(obj, youmonst)) {
+    if (await touch_artifact(obj, youmonst)) {
         // ag (Hate_silver) / bane_applies damage deferred → allow when clear
         return 1;
     }
@@ -1783,7 +1840,7 @@ export async function arti_invoke(obj) {
 export async function doinvoke() {
     const obj = await getobj('invoke', invoke_ok, GETOBJ_PROMPT);
     if (!obj) return ECMD_CANCEL;
-    if (!retouch_object(obj, false)) return ECMD_TIME;
+    if (!(await retouch_object(obj, false))) return ECMD_TIME;
     return arti_invoke(obj);
 }
 

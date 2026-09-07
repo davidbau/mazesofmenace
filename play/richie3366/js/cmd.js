@@ -13,7 +13,7 @@ import {
     clear_nhwindow_message,
     mon_visible, sensemon, glyph_is_invisible_id, unmap_object, map_object,
     look_shown_at, Norep, tty_doprev_message, putmsghistory,
-    unmap_invisible,
+    unmap_invisible, custompline,
 } from './display.js';
 import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, SCORR, LAVAWALL,
@@ -32,6 +32,7 @@ import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
          M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VIBRATING_SQUARE,
          PARANOID_TRAP,
          LARGEST_INT, GC_NOFLAGS, GC_SAVEHIST, GC_CONDHIST, GC_ECHOFIRST,
+         SUPPRESS_HISTORY,
          In_sokoban,
          } from './const.js';
 import { FOOD_CLASS, objectNames } from './objects.js';
@@ -2139,7 +2140,8 @@ function get_count_inkey_code(inkey) {
 
 /**
  * C cmd.c get_count `:5009–5090`. Digits then a terminator; echo
- * "Count: N" via _pending_message (custompline SUPPRESS_HISTORY named).
+ * "Count: N" via live custompline(SUPPRESS_HISTORY) (full vpline +
+ * prevmsg, minus dumplog).
  * GC_SAVEHIST / GC_CONDHIST put "Count: N "+key2txt in putmsghistory
  * (D-1588). parse uses GC_NOFLAGS; getobj uses GC_SAVEHIST.
  * altmeta input_state / num_pad NHKF_COUNT named.
@@ -2205,7 +2207,10 @@ export async function get_count(
                 qbuf = `Count: ${cnt}`;
                 backspaced = false;
             }
-            game._pending_message = qbuf;
+            // C cmd.c get_count: custompline(SUPPRESS_HISTORY, "%s", qbuf)
+            // then mark_synch — full vpline (update_topl + prevmsg) minus
+            // dumplog, so a later Norep compares against the echo.
+            await custompline(SUPPRESS_HISTORY, qbuf);
             await flush_screen(1);
             game.nhDisplay?.setCursor?.(qbuf.length, 0);
         }

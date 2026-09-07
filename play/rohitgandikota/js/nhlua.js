@@ -159,11 +159,57 @@ function clone_tutorial_u(u) {
                          pointerFields);
 }
 
+// dat/nhlib.lua:181 tutorial_blacklist_commands — extended commands NOT
+// available in tutorial
+const tutorial_blacklist_commands = { save: true };
+
+// dat/nhlib.lua:185 tutorial_cmd_before(cmd)
+function tutorial_cmd_before(cmd) {
+    if (tutorial_blacklist_commands[cmd])
+        return false;
+    return true;
+}
+
+/* the Lua-side callback functions nh.callback() can name */
+const lua_callback_functions = { tutorial_cmd_before };
+
+// src/nhlua.c:1664 nhl_callback() — nh.callback(cbname, fn, remove):
+// register (or remove) a Lua function for one of the nhcb_name hooks
+export function nh_callback(cbname, fn, remove = false) {
+    const list = ((game.nhcb ||= {})[cbname] ||= []);
+    const at = list.indexOf(fn);
+    if (remove) {
+        if (at >= 0)
+            list.splice(at, 1);
+    } else if (at < 0) {
+        list.push(fn);
+    }
+}
+
+// dat/nhlib.lua nh_callback_run(cbname, ...): every registered function
+// runs in order; a false return stops the chain and is the result
+export function nh_callback_run(cbname, ...args) {
+    for (const fn of (game.nhcb?.[cbname] || [])) {
+        const f = lua_callback_functions[fn];
+        if (f && f(...args) === false)
+            return false;
+    }
+    return true;
+}
+
 export async function tutorial(entering) {
-    if (entering)
+    if (entering) {
         nhl_gamestate_save();
-    else
+        /* dat/nhlib.lua:194 tutorial_enter(): add the tutorial branch
+           callbacks */
+        nh_callback('cmd_before', 'tutorial_cmd_before');
+        nh_callback('end_turn', 'tutorial_turn');
+    } else {
         await nhl_gamestate_restore();
+        /* dat/nhlib.lua:206 tutorial_leave(): remove them */
+        nh_callback('cmd_before', 'tutorial_cmd_before', true);
+        nh_callback('end_turn', 'tutorial_turn', true);
+    }
     /* nhlib.lua also registers cmd_before (blacklists #save) and end_turn
        (the low-hunger food-ration event) callbacks; the end_turn event
        only acts when u.uhunger < 148, which is recorded when reached */

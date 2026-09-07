@@ -5,7 +5,8 @@ import { A_WIS, A_CON } from './const.js';
 import { artifactDefinitionForName } from './mklev.js';
 import { pmOf } from './mhitm.js';
 import { M2_ELF, M2_ORC, M2_DEMON, M2_WERE, M2_GIANT, M2_UNDEAD,
-    S_DRAGON, S_OGRE, S_TROLL, S_VAMPIRE, S_IMP, PM_SHADE, PM_TENGU } from './permonst.js';
+    S_DRAGON, S_OGRE, S_TROLL, S_VAMPIRE, S_IMP, PM_SHADE, PM_TENGU,
+    is_covetous, PM_ARCHEOLOGIST, PM_WIZARD } from './permonst.js';
 
 const ARTIFACT_ALIGN_TYPE = { lawful: 1, neutral: 0, chaotic: -1 };
 const ARTIFACT_TOUCH_METADATA = Object.freeze({
@@ -46,6 +47,35 @@ const BANE_FLAGS = { Grimtooth: M2_ELF, Orcrist: M2_ORC, Sting: M2_ORC,
     Demonbane: M2_DEMON, Werebane: M2_WERE, Giantslayer: M2_GIANT,
     Sunsword: M2_UNDEAD, 'The Mitre of Holiness': M2_UNDEAD };
 const BANE_CLASSES = { Dragonbane: S_DRAGON, Ogresmasher: S_OGRE, Trollsbane: S_TROLL };
+
+// artifact.c:908-977: monsters reject incompatible artifacts without the
+// hero's blast roll. Covetous monsters and player monsters ignore role and
+// alignment restrictions, but still cannot touch their own bane.
+export function monsterCanTouchArtifact(item, mon) {
+    const def = artifactDefinitionForName(item?.artifact || item?.oartifact);
+    if (!def) return true;
+    const metadata = ARTIFACT_TOUCH_METADATA[def.name] || {};
+    const species = pmOf(mon) || {};
+    const role = def.questRole || metadata.role;
+    let alignment = ARTIFACT_ALIGN_TYPE[def.alignment] ?? metadata.alignment ?? null;
+    const heroRole = String(game._startup_role || game.urole?.name?.m || '')
+        .replace(/^Cavewoman$/, 'Caveman').replace(/^Priestess$/, 'Priest');
+    if (role === heroRole && alignment !== null)
+        alignment = ARTIFACT_ALIGN_TYPE[game._startup_align] ?? alignment;
+    const selfWilled = !!def.questArtifact || !!metadata.selfWilled;
+    const special = is_covetous(species) || species.pm >= PM_ARCHEOLOGIST && species.pm <= PM_WIZARD;
+    const badClass = !special && selfWilled && !!role && def.name !== 'Excalibur';
+    const rawAlignment = mon.ispriest ? mon.epri?.shralign ?? mon.mextra?.epri?.shralign ?? mon.shrine?.align ?? species.align
+        : mon.isminion ? mon.min_align ?? mon.emin?.min_align ?? mon.mextra?.emin?.min_align ?? species.align : species.align;
+    const monsterAlignment = rawAlignment === -128 ? -128 : Math.sign(rawAlignment ?? 0);
+    const badAlign = !special && (def.restricted || def.questArtifact || metadata.restricted)
+        && alignment !== null && alignment !== monsterAlignment;
+    const bane = !!(BANE_FLAGS[def.name] & species.m2)
+        || (BANE_CLASSES[def.name] != null && BANE_CLASSES[def.name] === species.mlet)
+        || (def.name === 'The Sceptre of Might'
+            && (species.align === -128 || Math.sign(species.align ?? 0) !== alignment));
+    return !((badClass && selfWilled) || badAlign || bane);
+}
 
 export function artifactTouchStatus(def) {
     const u = game.u || {};

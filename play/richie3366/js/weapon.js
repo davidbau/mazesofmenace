@@ -643,18 +643,18 @@ export async function silver_sears(_magr, mdef, silverhit) {
  * C `oc_bimanual` is `#define oc_bimanual oc_big` (`objclass.h:65`), so the
  * JS `oc_big` read is the same field, not a rename.
  * Named omissions: `can_touch_safely` inside `oselect` (`mon.c:1957–1974`;
- * `js/monmove.js:230` stub stays always-safe); `touch_artifact` non-yours
- * bane/covetous arms deferred in `js/artifact.js:944` (hero-path subset,
- * always 1 for monsters, call wired for C order).
+ * `js/monmove.js:230` stub stays always-safe); `touch_artifact` monster
+ * covetous/mplayer role/align arms deferred in `js/artifact.js`
+ * (bane live, call wired for C order).
  */
-export function select_hwep(mtmp) {
+export async function select_hwep(mtmp) {
     const strong = strongmonst(mtmp.data);
     const wearing_shield = ((mtmp.misc_worn_check | 0) & W_ARMS) !== 0;
 
     // C: prefer artifacts to everything else
     for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
         if (otmp.oclass === WEAPON_CLASS && otmp.oartifact
-            && touch_artifact(otmp, mtmp)
+            && (await touch_artifact(otmp, mtmp))
             && ((strong && !wearing_shield)
                 || !game.objects?.[otmp.otyp]?.oc_big)) {
             return otmp;
@@ -702,7 +702,7 @@ export async function mon_wield_item(mon) {
     let exclaim = true;
     switch (mon.weapon_check) {
     case NEED_HTH_WEAPON:
-        obj = select_hwep(mon);
+        obj = await select_hwep(mon);
         break;
     case NEED_RANGED_WEAPON:
         select_rwep(mon);

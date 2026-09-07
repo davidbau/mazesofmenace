@@ -1247,7 +1247,7 @@ export async function revive(corpse, by_hero) {
                 free_omonst(corpse);
             if (mtmp.cham === PMNAMES.PM_DOPPELGANGER) {
                 /* change shape to match the corpse */
-                newcham(mtmp, mptr, NO_NC_FLAGS);
+                await newcham(mtmp, mptr, NO_NC_FLAGS);
             } else if (mtmp.data.mlet === MONSYMS.S_ZOMBIE) {
                 mtmp.mhp = mtmp.mhpmax = 100;
                 mon_adjust_speed(mtmp, 2, null); /* MFAST */
@@ -2651,7 +2651,7 @@ async function stone_to_flesh_obj(obj) /* nonnull */
                 ptr = mon.data;
                 /* this golem handling is redundant... */
                 if (is_golem(ptr) && ptr !== game.mons[PMNAMES.PM_FLESH_GOLEM])
-                    newcham(mon, game.mons[PMNAMES.PM_FLESH_GOLEM],
+                    await newcham(mon, game.mons[PMNAMES.PM_FLESH_GOLEM],
                             NC_VIA_WAND_OR_SPELL);
             } else if ((ptr.geno & (MFLAGS.G_NOCORPSE | MFLAGS.G_UNIQ)) !== 0) {
                 /* didn't revive but can't leave corpse either */
@@ -3217,7 +3217,7 @@ export async function bhitm(mtmp, otmp) {
                               enough eligible candidates (most likely for
                               vampshifter), try reverting to original form */
                            || (ismnum(mtmp.cham)
-                               && newcham(mtmp, game.mons[mtmp.cham],
+                               && await newcham(mtmp, game.mons[mtmp.cham],
                                           ncflags) !== 0)) {
                     if (give_msg && (canspotmon(mtmp)
                                      || engulfing_u(mtmp)))
@@ -3412,7 +3412,7 @@ export async function bhitm(mtmp, otmp) {
 
             /* turn stone golem into flesh golem */
             if (monsndx(mtmp.data) === PMNAMES.PM_STONE_GOLEM
-                && newcham(mtmp, game.mons[PMNAMES.PM_FLESH_GOLEM], NO_NC_FLAGS))
+                && await newcham(mtmp, game.mons[PMNAMES.PM_FLESH_GOLEM], NO_NC_FLAGS))
                 mesg = 'turns to flesh!';
             else if (monsndx(mtmp.data) === PMNAMES.PM_FLESH_GOLEM)
                 mesg = 'seems fleshier...';

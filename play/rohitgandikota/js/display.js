@@ -823,10 +823,16 @@ export function back_to_glyph(loc, x, y) {
     }
 }
 
+// include/flag.h:507 iflags.use_color is wc_color, the boolean 'color'
+// option (optlist.h:236, default On).
+function use_color() {
+    return boolean_option('color');
+}
+
 // include/flag.h flags.dark_room && iflags.use_color — dark_room defaults ON
-// in 5.0 (optlist.h:264) and the tty runs in color.
+// in 5.0 (optlist.h:264).
 function dark_room_color() {
-    return game.flags?.dark_room !== false;
+    return game.flags?.dark_room !== false && use_color();
 }
 
 // include/display.h DARKROOMSYM — S_darkroom when dark_room+color, else
@@ -842,6 +848,56 @@ function darkroomsym_cell() {
     const s = showsym(cmap_names.S_darkroom);
     return { ch: s ? s.ch : '.', color: CLR_BLACK, decgfx: s ? !!s.dec : false,
              glyph: { kind: 'cmap', cmap: cmap_names.S_darkroom } };
+}
+
+// src/display.c:1818 reglyph_darkroom() — after a level change or a
+// dark_room/color change, bring the remembered floor and corridor glyphs
+// in line with the options: out-of-sight lit floor is S_darkroom while
+// dark_room and color are on, S_room (or nothing) otherwise. Called
+// before vision_reset() on arrival, so cansee() still answers for the
+// level being left, exactly as in the C.
+export function reglyph_darkroom() {
+    if (!game.level)
+        return;
+    const CM = cmap_names;
+    const dark_room = game.flags?.dark_room !== false;
+    for (let x = 1; x < COLNO; x++)
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = game.level.at(x, y);
+            if (!loc)
+                continue;
+            let rg = loc.remembered_glyph;
+            let remcmap = rg?.glyph?.kind === 'cmap' ? rg.glyph.cmap : undefined;
+            if (!dark_room) {
+                if (remcmap === CM.S_corr && loc.waslit)
+                    loc.remembered_glyph = { ch: '#', color: CLR_WHITE, decgfx: false,
+                                             glyph: { kind: 'cmap', cmap: CM.S_litcorr } };
+            } else {
+                if (remcmap === CM.S_litcorr && !cansee(x, y))
+                    loc.remembered_glyph = { ch: '#', color: NO_COLOR, decgfx: false,
+                                             glyph: { kind: 'cmap', cmap: CM.S_corr } };
+            }
+            rg = loc.remembered_glyph;
+            remcmap = rg?.glyph?.kind === 'cmap' ? rg.glyph.cmap : undefined;
+            if (!dark_room || !use_color() || Is_rogue_level(game.u?.uz)) {
+                if (remcmap === CM.S_darkroom) {
+                    if (loc.waslit) {
+                        const tg = terrain_glyph(loc, x, y);
+                        loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec,
+                                                 glyph: { kind: 'cmap', cmap: tg.cmap } };
+                    } else {
+                        loc.remembered_glyph = undefined; /* GLYPH_NOTHING */
+                    }
+                }
+            } else {
+                if (remcmap === CM.S_room && loc.seenv && loc.waslit && !cansee(x, y))
+                    loc.remembered_glyph = darkroomsym_cell();
+                else if (!rg && loc.typ === ROOM && loc.seenv && !cansee(x, y))
+                    loc.remembered_glyph = darkroomsym_cell();
+            }
+        }
+    /* showsyms[S_darkroom] tracks S_room (or S_stone) — darkroomsym_cell()
+       derives that on every call */
 }
 
 // ── show_glyph_cell ──
@@ -861,6 +917,10 @@ export function gbuf_at(x, y) {
 export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr = 0, glyph = undefined) {
     const loc = game.level?.at(x, y);
     if (!loc) return;
+    /* src/display.c:3078 map_glyphinfo(): turn off color if no color
+       defined, or rogue level w/o PC graphics, or the color option is off */
+    if (!use_color())
+        color = NO_COLOR;
     if (Is_rogue_level(game.u?.uz)) {
         color = NO_COLOR;
         decgfx = false;
@@ -1880,7 +1940,18 @@ function _statusLine2() {
         if (f.showexp) s += `/${u.uexp || 0}`;
     }
     if (f.time) s += ` T:${game.moves || 1}`;
-    s += bot_conditions();
+    /* win/tty/wintty.c:4585 tty_status_update()/check_fields(): the row
+       must fit in cols - 1 cells; when it does not, the condition names
+       shrink to their second and then third form (cond_shrinklvl 1, 2)
+       before anything else is tried.  (The further encumbrance/dlvl
+       shrinking that follows level 2 is not ported.) */
+    {
+        const cols = game.nhDisplay?.cols ?? 80;
+        let conds = bot_conditions(0);
+        for (let lvl = 1; lvl <= 2 && (s + conds).length > cols - 1; lvl++)
+            conds = bot_conditions(lvl);
+        s += conds;
+    }
     /* src/botl.c:1259 bot_via_windowport(), BL_TERRAIN: " %s" of
        terrain_descr[iflags.terrain_typ]; an unset type is classified first.
        (BL_WEAPON and BL_ARMOR, the 'weaponstatus'/'armorstatus' fields that
@@ -2982,7 +3053,13 @@ export function magic_map_background(x, y, show) {
     /* object glyphs are never DEC; the door's own '+' is background */
     const is_obj_memory = rg && !rg.decgfx && objsyms.includes(rg.ch)
                           && !(rg.ch === '+' && IS_DOOR(loc.typ));
-    if (game.level?.flags?.hero_memory && !is_obj_memory)
+    /* a memory record that names its glyph kind decides directly: only
+       unexplored memory and cmap memory are background; an 'I' marker
+       (kind 'invis'), an object, a trap or a monster stays put */
+    const kind = rg?.glyph?.kind;
+    const is_background = !rg || kind === 'cmap'
+                          || (kind === undefined && !is_obj_memory);
+    if (game.level?.flags?.hero_memory && is_background)
         loc.remembered_glyph = tg
             ? { ch: tg.ch, color: tg.color, decgfx: tg.dec,
                 glyph: { kind: 'cmap', cmap: tg.cmap } }

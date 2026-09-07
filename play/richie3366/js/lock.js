@@ -4,17 +4,17 @@
 
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { pline, newsym, canseemon, pline_mon, clear_nhwindow_message } from './display.js';
+import { pline, newsym, canseemon, pline_mon, clear_nhwindow_message, verbalize, feel_location } from './display.js';
 import { yn_function } from './getline.js';
 import { vision_recalc, recalc_block_point, cansee } from './vision.js';
-import { stop_occupation, in_rooms, closed_door } from './hack.js';
+import { stop_occupation, in_rooms, closed_door, confdir } from './hack.js';
 import {
     COLNO, ROWNO, IS_DOOR, ECMD_OK, ECMD_TIME, OBJ_FLOOR, OBJ_FREE,
     DOOR, SDOOR, Is_rogue_level, SHOPBASE,
     D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED,
     P_DAGGER, P_FLAIL, P_LANCE, P_PICK_AXE, P_SABER, P_NONE,
     AUTOUNLOCK_APPLY_KEY, STRAT_WAITMASK, TT_PIT, M_AP_TYPE,
-    M_AP_FURNITURE, M_AP_OBJECT, FINGER,
+    M_AP_FURNITURE, M_AP_OBJECT, FINGER, S_hcdoor, S_vcdoor,
     CMDQ_DIR, CMDQ_KEY, CQ_CANNED, CQ_REPEAT,
     xytodir, getdirInp, u_at,
 } from './const.js';
@@ -33,7 +33,12 @@ import {
 import { doname, xname, cxname, singular } from './objnam.js';
 import { obj_resists } from './dogmove.js';
 import { setuwep } from './wield.js';
-import { PM_ROGUE, PM_WIZARD, PM_GRID_BUG } from './generated/monsters_data.js';
+import { PM_ROGUE, PM_WIZARD, PM_GRID_BUG, monsterNames } from './generated/monsters_data.js';
+import { mon_nam } from './do_name.js';
+import { SetVoice } from './sndprocs.js';
+import { stumble_onto_mimic } from './uhitm.js';
+import { update_mapseen_for } from './dungeon.js';
+import { is_drawbridge_wall } from './dbridge.js';
 import { m_at, wake_nearto } from './mon.js';
 import { b_trapped, t_at } from './trap.js';
 import { currency, cmdq_add_key } from './invent.js';
@@ -242,6 +247,8 @@ const SPE_POLYMORPH = objectNames.indexOf('SPE_POLYMORPH');
 const PICKLOCK_LEARNED_SOMETHING = -1;
 const PICKLOCK_DID_NOTHING = 0;
 const PICKLOCK_DID_SOMETHING = 1;
+// C: mons[PM_ORACLE] for the credit-card shopkeep/oracle arm (sounds.js idiom)
+const PM_ORACLE = monsterNames.indexOf('PM_ORACLE');
 
 function Role_if(pm) {
     return (game.urole?.mnum ?? -1) === pm;
@@ -714,6 +721,13 @@ export async function doopen_indir(x, y) {
     return true;
 }
 
+/** C youprop.h Blind — same per-file idiom as apply.js (macro, not a clone). */
+function Blind() {
+    const u = game.u || {};
+    if (u.uroleplay?.blind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+
 /** C youprop.h Deaf */
 function Deaf() {
     const u = game.u || {};
@@ -799,9 +813,10 @@ async function obstructed_close(x, y) {
 
 /**
  * C ref: lock.c doclose — #close / `c` command.
- * Envelope: nohands/pit gates, getdir (cmdassist), door mask arms, close roll.
+ * Envelope: nohands/pit gates, getdir (cmdassist) + getdir-tail confdir(FALSE),
+ * impaired-direction TIME, door mask arms, close roll.
  * Named omissions: stumble_on_door_mimic; Blind feel_location/mapseen;
- * Confusion/Stunned always-TIME; portcullis/drawbridge; steed close path;
+ * portcullis/drawbridge; steed close path;
  * feel_newsym mapseen gating; Some_Monnam obstructed polish.
  * @returns {Promise<boolean>} true when C would return ECMD_TIME
  */
@@ -818,6 +833,11 @@ export async function doclose() {
 
     // C: getdir(NULL) — cmdassist NHW_TEXT on invalid key, then cancel
     if (!(await getdir(null))) return false;
+    // C cmd.c getdir `:4116–4117` — if (!u.dz) confdir(FALSE). getdir omits
+    // the tail by design (use_whip/getdir_zap already confdir), so callers
+    // that need it run it here. Draws the Confusion !rn2(5) direction check
+    // even when no door ends up closed.
+    if (!(u.dz | 0)) confdir(false);
 
     const x = (u.ux | 0) + (u.dx | 0);
     const y = (u.uy | 0) + (u.dy | 0);
@@ -828,7 +848,11 @@ export async function doclose() {
         return true;
     }
 
-    let res = false; // C: res starts ECMD_OK; Confusion→TIME deferred
+    let res = false; // C: res starts ECMD_OK
+    // C lock.c doclose — impaired direction choice costs a turn even when no
+    // door is targeted: if (Confusion || Stunned) res = ECMD_TIME.
+    // C Confusion/Stunned ≡ H-fields (youprop.h); flat mirrors per repo idiom.
+    if ((u.HConfusion | 0) || u.Confusion || (u.HStun | 0) || u.Stunned) res = true;
     if (x < 1 || x >= COLNO || y < 0 || y >= ROWNO) {
         await pline('You see no door there.');
         return res;
@@ -1001,9 +1025,46 @@ export async function pick_lock(pick, rx = 0, ry = 0, container = null) {
             return PICKLOCK_LEARNED_SOMETHING;
         }
     } else {
+        // C ref: lock.c pick_lock `:547–550` — can't reach past a pit rim
+        if (u.utrap && (u.utraptype | 0) === TT_PIT) {
+            await pline("You can't reach over the edge of the pit.");
+            return PICKLOCK_DID_NOTHING;
+        }
         const loc = game.level?.at(cc.x, cc.y);
+        // C ref: lock.c pick_lock `:552–570` — visible monster there first
+        const mtmp = m_at(cc.x, cc.y);
+        if (mtmp && canseemon(mtmp) && M_AP_TYPE(mtmp) !== M_AP_FURNITURE
+            && M_AP_TYPE(mtmp) !== M_AP_OBJECT) {
+            if (picktyp === CREDIT_CARD
+                && (mtmp.isshk || (mtmp.data?.mndx | 0) === PM_ORACLE)) {
+                SetVoice(mtmp, 0, 80, 0);
+                await verbalize('No checks, no credit, no problem.');
+            } else {
+                await pline(`I don't think ${mon_nam(mtmp)} would appreciate that.`);
+            }
+            return PICKLOCK_LEARNED_SOMETHING;
+        } else if (mtmp && M_AP_TYPE(mtmp) === M_AP_FURNITURE
+            && ((mtmp.mappearance | 0) === S_hcdoor
+                || (mtmp.mappearance | 0) === S_vcdoor)) {
+            // C ref: monst.h `:240` is_door_mappear — door-mimic reveal
+            await stumble_onto_mimic(mtmp);
+            // maybe_absorb_item 50%/10% named omit — no JS port
+            return PICKLOCK_LEARNED_SOMETHING;
+        }
         if (!loc || !IS_DOOR(loc.typ)) {
-            await pline('You see no door there.');
+            // C ref: lock.c pick_lock `:576–590` — feel/mapseen side
+            // effects, then Blind feel/see + drawbridge message.
+            // Return stays LEARNED: C's DID_NOTHING half turns on
+            // lev->glyph, which JS cells don't model (game.js).
+            update_mapseen_for(cc.x, cc.y);
+            /* this is probably only relevant when blind */
+            feel_location(cc.x, cc.y);
+            const sense = Blind() ? 'feel' : 'see';
+            if (is_drawbridge_wall(cc.x, cc.y) >= 0) {
+                await pline(`You ${sense} no lock on the drawbridge.`);
+            } else {
+                await pline(`You ${sense} no door there.`);
+            }
             return PICKLOCK_LEARNED_SOMETHING;
         }
 

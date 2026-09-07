@@ -112,6 +112,7 @@ import {
     PLINE_NOREPEAT,
     OVERRIDE_MSGTYPE,
     URGENT_MESSAGE,
+    SUPPRESS_HISTORY,
     PLNMSG_UNKNOWN,
     gp,
     ECMD_OK,
@@ -7277,6 +7278,23 @@ export async function Norep(msg) {
     }
 }
 
+/**
+ * C ref: pline.c custompline — vpline with caller flags.
+ * SUPPRESS_HISTORY skips dumplogmsg only (C `:235–239`); putmesg,
+ * update_topl and gp.prevmsg still run, so a later Norep compares
+ * against this line.
+ */
+export async function custompline(flags, msg) {
+    msg = vpline_consume_msg_loc(msg);
+    if (msg == null || msg === '') return;
+    gp.pline_flags = flags | 0;
+    try {
+        await pline_after_consume(msg, (flags & SUPPRESS_HISTORY) !== 0);
+    } finally {
+        gp.pline_flags = 0;
+    }
+}
+
 // ── pline ──
 // C ref: pline.c vpline — msgtype_type then flush_screen before putmesg.
 export async function pline(msg) {
@@ -7285,12 +7303,12 @@ export async function pline(msg) {
     await pline_after_consume(msg);
 }
 
-async function pline_after_consume(msg) {
+async function pline_after_consume(msg, suppressHistory = false) {
     const CO = game?.nhDisplay?.cols || 80;
     const line = String(msg);
     // C pline.c vpline DUMPLOG_CORE: dumplogmsg before putmesg when
     // SUPPRESS_HISTORY is off (default). yn ATR_NOHISTORY still named.
-    dumplogmsg(line);
+    if (!suppressHistory) dumplogmsg(line);
     const { msgtyp, suppress } = vpline_msgtyp_gate(line);
     if (suppress) return;
     // C pline.c vpline: vision_recalc before flush when dirty (boulder

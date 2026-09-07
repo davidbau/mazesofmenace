@@ -1,7 +1,7 @@
 // C objnam.c:not_fully_identified and the object knowledge used by xname.
 import { game } from './gstate.js';
 import { A_WIS } from './const.js';
-import { OBJECT_DATA } from './object_data.js';
+import { OBJECT_DATA, LEGACY_OBJECT_IDS } from './object_data.js';
 import { JAPANESE_ITEM_ALIASES } from './o_init.js';
 
 const CLASSES = { weapon: 2, armor: 3, ring: 4, amulet: 5, tool: 6, food: 7,
@@ -13,6 +13,9 @@ const CLASS_TYPES = Array.from({ length: 18 }, (_, cls) => OBJECT_DATA.filter(ty
 const SECTIONS = ['', '', 'Weapons', 'Armor', 'Rings', 'Amulets', 'Tools', 'Comestibles',
     'Potions', 'Scrolls', 'Spellbooks', 'Wands', 'Coins', 'Gems/Stones', 'Boulders/Statues',
     'Iron balls', 'Chains', 'Venoms'];
+export const MATERIAL_NAMES = ['no_material', 'liquid', 'wax', 'veggy', 'flesh', 'paper',
+    'cloth', 'leather', 'wood', 'bone', 'dragon_hide', 'iron', 'metal', 'copper',
+    'silver', 'gold', 'platinum', 'mithril', 'plastic', 'glass', 'gemstone', 'mineral'];
 
 // Numeric legacy JS otyp values overlap native C IDs. Only an explicitly
 // tagged native ID can index the canonical table; named/indexed JS objects
@@ -22,6 +25,8 @@ export function objectTypeData(item) {
     const cls = CLASSES[item.cls] || ({ ')': 2, '[': 3, '=': 4, '"': 5, '(': 6,
         '%': 7, '!': 8, '?': 9, '+': 10, '/': 11, '$': 12, '*': 13, '`': 14 }[item.glyph])
         || ({ 1: 2, 2: 3, 3: 4, 7: 7, 8: 9, 9: 8, 10: 11, 11: 10, 12: 6, 14: 13, 15: 5, 466: 12 }[item.otyp]);
+    const legacyTypes = (LEGACY_OBJECT_IDS[item.otyp] || []).map(id => OBJECT_DATA[id])
+        .filter(type => !cls || type.class === cls);
     const candidates = cls ? CLASS_TYPES[cls] : OBJECT_DATA;
     for (const name of [item.actualKind, item.kind, item.spellName, item.spell?.name, item.wand,
         typeof item.otyp === 'string' ? item.otyp : '', item.gemDescription]) {
@@ -37,6 +42,7 @@ export function objectTypeData(item) {
         if (normalized === 'holy water' || normalized === 'unholy water') return SYMBOLS.get('POT_WATER');
         if (normalized === 'flint stone') return SYMBOLS.get('FLINT');
     }
+    if (legacyTypes.length === 1) return legacyTypes[0];
     const index = ({ 4: item.ringRoll != null ? item.ringRoll - 1 : undefined,
         5: item.amuletIndex, 8: item.potionIndex, 9: item.scrollIndex,
         10: item.spellbookIndex, 11: item.wandIndex })[cls];
@@ -56,10 +62,33 @@ export function objectTypeIsKnown(item, type = objectTypeData(item)) {
     });
 }
 
+// o_init.c:shuffle_all moves material with whole-class appearances. Armor
+// subranges only shuffle their description, toughness and color.
+export function objectMaterial(item, type = objectTypeData(item)) {
+    const explicit = item.material ?? item.oc_material;
+    if (typeof explicit === 'number') return explicit;
+    if (explicit) {
+        const name = String(explicit).toLowerCase().replace(/^hi_/, '');
+        const alias = { steel: 'iron', brass: 'copper', bronze: 'copper', tin: 'metal',
+            zinc: 'metal', aluminum: 'metal', aluminium: 'metal', iridium: 'metal', uranium: 'metal' }[name] || name;
+        const material = MATERIAL_NAMES.indexOf(alias);
+        if (material >= 0) return material;
+    }
+    if (!type) return undefined;
+    if ([4, 5, 8, 9, 10, 11, 17].includes(type.class)) {
+        const group = { 4: 'rings', 5: 'amulets', 8: 'potions', 9: 'scrolls', 10: 'spellbooks', 11: 'wands' }[type.class];
+        const appearance = game._object_descriptions?.[group]?.[CLASS_TYPES[type.class].indexOf(type)];
+        const description = appearance?.description ?? appearance ?? item.appearance;
+        const original = CLASS_TYPES[type.class].find(candidate => description && candidate.description === description);
+        if (original) return original.material;
+    }
+    return type.material;
+}
+
 // objclass.h and mkobj.c: a material can have both primary and secondary
 // erosion. Candles and fire-resistant types have separate flammability rules.
 export function objectDamageTraits(item, type = objectTypeData(item)) {
-    const material = item.material ?? type.material;
+    const material = objectMaterial(item, type);
     const organic = material <= 8 && material !== 1;
     const rusty = material === 11, corroded = rusty || material === 13;
     const cracked = material === 19 && type.class === 3;
@@ -85,9 +114,9 @@ export function objectIsFullyIdentified(item) {
     return !objectDamageTraits(item, type).damageable;
 }
 
-// invent.c:fully_identify_obj. This mutates one object, including a container
-// itself; it never identifies that container's contents recursively.
-export function fullyIdentifyObject(item, D) {
+// o_init.c:makeknown/discover_object. Type knowledge is shared across objects;
+// learning a type never reveals an individual object's BUC or charges.
+export function discoverObjectType(item, D) {
     const type = objectTypeData(item);
     if (!type) return false;
     const wasKnown = objectTypeIsKnown(item, type);
@@ -95,6 +124,14 @@ export function fullyIdentifyObject(item, D) {
     if (!game._known_object_types.includes(type.id)) game._known_object_types.push(type.id);
     if (!wasKnown) D.exercise(A_WIS, true);
     D.discover(item, type);
+    return type;
+}
+
+// invent.c:fully_identify_obj. This mutates one object, including a container
+// itself; it never identifies that container's contents recursively.
+export function fullyIdentifyObject(item, D) {
+    const type = discoverObjectType(item, D);
+    if (!type) return false;
     const artifact = item.artifact || item.oartifact;
     if (artifact) {
         game._identified_artifacts ??= [];
@@ -120,10 +157,7 @@ export function learnWandType(item, D) {
         D.observe(item, type);
     }
     if (!known && item.dknown && type.id >= 18) {
-        game._known_object_types ??= [];
-        game._known_object_types.push(type.id);
-        D.exercise(A_WIS, true);
-        D.discover(item, type);
+        discoverObjectType(item, D);
     }
     D.update(item);
 }

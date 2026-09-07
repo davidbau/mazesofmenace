@@ -36,7 +36,7 @@ import { bury_an_obj, fill_special_room, sp_lev_wire_mklev,
          reset_xystart_size } from './sp_lev.js';
 import { walkfrom, mazexy, mkmaze_wire_mklev, mkportal } from './mkmaze.js';
 import { enexto_core } from './teleport.js';
-import { goodpos } from './makemon.js';
+import { goodpos, set_mimic_sym } from './makemon.js';
 import { GP_CHECKSCARY as GP_CHECKSCARY_MK,
          In_endgame as In_endgame_mk } from './const.js';
 import { breaktest } from './dothrow.js';
@@ -2091,8 +2091,15 @@ function dosdoor(x, y, aroom, type) {
         if (Is_rogue_level(game.u.uz))
             loc.doormask = D_NODOOR;
         if (loc.doormask & D_TRAPPED) {
-            if (level_difficulty() >= 9 && !rn2(5)) {
+            if (level_difficulty() >= 9 && !rn2(5)
+                && !(((game.mvitals?.[PMNAMES.PM_SMALL_MIMIC]?.mvflags ?? 0) & G_GONE)
+                     && ((game.mvitals?.[PMNAMES.PM_LARGE_MIMIC]?.mvflags ?? 0) & G_GONE)
+                     && ((game.mvitals?.[PMNAMES.PM_GIANT_MIMIC]?.mvflags ?? 0) & G_GONE))) {
+                /* make a mimic instead */
                 loc.doormask = D_NODOOR;
+                const mtmp = makemon(mkclass(MONSYMS.S_MIMIC, 0), x, y, NO_MM_FLAGS);
+                if (mtmp)
+                    set_mimic_sym(mtmp);
             }
         }
     } else {
@@ -3667,6 +3674,11 @@ function level_finalize_topology() {
     // src/mklev.c:1550 — mineralize() runs here, while in_mklev is still set.
     mineralize(-1, -1, -1, -1, false);
     game.in_mklev = false;
+    /* has_morgue gets cleared once morgue is entered; graveyard stays
+       set (graveyard might already be set even when has_morgue is clear
+       [see fixup_special()], so don't update it unconditionally) */
+    if (game.level.flags.has_morgue)
+        game.level.flags.graveyard = 1;
     if (!game.level?.flags?.is_maze_lev) {
         const nroom = game.level?.nroom ?? 0;
         for (let i = 0; i < nroom; i++)

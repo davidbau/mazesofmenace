@@ -18,9 +18,10 @@ import { COLNO, ROWNO, ROOM, CORR, AIR, STONE, HWALL, IS_DOOR,
          Is_waterlevel, Is_airlevel, Is_firelevel, u_at,
          MON_BUBBLEMOVE, MIGR_RANDOM, MIGR_LEFTOVERS, MIGR_TO_SPECIES,
          OBJ_MIGRATING, has_mgivenname, MKTRAP_MAZEFLAG,
-         VIBRATING_SQUARE, NO_MM_FLAGS } from './const.js';
+         VIBRATING_SQUARE, NO_MM_FLAGS , undestroyable_trap } from './const.js';
 import { isok, distu, sgn } from './hacklib.js';
 import { occupied, somex, somey } from './mklev.js';
+import { deltrap } from './trap.js';
 import { t_at, m_at, mnexto, mnearto, elemental_clog, m_into_limbo }
     from './mon.js';
 import { goodpos, rndmonnum, remove_monster, makemon, set_malign,
@@ -171,12 +172,15 @@ async function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
         if (!oneshot) {
             return false; /* caller should try again */
         } else {
+            /* Must make do with the only location possible;
+               avoid failure due to a misplaced trap.
+               It might still fail if there's a dungeon feature here. */
             const t = t_at(x, y);
-            if (t) {
+            if (t && !undestroyable_trap(t.ttyp)) {
                 const mtmp = m_at(x, y);
                 if (mtmp && mtmp.mtrapped)
                     mtmp.mtrapped = 0;
-                note_unported_mkmaze('put_lregion_here:deltrap');
+                deltrap(t);
             }
             if (bad_location(x, y, nlx, nly, nhx, nhy))
                 return false;

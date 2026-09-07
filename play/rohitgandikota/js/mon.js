@@ -31,7 +31,10 @@ import { is_vampire, is_shapeshifter, vegan } from './mondata.js';
 import { can_hide_under_obj } from './monmove.js';
 import { u_at, OBJ_AT } from './const.js';
 import { mon_explodes } from './explode.js';
-import { fill_pit } from './trap.js';
+import { fill_pit, mselftouch } from './trap.js';
+import { poly_steed } from './steed.js';
+import { possibly_unwield } from './weapon.js';
+import { Protection_from_shape_changers } from './youprop.js';
 import { remove_worm } from './worm.js';
 import { mon_offmap, is_lightblocker_mappear } from './monst.js';
 import { dist2 } from './hacklib.js';
@@ -42,7 +45,7 @@ import { new_light_source, del_light_source, any_light_source,
          LS_OBJECT, LS_MONSTER } from './light.js';
 import { sensemon } from './display.js';
 import { mdistu, mon_track_clear, m_everyturn_effect,
-         set_apparxy as set_apparxy_ref, monflee, m_canseeu } from './monmove.js';
+         set_apparxy as set_apparxy_ref, monflee, m_canseeu, monnear } from './monmove.js';
 // mon.js — monster bookkeeping.
 // C ref: src/mon.c
 //
@@ -4260,7 +4263,7 @@ export function newcham(mtmp, mdat, ncflags) {
         }
 
         finishDisplay();
-        return msg ? finishPostChange() : 1;
+        return finishPostChange();
     };
 
     const showChange = async () => {
@@ -4281,12 +4284,71 @@ export function newcham(mtmp, mdat, ncflags) {
     };
 
     const finishPostChange = async () => {
+        const polyspot = !!(ncflags & NC_VIA_WAND_OR_SPELL);
+
         if (msg)
             await showChange();
-        const { possibly_unwield } = await import('./weapon.js');
-        await possibly_unwield(mtmp, !!(ncflags & NC_VIA_WAND_OR_SPELL));
-        await mon_break_armor(
-            mtmp, !!(ncflags & NC_VIA_WAND_OR_SPELL));
+
+        /* when polymorph trap/wand/potion produces a vampire, turn in into
+           a full-fledged vampshifter unless shape-changing is blocked */
+        if ((mtmp.cham ?? NON_PM) === NON_PM && mdat.mlet === MONSYMS.S_VAMPIRE
+            && !Protection_from_shape_changers())
+            mtmp.cham = pm_to_cham(mndx);
+
+        /* src/mon.c:5484 — the tail runs whether or not a message was
+           shown. makemon() calls newcham() from synchronous level
+           creation, and mon_break_armor() rolls two hallucinated pronouns
+           on entry even when nothing is worn, so that entry must not wait
+           for a microtask: possibly_unwield() only has asynchronous work
+           when something is wielded, and a monster still being created
+           wields nothing yet. */
+        const had_wep = !!MON_WEP(mtmp);
+        const unwield = possibly_unwield(mtmp, polyspot); /* might lose use of weapon */
+        if (had_wep)
+            await unwield;
+        await mon_break_armor(mtmp, polyspot);
+        if (!(mtmp.misc_worn_check & W_ARMG))
+            await mselftouch(mtmp, 'No longer petrify-resistant, ',
+                             !game.context?.mon_moving);
+        check_gear_next_turn(mtmp);
+
+        /* former giants can't continue carrying boulders */
+        if (mtmp.minvent && !throws_rocks(mdat)) {
+            let otmp2;
+            /* DEADMONSTER(): it is possible for flooreffects() to kill mtmp;
+               the rest of its inventory would be dropped making otmp2 stale */
+            for (let otmp = mtmp.minvent; otmp && !DEADMONSTER(mtmp);
+                 otmp = otmp2) {
+                otmp2 = otmp.nobj;
+                if (otmp.otyp === ONAMES.BOULDER) {
+                    /* this keeps otmp from being polymorphed in the
+                       same zap that the monster that held it is polymorphed */
+                    if (polyspot)
+                        bypass_obj(otmp);
+                    obj_extract_self(otmp);
+                    /* probably ought to give some "drop" message here */
+                    if (await flooreffects(otmp, mtmp.mx, mtmp.my, ''))
+                        continue;
+                    place_object(otmp, mtmp.mx, mtmp.my);
+                }
+            }
+        }
+        if (mtmp === game.u.usteed)
+            await poly_steed(mtmp, olddata);
+
+        /* old form might not have been affected by Elbereth but perhaps the
+           new form is */
+        if (game.context?.mon_moving) {
+            /* give 'mtmp' a new chance to pinpoint hero's location */
+            if (!u_at(mtmp.mux, mtmp.muy))
+                set_apparxy_ref(mtmp);
+            /* if hero is on Elbereth or scare monster, mtmp in new form might
+               become scared */
+            if (!mtmp.mpeaceful
+                && onscary(mtmp.mux, mtmp.muy, mtmp)
+                && monnear(mtmp, mtmp.mux, mtmp.muy))
+                await monflee(mtmp, rn1(9, 2), true, true); /* 2..10 turns */
+        }
         return 1;
     };
 
@@ -4595,7 +4657,7 @@ export async function kill_genocided_monsters() {
                      && (game.mvitals[mtmp.cham].mvflags & G_GENOD));
         if ((game.mvitals[mndx].mvflags & G_GENOD) || kill_cham) {
             if (ismnum(mtmp.cham ?? NON_PM) && !kill_cham)
-                newcham(mtmp, null, NC_SHOW_MSG);
+                await newcham(mtmp, null, NC_SHOW_MSG);
             else
                 await mondead(mtmp);
         }

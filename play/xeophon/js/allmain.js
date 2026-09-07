@@ -1,6 +1,7 @@
 import { heroCarriedWeight, heroEncumbranceForWeight, movementIsPoolAt } from './cmd.js';
 import { REGENERATION, SLEEPY, ENERGY_REGENERATION, MAGICAL_BREATHING, HALF_PHDAM } from './const.js';
-import { S_EEL, breathless } from './permonst.js';
+import { S_EEL, breathless, nonliving, haseyes, is_silent, touch_petrifies, PM_HEZROU, PM_VROCK, PM_FOG_CLOUD, AT_WEAP } from './permonst.js';
+import { objectTypeData, discoverObjectType } from './object_knowledge.js';
 import { hasWoundedLegs } from './do.js';
 import { beginHeroLegHealing, finishHeroLegHealing, encumberMsg } from './cmd.js';
 import { WOUNDED_LEGS } from './const.js';
@@ -11,22 +12,27 @@ import { FUMBLING, TIMEOUT, FROMOUTSIDE } from './const.js';
 import { ARMOR_MAGIC_NEGATION } from './armor.js';
 import { initializeSkills, ROLE_SKILL_LIMITS, spellSkillType } from './skills.js';
 import { setArtifactEquipmentLight } from './artifact.js';
-import { monsterCastSpell, afterMeltHeroSpotEffects, runMonsterAttackTurn, finishArmorBonusChange } from './cmd.js';
+import { monsterCastSpell, afterMeltHeroSpotEffects, runMonsterAttackTurn, finishArmorBonusChange, recordMonsterReflectionDiscovery } from './cmd.js';
 import { supportsMonsterAttackSlots } from './mhitu.js';
-import { clearHeroSickness, adjustHeroAttribute, heroCanSpotMonster, heroIsBlind, hcolor } from './cmd.js';
+import { clearHeroSickness, adjustHeroAttribute, heroCanSpotMonster, heroCanSeeMonster, heroIsBlind, hcolor } from './cmd.js';
+import { SEE_INVIS, DEAF, WAND_BACKFIRE_CHANCE } from './const.js';
+import { AT_GAZE, perceives } from './permonst.js';
 import { AT_BOOM, AT_MAGC, AD_SPEL, AD_CLRC, is_hider } from './permonst.js';
 // allmain.js — Main game setup and move loop.
 
 // C refs: src/allmain.c:newgame(), moveloop_core().
 
 import { game } from './gstate.js';
+import { applyHeroHitPointDamage, heroHasPoisonResistance, setHeroBlindedTimeout, monstersObserveHeroResistance, wakeNearbyMonstersAt } from './cmd.js';
+import { M_SEEN_POISON, STRAT_WAITMASK } from './const.js';
+import { announceHeroMonsterKill, killMonsterFromHeroProjectileHit, directMeleeSetmangryElberethHypocrisy, directMeleeAngerPeacefulMonster } from './cmd.js';
 import { amulet as wizardAmuletTurn, demigodTurnHook, clonewiz, noOfWizards, aggravate as wizardAggravate } from './wizard.js';
 import { mklev, l_nhcore_init, u_on_upstairs, makemon, mkcorpstat, mksobj, maketrap, wipe_engr_at, dropMonsterInventory, wandIndexForRoll, scrollIndexForRoll, potionIndexForRoll, RANDOM_MONSTER_BY_NAME, STONE_RESISTANT_MONSTERS, adjustedMonsterLevel, monsterByRndName, monster_hp, rndmonnum, syncDungeonContext, next_ident, set_malign, enextoMonsterSpot, getbogusmon, pickNasty, chameleonAnimalForm, doppelgangerHumanoidForm, noteleportLevelForMonster, rlocNoMsg, rlocToCoreNoMsg, somexyspace, fumaroles, createMonsterCorpseOrGlob, monsterCorpseDropSucceeds, monsterLeavesCorpseLikeDrop, movebubbles, add_to_minv, putSaddleOnMonster } from './mklev.js';
 import { rhack, travelStepEndsAtTarget, pickupObjectName, inventoryItemName, inventoryLetterRank, recordVanquished, finishForceLock, loseExperienceLevel, finishLevelTeleport, finishPickDigDownwardHole, finishPickDigDownwardPit, triggerPickDigTrapUnderHero, billDigShopTerrainDamage, maybeQueueQuestTalk, monsterGrowUp, monsterHostileCussNoise, monsterTurnDemonBribeArtifact, monsterTurnDemonBribeDemand, monsterTurnDemonBribeNoGold, processForceLockOccupationTick, forceLockOccupationShouldGiveUp, processSpellbookStudyOccupation, processTinOpeningOccupation, finishTinOpeningOccupation, refreshSwallowOverlay, finishSwallowExpel, travelPathKeys, takeOffGlovesPetrifyingSelfTouchMessages, addBootsOffSideEffects, consumeLifeSavingAmulet, activateStatueTrap, breakStatueObject, burnFloorObjectsByFire, burnRayFloorObjectsByFire, erodeArmorByFireTrap, dryWetTowelFromFire, igniteMonsterFireInventoryItems, monsterFireInventoryDamage, dropMonsterObject, earthFloorEffects, projectileTopLevelBreakKind, projectileTopLevelBreakMessage, brokenPotionBreathe, landMonsterThrownObject, heroCanAttemptThrownObjectCatch, holdCaughtThrownObject, monsterThrownPotionHitMonster, monsterPolyTrapEffect, stoneMonster, CORPSE_TIMER_HANDLERS, runOrganicRotTimer, shrinkGlob, addDelayedFoodBiteNutrition, addShopTerrainDamage, repairShopDamageForShopkeeper, heroHasAntimagic, heroHasSlowDigestion, applyHeroOrdinaryHunger, applyHeroFireExplosionInventoryDamage, applyHeroColdExplosionInventoryDamage, applyHeroElectricExplosionInventoryDamage, applyChestTrapPayload, applyLifeSavingOrFatalCommandMode, processHeroLavaSinkingTurn, randomTeleportDepth, levelTeleportNumericTarget, downGateAt, impactDropFloorObjects, queueImpactDroppedObjects, maybeTurnPolyselfIntoStoneGolem, randomMonsterPolymorphTarget, applyMonsterPolymorphTarget, heroMeleeFireInventoryBurn, coldTouchDestroyItemsProgram } from './cmd.js';
-import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell } from './display.js';
+import { docrt, cls, bot, flush_screen, pline, newsym, refreshHallucinatedMap, show_glyph_cell, monsterGlyph } from './display.js';
 import { vision_recalc, vision_reset, init_vision_globals, cansee, couldsee, view_from } from './vision.js';
 import { init_objects } from './o_init.js';
-import { setTinVariety } from './eat.js';
+import { setTinVariety, corpseMonsterType } from './eat.js';
 import { alignGodName, GOD_VOICES } from './offer.js';
 import { init_dungeons_rng } from './dungeon.js';
 import { rn2, rn2_on_display_rng, rnd, rn1, rnl, rne, rnz, d, getRngLog } from './rng.js';
@@ -41,6 +47,8 @@ import {
     fightm as monsterConflictFightm,
     attackList as monsterPermonstAttacks,
     selectHwep as monsterSelectHwep,
+    monWieldItem,
+    selectRwep,
     dmgvalMonsterWeapon,
     hitvalMonsterWeapon,
     mattackm as monsterAttackm,
@@ -54,7 +62,7 @@ import {
 import { planMonsterSteal } from './steal.js';
 import { foodObjectNutrition, CARRIED_DELAYED_FOOD_VICTUALS, heroMetalNonFoodNutrition, applyHeroProjectileMonsterLifeSaving, tipHatMonsterNoise, dismountSteedThrown, stackMonsterThrownObject } from './cmd.js';
 import { DIGTYP_BOULDER, DIGTYP_DOOR, DIGTYP_ROCK, DIGTYP_STATUE, DIGTYP_TREE, DIGTYP_UNDIGGABLE, digBoulderAt, digCheckFailed, digCheckFailMessage, digCheckHero, digDbon, digEffortIncrement, digFumblingResult, digHardnessBlockMessage, digOccupationAborted, digTargetName, digTypeOf, digVerb, finishDigContext, finishWallDigTerrain, fractureDigBoulder, inShopBaseAt, pickDigDirectionPrompt, wakeNearbyForDig } from './dig.js';
-import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, GRAVE, ICE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, SINK, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, ANTIMAGIC, MAGIC_PORTAL, POLY_TRAP, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_airlevel, Is_oracle_level, Is_waterlevel, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, STAIRS, LADDER, BOLT_LIM, ZAP_POS, MON_POLE_DIST, NO_WEAPON_WANTED, NEED_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHARED, SHARED_PLUS, SHOPBASE, STRAT_APPEARMSG, STRAT_WAITFORU, MIGR_LADDER_UP, MIGR_RANDOM, MON_MIGRATING, W_ACCESSORY, W_ARMOR, W_WEP, isok } from './const.js';
+import { COLNO, ROWNO, A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS, ALTAR, GRAVE, ICE, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_ROOM, IS_WALL, TREE, ROOM, DOOR, CORR, SDOOR, SCORR, IRONBARS, SINK, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, W_NONDIGGABLE, W_NONPASSWALL, APPORT, CADAVER, ACCFOOD, DOGFOOD, MANFOOD, POISON, UNDEF, TABU, NO_MM_FLAGS, NO_MINVENT, MM_NOMSG, IN_SIGHT, ALL_TRAPS, ARROW_TRAP, ROCKTRAP, PIT, SPIKED_PIT, SQKY_BOARD, BEAR_TRAP, LANDMINE, ROLLING_BOULDER_TRAP, SLP_GAS_TRAP, RUST_TRAP, FIRE_TRAP, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, ANTIMAGIC, MAGIC_PORTAL, POLY_TRAP, VIBRATING_SQUARE, ALLOW_M, ALLOW_TM, ALLOW_TRAPS, ALLOW_U, ALLOW_ALL, NOTONL, OPENDOOR, UNLOCKDOOR, BUSTDOOR, ALLOW_ROCK, ALLOW_WALL, ALLOW_DIG, ALLOW_SANCT, ALLOW_SSM, ALLOW_BARS, NOGARLIC, Is_airlevel, Is_oracle_level, Is_waterlevel, ACCESSIBLE, IS_POOL, IS_LAVA, WATER, LAVAWALL, STAIRS, LADDER, BOLT_LIM, ZAP_POS, MON_POLE_DIST, NO_WEAPON_WANTED, NEED_WEAPON, NEED_HTH_WEAPON, NEED_AXE, NEED_PICK_AXE, NEED_PICK_OR_AXE, VAULT, VAULT_GUARD_TIME, M_SEEN_MAGR, M_AP_FURNITURE, M_AP_OBJECT, M_AP_MONSTER, M_AP_TYPE, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, OVERLOADED, ROOMOFFSET, SHARED, SHARED_PLUS, SHOPBASE, STRAT_APPEARMSG, STRAT_WAITFORU, MIGR_LADDER_UP, MIGR_RANDOM, MON_MIGRATING, W_ACCESSORY, W_ARMOR, W_WEP, isok } from './const.js';
 import { CLR_BROWN, CLR_CYAN, CLR_MAGENTA, CLR_RED, CLR_WHITE, CLR_YELLOW, NO_COLOR } from './terminal.js';
 import { advanceVaultGuard, prepareVaultGuardEscort, restVaultFakecorr } from './vault.js';
 import { DISPLAY_MONSTER_GLYPHS, DISPLAY_MONSTER_HALLU_NAMES, GIANT_M2_MONSTERS } from './monster_data.js';
@@ -2314,8 +2322,18 @@ function monsterWouldConsumeCorpseItem(mon, obj) {
     return !(PETRIFYING_TOUCH_MONSTERS.has(corpseName) && !monsterResistsStoning(mon));
 }
 
-function monsterWouldConsumeItem(mon, obj) {
-    return monsterCouldEatMetalItem(mon, obj) || monsterWouldConsumeCorpseItem(mon, obj);
+export function monsterWouldConsumeItem(mon, obj) {
+    // monmove.c:mon_would_consume_item only attracts corpse eaters and pets.
+    // Metallivores eat metal they reach, but do not seek it out as food.
+    const corpse = corpseMonsterType(obj);
+    if ((obj.otyp === CORPSE || obj.otyp === 'corpse' || objectTypeData(obj)?.symbol === 'CORPSE')
+        && corpse && !touch_petrifies(corpse) && monsterIsCorpseEater(mon)) return true;
+    const edog = mon.mextra?.edog;
+    if ((mon.pet || mon.mtame) && edog) {
+        const food = dogFood(mon, obj);
+        return food < MANFOOD && (food < ACCFOOD || edog.hungrytime <= game.moves);
+    }
+    return false;
 }
 
 function corpseEaterEatFloorCorpse(mon) {
@@ -2505,7 +2523,21 @@ export function addToplineMessage(msg) {
     // following Norep() (e.g. makemon.c:1491 "A X suddenly appears!")
     // identical to it is suppressed while it stays the latest message.
     game._norep_prevmsg = text;
+    if (game._tty_message_stop) {
+        // topl.c:update_topl still updates the logical topline under WIN_STOP,
+        // while leaving the displayed line and the running effect alone.
+        const previous = game._tty_stopped_topline ?? game._pending_message ?? '';
+        const fits = !previous.includes('\n')
+            && previous.length + text.length + 3 < (game.nhDisplay?.cols || 80) - 8;
+        const died = fits && text.startsWith('You die');
+        game._tty_stopped_topline = fits && !died ? `${previous}  ${text}` : text;
+        if (!died) return true;
+        game._tty_message_stop = false;
+        game._pending_message = '';
+    }
     game._keep_pending_message = 1;
+    if (game._tty_seen_topline === game._pending_message) game._pending_message = '';
+    game._tty_seen_topline = null;
     if (!game._pending_message) {
         game._pending_message = text;
         game._pending_fumble_turn_message = 0;
@@ -2602,11 +2634,13 @@ export function stopCountedSearchOccupationOnHeroHit(fatalHit = false) {
         // the batch now (nomul(0) semantics).
         game._hero_hit_search_stop_after_survival = 1;
         game._search_pending_count = 0;
+        game._counted_repeat_interruptible = 0;
         game._pending_time_passed = Math.min(game._pending_time_passed || 1, 1);
         return;
     }
     addToplineMessage('You stop searching.');
     game._search_pending_count = 0;
+    game._counted_repeat_interruptible = 0;
     game._pending_time_passed = Math.min(game._pending_time_passed || 1, 1);
     game._keep_pending_message = 1;
 }
@@ -2805,16 +2839,8 @@ function maybeBlockInvulnerableAttack(mon) {
     return true;
 }
 
-function monsterDisplayName(mon, hallucinate = false, bareBogus = false) {
-    let name = mon.data?.name || 'creature';
-    if (name === 'elf-noble') name = mon.female ? 'elf-lady' : 'elf-lord';
-    if (name === 'dwarf leader') name = 'dwarf lord';
-    if (name === 'dwarf ruler') name = 'dwarf king';
-    if (name === 'gnome leader') name = 'gnome lord';
-    if (name === 'gnome ruler') name = 'gnome king';
-    if (name === 'kobold leader') name = 'kobold lord';
-    if (name === 'ogre leader') name = 'ogre lord';
-    if (name === 'vampire leader') name = 'vampire lord';
+export function monsterDisplayName(mon, hallucinate = false, bareBogus = false) {
+    let name = monsterSpecies(mon)?.names?.[mon.female ? 1 : 0] || mon.data?.name || 'creature';
     if (hallucinate && (game.u?._statusSuffix || '').includes('Hallu') && !game.u?.blind) {
         let halluIndex;
         do {
@@ -3410,7 +3436,7 @@ export function stopHeroOccupation() {
         : game._force_lock_occupation ? 'forcing the lock'
         : game._pick_dig_occupation ? 'digging' : game._tin_opening_occupation ? 'opening the tin' : null;
     stopCountedSearchOccupationOnHeroHit();
-    clearActiveDelayedOccupations({ interruptEating: true, addEatingMessage: true, interruptibleOnly: true });
+    clearActiveDelayedOccupations({ interruptEating: true, interruptibleOnly: true });
     if (activity) addToplineMessage(`You stop ${activity}.`);
     interruptPositiveMulti();
     game.multi = Math.min(game.multi || 0, -(game._helpless_time || 0));
@@ -4342,7 +4368,7 @@ function maybeShapeshiftVampire(mon) {
 
 export async function processMonsterTurns() {
     if (game._monster_attack_continuation) return false;
-    if (['timers', 'legs', 'exertion'].includes(game._turn_tail_phase)) {
+    if (['stoning', 'timers', 'legs', 'regions', 'exertion'].includes(game._turn_tail_phase)) {
         game._deferred_monster_turn_tail = 0;
         return await finishMonsterTurnTail();
     }
@@ -4559,7 +4585,7 @@ export async function processMonsterTurns() {
 		                if (!(game.level?.monsters || []).includes(mon)) continue;
                     if (process.env.PROCDBG) { const L = getRngLog().length; const [wlo, whi] = (process.env.PROCDBG_WIN || '6360,6480').split(',').map(Number); if (L >= wlo && L <= whi) console.error(`PROC rng=${L} idx=${monIndex} ${mon.data?.name} @${mon.mx},${mon.my} mv=${mon.movement} peace=${!!mon.mpeaceful} shk=${!!mon.isshk} fol=${!!mon.following} roomno=${game.level?.at(mon.mx, mon.my)?.roomno} hero=${game.u?.ux},${game.u?.uy} mux=${mon.mux},${mon.muy}`); }
 		                const resumingPetInventory = game._pet_inventory_resume === mon;
-	                const resumedAfterPreturn = resumeAfterPreturn && monIndex === startIndex;
+	                let resumedAfterPreturn = resumeAfterPreturn && monIndex === startIndex;
 	                if (resumingSameMonster && monIndex === startIndex && mon._resume_web_after_more) {
 	                    mon._resume_web_after_more = 0;
 	                    mon._hide_for_web_more = 0;
@@ -4573,22 +4599,18 @@ export async function processMonsterTurns() {
 	                    resumingSameMonster = false;
 	                    continue;
 	                }
-	                if (resumingSameMonster && monIndex === startIndex && mon._resume_misc_after_more) {
-	                    mon._resume_misc_after_more = 0;
-	                    if (!mon.data?.mindless && !mon.data?.nohands && !mon.mpeaceful) {
-                        const miscRange = (mon.mx - (mon.mux ?? game.u?.ux ?? mon.mx)) ** 2
-                            + (mon.my - (mon.muy ?? game.u?.uy ?? mon.my)) ** 2;
-                        const potion = [...(mon.minvent || [])].reverse()
-                            .find(item => item.cls === 'potion' || item.glyph === '!');
-                        if (miscRange <= 36 && potion) {
-                            mon.minvent = (mon.minvent || []).filter(item => item !== potion);
-                            mon._bullwhip_find_misc_ready = 1;
-                            addToplineMessage(couldSeeCoord(mon.mx, mon.my)
-                                ? `${monsterDisplayName(mon)} drinks a potion!`
-                                : 'You hear a chugging sound.');
-                            continue;
-                        }
+                if (resumingSameMonster && monIndex === startIndex && mon._misc_item_state) {
+                    if (!await useMonsterInvisibility(mon, mon._misc_item_state)) {
+                        game._monster_resume_index = monIndex;
+                        game._monster_resume_somebody_can_move = somebodyCanMove;
+                        game._monster_resume_same_index = 1;
+                        return false;
                     }
+                    const aborted = mon._misc_item_state.aborted;
+                    mon._misc_item_state = null;
+                    resumingSameMonster = false;
+                    if (!aborted) continue;
+                    resumedAfterPreturn = true;
                 }
                 const movement = mon.movement || 0;
                 const skipAfterMimicReveal = !!mon._skip_after_mimic_reveal;
@@ -5060,43 +5082,33 @@ export async function processMonsterTurns() {
                     }
                     const miscRange = (mon.mx - (mon.mux ?? game.u?.ux ?? mon.mx)) ** 2
                         + (mon.my - (mon.muy ?? game.u?.uy ?? mon.my)) ** 2;
-                    const heroWeapon = (game.inventory || []).some(item =>
-                        item.wielded || item.line?.includes('weapon in') || item.line?.includes('wielded in right'));
-                    const pendingFumbleMore = game._fumble_turn_message_pending
-                        && (game._pending_message || game._message_more);
-                    if (((game._message_more && !game._process_time_with_more) || pendingFumbleMore)
-                        && heroWeapon && !mon.mpeaceful
-                        && (mon.minvent || []).some(item => item.kind === 'bullwhip')) {
-                        rn2(5);
-                        mon._resume_misc_after_more = 1;
-                        game._message_more = 1;
-                        game._monster_resume_index = monIndex;
-                        game._monster_resume_somebody_can_move = somebodyCanMove;
-                        game._monster_resume_same_index = 1;
-                        return false;
+                    const miscItem = findMonsterMiscItem(mon);
+                    if (miscItem?.type === 'WAN_MAKE_INVISIBLE' || miscItem?.type === 'POT_INVISIBILITY') {
+                        mon._misc_item_state = miscItem;
+                        if (!await useMonsterInvisibility(mon, miscItem)) {
+                            game._monster_resume_index = monIndex;
+                            game._monster_resume_somebody_can_move = somebodyCanMove;
+                            game._monster_resume_same_index = 1;
+                            return false;
+                        }
+                        mon._misc_item_state = null;
+                        if (!miscItem.aborted) continue;
                     }
                     const wieldedWeapon = (game.inventory || []).find(item =>
                         item.wielded || item.line?.includes('weapon in') || item.line?.includes('wielded in right'));
                     const bullwhip = (mon.minvent || []).find(item => item.kind === 'bullwhip');
                     const adjacentKnownHero = (mon.mux === game.u?.ux && mon.muy === game.u?.uy)
                         && Math.max(Math.abs(mon.mx - (game.u?.ux || 0)), Math.abs(mon.my - (game.u?.uy || 0))) <= 1;
-                    if (bullwhip && wieldedWeapon && !mon.mpeaceful
-                        && (mon._bullwhip_find_misc_ready || adjacentKnownHero)) {
-                        const bullwhipRoll = rn2(5);
-                        if (!bullwhipRoll && !adjacentKnownHero) continue;
-                        if (bullwhipRoll) {
-                            if (mon._bullwhip_find_misc_ready) mon._bullwhip_skip_attack = 1;
-                        } else {
+                    if (miscItem?.type === 'BULLWHIP' && bullwhip && wieldedWeapon && adjacentKnownHero) {
                             mon.mw ||= bullwhip;
                             const whereTo = rn2(4);
                             const weaponName = pickupObjectName(wieldedWeapon);
                             const theWeapon = weaponName.startsWith('the ') ? weaponName : `the ${weaponName}`;
                             const hand = /two-handed|quarterstaff|battle-axe/.test(String(wieldedWeapon.kind || ''))
                                 ? 'hands' : 'hand';
-                            mon._hide_for_bullwhip_more = 1;
-                            newsym(mon.mx, mon.my);
-                            const whipName = 'A whip';
-                            const actor = 'It';
+                            const seen = heroCanSpotMonster(mon);
+                            const whipName = seen ? `${monsterDisplayName(mon)}'s bullwhip` : 'A whip';
+                            const actor = seen ? monsterDisplayName(mon) : 'It';
                             let followup = 'The whip slips free.';
                             if (whereTo === 1)
                                 followup = `${actor} yanks ${theWeapon} from your ${hand}!`;
@@ -5104,6 +5116,7 @@ export async function processMonsterTurns() {
                                 followup = `${actor} yanks ${theWeapon} to the floor!`;
                             else if (whereTo === 3)
                                 followup = `${actor} snatches ${theWeapon}!`;
+                            game._run_steps_after_more = game._run_steps_remaining || 0;
                             game._bullwhip_after_more = { mon, itemLetter: wieldedWeapon.letter, item: wieldedWeapon, whereTo };
                             game._pending_message = `${whipName} wraps around ${theWeapon} you're wielding!`;
                             game._message_more = 1;
@@ -5114,9 +5127,8 @@ export async function processMonsterTurns() {
                             game._monster_resume_index = monIndex + 1;
                             game._monster_resume_somebody_can_move = somebodyCanMove;
                             return false;
-                        }
                     }
-                    if (!mon.data?.mindless && !mon.data?.nohands && miscRange <= 36) {
+                    if (!miscItem?.aborted && !mon.data?.mindless && !mon.data?.nohands && miscRange <= 36) {
                         const healingPotion = findMonsterHealingPotion(mon);
                         const heroLevel = game.u?.ulevel || 1;
                         const healFraction = heroLevel < 10 ? 5 : heroLevel < 14 ? 4 : 3;
@@ -5133,10 +5145,7 @@ export async function processMonsterTurns() {
                             continue;
                         }
                         if (mon.mspeed !== 'fast') {
-                            const speedWand = [...(mon.minvent || [])].reverse().find(item => {
-                                const kind = String(item.kind || item.actualKind || '').replace(/^wand:/, '').replace(/^wand of /, '');
-                                return item.otyp === WAN_SPEED_MONSTER || item.wandIndex === 10 || kind === 'speed monster';
-                            });
+                            const speedWand = miscItem?.type === 'WAN_SPEED_MONSTER' ? miscItem.item : null;
                             if (speedWand && (speedWand.spe || 0) > 0 && !mon.isgd) {
                                 speedWand.spe--;
                                 mon.mspeed = 'fast';
@@ -5154,10 +5163,7 @@ export async function processMonsterTurns() {
                                 }
                                 continue;
                             }
-                            const speedPotion = [...(mon.minvent || [])].reverse().find(item => {
-                                const kind = String(item.kind || '').replace(/^potion:/, '').replace(/^potion of /, '');
-                                return item.otyp === POT_SPEED || (item.cls === 'potion' && (item.potionIndex === 5 || kind === 'speed'));
-                            });
+                            const speedPotion = miscItem?.type === 'POT_SPEED' ? miscItem.item : null;
                             if (speedPotion) {
                                 if ((speedPotion.quan || 1) > 1) speedPotion.quan--;
                                 else mon.minvent = (mon.minvent || []).filter(item => item !== speedPotion);
@@ -5285,9 +5291,38 @@ export async function processMonsterTurns() {
                         game._pet_return_attack_resumed = 0;
                         rn2(5);
                     }
-                    const wandererMovesInstead = nearby && mon.data?.wanderer && !rn2(4);
+                    // monmove.c:837-858: wielding is a complete monster action,
+                    // including a failed attempt to replace a welded weapon.
+                    const weaponRange = (mon.mx - apparentX) ** 2 + (mon.my - apparentY) ** 2;
+                    const scaryX = mon.mcansee === false || game.u?.invisible && !mon.data?.seeInvisible
+                        ? apparentX : game.u?.ux;
+                    const scaryY = mon.mcansee === false || game.u?.invisible && !mon.data?.seeInvisible
+                        ? apparentY : game.u?.uy;
+                    const scaredWithPick = nearby && mon.mw
+                        && ['PICK_AXE', 'DWARVISH_MATTOCK'].includes(objectTypeData(mon.mw)?.symbol)
+                        && (scaryObjectAt(mon, scaryX, scaryY) || scaryEngravingAt(mon, scaryX, scaryY));
+                    if ((!mon.mpeaceful || conflictActive) && weaponRange <= 8
+                        && monsterPermonstAttacks(mon).some(attack => attack.aatyp === AT_WEAP)
+                        && mon.weapon_check === NEED_WEAPON && !scaredWithPick
+                        && !(mon.mtrapped && !nearby && selectRwep(mon, couldSeeCoord))) {
+                        mon.weapon_check = NEED_HTH_WEAPON;
+                        if (monWieldItem(mon)) {
+                            if (game._message_more && !game._process_time_with_more) {
+                                game._monster_resume_index = monIndex + 1;
+                                game._monster_resume_somebody_can_move = somebodyCanMove;
+                                return false;
+                            }
+                            continue;
+                        }
+                    }
+                    // dochug checks these OR terms before minvis: an already
+                    // moving monster does not consume the invisibility draw.
+                    const invisibleMovesInstead = nearby && !mon.mflee && !mon.mconf && !mon.mstun
+                        && !scaryObjectAt(mon, scaryX, scaryY) && !scaryEngravingAt(mon, scaryX, scaryY)
+                        && mon.minvis && !rn2(3);
+                    const wandererMovesInstead = !invisibleMovesInstead && nearby && mon.data?.wanderer && !rn2(4);
                     const wandererCanMoveInstead = wandererMovesInstead && monsterHasNonHeroMove(mon, conflictActive);
-		                    if (adjacentHostile && !wandererCanMoveInstead) {
+		                    if (adjacentHostile && !invisibleMovesInstead && !wandererCanMoveInstead) {
                         /* monmove.c dochug under Conflict: the monster went
                          * through phase 3 m_move() first — mon_allowflags'
                          * `Conflict && !resist_conflict` roll (mon.c:2088,
@@ -5948,13 +5983,12 @@ export async function processMonsterTurns() {
                         const attackLoc = game.level?.at(mon.mx, mon.my);
                         const monsterInSight = !game.u?.blind && !mon.minvis && !mon.mundetected
                             && !!(game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT);
-                        if (attackLoc?.map_invisible && monsterInSight && !mon._hide_for_bullwhip_more) {
+                        if (attackLoc?.map_invisible && monsterInSight) {
                             attackLoc.map_invisible = false;
                             if (attackLoc.remembered_glyph?.ch === 'I') attackLoc.remembered_glyph = null;
                         }
-                        const hiddenBullwhip = !!mon._hide_for_bullwhip_more
-                            || (!!attackLoc?.map_invisible && !monsterInSight);
-                        const bullwhipHiddenAttack = !!mon._hide_for_bullwhip_more;
+                        const hiddenBullwhip = !!attackLoc?.map_invisible && !monsterInSight;
+                        const bullwhipHiddenAttack = !!mon.minvis && !heroCanSpotMonster(mon);
                         const subject = game.u?.blind || hiddenBullwhip ? 'It' : monsterDisplayName(mon);
                         if (game.u?.blind && !hiddenBullwhip) {
                             if (attackLoc) attackLoc.map_invisible = true;
@@ -7278,29 +7312,7 @@ if (attack.adtyp === 'steal') {
 	                        if (game._message_more && !game._process_time_with_more) return false;
                         continue;
                     }
-                    const weaponRange = (mon.mx - (mon.mux ?? game.u?.ux ?? mon.mx)) ** 2
-                        + (mon.my - (mon.muy ?? game.u?.uy ?? mon.my)) ** 2;
-	                    const readyWeapon = !mon.mpeaceful && weaponRange <= 8 && !mon.mw
-	                        && mon.minvent?.find(item =>
-	                            item.otyp === ORCISH_DAGGER || item.otyp === SHORT_SWORD
-                                || item.kind === 'orcish dagger' || item.kind === 'dagger'
-                                || /^(?:elven |orcish |dwarvish |silver )?(?:short sword|long sword|spear|mace|flail|broadsword|saber|axe|club|aklys)$/.test(String(item.kind || item.actualKind || '')));
-	                    if (readyWeapon) {
-	                        mon.mw = readyWeapon;
-	                        if (!game.u?.blind && !mon.minvis && !mon.mundetected
-	                            && (game.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT)
-	                            && couldSeeCoord(mon.mx, mon.my)) {
-                            const stack = (readyWeapon.quan || 1) === 1
-                                ? (readyWeapon.kind === 'orcish dagger' || readyWeapon.otyp === ORCISH_DAGGER
-                                    ? 'a crude dagger' : `a ${readyWeapon.kind || (readyWeapon.otyp === SHORT_SWORD ? 'short sword' : 'weapon')}`)
-                                : `${readyWeapon.quan} ${readyWeapon.kind === 'orcish dagger' || readyWeapon.otyp === ORCISH_DAGGER
-                                    ? 'crude daggers' : `${readyWeapon.kind || (readyWeapon.otyp === SHORT_SWORD ? 'short sword' : 'weapon')}s`}`;
-                            recordWeaponDiscoveryForItem(readyWeapon);
-                            addToplineMessage(`${monsterDisplayName(mon, true)} wields ${stack}!`);
-                            if (game._message_more && !game._process_time_with_more) return false;
-		                        }
-	                        continue;
-	                    }
+
 	                    if (mon.isshk || mon.ispriest) {
                         const oldx = mon.mx;
                         const oldy = mon.my;
@@ -7319,7 +7331,6 @@ if (attack.adtyp === 'steal') {
                             if ((!targetNearby || mon.mflee || mon.mconf || mon.mstun || mon.mpeaceful)
                                 && await maybeCastUndirectedMonsterSpell(mon)) continue;
                         }
-                        consumeSetApparxy(mon);
                         let goalX = mon.shk?.x ?? oldx;
                         let goalY = mon.shk?.y ?? oldy;
                         let appr = 1;
@@ -7338,8 +7349,14 @@ if (attack.adtyp === 'steal') {
                         const cShapedPriestMove = mon.ispriest && mon.shrine?.specialLevel;
                         // C pri_move() returns -1 outside the priest's own temple.
                         const priestLetsGenericMove = cShapedPriestMove && !inHisTemple;
+                        // C shk_move() returns -1 for distant followers without
+                        // a bill, leaving mfndpos, track avoidance and postmov
+                        // to ordinary m_move even when the keeper is peaceful.
+                        const shopkeeperLetsGenericMove = mon.isshk && mon.following && !mon.billct
+                            && (oldx - heroX) ** 2 + (oldy - heroY) ** 2 > 4;
 
-                        if (!priestLetsGenericMove) {
+                        if (!priestLetsGenericMove && !shopkeeperLetsGenericMove) {
+                            consumeSetApparxy(mon);
                             if (inHisTemple) {
                                 goalX = mon.shrine.x + rn1(3, -1);
                                 goalY = mon.shrine.y + rn1(3, -1);
@@ -7382,34 +7399,6 @@ if (attack.adtyp === 'steal') {
                                 goalX = heroX;
                                 goalY = heroY;
                                 avoid = false;
-                                /* C ref: shk.c:4941-4950 shk_move() -- an angry
-                                   shopkeeper actively following the hero (udist
-                                   > 4 and no outstanding bill) returns -1, "let
-                                   m_move do it" (monmove.c:1807-1828 case -1
-                                   falls through to generic movement).  A keeper
-                                   still standing in a shop room then passes
-                                   through m_search_items(), whose shop rule
-                                   (monmove.c:1353-1356) rolls rn2(25); a
-                                   non-following angry keeper instead stops
-                                   inside shk_move()/move_special() and never
-                                   reaches it.  The generic getitems gate
-                                   (monmove.c:1891-1904) suppresses the search
-                                   (and its roll) when a directly lined-up,
-                                   in-throw-range target keeps appr==1. */
-                                const fudist = (oldx - heroX) ** 2
-                                    + (oldy - heroY) ** 2; /* C distu() = dist2() (hack.h:1531) */
-                                if (mon.following && !mon.billct && fudist > 4
-                                    && !game.level?.flags?.rogue_level
-                                    && inShopBaseRoomAt(oldx, oldy)) {
-                                    /* m_search_items()'s shop rule
-                                       (monmove.c:1353-1356): standing in a shop
-                                       room rolls rn2(25) unconditionally before
-                                       deciding whether the keeper skips the
-                                       search.  Observed recorder output (e.g.
-                                       seed9006 step 80/88) always has this
-                                       roll for the -1-following keeper here. */
-                                    rn2(25);
-                                }
                             }
 
                         if (mon.mconf) {
@@ -7430,7 +7419,6 @@ if (attack.adtyp === 'steal') {
                             let choice = null;
                             let choiceInfo = 0;
                             let chcnt = 0;
-                            const fudist0 = (oldx - heroX) ** 2 + (oldy - heroY) ** 2; /* C dist2(shk, hero) — shk_move()'s udist (shk.c:4936-4948) */
                             let positions;
                             if (cShapedPriestMove) {
                                 positions = mfndpos(mon, monsterAllowFlags(mon, false, conflictActive))
@@ -7463,15 +7451,6 @@ if (attack.adtyp === 'steal') {
                                 && positions.length && positions.every(pos => pos.info & NOTONL)) {
                                 avoid = false;
                             }
-                            /* C ref: monmove.c:1940-1990 m_move() candidate loop,
-                                   reached from shk_move() only via its return -1 case
-                                   (shk.c:4941-4948: angry keeper following the hero,
-                                   udist > 4, no outstanding bill — "let m_move do
-                                   it").  Peaceful keepers and temple priests stay in
-                                   move_special()/pri_move() and never touch the
-                                   mtrack-avoidance rolls below. */
-                                const inShkGenericMMove = mon.isshk && !mon.mpeaceful
-                                    && mon.following && !mon.billct && fudist0 > 4;
                             for (const pos of positions) {
                                 if (!(IS_ROOM(pos.loc.typ) || (mon.isshk && (!inHisShop || mon.following)))) continue;
                                 if (avoid && (pos.info & NOTONL) && !(pos.info & ALLOW_M)) continue;
@@ -7503,11 +7482,6 @@ if (attack.adtyp === 'steal') {
                             if (choice && !(choiceInfo & ALLOW_M)) {
                                 mon.mx = choice.x;
                                 mon.my = choice.y;
-                                /* C ref: monmove.c:2062 mon_track_add() runs only in
-                                   m_move()'s movement commit (not in shk_move()'s
-                                   move_special() or pri_move() paths), so the track
-                                   ring only updates on the shk_move() return -1 case. */
-                                if (inShkGenericMMove) updateMonsterTrack(mon, oldx, oldy);
                                 newsym(oldx, oldy);
                                 newsym(mon.mx, mon.my);
                             }
@@ -7870,6 +7844,23 @@ if (attack.adtyp === 'steal') {
                         const postMoveGridBugDiagonal = mon.data?.name === 'grid bug'
                             && mon.mx !== postMoveTargetX && mon.my !== postMoveTargetY;
                         const postMoveNearby = postMoveDist2 < 3 && !postMoveGridBugDiagonal;
+                        // MMOVE_NOMOVES/NOTHING still reach mattacku after
+                        // distfleeck; moving into the hero's square is blocked.
+                        if (invisibleMovesInstead && !movedByMonster && !moveEndedTurn && !teleportedViaTrap
+                            && adjacentHostile && postMoveNearby && supportsMonsterAttackSlots(mon)) {
+                            if (!await runMonsterAttackTurn(mon, { resumeIndex: monIndex + 1, somebodyCanMove })) return false;
+                            continue;
+                        }
+                        // thrwmu prepares ranged attacks even without a launcher
+                        // or a lined-up shot. mon_wield_item's hands/null result
+                        // leaves NEED_WEAPON for the next turn's melee check.
+                        if (!moveEndedTurn && !teleportedViaTrap && !postMoveNearby
+                            && postMoveDist2 <= BOLT_LIM * BOLT_LIM && !mon.mpeaceful
+                            && (game.u?.uhp || 0) > 0 && !game.level?.flags?.rogue_level
+                            && monsterPermonstAttacks(mon).some(attack => attack.aatyp === AT_WEAP)
+                            && (mon.weapon_check === NEED_WEAPON || !mon.mw)
+                            && !selectRwep(mon, couldSeeCoord)?.propellor)
+                            mon.weapon_check = NEED_WEAPON;
                         const ghostChecksOffensiveLine = mon.data?.name === 'ghost'
                             && !moveEndedTurn && !postMoveNearby && monsterWouldCheckOffensiveLine(mon)
                             && ((movedByMonster
@@ -10751,7 +10742,8 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
             }
         }
     }
-    const resumeTimers = ['timers', 'legs', 'exertion'].includes(game._turn_tail_phase);
+    const resumeTimers = ['timers', 'legs', 'regions', 'exertion'].includes(game._turn_tail_phase);
+    const resumeStoning = game._turn_tail_phase === 'stoning';
     const resumeExertion = game._turn_tail_phase === 'exertion';
     const resumeAfterSounds = !!game._resume_monster_turn_tail_after_sounds;
     game._resume_monster_turn_tail_after_sounds = 0;
@@ -10759,7 +10751,7 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
     if (!resumeAfterSounds) {
     // C resumes nh_timeout after a refused death or a suspended timer.
     // Neither continuation repeats the earlier intrinsic decrements.
-    if (!resumeTimers && !resumeAfterStoningDeath) {
+    if (!resumeTimers && !resumeAfterStoningDeath && !resumeStoning) {
         // timeout.c:650: spell protection decays before property timeouts,
         // so blindness expiring later this turn still hides the haze change.
         if (!game.u?.uinvulnerable && game.u.usptime) {
@@ -10833,7 +10825,16 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
             addHeroStatusSuffix('Stone');
             const stonedStage = game.u._stonedTimeout;
             const stonedMessage = STONED_TEXTS[5 - stonedStage];
-            if (stonedMessage) addToplineMessage(stonedMessage);
+            if (!resumeStoning && stonedMessage && !addToplineMessage(stonedMessage)) {
+                // nh_timeout pauses inside urgent_pline, before stage effects,
+                // attribute exercise, timeout decrement or any later timers.
+                game._turn_tail_phase = 'stoning';
+                game._deferred_monster_turn_tail = 1;
+                game._resume_time_after_more = 1;
+                game._process_time_with_more = 0;
+                return 'defer-tail';
+            }
+            if (resumeStoning) game._turn_tail_phase = null;
             applyStoningDialogueSideEffects(stonedStage);
             exerciseAttribute(A_DEX, false);
             game.u._stonedTimeout--;
@@ -11053,7 +11054,7 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
         }
         const wtcap = game.u.uinvulnerable ? 0 : (game._turn_wtcap ?? heroEncumbranceForWeight(heroCarriedWeight()));
         if (!resumeExertion) {
-            if (!game.u?.uinvulnerable || resumeTimers) {
+            if (game._turn_tail_phase !== 'regions' && (!game.u?.uinvulnerable || resumeTimers)) {
                 game._turn_tail_phase = 'timers';
                 for (const message of await processGameTimers(game)) addToplineMessage(message);
                 if (game._timer_callback_pending) {
@@ -11064,7 +11065,14 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
                 }
                 game._turn_tail_phase = null;
             }
-            advanceRegions(game);
+            game._turn_tail_phase = 'regions';
+            if (!await advanceRegions(game)) {
+                game._deferred_monster_turn_tail = 1;
+                game._resume_time_after_more = 1;
+                game._process_time_with_more = 0;
+                return 'defer-tail';
+            }
+            game._turn_tail_phase = null;
             if (game.u?.ublesscnt) game.u.ublesscnt--;
             game._turn_reached_full_hp = regenerateHeroHealth(wtcap);
         }
@@ -11551,7 +11559,6 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
     }
     const armBallDragForceTail = !!game._ball_drag_force_tail_after_first_turn;
     if (armBallDragForceTail) game._ball_drag_force_tail_after_first_turn = 0;
-	    const collapsedDoubleMiss = /^The .+ misses the .+\.  The .+ misses the .+\.$/.test(game._pending_message || '');
 	    game._monster_turns_started = 1;
     const suppressImmobileExtraTurns = !!game._suppress_immobile_extra_turns_once;
     game._suppress_immobile_extra_turns_once = 0;
@@ -11561,7 +11568,7 @@ async function finishMonsterTurnTail(resumeAfterStoningDeath = false) {
     // remaining tail items then complete the SAME turn): do not cascade into
     // the immobile-hero extra monster phase here; the next keyed pass owns it.
     if (resumeAfterStoningDeath) return true;
-    if ((game.u?.umovement ?? 0) < NORMAL_SPEED && !collapsedDoubleMiss && !suppressImmobileExtraTurns) {
+    if ((game.u?.umovement ?? 0) < NORMAL_SPEED && !suppressImmobileExtraTurns) {
         await afterMoveTurn(game, false);
         if (armBallDragForceTail) {
             game._force_monster_turn_tail_once = 1;
@@ -11960,7 +11967,7 @@ function splitMonsterThrownInventoryObject(mon, index) {
     const missileQuan = Math.max(1, Math.trunc(Number(missile.quan || 1)));
     if (missileQuan > 1) {
         missile.quan = missileQuan - 1;
-        const thrown = { ...missile, id: next_ident(), quan: 1, timed: 0, owornmask: 0 };
+        const thrown = { ...missile, id: next_ident(), quan: 1, timed: 0, owornmask: 0, wielded: false, ocarry: null };
         splitObjectTimers(missile, thrown);
         delete thrown.o_id;
         delete thrown.letter;
@@ -11970,6 +11977,10 @@ function splitMonsterThrownInventoryObject(mon, index) {
     mon.minvent.splice(index, 1);
     if (mon.missile === missile) mon.missile = null;
     if (mon.mw === missile) mon.mw = null;
+    // m_throw clears equipment state before another monster can pick it up.
+    missile.owornmask = 0;
+    missile.wielded = false;
+    missile.ocarry = null;
     missile.quan = 1;
     delete missile.letter;
     delete missile.line;
@@ -12109,7 +12120,7 @@ function monsterThrownEggHitName(item) {
 
 function monsterCanUseMunstone(mon) {
     if (!mon || monsterResistsStoning(mon)) return false;
-    return !(mon.meating || mon.mfrozen || mon.mcanmove === false);
+    return !(mon.meating || mon.msleeping || mon.mcanmove === false || mon.mcanmove === 0);
 }
 
 function monsterAcidResistant(mon) {
@@ -13117,7 +13128,7 @@ function monsterPickupClass(obj) {
 
 // mon.c:curr_mon_load/max_mon_load. Equipment contributes to weight even
 // when droppables() keeps it, and species strength determines capacity.
-function monsterCarryingLoad(mon) {
+export function monsterCarryingLoad(mon) {
     const data = mon.data || {};
     const species = monsterSpecies(mon);
     const weight = species?.weight ?? data.cwt ?? MONSTER_BODY_WEIGHTS.get(data.name) ?? 1450;
@@ -15194,7 +15205,7 @@ function monsterSearchItemGoal(mon) {
        gives up the search entirely.  The roll happens for every monster
        that reaches m_search_items (via the getitems gate, monmove.c:1891),
        including one whose only shop contact is standing in it. */
-    if (inShopBaseRoomAt(mon.mx, mon.my) && rn2(25)) return null;
+    if (inShopBaseRoomAt(mon.mx, mon.my) && (rn2(25) || mon.isshk)) return null;
     if (mon.mpeaceful || !(game.level?.objects || []).length) return null;
 
     const heroDist = Math.max(Math.abs((mon.mux ?? game.u?.ux ?? mon.mx) - mon.mx),
@@ -15521,6 +15532,163 @@ function consumeSetApparxy(mon) {
     return true;
 }
 
+// muse.c:2095-2244. Retain the selected object, not just its type: nomore
+// skips the rest of an inventory iteration, including later item classes.
+export function findMonsterMiscItem(mon) {
+    const data = monsterSpecies(mon) || mon.data || {};
+    if (is_animal(data) || mindless(data) || nohands(data)
+        || (game.u?.uswallow && game.u.ustuck === mon)
+        || (mon.mx - (mon.mux ?? game.u?.ux)) ** 2 + (mon.my - (mon.muy ?? game.u?.uy)) ** 2 > 36) return null;
+    const seeInvisible = game.u?.seeInvisible || game.u?.uprops?.[SEE_INVIS]?.intrinsic
+        || game.u?.uprops?.[SEE_INVIS]?.extrinsic || perceives(monsterSpecies({ data: game.u?._polyself_form }) || {});
+    const mayInvis = !mon.minvis && !mon.invis_blkd && (!mon.mpeaceful || seeInvisible)
+        && (!(data.attacks || []).some(attack => attack.aatyp === AT_GAZE) || mon.mcan);
+    const weapon = (game.inventory || []).find(item => item.wielded || (item.owornmask & W_WEP)
+        || item.line?.includes('weapon in') || item.line?.includes('wielded in right'));
+    let selected = null;
+    for (const item of mon.minvent || []) {
+        const type = objectTypeData(item)?.symbol;
+        if (type === 'POT_GAIN_LEVEL' && (!item.cursed || (!mon.isgd && !mon.isshk && !mon.ispriest)))
+            selected = { item, type };
+        if (selected?.type === 'BULLWHIP') continue;
+        if (type === 'BULLWHIP' && !mon.mpeaceful && weapon && !rn2(5) && item === mon.mw
+            && mon.mux === game.u.ux && mon.muy === game.u.uy && monsterNextToHero(mon) && !game.u.uswallow)
+            selected = { item, type };
+        if (selected?.type === 'WAN_MAKE_INVISIBLE') continue;
+        if (type === 'WAN_MAKE_INVISIBLE' && item.spe > 0 && mayInvis) selected = { item, type };
+        if (selected?.type === 'POT_INVISIBILITY') continue;
+        if (type === 'POT_INVISIBILITY' && mayInvis) selected = { item, type };
+        if (selected?.type === 'WAN_SPEED_MONSTER') continue;
+        if (type === 'WAN_SPEED_MONSTER' && item.spe > 0 && mon.mspeed !== 'fast' && mon.mspeed !== MFAST && !mon.isgd)
+            selected = { item, type };
+        if (selected?.type === 'POT_SPEED') continue;
+        if (type === 'POT_SPEED' && mon.mspeed !== 'fast' && mon.mspeed !== MFAST && !mon.isgd)
+            selected = { item, type };
+        if (selected?.type === 'WAN_POLYMORPH') continue;
+        if (type === 'WAN_POLYMORPH' && item.spe > 0 && !mon.chamBase && data.difficulty < 6) selected = { item, type };
+        if (selected?.type === 'POT_POLYMORPH') continue;
+        if (type === 'POT_POLYMORPH' && !mon.chamBase && data.difficulty < 6) selected = { item, type };
+    }
+    return selected;
+}
+
+// muse.c:2441-2486: the drinking/zapping pline returns before invisibility
+// changes; the effect's pline returns before the potion is consumed.
+export async function useMonsterInvisibility(mon, state) {
+    const item = state.item;
+    const potion = state.type === 'POT_INVISIBILITY';
+    const deaf = heroIsDeafForMonsterNoise() || game.u?.uprops?.[DEAF]?.intrinsic || game.u?.uprops?.[DEAF]?.extrinsic;
+    if (!state.phase) {
+        state.vis = cansee(mon.mx, mon.my);
+        state.vismon = heroCanSeeMonster(mon);
+        state.phase = 'announce';
+        if (!potion && item.cursed && !rn2(WAND_BACKFIRE_CHANCE)) {
+            state.phase = 'backfire';
+            state.damage = d(item.spe + 2, 6);
+            const range = couldsee(mon.mx, mon.my) ? BOLT_LIM + 1 : BOLT_LIM - 3;
+            const message = state.vis
+                ? `${monsterDisplayName(mon, true)} zaps a ${pickupObjectName({ ...item, quan: 1, line: '' })}, which suddenly explodes!`
+                : deaf ? '' : `You hear a zap and an explosion ${(mon.mx - game.u.ux) ** 2 + (mon.my - game.u.uy) ** 2 <= range * range ? 'nearby' : 'in the distance'}.`;
+            if (message && !addToplineMessage(message)) return false;
+        }
+    }
+    if (state.phase === 'backfire') {
+        mon.minvent = mon.minvent.filter(obj => obj !== item); item.ocarry = null;
+        mon.mhp -= state.damage;
+        state.aborted = mon.mhp > 0;
+        state.phase = 'done';
+        if (mon.mhp <= 0) {
+            const messages = [];
+            if (!applyHeroProjectileMonsterLifeSaving(mon, messages)) monsterCombatKill(mon);
+            for (const message of messages) addToplineMessage(message);
+        }
+        return true;
+    }
+    if (state.phase === 'announce') {
+        state.phase = 'effect';
+        let message;
+        if (state.vismon) {
+            if (!heroIsHallucinatingForMonsterFeedback()) item.dknown = true;
+            const name = pickupObjectName({ ...item, quan: 1, line: '' });
+            const article = /^[aeiou]/i.test(name) ? 'an' : 'a';
+            message = `${monsterDisplayName(mon, true)} ${potion ? 'drinks' : `zaps ${mon.female ? 'herself' : 'himself'} with`} ${article} ${name}!`;
+        } else if (!deaf) {
+            const range = couldsee(mon.mx, mon.my) ? BOLT_LIM + 1 : BOLT_LIM - 3;
+            message = potion ? 'You hear a chugging sound.'
+                : `You hear a ${(mon.mx - game.u.ux) ** 2 + (mon.my - game.u.uy) ** 2 <= range * range ? 'nearby' : 'distant'} zap.`;
+        }
+        if (message && !addToplineMessage(message)) return false;
+    }
+    if (state.phase === 'effect') {
+        if (!potion) {
+            if (!state.vismon) { item.known = false; item.chargeKnown = false; }
+            item.spe--;
+        }
+        const name = monsterDisplayName(mon, true).replace(/^The /, 'the ');
+        mon.perminvis = item.cursed ? 0 : 1;
+        if (!mon.invis_blkd) { mon.minvis = mon.perminvis; newsym(mon.mx, mon.my); }
+        state.phase = 'identify';
+        let message;
+        if (state.vismon && mon.minvis) {
+            if (heroCanSpotMonster(mon)) message = `${name[0].toUpperCase() + name.slice(1)}${name.endsWith('s') ? "'" : "'s"} body takes on a ${heroIsHallucinatingForMonsterFeedback() ? 'normal' : 'strange'} transparency.`;
+            else {
+                message = `Suddenly you cannot see ${name}.`;
+                state.mapInvisible = state.vis;
+            }
+            state.learn = true;
+        } else if (state.vismon) message = `${monsterDisplayName(mon, true)} briefly seems to be transparent.`;
+        if (message && !addToplineMessage(message)) return false;
+    }
+    if (state.phase === 'identify') {
+        if (state.mapInvisible) { game.level.at(mon.mx, mon.my).map_invisible = true; newsym(mon.mx, mon.my); }
+        if (state.learn) discoverObjectType(item, { exercise: exerciseAttribute, discover: () => {
+            if (potion) recordPotionDiscovery('invisibility', true); else recordWandDiscovery('make invisible', true);
+        } });
+        state.phase = potion && item.cursed ? 'aggravate' : 'consume';
+    }
+    if (state.phase === 'aggravate') {
+        state.phase = 'aggravateMap';
+        const name = monsterDisplayName(mon, true).replace(/^The /, 'the ');
+        if (!addToplineMessage(`For some reason, ${name}${name.endsWith('s') ? "'" : "'s"} presence is known to you.`)) return false;
+    }
+    if (state.phase === 'aggravateMap') {
+        state.phase = 'aggravateConfirm';
+        const glyph = monsterGlyph(mon, true);
+        state.overlayBefore = game._overlay_lines;
+        game._overlay_lines = Array.from({ length: ROWNO }, (_, y) => [y + 1, 0, ' '.repeat(COLNO)]);
+        game._overlay_lines.push([mon.my + 1, mon.mx - 1, glyph.ch, 0, glyph.color],
+            [game.u.uy + 1, game.u.ux - 1, '@', 0, CLR_WHITE]);
+        const name = monsterDisplayName(mon, true).replace(/^The /, 'the ');
+        if (!addToplineMessage(`You feel aggravated at ${name}.`)) return false;
+    }
+    if (state.phase === 'aggravateConfirm') {
+        state.phase = 'aggravateDone';
+        game._message_more = 1;
+        game._process_time_with_more = 0;
+        return false;
+    }
+    if (state.phase === 'aggravateDone') {
+        game._overlay_lines = state.overlayBefore ?? null;
+        if (game.u?.usleep || game.u?.unconscious || game._sleeping_time > 0) {
+            game.multi = -1;
+            game._helpless_time = 1;
+            if (game._sleeping_time > 0) game._sleeping_time = 1;
+            game._wake_message = 'Aggravated, you are jolted into full consciousness.';
+        }
+        newsym(mon.mx, mon.my);
+        if (!heroCanSpotMonster(mon)) { game.level.at(mon.mx, mon.my).map_invisible = true; newsym(mon.mx, mon.my); }
+        state.phase = 'consume';
+    }
+    if (state.phase === 'consume') {
+        if (potion) {
+            if ((item.quan || 1) > 1) { item.quan--; item.owt = (objectTypeData(item)?.weight ?? 20) * item.quan; }
+            else { mon.minvent = mon.minvent.filter(obj => obj !== item); item.ocarry = null; }
+        }
+        state.phase = 'done';
+    }
+    return true;
+}
+
 function findMonsterHealingPotion(mon) {
     return [...(mon.minvent || [])].reverse().find(item => {
         const kind = String(item.kind || '').replace(/^potion:/, '').replace(/^potion of /, '');
@@ -15638,8 +15806,8 @@ function moveMonsterTowardHero(mon, conflictActive = false, monIndex = null, som
             }
         }
     }
-    const peacefulWander = !!mon.mpeaceful;
-    const peacefulSearchItems = !peacefulWander || !rn2(10);
+    const peacefulWander = !!mon.mpeaceful && !mon.isshk;
+    const peacefulSearchItems = !mon.mpeaceful || !rn2(10);
     let randomWander = peacefulWander;
     if (mon.mconf) randomWander = true;
     let goalX = mon.mux ?? game.u?.ux ?? mon.mx;
@@ -17393,35 +17561,16 @@ function regionContains(reg, x, y) {
     return reg?.coords?.some(coord => coord.x === x && coord.y === y);
 }
 
-function reportGasCloudDissipation(g, reg) {
-    if (reg?.type !== 'gas_cloud') return;
-    const ux = g.u?.ux ?? -1;
-    const uy = g.u?.uy ?? -1;
-    if (regionContains(reg, ux, uy)) {
-        addToplineMessage('The gas cloud around you dissipates.');
-        return;
-    }
-    const visibleCount = (reg.coords || []).filter(coord =>
-        g.viz_array?.[coord.y]?.[coord.x] & IN_SIGHT).length;
-    if (visibleCount) addToplineMessage(`You see ${visibleCount === 1 ? 'a' : 'some'} gas cloud${visibleCount === 1 ? '' : 's'} dissipate.`);
-}
-
-function gasCloudWakeNearby(x, y) {
-    for (const mon of game.level?.monsters || []) {
-        if (!mon.msleeping) continue;
-        const dx = (mon.mx || 0) - x;
-        const dy = (mon.my || 0) - y;
-        if (dx * dx + dy * dy <= 4) mon.msleeping = 0;
-    }
-}
-
 function heroGasCloudImmune(g) {
     const magicalBreathing = (g.inventory || []).some(item =>
         item.worn && (item.actualKind === 'amulet of magical breathing'
             || item.kind === 'amulet of magical breathing'));
-    const form = g.u?._polyself_base || {};
-    return !!(g.u?.uinvulnerable || g.u?.underwater || g.u?.uunderwater
-        || magicalBreathing || form.breathless || form.nonliving);
+    const form = g.u?._polyself_form || MONS[g.u?.umonnum] || {};
+    const breathing = g.u?.uprops?.[MAGICAL_BREATHING];
+    return !!(g.u?.uinvulnerable || g.u?.underwater || g.u?.uunderwater || g.u?.uinwater
+        || magicalBreathing || breathing?.intrinsic || breathing?.extrinsic
+        || g.u?.magicalBreathing || g.u?.breathless || g.u?.Breathless
+        || monsterPoisongasOk({ data: form, mx: g.u.ux, my: g.u.uy }));
 }
 
 // Spawned-monster `data` objects are sparse stubs; look up the canonical
@@ -17431,7 +17580,7 @@ const PERMONST_BY_NAME = new Map(PERMONST_MONS.map(m => [m.name, m]));
 function canonicalMonstFlags(data) {
     if (!data) return null;
     if (Number.isInteger(data.m1)) return data;
-    return PERMONST_BY_NAME.get(data.name) || null;
+    return MONS[data.pm] || PERMONST_BY_NAME.get(data.name) || null;
 }
 
 // C ref: mon.c:329-355 m_poisongas_ok() — monsters gas never touches
@@ -17443,10 +17592,7 @@ function monsterGasCloudImmune(mon) {
     const data = mon?.data || {};
     const canon = canonicalMonstFlags(data);
     return !!(data.breathless || data.nonliving
-        || (canon && (canon.m1 & 0x00000400) !== 0) /* M1_BREATHLESS */
-        || data.name === 'fog cloud'
-        || data.name?.endsWith(' golem') || data.mlet === 'W'
-        || data.mlet === 'Z' || data.mlet === 'M' || data.mlet === "'");
+        || canon && (breathless(canon) || nonliving(canon) || [PM_HEZROU, PM_VROCK].includes(canon.pm)));
 }
 
 // C ref: mon.c:329-356 m_poisongas_ok() — only the M_POISONGAS_OK tier counts.
@@ -17456,11 +17602,10 @@ function monsterGasCloudImmune(mon) {
 function monsterPoisongasOk(mon) {
     const data = mon?.data || {};
     const canon = canonicalMonstFlags(data);
-    if (mon?.cham === 'vampire' || mon?.cham === 'vampire leader'
-        || mon?.cham === 'Vlad the Impaler') return true; // is_vampshifter, monst.h:217-219
+    if (['vampire', 'vampire leader', 'Vlad the Impaler'].includes(MONS[mon?.cham]?.name || mon?.cham)) return true;
     if (monsterGasCloudImmune(mon)) return true; // mon.c:335-338 nonliving/breathless/immune_poisongas
     const loc = game.level?.at(mon?.mx ?? -1, mon?.my ?? -1);
-    if ((canon?.mlet === 57 /* S_EEL */ || data.mlet === 57 || data.mlet === ';'
+    if ((canon?.mlet === S_EEL || data.mlet === S_EEL || data.mlet === ';'
          || Is_waterlevel()) && loc && IS_POOL(loc.typ))
         return true; // mon.c:340-346 eels in pools / plane of water
     const attacks = canon?.attacks || data.attacks || [];
@@ -17490,108 +17635,178 @@ function monsterPoisonResistant(mon) {
         || (canon && (canon.mres & 0x20) !== 0));
 }
 
-function applyHeroGasCloud(g, reg) {
-    if ((reg.damage || 0) < 1 || !regionContains(reg, g.u?.ux, g.u?.uy)) return;
-    if (heroGasCloudImmune(g)) return;
-    if (!g.u?.blind) {
-        addToplineMessage('Your eyes sting.');
-        g.u.blind = true;
-        g.u._blindTimeout = Math.max(g.u._blindTimeout || 0, 1);
+function applyHeroGasCloud(g, reg, state) {
+    if (state.phase === 'done') return true;
+    if (!state.phase) {
+        state.phase = 'done';
+        if (!regionContains(reg, g.u?.ux, g.u?.uy)) return true;
+        const form = canonicalMonstFlags(g.u._polyself_form) || MONS[g.u.umonnum];
+        if (reg.ttl < 20 && form?.pm === PM_FOG_CLOUD) reg.ttl += 5;
+        if ((reg.damage || 0) < 1 || heroGasCloudImmune(g)) return true;
+        state.phase = g.u.blind ? 'cough' : 'blind';
+        if (!g.u.blind && !addToplineMessage('Your eyes sting.')) return false;
     }
-    if (g.u?.poisonResistance) {
-        addToplineMessage('You cough!');
-        gasCloudWakeNearby(g.u.ux, g.u.uy);
-        return;
+    if (state.phase === 'blind') {
+        setHeroBlindedTimeout(1, [], false);
+        // make_blinded updates the map before the subsequent gas messages.
+        g._redraw_level_after_more = 0;
+        state.phase = 'cough';
     }
-    addToplineMessage('Something is burning your lungs!');
-    addToplineMessage('You cough and spit blood!');
-    gasCloudWakeNearby(g.u.ux, g.u.uy);
-    g.u.uhp = Math.max(0, (g.u.uhp || 0) - (rnd(reg.damage || 1) + 5));
-    if ((g.u.uhp || 0) <= 0) {
-        g._death_cause = 'killed by a gas cloud';
-        addToplineMessage('You die...');
+    if (state.phase === 'cough') {
+        state.resistant = heroHasPoisonResistance();
+        state.phase = 'blood';
+        if (!state.resistant && !addToplineMessage('Something is burning your lungs!')) return false;
     }
-}
-
-function applyMonsterGasCloud(g, reg, mon) {
-    if ((reg.damage || 0) < 1 || !regionContains(reg, mon.mx, mon.my)) return false;
-    if (monsterGasCloudImmune(mon)) return false;
-    const data = mon.data || {};
-    const nearby = (mon.mx - (g.u?.ux || 0)) ** 2 + (mon.my - (g.u?.uy || 0)) ** 2 < 8;
-    if (!data.silent && (couldSeeCoord(mon.mx, mon.my) || nearby))
-        addToplineMessage(`${monsterDisplayName(mon)} coughs!`);
-    gasCloudWakeNearby(mon.mx, mon.my);
-    if (reg.heroFault) {
-        mon.mpeaceful = 0;
-        mon.mtame = 0;
-        mon.pet = false;
+    if (state.phase === 'blood') {
+        state.phase = 'damage';
+        if (!addToplineMessage(state.resistant ? 'You cough!' : 'You cough and spit blood!')) return false;
     }
-    // C ref: region.c:1139-1142 haseyes(mtmp->data) gate (M1_NOEYES).
-    if (!(data.noeyes || (() => { const c = canonicalMonstFlags(data); return c && (c.m1 & 0x00001000) !== 0; })()) && mon.mcansee !== false) {
-        mon.mblinded = Math.max(mon.mblinded || 0, 1);
-        mon.mcansee = false;
+    if (state.phase === 'damage') {
+        state.output = [];
+        wakeNearbyMonstersAt(g.u.ux, g.u.uy, 2, state.output);
+        state.phase = 'wake';
     }
-    if (monsterPoisonResistant(mon)) return false;
-    mon.mhp = (mon.mhp || 1) - (rnd(reg.damage || 1) + 5);
-    if ((mon.mhp || 0) > 0) return false;
-    if (couldSeeCoord(mon.mx, mon.my)) addToplineMessage(`${monsterDisplayName(mon)} is killed!`);
-    recordVanquished(mon, !!reg.heroFault);
-    dropMonsterInventory(mon);
-    const explosion = queueGasSporeDeathExplosion(mon);
-    if (explosion) addToplineMessage(explosion.message);
-    g.level.monsters = (g.level?.monsters || []).filter(other => other !== mon);
-    newsym(mon.mx, mon.my);
+    if (state.phase === 'wake') {
+        while (state.output.length) if (!addToplineMessage(state.output.shift())) return false;
+        if (!state.resistant) {
+            const half = g.u.uprops?.[HALF_PHDAM];
+            let damage = rnd(reg.damage) + 5;
+            damage = half ? half.intrinsic || half.extrinsic ? Math.ceil(damage / 2) : damage : maybeHalfPhysicalDamage(damage);
+            const towel = g.u.ublindf || (g.inventory || []).find(item => item.worn && objectTypeData(item)?.symbol === 'TOWEL');
+            if (towel && objectTypeData(towel)?.symbol === 'TOWEL' && towel.spe > 0) damage = Math.ceil(damage / 2);
+            state.result = applyHeroHitPointDamage(state.output, damage, 'killed by a gas cloud');
+        }
+        state.phase = 'output';
+    }
+    if (state.phase === 'output') {
+        while (state.output.length) if (!addToplineMessage(state.output.shift())) return false;
+        state.phase = 'observe';
+        if (state.result && applyLifeSavingOrFatalCommandMode(state.result)) return false;
+    }
+    monstersObserveHeroResistance(M_SEEN_POISON, state.resistant);
+    state.phase = 'done';
     return true;
 }
 
-function applyGasCloudEffects(g, reg) {
-    applyHeroGasCloud(g, reg);
-    for (const mon of [...(g.level?.monsters || [])])
-        applyMonsterGasCloud(g, reg, mon);
+async function applyMonsterGasCloud(g, reg, mon, state) {
+    const data = canonicalMonstFlags(mon.data) || mon.data || {};
+    if (!state.phase) {
+        if (mon.dead || mon.mhp <= 0 || !regionContains(reg, mon.mx, mon.my)) return true;
+        if (reg.ttl < 20 && data.pm === PM_FOG_CLOUD) reg.ttl += 5;
+        if ((reg.damage || 0) < 1 || monsterPoisongasOk(mon)) return true;
+        state.phase = 'wake';
+        state.silent = is_silent(data) || mon.data?.silent;
+        const nearby = (mon.mx - g.u.ux) ** 2 + (mon.my - g.u.uy) ** 2 < 8;
+        if (!state.silent && (couldSeeCoord(mon.mx, mon.my) || nearby)
+            && !addToplineMessage(`${monsterDisplayName(mon)} coughs!`)) return false;
+    }
+    if (state.phase === 'wake') {
+        state.output = [];
+        if (!state.silent) wakeNearbyMonstersAt(mon.mx, mon.my, 2, state.output);
+        state.phase = 'damage';
+    }
+    if (state.phase === 'damage') {
+        while (state.output.length) if (!addToplineMessage(state.output.shift())) return false;
+        if (reg.heroFault) {
+            directMeleeSetmangryElberethHypocrisy(mon, state.output);
+            mon.mstrategy = (mon.mstrategy || 0) & ~STRAT_WAITMASK;
+            directMeleeAngerPeacefulMonster(mon, state.output, { visible: couldSeeCoord(mon.mx, mon.my), wake: false });
+        }
+        state.phase = 'injure';
+    }
+    if (state.phase === 'injure') {
+        while (state.output.length) if (!addToplineMessage(state.output.shift())) return false;
+        if (haseyes(data) && !mon.data?.noeyes && mon.mcansee !== false && mon.mcansee !== 0) {
+            mon.mblinded = 1;
+            mon.mcansee = false;
+        }
+        if (monsterPoisonResistant(mon)) return true;
+        mon.mhp = (mon.mhp || 1) - (rnd(reg.damage) + 5);
+        if (mon.mhp > 0) return true;
+        state.phase = 'kill';
+        state.visible = cansee(mon.mx, mon.my);
+        if (reg.heroFault) {
+            if (!addToplineMessage(announceHeroMonsterKill(mon))) return false;
+        } else if (state.visible && !addToplineMessage(`${monsterDisplayName(mon)} is killed by the gas cloud!`)) return false;
+    }
+    if (state.phase === 'kill') {
+        state.output = [];
+        if (reg.heroFault) await killMonsterFromHeroProjectileHit(mon, state.output, null, { killMessage: false, announced: true });
+        else if (!applyHeroProjectileMonsterLifeSaving(mon, state.output, { unseenMaybeNot: false, visibleSquare: state.visible })) {
+            finishTrapKilledMonster(mon);
+            if (mon.mtame && !state.visible) state.output.push('You have a sad feeling for a moment, then it passes.');
+        }
+        state.phase = 'death-output';
+    }
+    if (state.phase === 'death-output') {
+        while (state.output.length) if (!addToplineMessage(state.output.shift())) return false;
+        state.phase = 'done';
+    }
+    return true;
 }
 
-export function advanceRegions(g) {
-    if (!g.level?.regions?.length) return;
-    const regionCount = g.level.regions.length;
-    const removedRegions = [];
-    g.level.regions = g.level.regions.filter(reg => {
-        if (reg.ttl !== 0) return true;
-        if (reg.type === 'gas_cloud' && (reg.damage || 0) >= 5) {
-            // C ref: region.c:1046-1061 expire_gas_cloud() — a thick cloud
-            // (damage >= 5) thins instead of expiring: damage halves and
-            // ttl resets to 2.
-            reg.damage = Math.trunc((reg.damage || 0) / 2);
-            reg.ttl = 2;
-            return true;
-        }
-        reportGasCloudDissipation(g, reg);
-        removedRegions.push(reg);
-        return false;
-    });
-    if (g.level.regions.length !== regionCount) {
-        // C ref: region.c remove_region() — after the region is dropped, each
-        // covered spot still in sight gets newsym() so cloud glyphs revert to
-        // their background; expiring first unblocks line-of-sight and then
-        // redraws (second pass is skipped while blind).
-        vision_reset();
-        g.vision_full_recalc = 1;
-        vision_recalc(0);
-        if (!g.u?.blind) {
-            for (const reg of removedRegions)
-                if (reg.visible !== false && reg.coords)
-                    for (const coord of reg.coords) newsym(coord.x, coord.y);
-        }
+async function applyGasCloudEffects(g, reg, state) {
+    state.hero ??= {};
+    if (!applyHeroGasCloud(g, reg, state.hero)) return false;
+    state.monsters ??= [...(g.level?.monsters || [])];
+    state.monsterIndex ??= 0;
+    for (; state.monsterIndex < state.monsters.length; state.monsterIndex++) {
+        state.monster ??= {};
+        if (!await applyMonsterGasCloud(g, reg, state.monsters[state.monsterIndex], state.monster)) return false;
+        state.monster = null;
     }
-    for (const reg of g.level.regions) {
-        if (reg.ttl > 0) reg.ttl--;
+    return true;
+}
+
+export async function advanceRegions(g) {
+    if (!g.level?.regions?.length && !g._region_turn_state) return true;
+    const state = g._region_turn_state ??= { index: 0, initialized: false, aged: false, effect: {}, output: [] };
+    if (!state.initialized) {
+        state.initialized = true;
+        let within = false, seen = 0;
+        // region.c:run_regions expires backward; remove_region fills a hole
+        // with the last region. Dissipation messages follow all inside effects.
+        for (let i = g.level.regions.length - 1; i >= 0; i--) {
+            const reg = g.level.regions[i];
+            if (reg.ttl !== 0) continue;
+            if (reg.type === 'gas_cloud' && reg.damage >= 5) {
+                reg.damage = Math.trunc(reg.damage / 2);
+                reg.ttl = 2;
+                continue;
+            }
+            const last = g.level.regions.pop();
+            if (i < g.level.regions.length) g.level.regions[i] = last;
+            vision_reset();
+            g.vision_full_recalc = 1;
+            vision_recalc(0);
+            if (!g.u?.blind && reg.visible !== false) {
+                for (const coord of reg.coords || []) {
+                    newsym(coord.x, coord.y);
+                    if (reg.type !== 'gas_cloud' || g.u?.uswallow) continue;
+                    if (g.u?.ux === coord.x && g.u?.uy === coord.y) within = true;
+                    else if (g.viz_array?.[coord.y]?.[coord.x] & IN_SIGHT) seen++;
+                }
+            }
+        }
+        if (within) {
+            state.output.push('The gas cloud around you dissipates.');
+            if ((g.u?.xray_range ?? -1) <= 1) seen = 0;
+        }
+        if (seen) state.output.push(`You see ${seen === 1 ? 'a' : 'some'} gas cloud${seen === 1 ? '' : 's'} dissipate.`);
+    }
+    for (; state.index < g.level.regions.length; state.index++) {
+        const reg = g.level.regions[state.index];
+        if (!state.aged && reg.ttl > 0) reg.ttl--;
+        state.aged = true;
         if (reg.type === 'gas_cloud') {
-            applyGasCloudEffects(g, reg);
-            if (reg.ttl < 20
-                && (g.level?.monsters || []).some(mon => mon.data?.name === 'fog cloud'
-                    && regionContains(reg, mon.mx, mon.my)))
-                reg.ttl += 5;
+            if (!await applyGasCloudEffects(g, reg, state.effect)) return false;
         }
+        state.aged = false;
+        state.effect = {};
     }
+    while (state.output.length) if (!addToplineMessage(state.output.shift())) return false;
+    g._region_turn_state = null;
+    return true;
 }
 
 function advanceSpecialLevelFeatures(g) {
@@ -18033,6 +18248,12 @@ export async function moveloop_core() {
             || g._hallu_display_after_deferred_multiattack
             || g._hallu_display_after_expel
             || (!g._dismissed_more_this_command && !g._process_time_with_more);
+        // Consume the incoming continuation before monster actions can arm
+        // the same flag for a later pline suspension.
+        if (clearPetKillHalluDisplay) g._hallu_display_after_pet_kill_luck = 0;
+        if (clearColdHalluDisplay) g._hallu_display_after_cold_topline = 0;
+        if (clearDeferredMultiattackHalluDisplay) g._hallu_display_after_deferred_multiattack = 0;
+        if (clearExpelHalluDisplay) g._hallu_display_after_expel = 0;
         if (normalHalluDisplay && !armorTailOnly) g._display_hallucinated_normal = 1;
         const ballDragForcedTail = g._ball_drag_force_tail_on_last_turn && g._pending_time_passed === 1;
         let forcedTailRemaining = -1;
@@ -18074,13 +18295,9 @@ export async function moveloop_core() {
 	                !mon.pet && !mon.mpeaceful && !mon.msleeping && !mon.mundetected
 	                && Math.max(Math.abs(mon.mx - (g.u?.ux || 0)), Math.abs(mon.my - (g.u?.uy || 0))) <= 1
 	                && couldSeeCoord(mon.mx, mon.my))) {
+	            // Stopping the occupation retains the action already in progress.
 	            interruptEatingOccupation(g);
-	            g._pending_time_passed = 0;
 	        }
-        if (clearPetKillHalluDisplay) g._hallu_display_after_pet_kill_luck = 0;
-        if (clearColdHalluDisplay) g._hallu_display_after_cold_topline = 0;
-        if (clearDeferredMultiattackHalluDisplay) g._hallu_display_after_deferred_multiattack = 0;
-        if (clearExpelHalluDisplay) g._hallu_display_after_expel = 0;
         const prayerPartialTurn = !movedMonsters && g._prayer_occupation
             && g._pending_prayer_finish_message;
         if (armorTailOnly) {
@@ -18447,12 +18664,12 @@ const prayerMessageComplete = !!g._prayer_message_complete_once;
 			                || g._hallu_display_after_cold_topline
 			                || g._hallu_display_after_deferred_multiattack
 			                || (!g._dismissed_more_this_command && !g._process_time_with_more);
-			            if (normalHalluDisplay) g._display_hallucinated_normal = 1;
-			            const movedMoreMonsters = await processMonsterTurns();
-			            if (normalHalluDisplay) g._display_hallucinated_normal = 0;
 			            if (clearPetKillHalluDisplay) g._hallu_display_after_pet_kill_luck = 0;
 			            if (clearColdHalluDisplay) g._hallu_display_after_cold_topline = 0;
 			            if (clearDeferredMultiattackHalluDisplay) g._hallu_display_after_deferred_multiattack = 0;
+			            if (normalHalluDisplay) g._display_hallucinated_normal = 1;
+			            const movedMoreMonsters = await processMonsterTurns();
+			            if (normalHalluDisplay) g._display_hallucinated_normal = 0;
             if (movedMoreMonsters === 'defer-tail') {
                 // Deferred by a message prompt; the top of the loop resumes the tail.
                 if (g._timer_callback_pending) break;
@@ -18486,11 +18703,18 @@ const prayerMessageComplete = !!g._prayer_message_complete_once;
                     || g._pick_lock_occupation
                     || g._pick_dig_occupation
                     || g._tin_opening_occupation;
-            const completedTurnTailMore = (g._turn_tail_topline_more || g._spellbook_finish_after_topline_more)
+            // unmul's armor completion message belongs to the finished
+            // turn. Once no continuation owns time, the next action must
+            // pay its normal movement cost (C allmain.c:204-206,380-388).
+            const completedTurnTailMore = (g._turn_tail_topline_more || g._spellbook_finish_after_topline_more
+                || (g._armor_finish_after_more && turnAdvanced))
                 && !moreNeedsTimeResume;
             if (g._armor_finish_after_more) g._armor_finish_after_more = 0;
             else if (g._suppress_more_time_once > 0) g._suppress_more_time_once--;
-            else if (!g._pet_message_resume && !completedTurnTailMore) g._pending_time_passed++;
+            // Immobility already retained a pending turn above. More resumes
+            // that same turn; it must not add another one after unmul finishes.
+            else if (!g._pet_message_resume && !completedTurnTailMore && !(g._helpless_time > 0))
+                g._pending_time_passed++;
             g._turn_tail_topline_more = 0;
             const swapMoreBeforeTimeDebit = /^You swap places with\b/.test(g._pending_message || '');
             // C ref: allmain.c moveloop_core() — when the dig occupation ended
@@ -18634,7 +18858,7 @@ const prayerMessageComplete = !!g._prayer_message_complete_once;
             const heroY = g.u?.uy || 0;
             const runDir = RUN_DIRECTIONS[g._run_key] || { dx: 0, dy: 0 };
             if (!ignoreAdjacentStop && (g.level?.monsters || []).some(mon =>
-                !mon.pet && !mon.mpeaceful
+                !mon.pet && !mon.mpeaceful && heroCanSeeMonster(mon)
                 && (g.viz_array?.[mon.my]?.[mon.mx] & IN_SIGHT)
                 && Math.max(Math.abs(mon.mx - heroX), Math.abs(mon.my - heroY)) <= 1
                 && (g._run_mode !== 1 || (mon.mx === heroX + runDir.dx && mon.my === heroY + runDir.dy))
@@ -19117,7 +19341,9 @@ function monsterHeroPermonstAttackEntries(mon) {
  * discovered types their real name.  Stacks render "N <plural>" the way
  * C's doname does for monster inventory.  Hook for js/mhitm.js. */
 function monsterWieldWeaponDoname(obj) {
-    const real = String(obj.actualKind || obj.kind || '').toLowerCase();
+    recordWeaponDiscoveryForItem(obj);
+    obj.dknown = true;
+    const real = String(obj.actualKind || obj.kind || objectTypeData(obj)?.name || '').toLowerCase();
     const entry = WEAPON_DISCOVERIES.find(e => e.name.toLowerCase() === real);
     let base = real || 'weapon';
     if (entry) {
@@ -19181,10 +19407,25 @@ setMonsterMonsterCombatHooks({
     cansee: (x, y) => !game.u?.blind && couldSeeCoord(x, y),
     canseemon: (m) => monsterVisibleToHero(m),
     canspotmon: (m) => monsterVisibleToHero(m),
-    Monnam: (m) => monsterDisplayName(m),
-    mon_nam: (m) => (m.givenName || `the ${m.data?.name || 'creature'}`),
+    Monnam: (m, hallucinate = false) => monsterDisplayName(m, hallucinate),
+    mon_nam: (m, hallucinate = false) => hallucinate
+        ? monsterDisplayName(m, true).replace(/^The /, 'the ')
+        : (m.givenName || `the ${m.data?.name || 'creature'}`),
     monkilled: (m, how) => monsterCombatKill(m, how),
-    monstone: (m) => stoneMonster(m, null, { awardExperience: false }),
+    monstone: mon => {
+        const messages = [];
+        mon.mhp = 0;
+        if (!applyHeroProjectileMonsterLifeSaving(mon, messages, { unseenMaybeNot: false }))
+            stoneMonster(mon, messages, { awardExperience: false });
+        for (const message of messages) addToplineMessage(message);
+    },
+    recordReflection: recordMonsterReflectionDiscovery,
+    munstone: mon => {
+        const messages = [];
+        const cured = monsterMunstone(mon, messages, monsterVisibleToHero(mon));
+        for (const message of messages) addToplineMessage(message);
+        return cured;
+    },
     newsym,
     /* mdamagem() -> grow_up(magr, mdef): cmd.js growth bookkeeping */
     growUp: (agr, def) => monsterGrowUp(agr, def),

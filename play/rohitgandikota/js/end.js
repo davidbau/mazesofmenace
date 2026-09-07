@@ -10,7 +10,7 @@
 import { game } from './gstate.js';
 import { pline, canspotmon, tty_clear_nhwindow_message } from './display.js';
 import { You, Your, You_feel, pline_The } from './pline.js';
-import { carrying, hidden_gold, money_cnt, useup } from './invent.js';
+import { carrying, hidden_gold, money_cnt, useup, obfree, currency } from './invent.js';
 import { depth, dunlevs_in_dungeon, single_level_branch } from './dungeon.js';
 import { G_GENOD, G_UNIQ, In_endgame, In_quest, Is_astralevel,
          KILLED_BY_AN, KILLED_BY, A_CURRENT, A_ORIGINAL,
@@ -18,8 +18,8 @@ import { G_GENOD, G_UNIQ, In_endgame, In_quest, Is_astralevel,
          OBJ_FREE, BUFSZ,
          NON_PM, LEAVESTATUE, A_CON, has_mgivenname, Upolyd } from './const.js';
 import { PMNAMES, MONSYMS } from './monst_data.js';
-import { ONAMES } from './objects_data.js';
-import { pmname } from './do_name.js';
+import { ONAMES, OCLASSES } from './objects_data.js';
+import { pmname, free_oname } from './do_name.js';
 import { gender, type_is_pname } from './mondata.js';
 import { is_vampshifter } from './monst.js';
 import { Hallucination } from './youprop.js';
@@ -34,7 +34,7 @@ import { minuhpmax } from './attrib.js';
 import { setuhpmax } from './exper.js';
 import { init_uhunger } from './eat.js';
 import { make_sick } from './potion.js';
-import { TIMEOUT, SICK_ALL, TT_LAVA, PLNMSG_OK_DONT_DIE } from './const.js';
+import { TIMEOUT, SICK_ALL, TT_LAVA, PLNMSG_OK_DONT_DIE, plur, has_oname, IN_SIGHT } from './const.js';
 import { reset_utrap } from './trap.js';
 import { endmultishot } from './dothrow.js';
 import { expels } from './mhitu.js';
@@ -44,7 +44,11 @@ import { mon_nam, Monnam } from './do_name.js';
 import { flush_screen } from './display.js';
 import { Is_container, Has_contents, SchroedingersBox } from './obj.js';
 import { update_inventory, sortloot, unsortloot } from './invent.js';
-import { the, xname, thesimpleoname } from './objnam.js';
+import { the, xname, thesimpleoname, the_unique_obj, OBJ_NAME } from './objnam.js';
+import { mksobj } from './mkobj.js';
+import { arti_cost, artiname } from './artifact.js';
+import { adj_lev } from './makemon.js';
+import { d } from './rng.js';
 import { doname_with_price } from './shk.js';
 import { discover_object } from './o_init.js';
 import { upstart } from './do_name.js';
@@ -378,6 +382,100 @@ export async function savelife(how) {
 }
 
 // src/end.c done() — the hero's game is over.
+// src/end.c:63 — set while resolving Schroedinger's box for disclosure so
+// the final score counts the same cat
+let Schroedingers_cat = false;
+
+// include/decl.h:417 gg.gems[] and decl.h:154 ga.amulets[], the valuables
+// tallied at the end of the game; src/decl.c:1132 gv.valuables[] lists them
+const gems = Array.from(
+    { length: ONAMES.LAST_REAL_GEM + 1 - ONAMES.FIRST_REAL_GEM + 1 }, /* 1 extra for glass */
+    () => ({ typ: 0, count: 0 }));
+const amulets = Array.from(
+    { length: ONAMES.LAST_AMULET + 1 - ONAMES.FIRST_AMULET },
+    () => ({ typ: 0, count: 0 }));
+const valuables = [{ list: gems, size: gems.length },
+                   { list: amulets, size: amulets.length }];
+
+// include/integer.h:129 nowrap_add() — addition saturating at LONG_MAX
+const LONG_MAX = 0x7fffffffffffffff;
+const nowrap_add = (a, b) => ((a) <= (LONG_MAX - (b)) ? ((a) + (b)) : LONG_MAX);
+
+// src/end.c:763 get_valuables() — inventory or container contents
+function get_valuables(list) {
+    /* find amulets and gems, ignoring all artifacts */
+    for (const obj of list) {
+        if (Has_contents(obj)) {
+            get_valuables(obj.cobj);
+        } else if (obj.oartifact) {
+            continue;
+        } else if (obj.oclass === OCLASSES.AMULET_CLASS) {
+            const i = obj.otyp - ONAMES.FIRST_AMULET;
+            if (!amulets[i].count) {
+                amulets[i].count = obj.quan;
+                amulets[i].typ = obj.otyp;
+            } else
+                amulets[i].count += obj.quan; /* always adds one */
+        } else if (obj.oclass === OCLASSES.GEM_CLASS
+                   && obj.otyp <= ONAMES.LAST_GLASS_GEM) {
+            /* last+1: combine all glass gems into one slot */
+            const i = Math.min(obj.otyp, ONAMES.LAST_REAL_GEM + 1)
+                      - ONAMES.FIRST_REAL_GEM;
+            if (!gems[i].count) {
+                gems[i].count = obj.quan;
+                gems[i].typ = obj.otyp;
+            } else
+                gems[i].count += obj.quan;
+        }
+    }
+}
+
+// src/end.c:798 sort_valuables() — most frequent to least; we could just
+// as easily use qsort, but we don't care about efficiency here
+function sort_valuables(list, size) {
+    /* move greater quantities to the front of the list */
+    for (let i = 1; i < size; i++) {
+        if (list[i].count === 0)
+            continue;   /* empty slot */
+        const ltmp = { ...list[i] }; /* structure copy */
+        let j;
+        for (j = i; j > 0; --j) {
+            if (list[j - 1].count >= ltmp.count)
+                break;
+            list[j] = { ...list[j - 1] };
+        }
+        list[j] = ltmp;
+    }
+}
+
+// src/end.c:907 artifact_score() — counting: add up points; otherwise
+// display them
+function artifact_score(list, counting, endwin) {
+    for (const otmp of list) {
+        if (otmp.oartifact || otmp.otyp === ONAMES.BELL_OF_OPENING
+            || otmp.otyp === ONAMES.SPE_BOOK_OF_THE_DEAD
+            || otmp.otyp === ONAMES.CANDELABRUM_OF_INVOCATION) {
+            const value = arti_cost(otmp); /* zorkmid value */
+            const points = Math.trunc(value * 5 / 2);  /* score value */
+            if (counting) {
+                game.u.urexp = nowrap_add(game.u.urexp, points);
+            } else {
+                discover_object(otmp.otyp, true, true, false);
+                /* not observe_object; dead characters don't observe */
+                otmp.known = otmp.dknown = otmp.bknown = otmp.rknown = 1;
+                /* assumes artifacts don't have quan > 1 */
+                const pbuf = `${the_unique_obj(otmp) ? 'The ' : ''}${
+                    otmp.oartifact ? artiname(otmp.oartifact)
+                                   : OBJ_NAME(game.objects[otmp.otyp])
+                    } (worth ${value} ${currency(value)} and ${points} points)`;
+                tty_putstr(endwin, 0, pbuf);
+            }
+        }
+        if (Has_contents(otmp))
+            artifact_score(otmp.cobj, counting, endwin);
+    }
+}
+
 export async function done(how) {
     let survive = false;
     const u = game.u;
@@ -597,6 +695,21 @@ async function really_done(how) {
             obj.cknown = 1;
         if (obj.otyp === END_ONAMES.LARGE_BOX || obj.otyp === END_ONAMES.CHEST)
             obj.lknown = 1;
+        /* we resolve Schroedinger's cat now in case of both
+           disclosure and dumplog, where the 50:50 chance for
+           live cat has to be the same both times */
+        if (SchroedingersBox(obj)) {
+            if (!Schroedingers_cat) {
+                /* tell observe_quantum_cat() not to create a cat; if it
+                   chooses live cat in this situation, it will leave the
+                   SchroedingersBox flag set (for container_contents()) */
+                const { observe_quantum_cat } = await import('./pickup.js');
+                await observe_quantum_cat(obj, false, false);
+                if (SchroedingersBox(obj))
+                    Schroedingers_cat = true;
+            } else
+                obj.spe = 0; /* ordinary box with cat corpse in it */
+        }
     }
 
     await disclose(how, taken);
@@ -696,10 +809,85 @@ async function really_done(how) {
         tty_putstr(endwin, 0, '');
 
         if (how === ESCAPED || how === ASCENDED) {
-            tty_putstr(endwin, 0,
-                       `You ${how === ASCENDED ? 'went to your reward'
-                                              : 'escaped from the dungeon'} with ${
-                           u.urexp} point${u.urexp === 1 ? '' : 's'},`);
+            for (const val of valuables)
+                for (let i = 0; i < val.size; i++)
+                    val.list[i].count = 0;
+            get_valuables(game.invent || []);
+
+            /* add points for collected valuables */
+            for (const val of valuables)
+                for (let i = 0; i < val.size; i++)
+                    if (val.list[i].count !== 0) {
+                        const tmp = val.list[i].count
+                                    * (game.objects[val.list[i].typ]?.oc_cost ?? 0);
+                        u.urexp = nowrap_add(u.urexp, tmp);
+                    }
+
+            /* count the points for artifacts */
+            artifact_score(game.invent || [], true, endwin);
+
+            if (game.viz_array?.[0])
+                game.viz_array[0][0] |= IN_SIGHT; /* need visibility for naming */
+            const mydogs = game.mydogs || [];
+            let pbuf = 'You';
+            if (mydogs.length || Schroedingers_cat) {
+                for (const mtmp of mydogs) {
+                    pbuf += ` and ${mon_nam(mtmp)}`;
+                    if (mtmp.mtame)
+                        u.urexp = nowrap_add(u.urexp, mtmp.mhp);
+                }
+                /* [it might be more robust to create a housecat and add it to
+                   gm.mydogs; it doesn't have to be placed on the map for that] */
+                if (Schroedingers_cat) {
+                    const m_lev = adj_lev(game.mons[PMNAMES.PM_HOUSECAT]);
+
+                    const mhp = d(m_lev, 8);
+                    u.urexp = nowrap_add(u.urexp, mhp);
+                    pbuf += " and Schroedinger's cat";
+                }
+                tty_putstr(endwin, 0, pbuf);
+                pbuf = '';
+            } else {
+                pbuf += ' ';
+            }
+            pbuf += `${how === ASCENDED ? 'went to your reward'
+                                        : 'escaped from the dungeon'} with ${
+                        u.urexp} point${plur(u.urexp)},`;
+            tty_putstr(endwin, 0, pbuf);
+
+            if (!game.done_stopprint)
+                artifact_score(game.invent || [], false, endwin); /* list artifacts */
+
+            /* list valuables here */
+            for (const val of valuables) {
+                sort_valuables(val.list, val.size);
+                for (let i = 0; i < val.size && !game.done_stopprint; i++) {
+                    const typ = val.list[i].typ;
+                    const count = val.list[i].count;
+
+                    if (count === 0)
+                        continue;
+                    if (game.objects[typ].oc_class !== OCLASSES.GEM_CLASS
+                        || typ <= ONAMES.LAST_REAL_GEM) {
+                        const otmp = mksobj(typ, false, false);
+                        discover_object(otmp.otyp, true, true, false);
+                        otmp.dknown = 1; /* seen it (blindness fix) */
+                        /* observe_object not necessary after discover_object */
+                        otmp.known = 1;  /* for fake amulets */
+                        if (has_oname(otmp))
+                            free_oname(otmp);
+                        otmp.quan = count;
+                        pbuf = `${String(count).padStart(8)} ${xname(otmp)} (worth ${
+                                    count * game.objects[typ].oc_cost} ${
+                                    currency(2)}),`;
+                        obfree(otmp, null);
+                    } else {
+                        pbuf = `${String(count).padStart(8)} worthless piece${
+                                    plur(count)} of colored glass,`;
+                    }
+                    tty_putstr(endwin, 0, pbuf);
+                }
+            }
         } else {
             /* did not escape or ascend */
             let pbuf;
