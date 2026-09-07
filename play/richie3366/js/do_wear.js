@@ -14,7 +14,7 @@ import { yn_function } from './getline.js';
 import { an, doname, the, xname, xprname, vtense, makeplural, makesingular, otense, gloves_simple_name, simpleonames, body_part_latebound, Tobjnam } from './objnam.js';
 import { find_ac } from './u_init.js';
 import {
-    A_STR, A_CON, A_CHA, acurr, extremeattr, change_luck, Fast, Very_fast,
+    A_STR, A_CON, A_CHA, A_DEX, acurr, extremeattr, change_luck, Fast, Very_fast,
 } from './attrib.js';
 import { nomul, unmul, stop_occupation } from './hack.js';
 import { retouch_object, set_artifact_intrinsic } from './artifact.js';
@@ -26,7 +26,7 @@ import { cmdq_pop, cmdq_clear } from './cmd.js';
 import { set_occupation } from './engrave.js';
 import {
     makeknown, observe_object, ggetobj, is_worn, silly_thing, update_inventory,
-    weapon_descr, getobj,
+    weapon_descr, getobj, useup,
 } from './invent.js';
 import { w_blocks } from './worn.js';
 import { monstunseesu_prop } from './mondata.js';
@@ -60,7 +60,8 @@ import {
     GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_INACCESS, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST,
     GETOBJ_NOFLAGS,
 } from './const.js';
-import { x_monnam } from './do_name.js';
+import { x_monnam, trycall } from './do_name.js';
+import { change_sex, poly_gender, Unchanging } from './polyself.js';
 import {
     ARMOR_CLASS, RING_CLASS, AMULET_CLASS, WEAPON_CLASS, TOOL_CLASS,
     objectNames, objectNameStrs, objectDescrs, is_sword,
@@ -80,6 +81,7 @@ const FEDORA = objectNames.indexOf('FEDORA');
 const MEAT_RING = objectNames.indexOf('MEAT_RING');
 const GAUNTLETS_OF_POWER = objectNames.indexOf('GAUNTLETS_OF_POWER');
 const GAUNTLETS_OF_FUMBLING = objectNames.indexOf('GAUNTLETS_OF_FUMBLING');
+const GAUNTLETS_OF_DEXTERITY = objectNames.indexOf('GAUNTLETS_OF_DEXTERITY');
 const CLOAK_OF_PROTECTION = objectNames.indexOf('CLOAK_OF_PROTECTION');
 const CLOAK_OF_DISPLACEMENT = objectNames.indexOf('CLOAK_OF_DISPLACEMENT');
 const ROBE = objectNames.indexOf('ROBE');
@@ -865,8 +867,8 @@ async function Shield_on() {
 }
 /**
  * C ref: do_wear.c Gloves_on — POWER makeknown→exercise(A_WIS) (D-0783);
- * FUMBLING incr_itimeout. Named omissions: DEX adj_abon; update_inventory;
- * Gloves_off.
+ * FUMBLING incr_itimeout; DEXTERITY adj_abon (makeknown→exercise(A_WIS)
+ * credit when spe nonzero). Named omissions: update_inventory; Gloves_off.
  */
 async function Gloves_on() {
     const o = game.u?.uarmg;
@@ -893,8 +895,18 @@ async function Gloves_on() {
         makeknown(o.otyp);
         if (!game.flags) game.flags = {};
         game.flags.botl = true;
+    } else if (o.otyp === GAUNTLETS_OF_DEXTERITY) {
+        // C do_wear.c:592–594 + adj_abon :3322–3331 — makeknown when spe
+        // nonzero (→exercise(A_WIS) credit when newly learned), then
+        // ABON(A_DEX) += spe; botl unconditionally.
+        if (o.spe | 0) {
+            makeknown(o.otyp);
+            if (!u.abon) u.abon = { a: [0, 0, 0, 0, 0, 0] };
+            u.abon.a[A_DEX] = (u.abon.a[A_DEX] || 0) + (o.spe | 0);
+        }
+        if (!game.flags) game.flags = {};
+        game.flags.botl = true;
     }
-    // GAUNTLETS_OF_DEXTERITY adj_abon deferred
     if (!o.known) o.known = 1;
     find_ac();
     return 0;
@@ -1189,11 +1201,14 @@ export async function Blindf_on(otmp) {
 export async function Blindf_off(otmp) {
     const u = game.u || (game.u = {});
     const was_blind = Blind();
+    // C do_wear.c:1498 `nooffmsg = !otmp` — break_armor's ublindf arm passes
+    // Null to skip the usual off message (polyself.c:1297).
+    const nooffmsg = !otmp;
     if (!otmp) otmp = u.ublindf;
     if (!otmp) return;
 
     setworn(null, W_TOOL);
-    await off_msg(otmp);
+    if (!nooffmsg) await off_msg(otmp);
 
     let changed = false;
     if (Blind()) {
@@ -1996,9 +2011,10 @@ function takeoff_ok(obj) {
 }
 
 /**
- * C ref: do_wear.c Amulet_on — setworn + on_msg; RESTFUL_SLEEP sets HSleepy.
- * Deferred: change/strangle/flying/breathing bodies; ESP see_monsters;
- * Guarding makeknown; nh_timeout SLEEPY dialogue.
+ * C ref: do_wear.c Amulet_on — setworn + on_msg; RESTFUL_SLEEP sets HSleepy;
+ * CHANGE sex change (makeknown→exercise(A_WIS) credit when sex changes).
+ * Deferred: strangle/flying/breathing bodies; ESP see_monsters;
+ * Guarding makeknown; nh_timeout SLEEPY dialogue; livelog_newform.
  */
 async function Amulet_on(amul) {
     remove_worn_item(amul);
@@ -2029,6 +2045,32 @@ async function Amulet_on(amul) {
         // C Amulet_on: makeknown + find_ac (setworn does not find_ac; D-0810)
         makeknown(AMULET_OF_GUARDING);
         find_ac();
+    } else if (otyp === AMULET_OF_CHANGE) {
+        // C do_wear.c:1000–1035 — change sex unless Unchanging; makeknown
+        // when the sex changed (→exercise(A_WIS) credit when newly learned);
+        // on_msg here (not at the end); the amulet disintegrates + useup.
+        const uu = game.u || (game.u = {});
+        const orig_sex = poly_gender();
+        if (!Unchanging(uu)) change_sex();
+        const new_sex = poly_gender();
+        if (new_sex !== orig_sex) makeknown(AMULET_OF_CHANGE);
+        await on_msg(amul);
+        on_msg_done = true;
+        let call_it = false;
+        if (new_sex !== orig_sex) {
+            newsym(uu.ux, uu.uy);
+            if (!game.flags) game.flags = {};
+            game.flags.botl = true;
+            const female = !!(game.flags.female);
+            await pline(`You are suddenly very ${female ? 'feminine' : 'masculine'}!`);
+        } else {
+            await pline("You don't feel like yourself.");
+            call_it = (amul.dknown | 0) !== 0;
+        }
+        // C livelog_newform(FALSE, orig, new) — log-only, named omit.
+        await pline('The amulet disintegrates!');
+        if (call_it) await trycall(amul);
+        useup(amul);
     }
     // C: if (!on_msg_done) on_msg(uamul);
     if (!on_msg_done) await on_msg(amul);

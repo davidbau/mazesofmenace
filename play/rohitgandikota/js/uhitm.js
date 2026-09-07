@@ -3341,7 +3341,7 @@ export async function mhitm_ad_curs(magr, mattk, mdef, mhm) {
                     await You('have a strangely sad feeling for a moment, then it passes.');
                 }
                 mhm.hitflags = (M_ATTK_DEF_DIED
-                                | (grow_up(magr, mdef) ? 0
+                                | ((await grow_up(magr, mdef)) ? 0
                                    : M_ATTK_AGR_DIED));
                 mhm.done = true;
                 return;
@@ -3823,7 +3823,7 @@ export async function mhitm_ad_sedu(magr, mattk, mdef, mhm) {
         await mselftouch(mdef, null, false);
         if (DEADMONSTER(mdef)) {
             mhm.hitflags = M_ATTK_DEF_DIED
-                | (grow_up(magr, mdef) ? 0 : M_ATTK_AGR_DIED);
+                | ((await grow_up(magr, mdef)) ? 0 : M_ATTK_AGR_DIED);
             mhm.done = true;
             return;
         }
@@ -3986,7 +3986,7 @@ export async function mhitm_ad_fire(magr, mattk, mdef, mhm) {
                 mhm.hitflags = M_ATTK_MISS;
             } else {
                 mhm.hitflags = M_ATTK_DEF_DIED
-                    | (grow_up(magr, mdef) ? 0 : M_ATTK_AGR_DIED);
+                    | ((await grow_up(magr, mdef)) ? 0 : M_ATTK_AGR_DIED);
             }
             mhm.done = true;
             return;
@@ -4429,7 +4429,7 @@ async function do_stone_mon(magr, mattk, mdef, mhm) {
         if (mdef.mtame && !game.vis)
             await You('have a peculiarly sad feeling for a moment, then it passes.');
         mhm.hitflags = M_ATTK_DEF_DIED
-            | (grow_up(magr, mdef) ? 0 : M_ATTK_AGR_DIED);
+            | ((await grow_up(magr, mdef)) ? 0 : M_ATTK_AGR_DIED);
         mhm.done = true;
         return;
     }
@@ -4451,7 +4451,7 @@ async function do_stone_mon(magr, mattk, mdef, mhm) {
         if (mdef.mtame && !game.vis)
             await You('have a peculiarly sad feeling for a moment, then it passes.');
         mhm.hitflags = M_ATTK_DEF_DIED
-            | (grow_up(magr, mdef) ? 0 : M_ATTK_AGR_DIED);
+            | ((await grow_up(magr, mdef)) ? 0 : M_ATTK_AGR_DIED);
         mhm.done = true;
         return;
     }
@@ -5020,7 +5020,7 @@ export async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
                    destroyed and they might do so */
                 if (DEADMONSTER(mdef)) {
                     mhm.hitflags = (M_ATTK_DEF_DIED
-                                    | (grow_up(magr, mdef) ? 0
+                                    | ((await grow_up(magr, mdef)) ? 0
                                        : M_ATTK_AGR_DIED));
                     mhm.done = true;
                     return;

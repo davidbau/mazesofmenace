@@ -99,7 +99,7 @@ import { BRK_KNOWN_OUTCOME } from './const.js';
 import { BRK_FROM_INV } from './const.js';
 import { IS_ALTAR, TRAPDOOR, HOLE, PIT, SPIKED_PIT } from './const.js';
 import { ship_object, container_impact_dmg } from './dokick.js';
-import { snuff_candle } from './apply.js';
+import { snuff_candle, use_whip, use_pole, could_pole_mon } from './apply.js';
 import { is_flammable } from './mkobj.js';
 import { obj_sheds_light } from './light.js';
 import { is_pick } from './mon.js';
@@ -158,7 +158,7 @@ import { doswapweapon, dowield, doquiver_core, is_ammo, setuwep,
          setuswapwep, setuqwep, set_twoweap } from './wield.js';
 import { greatest_erosion } from './do_wear.js';
 import { rnl } from './rng.js';
-import { is_pole, is_spear } from './u_init.js';
+import { is_pole, is_spear, Race_if } from './u_init.js';
 import { You, You_cant, You_hear, Your } from './pline.js';
 import { ammo_and_launcher } from './wield.js';
 import { ECMD_OK, ECMD_TIME, ECMD_CANCEL, CQ_CANNED } from './const.js';
@@ -181,6 +181,7 @@ import { ceiling } from './dungeon.js';
 import { body_part } from './polyself.js';
 
 import { u_wipe_engr } from './engrave.js';
+import { is_quest_artifact } from './questpgr.js';
 // include/mondata.h:255 befriend_with_obj(). This predicate is checked before
 // dogfood(), so a domestic monster offered normal food does not spend
 // dogfood()'s obj_resists draw until tamedog() inspects the meal.
@@ -322,17 +323,33 @@ export async function throw_obj(obj, shotlimit) {
         /* ...or is using a special weapon for their role... */
         multishot += multishot_class_bonus(mnum, obj, game.u.uwep);
 
-        /* the racial-bow arms need launcher matching that the reachable
-           races do not trigger; the Elf/Orc bows and gnomish crossbows are
-           recorded when they arise */
-        if (!weakmultishot
-            && (game.urace?.mnum === 'PM_ELF' || game.urace?.mnum === 'PM_ORC'
-                || game.urace?.mnum === 'PM_GNOME'))
-            note_unported_dothrow('throw_obj:racial_multishot');
+        /* ...or using their race's special bow; no bonus for spears */
+        if (!weakmultishot) {
+            if (Race_if('PM_ELF')) {
+                if (obj.otyp === ONAMES.ELVEN_ARROW && game.u.uwep
+                    && game.u.uwep.otyp === ONAMES.ELVEN_BOW)
+                    multishot++;
+            } else if (Race_if('PM_ORC')) {
+                if (obj.otyp === ONAMES.ORCISH_ARROW && game.u.uwep
+                    && game.u.uwep.otyp === ONAMES.ORCISH_BOW)
+                    multishot++;
+            } else if (Race_if('PM_GNOME')) {
+                /* arbitrary; there isn't any gnome-specific gear */
+                if (skill === -SKILLS.P_CROSSBOW)
+                    multishot++;
+            }
+            /* when launcher is own quest artifact, give extra +1 with any
+               type of ammo appropriate for that launcher (compensates for
+               elven and orcish rangers loss of bonus for use of racial bow
+               plus racial arrows if they switch to the Longbow of Diana) */
+            if (game.u.uwep && is_quest_artifact(game.u.uwep)
+                && ammo_and_launcher(obj, game.u.uwep))
+                ++multishot;
+        }
 
         if (multishot > 1 && skill === -SKILLS.P_CROSSBOW
             && ammo_and_launcher(obj, game.u.uwep)
-            && acurrstr() < 18)
+            && acurrstr() < (Race_if('PM_GNOME') ? 16 : 18))
             multishot = rnd(multishot);
 
         multishot = rnd(multishot);
@@ -1901,12 +1918,10 @@ export async function dofire() {
         if (!game.flags.autoquiver) {
             /* if we're wielding a polearm, apply it */
             if (game.u.uwep && is_pole(game.u.uwep)) {
-                note_unported_dothrow('dofire:use_pole');
-                return ECMD_OK;
+                return use_pole(game.u.uwep, true);
             /* if we're wielding a bullwhip, apply it */
             } else if (game.u.uwep && game.u.uwep.otyp === ONAMES.BULLWHIP) {
-                note_unported_dothrow('dofire:use_whip');
-                return ECMD_OK;
+                return use_whip(game.u.uwep);
             } else if ((game.iflags.fireassist !== false)
                        && game.u.uswapwep && is_pole(game.u.uswapwep)
                        && !(game.u.uswapwep.cursed && game.u.uswapwep.bknown)) {
@@ -1938,10 +1953,8 @@ export async function dofire() {
         && !skip_fireassist) {
         let olauncher;
 
-        if (game.u.uwep && is_pole(game.u.uwep)) {
-            note_unported_dothrow('dofire:use_pole');
-            return ECMD_OK;
-        }
+        if (game.u.uwep && is_pole(game.u.uwep) && (await could_pole_mon()))
+            return use_pole(game.u.uwep, true);
         /* Try to find a launcher */
         if (ammo_and_launcher(game.u.uquiver, game.u.uwep)) {
             obj = game.u.uquiver;

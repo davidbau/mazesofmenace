@@ -6,7 +6,7 @@
 import { slept_monst } from './mhitm.js';
 import { POLY_NOFLAGS, POLY_CONTROLLED, POLY_LOW_CTRL } from './const.js';
 import { polyself } from './polyself.js';
-import { Unchanging, Invisible } from './youprop.js';
+import { Unchanging, Invisible, Glib } from './youprop.js';
 import { clone_mon } from './makemon.js';
 import { cloneu } from './mhitu.js';
 import { object_detect } from './detect.js';
@@ -108,6 +108,7 @@ import { ARTICLE_THE, SUPPRESS_IT, SUPPRESS_SADDLE, W_SADDLE,
          ER_NOTHING, PLNMSG_OBJ_GLOWS } from './const.js';
 import { float_vs_flight } from './polyself.js';
 import { delayed_killer, find_delayed_killer, dealloc_killer } from './end.js';
+import { can_reach_floor } from './pickup.js';
 const G_GONE = MFLAGS.G_GENOD | MFLAGS.G_EXTINCT;
 
 function note_unported_potion(what) {
@@ -1918,6 +1919,14 @@ function dip_ok(obj) {
     return GETOBJ_SUGGEST;
 }
 
+// src/potion.c:2231 dip_hands_ok() — at a pool, fountain or sink the hands
+// become a likely choice when they are slippery and the floor is in reach
+function dip_hands_ok(obj) {
+    if (!obj && (Glib() && can_reach_floor(false)))
+        return GETOBJ_SUGGEST;
+    return dip_ok(obj);
+}
+
 // src/potion.c:2120 mixtype() -- deterministic alchemy recipes plus the two
 // recipe-specific random choices.
 function mixtype(o1, o2) {
@@ -2280,8 +2289,10 @@ export async function dodip() {
     const at_pool = is_pool(game.u.ux, game.u.uy);
     const at_fountain = IS_FOUNTAIN(here);
     const at_sink = IS_SINK(here);
+    const at_here = (!game.iflags?.menu_requested
+                     && (at_pool || at_fountain || at_sink));
 
-    const obj = await getobj('dip', dip_ok, GETOBJ_PROMPT);
+    const obj = await getobj('dip', at_here ? dip_hands_ok : dip_ok, GETOBJ_PROMPT);
     if (!obj)
         return ECMD_CANCEL;
 

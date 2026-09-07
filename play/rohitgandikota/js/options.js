@@ -3,12 +3,11 @@
 // include/optlist.h into js/optlist.js by tools/gen-optlist.mjs.
 
 import { game } from './gstate.js';
-import { more, TOPLINE_NEED_MORE, pline, docrt, bot } from './display.js';
+import { pline, docrt, bot } from './display.js';
 import {
     NHW_MENU, ATR_NONE, ATR_INVERSE,
     tty_create_nhwindow, tty_destroy_nhwindow, tty_start_menu, tty_add_menu,
-    tty_add_menu_str, tty_end_menu, tty_display_nhwindow, tty_select_menu,
-} from './tty/wintty.js';
+    tty_add_menu_str, tty_end_menu, tty_display_nhwindow, tty_select_menu, tty_wait_synch } from './tty/wintty.js';
 import {
     MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_SKIPINVERT,
     MENU_BEHAVE_STANDARD,
@@ -387,6 +386,21 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
         result.opts.packorder = order;
         if (!change_inv_order(order, result))
             retval = false;
+    } else if (opt.name === 'statuslines') {
+        /* src/options.c:4099 optfn_statuslines(), the do_set arm. atoi() of
+           a non-number is 0, which is out of range, so a typed "de" is
+           reported as "'statuslines:de' is invalid; must be 2 or 3" and the
+           return is optn_silenterr: no second message. */
+        const op = value ?? '';
+        let itmp = 0;
+        if (op !== '')
+            itmp = parseInt(op, 10) || 0;
+        if (itmp < 2 || itmp > 3) {
+            config_error_add(result,
+                             `'${opt.name}:${op}' is invalid; must be 2 or 3`);
+            return false;
+        }
+        result.opts.statuslines = itmp;
     } else {
         result.opts[opt.name] = negated ? null : value;
     }
@@ -497,11 +511,6 @@ export async function ask_do_tutorial() {
     /* opt_set_in_config[opt_tutorial] — did the rc mention it at all? */
     if (game.rc?.optSetInConfig?.tutorial)
         return dotut;
-
-    /* win/tty/wintty.c:1921 — displaying a menu while the top line is still
-       unacknowledged runs more() FIRST, which consumes the key meant for it. */
-    if (game._toplin === TOPLINE_NEED_MORE)
-        await more();
 
     let pass = 0;
     for (;;) {
@@ -869,7 +878,12 @@ function longest_option_name(startpass, endpass) {
     return longest_name_len;
 }
 
-const iflag_boolean_options = new Set([
+/* include/optlist.h — booleans whose address is an iflags field, not a
+   flags one; the code that reads them (getpos autodescribe, cmdassist,
+   fireassist, the menu layout switches) reads game.iflags, so the option
+   menu and the rc must write the same place. */
+export const iflag_boolean_options = new Set([
+    'autodescribe', 'cmdassist', 'fireassist', 'menu_overlay', 'menu_tab_sep',
     'debug_hunger', 'debug_mongen', 'debug_overwrite_stairs',
 ]);
 
@@ -1383,12 +1397,9 @@ async function doset_simple_menu() {
                 const { getlin } = await import('./cmd.js');
                 const abuf = await getlin(`Set ${allopt[k].name} to what?`);
                 if (abuf !== null && abuf !== '\x1b') {
-                    if (allopt[k].name === 'fruit')
-                        set_fruit_name(abuf);
-                    else if (allopt[k].name === 'packorder')
-                        await set_packorder(abuf);
-                    else
-                        game.flags[allopt[k].name] = abuf;
+                    /* src/options.c:8686 — "pass the buck" to parseoptions,
+                       whose option handler validates the typed value */
+                    await parseoptions_interactive(`${allopt[k].name}:${abuf}`);
                 }
             } else if (allopt[k].name === 'pickup_types') {
                 /* compound option with a handler: src/options.c:6114
@@ -1404,6 +1415,11 @@ async function doset_simple_menu() {
                 await handler_autounlock();
             } else if (allopt[k].name === 'menu_objsyms') {
                 await handler_menu_objsyms();
+            } else if (allopt[k].name === 'symset') {
+                /* src/options.c handler_symset() via allopt[k].optfn */
+                await do_symset();
+            } else if (allopt[k].name === 'whatis_coord') {
+                await handler_whatis_coord();
             } else {
                 note_unported_options(`doset_simple:set=${allopt[k].name}`);
             }
@@ -1744,7 +1760,7 @@ async function status_hilite_menu() {
 export function add_menu_heading(tmpwin, buf) {
     let attr = game.iflags?.menu_headings?.attr ?? ATR_INVERSE;
     let color = game.iflags?.menu_headings?.color ?? NO_COLOR;
-    if (game.program_state?.gameover)
+    if (game.program_state_gameover)
         attr = ATR_NONE, color = NO_COLOR;
     tty_add_menu(tmpwin, null, 0, 0, 0, attr, color, buf,
                  MENU_ITEMFLAGS_NONE);
@@ -1971,10 +1987,8 @@ export async function doset() {
                 const abuf = await getlin(`Set ${o.name} to what?`);
                 if (abuf === null || abuf === '\x1b')
                     continue;
-                if (o.name === 'packorder')
-                    await set_packorder(abuf);
-                else
-                    game.flags[o.name] = abuf;
+                /* src/options.c doset() — parseoptions(buf, FALSE, FALSE) */
+                await parseoptions_interactive(`${o.name}:${abuf}`);
             }
         }
 
@@ -2174,6 +2188,37 @@ function change_inv_order(op, result) {
             order.push(oclass);
     result.opts.inv_order = order;
     return ok;
+}
+
+// src/options.c parseoptions(opts, FALSE, FALSE) as the 'O' command calls it
+// for a typed compound value. The C's per-option handlers write the live
+// variables and report problems through config_error_add(); in play,
+// src/cfgfiles.c:1554 config_erradd() prints each one with pline() (adding a
+// period when the text has no end punctuation) and calls wait_synch(). Our
+// parseoptions() collects into `result`, so the live store is written and the
+// errors are printed here, in the same order.
+async function parseoptions_interactive(buf) {
+    const result = { opts: {}, errors: [] };
+    if (game.flags?.inv_order) /* change_inv_order()'s "previous" is live */
+        result.opts.inv_order = game.flags.inv_order;
+    parseoptions(buf, false, false, result);
+    for (const [name, value] of Object.entries(result.opts)) {
+        if (name === 'fruit') {
+            set_fruit_name(value);
+        } else if (name === 'statuslines') {
+            /* iflags.wc2_statuslines; the 3-line status layout itself is
+               not ported, so a changed value is only recorded */
+            if ((game.iflags.wc2_statuslines | 0) !== value)
+                note_unported_options(`statuslines:${value}`);
+            game.iflags.wc2_statuslines = value;
+        } else {
+            game.flags[name] = value;
+        }
+    }
+    for (const error of result.errors) {
+        await pline(error + (/[.!?]$/.test(error) ? '' : '.'));
+        await tty_wait_synch();
+    }
 }
 
 // Interactive config_erradd() prints errors immediately with punctuation.

@@ -844,7 +844,7 @@ async function use_leash(obj) {
 // src/apply.c:2955 use_whip(). This covers wield-and-replay, direction
 // handling, self damage, ordinary snaps, adjacent attacks, floor snags, and
 // weapon disarming. Mounted use and pit escape remain explicit gaps.
-async function use_whip(obj) {
+export async function use_whip(obj) {
     let buf;
     let mtmp;
     let otmp;
@@ -4027,7 +4027,7 @@ function snickersnee_used_dist_attk(obj) {
 }
 
 // src/apply.c:3426 use_pole(); Distance attacks by pole-weapons
-async function use_pole(obj, autohit) {
+export async function use_pole(obj, autohit) {
     const thump = (what) => `Thump!  Your blow bounces harmlessly off the ${what}.`;
     let res = ECMD_OK, max_range, min_range, glyph;
     const cc = { x: 0, y: 0 };

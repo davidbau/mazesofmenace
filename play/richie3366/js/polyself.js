@@ -9,7 +9,7 @@ import {
 } from './display.js';
 import { getlin, yn_function } from './getline.js';
 import { getdir } from './lock.js';
-import { an, set_body_part } from './objnam.js';
+import { an, set_body_part, yname, vtense, simpleonames, makeplural } from './objnam.js';
 import {
     pmname, mon_nam, s_suffix, Ugender,
 } from './do_name.js';
@@ -34,11 +34,15 @@ import { newpw, rndexp, setuhpmax } from './exper.js';
 import { find_ac } from './u_init.js';
 import {
     setworn, Helmet_off, Gloves_off, Boots_off, Shield_off,
+    Armor_gone, Cloak_off, Blindf_off, cloak_simple_name,
 } from './do_wear.js';
 import { dropx, canletgo, make_blinded } from './do.js';
-import { setuwep, setuswapwep } from './wield.js';
+import { uswapwepgone, uwepgone, could_twoweap, untwoweapon } from './wield.js';
 import { races } from './roles.js';
-import { encumber_msg } from './invent.js';
+import { encumber_msg, useup, weapon_descr, update_inventory } from './invent.js';
+import { end_burn } from './timeout.js';
+import { racial_exception, has_horns, num_horns, WrappingAllowed, is_flimsy } from './worn.js';
+import { helm_simple_name } from './mhitu.js';
 import { losehp, nomul, is_pool } from './hack.js';
 import { finish_losehp_done, done } from './end.js';
 import { steed_vs_stealth } from './steed.js';
@@ -62,6 +66,7 @@ import {
     noncorporeal,
     nohands,
     verysmall,
+    has_head,
     is_flyer,
     is_floater,
     is_vampire,
@@ -142,7 +147,7 @@ import {
     SPECIAL_PM,
     monsterNames,
 } from './generated/monsters_data.js';
-import { TOOL_CLASS, objects, objectNames } from './objects.js';
+import { objectNames, is_sword } from './objects.js';
 
 const GRAY_DRAGON_SCALES = objectNames.indexOf('GRAY_DRAGON_SCALES');
 const YELLOW_DRAGON_SCALES = objectNames.indexOf('YELLOW_DRAGON_SCALES');
@@ -162,6 +167,11 @@ const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
 const BLINDING_VENOM = objectNames.indexOf('BLINDING_VENOM');
 const ACID_VENOM = objectNames.indexOf('ACID_VENOM');
+const ROBE = objectNames.indexOf('ROBE');
+const MUMMY_WRAPPING = objectNames.indexOf('MUMMY_WRAPPING');
+const ALCHEMY_SMOCK = objectNames.indexOf('ALCHEMY_SMOCK');
+const PM_MARILITH = monsterNames.indexOf('PM_MARILITH');
+const PM_WINGED_GARGOYLE = monsterNames.indexOf('PM_WINGED_GARGOYLE');
 const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
 const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
 const PM_RAVEN = monsterNames.indexOf('PM_RAVEN');
@@ -221,8 +231,9 @@ function Polymorph_control(u = game.u || {}) {
         || (e?.intrinsic | 0) || (e?.extrinsic | 0));
 }
 
-/** C ref: youprop.h Unchanging — H || E via flat + uprops. */
-function Unchanging(u = game.u || {}) {
+/** C ref: youprop.h Unchanging — H || E via flat + uprops.
+ * Exported for do_wear.c Amulet_on CHANGE arm. */
+export function Unchanging(u = game.u || {}) {
     const e = u.uprops?.[UNCHANGING];
     return !!((u.Unchanging || u.HUnchanging || u.EUnchanging)
         || (e?.intrinsic | 0) || (e?.extrinsic | 0));
@@ -236,7 +247,11 @@ function sliparm(ptr) {
 /** C ref: mondata.c breakarm — large forms that shatter armor */
 function breakarm(ptr) {
     if (sliparm(ptr)) return false;
-    return !!(bigmonst(ptr) || ((ptr?.msize ?? 0) > MZ_SMALL && !humanoid(ptr)));
+    // C mondata.c:645–649 — marilith / winged gargoyle special cases
+    // (matches worn.js breakarm).
+    const mndx = ptr?.mndx ?? -1;
+    return !!(bigmonst(ptr) || ((ptr?.msize ?? 0) > MZ_SMALL && !humanoid(ptr))
+        || mndx === PM_MARILITH || mndx === PM_WINGED_GARGOYLE);
 }
 
 /** C ref: mondata.h slithy — M1_SLITHY */
@@ -541,8 +556,8 @@ function rounddiv(x, y) {
 
 /**
  * C ref: polyself.c poly_gender — 0/1 ≡ flags.female, 2=none.
- */
-function poly_gender() {
+ * Exported for do_wear.c Amulet_on CHANGE arm. */
+export function poly_gender() {
     const ptr = game.youmonst?.data;
     if (is_neuter(ptr) || !humanoid(ptr)) return 2;
     return game.flags?.female ? 1 : 0;
@@ -726,75 +741,69 @@ function cantwield(ptr) {
 }
 
 /**
- * C ref: weapon.c weapon_descr subset for drop_weapon alone-message.
- * TOOL_CLASS → "tool" (magic lamp); else "weapon".
- * @param {object} obj
- */
-function poly_weapon_descr(obj) {
-    if (!obj) return 'weapon';
-    if ((obj.oclass | 0) === TOOL_CLASS) return 'tool';
-    const od = objects()?.[obj.otyp | 0];
-    const nm = String(od?.oc_name || od?.name || '').toLowerCase();
-    if (nm.includes('sword') || nm.includes('saber')) return 'sword';
-    return 'weapon';
-}
-
-/**
- * C ref: polyself.c drop_weapon(alone) — cantwield forms must drop uwep.
- * Named omissions: twoweapon dual-drop detail; in_use defer; could_twoweap
- * untwoweapon arm; update_inventory side effects; Heart-of-Ahriman note.
+ * C ref: polyself.c drop_weapon(alone) `:1305–1362` — cantwield forms must drop uwep.
+ * `:1313` !alone||cantwield gate; `:1316–1317` canletgo pair; `:1318–1332`
+ * alone message via is_sword/weapon_descr + twoweap whichtoo compare +
+ * makeplural + the_your corpse gate; `:1334–1353` uswapwep-then-uwep
+ * gone/dropx with in_use defer + update_inventory; `:1354–1356`
+ * could_twoweap untwoweapon arm. weapon_descr P_NONE specials / ammo
+ * arms stay named in invent.js (live callee, C-matched on skill names).
  * @param {number} alone
  */
 async function drop_weapon(alone) {
     const u = game.u || {};
     if (!u.uwep) return;
-    const uptr = game.youmonst?.data;
-    // C: if (!alone || cantwield(youmonst.data))
-    if (alone && !cantwield(uptr)) {
-        // could_twoweap untwoweapon deferred
-        return;
-    }
-    const candropwep = await canletgo(u.uwep, '');
-    let candropswapwep = true;
-    if (u.twoweap && u.uswapwep) {
-        candropswapwep = await canletgo(u.uswapwep, '');
-    } else if (u.twoweap) {
-        candropswapwep = false;
-    }
-    if (alone) {
-        const what = (candropwep && candropswapwep) ? 'drop' : 'release';
-        let which = poly_weapon_descr(u.uwep);
-        if (u.twoweap && u.uswapwep) {
-            const whichtoo = poly_weapon_descr(u.uswapwep);
-            if (which !== whichtoo) which = 'weapon';
+    // C `:1313` — the !alone check is superfluous per C comment but kept.
+    if (!alone || cantwield(game.youmonst?.data)) {
+        const candropwep = await canletgo(u.uwep, '');
+        // C `:1317` — !twoweap short-circuits; twoweap implies uswapwep set.
+        const candropswapwep = !u.twoweap || (await canletgo(u.uswapwep, ''));
+        if (alone) {
+            const what = (candropwep && candropswapwep) ? 'drop' : 'release';
+            // C `:1320–1321` — is_sword maps to "sword", else weapon_descr.
+            let which = is_sword(u.uwep) ? 'sword' : weapon_descr(u.uwep);
+            if (u.twoweap && u.uswapwep) {
+                const whichtoo = is_sword(u.uswapwep) ? 'sword' : weapon_descr(u.uswapwep);
+                // C `:1325–1326` — strcmp(which, whichtoo).
+                if (which !== whichtoo) which = 'weapon';
+            }
+            // C `:1328–1329` — quan != 1 (long) or twoweap.
+            if ((u.uwep.quan || 1) !== 1 || u.twoweap) which = makeplural(which);
+            // C `:1331` — the_your[!!strncmp(which, "corpse", 6)].
+            const your = which.startsWith('corpse') ? 'the' : 'your';
+            await pline(`You find you must ${what} ${your} ${which}!`);
         }
-        if ((u.uwep.quan || 1) !== 1 || u.twoweap) {
-            // makeplural deferred — quan>1 uncommon for wielded tools
-            if (!which.endsWith('s')) which += 's';
+        // C `:1334–1342` — swap weapon first; in_use defers drop+inventory.
+        let updateinv = true;
+        if (u.twoweap) {
+            const otmp = u.uswapwep;
+            uswapwepgone();
+            if (otmp?.in_use) updateinv = false;
+            else if (otmp && candropswapwep) await dropx(otmp);
         }
-        // C: the_your[!!strncmp(which,"corpse",6)] — "tool" → "your"
-        const your = which.startsWith('corpse') ? 'the' : 'your';
-        await pline(`You find you must ${what} ${your} ${which}!`);
-    }
-    if (u.twoweap && u.uswapwep) {
-        const otmp = u.uswapwep;
-        setuswapwep(null);
-        if (!otmp.in_use && candropswapwep) await dropx(otmp);
-    }
-    {
-        const otmp = u.uwep;
-        setuwep(null);
-        if (!otmp.in_use && candropwep) await dropx(otmp);
+        // C `:1343–1349` — then the main wielded weapon.
+        {
+            const otmp = u.uwep;
+            await uwepgone();
+            if (otmp?.in_use) updateinv = false;
+            else if (otmp && candropwep) await dropx(otmp);
+        }
+        // C `:1351–1353` — dropp-vs-dropx note lives in dropx (do.js).
+        if (updateinv) update_inventory();
+    } else if (!could_twoweap(game.youmonst?.data)) {
+        // C `:1354–1356` — new form can wield but not two-weapon.
+        await untwoweapon();
     }
 }
 
 /**
- * C ref: polyself.c break_armor — sliparm / breakarm gear shedding.
- * setworn(..., {skip_find_ac}) matches C worn.c (no find_ac); polymon
- * calls find_ac after encumber_msg so --More-- keeps cached AC.
- * Named omissions: mummy wrapping / alchemy smock / horns / flimsy-helm
- * pierce; racial_exception; donning cancel; end_burn DSM; ublindf
- * !has_head; surface()→"ground".
+ * C ref: polyself.c break_armor `:1157–1302` — breakarm destroy order
+ * (uarm useup, cloak 3-way, shirt useup), sliparm shed order (racial
+ * gate, whirly cloak/shirt), horns helm pierce/drop, nohands gloves /
+ * shield / helm, boots, ublindf eyewear. dropx is the dropp equivalent;
+ * the one raw setworn keeps {skip_find_ac} (C worn.c has no find_ac;
+ * polymon calls find_ac after encumber_msg so --More-- keeps cached AC).
+ * Named omissions: donning/cancel_don (do_wear locals, unwired).
  */
 async function break_armor() {
     const u = game.u || {};
@@ -803,42 +812,63 @@ async function break_armor() {
     const noAc = { skip_find_ac: true };
 
     if (breakarm(uptr)) {
+        // C :1162–1176 — donning cancel omitted (do_wear local unwired);
+        // lamplit DSM end_burn, message, exercise, Armor_gone, useup
+        // (armor is DESTROYED, not dropped).
         const otmp = u.uarm;
         if (otmp) {
+            if (otmp.lamplit) end_burn(otmp, false);
             await pline('You break out of your armor!');
             exercise(A_STR, false);
-            setworn(null, W_ARM, noAc);
-            // useup deferred — drop to floor like sliparm dropp
-            await dropx(otmp);
+            await Armor_gone();
+            useup(otmp);
         }
+        // C :1177–1195 — wrapping tears (useup) / smock knot (drop) /
+        // clasp (drop), each through cloak_simple_name + Cloak_off.
         const cloak = u.uarmc;
-        if (cloak) {
-            await pline('The clasp on your cloak breaks open!');
-            setworn(null, W_ARMC, noAc);
-            await dropx(cloak);
+        if (cloak
+            && ((cloak.otyp | 0) !== MUMMY_WRAPPING
+                || !WrappingAllowed(uptr))) {
+            if ((cloak.otyp | 0) === MUMMY_WRAPPING) {
+                await pline(`Your ${cloak_simple_name(cloak)} tears apart!`);
+                await Cloak_off();
+                useup(cloak);
+            } else if ((cloak.otyp | 0) === ALCHEMY_SMOCK) {
+                await pline(`The knot on your ${cloak_simple_name(cloak)} is pulled apart!`);
+                await Cloak_off();
+                await dropx(cloak);
+            } else {
+                await pline(`The clasp on your ${cloak_simple_name(cloak)} breaks open!`);
+                await Cloak_off();
+                await dropx(cloak);
+            }
         }
+        // C :1196–1199 — shirt is destroyed with no _off call (useupall
+        // setnotworns, matching C useup on the worn shirt).
         if (u.uarmu) {
-            const shirt = u.uarmu;
             await pline('Your shirt rips to shreds!');
-            setworn(null, W_ARMU, noAc);
-            await dropx(shirt);
+            useup(u.uarmu);
         }
     } else if (sliparm(uptr)) {
+        // C :1201–1211 — racial_exception keeps hobbit elven suits on.
         const otmp = u.uarm;
-        if (otmp) {
+        if (otmp && racial_exception(game.youmonst, otmp) < 1) {
             await pline('Your armor falls around you!');
-            setworn(null, W_ARM, noAc);
+            await Armor_gone();
             // C dropp→dropx→dropz→encumber_msg mid-break_armor (before gloves)
             await dropx(otmp);
         }
+        // C :1212–1220 — same wrapping gate as the breakarm cloak arm.
         const cloak = u.uarmc;
-        if (cloak) {
+        if (cloak
+            && ((cloak.otyp | 0) !== MUMMY_WRAPPING
+                || !WrappingAllowed(uptr))) {
             if (is_whirly(uptr)) {
-                await pline('Your cloak falls, unsupported!');
+                await pline(`Your ${cloak_simple_name(cloak)} falls, unsupported!`);
             } else {
-                await pline('You shrink out of your cloak!');
+                await pline(`You shrink out of your ${cloak_simple_name(cloak)}!`);
             }
-            setworn(null, W_ARMC, noAc);
+            await Cloak_off();
             await dropx(cloak);
         }
         if (u.uarmu) {
@@ -852,9 +882,23 @@ async function break_armor() {
             await dropx(shirt);
         }
     }
-    // C: has_horns helm pierce / drop — deferred (named omit)
+    // C :1230–1251 — horned forms pierce flimsy helms, else the helm
+    // falls (donning cancel omitted like the other arms in this function).
+    if (has_horns(uptr)) {
+        const hornhelm = u.uarmh;
+        if (hornhelm) {
+            if (is_flimsy(hornhelm)) {
+                const hornbuf = `horn${num_horns(uptr) === 1 ? '' : 's'}`;
+                await pline(`Your ${hornbuf} ${vtense(hornbuf, 'pierce')} through ${yname(hornhelm)}.`);
+            } else {
+                await pline(`Your ${helm_simple_name(hornhelm)} falls to the ${surface(u.ux, u.uy)}!`);
+                Helmet_off();
+                await dropx(hornhelm);
+            }
+        }
+    }
 
-    // C: nohands || verysmall → gloves, shield, helm
+    // C :1253–1276 — nohands || verysmall → gloves, shield, helm
     if (nohands(uptr) || verysmall(uptr)) {
         const gloves = u.uarmg;
         if (gloves) {
@@ -872,8 +916,7 @@ async function break_armor() {
         }
         const helm = u.uarmh;
         if (helm) {
-            // C: helm_simple_name + surface() — "helm" / "ground" stand-in
-            await pline('Your helm falls to the ground!');
+            await pline(`Your ${helm_simple_name(helm)} falls to the ${surface(u.ux, u.uy)}!`);
             Helmet_off();
             await dropx(helm);
         }
@@ -894,7 +937,18 @@ async function break_armor() {
             await dropx(boots);
         }
     }
-    // C: ublindf without has_head — deferred
+    // C :1294–1307 — eyewear cannot stay worn without a head to wear
+    // it on (amulet stays worn; rings stay worn even with no hands).
+    // Blindf_off Null skips the usual off message (do_wear.c:1498).
+    const blindf = u.ublindf;
+    if (blindf && !has_head(uptr)) {
+        let eyewear = simpleonames(blindf);
+        if (eyewear.startsWith('pair of ')) eyewear = eyewear.slice(8);
+        await pline(`Your ${eyewear} ${vtense(eyewear, 'fall')} off!`);
+        await Blindf_off(null);
+        await dropx(blindf);
+    }
+    // C :1308 — rings stay worn even when no hands
 }
 
 /**
@@ -906,8 +960,7 @@ async function break_armor() {
  * Named omissions: Stoned/Sick/Slimed/strangle/glib; hideunder; utrap;
  * Blind restore; egg learn; swallow expel; light sources;
  * full skinback; livelog first-poly text; break_armor horns /
- * flimsy-helm pierce / ublindf; drop_weapon twoweapon/in_use arms;
- * retouch_equipment; non-breath verbose tips.
+ * flimsy-helm pierce / ublindf; retouch_equipment; non-breath verbose tips.
  * @param {number} mntmp
  * @returns {Promise<number>} 1 on success, 0 on geno abort
  */

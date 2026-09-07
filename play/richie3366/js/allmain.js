@@ -27,7 +27,7 @@ import { makemon, reset_align_shift_cache } from './makemon.js';
 import {
     mcalcmove, mcalcdistress, movemon, NORMAL_SPEED, see_nearby_monsters,
 } from './mon.js';
-import { LOW_PM, NUMMONS, mons, G_NOCORPSE, PM_WIZARD, reset_erinys, breathless } from './monsters.js';
+import { LOW_PM, NUMMONS, mons, G_NOCORPSE, PM_WIZARD, PM_MONK, reset_erinys, breathless } from './monsters.js';
 import {
     A_DEX, A_STR, A_CON, A_WIS, A_INT, A_MAX, acurr, exercise, adjattrib,
     change_luck, Fast, Very_fast, Searching, Fumbling,
@@ -63,7 +63,7 @@ import {
     UNENCUMBERED, SLT_ENCUMBER, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER,
     NO_MM_FLAGS, Upolyd, LL_ACHIEVE,
     ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE,
-    UTOTYPE_NONE, TIMEOUT, REGENERATION,
+    UTOTYPE_NONE, TIMEOUT, REGENERATION, CLAIRVOYANT,
     MAXULEV, ENERGY_REGENERATION, MAGICAL_BREATHING, GLIB,
     TELEPORT, TELEPAT, POLYMORPH, UNCHANGING, NON_PM, POLY_NOFLAGS, ismnum,
     WARNING, HALF_PHDAM, Is_waterlevel, Is_airlevel,
@@ -503,23 +503,28 @@ function regen_pw(wtcap) {
 
 /**
  * C ref: attrib.c exerper — hunger / encumbrance / status exercise ticks.
- * Named omissions: Monk fasting WIS arms; Clairvoyant/Regeneration props;
- * full Sick/Vomiting timeout bodies (flags only when set).
+ * Named omissions: full Sick/Vomiting timeout bodies (flags only when set).
  */
 function exerper() {
     const moves = game.moves || 0;
     const u = game.u || {};
+    // C attrib.c:523–524 — exerper hunger/encumbrance ticks every 10 moves.
     if (!(moves % 10)) {
         // Hunger Checks — Tourist starts Not Hungry → exercise(A_CON, TRUE)
         const hunger = u.uhunger ?? 900;
+        const isMonk = (game.urole?.mnum | 0) === PM_MONK;
         if (hunger > 1000) {
             exercise(A_DEX, false);
+            // C attrib.c:534–536 — SATIATED Monk also trains WIS
+            if (isMonk) exercise(A_WIS, false);
         } else if (hunger > 150) {
             exercise(A_CON, true);
         } else if (hunger > 50) {
             /* HUNGRY — no exercise in switch until WEAK */
         } else if (hunger > 0) {
             exercise(A_STR, false);
+            // C attrib.c:542–544 — WEAK fasting Monk trains WIS
+            if (isMonk) exercise(A_WIS, true);
         } else {
             exercise(A_CON, false);
         }
@@ -544,7 +549,16 @@ function exerper() {
 
     // status checks every 5 moves
     if (!(moves % 5)) {
-        // HClairvoyant / HRegeneration deferred
+        // C attrib.c:570–575 — intrinsic clairvoyance trains WIS (H only;
+        // extrinsic does not count), regeneration trains STR (H only).
+        const clairProp = u.uprops?.[CLAIRVOYANT];
+        const hasClair = (u.HClairvoyant | 0) || (clairProp?.intrinsic | 0);
+        const blockClair = (u.BClairvoyant | 0) || (clairProp?.blocked | 0);
+        if (hasClair && !blockClair) exercise(A_WIS, true);
+        const regenProp = u.uprops?.[REGENERATION];
+        if ((u.HRegeneration | 0) || (regenProp?.intrinsic | 0)) {
+            exercise(A_STR, true);
+        }
         // C: Confusion ≡ HConfusion; Hallucination ≡ HHallucination && !res
         if (u.Sick || u.Vomiting) exercise(A_CON, false);
         if ((u.HConfusion | u.Confusion)

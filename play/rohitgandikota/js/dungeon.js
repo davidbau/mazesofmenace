@@ -856,6 +856,11 @@ export function Invocation_lev(lev) {
     return !!(lev && dgn?.flags?.hellish
               && lev.dlevel === dgn.num_dunlevs - 1);
 }
+// src/dungeon.c In_hell(): the level's dungeon carries the hellish flag.
+export function In_hell(lev) {
+    const dgn = lev && game.dungeons?.[lev.dnum];
+    return !!(lev && dgn?.flags?.hellish);
+}
 function Is_stronghold(lev) {
     return !!(game.stronghold_level && lev
               && lev.dnum === game.stronghold_level.dnum
@@ -1116,6 +1121,18 @@ function print_branch(win, dnum, lower_bound, upper_bound, bymenu, lchoices) {
                 tty_putstr(win, 0, buf);
         }
     }
+}
+
+// include/dungeon.h Is_bigroom(x) — on_level(x, &bigroom_level)
+export function Is_bigroom(lev) {
+    return !!(game.bigroom_level && lev.dnum === game.bigroom_level.dnum
+              && lev.dlevel === game.bigroom_level.dlevel);
+}
+
+// include/dungeon.h Is_medusa_level() — Lcheck against medusa_level
+export function Is_medusa_level(lev) {
+    return !!(game.medusa_level && lev.dnum === game.medusa_level.dnum
+              && lev.dlevel === game.medusa_level.dlevel);
 }
 
 // src/dungeon.c:2290 print_dungeon() — the wizard-mode dungeon overview.

@@ -266,6 +266,11 @@ const SPE_JUMPING = objectNames.indexOf('SPE_JUMPING');
 const SPE_CHAIN_LIGHTNING = objectNames.indexOf('SPE_CHAIN_LIGHTNING');
 const SPE_CREATE_MONSTER = objectNames.indexOf('SPE_CREATE_MONSTER');
 const SPE_MAGIC_MAPPING = objectNames.indexOf('SPE_MAGIC_MAPPING');
+const SPE_REMOVE_CURSE = objectNames.indexOf('SPE_REMOVE_CURSE');
+const SPE_CONFUSE_MONSTER = objectNames.indexOf('SPE_CONFUSE_MONSTER');
+const SPE_CAUSE_FEAR = objectNames.indexOf('SPE_CAUSE_FEAR');
+const SPE_IDENTIFY = objectNames.indexOf('SPE_IDENTIFY');
+const SPE_CHARM_MONSTER = objectNames.indexOf('SPE_CHARM_MONSTER');
 const SPE_HASTE_SELF = objectNames.indexOf('SPE_HASTE_SELF');
 const SPE_DETECT_TREASURE = objectNames.indexOf('SPE_DETECT_TREASURE');
 const SPE_DETECT_MONSTERS = objectNames.indexOf('SPE_DETECT_MONSTERS');
@@ -1834,7 +1839,7 @@ async function cast_protection() {
  * seffect_food_detection → detect.c food_detect D-1781).
  * Remaining scroll-duplicate otyps (REMOVE_CURSE /
  * CONFUSE_MONSTER / CAUSE_FEAR / IDENTIFY / CHARM_MONSTER)
- * still named.
+ * routed above via the same :1517–1531 arm.
  * SPE_HASTE_SELF peffects(pseudo) (D-1408; C `:1534–1546`
  * skilled bless then peffects; callee potion.c peffect_speed /
  * speed_up). SPE_DETECT_TREASURE peffects (D-1417; same arm;
@@ -2051,13 +2056,18 @@ export async function spelleffects(spell_otyp, atme, force) {
         await cast_chain_lightning();
     } else if (otyp === SPE_DETECT_FOOD
         || otyp === SPE_MAGIC_MAPPING
-        || otyp === SPE_CREATE_MONSTER) {
-        /* C spell.c :1517–1531 — DETECT_FOOD is in the skilled-bless
-         * FALLTHROUGH group (REMOVE_CURSE through CHARM_MONSTER);
+        || otyp === SPE_CREATE_MONSTER
+        || otyp === SPE_REMOVE_CURSE
+        || otyp === SPE_CONFUSE_MONSTER
+        || otyp === SPE_CAUSE_FEAR
+        || otyp === SPE_IDENTIFY
+        || otyp === SPE_CHARM_MONSTER) {
+        /* C spell.c :1517–1531 — skilled-bless FALLTHROUGH group
+         * (REMOVE_CURSE through CHARM_MONSTER, DETECT_FOOD included);
          * MAGIC_MAPPING/CREATE_MONSTER skip the bless and only
-         * (void) seffects(pseudo). Remaining scroll-duplicate
-         * otyps still named. Dynamic import: read.js → spell.js. */
-        if (otyp === SPE_DETECT_FOOD && role_skill >= P_SKILLED) {
+         * (void) seffects(pseudo). Dynamic import: read.js → spell.js. */
+        if (otyp !== SPE_MAGIC_MAPPING && otyp !== SPE_CREATE_MONSTER
+            && role_skill >= P_SKILLED) {
             pseudo.blessed = true;
         }
         const { seffects } = await import('./read.js');

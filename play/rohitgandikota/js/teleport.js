@@ -16,7 +16,7 @@ import { rn1 } from './rng.js';
 import { update_player_regions, update_monster_region } from './region.js';
 import { m_into_limbo } from './mon.js';
 import { unstuck } from './mon.js';
-import { engulfing_u, In_mines, NO_KILLER_PREFIX, DIED } from './const.js';
+import { engulfing_u, In_mines, NO_KILLER_PREFIX, DIED, MAX_TYPE } from './const.js';
 import { place_object } from './mkobj.js';
 import { stolen_value, u_left_shop } from './shk.js';
 import { addtobill } from './shk.js';
@@ -61,7 +61,7 @@ import { COLNO, ROWNO, In_endgame, In_quest, In_sokoban, GP_CHECKSCARY,
          MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED } from './const.js';
 import { rnl } from './rng.js';
 import { pline, see_nearby_objects, canspotmon, canseemon,
-         sensemon, see_monsters, display_nhwindow_message } from './display.js';
+         sensemon, see_monsters, display_nhwindow_message, map_location } from './display.js';
 import { Blind, Hallucination, Teleport_control, Teleportation }
     from './youprop.js';
 import { is_demon, is_lord, is_prince, is_covetous,
@@ -600,11 +600,20 @@ export function u_on_newpos(x, y) {
         game.u.usteed.mx = game.u.ux;
         game.u.usteed.my = game.u.uy;
     }
-    /* src/dungeon.c:1594 — still on same level; might have come close
-       enough to generic object(s) to redisplay them as specific objects
-       (level changes take the map_location() arm instead) */
-    if (!game.u.ublind && !Hallucination() && !game.u.uswallow)
-        see_nearby_objects();
+    /* when changing levels, don't leave old position set with
+       stale values from previous level */
+    if (!game.u.uz0 || !on_level(game.u.uz, game.u.uz0)) {
+        game.u.ux0 = game.u.ux, game.u.uy0 = game.u.uy;
+        /* sets lastseentyp[u.ux][u.uy]; needed for switch_terrain()
+           somewhere back up the call chain */
+        map_location(game.u.ux, game.u.uy, false);
+        game.iflags.terrain_typ = MAX_TYPE; /* "none of the above" value */
+    } else {
+        /* still on same level; might have come close enough to
+           generic object(s) to redisplay them as specific objects */
+        if (!game.u.ublind && !Hallucination() && !game.u.uswallow)
+            see_nearby_objects();
+    }
 }
 
 /* include/mondata.h:140 is_dlord/is_dprince, include/dungeon.h In_hell */

@@ -122,7 +122,7 @@ export async function update_topl(bp) {
 }
 
 // win/tty/topl.c:194 addtopl(), physical text without changing history.
-function addtopl(bp) {
+export function addtopl(bp) {
     const columns = game?.nhDisplay?.cols ?? 80;
     const lines = ((game._topline_physical_prefix || '')
                    + (game._pending_message || '')).split('\n');

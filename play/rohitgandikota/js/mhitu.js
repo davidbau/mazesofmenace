@@ -20,7 +20,7 @@ import { pline_The, pline_mon, verbalize } from './pline.js';
 import { update_inventory } from './invent.js';
 import { cloak_simple_name, helm_simple_name, Ring_gone, Ring_on,
          stop_donning } from './do_wear.js';
-import { mhitm_ad_poly, mhitm_ad_deth, mhitm_ad_tlpt, mhitm_ad_curs } from './uhitm.js';
+import { mhitm_ad_poly, mhitm_ad_deth, mhitm_ad_tlpt, mhitm_ad_curs, mhitm_ad_acid, mhitm_ad_drin, mhitm_ad_dren, mhitm_ad_slow } from './uhitm.js';
 import { monsndx } from './makemon.js';
 import { split_mon } from './potion.js';
 import { Your } from './pline.js';
@@ -1363,6 +1363,14 @@ async function hitmu(mtmp, mattk, indx) {
             set_ulycn(mdat.pmidx);
             await retouch_equipment(2);
         }
+    } else if (mattk[1] === A.AD_ACID) {
+        await mhitm_ad_acid(mtmp, mattk, game.youmonst, mhm);
+    } else if (mattk[1] === A.AD_DRIN) {
+        await mhitm_ad_drin(mtmp, mattk, game.youmonst, mhm);
+    } else if (mattk[1] === A.AD_DREN) {
+        await mhitm_ad_dren(mtmp, mattk, game.youmonst, mhm);
+    } else if (mattk[1] === A.AD_SLOW) {
+        await mhitm_ad_slow(mtmp, mattk, game.youmonst, mhm);
     } else if (mattk[1] === A.AD_STCK) {
         await hitmsg(mtmp, mattk, indx);
         const negated = await mhitm_mgc_atk_negated(

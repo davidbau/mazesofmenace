@@ -1,21 +1,21 @@
 import { maybe_unhide_at } from './mon.js';
 import { is_rider, locomotion } from './mondata.js';
 import { goodpos } from './makemon.js';
-import { rloc_to, enexto } from './teleport.js';
-import { revive_corpse } from './do.js';
-import { obj_ice_effects } from './mkobj.js';
+import { rloc_to, enexto, random_teleport_level, rloco } from './teleport.js';
+import { revive_corpse, flooreffects } from './do.js';
+import { obj_ice_effects, add_to_migration } from './mkobj.js';
 import { spot_time_left, spot_stop_timers, MELT_ICE_AWAY } from './timeout.js';
 import { float_vs_flight } from './polyself.js';
-import { float_up } from './trap.js';
-import { You_cant } from './pline.js';
-import { FROMOUTSIDE, DRAWBRIDGE_UP, DB_UNDER, DB_ICE, MAX_TYPE, OBJ_FLOOR } from './const.js';
-import { obj_extract_self } from './invent.js';
+import { float_up, blow_up_landmine, fill_pit, deltrap, seetrap, feeltrap, launch_obj } from './trap.js';
+import { You_cant, pline_dir } from './pline.js';
+import { FROMOUTSIDE, TIMEOUT, A_DEX, Is_airlevel, DRAWBRIDGE_UP, DB_UNDER, DB_ICE, MAX_TYPE, OBJ_FLOOR, IN_SIGHT, MIGR_RANDOM, ROLL, LAUNCH_KNOWN, xFLOOR, xGROUND, xOPENDOOR, xSHUTDOOR, xSWAMP, xSUBMERGED, xSEA, xWATERWALL, TREE, DOOR, D_TRAPPED, MOAT, Is_earthlevel, Is_juiblex_level } from './const.js';
+import { obj_extract_self, useupf } from './invent.js';
 import { place_object } from './mkobj.js';
 import { exercise } from './attrib.js';
 import { A_STR, LANDMINE, SPIKED_PIT, PIT, HOLE, TRAPDOOR,
          LEVEL_TELEP, TELEP_TRAP, ROLLING_BOULDER_TRAP } from './const.js';
-import { the, xname, ansimpleoname } from './objnam.js';
-import { costly_spot } from './shk.js';
+import { the, xname, ansimpleoname, Tobjnam, otense } from './objnam.js';
+import { costly_spot, stolen_value } from './shk.js';
 import { You_hear, There } from './pline.js';
 import { flush_screen, glyph_at, map_invisible, newsym, unmap_invisible,
          unmap_object, map_object, back_to_glyph } from './display.js';
@@ -24,7 +24,7 @@ import { is_flimsy } from './obj.js';
 import { You, You_feel, pline_xy, pline_The, set_msg_xy, Norep } from './pline.js';
 import { feel_location } from './display.js';
 import { can_ooze, accessible } from './monmove.js';
-import { dig_typ, use_pick_axe2 } from './dig.js';
+import { dig_typ, use_pick_axe2, bury_objs } from './dig.js';
 import { worm_cross } from './worm.js';
 import { block_door, block_entry, u_entered_shop, u_left_shop } from './shk.js';
 import { curr_mon_load } from './mon.js';
@@ -37,22 +37,22 @@ import { dist2, distmin } from './hacklib.js';
 import { Levitation, Flying, Fire_resistance, Underwater,
          Hallucination, Deaf, Passes_walls, Stealth, Swimming,
          Amphibious, Breathless } from './youprop.js';
-import { is_pool_or_lava } from './dbridge.js';
+import { is_pool_or_lava, is_db_wall, db_under_typ, is_ice } from './dbridge.js';
 import { is_pool, is_lava, t_at, m_at, is_pick, seemimic,
          wake_msg } from './mon.js';
 import { hliquid } from './do_name.js';
 import { Is_waterlevel, WATER, LAVAPOOL, POOL, AIR } from './const.js';
 import { waterbody_name } from './pager.js';
-import { surface, recalc_mapseen } from './dungeon.js';
+import { surface, recalc_mapseen, depth, get_level, Is_medusa_level } from './dungeon.js';
 import { pickup, can_reach_floor, loot_mon } from './pickup.js';
 import { dotrap, immune_to_trap, into_vs_onto } from './trap.js';
 import { is_pit, EXT_ENCUMBER, HVY_ENCUMBER, IS_FURNITURE, STAIRS, ECMD_OK, ECMD_TIME, OBJ_AT, GOLD_SYM, TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL } from './const.js';
 import { near_capacity } from './attrib.js';
 import { gethungry } from './eat.js';
-import { cmdq_clear, closed_door, paranoid_query } from './cmd.js';
+import { cmdq_clear, closed_door, paranoid_query, xytodir } from './cmd.js';
 import { paranoia_bits, boolean_option } from './options.js';
 import { PARANOID_TRAP, PARANOID_CONFIRM, TRAPNUM, TRAP_CLEARLY_IMMUNE } from './const.js';
-import { Blind, Stunned, Confusion } from './youprop.js';
+import { Blind, Stunned, Confusion, Cold_resistance } from './youprop.js';
 import { visible_region_at, reg_damg } from './region.js';
 import { defsyms } from './drawing_data.js';
 // hack.js — the hero's movement and the terrain predicates that go with it.
@@ -90,7 +90,7 @@ import {
     DIR_W, DIR_N, DIR_E, DIR_S, DIR_NW, DIR_NE, DIR_SE, DIR_SW,
     xdir, ydir, N_DIRS, Upolyd } from './const.js';
 import { sobj_at } from './invent.js';
-import { couldsee } from './vision.js';
+import { couldsee, cansee } from './vision.js';
 import { D_CLOSED, D_LOCKED } from './const.js';
 import { done } from './end.js';
 import { DIED } from './const.js';
@@ -105,7 +105,8 @@ import { INTRINSIC } from './const.js';
 import { start_timer, stop_timer, peek_timer, TIMER_OBJECT, ZOMBIFY_MON }
     from './timeout.js';
 import { Hello } from './role.js';
-import { digests, is_floater, is_clinger, likes_lava } from './mondata.js';
+import { digests, is_floater, is_clinger, likes_lava, resists_cold } from './mondata.js';
+import { objdescr_is } from './o_init.js';
 import { Wwalking } from './youprop.js';
 import { s_suffix } from './hacklib.js';
 import { uteetering_at_seen_pit } from './trap.js';
@@ -367,8 +368,27 @@ export async function test_move(ux, uy, dx, dy, mode) {
             return false;
         } else {
             if (mode === DO_MOVE) {
-                /* is_db_wall/Sokoban-passwall/mention_walls flavor */
-                note_unported_hack('test_move:do_move_wall_msg');
+                if (is_db_wall(x, y)) {
+                    await pline('That drawbridge is up!');
+                } else if (passesWalls && !may_passwall(x, y)
+                           && In_sokoban(game.u.uz)) {
+                    /* soko restriction stays even after puzzle is solved */
+                    await pline_The('Sokoban walls resist your ability.');
+                } else if (game.flags?.mention_walls) {
+                    /* back_to_glyph() here yields a cmap glyph descriptor;
+                       glyph_is_cmap(glyph) ? glyph_to_cmap(glyph) : -1 */
+                    const glyph = back_to_glyph(tmpr, x, y);
+                    const sym = Number.isInteger(glyph?.cmap) ? glyph.cmap : -1;
+                    let buf;
+
+                    if (sym === cmap_names.S_stone)
+                        buf = 'solid stone';
+                    else if (sym >= 0)
+                        buf = an(defsyms[sym].explain);
+                    else
+                        buf = `impossible [background glyph=${sym}]`;
+                    await pline_dir(xytodir(dx, dy), `It's ${buf}.`);
+                }
             }
             return false;
         }
@@ -437,7 +457,7 @@ export async function test_move(ux, uy, dx, dy, mode) {
     } else if (dx && dy && worm_cross(ux, uy, x, y)) {
         /* consecutive long worm segments are at <ux,y> and <x,uy> */
         if (mode === DO_MOVE)
-            note_unported_hack('test_move:worm_in_way_msg');
+            await pline(`${YMonnam(m_at(ux, y))} is in your way.`);
         return false;
     }
     /* Pick travel path that does not require crossing a trap.
@@ -533,8 +553,12 @@ async function test_move_testdiag(x, y, dx, dy, mode, passesWalls) {
     if (dx && dy && !passesWalls
         && (!doorless_door(x, y) || await block_door(x, y))) {
         /* Diagonal moves into a door are not allowed. */
-        if (mode === DO_MOVE)
-            note_unported_hack('test_move:diag_door_msg');
+        if (mode === DO_MOVE) {
+            if (game.u.ublind)
+                await feel_location(x, y);
+            if (Underwater() || game.flags?.mention_walls)
+                await You_cant('move diagonally into an intact doorway.');
+        }
         return false;
     }
     return 'fallthru';
@@ -1279,12 +1303,12 @@ export function end_running(and_travel) {
         ctx.run = 0;
         if (game.flags?.time)
             (game.disp ||= {}).time_botl = true;
-        /* classify_terrain() suppresses setting disp.botl while running, so C
-           recomputes here. The terrainstatus option defaults to Off
-           (js/optlist.js:219) and classify_terrain is not ported, so this arm
-           cannot fire yet; recorded rather than guessed. */
+        /* classify_terrain() suppresses setting disp.botl when
+           running; after that, it can no longer compare current terrain
+           against iflaga.terrain_typ to detect a change, so recompute */
         if (game.flags?.terrainstatus) {
-            (game.unported ||= new Set()).add('hack:end_running:classify_terrain');
+            game.iflags.terrain_typ = MAX_TYPE; /* "none of the above" value */
+            classify_terrain();
         }
     }
 
@@ -1418,6 +1442,53 @@ export async function handle_tip(tip) {
     return false;
 }
 
+// src/hack.c:2342 air_turbulence() — on the Plane of Air a hero who is
+// neither levitating nor flying loses 3 moves in 4 to the wind.
+export async function air_turbulence() {
+    if (Is_airlevel(game.u.uz) && rn2(4) && !Levitation() && !Flying()) {
+        switch (rn2(3)) {
+        case 0:
+            await You('tumble in place.');
+            exercise(A_DEX, false);
+            break;
+        case 1:
+            await You_cant('control your movements very well.');
+            break;
+        case 2:
+            await pline("It's hard to walk in thin air.");
+            exercise(A_DEX, true);
+            break;
+        }
+        return true;
+    }
+    return false;
+}
+
+// src/hack.c:2396 slippery_ice_fumbling() — standing on ice without snow
+// boots, cold resistance, flight or a floating/clinging/whirly form gives
+// a 1 in 2 (1 in 3 when cold resistant) chance of fumbling on the next
+// move; leaving the ice drops the FROMOUTSIDE fumbling again.
+export function slippery_ice_fumbling() {
+    const u = game.u;
+    let on_ice = !Levitation() && is_ice(u.ux, u.uy);
+    const iceskater = u.usteed ? u.usteed : game.youmonst;
+
+    if (on_ice) {
+        if ((u.uarmf && objdescr_is(u.uarmf, 'snow boots'))
+            || resists_cold(iceskater) || Flying()
+            || is_floater(iceskater.data) || is_clinger(iceskater.data)
+            || is_whirly(iceskater.data)) {
+            on_ice = false;
+        } else if (!rn2(Cold_resistance() ? 3 : 2)) {
+            u.intrinsic.HFumbling |= FROMOUTSIDE;
+            u.intrinsic.HFumbling &= ~TIMEOUT;
+            u.intrinsic.HFumbling += 1; /* slip on next move */
+        }
+    }
+    if (!on_ice && (u.intrinsic.HFumbling & FROMOUTSIDE))
+        u.intrinsic.HFumbling &= ~FROMOUTSIDE;
+}
+
 // src/hack.c:2444 avoid_moving_on_trap() — stop a run at a known trap.
 //
 // The vibrating square is a trap structurally but terrain in spirit, so it is
@@ -1472,6 +1543,24 @@ export function avoid_moving_on_liquid(x, y, msg) {
             (game.unported ||= new Set()).add('hack:avoid_moving_on_liquid:msg');
         }
         return true;
+    }
+    return false;
+}
+
+// src/hack.c:2495 avoid_running_into_trap_or_liquid() — a run (run >= 2)
+// stops short of a known trap or, while blind, a known liquid; a walk-style
+// run (run == 1) only clears multi and lets the move go on
+export function avoid_running_into_trap_or_liquid(x, y) {
+    const would_stop = ((game.context.run | 0) >= 2);
+
+    if (!game.context.run)
+        return false;
+    if (avoid_moving_on_trap(x, y, would_stop)
+        || (Blind() && avoid_moving_on_liquid(x, y, would_stop))) {
+        nomul(0);
+        if (would_stop)
+            game.context.move = 0;
+        return would_stop;
     }
     return false;
 }
@@ -2032,6 +2121,14 @@ function moverock_done(sx, sy) {
             otmp.next_boulder = 0; /* resume normal xname() */
 }
 
+// src/hack.c:315 rock_disappear_msg()
+async function rock_disappear_msg(otmp) {
+    if (game.u.usteed)
+        await pline(`${YMonnam(game.u.usteed)} pushes ${the(xname(otmp))} and suddenly it disappears!`);
+    else
+        await You(`push ${the(xname(otmp))} and suddenly it disappears!`);
+}
+
 // src/hack.c:336 moverock()
 export async function moverock() {
     const sx = game.u.ux + game.u.dx, sy = game.u.uy + game.u.dy;
@@ -2146,21 +2243,112 @@ async function moverock_core(sx, sy) {
             disturb_buried_zombies(sx, sy);
 
             if (ttmp) {
+                let newlev;
                 switch (ttmp.ttyp) {
                 case LANDMINE:
+                    if (rn2(10)) {
+                        obj_extract_self(otmp);
+                        place_object(otmp, rx, ry);
+                        newsym(sx, sy);
+                        await pline(`${
+                              /* "kablam" is a variation of "ka-boom" or
+                                 "kablooey", rather cartoonish descriptions
+                                 of the sound of an explosion, but give it
+                                 even when deaf if hero sees the explosion */
+                              (!Deaf() || !Blind()) ? 'KAABLAMM!!'
+                              /* use an alternate exclamation when feeling
+                                 the floor/ground/whatever shake (or maybe
+                                 a weak shockwave if levitating or flying) */
+                                                    : 'Gadzooks'}!  ${
+                              Tobjnam(otmp, 'trigger')} ${
+                              ttmp.madeby_u ? 'your' : 'a'} land mine.`);
+                        await blow_up_landmine(ttmp);
+                        /* if the boulder remains, it should fill the pit */
+                        await fill_pit(game.u.ux, game.u.uy);
+                        if (cansee(rx, ry))
+                            newsym(rx, ry);
+                        return sobj_at(ONAMES.BOULDER, sx, sy) ? -1 : 0;
+                    }
+                    break;
                 case SPIKED_PIT:
                 case PIT:
+                    obj_extract_self(otmp);
+                    /* vision kludge to get messages right;
+                       the pit will temporarily be seen even
+                       if this is one among multiple boulders */
+                    if (!Blind() && game.viz_array?.[ry])
+                        game.viz_array[ry][rx] |= IN_SIGHT;
+                    if (!(await flooreffects(otmp, rx, ry, 'fall'))) {
+                        place_object(otmp, rx, ry);
+                    }
+                    if (mtmp && !Blind())
+                        newsym(rx, ry);
+                    return sobj_at(ONAMES.BOULDER, sx, sy) ? -1 : 0;
                 case HOLE:
                 case TRAPDOOR:
+                    /* Soundeffect(se_kerplunk_boulder_gone, 40); */
+                    if (Blind())
+                        await pline(`Kerplunk!  You no longer feel ${the(xname(otmp))}.`);
+                    else
+                        await pline(`${Tobjnam(otmp, (ttmp.ttyp === TRAPDOOR)
+                                                      ? 'trigger' : 'fall')}${
+                                    (ttmp.ttyp === TRAPDOOR) ? '' : ' into'} and ${
+                                    otense(otmp, 'plug')} a ${
+                                    (ttmp.ttyp === TRAPDOOR) ? 'trap door' : 'hole'} in the ${
+                                    surface(rx, ry)}!`);
+                    deltrap(ttmp);
+                    useupf(otmp, 1);
+                    await bury_objs(rx, ry);
+                    game.level.at(rx, ry).wall_info &= ~W_NONDIGGABLE;
+                    game.level.at(rx, ry).candig = 1;
+                    if (cansee(rx, ry))
+                        newsym(rx, ry);
+                    return sobj_at(ONAMES.BOULDER, sx, sy) ? -1 : 0;
                 case LEVEL_TELEP:
+                    /* 20% chance of picking current level; 100% chance for
+                       that if in single-level branch (Knox) or in endgame */
+                    newlev = random_teleport_level();
+                    /* if trap doesn't work, skip "disappears" message */
+                    if (newlev === depth(game.u.uz)) {
+                        await dopush(sx, sy, rx, ry, otmp, costly);
+                        continue;
+                    }
+                    /* FALLTHRU */
                 case TELEP_TRAP:
-                case ROLLING_BOULDER_TRAP:
-                    /* the trap-operates-on-boulder arms (landmine rn2(10),
-                       pit fill, hole plug, teleport) sit on machinery that
-                       has its own draws; record which trap so the gap is
-                       visible per type */
-                    note_unported_hack(`moverock:trap=${ttmp.ttyp}`);
-                    return -1;
+                    await rock_disappear_msg(otmp);
+                    otmp.next_boulder = 0; /* reset before moving it */
+                    if (ttmp.ttyp === TELEP_TRAP) {
+                        await rloco(otmp);
+                    } else {
+                        if (costly)
+                            await stolen_value(otmp, rx, ry, !ttmp.tseen, false);
+                        obj_extract_self(otmp);
+                        add_to_migration(otmp);
+                        const dest = get_level(newlev);
+                        otmp.ox = dest.dnum;
+                        otmp.oy = dest.dlevel;
+                        otmp.owornmask = MIGR_RANDOM;
+                    }
+                    seetrap(ttmp);
+                    return sobj_at(ONAMES.BOULDER, sx, sy) ? -1 : 0;
+                case ROLLING_BOULDER_TRAP: {
+                    let tox = rx;
+                    let toy = ry;
+                    /* the boulder continues until it reaches one of
+                       the trap's launch spots or hits a wall / out-of-bounds */
+                    while (isok(tox + game.u.dx, toy + game.u.dy)) {
+                        tox += game.u.dx;
+                        toy += game.u.dy;
+                        if (tox === ttmp.launch.x && toy === ttmp.launch.y)
+                            break;
+                        if (tox === ttmp.launch2.x && toy === ttmp.launch2.y)
+                            break;
+                    }
+                    await pline(`${Tobjnam(otmp, 'suddenly roll')} away from you!`);
+                    feeltrap(ttmp);
+                    await launch_obj(ONAMES.BOULDER, sx, sy, tox, toy, ROLL | LAUNCH_KNOWN);
+                    return sobj_at(ONAMES.BOULDER, sx, sy) ? -1 : 0;
+                }
                 default:
                     break; /* boulder not affected by this trap */
                 }
@@ -2425,6 +2613,68 @@ function end_running_hack(and_travel) {
     }
 }
 
+// src/hack.c:3090 classify_terrain() — the terrain type under the hero
+// for the 'terrainstatus' status field; some types need fixing up
+export function classify_terrain() {
+    const lev = game.level.at(game.u.ux, game.u.uy);
+    let typ = lev.lastseentyp ?? lev.typ; /* svl.lastseentyp[u.ux][u.uy] */
+
+    /*
+     * If the terrain under the hero is different now from what it
+     * was on the previous check, bring iflags.terrain_typ up to date
+     * and request a status update.  Unless hero is running--then the
+     * update request will be suppressed.
+     */
+    if (Underwater()) {
+        typ = xSUBMERGED;
+    } else {
+        switch (typ) {
+        case STONE:
+            if (game.level.flags?.arboreal)
+                typ = TREE;
+            break;
+        case CORR:
+        case ROOM:
+            /* this matches surface() but 'floor' is odd in many places */
+            typ = !Is_earthlevel(game.u.uz) ? xFLOOR : xGROUND;
+            break;
+        case DOOR:
+            /* defaults to "doorway" (door-less or broken) */
+            if ((lev.doormask & D_ISOPEN) !== 0)
+                typ = xOPENDOOR;
+            else if ((lev.doormask & (D_CLOSED | D_LOCKED | D_TRAPPED)) !== 0)
+                typ = xSHUTDOOR;
+            break;
+        case DRAWBRIDGE_UP:
+            /* ICE, MOAT, LAVA, or 'STONE' (which ought to be 'room') */
+            typ = db_under_typ(lev.drawbridgemask);
+            if (typ === STONE || typ === ROOM)
+                typ = xGROUND;
+            break;
+        case MOAT:
+            /* moat and swamp handling match waterbody_name()'s result */
+            if (Is_medusa_level(game.u.uz))
+                typ = xSEA;
+            else if (Is_juiblex_level(game.u.uz))
+                typ = xSWAMP;
+            break;
+        case WATER:
+            if (!Is_waterlevel(game.u.uz))
+                typ = xWATERWALL;
+            break;
+        default:
+            break;
+        }
+    }
+    if (typ !== game.iflags.terrain_typ) {
+        /* terrain at hero's spot is different */
+        game.iflags.terrain_typ = typ;
+        /* request a status update unless hero is running */
+        if (game.flags?.terrainstatus && !game.context.run)
+            (game.disp ||= {}).botl = true;
+    }
+}
+
 // src/hack.c:3178 switch_terrain(); when the hero's location changes to or
 // from solid rock, levitation and flight are blocked or restored
 export async function switch_terrain() {
@@ -2464,8 +2714,9 @@ export async function switch_terrain() {
     }
     if ((!!Levitation() ^ was_levitating) || (!!Flying() ^ was_flying))
         (game.disp ||= {}).botl = true; /* update Lev/Fly status condition */
-    /* if (flags.terrainstatus) classify_terrain(): the terrain status
-       condition is a windowport status-hilite feature */
+
+    if (game.flags?.terrainstatus)
+        classify_terrain();
 }
 
 // src/hack.c:4525 spot_checks(); a location's terrain changed; anything

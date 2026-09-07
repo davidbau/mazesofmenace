@@ -1,4 +1,5 @@
-import { NODIAG } from './hack.js';
+import { NODIAG, handle_tip, TIP_UNTRAP_MON, avoid_running_into_trap_or_liquid,
+         air_turbulence, slippery_ice_fumbling } from './hack.js';
 import { MV_ANY, MV_RUN, MV_RUSH, MV_WALK, CMDQ_INT, CMDQ_DIR, DIR_DOWN, DIR_UP, IRONBARS, DO_MOVE } from './const.js';
 import { impossible } from './pline.js';
 import { can_ooze } from './monmove.js';
@@ -64,7 +65,7 @@ import { ACURR, exercise, near_capacity } from './attrib.js';
 import { is_pit, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_ALLOWCNT, GETOBJ_DOWNPLAY, W_ARMOR, W_ACCESSORY, GETOBJ_EXCLUDE_INACCESS, ARTICLE_YOUR, ARTICLE_THE, CQ_CANNED, CQ_REPEAT, CMDQ_EXTCMD, CMDQ_KEY, PIT, HOLE, WEB } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
 import { an, cxname, simpleonames, the, makeplural, singular, xname,
-         the_unique_obj, armor_simple_name } from './objnam.js';
+         the_unique_obj, armor_simple_name, just_an } from './objnam.js';
 import { is_edible } from './eat.js';
 import { donull } from './do.js';
 import { shop_keeper, dopay } from './shk.js';
@@ -153,6 +154,7 @@ import { dowieldquiver, dowield, doswapweapon, dotwoweapon } from './wield.js';
 import { dozap } from './zap.js';
 import { dist2, distmin } from './hacklib.js';
 import { place_object } from './mkobj.js';
+import { trapname, feeltrap } from './trap.js';
 
 // Direction deltas: y u k
 //                   h . l
@@ -207,12 +209,13 @@ async function blocksMove(x, y, dx, dy) {
     game.context.door_opened = false;
     const loc = game.level?.at(x, y);
     if (!loc) return true;
-    if (loc.typ === IRONBARS) {
+    /* src/hack.c:1010 — every obstruction (walls, bars, boulders in rock)
+       goes through test_move's DO_MOVE arm: it feels the location when
+       blind and prints the drawbridge/Sokoban/mention_walls feedback */
+    if (IS_OBSTRUCTED(loc.typ) || loc.typ === IRONBARS) {
         const { test_move } = await import('./hack.js');
         return !(await test_move(game.u.ux, game.u.uy, dx, dy, DO_MOVE));
     }
-    if (IS_OBSTRUCTED(loc.typ)
-        && !(Passes_walls() && may_passwall(x, y))) return true;
     if (closed_door(x, y)) {
         if (Passes_walls() || can_ooze(game.youmonst)) {
             const { test_move } = await import('./hack.js');
@@ -2605,6 +2608,12 @@ async function domove_core() {
         return;
     }
 
+    /* src/hack.c:2739 */
+    if (await air_turbulence())
+        return;
+    /* check slippery ice */
+    slippery_ice_fumbling();
+
     /* src/hack.c:2747 impaired_movement() — a stunned (always) or confused
        (4 in 5) hero moves in a random viable direction; the rn2(5) inside
        u_maybe_impaired() draws on EVERY move while merely confused, and
@@ -2626,6 +2635,11 @@ async function domove_core() {
     const dx = u.dx, dy = u.dy;
     const newx = u.ux + dx;
     const newy = u.uy + dy;
+
+    /* src/hack.c:2762 — after move_out_of_bounds(), before the sticky
+       monster check */
+    if (avoid_running_into_trap_or_liquid(newx, newy))
+        return;
 
     if (await escape_from_sticky_mon(newx, newy))
         return;
@@ -2827,18 +2841,6 @@ async function domove_core() {
             } else {
                 await pline('That door is closed.');
             }
-        } else if (bloc?.typ === DBWALL) {
-            await pline('That drawbridge is up!');
-        } else if (game.flags?.mention_walls && !game.context.door_opened) {
-            const glyph = bloc ? back_to_glyph(bloc, newx, newy) : null;
-            const cmap = glyph?.cmap;
-            if (!bloc || cmap === cmap_names.S_stone) {
-                await pline("It's solid stone.");
-            } else if (Number.isInteger(cmap) && defsyms[cmap]?.explain) {
-                await pline(`It's ${an(defsyms[cmap].explain)}.`);
-            } else {
-                note_unported_cmd('test_move:mention_walls_other');
-            }
         }
         if (!game.context.door_opened) {
             game.context.move = 0;
@@ -3034,22 +3036,33 @@ async function domove_swap_with_pet(mtmp, x, y) {
         && sobj_at(ONAMES.BOULDER, trap.tx, trap.ty)) {
         didnt_move = true;              /* pinned in a pit by a boulder */
     } else if (game.u.ux0 !== x && game.u.uy0 !== y
-               && mtmp.mnum === PMNAMES.PM_GRID_BUG) {
-        note_unported_cmd('domove_swap_with_pet:nodiag_msg');
+               && mtmp.mnum === PMNAMES.PM_GRID_BUG) { /* NODIAG() */
+        /* can't swap places when pet can't move to your spot */
+        await You(`stop.  ${YMonnam(mtmp)} can't move diagonally.`);
         didnt_move = true;
     } else if (u_with_boulder
                && !(verysmall(mdat)
                     && (!mtmp.minvent?.length || curr_mon_load(mtmp) <= 600))) {
-        note_unported_cmd('domove_swap_with_pet:boulder_msg');
+        /* can't swap places when pet won't fit there with the boulder */
+        await You(`stop.  ${YMonnam(mtmp)} won't fit into the same spot that you're at.`);
         didnt_move = true;
     } else if (game.u.ux0 !== x && game.u.uy0 !== y
                && bad_rock(mdat, x, game.u.uy0)
                && bad_rock(mdat, game.u.ux0, y)
                && (bigmonst(mdat) || curr_mon_load(mtmp) > 600)) {
-        note_unported_cmd('domove_swap_with_pet:wont_fit_msg');
+        /* can't swap places when pet won't fit thru the opening */
+        await You(`stop.  ${YMonnam(mtmp)} won't fit through.`);
         didnt_move = true;
     } else if (mtmp.mpeaceful && mtmp.mtrapped) {
-        note_unported_cmd('domove_swap_with_pet:trapped_msg');
+        /* all mtame are also mpeaceful, so this affects pets too */
+        const what = trapname(trap.ttyp, false);
+        let which = 'that ';
+        if (!trap.tseen) {
+            feeltrap(trap); /* show on map once mtmp is out of the way */
+            which = just_an(what); /* "a " or "an " */
+        }
+        await You(`stop.  ${YMonnam(mtmp)} can't move out of ${which}${what}.`);
+        await handle_tip(TIP_UNTRAP_MON);
         didnt_move = true;
     } else if (mtmp.mpeaceful
                && (!goodpos(game.u.ux0, game.u.uy0, mtmp, 0)
@@ -3898,6 +3911,7 @@ async function dotravel_target() {
     game.context.travel1 = 1;
     game.context.run = 8;
     game.context.nopick = 1;
+    game.domove_attempting |= DOMOVE_RUSH;   /* src/cmd.c:5366 */
 
     if (!game.multi)
         game.multi = Math.max(COLNO, ROWNO);
@@ -3967,6 +3981,36 @@ function cmdbind_table() {
     binds.set(0x80 | 'O'.charCodeAt(0), by_txt('overview'));
     binds.set(0x80 | '2'.charCodeAt(0), by_txt('twoweapon'));
     binds.set(0x80 | 'N'.charCodeAt(0), by_txt('name'));
+    /* src/cmd.c:3462 reset_commands(): the direction characters (and their
+       run/rush forms) replace whatever commands_init() had on those keys,
+       so cmdbind_get('l') is "moveeast" without number_pad and "loot"
+       with it. swap_yz and the phone layout are not modelled. */
+    {
+        const num_pad = !!game.iflags?.num_pad;
+        const dirchars = num_pad ? '47896321' : 'hykulnjb';
+        for (let i = 0; i < 8; i++) {
+            const di = dirchars.charCodeAt(i);
+            const up = String.fromCharCode(di).toUpperCase().charCodeAt(0);
+            /* back up the commands & keys overwritten by new movement keys */
+            binds.delete(di);
+            if (!num_pad) {
+                binds.delete(up);
+                binds.delete(di & 0x1f);
+            } else {
+                binds.delete(di | 0x80);
+            }
+            /* bind the new keys to movement commands */
+            binds.set(di, by_txt(move_funcs[i][0]));
+            if (!num_pad) {
+                binds.set(up, by_txt(move_funcs[i][1]));
+                binds.set(di & 0x1f, by_txt(move_funcs[i][2]));
+            } else {
+                /* M(number) works when altmeta is on */
+                binds.set(di | 0x80, by_txt(move_funcs[i][1]));
+                /* can't bind highc() or C() of digits. just use the 5 prefix. */
+            }
+        }
+    }
     return binds;
 }
 
@@ -4121,18 +4165,37 @@ export async function dokeylist() {
 // src/cmd.c key2extcmddesc() — what a key does, for dowhatdoes ('?f').
 export function key2extcmddesc(key) {
     const ch = String.fromCharCode(key & 0x7f);
-    /* movement commands take precedence over the binding table */
-    if (!(key & 0x80)) {
-        if ('hjklyubn'.includes(ch))
-            return 'move'; /* "move or attack"? */
-        if ('HJKLYUBN'.includes(ch))
-            return 'run';
+    const num_pad = !!game.iflags?.num_pad;
+    let key2cmdbuf = '';
+    /* need to check for movement commands before checking the extended
+       commands table because it contains entries for number_pad commands
+       that match !number_pad movement (like 'j' for "jump") */
+    const k = String.fromCharCode(key);
+    if (movecmd(k, MV_WALK))
+        key2cmdbuf = 'move'; /* "move or attack"? */
+    else if (movecmd(k, MV_RUSH))
+        key2cmdbuf = 'rush';
+    else if (movecmd(k, MV_RUN))
+        key2cmdbuf = 'run';
+    if ((ch >= '0' && ch <= '9' && !(key & 0x80))
+        || (num_pad && ch >= '0' && ch <= '9')) {
+        key2cmdbuf = '';
+        if (!num_pad)
+            key2cmdbuf = 'start of, or continuation of, a count';
+        else if (key === '5'.charCodeAt(0) || key === (0x80 | '5'.charCodeAt(0)))
+            key2cmdbuf = `${(!!game.iflags?.pcHack_compat ^ (key === (0x80 | '5'.charCodeAt(0))))
+                            ? 'run' : 'rush'} prefix`;
+        else if (key === '0'.charCodeAt(0)
+                 || (game.iflags?.pcHack_compat && key === (0x80 | '0'.charCodeAt(0))))
+            key2cmdbuf = "synonym for 'i'";
+        if (key2cmdbuf)
+            return key2cmdbuf;
     }
-    if (ch >= '0' && ch <= '9')
-        return 'start of, or continuation of, a count';
+    /* check prefixes before regular commands; includes ^A pseudo-command */
     for (const mk of misc_keys)
         if (key === mk.key)
             return mk.desc;
+    /* finally, check whether 'key' is a command */
     const cmd = cmdbind_table().get(key);
     if (cmd && cmd.ef_txt) {
         let buf = `${cmd.ef_desc} (#${cmd.ef_txt})`;
@@ -4144,7 +4207,7 @@ export function key2extcmddesc(key) {
                 + 'non-movement prefix:' + buf.slice(7);
         return buf;
     }
-    return null;
+    return key2cmdbuf || null;
 }
 
 // src/cmd.c:5655 paranoid_query(), a yes/no paranoid_ynq().

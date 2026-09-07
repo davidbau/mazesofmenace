@@ -30,11 +30,11 @@ import { you_were, you_unwere } from './were.js';
 import { polyself } from './polyself.js';
 import { You_feel } from './pline.js';
 import { shieldeff } from './display.js';
-import { Antimagic, Unchanging, Passes_walls } from './youprop.js';
+import { Antimagic, Unchanging, Passes_walls, Unaware } from './youprop.js';
 import { game } from './gstate.js';
 import { Deaf } from './youprop.js';
 import { You, You_hear } from './pline.js';
-import { M_AP_TYPE, NORMAL_SPEED } from './const.js';
+import { M_AP_TYPE, NORMAL_SPEED, G_UNIQ, ARTICLE_THE, ARTICLE_NONE, PLNMSG_HIDE_UNDER } from './const.js';
 import { ATTKS } from './monst_data.js';
 import { resist_conflict } from './mondata.js';
 import { seemimic, set_ustuck } from './mon.js';
@@ -45,8 +45,8 @@ import { Monnam, mon_nam_too } from './do_name.js';
 import { could_seduce, getmattk, mswings_verb } from './mhitu.js';
 import { MON_WEP, DEADMONSTER, mon_offmap, troll_baned } from './monst.js';
 import { hitval, mon_wield_item, possibly_unwield } from './weapon.js';
-import { mon_nam } from './do_name.js';
-import { xname } from './objnam.js';
+import { mon_nam, noname_monnam, a_monnam } from './do_name.js';
+import { xname, makeplural } from './objnam.js';
 import { pronoun_gender } from './mondata.js';
 import { genders } from './role_data.js';
 import { mon_visible } from './display.js';
@@ -265,8 +265,24 @@ export async function mattackm(magr, mdef) {
     if (mdef.mundetected) {
         mdef.mundetected = 0;
         newsym(mdef.mx, mdef.my);
-        if (canseemon(mdef) && !sensemon(mdef))
-            note_unported_mhitm('mattackm:unhide_msg');
+        if (canseemon(mdef) && !sensemon(mdef)) {
+            if (Unaware()) {
+                const justone = (mdef.data.geno & G_UNIQ) !== 0;
+                let montype = noname_monnam(mdef, justone ? ARTICLE_THE
+                                                          : ARTICLE_NONE);
+                if (!justone)
+                    montype = makeplural(montype);
+                await You(`dream of ${montype}.`);
+            } else {
+                if (game.iflags?.last_msg === PLNMSG_HIDE_UNDER
+                    && mdef.m_id === game.gl?.last_hider)
+                    await pline_mon(mdef, `${Monnam(mdef)} emerges from hiding.`);
+                else if (mdef.m_id === game.gl?.last_hider)
+                    await You(`notice ${mon_nam(mdef)}.`);
+                else
+                    await pline(`Suddenly, you notice ${a_monnam(mdef)}.`);
+            }
+        }
     }
 
     /* Elves hate orcs. */
@@ -726,7 +742,7 @@ export async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             return (M_ATTK_DEF_DIED | M_ATTK_AGR_DIED);
 
         return (M_ATTK_DEF_DIED
-                | (grow_up(magr, mdef) ? 0 : M_ATTK_AGR_DIED));
+                | ((await grow_up(magr, mdef)) ? 0 : M_ATTK_AGR_DIED));
     }
     return (mhm.hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
 }

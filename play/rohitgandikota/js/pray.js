@@ -6,34 +6,34 @@
 // paths remain partial.
 
 import { ureflects } from './muse.js';
-import { has_omonst, OMONST, ANIMATE_SPELL } from './const.js';
-import { animate_statue } from './trap.js';
+import { has_omonst, OMONST, ANIMATE_SPELL, HVY_ENCUMBER, TELEDS_NO_FLAGS, DISSOLVED, EYE, PLNMSG_OBJ_GLOWS, SICK_ALL, In_sokoban, IS_OBSTRUCTED, SDOOR, SCORR, STONE } from './const.js';
+import { animate_statue, reset_utrap, rescued_from_terrain } from './trap.js';
 import { revive } from './zap.js';
 import { cmap_names } from './drawing_data.js';
 import { M_AP_TYPE, M_AP_FURNITURE, MCORPSENM } from './const.js';
 import { m_at } from './mon.js';
 import { isok } from './hacklib.js';
 import { uhim } from './mhitu.js';
-import { Disint_resistance } from './youprop.js';
+import { Disint_resistance, Blindfolded_only, Glib, Fixed_abil, Unchanging, Blinded, Passes_walls, Blindfolded } from './youprop.js';
 import { genders } from './role_data.js';
 import { Monnam } from './do_name.js';
-import { punish } from './read.js';
-import { verbalize } from './pline.js';
+import { punish, unpunish } from './read.js';
+import { verbalize, impossible } from './pline.js';
 import { summon_minion } from './minion.js';
 
 import { shieldeff } from './display.js';
 import { XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT, M_SEEN_REFL, M_SEEN_ELEC, M_SEEN_DISINT, Is_astralevel, Is_sanctum } from './const.js';
 import { xkilled } from './mon.js';
-import { resists_disint, resists_elec, monstseesu, monstunseesu } from './mondata.js';
-import { disintegrate_arm } from './do_wear.js';
+import { resists_disint, resists_elec, monstseesu, monstunseesu, nohands, eyecount, attacktype_fordmg, throws_rocks } from './mondata.js';
+import { disintegrate_arm, stuck_ring, unchanger } from './do_wear.js';
 import { game } from './gstate.js';
-import { rn1, rn2, rnd, rnz, rnl, rn2_on_display_rng } from './rng.js';
+import { rn1, rn2, rnd, rnz, rnl, rn2_on_display_rng, d } from './rng.js';
 import { newsym, pline, more, see_monsters } from './display.js';
 import { You, You_feel, You_hear, Your, pline_The } from './pline.js';
 import { tty_yn_function } from './tty/topl.js';
 import { nomul, losehp } from './hack.js';
 import { adjalign, adjattrib, change_luck, near_capacity,
-         exercise, encumber_msg } from './attrib.js';
+         exercise, encumber_msg, ABASE, AMAX, setABASE } from './attrib.js';
 import { which_armor } from './worn.js';
 import { IS_ALTAR, Amask2align, A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
          ECMD_OK, ECMD_TIME, W_SADDLE, TT_LAVA, TT_BURIEDBALL, WEAK, HUNGRY,
@@ -46,14 +46,14 @@ import { IS_ALTAR, Amask2align, A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC,
          P_LONG_SWORD, P_BROAD_SWORD, FOOT, STOMACH } from './const.js';
 import { ONAMES, OCLASSES } from './objects_data.js';
 import { An, an, ansimpleoname, makeplural, OBJ_NAME, otense, vtense,
-         xname, yname, Yobjnam2 } from './objnam.js';
+         xname, yname, Yobjnam2, gloves_simple_name } from './objnam.js';
 import { a_monnam, hcolor, mon_nam, oname, upstart } from './do_name.js';
 import { attrcurse, rndcurse } from './sit.js';
 import { Blind, Deaf, Flying, Hallucination, Levitation, Reflecting,
          Shock_resistance } from './youprop.js';
 import { obj_resists, resist } from './zap.js';
-import { carrying, update_inventory, useup, useupf } from './invent.js';
-import { carried } from './obj.js';
+import { carrying, update_inventory, useup, useupf, confers_luck, sobj_at } from './invent.js';
+import { carried, bimanual } from './obj.js';
 import { find_ac } from './do_wear.js';
 import { done, DIED, ESCAPED, ASCENDED } from './end.js';
 import { roles } from './role_data.js';
@@ -71,8 +71,8 @@ import { dlord } from './minion.js';
 import { angry_priest } from './priest.js';
 import { s_suffix, sgn } from './hacklib.js';
 import { bless, is_weptool, mkobj, mksobj, place_object, rnd_class,
-         SPBOOK_no_NOVEL, uncurse } from './mkobj.js';
-import { dropy } from './do.js';
+         SPBOOK_no_NOVEL, uncurse, set_bknown } from './mkobj.js';
+import { dropy, heal_legs } from './do.js';
 import { discover_artifact, exist_artifact, is_art } from './artifact.js';
 import { artifact_names, ART_EXCALIBUR, ART_STORMBRINGER,
          ART_VORPAL_BLADE } from './artilist_data.js';
@@ -81,9 +81,16 @@ import { add_weapon_skill, unrestrict_weapon_skill,
 import { force_learn_spell, known_spell, spe_Forgotten, spe_Fresh,
          spe_Unknown, spell_skilltype } from './spell.js';
 import { makeknown, observe_object } from './o_init.js';
-import { make_blinded } from './potion.js';
-import { body_part, mbodypart } from './polyself.js';
+import { make_blinded, make_stoned, make_slimed, make_sick, make_deaf, make_stunned, make_confused, make_hallucinated, make_glib, set_itimeout } from './potion.js';
+import { body_part, mbodypart, rehumanize } from './polyself.js';
 import { welded } from './wield.js';
+import { safe_teleds } from './teleport.js';
+import { region_safety, region_danger } from './region.js';
+import { freehand } from './engrave.js';
+import { you_unwere } from './were.js';
+import { buried_ball_to_freedom } from './dig.js';
+import { is_pool_or_lava } from './dbridge.js';
+import { ATTKS } from './monst_data.js';
 
 function note_unported_pray(what) {
     (game.unported ||= new Set()).add('pray:' + what);
@@ -101,9 +108,12 @@ let p_type = 0;
 
 /* src/pray.c:60 TROUBLE_* — only the identity of the value matters here;
    positive are major troubles, negative minor. */
-const TROUBLE_STONED = 14, TROUBLE_STARVING = 8, TROUBLE_HIT = 6,
-      TROUBLE_COLLAPSING = 4, TROUBLE_STUCK_IN_WALL = 3,
-      TROUBLE_CURSED_LEVITATION = 2, TROUBLE_UNUSEABLE_HANDS = 1;
+const TROUBLE_STONED = 14, TROUBLE_SLIMED = 13, TROUBLE_STRANGLED = 12,
+      TROUBLE_LAVA = 11, TROUBLE_SICK = 10, TROUBLE_STARVING = 9,
+      TROUBLE_REGION = 8, /* stinking cloud */ TROUBLE_HIT = 7,
+      TROUBLE_LYCANTHROPE = 6, TROUBLE_COLLAPSING = 5,
+      TROUBLE_STUCK_IN_WALL = 4, TROUBLE_CURSED_LEVITATION = 3,
+      TROUBLE_UNUSEABLE_HANDS = 2, TROUBLE_CURSED_BLINDFOLD = 1;
 const TROUBLE_PUNISHED = -1, TROUBLE_FUMBLING = -2, TROUBLE_CURSED_ITEMS = -3,
       TROUBLE_SADDLE = -4, TROUBLE_BLIND = -5, TROUBLE_POISONED = -6,
       TROUBLE_WOUNDED_LEGS = -7, TROUBLE_HUNGRY = -8, TROUBLE_STUNNED = -9,
@@ -138,114 +148,456 @@ function critically_low_hp(only_if_injured) {
     return (curhp <= 5 || curhp * divisor <= maxhp);
 }
 
-// src/pray.c:284 worst_cursed_item() — select an item for
-// TROUBLE_CURSED_ITEMS. The full priority chain scans worn gear first;
-// the port keeps C's order over the slots it models.
-function worst_cursed_item() {
+// src/pray.c:2677 blocked_boulder() — is the boulder at the hero's
+// neighbour in direction <dx,dy> one that cannot be pushed out of the way?
+function blocked_boulder(dx, dy) {
     const u = game.u;
-    /* if strained or worse, check for loadstone first */
-    if (near_capacity() >= 3 /* HVY_ENCUMBER */) {
-        for (const otmp of game.invent)
-            if (otmp.otyp === ONAMES.LOADSTONE && otmp.cursed)
-                return otmp;
+    let count = 0;
+    for (const otmp of (game.level.objects || [])) {
+        if (otmp.ox === u.ux + dx && otmp.oy === u.uy + dy
+            && otmp.otyp === ONAMES.BOULDER)
+            count += otmp.quan;
     }
-    /* weapon takes precedence if it is interfering with taking off a ring
-       or putting on a shield */
-    if (u.uwep && u.uwep.cursed
-        && (u.uright?.cursed || u.uarms))          /* weapon */
-        return u.uwep;
-    for (const o of [u.uarmc, u.uarm, u.uarmu, u.uarmh, u.uarms,
-                     u.uarmg, u.uarmf, u.uleft, u.uright, u.uamul,
-                     u.ublindf, u.uwep])
-        if (o && o.cursed)
-            return o;
-    return null;
+    const nx = u.ux + 2 * dx, ny = u.uy + 2 * dy; /* next spot beyond boulder(s) */
+    switch (count) {
+    case 0:
+        /* no boulders--not blocked */
+        return false;
+    case 1:
+        /* possibly blocked depending on if it's pushable */
+        break;
+    case 2:
+        /* this is only approximate since multiple boulders might sink */
+        if (is_pool_or_lava(nx, ny)) /* does its own isok() check */
+            break; /* still need Sokoban check below */
+        /* FALLTHRU */
+    default:
+        /* more than one boulder--blocked after they push the top one;
+           don't force them to push it first to find out */
+        return true;
+    }
+    if (dx && dy && In_sokoban(u.uz)) /* can't push boulder diagonally in Sokoban */
+        return true;
+    if (!isok(nx, ny))
+        return true;
+    if (IS_OBSTRUCTED(game.level.at(nx, ny).typ))
+        return true;
+    if (sobj_at(ONAMES.BOULDER, nx, ny))
+        return true;
+    return false;
 }
 
-// src/pray.c:198 in_trouble() — worst trouble the hero is in. Every arm
-// reads real state; props the port does not model yet read as absent.
+// src/pray.c:180 stuck_in_wall() — every neighbouring square is rock, wall
+// or an immovable boulder
+function stuck_in_wall() {
+    const u = game.u;
+    let count = 0;
+    if (Passes_walls())
+        return false;
+    for (let i = -1; i <= 1; i++) {
+        const x = u.ux + i;
+        for (let j = -1; j <= 1; j++) {
+            if (!i && !j)
+                continue;
+            const y = u.uy + j;
+            const typ = isok(x, y) ? game.level.at(x, y).typ : STONE;
+            if (!isok(x, y)
+                || (IS_OBSTRUCTED(typ)
+                    && (typ !== SDOOR && typ !== SCORR))
+                || (blocked_boulder(i, j) && !throws_rocks(game.youmonst.data)))
+                ++count;
+        }
+    }
+    return count === 8;
+}
+
+// src/pray.c:198 in_trouble() — worst trouble the hero is in
 function in_trouble() {
     const u = game.u;
+    let otmp;
 
-    /* major troubles */
-    if (u.uprops?.STONED) return TROUBLE_STONED;
-    if (u.uprops?.SLIMED) return 13 /* TROUBLE_SLIMED */;
-    if (u.uprops?.STRANGLED) return 12 /* TROUBLE_STRANGLED */;
-    if (u.utrap && u.utraptype === TT_LAVA) return 11 /* TROUBLE_LAVA */;
-    if (u.uprops?.SICK) return 10 /* TROUBLE_SICK */;
-    if ((u.uhs ?? 1) >= WEAK) return TROUBLE_STARVING;
-    /* region_danger() — poison gas regions are not modelled */
-    if (!Upolyd(u) && critically_low_hp(false)) return TROUBLE_HIT;
-    if (u.ulycn >= 0 && u.ulycn != null) return 5 /* TROUBLE_LYCANTHROPE */;
-    if (near_capacity() >= EXT_ENCUMBER
-        && (game.u.amax.a[A_STR] - game.u.acurr.a[A_STR]) > 3)
+    /*
+     * major troubles
+     */
+    if (u.uprops?.STONED)
+        return TROUBLE_STONED;
+    if (u.uprops?.SLIMED)
+        return TROUBLE_SLIMED;
+    if (u.intrinsic?.HStrangled)
+        return TROUBLE_STRANGLED;
+    if (u.utrap && u.utraptype === TT_LAVA)
+        return TROUBLE_LAVA;
+    if (u.uprops?.SICK)
+        return TROUBLE_SICK;
+    if (u.uhs >= WEAK)
+        return TROUBLE_STARVING;
+    if (region_danger())
+        return TROUBLE_REGION;
+    if ((!Upolyd(u) || Unchanging()) && critically_low_hp(false))
+        return TROUBLE_HIT;
+    if (u.ulycn != null && u.ulycn >= 0) /* ismnum(u.ulycn) */
+        return TROUBLE_LYCANTHROPE;
+    if (near_capacity() >= EXT_ENCUMBER && AMAX(A_STR) - ABASE(A_STR) > 3)
         return TROUBLE_COLLAPSING;
-    /* stuck_in_wall() — needs the surrounded-by-rock scan; a hero on an
-       altar never is */
-    if (u.uarmf?.cursed && u.uarmf.otyp === ONAMES.LEVITATION_BOOTS)
-        return TROUBLE_CURSED_LEVITATION;
-    if (u.uleft?.cursed && u.uleft.otyp === ONAMES.RIN_LEVITATION)
-        return TROUBLE_CURSED_LEVITATION;
-    if (u.uright?.cursed && u.uright.otyp === ONAMES.RIN_LEVITATION)
-        return TROUBLE_CURSED_LEVITATION;
-    /* nohands/welded — hero forms with no hands are not modelled */
-    if (u.ublindf?.cursed) return TROUBLE_CURSED_BLINDFOLD_();
 
-    /* minor troubles */
-    if (game.uball || (u.utrap && u.utraptype === TT_BURIEDBALL))
+    if (stuck_in_wall())
+        return TROUBLE_STUCK_IN_WALL;
+    if (Cursed_obj(u.uarmf, ONAMES.LEVITATION_BOOTS)
+        || stuck_ring(u.uleft, ONAMES.RIN_LEVITATION)
+        || stuck_ring(u.uright, ONAMES.RIN_LEVITATION))
+        return TROUBLE_CURSED_LEVITATION;
+    if (nohands(game.youmonst.data) || !freehand()) {
+        /* for bag/box access [cf use_container()]...
+           make sure it's a case that we know how to handle;
+           otherwise "fix all troubles" would get stuck in a loop */
+        if (welded(u.uwep))
+            return TROUBLE_UNUSEABLE_HANDS;
+        if (Upolyd(u) && nohands(game.youmonst.data)
+            && (!Unchanging() || ((otmp = unchanger()) != null && otmp.cursed)))
+            return TROUBLE_UNUSEABLE_HANDS;
+    }
+    if (Blindfolded() && u.ublindf.cursed)
+        return TROUBLE_CURSED_BLINDFOLD;
+
+    /*
+     * minor troubles
+     */
+    if (u.uball || (u.utrap && u.utraptype === TT_BURIEDBALL))
         return TROUBLE_PUNISHED;
-    if ((u.uarmg?.cursed && u.uarmg.otyp === ONAMES.GAUNTLETS_OF_FUMBLING)
-        || (u.uarmf?.cursed && u.uarmf.otyp === ONAMES.FUMBLE_BOOTS))
+    if (Cursed_obj(u.uarmg, ONAMES.GAUNTLETS_OF_FUMBLING)
+        || Cursed_obj(u.uarmf, ONAMES.FUMBLE_BOOTS))
         return TROUBLE_FUMBLING;
-    if (worst_cursed_item()) return TROUBLE_CURSED_ITEMS;
-    if (u.usteed) {
-        const otmp = which_armor(u.usteed, W_SADDLE);
-        if (otmp?.cursed) return TROUBLE_SADDLE;
+    if (worst_cursed_item())
+        return TROUBLE_CURSED_ITEMS;
+    if (u.usteed) { /* can't voluntarily dismount from a cursed saddle */
+        otmp = which_armor(u.usteed, W_SADDLE);
+        if (Cursed_obj(otmp, ONAMES.SADDLE))
+            return TROUBLE_SADDLE;
     }
 
-    if (u.ublind /* BlindedTimeout > 1 */
-        && (u.intrinsic?.HBlinded ?? 0) > 1)
+    const HBlinded = u.intrinsic?.HBlinded || 0;
+    if ((HBlinded & TIMEOUT) > 1 && !(HBlinded & ~TIMEOUT)
+        && (!u.uswallow
+            || !attacktype_fordmg(u.ustuck.data, ATTKS.AT_ENGL, ATTKS.AD_BLND)))
         return TROUBLE_BLIND;
-    if (((u.intrinsic?.HDeaf ?? 0) & TIMEOUT) > 1)
+    /* deafness isn't its own trouble; healing magic cures deafness
+       when it cures blindness, so do the same with trouble repair */
+    if (((u.intrinsic?.HDeaf || 0) & TIMEOUT) > 1)
         return TROUBLE_BLIND;
 
     for (let i = 0; i < A_MAX; i++)
-        if (game.u.acurr.a[i] < game.u.amax.a[i])
+        if (ABASE(i) < AMAX(i))
             return TROUBLE_POISONED;
     const Wounded_legs = (u.intrinsic?.HWounded_legs || 0) > 0
                          || (u.EWounded_legs || 0);
-    if (Wounded_legs && !u.usteed) return TROUBLE_WOUNDED_LEGS;
-    if ((u.uhs ?? 1) >= HUNGRY) return TROUBLE_HUNGRY;
-    if ((u.intrinsic?.HStun ?? 0) & TIMEOUT) return TROUBLE_STUNNED;
-    if ((u.intrinsic?.HConfusion ?? 0) & TIMEOUT) return TROUBLE_CONFUSED;
-    if ((u.uprops?.HALLUC ?? 0)) return TROUBLE_HALLUCINATION;
+    if (Wounded_legs && !u.usteed)
+        return TROUBLE_WOUNDED_LEGS;
+    if (u.uhs >= HUNGRY)
+        return TROUBLE_HUNGRY;
+    if ((u.intrinsic?.HStun || 0) & TIMEOUT)
+        return TROUBLE_STUNNED;
+    if ((u.intrinsic?.HConfusion || 0) & TIMEOUT)
+        return TROUBLE_CONFUSED;
+    if ((u.intrinsic?.HHallucination || 0) & TIMEOUT)
+        return TROUBLE_HALLUCINATION;
     return 0;
 }
 
-function TROUBLE_CURSED_BLINDFOLD_() { return -12; }
+// src/pray.c:39 Cursed_obj()
+const Cursed_obj = (obj, typ) => !!(obj && obj.otyp === typ && obj.cursed);
 
-// src/pray.c:382 fix_worst_trouble(), implemented as each state becomes live.
+// src/pray.c:288 worst_cursed_item()
+function worst_cursed_item() {
+    const u = game.u;
+    let otmp = null;
+    /* if strained or worse, check for loadstone first */
+    if (near_capacity() >= HVY_ENCUMBER) {
+        for (otmp = game.invent; otmp; otmp = otmp.nobj)
+            if (Cursed_obj(otmp, ONAMES.LOADSTONE))
+                return otmp;
+    }
+    /* weapon takes precedence if it is interfering
+       with taking off a ring or putting on a shield */
+    if (welded(u.uwep) && (u.uright || bimanual(u.uwep))) { /* weapon */
+        otmp = u.uwep;
+    /* gloves come next, due to rings */
+    } else if (u.uarmg && u.uarmg.cursed) { /* gloves */
+        otmp = u.uarmg;
+    /* then shield due to two handed weapons and spells */
+    } else if (u.uarms && u.uarms.cursed) { /* shield */
+        otmp = u.uarms;
+    /* then cloak due to body armor */
+    } else if (u.uarmc && u.uarmc.cursed) { /* cloak */
+        otmp = u.uarmc;
+    } else if (u.uarm && u.uarm.cursed) { /* suit */
+        otmp = u.uarm;
+    /* if worn helmet of opposite alignment is making you an adherent
+       of the current god, he/she/it won't uncurse that for you */
+    } else if (u.uarmh && u.uarmh.cursed /* helmet */
+               && u.uarmh.otyp !== ONAMES.HELM_OF_OPPOSITE_ALIGNMENT) {
+        otmp = u.uarmh;
+    } else if (u.uarmf && u.uarmf.cursed) { /* boots */
+        otmp = u.uarmf;
+    } else if (u.uarmu && u.uarmu.cursed) { /* shirt */
+        otmp = u.uarmu;
+    } else if (u.uamul && u.uamul.cursed) { /* amulet */
+        otmp = u.uamul;
+    } else if (u.uleft && u.uleft.cursed) { /* left ring */
+        otmp = u.uleft;
+    } else if (u.uright && u.uright.cursed) { /* right ring */
+        otmp = u.uright;
+    } else if (u.ublindf && u.ublindf.cursed) { /* eyewear */
+        otmp = u.ublindf; /* must be non-blinding lenses */
+    /* if weapon wasn't handled above, do it now */
+    } else if (welded(u.uwep)) { /* weapon */
+        otmp = u.uwep;
+    /* active secondary weapon even though it isn't welded */
+    } else if (u.uswapwep && u.uswapwep.cursed && u.twoweap) {
+        otmp = u.uswapwep;
+    /* all worn items ought to be handled by now */
+    } else {
+        for (otmp = game.invent; otmp; otmp = otmp.nobj) {
+            if (!otmp.cursed)
+                continue;
+            if (otmp.otyp === ONAMES.LOADSTONE || confers_luck(otmp))
+                break;
+        }
+    }
+    return otmp;
+}
+
+// src/pray.c:349 fix_curse_trouble()
+async function fix_curse_trouble(otmp, what) {
+    if (!otmp) {
+        impossible('fix_curse_trouble: nothing to uncurse.');
+        return;
+    }
+    if (otmp === game.u.uarmg && Glib()) {
+        make_glib(0);
+        await Your(`${gloves_simple_name(game.u.uarmg)} are no longer slippery.`);
+        if (!otmp.cursed)
+            return;
+    }
+    if (!Blind() || (otmp === game.u.ublindf && Blindfolded_only())) {
+        await pline(`${what ? what : Yobjnam2(otmp, 'softly glow')} ${hcolor(NH_AMBER)}.`);
+        (game.iflags ||= {}).last_msg = PLNMSG_OBJ_GLOWS;
+        otmp.bknown = !Hallucination() ? 1 : 0; /* ok to skip set_bknown() */
+    }
+    uncurse(otmp);
+    update_inventory();
+}
+
+// src/pray.c:373 fix_worst_trouble()
 async function fix_worst_trouble(trouble) {
     const u = game.u;
+    let maxhp;
+    let otmp = null;
+    let what = null;
+    const leftglow = 'Your left ring softly glows',
+          rightglow = 'Your right ring softly glows';
 
     switch (trouble) {
-    case TROUBLE_HIT: {
+    case TROUBLE_STONED:
+        await make_stoned(0, 'You feel more limber.', 0, null);
+        break;
+    case TROUBLE_SLIMED:
+        await make_slimed(0, 'The slime disappears.');
+        break;
+    case TROUBLE_STRANGLED:
+        if (u.uamul && u.uamul.otyp === ONAMES.AMULET_OF_STRANGULATION) {
+            await Your('amulet vanishes!');
+            useup(u.uamul);
+        }
+        await You('can breathe again.');
+        (u.intrinsic ||= {}).HStrangled = 0; /* Strangled = 0 */
+        (game.disp ||= {}).botl = true;
+        break;
+    case TROUBLE_LAVA:
+        if (!(await safe_teleds(TELEDS_NO_FLAGS)))
+            reset_utrap(true);
+        await rescued_from_terrain(DISSOLVED); /* DISSOLVED: pending cause of death
+                                                * if trouble didn't get cured */
+        break;
+    case TROUBLE_STARVING:
+        /* FALLTHRU */
+    case TROUBLE_HUNGRY:
+        await Your(`${body_part(STOMACH)} feels content.`);
+        init_uhunger();
+        (game.disp ||= {}).botl = true;
+        break;
+    case TROUBLE_SICK:
+        await You_feel('better.');
+        await make_sick(0, null, false, SICK_ALL);
+        break;
+    case TROUBLE_REGION:
+        await region_safety();
+        break;
+    case TROUBLE_HIT:
+        /* "fix all troubles" will keep trying if hero has
+           5 or less hit points, so make sure they're always
+           boosted to be more than that */
         await You_feel('much better.');
         if (Upolyd(u)) {
-            u.mhmax = Math.max((u.mhmax || 0) + rnd(5), 6);
+            maxhp = u.mhmax + rnd(5);
+            setuhpmax(Math.max(maxhp, 5 + 1), false); /* acts as setmhmax() */
             u.mh = u.mhmax;
         }
-        let maxhp = u.uhpmax;
+        maxhp = u.uhpmax;
         if (maxhp < u.ulevel * 5 + 11)
             maxhp += rnd(5);
-        setuhpmax(Math.max(maxhp, 6), true);
-        u.uhp = u.uhpmax;
+        setuhpmax(Math.max(maxhp, 5 + 1), true);
+        u.uhp = u.uhpmax; /* setuhpmax() will do this when u.uhp is higher
+                           * than u.uhpmax; prayer also does this if lower */
         (game.disp ||= {}).botl = true;
-        return true;
+        break;
+    case TROUBLE_COLLAPSING:
+        await You_feel(`${(AMAX(A_STR) - ABASE(A_STR) > 6) ? 'much ' : ''}stronger.`);
+        setABASE(A_STR, AMAX(A_STR));
+        (game.disp ||= {}).botl = true;
+        if (Fixed_abil()) {
+            if ((otmp = stuck_ring(u.uleft, ONAMES.RIN_SUSTAIN_ABILITY)) != null) {
+                if (otmp === u.uleft)
+                    what = leftglow;
+            } else if ((otmp = stuck_ring(u.uright, ONAMES.RIN_SUSTAIN_ABILITY))
+                       != null) {
+                if (otmp === u.uright)
+                    what = rightglow;
+            }
+            if (otmp) {
+                await fix_curse_trouble(otmp, what);
+                break;
+            }
+        }
+        break;
+    case TROUBLE_STUCK_IN_WALL:
+        if (await safe_teleds(TELEDS_NO_FLAGS)) {
+            await Your('surroundings change.');
+        } else {
+            /* safe_teleds() couldn't find a safe place; perhaps the
+               level is completely full.  As a last resort, confer
+               intrinsic wall/rock-phazing.  Hero might get stuck
+               again fairly soon.... */
+            set_itimeout('HPasses_walls', d(4, 4) + 4); /* 8..20 */
+            /* how else could you move between packed rocks or among
+               lattice forming "solid" rock? */
+            await You_feel('much slimmer.');
+        }
+        break;
+    case TROUBLE_CURSED_LEVITATION:
+        if (Cursed_obj(u.uarmf, ONAMES.LEVITATION_BOOTS)) {
+            otmp = u.uarmf;
+        } else if ((otmp = stuck_ring(u.uleft, ONAMES.RIN_LEVITATION)) != null) {
+            if (otmp === u.uleft)
+                what = leftglow;
+        } else if ((otmp = stuck_ring(u.uright, ONAMES.RIN_LEVITATION)) != null) {
+            if (otmp === u.uright)
+                what = rightglow;
+        }
+        await fix_curse_trouble(otmp, what);
+        break;
+    case TROUBLE_UNUSEABLE_HANDS:
+        if (welded(u.uwep)) {
+            otmp = u.uwep;
+            await fix_curse_trouble(otmp, what);
+            break;
+        }
+        if (Upolyd(u) && nohands(game.youmonst.data)) {
+            if (!Unchanging()) {
+                await Your('shape becomes uncertain.');
+                await rehumanize(); /* "You return to {normal} form." */
+            } else if ((otmp = unchanger()) != null && otmp.cursed) {
+                await fix_curse_trouble(otmp, what);
+                break;
+            }
+        }
+        if (nohands(game.youmonst.data) || !freehand())
+            impossible("fix_worst_trouble: couldn't cure hands.");
+        break;
+    case TROUBLE_CURSED_BLINDFOLD:
+        otmp = u.ublindf;
+        await fix_curse_trouble(otmp, what);
+        break;
+    case TROUBLE_LYCANTHROPE:
+        await you_unwere(true);
+        break;
+    /*
+     */
+    case TROUBLE_PUNISHED:
+        await Your('chain disappears.');
+        if (u.utrap && u.utraptype === TT_BURIEDBALL)
+            await buried_ball_to_freedom();
+        else
+            unpunish();
+        break;
+    case TROUBLE_FUMBLING:
+        if (Cursed_obj(u.uarmg, ONAMES.GAUNTLETS_OF_FUMBLING))
+            otmp = u.uarmg;
+        else if (Cursed_obj(u.uarmf, ONAMES.FUMBLE_BOOTS))
+            otmp = u.uarmf;
+        await fix_curse_trouble(otmp, what);
+        break;
+    case TROUBLE_CURSED_ITEMS:
+        otmp = worst_cursed_item();
+        if (otmp === u.uright)
+            what = rightglow;
+        else if (otmp === u.uleft)
+            what = leftglow;
+        await fix_curse_trouble(otmp, what);
+        break;
+    case TROUBLE_POISONED:
+        if (Hallucination())
+            await pline("There's a tiger in your tank.");
+        else
+            await You_feel('in good health again.');
+        for (let i = 0; i < A_MAX; i++) {
+            if (ABASE(i) < AMAX(i)) {
+                setABASE(i, AMAX(i));
+                (game.disp ||= {}).botl = true;
+            }
+        }
+        await encumber_msg();
+        break;
+    case TROUBLE_BLIND: { /* handles deafness as well as blindness */
+        let msgbuf = '';
+        let eyes = body_part(EYE);
+        const cure_deaf = !!((u.intrinsic?.HDeaf || 0) & TIMEOUT);
+        if (Blinded()) {
+            if (eyecount(game.youmonst.data) !== 1)
+                eyes = makeplural(eyes);
+            msgbuf = `Your ${eyes} ${vtense(eyes, 'feel')} better`;
+            u.ucreamed = 0;
+            await make_blinded(0, false);
+        }
+        if (cure_deaf) {
+            await make_deaf(0, false);
+            if (!Deaf())
+                msgbuf += `${!msgbuf ? 'You' : ' and you'} can hear again`;
+        }
+        if (msgbuf)
+            await pline(`${msgbuf}.`);
+        break;
     }
-    default:
-        note_unported_pray(`fix_worst_trouble:${trouble}`);
-        return false;
+    case TROUBLE_WOUNDED_LEGS:
+        await heal_legs(0);
+        break;
+    case TROUBLE_STUNNED:
+        await make_stunned(0, true);
+        break;
+    case TROUBLE_CONFUSED:
+        await make_confused(0, true);
+        break;
+    case TROUBLE_HALLUCINATION:
+        await pline('Looks like you are back in Kansas.');
+        await make_hallucinated(0, false, 0);
+        break;
+    case TROUBLE_SADDLE:
+        otmp = which_armor(u.usteed, W_SADDLE);
+        if (!Blind()) {
+            await pline(`${Yobjnam2(otmp, 'softly glow')} ${hcolor(NH_AMBER)}.`);
+            set_bknown(otmp, 1);
+        }
+        uncurse(otmp);
+        break;
     }
 }
 
@@ -485,7 +837,8 @@ async function angrygods(resp_god) {
     const u = game.u;
     let maxanger;
 
-    /* Inhell → A_NONE: Gehennom is not modelled */
+    if (Inhell())
+        resp_god = A_NONE;
     u.ublessed = 0; /* lose divine protection */
 
     const Luck = u.uluck ?? 0;
@@ -1544,7 +1897,13 @@ async function prayer_done() {
         note_unported_pray('prayer_done:moloch');
         return 0;
     }
-    /* Inhell arm — Gehennom is not modelled */
+    if (Inhell()) {
+        await pline(`Since you are in Gehennom, ${align_gname(alignment)} can't help you.`);
+        /* haltingly aligned is least likely to anger */
+        if (u.ualign.record <= 0 || rnl(u.ualign.record))
+            await angrygods(u.ualign.type);
+        return 0;
+    }
 
     if (p_type === 0) {
         if (on_altar() && u.ualign.type !== alignment)

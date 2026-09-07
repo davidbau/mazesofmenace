@@ -679,6 +679,8 @@ export const is_orc = (d) => (d.mflags2 & MFLAGS.M2_ORC) !== 0;
 
 // include/mondata.h is_demon()
 export const is_demon = (d) => (d.mflags2 & MFLAGS.M2_DEMON) !== 0;
+// include/mondata.h:97 is_were()
+export const is_were = (d) => (d.mflags2 & MFLAGS.M2_WERE) !== 0;
 
 // include/mondata.h:69 thick_skinned()
 export const thick_skinned = (d) => (d.mflags1 & MFLAGS.M1_THICK_HIDE) !== 0;
@@ -1268,4 +1270,11 @@ export function on_fire(mptr, mattk) {
         break;
     }
     return what;
+}
+
+// src/mondata.c:524 hates_silver() — creatures especially affected by silver
+export function hates_silver(ptr) {
+    return is_were(ptr) || ptr.mlet === MONSYMS.S_VAMPIRE || is_demon(ptr)
+           || ptr === game.mons[PMNAMES.PM_SHADE]
+           || (ptr.mlet === MONSYMS.S_IMP && ptr !== game.mons[PMNAMES.PM_TENGU]);
 }

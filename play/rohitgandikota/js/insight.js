@@ -15,9 +15,9 @@
 
 import { upstart } from './do_name.js';
 import { monexplain } from './drawing_data.js';
-import { is_rider } from './mondata.js';
+import { is_rider, haseyes } from './mondata.js';
 import { NUMMONS, PMNAMES } from './monst_data.js';
-import { VANQ_MLVL_MNDX, VANQ_MSTR_MNDX, VANQ_ALPHA_SEP, VANQ_ALPHA_MIX, VANQ_MCLS_HTOL, VANQ_MCLS_LTOH, VANQ_COUNT_H_L, VANQ_COUNT_L_H, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_NONE, PICK_ONE, ECMD_OK, LOW_PM, NEUTRAL, G_UNIQ, G_GENOD, G_GONE, G_EXTINCT, LL_ACHIEVE, LL_UMONST, LL_MINORAC, LL_SPOILER, LL_DUMP } from './const.js';
+import { VANQ_MLVL_MNDX, VANQ_MSTR_MNDX, VANQ_ALPHA_SEP, VANQ_ALPHA_MIX, VANQ_MCLS_HTOL, VANQ_MCLS_LTOH, VANQ_COUNT_H_L, VANQ_COUNT_L_H, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_NONE, PICK_ONE, ECMD_OK, LOW_PM, NEUTRAL, G_UNIQ, G_GENOD, G_GONE, G_EXTINCT, LL_ACHIEVE, LL_UMONST, LL_MINORAC, LL_SPOILER, LL_DUMP, Is_rogue_level, FROMOUTSIDE, FACE } from './const.js';
 import { NO_COLOR } from './terminal.js';
 import { docrt } from './display.js';
 import { tty_yn_function } from './tty/topl.js';
@@ -25,11 +25,11 @@ import { xwaitforspace } from './tty/getline.js';
 import { tty_create_nhwindow, tty_destroy_nhwindow, tty_putstr, tty_display_nhwindow, tty_next_page, tty_start_menu, tty_add_menu, tty_end_menu, tty_select_menu, NHW_MENU, ATR_NONE, ATR_INVERSE } from './tty/wintty.js';
 import { MONSYMS } from './monst_data.js';
 import { You, livelog_printf } from './pline.js';
-import { ceiling, surface } from './dungeon.js';
+import { ceiling, surface, Is_bigroom } from './dungeon.js';
 import { hides_under, is_clinger } from './mondata.js';
 import { waterbody_name } from './pager.js';
 import { is_pool, t_at } from './mon.js';
-import { simple_typename, ansimpleoname, OBJ_NAME } from './objnam.js';
+import { simple_typename, ansimpleoname, OBJ_NAME, ysimple_name } from './objnam.js';
 import { M_AP_TYPE, M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, TT_PIT, SPIKED_PIT } from './const.js';
 import { game } from './gstate.js';
 import { P_NONE, P_UNSKILLED, P_SKILLED, P_ISRESTRICTED, FULL_MOON, NEW_MOON, WEAK,
@@ -74,7 +74,7 @@ import { Fire_resistance, Cold_resistance, Sleep_resistance,
          Warning, Teleportation, Teleport_control, See_invisible,
          Infravision, Deaf, Blind, Hallucination, Halluc_resistance,
          Invis, Levitation, Flying, Swimming, Amphibious, Breathless,
-         Passes_walls, Regeneration, Reflecting } from './youprop.js';
+         Passes_walls, Regeneration, Reflecting, Blindfolded, Blindfolded_only } from './youprop.js';
 import { artifact_names } from './artilist_data.js';
 import { carried_artifact_conveys } from './artifact.js';
 import { body_part } from './polyself.js';
@@ -136,8 +136,20 @@ function from_what(abilKey) {
     if (!obj && (mask & W_ART))
         obj = (game.invent || []).find(
             (candidate) => carried_artifact_conveys(candidate, propKey));
-    if (!obj)
+    if (!obj) {
+        /* src/attrib.c:962 — a blindfold is not an extrinsic source, so
+           what_gives() finds nothing; the blindfold arm comes next, then
+           cream-pie goop over the eyes */
+        if (abilKey === 'HBlinded' && Blindfolded_only())
+            return ` because of ${ysimple_name(game.u.ublindf)}`;
+        if (abilKey === 'HBlinded') {
+            const HBlinded = game.u.intrinsic?.HBlinded | 0;
+            if (game.u.ucreamed && (HBlinded & TIMEOUT) === game.u.ucreamed
+                && !mask && !(HBlinded & ~TIMEOUT))
+                return `due to goop covering your ${body_part(FACE)}`;
+        }
         return '';
+    }
 
     const name = obj.oartifact ? artifact_names[obj.oartifact].replace(/^The /, 'the ')
                                : minimal_xname(obj).replace(/\bpair of /i, '');
@@ -566,8 +578,14 @@ function background_enlightenment() {
         let dgnbuf = game.dungeons[u.uz.dnum].dname;
         if (/^the /i.test(dgnbuf))
             dgnbuf = dgnbuf[0].toLowerCase() + dgnbuf.slice(1);
-        you_are(`in ${dgnbuf}, on level ${
-            In_quest(u.uz) ? dunlev(u.uz) : depth(u.uz)}`);
+        let tmpbuf = `level ${In_quest(u.uz) ? dunlev(u.uz) : depth(u.uz)}`;
+        /* TODO? maybe extend this bit to include various other automatic
+           annotations from the dungeon overview code */
+        if (Is_rogue_level(u.uz))
+            tmpbuf += ', a primitive area';
+        else if (Is_bigroom(u.uz) && !Blind())
+            tmpbuf += ', a very big room';
+        you_are(`in ${dgnbuf}, on ${tmpbuf}`);
     }
 
     if (game.moves === 1)
@@ -768,8 +786,18 @@ function status_enlightenment() {
         you_are('hallucinating');
 
     if (Blind()) {
-        const innatelyBlind = !!(u.intrinsic?.HBlinded & FROMFORM);
-        you_are(innatelyBlind ? 'innately blind' : 'temporarily blind');
+        /* check the reasons in same order as from_what() */
+        const HBlinded = u.intrinsic?.HBlinded | 0;
+        let buf = `${(HBlinded & FROMOUTSIDE) !== 0 ? 'permanently'
+                    : (HBlinded & FROMFORM) ? 'innately'
+                      /* better phrasing desperately wanted... */
+                      : Blindfolded_only() ? 'deliberately'
+                        /* timed, possibly combined with blindfold */
+                        : 'temporarily'} blind`;
+        if (game.wizard && (HBlinded === (HBlinded & TIMEOUT) && !Blindfolded()))
+            buf += ` (${HBlinded & TIMEOUT})`;
+        /* !haseyes: avoid "you are innately blind innately" */
+        you_are(buf, !haseyes(game.youmonst.data) ? '' : from_what('HBlinded'));
     }
 
     if (Deaf())

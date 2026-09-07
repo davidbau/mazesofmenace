@@ -8,15 +8,15 @@
 import { pline, newsym } from './display.js';
 import { game } from './gstate.js';
 
-import { rn1, rn2, rnd } from './rng.js';
+import { rn1, rn2, rnd, d } from './rng.js';
 import { isok, distu } from './hacklib.js';
 import { M_POISONGAS_OK, REG_NOT_HEROS, REG_HERO_INSIDE,
     PLNMSG_ENVELOPED_IN_GAS, COLNO, ROWNO, EYE, LUNG, KILLED_BY_AN,
-    M_SEEN_POISON, FM_FMON, MONST_INC, Something, u_at } from './const.js';
+    M_SEEN_POISON, FM_FMON, MONST_INC, Something, u_at, TELEDS_NO_FLAGS } from './const.js';
 import { m_poisongas_ok, m_at, wake_nearto, setmangry, killed, monkilled } from './mon.js';
-import { You, Your, You_see, pline_The } from './pline.js';
-import { Blind, Poison_resistance, Half_physical_damage, Half_gas_damage } from './youprop.js';
-import { is_silent, haseyes, resists_poison, monstseesu, monstunseesu } from './mondata.js';
+import { You, Your, You_see, pline_The, You_feel } from './pline.js';
+import { Blind, Poison_resistance, Half_physical_damage, Half_gas_damage, Breathless } from './youprop.js';
+import { is_silent, haseyes, resists_poison, monstseesu, monstunseesu, nonliving } from './mondata.js';
 import { DEADMONSTER } from './monst.js';
 import { Monnam } from './do_name.js';
 import { make_blinded } from './potion.js';
@@ -589,4 +589,66 @@ export function create_gas_cloud_selection(sel, damage) {
 
     const message = make_gas_cloud(cloud, damage, inside_cloud);
     return message ? message.then(() => cloud) : cloud;
+}
+
+// src/region.c:1339 region_danger() — is the hero inside a gas cloud that
+// can actually hurt?
+export function region_danger() {
+    let n = 0;
+    for (const reg of game.regions || []) {
+        /* only care about regions that hero is in */
+        if (!(reg.player_flags & REG_HERO_INSIDE))
+            continue;
+        /* the only type of region we understand is gas_cloud */
+        if (reg.inside_f === INSIDE_GAS_CLOUD) {
+            /* completely harmless if you don't need to breathe */
+            if (nonliving(game.youmonst.data) || Breathless())
+                continue;
+            /* minor inconvenience if you're poison resistant;
+               not harmful enough to be a prayer-level trouble */
+            if (Poison_resistance())
+                continue;
+            ++n;
+        }
+    }
+    return n !== 0;
+}
+
+// src/region.c:1368 region_safety() — prayer's fix for TROUBLE_REGION
+export async function region_safety() {
+    let r = null, n = 0;
+    for (const reg of game.regions || []) {
+        /* only care about regions that hero is in */
+        if (!(reg.player_flags & REG_HERO_INSIDE))
+            continue;
+        /* the only type of region we understand is gas_cloud */
+        if (reg.inside_f === INSIDE_GAS_CLOUD) {
+            if (!n++ && reg.ttl >= 0)
+                r = reg;
+        }
+    }
+    if (n > 1 || (n === 1 && !r)) {
+        /* multiple overlapping cloud regions or non-expiring one */
+        const { safe_teleds } = await import('./teleport.js');
+        await safe_teleds(TELEDS_NO_FLAGS);
+        /* maybe there's no safe place available; must get hero out of danger
+           or prayer's "fix all troubles" result will get stuck in a loop */
+        if (region_danger()) {
+            const { set_itimeout } = await import('./potion.js');
+            set_itimeout('HMagical_breathing', d(4, 4) + 4);
+            /* not already Breathless or wouldn't be in region danger */
+            await You_feel('able to breathe.');
+        }
+    } else if (r) {
+        remove_region(r);
+        await pline_The('gas cloud enveloping you dissipates.');
+    } else {
+        /* cloud dissipated on its own, so nothing needs to be done */
+        await pline_The('gas cloud has dissipated.');
+    }
+    /* maybe cure blindness too */
+    if ((game.u.intrinsic?.HBlinded || 0) === 1) {
+        const { make_blinded } = await import('./potion.js');
+        await make_blinded(0, true);
+    }
 }

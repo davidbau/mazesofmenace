@@ -274,12 +274,20 @@ export async function read_engr_at(x, y) {
         }
 
         if (sensed) {
-            const et = ep.engr_txt;
-            /* skip the added '.' only when the original text ends in
-               punctuation that survived degradation */
-            const last = et[et.length - 1];
-            const plast = (ep.engr_txt_pristine || '')[et.length - 1];
-            const endpunct = (et.length < 2
+            /* sizeof buf - sizeof "You feel the words: \"\"." (the literal's
+               size counts its terminating NUL) */
+            const maxelen = BUFSZ - ('You feel the words: "".'.length + 1);
+            let et = ep.engr_txt;
+            /* off: how far actual_text has been advanced past the leading
+               spaces wipe_engr_at() trimmed (engr_text_space) */
+            const off = ep.engr_txt_offset || 0;
+            if (et.length > maxelen)
+                et = et.slice(0, maxelen);
+            const elen = et.length;
+            /* only skip if punctuation is original, not degraded char */
+            const last = et[elen - 1];
+            const plast = (ep.engr_txt_pristine || '')[off + elen - 1];
+            const endpunct = (elen < 2
                               || !(plast === last && '.!?'.includes(last)))
                 ? '.' : '';
             await You(`${game.u.ublind ? 'feel the words' : 'read'}: `

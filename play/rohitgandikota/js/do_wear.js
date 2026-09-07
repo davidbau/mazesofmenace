@@ -4,7 +4,7 @@
 // Initial u.uac is 0 when the first startup status is drawn. u_init's later
 // find_ac() computes the real value before welcome and moveloop paging.
 
-import { BUFSZ, W_ARMOR, GETOBJ_SUGGEST, GETOBJ_EXCLUDE } from './const.js';
+import { BUFSZ, W_ARMOR, GETOBJ_SUGGEST, GETOBJ_EXCLUDE, LEFT_HANDED } from './const.js';
 import { obj_resists } from './zap.js';
 import { selftouch, instapetrify } from './trap.js';
 import { remove_worn_item } from './steal.js';
@@ -2595,4 +2595,42 @@ export function fingers_or_gloves(check_gloves) {
     return ((check_gloves && game.u.uarmg)
             ? gloves_simple_name(game.u.uarmg) /* "gloves" or "gauntlets" */
             : makeplural(body_part(FINGER))); /* "fingers" */
+}
+
+// src/do_wear.c:2657 stuck_ring() — the object preventing removal of a ring
+// of the given type, or null when nothing does
+export function stuck_ring(ring, otyp) {
+    const u = game.u;
+    if (ring !== u.uleft && ring !== u.uright) {
+        impossible('stuck_ring: neither left nor right?');
+        return null;
+    }
+    if (ring && ring.otyp === otyp) {
+        /* reasons ring can't be removed match those checked by select_off();
+           limbless case has extra checks because ordinarily it's temporary */
+        if (nolimbs(game.youmonst.data) && u.uamul
+            && u.uamul.otyp === ONAMES.AMULET_OF_UNCHANGING && u.uamul.cursed)
+            return u.uamul;
+        /* RING_ON_PRIMARY: (ULEFTY ? uleft : uright) */
+        const ring_on_primary = (u.uhandedness === LEFT_HANDED) ? u.uleft : u.uright;
+        if (welded(u.uwep) && (ring === ring_on_primary || bimanual(u.uwep)))
+            return u.uwep;
+        if (u.uarmg && u.uarmg.cursed)
+            return u.uarmg;
+        if (ring.cursed)
+            return ring;
+        /* normally outermost layer is processed first, but slippery gloves
+           wears off quickly so uncurse ring itself before handling those */
+        if (u.uarmg && Glib())
+            return u.uarmg;
+    }
+    /* either no ring or not right type or nothing prevents its removal */
+    return null;
+}
+
+// src/do_wear.c:2687 unchanger() — the worn amulet of unchanging, if any
+export function unchanger() {
+    if (game.u.uamul && game.u.uamul.otyp === ONAMES.AMULET_OF_UNCHANGING)
+        return game.u.uamul;
+    return null;
 }

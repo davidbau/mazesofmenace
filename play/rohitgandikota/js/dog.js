@@ -12,11 +12,11 @@
 import { vision_recalc } from './vision.js';
 import { emits_light } from './mondata.js';
 import { ledger_to_dnum, ledger_to_dlev, depth, In_W_tower } from './dungeon.js';
-import { relmon } from './mon.js';
+import { relmon, mondied } from './mon.js';
 import { m_unleash } from './apply.js';
-import { pline_mon } from './pline.js';
+import { pline_mon, Your, verbalize } from './pline.js';
 import { body_part } from './polyself.js';
-import { EYE, DISMOUNT_THROWN } from './const.js';
+import { EYE, DISMOUNT_THROWN, STRAT_WAITFORU, NO_TRAP_FLAGS, DISMOUNT_GENERIC } from './const.js';
 import { dismount_steed } from './steed.js';
 import { count_wsegs, wormgone } from './worm.js';
 import { picked_container, set_residency } from './shk.js';
@@ -43,7 +43,7 @@ import { is_metallic, OBJ_FLOOR } from './obj.js';
 import { obj_resists } from './zap.js';
 import { newsym, canspotmon, mon_visible, pline, canseemon } from './display.js';
 import { splitobj, peek_at_iced_corpse_age, place_object } from './mkobj.js';
-import { yelp, growl, whimper } from './sounds.js';
+import { yelp, growl, whimper, beg } from './sounds.js';
 import { m_consume_obj, is_pick, check_gear_next_turn, healmon,
          wake_nearto, unstuck } from './mon.js';
 import {
@@ -61,7 +61,7 @@ import { MFLAGS, MONSYMS, NUMMONS, MSOUND, ATTKS } from './monst_data.js';
 
 const { WOOD, IRON, SILVER, MITHRIL } = MATERIALS;
 import { rn2, rnd, getRngLog } from './rng.js';
-import { dist2, sgn } from './hacklib.js';
+import { dist2, sgn, s_suffix } from './hacklib.js';
 import { couldsee, clear_path, cansee } from './vision.js';
 import { distant_name, doname, xname, the, The } from './objnam.js';
 import { Monnam, noit_Monnam, christen_monst, x_monnam,
@@ -73,7 +73,7 @@ import { MIGR_RANDOM, MIGR_APPROX_XY, MIGR_EXACT_XY, MIGR_WITH_HERO,
 import { Hallucination, Deaf } from './youprop.js';
 import { night } from './calendar.js';
 import { pline_xy, You, You_feel } from './pline.js';
-import { relobj } from './steal.js';
+import { relobj, mdrop_special_objs } from './steal.js';
 import { set_apparxy, mon_track_add } from './monmove.js';
 import { gettrack } from './track.js';
 import { do_clear_area } from './vision.js';
@@ -88,6 +88,8 @@ import { rloc } from './teleport.js';
 import { finish_meating } from './dogmove.js';
 import { FULL_MOON } from './const.js';
 
+import { mintrap } from './trap.js';
+import { mon_has_amulet } from './wizard.js';
 const NON_PM = -1;
 
 // gu.urole.petnum is a PM_ name in the generated role table.
@@ -1351,6 +1353,17 @@ const DOG_HUNGRY = 300, DOG_WEAK = 500, DOG_STARVE = 750;
 // weakened, and in DOG_STARVE turns it dies. Draws nothing: it is a comparison
 // of moves against edog->hungrytime, plus messages.
 //
+// src/dogmove.c:348 dog_starve()
+async function dog_starve(mtmp) {
+    if (mtmp.mleashed && mtmp !== game.u.usteed)
+        await Your('leash goes slack.');
+    else if (cansee(mtmp.mx, mtmp.my))
+        await pline_mon(mtmp, `${Monnam(mtmp)} starves.`);
+    else
+        await You_feel(`${Hallucination() ? 'bummed' : 'sad'} for a moment.`);
+    await mondied(mtmp);
+}
+
 // Returns TRUE when the pet died, which makes dog_move return MMOVE_DIED and
 // stops dochug from calling distfleeck a second time for it — so a pet that
 // starves changes the DRAW COUNT of the turn even though this function itself
@@ -1371,13 +1384,13 @@ async function dog_hunger(mtmp, edog) {
             if (mtmp.mhp > mtmp.mhpmax)
                 mtmp.mhp = mtmp.mhpmax;
             if (DEADMONSTER(mtmp)) {
-                note_unported('dog_starve');
+                await dog_starve(mtmp);
                 return true;
             }
             if (cansee(mtmp.mx, mtmp.my)) {
-                await pline(`${Monnam(mtmp)} is confused from hunger.`);
+                await pline_mon(mtmp, `${Monnam(mtmp)} is confused from hunger.`);
             } else if (couldsee(mtmp.mx, mtmp.my)) {
-                note_unported('dog_hunger:beg');
+                await beg(mtmp);
             } else {
                 await You_feel(`worried about ${y_monnam(mtmp)}.`);
             }
@@ -1385,7 +1398,7 @@ async function dog_hunger(mtmp, edog) {
             await stop_occupation();
         } else if (game.moves > edog.hungrytime + DOG_STARVE
                    || DEADMONSTER(mtmp)) {
-            note_unported('dog_starve');
+            await dog_starve(mtmp);
             return true;
         }
     }
@@ -2058,37 +2071,99 @@ function migrate_accessible_monster(mtmp) {
 
 // src/dog.c:789 keepdogs() moves adjacent followers off the map and onto
 // the mydogs list before the hero leaves the level.
-export function keepdogs(pets_only) {
+export async function keepdogs(pets_only) { /* true for ascension or final escape */
     const chain = [...(game.level?.monsters || [])];
     for (const mtmp of chain) {
         if (DEADMONSTER(mtmp))
             continue;
-        if (pets_only && !mtmp.mtame)
-            continue;
-        if (((mdistu_dog(mtmp) <= 2 && levl_follower(mtmp))
+        if (pets_only) {
+            if (!mtmp.mtame)
+                continue; /* reject non-pets */
+            /* don't block pets from accompanying hero's dungeon
+               escape or ascension simply due to mundane trifles;
+               unlike level change for steed, don't bother trying
+               to achieve a normal trap escape first */
+            mtmp.mtrapped = 0;
+            finish_meating(mtmp);
+            mtmp.msleeping = 0;
+            mtmp.mfrozen = 0;
+            mtmp.mcanmove = 1;
+        }
+        if (((monnear(mtmp, game.u.ux, game.u.uy) && levl_follower(mtmp))
+             /* the wiz will level t-port from anywhere to chase
+                the amulet; if you don't have it, will chase you
+                only if in range. -3. */
              || (game.u.uhave?.amulet && mtmp.iswiz))
-            && (!helpless(mtmp))
-            && !(mtmp.mstrategy & 0x20000000 /* STRAT_WAITFORU */)) {
+            && (!helpless(mtmp)
+                /* eg if level teleport or new trap, steed has no control
+                   to avoid following */
+                || (mtmp === game.u.usteed))
+            /* monster won't follow if it hasn't noticed you yet */
+            && !(mtmp.mstrategy & STRAT_WAITFORU)) {
+            let stay_behind = false;
+
             if (mtmp.mtrapped)
-                note_unported('keepdogs:mintrap');
-            if (mtmp.meating || mtmp.mtrapped) {
-                note_unported('keepdogs:stay_behind');
+                await mintrap(mtmp, NO_TRAP_FLAGS); /* try to escape */
+            if (mtmp === game.u.usteed) {
+                /* make sure steed is eligible to accompany hero */
+                mtmp.mtrapped = 0;       /* escape trap */
+                mtmp.meating = 0;        /* terminate eating */
+                await mdrop_special_objs(mtmp); /* drop Amulet */
+            } else if (mtmp.meating || mtmp.mtrapped) {
+                if (canseemon(mtmp))
+                    await pline_mon(mtmp, `${Monnam(mtmp)} is still ${
+                                   mtmp.meating ? 'eating' : 'trapped'}.`);
+                stay_behind = true;
+            } else if (mon_has_amulet(mtmp)) {
+                if (canseemon(mtmp))
+                    await pline(`${Monnam(mtmp)} seems very disoriented for a moment.`);
+                stay_behind = true;
+            }
+            if (stay_behind) {
+                if (mtmp.mleashed) {
+                    await pline(`${humanoid(game.mons[mtmp.mnum])
+                                  ? (mtmp.female ? 'Her' : 'His')
+                                  : 'Its'} leash suddenly comes loose.`);
+                    await m_unleash(mtmp, false);
+                }
+                if (mtmp === game.u.usteed) {
+                    /* can't happen unless someone makes a change
+                       which scrambles the stay_behind logic above */
+                    /* impossible("steed left behind?"); */
+                    await dismount_steed(DISMOUNT_GENERIC);
+                }
                 continue;
             }
-            /* mon_leave/relmon: off the map, onto mydogs. C PREPENDS
-               (relmon: mtmp->nmon = gm.mydogs; gm.mydogs = mtmp) and
-               losedogs pops the head, so arrivals run in REVERSE of the
-               fmon scan order: the pet (newest, scanned first) lands
-               last. Pushing here played them forwards. */
+
+            /* prepare to take mtmp off the map */
+            const num_segs = mon_leave(mtmp);
+            /* take off map and move mtmp from fmon list to mydogs. C
+               PREPENDS (relmon: mtmp->nmon = gm.mydogs; gm.mydogs = mtmp)
+               and losedogs pops the head, so arrivals run in REVERSE of
+               the fmon scan order: the pet (newest, scanned first) lands
+               last. */
             remove_monster(mtmp.mx, mtmp.my);
             const idx = game.level.monsters.indexOf(mtmp);
             if (idx >= 0)
                 game.level.monsters.splice(idx, 1);
             (game.mydogs ||= []).unshift(mtmp);
             mtmp.mx = mtmp.my = 0; /* mx==0 implies migrating */
+            mtmp.wormno = num_segs;
             mtmp.mlstmv = game.moves;
         } else if (keep_mon_accessible(mtmp)) {
+            /* we want to be able to find the Wizard when his next
+               resurrection chance comes up, but have him resume his
+               present location if player returns to this level before
+               that time; also needed for monsters (shopkeeper, temple
+               priest, vault guard) who have level data in mon->mextra
+               in case #wizmakemap is used to replace their home level
+               while they're away from it */
             migrate_accessible_monster(mtmp);
+        } else if (mtmp.mleashed) {
+            /* this can happen if your quest leader ejects you from the
+               "home" level while a leashed pet isn't next to you */
+            await pline(`${s_suffix(Monnam(mtmp))} leash goes slack.`);
+            await m_unleash(mtmp, false);
         }
     }
 }

@@ -1032,14 +1032,15 @@ export async function can_twoweapon() {
 }
 
 /**
- * C ref: wield.c untwoweapon — end dual-wield with can_no_longer message.
+ * C ref: wield.c untwoweapon :905–914 — end dual-wield with can_no_longer
+ * message + update_inventory.
  */
 export async function untwoweapon() {
     const u = game.u;
     if (u?.twoweap) {
         await pline(`You ${can_no_longer_twoweap}.`);
         set_twoweap(false);
-        // update_inventory deferred
+        update_inventory();
     }
 }
 

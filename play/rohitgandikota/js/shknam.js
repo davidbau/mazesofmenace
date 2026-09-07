@@ -8,7 +8,7 @@
 
 import { upstart } from './do_name.js';
 import { Hallucination } from './youprop.js';
-import { has_eshk, ESHK } from './const.js';
+import { has_eshk, ESHK, In_mines } from './const.js';
 import { noit_mon_nam } from './do_name.js';
 import { rnd } from './rng.js';
 import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
@@ -24,7 +24,7 @@ import { PMNAMES, MONSYMS } from './monst_data.js';
 import { rnd as _rnd } from './rng.js';
 import { distmin } from './hacklib.js';
 import { newsym } from './display.js';
-import { depth } from './dungeon.js';
+import { depth, Is_special } from './dungeon.js';
 import { SHKNAMES, SHKNMS_ORDER } from './shknam_data.js';
 
 // src/shknam.c:19 VEGETARIAN_CLASS — not a real object class, a marker the
@@ -132,7 +132,13 @@ export function nameshk(shk, shknms) {
     let nlp = SHKNAMES[list_name];
     let names_avail = nlp.length;
 
-    if (shknms === 'shktools') {
+    let sptr;
+    if (shknms === 'shklight' && In_mines(game.u.uz)
+        && (sptr = Is_special(game.u.uz)) && sptr.flags?.town) {
+        /* special-case minetown lighting shk */
+        shk.shknam = '+Izchak';
+        shk.female = 0;
+    } else if (shknms === 'shktools') {
         shk.shknam = nlp[rn2(names_avail)];
         shk.female = 0;         /* reversed below for '_' prefix */
     } else {

@@ -40,6 +40,7 @@ import { body_part } from './polyself.js';
 import { FACE } from './const.js';
 import { A_DEX } from './const.js';
 import { You_see } from './pline.js';
+import { set_levltyp } from './mkmaze.js';
 
 
 
@@ -90,13 +91,10 @@ export async function dryup(x, y, isyou) {
         }
         await pline_The('fountain dries up!');
         /* replace the fountain with ordinary floor */
-        loc.typ = ROOM;
+        set_levltyp(x, y, ROOM); /* updates level.flags.nfountains */
         loc.flags = 0;
         loc.looted = 0;
         loc.blessedftn = 0;
-        if (game.level.flags)
-            game.level.flags.nfountains =
-                Math.max(0, (game.level.flags.nfountains || 1) - 1);
         newsym(x, y);
     }
 }
@@ -474,13 +472,8 @@ export async function breaksink(x, y) {
         await pline_The('pipes break!  Water spurts out!');
 
     const loc = game.level.at(x, y);
-    if (loc.typ === SINK) {
-        game.level.flags.nsinks = Math.max(0,
-            (game.level.flags.nsinks || 1) - 1);
-    }
-    if (loc.typ !== FOUNTAIN)
-        game.level.flags.nfountains = (game.level.flags.nfountains || 0) + 1;
-    loc.typ = FOUNTAIN;
+    /* updates level.flags.nsinks and level.flags.nfountains */
+    set_levltyp(x, y, FOUNTAIN);
     loc.looted = F_LOOTED;
     loc.blessedftn = 0;
     newsym(x, y);

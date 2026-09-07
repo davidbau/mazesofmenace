@@ -155,8 +155,9 @@ function incr_prop_timeout(p, amt) {
  * BLINDED → make_blinded(newtimeout, TRUE) — not incr_prop_timeout
  * (D-0928 #1171; HBlinded from raven/cream must not be overwritten via
  * stale uprops[BLINDED]).
- * Named omissions: sick/slimed/stoned/stunned/vomiting/glib
- * special arms; count-prefix menu digits; float_vs_flight / rescham /
+ * Named omissions: sick/stoned/stunned/vomiting/glib
+ * special arms (SLIMED arm ported D-1995); count-prefix menu digits;
+ * float_vs_flight / rescham /
  * pooleffects; WARN_OF_MON species; SICK rn2 vomit-type; unavailcmd
  * ecname wording; make_blinded Blindfolded/Eyes talk variants.
  */
@@ -166,7 +167,9 @@ export async function wiz_intrinsic() {
         return ECMD_OK;
     }
     const { select_menu_pick_any } = await import('./options.js');
-    const { make_hallucinated, make_confused, make_deaf } = await import('./potion.js');
+    const {
+        make_hallucinated, make_confused, make_deaf, make_slimed,
+    } = await import('./potion.js');
 
     const raw = [
         { text: 'Which intrinsics?', selectable: false, attr: ATR_INVERSE },
@@ -216,6 +219,18 @@ export async function wiz_intrinsic() {
             // (cream pie / AD_BLND set HBlinded only). Already Blind +
             // increasing → silent (no generic Timeout pline).
             await make_blinded(newtimeout, true);
+        } else if (p === SLIMED) {
+            // C wizcmds.c:953,1040-1043 — fmt "You are%s %s." via
+            // make_slimed (sets botl, plines on 0↔nonzero change); no
+            // generic "Timeout for …" line. SICK/STONED arms still deferred
+            // (see the wiz_intrinsic Open row).
+            const uu = game.u || {};
+            const slimedNow = !!((uu.Slimed | 0)
+                || (uu.uprops?.[SLIMED]?.intrinsic | 0));
+            await make_slimed(
+                newtimeout,
+                `You are${slimedNow ? ' still' : ''} turning into slime.`,
+            );
         } else {
             incr_prop_timeout(p, amt);
             if (game.flags) game.flags.botl = true;

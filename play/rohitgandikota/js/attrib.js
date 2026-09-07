@@ -197,9 +197,9 @@ function note_unported_attrib(what) {
 // include/attrib.h — A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA
 export const A_MAX = 6;
 
-const ABASE = (i) => game.u.acurr.a[i];
-const setABASE = (i, v) => { game.u.acurr.a[i] = v; };
-const AMAX = (i) => game.u.amax.a[i];
+export const ABASE = (i) => game.u.acurr.a[i];
+export const setABASE = (i, v) => { game.u.acurr.a[i] = v; };
+export const AMAX = (i) => game.u.amax.a[i];
 const setAMAX = (i, v) => { game.u.amax.a[i] = v; };
 const ATTRMIN = (i) => game.urace.attrmin[i];
 /* include/attrib.h ABON — u.abon.a[i], the item/divine bonuses; nothing

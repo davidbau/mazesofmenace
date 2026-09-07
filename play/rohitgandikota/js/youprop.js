@@ -15,7 +15,7 @@
 
 import { game } from './gstate.js';
 import { amphibious, breathless, haseyes, is_flyer, is_swimmer,
-         resists_cold } from './mondata.js';
+         resists_cold, hates_silver } from './mondata.js';
 import { Upolyd } from './const.js';
 import { unconscious } from './trap.js';
 import { is_fainted } from './eat.js';
@@ -65,6 +65,9 @@ export const Stone_resistance = () =>
 // include/youprop.h:129 Fumbling
 export const Fumbling = () => !!(game.u?.intrinsic?.HFumbling
                                  || game.u?.uprops?.FUMBLING);
+
+// include/youprop.h:385 Fixed_abil — extrinsic only (ring of sustain ability)
+export const Fixed_abil = () => !!game.u?.uprops?.FIXED_ABIL;
 
 // include/youprop.h:132 Glib, the timed slippery-fingers property.
 export const Glib = () => !!(game.u?.intrinsic?.HGlib
@@ -213,3 +216,11 @@ export const Reflecting = () =>
 // The intrinsic half comes from the hero's race via set_uasmon().
 export const Infravision = () => !!(game.u?.intrinsic?.HInfravision
                                     || game.u?.uprops?.INFRAVISION);
+
+// include/youprop.h:401 Hate_silver
+export const Hate_silver = () => (game.u?.ulycn ?? -1) >= 0
+    || hates_silver(game.youmonst.data);
+
+// include/youprop.h:156 Blind_telepat (HTelepat || ETelepat)
+export const Blind_telepat = () => !!(game.u?.intrinsic?.HTelepat
+                                     || game.u?.uprops?.TELEPAT);

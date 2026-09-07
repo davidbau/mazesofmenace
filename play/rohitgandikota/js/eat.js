@@ -1082,14 +1082,30 @@ async function violated_vegetarian() {
     }
 }
 
-// src/eat.c:568 eating_conducts(), shared by ordinary meals and brain eating.
+// src/eat.c:575 eating_conducts(), shared by tinned monsters and brain eating.
 export async function eating_conducts(pd) {
     const conduct = (game.u.uconduct ||= {});
+    let ll_conduct = 0;
+    const pdname = pd.pmnames?.[NEUTRAL] ?? pd.pmnames?.[0];
+
+    if (!(conduct.food | 0)) {
+        livelog_printf(LL_CONDUCT, `ate for the first time - ${pdname}`);
+        ll_conduct++;
+    }
     conduct.food = (conduct.food | 0) + 1;
-    if (!vegan(pd))
+    if (!vegan(pd)) {
+        if (!(conduct.unvegan | 0) && !ll_conduct) {
+            livelog_printf(LL_CONDUCT,
+                           `consumed animal products (${pdname}) for the first time`);
+            ll_conduct++;
+        }
         conduct.unvegan = (conduct.unvegan | 0) + 1;
-    if (!vegetarian(pd))
+    }
+    if (!vegetarian(pd)) {
+        if (!(conduct.unvegetarian | 0) && !ll_conduct)
+            livelog_printf(LL_CONDUCT, `tasted meat (${pdname}) for the first time`);
         await violated_vegetarian();
+    }
 }
 
 /* src/eat.c:2491 foodwords[]; indices are enum obj_material_types. */
@@ -1324,6 +1340,10 @@ async function eatcorpse(otmp) {
 }
 
 export async function doeat() {
+    if (game.u.intrinsic?.HStrangled) { /* Strangled */
+        await pline("If you can't breathe air, how can you consume solids?");
+        return ECMD_OK;
+    }
     let otmp = await floorfood('eat', 0);
 
     if (!otmp)
@@ -1343,6 +1363,35 @@ export async function doeat() {
         return ECMD_OK;
     }
 
+    /* src/eat.c:2922 — picking the interrupted meal again resumes it */
+    if (otmp === game.context.victual?.piece) {
+        const v = game.context.victual;
+        const one_bite_left = ((v.usedtime | 0) + 1 >= (v.reqtime | 0));
+        /* If they weren't able to choke, they don't suddenly become able to
+         * choke just because they were interrupted.  On the other hand, if
+         * they were able to choke before, if they lost food it's possible
+         * they shouldn't be able to choke now.
+         */
+        if (game.u.uhs !== SATIATED)
+            v.canchoke = 0;
+        v.o_id = 0;
+        otmp = await touchfood(otmp);
+        if (otmp) {
+            v.piece = otmp;
+            v.o_id = otmp.o_id;
+        } else {
+            await do_reset_eat();
+        }
+        /* if there's only one bite left, there sometimes won't be any
+           "you finish eating" message when done; use different wording
+           for resuming with one bite remaining instead of trying to
+           determine whether or not "you finish" is going to be given */
+        await You(`${!one_bite_left ? 'resume' : 'consume the last bite of'} your meal.`);
+        if (otmp)
+            await start_eating(otmp, false);
+        return ECMD_TIME;
+    }
+
     /* src/eat.c doeat() tail. Tins have their own opening occupation; the
        remaining arms continue through corpse or ordinary-food handling. */
     if (otmp.otyp === ONAMES.TIN) {
@@ -1350,7 +1399,12 @@ export async function doeat() {
         return ECMD_TIME;
     }
 
-    (game.u.uconduct ||= {}).food = (game.u.uconduct.food | 0) + 1;
+    /* KMH, conduct */
+    game.u.uconduct ||= {};
+    if (!(game.u.uconduct.food | 0))
+        livelog_printf(LL_CONDUCT,
+                       `ate for the first time - ${food_xname(otmp, false)}`);
+    game.u.uconduct.food = (game.u.uconduct.food | 0) + 1;
 
     let dont_start = false;
     if (otmp.otyp === ONAMES.CORPSE || otmp.globby) {
@@ -2009,7 +2063,10 @@ async function consume_tin(mesg) {
         await use_up_tin(tin);
         return;
     }
+    /* don't need vegetarian checks for spinach */
     const conduct = game.u.uconduct ||= {};
+    if (!(conduct.food | 0))
+        livelog_printf(LL_CONDUCT, 'ate for the first time (spinach)');
     conduct.food = (conduct.food | 0) + 1;
     if (!tin.cursed) {
         await pline(`This makes you feel like ${Hallucination()

@@ -3,12 +3,10 @@
 // light sources and pit-limited sight are live.
 
 import { game } from './gstate.js';
-import {
-    COLNO, ROWNO, DOOR, SDOOR, POOL, TREE, CLOUD, LAVAWALL,
+import { COLNO, ROWNO, DOOR, SDOOR, POOL, TREE, CLOUD, LAVAWALL,
     D_CLOSED, D_LOCKED, D_TRAPPED, IS_OBSTRUCTED, IS_DOOR, IS_WATERWALL,
     SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL,
-    IS_WALL, MAX_RADIUS, TT_PIT, Is_waterlevel,
-} from './const.js';
+    IS_WALL, MAX_RADIUS, TT_PIT, Is_waterlevel, ROOMOFFSET, Is_rogue_level } from './const.js';
 import { newsym } from './display.js';
 import { ONAMES } from './objects_data.js';
 import { m_at, is_pool } from './mon.js';
@@ -671,6 +669,61 @@ function view_from(srow, scol, cs_rows, cs_left, cs_right, range = 0, func = nul
     }
 }
 
+// src/vision.c:314 rogue_vision() — the Rogue level: a lit room is seen to
+// its walls (including its doorways), and everything adjacent is seen.
+function rogue_vision(next, rmin, rmax) {
+    const u = game.u;
+    const rooms = game.level?.rooms || [];
+    const rnum = (game.level.at(u.ux, u.uy).roomno ?? 0) - ROOMOFFSET; /* no SHARED... */
+    let start, stop;
+
+    /* If in a lit room, we are able to see to its boundaries. */
+    /* If dark, set COULD_SEE so various spells work -dlc */
+    if (rnum >= 0 && rooms[rnum]) {
+        const r = rooms[rnum];
+        for (let zy = r.ly - 1; zy <= r.hy + 1; zy++) {
+            rmin[zy] = start = r.lx - 1;
+            rmax[zy] = stop = r.hx + 1;
+
+            for (let zx = start; zx <= stop; zx++) {
+                if (r.rlit) {
+                    next[zy][zx] = COULD_SEE | IN_SIGHT;
+                    game.level.at(zx, zy).seenv = SVALL; /* see the walls */
+                } else
+                    next[zy][zx] = COULD_SEE;
+            }
+        }
+    }
+
+    const in_door = game.level.at(u.ux, u.uy).typ === DOOR;
+
+    /* Can always see adjacent. */
+    const ylo = Math.max(u.uy - 1, 0);
+    const yhi = Math.min(u.uy + 1, ROWNO - 1);
+    const xlo = Math.max(u.ux - 1, 1);
+    const xhi = Math.min(u.ux + 1, COLNO - 1);
+    for (let zy = ylo; zy <= yhi; zy++) {
+        if (xlo < rmin[zy])
+            rmin[zy] = xlo;
+        if (xhi > rmax[zy])
+            rmax[zy] = xhi;
+
+        for (let zx = xlo; zx <= xhi; zx++) {
+            next[zy][zx] = COULD_SEE | IN_SIGHT;
+            /*
+             * Yuck, update adjacent non-diagonal positions when in a doorway.
+             * We need to do this to catch the case when we first step into
+             * a room.  The room's walls were not seen from the outside, but
+             * now are seen (the seen bits are set just above).  However, the
+             * positions are not updated because they were already in sight.
+             * So, we have to do it here.
+             */
+            if (in_door && (zx === u.ux || zy === u.uy))
+                newsym(zx, zy);
+        }
+    }
+}
+
 // C ref: vision_recalc(control)
 export function vision_recalc(control = 0) {
     const u = game.u;
@@ -690,9 +743,13 @@ export function vision_recalc(control = 0) {
     }
 
     if (!u.uswallow && control !== 2) {
+        /* src/vision.c:584 — the Blind arm comes first in C (handled below
+           here), then the Rogue level gets its own room-based vision */
+        if (!Blind() && Is_rogue_level(u.uz)) {
+            rogue_vision(next, next_rmin, next_rmax);
         /* src/vision.c:577. Away from the Plane of Water, an underwater
            hero can only see adjacent squares which are also pools. */
-        if (Underwater() && !Is_waterlevel(u.uz)) {
+        } else if (Underwater() && !Is_waterlevel(u.uz)) {
             const lo_col = Math.max(u.ux - 1, 1);
             for (let row = u.uy - 1; row <= u.uy + 1; row++) {
                 for (let col = lo_col; col <= u.ux + 1; col++) {

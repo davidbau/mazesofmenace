@@ -71,7 +71,7 @@ import { MONSYMS } from './monst_data.js';
 import { M_AP_TYPE } from './const.js';
 import { recalc_block_point, unblock_point } from './vision.js';
 import { nomul } from './hack.js';
-import { back_to_glyph, show_glyph_cell, flush_screen, trap_glyph,
+import { terrain_glyph, show_glyph_cell, flush_screen, trap_glyph,
          xy_set_wall_state, pline, covers_traps } from './display.js';
 import { TER_MAP, TER_TRP, TER_OBJ, TER_MON, TER_FULL, TER_DETECT, IS_WALL,
          M_AP_FURNITURE } from './const.js';
@@ -712,7 +712,9 @@ function reveal_terrain_getglyph(x, y, swallowed, default_cell, which_subset) {
     const hero_memory = !!game.level?.flags?.hero_memory;
 
     const btg_cell = () => {
-        const b = back_to_glyph(loc, x, y);
+        /* back_to_glyph() -> show_glyph(): the cmap symbol comes from the
+           active symbol set (display.c map_glyphinfo) */
+        const b = terrain_glyph(loc, x, y);
         return { ch: b.ch, color: b.color, dec: !!b.dec,
                  glyph: { kind: 'cmap', cmap: b.cmap } };
     };
@@ -912,7 +914,7 @@ function trap_cell(trap) {
              glyph: { kind: 'cmap', cmap: tg.cmap } };
 }
 function back_cell(lev, x, y) {
-    const b = back_to_glyph(lev, x, y);
+    const b = terrain_glyph(lev, x, y);
     return { ch: b.ch, color: b.color, decgfx: !!b.dec,
              glyph: b.glyph ?? { kind: 'cmap', cmap: b.cmap } };
 }

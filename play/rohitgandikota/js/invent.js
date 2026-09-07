@@ -3,7 +3,7 @@
 
 import { MON_WEP } from './monst.js';
 import { noit_Monnam, mon_nam, oname } from './do_name.js';
-import { engulfing_u } from './const.js';
+import { engulfing_u, FINGERTIP } from './const.js';
 import { allow_all, add_valid_menu_class, menu_class_present, allow_category,
          collect_obj_classes, count_justpicked, container_gone } from './pickup.js';
 import { query_objlist, query_category } from './pickup.js';
@@ -52,7 +52,7 @@ import { u_at, CMDQ_KEY, CMDQ_INT, CQ_CANNED, CQ_REPEAT, FOUNTAIN, THRONE, SINK,
          AM_SANCTUM, AM_SHRINE, Amask2align, A_NONE, A_LAWFUL,
          A_NEUTRAL, A_CHAOTIC, OBJ_DELETED } from './const.js';
 import { hides_under, touch_petrifies, poly_when_stoned } from './mondata.js';
-import { worn } from './do_wear.js';
+import { worn, fingers_or_gloves } from './do_wear.js';
 import { empty_handed } from './wield.js';
 import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU,
          W_ARMOR, W_WEP, W_QUIVER, W_SWAPWEP, W_WEAPONS,
@@ -1024,7 +1024,13 @@ export async function display_binventory(x, y, as_if_seen = false) {
         const items = sortloot_items(buried.filter(o => o.oclass === oclass));
         if (!items.length)
             continue;
-        tty_add_menu(win, null, 0, 0, 0, ATR_INVERSE, NO_COLOR,
+        /* src/windows.c:1816 add_menu_heading(): iflags.menu_headings style,
+           suppressed during end-of-game disclosure */
+        tty_add_menu(win, null, 0, 0, 0,
+                     game.program_state_gameover ? ATR_NONE
+                     : (game.iflags?.menu_headings?.attr ?? ATR_INVERSE),
+                     game.program_state_gameover ? NO_COLOR
+                     : (game.iflags?.menu_headings?.color ?? NO_COLOR),
                      let_to_name(oclass), MENU_ITEMFLAGS_NONE);
         let first = true;
         for (const obj of items) {
@@ -1065,12 +1071,15 @@ export function display_pickinv_entries(allowed_choices = null, want_reply = fal
                  && (!allowed_choices || allowed_choices.includes(o.invlet))
                  && (!wizid || not_fully_identified(o)));
         if (!items.length) continue;
-        /* add_menu_heading(win, class_header) — iflags.menu_headings */
+        /* add_menu_heading(win, class_header) — iflags.menu_headings style,
+           and src/windows.c:1822 suppresses the highlighting during
+           end-of-game disclosure */
         if (sortpack)
             out.push({ heading: true,
                        str: let_to_name(oclass, false,
                            want_reply && game.iflags.menu_head_objsym),
-                       attr: ATR_INVERSE });
+                       attr: game.program_state_gameover ? ATR_NONE
+                             : (game.iflags?.menu_headings?.attr ?? ATR_INVERSE) });
         for (const o of items) {
             /* src/invent.c:1039 — displaying the item observes its type */
             if (!Blind())
@@ -1333,8 +1342,7 @@ export async function display_pickinv(allowed_choices, handsbuf, menuquery,
         = await import('./const.js');
     const { NO_COLOR } = await import('./terminal.js');
 
-    if (handsbuf || menuquery)
-        note_unported_invent('display_pickinv:hands_or_forcemenu');
+    const usextra = !!(handsbuf && allownone); /* xtra_choice && allowxtra */
     const wizid = game.wizard && game.iflags?.override_ID;
 
     /* src/invent.c:3130 — count 0, 1, or more-than-1 candidates. With
@@ -1344,26 +1352,42 @@ export async function display_pickinv(allowed_choices, handsbuf, menuquery,
        with one scroll shows "o - a scroll labeled X.--More--" rather than
        opening a menu. force_invmenu defaults off. */
     {
-        const n = allowed_choices ? allowed_choices.length
-                  : !game.invent?.length ? 0 : game.invent.length === 1 ? 1 : 2;
+        let n = allowed_choices ? allowed_choices.length
+                : !game.invent?.length ? 0 : game.invent.length === 1 ? 1 : 2;
+        /* for xtra_choice, there's another 'item' not included in initial
+           'n'; for !lets (full invent) and for override_ID (wizard mode
+           identify), skip message_menu handling of single item even if item
+           count was 1 */
+        if (usextra || (n === 1 && (!allowed_choices || wizid)))
+            ++n;
         if (n === 0) {
             await pline('Not carrying anything.');
             return 0;
         }
         if (game.flags.fixinv === false)
             reassign();
-        if (n === 1 && allowed_choices && !wizid) {
-            const otmp = (game.invent || [])
-                .find(o => o.invlet === allowed_choices[0]);
-            if (otmp) {
-                const { tty_message_menu } = await import('./tty/wintty.js');
-                /* xprname(otmp, NULL, lets[0], TRUE, 0, 0) */
-                const line = `${otmp.invlet} - ${doname(otmp)}.`;
-                const r = await tty_message_menu(otmp.invlet,
-                                                 want_reply ? PICK_ONE : PICK_NONE,
-                                                 line);
-                return (r === '\0' || r === 0) ? 0 : r;
+        if (n === 1 && !game.iflags?.force_invmenu && !game.iflags?.menu_requested) {
+            /* when only one item of interest, use pline instead of menus;
+               we actually use a fake message-line menu in order to allow
+               the user to perform selection at the --More-- prompt for tty */
+            const { tty_message_menu } = await import('./tty/wintty.js');
+            let r = 0;
+            if (usextra) {
+                /* xtra_choice is "bare hands" (wield), "fingertip" (Engrave),
+                   "nothing" (prepare Quiver), "fingers" (apply grease), or
+                   "hands" (default): xprname(NULL, xtra_choice, HANDS_SYM, ...) */
+                r = await tty_message_menu('-', PICK_ONE, `- - ${handsbuf}.`);
+            } else {
+                const otmp = (game.invent || [])
+                    .find(o => !allowed_choices || o.invlet === allowed_choices[0]);
+                if (otmp) {
+                    /* xprname(otmp, NULL, lets[0], TRUE, 0, 0) */
+                    r = await tty_message_menu(otmp.invlet,
+                                               want_reply ? PICK_ONE : PICK_NONE,
+                                               `${otmp.invlet} - ${doname(otmp)}.`);
+                }
             }
+            return (r === '\0' || r === 0) ? 0 : r;
         }
     }
 
@@ -1386,6 +1410,12 @@ export async function display_pickinv(allowed_choices, handsbuf, menuquery,
             tty_add_menu(win, null, wizid_fakeobj, '_', override, A_NONE, NO_COLOR,
                          prompt, MENU_ITEMFLAGS_SKIPINVERT);
         }
+    } else if (usextra) {
+        /* wizard override ID and xtra_choice are mutually exclusive */
+        if (game.flags.sortpack !== false)
+            add_menu_heading(win, 'Miscellaneous');
+        tty_add_menu(win, null, '-'.charCodeAt(0), '-', 0, A_NONE, NO_COLOR,
+                     handsbuf, MENU_ITEMFLAGS_NONE); /* HANDS_SYM */
     }
     /* src/invent.c:3273 — C applies the `lets` filter FIRST and only then adds
        the class heading, gated on `!classcount`, so a heading appears just
@@ -1402,7 +1432,11 @@ export async function display_pickinv(allowed_choices, handsbuf, menuquery,
         if (allowed_choices && !allowed_choices.includes(e.invlet))
             continue;
         if (pending_heading) {
-            tty_add_menu(win, null, 0, 0, 0, A_INV, NO_COLOR,
+            /* add_menu_heading(): iflags.menu_headings style, suppressed
+               during end-of-game disclosure (src/windows.c:1822) */
+            tty_add_menu(win, null, 0, 0, 0, pending_heading.attr,
+                         game.program_state_gameover ? NO_COLOR
+                         : (game.iflags?.menu_headings?.color ?? NO_COLOR),
                          pending_heading.str, MENU_ITEMFLAGS_NONE);
             pending_heading = null;
         }
@@ -1603,6 +1637,22 @@ function compactify(str) {
     return buf.slice(0, i2).join('');
 }
 
+// src/invent.c:1719 getobj_hands_txt() — the text for the '-' choice
+function getobj_hands_txt(action) {
+    if (action === 'grease') {
+        return `your ${fingers_or_gloves(false)}`;
+    } else if (action === 'write with') {
+        return `your ${body_part(FINGERTIP)}`;
+    } else if (action === 'wield') {
+        return `your ${game.u.uarmg ? 'gloved' : 'bare'} ${makeplural(body_part(HAND))}${
+            !game.u.uwep ? ' (wielded)' : ''}`;
+    } else if (action === 'ready') {
+        return `empty quiver${!game.u.uquiver ? ' (nothing readied)' : ''}`;
+    } else {
+        return `your ${makeplural(body_part(HAND))}`;
+    }
+}
+
 export async function getobj(word, obj_ok_func, ctrlflags) {
     /* src/invent.c:1779 — a queued CMDQ_KEY picks the object without
        prompting; a failed lookup discards the rest of the canned queue so a
@@ -1735,9 +1785,17 @@ export async function getobj(word, obj_ok_func, ctrlflags) {
             /* src/invent.c:1963 — '?' lists only the letters this command
                accepts, '*' lists everything. */
             const allowed_choices = (ilet === '?') ? (lets || altChoices) : null;
-            /* C's `allownone` comes from the '-' choice being offered; our
-               hands arm above is recorded, so it is always false here. */
-            ilet = await display_pickinv(allowed_choices, null, null, false);
+            let menuquery = '';
+            let handsbuf = null;
+            if (game.iflags?.force_invmenu)
+                menuquery = `What do you want to ${word}?`;
+            /* C's `*buf == HANDS_SYM`: the prompt letters carry the "- "
+               prefix when the hands were suggested; ours keep it in lets */
+            if (!allowed_choices || allowed_choices[0] === HANDS_SYM
+                || lets[0] === HANDS_SYM)
+                handsbuf = getobj_hands_txt(word);
+            ilet = await display_pickinv(allowed_choices, handsbuf,
+                                         menuquery, allownone, true);
             if (!ilet)
                 continue;
             if (ilet === '\x1b') {

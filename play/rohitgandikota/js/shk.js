@@ -55,7 +55,7 @@ import { move_special } from './priest.js';
 import { addinv, carrying, sobj_at, currency, money_cnt, freeinv,
          contained_gold, hidden_gold, weight } from './invent.js';
 import { m_at, t_at, wake_nearto } from './mon.js';
-import { Blind, Deaf, Invis, Detect_monsters } from './youprop.js';
+import { Blind, Deaf, Invis, Detect_monsters, Blind_telepat } from './youprop.js';
 import { ACURR, Fast, adjalign, exercise } from './attrib.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
 import { PMNAMES, MSOUND, MFLAGS } from './monst_data.js';
@@ -2326,7 +2326,10 @@ export async function dopay() {
     }
 
     let shkp = adjacent && nexttosk === 1 ? adjacent : null;
-    if (!shkp && (!keepers.length || (!Blind() && !seen))) {
+    /* src/shk.c dopay(): a blind hero without telepathy is told "You can't
+       see..." even when the level has no shopkeeper at all */
+    if (!shkp && ((!keepers.length && (!Blind() || Blind_telepat()))
+                  || (!Blind() && !seen))) {
         await pline('There appears to be no shopkeeper here to receive your payment.');
         return ECMD_OK;
     }

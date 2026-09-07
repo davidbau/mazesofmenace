@@ -9,7 +9,7 @@ import { set_uasmon } from './polyself.js';
 import { do_vicinity_map } from './detect.js';
 import { game } from './gstate.js';
 import { glibr, set_wear } from './do_wear.js';
-import { maybe_finished_meal } from './eat.js';
+import { maybe_finished_meal, reset_eat } from './eat.js';
 
 // src/allmain.c set_occupation() / stop_occupation() — the multi-turn action
 // slot. moveloop_core calls go.occupation once per turn until it returns 0.
@@ -707,6 +707,8 @@ export async function moveloop_core() {
         await rhack(0);
         if (g.u.utotype)
             await deferred_goto();
+        if (g.vision_full_recalc)
+            vision_recalc(0); /* vision! */
         return;
     }
 
@@ -1037,11 +1039,7 @@ export async function moveloop_core() {
             g.occupation = null;
         if (monster_nearby()) {
             await stop_occupation();
-            /* reset_eat(): only matters when the occupation was eating,
-               which sets its own context; noted until eating occupations
-               are ported */
-            if (g.context?.victual?.piece)
-                note_unported_main('moveloop:reset_eat');
+            reset_eat();
         }
         g.context.move = 1;             /* the occupation took this turn */
         await runmode_delay_output();
@@ -1116,6 +1114,10 @@ export async function moveloop_core() {
        here, AFTER rhack() returns, not inside the command itself. */
     if (g.u.utotype)
         await deferred_goto();
+
+    /* src/allmain.c:541 */
+    if (g.vision_full_recalc)
+        vision_recalc(0); /* vision! */
 }
 
 // C ref: allmain.c moveloop()
@@ -1134,7 +1136,7 @@ export async function moveloop(resuming) {
 
     for (;;) {
         await moveloop_core();
-        if (game.program_state?.gameover) break;
+        if (game.program_state_gameover) break;
     }
 }
 

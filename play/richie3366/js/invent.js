@@ -62,7 +62,7 @@ import { mergable, is_damageable, stop_timer, splitobj, unsplitobj, clear_splito
 import { unpaid_cost, doinvbill, gem_learned, obfree, shopper_financial_report } from './shk.js';
 import { hidden_gold } from './vault.js';
 import { setnotworn } from './do.js';
-import { s_suffix } from './do_name.js';
+import { s_suffix, a_monnam } from './do_name.js';
 import { inv_cnt } from './steal.js';
 import { assigninvlet } from './u_init.js';
 import { cansee } from './vision.js';
@@ -193,13 +193,47 @@ import {
     INCLUDE_VENOM,
     USE_INVLET,
     INVORDER_SORT,
+    STONED,
+    SLIMED,
+    STRANGLED,
+    SICK,
+    SICK_VOMITABLE,
+    SICK_NONVOMITABLE,
+    VOMITING,
+    STUNNED,
+    CONFUSION,
+    BLINDED,
+    DEAF, // C attrib.c from_what(DEAF) via insight.c:1074 deaf arm (D-1996)
+    TIMEOUT,
+    I_SPECIAL,
+    FROMOUTSIDE,
+    FROMFORM,
+    SLEEP_RES,
+    SLEEPY,
+    FUMBLING,
+    INFRAVISION,
+    HUNGER,
+    POISON_RES,
+    COLD_RES,
+    DISINT_RES,
+    ACID_RES,
+    DRAIN_RES,
+    SICK_RES,
+    STONE_RES,
+    STEALTH,
+    INVULNERABLE,
+    FAST,
+    SEE_INVIS,
+    MGIVENNAME,
+    has_mgivenname,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import {
     acurr, acurrstr, get_strength_str, exercise, Fumbling,
+    from_what, stone_luck,
     A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA,
 } from './attrib.js';
-import { depth, ing_suffix, strstri } from './hacklib.js';
+import { depth, ing_suffix, strstri, ordin } from './hacklib.js';
 import { visctrl } from './dokeylist.js';
 import { select_menu_pick_any, hide_unhide_msgtypes } from './options.js';
 import { rn2 } from './rng.js';
@@ -256,7 +290,7 @@ import { objects_at } from './mkobj.js';
 import { t_at, trapname } from './trap.js';
 import { visible_region_at, reg_damg } from './region.js';
 import { PM_SAMURAI, PM_MONK, PM_CLERIC } from './generated/monsters_data.js';
-import { humanoid, strongmonst, mons, touch_petrifies, poly_when_stoned, hides_under } from './monsters.js';
+import { humanoid, strongmonst, mons, touch_petrifies, poly_when_stoned, hides_under, haseyes, dmgtype } from './monsters.js';
 import { hideunder } from './mon.js';
 import { set_artifact_intrinsic, undiscovered_artifact, discover_artifact } from './artifact.js';
 import {
@@ -4568,6 +4602,67 @@ function hero_Shock_resistance(u = game.u || {}) {
         || (e?.intrinsic | 0) || (e?.extrinsic | 0));
 }
 
+/** C ref: youprop.h Sleep_resistance — H || E via flat + uprops[SLEEP_RES]. */
+function hero_Sleep_resistance(u = game.u || {}) {
+    const e = u.uprops?.[SLEEP_RES];
+    return !!((u.HSleep_resistance | 0) || (u.ESleep_resistance | 0)
+        || u.Sleep_resistance
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+}
+
+/** C ref: youprop.h Cold_resistance — H || E via flat + uprops[COLD_RES]. */
+function hero_Cold_resistance(u = game.u || {}) {
+    const e = u.uprops?.[COLD_RES];
+    return !!((u.HCold_resistance | 0) || (u.ECold_resistance | 0)
+        || u.Cold_resistance
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+}
+
+/** C ref: youprop.h Disint_resistance — H || E via flat + uprops[DISINT_RES]. */
+function hero_Disint_resistance(u = game.u || {}) {
+    const e = u.uprops?.[DISINT_RES];
+    return !!((u.HDisint_resistance | 0) || (u.EDisint_resistance | 0)
+        || u.Disint_resistance
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+}
+
+/** C ref: youprop.h Acid_resistance — H || E via flat + uprops[ACID_RES]. */
+function hero_Acid_resistance(u = game.u || {}) {
+    const e = u.uprops?.[ACID_RES];
+    return !!((u.HAcid_resistance | 0) || (u.EAcid_resistance | 0)
+        || u.Acid_resistance
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+}
+
+/** C ref: youprop.h Drain_resistance — H || E via flat + uprops[DRAIN_RES]. */
+function hero_Drain_resistance(u = game.u || {}) {
+    const e = u.uprops?.[DRAIN_RES];
+    return !!((u.HDrain_resistance | 0) || (u.EDrain_resistance | 0)
+        || u.Drain_resistance
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+}
+
+/**
+ * C ref: youprop.h Sick_resistance — H || E via flat + uprops[SICK_RES].
+ * Named omission: `|| defended(&gy.youmonst, AD_DISE)` (current-form
+ * disease defense; no `defended` export in js/, no corpus disclosure
+ * reaches it polymorphed into a defending form).
+ */
+function hero_Sick_resistance(u = game.u || {}) {
+    const e = u.uprops?.[SICK_RES];
+    return !!((u.HSick_resistance | 0) || (u.ESick_resistance | 0)
+        || u.Sick_resistance
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+}
+
+/** C ref: youprop.h Stone_resistance — H || E via flat + uprops[STONE_RES]. */
+function hero_Stone_resistance(u = game.u || {}) {
+    const e = u.uprops?.[STONE_RES];
+    return !!((u.HStone_resistance | 0) || (u.EStone_resistance | 0)
+        || u.Stone_resistance
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+}
+
 /**
  * C ref: youprop.h Blind_telepat — HTelepat || ETelepat
  * (uprops[TELEPAT] mirrors).
@@ -4655,12 +4750,19 @@ function hero_Teleport_control(u = game.u || {}) {
 
 /* C monattk.h — local for item_resistance_message / adtyp_to_prop */
 const AD_FIRE = 2;
+const AD_COLD = 3;
+const AD_DISN = 5;
 const AD_ELEC = 6;
+const AD_ACID = 8;
+const AD_DGST = 26;
 
 /** C ref: zap.c adtyp_to_prop — subset used by item resistance enl. */
 function adtyp_to_prop(dmgtyp) {
     if (dmgtyp === AD_FIRE) return FIRE_RES;
+    if (dmgtyp === AD_COLD) return COLD_RES;
+    if (dmgtyp === AD_DISN) return DISINT_RES;
     if (dmgtyp === AD_ELEC) return SHOCK_RES;
+    if (dmgtyp === AD_ACID) return ACID_RES;
     return 0;
 }
 
@@ -4728,10 +4830,28 @@ function item_what(dmgtyp) {
 }
 
 /**
+ * C ref: eat.c temp_resist `:450–469` — intrinsic timeout with no form,
+ * worn-gear or blocked cover; used by enlightenment for the Acid/Stone
+ * "temporarily " prefix.
+ */
+function enl_temp_resist(prop) {
+    const p = game.u?.uprops?.[prop] || {};
+    const intr = p.intrinsic | 0;
+    const timeout = intr & TIMEOUT;
+    if (timeout
+        && (intr & ~TIMEOUT) === 0
+        && !(p.extrinsic | 0)
+        && !(p.blocked | 0)) {
+        return timeout;
+    }
+    return 0;
+}
+
+/**
  * C ref: insight.c item_resistance_message — "Your items are [somewhat]
  * protected from …" + item_what.
  */
-function item_resistance_message_lines(adtyp, prot_message, final, o) {
+function item_resistance_message_lines(adtyp, prot_message, final, o = (t) => t) {
     const protection = u_adtyp_resistance_obj(adtyp);
     if (!protection) return [];
     const somewhat = protection < 99;
@@ -4755,30 +4875,121 @@ function status_core_lines(final = 0, opts = {}) {
     const overlay = !!opts.overlay;
     const magic = !!opts.magic;
     const u = game.u || {};
+    const wizard = !!(game.flags?.wizard || game.flags?.debug);
     const You_ = 'You ';
     const are = 'are ';
     const were = 'were ';
     const have = 'have ';
     const had = 'had ';
     const mid = final ? were : are;
-    const wrap = (attr) => {
-        const line = enlght_line_txt(You_, mid, attr, '');
+    const wrap = (attr, ps = '') => {
+        const line = enlght_line_txt(You_, mid, attr, ps);
         return overlay ? ` ${line}` : line;
     };
     const wrap_have = (attr) => {
         const line = enlght_line_txt(You_, final ? had : have, attr, '');
         return overlay ? ` ${line}` : line;
     };
+    // C insight.c status_enlightenment — enlght_out-direct lines carry
+    // their own leading space; the overlay menu adds one more.
+    const raw = (item) => (overlay ? ` ${item}` : item);
+    // C insight.c:940+ — youprop bits: flat timeout/mirror OR uprops intrinsic.
+    const enl_bits = (p, flat) => ((u[flat] | 0) || (u.uprops?.[p]?.intrinsic | 0));
     const out = [];
-    // C: after Confusion — if (Hallucination) you_are("hallucinating", "");
-    // Stoned/Slimed/Strangled/Sick/Vomiting/Stunned/Confusion/Blind/… deferred.
+    // C insight.c:1006-1011 — Stoned before Slimed, prayer order.
+    const stoned = enl_bits(STONED, 'Stoned');
+    if (stoned) {
+        if (final && (stoned & I_SPECIAL)) out.push(raw(' You turned into stone.'));
+        else out.push(wrap('turning to stone'));
+    }
+    // C insight.c:1012-1017 — Slimed.
+    const slimed = enl_bits(SLIMED, 'Slimed');
+    if (slimed) {
+        if (final && (slimed & I_SPECIAL)) out.push(raw(' You turned into slime.'));
+        else out.push(wrap('turning into slime'));
+    }
+    // C insight.c:1018-1031 — Strangled (buried / died / wizard timeout).
+    const strang = enl_bits(STRANGLED, 'Strangled');
+    if (strang) {
+        if (u.uburied) {
+            out.push(wrap('buried'));
+        } else if (final && (strang & I_SPECIAL)) {
+            out.push(raw(' You died from strangulation.'));
+        } else {
+            let buf = 'being strangled';
+            if (wizard) buf += ` (${strang & TIMEOUT})`;
+            out.push(wrap(buf, from_what(STRANGLED)));
+        }
+    }
+    // C insight.c:1032-1050 — Sick (lumped death / split troubles).
+    const sick = enl_bits(SICK, 'Sick');
+    if (sick) {
+        if (final && (sick & I_SPECIAL)) {
+            const cause = ((u.usick_type | 0) & SICK_NONVOMITABLE)
+                ? 'terminal illness' : 'food poisoning';
+            out.push(raw(` You died from ${cause}.`));
+        } else {
+            if ((u.usick_type | 0) & SICK_NONVOMITABLE) {
+                out.push(wrap('terminally sick from illness'));
+            }
+            if ((u.usick_type | 0) & SICK_VOMITABLE) {
+                out.push(wrap('terminally sick from food poisoning'));
+            }
+        }
+    }
+    // C insight.c:1051-1058 — Vomiting / Stunned / Confusion / Hallucination.
+    if (enl_bits(VOMITING, 'Vomiting')) out.push(wrap('nauseated'));
+    if ((u.HStun | 0) || (u.Stunned | 0)) out.push(wrap('stunned'));
+    if ((u.HConfusion | 0) || (u.Confusion | 0)) out.push(wrap('confused'));
     if (hero_Hallucination()) out.push(wrap('hallucinating'));
+    // C insight.c:1059-1074 — Blind (reason order matches from_what) + Deaf.
+    if ((((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0))
+        || u.uroleplay?.blind) {
+        const hb = u.HBlinded | 0;
+        const blindfoldOnly = !!(u.ublindf
+            && u.ublindf.otyp === objectNames.indexOf('BLINDFOLD'));
+        const kind = (hb & FROMOUTSIDE) ? 'permanently'
+            : (hb & FROMFORM) ? 'innately'
+                : blindfoldOnly ? 'deliberately'
+                    : 'temporarily';
+        let buf = `${kind} blind`;
+        // C: wizard && HBlinded == BlindedTimeout && !Blindfolded.
+        if (wizard && (hb & TIMEOUT) === hb && !u.ublindf) {
+            buf += ` (${hb & TIMEOUT})`;
+        }
+        // C: !haseyes(youmonst.data) avoids "innately blind innately";
+        // race form matches the neighboring Infravision fallback.
+        const noeyes = !haseyes(mons(game.urace?.mnum));
+        out.push(wrap(buf, noeyes ? '' : from_what(BLINDED)));
+    }
     // C: if (Deaf) you_are("deaf", from_what(DEAF)); from_what wizard-only
-    if (hero_Deaf()) out.push(wrap('deaf'));
+    if (hero_Deaf()) out.push(wrap('deaf', from_what(DEAF)));
     // C: if (Punished) you_are("chained to %s", ansimpleoname(uball))
     // Punished ≡ (uball != 0)
     if (u.uball) {
         out.push(wrap(`chained to ${ansimpleoname(u.uball)}`));
+    }
+    // C insight.c:1099-1123 — held/swallowed (utrap trap_predicament and
+    // non-swallow held-by arms deferred). digests ≡ AD_DGST engulf attack
+    // (mondata.h); swallower form is ustuck's own data.
+    if (u.ustuck) {
+        let heldmon = a_monnam(u.ustuck);
+        if (heldmon === 'it'
+            && (!has_mgivenname(u.ustuck)
+                || MGIVENNAME(u.ustuck) !== 'it')) {
+            heldmon = 'an unseen creature';
+        }
+        if (u.uswallow) {
+            const udat = u.ustuck.data
+                || (u.ustuck.mnum != null ? mons(u.ustuck.mnum) : null);
+            let buf = `${udat && dmgtype(udat, AD_DGST) ? 'swallowed' : 'engulfed'} by ${heldmon}`;
+            if (udat && dmgtype(udat, AD_DGST)) {
+                if (final && !(u.uswldtim | 0)) buf += ' and got totally digested';
+                else buf += ` and ${final ? 'were' : 'are'} being digested`;
+            }
+            if (wizard) buf += ` (${u.uswldtim | 0})`;
+            out.push(wrap(buf));
+        }
     }
     // C: if (Wounded_legs) you_have("%swounded %s%s", …) when !usteed
     // (steed report wizard-only deferred)
@@ -4796,14 +5007,35 @@ function status_core_lines(final = 0, opts = {}) {
         }
         out.push(wrap_have(`${article}wounded ${leftright}${bp}`));
     }
-    // C: if (Sleepy) if (magic || cause_known(SLEEPY))
-    //    enl_msg("You ", "fall", "fell", " asleep uncontrollably", …)
+    // C insight.c:1177-1180 — Fumbling (cause_known deferred; magic exact).
+    if (Fumbling() && magic) {
+        const line = enlght_line_txt(
+            You_,
+            final ? 'fumbled' : 'fumble',
+            '',
+            from_what(FUMBLING),
+        );
+        out.push(overlay ? ` ${line}` : line);
+    }
+    // C insight.c:1181-1188 — Sleepy (from_what + wizard HSleepy timeout).
     if (hero_Sleepy() && (magic || cause_known_sleepy())) {
+        let ps = from_what(SLEEPY);
+        if (wizard) ps += ` (${(u.HSleepy | 0) & TIMEOUT})`;
         const line = enlght_line_txt(
             You_,
             final ? 'fell' : 'fall',
             ' asleep uncontrollably',
-            '',
+            ps,
+        );
+        out.push(overlay ? ` ${line}` : line);
+    }
+    // C insight.c:1190-1194 — Hunger rapid (cause_known deferred; magic exact).
+    if (((u.HHunger | 0) || (u.EHunger | 0)) && magic) {
+        const line = enlght_line_txt(
+            You_,
+            final ? 'hungered' : 'hunger',
+            ' rapidly',
+            from_what(HUNGER),
         );
         out.push(overlay ? ` ${line}` : line);
     }
@@ -4816,9 +5048,12 @@ function status_core_lines(final = 0, opts = {}) {
  * C ref: insight.c enlightenment — BASIC|MAGIC; final → putstr NHW_MENU
  * (--More-- pages), not ^X menu "(k of n)".
  * Named omissions: poly/vamp; night/midnight; SCORE_ON_BOTL; most
- * status troubles beyond Deaf/Sleepy; resistances/vision beyond
- * Poison_resistance/Searching/Infravision/Stealth; from_what suffixes;
- * wizard alignment number; blocked-Stealth / other appearance props.
+ * status troubles beyond Deaf/Sleepy; vision beyond
+ * Searching/Infravision/Stealth (See_invisible/telepathic/warned live);
+ * from_what suffixes; blocked-Stealth / other appearance props;
+ * Teleportation/Aggravate/Conflict/Jumping-Teleport arms; Regen/digestion/
+ * combat-inc/defense/half-damage; shape-changers/Hate_silver/Free/Fixed_abil;
+ * Sick `defended(AD_DISE)` form arm.
  * @param {number} mode BASICENLIGHTENMENT | MAGICENLIGHTENMENT
  * @param {number} final ENL_GAMEINPROGRESS / GAMEOVERALIVE / GAMEOVERDEAD
  */
@@ -4831,7 +5066,7 @@ export async function enlightenment(mode, final = 0) {
     }
     const { show_nhw_menu_text } = await import('./pager.js');
     const { newuexp } = await import('./exper.js');
-    const { Searching } = await import('./attrib.js');
+    const { Searching, Fast, Very_fast } = await import('./attrib.js');
     const { piousness } = await import('./insight.js');
     const {
         BASICENLIGHTENMENT, MAGICENLIGHTENMENT, ENL_GAMEOVERDEAD,
@@ -4867,8 +5102,8 @@ export async function enlightenment(mode, final = 0) {
     const have = 'have ';
     const had = 'had ';
     const You_ = 'You ';
-    const you_are = (attr) => enlght_line_txt(You_, final ? were : are, attr, '');
-    const you_have = (attr) => enlght_line_txt(You_, final ? had : have, attr, '');
+    const you_are = (attr, ps = '') => enlght_line_txt(You_, final ? were : are, attr, ps);
+    const you_have = (attr, ps = '') => enlght_line_txt(You_, final ? had : have, attr, ps);
 
     const lines = [];
     lines.push(`${name} the ${role}'s attributes:`);
@@ -5027,6 +5262,19 @@ export async function enlightenment(mode, final = 0) {
         const record = u.ualign?.record | 0;
         if (record >= 0) lines.push(you_are(pio));
         else lines.push(you_have(pio));
+        // C insight.c:1515-1518 — wizard alignment record after piousness.
+        const wiz = !!(game.flags?.wizard || game.flags?.debug);
+        if (wiz) {
+            lines.push(enlght_line_txt(
+                'Your alignment ', final ? 'was' : 'is', ` ${record}`, '',
+            ));
+        }
+        // C insight.c:1521-1522 — Invulnerable heads the resistances.
+        if (!!(u.Invulnerable || u.HInvulnerable || u.EInvulnerable
+            || (u.uprops?.[INVULNERABLE]?.intrinsic | 0)
+            || (u.uprops?.[INVULNERABLE]?.extrinsic | 0))) {
+            lines.push(you_are('invulnerable', from_what(INVULNERABLE)));
+        }
         // C attributes_enlightenment: Antimagic early among resistances
         // (from_what deferred). Cloak MR via setworn oc_oprop still deferred.
         const { ANTIMAGIC } = await import('./const.js');
@@ -5036,11 +5284,111 @@ export async function enlightenment(mode, final = 0) {
             || u.uprops?.[ANTIMAGIC]?.intrinsic
             || u.uprops?.[ANTIMAGIC]?.extrinsic
             || (u.uarmc && u.uarmc.otyp === CLOAK_MR));
-        if (antimagic) lines.push(you_are('magic-protected'));
-        // C: Poison_resistance after Antimagic / other resists (from_what
-        // deferred). Fire/cold/sleep/… resistance arms still deferred.
-        if (hero_Poison_resistance(u)) lines.push(you_are('poison resistant'));
-        if (Searching()) lines.push(you_have('automatic searching'));
+        if (antimagic) lines.push(you_are('magic-protected', from_what(ANTIMAGIC)));
+        // C insight.c:1525-1527 — Fire + item-fire before Cold.
+        if (hero_Fire_resistance(u)) {
+            lines.push(you_are('fire resistant', from_what(FIRE_RES)));
+        }
+        lines.push(...item_resistance_message_lines(
+            AD_FIRE, ' protected from fire', final,
+        ));
+        // C insight.c:1528-1530 — Cold + item-cold before Sleep.
+        if (hero_Cold_resistance(u)) {
+            lines.push(you_are('cold resistant', from_what(COLD_RES)));
+        }
+        lines.push(...item_resistance_message_lines(
+            AD_COLD, ' protected from cold', final,
+        ));
+        // C insight.c:1531-1532 — Sleep.
+        if (hero_Sleep_resistance(u)) {
+            lines.push(you_are('sleep resistant', from_what(SLEEP_RES)));
+        }
+        // C insight.c:1533-1535 — Disint + item-disn before Shock.
+        if (hero_Disint_resistance(u)) {
+            lines.push(you_are(
+                'disintegration resistant', from_what(DISINT_RES),
+            ));
+        }
+        lines.push(...item_resistance_message_lines(
+            AD_DISN, ' protected from disintegration', final,
+        ));
+        // C insight.c:1536-1538 — Shock + item-elec before Poison.
+        if (hero_Shock_resistance(u)) {
+            lines.push(you_are('shock resistant', from_what(SHOCK_RES)));
+        }
+        lines.push(...item_resistance_message_lines(
+            AD_ELEC, ' protected from electric shocks', final,
+        ));
+        // C insight.c:1540-1541 — Poison.
+        if (hero_Poison_resistance(u)) {
+            lines.push(you_are('poison resistant', from_what(POISON_RES)));
+        }
+        // C insight.c:1542-1548 — Acid (+ "temporarily ") + item-acid.
+        if (hero_Acid_resistance(u)) {
+            const acidPre = enl_temp_resist(ACID_RES) ? 'temporarily ' : '';
+            lines.push(you_are(`${acidPre}acid resistant`, from_what(ACID_RES)));
+        }
+        lines.push(...item_resistance_message_lines(
+            AD_ACID, ' protected from acid', final,
+        ));
+        // C insight.c:1549-1552 — Drain, Sick.
+        if (hero_Drain_resistance(u)) {
+            lines.push(you_are('level-drain resistant', from_what(DRAIN_RES)));
+        }
+        if (hero_Sick_resistance(u)) {
+            lines.push(you_are('immune to sickness', from_what(SICK_RES)));
+        }
+        // C insight.c:1553-1557 — Stone (+ "temporarily ").
+        if (hero_Stone_resistance(u)) {
+            const stonePre = enl_temp_resist(STONE_RES) ? 'temporarily ' : '';
+            lines.push(you_are(
+                `${stonePre}petrification resistant`, from_what(STONE_RES),
+            ));
+        }
+        // C insight.c:1558-1561 — Halluc ("resist"/"resisted").
+        if (hero_Halluc_resistance(u)) {
+            lines.push(enlght_line_txt(
+                You_, final ? 'resisted' : 'resist', ' hallucinations',
+                from_what(HALLUC_RES),
+            ));
+        }
+        // C insight.c:1562-1563 — uedibility.
+        if (u.uedibility) {
+            lines.push(enlght_line_txt(
+                You_, final ? 'could ' : 'can ',
+                'recognize detrimental food', '',
+            ));
+        }
+        // C insight.c:1571-1580 — See_invisible (Warn_of_mon deferred after).
+        if ((u.HSee_invisible | 0) || (u.ESee_invisible | 0)) {
+            if (!Blind()) {
+                lines.push(enlght_line_txt(
+                    You_, final ? 'saw' : 'see', ' invisible',
+                    from_what(SEE_INVIS),
+                ));
+            } else if (!((u.HBlinded | 0) & FROMOUTSIDE)) {
+                lines.push(enlght_line_txt(
+                    You_, final ? 'would have seen' : 'will see',
+                    ' invisible when not blind', '',
+                ));
+            } else {
+                lines.push(enlght_line_txt(
+                    You_, final ? 'would have seen' : 'would see',
+                    ' invisible if not blind', '',
+                ));
+            }
+        }
+        // C insight.c:1581-1584 — telepathic + warned before Searching
+        // (Warn_of_mon / Clairvoyant deferred between).
+        if (hero_Blind_telepat(u)) {
+            lines.push(you_are('telepathic', from_what(TELEPAT)));
+        }
+        if (hero_Warning(u)) {
+            lines.push(you_are('warned', from_what(WARNING)));
+        }
+        if (Searching()) {
+            lines.push(you_have('automatic searching', from_what(SEARCHING)));
+        }
         // C Infravision via set_uasmon FROMRACE; port falls back to race mons
         // like display.js hero_has_infravision (set_uasmon still deferred).
         let hasInfra = !!(u.HInfravision || u.EInfravision);
@@ -5049,10 +5397,10 @@ export async function enlightenment(mode, final = 0) {
             const racePm = game.urace?.mnum;
             if (racePm != null) hasInfra = infraFn(monsFn(racePm));
         }
-        if (hasInfra) lines.push(you_have('infravision'));
+        if (hasInfra) lines.push(you_have('infravision', from_what(INFRAVISION)));
         // C: Stealth after Infravision / appearance block (blocked-Stealth
         // "would be stealthy" arm deferred).
-        if (hero_Stealth(u)) lines.push(you_are('stealthy'));
+        if (hero_Stealth(u)) lines.push(you_are('stealthy', from_what(STEALTH)));
         // C: magic_negation → warded/guarded/protected
         const armpro = magic_negation_you();
         if (armpro > 0) {
@@ -5060,22 +5408,115 @@ export async function enlightenment(mode, final = 0) {
             const idx = Math.min(armpro, mc_types.length - 1);
             lines.push(you_are(mc_types[idx]));
         }
-        // C: Luck → lucky / unlucky
+        // C insight.c:1816-1832 — spell casting suit/robe (halfdmg deferred
+        // between; final disclosure → "was"). Skipped with no spells known.
+        {
+            const { spellid, NO_SPELL } = await import('./spell.js');
+            const { is_metallic } = await import('./mkobj.js');
+            if (spellid(0) > NO_SPELL) {
+                const suit = !!(u.uarm && is_metallic(u.uarm));
+                const robe = !!(u.uarmc
+                    && u.uarmc.otyp === objectNames.indexOf('ROBE'));
+                let castAdj = '';
+                if (suit) {
+                    castAdj = ' impaired by metallic armor'
+                        + (robe ? ', mitigated by your robe' : '');
+                } else if (robe) {
+                    castAdj = ' enhanced by wearing a robe';
+                }
+                if (castAdj) {
+                    lines.push(enlght_line_txt(
+                        'Your spell casting ', final ? 'was' : 'is', castAdj, '',
+                    ));
+                }
+            }
+        }
+        // C insight.c:1897-1906 — Fast / Reflecting / Lifesaved
+        // (shape-changers / Hate_silver / Free_action / Fixed_abil deferred).
+        if (Fast()) {
+            const fastAttr = Very_fast() ? 'very fast' : 'fast';
+            lines.push(you_are(fastAttr, from_what(FAST)));
+        }
+        if (hero_Reflecting(u)) {
+            lines.push(you_have('reflection', from_what(REFLECTING)));
+        }
+        if (hero_Lifesaved(u)) {
+            lines.push(enlght_line_txt(
+                'Your life ', final ? 'would have been' : 'will be', ' saved', '',
+            ));
+        }
+        // C insight.c:1909-1918 — Luck (+ wizard timeout-style record).
         const luck = (u.uluck | 0) + (u.moreluck | 0);
         if (luck) {
             const ltmp = Math.abs(luck);
             const pref = ltmp >= 10 ? 'extremely ' : ltmp >= 5 ? 'very ' : '';
-            lines.push(you_are(`${pref}${luck < 0 ? 'un' : ''}lucky`));
+            let luckAttr = `${pref}${luck < 0 ? 'un' : ''}lucky`;
+            if (wiz) luckAttr += ` (${luck})`;
+            lines.push(you_are(luckAttr));
+        } else if (wiz) {
+            lines.push(enlght_line_txt(
+                'Your luck ', final ? 'was' : 'is', ' zero', '',
+            ));
         }
-        // C attributes_enlightenment mortality: past-slot holds "are dead"
+        // C insight.c:1919-1922 — moreluck extra/reduced.
+        if ((u.moreluck | 0) > 0) {
+            lines.push(you_have('extra luck'));
+        } else if ((u.moreluck | 0) < 0) {
+            lines.push(you_have('reduced luck'));
+        }
+        // C insight.c:1923-1929 — luckstone carry (Bad/Good luck timeout).
+        {
+            const { carrying } = await import('./hack.js');
+            const luckstone = objectNames.indexOf('LUCKSTONE');
+            if (carrying(luckstone) || stone_luck(true)) {
+                const ltmp = stone_luck(false);
+                if (ltmp <= 0) {
+                    lines.push(enlght_line_txt(
+                        'Bad luck ', final ? 'did' : 'does',
+                        ' not time out for you', '',
+                    ));
+                }
+                if (ltmp >= 0) {
+                    lines.push(enlght_line_txt(
+                        'Good luck ', final ? 'did' : 'does',
+                        ' not time out for you', '',
+                    ));
+                }
+            }
+        }
+        // C insight.c:1931-1936 — god anger ("The Lady was angry with you").
+        {
+            const ugangr = u.ugangr | 0;
+            if (ugangr) {
+                let anger = ` ${ugangr > 6 ? 'extremely ' : ugangr > 3 ? 'very ' : ''}angry with you`;
+                if (wiz) anger += ` (${ugangr})`;
+                lines.push(enlght_line_txt(
+                    u_gname(game.urole, atype), final ? ' was' : ' is',
+                    anger, '',
+                ));
+            }
+        }
+        // C insight.c:1987-2000 — death disclosure (+ Nth-time suffix;
+        // final<2 survived-arms deferred: no corpus session reaches them).
         if (final === ENL_GAMEOVERDEAD) {
-            lines.push(enlght_line_txt(You_, 'are dead', '', ''));
+            const umort = u.umortality | 0;
+            let buf = '';
+            if (umort > 1) buf = ` (${umort}${ordin(umort)} time!)`;
+            lines.push(enlght_line_txt(You_, 'are dead', buf, ''));
         }
     }
 
     lines.push('');
     lines.push('Miscellaneous:');
     if ((mode & BASICENLIGHTENMENT) && final) {
+        // C insight.c:431-434 — debug/explore mode reminder (final path too).
+        const wmode = !!(game.flags?.wizard || game.flags?.debug);
+        const dmode = !!(game.flags?.explore || game.flags?.discover);
+        if (wmode || dmode) {
+            lines.push(you_are(
+                `running in ${wmode ? 'debug' : 'explore'} mode`,
+            ));
+        }
         const bonesOn = game.flags?.bones !== false;
         if (!bonesOn) {
             lines.push(you_have(
@@ -5086,6 +5527,15 @@ export async function enlightenment(mode, final = 0) {
                 You_,
                 final ? "didn't encounter" : "haven't encountered",
                 ' any bones levels',
+                '',
+            ));
+        } else {
+            // C insight.c:443-446 — you_have_X: past slot is "".
+            const nb = u.uroleplay.numbones | 0;
+            lines.push(enlght_line_txt(
+                You_,
+                final ? '' : 'have ',
+                `encountered ${nb} bones level${nb === 1 ? '' : 's'}`,
                 '',
             ));
         }
@@ -5284,6 +5734,11 @@ export async function doattributes(enl_mode = null) {
             dungeonLine,
             adventureLine,
         );
+        // C insight.c:647-651 — ^X (final=0) reads live midnight()/night(),
+        // not the gameover-captured iflags (those are for final only).
+        const { night: isNight, midnight: isMidnight } = await import('./calendar.js');
+        if (isMidnight()) lines.push('  It is the midnight hour.');
+        else if (isNight()) lines.push('  It is nighttime.');
         const moon = game.flags?.moonphase;
         if (moon === FULL_MOON || moon === NEW_MOON) {
             const phase = moon === FULL_MOON ? 'full' : 'new';
@@ -5437,7 +5892,10 @@ export async function doattributes(enl_mode = null) {
         const {
             from_what, Fast, Very_fast, Searching,
         } = await import('./attrib.js');
-        const { POISON_RES, STEALTH, FAST, TELEPORT_CONTROL } = await import('./const.js');
+        const {
+            POISON_RES, STEALTH, FAST, TELEPORT_CONTROL, SLEEP_RES, INFRAVISION,
+            COLD_RES, DISINT_RES, ACID_RES, DRAIN_RES, SICK_RES, STONE_RES,
+        } = await import('./const.js');
         const { can_pray } = await import('./pray.js');
         const o = (txt) => ` ${txt}`; // overlay body: enlght_line already has 1 space
         lines.push(' Attributes:');
@@ -5453,9 +5911,17 @@ export async function doattributes(enl_mode = null) {
                 'Your alignment ', 'is', ` ${record}`, '',
             )));
         }
-        // C attributes_enlightenment Resistances — Antimagic before Fire/
-        // Cold/…/Shock/Poison. Invulnerable + Cold/Sleep/Disint/Acid/
-        // Drain/Sick/Stone deferred.
+        // C attributes_enlightenment Resistances — Invulnerable, Antimagic,
+        // Fire/item-fire, Cold/item-cold, Sleep, Disint/item-disn,
+        // Shock/item-elec, Poison, Acid(+temp)/item-acid, Drain, Sick,
+        // Stone(+temp), Halluc, uedibility, in order (insight.c:1519-1563).
+        if (!!(u.Invulnerable || u.HInvulnerable || u.EInvulnerable
+            || (u.uprops?.[INVULNERABLE]?.intrinsic | 0)
+            || (u.uprops?.[INVULNERABLE]?.extrinsic | 0))) {
+            lines.push(o(enlght_line_txt(
+                'You ', 'are ', 'invulnerable', from_what(INVULNERABLE),
+            )));
+        }
         if (hero_Antimagic(u)) {
             lines.push(o(enlght_line_txt(
                 'You ', 'are ', 'magic-protected', from_what(ANTIMAGIC),
@@ -5466,7 +5932,31 @@ export async function doattributes(enl_mode = null) {
                 'You ', 'are ', 'fire resistant', from_what(FIRE_RES),
             )));
         }
-        // item_resistance AD_FIRE deferred (no fire-extrinsic on this peel)
+        lines.push(...item_resistance_message_lines(
+            AD_FIRE, ' protected from fire', 0, o,
+        ));
+        if (hero_Cold_resistance(u)) {
+            lines.push(o(enlght_line_txt(
+                'You ', 'are ', 'cold resistant', from_what(COLD_RES),
+            )));
+        }
+        lines.push(...item_resistance_message_lines(
+            AD_COLD, ' protected from cold', 0, o,
+        ));
+        if (hero_Sleep_resistance(u)) {
+            lines.push(o(enlght_line_txt(
+                'You ', 'are ', 'sleep resistant', from_what(SLEEP_RES),
+            )));
+        }
+        if (hero_Disint_resistance(u)) {
+            lines.push(o(enlght_line_txt(
+                'You ', 'are ', 'disintegration resistant',
+                from_what(DISINT_RES),
+            )));
+        }
+        lines.push(...item_resistance_message_lines(
+            AD_DISN, ' protected from disintegration', 0, o,
+        ));
         if (hero_Shock_resistance(u)) {
             lines.push(o(enlght_line_txt(
                 'You ', 'are ', 'shock resistant', from_what(SHOCK_RES),
@@ -5475,16 +5965,48 @@ export async function doattributes(enl_mode = null) {
         lines.push(...item_resistance_message_lines(
             AD_ELEC, ' protected from electric shocks', 0, o,
         ));
-        // Resistances — poison + Halluc_resistance (other resists deferred)
         if (hero_Poison_resistance(u)) {
             lines.push(o(enlght_line_txt(
                 'You ', 'are ', 'poison resistant', from_what(POISON_RES),
+            )));
+        }
+        if (hero_Acid_resistance(u)) {
+            const acidPre = enl_temp_resist(ACID_RES) ? 'temporarily ' : '';
+            lines.push(o(enlght_line_txt(
+                'You ', 'are ', `${acidPre}acid resistant`,
+                from_what(ACID_RES),
+            )));
+        }
+        lines.push(...item_resistance_message_lines(
+            AD_ACID, ' protected from acid', 0, o,
+        ));
+        if (hero_Drain_resistance(u)) {
+            lines.push(o(enlght_line_txt(
+                'You ', 'are ', 'level-drain resistant',
+                from_what(DRAIN_RES),
+            )));
+        }
+        if (hero_Sick_resistance(u)) {
+            lines.push(o(enlght_line_txt(
+                'You ', 'are ', 'immune to sickness', from_what(SICK_RES),
+            )));
+        }
+        if (hero_Stone_resistance(u)) {
+            const stonePre = enl_temp_resist(STONE_RES) ? 'temporarily ' : '';
+            lines.push(o(enlght_line_txt(
+                'You ', 'are ', `${stonePre}petrification resistant`,
+                from_what(STONE_RES),
             )));
         }
         // C: if (Halluc_resistance) enl_msg(You_, "resist", … " hallucinations", …)
         if (hero_Halluc_resistance(u)) {
             lines.push(o(enlght_line_txt(
                 'You ', 'resist', ' hallucinations', from_what(HALLUC_RES),
+            )));
+        }
+        if (u.uedibility) {
+            lines.push(o(enlght_line_txt(
+                'You ', 'can ', 'recognize detrimental food', '',
             )));
         }
         // Vision — Blind_telepat + Warning before Searching (See_invisible /
@@ -5503,6 +6025,19 @@ export async function doattributes(enl_mode = null) {
         if (Searching()) {
             lines.push(o(enlght_line_txt(
                 'You ', 'have ', 'automatic searching', from_what(SEARCHING),
+            )));
+        }
+        // C insight.c:1621-1622 — Infravision after Clairvoyant (deferred);
+        // same race-mons fallback as the gameover path above.
+        let hasInfra = !!((u.HInfravision | 0) || (u.EInfravision | 0));
+        if (!hasInfra) {
+            const { mons: monsFn, infravision: infraFn } = await import('./monsters.js');
+            const racePm = game.urace?.mnum;
+            if (racePm != null) hasInfra = infraFn(monsFn(racePm));
+        }
+        if (hasInfra) {
+            lines.push(o(enlght_line_txt(
+                'You ', 'have ', 'infravision', from_what(INFRAVISION),
             )));
         }
         // Appearance — Displaced before Stealth (insight.c); Aggravate/
@@ -5537,6 +6072,29 @@ export async function doattributes(enl_mode = null) {
             const idx = Math.min(armpro, mc_types.length - 1);
             lines.push(o(enlght_line_txt('You ', 'are ', mc_types[idx], '')));
         }
+        // C insight.c:1816-1832 — spell casting suit/robe (halfdmg deferred
+        // between; ^X final=0 → "is"). Skipped when no spells known yet.
+        {
+            const { spellid, NO_SPELL } = await import('./spell.js');
+            const { is_metallic } = await import('./mkobj.js');
+            if (spellid(0) > NO_SPELL) {
+                const suit = !!(u.uarm && is_metallic(u.uarm));
+                const robe = !!(u.uarmc
+                    && u.uarmc.otyp === objectNames.indexOf('ROBE'));
+                let castAdj = '';
+                if (suit) {
+                    castAdj = ' impaired by metallic armor'
+                        + (robe ? ', mitigated by your robe' : '');
+                } else if (robe) {
+                    castAdj = ' enhanced by wearing a robe';
+                }
+                if (castAdj) {
+                    lines.push(o(enlght_line_txt(
+                        'Your spell casting ', 'is', castAdj, '',
+                    )));
+                }
+            }
+        }
         if (Fast()) {
             const fastAttr = Very_fast() ? 'very fast' : 'fast';
             lines.push(o(enlght_line_txt(
@@ -5563,6 +6121,40 @@ export async function doattributes(enl_mode = null) {
             lines.push(o(enlght_line_txt('You ', 'are ', luckAttr, '')));
         } else if (wizard) {
             lines.push(o(enlght_line_txt('Your luck ', 'is', ' zero', '')));
+        }
+        // C insight.c:1919-1929 — moreluck + luckstone (in-progress tense).
+        if ((u.moreluck | 0) > 0) {
+            lines.push(o(enlght_line_txt('You ', 'have ', 'extra luck', '')));
+        } else if ((u.moreluck | 0) < 0) {
+            lines.push(o(enlght_line_txt('You ', 'have ', 'reduced luck', '')));
+        }
+        {
+            const { carrying } = await import('./hack.js');
+            const luckstone = objectNames.indexOf('LUCKSTONE');
+            if (carrying(luckstone) || stone_luck(true)) {
+                const ltmp = stone_luck(false);
+                if (ltmp <= 0) {
+                    lines.push(o(enlght_line_txt(
+                        'Bad luck ', 'does', ' not time out for you', '',
+                    )));
+                }
+                if (ltmp >= 0) {
+                    lines.push(o(enlght_line_txt(
+                        'Good luck ', 'does', ' not time out for you', '',
+                    )));
+                }
+            }
+        }
+        // C insight.c:1931-1936 — god anger ("X is angry with you").
+        {
+            const ugangr = u.ugangr | 0;
+            if (ugangr) {
+                let anger = ` ${ugangr > 6 ? 'extremely ' : ugangr > 3 ? 'very ' : ''}angry with you`;
+                if (wizard) anger += ` (${ugangr})`;
+                lines.push(o(enlght_line_txt(
+                    u_gname(game.urole, atype), ' is', anger, '',
+                )));
+            }
         }
         // Pray — in-progress only; wizard appends (ublesscnt)
         let prayAttr = `${(await can_pray(false)) ? '' : 'not '}safely pray`;
@@ -5608,27 +6200,69 @@ export async function doattributes(enl_mode = null) {
         )));
     }
 
-    // C tty enlightenment: 23 content rows + " (k of n)" footer per page.
-    // C dmore → xwaitforspace(quitchars): only space/CR/LF advance; ESC
-    // cancels remaining pages; other keys (e.g. ^O) bell and stay.
-    const PAGE = 23;
-    const pageCount = Math.max(1, Math.ceil(lines.length / PAGE));
-    for (let p = 0; p < pageCount; p++) {
-        const chunk = lines.slice(p * PAGE, (p + 1) * PAGE);
-        chunk.push(` (${p + 1} of ${pageCount})`);
-        const endRow = chunk.length - 1;
-        paint_overlay(chunk.map(t => ({ text: t, attr: 0 })), {
-            cursor: [9, endRow],
-        });
-        await flush_screen(1);
-        let cancelled = false;
+    // C wintty.c tty_end_menu + tty_display_nhwindow(NHW_MENU, H2344):
+    // maxcol = max(strlen(item)+2, morestr); lmax = min(52, rows-1) = 23;
+    // maxrow = npages>1 ? 24 : nitems+1; offx = min(40, 80-maxcol-1);
+    // fullscreen (clear + col 0) iff maxrow>=24 || !menu_overlay, else a
+    // corner overlay at offx with map/status kept. JS lines already carry
+    // the menu item's one leading space, so paint them verbatim at offx:
+    // C items are the line minus that space, and the NOMUX shadow capture
+    // omits the putchar(' '), landing the same grid cells. Corner ⟺
+    // single page (nitems ≤ 22): one paint + "(end) " morestr + wait.
+    // C dmore → xwaitforspace: only space/CR/LF advance; ESC cancels;
+    // other keys bell and stay (still a capture boundary).
+    const cItems = lines.map((t) => (t.startsWith(' ') ? t.slice(1) : t));
+    const { offx } = nhw_menu_geometry(cItems, '(end) ');
+    const waitMenuKey = async () => {
         for (;;) {
             const c = await nhgetch();
-            if (c === 27) { cancelled = true; break; }
-            if (c === 32 || c === 13 || c === 10) break;
+            if (c === 27) return true;
+            if (c === 32 || c === 13 || c === 10) return false;
             // tty_nhbell — stay on this page (still a capture boundary)
         }
-        if (cancelled) break;
+    };
+    if (offx === 0) {
+        const PAGE = 23;
+        const pageCount = Math.max(1, Math.ceil(lines.length / PAGE));
+        for (let p = 0; p < pageCount; p++) {
+            const chunk = lines.slice(p * PAGE, (p + 1) * PAGE);
+            chunk.push(` (${p + 1} of ${pageCount})`);
+            const endRow = chunk.length - 1;
+            paint_overlay(chunk.map(t => ({ text: t, attr: 0 })), {
+                cursor: [9, endRow],
+            });
+            await flush_screen(1);
+            if (await waitMenuKey()) break;
+        }
+    } else {
+        const disp = display();
+        game._menu_overlay = true;
+        // C corner branch clears WIN_MESSAGE only (row 0); map/status stay.
+        for (let c = 0; c < disp.cols; c++) {
+            disp.setCell(c, 0, ' ', NO_COLOR, 0);
+        }
+        for (let r = 0; r < lines.length; r++) {
+            const text = lines[r];
+            // C cl_end from offx on every menu row (blank items clear too).
+            for (let c = offx; c < disp.cols; c++) {
+                disp.setCell(c, r, ' ', NO_COLOR, 0);
+            }
+            for (let i = 0; i < text.length && offx + i < disp.cols; i++) {
+                disp.setCell(offx + i, r, text[i], NO_COLOR, 0);
+            }
+        }
+        // C dmore single-page morestr "(end) " + cursor after it.
+        const moreRow = lines.length;
+        for (let c = offx; c < disp.cols; c++) {
+            disp.setCell(c, moreRow, ' ', NO_COLOR, 0);
+        }
+        const moreStr = ' (end)';
+        for (let i = 0; i < moreStr.length; i++) {
+            disp.setCell(offx + i, moreRow, moreStr[i], NO_COLOR, 0);
+        }
+        disp.setCursor(offx + moreStr.length + 1, moreRow);
+        await flush_screen(1);
+        await waitMenuKey();
     }
     clear_overlay();
     await docrt();

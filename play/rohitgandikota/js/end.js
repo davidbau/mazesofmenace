@@ -838,31 +838,12 @@ async function disclose(how, taken) {
             : 'Do you want your possessions identified?';
         c = ask ? await tty_yn_function(qbuf, 'ynq', defquery) : defquery;
         if (c === 'y') {
-            const { display_pickinv_entries } = await import('./invent.js');
-            const { tty_start_menu, tty_add_menu, tty_end_menu,
-                    tty_next_page } = await import('./tty/wintty.js');
-            const { MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE } =
-                await import('./const.js');
-            const { NO_COLOR } = await import('./terminal.js');
-            const { nhgetch } = await import('./input.js');
-            const { docrt } = await import('./display.js');
-            const win = tty_create_nhwindow(NHW_MENU);
-            tty_start_menu(win, MENU_BEHAVE_STANDARD);
-            for (const item of display_pickinv_entries()) {
-                tty_add_menu(win, item.glyphinfo ?? null,
-                             item.heading ? 0 : 1,
-                             item.invlet || 0, 0, 0, NO_COLOR, item.str,
-                             MENU_ITEMFLAGS_NONE);
-            }
-            tty_end_menu(win, null);
-            await tty_display_nhwindow(win);
-            let key = await nhgetch();
-            while (String.fromCharCode(key) !== '\x1b'
-                   && tty_next_page(win))
-                key = await nhgetch();
-            tty_destroy_nhwindow(win);
-            await docrt();
-            /* container_contents: no dead hero carries a container yet */
+            /* caller has already ID'd everything; we pass 'want_reply=True'
+               to force display_pickinv() to avoid using WIN_INVENT */
+            (game.iflags ||= {}).force_invmenu = false;
+            const { display_inventory } = await import('./invent.js');
+            await display_inventory(null, true);
+            await container_contents(game.invent, true, true, false);
         }
         if (c === 'q')
             game.done_stopprint = (game.done_stopprint | 0) + 1;

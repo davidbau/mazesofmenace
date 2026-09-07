@@ -2142,7 +2142,7 @@ export async function use_misc(mtmp) {
         }
         await m_useup(mtmp, obj);
         const { grow_up } = await import('./makemon.js');
-        return grow_up(mtmp, null) ? 2 : 1;
+        return (await grow_up(mtmp, null)) ? 2 : 1;
     }
     case MUSE_WAN_SPEED_MONSTER: {
         if (!obj || obj.spe < 1)

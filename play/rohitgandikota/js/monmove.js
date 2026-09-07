@@ -16,7 +16,7 @@ import { in_rooms } from './hack.js';
 import { Is_special } from './dungeon.js';
 import { game } from './gstate.js';
 import { mpickstuff, mondied, wake_nearto, wake_msg, wakeup,
-         monkilled } from './mon.js';
+         monkilled, meatcorpse } from './mon.js';
 import { sengr_at, wipe_engr_at } from './engrave.js';
 import { autoreturn_weapon } from './weapon.js';
 import { MON_WEP, mon_offmap } from './monst.js';
@@ -98,6 +98,9 @@ import { mon_wield_item } from './weapon.js';
 import { mattacku, gazemu } from './mhitu.js';
 import { noattacks } from './mondata.js';
 import { helpless } from './monst.js';
+import { is_mines_prize, is_soko_prize } from './obj.js';
+import { costly_spot } from './shk.js';
+import { can_touch_safely } from './mon.js';
 import { is_axe, is_pick } from './mon.js';
 import { MSOUND } from './monst_data.js';
 import { pline_mon } from './pline.js';
@@ -460,7 +463,7 @@ function m_search_items(mtmp, goal, st) {
                 /* don't get stuck circling an object underneath an immobile
                    or hidden monster */
                 const mtoo = m_at(xx, yy);
-                if (mtoo && (mtoo.mundetected
+                if (mtoo && (helpless(mtoo) || mtoo.mundetected
                              || (mtoo.mappearance && !mtoo.iswiz)
                              || !game.mons[mtoo.mnum].mmove))
                     continue;
@@ -484,6 +487,7 @@ function m_search_items(mtmp, goal, st) {
                 if (!clear_path(omx, omy, xx, yy))
                     continue;
 
+                const costly = costly_spot(xx, yy);
                 /* look through the items on this location */
                 for (const otmp of objects_at(xx, yy)) {
                     /* monsters may pick rocks up, but won't go out of their
@@ -491,9 +495,16 @@ function m_search_items(mtmp, goal, st) {
                     if (otmp.otyp === ONAMES.ROCK)
                         continue;
 
+                    /* avoid special items; once hero picks them up, they'll
+                       cease being special */
+                    if (is_mines_prize(otmp) || is_soko_prize(otmp))
+                        continue;
+                    if (costly && !otmp.no_charge)
+                        continue;
                     if (((mon_would_take_item(mtmp, otmp)
                           && (can_carry(mtmp, otmp) > 0))
-                         || mon_would_consume_item(mtmp, otmp))) {
+                         || mon_would_consume_item(mtmp, otmp))
+                        && can_touch_safely(mtmp, otmp)) {
                         minr = distmin(omx, omy, xx, yy);
                         goal.x = otmp.ox;
                         goal.y = otmp.oy;
@@ -1722,7 +1733,7 @@ export async function m_move(mtmp, after) {
     /* src/monmove.c:1891 — the pickup branch. The rn2(10) fires for every
        PEACEFUL monster whether or not it then picks anything up. */
     let getitems = false;
-    if ((!mtmp.mpeaceful || !rn2(10))) {
+    if ((!mtmp.mpeaceful || !rn2(10)) && !IRL_const(game.u.uz)) {
         const in_line = lined_up(mtmp)
             && (distmin(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy)
                 <= (throws_rocks(game.mons[game.u.umonnum]) ? 20
@@ -2133,8 +2144,11 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, can_tunnel) {
             }
 
             /* Maybe a purple worm ate a corpse */
-            if (corpse_eater(ptr))
-                note_unported('postmov:meatcorpse');
+            if (corpse_eater(ptr)) {
+                const etmp = await meatcorpse(mtmp);
+                if (etmp >= 2)
+                    return etmp; /* it died or got forced off the level */
+            }
 
             if (await mpickstuff(mtmp))
                 mmoved = MMOVE_DONE;

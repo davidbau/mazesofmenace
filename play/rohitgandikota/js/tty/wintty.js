@@ -588,6 +588,21 @@ export function menu_page_items(window, page) {
 // win/tty/wintty.c tty_display_nhwindow() — menu/text case.
 // Renders the first page. Paging on subsequent keys is driven by the caller
 // consuming keys, matching how C's dmore() blocks inside the window.
+// win/tty/wintty.c tty_wait_synch()
+export async function tty_wait_synch() {
+    /* we just need to make sure all windows are synch'd */
+    /* the `!ttyDisplay || ttyDisplay->rawprint` arm calls getret(): raw
+       printing is not used once the game is up, and it is not modelled */
+    /* tty_display_nhwindow(WIN_MAP, FALSE): the NHW_MAP arm only ends any
+       pending glyph output, and this port never buffers map writes */
+    if (game.ttyDisplay?.inmore) {
+        const { addtopl } = await import('./topl.js');
+        addtopl('--More--');
+    }
+    /* the `inread > program_state.gameover` arm re-shows an interrupted
+       prompt; interrupts do not exist in this port */
+}
+
 export async function tty_display_nhwindow(window) {
     const cw = windows[window];
     const display = game?.nhDisplay;
@@ -603,8 +618,14 @@ export async function tty_display_nhwindow(window) {
                tty_display_nhwindow(WIN_MESSAGE, TRUE);
        That recursive call is the NHW_MESSAGE arm, i.e. more(). It is what
        puts the --More-- on "Please move the cursor to ..." while the getpos
-       tip window waits behind it. */
-    if (game._toplin === TOPLINE_NEED_MORE)
+       tip window waits behind it.
+
+       The recursive call is subject to the guard at the top of the C
+       function, `if (cw->flags & WIN_CANCEL) return;`, and for the message
+       window WIN_CANCEL is the same bit as WIN_STOP. So after an ESC at the
+       previous --More-- the pending message is neither prompted for nor
+       acknowledged: the menu's own clearing below simply erases it. */
+    if (game._toplin === TOPLINE_NEED_MORE && !game._win_stop)
         await more();
 
     /* wintty.c tty_display_nhwindow(), the NHW_MENU/NHW_TEXT arm: a menu

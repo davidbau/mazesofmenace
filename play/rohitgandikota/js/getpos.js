@@ -11,7 +11,7 @@
 // window the first time the picker is entered.
 
 import { game } from './gstate.js';
-import { COLNO, ROWNO } from './const.js';
+import { COLNO, ROWNO, TER_MON, TER_OBJ, TER_MAP, TER_DETECT } from './const.js';
 import { sgn, isok } from './hacklib.js';
 import { nhgetch } from './input.js';
 import { pline, pline_nohistory_no_cursor, flush_screen, glyph_at,
@@ -113,37 +113,56 @@ async function getpos_help(force, goal) {
     put("(or prefix normal move with 'G' or 'g' to fast-move)");
     put("Or enter a background symbol (ex. '<').");
     put("Use '@' to move the cursor on yourself.");
-    pair('m', 'M', 'next/previous monster', 'monsters');
+    /* src/getpos.c:198 the #terrain views (iflags.terrainmode) hide the
+       target classes they filtered out, and TER_DETECT hides the menu keys */
+    const terrainmode = game.iflags?.terrainmode | 0;
+    if (!terrainmode || (terrainmode & TER_MON) !== 0)
+        pair('m', 'M', 'next/previous monster', 'monsters');
+    /* src/getpos.c:204 "a monster" goals goto skip_non_mons, which sits
+       inside the !terrainmode block below: they skip every line down to
+       the pick-key text and then print that text unconditionally */
     if (goal !== 'a monster') {
-        pair('o', 'O', 'next/previous object', 'objects');
-        pair('d', 'D', 'next/previous door or doorway', 'doors or doorways');
-        if (usemenu) {
-            let shortFilter = filter.replace('this area', 'area');
-            put(`Use 'x'/'X' to get a menu of locations next to unexplored locations${shortFilter}.`);
-        } else {
-            put(`Use 'x'/'X' to move the cursor next to an unexplored location${filter}.`);
+        if (!terrainmode || (terrainmode & TER_OBJ) !== 0)
+            pair('o', 'O', 'next/previous object', 'objects');
+        if (!terrainmode || (terrainmode & TER_MAP) !== 0) {
+            pair('d', 'D', 'next/previous door or doorway', 'doors or doorways');
+            if (usemenu) {
+                let shortFilter = filter.replace('this area', 'area');
+                put(`Use 'x'/'X' to get a menu of locations next to unexplored locations${shortFilter}.`);
+            } else {
+                put(`Use 'x'/'X' to move the cursor next to an unexplored location${filter}.`);
+            }
+            pair('a', 'A', 'anything interesting', 'anything interesting');
         }
-        pair('a', 'A', 'anything interesting', 'anything interesting');
+        put(`Use '*' to change fast-move mode to ${nextmode}.`);
+        if (!terrainmode || (terrainmode & TER_DETECT) === 0) {
+            put("Use '!' to toggle menu listing for possible targets.");
+            put("Use '\"' to change the mode of limiting possible targets.");
+        }
+        if (!terrainmode) {
+            if (getpos_getvalid)
+                put("Use 'z' or 'Z' to move to valid locations.");
+            put("Use '#' to toggle automatic description.");
+            /* src/getpos.c:257 the cmdassist whatis_coord hint is formatted
+               into sbuf but never putstr'd, so it prints nothing */
+        }
     }
-    put(`Use '*' to change fast-move mode to ${nextmode}.`);
-    put("Use '!' to toggle menu listing for possible targets.");
-    put("Use '\"' to change the mode of limiting possible targets.");
-    if (getpos_getvalid)
-        put("Use 'z' or 'Z' to move to valid locations.");
-    put("Use '#' to toggle automatic description.");
-    /* disgusting hack; the alternate selection characters work for any
-       getpos call, but only matter for dowhatis (and doquickwhatis,
-       also for dotherecmdmenu's simulated mouse) */
-    const doing_what_is = (goal === what_is_a_location);
-    const kbuf = doing_what_is ? "'.' or ',' or ';' or ':'" : "'.'";
-    put(`Type a ${kbuf} when you are at the right place.`);
-    if (doing_what_is) {
-        put("  ':' describe current spot, show 'more info', move to another spot.");
-        put(`  '.' describe current spot,${
-            (game.flags?.help !== false && !force) ? " prompt if 'more info'," : ''
-            } move to another spot;`);
-        put("  ',' describe current spot, move to another spot;");
-        put("  ';' describe current spot, stop looking at things;");
+    if (goal === 'a monster' || !terrainmode) {
+        /* skip_non_mons: */
+        /* disgusting hack; the alternate selection characters work for any
+           getpos call, but only matter for dowhatis (and doquickwhatis,
+           also for dotherecmdmenu's simulated mouse) */
+        const doing_what_is = (goal === what_is_a_location);
+        const kbuf = doing_what_is ? "'.' or ',' or ';' or ':'" : "'.'";
+        put(`Type a ${kbuf} when you are at the right place.`);
+        if (doing_what_is) {
+            put("  ':' describe current spot, show 'more info', move to another spot.");
+            put(`  '.' describe current spot,${
+                (game.flags?.help !== false && !force) ? " prompt if 'more info'," : ''
+                } move to another spot;`);
+            put("  ',' describe current spot, move to another spot;");
+            put("  ';' describe current spot, stop looking at things;");
+        }
     }
     if (!force)
         put("Type Space or Escape when you're done.");

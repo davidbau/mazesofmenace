@@ -13,6 +13,7 @@ import { cansee, couldsee, vision_recalc, vision_off_newsym_gbuf } from './visio
 import { objects_at } from './mkobj.js';
 import {
     mcolors, mons, pmnames, infravision, infravisible, mindless, NUMMONS,
+    is_flyer,
 } from './monsters.js';
 import { rn2_on_display_rng } from './rng.js';
 import {
@@ -74,6 +75,14 @@ import {
     OBJ_FLOOR,
     UNENCUMBERED,
     NOT_HUNGRY,
+    SICK,
+    STONED,
+    STRANGLED,
+    SLIMED,
+    SICK_VOMITABLE,
+    SICK_NONVOMITABLE,
+    LEVITATION,
+    FLYING,
     WARNCOUNT,
     def_warnsyms,
     TELEPAT,
@@ -132,6 +141,7 @@ import { see_wsegs, worm_known, level_mon_at } from './worm.js';
 import { SoundSpeak } from './sndprocs.js';
 import { msgtype_type } from './options.js';
 import { mapxy_valid } from './getpos.js';
+import { mungspaces } from './getline.js';
 
 const CORPSE_OTYP = objectNames.indexOf('CORPSE');
 const STATUE_OTYP = objectNames.indexOf('STATUE');
@@ -5520,65 +5530,126 @@ export function describe_level(dflgs = 1) {
     return buf;
 }
 
-// C ref: botl.c do_statusline2 — describe_level(dloc,1) then `$:` gold;
-// Upolyd → mh/mhmax + HD:mlevel (no Xp); else Xp:/T: via showexp/time;
-// hunger then enc_stat then Blind…Conf…Hallu…Lev/Fly then Ride.
-// Named omissions: Stone/Slime/Strngl/Sick (before hunger);
-// Halluc_resistance; AC %-2d pad polish.
+// C ref: botl.c do_statusline2 `:100–250` — dloc/hlth/expr/tmmv pieces then
+// the cond list in C order `:170–206` (Stone/Slime/Strngl/Sick before
+// hunger, then hunger, enc, Blind/Deaf/Stun/Conf/Hallu/Lev/Fly/Ride),
+// then the COLNO reorder + mungspaces `:212–250`.
+// Named omissions: flags.showvers/status_version (`:208–211`, vers="");
+// MAXCO panic (`:230–235`, unreachable — last-resort order + mungspaces);
+// C `%-2d` gold/AC pads (display-length only; the tty renders fit lines
+// single-spaced, which the suite matches — D-0500 precedent).
 function _statusLine2() {
     const u = game.u;
     if (!u) return '';
+    // C do_statusline2 `:113–114` — no status while map output suppressed.
+    if (suppress_map_output()) return '';
     const flags = game.flags || {};
     const polyd = Upolyd(u);
-    // C botl.c: Upolyd ? mh/mhmax : uhp/uhpmax; hp < 0 → 0
+    // C botl.c `:141–149` — Upolyd ? mh/mhmax : uhp/uhpmax; hp < 0 → 0;
+    // min(hp, 9999) guards the field widths (Pw likewise).
     let hp = polyd ? (u.mh | 0) : (u.uhp | 0);
     if (hp < 0) hp = 0;
     if (hp > 9999) hp = 9999;
     let hpmax = polyd ? (u.mhmax | 0) : (u.uhpmax | 0);
     if (hpmax > 9999) hpmax = 9999;
-    // C: describe_level(dloc, 1) includes trailing space; gold via
-    // showsyms[COIN_CLASS] (Rogue set → '*', else '$'; invis → '$').
+    let uen = u.uen | 0;
+    if (uen > 9999) uen = 9999;
+    let uenmax = u.uenmax | 0;
+    if (uenmax > 9999) uenmax = 9999;
+    // C botl.c `:130–138` — describe_level(dloc, 1) plus gold; money < 0
+    // → 0, min(money, 999999L); '$' when in_dumplog/invis_goldsym else the
+    // gold glyph. JS gold rides the _goldCount cache (do.js); dx is 0 here
+    // (no `\GXXXXNNNN` glyph encoding on this path).
     const goldch = game.iflags?.invis_goldsym ? '$' : (game._goldsym || '$');
-    let s = `${describe_level(1)}${goldch}:${game._goldCount || 0} HP:${hp}(${hpmax}) Pw:${u.uen || 0}(${u.uenmax || 0}) AC:${u.uac ?? 10}`;
+    let gold = game._goldCount | 0;
+    if (gold < 0) gold = 0;
+    if (gold > 999999) gold = 999999;
+    const dloc = `${describe_level(1)}${goldch}:${gold}`;
+    const hlth = `HP:${hp}(${hpmax}) Pw:${uen}(${uenmax}) AC:${u.uac ?? 10}`;
+    let expr;
     if (polyd) {
         const mdat = mons(u.umonnum | 0);
-        s += ` HD:${mdat?.mlevel | 0}`;
+        expr = `HD:${mdat?.mlevel | 0}`;
     } else {
-        s += ` Xp:${u.ulevel || 1}`;
-        if (flags.showexp) s += `/${u.uexp || 0}`;
+        expr = `Xp:${u.ulevel || 1}`;
+        if (flags.showexp) expr += `/${u.uexp || 0}`;
     }
-    if (flags.time) s += ` T:${game.moves || 1}`;
-    // C do_statusline2: u.uhs != NOT_HUNGRY → hu_stat before enc_stat
+    const tmmv = flags.time ? `T:${game.moves || 1}` : '';
+    // C botl.c `:165–186` — fatal four first. JS keeps these flat
+    // (make_stoned/make_slimed/make_sick) or in uprops[].intrinsic
+    // (#wizintrinsic STRANGLED via incr_prop_timeout), so read both like
+    // timeout.js intr_bits; Strangled also covers the H/E flat mirrors.
+    let cond = '';
+    if ((u.Stoned | 0) || (u.uprops?.[STONED]?.intrinsic | 0)) cond += ' Stone';
+    if ((u.Slimed | 0) || (u.uprops?.[SLIMED]?.intrinsic | 0)) cond += ' Slime';
+    if ((u.Strangled | 0) || (u.HStrangled | 0) || (u.EStrangled | 0)
+        || (u.uprops?.[STRANGLED]?.intrinsic | 0)
+        || (u.uprops?.[STRANGLED]?.extrinsic | 0)) cond += ' Strngl';
+    if ((u.Sick | 0) || (u.uprops?.[SICK]?.intrinsic | 0)) {
+        if ((u.usick_type | 0) & SICK_VOMITABLE) cond += ' FoodPois';
+        if ((u.usick_type | 0) & SICK_NONVOMITABLE) cond += ' TermIll';
+    }
+    // C do_statusline2 `:187–188` — hu_stat before enc_stat.
     const uhs = u.uhs ?? NOT_HUNGRY;
     if (uhs !== NOT_HUNGRY) {
-        s += ` ${HU_STAT[uhs] || ''}`;
+        cond += ` ${HU_STAT[uhs] || ''}`;
     }
-    // C do_statusline2: enc_stat then Blind/Deaf/Stun/Conf/Hallu/Lev/Fly/Ride
-    // (Stone/Slime/Strngl/Sick before hunger deferred)
+    // C do_statusline2 `:189–206` — enc_stat then Blind…Ride.
     const cap = near_capacity();
     if (cap > UNENCUMBERED) {
-        s += ` ${ENC_STAT[cap] || ''}`;
+        cond += ` ${ENC_STAT[cap] || ''}`;
     }
-    // C youprop.h Blind / Deaf / Stunned / Confusion / Hallucination
-    if (hero_Blind()) s += ' Blind';
+    // C youprop.h Blind / Deaf / Stunned / Confusion.
+    if (hero_Blind()) cond += ' Blind';
     if ((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf) {
-        s += ' Deaf';
+        cond += ' Deaf';
     }
-    if ((u.HStun | 0) || u.Stunned) s += ' Stun';
-    // C: Confusion ≡ HConfusion
-    if ((u.HConfusion | 0) || u.Confusion) s += ' Conf';
-    if ((u.HHallucination | 0) || u.Hallucination) s += ' Hallu';
-    // C: Levitation / Flying mutually exclusive via props; Ride is not
+    if ((u.HStun | 0) || u.Stunned) cond += ' Stun';
+    if ((u.HConfusion | 0) || u.Confusion) cond += ' Conf';
+    // C youprop.h Hallucination — HHallucination && !Halluc_resistance.
+    if (Hallucination()) cond += ' Hallu';
+    // C youprop.h Levitation — (H||E) && !B (plus the flat JS mirror).
     if (u.Levitation
-        || (((u.HLevitation | 0) || (u.ELevitation | 0))
-            && !(u.BLevitation | 0))) {
-        s += ' Lev';
+        || (((u.HLevitation | 0) || (u.ELevitation | 0)
+            || (u.uprops?.[LEVITATION]?.intrinsic | 0)
+            || (u.uprops?.[LEVITATION]?.extrinsic | 0))
+            && !((u.BLevitation | 0) || (u.uprops?.[LEVITATION]?.blocked | 0)))) {
+        cond += ' Lev';
     }
+    // C youprop.h Flying — (H||E||steed is_flyer) && !B.
     if (u.Flying
-        || (((u.HFlying | 0) || (u.EFlying | 0)) && !(u.BFlying | 0))) {
-        s += ' Fly';
+        || ((((u.HFlying | 0) || (u.EFlying | 0)
+            || (u.uprops?.[FLYING]?.intrinsic | 0)
+            || (u.uprops?.[FLYING]?.extrinsic | 0))
+            || !!(u.usteed && is_flyer(u.usteed.data)))
+            && !((u.BFlying | 0) || (u.uprops?.[FLYING]?.blocked | 0)))) {
+        cond += ' Fly';
     }
-    if (u.usteed) s += ' Ride';
+    if (u.usteed) cond += ' Ride';
+    // C botl.c `:212–250` — fit keeps dloc hlth expr tmmv cond order;
+    // overflow parks tmmv (then expr, then dloc) last for truncation.
+    // vers is "" (showvers omit above); empty tmmv appends nothing (the
+    // tty renders fit lines single-spaced). Overflow arms mungspaces.
+    const vers = '';
+    const dln = dloc.length;
+    const hln = hlth.length;
+    const xln = expr.length;
+    const tln = tmmv.length;
+    const cln = cond.length;
+    const vrn = 0;
+    let s;
+    if (dln + 1 + hln + 1 + xln + 1 + tln + 1 + cln + vrn <= COLNO) {
+        s = dloc + ' ' + hlth + ' ' + expr + (tmmv ? ' ' + tmmv : '') + cond + vers;
+    } else if (dln + 1 + hln + 1 + xln + 1 + cln <= COLNO) {
+        s = dloc + ' ' + hlth + ' ' + expr + cond + (tmmv ? ' ' + tmmv : '') + vers;
+        s = mungspaces(s);
+    } else if (dln + 1 + hln + 1 + cln <= COLNO) {
+        s = dloc + ' ' + hlth + cond + ' ' + expr + (tmmv ? ' ' + tmmv : '') + vers;
+        s = mungspaces(s);
+    } else {
+        s = hlth + cond + ' ' + dloc + ' ' + expr + (tmmv ? ' ' + tmmv : '') + vers;
+        s = mungspaces(s);
+    }
     return s;
 }
 

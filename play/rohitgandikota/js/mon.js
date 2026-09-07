@@ -27,7 +27,7 @@ import { kill_egg } from './timeout.js';
 import { Has_contents } from './obj.js';
 import { dead_species } from './mkobj.js';
 import { LOW_PM } from './const.js';
-import { is_vampire, is_shapeshifter } from './mondata.js';
+import { is_vampire, is_shapeshifter, vegan } from './mondata.js';
 import { can_hide_under_obj } from './monmove.js';
 import { u_at, OBJ_AT } from './const.js';
 import { mon_explodes } from './explode.js';
@@ -72,7 +72,7 @@ import { obj_resists, destroy_items, resist } from './zap.js';
 import { mksobj_at, splitobj, mkobj, place_object, clear_splitobjs, mkgold,
          undead_to_corpse, zombie_form, discard_minvent,
          add_to_container } from './mkobj.js';
-import { weight, update_inventory } from './invent.js';
+import { weight, update_inventory, nxtobj } from './invent.js';
 import { newsym, canseemon, canspotmon, display_nhwindow_message, pline,
          see_monsters, unmap_invisible, flash_glyph_at } from './display.js';
 import { rn1, rn2, rnd, rnl, d, rn2_on_display_rng } from './rng.js';
@@ -299,11 +299,8 @@ export async function movemon() {
         if (mtmp.mhp <= 0) continue;   /* died earlier in this sweep */
         if (await movemon_singlemon(mtmp)) break;
     }
-    /* src/mon.c:1332. Object light sources can move with their monster
-       carriers. Monster-source parity still depends on missing movement
-       cases, so only enable the fully resolved object arm for now. */
-    if (any_light_source(LS_OBJECT))
-        game.vision_full_recalc = 1;
+    if (any_light_source())
+        game.vision_full_recalc = 1; /* in case a mon moved w/ a light source */
     clear_splitobjs();
     dmonsfree();
 
@@ -992,6 +989,70 @@ export function healmon(mtmp, amt, overheal) {
             mtmp.mhpmax = mtmp.mhp;
     }
     return mtmp.mhp - oldhp;
+}
+
+// src/mon.c:1656 meatcorpse() — for purple worms and other voracious monsters
+export async function meatcorpse(mtmp) {
+    const original_ptr = game.mons[mtmp.mnum];
+    let ptr;
+    const x = mtmp.mx, y = mtmp.my;
+
+    /* if a pet, eating is handled separately, in dog.c */
+    if (mtmp.mtame)
+        return 0;
+
+    /* skips past any globs */
+    for (let otmp = sobj_at(ONAMES.CORPSE, x, y); otmp;
+         /* won't get back here if otmp is split or gets used up */
+         otmp = nxtobj(otmp, ONAMES.CORPSE, true)) {
+
+        const corpsepm = game.mons[otmp.corpsenm];
+        /* skip some corpses */
+        if (vegan(corpsepm) /* ignore veggy corpse even if omnivorous */
+            /* don't eat harmful corpses */
+            || (flesh_petrifies(corpsepm) && !resists_ston(mtmp)))
+            continue;
+        if (is_rider(corpsepm)) {
+            const revived_it = await revive_corpse(otmp);
+
+            newsym(x, y); /* corpse is gone; mtmp might be too so do this now
+                             since we're bypassing the bottom of the loop */
+            if (!revived_it)
+                continue; /* revival failed? if so, corpse is gone */
+            /* Successful Rider revival; unlike skipped corpses, don't
+               just move on to next corpse as if nothing has happened. */
+            break;
+        }
+
+        if (otmp.quan > 1)
+            otmp = splitobj(otmp, 1);
+
+        if (cansee(x, y) && canseemon(mtmp)) {
+            /* call distant_name() for its possible side-effects even if
+               the result won't be printed */
+            const otmpname = distant_name(otmp, doname);
+
+            if (game.flags.verbose)
+                await pline_mon(mtmp, `${Monnam(mtmp)} eats ${otmpname}!`);
+        } else {
+            /* Soundeffect(se_masticating_sound, 50); */
+            if (game.flags.verbose)
+                await You_hear('a masticating sound.');
+        }
+
+        await m_consume_obj(mtmp, otmp);
+        /* in case it polymorphed or died */
+        ptr = DEADMONSTER(mtmp) ? null : game.mons[mtmp.mnum];
+        if (ptr !== original_ptr)
+            return !ptr ? 2 : 1;
+
+        /* Engulf & devour is instant, so don't set meating */
+        if (mtmp.minvis)
+            newsym(x, y);
+
+        return 1;
+    }
+    return 0;
 }
 
 // src/mon.c:1726 mon_give_prop(); give an intrinsic to a monster

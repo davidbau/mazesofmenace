@@ -17,7 +17,7 @@ import { new_light_source, LS_OBJECT, LS_MONSTER } from './light.js';
 import { ARM_BONUS } from './do_wear.js';
 import { get_wormno, initworm, count_wsegs, place_worm_tail_randomly, worm_wire } from './worm.js';
 import { newcham, mon_wire_cham } from './mon.js';
-import { weight as weight_fn, sobj_at } from './invent.js';
+import { weight as weight_fn, sobj_at, update_inventory } from './invent.js';
 import { In_mines, Is_rogue_level, MIGR_TO_SPECIES, OBJ_FREE,
          W_SADDLE, has_mgivenname, A_LAWFUL, ONAME_RANDOM } from './const.js';
 import { Levitation, Flying, Protection_from_shape_changers } from './youprop.js';
@@ -37,27 +37,28 @@ import {
     MMFLAGS, LIMITS, STRAT, GROWNUPS,
 } from './monst_data.js';
 import { ONAMES, OCLASSES, SKILLS, MATERIALS } from './objects_data.js';
-import { depth } from './dungeon.js';
+import { depth, In_hell } from './dungeon.js';
+import { mon_learns_traps } from './trap.js';
 import { next_ident, mksobj, mkobj, place_object, curse, rnd_class, can_be_hatched,
          set_corpsenm, add_to_container } from './mkobj.js';
 import { sgn, isok, distu } from './hacklib.js';
 import { get_shop_item } from './shknam.js';
-import { canseemon, canspotmon, newsym } from './display.js';
+import { canseemon, canspotmon, newsym, pline } from './display.js';
 import { sensemon } from './display.js';
 import { M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, MM_NOEXCLAM,
          MHID_ARTICLE, MHID_ALTMON, BOLT_LIM } from './const.js';
 import { create_particular } from './read.js';
 import { cansee, does_block, block_point } from './vision.js';
-import { COLNO, ROWNO, MFAST } from './const.js';
+import { COLNO, ROWNO, MFAST, Is_stronghold, Is_knox_level, In_V_tower, In_quest, PIT, HOLE, TRAPDOOR, ALL_TRAPS } from './const.js';
 import { attacktype, is_neuter, is_floater, emits_light, likes_lava,
          amorphous, throws_rocks, haseyes, is_flyer, is_whirly,
          noncorporeal, locomotion } from './mondata.js';
 import { is_vampshifter } from './monst.js';
 import { t_at, is_pool, is_lava, m_in_air, resists_ston } from './mon.js';
-import { touch_petrifies } from './mondata.js';
+import { touch_petrifies, mhe, nonliving } from './mondata.js';
 import { can_hide_under_obj, dochugw, set_apparxy } from './monmove.js';
 import { couldsee } from './vision.js';
-import { is_pit, OBJ_FLOOR, PLNMSG_HIDE_UNDER } from './const.js';
+import { is_pit, OBJ_FLOOR, PLNMSG_HIDE_UNDER, Mgender } from './const.js';
 import { ACCESSIBLE, POOL, LAVAPOOL,
     BLCORNER, CROSSWALL, DELPHI, FODDERSHOP, HWALL, IS_DOOR, IS_WALL, M_AP_FURNITURE, M_AP_OBJECT, OBJ_AT, OBJ_MINVENT, SCORR, SDOOR, SHOPBASE, TDWALL, TLCORNER, TRWALL, TUWALL, TEMPLE, VAULT, ZOO, ROOMOFFSET, GP_ALLOW_U, GP_CHECKSCARY, GP_AVOID_MONPOS, MM_IGNORELAVA,
     IS_WATERWALL, IS_ALTAR, Is_waterlevel, Is_airlevel, Is_firelevel,
@@ -2366,6 +2367,19 @@ export function makemon(ptr, x, y, mmflags) {
     else
         mtmp.female = femaleok ? rn2(2) : 0;
 
+    if (In_sokoban(game.u.uz) && !mindless(ptr)) { /* know about traps here */
+        mon_learns_traps(mtmp, PIT);
+        mon_learns_traps(mtmp, HOLE);
+    }
+    if (Is_stronghold(game.u.uz) && !mindless(ptr)) /* know about trap doors */
+        mon_learns_traps(mtmp, TRAPDOOR);
+    /* quest leader and nemesis both know about all trap types */
+    if (ptr.msound === MS_LEADER || ptr.msound === MS_NEMESIS)
+        mon_learns_traps(mtmp, ALL_TRAPS);
+    /* locations where monsters are already experienced with wands */
+    if (Is_stronghold(game.u.uz) || Is_knox_level(game.u.uz) || In_endgame(game.u.uz)
+        || In_hell(game.u.uz) || In_V_tower(game.u.uz) || In_quest(game.u.uz))
+        mtmp.mwandexp = true;
     place_monster(mtmp, x, y);
     mtmp.mcansee = mtmp.mcanmove = true;
     mtmp.mgenmklev = game.in_mklev;
@@ -2590,7 +2604,7 @@ export function makemon(ptr, x, y, mmflags) {
 // The draws: rnd(victim->m_lev + 1) for the max HP gain, then
 // rn2(max_increase) when that is above 1. The genocided-growth death arm and
 // the leash bookkeeping record.
-export function grow_up(mtmp, victim) {
+export async function grow_up(mtmp, victim) {
     if (mtmp.mhp <= 0)
         return null;
 
@@ -2626,31 +2640,51 @@ export function grow_up(mtmp, victim) {
     if (mtmp.mhpmax <= hp_threshold)
         return ptr;                     /* doesn't gain a level */
 
-    if (lev_limit < 5)
+    if (is_mplayer(ptr))
+        lev_limit = 30; /* same as player */
+    else if (lev_limit < 5)
         lev_limit = 5;
     else if (lev_limit > 49)
         lev_limit = (ptr.mlevel > 49 ? 50 : 49);
 
     if (++mtmp.m_lev >= game.mons[newtype].mlevel && newtype !== oldtype) {
         ptr = game.mons[newtype];
-        const fem = mtmp.female | 0;   /* gender forcing needs is_male/is_female flags */
+        const { mon_nam, pmname, YMonnam } = await import('./do_name.js');
+        const { an } = await import('./objnam.js');
+        const { pline_mon } = await import('./pline.js');
+        /* new form might force gender change */
+        const fem = is_male(ptr) ? 0 : is_female(ptr) ? 1 : (mtmp.female ? 1 : 0);
 
         if ((game.mvitals?.[newtype]?.mvflags ?? 0) & G_GENOD) {
-            note_unported_makemon('grow_up:genocided_growth');
+            if (canspotmon(mtmp))
+                await pline(`As ${mon_nam(mtmp)} grows up into ${
+                    an(pmname(ptr, Mgender(mtmp)))}, ${mhe(mtmp)} ${
+                    nonliving(ptr) ? 'expires' : 'dies'}!`);
             mtmp.mnum = newtype;
             mtmp.data = ptr;
             const { mondied } = mondied_ref();
-            mondied(mtmp);   /* grow_up is sync in C's call chain */
+            await mondied(mtmp);
             return null;
         } else if (canspotmon(mtmp)) {
-            /* pline_mon "%s grows up into %s." */
-            note_unported_makemon('grow_up:growth_msg');
+            /* 3.6.1: temporary (?) hack to fix growing into opposite
+               gender (female gnome becoming a gnome lord, etc.) */
+            const buf = ((mtmp.female && !fem) ? 'male '
+                         : (fem && !mtmp.female) ? 'female ' : '')
+                        + pmname(ptr, fem);
+            await pline_mon(mtmp, `${YMonnam(mtmp)} ${
+                (fem !== (mtmp.female ? 1 : 0)) ? 'changes into'
+                : humanoid(ptr) ? 'becomes' : 'grows up into'} ${an(buf)}.`);
         }
         mtmp.mnum = newtype;
         mtmp.data = ptr;
+        if (mtmp.cham === oldtype && is_shapeshifter(ptr))
+            mtmp.cham = newtype; /* vampire growing into vampire lord */
         newsym(mtmp.mx, mtmp.my);      /* color may change */
         lev_limit = mtmp.m_lev;
-        mtmp.female = fem;
+        mtmp.female = fem; /* gender might be changing */
+        /* if 'mtmp' is leashed, persistent inventory window needs updating */
+        if (mtmp.mleashed)
+            update_inventory(); /* x - leash (attached to a <mon>) */
     }
 
     /* sanity checks */

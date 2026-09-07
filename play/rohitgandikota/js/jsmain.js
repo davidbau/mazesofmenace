@@ -16,7 +16,7 @@ import { pushKey, nhgetch } from './input.js';
 import { newgame, newgame_moveloop_preamble, moveloop_core,
          maybe_do_tutorial } from './allmain.js';
 import { wd_message, restore_savefile_prompt } from './unixmain.js';
-import { parseNethackrc, optValue, set_fruit_name, set_menuobjsyms_flags } from './options.js';
+import { parseNethackrc, optValue, set_fruit_name, set_menuobjsyms_flags, iflag_boolean_options } from './options.js';
 import { assign_graphics, init_ov_primary_symbols, init_ov_rogue_symbols,
          savedsym_free, go_ov_primary_syms, go_ov_rogue_syms, SYM_BOULDER,
          SYM_OFF_X } from './symbols.js';
@@ -175,6 +175,14 @@ export class NethackGame {
                     pickup_thrown: true,
                     ...rc.opts };
         g.iflags = { getpos_coords: rc.opts.getpos_coords ?? 'n' };
+        /* optlist.h homes some booleans in iflags; keep them where their
+           readers and the 'O' menu look (see iflag_boolean_options) */
+        for (const name of iflag_boolean_options) {
+            if (name in rc.opts) {
+                g.iflags[name] = rc.opts[name];
+                delete g.flags[name];
+            }
+        }
         set_menuobjsyms_flags(rc.opts.menuobjsyms ?? 4);
         const pettype = optValue(rc, 'pettype');
         if (pettype) g.preferred_pet = pettype[0];

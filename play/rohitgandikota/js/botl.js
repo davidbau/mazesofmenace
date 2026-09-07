@@ -175,3 +175,64 @@ export function bot_conditions() {
     if (intr.HStun || props.STUNNED) cond += ' Stun';
     return cond;
 }
+
+/* src/botl.c:854 */
+const c_Wall = 'Wall';
+
+/*
+ *  src/botl.c:863 terrain_descr[] — terrain feedback for the status line,
+ *  indexed by iflags.terrain_typ; classify_terrain() supplies the extra
+ *  pseudo-types past MAX_TYPE.
+ */
+export const terrain_descr = [
+/* 0*/ 'Stone',         /* stone */
+       c_Wall,          /* vwall */
+       c_Wall,          /* hwall */
+       c_Wall,          /* tlcorner */
+       c_Wall,          /* trcorner */
+       c_Wall,          /* blcorner */
+       c_Wall,          /* brcorner */
+       c_Wall,          /* crosswall */
+       c_Wall,          /* tuwall */
+       c_Wall,          /* tdwall */
+/*10*/ c_Wall,          /* tlwall */
+       c_Wall,          /* trwall */
+       'Portcullis',    /* dbwall, closed drawbridge 'door' */
+       'Tree',
+       c_Wall,          /* sdoor: secret door */
+       'Stone',         /* scorr: secret corridor */
+       'Pool',          /* pool or non-moat water; can be boiled away */
+       'Moat',          /* water that can't be boiled away */
+       'Water',         /* water on Water level; can't be boiled or frozen */
+       '(gap)',         /* drawbridge_up; replaced by whatever is under */
+/*20*/ 'Lava',          /* lavapool */
+       'LavaWall',      /* lava that extends to ceiling */
+       'Bars',          /* ironbars */
+       'Doorway',       /* doorless or broken door; diagonal movement is ok */
+       'Corridor',      /* replaced by "Floor" */
+       'Room',          /* also replaced by "Floor" */
+       'Stairs',
+       'Ladder',
+       'Fountain',
+       'Throne',
+/*30*/ 'Sink',
+       'Grave',
+       'Altar',
+       'Ice',
+       'Bridge',        /* drawbridge_down, span across moat/ice/lava/floor */
+       'Air',           /* open air on Air level or bubble on Water level */
+       'Cloud',         /* [part of] a cloud or Air level */
+/*37*/ '',              /* MAX_TYPE; skipped rather than overloaded */
+/*38*/ c_Wall,          /* MATCH_WALL for special levels; shouldn't happen */
+    /*
+     * additional terrain names that aren't simple levl[][].typ values
+     */
+/*39*/ 'Floor',         /* substituted for room or corridor */
+/*40*/ 'Ground',        /* 'room' on Earth level */
+       'Open-door',     /* open (not broken or doorless) */
+       'Shut-door',     /* closed or locked (or trapped) */
+       'Swamp',         /* Juiblex level */
+       'Submerged',     /* under water */
+       'Sea',           /* moat terrain on Medusa's level: "shallow sea" */
+       'WaterWall',     /* water that extends to the ceiling */
+];

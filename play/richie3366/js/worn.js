@@ -173,7 +173,7 @@ function cantweararm(ptr) {
 }
 
 /** C ref: obj.h WrappingAllowed */
-function WrappingAllowed(mptr) {
+export function WrappingAllowed(mptr) {
     const mndx = mptr?.mndx ?? -1;
     return !!(humanoid(mptr)
         && (mptr.msize ?? 0) >= MZ_SMALL && (mptr.msize ?? 0) <= MZ_HUGE
@@ -183,7 +183,7 @@ function WrappingAllowed(mptr) {
 }
 
 /** C ref: mondata.c num_horns / mondata.h has_horns */
-function num_horns(ptr) {
+export function num_horns(ptr) {
     const mndx = ptr?.mndx ?? -1;
     if (mndx === PM_HORNED_DEVIL || mndx === PM_MINOTAUR
         || mndx === PM_ASMODEUS || mndx === PM_BALROG) return 2;
@@ -191,7 +191,7 @@ function num_horns(ptr) {
         || mndx === PM_BLACK_UNICORN || mndx === PM_KI_RIN) return 1;
     return 0;
 }
-function has_horns(ptr) {
+export function has_horns(ptr) {
     return num_horns(ptr) > 0;
 }
 

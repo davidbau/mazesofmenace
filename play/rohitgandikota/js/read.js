@@ -284,8 +284,11 @@ export async function doread(read_ok) {
         if (game.flags.verbose)
             await You('break up the cookie and throw away the pieces.');
         await outrumor(bcsign(scroll), BY_COOKIE);
-        if (!game.u.ublind) {
+        if (!Blind()) {
             game.u.uconduct = game.u.uconduct || {};
+            if (!(game.u.uconduct.literate || 0))
+                livelog_printf(LL_CONDUCT,
+                               'became literate by reading a fortune cookie');
             game.u.uconduct.literate = (game.u.uconduct.literate || 0) + 1;
         }
         useup(scroll);
@@ -487,12 +490,16 @@ export async function doread(read_ok) {
         }
     }
 
-    /* Blank paper and the two special books do not break illiterate conduct. */
-    if (otyp !== ONAMES.SCR_BLANK_PAPER
-        && otyp !== ONAMES.SPE_BLANK_PAPER
-        && otyp !== ONAMES.SPE_BOOK_OF_THE_DEAD
-        && otyp !== ONAMES.SPE_NOVEL) {
+    /* Actions required to win the game aren't counted towards conduct */
+    /* Novel conduct is handled in read_tribute so exclude it too */
+    if (otyp !== ONAMES.SPE_BOOK_OF_THE_DEAD && otyp !== ONAMES.SPE_NOVEL
+        && otyp !== ONAMES.SPE_BLANK_PAPER && otyp !== ONAMES.SCR_BLANK_PAPER) {
         game.u.uconduct = game.u.uconduct || {};
+        if (!(game.u.uconduct.literate || 0))
+            livelog_printf(LL_CONDUCT, `became literate by reading ${
+                (scroll.oclass === OCLASSES.SPBOOK_CLASS) ? 'a book'
+                : (scroll.oclass === OCLASSES.SCROLL_CLASS) ? 'a scroll'
+                  : 'something'}`);
         game.u.uconduct.literate = (game.u.uconduct.literate || 0) + 1;
     }
 

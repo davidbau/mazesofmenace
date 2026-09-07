@@ -35,7 +35,7 @@ import { COLNO, ROWNO, BOLT_LIM, STONE, SCORR, SDOOR, GRAVE, CORR,
          D_TRAPPED, D_BROKEN, IS_WALL,
          POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE,
          MENU_ITEMFLAGS_NONE, MENU_BEHAVE_STANDARD, ECMD_OK,
-         TER_DETECT, TER_MAP, M_AP_TYPE, M_AP_FURNITURE,
+         TER_DETECT, TER_MAP, TER_MON, M_AP_TYPE, M_AP_FURNITURE,
          M_AP_OBJECT, M_AP_FLAG, M_AP_F_DKNOWN, OBJ_FLOOR,
          AM_MASK, AM_SANCTUM, Amask2align, Is_astralevel,
          A_LAWFUL, A_NEUTRAL, A_CHAOTIC, STRAT_WAITMASK,
@@ -76,7 +76,7 @@ import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow,
 import { ok_to_quest } from './quest.js';
 import { costly_spot, doname_with_price } from './shk.js';
 import { trapname } from './trap.js';
-import { showsym_other, SYM_BOULDER } from './symbols.js';
+import { showsym_other, SYM_BOULDER, showsym as active_showsym } from './symbols.js';
 import { visctrl } from './hacklib.js';
 import { VERSION_BANNER_LINE, VERSION_OPTIONS_TEXT } from './version_data.js';
 
@@ -91,13 +91,14 @@ const invisexplain = 'remembered, unseen, creature';
 /* include/hack.h — quitchars */
 const quitchars = ' \r\n\x1b';
 
-// gs.showsyms[] for the cmap range: defsyms with the DECgraphics overrides
-// already applied by the generator, plus src/display.c:1850 —
-// "showsyms[S_darkroom] = showsyms[S_room]" while flags.dark_room and
-// iflags.use_color are both on, which they are in the reference build.
+// gs.showsyms[] for the cmap range: the ACTIVE symbol set's symbol (plain
+// '|' without OPTIONS=symset:DECgraphics, the DEC line-drawing set with it,
+// SYMBOLS= overrides on top) merged with the defsyms entry so callers keep
+// its explanation. Comparing against the DEC table regardless of the
+// option made a farlook on a plain '|' wall match only the grave entry.
 function showsym(idx) {
-    if (idx === CM.S_darkroom) idx = CM.S_room;
-    return defsyms[idx];
+    const s = active_showsym(idx);
+    return s ? { ...defsyms[idx], ch: s.ch, dec: !!s.dec } : defsyms[idx];
 }
 
 /* the display {ch,dec} pair for what a cell shows; the topline and window
@@ -475,7 +476,17 @@ function lookat(x, y) {
     const glyph = glyph_at(x, y);
     const loc = game.level?.at(x, y);
 
-    if (game.u.ux === x && game.u.uy === y && canspotself()) {
+    /* src/pager.c:661 — in a terrain view (#terrain, or the browse after a
+       detection) the hero is described only when the view includes monsters;
+       otherwise the cursor on the hero's square reads the terrain there. The
+       glyph test covers a browse while engulfed: browse_map() clears
+       u.uswallow into iflags.save_uswallow, and the hero's square then shows
+       the engulfer, not the hero. */
+    if (game.u.ux === x && game.u.uy === y && canspotself()
+        && !(game.iflags?.save_uswallow
+             && glyph.kind === 'mon' && glyph.mon === game.u.ustuck)
+        && (!game.iflags?.terrainmode
+            || (game.iflags.terrainmode & TER_MON) !== 0)) {
         buf = self_lookat();
         /* pm stays null for self: file lookup uses the name string.
            The only exception is a gnomish wizard, forced to the generic

@@ -19,7 +19,7 @@ import { ECMD_OK, ECMD_TIME, IS_WALL, SDOOR, isok, M_AP_TYPE,
          BLOOD, Upolyd, In_endgame, Is_astralevel, Is_sanctum,
          A_LAWFUL } from './const.js';
 import { is_animal, is_undead, is_flyer, is_elf, is_dwarf, is_gnome,
-         is_lord, is_prince, is_mplayer, mhis } from './mondata.js';
+         is_lord, is_prince, is_mplayer, mhis, carnivorous, herbivorous, is_silent } from './mondata.js';
 import { is_vampshifter } from './monst.js';
 import { get_iter_mons, m_at, t_at, wake_nearto } from './mon.js';
 import { body_part } from './polyself.js';
@@ -32,7 +32,7 @@ import { MSOUND } from './monst_data.js';
 import { canspotmon } from './display.js';
 import { getdir } from './cmd.js';
 import { Deaf, Hallucination, Underwater } from './youprop.js';
-import { pline_The, You, You_hear } from './pline.js';
+import { pline_The, You, You_hear, verbalize } from './pline.js';
 import { pline } from './display.js';
 import { Monnam, noveltitle, pmname } from './do_name.js';
 import { an, vtense } from './objnam.js';
@@ -289,10 +289,32 @@ export async function dochat() {
     return await domonnoise(mtmp);
 }
 
-// src/sounds.c:679 domonnoise(), what an adjacent monster says. Specialized
-// Shopkeeper, oracle, and demon-bribe conversations remain
-// separate subsystems; ordinary sound classes and their state branches live
-// here and preserve C's RNG order. A successful conversation costs the turn.
+// src/sounds.c:519 beg() — a hungry pet asks for food
+export async function beg(mtmp) {
+    const ptr = game.mons[mtmp.mnum];
+
+    if (helpless(mtmp)
+        || !(carnivorous(ptr) || herbivorous(ptr)))
+        return;
+
+    /* presumably nearness and soundok checks have already been made */
+    if (!is_silent(ptr) && ptr.msound <= MSOUND.MS_ANIMAL) {
+        await domonnoise(mtmp);
+    } else if (ptr.msound >= MSOUND.MS_HUMANOID) {
+        if (!canspotmon(mtmp))
+            map_invisible(mtmp.mx, mtmp.my);
+        await verbalize("I'm hungry.");
+    } else {
+        /* this is pretty lame but is better than leaving out the block
+           of speech types between animal and humanoid; this covers
+           MS_SILENT too (if caller lets that get this far) since it's
+           excluded by the first two cases */
+        if (canspotmon(mtmp))
+            await pline(`${Monnam(mtmp)} seems famished.`);
+        /* looking famished will be a good trick for a tame skeleton... */
+    }
+}
+
 export async function domonnoise(mtmp) {
     const ptr = game.mons[mtmp.mnum];
     let msound = ptr.msound;

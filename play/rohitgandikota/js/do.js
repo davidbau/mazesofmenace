@@ -1046,7 +1046,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     /* src/do.c:1623 — the tutorial transition sets iflags.nofollowers so
        the pet stays behind */
     if (!game.iflags?.nofollowers)
-        keepdogs(false);
+        await keepdogs(false);
     /* src/do.c:1625, preserve the overview information from the level
        being left before its visibility and live structures are replaced. */
     {
@@ -2200,25 +2200,42 @@ export async function canletgo_with_feedback(obj, word) {
     return false;
 }
 
+// src/do.c:2318 danger_uprops()
+function danger_uprops() {
+    return !!(game.u.uprops?.STONED || game.u.uprops?.SLIMED
+              || game.u.intrinsic?.HStrangled || game.u.uprops?.SICK);
+}
+
 // src/do.c:2325 cmd_safety_prevention() — refuse a no-op command next to a
-// spottable hostile (flags.safe_wait defaults On).
+// spottable hostile or while a fatal timeout runs (flags.safe_wait
+// defaults On).
 export async function cmd_safety_prevention(ucverb, cmddesc, act,
                                             flagname = 'did_nothing_flag') {
     if ((game.flags?.safe_wait ?? true) && !game.iflags?.menu_requested
         && !(game.multi ?? 0)) {
         const { monster_nearby } = await import('./hack.js');
         const { boolean_option } = await import('./options.js');
-        const first = !(game[flagname] | 0);
-        const buf = (boolean_option('cmdassist') || first)
-            ? `  Use 'm' prefix to force ${cmddesc}.` : '';
+        const { Norep } = await import('./pline.js');
+        let buf = '';
+
+        /* if (iflags.cmdassist || !(*flagcounter)++) — the counter only
+           advances when cmdassist is off */
+        if (boolean_option('cmdassist')) {
+            buf = `  Use 'm' prefix to force ${cmddesc}.`;
+        } else {
+            const cnt = game[flagname] | 0;
+            game[flagname] = cnt + 1;
+            if (!cnt)
+                buf = `  Use 'm' prefix to force ${cmddesc}.`;
+        }
+
         if (monster_nearby()) {
-            game[flagname] = (game[flagname] | 0) + 1;
-            /* C uses Norep: back-to-back refusals print only once */
-            const { Norep } = await import('./pline.js');
             await Norep(`${act}${buf}`);
             return true;
+        } else if (danger_uprops()) {
+            await Norep(`${ucverb} doesn't feel like a good idea right now.`);
+            return true;
         }
-        /* danger_uprops(): Stoned/Slimed/Strangled/Sick — none tracked */
     }
     game[flagname] = 0;
     return false;

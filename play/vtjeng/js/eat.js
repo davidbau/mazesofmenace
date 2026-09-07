@@ -210,7 +210,7 @@ import {
 import {
     carried,
     costly_alteration,
-    isRottable,
+    is_rottable,
     objectType,
     peek_at_iced_corpse_age,
     remove_object,
@@ -803,7 +803,7 @@ async function rottenfood(obj, state) {
     const u = state.u;
 
     await ttyPline(
-        `Blecch!  ${isRottable(obj, state) ? 'Rotten' : 'Awful'} ${
+        `Blecch!  ${is_rottable(obj, state) ? 'Rotten' : 'Awful'} ${
             foodword(obj, state)}!`,
         state,
     );
@@ -912,6 +912,12 @@ function victual(state) {
 // raises one bite earlier and do_reset_eat() lowers on an interruption.
 function eating_occupation(state) {
     return state.go?.occupation === eatfood;
+}
+
+// C ref: eat.c eating_glob() (2078-2081). True when the hero's multi-turn
+// meal is in progress and the piece being eaten is this glob.
+export function eating_glob(glob, state = game) {
+    return eating_occupation(state) && glob === victual(state).piece;
 }
 
 // C ref: eat.c food_xname() (215-235), ``[the(] singular(food, xname) [)]''.

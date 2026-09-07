@@ -32,10 +32,10 @@ import { getnow } from './calendar.js';
 import {
     roles, races, aligns, findRole, findRace, findAlign, align_gtitle,
 } from './roles.js';
-import { discover_object } from './invent.js';
+import { discover_object, Blind, makeknown, observe_object } from './invent.js';
 import { setworn } from './do_wear.js';
 import { initialspell, init_spl_book, num_spells, SPELL_LEV_PW } from './spell.js';
-import { otyp_uses_known, otyp_is_charged, Japanese_item_name } from './objnam.js';
+import { otyp_uses_known, otyp_is_charged, Japanese_item_name, yname } from './objnam.js';
 import {
     W_ARMU, W_ARM, W_ARMC, W_ARMS, W_ARMH, W_ARMG, W_ARMF,
     W_WEP, W_SWAPWEP, W_QUIVER,
@@ -56,6 +56,7 @@ import {
     P_RIDING, P_TWO_WEAPON_COMBAT, P_BARE_HANDED_COMBAT, P_MARTIAL_ARTS,
     P_BASIC, P_SKILLED, P_EXPERT, P_MASTER, P_GRAND_MASTER,
     NOT_HUNGRY,
+    LL_CONDUCT,
     INTRINSIC,
     PROTECTION,
     W_ART,
@@ -886,6 +887,37 @@ function reorder_invent() {
     }
 }
 
+/**
+ * C ref: invent.c addinv_core2 `:1025–1050` — luckstone set_moreluck, then
+ * the Archeologist scroll-label decipher (observe + decipher pline +
+ * makeknown→exercise(A_WIS) credit + literate conduct). Called at the
+ * `added:` label for merged and fresh takes alike.
+ * Named omit: set_moreluck luck recompute (no JS Luck engine yet).
+ */
+async function addinv_core2(obj) {
+    if (!obj) return;
+    // C: confers_luck(obj) → set_moreluck() — named omit (see above).
+    const oc = game.objects?.[obj.otyp];
+    if ((game.urole?.mnum | 0) === PM_ARCHEOLOGIST
+        && (obj.oclass | 0) === SCROLL_CLASS
+        && (obj.otyp | 0) !== objectNames.indexOf('SCR_BLANK_PAPER')
+        && !Blind()
+        && !oc?.oc_name_known) {
+        observe_object(obj);
+        const { pline } = await import('./display.js');
+        await pline(`You decipher the label on ${yname(obj)}.`);
+        makeknown(obj.otyp);
+        const u = game.u || (game.u = {});
+        if (!u.uconduct) u.uconduct = {};
+        const was = u.uconduct.literate | 0;
+        u.uconduct.literate = was + 1;
+        if (!was) {
+            const { livelog_printf } = await import('./pline.js');
+            livelog_printf(LL_CONDUCT, 'became literate by deciphering a scroll label');
+        }
+    }
+}
+
 // C ref: invent.c addinv() → merged() for stack absorb + compare-learn pline.
 // addinv_core1 artifact W_ART conferral (D-1539). Named omissions: quiver-prefer
 // merge; addinv_before; thrown autoquiver; oname absorb; worn-slot merge;
@@ -948,6 +980,8 @@ export async function addinv(obj) {
             const { pline } = await import('./display.js');
             await pline('You learn more about your items by comparing them.');
         }
+        // C invent.c `added:` — addinv_core2(obj) then carry_obj_effects(obj)
+        await addinv_core2(otmp);
         carry_obj_effects(otmp);
         return otmp;
     }
@@ -964,6 +998,8 @@ export async function addinv(obj) {
     if (obj.oclass === COIN_CLASS || objectNames[obj.otyp] === 'GOLD_PIECE') {
         game._goldCount = (game._goldCount || 0) + (obj.quan || 0);
     }
+    // C invent.c `added:` — addinv_core2(obj) then carry_obj_effects(obj)
+    await addinv_core2(obj);
     carry_obj_effects(obj);
     return obj;
 }
