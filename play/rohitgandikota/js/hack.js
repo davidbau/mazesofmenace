@@ -50,6 +50,29 @@ import { is_pit, EXT_ENCUMBER, HVY_ENCUMBER, IS_FURNITURE, STAIRS, ECMD_OK, ECMD
 import { near_capacity } from './attrib.js';
 import { gethungry } from './eat.js';
 import { cmdq_clear, closed_door, paranoid_query, xytodir } from './cmd.js';
+import { delobj } from './mon.js';
+import { block_point, recalc_block_point } from './vision.js';
+import { add_damage, pay_for_damage } from './shk.js';
+import { IS_WALL, SDOOR, NO_PART, LL_CONDUCT, SHOP_DOOR_COST } from './const.js';
+import { dissolve_bars } from './monmove.js';
+import { morehungry } from './eat.js';
+import { b_trapped } from './trap.js';
+import { livelog_printf } from './pline.js';
+import { watch_dig, digging_context, clear_digging_context, SHOP_WALL_DMG } from './dig.js';
+import { on_level } from './dungeon.js';
+import { d } from './rng.js';
+import { Warning, Half_physical_damage } from './youprop.js';
+import { ESHK, RLOC_NOMSG, something, DISMOUNT_FELL, DISMOUNT_GENERIC, invlet_basic, GP_ALLOW_U, A_CON } from './const.js';
+import { hard_helmet, helm_simple_name } from './do_wear.js';
+import { fall_asleep } from './timeout.js';
+import { mnexto } from './mon.js';
+import { mdamageu } from './mhitu.js';
+import { ceiling } from './dungeon.js';
+import { Amonnam } from './do_name.js';
+import { dismount_steed } from './steed.js';
+import { grounded, sokoban_guilt } from './trap.js';
+import { autopick_testobj } from './pickup.js';
+import { addtobill, subfrombill, shop_keeper, onshopbill, find_objowner } from './shk.js';
 import { paranoia_bits, boolean_option } from './options.js';
 import { PARANOID_TRAP, PARANOID_CONFIRM, TRAPNUM, TRAP_CLEARLY_IMMUNE } from './const.js';
 import { Blind, Stunned, Confusion, Cold_resistance, Fumbling } from './youprop.js';
@@ -113,6 +136,13 @@ import { uteetering_at_seen_pit } from './trap.js';
 import { P_SKILL } from './weapon.js';
 import { P_RIDING, P_BASIC } from './const.js';
 import { rider_cant_reach } from './steed.js';
+import { canseemon } from './display.js';
+import { x_monnam } from './do_name.js';
+import { has_mgivenname, SUPPRESS_SADDLE, ARTICLE_YOUR, ARTICLE_A, ARTICLE_NONE } from './const.js';
+import { distu } from './hacklib.js';
+import { type_is_pname } from './mondata.js';
+import { impossible } from './pline.js';
+import { directionname } from './cmd.js';
 
 // src/hack.c:2996 runmode_delay_output(). Multi-turn actions and running
 // periodically expose their intermediate screen. The default "run" mode
@@ -192,6 +222,184 @@ export async function invocation_message() {
         await pline(`${The(xname(candelabrum))} ${
             u.ublind ? 'throbs palpably' : 'glows with a strange light'}!`);
     }
+}
+
+// src/hack.c:647 still_chewing() — the hero, as a tunneling monster, chews
+// through rock, a boulder, a tree, iron bars or a door at <x,y>; 1 while
+// still chewing, 0 once through
+export async function still_chewing(x, y) {
+    const u = game.u;
+    const lev = game.level.at(x, y);
+    const boulder = sobj_at(ONAMES.BOULDER, x, y);
+    let digtxt = null, dmgtxt = null;
+    const dig = digging_context();
+
+    if (dig.down) /* not continuing prev dig (w/ pick-axe) */
+        clear_digging_context();
+
+    if (!boulder
+        && ((IS_OBSTRUCTED(lev.typ) && !may_dig(x, y))
+            /* may_dig() checks W_NONDIGGABLE but doesn't handle iron bars */
+            || (lev.typ === IRONBARS && (lev.wall_info & W_NONDIGGABLE)))) {
+        await You(`hurt your teeth on the ${
+            (lev.typ === IRONBARS)
+                ? 'bars'
+                : IS_TREE(lev.typ)
+                    ? 'tree'
+                    : 'hard stone'}.`);
+        nomul(0);
+        return 1;
+    } else if (lev.typ === IRONBARS
+               && metallivorous(game.youmonst.data) && u.uhunger > 1500) {
+        /* finishing eating via 'morehungry()' doesn't handle choking */
+        await You('are too full to eat the bars.');
+        nomul(0);
+        return 1;
+    } else if (!dig.chew
+               || dig.pos.x !== x
+               || dig.pos.y !== y
+               || !dig.level || !on_level(dig.level, u.uz)) {
+        dig.down = false;
+        dig.chew = true;
+        dig.warned = false;
+        dig.pos.x = x;
+        dig.pos.y = y;
+        dig.level = { dnum: u.uz.dnum, dlevel: u.uz.dlevel }; /* assign_level() */
+        /* solid rock takes more work & time to dig through */
+        dig.effort =
+            (IS_OBSTRUCTED(lev.typ) && !IS_TREE(lev.typ) ? 30 : 60) + (u.udaminc | 0);
+        await You(`start chewing ${
+            (boulder || IS_TREE(lev.typ) || lev.typ === IRONBARS)
+                ? 'on a'
+                : 'a hole in the'} ${
+            boulder
+                ? 'boulder'
+                : IS_TREE(lev.typ)
+                    ? 'tree'
+                    : IS_OBSTRUCTED(lev.typ)
+                        ? 'rock'
+                        : (lev.typ === IRONBARS)
+                            ? 'bar'
+                            : 'door'}.`);
+        await watch_dig(null, x, y, false);
+        return 1;
+    } else if ((dig.effort += (30 + (u.udaminc | 0))) <= 100) {
+        if (game.flags?.verbose !== false)
+            await You(`${dig.chew ? 'continue' : 'begin'} chewing on the ${
+                boulder
+                    ? 'boulder'
+                    : IS_TREE(lev.typ)
+                        ? 'tree'
+                        : IS_OBSTRUCTED(lev.typ)
+                            ? 'rock'
+                            : (lev.typ === IRONBARS)
+                                ? 'bars'
+                                : 'door'}.`);
+        dig.chew = true;
+        await watch_dig(null, x, y, false);
+        return 1;
+    }
+
+    /* Okay, you've chewed through something */
+    if (!(u.uconduct.food | 0))
+        livelog_printf(LL_CONDUCT,
+                       `ate for the first time, by chewing through ${
+                       boulder ? 'a boulder'
+                       : IS_TREE(lev.typ) ? 'a tree'
+                         : IS_OBSTRUCTED(lev.typ) ? 'rock'
+                           : (lev.typ === IRONBARS) ? 'iron bars'
+                             : 'a door'}`);
+    u.uconduct.food = (u.uconduct.food | 0) + 1;
+    u.uhunger += rnd(20);
+
+    if (boulder) {
+        delobj(boulder);         /* boulder goes bye-bye */
+        await You('eat the boulder.'); /* yum */
+
+        /*
+         *  The location could still block because of
+         *      1. More than one boulder
+         *      2. Boulder stuck in a wall/stone/door.
+         *
+         *  [perhaps use does_block() below (from vision.c)]
+         */
+        if (IS_OBSTRUCTED(lev.typ) || closed_door(x, y)
+            || sobj_at(ONAMES.BOULDER, x, y)) {
+            block_point(x, y); /* delobj will unblock the point */
+            /* reset dig state */
+            clear_digging_context();
+            return 1;
+        }
+
+    } else if (IS_WALL(lev.typ)) {
+        if (in_rooms(x, y, SHOPBASE)) {
+            add_damage(x, y, SHOP_WALL_DMG());
+            dmgtxt = 'damage';
+        }
+        digtxt = 'chew a hole in the wall.';
+        if (game.level.flags?.is_maze_lev) {
+            lev.typ = ROOM;
+        } else if (game.level.flags?.is_cavernous_lev && !in_town(x, y)) {
+            lev.typ = CORR;
+        } else {
+            lev.typ = DOOR;
+            lev.doormask = D_NODOOR;
+        }
+    } else if (IS_TREE(lev.typ)) {
+        digtxt = 'chew through the tree.';
+        lev.typ = ROOM;
+    } else if (lev.typ === IRONBARS) {
+        if (metallivorous(game.youmonst.data)) { /* should always be True here */
+            /* arbitrary amount; unlike proper eating, nutrition is
+               bestowed in a lump sum at the end */
+            const nut = game.objects[ONAMES.HEAVY_IRON_BALL].oc_weight;
+
+            /* lesshungry() requires that victual be set up, so skip it;
+               morehungry() of a negative amount will increase nutrition
+               without any possibility of choking to death on the meal;
+               updates hunger state and requests status update if changed */
+            await morehungry(-nut);
+        }
+        digtxt = u_at(x, y)
+                 ? 'devour the iron bars.'
+                 : 'eat through the bars.';
+        await dissolve_bars(x, y);
+    } else if (lev.typ === SDOOR) {
+        if (lev.doormask & D_TRAPPED) {
+            lev.doormask = D_NODOOR;
+            await b_trapped('secret door', NO_PART);
+        } else {
+            digtxt = 'chew through the secret door.';
+            lev.doormask = D_BROKEN;
+        }
+        lev.typ = DOOR;
+
+    } else if (IS_DOOR(lev.typ)) {
+        if (in_rooms(x, y, SHOPBASE)) {
+            add_damage(x, y, SHOP_DOOR_COST);
+            dmgtxt = 'break';
+        }
+        if (lev.doormask & D_TRAPPED) {
+            lev.doormask = D_NODOOR;
+            await b_trapped('door', NO_PART);
+        } else {
+            digtxt = 'chew through the door.';
+            lev.doormask = D_BROKEN;
+        }
+
+    } else { /* STONE or SCORR */
+        digtxt = 'chew a passage through the rock.';
+        lev.typ = CORR;
+    }
+
+    recalc_block_point(x, y); /* vision */
+    newsym(x, y);
+    if (digtxt)
+        await You(digtxt); /* after newsym */
+    if (dmgtxt)
+        await pay_for_damage(dmgtxt, false);
+    clear_digging_context();
+    return 0;
 }
 
 // src/hack.c:825 movobj()
@@ -312,7 +520,6 @@ export function doorless_door(x, y) {
 
 // src/hack.c:991 test_move() — is (ux+dx,uy+dy) an OK place to move? mode is
 // DO_MOVE, TEST_MOVE, TEST_TRAV or TEST_TRAP. The DO_MOVE message/side-effect
-// arms whose subsystems are not ported yet (still_chewing, autodig, moverock)
 // record themselves; nothing reaches them today because domove_core in
 // js/cmd.js still carries its own inline blocked-move test.
 export async function test_move(ux, uy, dx, dy, mode) {
@@ -343,8 +550,8 @@ export async function test_move(ux, uy, dx, dy, mode) {
             if (mode === DO_MOVE
                 && (dmgtype(game.youmonst.data, ATTKS.AD_RUST)
                     || dmgtype(game.youmonst.data, ATTKS.AD_CORR)
-                    || metallivorous(game.youmonst.data))) {
-                note_unported_hack('test_move:chew_ironbars');
+                    || metallivorous(game.youmonst.data))
+                && await still_chewing(x, y)) {
                 return false;
             }
             if (!(passesWalls || passes_bars(game.youmonst.data))) {
@@ -355,16 +562,14 @@ export async function test_move(ux, uy, dx, dy, mode) {
         } else if (tunnels(game.youmonst.data)
                    && !needspick(game.youmonst.data)) {
             /* Eat the rock. */
-            if (mode === DO_MOVE) {
-                note_unported_hack('test_move:still_chewing');
+            if (mode === DO_MOVE && await still_chewing(x, y))
                 return false;
-            }
         } else if (game.flags?.autodig && !game.context.run
                    && !game.context.nopick
                    && game.u.uwep && is_pick(game.u.uwep)) {
             /* MRKR: Automatic digging when wielding the appropriate tool */
             if (mode === DO_MOVE)
-                note_unported_hack('test_move:autodig');
+                await use_pick_axe2(game.u.uwep);
             return false;
         } else {
             if (mode === DO_MOVE) {
@@ -408,10 +613,8 @@ export async function test_move(ux, uy, dx, dy, mode) {
             } else if (tunnels(game.youmonst.data)
                        && !needspick(game.youmonst.data)) {
                 /* Eat the door. */
-                if (mode === DO_MOVE) {
-                    note_unported_hack('test_move:still_chewing');
+                if (mode === DO_MOVE && await still_chewing(x, y))
                     return false;
-                }
             } else {
                 let through_testdiag = false;
                 if (mode === DO_MOVE) {
@@ -526,7 +729,7 @@ export async function test_move(ux, uy, dx, dy, mode) {
 
     /* Now see if other things block our way . . */
     if (dx && dy && !passesWalls && IS_DOOR(ust.typ)
-        && (!doorless_door(ux, uy) || block_entry(x, y))) {
+        && (!doorless_door(ux, uy) || await block_entry(x, y))) {
         /* Can't move at a diagonal out of a doorway with door. */
         if (mode === DO_MOVE && game.flags?.mention_walls)
             await pline("You can't move diagonally out of an intact doorway.");
@@ -539,19 +742,17 @@ export async function test_move(ux, uy, dx, dy, mode) {
             && !(game.u.ublind || Hallucination())
             && !could_move_onto_boulder(x, y)) {
             if (mode === DO_MOVE && game.flags?.mention_walls)
-                await pline('A boulder blocks your path.');
+                await pline_dir(xytodir(dx, dy), 'A boulder blocks your path.');
             return false;
         }
         if (mode === DO_MOVE) {
             /* tunneling monsters will chew before pushing */
             if (tunnels(game.youmonst.data) && !needspick(game.youmonst.data)
                 && !In_sokoban(game.u.uz)) {
-                note_unported_hack('test_move:still_chewing');
+                if (await still_chewing(x, y))
+                    return false;
+            } else if ((await moverock()) < 0)
                 return false;
-            } else {
-                note_unported_hack('test_move:moverock');
-                return false;
-            }
         } else if (mode === TEST_TRAV) {
             /* never travel through boulders in Sokoban */
             if (In_sokoban(game.u.uz))
@@ -1112,7 +1313,16 @@ export async function domove_attackmon_at(mtmp, x, y, displaceu) {
         displaceu.value =
             !!(mtmp.mnum === PMNAMES.PM_DISPLACER_BEAST && !rn2(2)
                && mtmp.mux === game.u.ux0 && mtmp.muy === game.u.uy0
-               && note_unported_hack('domove_attackmon_at:displace_rest'));
+               && !helpless(mtmp)
+               && !mtmp.meating && !mtmp.mtrapped
+               && !game.u.utrap && !game.u.ustuck && !game.u.usteed
+               && !(game.u.dx && game.u.dy
+                    && (NODIAG(game.u.umonnum)
+                        || (bad_rock(mtmp.data, x, game.u.uy0)
+                            && bad_rock(mtmp.data, game.u.ux0, y))
+                        || (bad_rock(game.youmonst.data, game.u.ux0, y)
+                            && bad_rock(game.youmonst.data, x, game.u.uy0))))
+               && goodpos(game.u.ux0, game.u.uy0, mtmp, GP_ALLOW_U));
 
         /* if not displacing, try to attack; note that it might evade; also,
            we don't attack tame or peaceful when safemon() */
@@ -1257,10 +1467,24 @@ export async function pooleffects(newspot) {
     /* check for entering water or lava */
     if (!u.ustuck && !Levitation() && !Flying()
         && is_pool_or_lava(u.ux, u.uy)) {
-        if (u.usteed) {
-            note_unported_hack('pooleffects:steed');
+        if (u.usteed && !grounded(u.usteed.data)) {
+            /* floating or clinging steed keeps hero safe (is_flyer() test
+               is redundant; it can't be true since Flying yielded false) */
             return false;
+        } else if (u.usteed) {
+            /* steed enters pool */
+            await dismount_steed(Underwater() ? DISMOUNT_FELL : DISMOUNT_GENERIC);
+            /* dismount_steed() -> float_down() -> pickup()
+               (float_down doesn't do autopickup on Air or Water) */
+            if (Is_airlevel(u.uz) || Is_waterlevel(u.uz))
+                return false;
+            /* even if we actually end up at same location, float_down()
+               has already done trap and pickup actions of spoteffects() */
+            if (newspot)
+                await check_special_room(false); /* spoteffects */
+            return true;
         }
+        /* not mounted */
         /* ceiling hider check needs polyself */
         if (is_lava(u.ux, u.uy)) {
             const { lava_effects } = await import('./trap.js');
@@ -1315,10 +1539,58 @@ export async function spoteffects(pick) {
             await pickup(1);
     }
 
-    /* hidden monster at the same spot (hides_under, piercers) */
+    /* Warning alerts you to ice danger */
+    if (Warning() && is_ice(game.u.ux, game.u.uy)) {
+        const icewarnings = [
+            'The ice seems very soft and slushy.',
+            'You feel the ice shift beneath you!',
+            'The ice, is gonna BREAK!', /* The Dead Zone */
+        ];
+        const time_left = spot_time_left(game.u.ux, game.u.uy, MELT_ICE_AWAY);
+
+        if (time_left && time_left < 15)
+            await pline(icewarnings[(time_left < 5) ? 2
+                                    : (time_left < 10) ? 1
+                                      : 0]);
+    }
+
     const mtmp = m_at(game.u.ux, game.u.uy);
-    if (mtmp && !game.u.uswallow)
-        note_unported_hack('spoteffects:mon_here');
+    if (mtmp && !game.u.uswallow) {
+        mtmp.mundetected = mtmp.msleeping = 0;
+        switch (mtmp.data.mlet) {
+        case MONSYMS.S_PIERCER:
+            await pline(`${Amonnam(mtmp)} suddenly drops from the ${
+                ceiling(game.u.ux, game.u.uy)}!`);
+            if (mtmp.mtame) { /* jumps to greet you, not attack */
+                ;
+            } else if (hard_helmet(game.uarmh)) {
+                await pline(`Its blow glances off your ${helm_simple_name(game.uarmh)}.`);
+            } else if (game.u.uac + 3 <= rnd(20)) {
+                await You(`are almost hit by ${
+                    x_monnam(mtmp, ARTICLE_A, 'falling', 0, true)}!`);
+            } else {
+                await You(`are hit by ${
+                    x_monnam(mtmp, ARTICLE_A, 'falling', 0, true)}!`);
+                let dmg = d(4, 6);
+                if (Half_physical_damage())
+                    dmg = Math.trunc((dmg + 1) / 2);
+                await mdamageu(mtmp, dmg);
+            }
+            break;
+        default: /* monster surprises you. */
+            if (mtmp.mtame)
+                await pline(`${Amonnam(mtmp)} jumps near you from the ${
+                    ceiling(game.u.ux, game.u.uy)}.`);
+            else if (mtmp.mpeaceful) {
+                await You(`surprise ${
+                    Blind() && !sensemon(mtmp) ? something : a_monnam(mtmp)}!`);
+                mtmp.mpeaceful = 0;
+            } else
+                await pline(`${Amonnam(mtmp)} attacks you by surprise!`);
+            break;
+        }
+        await mnexto(mtmp, RLOC_NOMSG); /* have to move the monster */
+    }
 }
 
 // src/hack.c:4130 end_running() — stop a run/rush/travel.
@@ -1807,6 +2079,150 @@ export async function lookaround() {
     }
 }
 
+// include/flag.h:233 notice_mon_off() — temporarily disable the a11y
+// monster notices (nested)
+export function notice_mon_off() {
+    const a11y = (game.a11y ||= {});
+    a11y.mon_notices_blocked = (a11y.mon_notices_blocked | 0) + 1;
+}
+
+// include/flag.h:234 notice_mon_on()
+export function notice_mon_on() {
+    const a11y = (game.a11y ||= {});
+    if (--a11y.mon_notices_blocked < 0) {
+        impossible('mon_notices_blocked<0');
+        a11y.mon_notices_blocked = 0;
+    }
+}
+
+// src/hack.c:2589 move_out_of_bounds() — trying to move out-of-bounds?
+export async function move_out_of_bounds(x, y) {
+    if (!isok(x, y)) {
+        if (game.context.forcefight)
+            return domove_fight_empty(x, y);
+
+        if (game.flags?.mention_walls) {
+            let dx = game.u.dx, dy = game.u.dy;
+
+            if (dx && dy) { /* diagonal */
+                /* only as far as possible diagonally if in very
+                   corner; otherwise just report whichever of the
+                   cardinal directions has reached its limit */
+                if (isok(x, game.u.uy))
+                    dx = 0;
+                else if (isok(game.u.ux, y))
+                    dy = 0;
+            }
+            await You(`have already gone as far ${
+                directionname(xytodir(dx, dy))} as possible.`);
+        }
+        nomul(0);
+        game.context.move = 0;
+        return true;
+    }
+    return false;
+}
+
+// src/hack.c:1693 u_rooted() — a hero in a form that cannot move
+export async function u_rooted() {
+    if (!game.youmonst.data.mmove) {
+        await You(`are rooted ${
+            Levitation() || Is_airlevel(game.u.uz) || Is_waterlevel(game.u.uz)
+                ? 'in place'
+                : 'to the ground'}.`);
+        nomul(0);
+        return true;
+    }
+    return false;
+}
+
+// src/hack.c:1707 notice_mon() — a11y.mon_notices is the spot_monsters
+// option; mspotted records that the hero has already been told. The
+// mspotted update happens here, at C's moment; the message text is
+// composed now too but queued on game.a11y.notices, because pline() is
+// asynchronous here and this is reached from synchronous vision_recalc().
+// notice_all_mons_flush() delivers the queue.
+export function notice_mon(mtmp) {
+    if (game.flags?.spot_monsters && !(game.a11y?.mon_notices_blocked)) {
+        const spot = canspotmon(mtmp)
+            && !(is_hider(mtmp.data)
+                 && (mtmp.mundetected
+                     || M_AP_TYPE(mtmp) === M_AP_FURNITURE
+                     || M_AP_TYPE(mtmp) === M_AP_OBJECT));
+
+        if (spot && !mtmp.mspotted && !DEADMONSTER(mtmp)) {
+            mtmp.mspotted = true;
+            ((game.a11y ||= {}).notices ||= []).push({
+                x: mtmp.mx, y: mtmp.my,
+                text: `${canseemon(mtmp) ? 'see' : 'notice'} ${
+                    x_monnam(mtmp,
+                             mtmp.mtame ? ARTICLE_YOUR
+                             : (!has_mgivenname(mtmp)
+                                && !type_is_pname(mtmp.data)) ? ARTICLE_A
+                             : ARTICLE_NONE,
+                             (mtmp.mpeaceful && !mtmp.mtame) ? 'peaceful' : null,
+                             has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0,
+                             false)}.`,
+            });
+        } else if (!spot) {
+            mtmp.mspotted = false;
+        }
+    }
+}
+
+// src/hack.c:1735 notice_mons_cmp()
+function notice_mons_cmp(m1, m2) {
+    return distu(m1.mx, m1.my) - distu(m2.mx, m2.my);
+}
+
+// src/hack.c:1744 notice_all_mons() — C walks fmon (newest first, as
+// game.level.monsters is) and qsorts by distance; ties keep list order here
+export function notice_all_mons(reset) {
+    if (game.flags?.spot_monsters && !(game.a11y?.mon_notices_blocked)) {
+        const arr = [];
+        let cnt = 0;
+
+        for (const mtmp of game.level?.monsters || []) {
+            if (DEADMONSTER(mtmp))
+                continue;
+            if (canspotmon(mtmp))
+                cnt++;
+            else if (reset)
+                mtmp.mspotted = false;
+        }
+        if (!cnt)
+            return;
+
+        for (const mtmp of game.level.monsters) {
+            if (DEADMONSTER(mtmp))
+                continue;
+            if (!canspotmon(mtmp))
+                mtmp.mspotted = false;
+            else if (arr.length < cnt)
+                arr.push(mtmp);
+        }
+
+        if (arr.length) {
+            arr.sort(notice_mons_cmp);
+            for (const mtmp of arr)
+                notice_mon(mtmp);
+        }
+    }
+}
+
+/* deliver the notices queued by notice_mon(); C printed them on the spot */
+export async function notice_all_mons_flush() {
+    const a11y = game.a11y;
+    if (!a11y?.notices?.length)
+        return;
+    const list = a11y.notices;
+    a11y.notices = [];
+    for (const n of list) {
+        set_msg_xy(n.x, n.y);
+        await You(n.text);
+    }
+}
+
 // src/hack.c:1787 impact_disturbs_zombies() — a heavy object hitting the floor
 // wakes zombies buried nearby.
 //
@@ -1876,15 +2292,32 @@ export async function check_capacity(str) {
     return 0;
 }
 
-// src/hack.c:3051 overexertion() — the hunger tick an attack costs.
-//
-// gethungry() DRAWS, so this is the reason attacking a monster spends more
-// from the stream than stepping onto an empty square does.
+// src/hack.c:3040 overexert_hp() — HP loss or passing out from overexerting
+// yourself
+async function overexert_hp() {
+    const u = game.u;
+    const hp = !Upolyd(u) ? 'uhp' : 'mh';
+
+    if (u[hp] > 1) {
+        u[hp] -= 1;
+        (game.disp ||= {}).botl = true;
+    } else {
+        await You('pass out from exertion!');
+        exercise(A_CON, false);
+        await fall_asleep(-10, false);
+    }
+}
+
+// src/hack.c:3051 overexertion() — combat increases metabolism
 export async function overexertion() {
+    /* this used to be part of domove() when moving to a monster's
+       position, but is now called by do_attack() so that it doesn't
+       execute if you decline to attack a peaceful monster */
     await gethungry();
-    if ((game.moves % 3) !== 0 && near_capacity() >= HVY_ENCUMBER)
-        note_unported_hack('overexertion:overexert_hp');
-    return game.multi < 0; /* might have fainted */
+    if ((game.moves % 3) !== 0 && near_capacity() >= HVY_ENCUMBER) {
+        await overexert_hp();
+    }
+    return game.multi < 0; /* might have fainted (forced to sleep) */
 }
 
 
@@ -2107,21 +2540,44 @@ async function dopush(sx, sy, rx, ry, otmp, costly) {
     game.bldrpushtime = game.moves | 0;
 
     /* Move the boulder *after* the message. */
+    unmap_invisible(rx, ry); /* if glyph_is_invisible(levl[rx][ry].glyph) */
     otmp.next_boulder = 0;
-    /* movobj(): remove + place + newsym both squares. place_object() is
-       what re-blocks vision at the boulder's new square; skipping it let
-       the hero see straight into the room the boulder was pushed toward. */
-    const osx = otmp.ox, osy = otmp.oy;
-    obj_extract_self(otmp);
-    newsym(osx, osy);
-    /* A successful push proves that no invisible monster remains at the
-       destination. Clear a stale marker before the boulder is mapped there. */
-    unmap_invisible(rx, ry);
-    place_object(otmp, rx, ry);
-    newsym(rx, ry);
-    /* the shop-bill adjustments need billing; costly is false until then */
-    if (costly)
-        note_unported_hack('dopush:shop_bill');
+    movobj(otmp, rx, ry); /* does newsym(rx,ry) */
+    if (Blind()) {
+        await feel_location(rx, ry);
+        await feel_location(sx, sy);
+    } else {
+        newsym(sx, sy);
+    }
+    /* maybe adjust bill if boulder was pushed across shop boundary;
+       normally otmp->unpaid would not apply because otmp isn't in
+       hero's inventory, but addtobill() sets it and subfrombill()
+       clears it */
+    let shkp;
+    if (costly && !costly_spot(rx, ry)) {
+        /* pushing from inside shop to its boundary (or free spot) */
+        await addtobill(otmp, false, false, false);
+    } else if (!costly && costly_spot(rx, ry) && otmp.unpaid
+               && ((shkp = shop_keeper((in_rooms(rx, ry, SHOPBASE) || '\0').charCodeAt(0)))
+                   != null)
+               && onshopbill(otmp, shkp, true)) {
+        /* this can happen if hero pushes boulder from farther inside
+           shop into shop's free spot (which will add it to the bill),
+           then teleports or Passes_walls to doorway (without exiting
+           the shop), and then pushes the boulder from the free spot
+           back into the shop; it's contingent upon the shopkeeper not
+           "muttering an incantation" to fracture the boulder while it
+           is unpaid at the free spot */
+        subfrombill(otmp, shkp);
+    } else if (otmp.unpaid
+               && (shkp = find_objowner(otmp, sx, sy)) != null
+               && !in_rooms(rx, ry, SHOPBASE).includes(
+                      String.fromCharCode(ESHK(shkp).shoproom))) {
+        /* once the boulder is fully out of the shop, so that it's
+         * impossible to change your mind and push it back in without
+         * leaving and triggering Kops, switch it to stolen_value */
+        await stolen_value(otmp, sx, sy, true, false);
+    }
 }
 
 // src/hack.c:247 cannot_push_msg()
@@ -2135,14 +2591,51 @@ async function cannot_push_msg(otmp, sx, sy) {
         await feel_location(sx, sy);
 }
 
-// src/hack.c:262 cannot_push() — climbing over is a polyd-giant option;
-// an ordinary hero just fails.
+// src/hack.c:262 cannot_push()
 async function cannot_push(otmp, sx, sy) {
     if (throws_rocks(game.youmonst.data)) {
-        note_unported_hack('cannot_push:giant_climb');
+        const canpickup = (!In_sokoban(game.u.uz)
+                         /* similar exception as in can_lift():
+                            when poly'd into a giant, you can
+                            pick up a boulder if you have a free
+                            slot or into the overflow ('#') slot
+                            unless already carrying at least one */
+                        && (inv_cnt(false) < invlet_basic
+                               || !carrying(ONAMES.BOULDER))),
+              willpickup = (canpickup
+                          && (game.flags.autopickup && !game.context.nopick)
+                          && autopick_testobj(otmp, true));
+
+        if (game.u.usteed && P_SKILL(P_RIDING) < P_BASIC) {
+            await You(`aren't skilled enough to ${
+                willpickup ? 'pick up' : 'push aside'} ${
+                the(xname(otmp))} from ${y_monnam(game.u.usteed)}.`);
+        } else {
+            /*
+             * will pick up:  you easily pick it up
+             * can but won't: you maneuver over it and could pick it up
+             * can't pick up: you maneuver over it (possibly followed
+             *     by feedback from failed auto-pickup attempt)
+             */
+            await pline(`However, you ${
+                willpickup ? 'easily pick it up' : 'maneuver over it'}${
+                (canpickup && !willpickup) ? ' and could pick it up' : ''}.`);
+            /* similar to dropping everything and squeezing onto
+               a Sokoban boulder's spot, moving to same breaks the
+               Sokoban rules because on next step you could go
+               past it without pushing it to plug a pit or hole */
+            sokoban_guilt();
+        }
         return 0;
     }
-    return -1;
+
+    if (could_move_onto_boulder(sx, sy)) {
+        await pline('However, you can squeeze yourself into a small opening.');
+        sokoban_guilt();
+        return 0;
+    } else {
+        return -1;
+    }
 }
 
 // src/hack.c:327 moverock_done()
@@ -2174,10 +2667,16 @@ async function moverock_core(sx, sy) {
     let otmp;
 
     while ((otmp = sobj_at(ONAMES.BOULDER, sx, sy)) != null) {
-        /* Blind "That feels like a boulder." arm needs remembered-glyph
-           bookkeeping; recorded until a blind hero pushes one */
-        if (game.u.ublind)
-            note_unported_hack('moverock:blind_feel');
+        if (Blind()) {
+            const g = glyph_at(sx, sy);
+            if (!(g?.kind === 'obj' && g.otyp === ONAMES.BOULDER)) {
+                /* glyph_to_obj(glyph_at(sx, sy)) != BOULDER */
+                await pline('That feels like a boulder.');
+                map_object(otmp, true);
+                nomul(0);
+                return -1;
+            }
+        }
 
         otmp.next_boulder = firstboulder ? 0 : 1;
         firstboulder = false;
@@ -2201,27 +2700,56 @@ async function moverock_core(sx, sy) {
         const ry = game.u.uy + 2 * game.u.dy;
         nomul(0);
 
-        /* m<dir> toward an adjacent boulder: squeeze or refuse */
+        /* using m<dir> towards an adjacent boulder steps over/onto it if
+           poly'd into a giant or squeezes under/beside it if small/light
+           enough but is a no-op in other circumstances unless move attempt
+           reveals an unseen boulder or lack of remembered, unseen monster */
         if (game.context.nopick) {
-            await feel_location(sx, sy);
+            const oldglyph = glyph_at(sx, sy); /* before feel_location() */
+            let res;
+
+            await feel_location(sx, sy); /* same for all 3 if/else-if/else cases */
             if (throws_rocks(game.youmonst.data)) {
-                note_unported_hack('moverock:nopick_giant');
-                return 0;
+                /* player has used 'm<dir>' to move, so step to boulder's
+                   spot without pushing it; hero is poly'd into a giant,
+                   so exotic forms of locomotion are out, but might be
+                   levitating (ring, potion, spell) or flying (amulet) */
+                await You(`${u_locomotion('step')} over a boulder here.`);
+                /* ["over" seems weird on air level but what else to say?] */
+                sokoban_guilt();
+                res = 0; /* move to <sx,sy> */
             } else if (could_move_onto_boulder(sx, sy)) {
                 await You(`squeeze yourself ${
-                    game.u.uprops?.FLYING ? 'over' : 'against'} the boulder.`);
-                return 0;
+                    Flying() ? 'over' : 'against'} the boulder.`);
+                sokoban_guilt();
+                res = 0; /* move to <sx,sy> */
             } else {
                 await There('is a boulder in your way.');
-                return -1;
+                /* use a move if hero learns something; see test_move() for
+                   how/why 'context.door_opened' is being dragged into this */
+                if (JSON.stringify(glyph_at(sx, sy)) !== JSON.stringify(oldglyph))
+                    game.context.door_opened = game.context.move = true;
+                res = -1; /* don't move to <sx,sy>, so no soko guilt */
             }
+            return res;
         }
-        if (game.u.uprops?.LEVITATION) {
+        if (Levitation() || Is_airlevel(game.u.uz)) {
+            /* FIXME?  behavior in an air bubble on the water level should
+               be similar to being on the air level; both cases probably
+               ought to let push attempt proceed when flying (which implies
+               not levitating) */
+            if (Blind())
+                await feel_location(sx, sy);
             await You(`don't have enough leverage to push ${the(xname(otmp))}.`);
             /* Give them a chance to climb over it? */
             return -1;
         }
-        /* verysmall(youmonst.data) cannot fire un-polymorphed */
+        if (verysmall(game.youmonst.data) && !game.u.usteed) {
+            if (Blind())
+                await feel_location(sx, sy);
+            await pline(`You're too small to push that ${xname(otmp)}.`);
+            return cannot_push(otmp, sx, sy);
+        }
 
         const dest = isok(rx, ry) ? game.level.at(rx, ry) : null;
         if (dest && !IS_OBSTRUCTED(dest.typ)
@@ -2231,20 +2759,30 @@ async function moverock_core(sx, sy) {
             && !sobj_at(ONAMES.BOULDER, rx, ry)) {
             const ttmp = t_at(rx, ry);
             const mtmp = m_at(rx, ry);
-            const costly = costly_spot(sx, sy); /* shop_keeper gate inside */
+            const costly = (costly_spot(sx, sy)
+                            && !!shop_keeper((in_rooms(sx, sy, SHOPBASE) || '\0').charCodeAt(0)));
 
             /* KMH -- Sokoban doesn't let you push boulders diagonally */
             if (In_sokoban(game.u.uz) && game.u.dx && game.u.dy) {
-                await pline(`${The(xname(otmp))} won't roll diagonally on this floor.`);
+                if (Blind())
+                    await feel_location(sx, sy);
+                await pline(`${The(xname(otmp))} won't roll diagonally on this ${
+                    surface(sx, sy)}.`);
                 return cannot_push(otmp, sx, sy);
             }
 
-            /* revive_nasty: buried Rider corpses only; nothing buries them */
+            if (await revive_nasty(rx, ry,
+                                   'You sense movement on the other side.')) {
+                return -1;
+            }
 
             if (mtmp && !noncorporeal(game.mons[mtmp.mnum])
                 && (!mtmp.mtrapped
                     || !(ttmp && is_pit(ttmp.ttyp)))) {
                 let deliver_part1 = false;
+
+                if (Blind())
+                    await feel_location(sx, sy);
                 if (canspotmon(mtmp)) {
                     await pline(`There's ${a_monnam(mtmp)} on the other side.`);
                     deliver_part1 = true;
@@ -2256,8 +2794,7 @@ async function moverock_core(sx, sy) {
                 }
                 if (game.flags?.verbose !== false) {
                     const you_or_steed = game.u.usteed
-                        ? 'it' /* y_monnam(usteed): no steed here yet */
-                        : 'you';
+                        ? y_monnam(game.u.usteed) : 'you';
                     await pline(`${deliver_part1 ? "Perhaps that's why " : ''}${
                         deliver_part1 ? you_or_steed
                                       : upstart(you_or_steed)} cannot move ${

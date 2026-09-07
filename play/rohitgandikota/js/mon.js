@@ -2099,6 +2099,9 @@ export function can_touch_safely(mtmp, otmp) {
 
 
 import { thiefdead } from './steal.js';
+import { completelyburns, completelyrusts, completelyrots } from './mondata.js';
+import { noit_mon_nam } from './do_name.js';
+import { worm_known } from './worm.js';
 
 // src/mon.c:2734 m_detach() — take a monster off the map.
 //
@@ -3543,14 +3546,40 @@ game._mondied_ref = mondied;
 export async function monkilled(mdef, fltxt, how) {
     const mptr = game.mons[mdef.mnum];
 
-    if (fltxt !== null && fltxt !== undefined && cansee(mdef.mx, mdef.my))
-        await pline(`${Monnam(mdef)} is ${
+    if (fltxt !== null && fltxt !== undefined
+        && (mdef.wormno ? worm_known(mdef) : cansee(mdef.mx, mdef.my)))
+        await pline_mon(mdef, `${Monnam(mdef)} is ${
             nonliving(mptr) ? 'destroyed' : 'killed'}${
             fltxt ? ' by the ' + fltxt : ''}!`);
-    else if (mdef.mtame)
-        (game.iflags ||= {}).sad_feeling = true;
+    else
+        /* sad feeling is deferred until after potential life-saving */
+        (game.iflags ||= {}).sad_feeling = mdef.mtame ? true : false;
 
-    await mondied(mdef);
+    /* no corpse if digested or disintegrated or flammable golem burnt up;
+       no corpse for a paper golem means no scrolls; golems that rust or
+       rot completely are described as "falling to pieces" so they do
+       leave a corpse (which means staves for wood golem, leather armor for
+       leather golem, iron chains for iron golem, not a regular corpse) */
+    game.disintegested = (how === ATTKS.AD_DGST || how === -ATTKS.AD_RBRE
+                          || (how === ATTKS.AD_FIRE && completelyburns(mptr)));
+    if (game.disintegested)
+        await mondead(mdef); /* never leaves a corpse */
+    else
+        await mondied(mdef); /* calls mondead() and maybe leaves a corpse */
+
+    if (!DEADMONSTER(mdef))
+        return; /* life-saved */
+    /* extra message if pet golem is completely destroyed;
+       if not visible, this will follow "you have a sad feeling" */
+    if (mdef.mtame) {
+        const rxt = (how === ATTKS.AD_FIRE && completelyburns(mptr)) ? 'roast'
+                    : (how === ATTKS.AD_RUST && completelyrusts(mptr)) ? 'rust'
+                      : (how === ATTKS.AD_DCAY && completelyrots(mptr)) ? 'rot'
+                        : null;
+        if (rxt)
+            await pline(`May ${noit_mon_nam(mdef)} ${rxt} in peace.`);
+    }
+    return;
 }
 
 // src/mon.c:3864 ok_to_obliterate() — monsters that should not be
@@ -4313,13 +4342,12 @@ export function newcham(mtmp, mdat, ncflags) {
         check_gear_next_turn(mtmp);
 
         /* former giants can't continue carrying boulders */
-        if (mtmp.minvent && !throws_rocks(mdat)) {
-            let otmp2;
+        if (mtmp.minvent?.length && !throws_rocks(mdat)) {
             /* DEADMONSTER(): it is possible for flooreffects() to kill mtmp;
                the rest of its inventory would be dropped making otmp2 stale */
-            for (let otmp = mtmp.minvent; otmp && !DEADMONSTER(mtmp);
-                 otmp = otmp2) {
-                otmp2 = otmp.nobj;
+            for (const otmp of [...mtmp.minvent]) {
+                if (DEADMONSTER(mtmp))
+                    break;
                 if (otmp.otyp === ONAMES.BOULDER) {
                     /* this keeps otmp from being polymorphed in the
                        same zap that the monster that held it is polymorphed */

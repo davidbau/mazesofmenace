@@ -56,7 +56,7 @@ import {
     show_glyph_cell, display_self, map_trap, map_engraving, canspotmon, sensemon,
     map_invisible, glyph_is_invisible, glyph_is_monster, warning_of, You_feel,
     feel_location, feel_newsym, unmap_invisible, map_object, Norep,
-    see_monsters, flush_screen, docrt, cls, unmap_object, flush_topl_more,
+    see_monsters, flush_screen, docrt, cls, more, set_msg_xy, unmap_object, flush_topl_more,
     glyph_is_object, glyph_to_obj, glyph_is_trap, glyph_at,
     Hallucination, random_object, random_monster,
     pet_to_glyph, detected_mon_to_glyph, mon_to_glyph, monsym, glyph_tty_attr,
@@ -345,14 +345,37 @@ function nomul_clear() {
 }
 
 /**
- * C ref: detect.c find_trap — mark seen, exercise, message.
- * Hallucination/cls/map_trap/display_nhwindow wait deferred.
+ * C ref: detect.c find_trap `:1936–1962` — mark seen, exercise, reveal,
+ * message, and the clutter redraw wait.
  */
 async function find_trap(trap) {
     trap.tseen = true;
     exercise(A_WIS, true);
-    newsym(trap.tx, trap.ty);
+    feel_newsym(trap.tx, trap.ty);
+
+    // C: Hallucination || glyph != trap glyph — "too much clutter to see
+    // your find otherwise": clear, paint the trap + hero, wait below.
+    const tg = trap_to_glyph(trap);
+    const tgid = (typeof tg === 'number')
+        ? tg
+        : (typeof tg?.glyph === 'number' ? tg.glyph : NO_GLYPH);
+    let cleared = false;
+    if (Hallucination() || glyph_at(trap.tx, trap.ty) !== tgid) {
+        await cls();
+        map_trap(trap, 1);
+        display_self();
+        cleared = true;
+    }
+
+    set_msg_xy(trap.tx, trap.ty);
     await pline(`You find ${an(trapname(trap.ttyp, false))}.`);
+
+    if (cleared) {
+        // C: display_nhwindow(WIN_MAP, TRUE) — wait (same mapping as the
+        // eat.js mimic arm: display_nhwindow(WIN_MAP,TRUE) → more()).
+        await more();
+        await docrt();
+    }
 }
 
 /**

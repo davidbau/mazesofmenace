@@ -119,7 +119,7 @@ const Maybe_Half_Phys = (dmg) =>
     (game.u.intrinsic?.HHalf_physical_damage || game.u.uprops?.HALF_PHDAM)
         ? Math.trunc((dmg + 1) / 2) : dmg;
 /* include/hack.h:80 SHOP_WALL_DMG */
-const SHOP_WALL_DMG = () => 10 * acurrstr();
+export const SHOP_WALL_DMG = () => 10 * acurrstr();
 /* include/mondata.h:159 is_watch() */
 const is_watch = (ptr) => ptr.pmidx === PMNAMES.PM_WATCHMAN
     || ptr.pmidx === PMNAMES.PM_WATCH_CAPTAIN;
@@ -150,7 +150,7 @@ function on_level(a, b) {
 }
 
 /* svc.context.digging (include/context.h dig_info) */
-function digging_context() {
+export function digging_context() {
     const context = game.context ||= {};
     return context.digging ||= {
         pos: { x: 0, y: 0 },
@@ -165,7 +165,7 @@ function digging_context() {
 }
 
 /* memset(&svc.context.digging, 0, sizeof svc.context.digging) */
-function clear_digging_context() {
+export function clear_digging_context() {
     const ctx = digging_context();
     ctx.pos = { x: 0, y: 0 };
     ctx.level = null;

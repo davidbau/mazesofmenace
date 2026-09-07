@@ -19,6 +19,9 @@ import { exercise } from './attrib.js';
 import { Blind, Hallucination, Acid_resistance, Stone_resistance, Unaware } from './youprop.js';
 import { an } from './objnam.js';
 import { hcolor, rndmonnam } from './do_name.js';
+import { find_ac } from './do_wear.js';
+import { NH_GOLDEN } from './const.js';
+import { Norep } from './pline.js';
 import { find_delayed_killer, dealloc_killer, done } from './end.js';
 import { polymon } from './polyself.js';
 import { game } from './gstate.js';
@@ -1102,6 +1105,18 @@ export async function nh_timeout() {
     /* src/timeout.c:649, before intrinsic timeouts are decremented. */
     if (u.ucreamed)
         u.ucreamed--;
+
+    /* src/timeout.c:652 Dissipate spell-based protection. */
+    if (u.usptime) {
+        if (--u.usptime === 0 && u.uspellprot) {
+            u.usptime = u.uspmtime;
+            u.uspellprot--;
+            find_ac();
+            if (!Blind())
+                await Norep(`The ${hcolor(NH_GOLDEN)} haze around you ${
+                    u.uspellprot ? 'becomes less dense' : 'disappears'}.`);
+        }
+    }
 
     /* include/prop.h and include/youprop.h: visit intrinsic slots in
        property-number order, independent of when JS fields were created. */

@@ -92,6 +92,7 @@ import {
     MR_ACID,
     MR_STONE,
 } from './monsters.js';
+import { golemhp, is_home_elemental } from './makemon.js';
 import {
     POLY_CONTROLLED,
     POLY_LOW_CTRL,
@@ -1044,12 +1045,13 @@ export async function polymon(mntmp) {
     if (mdat?.mlet === 'S_DRAGON' && mntmp >= PM_GRAY_DRAGON) {
         u.mhmax = In_endgame(u.uz) ? (8 * mlvl) : (4 * mlvl + d(mlvl, 4));
     } else if (is_golem(mdat)) {
-        // golemhp deferred — treat as ordinary d()
-        u.mhmax = mlvl ? d(mlvl, 8) : rnd(4);
+        // C polyself.c:863 — fixed golem HP table, no RNG (makemon.c:2233).
+        u.mhmax = golemhp(mntmp);
     } else {
         if (!mlvl) u.mhmax = rnd(4);
         else u.mhmax = d(mlvl, 8);
-        // is_home_elemental ×3 deferred
+        // C polyself.c:869-870 — home-plane elementals triple HP.
+        if (is_home_elemental(mdat)) u.mhmax *= 3;
     }
     u.mh = u.mhmax;
 

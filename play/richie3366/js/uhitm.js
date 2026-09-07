@@ -5,7 +5,7 @@
 //         hack.c overexertion; mon.c killed / xkilled / corpse_chance.
 
 import { game } from './gstate.js';
-import { rn2, rnd, d, rn1 } from './rng.js';
+import { rn2, rnd, d, rn1, rnl } from './rng.js';
 import {
     IS_OBSTRUCTED, IS_TREE, IS_DOOR, IRONBARS, D_CLOSED, D_LOCKED,
     HMON_MELEE, HMON_THROWN, HMON_KICKED, HMON_APPLIED, STRAT_WAITMASK,
@@ -37,19 +37,22 @@ import { cansee } from './vision.js';
 import {
     dmgval, hitval, P_SKILL, weapon_hit_bonus, martial_bonus,
     dbon, weapon_dam_bonus, use_skill, weapon_type,
-    special_dmgval, silver_sears,
+    special_dmgval, silver_sears, MON_WEP,
 } from './weapon.js';
 import {
     ammo_and_launcher, is_weptool, is_launcher, is_ammo, is_missile,
-    drop_uswapwep,
+    is_pole, drop_uswapwep, uwepgone,
 } from './wield.js';
+import { useup } from './invent.js';
 import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI, PM_ARCHEOLOGIST, PM_WIZARD, PM_HUMAN } from './generated/monsters_data.js';
 import {
     find_mac, get_mattk, make_corpse, monstone, mhitm_knockback, monkilled,
     troll_baned, mhitm_ad_poly, mhitm_ad_slee, could_seduce, failed_grab, shade_miss,
+    mhitm_mgc_atk_negated, resists_poison_mm,
     AT_NONE, AT_WEAP, AT_KICK, AT_CLAW, AT_SPIT, AT_HUGS,
     AT_TUCH, AT_BITE, AT_BUTT, AT_STNG, AT_MAGC, AT_TENT,
     AT_EXPL, AT_ENGL, AT_BREA, AT_GAZE, AD_PHYS, AD_POLY, AD_DRIN, AD_SLEE,
+    AD_DRST,
 } from './mhitm.js';
 import {
     verysmall, nohands, G_FREQ, G_NOCORPSE, M2_COLLECT, MZ_MEDIUM, MZ_HUGE,
@@ -58,7 +61,7 @@ import {
     is_demon, NON_PM, NUMMONS, has_head, mindless, unsolid, breathless, mons,
     flaming, touch_petrifies, is_vampshifter, is_animal, amphibious,
     is_swimmer, slithy,
-    amorphous, noncorporeal, is_whirly, passes_walls, hates_silver, humanoid,
+    amorphous, noncorporeal, is_whirly, passes_walls, hates_silver, mon_hates_silver, humanoid,
     is_human, always_hostile, is_unicorn,
     MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
 } from './monsters.js';
@@ -76,12 +79,12 @@ import { experience, more_experienced, newexplevel } from './exper.js';
 import { explode, mon_explodes, adtyp_to_expltype } from './explode.js';
 import { rehumanize, body_part, mbodypart } from './polyself.js';
 import { mon_nam, Monnam, x_monnam, x_monnam_tame, Hallucination, type_is_pname, pmname, a_monnam, safe_oname } from './do_name.js';
-import { artifact_hit, youmonst, is_art, artifact_exists } from './artifact.js';
+import { artifact_hit, youmonst, is_art, artifact_exists, shade_glare } from './artifact.js';
 import { xname, vtense, The, An, an, singular, makeplural, cxname, simpleonames, otense, mshot_xname } from './objnam.js';
 import { abuse_dog, tamedog } from './dog.js';
 import { makemon, makemon_appear_msg, newcham } from './makemon.js';
 import { ndemon } from './minion.js';
-import { ART_GIANTSLAYER, ART_STORMBRINGER } from './generated/artifacts_data.js';
+import { ART_GIANTSLAYER, ART_STORMBRINGER, ART_SNICKERSNEE } from './generated/artifacts_data.js';
 import { paranoid_query } from './getline.js';
 import { which_armor } from './worn.js';
 import { u_wipe_engr } from './engrave.js';
@@ -155,6 +158,7 @@ const HEAVY_IRON_BALL = objectNames.indexOf('HEAVY_IRON_BALL');
 const TOWEL = objectNames.indexOf('TOWEL');
 const CREAM_PIE = objectNames.indexOf('CREAM_PIE');
 const BLINDING_VENOM = objectNames.indexOf('BLINDING_VENOM');
+const BOOMERANG = objectNames.indexOf('BOOMERANG');
 const WAN_LIGHT = objectNames.indexOf('WAN_LIGHT');
 const LOADSTONE = objectNames.indexOf('LOADSTONE');
 // C objclass.h ARM_SHIELD — armor oc_skill / oc_armcat
@@ -405,17 +409,17 @@ export function disguised_as_non_mon(mtmp) {
  * dokick poly AT_KICK uses this via find_roll_to_hit (D-1310);
  * kickdmg still calls check_caitiff itself.
  */
-export function check_caitiff(mtmp) {
+export async function check_caitiff(mtmp) {
     if (!mtmp) return;
     const u = game.u || {};
     if ((u.ualign?.record | 0) <= -10) return;
     if (Role_if(PM_KNIGHT) && (u.ualign?.type | 0) === A_LAWFUL
         && !is_undead(mtmp.data)
         && (helpless(mtmp) || (mtmp.mflee && !mtmp.mavenge))) {
-        pline('You caitiff!');
+        await pline('You caitiff!');
         adjalign(-1);
     } else if (Role_if(PM_SAMURAI) && mtmp.mpeaceful) {
-        pline('You dishonorably attack the innocent!');
+        await pline('You dishonorably attack the innocent!');
         adjalign(-1);
     }
 }
@@ -428,7 +432,7 @@ export function check_caitiff(mtmp) {
  * weapon_hit_bonus from weapon.c (bare-hand unskilled = +1; AT_KICK
  * martial_bonus uses NULL weapon like C).
  */
-export function find_roll_to_hit(mtmp, aatyp, weapon, attk_count, role_roll_penalty) {
+export async function find_roll_to_hit(mtmp, aatyp, weapon, attk_count, role_roll_penalty) {
     role_roll_penalty.v = 0;
     const u = game.u || {};
     const luck = Luck();
@@ -439,8 +443,10 @@ export function find_roll_to_hit(mtmp, aatyp, weapon, attk_count, role_roll_pena
         + luckbon
         + (u.ulevel | 0); // maybe_polyd → ulevel when not poly
     if (!attk_count.v++) {
-        // C: knight's chivalry or samurai's giri — once per multi-attack
-        check_caitiff(mtmp);
+        // C: knight's chivalry or samurai's giri — once per multi-attack.
+        // Awaited: C prints synchronously before the attack roll; a
+        // floating pline reorders the topline (scen-kit-Samurai-91129).
+        await check_caitiff(mtmp);
     }
     if (mtmp.mstun) tmp += 2;
     if (mtmp.mflee) tmp += 2;
@@ -909,17 +915,62 @@ async function hmon(mon, obj, thrown, _dieroll) {
         }
     } else if (obj.oclass === WEAPON_CLASS
         || game.objects?.[obj.otyp]?.oc_skill != null) {
-        dmg = dmgval(obj, mon);
-        use_weapon_skill = true;
-        train_weapon_skill = dmg > 1;
-        // C hmon_hitmon_weapon_melee: artifact_hit after dmgval, before
-        // hmon_hitmon_dmg_recalc (Grayswandir spec_dbon max(tmp,1)).
-        if (obj.oartifact) {
-            const dmgBox = { dmg };
-            if (await artifact_hit(youmonst, mon, obj, dmgBox, _dieroll | 0)) {
-                hittxt = true;
+        // C uhitm.c hmon_hitmon_weapon :1074–1094 — a launcher, a missile
+        // or ammo in hand, a short pole (unmounted, not Snickersnee), or
+        // ammo without its launcher goes ranged: 1–2 dmg, no weapon skill
+        // use or training. Everything else goes melee below.
+        const uW = game.u || {};
+        if (is_launcher(obj)
+            || (!thrown && (is_missile(obj) || is_ammo(obj)))
+            || (!thrown && !uW.usteed && is_pole(obj)
+                && !is_art(obj, ART_SNICKERSNEE))
+            || (is_ammo(obj) && (thrown !== HMON_THROWN
+                || !ammo_and_launcher(obj, uW.uwep)))) {
+            // C uhitm.c hmon_hitmon_weapon_ranged :885–917. Silver sear
+            // message named (hmon has no msg_silver plumbing); shade with
+            // no glare takes 0; wielded-boomerang splinter tail below.
+            // use/train_weapon_skill stay false (C init FALSE; the ranged
+            // arm sets neither), so the recalc below adds udaminc +
+            // strength only.
+            if ((mon.data?.mndx | 0) === PM_SHADE && !shade_glare(obj)) {
+                dmg = 0;
+            } else {
+                dmg = rnd(2);
             }
-            dmg = dmgBox.dmg | 0;
+            // C uhitm.c:896 mon_hates_silver(mon) = is_vampshifter(mon)
+            // || hates_silver(mon->data) (mondata.c:516–520).
+            if ((game.objects?.[obj.otyp]?.oc_material | 0) === SILVER
+                && mon_hates_silver(mon)) {
+                dmg += rnd(dmg ? 20 : 10);
+            }
+            // C uhitm.c hmon_hitmon_weapon_ranged :901–917 — wielded
+            // boomerang may splinter: !thrown && obj==uwep && BOOMERANG
+            // && rnl(4)==3 → splinter pline + uwepgone/useup + hittxt
+            // + dmg++ (non-shade). C's obj=0 is local to the ranged
+            // helper (caller keeps obj), so no nulling here. yname is
+            // the pre-existing local clone below (wielded ⇒ "your X").
+            if (!thrown && obj === game.u?.uwep && obj.otyp === BOOMERANG
+                && rnl(4) === 3) {
+                const more_than_1 = (obj.quan | 0) > 1;
+                await pline(`As you hit ${mon_nam(mon)}, ${more_than_1 ? 'one of ' : ''}${yname(obj)} breaks into splinters.`);
+                if (!more_than_1) await uwepgone();
+                useup(obj);
+                hittxt = true;
+                if ((mon.data?.mndx | 0) !== PM_SHADE) dmg++;
+            }
+        } else {
+            dmg = dmgval(obj, mon);
+            use_weapon_skill = true;
+            train_weapon_skill = dmg > 1;
+            // C hmon_hitmon_weapon_melee: artifact_hit after dmgval, before
+            // hmon_hitmon_dmg_recalc (Grayswandir spec_dbon max(tmp,1)).
+            if (obj.oartifact) {
+                const dmgBox = { dmg };
+                if (await artifact_hit(youmonst, mon, obj, dmgBox, _dieroll | 0)) {
+                    hittxt = true;
+                }
+                dmg = dmgBox.dmg | 0;
+            }
         }
     } else {
         dmg = dmgval(obj, mon);
@@ -1238,9 +1289,59 @@ export async function mhitm_ad_wrap(magr, mattk, mdef, mhm) {
 
 /**
  * C ref: uhitm.c mhitm_adtyping youmonst subset for damageum.
- * AD_PHYS + AD_POLY + AD_DRIN skipdrin + AD_WRAP (D-1348) + AD_SLEE live;
+ * AD_PHYS + AD_POLY + AD_DRIN skipdrin + AD_WRAP (D-1348) + AD_SLEE + AD_DRST live;
  * remaining mhitm_ad_* named. mhitm wrap brush is D-1406.
  */
+
+/** C ref: pline.c Your — prefix "Your " (file-local like zap.js/mhitu.js). */
+async function Your_u(rest) {
+    await pline(`Your ${rest}`);
+}
+
+/**
+ * C ref: mhitu.c mpoisons_subj `:145–158` for a hero attacker.
+ * The mhitm.js mm-variant reads MON_WEP(mtmp), but C `:150` uses uwep
+ * when mtmp is youmonst — a poly'd hero's mw is not the wielded weapon —
+ * so this uhitm copy keeps the C youmonst arm. Other aatyps are
+ * contact/gaze/bite else sting, exactly like the mm-variant.
+ */
+function mpoisons_subj_u(magr, mattk) {
+    const aatyp = mattk?.aatyp | 0;
+    if (aatyp === AT_WEAP) {
+        const mwep = (magr === game.youmonst || !!magr?._youmonst)
+            ? game.u?.uwep : MON_WEP(magr);
+        return (!mwep || !mwep.opoisoned) ? 'attack' : 'weapon';
+    }
+    if (aatyp === AT_TUCH) return 'contact';
+    if (aatyp === AT_GAZE) return 'gaze';
+    if (aatyp === AT_BITE) return 'bite';
+    return 'sting';
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_drst `:3122–3142` — uhitm (you→mon) arm.
+ * The gate (FALSE) always burns rn2(10); `!negated && !rn2(8)` poisons:
+ * resists_poison → "doesn't seem to affect"; else `!rn2(10)` deadly
+ * (damage = mhp) or damage += rn1(10, 6).
+ * Named omissions: mhitm (mon→mon) arm (mhitm_really_poison live,
+ * dispatch row named per mhitm_ad_phys D-1447); uhitm AD_SLOW arm.
+ */
+async function damageum_ad_drst(mdef, mattk, mhm) {
+    const magr = game.youmonst;
+    const negated = await mhitm_mgc_atk_negated(magr, mdef, false);
+    if (!negated && !rn2(8)) {
+        await Your_u(`${mpoisons_subj_u(magr, mattk)} was poisoned!`);
+        if (resists_poison_mm(mdef)) {
+            await pline(`The poison doesn't seem to affect ${mon_nam(mdef)}.`);
+        } else if (!rn2(10)) {
+            await Your_u('poison was deadly...');
+            mhm.damage = mdef.mhp | 0;
+        } else {
+            mhm.damage = (mhm.damage | 0) + rn1(10, 6);
+        }
+    }
+}
+
 async function damageum_adtyping(mattk, mdef, mhm) {
     const adtyp = mattk.adtyp | 0;
     if (adtyp === AD_PHYS) damageum_ad_phys(mdef, mattk, mhm);
@@ -1252,6 +1353,8 @@ async function damageum_adtyping(mattk, mdef, mhm) {
         await mhitm_ad_wrap(game.youmonst, mattk, mdef, mhm);
     } else if (adtyp === AD_SLEE) {
         await mhitm_ad_slee(game.youmonst, mattk, mdef, mhm);
+    } else if (adtyp === AD_DRST) {
+        await damageum_ad_drst(mdef, mattk, mhm);
     }
 }
 
@@ -1681,7 +1784,7 @@ async function hitum(mon, uattk) {
     // 0: single; 1: first of two — hmon copies into hmd.twohits
     gt_twohits = (uwep ? !!u.twoweap : double_punch()) ? 1 : 0;
 
-    let tmp = find_roll_to_hit(mon, uattk.aatyp, uwep, attk_count, role_roll_penalty);
+    let tmp = await find_roll_to_hit(mon, uattk.aatyp, uwep, attk_count, role_roll_penalty);
     mon_maybe_unparalyze(mon);
     let dieroll = rnd(20);
     let mhit = { v: (tmp > dieroll || !!u.uswallow) ? 1 : 0 };
@@ -1702,7 +1805,7 @@ async function hitum(mon, uattk) {
         || !malive
         || m_at(x, y) !== mon)) {
         gt_twohits = 2;
-        tmp = find_roll_to_hit(
+        tmp = await find_roll_to_hit(
             mon, uattk.aatyp, u.uswapwep || null, attk_count, role_roll_penalty,
         );
         mon_maybe_unparalyze(mon);
@@ -2330,7 +2433,7 @@ export async function hmonas(mon) {
             if (hmonas_toggle_altwep(u)) altwep = !altwep;
             weapon = u[origSlot] || null;
             if (!weapon) origSlot = 'uarmg';
-            const tmp = find_roll_to_hit(mon, AT_WEAP, weapon, attk_count,
+            const tmp = await find_roll_to_hit(mon, AT_WEAP, weapon, attk_count,
                 role_roll_penalty);
             mon_maybe_unparalyze(mon);
             const dieroll = rnd(20);
@@ -2361,7 +2464,7 @@ export async function hmonas(mon) {
             if (aatyp === AT_KICK && mtrapped_in_pit(game.youmonst)) {
                 continue;
             }
-            const tmp = find_roll_to_hit(mon, aatyp, null, attk_count,
+            const tmp = await find_roll_to_hit(mon, aatyp, null, attk_count,
                 role_roll_penalty);
             mon_maybe_unparalyze(mon);
             const dieroll = rnd(20);
@@ -2459,7 +2562,7 @@ export async function hmonas(mon) {
             sum[i] = await explum(mon, mattk);
         } else if (aatyp === AT_ENGL) {
             // C uhitm.c hmonas AT_ENGL :5769–5794 — rnd(20+i); gulpum.
-            const tmp = find_roll_to_hit(mon, aatyp, null, attk_count,
+            const tmp = await find_roll_to_hit(mon, aatyp, null, attk_count,
                 role_roll_penalty);
             mon_maybe_unparalyze(mon);
             dhit = (tmp > rnd(20 + i)) ? 1 : 0;

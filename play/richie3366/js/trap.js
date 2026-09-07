@@ -2133,6 +2133,63 @@ async function trapeffect_dart_trap(mtmp, trap) {
         : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
 }
 
+// C ref: trap.c trapeffect_arrow_trap `:1189-1248` — hero + monster
+// branches. Shape mirrors trapeffect_dart_trap above: the monster arm is
+// t_missile(ARROW) (mksobj o_id + full WEAPON init, quan forced to 1) with
+// NO poison roll, then thitm(8, …); the hero arm plines and thitu(8, …).
+// Omissions mirror the dart port: Soundeffect, steedintrap, the gone-arm
+// pline_mon, in_sight gating on seetrap, obfree obj_resists (all draw-free
+// except the gone-arm rn2(15), which is kept). C trace for
+// scen-poly-Priest-92021 drew o_id + mksobj_init `:877/:878/:881` +
+// blessorcurse(10) + erosions + rnd(20)@thitm here.
+async function trapeffect_arrow_trap(mtmp, trap) {
+    if (is_youmonst(mtmp)) {
+        const u = game.u;
+        if (trap.once && trap.tseen && !rn2(15)) {
+            await pline('You hear a loud click!');
+            deltrap(trap);
+            newsym(u.ux, u.uy);
+            return Trap_Is_Gone;
+        }
+        trap.once = true;
+        seetrap(trap);
+        await pline('An arrow shoots out at you!');
+        let otmp = t_missile(ARROW, trap);
+        const dam = dmgval(otmp, game.youmonst || mtmp);
+        const box = { obj: otmp };
+        // thitu plines are sync-append-safe after the shoot message
+        if (await thitu(8, maybe_half_phys(dam), box, 'arrow')) {
+            otmp = box.obj;
+            if (otmp) {
+                // obfree: no obj_resists (delobj would burn rn2)
+            }
+            return Trap_Effect_Finished;
+        }
+        otmp = box.obj;
+        if (otmp) {
+            place_object(otmp, u.ux, u.uy);
+            if (!u.Blind) observe_object(otmp);
+            stackobj(otmp);
+            newsym(u.ux, u.uy);
+        }
+        return Trap_Effect_Finished;
+    }
+
+    // Monster branch
+    if (trap.once && trap.tseen && !rn2(15)) {
+        deltrap(trap);
+        newsym(mtmp.mx, mtmp.my);
+        return Trap_Is_Gone;
+    }
+    trap.once = true;
+    const otmp = t_missile(ARROW, trap);
+    // C: if (in_sight) seetrap(trap);
+    seetrap(trap);
+    const trapkilled = await thitm(8, mtmp, otmp, 0, false);
+    return trapkilled ? Trap_Killed_Mon
+        : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
+}
+
 // C ref: trap.c feeltrap — mark seen + redisplay via newsym → map_trap
 export function feeltrap(trap) {
     if (!trap) return;
@@ -4599,11 +4656,13 @@ async function trapeffect_landmine(mtmp, trap, trflags) {
         : (mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished);
 }
 
-// C ref: trap.c trapeffect_selector — dart/rock/pit/sqky/hole/magic/fire/slp/telep/bear/rust/web/landmine
+// C ref: trap.c trapeffect_selector — dart/arrow/rock/pit/sqky/hole/magic/fire/slp/telep/bear/rust/web/landmine
 async function trapeffect_selector(mtmp, trap, trflags) {
     switch (trap.ttyp) {
     case DART_TRAP:
         return trapeffect_dart_trap(mtmp, trap);
+    case ARROW_TRAP:
+        return trapeffect_arrow_trap(mtmp, trap);
     case ROCKTRAP:
         return trapeffect_rocktrap(mtmp, trap, trflags);
     case ROLLING_BOULDER_TRAP:
@@ -4639,7 +4698,7 @@ async function trapeffect_selector(mtmp, trap, trflags) {
     case STATUE_TRAP:
         return trapeffect_statue_trap(mtmp, trap, trflags);
     default:
-        // Named omission: arrow/anti-magic/… trap effects
+        // Named omission: anti-magic trap effect (arrow ported above)
         return Trap_Effect_Finished;
     }
 }

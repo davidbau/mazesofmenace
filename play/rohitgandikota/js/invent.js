@@ -1853,11 +1853,23 @@ export async function getobj(word, obj_ok_func, ctrlflags) {
         const allowed = obj_ok_func ? await obj_ok_func(otmp)
                                     : GETOBJ_SUGGEST;
         if (allowed === GETOBJ_EXCLUDE) {
-            await pline(`That is a silly thing to ${word}.`);
+            await silly_thing(word, otmp);
             return null;
         }
         return split_otmp(otmp);
     }
+}
+
+// src/invent.c:1755 silly_thing()
+export async function silly_thing(word, otmp) {
+    /* see comment about Amulet of Yendor in objtyp_is_callable(do_name.c);
+       known fakes yield the silly thing feedback */
+    if (word === 'call'
+        && (otmp.otyp === ONAMES.AMULET_OF_YENDOR
+            || (otmp.otyp === ONAMES.FAKE_AMULET_OF_YENDOR && !otmp.known)))
+        await pline_The("Amulet doesn't like being called names.");
+    else
+        await pline(`That is a silly thing to ${word}.`); /* silly_thing_to[] */
 }
 
 // src/invent.c:1466 sobj_at() — try to find a particular type of object at
@@ -3423,6 +3435,7 @@ export async function identify_pack(id_limit, learning_id) {
 
 // src/invent.c:1664 splittable() — can this stack be split off from?
 import { welded } from './wield.js';
+import { pline_The } from './pline.js';
 
 
 

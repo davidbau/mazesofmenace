@@ -4,30 +4,37 @@
 //         nasty / pick_nasty (pick_nasty lives in makemon.js for newcham).
 
 import { game } from './gstate.js';
-import { makemon, set_malign, pick_nasty } from './makemon.js';
+import { makemon, set_malign, pick_nasty, mpickobj } from './makemon.js';
 import {
     mons, is_covetous, is_minion, M3_WANTSAMUL, M3_WANTSBELL, M3_WANTSBOOK,
-    M3_WANTSCAND,
+    M3_WANTSCAND, M3_WANTSARTI,
 } from './monsters.js';
 import { monsterNames } from './generated/monsters_data.js';
 import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
 import { objectNames } from './objects.js';
-import { add_to_minv, mksobj } from './mkobj.js';
+import { add_to_minv, mksobj, obj_extract_self } from './mkobj.js';
 import {
     MM_NOWAIT, MM_NOMSG, NO_MM_FLAGS, STRAT_WAITMASK, STRAT_WAITFORU,
-    STRAT_APPEARMSG, STRAT_NONE, STRAT_HEAL, RLOC_MSG, In_endgame,
-    M_AP_MONSTER, EMIN,
+    STRAT_APPEARMSG, STRAT_NONE, STRAT_HEAL, STRAT_PLAYER, STRAT_GROUND,
+    STRAT_MONSTR, STRAT_STRATMASK, STRAT_GOAL, RLOC_MSG, In_endgame,
+    M_AP_MONSTER, EMIN, BOLT_LIM, isok, u_at,
 } from './const.js';
 import { pline, verbalize, Norep, newsym } from './display.js';
 import { Monnam } from './do_name.js';
+import { distant_name, doname } from './objnam.js';
 import { rn1, rn2, rnd } from './rng.js';
-import { noteleport_level, enexto, is_lminion } from './teleport.js';
-import { mnexto, wake_nearto } from './mon.js';
+import { noteleport_level, enexto, is_lminion, rloc, rloc_to } from './teleport.js';
+import { mnexto, wake_nearto, mnearto, healmon, monnear, m_at } from './mon.js';
 import { SetVoice } from './sndprocs.js';
 import { com_pager } from './questpgr.js';
 import { inhishop } from './shk.js';
+import { inhistemple } from './priest.js';
+import { In_W_tower } from './dungeon.js';
+import { mon_has_amulet } from './apply.js';
+import { expels } from './mhitu.js';
+import { cansee } from './vision.js';
 import { msummon, monster_census, Inhell } from './minion.js';
-import { builds_up } from './hacklib.js';
+import { builds_up, dist2 } from './hacklib.js';
 import { stairway_find_type_dir } from './mklev.js';
 
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
@@ -289,33 +296,136 @@ export function wizdeadorgone() {
 }
 
 /**
- * C ref: wizard.c strategy — HP-band + covetous/shop/temple gates.
- * Envelope: cases 0–3 → STRAT_HEAL / STRAT_NONE. Named omissions:
- * target_on(M3_WANTS*) pursuit; inhistemple (ispriest always treated as
- * in-temple skip like shopkeeper-in-shop).
+ * C ref: wizard.c you_have `:216–233` — hero holds the invocation target
+ * for mask (C static; insight.c has an unrelated same-named macro).
+ */
+function you_have(mask) {
+    switch (mask | 0) {
+    case M3_WANTSAMUL:
+        return !!game.u?.uhave?.amulet;
+    case M3_WANTSBELL:
+        return !!game.u?.uhave?.bell;
+    case M3_WANTSCAND:
+        return !!game.u?.uhave?.menorah;
+    case M3_WANTSBOOK:
+        return !!game.u?.uhave?.book;
+    case M3_WANTSARTI:
+        return !!game.u?.uhave?.questart;
+    default:
+        break;
+    }
+    return false;
+}
+
+/**
+ * C ref: wizard.c target_on `:236–267` — covetous pursuit goal for mask
+ * (C static): the `:139` M_Wants gate (mflags3 & mask) is inlined; hero
+ * holds it → STRAT_PLAYER at the hero; on the ground → STRAT_GROUND;
+ * another monster holds it → STRAT_MONSTR (Amulet skips the Wizard and
+ * temple priests, to protect Moloch's high priest); else mgoal zeroed
+ * + STRAT_NONE. mgoal is ensured here — makemon leaves it unset while
+ * the C struct always carries it.
+ */
+function target_on(mask, mtmp) {
+    if (!((mtmp.data?.mflags3 ?? 0) & (mask | 0))) {
+        return STRAT_NONE;
+    }
+    const otyp = which_arti(mask);
+    if (!mon_has_arti(mtmp, otyp)) {
+        if (you_have(mask)) {
+            if (!mtmp.mgoal) mtmp.mgoal = { x: 0, y: 0 };
+            mtmp.mgoal.x = game.u?.ux | 0;
+            mtmp.mgoal.y = game.u?.uy | 0;
+            return STRAT_PLAYER | (mask | 0);
+        }
+        const otmp = on_ground(otyp);
+        if (otmp) {
+            if (!mtmp.mgoal) mtmp.mgoal = { x: 0, y: 0 };
+            mtmp.mgoal.x = otmp.ox;
+            mtmp.mgoal.y = otmp.oy;
+            return STRAT_GROUND | (mask | 0);
+        }
+        const mtmp2 = other_mon_has_arti(mtmp, otyp);
+        /* when seeking the Amulet, avoid targeting the Wizard
+           or temple priests (to protect Moloch's high priest) */
+        if (mtmp2
+            && (otyp !== AMULET_OF_YENDOR
+                || (!mtmp2.iswiz && !inhistemple(mtmp2)))) {
+            if (!mtmp.mgoal) mtmp.mgoal = { x: 0, y: 0 };
+            mtmp.mgoal.x = mtmp2.mx;
+            mtmp.mgoal.y = mtmp2.my;
+            return STRAT_MONSTR | (mask | 0);
+        }
+    }
+    if (!mtmp.mgoal) mtmp.mgoal = { x: 0, y: 0 };
+    mtmp.mgoal.x = mtmp.mgoal.y = 0;
+    return STRAT_NONE;
+}
+
+/**
+ * C ref: wizard.c strategy `:270–327` — HP band + covetous/shop/temple
+ * gates, then target_on(M3_WANTS*) pursuit: the Amulet once made, then
+ * ARTI→BOOK→BELL→CAND after the Invocation else BOOK→BELL→CAND→ARTI.
+ * Bands 2–3 set dstrat (HEAL/NONE) and fall into the pursuit; band 1
+ * falls through only for the Wizard of Yendor. Complete vs C.
  */
 function strategy(mtmp) {
     if (!is_covetous(mtmp.data)
+        /* perhaps a shopkeeper has been polymorphed into a master
+           lich; we don't want it teleporting to the stairs to heal
+           because that will leave its shop untended */
         || (mtmp.isshk && inhishop(mtmp))
-        || mtmp.ispriest) {
+        /* likewise for temple priests */
+        || (mtmp.ispriest && inhistemple(mtmp))) {
         return STRAT_NONE;
     }
     const hpmax = mtmp.mhpmax | 0;
     const band = hpmax > 0 ? (((mtmp.mhp | 0) * 3) / hpmax) | 0 : 0;
+    let dstrat;
+    let strat;
     switch (band) {
     default:
-    case 0:
+    case 0: /* panic time - mtmp is almost snuffed */
         return STRAT_HEAL;
-    case 1:
-        if (mtmp.data !== mons(PM_WIZARD_OF_YENDOR)) return STRAT_HEAL;
-        // FALLTHROUGH — Wizard less cautious
+    case 1: /* the wiz is less cautious */
+        if (mtmp.data !== mons(PM_WIZARD_OF_YENDOR)) {
+            return STRAT_HEAL;
+        }
+        /* FALLTHRU */
+        // falls through
     case 2:
-        // C: dstrat=HEAL then target_on… — target deferred → HEAL
-        return STRAT_HEAL;
+        dstrat = STRAT_HEAL;
+        break;
     case 3:
-        // C: dstrat=NONE then target_on… — target deferred → NONE
-        return STRAT_NONE;
+        dstrat = STRAT_NONE;
+        break;
     }
+
+    if (game.context?.made_amulet) {
+        strat = target_on(M3_WANTSAMUL, mtmp);
+        if (strat !== STRAT_NONE) return strat;
+    }
+
+    if (game.u?.uevent?.invoked) { /* priorities change once gate opened */
+        strat = target_on(M3_WANTSARTI, mtmp);
+        if (strat !== STRAT_NONE) return strat;
+        strat = target_on(M3_WANTSBOOK, mtmp);
+        if (strat !== STRAT_NONE) return strat;
+        strat = target_on(M3_WANTSBELL, mtmp);
+        if (strat !== STRAT_NONE) return strat;
+        strat = target_on(M3_WANTSCAND, mtmp);
+        if (strat !== STRAT_NONE) return strat;
+    } else {
+        strat = target_on(M3_WANTSBOOK, mtmp);
+        if (strat !== STRAT_NONE) return strat;
+        strat = target_on(M3_WANTSBELL, mtmp);
+        if (strat !== STRAT_NONE) return strat;
+        strat = target_on(M3_WANTSCAND, mtmp);
+        if (strat !== STRAT_NONE) return strat;
+        strat = target_on(M3_WANTSARTI, mtmp);
+        if (strat !== STRAT_NONE) return strat;
+    }
+    return dstrat;
 }
 
 /**
@@ -347,31 +457,125 @@ export function choose_stairs(coord, dir) {
 }
 
 /**
- * C ref: wizard.c tactics — covetous special move before distfleeck.
- * Envelope: strategy → mstrategy update → STRAT_NONE harass rn2/mnexto.
- * STRAT_HEAL: set mavenge only; choose_stairs / rloc / healmon /
- * FALLTHROUGH-to-harass deferred (falling through burned extra rn2 when C
- * early-returned from HEAL). choose_stairs is live for call_kops.
+ * C ref: wizard.c tactics `:369–468` — covetous special move before
+ * distfleeck. STRAT_HEAL holes up on/near the stairs (choose_stairs by
+ * m_id parity), teleports out (W-tower rloc, stair mnearto with an
+ * rloc_to fallback), casts healmon out of BOLT_LIM range, then
+ * FALLTHROUGHs to the STRAT_NONE harass (rn2/mnexto) exactly as C does
+ * (healmon returns 1 first). Default arm pursues mgoal: player-held →
+ * mnearto beside the hero; ground → rloc_to + pickup (Monnam /
+ * distant_name pline, obj_extract_self, mpickobj) or harass-if-occupied;
+ * monster-held → mnearto beside it. No behavior delta where C is not
+ * yet ported: every callee here is live (mnearto/mon_leaving_level in
+ * mon.js, same SCC).
  */
 export async function tactics(mtmp) {
+    const u = game.u || {};
     const strat = strategy(mtmp);
     mtmp.mstrategy = ((mtmp.mstrategy | 0) & (STRAT_WAITMASK | STRAT_APPEARMSG))
         | strat;
 
     switch (strat) {
-    case STRAT_HEAL:
-        // choose_stairs / In_W_tower rloc / healmon / FALLTHROUGH deferred
-        mtmp.mavenge = 1;
-        return 0;
-    case STRAT_NONE:
+    case STRAT_HEAL: /* hide and recover */ {
+        let mx = mtmp.mx, my = mtmp.my;
+
+        if (u.uswallow && u.ustuck === mtmp) {
+            await expels(mtmp, mtmp.data, true);
+        }
+
+        /* if wounded, hole up on or near the stairs (to block them) */
+        const stair = { sx: 0, sy: 0 };
+        choose_stairs(stair, ((mtmp.m_id | 0) % 2) !== 0);
+        const sx = stair.sx | 0, sy = stair.sy | 0;
+        mtmp.mavenge = 1; /* covetous monsters attack while fleeing */
+        if (In_W_tower(mx, my, u.uz)
+            || (mtmp.iswiz && !sx && !mon_has_amulet(mtmp))) {
+            if (!noteleport_level(mtmp)
+                && !rn2(3 + (((mtmp.mhp | 0) / 10) | 0))) {
+                await rloc(mtmp, RLOC_MSG);
+            }
+        } else if (sx && (mx !== sx || my !== sy)) {
+            if (!noteleport_level(mtmp)
+                && !(await mnearto(mtmp, sx, sy, true, RLOC_MSG))) {
+                /* couldn't move to the target spot for some reason,
+                   so stay where we are (don't actually need rloc_to()
+                   because mtmp is still on the map at <mx,my>... */
+                await rloc_to(mtmp, mx, my);
+                return 0;
+            }
+            mx = mtmp.mx, my = mtmp.my; /* update cached location */
+        }
+        /* if you're not around, cast healing spells */
+        if (dist2(mx, my, u.ux, u.uy) > (BOLT_LIM * BOLT_LIM)) {
+            if ((mtmp.mhp | 0) <= (mtmp.mhpmax | 0) - 8) {
+                healmon(mtmp, rnd(8), 0);
+                return 1;
+            }
+        }
+        /*FALLTHRU*/
+    }
+    // falls through
+    case STRAT_NONE: /* harass */
         if (!noteleport_level(mtmp) && !rn2(!mtmp.mflee ? 5 : 33)) {
             await mnexto(mtmp, RLOC_MSG);
         }
         return 0;
-    default:
-        // STRAT_PLAYER / GROUND / MONSTR pursuit deferred
+    default: /* kill, maim, pillage! */ {
+        const where = strat & STRAT_STRATMASK;
+        const tx = mtmp.mgoal?.x | 0, ty = mtmp.mgoal?.y | 0;
+        const targ = strat & STRAT_GOAL;
+
+        if (!targ || !isok(tx, ty)) { /* simply wants you to close */
+            return 0;
+        }
+        if (noteleport_level(mtmp) && !monnear(mtmp, tx, ty)) {
+            return 0;
+        }
+        if (u_at(tx, ty) || where === STRAT_PLAYER) {
+            /* player is standing on it (or has it) */
+            const mx = mtmp.mx, my = mtmp.my;
+            if (noteleport_level(mtmp)
+                || !(await mnearto(mtmp, tx, ty, false, RLOC_MSG))) {
+                await rloc_to(mtmp, mx, my); /* no room? stay put */
+            }
+            return 0;
+        }
+        if (where === STRAT_GROUND) {
+            /* MON_AT (rm.h grid read) is m_at under the port's grid
+               discipline (heads on fmon, segs on _level_monsters;
+               steed/dead/off-map absent from the C grid too — D-1565) */
+            if (!m_at(tx, ty) || (mtmp.mx === tx && mtmp.my === ty)) {
+                /* teleport to it and pick it up */
+                await rloc_to(mtmp, tx, ty); /* clean old pos */
+
+                const otmp = on_ground(which_arti(targ));
+                if (otmp) {
+                    if (cansee(mtmp.mx, mtmp.my)) {
+                        await pline(`${Monnam(mtmp)} picks up ${distant_name(otmp, doname)}.`);
+                    }
+                    obj_extract_self(otmp);
+                    mpickobj(mtmp, otmp);
+                    return 1;
+                }
+                return 0;
+            }
+            /* a monster is standing on it - cause some trouble */
+            if (!rn2(5) && !noteleport_level(mtmp)) {
+                await mnexto(mtmp, RLOC_MSG);
+            }
+            return 0;
+        }
+        /* a monster has it - 'port beside it. */
+        const mx = mtmp.mx, my = mtmp.my;
+        if (!noteleport_level(mtmp)
+            && !(await mnearto(mtmp, tx, ty, false, RLOC_MSG))) {
+            await rloc_to(mtmp, mx, my); /* no room? stay put */
+        }
         return 0;
     }
+    }
+    /*NOTREACHED*/
+    return 0;
 }
 
 /**

@@ -933,6 +933,15 @@ export function find_hell(lev) {
     lev.dlevel = 1;
 }
 
+// src/dungeon.c:1957 goto_hell() — go directly to hell...
+export async function goto_hell(at_stairs, falling) {
+    const lev = {};
+
+    find_hell(lev);
+    const { goto_level } = await import('./do.js');
+    await goto_level(lev, at_stairs, falling, false);
+}
+
 // src/dungeon.c:1325 dunlev() — how deep inside its own dungeon branch.
 export function dunlev(lev) {
     return lev.dlevel;

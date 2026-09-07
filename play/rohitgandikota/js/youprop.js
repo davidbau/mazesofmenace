@@ -224,3 +224,15 @@ export const Hate_silver = () => (game.u?.ulycn ?? -1) >= 0
 // include/youprop.h:156 Blind_telepat (HTelepat || ETelepat)
 export const Blind_telepat = () => !!(game.u?.intrinsic?.HTelepat
                                      || game.u?.uprops?.TELEPAT);
+
+// include/youprop.h Wounded_legs — HWounded_legs || EWounded_legs
+export const Wounded_legs = () =>
+    ((game.u?.intrinsic?.HWounded_legs || 0) > 0) || !!(game.u?.EWounded_legs || 0);
+
+// include/youprop.h Jumping — HJumping || EJumping
+export const Jumping = () =>
+    !!(game.u?.intrinsic?.HJumping) || !!(game.u?.uprops?.JUMPING);
+
+// include/youprop.h Conflict — HConflict || EConflict
+export const Conflict = () =>
+    !!(game.u?.intrinsic?.HConflict || game.u?.uprops?.CONFLICT);

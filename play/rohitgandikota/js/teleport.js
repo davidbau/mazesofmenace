@@ -106,6 +106,7 @@ import { uhis } from './mhitu.js';
 import { Levitation, Flying } from './youprop.js';
 import { done } from './end.js';
 import { tty_yn_function } from './tty/topl.js';
+import { notice_mon_off, notice_mon_on, notice_all_mons, notice_all_mons_flush } from './hack.js';
 
 
 
@@ -903,6 +904,7 @@ export async function teleds(nux, nuy, teleds_flags) {
     update_player_regions();
     newsym(ux0, uy0);           /* clear the old position */
     see_monsters();             /* clear or redraw old sensing glyphs */
+    notice_mon_off();
     vision_recalc(0);           /* vision before effects */
 
     if (is_teleport && game.flags?.verbose)
@@ -920,6 +922,9 @@ export async function teleds(nux, nuy, teleds_flags) {
 
     await spoteffects(true);
     await invocation_message();
+    notice_mon_on();
+    notice_all_mons(true);
+    await notice_all_mons_flush();
 }
 
 /* src/teleport.h TELEDS_* */

@@ -49,6 +49,8 @@ import {
     montoostrong,
     likes_gold,
     monsterNames,
+    pmnames,
+    NEUTRAL,
     pm_resistance,
     MR_FIRE,
     MR_COLD,
@@ -849,7 +851,7 @@ export function adj_lev(ptr) {
 }
 
 // C ref: makemon.c golemhp() — fixed HP by golem type; no RNG.
-function golemhp(type) {
+export function golemhp(type) {
     switch (type) {
     case pm('STRAW_GOLEM'):
         return 20;
@@ -1004,9 +1006,8 @@ const NASTIES = [
 ];
 
 /**
- * C ref: wizard.c pick_nasty — ROLL_FROM(nasties) + geno/difcap/hell alt.
- * Named omissions: rogue monsym uppercase retry; juvenile name-string gate
- * on big_to_little alt (always accept non-geno alt).
+ * C ref: wizard.c pick_nasty `:537–581` — ROLL_FROM(nasties) + geno/difcap/hell alt.
+ * Named omissions: rogue monsym uppercase retry (monsym table not wired here).
  */
 export function pick_nasty(difcap) {
     let res = NASTIES[rn2(NASTIES.length)];
@@ -1019,7 +1020,19 @@ export function pick_nasty(difcap) {
         alt = big_to_little(res);
     }
     if (alt !== res && ((game.mvitals?.[alt]?.mvflags ?? 0) & G_GENOD) === 0) {
-        res = alt;
+        // C `:568–578`: only non-juveniles can become alternate choice —
+        // mons[alt].pmnames[NEUTRAL] starting with "baby " or ending in
+        // " hatchling"/" pup"/" cub" keeps the adult res.
+        const mnam = pmnames[alt]?.[NEUTRAL] ?? '';
+        const li = mnam.lastIndexOf(' ');
+        const lastspace = li >= 0 ? mnam.slice(li) : null;
+        if (!mnam.startsWith('baby ')
+            && (lastspace === null
+                || (lastspace !== ' hatchling'
+                    && lastspace !== ' pup'
+                    && lastspace !== ' cub'))) {
+            res = alt;
+        }
     }
     return res;
 }
@@ -2951,7 +2964,12 @@ export function makemon(mdat, x, y, mmflags = 0) {
         mtmp.iswiz = true;
         if (!game.context) game.context = {};
         game.context.no_of_wizards = (game.context.no_of_wizards | 0) + 1;
-        // SPE_DIG when first Wizard on earth — deferred (fire/air/water first)
+        // C makemon.c:1369-1373 — first Wizard on earth carries SPE_DIG
+        // (mongets below → mksobj o_id + SPBOOK blessorcurse(17), no
+        // other draws; C trace for scen-tour-Wizard-92103 drew exactly
+        // rnd(2)@next_ident then rn2(17)@blessorcurse here).
+        if (game.context.no_of_wizards === 1 && Is_earthlevel(game.u?.uz))
+            mitem = otyp('SPE_DIG');
     } else if (ptr.mndx === PM_CROESUS) {
         mitem = otyp('TWO_HANDED_SWORD');
     } else if ((ptr.msound | 0) === MS_NEMESIS) {

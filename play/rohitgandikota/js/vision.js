@@ -29,6 +29,7 @@ import { MONSEEN_TELEPAT } from './const.js';
 import { MONSEEN_XRAYVIS } from './const.js';
 import { MONSEEN_DETECT } from './const.js';
 import { MONSEEN_WARNMON } from './const.js';
+import { notice_all_mons } from './hack.js';
 
 
 
@@ -802,6 +803,7 @@ export function vision_recalc(control = 0) {
             newsym(u.ux, u.uy);
         game._viz_rmin = next_rmin;
         game._viz_rmax = next_rmax;
+        notice_all_mons(true); /* vision.c:856 */
         return;
     }
 
@@ -933,6 +935,8 @@ export function vision_recalc(control = 0) {
 
     game._viz_rmin = next_rmin;
     game._viz_rmax = next_rmax;
+
+    notice_all_mons(true); /* vision.c:856 */
 }
 
 // C ref: cansee(x, y)

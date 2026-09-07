@@ -1262,15 +1262,21 @@ export async function prev_level(at_stairs) {
     const stway = stairway_at(u.ux, u.uy);
     if (at_stairs && stway) stway.u_traversed = true;
 
-    const newlevel = { dnum: 0, dlevel: 1 };
+    // C dungeon.c:1526–1544 — up dungeon branch: Dlvl 1 without the Amulet
+    // escapes the dungeon (done(ESCAPED), noreturn); with the Amulet (or
+    // from a deeper level) follow the branch tolev (endgame entry).
+    // KMH: upwards branches are okay if not level 1.
     if (at_stairs && stway && (stway.tolev.dnum | 0) !== (u.uz?.dnum | 0)) {
-        // Up dungeon branch — amulet/escape arms deferred
-        newlevel.dnum = stway.tolev.dnum | 0;
-        newlevel.dlevel = stway.tolev.dlevel | 0;
-    } else {
-        newlevel.dnum = u.uz?.dnum | 0;
-        newlevel.dlevel = (u.uz?.dlevel | 0) - 1;
+        if (!(u.uz?.dnum | 0) && (u.uz?.dlevel | 0) === 1 && !(u.uhave?.amulet || u.uhave_amulet)) {
+            const { done } = await import('./end.js');
+            await done(ESCAPED);
+            return;
+        }
+        const newlevel = { dnum: stway.tolev.dnum | 0, dlevel: stway.tolev.dlevel | 0 };
+        await goto_level(newlevel, at_stairs, false, false);
+        return;
     }
+    const newlevel = { dnum: u.uz?.dnum | 0, dlevel: (u.uz?.dlevel | 0) - 1 };
     await goto_level(newlevel, at_stairs, false, false);
 }
 

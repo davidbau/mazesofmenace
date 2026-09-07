@@ -2271,15 +2271,37 @@ export async function artifact_hit(magr, mdef, otmp, dmgBox, dieroll) {
 }
 
 /**
+ * C ref: artifact.c abil_to_spfx — E-prop identity to wielded/worn spfx.
+ */
+function abil_to_spfx(propidx) {
+    switch (propidx | 0) {
+    case SEARCHING: return SPFX_SEARCH;
+    case HALLUC_RES: return SPFX_HALRES;
+    case TELEPAT: return SPFX_ESP;
+    case STEALTH: return SPFX_STLTH;
+    case REGENERATION: return SPFX_REGEN;
+    case TELEPORT_CONTROL: return SPFX_TCTRL;
+    case WARN_OF_MON: return SPFX_WARN;
+    case WARNING: return SPFX_WARN;
+    case ENERGY_REGENERATION: return SPFX_EREGEN;
+    case HALF_SPDAM: return SPFX_HSPDAM;
+    case HALF_PHDAM: return SPFX_HPHDAM;
+    case REFLECTING: return SPFX_REFLECT;
+    default: return 0;
+    }
+}
+
+/**
  * C ref: artifact.c what_gives — first invent item conveying extrinsic.
- * Ported: artifact SPFX_HALRES when wielded/worn; non-artifact wornmask
- * match (rings/armor/amulet/tool).
- * Named omissions: other abil_to_spfx / abil_to_adtyp arms; Sunsword EBlnd;
- * cary/defn; what_gives cspfx match (conferral is D-1539).
+ * Ported: artifact abil_to_spfx match when wielded/worn; non-artifact
+ * wornmask match (rings/armor/amulet/tool).
+ * Named omissions: abil_to_adtyp cary/defn arms; Sunsword EBlnd;
+ * what_gives cspfx match (conferral is D-1539); EWarn_of_mon warntype guard.
  * @param {number} extrinsicBits u.uprops[prop].extrinsic
+ * @param {number} propidx u_prop index selecting the abil_to_spfx row
  * @returns {object|null}
  */
-export function what_gives(extrinsicBits) {
+export function what_gives(extrinsicBits, propidx = -1) {
     const bits = extrinsicBits | 0;
     if (!bits) return null;
     let wornmask = W_ARM | W_ARMC | W_ARMH | W_ARMS
@@ -2288,9 +2310,9 @@ export function what_gives(extrinsicBits) {
         | W_ART | W_ARTI;
     if (game.u?.twoweap) wornmask |= W_SWAPWEP;
     const wornbits = wornmask & bits;
-    // C: abil_to_spfx(&EHalluc_resistance) → SPFX_HALRES; other props 0 here
+    // C: abil_to_spfx(abil); wielded/worn spfx arm only (cspfx deferred).
     const needSpfx = (bits & (W_WEP | W_SWAPWEP | W_ART | W_ARTI))
-        ? SPFX_HALRES
+        ? abil_to_spfx(propidx)
         : 0;
     const list = artilist();
     for (const obj of game.invent || []) {

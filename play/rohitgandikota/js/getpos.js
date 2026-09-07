@@ -95,11 +95,13 @@ function visctrl(ch) {
 async function getpos_help(force, goal) {
     const win = tty_create_nhwindow(NHW_MENU);
     const put = (line) => tty_putstr(win, 0, line);
-    const fastmode = game.iflags?.getloc_moveskip
+    const fastmode = game.iflags?.whatis_moveskip
         ? 'skipping same glyphs' : '8 units at a time';
-    const nextmode = game.iflags?.getloc_moveskip
+    const nextmode = game.iflags?.whatis_moveskip
         ? '8 units at a time' : 'skipping same glyphs';
-    const usemenu = !!game.iflags?.getloc_usemenu;
+    /* C iflags.getloc_usemenu is the whatis_menu option's field, and
+       iflags.getloc_moveskip the whatis_moveskip option's */
+    const usemenu = !!game.iflags?.whatis_menu;
     const filter = ['', ' in view', ' in this area'][
         game.iflags?.getloc_filter | 0] || '';
     const pair = (lo, hi, description, menuDescription = description) => {
@@ -346,11 +348,11 @@ export async function getpos(ccp, force, goal) {
         } else if (DIR_DX[CTRL_DIR[ch] ?? ch.toLowerCase()] !== undefined) {
             /* movecmd(c, MV_RUSH | MV_RUN): shifted letter, or a walk
                letter behind the 'g'/'G' prefix, or Ctrl plus a direction.
-               iflags.getloc_moveskip defaults off, so the cursor jumps 8
+               iflags.whatis_moveskip defaults off, so the cursor jumps 8
                squares. */
             const dir = CTRL_DIR[ch] ?? ch.toLowerCase();
             let dx, dy;
-            if (game.iflags?.getloc_moveskip) {
+            if (game.iflags?.whatis_moveskip) {
                 /* skip same glyphs */
                 const glyph = glyph_at(c.x, c.y);
                 const udx = DIR_DX[dir], udy = DIR_DY[dir];
@@ -397,8 +399,8 @@ export async function getpos(ccp, force, goal) {
         } else if (ch === '*') {
             /* NHKF_GETPOS_MOVESKIP — toggle */
             game.iflags = game.iflags || {};
-            game.iflags.getloc_moveskip = !game.iflags.getloc_moveskip;
-            await pline(`${game.iflags.getloc_moveskip ? 'S' : 'Not s'}`
+            game.iflags.whatis_moveskip = !game.iflags.whatis_moveskip;
+            await pline(`${game.iflags.whatis_moveskip ? 'S' : 'Not s'}`
                 + 'kipping over similar terrain when fastmoving the cursor.');
             msg_given = true;
         } else if (ch === '$') {
@@ -410,7 +412,7 @@ export async function getpos(ccp, force, goal) {
                valid location */
             const gtmp = 'mMoOdDxXaAzZ'.indexOf(ch), /* 0..11 */
                   gloc = gtmp >> 1;                  /* 0..5 */
-            if (game.iflags?.getloc_usemenu) {
+            if (game.iflags?.whatis_menu) {
                 const tmpcrd = { x: 0, y: 0 };
                 if (await getpos_menu(tmpcrd, gloc)) {
                     c.x = tmpcrd.x;
@@ -450,10 +452,10 @@ export async function getpos(ccp, force, goal) {
         } else if (ch === '!') {
             /* NHKF_GETPOS_MENU */
             game.iflags = game.iflags || {};
-            game.iflags.getloc_usemenu = !game.iflags.getloc_usemenu;
-            await pline(`${game.iflags.getloc_usemenu ? 'Using' : 'Not using'
+            game.iflags.whatis_menu = !game.iflags.whatis_menu;
+            await pline(`${game.iflags.whatis_menu ? 'Using' : 'Not using'
                 } a menu to show possible targets${
-                game.iflags.getloc_usemenu
+                game.iflags.whatis_menu
                     ? " for 'm|M', 'o|O', 'd|D', and 'x|X'" : ''}.`);
             msg_given = true;
         } else {
@@ -486,21 +488,37 @@ export async function getpos(ccp, force, goal) {
                             const hi_x = (pass === 1 && ty === hi_y) ? c.x
                                                                      : COLNO - 1;
                             for (let tx = lo_x; tx <= hi_x; tx++) {
-                                /* first, what is currently displayed */
+                                /* first, look at what is currently visible
+                                   (might be monster) */
                                 const g = glyph_at(tx, ty);
+                                const lev = game.level.at(tx, ty);
                                 if (g.kind === 'cmap' && matching[g.cmap]) {
                                     foundc = true;
-                                } else if (game.level?.flags?.hero_memory) {
-                                    /* then the remembered glyph */
-                                    const rg = game.level.at(tx, ty)
-                                        ?.remembered_glyph?.glyph;
+                                } else if (game.level?.flags?.hero_memory
+                                           /* !terrainmode: don't move to
+                                              remembered trap or object if
+                                              not currently shown */
+                                           && !game.iflags?.terrainmode) {
+                                    /* next, try glyph that's remembered here
+                                       (might be trap or object) */
+                                    const rg = lev?.remembered_glyph?.glyph;
                                     if (rg && rg.kind === 'cmap'
                                         && matching[rg.cmap])
                                         foundc = true;
                                 }
-                                /* last, actual terrain when seen — the
-                                   back_to_glyph probe only matters for
-                                   memory the display doesn't carry */
+                                /* FIXME: check player-specified vib.sq trap
+                                   symbol rather than or in addition to '~' */
+                                if (!foundc && ch === '~'
+                                    && known_vibrating_square_at(tx, ty))
+                                    foundc = true;
+                                /* last, try actual terrain here (shouldn't
+                                   we be using svl.lastseentyp[][] instead?) */
+                                if (!foundc && lev?.seenv) {
+                                    const k = back_to_glyph(lev, tx, ty);
+                                    if (k && k.cmap !== undefined
+                                        && matching[k.cmap])
+                                        foundc = true;
+                                }
                                 if (foundc) {
                                     c.x = tx;
                                     c.y = ty;

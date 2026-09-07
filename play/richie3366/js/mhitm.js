@@ -101,7 +101,7 @@ import {
     thick_skinned,
     unsolid, is_whirly, passes_walls, haseyes, flaming, slimeproof,
     is_male, is_female, is_shapeshifter, has_head, mon_hates_silver,
-    noncorporeal, MR_POISON,
+    noncorporeal, MR_POISON, carnivorous, herbivorous, metallivorous,
 } from './monsters.js';
 import { objectNames, WEAPON_CLASS } from './objects.js';
 import { ART_TROLLSBANE, ART_STORMBRINGER, ART_VORPAL_BLADE, ART_SNICKERSNEE, ART_OGRESMASHER } from './generated/artifacts_data.js';
@@ -679,7 +679,7 @@ export {
     AT_WEAP, AT_MAGC, AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_ACID,
     AD_BLND, AD_DRDX, AD_DRCO, AD_DRIN, AD_SITM, AD_SEDU, AD_SSEX, AD_POLY,
     AD_STON, AD_CONF, AD_STUN, AD_WRAP, AD_SLEE,
-    AD_SGLD, AD_TLPT, AD_WERE, AD_SLIM,
+    AD_SGLD, AD_TLPT, AD_WERE, AD_SLIM, AD_FAMN,
     could_seduce, failed_grab,
 };
 
@@ -802,6 +802,24 @@ async function mhitm_ad_conf(magr, mattk, mdef, mhm) {
         }
         mdef.mconf = 1;
         mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
+    }
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_famn `:3797–3804` — mhitm (mon→mon) arm only.
+ * A target that doesn't eat (neither carnivorous, herbivorous, nor
+ * metallivorous) takes no damage; otherwise the leftover d() stays
+ * ("just inflict the normal damage"). No message either way.
+ * The uhitm arm cannot happen (hero never polymorphs into a FAMN
+ * attacker — C `:3780–3783` comment); the mhitu arm is
+ * mhitm_ad_famn_u in mhitu.js.
+ */
+async function mhitm_ad_famn(magr, mattk, mdef, mhm) {
+    void magr;
+    void mattk;
+    const pd = mdef.data;
+    if (!(carnivorous(pd) || herbivorous(pd) || metallivorous(pd))) {
+        mhm.damage = 0;
     }
 }
 
@@ -1249,7 +1267,7 @@ function mpoisons_subj_mm(mtmp, mattk) {
  * data.mresists | mextrinsics | mintrinsics. Artifact/worn grants named.
  * mhitm_really_poison is m-vs-m only (not youmonst).
  */
-function resists_poison_mm(mtmp) {
+export function resists_poison_mm(mtmp) {
     if (!mtmp) return false;
     const bits = (mtmp.data?.mresists | 0)
         | (mtmp.mextrinsics | 0)
@@ -3412,6 +3430,38 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             done: false,
         };
         await mhitm_ad_slim(magr, mattk, mdef, mhm);
+        // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
+        if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
+            && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {
+            return mhm.hitflags;
+        }
+        if (mhm.done) return mhm.hitflags;
+        damage = mhm.damage | 0;
+        hitflags = mhm.hitflags | 0;
+        if (!damage) return hitflags;
+        mdef.mhp -= damage;
+        if (mdef.mhp < 1) {
+            mdef.mhp = 0;
+            await mdamagem_monkilled(magr, mdef, mattk, mwep);
+            if ((mdef.mhp | 0) > 0) return hitflags; /* lifesaved */
+            if (hitflags === M_ATTK_AGR_DIED) {
+                return M_ATTK_DEF_DIED | M_ATTK_AGR_DIED;
+            }
+            const grew = await grow_up(magr, mdef);
+            return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
+        }
+        return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
+    }
+
+    // C: mhitm_adtyping → mhitm_ad_famn for AD_FAMN (uhitm.c:3777–3805
+    // mhitm arm). Non-eater zeroes leftover; eater keeps normal damage.
+    if ((mattk.adtyp | 0) === AD_FAMN) {
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+        };
+        await mhitm_ad_famn(magr, mattk, mdef, mhm);
         // C mhitm.c:1061-1065 — knockback preempts damage on HIT/DEF_DIED/offmap
         if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
             && (((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) !== 0) || mon_offmap(mdef))) {

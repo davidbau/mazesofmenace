@@ -5,7 +5,7 @@
 import { game } from './gstate.js';
 import { reset_commands } from './cmd.js';
 import { set_vanq_order } from './insight.js';
-import { pline, docrt, bot, reglyph_darkroom } from './display.js';
+import { pline, docrt, bot, reglyph_darkroom, flush_screen } from './display.js';
 import {
     NHW_MENU, ATR_NONE, ATR_INVERSE,
     tty_create_nhwindow, tty_destroy_nhwindow, tty_start_menu, tty_add_menu,
@@ -20,7 +20,7 @@ import {
 } from './const.js';
 import { NO_COLOR } from './terminal.js';
 import { allopt, findOption } from './optlist.js';
-import { condtests } from './botl.js';
+import { condtests, status_hilite_menu, count_status_hilites } from './botl.js';
 import {
     assign_graphics, gs_symset, gc_currentgraphics, known_handling,
     primary_symsets, PRIMARYSET, ROGUESET, parsesymbols, switch_symbols,
@@ -45,6 +45,11 @@ import { fruit_from_name, makesingular, makeplural, OBJ_NAME } from './objnam.js
 import { name_to_mon } from './mondata.js';
 import { sanitize_name } from './bones.js';
 import { rnd } from './rng.js';
+import { def_char_to_monclass } from './drawing.js';
+import { visctrl } from './hacklib.js';
+import { MAXMCLASSES, SYM_OFF_X, go_ov_primary_syms, go_ov_rogue_syms, escapes } from './symbols.js';
+import { WARNCOUNT, SYM_BOULDER } from './const.js';
+import { NUM_DISCLOSURE_OPTIONS, DISCLOSE_PROMPT_DEFAULT_YES, DISCLOSE_PROMPT_DEFAULT_NO, DISCLOSE_PROMPT_DEFAULT_SPECIAL, DISCLOSE_YES_WITHOUT_PROMPT, DISCLOSE_NO_WITHOUT_PROMPT, DISCLOSE_SPECIAL_WITHOUT_PROMPT } from './const.js';
 
 function note_unported_options(what) {
     (game.unported ||= new Set()).add('options:' + what);
@@ -508,6 +513,112 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
         }
         result.opts.end_disclose = end.join('');
         result.opts[opt.name] = value;
+    } else if (opt.name === 'boulder') {
+        /* src/options.c:1171 optfn_boulder(), the do_set arm: boulder:symbol */
+        let op = value ?? '';   /* string_for_opt(opts, FALSE) */
+        if (op === '')
+            return false;
+        op = escapes(op);
+        /* note: dummy monclass #0 has symbol value '\0'; we allow that--
+           attempting to set bouldersym to '^@'/'\0' will reset to default */
+        const c0 = op.length ? op.charCodeAt(0) : 0;
+        let clash = 0;
+        if (def_char_to_monclass(op[0] ?? '\0') !== MAXMCLASSES)
+            clash = c0 ? 1 : 0;
+        else if (c0 >= 0x31 /* '1' */ && c0 < WARNCOUNT + 0x30 /* '0' */)
+            clash = 2;
+        if (c0 < 0x20) {
+            config_error_add('boulder symbol cannot be a control character');
+            return true;        /* optn_ok */
+        } else if (clash) {
+            /* symbol chosen matches a used monster or warning
+               symbol which is not good - reject it */
+            config_error_add(`Badoption - boulder symbol '${visctrl(op[0])}' would conflict `
+                             + `with a ${(clash === 1) ? 'monster' : 'warning'} symbol`);
+        } else {
+            /*
+             * Override the default boulder symbol.
+             */
+            go_ov_primary_syms[SYM_BOULDER + SYM_OFF_X] = c0;
+            go_ov_rogue_syms[SYM_BOULDER + SYM_OFF_X] = c0;
+            game.boulder_symbol = op[0];
+            /* for 'initial', update of BOULDER symbol is done in
+               initoptions_finish(), after all symset options
+               have been processed; gs.showsyms[SYM_BOULDER + SYM_OFF_X] is
+               read through get_othersym() in this port */
+            if (!tinitial)
+                game.opt_need_redraw = true;
+        }
+        result.opts[opt.name] = value;
+    } else if (opt.name === 'scores') {
+        /* src/options.c:3669 optfn_scores(), the do_set arm:
+           scores:5t[op] 5a[round] o[wn] */
+        let op = value ?? '';   /* string_for_opt(opts, FALSE) */
+        if (op === '')
+            return false;       /* optn_err */
+
+        /* 5.0: earlier versions left old values for unspecified arguments
+           if player's scores:foo option only specified some of the three;
+           in particular, attempting to use 'scores:own' rather than
+           'scores:0 top/0 around/own' didn't work as intended */
+        result.opts.end_top = result.opts.end_around = 0;
+        result.opts.end_own = false;
+
+        if (negated)
+            op = '';            /* op = eos(op) */
+
+        const digit = (c) => c !== undefined && c >= '0' && c <= '9';
+        const letter = (c) => c !== undefined && /[A-Za-z]/.test(c);
+        while (op.length) {
+            let inum = 1;
+
+            let neg = (op[0] === '!') || op.slice(0, 2).toLowerCase() === 'no';
+            if (neg)
+                op = op.slice((op[0] === '!') ? 1 : (op[2] !== '-') ? 2 : 3);
+
+            if (digit(op[0])) {
+                inum = parseInt(op, 10);
+                while (digit(op[0]))
+                    op = op.slice(1);
+            }
+            while (op[0] === ' ')
+                op = op.slice(1);
+
+            switch ((op[0] ?? '').toLowerCase()) {
+            case 't':
+                result.opts.end_top = neg ? 0 : inum;
+                break;
+            case 'a':
+                result.opts.end_around = neg ? 0 : inum;
+                break;
+            case 'o':
+                result.opts.end_own = (neg || !inum) ? false : true;
+                break;
+            case 'n': /* none */
+                result.opts.end_top = result.opts.end_around = 0;
+                result.opts.end_own = false;
+                break;
+            case '-':
+                if (digit(op[1])) {
+                    config_error_add(`Values for ${opt.name}:top and ${
+                        opt.name}:around must not be negative`);
+                    return false; /* optn_silenterr */
+                }
+                /*FALLTHRU*/
+            default:
+                config_error_add(`Unknown ${opt.name} parameter '${op}'`);
+                return false; /* optn_silenterr */
+            }
+            /* "3a" is sufficient but accept "3around" (or "3abracadabra") */
+            while (letter(op[0]))
+                op = op.slice(1);
+            /* t, a, and o can be separated by space(s) or slash or both */
+            while (op[0] === ' ')
+                op = op.slice(1);
+            if (op[0] === '/')
+                op = op.slice(1);
+        }
+        result.opts[opt.name] = negated ? null : value;
     } else {
         result.opts[opt.name] = negated ? null : value;
     }
@@ -1023,6 +1134,8 @@ export const iflag_boolean_options = new Set([
     'autodescribe', 'cmdassist', 'fireassist', 'menu_overlay', 'menu_tab_sep',
     'debug_hunger', 'debug_mongen', 'debug_overwrite_stairs',
     'menucolors', /* iflags.use_menu_color */
+    'whatis_menu', /* iflags.getloc_usemenu */
+    'whatis_moveskip', /* iflags.getloc_moveskip */
 ]);
 
 function bool_opt_store(name) {
@@ -1237,8 +1350,12 @@ function get_option_value(o) {
     }
     case 'soundlib':                /* src/options.c:3824 optfn_soundlib */
         return 'nosound';           /* get_soundlib_name(): no soundlib built */
-    case 'boulder':                 /* src/options.c optfn_boulder */
-        return game.boulder_symbol || '`';
+    case 'boulder':                 /* src/options.c:1240 optfn_boulder */
+        /* go.ov_primary_syms[SYM_BOULDER + SYM_OFF_X] else
+           gs.showsyms[objects[BOULDER].oc_class + SYM_OFF_O] */
+        return go_ov_primary_syms[SYM_BOULDER + SYM_OFF_X]
+               ? String.fromCharCode(go_ov_primary_syms[SYM_BOULDER + SYM_OFF_X])
+               : def_oc_syms[OCLASSES.ROCK_CLASS];
     case 'crash_urlmax':            /* src/options.c optfn_crash_urlmax */
         return String(game.crash_urlmax ?? -1);     /* decl.c:261 default */
     case 'disclose': {              /* src/options.c optfn_disclose */
@@ -1257,7 +1374,7 @@ function get_option_value(o) {
     case 'traps':
         return opt_to_be_done;
     case 'hilite_status':           /* src/options.c optfn_hilite_status */
-        return (game.status_hilites || []).length
+        return count_status_hilites()
                ? '(see "status highlight rules" below)' : opt_none;
     case 'menu_headings':           /* src/options.c:2183 optfn_menu_headings */
         /* iflags.menu_headings defaults to NO_COLOR + ATR_INVERSE
@@ -1415,7 +1532,7 @@ function get_option_value(o) {
     case 'status condition fields':
         return n_currently_set(count_cond());
     case 'status highlight rules':
-        return n_currently_set((game.status_hilites || []).length);
+        return n_currently_set(count_status_hilites());
     default:
         return null;            /* optn_err -> "unknown" */
     }
@@ -1525,6 +1642,19 @@ async function doset_simple_menu() {
                    left the menu showing the old value. */
                 set_bool_optval(allopt[k].name, !bool_optval(allopt[k]));
                 boolopt_side_effects(allopt[k].name);
+            } else if (allopt[k].type === 'OthrOpt') {
+                /* optlist.h's "other" entries all have handlers:
+                   optfn_o_menu_colors etc., do_handler arms */
+                if (allopt[k].name === 'menu colors')
+                    await handler_menu_colors();
+                else if (allopt[k].name === 'bind keys')
+                    await handler_rebind_keys();
+                else if (allopt[k].name === 'status condition fields')
+                    await cond_menu();
+                else if (allopt[k].name === 'status highlight rules')
+                    await status_hilite_menu();
+                else
+                    note_unported_options(`doset_simple:other=${allopt[k].name}`);
             } else if (allopt[k].hasHandler !== 'Yes') {
                 /* src/options.c:8672 — a compound option with no handler
                    asks for its value outright. C then re-enters
@@ -1537,6 +1667,9 @@ async function doset_simple_menu() {
                        whose option handler validates the typed value */
                     await parseoptions_interactive(`${allopt[k].name}:${abuf}`);
                 }
+            } else if (allopt[k].name === 'disclose') {
+                /* src/options.c optfn_disclose() do_handler */
+                await handler_disclose();
             } else if (allopt[k].name === 'pickup_types') {
                 /* compound option with a handler: src/options.c:6114
                    handler_pickup_types() just re-enters parseoptions with a
@@ -1564,6 +1697,8 @@ async function doset_simple_menu() {
                 await do_symset();
             } else if (allopt[k].name === 'whatis_coord') {
                 await handler_whatis_coord();
+            } else if (allopt[k].name === 'petattr') {
+                await handler_petattr();
             } else {
                 note_unported_options(`doset_simple:set=${allopt[k].name}`);
             }
@@ -1600,9 +1735,15 @@ export async function doset_simple() {
     game.give_opt_msg = false;
     do {
         pickedone = await doset_simple_menu();
+        const flush = game.opt_need_redraw;
+
+        /* src/options.c:8726 — after every pass, so a toggle's disp.botl
+           repaints the status rows before the menu is put up again */
+        await reset_needed_visuals();
+        if (flush)
+            await flush_screen(1);
     } while (pickedone > 0);
     game.give_opt_msg = true;
-    await reset_needed_visuals();
     return ECMD_OK;
 }
 
@@ -1771,132 +1912,88 @@ async function cond_menu() {
     }
 }
 
-/* src/botl.c:703 initblstats[]. Most array indices match BL_* values. The
-   final version, weapon, armor, and terrain entries do not, so `fld` keeps
-   the enum identifier that status_hilite_menu() stores in its menu item. */
-const status_fields = [
-    { name: 'title', type: 'str' },
-    { name: 'strength', type: 'int' },
-    { name: 'dexterity', type: 'int' },
-    { name: 'constitution', type: 'int' },
-    { name: 'intelligence', type: 'int' },
-    { name: 'wisdom', type: 'int' },
-    { name: 'charisma', type: 'int' },
-    { name: 'alignment', type: 'str' },
-    { name: 'score', type: 'long', score: true },
-    { name: 'carrying-capacity', type: 'int', enumerated: true },
-    { name: 'gold', type: 'long' },
-    { name: 'power', type: 'int', percentage: true },
-    { name: 'power-max', type: 'int' },
-    { name: 'experience-level', type: 'int', percentage: true },
-    { name: 'armor-class', type: 'int' },
-    { name: 'HD', type: 'int' },
-    { name: 'time', type: 'long' },
-    { name: 'hunger', type: 'int', enumerated: true },
-    { name: 'hitpoints', type: 'int', percentage: true, critical: true },
-    { name: 'hitpoints-max', type: 'int' },
-    { name: 'dungeon-level', type: 'str' },
-    { name: 'experience', type: 'long', percentage: true },
-    { name: 'condition', type: 'mask' },
-    { name: 'version', type: 'str', fld: 26 },
-    { name: 'weapon', type: 'str', fld: 23 },
-    { name: 'armor', type: 'str', fld: 24 },
-    { name: 'terrain', type: 'str', fld: 25 },
-];
+/* src/options.c handler_disclose() — the disclose option's do_handler:
+   pick categories, then a prompt style for each */
+async function handler_disclose() {
+    /* order of disclose_names[] must correspond to
+       disclosure_options in decl.c */
+    const disclosure_names = [
+        'inventory', 'attributes', 'vanquished',
+        'genocides', 'conduct',    'overview',
+    ];
+    const disclosure_options = 'iavgco';        /* decl.c:54 */
+    const disc_cat = new Array(NUM_DISCLOSURE_OPTIONS).fill(0);
+    const clr = NO_COLOR;
+    const end_disclose = (game.flags.end_disclose || 'nnnnnn').split('');
 
-const BL_TH_NONE = 0, BL_TH_VAL_PERCENTAGE = 1,
-      BL_TH_UPDOWN = 2, BL_TH_VAL_ABSOLUTE = 3,
-      BL_TH_TEXTMATCH = 4, BL_TH_CONDITION = 5,
-      BL_TH_ALWAYS_HILITE = 6, BL_TH_CRITICALHP = 7;
+    let tmpwin = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    for (let i = 0; i < NUM_DISCLOSURE_OPTIONS; i++) {
+        const buf = `${disclosure_names[i].padEnd(12)}[${end_disclose[i]}${
+            disclosure_options[i]}]`;
+        tty_add_menu(tmpwin, null, i + 1, disclosure_options[i],
+                     0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
+        disc_cat[i] = 0;
+    }
+    tty_end_menu(tmpwin, 'Change which disclosure options categories:');
+    const picks = await tty_select_menu(tmpwin, PICK_ANY);
+    for (const pick of picks)
+        disc_cat[pick - 1] = 1;
+    tty_destroy_nhwindow(tmpwin);
 
-// src/botl.c:3707 status_hilite_menu_choose_behavior().
-async function status_hilite_menu_choose_behavior(fld) {
-    const field = status_fields[fld];
-    if (!field)
-        return BL_TH_NONE;
-
-    const win = tty_create_nhwindow(NHW_MENU);
-    tty_start_menu(win, MENU_BEHAVE_STANDARD);
-    const add = (id, selector, text) => tty_add_menu(
-        win, null, id, selector, 0, ATR_NONE, NO_COLOR, text,
-        MENU_ITEMFLAGS_NONE);
-
-    let only = BL_TH_NONE, count = 0;
-    if (field.type !== 'mask') {
-        add(only = BL_TH_ALWAYS_HILITE, 'a',
-            `Always highlight ${field.name}`);
-        count++;
-    } else {
-        add(only = BL_TH_CONDITION, 'b', 'Bitmask of conditions');
-        count++;
-    }
-    if (field.type !== 'mask' && field.name !== 'version') {
-        add(only = BL_TH_UPDOWN, 'c', `${field.name} value changes`);
-        count++;
-    }
-    if (!field.enumerated && (field.type === 'int' || field.type === 'long')) {
-        add(only = BL_TH_VAL_ABSOLUTE, 'n', 'Number threshold');
-        count++;
-    }
-    if (field.percentage) {
-        add(only = BL_TH_VAL_PERCENTAGE, 'p', 'Percentage threshold');
-        count++;
-    }
-    if (field.critical) {
-        add(only = BL_TH_CRITICALHP, 'C',
-            `Highlight critically low ${field.name}`);
-        count++;
-    }
-    if (field.type === 'str' || field.enumerated) {
-        add(only = BL_TH_TEXTMATCH, 't', `${field.name} text match`);
-        count++;
-    }
-
-    tty_end_menu(win, `Select ${field.name} field hilite behavior:`);
-    let behavior = only;
-    if (count > 1) {
-        const picks = await tty_select_menu(win, PICK_ONE);
-        behavior = picks.length ? picks[0]
-                   : picks.cancelled ? BL_TH_NONE - 1 : BL_TH_NONE;
-    }
-    tty_destroy_nhwindow(win);
-    return behavior;
-}
-
-// src/botl.c:4498 status_hilite_menu(), including its retry loop after a
-// field was opened. Rule creation beyond the behavior picker is kept visible
-// as pending until its value, color, and attribute dialogs are ported.
-async function status_hilite_menu() {
-    for (;;) {
-        const win = tty_create_nhwindow(NHW_MENU);
-        tty_start_menu(win, MENU_BEHAVE_STANDARD);
-        for (let fld = 0; fld < status_fields.length; fld++) {
-            const field = status_fields[fld];
-            if (field.score)
-                continue;
-            const fieldId = field.fld ?? fld;
-            const count = (game.status_hilites || [])
-                .filter(rule => rule.fld === fieldId).length;
-            let text = field.name.padEnd(18);
-            if (count)
-                text += ` (${count} defined)`;
-            tty_add_menu(win, null, fieldId + 1, 0, 0, ATR_NONE, NO_COLOR,
-                         text, MENU_ITEMFLAGS_NONE);
+    for (let i = 0; i < NUM_DISCLOSURE_OPTIONS; i++) {
+        if (disc_cat[i]) {
+            const c = end_disclose[i];
+            const buf = `Disclosure options for ${disclosure_names[i]}:`;
+            tmpwin = tty_create_nhwindow(NHW_MENU);
+            tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+            /* 'y','n',and '+' work as alternate selectors; '-' doesn't */
+            let a_char = DISCLOSE_NO_WITHOUT_PROMPT;
+            tty_add_menu(tmpwin, null, a_char, 0, a_char, ATR_NONE, clr,
+                         'Never disclose, without prompting',
+                         (c === a_char) ? MENU_ITEMFLAGS_SELECTED
+                                        : MENU_ITEMFLAGS_NONE);
+            a_char = DISCLOSE_YES_WITHOUT_PROMPT;
+            tty_add_menu(tmpwin, null, a_char, 0, a_char, ATR_NONE, clr,
+                         'Always disclose, without prompting',
+                         (c === a_char) ? MENU_ITEMFLAGS_SELECTED
+                                        : MENU_ITEMFLAGS_NONE);
+            if (disclosure_names[i][0] === 'v' || disclosure_names[i][0] === 'g') {
+                a_char = DISCLOSE_SPECIAL_WITHOUT_PROMPT; /* '#' */
+                tty_add_menu(tmpwin, null, a_char, 0, a_char, ATR_NONE, clr,
+                             'Always disclose, pick sort order from menu',
+                             (c === a_char) ? MENU_ITEMFLAGS_SELECTED
+                                            : MENU_ITEMFLAGS_NONE);
+            }
+            a_char = DISCLOSE_PROMPT_DEFAULT_NO;
+            tty_add_menu(tmpwin, null, a_char, 0, a_char, ATR_NONE, clr,
+                         'Prompt, with default answer of "No"',
+                         (c === a_char) ? MENU_ITEMFLAGS_SELECTED
+                                        : MENU_ITEMFLAGS_NONE);
+            a_char = DISCLOSE_PROMPT_DEFAULT_YES;
+            tty_add_menu(tmpwin, null, a_char, 0, a_char, ATR_NONE, clr,
+                         'Prompt, with default answer of "Yes"',
+                         (c === a_char) ? MENU_ITEMFLAGS_SELECTED
+                                        : MENU_ITEMFLAGS_NONE);
+            if (disclosure_names[i][0] === 'v' || disclosure_names[i][0] === 'g') {
+                a_char = DISCLOSE_PROMPT_DEFAULT_SPECIAL; /* '?' */
+                tty_add_menu(tmpwin, null, a_char, 0, a_char, ATR_NONE, clr,
+                             'Prompt, with default answer of "Ask" to request sort menu',
+                             (c === a_char) ? MENU_ITEMFLAGS_SELECTED
+                                            : MENU_ITEMFLAGS_NONE);
+            }
+            tty_end_menu(tmpwin, buf);
+            const npicks = await tty_select_menu(tmpwin, PICK_ONE);
+            if (npicks.length > 0) {
+                end_disclose[i] = npicks[0];
+                if (npicks.length > 1 && end_disclose[i] === c)
+                    end_disclose[i] = npicks[1];
+                game.flags.end_disclose = end_disclose.join('');
+            }
+            tty_destroy_nhwindow(tmpwin);
         }
-        tty_end_menu(win, 'Status hilites:');
-        const picks = await tty_select_menu(win, PICK_ONE);
-        tty_destroy_nhwindow(win);
-        if (!picks.length)
-            return true;
-
-        const fld = picks[0] - 1;
-        const behavior = await status_hilite_menu_choose_behavior(fld);
-        if (behavior > BL_TH_NONE)
-            note_unported_options(`status-hilite:${status_fields[fld].name}`);
-        /* With no existing rule, status_hilite_menu_fld() attempts one add
-           and then the outer menu is shown again whether it succeeds or is
-           cancelled. */
     }
+    return true; /* optn_ok */
 }
 
 /* src/windows.c:1816 add_menu_heading() — non-selectable line in
@@ -2130,6 +2227,11 @@ export async function doset() {
                 await handler_menu_objsyms();
             } else if (o.hasHandler === 'Yes' && o.name === 'whatis_coord') {
                 await handler_whatis_coord();
+            } else if (o.hasHandler === 'Yes' && o.name === 'petattr') {
+                await handler_petattr();
+            } else if (o.hasHandler === 'Yes' && o.name === 'disclose') {
+                /* src/options.c optfn_disclose() do_handler */
+                await handler_disclose();
             } else if (o.name === 'menu colors') {
                 /* src/options.c:8383 optfn_o_menu_colors() do_handler */
                 await handler_menu_colors();
@@ -2285,6 +2387,20 @@ export async function handler_whatis_coord() {
     }
     tty_destroy_nhwindow(win);
     return 0;
+}
+
+// src/options.c handler_petattr() — optfn_petattr()'s do_handler arm
+async function handler_petattr() {
+    const tmp = await query_attr('Select pet highlight attribute',
+                                 game.iflags?.wc2_petattr ?? ATR_INVERSE);
+
+    if (tmp !== -1) {
+        (game.iflags ||= {}).wc2_petattr = tmp;
+        set_bool_optval('hilite_pet', game.iflags.wc2_petattr !== ATR_NONE); /* iflags.hilite_pet */
+        if (!game.opt_initial)
+            game.opt_need_redraw = true;
+    }
+    return 0; /* optn_ok */
 }
 
 // src/options.c:6407 handler_menu_colors()

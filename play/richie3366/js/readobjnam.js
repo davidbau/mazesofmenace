@@ -6,7 +6,9 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd } from './rng.js';
-import { str_start_is } from './hacklib.js';
+import { str_start_is, strstri } from './hacklib.js';
+import { ALT_SPELLINGS } from './generated/alt_spellings.js';
+import { LAST_REAL_GEM } from './generated/objects_data.js';
 import {
     objectNames,
     objectNameStrs,
@@ -61,6 +63,12 @@ const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
 const WAN_WISHING = objectNames.indexOf('WAN_WISHING');
 const SPE_NOVEL = objectNames.indexOf('SPE_NOVEL');
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
+const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
+const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
+const TIN = objectNames.indexOf('TIN');
+// C ref: objnam.c spellings[] via scripts/extract-alt-spellings.py —
+// resolve C ob names to object indices once (all 46 resolve; C order kept).
+const ALT_SPELLINGS_RESOLVED = ALT_SPELLINGS.map(([sp, ob]) => [sp, objectNames.indexOf(ob)]);
 const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
 const ROCK = objectNames.indexOf('ROCK');
 const FLINT = objectNames.indexOf('FLINT');
@@ -698,6 +706,8 @@ export function readobjnam(bp, no_wish, missOut) {
         blessed: 0,
         uncursed: 0,
         iscursed: 0,
+        real: 0,
+        fake: 0,
         oclass: 0,
         actualn: null,
         dn: null,
@@ -745,6 +755,15 @@ export function readobjnam(bp, no_wish, missOut) {
         } else if (/^uncursed /i.test(s)) {
             d.uncursed = 1; d.blessed = 0; d.iscursed = 0;
             l = 9;
+        } else if (/^real /i.test(s)) {
+            /* C objnam.c readobjnam_preparse `:4125-4130` — "real Amulet";
+               fake is not negated here ("real fake amulet" stays fake). */
+            d.real = 1;
+            l = 5;
+        } else if (/^fake /i.test(s)) {
+            /* C `:4131-4133` — "fake Amulet of Yendor". */
+            d.fake = 1; d.real = 0;
+            l = 5;
         } else if (/^poisoned /i.test(s)) {
             /* C objnam.c readobjnam `:4034–4035` — before trapped. */
             d.ispoisoned = 1;
@@ -817,13 +836,46 @@ export function readobjnam(bp, no_wish, missOut) {
         d.mntmp = NON_PM;
     }
 
+    // C ref: objnam.c readobjnam_postparse1 :4284-4309 — real vs fake Amulet
+    // of Yendor resolves with no RNG: the fake's description contains the
+    // real one's name, so an explicit "real" (or nothing) picks the real
+    // Amulet while cheap/plastic/imitation (or a preparsed fake) picks the
+    // fake; C :4306 forces real when fake is false either way.
+    if (!d.typ) {
+        const amuDescr = objectDescrs[AMULET_OF_YENDOR];
+        const tail = amuDescr ? strstri(d.bp, amuDescr) : null;
+        if (tail !== null) {
+            const at = d.bp.length - tail.length;
+            if (at === 0 || d.bp[at - 1] === ' ') {
+                let s = d.bp;
+                if (s.slice(0, 6).toLowerCase() === 'cheap ') { d.fake = 1; s = s.slice(6); }
+                if (s.slice(0, 8).toLowerCase() === 'plastic ') { d.fake = 1; s = s.slice(8); }
+                if (s.slice(0, 10).toLowerCase() === 'imitation ') { d.fake = 1; s = s.slice(10); }
+                d.real = d.fake ? 0 : 1;
+                // C :5002-5006 typfnd — non-wizard AMULET_OF_YENDOR is fake.
+                d.typ = (d.real && wizardMode()) ? AMULET_OF_YENDOR : FAKE_AMULET_OF_YENDOR;
+            }
+        }
+    }
+
     // C ref: objnam.c readobjnam — makesingular before alt spellings / wrp / srch.
     // Exceptions: "tricks" (bag of tricks), "clothes" (avoid cloth false hit).
-    if (d.bp && !/^tricks$/i.test(d.bp) && !/^clothes$/i.test(d.bp)) {
+    if (d.bp && !d.typ && !/^tricks$/i.test(d.bp) && !/^clothes$/i.test(d.bp)) {
         const sng = makesingular(d.bp);
         if (sng !== d.bp) {
             if (d.cnt === 1) d.cnt = 2;
             d.bp = sng;
+        }
+    }
+
+    // C ref: objnam.c readobjnam_postparse1 :4457-4467 — alternate spellings
+    // (luckstone, saber, tripe, ...) resolve with no RNG before wrp / srch.
+    if (!d.typ) {
+        for (let si = 0; si < ALT_SPELLINGS_RESOLVED.length; si++) {
+            if (wishymatch(d.bp, ALT_SPELLINGS_RESOLVED[si][0], true)) {
+                d.typ = ALT_SPELLINGS_RESOLVED[si][1];
+                break;
+            }
         }
     }
 
@@ -857,8 +909,25 @@ export function readobjnam(bp, no_wish, missOut) {
         if (!d.actualn) d.actualn = d.bp;
         if (!d.dn) d.dn = d.actualn;
 
-        // C: postparse3 — search even when oclass is set (srch path)
-        if (d.actualn) {
+        // C ref: objnam.c readobjnam_postparse3 :4731-4747 — real gem names
+        // match exactly (and plain "tin" is a tin) with no RNG before srch.
+        if (!d.oclass && d.actualn) {
+            const glo = (game.bases && game.bases[GEM_CLASS]) | 0;
+            const want = d.actualn.toLowerCase();
+            for (let gi = glo; gi <= LAST_REAL_GEM; gi++) {
+                const zn = objectNameStrs[gi];
+                if (zn && want === zn.toLowerCase()) {
+                    d.typ = gi;
+                    break;
+                }
+            }
+            if (!d.typ && want === 'tin') d.typ = TIN;
+        }
+
+        // C: postparse3 — the srch chain runs only when nothing above
+        // resolved a type (C reaches `srch:` solely via goto srch); a
+        // gem-exact/tin hit above must skip these draws entirely.
+        if (!d.typ && d.actualn) {
             let typ = rnd_otyp_by_namedesc(d.actualn, d.oclass, 1);
             if (typ === STRANGE_OBJECT && d.dn !== d.actualn) {
                 typ = rnd_otyp_by_namedesc(d.dn, d.oclass, 1);

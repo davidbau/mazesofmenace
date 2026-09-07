@@ -19,7 +19,7 @@ import {
     IS_FOUNTAIN,
     ismnum, M_POISONGAS_OK, M_POISONGAS_MINOR, M_POISONGAS_BAD, POISON_RES,
     FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, STONE_RES,
-    u_at, TEMPLE, SHOPBASE, MON_FLOOR, MON_OFFMAP, MON_MIGRATING, MON_DETACH,
+    u_at, isok, TEMPLE, SHOPBASE, MON_FLOOR, MON_OFFMAP, MON_MIGRATING, MON_DETACH,
     MON_LIMBO, MON_OBLITERATE, MON_ENDGAME_MIGR, MIGR_APPROX_XY, MIGR_RANDOM,
     has_emin, has_epri, has_eshk, has_mcorpsenm, MCORPSENM,
     Has_contents, RLOC_MSG, RLOC_NOMSG, XKILL_NOMSG,
@@ -53,14 +53,15 @@ import {
     objectNames, objectDescrs, ROCK_CLASS, SCROLL_CLASS,
 } from './generated/objects_data.js';
 import { PM_GRID_BUG, PM_TOURIST } from './generated/monsters_data.js';
-import { enexto, rloc_to, rloc, tele_restrict, noteleport_level, rloc_to_flag, migrate_to_level, rloco, control_mon_tele } from './teleport.js';
-import { may_dig } from './dig.js';
+import { enexto, rloc_to, rloc, tele_restrict, noteleport_level, rloc_to_flag, migrate_to_level, rloco, control_mon_tele, goodpos } from './teleport.js';
+import { may_dig, fill_pit } from './dig.js';
 import { newsym, pline, pline_mon, verbalize, You_feel, sensemon, canseemon, canspotmon } from './display.js';
 import { online2, level_difficulty } from './hacklib.js';
-import { worm_cross, level_mon_at } from './worm.js';
+import { worm_cross, level_mon_at, remove_worm } from './worm.js';
 import { Monnam, mon_nam } from './do_name.js';
 import { cansee, couldsee, does_block, is_lightblocker_mappear, unblock_point } from './vision.js';
 import { fightm, mondead, mondied } from './mhitm.js';
+import { remove_monster } from './steed.js';
 import { engr_at } from './engrave.js';
 import { visible_region_at, is_poisoncloud_region } from './region.js';
 import { were_change } from './were.js';
@@ -1691,6 +1692,118 @@ export async function maybe_mnexto(mtmp) {
             return;
         }
     } while (--tryct > 0);
+}
+
+/**
+ * C ref: mon.c mon_leaving_level `:2696–2732` — mon is off the level
+ * (migration via mnearto move_other, or death via m_detach): clear
+ * mtrapped, unstuck (not swallowing/held), drop the worm body or the
+ * grid cell (vault guard may sit at <0,0>), then mundetected clear,
+ * mimic unhide, pit fill and newsym on-map, and forget a remembered
+ * polearm target. C static. The `#if 0` mx/my zeroing stays out (C
+ * keeps the stale coords valid). `m_at` is the rm.h grid read (heads
+ * on fmon, segs on _level_monsters — D-1565). Async only because the
+ * port's unstuck awaits docrt on swallow release.
+ */
+async function mon_leaving_level(mon) {
+    const mx = mon.mx | 0, my = mon.my | 0;
+    const onmap = isok(mx, my) && m_at(mx, my) === mon;
+
+    /* to prevent an infinite relobj-flooreffects-hmon-killed loop */
+    mon.mtrapped = 0;
+    /* dynamic import: mon↔mhitu is a cycle and a static unstuck edge
+       breaks graph link; migrate_mon/mongone use this same idiom */
+    const { unstuck } = await import('./mhitu.js');
+    await unstuck(mon); /* mon is not swallowing or holding you nor held by you */
+
+    /* vault guard might be at <0,0> */
+    if (onmap || m_at(0, 0) === mon) {
+        if (mon.wormno) {
+            remove_worm(mon);
+        } else {
+            remove_monster(mx, my);
+        }
+    }
+    if (onmap) {
+        mon.mundetected = 0; /* for migration; doesn't matter for death */
+        /* unhide mimic in case its shape has been blocking line of sight
+           or it is accompanying the hero to another level */
+        if (M_AP_TYPE(mon) !== M_AP_NOTHING
+            && M_AP_TYPE(mon) !== M_AP_MONSTER) {
+            seemimic(mon);
+        }
+        /* if mon is pinned by a boulder, removing mon lets boulder drop */
+        fill_pit(mx, my);
+        newsym(mx, my);
+    }
+    /* if mon is a remembered target, forget it since it isn't here anymore */
+    if (game.context?.polearm && mon === game.context.polearm.hitmon) {
+        game.context.polearm.hitmon = null;
+    }
+}
+
+/**
+ * C ref: mon.c mnearto `:4031–4085` — relocate mtmp onto (x,y) for the
+ * covetous tactics arms: already-there early-out; move_other lifts the
+ * occupant off-map first (mx/my zeroed + MON_OFFMAP); goodpos else the
+ * enexto/isok fallback (C `&mm` out-param is the {x,y} idiom shared
+ * with mnexto); rloc_to_flag; move_other recurses once with FALSE then
+ * deal_with_overcrowding. Returns 1, 2 (moved another), or 0. Async:
+ * mon_leaving_level / rloc_to_flag / deal_with_overcrowding await.
+ */
+export async function mnearto(mtmp, x, y, move_other, rlocflags) {
+    let othermon = null;
+    let newx, newy;
+    const mm = { x: 0, y: 0 };
+    let res = 1;
+
+    if (mtmp.mx === x && mtmp.my === y && m_at(x, y) === mtmp) {
+        return res;
+    }
+
+    if (move_other) {
+        othermon = m_at(x, y);
+        if (othermon) {
+            /* take othermon off the map; it might end up immediately
+               returning but for the moment it is leaving */
+            await mon_leaving_level(othermon);
+            othermon.mx = othermon.my = 0; /* 'othermon' is not on the map */
+            othermon.mstate |= MON_OFFMAP;
+        }
+    }
+
+    newx = x;
+    newy = y;
+    if (!goodpos(newx, newy, mtmp, 0)) {
+        /* Actually we have real problems if enexto ever fails.
+         * Migrating_mons that need to be placed will cause
+         * no end of trouble.
+         */
+        if (!enexto(mm, newx, newy, mtmp.data) || !isok(mm.x, mm.y)) {
+            if (othermon) {
+                /* othermon already had its mx, my set to 0 above
+                 * and this would shortly cause a sanity check to fail
+                 * if we just return 0 here. The caller only possesses
+                 * awareness of mtmp, not othermon. */
+                await deal_with_overcrowding(othermon);
+            }
+            return 0;
+        }
+        newx = mm.x;
+        newy = mm.y;
+    }
+    /* [this doesn't honor the 'montelecontrol' option] */
+    await rloc_to_flag(mtmp, newx, newy, rlocflags);
+
+    if (move_other && othermon) {
+        res = 2; /* moving another monster out of the way */
+        /* 'move_other'==FALSE this time; fail rather than recurse */
+        if (!(await mnearto(othermon, x, y, false, rlocflags))) {
+            await deal_with_overcrowding(othermon);
+        }
+    }
+
+    return res;
 }
 
 // C ref: mon.c mon_allowflags() — hostile/peaceful + dig/tunnel flags

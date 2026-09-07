@@ -21,7 +21,7 @@ import { arti_cost, artiname } from './artifact.js';
 import {
     DIED, GENOCIDED, STONING, QUIT, ESCAPED, ASCENDED, STARVING, BURNING,
     CHOKING, NON_PM, CORPSTAT_INIT, CORPSTAT_NONE,
-    OBJ_FREE, Upolyd, MM_NONAME, isok, ACCESSIBLE, MAGIC_PORTAL,
+    OBJ_FREE, Upolyd, MM_NONAME, isok, u_at, ACCESSIBLE, MAGIC_PORTAL,
     ECMD_OK, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, PANICKED,
     DISCLOSE_YES_WITHOUT_PROMPT, DISCLOSE_NO_WITHOUT_PROMPT,
     DISCLOSE_SPECIAL_WITHOUT_PROMPT, DISCLOSE_PROMPT_DEFAULT_YES,
@@ -32,9 +32,11 @@ import {
     PARANOID_DIE, PARANOID_BONES, PARANOID_QUIT, TT_LAVA, Has_contents,
     has_oname, LIFESAVED, W_AMUL,
 } from './const.js';
-import { G_NOCORPSE, mons } from './monsters.js';
+import { G_NOCORPSE, mons, likes_gold, likes_gems, likes_objs, likes_magic } from './monsters.js';
+import { m_at } from './mon.js';
+import { can_carry } from './monmove.js';
 import { oname, christen_monst, free_oname, mon_nam } from './do_name.js';
-import { mkcorpstat, curse, place_object, stackobj, mksobj } from './mkobj.js';
+import { mkcorpstat, curse, place_object, stackobj, mksobj, add_to_minv } from './mkobj.js';
 import { make_grave } from './engrave.js';
 import { makemon, adj_lev } from './makemon.js';
 import {
@@ -1147,9 +1149,45 @@ function mk_named_object(objtype, ptr, x, y, nm) {
 }
 
 /**
+ * C ref: bones.c give_to_nearby_mon `:226–255` (D-2034) — reservoir-sample
+ * one object-liking monster on/adjacent to (x,y), skipping the hero's
+ * square; give it otmp when it can carry, else place otmp on the floor.
+ * Called only from drop_upon_death's `!rn2(8)` arm below.
+ */
+function give_to_nearby_mon(otmp, x, y) {
+    let selected = null;
+    let nmon = 0;
+    // C: for (xx = x - 1; xx <= x + 1; ++xx)
+    //        for (yy = y - 1; yy <= y + 1; ++yy)
+    for (let xx = x - 1; xx <= x + 1; ++xx) {
+        for (let yy = y - 1; yy <= y + 1; ++yy) {
+            if (!isok(xx, yy)) continue;
+            if (u_at(xx, yy)) continue;
+            const mtmp = m_at(xx, yy);
+            if (!mtmp) continue;
+            // C: intentionally no check that otmp matches the likes_*
+            // property — the monster takes what looks interesting.
+            const mdat = mtmp.data;
+            if (!(likes_gold(mdat) || likes_gems(mdat)
+                  || likes_objs(mdat) || likes_magic(mdat))) continue;
+            nmon++;
+            if (!rn2(nmon)) selected = mtmp;
+        }
+    }
+    if (selected && can_carry(selected, otmp)) add_to_minv(selected, otmp);
+    else {
+        // C is place_object only; stackobj is this file's pre-existing
+        // floor convention (RNG-free), kept so the no-neighbour path is
+        // unchanged from the deferred arm it replaces.
+        place_object(otmp, x, y);
+        stackobj(otmp);
+    }
+}
+
+/**
  * C ref: bones.c drop_upon_death — curse invent; place (or nearby gate).
  * Named omissions: artifact_light/end_burn;
- * add_to_minv / statue container; give_to_nearby_mon body (still places).
+ * add_to_minv / statue container arms (mtmp-or-cont live arm still places).
  */
 function drop_upon_death(mtmp, cont, x, y) {
     const u = game.u || {};
@@ -1169,9 +1207,7 @@ function drop_upon_death(mtmp, cont, x, y) {
             place_object(otmp, x, y);
             stackobj(otmp);
         } else if (!rn2(8)) {
-            // give_to_nearby_mon deferred — place keeps RNG arity
-            place_object(otmp, x, y);
-            stackobj(otmp);
+            give_to_nearby_mon(otmp, x, y);
         } else {
             place_object(otmp, x, y);
             stackobj(otmp);

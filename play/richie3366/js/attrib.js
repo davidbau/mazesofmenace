@@ -1026,7 +1026,7 @@ export function from_what(propidx) {
     } else {
         // C: wizard && (obj = what_gives(&u.uprops[propidx].extrinsic))
         const extrinsic = game.u?.uprops?.[propidx]?.extrinsic | 0;
-        const obj = what_gives(extrinsic);
+        const obj = what_gives(extrinsic, propidx);
         if (obj) {
             // C: obj->oartifact ? bare_artifactname(obj) : ysimple_name(obj)
             const because = obj.oartifact

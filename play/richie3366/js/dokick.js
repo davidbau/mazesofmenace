@@ -856,8 +856,9 @@ async function kickdmg(mon, clumsy) {
     }
 
     if (M_AP_TYPE(mon)) seemimic(mon);
-    // C: check_caitiff(mon) before tame abuse
-    check_caitiff(mon);
+    // C dokick.c:68 — check_caitiff(mon) before tame abuse (sync in C;
+    // async in JS for awaited pline — must await to keep topline order)
+    await check_caitiff(mon);
 
     /* C dokick.c `:70–76` — squeeze some guilt feelings… */
     if (mon.mtame) {
@@ -954,7 +955,7 @@ export async function kick_monster(mon, x, y) {
     if (Upolyd(u) && attacktype_fordmg(game.youmonst?.data, AT_KICK, -1)) {
         const attknum = { v: 0 };
         const armorpenalty = { v: 0 };
-        const tmp = find_roll_to_hit(mon, AT_KICK, null, attknum, armorpenalty);
+        const tmp = await find_roll_to_hit(mon, AT_KICK, null, attknum, armorpenalty);
         mon_maybe_unparalyze(mon);
         const slots = game.youmonst?.data?.mattk;
         for (let i = 0; i < NATTK; i++) {

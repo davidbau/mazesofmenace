@@ -967,6 +967,7 @@ export const DISCLOSE_PROMPT_DEFAULT_NO = 'n';
 export const DISCLOSE_PROMPT_DEFAULT_SPECIAL = '?';
 export const DISCLOSE_YES_WITHOUT_PROMPT = '+';
 export const DISCLOSE_NO_WITHOUT_PROMPT = '-';
+export const DISCLOSE_SPECIAL_WITHOUT_PROMPT = '#';
 export const GPCOORDS_NONE = 'n';
 export const GPCOORDS_MAP = 'm';
 export const GPCOORDS_COMPASS = 'c';
@@ -1484,6 +1485,7 @@ export const DIR_ERR = -1;
 // include/hack.h:658 DIR_LEFT / :659 DIR_RIGHT — rotate a direction code.
 export const DIR_LEFT = (dir) => (dir + 7) % N_DIRS;
 export const DIR_RIGHT = (dir) => (dir + 1) % N_DIRS;
+export const DIR_RIGHT2 = (dir) => (dir + 2) % N_DIRS;
 export const NHCORE_START_NEW_GAME = 0;
 export const NHCORE_RESTORE_OLD_GAME = (NHCORE_START_NEW_GAME + 1);
 export const NHCORE_MOVELOOP_TURN = (NHCORE_RESTORE_OLD_GAME + 1);

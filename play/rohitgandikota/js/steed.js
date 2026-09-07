@@ -79,6 +79,7 @@ import { P_SKILL } from './weapon.js';
 import { objdescr_is } from './o_init.js';
 import { remove_worn_item } from './steal.js';
 import { freeinv } from './invent.js';
+import { YMonnam } from './do_name.js';
 
 // src/steed.c:17 rider_cant_reach().
 export async function rider_cant_reach() {
@@ -786,6 +787,26 @@ export async function dismount_steed(reason) {
     if (game.u.uwep && is_pole(game.u.uwep))
         game.unweapon = true;
     return;
+}
+
+// src/steed.c:878 stucksteed() — steed can't move (helpless) or, optionally,
+// is still eating; reports why
+export async function stucksteed(checkfeeding) {
+    const steed = game.u.usteed;
+
+    if (steed) {
+        /* check whether steed can move */
+        if (helpless(steed)) {
+            await pline(`${YMonnam(steed)} won't move!`);
+            return true;
+        }
+        /* optionally check whether steed is in the midst of a meal */
+        if (checkfeeding && steed.meating) {
+            await pline(`${YMonnam(steed)} is still eating.`);
+            return true;
+        }
+    }
+    return false;
 }
 
 // src/steed.c:850 poly_steed() — steed has just changed shape

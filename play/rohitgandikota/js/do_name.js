@@ -374,6 +374,27 @@ async function alreadynamed(mtmp, monnambuf, usrbuf) {
     }
     return false;
 }
+// src/do_name.c:1512 — aliases for road-runner nemesis
+const coynames = [
+    'Carnivorous Vulgaris', 'Road-Runnerus Digestus', 'Eatibus Anythingus',
+    'Famishus-Famishus', 'Eatibus Almost Anythingus', 'Eatius Birdius',
+    'Famishius Fantasticus', 'Eternalii Famishiis', 'Famishus Vulgarus',
+    'Famishius Vulgaris Ingeniusi', 'Eatius-Slobbius', 'Hardheadipus Oedipus',
+    'Carnivorous Slobbius', 'Hard-Headipus Ravenus', 'Evereadii Eatibus',
+    'Apetitius Giganticus', 'Hungrii Flea-Bagius', 'Overconfidentii Vulgaris',
+    'Caninus Nervous Rex', 'Grotesques Appetitus', 'Nemesis Ridiculii',
+    'Canis latrans',
+];
+
+// src/do_name.c:1526 coyotename() — the C fills buf; the string is returned
+export function coyotename(mtmp) {
+    if (!mtmp)
+        return '';
+    return `${x_monnam(mtmp, ARTICLE_NONE, null, 0, true)} - ${
+        mtmp.mcan ? coynames[coynames.length - 1]
+                  : coynames[mtmp.m_id % (coynames.length - 1)]}`;
+}
+
 
 // src/do_name.c:199 do_mgivenname(); name a visible monster at a chosen square.
 async function do_mgivenname() {

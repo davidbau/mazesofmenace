@@ -1845,7 +1845,7 @@ async function cpostfx(pm) {
 }
 
 /**
- * C ref: eat.c done_eating — finish meal; cpostfx for CORPSE; fpostfx.
+ * C ref: eat.c done_eating `:543–573` — finish meal; cpostfx for CORPSE; fpostfx.
  * Envelope: fortune cookie rumor; wolfsbane you_unwere(TRUE).
  * Named omissions: carrot blindness; other fpostfx otyps.
  */
@@ -1860,8 +1860,19 @@ async function done_eating(message) {
     piece.in_use = true;
     game.occupation = null;
     await newuhs(false);
-    if (message) {
-        await pline(`You finish eating ${food_xname(piece, true)}.`);
+    // C `:552–556` — a stored nomovemsg (e.g. lesshungry `:3315`
+    // "You're finally finished.") wins over the finish-eating line and is
+    // always cleared, even when message is false (cf. unmul in hack.js).
+    if (game.nomovemsg) {
+        if (message) await pline(game.nomovemsg);
+        game.nomovemsg = null;
+    } else if (message) {
+        // C `:557–561` — fire-elemental heroes "consume" their meal.
+        // JS mons() builds a fresh record per call, so compare the canonical
+        // umonnum instead (set_uasmon points data at mons[umonnum]).
+        const u = game.u || {};
+        const consuming = Upolyd(u) && ((u.umonnum | 0) === PM_FIRE_ELEMENTAL);
+        await pline(`You finish ${consuming ? 'consuming' : 'eating'} ${food_xname(piece, true)}.`);
     }
     if (piece.otyp === CORPSE || piece.globby) {
         await cpostfx(piece.corpsenm | 0);

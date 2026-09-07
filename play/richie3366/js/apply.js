@@ -1043,7 +1043,7 @@ async function use_cream_pie(obj) {
 }
 
 /** C ref: o_init.c objdescr_is — appearance string match. */
-function objdescr_is(obj, descr) {
+export function objdescr_is(obj, descr) {
     if (!obj) return false;
     const oc = game.objects?.[obj.otyp];
     if (!oc) return false;
@@ -3897,7 +3897,7 @@ export async function use_pole(obj, autohit) {
             await pline("The blade doesn't reach there!");
             return ECMD_FAIL;
         }
-        check_caitiff(mtmp);
+        await check_caitiff(mtmp);
         game.notonhead = (cc.x !== mtmp.mx || cc.y !== mtmp.my);
         if (obj === u.uwep && u_wield_art(ART_SNICKERSNEE)) {
             freehit = (game.moves | 0) !== (game.context.snickersnee_turn | 0);
@@ -4060,7 +4060,7 @@ async function use_grapple(obj) {
             if (game.flags) game.flags.confirm = false;
             await attack_checks(mtmp, u.uwep);
             if (game.flags) game.flags.confirm = save_confirm;
-            check_caitiff(mtmp);
+            await check_caitiff(mtmp);
             await pline(`You pull in ${mon_nam(mtmp)}!`);
             mtmp.mundetected = 0;
             await rloc_to(mtmp, pullcc.x, pullcc.y);
@@ -4070,7 +4070,7 @@ async function use_grapple(obj) {
             if (game.flags) game.flags.confirm = false;
             await attack_checks(mtmp, u.uwep);
             if (game.flags) game.flags.confirm = save_confirm;
-            check_caitiff(mtmp);
+            await check_caitiff(mtmp);
             await thitmonst(mtmp, u.uwep);
             return ECMD_TIME;
         }

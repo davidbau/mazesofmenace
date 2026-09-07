@@ -48,10 +48,13 @@ import { PMNAMES, MFLAGS, MONSYMS } from './monst_data.js';
 import { hides_under, is_hider, verysmall, sticks } from './mondata.js';
 import { bad_rock, cant_squeeze_thru, nomul, domove_attackmon_at, spoteffects,
          domove_bump_mon, dopickup, trapmove, doorless_door,
-         could_move_onto_boulder,
          disturb_buried_zombies, may_passwall,
          runmode_delay_output, avoid_trap_andor_region } from './hack.js';
 import { In_sokoban, surface } from './dungeon.js';
+import { canspotmon, map_invisible, glyph_at } from './display.js';
+import { Something, NO_TRAP_FLAGS } from './const.js';
+import { minliquid } from './mon.js';
+import { mintrap } from './trap.js';
 import { Blind, Flying, Hallucination, Levitation, Passes_walls, Stealth }
     from './youprop.js';
 import { u_on_newpos } from './teleport.js';
@@ -132,7 +135,7 @@ import { doapply } from './apply.js';
 import { dochat } from './sounds.js';
 import { dothrow, dofire } from './dothrow.js';
 import { getpos, getpos_sethilite } from './getpos.js';
-import { get_valid_jump_position, is_valid_jump_pos } from './apply.js';
+import { dojump } from './apply.js';
 import { dowear, doputon, dotakeoff, doremring, doddoremarm,
          canwearobj_core } from './do_wear.js';
 import { boolean_option, show_menu_controls, paranoia_bits,
@@ -148,7 +151,7 @@ import { doengrave, engr_at, wipe_engr_at } from './engrave.js';
 import { rnd, rn2 } from './rng.js';
 import { ACCESSIBLE } from './const.js';
 import { morehungry } from './eat.js';
-import { dohelp, dowhatis, doquickwhatis, dowhatdoes } from './pager.js';
+import { dohelp, dowhatis, doquickwhatis, dowhatdoes, dowhatdoes_core } from './pager.js';
 import { dolook, ECMD_TIME, display_pickinv_entries } from './invent.js';
 import { dovspell, docast, known_spell, spe_Fresh, spelleffects } from './spell.js';
 import { dowieldquiver, dowield, doswapweapon, dotwoweapon } from './wield.js';
@@ -156,6 +159,7 @@ import { dozap } from './zap.js';
 import { dist2, distmin } from './hacklib.js';
 import { place_object } from './mkobj.js';
 import { trapname, feeltrap } from './trap.js';
+import { move_out_of_bounds } from './hack.js';
 
 // Direction deltas: y u k
 //                   h . l
@@ -240,18 +244,23 @@ async function blocksMove(x, y, dx, dy) {
         return true;
     }
     /* src/hack.c:1140 test_move() — diagonal moves into an intact doorway
-       are not allowed (block_door boulder check needs Sokoban state) */
-    if (dx && dy && !Passes_walls() && IS_DOOR(loc.typ)) {
-        if (!doorless_door(x, y))
-            return true;
-        const { block_door } = await import('./shk.js');
-        if (await block_door(x, y))
-            return true;
-    }
-    /* src/hack.c:1208 — nor diagonal moves OUT of one */
+       are not allowed, and src/hack.c:1208 nor diagonal moves OUT of one.
+       Both refusals are test_move's DO_MOVE arms: they feel the location
+       when blind and print "You can't move diagonally into/out of an
+       intact doorway." under Underwater or mention_walls. */
     const ust = game.level?.at(game.u.ux, game.u.uy);
-    if (dx && dy && !Passes_walls() && ust && IS_DOOR(ust.typ)
-        && !doorless_door(game.u.ux, game.u.uy)) return true;
+    if (dx && dy && !Passes_walls()
+        && (IS_DOOR(loc.typ) || (ust && IS_DOOR(ust.typ)))) {
+        const { test_move } = await import('./hack.js');
+        return !(await test_move(game.u.ux, game.u.uy, dx, dy, DO_MOVE));
+    }
+    /* src/hack.c:1216 — a boulder is pushed (moverock) or chewed inside
+       test_move's DO_MOVE arm; a failed push blocks the move like terrain */
+    if (sobj_at(ONAMES.BOULDER, x, y)
+        && (In_sokoban(game.u.uz) || !Passes_walls())) {
+        const { test_move } = await import('./hack.js');
+        return !(await test_move(game.u.ux, game.u.uy, dx, dy, DO_MOVE));
+    }
     return false;
 }
 
@@ -312,21 +321,27 @@ export function u_maybe_impaired() {
 // keybindings put the plain letters on the movement commands, so visctrl of
 // each is the letter itself; rebinding is not ported.
 function show_direction_keys(win, centerchar, nodiag) {
+    /* visctrl(cmd_from_func(do_move_<dir>)): the key currently bound to
+       each movement command, i.e. Cmd.dirchars in sdir order (h y k u l n
+       j b with letters, 4 7 8 9 6 3 2 1 with number_pad) */
+    const dc = game.Cmd?.dirchars || 'hykulnjb><';
+    const [W, NW, N, NE, E, SE, S, SW] = [...dc.slice(0, 8)].map(visctrl);
+
     if (!centerchar)
         centerchar = ' ';
 
     if (nodiag) {
-        tty_putstr(win, 0, "             k   ");
+        tty_putstr(win, 0, `             ${N}   `);
         tty_putstr(win, 0, "             |   ");
-        tty_putstr(win, 0, `          h- ${centerchar} -l`);
+        tty_putstr(win, 0, `          ${W}- ${centerchar} -${E}`);
         tty_putstr(win, 0, "             |   ");
-        tty_putstr(win, 0, "             j   ");
+        tty_putstr(win, 0, `             ${S}   `);
     } else {
-        tty_putstr(win, 0, "          y  k  u");
+        tty_putstr(win, 0, `          ${NW}  ${N}  ${NE}`);
         tty_putstr(win, 0, "           \\ | / ");
-        tty_putstr(win, 0, `          h- ${centerchar} -l`);
+        tty_putstr(win, 0, `          ${W}- ${centerchar} -${E}`);
         tty_putstr(win, 0, "           / | \\ ");
-        tty_putstr(win, 0, "          b  j  n");
+        tty_putstr(win, 0, `          ${SW}  ${S}  ${SE}`);
     }
 }
 
@@ -348,15 +363,40 @@ async function help_dir(sym, msg) {
         tty_putstr(win, 0, "");
     }
 
+    /* src/cmd.c:4243 — hacklib.h letter(): '@'..'Z' or 'a'..'z' */
+    if (('@' <= sym && sym <= 'Z') || ('a' <= sym && sym <= 'z')
+        || sym === '[') {
+        /* '[': old 'cmdhelp' showed ESC as ^[ */
+        sym = sym.toUpperCase(); /* highc(): @A-Z[ (letter() accepts '@') */
+        const ctrl = (sym.charCodeAt(0) - 'A'.charCodeAt(0)) + 1; /* 0-27 */
+        const wiz_only = 'EFGIVW'.includes(sym); /* wiz_only_list */
+        const explain = dowhatdoes_core(ctrl);
+        if (explain !== null && (!wiz_only || game.wizard)) {
+            tty_putstr(win, 0, `Are you trying to use ^${sym}${
+                       wiz_only ? '' : ' as specified in the Guidebook'}?`);
+            tty_putstr(win, 0, "");
+            tty_putstr(win, 0, explain);
+            tty_putstr(win, 0, "");
+            tty_putstr(win, 0,
+                  "To use that command, hold down the <Ctrl> key as a shift");
+            tty_putstr(win, 0, `and press the <${sym}> key.`);
+            tty_putstr(win, 0, "");
+        }
+    }
+
     tty_putstr(win, 0, `Valid direction keys${nodiag ? " in your current form" : ""} are:`);
     show_direction_keys(win, '.', nodiag);
 
     tty_putstr(win, 0, "");
     tty_putstr(win, 0, "          <  up");
     tty_putstr(win, 0, "          >  down");
-    /* C: "       %4s  direct at yourself" with visctrl(NHKF_GETDIR_SELF),
-       which is "." under the default bindings */
-    tty_putstr(win, 0, "          .  direct at yourself");
+    {
+        /* src/cmd.c:4279 — Cmd.spkeys[NHKF_GETDIR_SELF] is '.' and
+           NHKF_GETDIR_SELF2 is 's' (cmd.c:3163); number_pad shows the
+           latter. "       %4s  direct at yourself" */
+        const self = visctrl(game.Cmd?.num_pad ? 's' : '.');
+        tty_putstr(win, 0, `       ${self.padStart(4)}  direct at yourself`);
+    }
 
     if (msg) {
         /* non-null msg means that this wasn't an explicit user request */
@@ -406,58 +446,74 @@ export async function getdir(s) {
        key is consumed. A caller-supplied string starting with '^' is a
        key-hint, not a prompt, and is ignored here as C ignores it. */
     let dirsym;
-    const queued = cmdq_pop();
-    if (queued) {
-        if (queued.typ === CMDQ_DIR) {
-            dirsym = cmd_from_dir(queued.dirz
-                ? (queued.dirz > 0 ? DIR_DOWN : DIR_UP)
-                : xytodir(queued.dirx, queued.diry), MV_WALK);
-        } else if (queued.typ === CMDQ_KEY) {
-            dirsym = queued.key;
-        } else {
-            /* src/cmd.c:3974, a non-direction entry is a broken canned
-               command. C discards the canned tail and treats it as NUL. */
-            cmdq_clear(CQ_CANNED);
-            dirsym = '\0';
-            await impossible('getdir: command queue had no dir?');
-        }
-    } else {
-        dirsym = await tty_yn_function(
-            (s && s[0] !== '^') ? s : 'In what direction?', null, '\0', false);
-        tty_clear_nhwindow_message(game._topl_cury || 0);
-        game._pending_message = '';
-        /* src/cmd.c:4017, getdir records the literal answer itself. Its
-           yn_function call uses addcmdq=FALSE so the key appears once. */
-        if (!game.in_doagain)
-            cmdq_add_key(CQ_REPEAT, dirsym);
-    }
+    let is_mov;
+    let cmdq = cmdq_pop();
 
-    if (dirsym === '.' || dirsym === 's') {
-        game.u.dx = game.u.dy = game.u.dz = 0;
-        /* src/cmd.c:4116 — getdir's tail runs confdir(FALSE) for every
-           !u.dz result, INCLUDING the self-direction: while confused the
-           rn2(5) inside u_maybe_impaired still draws here. */
-        confdir(false);
-        return true;
-    }
-    const is_mov = movecmd(dirsym, MV_ANY);
-    if (!is_mov && !game.u.dz) {
-        /* src/cmd.c:4095-4110 — a key in quitchars (" \r\n\033",
-           src/decl.c:96) cancels quietly; anything else gets the cmdassist
-           help panel (iflags.cmdassist is opt_out, default On) or the
-           "What a strange direction!" pline when assistance is off. The
-           '?' help-request retry is recorded; no recorded session asks. */
-        if (!"\0 \r\n\x1b".includes(dirsym)) {
-            let did_help = false;
-            if (dirsym === '?' || boolean_option('cmdassist')) {
-                did_help = await help_dir('\0', "Invalid direction key!");
-                if (dirsym === '?')
-                    note_unported_cmd('getdir:help_retry');
+    /* src/cmd.c:3984 retry: — a '?' at the prompt shows help_dir() and
+       comes back here to read another key. A queued direction is used once
+       (the C's goto got_dirsym); any retry reads live. */
+    for (;;) {
+        if (cmdq) {
+            const queued = cmdq;
+            cmdq = null;
+            if (queued.typ === CMDQ_DIR) {
+                dirsym = cmd_from_dir(queued.dirz
+                    ? (queued.dirz > 0 ? DIR_DOWN : DIR_UP)
+                    : xytodir(queued.dirx, queued.diry), MV_WALK);
+            } else if (queued.typ === CMDQ_KEY) {
+                dirsym = queued.key;
+            } else {
+                /* src/cmd.c:3974, a non-direction entry is a broken canned
+                   command. C discards the canned tail and treats it as NUL. */
+                cmdq_clear(CQ_CANNED);
+                dirsym = '\0';
+                await impossible('getdir: command queue had no dir?');
             }
-            if (!did_help)
-                await pline("What a strange direction!");
+        } else {
+            dirsym = await tty_yn_function(
+                (s && s[0] !== '^') ? s : 'In what direction?', null, '\0', false);
+            tty_clear_nhwindow_message(game._topl_cury || 0);
+            game._pending_message = '';
+            /* src/cmd.c:4017, getdir records the literal answer itself. Its
+               yn_function call uses addcmdq=FALSE so the key appears once. */
+            if (!game.in_doagain)
+                cmdq_add_key(CQ_REPEAT, dirsym);
         }
-        return false;
+
+        /* got_dirsym: */
+        if (dirsym === '.' || dirsym === 's') {
+            game.u.dx = game.u.dy = game.u.dz = 0;
+            /* src/cmd.c:4116 — getdir's tail runs confdir(FALSE) for every
+               !u.dz result, INCLUDING the self-direction: while confused the
+               rn2(5) inside u_maybe_impaired still draws here. */
+            confdir(false);
+            return true;
+        }
+        is_mov = movecmd(dirsym, MV_ANY);
+        if (!is_mov && !game.u.dz) {
+            /* src/cmd.c:4095-4110 — a key in quitchars (" \r\n\033",
+               src/decl.c:96) cancels quietly; anything else gets the
+               cmdassist help panel (iflags.cmdassist is opt_out, default On)
+               or the "What a strange direction!" pline when assistance is
+               off. '?' (Cmd.spkeys[NHKF_GETDIR_HELP]) asks for the panel
+               without the cmdassist line and then retries the prompt. */
+            if (!"\0 \r\n\x1b".includes(dirsym)) {
+                let did_help = false;
+                const help_requested = (dirsym === '?');
+                if (help_requested || boolean_option('cmdassist')) {
+                    did_help = await help_dir((s && s[0] !== '^') ? dirsym : '\0',
+                                              help_requested
+                                                  ? null
+                                                  : "Invalid direction key!");
+                    if (help_requested)
+                        continue; /* goto retry */
+                }
+                if (!did_help)
+                    await pline("What a strange direction!");
+            }
+            return false;
+        }
+        break;
     }
     if (is_mov && !dxdy_moveok()) {
         await You_cant('orient yourself that direction.');
@@ -999,6 +1055,20 @@ async function execute_extcmd(name) {
     }
     if (name === 'wait')
         return await donull();
+    /* src/cmd.c commands_init(): with number_pad the letter keys land on
+       these entries instead of on movement */
+    if (name === 'help')
+        return await dohelp();
+    if (name === 'kick') {
+        const res = await dokick();
+        game._cmd_was_kick = true;
+        return res;
+    }
+    if (name === 'redraw') {
+        /* src/display.c doredraw() */
+        await docrt();
+        return ECMD_OK;
+    }
     if (name === 'exploremode')
         return await enter_explore_mode();
     if (name === 'enhance') {
@@ -1364,77 +1434,6 @@ export async function doterrain() {
     return ECMD_OK; /* no time elapses */
 }
 
-// src/apply.c:1847 dojump() -> jump(0). The jump itself needs the movement and
-// trap plumbing; what is ported is the getpos() call at src/apply.c:2063, which
-// is where a session's cursor keys and pick go.
-async function dojump() {
-    const has_jumping = !!game.u.intrinsic?.HJumping
-                        || !!game.u.uprops?.JUMPING;
-
-    /* src/apply.c:1979. Physical #jump casts a fresh jumping spell when the
-       hero lacks the ability, then rejects the command before getpos when no
-       such spell is available. */
-    if (!has_jumping
-        && known_spell(ONAMES.SPE_JUMPING) >= spe_Fresh)
-        return await spelleffects(ONAMES.SPE_JUMPING, false, false);
-
-    if (!has_jumping) {
-        await You_cant('jump very far.');
-        return ECMD_OK;
-    }
-
-    await pline('Where do you want to jump?');
-
-    const cc = { x: game.u.ux, y: game.u.uy };
-    /* src/apply.c:2062 — the cursor marks squares the jump cannot reach.
-       display_jump_positions (the tmp_at beam) is not ported; the validator
-       is, because getpos' auto-describe prints "(invalid target)" from it. */
-    await getpos_sethilite(null, get_valid_jump_position);
-
-    if (await getpos(cc, true, 'the desired position') < 0)
-        return ECMD_CANCEL; /* user pressed ESC */
-
-    /* src/apply.c:2065 — the same validator again, this time with its
-       messages; a rejected target ends the command without a turn. */
-    if (!(await is_valid_jump_pos(cc.x, cc.y, game.jumping_is_magic, true)))
-        return ECMD_FAIL;
-
-    /* src/apply.c:2116 — jumping onto your own square never moves you */
-    if (cc.x === game.u.ux && cc.y === game.u.uy) {
-        if (t_at(cc.x, cc.y)) {
-            note_unported_cmd('jump:in_place_trap');
-            return ECMD_TIME;
-        }
-        /* jumping in place takes no time and doesn't exercise anything */
-        await You('decide not to jump after all.');
-        return ECMD_OK;
-    }
-
-    /*
-     * Check the path from uc to cc, calling hurtle_step at each location.
-     * The final position actually reached will be in cc.
-     */
-    const uc = { x: game.u.ux, y: game.u.uy };
-    let range = cc.x - uc.x;
-    if (range < 0) range = -range;
-    let temp = cc.y - uc.y;
-    if (temp < 0) temp = -temp;
-    if (range < temp) range = temp;
-
-    const { walk_path, hurtle_jump } = await import('./dothrow.js');
-    const { teleds, TELEDS_NO_FLAGS } = await import('./teleport.js');
-    await walk_path(uc, cc, hurtle_jump, { range });
-    /* hurtle_jump -> hurtle_step results in <u.ux,u.uy> == <cc.x,cc.y> and
-     * usually moves the ball if punished, but does not handle all the
-     * effects of landing on the final position.
-     */
-    await teleds(cc.x, cc.y, TELEDS_NO_FLAGS);
-    nomul(-1);
-    game.multi_reason = 'jumping around';
-    game.nomovemsg = '';
-    await morehungry(rnd(25));
-    return ECMD_TIME;
-}
 
 // src/pager.c doidtrap(), the '^' command. Ordinary seen floor traps are the
 // common path; trapped-door and trapped-chest glyph overlays remain separate
@@ -2687,8 +2686,10 @@ async function domove_core() {
     const newx = u.ux + dx;
     const newy = u.uy + dy;
 
-    /* src/hack.c:2762 — after move_out_of_bounds(), before the sticky
-       monster check */
+    if (await move_out_of_bounds(newx, newy))
+        return;
+
+    /* src/hack.c:2762 — before the sticky monster check */
     if (avoid_running_into_trap_or_liquid(newx, newy))
         return;
 
@@ -2792,6 +2793,8 @@ async function domove_core() {
      * Unlike hack.c:2766 this is NOT gated on context.run and does NOT
      * return -- it only clears multi and lets the rest of domove proceed.
      * This sits before the blocked-move test, matching C's order. */
+    /* src/hack.c:2785 — the destination's glyph before anything moves */
+    const glyph = glyph_at(newx, newy);
     {
         const mtmp_bump = m_at(newx, newy);
         if (mtmp_bump && (!is_safemon(mtmp_bump) || game.context.forcefight))
@@ -2804,10 +2807,10 @@ async function domove_core() {
        square, for a hostile target as well as a safe one. do_attack's combat
        tail runs attack_checks(), the overexertion() hunger tick, u_wipe_engr
        and hitum(), so the whole hero-attacks-monster chain is live. */
+    const displaceu = { value: false };
     {
         const mtmp_atk = m_at(newx, newy);
         if (mtmp_atk) {
-            const displaceu = { value: false };
             if (await domove_attackmon_at(mtmp_atk, newx, newy, displaceu)) {
                 /* the move was used up; C's domove returns here */
                 return;
@@ -2918,35 +2921,6 @@ async function domove_core() {
         }
     }
 
-    /* src/hack.c:1230 — test_move()'s boulder arm, the DO_MOVE slice:
-       walking into a boulder tries to push it (moverock, hack.c:336), and
-       a failed push blocks the move exactly like terrain. */
-    if (sobj_at(ONAMES.BOULDER, newx, newy)
-        && (In_sokoban(game.u.uz) || !Passes_walls())) {
-        if (!(u.ublind || Hallucination()) && (game.context.run | 0) >= 2
-            && !could_move_onto_boulder(newx, newy)) {
-            if (game.flags?.mention_walls)
-                await pline('A boulder blocks your path.');
-            game.context.move = 0;
-            nomul(0);
-            return;
-        }
-        /* tunneling monsters chew before pushing; the un-polymorphed hero
-           never tunnels */
-        const { moverock } = await import('./hack.js');
-        if ((await moverock()) < 0) {
-            if (!game.context.door_opened) {
-                game.context.move = 0;
-                nomul(0);
-            }
-            return;
-        }
-        /* push succeeded (or squeezed): if a boulder still remains on the
-           target square after moverock() returned 0, C's test_move lets
-           the move proceed only for could_move_onto_boulder cases; the
-           vacated-square case just walks on */
-    }
-
     /* src/hack.c:2860. drag_ball() removes both floor pieces before the hero
        moves and computes where each will be replaced afterward. */
     let punishmentMove = null;
@@ -2974,13 +2948,50 @@ async function domove_core() {
        tentatively setting the hero's position, and puts the hero back if the
        swap is refused. */
     const mtmp = m_at(newx, newy);
-    if (mtmp && is_safemon(mtmp)
-        && !(is_hider(game.mons[mtmp.mnum]) && mtmp.mundetected)) {
-        if (!(await domove_swap_with_pet(mtmp, newx, newy))) {
-            game.u.ux = game.u.ux0;     /* didn't move after all */
-            game.u.uy = game.u.uy0;
+    if (mtmp) {
+        if (displaceu.value) {
+            const noticed_it = (canspotmon(mtmp)
+                                || glyph?.kind === 'invis'
+                                || glyph?.kind === 'warn');
+
+            remove_monster(u.ux, u.uy);
+            place_monster(mtmp, u.ux0, u.uy0);
+            newsym(u.ux, u.uy);
+            newsym(u.ux0, u.uy0);
+            /* monst still knows where hero is */
+            mtmp.mux = u.ux, mtmp.muy = u.uy;
+
+            await pline(`${!noticed_it ? Something : YMonnam(mtmp)} swaps places with you...`);
+            if (!canspotmon(mtmp))
+                map_invisible(u.ux0, u.uy0);
+            /* monster chose to swap places; hero doesn't get any credit
+               or blame if something bad happens to it */
+            game.context.mon_moving = 1;
+            if (!(await minliquid(mtmp)))
+                await mintrap(mtmp, NO_TRAP_FLAGS);
+            game.context.mon_moving = 0;
+
+        /*
+         * If safepet at destination then move the pet to the hero's
+         * previous location using the same conditions as in do_attack().
+         * there are special extenuating circumstances:
+         * (1) if the pet dies then your god angers,
+         * (2) if the pet gets trapped then your god may disapprove.
+         *
+         * Ceiling-hiding pets are skipped by this section of code, to
+         * be caught by the normal falling-monster code.
+         */
+        } else if (is_safemon(mtmp)
+                   && !(is_hider(game.mons[mtmp.mnum]) && mtmp.mundetected)) {
+            if (!(await domove_swap_with_pet(mtmp, newx, newy))) {
+                game.u.ux = game.u.ux0;     /* didn't move after all */
+                game.u.uy = game.u.uy0;
+                /* could skip this since we're about to call u_on_newpos() */
+                if (u.usteed)
+                    u.usteed.mx = u.ux, u.usteed.my = u.uy;
+            }
         }
-    }
+    }  /* mtmp != NULL */
 
     /* src/hack.c:2934 — full re-position after the tentative move; this is
        where a ridden steed's mx,my get synced to the hero. */

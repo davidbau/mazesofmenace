@@ -20,7 +20,7 @@
 import { game } from './gstate.js';
 import { mergable, reorder_invent, assigninvlet, addinv, weight } from './invent.js';
 import { rn2, rnd, rne, rn1 } from './rng.js';
-import { OCLASSES, ONAMES, SKILLS } from './objects_data.js';
+import { OCLASSES, ONAMES, SKILLS, NUM_OBJECTS } from './objects_data.js';
 import { PMNAMES } from './monst_data.js';
 import { skill_tables } from './skills_data.js';
 import { ART_SNICKERSNEE } from './artilist_data.js';
@@ -38,7 +38,8 @@ import { spell_skilltype, initialspell, num_spells,
 import { mkobj, mksobj } from './mkobj.js';
 import { TROBJ, UNDEF_TYP, UNDEF_SPE, UNDEF_BLESS } from './uinit_data.js';
 import { discover_object } from './o_init.js';
-import { OBJ_DESCR } from './objnam.js';
+import { OBJ_DESCR, Japanese_item_name } from './objnam.js';
+import { MAXOCLASSES } from './symbols.js';
 
 // include/prop.h:101-107 — worn-equipment slot masks.
 /* W_QUIVER was 0x0800 here and in js/objnam.js; include/prop.h:111 says
@@ -479,9 +480,18 @@ export function u_init_role() {
     case PMNAMES.PM_SAMURAI:
         ini_inv(TROBJ.Samurai);
         if (!rn2(5)) ini_inv(TROBJ.Blindfold);
-        knows_class(WEAPON_CLASS);
+        knows_class(WEAPON_CLASS); /* all weapons */
         knows_class(ARMOR_CLASS);
-        /* the Japanese_item_name() pre-discovery loop draws nothing */
+        /* in order to assist non-Japanese speakers, pre-discover items
+           that switch to Japanese names when playing as a Samurai */
+        for (let i = MAXOCLASSES; i < NUM_OBJECTS; ++i) {
+            if (game.objects[i].oc_magic) /* skip "magic koto" */
+                continue;
+            if (Japanese_item_name(i, null))
+                /* we don't override pauper here because that would give
+                   samarai an advantage of knowing several items in advance */
+                knows_object(i, false);
+        }
         break;
     case PMNAMES.PM_TOURIST:
         u.umoney0 = rnd(1000);

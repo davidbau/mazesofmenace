@@ -41,6 +41,8 @@ import { FACE } from './const.js';
 import { A_DEX } from './const.js';
 import { You_see } from './pline.js';
 import { set_levltyp } from './mkmaze.js';
+import { TT_INFLOOR, TT_LAVA } from './const.js';
+import { surface } from './dungeon.js';
 
 
 
@@ -97,6 +99,21 @@ export async function dryup(x, y, isyou) {
         loc.blessedftn = 0;
         newsym(x, y);
     }
+}
+
+// src/fountain.c:21 floating_above() — used when trying to use a fountain or
+// sink while levitating above it, or when trying to move downwards in that
+// state
+export async function floating_above(what) {
+    let umsg = 'are floating high above the %s.';
+
+    if (game.u.utrap && (game.u.utraptype === TT_INFLOOR || game.u.utraptype === TT_LAVA)) {
+        /* when stuck in floor (not possible at fountain or sink location,
+           so must be attempting to move down), override the usual message */
+        umsg = 'are trapped in the %s.';
+        what = surface(game.u.ux, game.u.uy); /* probably redundant */
+    }
+    await You(umsg.replace('%s', what));
 }
 
 // src/fountain.c:40 dowatersnakes()

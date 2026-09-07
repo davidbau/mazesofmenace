@@ -92,8 +92,9 @@ import {
     AT_ENGL, AT_GAZE, AT_SPIT, AT_BREA, AT_EXPL, AT_BOOM, AT_TENT, AT_MAGC,
     AT_HUGS,
     AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_DRDX, AD_DRCO, AD_ACID,
-    AD_SITM, AD_SEDU, AD_SSEX, AD_POLY, AD_DRIN, AD_SLEE, AD_TLPT,
+    AD_SITM, AD_SEDU, AD_SSEX, AD_POLY, AD_DRIN, AD_SLEE, AD_TLPT, AD_FAMN,
 } from './mhitm.js';
+import { morehungry, is_fainted } from './eat.js';
 import { castmu, buzzmu } from './mcastu.js';
 import { rehumanize, polymon, body_part } from './polyself.js';
 import { set_wounded_legs, burnarmor, ignite_items, ceiling } from './trap.js';
@@ -179,6 +180,7 @@ const AD_CONF = 25; /* umber hulk gaze — monattk.h */
 const AD_HALU = 36; /* monattk.h — black-light AT_EXPL */
 const AD_DREN = 16;
 const AD_STCK = 19; /* stick-to (mimic, lichen) — monattk.h */
+const AD_SLOW = 13; /* slows — monattk.h */
 const AD_DGST = 26;
 const AD_WRAP = 28;
 const AD_DISE = 33;
@@ -2313,10 +2315,48 @@ async function mhitm_ad_plys_u(mtmp, mattk, mhm) {
 }
 
 /**
+ * C ref: uhitm.c mhitm_ad_famn `:3784–3796` — mhitu (monster→you) arm.
+ * No hitmsg (C goes straight to pline_mon, unlike the STON/SLEE arms).
+ * pline_mon reach-out; exercise(A_CON, FALSE); unless fainted
+ * morehungry(rn1(40, 40)). Leftover hitmu d() is kept
+ * ("plus the normal damage", unlike the default zero).
+ * The uhitm arm cannot happen (hero never polymorphs into a FAMN
+ * attacker — C `:3780–3783` comment); the mhitm arm is mhitm_ad_famn
+ * in mhitm.js.
+ */
+async function mhitm_ad_famn_u(mtmp, mattk, mhm) {
+    void mattk;
+    void mhm; /* leftover d() stays */
+    await pline_mon(mtmp, `${Monnam(mtmp)} reaches out, and your body shrivels.`);
+    exercise(A_CON, false);
+    if (!is_fainted()) await morehungry(rn1(40, 40));
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_slow `:3652–3689` — mhitu (monster→you) arm.
+ * The gate (FALSE) always burns rn2(10); then hitmsg; then
+ * `!negated && HFast && !rn2(4)` → u_slow_down (leftover d() kept,
+ * like FAMN — the slow arm never zeroes damage).
+ * C `:3660–3661` defended(mdef, AD_SLOW) early return is a named omit:
+ * RNG-free (wielded slow-defending artifact, or blue dragon scales/mail
+ * per artifact.c defends `:651–676`), no corpus reach.
+ */
+async function mhitm_ad_slow_u(mtmp, mattk, mhm) {
+    void mhm; /* leftover d() stays */
+    const negated = await mhitm_mgc_atk_negated(mtmp, null, false);
+    await hitmsg(mtmp, mattk);
+    /* C youprop.h:374 HFast = u.uprops[FAST].intrinsic; u.HFast is the
+       flat mirror (attrib.js Fast idiom); either nonzero means intrinsic */
+    const u = game.u || {};
+    const HFast = ((u.HFast | 0) || (u.uprops?.[FAST]?.intrinsic | 0)) !== 0;
+    if (!negated && HFast && !rn2(4)) await u_slow_down();
+}
+
+/**
  * C ref: uhitm.c mhitm_adtyping — mhitu (monster→you) subset.
  * PHYS + ELEC + COLD + FIRE + TLPT + DRST/DRDX/DRCO + SITM/SEDU + SSEX (D-1750)
  * + BLND + STON + LEGS + POLY (D-1004) + DRIN (D-1329) + WRAP (D-1331) + SLEE
- * + DRLI + RUST + STCK + PLYS; other adtyps zero damage.
+ * + DRLI + RUST + STCK + PLYS + FAMN + SLOW; other adtyps zero damage.
  */
 async function mhitm_adtyping_u(mtmp, mattk, mhm) {
     switch (mattk.adtyp | 0) {
@@ -2379,6 +2419,12 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
         break;
     case AD_PLYS:
         await mhitm_ad_plys_u(mtmp, mattk, mhm);
+        break;
+    case AD_FAMN:
+        await mhitm_ad_famn_u(mtmp, mattk, mhm);
+        break;
+    case AD_SLOW:
+        await mhitm_ad_slow_u(mtmp, mattk, mhm);
         break;
     default:
         mhm.damage = 0;

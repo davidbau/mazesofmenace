@@ -34,8 +34,9 @@ import { addinv } from './u_init.js';
 import {
     an, doname, Doname2, makesingular, xname, cxname, cxname_singular, xprname,
     the as theArt, The, body_part_latebound, vtense,
-    safe_qbuf, ansimpleoname, otense,
+    safe_qbuf, ansimpleoname, otense, Tobjnam,
     yname as yname_objnam, Yname2,
+    thesimpleoname as thesimpleoname_objnam,
     ysimple_name as ysimple_name_objnam,
     Ysimple_name2 as Ysimple_name2_objnam,
 } from './objnam.js';
@@ -2205,7 +2206,9 @@ async function in_or_out_menu(
     // C tty_end_menu: prompt uses tty_menu_promptstyle (= menu_headings,
     // default ATR_INVERSE); blank separator; then add_menu items.
     const entries = [{ text: prompt, attr: ATR_INVERSE }, { text: '', attr: 0 }];
-    const simple = thesimpleoname(obj); // "the bag"
+    // C pickup.c:3420 — "Look inside %s" via thesimpleoname, which is
+    // discovery-aware (known sack → "the sack", never the local "bag").
+    const simple = thesimpleoname_objnam(obj);
     entries.push({
         text: `${accel.look} - Look inside ${simple}`,
         attr: 0, sel: accel.look, ret: ret.look,
@@ -3617,14 +3620,11 @@ export async function use_container(obj, held = false, more_containers = false) 
     // C: if (!u_handsy()) return ECMD_OK;
     if (!(await u_handsy())) return ECMD_OK;
 
+    // C pickup.c:2994–2999 — Tobjnam "are" locked; held asks to put it
+    // down. No lknown/Hmmm arm here (that is do_loot_cont `:2106–2111`
+    // for floor #loot, which keeps its own copy below).
     if (obj.olocked) {
-        // C ref: pickup.c use_container — held locked; floor #loot uses
-        // do_loot_cont autounlock instead.
-        if (obj.lknown)
-            await pline(`${upstart(theArt(xname(obj)))} is locked.`);
-        else
-            await pline(`Hmmm, ${theArt(xname(obj))} turns out to be locked.`);
-        obj.lknown = 1;
+        await pline(`${Tobjnam(obj, 'are')} locked.`);
         if (held) await pline('You must put it down to unlock.');
         return ECMD_OK;
     }
@@ -3644,7 +3644,8 @@ export async function use_container(obj, held = false, more_containers = false) 
     // quantum_cat (cursed_mbag "now " still named).
     let emptymsg = '';
     if (!outokay) {
-        emptymsg = `${Ysimple_name2(obj)} is ${quantum_cat ? 'now ' : ''}empty.`;
+        // C pickup.c:3043–3046 — Ysimple_name2 (known sack → "Your sack").
+        emptymsg = `${Ysimple_name2_objnam(obj)} is ${quantum_cat ? 'now ' : ''}empty.`;
     }
     // C default MENU_FULL (options.c). Unset JS flags must not fall
     // through to TRADITIONAL (0) yn_function — that would break FULL
@@ -3703,8 +3704,8 @@ export async function use_container(obj, held = false, more_containers = false) 
         // out-only or out before in
         if (loot_out && !loot_in_first) {
             if (!Has_contents(obj)) {
-                // C: pline1(emptymsg) — Ysimple_name2 ("The bag is empty.")
-                await pline(emptymsg || `${Ysimple_name2(obj)} is empty.`);
+                // C: pline1(emptymsg) — Ysimple_name2 ("The sack is empty.")
+                await pline(emptymsg || `${Ysimple_name2_objnam(obj)} is empty.`);
                 if (!obj.cknown) used = ECMD_TIME;
                 obj.cknown = 1;
             } else {
@@ -3750,7 +3751,7 @@ export async function use_container(obj, held = false, more_containers = false) 
         if (loot_out && loot_in_first) {
             const cont = game._current_container;
             if (!Has_contents(cont)) {
-                await pline(emptymsg || `${Ysimple_name2(cont)} is empty.`);
+                await pline(emptymsg || `${Ysimple_name2_objnam(cont)} is empty.`);
                 // C: used = 1 (ECMD_TIME) when !cknown, unlike first-out ECMD_TIME
                 if (!cont.cknown) used = 1;
                 cont.cknown = 1;

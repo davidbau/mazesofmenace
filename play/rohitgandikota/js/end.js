@@ -57,6 +57,7 @@ import { boolean_option } from './options.js';
 import { tty_next_page } from './tty/wintty.js';
 import { xwaitforspace } from './tty/getline.js';
 import { docrt, display_nhwindow_message } from './display.js';
+import { keepdogs } from './dog.js';
 
 function note_unported_end(what) {
     (game.unported ||= new Set()).add('end:' + what);
@@ -715,6 +716,13 @@ async function really_done(how) {
     await disclose(how, taken);
 
     /* dump_everything: dumplog disabled */
+
+    /* if pets will contribute to score, populate gm.mydogs list now
+       (bones creation isn't a factor, but pline() messaging is; used to
+       be done even sooner, but we need it to come after dump_everything()
+       so that any accompanying pets are still on the map during dump) */
+    if (how === ESCAPED || how === ASCENDED)
+        await keepdogs(true);
 
     if (bones_ok && taken)
         await drop_upon_death(null, null, repos.x, repos.y);

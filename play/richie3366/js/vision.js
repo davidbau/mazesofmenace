@@ -34,10 +34,11 @@ const S_vcdoor = 15;
 const S_hcdoor = 16;
 const S_tree = 18;
 
-// C ref: vision.c seenv_matrix
+// C ref: display.c seenv_matrix `:3358–3362` (shared by vision.c) —
+// center is SVALL (hero's own square seen from all angles), not 0.
 const seenv_matrix = [
     [SV2, SV1, SV0],
-    [SV3, 0,   SV7],
+    [SV3, SVALL, SV7],
     [SV4, SV5, SV6],
 ];
 

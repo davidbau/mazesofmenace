@@ -26,11 +26,14 @@
 // seffect_charging SCR_CHARGING + seffect_amnesia SCR_AMNESIA (forget) +
 // seffect_earth SCR_EARTH (drop_boulder_on_player/monster) +
 // seffect_stinking_cloud SCR_STINKING_CLOUD (do_stinking_cloud,
-// can_center_cloud, display_stinking_cloud_positions, p_glow3).
+// can_center_cloud, display_stinking_cloud_positions, p_glow3) +
+// seffect_fire SCR_FIRE (confused/underwater/blessed-getpos arms,
+// tower + burn_away_slime, explode ZT_SPELL_O_FIRE / SCROLL_CLASS /
+// EXPL_FIERY; doread allowlist + nodisappear).
 // Named omissions: fortune/credit-card/marker/coin/orb/Braille Blind
 // gates; doread T_SHIRT/ALCHEMY_SMOCK/HAWAIIAN_SHIRT (hawaiian_design);
 // study_book novel / dull sleep (occupation learn D-0907);
-// SCR_FIRE / SCR_BLANK_PAPER seffects; SCR_IDENTIFY SPE_IDENTIFY cast; menu_identify traditional
+// SCR_BLANK_PAPER seffects; SCR_IDENTIFY SPE_IDENTIFY cast; menu_identify traditional
 // ggetobj; discover_artifact / learn_egg_type in fully_identify_obj;
 // SCR_DESTROY_ARMOR confused erodeproof / cursed vibrate+stun /
 // blessed getobj choice / disintegrate_cursed_armor; Rogue unblock_point
@@ -62,7 +65,7 @@
 // Named omissions: fortune/credit-card/marker/coin/orb/Braille Blind
 // gates; doread T_SHIRT/ALCHEMY_SMOCK/HAWAIIAN_SHIRT (hawaiian_design);
 // study_book novel / dull sleep (occupation learn D-0907);
-// SCR_FIRE seffect_fire; SCR_BLANK_PAPER; SCR_IDENTIFY SPE_IDENTIFY cast;
+// seffect_fire SCR_FIRE live; SCR_BLANK_PAPER; SCR_IDENTIFY SPE_IDENTIFY cast;
 // menu_identify traditional ggetobj; discover_artifact / learn_egg_type;
 // SCR_DESTROY_ARMOR confused erodeproof / cursed vibrate+stun /
 // blessed getobj choice / disintegrate_cursed_armor; Rogue unblock_point
@@ -86,7 +89,7 @@
 // from angrygods.
 
 import { game } from './gstate.js';
-import { pline, urgent_pline, newsym, You_feel, verbalize, canspotmon, tmp_at, cmap_to_glyph, map_invisible } from './display.js';
+import { pline, urgent_pline, newsym, You_feel, verbalize, canspotmon, tmp_at, cmap_to_glyph, map_invisible, shieldeff } from './display.js';
 import { xname, makeplural, an, vtense, otense, otyp_is_charged, Yname2, Yobjnam2, doname } from './objnam.js';
 import {
     SCROLL_CLASS, SPBOOK_CLASS, COIN_CLASS, WEAPON_CLASS, GEM_CLASS,
@@ -104,7 +107,7 @@ import {
 } from './detect.js';
 import { study_book, can_chant, losespells } from './spell.js';
 import { scrolltele, level_tele } from './teleport.js';
-import { trycall, hcolor, Monnam, mon_nam, s_suffix } from './do_name.js';
+import { trycall, hcolor, Monnam, mon_nam, s_suffix, hliquid } from './do_name.js';
 import { chwepon, is_weptool } from './wield.js';
 import { destroy_arm, some_armor, setworn, hard_helmet } from './do_wear.js';
 import { dropy, flooreffects } from './do.js';
@@ -123,6 +126,7 @@ import {
     LEFT_RING, RIGHT_RING, COST_UNCHRG, COST_DECHNT, COST_DEGRD, NOTELL,
     ALL_SPELLS, DISP_BEAM, DISP_END, S_goodpos, Never_mind,
     In_endgame, Is_earthlevel, IS_OBSTRUCTED, IS_AIR,
+    EXPL_FIERY, PLNMSG_TOWER_OF_FLAME, M_SEEN_FIRE, u_at,
 } from './const.js';
 import { vision_recalc, do_clear_area, cansee } from './vision.js';
 import { valid_cloud_pos, create_gas_cloud } from './region.js';
@@ -132,7 +136,7 @@ import { dist2 } from './hacklib.js';
 import { You_hear, closed_door, maybe_half_phys } from './hack.js';
 import { Soundeffect } from './sndprocs.js';
 import { se_maniacal_laughter, se_sad_wailing } from './generated/seffects_data.js';
-import { resist, cant_revive } from './zap.js';
+import { resist, cant_revive, Fire_resistance } from './zap.js';
 import { monflee } from './monmove.js';
 import { which_armor } from './worn.js';
 import { alter_cost, costly_alteration, obfree } from './shk.js';
@@ -140,7 +144,7 @@ import { sokoban_guilt, ceiling } from './trap.js';
 import { drain_weapon_skill, dmgval } from './weapon.js';
 import { mhim } from './mondata.js';
 import { getlin, y_n } from './getline.js';
-import { name_to_mon, name_to_monclass } from './mondata.js';
+import { name_to_mon, name_to_monclass, monstseesu, monstunseesu } from './mondata.js';
 import { mons, NON_PM, LOW_PM, NUMMONS, amorphous, passes_walls, noncorporeal, is_whirly, unsolid,
     G_GENO, G_UNIQ, G_NOCORPSE, is_human, is_demon, pmnames, NEUTRAL,
     MALE, FEMALE, is_male, is_female,
@@ -155,6 +159,8 @@ import { done } from './end.js';
 import { ART_SUNSWORD } from './generated/artifacts_data.js';
 import { readmail } from './mail.js';
 import { has_ceiling, avoid_ceiling } from './dungeon.js';
+import { explode } from './explode.js';
+import { burn_away_slime } from './timeout.js';
 
 const SCR_MAGIC_MAPPING = objectNames.indexOf('SCR_MAGIC_MAPPING');
 const SPE_MAGIC_MAPPING = objectNames.indexOf('SPE_MAGIC_MAPPING');
@@ -1627,6 +1633,85 @@ async function seffect_stinking_cloud(sobj) {
     await do_stinking_cloud(sobj, already_known);
 }
 
+/**
+ * C read.c seffect_fire `:1850–1916` — dam from rn1(3,3)+bcsign, useup +
+ * learnscrolltyp up front (*sobjp = 0: always consumed, returns null);
+ * confused → underwater trickle / fire-res pretty flames / 1-hp burn;
+ * underwater → violent vaporize; blessed → 5x dam + getpos centering
+ * (off-cloud falls back to hero); hero-centered → tower + burn_away_slime;
+ * always explode(ZT_SPELL_O_FIRE=11, SCROLL_CLASS, EXPL_FIERY).
+ * @returns {Promise<object|null>} null when sobj is gone (every arm)
+ */
+async function seffect_fire(sobj) {
+    const otyp = sobj.otyp | 0;
+    const sblessed = !!sobj.blessed;
+    const u = game.u || (game.u = {});
+    // C youprop.h: Confusion ≡ HConfusion (D-1048); sibling seffects also
+    // OR the flat flag set by the nommap screw-up path — match them.
+    const confused = !!((u.HConfusion | 0) || (u.Confusion | 0));
+    const already_known = sobj.oclass === SPBOOK_CLASS
+        || !!game.objects?.[otyp]?.oc_name_known;
+    const { body_part } = await import('./polyself.js');
+
+    const cc = { x: u.ux | 0, y: u.uy | 0 };
+    const cval = bcsign(sobj);
+    let dam = Math.trunc((2 * (rn1(3, 3) + 2 * cval) + 1) / 3);
+    useup(sobj);
+    // C: *sobjp = 0 — one unit consumed; caller must not useup again.
+    if (!already_known) learnscrolltyp(SCR_FIRE);
+    // C Underwater ≡ u.uinwater (youprop.h); also accept the flat alias
+    // some JS paths set (cf. potion.js D-2031 dual-store note).
+    const Underwater = !!((u.uinwater | 0) || u.Underwater);
+    if (confused) {
+        if (Underwater) {
+            await pline(`A little ${hliquid('water')} around you vaporizes.`);
+        } else if (Fire_resistance()) {
+            await shieldeff(u.ux | 0, u.uy | 0);
+            monstseesu(M_SEEN_FIRE);
+            const hands = makeplural(body_part(HAND));
+            if (!Blind_read()) {
+                await pline(`Oh, look, what a pretty fire in your ${hands}.`);
+            } else {
+                await You_feel(`a pleasant warmth in your ${hands}.`);
+            }
+        } else {
+            monstunseesu(M_SEEN_FIRE);
+            const hands = makeplural(body_part(HAND));
+            // C pline_The — plain pline with the The-phrase (cf. zap.js).
+            await pline(`The scroll catches fire and you burn your ${hands}.`);
+            losehp(1, 'scroll of fire', KILLED_BY_AN);
+        }
+        return null;
+    }
+    if (Underwater) {
+        await pline(`The ${hliquid('water')} around you vaporizes violently!`);
+    } else {
+        if (sblessed) {
+            if (!already_known) await pline('This is a scroll of fire!');
+            dam *= 5;
+            await pline('Where do you want to center the explosion?');
+            getpos_sethilite(display_stinking_cloud_positions, can_center_cloud);
+            // C ignores the getpos return (no Never_mind): an invalid pick
+            // fails can_center_cloud below and falls back to the hero.
+            await getpos(cc, true, 'the desired position');
+            if (!can_center_cloud(cc.x | 0, cc.y | 0)) {
+                /* try to reach too far, get burned */
+                cc.x = u.ux | 0;
+                cc.y = u.uy | 0;
+            }
+        }
+        if (u_at(cc.x | 0, cc.y | 0)) {
+            await pline('The scroll erupts in a tower of flame!');
+            // C iflags.last_msg = PLNMSG_TOWER_OF_FLAME — read by explode().
+            if (game.iflags) game.iflags.last_msg = PLNMSG_TOWER_OF_FLAME;
+            await burn_away_slime();
+        }
+    }
+    // C: #define ZT_SPELL_O_FIRE 11 (splatter_burning_oil, explode.c).
+    await explode(cc.x | 0, cc.y | 0, 11, dam, SCROLL_CLASS, EXPL_FIERY);
+    return null;
+}
+
 /** C read.c seffect_mail `:2157–2188`. Default arm is mail.c readmail (MAIL defined). */
 async function seffect_mail(sobj) {
     const odd = ((sobj.o_id | 0) % 2) === 1;
@@ -1865,6 +1950,12 @@ export async function seffects(sobj) {
     case SCR_STINKING_CLOUD:
         await seffect_stinking_cloud(sobj);
         break;
+    case SCR_FIRE: {
+        // C seffect_fire useup'd + *sobjp = 0: always consumed.
+        const kept = await seffect_fire(sobj);
+        if (!kept) return 1;
+        break;
+    }
     default:
         // Other seffect_* deferred — do not useup
         await pline('That scroll is not implemented yet.');
@@ -1924,7 +2015,7 @@ export async function doread() {
         && otyp !== SCR_ENCHANT_ARMOR && otyp !== SCR_CONFUSE_MONSTER
         && otyp !== SCR_SCARE_MONSTER && otyp !== SCR_CHARGING
         && otyp !== SCR_AMNESIA && otyp !== SCR_EARTH
-        && otyp !== SCR_STINKING_CLOUD) {
+        && otyp !== SCR_STINKING_CLOUD && otyp !== SCR_FIRE) {
         await pline('That scroll is not implemented yet.');
         return 0;
     }
@@ -1937,7 +2028,8 @@ export async function doread() {
         const Blind = !!(u.Blind || u.ublind);
         const silently = !can_chant();
         // C: nodisappear for SCR_FIRE / cursed SCR_REMOVE_CURSE
-        const nodisappear = (otyp === SCR_REMOVE_CURSE && !!scroll.cursed);
+        const nodisappear = (otyp === SCR_FIRE
+            || (otyp === SCR_REMOVE_CURSE && !!scroll.cursed));
         if (Blind) {
             const verb = silently ? 'cogitate' : 'pronounce';
             await pline(

@@ -148,7 +148,7 @@ import { something } from './const.js';
 import { OBJ_FLOOR } from './const.js';
 import { costly_spot } from './shk.js';
 import { bill_dummy_object } from './shk.js';
-import { make_glib } from './potion.js';
+import { make_glib, djinni_from_bottle } from './potion.js';
 import { On_stairs } from './stairs.js';
 import { mkclass } from './makemon.js';
 import { MONSYMS } from './monst_data.js';
@@ -295,6 +295,18 @@ import { MELT_ICE_AWAY } from './const.js';
 import { ROOM } from './const.js';
 import { PIT } from './const.js';
 import { HOLE } from './const.js';
+import { Jumping, Conflict, Wounded_legs } from './youprop.js';
+import { known_spell, spe_Fresh, spelleffects } from './spell.js';
+import { slithy } from './mondata.js';
+import { stucksteed } from './steed.js';
+import { set_ustuck } from './mon.js';
+import { near_capacity } from './attrib.js';
+import { UNENCUMBERED, TT_BEARTRAP, TT_LAVA, TT_INFLOOR, LEFT_SIDE, RIGHT_SIDE, LEG, FORCETRAP, TOOKPLUNGE, TELEDS_NO_FLAGS } from './const.js';
+import { legs_in_no_shape, set_wounded_legs } from './do.js';
+import { YMonnam, hliquid } from './do_name.js';
+import { deltrap } from './trap.js';
+import { morehungry } from './eat.js';
+import { hurtle_jump } from './dothrow.js';
 
 
 
@@ -1888,54 +1900,6 @@ async function use_tinning_kit(obj) {
                                   doname(can), null);
     } else {
         /* impossible("Tinning failed.") */
-    }
-}
-
-// src/potion.c:2815 djinni_from_bottle().
-async function djinni_from_bottle(obj) {
-    const mtmp = await makemon(game.mons[PMNAMES.PM_DJINNI],
-                         game.u.ux, game.u.uy, MM_NOMSG);
-    if (!mtmp) {
-        await pline('It turns out to be empty.');
-        return;
-    }
-
-    if (!Blind()) {
-        await pline(`In a cloud of smoke, ${a_monnam(mtmp)} emerges!`);
-        await pline(`${Monnam(mtmp)} speaks.`);
-    } else {
-        await You('smell acrid fumes.');
-        await pline('Something speaks.');
-    }
-
-    let chance = rn2(5);
-    if (obj.blessed)
-        chance = chance === 4 ? rnd(4) : 0;
-    else if (obj.cursed)
-        chance = chance === 0 ? rn2(4) : 4;
-
-    if (chance === 0) {
-        await pline('"I am in your debt.  I will grant one wish!"');
-        mongone(mtmp);
-        const { makewish } = await import('./zap.js');
-        await makewish();
-    } else if (chance === 1) {
-        await pline('"Thank you for freeing me!"');
-        const { initedog } = await import('./dog.js');
-        initedog(mtmp, true);
-    } else if (chance === 2) {
-        await pline('"You freed me!"');
-        mtmp.mpeaceful = 1;
-        set_malign(mtmp);
-    } else if (chance === 3) {
-        await pline('"It is about time!"');
-        if (canspotmon(mtmp))
-            await pline(`${Monnam(mtmp)} vanishes.`);
-        mongone(mtmp);
-    } else {
-        await pline('"You disturbed me, fool!"');
-        mtmp.mpeaceful = 0;
-        set_malign(mtmp);
     }
 }
 
@@ -3797,6 +3761,190 @@ function check_jump(arg, x, y) {
     if (sobj_at(ONAMES.BOULDER, x, y) && !throws_rocks(game.youmonst.data))
         return false;
     return true;
+}
+
+// src/apply.c:1847 dojump() — the #jump command: a physical jump
+export async function dojump() {
+    return await jump(0);
+}
+
+// src/apply.c:1988 jump() — 0=Physical, otherwise skill level
+export async function jump(magic) {
+    const cc = { x: 0, y: 0 };
+
+    /* attempt "jumping" spell if hero has no innate jumping ability */
+    if (!magic && !Jumping() && known_spell(ONAMES.SPE_JUMPING) >= spe_Fresh)
+        return await spelleffects(ONAMES.SPE_JUMPING, false, false);
+
+    if (!magic && (nolimbs(game.youmonst.data) || slithy(game.youmonst.data))) {
+        /* normally (nolimbs || slithy) implies !Jumping,
+           but that isn't necessarily the case for knights */
+        await You_cant('jump; you have no legs!');
+        return ECMD_OK;
+    } else if (!magic && !Jumping()) {
+        await You_cant('jump very far.');
+        return ECMD_OK;
+    /* if steed is immobile, can't do physical jump but can do spell one */
+    } else if (!magic && game.u.usteed && await stucksteed(false)) {
+        /* stucksteed gave "<steed> won't move" message */
+        return ECMD_OK;
+    } else if (game.u.uswallow) {
+        if (magic) {
+            await You('bounce around a little.');
+            return ECMD_TIME;
+        }
+        await pline("You've got to be kidding!");
+        return ECMD_OK;
+    } else if (game.u.uinwater) {
+        if (magic) {
+            await You('swish around a little.');
+            return ECMD_TIME;
+        }
+        await pline('This calls for swimming, not jumping!');
+        return ECMD_OK;
+    } else if (game.u.ustuck) {
+        if (game.u.ustuck.mtame && !Conflict() && !game.u.ustuck.mconf) {
+            const mtmp = game.u.ustuck;
+            set_ustuck(null);
+            await You(`pull free from ${mon_nam(mtmp)}.`);
+            return ECMD_TIME;
+        }
+        if (magic) {
+            await You(`writhe a little in the grasp of ${mon_nam(game.u.ustuck)}!`);
+            return ECMD_TIME;
+        }
+        await You(`cannot escape from ${mon_nam(game.u.ustuck)}!`);
+        return ECMD_OK;
+    } else if (Levitation() || Is_airlevel(game.u.uz) || Is_waterlevel(game.u.uz)) {
+        if (magic) {
+            await You('flail around a little.');
+            return ECMD_TIME;
+        }
+        await You("don't have enough traction to jump.");
+        return ECMD_OK;
+    } else if (!magic && near_capacity() > UNENCUMBERED) {
+        await You('are carrying too much to jump!');
+        return ECMD_OK;
+    } else if (!magic && (game.u.uhunger <= 100 || ACURR(A_STR) < 6)) {
+        await You('lack the strength to jump!');
+        return ECMD_OK;
+    } else if (!magic && Wounded_legs()) {
+        await legs_in_no_shape('jumping', game.u.usteed != null);
+        return ECMD_OK;
+    } else if (game.u.usteed && game.u.utrap) {
+        await pline(`${Monnam(game.u.usteed)} is stuck in a trap.`);
+        return ECMD_OK;
+    }
+
+    await pline('Where do you want to jump?');
+    cc.x = game.u.ux;
+    cc.y = game.u.uy;
+    game.jumping_is_magic = magic;
+    /* display_jump_positions (the tmp_at beam over the reachable squares)
+       is not ported; the validator is, because getpos' autodescribe prints
+       "(invalid target)" from it */
+    await getpos_sethilite(null, get_valid_jump_position);
+    if (await getpos(cc, true, 'the desired position') < 0)
+        return ECMD_CANCEL; /* user pressed ESC */
+    if (!(await is_valid_jump_pos(cc.x, cc.y, magic, true))) {
+        return ECMD_FAIL;
+    } else if (game.u.usteed && u_at(cc.x, cc.y)) {
+        await pline(`${YMonnam(game.u.usteed)} isn't capable of jumping in place.`);
+        return ECMD_FAIL;
+    } else {
+        const uc = { x: 0, y: 0 };
+        let side;
+        let range, temp;
+        let wastrapped = false;
+
+        if (game.u.utrap) {
+            wastrapped = true;
+            switch (game.u.utraptype) {
+            case TT_BEARTRAP:
+                side = rn2(3) ? LEFT_SIDE : RIGHT_SIDE;
+                await You('rip yourself free of the bear trap!  Ouch!');
+                await losehp(Maybe_Half_Phys(rnd(10)), 'jumping out of a bear trap',
+                             KILLED_BY);
+                set_wounded_legs(side, rn1(1000, 500));
+                break;
+            case TT_PIT:
+                await You('leap from the pit!');
+                break;
+            case TT_WEB:
+                await You('tear the web apart as you pull yourself free!');
+                deltrap(t_at(game.u.ux, game.u.uy));
+                break;
+            case TT_LAVA:
+                await You(`pull yourself above the ${hliquid('lava')}!`);
+                cc.x = game.u.ux, cc.y = game.u.uy; /* take u_at() 'if' below */
+                break;
+            case TT_BURIEDBALL:
+            case TT_INFLOOR:
+                await You(`strain your ${makeplural(body_part(LEG))}, but you're still ${
+                    (game.u.utraptype === TT_INFLOOR)
+                        ? 'stuck in the floor'
+                        : 'attached to the buried ball'}.`);
+                set_wounded_legs(LEFT_SIDE, rn1(10, 11));
+                set_wounded_legs(RIGHT_SIDE, rn1(10, 11));
+                return ECMD_TIME;
+            default:
+                impossible(`Jumping out of strange trap (${game.u.utraptype})?`);
+                break;
+            }
+            /* if we reach here, hero is no longer trapped */
+            reset_utrap(true);
+        }
+
+        /* jumping on hero's same spot doesn't use walk_path() and isn't
+           allowed when riding (handled above) */
+        if (u_at(cc.x, cc.y)) {
+            let t;
+
+            /* escaping from a trap takes precedence over jumping in place */
+            if (wastrapped) {
+                await morehungry(rnd(10));
+                return ECMD_TIME;
+            }
+            /* jumping in place on a trap will trigger it */
+            if ((t = t_at(cc.x, cc.y)) != null) {
+                await You(`jump up and ${!Flying() ? 'come' : 'fly'} back down.`);
+                await dotrap(t, FORCETRAP | TOOKPLUNGE);
+                return ECMD_TIME;
+            }
+            /* jumping in place takes no time and doesn't exercise anything */
+            await You(`${Hallucination() ? 'hop up and down a bit'
+                                         : 'decide not to jump after all'}.`);
+            return ECMD_OK;
+        }
+
+        /*
+         * Check the path from uc to cc, calling hurtle_step at each
+         * location.  The final position actually reached will be
+         * in cc.
+         */
+        uc.x = game.u.ux;
+        uc.y = game.u.uy;
+        /* calculate max(abs(dx), abs(dy)) as the range */
+        range = cc.x - uc.x;
+        if (range < 0)
+            range = -range;
+        temp = cc.y - uc.y;
+        if (temp < 0)
+            temp = -temp;
+        if (range < temp)
+            range = temp;
+        await walk_path(uc, cc, hurtle_jump, { range });
+        /* hurtle_jump -> hurtle_step results in <u.ux,u.uy> == <cc.x,cc.y>
+         * and usually moves the ball if punished, but does not handle all
+         * the effects of landing on the final position.
+         */
+        await teleds(cc.x, cc.y, TELEDS_NO_FLAGS);
+        nomul(-1);
+        game.multi_reason = 'jumping around';
+        game.nomovemsg = '';
+        await morehungry(rnd(25));
+        return ECMD_TIME;
+    }
 }
 
 // src/apply.c:1893 is_valid_jump_pos()

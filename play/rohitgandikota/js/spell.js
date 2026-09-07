@@ -50,6 +50,47 @@ import { can_chant } from './mondata.js';
 import { freehand } from './engrave.js';
 import { check_capacity } from './hack.js';
 import { make_confused, make_stunned } from './potion.js';
+import { jump } from './apply.js';
+import { healup, make_slimed } from './potion.js';
+import { make_familiar } from './dog.js';
+import { hcolor, hliquid, Monnam, mon_nam } from './do_name.js';
+import { is_whirly, enfolds, is_animal, resists_elec, defended } from './mondata.js';
+import { find_ac } from './do_wear.js';
+import { Blind, Hallucination } from './youprop.js';
+import { an } from './objnam.js';
+import { NH_GOLDEN, CLOUD, IS_TREE, IS_STWALL, P_EXPERT, xdir, ydir, N_DIRS, DIR_LEFT, DIR_RIGHT2, D_CLOSED, D_LOCKED, D_ISOPEN, POOL, MOAT, DRAWBRIDGE_UP, LAVAPOOL, SPACE_POS, IS_DOOR, ZAP_POS, isok, DISP_BEAM, DISP_CHANGE, DISP_END, XKILL_GIVEMSG, EXPL_FROSTY, EXPL_FIERY, Is_waterlevel, u_at } from './const.js';
+import { tmp_at, zapdir_to_glyph, map_invisible, canseemon, canspotmon, tty_clear_nhwindow_message } from './display.js';
+import { m_at, wakeup, xkilled } from './mon.js';
+import { DEADMONSTER } from './monst.js';
+import { zhitm, exclam, spell_damage_bonus, BZ_U_SPELL } from './zap.js';
+import { explode } from './explode.js';
+import { rn2_on_display_rng } from './rng.js';
+import { ATTKS } from './monst_data.js';
+import { uhim } from './mhitu.js';
+import { distmin } from './hacklib.js';
+import { cansee } from './vision.js';
+import { getpos, getpos_sethilite } from './getpos.js';
+import { walk_path } from './dothrow.js';
+import { showsym } from './symbols.js';
+import { defsyms, cmap_names } from './drawing_data.js';
+import { make_blinded } from './potion.js';
+import { take_gold, rndcurse } from './sit.js';
+import { erode_obj } from './trap.js';
+import { poison_strdmg } from './attrib.js';
+import { Antimagic, Poison_resistance } from './youprop.js';
+import { shieldeff } from './display.js';
+import { set_malign, makemon } from './makemon.js';
+import { mkundead } from './mkroom.js';
+import { tamedog } from './dog.js';
+import { monflee, mdistu } from './monmove.js';
+import { is_undead } from './mondata.js';
+import { is_vampshifter, mon_offmap } from './monst.js';
+import { NO_MINVENT, EF_GREASE, EF_VERBOSE, ERODE_CORRODE, FACE, something } from './const.js';
+import { sgn } from './hacklib.js';
+import { unturn_dead } from './zap.js';
+import { Maybe_Half_Phys } from './do.js';
+import { tele } from './teleport.js';
+import { aggravate } from './wizard.js';
 
 // src/spell.c — NO_SPELL sentinel and the spell list accessor.
 const NO_SPELL = 0;
@@ -102,88 +143,67 @@ export function initialspell(obj) {
     }
 }
 
+/* src/spell.c:111 */
+const explodes = 'radiates explosive energy';
+
 // src/spell.c:130 cursed_book()
-async function cursed_book(book) {
-    const lev = game.objects[book.otyp].oc_level;
+async function cursed_book(bp) {
+    const lev = game.objects[bp.otyp].oc_level;
+    let dmg = 0;
 
     switch (rn2(lev)) {
-    case 0: {
+    case 0:
         await You_feel('a wrenching sensation.');
-        const { tele } = await import('./teleport.js');
-        await tele();
+        await tele(); /* teleport him */
         break;
-    }
-    case 1: {
+    case 1:
         await You_feel('threatened.');
-        const { aggravate } = await import('./wizard.js');
         aggravate();
         break;
-    }
-    case 2: {
-        const intr = (game.u.intrinsic ||= {});
-        const was_blind = !!game.u.ublind;
-        intr.HBlinded = (intr.HBlinded | 0) + rn1(100, 250);
-        game.u.ublind = 1;
-        (game.disp ||= {}).botl = true;
-        game.vision_full_recalc = 1;
-        if (!was_blind)
-            await pline('A cloud of darkness falls upon you.');
+    case 2:
+        await make_blinded(((game.u.intrinsic?.HBlinded | 0) & TIMEOUT)
+                           + rn1(100, 250), true);
         break;
-    }
-    case 3: {
-        const coins = (game.invent || [])
-            .filter((obj) => obj.oclass === OCLASSES.COIN_CLASS);
-        if (!coins.length) {
-            await You_feel('a strange sensation.');
-        } else {
-            const { useupall } = await import('./invent.js');
-            for (const coin of coins)
-                useupall(coin);
-            await You('notice you have no gold!');
-            (game.disp ||= {}).botl = true;
-        }
+    case 3:
+        await take_gold();
         break;
-    }
-    case 4: {
+    case 4:
         await pline('These runes were just too much to comprehend.');
-        const { make_confused } = await import('./potion.js');
         await make_confused((game.u.intrinsic?.HConfusion | 0) + rn1(7, 16),
                             false);
         break;
-    }
-    case 5: {
+    case 5:
         await pline_The('book was coated with contact poison!');
         if (game.u.uarmg) {
-            note_unported_spell('cursed_book:corrode_gloves');
+            await erode_obj(game.u.uarmg, 'gloves', ERODE_CORRODE,
+                            EF_GREASE | EF_VERBOSE);
             break;
         }
-        const poison_resistant = !!(game.u.intrinsic?.HPoison_resistance
-                                    || game.u.uprops?.POISON_RES);
-        const strloss = poison_resistant ? rn1(2, 1) : rn1(4, 3);
-        const damage = rnd(poison_resistant ? 6 : 10);
-        const { adjattrib } = await import('./attrib.js');
-        const { losehp } = await import('./hack.js');
-        const was_in_use = book.in_use;
-        book.in_use = false;
-        await adjattrib(A_STR, -strloss, 1);
-        note_unported_spell('cursed_book:losestr_killer');
-        await losehp(damage, 'contact-poisoned spellbook', KILLED_BY_AN);
-        book.in_use = was_in_use;
+        {
+            /* temp disable in_use; death should not destroy the book */
+            const was_in_use = bp.in_use;
+            bp.in_use = false;
+            await poison_strdmg(Poison_resistance() ? rn1(2, 1) : rn1(4, 3),
+                                rnd(Poison_resistance() ? 6 : 10),
+                                'contact-poisoned spellbook', KILLED_BY_AN);
+            bp.in_use = was_in_use;
+        }
         break;
-    }
-    case 6: {
-        if (game.u.uprops?.ANTIMAGIC || game.u.uprops?.MAGIC_RES) {
-            await pline_The('book radiates explosive energy, but you are unharmed!');
+    case 6:
+        if (Antimagic()) {
+            await shieldeff(game.u.ux, game.u.uy);
+            await pline_The(`book ${explodes}, but you are unharmed!`);
         } else {
-            await pline('As you read the book, it radiates explosive energy in your face!');
-            let damage = 2 * rnd(10) + 5;
-            if (game.u.uprops?.HALF_PHDAM)
-                damage = Math.ceil(damage / 2);
+            await pline(`As you read the book, it ${explodes} in your ${
+                body_part(FACE)}!`);
+            dmg = 2 * rnd(10) + 5;
             const { losehp } = await import('./hack.js');
-            await losehp(damage, 'exploding rune', KILLED_BY_AN);
+            await losehp(Maybe_Half_Phys(dmg), 'exploding rune', KILLED_BY_AN);
         }
         return true;
-    }
+    default:
+        await rndcurse();
+        break;
     }
     return false;
 }
@@ -216,10 +236,51 @@ function on_stairs_at_u() {
     return false;
 }
 
+// src/spell.c:210 deadbook_pacify_undead() — pacify or tame an undead
+// monster
+async function deadbook_pacify_undead(mtmp) {
+    if ((is_undead(mtmp.data) || is_vampshifter(mtmp))
+        && cansee(mtmp.mx, mtmp.my)) {
+        mtmp.mpeaceful = 1;
+        if (sgn(mtmp.data.maligntyp) === sgn(game.u.ualign.type)
+            && mdistu(mtmp) < 4) {
+            if (mtmp.mtame) {
+                if (mtmp.mtame < 20)
+                    mtmp.mtame++;
+            } else
+                await tamedog(mtmp, null, true);
+        } else
+            await monflee(mtmp, 0, false, true);
+    }
+}
+
 // src/spell.c:231 deadbook(). The successful invocation path is complete.
 // Raising or pacifying undead away from a prepared ritual remains recorded
 // until those monster effects are ported.
 async function deadbook(book) {
+    /* the raise_dead: label of the cursed arm below; the invocation arm
+       jumps there when a relic is not prepared properly */
+    const raise_dead = async () => {
+        let mtmp;
+
+        await You('raised the dead!');
+        /* first maybe place a dangerous adversary */
+        if (!rn2(3) && ((mtmp = await makemon(game.mons[PMNAMES.PM_MASTER_LICH],
+                                              game.u.ux, game.u.uy,
+                                              NO_MINVENT)) != null
+                        || (mtmp = await makemon(game.mons[PMNAMES.PM_NALFESHNEE],
+                                                 game.u.ux, game.u.uy,
+                                                 NO_MINVENT)) != null)) {
+            mtmp.mpeaceful = 0;
+            set_malign(mtmp);
+        }
+        /* next handle the affect on things you're carrying */
+        await unturn_dead(game.youmonst);
+        /* last place some monsters around you */
+        const mm = { x: game.u.ux, y: game.u.uy };
+        await mkundead(mm, true, NO_MINVENT);
+    };
+
     await You('turn the pages of the Book of the Dead...');
     makeknown(ONAMES.SPE_BOOK_OF_THE_DEAD);
     observe_object(book);
@@ -272,17 +333,23 @@ async function deadbook(book) {
             record_achievement(ACH_INVK);
             if (!game.u.udg_cnt || game.u.udg_cnt > soon)
                 game.u.udg_cnt = soon;
-        } else {
-            await You('have a feeling that something is amiss...');
-            note_unported_spell('deadbook:raise_dead');
+        } else { /* at least one relic not prepared properly */
+            await You(`have a feeling that ${something} is amiss...`);
+            await raise_dead();
         }
         return;
     }
 
+    /* when not an invocation situation */
     if (book.cursed) {
-        note_unported_spell('deadbook:raise_dead');
+        await raise_dead();
     } else if (book.blessed) {
-        note_unported_spell('deadbook:pacify_undead');
+        /* iter_mons(deadbook_pacify_undead), awaiting each visit */
+        for (const mtmp of [...(game.level.monsters || [])]) {
+            if (DEADMONSTER(mtmp) || mon_offmap(mtmp))
+                continue;
+            await deadbook_pacify_undead(mtmp);
+        }
     } else {
         switch (rn2(3)) {
         case 0:
@@ -640,6 +707,235 @@ export async function docast() {
     return ECMD_FAIL;
 }
 
+/* win/tty: nh_delay_output() — the frame delay between animation steps */
+async function nh_delay_output() {
+    if (game.animationFrame)
+        await game.animationFrame();
+}
+
+/* src/spell.c:911 CHAIN_LIGHTNING_LIMIT — the total area chain lightning can
+   cover; smaller than TMP_AT_MAX_GLYPHS so it displays properly */
+const CHAIN_LIGHTNING_LIMIT = 100;
+
+// src/spell.c:916 CHAIN_LIGHTNING_TYP() — open space only: it can't hit
+// solid terrain (not WATER, not LAVAWALL)
+function CHAIN_LIGHTNING_TYP(typ) {
+    return SPACE_POS(typ) || typ === POOL || typ === MOAT
+           || typ === DRAWBRIDGE_UP || typ === LAVAPOOL;
+}
+
+// src/spell.c:920 CHAIN_LIGHTNING_POS()
+function CHAIN_LIGHTNING_POS(x, y) {
+    if (!isok(x, y))
+        return false;
+    const loc = game.level.at(x, y);
+    return CHAIN_LIGHTNING_TYP(loc.typ)
+           || (IS_DOOR(loc.typ) && !(loc.doormask & (D_CLOSED | D_LOCKED)));
+}
+
+// src/spell.c:951 propagate_chain_lightning() — move a zap one square
+// forward and queue it unless it hits an invalid square or is out of power;
+// zap is passed by value
+async function propagate_chain_lightning(clq, zap) {
+    zap = { ...zap };
+    zap.x += xdir[zap.dir];
+    zap.y += ydir[zap.dir];
+
+    if (clq.tail >= CHAIN_LIGHTNING_LIMIT)
+        return;    /* zap has covered too many squares */
+    if (!CHAIN_LIGHTNING_POS(zap.x, zap.y))
+        return;    /* zap can't go to this square */
+
+    const mon = m_at(zap.x, zap.y);
+    if (mon && mon.mpeaceful)
+        return;    /* chain lightning avoids peaceful and tame monsters */
+
+    /* When hitting a monster that isn't electricity-resistant, a
+       particular chain lightning zap regains all its power, allowing it to
+       chain to other monsters; upon hitting a shock-resistant monster it
+       can't continue any further, but we let it hit the monster to show
+       the shield effect */
+    if (mon && !resists_elec(mon) && !defended(mon, ATTKS.AD_ELEC))
+        zap.strength = 3;
+    else if (mon)
+        zap.strength = 0;
+
+    /* Unless it hits a monster, the last square of a zap isn't drawn on
+       screen and can't propagate further, so it may as well be discarded
+       now */
+    if (!mon && !zap.strength)
+        return;
+
+    /* The same square can't be chained to twice. */
+    for (let i = 0; i < clq.tail; i++) {
+        if (clq.q[i].x === zap.x && clq.q[i].y === zap.y)
+            return;
+    }
+
+    clq.q[clq.tail++] = zap;
+
+    /* Draw it. */
+    await tmp_at(DISP_CHANGE, await zapdir_to_glyph(xdir[zap.dir], ydir[zap.dir],
+                                                    clq.displayed_beam));
+    await tmp_at(zap.x, zap.y);
+}
+
+// src/spell.c:1003 cast_chain_lightning()
+async function cast_chain_lightning() {
+    const clq = { q: [], head: 0, tail: 0,
+                  displayed_beam: Hallucination() ? rn2_on_display_rng(6)
+                                                  : (ATTKS.AD_ELEC - 1) };
+
+    if (game.u.uswallow) {
+        // TODO: damage the engulfer
+        return;
+    }
+
+    /* set the type of beam we're using; the direction here is arbitrary
+       because we change the beam direction just before drawing the beam
+       anyway */
+    await tmp_at(DISP_BEAM, await zapdir_to_glyph(0, 1, clq.displayed_beam));
+
+    /* start by propagating in all directions from the caster */
+    for (let dir = 0; dir < N_DIRS; dir++) {
+        const zap = { dir, x: game.u.ux, y: game.u.uy, strength: 2 };
+
+        await propagate_chain_lightning(clq, zap);
+    }
+    await nh_delay_output();
+
+    while (clq.head < clq.tail) {
+        const delay_tail = clq.tail;
+
+        while (clq.head < delay_tail) {
+            const zap = { ...clq.q[clq.head++] };
+            /* damage any monster that was hit */
+            const mon = m_at(zap.x, zap.y);
+
+            if (mon) {
+                const unused = { v: null }; /* AD_ELEC can't destroy armor */
+
+                game.notonhead = (mon.mx !== game.bhitpos.x
+                                  || mon.my !== game.bhitpos.y);
+                const dmg = await zhitm(mon, BZ_U_SPELL(ATTKS.AD_ELEC - 1), 2, unused);
+
+                if (dmg) {
+                    /* mon has been damaged, but we haven't yet printed the
+                       messages or given kill credit; assume the hero can
+                       sense their spell hitting monsters, because they can
+                       steer it away from peacefuls */
+                    if (DEADMONSTER(mon)) {
+                        await xkilled(mon, XKILL_GIVEMSG);
+                    } else {
+                        await pline(`You shock ${mon_nam(mon)}${exclam(dmg)}`);
+                        /* if a long worm, only map 'I' for its head */
+                        if (!canseemon(mon) && !game.notonhead)
+                            /* FIXME: this doesn't work, possibly because
+                               cleaning up tmp_at() restores old glyph? */
+                            map_invisible(zap.x, zap.y);
+                    }
+                } else if (canseemon(mon)) {
+                    await pline(`${Monnam(mon)} resists.`);
+                }
+                if (!DEADMONSTER(mon)) {
+                    /* wakeup is via attack, but since mon is already
+                       hostile we pass via_attack==False rather than True,
+                       otherwise other monsters witnessing this would treat
+                       it as seeing hero attack a peaceful; mimic will be
+                       exposed; forcefight makes hider unhide */
+                    game.context.forcefight = (game.context.forcefight | 0) + 1;
+                    await wakeup(mon, false);
+                    game.context.forcefight = (game.context.forcefight | 0) - 1;
+                }
+            }
+
+            /* each zap propagates forwards with 1 less strength, and
+               diagonally with 0 strength (thus the diagonal zaps aren't
+               drawn and don't spread unless they hit a monster);
+               exception: if the zap just hit a monster, the diagonals have
+               as much strength as the forwards zap */
+            if (!zap.strength)
+                continue; /* happens upon hitting a shock-resistant monster */
+            zap.strength--;
+
+            await propagate_chain_lightning(clq, zap);
+
+            if (zap.strength < 2)
+                zap.strength = 0;
+            else if (game.u.uen > 0)
+                game.u.uen--; /* propagating past mons increases Pw cost a bit */
+            zap.dir = DIR_LEFT(zap.dir);
+            await propagate_chain_lightning(clq, zap);
+
+            zap.dir = DIR_RIGHT2(zap.dir);
+            await propagate_chain_lightning(clq, zap);
+        }
+        await nh_delay_output();
+    }
+    await nh_delay_output();
+    await nh_delay_output();
+
+    await tmp_at(DISP_END, 0);
+}
+
+// src/spell.c:1104 cast_protection()
+async function cast_protection() {
+    const u = game.u;
+    let l = u.ulevel, loglev = 0;
+    let natac = u.uac + (u.uspellprot || 0);
+    /* note: u.uspellprot is subtracted when find_ac() factors it into u.uac,
+       so adding here factors it back out
+       (versions prior to 3.6 had this backwards) */
+
+    /* loglev=log2(u.ulevel)+1 (1..5) */
+    while (l) {
+        loglev++;
+        l = Math.trunc(l / 2);
+    }
+
+    /* The more u.uspellprot you already have, the less you get,
+     * and the better your natural ac, the less you get.
+     * (table in src/spell.c:1120)
+     */
+    natac = Math.trunc((10 - natac) / 10); /* convert to positive and scale down */
+    const gain = loglev - Math.trunc((u.uspellprot || 0) / (4 - Math.min(3, natac)));
+
+    if (gain > 0) {
+        if (!Blind()) {
+            const hgolden = hcolor(NH_GOLDEN);
+
+            if (u.uspellprot) {
+                await pline_The(`${hgolden} haze around you becomes more dense.`);
+            } else {
+                const pm = u.ustuck ? u.ustuck.data : null;
+
+                const rmtyp = game.level.at(u.ux, u.uy).typ;
+                const atmosphere = (pm && u.uswallow)
+                                ? ((pm === game.mons[PMNAMES.PM_FOG_CLOUD]) ? 'mist'
+                                   : is_whirly(pm) ? 'maelstrom'
+                                     : enfolds(pm) ? 'folds'
+                                       : is_animal(pm) ? 'maw'
+                                         : 'ooze')
+                                : (u.uinwater ? hliquid('water')
+                                   : (rmtyp === CLOUD) ? 'cloud'
+                                     : IS_TREE(rmtyp) ? 'vegetation'
+                                       : IS_STWALL(rmtyp) ? 'stone'
+                                         : 'air');
+                await pline_The(`${atmosphere} around you begins to shimmer with ${
+                    an(hgolden)} haze.`);
+            }
+        }
+        u.uspellprot = (u.uspellprot || 0) + gain;
+        u.uspmtime = (P_SKILL(spell_skilltype(ONAMES.SPE_PROTECTION)) === P_EXPERT)
+                        ? 20 : 10;
+        if (!u.usptime)
+            u.usptime = u.uspmtime;
+        find_ac();
+    } else {
+        await Your('skin feels warm for a moment.');
+    }
+}
+
 // src/spell.c spelleffects(), cast the selected spell.
 export async function spelleffects(spell_otyp, atme, force) {
     const spell = spell_idx(spell_otyp);
@@ -667,17 +963,47 @@ export async function spelleffects(spell_otyp, atme, force) {
     let physical_damage = false;
 
     switch (otyp) {
-    /* As the hero increases in skill some spells increase in their effects
-       without additional cost. Skilled fireball/cone of cold throw an
-       explosion at a chosen spot; throwspell()/explode()/spell_damage_bonus()
-       are not ported yet, so a skilled cast is noted. Unskilled casters fall
-       through to the wand-duplicate arm below (buzz via weffects). */
+    /*
+     * At first spells act as expected.  As the hero increases in skill
+     * with the appropriate spell type, some spells increase in their
+     * effects, e.g. more damage, further distance, and so on, without
+     * additional cost to the spellcaster.
+     */
     case ONAMES.SPE_FIREBALL:
     case ONAMES.SPE_CONE_OF_COLD:
         if (role_skill >= SKILLS.P_SKILLED) {
-            note_unported_spell('spelleffects:skilled fireball/cold');
+            if (await throwspell()) {
+                const cc = { x: game.u.dx, y: game.u.dy };
+                let n = rnd(8) + 1;
+                while (n--) {
+                    if (!game.u.dx && !game.u.dy && !game.u.dz) {
+                        const damage = await zapyourself(pseudo, true);
+                        if (damage) {
+                            const { losehp } = await import('./hack.js');
+                            await losehp(damage, `zapped ${uhim()}self with a spell`,
+                                         NO_KILLER_PREFIX);
+                        }
+                    } else {
+                        await explode(game.u.dx, game.u.dy,
+                                      otyp - ONAMES.SPE_MAGIC_MISSILE + 10,
+                                      spell_damage_bonus(Math.trunc(game.u.ulevel / 2) + 1), 0,
+                                      (otyp === ONAMES.SPE_CONE_OF_COLD)
+                                         ? EXPL_FROSTY
+                                         : EXPL_FIERY);
+                    }
+                    game.u.dx = cc.x + rnd(3) - 2;
+                    game.u.dy = cc.y + rnd(3) - 2;
+                    if (!isok(game.u.dx, game.u.dy) || !cansee(game.u.dx, game.u.dy)
+                        || IS_STWALL(game.level.at(game.u.dx, game.u.dy).typ)
+                        || game.u.uswallow) {
+                        /* Spell is reflected back to center */
+                        game.u.dx = cc.x;
+                        game.u.dy = cc.y;
+                    }
+                }
+            }
             break;
-        }
+        } /* else */
         /* FALLTHRU */
 
     /* these spells are all duplicates of wand effects */
@@ -764,13 +1090,27 @@ export async function spelleffects(spell_otyp, atme, force) {
         break;
 
     case ONAMES.SPE_CURE_BLINDNESS:
-        note_unported_spell('spelleffects:cure_blindness');
+        await healup(0, 0, false, true);
         break;
-    case ONAMES.SPE_CURE_SICKNESS:
-        note_unported_spell('spelleffects:cure_sickness');
+    case ONAMES.SPE_CURE_SICKNESS: {
+        const was_sick = !!game.u.uprops?.SICK, was_slimed = !!game.u.uprops?.SLIMED;
+
+        /* cure conditions (which updates status) before feedback */
+        await healup(0, 0, true, false);
+        /*
+         *  Sick + !Slimed -- You are no longer ill.
+         * !Sick + !Slimed -- You are not ill.
+         * !Sick +  Slimed -- The slime disappears.
+         *  Sick +  Slimed -- You are no longer ill.  The slime disappears.
+         */
+        if (was_sick || !was_slimed)
+            await You(`are ${was_sick ? 'no longer' : 'not'} ill.`);
+        if (was_slimed)
+            await make_slimed(0, 'The slime disappears!');
         break;
+    }
     case ONAMES.SPE_CREATE_FAMILIAR:
-        note_unported_spell('spelleffects:create_familiar');
+        await make_familiar(null, game.u.ux, game.u.uy, false);
         break;
     case ONAMES.SPE_CLAIRVOYANCE:
         if (!game.u.blocked?.CLAIRVOYANT) {
@@ -782,13 +1122,14 @@ export async function spelleffects(spell_otyp, atme, force) {
             await You(`sense a pointy hat on top of your ${body_part(HEAD)}.`);
         break;
     case ONAMES.SPE_PROTECTION:
-        note_unported_spell('spelleffects:protection');
+        await cast_protection();
         break;
     case ONAMES.SPE_JUMPING:
-        note_unported_spell('spelleffects:jumping');
+        if (!((await jump(Math.max(role_skill, 1))) & ECMD_TIME))
+            await pline('Nothing happens.'); /* pline1(nothing_happens) */
         break;
     case ONAMES.SPE_CHAIN_LIGHTNING:
-        note_unported_spell('spelleffects:chain_lightning');
+        await cast_chain_lightning();
         break;
     default:
         /* impossible("Unknown spell %d attempted.") */
@@ -933,6 +1274,100 @@ export function force_learn_spell(otyp) {
 // include/spell.h:33 spellknow()
 function spellknow(spidx) {
     return game.spl_book?.[spidx]?.sp_know ?? 0;
+}
+
+// src/spell.c:1605 spell_aim_step()
+function spell_aim_step(arg, x, y) {
+    if (!isok(x, y))
+        return false;
+    const loc = game.level.at(x, y);
+    if (!ZAP_POS(loc.typ)
+        && !(IS_DOOR(loc.typ) && (loc.doormask & D_ISOPEN)))
+        return false;
+    return true;
+}
+
+// src/spell.c:1617 can_center_spell_location() — not quite the same as
+// throwspell limits, but close enough
+function can_center_spell_location(x, y) {
+    if (distmin(game.u.ux, game.u.uy, x, y) > 10)
+        return false;
+    return (isok(x, y) && cansee(x, y) && !IS_STWALL(game.level.at(x, y).typ));
+}
+
+// src/spell.c:1626 display_spell_target_positions()
+async function display_spell_target_positions(on_off) {
+    const dist = 10;
+
+    if (on_off) {
+        /* on */
+        const sym = showsym(cmap_names.S_goodpos) || defsyms[cmap_names.S_goodpos];
+        await tmp_at(DISP_BEAM, { ch: sym.ch, color: defsyms[cmap_names.S_goodpos].color,
+                                  decgfx: !!sym.dec,
+                                  glyph: { kind: 'cmap', cmap: cmap_names.S_goodpos } });
+        for (let dx = -dist; dx <= dist; dx++)
+            for (let dy = -dist; dy <= dist; dy++) {
+                const x = game.u.ux + dx;
+                const y = game.u.uy + dy;
+                /* hero's location is allowed but highlighting the hero's
+                   spot makes map harder to read (if using '$' rather than
+                   by changing background color) */
+                if (u_at(x, y))
+                    continue;
+                if (can_center_spell_location(x, y))
+                    await tmp_at(x, y);
+            }
+    } else {
+        /* off */
+        await tmp_at(DISP_END, 0);
+    }
+}
+
+// src/spell.c:1655 throwspell() — choose location where spell takes effect
+async function throwspell() {
+    let mtmp;
+
+    if (game.u.uinwater) {
+        await pline("You're joking!  In this weather?");
+        return 0;
+    } else if (Is_waterlevel(game.u.uz)) {
+        await You('had better wait for the sun to come out.');
+        return 0;
+    }
+
+    await pline('Where do you want to cast the spell?');
+    const cc = { x: game.u.ux, y: game.u.uy };
+    await getpos_sethilite(display_spell_target_positions,
+                           can_center_spell_location);
+    if (await getpos(cc, true, 'the desired position') < 0)
+        return 0; /* user pressed ESC */
+    /* clear_nhwindow(WIN_MESSAGE) — discard any autodescribe feedback */
+    tty_clear_nhwindow_message(game._topl_cury || 0);
+
+    /* The number of moves from hero to where the spell drops.*/
+    if (distmin(game.u.ux, game.u.uy, cc.x, cc.y) > 10) {
+        await pline_The('spell dissipates over the distance!');
+        return 0;
+    } else if (game.u.uswallow) {
+        await pline_The('spell is cut short!');
+        exercise(A_WIS, false); /* What were you THINKING! */
+        game.u.dx = 0;
+        game.u.dy = 0;
+        return 1;
+    } else if (((cc.x !== game.u.ux || cc.y !== game.u.uy) && !cansee(cc.x, cc.y)
+                && (!(mtmp = m_at(cc.x, cc.y)) || !canspotmon(mtmp)))
+               || IS_STWALL(game.level.at(cc.x, cc.y).typ)) {
+        await Your('mind fails to lock onto that location!');
+        return 0;
+    }
+
+    const uc = { x: game.u.ux, y: game.u.uy };
+
+    await walk_path(uc, cc, spell_aim_step, null);
+
+    game.u.dx = cc.x;
+    game.u.dy = cc.y;
+    return 1;
 }
 
 // src/spell.c:1181 spell_backfire()

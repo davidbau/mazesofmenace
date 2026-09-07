@@ -133,7 +133,7 @@ import {
     EYE, SEE_INVIS,
     DETECT_MONSTERS, LEVITATION, INVIS, HEAD, COLNO, ROWNO,
     In_endgame, Is_earthlevel, In_sokoban,
-    QBUFSZ, STONED, SLIMED, SICK, SICK_ALL, DEAF,
+    QBUFSZ, STONED, SLIMED, SICK, SICK_ALL, DEAF, STRANGLED, G_GONE,
     A_CHAOTIC, A_LAWFUL, Upolyd, ismnum, NON_PM, NEUTRAL,
     P_RIDING, P_BASIC, ER_DESTROYED, ER_NOTHING, MM_NOMSG,
     ERODE_CORRODE, EF_GREASE,
@@ -170,8 +170,10 @@ import { more_experienced, pluslvl, rndexp } from './exper.js';
 import { depth } from './hacklib.js';
 import {
     trycall, docall, hliquid, a_monnam, Monnam, hcolor, x_monnam, mon_nam,
-    Hallucination,
+    Hallucination, rndmonnam,
 } from './do_name.js';
+import { objdescr_is } from './apply.js';
+import { remove_worn_item } from './steal.js';
 import { newuhs, fix_petrification, Unaware } from './eat.js';
 import { heal_legs, water_damage, float_up, self_invis_message } from './trap.js';
 import { aggravate } from './wizard.js';
@@ -229,6 +231,7 @@ const ALCHEMY_SMOCK = objectNames.indexOf('ALCHEMY_SMOCK');
 const TOWEL = objectNames.indexOf('TOWEL');
 const CORPSE = objectNames.indexOf('CORPSE');
 const PM_DJINNI = monsterNames.indexOf('PM_DJINNI');
+const PM_GHOST = monsterNames.indexOf('PM_GHOST');
 const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
 const PM_IRON_GOLEM = monsterNames.indexOf('PM_IRON_GOLEM');
 const PM_PESTILENCE = monsterNames.indexOf('PM_PESTILENCE');
@@ -2132,16 +2135,51 @@ export async function healup(nhp, nxtra, curesick, cureblind) {
 }
 
 /**
- * C ref: potion.c dodrink() / #quaff
- * Fountain-at-feet yn → drinkfountain; sink yn → drinksink.
- * Underwater / Strangled / milky-ghost / smoky occupant chance deferred
- * (`djinni_from_bottle` itself is D-1144; MAGIC_LAMP `#rub` is the caller).
- * Worn-stack split deferred (starting oils are unworn).
- * @returns {number} ECMD_* — CANCEL on getobj abort; TIME after quaff
+ * C ref: potion.c ghost_from_bottle `:481–500` — milky-potion ghost.
+ * makemon GHOST at hero; empty bottle when null; Blind sees only
+ * `something` emerge; else enormous ghost (hallu rndmonnam); verbose
+ * fright + nomul(-3) with multi_reason/nomovemsg.
+ */
+async function ghost_from_bottle() {
+    const u = game.u || {};
+    const mtmp = makemon(mons(PM_GHOST), u.ux, u.uy, MM_NOMSG);
+    if (!mtmp) {
+        await pline('This bottle turns out to be empty.');
+        return;
+    }
+    if (Blind()) {
+        // C: pline("As you open the bottle, %s emerges.", something)
+        await pline('As you open the bottle, something emerges.');
+        return;
+    }
+    // C: Hallucination ? rndmonnam(NULL) : "ghost"
+    await pline(`As you open the bottle, an enormous ${Hallucination() ? rndmonnam(null) : 'ghost'} emerges!`);
+    // C: if (flags.verbose) You("are frightened to death, and unable to move.")
+    if (game.flags?.verbose !== false) {
+        await pline('You are frightened to death, and unable to move.');
+    }
+    nomul(-3);
+    game.multi_reason = 'being frightened to death';
+    game.nomovemsg = 'You regain your composure.';
+}
+
+/**
+ * C ref: potion.c dodrink() `:526–615` / #quaff
+ * Strangled gate first (ECMD_OK, no turn); !menu_requested fountain /
+ * sink / underwater yn prompts (each refusal sets drink_ok_extra for the
+ * getobj empty "else"); getobj drink; worn-stack split or unwear;
+ * in_use stopper; milky-ghost / smoky-djinni POTION_OCCUPANT_CHANCE
+ * (hack.h:1409 `13 + 2 * born`) occupant rolls; else dopotion.
+ * @returns {number} ECMD_* — OK when Strangled; CANCEL on getobj abort; TIME after quaff
  */
 export async function dodrink() {
-    // C: Strangled → message, ECMD_OK (no turn) — deferred unless needed
     const u = game.u || {};
+    // C youprop.h:110 Strangled ≡ u.uprops[STRANGLED].intrinsic; JS also
+    // keeps the flat u.Strangled for the same C value (do.js danger_uprops).
+    if (((u.uprops?.[STRANGLED]?.intrinsic | 0) !== 0) || (u.Strangled | 0)) {
+        await pline("If you can't breathe air, how can you drink liquid?");
+        return ECMD_OK;
+    }
     const loc = game.level?.at(u.ux, u.uy);
     const here = loc?.typ ?? 0;
 
@@ -2163,14 +2201,50 @@ export async function dodrink() {
             }
             drink_ok_extra++;
         }
-        // underwater prompts deferred
+        // C: Underwater (u.uinwater, youprop.h:279) && !u.uswallow
+        if ((u.uinwater | 0) && !u.uswallow) {
+            if ((await yn_function('Drink the water around you?', 'yn', 'n')) === 'y') {
+                await pline('Do you know what lives in this water?');
+                return ECMD_TIME;
+            }
+            drink_ok_extra++;
+        }
     }
 
-    const otmp = await getobj('drink', drink_ok, GETOBJ_NOFLAGS);
+    let otmp = await getobj('drink', drink_ok, GETOBJ_NOFLAGS);
     if (!otmp) return ECMD_CANCEL;
 
+    // C 3.6/5.0 comment `:577–590` — unworn current potion; split stack of
+    // worn potions so the rest of the stack is unaffected.
+    if (otmp.owornmask) {
+        if ((otmp.quan | 0) > 1) {
+            const split = splitobj(otmp, 1);
+            if (split) {
+                otmp = split;
+                otmp.owornmask = 0;
+            }
+        } else {
+            await remove_worn_item(otmp, false);
+        }
+    }
     otmp.in_use = true;
-    // milky/smoky occupant paths deferred (no RNG when descr unmatched)
+    // C: POTION_OCCUPANT_CHANCE(n) (13 + 2 * born); milky first, smoky second.
+    const ghostBorn = game.mvitals?.[PM_GHOST]?.born | 0;
+    if (objdescr_is(otmp, 'milky')
+        && !((game.mvitals?.[PM_GHOST]?.mvflags | 0) & G_GONE)
+        && !rn2(13 + 2 * ghostBorn)) {
+        await ghost_from_bottle();
+        useup(otmp);
+        return ECMD_TIME;
+    }
+    const djinniBorn = game.mvitals?.[PM_DJINNI]?.born | 0;
+    if (objdescr_is(otmp, 'smoky')
+        && !((game.mvitals?.[PM_DJINNI]?.mvflags | 0) & G_GONE)
+        && !rn2(13 + 2 * djinniBorn)) {
+        await djinni_from_bottle(otmp);
+        useup(otmp);
+        return ECMD_TIME;
+    }
     return dopotion(otmp);
 }
 

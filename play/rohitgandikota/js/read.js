@@ -123,6 +123,17 @@ import { Blind, Hallucination, Invisible, Confusion } from './youprop.js';
 import { make_confused } from './potion.js';
 
 import { ART_ORB_OF_FATE } from './artilist_data.js';
+import { notice_mon_off, notice_mon_on } from './hack.js';
+import { snuff_light_source } from './light.js';
+import { initedog } from './dog.js';
+import { G_GONE, MM_EDOG, Is_waterlevel, ROOMOFFSET } from './const.js';
+import { ART_SUNSWORD } from './artilist_data.js';
+import { light_hits_gremlin } from './uhitm.js';
+import { lightdamage } from './zap.js';
+import { snuff_lit } from './apply.js';
+import { impact_arti_light } from './potion.js';
+import { Underwater } from './youprop.js';
+import { digests } from './mondata.js';
 function note_unported_read(what) {
     (game.unported ||= new Set()).add('read:' + what);
 }
@@ -2277,89 +2288,211 @@ function learnscrolltyp(scrolltyp) {
 // The confused arm makes yellow/black lights, which needs makemon with
 // MM_EDOG plus initedog; recorded. The ordinary arm is live.
 async function seffect_light(sobj) {
+    const sblessed = sobj.blessed;
     const scursed = sobj.cursed;
-    const confused = !!(game.u?.intrinsic?.HConfusion
-                        || game.u?.uprops?.CONFUSION);
+    const confused = (Confusion() != 0);
 
     if (!confused) {
-        if (!game.u.ublind)
+        if (!Blind())
             game.known = true;
         await litroom(!scursed, sobj);
         if (!scursed) {
-            /* lightdamage(sobj, TRUE, 5): the gremlin arm is the only one
-               with draws or effect, and the hero is never a gremlin here */
-            if (5)
+            if (await lightdamage(sobj, true, 5))
                 game.known = true;
         }
     } else {
-        note_unported_read('seffect_light:confused_lights');
+        const pm = scursed ? PMNAMES.PM_BLACK_LIGHT : PMNAMES.PM_YELLOW_LIGHT;
+
+        if (((game.mvitals?.[pm]?.mvflags ?? 0) & G_GONE)) {
+            await pline('Tiny lights sparkle in the air momentarily.');
+        } else {
+            /* surround with cancelled tame lights which won't explode */
+            let mon;
+            let sawlights = false;
+            const numlights = rn1(2, 3) + ((sblessed ? 1 : 0) * 2);
+
+            for (let i = 0; i < numlights; ++i) {
+                mon = await makemon(game.mons[pm], game.u.ux, game.u.uy,
+                                    MM_EDOG | NO_MINVENT | MM_NOMSG);
+                if (mon) {
+                    initedog(mon, true);
+                    mon.msleeping = 0;
+                    mon.mcan = 1;
+                    if (canspotmon(mon))
+                        sawlights = true;
+                    newsym(mon.mx, mon.my);
+                }
+            }
+            if (sawlights) {
+                await pline('Lights appear all around you!');
+                game.known = true;
+            }
+        }
     }
     return false;
 }
 
-// src/read.c set_lit() — do_clear_area()'s callback.
-//
-// The gremlin collection list is recorded: it only matters when a gremlin is
-// standing in the lit area, and light_hits_gremlin's rnd(5) would be a draw.
+/* src/read.c:2459 — used to collect gremlins being hit by light so that they
+   can be processed after vision for the entire lit area has been updated */
+let gremlins = null;
+
+// src/read.c:2471 set_lit() — low-level lit-field update routine,
+// do_clear_area()'s callback.
 function set_lit(x, y, val) {
+    let mtmp;
     const loc = game.level?.at(x, y);
-    if (!loc) return;
+    if (!loc)
+        return;
+
     if (val) {
         loc.lit = 1;
-        const mtmp = (game.level?.monsters || [])
-            .find(m => m.mx === x && m.my === y && m.mhp > 0);
-        if (mtmp && mtmp.data?.mname === 'gremlin')
-            note_unported_read('set_lit:gremlin');
+        if ((mtmp = m_at(x, y)) && mtmp.data === game.mons[PMNAMES.PM_GREMLIN])
+            gremlins = { mon: mtmp, nxt: gremlins };
     } else {
         loc.lit = 0;
-        note_unported_read('set_lit:snuff_light_source');
+        snuff_light_source(x, y);
     }
 }
 
 // src/read.c:2491 litroom() — light (on) or darken (!on) the hero's area.
-//
-// Radius is 5, or 9 for a blessed scroll. The darkening arm needs
-// snuff_lit/artifact_light over the inventory and is recorded; the lighting
-// arm is what a scroll of light reaches.
+// `obj` is the scroll, spellbook (for spell), or wand of light.
 export async function litroom(on, obj) {
+    let otmp;
     const blessed_effect = !!(obj && obj.oclass === OCLASSES.SCROLL_CLASS
                               && obj.blessed);
-    const no_op = !!game.u.uswallow;    /* Underwater/waterlevel not modelled */
+    const no_op = !!(game.u.uswallow || Underwater()
+                     || Is_waterlevel(game.u.uz));
+    const is_lit = 1; /* value is irrelevant; a 'not null' flag for set_lit() */
 
     /* update object lights and produce message (provided you're not blind) */
     if (!on) {
-        note_unported_read('litroom:darken');
-        return;
-    }
-    if (blessed_effect)
-        /* impact_arti_light over lamplit artifacts; none exist yet */
-        note_unported_read('litroom:blessed_arti_light');
+        let still_lit = 0;
 
-    if (game.u.uswallow) {
-        note_unported_read('litroom:swallowed');
-    } else if (!game.u.ublind
-               && (!Is_rogue_level(game.u.uz)
-                   || game.level?.at(game.u.ux, game.u.uy)?.typ !== CORR)) {
-        await pline(`A lit field ${no_op ? 'briefly ' : ''}surrounds you!`);
+        /*
+         * The magic douses lamps,&c too and might curse artifact lights.
+         *
+         * FIXME?
+         *  Shouldn't this affect all lit objects in the area of effect
+         *  rather than just those carried by the hero?
+         */
+        for (otmp of [...game.invent]) {
+            if (otmp.lamplit) {
+                if (!artifact_light(otmp))
+                    await snuff_lit(otmp);
+                else
+                    /* wielded Sunsword or worn gold dragon scales/mail;
+                       maybe lower its BUC state if not already cursed */
+                    await impact_arti_light(otmp, true, !Blind());
+
+                if (otmp.lamplit)
+                    ++still_lit;
+            }
+        }
+        /* scroll of light becomes discovered when not blind, so some
+           message to justify that is needed */
+        if (!Blind()) {
+            /* for the still_lit case, we don't know at this point whether
+               anything currently visibly lit is going to go dark; if this
+               message came after the darkening, we could count visibly
+               lit squares before and after to know; we do know that being
+               swallowed won't be affected--the interior is still lit */
+            if (still_lit)
+                await pline_The('ambient light seems dimmer.');
+            else if (game.u.uswallow)
+                await pline('It seems even darker in here than before.');
+            else
+                await You('are surrounded by darkness!');
+        }
+    } else { /* on */
+        if (blessed_effect) {
+            /* might bless artifact lights; no effect on ordinary lights */
+            for (otmp of [...game.invent]) {
+                if (otmp.lamplit && artifact_light(otmp))
+                    /* wielded Sunsword or worn gold dragon scales/mail;
+                       maybe raise its BUC state if not already blessed */
+                    await impact_arti_light(otmp, false, !Blind());
+            }
+        }
+        if (game.u.uswallow) {
+            const ustuck = game.u.ustuck;
+            if (Blind())
+                ; /* no feedback */
+            else if (digests(ustuck.data))
+                await pline(`${s_suffix(Monnam(ustuck))} ${
+                            mbodypart(ustuck, STOMACH)} is lit.`);
+            else if (is_whirly(ustuck.data))
+                await pline(`${Monnam(ustuck)} shines briefly.`);
+            else
+                await pline(`${Monnam(ustuck)} glistens.`);
+        } else if (!Blind() && (!Is_rogue_level(game.u.uz)
+                                || game.level.at(game.u.ux, game.u.uy).typ
+                                   !== CORR)) {
+            await pline(`A lit field ${no_op ? 'briefly ' : ''}surrounds you!`);
+        }
     }
 
     /* No-op when swallowed or in water */
     if (no_op)
         return;
+    /*
+     *  If we are darkening the room and the hero is punished but not
+     *  blind, then we have to pick up and replace the ball and chain so
+     *  that we don't remember them if they are out of sight.
+     */
+    if (game.u.uball && !on && !Blind())
+        note_unported_read('litroom:move_bc'); /* ball.c move_bc() */
 
-    do_clear_area(game.u.ux, game.u.uy, blessed_effect ? 9 : 5,
-                  set_lit, on ? 1 : 0);
+    if (Is_rogue_level(game.u.uz)) {
+        /* Can't use do_clear_area because MAX_RADIUS is too small */
+        /* rogue lighting must light the entire room */
+        const rnum = game.level.at(game.u.ux, game.u.uy).roomno - ROOMOFFSET;
+
+        if (rnum >= 0) {
+            const room = game.level.rooms[rnum];
+            for (let rx = room.lx - 1; rx <= room.hx + 1; rx++)
+                for (let ry = room.ly - 1; ry <= room.hy + 1; ry++)
+                    set_lit(rx, ry, on ? is_lit : 0);
+            room.rlit = on ? 1 : 0;
+        }
+        /* hallways remain dark on the rogue level */
+    } else if (is_art(obj, ART_SUNSWORD)) {
+        /* Sunsword's #invoke power directed up or down lights hero's spot
+           (do_clear_area() rejects radius 0 so call set_lit() directly) */
+        set_lit(game.u.ux, game.u.uy, is_lit);
+    } else {
+        do_clear_area(game.u.ux, game.u.uy, blessed_effect ? 9 : 5,
+                      set_lit, on ? is_lit : 0);
+    }
 
     /*
      *  If we are not blind, then force a redraw on all positions in sight
-     *  by temporarily blinding the hero. The vision recalculation will
-     *  correctly update all previously seen positions *and* correctly set
-     *  the waslit bit.
+     *  by temporarily blinding the hero.  The vision recalculation will
+     *  correctly update all previously seen positions *and* correctly
+     *  set the waslit bit [could be messed up from above].
      */
-    if (!game.u.ublind)
+    if (!Blind()) {
         vision_recalc(2);
 
-    game.vision_full_recalc = 1;        /* delayed vision recalculation */
+        /* replace ball&chain */
+        if (game.u.uball && !on)
+            note_unported_read('litroom:move_bc'); /* ball.c move_bc() */
+    }
+
+    game.vision_full_recalc = 1; /* delayed vision recalculation */
+    if (gremlins) {
+        let gremlin;
+
+        /* can't delay vision recalc after all */
+        vision_recalc(0);
+        /* after vision has been updated, monsters who are affected
+           when hit by light can now be hit by it */
+        do {
+            gremlin = gremlins;
+            gremlins = gremlin.nxt;
+            await light_hits_gremlin(gremlin.mon, rnd(5));
+        } while (gremlins);
+    }
+    return;
 }
 
 // src/read.c:1627 seffect_enchant_weapon() — the scroll of enchant weapon.
@@ -2506,7 +2639,9 @@ async function seffect_magic_mapping(sobj) {
         (game.u.intrinsic ||= {}).HConfusion = 1; /* to screw up map */
     /* notice_mon_off() / notice_mon_on() wrap the mapping so newly drawn
        monsters are not announced */
+    notice_mon_off();
     await do_mapping();
+    notice_mon_on();
     if (cval) {
         game.u.intrinsic.HConfusion = 0; /* restore */
         await pline("Unfortunately, you can't grasp the details.");

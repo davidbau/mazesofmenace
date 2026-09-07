@@ -34,6 +34,7 @@ import {
 } from './roles.js';
 import { discover_object, Blind, makeknown, observe_object } from './invent.js';
 import { setworn } from './do_wear.js';
+import { setuwep, setuswapwep, setuqwep } from './wield.js';
 import { initialspell, init_spl_book, num_spells, SPELL_LEV_PW } from './spell.js';
 import { otyp_uses_known, otyp_is_charged, Japanese_item_name, yname } from './objnam.js';
 import {
@@ -1209,17 +1210,18 @@ function ini_inv_use_obj(obj) {
         || objectNames[obj.otyp] === 'TIN_OPENER'
         || objectNames[obj.otyp] === 'FLINT'
         || objectNames[obj.otyp] === 'ROCK') {
+        // C u_init.c ini_inv_use_obj `:1284–1292` — initial wield through
+        // setuwep/setuqwep/setuswapwep (not direct slot assigns) so
+        // gu.unweapon is armed at birth (scen-poly-Tourist-92047 tin
+        // opener never printed begin-bashing with game.gu undefined).
         if (is_ammo(obj) || is_missile(obj)) {
             if (!game.u.uquiver) {
-                obj.owornmask = (obj.owornmask || 0) | W_QUIVER;
-                game.u.uquiver = obj;
+                setuqwep(obj);
             }
         } else if (!game.u.uwep && (!game.u.uarms || !bimanual(obj))) {
-            obj.owornmask = (obj.owornmask || 0) | W_WEP;
-            game.u.uwep = obj;
+            setuwep(obj);
         } else if (!game.u.uswapwep) {
-            obj.owornmask = (obj.owornmask || 0) | W_SWAPWEP;
-            game.u.uswapwep = obj;
+            setuswapwep(obj);
         }
     }
     // C ref: u_init.c ini_inv_use_obj — SPBOOK → initialspell (not blank paper)

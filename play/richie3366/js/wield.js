@@ -241,9 +241,11 @@ export async function wield_tool(obj, verb) {
     if (u.uwep && u.uwep !== obj) return false;
     if (u.twoweap) await untwoweapon();
     if (obj.oclass !== WEAPON_CLASS) {
-        // C: gu.unweapon = TRUE
-        if (!game.u) game.u = u;
-        game.unweapon = true;
+        // C wield.c wield_tool `:756` — gu.unweapon = TRUE (was a
+        // wrong-object write to game.unweapon, so apply-wielded tools
+        // never armed begin-bashing).
+        if (!game.gu) game.gu = {};
+        game.gu.unweapon = true;
     }
     return true;
 }
@@ -261,10 +263,13 @@ export function setuwep(obj) {
     // C: Ogresmasher botl / Sunsword end_burn named omit
     if (obj) {
         if (!game.gu) game.gu = {};
+        // C wield.c setuwep `:128–134` — pole arm exempts Snickersnee
+        // (is_pole already includes it); non-weapons exempt wet towels.
         game.gu.unweapon = (obj.oclass === WEAPON_CLASS)
             ? (is_launcher(obj) || is_ammo(obj) || is_missile(obj)
-                || (is_pole(obj) && !u.usteed))
-            : (!is_weptool(obj));
+                || (is_pole(obj) && !u.usteed
+                    && !is_art(obj, ART_SNICKERSNEE)))
+            : (!is_weptool(obj) && !is_wet_towel(obj));
     } else {
         if (!game.gu) game.gu = {};
         game.gu.unweapon = true;

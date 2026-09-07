@@ -15,7 +15,7 @@ import {
     MAGICAL_BREATHING, WWALKING, FIRE_RES, COLD_RES, SLEEP_RES,
     ACCESSIBLE, Is_waterlevel, SICK_NONVOMITABLE, M_AP_MONSTER,
     COLNO, ROWNO, CLOUD,
-    KILLED_BY_AN,
+    KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, TURNED_SLIME, GENOCIDED, STONING, DIED,
     DISINT_RES, SHOCK_RES, POISON_RES, DRAIN_RES, SICK_RES, ANTIMAGIC,
     BLND_RES, HUNGER, TELEPAT, WARNING, WARN_OF_MON, WARN_UNDEAD,
     SEARCHING, INFRAVISION, ADORNED, STEALTH, AGGRAVATE_MONSTER,
@@ -26,15 +26,15 @@ import {
     OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_MIGRATING, OBJ_FREE,
     OBJ_CONTAINED, OBJ_BURIED,
     CONTAINED_TOO, BURIED_TOO, TIMER_OBJECT, TIMER_NONE, TIMER_LEVEL,
-    TIMER_GLOBAL, TIMER_MONSTER, BURN_OBJECT, LS_OBJECT,
+    TIMER_GLOBAL, TIMER_MONSTER, BURN_OBJECT, LS_OBJECT, LS_MONSTER,
     MAX_RADIUS, W_ARM,
     G_GENOD, G_EXTINCT, NO_MINVENT, MM_NOMSG, NON_PM,
     MV_KNOWS_EGG, ARTICLE_NONE, ARTICLE_A, EXACT_NAME,
     REVIVE_MON, ROT_CORPSE, ZOMBIFY_MON, RLOC_NOMSG,
-    has_omid, has_omonst,
+    has_omid, has_omonst, Upolyd, PLNMSG_OK_DONT_DIE,
 } from './const.js';
 import { heal_legs, float_down } from './trap.js';
-import { stop_occupation, nomul, is_pool, is_lava, carrying, You_hear } from './hack.js';
+import { stop_occupation, nomul, is_pool, is_lava, carrying, You_hear, monst_to_any } from './hack.js';
 import { run_timers, start_timer, stop_timer, weight,
     obj_extract_self, delobj, objects_at, attach_egg_hatch_timeout,
     obj_has_timer, rider_revival_time, rot_corpse, set_corpsenm,
@@ -44,7 +44,7 @@ import { make_confused, make_deaf, make_slimed, make_stoned, make_stunned, make_
 import { make_blinded } from './do.js';
 import { Fumbling, Fast, Very_fast, exercise, stone_luck, A_STR, A_DEX, A_CON } from './attrib.js';
 import { pline, You_feel, newsym, canseemon, verbalize, Norep, see_monsters, impossible, urgent_pline, Hallucination } from './display.js';
-import { inv_weight, update_inventory, useupall } from './invent.js';
+import { inv_weight, update_inventory, useup, useupall } from './invent.js';
 import { doname, makeplural, xname, an, The, vtense } from './objnam.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { objectNames } from './objects.js';
@@ -61,15 +61,16 @@ import { zombie_form } from './mon.js';
 import { cry_sound } from './sounds.js';
 import { Soundeffect } from './sndprocs.js';
 import { se_kaboom_boom_boom } from './generated/seffects_data.js';
-import { rehumanize, body_part } from './polyself.js';
+import { rehumanize, body_part, polymon } from './polyself.js';
 import { you_unwere } from './were.js';
-import { new_light_source, del_light_source } from './light.js';
+import { new_light_source, del_light_source, emits_light } from './light.js';
 import { cansee } from './vision.js';
 import { is_art } from './artifact.js';
 import { ART_SUNSWORD } from './generated/artifacts_data.js';
 import { Monnam, x_monnam, hcolor, rndmonnam, hliquid } from './do_name.js';
 import { find_ac } from './u_init.js';
 import { any_visible_region, visible_region_summary } from './region.js';
+import { done, find_delayed_killer, dealloc_killer } from './end.js';
 
 /**
  * Props whose TIMEOUT is already decremented by the dedicated arms below
@@ -109,6 +110,7 @@ const TIMEOUT_FLAT = {
 /** C ref: weight.h WT_NOISY_INV — inv_weight() threshold for noisy fumbling. */
 const WT_NOISY_INV = 500;
 const ROCK = objectNames.indexOf('ROCK');
+const AMULET_OF_STRANGULATION = objectNames.indexOf('AMULET_OF_STRANGULATION');
 const LUCKSTONE = objectNames.indexOf('LUCKSTONE');
 const FEDORA = objectNames.indexOf('FEDORA');
 const PM_GREEN_SLIME = monsterNames.indexOf('PM_GREEN_SLIME');
@@ -658,6 +660,106 @@ async function phaze_dialogue() {
 }
 
 /**
+ * C ref: timeout.c done_timeout `:574–585` — when a status timeout is
+ * fatal, keep the indicator shown during the end-of-game rundown:
+ * I_SPECIAL on the expiring prop (affects final disclosure), done(),
+ * then clear + botl when life-saved (C falls through only on lifesave;
+ * JS done() returns normally then, or sets program_state.gameover).
+ */
+async function done_timeout(how, which) {
+    const u = game.u || (game.u = {});
+    if (!u.uprops) u.uprops = {};
+    if (!u.uprops[which]) {
+        u.uprops[which] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    }
+    // C: *intrinsic_p |= I_SPECIAL — timeout already counted to 0 here
+    u.uprops[which].intrinsic = (u.uprops[which].intrinsic | 0) | I_SPECIAL;
+    await done(how);
+    // life-saved
+    u.uprops[which].intrinsic = (u.uprops[which].intrinsic | 0) & ~I_SPECIAL;
+    if (game.disp) game.disp.botl = true;
+}
+
+/**
+ * C ref: timeout.c slimed_to_death `:456–521` — Slimed countdown ran out.
+ * Killer from the delayed SLIMED entry (default "turned into green slime",
+ * NO_KILLER_PREFIX); ungenocide dance around polymon() (whose CON/WIS
+ * exercise arms are the first C-vs-JS draws on this path — the `exercise`
+ * corpus owner, attrib.c:509); done_timeout(); life-saved while green
+ * slimes are genocided → slimicide messages + done(GENOCIDED).
+ * Reached from the uprops expiry loop (C `:686–688`).
+ */
+async function slimed_to_death(kptr) {
+    const u = game.u || (game.u = {});
+    // C: redundant — polymon() cures sliming when polying into green slime.
+    // C compares youmonst.data against &mons[PM_GREEN_SLIME]; JS mons()
+    // builds a fresh record per call, so compare the canonical umonnum
+    // instead (set_uasmon points data at mons[umonnum]).
+    if (Upolyd(u) && ((u.umonnum | 0) === PM_GREEN_SLIME)) {
+        dealloc_killer(kptr);
+        return;
+    }
+    // more sure killer reason is set up
+    if (!game.killer) game.killer = { name: '', format: 0, next: null };
+    if (kptr && kptr.name) {
+        game.killer.format = kptr.format | 0;
+        game.killer.name = String(kptr.name);
+    } else {
+        game.killer.format = NO_KILLER_PREFIX;
+        game.killer.name = 'turned into green slime';
+    }
+    dealloc_killer(kptr);
+
+    // Polymorph into a green slime, which might destroy some worn armor
+    // (potentially affecting bones) and dismount from steed.
+    // Can't be Unchanging; wouldn't have turned into slime if we were.
+    // Despite lack of Unchanging, neither done() nor savelife() calls
+    // rehumanize() if hero dies while polymorphed.
+    // polymon() undoes the slime countdown's mimick-green-slime hack
+    // but does not perform polyself()'s light source bookkeeping.
+    // No longer need to manually increment uconduct.polyselfs to reflect
+    // [formerly implicit] change of form; polymon() takes care of that.
+    // Temporarily ungenocide if necessary.
+    if (emits_light(game.youmonst?.data)) {
+        del_light_source(LS_MONSTER, monst_to_any(game.youmonst));
+    }
+    if (!game.mvitals) game.mvitals = {};
+    if (!game.mvitals[PM_GREEN_SLIME]) {
+        game.mvitals[PM_GREEN_SLIME] = { mvflags: 0, died: 0 };
+    }
+    const save_mvflags = game.mvitals[PM_GREEN_SLIME].mvflags | 0;
+    game.mvitals[PM_GREEN_SLIME].mvflags = save_mvflags & ~G_GENOD;
+    // become a green slime; also resets youmonst.m_ap_type+.mappearance
+    await polymon(PM_GREEN_SLIME);
+    game.mvitals[PM_GREEN_SLIME].mvflags = save_mvflags;
+    await done_timeout(TURNED_SLIME, SLIMED);
+
+    // C: done() does not return unless life-saved.
+    if (game.program_state?.gameover) return;
+
+    // life-saved; even so, hero still has turned into green slime;
+    // player may have genocided green slimes after being infected
+    if (((game.mvitals[PM_GREEN_SLIME].mvflags | 0) & G_GENOD) !== 0) {
+        game.killer.format = KILLED_BY;
+        game.killer.name = 'slimicide';
+        // vary the message depending upon whether life-save was due to
+        // amulet or due to declining to die in explore or wizard mode
+        const slimebuf = 'green slime has been genocided...';
+        if ((game.iflags?.last_msg | 0) === PLNMSG_OK_DONT_DIE) {
+            // follows "OK, so you don't die." and arg is second sentence
+            await urgent_pline(`Yes, you do.  ${upstart(slimebuf)}`);
+        } else {
+            // follows "The medallion crumbles to dust."
+            await urgent_pline(`Unfortunately, ${slimebuf}`);
+        }
+        // die again; no possibility of amulet this time
+        await done(GENOCIDED); // [should it be done_timeout(GENOCIDED, SLIMED)?]
+        // could be life-saved again (only in explore or wizard mode)
+        // but green slimes are gone; just stay in current form
+    }
+}
+
+/**
  * C timeout.c nh_timeout `:588–623` luck timeout toward baseluck.
  * moon / friday13 / killed_leader / fedora fedora; stone_luck +
  * carrying(LUCKSTONE) gate the uluck step every 300 (amulet/angry)
@@ -710,8 +812,8 @@ function nh_timeout_luck(u) {
  * Remaining uprops TIMEOUT (incl. INVULNERABLE from #wizintrinsic) —
  * generic -- like C's for (upp = u.uprops; …) (D-0928 #1168); expiry
  * switch cases for those props still deferred (silent clear).
- * Named omissions: region_dialogue / sleep_dialogue; STONED/SLIMED
- * done_timeout / slimed_to_death; STUNNED/SEE_INVIS/HALLUC/SLEEPY/…
+ * Named omissions: region_dialogue / sleep_dialogue;
+ * STUNNED/SEE_INVIS/HALLUC/SLEEPY/…
  * expiry messages; FLYING timed-land (wizintrinsic); GLIB `make_glib(0)`
  * inventory on expiry; ublesscnt (in allmain); ugallop; delayed killers;
  * full ice/mount slip_or_trip arms; you_unwere callers
@@ -889,9 +991,12 @@ export async function nh_timeout() {
             if (p === STUNNED) u.Stunned = u.HStun;
             if (p === GLIB) u.HGlib = next;
         }
-        // Expiry switch (STONED/HALLUC/…) deferred — silent clear
-        // except DETECT_MONSTERS → see_monsters (D-1418), LEVITATION
-        // → float_down (D-1419), and INVIS → newsym + You (D-1421).
+        // Expiry switch (HALLUC/…) deferred — silent clear
+        // except STONED → stoning death (C `:674–685`),
+        // DETECT_MONSTERS → see_monsters (D-1418), LEVITATION
+        // → float_down (D-1419), INVIS → newsym + You (D-1421),
+        // SLIMED → slimed_to_death (C `:686–688`), and STRANGLED →
+        // done_timeout(DIED, …) + amulet-vanishes (C `:890–900`).
         if (!(next & TIMEOUT) && p === DETECT_MONSTERS) {
             see_monsters();
         }
@@ -931,6 +1036,48 @@ export async function nh_timeout() {
                         : 'You can no longer see through yourself.',
                 );
                 await stop_occupation();
+            }
+        }
+        if (!(next & TIMEOUT) && p === STONED) {
+            // C timeout.c :674–685 — petrification runs out: killer from
+            // the delayed STONED entry (default "killed by petrification",
+            // NO_KILLER_PREFIX); dealloc + done_timeout(STONING, STONED)
+            // (unlike sliming, no form change; noreturn unless life-saved).
+            const kptr = find_delayed_killer(STONED);
+            if (!game.killer) game.killer = { name: '', format: 0, next: null };
+            if (kptr && kptr.name) {
+                game.killer.format = kptr.format | 0;
+                game.killer.name = String(kptr.name);
+            } else {
+                game.killer.format = NO_KILLER_PREFIX;
+                game.killer.name = 'killed by petrification';
+            }
+            dealloc_killer(kptr);
+            await done_timeout(STONING, STONED);
+            // C: done() does not return unless life-saved.
+            if (game.program_state?.gameover) return;
+        }
+        if (!(next & TIMEOUT) && p === SLIMED) {
+            // C timeout.c :686–688 — slimed_to_death(kptr)
+            // (done_timeout(TURNED_SLIME, SLIMED) inside).
+            await slimed_to_death(find_delayed_killer(SLIMED));
+        }
+        if (!(next & TIMEOUT) && p === STRANGLED) {
+            // C timeout.c :890–900 — strangulation runs out: killer
+            // KILLED_BY "suffocation" when buried else "strangulation";
+            // done_timeout(DIED, STRANGLED) (noreturn unless life-saved
+            // or wizard/explore Die? declined); then a worn amulet of
+            // strangulation vanishes like a prayer cure.
+            if (!game.killer) game.killer = { name: '', format: 0, next: null };
+            game.killer.format = KILLED_BY;
+            game.killer.name = u.uburied ? 'suffocation' : 'strangulation';
+            await done_timeout(DIED, STRANGLED);
+            // C: done() does not return unless life-saved.
+            if (game.program_state?.gameover) return;
+            const amulet = u.uamul;
+            if (amulet && (amulet.otyp | 0) === AMULET_OF_STRANGULATION) {
+                await pline('Your amulet vanishes!');
+                useup(amulet);
             }
         }
     }

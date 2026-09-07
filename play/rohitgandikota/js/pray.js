@@ -1974,7 +1974,7 @@ export async function dopray() {
     game.nomovemsg = 'You finish your prayer.';
     game.afternmv = prayer_done;
 
-    if (p_type === 3) {
+    if (p_type === 3 && !Inhell()) {
         /* if you've been true to your god you can't die while you pray */
         if (!game.u.ublind)
             await You('are surrounded by a shimmering light.');

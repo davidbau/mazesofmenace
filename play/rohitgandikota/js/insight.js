@@ -908,7 +908,7 @@ function status_enlightenment() {
         const adj = ['?', 'slightly', 'moderately', 'very', 'extremely',
                      'not possible'];
         let state = enc[cap] + (game.wizard ? ` <${inv_weight()}>` : '');
-        state += `; movement is ${adj[cap]}${cap < 5 ? ' slowed' : ''}`;
+        state += `; movement ${!en_final ? 'is' : 'was'} ${adj[cap]}${cap < 5 ? ' slowed' : ''}`;
         you_are(state);
     } else {
         you_are('unencumbered' + (game.wizard ? ` <${inv_weight()}>` : ''));

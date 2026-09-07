@@ -1291,7 +1291,14 @@ export function mkbox_cnts(box) {
         let otmp;
         if (box.otyp === ONAMES.ICE_BOX) {
             otmp = mksobj(ONAMES.CORPSE, true, false);
+            /* Note: setting age to 0 is correct.  Age has a different
+             * from usual meaning for objects stored in ice boxes. -KAA
+             */
             otmp.age = 0;
+            if (otmp.timed) {
+                stop_timer(TIMEOUT_ROT_CORPSE, otmp);
+                stop_timer(TIMEOUT_REVIVE_MON, otmp);
+            }
         } else {
             let tprob, idx = 0;
             for (tprob = rnd(100); (tprob -= boxiprobs[idx][0]) > 0; idx++)

@@ -66,6 +66,7 @@ import { NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE,
          DEC_TO_UNICODE, ATR_INVERSE as TERM_INVERSE,
          ATR_BOLD as TERM_BOLD,
          ATR_UNDERLINE as TERM_UNDERLINE } from './terminal.js';
+import { notice_all_mons_flush } from './hack.js';
 
 // ── ANSI color codes ──
 // Maps CLR_* constants (0-15) to ANSI SGR color codes.
@@ -835,6 +836,14 @@ function dark_room_color() {
     return game.flags?.dark_room !== false && use_color();
 }
 
+// GLYPH_NOTHING as a remembered cell: the C's levl[x][y].glyph can hold
+// GLYPH_NOTHING (magic_map_background() and reglyph_darkroom() put it
+// there) as distinct from GLYPH_UNEXPLORED, which is an absent record here.
+export const GLYPH_NOTHING_CELL = Object.freeze({
+    ch: ' ', color: NO_COLOR, decgfx: false,
+    glyph: Object.freeze({ kind: 'nothing' }),
+});
+
 // include/display.h DARKROOMSYM — S_darkroom when dark_room+color, else
 // S_stone. S_darkroom renders through the active symset, where
 // assign_graphics() has copied S_room's symbol into its slot
@@ -886,13 +895,14 @@ export function reglyph_darkroom() {
                         loc.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec,
                                                  glyph: { kind: 'cmap', cmap: tg.cmap } };
                     } else {
-                        loc.remembered_glyph = undefined; /* GLYPH_NOTHING */
+                        loc.remembered_glyph = GLYPH_NOTHING_CELL;
                     }
                 }
             } else {
                 if (remcmap === CM.S_room && loc.seenv && loc.waslit && !cansee(x, y))
                     loc.remembered_glyph = darkroomsym_cell();
-                else if (!rg && loc.typ === ROOM && loc.seenv && !cansee(x, y))
+                else if (rg?.glyph?.kind === 'nothing' /* GLYPH_NOTHING */
+                         && loc.typ === ROOM && loc.seenv && !cansee(x, y))
                     loc.remembered_glyph = darkroomsym_cell();
             }
         }
@@ -965,9 +975,30 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
     loc.gnew = 1;
 }
 
-// src/display.c:2159 clear_glyph_buffer()
+/* the glyph buffer's unexplored entry, what glyph_at() reads after cls() */
+const GLYPH_UNEXPLORED_GLYPH = Object.freeze({ kind: 'unexplored' });
+
+// src/display.c:2107 clear_glyph_buffer() — every gbuf entry becomes the
+// unexplored glyph. The physical map was just cleared, so nothing is flagged
+// for repaint; glyph_at() reports unexplored until something redraws a spot.
 export function clear_glyph_buffer() {
     game.gbuf = [];
+    const lev = game.level;
+    if (!lev)
+        return;
+    for (let x = 1; x < COLNO; x++) {
+        for (let y = 0; y < ROWNO; y++) {
+            const loc = lev.at(x, y);
+            if (!loc)
+                continue;
+            loc.disp_ch = ' ';
+            loc.disp_color = NO_COLOR;
+            loc.disp_decgfx = false;
+            loc.disp_attr = 0;
+            loc.disp_glyph = GLYPH_UNEXPLORED_GLYPH;
+            loc.gnew = 0;
+        }
+    }
 }
 
 // C glyph_at() (display.h:200) — what the glyph buffer holds for the spot.
@@ -1335,6 +1366,18 @@ export function newsym(x, y) {
     }
 
     if (game.u?.ux === x && game.u?.uy === y) {
+        /* src/display.c:1043 — out of sight (blind), the hero's own square
+           is mapped by touch: feel_location() applies its own dark-floor
+           rule, `flags.dark_room ? S_darkroom : S_stone`, rather than
+           DARKROOMSYM. The difference shows on the Rogue level, where
+           DARKROOMSYM is S_stone but the Rogue symset draws S_darkroom as
+           '.', so the vacated square stays a dot behind a blind hero. */
+        if (!cansee(x, y)) {
+            feel_location(game.u.ux, game.u.uy); /* forces an update */
+            if (canspotself())
+                display_self();
+            return;
+        }
         /* Hero. Map memory keeps the topmost non-monster layer, so an object
            underfoot is what the cell reverts to after stepping off —
            src/display.c _map_location() sets lev->glyph to the object glyph,
@@ -1741,6 +1784,7 @@ export async function docrt() {
        but the endgame planes keep a one-glyph backdrop as memory and only
        this pass shows the hero's actual surroundings. */
     vision_recalc(0);
+    await notice_all_mons_flush(); /* vision.c:856, queued by vision_recalc */
 
     /* C overlays monsters and calls newsym on an unmounted hero too. That
        also updates the object beneath the hero, including display RNG. */
@@ -2393,6 +2437,9 @@ export function message_with_location(msg) {
 }
 
 export async function pline(msg) {
+    /* a monster notice queued by a synchronous docrt() (window erase) is
+       an earlier pline in C; deliver it before this message */
+    await notice_all_mons_flush();
     msg = message_with_location(msg);
     if (!msg) return;
     await prepare_pline();
@@ -3063,7 +3110,7 @@ export function magic_map_background(x, y, show) {
         loc.remembered_glyph = tg
             ? { ch: tg.ch, color: tg.color, decgfx: tg.dec,
                 glyph: { kind: 'cmap', cmap: tg.cmap } }
-            : undefined;
+            : GLYPH_NOTHING_CELL;
     if (show && tg)
         show_glyph_cell(x, y, tg.ch, tg.color, tg.dec, 0,
                         { kind: 'cmap', cmap: tg.cmap });

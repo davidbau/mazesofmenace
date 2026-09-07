@@ -50,6 +50,7 @@ import {
     Is_airlevel,
     Is_waterlevel,
     LARGEST_INT,
+    Has_contents,
     ZAP_POS,
     is_hole,
     isok,
@@ -87,6 +88,7 @@ import {
 } from './hack.js';
 import { freeinv, getobj, stackobj } from './invent.js';
 import { obj_sheds_light } from './light.js';
+import { MZ_MEDIUM } from './monsters.js';
 import { nohands, notake, throws_rocks, touch_petrifies } from './mondata.js';
 import { closed_door } from './monmove.js';
 import {
@@ -115,6 +117,7 @@ import {
     is_flimsy,
     is_missile,
     is_wet_towel,
+    is_weptool,
     matching_launcher,
     obj_no_longer_held,
     objectType,
@@ -128,25 +131,38 @@ import {
     ACID_VENOM,
     AKLYS,
     ARMOR_CLASS,
+    BAG_OF_HOLDING,
+    BAG_OF_TRICKS,
     BLINDING_VENOM,
     BOOMERANG,
     BOULDER,
     BULLWHIP,
+    CLOTH,
     COIN_CLASS,
     CORPSE,
     CREAM_PIE,
     EGG,
     ELVEN_ARROW,
     ELVEN_BOW,
+    EUCALYPTUS_LEAF,
     EXPENSIVE_CAMERA,
+    FORTUNE_COOKIE,
     GEM_CLASS,
     GLASS,
     HEAVY_IRON_BALL,
+    KELP_FROND,
     MELON,
+    OILSKIN_SACK,
     ORCISH_ARROW,
     ORCISH_BOW,
+    PANCAKE,
     POTION_CLASS,
     POT_WATER,
+    RUBBER_HOSE,
+    SACK,
+    SCROLL_CLASS,
+    SLING,
+    SPRIG_OF_WOLFSBANE,
     STRANGE_OBJECT,
     VENOM_CLASS,
     WEAPON_CLASS,
@@ -157,6 +173,7 @@ import { an, helm_simple_name, singular, the, xnameFresh } from './objnam.js';
 import { encumber_msg } from './pickup.js';
 import { body_part } from './polyself.js';
 import { rn2, rnd } from './rng.js';
+import { hitval } from './weapon.js';
 import { stairway_at } from './stairs.js';
 import { P_SKILL, weapon_type } from './startup_skills.js';
 import { Levitation, is_lava, is_pool, t_at } from './trap.js';
@@ -926,6 +943,37 @@ export function shipsAway(x, y, state) {
     return Boolean(ttmp && ttmp.tseen && is_hole(ttmp.ttyp));
 }
 
+// C ref: dothrow.c harmless_missile() (1220-1248). A pure predicate: TRUE when
+// the thrown object is too soft, light, or fragile to cause meaningful noise
+// or damage when it hits iron bars. Used by hit_bars() to select the sound
+// effect and by hits_bars() indirectly through hit_bars().
+export function harmless_missile(obj, state = game) {
+    const otyp = obj.otyp;
+    switch (otyp) {
+    case SLING:
+    case EUCALYPTUS_LEAF:
+    case KELP_FROND:
+    case SPRIG_OF_WOLFSBANE:
+    case FORTUNE_COOKIE:
+    case PANCAKE:
+        return true;
+    case RUBBER_HOSE:
+    case BAG_OF_TRICKS:
+        return obj.spe < 1;
+    case SACK:
+    case OILSKIN_SACK:
+    case BAG_OF_HOLDING:
+        return !Has_contents(obj);
+    default:
+        if (obj.oclass === SCROLL_CLASS)
+            return true;
+        if (objectType(otyp, state).oc_material === CLOTH)
+            return true;
+        break;
+    }
+    return false;
+}
+
 // C ref: hack.c impact_disturbs_zombies() (1786-1794) over obj.h is_flimsy()
 // (418-420). A heavy landing wakes buried zombies; a light or soft object
 // leaves them alone.
@@ -935,6 +983,46 @@ export function impact_disturbs_zombies(obj, violent, state = game) {
         return;
 
     disturb_buried_zombies(obj.ox, obj.oy, state);
+}
+
+// C ref: dothrow.c omon_adj() (1913-1947). Adjust to-hit for the target
+// monster's size, status (sleeping, immobilized), and the specific object
+// thrown. Called from ohitmon() (mthrowu.c) and thitmonst() (dothrow.c).
+export function omon_adj(mon, obj, mon_notices, rawEnv = {}) {
+    const state = rawEnv.state ?? game;
+    const random = rawEnv.random ?? { rn2 };
+    let tmp = 0;
+
+    /* size of target affects the chance of hitting */
+    tmp += (mon.data.msize - MZ_MEDIUM); /* -2..+5 */
+    /* sleeping target is more likely to be hit */
+    if (mon.msleeping) {
+        tmp += 2;
+    }
+    /* ditto for immobilized target */
+    if (!mon.mcanmove || !mon.data.mmove) {
+        tmp += 4;
+        if (mon_notices && mon.data.mmove && !random.rn2(10)) {
+            mon.mcanmove = 1;
+            mon.mfrozen = 0;
+        }
+    }
+    /* some objects are more likely to hit than others */
+    switch (obj.otyp) {
+    case HEAVY_IRON_BALL:
+        if (obj !== state.uball)
+            tmp += 2;
+        break;
+    case BOULDER:
+        tmp += 6;
+        break;
+    default:
+        if (obj.oclass === WEAPON_CLASS || is_weptool(obj, state)
+            || obj.oclass === GEM_CLASS)
+            tmp += hitval(obj, mon, state);
+        break;
+    }
+    return tmp;
 }
 
 // C ref: dothrow.c throw_gold() (2655-2731). The coin arm of throw_obj(), and

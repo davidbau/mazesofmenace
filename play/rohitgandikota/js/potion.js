@@ -65,7 +65,7 @@ import { bless, curse, mkobj, splitobj, unbless, uncurse } from './mkobj.js';
 import { distu, s_suffix } from './hacklib.js';
 import { pluslvl } from './exper.js';
 import { heal_legs } from './do.js';
-import { speed_up } from './zap.js';
+import { speed_up, obj_resists } from './zap.js';
 import { INTRINSIC, FROMOUTSIDE } from './const.js';
 import { monstseesu, monstunseesu } from './mondata.js';
 import { fall_asleep } from './timeout.js';
@@ -109,6 +109,16 @@ import { ARTICLE_THE, SUPPRESS_IT, SUPPRESS_SADDLE, W_SADDLE,
 import { float_vs_flight } from './polyself.js';
 import { delayed_killer, find_delayed_killer, dealloc_killer } from './end.js';
 import { can_reach_floor } from './pickup.js';
+import { mksobj } from './mkobj.js';
+import { remove_worn_item } from './steal.js';
+import { rndmonnam, a_monnam } from './do_name.js';
+import { verbalize } from './pline.js';
+import { tamedog } from './dog.js';
+import { set_malign, makemon, MM_NOMSG } from './makemon.js';
+import { mongone } from './mon.js';
+import { something, Something, DISP_ALWAYS, DISP_END } from './const.js';
+import { glyph_at, tmp_at } from './display.js';
+import { makewish } from './zap.js';
 const G_GONE = MFLAGS.G_GENOD | MFLAGS.G_EXTINCT;
 
 function note_unported_potion(what) {
@@ -471,6 +481,28 @@ export async function H2Opotion_dip(potion, targobj, useeit, objphrase) {
         res = true;
     }
     return res;
+}
+
+/* src/potion.c:1595 impact_arti_light() — used when blessed or cursed scroll
+   of light interacts with artifact light; if the lit object (Sunsword or
+   gold dragon scales/mail) doesn't resist, treat like dipping it in holy or
+   unholy water (BUC change, glow message) */
+export async function impact_arti_light(obj, worsen, seeit) {
+    let otmp;
+
+    /* if already worst/best BUC it can be, or if it resists, do nothing */
+    if ((worsen ? obj.cursed : obj.blessed) || obj_resists(obj, 25, 75))
+        return;
+
+    /* curse() and bless() take care of maybe_adjust_light() */
+    otmp = mksobj(ONAMES.POT_WATER, true, false);
+    if (worsen)
+        curse(otmp);
+    else
+        bless(otmp);
+    await H2Opotion_dip(otmp, obj, seeit, seeit ? Yobjnam2(obj, 'glow') : '');
+    /* dealloc_obj(otmp) */
+    return;
 }
 
 // src/potion.c:1624 potionhit(). The bottle name and impact damage are drawn
@@ -1747,6 +1779,28 @@ export async function dopotion(otmp) {
     return ECMD_TIME;
 }
 
+// src/potion.c:481 ghost_from_bottle()
+async function ghost_from_bottle() {
+    const mtmp = await makemon(game.mons[PMNAMES.PM_GHOST], game.u.ux, game.u.uy,
+                               MM_NOMSG);
+
+    if (!mtmp) {
+        await pline('This bottle turns out to be empty.');
+        return;
+    }
+    if (Blind()) {
+        await pline(`As you open the bottle, ${something} emerges.`);
+        return;
+    }
+    await pline(`As you open the bottle, an enormous ${
+                Hallucination() ? rndmonnam(null) : 'ghost'} emerges!`);
+    if (game.flags?.verbose !== false)
+        await You('are frightened to death, and unable to move.');
+    nomul(-3);
+    game.multi_reason = 'being frightened to death';
+    game.nomovemsg = 'You regain your composure.';
+}
+
 // src/potion.c:526 dodrink() — the 'q' command.
 export async function dodrink(drink_ok) {
     /* Strangled needs the amulet of strangulation */
@@ -1776,12 +1830,25 @@ export async function dodrink(drink_ok) {
         }
     }
 
-    const otmp = await getobj('drink', drink_ok, GETOBJ_NOFLAGS);
+    let otmp = await getobj('drink', drink_ok, GETOBJ_NOFLAGS);
     if (!otmp)
         return ECMD_CANCEL;
 
-    if (otmp.owornmask)
-        note_unported_potion('dodrink:worn_potion');
+    /*
+     * 5.0: rely on useup() unless the object is actually worn.  Otherwise
+     * drinking a stack of unpaid potions one by one in a shop makes each
+     * one a separate used-up item for 'Ix' invent display and for itemized
+     * shop billing instead of having a single stack with quantity greater
+     * than 1.
+     */
+    if (otmp.owornmask) {
+        if (otmp.quan > 1) {
+            otmp = splitobj(otmp, 1);
+            otmp.owornmask = 0; /* rest of original stack is unaffected */
+        } else {
+            await remove_worn_item(otmp, false);
+        }
+    }
     otmp.in_use = true;                 /* you've opened the stopper */
 
     /* src/potion.c:601 — milky/smoky bottles may hold an occupant; the
@@ -1790,13 +1857,13 @@ export async function dodrink(drink_ok) {
     if (descr === 'milky'
         && !((game.mvitals?.[PMNAMES.PM_GHOST]?.mvflags ?? 0) & G_GONE)
         && !rn2(13 + 2 * (game.mvitals?.[PMNAMES.PM_GHOST]?.born ?? 0))) {
-        note_unported_potion('dodrink:ghost_from_bottle');
+        await ghost_from_bottle();
         useup(otmp);
         return ECMD_TIME;
     } else if (descr === 'smoky'
         && !((game.mvitals?.[PMNAMES.PM_DJINNI]?.mvflags ?? 0) & G_GONE)
         && !rn2(13 + 2 * (game.mvitals?.[PMNAMES.PM_DJINNI]?.born ?? 0))) {
-        note_unported_potion('dodrink:djinni_from_bottle');
+        await djinni_from_bottle(otmp);
         useup(otmp);
         return ECMD_TIME;
     }
@@ -2394,6 +2461,85 @@ async function peffect_object_detection(otmp) {
         return 1; /* nothing detected */
     exercise(A_WIS, true);
     return 0;
+}
+
+// src/potion.c:2796 mongrantswish() — *monp grants a wish and then leaves
+// the game. `monp` is a holder object whose .mon is cleared, the C's
+// pointer-to-pointer.
+async function mongrantswish(monp) {
+    const mon = monp.mon;
+    const mx = mon.mx, my = mon.my, glyph = glyph_at(mx, my);
+
+    /* remove the monster first in case wish proves to be fatal
+       (blasted by artifact), to keep it out of resulting bones file */
+    mongone(mon);
+    monp.mon = null; /* inform caller that monster is gone */
+    /* hide that removal from player--map is visible during wish prompt */
+    await tmp_at(DISP_ALWAYS, glyph);
+    await tmp_at(mx, my);
+    /* grant the wish */
+    await makewish();
+    /* clean up */
+    await tmp_at(DISP_END, 0);
+}
+
+// src/potion.c:2815 djinni_from_bottle()
+export async function djinni_from_bottle(obj) {
+    let mtmp;
+    let chance;
+
+    if (!(mtmp = await makemon(game.mons[PMNAMES.PM_DJINNI], game.u.ux, game.u.uy,
+                               MM_NOMSG))) {
+        await pline('It turns out to be empty.');
+        return;
+    }
+
+    if (!Blind()) {
+        await pline(`In a cloud of smoke, ${a_monnam(mtmp)} emerges!`);
+        await pline(`${Monnam(mtmp)} speaks.`);
+    } else {
+        await You('smell acrid fumes.');
+        await pline(`${Something} speaks.`);
+    }
+
+    chance = rn2(5);
+    if (obj.blessed)
+        chance = (chance === 4) ? rnd(4) : 0;
+    else if (obj.cursed)
+        chance = (chance === 0) ? rn2(4) : 4;
+    /* 0,1,2,3,4:  b=80%,5,5,5,5; nc=20%,20,20,20,20; c=5%,5,5,5,80 */
+
+    /* SetVoice(mtmp, 0, 80, 0); */
+    switch (chance) {
+    case 0: {
+        await verbalize('I am in your debt.  I will grant one wish!');
+        /* give a wish and discard the monster (mtmp set to null) */
+        const monp = { mon: mtmp };
+        await mongrantswish(monp);
+        mtmp = monp.mon;
+        break;
+    }
+    case 1:
+        await verbalize('Thank you for freeing me!');
+        await tamedog(mtmp, null, false);
+        break;
+    case 2:
+        await verbalize('You freed me!');
+        mtmp.mpeaceful = 1;
+        set_malign(mtmp);
+        break;
+    case 3:
+        await verbalize('It is about time!');
+        if (canspotmon(mtmp))
+            await pline(`${Monnam(mtmp)} vanishes.`);
+        mongone(mtmp);
+        break;
+    default:
+        await verbalize('You disturbed me, fool!');
+        mtmp.mpeaceful = 0;
+        set_malign(mtmp);
+        break;
+    }
 }
 
 // src/potion.c:2873 split_mon(); split a monster (or the hero) whose heat has

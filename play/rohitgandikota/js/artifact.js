@@ -402,6 +402,13 @@ const SPFX_INTEL = 0x04, SPFX_RESTR = 0x02, SPFX_SPEAK = 0x08,
       SPFX_PROTECT = 0x08000000;
 
 // src/artifact.c get_artifact() — the artilist record for an object.
+// src/artifact.c:2299 artifact_has_invprop()
+export function artifact_has_invprop(otmp, inv_prop) {
+    const arti = get_artifact(otmp);
+
+    return (arti !== artifact_records[0]) && (arti.inv_prop === inv_prop);
+}
+
 export function get_artifact(obj) {
     const n = obj?.oartifact ?? 0;
     return (n > 0 && n < artifact_records.length) ? artifact_records[n]

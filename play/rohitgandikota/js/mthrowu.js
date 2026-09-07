@@ -93,6 +93,19 @@ import { rn2 } from './rng.js';
 import { ATTKS } from './monst_data.js';
 import { Deaf, Hallucination, Sleep_resistance, Blind } from './youprop.js';
 import { You_hear } from './pline.js';
+import { Confusion, Stunned, Fumbling, Underwater } from './youprop.js';
+import { Role_if } from './attrib.js';
+import { PMNAMES } from './monst_data.js';
+import { artifact_hit } from './artifact.js';
+import { monkilled, is_pool, is_lava } from './mon.js';
+import { snuff_candle } from './apply.js';
+import { add_to_minv, is_flammable } from './mkobj.js';
+import { obj_sheds_light } from './light.js';
+import { mbodypart } from './polyself.js';
+import { mhis } from './mondata.js';
+import { tmp_at } from './display.js';
+import { Something, something, HAND, FOOT, ARM, BACKTRACK, DISP_TETHER,
+         DISP_FLASH, DISP_END } from './const.js';
 
 // src/mthrowu.c:31 hallublasts[]
 const hallublasts = [
@@ -447,24 +460,17 @@ async function ucatchgem(gem, mon) {
 }
 
 async function u_catch_thrown_obj(otmp) {
-    const roleName = game.urole?.name?.m ?? game.urole?.name;
     const catch_chance = 100 - ACURR(A_DEX)
-        - ((roleName === 'Monk' || roleName === 'Rogue')
-           ? 20 : 0);
+                         - ((Role_if(PMNAMES.PM_MONK) || Role_if(PMNAMES.PM_ROGUE))
+                            ? 20 : 0);
 
-    const impaired = Blind()
-        || game.u.intrinsic?.HConfusion || game.u.uprops?.CONFUSION
-        || game.u.intrinsic?.HStun || game.u.uprops?.STUNNED
-        || game.u.uprops?.FUMBLING;
-    if (!impaired
+    if (!Blind() && !Confusion() && !Stunned() && !Fumbling()
         && otmp.oclass !== OCLASSES.VENOM_CLASS
         && !nohands(game.youmonst.data) && freehand()
-        && calc_capacity(otmp.owt) <= SLT_ENCUMBER
-        && !rn2(catch_chance)) {
-        const simpleName = simpleonames(otmp);
-        await hold_another_object(otmp,
-                                  'You catch, but drop, the %s.', simpleName,
-                                  `You catch the ${simpleName}!`);
+        && calc_capacity(otmp.owt) <= SLT_ENCUMBER && !rn2(catch_chance)) {
+        const buf = `You catch the ${simpleonames(otmp)}!`;
+        await hold_another_object(otmp, 'You catch, but drop, the %s.',
+                                  simpleonames(otmp), buf);
         return true;
     }
     return false;
@@ -474,6 +480,9 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
     let mtmp, singleobj;
     let hitu = 0, blindinc = 0;
     let tempMissile = null;
+    const arw = autoreturn_weapon(obj);
+    const tethered_weapon = (obj === MON_WEP(mon) && !!arw && arw.tethered !== 0);
+    let return_flightpath = false;
 
     game.bhitpos = { x, y };
     game.notonhead = false;     /* reset potentially stale value */
@@ -495,6 +504,15 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
     /* display.c tmp_at() restores the preceding temporary cell whenever the
        missile advances, then leaves the new one painted during messages. */
     const show_missile = async () => {
+        if (tethered_weapon) {
+            /* tmp_at(DISP_TETHER, ...) style: earlier positions keep their
+               tether glyph until DISP_END */
+            await tmp_at(game.bhitpos.x, game.bhitpos.y);
+            if (game.animationFrame) {
+                await game.animationFrame();
+            }
+            return;
+        }
         if (tempMissile) {
             newsym(tempMissile.x, tempMissile.y);
             tempMissile = null;
@@ -550,7 +568,10 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
     game.mesg_given = 0; /* a 'missile misses' message not yet shown */
     /* tmp_at(DISP_FLASH, glyph) flushes map updates before the first flight
        delay, including restoration left buffered by a preceding shot. */
-    await flush_screen(0);
+    if (!tethered_weapon)
+        await flush_screen(0);
+    else
+        await tmp_at(DISP_TETHER, missileGlyph);
 
     while (range-- > 0) { /* loop is always exited by break */
         game.bhitpos.x += dx;
@@ -582,7 +603,7 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
             /* src/mthrowu.c:695 — hero may catch the thrown object;
                rn2(catch_chance) draws whenever unimpaired with a free
                hand and light enough load. */
-            if (await u_catch_thrown_obj(singleobj))
+            if (!tethered_weapon && await u_catch_thrown_obj(singleobj))
                 break;
 
             if (singleobj.oclass === OCLASSES.POTION_CLASS) {
@@ -658,7 +679,12 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
             }
             await stop_occupation();
             if (hitu) {
-                await drop_throw(singleobj, hitu, game.u.ux, game.u.uy);
+                if (!tethered_weapon) {
+                    await drop_throw(singleobj, hitu, game.u.ux, game.u.uy);
+                } else {
+                    /* ready for return journey */
+                    return_flightpath = true;
+                }
                 break;
             }
         }
@@ -674,8 +700,13 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
                     && (cansee(game.bhitpos.x, game.bhitpos.y)
                         || (game.marcher && canseemon(game.marcher))))
                     await pline(`${The(mshot_xname(singleobj))} misses.`);
-                await drop_throw(singleobj, 0,
-                                 game.bhitpos.x, game.bhitpos.y);
+                if (!tethered_weapon) {
+                    await drop_throw(singleobj, 0,
+                                     game.bhitpos.x, game.bhitpos.y);
+                } else {
+                    /*ready for return journey */
+                    return_flightpath = true;
+                }
             }
             break;
         }
@@ -683,7 +714,13 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
         await show_missile();
     }
     await show_missile();
-    end_missile();
+    if (arw && return_flightpath)
+        await return_from_mtoss(mon, singleobj, tethered_weapon);
+        /* mon could be DEADMONSTER now */
+    else if (tethered_weapon)
+        await tmp_at(DISP_END, 0);
+    else
+        end_missile();
     game.mesg_given = 0; /* reset */
 
     if (blindinc) {
@@ -695,6 +732,124 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
             await Your('vision quickly clears.'); /* Your1(vision_clears) */
     }
     game.thrownobj = null;
+}
+
+/* src/mthrowu.c:889 — static long do_not_annoy in return_from_mtoss() */
+let do_not_annoy = 0;
+
+// src/mthrowu.c:851 return_from_mtoss() — an autoreturn weapon flies back to
+// the monster that threw it.
+async function return_from_mtoss(magr, otmp, tethered_weapon) {
+    const impaired = !!(magr.mconf || magr.mstun || magr.mblinded);
+    let notcaught = false, hits_thrower = false;
+    let x = game.bhitpos.x, y = game.bhitpos.y;
+    const made_it_back = rn2(100);
+    let dmg = 0;
+
+    if (otmp && made_it_back) {
+        /* it made it back to thrower's location */
+        if (tethered_weapon) {
+            await tmp_at(DISP_END, BACKTRACK);
+        } else {
+            const dx = sgn(x - magr.mx),
+                  dy = sgn(y - magr.my);
+
+            if (x !== magr.mx || y !== magr.my) {
+                await tmp_at(DISP_FLASH, temporary_object_glyph(otmp));
+                while (isok(x, y) && (x !== magr.mx || y !== magr.my)) {
+                    await tmp_at(x, y);
+                    if (game.animationFrame)
+                        await game.animationFrame();
+                    x -= dx;
+                    y -= dy;
+                }
+                await tmp_at(DISP_END, 0);
+            }
+        }
+        x = magr.mx;
+        y = magr.my;
+        if (!impaired && rn2(100)) {
+            if (!do_not_annoy || (game.moves - do_not_annoy) > 500) {
+                await pline(`${Tobjnam(otmp, 'return')} to ${
+                    s_suffix(mon_nam(magr))} ${mbodypart(magr, HAND)}!`);
+                do_not_annoy = game.moves;
+            }
+            if (otmp) {
+                add_to_minv(magr, otmp);
+                if (tethered_weapon) {
+                    magr.mw = otmp;
+                    otmp.owornmask |= W_WEP;
+                }
+            }
+            if (cansee(x, y))
+                newsym(x, y);
+        } else {
+            const mlevitating = false;  /* msg future-proofing only */
+
+            dmg = rn2(2);
+            if (!dmg) {
+                if (canseemon(magr)) {
+                    await pline(`${Tobjnam(otmp, 'return')} back to ${
+                        mon_nam(magr)}, landing ${
+                        mlevitating ? 'beneath' : 'at'} ${mhis(magr)} ${
+                        makeplural(mbodypart(magr, FOOT))}.`);
+                } else if (!Deaf()) {
+                    await You_hear(`${Something} land near ${mon_nam(magr)}.`);
+                }
+            } else {
+                dmg += rnd(3);
+                if (canseemon(magr)) {
+                    await pline(`${Tobjnam(otmp, 'fly')} back toward ${
+                        mon_nam(magr)}, hitting ${mhis(magr)} ${body_part(ARM)}!`);
+                } else if (!Deaf()) {
+                    await You_hear(`${something} hit ${mon_nam(magr)} with a thud!`);
+                }
+                hits_thrower = true;
+            }
+            notcaught = true;
+        }
+    } else {
+        /* it didn't make it back to thrower's location */
+        if (tethered_weapon)
+            await tmp_at(DISP_END, 0);
+        await You_hear('a loud snap!');
+        notcaught = true;
+    }
+    if (otmp) {
+        if (hits_thrower) {
+            if (otmp.oartifact) {
+                const dmgbox = { v: dmg };
+                await artifact_hit(null, magr, otmp, dmgbox, 0);
+                dmg = dmgbox.v;
+            }
+            magr.mhp -= dmg;
+            if (DEADMONSTER(magr))
+                await monkilled(magr, canspotmon(magr) ? '' : null, ATTKS.AD_PHYS);
+        }
+        if (notcaught) {
+            await snuff_candle(otmp);
+            if (!ship_object(otmp, x, y, false)) {
+                if (await flooreffects(otmp, x, y, 'drop')) {
+                    if (cansee(x, y))
+                        newsym(x, y);
+                    return;
+                }
+                place_object(otmp, x, y);
+                stackobj(otmp);
+            }
+            if (!Deaf() && !Underwater()) {
+                /* Some sound effects when item lands in water or lava */
+                if (is_pool(x, y) || (is_lava(x, y) && !is_flammable(otmp))) {
+                    /* Soundeffect(se_splash, 50); */
+                    await pline((weight(otmp) > 9) ? 'Splash!' : 'Plop!');
+                }
+            }
+            if (obj_sheds_light(otmp))
+                game.vision_full_recalc = 1;
+        }
+    }
+    if (cansee(x, y))
+        newsym(x, y);
 }
 
 // src/mthrowu.c:262 monshoot() — fire a volley of monmulti() missiles.

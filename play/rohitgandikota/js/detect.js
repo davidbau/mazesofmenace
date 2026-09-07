@@ -38,7 +38,7 @@ import { wake_nearto } from './mon.js';
 import { Your, You_see, pline_The, There, Norep, set_msg_xy } from './pline.js';
 import { rnd, rn2_on_display_rng } from './rng.js';
 import { I_SPECIAL, A_INT, u_at, OBJ_AT, Has_contents, TRAPPED_CHEST, TRAPPED_DOOR, BEAR_TRAP, D_BROKEN, D_ISOPEN, DRAWBRIDGE_UP, IS_DOOR, M_AP_OBJECT, M_AP_MONSTER, ARTICLE_YOUR, ARTICLE_THE, SUPPRESS_SADDLE, FOOT, NOSE, TOE, TIMEOUT, KILLED_BY_AN, BURIED_TOO, CONTAINED_TOO, NO_PART, BOLT_LIM, TOPLINE_EMPTY, TOPLINE_NEED_MORE } from './const.js';
-import { display_self, more, unmap_object, glyph_at, see_monsters, covers_objects, flash_glyph_at } from './display.js';
+import { display_self, more, unmap_object, glyph_at, see_monsters, covers_objects, flash_glyph_at, map_engraving } from './display.js';
 import { OCLASSES, MATERIALS } from './objects_data.js';
 import { PMNAMES, NUMMONS } from './monst_data.js';
 import { Deaf } from './youprop.js';
@@ -611,20 +611,12 @@ export function show_map_spot(x, y, cnf) {
 
     if (!IS_FURNITURE(loc.typ)) {
         const t = t_at(x, y);
+        let ep;
         if (t && t.tseen) {
             map_trap(t, 1);
-        } else if ((game.level?.lev_engr || [])
-                       .some(e => e.x === x && e.y === y)) {
-            /* map_engraving(ep, 1) — engraving_glyph via newsym covers the
-               visible case; write the engraving into memory too */
-            const eg = { ch: loc.typ === CORR ? '#' : '`',
-                         color: 12 /* CLR_BRIGHT_BLUE */, decgfx: false,
-                         glyph: { kind: 'cmap',
-                                  cmap: cmap_names[loc.typ === CORR
-                                      ? 'S_engrcorr' : 'S_engroom'] } };
-            if (game.level?.flags?.hero_memory)
-                loc.remembered_glyph = eg;
-            newsym(x, y);
+        } else if ((ep = (game.level?.lev_engr || [])
+                            .find(e => e.x === x && e.y === y)) && !cnf) {
+            map_engraving(ep, 1);
         }
         /* the remembered-object re-show is already handled: memory keeps
            object glyphs (magic_map_background skips them) and newsym shows

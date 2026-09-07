@@ -125,6 +125,7 @@ import { rnd } from './rng.js';
 import { find_ac } from './do_wear.js';
 import { clear_splitobjs } from './mkobj.js';
 import { pickup } from './pickup.js';
+import { notice_mon_off, notice_mon_on, notice_all_mons, notice_all_mons_flush } from './hack.js';
 
 // src/allmain.c moveloop_preamble(). unixmain calls this after newgame() has
 // printed welcome and wd_message() has reported explore mode. That ordering
@@ -152,7 +153,7 @@ export async function newgame_moveloop_preamble(resuming = false) {
 
     if (!resuming) {
         g.context.rndencode = rnd(9000);
-        set_wear(null);
+        await set_wear(null);
         for (const obj of (g.invent || []))
             obj.pickup_prev = 0;
         await pickup(1);
@@ -240,6 +241,8 @@ export async function newgame() {
         }
     }
 
+    /* make sure welcome messages are given before noticing monsters */
+    notice_mon_off();
     game.context.ident = 2;  /* id 1 is reserved for gy.youmonst */
     game.context.warnlevel = 1;
     game.context.next_attrib_check = 600;
@@ -516,6 +519,12 @@ export async function newgame() {
         const { livelog_add } = await import('./pline.js');
         livelog_add(`${g.plname} the${buf} entered the dungeon`);
     }
+    notice_mon_on(); /* now we can notice monsters */
+    if (g.flags?.mention_map) /* a11y.glyph_updates */
+        (game.unported ||= new Set()).add('allmain:dolookaround');
+    else
+        notice_all_mons(true);
+    await notice_all_mons_flush();
 
     return false;
 }
@@ -705,10 +714,12 @@ export async function moveloop_core() {
        per-input hallucination redraw, status, and hero-form effects. */
     if (g._cmd_prefix_pending) {
         await rhack(0);
+        await notice_all_mons_flush(); /* notices queued by a window erase's docrt */
         if (g.u.utotype)
             await deferred_goto();
         if (g.vision_full_recalc)
             vision_recalc(0); /* vision! */
+        await notice_all_mons_flush();
         return;
     }
 
@@ -1099,6 +1110,7 @@ export async function moveloop_core() {
                reading a key. parse() does not run for repeats, so no count
                collection and no topline clear happen here. */
             await rhack(g.cmd_key ? g.cmd_key.charCodeAt(0) : 0);
+            await notice_all_mons_flush(); /* notices queued by a window erase's docrt */
         }
         return;
     }
@@ -1109,6 +1121,7 @@ export async function moveloop_core() {
     // before dispatching, so each message survives exactly until the frame
     // that displays it has been captured.
     await rhack(0);
+    await notice_all_mons_flush(); /* notices queued by a window erase's docrt */
 
     /* src/allmain.c:538 — a command that scheduled a level change takes it
        here, AFTER rhack() returns, not inside the command itself. */

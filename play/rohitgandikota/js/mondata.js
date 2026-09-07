@@ -10,7 +10,8 @@
 // exception is pronoun_gender() at the bottom, which rolls rn2(4) when the
 // hero is hallucinating.
 
-import { W_AMUL } from './const.js';
+import { W_AMUL, W_ARMOR, W_ACCESSORY, W_WEP, W_SWAPWEP } from './const.js';
+import { is_weptool } from './mkobj.js';
 import { Breathless } from './youprop.js';
 import { monsndx } from './makemon.js';
 import { M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_SLEEP, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_POISON, M_SEEN_ACID } from './const.js';
@@ -557,8 +558,24 @@ export function resists_magm(mon) {
         || ptr.pmidx === PMNAMES.PM_BABY_GRAY_DRAGON
         || dmgtype(ptr, ATTKS.AD_RBRE))
         return true;
-
-    /* the wielded-weapon and worn/carried loops need monster inventory */
+    const is_you = (mon === game.youmonst);
+    /* check for magic resistance granted by wielded weapon */
+    let o = is_you ? game.u.uwep : MON_WEP(mon);
+    if (o && o.oartifact && defends(ATTKS.AD_MAGM, o))
+        return true;
+    /* check for magic resistance granted by worn or carried items */
+    let slotmask = W_ARMOR | W_ACCESSORY;
+    if (!is_you /* assumes monsters don't wield non-weapons */
+        || (game.u.uwep && (game.u.uwep.oclass === OCLASSES.WEAPON_CLASS
+                            || is_weptool(game.u.uwep, game.objects))))
+        slotmask |= W_WEP;
+    if (is_you && game.u.twoweap)
+        slotmask |= W_SWAPWEP;
+    for (o of ((is_you ? game.invent : mon.minvent) || []))
+        if (((o.owornmask & slotmask) !== 0
+             && game.objects[o.otyp].oc_oprop === ANTIMAGIC)
+            || (o.oartifact && defends_when_carried(ATTKS.AD_MAGM, o)))
+            return true;
     return false;
 }
 
@@ -1278,3 +1295,6 @@ export function hates_silver(ptr) {
            || ptr === game.mons[PMNAMES.PM_SHADE]
            || (ptr.mlet === MONSYMS.S_IMP && ptr !== game.mons[PMNAMES.PM_TENGU]);
 }
+
+// include/mondata.h helpless() — asleep or paralyzed
+export const helpless = (mon) => !!(mon.msleeping || !mon.mcanmove);

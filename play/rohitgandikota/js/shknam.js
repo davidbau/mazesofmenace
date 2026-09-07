@@ -25,6 +25,10 @@ import { rnd as _rnd } from './rng.js';
 import { distmin } from './hacklib.js';
 import { newsym } from './display.js';
 import { depth, Is_special } from './dungeon.js';
+import { inside_shop } from './shk.js';
+import { make_engr_at } from './engrave.js';
+import { DUST, CORR, ROOM } from './const.js';
+import { in_rooms } from './hack.js';
 import { SHKNAMES, SHKNMS_ORDER } from './shknam_data.js';
 
 // src/shknam.c:19 VEGETARIAN_CLASS — not a real object class, a marker the
@@ -378,8 +382,23 @@ export async function stock_room(shp_indx, sroom) {
     }
     if (dlev.doormask & D_TRAPPED)
         dlev.doormask = D_LOCKED;
-    if (dlev.doormask === D_LOCKED)
-        (game.unported ||= new Set()).add('shknam:closed_for_inventory_engr');
+    if (dlev.doormask === D_LOCKED) {
+        let m = dx, n = dy;
+
+        if (inside_shop(dx + 1, dy))
+            m--;
+        else if (inside_shop(dx - 1, dy))
+            m++;
+        if (inside_shop(dx, dy + 1))
+            n--;
+        else if (inside_shop(dx, dy - 1))
+            n++;
+        make_engr_at(m, n, 'Closed for inventory', null, 0, DUST);
+        const mn = game.level.at(m, n);
+        if (mn.typ !== CORR && mn.typ !== ROOM)
+            mn.typ = (Is_special(game.u.uz) || in_rooms(m, n, 0).length)
+                     ? ROOM : CORR;
+    }
 
     /* svc.context.tribute.enabled is set TRUE at game start (allmain.c:776),
        so this block RUNS and its rnd(stockcount) is not optional. */

@@ -3512,7 +3512,7 @@ const AC_VALUE = (AC) => ((AC >= 0) ? AC : -rnd(-AC));
 const BZ_OFS_WAN = (otyp) => (Math.abs(otyp - ONAMES.WAN_MAGIC_MISSILE) % 10);
 const BZ_OFS_SPE = (otyp) => (Math.abs(otyp - ONAMES.SPE_MAGIC_MISSILE) % 10);
 const BZ_U_WAND = (bztyp) => (0 + bztyp);
-const BZ_U_SPELL = (bztyp) => (10 + bztyp);
+export const BZ_U_SPELL = (bztyp) => (10 + bztyp);
 /* include/youprop.h Half_spell_damage, Stunned */
 const Half_spell_damage = () => !!(game.u.intrinsic?.HHalf_spell_damage || game.u.uprops?.HALF_SPDAM);
 const Stunned = () => !!(game.u.intrinsic?.HStun || game.u.uprops?.STUNNED);
@@ -5599,7 +5599,7 @@ export async function weffects(obj) {
 
 // src/zap.c:3480 spell_damage_bonus(); augment damage for a spell based on
 // the hero's intelligence (and level)
-function spell_damage_bonus(dmg) /* base amount to be adjusted by bonus or penalty */
+export function spell_damage_bonus(dmg) /* base amount to be adjusted by bonus or penalty */
 {
     const intell = ACURR(A_INT);
 

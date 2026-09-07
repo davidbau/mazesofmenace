@@ -271,6 +271,8 @@ import {
     RIGHT_SIDE,
     BOTH_SIDES,
     TELEPORT_CONTROL,
+    POLYMORPH_CONTROL,
+    REGENERATION,
     JUMPING,
     HALLUC_RES, SEARCHING, REFLECTING, LIFESAVED,
     FIRE_RES, SHOCK_RES, TELEPAT, WARNING,
@@ -4748,6 +4750,30 @@ function hero_Teleport_control(u = game.u || {}) {
     );
 }
 
+/**
+ * C ref: youprop.h Polymorph_control —
+ * HPolymorph_control || EPolymorph_control (uprops + flat mirrors).
+ */
+function hero_Polymorph_control(u = game.u || {}) {
+    return !!(
+        (u.HPolymorph_control | 0)
+        || (u.EPolymorph_control | 0)
+        || u.Polymorph_control
+        || (u.uprops?.[POLYMORPH_CONTROL]?.intrinsic | 0)
+        || (u.uprops?.[POLYMORPH_CONTROL]?.extrinsic | 0)
+    );
+}
+
+/** C ref: youprop.h Regeneration — HRegeneration || ERegeneration. */
+function hero_Regeneration(u = game.u || {}) {
+    return !!(
+        (u.HRegeneration | 0)
+        || (u.ERegeneration | 0)
+        || (u.uprops?.[REGENERATION]?.intrinsic | 0)
+        || (u.uprops?.[REGENERATION]?.extrinsic | 0)
+    );
+}
+
 /* C monattk.h — local for item_resistance_message / adtyp_to_prop */
 const AD_FIRE = 2;
 const AD_COLD = 3;
@@ -5050,7 +5076,8 @@ function status_core_lines(final = 0, opts = {}) {
  * Named omissions: poly/vamp; night/midnight; SCORE_ON_BOTL; most
  * status troubles beyond Deaf/Sleepy; vision beyond
  * Searching/Infravision/Stealth (See_invisible/telepathic/warned live);
- * from_what suffixes; blocked-Stealth / other appearance props;
+ * from_what suffixes; blocked-Stealth / other appearance props
+ * (Displaced + Polymorph_control live, D-2025);
  * Teleportation/Aggravate/Conflict/Jumping-Teleport arms; Regen/digestion/
  * combat-inc/defense/half-damage; shape-changers/Hate_silver/Free/Fixed_abil;
  * Sick `defended(AD_DISE)` form arm.
@@ -5398,9 +5425,17 @@ export async function enlightenment(mode, final = 0) {
             if (racePm != null) hasInfra = infraFn(monsFn(racePm));
         }
         if (hasInfra) lines.push(you_have('infravision', from_what(INFRAVISION)));
-        // C: Stealth after Infravision / appearance block (blocked-Stealth
+        // C insight.c:1667-1670 — Displaced before Stealth (blocked-Stealth
         // "would be stealthy" arm deferred).
+        if (hero_Displaced(u)) lines.push(you_are('displaced', from_what(DISPLACED)));
         if (hero_Stealth(u)) lines.push(you_are('stealthy', from_what(STEALTH)));
+        // C insight.c:1768-1769 — Regeneration before magic_negation
+        // (Slow_digestion / combat-inc / defense deferred).
+        if (hero_Regeneration(u)) {
+            lines.push(enlght_line_txt(
+                'You regenerate', final ? 'd' : '', '', from_what(REGENERATION),
+            ));
+        }
         // C: magic_negation → warded/guarded/protected
         const armpro = magic_negation_you();
         if (armpro > 0) {
@@ -5430,6 +5465,11 @@ export async function enlightenment(mode, final = 0) {
                     ));
                 }
             }
+        }
+        // C insight.c:1857-1858 — Polymorph_control after the shape-change
+        // arms (Unchanging / Polymorph / Upolyd deferred), before Fast.
+        if (hero_Polymorph_control(u)) {
+            lines.push(you_have('polymorph control', from_what(POLYMORPH_CONTROL)));
         }
         // C insight.c:1897-1906 — Fast / Reflecting / Lifesaved
         // (shape-changers / Hate_silver / Free_action / Fixed_abil deferred).
@@ -6065,6 +6105,13 @@ export async function doattributes(enl_mode = null) {
                 'You ', 'have ', 'teleport control', from_what(TELEPORT_CONTROL),
             )));
         }
+        // C insight.c:1768-1769 — Regeneration before magic_negation
+        // (Slow_digestion / combat-inc / defense deferred).
+        if (hero_Regeneration(u)) {
+            lines.push(o(enlght_line_txt(
+                'You regenerate', '', '', from_what(REGENERATION),
+            )));
+        }
         // Physical — magic_negation then Fast then Reflecting / Lifesaved
         const armpro = magic_negation_you();
         if (armpro > 0) {
@@ -6094,6 +6141,14 @@ export async function doattributes(enl_mode = null) {
                     )));
                 }
             }
+        }
+        // C insight.c:1857-1858 — Polymorph_control after the shape-change
+        // arms (Unchanging / Polymorph / Upolyd deferred), before Fast.
+        if (hero_Polymorph_control(u)) {
+            lines.push(o(enlght_line_txt(
+                'You ', 'have ', 'polymorph control',
+                from_what(POLYMORPH_CONTROL),
+            )));
         }
         if (Fast()) {
             const fastAttr = Very_fast() ? 'very fast' : 'fast';

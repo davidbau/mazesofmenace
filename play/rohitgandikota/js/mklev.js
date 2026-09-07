@@ -3685,11 +3685,11 @@ function level_finalize_topology() {
             topologize(game.level.rooms?.[i]);
     }
     set_wall_state();
-    const rooms = game.level?.rooms ?? [];
-    for (let i = 0; i < rooms.length; i++) {
-        const rm = rooms[i];
+    /* for many room types, svr.rooms[].rtype is zeroed once the room has been
+       entered; svr.rooms[].orig_rtype always retains original rtype value.
+       C's svr.rooms[] holds the subrooms after the rooms. */
+    for (const rm of [...(game.level?.rooms ?? []), ...(game.level?.subrooms ?? [])])
         if (rm && rm.rtype != null) rm.orig_rtype = rm.rtype;
-    }
 }
 
 // src/mklev.c:828 count_level_features(); level.flags.nfountains, nsinks

@@ -20,7 +20,7 @@ import { ECMD_OK, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ANY,
 import { rn2 } from './rng.js';
 import { getdir, getlin, cmd_from_func } from './cmd.js';
 import { display_pickinv } from './invent.js';
-import { docrt, map_trap, pline, unmap_invisible, canspotmon }
+import { docrt, map_trap, pline, unmap_invisible, canspotmon, map_engraving }
     from './display.js';
 import { pluslvl, losexp } from './exper.js';
 import { level_tele } from './teleport.js';
@@ -38,6 +38,7 @@ import { DEADMONSTER } from './monst.js';
 import { nonliving } from './mondata.js';
 import { x_monnam } from './do_name.js';
 import { You } from './pline.js';
+import { notice_mon_off, notice_mon_on } from './hack.js';
 
 function note_unported_wizcmds(what) {
     (game.unported ||= new Set()).add(what);
@@ -170,6 +171,7 @@ export async function wiz_map() {
         conf: uprops.CONFUSION,
         hallu: uprops.HALLUC,
     };
+    notice_mon_off();
     delete intrinsic.HConfusion;
     delete intrinsic.HHallucination;
     delete uprops.CONFUSION;
@@ -179,8 +181,10 @@ export async function wiz_map() {
         trap.tseen = 1;
         map_trap(trap, true);
     }
-    /* show_map_spot() maps engravings while do_mapping() scans the level. */
+    for (const ep of game.level?.lev_engr || [])
+        map_engraving(ep, true);
     await do_mapping();
+    notice_mon_on();
 
     if (saved.hconf !== undefined) intrinsic.HConfusion = saved.hconf;
     if (saved.hhallu !== undefined) intrinsic.HHallucination = saved.hhallu;
