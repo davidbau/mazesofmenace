@@ -257,7 +257,7 @@ import {
     hides_under, is_golem, is_mplayer, vegetarian, carnivorous, NUMMONS,
 } from './monsters.js';
 import { m_at, wakeup, seemimic, dead_species, normal_shape, replmon, find_mid, mongone, restore_cham, m_respond, hideunder, healmon, can_be_hatched, cant_drown } from './mon.js';
-import { find_mac, monkilled, shade_miss, resists_sleep_slee } from './mhitm.js';
+import { find_mac, monkilled, shade_miss, resists_sleep_slee, resists_blnd_mm } from './mhitm.js';
 import { update_mapseen_for } from './dungeon.js';
 import {
     find_drawbridge, open_drawbridge, close_drawbridge, is_db_wall,
@@ -347,12 +347,12 @@ import {
     def_warnsyms, S_flashbeam,
     W_RING, W_ARMG, W_ARMH, W_ARMOR, W_SADDLE, W_ART, W_ARTI,
     W_WEP, W_SWAPWEP, W_QUIVER, W_WEAPONS,
-    REFLECTING, ANTIMAGIC, SHOCK_RES, DRAIN_RES, TELEPORT_CONTROL, STUNNED,
+    REFLECTING, ANTIMAGIC, SHOCK_RES, DRAIN_RES, TELEPORT_CONTROL, STUNNED, M_SEEN_MAGR, M_SEEN_REFL,
     NO_MINVENT, MM_NOWAIT, MM_NOMSG, MM_NOCOUNTBIRTH, MM_MALE, MM_FEMALE,
     IS_POOL, CONTAINED_TOO, BURIED_TOO, ROOM, CORR, GRAVE,
     CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, MFAST,
     OMONST, has_oname, ONAME, has_omonst, has_omid, OMID, ESHK,
-    WEB, PIT, HOLE, TRAPDOOR, HEAD, FACE, FOOT, ENGRAVE, IS_FOUNTAIN, IS_WATERWALL, IS_WALL, HWALL, VWALL,
+    WEB, PIT, HOLE, TRAPDOOR, HEAD, FACE, FOOT, ARM, ENGRAVE, IS_FOUNTAIN, IS_WATERWALL, IS_WALL, HWALL, VWALL,
     TIMER_LEVEL, MELT_ICE_AWAY, EXPL_FIERY, EXPL_MAGICAL, COLNO, ROWNO,
     xytodir,
     IS_ALTAR, Is_earthlevel, IS_AIR, CLOUD, IS_SINK,
@@ -365,6 +365,7 @@ import {
     has_mcorpsenm,
     LL_WISH, LL_CONDUCT, LL_ARTIFACT, ONAME_WISH, ONAME_KNOW_ARTI,
 } from './const.js';
+import { monstseesu, monstunseesu } from './mondata.js';
 
 const MZ_HUMAN = MZ_MEDIUM;
 const SPE_HEALING = objectNames.indexOf('SPE_HEALING');
@@ -1758,8 +1759,10 @@ export async function resist(mtmp, oclass, damage, tell) {
 /**
  * C ref: zap.c zhitm — wand/spell/breath hit on monster.
  * Envelope: ZT_MAGIC_MISSILE..ZT_ACID dice + cold/fire/elec destroy_items
- * + resist halve. Named omissions: defended(); resists_magm body;
- * zhitm spell_damage_bonus (helper lives D-1378); burnarmor/ignite; acid_damage/erode; death-breath
+ * + resist halve + ZT_LIGHTNING spell_damage_bonus + rnd(50) blind
+ * (D-2127). Named omissions: defended(); resists_magm body;
+ * MAGIC_MISSILE/FIRE/COLD spell_damage_bonus (helper lives D-1378);
+ * burnarmor/ignite; acid_damage/erode; death-breath
  * armor strip; Rider/Death; Knight questart double; shieldeff.
  * @returns {Promise<number>} damage applied (MAGIC_COOKIE = disintegrate)
  */
@@ -1845,12 +1848,27 @@ export async function zhitm(mon, type, nd, ootmp) {
     }
     case ZT_LIGHTNING:
         tmp = d(nd, 6);
+        // C zap.c:4344-4345 — Int/level bonus for hero spells (RNG-free).
+        if (spellcaster)
+            tmp = spell_damage_bonus(tmp);
         orig_dmg = tmp;
         if (resists_elec(mon) /* || defended(mon, AD_ELEC) */) {
             sho_shieldeff = true;
             tmp = 0;
+            /* can still blind the monster */
         }
-        // blinding rnd(50) when nd>2 deferred (no RNG stub when skipped)
+        // C zap.c:4352-4362 — sufficiently powerful lightning blinds monsters.
+        // Drawn before the rn2(3) destroy gate, so rnd(50) comes first.
+        // resists_blnd monster arm (import-the-export; youmonst arm
+        // unreachable — every zhitm caller passes a monst*, never youmonst).
+        if (!resists_blnd_mm(mon)
+            && !((type | 0) > 0 && engulfing_u(mon))
+            && (nd | 0) > 2) {
+            const blind_dur = rnd(50);
+            mon.mcansee = 0;
+            const blinded = (mon.mblinded | 0) + blind_dur;
+            mon.mblinded = blinded > 127 ? 127 : blinded;
+        }
         if (!rn2(3)) tmp += await destroy_items(mon, AD_ELEC, orig_dmg);
         break;
     case ZT_POISON_GAS:
@@ -1889,22 +1907,29 @@ export async function zhitm(mon, type, nd, ootmp) {
  * Envelope: ZT_MAGIC_MISSILE..ZT_LIGHTNING damage + ZT_FIRE burnarmor/
  * destroy_items/ignite gate + ZT_COLD/ELEC destroy_items + losehp;
  * ZT_ACID Acid_resistance + hliquid + d(nd,6) (D-1127).
- * Named omissions: shieldeff/monstunseesu/ugolemeffects;
+ * Named omissions: shieldeff (FIRE/COLD resist arms), monstseesu/
+ * monstunseesu (FIRE/COLD arms), ugolemeffects; MM-Antimagic shieldeff +
+ * monstseesu and MM-hit monstunseesu live (C zap.c:4410–4419).
  * death/disintegrate arms; poison; acid_damage/erode_armor bodies;
  * killer buzzer verb polish.
  */
-async function zhitu(type, nd, fltxt, _sx, _sy) {
+async function zhitu(type, nd, fltxt, sx, sy) {
     let dam = 0;
     const abstyp = zaptype(type);
     let orig_dam = 0;
 
     switch (abstyp % 10) {
     case ZT_MAGIC_MISSILE:
+        // C zap.c:4410–4419 — shieldeff first (its closing newsym restores
+        // the beam-painted cell), then the pline, then monster seen-state.
         if (Antimagic()) {
+            await shieldeff(sx, sy);
             await pline('The missiles bounce off!');
+            monstseesu(M_SEEN_MAGR);
         } else {
             dam = d(nd, 6);
             exercise(A_STR, false);
+            monstunseesu(M_SEEN_MAGR);
         }
         break;
     case ZT_FIRE:
@@ -2046,7 +2071,10 @@ export async function ubreatheu(mattk) {
  * AD_RBRE) else xkilled/killed; shopdamage → pay_for_damage (D-0948).
  * Named omit: mon_reflects; map_invisible; Hallu hdmgtype;
  * disintegrate_mon; fire completelyburns XKILL_NOCORPSE; steed
- * redirect; AD_MAGM..ACID explode combat → explode.js (D-0973).
+ * redirect (usteed rn2(3) arm); AD_MAGM..ACID explode combat →
+ * explode.js (D-0973). Hero-hit arm live: reflect monstseesu+shieldeff
+ * (:4972/:4975), zhitu monstunseesu (:4981), blind-miss tingles
+ * (:4985–4986), lightning flashburn (:4988–4989), stop_occupation (:4990).
  */
 export async function dobuzz(
     type, nd, sx0, sy0, dx0, dy0, sayhit, saymiss, forcemiss,
@@ -2191,17 +2219,34 @@ export async function dobuzz(
                                     'For some reason you are not affected.',
                                 );
                             }
+                            // C zap.c:4972 — monsters remember the reflection
+                            monstseesu(M_SEEN_REFL);
                             dx = -dx;
                             dy = -dy;
+                            // C zap.c:4975 — shield flash; its closing
+                            // newsym restores the beam-painted cell
+                            await shieldeff(sx, sy);
                             gas_hit = false;
                         } else {
                             await zhitu(type, nd, flash_str(fltyp), sx, sy);
                             // C: fatal losehp never returns into dobuzz
                             if (game.program_state?.gameover) break;
+                            // C zap.c:4981 — seen-state clears past the hit
+                            monstunseesu(M_SEEN_REFL);
                         }
                     } else if (!Blind()) {
                         await pline(`The ${flash_str(fltyp)} whizzes by you!`);
+                    } else if (damgtype === ZT_LIGHTNING) {
+                        // C zap.c:4985–4986 — blind miss still tingles
+                        await Your(`${body_part(ARM)} tingles.`);
                     }
+                    // C zap.c:4988–4989 — lightning blinds via flashburn on
+                    // any pass through the hero, hit or missed or reflected
+                    if (damgtype === ZT_LIGHTNING) {
+                        await flashburn(d(nd, 50), true);
+                    }
+                    // C zap.c:4990
+                    await stop_occupation();
                     nomul(0);
                 }
 

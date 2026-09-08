@@ -281,6 +281,9 @@ import {
     POLYMORPH_CONTROL,
     REGENERATION,
     JUMPING,
+    SWIMMING,
+    MAGICAL_BREATHING,
+    PASSES_WALLS,
     HALLUC_RES, SEARCHING, REFLECTING, LIFESAVED,
     FIRE_RES, SHOCK_RES, TELEPAT, WARNING,
     DISPLACED, ANTIMAGIC, INVIS,
@@ -5565,6 +5568,40 @@ export async function enlightenment(mode, final = 0) {
         if (hero_Teleport_control(u)) {
             lines.push(you_have('teleport control', from_what(TELEPORT_CONTROL)));
         }
+        // C insight.c:1758-1765 — Swimming, Breathless/Amphibious,
+        // Passes_walls after Teleport_control, before Regeneration
+        // (Wwalking deferred above: walking_on_water has no js/ export).
+        {
+            const {
+                hero_Swimming, hero_Breathless, hero_Amphibious,
+                hero_Passes_walls,
+            } = await import('./dbridge.js');
+            // C: Swimming && (Underwater || !u.uinwater) — the parenthetical
+            // is identically true (Underwater is u.uinwater), so Swimming.
+            if (hero_Swimming()) {
+                lines.push(enlght_line_txt(
+                    You_, final ? 'could ' : 'can ', 'swim',
+                    from_what(SWIMMING),
+                ));
+            }
+            if (hero_Breathless()) {
+                lines.push(enlght_line_txt(
+                    You_, final ? 'could ' : 'can ', 'survive without air',
+                    from_what(MAGICAL_BREATHING),
+                ));
+            } else if (hero_Amphibious()) {
+                lines.push(enlght_line_txt(
+                    You_, final ? 'could ' : 'can ', 'breathe water',
+                    from_what(MAGICAL_BREATHING),
+                ));
+            }
+            if (hero_Passes_walls()) {
+                lines.push(enlght_line_txt(
+                    You_, final ? 'could ' : 'can ', 'walk through walls',
+                    from_what(PASSES_WALLS),
+                ));
+            }
+        }
         // C insight.c:1768-1769 — Regeneration before magic_negation
         // (Slow_digestion / combat-inc / defense deferred).
         if (hero_Regeneration(u)) {
@@ -6311,6 +6348,37 @@ export async function doattributes(enl_mode = null) {
             lines.push(o(enlght_line_txt(
                 'You ', 'have ', 'teleport control', from_what(TELEPORT_CONTROL),
             )));
+        }
+        // C insight.c:1758-1765 — Swimming, Breathless/Amphibious,
+        // Passes_walls after Teleport_control, before Regeneration
+        // (^X final=0 → "can"; Wwalking deferred: no walking_on_water).
+        {
+            const {
+                hero_Swimming, hero_Breathless, hero_Amphibious,
+                hero_Passes_walls,
+            } = await import('./dbridge.js');
+            if (hero_Swimming()) {
+                lines.push(o(enlght_line_txt(
+                    'You ', 'can ', 'swim', from_what(SWIMMING),
+                )));
+            }
+            if (hero_Breathless()) {
+                lines.push(o(enlght_line_txt(
+                    'You ', 'can ', 'survive without air',
+                    from_what(MAGICAL_BREATHING),
+                )));
+            } else if (hero_Amphibious()) {
+                lines.push(o(enlght_line_txt(
+                    'You ', 'can ', 'breathe water',
+                    from_what(MAGICAL_BREATHING),
+                )));
+            }
+            if (hero_Passes_walls()) {
+                lines.push(o(enlght_line_txt(
+                    'You ', 'can ', 'walk through walls',
+                    from_what(PASSES_WALLS),
+                )));
+            }
         }
         // C insight.c:1768-1769 — Regeneration before magic_negation
         // (Slow_digestion / combat-inc / defense deferred).
@@ -7124,7 +7192,8 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
         if (!(await touch_artifact(obj, youmonst))) {
             obj_extract_self(obj);
             // dropy deferred — leave on floor (C dropy after extract)
-            await hold_drop_msg();
+            // C invent.c:1227-1231 prints nothing on the refuse arm
+            // (drop_fmt sounds only in the wasUpolyd arm and drop_it).
             return obj;
         }
         obj_extract_self(obj);

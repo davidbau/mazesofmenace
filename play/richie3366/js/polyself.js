@@ -11,7 +11,7 @@ import { getlin, yn_function, y_n } from './getline.js';
 import { getdir } from './lock.js';
 import { an, the, the_unique_pm, set_body_part, yname, vtense, simpleonames, makeplural, cxname, ansimpleoname, simple_typename } from './objnam.js';
 import {
-    pmname, type_is_pname, mon_nam, s_suffix, Ugender, hliquid,
+    pmname, type_is_pname, mon_nam, Monnam, s_suffix, Ugender, hliquid,
 } from './do_name.js';
 import { Unaware } from './eat.js';
 import { attacktype_fordmg, killed } from './uhitm.js';
@@ -20,6 +20,7 @@ import {
 } from './mhitm.js';
 import { mksobj, objects_at } from './mkobj.js';
 import { throwit } from './dothrow.js';
+import { ubuzz, ubreatheu } from './zap.js';
 import { were_summon } from './were.js';
 import { unpunish } from './read.js';
 import { surface, split_mon } from './sit.js';
@@ -46,7 +47,7 @@ import { races } from './roles.js';
 import { encumber_msg, useup, weapon_descr, update_inventory } from './invent.js';
 import { end_burn } from './timeout.js';
 import { racial_exception, has_horns, num_horns, WrappingAllowed, is_flimsy } from './worn.js';
-import { helm_simple_name, digests } from './mhitu.js';
+import { helm_simple_name, digests, set_ustuck } from './mhitu.js';
 import { losehp, nomul, is_pool, waterbody_name } from './hack.js';
 import { finish_losehp_done, done } from './end.js';
 import { steed_vs_stealth } from './steed.js';
@@ -90,6 +91,8 @@ import {
     eggs_in_water,
     mindless,
     telepathic,
+    can_teleport,
+    control_teleport,
     touch_petrifies,
     haseyes,
     MZ_SMALL,
@@ -132,6 +135,8 @@ import {
     TIMEOUT,
     FLYING,
     BLINDED,
+    TELEPORT,
+    TELEPORT_CONTROL,
     FIRE_RES,
     COLD_RES,
     SLEEP_RES,
@@ -143,6 +148,8 @@ import {
     DRAIN_RES,
     KILLED_BY_AN,
     BOLT_LIM,
+    BZ_OFS_AD,
+    BZ_U_BREATH,
     ECMD_CANCEL,
     IS_FOUNTAIN,
     hidespinchars,
@@ -551,7 +558,7 @@ function resists_drli_you(mdat) {
  * Named omissions: defended(AD_DRLI) disjunct of resists_drli (no JS
  * defended export); ANTIMAGIC;
  * SICK_RES fungus/ghoul; STUNNED/HALLUC_RES/SEE_INVIS/TELEPAT/INFRAVISION/
- * INVIS/TELEPORT/TELEPORT_CONTROL/LEVITATION/SWIMMING/PASSES_WALLS/
+ * INVIS/LEVITATION/SWIMMING/PASSES_WALLS/
  * REGENERATION/REFLECTING/BLND_RES; vamp cham; polysense;
  * light-source bookkeeping.
  */
@@ -580,6 +587,11 @@ export function set_uasmon() {
     propset_fromform(STONE_RES, 'HStone_resistance', !!(mres & MR_STONE));
     // C: PROPSET(DRAIN_RES, resists_drli(&gy.youmonst)) with uwep suppressed
     propset_fromform(DRAIN_RES, 'HDrain_resistance', resists_drli_you(mdat));
+    // C polyself.c:94-95 — PROPSET(TELEPORT, can_teleport(mdat)) and
+    // PROPSET(TELEPORT_CONTROL, control_teleport(mdat)): a tengu form
+    // confers FROMFORM teleport, gating moveloop rn2(85) (allmain.c:308).
+    propset_fromform(TELEPORT, 'HTeleportation', can_teleport(mdat));
+    propset_fromform(TELEPORT_CONTROL, 'HTeleport_control', control_teleport(mdat));
 
     // C: PROPSET(FLYING, is_flyer(mdat) && !is_floater(mdat)) — D-0724
     // floating eye is flyer+floater; suppress Flying under Levitation.
@@ -639,15 +651,33 @@ export function change_sex() {
 }
 
 /**
+ * C ref: polyself.c uunstick :1941–1951 — release u.ustuck then pline.
+ * set_ustuck runs before pline() per C (D-2131; was a uhitm.js local clone).
+ */
+export async function uunstick() {
+    const mtmp = (game.u || {}).ustuck;
+    if (!mtmp) {
+        await impossible('uunstick: no ustuck?');
+        return;
+    }
+    // C: set_ustuck(0) before pline()
+    set_ustuck(null);
+    await pline(`${Monnam(mtmp)} is no longer in your clutches.`);
+}
+
+/**
  * C ref: polyself.c polyman — revert to original race form after newman.
- * Envelope: restore macurr/mamax; clear mh/mtimedone; set_uasmon; find_ac;
- * newsym; pline; was_blind→make_blinded; see_monsters.
- * Named omissions: skinback; ugenocided; stick/mimic/twoweapon;
+ * Envelope: restore macurr/mamax; clear mh/mtimedone; set_uasmon; sticking
+ * uunstick (D-2131); find_ac; newsym; pline; was_blind→make_blinded;
+ * see_monsters.
+ * Named omissions: skinback; ugenocided; mimic/twoweapon;
  * strangling; pool spoteffects; retouch_equipment/selftouch.
  */
 async function polyman(fmt, arg) {
     const u = game.u || (game.u = {});
     const flags = game.flags || (game.flags = {});
+    // C :200–201 — sticking reads the CURRENT (poly) form, before set_uasmon
+    const sticking = !!(sticks(game.youmonst?.data) && u.ustuck && !u.uswallow);
     // C: was_blind = !!Blind before set_uasmon clears FROMFORM Blind
     const wasBlind = !!(((u.HBlinded | 0) || (u.EBlinded | 0))
         && !(u.BBlinded | 0)) || !!u.uroleplay?.blind;
@@ -663,6 +693,8 @@ async function polyman(fmt, arg) {
     u.mtimedone = 0;
     // skinback deferred
     u.uundetected = 0;
+    // C :220–221 — release the hold before the return-to-form pline
+    if (sticking) await uunstick();
     find_ac();
     newsym(u.ux, u.uy);
     // C urgent_pline(fmt, arg) — fmt has one %s; overrides WIN_STOP
@@ -1379,9 +1411,10 @@ export async function wiz_polyself() {
 }
 
 /**
- * C ref: polyself.c dobreathe — hero breath weapon while poly'd.
- * Envelope: Strangled refuse; u.uen < 15 energy pline.
- * Named omissions: uen drain + getdir; ubreatheu / ubuzz BZ_U_BREATH.
+ * C ref: polyself.c dobreathe `:1420–1447` — hero breath weapon while poly'd.
+ * Envelope: Strangled refuse; u.uen < 15 refuse; u.uen -= 15 + botl;
+ * getdir (ECMD_CANCEL on quit); attacktype_fordmg AT_BREA AD_ANY;
+ * self-directed → ubreatheu, else ubuzz(BZ_U_BREATH(BZ_OFS_AD(adtyp)), damn).
  * @returns {Promise<number>} ECMD_OK | ECMD_CANCEL | ECMD_TIME
  */
 export async function dobreathe() {
@@ -1394,9 +1427,24 @@ export async function dobreathe() {
         await pline("You don't have enough energy to breathe!");
         return ECMD_OK;
     }
-    // C: u.uen -= 15; botl; getdir; attacktype_fordmg AT_BREA;
-    // ubreatheu / ubuzz(BZ_U_BREATH) — deferred (seed0108 hits uen < 15).
-    return ECMD_OK;
+    // C `:1433–1434` — energy cost lands before the direction prompt,
+    // so a cancelled breath still costs 15 (dosummon botl pattern).
+    u.uen = (u.uen | 0) - 15;
+    if (!game.flags) game.flags = {};
+    game.flags.botl = true;
+    if (game.disp) game.disp.botl = true;
+    // C `:1436–1437` — live getdir (lock.js); 'b'-style dirsym consumed here.
+    if (!(await getdir(null))) return ECMD_CANCEL;
+    // C `:1439–1445` — AD_ANY is -1 (monattk.h; dospit pattern).
+    const mattk = attacktype_fordmg(game.youmonst?.data, AT_BREA, -1);
+    if (!mattk) {
+        await impossible('bad breath attack?');
+    } else if (!(u.dx | 0) && !(u.dy | 0) && !(u.dz | 0)) {
+        await ubreatheu(mattk);
+    } else {
+        await ubuzz(BZ_U_BREATH(BZ_OFS_AD(mattk.adtyp | 0)), mattk.damn | 0);
+    }
+    return ECMD_TIME;
 }
 
 /**

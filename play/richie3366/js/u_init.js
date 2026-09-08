@@ -1757,6 +1757,10 @@ export function setup_role_race_from_rc(opts = {}) {
             ? { m: race.individual.m || null, f: race.individual.f || null }
             : { m: null, f: null },
         mnum: race.mnum,
+        // C role.c:2025 gu.urace = races[] whole-struct copy (mummy/zombie
+        // feed the done_in_by grave-arise, end.c:328-331).
+        mummynum: race.mummynum,
+        zombienum: race.zombienum,
         attrmin: race.attrmin,
         attrmax: race.attrmax,
         hpadv: race.hpadv || { infix: 2, inrnd: 0, lofix: 0, lornd: 2, hifix: 1, hirnd: 0 },

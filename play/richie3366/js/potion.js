@@ -158,6 +158,7 @@ import {
     has_head, is_were, is_vampshifter, is_human, breathless, haseyes,
     eyecount,
     dmgtype, MR_POISON, MR_ACID, MR_SLEEP,
+    is_floater, is_flyer, slithy, amorphous, nolimbs, MZ_SMALL,
 } from './monsters.js';
 import { rider_cant_reach } from './steed.js';
 import { PM_HUMAN, PM_HEALER, PM_LICHEN } from './generated/monsters_data.js';
@@ -839,9 +840,36 @@ export async function make_confused(xtime, talk) {
 }
 
 /**
+ * C ref: mondata.c stagger :1394–1407 — stun/wobble verb for the
+ * potion.c make_stunned You pline (same clone as mhitm.js).
+ */
+function stagger_poly(ptr, def) {
+    const s = String(def ?? '');
+    const ch = s.charAt(0);
+    const code = ch.charCodeAt(0);
+    /* C hacklib highc: a–z → A–Z; locoindx 2 if *def != highc(*def). */
+    const high = (code >= 97 && code <= 122)
+        ? String.fromCharCode(code - 32) : ch;
+    const cap = ch === high;
+    const pick = (lo, hi) => (cap ? hi : lo);
+    if (is_floater(ptr)) return pick('wobble', 'Wobble');
+    if (is_flyer(ptr) && ((ptr.msize | 0) <= MZ_SMALL)) {
+        return pick('flutter', 'Flutter');
+    }
+    if (is_flyer(ptr) && ((ptr.msize | 0) > MZ_SMALL)) {
+        return pick('stagger', 'Stagger');
+    }
+    if (slithy(ptr)) return pick('falter', 'Falter');
+    if (amorphous(ptr)) return pick('tremble', 'Tremble');
+    if (!(ptr?.mmove | 0)) return pick('pulsate', 'Pulsate');
+    if (nolimbs(ptr)) return pick('falter', 'Falter');
+    return def;
+}
+
+/**
  * C ref: potion.c make_stunned(xtime, talk)
  * Sync HStun TIMEOUT; mirror onto u.Stunned for JS gates (C: Stun ≡ HStun).
- * Named omissions: usteed saddle wobble; stagger(youmonst.data, …) poly verb.
+ * Named omissions: usteed saddle wobble.
  */
 export async function make_stunned(xtime, talk) {
     const u = game.u || (game.u = {});
@@ -855,8 +883,8 @@ export async function make_stunned(xtime, talk) {
         if (u.usteed) {
             await pline('You wobble in the saddle.');
         } else {
-            // C: You("%s...", stagger(youmonst.data, "stagger"))
-            await pline('You stagger...');
+            // C potion.c:124: You("%s...", stagger(gy.youmonst.data, "stagger"))
+            await pline(`You ${stagger_poly(game.youmonst?.data, 'stagger')}...`);
         }
     }
     if ((!xtime && old) || (xtime && !old)) {

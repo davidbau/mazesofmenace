@@ -19,6 +19,8 @@ import {
     DB_UNDER,
     DIED,
     DISINT_RES,
+    DISMOUNT_FELL,
+    DISMOUNT_GENERIC,
     DOOR,
     DO_MOVE,
     DRAWBRIDGE_UP,
@@ -73,6 +75,7 @@ import {
     LEFT_SIDE,
     LEVITATION,
     MAX_CARR_CAP,
+    MAGICAL_BREATHING,
     MAX_TYPE,
     MELT_ICE_AWAY,
     M_AP_FURNITURE,
@@ -87,11 +90,13 @@ import {
     PARANOID_SWIM,
     PARANOID_TRAP,
     PICK_NONE,
+    PLNMSG_BACK_ON_GROUND,
     POISON_RES,
     POOL,
     RIGHT_SIDE,
     ROWNO,
     ROOM,
+    ROOMOFFSET,
     RUN_CRAWL,
     RUN_LEAP,
     RUN_TPORT,
@@ -138,6 +143,7 @@ import {
     WT_WEIGHTCAP_STRCON,
     WT_TOOMUCH_DIAGONAL,
     WT_WOUNDEDLEG_REDUCT,
+    WWALKING,
     ZOMBIFY_MON,
     OVERLOADED,
     PROT_FROM_SHAPE_CHANGERS,
@@ -222,6 +228,9 @@ import {
     nohands,
     noncorporeal,
     grounded,
+    amphibious,
+    breathless,
+    is_swimmer,
     metallivorous,
     monster_resists_element,
     passes_walls,
@@ -352,6 +361,9 @@ import {
     is_lava,
     is_pool,
     is_pool_or_lava,
+    back_on_ground,
+    drown,
+    lava_effects,
     reset_utrap,
     t_at,
     trapname,
@@ -1261,7 +1273,7 @@ function blocksMove(x, y, state) {
 function blocksDiagonalDoorwayEntry(ux, uy, x, y, state) {
     return Boolean((x - ux) && (y - uy)
         && !propertyPresent(state, PASSES_WALLS)
-        && !doorless_door(state.level?.at(x, y)));
+        && !doorless_door(state.level?.at(x, y), state));
 }
 
 // C ref: hack.c:1208-1209. The mirror rule: a doorway that still has its door
@@ -1270,7 +1282,7 @@ function blocksDiagonalDoorwayExit(ux, uy, x, y, state) {
     const source = state.level?.at(ux, uy);
     return Boolean((x - ux) && (y - uy)
         && !propertyPresent(state, PASSES_WALLS)
-        && IS_DOOR(source?.typ) && !doorless_door(source));
+        && IS_DOOR(source?.typ) && !doorless_door(source, state));
 }
 
 // TRUE where test_move() refuses the step through one of its two diagonal
@@ -1304,11 +1316,11 @@ function refusedDiagonalDoorway(x, y, state) {
 }
 
 // This repeated-command boundary owns entry into a ROOM, CORR, or
-// IS_FURNITURE square, or a doorway whose mask is exactly D_NODOOR or
-// D_ISOPEN. With autopickup disabled, it also admits the sighted object
-// descriptions and, now that js/dungeon.js surface() names every terrain
-// look_here() can feel underfoot, the blind paths with no object or one
-// object. Blind paths that would describe an object pile remain refused.
+// IS_FURNITURE square, or a doorway whose mask is exactly D_NODOOR,
+// D_BROKEN, or D_ISOPEN. With autopickup disabled, it also admits the sighted
+// object descriptions and, now that js/dungeon.js surface() names every
+// terrain look_here() can feel underfoot, the blind paths with no object or
+// one object. Blind paths that would describe an object pile remain refused.
 // These checks are a temporary admission seam in front
 // of hack.c:domove_core(); each rejected branch will move to its upstream owner
 // when that behavior is ported.
@@ -1333,6 +1345,15 @@ export function requireSimpleHeroDestination(
     pushesBoulder = false,
 ) {
     const location = state.level?.at(x, y);
+    // hack.c domove_core():2843-2856 admits liquid through test_move(), then
+    // asks swim_move_danger() before moving the hero or applying any arrival
+    // effect.  A warning which is certain to stop the step therefore needs no
+    // ordinary-destination preflight.  Keep this walking-only: teleport.c
+    // teleds() also calls this seam but never calls swim_move_danger().
+    if (pushesBoulder && is_pool(x, y, state)
+        && swim_move_danger_result(x, y, state) === SWIM_DANGER_AVOID) {
+        return;
+    }
     // hack.c test_move() admits every IS_FURNITURE type untouched -- stairs,
     // ladder, fountain, throne, sink, grave and altar. Its obstacle chain never
     // claims the square: `IS_OBSTRUCTED` is `typ < POOL` (rm.h:119) and
@@ -1349,23 +1370,14 @@ export function requireSimpleHeroDestination(
     // arm, which refuses a diagonal entry and allows an orthogonal one; the
     // diagonal case never arrives here, because preflightDomoveDestination()
     // admits it for test_move() to refuse.
-    // Only D_NODOOR and D_ISOPEN are admitted, the two masks recorded against
-    // the C program. D_BROKEN behaves like D_NODOOR in doorless_door() but
-    // differs in dfeature_at(), which returns the literal "broken door" where
-    // the other two go through the cmap, so it is refused rather than assumed
-    // equivalent. It is a mask a level really can carry: sp_lev.c
-    // lspo_door():4702 rolls rnddoor() for `state = "random"`, and its
-    // coordinate arm at 4721-4726 hands that roll to sel_set_door() (4646-4662)
-    // to write as the doormask. dat/tut-1.lua:273 takes that arm, so the
-    // tutorial's door at map [40,15] is D_BROKEN on about one seed in five. The
-    // room-door arm at 4704-4720 cannot: it passes `msk`, still -1, to
-    // create_door(), which rerolls a state that has no D_BROKEN in it.
-    // D_TRAPPED is excluded too: C admits an open trapped door here because
-    // its trap fires from doopen(), not from entry, but that path is not
-    // traced yet, so it stays refused.
+    // The three exact masks below are the non-closed doorway states that this
+    // boundary owns. In particular, hack.c test_move():1074-1150 sends
+    // D_BROKEN through testdiag, where doorless_door() admits it off the Rogue
+    // level. D_TRAPPED combinations remain excluded: the trap bit makes them
+    // distinct C states whose later behavior is not traced here.
     const mask = doorMask(location);
     const doorway = location?.typ === DOOR
-        && (mask === D_NODOOR || mask === D_ISOPEN);
+        && (mask === D_NODOOR || mask === D_BROKEN || mask === D_ISOPEN);
     const ordinaryDestination = location
         && (location.typ === ROOM
             || location.typ === CORR
@@ -1537,12 +1549,12 @@ function doorMask(location) {
 }
 
 // C ref: hack.c doorless_door(). A doorway lacks its door when no mask bit
-// outside D_NODOOR and D_BROKEN is set. Both of test_move()'s diagonal rules
-// turn on this predicate, so they read it here rather than testing masks
-// themselves. The Is_rogue_level() arm is not ported: the rogue level is not
-// reachable from this boundary.
-export function doorless_door(location) {
+// outside D_NODOOR and D_BROKEN is set. Rogue-level doorways are the exception:
+// Rogue has no doors but disallows diagonal access, so C treats them as intact.
+// Both of test_move()'s diagonal rules use this predicate.
+export function doorless_door(location, state = game) {
     return location?.typ === DOOR
+        && !on_level(state.u?.uz, state.rogue_level)
         && (doorMask(location) & ~(D_NODOOR | D_BROKEN)) === 0;
 }
 
@@ -2202,7 +2214,7 @@ function preflight_moverock(sx, sy, noPickMove, state) {
         || IS_OBSTRUCTED(destination.typ)
         || destination.typ === IRONBARS
         || (IS_DOOR(destination.typ) && dx && dy
-            && !doorless_door(destination))
+            && !doorless_door(destination, state))
         || sobj_at(BOULDER, rx, ry, state)) {
         refuse('a boulder that will not move');
     }
@@ -2665,7 +2677,7 @@ async function moverock_core(sx, sy, state, env) {
             || IS_OBSTRUCTED(destination.typ)
             || destination.typ === IRONBARS
             || (IS_DOOR(destination.typ) && u.dx && u.dy
-                && !doorless_door(destination))
+                && !doorless_door(destination, state))
             || sobj_at(BOULDER, rx, ry, state)) {
             // hack.c:486-487. nomul(0) and next_boulder bookkeeping precede
             // this failed-destination check. No trap, monster, or push-side
@@ -3374,36 +3386,53 @@ export function u_simple_floortyp(x, y, state = game) {
     return ROOM;
 }
 
-// C ref: hack.c swim_move_danger() (1885-1922).
-export async function swim_move_danger(x, y, state = game) {
+const SWIM_DANGER_CONTINUE = 0;
+const SWIM_DANGER_FORCE = 1;
+const SWIM_DANGER_AVOID = 2;
+
+// Pure classification of hack.c swim_move_danger() (1885-1922).  The command
+// admission seam uses only SWIM_DANGER_AVOID, the one result which guarantees
+// that domove_core() returns before moving the hero.  SWIM_DANGER_FORCE is the
+// m-prefix arm: it records TIP_SWIM but deliberately lets the move continue.
+function swim_move_danger_result(x, y, state) {
     const newtyp = u_simple_floortyp(x, y, state);
     const liquidWall = IS_WATERWALL(newtyp) || newtyp === LAVAWALL;
     if (state.u.uinwater
-        && (is_pool(x, y, state) || IS_WATERWALL(newtyp))) return false;
+        && (is_pool(x, y, state) || IS_WATERWALL(newtyp))) {
+        return SWIM_DANGER_CONTINUE;
+    }
 
     const stunned = propertyIntrinsic(state, STUNNED);
     const confused = propertyIntrinsic(state, CONFUSION);
     if (newtyp !== u_simple_floortyp(state.u.ux, state.u.uy, state)
         && !stunned && !confused && state.level.at(x, y).seenv
-        && (is_pool(x, y, state) || is_lava(x, y, state) || liquidWall)) {
-        if ((is_pool(x, y, state) && !known_wwalking(state))
+        && (is_pool(x, y, state) || is_lava(x, y, state) || liquidWall)
+        && ((is_pool(x, y, state) && !known_wwalking(state))
             || (is_lava(x, y, state) && !known_lwalking(state)
                 && !is_lava(state.u.ux, state.u.uy, state))
-            || liquidWall) {
-            if (state.context.nopick) {
-                state.context.tips = Math.trunc(state.context.tips ?? 0)
-                    | (1 << TIP_SWIM);
-                return false;
-            }
-            if ((state.flags?.paranoia_bits & PARANOID_SWIM) || liquidWall) {
-                await ttyPline(
-                    `You avoid ${ing_suffix(u_locomotion('step', state))} into the ${waterbody_name(x, y, state)}.`,
-                    state,
-                );
-                await handle_tip(TIP_SWIM, state);
-                return true;
-            }
-        }
+            || liquidWall)) {
+        if (state.context.nopick) return SWIM_DANGER_FORCE;
+        if ((state.flags?.paranoia_bits & PARANOID_SWIM) || liquidWall)
+            return SWIM_DANGER_AVOID;
+    }
+    return SWIM_DANGER_CONTINUE;
+}
+
+// C ref: hack.c swim_move_danger() (1885-1922).
+export async function swim_move_danger(x, y, state = game) {
+    const result = swim_move_danger_result(x, y, state);
+    if (result === SWIM_DANGER_FORCE) {
+        state.context.tips = Math.trunc(state.context.tips ?? 0)
+            | (1 << TIP_SWIM);
+        return false;
+    }
+    if (result === SWIM_DANGER_AVOID) {
+        await ttyPline(
+            `You avoid ${ing_suffix(u_locomotion('step', state))} into the ${waterbody_name(x, y, state)}.`,
+            state,
+        );
+        await handle_tip(TIP_SWIM, state);
+        return true;
     }
     return false;
 }
@@ -4824,6 +4853,101 @@ export function set_uinwater(in_out, state = game) {
     }
 }
 
+// C ref: hack.c pooleffects() (3233-3311). This is the shared liquid
+// transition owner for spoteffects() and for a hero who spends a turn without
+// moving. It returns true only when dismounting, drowning, or burning moves
+// the hero and the caller must skip the rest of its square effects.
+export async function pooleffects(newspot, state = game) {
+    const { u } = state;
+    const levitating = propertyActiveUnblocked(state, LEVITATION);
+    const flying = heroIsFlying(state);
+    const waterWalking = propertyActiveUnblocked(state, WWALKING);
+    const swimming = propertyActiveUnblocked(state, SWIMMING)
+        || Boolean(u.usteed && is_swimmer(u.usteed.data));
+    const breathlessHero = propertyActiveUnblocked(
+        state,
+        MAGICAL_BREATHING,
+    ) || breathless(state.youmonst?.data);
+    const amphibiousHero = breathlessHero || amphibious(state.youmonst?.data);
+
+    if (u.uinwater) {
+        let stillInWater = false;
+        if (!is_pool(u.ux, u.uy, state)) {
+            if (Is_waterlevel(u.uz)) {
+                await ttyPline('You pop into an air bubble.', state);
+                state.iflags.last_msg = PLNMSG_BACK_ON_GROUND;
+            } else if (is_lava(u.ux, u.uy, state)) {
+                await ttyPline(
+                    `You leave the ${hliquid('water', { state })}...`,
+                    state,
+                );
+            } else {
+                await back_on_ground(false, state);
+            }
+        } else if (Is_waterlevel(u.uz)) {
+            stillInWater = true;
+        } else if (levitating) {
+            await ttyPline(
+                `You pop out of the ${hliquid('water', { state })} like a cork!`,
+                state,
+            );
+        } else if (flying) {
+            await ttyPline(
+                `You fly out of the ${hliquid('water', { state })}.`,
+                state,
+            );
+        } else if (waterWalking) {
+            await ttyPline('You slowly rise above the surface.', state);
+        } else {
+            stillInWater = true;
+        }
+        if (!stillInWater) {
+            const wasUnderwater = Boolean(
+                u.uinwater && !Is_waterlevel(u.uz),
+            );
+            set_uinwater(false, state);
+            if (wasUnderwater) {
+                await docrt({ state });
+                state.vision_full_recalc = 1;
+            }
+        }
+    }
+
+    if (!u.ustuck && !levitating && !flying
+        && is_pool_or_lava(u.ux, u.uy, state)) {
+        if (u.usteed && !grounded(u.usteed.data, state)) {
+            return false;
+        }
+        if (u.usteed) {
+            const { dismount_steed } = await import('./steed.js');
+            await dismount_steed(
+                u.uinwater ? DISMOUNT_FELL : DISMOUNT_GENERIC,
+                state,
+            );
+            if (Is_airlevel(u.uz) || Is_waterlevel(u.uz)) return false;
+            if (newspot) await check_special_room(false, state);
+            return true;
+        }
+        if (Upolyd(u) && ceiling_hider(state.mons?.[u.umonnum])
+            && u.uundetected) {
+            return false;
+        }
+        if (is_lava(u.ux, u.uy, state)) {
+            if (await lava_effects(state)) return true;
+        } else {
+            const isWaterWall = IS_WATERWALL(
+                state.level?.at(u.ux, u.uy)?.typ,
+            );
+            if ((!waterWalking || isWaterWall)
+                && (newspot || !u.uinwater
+                    || !(swimming || amphibiousHero || breathlessHero))) {
+                if (await drown(state)) return true;
+            }
+        }
+    }
+    return false;
+}
+
 // C ref: hack.c spoteffects():3345-3347, the terrain test that guards
 // switch_terrain(). teleport.c teleds():551-552 has a test of its own with the
 // same call, so this one is written where spoteffects() has it rather than
@@ -4858,6 +4982,7 @@ export async function spoteffects(pick, state = game) {
     // FAILEDUNTRAP never reaches dotrap() -- but the read belongs here, where
     // C makes it, rather than being written out as the constant 0.
     const trapflag = state.iflags?.failing_untrap ? FAILEDUNTRAP : 0;
+    if (await pooleffects(true, state)) return;
     if (terrain_changed_under_hero(state)) switch_terrain(state);
     await check_special_room(false, state);
     // C ref: hack.c:3353-3354, spoteffects()'s only IS_FURNITURE arm. Nothing
@@ -4890,6 +5015,39 @@ export async function spoteffects(pick, state = game) {
         if (trap) await dotrap(trap, trapflag, state);
         if (pick && pit) await pickup(1, state);
     }
+}
+
+// C ref: hack.c monstinroom() (3466-3481). Monster species objects model C's
+// `struct permonst *`, so identity comparison preserves the source test.
+export function monstinroom(mdat, roomno, state = game) {
+    for (let mtmp = state.level?.monlist ?? null;
+        mtmp;
+        mtmp = mtmp.nmon) {
+        if ((mtmp.mhp ?? 0) < 1) continue;
+        if (mtmp.data === mdat
+            && in_rooms(mtmp.mx, mtmp.my, 0, state).includes(
+                roomno + ROOMOFFSET,
+            )) {
+            return mtmp;
+        }
+    }
+    return null;
+}
+
+// C ref: hack.c furniture_present() (3482-3497). The inclusive bounds and
+// inside_room() test both matter for edge furniture and irregular rooms.
+export function furniture_present(furniture, roomno, state = game) {
+    const sroom = state.level?.rooms?.[roomno];
+    if (!sroom) return false;
+    for (let y = sroom.ly; y <= sroom.hy; ++y) {
+        for (let x = sroom.lx; x <= sroom.hx; ++x) {
+            if (state.level.at(x, y)?.typ === furniture
+                && inside_room(sroom, x, y, state)) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 // C ref: flag.h:233 notice_mon_off(). Suspends the accessibility monster

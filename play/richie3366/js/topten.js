@@ -211,7 +211,7 @@ function outheader(emit) {
 
 /**
  * C ref: topten.c outentry.
- * Named omissions: escaped with-amulet paren fixup; astral plane text;
+ * Named omissions: astral plane text;
  * choked/poisoned/crushed/petrified first-line arms.
  */
 function outentry(rank, t1, so, emit) {
@@ -227,7 +227,18 @@ function outentry(rank, t1, so, emit) {
 
     const death = String(t1.death || '');
     if (death.startsWith('escaped')) {
-        linebuf += 'escaped the dungeon';
+        // C topten.c:973-980 — "escaped the dungeon %s[max level %d]"; %s
+        // is the " (with ...)" tail past "escaped" (amulet), then the
+        // closing-paren fixup (truncate on astral, blank elsewhere).
+        const amulet = death.slice(7, 9) === ' (' ? death.slice(9) : '';
+        linebuf += `escaped the dungeon ${amulet}[max level ${t1.maxlvl | 0}]`;
+        const paren = linebuf.indexOf(')');
+        if (paren >= 0) {
+            const astralDnum = game.astral_level?.dnum;
+            linebuf = (astralDnum != null && (t1.deathdnum | 0) === (astralDnum | 0))
+                ? linebuf.slice(0, paren)
+                : `${linebuf.slice(0, paren)} ${linebuf.slice(paren + 1)}`;
+        }
         second_line = false;
     } else if (death.startsWith('ascended')) {
         linebuf += `ascended to demigod${t1.plgend[0] === 'F' ? 'dess' : ''}-hood`;

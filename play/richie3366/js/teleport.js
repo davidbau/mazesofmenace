@@ -2117,7 +2117,7 @@ export async function dotelecmd() {
 }
 
 /** C ref: dungeon.c single_level_branch — Is_knox only (Ludios). */
-function single_level_branch(lev) {
+export function single_level_branch(lev) {
     return Is_knox_level(lev);
 }
 

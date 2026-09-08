@@ -1114,9 +1114,10 @@ async function peacefuls_respond(mtmp) {
 /**
  * C ref: mon.c setmangry `:4260–4318` — peaceful → hostile on attack.
  * Branch envelope: core mpeaceful clear + humanoid/shk/gd couldsee
- * pline_mon + adjalign (priest coalign / -1) + peacefuls_respond when
- * !mon_moving (D-1772). Named omissions: Elbereth hypocrite/rnd(5)/
- * del_engr; victim growl else-arm; qst_guardians_respond.
+ * pline_mon + adjalign (priest coalign / -1) + non-humanoid victim
+ * growl else-arm (`:4304–4309`) + peacefuls_respond when !mon_moving
+ * (D-1772). Named omissions: Elbereth hypocrite/rnd(5)/del_engr;
+ * qst_guardians_respond.
  */
 export async function setmangry(mtmp, via_attack) {
     if (!mtmp) return;
@@ -1135,8 +1136,12 @@ export async function setmangry(mtmp, via_attack) {
         if (couldsee(mtmp.mx, mtmp.my)) {
             await pline_mon(mtmp, `${Monnam(mtmp)} gets angry!`);
         }
+    } else {
+        // C mon.c:4307-4309 — non-humanoid victim growls ("It screams!");
+        // pre-existing sounds.js edge, already imported (no new edge, no TDZ).
+        await growl(mtmp);
     }
-    // growl else-arm / qst_guardians_respond named omitted
+    // qst_guardians_respond named omitted (quest-leader only, no corpus reach)
     /* make other peaceful monsters react */
     if (!game.context?.mon_moving) {
         await peacefuls_respond(mtmp);

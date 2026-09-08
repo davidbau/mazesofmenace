@@ -91,6 +91,8 @@ import {
     WARN_OF_MON,
     PROT_FROM_SHAPE_CHANGERS,
     DETECT_MONSTERS,
+    INVIS,
+    SEE_INVIS,
     BOLT_LIM,
     Upolyd,
     H_IBM,
@@ -4556,11 +4558,23 @@ function hero_Blind() {
 function hero_Invis() {
     const u = game.u || {};
     if (u.Invis && !((u.HInvis | 0) || (u.EInvis | 0))) return true;
-    return !!(((u.HInvis | 0) || (u.EInvis | 0)) && !(u.BInvis | 0));
+    // C youprop.h:198 Invis ≡ (HInvis || EInvis) && !BInvis, where each
+    // H/E/B is uprops[INVIS].intrinsic/extrinsic/blocked. Flats alone miss
+    // worn-ring extrinsic (confer_oc_oprop sets uprops but no EInvis flat),
+    // so Ring_on newsym still canspotself and paints @ over < (D-next).
+    const p = u.uprops?.[INVIS];
+    const H = (u.HInvis | 0) || (p?.intrinsic | 0);
+    const E = (u.EInvis | 0) || (p?.extrinsic | 0);
+    const B = (u.BInvis | 0) || (p?.blocked | 0);
+    return !!((H || E) && !B);
 }
 function hero_See_invisible() {
     const u = game.u || {};
-    return !!((u.HSee_invisible | 0) || (u.ESee_invisible | 0) || u.See_invisible);
+    // C youprop.h:152 See_invisible ≡ HSee_invisible || ESee_invisible
+    // (uprops[SEE_INVIS]); same flat/uprops split as hero_Invis.
+    const p = u.uprops?.[SEE_INVIS];
+    return !!((u.HSee_invisible | 0) || (u.ESee_invisible | 0) || u.See_invisible
+        || (p?.intrinsic | 0) || (p?.extrinsic | 0));
 }
 export function hero_Invisible() {
     // C: Invisible (Invis && !See_invisible)

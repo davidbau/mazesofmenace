@@ -32,13 +32,14 @@ import {
     Is_container, SORTLOOT_LOOT, SORTLOOT_PACK,
     PARANOID_DIE, PARANOID_BONES, PARANOID_QUIT, TT_LAVA, Has_contents,
     has_oname, LIFESAVED, W_AMUL,
-    DELPHI, ROOMOFFSET, Is_oracle_level,
+    DELPHI, ROOMOFFSET, Is_oracle_level, Is_astralevel, In_endgame,
+    In_quest, ismnum,
 } from './const.js';
 import { G_NOCORPSE, mons, likes_gold, likes_gems, likes_objs, likes_magic } from './monsters.js';
-import { m_at, mongone, dmonsfree } from './mon.js';
+import { m_at, mongone, dmonsfree, zombie_maker } from './mon.js';
 import { can_carry, mon_offmap } from './monmove.js';
-import { enexto, rloc_to } from './teleport.js';
-import { oname, christen_monst, free_oname, mon_nam } from './do_name.js';
+import { enexto, rloc_to, single_level_branch } from './teleport.js';
+import { oname, christen_monst, free_oname, mon_nam, pmname, Ugender } from './do_name.js';
 import { mkcorpstat, curse, place_object, stackobj, mksobj, add_to_minv, add_to_container, weight } from './mkobj.js';
 import { make_grave } from './engrave.js';
 import { makemon, adj_lev } from './makemon.js';
@@ -49,7 +50,7 @@ import {
 import { genders, aligns } from './roles.js';
 import { topten, nh_terminate_capture, raw_print_blanks } from './topten.js';
 import { objectNames } from './generated/objects_data.js';
-import { monsterNames, pmnames, PM_TOURIST } from './generated/monsters_data.js';
+import { monsterNames, pmnames, PM_TOURIST, LOW_PM } from './generated/monsters_data.js';
 import { paybill, money2mon, obfree } from './shk.js';
 import { hidden_gold, paygd } from './vault.js';
 import { clearlocks } from './files.js';
@@ -70,6 +71,10 @@ import { night, midnight, getnow, yyyymmddhhmmss } from './calendar.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
 const PM_GREEN_SLIME = monsterNames.indexOf('PM_GREEN_SLIME');
+const PM_WRAITH = monsterNames.indexOf('PM_WRAITH');
+const PM_VAMPIRE = monsterNames.indexOf('PM_VAMPIRE');
+const PM_GHOUL = monsterNames.indexOf('PM_GHOUL');
+const PM_HUMAN = monsterNames.indexOf('PM_HUMAN');
 const STATUE = objectNames.indexOf('STATUE');
 const TIN = objectNames.indexOf('TIN');
 const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
@@ -852,8 +857,8 @@ async function disclose(how, taken) {
 /**
  * C ref: end.c really_done death summary + rip — NHW_TEXT via
  * display_nhwindow; wintty process_text_window paginates at rows-1.
- * Named omissions: paybill; discover_object invent walk; arise pline;
- * In_endgame/quest depth; DUMPLOG second artifact_score; amulet killer
+ * Named omissions: paybill; discover_object invent walk;
+ * DUMPLOG second artifact_score; amulet killer
  * suffix. Companion pet HP / live-cat d() is D-1754.
  */
 async function show_death_rip_and_summary(how, umoney, endtime = 0) {
@@ -901,13 +906,23 @@ async function show_death_rip_and_summary(how, umoney, endtime = 0) {
         artifact_score(game.invent, false, lines);
         list_valuables(lines);
     } else {
-        const where = game.dungeons?.[u.uz?.dnum | 0]?.dname
-            || 'The Dungeons of Doom';
-        const dlev = depth(u.uz);
+        // C really_done :1521-1541 — level-teleported-out arm; Astral
+        // override; the level suffix is skipped In_endgame and on
+        // single-level branches; quest prints dunlev (== dlevel).
         const pts = u.urexp | 0;
-        lines.push(
-            `You ${ENDS[how] || 'died'} in ${where} on dungeon level ${dlev} with ${pts} point${plur(pts)},`,
-        );
+        let line;
+        if ((u.uz?.dnum | 0) === 0 && (u.uz?.dlevel | 0) <= 0) {
+            line = `You ${(u.uz?.dlevel | 0) < 0 ? 'passed away' : (ENDS[how] || 'died')} beyond the confines of the dungeon`;
+        } else {
+            let where = game.dungeons?.[u.uz?.dnum | 0]?.dname
+                || 'The Dungeons of Doom';
+            if (Is_astralevel(u.uz)) where = 'The Astral Plane';
+            line = `You ${ENDS[how] || 'died'} in ${where}`;
+            if (!In_endgame(u.uz) && !single_level_branch(u.uz)) {
+                line += ` on dungeon level ${In_quest(u.uz) ? (u.uz?.dlevel | 0) : depth(u.uz)}`;
+            }
+        }
+        lines.push(`${line} with ${pts} point${plur(pts)},`);
     }
     lines.push(
         `and ${umoney} piece${plur(umoney)} of gold, after ${game.moves | 0} move${plur(game.moves | 0)}.`,
@@ -926,7 +941,7 @@ async function show_death_rip_and_summary(how, umoney, endtime = 0) {
 /**
  * C ref: end.c really_done — gameover; paybill; disclose; score; bones; rip; topten.
  * Named omissions: dump/livelog; logfile/xlogfile; toptenwin NHW_TEXT;
- * arise pline; inven_inuse / ball-chain arms of done_object_cleanup;
+ * inven_inuse / ball-chain arms of done_object_cleanup;
  * unleash_all in finish_paybill; ParanoidBones getlin; DUMPLOG second
  * artifact_score; POSIX signal/hangup in clearlocks; grddead inside
  * mongone; display_pickinv cache setter; insight fmt_elapsed_time /
@@ -984,9 +999,8 @@ async function really_done(how) {
     const u = game.u || {};
     // C end.c:1206–1219 — maintain ugrave_arise even for !bones_ok: no
     // corpse or grave for PANICKED, none for BURNING/DISSOLVED, a statue
-    // for STONING, slime-arise unless green slimes are genocided. The
-    // killer-based arise (wraith/mummy/zombie/vampire/ghoul, end.c:326–340)
-    // stays a named omission — no blocked session reaches it.
+    // for STONING, slime-arise unless green slimes are genocided; the
+    // killer-based arise lands in done_in_by (end.c:326–340).
     if (how === PANICKED) u.ugrave_arise = NON_PM - 3;
     else if (how === BURNING || how === DISSOLVED) u.ugrave_arise = NON_PM - 2;
     else if (how === STONING) u.ugrave_arise = LEAVESTATUE;
@@ -1074,6 +1088,17 @@ async function really_done(how) {
     // C: finish_paybill after disclosure, before bones
     if (bones_ok && taken) finish_paybill();
 
+    // C end.c:1351-1361 — grave-arise feedback even when bones won't be
+    // made (its presence must not tip off bones); flushed to the message
+    // window before the bones query, like the C display_nhwindow.
+    if (ismnum(u.ugrave_arise) && !(game.program_state?.done_stopprint | 0)) {
+        const ariseAct = u.ugrave_arise !== PM_GREEN_SLIME
+            ? 'body rises from the dead'
+            : 'revenant persists';
+        await pline(`Your ${ariseAct} as ${an(pmname(u.ugrave_arise, Ugender()))}...`);
+        await flush_topl_more();
+    }
+
     if (bones_ok) {
         // C: if (!wizard || paranoid_query(ParanoidBones, "Save bones?"))
         const flags = game.flags || {};
@@ -1137,7 +1162,10 @@ function finish_paybill() {
 /**
  * C ref: end.c done_in_by — "You die..." then done(how).
  * Ported: isshk → honorific + shkname + ", the shopkeeper" + KILLED_BY
- * (D-0313). Named omissions: G_UNIQ / ghost / mimicker / vampshifter /
+ * (D-0313); killer-based grave arise (wraith/mummy/zombie/vampire/ghoul,
+ * end.c:326-340) with the genocided-arise reset. C mptr is mtmp->data
+ * here (the mimicker arm resets it at :255).
+ * Named omissions: G_UNIQ / ghost / mimicker / vampshifter /
  * priest|minion m_monnam / minvis / hallu-distort / monhealthdescr /
  * multi_reason trim.
  */
@@ -1163,6 +1191,30 @@ export async function done_in_by(mtmp, how = DIED) {
             : '';
     }
     game.killer.name = buf;
+    // C end.c:326-340 — undead transformation at death: the killer's kind
+    // sets ugrave_arise (mummy/zombie via the hero's race); a genocided
+    // arise is suppressed. Feeds the really_done arise pline.
+    const mdat = mtmp?.data;
+    if (mdat) {
+        const u = game.u || {};
+        const raceMummy = game.urace?.mummynum ?? NON_PM;
+        const raceZombie = game.urace?.zombienum ?? NON_PM;
+        if (mdat.mlet === 'S_WRAITH') u.ugrave_arise = PM_WRAITH;
+        else if (mdat.mlet === 'S_MUMMY' && raceMummy !== NON_PM) {
+            u.ugrave_arise = raceMummy;
+        } else if (zombie_maker(mtmp) && raceZombie !== NON_PM) {
+            u.ugrave_arise = raceZombie;
+        } else if (mdat.mlet === 'S_VAMPIRE'
+            && (game.urace?.mnum | 0) === PM_HUMAN) {
+            u.ugrave_arise = PM_VAMPIRE;
+        } else if ((mdat.mndx ?? mtmp?.mnum) === PM_GHOUL) {
+            u.ugrave_arise = PM_GHOUL;
+        }
+        if ((u.ugrave_arise | 0) >= LOW_PM
+            && (((game.mvitals?.[u.ugrave_arise]?.mvflags) | 0) & G_GENOD)) {
+            u.ugrave_arise = NON_PM;
+        }
+    }
     await done(how);
 }
 

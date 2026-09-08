@@ -119,7 +119,7 @@ import {
 } from './artifact.js';
 import {
     IS_ALTAR, Amask2align, AM_MASK, AM_SHRINE, AM_SANCTUM, AM_CHAOTIC,
-    A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, GEHENNOM, ECMD_OK, ECMD_TIME,
+    A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, ECMD_OK, ECMD_TIME,
     PARANOID_PRAY, PARANOID_CONFIRM, LL_CONDUCT, LL_DIVINEGIFT, LL_ARTIFACT,
     LL_SPOILER, CXN_ARTICLE, FROMOUTSIDE,
     LUCKMAX, has_omonst, NON_PM, ROOM, FOOT, something, Something,
@@ -202,8 +202,9 @@ function Luck() {
     return (u.uluck || 0) + (u.moreluck || 0);
 }
 
+/** C ref: dungeon.h Inhell — In_hell(&u.uz): dungeon hellish flag (dungeon.c:1941–1945), not dnum. */
 function Inhell() {
-    return (game.u?.uz?.dnum | 0) === GEHENNOM;
+    return !!(game.dungeons?.[game.u?.uz?.dnum | 0]?.flags?.hellish);
 }
 
 function Blind() {
@@ -1637,6 +1638,7 @@ export async function gcrownu() {
 /**
  * C ref: pray.c prayer_done — afternmv after nomul(-3).
  * Ported: p_type 0 (too soon) full path; p_type 3 → pleased envelope;
+ * Inhell Gehennom gate + rnl(record) angrygods (pray.c:2307-2313);
  * other p_types partial/stub.
  */
 export async function prayer_done() {
@@ -1653,7 +1655,9 @@ export async function prayer_done() {
         await pline(
             `Since you are in Gehennom, ${align_gname(game.urole, alignment)} can't help you.`,
         );
-        // angrygods gate deferred
+        // C pray.c:2310-2312 haltingly aligned least likely to anger
+        if (((u.ualign?.record | 0) <= 0) || rnl(u.ualign?.record | 0))
+            await angrygods(u.ualign?.type ?? 0);
         return 0;
     }
 

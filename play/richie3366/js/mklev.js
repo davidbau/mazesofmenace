@@ -23199,17 +23199,25 @@ async function hellfill_style_open_cavern() {
             loc.lit = false;
         }
     });
-    // selection.rect(0,0,78,20) border
-    for (let x = 0; x <= 78; x++) {
-        for (const y of [0, 20]) {
-            if (isok(x, y)) sel_set_ter(x, y, wter, 0);
-        }
-    }
-    for (let y = 0; y <= 20; y++) {
-        for (const x of [0, 78]) {
-            if (isok(x, y)) sel_set_ter(x, y, wter, 0);
-        }
-    }
+    // C hellfill.lua hells[7]: selection.rect(0,0,78,20) builds its frame
+    // through get_location_coord (nhlsel.c l_selection_rect), and C
+    // sp_lev.c get_location adds the coder origin (gx.xstart=1 "column 0
+    // is off limits", gy.ystart=0) to explicit coords — so the frame lands
+    // at (1,0)-(79,20): the west edge paints x=1 lava over the grown
+    // fringe and the east edge x=79 leaves x=78 rooms intact. The previous
+    // hand-rolled frame skipped that shift (painting x=0/x=78), covering
+    // grown rooms at x=78 with lava and missing the x=1 fringe lava.
+    // selection_rect_rel applies the same origin shift (JS get_location_coord
+    // adds game.splev_xstart/ystart, reset to 1/0 like C).
+    const border = selection_rect_rel(0, 0, 78, 20);
+    selection_iterate(border, (x, y) => {
+        sel_set_ter(x, y, wter, 0);
+        // C lspo_terrain lit=0 via mkmaze.c set_levltyp_lit: lava forces
+        // lit=1, anything else takes lit=0 (JS sel_set_ter treats tlit 0 as
+        // nochange, so apply C's rule explicitly).
+        const bloc = game.level.at(x, y);
+        if (bloc) bloc.lit = IS_LAVA(wter);
+    });
     wallify_map(0, 0, COLNO - 1, ROWNO - 1);
 }
 

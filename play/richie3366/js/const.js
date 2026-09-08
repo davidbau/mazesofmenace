@@ -423,6 +423,8 @@ export function BZ_VALID_ADTYP(adtyp) {
 export function BZ_M_BREATH(bztyp) { return -20 - (bztyp | 0); }
 /** C ref: hack.h BZ_M_WAND — monster wand buzz type (-39..-30); not -0 */
 export function BZ_M_WAND(bztyp) { return -30 - (bztyp | 0); }
+/** C ref: hack.h BZ_U_BREATH — hero breath buzz type (20..29) */
+export function BZ_U_BREATH(bztyp) { return 20 + (bztyp | 0); }
 
 // Room types (mkroom.h)
 export const OROOM = 0;

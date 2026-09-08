@@ -11,11 +11,12 @@ import {
     MCF_INDIRECT, MCF_SIGHT, MCF_HOSTILE,
     HEAD, EYE, TIMEOUT, DIED, KILLED_BY, A_DEX,
     MM_ANGRY, MM_NOMSG, Upolyd, ismnum, DETECT_MONSTERS,
-    M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_ELEC, M_SEEN_REFL,
+    M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_ELEC, M_SEEN_REFL,
+    M_AP_TYPE, M_AP_OBJECT,
 } from './const.js';
 import { mon_adjust_speed } from './muse.js';
 import {
-    pline, verbalize, canspotmon, canseemon, impossible,
+    pline, pline_mon, Norep, verbalize, canspotmon, canseemon, impossible,
     You_feel, shieldeff, map_invisible, tp_sensemon,
 } from './display.js';
 import {
@@ -37,7 +38,7 @@ import { rndcurse } from './sit.js';
 import { destroy_arm } from './do_wear.js';
 import { make_stunned, make_confused } from './potion.js';
 import { mon_set_minvis } from './worn.js';
-import { destroy_items, flashburn } from './zap.js';
+import { destroy_items, flashburn, mon_spell_hits_spot } from './zap.js';
 import { burnarmor, ignite_items } from './trap.js';
 import { mkclass, makemon, set_malign } from './makemon.js';
 import { monster_census } from './minion.js';
@@ -45,6 +46,8 @@ import { enexto } from './teleport.js';
 import { setuhpmax } from './exper.js';
 import { done, finish_losehp_done } from './end.js';
 import { burn_away_slime } from './timeout.js';
+// C ref: mhitu.c mdamageu — castmu FIRE/COLD/MAGM tail (imports.mjs: hoisted, cycle-safe).
+import { mdamageu } from './mhitu.js';
 
 /** C ref: mondata.h perceives — M1_SEE_INVIS. */
 function perceives(ptr) {
@@ -96,6 +99,11 @@ function Fire_resistance() {
     const u = game.u || {};
     return !!(u.Fire_resistance || u.HFire_resistance || u.EFire_resistance);
 }
+/** C youprop.h Cold_resistance — H || E (mirrors local Fire_resistance). */
+function Cold_resistance() {
+    const u = game.u || {};
+    return !!(u.Cold_resistance || u.HCold_resistance || u.ECold_resistance);
+}
 function Shock_resistance() {
     const u = game.u || {};
     return !!(u.Shock_resistance || u.HShock_resistance || u.EShock_resistance);
@@ -133,8 +141,10 @@ function youmonst_victim() {
     return game.youmonst || { _youmonst: true };
 }
 
-// C ref: monattk.h
+// C ref: monattk.h AD_MAGM/AD_FIRE/AD_COLD (:43-45), AD_ELEC
+const AD_MAGM = 1;
 const AD_FIRE = 2;
+const AD_COLD = 3;
 const AD_ELEC = 6;
 
 // C ref: mcastu.h MONSPELL — unified spell ids
@@ -762,6 +772,41 @@ async function mcast_spell(mtmp, dmg, spellnum) {
     }
 }
 
+// C ref: objects.h — STRANGE_OBJECT is otyp 0 (cf. readobjnam.js).
+const STRANGE_OBJECT = 0;
+
+/**
+ * C ref: mcastu.c:61-85 cursetxt — feedback when frustrated monster
+ * couldn't cast a spell. The canseemon arm draws no RNG; the blind arm
+ * keeps C's short-circuit `!(moves % 4) || !rn2(4)` so the rn2(4) burns
+ * exactly when C burns it.
+ */
+async function cursetxt(mtmp, undirected) {
+    if (canseemon(mtmp) && couldsee(mtmp.mx, mtmp.my)) {
+        const u = game.u || {};
+        const Invis = !!(u.Invis || u.HInvis || u.EInvis);
+        const Displaced = !!(u.Displaced || u.HDisplaced || u.EDisplaced);
+        let point_msg;
+        if (undirected) {
+            point_msg = 'all around, then curses';
+        } else if ((Invis && !perceives(mtmp.data)
+                    && ((mtmp.mux | 0) !== (u.ux | 0) || (mtmp.muy | 0) !== (u.uy | 0)))
+                   || (M_AP_TYPE(game.youmonst) === M_AP_OBJECT
+                       && game.youmonst?.mappearance === STRANGE_OBJECT)
+                   || u.uundetected) {
+            point_msg = 'and curses in your general direction';
+        } else if (Displaced
+                   && ((mtmp.mux | 0) !== (u.ux | 0) || (mtmp.muy | 0) !== (u.uy | 0))) {
+            point_msg = 'and curses at your displaced image';
+        } else {
+            point_msg = 'at you, then curses';
+        }
+        await pline_mon(mtmp, `${Monnam(mtmp)} points ${point_msg}.`);
+    } else if (!(((game.moves || 0) % 4)) || !rn2(4)) {
+        if (!Deaf()) await Norep('You hear a mumbled curse.');
+    }
+}
+
 /**
  * C ref: mcastu.c castmu — spell selection + undirected early-out.
  * mcast_spell owns all 20 arms (D-0928 #1191 cast pline before effects).
@@ -786,8 +831,9 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
         if (cnt === 0) return M_ATTK_MISS;
     }
 
-    // Unable to cast — cursetxt deferred (may burn rn2(4) when !canseemon)
+    // C ref: mcastu.c:174-179 — monster unable to cast: cursetxt feedback.
     if (mtmp.mcan || mtmp.mspec_used || !ml) {
+        await cursetxt(mtmp, is_undirected_spell(spellnum));
         return M_ATTK_MISS;
     }
     // m_seenres(cvt_adtyp…) — AD_SPEL/CLRC map to M_SEEN_NOTHING in C
@@ -847,11 +893,59 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
     }
     if (Half_spell_damage()) dmg = Math.trunc((dmg + 1) / 2);
 
-    if (adtyp === AD_SPEL || adtyp === AD_CLRC) {
+    // C ref: mcastu.c:247-304 — ret + AD_FIRE/AD_COLD/AD_MAGM/SPEL/CLRC
+    // switch in C order, then `if (dmg) mdamageu`.
+    let ret = M_ATTK_HIT;
+    const uhp = game.u || {};
+    switch (adtyp) {
+    case AD_FIRE:
+        await pline("You're enveloped in flames.");
+        if (Fire_resistance()) {
+            await shieldeff(uhp.ux, uhp.uy);
+            await pline('But you resist the effects.');
+            monstseesu(M_SEEN_FIRE);
+            dmg = 0;
+        } else {
+            monstunseesu(M_SEEN_FIRE);
+        }
+        await burn_away_slime();
+        await mon_spell_hits_spot(mtmp, AD_FIRE, uhp.ux, uhp.uy);
+        break;
+    case AD_COLD:
+        await pline("You're covered in frost.");
+        if (Cold_resistance()) {
+            await shieldeff(uhp.ux, uhp.uy);
+            await pline('But you resist the effects.');
+            monstseesu(M_SEEN_COLD);
+            dmg = 0;
+        } else {
+            monstunseesu(M_SEEN_COLD);
+        }
+        await mon_spell_hits_spot(mtmp, AD_COLD, uhp.ux, uhp.uy);
+        break;
+    case AD_MAGM:
+        // C You("are hit ...") — pline with full text (no local You clone).
+        await pline('You are hit by a shower of missiles!');
+        if (Antimagic()) {
+            await shieldeff(uhp.ux, uhp.uy);
+            // C pline_The("missiles bounce off!") — full text (cf. zap.js).
+            await pline('The missiles bounce off!');
+            monstseesu(M_SEEN_MAGR);
+            dmg = 0;
+        } else {
+            dmg = d(Math.trunc(ml / 2) + 1, 6);
+            monstunseesu(M_SEEN_MAGR);
+        }
+        await mon_spell_hits_spot(mtmp, AD_MAGM, uhp.ux, uhp.uy);
+        break;
+    case AD_SPEL:
+    case AD_CLRC:
         await mcast_spell(mtmp, dmg, spellnum);
+        dmg = 0; // done by the spell casting functions
+        break;
     }
-
-    return M_ATTK_HIT;
+    if (dmg) await mdamageu(mtmp, dmg);
+    return ret;
 }
 
 /**

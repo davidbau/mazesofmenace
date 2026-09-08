@@ -714,7 +714,7 @@ function dmgtype_fromattack(ptr, adtyp, aatyp) {
  * C ref: mondata.c resists_blnd monster arm :248–272.
  * Named omit: resists_blnd_by_arti (Sunsword); youmonst Blind/Unaware.
  */
-function resists_blnd_mm(mon) {
+export function resists_blnd_mm(mon) {
     if (!mon) return true;
     const ptr = mon.data;
     if ((mon.mblinded | 0) || !(mon.mcansee | 0) || !haseyes(ptr)
@@ -974,6 +974,28 @@ async function mhitm_ad_wrap(magr, mattk, mdef, mhm) {
         await pline(
             `${Some_Monnam_mm(magr)} brushes against ${some_mon_nam_mm(mdef)}.`,
         );
+    }
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_plys `:3464–3475` — mhitm (mon→mon) arm.
+ * Defender already moving && !rn2(3) && !mgc_negated(TRUE) → vis &&
+ * canspotmon «is frozen by» (C plain pline, like the wrap arm above)
+ * then paralyze_monst(rnd(10)). Leftover d() is kept (paralysis rides
+ * on top of the hit; mdamagem applies it after knockback).
+ * Named omissions: uhitm you-as-agr arm is damageum_ad_plys in
+ * uhitm.js (D-2091); mhitu you-as-def arm (hitmsg + multi paralyze)
+ * is open D-2005.
+ */
+export async function mhitm_ad_plys(magr, mattk, mdef, mhm) {
+    void mattk;
+    void mhm;
+    if (mdef.mcanmove && !rn2(3)
+        && !(await mhitm_mgc_atk_negated(magr, mdef, true))) {
+        if (_mm_vis && canspotmon(mdef)) {
+            await pline(`${Monnam(mdef)} is frozen by ${mon_nam(magr)}.`);
+        }
+        paralyze_monst(mdef, rnd(10));
     }
 }
 
@@ -3516,6 +3538,26 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
         // AD_PHYS zero-damage path below.
         await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep);
         return mhm.hitflags;
+    }
+
+    // C: mhitm_adtyping → mhitm_ad_plys for AD_PLYS (uhitm.c:3464–3475
+    // mhitm arm). The arm never zeroes leftover or sets done, so like
+    // AD_PHYS below this falls through to the shared knockback + HP
+    // tail; a zero-dice attack returns hitflags after knockback.
+    if ((mattk.adtyp | 0) === AD_PLYS) {
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+        };
+        await mhitm_ad_plys(magr, mattk, mdef, mhm);
+        damage = mhm.damage | 0;
+        hitflags = mhm.hitflags | 0;
+        if (mhm.done || !damage) {
+            // C mhitm.c:1061 — knockback still runs; every path here returns hitflags
+            await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep);
+            return mhm.hitflags;
+        }
     }
 
     // C: mhitm_adtyping → mhitm_ad_phys for AD_PHYS (D-1394 shade;

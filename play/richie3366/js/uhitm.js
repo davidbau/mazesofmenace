@@ -79,7 +79,7 @@ import { monflee, m_move, accessible } from './monmove.js';
 import { livelog_printf } from './pline.js';
 import { experience, more_experienced, newexplevel } from './exper.js';
 import { explode, mon_explodes, adtyp_to_expltype } from './explode.js';
-import { rehumanize, body_part, mbodypart } from './polyself.js';
+import { rehumanize, body_part, mbodypart, uunstick } from './polyself.js';
 import { mon_nam, Monnam, x_monnam, x_monnam_tame, Hallucination, type_is_pname, pmname, a_monnam, safe_oname } from './do_name.js';
 import { artifact_hit, youmonst, is_art, artifact_exists, shade_glare } from './artifact.js';
 import { xname, vtense, The, An, an, singular, makeplural, cxname, simpleonames, otense, mshot_xname } from './objnam.js';
@@ -1982,16 +1982,6 @@ function set_ustuck(mtmp) {
         u.uswallow = 0;
         u.uswldtim = 0;
     }
-}
-
-/**
- * C ref: polyself.c uunstick — release u.ustuck then pline.
- */
-async function uunstick() {
-    const mtmp = game.u?.ustuck;
-    if (!mtmp) return;
-    set_ustuck(null);
-    await pline(`${Monnam(mtmp)} is no longer in your clutches.`);
 }
 
 /**

@@ -280,6 +280,17 @@ function freeinv(otmp) {
     if (otmp) {
         otmp.nobj = null;
         otmp.where = OBJ_FREE;
+        // C invent.c freeinv_core — COIN_CLASS → disp.botl = TRUE. JS botl
+        // `$:` reads the _goldCount cache (do.js), so decrement it on every
+        // gold freeinv here (throw split coins, whole stacks, throw_gold;
+        // D-2139). update_inventory/artifact/timer arms stay named omits.
+        if (otmp.oclass === COIN_CLASS) {
+            game._goldCount = Math.max(
+                0, (game._goldCount || 0) - (otmp.quan || 0),
+            );
+            if (!game.flags) game.flags = {};
+            game.flags.botl = true;
+        }
     }
 }
 
@@ -774,14 +785,9 @@ export async function throw_gold(obj) {
         // C You() + unsplitobj named (D-0720).
         return 0; // C ECMD_CANCEL; JS cmd.js treats truthy as time
     }
+    // Local freeinv above already decrements the _goldCount cache for
+    // COIN_CLASS (C invent.c freeinv_core coin arm; D-2139).
     freeinv(obj);
-    if (obj?.oclass === COIN_CLASS) {
-        game._goldCount = Math.max(
-            0, (game._goldCount || 0) - (obj.quan || 0),
-        );
-        if (!game.flags) game.flags = {};
-        game.flags.botl = true;
-    }
     if (u.uswallow) {
         let swallower = mon_nam(u.ustuck);
         // C :2674 — digests → s_suffix(mon_nam) + " entrails"
@@ -884,10 +890,13 @@ export async function throw_gold(obj) {
  */
 export async function throw_obj(obj, shotlimit) {
     const u = game.u || {};
-    // C throw_obj :112 — non-quiver coins → throw_gold (swallow D-1302)
-    if (obj.oclass === COIN_CLASS) {
-        if (obj !== (u.uquiver || null)) return throw_gold(obj);
-        return 0; // quivered gold via throwit named omit
+    // C throw_obj :112 — non-quiver coins → throw_gold (swallow D-1302);
+    // quivered coins fall through to the m_shot loop below (D-2139):
+    // split one coin via splitobj/next_ident, freeinv, throwit, encumber.
+    // canletgo/Mjollnir/too-heavy/welded/wet-towel gates cannot refuse gold
+    // (do.c canletgo: worn-armor/uwep-welded/LOADSTONE/LEASH/SADDLE only).
+    if (obj.oclass === COIN_CLASS && obj !== (u.uquiver || null)) {
+        return throw_gold(obj);
     }
 
     // C ref: dothrow.c throw_obj — after getdir, self (dx=dy=dz=0) refuses

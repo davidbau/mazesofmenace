@@ -19,7 +19,7 @@ import {
 import { nomul, unmul, stop_occupation } from './hack.js';
 import { retouch_object, set_artifact_intrinsic } from './artifact.js';
 import {
-    welded, setuwep, setuswapwep, setuqwep, empty_handed, is_weptool,
+    welded, bimanual, setuwep, setuswapwep, setuqwep, empty_handed, is_weptool,
     set_twoweap,
 } from './wield.js';
 import { cmdq_pop, cmdq_clear } from './cmd.js';
@@ -28,7 +28,7 @@ import {
     makeknown, observe_object, ggetobj, is_worn, silly_thing, update_inventory,
     weapon_descr, getobj, useup,
 } from './invent.js';
-import { w_blocks } from './worn.js';
+import { w_blocks, cantweararm, racial_exception, WrappingAllowed, is_flimsy, has_horns, num_horns } from './worn.js';
 import { monstunseesu_prop } from './mondata.js';
 import {
     add_valid_menu_class, menu_class_present, query_category, query_objlist,
@@ -55,10 +55,10 @@ import {
     MENU_TRADITIONAL, MENU_COMBINATION, MENU_FULL,
     ALL_FINISHED, ALL_TYPES_SELECTED, ALL_TYPES, WORN_TYPES, UNPAID_TYPES,
     BUCX_TYPES, SIGNAL_NOMENU, USE_INVLET, INVORDER_SORT, PICK_ANY,
-    HAND, FOOT, FINGER, TT_BEARTRAP, TT_INFLOOR, P_SHORT_SWORD, P_SABER,
+    HAND, FOOT, FINGER, TT_BEARTRAP, TT_INFLOOR, TT_LAVA, TT_BURIEDBALL, P_SHORT_SWORD, P_SABER,
     rightleftchars, RIGHT_HANDED,
     GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_INACCESS, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST,
-    GETOBJ_NOFLAGS,
+    GETOBJ_NOFLAGS, Upolyd,
 } from './const.js';
 import { x_monnam, trycall } from './do_name.js';
 import { change_sex, poly_gender, Unchanging } from './polyself.js';
@@ -66,7 +66,7 @@ import {
     ARMOR_CLASS, RING_CLASS, AMULET_CLASS, WEAPON_CLASS, TOOL_CLASS,
     objectNames, objectNameStrs, objectDescrs, is_sword,
 } from './objects.js';
-import { PM_ARCHEOLOGIST, PM_MONK, nolimbs, nohands, verysmall } from './monsters.js';
+import { PM_ARCHEOLOGIST, PM_MONK, nolimbs, nohands, verysmall, slithy, MZ_SMALL } from './monsters.js';
 import {
     is_flammable, is_rustprone, is_rottable, is_corrodeable, is_crackable,
     erosion_matters, is_damageable, is_metallic,
@@ -1829,18 +1829,51 @@ export async function doddoremarm() {
 }
 
 /**
- * C ref: do_wear.c canwearobj — slot/mask for armor; poly/weld/trap gates
- * mostly deferred (human form always ok). Noisy else → silly_thing("wear")
- * (D-1682; C `:2189–2194`).
+ * C do_wear.c canwearobj `:2029–2206` — verysmall/nohands (`:2036–2042`),
+ * cantweararm cloak-exception + racial (`:2043–2057`), worn (`:2058–2063`),
+ * welded bimanual suit/shirt (`:2065–2072`), per-type helm horns
+ * (`:2074–2084`), shield bimanual/twoweap (`:2085–2103`), boots
+ * slithy/centaur/utrap (`:2104–2134`), gloves welded/Glib (`:2135–2153`),
+ * shirt/cloak/suit occupancy (`:2154–2188`), else silly_thing
+ * (`:2189–2194`). Noisy prints; silent (equip_ok DOWNPLAY) returns 0/1.
  * @returns {Promise<number>} 1 ok (mask out), 0 fail
  */
 export async function canwearobj(otmp, maskOut, noisy) {
     const u = game.u || {};
+    const data = game.youmonst?.data;
     let err = 0;
     let mask = 0;
 
+    if (verysmall(data) || nohands(data)) {
+        if (noisy) await pline("You can't wear any armor in your current form.");
+        return 0;
+    }
+
+    {
+        const isCloak = is_cloak(otmp);
+        const isShirt = !isCloak && is_shirt(otmp);
+        const isSuit = !isCloak && !isShirt && is_suit(otmp);
+        const which = isCloak ? 'cloak' : isShirt ? 'shirt' : isSuit ? 'suit' : null;
+        if (which && cantweararm(data)
+            && (which !== 'cloak'
+                || ((otmp.otyp !== MUMMY_WRAPPING)
+                    ? (data?.msize !== MZ_SMALL)
+                    : !WrappingAllowed(data)))
+            && racial_exception(game.youmonst, otmp) < 1) {
+            if (noisy) await pline(`The ${which} will not fit on your body.`);
+            return 0;
+        }
+    }
+
     if ((otmp.owornmask || 0) & W_ARMOR) {
-        if (noisy) await pline('You are already wearing that.');
+        if (noisy) await already_wearing('that');
+        return 0;
+    }
+
+    if (welded(u.uwep) && bimanual(u.uwep) && (is_suit(otmp) || is_shirt(otmp))) {
+        if (noisy) {
+            await pline(`You cannot do that while holding your ${is_sword(u.uwep) ? 'sword' : 'weapon'}.`);
+        }
         return 0;
     }
 
@@ -1848,20 +1881,66 @@ export async function canwearobj(otmp, maskOut, noisy) {
         if (u.uarmh) {
             if (noisy) await pline('You are already wearing a helmet.');
             err++;
+        } else if (Upolyd(u) && has_horns(data) && !is_flimsy(otmp)) {
+            if (noisy) {
+                const n = num_horns(data) | 0;
+                await pline(`The helmet won't fit over your horn${n === 1 ? '' : 's'}.`);
+            }
+            err++;
         } else mask = W_ARMH;
     } else if (is_shield(otmp)) {
         if (u.uarms) {
             if (noisy) await pline('You are already wearing a shield.');
+            err++;
+        } else if (u.uwep && bimanual(u.uwep)) {
+            if (noisy) {
+                const w = u.uwep;
+                const what = is_sword(w) ? 'sword' : (w.otyp === BATTLE_AXE ? 'axe' : 'weapon');
+                await pline(`You cannot wear a shield while wielding a two-handed ${what}.`);
+            }
+            err++;
+        } else if (u.twoweap) {
+            if (noisy) await pline('You cannot wear a shield while wielding two weapons.');
             err++;
         } else mask = W_ARMS;
     } else if (is_boots(otmp)) {
         if (u.uarmf) {
             if (noisy) await pline('You are already wearing boots.');
             err++;
+        } else if (Upolyd(u) && slithy(data)) {
+            if (noisy) await pline('You have no feet...');
+            err++;
+        } else if (Upolyd(u) && data?.mlet === 'S_CENTAUR') {
+            if (noisy) await pline('You have too many hooves to wear boots.');
+            err++;
+        } else if (u.utrap && ((u.utraptype | 0) === TT_BEARTRAP
+            || (u.utraptype | 0) === TT_INFLOOR
+            || (u.utraptype | 0) === TT_LAVA
+            || (u.utraptype | 0) === TT_BURIEDBALL)) {
+            if (noisy) {
+                if ((u.utraptype | 0) === TT_BEARTRAP) {
+                    await pline(`Your ${body_part_latebound(FOOT)} is trapped!`);
+                } else if ((u.utraptype | 0) === TT_BURIEDBALL) {
+                    await pline(`Your ${body_part_latebound(FOOT)} is attached to the buried ball!`);
+                } else {
+                    await pline(`Your ${makeplural(body_part_latebound(FOOT))} are stuck!`);
+                }
+            }
+            err++;
         } else mask = W_ARMF;
     } else if (is_gloves(otmp)) {
         if (u.uarmg) {
             if (noisy) await pline('You are already wearing gloves.');
+            err++;
+        } else if (welded(u.uwep)) {
+            if (noisy) {
+                await pline(`You cannot wear gloves over your ${is_sword(u.uwep) ? 'sword' : 'weapon'}.`);
+            }
+            err++;
+        } else if (hero_glib()) {
+            if (noisy) {
+                await pline(`Your ${fingers_or_gloves(false)} are too slippery to pull on gloves.`);
+            }
             err++;
         } else mask = W_ARMG;
     } else if (is_shirt(otmp)) {
@@ -1897,20 +1976,57 @@ export async function canwearobj(otmp, maskOut, noisy) {
 }
 
 /**
- * C do_wear.c canwearobj `:2029–2206` with noisy=FALSE — slot occupancy
- * only (equip_ok DOWNPLAY). Named omit vs full C: polyform
- * cantweararm/horns/slithy/centaur, welded bimanual, shield+twoweap,
- * utrap boots, Glib gloves.
+ * C do_wear.c canwearobj `:2029–2206` with noisy=FALSE — same gates as
+ * above, silent (equip_ok DOWNPLAY). Polyform cantweararm/horns/slithy/
+ * centaur, welded bimanual, shield+twoweap, utrap boots, Glib gloves.
  * @param {object} otmp
  * @returns {number} 1 fit, 0 no
  */
 function canwearobj_silent(otmp) {
     const u = game.u || {};
+    const data = game.youmonst?.data;
+    if (verysmall(data) || nohands(data)) return 0;
+    {
+        const isCloak = is_cloak(otmp);
+        const isShirt = !isCloak && is_shirt(otmp);
+        const isSuit = !isCloak && !isShirt && is_suit(otmp);
+        const which = isCloak || isShirt || isSuit;
+        if (which && cantweararm(data)
+            && (!isCloak
+                || ((otmp.otyp !== MUMMY_WRAPPING)
+                    ? (data?.msize !== MZ_SMALL)
+                    : !WrappingAllowed(data)))
+            && racial_exception(game.youmonst, otmp) < 1) return 0;
+    }
     if ((otmp.owornmask || 0) & W_ARMOR) return 0;
-    if (is_helmet(otmp)) return u.uarmh ? 0 : 1;
-    if (is_shield(otmp)) return u.uarms ? 0 : 1;
-    if (is_boots(otmp)) return u.uarmf ? 0 : 1;
-    if (is_gloves(otmp)) return u.uarmg ? 0 : 1;
+    if (welded(u.uwep) && bimanual(u.uwep) && (is_suit(otmp) || is_shirt(otmp))) return 0;
+    if (is_helmet(otmp)) {
+        if (u.uarmh) return 0;
+        if (Upolyd(u) && has_horns(data) && !is_flimsy(otmp)) return 0;
+        return 1;
+    }
+    if (is_shield(otmp)) {
+        if (u.uarms) return 0;
+        if (u.uwep && bimanual(u.uwep)) return 0;
+        if (u.twoweap) return 0;
+        return 1;
+    }
+    if (is_boots(otmp)) {
+        if (u.uarmf) return 0;
+        if (Upolyd(u) && slithy(data)) return 0;
+        if (Upolyd(u) && data?.mlet === 'S_CENTAUR') return 0;
+        if (u.utrap && ((u.utraptype | 0) === TT_BEARTRAP
+            || (u.utraptype | 0) === TT_INFLOOR
+            || (u.utraptype | 0) === TT_LAVA
+            || (u.utraptype | 0) === TT_BURIEDBALL)) return 0;
+        return 1;
+    }
+    if (is_gloves(otmp)) {
+        if (u.uarmg) return 0;
+        if (welded(u.uwep)) return 0;
+        if (hero_glib()) return 0;
+        return 1;
+    }
     if (is_shirt(otmp)) return (u.uarm || u.uarmc || u.uarmu) ? 0 : 1;
     if (is_cloak(otmp)) return u.uarmc ? 0 : 1;
     if (is_suit(otmp)) return (u.uarmc || u.uarm) ? 0 : 1;

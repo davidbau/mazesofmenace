@@ -3158,19 +3158,16 @@ async function domove(dx, dy) {
             if (await domove_fight_ironbars(newx, newy)) {
                 if (game.context?.run) end_running(true);
                 game.context.move = 1;
-                game.kickedloc = { x: 0, y: 0 };
                 return;
             }
             if (await domove_fight_web(newx, newy)) {
                 if (game.context?.run) end_running(true);
                 game.context.move = 1;
-                game.kickedloc = { x: 0, y: 0 };
                 return;
             }
             await domove_fight_empty(newx, newy);
             if (game.context?.run) end_running(true);
             game.context.move = 1;
-            game.kickedloc = { x: 0, y: 0 };
             return;
         }
         // C: don't attack if running and can see the non-safemon (pets ok).
@@ -3481,8 +3478,8 @@ async function domove(dx, dy) {
         see_nearby_objects();
     }
 
-    // C ref: hack.c domove — clear kickedloc after a successful move
-    if (did_step) game.kickedloc = { x: 0, y: 0 };
+    // C ref: hack.c domove :2708 — kickedloc clears unconditionally at
+    // domove() end (finally block below), even on bumps/failed steps.
 
     // C: running stops on door / obstructed / furniture (dest tmpr)
     if (game.context?.run && game.context.run < 8) {
@@ -3544,5 +3541,10 @@ async function domove(dx, dy) {
             maybe_adjust_hero_bubble();
         }
         game.domove_attempting = 0;
+        // C ref: hack.c domove :2708 — gk.kickedloc cleared unconditionally
+        // at domove() end: a bumped/failed step still frees the kicked
+        // square, so pets stop avoiding it next turn (scen-normal-Rogue-92146:
+        // stale (26,9) skipped dog_move's j==0 rn2(1) at dogmove.c:1255).
+        game.kickedloc = { x: 0, y: 0 };
     }
 }

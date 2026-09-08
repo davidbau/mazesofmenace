@@ -320,8 +320,8 @@ export function E_phrase(etmp, verb) {
     return s;
 }
 
-/** C ref: youprop.h Passes_walls — H||E ≡ uprops[PASSES_WALLS] (D-1967 local; teleport.js keeps its own). */
-function hero_Passes_walls() {
+/** C ref: youprop.h Passes_walls — H||E ≡ uprops[PASSES_WALLS] (D-1967 local; teleport.js keeps its own; invent.js enlightenment imports it D-2120). */
+export function hero_Passes_walls() {
     const u = game.u || {};
     const p = u.uprops?.[PASSES_WALLS];
     return !!((u.HPasses_walls | 0) || (u.EPasses_walls | 0)
@@ -337,8 +337,8 @@ function hero_Wwalking() {
     return !!(he && !Is_waterlevel(u.uz));
 }
 
-/** C ref: youprop.h Swimming — H||E||steed is_swimmer (D-1967 local). */
-function hero_Swimming() {
+/** C ref: youprop.h Swimming — H||E||steed is_swimmer (D-1967 local; invent.js enlightenment imports it D-2120). */
+export function hero_Swimming() {
     const u = game.u || {};
     const p = u.uprops?.[SWIMMING];
     if ((u.HSwimming | 0) || (u.ESwimming | 0)
@@ -346,8 +346,8 @@ function hero_Swimming() {
     return !!(u.usteed && is_swimmer(u.usteed.data));
 }
 
-/** C ref: youprop.h Amphibious — HMagical_breathing||E||amphibious(data) (D-1967 local). */
-function hero_Amphibious() {
+/** C ref: youprop.h Amphibious — HMagical_breathing||E||amphibious(data) (D-1967 local; invent.js enlightenment imports it D-2120). */
+export function hero_Amphibious() {
     const u = game.u || {};
     const p = u.uprops?.[MAGICAL_BREATHING];
     if ((u.HMagical_breathing | 0) || (u.EMagical_breathing | 0)
@@ -355,8 +355,8 @@ function hero_Amphibious() {
     return amphibious(game.youmonst?.data);
 }
 
-/** C ref: youprop.h Breathless — HMagical_breathing||E||breathless(data) (D-1967 local). */
-function hero_Breathless() {
+/** C ref: youprop.h Breathless — HMagical_breathing||E||breathless(data) (D-1967 local; invent.js enlightenment imports it D-2120). */
+export function hero_Breathless() {
     const u = game.u || {};
     const p = u.uprops?.[MAGICAL_BREATHING];
     if ((u.HMagical_breathing | 0) || (u.EMagical_breathing | 0)

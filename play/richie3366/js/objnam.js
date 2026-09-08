@@ -974,8 +974,21 @@ export function xname(obj) {
         if ((obj.quan || 1) !== 1) base = makeplural(base);
         return base;
     }
-    // C: obj_is_pname → goto nameit (bare ONAME) — deferred; partial ID
-    // artifacts fall through to actualn + " named ONAME" below.
+    // C xname_flags `:663–664` — obj_is_pname(obj) → goto nameit (bare
+    // ONAME, no base type / poisoned prefix / pluralize / gameover suffix).
+    // Partial-ID artifacts fall through to actualn + " named ONAME" below.
+    // Gameover disclosure (end.c possessions identified) takes this arm for
+    // every artifact with an oname (obj_is_pname skips the ID gate).
+    if (obj_is_pname(obj) && has_oname(obj)) {
+        let nm = String(ONAME(obj) ?? '');
+        // C `:1004–1008` — downcase "The" in "<item> named The ..." then
+        // C `:1011–1012` — strip leading "the " (doname re-adds its own).
+        if (obj.oartifact && nm.slice(0, 4) === 'The ') nm = `t${nm.slice(1)}`;
+        if (nm.length >= 4 && nm.slice(0, 4).toLowerCase() === 'the ') {
+            nm = nm.slice(4);
+        }
+        return nm;
+    }
     let base = pretty_base(obj);
     /* C objnam.c xname ROCK_CLASS :814–823 — BOULDER && next_boulder==1
        formats "next boulder" then clears to 0. Overloaded corpsenm
@@ -2344,8 +2357,10 @@ function doname_artifact_light(obj) {
 /**
  * C ref: light.c arti_light_radius + arti_light_description `:916–931`.
  * timeout.js has the radius used by vision; this is the doname adverb.
+ * Exported for weapon.c mon_wield_item's wield-shine pline (import-the-export;
+ * timeout.js already imports doname, so the radius original stays there).
  */
-function arti_light_description(obj) {
+export function arti_light_description(obj) {
     if (!obj?.lamplit || !doname_artifact_light(obj)) return 'strangely';
     let res = obj.blessed ? 3 : (!obj.cursed ? 2 : 1);
     if (obj === game.u?.uskin) res = 1;
@@ -2757,11 +2772,26 @@ export function doname(obj) {
     const bknown = !!obj.bknown;
     const quan = obj.quan || 1;
     const oname = objectNames[otyp];
-    let base = pretty_base(obj);
+    // C doname_base `:1247` — bp = xname(obj); pname artifacts arrive as
+    // bare ONAME (xname obj_is_pname goto nameit, `:663–664` + `:999–1012`):
+    // no base type, no "poisoned " (Grimtooth), no " named ONAME" suffix.
+    const isPname = obj_is_pname(obj) && has_oname(obj);
+    let base;
+    if (isPname) {
+        let nm = String(ONAME(obj) ?? '');
+        if (obj.oartifact && nm.slice(0, 4) === 'The ') nm = `t${nm.slice(1)}`;
+        if (nm.length >= 4 && nm.slice(0, 4).toLowerCase() === 'the ') {
+            nm = nm.slice(4);
+        }
+        base = nm;
+    } else {
+        base = pretty_base(obj);
+    }
     // C doname_base: xname may start with "poisoned "; strip into prefix
     // so order is article/BUC/poisoned/erosion/spe + bare name.
+    // Pname base is already bare (no poisoned to strip).
     let ispoisoned = false;
-    if (base.startsWith('poisoned ') && obj.opoisoned) {
+    if (!isPname && base.startsWith('poisoned ') && obj.opoisoned) {
         base = base.slice(9);
         ispoisoned = true;
     }
@@ -2949,9 +2979,10 @@ export function doname(obj) {
 
     let bp = prefix + base;
 
-    // C: has_oname && dknown → " named Foo"
+    // C: has_oname && dknown → " named Foo" — skipped for pname artifacts:
+    // bp is already bare ONAME (xname goto nameit), not "<base> named ONAME".
     const onameStr = obj.oextra?.oname;
-    if (onameStr && obj.dknown) {
+    if (onameStr && obj.dknown && !isPname) {
         const nameStart = bp.length + ' named '.length;
         bp += ` named ${onameStr}`;
         /* C objnam.c:1006–1008 — downcase "The" in "<item> named The ..." */

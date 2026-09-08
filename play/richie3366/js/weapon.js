@@ -15,12 +15,13 @@ import { select_menu_pick_none } from './invent.js';
 import { select_menu_pick_one } from './options.js';
 import { yn_function } from './getline.js';
 import { Monnam, mon_nam, s_suffix } from './do_name.js';
-import { doname, xname, vtense, The, distant_name, otense } from './objnam.js';
+import { doname, xname, vtense, The, distant_name, otense, Tobjnam, arti_light_description } from './objnam.js';
 import {
     WEAPON_CLASS, GEM_CLASS, TOOL_CLASS, BALL_CLASS, CHAIN_CLASS,
     objectNames, objectNameStrs, is_axe, is_pick, is_spear, LEATHER, SILVER,
 } from './objects.js';
 import { is_pool, handle_tip } from './hack.js';
+import { dist2 } from './hacklib.js';
 import {
     is_ammo, ammo_and_launcher, is_missile, mwelded, is_weptool,
 } from './wield.js';
@@ -53,7 +54,7 @@ import {
 } from './const.js';
 import { obj_extract_self, place_object, stackobj } from './mkobj.js';
 import { flooreffects } from './do.js';
-import { artifact_light, end_burn } from './timeout.js';
+import { artifact_light, begin_burn, end_burn } from './timeout.js';
 import { mbodypart } from './polyself.js';
 import { attacktype_fordmg } from './uhitm.js';
 import { acurr, A_STR } from './attrib.js';
@@ -696,7 +697,8 @@ export async function select_hwep(mtmp) {
 
 /**
  * C ref: weapon.c mon_wield_item — HTH + ranged + dig-tool pick/axe.
- * Named omissions: mwelded refuse-wield plines, weld-on-wield, artifact_light,
+ * Live: artifact_light begin_burn + wield-shine pline (`weapon.c:918–928`).
+ * Named omissions: mwelded refuse-wield plines, weld-on-wield,
  * autoreturn tether pline.
  */
 export async function mon_wield_item(mon) {
@@ -748,12 +750,25 @@ export async function mon_wield_item(mon) {
         if (mw_tmp) mw_tmp.owornmask = (mw_tmp.owornmask || 0) & ~W_WEP;
         mon.weapon_check = NEED_WEAPON;
         // C: canseemon → pline_mon("%s wields %s%c", Monnam, doname, !|.)
-        // before final owornmask (weld/artifact_light arms deferred)
+        // before final owornmask (weld arm still deferred)
         if (canseemon(mon)) {
             await pline_mon(
                 mon,
                 `${Monnam(mon)} wields ${doname(obj)}${exclaim ? '!' : '.'}`,
             );
+        }
+        // C weapon.c:918–928 — a newly wielded light artifact ignites:
+        // begin_burn sets lamplit first (arti_light_radius, and the
+        // arti_light_description adverb below, read the lit radius).
+        if (artifact_light(obj) && !obj.lamplit) {
+            begin_burn(obj, false);
+            if (canseemon(mon)) {
+                await pline(
+                    `${Tobjnam(obj, 'shine')} ${arti_light_description(obj)} in ${s_suffix(mon_nam(mon))} ${mbodypart(mon, HAND)}!`,
+                );
+            } else if (cansee(mon.mx, mon.my)) {
+                await pline(`Light begins shining ${dist2(mon.mx, mon.my, game.u.ux, game.u.uy) <= 5 * 5 ? 'nearby' : 'in the distance'}.`);
+            }
         }
         obj.owornmask = (obj.owornmask || 0) | W_WEP;
         return 1;

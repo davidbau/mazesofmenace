@@ -10,6 +10,7 @@ import {
     mlevels,
     mmoves,
     macs,
+    mrs,
     maligntyps,
     genos,
     difficulties,
@@ -206,6 +207,9 @@ export function mons(mndx) {
         mlevel: mlevels[mndx],
         mmove: mmoves[mndx],
         ac: macs[mndx],
+        // C ref: monsters.h MON LVL(lev, mov, ac, mr, aln) — permonst.mr
+        // (magic-resistance %; zap.c:6141 resist `rn2(100+alev-dlev) < mr`).
+        mr: mrs[mndx],
         maligntyp: fix?.maligntyp ?? maligntyps[mndx],
         geno: genos[mndx],
         difficulty: difficulties[mndx],

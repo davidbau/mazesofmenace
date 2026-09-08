@@ -359,10 +359,12 @@ export function mswings_verb(mwep, bash) {
  * exemption is applied at the mattacku AT_WEAP caller (D-1795).
  */
 export async function mswings(mtmp, otemp, bash) {
-    const u = game.u || {};
-    const Blind = !!(u.Blind || u.ublind);
+    /* C mhitu.c mswings `:135` — !Blind is youprop.h Blind
+     * ((HBlinded||EBlinded) && !BBlinded), not the sticky u.Blind flat:
+     * a hero poly'd into an eyeless form (polyself.c PROPSET(BLINDED)
+     * FROMFORM) is Blind with flats clear (D-0716 convention). */
     const verbose = game.flags?.verbose !== false;
-    if (verbose && !Blind && mon_visible(mtmp)) {
+    if (verbose && !Blind() && mon_visible(mtmp)) {
         await pline_mon(
             mtmp,
             `${Monnam(mtmp)} ${mswings_verb(otemp, bash)} `

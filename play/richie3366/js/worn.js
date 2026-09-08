@@ -156,6 +156,10 @@ function slithy(ptr) {
     return !!((ptr?.mflags1 ?? 0) & M1_SLITHY);
 }
 
+/** C ref: mondata.c sliparm / breakarm / cantweararm (exported for do_wear.c canwearobj; import-the-export, no second copy). */
+export function cantweararm(ptr) {
+    return breakarm(ptr) || sliparm(ptr);
+}
 /** C ref: mondata.c sliparm / breakarm / cantweararm */
 function sliparm(ptr) {
     return !!(is_whirly(ptr) || (ptr?.msize ?? 99) <= MZ_SMALL || noncorporeal(ptr));
@@ -167,9 +171,6 @@ function breakarm(ptr) {
         || ((ptr?.msize ?? 0) > MZ_SMALL && !humanoid(ptr))
         || mndx === PM_MARILITH
         || mndx === PM_WINGED_GARGOYLE);
-}
-function cantweararm(ptr) {
-    return breakarm(ptr) || sliparm(ptr);
 }
 
 /** C ref: obj.h WrappingAllowed */
