@@ -1014,10 +1014,7 @@ async function pick_obj(otmp) {
         robshop = !!otmp.unpaid && !saveushops.includes(fakeshop);
     }
 
-    const oldcap = near_capacity();
     const result = await addinv(otmp);
-    if (near_capacity() !== oldcap)
-        game._encumber_status_stale = true;
     if (robshop)
         note_unported_pickup('pick_obj:remote_burglary');
     return result;

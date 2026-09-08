@@ -117,6 +117,11 @@ import { cmap_names } from './drawing_data.js';
 import { tty_yn_function } from './tty/topl.js';
 import { floating_above } from './fountain.js';
 import { artifact_has_invprop } from './artifact.js';
+import { set_levltyp } from './mkmaze.js';
+import { make_grave } from './mklev.js';
+import { Align2amask, AM_NONE, T_LOOTED, FOUNTAIN, THRONE, ALTAR, SINK } from './const.js';
+import { Inhell } from './makemon.js';
+import { defsyms } from './drawing_data.js';
 
 
 
@@ -2057,6 +2062,61 @@ export async function doaltarobj(obj) {
 // Keep existing callers compatible with hitfloor's C-owned module.
 export { hitfloor } from './dothrow.js';
 
+// src/do.c:404 polymorph_sink() — the sink underfoot becomes a fountain,
+// throne, altar, grave or plain floor
+export async function polymorph_sink() {
+    let sym = cmap_names.S_sink;
+    let sinklooted;
+    let algn;
+    const loc = game.level.at(game.u.ux, game.u.uy);
+
+    if (loc.typ !== SINK)
+        return;
+
+    sinklooted = loc.looted !== 0;
+    /* svl.level.flags.nsinks--; // set_levltyp() will update this */
+    loc.flags = 0;
+    loc.looted = 0;
+    switch (rn2(4)) {
+    default:
+    case 0:
+        sym = cmap_names.S_fountain;
+        set_levltyp(game.u.ux, game.u.uy, FOUNTAIN); /* updates level.flags.nfountains */
+        loc.blessedftn = 0;
+        if (sinklooted)
+            loc.looted |= 1; /* SET_FOUNTAIN_LOOTED */
+        break;
+    case 1:
+        sym = cmap_names.S_throne;
+        set_levltyp(game.u.ux, game.u.uy, THRONE);
+        if (sinklooted)
+            loc.looted = T_LOOTED;
+        break;
+    case 2:
+        sym = cmap_names.S_altar;
+        set_levltyp(game.u.ux, game.u.uy, ALTAR);
+        /* 3.6.3: this used to pass 'rn2(A_LAWFUL + 2) - 1' to
+           Align2amask() but that evaluates its argument more than once */
+        algn = rn2(3) - 1; /* -1 (A_Cha) or 0 (A_Neu) or +1 (A_Law) */
+        loc.altarmask = ((Inhell() && rn2(3)) ? AM_NONE : Align2amask(algn));
+        break;
+    case 3:
+        sym = cmap_names.S_room;
+        set_levltyp(game.u.ux, game.u.uy, ROOM);
+        make_grave(game.u.ux, game.u.uy, null);
+        if (loc.typ === GRAVE)
+            sym = cmap_names.S_grave;
+        break;
+    }
+    /* give message even if blind; we know we're not levitating,
+       so can feel the outcome even if we can't directly see it */
+    if (loc.typ !== ROOM)
+        await pline_The(`sink transforms into ${an(defsyms[sym].explanation)}!`);
+    else
+        await pline_The('sink vanishes.');
+    newsym(game.u.ux, game.u.uy);
+}
+
 // src/do.c dropx() — take it out of inventory, then put it down.
 //
 // freeinv FIRST, then the placement. ship_object is the chute that swallows
@@ -2064,10 +2124,7 @@ export { hitfloor } from './dothrow.js';
 // nothing reaches the floor there; doaltarobj sets bknown when it lands on
 // an altar.
 export async function dropx(obj) {
-    const oldcap = near_capacity();
     freeinv(obj);
-    if (near_capacity() !== oldcap)
-        game._encumber_status_stale = true;
     if (!game.u.uswallow) {
         /* src/do.c:298 — ship_object() sends the object down a hole or
            stairs and returns TRUE when it did, in which case dropy() must

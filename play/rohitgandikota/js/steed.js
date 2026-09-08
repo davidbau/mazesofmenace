@@ -77,7 +77,7 @@ import { ACURR } from './attrib.js';
 import { Role_if } from './attrib.js';
 import { P_SKILL } from './weapon.js';
 import { objdescr_is } from './o_init.js';
-import { remove_worn_item } from './steal.js';
+import { remove_worn_item, mpickobj } from './steal.js';
 import { freeinv } from './invent.js';
 import { YMonnam } from './do_name.js';
 
@@ -253,26 +253,30 @@ export async function use_saddle(otmp) {
     return ECMD_TIME;
 }
 
-// src/steed.c put_saddle_on_mon() — saddle `mtmp`, making the saddle if the
-// caller did not supply one.
+// src/steed.c:141 put_saddle_on_mon() — saddle `mtmp`, making the saddle if
+// the caller did not supply one.
 //
-// The mksobj() is the draw. fully_identify_obj() is discovery bookkeeping and
+// The mksobj() is the draw. mpickobj() is the C's own insertion: for a
+// monster that is not (yet) tame and not in view, it unknow_object()s the
+// saddle again, which is why the starting pony's saddle (saddled before
+// initedog() in makedog()) lists as "a saddle", not "an uncursed saddle".
 // update_mon_extrinsics() is a no-op for a saddle, which grants nothing.
 export function put_saddle_on_mon(saddle, mtmp) {
-    if (!can_saddle(mtmp) || which_armor(mtmp, W_SADDLE))
+    if (!can_saddle(mtmp) || which_armor(mtmp, W_SADDLE)) {
+        if (saddle)
+            void impossible('put_saddle_on_mon: saddle obj could get orphaned');
         return;
-
+    }
     if (!saddle) {
         saddle = mksobj(ONAMES.SADDLE, true, false);
-        if (!saddle)
+        if (saddle) {
+            fully_identify_obj(saddle);
+            /* mpickobj can later override identification if out-of-view */
+        } else {
             return;
-        fully_identify_obj(saddle);
+        }
     }
-
-    (mtmp.minvent ||= []).unshift(saddle);      /* mpickobj() */
-    saddle.where = OBJ_MINVENT;
-    saddle.ocarry = mtmp;
-
+    mpickobj(mtmp, saddle); /* a saddle never merges */
     mtmp.misc_worn_check = (mtmp.misc_worn_check || 0) | W_SADDLE;
     saddle.owornmask = W_SADDLE;
     saddle.leashmon = mtmp.m_id;

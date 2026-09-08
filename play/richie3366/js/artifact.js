@@ -102,7 +102,7 @@ import { recalc_telepat_range } from './do_wear.js';
 import { t_at } from './trap.js';
 import { livelog_printf } from './pline.js';
 import { inside_shop } from './shk.js';
-import { losehp, maybe_half_phys } from './hack.js';
+import { losehp, maybe_half_phys, finish_maybe_wail } from './hack.js';
 import { exercise, A_WIS } from './attrib.js';
 
 const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
@@ -1147,6 +1147,15 @@ export async function touch_artifact(obj, mon) {
             dmg += maybe_half_phys(tmp);
         }
         losehp(dmg, `touching ${oart.name}`, KILLED_BY);
+        /* C artifact.c:958 losehp is noreturn when fatal (done(DIED)):
+           drain the deferred death here so exercise + the evade/control
+           pline below never run after death (hack.js finish idiom). */
+        await finish_maybe_wail();
+        if (game._losehp_needs_done) {
+            const { finish_losehp_done } = await import('./end.js');
+            await finish_losehp_done();
+            return 0;
+        }
         exercise(A_WIS, false);
     }
 

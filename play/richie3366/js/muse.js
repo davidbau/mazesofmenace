@@ -106,7 +106,7 @@ import { extract_from_minvent, which_armor } from './worn.js';
 import { hard_helmet } from './do_wear.js';
 import { obfree, inhishop } from './shk.js';
 import { xkilled, killed, attacktype_fordmg } from './uhitm.js';
-import { mondead, mondied, monkilled } from './mhitm.js';
+import { mondead, mondied, monkilled, grow_up } from './mhitm.js';
 import { dog_nutrition } from './dogmove.js';
 import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
 import { CLR_GREEN, CLR_BRIGHT_GREEN } from './terminal.js';
@@ -1283,7 +1283,8 @@ function m_useup(mon, obj) {
 async function mquaffmsg(mtmp, otmp) {
     if (canseemon(mtmp)) {
         observe_object(otmp);
-        await pline(`${Monnam(mtmp)} drinks ${singular(otmp, doname)}!`);
+        // C muse.c:297 pline_mon (not pline).
+        await pline_mon(mtmp, `${Monnam(mtmp)} drinks ${singular(otmp, doname)}!`);
     } else {
         const u = game.u || {};
         const deaf = (u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf;
@@ -2129,18 +2130,6 @@ function ledger_no(lev) {
 
 function on_level(a, b) {
     return (a?.dnum | 0) === (b?.dnum | 0) && (a?.dlevel | 0) === (b?.dlevel | 0);
-}
-
-/**
- * C ref: makemon.c grow_up(mtmp, NULL) — potion/wraith envelope.
- * Named omission: little_to_big form change / geno death.
- */
-function grow_up_potion(mtmp) {
-    const gain = rnd(8);
-    mtmp.mhpmax = (mtmp.mhpmax | 0) + gain;
-    mtmp.mhp = (mtmp.mhp | 0) + gain;
-    mtmp.m_lev = (mtmp.m_lev | 0) + 1;
-    return true;
 }
 
 /**
@@ -3018,9 +3007,12 @@ export async function use_misc(mtmp) {
                 get_level(tolevel, tolev);
                 if (!on_level(tolevel, u.uz)) {
                     if (vismon) {
-                        await pline(
-                            `${Monnam(mtmp)} rises up, through the ceiling!`,
+                        // C muse.c:2414-2416 pline_mon + ceiling() + trycall.
+                        await pline_mon(
+                            mtmp,
+                            `${Monnam(mtmp)} rises up, through the ${ceiling(mtmp.mx, mtmp.my)}!`,
                         );
+                        await trycall(otmp);
                     }
                     m_useup(mtmp, otmp);
                     migrate_to_level(
@@ -3029,16 +3021,23 @@ export async function use_misc(mtmp) {
                     return 2;
                 }
             }
-            if (vismon) await pline(`${Monnam(mtmp)} looks uneasy.`);
+            // C muse.c:2424-2426 skipmsg: pline_mon + trycall.
+            if (vismon) {
+                await pline_mon(mtmp, `${Monnam(mtmp)} looks uneasy.`);
+                await trycall(otmp);
+            }
             m_useup(mtmp, otmp);
             return 2;
         }
         if (vismon) {
-            await pline(`${Monnam(mtmp)} seems more experienced.`);
+            // C muse.c:2432-2433 pline_mon (not pline).
+            await pline_mon(mtmp, `${Monnam(mtmp)} seems more experienced.`);
         }
         if (oseen) makeknown(POT_GAIN_LEVEL);
         m_useup(mtmp, otmp);
-        if (!grow_up_potion(mtmp)) return 1;
+        // C muse.c:2437 makemon.c grow_up(mtmp, NULL): form change / geno
+        // death via the live mhitm.js port (retires the grow_up_potion stub).
+        if (!(await grow_up(mtmp, null))) return 1;
         return 2;
     }
     case MUSE_WAN_MAKE_INVISIBLE:

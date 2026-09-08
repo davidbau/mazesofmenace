@@ -22,8 +22,7 @@
 // domove smudge via maybe_smudge_engr → wipe_engr_at(rnd(5)).
 // **doengrave non-hands stylus sfx** (D-1689: wand/weapon/marker/towel/
 // gem oc_tough / boots / large/silly); canned KEY was D-1675.
-// Named omissions: altar/jello/swallow/lava/pool; yn add-to (same-type
-// defaults append); livelog;
+// Named omissions: altar/jello/swallow/lava/pool; livelog;
 // allmain DEX timeout D-1372; dokick(2) D-1360;
 // uhitm do_attack(3) D-1373; dothrow throw_obj(2) D-1374;
 // dig.c still stubbed;
@@ -43,7 +42,7 @@
 import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { pline, newsym, impossible } from './display.js';
-import { getlin } from './getline.js';
+import { getlin, yn_function } from './getline.js';
 import { getobj, useup, hold_another_object, prinv, update_inventory } from './invent.js';
 import { splitobj, obj_extract_self } from './mkobj.js';
 import { A_WIS, exercise } from './attrib.js';
@@ -1185,7 +1184,7 @@ async function engrave() {
     return 0;
 }
 
-/** C engrave.c doengrave `:955–1263`. D-1689 non-hands sfx; yn add-to named. */
+/** C engrave.c doengrave `:955–1263`. D-1689 non-hands sfx; add-to ynq + HEADSTONE + BUFSZ room live. */
 export async function doengrave() {
     const u = game.u || {};
     if (!u_can_engrave()) {
@@ -1283,11 +1282,19 @@ export async function doengrave() {
 
     if (de.oep) {
         let c = 'n';
-        if (de.type === de.oep.engr_type
+        /* C engrave.c:1113-1125 — HEADSTONE appends; same-type asks ynq (decl.c:114 "ynq", def 'y'). */
+        if (de.type === HEADSTONE) {
+            /* no choice, only append */
+            c = 'y';
+        } else if (de.type === de.oep.engr_type
             && (!Blind() || de.oep.engr_type === BURN
                 || de.oep.engr_type === ENGRAVE)) {
-            // yn_function add-to named omit; C default 'y'
-            c = 'y';
+            c = await yn_function('Do you want to add to the current engraving?', 'ynq', 'y');
+            if (c === 'q') {
+                await pline(Never_mind);
+                if (de.disprefresh) newsym(u.ux, u.uy);
+                return de.ret;
+            }
         }
         if (c === 'n' || Blind()) {
             const ot = de.oep.engr_type;
@@ -1317,6 +1324,12 @@ export async function doengrave() {
                 }
                 de.eow = true;
             }
+        } else if (de.oep
+            && String(de.oep.engr_txt?.actual_text ?? '').length >= BUFSZ - 1) {
+            /* C engrave.c:1162-1167 — no room to append. */
+            await pline('There is no room to add anything else here.');
+            if (de.disprefresh) newsym(u.ux, u.uy);
+            return ECMD_TIME;
         }
     }
 

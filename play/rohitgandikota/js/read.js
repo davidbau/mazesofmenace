@@ -134,6 +134,8 @@ import { snuff_lit } from './apply.js';
 import { impact_arti_light } from './potion.js';
 import { Underwater } from './youprop.js';
 import { digests } from './mondata.js';
+import { buried_ball_to_freedom } from './dig.js';
+import { LEG } from './const.js';
 function note_unported_read(what) {
     (game.unported ||= new Set()).add('read:' + what);
 }
@@ -1931,14 +1933,30 @@ async function seffect_remove_curse(sobj) {
                 }
             }
         }
-        if (game.u.usteed)
-            note_unported_read('seffect_remove_curse:saddle');
+        /* if riding, treat steed's saddle as if part of hero's invent */
+        if (game.u.usteed && (obj = which_armor(game.u.usteed, W_SADDLE))) {
+            if (confused) {
+                blessorcurse(obj, 2);
+                obj.bknown = 0; /* skip set_bknown() */
+            } else if (obj.cursed) {
+                await uncurse(obj);
+                /* like rndcurse(sit.c), effect on regular inventory
+                   doesn't show things glowing but saddle does */
+                if (!Blind()) {
+                    await pline(`${Yobjnam2(obj, 'glow')} ${hcolor('amber')}.`);
+                    obj.bknown = Hallucination() ? 0 : 1;
+                } else {
+                    obj.bknown = 0; /* skip set_bknown() */
+                }
+            }
+        }
     }
-
     if (game.uball && !confused)
         unpunish();
-    if (game.u.utraptype === TT_BURIEDBALL)
-        note_unported_read('seffect_remove_curse:buried_ball');
+    if (game.u.utrap && game.u.utraptype === TT_BURIEDBALL) {
+        await buried_ball_to_freedom();
+        await pline_The(`clasp on your ${body_part(LEG)} vanishes.`);
+    }
     update_inventory();
 }
 
@@ -2514,7 +2532,29 @@ async function seffect_enchant_weapon(sobj) {
        primary and secondary instead of always acting on primary?] */
     if (confused && uwep && erosion_matters(uwep, game.objects)
         && uwep.oclass !== OCLASSES.ARMOR_CLASS) {
-        note_unported_read('seffect_enchant_weapon:erodeproof');
+        const old_erodeproof = (uwep.oerodeproof != 0);
+        const new_erodeproof = !scursed;
+        uwep.oerodeproof = 0; /* for messages */
+        if (Blind()) {
+            uwep.rknown = 0;
+            await Your('weapon feels warm for a moment.');
+        } else {
+            uwep.rknown = 1;
+            await pline(`${Yobjnam2(uwep, 'are')} covered by a ${
+                        scursed ? 'mottled' : 'shimmering'} ${
+                        hcolor(scursed ? NH_PURPLE : NH_GOLDEN)} ${
+                        scursed ? 'glow' : 'shield'}!`);
+        }
+        if (new_erodeproof && (uwep.oeroded || uwep.oeroded2)) {
+            uwep.oeroded = uwep.oeroded2 = 0;
+            await pline(`${Yobjnam2(uwep, Blind() ? 'feel' : 'look')} as good as new!`);
+        }
+        if (old_erodeproof && !new_erodeproof) {
+            /* restore old_erodeproof before shop charges */
+            uwep.oerodeproof = 1;
+            await costly_alteration(uwep, COST_DEGRD);
+        }
+        uwep.oerodeproof = new_erodeproof ? 1 : 0;
         return false;
     }
     s = scursed ? -1

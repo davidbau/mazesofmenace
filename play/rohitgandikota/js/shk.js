@@ -2081,7 +2081,6 @@ export async function sellobj(obj, x, y) {
             }
         }
         if (answer === 'y') {
-            delete game._encumber_status_stale;
             if (container)
                 dropped_container(obj, shkp, true);
             const tradedName = container
@@ -2142,7 +2141,6 @@ export async function sellobj(obj, x, y) {
         game.sell_response = 'y';
         answer = 'y';
     }
-    delete game._encumber_status_stale;
 
     if (answer !== 'y') {
         if (container)

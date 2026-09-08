@@ -21,6 +21,7 @@ import {
     flush_screen, flush_screen_getpos_dirty, pline, docrt, terrain_glyph,
     look_shown_at, newsym_force, glyph_is_invisible,
     glyph_at, glyph_is_cmap, glyph_to_cmap, back_to_glyph,
+    glyph_is_monster, GLYPH_MON_MALE_OFF, GLYPH_MON_FEM_OFF,
 } from './display.js';
 import { cansee } from './vision.js';
 import { lookat } from './pager.js';
@@ -840,10 +841,17 @@ export function gather_locs_interesting(x, y, gloc) {
 
     switch (gloc) {
     case GLOC_MONS: {
-        const shown = look_shown_at(x, y);
-        if (shown?.kind !== 'mon' || !shown.mtmp) return false;
-        const mnum = shown.mtmp.mnum ?? shown.mtmp.data?.mndx;
-        return mnum !== PM_LONG_WORM_TAIL;
+        // C gather_locs_interesting reads glyph_at — the DISPLAYED map, not
+        // live monsters — so during #terrain browse (monsters stripped) no
+        // cell matches and 'm' stays put. Live-state reads would wrongly
+        // jump to an unstripped monster. Long-worm-tail banks excluded
+        // exactly like C (mon male/female only, not pet/detect/ridden).
+        const g = glyph_at(x, y);
+        if (!glyph_is_monster(g)) return false;
+        const id = g | 0;
+        if (id === (PM_LONG_WORM_TAIL | 0) + GLYPH_MON_MALE_OFF) return false;
+        if (id === (PM_LONG_WORM_TAIL | 0) + GLYPH_MON_FEM_OFF) return false;
+        return true;
     }
     case GLOC_OBJS: {
         const shown = look_shown_at(x, y);

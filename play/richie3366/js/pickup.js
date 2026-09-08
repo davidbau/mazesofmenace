@@ -13,7 +13,7 @@ import {
 } from './mkobj.js';
 import {
     look_here, observe_object, dfeature_at, paint_corner_nhw_menu,
-    dismiss_nhw_menu, sortloot,
+    dismiss_nhw_menu, sortloot, update_inventory,
     let_to_name, DEF_INV_ORDER, prinv, near_capacity, calc_capacity,
     max_capacity, compactify_invlets, getobj_take_count, getobj_apply_count,
     getobj_from_cmdq, getobj_display_pickinv, freeinv, display_inventory,
@@ -3620,9 +3620,15 @@ export async function use_container(obj, held = false, more_containers = false) 
     // C: if (!u_handsy()) return ECMD_OK;
     if (!(await u_handsy())) return ECMD_OK;
 
-    // C pickup.c:2994–2999 — Tobjnam "are" locked; held asks to put it
-    // down. No lknown/Hmmm arm here (that is do_loot_cont `:2106–2111`
-    // for floor #loot, which keeps its own copy below).
+    // C pickup.c:2992–2999 — discover lock in advance (`:2992–2996`); held
+    // refreshes the inventory display. Then Tobjnam "are" locked; held asks
+    // to put it down. (The Hmmm/"turns out to be locked" variant is the
+    // floor-only do_loot_cont `:2106–2111` copy; use_container always uses
+    // Tobjnam.)
+    if (!obj.lknown) {
+        obj.lknown = 1;
+        if (held) update_inventory();
+    }
     if (obj.olocked) {
         await pline(`${Tobjnam(obj, 'are')} locked.`);
         if (held) await pline('You must put it down to unlock.');

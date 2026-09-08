@@ -131,7 +131,7 @@ function plur(n) {
 }
 
 /** C ref: insight.c N_times */
-function N_times(n) {
+export function N_times(n) {
     switch (n | 0) {
         case 1: return 'once';
         case 2: return 'twice';

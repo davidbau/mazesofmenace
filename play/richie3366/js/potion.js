@@ -107,7 +107,7 @@ import {
 } from './mkobj.js';
 import {
     A_WIS, A_INT, A_DEX, A_CON, A_STR, A_MAX, adjattrib, exercise, acurr,
-    Fast, Very_fast,
+    poisontell, Fast, Very_fast,
 } from './attrib.js';
 import {
     makeknown, compactify_invlets, enlightenment, observe_object,
@@ -424,11 +424,11 @@ function Role_if_healer() {
 }
 
 /**
- * C ref: potion.c peffect_sickness
+ * C ref: potion.c peffect_sickness :964–1011
  * Blessed: stale-fruit pline + losehp(1) (non-healer). Uncursed/cursed:
  * attr drain + HP. Does not set potion_unkn → dopotion makeknown may
- * exercise(A_WIS) via discover_object. Named omissions: poisontell
- * wording / Fixed_abil gate; full make_hallucinated body (flag clear only).
+ * exercise(A_WIS) via discover_object. Named omissions: full
+ * make_hallucinated body (flag clear only).
  */
 async function peffect_sickness(otmp) {
     await pline('Yecch!  This stuff tastes like poison.');
@@ -451,13 +451,16 @@ async function peffect_sickness(otmp) {
             const contaminant =
                 (Poison_resistance() ? 'mildly ' : '')
                 + (otmp.fromsink ? 'contaminated tap water' : 'contaminated potion');
-            // Fixed_abil deferred — always adjattrib like !Fixed_abil
-            // poisontell(typ, FALSE) wording deferred
-            await adjattrib(
-                typ,
-                Poison_resistance() ? -1 : -rn1(4, 3),
-                1,
-            );
+            // C :987–992: Fixed_abil skips both poisontell and
+            // adjattrib (sustain ability holds the max).
+            if (!Fixed_abil()) {
+                await poisontell(typ, false);
+                await adjattrib(
+                    typ,
+                    Poison_resistance() ? -1 : -rn1(4, 3),
+                    1,
+                );
+            }
             if (!Poison_resistance()) {
                 const dmg = rnd(10) + 5 * (otmp.cursed ? 1 : 0);
                 losehp(

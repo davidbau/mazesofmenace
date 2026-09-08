@@ -52,6 +52,12 @@ const ynq = (query) => tty_yn_function(query, 'ynq', 'q');
 import { P_BOW, P_CROSSBOW } from './const.js';
 import { OCLASSES, ONAMES, SKILLS } from './objects_data.js';
 import { Shk_Your } from './shk.js';
+import { shop_keeper, inside_shop, alter_cost } from './shk.js';
+import { shkname } from './shknam.js';
+import { costly_alteration } from './mkobj.js';
+import { COST_DEGRD, COST_DECHNT } from './const.js';
+import { restrict_name, u_wield_art } from './artifact.js';
+import { ART_MAGICBANE } from './artilist_data.js';
 
 
 
@@ -477,8 +483,13 @@ export async function ready_weapon(wep) {
                 await pline(`${Tobjnam(wep, 'begin')} to shine ${
                     artifact_light_description(wep)}!`);
         }
-        if (wep.unpaid)
-            note_unported_wield('ready_weapon:shk_warning');
+        if (wep.unpaid) {
+            let this_shkp;
+
+            if ((this_shkp = shop_keeper(inside_shop(game.u.ux, game.u.uy)))) {
+                await pline(`${shkname(this_shkp)} says "You be careful with my ${xname(wep)}!"`);
+            }
+        }
     }
     /* src/wield.c:270 — condtests[bl_bareh] is an opt-in status condition,
        disabled by default; nothing in this port enables it. */
@@ -553,11 +564,9 @@ export async function dowield() {
         await weldmsg(game.u.uwep);
         /* previously interrupted armor removal mustn't be resumed */
         reset_remarm();
-        /* if player chose a partial stack but can't wield it, undo split;
-           getobj's count path never splits on this tree (recorded there),
-           so the child test cannot match a fresh split */
+        /* if player chose a partial stack but can't wield it, undo split */
         if (wep.o_id && wep.o_id === game.context.objsplit?.child_oid)
-            note_unported_wield('dowield:unsplitobj');
+            await unsplitobj(wep);
         return ECMD_FAIL;
     }
 
@@ -597,11 +606,8 @@ export async function dowield() {
         if (!to_wielding) {
             /* require confirmation to wield the quivered weapon */
             if (await ynq(qbuf) !== 'y') {
-                /* C replaces qbuf via Shk_Your(); the shopkeeper-owned
-                   variant needs shk_your(), which is not ported */
-                if (game.u.uquiver.unpaid)
-                    note_unported_wield('dowield:Shk_Your');
-                await pline(`Your ${simpleonames(game.u.uquiver)} `
+                qbuf = Shk_Your(game.u.uquiver); /* replace qbuf[] contents */
+                await pline(`${qbuf}${simpleonames(game.u.uquiver)} `
                             + `${otense(game.u.uquiver, 'remain')} readied.`);
                 return ECMD_OK;
             }
@@ -731,7 +737,7 @@ export async function chwepon(otmp, amount) {
             await uncurse(uwep);
         /* update shop bill to reflect new higher value */
         if (uwep.unpaid)
-            note_unported_wield('chwepon:alter_cost');
+            alter_cost(uwep, 0);
         if (otyp !== ONAMES.STRANGE_OBJECT)
             makeknown(otyp);
         if (multiple)
@@ -742,7 +748,7 @@ export async function chwepon(otmp, amount) {
         /* order matters: message, shop handling, transformation */
         await Your(`${simpleonames(uwep)} `
                    + `${multiple ? 'fuse, and become' : 'is'} much duller now.`);
-        note_unported_wield('chwepon:costly_alteration');
+        await costly_alteration(uwep, COST_DEGRD); /* DECHNT? other? */
         uwep.otyp = ONAMES.WORM_TOOTH;
         uwep.oerodeproof = 0;
         if (multiple) {
@@ -758,9 +764,10 @@ export async function chwepon(otmp, amount) {
 
     if (uwep.oname != null)
         wepname = uwep.oname;
-    if (amount < 0 && uwep.oartifact) {
-        /* restrict_name() needs the artifact tables, which are not ported */
-        note_unported_wield('chwepon:restrict_name');
+    if (amount < 0 && uwep.oartifact && restrict_name(uwep, wepname)) {
+        if (!game.u.ublind)
+            await pline(`${Yobjnam2(uwep, 'faintly glow')} ${color}.`);
+        return 1;
     }
     /* there is a (soft) upper and lower limit to uwep->spe */
     if (((uwep.spe > 5 && amount >= 0) || (uwep.spe < -5 && amount < 0))
@@ -783,14 +790,14 @@ export async function chwepon(otmp, amount) {
             makeknown(otyp);
     }
     if (amount < 0)
-        note_unported_wield('chwepon:costly_alteration');
+        await costly_alteration(uwep, COST_DECHNT);
     uwep.spe += amount;
     if (amount > 0) {
         if (uwep.cursed)
             await uncurse(uwep);
         /* update shop bill to reflect new higher price */
         if (uwep.unpaid)
-            note_unported_wield('chwepon:alter_cost');
+            alter_cost(uwep, 0);
     }
 
     /*
@@ -798,8 +805,10 @@ export async function chwepon(otmp, amount) {
      * adverse reaction on Magicbane whose effects are spe dependent.
      * Give an obscure clue here.
      */
-    if (uwep.oartifact && uwep.spe >= 0)
-        note_unported_wield('chwepon:magicbane');
+    if (u_wield_art(ART_MAGICBANE) && uwep.spe >= 0) {
+        await Your(`right ${body_part(HAND)} ${
+                   (((amount > 1) && (uwep.spe > 1)) ? 'flin' : 'it')}ches!`);
+    }
 
     /* an elven magic clue, cookie@keebler */
     /* elven weapons vibrate warningly when enchanted beyond a limit */

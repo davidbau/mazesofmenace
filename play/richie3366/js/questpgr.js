@@ -305,7 +305,7 @@ You have an odd feeling this may be the last time you ever come here.`,
 the final time you come here.`,
 };
 
-/** C ref: dat/quest.lua goal_first (Arc + Bar + Pri + Kni; output=text). */
+/** C ref: dat/quest.lua goal_first (Arc + Bar + Pri + Kni + Sam; output=text). */
 const QUEST_GOAL_FIRST = {
     Arc: `A strange feeling washes over you, and you think back to things you
 learned during the many lectures of %l.
@@ -325,6 +325,12 @@ side of a hill.  From within, you smell the foul stench of carrion.
 
 The pools on either side of the entrance are fouled with blood, and
 pieces of rusted metal and broken weapons show above the surface.`,
+    // C ref: dat/quest.lua Sam goal_first (output=text)
+    Sam: `In your mind, you hear the taunts of %n.
+
+You become like the rice plant and bend to the ground, offering a
+prayer to %d.  But when the wind has passed, you stand
+proudly again.  Putting your kami in the hands of fate, you advance.`,
 };
 
 /** C ref: dat/quest.lua goal_next (Arc + Bar + Pri + Kni). */
@@ -421,6 +427,10 @@ const QUEST_MSG_META = {
         Kni: {
             output: 'text',
             synopsis: '[You %x the entrance to a cavern inside a hill.]',
+        },
+        Sam: {
+            output: 'text',
+            synopsis: '[You feel the taunts %n, but after offering a prayer to %d, you proceed.]',
         },
     },
 };

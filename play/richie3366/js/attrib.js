@@ -64,8 +64,11 @@ import {
     PM_ORC,
     PM_DWARF,
     PM_GNOME,
+    monsterNames,
 } from './generated/monsters_data.js';
 import { adj_erinys } from './monsters.js';
+
+const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
 
 export const A_STR = 0;
 export const A_INT = 1;
@@ -107,7 +110,12 @@ export function acurr(i) {
             result = Math.max(tmp, 3);
         }
     } else if (i === A_CHA) {
-        // C: nymph / incubus-succubus floor CHA to 18 — deferred (need youmonst)
+        // C attrib.c:1205–1215 — nymph / amorous-demon floor CHA to 18
+        if (tmp < 18
+            && ((game.youmonst?.data?.mlet === 'S_NYMPH')
+                || ((u.umonnum | 0) === PM_AMOROUS_DEMON))) {
+            result = 18;
+        }
     } else if (i === A_CON) {
         // C: ART_OGRESMASHER → 25 — deferred
     } else if (i === A_INT || i === A_WIS) {
@@ -434,6 +442,17 @@ export async function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {
         let loss = thrown_weapon ? rnd(6) : rn1(10, 6);
         // Half_gas_damage (worn towel) for blast/cloud deferred
         losehp(loss, killer, kprefix);
+        /* C attrib.c:391 losehp is noreturn when fatal (done(DIED) inside);
+           drain the deferred death here so the trailing done() below —
+           unreachable in C on this path — never reports death without
+           "You die..." first (artifact.js touch_artifact idiom). */
+        const { finish_maybe_wail } = await import('./hack.js');
+        await finish_maybe_wail();
+        if (game._losehp_needs_done) {
+            const { finish_losehp_done } = await import('./end.js');
+            await finish_losehp_done();
+            return;
+        }
     } else {
         // attribute loss; STR drop to 3 may reduce HP later via adjattrib path
         const loss = (thrown_weapon || !fatal) ? 1 : d(2, 2);

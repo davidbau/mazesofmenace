@@ -6458,6 +6458,13 @@ export async function dozap() {
             // C zap.c:2661–2663 uhim() + killer_xname (D-1345; not xname)
             const buf = `zapped ${uhim()}self with ${killer_xname(obj)}`;
             losehp(maybe_half_phys(damage), buf, NO_KILLER_PREFIX);
+            // C losehp is noreturn on fatal damage (done(DIED) inside);
+            // JS defers via _losehp_needs_done — process it like the
+            // backfire arm above so a fatal self-zap actually kills.
+            if (game._losehp_needs_done || game.program_state?.gameover) {
+                await finish_losehp_done();
+                if (game.program_state?.gameover) return 1;
+            }
         }
     } else {
         game.current_wand = obj;

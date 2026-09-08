@@ -267,6 +267,7 @@ const AD_SGLD = 20; /* steals gold (leprechaun) — monattk.h */
 const AD_TLPT = 23; /* teleports victim (quantum mechanic) — monattk.h */
 const AD_WERE = 29; /* confers lycanthropy — monattk.h */
 const AD_SLIM = 40; /* turns victim into green slime — monattk.h */
+const AD_SAMU = 252; /* steals quest artifact/Amulet (Wizard/nemesis) — monattk.h */
 const MR_FIRE = 0x01;
 const MR_COLD = 0x02;
 const MR_SLEEP = 0x04;
@@ -679,7 +680,7 @@ export {
     AT_WEAP, AT_MAGC, AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_ACID,
     AD_BLND, AD_DRDX, AD_DRCO, AD_DRIN, AD_SITM, AD_SEDU, AD_SSEX, AD_POLY,
     AD_STON, AD_CONF, AD_STUN, AD_WRAP, AD_SLEE,
-    AD_SGLD, AD_TLPT, AD_WERE, AD_SLIM, AD_FAMN,
+    AD_SGLD, AD_TLPT, AD_WERE, AD_SLIM, AD_FAMN, AD_SAMU,
     could_seduce, failed_grab,
 };
 
@@ -824,6 +825,20 @@ async function mhitm_ad_famn(magr, mattk, mdef, mhm) {
 }
 
 /**
+ * C ref: uhitm.c mhitm_ad_samu `:4570–4589` — mhitm (mon→mon) arm only
+ * (`:4587–4588`): no message, the leftover d() is zeroed.
+ * The uhitm arm (`:4573–4576`, hero as attacker) likewise zeroes
+ * (`damageum_adtyping` in uhitm.js); the mhitu arm (`:4577–4586`) is
+ * mhitm_ad_samu_u in mhitu.js.
+ */
+function mhitm_ad_samu(magr, mattk, mdef, mhm) {
+    void magr;
+    void mattk;
+    void mdef;
+    mhm.damage = 0;
+}
+
+/**
  * C ref: mondata.c stagger :1394–1407 — stun/wobble verb for the
  * mhitm AD_STUN pline. locomotion() itself named.
  */
@@ -855,8 +870,8 @@ function stagger(ptr, def) {
  * Cancelled returns keeping leftover d() (no stun, no phys).
  * Else canseemon pline + mstun=1 even if already stunned (no
  * spec-used / wait-for-hero unlike CONF) then mhitm_ad_phys.
- * Named omit: uhitm you-as-agr (!Blind stagger + phys);
- * mhitu you-as-def (hitmsg + !mcan && !rn2(4) make_stunned + dmg/2).
+ * Named omit: uhitm you-as-agr (!Blind stagger + phys).
+ * mhitu you-as-def lives in mhitu.js as mhitm_ad_stun_u.
  * mhitm_ad_fire leftover is D-1405.
  */
 async function mhitm_ad_stun(magr, mattk, mdef, mhm) {
@@ -1163,9 +1178,8 @@ export async function mhitm_ad_slim(magr, mattk, mdef, mhm) {
 /**
  * C ref: uhitm.c mhitm_ad_were `:4265–4293` — mhitm (mon→mon) arm.
  * Delegates to mhitm_ad_phys; done propagates via mhm (caller checks).
- * uhitm you-as-agr shares this shape. Named omission: mhitu you-as-def
- * (hitmsg + rn2(4) lycanthropy: Protection_from_shape_changers /
- * defends(AD_WERE) / mgc-negated / set_ulycn / retouch_equipment).
+ * uhitm you-as-agr shares this shape. mhitu you-as-def is
+ * mhitm_ad_were_u in mhitu.js (hitmsg + rn2(4) lycanthropy envelope).
  */
 export async function mhitm_ad_were(magr, mattk, mdef, mhm) {
     if (is_youmonst(mdef)) return;
@@ -3388,7 +3402,7 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
 
     // C: mhitm_adtyping → mhitm_ad_were for AD_WERE (uhitm.c:4265–4293
     // mhitm arm). Delegates to mhitm_ad_phys; done propagates via mhm.
-    // mhitu lycanthropy arm named in the callee.
+    // mhitu lycanthropy arm is mhitm_ad_were_u (mhitu.js).
     if ((mattk.adtyp | 0) === AD_WERE) {
         const mhm = {
             damage,
@@ -3483,6 +3497,25 @@ async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
             return M_ATTK_DEF_DIED | (grew ? 0 : M_ATTK_AGR_DIED);
         }
         return (hitflags === M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
+    }
+
+    // C: mhitm_adtyping → mhitm_ad_samu for AD_SAMU (uhitm.c:4570–4589
+    // mhitm arm). No message; leftover d() is zeroed, so C's mdamagem
+    // always returns hitflags after knockback (the !damage arm). uhitm
+    // arm zeroes in damageum_adtyping; mhitu arm is mhitm_ad_samu_u.
+    if ((mattk.adtyp | 0) === AD_SAMU) {
+        const mhm = {
+            damage,
+            hitflags: M_ATTK_MISS,
+            done: false,
+        };
+        mhitm_ad_samu(magr, mattk, mdef, mhm);
+        // C mhitm.c:1061-1065 — knockback still runs (rn2(3) first);
+        // the HIT/DEF_DIED preempt is dead here (hitflags stays MISS),
+        // then C returns hitflags via the !damage arm, like the
+        // AD_PHYS zero-damage path below.
+        await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep);
+        return mhm.hitflags;
     }
 
     // C: mhitm_adtyping → mhitm_ad_phys for AD_PHYS (D-1394 shade;

@@ -360,9 +360,9 @@ const SCR_MAIL = objectNames.indexOf('SCR_MAIL');
 const SCR_BLANK_PAPER = objectNames.indexOf('SCR_BLANK_PAPER');
 
 /**
- * C ref: objnam.c simpleonames — minimal_xname, then makeplural if
- * quan != 1. Local clone (pickup.js also); the objnam export omits
- * makeplural (pretty_base only). Do not add another clone.
+ * C ref: objnam.c simpleonames — singular base, then makeplural if quan
+ * != 1. Local clone kept (singular(xname) base; the objnam export
+ * pluralizes its own pretty_base base instead). Do not add another clone.
  */
 function simpleonames(obj) {
     let n = singular(obj, xname);

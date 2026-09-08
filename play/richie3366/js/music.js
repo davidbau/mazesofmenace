@@ -33,7 +33,7 @@ import {
     Is_stronghold, ACH_TUNE, isok,
 } from './const.js';
 import { A_WIS, A_DEX, acurr, exercise, Fumbling } from './attrib.js';
-import { cxname, an, xname, The, the, otense } from './objnam.js';
+import { cxname, an, xname, The, the, otense, thesimpleoname } from './objnam.js';
 import {
     mindless, G_UNIQ, is_flyer, is_clinger, humanoid, is_hider, nolimbs,
     M1_SLITHY, is_mercenary, MR_SLEEP,
@@ -62,6 +62,9 @@ import {
     open_drawbridge, close_drawbridge,
 } from './dbridge.js';
 import { record_achievement } from './insight.js';
+import { can_blow } from './mondata.js';
+import { Soundeffect } from './sndprocs.js';
+import { se_tumbler_click, se_gear_turn } from './generated/seffects_data.js';
 
 const WOODEN_FLUTE = objectNames.indexOf('WOODEN_FLUTE');
 const MAGIC_FLUTE = objectNames.indexOf('MAGIC_FLUTE');
@@ -973,15 +976,25 @@ async function do_improvisation(instr) {
 export async function do_play_instrument(instr) {
     const u = game.u;
     if (u?.Underwater) {
+        // C music.c:763-765: You_cant("play music underwater!")
         await pline("You can't play music underwater!");
         return ECMD_OK;
+    } else if (
+        (instr.otyp === WOODEN_FLUTE || instr.otyp === MAGIC_FLUTE
+            || instr.otyp === TOOLED_HORN || instr.otyp === FROST_HORN
+            || instr.otyp === FIRE_HORN || instr.otyp === BUGLE)
+        && !can_blow(game.youmonst)
+    ) {
+        // C music.c:766-773: wind instruments need can_blow(&gy.youmonst)
+        await pline(`You are incapable of playing ${thesimpleoname(instr)}.`);
+        return ECMD_OK;
     }
-    // can_blow gate for wind instruments deferred → allow
 
     let c = 'y';
     if (instr.otyp !== LEATHER_DRUM && instr.otyp !== DRUM_OF_EARTHQUAKE
         && !(Stunned() || Confusion() || Hallucination())) {
-        c = await yn_function('Improvise?', 'ynq', 'y');
+        // C include/hack.h:1330: ynq(query) = yn_function(query, ynqchars, 'q', TRUE)
+        c = await yn_function('Improvise?', 'ynq', 'q');
         if (c === 'q') {
             await pline(Never_mind);
             return ECMD_OK;
@@ -996,7 +1009,8 @@ export async function do_play_instrument(instr) {
     // C: passtune / getlin tune / drawbridge (D-0977)
     let buf = '';
     if ((u.uevent?.uheard_tune | 0) === 2) {
-        c = await yn_function('Play the passtune?', 'ynq', 'y');
+        // C include/hack.h:1330: ynq default is 'q', not 'y'
+        c = await yn_function('Play the passtune?', 'ynq', 'q');
     }
     if (c === 'q') {
         await pline(Never_mind);
@@ -1006,7 +1020,8 @@ export async function do_play_instrument(instr) {
     } else {
         buf = await getlin('What tune are you playing? [5 notes, A-G]');
         buf = mungspaces(buf);
-        if (buf.charCodeAt(0) === 0x1b || buf === '') {
+        // C music.c:792: only ESC aborts (`if (*buf == '\033')`); empty plays
+        if (buf.charCodeAt(0) === 0x1b) {
             await pline(Never_mind);
             return ECMD_OK;
         }
@@ -1094,13 +1109,18 @@ export async function do_play_instrument(instr) {
                     }
                 }
                 const plur = (n) => (n === 1 ? '' : 's');
+                // C music.c:851-863: Soundeffect calls precede You_hear (no-op
+                // without SND_LIB, same as the dbridge call sites)
                 if (tumblers) {
                     if (gears) {
+                        Soundeffect(se_tumbler_click, 50);
+                        Soundeffect(se_gear_turn, 50);
                         await You_hear(
                             `${tumblers} tumbler${plur(tumblers)} click and ${
                                 gears} gear${plur(gears)} turn.`,
                         );
                     } else {
+                        Soundeffect(se_tumbler_click, 50);
                         await You_hear(
                             `${tumblers} tumbler${plur(tumblers)} click.`,
                         );

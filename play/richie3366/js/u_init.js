@@ -77,6 +77,8 @@ import {
 import { skill_init } from './weapon.js';
 import { set_artifact_intrinsic } from './artifact.js';
 import { reset_justpicked } from './pickup.js';
+import { throwing_weapon } from './dothrow.js';
+import { ART_MJOLLNIR } from './generated/artifacts_data.js';
 
 // C ref: objclass.h ARM_* — oc_skill / oc_subtyp / oc_armcat for armor
 const ARM_SUIT = 0;
@@ -920,11 +922,15 @@ async function addinv_core2(obj) {
 }
 
 // C ref: invent.c addinv() → merged() for stack absorb + compare-learn pline.
-// addinv_core1 artifact W_ART conferral (D-1539). Named omissions: quiver-prefer
-// merge; addinv_before; thrown autoquiver; oname absorb; worn-slot merge;
-// globby/pudding; lamplit timers; questart/artitouch; addinv_core2 luck.
+// addinv_core1 artifact W_ART conferral (D-1539). Thrown-autoquiver fill
+// (addinv_core0, live below). Named omissions: quiver-prefer merge;
+// addinv_before; oname absorb; worn-slot merge; globby/pudding; lamplit
+// timers; questart/artitouch; addinv_core2 luck.
 export async function addinv(obj) {
     if (!game.invent) game.invent = [];
+    // C invent.c addinv_core0 — obj_was_thrown captured before merge
+    // (how_lost is LOST_THROWN on a picked-up thrown missile).
+    const objWasThrown = ((obj?.how_lost | 0) === LOST_THROWN);
     // C invent.c addinv_core0 `:1077–1080` — first #loot addinv clears
     // pickup_prev so the new take is the justpicked set
     if (game.loot_reset_justpicked) {
@@ -981,6 +987,8 @@ export async function addinv(obj) {
             const { pline } = await import('./display.js');
             await pline('You learn more about your items by comparing them.');
         }
+        // C invent.c addinv_core0 — merge paths `goto added`, bypassing the
+        // `:1128–1140` thrown-autoquiver fill (fresh-insert only); no setuqwep here.
         // C invent.c `added:` — addinv_core2(obj) then carry_obj_effects(obj)
         await addinv_core2(otmp);
         carry_obj_effects(otmp);
@@ -998,6 +1006,14 @@ export async function addinv(obj) {
     reorder_invent();
     if (obj.oclass === COIN_CLASS || objectNames[obj.otyp] === 'GOLD_PIECE') {
         game._goldCount = (game._goldCount || 0) + (obj.quan || 0);
+    }
+    // C invent.c addinv_core0 — fill empty quiver if obj was thrown
+    // (pickup_thrown on, no quiver, not Mjollnir/aklys, throwable).
+    if (objWasThrown && (game.flags?.pickup_thrown !== false)
+        && !game.u?.uquiver && ((obj.oartifact | 0) !== ART_MJOLLNIR)
+        && ((obj.otyp | 0) !== objectNames.indexOf('AKLYS'))
+        && (throwing_weapon(obj) || is_ammo(obj))) {
+        setuqwep(obj);
     }
     // C invent.c `added:` — addinv_core2(obj) then carry_obj_effects(obj)
     await addinv_core2(obj);

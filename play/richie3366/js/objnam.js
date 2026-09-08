@@ -2492,13 +2492,16 @@ export function Yobjnam2(obj, verb) {
 }
 
 /**
- * C ref: objnam.c simpleonames ← minimal_xname — type appearance without
- * quan/BUC. Statue/figurine corpsenm suppressed (C bareobj.corpsenm=NON_PM).
- * C bareobj = zeroobj (owt 0) → BALL_CLASS never gets "very " via this path
- * (xname/doname of the live object still apply punish weight).
+ * C ref: objnam.c simpleonames `:2428–2442` ← minimal_xname — type
+ * appearance without BUC, then makeplural when quan != 1 (doquiver_core
+ * "6 orcish daggers", dowield "You have N ... readied"). Statue/figurine
+ * corpsenm suppressed (C bareobj.corpsenm=NON_PM). C bareobj = zeroobj
+ * (owt 0) → BALL_CLASS never gets "very " via this path (xname/doname of
+ * the live object still apply punish weight).
  * Named omissions: sack→bag family aliases; full bareobj field subset.
  * C copies SLIME_MOLD spe onto zeroobj so fruit_from_indx still hits;
- * JS pretty_base reads the live spe (quan stays 1 via no makeplural here).
+ * JS pretty_base reads the live spe. Missing quan is a JS-side unset
+ * (C always sets quan) — read as 1, same guard as the iactions clone.
  */
 export function simpleonames(obj) {
     if (!obj) return 'object';
@@ -2508,7 +2511,10 @@ export function simpleonames(obj) {
     if (n === 'FIGURINE') return 'figurine';
     // C minimal_xname bareobj.owt stays 0 → never "very heavy iron ball"
     if (obj.oclass === BALL_CLASS) return 'heavy iron ball';
-    return pretty_base(obj);
+    const base = pretty_base(obj);
+    // C `:2432` — if (obj->quan != 1L) makeplural(simpleoname)
+    if (((obj.quan ?? 1) | 0) !== 1) return makeplural(base);
+    return base;
 }
 
 /**

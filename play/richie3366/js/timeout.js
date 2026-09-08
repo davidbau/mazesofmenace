@@ -105,6 +105,10 @@ const TIMEOUT_FLAT = {
     [SICK]: 'Sick',
     [STRANGLED]: 'Strangled',
     [PASSES_WALLS]: 'HPasses_walls',
+    /* C youprop.h:141 — HSleepy ≡ uprops[SLEEPY].intrinsic (single
+       storage); the mirror keeps flat readers and the generic -- in sync
+       for the wizintrinsic default arm (scen-intrinsic-Samurai-92017). */
+    [SLEEPY]: 'HSleepy',
 };
 
 /** C ref: weight.h WT_NOISY_INV — inv_weight() threshold for noisy fumbling. */
@@ -660,6 +664,17 @@ async function phaze_dialogue() {
 }
 
 /**
+ * C ref: timeout.c sleep_dialogue `:267–274` — i = HSleepy & TIMEOUT;
+ * i == 4 → You("yawn."). Called under `if (HSleepy & TIMEOUT)` (:639-640),
+ * before the uprops -- loop, so it sees the pre-decrement value.
+ */
+async function sleep_dialogue() {
+    const u = game.u || {};
+    const i = intr_bits(u, SLEEPY, 'HSleepy') & TIMEOUT;
+    if (i === 4) await pline('You yawn.');
+}
+
+/**
  * C ref: timeout.c done_timeout `:574–585` — when a status timeout is
  * fatal, keep the indicator shown during the end-of-game rundown:
  * I_SPECIAL on the expiring prop (affects final disclosure), done(),
@@ -812,7 +827,9 @@ function nh_timeout_luck(u) {
  * Remaining uprops TIMEOUT (incl. INVULNERABLE from #wizintrinsic) —
  * generic -- like C's for (upp = u.uprops; …) (D-0928 #1168); expiry
  * switch cases for those props still deferred (silent clear).
- * Named omissions: region_dialogue / sleep_dialogue;
+ * HSleepy TIMEOUT → sleep_dialogue yawn at ==4 (C timeout.c
+ * `:639–640`, `:267–274`; HSleepy mirror in TIMEOUT_FLAT).
+ * Named omissions: region_dialogue;
  * STUNNED/SEE_INVIS/HALLUC/SLEEPY/…
  * expiry messages; FLYING timed-land (wizintrinsic); GLIB `make_glib(0)`
  * inventory on expiry; ublesscnt (in allmain); ugallop; delayed killers;
@@ -838,6 +855,11 @@ export async function nh_timeout() {
     }
     if (intr_bits(u, PASSES_WALLS, 'HPasses_walls') & TIMEOUT) {
         await phaze_dialogue();
+    }
+    // C timeout.c :637-640 — region_dialogue stays deferred (named map omit);
+    // sleep_dialogue runs under `if (HSleepy & TIMEOUT)` before the -- loop.
+    if (intr_bits(u, SLEEPY, 'HSleepy') & TIMEOUT) {
+        await sleep_dialogue();
     }
     // C: for (upp = u.uprops; …) if ((intrinsic & TIMEOUT) && !(--intrinsic & TIMEOUT))
 

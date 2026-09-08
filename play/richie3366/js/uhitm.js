@@ -52,7 +52,7 @@ import {
     AT_NONE, AT_WEAP, AT_KICK, AT_CLAW, AT_SPIT, AT_HUGS,
     AT_TUCH, AT_BITE, AT_BUTT, AT_STNG, AT_MAGC, AT_TENT,
     AT_EXPL, AT_ENGL, AT_BREA, AT_GAZE, AD_PHYS, AD_POLY, AD_DRIN, AD_SLEE,
-    AD_DRST,
+    AD_DRST, AD_SAMU,
 } from './mhitm.js';
 import {
     verysmall, nohands, G_FREQ, G_NOCORPSE, M2_COLLECT, MZ_MEDIUM, MZ_HUGE,
@@ -82,7 +82,7 @@ import { mon_nam, Monnam, x_monnam, x_monnam_tame, Hallucination, type_is_pname,
 import { artifact_hit, youmonst, is_art, artifact_exists, shade_glare } from './artifact.js';
 import { xname, vtense, The, An, an, singular, makeplural, cxname, simpleonames, otense, mshot_xname } from './objnam.js';
 import { abuse_dog, tamedog } from './dog.js';
-import { makemon, makemon_appear_msg, newcham } from './makemon.js';
+import { makemon, makemon_appear_msg, newcham, adj_lev } from './makemon.js';
 import { ndemon } from './minion.js';
 import { ART_GIANTSLAYER, ART_STORMBRINGER, ART_SNICKERSNEE } from './generated/artifacts_data.js';
 import { paranoid_query } from './getline.js';
@@ -331,9 +331,15 @@ function m_at(x, y) {
 }
 
 /**
- * C ref: weapon.c abon — strength/dexterity to-hit bonus (non-poly).
+ * C ref: weapon.c abon — poly'd hero ignores STR/DEX bands entirely
+ * (`if (Upolyd) return adj_lev(&mons[u.umonnum]) - 3`, weapon.c:955-956).
  */
 function abon() {
+    // Same rnd(20) then misses in C, hits in JS while poly'd
+    // (scen-poly-Rogue-92026: yeti claws, dieroll 8 both sides).
+    if (Upolyd(game.u) && game.youmonst?.data) {
+        return adj_lev(game.youmonst.data) - 3;
+    }
     const str = acurr(A_STR);
     const dex = acurr(A_DEX);
     const STR18_50 = 18 + 50; // STR18(50) encoding stub: treat encoded >18 as high
@@ -427,8 +433,9 @@ export async function check_caitiff(mtmp) {
 /**
  * C ref: uhitm.c find_roll_to_hit — to-hit threshold before rnd(20).
  * dokick poly AT_KICK loop is a caller (D-1310).
- * monk armor / encumbrance / trap / maybe_polyd(mlevel) deferred when
- * they do not change RNG order for ordinary L1 melee.
+ * monk armor / encumbrance / trap / orc-vs-elf deferred (RNG-free;
+ * no corpus session has demanded them yet).
+ * maybe_polyd live: poly form's mlevel, not ulevel (uhitm.c:378-379).
  * weapon_hit_bonus from weapon.c (bare-hand unskilled = +1; AT_KICK
  * martial_bonus uses NULL weapon like C).
  */
@@ -439,9 +446,13 @@ export async function find_roll_to_hit(mtmp, aatyp, weapon, attk_count, role_rol
     // C: sgn(Luck) * ((abs(Luck) + 2) / 3) — trunc toward 0
     const luckbon = (luck < 0 ? -1 : luck > 0 ? 1 : 0)
         * Math.trunc((Math.abs(luck) + 2) / 3);
+    // C: + maybe_polyd(gy.youmonst.data->mlevel, u.ulevel) — a poly'd
+    // hero hits with the FORM's level. Same rnd(20) then misses in C
+    // and hits in JS (scen-poly-Rogue-92026: rnd(20)=16 both sides).
+    const formlevel = Upolyd(u) ? (game.youmonst?.data?.mlevel | 0) : (u.ulevel | 0);
     let tmp = 1 + abon() + find_mac(mtmp) + (u.uhitinc | 0)
         + luckbon
-        + (u.ulevel | 0); // maybe_polyd → ulevel when not poly
+        + formlevel;
     if (!attk_count.v++) {
         // C: knight's chivalry or samurai's giri — once per multi-attack.
         // Awaited: C prints synchronously before the attack roll; a
@@ -1289,7 +1300,7 @@ export async function mhitm_ad_wrap(magr, mattk, mdef, mhm) {
 
 /**
  * C ref: uhitm.c mhitm_adtyping youmonst subset for damageum.
- * AD_PHYS + AD_POLY + AD_DRIN skipdrin + AD_WRAP (D-1348) + AD_SLEE + AD_DRST live;
+ * AD_PHYS + AD_POLY + AD_DRIN skipdrin + AD_WRAP (D-1348) + AD_SLEE + AD_DRST + AD_SAMU live;
  * remaining mhitm_ad_* named. mhitm wrap brush is D-1406.
  */
 
@@ -1355,6 +1366,11 @@ async function damageum_adtyping(mattk, mdef, mhm) {
         await mhitm_ad_slee(game.youmonst, mattk, mdef, mhm);
     } else if (adtyp === AD_DRST) {
         await damageum_ad_drst(mdef, mattk, mhm);
+    } else if (adtyp === AD_SAMU) {
+        /* C ref: uhitm.c mhitm_ad_samu `:4573–4576` — uhitm (hero as
+           attacker) arm zeroes the leftover d(); no message, no steal
+           roll (those are the mhitu `:4577–4586` arm). */
+        mhm.damage = 0;
     }
 }
 
@@ -1538,6 +1554,8 @@ function passive_obj(mon, obj, mattk) {
  * Named omissions: full AD_PLYS gaze/cube / ugolemeffects /
  * erode_armor / done_in_by stone / attk_protection detail; dokick callers.
  * D-1095: AD_COLD healmon + split_mon (potion.c via sit.js).
+ * Lethal mdamageu ends the turn here (C longjmps out of done_in_by);
+ * callers see it via program_state.gameover, same as other deaths.
  */
 export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destroyed) {
     if (!mon) return (maliveb ? M_ATTK_HIT : M_ATTK_MISS)
@@ -1571,6 +1589,14 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
     const Stone_resistance = !!(u.Stone_resistance || u.HStone_resistance
         || u.EStone_resistance);
 
+    // C passive arms call mdamageu (mhitu.c), never losehp: lethal damage
+    // runs done_in_by immediately (no healmon/split after). Dynamic import:
+    // uhitm <-> mhitu would be a static cycle (see the hitum caller below).
+    const { mdamageu } = await import('./mhitu.js');
+    // C has no return after a lethal mdamageu (done_in_by noreturns); JS
+    // mirrors it by bailing as soon as the death flag is set.
+    const dead = () => !!game.program_state?.gameover;
+
     switch (mattk.adtyp | 0) {
     case AD_FIRE:
         if (mhitb && !mon.mcan && weapon) {
@@ -1592,7 +1618,8 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                 await pline(`You are splashed by ${mon_nam(mon)}'s acid!`);
             }
             if (!Acid_resistance) {
-                losehp(tmp, mon_nam(mon), 2);
+                await mdamageu(mon, tmp);
+                if (dead()) return malive | mhit;
             }
             if (!rn2(30)) {
                 // erode_armor ERODE_CORRODE deferred
@@ -1635,7 +1662,8 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
             await pline('A hail of magic missiles narrowly misses you!');
         } else {
             await pline('You are hit by magic missiles appearing from thin air!');
-            losehp(tmp, mon_nam(mon), 2);
+            await mdamageu(mon, tmp);
+            if (dead()) return malive | mhit;
         }
         break;
     case AD_ENCH:
@@ -1693,7 +1721,8 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                     break;
                 }
                 await pline('You are suddenly very cold!');
-                losehp(tmp, mon_nam(mon), 2);
+                await mdamageu(mon, tmp);
+                if (dead()) return malive | mhit;
                 // C uhitm.c:6078–6082 healmon then split_mon on mhpmax gate
                 healmon(mon, Math.trunc((tmp + rn2(2)) / 2),
                     Math.trunc((tmp + 1) / 2));
@@ -1716,7 +1745,8 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                     break;
                 }
                 await pline('You are suddenly very hot!');
-                losehp(tmp, mon_nam(mon), 2);
+                await mdamageu(mon, tmp);
+                if (dead()) return malive | mhit;
             }
             break;
         case AD_ELEC:
@@ -1725,7 +1755,8 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                 break;
             }
             await pline('You are jolted with electricity!');
-            losehp(tmp, mon_nam(mon), 2);
+            await mdamageu(mon, tmp);
+            if (dead()) return malive | mhit;
             break;
         default:
             break;
@@ -2604,6 +2635,9 @@ export async function hmonas(mon) {
             const died = sum[i] === M_ATTK_DEF_DIED || (mon.mhp | 0) < 1;
             await passive(mon, weapon, sum[i] !== M_ATTK_MISS, !died, aatyp,
                 false);
+            // C: a lethal passive never returns (done_in_by noreturns), so
+            // knockback, the uswapwep drop and further attacks never run.
+            if (game.program_state?.gameover) return (mon.mhp | 0) >= 1;
             {
                 // C uhitm.c:5833 — knockback writes sum[i] via &sum[i], TRUE breaks
                 const kbm = { hitflags: sum[i] };
@@ -2729,10 +2763,10 @@ export async function that_is_a_mimic(mtmp, mimic_flags) {
                 fakeobj = !!got?.fakeobj;
                 otmp = got?.otmp || null;
             }
+            // C uhitm.c:6234 — simpleonames alone (it pluralizes for
+            // quan != 1 itself); no makeplural wrapper.
             const otmp_name = (otmp && (otmp.otyp | 0) !== STRANGE_OBJECT_THAT)
-                ? (is_plural_that(otmp)
-                    ? makeplural(simpleonames(otmp))
-                    : simpleonames(otmp))
+                ? simpleonames(otmp)
                 : 'strange object';
             const those = (otmp && is_plural_that(otmp)) ? 'Those' : 'That';
             const are = otmp ? otense(otmp, 'are') : 'is';

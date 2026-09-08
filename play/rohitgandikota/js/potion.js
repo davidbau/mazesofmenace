@@ -30,7 +30,7 @@ import { Your } from './pline.js';
 import { nomul, losehp } from './hack.js';
 import { surface } from './dungeon.js';
 import { A_WIS, ECMD_CANCEL, ECMD_FAIL, CQ_CANNED, IS_FOUNTAIN, IS_SINK } from './const.js';
-import { cmdq_peek, drink_ok } from './cmd.js';
+import { cmdq_peek } from './cmd.js';
 import { carried, is_plural } from './obj.js';
 import { Unaware, Hallucination, Halluc_resistance, Blind,
          Deaf, Poison_resistance, Sleep_resistance,
@@ -119,6 +119,15 @@ import { mongone } from './mon.js';
 import { something, Something, DISP_ALWAYS, DISP_END } from './const.js';
 import { glyph_at, tmp_at } from './display.js';
 import { makewish } from './zap.js';
+import { likes_fire, is_swimmer } from './mondata.js';
+import { FACE, FOOT, Is_airlevel, Is_waterlevel, P_RIDING, P_BASIC, ER_DESTROYED, GETOBJ_EXCLUDE_NONINVENT } from './const.js';
+import { Fire_resistance, Cold_resistance, Free_action, Wounded_legs } from './youprop.js';
+import { burn_away_slime } from './timeout.js';
+import { dipsink, wash_hands, floating_above } from './fountain.js';
+import { waterbody_name } from './pager.js';
+import { rider_cant_reach } from './steed.js';
+import { P_SKILL } from './weapon.js';
+import { impossible } from './pline.js';
 const G_GONE = MFLAGS.G_GENOD | MFLAGS.G_EXTINCT;
 
 function note_unported_potion(what) {
@@ -360,7 +369,7 @@ export async function potionbreathe(obj) {
                 exercise(A_DEX, false);
             } else {
                 await You('yawn.');
-                note_unported_potion('potionbreathe:monstseesu_sleep');
+                monstseesu(M_SEEN_SLEEP);
             }
             break;
         case ONAMES.POT_SPEED: {
@@ -406,9 +415,6 @@ export async function potionbreathe(obj) {
         case ONAMES.POT_MONSTER_DETECTION:
         case ONAMES.POT_OBJECT_DETECTION:
         case ONAMES.POT_OIL:
-            break;
-        default:
-            note_unported_potion(`potionbreathe:otyp=${obj.otyp}`);
             break;
         }
     }
@@ -761,9 +767,6 @@ export async function potionhit(mon, obj, how) {
             }
             break;
         }
-        default:
-            note_unported_potion(`potionhit:monster:otyp=${obj.otyp}`);
-            break;
         }
         if ((mon.mhp | 0) > 0) {
             if (angermon)
@@ -1137,23 +1140,37 @@ async function peffect_sickness(otmp) {
     }
     if (Hallucination()) {
         await You('are shocked back to your senses!');
-        if (game.u.uprops)
-            delete game.u.uprops.HALLUC;
-        if (game.u.intrinsic)
-            delete game.u.intrinsic.HHallucination;
-        (game.disp ||= {}).botl = true;
-        /* make_hallucinated() also redraws monsters, objects, and traps. */
-        note_unported_potion('peffect_sickness:hallucination_redraw');
+        await make_hallucinated(0, false, 0);
     }
 }
 
 // src/potion.c:1260 peffect_oil() — the one potion arm the sessions reach.
 async function peffect_oil(otmp) {
-    const good_for_you = false;
+    let good_for_you = false, vulnerable;
 
     if (otmp.lamplit) {
-        /* burning oil: face burn + losehp d(x,4) + burn_away_slime */
-        note_unported_potion('peffect_oil:lamplit');
+        if (likes_fire(game.youmonst.data)) {
+            await pline('Ahh, a refreshing drink.');
+            good_for_you = true;
+        } else {
+            /*
+             * Note: if poly'd into green slime, hero ought to take
+             * extra damage, but drinking potions in that form isn't
+             * possible so there's no need to try to handle that.
+             */
+            await You(`burn your ${body_part(FACE)}.`);
+            /* fire damage */
+            vulnerable = !Fire_resistance() || Cold_resistance();
+            await losehp(d(vulnerable ? 4 : 2, 4),
+                         'quaffing a burning potion of oil', KILLED_BY);
+        }
+        /*
+         * This is slightly iffy because the burning isn't being
+         * spread across the body.  But the message is "the slime
+         * that covers you burns away" and having that follow
+         * "you burn your face" seems consistent enough.
+         */
+        await burn_away_slime();
     } else if (otmp.cursed) {
         await pline('This tastes like castor oil.');
     } else {
@@ -1202,10 +1219,13 @@ async function peffect_extra_healing(otmp) {
                  otmp.blessed ? 5 : otmp.cursed ? 0 : 2,
                  !otmp.cursed,
                  true);
-    if (Hallucination())
-        note_unported_potion('peffect_extra_healing:make_hallucinated');
+    await make_hallucinated(0, true, 0);
     exercise(A_CON, true);
     exercise(A_STR, true);
+    /* blessed potion also heals wounded legs unless riding (where leg
+       wounds apply to the steed rather than to the hero) */
+    if (Wounded_legs() && (otmp.blessed && !game.u.usteed))
+        await heal_legs(0);
 }
 
 // src/potion.c:1224 peffect_gain_energy(). The BUC state changes the die
@@ -1745,9 +1765,8 @@ export async function peffects(otmp) {
             return 1;
         break;
     default:
-        /* every other arm draws through its own subsystem */
-        note_unported_potion(`peffects:otyp=${otmp.otyp}`);
-        break;
+        void impossible(`What a funny potion! (${otmp.otyp})`);
+        return 0;
     }
     return -1;
 }
@@ -1801,16 +1820,44 @@ async function ghost_from_bottle() {
     game.nomovemsg = 'You regain your composure.';
 }
 
+/* src/potion.c:52 drink_ok_extra — the hero passed up a fountain, sink or
+   surrounding water before the inventory prompt */
+let drink_ok_extra = 0;
+
+// src/potion.c:505 drink_ok() — getobj callback for object to drink from,
+// which also does double duty as the callback for dipping into (both just
+// allow potions).
+export function drink_ok(obj) {
+    /* getobj()'s callback to test whether hands/self is a valid "item" to
+       pick is used here to communicate the fact that player has already
+       passed up an opportunity to perform the action (drink or dip) on a
+       non-inventory dungeon feature, so if there are no potions in invent
+       the message will be "you have nothing /else/ to {drink | dip into}";
+       if player used 'm' prefix to bypass dungeon features, drink_ok_extra
+       will be 0 and the potential "else" will be omitted */
+    if (!obj)
+        return drink_ok_extra ? GETOBJ_EXCLUDE_NONINVENT : GETOBJ_EXCLUDE;
+
+    if (obj.oclass === OCLASSES.POTION_CLASS)
+        return GETOBJ_SUGGEST;
+
+    return GETOBJ_EXCLUDE;
+}
+
 // src/potion.c:526 dodrink() — the 'q' command.
-export async function dodrink(drink_ok) {
+export async function dodrink() {
     /* Strangled needs the amulet of strangulation */
 
     /* src/potion.c:540 — the fountain/sink prompts come before getobj;
        'm'-prefixed quaff skips them. can_reach_floor(FALSE) is true for
        an ordinary walking hero. */
     const typ = game.level?.at(game.u.ux, game.u.uy)?.typ;
+    drink_ok_extra = 0;
     if (!game.iflags?.menu_requested) {
-        if (IS_FOUNTAIN(typ)) {
+        /* Is there a fountain to drink from here? */
+        if (IS_FOUNTAIN(typ)
+            /* not as low as floor level but similar restrictions apply */
+            && can_reach_floor(false)) {
             const { tty_yn_function } = await import('./tty/topl.js');
             if ((await tty_yn_function('Drink from the fountain?', 'yn', 'n'))
                 === 'y') {
@@ -1818,8 +1865,12 @@ export async function dodrink(drink_ok) {
                 await drinkfountain();
                 return ECMD_TIME;
             }
+            ++drink_ok_extra;
         }
-        if (IS_SINK(typ)) {
+        /* Or a kitchen sink? */
+        if (IS_SINK(typ)
+            /* not as low as floor level but similar restrictions apply */
+            && can_reach_floor(false)) {
             const { tty_yn_function } = await import('./tty/topl.js');
             if ((await tty_yn_function('Drink from the sink?', 'yn', 'n'))
                 === 'y') {
@@ -1827,6 +1878,17 @@ export async function dodrink(drink_ok) {
                 await drinksink();
                 return ECMD_TIME;
             }
+            ++drink_ok_extra;
+        }
+        /* Or are you surrounded by water? */
+        if (Underwater() && !game.u.uswallow) {
+            const { tty_yn_function } = await import('./tty/topl.js');
+            if ((await tty_yn_function('Drink the water around you?', 'yn', 'n'))
+                === 'y') {
+                await pline('Do you know what lives in this water?');
+                return ECMD_TIME;
+            }
+            ++drink_ok_extra;
         }
     }
 
@@ -1918,19 +1980,21 @@ async function peffect_see_invisible(otmp) {
 // change only the message and remain recorded until their surface variants
 // are covered.
 async function peffect_paralysis(otmp) {
-    if (game.u.uprops?.FREE_ACTION) {
+    if (Free_action()) {
         await You('stiffen momentarily.');
-        return;
-    }
-    if (game.u.uprops?.LEVITATION || game.u.usteed) {
-        note_unported_potion('peffect_paralysis:suspended_or_steed');
     } else {
-        await Your(`feet are frozen to the ${surface(game.u.ux, game.u.uy)}!`);
+        if (Levitation() || Is_airlevel(game.u.uz) || Is_waterlevel(game.u.uz))
+            await You('are motionlessly suspended.');
+        else if (game.u.usteed)
+            await You('are frozen in place!');
+        else
+            await Your(`${makeplural(body_part(FOOT))} are frozen to the ${
+                       surface(game.u.ux, game.u.uy)}!`);
+        nomul(-(rn1(10, 25 - 12 * bcsign(otmp))));
+        game.multi_reason = 'frozen by a potion';
+        game.nomovemsg = 'You can move again.';
+        exercise(A_DEX, false);
     }
-    nomul(-(rn1(10, 25 - 12 * bcsign(otmp))));
-    game.multi_reason = 'frozen by a potion';
-    game.nomovemsg = 'You can move again.';
-    exercise(A_DEX, false);
 }
 
 // src/potion.c strange_feeling() — the "nothing obvious happened" path shared
@@ -2366,6 +2430,7 @@ export async function dodip() {
     /* inaccessible_equipment — cursed worn gear check, records via getobj */
 
     const is_hands = obj === hands_obj;
+    drink_ok_extra = 0;
     const shortestname = is_hands || is_plural(obj) || pair_of(obj) ? 'them' : 'it';
     const obuf = is_hands ? `your ${makeplural(body_part(HAND))}`
         : short_oname(obj, doname, thesimpleoname,
@@ -2382,15 +2447,50 @@ export async function dodip() {
                              : obuf} into the fountain?`;
             const ans = await tty_yn_function(q, 'yn', 'n');
             if (ans === 'y') {
-                obj.pickup_prev = 0;
+                if (!is_hands)
+                    obj.pickup_prev = 0;
                 const { dipfountain } = await import('./fountain.js');
                 await dipfountain(obj);
                 return ECMD_TIME;
             }
+            ++drink_ok_extra;
         } else if (at_sink) {
-            note_unported_potion('dodip:sink');
+            const q = `Dip ${game.flags?.verbose === false ? shortestname
+                             : obuf} into the sink?`;
+            if ((await tty_yn_function(q, 'yn', 'n')) === 'y') {
+                if (!is_hands)
+                    obj.pickup_prev = 0;
+                await dipsink(obj);
+                return ECMD_TIME;
+            }
+            ++drink_ok_extra;
         } else if (at_pool) {
-            note_unported_potion('dodip:pool');
+            const pooltype = waterbody_name(game.u.ux, game.u.uy);
+
+            const q = `Dip ${game.flags?.verbose === false ? shortestname
+                             : obuf} into the ${pooltype}?`;
+            /* "Dip <the object> into the {pool, moat, &c}?" */
+            if ((await tty_yn_function(q, 'yn', 'n')) === 'y') {
+                if (Levitation()) {
+                    await floating_above(pooltype);
+                } else if (game.u.usteed && !is_swimmer(game.u.usteed.data)
+                           && P_SKILL(P_RIDING) < P_BASIC) {
+                    await rider_cant_reach(); /* not skilled enough to reach */
+                } else if (is_hands || obj === game.u.uarmg) {
+                    if (!is_hands)
+                        obj.pickup_prev = 0;
+                    await wash_hands();
+                } else {
+                    obj.pickup_prev = 0;
+                    if (obj.otyp === ONAMES.POT_ACID)
+                        obj.in_use = 1;
+                    if ((await water_damage(obj, null, true)) !== ER_DESTROYED
+                        && obj.in_use)
+                        useup(obj);
+                }
+                return ECMD_TIME;
+            }
+            ++drink_ok_extra;
         }
     }
 
@@ -2415,9 +2515,8 @@ export async function dip_into() {
 
     /* note: drink_ok() callback for quaffing is also used to validate
        a potion to dip into */
-    /* C clears drink_ok_extra here (haven't been asked about and declined
-       to use a floor feature like a fountain); drink_ok()'s
-       EXCLUDE_NONINVENT arm that reads it is not modelled (see cmd.js) */
+    drink_ok_extra = 0; /* haven't been asked about and declined to use a
+                           floor feature like a fountain */
     const potion = await getobj('dip', drink_ok, GETOBJ_NOFLAGS);
     if (!potion || potion.oclass !== OCLASSES.POTION_CLASS)
         return ECMD_CANCEL;
@@ -2466,7 +2565,7 @@ async function peffect_object_detection(otmp) {
 // src/potion.c:2796 mongrantswish() — *monp grants a wish and then leaves
 // the game. `monp` is a holder object whose .mon is cleared, the C's
 // pointer-to-pointer.
-async function mongrantswish(monp) {
+export async function mongrantswish(monp) {
     const mon = monp.mon;
     const mx = mon.mx, my = mon.my, glyph = glyph_at(mx, my);
 

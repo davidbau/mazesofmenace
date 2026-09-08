@@ -143,32 +143,14 @@ import { distu } from './hacklib.js';
 import { type_is_pname } from './mondata.js';
 import { impossible } from './pline.js';
 import { directionname } from './cmd.js';
+import { trapname } from './trap.js';
 
 // src/hack.c:2996 runmode_delay_output(). Multi-turn actions and running
 // periodically expose their intermediate screen. The default "run" mode
 // does so every seventh move; "walk" does so every move, "crawl" adds four
 // more delays, and "teleport" suppresses all intermediate updates.
 export async function runmode_delay_output() {
-    const rawMode = game.flags?.runmode;
-    let mode = RUN_LEAP;
-
-    if (rawMode === false) {
-        mode = RUN_TPORT;
-    } else if (Number.isInteger(rawMode)
-               && rawMode >= RUN_TPORT && rawMode <= RUN_CRAWL) {
-        mode = rawMode;
-    } else if (typeof rawMode === 'string') {
-        const value = rawMode.toLowerCase();
-        if ('teleport'.startsWith(value))
-            mode = RUN_TPORT;
-        else if ('run'.startsWith(value))
-            mode = RUN_LEAP;
-        else if ('walk'.startsWith(value))
-            mode = RUN_STEP;
-        else if ('crawl'.startsWith(value))
-            mode = RUN_CRAWL;
-    }
-
+    const mode = game.flags?.runmode ?? RUN_LEAP;
     if (!(game.context?.run || game.multi) || mode === RUN_TPORT)
         return;
     if (mode === RUN_LEAP && (game.moves % 7) !== 0)
@@ -1796,7 +1778,7 @@ export function slippery_ice_fumbling() {
 //
 // The vibrating square is a trap structurally but terrain in spirit, so it is
 // excluded; running across it does not stop.
-export function avoid_moving_on_trap(x, y, msg) {
+export async function avoid_moving_on_trap(x, y, msg) {
     const trap = t_at(x, y);
 
     if (trap && trap.tseen
@@ -1804,10 +1786,8 @@ export function avoid_moving_on_trap(x, y, msg) {
            it were a type of terrain */
         && trap.ttyp !== VIBRATING_SQUARE) {
         if (msg && game.flags?.mention_walls) {
-            /* You("stop in front of %s.", an(trapname(trap->ttyp, FALSE)))
-               -- trapname() is not ported and mention_walls defaults Off
-               (js/optlist.js), so this records rather than guessing a name. */
-            (game.unported ||= new Set()).add('hack:avoid_moving_on_trap:msg');
+            set_msg_xy(x, y);
+            await You(`stop in front of ${an(trapname(trap.ttyp, false))}.`);
         }
         return true;
     }
@@ -1821,7 +1801,7 @@ export function avoid_moving_on_trap(x, y, msg) {
 // shift-running and the transition is not lava, OR you are travelling -- AND
 // you know you will not fall in -- AND it is not a waterwall or lavawall.
 // Everything else falls through to the stop test.
-export function avoid_moving_on_liquid(x, y, msg) {
+export async function avoid_moving_on_liquid(x, y, msg) {
     const in_air = (Levitation() || Flying());
     const here = game.level?.at?.(game.u.ux, game.u.uy);
     const there = game.level?.at?.(x, y);
@@ -1841,9 +1821,9 @@ export function avoid_moving_on_liquid(x, y, msg) {
         return false; /* liquid is safe to traverse */
     } else if (is_pool_or_lava(x, y) && there.seenv) {
         if (msg && game.flags?.mention_walls) {
-            /* You("stop at the edge of the %s.", hliquid(...)) -- hliquid()
-               is not ported and mention_walls defaults Off. */
-            (game.unported ||= new Set()).add('hack:avoid_moving_on_liquid:msg');
+            set_msg_xy(x, y);
+            await You(`stop at the edge of the ${
+                      hliquid(is_pool(x, y) ? 'water' : 'lava')}.`);
         }
         return true;
     }
@@ -1853,13 +1833,13 @@ export function avoid_moving_on_liquid(x, y, msg) {
 // src/hack.c:2495 avoid_running_into_trap_or_liquid() — a run (run >= 2)
 // stops short of a known trap or, while blind, a known liquid; a walk-style
 // run (run == 1) only clears multi and lets the move go on
-export function avoid_running_into_trap_or_liquid(x, y) {
+export async function avoid_running_into_trap_or_liquid(x, y) {
     const would_stop = ((game.context.run | 0) >= 2);
 
     if (!game.context.run)
         return false;
-    if (avoid_moving_on_trap(x, y, would_stop)
-        || (Blind() && avoid_moving_on_liquid(x, y, would_stop))) {
+    if (await avoid_moving_on_trap(x, y, would_stop)
+        || (Blind() && await avoid_moving_on_liquid(x, y, would_stop))) {
         nomul(0);
         if (would_stop)
             game.context.move = 0;
@@ -1951,7 +1931,7 @@ export async function lookaround() {
                 continue;
 
             /* stop for traps, sometimes */
-            if (avoid_moving_on_trap(x, y, (infront && run > 1))) {
+            if (await avoid_moving_on_trap(x, y, (infront && run > 1))) {
                 if (run === 1)
                     bcorr = true;       /* goto bcorr -- if you must */
                 else if (infront)
@@ -1983,7 +1963,7 @@ export async function lookaround() {
                 } else if (loc.typ === CORR) {
                     bcorr = true;
                 } else if (is_pool_or_lava(x, y)) {
-                    if (infront && avoid_moving_on_liquid(x, y, true))
+                    if (infront && await avoid_moving_on_liquid(x, y, true))
                         stop = true;
                     else
                         next = true;

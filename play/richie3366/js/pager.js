@@ -35,7 +35,7 @@ import {
 } from './invent.js';
 import { stairway_at, known_branch_stairs } from './mklev.js';
 import {
-    getpos, LOOK_ONCE, LOOK_VERBOSE, room_cmap_explanation,
+    getpos, LOOK_QUICK, LOOK_ONCE, LOOK_VERBOSE, room_cmap_explanation,
     maybe_blocked_staircase_down,
 } from './getpos.js';
 import { mon_at, defsym_explanation } from './uhitm.js';
@@ -49,6 +49,7 @@ import { distant_monnam_none, pmname, Ugender, mon_nam, rndmonnam } from './do_n
 import { hides_under, is_hider, is_clinger, is_flyer, mons,
     M2_HUMAN, M2_ELF, M2_ORC, M2_DEMON,
 } from './monsters.js';
+import { mlet_class_explain } from './mondata.js';
 import { is_pool, is_lava, closed_door, waterbody_name } from './hack.js';
 import { altarmask_at } from './pray.js';
 import { align_str } from './roles.js';
@@ -83,7 +84,7 @@ import {
     MHID_PREFIX, MHID_ARTICLE, MHID_ALTMON, MHID_REGION,
     MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_INFRAVIS, MONSEEN_TELEPAT,
     MONSEEN_XRAYVIS, MONSEEN_DETECT, MONSEEN_WARNMON,
-    CMDQ_KEY, MENU_SEARCH, PICK_ONE,
+    CMDQ_KEY, MENU_SEARCH, PICK_ONE, I_SPECIAL,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR, DEC_TO_UNICODE } from './terminal.js';
 import { DAT_TEXT } from './generated/dat_text.js';
@@ -1493,10 +1494,31 @@ function describe_looked(x, y) {
     }
     const mtmp = mon_at(x, y);
     if (mtmp) {
-        const nm = look_at_monster_buf(mtmp).replace(/^(tame|peaceful) /, '');
-        const first = nm;
+        // C ref: pager.c do_screen_description check_monsters (looked) +
+        // didlook `:1607–1640`. The shown ttychar selects the class row and
+        // out is `an(explain)` under a glyph+8-space prefix; didlook then
+        // appends " (lookat)" and firstmatch becomes look_buf (found back
+        // to 1 for checkfile). S_invisible is skipped by the class loop; a
+        // shown 'I' takes the DEF_INVISIBLE arm (`:1406–1417`, no didlook:
+        // found stays 1 with need_to_look clear, so no parenthetical).
+        const ch = mon_glyph(mtmp).ch || '?';
+        if (ch === 'I') {
+            const u = game.u || {};
+            const usealt = ((u.EDetect_monsters | 0) & I_SPECIAL) !== 0;
+            const unseen = (usealt || u.Blind)
+                ? 'unseen creature'
+                : 'remembered, unseen, creature';
+            return { out: `I        ${an(unseen)}`, first: unseen, found: 1 };
+        }
+        const look = look_at_monster_buf(mtmp);
+        const explain = mlet_class_explain(mtmp.data?.mlet) || 'monster';
+        let out = `${ch}        ${an(explain)}`;
+        let first = explain;
+        if (look) {
+            out += ` (${look})`;
+            first = look;
+        }
         const seen = howmonseen_look_buf(mtmp);
-        let out = `${nm[0] || '?'}        ${an(nm)}`;
         if (seen) out += ` [seen: ${seen}]`;
         return { out, first, found: 1 };
     }
@@ -1985,6 +2007,7 @@ export async function do_look(mode = 0) {
                 // C: checkfile only when !LOOK_QUICK/ONCE && (VERBOSE || (help && !quick))
                 if (
                     found === 1
+                    && ans !== LOOK_QUICK
                     && ans !== LOOK_ONCE
                     && (ans === LOOK_VERBOSE || (game.flags?.help !== false && !quick))
                 ) {

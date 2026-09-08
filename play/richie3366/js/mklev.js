@@ -27356,7 +27356,7 @@ export function somex(croom) { return rn1(croom.hx - croom.lx + 1, croom.lx); }
 export function somey(croom) { return rn1(croom.hy - croom.ly + 1, croom.ly); }
 
 // C ref: mkroom.c inside_room()
-function inside_room(croom, x, y) {
+export function inside_room(croom, x, y) {
     if (croom.irregular) {
         const i = (croom.roomnoidx ?? -1) + ROOMOFFSET;
         const loc = game.level.at(x, y);

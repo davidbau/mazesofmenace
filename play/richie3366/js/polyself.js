@@ -7,21 +7,25 @@ import { dist2 } from './hacklib.js';
 import {
     pline, urgent_pline, newsym, see_monsters, impossible,
 } from './display.js';
-import { getlin, yn_function } from './getline.js';
+import { getlin, yn_function, y_n } from './getline.js';
 import { getdir } from './lock.js';
-import { an, set_body_part, yname, vtense, simpleonames, makeplural } from './objnam.js';
+import { an, the, the_unique_pm, set_body_part, yname, vtense, simpleonames, makeplural, cxname, ansimpleoname, simple_typename } from './objnam.js';
 import {
-    pmname, mon_nam, s_suffix, Ugender,
+    pmname, type_is_pname, mon_nam, s_suffix, Ugender, hliquid,
 } from './do_name.js';
+import { Unaware } from './eat.js';
 import { attacktype_fordmg, killed } from './uhitm.js';
 import {
     AT_SPIT, AT_GAZE, AD_BLND, AD_DRST, AD_ACID,
 } from './mhitm.js';
-import { mksobj } from './mkobj.js';
+import { mksobj, objects_at } from './mkobj.js';
 import { throwit } from './dothrow.js';
 import { were_summon } from './were.js';
 import { unpunish } from './read.js';
 import { surface, split_mon } from './sit.js';
+import { sticks } from './engrave.js';
+import { ceiling, t_at, instapetrify } from './trap.js';
+import { has_ceiling } from './dungeon.js';
 import { dryup } from './fountain.js';
 import { aggravate } from './wizard.js';
 import { wakeup } from './mon.js';
@@ -42,8 +46,8 @@ import { races } from './roles.js';
 import { encumber_msg, useup, weapon_descr, update_inventory } from './invent.js';
 import { end_burn } from './timeout.js';
 import { racial_exception, has_horns, num_horns, WrappingAllowed, is_flimsy } from './worn.js';
-import { helm_simple_name } from './mhitu.js';
-import { losehp, nomul, is_pool } from './hack.js';
+import { helm_simple_name, digests } from './mhitu.js';
+import { losehp, nomul, is_pool, waterbody_name } from './hack.js';
 import { finish_losehp_done, done } from './end.js';
 import { steed_vs_stealth } from './steed.js';
 import {
@@ -57,7 +61,11 @@ import {
     is_elf,
     is_dwarf,
     is_gnome,
+    is_giant,
+    is_undead,
+    is_demon,
     is_golem,
+    is_clinger,
     is_unicorn,
     strongmonst,
     bigmonst,
@@ -71,6 +79,8 @@ import {
     is_floater,
     is_vampire,
     is_vampshifter,
+    your_race,
+    G_UNIQ,
     is_were,
     webmaker,
     is_hider,
@@ -80,6 +90,7 @@ import {
     eggs_in_water,
     mindless,
     telepathic,
+    touch_petrifies,
     haseyes,
     MZ_SMALL,
     M1_SLITHY,
@@ -106,6 +117,7 @@ import {
     ECMD_TIME,
     MALE,
     FEMALE,
+    NEUTRAL,
     G_GENOD,
     W_ARM,
     W_ARMC,
@@ -128,6 +140,7 @@ import {
     POISON_RES,
     ACID_RES,
     STONE_RES,
+    DRAIN_RES,
     KILLED_BY_AN,
     BOLT_LIM,
     ECMD_CANCEL,
@@ -138,6 +151,16 @@ import {
     UNCHANGING,
     I_SPECIAL,
     TT_PIT,
+    M_AP_NOTHING,
+    M_AP_OBJECT,
+    M_AP_FURNITURE,
+    M_AP_MONSTER,
+    M_AP_TYPE,
+    Is_airlevel,
+    Is_waterlevel,
+    SPIKED_PIT,
+    STR18,
+    STR19,
     NO_PART, ARM, EYE, FINGER, FINGERTIP, FOOT, HAND, HANDED,
     HEAD, LEG, TOE, NOSE, HAIR,
 } from './const.js';
@@ -158,6 +181,7 @@ const GRAY_DRAGON_SCALE_MAIL = objectNames.indexOf('GRAY_DRAGON_SCALE_MAIL');
 const YELLOW_DRAGON_SCALE_MAIL = objectNames.indexOf('YELLOW_DRAGON_SCALE_MAIL');
 
 const PM_GRAY_DRAGON = monsterNames.indexOf('PM_GRAY_DRAGON');
+const PM_DEATH = monsterNames.indexOf('PM_DEATH');
 const PM_URUK_HAI = monsterNames.indexOf('PM_URUK_HAI');
 const PM_ORC_CAPTAIN = monsterNames.indexOf('PM_ORC_CAPTAIN');
 const PM_OWLBEAR = monsterNames.indexOf('PM_OWLBEAR');
@@ -168,6 +192,8 @@ const PM_JELLYFISH = monsterNames.indexOf('PM_JELLYFISH');
 const PM_KRAKEN = monsterNames.indexOf('PM_KRAKEN');
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
+const CORPSE = objectNames.indexOf('CORPSE');
+const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
 const PM_GIANT_EEL = monsterNames.indexOf('PM_GIANT_EEL');
 const PM_ELECTRIC_EEL = monsterNames.indexOf('PM_ELECTRIC_EEL');
 const BLINDING_VENOM = objectNames.indexOf('BLINDING_VENOM');
@@ -179,6 +205,10 @@ const PM_MARILITH = monsterNames.indexOf('PM_MARILITH');
 const PM_WINGED_GARGOYLE = monsterNames.indexOf('PM_WINGED_GARGOYLE');
 const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
 const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
+const PM_VAMPIRE_LEADER = monsterNames.indexOf('PM_VAMPIRE_LEADER');
+const PM_WOLF = monsterNames.indexOf('PM_WOLF');
+const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
+const PM_VAMPIRE_BAT = monsterNames.indexOf('PM_VAMPIRE_BAT');
 const PM_RAVEN = monsterNames.indexOf('PM_RAVEN');
 const PM_KI_RIN = monsterNames.indexOf('PM_KI_RIN');
 const PM_ROTHE = monsterNames.indexOf('PM_ROTHE');
@@ -446,7 +476,10 @@ function uasmon_maxStr() {
     }
     const R = character_race(mndx);
     if (strongmonst(ptr)) {
-        return R ? (R.attrmax[A_STR] | 0) : 18 + 100; // STR18(100) fallback
+        // C polyself.c:1100–1114 — live giant (giant, not undead) maxes at
+        // STR19(19); other strongmonst fall back to STR18(100).
+        const liveH = is_giant(ptr) && !is_undead(ptr);
+        return R ? (R.attrmax[A_STR] | 0) : liveH ? STR19(19) : STR18(100);
     }
     return R ? (R.attrmax[A_STR] | 0) : 18;
 }
@@ -497,9 +530,26 @@ export function float_vs_flight() {
 }
 
 /**
+ * C ref: mondata.c resists_drli for &gy.youmonst — undead/demon/were form,
+ * human-form ulycn arm (mondata.c:206-207), Death, vampshifter. set_uasmon
+ * zeroes uwep before calling, so the wielded-weapon path is suppressed;
+ * the defended(mon, AD_DRLI) disjunct has no JS export (named omission).
+ */
+function resists_drli_you(mdat) {
+    const u = game.u || {};
+    if (!mdat) return false;
+    if (is_undead(mdat) || is_demon(mdat) || is_were(mdat)) return true;
+    if (ismnum((u.ulycn ?? NON_PM) | 0)) return true;
+    if ((u.umonnum | 0) === PM_DEATH) return true;
+    if (is_vampshifter(game.youmonst || {})) return true;
+    return false;
+}
+
+/**
  * C ref: polyself.c set_uasmon — point youmonst.data at mons[umonnum]
  * via set_mon_data (prorates u.umovement when new form is slower).
- * Named omissions: DRAIN_RES (uwep-suppressed resists_drli); ANTIMAGIC;
+ * Named omissions: defended(AD_DRLI) disjunct of resists_drli (no JS
+ * defended export); ANTIMAGIC;
  * SICK_RES fungus/ghoul; STUNNED/HALLUC_RES/SEE_INVIS/TELEPAT/INFRAVISION/
  * INVIS/TELEPORT/TELEPORT_CONTROL/LEVITATION/SWIMMING/PASSES_WALLS/
  * REGENERATION/REFLECTING/BLND_RES; vamp cham; polysense;
@@ -528,6 +578,8 @@ export function set_uasmon() {
     propset_fromform(POISON_RES, 'HPoison_resistance', !!(mres & MR_POISON));
     propset_fromform(ACID_RES, 'HAcid_resistance', !!(mres & MR_ACID));
     propset_fromform(STONE_RES, 'HStone_resistance', !!(mres & MR_STONE));
+    // C: PROPSET(DRAIN_RES, resists_drli(&gy.youmonst)) with uwep suppressed
+    propset_fromform(DRAIN_RES, 'HDrain_resistance', resists_drli_you(mdat));
 
     // C: PROPSET(FLYING, is_flyer(mdat) && !is_floater(mdat)) — D-0724
     // floating eye is flyer+floater; suppress Flying under Levitation.
@@ -963,7 +1015,7 @@ async function break_armor() {
  * mhmax (dragon / golem / d(mlvl,8)); break_armor; drop_weapon;
  * find_ac; newsym; botl; see_monsters; encumber_msg; verbose ability tips.
  * Named omissions: Stoned/Sick/Slimed/strangle/glib; hideunder; utrap;
- * Blind restore; egg learn; swallow expel; light sources;
+ * egg learn; swallow expel; light sources;
  * full skinback; livelog first-poly text; break_armor horns /
  * flimsy-helm pierce / ublindf; retouch_equipment.
  * @param {number} mntmp
@@ -973,6 +1025,10 @@ export async function polymon(mntmp) {
     const u = game.u || (game.u = {});
     const flags = game.flags || (game.flags = {});
     let dochange = false;
+    // C polyself.c:739 — was_blind = !!Blind at entry, before set_uasmon
+    // swaps the FROMFORM eyeless bit (same shape as the polyman arm).
+    const wasBlind = !!(((u.HBlinded | 0) || (u.EBlinded | 0))
+        && !(u.BBlinded | 0)) || !!u.uroleplay?.blind;
 
     const mv = game.mvitals?.[mntmp];
     if (mv && ((mv.mvflags | 0) & G_GENOD)) {
@@ -1062,7 +1118,23 @@ export async function polymon(mntmp) {
     await break_armor();
     // C: drop_weapon(1) — cantwield (dragon/nohands) must drop uwep
     await drop_weapon(1);
-    // hideunder / Blind / egg / swallow / steed arms deferred
+    // hideunder / egg / swallow / steed arms deferred
+    // C polyself.c:899-902 — previous form was eyeless and the new form
+    // sees: set HBlinded timeout then make_blinded(0,TRUE) "can see again"
+    // (same shape as the polyman arm; break_armor's Blindf_off above ran
+    // first, matching C :888 before :899).
+    const nowBlind = !!(((u.HBlinded | 0) || (u.EBlinded | 0))
+        && !(u.BBlinded | 0)) || !!u.uroleplay?.blind;
+    if (wasBlind && !nowBlind) {
+        u.HBlinded = ((u.HBlinded | 0) & ~TIMEOUT) | (1 & TIMEOUT);
+        if (!u.uprops) u.uprops = {};
+        if (!u.uprops[BLINDED]) {
+            u.uprops[BLINDED] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+        }
+        u.uprops[BLINDED].intrinsic =
+            ((u.uprops[BLINDED].intrinsic | 0) & ~TIMEOUT) | (1 & TIMEOUT);
+        await make_blinded(0, true);
+    }
     newsym(u.ux, u.uy); /* Change symbol */
     // spoteffects / Passes_walls / amorphous / webmaker deferred
     // C: find_ac() before encumber_msg; tty more() paints *cached* botl
@@ -1137,10 +1209,13 @@ export async function polymon(mntmp) {
 /**
  * C ref: polyself.c polyself — system-shock, POLY_CONTROLLED getlin,
  * random ordinary pick, then polymon/newman.
- * Named omissions: were/vamp/dragon-merge/POLY_MONSTER/POLY_REVERT;
- * placeholder orc/elf/giant substitutes; mkclass_poly; controllable_poly
- * getlin (non-force); wizard rehumanize own-role; light-source bookkeeping.
- * POLY_LOW_CTRL forcecontrol downgrade is live (D-1428).
+ * Live: POLY_LOW_CTRL forcecontrol downgrade (D-1428); controllable_poly
+ * gate; !polyok the()/bare/an() article (D-2063); POLY_MONSTER isvamp
+ * do_vampyr shape change (D-2063).
+ * Named omissions: were/dragon-merge/POLY_REVERT; placeholder orc/elf/giant
+ * substitutes; mkclass_poly; controllable_poly getlin (non-force);
+ * post-loop isvamp/draconian goto (tryct<=0 random-name funnel);
+ * wizard rehumanize own-role; light-source bookkeeping.
  * @param {number} [psflags=POLY_NOFLAGS]
  */
 export async function polyself(psflags = 0) {
@@ -1161,6 +1236,9 @@ export async function polyself(psflags = 0) {
     const iswere = ismnum(u.ulycn);
     const youdata = game.youmonst?.data;
     const isvamp = !!(is_vampire(youdata) || is_vampshifter(game.youmonst));
+    // C polyself.c:480 — controllable_poly = Polymorph_control && !(Stunned || Unaware);
+    // Stunned shape mirrors hack.js Stunned_prop ((u.HStun|0) || u.Stunned).
+    const controllable_poly = Polymorph_control(u) && !((u.HStun | 0) || u.Stunned) && !Unaware();
     if (!Polymorph_control(u) && !forcecontrol && !draconian && !iswere
         && !isvamp) {
         // C: if (rn2(20) > ACURR(A_CON)) system shock
@@ -1183,7 +1261,10 @@ export async function polyself(psflags = 0) {
     }
 
     let mntmp = NON_PM;
-    if (forcecontrol) {
+    // C polyself.c:511 — `if (monsterpoly && isvamp) goto do_vampyr`: a #monster
+    // shape change as a vampire skips the getlin block entirely.
+    const vampyr_goto = monsterpoly && isvamp;
+    if (forcecontrol && !vampyr_goto) {
         let tryct = 5;
         do {
             mntmp = NON_PM;
@@ -1206,9 +1287,18 @@ export async function polyself(psflags = 0) {
                 await pline(`You can't polymorph into ${an(pmname(mntmp, FEMALE))}.`);
                 mntmp = NON_PM;
             } else if (!polyok(mons(mntmp))
+                // C polyself.c:596–601 — own race (non-unique) and own role
+                // force newman() instead of this message.
                 && !(mntmp === PM_HUMAN
+                    || (your_race(mons(mntmp)) && ((mons(mntmp)?.geno | 0) & G_UNIQ) === 0)
                     || mntmp === (game.urole?.mnum | 0))) {
-                await pline(`You can't polymorph into ${an(pmname(mntmp, game.flags?.female ? FEMALE : MALE))}.`);
+                // C polyself.c:610–615 — unique → the(), proper name → bare,
+                // otherwise an().
+                const mptr = mons(mntmp);
+                let pm_name = pmname(mntmp, game.flags?.female ? FEMALE : MALE);
+                if (the_unique_pm(mptr)) pm_name = the(pm_name);
+                else if (!type_is_pname(mptr)) pm_name = an(pm_name);
+                await pline(`You can't polymorph into ${pm_name}.`);
                 mntmp = NON_PM;
             } else {
                 break;
@@ -1219,6 +1309,32 @@ export async function polyself(psflags = 0) {
             await pline("That's enough tries!");
             return;
         }
+    }
+
+    // C polyself.c do_vampyr — vampire shape change skips the polyok gate:
+    // re-pick wolf/fog/bat (cham override), y_n prompt when controlled,
+    // then polymon/newman directly (no sex_change_ok wrap; goto made_change,
+    // whose light-source bookkeeping stays deferred like the random path).
+    // Second disjunct is C's `else if (draconian || iswere || isvamp)` taken
+    // when NOT (controllable || forcecontrol); dragon/were arms stay deferred.
+    if (vampyr_goto || (!forcecontrol && !controllable_poly && isvamp && !draconian && !iswere)) {
+        // C re-pick guard `mntmp < LOW_PM || geno & G_UNIQ`; RNG short-circuit
+        // order kept: leader rn2(10) first, else rn2(4), then cham rn2(2).
+        if (mntmp < LOW_PM || ((mons(mntmp)?.geno | 0) & G_UNIQ)) {
+            const isLeader = (youdata?.mndx ?? -1) === PM_VAMPIRE_LEADER;
+            if (isLeader && !rn2(10)) mntmp = PM_WOLF;
+            else if (!rn2(4)) mntmp = PM_FOG_CLOUD;
+            else mntmp = PM_VAMPIRE_BAT;
+            const cham = game.youmonst?.cham;
+            if (ismnum(cham) && !is_vampire(youdata) && !rn2(2)) mntmp = cham;
+        }
+        if (controllable_poly) {
+            // C gvariant is NEUTRAL here — no getlin ran on this path.
+            if ((await y_n(`Become ${an(pmname(mntmp, NEUTRAL))}?`)) !== 'y') return;
+        }
+        if (mntmp === PM_HUMAN) await newman();
+        else await polymon(mntmp);
+        return;
     }
 
     // C: mntmp < LOW_PM → tryct=200; rn1(SPECIAL_PM-LOW_PM, LOW_PM)
@@ -1419,11 +1535,188 @@ export async function domindblast() {
 }
 
 /**
+ * C ref: youprop.h Flying — (H||E||steed-flyer) && !B.
+ * File-local per-module idiom (eat.js Flying); dohide/youhiding need the
+ * ceiling test without importing another module's local.
+ * @returns {boolean}
+ */
+function Flying() {
+    const u = game.u || {};
+    if (u.Flying) return true;
+    const prop = u.uprops?.[FLYING];
+    const blocked = (u.BFlying | 0) || (prop?.blocked | 0);
+    if (u.usteed && is_flyer(u.usteed.data) && !blocked) return true;
+    return !!(((u.HFlying | 0) || (u.EFlying | 0)
+        || (prop?.intrinsic | 0) || (prop?.extrinsic | 0))
+        && !blocked);
+}
+
+/** C ref: dungeon.c plur — "s" unless 1 (end.js file-local idiom). */
+function plur(n) {
+    return (n | 0) === 1 ? '' : 's';
+}
+
+/**
+ * C ref: insight.c youhiding :2022–2077 — describe the hero's hiding place.
+ * Envelope: mimic shape detail (U_AP_TYPE) vs uundetected eel-in-pool /
+ * hides_under pile / ceiling-clinger-or-flyer / pit-floor trapper /
+ * surface; via_enlghtmt menu line vs topline message.
+ * Named omission: the via_enlghtmt arm (insight.c:2074–2077 `you_are`) —
+ * JS enlightenment (invent.js) never calls youhiding and the menu-line
+ * channel has no polyself-side endpoint.
+ */
+export async function youhiding(via_enlghtmt, msgflag) {
+    const u = game.u || {};
+    const youdata = game.youmonst?.data;
+    let buf = 'hiding';
+    const ap_type = M_AP_TYPE(game.youmonst);
+    if (ap_type !== M_AP_NOTHING) {
+        /* mimic; the hero only ever mimics a strange object or gold
+           (or its hallucinatory stand-in), so furniture/monster detail
+           arms stay exactly as C wrote them */
+        buf = 'mimicking';
+        if (ap_type === M_AP_OBJECT) {
+            buf += ` ${an(simple_typename(game.youmonst?.mappearance))}`;
+        } else if (ap_type === M_AP_FURNITURE) {
+            buf += ' something';
+        } else if (ap_type === M_AP_MONSTER) {
+            buf += ' someone';
+        }
+        /* else: something unexpected; leave buf as-is */
+    } else if (u.uundetected) {
+        if (youdata?.mlet === 'S_EEL') {
+            if (is_pool(u.ux, u.uy)) buf += ` in the ${waterbody_name(u.ux, u.uy)}`;
+        } else if (hides_under(youdata)) {
+            const o = objects_at(u.ux, u.uy);
+            if (o) buf += ` underneath ${ansimpleoname(o)}`;
+        } else if (is_clinger(youdata) || Flying()) {
+            /* Flying: 'lurker above' hides on ceiling but doesn't cling */
+            buf += ` on the ${ceiling(u.ux, u.uy)}`;
+        } else if ((u.utrap | 0) && (u.utraptype | 0) === TT_PIT) {
+            /* on floor; is_hider() but otherwise not special: 'trapper' */
+            const t = t_at(u.ux, u.uy);
+            buf += ` in a ${t && (t.ttyp | 0) === SPIKED_PIT ? 'spiked ' : ''}pit`;
+        } else {
+            buf += ` on the ${surface(u.ux, u.uy)}`;
+        }
+    }
+    /* else: shouldn't happen; falls through to generic "you are hiding" */
+    if (via_enlghtmt) return; /* named omission above */
+    /* C: You("are %s %s.", msgflag ? "already" : "now", buf) */
+    await pline(`You are ${msgflag ? 'already' : 'now'} ${buf}.`);
+}
+
+/**
+ * C ref: polyself.c dohide :1777–1874 — #monster hide for hiders/mimics.
+ * Branch order matches C: held/trapped refuse (+reveal uundetected/mimic)
+ * → eel-out-of-water → hides_under pile (incl. all-'trice petrify) →
+ * ceiling-without-ceiling / floor-hider-on-air-or-water → already-hiding
+ * → mimic-appearance set / uundetected set + newsym + youhiding.
+ * @returns {Promise<number>} ECMD_OK | ECMD_TIME
+ */
+export async function dohide() {
+    const u = game.u || (game.u = {});
+    if (!game.youmonst) game.youmonst = {};
+    const you = game.youmonst;
+    const youdata = you.data;
+    const ismimic = youdata?.mlet === 'S_MIMIC';
+    const on_ceiling = is_clinger(youdata) || Flying();
+
+    /* can't hide while being held (or holding) or while trapped
+       (except for floor hiders [trapper or mimic] in pits) */
+    if (u.ustuck || ((u.utrap | 0) && ((u.utraptype | 0) !== TT_PIT || on_ceiling))) {
+        /* C: You_cant("hide while you're %s.", ...) — nesting kept */
+        const why = !u.ustuck ? 'trapped'
+            : u.uswallow ? (digests(u.ustuck?.data) ? 'swallowed' : 'engulfed')
+            : !sticks(youdata) ? 'being held'
+            : (humanoid(u.ustuck?.data) ? 'holding someone' : 'holding that creature');
+        await pline(`You can't hide while you're ${why}.`);
+        if (u.uundetected || (ismimic && M_AP_TYPE(you) !== M_AP_NOTHING)) {
+            u.uundetected = 0;
+            you.m_ap_type = M_AP_NOTHING;
+            newsym(u.ux, u.uy);
+        }
+        return ECMD_OK;
+    }
+    /* note: hero-as-eel handling is incomplete but unnecessary;
+       such critters aren't offered the option of hiding via #monster */
+    if (youdata?.mlet === 'S_EEL' && !is_pool(u.ux, u.uy)) {
+        if (IS_FOUNTAIN(game.level?.at(u.ux, u.uy)?.typ)) {
+            await pline('The fountain is not deep enough to hide in.');
+        } else {
+            await pline(`There is no ${hliquid('water')} to hide in here.`);
+        }
+        u.uundetected = 0;
+        return ECMD_OK;
+    }
+    if (hides_under(youdata)) {
+        let ct = 0;
+        const otop = objects_at(u.ux, u.uy);
+        if (!otop) {
+            await pline('There is nothing to hide under here.');
+            u.uundetected = 0;
+            return ECMD_OK;
+        }
+        let otmp;
+        for (otmp = otop;
+             otmp && (otmp.otyp | 0) === CORPSE
+                && touch_petrifies(mons(otmp.corpsenm));
+             otmp = otmp.nexthere) {
+            ct += (otmp.quan | 0);
+        }
+        /* otmp is null iff the entire pile consists of 'trice corpses */
+        if (!otmp && !(u.Stone_resistance || u.HStone_resistance || u.EStone_resistance)) {
+            let corpse_name = cxname(otop);
+            /* plural case says "cockatrice corpses" / "chickatrice corpses"
+               from the top of the pile even if both types are present */
+            if (ct === 1) corpse_name = an(corpse_name);
+            /* no need to check poly_when_stoned(); no hide-underers can
+               turn into stone golems instead of becoming petrified */
+            await pline(`Hiding under ${corpse_name}${plur(ct)} is a fatal mistake...`);
+            await instapetrify(`hiding under ${corpse_name}${plur(ct)}`);
+            /* only reach here if life-saved */
+            u.uundetected = 0;
+            return ECMD_TIME;
+        }
+    }
+    /* Planes of Air and Water */
+    if (on_ceiling && !has_ceiling(u.uz)) {
+        await pline('There is nowhere to hide above you.');
+        u.uundetected = 0;
+        return ECMD_OK;
+    }
+    if (is_hider(youdata) && !Flying()
+        && (Is_airlevel(u.uz) || Is_waterlevel(u.uz))) {
+        await pline('There is nowhere to hide beneath you.');
+        u.uundetected = 0;
+        return ECMD_OK;
+    }
+    /* TODO? inhibit floor hiding at furniture locations, or
+     * else make youhiding() give smarter messages at such spots. */
+
+    if (u.uundetected || (ismimic && M_AP_TYPE(you) !== M_AP_NOTHING)) {
+        await youhiding(false, 1); /* "you are already hiding" */
+        return ECMD_OK;
+    }
+
+    if (ismimic) {
+        /* should bring up a dialog "what would you like to imitate?" */
+        you.m_ap_type = M_AP_OBJECT;
+        you.mappearance = STRANGE_OBJECT;
+    } else {
+        u.uundetected = 1;
+    }
+    newsym(u.ux, u.uy);
+    await youhiding(false, 0); /* "you are now hiding" */
+    return ECMD_TIME;
+}
+
+/**
  * C ref: cmd.c domonability — #monster special ability while poly'd.
  * Envelope: hide/web prompt; breathe → spit → nymph → gaze → were →
  * hide → web → mindflayer → gremlin → unicorn → shriek → vampire →
  * steed → reflexive/normal.
- * Named omissions: dogaze, dohide, dospinweb (polyself.c arms, queued);
+ * Named omissions: dogaze, dospinweb (polyself.c arms, queued);
  * steed breath via pet_ranged_attk (missing). Deferred arms keep the
  * old reflexive/normal fallthrough.
  * @returns {Promise<number>} ECMD_OK | ECMD_TIME
@@ -1441,7 +1734,10 @@ export async function domonability() {
     };
     // C: might_hide prompt rides before every arm
     const might_hide = is_hider(uptr) || hides_under(uptr);
-    let c = '\0';
+    /* C: char c = '\0' — 0 is falsy so `c ? ... : ...` falls to the
+       predicate arms. A JS '\0' string has length 1 (truthy) and would
+       wrongly skip every c-gated arm, so the no-answer state is 0. */
+    let c = 0;
     if (might_hide && webmaker(uptr)) {
         c = await yn_function('Hide [h] or spin a web [s]?',
             hidespinchars, 'q', true);
@@ -1458,7 +1754,7 @@ export async function domonability() {
     } else if (is_were(uptr)) {
         return dosummon();
     } else if (c ? c === 'h' : might_hide) {
-        return tail(); // dohide deferred
+        return dohide();
     } else if (c ? c === 's' : webmaker(uptr)) {
         return tail(); // dospinweb deferred
     } else if (is_mind_flayer(uptr)) {

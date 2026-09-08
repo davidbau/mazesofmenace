@@ -2180,7 +2180,10 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs, can_tunnel) {
             if (mtmp.mx)
                 newsym(mtmp.mx, mtmp.my);
             return MMOVE_DIED;
+        } else if (mon_offmap(mtmp)) {
+            return MMOVE_DONE;
         }
+        ptr = mtmp.data; /* in case mintrap() caused polymorph */
 
         /* src/monmove.c:1520 — open a door, or crash through it, if 'mtmp'
            can. can_tunnel is the effective movement decision from m_move();

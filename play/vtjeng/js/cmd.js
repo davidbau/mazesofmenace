@@ -123,7 +123,7 @@ import { UnsupportedItemDestructionError } from './zap_destroy_items.js';
 import { SPE_TELEPORT_AWAY } from './objects.js';
 import { next_to_u } from './apply_next_to_u.js';
 import { UnsupportedPositionCheckError, tele } from './teleport.js';
-import { t_at } from './trap.js';
+import { t_at, dountrap } from './trap.js';
 import { UnsupportedHeroTimeoutBoundaryError } from './timeout.js';
 import { UnsupportedErosionError } from './trap_erode_obj.js';
 import {
@@ -231,7 +231,6 @@ import {
     preflightDomoveDestination,
     u_maybe_impaired,
     NODIAG,
-    UnsupportedHitPointLossError,
     UnsupportedHeroMoveBoundaryError,
 } from './hack.js';
 import { nhgetch } from './input.js';
@@ -249,7 +248,10 @@ import {
     UnsupportedMonsterRequestError,
     UnsupportedReadError,
 } from './read.js';
-import { UnsupportedPolyselfError, dobreathe } from './polyself.js';
+import {
+    UnsupportedPolyselfError, dobreathe, dogaze, dohide, domindblast,
+    dopoly, doremove, dospinweb, dospit, dosummon,
+} from './polyself.js';
 import {
     wiz_genesis, wiz_intrinsic, wiz_level_change, wiz_level_tele,
     wiz_polyself, wiz_wish,
@@ -1415,7 +1417,7 @@ export const ADMITTED_COMMANDS = Object.freeze([
     'swap', 'kick',
     'save', 'wield', 'quiver', 'help', 'whatis', '#', 'loot', 'force', 'tip',
     'glance', 'showgold', 'seeweapon', 'seearmor', 'seerings', 'seeamulet', 'teleport',
-    'terrain', 'travel', 'dip', 'invoke',
+    'terrain', 'travel', 'dip', 'invoke', 'untrap',
 ]);
 const ADMITTED_BOUNDARY = 'the repeated-command boundary admits only '
     + `${ADMITTED_COMMANDS.join(', ')}, a one-square walk, a shift-direction `
@@ -1893,9 +1895,8 @@ export function failClosedCommandRefusals() {
         UnsupportedWieldError,
         UnsupportedBhitError,
         UnsupportedTransientDisplayError,
-        UnsupportedHitPointLossError,
-        // A killing blow reaches the next two classes below
-        // UnsupportedHitPointLossError. UnsupportedEndOfGameError now has
+        // A killing blow reaches the next two classes.
+        // UnsupportedEndOfGameError now has
         // several source-ordered endpoints: a return-capable paranoid query
         // is preflighted before done() paints or mutates, an ordinary death
         // stops above really_done() after the forced status work, and a debug
@@ -2514,60 +2515,47 @@ async function runPolyselfCommand(key, state) {
 }
 
 // C ref: cmd.c domonability() (888-949). #monster command: use a special
-// monster ability while polymorphed. The can_breathe() arm delegates to
-// dobreathe() (polyself.c:1420); all other special abilities still refuse.
-// For a gnome form every test is false and the Upolyd catch-all prints
-// "Any special ability you may have is purely reflexive."
+// monster ability while polymorphed. The polyself.c abilities are wired;
+// the gremlin split, unicorn horn, shriek and steed breath arms still
+// refuse. For a gnome form every test is false and the Upolyd catch-all
+// prints "Any special ability you may have is purely reflexive."
 async function domonability(state) {
     const uptr = state.youmonst?.data;
     const might_hide = is_hider(uptr) || hides_under(uptr);
 
-    // cmd.c:896-901: combined hider+webmaker prompt. Every branch below that
-    // acts on the prompt answer is unreachable for gnome, but the prompt
-    // itself is unreachable too because gnome is neither a hider nor a
-    // webmaker. C initializes c to '\0'; null preserves the same falsiness
-    // for the ternary conditions at lines 912 and 914.
+    // cmd.c:896-901: combined hider+webmaker prompt. C initializes c to
+    // '\0'; null preserves the same falsiness for the ternary conditions at
+    // lines 912 and 914.
     let c = null;
     if (might_hide && webmaker(uptr)) {
-        throw new UnsupportedHeroCommandBranchBoundaryError(
-            'domonability hide-or-web prompt for a hider+webmaker form',
-        );
+        // decl.c:118 hidespinchars is "hsq". yn_function() answers a key
+        // code, so the answers are compared as codes.
+        c = await yn_function('Hide [h] or spin a web [s]?', 'hsq', 'q',
+            true, state);
+        if (c === 'q'.charCodeAt(0) || c === 0x1b)
+            return ECMD_OK;
     }
 
     if (can_breathe(uptr)) {
         // cmd.c:902-903: return dobreathe();
         return dobreathe(state);
     } else if (attacktype(uptr, AT_SPIT)) {
-        throw new UnsupportedHeroCommandBranchBoundaryError(
-            'domonability dospit() for a spitting form',
-        );
+        return dospit(state);
     } else if (uptr?.mlet === S_NYMPH) {
-        throw new UnsupportedHeroCommandBranchBoundaryError(
-            'domonability doremove() for a nymph form',
-        );
+        return doremove(state);
     } else if (attacktype(uptr, AT_GAZE)) {
-        throw new UnsupportedHeroCommandBranchBoundaryError(
-            'domonability dogaze() for a gaze-attack form',
-        );
+        return dogaze(state);
     } else if (is_were(uptr)) {
-        throw new UnsupportedHeroCommandBranchBoundaryError(
-            'domonability dosummon() for a were form',
-        );
-    } else if (c ? c === 'h' : might_hide) {
+        return dosummon(state);
+    } else if (c ? c === 'h'.charCodeAt(0) : might_hide) {
         // cmd.c:912. When the prompt was not shown (c is null), this tests
         // might_hide alone; when it was shown, it tests the answer.
-        throw new UnsupportedHeroCommandBranchBoundaryError(
-            'domonability dohide() for a hider form',
-        );
-    } else if (c ? c === 's' : webmaker(uptr)) {
+        return dohide(state);
+    } else if (c ? c === 's'.charCodeAt(0) : webmaker(uptr)) {
         // cmd.c:914. Same ternary pattern as the hider branch above.
-        throw new UnsupportedHeroCommandBranchBoundaryError(
-            'domonability dospinweb() for a webmaker form',
-        );
+        return dospinweb(state);
     } else if (is_mind_flayer(uptr)) {
-        throw new UnsupportedHeroCommandBranchBoundaryError(
-            'domonability domindblast() for a mind flayer form',
-        );
+        return domindblast(state);
     } else if (state.u.umonnum === PM_GREMLIN) {
         throw new UnsupportedHeroCommandBranchBoundaryError(
             'domonability gremlin-split for gremlin form',
@@ -2581,9 +2569,7 @@ async function domonability(state) {
             'domonability shriek for a shrieking form',
         );
     } else if (is_vampire(uptr) || is_vampshifter(state.youmonst)) {
-        throw new UnsupportedHeroCommandBranchBoundaryError(
-            'domonability dopoly() for a vampire form',
-        );
+        return dopoly(state);
     } else if (state.u.usteed && can_breathe(state.u.usteed?.data)) {
         throw new UnsupportedHeroCommandBranchBoundaryError(
             'domonability steed-breathe for a breath-weapon steed',
@@ -2989,6 +2975,9 @@ async function doextcmd(key, state) {
     case 'doinvoke':
         // C ref: artifact.c doinvoke(), which returns its own ECMD_* result.
         return await failClosedCommand(key, state, () => doinvoke(state));
+    case 'dountrap':
+        // C ref: trap.c dountrap(), which returns ECMD_OK or ECMD_TIME.
+        return await dountrap(state);
     default:
         resetCommandVars(state);
         throw new UnsupportedHeroCommandBoundaryError(

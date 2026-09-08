@@ -455,6 +455,16 @@ const DEF_MONSYM_MLET = [
     'S_YETI', 'S_ZOMBIE', 'S_HUMAN', 'S_GHOST', 'S_GOLEM', 'S_DEMON',
     'S_EEL', 'S_LIZARD', 'S_WORM_TAIL', 'S_MIMIC_DEF',
 ];
+/**
+ * C ref: drawing.c def_monsyms[].explain by mlet name ('S_FELINE' →
+ * 'cat or other feline'). pager.c do_screen_description check_monsters
+ * prints an(explain) for the shown symbol's class. Returns null when the
+ * mlet has no explain row (mirrors C's `explain && *explain` guard).
+ */
+export function mlet_class_explain(mlet) {
+    const i = DEF_MONSYM_MLET.indexOf(mlet);
+    return i > 0 ? (DEF_MONSYM_EXPLAIN[i] || null) : null;
+}
 const NAME_TO_MONCLASS_FALSE = ['an', 'the', 'or', 'other', 'or other'];
 const DEF_INVISIBLE = 'I';
 const PM_LONG_WORM = monsterNames.indexOf('PM_LONG_WORM');

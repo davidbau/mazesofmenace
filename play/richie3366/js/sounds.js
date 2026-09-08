@@ -29,7 +29,7 @@ import { COIN_CLASS, WEAPON_CLASS } from './objects.js';
 import { rn2 } from './rng.js';
 import { dist2, ucase } from './hacklib.js';
 import { vtense, an } from './objnam.js';
-import { nomul } from './hack.js';
+import { nomul, You_hear } from './hack.js';
 import {
     is_animal, is_flyer, is_lord, is_prince, is_mercenary, is_undead,
     is_mplayer, is_elf, is_dwarf, is_gnome, likes_magic, monsterNames,
@@ -119,13 +119,6 @@ const PM_SILVER_DRAGON = monsterNames.indexOf('PM_SILVER_DRAGON');
 const PM_BABY_SILVER_DRAGON = monsterNames.indexOf('PM_BABY_SILVER_DRAGON');
 const PM_WATER_DEMON = monsterNames.indexOf('PM_WATER_DEMON');
 const PM_PRISONER = monsterNames.indexOf('PM_PRISONER');
-
-/** C ref: pline.c You_hear — acoustics/Deaf; Unaware/Underwater deferred. */
-async function You_hear(line) {
-    const u = game.u || {};
-    if (u.Deaf || game.flags?.acoustics === false) return;
-    await pline(`You hear ${line}`);
-}
 
 /** C ref: invent.c g_at — first COIN_CLASS on pile (local for vault gold scan). */
 function gold_at(x, y) {

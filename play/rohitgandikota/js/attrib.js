@@ -30,6 +30,12 @@ import {
 } from './const.js';
 import { ATTKS, MFLAGS, PMNAMES, MONSYMS } from './monst_data.js';
 import { Upolyd } from './const.js';
+import { livelog_printf } from './pline.js';
+import { LL_ALIGNMENT, A_CG_CONVERT, A_CG_HELM_ON, A_CG_HELM_OFF, A_CURRENT, Is_astralevel } from './const.js';
+import { aligns } from './role_data.js';
+import { summon_furies } from './makemon.js';
+import { retouch_equipment } from './artifact.js';
+import { Hallucination } from './youprop.js';
 
 // include/you.h:247 Role_if()
 export function Role_if(pm) {
@@ -142,9 +148,7 @@ export async function encumber_msg() {
     const newcap = near_capacity();
     const oldcap = game.oldcap;
 
-    if (game._encumber_status_stale && oldcap !== newcap)
-        game._deferred_status_capacity = oldcap;
-    try {
+    {
         if (oldcap < newcap) {
             switch (newcap) {
             case 1:
@@ -181,9 +185,6 @@ export async function encumber_msg() {
             }
             (game.disp ||= {}).botl = true;
         }
-    } finally {
-        delete game._deferred_status_capacity;
-        delete game._encumber_status_stale;
     }
 
     game.oldcap = newcap;
@@ -961,4 +962,51 @@ export async function gainstr(otmp, incr, givemsg) {
     }
     await adjattrib(A_STR, (otmp && otmp.cursed) ? -num : num,
                     givemsg ? -1 : 1);
+}
+
+// src/attrib.c:1320 uchangealign() — change hero's alignment type, possibly
+// losing use of artifacts. `reason` is A_CG_CONVERT, A_CG_HELM_ON, or
+// A_CG_HELM_OFF.
+export async function uchangealign(newalign, reason) {
+    const oldalign = game.u.ualign.type;
+
+    game.u.ublessed = 0; /* lose divine protection */
+    /* You/Your/pline message with call flush_screen(), triggering bot(),
+       so the actual data change needs to come before the message */
+    (game.disp ||= {}).botl = true; /* status line needs updating */
+    if (reason === A_CG_CONVERT) {
+        /* conversion via altar */
+        livelog_printf(LL_ALIGNMENT,
+                       `permanently converted to ${aligns[1 - newalign].adj}`);
+        game.u.ualignbase[A_CURRENT] = newalign;
+        /* worn helm of opposite alignment might block change */
+        if (!game.u.uarmh
+            || game.u.uarmh.otyp !== ONAMES.HELM_OF_OPPOSITE_ALIGNMENT)
+            game.u.ualign.type = game.u.ualignbase[A_CURRENT];
+        await You(`have a ${(game.u.ualign.type !== oldalign) ? 'sudden ' : ''
+                   }sense of a new direction.`);
+    } else {
+        /* putting on or taking off a helm of opposite alignment */
+        game.u.ualign.type = newalign;
+        if (reason === A_CG_HELM_ON) {
+            adjalign(-7); /* for abuse -- record will be cleared shortly */
+            await Your(`mind oscillates ${Hallucination() ? 'wildly'
+                                                           : 'briefly'}.`);
+            const { make_confused } = await import('./potion.js');
+            await make_confused(rn1(2, 3), false);
+            if (Is_astralevel(game.u.uz)
+                || rn2(50) < (game.u.ualign.abuse || 0))
+                await summon_furies(Is_astralevel(game.u.uz) ? 0 : 1);
+            /* don't livelog taking it back off */
+            livelog_printf(LL_ALIGNMENT,
+                           `used a helm to turn ${aligns[1 - newalign].adj}`);
+        } else if (reason === A_CG_HELM_OFF) {
+            await Your(`mind is ${Hallucination()
+                ? 'much of a muchness' : 'back in sync with your body'}.`);
+        }
+    }
+    if (game.u.ualign.type !== oldalign) {
+        game.u.ualign.record = 0; /* slate is wiped clean */
+        await retouch_equipment(0);
+    }
 }

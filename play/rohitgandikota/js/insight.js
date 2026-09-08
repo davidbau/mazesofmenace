@@ -112,6 +112,13 @@ const EXTRINSIC_KEYS = {
     HFast: 'FAST',
     HReflecting: 'REFLECTING',
     HFree_action: 'FREE_ACTION',
+    HBlinded: 'BLINDED',
+    HInvis: 'INVIS',
+    HTeleportation: 'TELEPORT',
+    HLevitation: 'LEVITATION',
+    HFlying: 'FLYING',
+    HSwimming: 'SWIMMING',
+    HPasses_walls: 'PASSES_WALLS',
 };
 
 // src/attrib.c:905 from_what(), equipment arm. The flat extrinsic value is a

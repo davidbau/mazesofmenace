@@ -5,8 +5,9 @@
 // prisoner_speaks; chat_with_leader got_thanks/questart/banished arms;
 // com_pager; livelog; exercise side-effects beyond call; full convert_arg
 // catalogue for assignquest; find_quest_artifact OBJ_INVENT/MIGRATING.
-// nexttime/othertime: Arc+Bar+Pri; goal_first/next: Arc+Bar+Pri+Kni
-// (other-role goal_* miss then D-1662 common retry; still no body).
+// nexttime/othertime: Arc+Bar+Pri; goal_first: Arc+Bar+Pri+Kni+Sam,
+// goal_next: Arc+Bar+Pri+Kni (other-role goal_* miss then D-1662
+// common retry; still no body).
 // finish_quest throw/kick catch is D-1312; offeredit/hasamulet/offeredit2
 // qt_pager bodies still named (shuffle live).
 

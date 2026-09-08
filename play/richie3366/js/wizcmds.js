@@ -108,8 +108,11 @@ const PROPERTYNAMES = [
 
 const DEFAULT_TIMEOUT_INCR = 30;
 
-/** Flat H* mirrors used by exerper / nh_timeout / display gates. */
+/** Flat H* mirrors used by exerper / nh_timeout / display gates. C youprop.h
+ * keeps one storage (HSleepy ≡ uprops[SLEEPY].intrinsic); the mirror keeps
+ * the flat readers (eat/do_wear/allmain) on the wizintrinsic default arm. */
 const PROP_FLAT = {
+    [SLEEPY]: 'HSleepy',
     [STUNNED]: 'HStun',
     [CONFUSION]: 'HConfusion',
     [HALLUC]: 'HHallucination',

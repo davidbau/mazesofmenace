@@ -3860,10 +3860,36 @@ export async function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false
  */
 function reveal_terrain_cmap_hack(g) {
     if (!g) return g;
+    // C compares integer glyphs here; remap the travelling id the same way
+    // so gbuf keeps the S_room / S_corr int C stores (S_darkroom already
+    // paints as S_room in JS, S_litcorr as white '#').
+    const id = typeof g.glyph === 'number' ? g.glyph | 0 : NO_GLYPH;
+    if (id === cmap_to_glyph(S_DARKROOM)) {
+        return attach_glyph({ ...g }, cmap_to_glyph(S_ROOM_CMAP));
+    }
+    if (id === cmap_to_glyph(S_LITCORR)) {
+        return {
+            ch: '#', color: NO_COLOR, dec: false,
+            glyph: cmap_to_glyph(S_CORR),
+        };
+    }
     if (g.ch === '#' && g.color === CLR_WHITE) {
-        return { ch: '#', color: NO_COLOR, dec: false };
+        const fixed = { ch: '#', color: NO_COLOR, dec: false };
+        if (typeof g.glyph === 'number') fixed.glyph = g.glyph | 0;
+        return fixed;
     }
     return g;
+}
+
+/**
+ * C detect.c reveal_terrain_getglyph — the returned int glyph is gbuf state.
+ * copy_glyph drops the travelling id, so reveal copies that must keep the
+ * levl_glyph int (swallowed / monster-strip arms) use this instead.
+ */
+function copy_glyph_id(g) {
+    const out = copy_glyph(g);
+    if (out && g && typeof g.glyph === 'number') out.glyph = g.glyph | 0;
+    return out;
 }
 
 /** Copy remembered / terrain glyph into a plain {ch,color,dec[,invisible]}. */
@@ -3917,24 +3943,38 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
         ? (loc.seenv | 0)
         : (cansee(x, y) ? SVALL : 0);
 
+    // C TER_MAP default int (detect.c reveal_terrain): arboreal S_tree else
+    // S_stone. The JS default_glyph param is ch-only (arboreal deferred),
+    // so the id is attached wherever the default is used.
+    const default_id = cmap_to_glyph(
+        game.level?.flags?.arboreal ? S_TREE_CMAP : S_STONE,
+    );
     if (full) {
         const save = loc.seenv;
         loc.seenv = SVALL;
         const g = terrain_glyph(loc, x, y);
+        // C: glyph = back_to_glyph(x, y) — the int id must travel with the
+        // cell (gbuf) so lookat during browse sees the cmap, not NO_GLYPH.
+        const id = back_to_glyph(x, y);
         loc.seenv = save;
-        return reveal_terrain_cmap_hack(g);
+        return reveal_terrain_cmap_hack(attach_glyph({ ...g }, id));
     }
 
     // C: levl_glyph = hero_memory ? levl.glyph : seenv ? back_to_glyph : default
     let levl_glyph;
     if (hero_memory) {
-        levl_glyph = loc.remembered_glyph
-            ? copy_glyph(loc.remembered_glyph)
-            : copy_glyph(default_glyph);
+        const mem = loc.remembered_glyph;
+        levl_glyph = mem ? copy_glyph(mem) : copy_glyph(default_glyph);
+        // C levl[][].glyph is the remembered int; unseen BSS 0 is the stone
+        // int, same as default_id.
+        attach_glyph(
+            levl_glyph,
+            mem && typeof mem.glyph === 'number' ? mem.glyph : default_id,
+        );
     } else {
         levl_glyph = seenv
-            ? terrain_glyph(loc, x, y)
-            : copy_glyph(default_glyph);
+            ? { ...terrain_glyph(loc, x, y), glyph: back_to_glyph(x, y) }
+            : attach_glyph(copy_glyph(default_glyph), default_id);
     }
 
     // Classify displayed layer (C glyph_at) without integer glyph IDs.
@@ -3943,7 +3983,7 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
     let was_mon = false;
 
     if (swallowed) {
-        glyph = copy_glyph(levl_glyph);
+        glyph = copy_glyph_id(levl_glyph);
     } else {
         const u = game.u || {};
         if (u.ux === x && u.uy === y && canspotself()) {
@@ -4000,7 +4040,7 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
 
     // C: !keep_mons && (monster|warning) || swallow → levl_glyph
     if ((!keep_mons && kind === 'mon')) {
-        glyph = copy_glyph(levl_glyph);
+        glyph = copy_glyph_id(levl_glyph);
         was_mon = true;
         if (glyph?.invisible) kind = 'invisible';
         else {
@@ -4030,6 +4070,9 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
         if (t && t.tseen) {
             const tg = trap_glyph(t);
             glyph = { ch: tg.ch, color: tg.color, dec: !!tg.dec };
+            // C trap_to_glyph int travels with the cell (trap_glyph carries
+            // .glyph; map_trap guards the same way).
+            if (typeof tg.glyph === 'number') glyph.glyph = tg.glyph | 0;
             kind = 'trap';
         }
     }
@@ -4040,23 +4083,31 @@ export function reveal_terrain_getglyph(x, y, swallowed, default_glyph, which_su
         || kind === 'invisible'
         || (was_mon && false /* region deferred */))) {
         if (!seenv) {
-            glyph = copy_glyph(default_glyph);
+            glyph = attach_glyph(copy_glyph(default_glyph), default_id);
         } else {
             const last = game.lastseentyp?.[x]?.[y] | 0;
             if (last === (loc.typ | 0) || !last) {
-                glyph = terrain_glyph(loc, x, y);
+                glyph = {
+                    ...terrain_glyph(loc, x, y), glyph: back_to_glyph(x, y),
+                };
             } else {
                 // C: temp typ = lastseentyp; back_to_glyph; restore
                 // wall_info recalc deferred
                 const saveTyp = loc.typ;
                 loc.typ = last;
-                glyph = terrain_glyph(loc, x, y);
+                glyph = {
+                    ...terrain_glyph(loc, x, y), glyph: back_to_glyph(x, y),
+                };
                 loc.typ = saveTyp;
             }
         }
     }
 
-    return reveal_terrain_cmap_hack(glyph || default_glyph);
+    // C: an unclassified cell keeps glyph_at — the displayed int, which is
+    // GLYPH_UNEXPLORED for unseen cells (never the stone default).
+    return reveal_terrain_cmap_hack(
+        glyph || attach_glyph(copy_glyph(default_glyph), GLYPH_UNEXPLORED),
+    );
 }
 
 /**

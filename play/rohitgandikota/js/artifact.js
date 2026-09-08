@@ -95,6 +95,8 @@ import { ONAME_VIA_NAMING, ONAME_WISH, ONAME_GIFT, ONAME_VIA_DIP,
          SICK_ALL,
          I_SPECIAL, TIMEOUT, W_SWAPWEP, W_QUIVER, W_BALL, W_SADDLE,
          DISMOUNT_THROWN, IS_ALTAR } from './const.js';
+import { obj_shuffle_range } from './o_init.js';
+import { OBJ_DESCR } from './objnam.js';
 
 /* include/artilist.h — artilist[i].otyp, resolved from the generated
    ONAMES-key table. Index 0 is the dummy (STRANGE_OBJECT == 0). */
@@ -387,6 +389,7 @@ function artifact_alignment(rec, artinum) {
 
 /* include/artifact.h SPFX_* bits used below */
 export { SPFX_SEARCH };
+const SPFX_NOGEN = 0x00000001;
 const SPFX_INTEL = 0x04, SPFX_RESTR = 0x02, SPFX_SPEAK = 0x08,
       SPFX_WARN = 0x20,
       SPFX_ATTK = 0x40, SPFX_SEARCH = 0x00000200,
@@ -1347,6 +1350,60 @@ export function find_artifact(otmp) {
                      : '');
         livelog_printf(LL_ARTIFACT, `found ${bare_artifactname(otmp)}${where}`);
     }
+}
+
+// src/artifact.c:575 restrict_name() — returns TRUE if `name` is restricted
+// for otmp->otyp: it is the name of an artifact of the same type (or of an
+// undiscovered type sharing its description or shuffle range) that is
+// SPFX_NOGEN or SPFX_RESTR, or the stack has more than one item
+export function restrict_name(otmp, name) {
+    const otyp = otmp.otyp, ocls = game.objects[otyp].oc_class;
+    const sametype = new Array(game.objects.length).fill(false);
+
+    if (!name)
+        return false;
+    if (name.toLowerCase().startsWith('the '))
+        name = name.slice(4);
+
+    /* decide what types of objects are the same as otyp;
+       if it's been discovered, then only itself matches;
+       otherwise, include all other undiscovered objects
+       of the same class which have the same description
+       or share the same pool of shuffled descriptions */
+    sametype[otyp] = true;
+    let odesc;
+    if (!game.objects[otyp].oc_name_known
+        && (odesc = OBJ_DESCR(game.objects[otyp]))) {
+        const { lo, hi } = obj_shuffle_range(otyp);
+        for (let i = game.bases[ocls]; i < game.objects.length; i++) {
+            if (game.objects[i].oc_class !== ocls)
+                break;
+            let other;
+            if (!game.objects[i].oc_name_known
+                && (other = OBJ_DESCR(game.objects[i]))
+                && (odesc === other || (i >= lo && i <= hi)))
+                sametype[i] = true;
+        }
+    }
+
+    /* Since almost every artifact is SPFX_RESTR, it doesn't cost
+       us much to do the string comparison before the spfx check.
+       Bug fix:  don't name multiple elven daggers "Sting".
+     */
+    for (let a = 1; a < artifact_records.length; a++) {
+        if (!artifact_otyps[a])
+            break;
+        if (!sametype[artifact_otyps[a]])
+            continue;
+        let aname = artifact_names[a];
+        if (aname.toLowerCase().startsWith('the '))
+            aname = aname.slice(4);
+        if (aname === name)
+            return ((artifact_records[a].spfx & (SPFX_NOGEN | SPFX_RESTR)) !== 0
+                    || otmp.quan > 1);
+    }
+
+    return false;
 }
 
 // src/artifact.c:626 attacks()

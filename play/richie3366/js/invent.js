@@ -62,7 +62,7 @@ import { mergable, is_damageable, stop_timer, splitobj, unsplitobj, clear_splito
 import { unpaid_cost, doinvbill, gem_learned, obfree, shopper_financial_report } from './shk.js';
 import { hidden_gold } from './vault.js';
 import { setnotworn } from './do.js';
-import { s_suffix, a_monnam } from './do_name.js';
+import { s_suffix, a_monnam, pmname } from './do_name.js';
 import { inv_cnt } from './steal.js';
 import { assigninvlet } from './u_init.js';
 import { cansee } from './vision.js';
@@ -226,6 +226,10 @@ import {
     SEE_INVIS,
     MGIVENNAME,
     has_mgivenname,
+    ismnum,
+    NON_PM,
+    FEMALE,
+    MALE,
 } from './const.js';
 import { ATR_INVERSE, NO_COLOR } from './terminal.js';
 import {
@@ -292,7 +296,7 @@ import { objects_at } from './mkobj.js';
 import { t_at, trapname } from './trap.js';
 import { visible_region_at, reg_damg } from './region.js';
 import { PM_SAMURAI, PM_MONK, PM_CLERIC } from './generated/monsters_data.js';
-import { humanoid, strongmonst, mons, touch_petrifies, poly_when_stoned, hides_under, haseyes, dmgtype } from './monsters.js';
+import { humanoid, strongmonst, mons, touch_petrifies, poly_when_stoned, hides_under, haseyes, dmgtype, hates_silver } from './monsters.js';
 import { hideunder } from './mon.js';
 import { set_artifact_intrinsic, undiscovered_artifact, discover_artifact } from './artifact.js';
 import {
@@ -5094,7 +5098,7 @@ export async function enlightenment(mode, final = 0) {
     const { show_nhw_menu_text } = await import('./pager.js');
     const { newuexp } = await import('./exper.js');
     const { Searching, Fast, Very_fast } = await import('./attrib.js');
-    const { piousness } = await import('./insight.js');
+    const { piousness, N_times } = await import('./insight.js');
     const {
         BASICENLIGHTENMENT, MAGICENLIGHTENMENT, ENL_GAMEOVERDEAD,
     } = await import('./const.js');
@@ -5471,8 +5475,27 @@ export async function enlightenment(mode, final = 0) {
         if (hero_Polymorph_control(u)) {
             lines.push(you_have('polymorph control', from_what(POLYMORPH_CONTROL)));
         }
+        // C insight.c:1881-1892 — were-form after the shape-change arms
+        // (Upolyd foreign-shape / lays_eggs / Unchanging deferred above).
+        if (ismnum((u.ulycn ?? NON_PM) | 0)) {
+            // C: an(pmname(&mons[u.ulycn], flags.female ? FEMALE : MALE))
+            let werebuf = an(pmname(mons(u.ulycn), female ? FEMALE : MALE));
+            if ((u.umonnum | 0) === (u.ulycn | 0)) {
+                werebuf += ' in beast form';
+                if (wiz) werebuf += ` (${u.mtimedone | 0})`;
+            }
+            lines.push(you_are(werebuf));
+        }
+        // C insight.c:1895-1896 — Hate_silver after the shape-change arms
+        // (Unchanging-while-poly deferred above).
+        // C: Hate_silver (u.ulycn >= LOW_PM || hates_silver(youmonst.data))
+        if (ismnum((u.ulycn ?? NON_PM) | 0)
+            || hates_silver(game.youmonst?.data)) {
+            lines.push(you_are('harmed by silver'));
+        }
         // C insight.c:1897-1906 — Fast / Reflecting / Lifesaved
-        // (shape-changers / Hate_silver / Free_action / Fixed_abil deferred).
+        // (Upolyd foreign-shape / lays_eggs / Unchanging / Free_action /
+        // Fixed_abil still deferred).
         if (Fast()) {
             const fastAttr = Very_fast() ? 'very fast' : 'fast';
             lines.push(you_are(fastAttr, from_what(FAST)));
@@ -5536,13 +5559,32 @@ export async function enlightenment(mode, final = 0) {
                 ));
             }
         }
-        // C insight.c:1987-2000 — death disclosure (+ Nth-time suffix;
-        // final<2 survived-arms deferred: no corpus session reaches them).
-        if (final === ENL_GAMEOVERDEAD) {
-            const umort = u.umortality | 0;
+        // C insight.c:1980-2005 — death/survival disclosure after god anger.
+        {
+            let p = null;
             let buf = '';
-            if (umort > 1) buf = ` (${umort}${ordin(umort)} time!)`;
-            lines.push(enlght_line_txt(You_, 'are dead', buf, ''));
+            if (final < ENL_GAMEOVERDEAD) {
+                // still in progress, or quit/escaped/ascended
+                p = 'survived after being killed ';
+                if (!(u.umortality | 0)) {
+                    p = !final ? null : 'survived';
+                } else {
+                    buf = N_times(u.umortality | 0);
+                }
+            } else {
+                // game ended in character's death
+                p = 'are dead';
+                const umort = u.umortality | 0;
+                // C: case 0 impossible("dead without dying?") falls through
+                // to case 1 (just "are dead").
+                if (umort > 1) buf = ` (${umort}${ordin(umort)} time!)`;
+            }
+            // C: enl_msg(You_, "have been killed ", p, buf, "")
+            if (p) {
+                lines.push(enlght_line_txt(
+                    You_, final ? p : 'have been killed ', buf, '',
+                ));
+            }
         }
     }
 

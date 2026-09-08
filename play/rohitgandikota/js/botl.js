@@ -176,13 +176,7 @@ export function bot_conditions(shrinklvl = 0) {
     let cond = '';
     if (u.uhs != null && u.uhs !== NOT_HUNGRY)
         cond += ' ' + hu_stat[u.uhs].trimEnd();
-    /* encumber_msg() prints before botl is marked dirty.  The tty therefore
-       keeps the preceding capacity condition while that message is blocked
-       at --More--; display.js otherwise recomputes every status line from
-       live state and would reveal the new condition one screen too early. */
-    const cap = Number.isInteger(game._deferred_status_capacity)
-        ? game._deferred_status_capacity
-        : game._encumber_status_stale ? game.oldcap : near_capacity();
+    const cap = near_capacity();
     if (cap > UNENCUMBERED) cond += ' ' + enc_stat[cap];
     /* src/botl.c:781 conditions[] — ranking, useroption (tie-break),
        and the three text widths the tty falls back through when the row

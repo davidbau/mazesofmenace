@@ -15,6 +15,7 @@ import {
     W_RANDOM,
     W_SOUTH,
     W_WEST,
+    isok,
 } from './const.js';
 import { rn2 } from './rng.js';
 
@@ -189,6 +190,8 @@ export class ThemeroomSelection {
     // l_selection_grow() clones before growing, so the receiver is unchanged.
     grow(direction = W_ANY, random = rn2) {
         if (direction === W_RANDOM) {
+            // C: random_wdir(), ported in mklev.js, which imports this
+            // module; the same draw is made here instead.
             direction = [W_NORTH, W_SOUTH, W_EAST, W_WEST][random(4)];
         }
         const result = this.clone();
@@ -241,6 +244,19 @@ export function selection_area(x1, y1, x2, y2) {
     return result;
 }
 
+// C ref: selvar.c selection_new(). A fresh selection over the whole map,
+// in map coordinates as every C selection is; its points are clear.
+export function selection_new() {
+    return new ThemeroomSelection(null, true);
+}
+
+// C ref: selvar.c selection_clear(). Sets every point of `sel` to `val`.
+// The source also rewrites the cached bounds; the port's bounds() derives
+// them from the points, so a selection cleared to 1 spans the whole map.
+export function selection_clear(sel, val) {
+    sel.points.fill(val ? 1 : 0);
+}
+
 // C ref: selvar.c selection_iterate(). This is distinct from Lua's
 // selection:iterate(), which traverses y-major after returning to Lua.
 export function selection_iterate(selection, callback, origin = null) {
@@ -258,6 +274,76 @@ export function selection_iterate(selection, callback, origin = null) {
     }
 }
 
+// C ref: selvar.c selection_flood_check_func, the file-scope predicate that
+// set_selection_floodfillchk() installs and selection_floodfill() consults.
+// It is null until a caller installs one, and stays installed afterwards.
+let selection_flood_check_func = null;
+
+// C ref: selvar.c set_selection_floodfillchk().
+export function set_selection_floodfillchk(f) {
+    selection_flood_check_func = f;
+}
+
+// C ref: selvar.c sel_flood_havepoint(). Whether <x,y> is already on the
+// pending stack.
+function sel_flood_havepoint(x, y, xs, ys, n) {
+    while (n > 0) {
+        --n;
+        if (xs[n] === x && ys[n] === y)
+            return true;
+    }
+    return false;
+}
+
+// C ref: selvar.c selection_floodfill(). Adds to `ov` every square reachable
+// from (x, y) through squares the installed check accepts, orthogonally and,
+// with `diagonals`, diagonally too. `tmp` is the source's visited set; the
+// stack is bounded the way SEL_FLOOD_STACK bounds it. The points are map
+// coordinates, as every selection's are in C.
+export function selection_floodfill(ov, x, y, diagonals) {
+    const tmp = new ThemeroomSelection(null, ov.absolute);
+    const SEL_FLOOD_STACK = COLNO * ROWNO;
+    const dx = [];
+    const dy = [];
+    const SEL_FLOOD = (nx, ny) => {
+        if (dx.length < SEL_FLOOD_STACK) {
+            dx.push(nx);
+            dy.push(ny);
+        } else {
+            throw new Error('floodfill stack overrun');
+        }
+    };
+    const SEL_FLOOD_CHKDIR = (mx, my, sel) => {
+        if (isok(mx, my)
+            && selection_flood_check_func(mx, my)
+            && !sel.get(mx, my)
+            && !sel_flood_havepoint(mx, my, dx, dy, dx.length))
+            SEL_FLOOD(mx, my);
+    };
+
+    if (selection_flood_check_func == null)
+        return;
+    SEL_FLOOD(x, y);
+    do {
+        x = dx.pop();
+        y = dy.pop();
+        if (isok(x, y)) {
+            ov.set(x, y, true);
+            tmp.set(x, y, true);
+        }
+        SEL_FLOOD_CHKDIR(x + 1, y, tmp);
+        SEL_FLOOD_CHKDIR(x - 1, y, tmp);
+        SEL_FLOOD_CHKDIR(x, y + 1, tmp);
+        SEL_FLOOD_CHKDIR(x, y - 1, tmp);
+        if (diagonals) {
+            SEL_FLOOD_CHKDIR(x + 1, y + 1, tmp);
+            SEL_FLOOD_CHKDIR(x - 1, y - 1, tmp);
+            SEL_FLOOD_CHKDIR(x - 1, y + 1, tmp);
+            SEL_FLOOD_CHKDIR(x + 1, y - 1, tmp);
+        }
+    } while (dx.length > 0);
+}
+
 // selection.negate() with no operand starts with selection_new(), whose map is
 // empty, and therefore selects the whole map.
 export function selection_negate(selection = null) {
@@ -269,7 +355,9 @@ export function selection_room(room, locationAt) {
         throw new TypeError('selection_room requires an indexed room');
     if (typeof locationAt !== 'function')
         throw new TypeError('selection_room requires a location accessor');
-    const result = new ThemeroomSelection();
+    // The room's bounds are map coordinates, so the selection is built in the
+    // absolute frame, as selection_match() in bigrm.js is.
+    const result = new ThemeroomSelection(null, true);
     const roomNumber = room.roomnoidx + ROOMOFFSET;
     for (let y = room.ly; y <= room.hy; ++y) {
         for (let x = room.lx; x <= room.hx; ++x) {

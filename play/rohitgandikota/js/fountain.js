@@ -43,6 +43,33 @@ import { You_see } from './pline.js';
 import { set_levltyp } from './mkmaze.js';
 import { TT_INFLOOR, TT_LAVA } from './const.js';
 import { surface } from './dungeon.js';
+import { Levitation, Invisible, Glib } from './youprop.js';
+import { makeplural } from './objnam.js';
+import { rndmonnam, Amonnam, oname } from './do_name.js';
+import { mhis, mhe, is_watch, nolimbs } from './mondata.js';
+import { mongrantswish, make_glib } from './potion.js';
+import { exist_artifact, artiname, discover_artifact } from './artifact.js';
+import { ART_EXCALIBUR } from './artilist_data.js';
+import { ONAME_VIA_DIP, ONAME_KNOW_ARTI, LL_ARTIFACT, FROMOUTSIDE, HEAD, ARM, HAND, ER_NOTHING, ER_GREASED, A_LAWFUL } from './const.js';
+import { bless, mkgold } from './mkobj.js';
+import { livelog_printf, verbalize } from './pline.js';
+import { in_town } from './hack.js';
+import { angry_guards, minliquid, get_iter_mons } from './mon.js';
+import { Role_if } from './attrib.js';
+import { PMNAMES } from './monst_data.js';
+import { mbodypart } from './polyself.js';
+import { couldsee } from './vision.js';
+import { hands_obj } from './invent.js';
+import { fingers_or_gloves } from './do_wear.js';
+import { dunlevs_in_dungeon, dunlev } from './dungeon.js';
+import { uhim } from './mhitu.js';
+import { nothing_seems_to_happen } from './const.js';
+import { the, xname } from './objnam.js';
+import { breathless, haseyes } from './mondata.js';
+import { potionbreathe } from './potion.js';
+import { trycall } from './do_name.js';
+import { useup } from './invent.js';
+import { polymorph_sink } from './do.js';
 
 
 
@@ -59,31 +86,41 @@ function note_unported_fountain(what) {
     (game.unported ||= new Set()).add('fountain:' + what);
 }
 
+// src/fountain.c:179 watchman_warn_fountain() — get_iter_mons() callback:
+// the first peaceful watchman in line of sight objects
+async function watchman_warn_fountain(mtmp) {
+    if (is_watch(mtmp.data) && couldsee(mtmp.mx, mtmp.my)
+        && mtmp.mpeaceful) {
+        if (!Deaf()) {
+            await pline(`${Amonnam(mtmp)} yells:`);
+            await verbalize('Hey, stop using that fountain!');
+        } else {
+            await pline(`${Amonnam(mtmp)} earnestly ${
+                        nolimbs(mtmp.data) ? 'shakes' : 'waves'} ${
+                        mhis(mtmp)} ${
+                        nolimbs(mtmp.data)
+                        ? mbodypart(mtmp, HEAD)
+                        : makeplural(mbodypart(mtmp, ARM))}!`);
+        }
+        return true;
+    }
+    return false;
+}
+
 // src/fountain.c:201 dryup() — 1 in 3 dips dries the fountain.
 export async function dryup(x, y, isyou) {
     const loc = game.level.at(x, y);
     if (IS_FOUNTAIN(loc.typ)
         && (!rn2(3) || (loc.looted & 2 /* F_WARNED */))) {
-        const { in_town } = await import('./hack.js');
         if (isyou && in_town(x, y) && !(loc.looted & 2 /* F_WARNED */)) {
-            const { couldsee } = await import('./vision.js');
-            const { PMNAMES } = await import('./monst_data.js');
-            const watch = (game.level.monsters || []).find(mtmp =>
-                (mtmp.data?.pmidx === PMNAMES.PM_WATCHMAN
-                 || mtmp.data?.pmidx === PMNAMES.PM_WATCH_CAPTAIN)
-                && couldsee(mtmp.mx, mtmp.my) && mtmp.mpeaceful);
+            let mtmp;
 
-            loc.looted |= 2; /* F_WARNED */
-            const { Deaf } = await import('./youprop.js');
-            if (watch && !Deaf()) {
-                const { Amonnam } = await import('./do_name.js');
-                await pline(`${Amonnam(watch)} yells:`);
-                await pline('"Hey, stop using that fountain!"');
-            } else if (!watch) {
+            loc.looted |= 2; /* SET_FOUNTAIN_WARNED */
+            /* Warn about future fountain use. */
+            mtmp = await get_iter_mons(watchman_warn_fountain);
+            /* You can see or hear this effect */
+            if (!mtmp)
                 await pline_The('flow reduces to a trickle.');
-            } else {
-                note_unported_fountain('dryup:deaf_watchman_warning');
-            }
             return;
         }
         if (isyou && game.wizard) {
@@ -128,9 +165,9 @@ async function dowatersnakes() {
     if (!((game.mvitals?.[PMNAMES.PM_WATER_MOCCASIN]?.mvflags ?? 0)
           & G_GONE)) {
         if (!game.u.ublind) {
-            if (game.u.uprops?.HALLUC)
-                note_unported_fountain('dowatersnakes:hallucination_name');
-            await pline('An endless stream of snakes pours forth!');
+            await pline(`An endless stream of ${
+                        Hallucination() ? makeplural(rndmonnam(null))
+                                        : 'snakes'} pours forth!`);
         } else {
             const { You_hear } = await import('./pline.js');
             await You_hear('something hissing!');
@@ -170,7 +207,10 @@ async function dowaterdemon() {
             /* Give those on low levels a (slightly) better chance of
                survival */
             if (rnd(100) > (80 + level_difficulty())) {
-                note_unported_fountain('dowaterdemon:wish');
+                await pline(`Grateful for ${mhis(mtmp)} release, ${
+                            mhe(mtmp)} grants you a wish!`);
+                /* give a wish and discard the monster (mtmp set to null) */
+                await mongrantswish({ mon: mtmp });
             } else if (t_at(mtmp.mx, mtmp.my)) {
                 await mintrap(mtmp, NO_TRAP_FLAGS);
             }
@@ -264,14 +304,11 @@ async function gush(x, y, state) {
         .filter(obj => obj.ox === x && obj.oy === y);
     await water_damage_chain(floor_objects, true);
 
-    if (m_at(x, y)) {
-        /* minliquid() is only relevant for a monster on a newly made pool.
-           Keep the flood and draw order exact while its drowning branches
-           remain isolated as a tracked gap. */
-        note_unported_fountain('gush:minliquid');
-    } else {
+    let mtmp;
+    if ((mtmp = m_at(x, y)))
+        await minliquid(mtmp);
+    else
         newsym(x, y);
-    }
 }
 
 // src/fountain.c:121 dogushforth(). do_clear_area supplies C's exact visible
@@ -313,8 +350,8 @@ export async function drinkfountain() {
     const mgkftn = (loc.blessedftn === 1);
     const fate = rnd(30);
 
-    if (u.uprops?.LEVITATION) {
-        note_unported_fountain('drinkfountain:floating_above');
+    if (Levitation()) {
+        await floating_above('fountain');
         return;
     }
 
@@ -441,7 +478,21 @@ export async function drinkfountain() {
             }
             break;
         case 25: /* See invisible */
-            note_unported_fountain('drinkfountain:see_invisible');
+            if (Blind()) {
+                if (Invisible()) {
+                    await You('feel transparent.');
+                } else {
+                    await You('feel very self-conscious.');
+                    await pline('Then it passes.');
+                }
+            } else {
+                await You_see('an image of someone stalking you.');
+                await pline('But it disappears.');
+            }
+            (game.u.intrinsic ||= {}).HSee_invisible =
+                (game.u.intrinsic.HSee_invisible | 0) | FROMOUTSIDE;
+            newsym(u.ux, u.uy);
+            exercise(A_WIS, true);
             break;
         case 26: /* See Monsters */
             {
@@ -480,6 +531,27 @@ export async function drinkfountain() {
         }
     }
     await dryup(u.ux, u.uy, true);
+}
+
+// src/fountain.c:558 wash_hands() — dipping '-' in fountain, pool, or sink
+export async function wash_hands() {
+    const hands = makeplural(body_part(HAND));
+    let res = ER_NOTHING;
+    const was_glib = !!Glib();
+
+    await You(`wash your ${game.u.uarmg ? 'gloved ' : ''}${hands} in the ${
+              hliquid('water')}.`);
+    if (Glib()) {
+        make_glib(0);
+        await Your(`${fingers_or_gloves(true)} are no longer slippery.`);
+    }
+    if (game.u.uarmg)
+        res = await water_damage(game.u.uarmg, null, true);
+    /* not what ER_GREASED is for, but the checks in dipfountain just
+       compare the result to ER_DESTROYED and ER_NOTHING, so it works */
+    if (was_glib && res === ER_NOTHING)
+        res = ER_GREASED;
+    return res;
 }
 
 // src/fountain.c:575 breaksink() -- convert a sink into a looted fountain.
@@ -635,22 +707,61 @@ export async function drinksink() {
 
 // src/fountain.c:394 dipfountain() — dip an object into a fountain.
 export async function dipfountain(obj) {
-    let er = 0; /* ER_NOTHING */
+    let er = ER_NOTHING;
+    const is_hands = (obj === hands_obj);
 
-    if (game.u.uprops?.LEVITATION) {
-        note_unported_fountain('dipfountain:floating_above');
+    if (Levitation()) {
+        await floating_above('fountain');
         return;
     }
 
     if (obj.otyp === ONAMES.LONG_SWORD && game.u.ulevel >= 5
-        && !rn2(game.urole?.name === 'Knight' ? 6 : 30)
-        && obj.quan === 1 && !obj.oartifact) {
-        /* exist_artifact(Excalibur) — the Lady of the Lake; artifact
-           creation machinery records */
-        note_unported_fountain('dipfountain:excalibur');
+        && !rn2(Role_if(PMNAMES.PM_KNIGHT) ? 6 : 30)
+        /* once upon a time it was possible to poly N daggers into N swords */
+        && obj.quan === 1 && !obj.oartifact
+        && !exist_artifact(ONAMES.LONG_SWORD, artiname(ART_EXCALIBUR))) {
+        const lady = 'Lady of the Lake';
+
+        if (game.u.ualign.type !== A_LAWFUL) {
+            /* Ha!  Trying to cheat her. */
+            await pline(`A freezing mist rises from the ${hliquid('water')
+                        } and envelopes the sword.`);
+            await pline_The('fountain disappears!');
+            curse(obj);
+            if (obj.spe > -6 && !rn2(3))
+                obj.spe--;
+            obj.oerodeproof = 0;
+            exercise(A_WIS, false);
+            livelog_printf(LL_ARTIFACT,
+                           `was denied ${artiname(ART_EXCALIBUR)}!  The ${
+                           lady} has deemed ${uhim()} unworthy`);
+        } else {
+            /* The lady of the lake acts! - Eric Backus */
+            /* Be *REAL* nice */
+            await pline(
+              'From the murky depths, a hand reaches up to bless the sword.');
+            await pline('As the hand retreats, the fountain disappears!');
+            obj = oname(obj, artiname(ART_EXCALIBUR),
+                        ONAME_VIA_DIP | ONAME_KNOW_ARTI);
+            discover_artifact(ART_EXCALIBUR);
+            bless(obj);
+            obj.oeroded = obj.oeroded2 = 0;
+            obj.oerodeproof = 1;
+            exercise(A_WIS, true);
+            livelog_printf(LL_ARTIFACT, `was given ${artiname(ART_EXCALIBUR)
+                           } by the ${lady}`);
+        }
+        update_inventory();
+        const loc = game.level.at(game.u.ux, game.u.uy);
+        set_levltyp(game.u.ux, game.u.uy, ROOM); /* updates level.flags.nfountains */
+        loc.flags = 0;
+        loc.looted = 0;
+        newsym(game.u.ux, game.u.uy);
+        if (in_town(game.u.ux, game.u.uy))
+            await angry_guards(false);
         return;
-    } else if (obj === game.u.uarmg) {
-        note_unported_fountain('dipfountain:wash_hands');
+    } else if (is_hands || obj === game.u.uarmg) {
+        er = await wash_hands();
     } else {
         er = await water_damage(obj, null, true);
     }
@@ -678,7 +789,7 @@ export async function dipfountain(obj) {
         }
         break;
     case 21: /* Water Demon */
-        note_unported_fountain('dipfountain:dowaterdemon');
+        await dowaterdemon();
         break;
     case 22: /* Water Nymph */
         await dowaternymph();
@@ -733,7 +844,20 @@ export async function dipfountain(obj) {
         }
         break;
     case 29: /* You see coins */
-        note_unported_fountain('dipfountain:see_coins');
+        /* We make fountains have more coins the closer you are to the
+         * surface.  After all, there will have been more people going
+         * by.  Just like a shopping mall!  Chris Woodbury  */
+
+        if (game.level.at(game.u.ux, game.u.uy).looted & 1) /* FOUNTAIN_IS_LOOTED */
+            break;
+        game.level.at(game.u.ux, game.u.uy).looted |= 1; /* SET_FOUNTAIN_LOOTED */
+        mkgold(rnd((dunlevs_in_dungeon(game.u.uz) - dunlev(game.u.uz) + 1) * 2) + 5,
+               game.u.ux, game.u.uy);
+        if (!Blind())
+            await pline(`Far below you, you see coins glistening in the ${
+                        hliquid('water')}.`);
+        exercise(A_WIS, true);
+        newsym(game.u.ux, game.u.uy);
         break;
     default:
         if (er === 0 /* ER_NOTHING */)
@@ -742,6 +866,94 @@ export async function dipfountain(obj) {
     }
     update_inventory();
     await dryup(game.u.ux, game.u.uy, true);
+}
+
+// src/fountain.c:716 dipsink()
+export async function dipsink(obj) {
+    let try_call = false;
+    const loc = game.level.at(game.u.ux, game.u.uy);
+    const not_looted_yet = (loc.looted & S_LRING) === 0;
+    const is_hands = (obj === hands_obj
+                      || (game.u.uarmg && obj === game.u.uarmg));
+
+    if (!rn2(not_looted_yet ? 25 : 15)) {
+        /* can't rely on using sink for unlimited scroll blanking; however,
+           since sink will be converted into a fountain, hero can dip again */
+        await breaksink(game.u.ux, game.u.uy); /* "The pipes break!  Water spurts out!" */
+        if (Glib() && is_hands)
+            await Your(`${fingers_or_gloves(true)} are still slippery.`);
+        return;
+    } else if (is_hands) {
+        await wash_hands();
+        return;
+    } else if (obj.oclass !== OCLASSES.POTION_CLASS) {
+        await You(`hold ${the(xname(obj))} under the tap.`);
+        if ((await water_damage(obj, null, true)) === ER_NOTHING)
+            await pline(nothing_seems_to_happen);
+        return;
+    }
+
+    /* at this point the object must be a potion */
+    await You(`pour ${(obj.quan > 1 ? 'one of ' : '')}${the(xname(obj))
+              } down the drain.`);
+    switch (obj.otyp) {
+    case ONAMES.POT_POLYMORPH:
+        await polymorph_sink();
+        try_call = true;
+        break;
+    case ONAMES.POT_OIL:
+        if (!Blind()) {
+            await pline('It leaves an oily film on the basin.');
+            try_call = true;
+        } else {
+            await pline(nothing_seems_to_happen);
+        }
+        break;
+    case ONAMES.POT_ACID:
+        /* acts like a drain cleaner product */
+        try_call = true;
+        if (!Blind()) {
+            await pline_The('drain seems less clogged.');
+        } else if (!Deaf()) {
+            await You_hear('a sucking sound.');
+        } else {
+            await pline(nothing_seems_to_happen);
+            try_call = false;
+        }
+        break;
+    case ONAMES.POT_LEVITATION:
+        await sink_backs_up(game.u.ux, game.u.uy);
+        try_call = true;
+        break;
+    case ONAMES.POT_OBJECT_DETECTION:
+        if (!(loc.looted & S_LRING)) {
+            await You('sense a ring lost down the drain.');
+            try_call = true;
+            break;
+        }
+        /* FALLTHRU */
+    case ONAMES.POT_GAIN_LEVEL:
+    case ONAMES.POT_GAIN_ENERGY:
+    case ONAMES.POT_MONSTER_DETECTION:
+    case ONAMES.POT_FRUIT_JUICE:
+    case ONAMES.POT_WATER:
+        /* potions with no potionbreathe() effects, plus water.  if effects
+           are added to potionbreathe these should go to that instead (except
+           for water). */
+        await pline(nothing_seems_to_happen);
+        break;
+    default:
+        /* hero can feel the vapor on her skin, so no need to check Blind or
+           breathless for this message */
+        await pline('A wisp of vapor rises up...');
+        /* NB: potionbreathe calls trycall or makeknown as appropriate */
+        if (!breathless(game.youmonst.data) || haseyes(game.youmonst.data))
+            await potionbreathe(obj);
+        break;
+    }
+    if (try_call && obj.dknown)
+        await trycall(obj);
+    useup(obj);
 }
 
 // src/fountain.c sink_backs_up(); a kicked sink spits out a ring, once

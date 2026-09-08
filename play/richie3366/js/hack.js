@@ -11,7 +11,7 @@ import {
     is_pit, TEMPLE, OROOM, COURT, SWAMP, MORGUE, ZOO, BEEHIVE, BARRACKS,
     LEPREHALL, COCKNEST, ANTHOLE, DELPHI,
     POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT,
-    DB_LAVA, DB_ICE, STONE,
+    DB_LAVA, DB_ICE, STONE, THRONE,
     ROOM, CORR, DOOR, SDOOR, TREE, ICE, MAX_TYPE,
     xFLOOR, xGROUND, xOPENDOOR, xSHUTDOOR, xSWAMP, xSUBMERGED, xSEA,
     xWATERWALL,
@@ -36,9 +36,10 @@ import {
 } from './const.js';
 import {
     pline, Norep, newsym, canspotmon, canseemon, map_invisible, You_feel,
-    set_msg_xy, feel_location, map_object,
+    set_msg_xy, feel_location, map_object, verbalize,
 } from './display.js';
-import { gethungry, morehungry } from './eat.js';
+import { gethungry, morehungry, is_fainted } from './eat.js';
+import { unconscious } from './teleport.js';
 import { m_at, hideunder, seemimic, bad_rock } from './mon.js';
 import { recalc_block_point } from './vision.js';
 import { is_hider, hides_under, throws_rocks, noncorporeal, metallivorous, mons, is_flyer, is_swimmer, verysmall, bigmonst, passes_bars, dmgtype } from './monsters.js';
@@ -73,6 +74,8 @@ import { setuwep } from './wield.js';
 import { P_SKILL, weapon_type, use_skill } from './weapon.js';
 import { surface } from './sit.js';
 import { autopick_testobj } from './pickup.js';
+import { Hello } from './roles.js';
+import { SetVoice } from './sndprocs.js';
 
 export { set_msg_xy };
 
@@ -128,11 +131,25 @@ function t_at_local(x, y) {
     return null;
 }
 
-/** C ref: pline.c You_hear — acoustics/Deaf; Unaware/Underwater deferred. */
+/**
+ * C ref: pline.c You_hear `:436–452` — (Deaf && !Unaware) gate, where C
+ * Deaf is youprop.h:123–125 (HDeaf || EDeaf || uroleplay.deaf), not a
+ * single sticky field (scen-wish-Priest-92035 step 179: HDeaf-only hero
+ * must not hear the scare-monster laugh). Unaware
+ * (youprop.h:399: multi < 0 && (unconscious() [trap.c:6776] ||
+ * is_fainted() [eat.c:3347])) → "You dream that you hear ". The longer
+ * dream prefix is what pushes a sleep-turn dosounds fountain past the
+ * CO-8 append gate, so C mores the pending line first instead of
+ * appending (scen-wish-Rogue-92210 step 110: dobuzz sleep ray + fountain).
+ * Underwater "barely hear" stays deferred (pre-existing map omit).
+ */
 export async function You_hear(line) {
     const u = game.u || {};
-    if (u.Deaf || game.flags?.acoustics === false) return;
-    await pline(`You hear ${line}`);
+    const unaware = (game.multi | 0) < 0 && (unconscious() || is_fainted());
+    const deaf = !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
+    if ((deaf && !unaware) || game.flags?.acoustics === false) return;
+    if (unaware) await pline(`You dream that you hear ${line}`);
+    else await pline(`You hear ${line}`);
 }
 
 /**
@@ -2090,13 +2107,47 @@ export async function domove_fight_web(x, y) {
 
 /**
  * C ref: hack.c check_special_room — shop enter/leave + special-room messages.
- * Ported: ZOO/SWAMP/COURT/LEPREHALL/MORGUE/BEEHIVE/COCKNEST/ANTHOLE plines;
- * TEMPLE→intemple; rtype→OROOM + has_* clear; COURT/SWAMP/MORGUE/ZOO
- * wake `!Stealth && !rn2(3)` (wake_msg pline deferred).
- * Named omissions: furniture_present throne detail;
- * BARRACKS monstinroom occupied vs abandoned; DELPHI oracle verbalize;
+ * Ported: ZOO/SWAMP/COURT(+throne)/LEPREHALL/MORGUE/BEEHIVE/COCKNEST/ANTHOLE
+ * plines; DELPHI oracle verbalize (peaceful welcome vs hostile taunt,
+ * msg_given FALSE only with no oracle); TEMPLE→intemple; rtype→OROOM +
+ * has_* clear; COURT/SWAMP/MORGUE/ZOO wake `!Stealth && !rn2(3)`
+ * (wake_msg pline deferred).
+ * Named omissions: BARRACKS monstinroom occupied vs abandoned;
  * wake_msg canseemon text.
  */
+/**
+ * C ref: hack.c monstinroom (staticfn) — first live mon of type mdat
+ * whose in_rooms(0) contains roomno.
+ */
+function monstinroom(mndx, roomno) {
+    const want = roomno + ROOMOFFSET;
+    for (const mtmp of game.fmon || []) {
+        if (!mtmp || (mtmp.mhp | 0) <= 0) continue; // DEADMONSTER
+        const monnum = mtmp.mnum ?? mtmp.data?.mndx;
+        if (monnum !== mndx) continue;
+        const roomsHere = in_rooms(mtmp.mx | 0, mtmp.my | 0, 0);
+        if (roomsHere.indexOf(String.fromCharCode(want)) >= 0) return mtmp;
+    }
+    return null;
+}
+/**
+ * C ref: hack.c furniture_present (staticfn) — room bbox scan for a levl
+ * furniture typ; inside_room() rejects irregular-room outsiders.
+ */
+async function furniture_present(furniture, roomno) {
+    const sroom = game.level?.rooms?.[roomno];
+    if (!sroom) return false;
+    // Lazy: mklev is the inside_room home (mkroom.c port); call-time only.
+    const { inside_room } = await import('./mklev.js');
+    for (let y = sroom.ly | 0; y <= (sroom.hy | 0); y++) {
+        for (let x = sroom.lx | 0; x <= (sroom.hx | 0); x++) {
+            const loc = game.level?.at(x, y);
+            if (!loc || (loc.typ | 0) !== (furniture | 0)) continue;
+            if (inside_room(sroom, x, y)) return true;
+        }
+    }
+    return false;
+}
 export async function check_special_room(newlev) {
     const u = game.u;
     if (!u) return;
@@ -2146,10 +2197,13 @@ export async function check_special_room(newlev) {
             await pline(`It ${Blind ? 'feels' : 'looks'} rather ${
                 Blind ? 'humid' : 'muddy'} down here.`);
             break;
-        case COURT:
-            // furniture_present(THRONE) deferred — omit " throne" suffix
-            await pline('You enter an opulent room!');
+        case COURT: {
+            // C: opulent throne room iff furniture_present(THRONE, roomno)
+            // (the throne room in Sam quest home level lacks a throne).
+            const throne = await furniture_present(THRONE, roomno);
+            await pline(`You enter an opulent${throne ? ' throne' : ''} room!`);
             break;
+        }
         case LEPREHALL:
             await pline('You enter a leprechaun hall!');
             break;
@@ -2174,10 +2228,24 @@ export async function check_special_room(newlev) {
             // monstinroom soldier check deferred — treat as occupied
             await pline('You enter a military barracks!');
             break;
-        case DELPHI:
-            // oracle verbalize deferred
-            msg_given = false;
+        case DELPHI: {
+            // C: monstinroom(PM_ORACLE); peaceful → welcome, hostile →
+            // taunt; msg_given FALSE only when no oracle is present.
+            const oracle = monstinroom(PM_ORACLE, roomno);
+            if (oracle) {
+                SetVoice(oracle, 0, 80, 0);
+                if (!oracle.mpeaceful) {
+                    await verbalize(`You're in Delphi, ${game.plname}.`);
+                } else {
+                    await verbalize(
+                        `${Hello(null)}, ${game.plname}, welcome to Delphi!`,
+                    );
+                }
+            } else {
+                msg_given = false;
+            }
             break;
+        }
         case TEMPLE:
             await intemple(roomno + ROOMOFFSET);
             // FALLTHROUGH

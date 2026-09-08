@@ -2719,13 +2719,6 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
                 obj = splitobj(obj, oquan);
             drop_it = true;
         } else {
-            if (near_capacity() !== old_encumbr
-                && !game.disp?.botl && !game.disp?.botlx) {
-                /* prinv() flushes dirty status, including newly added gold.
-                   Otherwise the old condition lasts until encumber_msg(). */
-                game._encumber_status_stale = true;
-                game._deferred_status_capacity = old_encumbr;
-            }
             if (game.flags?.autoquiver && !game.uquiver && !obj.owornmask
                 && (is_missile(obj) || ammo_and_launcher(obj, game.uwep)
                     || ammo_and_launcher(obj, game.uswapwep)))

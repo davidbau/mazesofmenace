@@ -130,7 +130,7 @@ import { doopen, doopen_indir, doclose } from './lock.js';
 import { ECMD_OK, getobj } from './invent.js';
 import { doeat } from './eat.js';
 import { doread, wiz_genesis } from './read.js';
-import { dodrink } from './potion.js';
+import { dodrink, drink_ok } from './potion.js';
 import { doapply } from './apply.js';
 import { dochat } from './sounds.js';
 import { dothrow, dofire } from './dothrow.js';
@@ -501,7 +501,7 @@ export async function getdir(s) {
                 let did_help = false;
                 const help_requested = (dirsym === '?');
                 if (help_requested || boolean_option('cmdassist')) {
-                    did_help = await help_dir((s && s[0] !== '^') ? dirsym : '\0',
+                    did_help = await help_dir((s && s[0] === '^') ? dirsym : '\0',
                                               help_requested
                                                   ? null
                                                   : "Invalid direction key!");
@@ -784,18 +784,6 @@ async function get_ext_cmd() {
         return null;
     }
     return buf;
-}
-
-/* src/potion.c drink_ok() — only potions are suggested for 'q'. The !obj arm
-   returns GETOBJ_EXCLUDE; C's EXCLUDE_NONINVENT case needs drink_ok_extra,
-   which tracks whether the hero already passed up a fountain, and is not
-   modelled. */
-export function drink_ok(obj) {
-    if (!obj)
-        return GETOBJ_EXCLUDE;
-    if (obj.oclass === OCLASSES.POTION_CLASS)
-        return GETOBJ_SUGGEST;
-    return GETOBJ_EXCLUDE;
 }
 
 /* src/read.c:315 read_ok() — scrolls and spellbooks. Note the else arm is
@@ -1286,7 +1274,7 @@ async function doherecmdmenu() {
     const typ = loc?.typ;
     if ((typ === FOUNTAIN || typ === SINK) && can_reach_floor(false)) {
         add(`Drink from the ${typ === FOUNTAIN ? 'fountain' : 'sink'}`,
-            () => dodrink(drink_ok), 'y');
+            () => dodrink(), 'y');
     }
     if (typ === FOUNTAIN && can_reach_floor(false)) {
         const { dodip } = await import('./potion.js');
@@ -2032,7 +2020,7 @@ export async function rhack(key) {
         if (ch === 'r')
             game.context.move = ((await doread(read_ok)) === ECMD_TIME ? 1 : 0);
         else if (ch === 'q')
-            game.context.move = ((await dodrink(drink_ok)) === ECMD_TIME ? 1 : 0);
+            game.context.move = ((await dodrink()) === ECMD_TIME ? 1 : 0);
         else if (ch === 'W')
             game.context.move = ((await dowear()) === ECMD_TIME ? 1 : 0);
         else if (ch === 'P')
@@ -2128,9 +2116,12 @@ export async function rhack(key) {
                autopickup-exception suffix needs an apelist, which no
                recorded rc defines. */
             const ocl = game.flags.pickup_types || '';
-            if (game.apelist)
-                note_unported_cmd('dotogglepickup:exceptions');
-            await pline(`Autopickup: ON, for ${ocl || 'all'} objects.`);
+            await pline(`Autopickup: ON, for ${ocl || 'all'} objects${
+                        (game.apelist?.length)
+                            ? ((game.apelist.length === 1)
+                                   ? ', with one exception'
+                                   : ', with some exceptions')
+                            : ''}.`);
         } else {
             await pline('Autopickup: OFF.');
         }
@@ -2690,7 +2681,7 @@ async function domove_core() {
         return;
 
     /* src/hack.c:2762 — before the sticky monster check */
-    if (avoid_running_into_trap_or_liquid(newx, newy))
+    if (await avoid_running_into_trap_or_liquid(newx, newy))
         return;
 
     if (await escape_from_sticky_mon(newx, newy))
@@ -2884,7 +2875,7 @@ async function domove_core() {
             if (u.ublind || game.u.uprops?.STUNNED || ACURR(A_DEX) < 10
                 || game.u.uprops?.FUMBLING) {
                 if (u.usteed) {
-                    note_unported_cmd('test_move:steed_into_door');
+                    await You_cant(`lead ${y_monnam(u.usteed)} through that closed door.`);
                 } else {
                     await pline('Ouch!  You bump into a door.');
                     exercise(A_DEX, false);
@@ -3786,7 +3777,7 @@ function queue_item_action(action, obj) {
         /* m-prefix to skip fountain or sink if present and drink a potion
            from invent */
         cmdq_add_ec(CQ_CANNED, do_reqmenu);
-        push(() => dodrink(drink_ok), obj.invlet);
+        push(() => dodrink(), obj.invlet);
         break;
     case 'Q': push(dowieldquiver, obj.invlet); break;
     case 'r': push(() => doread(read_ok), obj.invlet); break;

@@ -112,6 +112,10 @@ const FUMBLE_BOOTS = objectNames.indexOf('FUMBLE_BOOTS');
 const SPEED_BOOTS = objectNames.indexOf('SPEED_BOOTS');
 const ELVEN_BOOTS = objectNames.indexOf('ELVEN_BOOTS');
 const ELVEN_CLOAK = objectNames.indexOf('ELVEN_CLOAK');
+const GRAY_DRAGON_SCALES = objectNames.indexOf('GRAY_DRAGON_SCALES');
+const GRAY_DRAGON_SCALE_MAIL = objectNames.indexOf('GRAY_DRAGON_SCALE_MAIL');
+const SILVER_DRAGON_SCALES = objectNames.indexOf('SILVER_DRAGON_SCALES');
+const SILVER_DRAGON_SCALE_MAIL = objectNames.indexOf('SILVER_DRAGON_SCALE_MAIL');
 const BLACK_DRAGON_SCALES = objectNames.indexOf('BLACK_DRAGON_SCALES');
 const BLACK_DRAGON_SCALE_MAIL = objectNames.indexOf('BLACK_DRAGON_SCALE_MAIL');
 const BLUE_DRAGON_SCALES = objectNames.indexOf('BLUE_DRAGON_SCALES');
@@ -1002,13 +1006,22 @@ export async function set_wear(obj = null) {
 }
 
 /**
- * C ref: objnam.c suit_simple_name — "mail"/"jacket"/"suit" (dragon deferred).
+ * C ref: objnam.c suit_simple_name `:5470–5489` — dragon mail/scales first
+ * (obj.h Is_dragon_mail/Is_dragon_scales otyp ranges), then "mail"/
+ * "jacket" suffix arms, else "suit".
  */
 export function suit_simple_name(suit) {
-    if (!suit) return 'suit';
-    const suitnm = objectNameStrs[suit.otyp] || '';
-    if (suitnm.length > 5 && suitnm.endsWith(' mail')) return 'mail';
-    if (suitnm.length > 7 && suitnm.endsWith(' jacket')) return 'jacket';
+    if (suit) {
+        const t = suit.otyp | 0;
+        if (t >= GRAY_DRAGON_SCALE_MAIL && t <= YELLOW_DRAGON_SCALE_MAIL)
+            return 'dragon mail'; /* <color> dragon scale mail */
+        if (t >= GRAY_DRAGON_SCALES && t <= YELLOW_DRAGON_SCALES)
+            return 'dragon scales';
+        const suitnm = objectNameStrs[t] || '';
+        if (suitnm.length > 5 && suitnm.endsWith(' mail')) return 'mail';
+        if (suitnm.length > 7 && suitnm.endsWith(' jacket')) return 'jacket';
+    }
+    /* "suit" is lame but "armor" is ambiguous and "body armor" is absurd */
     return 'suit';
 }
 
@@ -1064,7 +1077,7 @@ function shield_simple_name(shield) {
 /**
  * C ref: objnam.c armor_simple_name `:5434–5468` — per-category simple
  * noun for the itemactions "already wearing …" row. Suit reuses
- * suit_simple_name (dragon mail/scales deferred there); gloves reuse
+ * suit_simple_name (incl. dragon mail/scales); gloves reuse
  * the canonical objnam.js gloves_simple_name; helm keys off
  * hard_helmet like C (`:5512–5528`); shirt is C `:5599–5603`.
  * Default is simpleonames + impossible, as in C.
@@ -1093,15 +1106,20 @@ export function armor_simple_name(armor) {
     return result;
 }
 
-/** C ref: objnam.c cloak/helm/gloves/boots/shield/shirt_simple_name — subset */
+/**
+ * C ref: do_wear.c armoroff `:1936–1966` — the delay-arm `what` is the same
+ * per-category simple name C assigns in that switch (suit/shield/helm/
+ * gloves/boots/cloak/shirt_simple_name); the helpers live in this module
+ * (or the existing objnam.js gloves import) so no new module edge.
+ */
 function armor_doff_simple_name(otmp) {
     switch (armcat(otmp)) {
         case ARM_SUIT: return suit_simple_name(otmp);
-        case ARM_SHIELD: return 'shield';
-        case ARM_HELM: return 'helmet'; // hard vs hat deferred
-        case ARM_GLOVES: return 'gloves';
-        case ARM_BOOTS: return 'boots';
-        case ARM_CLOAK: return 'cloak'; // robe/smock deferred
+        case ARM_SHIELD: return shield_simple_name(otmp);
+        case ARM_HELM: return hard_helmet(otmp) ? 'helm' : 'hat';
+        case ARM_GLOVES: return gloves_simple_name(otmp);
+        case ARM_BOOTS: return boots_simple_name(otmp);
+        case ARM_CLOAK: return cloak_simple_name(otmp);
         case ARM_SHIRT: return 'shirt';
         default: return 'armor';
     }
@@ -1266,16 +1284,10 @@ async function armor_or_accessory_off(obj) {
         return 0;
     }
     if (obj === u.uleft || obj === u.uright) {
+        // C do_wear.c:1809–1817 — off_msg before removal, then Ring_off
+        // (setworn + adjust_attrib/accuracy/damage/prop side effects).
         await off_msg(obj);
-        if (obj === u.uleft) {
-            confer_oc_oprop(obj, W_RINGL, false);
-            obj.owornmask = (obj.owornmask || 0) & ~W_RING;
-            u.uleft = null;
-        } else {
-            confer_oc_oprop(obj, W_RINGR, false);
-            obj.owornmask = (obj.owornmask || 0) & ~W_RING;
-            u.uright = null;
-        }
+        await Ring_off(obj);
         return 1;
     }
     if (obj === u.uamul) {

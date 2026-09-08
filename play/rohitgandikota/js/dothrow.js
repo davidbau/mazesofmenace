@@ -182,6 +182,8 @@ import { body_part } from './polyself.js';
 
 import { u_wipe_engr } from './engrave.js';
 import { is_quest_artifact } from './questpgr.js';
+import { prinv } from './invent.js';
+import { P_DAGGER } from './const.js';
 // include/mondata.h:255 befriend_with_obj(). This predicate is checked before
 // dogfood(), so a domestic monster offered normal food does not spend
 // dogfood()'s obj_resists draw until tamedog() inspects the meal.
@@ -386,14 +388,7 @@ export async function throw_obj(obj, shotlimit) {
             }
             obj = null;
         }
-        const old_encumbr = near_capacity();
         freeinv(otmp);
-        if (near_capacity() !== old_encumbr) {
-            /* C leaves the old capacity on the tty until encumber_msg()
-               announces the change after throwit() finishes. */
-            game._encumber_status_stale = true;
-            game._deferred_status_capacity = old_encumbr;
-        }
         await throwit(otmp, wep_mask, twoweap, oldslot);
         await encumber_msg();
     }
@@ -1896,6 +1891,70 @@ export function find_launcher(ammo) {
     return oX;
 }
 
+// src/dothrow.c:1520 autoquiver() — KMH -- Automatically fill quiver.
+// Suggested by Jeffrey Bay <jbay@convex.hp.com>
+function autoquiver() {
+    let oammo = null, omissile = null, omisc = null, altammo = null;
+
+    if (game.u.uquiver)
+        return;
+
+    /* Scan through the inventory */
+    for (const otmp of (game.invent || [])) {
+        if (otmp.owornmask || otmp.oartifact || !otmp.dknown) {
+            ; /* Skip it */
+        } else if (otmp.otyp === ONAMES.ROCK
+                   /* seen rocks or known flint or known glass */
+                   || (otmp.otyp === ONAMES.FLINT
+                       && game.objects[otmp.otyp].oc_name_known)
+                   || (otmp.oclass === OCLASSES.GEM_CLASS
+                       && game.objects[otmp.otyp].oc_material === MATERIALS.GLASS
+                       && game.objects[otmp.otyp].oc_name_known)) {
+            if (uslinging())
+                oammo = otmp;
+            else if (ammo_and_launcher(otmp, game.u.uswapwep))
+                altammo = otmp;
+            else if (!omisc)
+                omisc = otmp;
+        } else if (otmp.oclass === OCLASSES.GEM_CLASS) {
+            ; /* skip non-rock gems--they're ammo but
+                 player has to select them explicitly */
+        } else if (is_ammo(otmp)) {
+            if (ammo_and_launcher(otmp, game.u.uwep))
+                /* Ammo matched with launcher (bow+arrow, crossbow+bolt) */
+                oammo = otmp;
+            else if (ammo_and_launcher(otmp, game.u.uswapwep))
+                altammo = otmp;
+            else
+                /* Mismatched ammo (no better than an ordinary weapon) */
+                omisc = otmp;
+        } else if (is_missile(otmp)) {
+            /* Missile (dart, shuriken, etc.) */
+            omissile = otmp;
+        } else if (otmp.oclass === OCLASSES.WEAPON_CLASS && throwing_weapon(otmp)) {
+            /* Ordinary weapon */
+            if (game.objects[otmp.otyp].oc_skill === P_DAGGER && !omissile)
+                omissile = otmp;
+            else if (otmp.otyp === ONAMES.AKLYS)
+                continue;
+            else
+                omisc = otmp;
+        }
+    }
+
+    /* Pick the best choice */
+    if (oammo)
+        setuqwep(oammo);
+    else if (omissile)
+        setuqwep(omissile);
+    else if (altammo)
+        setuqwep(altammo);
+    else if (omisc)
+        setuqwep(omisc);
+
+    return;
+}
+
 /*
  * src/dothrow.c:469 dofire() — the 'f' command: fire from the quiver.
  *
@@ -1942,7 +2001,16 @@ export async function dofire() {
                 await You("have no ammunition readied.");
             }
         } else {
-            note_unported_dothrow('dofire:autoquiver');
+            autoquiver();
+            obj = game.u.uquiver;
+            if (obj) {
+                /* give feedback if quiver has now been filled */
+                game.u.uquiver.owornmask &= ~W_QUIVER; /* less verbose */
+                await prinv('You ready:', obj, 0);
+                game.u.uquiver.owornmask |= W_QUIVER;
+            } else {
+                await You('have nothing appropriate for your quiver.');
+            }
         }
     }
 

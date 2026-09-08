@@ -1044,10 +1044,9 @@ export async function mattacku(mtmp) {
                               || !touch_petrifies(game.youmonst.data))) {
                 if (v.foundyou) {
                     if (tmp > (j = rnd(20 + i))) {
-                        if (unsolid(game.youmonst.data)) {
-                            /* failed_grab() needs the grab bookkeeping */
-                            note_unported_mhitu('mattacku:failed_grab');
-                        }
+                        if (unsolid(game.youmonst.data)
+                            && await failed_grab(mtmp, game.youmonst, mattk))
+                            continue;
                         if (mattk[0] !== A.AT_KICK
                             || !thick_skinned(game.youmonst.data))
                             sum[i] = await hitmu(mtmp, mattk, i);
@@ -1065,9 +1064,8 @@ export async function mattacku(mtmp) {
             /* Note: if displaced, prev attacks never succeeded */
             if ((!v.range2 && i >= 2 && sum[i - 1] && sum[i - 2])
                 || mtmp === game.u.ustuck) {
-                if (unsolid(game.youmonst.data))
-                    note_unported_mhitu('mattacku:failed_grab');
-                sum[i] = await hitmu(mtmp, mattk, i);
+                if (!await failed_grab(mtmp, game.youmonst, mattk))
+                    sum[i] = await hitmu(mtmp, mattk, i);
             }
             break;
 

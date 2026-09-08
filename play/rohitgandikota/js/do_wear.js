@@ -28,7 +28,7 @@ import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_TOOL,
          INTRINSIC, HEAD, HAND, FINGER, CQ_CANNED, st_corpse,
          st_petrifies, MENU_TRADITIONAL, MENU_COMBINATION, MENU_FULL,
          ALL_TYPES_SELECTED, ALL_FINISHED, SIGNAL_NOMENU, USE_INVLET, INVORDER_SORT, PICK_ANY,
-         FROMOUTSIDE, Is_astralevel } from './const.js';
+         FROMOUTSIDE } from './const.js';
 import { setworn } from './worn.js';
 import { welded, is_sword, setuwep, setuswapwep, setuqwep, empty_handed }
     from './wield.js';
@@ -81,17 +81,15 @@ import { NECK, Is_waterlevel, Is_airlevel } from './const.js';
 import { is_pool_or_lava } from './dbridge.js';
 import { pline_The } from './pline.js';
 import { silly_thing } from './invent.js';
-import { retouch_equipment } from './artifact.js';
 import { arti_light_description } from './light.js';
 import { begin_burn } from './timeout.js';
 import { is_flimsy, WrappingAllowed } from './obj.js';
 import { cantweararm, has_horns, num_horns, slithy } from './mondata.js';
 import { racial_exception } from './worn.js';
 import { MFLAGS, MONSYMS } from './monst_data.js';
-import { TT_LAVA, TT_BURIEDBALL, FOOT, LEG, plur, RIGHT_HANDED, LL_ALIGNMENT, Upolyd } from './const.js';
-import { summon_furies } from './makemon.js';
-import { livelog_printf } from './pline.js';
-import { aligns } from './role_data.js';
+import { TT_LAVA, TT_BURIEDBALL, FOOT, LEG, plur, RIGHT_HANDED, Upolyd } from './const.js';
+import { uchangealign } from './attrib.js';
+import { A_CG_HELM_ON, A_CG_HELM_OFF } from './const.js';
 
 const OCLASSES_ARMOR = OCLASSES.ARMOR_CLASS;
 const OCLASSES_RING = OCLASSES.RING_CLASS;
@@ -575,11 +573,11 @@ async function Helmet_on() {
         break;
     case ONAMES.HELM_OF_OPPOSITE_ALIGNMENT:
         uarmh.known = 1;
-        await change_helm_alignment(
+        await uchangealign(
             game.u.ualign.type !== A_NEUTRAL
                 ? -game.u.ualign.type
                 : ((uarmh.o_id || 0) % 2 ? A_CHAOTIC : A_LAWFUL),
-            true);
+            A_CG_HELM_ON);
         /* fall through: opposite-alignment helms and dunce caps autocurse */
     case ONAMES.DUNCE_CAP:
         if (!uarmh.cursed) {
@@ -652,43 +650,13 @@ export async function Helmet_off() {
             adjust_helmet_brilliance(otmp, -(otmp.spe || 0));
         break;
     case ONAMES.HELM_OF_OPPOSITE_ALIGNMENT:
-        await change_helm_alignment(
+        await uchangealign(
             game.u.ualignbase?.[A_CURRENT] ?? game.u.ualign.type,
-            false);
+            A_CG_HELM_OFF);
         break;
     }
     setworn(null, W_ARMH);
     game.context_takeoff.cancelled_don = false;
-}
-
-// src/attrib.c:1320 uchangealign(), helm-on and helm-off arms.
-async function change_helm_alignment(newalign, puttingOn) {
-    const oldalign = game.u.ualign.type;
-
-    game.u.ublessed = 0;
-    (game.disp ||= {}).botl = true;
-    game.u.ualign.type = newalign;
-
-    if (puttingOn) {
-        adjalign(-7);
-        await Your(`mind oscillates ${Hallucination() ? 'wildly'
-                                                       : 'briefly'}.`);
-        const { make_confused } = await import('./potion.js');
-        await make_confused(rn1(2, 3), false);
-        if (Is_astralevel(game.u.uz)
-            || rn2(50) < (game.u.ualign.abuse || 0))
-            await summon_furies(Is_astralevel(game.u.uz) ? 0 : 1);
-        /* don't livelog taking it back off */
-        livelog_printf(LL_ALIGNMENT, `used a helm to turn ${aligns[1 - newalign].adj}`);
-    } else {
-        await Your(`mind is ${Hallucination()
-            ? 'much of a muchness' : 'back in sync with your body'}.`);
-    }
-
-    if (game.u.ualign.type !== oldalign) {
-        game.u.ualign.record = 0; /* slate is wiped clean */
-        await retouch_equipment(0);
-    }
 }
 
 function attribute_bonus_array() {

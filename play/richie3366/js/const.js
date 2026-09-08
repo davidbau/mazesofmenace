@@ -3156,9 +3156,13 @@ export function has_omid(obj) { return !!(obj?.oextra && (obj.oextra.omid | 0));
 export function MGIVENNAME(mtmp) { return mtmp?.mextra?.mgivenname || mtmp?.mgivenname || ''; }
 export function has_mgivenname(mtmp) { return !!(mtmp?.mextra?.mgivenname || mtmp?.mgivenname); }
 
-// C: you.h — #define Upolyd (u.mtimedone != 0)
+// C you.h:554 — #define Upolyd (u.umonnum != u.umonster); role init sets
+// both to urole.mnum (u_init.c:991), polymon sets umonnum=mntmp,
+// polyman restores umonnum=umonster. mtimedone==0 at timeout expiry must
+// NOT read human (D-2079: rehumanize kept mold umonnum, FROMFORM Blind
+// stuck, "You can see again." lost).
 export function Upolyd(player) {
-    return !!(player && player.mtimedone && player.mtimedone > 0);
+    return !!player && ((player.umonnum | 0) !== (player.umonster | 0));
 }
 
 // Canonical macros — previously duplicated as local stubs in 15+ files
@@ -3181,7 +3185,11 @@ export function Waterproof_container(obj) {
     // OILSKIN_SACK=218, ICE_BOX=216 (objects.h order LARGE_BOX..BAG_OF_TRICKS)
     return t === 218 || t === 216 || Is_box(obj);
 }
-export function M_AP_TYPE(mon) { return mon?.m_ap_type ?? 0; }
+// C ref: monst.h:73 — #define M_AP_TYPE(m) ((m)->m_ap_type & M_AP_TYPMASK).
+// The F_DKNOWN bit (0x8) rides in m_ap_type; every C comparison (e.g.
+// hack.c monster_nearby skipping M_AP_FURNITURE/M_AP_OBJECT) sees the
+// masked type, so JS must mask too — raw 10 (OBJECT|F_DKNOWN) !== 2.
+export function M_AP_TYPE(mon) { return ((mon?.m_ap_type ?? 0) & M_AP_TYPMASK); }
 export function engulfing_u(mon) { const g = (typeof game !== 'undefined' ? game : null); return g?.u?.uswallow && g?.u?.ustuck === mon; }
 // C ref: permonst.h — ismnum(x) means x is a valid monster index.
 // JS call sites pass integer indices (for example u.ulycn, corpsenm, cham).

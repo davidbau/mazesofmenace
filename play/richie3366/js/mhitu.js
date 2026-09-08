@@ -4,13 +4,13 @@
 //         uhitm.c mhitm_ad_phys (mhitu bare / weapon subset).
 
 import { game } from './gstate.js';
-import { monnear, mnexto, mtrapped_in_pit, wake_nearto, m_at } from './mon.js';
+import { monnear, mnexto, mtrapped_in_pit, wake_nearto, m_at, mongone } from './mon.js';
 import {
     Is_rogue_level, NEED_WEAPON, NEED_HTH_WEAPON, NATTK,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
     M_ATTK_DEF_DIED,
     Upolyd, DIED, P_WHIP, NON_PM, XKILL_NOMSG, NEW_MOON,
-    DISPLACED, CONFLICT, IS_WATERWALL, RLOC_MSG, RLOC_NOMSG, TIMEOUT, FAST, ARTICLE_A,
+    DISPLACED, CONFLICT, INVIS, IS_WATERWALL, RLOC_MSG, RLOC_NOMSG, TIMEOUT, FAST, ARTICLE_A,
     LEFT_SIDE, RIGHT_SIDE, LEFT_RING, RIGHT_RING, LEG, HAND, HAIR,
     POOL, DROWNING, KILLED_BY_AN,
     MAGICAL_BREATHING, SWIMMING, Is_medusa_level, Is_waterlevel,
@@ -18,7 +18,8 @@ import {
     M_SEEN_SLEEP, STUNNED, TELEPORT_CONTROL,
     REFLECTING, A_CHAOTIC, LARGEST_INT,
     M_AP_NOTHING, M_AP_OBJECT, WORN_HELMET, TELEDS_ALLOW_DRAG,
-    something, Something, u_at, ERODE_RUST,
+    something, Something, u_at, ERODE_RUST, ERODE_CORRODE,
+    SICK_ALL, SICK_NONVOMITABLE, SICK_RES,
 } from './const.js';
 import { thrwmu, spitmu, breamu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
@@ -38,12 +39,12 @@ import {
     noit_mon_nam, noit_Monnam, s_suffix, Ugender, m_monnam, Some_Monnam, Mgender,
 } from './do_name.js';
 import { MON_WEP, mon_wield_item, dmgval, hitval, drain_weapon_skill } from './weapon.js';
-import { arti_reflects, artifact_hit, permapoisoned, is_art } from './artifact.js';
-import { is_pole, welded } from './wield.js';
+import { arti_reflects, artifact_hit, permapoisoned, is_art, defends } from './artifact.js';
+import { is_pole, welded, is_weptool } from './wield.js';
 import { xname, doname, an, yname, the, simpleonames, safe_qbuf, mimic_obj_name, makeplural } from './objnam.js';
-import { objectNames, ARMOR_CLASS, COIN_CLASS, SILVER } from './objects.js';
+import { objectNames, ARMOR_CLASS, COIN_CLASS, SILVER, WEAPON_CLASS } from './objects.js';
 import { objects_at } from './mkobj.js';
-import { steal, unresponsive, remove_worn_item } from './steal.js';
+import { steal, stealamulet, unresponsive, remove_worn_item } from './steal.js';
 import { cloneu } from './sit.js';
 import {
     stop_donning, setworn, Ring_on, Ring_gone, suit_simple_name, hard_helmet,
@@ -68,9 +69,9 @@ import {
 import { done_in_by, done, finish_losehp_done } from './end.js';
 import { make_blinded } from './do.js';
 import { msummon, Inhell } from './minion.js';
-import { new_were, were_summon, Protection_from_shape_changers } from './were.js';
+import { new_were, were_summon, Protection_from_shape_changers, set_ulycn } from './were.js';
 import { growl_sound } from './sounds.js';
-import { monsterNames, PM_CLERIC } from './generated/monsters_data.js';
+import { monsterNames, pmnames, PM_CLERIC, PM_HEALER } from './generated/monsters_data.js';
 import {
     A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, acurr, adjattrib, exercise,
     poisoned, Fast, adjalign, minuhpmax,
@@ -93,13 +94,14 @@ import {
     AT_HUGS,
     AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_DRDX, AD_DRCO, AD_ACID,
     AD_SITM, AD_SEDU, AD_SSEX, AD_POLY, AD_DRIN, AD_SLEE, AD_TLPT, AD_FAMN,
+    AD_SAMU,
 } from './mhitm.js';
 import { morehungry, is_fainted } from './eat.js';
 import { castmu, buzzmu } from './mcastu.js';
 import { rehumanize, polymon, body_part } from './polyself.js';
 import { set_wounded_legs, burnarmor, ignite_items, ceiling } from './trap.js';
 import { mon_explodes } from './explode.js';
-import { make_hallucinated, make_confused, make_stunned } from './potion.js';
+import { make_hallucinated, make_confused, make_stunned, make_sick } from './potion.js';
 import { SetVoice, Soundeffect } from './sndprocs.js';
 import { ART_SNICKERSNEE } from './generated/artifacts_data.js';
 import { se_rushing_wind_noise } from './generated/seffects_data.js';
@@ -111,8 +113,12 @@ const AD_STUN = 12;
 const AD_PLYS = 14;
 const AD_LEGS = 17; /* damages legs (xan) — monattk.h */
 const AD_STON = 18;
+const AD_HEAL = 27; /* heals opponent's wounds (nurse) — monattk.h */
+const AD_PEST = 38; /* for Pestilence only — monattk.h */
+const AD_WERE = 29; /* confers lycanthropy — monattk.h */
 const AD_ENCH = 41;
 const AD_RUST = 24; /* rusts armour (Rust Monster) — monattk.h */
+const AD_CORR = 42; /* corrode armor (black pudding) — monattk.h */
 
 const LOW_BOOTS = objectNames.indexOf('LOW_BOOTS');
 const IRON_SHOES = objectNames.indexOf('IRON_SHOES');
@@ -216,9 +222,32 @@ function Displaced() {
     return !!(cloak && cloak.otyp === CLOAK_OF_DISPLACEMENT);
 }
 
-/** C ref: youprop.h Invis — match monmove: u.Invis flag. */
+/**
+ * C ref: youprop.h BInvis — uprops[INVIS].blocked.
+ * JS setworn named-omits w_blocks; worn MUMMY_WRAPPING on uarmc
+ * stands in (C worn.c setworn; potion.js/zap.js BInvis idiom).
+ */
+function BInvis() {
+    const u = game.u || {};
+    const p = u.uprops?.[INVIS];
+    if ((u.BInvis | 0) || (p?.blocked | 0)) return true;
+    const cloak = u.uarmc;
+    return !!((cloak && (cloak.otyp | 0) === MUMMY_WRAPPING));
+}
+
+/**
+ * C ref: youprop.h:195–198 Invis — (HInvis || EInvis) && !BInvis
+ * via flats + uprops[INVIS]. Quaff/spell/wand write HInvis and the
+ * uprops intrinsic (potion.js set_HInvis); the u.Invis flat is only
+ * synced by the magic-trap toggle (timeout.js D-1999), so readers
+ * must not use it here.
+ */
 function Invis() {
-    return !!(game.u?.Invis);
+    const u = game.u || {};
+    const p = u.uprops?.[INVIS];
+    const H = (u.HInvis | 0) || (p?.intrinsic | 0);
+    const E = (u.EInvis | 0) || (p?.extrinsic | 0);
+    return !!(H || E) && !BInvis();
 }
 
 /** C ref: pline.c Your — prefix "Your " (file-local like zap.js/artifact.js). */
@@ -483,7 +512,7 @@ export async function u_slow_down() {
 export async function wildmiss(mtmp, mattk) {
     const unotseen = !mtmp.mcansee || (Invis() && !perceives(mtmp.data));
     const unotthere = Displaced();
-    const usubmerged = !!(game.u?.Underwater);
+    const usubmerged = !!((game.u?.uinwater | 0)); /* C youprop.h:279 Underwater (u.uinwater) */
 
     if (!unotseen && !unotthere && !usubmerged) {
         // C: impossible("%s attacks you without knowing your location?",
@@ -2250,7 +2279,7 @@ async function mhitm_ad_drli_u(mtmp, mattk, mhm) {
  * `:2299–2316`. hitmsg always; cancelled → return; iron-golem hero
  * (completelyrusts, mondata.h:227) "rust!" + rehumanize; else
  * erode_armor(youmonst, ERODE_RUST). Base hitmu d() is kept (unlike
- * default zero). CORR/DCAY mhitu arms still deferred.
+ * default zero). DCAY mhitu arm still deferred.
  */
 async function mhitm_ad_rust_u(mtmp, mattk, mhm) {
     void mhm;
@@ -2266,6 +2295,22 @@ async function mhitm_ad_rust_u(mtmp, mattk, mhm) {
         return;
     }
     await erode_armor(game.youmonst, ERODE_RUST);
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_corr `:2338–2360` — mhitu (monster→you) arm
+ * `:2346–2351`. hitmsg always; cancelled → return; else
+ * erode_armor(youmonst, ERODE_CORRODE). Base hitmu d() is kept (unlike
+ * the default zero). The uhitm/mhitm arms (`:2342–2345`/`:2352–2359`)
+ * and the DCAY mhitu arm stay named in the map.
+ */
+async function mhitm_ad_corr_u(mtmp, mattk, mhm) {
+    void mhm;
+    await hitmsg(mtmp, mattk);
+    if (mtmp.mcan) {
+        return;
+    }
+    await erode_armor(game.youmonst, ERODE_CORRODE);
 }
 
 /**
@@ -2333,6 +2378,138 @@ async function mhitm_ad_famn_u(mtmp, mattk, mhm) {
 }
 
 /**
+ * C ref: uhitm.c mhitm_ad_samu `:4570–4589` — mhitu (monster→you) arm
+ * (`:4577–4586`). hitmsg always; then, when the Wizard or a quest
+ * nemesis hits, a 1/20 `stealamulet(mtmp)` (any role's quest artifact,
+ * the Amulet, or an invocation tool). Leftover hitmu d() is kept
+ * (unlike the default zero). The uhitm/mhitm arms (`:4573–4576` /
+ * `:4587–4588`) zero damage (uhitm.js `damageum_adtyping`, mhitm.js
+ * `mhitm_ad_samu` + `mdamagem` dispatch).
+ */
+async function mhitm_ad_samu_u(mtmp, mattk, mhm) {
+    void mhm; /* leftover d() stays */
+    await hitmsg(mtmp, mattk);
+    /* C: 1/20 chance to steal a quest artifact (any, not just the one
+       for the hero's own role) or the Amulet or an invocation tool */
+    if (!rn2(20)) await stealamulet(mtmp);
+}
+
+/**
+ * C ref: mhitu.c diseasemu `:1032–1043` — Sick_resistance (H||E flat +
+ * uprops[SICK_RES], invent.js hero_Sick_resistance idiom) → "a slight
+ * illness", FALSE; else make_sick(Sick ? Sick/3+1 : rn1(ACURR(A_CON),20),
+ * mdat->pmnames[NEUTRAL], TRUE, SICK_NONVOMITABLE), TRUE. Cause falls back
+ * to 'a Rider' (eat.js Rider-corpse idiom) when the mndx lookup misses.
+ */
+async function diseasemu(mdat) {
+    const u = game.u || {};
+    const e = u.uprops?.[SICK_RES];
+    const Sick_resistance = !!((u.HSick_resistance | 0) || (u.ESick_resistance | 0)
+        || u.Sick_resistance || (e?.intrinsic | 0) || (e?.extrinsic | 0));
+    if (Sick_resistance) {
+        await You_feel('a slight illness.');
+        return false;
+    }
+    const sickTm = (u.Sick | 0) & TIMEOUT;
+    const xtime = sickTm ? Math.trunc(sickTm / 3) + 1 : rn1(acurr(A_CON), 20);
+    const mndx = mdat?.mndx ?? mdat?.mnum;
+    const cause = (mndx != null && pmnames[mndx]?.[NEUTRAL]) || 'a Rider';
+    await make_sick(xtime, cause, true, SICK_NONVOMITABLE);
+    return true;
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_pest `:3808–3834` — mhitu (monster→you) arm only.
+ * No hitmsg (C goes straight to pline_mon, like the FAMN arm, unlike the
+ * STON/SLEE arms); pline_mon reach-out, then diseasemu(pa). Leftover
+ * hitmu d() is kept ("plus the normal damage", unlike the default zero).
+ * The uhitm arm cannot happen (hero never polymorphs into a PEST
+ * attacker — C `:3815–3819` comment); the mhitm arm is AD_DISE damage
+ * in mhitm.js.
+ */
+async function mhitm_ad_pest_u(mtmp, mattk, mhm) {
+    void mattk;
+    void mhm; /* leftover d() stays */
+    await pline_mon(mtmp, `${Monnam(mtmp)} reaches out, and you feel fever and chills.`);
+    await diseasemu(mtmp?.data);
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_heal `:4307–4378` — mhitu (monster→you) arm only.
+ * Cancelled (or poly-petrifying) nurse is an ordinary monster → hitmsg.
+ * Naked (no weapon/weptool and no body armor of any slot — the oclass
+ * gate matches sounds.c MS_NURSE) → heal pline_mon, rnd(7) HP, rn2(7)
+ * max-HP bump capped at 5*ulevel+d(2*ulevel,10) (uhppeak tracked),
+ * rn2(3) STR/CON exercise, Sick cure, botl; rn2(13) departure via
+ * mongone else rn2(33) rloc+monflee, else damage zeroed. Armored healer
+ * role hears the cooperate verbalize every 5th move (SetVoice is a
+ * no-op without SND_LIB, D-1752); armored others get hitmsg. Leftover
+ * hitmu d() stays except where C zeroes damage. The uhitm/mhitm arms
+ * are mhitm_ad_phys in uhitm.js/mhitm.js.
+ */
+async function mhitm_ad_heal_u(mtmp, mattk, mhm) {
+    const u = game.u || (game.u = {});
+    const pd = game.youmonst?.data;
+    if ((mtmp.mcan | 0) || (Upolyd(u) && touch_petrifies(pd))) {
+        await hitmsg(mtmp, mattk);
+        return;
+    }
+    const uwep = u.uwep;
+    if (!(uwep && (uwep.oclass === WEAPON_CLASS || is_weptool(uwep)))
+        && !u.uarmu && !u.uarm && !u.uarmc
+        && !u.uarms && !u.uarmg && !u.uarmf && !u.uarmh) {
+        let goaway = false;
+        await pline_mon(mtmp, `${Monnam(mtmp)} hits!  (I hope you don't mind.)`);
+        if (Upolyd(u)) {
+            u.mh = (u.mh | 0) + rnd(7);
+            if (!rn2(7)) {
+                u.mhmax = (u.mhmax | 0) + 1;
+                if (!rn2(13)) goaway = true;
+            }
+            if ((u.mh | 0) > (u.mhmax | 0)) u.mh = u.mhmax;
+        } else {
+            u.uhp = (u.uhp | 0) + rnd(7);
+            if (!rn2(7)) {
+                if ((u.uhpmax | 0) < 5 * (u.ulevel | 0) + d(2 * (u.ulevel | 0), 10)) {
+                    u.uhpmax = (u.uhpmax | 0) + 1;
+                    if ((u.uhpmax | 0) > (u.uhppeak | 0)) u.uhppeak = u.uhpmax;
+                }
+                if (!rn2(13)) goaway = true;
+            }
+            if ((u.uhp | 0) > (u.uhpmax | 0)) u.uhp = u.uhpmax;
+        }
+        if (!rn2(3)) exercise(A_STR, true);
+        if (!rn2(3)) exercise(A_CON, true);
+        if ((u.Sick | 0)) await make_sick(0, null, false, SICK_ALL);
+        if (game.disp) game.disp.botl = true;
+        if (game.flags) game.flags.botl = true;
+        if (goaway) {
+            await mongone(mtmp);
+            mhm.done = true;
+            mhm.hitflags = M_ATTK_DEF_DIED;
+            return;
+        } else if (!rn2(33)) {
+            if (!(await tele_restrict(mtmp))) await rloc(mtmp, RLOC_MSG);
+            await monflee(mtmp, d(3, 6), true, false);
+            mhm.done = true;
+            mhm.hitflags = M_ATTK_HIT | M_ATTK_DEF_DIED;
+            return;
+        }
+        mhm.damage = 0;
+    } else {
+        if ((game.urole?.mnum | 0) === (PM_HEALER | 0)) {
+            if (!hero_Deaf() && ((game.moves | 0) % 5) === 0) {
+                SetVoice(mtmp, 0, 80, 0);
+                await verbalize("Doc, I can't help you unless you cooperate.");
+            }
+            mhm.damage = 0;
+        } else {
+            await hitmsg(mtmp, mattk);
+        }
+    }
+}
+
+/**
  * C ref: uhitm.c mhitm_ad_slow `:3652–3689` — mhitu (monster→you) arm.
  * The gate (FALSE) always burns rn2(10); then hitmsg; then
  * `!negated && HFast && !rn2(4)` → u_slow_down (leftover d() kept,
@@ -2353,10 +2530,56 @@ async function mhitm_ad_slow_u(mtmp, mattk, mhm) {
 }
 
 /**
+ * C ref: uhitm.c mhitm_ad_were `:4276–4286` — mhitu (monster→you) arm.
+ * hitmsg first (unconditional, RNG-free like C mhitu.c:29–81); then the
+ * C short-circuit `!rn2(4) && ulycn==NON_PM && !Protection_from_shape_changers
+ * && !defends(AD_WERE,uwep) && !mgc-negated(TRUE)` → feverish +
+ * exercise(A_CON,FALSE) + set_ulycn(monsndx(pa)) (leftover d() kept —
+ * the were arm never zeroes damage, like FAMN/SLOW).
+ * Named omit: retouch_equipment(2) (same as eat.js cpostfx D-0945 —
+ * untouchable/retouch_object/bypass chain, unported).
+ */
+async function mhitm_ad_were_u(mtmp, mattk, mhm) {
+    void mhm; /* leftover d() stays */
+    await hitmsg(mtmp, mattk);
+    const u = game.u || {};
+    if (!rn2(4) && (u.ulycn | 0) === NON_PM
+        && !Protection_from_shape_changers()
+        && !defends(AD_WERE, u.uwep || null)
+        && !(await mhitm_mgc_atk_negated(mtmp, null, true))) {
+        await urgent_pline('You feel feverish.');
+        exercise(A_CON, false);
+        set_ulycn(mtmp?.data?.mndx ?? mtmp?.mnum);
+        /* retouch_equipment(2) deferred (eat.js cpostfx D-0945 same) */
+    }
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_stun `:4403–4409` — mhitu (monster→you) arm.
+ * hitmsg always (no mcan gate, unlike the mhitm arm); then
+ * `!mcan && !rn2(4)` → make_stunned((HStun & TIMEOUT) + leftover
+ * damage) + damage halved (C `/= 2` truncates; Math.trunc same).
+ * Leftover hitmu d() is kept when the stun misses or the attacker is
+ * cancelled (unlike the default zero). Reached with AD_STUN swapped
+ * in by getmattk for a second consecutive DISE/PEST/FAMN hit
+ * (mhitu.c:337–347, live in mhitm.js get_mattk). The uhitm arm
+ * (`:4394–4402`, !Blind stagger + phys) stays named; the mhitm arm
+ * lives in mhitm.js (D-1396).
+ */
+async function mhitm_ad_stun_u(mtmp, mattk, mhm) {
+    await hitmsg(mtmp, mattk);
+    if (!(mtmp.mcan | 0) && !rn2(4)) {
+        await make_stunned(((game.u?.HStun | 0) & TIMEOUT) + (mhm.damage | 0), true);
+        mhm.damage = Math.trunc((mhm.damage | 0) / 2);
+    }
+}
+
+/**
  * C ref: uhitm.c mhitm_adtyping — mhitu (monster→you) subset.
  * PHYS + ELEC + COLD + FIRE + TLPT + DRST/DRDX/DRCO + SITM/SEDU + SSEX (D-1750)
  * + BLND + STON + LEGS + POLY (D-1004) + DRIN (D-1329) + WRAP (D-1331) + SLEE
- * + DRLI + RUST + STCK + PLYS + FAMN + SLOW; other adtyps zero damage.
+ * + DRLI + RUST + CORR + STCK + PLYS + FAMN + SLOW + WERE + HEAL + PEST
+ * + SAMU + STUN; other adtyps zero damage.
  */
 async function mhitm_adtyping_u(mtmp, mattk, mhm) {
     switch (mattk.adtyp | 0) {
@@ -2414,6 +2637,9 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
     case AD_RUST:
         await mhitm_ad_rust_u(mtmp, mattk, mhm);
         break;
+    case AD_CORR:
+        await mhitm_ad_corr_u(mtmp, mattk, mhm);
+        break;
     case AD_STCK:
         await mhitm_ad_stck_u(mtmp, mattk, mhm);
         break;
@@ -2423,8 +2649,23 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
     case AD_FAMN:
         await mhitm_ad_famn_u(mtmp, mattk, mhm);
         break;
+    case AD_SAMU:
+        await mhitm_ad_samu_u(mtmp, mattk, mhm);
+        break;
     case AD_SLOW:
         await mhitm_ad_slow_u(mtmp, mattk, mhm);
+        break;
+    case AD_WERE:
+        await mhitm_ad_were_u(mtmp, mattk, mhm);
+        break;
+    case AD_HEAL:
+        await mhitm_ad_heal_u(mtmp, mattk, mhm);
+        break;
+    case AD_PEST:
+        await mhitm_ad_pest_u(mtmp, mattk, mhm);
+        break;
+    case AD_STUN:
+        await mhitm_ad_stun_u(mtmp, mattk, mhm);
         break;
     default:
         mhm.damage = 0;
@@ -2532,7 +2773,7 @@ async function passiveum(olduasmon, mtmp, mattk) {
             if ((u.umonnum | 0) === PM_FLOATING_EYE) {
                 if (!rn2(4)) tmp = 127;
                 if (mtmp.mcansee && haseyes(mtmp.data) && rn2(3)
-                    && (perceives(mtmp.data) || !u.Invis)) {
+                    && (perceives(mtmp.data) || !Invis())) {
                     if (Blind()) {
                         const sex = game.flags?.female ? FEMALE : MALE;
                         await pline(
@@ -2638,7 +2879,7 @@ async function hitmu(mtmp, mattk) {
             if (obj) {
                 let what;
                 if (Blind() && !obj.dknown) what = 'something';
-                else if (is_pool(mtmp.mx, mtmp.my) && !u.Underwater) {
+                else if (is_pool(mtmp.mx, mtmp.my) && !(u.uinwater | 0)) { /* C mhitu.c:1171 !Underwater */
                     what = 'the water';
                 } else {
                     what = doname(obj);

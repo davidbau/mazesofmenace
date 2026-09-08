@@ -5,7 +5,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline } from './display.js';
-import { xprname, xname, makeplural, vtense, an, doname, The, body_part_latebound, simpleonames, is_plural, otense } from './objnam.js';
+import { xprname, xname, makeplural, vtense, an, doname, The, body_part_latebound, simpleonames, is_plural, otense, Yname2 } from './objnam.js';
 import { yn_function } from './getline.js';
 import { hands_obj, is_wet_towel } from './weapon.js';
 import { humanoid, mons } from './monsters.js';
@@ -893,7 +893,9 @@ export async function doquiver_core(verb) {
         setuqwep(newquiver);
         await pline(xprname(newquiver, undefined, true));
     } else {
-        await pline(`You ready: ${xprname(newquiver, undefined, false)}`);
+        // C wield.c doquiver_core fire arm: prinv("You ready:", q, 0L) →
+        // xprname(..., obj_to_let, dot=!total_of=TRUE) — trailing period.
+        await pline(`You ready: ${xprname(newquiver, undefined, true)}`);
         setuqwep(newquiver);
     }
 
@@ -989,8 +991,11 @@ export async function drop_uswapwep() {
 
 /**
  * C ref: wield.c can_twoweapon — dual-wield eligibility + failure plines.
- * Named omissions: full Yname2/Yobjnam2/body_part/cant_wield_corpse; Glib
- * prop may be incomplete until timeout wiring.
+ * TWOWEAPOK/bimanual arms use live Yname2 (objnam.js) + is_plural (obj.h:421).
+ * Named omissions: artifact-resist arm uses xname (live Yobjnam2 export
+ * not wired; local clone at :1063 stays), CORPSE/cant_wield_corpse arm
+ * absent (cant_wield_corpse not ported), body_part(HAND) is a 'hand'
+ * literal; Glib prop may be incomplete until timeout wiring.
  */
 export async function can_twoweapon() {
     const u = game.u || {};
@@ -1014,15 +1019,17 @@ export async function can_twoweapon() {
         const which = uwep ? 'left ' : uswapwep ? 'right ' : '';
         await pline(`Your ${which}${hand_s} ${vtense(hand_s, 'are')} empty.`);
     } else if (!TWOWEAPOK(uwep) || !TWOWEAPOK(uswapwep)) {
+        // C wield.c:784-787 — Yname2 (upstart yname: "Your <name>"),
+        // is_plural (obj.h:421) for aren't/isn't-a, plur(quan) for weapon/s.
         const otmp = !TWOWEAPOK(uwep) ? uwep : uswapwep;
-        const plural = (otmp.quan || 1) !== 1;
-        const suit = plural ? "aren't" : "isn't a";
+        const suit = is_plural(otmp) ? "aren't" : "isn't a";
         const slot = otmp === uwep ? 'primary' : 'secondary';
-        const plur = plural ? 's' : '';
-        await pline(`${xname(otmp)} ${suit} suitable ${slot} weapon${plur}.`);
+        const plur = ((otmp.quan ?? 1) | 0) !== 1 ? 's' : '';
+        await pline(`${Yname2(otmp)} ${suit} suitable ${slot} weapon${plur}.`);
     } else if (bimanual(uwep) || bimanual(uswapwep)) {
+        // C wield.c:788-790 — pline("%s isn't one-handed.", Yname2(otmp)).
         const otmp = bimanual(uwep) ? uwep : uswapwep;
-        await pline(`${xname(otmp)} isn't one-handed.`);
+        await pline(`${Yname2(otmp)} isn't one-handed.`);
     } else if (u.uarms) {
         await pline("You can't use two weapons while wearing a shield.");
     } else if (uswapwep.oartifact) {

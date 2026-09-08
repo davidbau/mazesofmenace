@@ -50,6 +50,7 @@ import { visctrl } from './hacklib.js';
 import { MAXMCLASSES, SYM_OFF_X, go_ov_primary_syms, go_ov_rogue_syms, escapes } from './symbols.js';
 import { WARNCOUNT, SYM_BOULDER } from './const.js';
 import { NUM_DISCLOSURE_OPTIONS, DISCLOSE_PROMPT_DEFAULT_YES, DISCLOSE_PROMPT_DEFAULT_NO, DISCLOSE_PROMPT_DEFAULT_SPECIAL, DISCLOSE_YES_WITHOUT_PROMPT, DISCLOSE_NO_WITHOUT_PROMPT, DISCLOSE_SPECIAL_WITHOUT_PROMPT } from './const.js';
+import { RUN_TPORT, RUN_LEAP, RUN_STEP, RUN_CRAWL } from './const.js';
 
 function note_unported_options(what) {
     (game.unported ||= new Set()).add('options:' + what);
@@ -253,6 +254,31 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
             return false;
         }
         result.opts[opt.name] = burden;
+    } else if (opt.name === 'runmode') {
+        /* src/options.c:3627 optfn_runmode() do_set: the value is kept as
+           the RUN_* index; str_start_is(whole, op) accepts any prefix of
+           the mode name */
+        const op = value ?? '';
+        if (negated) {
+            result.opts[opt.name] = RUN_TPORT;
+        } else if (op !== '') {
+            const lop = op.toLowerCase();
+            if ('teleport'.startsWith(lop))
+                result.opts[opt.name] = RUN_TPORT;
+            else if ('run'.startsWith(lop))
+                result.opts[opt.name] = RUN_LEAP;
+            else if ('walk'.startsWith(lop))
+                result.opts[opt.name] = RUN_STEP;
+            else if ('crawl'.startsWith(lop))
+                result.opts[opt.name] = RUN_CRAWL;
+            else {
+                config_error_add(`Unknown runmode parameter '${op}'`);
+                return false;
+            }
+        } else {
+            config_error_add('Value is mandatory for runmode');
+            return false;
+        }
     } else if (opt.name === 'pickup_types') {
         // src/options.c:3321 optfn_pickup_types(), configured-value arm.
         result.opts.pickup_types = '';

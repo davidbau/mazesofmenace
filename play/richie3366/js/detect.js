@@ -1230,7 +1230,7 @@ export function map_monst(mtmp, showtail) {
  * D-1549 (mnum/mndx, not mons() ptr).
  */
 export async function monster_detect(otmp, mclass) {
-    const { cls, pline, flush_topl_more } =
+    const { cls, pline } =
         await import('./display.js');
 
     let mcnt = 0;
@@ -1276,8 +1276,10 @@ export async function monster_detect(otmp, mclass) {
         display_self();
     }
     await pline('You sense the presence of monsters.');
-    // C session: sense message --More-- before getpos tip
-    await flush_topl_more();
+    // C detect.c:842 You("sense...") then browse_map→getpos.c:843-846
+    // verbose pline appends "(For instructions...)" on the same topline
+    // (topl.c NEED_MORE + room → two-space join, js/display.js:7387-96);
+    // no more() between — a flush here paints a spurious --More--.
 
     // otmp&&blessed && !unconstrained → display_nhwindow(WIN_MAP) deferred
     u.EDetect_monsters = (u.EDetect_monsters | 0) | I_SPECIAL;

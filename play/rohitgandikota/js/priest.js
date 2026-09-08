@@ -732,7 +732,7 @@ export async function angry_priest() {
 
 // src/priest.c:142 temple_occupied(); the first room in the hero's room
 // list that is a temple, as its room character
-function temple_occupied(array) {
+export function temple_occupied(array) {
     for (const ch of array || '')
         if (game.level.rooms[ch.charCodeAt(0) - ROOMOFFSET]?.rtype === TEMPLE)
             return ch;

@@ -30,8 +30,8 @@
 // seffect_fire SCR_FIRE (confused/underwater/blessed-getpos arms,
 // tower + burn_away_slime, explode ZT_SPELL_O_FIRE / SCROLL_CLASS /
 // EXPL_FIERY; doread allowlist + nodisappear).
-// Named omissions: fortune/credit-card/marker/coin/orb/Braille Blind
-// gates; doread T_SHIRT/ALCHEMY_SMOCK/HAWAIIAN_SHIRT (hawaiian_design);
+// Named omissions: fortune/credit-card/marker/coin/orb + their Braille arms
+// (doread Blind formula/book gate live); doread T_SHIRT/ALCHEMY_SMOCK/HAWAIIAN_SHIRT (hawaiian_design);
 // study_book novel / dull sleep (occupation learn D-0907);
 // SCR_BLANK_PAPER seffects; SCR_IDENTIFY SPE_IDENTIFY cast; menu_identify traditional
 // ggetobj; discover_artifact / learn_egg_type in fully_identify_obj;
@@ -62,8 +62,8 @@
 // SCR_PUNISHMENT / SCR_GENOCIDE +
 // SPBOOK_CLASS → study_book (already-known refresh yn) + create_particular
 // named-monster path for #wizgenesis.
-// Named omissions: fortune/credit-card/marker/coin/orb/Braille Blind
-// gates; doread T_SHIRT/ALCHEMY_SMOCK/HAWAIIAN_SHIRT (hawaiian_design);
+// Named omissions: fortune/credit-card/marker/coin/orb + their Braille arms
+// (doread Blind formula/book gate live); doread T_SHIRT/ALCHEMY_SMOCK/HAWAIIAN_SHIRT (hawaiian_design);
 // study_book novel / dull sleep (occupation learn D-0907);
 // seffect_fire SCR_FIRE live; SCR_BLANK_PAPER; SCR_IDENTIFY SPE_IDENTIFY cast;
 // menu_identify traditional ggetobj; discover_artifact / learn_egg_type;
@@ -1981,6 +1981,8 @@ export async function doread() {
     if (!scroll) return 0;
 
     const otyp = scroll.otyp;
+    // C ref: read.c:359 doread — no longer 'just picked up' (eat.js/apply.js idiom)
+    scroll.pickup_prev = 0;
     // cookie / shirt / credit / marker / coin / orb / candy deferred
 
     if (scroll.oclass !== SCROLL_CLASS && scroll.oclass !== SPBOOK_CLASS) {
@@ -1988,7 +1990,32 @@ export async function doread() {
         return 0;
     }
 
-    // Blind formula gates deferred (starting Wizard not Blind)
+    // C ref: read.c:561-576 doread — Blind gate precedes literate conduct.
+    // Dead exempt; novel→words, book→mystic runes, unknown scroll→formula.
+    {
+        const ub = game.u || {};
+        const Zblind = !!(ub.Blind || ub.ublind);
+        if (Zblind && otyp !== SPE_BOOK_OF_THE_DEAD) {
+            let what = null;
+            if (otyp === SPE_NOVEL) what = 'words';
+            else if (scroll.oclass === SPBOOK_CLASS) what = 'mystic runes';
+            else if (!scroll.dknown) what = 'formula on the scroll';
+            if (what) {
+                await pline(`Being blind, you cannot read the ${what}.`);
+                return 0;
+            }
+        }
+    }
+
+    // C ref: read.c:579-597 doread — mail reads outside gameplay
+    // (MAIL_STRUCTURES live per global.h): illiterate-conduct confirmation.
+    // The confused=FALSE override lives with the confused computation below.
+    if (otyp === SCR_MAIL && !((game.u?.uconduct?.literate) | 0)) {
+        if (!scroll.spe
+            && (await y_n('Reading mail will violate "illiterate" conduct.  Read anyway?')) !== 'y') {
+            return 0;
+        }
+    }
 
     // C: literate conduct before SPBOOK study_book (exclude Dead/novel/blank)
     if (otyp !== SPE_BOOK_OF_THE_DEAD && otyp !== SPE_NOVEL
@@ -2015,7 +2042,8 @@ export async function doread() {
         && otyp !== SCR_ENCHANT_ARMOR && otyp !== SCR_CONFUSE_MONSTER
         && otyp !== SCR_SCARE_MONSTER && otyp !== SCR_CHARGING
         && otyp !== SCR_AMNESIA && otyp !== SCR_EARTH
-        && otyp !== SCR_STINKING_CLOUD && otyp !== SCR_FIRE) {
+        && otyp !== SCR_STINKING_CLOUD && otyp !== SCR_FIRE
+        && otyp !== SCR_TAMING) {
         await pline('That scroll is not implemented yet.');
         return 0;
     }
@@ -2024,7 +2052,8 @@ export async function doread() {
     if (otyp !== SCR_BLANK_PAPER) {
         const u = game.u || {};
         // C: Confusion != 0; Blind; can_chant → silently
-        const confused = !!(u.HConfusion || u.Confusion);
+        // C ref: read.c:580 doread — mail overrides confused to FALSE
+        const confused = !!(u.HConfusion || u.Confusion) && otyp !== SCR_MAIL;
         const Blind = !!(u.Blind || u.ublind);
         const silently = !can_chant();
         // C: nodisappear for SCR_FIRE / cursed SCR_REMOVE_CURSE

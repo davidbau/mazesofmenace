@@ -10,7 +10,7 @@ import {
     is_vampshifter, is_watch, is_mind_flayer, is_covetous,
     is_floater, is_flyer, amorphous, nolimbs, M1_SLITHY, MZ_SMALL,
     grounded, telepathic, mons, metallivorous, humanoid, is_neuter, G_UNIQ,
-    corpse_eater, is_demon,
+    corpse_eater, is_demon, touch_petrifies, acidic,
 } from './monsters.js';
 import { gettrack } from './track.js';
 import { wipe_engr_at } from './engrave.js';
@@ -79,7 +79,7 @@ import {
 } from './display.js';
 import { dog_move, finish_meating } from './dogmove.js';
 import { worm_move, worm_nomove, see_wsegs, worm_known, wormhitu } from './worm.js';
-import { shk_move, gd_move, pri_move } from './shk.js';
+import { shk_move, gd_move, pri_move, costly_spot, inhishop } from './shk.js';
 import { tactics } from './wizard.js';
 import { Invis } from './timeout.js';
 import { rn2, rnd, d } from './rng.js';
@@ -99,6 +99,7 @@ import {
     meatobj,
     meatcorpse,
     m_respond,
+    onscary,
 } from './mon.js';
 
 const CREDIT_CARD = objectNames.indexOf('CREDIT_CARD');
@@ -120,6 +121,7 @@ const PM_HEZROU = monsterNames.indexOf('PM_HEZROU');
 const PM_STEAM_VORTEX = monsterNames.indexOf('PM_STEAM_VORTEX');
 const PM_KILLER_BEE = monsterNames.indexOf('PM_KILLER_BEE');
 const PM_QUEEN_BEE = monsterNames.indexOf('PM_QUEEN_BEE');
+const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 const LUMP_OF_ROYAL_JELLY = objectNames.indexOf('LUMP_OF_ROYAL_JELLY');
 /** C ref: monattk.h AD_DRIN — mind_blast monkilled how. */
 const AD_DRIN = 32;
@@ -345,20 +347,29 @@ function could_reach_item(mon, nx, ny) {
 }
 
 /**
- * C ref: mon.c mpickstuff — pick one wanted floor object underfoot.
- * Named omissions: shopkeeper inhishop; in_rooms shop rn2(25);
- * prize helpers unwired (D-1257 gelcube uses them); nymph/corpse specials.
+ * C ref: mon.c:1847-1910 mpickstuff — pick one wanted floor object underfoot.
+ * Shopkeeper inhishop gate, non-tame in_rooms shop rn2(25) gate, prize
+ * skip, and nymph/corpse specials all live (D-2085).
  */
 async function mpickstuff(mtmp) {
-    if (mtmp.isshk) return false;
-    // shop in_rooms + rn2(25) deferred (no shop rooms on Mines path)
+    /* prevent shopkeepers from leaving the door of their shop */
+    if (mtmp.isshk && inhishop(mtmp)) return false;
+    /* non-tame monsters normally don't go shopping */
+    if (!mtmp.mtame && in_rooms(mtmp.mx, mtmp.my, SHOPBASE) && rn2(25)) return false;
+    /* item in a pool, but monster can't swim */
     if (!could_reach_item(mtmp, mtmp.mx, mtmp.my)) return false;
 
     for (let otmp = objects_at(mtmp.mx, mtmp.my); otmp; otmp = otmp.nexthere) {
-        // prize helpers unwired (D-1257 gelcube)
+        /* avoid special items; once hero picks them up, they'll cease
+           being special, becoming eligible for normal pickup */
+        if (is_mines_prize(otmp) || is_soko_prize(otmp)) continue;
+        /* Nymphs take everything.  Most monsters don't pick up corpses. */
         if (!mon_would_take_item(mtmp, otmp)) continue;
-        if (otmp.otyp === CORPSE && mtmp.data?.mlet !== 'S_NYMPH') {
-            // touch_petrifies / lizard / acidic corpse exceptions deferred
+        if (otmp.otyp === CORPSE && mtmp.data?.mlet !== 'S_NYMPH'
+            /* let a handful of corpse types thru to can_carry() */
+            && !touch_petrifies(mons(otmp.corpsenm))
+            && otmp.corpsenm !== PM_LIZARD
+            && !acidic(mons(otmp.corpsenm))) {
             continue;
         }
         if (!can_touch_safely(mtmp, otmp)) continue;
@@ -387,12 +398,16 @@ async function mpickstuff(mtmp) {
 }
 
 /**
- * C ref: monmove.c m_search_items — redirect gg toward interesting floor loot.
+ * C ref: monmove.c m_search_items :1329-1450 — redirect gg toward loot.
  * Returns true → caller postmov(MMOVE_DONE) for underfoot claim (mpickstuff).
- * Named omissions: in_rooms shop rn2(25); hides_under; onscary; costly_spot
- * merchandise; prize helpers unwired (D-1257); helpless under-monster skip
- * beyond mcanmove/msleeping/mmove; can_touch_safely in search loop
- * (mpickstuff/can_carry still gates).
+ * C order: minr guards → shop in_rooms+rn2(25)||isshk goto finish_search
+ * (:1366) → cell scan (OBJ_AT, minr, could_reach, hides_under+cansee, m_at
+ * helpless, onscary, trap-known, m_cansee, costly_spot) → per-item (ROCK,
+ * prizes, costly/no_charge, (take&&carry || consume)&&touch) → finish tail.
+ * helpless(mtoo) = msleeping||!mcanmove (monst.h:251), expanded inline.
+ * Named omissions: mon_would_consume_item body (stub false, own future row);
+ * can_touch_safely silver/artifact/petrify arms (stub true); onscary
+ * inhishop/inhistemple + lminion/unique arms (deferred in mon.js live arms).
  */
 function m_search_items(mtmp, gg) {
     let minr = SQSRCHRADIUS;
@@ -406,60 +421,73 @@ function m_search_items(mtmp, gg) {
     }
     if (!mtmp.mpeaceful && is_mercenary(ptr)) minr = 1;
 
-    // shop in_rooms + rn2(25) deferred (no shop rooms on Mines path)
+    // C monmove.c:1366 — in shop, usually skip; rn2 draws only in shop.
+    // Short-circuit order preserved: in_rooms first, then rn2(25), then isshk.
+    // True arm is C `goto finish_search` (skip scan, fall to tail below).
+    const shopSkip = in_rooms(omx, omy, SHOPBASE) && (rn2(25) || mtmp.isshk);
+    if (!shopSkip) {
+        const hmx = Math.min(COLNO - 1, omx + minr);
+        const hmy = Math.min(ROWNO - 1, omy + minr);
+        const lmx = Math.max(1, omx - minr);
+        const lmy = Math.max(0, omy - minr);
 
-    const hmx = Math.min(COLNO - 1, omx + minr);
-    const hmy = Math.min(ROWNO - 1, omy + minr);
-    const lmx = Math.max(1, omx - minr);
-    const lmy = Math.max(0, omy - minr);
-
-    for (let xx = lmx; xx <= hmx; xx++) {
-        for (let yy = lmy; yy <= hmy; yy++) {
-            let otmp = objects_at(xx, yy);
-            if (!otmp) continue;
-            if (minr < distmin(omx, omy, xx, yy)) continue;
-            if (!could_reach_item(mtmp, xx, yy)) continue;
-            // hides_under + cansee deferred
-            const mtoo = m_at(xx, yy);
-            if (mtoo && (
-                !mtoo.mcanmove
-                || mtoo.msleeping
-                || mtoo.mundetected
-                || (mtoo.mappearance && !mtoo.iswiz)
-                || !(mtoo.data?.mmove)
-            )) {
-                continue;
-            }
-            // onscary deferred
-            const ttmp = t_at(xx, yy);
-            if (ttmp && mon_knows_traps(mtmp, ttmp.ttyp)) {
-                if (gg.x === xx && gg.y === yy) {
-                    gg.x = mtmp.mux;
-                    gg.y = mtmp.muy;
+        for (let xx = lmx; xx <= hmx; xx++) {
+            for (let yy = lmy; yy <= hmy; yy++) {
+                let otmp = objects_at(xx, yy);
+                if (!otmp) continue;
+                if (minr < distmin(omx, omy, xx, yy)) continue;
+                if (!could_reach_item(mtmp, xx, yy)) continue;
+                // C: hiders avoid hero's line of sight
+                if (hides_under(ptr) && cansee(xx, yy)) continue;
+                const mtoo = m_at(xx, yy);
+                if (mtoo && (
+                    !mtoo.mcanmove
+                    || mtoo.msleeping
+                    || mtoo.mundetected
+                    || (mtoo.mappearance && !mtoo.iswiz)
+                    || !(mtoo.data?.mmove)
+                )) {
+                    continue;
                 }
-                continue;
-            }
-            if (!m_cansee(mtmp, xx, yy)) continue;
-            // costly_spot merchandise skip deferred
+                // C: don't get stuck circling an Elbereth
+                if (onscary(xx, yy, mtmp)) continue;
+                const ttmp = t_at(xx, yy);
+                if (ttmp && mon_knows_traps(mtmp, ttmp.ttyp)) {
+                    if (gg.x === xx && gg.y === yy) {
+                        gg.x = mtmp.mux;
+                        gg.y = mtmp.muy;
+                    }
+                    continue;
+                }
+                if (!m_cansee(mtmp, xx, yy)) continue;
+                const costly = costly_spot(xx, yy);
 
-            for (; otmp; otmp = otmp.nexthere) {
-                if (otmp.otyp === ROCK) continue;
-                // prize helpers unwired (D-1257 gelcube)
-                if ((mon_would_take_item(mtmp, otmp) && can_carry(mtmp, otmp) > 0)
-                    || mon_would_consume_item(mtmp, otmp)) {
-                    const ix = otmp.ox ?? xx;
-                    const iy = otmp.oy ?? yy;
-                    minr = distmin(omx, omy, xx, yy);
-                    gg.x = ix;
-                    gg.y = iy;
-                    // C: underfoot → MMOVE_DONE → postmov → mpickstuff
-                    if (ix === omx && iy === omy) return true;
-                    break;
+                for (; otmp; otmp = otmp.nexthere) {
+                    if (otmp.otyp === ROCK) continue;
+                    // C: avoid special items; once hero takes them they cease
+                    if (is_mines_prize(otmp) || is_soko_prize(otmp)) continue;
+                    // C: skip shop merchandise
+                    if (costly && !otmp.no_charge) continue;
+                    // C short-circuit: ((take && carry>0) || consume) && touch
+                    if (((mon_would_take_item(mtmp, otmp)
+                        && can_carry(mtmp, otmp) > 0)
+                        || mon_would_consume_item(mtmp, otmp))
+                        && can_touch_safely(mtmp, otmp)) {
+                        const ix = otmp.ox ?? xx;
+                        const iy = otmp.oy ?? yy;
+                        minr = distmin(omx, omy, xx, yy);
+                        gg.x = ix;
+                        gg.y = iy;
+                        // C: underfoot → MMOVE_DONE → postmov → mpickstuff
+                        if (ix === omx && iy === omy) return true;
+                        break;
+                    }
                 }
             }
         }
     }
 
+    // finish_search:
     if (minr < SQSRCHRADIUS && gg.appr === -1) {
         if (distmin(omx, omy, mtmp.mux, mtmp.muy) <= 3) {
             gg.x = mtmp.mux;
