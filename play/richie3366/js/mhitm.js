@@ -680,7 +680,7 @@ export {
     AT_WEAP, AT_MAGC, AD_PHYS, AD_FIRE, AD_COLD, AD_ELEC, AD_DRST, AD_ACID,
     AD_BLND, AD_DRDX, AD_DRCO, AD_DRIN, AD_SITM, AD_SEDU, AD_SSEX, AD_POLY,
     AD_STON, AD_CONF, AD_STUN, AD_WRAP, AD_SLEE,
-    AD_SGLD, AD_TLPT, AD_WERE, AD_SLIM, AD_FAMN, AD_SAMU,
+    AD_SGLD, AD_TLPT, AD_WERE, AD_SLIM, AD_FAMN, AD_SAMU, AD_DRLI,
     could_seduce, failed_grab,
 };
 
@@ -986,7 +986,7 @@ function Blind_slee() {
 }
 
 /** C ref: mhitm.c resists_sleep — MR_SLEEP on data / intrinsics / extrinsics. */
-function resists_sleep_slee(mon) {
+export function resists_sleep_slee(mon) {
     if (!mon) return false;
     const bits = (mon.data?.mresists | 0) | (mon.mextrinsics | 0)
         | (mon.mintrinsics | 0);
@@ -1633,7 +1633,7 @@ export { max_passive_dmg };
  * C ref: mhitm.c paralyze_monst — clamp amt to 127; clear meating and
  * STRAT_WAITFORU. Same file as passivemm (AD_PLYS).
  */
-function paralyze_monst(mon, amt) {
+export function paralyze_monst(mon, amt) {
     if ((amt | 0) > 127) amt = 127;
     mon.mcanmove = 0;
     mon.mfrozen = amt | 0;

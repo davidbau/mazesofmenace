@@ -1665,12 +1665,54 @@ export async function expels(mtmp, mdat, message) {
 }
 
 /**
+ * C ref: mondata.c can_blnd AT_ENGL arm (mdef == youmonst, obj NULL) for gulpmu.
+ * haseyes + raven-vs-raven + !(Blindfolded||Unaware||ucreamed); WEAP/SPIT/NONE
+ * with NULL obj cannot blind; EXPL/BOOM/GAZE/MAGC/BREA need !mcan +
+ * !resists_blnd; CLAW needs !ublindf; TUCH/STNG need !mcan (C switch order).
+ * Named omission: worn visored-helmet check (same debt as can_blnd_u).
+ */
+function gulpmu_can_blnd(mtmp, mattk) {
+    const you = game.youmonst;
+    if (!haseyes(you?.data)) return false;
+    const raven = mons(monsterNames.indexOf('PM_RAVEN'));
+    if (raven && mtmp?.data === raven && you?.data === raven) return false;
+    switch (mattk?.aatyp | 0) {
+    case AT_EXPL:
+    case AT_BOOM:
+    case AT_GAZE:
+    case AT_MAGC:
+    case AT_BREA:
+        if (mtmp?.mcan) return false;
+        return !resists_blnd_you();
+    case AT_WEAP:
+    case AT_SPIT:
+    case AT_NONE:
+        return false;
+    case AT_ENGL: {
+        const u = game.u || {};
+        if ((u.EBlinded | 0) || Unaware() || (u.ucreamed | 0)) return false;
+        return true;
+    }
+    case AT_CLAW:
+        if (game.u?.ublindf) return false;
+        break;
+    case AT_TUCH:
+    case AT_STNG:
+        if (mtmp?.mcan) return false;
+        break;
+    default:
+        break;
+    }
+    return true;
+}
+
+/**
  * C ref: mhitu.c gulpmu — swallow hero or damage while swallowed.
  * Envelope: first swallow place+ustuck+uswldtim; AD_PHYS/COLD/FIRE/ELEC/DGST/
- * ACID arms; mdamageu; expel on timer.
+ * ACID/BLND arms; mdamageu; expel on timer.
  * Named omissions: Punished ball; steed DISMOUNT_ENGULFED; leashes; petrify;
  * snuff_lit invent; Slow_digestion; ugolemeffects/monstseesu; diseasemu;
- * drain_en; make_blinded; Half_physical polish;
+ * drain_en; Half_physical polish;
  * display_nhwindow(WIN_MESSAGE) before vision_recalc (D-0852 #996);
  * swallowed cls/bot polish; u_on_newpos while digesting (D-0826 postmov).
  */
@@ -1787,9 +1829,26 @@ async function gulpmu(mtmp, mattk) {
             exercise(A_STR, false);
         }
         break;
-    case AD_BLND:
+    case AD_BLND: {
+        // C mhitu.c gulpmu `:1471–1484` — engulf blinding in exact C order:
+        // can_blnd gate, then (!Blind ? maybe "can't see" + make_blinded +
+        // vision_clears : incr HBlinded), then tmp = 0.
+        if (gulpmu_can_blnd(mtmp, mattk)) {
+            if (!Blind()) {
+                // C youprop.h Blinded ≡ HBlinded && !BBlinded
+                const was_blinded = !!((u.HBlinded | 0) && !(u.BBlinded | 0));
+                if (!was_blinded) await pline("You can't see in here!");
+                await make_blinded(tmp, false);
+                if (!was_blinded && !Blind()) await pline('Your vision clears.');
+            } else {
+                // C potion.c incr_itimeout(&HBlinded, 1L) — TIMEOUT bits only
+                u.HBlinded = ((u.HBlinded | 0) & ~TIMEOUT)
+                    | ((BlindedTimeout() + 1) & TIMEOUT);
+            }
+        }
         tmp = 0;
         break;
+    }
     case AD_ELEC:
         if (!(mtmp.mcan | 0) && rn2(2)) {
             await pline('The air around you crackles with electricity.');

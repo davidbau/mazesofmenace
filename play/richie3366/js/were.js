@@ -4,7 +4,7 @@
 // Branch envelope: ParanoidWerechange getlin via paranoid_query (D-1001);
 // mon were_change / new_were; set_ulycn Drain_resistance; were_summon
 // (mhitu summonmu; tamedog when yours).
-// Named omissions: howl You_hear + wake_nearto;
+// Named omissions:
 // mon_poly monster-defender via mhitm (D-1006). possibly_unwield D-1744.
 // Callers wired: allmain Poly/ulycn (D-1002); potion peffect_water /
 // potionbreathe + pray TROUBLE_LYCANTHROPE + mon_poly youmonst (D-1004);
@@ -23,7 +23,10 @@ import { set_mon_data } from './mondata.js';
 import { possibly_unwield } from './weapon.js';
 import { mon_break_armor } from './worn.js';
 import { set_uasmon, polymon, rehumanize } from './polyself.js';
-import { monster_nearby } from './hack.js';
+import { monster_nearby, You_hear } from './hack.js';
+import { wake_nearto } from './mon.js';
+import { Soundeffect } from './sndprocs.js';
+import { se_canine_howl } from './generated/seffects_data.js';
 import { an } from './objnam.js';
 import { paranoid_query } from './getline.js';
 import { tamedog } from './dog.js';
@@ -285,12 +288,22 @@ export async function you_unwere(purify) {
     }
 }
 
+/** C ref: youprop.h Deaf — HDeaf || EDeaf || uroleplay.deaf. */
+function Deaf() {
+    const u = game.u || {};
+    return !!((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf);
+}
+
 /**
- * C ref: were.c were_change — once-per-turn lycanthrope chance.
- * Named omissions: howl You_hear + wake_nearto when transform unseen;
- * Soundeffect.
+ * C ref: were.c were_change `:9–45` — once-per-turn lycanthrope chance.
+ * Human→beast arm runs the unseen-howl block in exact C order after
+ * new_were: `!Deaf && !canseemon` → monsndx switch on the post-change
+ * data (PM_WEREWOLF "wolf" / PM_WEREJACKAL "jackal") → Soundeffect
+ * (no-op without SND_LIB) + You_hear + wake_nearto 4*4. C is fully
+ * sequential, so new_were's armor tail is awaited before the check.
+ * Named omissions: none in this function (Soundeffect is a live no-op).
  */
-export function were_change(mon) {
+export async function were_change(mon) {
     if (!mon?.data || !is_were(mon.data)) return;
 
     if (is_human(mon.data)) {
@@ -300,15 +313,31 @@ export function were_change(mon) {
                 ? (full ? 3 : 30)
                 : (full ? 10 : 50);
             if (!rn2(chance)) {
-                const p = new_were(mon);
+                await new_were(mon);
                 if (game.were_changes != null) game.were_changes++;
-                // howl You_hear / wake_nearto deferred (no RNG)
-                return p;
+                if (!Deaf() && !canseemon(mon)) {
+                    // C: monsndx(mon->data) after new_were (animal form).
+                    let howler = null;
+                    switch (mon.data?.mndx | 0) {
+                    case PM_WEREWOLF:
+                        howler = 'wolf';
+                        break;
+                    case PM_WEREJACKAL:
+                        howler = 'jackal';
+                        break;
+                    default:
+                        break;
+                    }
+                    if (howler) {
+                        Soundeffect(se_canine_howl, 50);
+                        await You_hear(`a ${howler} howling at the moon.`);
+                        await wake_nearto(mon.mx | 0, mon.my | 0, 4 * 4);
+                    }
+                }
             }
         }
     } else if (!rn2(30) || Protection_from_shape_changers()) {
-        const p = new_were(mon);
+        await new_were(mon);
         if (game.were_changes != null) game.were_changes++;
-        return p;
     }
 }

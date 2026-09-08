@@ -1216,6 +1216,16 @@ export async function rhack(key) {
         // branch, so 'v' fell through to "Unknown command 'v'.".
         await do_gamelog();
         game.context.move = 0;
+    } else if (ch === 'V') {
+        // C ref: cmd.c { 'V', "versionshort", doversion, IFBURIED |
+        // GENERALCMD | CMD_M_PREFIX } — 'versionshort' was registered in the
+        // key/handler-name tables but had no dispatch branch, so 'V' fell
+        // through to "Unknown command 'V'.".  doversion() already
+        // self-escalates to the full #version listing under CMD_M_PREFIX
+        // (iflags.menu_requested), so no extra handling is needed here.
+        const { doversion } = await import('./version.js');
+        await doversion();
+        game.context.move = 0;
     } else if (ch === '*') {
         // C ref: cmd.c:1848 { '*', "seeall", doprinuse, IFBURIED | GENERALCMD |
         // CMD_M_PREFIX } — the ')' + '[' + '=' + '"' + '(' listings combined.
@@ -1517,6 +1527,16 @@ export async function rhack(key) {
         // already-ported handler whose key was never bound.  ECMD_OK.
         await dooverview();
         game.context.move = 0;
+    } else if (key === 16) {   /* ^P */
+        // C ref: cmd.c { C('p'), "prevmsg", doprev_message } — same shape as
+        // ^O above: doprev_message() (js/cmd.js) is already ported and the
+        // #prevmsg extcmd-by-name path already wired (extcmd-handlers.js
+        // prevmsg_extcmd), but the raw key itself had no dispatch arm.
+        // cmd_nh_doprev_message() is an explicit unported stub (message
+        // history recall itself is a separate, real missing feature), so
+        // this only stops the wrong "Unknown command '^P'." message.
+        doprev_message();
+        game.context.move = 0;
     } else if (ch === ',') {
         // C ref: cmd.c { ',', "pickup", dopickup } -> hack.c dopickup().  Pick up
         // the objects under the hero.  ECMD_TIME (turn elapses, monsters move) when
@@ -1737,9 +1757,12 @@ export async function rhack(key) {
         // Unknown command.  C ref: cmd.c rhack() bad_command — no
         // reset_cmd_vars(), so a pending g/G prefix's svc.context.run stays
         // armed for the next command (context.stale_run, set at the head).
+        // C ref: cmd.c bad_command(cmd) { pline("Unknown command '%s'.",
+        // visctrl(cmd)); } — a control key must render as "^X", not raw
+        // (matches the npBad arm above, which already does this conversion).
         badCommand = true;
         game.context.move = 0;
-        await pline(`Unknown command '${ch}'.`);
+        await pline(`Unknown command '${visctrl_code(key & 0xff)}'.`);
     }
 
     // C ref: cmd.c rhack():3813-3816 — reset_cmd_vars() (which clears
@@ -2018,7 +2041,7 @@ async function cmd_safety_prevention(ucverb, cmddesc, act, counterKey) {
 }
 
 // The explicit `s` search command.  C ref: detect.c dosearch().
-async function dosearch() {
+export async function dosearch() {
     if (await cmd_safety_prevention('Searching', 'another search',
         'You already found a monster.', '_already_found_flag'))
         return false; // ECMD_OK: no game turn
@@ -2391,7 +2414,7 @@ export async function doopen_indir(x, y) {
 // nohands / pit guards are FALSE for the starter heroes.  getdir() reads the
 // direction (and shows the cmdassist window + cancels on an invalid key, which
 // is exactly what seed5002 exercises after the #search safety-block).
-async function doclose() {
+export async function doclose() {
     const u = game.u;
     // C ref: lock.c:964 — refused BEFORE the pit test and BEFORE getdir().
     if (nohands_youmonst()) {
@@ -5683,6 +5706,25 @@ export async function do_rush() {
     }
 
     svc.run = 2;
+    game.domove_attempting = (game.domove_attempting | 0) | DOMOVE_RUSH;
+    return ECMD_OK;
+}
+
+// C ref: cmd.c:1606 do_run() — the #run prefix ('G').  Not ported before: the
+// only existing `do_run` export is hack.js's 2-arg do_run(dx,dy) (the direct
+// capital-letter run commands), a different C function entirely.  Named
+// do_run_prefix here to avoid colliding with that import.
+export async function do_run_prefix() {
+    const svc = game.context || (game.context = {});
+
+    if ((game.domove_attempting & DOMOVE_RUSH)) {
+        await Norep_topl('Double run prefix, canceled.');
+        svc.run = 0;
+        game.domove_attempting = 0;
+        return ECMD_CANCEL;
+    }
+
+    svc.run = 3;
     game.domove_attempting = (game.domove_attempting | 0) | DOMOVE_RUSH;
     return ECMD_OK;
 }

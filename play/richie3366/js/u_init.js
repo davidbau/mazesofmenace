@@ -8,7 +8,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, rne } from './rng.js';
-import { mksobj, mkobj, weight, mergable, carry_obj_effects } from './mkobj.js';
+import { mksobj, mkobj, weight, mergable, carry_obj_effects, is_mines_prize, is_soko_prize } from './mkobj.js';
 import {
     WEAPON_CLASS,
     ARMOR_CLASS,
@@ -61,6 +61,8 @@ import {
     INTRINSIC,
     PROTECTION,
     W_ART,
+    ACH_AMUL, ACH_CNDL, ACH_BELL, ACH_BOOK,
+    ACH_MINE_PRIZE, ACH_SOKO_PRIZE,
 } from './const.js';
 import {
     PM_TOURIST, PM_ROGUE, PM_CLERIC, PM_WIZARD, PM_MONK, PM_KNIGHT,
@@ -76,6 +78,7 @@ import {
 } from './monsters.js';
 import { skill_init } from './weapon.js';
 import { set_artifact_intrinsic } from './artifact.js';
+import { record_achievement } from './insight.js';
 import { reset_justpicked } from './pickup.js';
 import { throwing_weapon } from './dothrow.js';
 import { ART_MJOLLNIR } from './generated/artifacts_data.js';
@@ -921,11 +924,60 @@ async function addinv_core2(obj) {
     }
 }
 
+/**
+ * C ref: invent.c addinv_core1 `:960–1004` — side effects of carrying obj,
+ * called before merge/link (addinv_core0 `:1082`).
+ * COIN → disp.botl; AMULET/CANDELABRUM/BELL/BOOK → uhave + record_achievement;
+ * oartifact → set_artifact_intrinsic W_ART; mines/soko prize → achievement +
+ * achieveo oid clear + nomerge=0. Sync like C; the two already-have
+ * impossible() arms are a named omit (async pline, cf. artifact.js:496).
+ * Named omit: questart/artitouch arm (no live artitouch/is_quest_artifact).
+ */
+function addinv_core1(obj) {
+    if (!obj) return;
+    if ((obj.oclass | 0) === COIN_CLASS) {
+        // C: disp.botl = TRUE
+        if (game.flags) game.flags.botl = true;
+        if (game.disp) game.disp.botl = true;
+    } else if ((obj.otyp | 0) === objectNames.indexOf('AMULET_OF_YENDOR')) {
+        const u = game.u || (game.u = {});
+        if (!u.uhave) u.uhave = {};
+        u.uhave.amulet = 1;
+        record_achievement(ACH_AMUL);
+    } else if ((obj.otyp | 0) === objectNames.indexOf('CANDELABRUM_OF_INVOCATION')) {
+        const u = game.u || (game.u = {});
+        if (!u.uhave) u.uhave = {};
+        u.uhave.menorah = 1;
+        record_achievement(ACH_CNDL);
+    } else if ((obj.otyp | 0) === objectNames.indexOf('BELL_OF_OPENING')) {
+        const u = game.u || (game.u = {});
+        if (!u.uhave) u.uhave = {};
+        u.uhave.bell = 1;
+        record_achievement(ACH_BELL);
+    } else if ((obj.otyp | 0) === objectNames.indexOf('SPE_BOOK_OF_THE_DEAD')) {
+        const u = game.u || (game.u = {});
+        if (!u.uhave) u.uhave = {};
+        u.uhave.book = 1;
+        record_achievement(ACH_BOOK);
+    } else if (obj.oartifact) {
+        set_artifact_intrinsic(obj, true, W_ART);
+    }
+    // C: "special achievements" — separate if/else chain after the above.
+    if (is_mines_prize(obj)) {
+        record_achievement(ACH_MINE_PRIZE);
+        if (game.context?.achieveo) game.context.achieveo.mines_prize_oid = 0;
+        obj.nomerge = 0;
+    } else if (is_soko_prize(obj)) {
+        record_achievement(ACH_SOKO_PRIZE);
+        if (game.context?.achieveo) game.context.achieveo.soko_prize_oid = 0;
+        obj.nomerge = 0;
+    }
+}
+
 // C ref: invent.c addinv() → merged() for stack absorb + compare-learn pline.
-// addinv_core1 artifact W_ART conferral (D-1539). Thrown-autoquiver fill
-// (addinv_core0, live below). Named omissions: quiver-prefer merge;
-// addinv_before; oname absorb; worn-slot merge; globby/pudding; lamplit
-// timers; questart/artitouch; addinv_core2 luck.
+// Thrown-autoquiver fill (addinv_core0, live below). Named omissions:
+// quiver-prefer merge; addinv_before; oname absorb; worn-slot merge;
+// globby/pudding; lamplit timers; questart/artitouch; addinv_core2 luck.
 export async function addinv(obj) {
     if (!game.invent) game.invent = [];
     // C invent.c addinv_core0 — obj_was_thrown captured before merge
@@ -937,8 +989,8 @@ export async function addinv(obj) {
         game.loot_reset_justpicked = false;
         reset_justpicked(game.invent);
     }
-    // C invent.c addinv_core1 `:984–991` — before merge/link
-    if (obj?.oartifact) set_artifact_intrinsic(obj, true, W_ART);
+    // C invent.c addinv_core0 `:1082` — addinv_core1(obj) before merge/link
+    addinv_core1(obj);
     for (const otmp of game.invent) {
         if (!mergable(otmp, obj)) continue;
         // C invent.c merged(): age/quan/weight (+ coin bknown wipe) BEFORE

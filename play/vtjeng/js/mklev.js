@@ -11,7 +11,6 @@ import {
     Can_dig_down,
     Can_fall_thru,
     In_hell,
-    Is_branchlev,
     Is_special,
     at_dgn_entrance,
     depth,
@@ -72,12 +71,23 @@ import {
 } from './nhlua.js';
 import {
     create_maze,
-    place_lregion,
+    check_ransacked,
+    fixup_special,
+    is_solid,
+    iswall,
+    iswall_or_stone,
+    mkportal,
+    okay,
     set_levltyp_lit,
-    setup_waterlevel,
 } from './mkmaze.js';
 import { d, rn2, rnd, rn1, rne, rnz } from './rng.js';
-import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
+import {
+    init_rect,
+    rnd_rect,
+    get_rect,
+    split_rects,
+    within_bounded_area,
+} from './rect.js';
 import {
     mkaltar,
     mkfount,
@@ -627,48 +637,7 @@ async function makelevel(specialLevelLoader = null) {
     if (!specialLevelLoader) {
         const slev = Is_special(g.u.uz, g);
         if (slev && slev.proto) {
-            if (!SPECIAL_LEVEL_LOADERS) {
-                const { BIGRM_LOADERS } = await import('./bigrm.js');
-                const { QUEST_LEVEL_LOADERS } = await import(
-                    './quest_levels.js'
-                );
-                const { SOKOBAN_LEVEL_LOADERS } = await import(
-                    './sokoban_levels.js'
-                );
-                const { CASTLE_LEVEL_LOADERS } = await import(
-                    './castle_levels.js'
-                );
-                const { MINES_LEVEL_LOADERS } = await import(
-                    './mines_levels.js'
-                );
-                const { FIRE_LEVEL_LOADERS } = await import(
-                    './fire_levels.js'
-                );
-                const { AIR_LEVEL_LOADERS } = await import(
-                    './air_levels.js'
-                );
-                const { HELL_LEVEL_LOADERS } = await import(
-                    './hell_levels.js'
-                );
-                const { VALLEY_LEVEL_LOADERS } = await import(
-                    './valley_levels.js'
-                );
-                const { MEDUSA_LEVEL_LOADERS } = await import(
-                    './medusa_levels.js'
-                );
-                SPECIAL_LEVEL_LOADERS = {
-                    ...BIGRM_LOADERS,
-                    ...QUEST_LEVEL_LOADERS,
-                    ...SOKOBAN_LEVEL_LOADERS,
-                    ...CASTLE_LEVEL_LOADERS,
-                    ...MINES_LEVEL_LOADERS,
-                    ...FIRE_LEVEL_LOADERS,
-                    ...AIR_LEVEL_LOADERS,
-                    ...HELL_LEVEL_LOADERS,
-                    ...VALLEY_LEVEL_LOADERS,
-                    ...MEDUSA_LEVEL_LOADERS,
-                };
-            }
+            await ensureSpecialLevelLoaders();
             // Determine the resolved protofile the same way makemaz() will.
             // For bigrm, slev.rndlevs is 13, so the proto is
             // "bigrm-<rnd(13)>". We cannot call rnd() here because it
@@ -724,20 +693,7 @@ async function makelevel(specialLevelLoader = null) {
         const loc_lev = find_level(locaName, g);
         const fillName = `${filecode}-fil`
             + (g.u.uz.dlevel < loc_lev.dlevel.dlevel ? 'a' : 'b');
-        if (!SPECIAL_LEVEL_LOADERS) {
-            const { BIGRM_LOADERS } = await import('./bigrm.js');
-            const { QUEST_LEVEL_LOADERS } = await import(
-                './quest_levels.js'
-            );
-            const { SOKOBAN_LEVEL_LOADERS } = await import(
-                './sokoban_levels.js'
-            );
-            SPECIAL_LEVEL_LOADERS = {
-                ...BIGRM_LOADERS,
-                ...QUEST_LEVEL_LOADERS,
-                ...SOKOBAN_LEVEL_LOADERS,
-            };
-        }
+        await ensureSpecialLevelLoaders();
         if (SPECIAL_LEVEL_LOADERS[fillName]) {
             await makemaz(fillName, null, g);
             return;
@@ -1740,6 +1696,7 @@ async function ensureSpecialLevelLoaders() {
     const { HELL_LEVEL_LOADERS } = await import('./hell_levels.js');
     const { VALLEY_LEVEL_LOADERS } = await import('./valley_levels.js');
     const { MEDUSA_LEVEL_LOADERS } = await import('./medusa_levels.js');
+    const { SANCTUM_LEVEL_LOADERS } = await import('./sanctum_levels.js');
     SPECIAL_LEVEL_LOADERS = {
         ...BIGRM_LOADERS,
         ...QUEST_LEVEL_LOADERS,
@@ -1751,6 +1708,7 @@ async function ensureSpecialLevelLoaders() {
         ...HELL_LEVEL_LOADERS,
         ...VALLEY_LEVEL_LOADERS,
         ...MEDUSA_LEVEL_LOADERS,
+        ...SANCTUM_LEVEL_LOADERS,
     };
 }
 
@@ -1798,6 +1756,7 @@ async function makemaz(proto, slev, state) {
     }
 
     if (protofile) {
+        check_ransacked(protofile, state);
         // C ref: mkmaze.c:1184-1193. load_special() runs the Lua level
         // definition and applies post-processing.
         if (await load_special(protofile, state)) {
@@ -4258,7 +4217,7 @@ export function lspo_finalize_level(args, env) {
 
     /* This must be done before premap_detect(),
      * otherwise branch stairs won't be premapped. */
-    fixup_special(state);
+    finishFixupSpecial(state);
 
     if (coder.premapped)
         premap_detect(state);
@@ -4275,147 +4234,24 @@ export function lspo_finalize_level(args, env) {
 }
 
 
-// C ref: mkmaze.c fixup_special(). Kept in this file rather than
-// js/mkmaze.js because it drives mklev.js's level-object environment.
-// Covers the water and air setup, the level-region placement with its
-// branch fallback, and the Medusa statues; the Cleric-quest and stronghold
-// graveyard flags, baalz_fixup(), stolen_booty(), and the has_town flag are
-// not ported. load_special() and lspo_finalize_level() both call it.
-function fixup_special(state) {
-    // C ref: mkmaze.c fixup_special(). Plane of Air levels replace
-    // the special-level map cells with the shared air base terrain
-    // and initialize their cloud bubbles before placing levregions.
-    setup_waterlevel(state);
-
-    // C ref: mkmaze.c fixup_special(). Each level region
-    // levregion_add() stored is placed now, after wallification and
-    // flipping; a teleport region only records its outlines for
-    // goto_level(), which places it on arrival.
-    let addedBranch = false;
-    for (const r of state.lregions) {
-        let lev = null;
-        switch (r.rtype) {
-        case LR_BRANCH:
-            addedBranch = true;
-            place_lregion(
-                r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
-                r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
-                r.rtype, lev, state,
-            );
-            break;
-
-        case LR_PORTAL:
-            if (r.rname[0] >= '0' && r.rname[0] <= '9') {
-                /* "chutes and ladders" */
-                lev = { ...state.u.uz, dlevel: parseInt(r.rname, 10) };
-            } else {
-                lev = find_level(r.rname, state).dlevel;
-            }
-            /*FALLTHRU*/
-        case LR_UPSTAIR:
-        case LR_DOWNSTAIR:
-            place_lregion(
-                r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
-                r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
-                r.rtype, lev, state,
-            );
-            break;
-
-        case LR_TELE:
-        case LR_UPTELE:
-        case LR_DOWNTELE:
-            /* save the region outlines for goto_level() */
-            if (r.rtype === LR_TELE || r.rtype === LR_UPTELE) {
-                state.updest = {
-                    lx: r.inarea.x1, ly: r.inarea.y1,
-                    hx: r.inarea.x2, hy: r.inarea.y2,
-                    nlx: r.delarea.x1, nly: r.delarea.y1,
-                    nhx: r.delarea.x2, nhy: r.delarea.y2,
-                };
-            }
-            if (r.rtype === LR_TELE || r.rtype === LR_DOWNTELE) {
-                state.dndest = {
-                    lx: r.inarea.x1, ly: r.inarea.y1,
-                    hx: r.inarea.x2, hy: r.inarea.y2,
-                    nlx: r.delarea.x1, nly: r.delarea.y1,
-                    nhx: r.delarea.x2, nhy: r.delarea.y2,
-                };
-            }
-            /* place_lregion gets called from goto_level() */
-            break;
-        }
-    }
-
-    /* place dungeon branch if not placed above */
-    if (!addedBranch && Is_branchlev(state.u.uz, state)) {
-        place_lregion(
-            0, 0, 0, 0, 0, 0, 0, 0,
-            LR_BRANCH, null, state,
-        );
-    }
-
-    // C ref: mkmaze.c fixup_special() Is_medusa_level branch
-    // (lines 649-685). After the special-level loader finishes,
-    // add rnd(4) random non-stone-resistant statues to the first
-    // room defined on the Medusa level.
-    if (Is_medusa_level(state.u.uz)) {
-        const croom = state.level.rooms[0];
-        for (let tryct = rnd(4); tryct > 0; tryct--) {
-            const x = somex(croom);
-            const y = somey(croom);
-            if (goodpos(x, y, null, 0, { state })) {
-                let tryct2 = 0;
-                let otmp = mk_tt_object(
-                    STATUE, x, y, levelObjectEnv(),
-                );
-                while (++tryct2 < 100 && otmp
-                    && (poly_when_stoned(
-                        state.mons[otmp.corpsenm], state,
-                    )
-                    || pm_resistance(
-                        state.mons[otmp.corpsenm], MR_STONE,
-                    ))) {
-                    set_corpsenm(
-                        otmp, rndmonnum(levelObjectEnv()),
-                        levelObjectEnv(),
-                    );
-                }
-            }
-        }
-        let otmp;
-        if (rn2(2)) {
-            otmp = mk_tt_object(
-                STATUE, somex(croom), somey(croom),
-                levelObjectEnv(),
-            );
-        } else {
-            // Medusa statues don't contain books
-            otmp = mkcorpstat(
-                STATUE, null, null,
-                somex(croom), somey(croom),
-                CORPSTAT_NONE, levelObjectEnv(),
-            );
-        }
-        if (otmp) {
-            let tryct = 0;
-            while (++tryct < 100
-                && (pm_resistance(
-                    state.mons[otmp.corpsenm], MR_STONE,
-                )
-                || poly_when_stoned(
-                    state.mons[otmp.corpsenm], state,
-                ))) {
-                set_corpsenm(
-                    otmp, rndmonnum(levelObjectEnv()),
-                    levelObjectEnv(),
-                );
-            }
-        }
-    }
-
-    // C: fixup_special() frees gl.lregions once every record is
-    // placed.
-    state.lregions = [];
+function finishFixupSpecial(state) {
+    fixup_special(state, {
+        findLevel: find_level,
+        isMedusaLevel: Is_medusa_level,
+        somex: (room) => somex(room),
+        somey: (room) => somey(room),
+        goodpos,
+        levelObjectEnv,
+        mkTtObject: (x, y, env) => mk_tt_object(STATUE, x, y, env),
+        mkCorpstat: (x, y, env) => mkcorpstat(
+            STATUE, null, null, x, y, CORPSTAT_NONE, env,
+        ),
+        badStatueSpecies: (mnum, currentState) =>
+            poly_when_stoned(currentState.mons[mnum], currentState)
+                || pm_resistance(currentState.mons[mnum], MR_STONE),
+        setCorpsenm: set_corpsenm,
+        rndmonnum,
+    });
 }
 
 function createSpecialLevelApi(state) {
@@ -4718,7 +4554,7 @@ function createSpecialLevelApi(state) {
                 solidify_map(state);
             }
 
-            fixup_special(state);
+            finishFixupSpecial(state);
 
             // C ref: sp_lev.c:6052-6053. Reveal the entire map for
             // premapped levels (Sokoban).
@@ -5588,7 +5424,7 @@ function walkfrom(x, y, typ, state, bounds) {
         let q = 0;
         const dirs = [0, 0, 0, 0];
         for (let a = 0; a < 4; ++a) {
-            if (maze_okay(x, y, a, state, bounds)) dirs[q++] = a;
+            if (okay(x, y, a, state, bounds)) dirs[q++] = a;
         }
         if (!q) return;
         const dir = dirs[rn2(q)];
@@ -5606,27 +5442,6 @@ function walkfrom(x, y, typ, state, bounds) {
         // (matching the C behavior where mz_move modifies x,y in place).
         walkfrom(x, y, typ, state, bounds);
     }
-}
-
-// C ref: mkmaze.c okay(). Checks whether maze carving can extend two
-// cells from (x,y) in direction a. Uses x_maze_max/y_maze_max which
-// default to (COLNO-1)&~1 and (ROWNO-1)&~1 for special levels.
-// bounds.xMax and bounds.yMax default to the full maze area.
-// create_maze() passes reduced bounds for the scaled-down grid.
-function maze_okay(x, y, a, state, bounds) {
-    // C ref: mkmaze.c mz_move(). Direction mapping must match walkfrom():
-    // 0=north(y--), 1=east(x++), 2=south(y++), 3=west(x--).
-    const dx = [0, 1, 0, -1];
-    const dy = [-1, 0, 1, 0];
-    const nx = x + 2 * dx[a];
-    const ny = y + 2 * dy[a];
-    if (nx < 3 || ny < 3) return false;
-    const xMax = bounds?.xMax ?? ((COLNO - 1) & ~1);
-    const yMax = bounds?.yMax ?? ((ROWNO - 1) & ~1);
-    if (nx > xMax) return false;
-    if (ny > yMax) return false;
-    if (state.level.at(nx, ny).typ !== STONE) return false;
-    return true;
 }
 
 // C ref: mkmaze.c move(). Opens the cell between the old and new
@@ -7902,10 +7717,7 @@ function place_branch(branchp, x = 0, y = 0) {
     const dest = on_end1 ? branchp.end2 : branchp.end1;
     // C ref: mklev.c:1727-1739
     if (branchp.type === BR_PORTAL) {
-        const trap = maketrap(x, y, MAGIC_PORTAL);
-        if (trap) {
-            trap.dst = { dnum: dest.dnum, dlevel: dest.dlevel };
-        }
+        mkportal(x, y, dest.dnum, dest.dlevel, g);
     } else {
         const make_stairs = on_end1
             ? branchp.type !== BR_NO_END1
@@ -7951,21 +7763,6 @@ function premap_detect(state) {
 // Wallification
 // ============================================================
 
-function isSolidTile(x, y) {
-    if (!isok(x, y)) return true;
-    return IS_STWALL(game.level?.at(x, y)?.typ ?? STONE);
-}
-function isWallOrStone(x, y) {
-    if (!isok(x, y)) return 1;
-    const typ = game.level?.at(x, y)?.typ ?? STONE;
-    return (typ === STONE || isWallTile(x, y)) ? 1 : 0;
-}
-function isWallTile(x, y) {
-    if (!isok(x, y)) return 0;
-    const typ = game.level?.at(x, y)?.typ ?? STONE;
-    return (IS_WALL(typ) || IS_DOOR(typ) || typ === LAVAWALL
-        || typ === WATER || typ === SDOOR || typ === IRONBARS) ? 1 : 0;
-}
 function extend_spine(locale, wall_there, dx, dy) {
     const nx = 1 + dx, ny = 1 + dy;
     if (!wall_there) return 0;
@@ -7976,47 +7773,60 @@ function extend_spine(locale, wall_there, dx, dy) {
     if (locale[0][1] && locale[2][1] && locale[0][ny] && locale[2][ny]) return 0;
     return 1;
 }
-function wall_cleanup(x1, y1, x2, y2) {
-    const map = game.level;
+function wall_cleanup(x1, y1, x2, y2, state = game) {
+    const map = state.level;
     if (!map) return;
     for (let x = x1; x <= x2; x++)
         for (let y = y1; y <= y2; y++) {
+            const protectedArea = state.bughack?.inarea;
+            if (protectedArea && within_bounded_area(
+                x, y,
+                protectedArea.x1, protectedArea.y1,
+                protectedArea.x2, protectedArea.y2,
+            )) continue;
             const loc = map.at(x, y);
             const typ = loc?.typ ?? STONE;
             if (!(IS_WALL(typ) && typ !== DBWALL)) continue;
-            if (isSolidTile(x-1,y-1) && isSolidTile(x-1,y) && isSolidTile(x-1,y+1)
-                && isSolidTile(x,y-1) && isSolidTile(x,y+1)
-                && isSolidTile(x+1,y-1) && isSolidTile(x+1,y) && isSolidTile(x+1,y+1))
+            if (is_solid(x-1,y-1,state) && is_solid(x-1,y,state)
+                && is_solid(x-1,y+1,state) && is_solid(x,y-1,state)
+                && is_solid(x,y+1,state) && is_solid(x+1,y-1,state)
+                && is_solid(x+1,y,state) && is_solid(x+1,y+1,state))
                 loc.typ = STONE;
         }
 }
-function fix_wall_spines(x1, y1, x2, y2) {
+function fix_wall_spines(x1, y1, x2, y2, state = game) {
     const spineArray = [VWALL, HWALL, HWALL, HWALL,
         VWALL, TRCORNER, TLCORNER, TDWALL,
         VWALL, BRCORNER, BLCORNER, TUWALL,
         VWALL, TLWALL, TRWALL, CROSSWALL];
-    const map = game.level;
+    const map = state.level;
     if (!map) return;
     for (let x = x1; x <= x2; x++)
         for (let y = y1; y <= y2; y++) {
             const loc = map.at(x, y);
             const typ = loc?.typ ?? STONE;
             if (!(IS_WALL(typ) && typ !== DBWALL)) continue;
+            const protectedArea = state.bughack?.inarea;
+            const locationTest = protectedArea && within_bounded_area(
+                x, y,
+                protectedArea.x1, protectedArea.y1,
+                protectedArea.x2, protectedArea.y2,
+            ) ? iswall : iswall_or_stone;
             const locale = [
-                [isWallOrStone(x-1,y-1), isWallOrStone(x-1,y), isWallOrStone(x-1,y+1)],
-                [isWallOrStone(x,y-1), 0, isWallOrStone(x,y+1)],
-                [isWallOrStone(x+1,y-1), isWallOrStone(x+1,y), isWallOrStone(x+1,y+1)],
+                [locationTest(x-1,y-1,state), locationTest(x-1,y,state), locationTest(x-1,y+1,state)],
+                [locationTest(x,y-1,state), 0, locationTest(x,y+1,state)],
+                [locationTest(x+1,y-1,state), locationTest(x+1,y,state), locationTest(x+1,y+1,state)],
             ];
-            const bits = (extend_spine(locale, isWallTile(x,y-1), 0, -1) << 3)
-                | (extend_spine(locale, isWallTile(x,y+1), 0, 1) << 2)
-                | (extend_spine(locale, isWallTile(x+1,y), 1, 0) << 1)
-                | extend_spine(locale, isWallTile(x-1,y), -1, 0);
+            const bits = (extend_spine(locale, iswall(x,y-1,state), 0, -1) << 3)
+                | (extend_spine(locale, iswall(x,y+1,state), 0, 1) << 2)
+                | (extend_spine(locale, iswall(x+1,y,state), 1, 0) << 1)
+                | extend_spine(locale, iswall(x-1,y,state), -1, 0);
             if (bits) loc.typ = spineArray[bits];
         }
 }
-function wallification(x1, y1, x2, y2) {
-    wall_cleanup(x1, y1, x2, y2);
-    fix_wall_spines(x1, y1, x2, y2);
+export function wallification(x1, y1, x2, y2, state = game) {
+    wall_cleanup(x1, y1, x2, y2, state);
+    fix_wall_spines(x1, y1, x2, y2, state);
 }
 
 // C ref: sp_lev.c map_cleanup(). Liquid squares cannot retain boulders,

@@ -46,6 +46,7 @@ import {
     isok,
     quitchars,
     u_at,
+    dirs_ord,
     xdir,
     ydir,
     zdir,
@@ -226,8 +227,8 @@ import {
     check_capacity,
     domove,
     dopickup,
-    endRunning,
-    monsterNearby,
+    end_running,
+    monster_nearby,
     preflightDomoveDestination,
     u_maybe_impaired,
     NODIAG,
@@ -464,7 +465,7 @@ export async function cmdSafetyPrevention(
             }
         }
 
-        if (monsterNearby(state)) {
+        if (monster_nearby(state)) {
             await ttyNorep(`${act}${assist}`, state);
             return true;
         }
@@ -773,15 +774,15 @@ export function redraw_cmd(c, state = game) {
     return boundHandler(commandBindings(state), c) === 'doredraw';
 }
 
-// C ref: cmd.c confdir(). The impaired arm draws rn2(kmax) and rewrites the
-// direction. Nothing the port admits can stun or confuse the hero -- the
-// closed-door seam in js/hack.js refuses both properties for the same reason
-// -- so it stops here rather than guess at a draw no recorded case can check.
+// C ref: cmd.c confdir() (4300-4310). Cardinal directions occupy the first
+// half of dirs_ord[], which preserves the distinct draw range for NODIAG
+// forms.
 export function confdir(force_impairment, state = game) {
     if (force_impairment || u_maybe_impaired(state)) {
-        throw new UnsupportedDirectionBoundaryError(
-            'an impaired hero rerolls the direction',
-        );
+        const kmax = NODIAG(state.u.umonnum) ? N_DIRS / 2 : N_DIRS;
+        const k = dirs_ord[rn2(kmax)];
+        state.u.dx = xdir[k];
+        state.u.dy = ydir[k];
     }
 }
 
@@ -2389,7 +2390,7 @@ async function runCastCommand(key, state) {
         // morehungry() -> newuhs() requires these hooks for hunger
         // status-change messages and status-line redraws.
         statusRefresh: () => bot(),
-        endRunning: (s) => endRunning(s),
+        endRunning: (s) => end_running(true, s),
     }));
 }
 

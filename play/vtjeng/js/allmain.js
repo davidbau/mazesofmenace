@@ -84,8 +84,9 @@ import { deferred_goto } from './do.js';
 import {
     domove,
     endRunning,
+    end_running,
     lookaround,
-    monsterNearby,
+    monster_nearby,
     near_capacity,
     nomul,
     overexert_hp,
@@ -142,7 +143,7 @@ import {
     rnl,
     rnz,
 } from './rng.js';
-import { dosoundsInitialLevel } from './sounds.js';
+import { dosounds } from './sounds.js';
 import {
     gethungry,
     maybe_finished_meal,
@@ -888,7 +889,7 @@ export async function finishElapsedTurn(
     // C ref: allmain.c:351 mkot_trap_warn(). Sense traps near the hero when
     // wielding the Master Key of Thievery without gloves.
     await mkot_trap_warn(state);
-    await dosoundsInitialLevel(state, {
+    await dosounds(state, {
         random: random.rn2,
         pline: turnMessage,
     });
@@ -1424,7 +1425,7 @@ export async function moveloop_core() {
             throw error;
         }
         if (finished === 0) g.go.occupation = null;
-        if (monsterNearby(g)) {
+        if (monster_nearby(g)) {
             // C ref: `if (monster_nearby()) { stop_occupation(); reset_eat(); }`
             // at allmain.c:505-508. Which arm of stop_occupation() (683-696)
             // runs depends on whether the callback above just answered 0,
@@ -1452,7 +1453,7 @@ export async function moveloop_core() {
             return;
         }
         if (g.context.mv) {
-            if (g.multi < COLNO && !--g.multi) endRunning(g);
+            if (g.multi < COLNO && !--g.multi) end_running(true, g);
             await runDomoveAtTurnBoundary(g);
         } else {
             --g.multi;

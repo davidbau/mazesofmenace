@@ -872,8 +872,7 @@ function pretty_base(obj) {
         let buf = '';
         // C: WEAPON_CLASS only — is_poisonable && opoisoned → "poisoned "
         // before VENOM/TOOL fallthrough (lenses/towel would overwrite).
-        // Named omission: wet-towel moist/wet; figurine " of <pm>";
-        // ConcUpdate.
+        // Named omission: wet-towel moist/wet; ConcUpdate (buffer mgmt).
         if (obj.oclass === WEAPON_CLASS
             && is_poisonable(obj) && obj.opoisoned) {
             buf = 'poisoned ';
@@ -883,6 +882,16 @@ function pretty_base(obj) {
         else if (nn) buf += actual;
         else if (un) buf = xcalled_xname(buf, dn, un);
         else buf += dn;
+        // C ref: objnam.c xname_flags `:709-714` — FIGURINE with a known
+        // corpsenm appends " of <pm>" (obj_pmname, gender-aware) after the
+        // base name; the STATUE twin lives in the ROCK_CLASS arm above.
+        if (n === 'FIGURINE' && obj.corpsenm != null) {
+            const omndx = obj.corpsenm | 0;
+            if (omndx !== NON_PM && ismnum(omndx)) {
+                const pm = obj_pmname_corpse(obj);
+                buf += ` of ${just_an(pm)}${pm}`;
+            }
+        }
         return buf;
     }
     // C ref: objnam.c xname_flags ARMOR_CLASS —

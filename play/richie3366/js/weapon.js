@@ -69,6 +69,7 @@ import {
 } from './generated/monsters_data.js';
 import { spec_abon, shade_glare, spec_dbon, touch_artifact } from './artifact.js';
 
+const PM_NINJA = monsterNames.indexOf('PM_NINJA');
 const PM_PONY = monsterNames.indexOf('PM_PONY');
 const PM_SHADE = monsterNames.indexOf('PM_SHADE');
 const PM_BALROG = monsterNames.indexOf('PM_BALROG');
@@ -391,6 +392,9 @@ export function multishot_class_bonus(pm, ammo, launcher) {
     case PM_ROGUE:
         if (skill === P_DAGGER) multishot++;
         break;
+    case PM_NINJA:
+        if (skill === -P_SHURIKEN || skill === -P_DART) multishot++;
+        /* FALLTHROUGH — C dothrow.c: NINJA falls into SAMURAI (ya+yumi) */
     case PM_SAMURAI:
         if (ammo.otyp != null
             && objectNames[ammo.otyp] === 'YA'

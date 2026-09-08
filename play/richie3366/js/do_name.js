@@ -713,15 +713,11 @@ export function distant_monnam_none(mtmp) {
     if (!mtmp) return 'it';
     const hid = astral_high_cleric_distant_nam(mtmp, ARTICLE_NONE);
     if (hid != null) return hid;
-    // C x_monnam: isshk && !hallu && !mappear → shkname
-    if (mtmp.isshk) {
-        const nam = shkname(mtmp);
-        if (nam) return nam;
-    }
-    const ghost = named_ghost_monnam(mtmp);
-    if (ghost) return ghost;
-    if (has_mgivenname(mtmp)) return MGIVENNAME(mtmp);
-    return `${saddle_adj(mtmp)}${mon_plain_name(mtmp)}`;
+    // C distant_monnam :1183-1186: else x_monnam(mon, article, NULL, 0, TRUE).
+    // The old subset returned the bare given name ("Slasher"); C called=TRUE
+    // yields "little dog called Slasher" via the x_monnam named arm, which
+    // also owns the isshk/ghost/invis/hallu/mappear/priest arms (D-2108).
+    return x_monnam(mtmp, ARTICLE_NONE, null, 0, true);
 }
 
 /**

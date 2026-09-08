@@ -634,15 +634,15 @@ export function enexto_core(cc, xx, yy, mdat, entflags) {
         if (goodpos(cc.x, cc.y, fakemon, entflags)) return true;
     }
 
-    const allStart = candy.length;
+    /* C teleport.c:256-268 — the second collect_coords overwrites the same
+     * candy buffer (whole map, reshuffled); entries below nearcandyct are
+     * the already-rejected near spots in a different random order. Truncate
+     * first so indices, shuffle slice and draws match C (D-2096). */
+    candy.length = 0;
     const allcandyct = collect_coords(candy, xx, yy, 0, CC_NO_FLAGS, null);
-    // nearcandyct spots already rejected (different order, same total)
     for (let i = nearcandyct; i < allcandyct; ++i) {
-        // allcandyct is count from second collect which appended; indices from allStart
-        const spot = candy[allStart + (i - nearcandyct)];
-        if (!spot) continue;
-        cc.x = spot.x;
-        cc.y = spot.y;
+        cc.x = candy[i].x;
+        cc.y = candy[i].y;
         if (goodpos(cc.x, cc.y, fakemon, entflags)) return true;
     }
 

@@ -12,7 +12,7 @@ import {
     see_nearby_objects,
     clear_nhwindow_message,
     mon_visible, sensemon, glyph_is_invisible_id, unmap_object, map_object,
-    look_shown_at, Norep, tty_doprev_message, putmsghistory,
+    look_shown_at, glyph_to_obj_at, Norep, tty_doprev_message, putmsghistory,
     unmap_invisible, custompline,
 } from './display.js';
 import { COLNO, ROWNO, STONE, DOOR, CORR, ROOM, IRONBARS, TREE, SDOOR,
@@ -1215,16 +1215,17 @@ export async function domove_fight_empty(x, y) {
     const loc = (!offEdge && game.level?.at(x, y)) || null;
     let boulder = null;
     if (!offEdge && loc) {
-        const mem = loc.remembered_glyph;
-        // C: glyph_is_statue(glyph) → sobj_at(STATUE); also live BOULDER
-        const looksStatue = !!(mem && mem.ch === '`');
-        if (looksStatue) {
-            const top = objects_at(x, y);
-            if (top && (top.otyp | 0) === STATUE_OTYP) boulder = top;
+        // C hack.c:2258-2267: boulder = sobj_at(BOULDER, x, y); when the
+        // displayed glyph is a statue (glyph_is_statue(glyph_at(x, y))),
+        // boulder = sobj_at(STATUE, x, y) — full-pile scan, overwrite.
+        // glyph_to_obj_at is the gbuf equivalent (display.h:904).
+        for (let p = objects_at(x, y); p; p = p.nexthere) {
+            if ((p.otyp | 0) === BOULDER_OTYP) { boulder = p; break; }
         }
-        if (!boulder) {
+        if (glyph_to_obj_at(x, y) === STATUE_OTYP) {
+            boulder = null;
             for (let p = objects_at(x, y); p; p = p.nexthere) {
-                if ((p.otyp | 0) === BOULDER_OTYP) { boulder = p; break; }
+                if ((p.otyp | 0) === STATUE_OTYP) { boulder = p; break; }
             }
         }
         // C: unmap_object then map_object(boulder,TRUE) then newsym
@@ -1240,7 +1241,8 @@ export async function domove_fight_empty(x, y) {
     if (offEdge) {
         target = 'an unknown obstacle';
     } else if (boulder) {
-        target = 'a boulder'; // ansimpleoname deferred
+        // C ansimpleoname(boulder): "a boulder", or "a statue" (full naming deferred)
+        target = (boulder.otyp | 0) === STATUE_OTYP ? 'a statue' : 'a boulder';
     } else if (solid) {
         if (loc && (loc.seenv || IS_STWALL(loc.typ))) {
             target = IS_STWALL(loc.typ) || loc.typ === STONE

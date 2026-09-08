@@ -6,6 +6,7 @@ import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
 import { couldsee, cansee } from './vision.js';
 import {
+    ANTIMAGIC,
     M_ATTK_MISS, M_ATTK_HIT, MFAST,
     MCF_INDIRECT, MCF_SIGHT, MCF_HOSTILE,
     HEAD, EYE, TIMEOUT, DIED, KILLED_BY, A_DEX,
@@ -71,9 +72,20 @@ function Half_physical_damage() {
     const u = game.u || {};
     return !!(u.HHalf_physical_damage || u.EHalf_physical_damage);
 }
+/**
+ * C youprop.h:55-57 — HAntimagic ≡ uprops[ANTIMAGIC].intrinsic,
+ * EAntimagic ≡ uprops[ANTIMAGIC].extrinsic, Antimagic ≡ H || E.
+ * D-1089 pattern (invent.js hero_Antimagic): worn cloak-of-MR / gray
+ * dragon scales confer ANTIMAGIC to uprops extrinsic without mirroring
+ * the EAntimagic flat, so the flats alone misread cloak MR
+ * (scen-tour-Wizard-92103 step 100: C "momentarily weakened", JS
+ * "suddenly feel weaker" + rnd(25)). Keep the flats for eat/poly paths.
+ */
 function Antimagic() {
     const u = game.u || {};
-    return !!(u.Antimagic || u.HAntimagic || u.EAntimagic);
+    const e = u.uprops?.[ANTIMAGIC];
+    return !!((u.Antimagic || u.HAntimagic || u.EAntimagic)
+        || (e?.intrinsic | 0) || (e?.extrinsic | 0));
 }
 function Hallucination() {
     const u = game.u || {};
@@ -205,7 +217,9 @@ function spell_would_be_useless(mtmp, spellnum) {
     const u = game.u || {};
     switch (spellnum) {
     case MCAST_DEATH_TOUCH: {
-        const Antimagic = !!(u.Antimagic || u.HAntimagic || u.EAntimagic);
+        const e = u.uprops?.[ANTIMAGIC];
+        const Antimagic = !!((u.Antimagic || u.HAntimagic || u.EAntimagic)
+            || (e?.intrinsic | 0) || (e?.extrinsic | 0));
         const Hallucination = !!(u.Hallucination
             || ((u.HHallucination | 0) && !(u.Halluc_resistance | 0)));
         if ((Antimagic || Hallucination) && !rn2(2)) return true;

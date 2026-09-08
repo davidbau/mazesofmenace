@@ -334,6 +334,23 @@ const DEF_OC_SYM = {
     [VENOM_CLASS]: '.',
 };
 
+// C ref: drawing.c def_r_oc_syms + symbols.c init_rogue_symbols `:201`
+// (gr.rogue_syms[O] = def_r_oc_syms) swapped into showsyms by
+// assign_graphics ROGUESET (do.c goto_level; js do.js:1604). Rogue level
+// renders armor ']' (not '['), amulet ',' (not '"'), food ':' (not '%');
+// gold '*' rides _goldsym (assign_graphics) and VENOM/others are unchanged.
+const DEF_R_OC_SYM = {
+    [ARMOR_CLASS]: ']',
+    [AMULET_CLASS]: ',',
+    [FOOD_CLASS]: ':',
+};
+function oc_display_sym(oclass) {
+    if ((game.currentgraphics | 0) === ROGUESET
+        && DEF_R_OC_SYM[oclass] != null)
+        return DEF_R_OC_SYM[oclass];
+    return DEF_OC_SYM[oclass] || ']';
+}
+
 // C ref: defsym.h MONSYM — letter from mlet; color from mons[].mcolor (not mlet).
 // pet_color ≡ mon_color (display.c); hilite_pet sets tty attr via mon_map_attr.
 const MLET_CH = {
@@ -1840,7 +1857,7 @@ function display_monster(x, y, mon, sightflags, worm_tail) {
 function objnum_to_display_glyph(onum) {
     const def = game.objects?.[onum | 0];
     const oclass = def?.oc_class ?? ILLOBJ_CLASS;
-    let ch = DEF_OC_SYM[oclass] || ']';
+    let ch = oc_display_sym(oclass);
     if (oclass === COIN_CLASS) ch = game._goldsym || ch;
     const color = def?.oc_color ?? NO_COLOR;
     return { ch, color, dec: false, glyph: objnum_to_glyph(onum) };
@@ -2111,7 +2128,7 @@ export function map_object(obj, show) {
                 const def = game.objects?.[otyp];
                 const oclass = def?.oc_class ?? ILLOBJ_CLASS;
                 mem = {
-                    ch: DEF_OC_SYM[oclass] || ']',
+                    ch: oc_display_sym(oclass),
                     color: def?.oc_color ?? NO_COLOR,
                     decgfx: false,
                     objpile: pile,
@@ -2187,7 +2204,7 @@ export function obj_glyph(obj) {
         }
         const def = game.objects?.[otyp];
         const oclass = def?.oc_class ?? ILLOBJ_CLASS;
-        const ch = DEF_OC_SYM[oclass] || ']';
+        const ch = oc_display_sym(oclass);
         return {
             ch, color: def?.oc_color ?? NO_COLOR, dec: false,
             glyph: otyp + GLYPH_OBJ_OFF,
@@ -2219,7 +2236,7 @@ export function obj_glyph(obj) {
             return { ch, color, dec: false, glyph: (obj.corpsenm | 0) + off };
         }
     }
-    const ch = DEF_OC_SYM[oclass] || ']';
+    const ch = oc_display_sym(oclass);
     // C: body glyphs use mon_color(corpsenm), not objects[CORPSE].oc_color
     if (obj.otyp === CORPSE_OTYP && obj.corpsenm != null && obj.corpsenm >= 0) {
         const color = mcolors[obj.corpsenm] ?? def?.oc_color ?? NO_COLOR;

@@ -31,7 +31,7 @@ import {
 } from './mkobj.js';
 import {
     in_rooms, in_town, stop_occupation, is_pool, is_lava, is_moat,
-    confdir, losehp, maybe_half_phys, nomul, switch_terrain,
+    confdir, losehp, maybe_half_phys, nomul, switch_terrain, On_stairs,
 } from './hack.js';
 import { currency } from './invent.js';
 import { objectNames } from './generated/objects_data.js';
@@ -52,7 +52,7 @@ import { stairway_at } from './mklev.js';
 import {
     t_at, maketrap, seetrap, feeltrap, set_utrap, reset_utrap, deltrap,
     delfloortrap, trapname, mintrap, b_trapped, conjoined_pits,
-    activate_statue_trap,
+    activate_statue_trap, ceiling,
 } from './trap.js';
 import { set_occupation, can_reach_floor, del_engr_at, u_wipe_engr } from './engrave.js';
 import { wield_tool, welded } from './wield.js';
@@ -95,7 +95,8 @@ import {
     DIGTYP_DOOR, DIGTYP_TREE,
     ECMD_OK, ECMD_TIME, ECMD_CANCEL,
     P_PICK_AXE, P_AXE, IRONBARS, LAVAWALL, IS_WATERWALL,
-    WEB, LANDMINE, BEAR_TRAP, TRAPDOOR, KILLED_BY, NO_PART,
+    WEB, LANDMINE, BEAR_TRAP, TRAPDOOR, KILLED_BY, KILLED_BY_AN, NO_PART,
+    HEAD,
     TT_BURIEDBALL, TT_INFLOOR, DRAWBRIDGE_DOWN, MIGR_RANDOM,
     TAINT_AGE, MM_NOMSG, IN_SIGHT, COULD_SEE, RLOC_NOMSG,
     xytodir, DIR_180, DIR_ERR,
@@ -1056,8 +1057,13 @@ export async function mdig_tunnel(mtmp) {
  * Branch envelope: horizontal digdepth=rn1(18,8) + door/SDOOR + maze_dig
  * wall/tree/stone + ordinary IS_OBSTRUCTED dig; DISP_BEAM trail.
  * watch_dig + shop add_damage wired (D-0941); pay_for_damage (D-0942).
- * Named omissions: swallowed pierce; u.dz falling-rock / dighole;
- * pitdig conjoined / adj_pit_checks / pit_flow.
+ * u.dz arm (D-2115): zap up, or down while On_stairs, bounces off the
+ * stairs/ladder and drops a ceiling rock (rnd 2/6 hard_helmet,
+ * KILLED_BY_AN falling rock, mksobj ROCK + stackobj + newsym);
+ * zap down elsewhere is watch_dig + dighole. Air/waterlevel and
+ * u.uinwater (C `Underwater` = u.uinwater, youprop.h:279) skip both.
+ * Named omissions: swallowed pierce; pitdig conjoined /
+ * adj_pit_checks / pit_flow.
  */
 export async function zap_dig() {
     const u = game.u;
@@ -1069,7 +1075,43 @@ export async function zap_dig() {
     }
 
     if (u.dz) {
-        // ceiling rock / dighole deferred
+        /* C dig.c:1583–1612 — up or down. Fatal losehp is noreturn
+         * in C (done(DIED)), so finish + return like the zap.c:3311
+         * striking twin in js/zap.js (same killer, same dice). */
+        if (!Is_airlevel(u.uz) && !Is_waterlevel(u.uz)
+            && !(u.uinwater | 0)) {
+            const ux = u.ux | 0;
+            const uy = u.uy | 0;
+            if ((u.dz | 0) < 0 || On_stairs(ux, uy)) {
+                if (On_stairs(ux, uy)) {
+                    const stway = stairway_at(ux, uy);
+                    await pline(
+                        `The beam bounces off the ${stway && stway.isladder ? 'ladder' : 'stairs'} and hits the ${ceiling(ux, uy)}.`,
+                    );
+                }
+                await pline(`You loosen a rock from the ${ceiling(ux, uy)}.`);
+                const { body_part } = await import('./polyself.js');
+                await pline(`It falls on your ${body_part(HEAD)}!`);
+                const { hard_helmet } = await import('./do_wear.js');
+                const dmg = rnd(hard_helmet(u.uarmh) ? 2 : 6);
+                losehp(maybe_half_phys(dmg), 'falling rock', KILLED_BY_AN);
+                if (game._losehp_needs_done
+                    || game.program_state?.gameover) {
+                    const { finish_losehp_done } = await import('./end.js');
+                    await finish_losehp_done();
+                    return;
+                }
+                const otmp = mksobj_at(ROCK, ux, uy, false, false);
+                if (otmp) {
+                    xname(otmp);
+                    stackobj(otmp);
+                }
+                newsym(ux, uy);
+            } else {
+                await watch_dig(null, ux, uy, true);
+                await dighole(false, true, null);
+            }
+        }
         return;
     }
 

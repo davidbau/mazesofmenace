@@ -12,6 +12,7 @@ import {
     WEAPON_CLASS,
     ARMOR_CLASS,
     TOOL_CLASS,
+    objectNames,
 } from './generated/objects_data.js';
 import { ART_GRIMTOOTH } from './generated/artifacts_data.js';
 
@@ -174,6 +175,22 @@ export function is_multigen(otmp) {
     if (!otmp || otmp.oclass !== WEAPON_CLASS) return false;
     const sk = game.objects?.[otmp.otyp]?.oc_skill | 0;
     return sk >= -P_SHURIKEN && sk <= -P_BOW;
+}
+
+/**
+ * C obj.h is_graystone — luckstone/loadstone/flint/touchstone.
+ * Canonical home (D-2109 weapon_descr port); apply/iactions keep
+ * file-local clones (named debt, same predicate).
+ */
+const OTYP_LUCKSTONE = objectNames.indexOf('LUCKSTONE');
+const OTYP_LOADSTONE = objectNames.indexOf('LOADSTONE');
+const OTYP_FLINT = objectNames.indexOf('FLINT');
+const OTYP_TOUCHSTONE = objectNames.indexOf('TOUCHSTONE');
+export function is_graystone(obj) {
+    if (!obj) return false;
+    const o = obj.otyp | 0;
+    return o === OTYP_LUCKSTONE || o === OTYP_LOADSTONE
+        || o === OTYP_FLINT || o === OTYP_TOUCHSTONE;
 }
 
 /**

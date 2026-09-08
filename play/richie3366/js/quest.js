@@ -2,7 +2,7 @@
 // C ref: quest.c onquest / on_start / on_locate / on_goal /
 //        quest_talk / leader_speaks / chat_with_leader / is_pure / expulsion.
 // Named omissions: locate_next beyond Bar/Arc/Pri/Wiz; chat_with_nemesis/guardian;
-// prisoner_speaks; chat_with_leader got_thanks/questart/banished arms;
+// nemesis_speaks (quest_talk MS_NEMESIS arm); chat_with_leader got_thanks/questart/banished arms;
 // com_pager; livelog; exercise side-effects beyond call; full convert_arg
 // catalogue for assignquest; find_quest_artifact OBJ_INVENT/MIGRATING.
 // nexttime/othertime: Arc+Bar+Pri; goal_first: Arc+Bar+Pri+Kni+Sam,
@@ -19,10 +19,14 @@ import {
 } from './const.js';
 import { qt_pager, com_pager } from './questpgr.js';
 import { create_gas_cloud } from './region.js';
-import { pline, verbalize } from './display.js';
+import { pline, verbalize, canseemon } from './display.js';
+import { Monnam } from './do_name.js';
+import { SetVoice } from './sndprocs.js';
+import { angry_guards } from './mon.js';
+import { monsterNames } from './monsters.js';
 import { yn_function } from './getline.js';
 import { nomul } from './hack.js';
-import { exercise, A_WIS } from './attrib.js';
+import { exercise, adjalign, A_WIS } from './attrib.js';
 import { fully_identify_obj, update_inventory } from './invent.js';
 import { the, xname } from './objnam.js';
 import { objectNames } from './objects.js';
@@ -30,6 +34,10 @@ import { objectNames } from './objects.js';
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
 const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
+/** C ref: mondata.h mons[PM_PRISONER] — JS mtmp.data is a value, so compare mndx (sounds.js pattern). */
+const PM_PRISONER = monsterNames.indexOf('PM_PRISONER');
+/** C ref: monflag.h enum ms_sounds — MS_DJINNI (local const; sounds.js keeps the table local too). */
+const MS_DJINNI = 29;
 
 /** C ref: dungeon.c on_level */
 function on_level(a, b) {
@@ -411,15 +419,47 @@ export async function quest_chat(mtmp) {
 }
 
 /**
- * C ref: quest.c quest_talk — leader by m_id; nemesis/djinn deferred.
+ * C ref: quest.c prisoner_speaks `:451–470` — freed prisoner (data is
+ * PM_PRISONER, still STRAT_WAITMASK): announce when seen, speak, clear
+ * the waitmask, befriend, align +3, anger the guards. SetVoice is a
+ * !SND_LIB no-op (sndprocs.h); the call is kept for C order.
+ */
+async function prisoner_speaks(mtmp) {
+    if ((mtmp?.data?.mndx | 0) === PM_PRISONER
+        && ((mtmp.mstrategy | 0) & STRAT_WAITMASK)) {
+        /* Awaken the prisoner */
+        if (canseemon(mtmp)) await pline(`${Monnam(mtmp)} speaks:`);
+        SetVoice(mtmp, 0, 80, 0);
+        await verbalize("I'm finally free!");
+        mtmp.mstrategy &= ~STRAT_WAITMASK;
+        mtmp.mpeaceful = 1;
+
+        /* Your god is happy... */
+        adjalign(3);
+
+        /* ...But the guards are not */
+        await angry_guards(false);
+    }
+}
+
+/**
+ * C ref: quest.c quest_talk `:495–511` — leader by m_id; nemesis/djinn
+ * switch. Named omission: MS_NEMESIS → nemesis_speaks (no live export).
  */
 export async function quest_talk(mtmp) {
     if (!mtmp) return;
     const qs = game.quest_status || (game.quest_status = {});
     if ((mtmp.m_id | 0) === (qs.leader_m_id | 0) && qs.leader_m_id) {
         await leader_speaks(mtmp);
+        return;
     }
-    // MS_NEMESIS / MS_DJINNI deferred
+    switch (mtmp.data?.msound | 0) {
+    case MS_DJINNI:
+        await prisoner_speaks(mtmp);
+        break;
+    default:
+        break;
+    }
 }
 
 /**

@@ -2617,7 +2617,10 @@ async function create_particular_creation(d) {
         }
         const mtmp = makemon(whichpm, ux, uy, mmflags);
         if (!mtmp) break;
-        await makemon_appear_msg(mtmp, ux, uy, mmflags);
+        /* C: the appear Norep is inside makemon, using post-enexto x,y
+         * (makemon.c:1491-1499); requested ux,uy would force "next to you"
+         * for every genesis placement (D-2096). */
+        await makemon_appear_msg(mtmp, mtmp.mx | 0, mtmp.my | 0, mmflags);
         madeany = true;
         // C: read.c:3350–3354 — a doppelganger created instead of what was
         // asked for starts out looking like what was asked for.

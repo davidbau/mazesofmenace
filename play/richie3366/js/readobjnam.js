@@ -851,9 +851,10 @@ export function readobjnam(bp, no_wish, missOut) {
 
     // C ref: objnam.c readobjnam_postparse1 `:4371–4397` — corpse type via
     // "of" (figurine of an orc, tin of orc meat). The glob intercept above
-    // this in C stays a named omission (map). "tin of" resolves straight to
-    // typfnd (every block below is !d.typ-guarded or a no-op for this bp,
-    // and the no-"of" scan below is a proven no-op when it finds no match);
+    // this in C stays a named omission (map). "tin of" sets typ=TIN (C
+    // `return 2`, goto typfnd); every block below is !d.typ-guarded except
+    // the no-"of" scan, which is a proven no-op for "tin of …" bp
+    // (prefix-anchored match, no monster name prefixes such a string);
     // " of <monster>" truncates bp (C `*d->p = 0`) so srch sees "figurine".
     if (!strstri(d.bp, 'wand ') && !strstri(d.bp, 'spellbook ')
         && !strstri(d.bp, 'gauntlets ') && !strstri(d.bp, 'gloves ')
@@ -955,7 +956,10 @@ export function readobjnam(bp, no_wish, missOut) {
     }
 
     // C ref: objnam.c readobjnam_postparse1 — gold/money → mksobj(GOLD_PIECE, FALSE)
-    // and return otmp (skips namedesc / typfnd). Case 3 in C.
+    // and return otmp (skips namedesc / typfnd). Case 3 in C. The tin arm
+    // above does `return 2` (goto typfnd) so C never reaches this block
+    // with typ set — gate on !d.typ (else "tin of gold piece" suffix-matches
+    // "gold piece" and wishes gold instead of a tin).
     {
         const bp = d.bp || '';
         const end = bp.length;
@@ -963,7 +967,7 @@ export function readobjnam(bp, no_wish, missOut) {
             || (end >= 7 && bp.slice(end - 7).toLowerCase() === 'zorkmid')
             || /^gold$/i.test(bp) || /^money$/i.test(bp) || /^coin$/i.test(bp)
             || bp === GOLD_SYM;
-        if (isGold && GOLD_PIECE >= 0) {
+        if (!d.typ && isGold && GOLD_PIECE >= 0) {
             let cnt = d.cnt | 0;
             if (cnt > 5000 && !wizardMode()) cnt = 5000;
             else if (cnt < 1) cnt = 1;

@@ -94,7 +94,7 @@ import {
 import { an, just_an, safe_qbuf, simpleonames, vtense, xnameFresh } from './objnam.js';
 import { get_rnd_text } from './random_text.js';
 import { HLIQUIDS } from './random_text_data.js';
-import { rn2, rn2_on_display_rng } from './rng.js';
+import { rn1, rn2, rn2_on_display_rng } from './rng.js';
 import { getlin } from './windows.js';
 // display.h canspotmon() (129). js/startup_a11y.js owns it and imports
 // capitalizedMonsterName() from this file, so the two modules form a cycle.
@@ -248,6 +248,37 @@ export function christen_monst(monster, name, env = {}) {
     );
     if (monster.mleashed) updateInventory(env);
     return monster;
+}
+
+// C ref: do_name.c rndorcname() (1537-1554).  Orc names alternate vowel and
+// consonant chunks, starting on either side, and very rarely hyphenate a
+// chunk after the first.  Keeping this here lets mkmaze.c's stolen_booty()
+// consume the same draws as the source without embedding naming policy in the
+// maze generator.
+export function rndorcname(random = { rn1, rn2 }) {
+    const vowels = ['a', 'ai', 'og', 'u'];
+    const sounds = ['gor', 'gris', 'un', 'bane', 'ruk', 'oth', 'ul', 'z',
+        'thos', 'akh', 'hai'];
+    const end = random.rn1(2, 3);
+    let vowelNext = random.rn2(2);
+    let result = '';
+    for (let i = 0; i < end; ++i) {
+        vowelNext = 1 - vowelNext;
+        if (i > 0 && !random.rn2(30)) result += '-';
+        const choices = vowelNext ? vowels : sounds;
+        result += choices[random.rn2(choices.length)];
+    }
+    return result;
+}
+
+// C ref: do_name.c christen_orc() (1556-1585).  The generated personal name
+// is capitalized and optionally followed by the invading gang name.
+export function christen_orc(monster, gang, other, env = {}) {
+    const orcname = rndorcname(env.random ?? { rn1, rn2 });
+    if (!gang && !other) return monster;
+    const suffix = gang ? ` of ${upstart(gang)}` : (other ?? '');
+    const name = `${upstart(orcname)}${suffix}`;
+    return name.length < 256 ? christen_monst(monster, name, env) : monster;
 }
 
 // An object-naming prompt this port cannot open yet.
@@ -1153,6 +1184,28 @@ export function l_monnam(monster, state = game, env = {}) {
     const hasGivenName = !!(monster.mextra?.mgivenname);
     return x_monnam(monster, ARTICLE_NONE, null,
         hasGivenName ? SUPPRESS_SADDLE : 0, true, state, env);
+}
+
+// C ref: do_name.c mon_nam() (1042-1046). Ordinary definite monster name.
+export function mon_nam(monster, state = game, env = {}) {
+    const hasGivenName = !!(monster.mextra?.mgivenname
+        || monster.mgivenname);
+    return x_monnam(monster, ARTICLE_THE, null,
+        hasGivenName ? SUPPRESS_SADDLE : 0, false, state, env);
+}
+
+// C ref: do_name.c Monnam() (1151-1156), mon_nam() with its first letter
+// raised by highc().
+export function Monnam(monster, state = game, env = {}) {
+    return upstart(mon_nam(monster, state, env));
+}
+
+// C ref: do_name.c m_monnam() (1110-1113). EXACT_NAME is the three
+// suppression bits below, so this reports the monster's own name.
+export function m_monnam(monster, state = game, env = {}) {
+    return x_monnam(monster, ARTICLE_NONE, null,
+        SUPPRESS_INVISIBLE | SUPPRESS_HALLUCINATION | SUPPRESS_IT,
+        false, state, env);
 }
 
 // C ref: do_name.c Amonnam() (1158-1165), a_monnam() with its first letter

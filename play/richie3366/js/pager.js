@@ -514,6 +514,10 @@ function howmonseen_look_buf(mtmp) {
  *   left of offx through dismiss. Ordinary corner menus clear (D-0929).
  */
 export async function show_nhw_menu_text(lines, opts = {}) {
+    // C ref: wintty.c tty_display_nhwindow(NHW_MENU) — toplin NEED_MORE
+    // flushes WIN_MESSAGE blocking first (the look putmixed + --More--
+    // wait precedes the checkfile menu paint).
+    await flush_topl_more();
     const disp = game.nhDisplay;
     if (!disp) {
         await text_page_wait();
@@ -620,8 +624,11 @@ async function display_file(fname, _warn) {
 
 /**
  * Parse data.base: keys (non-# non-tab lines) → tab-indented body lines.
+ * Returns the entry body plus its key-block line index so checkfile can
+ * skip a pass-0 hit on the same entry C already showed for pass 1
+ * (C compares dlb offsets; same body at the same index is the same entry).
  */
-function lookup_data_base(query) {
+function lookup_data_base_entry(query) {
     const raw = readDat('data');
     if (!raw) return null;
     const q = String(query || '').toLowerCase();
@@ -635,6 +642,7 @@ function lookup_data_base(query) {
             i++;
             continue;
         }
+        const keyIndex = i;
         // Collect key block until body. Keys keep file case: C matches
         // them with case-sensitive pmatch (strutil.c:144-148) against
         // lcase(dbase_str) (pager.c:866), so q is lowered but keys are
@@ -683,9 +691,17 @@ function lookup_data_base(query) {
                 if (pmatch(key.slice(1), q)) { matched = false; break; }
             }
         }
-        if (matched) return body;
+        if (matched) return { body, index: keyIndex };
     }
     return null;
+}
+
+/**
+ * Parse data.base: keys → body lines (body only; see above for the match).
+ */
+function lookup_data_base(query) {
+    const hit = lookup_data_base_entry(query);
+    return hit ? hit.body : null;
 }
 
 function simplify_for_db(inp) {
@@ -705,29 +721,81 @@ function simplify_for_db(inp) {
  * C ref: pager.c checkfile — lookup + optional yn + display entry.
  * Ask path uses y_n → tty_yn_function, which more()'s when toplin is
  * NEED_MORE (look putmixed) before painting the yn prompt (D-0334).
+ * Two passes (`:996–1035`): pass 1 matches the " named "/" called "
+ * given name first (the "wizard" entry for "orcish barbarian called
+ * wizard"), pass 0 matches the base description; pass 0 skips an entry
+ * C already showed for pass 1 (same dlb offset).
+ * Named omissions in this commit: pm-derived dbase (`:862–864`, needs a
+ * permonst param this caller does not pass), makesingular/fruit alt
+ * (`:990–996`), supplemental_name (`:956–958`).
  */
+function split_db_query(inp) {
+    // C `:862–976` — lcase, strip prefixes, then split at " named " (alt
+    // wins) unless " called " precedes it, else at " called ". The split
+    // runs on the full lowered input BEFORE simplify_for_db (which also
+    // strips " named "/" called " tails); the base piece is simplified
+    // after, matching C since C's prefix strips only anchor at the start
+    // the piece shares with the full string. C strstri is
+    // case-insensitive over already-lcased text.
+    const lowered = String(inp || '').toLowerCase();
+    let rawDbase = lowered;
+    let alt = null;
+    const iNamed = lowered.indexOf(' named ');
+    const iCalled = lowered.indexOf(' called ');
+    // C `:951–958` — " named " wins the alt even when " called " precedes
+    // it (truncate at " called ", alt past " named ").
+    if (iNamed >= 0) {
+        alt = lowered.slice(iNamed + 7);
+        rawDbase = lowered.slice(
+            0, (iCalled >= 0 && iCalled < iNamed) ? iCalled : iNamed);
+    } else if (iCalled >= 0) {
+        alt = lowered.slice(iCalled + 8);
+        rawDbase = lowered.slice(0, iCalled);
+    }
+    const dbase = simplify_for_db(rawDbase);
+    // C `:967–976` — strip article + " (" suffix from the given name.
+    if (alt) {
+        alt = alt.replace(/^(a|an|the) /, '');
+        const pi = alt.indexOf(' (');
+        if (pi > 0) alt = alt.slice(0, pi);
+        alt = alt.trim();
+        if (!alt || alt === dbase) alt = null;
+    }
+    return { dbase, alt };
+}
 async function checkfile(inp, flags = 0) {
     const userTyped = !!(flags & CHK_USR);
     const dontAsk = !!(flags & CHK_DONT_ASK);
     const iaChecking = !!(flags & CHK_IA_CHECK);
-    const dbase = simplify_for_db(inp);
+    const { dbase, alt } = split_db_query(inp);
     if (!dbase) return false;
-    const body = lookup_data_base(dbase);
-    if (!body || !body.length) {
+    // C `:996` — pass 1 (alt) first unless it equals the base, then pass 0.
+    const queries = (alt && alt !== dbase) ? [alt, dbase] : [dbase];
+    let shownIndex = -1;
+    for (let pass = 0; pass < queries.length; pass++) {
+        const q = queries[pass];
+        const hit = lookup_data_base_entry(q);
+        if (!hit || !hit.body.length) continue;
+        // C: chkfilIaCheck — found entry, skip yn/display
+        if (iaChecking) return true;
+        // C `:1052–1053` — pass 0 on the pass-1 entry is already shown.
+        if (hit.index === shownIndex) break;
+        // C `:1056–1072` — user-typed and no-ask display without asking.
+        let yes = dontAsk || userTyped;
+        if (!yes) {
+            // C: y_n("More info about \"…\"?") — ynchars + def 'n'
+            const ch = await yn_function(`More info about "${q}"?`, 'yn', 'n');
+            yes = ch === 'y' || ch === 'Y';
+        }
+        if (!yes) return true;
+        shownIndex = hit.index;
+        // C: NHW_MENU putstr + process_text_window — not NHW_TEXT fullscreen.
+        await show_nhw_menu_text(hit.body.map(l => l || ''));
+    }
+    if (shownIndex < 0) {
         if (userTyped && !iaChecking) await pline("I don't recognize that.");
         return false;
     }
-    // C: chkfilIaCheck — found entry, skip yn/display
-    if (iaChecking) return true;
-    let yes = dontAsk;
-    if (!dontAsk) {
-        // C: y_n("More info about \"…\"?") — ynchars + def 'n'
-        const ch = await yn_function(`More info about "${dbase}"?`, 'yn', 'n');
-        yes = ch === 'y' || ch === 'Y';
-    }
-    if (!yes) return true;
-    // C: NHW_MENU putstr + process_text_window — not NHW_TEXT fullscreen.
-    await show_nhw_menu_text(body.map(l => l || ''));
     return true;
 }
 
@@ -1471,14 +1539,17 @@ function describe_looked(x, y) {
         const first = self_lookat();
         // C pager.c:1346–1353 — '@' that refers to you when your race
         // isn't normally shown as '@': tack on "or you" via
-        // found += append_str(out_str, "you") (pager.c:82–104 returns 1,
-        // so C found goes 1→2); do_look :1941 (found == 1) then skips
-        // checkfile. u_at is this branch; the '@' sym is its existing prefix.
+        // found += append_str(out_str, "you") (append_str returns 1,
+        // so C found goes 1→2 here). But didlook `:1591–1616`
+        // (found > 1 || need_to_look) then appends the lookat
+        // parenthetical and resets found = 1 ("we have something to
+        // look up"), so do_look `:1941` (found == 1) still runs
+        // checkfile. Return the post-didlook count.
         const raceMnum = game.urace?.mnum | 0;
         const orYou = (raceMnum !== PM_HUMAN && raceMnum !== PM_ELF
             && !Upolyd(u)) ? ' or you' : '';
         const out = `@        a human or elf${orYou} (${first})`;
-        return { out, first, found: orYou ? 2 : 1 };
+        return { out, first, found: 1 };
     }
     // C lookat `:718–721` — gbuf trap glyph before floor objects.
     // Detected chest: trap glyph, pile still on fobj; C names the trap.
@@ -2011,7 +2082,11 @@ export async function do_look(mode = 0) {
                     && ans !== LOOK_ONCE
                     && (ans === LOOK_VERBOSE || (game.flags?.help !== false && !quick))
                 ) {
-                    await checkfile(first, 0);
+                    // C `:1944–1948`: (ans == LOOK_VERBOSE) ? chkfilDontAsk
+                    // : chkfilNone — ':' shows the entry without asking.
+                    await checkfile(
+                        first, ans === LOOK_VERBOSE ? CHK_DONT_ASK : 0,
+                    );
                 }
             } else {
                 await pline("I've never heard of such things.");

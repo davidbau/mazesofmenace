@@ -80,7 +80,7 @@ import {
 import { dog_move, finish_meating } from './dogmove.js';
 import { worm_move, worm_nomove, see_wsegs, worm_known, wormhitu } from './worm.js';
 import { shk_move, gd_move, pri_move, costly_spot, inhishop } from './shk.js';
-import { tactics } from './wizard.js';
+import { cuss, tactics } from './wizard.js';
 import { Invis } from './timeout.js';
 import { rn2, rnd, d } from './rng.js';
 import { game } from './gstate.js';
@@ -94,6 +94,7 @@ import {
     m_avoid_kicked_loc,
     mnexto,
     wakeup,
+    wake_msg,
     m_consume_obj,
     meatmetal,
     meatobj,
@@ -147,6 +148,8 @@ const AT_GAZE = 15;
 const AT_MAGC = 255;
 /** C ref: monflag.h enum ms_sounds — MS_BRIBE. */
 const MS_BRIBE = 33;
+/** C ref: monflag.h enum ms_sounds — MS_CUSS (dochug vile-monster arm). */
+const MS_CUSS = 34;
 
 /** C ref: monst.h mon_offmap — mstate != MON_FLOOR */
 export function mon_offmap(mon) {
@@ -644,10 +647,10 @@ function mdistu(mtmp) {
 
 /**
  * C ref: monmove.c disturb — possibly awaken a sleeping monster.
- * Named omissions: wake_msg (canseemon sleep pline); Hallucination newsym
- * already gated at dochug caller.
+ * C: wake_msg(mtmp, !mpeaceful) before clearing msleeping (mon.c:4321);
+ * Hallucination newsym already gated at dochug caller.
  */
-function disturb(mtmp) {
+async function disturb(mtmp) {
     const mdat = mtmp.data;
     const mndx = mdat?.mndx ?? -1;
     const mlet = mdat?.mlet;
@@ -662,7 +665,8 @@ function disturb(mtmp) {
             || (mlet === 'S_DOG' || mlet === 'S_HUMAN')
             || (!rn2(7) && M_AP_TYPE(mtmp) !== M_AP_FURNITURE
                 && M_AP_TYPE(mtmp) !== M_AP_OBJECT))) {
-        // wake_msg deferred
+        // C monmove.c:355: wake_msg(mtmp, !mpeaceful) while still asleep
+        await wake_msg(mtmp, !mtmp.mpeaceful);
         mtmp.msleeping = 0;
         return 1;
     }
@@ -2162,7 +2166,7 @@ export async function dochug(mtmp) {
     }
 
     // C: there is a chance we will wake it
-    if (mtmp.msleeping && !disturb(mtmp)) {
+    if (mtmp.msleeping && !(await disturb(mtmp))) {
         if (game.u?.Hallucination) newsym(mtmp.mx, mtmp.my);
         return 0;
     }
@@ -2391,21 +2395,30 @@ export async function dochug(mtmp) {
     if (!(mtmp.msleeping || !mtmp.mcanmove) && nearby) {
         await quest_talk(mtmp);
     }
-    // C: MS_CUSS !rn2(5) cuss() named omit (wizard.c cuss)
+    // C ref: monmove.c dochug — extra emotional attack for vile monsters:
+    // inrange MS_CUSS, not peaceful, seen and visible, then !rn2(5) cuss.
+    if (inrange && (mdat?.msound | 0) === MS_CUSS && !mtmp.mpeaceful
+        && couldsee(mtmp.mx, mtmp.my) && !mtmp.minvis && !rn2(5)) {
+        await cuss(mtmp);
+    }
     return 0;
 }
 
 /**
  * C ref: monmove.c dochugw — move mon; stop occupation if newly spotted threat.
- * rloc_to_core calls this with chug FALSE (teleport.c:1762, D-1170): no
- * dochug, only the threat check. onscary stubbed false (Elbereth /
- * sanctuary deferred). makemon occupation still named.
+ * Visibility is display.h canspotmon (display.js live macro), not the
+ * door-feedback stub below (D-2102: the stub drops infrared, so an
+ * infravision-seen bat at 3 squares read as unseen and stopped the search
+ * before its bite). rloc_to_core calls this with chug FALSE
+ * (teleport.c:1762, D-1170): no dochug, only the threat check. onscary
+ * stubbed false (Elbereth / sanctuary deferred). makemon occupation
+ * still named.
  */
 export async function dochugw(mtmp, chug) {
     const x = mtmp.mx;
     const y = mtmp.my;
     // C: skip canspotmon if occupation is Null
-    const already_saw_mon = (chug && game.occupation) ? canspotmon(mtmp) : false;
+    const already_saw_mon = (chug && game.occupation) ? display_canspotmon(mtmp) : false;
     const rd = chug ? await dochug(mtmp) : 0;
 
     if (
@@ -2414,7 +2427,7 @@ export async function dochugw(mtmp, chug) {
         && mdistu(mtmp) <= (BOLT_LIM + 1) * (BOLT_LIM + 1)
         && (!already_saw_mon || !couldsee(x, y)
             || dist2(x, y, game.u.ux, game.u.uy) > (BOLT_LIM + 1) * (BOLT_LIM + 1))
-        && canspotmon(mtmp) && couldsee(mtmp.mx, mtmp.my)
+        && display_canspotmon(mtmp) && couldsee(mtmp.mx, mtmp.my)
         && mtmp.mcanmove
         // onscary(u.ux, u.uy, mtmp) deferred → treat as not scary
     ) {

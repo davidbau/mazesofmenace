@@ -56,6 +56,7 @@ import {
     MR_COLD,
     is_animal,
     mindless,
+    mon_learns_traps,
     is_floater,
     is_flyer,
     is_swimmer,
@@ -95,7 +96,7 @@ import {
     MM_NOMSG, MM_NOEXCLAM, MM_IGNOREWATER,
     GP_CHECKSCARY, GP_AVOID_MONPOS, Is_rogue_level, Is_earthlevel,
     Is_firelevel, Is_airlevel, Is_astralevel,
-    In_mines, In_sokoban, In_endgame,
+    In_mines, In_sokoban, In_endgame, Is_stronghold, Is_knox, In_V_tower,
     OBJ_MINVENT, COLNO, ROWNO, A_NONE, GEHENNOM, G_GONE, G_GENOD, G_EXTINCT,
     isok, has_mgivenname, MGIVENNAME, has_emin, has_mcorpsenm, EDOG, MON_FLOOR,
     M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE,
@@ -110,6 +111,7 @@ import {
     PROT_FROM_SHAPE_CHANGERS,
     In_quest, W_ARMH, W_SADDLE, P_POLEARMS, ROT_CORPSE, Is_waterlevel,
     STRAT_CLOSE, STRAT_WAITFORU, STRAT_APPEARMSG, is_pit,
+    PIT, HOLE, TRAPDOOR, ALL_TRAPS,
     A_LAWFUL, ONAME_RANDOM, EMIN,
     MFAST, MAXMONNO, DF_NONE, u_at,
 } from './const.js';
@@ -2318,9 +2320,14 @@ export function rnd_defensive_item(mtmp) {
     }
 }
 
+/** C youprop.h:152 See_invisible (HSee_invisible || ESee_invisible) */
+function See_invisible_misc() {
+    const u = game.u || {};
+    return !!((u.HSee_invisible | 0) || (u.ESee_invisible | 0) || u.See_invisible);
+}
+
 /**
  * C ref: muse.c rnd_misc_item — weak-monster misc inventory.
- * Named omissions: See_invisible on peaceful invis arm (treat as false).
  */
 export function rnd_misc_item(mtmp) {
     const pm_ = mtmp.data;
@@ -2342,8 +2349,8 @@ export function rnd_misc_item(mtmp) {
         if (mtmp.isgd) return 0;
         return rn2(6) ? otyp('POT_SPEED') : otyp('WAN_SPEED_MONSTER');
     case 1:
-        // C: mpeaceful && !See_invisible → 0; See_invisible deferred → treat false
-        if (mtmp.mpeaceful) return 0;
+        // C muse.c:2678: mpeaceful && !See_invisible → 0
+        if (mtmp.mpeaceful && !See_invisible_misc()) return 0;
         return rn2(6) ? otyp('POT_INVISIBILITY') : otyp('WAN_MAKE_INVISIBLE');
     case 2:
         return otyp('POT_GAIN_LEVEL');
@@ -2837,6 +2844,27 @@ export function makemon(mdat, x, y, mmflags = 0) {
         mtmp.female = game.quest_status?.nemgend | 0;
     else mtmp.female = femaleok ? rn2(2) : 0;
 
+    // C: makemon.c birth knowledge — Sokoban PIT+HOLE, stronghold TRAPDOOR,
+    // MS_LEADER/MS_NEMESIS ALL_TRAPS (mon_learns_traps; draw-free bit sets).
+    if (In_sokoban(game.u?.uz) && !mindless(ptr)) {
+        mon_learns_traps(mtmp, PIT);
+        mon_learns_traps(mtmp, HOLE);
+    }
+    if (Is_stronghold(game.u?.uz) && !mindless(ptr))
+        mon_learns_traps(mtmp, TRAPDOOR);
+    if ((ptr.msound | 0) === MS_LEADER || (ptr.msound | 0) === MS_NEMESIS)
+        mon_learns_traps(mtmp, ALL_TRAPS);
+    // C: makemon.c — stronghold/knox/endgame/hell/V_tower/quest births are
+    // already experienced with wands, so the first wand shot uses buzz
+    // (muse.c use_offensive buzzfn), not buzz_force_miss. In_hell is the
+    // dungeons[dnum].flags.hellish bit (dungeon.c In_hell), the idiom this
+    // file already uses for gehennom checks.
+    if (Is_stronghold(game.u?.uz) || Is_knox(game.u?.uz)
+        || In_endgame(game.u?.uz)
+        || !!(game.dungeons?.[game.u?.uz?.dnum | 0]?.flags?.hellish)
+        || In_V_tower(game.u?.uz) || In_quest(game.u?.uz))
+        mtmp.mwandexp = true;
+
     mtmp.mpeaceful = peace_minded(ptr) ? 1 : 0;
 
     // C: ptr->mflags3 && !(mmflags & MM_NOWAIT) → STRAT_WAITFORU / STRAT_CLOSE
@@ -3088,8 +3116,9 @@ export function makemon(mdat, x, y, mmflags = 0) {
 
 /**
  * C ref: makemon.c makemon post-place appear Norep (!in_mklev, !MM_NOMSG).
- * Uses requested (x,y) for next2u/distu — wizgenesis passes u.ux,u.uy so
- * distance 0 → always " next to you" when visible.
+ * Callers pass the FINAL placement (mtmp.mx,mtmp.my) for next2u/distu —
+ * C computes the message from post-enexto x,y (makemon.c:1491-1499), so
+ * requested u.ux,u.uy would wrongly force " next to you" (D-2096).
  * Mimic furniture/object: mhidden_description + upstart (D-1554).
  * Named omit: set_msg_xy; occupation dochugw.
  */

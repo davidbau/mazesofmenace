@@ -799,6 +799,7 @@ export const IBMGRAPHICS_CHARS = {
     S_corr: '0', S_litcorr: '1', S_pool: 'w', S_ice: 'z', S_lava: 'w',
     S_lavawall: 'w', S_vodbridge: 'z', S_hodbridge: 'z', S_water: 'w',
     S_bars: 'p', S_tree: 'q', S_fountain: 't', S_sink: 't',
+    S_engroom: 'n', S_engrcorr: '0',
 };
 
 // S_tree, shared by TREE terrain and an arboreal level's STONE/SCORR.
@@ -1056,7 +1057,9 @@ function spot_shows_engravings(loc) {
 // defsym.h — a corridor engraving shows as '#' (S_engrcorr), any other (room
 // or ice) as '`' (S_engroom); both are CLR_BRIGHT_BLUE.
 export function engraving_glyph(loc) {
-    const ch = (loc?.typ === CORR) ? '#' : '`';
+    const isCorr = loc?.typ === CORR;
+    const ov = symOverrideChar(isCorr ? 'S_engrcorr' : 'S_engroom');
+    const ch = ov || (isCorr ? '#' : '`');
     return { ch, color: CLR_BRIGHT_BLUE, dec: false };
 }
 
@@ -2102,6 +2105,19 @@ function _botConditions() {
 
 // C ref: botl.c bot_via_windowport() — fill in every field's raw value, then
 // windows.c/wintty.c tty_status_update() wraps it in initblstats[].fldfmt.
+// js/botl.js statically imports FROM display.js (pline/impossible), so a
+// static top-level `import ... from './botl.js'` here throws
+// "Cannot access 'objects' before initialization" at load (same TDZ hazard
+// class as [[mktrap-victim-tdz-is-real]]).  _botFields()/_renderStatus()/
+// botl_lines() are called synchronously from many hot rendering call sites,
+// so making the whole chain async to allow a per-call dynamic import isn't
+// practical either — instead, warm this cache ONCE via warmupBotlStatusFns()
+// (called from jsmain.js's runSegment() before any game logic runs).
+let _botlStatusFns = null;
+export async function warmupBotlStatusFns() {
+    if (!_botlStatusFns) _botlStatusFns = await import('./botl.js');
+}
+
 // Returns { val[], active[], lth[], cond[], hpPct, critHp }.
 function _botFields(order) {
     const u = game.u || {};
@@ -2118,6 +2134,13 @@ function _botFields(order) {
     active[BL_WEAPON] = !!game.flags?.weaponstatus;
     active[BL_ARMOR] = !!game.flags?.armorstatus;
     active[BL_TERRAIN] = !!game.flags?.terrainstatus;
+    // C ref: botl.c bot() calling weapon_status()/armor_status() only when
+    // the respective flag is set.  These were ported faithfully into
+    // js/botl.js but never wired into the live render path — see
+    // warmupBotlStatusFns() above for why this is a cached dynamic import
+    // rather than a static one.
+    if (active[BL_WEAPON]) raw[BL_WEAPON] = _botlStatusFns?.weapon_status() ?? '';
+    if (active[BL_ARMOR]) raw[BL_ARMOR] = _botlStatusFns?.armor_status() ?? '';
 
     raw[BL_TITLE] = _botTitle();
 
@@ -2178,6 +2201,20 @@ function _botFields(order) {
     raw[BL_HD] = String(u.data?.mlevel ?? 0);
     raw[BL_XP] = String(u.ulevel || 1);
     raw[BL_EXP] = String(u.uexp || 0);
+    // NOT YET FIXED: C ref: allmain.c:262-263 `if (flags.time &&
+    // !svc.context.run) disp.time_botl = TRUE;` — while a run/rush is armed,
+    // C freezes the displayed turn counter at its last value instead of
+    // republishing it every turn (see [[stale-context-run-freezes-turn-counter]]).
+    // A snapshot gated on game.context.run_prefix/stale_run (the JS stand-ins
+    // for svc.context.run) was tried and reverted: those fields are designed
+    // to bridge only ONE unbound keypress after a 'g'/'G' prefix, and can
+    // stay armed across several MORE turns than C's real svc.context.run
+    // would whenever a multi-turn occupation (e.g. take-off) advances
+    // game.moves without a new rhack() call to clear the residue — this
+    // false-froze bl011/bl023 by one screen each while fixing bl026, net
+    // only +11 across a 50-session draw.  A correct fix needs a more
+    // faithful svc.context.run equivalent (or an occupation-aware guard that
+    // actually works — game.occupation was NOT sufficient, still TBD).
     raw[BL_TIME] = String(game.moves || 1);
     // C ref: botl.c bot_via_windowport — hu_stat[] (eat.c) = {Satiated, "",
     // Hungry, Weak, Fainting, Fainted, Starved}; NOT_HUNGRY(1) shows nothing.
@@ -2684,6 +2721,21 @@ export async function pline(msg) {
     // flush_screen(), which is what runs bot() when disp.botl is set.
     pline_vision_flush();
     await botl_flush();
+    const cur = game._pending_message || '';
+    const softPending = !!cur && game._toplinSoft === cur;
+    // C ref: win/tty/topl.c update_topl():273-299 — a second message in the
+    // same still-unacknowledged turn merges onto the pending line with two
+    // spaces IF it fits in CO-8 columns (e.g. flip_through_book's two plines);
+    // otherwise the pending line must page via --More-- first, exactly like
+    // update_topl()'s own softPending branch below.  Kept on _toplinSoft (text
+    // keyed), not _toplin, for the reason explained further down.
+    if (softPending && !msg.startsWith('You die') && msg.length + cur.length + 3 < CO - 8) {
+        game._pending_message = cur + '  ' + msg;
+        game._toplinSoft = game._pending_message;
+        game._toplines = game._pending_message;
+        return;
+    }
+    if (softPending) await topl_more();
     game._pending_message = msg;
     // C ref: pline -> vpline -> update_topl sets gt.toplines; mirror it so the
     // Norep dedup reference tracks the actual last topline text.
@@ -2697,6 +2749,14 @@ export async function pline(msg) {
     // the text self-clears the moment any writer (rhack's per-command reset,
     // a prompt, a menu) replaces the pending line.
     game._toplinSoft = msg;
+    // C ref: win/tty/topl.c redotoplin():139 — a message that word-wraps onto
+    // a second display row blocks on --More-- IMMEDIATELY, no second logical
+    // message required (e.g. a long welcome greeting).
+    if (wrap_topl(msg).length > 1) {
+        await topl_more();
+        game._toplinSoft = null;
+        game._pending_message = '';
+    }
 }
 
 // C ref: pline.c impossible():584-616 — a failed internal invariant prints the

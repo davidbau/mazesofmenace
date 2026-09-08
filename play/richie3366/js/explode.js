@@ -70,12 +70,12 @@ import {
 } from './const.js';
 import {
     pmnames, G_UNIQ, MR_FIRE, MR_COLD, MR_ELEC, MR_DISINT, MR_POISON,
-    MR_ACID, nonliving, is_demon, is_vampshifter, bigmonst,
+    MR_ACID, nonliving, is_demon, is_vampshifter, bigmonst, is_mplayer,
 } from './monsters.js';
 import {
     PM_CLERIC, PM_MONK, PM_WIZARD, PM_HEALER, PM_KNIGHT, monsterNames,
 } from './generated/monsters_data.js';
-import { WAND_CLASS, SCROLL_CLASS, objectNames, RAY } from './objects.js';
+import { WAND_CLASS, TOOL_CLASS, WEAPON_CLASS, SCROLL_CLASS, POTION_CLASS, RING_CLASS, objectNames, RAY } from './objects.js';
 import {
     objects_at, obj_extract_self, splitobj, place_object, stackobj,
 } from './mkobj.js';
@@ -210,17 +210,29 @@ function completelyburns(data) {
 }
 
 /**
- * C ref: zap.c resist — burn rn2; MON_EXPLODE oclass uses default alev=ulevel.
- * tell/shield and HP application deferred (caller applies damage; C passes 0).
+ * C ref: zap.c resist — full oclass alev table (explode.c passes olet, which
+ * varies: wand / scroll / potion / ...). tell/shield and HP application
+ * deferred (caller passes damage 0 + FALSE and applies damage itself).
  */
 function resist(mtmp, oclass, damage, tell) {
     void damage;
     void tell;
-    void oclass;
-    const alev = game.u?.ulevel | 0;
+    // C: fake players always pass vs Conflict (RING_CLASS, 0 damage, NOTELL).
+    if (oclass === RING_CLASS && !damage && !tell && is_mplayer(mtmp.data))
+        return true;
+    let alev;
+    switch (oclass) {
+    case WAND_CLASS: alev = 12; break;
+    case TOOL_CLASS: alev = 10; break;
+    case WEAPON_CLASS: alev = 10; break;
+    case SCROLL_CLASS: alev = 9; break;
+    case POTION_CLASS: alev = 6; break;
+    case RING_CLASS: alev = 5; break;
+    default: alev = game.u?.ulevel | 0; break;
+    }
     let dlev = mtmp.m_lev | 0;
     if (dlev > 50) dlev = 50;
-    else if (dlev < 1) dlev = 1;
+    else if (dlev < 1) dlev = is_mplayer(mtmp.data) ? game.u?.ulevel | 0 : 1;
     const mr = mtmp.data?.mr | 0;
     return rn2(100 + alev - dlev) < mr;
 }

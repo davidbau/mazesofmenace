@@ -52,6 +52,7 @@ import {
     MM_ESHK,
     MM_FEMALE,
     MM_MALE,
+    MM_NOWAIT,
     MM_NOCOUNTBIRTH,
     MM_NOEXCLAM,
     MM_NOGRP,
@@ -110,6 +111,7 @@ import {
 } from './const.js';
 import { artifact_exists } from './artifacts.js';
 import { obj_resists } from './bury.js';
+import { in_town } from './hack.js';
 import {
     can_saddle,
     newedog,
@@ -201,6 +203,7 @@ import {
     PM_ACOLYTE,
     PM_ALIGNED_CLERIC,
     PM_APPRENTICE,
+    PM_ARCH_LICH,
     PM_ARCHON,
     PM_ARCHEOLOGIST,
     PM_ATTENDANT,
@@ -218,6 +221,7 @@ import {
     PM_COBRA,
     PM_COCKATRICE,
     PM_DEMILICH,
+    PM_DISPATER,
     PM_DWARF_RULER,
     PM_DJINNI,
     PM_DOPPELGANGER,
@@ -240,6 +244,7 @@ import {
     PM_GRID_BUG,
     PM_GUIDE,
     PM_HOBBIT,
+    PM_HORNED_DEVIL,
     PM_HOUSECAT,
     PM_HUMAN,
     PM_HUNTER,
@@ -259,6 +264,7 @@ import {
     PM_LITTLE_DOG,
     PM_LONG_WORM,
     PM_MANES,
+    PM_MASTER_LICH,
     PM_MINOTAUR,
     PM_GIANT_EEL,
     PM_GUARD,
@@ -273,6 +279,7 @@ import {
     PM_ORC,
     PM_ORC_CAPTAIN,
     PM_ORC_SHAMAN,
+    PM_ORCUS,
     PM_OGRE_LEADER,
     PM_PESTILENCE,
     PM_OGRE_TYRANT,
@@ -313,6 +320,7 @@ import {
     PM_WIZARD_OF_YENDOR,
     PM_YELLOW_LIGHT,
     PM_YELLOW_MOLD,
+    PM_YEENOGHU,
     SPECIAL_PM,
     S_ANGEL,
     S_CENTAUR,
@@ -330,6 +338,7 @@ import {
     S_KOBOLD,
     S_KOP,
     S_LEPRECHAUN,
+    S_LICH,
     S_LIZARD,
     S_LIGHT,
     S_MIMIC,
@@ -375,6 +384,7 @@ import {
     ARM_SUIT,
     ARMOR_CLASS,
     ARROW,
+    ATHAME,
     AXE,
     BANDED_MAIL,
     BATTLE_AXE,
@@ -479,6 +489,7 @@ import {
     POT_SLEEPING,
     POT_SPEED,
     POTION_CLASS,
+    QUARTERSTAFF,
     RANDOM_CLASS,
     RANSEUR,
     RING_MAIL,
@@ -525,6 +536,7 @@ import {
     WAN_LIGHTNING,
     WAN_MAGIC_MISSILE,
     WAN_MAKE_INVISIBLE,
+    WAN_NOTHING,
     WAN_POLYMORPH,
     WAN_SLEEP,
     WAN_SPEED_MONSTER,
@@ -567,7 +579,9 @@ import { pick_nasty } from './wizard.js';
 import { which_armor } from './worn.js';
 
 const SUPPORTED_FLAGS = NO_MINVENT
+    | MM_NOWAIT
     | MM_NOCOUNTBIRTH
+    | MM_NOTAIL
     | MM_NOMSG
     | MM_NOEXCLAM
     | MM_ANGRY
@@ -1011,8 +1025,8 @@ export function set_mimic_sym(monster, normalized) {
             ? horizontal ? S_hwall : S_vwall
             : horizontal ? S_hcdoor : S_vcdoor;
     } else if (state.level.flags.is_maze_lev
-               // C also checks !(In_mines && in_town); in_town is unported,
-               // and no maze level contains a town, so the check is inert.
+               && !(In_mines(state.u.uz)
+                   && in_town(state.u.ux, state.u.uy, state))
                && !In_sokoban(state.u.uz) && random.rn2(2)) {
         appearanceType = M_AP_OBJECT;
         appearance = STATUE;
@@ -1342,10 +1356,19 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
     const vaultGuardCall = !state.in_mklev
         && ptr?.pmidx === PM_GUARD
         && mmflags === (MM_EGD | MM_NOMSG);
+    const revivalCall = !state.in_mklev
+        && normalized.revival === true
+        && Boolean(ptr)
+        && !randomCoordinates
+        && Boolean(mmflags & NO_MINVENT)
+        && Boolean(mmflags & MM_NOWAIT)
+        && Boolean(mmflags & MM_NOMSG)
+        && !(mmflags & ~(NO_MINVENT | MM_NOWAIT | MM_NOMSG
+            | MM_NOCOUNTBIRTH | MM_NOTAIL | MM_MALE | MM_FEMALE));
     const runtimeCall = startingPetCall || djinniBottleCall
         || fountainCreatureCall
         || runtimeRandomCall || runtimeGroupCall || createParticularCall
-        || vaultGuardCall;
+        || vaultGuardCall || revivalCall;
     if (runtimeCall
         && (!normalized.runtimeContinuation
             || typeof normalized.runtimeContinuation !== 'object')) {
@@ -1353,7 +1376,7 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
             'runtime creation without its async tail owner',
         );
     }
-    if (runtimeCall && state.go?.occupation
+    if (runtimeCall && !revivalCall && state.go?.occupation
         && typeof normalized.hooks?.stopOccupation !== 'function') {
         throw new UnsupportedMonsterCreationError(
             'runtime creation while an occupation lacks stopOccupation',
@@ -1430,8 +1453,10 @@ function preflightCreation(ptr, x, y, mmflags, normalized) {
         // allowlist for explicitly placed species but bypass it for
         // rndmonst selections (the _rndmonMklev flag, set in the rndmonst
         // loop).  Outside mklev the allowlist always applies.
-        if (!state.in_mklev
-            || (isMainDungeonLevel(state) && !normalized._rndmonMklev)) {
+        if (!revivalCall
+            && (!state.in_mklev
+                || (isMainDungeonLevel(state)
+                    && !normalized._rndmonMklev))) {
             assertSupportedSpecies(ptr, {
                 // sp_lev.c:fill_empty_maze() explicitly places a minotaur
                 // while generating a stocked main-dungeon maze. The caller
@@ -2033,6 +2058,22 @@ function m_initweap(monster, normalized) {
             mongets(monster, BULLWHIP, normalized);
             mongets(monster, BROADSWORD, normalized);
             break;
+        case PM_ORCUS:
+            mongets(monster, WAN_DEATH, normalized);
+            break;
+        case PM_HORNED_DEVIL:
+            mongets(
+                monster,
+                random.rn2(4) ? TRIDENT : BULLWHIP,
+                normalized,
+            );
+            break;
+        case PM_DISPATER:
+            mongets(monster, WAN_STRIKING, normalized);
+            break;
+        case PM_YEENOGHU:
+            mongets(monster, FLAIL, normalized);
+            break;
         }
         // Non-demons in class S_DEMON (djinni, mail daemon) break here so
         // a later vanish drops no object. Actual demons (water demon, etc.)
@@ -2383,6 +2424,26 @@ function m_initinv(monster, normalized) {
             );
             obj.quan = random.rn1(2, 3);
             obj.owt = weight(obj, normalized);
+            addFreshMonsterObject(monster, obj, normalized);
+        }
+    } else if (ptr.mlet === S_LICH) {
+        // C ref: makemon.c:759-771. Master liches rarely receive an athame
+        // or empty wand; arch-liches can receive a higher-quality weapon.
+        if (ptr.pmidx === PM_MASTER_LICH && !random.rn2(13)) {
+            mongets(
+                monster,
+                random.rn2(7) ? ATHAME : WAN_NOTHING,
+                normalized,
+            );
+        } else if (ptr.pmidx === PM_ARCH_LICH && !random.rn2(3)) {
+            const obj = mksobj(
+                random.rn2(3) ? ATHAME : QUARTERSTAFF,
+                true,
+                !random.rn2(13),
+                normalized,
+            );
+            if (obj.spe < 2) obj.spe = random.rnd(3);
+            if (!random.rn2(4)) obj.oerodeproof = true;
             addFreshMonsterObject(monster, obj, normalized);
         }
     } else if (ptr.mlet === S_MUMMY) {
@@ -3059,6 +3120,18 @@ function apply_newcham_form(monster, target, normalized) {
     const olddata = monster.data;
     if (target === olddata) return false;
 
+    // mon.c newcham():5356-5362 discards an old long-worm tail before
+    // changing the head's species. A newly-created doppelganger can select
+    // long worm as its initial shape before revive() gives it the corpse's
+    // unique species, so this is part of the revival path too.
+    if (monster.wormno) {
+        const mx = monster.mx;
+        const my = monster.my;
+        remove_worm(monster, normalized);
+        wormgone(monster, state);
+        place_monster(monster, mx, my, state);
+    }
+
     mgender_from_permonst(monster, target, random);
     const oldHp = monster.mhp;
     const oldMax = monster.mhpmax;
@@ -3321,10 +3394,33 @@ export function restore_waiting_vampire(monster, rawEnv = {}) {
     return apply_newcham_form(monster, target, normalized);
 }
 
+// C ref: zap.c revive():991-994, the explicit-target newcham() used after a
+// unique corpse without saved traits is substituted with a doppelganger.
+// Inventory, leash, hero attachment, and arbitrary shapechanger calls remain
+// outside this adapter; revive() removes a mimic disguise after this returns.
+export function newcham_revival(monster, target, rawEnv = {}) {
+    const normalized = creationEnv(rawEnv);
+    const { state } = normalized;
+    if (monster?.cham !== PM_DOPPELGANGER
+        || !target
+        || state.mons?.[target.pmidx] !== target
+        || monster.minvent
+        || monster.mleashed
+        || monster === state.u?.ustuck
+        || monster === state.u?.usteed) {
+        throw new UnsupportedMonsterCreationError(
+            'revival doppelganger shape change',
+        );
+    }
+    if (state.mvitals[target.pmidx].mvflags & G_GENOD) return false;
+    return apply_newcham_form(monster, target, normalized);
+}
+
 function finishMonsterInventoryAndStrategy(
     monster,
     ptr,
     allowMinvent,
+    mmflags,
     normalized,
 ) {
     const { random } = normalized;
@@ -3344,9 +3440,9 @@ function finishMonsterInventoryAndStrategy(
         monster.minvent = null;
     }
 
-    // C ref: makemon.c makemon() (1457-1466). MM_NOWAIT is not among this
-    // port's admitted flags, so every supported call takes the ordinary arm.
-    if (ptr.mflags3) {
+    // C ref: makemon.c makemon() (1457-1466). Revived monsters pass
+    // MM_NOWAIT and therefore retain no waiting or covetous strategy bits.
+    if (ptr.mflags3 && !(mmflags & MM_NOWAIT)) {
         if (ptr.mflags3 & M3_WAITFORU)
             monster.mstrategy |= STRAT_WAITFORU;
         if (ptr.mflags3 & M3_CLOSE)
@@ -3643,6 +3739,7 @@ export function makemon(ptr, x, y, mmflags = 0, env = {}) {
         monster,
         ptr,
         allowMinvent,
+        mmflags,
         normalized,
     );
 
@@ -3699,9 +3796,41 @@ export async function makemon_runtime(ptr, x, y, mmflags = 0, env = {}) {
         monster,
         selected,
         allowMinvent,
+        mmflags,
         normalized,
     );
     await finishRuntimeCreationTail(monster, mmflags, normalized);
+    return monster;
+}
+
+// C ref: makemon.c makemon(), the synchronous runtime call shape used by
+// zap.c revive()/montraits(). NO_MINVENT makes the inventory tail drawless,
+// MM_NOMSG suppresses the appearance line, and MM_NOWAIT suppresses the
+// species' initial waiting strategy. MM_NOWAIT also makes makemon() leave any
+// unrelated hero occupation alone.
+export function makemon_revival(ptr, x, y, mmflags, rawEnv = {}) {
+    const state = rawEnv.state ?? game;
+    const runtimeContinuation = { claimed: false };
+    const normalized = creationEnv({
+        ...rawEnv,
+        state,
+        revival: true,
+        runtimeContinuation,
+    });
+    const monster = makemon(ptr, x, y, mmflags, normalized);
+    if (!monster) return null;
+    if (!runtimeContinuation.claimed
+        || runtimeContinuation.monster !== monster) {
+        throw new Error('revival continuation was not claimed');
+    }
+    finishMonsterInventoryAndStrategy(
+        monster,
+        runtimeContinuation.ptr,
+        runtimeContinuation.allowMinvent,
+        mmflags,
+        normalized,
+    );
+    redrawSquare(monster.mx, monster.my, normalized);
     return monster;
 }
 

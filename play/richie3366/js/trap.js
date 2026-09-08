@@ -660,7 +660,7 @@ function is_pool_or_lava(x, y) {
 }
 
 /** C ref: trap.h undestroyable_trap — portal / vibrating square. */
-function undestroyable_trap(ttyp) {
+export function undestroyable_trap(ttyp) {
     return ttyp === MAGIC_PORTAL || ttyp === VIBRATING_SQUARE;
 }
 
@@ -2724,7 +2724,7 @@ export async function float_up() {
  * lava_effects; come-down msgs (incl. W_SADDLE skip); encumber_msg; dotrap;
  * pickup when still on level.
  * Named omissions: Punished ball drag to pit/pool; ustuck release wording
- * (sticks/digests); selftouch/dismount Sokoban fell; surface() exact;
+ * (sticks/digests); selftouch/dismount Sokoban fell;
  * Underwater vision; assign_level trapdoor skip via dnum/dlevel compare.
  * @param {number} hmask clear from HLevitation
  * @param {number} emask clear from ELevitation (W_SADDLE skips come-down msgs)
@@ -2827,7 +2827,12 @@ export async function float_down(hmask, emask) {
                         `Bummer!  You've ${is_pool(u.ux | 0, u.uy | 0) ? 'splashed down' : 'hit the ground'}.`,
                     );
                 } else {
-                    const surf = surface_fd(u.ux | 0, u.uy | 0);
+                    // C trap.c:4144 surface(u.ux, u.uy) — the shared
+                    // dungeon.c surface (js/sit.js, D-2008); the local
+                    // surface_fd floor/ground stand-in misread STAIRS
+                    // (STAIRS >= ROOM) as 'floor'.
+                    const { surface } = await import('./sit.js');
+                    const surf = surface(u.ux | 0, u.uy | 0);
                     await pline(`You float gently to the ${surf}.`);
                 }
             }
@@ -3724,12 +3729,17 @@ function mr_bit(prop) {
 }
 
 /**
- * C ref: monst.h resists_fire / resists_sleep — Resists_Elem(prop).
- * Named omission: data->mresists not in extracted mons(); only
- * mintrinsics/mextrinsics bits when set.
+ * C ref: monst.h mon_resistancebits / mondata.c Resists_Elem(prop) subset:
+ * data->mresists | mextrinsics | mintrinsics (species bits ride
+ * mtmp.data via js/monsters.js from js/generated/monsters_data.js).
+ * The hero uses u.uprops (mirrored by mintrinsics/mextrinsics here), so
+ * species bits apply to monsters only. Named omissions: wielded-artifact
+ * defends, worn/carried oc_oprop + alchemy-smock pair, carried-artifact
+ * defends_when_carried (mondata.c:175-196).
  */
 function resists_elem(mtmp, prop) {
-    const bits = (mtmp?.mintrinsics | 0) | (mtmp?.mextrinsics | 0);
+    const species = is_youmonst(mtmp) ? 0 : (mtmp?.data?.mresists | 0);
+    const bits = species | (mtmp?.mintrinsics | 0) | (mtmp?.mextrinsics | 0);
     return !!(bits & mr_bit(prop));
 }
 function resists_fire(mtmp) {

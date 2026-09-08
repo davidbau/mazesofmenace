@@ -4,8 +4,9 @@
 import { game } from './gstate.js';
 // js/hack.js imports this file; both sides use the other's exports only inside
 // function bodies, so the cycle resolves.
-import { UnsupportedHeroMoveBoundaryError } from './hack.js';
+import { in_town, UnsupportedHeroMoveBoundaryError } from './hack.js';
 import {
+    ACH_TOWN,
     ANTHOLE,
     BARRACKS,
     BEEHIVE,
@@ -28,6 +29,7 @@ import {
     THRONE,
     ZOO,
 } from './const.js';
+import { record_achievement } from './insight.js';
 import { wake_msg } from './mon.js';
 import { room_discovered } from './dungeon.js';
 import { rn2 } from './rng.js';
@@ -207,12 +209,12 @@ export async function check_special_room(
     if (roomString(roomBuffer(state.u, 'ushops0')).length)
         u_left_shop(roomBuffer(state.u, 'ushops_left'), newlev, state);
 
-    // svl.level.flags.has_town is set by the Mine Town special level alone, so
-    // no level this port generates satisfies the achievement's first term.
-    if (state.level?.flags?.has_town) {
-        throw new UnsupportedHeroMoveBoundaryError(
-            'check_special_room() on a level holding a town',
-        );
+    const achieveo = state.context?.achieveo;
+    if (state.level?.flags?.has_town && !achieveo?.minetn_reached
+        && state.u.uz.dnum === state.mines_dnum
+        && in_town(state.u.ux, state.u.uy, state)) {
+        record_achievement(ACH_TOWN, state);
+        achieveo.minetn_reached = true;
     }
 
     const entered = roomString(roomBuffer(state.u, 'uentered'));

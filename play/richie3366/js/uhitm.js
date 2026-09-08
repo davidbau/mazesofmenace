@@ -48,12 +48,14 @@ import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI, PM_ARCHEOLOGIST, PM_WIZAR
 import {
     find_mac, get_mattk, make_corpse, monstone, mhitm_knockback, monkilled,
     troll_baned, mhitm_ad_poly, mhitm_ad_slee, could_seduce, failed_grab, shade_miss,
+    paralyze_monst,
     mhitm_mgc_atk_negated, resists_poison_mm,
     AT_NONE, AT_WEAP, AT_KICK, AT_CLAW, AT_SPIT, AT_HUGS,
     AT_TUCH, AT_BITE, AT_BUTT, AT_STNG, AT_MAGC, AT_TENT,
     AT_EXPL, AT_ENGL, AT_BREA, AT_GAZE, AD_PHYS, AD_POLY, AD_DRIN, AD_SLEE,
-    AD_DRST, AD_SAMU,
+    AD_DRST, AD_SAMU, AD_DRLI,
 } from './mhitm.js';
+import { resists_drli } from './zap.js';
 import {
     verysmall, nohands, G_FREQ, G_NOCORPSE, M2_COLLECT, MZ_MEDIUM, MZ_HUGE,
     bigmonst, thick_skinned, monsterNames, nonliving, haseyes,
@@ -675,6 +677,12 @@ export async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
         if (game.context) game.context.stoned = false;
         return; // lifesaved
     }
+    // C mon.c mon_leaving_level :2702-2703 via m_detach :2760 / mondead :3175 /
+    // xkilled :3535 — death releases a holder before the rn2(6) treasure draw;
+    // JS mondead covers only relobj/unmap/newsym, so wire unstuck here.
+    // Dynamic import: uhitm<->mhitu cycle idiom (mon.js:1714); call-time use only.
+    mtmp.mtrapped = 0;
+    await (await import('./mhitu.js')).unstuck(mtmp);
     const mdat = mtmp.data;
     const mndx = mtmp.mnum ?? mdat?.mndx;
     // C: if (gs.stoned) { gs.stoned = FALSE; goto cleanup; }
@@ -1300,7 +1308,7 @@ export async function mhitm_ad_wrap(magr, mattk, mdef, mhm) {
 
 /**
  * C ref: uhitm.c mhitm_adtyping youmonst subset for damageum.
- * AD_PHYS + AD_POLY + AD_DRIN skipdrin + AD_WRAP (D-1348) + AD_SLEE + AD_DRST + AD_SAMU live;
+ * AD_PHYS + AD_POLY + AD_DRIN skipdrin + AD_WRAP (D-1348) + AD_SLEE + AD_DRST + AD_SAMU + AD_DRLI/AD_PLYS uhitm live;
  * remaining mhitm_ad_* named. mhitm wrap brush is D-1406.
  */
 
@@ -1353,6 +1361,57 @@ async function damageum_ad_drst(mdef, mattk, mhm) {
     }
 }
 
+/**
+ * C ref: uhitm.c mhitm_ad_drli `:2450–2477` — uhitm (you→mon) arm.
+ * `!rn2(3)` burns first, ahead of the pure resists checks (short-circuit
+ * order kept); then resists_drli/defended(AD_DRLI) and mgc_negated(TRUE).
+ * Drain is d(2,6) off mhpmax (floored at m_lev+1) and mhp; a level-0
+ * target dies via xkilled, else m_lev--; leftover damageum d() is zeroed
+ * (already inflicted). Unlike Stormbringer, the hero heals nothing.
+ * Named omissions: defended(mdef, AD_DRLI) worn-item walk (named on every
+ * defended call site; zap.js resists_drli carries the same omit);
+ * mhitm (mon→mon) arm (map turns.md:3379).
+ */
+async function damageum_ad_drli(mdef, mhm) {
+    const magr = game.youmonst;
+    if (!rn2(3) && !resists_drli(mdef)
+        && !(await mhitm_mgc_atk_negated(magr, mdef, true))) {
+        mhm.damage = d(2, 6);
+        await pline(`${Monnam(mdef)} becomes weaker!`);
+        if ((mdef.mhpmax | 0) - (mhm.damage | 0) > (mdef.m_lev | 0)) {
+            mdef.mhpmax = (mdef.mhpmax | 0) - (mhm.damage | 0);
+        } else if ((mdef.mhpmax | 0) > (mdef.m_lev | 0)) {
+            mdef.mhpmax = (mdef.m_lev | 0) + 1;
+        }
+        mdef.mhp = (mdef.mhp | 0) - (mhm.damage | 0);
+        if ((mdef.mhp | 0) < 1 || !(mdef.m_lev | 0)) {
+            await pline(`${Monnam(mdef)} ${nonliving(mdef.data) ? 'expires' : 'dies'}!`);
+            await xkilled(mdef, XKILL_NOMSG);
+        } else {
+            mdef.m_lev = (mdef.m_lev | 0) - 1;
+        }
+        mhm.damage = 0;
+    }
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_plys `:3434–3442` — uhitm (you→mon) arm.
+ * `!rn2(3)` burns first; damage<mhp and mgc_negated(TRUE) gates; !Blind
+ * "is frozen by you!" then paralyze_monst(rnd(10)). Leftover damageum
+ * d() is kept (paralysis rides on top of the hit). Named omissions:
+ * mhitu (you-as-def) arm; mhitm (mon→mon) arm.
+ */
+async function damageum_ad_plys(mdef, mhm) {
+    const magr = game.youmonst;
+    if (!rn2(3) && (mhm.damage | 0) < (mdef.mhp | 0)
+        && !(await mhitm_mgc_atk_negated(magr, mdef, true))) {
+        if (!Blind_that()) {
+            await pline(`${Monnam(mdef)} is frozen by you!`);
+        }
+        paralyze_monst(mdef, rnd(10));
+    }
+}
+
 async function damageum_adtyping(mattk, mdef, mhm) {
     const adtyp = mattk.adtyp | 0;
     if (adtyp === AD_PHYS) damageum_ad_phys(mdef, mattk, mhm);
@@ -1366,6 +1425,10 @@ async function damageum_adtyping(mattk, mdef, mhm) {
         await mhitm_ad_slee(game.youmonst, mattk, mdef, mhm);
     } else if (adtyp === AD_DRST) {
         await damageum_ad_drst(mdef, mattk, mhm);
+    } else if (adtyp === AD_DRLI) {
+        await damageum_ad_drli(mdef, mhm);
+    } else if (adtyp === AD_PLYS) {
+        await damageum_ad_plys(mdef, mhm);
     } else if (adtyp === AD_SAMU) {
         /* C ref: uhitm.c mhitm_ad_samu `:4573–4576` — uhitm (hero as
            attacker) arm zeroes the leftover d(); no message, no steal

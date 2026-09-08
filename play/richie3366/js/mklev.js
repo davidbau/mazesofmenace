@@ -90,7 +90,7 @@ import {
 } from './objects.js';
 import { shtypes, stock_room } from './shknam.js';
 import { setgemprobs } from './o_init.js';
-import { maketrap, t_at } from './trap.js';
+import { maketrap, t_at, undestroyable_trap } from './trap.js';
 import {
     mkobj, mksobj, mksobj_at, mksobj_migr_to_species, mkobj_at, mkgold,
     mkcorpstat, next_ident,
@@ -171,6 +171,10 @@ const SCR_EARTH = objectNames.indexOf('SCR_EARTH');
 const BAG_OF_HOLDING = objectNames.indexOf('BAG_OF_HOLDING');
 const AMULET_OF_REFLECTION = objectNames.indexOf('AMULET_OF_REFLECTION');
 const WAN_DIGGING = objectNames.indexOf('WAN_DIGGING');
+const PICK_AXE = objectNames.indexOf('PICK_AXE');
+const DWARVISH_MATTOCK = objectNames.indexOf('DWARVISH_MATTOCK');
+const WAN_TELEPORTATION = objectNames.indexOf('WAN_TELEPORTATION');
+const RIN_TELEPORTATION = objectNames.indexOf('RIN_TELEPORTATION');
 const WAN_WISHING = objectNames.indexOf('WAN_WISHING');
 const POT_GAIN_LEVEL = objectNames.indexOf('POT_GAIN_LEVEL');
 const SPE_HEALING = objectNames.indexOf('SPE_HEALING');
@@ -15543,9 +15547,9 @@ function load_minetn_5() {
 /**
  * C ref: dat/minetn-6.lua via load_special — Mines town "Bustling Town".
  * Solidfill then mines (lit=1, bg HWALL) + top-aligned map ('x' keeps
- * cavern) + shops/temple/watch. Named omissions:
- * link_doors_rooms extras; ensure_way_out (lua inaccessibles flag);
- * map_cleanup; count_level_features. minetn-7 is D-1504.
+ * cavern) + shops/temple/watch. ensure_way_out live (lua inaccessibles
+ * flag). Named omissions: link_doors_rooms extras; map_cleanup;
+ * count_level_features. minetn-7 is D-1504.
  */
 async function load_minetn_6() {
     const g = game;
@@ -15560,7 +15564,7 @@ async function load_minetn_6() {
         icedpools: false,
     });
 
-    // des.level_flags("mazelevel", "inaccessibles") — ensure_way_out named
+    // des.level_flags("mazelevel", "inaccessibles") — ensure_way_out below
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
 
@@ -15755,7 +15759,11 @@ xxxx-------xxxxxxxxxxxxxxx--------------
     splev_create_monster('watch captain', 1);
     splev_create_monster('watch captain', 1);
 
-    // C load_special: wallification → flip → fixup
+    // C load_special with des `inaccessibles`: ensure_way_out →
+    // map_cleanup → wallification → flip_level_rnd → fixup_special.
+    // map_cleanup stays a named omission (below); ensure_way_out must run
+    // before wallification so its selection_rndcoord drain matches C.
+    ensure_way_out();
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);
     flip_level_rnd(3, false);
@@ -25018,6 +25026,179 @@ function selection_from_mkroom(croom) {
     }
     if (pts.size === 0) return { pts, lx: 0, ly: 0, hx: -1, hy: -1 };
     return { pts, lx, ly, hx, hy };
+}
+
+/**
+ * C ref: sp_lev.c floodfillchk_match_accessible — ACCESSIBLE terrain plus
+ * secret doors and corridors (the predicate ensure_way_out installs with
+ * set_selection_floodfillchk before each selection_floodfill below).
+ */
+function floodfillchk_match_accessible(x, y) {
+    const loc = game.level.at(x, y);
+    if (!loc) return false;
+    return ACCESSIBLE(loc.typ) || loc.typ === SDOOR || loc.typ === SCORR;
+}
+
+/**
+ * C ref: selvar.c selection_floodfill walked with the accessible check —
+ * C stack shape verbatim: the seed is pushed without a predicate check,
+ * neighbours need isok + predicate + not-visited-this-call (C `tmp`,
+ * here `seen`); diagonal neighbours only when asked. ensure_way_out and
+ * generate_way_out_method always pass diagonals=TRUE.
+ */
+function selection_floodfill_accessible(ov, x0, y0, diagonals) {
+    if (!ov) return;
+    const seen = new Set([`${x0},${y0}`]);
+    const stackX = [x0];
+    const stackY = [y0];
+    while (stackX.length) {
+        const x = stackX.pop();
+        const y = stackY.pop();
+        if (isok(x, y)) {
+            selection_setpoint(x, y, ov, 1);
+            const chkdir = (mx, my) => {
+                if (!isok(mx, my)) return;
+                if (!floodfillchk_match_accessible(mx, my)) return;
+                const key = `${mx},${my}`;
+                if (seen.has(key)) return;
+                seen.add(key);
+                stackX.push(mx);
+                stackY.push(my);
+            };
+            chkdir(x + 1, y);
+            chkdir(x - 1, y);
+            chkdir(x, y + 1);
+            chkdir(x, y - 1);
+            if (diagonals) {
+                chkdir(x + 1, y + 1);
+                chkdir(x - 1, y - 1);
+                chkdir(x - 1, y + 1);
+                chkdir(x + 1, y - 1);
+            }
+        }
+    }
+}
+
+/**
+ * C ref: sp_lev.c generate_way_out_method — flood the caller's
+ * inaccessible cell, drain a clone hunting a secret-door wall (C order:
+ * +x, -x, +y, -y; selection_rndcoord removeit skips nothing), else drop
+ * a hole/trapdoor on a random cell of the same flood, else leave one of
+ * the escape items. TRUE when the region joined the level (gotitdone).
+ */
+function generate_way_out_method(nx, ny, ov) {
+    // C: static const int escapeitems[] = { PICK_AXE, DWARVISH_MATTOCK,
+    // WAN_DIGGING, WAN_TELEPORTATION, SCR_TELEPORTATION, RIN_TELEPORTATION };
+    const escapeitems = [
+        PICK_AXE, DWARVISH_MATTOCK, WAN_DIGGING,
+        WAN_TELEPORTATION, SCR_TELEPORTATION, RIN_TELEPORTATION,
+    ];
+    const ov2 = selection_new();
+
+    selection_floodfill_accessible(ov2, nx, ny, true);
+    let ov3 = selection_clone(ov2);
+
+    /* try to make a secret door */
+    let p = selection_rndcoord(ov3, true);
+    while (p) {
+        const x = p.x, y = p.y;
+        if (isok(x + 1, y) && !selection_getpoint(x + 1, y, ov)
+            && IS_WALL(game.level.at(x + 1, y).typ)
+            && isok(x + 2, y) && selection_getpoint(x + 2, y, ov)
+            && ACCESSIBLE(game.level.at(x + 2, y).typ)) {
+            game.level.at(x + 1, y).typ = SDOOR;
+            return true;
+        }
+        if (isok(x - 1, y) && !selection_getpoint(x - 1, y, ov)
+            && IS_WALL(game.level.at(x - 1, y).typ)
+            && isok(x - 2, y) && selection_getpoint(x - 2, y, ov)
+            && ACCESSIBLE(game.level.at(x - 2, y).typ)) {
+            game.level.at(x - 1, y).typ = SDOOR;
+            return true;
+        }
+        if (isok(x, y + 1) && !selection_getpoint(x, y + 1, ov)
+            && IS_WALL(game.level.at(x, y + 1).typ)
+            && isok(x, y + 2) && selection_getpoint(x, y + 2, ov)
+            && ACCESSIBLE(game.level.at(x, y + 2).typ)) {
+            game.level.at(x, y + 1).typ = SDOOR;
+            return true;
+        }
+        if (isok(x, y - 1) && !selection_getpoint(x, y - 1, ov)
+            && IS_WALL(game.level.at(x, y - 1).typ)
+            && isok(x, y - 2) && selection_getpoint(x, y - 2, ov)
+            && ACCESSIBLE(game.level.at(x, y - 2).typ)) {
+            game.level.at(x, y - 1).typ = SDOOR;
+            return true;
+        }
+        p = selection_rndcoord(ov3, true);
+    }
+
+    /* try to make a hole or a trapdoor */
+    if (Can_fall_thru(game.u?.uz)) {
+        ov3 = selection_clone(ov2);
+        let q = selection_rndcoord(ov3, true);
+        while (q) {
+            if (maketrap(q.x, q.y, rn2(2) ? HOLE : TRAPDOOR)) return true;
+            q = selection_rndcoord(ov3, true);
+        }
+    }
+
+    /* generate one of the escape items */
+    // C: mksobj_at(ROLL_FROM(escapeitems), x, y, TRUE, FALSE)
+    const r = selection_rndcoord(ov2, false);
+    if (r) {
+        mksobj_at(escapeitems[rn2(escapeitems.length)], r.x, r.y, true, false);
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * C ref: sp_lev.c ensure_way_out — seed a selection from same-dungeon
+ * stairs plus hole/undestroyable traps, then join every ACCESSIBLE cell
+ * still outside it via generate_way_out_method. The labeled `break outer`
+ * is C's `goto outhere` (sp_lev.c:5241-5251: exits both loops; the
+ * do-while rescans from x=1 until a full pass finds nothing new). C
+ * selection_free calls are GC here. C load_special runs this after
+ * link_doors_rooms/remove_boundary_syms when the des file sets the
+ * `inaccessibles` level flag (only minetn-6 does) and before
+ * map_cleanup/wallification/flip_level_rnd.
+ */
+function ensure_way_out() {
+    const g = game;
+    const ov = selection_new();
+    let ret = true;
+
+    for (let stway = g.stairs; stway; stway = stway.next) {
+        if ((stway.tolev?.dnum | 0) === (g.u?.uz?.dnum | 0))
+            selection_floodfill_accessible(ov, stway.sx, stway.sy, true);
+    }
+
+    const traps = g.level?.traps;
+    if (traps) {
+        for (const ttmp of traps) {
+            if (!ttmp) continue;
+            if ((undestroyable_trap(ttmp.ttyp) || is_hole(ttmp.ttyp))
+                && !selection_getpoint(ttmp.tx, ttmp.ty, ov))
+                selection_floodfill_accessible(ov, ttmp.tx, ttmp.ty, true);
+        }
+    }
+
+    do {
+        ret = true;
+        outer: for (let x = 1; x < COLNO; x++)
+            for (let y = 0; y < ROWNO; y++) {
+                const loc = g.level.at(x, y);
+                if (loc && ACCESSIBLE(loc.typ)
+                    && !selection_getpoint(x, y, ov)) {
+                    if (generate_way_out_method(x, y, ov))
+                        selection_floodfill_accessible(ov, x, y, true);
+                    ret = false;
+                    break outer;
+                }
+            }
+    } while (!ret);
 }
 
 // C ref: selvar.c selection_rndcoord — walk x-outer then y; rn2(count)
