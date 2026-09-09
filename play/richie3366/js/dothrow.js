@@ -7,6 +7,7 @@ import { game } from './gstate.js';
 import {
     flush_screen, pline, newsym, mark_topline_seen,
     canseemon, canspotmon, nh_delay_output, tmp_at, obj_glyph, verbalize,
+    glyph_at, glyph_is_monster, glyph_is_invisible_id, map_invisible,
 } from './display.js';
 import { cansee, vision_recalc } from './vision.js';
 import { rn2, rnd, rn1 } from './rng.js';
@@ -42,6 +43,8 @@ import {
     BOLT_LIM, AKLYS_LIM, HAND, THROWN_WEAPON, THROWN_TETHERED_WEAPON,
     xdir, ydir, xytodir, N_DIRS, RIGHT_HANDED, IS_SINK, HI_WOOD, OBJ_MINVENT,
     DISP_FLASH, DISP_CHANGE, DISP_END, DISP_TETHER, BACKTRACK,
+    ARTICLE_A, SUPPRESS_SADDLE, AUGMENT_IT, has_mgivenname,
+    W_ARMU, W_ARM, W_ARMC,
     ECMD_OK, ECMD_TIME, LARGEST_INT, CQ_CANNED,
     DEAF, SHOPBASE, Is_waterlevel,
     GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GETOBJ_PROMPT,
@@ -74,8 +77,10 @@ import {
     xname, killer_xname, singular, an, the, vtense, doname, thesimpleoname,
     makeplural, otense, mshot_xname,
 } from './objnam.js';
-import { m_at, wakeup, seemimic, wake_nearto, distmin, monnear, m_respond } from './mon.js';
-import { mon_nam, Monnam, hliquid, Hallucination, Some_Monnam } from './do_name.js';
+import { m_at, wakeup, seemimic, wake_nearto, distmin, monnear, m_respond, setmangry } from './mon.js';
+import { mon_nam, Monnam, hliquid, Hallucination, Some_Monnam, x_monnam, pmname } from './do_name.js';
+import { noit_mhim, NEUTRAL } from './mondata.js';
+import { which_armor } from './worn.js';
 import {
     is_domestic, nohands, M1_NOTAKE, MZ_HUGE, MZ_MEDIUM,
     is_unicorn, is_orc, is_elf, your_race, is_animal, is_whirly,
@@ -90,7 +95,7 @@ import { body_part, polymon } from './polyself.js';
 import { goodpos, rloc_to } from './teleport.js';
 import {
     mintrap, t_at, Trap_Killed_Mon, Trap_Caught_Mon, Trap_Moved_Mon,
-    minstapetrify,
+    minstapetrify, instapetrify,
 } from './trap.js';
 import { in_out_region, m_in_out_region } from './region.js';
 import { u_wipe_engr } from './engrave.js';
@@ -620,7 +625,7 @@ export async function thitmonst(mon, obj) {
                 obj.where = OBJ_FREE;
                 return true;
             }
-            passive_obj(mon, obj, null);
+            await passive_obj(mon, obj, null);
         } else {
             await tmiss(obj, mon, true);
             if (hmode === HMON_APPLIED) await wakeup(mon, true);
@@ -2641,9 +2646,12 @@ function sobj_at_hurtle(otyp, x, y) {
  * C ref: dothrow.c hurtle_step — one cell of hero hurtle.
  * in_out_region after isok, before *range==0 (D-1165; C 787–790).
  * dest-typ ≠ origin after flush_screen → switch_terrain (D-1277;
- * C :916–917). Named omit: Passes_walls/may_passwall; bad_rock
+ * C :916–917). Monster-bump arm in C order (C :855–905): glyph read,
+ * x_monnam ARTICLE_A + AUGMENT_IT, find-by-bumping branch, wakeup,
+ * canspotmon→map_invisible, setmangry, both petrify checks, wake_nearto.
+ * Named omit: Passes_walls/may_passwall; bad_rock
  * squeeze; Sokoban diagonal halt; drag_ball; check_special_room;
- * drown/waterwall; jumping I_SPECIAL; petrify bump; setmangry; trap
+ * drown/waterwall; jumping I_SPECIAL; trap
  * pass-over dotrap; nh_delay_output.
  */
 export async function hurtle_step(rangeArg, x, y) {
@@ -2690,9 +2698,33 @@ export async function hurtle_step(rangeArg, x, y) {
 
     const mon = m_at(x, y);
     if (mon) {
-        mon.mundetected = 0;
-        await pline(`You bump into ${mon_nam(mon)}.`);
+        /* C dothrow.c:855–875 — the #if 0 mundetected exceptions stay
+         * excluded (cannot know the range will continue past this spot). */
+        const bumpGlyph = glyph_at(x, y);
+        mon.mundetected = 0; /* wakeup() will handle mimic */
+        /* after unhiding; combination of a_monnam() and some_mon_nam();
+           yields "someone" or "something" instead of "it" for unseen mon */
+        const mnam = x_monnam(
+            mon, ARTICLE_A, null,
+            (has_mgivenname(mon) ? SUPPRESS_SADDLE : 0) | AUGMENT_IT,
+            false,
+        );
+        if (!glyph_is_monster(bumpGlyph) && !glyph_is_invisible_id(bumpGlyph))
+            await pline(`You find ${mnam} by bumping into ${noit_mhim(mon)}.`);
+        else
+            await pline(`You bump into ${mnam}.`);
         await wakeup(mon, false);
+        if (!canspotmon(mon))
+            map_invisible(mon.mx, mon.my);
+        await setmangry(mon, false);
+        if (touch_petrifies(mon.data) && !u.uarmu && !u.uarm && !u.uarmc) {
+            /* C keeps svk.killer.name; JS instapetrify takes it as arg. */
+            await instapetrify(`bumping into ${an(pmname(mon.data, NEUTRAL))}`);
+        }
+        if (touch_petrifies(game.youmonst?.data)
+            && !which_armor(mon, W_ARMU | W_ARM | W_ARMC)) {
+            await minstapetrify(mon, true);
+        }
         await wake_nearto(x, y, 10);
         return false;
     }

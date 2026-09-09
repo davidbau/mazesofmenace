@@ -25,7 +25,7 @@ import {
     objects_at, splitobj, nxtobj, add_to_migration,
     obj_ice_effects, spot_stop_timers, stop_timer,
 } from './mkobj.js';
-import { find_mac, make_corpse, mon_to_stone, vamp_stone, monstone } from './mhitm.js';
+import { find_mac, make_corpse, mon_to_stone, vamp_stone, monstone, mondead } from './mhitm.js';
 import { mon_explodes, scatter } from './explode.js';
 import {
     newsym, pline, pline_mon, pline_xy, urgent_pline, mon_visible, see_with_infrared,
@@ -33,7 +33,7 @@ import {
     obj_glyph, flush_topl_more, feel_newsym, canspotmon, map_invisible,
     set_msg_xy, Hallucination, Norep,
 } from './display.js';
-import { doname, an, the, The, xname, yname, cxname, makeplural, vtense, ansimpleoname, safe_qbuf } from './objnam.js';
+import { doname, an, the, The, xname, yname, cxname, makeplural, vtense, ansimpleoname, safe_qbuf, gloves_simple_name } from './objnam.js';
 import {
     Amonnam, Monnam, mon_nam, x_monnam, x_monnam_tame, y_monnam, noit_Monnam, pmname,
     christen_monst, rndmonnam, hliquid, rndcolor, mon_pmname, YMonnam,
@@ -142,7 +142,7 @@ import { make_blinded, dropx } from './do.js';
 import { mon_adjust_speed } from './muse.js';
 import { m_dowear } from './worn.js';
 import { m_unleash } from './apply.js';
-import { hard_helmet } from './do_wear.js';
+import { hard_helmet, helm_simple_name, cloak_simple_name, suit_simple_name } from './do_wear.js';
 import { unplacebc, placebc, ballfall } from './ball.js';
 import { carried, is_fainted, reset_faint } from './eat.js';
 import { inv_cnt, remove_worn_item } from './steal.js';
@@ -1113,29 +1113,7 @@ async function corpse_chance(mon) {
     return !rn2(tmp);
 }
 
-// C ref: mon.c mondead → m_detach(due_to_death) → relobj
-function mondead(mtmp) {
-    mtmp.mhp = 0;
-    const mx = mtmp.mx, my = mtmp.my;
-    // C m_detach `:2741–2742` — m_unleash(mtmp, FALSE)
-    if (mtmp.mleashed) m_unleash(mtmp, false);
-    const mndx = mtmp.mnum ?? mtmp.data?.mndx;
-    if (mndx != null && mndx >= LOW_PM) {
-        if (!game.mvitals) game.mvitals = [];
-        const slot = game.mvitals[mndx] || (game.mvitals[mndx] = {
-            mvflags: 0, born: 0, died: 0,
-        });
-        if ((slot.died | 0) < 255) slot.died = (slot.died | 0) + 1;
-    }
-    // C: m_detach — stay on fmon until dmonsfree
-    mtmp.mstate = (mtmp.mstate | 0) | MON_DETACH;
-    relobj_on_death(mtmp);
-    // C mon.c mondead: glyph_is_invisible → unmap_object
-    if (mx > 0 && glyph_is_invisible(game.level?.at?.(mx, my))) {
-        unmap_object(mx, my);
-    }
-    if (mx > 0) newsym(mx, my);
-}
+// mon.c mondead lives in mhitm.js — imported above (D-2147; no third clone).
 
 // C ref: mon.c mondied → mondead + maybe make_corpse
 async function mondied(mdef) {
@@ -2590,6 +2568,49 @@ export function reset_utrap(_msg) {
 }
 
 /**
+ * C ref: trap.c:5201-5244 drain_en — energy drain with uen/uenmax throttle.
+ * Exact C order and short-circuit: uenmax<1 → zero + botl + lethargic;
+ * else throttle n via rnd when n > (uen+uenmax)/3, '!' punct when n > uen,
+ * uen-=n with uenmax-=rnd(-uen) spill, botl, then You_feel after state.
+ */
+export async function drain_en(n, max_already_drained) {
+    const u = game.u || (game.u = {});
+    let mesg;
+    let punct = max_already_drained ? '!' : '.';
+    if ((u.uenmax | 0) < 1) {
+        /* energy is completely gone */
+        if ((u.uen | 0) || (u.uenmax | 0)) { /* paranoia */
+            u.uen = 0;
+            u.uenmax = 0;
+            if (game.disp) game.disp.botl = true;
+        }
+        mesg = 'momentarily lethargic';
+    } else {
+        /* throttle further loss a bit when there's not much left to lose */
+        if ((n | 0) > Math.trunc(((u.uen | 0) + (u.uenmax | 0)) / 3))
+            n = rnd(n | 0);
+        mesg = 'your magical energy drain away';
+        if ((n | 0) > (u.uen | 0))
+            punct = '!';
+        u.uen = (u.uen | 0) - (n | 0);
+        if ((u.uen | 0) < 0) {
+            u.uenmax = (u.uenmax | 0) - rnd(-(u.uen | 0));
+            if ((u.uenmax | 0) < 0)
+                u.uenmax = 0;
+            u.uen = 0;
+        } else if ((u.uen | 0) > (u.uenmax | 0)) {
+            /* uen might be greater than uenmax if caller reduced uenmax
+               and then we throttled the loss being applied to current */
+            u.uen = u.uenmax;
+        }
+        if (game.disp) game.disp.botl = true;
+    }
+    /* after manipulating u.uen,uenmax and setting context.botl, so
+       that You_feel() -> pline() will update status before the message */
+    await You_feel(`${mesg}${punct}`);
+}
+
+/**
  * C ref: trap.c back_on_ground — simplified surface wording.
  * Named omissions: ice_descr / surface / Levitation-Flying preposition
  * matrix beyond solid-ground default.
@@ -3219,26 +3240,6 @@ export function ceiling(x, y) {
 /** C ref: mondata.h passes_rocks */
 function passes_rocks(ptr) {
     return !!(passes_walls(ptr) && !unsolid(ptr));
-}
-
-/** C ref: objnam.c helm_simple_name — "helmet" / "hat" polish deferred */
-function helm_simple_name(_obj) {
-    return 'helmet';
-}
-
-/** C ref: objnam.c cloak_simple_name — robe/smock polish deferred */
-function cloak_simple_name(_obj) {
-    return 'cloak';
-}
-
-/** C ref: objnam.c gloves_simple_name */
-function gloves_simple_name(_obj) {
-    return 'gloves';
-}
-
-/** C ref: objnam.c suit_simple_name — mail/jacket polish deferred */
-function suit_simple_name(_obj) {
-    return 'suit';
 }
 
 /** C ref: obj.h bimanual — WEAPON/TOOL with oc_bimanual (oc_big). */

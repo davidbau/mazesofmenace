@@ -743,7 +743,7 @@ export function distant_monnam(mtmp, article = ARTICLE_THE) {
  * C ref: priest.c mon_aligntyp `:280–289` — epri.shralign / emin.min_align
  * else mdat.maligntyp; A_NONE stays; else sign → LAWFUL/CHAOTIC/NEUTRAL.
  */
-function mon_aligntyp_nam(mon) {
+export function mon_aligntyp_nam(mon) {
     let algn = mon?.ispriest ? (EPRI(mon)?.shralign)
         : mon?.isminion ? (EMIN(mon)?.min_align)
           : (mon?.data?.maligntyp);

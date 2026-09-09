@@ -32,11 +32,12 @@ import {
     LEVITATION, FLYING, BLINDED, FOOT, SWIMMING, VIBRATING_SQUARE,
     BRK_BY_HERO, BRK_FROM_INV, BRK_MELEE, BRK_KNOWN2BREAK, BRK_KNOWN2NOTBREAK,
     ARTICLE_NONE, ARTICLE_A, ARTICLE_THE, ARTICLE_YOUR, SUPPRESS_SADDLE,
-    has_mgivenname,
+    has_mgivenname, RUN_TPORT, RUN_LEAP, RUN_STEP, RUN_CRAWL,
 } from './const.js';
 import {
     pline, Norep, newsym, canspotmon, canseemon, map_invisible, You_feel,
-    set_msg_xy, feel_location, map_object, verbalize,
+    set_msg_xy, feel_location, map_object, verbalize, curs_on_u,
+    nh_delay_output,
 } from './display.js';
 import { gethungry, morehungry, is_fainted } from './eat.js';
 import { unconscious } from './teleport.js';
@@ -76,6 +77,8 @@ import { surface } from './sit.js';
 import { autopick_testobj } from './pickup.js';
 import { Hello } from './roles.js';
 import { SetVoice } from './sndprocs.js';
+import { set_ustuck, Conflict } from './mhitu.js';
+import { sticks } from './engrave.js';
 
 export { set_msg_xy };
 
@@ -1042,6 +1045,40 @@ export async function stop_occupation() {
     game._repeat_search = false;
     // C: cmdq_clear(CQ_CANNED) — avoid importing cmd.js
     if (game._cmdq_canned) game._cmdq_canned = [];
+}
+
+// src/hack.c:2995 runmode_delay_output()
+export async function runmode_delay_output() {
+    // C: gate on (context.run || multi) && runmode != RUN_TPORT.
+    // game.flags.runmode is never populated by an option setter; the raw
+    // string ('run' default, js/options.js) is normalized here with C's
+    // prefix table (options.c optfn_runmode: op is a prefix of the name).
+    const raw = String(game.flags?.runmode ?? 'run').toLowerCase();
+    const runmode = !raw ? RUN_LEAP
+        : 'teleport'.startsWith(raw) ? RUN_TPORT
+        : 'run'.startsWith(raw) ? RUN_LEAP
+        : 'walk'.startsWith(raw) ? RUN_STEP
+        : 'crawl'.startsWith(raw) ? RUN_CRAWL
+        : RUN_LEAP;
+    if (!(game.context?.run || (game.multi | 0)) || runmode === RUN_TPORT) return;
+    // C: leap (RUN_LEAP) updates every 7th turn-counter step ("ought to be
+    // to start of running" — port the turn-counter version verbatim);
+    // walk and crawl update after every step.
+    if (runmode !== RUN_LEAP || !((game.moves | 0) % 7)) {
+        // C: moveloop() suppresses time_botl when running — re-arm it.
+        if (game.flags?.time) {
+            game.flags.time_botl = true;
+            if (game.disp) game.disp.time_botl = true;
+        }
+        await curs_on_u();
+        await nh_delay_output();
+        if (runmode === RUN_CRAWL) {
+            await nh_delay_output();
+            await nh_delay_output();
+            await nh_delay_output();
+            await nh_delay_output();
+        }
+    }
 }
 
 /**
@@ -2018,6 +2055,60 @@ export async function move_out_of_bounds(x, y) {
     nomul(0);
     if (game.context) game.context.move = 0;
     return true;
+}
+
+/**
+ * C ref: hack.c escape_from_sticky_mon `:2639–2692` — leaving the square of
+ * a holder (giant mimic / sticky monster) spends the turn on the escape
+ * roll: asleep/paralyzed holder `rn2(8)` else `rn2(40)`; roll 3 wakes a
+ * helpless holder then falls through to the cannot-escape arm unless the
+ * holder is tame without conflict; rolls 0–2 (or tame, no conflict) pull
+ * free. Returns true when the move is spent.
+ */
+export async function escape_from_sticky_mon(x, y) {
+    const u = game.u || {};
+    if (!u.ustuck || ((x | 0) === (u.ustuck.mx | 0) && (y | 0) === (u.ustuck.my | 0))) {
+        return false;
+    }
+    // C you.h:560 — m_next2u(m) ≡ distu(mx,my) ≤ 2.
+    const dx = (u.ustuck.mx | 0) - (u.ux | 0);
+    const dy = (u.ustuck.my | 0) - (u.uy | 0);
+    if (dx * dx + dy * dy > 2) {
+        // Perhaps it fled (or was teleported or ...).
+        set_ustuck(null);
+    } else if (sticks(game.youmonst?.data)) {
+        // Polymorphed into a sticking monster: ustuck means it is stuck
+        // to you, not you to it.
+        const mtmp = u.ustuck;
+        set_ustuck(null);
+        await pline(`You release ${y_monnam(mtmp)}.`);
+    } else {
+        switch (rn2(!u.ustuck.mcanmove ? 8 : 40)) {
+        case 3:
+            if (!u.ustuck.mcanmove) {
+                // It is free to move on next turn.
+                u.ustuck.mfrozen = 1;
+                u.ustuck.msleeping = 0;
+            }
+            // FALLTHROUGH
+        default:
+            if (Conflict() || u.ustuck.mconf || !u.ustuck.mtame) {
+                await pline(`You cannot escape from ${y_monnam(u.ustuck)}!`);
+                nomul(0);
+                return true;
+            }
+            // FALLTHROUGH
+        case 0:
+        case 1:
+        case 2: {
+            const mtmp = u.ustuck;
+            set_ustuck(null);
+            await pline(`You pull free from ${y_monnam(mtmp)}.`);
+            break;
+        }
+        }
+    }
+    return false;
 }
 
 /**

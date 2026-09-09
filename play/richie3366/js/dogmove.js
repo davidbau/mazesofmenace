@@ -12,6 +12,7 @@ import {
     objects_at, obj_extract_self, place_object, splitobj, stackobj, delobj,
 } from './mkobj.js';
 import { mattackm, max_passive_dmg } from './mhitm.js';
+import { can_carry } from './monmove.js'; // C: mon.c can_carry (notake/touch/glomper/weight), not the removed local clone
 import { mattacku } from './mhitu.js';
 import { newsym, pline, canseemon, mon_visible, canspotmon, pline_mon, pline_xy } from './display.js';
 import { doname, distant_name } from './objnam.js';
@@ -234,35 +235,6 @@ function can_reach_location(mon, mx, my, fx, fy) {
     }
     return false;
 }
-
-/** C ref: mon.c max_mon_load / can_carry — weight + nohands partial stack. */
-function max_mon_load(mtmp) {
-    const MAX_CARR_CAP = 1000; // decl.c
-    const MZ_HUMAN = 3;
-    const WT_HUMAN = 1450;
-    const msize = mtmp.data?.msize ?? 2;
-    const cwt = mtmp.data?.cwt ?? 0;
-    let maxload;
-    if (!cwt)
-        maxload = Math.trunc((MAX_CARR_CAP * msize) / MZ_HUMAN);
-    else
-        maxload = Math.trunc((MAX_CARR_CAP * cwt) / WT_HUMAN);
-    // non-strong: half (kittens/dogs are not strongmonst)
-    maxload = Math.trunc(maxload / 2);
-    return Math.max(1, maxload);
-}
-
-function can_carry(mtmp, otmp) {
-    if (!mtmp || !otmp) return 0;
-    let iquan = otmp.quan || 1;
-    // nohands + quan>1 → return 1 before weight (C mon.c can_carry)
-    if (iquan > 1) {
-        return 1;
-    }
-    if ((otmp.owt || 0) > max_mon_load(mtmp)) return 0;
-    return iquan;
-}
-
 
 // C ref: dogmove.c cursed_object_at()
 function cursed_object_at(x, y) {

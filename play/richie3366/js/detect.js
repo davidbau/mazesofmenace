@@ -215,6 +215,7 @@ function BlindedTimeout() {
 function useup(otmp) {
     if (!otmp) return;
     if ((otmp.quan || 1) > 1) {
+        otmp.in_use = false; /* C invent.c:1326 — no longer in use */
         otmp.quan--;
         otmp.owt = weight(otmp);
         return;
@@ -353,14 +354,21 @@ async function find_trap(trap) {
     exercise(A_WIS, true);
     feel_newsym(trap.tx, trap.ty);
 
-    // C: Hallucination || glyph != trap glyph — "too much clutter to see
-    // your find otherwise": clear, paint the trap + hero, wait below.
+    // C: Hallucination || levl[][].glyph != trap glyph — "too much clutter
+    // to see your find otherwise": clear, paint the trap + hero, wait below.
+    // C reads memory (levl glyph, set by feel_newsym's _map_location even
+    // under a monster with show=FALSE), NOT the gbuf cell: a monster
+    // covering the trap (disp shows the mon) must NOT trigger the clear.
+    // JS levl glyph is loc.remembered_glyph (hero_memory store).
     const tg = trap_to_glyph(trap);
     const tgid = (typeof tg === 'number')
         ? tg
         : (typeof tg?.glyph === 'number' ? tg.glyph : NO_GLYPH);
+    const fLoc = game.level?.at(trap.tx, trap.ty);
+    const memGlyph = (typeof fLoc?.remembered_glyph?.glyph === 'number')
+        ? (fLoc.remembered_glyph.glyph | 0) : NO_GLYPH;
     let cleared = false;
-    if (Hallucination() || glyph_at(trap.tx, trap.ty) !== tgid) {
+    if (Hallucination() || memGlyph !== tgid) {
         await cls();
         map_trap(trap, 1);
         display_self();

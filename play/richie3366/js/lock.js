@@ -12,6 +12,7 @@ import {
     COLNO, ROWNO, IS_DOOR, ECMD_OK, ECMD_TIME, OBJ_FLOOR, OBJ_FREE,
     DOOR, SDOOR, Is_rogue_level, SHOPBASE,
     D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED, D_TRAPPED,
+    DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
     P_DAGGER, P_FLAIL, P_LANCE, P_PICK_AXE, P_SABER, P_NONE,
     AUTOUNLOCK_APPLY_KEY, STRAT_WAITMASK, TT_PIT, M_AP_TYPE,
     M_AP_FURNITURE, M_AP_OBJECT, FINGER, S_hcdoor, S_vcdoor,
@@ -38,14 +39,14 @@ import { mon_nam } from './do_name.js';
 import { SetVoice } from './sndprocs.js';
 import { stumble_onto_mimic } from './uhitm.js';
 import { update_mapseen_for } from './dungeon.js';
-import { is_drawbridge_wall } from './dbridge.js';
+import { is_drawbridge_wall, is_db_wall } from './dbridge.js';
 import { m_at, wake_nearto } from './mon.js';
 import { b_trapped, t_at } from './trap.js';
 import { currency, cmdq_add_key } from './invent.js';
 import { show_text_pages, dowhatdoes_core } from './pager.js';
 import { visctrl } from './dokeylist.js';
 import { highc } from './hacklib.js';
-import { doloot } from './pickup.js';
+import { doloot, container_at } from './pickup.js';
 
 const DIR_DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
 const DIR_DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
@@ -618,9 +619,9 @@ export async function doopen() {
  * C ref: lock.c doopen_indir — open a CLOSED door at (x,y).
  * Autoopen callers pass door coordinates (x > 0). Interactive `o`
  * uses get_adjacent_loc → getdir ("In what direction?").
- * Named omissions: pit "Open where? [.>]"; door-mimic stumble;
- * Confusion/Stunned always-TIME; portcullis/drawbridge;
- * feel_newsym mapseen gating; AUTOUNLOCK_KICK canned dokick.
+ * Named omissions: pit "Open where? [.>]" dirprompt + pit-reach gate;
+ * door-mimic stumble (stumble_on_door_mimic); set_msg_xy on the
+ * This-door arm; AUTOUNLOCK_KICK canned dokick.
  * Returns true when C would return ECMD_TIME (open attempt / lock setup).
  */
 export async function doopen_indir(x, y) {
@@ -650,10 +651,38 @@ export async function doopen_indir(x, y) {
     // C: u.utrap TT_PIT reach — deferred
     // C: stumble_on_door_mimic — deferred
 
+    // C lock.c doopen_indir — impaired direction costs a turn even with no
+    // door targeted: if (Confusion || Stunned) res = ECMD_TIME.
+    // (Same H-field + flat idiom as doclose below.)
+    let res = false; // C: res starts ECMD_OK
+    if ((u.HConfusion | 0) || u.Confusion || (u.HStun | 0) || u.Stunned) res = true;
+
     const loc = game.level?.at(cc.x, cc.y);
-    if (!loc || !IS_DOOR(loc.typ)) {
-        await pline('You see no door there.');
-        return false;
+    const portcullis = is_drawbridge_wall(cc.x, cc.y) >= 0;
+    // C lock.c doopen_indir `:836–845` — "this used to be 'if (Blind)' but
+    // using a key skips that so we do too": unconditional mapseen/newsym,
+    // LEARNED when either changes. C also compares door->glyph, which JS
+    // cells don't model (game.js), so only the lastseentyp half is live.
+    {
+        const oldlastseentyp = update_mapseen_for(cc.x, cc.y);
+        newsym(cc.x, cc.y);
+        if ((game.lastseentyp?.[cc.x]?.[cc.y] | 0) !== (oldlastseentyp | 0)) res = true;
+    }
+
+    if (portcullis || !loc || !IS_DOOR(loc.typ)) {
+        // C lock.c doopen_indir `:847–859` — closed portcullis / opened-bridge
+        // span / lootable container (Blind Feels/Seems) / Blind feel/see,
+        // in exact order. There/pline_The render as plain pline (read.js:1683).
+        if (is_db_wall(cc.x, cc.y) || (loc?.typ | 0) === DRAWBRIDGE_UP) {
+            await pline('There is no obvious way to open the drawbridge.');
+        } else if (portcullis || (loc?.typ | 0) === DRAWBRIDGE_DOWN) {
+            await pline('The drawbridge is already open.');
+        } else if (container_at(cc.x, cc.y, true)) {
+            await pline(`${Blind() ? 'Feels' : 'Seems'} like something lootable over there.`);
+        } else {
+            await pline(`You ${Blind() ? 'feel' : 'see'} no door there.`);
+        }
+        return res;
     }
     // Rebind for door body below (autoopen used bare x,y)
     x = cc.x;

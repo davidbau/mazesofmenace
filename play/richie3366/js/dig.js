@@ -72,7 +72,7 @@ import {
 } from './dbridge.js';
 import { obj_resists } from './dogmove.js';
 import { unpunish, punish } from './read.js';
-import { getdir } from './lock.js';
+import { getdir, dxdy_moveok } from './lock.js';
 import {
     IS_STWALL, IS_TREE, IS_WALL, IS_OBSTRUCTED, IS_DOOR, IS_FOUNTAIN,
     IS_THRONE, IS_ALTAR, IS_ROOM, IS_SINK, IS_FURNITURE, IS_GRAVE,
@@ -119,18 +119,20 @@ const TREEFRUITS = [
     objectNames.indexOf('EUCALYPTUS_LEAF'),
 ].filter((i) => i >= 0);
 
-/** Lateral + vertical dir chars for use_pick_axe getdir filter. */
+/** C ref: dig.c use_pick_axe dir loop — cmd_from_dir(dir, MV_WALK) walks
+ *  DIR_W..DIR_UP, i.e. sdir order "hykulnjb><" (cmd.c reset_commands;
+ *  hack.h movementdirs; xdir/ydir/zdir decl.c:77-79). */
 const DIG_DIR_CHARS = [
     { ch: 'h', dx: -1, dy: 0, dz: 0 },
-    { ch: 'j', dx: 0, dy: 1, dz: 0 },
-    { ch: 'k', dx: 0, dy: -1, dz: 0 },
-    { ch: 'l', dx: 1, dy: 0, dz: 0 },
     { ch: 'y', dx: -1, dy: -1, dz: 0 },
+    { ch: 'k', dx: 0, dy: -1, dz: 0 },
     { ch: 'u', dx: 1, dy: -1, dz: 0 },
-    { ch: 'b', dx: -1, dy: 1, dz: 0 },
+    { ch: 'l', dx: 1, dy: 0, dz: 0 },
     { ch: 'n', dx: 1, dy: 1, dz: 0 },
-    { ch: '<', dx: 0, dy: 0, dz: -1 },
+    { ch: 'j', dx: 0, dy: 1, dz: 0 },
+    { ch: 'b', dx: -1, dy: 1, dz: 0 },
     { ch: '>', dx: 0, dy: 0, dz: 1 },
+    { ch: '<', dx: 0, dy: 0, dz: -1 },
 ];
 
 function dist2(x0, y0, x1, y1) {
@@ -2138,15 +2140,26 @@ export async function use_pick_axe(obj) {
             continue;
         }
         if (d.dz === 0) {
-            const rx = (u.ux | 0) + d.dx;
-            const ry = (u.uy | 0) + d.dy;
+            /* C dig.c:1129-1136: movecmd(dirch, MV_WALK) sets u.dx/u.dy,
+             * then dxdy_moveok() (NODIAG grid-bug) gates the cell test. */
+            u.dx = d.dx;
+            u.dy = d.dy;
+            u.dz = 0;
+            if (!dxdy_moveok()) continue;
+            const rx = (u.ux | 0) + (u.dx | 0);
+            const ry = (u.uy | 0) + (u.dy | 0);
             if (!isok(rx, ry) || dig_typ(obj, rx, ry) === DIGTYP_UNDIGGABLE) {
                 continue;
             }
             dirsyms += d.ch;
         } else {
-            // include down when can_reach_floor; else up as silly candidate
-            if ((d.dz > 0) !== downok) continue;
+            /* C dig.c:1137-1145: up/down arm; movecmd set u.dz, skip when
+             * (u.dz > 0) ^ downok; down needs floor, else up is the token
+             * candidate so there is always at least one choice shown. */
+            u.dx = 0;
+            u.dy = 0;
+            u.dz = d.dz;
+            if (((u.dz > 0) ? 1 : 0) ^ (downok ? 1 : 0)) continue;
             dirsyms += d.ch;
         }
     }

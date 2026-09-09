@@ -13,9 +13,10 @@ import {
     INVULNERABLE, STONED, SLIMED, STRANGLED, SICK, SLEEPY, POLYMORPH,
     VOMITING, ACID_RES, STONE_RES, DISPLACED, PASSES_WALLS,
     MAGICAL_BREATHING, WWALKING, FIRE_RES, COLD_RES, SLEEP_RES,
-    ACCESSIBLE, Is_waterlevel, SICK_NONVOMITABLE, M_AP_MONSTER,
+    ACCESSIBLE, Is_waterlevel, SICK_NONVOMITABLE, SICK_ALL, M_AP_MONSTER,
     COLNO, ROWNO, CLOUD,
     KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, TURNED_SLIME, GENOCIDED, STONING, DIED,
+    POISONING,
     DISINT_RES, SHOCK_RES, POISON_RES, DRAIN_RES, SICK_RES, ANTIMAGIC,
     BLND_RES, HUNGER, TELEPAT, WARNING, WARN_OF_MON, WARN_UNDEAD,
     SEARCHING, INFRAVISION, ADORNED, STEALTH, AGGRAVATE_MONSTER,
@@ -28,7 +29,7 @@ import {
     CONTAINED_TOO, BURIED_TOO, TIMER_OBJECT, TIMER_NONE, TIMER_LEVEL,
     TIMER_GLOBAL, TIMER_MONSTER, BURN_OBJECT, LS_OBJECT, LS_MONSTER,
     MAX_RADIUS, W_ARM,
-    G_GENOD, G_EXTINCT, NO_MINVENT, MM_NOMSG, NON_PM,
+    G_GENOD, G_EXTINCT, NO_MINVENT, MM_NOMSG, NON_PM, LOW_PM,
     MV_KNOWS_EGG, ARTICLE_NONE, ARTICLE_A, EXACT_NAME,
     REVIVE_MON, ROT_CORPSE, ZOMBIFY_MON, RLOC_NOMSG,
     has_omid, has_omonst, Upolyd, PLNMSG_OK_DONT_DIE,
@@ -40,12 +41,12 @@ import { run_timers, start_timer, stop_timer, weight,
     obj_has_timer, rider_revival_time, rot_corpse, set_corpsenm,
     free_omid, free_omonst,
 } from './mkobj.js';
-import { make_confused, make_deaf, make_slimed, make_stoned, make_stunned, make_vomiting } from './potion.js';
+import { make_confused, make_deaf, make_sick, make_slimed, make_stoned, make_stunned, make_vomiting } from './potion.js';
 import { make_blinded } from './do.js';
-import { Fumbling, Fast, Very_fast, exercise, stone_luck, A_STR, A_DEX, A_CON } from './attrib.js';
+import { Fumbling, Fast, Very_fast, acurr, adjattrib, exercise, stone_luck, A_STR, A_DEX, A_CON } from './attrib.js';
 import { pline, You_feel, newsym, canseemon, verbalize, Norep, see_monsters, impossible, urgent_pline, Hallucination } from './display.js';
 import { inv_weight, update_inventory, useup, useupall } from './invent.js';
-import { doname, makeplural, xname, an, The, vtense } from './objnam.js';
+import { doname, makeplural, xname, an, The, the, vtense } from './objnam.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { objectNames } from './objects.js';
 import {
@@ -53,7 +54,7 @@ import {
     M1_SLITHY, MZ_SMALL, is_rider, is_displacer,
     breathless, monsterNames,
 } from './monsters.js';
-import { little_to_big, big_to_little, mhe, cantvomit } from './mondata.js';
+import { little_to_big, big_to_little, mhe, cantvomit, name_to_mon } from './mondata.js';
 import { dist2, ing_suffix, strsubst, strstri, upstart } from './hacklib.js';
 import { Popeye, morehungry, vomit } from './eat.js';
 import { phase_of_the_moon, friday_13th } from './calendar.js';
@@ -67,7 +68,7 @@ import { new_light_source, del_light_source, emits_light } from './light.js';
 import { cansee } from './vision.js';
 import { is_art } from './artifact.js';
 import { ART_SUNSWORD } from './generated/artifacts_data.js';
-import { Monnam, x_monnam, hcolor, rndmonnam, hliquid } from './do_name.js';
+import { Monnam, x_monnam, hcolor, rndmonnam, hliquid, type_is_pname } from './do_name.js';
 import { find_ac } from './u_init.js';
 import { any_visible_region, visible_region_summary } from './region.js';
 import { done, find_delayed_killer, dealloc_killer } from './end.js';
@@ -1083,6 +1084,48 @@ export async function nh_timeout() {
             // C timeout.c :686–688 — slimed_to_death(kptr)
             // (done_timeout(TURNED_SLIME, SLIMED) inside).
             await slimed_to_death(find_delayed_killer(SLIMED));
+        }
+        if (!(next & TIMEOUT) && p === SICK) {
+            // C timeout.c :692–724 — sickness runs out: food poisoning
+            // (no SICK_NONVOMITABLE) may recover via rn2(100) < ACURR(CON),
+            // else "You die from your illness." + done_timeout(POISONING).
+            const kptr = find_delayed_killer(SICK);
+            if (((u.usick_type | 0) & SICK_NONVOMITABLE) === 0
+                && rn2(100) < acurr(A_CON)) {
+                // C: You("have recovered from your illness.")
+                await pline('You have recovered from your illness.');
+                await make_sick(0, null, false, SICK_ALL);
+                exercise(A_CON, false);
+                await adjattrib(A_CON, -1, 1);
+            } else {
+                await urgent_pline('You die from your illness.');
+                if (!game.killer) {
+                    game.killer = { name: '', format: 0, next: null };
+                }
+                if (kptr && kptr.name) {
+                    game.killer.format = kptr.format | 0;
+                    game.killer.name = String(kptr.name);
+                } else {
+                    game.killer.format = KILLED_BY_AN;
+                    game.killer.name = '';
+                }
+                dealloc_killer(kptr);
+                const m_idx = name_to_mon(game.killer.name, null);
+                if (m_idx >= LOW_PM) {
+                    if (type_is_pname(mons(m_idx))) {
+                        game.killer.format = KILLED_BY;
+                    } else if (((mons(m_idx)?.geno | 0) & G_UNIQ) !== 0) {
+                        game.killer.name = the(game.killer.name);
+                        game.killer.format = KILLED_BY;
+                    }
+                }
+                await done_timeout(POISONING, SICK);
+                // C: done() does not return unless life-saved.
+                if (game.program_state?.gameover) return;
+                // C: u.usick_type = 0 after done_timeout (death path only;
+                // the recovery break above skips it, make_sick cleared it).
+                u.usick_type = 0;
+            }
         }
         if (!(next & TIMEOUT) && p === STRANGLED) {
             // C timeout.c :890–900 — strangulation runs out: killer

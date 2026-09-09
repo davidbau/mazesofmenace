@@ -10,7 +10,8 @@ import {
     is_vampshifter, is_watch, is_mind_flayer, is_covetous,
     is_floater, is_flyer, amorphous, nolimbs, M1_SLITHY, MZ_SMALL,
     grounded, telepathic, mons, metallivorous, humanoid, is_neuter, G_UNIQ,
-    corpse_eater, is_demon, touch_petrifies, acidic,
+    corpse_eater, is_demon, touch_petrifies, acidic, mon_hates_silver,
+    resists_ston, is_rider,
 } from './monsters.js';
 import { gettrack } from './track.js';
 import { wipe_engr_at } from './engrave.js';
@@ -37,7 +38,7 @@ import {
     D_BROKEN, D_TRAPPED, D_WARNED, u_at, DISPLACED, Is_rogue_level, NOTONL,
     ALLOW_U, ALLOW_M, ALLOW_MDISP, ALLOW_ROCK,
     NEED_PICK_AXE, NEED_AXE, NEED_PICK_OR_AXE, NEED_WEAPON, NEED_HTH_WEAPON,
-    P_AXE, P_PICK_AXE, W_WEP, SQSRCHRADIUS, COLNO, ROWNO, NATTK,
+    P_AXE, P_PICK_AXE, W_WEP, W_ARMG, SQSRCHRADIUS, COLNO, ROWNO, NATTK,
     MON_POLE_DIST, AKLYS_LIM, engulfing_u, M_AP_TYPE, M_AP_OBJECT,
     M_AP_FURNITURE, M_AP_NOTHING, M_AP_MONSTER, KILLED_BY_AN,
     STRAT_WAITFORU, STRAT_WAITMASK, STRAT_CLOSE, STRAT_ARRIVE,
@@ -52,13 +53,13 @@ import {
     CLOAK_OF_DISPLACEMENT, COIN_CLASS, WEAPON_CLASS, ARMOR_CLASS,
     GEM_CLASS, FOOD_CLASS, AMULET_CLASS, POTION_CLASS, SCROLL_CLASS,
     WAND_CLASS, RING_CLASS, SPBOOK_CLASS, ROCK_CLASS, BALL_CLASS,
-    objectNames, is_axe,
+    objectNames, is_axe, SILVER,
 } from './objects.js';
 import {
     Monnam, y_monnam, Adjmonnam, mon_nam, Amonnam, Hallucination,
     type_is_pname,
 } from './do_name.js';
-import { doname, distant_name, ansimpleoname, vtense, an, xname, makeplural } from './objnam.js';
+import { doname, distant_name, ansimpleoname, vtense, an, xname, makeplural, yname } from './objnam.js';
 import { mpickobj, set_malign } from './makemon.js';
 import { may_dig, mdig_tunnel, bury_an_obj } from './dig.js';
 import { MON_WEP, mon_wield_item, select_rwep } from './weapon.js';
@@ -67,6 +68,7 @@ import { is_pole } from './wield.js';
 import { acurrstr } from './attrib.js';
 import { m_canseeu } from './mondata.js';
 import { rloc, tele_restrict, noteleport_level } from './teleport.js';
+import { touch_artifact_mon, bare_artifactname } from './artifact.js';
 import { quest_talk, quest_stat_check } from './quest.js';
 import { stairway_at, u_on_newpos } from './mklev.js';
 import { create_gas_cloud, visible_region_at, m_in_out_region } from './region.js';
@@ -81,7 +83,9 @@ import { dog_move, finish_meating } from './dogmove.js';
 import { worm_move, worm_nomove, see_wsegs, worm_known, wormhitu } from './worm.js';
 import { shk_move, gd_move, pri_move, costly_spot, inhishop } from './shk.js';
 import { cuss, tactics } from './wizard.js';
-import { Invis } from './timeout.js';
+import { Invis, artifact_light } from './timeout.js';
+import { Unaware } from './eat.js';
+import { SetVoice } from './sndprocs.js';
 import { rn2, rnd, d } from './rng.js';
 import { game } from './gstate.js';
 import {
@@ -111,6 +115,7 @@ const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');
 const ROCK = objectNames.indexOf('ROCK');
 const BOULDER = objectNames.indexOf('BOULDER');
 const CORPSE = objectNames.indexOf('CORPSE');
+const BELL_OF_OPENING = objectNames.indexOf('BELL_OF_OPENING');
 const AKLYS = objectNames.indexOf('AKLYS');
 const PM_STALKER = monsterNames.indexOf('PM_STALKER');
 const PM_TENGU = monsterNames.indexOf('PM_TENGU');
@@ -230,12 +235,30 @@ function max_mon_load(mtmp) {
 }
 
 /**
- * C ref: mon.c can_touch_safely — corpse petrify/rider + silver/artifact
- * deferred as always-safe except rider/petrify corpse stubs.
+ * C ref: mon.c can_touch_safely — cockatrice-corpse petrify gate, rider-corpse
+ * gate, silver-hate gate, then the artifact touch gate (touch_artifact_mon:
+ * sync monster decision shared with async touch_artifact). Returns whether
+ * the monster may safely handle the object.
  */
-function can_touch_safely(_mtmp, otmp) {
+function can_touch_safely(mtmp, otmp) {
     if (!otmp) return false;
-    // touch_petrifies / is_rider / silver / touch_artifact named omissions
+    const otyp = otmp.otyp | 0;
+    const mdat = mtmp?.data;
+    // C: cockatrice corpse petrifies bare hands (gloved or stone-resistant
+    // hands exempt); rider corpses revive and are never safe to handle.
+    if (otyp === CORPSE) {
+        const fptr = mons(otmp.corpsenm);
+        if (touch_petrifies(fptr)
+            && !((mtmp?.misc_worn_check | 0) & W_ARMG)
+            && !resists_ston(mtmp)) return false;
+        if (is_rider(fptr)) return false;
+    }
+    // C: silver-haters refuse silver (covetous bell-ringers exempt).
+    if ((game.objects?.[otyp]?.oc_material | 0) === SILVER
+        && mon_hates_silver(mtmp)
+        && (otyp !== BELL_OF_OPENING || !is_covetous(mdat))) return false;
+    // C: self-willed/misaligned artifacts blast monsters (silent refuse).
+    if (!touch_artifact_mon(otmp, mtmp)) return false;
     return true;
 }
 
@@ -552,6 +575,8 @@ async function m_digweapon_check(mtmp, nix, niy) {
 // C monsters.h indices (not exported from monsters_data)
 const PM_DISPLACER_BEAST = monsterNames.indexOf('PM_DISPLACER_BEAST');
 const PM_XORN = monsterNames.indexOf('PM_XORN');
+const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
+const PM_VROCK = monsterNames.indexOf('PM_VROCK');
 
 // C ref: monmove.c mon_track_add()
 export function mon_track_add(mtmp, x, y) {
@@ -799,14 +824,32 @@ export function set_apparxy(mtmp) {
 }
 
 /**
- * C ref: monmove.c monflee — set mflee; optional fleetime / fleemsg.
- * Live pline_mon (D-1227): immobile Adjmonnam flinch; else turns to flee.
- * Named omissions: release_hero on ustuck; flees_light rn2(10)/verbalize /
- * Unaware "is frightened." / light-source pline; Vrock gas cloud.
+ * C ref: monmove.c flees_light macro `:450–457` — gremlin flees Sunsword /
+ * gold-dragon light the hero emits, when it can see and the hero square is
+ * visible. Hero invisibility does not matter (emitted light isn't).
+ */
+function flees_light(mon) {
+    if ((mon?.data?.mndx | 0) !== PM_GREMLIN) return false;
+    const u = game.u || {};
+    const uwep = u.uwep;
+    const uarm = u.uarm;
+    if (!((uwep && uwep.lamplit && artifact_light(uwep))
+        || (uarm && uarm.lamplit && artifact_light(uarm)))) return false;
+    return !!(mon.mcansee && couldsee(mon.mx, mon.my));
+}
+
+/**
+ * C ref: monmove.c monflee `:462–530` — set mflee; optional fleetime / fleemsg.
+ * Branch order: DEADMONSTER exit; release_hero on ustuck; fleetime accumulate
+ * with the fleetime==1 bump and 127 cap; new-flight message (immobile flinch /
+ * flees_light gremlin arm with Unaware + rn2(10)/Deaf + light-source lsrc +
+ * verbalize / turns to flee); Vrock mspec_used gas cloud; mflee=1; always
+ * mon_track_clear. Live pline_mon D-1227; release_hero helper D-1798.
  */
 export async function monflee(mtmp, fleetime, first, fleemsg) {
     if (!mtmp || (mtmp.mhp | 0) <= 0) return;
-    // C: if (mtmp == u.ustuck) release_hero(mtmp) — deferred
+    const u = game.u || {};
+    if (mtmp === u.ustuck) await release_hero(mtmp);
     if (!first || !mtmp.mflee) {
         if (!fleetime) {
             mtmp.mfleetim = 0;
@@ -822,12 +865,33 @@ export async function monflee(mtmp, fleetime, first, fleemsg) {
             if (!mtmp.mcanmove || !(mtmp.data?.mmove | 0)) {
                 // C: pline_mon("%s seems to flinch.", Adjmonnam(..., "immobile"))
                 await pline_mon(mtmp, `${Adjmonnam(mtmp, 'immobile')} seems to flinch.`);
+            } else if (flees_light(mtmp)) {
+                if (Unaware()) {
+                    // C: tell the player even if the hero is unconscious
+                    await pline_mon(mtmp, `${Monnam(mtmp)} is frightened.`);
+                } else if (rn2(10) || hero_Deaf()) {
+                    // C: via flees_light, light is uwep (Sunsword) or uarm
+                    // (gold dragon scales/mail) or both; no lamplit re-check
+                    const uwep = u.uwep;
+                    const uarm = u.uarm;
+                    const lsrc = (uwep && artifact_light(uwep))
+                        ? bare_artifactname(uwep)
+                        : (uarm && artifact_light(uarm))
+                            ? yname(uarm)
+                            : '[its imagination?]';
+                    await pline_mon(mtmp, `${Monnam(mtmp)} flees from the painful light of ${lsrc}.`);
+                } else {
+                    SetVoice(mtmp, 0, 80, 0);
+                    await verbalize('Bright light!');
+                }
             } else {
-                // flees_light arm deferred (no extra rn2(10))
                 await pline_mon(mtmp, `${Monnam(mtmp)} turns to flee.`);
             }
         }
-        // Vrock gas cloud deferred (create_gas_cloud + mspec_used)
+        if ((mtmp.data?.mndx | 0) === PM_VROCK && !(mtmp.mspec_used | 0)) {
+            mtmp.mspec_used = 75 + rn2(25);
+            await create_gas_cloud(mtmp.mx, mtmp.my, 5, 8);
+        }
         mtmp.mflee = 1;
     }
     // C: ignore recently-stepped spaces when made to flee (always)

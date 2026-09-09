@@ -11,7 +11,8 @@ import {
     newsym, flush_screen, pline, pline_dir, pline_xy, set_msg_xy,
     see_nearby_objects,
     clear_nhwindow_message,
-    mon_visible, sensemon, glyph_is_invisible_id, unmap_object, map_object,
+    mon_visible, sensemon, canspotmon, glyph_at, glyph_is_invisible_id,
+    glyph_is_warning, unmap_object, map_object,
     look_shown_at, glyph_to_obj_at, Norep, tty_doprev_message, putmsghistory,
     unmap_invisible, custompline,
 } from './display.js';
@@ -65,6 +66,7 @@ import { dosave, dosave0 } from './save.js';
 import { doset_simple, dotogglepickup, select_menu_pick_one } from './options.js';
 import {
     do_attack, mon_at, is_safemon, explum, attacktype_fordmg,
+    stumble_onto_mimic,
 } from './uhitm.js';
 import { rehumanize } from './polyself.js';
 import { doopen, doopen_indir, doclose } from './lock.js';
@@ -78,6 +80,7 @@ import { dowield, dowieldquiver, doswapweapon } from './wield.js';
 import { dowhatis, doquickwhatis, dohelp, dowhatdoes, doversion } from './pager.js';
 import { visctrl, key2txt, cmdbind_get } from './dokeylist.js';
 import { an, doname } from './objnam.js';
+import { m_monnam, mon_nam, Hallucination } from './do_name.js';
 import { spoteffects, dopickup, doloot, dotip } from './pickup.js';
 import { objects_at } from './mkobj.js';
 import { stairway_at, u_on_newpos, maybe_adjust_hero_bubble } from './mklev.js';
@@ -94,9 +97,9 @@ import {
     test_move_run_blocked_by_boulder, test_move_boulder_is_blocking,
     test_move_hero_passes_bars, test_move_hero_chews_bars, still_chewing,
     could_move_onto_boulder, Passes_walls_prop,
-    end_running, carrying,
+    end_running, carrying, runmode_delay_output,
     water_turbulence, move_out_of_bounds, avoid_running_into_trap_or_liquid,
-    domove_fight_ironbars, domove_fight_web,
+    escape_from_sticky_mon, domove_fight_ironbars, domove_fight_web,
 } from './hack.js';
 import { acurr, exercise, A_DEX, Fumbling } from './attrib.js';
 import { drag_ball, move_bc } from './ball.js';
@@ -1680,6 +1683,8 @@ export async function continue_run() {
         return false;
     }
     lookaround();
+    // C allmain.c:517 — delay output before testing lookaround's clear
+    await runmode_delay_output();
     if (!(game.multi > 0) || !game.context.run) {
         game.context.move = 0;
         return false;
@@ -2970,9 +2975,18 @@ export async function rhack(key) {
         await doattributes();
         game.context.move = 0;
     } else if (key === 23) { // ^W — C('w') wiz_wish
-        // C ref: wizcmds.c wiz_wish / cmd.c wizwish
-        await wiz_wish();
-        game.context.move = 0;
+        // C ref: wizcmds.c wiz_wish / cmd.c wizwish + rhack ECMD_OK tail
+        // `:3814–3816` — a death declined mid-wish leaves multi=-1
+        // (savelife); reset_cmd_vars clears it so the next command reads
+        // normally instead of tripping unmul's nomovemsg pline a turn
+        // early (scen-wish-Valkyrie-92014 step 49 stale --More--).
+        const wishRes = (await wiz_wish()) | 0;
+        if ((wishRes & (ECMD_CANCEL | ECMD_FAIL)) !== 0) {
+            reset_cmd_vars(true);
+        } else if ((wishRes & ECMD_TIME) === 0) {
+            reset_cmd_vars((game.multi | 0) < 0);
+        }
+        if ((wishRes & ECMD_TIME) !== 0) game.context.move = 1;
     } else if (key === 22) { // ^V — C('v') wiz_level_tele
         // C ref: wizcmds.c wiz_level_tele / cmd.c wizlevelport
         await wiz_level_tele();
@@ -3064,6 +3078,35 @@ export async function rhack(key) {
     } // C got_prefix_input
 }
 
+/**
+ * C ref: hack.c:1925-1948 domove_bump_mon — m-prefix bump onto a monster.
+ * If they used a 'm' command (nopick, not travel) onto a spotted/invisible/
+ * warning glyph, stumble onto mimics else print Pardon/move-right-into and
+ * waste the turn (return true); otherwise fall through to attack (false).
+ * Short-circuit and branch order match C exactly.
+ */
+export async function domove_bump_mon(mtmp, glyph) {
+    const u = game.u || {};
+    const ctx = game.context || {};
+    // C: if (nopick && !travel && (canspotmon || glyph_is_invisible || glyph_is_warning))
+    if (!(ctx.nopick && !ctx.travel)) return false;
+    if (!(canspotmon(mtmp) || glyph_is_invisible_id(glyph)
+        || glyph_is_warning(glyph))) return false;
+    // C: if (M_AP_TYPE && !Protection_from_shape_changers && !sensemon)
+    const prot = !!((u.HProtection_from_shape_changers | 0)
+        || (u.EProtection_from_shape_changers | 0)
+        || u.Protection_from_shape_changers);
+    if (M_AP_TYPE(mtmp) && !prot && !sensemon(mtmp)) {
+        await stumble_onto_mimic(mtmp);
+    } else if (mtmp.mpeaceful && !Hallucination()) {
+        // C: m_monnam(): "dog" or "Fido", no "invisible dog" or "it"
+        await pline(`Pardon me, ${m_monnam(mtmp)}.`);
+    } else {
+        await pline(`You move right into ${mon_nam(mtmp)}.`);
+    }
+    return true;
+}
+
 // C ref: hack.c domove — execute a movement
 /**
  * C ref: hack.c u_rooted — youmonst.data->mmove == 0 (brown mold, etc.).
@@ -3114,7 +3157,7 @@ async function domove(dx, dy) {
     // C ref: hack.c domove_core — swallowed: zero dx/dy, u_on_newpos onto
     // ustuck, attack engulfer; skip impaired_movement / m_at walk path.
     // Named omissions still ahead of the non-swallow arm:
-    // air_turbulence, slippery_ice_fumbling, escape_from_sticky_mon.
+    // air_turbulence, slippery_ice_fumbling.
     if ((u.uswallow | 0) && u.ustuck) {
         u.dx = 0;
         u.dy = 0;
@@ -3131,7 +3174,7 @@ async function domove(dx, dy) {
         }
         // C hack.c:2371 / :2750–2758 — water_friction via water_turbulence,
         // then move_out_of_bounds, then avoid_running_into_trap_or_liquid.
-        // Named: air_turbulence, slippery_ice_fumbling, escape_from_sticky_mon.
+        // Named: air_turbulence, slippery_ice_fumbling.
         if (await water_turbulence()) {
             if (game.context?.run) end_running(true);
             return;
@@ -3140,11 +3183,14 @@ async function domove(dx, dy) {
         newy = (u.uy | 0) + (u.dy | 0);
         if (await move_out_of_bounds(newx, newy)) return;
         if (await avoid_running_into_trap_or_liquid(newx, newy)) return;
+        // C ref: hack.c domove_core `:2760` — sticky-holder escape spends
+        // the turn before m_at / attack (D-new: escape_from_sticky_mon).
+        if (await escape_from_sticky_mon(newx, newy)) return;
 
         // C ref: hack.c domove_core — m_at / run-stop / attackmon BEFORE test_move
         // (closed_door / testdiag / rock). Diagonal intact-doorway bans must not
         // suppress attacking a monster on an adjacent cell (seed0012 @12439).
-        // Named omissions: displacer swap; domove_bump_mon; mundetected Wait!;
+        // Named omissions: displacer swap; mundetected Wait!;
         // full mon_visible Blind_telepat / Protection_from_shape amulet prop.
         mtmp = mon_at(newx, newy);
         const destLoc = game.level?.at?.(newx, newy);
@@ -3189,6 +3235,9 @@ async function domove(dx, dy) {
     }
 
     if (mtmp) {
+        // C ref: hack.c:2794 domove_bump_mon before domove_attackmon_at —
+        // m-prefix bump wastes the turn, skipping the do_attack rn2(7).
+        if (await domove_bump_mon(mtmp, glyph_at(newx, newy))) return;
         // C: domove_attackmon_at → do_attack (safemon may return false → swap)
         // Swallowed path: mtmp is ustuck; still goes through do_attack.
         if (await do_attack(mtmp)) {
@@ -3524,6 +3573,9 @@ async function domove(dx, dy) {
         game.multi_reason = 'dragging an iron ball';
         game.nomovemsg = '';
     }
+
+    // C hack.c:2990 — domove's last statement
+    await runmode_delay_output();
     } finally {
         // C ref: hack.c domove — smudge only when RUSH|WALK succeeded this step;
         // continue_run steps have attempting cleared → no rnd(5) (D-0359)

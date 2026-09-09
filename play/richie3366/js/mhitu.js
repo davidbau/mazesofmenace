@@ -23,7 +23,7 @@ import {
 } from './const.js';
 import { thrwmu, spitmu, breamu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
-import { destroy_items, resists_drli, Drain_resistance } from './zap.js';
+import { destroy_items, resists_drli, Drain_resistance, drain_item } from './zap.js';
 import { nomul, stop_occupation, maybe_half_phys, is_pool, losehp, unmul, fall_asleep } from './hack.js';
 import { upstart } from './hacklib.js';
 import { rnd, d, rn2, rn1 } from './rng.js';
@@ -41,13 +41,14 @@ import {
 import { MON_WEP, mon_wield_item, dmgval, hitval, drain_weapon_skill } from './weapon.js';
 import { arti_reflects, artifact_hit, permapoisoned, is_art, defends } from './artifact.js';
 import { is_pole, welded, is_weptool } from './wield.js';
-import { xname, doname, an, yname, the, simpleonames, safe_qbuf, mimic_obj_name, makeplural } from './objnam.js';
+import { xname, doname, an, yname, the, simpleonames, safe_qbuf, mimic_obj_name, makeplural, Yobjnam2 } from './objnam.js';
 import { objectNames, ARMOR_CLASS, COIN_CLASS, SILVER, WEAPON_CLASS } from './objects.js';
 import { objects_at } from './mkobj.js';
 import { steal, stealamulet, unresponsive, remove_worn_item } from './steal.js';
-import { cloneu } from './sit.js';
+import { cloneu, split_mon } from './sit.js';
 import {
     stop_donning, setworn, Ring_on, Ring_gone, suit_simple_name, hard_helmet,
+    some_armor,
 } from './do_wear.js';
 import { mpickobj } from './makemon.js';
 import { money2mon } from './shk.js';
@@ -99,7 +100,7 @@ import {
 import { morehungry, is_fainted } from './eat.js';
 import { castmu, buzzmu } from './mcastu.js';
 import { rehumanize, polymon, body_part } from './polyself.js';
-import { set_wounded_legs, burnarmor, ignite_items, ceiling } from './trap.js';
+import { set_wounded_legs, burnarmor, ignite_items, ceiling, drain_en } from './trap.js';
 import { mon_explodes } from './explode.js';
 import { make_hallucinated, make_confused, make_stunned, make_sick } from './potion.js';
 import { SetVoice, Soundeffect } from './sndprocs.js';
@@ -948,6 +949,48 @@ async function mhitm_ad_fire_u(mtmp, mattk, mhm) {
 }
 
 /**
+ * C ref: uhitm.c mhitm_ad_ench `:3603–3644` — mhitu (monster→you) arm.
+ * Non-verbose mhitm_mgc_atk_negated(FALSE) gate first (burns rn2(10),
+ * no message), then hitmsg; when !negated, some_armor else the rn2(5)
+ * ring pick, drain_item, and the "less effective" pline.
+ * uhitm/mhitm arms are C no-ops ("just do damage", no msomearmor).
+ */
+async function mhitm_ad_ench_u(mtmp, mattk, mhm) {
+    void mhm;
+    const u = game.u || {};
+    const negated = await mhitm_mgc_atk_negated(mtmp, null, false);
+    await hitmsg(mtmp, mattk);
+    // C: uncancelled is sufficient enough; please don't make this
+    // attack less frequent
+    if (!negated) {
+        let obj = some_armor(game.youmonst);
+        if (!obj) {
+            // C: some rings are susceptible; amulets and blindfolds
+            // aren't (at present)
+            switch (rn2(5)) {
+            case 0:
+                break;
+            case 1:
+                obj = u.uright;
+                break;
+            case 2:
+                obj = u.uleft;
+                break;
+            case 3:
+                obj = u.uamul;
+                break;
+            case 4:
+                obj = u.ublindf;
+                break;
+            }
+        }
+        if (obj && await drain_item(obj, false)) {
+            await pline(`${Yobjnam2(obj, 'seem')} less effective.`);
+        }
+    }
+}
+
+/**
  * C ref: uhitm.c mhitm_ad_tlpt `:2884–2927` — mhitu (monster→you) arm.
  * hitmsg, then the mhitm_mgc_atk_negated(FALSE) gate (negated →
  * "not affected"); verbose uncertain-position line, tele(), and the
@@ -1713,8 +1756,8 @@ function gulpmu_can_blnd(mtmp, mattk) {
  * Envelope: first swallow place+ustuck+uswldtim; AD_PHYS/COLD/FIRE/ELEC/DGST/
  * ACID/BLND arms; mdamageu; expel on timer.
  * Named omissions: Punished ball; steed DISMOUNT_ENGULFED; leashes; petrify;
- * snuff_lit invent; Slow_digestion; ugolemeffects/monstseesu; diseasemu;
- * drain_en; Half_physical polish;
+ * snuff_lit invent; Slow_digestion; ugolemeffects/monstseesu;
+ * Half_physical polish;
  * display_nhwindow(WIN_MESSAGE) before vision_recalc (D-0852 #996);
  * swallowed cls/bot polish; u_on_newpos while digesting (D-0826 postmov).
  */
@@ -1887,7 +1930,14 @@ async function gulpmu(mtmp, mattk) {
         }
         break;
     case AD_DISE:
+        // C mhitu.c gulpmu `:1533–1536` — diseasemu decides; resistance zeroes
+        if (!(await diseasemu(mtmp?.data))) tmp = 0;
+        break;
     case AD_DREN:
+        /* C mhitu.c:1537-1542 — AC magic cancellation doesn't help when
+           engulfed; 75% chance via rn2(4) short-circuit after !mcan */
+        if (!(mtmp.mcan | 0) && rn2(4))
+            await drain_en(tmp, false);
         tmp = 0;
         break;
     default:
@@ -2480,6 +2530,20 @@ async function diseasemu(mdat) {
 }
 
 /**
+ * C ref: uhitm.c mhitm_ad_dise `:4593–4619` — mhitu (monster→you) arm only
+ * (`:4604–4608`). hitmsg always (unconditional, like the SAMU/WERE arms);
+ * then `if (!diseasemu(pa)) mhm->damage = 0` — sickness keeps the leftover
+ * hitmu d() ("plus the normal damage"), resistance zeroes it. The uhitm
+ * arm cannot happen (hero never polymorphs into a DISE attacker — C
+ * `:4599–4603` comment); the mhitm arm (S_FUNGUS/GHOUL/defended gate,
+ * `:4610–4618`) lives in mhitm.js.
+ */
+async function mhitm_ad_dise_u(mtmp, mattk, mhm) {
+    await hitmsg(mtmp, mattk);
+    if (!(await diseasemu(mtmp?.data))) mhm.damage = 0;
+}
+
+/**
  * C ref: uhitm.c mhitm_ad_pest `:3808–3834` — mhitu (monster→you) arm only.
  * No hitmsg (C goes straight to pline_mon, like the FAMN arm, unlike the
  * STON/SLEE arms); pline_mon reach-out, then diseasemu(pa). Leftover
@@ -2640,7 +2704,7 @@ async function mhitm_ad_stun_u(mtmp, mattk, mhm) {
  * PHYS + ELEC + COLD + FIRE + TLPT + DRST/DRDX/DRCO + SITM/SEDU + SSEX (D-1750)
  * + BLND + STON + LEGS + POLY (D-1004) + DRIN (D-1329) + WRAP (D-1331) + SLEE
  * + DRLI + RUST + CORR + STCK + PLYS + FAMN + SLOW + WERE + HEAL + PEST
- * + SAMU + STUN; other adtyps zero damage.
+ * + SAMU + STUN + DISE + ENCH; other adtyps zero damage.
  */
 async function mhitm_adtyping_u(mtmp, mattk, mhm) {
     switch (mattk.adtyp | 0) {
@@ -2722,11 +2786,17 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
     case AD_HEAL:
         await mhitm_ad_heal_u(mtmp, mattk, mhm);
         break;
+    case AD_ENCH:
+        await mhitm_ad_ench_u(mtmp, mattk, mhm);
+        break;
     case AD_PEST:
         await mhitm_ad_pest_u(mtmp, mattk, mhm);
         break;
     case AD_STUN:
         await mhitm_ad_stun_u(mtmp, mattk, mhm);
+        break;
+    case AD_DISE:
+        await mhitm_ad_dise_u(mtmp, mattk, mhm);
         break;
     default:
         mhm.damage = 0;
@@ -2867,7 +2937,8 @@ async function passiveum(olduasmon, mtmp, mattk) {
             u.mh = (u.mh | 0) + Math.trunc((tmp + rn2(2)) / 2);
             if ((u.mhmax | 0) < (u.mh | 0)) u.mhmax = u.mh | 0;
             if ((u.mhmax | 0) > (((game.youmonst?.data?.mlevel | 0) + 1) * 8)) {
-                // split_mon(&youmonst, mtmp) deferred
+                // C mhitu.c passiveum :2574 — cold-fed mold fission.
+                await split_mon(game.youmonst, mtmp);
             }
             break;
         case AD_STUN:

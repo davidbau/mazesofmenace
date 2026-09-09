@@ -76,7 +76,7 @@ import { objectNameStrs } from './objects.js';
 import { show_text_pages, show_nhw_menu_text, mhidden_description } from './pager.js';
 import { visible_region_at } from './region.js';
 import {
-    NUMMONS, mons, G_UNIQ, M2_PNAME, monsterNames,
+    NUMMONS, mons, G_UNIQ, M2_PNAME, monsterNames, pmnames, NEUTRAL,
     MZ_TINY, MZ_SMALL, MZ_MEDIUM, MZ_LARGE, MZ_HUGE,
 } from './monsters.js';
 import { an, makeplural } from './objnam.js';
@@ -172,7 +172,7 @@ function you_have_X(final, something) {
 }
 
 /** C ref: insight.c num_genocides */
-function num_genocides() {
+export function num_genocides() {
     const mv = game.mvitals || [];
     let n = 0;
     for (let i = LOW_PM; i < NUMMONS; i++) {
@@ -651,10 +651,10 @@ function type_is_pname(ptr) {
     return !!((ptr?.mflags2 ?? 0) & M2_PNAME);
 }
 
-/** Neutral pmnames[] → display string (PM_KOBOLD → kobold). */
+/** C ref: insight.c list_vanquished — mons[i].pmnames[NEUTRAL] (case,
+ * hyphens and all: "Uruk-hai", "Keystone Kop"); never the PM_* enum label. */
 function pmname_neutral(mndx) {
-    const raw = monsterNames[mndx] || 'monster';
-    return String(raw).replace(/^PM_/, '').replace(/_/g, ' ').toLowerCase();
+    return pmnames[mndx]?.[NEUTRAL] ?? 'monster';
 }
 
 function strncmpi(a, b, n) {

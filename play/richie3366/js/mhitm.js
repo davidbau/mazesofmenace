@@ -45,6 +45,7 @@ import {
     NO_NC_FLAGS,
     NC_SHOW_MSG,
     NO_TRAP_FLAGS,
+    NO_MM_FLAGS,
     MM_IGNOREWATER,
     IS_OBSTRUCTED,
     IS_TREE,
@@ -116,7 +117,8 @@ import { munslime } from './muse.js';
 import { Monnam, mon_nam, mon_nam_too, Adjmonnam, oname, pmname, x_monnam, hliquid, YMonnam, s_suffix, free_mgivenname, a_monnam, y_monnam, some_mon_nam } from './do_name.js';
 import { an, xname, makeplural, cxname, vtense, The, simpleonames } from './objnam.js';
 import { mon_explodes } from './explode.js';
-import { newcham, pm_to_cham, is_home_elemental, clone_mon } from './makemon.js';
+import { makemon, newcham, pm_to_cham, is_home_elemental, clone_mon } from './makemon.js';
+import { stairway_find_type_dir } from './mklev.js';
 import { polyself } from './polyself.js';
 import { you_were, you_unwere } from './were.js';
 import { rloc, tele_restrict, tele, goodpos } from './teleport.js';
@@ -212,6 +214,13 @@ const PM_WOOD_GOLEM = monsterNames.indexOf('PM_WOOD_GOLEM');
 const PM_ROPE_GOLEM = monsterNames.indexOf('PM_ROPE_GOLEM');
 const PM_LEATHER_GOLEM = monsterNames.indexOf('PM_LEATHER_GOLEM');
 const PM_GOLD_GOLEM = monsterNames.indexOf('PM_GOLD_GOLEM');
+const PM_WEREJACKAL = monsterNames.indexOf('PM_WEREJACKAL');
+const PM_WEREWOLF = monsterNames.indexOf('PM_WEREWOLF');
+const PM_WERERAT = monsterNames.indexOf('PM_WERERAT');
+const PM_HUMAN_WEREJACKAL = monsterNames.indexOf('PM_HUMAN_WEREJACKAL');
+const PM_HUMAN_WEREWOLF = monsterNames.indexOf('PM_HUMAN_WEREWOLF');
+const PM_HUMAN_WERERAT = monsterNames.indexOf('PM_HUMAN_WERERAT');
+const PM_MAIL_DAEMON = monsterNames.indexOf('PM_MAIL_DAEMON');
 
 const NATTK = 6;
 // C ref: monattk.h — AT_SPIT is 10; AT_WEAP/AT_MAGC are 254/255 (not 10).
@@ -2685,19 +2694,79 @@ export async function monstone(mdef) {
     mondead(mdef);
 }
 
-// C ref: mon.c mondead → m_detach(due_to_death) → relobj(mtmp, 1, FALSE)
+// C ref: mon.c mondead `:3081–3177` — mhp=0, cham/were restore, mvitals,
+// quest/mail marks, Kops rnd(5)+makemon, unmap, m_detach(due_to_death).
 // Dead mons stay on fmon until dmonsfree (mon.c) — do not splice here.
+// Named omissions: lifesaved_monster + DEADMONSTER early return (callers
+// keep their mhp>=1 lifesaved checks); is_vampshifter+vamprises revert
+// (no JS export); be_sad pline (needs async; flag still cleared in C
+// order); steam-vortex create_gas_cloud (async; C draws rn2(10)+5 per
+// vortex death); isgd && !grddead vault-guard return (no JS export);
+// logdeadmon achievement/livelog; full m_detach wizdead/shkgone/wormgone
+// (inline subset kept: unleash, mvitals, MON_DETACH, relobj, unmap,
+// newsym). mklev edge: imports.mjs SAFE (hoisted fn, same SCC).
 export function mondead(mtmp) {
+    // C `:3089–3090` — potential pet message flag; always cleared.
+    const beSad = !!(game.iflags && game.iflags.sad_feeling);
+    if (game.iflags) game.iflags.sad_feeling = false;
     mtmp.mhp = 0;
     const mx = mtmp.mx, my = mtmp.my;
-    // C m_detach `:2741–2742` — m_unleash(mtmp, FALSE); no slack pline
+    // C `:3100–3101` be_sad pline omitted (async) — flag cleared above.
+    void beSad;
+    // C `:3115–3123` — restore chameleon, lycanthropes to true form.
+    if (ismnum(mtmp.cham)) {
+        set_mon_data(mtmp, mons(mtmp.cham));
+        mtmp.cham = NON_PM;
+    } else if ((mtmp.data?.mndx | 0) === PM_WEREJACKAL) {
+        set_mon_data(mtmp, mons(PM_HUMAN_WEREJACKAL));
+    } else if ((mtmp.data?.mndx | 0) === PM_WEREWOLF) {
+        set_mon_data(mtmp, mons(PM_HUMAN_WEREWOLF));
+    } else if ((mtmp.data?.mndx | 0) === PM_WERERAT) {
+        set_mon_data(mtmp, mons(PM_HUMAN_WERERAT));
+    }
+    // C m_detach `:2741–2742` — m_unleash(mtmp, FALSE); no slack pline.
+    // Kept hoisted ahead of the C detach position; draw-free.
     if (mtmp.mleashed) m_unleash(mtmp, false);
-    // C: after cham/were restore — mvitals[monsndx].died++
-    record_mvitals_died(mtmp.mnum ?? mtmp.data?.mndx);
+    // C `:3136–3138` — mvitals[monsndx].died++ on the restored form.
+    const mndx = mtmp.mnum ?? mtmp.data?.mndx;
+    record_mvitals_died(mndx);
+    // C `:3141–3142` — (possibly polymorphed) quest leader marked dead.
+    // m_id 0 is unset (dog.js:642), as in quest.js:413.
+    const qs = game.quest_status;
+    if (qs && (qs.leader_m_id | 0)
+        && (mtmp.m_id | 0) === (qs.leader_m_id | 0)) {
+        qs.leader_is_dead = true;
+    }
+    // C `:3146–3147` (#ifdef MAIL_STRUCTURES, always on) — dead mail
+    // daemon is genocided. Slot exists via record_mvitals_died above.
+    if ((mndx | 0) === PM_MAIL_DAEMON) {
+        const slot = game.mvitals && game.mvitals[mndx];
+        if (slot) slot.mvflags = (slot.mvflags | 0) | G_GENOD;
+    }
+    // C `:3149–3166` — dead Kops may come back.
+    if (mtmp.data?.mlet === 'S_KOP') {
+        const stway = stairway_find_type_dir(false, false);
+        // C: switch (rnd(5)) — 1 returns near the stairs (FALLTHROUGH
+        // to 2 with no stairway), 2 returns randomly, default nothing.
+        switch (rnd(5)) {
+        case 1:
+            if (stway) {
+                makemon(mtmp.data, stway.sx | 0, stway.sy | 0, NO_MM_FLAGS);
+                break;
+            }
+            // FALLTHROUGH
+        case 2:
+            makemon(mtmp.data, 0, 0, NO_MM_FLAGS);
+            break;
+        default:
+            break;
+        }
+    }
+    // C `:3169` logdeadmon omitted (see header).
     mtmp.mstate = (mtmp.mstate | 0) | MON_DETACH;
     // Keep mx/my for drop + make_corpse (C mon_leaving_level).
     relobj_on_death(mtmp);
-    // C mon.c mondead `:3170` — glyph_is_invisible(levl.glyph)
+    // C mon.c mondead `:3170` — glyph_is_invisible(levl.glyph).
     if (mx > 0 && memory_glyph_is_invisible(game.level?.at?.(mx, my))) {
         unmap_object(mx, my);
     }

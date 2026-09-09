@@ -58,6 +58,7 @@ import { P_SKILL, use_skill } from './weapon.js';
 import { welded, is_pole } from './wield.js';
 import { level_mon_at } from './worm.js';
 import { mhe } from './mondata.js';
+import { mpickobj } from './makemon.js';
 
 const SADDLE = objectNames.indexOf('SADDLE');
 const BOULDER = objectNames.indexOf('BOULDER');
@@ -271,17 +272,16 @@ function fully_identify_obj(obj) {
     obj.rknown = 1;
 }
 
-/** Local mpickobj — avoid makemon↔steed import cycle; saddles never merge. */
-function pick_saddle(mtmp, otmp) {
-    otmp.nobj = mtmp.minvent || null;
-    mtmp.minvent = otmp;
-    return false; // not merged
-}
-
 /**
- * C ref: steed.c put_saddle_on_mon.
- * NULL saddle → mksobj(SADDLE, TRUE, FALSE) then identify + wear.
- * update_mon_extrinsics deferred (no RNG for ordinary saddle).
+ * C ref: steed.c put_saddle_on_mon `:142–163` — mpickobj (steal.c:
+ * carry_obj_effects + add_to_minv, which set where/ocarry); a merged
+ * return panics in C ("merged saddle?") and is unreachable (saddles
+ * never merge), so a merge just skips the worn marking. The old local
+ * pick_saddle linked minvent without where/ocarry, hanging
+ * relobj_on_death's `while (minvent)` on the first saddled-mon death
+ * (scen-normal-Knight-92182). imports.mjs --can: mpickobj is hoisted,
+ * cycle-safe. update_mon_extrinsics deferred (no RNG for ordinary
+ * saddle).
  */
 export function put_saddle_on_mon(saddle, mtmp) {
     if (!can_saddle(mtmp) || which_armor_saddle(mtmp)) {
@@ -292,7 +292,7 @@ export function put_saddle_on_mon(saddle, mtmp) {
         if (!saddle) return;
         fully_identify_obj(saddle);
     }
-    if (pick_saddle(mtmp, saddle)) {
+    if (mpickobj(mtmp, saddle)) {
         return;
     }
     mtmp.misc_worn_check = (mtmp.misc_worn_check || 0) | W_SADDLE;

@@ -132,7 +132,7 @@ import {
     TIMEOUT, I_SPECIAL, HALLUC_RES, GLIB, FAST, FROMOUTSIDE, INTRINSIC, LEG,
     EYE, SEE_INVIS,
     DETECT_MONSTERS, LEVITATION, INVIS, HEAD, COLNO, ROWNO,
-    In_endgame, Is_earthlevel, In_sokoban,
+    In_endgame, Is_earthlevel, Is_airlevel, Is_waterlevel, In_sokoban,
     QBUFSZ, STONED, SLIMED, SICK, SICK_ALL, DEAF, STRANGLED, G_GONE,
     A_CHAOTIC, A_LAWFUL, Upolyd, ismnum, NON_PM, NEUTRAL,
     P_RIDING, P_BASIC, ER_DESTROYED, ER_NOTHING, MM_NOMSG,
@@ -143,7 +143,7 @@ import {
     M_AP_FURNITURE, M_AP_OBJECT, BURNING_OIL, LOST_EXPLODING, EXPL_FIERY,
     MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS, COST_NUTRLZ,
     COST_UNCURS, COST_UNBLSS, PLNMSG_OBJ_GLOWS,
-    P_CROSSBOW, P_NONE, FINGER, LL_CONDUCT,
+    P_CROSSBOW, P_NONE, FINGER, FOOT, LL_CONDUCT,
     GETOBJ_EXCLUDE, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_INACCESS,
     GETOBJ_EXCLUDE_NONINVENT, GETOBJ_NOFLAGS,
     HANDS_SYM,
@@ -166,6 +166,7 @@ import { makemon, set_malign } from './makemon.js';
 import { mongone, wakeup, healmon, wake_nearto, dist2, m_at, seemimic } from './mon.js';
 import { tamedog } from './dog.js';
 import { can_reach_floor } from './engrave.js';
+import { surface } from './sit.js';
 import { bcsign } from './rumors.js';
 import { more_experienced, pluslvl, rndexp } from './exper.js';
 import { depth } from './hacklib.js';
@@ -326,6 +327,7 @@ function dippable_lets() {
 function useup(otmp) {
     if (!otmp) return;
     if ((otmp.quan || 1) > 1) {
+        otmp.in_use = false; /* C invent.c:1326 — no longer in use */
         otmp.quan--;
         otmp.owt = weight(otmp);
         return;
@@ -489,25 +491,27 @@ async function peffect_sickness(otmp) {
 }
 
 /**
- * C ref: potion.c peffect_paralysis
- * Free_action resist; else freeze msg + nomul(-(rn1(10, 25-12*bcsign))).
- * Levitation/air/water/steed messages deferred → floor feet msg.
- * surface() → "floor".
+ * C ref: potion.c:881-898 peffect_paralysis — branch order + short-circuit.
+ * Free_action resist; else Levitation/air/water → suspended, usteed →
+ * frozen in place, else feet frozen to surface(u.ux,u.uy); then
+ * nomul(-(rn1(10, 25-12*bcsign))), multi_reason, nomovemsg, exercise DEX.
  */
 async function peffect_paralysis(otmp) {
     const u = game.u || {};
-    const Free_action = !!(u.Free_action || u.HFree_action || u.EFree_action);
-    if (Free_action) {
+    if (Free_action()) {
         await pline('You stiffen momentarily.');
-        return;
+    } else {
+        if (Levitation() || Is_airlevel(u.uz) || Is_waterlevel(u.uz))
+            await pline('You are motionlessly suspended.');
+        else if (u.usteed)
+            await pline('You are frozen in place!');
+        else
+            await pline(`Your ${makeplural(body_part(FOOT))} are frozen to the ${surface(u.ux, u.uy)}!`);
+        nomul(-(rn1(10, 25 - 12 * bcsign(otmp))));
+        game.multi_reason = 'frozen by a potion';
+        game.nomovemsg = 'You can move again.';
+        exercise(A_DEX, false);
     }
-    // Levitation / Is_airlevel / Is_waterlevel / usteed branches deferred
-    // C: makeplural(body_part(FOOT)) → "feet"; surface() → "floor" deferred
-    await pline('Your feet are frozen to the floor!');
-    nomul(-(rn1(10, 25 - 12 * bcsign(otmp))));
-    game.multi_reason = 'frozen by a potion';
-    game.nomovemsg = 'You can move again.';
-    exercise(A_DEX, false);
 }
 
 /** C ref: potion.c itimeout — clamp to TIMEOUT field. */

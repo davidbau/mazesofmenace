@@ -2493,9 +2493,10 @@ export function Doname2(obj) {
     return upstart(doname(obj));
 }
 
-/** C objnam.c aobjnam — cxname + optional otense (quan prefix via xname). */
+/** C objnam.c aobjnam `:2242–2258` — "count cxname" (quan prefix) + optional otense. */
 export function aobjnam(otmp, verb) {
     let bp = cxname(otmp);
+    if (((otmp?.quan ?? 1) | 0) !== 1) bp = `${otmp.quan | 0} ${bp}`;
     if (verb) bp += ` ${otense(otmp, verb)}`;
     return bp;
 }

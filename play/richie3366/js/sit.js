@@ -129,7 +129,7 @@ import { yn_function, getlin } from './getline.js';
 import { t_at, dotrap, water_damage, uteetering_at_seen_pit, uescaped_shaft } from './trap.js';
 import { losehp, finish_maybe_wail, is_pool, is_lava, On_stairs, db_under_typ } from './hack.js';
 import { burn_away_slime } from './timeout.js';
-import { hliquid, christen_monst, mon_nam, Monnam } from './do_name.js';
+import { hliquid, christen_monst, mon_nam, Monnam, s_suffix } from './do_name.js';
 import { mhis } from './mondata.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
@@ -997,15 +997,15 @@ export async function cloneu() {
 
 /**
  * C ref: potion.c split_mon. Hero path cloneu; monster path
- * clone_mon (D-1078). Non-youmonst heat reason still "its"
- * (C s_suffix(mon_nam(mtmp)) named).
+ * clone_mon (D-1078). Non-youmonst heat reason is C's
+ * s_suffix(mon_nam(mtmp)).
  */
 export async function split_mon(mon, mtmp) {
     let reason = '';
     if (mtmp) {
-        // C: the_your[1]=="your" when attacker is youmonst; else
-        // s_suffix(mon_nam(mtmp)). dosit passes NULL.
-        reason = ` from ${mtmp === game.youmonst ? 'your' : 'its'} heat`;
+        // C potion.c split_mon: the_your[1]=="your" when attacker is
+        // youmonst; else s_suffix(mon_nam(mtmp)). dosit passes NULL.
+        reason = ` from ${mtmp === game.youmonst ? 'your' : s_suffix(mon_nam(mtmp))} heat`;
     }
     if (mon === game.youmonst) {
         const u = game.u || {};

@@ -8,7 +8,7 @@ import {
     COLNO, ROWNO, MAX_RADIUS, LS_MONSTER, LS_OBJECT, TEMP_LIT,
     OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_FREE,
 } from './const.js';
-import { clear_path, vision_recalc } from './vision.js';
+import { circle_ptr, clear_path, vision_recalc } from './vision.js';
 import {
     canseemon, canspotmon, map_invisible, flush_screen, nh_delay_output,
     impossible,
@@ -146,13 +146,14 @@ export function relight_monsters() {
 /**
  * C ref: light.c do_light_sources — mark TEMP_LIT in cs_rows.
  * Camera flash: range 0 + Null obj, caller already set ls.{x,y} (D-1597).
- * Named omissions: LSF_NEEDS_FIXUP; circle_ptr exact ring; hero range trim.
+ * Exact circle ring via circle_ptr (light.c:213-226); a range-3 lamp no
+ * longer lights the dy=±2 corner columns (D-2157).
+ * Named omissions: LSF_NEEDS_FIXUP; hero at_hero_range dedup (OR-idempotent).
  */
 export function do_light_sources(cs_rows) {
     const list = game.light_base;
     if (!list?.length || !cs_rows) return;
 
-    // Approximate circle as square of side 2*range (circle_ptr deferred).
     for (const ls of list) {
         if (ls.type === LS_MONSTER) {
             const m = ls.id;
@@ -185,6 +186,8 @@ export function do_light_sources(cs_rows) {
         const range = ls.range | 0;
         if (range < 0) continue;
 
+        // C light.c:218 — circle ring limits, not a square of side 2*range.
+        const limits = circle_ptr(range);
         let max_y = ls.y + range;
         if (max_y >= ROWNO) max_y = ROWNO - 1;
         let y = ls.y - range;
@@ -192,7 +195,7 @@ export function do_light_sources(cs_rows) {
         for (; y <= max_y; y++) {
             const row = cs_rows[y];
             if (!row) continue;
-            const offset = range;
+            const offset = limits[Math.abs(y - ls.y)] | 0;
             let min_x = ls.x - offset;
             if (min_x < 1) min_x = 1;
             let max_x = ls.x + offset;

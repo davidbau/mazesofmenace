@@ -5,7 +5,7 @@
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { flush_screen, flush_topl_more, pline } from './display.js';
-import { xprname, xname, makeplural, vtense, an, doname, The, body_part_latebound, simpleonames, is_plural, otense, Yname2 } from './objnam.js';
+import { xprname, xname, aobjnam, makeplural, vtense, an, doname, The, body_part_latebound, simpleonames, is_plural, otense, Yname2, arti_light_description } from './objnam.js';
 import { yn_function } from './getline.js';
 import { hands_obj, is_wet_towel } from './weapon.js';
 import { humanoid, mons } from './monsters.js';
@@ -15,12 +15,12 @@ import { rn2, rnd } from './rng.js';
 import {
     WEAPON_CLASS, TOOL_CLASS, COIN_CLASS, GEM_CLASS, SCROLL_CLASS,
     ARMOR_CLASS,
-    objectNames,
+    objectNames, is_sword,
 } from './objects.js';
 import {
     W_WEP, W_SWAPWEP, W_QUIVER, W_ARMOR, W_ACCESSORY, W_SADDLE,
     P_NONE, P_BOW, P_CROSSBOW, P_DART, P_BOOMERANG, P_POLEARMS, P_LANCE,
-    ECMD_OK, ECMD_TIME, Upolyd, HAND,
+    ECMD_OK, ECMD_TIME, Upolyd, HAND, RIGHT_HANDED,
     has_oname, ONAME, COST_DEGRD, COST_DECHNT,
 } from './const.js';
 import { retouch_object, set_artifact_intrinsic, is_art, restrict_name } from './artifact.js';
@@ -31,7 +31,8 @@ import { uncurse, weight, unsplitobj, clear_splitobjs, splitobj } from './mkobj.
 import { trycall } from './do_name.js';
 import { addinv_nomerge } from './u_init.js';
 import { inv_cnt } from './steal.js';
-import { alter_cost, costly_alteration } from './shk.js';
+import { alter_cost, costly_alteration, shop_keeper, inside_shop } from './shk.js';
+import { shkname } from './shknam.js';
 
 /** C: are_no_longer_twoweap / can_no_longer_twoweap */
 const are_no_longer_twoweap = 'are no longer using two weapons at once';
@@ -387,9 +388,13 @@ export async function doswapweapon() {
 }
 
 /**
- * C ref: wield.c ready_weapon — hero path without corpse/bimanual weld
- * messages beyond the common retouch + prinv + setuwep.
- * @returns {number} 0 fail/cancel semantics caller maps; 1 took time
+ * C ref: wield.c ready_weapon `:168–273` — full arm order: empty-hands,
+ * corpse (named omit), bimanual+shield, retouch, will_weld pline vs
+ * prinv (+AKLYS tether), setuwep, twoweap message, artifact light, shop.
+ * Named omissions: `cant_wield_corpse` petrification death path
+ * (touch_petrifies/Stone_resistance/instapetrify unported);
+ * `arti_speak` rumor/verbalize (res already TIME, message-only here).
+ * @returns {number} 0 = ECMD_OK/ECMD_FAIL (no turn); 1 = ECMD_TIME
  */
 async function ready_weapon(wep) {
     const u = game.u || {};
@@ -400,36 +405,71 @@ async function ready_weapon(wep) {
         if (u.uwep) {
             await pline(`You are ${empty_handed()}.`);
             setuwep(null);
-            return 1;
+            return 1; // C: ECMD_TIME
         }
         await pline(`You are already ${empty_handed()}.`);
+        return 0; // C: ECMD_OK
+    }
+
+    // C :183 — wep->otyp == CORPSE && cant_wield_corpse(wep) → ECMD_TIME;
+    // named omit (see above).
+    if (u.uarms && bimanual(wep)) {
+        // C :186–190 — ECMD_FAIL takes no turn → 0 in this 0/1 scheme
+        const what = is_sword(wep) ? 'sword'
+            : ((wep.otyp | 0) === BATTLE_AXE ? 'axe' : 'weapon');
+        await pline(`You cannot wield a two-handed ${what} while wearing a shield.`);
         return 0;
     }
 
-    // cant_wield_corpse / bimanual+shield deferred
     if (!(await retouch_object(wep, false))) {
         return 1; // C: ECMD_TIME even when not wielded
     }
 
+    // C: Weapon WILL be wielded after this point → ECMD_TIME
     if (will_weld(wep)) {
-        // weld pline deferred — still set bknown + wield
+        // C :196–209 — weld pline before setuwep
+        let tmp = xname(wep);
+        const thestr = 'The ';
+        if (!tmp.startsWith(thestr) && The(tmp).startsWith(thestr)) tmp = thestr;
+        else tmp = '';
+        const itself = ((wep.quan ?? 1) | 0) === 1 ? 'itself' : 'themselves';
+        const URIGHTY = ((game.u?.uhandedness | 0) === RIGHT_HANDED);
+        const hand = body_part_latebound(HAND);
+        await pline(`${tmp}${aobjnam(wep, 'weld')} ${itself} to your ${bimanual(wep) ? '' : (URIGHTY ? 'dominant right ' : 'dominant left ')}${bimanual(wep) ? makeplural(hand) : hand}!`);
         wep.bknown = 1;
-        setuwep(wep);
-        return 1;
+        update_inventory(); // C: set_bknown → update_inventory when in invent
+    } else {
+        const dummy = wep.owornmask || 0;
+        wep.owornmask = dummy | W_WEP;
+        if ((wep.otyp | 0) === AKLYS && ((wep.owornmask | 0) & W_WEP) !== 0)
+            await pline('You secure the tether.'); // C: You("secure the tether.")
+        await pline(xprname(wep, undefined, true)); // C: prinv → xprname(..., TRUE)
+        wep.owornmask = dummy;
     }
-
-    const dummy = wep.owornmask || 0;
-    wep.owornmask = dummy | W_WEP;
-    await pline(xprname(wep, undefined, true)); // C: prinv → xprname(..., TRUE)
-    wep.owornmask = dummy;
 
     setuwep(wep);
-    // C: was_twoweap && !u.twoweap && verbose → are/can_no_longer message
-    if (was_twoweap && !u.twoweap && game.flags?.verbose !== false && u.uwep) {
-        const ok = TWOWEAPOK(u.uwep) && !bimanual(u.uwep);
+    // C :231–237 — was_twoweap && !u.twoweap && verbose → are/can_no_longer
+    if (was_twoweap && !game.u?.twoweap && game.flags?.verbose !== false && game.u?.uwep) {
+        const ok = TWOWEAPOK(game.u.uwep) && !bimanual(game.u.uwep);
         await pline(`You ${ok ? are_no_longer_twoweap : can_no_longer_twoweap}.`);
     }
-    // arti_speak / artifact_light / unpaid shop / twoweap messages deferred
+
+    // C :241–243 — arti_speak → res |= TIME; named omit (see above)
+    // C :245–250 — artifact light begins to burn + shine pline
+    const { artifact_light, begin_burn } = await import('./timeout.js');
+    if (artifact_light(wep) && !wep.lamplit) {
+        begin_burn(wep, false);
+        if (!Blind_w()) {
+            await pline(`${Tobjnam(wep, 'begin')} to shine ${arti_light_description(wep)}!`);
+        }
+    }
+    // C :260–268 — unpaid shopkeeper warning
+    if (wep.unpaid) {
+        const this_shkp = shop_keeper(inside_shop(game.u?.ux | 0, game.u?.uy | 0));
+        if (this_shkp) {
+            await pline(`${shkname(this_shkp)} says "You be careful with my ${xname(wep)}!"`);
+        }
+    }
     if (had_wep !== !!game.u?.uwep && game.flags) game.flags.botl = true;
     return 1;
 }
@@ -1098,6 +1138,8 @@ async function strange_feeling(obj, txt) {
     }
 }
 
+const BATTLE_AXE = objectNames.indexOf('BATTLE_AXE');
+const AKLYS = objectNames.indexOf('AKLYS');
 const WORM_TOOTH = objectNames.indexOf('WORM_TOOTH');
 const CRYSKNIFE = objectNames.indexOf('CRYSKNIFE');
 const STRANGE_OBJECT = objectNames.indexOf('STRANGE_OBJECT');

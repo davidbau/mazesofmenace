@@ -11,7 +11,7 @@ import {
     pline, mon_visible, see_with_infrared, pline_mon, verbalize,
     map_invisible, newsym, sensemon, flash_glyph_at, mon_to_glyph,
     canspotmon, impossible, cls, docrt, display_self, You_feel, Norep,
-    flush_screen, show_glyph_cell,
+    more, show_glyph_cell,
 } from './display.js';
 import { worm_known, worm_move } from './worm.js';
 import {
@@ -2956,7 +2956,9 @@ async function mloot_container(mon, container, vismon) {
 /**
  * C ref: muse.c you_aggravate `:2630`.
  * Named omit: CLIPPING cliparound (macosx-minimal has no CLIPPING).
- * WIN_MAP blocking → nhgetch after flush, no --More--.
+ * C wintty.c tty_display_nhwindow NHW_MAP blocking (`:1889`): topline
+ * non-empty → TOPLINE_NEED_MORE + WIN_MESSAGE block → more(). Same
+ * mapping as the detect.js mfind0 / eat.js mimic arms.
  */
 async function you_aggravate(mtmp) {
     await pline(
@@ -2969,9 +2971,7 @@ async function you_aggravate(mtmp) {
     );
     display_self();
     await You_feel(`aggravated at ${noit_mon_nam(mtmp)}.`);
-    await flush_screen(1);
-    const { nhgetch } = await import('./input.js');
-    await nhgetch();
+    await more();
     await docrt();
     if (unconscious()) {
         game.multi = -1;

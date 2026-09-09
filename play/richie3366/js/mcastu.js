@@ -12,15 +12,15 @@ import {
     HEAD, EYE, TIMEOUT, DIED, KILLED_BY, A_DEX,
     MM_ANGRY, MM_NOMSG, Upolyd, ismnum, DETECT_MONSTERS,
     M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_ELEC, M_SEEN_REFL,
-    M_AP_TYPE, M_AP_OBJECT,
+    M_AP_TYPE, M_AP_OBJECT, SEE_INVIS,
 } from './const.js';
 import { mon_adjust_speed } from './muse.js';
 import {
     pline, pline_mon, Norep, verbalize, canspotmon, canseemon, impossible,
-    You_feel, shieldeff, map_invisible, tp_sensemon,
+    You_feel, shieldeff, map_invisible, tp_sensemon, set_msg_xy,
 } from './display.js';
 import {
-    Monnam, bogusmon, pmname, type_is_pname, Mgender,
+    Monnam, mon_nam, bogusmon, pmname, type_is_pname, Mgender,
 } from './do_name.js';
 import { nomul, You_hear, losehp } from './hack.js';
 import { nasty, aggravate, clonewiz } from './wizard.js';
@@ -48,6 +48,8 @@ import { done, finish_losehp_done } from './end.js';
 import { burn_away_slime } from './timeout.js';
 // C ref: mhitu.c mdamageu — castmu FIRE/COLD/MAGM tail (imports.mjs: hoisted, cycle-safe).
 import { mdamageu } from './mhitu.js';
+import { Soundeffect } from './sndprocs.js';
+import { se_air_crackles } from './generated/seffects_data.js';
 
 /** C ref: mondata.h perceives — M1_SEE_INVIS. */
 function perceives(ptr) {
@@ -122,7 +124,10 @@ function Confusion() {
 }
 function See_invisible() {
     const u = game.u || {};
-    return !!((u.HSee_invisible | 0) || (u.ESee_invisible | 0) || u.See_invisible);
+    // C youprop.h:150–152 See_invisible ≡ H||E (uprops[SEE_INVIS]); + sticky flat.
+    const p = u.uprops?.[SEE_INVIS];
+    return !!((u.HSee_invisible | 0) || (u.ESee_invisible | 0) || u.See_invisible
+        || (p?.intrinsic | 0) || (p?.extrinsic | 0));
 }
 function Detect_monsters() {
     const u = game.u || {};
@@ -505,11 +510,11 @@ async function mcast_weaken_you(mtmp) {
     }
 }
 
-/** C ref: mcastu.c mcast_disappear */
+/** C ref: mcastu.c mcast_disappear :490–501 — pline_mon + See_invisible + mon_set_minvis + map_invisible */
 async function mcast_disappear(mtmp) {
     if (!mtmp.minvis && !mtmp.invis_blkd) {
         if (canseemon(mtmp)) {
-            await pline(`${Monnam(mtmp)} suddenly ${
+            await pline_mon(mtmp, `${Monnam(mtmp)} suddenly ${
                 !See_invisible() ? 'disappears' : 'becomes transparent'}!`);
         }
         mon_set_minvis(mtmp, false);
@@ -849,9 +854,15 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
         return M_ATTK_MISS;
     }
 
-    // C: nomul(0) then fumble rn2(ml*10); air-crackles pline deferred
+    // C ref: mcastu.c:207-215 — nomul(0) then fumble rn2(ml*10): Soundeffect
+    // always, air-crackles pline when seen and heard (D-2175).
     nomul(0);
-    if (rn2(ml * 10) < (mtmp.mconf ? 100 : 20)) {
+    if (rn2(ml * 10) < (mtmp.mconf ? 100 : 20)) { /* fumbled attack */
+        Soundeffect(se_air_crackles, 60);
+        if (canseemon(mtmp) && !Deaf()) {
+            set_msg_xy(mtmp.mx, mtmp.my);
+            await pline(`The air crackles around ${mon_nam(mtmp)}.`);
+        }
         return M_ATTK_MISS;
     }
 

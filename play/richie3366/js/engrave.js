@@ -41,9 +41,9 @@
 
 import { game } from './gstate.js';
 import { rn1, rn2, rnd } from './rng.js';
-import { pline, newsym, impossible } from './display.js';
+import { pline, newsym, impossible, Hallucination } from './display.js';
 import { getlin, yn_function } from './getline.js';
-import { getobj, useup, hold_another_object, prinv, update_inventory } from './invent.js';
+import { getobj, useup, hold_another_object, prinv, update_inventory, Blind } from './invent.js';
 import { splitobj, obj_extract_self } from './mkobj.js';
 import { A_WIS, exercise } from './attrib.js';
 import { getrumor, get_rnd_text, xcrypt } from './rumors.js';
@@ -98,17 +98,15 @@ function mungspaces(s) {
     return String(s || '').trim().replace(/\s+/g, ' ');
 }
 
-function Blind() {
-    return !!(game.u?.Blind || game.u?.ublind);
-}
+/** C youprop.h Confusion ≡ HConfusion (sticky u.Confusion kept per repo convention). */
 function Confusion() {
-    return !!(game.u?.Confusion);
+    const u = game.u || {};
+    return !!((u.HConfusion | 0) || u.Confusion);
 }
+/** C youprop.h Stunned ≡ HStun (sticky u.Stunned kept per repo convention). */
 function Stunned() {
-    return !!(game.u?.Stunned);
-}
-function Hallucination() {
-    return !!(game.u?.Hallucination);
+    const u = game.u || {};
+    return !!((u.HStun | 0) || u.Stunned);
 }
 
 /** C ref: hack.c is_ice — ice terrain check (partial). */
@@ -1360,6 +1358,7 @@ export async function doengrave() {
         u.uconduct.literate = (u.uconduct.literate | 0) + 1;
     }
 
+    /* C engrave.c:1219-1226 — mix-up draws rn2(25)/rn2(11)/rn2(7)/rn2(4)/rn2(2) in order; Blind≡(HBlinded||EBlinded)&&!BBlinded. */
     const chars = ebuf.split('');
     for (let i = 0; i < chars.length; i++) {
         if (chars[i] === ' ') continue;

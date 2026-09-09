@@ -36,7 +36,7 @@ import { dosearch0, warnreveal } from './detect.js';
 import { nhgetch } from './input.js';
 import {
     unmul, nomul, monster_nearby, stop_occupation, overexert_hp, is_pool,
-    notice_mon_off, notice_mon_on, notice_all_mons,
+    notice_mon_off, notice_mon_on, notice_all_mons, runmode_delay_output,
 } from './hack.js';
 import { reset_justpicked } from './pickup.js';
 import { set_wear, glibr } from './do_wear.js';
@@ -1075,13 +1075,15 @@ export async function moveloop_core() {
                 // Callee D-1156; this is the once-per-turn twin of
                 // goto_level (D-1168).
                 if (Is_waterlevel(g.u?.uz) || Is_airlevel(g.u?.uz)) {
-                    movebubbles();
+                    await movebubbles();
                 } else if (g.level?.flags?.fumaroles) {
                     await fumaroles();
                 }
 
                 // C: when immobile, count is in turns — multi < 0 occupation
                 if ((g.multi || 0) < 0) {
+                    // C allmain.c:381 — before ++gm.multi
+                    await runmode_delay_output();
                     g.multi++;
                     if (g.multi === 0) {
                         await unmul(null);
@@ -1175,6 +1177,8 @@ export async function moveloop_core() {
         if (!cont) g.occupation = null;
         // C: monster_nearby() → stop_occupation(); reset_eat deferred
         if (monster_nearby()) await stop_occupation();
+        // C allmain.c:509 — post-occupation, before return
+        await runmode_delay_output();
         return;
     }
     if ((g.multi || 0) < 0) {

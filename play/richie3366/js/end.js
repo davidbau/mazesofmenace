@@ -7,6 +7,7 @@ import { rn2, d } from './rng.js';
 import { depth } from './hacklib.js';
 import {
     pline, flush_topl_more, bot, You_feel, clear_nhwindow_message,
+    canspotmon, Hallucination,
 } from './display.js';
 import { yn_function, paranoid_query } from './getline.js';
 import { show_text_pages, show_nhw_menu_text } from './pager.js';
@@ -33,13 +34,14 @@ import {
     PARANOID_DIE, PARANOID_BONES, PARANOID_QUIT, TT_LAVA, Has_contents,
     has_oname, LIFESAVED, W_AMUL,
     DELPHI, ROOMOFFSET, Is_oracle_level, Is_astralevel, In_endgame,
-    In_quest, ismnum,
+    In_quest, ismnum, has_ebones, has_mgivenname, MGIVENNAME,
+    M_AP_TYPE, M_AP_MONSTER,
 } from './const.js';
-import { G_NOCORPSE, mons, likes_gold, likes_gems, likes_objs, likes_magic } from './monsters.js';
+import { G_NOCORPSE, G_UNIQ, mons, likes_gold, likes_gems, likes_objs, likes_magic } from './monsters.js';
 import { m_at, mongone, dmonsfree, zombie_maker } from './mon.js';
 import { can_carry, mon_offmap } from './monmove.js';
 import { enexto, rloc_to, single_level_branch } from './teleport.js';
-import { oname, christen_monst, free_oname, mon_nam, pmname, Ugender } from './do_name.js';
+import { oname, christen_monst, free_oname, mon_nam, pmname, Ugender, Mgender, type_is_pname } from './do_name.js';
 import { mkcorpstat, curse, place_object, stackobj, mksobj, add_to_minv, add_to_container, weight } from './mkobj.js';
 import { make_grave } from './engrave.js';
 import { makemon, adj_lev } from './makemon.js';
@@ -50,7 +52,7 @@ import {
 import { genders, aligns } from './roles.js';
 import { topten, nh_terminate_capture, raw_print_blanks } from './topten.js';
 import { objectNames } from './generated/objects_data.js';
-import { monsterNames, pmnames, PM_TOURIST, LOW_PM } from './generated/monsters_data.js';
+import { monsterNames, PM_TOURIST, LOW_PM } from './generated/monsters_data.js';
 import { paybill, money2mon, obfree } from './shk.js';
 import { hidden_gold, paygd } from './vault.js';
 import { clearlocks } from './files.js';
@@ -74,6 +76,7 @@ const PM_GREEN_SLIME = monsterNames.indexOf('PM_GREEN_SLIME');
 const PM_WRAITH = monsterNames.indexOf('PM_WRAITH');
 const PM_VAMPIRE = monsterNames.indexOf('PM_VAMPIRE');
 const PM_GHOUL = monsterNames.indexOf('PM_GHOUL');
+const PM_HIGH_CLERIC = monsterNames.indexOf('PM_HIGH_CLERIC');
 const PM_HUMAN = monsterNames.indexOf('PM_HUMAN');
 const STATUE = objectNames.indexOf('STATUE');
 const TIN = objectNames.indexOf('TIN');
@@ -1162,33 +1165,55 @@ function finish_paybill() {
 /**
  * C ref: end.c done_in_by — "You die..." then done(how).
  * Ported: isshk → honorific + shkname + ", the shopkeeper" + KILLED_BY
- * (D-0313); killer-based grave arise (wraith/mummy/zombie/vampire/ghoul,
+ * (D-0313); G_UNIQ "the " (unless pname) + KILLED_BY with imitator /
+ * High-Cleric gates (:195-205); minvis + hallucinogen-distorted prefixes
+ * (:209-212); gendered pmname(Mgender) + "called"/"of" mgivenname suffix
+ * (:270-282); killer-based grave arise (wraith/mummy/zombie/vampire/ghoul,
  * end.c:326-340) with the genocided-arise reset. C mptr is mtmp->data
  * here (the mimicker arm resets it at :255).
- * Named omissions: G_UNIQ / ghost / mimicker / vampshifter /
- * priest|minion m_monnam / minvis / hallu-distort / monhealthdescr /
- * multi_reason trim.
+ * Named omissions: ghost arms / imitator+vampshifter / priest|minion
+ * m_monnam / monhealthdescr wound prefix / multi_reason trim.
  */
 export async function done_in_by(mtmp, how = DIED) {
     await pline(how === STONING ? 'You turn to stone...' : 'You die...');
     if (!game.killer) game.killer = { name: '', format: 0 };
+    // C end.c done_in_by :183-190 — mptr/champtr + distorted/mimicker/imitator.
+    const mnum = mtmp?.mnum;
+    const mptr = mtmp?.data ?? (mnum != null ? mons(mnum) : null);
+    const champtr = ismnum(mtmp?.cham) ? mons(mtmp.cham) : mptr;
+    const distorted = Hallucination() && canspotmon(mtmp);
+    const mimicker = M_AP_TYPE(mtmp) === M_AP_MONSTER;
+    const imitator = mptr !== champtr || mimicker;
     // C: svk.killer.format = KILLED_BY_AN; then branch may override
     game.killer.format = KILLED_BY_AN;
     let buf = '';
+    // C end.c :195-205 — G_UNIQ "the " (unless pname) + KILLED_BY.
+    if (((mptr?.geno | 0) & G_UNIQ) !== 0 && !(imitator && !mimicker)
+        && !((mnum | 0) === PM_HIGH_CLERIC && !mtmp?.ispriest)) {
+        if (!type_is_pname(mptr)) buf += 'the ';
+        game.killer.format = KILLED_BY;
+    }
+    // C end.c ghost "the ghost of ..." arm — named omission (no corpus reach).
+    // C end.c :208 monhealthdescr wound prefix — named omission (not live in js/).
+    // C end.c :209-212 — minvis / hallucinogen-distorted prefixes.
+    if (mtmp?.minvis) buf += 'invisible ';
+    if (distorted) buf += 'hallucinogen-distorted ';
+    // C end.c imitator + second ghost arms — named omissions (no corpus reach).
     if (mtmp?.isshk) {
         // C end.c: isshk → "%s%s, the shopkeeper" + KILLED_BY
         const shknm = shkname(mtmp);
         const honorific = shkname_is_pname(mtmp)
             ? ''
             : (mtmp.female ? 'Ms. ' : 'Mr. ');
-        buf = `${honorific}${shknm}, the shopkeeper`;
+        buf += `${honorific}${shknm}, the shopkeeper`;
         game.killer.format = KILLED_BY;
+    // C end.c ispriest/isminion m_monnam arm — named omission (no corpus reach).
     } else {
-        const mnum = mtmp?.mnum;
-        const names = (mnum != null) ? pmnames[mnum] : null;
-        buf = names
-            ? (names[2] || names[0] || names[1] || 'creature')
-            : '';
+        // C end.c :270-282 — gendered pmname + named-killer suffix.
+        buf += pmname(mnum, Mgender(mtmp));
+        if (has_mgivenname(mtmp)) {
+            buf += ` ${has_ebones(mtmp) ? 'of' : 'called'} ${MGIVENNAME(mtmp)}`;
+        }
     }
     game.killer.name = buf;
     // C end.c:326-340 — undead transformation at death: the killer's kind
@@ -1638,6 +1663,11 @@ export async function done(how) {
     if (survive) {
         game.killer.name = '';
         game.killer.format = KILLED_BY_AN;
+        // C end.c done — savelife / wizard-Discover `Die?` decline returns
+        // normally (no really_done); the JS-invented gameover flag must clear
+        // so moveloop keeps driving (scen-wish-Valkyrie-92014 step 48).
+        if (!game.program_state) game.program_state = {};
+        game.program_state.gameover = false;
         return;
     }
     await really_done(how);

@@ -13,7 +13,7 @@ import { an, the, the_unique_pm, set_body_part, yname, vtense, simpleonames, mak
 import {
     pmname, type_is_pname, mon_nam, Monnam, s_suffix, Ugender, hliquid,
 } from './do_name.js';
-import { Unaware } from './eat.js';
+import { Unaware, newuhs } from './eat.js';
 import { attacktype_fordmg, killed } from './uhitm.js';
 import {
     AT_SPIT, AT_GAZE, AD_BLND, AD_DRST, AD_ACID,
@@ -93,6 +93,7 @@ import {
     telepathic,
     can_teleport,
     control_teleport,
+    regenerates,
     touch_petrifies,
     haseyes,
     MZ_SMALL,
@@ -146,6 +147,7 @@ import {
     ACID_RES,
     STONE_RES,
     DRAIN_RES,
+    REGENERATION,
     KILLED_BY_AN,
     BOLT_LIM,
     BZ_OFS_AD,
@@ -559,7 +561,7 @@ function resists_drli_you(mdat) {
  * defended export); ANTIMAGIC;
  * SICK_RES fungus/ghoul; STUNNED/HALLUC_RES/SEE_INVIS/TELEPAT/INFRAVISION/
  * INVIS/LEVITATION/SWIMMING/PASSES_WALLS/
- * REGENERATION/REFLECTING/BLND_RES; vamp cham; polysense;
+ * REFLECTING/BLND_RES; vamp cham; polysense;
  * light-source bookkeeping.
  */
 export function set_uasmon() {
@@ -600,6 +602,10 @@ export function set_uasmon() {
     // so Monnam → "It"; long "The cockatrice …" lines were forcing
     // mid-turn --More-- that ate #version (D-0928 #1109).
     propset_fromform(BLINDED, 'HBlinded', !haseyes(mdat));
+    // C polyself.c:105 — PROPSET(REGENERATION, regenerates(mdat)): an
+    // M1_REGEN form (troll, vampire, …) heals +1/turn via regen_hp; without
+    // the FROMFORM bit a poly'd hero never regenerates (D-2148).
+    propset_fromform(REGENERATION, 'HRegeneration', regenerates(mdat));
 
     // C: if (!program_state.restoring) float_vs_flight();
     if (!game.program_state?.restoring) float_vs_flight();
@@ -719,8 +725,9 @@ async function polyman(fmt, arg) {
  * C ref: polyself.c newman — fail-to-poly / force-human: level±2, sex
  * rn2(10), rndexp, redist_attr, HP/EN rebuild, hunger rn1(500,500),
  * then polyman.
- * Named omissions: Sick/Stoned clear; Slimed residual; death/lifesave;
+ * Named omissions: Sick/Stoned clear; Slimed residual;
  * livelog; retouch_equipment/selftouch; Polymorph_control uhp clamp.
+ * (dead-arm lifesave via done(DIED) is live.)
  */
 async function newman() {
     const u = game.u || (game.u = {});
@@ -728,9 +735,18 @@ async function newman() {
     const oldlvl = u.ulevel | 0;
     let newlvl = oldlvl + rn1(5, -2); // rn2(5)+(-2)
     if (newlvl > 127 || newlvl < 1) {
-        // dead: unsuccessful polymorph — deferred; keep old level
-        await pline("Your new form doesn't seem healthy enough to survive.");
-        return;
+        // C polyself.c:426-439 dead arm — old level intact (u.ulevel is
+        // still oldlvl here); urgent_pline blocks (--More--), then
+        // lifesave via done(DIED); lifesaved resumes with newuhs.
+        await urgent_pline("Your new form doesn't seem healthy enough to survive.");
+        if (!game.killer) game.killer = { name: '', format: 0 };
+        game.killer.format = KILLED_BY_AN;
+        game.killer.name = 'unsuccessful polymorph';
+        await done(DIED);
+        /* must have been life-saved to get here */
+        await newuhs(false);
+        await encumber_msg();
+        return; /* lifesaved */
     }
     if (newlvl > MAXULEV) newlvl = MAXULEV;
     if (newlvl < oldlvl) u.ulevelmax = (u.ulevelmax | 0) - (oldlvl - newlvl);
@@ -1241,12 +1257,12 @@ export async function polymon(mntmp) {
 /**
  * C ref: polyself.c polyself — system-shock, POLY_CONTROLLED getlin,
  * random ordinary pick, then polymon/newman.
- * Live: POLY_LOW_CTRL forcecontrol downgrade (D-1428); controllable_poly
- * gate; !polyok the()/bare/an() article (D-2063); POLY_MONSTER isvamp
+ * Live: POLY_LOW_CTRL forcecontrol downgrade (D-1428);
+ * controllable_poly getlin incl. non-force ESC-to-random (D-2177);
+ * !polyok the()/bare/an() article (D-2063); POLY_MONSTER isvamp
  * do_vampyr shape change (D-2063).
  * Named omissions: were/dragon-merge/POLY_REVERT; placeholder orc/elf/giant
- * substitutes; mkclass_poly; controllable_poly getlin (non-force);
- * post-loop isvamp/draconian goto (tryct<=0 random-name funnel);
+ * substitutes; mkclass_poly; post-loop isvamp/draconian goto;
  * wizard rehumanize own-role; light-source bookkeeping.
  * @param {number} [psflags=POLY_NOFLAGS]
  */
@@ -1296,17 +1312,26 @@ export async function polyself(psflags = 0) {
     // C polyself.c:511 — `if (monsterpoly && isvamp) goto do_vampyr`: a #monster
     // shape change as a vampire skips the getlin block entirely.
     const vampyr_goto = monsterpoly && isvamp;
-    if (forcecontrol && !vampyr_goto) {
+    // C polyself.c:513 — `if (controllable_poly || forcecontrol)`: poly-control
+    // (worn ring) prompts even for POLY_NOFLAGS (D-2177). `!vampyr_goto`
+    // is C :510–511 (monster-poly vampire jumps straight to do_vampyr).
+    if ((controllable_poly || forcecontrol) && !vampyr_goto) {
         let tryct = 5;
         do {
             mntmp = NON_PM;
             let buf = await getlin('Become what kind of monster? [type the name]');
             buf = mungspaces(buf);
+            // C :521–528 — ESC cancels only wizard #polyself (forcecontrol);
+            // ordinary control falls through to "*" (resort to random).
             if (buf === '\x1b' || buf == null) {
-                await pline('Never mind.');
-                return;
+                if (forcecontrol) {
+                    await pline('Never mind.');
+                    return;
+                }
+                buf = '*';
             }
-            if (buf === '*' || buf.toLowerCase() === 'random') {
+            // C :529 — exact strcmp "random" (not case-folded).
+            if (buf === '*' || buf === 'random') {
                 tryct = 0;
                 continue;
             }
@@ -1337,9 +1362,10 @@ export async function polyself(psflags = 0) {
             }
         } while (--tryct > 0);
 
-        if (!tryct && mntmp < LOW_PM) {
+        // C :616–619 — no return: ordinary forms fall through to the :698
+        // random funnel below (D-2177; JS wrongly aborted the poly).
+        if (!tryct) {
             await pline("That's enough tries!");
-            return;
         }
     }
 

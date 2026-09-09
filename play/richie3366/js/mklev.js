@@ -38,6 +38,7 @@ import {
     AM_SPLEV_CO, AM_SPLEV_NONCO, AM_SPLEV_RANDOM,
     MM_EPRI, MM_EMIN, MM_ADJACENTOK, NO_MM_FLAGS,
     N_DIRS, W_ARMC, RLOC_NOMSG,
+    MON_BUBBLEMOVE, CONS_OBJ, CONS_MON, CONS_HERO, CONS_TRAP, u_at,
     FILL_LVFLAGS, STRAT_WAITFORU, NON_PM, ONAME_LEVEL_DEF,
     MM_NONAME, MIGR_LEFTOVERS, MIGR_RANDOM, has_mgivenname,
     LR_DOWNSTAIR, LR_UPSTAIR, LR_PORTAL, LR_BRANCH,
@@ -105,9 +106,9 @@ import {
 } from './makemon.js';
 import { mk_mplayer } from './mplayer.js';
 import { can_saddle, put_saddle_on_mon } from './steed.js';
-import { m_at } from './mon.js';
+import { m_at, mnearto, mnexto, elemental_clog } from './mon.js';
 import { enexto, rloc, goodpos, migrate_to_level } from './teleport.js';
-import { clear_wormdata } from './worm.js';
+import { clear_wormdata, remove_worm } from './worm.js';
 import { obj_resists } from './dogmove.js';
 import {
     PM_ELF, PM_DWARF, PM_ORC, PM_GNOME, PM_HUMAN,
@@ -136,7 +137,8 @@ import {
     create_gas_cloud, create_gas_cloud_selection, clear_regions,
     clear_heros_fault,
 } from './region.js';
-import { Norep } from './display.js';
+import { Norep, newsym, impossible } from './display.js';
+import { block_point, unblock_point } from './vision.js';
 import { begin_burn } from './timeout.js';
 import { nexttodoor } from './fountain.js';
 import { ndemon } from './minion.js';
@@ -16059,10 +16061,14 @@ function mk_bubble(x, y, n, gbxmin, gbymin, gbxmax, gbymax) {
 }
 
 /**
- * C ref: mkmaze.c movebubbles — air edge clouds + bubble drift (goto_level /
- * moveloop). Named omission: water cons pickup/deposit; Punished ball.
+ * C ref: mkmaze.c movebubbles — water cons pickup + air edge clouds +
+ * bubble drift (goto_level / moveloop). Async: bubble deposit reaches
+ * mnearto/mnexto (pline-capable). Deposit runs inside mv_bubble_move
+ * between paint and boing, matching C mv_bubble order.
+ * Named omissions: Punished ball carry (unplacebc/lift_covet not live);
+ * vision_recalc(2) (display-only).
  */
-export function movebubbles() {
+export async function movebubbles() {
     const g = game;
     const uz = g.u?.uz;
     if (!Is_waterlevel(uz) && !Is_airlevel(uz)) return;
@@ -16070,12 +16076,78 @@ export function movebubbles() {
     if (!g.wportal)
         set_wportal();
 
+    // C vision_recalc(2) omitted: display-only (see map note).
+
     const bounds = g.waterlevel_bounds || {
         gbxmin: 4, gbymin: 2, gbxmax: 77, gbymax: 19,
     };
     const { gbxmin, gbymin, gbxmax, gbymax } = bounds;
 
-    if (Is_airlevel(uz)) {
+    /* C: water arm picks up everything inside of a bubble, then fills all
+     * bubble locations. Placed before the up-toggle: C scans with the
+     * pre-toggle direction. hero_bubble records the hero's bubble (last
+     * overlapping match wins) so maybe_adjust_hero_bubble gates rn2(2). */
+    g.hero_bubble = null;
+    if (Is_waterlevel(uz)) {
+        /* C: keep attached ball&chain separate — Punished arm named
+         * omission (unplacebc_and_covet_placebc not live). */
+        const upOld = !!g.movebubbles_up;
+        for (let b = upOld ? g.bbubbles : g.ebubbles; b; b = upOld ? b.next : b.prev) {
+            for (let i = 0, x = b.x | 0; i < (b.bm[0] | 0); i++, x++) {
+                for (let j = 0, y = b.y | 0; j < (b.bm[1] | 0); j++, y++) {
+                    if (!((b.bm[j + 2] | 0) & (1 << i))) continue;
+                    if (!isok(x, y)) {
+                        await impossible('movebubbles: bad pos (%d,%d)', x, y);
+                        continue;
+                    }
+                    /* C: pick up objects (cons list rebuilt head-first). */
+                    if (objects_at(x, y)) {
+                        let olist = null;
+                        for (let otmp = objects_at(x, y); otmp;) {
+                            const nxt = otmp.nexthere;
+                            /* C mkobj.c remove_object: unlink floor chains,
+                             * boulder recalc, timed checks. */
+                            obj_extract_self(otmp);
+                            otmp.ox = otmp.oy = 0;
+                            otmp.nexthere = olist;
+                            olist = otmp;
+                            otmp = nxt;
+                        }
+                        (b.cons || (b.cons = [])).unshift({ x, y, what: CONS_OBJ, list: olist });
+                    }
+                    /* C: pick up monsters (worm segs via remove_worm). */
+                    const mon = m_at(x, y);
+                    if (mon) {
+                        (b.cons || (b.cons = [])).unshift({ x, y, what: CONS_MON, list: mon });
+                        if (mon.wormno) remove_worm(mon);
+                        newsym(x, y); /* clean up old position */
+                        mon.mx = mon.my = 0;
+                        mon.mstate = (mon.mstate | 0) | MON_BUBBLEMOVE;
+                    }
+                    /* C: pick up hero (unless swallowed). */
+                    if (!((g.u || {}).uswallow | 0) && u_at(x, y)) {
+                        (b.cons || (b.cons = [])).unshift({ x, y, what: CONS_HERO, list: null });
+                        g.hero_bubble = b;
+                    }
+                    /* C: pick up traps. */
+                    const btrap = t_at(x, y);
+                    if (btrap) {
+                        (b.cons || (b.cons = [])).unshift({ x, y, what: CONS_TRAP, list: btrap });
+                    }
+                    /* C: levl[x][y] = water_pos (S_water glyph, WATER,
+                     * zeroed seenv/lit) then block_point. */
+                    const loc = g.level.at(x, y);
+                    if (loc) {
+                        loc.remembered_glyph = { ch: '}', color: CLR_BRIGHT_BLUE, decgfx: false };
+                        loc.typ = WATER;
+                        loc.lit = false;
+                        loc.seenv = 0;
+                        block_point(x, y);
+                    }
+                }
+            }
+        }
+    } else if (Is_airlevel(uz)) {
         // C: levl[x][y] = air_pos — glyph S_cloud, typ AIR, lit 1
         // (docrt paints lev->glyph for the whole map before vision).
         const airGlyph = { ch: '#', color: CLR_GRAY, decgfx: false };
@@ -16096,24 +16168,6 @@ export function movebubbles() {
             }
         }
     }
-    // C: movebubbles water arm resets hero_bubble, then the cons-pickup loop
-    // records the bubble containing the hero (last overlapping match wins).
-    // Named omission: obj/mon/trap cons pickup+deposit stays deferred; track
-    // only hero membership so maybe_adjust_hero_bubble gates its rn2(2) like C.
-    // Placed before the up-toggle: C scans with the pre-toggle direction.
-    g.hero_bubble = null;
-    if (Is_waterlevel(uz) && !((g.u || {}).uswallow | 0)) {
-        const u = g.u || {};
-        const upOld = !!g.movebubbles_up;
-        const ux = u.ux | 0, uy = u.uy | 0;
-        for (let b = upOld ? g.bbubbles : g.ebubbles; b; b = upOld ? b.next : b.prev) {
-            const i = ux - (b.x | 0), j = uy - (b.y | 0);
-            if (i >= 0 && j >= 0 && i < (b.bm[0] | 0) && j < (b.bm[1] | 0)
-                && ((b.bm[j + 2] | 0) & (1 << i))) {
-                g.hero_bubble = b;
-            }
-        }
-    }
 
     g.movebubbles_up = !g.movebubbles_up;
     const up = !!g.movebubbles_up;
@@ -16123,33 +16177,41 @@ export function movebubbles() {
         const ry = rn2(3);
         const mdx = b.dx + 1 - (!b.dx ? rx : (rx ? 1 : 0));
         const mdy = b.dy + 1 - (!b.dy ? ry : (ry ? 1 : 0));
-        mv_bubble_move(b, mdx, mdy, gbxmin, gbymin, gbxmax, gbymax, false);
+        await mv_bubble_move(b, mdx, mdy, gbxmin, gbymin, gbxmax, gbymax, false);
     }
+    /* C: put attached ball&chain back — Punished arm named omission. */
     g.vision_full_recalc = 1;
 }
 
-/** C ref: mkmaze.c mv_bubble — air rn2(6) skip + CLOUD/AIR paint + boing. */
-function mv_bubble_move(b, dx, dy, gbxmin, gbymin, gbxmax, gbymax, ini) {
+/** C ref: mkmaze.c mv_bubble — move + AIR/CLOUD paint + water cons
+ * deposit + boing (exact C order; deposit draws RNG via mnearto/mnexto).
+ * Async: deposit reaches pline-capable callees. ini path (mk_bubble /
+ * restore) carries no cons, so deposit is a no-op there like C. */
+async function mv_bubble_move(b, dx, dy, gbxmin, gbymin, gbxmax, gbymax, ini) {
+    const uz = game.u?.uz;
+    const isWater = Is_waterlevel(uz);
+    const isAir = Is_airlevel(uz);
     let colli = 0;
-    if (!Is_airlevel(game.u?.uz) || !rn2(6)) {
-        let mdx = dx;
-        let mdy = dy;
-        if (mdx < -1 || mdx > 1 || mdy < -1 || mdy > 1) {
-            mdx = Math.sign(mdx);
-            mdy = Math.sign(mdy);
+    /* C: cons deposit offsets by the applied displacement, so keep the
+     * clamped/bounced delta visible past the move block. */
+    let adx = dx, ady = dy;
+    if (!isAir || !rn2(6)) {
+        if (adx < -1 || adx > 1 || ady < -1 || ady > 1) {
+            adx = Math.sign(adx);
+            ady = Math.sign(ady);
         }
         if (b.x <= gbxmin) colli |= 2;
         if (b.y <= gbymin) colli |= 1;
         if ((b.x + b.bm[0] - 1) >= gbxmax) colli |= 2;
         if ((b.y + b.bm[1] - 1) >= gbymax) colli |= 1;
-        if (b.x === gbxmin && mdx < 0) mdx = -mdx;
-        if (b.x + b.bm[0] - 1 === gbxmax && mdx > 0) mdx = -mdx;
-        if (b.y === gbymin && mdy < 0) mdy = -mdy;
-        if (b.y + b.bm[1] - 1 === gbymax && mdy > 0) mdy = -mdy;
-        b.x += mdx;
-        b.y += mdy;
+        if (b.x === gbxmin && adx < 0) adx = -adx;
+        if (b.x + b.bm[0] - 1 === gbxmax && adx > 0) adx = -adx;
+        if (b.y === gbymin && ady < 0) ady = -ady;
+        if (b.y + b.bm[1] - 1 === gbymax && ady > 0) ady = -ady;
+        b.x += adx;
+        b.y += ady;
     }
-    const paint = Is_waterlevel(game.u?.uz) ? AIR : CLOUD;
+    const paint = isWater ? AIR : CLOUD;
     for (let i = 0; i < b.bm[0]; i++) {
         for (let j = 0; j < b.bm[1]; j++) {
             if (b.bm[j + 2] & (1 << i)) {
@@ -16157,9 +16219,53 @@ function mv_bubble_move(b, dx, dy, gbxmin, gbymin, gbxmax, gbymax, ini) {
                 if (loc) {
                     loc.typ = paint;
                     loc.lit = true;
+                    /* C mv_bubble paint: water AIR unblocks, air CLOUD
+                     * blocks (vision). */
+                    if (isWater) unblock_point(b.x + i, b.y + j);
+                    else if (isAir) block_point(b.x + i, b.y + j);
                 }
             }
         }
+    }
+    /* C mv_bubble: replace contents of bubble (water only). Each cons
+     * cell rides the applied displacement (cons->x += dx). Cons list
+     * order matches C's prepend-built chain. */
+    if (isWater && b.cons && b.cons.length) {
+        for (const cons of b.cons) {
+            const cx = (cons.x | 0) + adx, cy = (cons.y | 0) + ady;
+            if (cons.what === CONS_OBJ) {
+                for (let olist = cons.list, otmp; olist; olist = otmp) {
+                    otmp = olist.nexthere;
+                    place_object(olist, cx, cy);
+                    stackobj(olist);
+                }
+            } else if (cons.what === CONS_MON) {
+                const mon = cons.list;
+                /* C: mnearto() might fail; elemental_clog from there
+                 * rather than deal_with_overcrowding. */
+                if (!(await mnearto(mon, cx, cy, true, RLOC_NOMSG)))
+                    await elemental_clog(mon);
+            } else if (cons.what === CONS_HERO) {
+                const mtmp = m_at(cx, cy);
+                const u = game.u || {};
+                const ux0 = u.ux | 0, uy0 = u.uy | 0;
+                u_on_newpos(cx, cy);
+                /* C dungeon.c u_on_newpos same-level core: clear hide,
+                 * steed follows (see_nearby/earth_sense display-deferred). */
+                u.uundetected = 0;
+                if (u.usteed) {
+                    u.usteed.mx = u.ux;
+                    u.usteed.my = u.uy;
+                }
+                newsym(ux0, uy0); /* clean up old position */
+                if (mtmp) await mnexto(mtmp, RLOC_NOMSG);
+            } else if (cons.what === CONS_TRAP) {
+                const btrap = cons.list;
+                btrap.tx = cx;
+                btrap.ty = cy;
+            }
+        }
+        b.cons = null;
     }
     // C: boing — sometimes alter direction (!ini path; movebubbles uses FALSE)
     switch (colli) {
@@ -16267,7 +16373,7 @@ export function unsetup_waterlevel() {
  * the save blob, then mv_bubble(b, 0, 0, TRUE) per bubble.
  * Named omit: something_worth_saving / impossible on n==0.
  */
-export function restore_waterlevel(blob) {
+export async function restore_waterlevel(blob) {
     const g = game;
     if (!blob || !Array.isArray(blob.bubbles)) return;
     const xmin = blob.xmin | 0;
@@ -16303,7 +16409,7 @@ export function restore_waterlevel(blob) {
             g.bbubbles = b;
             b.prev = null;
         }
-        mv_bubble_move(b, 0, 0, gbxmin, gbymin, gbxmax, gbymax, true);
+        await mv_bubble_move(b, 0, 0, gbxmin, gbymin, gbxmax, gbymax, true);
     }
     g.ebubbles = b;
     if (b) b.next = null;
@@ -22393,7 +22499,10 @@ function load_wizard3() {
     const protectedSel = selection_or(selection_not(bounds2), wiz3);
     hell_tweaks(protectedSel);
 
-    // C load_special: map_cleanup → wallify → flip → lregions → fixup
+    // C load_special: link_doors → remove_boundary → map_cleanup →
+    // wallify → flip → fixup (lregions remapped by flip)
+    link_doors_rooms();
+    remove_boundary_syms();
     map_cleanup();
     if (!g.level.flags.corrmaze)
         wallification(1, 0, COLNO - 1, ROWNO - 1);

@@ -1571,7 +1571,7 @@ function ok_to_obliterate(mtmp) {
  * mon into that cell; else migrate to the previous plane unless already
  * on Astral.
  */
-async function elemental_clog(mon) {
+export async function elemental_clog(mon) {
     if (!In_endgame(game.u?.uz)) return;
     let m1 = null;
     let m2 = null;

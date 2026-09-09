@@ -3829,7 +3829,7 @@ async function do_loot_cont(cobj, cindex = 1, ccount = 1) {
  * @param {boolean} countem false → stop at first
  * @returns {number}
  */
-function container_at(x, y, countem) {
+export function container_at(x, y, countem) {
     let container_count = 0;
     for (let cobj = objects_at(x, y); cobj; cobj = cobj.nexthere) {
         if (Is_container(cobj)) {

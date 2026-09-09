@@ -45,7 +45,7 @@ import {
 import { objectNames } from './objects.js';
 import { pline, You_feel, impossible } from './display.js';
 import { ysimple_name } from './objnam.js';
-import { what_gives, bare_artifactname, confers_luck } from './artifact.js';
+import { what_gives, bare_artifactname, confers_luck, u_wield_art } from './artifact.js';
 import {
     PM_ARCHEOLOGIST,
     PM_BARBARIAN,
@@ -66,6 +66,7 @@ import {
     PM_GNOME,
     monsterNames,
 } from './generated/monsters_data.js';
+import { ART_OGRESMASHER } from './generated/artifacts_data.js';
 import { adj_erinys } from './monsters.js';
 
 const PM_AMOROUS_DEMON = monsterNames.indexOf('PM_AMOROUS_DEMON');
@@ -117,7 +118,8 @@ export function acurr(i) {
             result = 18;
         }
     } else if (i === A_CON) {
-        // C: ART_OGRESMASHER → 25 — deferred
+        // C attrib.c:1225–1227 — wielding Ogresmasher sets CON to 25
+        if (u_wield_art(ART_OGRESMASHER)) result = 25;
     } else if (i === A_INT || i === A_WIS) {
         // C: DUNCE_CAP → 6
         if (u.uarmh && (u.uarmh.otyp | 0) === DUNCE_CAP) {
@@ -147,7 +149,8 @@ export function extremeattr(attrindx) {
             lolimit = hilimit;
         }
     } else if ((attrindx | 0) === A_CON) {
-        // ART_OGRESMASHER → lolimit = hilimit deferred (acurr also defers)
+        // C attrib.c:1280–1282 — wielding Ogresmasher pins CON at its limit
+        if (u_wield_art(ART_OGRESMASHER)) lolimit = hilimit;
     } else if ((attrindx | 0) === A_INT || (attrindx | 0) === A_WIS) {
         if (u.uarmh && (u.uarmh.otyp | 0) === DUNCE_CAP) {
             hilimit = lolimit = 6;

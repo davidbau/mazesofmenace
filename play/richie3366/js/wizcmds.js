@@ -380,13 +380,14 @@ export async function wiz_level_change() {
 export async function wiz_wish() {
     if (!(game.flags?.debug || game.flags?.wizard)) {
         await pline("You can't do that.");
-        return;
+        return ECMD_OK;
     }
     const save_verbose = game.flags.verbose;
     game.flags.verbose = false;
     await makewish();
     game.flags.verbose = save_verbose;
     // encumber_msg deferred
+    return ECMD_OK;
 }
 
 /**

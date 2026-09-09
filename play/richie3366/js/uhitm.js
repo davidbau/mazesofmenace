@@ -13,7 +13,7 @@ import {
     XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, XKILL_NOCONDUCT,
     LL_CONDUCT, Upolyd, P_BARE_HANDED_COMBAT, P_TWO_WEAPON_COMBAT, P_BASIC, P_WHIP,
     A_CHAOTIC, INTRINSIC, CORPSTAT_BURIED, CORPSTAT_NONE, ONAME_NO_FLAGS,
-    P_DAGGER, P_AXE, P_SABER,
+    P_DAGGER, P_KNIFE, P_AXE, P_SABER, P_NONE, P_SKILLED, NEED_WEAPON,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, NATTK,
     M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE, M_AP_NOTHING,
     M_AP_TYPMASK, MHID_ALTMON,
@@ -22,7 +22,7 @@ import {
     SUPPRESS_NAME, SUPPRESS_IT, SUPPRESS_INVISIBLE, EXACT_NAME,
     HAND, LEG, A_LAWFUL, Is_airlevel, Is_waterlevel, PARANOID_HIT, LOW_PM,
     W_ARM, W_ARMC, W_ARMH, W_ARMU, W_ARMG, W_RINGL, W_RINGR, W_ARMF, W_AMUL,
-    MON_EXPLODE, NO_MM_FLAGS, DISP_ALWAYS, DISP_END, STOMACH, DIED, NO_KILLER_PREFIX,
+    MON_EXPLODE, NO_MM_FLAGS, NO_TRAP_FLAGS, DISP_ALWAYS, DISP_END, STOMACH, DIED, NO_KILLER_PREFIX, ERODE_CORRODE, EF_GREASE,
     KILLED_BY_AN, PASSES_WALLS, SLOW_DIGESTION, MALE, FEMALE, MMOVE_DIED,
 } from './const.js';
 import {
@@ -32,21 +32,21 @@ import {
 import { exercise, A_STR, A_DEX, A_WIS, A_CON, acurr, adjalign, change_luck } from './attrib.js';
 import { overexertion, nomul, losehp, is_pool, maybe_half_phys } from './hack.js';
 import { ing_suffix } from './hacklib.js';
-import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, map_invisible, unmap_object, memory_glyph_is_invisible, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph } from './display.js';
+import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, map_invisible, unmap_object, memory_glyph_is_invisible, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph, shieldeff } from './display.js';
 import { cansee } from './vision.js';
 import {
     dmgval, hitval, P_SKILL, weapon_hit_bonus, martial_bonus,
     dbon, weapon_dam_bonus, use_skill, weapon_type,
-    special_dmgval, silver_sears, MON_WEP,
+    special_dmgval, silver_sears, MON_WEP, setmnotwielded,
 } from './weapon.js';
 import {
     ammo_and_launcher, is_weptool, is_launcher, is_ammo, is_missile,
     is_pole, drop_uswapwep, uwepgone,
 } from './wield.js';
-import { useup } from './invent.js';
-import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI, PM_ARCHEOLOGIST, PM_WIZARD, PM_HUMAN } from './generated/monsters_data.js';
+import { near_capacity, useup } from './invent.js';
+import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI, PM_ARCHEOLOGIST, PM_WIZARD, PM_HUMAN, PM_HEALER, PM_ROGUE } from './generated/monsters_data.js';
 import {
-    find_mac, get_mattk, make_corpse, monstone, mhitm_knockback, monkilled,
+    find_mac, get_mattk, make_corpse, monstone, mhitm_knockback, monkilled, mondead,
     troll_baned, mhitm_ad_poly, mhitm_ad_slee, could_seduce, failed_grab, shade_miss,
     paralyze_monst,
     mhitm_mgc_atk_negated, resists_poison_mm,
@@ -55,7 +55,7 @@ import {
     AT_EXPL, AT_ENGL, AT_BREA, AT_GAZE, AD_PHYS, AD_POLY, AD_DRIN, AD_SLEE,
     AD_DRST, AD_SAMU, AD_DRLI,
 } from './mhitm.js';
-import { resists_drli } from './zap.js';
+import { resists_drli, resists_cold, destroy_items } from './zap.js';
 import {
     verysmall, nohands, G_FREQ, G_NOCORPSE, M2_COLLECT, MZ_MEDIUM, MZ_HUGE,
     bigmonst, thick_skinned, monsterNames, nonliving, haseyes,
@@ -82,18 +82,24 @@ import { explode, mon_explodes, adtyp_to_expltype } from './explode.js';
 import { rehumanize, body_part, mbodypart, uunstick } from './polyself.js';
 import { mon_nam, Monnam, x_monnam, x_monnam_tame, Hallucination, type_is_pname, pmname, a_monnam, safe_oname } from './do_name.js';
 import { artifact_hit, youmonst, is_art, artifact_exists, shade_glare } from './artifact.js';
-import { xname, vtense, The, An, an, singular, makeplural, cxname, simpleonames, otense, mshot_xname } from './objnam.js';
+import { xname, vtense, The, An, an, singular, makeplural, cxname, simpleonames, otense, mshot_xname, Yobjnam2 } from './objnam.js';
 import { abuse_dog, tamedog } from './dog.js';
-import { makemon, makemon_appear_msg, newcham, adj_lev } from './makemon.js';
+import { makemon, makemon_appear_msg, newcham, adj_lev, clone_mon } from './makemon.js';
 import { ndemon } from './minion.js';
-import { ART_GIANTSLAYER, ART_STORMBRINGER, ART_SNICKERSNEE } from './generated/artifacts_data.js';
+import { ART_GIANTSLAYER, ART_STORMBRINGER, ART_SNICKERSNEE, ART_CLEAVER } from './generated/artifacts_data.js';
 import { paranoid_query } from './getline.js';
-import { which_armor } from './worn.js';
+import { which_armor, is_flimsy, extract_from_minvent } from './worn.js';
+import { obj_resists } from './dogmove.js';
 import { u_wipe_engr } from './engrave.js';
 import { cutworm } from './worm.js';
 import { m_unleash } from './apply.js';
 import { mhis } from './mondata.js';
 import { hard_helmet } from './do_wear.js';
+
+const PM_BLACK_PUDDING = monsterNames.indexOf('PM_BLACK_PUDDING');
+const PM_BROWN_PUDDING = monsterNames.indexOf('PM_BROWN_PUDDING');
+const IRON = 11; /* objclass.h:24 IRON (Fe, incl. steel) */
+const METAL = 12; /* objclass.h:25 METAL (Sn, &c.) */
 
 /** Live pager.c object_from_map / mhidden_description; bound on first use
  * (pager.js imports mon_at from this file — static import cycles). */
@@ -161,6 +167,7 @@ const TOWEL = objectNames.indexOf('TOWEL');
 const CREAM_PIE = objectNames.indexOf('CREAM_PIE');
 const BLINDING_VENOM = objectNames.indexOf('BLINDING_VENOM');
 const BOOMERANG = objectNames.indexOf('BOOMERANG');
+const KATANA = objectNames.indexOf('KATANA');
 const WAN_LIGHT = objectNames.indexOf('WAN_LIGHT');
 const LOADSTONE = objectNames.indexOf('LOADSTONE');
 // C objclass.h ARM_SHIELD — armor oc_skill / oc_armcat
@@ -435,8 +442,9 @@ export async function check_caitiff(mtmp) {
 /**
  * C ref: uhitm.c find_roll_to_hit — to-hit threshold before rnd(20).
  * dokick poly AT_KICK loop is a caller (D-1310).
- * monk armor / encumbrance / trap / orc-vs-elf deferred (RNG-free;
- * no corpus session has demanded them yet).
+ * monk armor / orc-vs-elf deferred (RNG-free; no corpus session has
+ * demanded them yet). Encumbrance + utrap live (uhitm.c:407-411):
+ * scen-poly-Archeologist-92226 drew C miss at tmp 11 vs JS hit at 16.
  * maybe_polyd live: poly form's mlevel, not ulevel (uhitm.c:378-379).
  * weapon_hit_bonus from weapon.c (bare-hand unskilled = +1; AT_KICK
  * martial_bonus uses NULL weapon like C).
@@ -465,6 +473,11 @@ export async function find_roll_to_hit(mtmp, aatyp, weapon, attk_count, role_rol
     if (mtmp.mflee) tmp += 2;
     if (mtmp.msleeping) tmp += 2;
     if (!mtmp.mcanmove) tmp += 4;
+    // C uhitm.c:407-411 — encumbrance dulls agility; being trapped
+    // costs 3. near_capacity is 0 while unencumbered (no-op then).
+    const cap = near_capacity();
+    if (cap) tmp -= cap * 2 - 1;
+    if (u.utrap) tmp -= 3;
     if (aatyp === AT_WEAP || aatyp === AT_CLAW) {
         if (weapon) tmp += hitval(weapon, mtmp);
         tmp += weapon_hit_bonus(weapon);
@@ -544,24 +557,7 @@ async function corpse_chance(mon, magr = null, was_swallowed = false) {
     return !rn2(tmp);
 }
 
-// C ref: mon.c mondead → m_detach(due_to_death) → relobj(mtmp, 1, FALSE)
-// Dead mons stay on fmon until dmonsfree (mon.c) — do not splice here.
-function mondead(mtmp) {
-    mtmp.mhp = 0;
-    const mx = mtmp.mx, my = mtmp.my;
-    // C m_detach `:2741–2742` — m_unleash(mtmp, FALSE)
-    if (mtmp.mleashed) m_unleash(mtmp, false);
-    // C: after cham/were restore — mvitals[monsndx].died++
-    record_mvitals_died(mtmp.mnum ?? mtmp.data?.mndx);
-    mtmp.mstate = (mtmp.mstate | 0) | MON_DETACH;
-    // Keep mx/my for drop coords (C mon_leaving_level).
-    relobj_on_death(mtmp);
-    // C mon.c mondead `:3170` — glyph_is_invisible(levl.glyph)
-    if (mx > 0 && memory_glyph_is_invisible(game.level?.at?.(mx, my))) {
-        unmap_object(mx, my);
-    }
-    if (mx > 0) newsym(mx, my);
-}
+// mon.c mondead lives in mhitm.js — imported above (D-2147; no second clone).
 
 /**
  * C ref: uhitm.c first_weapon_hit — livelog before kill so order is hit then kill.
@@ -864,6 +860,98 @@ function hmon_hitmon_dmg_recalc(dmg, obj, thrown, twohits, use_weapon_skill,
 }
 
 /**
+ * C ref: uhitm.c hmon_hitmon_weapon_melee :933–1067 — ordinary melee weapon
+ * use: dmgval + train gate, Healer anatomy bonus, Rogue backstab
+ * (`rnd(ulevel)` + hittxt), dieroll-2 weapon-shatter, artifact_hit with
+ * doreturn (killed → FALSE / dmg 0 → TRUE), then silver/light/joust/poison
+ * flag arms. ctx carries the hmd fields this helper owns (dmg,
+ * use/train_weapon_skill, hittxt, doreturn, retval, dieroll, hand_to_hand).
+ * Named omissions: silvermsg/silverobj + lightobj message flags (hmon has
+ * no msg_silver/msg_lightobj plumbing — map turns.md), joust() +
+ * hmon_hitmon_jousting damage (no JS joust port), thrown ammo/poison +
+ * permapoisoned ispoisoned flags (no hmon_hitmon_poison consumer in hmon).
+ */
+async function hmon_hitmon_weapon_melee(mon, obj, ctx) {
+    const u = game.u || {};
+    ctx.use_weapon_skill = true;
+    ctx.dmg = dmgval(obj, mon);
+    ctx.train_weapon_skill = ctx.dmg > 1;
+    // C :947–951 — Healer with anatomy knowledge: wielded knife-class
+    // weapon gains min(3, kills-of-this-monster / 6).
+    if (Role_if(PM_HEALER) && ctx.hand_to_hand
+        && obj.oclass === WEAPON_CLASS
+        && (game.objects?.[obj.otyp]?.oc_skill | 0) === P_KNIFE) {
+        const mndx = mon.mnum ?? mon.data?.mndx ?? -1;
+        const died = game.mvitals?.[mndx]?.died | 0;
+        ctx.dmg += Math.min(3, Math.trunc(died / 6));
+    }
+    // C :953–1013 — special attack actions: minimal hit, stuck target,
+    // two-weaponing, or hand-to-hand Cleaver → no bonuses.
+    if (!ctx.train_weapon_skill || mon === u.ustuck || u.twoweap
+        || (ctx.hand_to_hand && is_art(obj, ART_CLEAVER))) {
+        ; // no special bonuses
+    } else if (Role_if(PM_ROGUE) && backstabbable(mon) && !Upolyd(game.u)
+        && ctx.hand_to_hand) {
+        // C :957–963 — Rogue backstab: message first, then rnd(ulevel).
+        await pline(`You strike ${mon_nam(mon)} from behind!`);
+        ctx.dmg += rnd(u.ulevel | 0);
+        ctx.hittxt = true;
+    } else if ((ctx.dieroll | 0) === 2 && obj === u.uwep
+        && obj.oclass === WEAPON_CLASS
+        && (bimanual(obj)
+            || (Role_if(PM_SAMURAI) && obj.otyp === KATANA && !u.uarms))
+        && (((ctx.wtype = (u.twoweap
+            ? P_TWO_WEAPON_COMBAT : weapon_type(u.uwep))) | 0) !== P_NONE
+            && P_SKILL(ctx.wtype) >= P_SKILLED)
+        && (((ctx.monwep = MON_WEP(mon)) || null) !== null
+            && !is_flimsy(ctx.monwep)
+            && !obj_resists(ctx.monwep,
+                50 + 15 * ((Math.max(obj.oeroded | 0, obj.oeroded2 | 0))
+                    - (Math.max(ctx.monwep.oeroded | 0,
+                        ctx.monwep.oeroded2 | 0))),
+                100))) {
+        // C :964–1013 — two-handed shatter of the defender's weapon.
+        // JS strings are unbounded so the C BUFSZ truncation is a no-op.
+        const monwep = ctx.monwep;
+        const from_your_blow = ' from the force of your blow!';
+        setmnotwielded(mon, monwep);
+        mon.weapon_check = NEED_WEAPON;
+        if (canseemon(mon)) {
+            await pline(`${Yobjnam2(monwep, 'shatter')}${from_your_blow}`);
+        } else {
+            await pline(`${s_suffix(Monnam(mon))} weapon${(monwep.quan | 0) === 1 ? '' : 's'} ${otense(monwep, 'shatter')}${from_your_blow}`);
+        }
+        // C m_useupall: extract + free; JS has no manual free (GC).
+        extract_from_minvent(mon, monwep, true, false);
+        if (rn2(4)) {
+            await monflee(mon, d(2, 3), true, true);
+        }
+        ctx.hittxt = true;
+    }
+    // C :1015–1034 — artifact_hit may kill (doreturn FALSE) or zero dmg
+    // (doreturn TRUE); otherwise hittxt.
+    if (obj.oartifact
+        && await artifact_hit(youmonst, mon, obj,
+            (ctx.dmgBox = { dmg: ctx.dmg }, ctx.dmgBox),
+            ctx.dieroll | 0)) {
+        ctx.dmg = ctx.dmgBox.dmg | 0;
+        if ((mon.mhp | 0) < 1) {
+            ctx.doreturn = true;
+            ctx.retval = false;
+            return;
+        }
+        if ((ctx.dmg | 0) === 0) {
+            ctx.doreturn = true;
+            ctx.retval = true;
+            return;
+        }
+        ctx.hittxt = true;
+    } else if (obj.oartifact) {
+        ctx.dmg = ctx.dmgBox.dmg | 0;
+    }
+}
+
+/**
  * C ref: uhitm.c hmon → hmon_hitmon.
  * Thrown cream pie / blinding venom misc_obj arm (D-0693); melee weapon path.
  * troll_baned around killed (D-1232): set TRUE only, always reset after.
@@ -978,18 +1066,30 @@ async function hmon(mon, obj, thrown, _dieroll) {
                 if ((mon.data?.mndx | 0) !== PM_SHADE) dmg++;
             }
         } else {
-            dmg = dmgval(obj, mon);
-            use_weapon_skill = true;
-            train_weapon_skill = dmg > 1;
-            // C hmon_hitmon_weapon_melee: artifact_hit after dmgval, before
-            // hmon_hitmon_dmg_recalc (Grayswandir spec_dbon max(tmp,1)).
-            if (obj.oartifact) {
-                const dmgBox = { dmg };
-                if (await artifact_hit(youmonst, mon, obj, dmgBox, _dieroll | 0)) {
-                    hittxt = true;
-                }
-                dmg = dmgBox.dmg | 0;
-            }
+            // C uhitm.c hmon_hitmon_weapon_melee :933–1067 — ordinary melee:
+            // dmgval, Healer/Rogue/shatter arms, artifact_hit with doreturn.
+            // hand_to_hand mirrors hmon_hitmon :1780 (melee, or applied
+            // polearm implying uwep); Grayswandir spec_dbon stays in the
+            // recalc below (D-0613).
+            const ctx = {
+                dmg,
+                use_weapon_skill,
+                train_weapon_skill,
+                hittxt,
+                doreturn: false,
+                retval: true,
+                dieroll: _dieroll | 0,
+                hand_to_hand: (thrown === HMON_MELEE
+                    || (thrown === HMON_APPLIED && is_pole(game.u?.uwep))),
+            };
+            await hmon_hitmon_weapon_melee(mon, obj, ctx);
+            dmg = ctx.dmg | 0;
+            use_weapon_skill = ctx.use_weapon_skill;
+            train_weapon_skill = ctx.train_weapon_skill;
+            hittxt = ctx.hittxt;
+            // C hmon_hitmon :1797 — artifact doreturn (killed → FALSE,
+            // dmg-zeroed → TRUE) skips recalc/pet/msg entirely.
+            if (ctx.doreturn) return !!ctx.retval;
         }
     } else {
         dmg = dmgval(obj, mon);
@@ -1045,6 +1145,33 @@ async function hmon(mon, obj, thrown, _dieroll) {
         await abuse_dog(mon);
         if (mon.mtame && !destroyed) {
             await monflee(mon, 10 * rnd(dmg), false, false);
+        }
+    }
+
+    // C uhitm.c hmon_hitmon_splitmon :1603–1634 — an iron/metal
+    // hand-to-hand hit on a live (mhp>1) uncanceled pudding clones it
+    // (clone_mon + mintrap for the clone); the divide message sets
+    // hittxt so the ordinary hit message is skipped. mintrap via
+    // dynamic import (file convention: trap.js bound the same way).
+    if (((mon.data?.mndx | 0) === PM_BLACK_PUDDING
+        || (mon.data?.mndx | 0) === PM_BROWN_PUDDING)
+        && (mon.mhp | 0) > 1 && !mon.mcan && (mon.mx | 0) !== 0
+        && obj && (obj === game.u?.uwep
+            || (game.u?.twoweap && obj === game.u?.uswapwep))
+        && (((game.objects?.[obj.otyp]?.oc_material | 0) === IRON)
+            || ((game.objects?.[obj.otyp]?.oc_material | 0) === METAL))
+        && !is_ammo(obj) && !is_missile(obj)
+        && (thrown === HMON_MELEE
+            || (thrown === HMON_APPLIED && is_pole(game.u?.uwep)))) {
+        const mclone = await clone_mon(mon, 0, 0);
+        if (mclone) {
+            let withwhat = '';
+            if (game.u?.twoweap && game.flags?.verbose !== false)
+                withwhat = ` with ${yname(obj)}`;
+            await pline(`${Monnam(mon)} divides as you hit it${withwhat}!`);
+            hittxt = true;
+            const { mintrap } = await import('./trap.js');
+            await mintrap(mclone, NO_TRAP_FLAGS);
         }
     }
 
@@ -1308,7 +1435,7 @@ export async function mhitm_ad_wrap(magr, mattk, mdef, mhm) {
 
 /**
  * C ref: uhitm.c mhitm_adtyping youmonst subset for damageum.
- * AD_PHYS + AD_POLY + AD_DRIN skipdrin + AD_WRAP (D-1348) + AD_SLEE + AD_DRST + AD_SAMU + AD_DRLI/AD_PLYS uhitm live;
+ * AD_PHYS + AD_POLY + AD_DRIN skipdrin + AD_WRAP (D-1348) + AD_SLEE + AD_DRST + AD_SAMU + AD_DRLI/AD_PLYS + AD_COLD uhitm live;
  * remaining mhitm_ad_* named. mhitm wrap brush is D-1406.
  */
 
@@ -1412,9 +1539,42 @@ async function damageum_ad_plys(mdef, mhm) {
     }
 }
 
+/**
+ * C ref: uhitm.c mhitm_ad_cold `:2626–2652` — uhitm (you→mon) arm.
+ * mhitm_mgc_atk_negated(TRUE) burns rn2(10) first (negated → damage 0,
+ * return); !Blind "is covered in frost!"; resists_cold zeros leftover
+ * after shieldeff + "The frost doesn't chill <mon>!"; leftover +=
+ * destroy_items(AD_COLD, orig). Named omissions: defended(mdef, AD_COLD)
+ * worn walk (no JS export; same omit on every defended call site);
+ * golemeffects(mdef, AD_COLD, damage) is slow-only for flesh golem
+ * (no heal; slow named with golemeffects_mm).
+ */
+async function damageum_ad_cold(mdef, mhm) {
+    const magr = game.youmonst;
+    const orig_dmg = mhm.damage | 0;
+    if (await mhitm_mgc_atk_negated(magr, mdef, true)) {
+        mhm.damage = 0;
+        return;
+    }
+    if (!Blind_that()) {
+        await pline(`${Monnam(mdef)} is covered in frost!`);
+    }
+    if (resists_cold(mdef) /* || defended(mdef, AD_COLD) */) {
+        await shieldeff(mdef.mx, mdef.my);
+        if (!Blind_that()) {
+            await pline(`The frost doesn't chill ${mon_nam(mdef)}!`);
+        }
+        mhm.damage = 0;
+    }
+    mhm.damage = (mhm.damage | 0) + ((await destroy_items(mdef, AD_COLD, orig_dmg)) | 0);
+}
+
 async function damageum_adtyping(mattk, mdef, mhm) {
     const adtyp = mattk.adtyp | 0;
     if (adtyp === AD_PHYS) damageum_ad_phys(mdef, mattk, mhm);
+    else if (adtyp === AD_COLD) {
+        await damageum_ad_cold(mdef, mhm);
+    }
     else if (adtyp === AD_POLY) {
         await mhitm_ad_poly(game.youmonst, mattk, mdef, mhm);
     } else if (adtyp === AD_DRIN) {
@@ -1565,7 +1725,7 @@ async function known_hitum(mon, weapon, mhit, rollneeded, armorpenalty, uattk, d
  * C ref: uhitm.c passive_obj — erosion/drain on the hitting object.
  * erode_obj / drain_item bodies deferred; RNG order preserved.
  */
-function passive_obj(mon, obj, mattk) {
+async function passive_obj(mon, obj, mattk) {
     const u = game.u || {};
     let weapon = obj;
     let atk = mattk;
@@ -1595,9 +1755,17 @@ function passive_obj(mon, obj, mattk) {
         }
         break;
     case AD_RUST:
-    case AD_CORR:
         if (!mon.mcan) {
-            // erode_obj deferred
+            // erode_obj ERODE_RUST deferred
+        }
+        break;
+    case AD_CORR:
+        // C uhitm.c passive_obj :6174–6178 — draw-free corrode of the
+        // hitting weapon (erode_obj live in trap.js; dynamic import
+        // keeps this file's trap.js convention).
+        if (!mon.mcan) {
+            const { erode_obj } = await import('./trap.js');
+            await erode_obj(obj, null, ERODE_CORRODE, EF_GREASE);
         }
         break;
     case AD_ENCH:
@@ -1669,7 +1837,7 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                 }
             } else if (aatyp === AT_WEAP || aatyp === AT_CLAW
                 || aatyp === AT_MAGC || aatyp === AT_TUCH) {
-                passive_obj(mon, weapon, mattk);
+                await passive_obj(mon, weapon, mattk);
             }
         }
         break;
@@ -1695,7 +1863,7 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                 }
             } else if (aatyp === AT_WEAP || aatyp === AT_CLAW
                 || aatyp === AT_MAGC || aatyp === AT_TUCH) {
-                passive_obj(mon, weapon, mattk);
+                await passive_obj(mon, weapon, mattk);
             }
         }
         exercise(A_STR, false);
@@ -1716,7 +1884,7 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                 }
             } else if (aatyp === AT_WEAP || aatyp === AT_CLAW
                 || aatyp === AT_MAGC || aatyp === AT_TUCH) {
-                passive_obj(mon, weapon, mattk);
+                await passive_obj(mon, weapon, mattk);
             }
         }
         break;
@@ -1737,7 +1905,7 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                 || (aatyp >= AT_STNG && aatyp < AT_WEAP)) {
                 break;
             }
-            passive_obj(mon, weapon, mattk);
+            await passive_obj(mon, weapon, mattk);
         }
         break;
     default:

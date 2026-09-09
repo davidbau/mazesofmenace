@@ -30,10 +30,11 @@ import {
 } from './objects.js';
 import { mksobj, mkobj, weight, curse, oc_merge_of, spot_stop_timers, set_corpsenm } from './mkobj.js';
 import { artifact_name, nartifact_exist, permapoisoned } from './artifact.js';
+import { is_quest_artifact } from './quest.js';
 import { oname, lookup_novel } from './do_name.js';
 import { name_to_mon, name_to_monplus } from './mondata.js';
-import { tin_variety_txt, set_tin_variety } from './eat.js';
-import { makesingular, An, an } from './objnam.js';
+import { tin_variety_txt, set_tin_variety, obj_nutrition, consume_oeaten } from './eat.js';
+import { makesingular, makeplural, An, an } from './objnam.js';
 import { is_weptool, is_ammo, is_missile } from './wield.js';
 import { Is_candle } from './timeout.js';
 import { genus, dead_species, can_be_hatched } from './mon.js';
@@ -730,6 +731,12 @@ export function readobjnam(bp, no_wish, missOut) {
     const d = {
         bp,
         origbp: bp,
+        // C ref: objnam.c readobjnam `:4926` + readobjnam_init `:3958` —
+        // fruitbuf is the mungspaced wish before prefix stripping; ftype
+        // defaults to the current fruit id.
+        fruitbuf: bp,
+        ftype: (game.context?.current_fruit | 0),
+        halfeaten: 0,
         cnt: 0,
         spe: 0,
         spesgn: 0,
@@ -792,6 +799,10 @@ export function readobjnam(bp, no_wish, missOut) {
         } else if (/^uncursed /i.test(s)) {
             d.uncursed = 1; d.blessed = 0; d.iscursed = 0;
             l = 9;
+        } else if (/^partly eaten /i.test(s) || /^partially eaten /i.test(s)) {
+            /* C objnam.c readobjnam_preparse `:4092–4094` — halfeaten food. */
+            d.halfeaten = 1;
+            l = /^partly eaten /i.test(s) ? 13 : 16;
         } else if (/^real /i.test(s)) {
             /* C objnam.c readobjnam_preparse `:4125-4130` — "real Amulet";
                fake is not negated here ("real fake amulet" stays fake). */
@@ -1020,6 +1031,55 @@ export function readobjnam(bp, no_wish, missOut) {
             if (typ !== STRANGE_OBJECT) d.typ = typ;
         }
 
+        // C ref: objnam.c readobjnam_postparse3 `:4806–4868` — fruits are
+        // checked last so real object names win. A fruit match resolves
+        // draw-free to SLIME_MOLD (the name table holds "fruit" since
+        // init, C options.c `:7341`, so the srch chain above cannot see
+        // it). Prefix matching is case-insensitive but the fruit-name
+        // match itself is case-sensitive strcmp, not wishymatch.
+        if (!d.typ && d.fruitbuf) {
+            let fp = d.fruitbuf;
+            let cntf = 0;
+            let blessedf = 0, iscursedf = 0, uncursedf = 0, halfeatenf = 0;
+            for (;;) {
+                if (!fp) break;
+                const low = fp.toLowerCase();
+                let l = 0;
+                if (low.startsWith('an ')) { cntf = 1; l = 3; }
+                else if (low.startsWith('a ')) { cntf = 1; l = 2; }
+                else if (!cntf && fp[0] >= '0' && fp[0] <= '9') {
+                    const m = fp.match(/^(\d+)/);
+                    cntf = parseInt(m[1], 10);
+                    fp = fp.slice(m[1].length).replace(/^ +/, '');
+                    continue;
+                } else if (low.startsWith('blessed ')) { blessedf = 1; l = 8; }
+                else if (low.startsWith('cursed ')) { iscursedf = 1; l = 7; }
+                else if (low.startsWith('uncursed ')) { uncursedf = 1; l = 9; }
+                else if (low.startsWith('partly eaten ')) { halfeatenf = 1; l = 13; }
+                else if (low.startsWith('partially eaten ')) { halfeatenf = 1; l = 16; }
+                else break;
+                fp = fp.slice(l);
+            }
+            for (let f = game.ffruit; f; f = f.nextf) {
+                let ftyp = 0;
+                if (fp === f.fname) ftyp = 1;
+                else if (fp === makesingular(f.fname)) ftyp = 2;
+                else if (fp === makeplural(f.fname)) ftyp = 3;
+                if (ftyp) {
+                    d.typ = SLIME_MOLD;
+                    d.blessed = blessedf;
+                    d.iscursed = iscursedf;
+                    d.uncursed = uncursedf;
+                    d.halfeaten = halfeatenf;
+                    if (ftyp === 2 && !cntf) cntf = 1;
+                    else if (ftyp === 3 && !cntf) cntf = 2;
+                    d.cnt = cntf;
+                    d.ftype = f.fid;
+                    break;
+                }
+            }
+        }
+
         if (!d.typ && !d.oclass && d.actualn) {
             const out = { otyp: 0 };
             const aname = artifact_name(d.actualn, out, true);
@@ -1088,9 +1148,9 @@ export function readobjnam(bp, no_wish, missOut) {
     /* C ref: objnam.c readobjnam — set otmp->spe; may or may not use d.spe.
        d.contents/d.mgend/d.tvariety are parsed by the "tin of"/" of " arm
        above (C `:4381–4397`); d.wetness/d.ishistoric are never parsed, so
-       they read as C defaults (0/0); d.ftype (C default: current_fruit) is
-       likewise unparsed — slime-mold fruit-variety wishes stay a named
-       omission (retain mksobj spe). */
+       they read as C defaults (0/0); d.ftype defaults to current_fruit
+       (C `:3958`) and the postparse3 fruit arm sets it to the wished
+       fruit's fid. */
     switch (d.typ) {
     case TIN:
         d.otmp.spe = 0; /* default: not spinach */
@@ -1106,7 +1166,9 @@ export function readobjnam(bp, no_wish, missOut) {
             d.otmp.spe = d.wetness;
         break;
     case SLIME_MOLD:
-        /* C: d.otmp->spe = d.ftype (default current_fruit) — deferred, see above. */
+        // C objnam.c readobjnam `:5137–5138` — spe is the fruit id
+        // (fruit-wish ftype, else the current-fruit default).
+        d.otmp.spe = d.ftype | 0;
         break;
     case SKELETON_KEY:
     case CHEST:
@@ -1275,10 +1337,22 @@ export function readobjnam(bp, no_wish, missOut) {
     // C objnam.c readobjnam `:5368–5369` — Grimtooth always poisoned.
     if (permapoisoned(d.otmp)) d.otmp.opoisoned = 1;
 
-    // C: evaluate rn2(nartifact_exist()) even when wizard (|| short-circuit)
-    if (d.otmp.oartifact) {
-        const denyRoll = rn2(nartifact_exist()) > 1;
-        if (denyRoll && !wizardMode()) return HANDS_OBJ;
+    // C objnam.c readobjnam `:5371–5380` — wishing abuse: quest artifacts
+    // short-circuit the existence roll (`is_quest_artifact || ...`, so no
+    // rn2 for them); non-quest artifacts always roll rn2, even in wizard
+    // mode (`&& !wizard` is last). Single if preserves C short-circuit.
+    if ((is_quest_artifact(d.otmp)
+         || (d.otmp.oartifact && rn2(nartifact_exist()) > 1)) && !wizardMode())
+        return HANDS_OBJ;
+
+    // C objnam.c readobjnam `:5383–5393` — partly-eaten wish: pre-eat one
+    // bite before weighing (skipped for 0/1-nutrition food).
+    if (d.halfeaten && d.otmp.oclass === FOOD_CLASS) {
+        const nut = obj_nutrition(d.otmp);
+        if (nut > 1) {
+            d.otmp.oeaten = nut;
+            consume_oeaten(d.otmp, 1);
+        }
     }
 
     d.otmp.owt = weight(d.otmp);

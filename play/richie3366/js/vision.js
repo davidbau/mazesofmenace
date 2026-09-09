@@ -74,7 +74,7 @@ const circle_data = [
 const circle_start = [0, 1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 66, 78, 91, 105, 120];
 
 /** C vision.h: circle_ptr(z) ≡ &circle_data[(int) circle_start[z]] */
-function circle_ptr(z) {
+export function circle_ptr(z) {
     return circle_data.slice(circle_start[z] | 0);
 }
 

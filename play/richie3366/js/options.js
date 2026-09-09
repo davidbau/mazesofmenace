@@ -93,7 +93,7 @@ import {
     WEAPON_CLASS, ARMOR_CLASS, RING_CLASS, AMULET_CLASS, TOOL_CLASS,
     FOOD_CLASS, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, WAND_CLASS,
     COIN_CLASS, GEM_CLASS, ROCK_CLASS, BALL_CLASS, CHAIN_CLASS,
-    objectNameStrs, objects,
+    objectNames, objectNameStrs, objects,
 } from './objects.js';
 import { EXTCMDLIST, INTERNALCMD } from './generated/extcmdlist_data.js';
 import { getlin } from './getline.js';
@@ -1410,6 +1410,12 @@ export function fruitadd(str, replaceFruit) {
  * restore ghostfruit fruitadd else is D-1541.
  */
 export function init_fruit_chain() {
+    // C ref: options.c initoptions_finish `:7341` — remove "slime mold"
+    // from the object-name list once the fruit chain exists, so wishes
+    // for it resolve through the fruit list (objnam.c postparse3,
+    // draw-free) instead of the namedesc search (which would draw
+    // rn2). Display keeps using the ffruit fname (D-1511).
+    objectNameStrs[objectNames.indexOf('SLIME_MOLD')] = 'fruit';
     if (game.ffruit) return;
     let nam = makesingular(
         String(game.pl_fruit || game.flags?.fruit || 'slime mold'),

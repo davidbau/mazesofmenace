@@ -61,7 +61,7 @@ import { get_count, pmatchi, cmdq_pop, cmdq_clear } from './cmd.js';
 import { mergable, is_damageable, stop_timer, splitobj, unsplitobj, clear_splitobjs, unknwn_contnr_contents, weight, delobj } from './mkobj.js';
 import { unpaid_cost, doinvbill, gem_learned, obfree, shopper_financial_report } from './shk.js';
 import { hidden_gold } from './vault.js';
-import { setnotworn } from './do.js';
+import { setnotworn, dropy } from './do.js';
 import { s_suffix, a_monnam, pmname } from './do_name.js';
 import { inv_cnt } from './steal.js';
 import { assigninvlet } from './u_init.js';
@@ -7191,9 +7191,10 @@ export async function hold_another_object(obj, drop_fmt, drop_arg, hold_msg) {
         place_object(obj, u.ux, u.uy);
         if (!(await touch_artifact(obj, youmonst))) {
             obj_extract_self(obj);
-            // dropy deferred — leave on floor (C dropy after extract)
-            // C invent.c:1227-1231 prints nothing on the refuse arm
-            // (drop_fmt sounds only in the wasUpolyd arm and drop_it).
+            // C invent.c:1229 dropy — put it back on the floor (was a named
+            // omit since D-2134; without it a refused wish-artifact leaves
+            // every chain, starving later floor scans such as dog_goal).
+            await dropy(obj);
             return obj;
         }
         obj_extract_self(obj);

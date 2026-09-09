@@ -916,10 +916,11 @@ function attach_glyph(g, glyph) {
     return g;
 }
 
-// C ref: display.h _mon_visible — invis/undetected only (caller handles sight)
+// C ref: display.h _mon_visible :86–90 (!minvis || See_invisible) + youprop.h:150–152
+// See_invisible ≡ H||E (uprops[SEE_INVIS]); hero_See_invisible covers flats+uprops+sticky.
 export function mon_visible(mon) {
     if (!mon) return false;
-    if (mon.minvis && !game.u?.See_invisible) return false;
+    if (mon.minvis && !hero_See_invisible()) return false;
     if (mon.mundetected) return false;
     return true;
 }

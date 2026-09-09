@@ -578,6 +578,7 @@ function Poison_resistance() {
 function useup(otmp) {
     if (!otmp) return;
     if ((otmp.quan || 1) > 1) {
+        otmp.in_use = false; /* C invent.c:1326 — no longer in use */
         otmp.quan--;
         otmp.owt = weight(otmp);
         return;

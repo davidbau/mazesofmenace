@@ -8,10 +8,10 @@ import {
     NROFARTIFACTS,
     artilistRaw,
 } from './generated/artifacts_data.js';
-import { objectNames, NUM_OBJECTS, objectDescrs, objects } from './objects.js';
+import { objectNames, NUM_OBJECTS, objectDescrs, objects, WEAPON_CLASS } from './objects.js';
 import { obj_shuffle_range } from './o_init.js';
-import { monsterNames, NON_PM, M2_UNDEAD, is_demon, is_dprince, is_dlord, resists_ston, hates_silver } from './monsters.js';
-import { Fire_resistance, Cold_resistance, Shock_resistance, Drain_resistance, resists_fire, resists_cold, resists_elec, resists_poison, resists_drli } from './zap.js';
+import { monsterNames, NON_PM, M2_UNDEAD, is_demon, is_dprince, is_dlord, resists_ston, hates_silver, bigmonst, has_head, noncorporeal, amorphous, is_covetous, is_mplayer } from './monsters.js';
+import { Fire_resistance, Cold_resistance, Shock_resistance, Drain_resistance, resists_fire, resists_cold, resists_elec, resists_poison, resists_drli, cancel_monst, resist, probe_monster } from './zap.js';
 import {
     A_NONE,
     ONAME_WISH,
@@ -56,6 +56,7 @@ import {
     GETOBJ_SUGGEST,
     GETOBJ_PROMPT,
     LAST_PROP,
+    NOTELL,
     HALLUC,
     TIMEOUT,
     I_SPECIAL,
@@ -85,24 +86,30 @@ import {
     LL_ARTIFACT,
     KILLED_BY,
     LOW_PM,
+    NECK,
 } from './const.js';
 import { rn2, rnd, d, rnz } from './rng.js';
 import { nhgetch } from './input.js';
 import {
     flush_screen, flush_topl_more, pline, impossible, You_feel, newsym, see_monsters,
-    set_sting_effects, glyph_at, glyph_is_trap,
+    set_sting_effects, glyph_at, glyph_is_trap, canspotmon, map_invisible, shieldeff,
 } from './display.js';
 import { cansee } from './vision.js';
-import { mon_nam, s_suffix } from './do_name.js';
+import { mon_nam, s_suffix, Monnam, mon_aligntyp_nam } from './do_name.js';
 import { wake_nearto } from './mon.js';
 import { burn_away_slime } from './timeout.js';
-import { compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, getobj } from './invent.js';
+import { compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, getobj, observe_object } from './invent.js';
 import { xname, the, vtense, cxname, otense, set_undiscovered_artifact, set_find_artifact, simple_typename, Tobjnam } from './objnam.js';
 import { recalc_telepat_range } from './do_wear.js';
 import { t_at } from './trap.js';
 import { livelog_printf } from './pline.js';
 import { inside_shop } from './shk.js';
-import { losehp, maybe_half_phys, finish_maybe_wail } from './hack.js';
+import { losehp, maybe_half_phys, finish_maybe_wail, nomul } from './hack.js';
+import { sticks } from './engrave.js';
+import { set_ustuck } from './mhitu.js';
+import { monflee } from './monmove.js';
+import { make_stunned, make_confused } from './potion.js';
+import { upstart } from './hacklib.js';
 import { exercise, A_WIS } from './attrib.js';
 
 const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
@@ -117,6 +124,10 @@ const SCR_TAMING = objectNames.indexOf('SCR_TAMING');
 const MS_NEMESIS = 37;
 /** C monsters.h PM_WATER_ELEMENTAL — mdef->data identity for the FIRE vaporize arm. */
 const PM_WATER_ELEMENTAL = monsterNames.indexOf('PM_WATER_ELEMENTAL');
+/** C artifact.c:1596 — mdef->data identity for the Vorpal Jabberwock arm. */
+const PM_JABBERWOCK = monsterNames.indexOf('PM_JABBERWOCK');
+/** C artifact.c:63 — overkill damage forcing death through negative AC. */
+const FATAL_DAMAGE_MODIFIER = 200;
 
 export { NROFARTIFACTS };
 import {
@@ -127,9 +138,12 @@ import {
     ART_STING,
     ART_GRAYSWANDIR,
     ART_MASTER_KEY_OF_THIEVERY,
+    ART_VORPAL_BLADE,
+    ART_TSURUGI_OF_MURAMASA,
 } from './generated/artifacts_data.js';
 import { PM_KNIGHT, PM_ROGUE } from './generated/monsters_data.js';
 import { aligns, align_str } from './roles.js';
+import { mbodypart, body_part } from './polyself.js';
 import { ATR_INVERSE } from './terminal.js';
 export { ART_NONARTIFACT, ART_EXCALIBUR, ART_GRIMTOOTH, ART_ORCRIST, ART_STING, ART_GRAYSWANDIR };
 
@@ -576,7 +590,7 @@ const LUCKSTONE_OTYP = objectNames.indexOf('LUCKSTONE');
  * (`arti != &artilist[ART_NONARTIFACT]`, C short-circuit order) plus the
  * spfx bit test. Live callers routed here: confers_luck SPFX_LUCK;
  * sit.c rndcurse SPFX_INTEL; detect.c dosearch0 SPFX_SEARCH.
- * artifact_hit SPFX_BEHEAD/SPFX_DRLI arms stay deferred (named there).
+ * artifact_hit SPFX_DRLI arm stays deferred (named there).
  * @param {object} otmp
  * @param {number} abil SPFX_* bit mask
  * @returns {boolean}
@@ -1100,11 +1114,48 @@ function bane_applies(oart, mon) {
 }
 
 /**
+ * C ref: artifact.c touch_artifact `:908–974` — monster-only touch decision
+ * (sync). NONART gate, non-covetous role/align arms (`self_willed &&
+ * role != NON_PM` save Excalibur; RESTR align vs mon_aligntyp), covetous /
+ * fake-player pass-through, bane, and the silent monster refuse (`return 0`:
+ * no pline, and no RNG — C's `badalign && (!yours || !rn2(4))` short-circuits
+ * on `!yours`). Async touch_artifact reuses this for monsters; sync
+ * can_touch_safely (mon.c) calls it directly. Returns 1 (may touch) / 0.
+ */
+export function touch_artifact_mon(obj, mon) {
+    const oart = get_artifact(obj);
+    const list = artilist();
+    if (oart === list[0]) return 1;
+    const mdat = mon?.data;
+    const self_willed = (oart.spfx & SPFX_INTEL) !== 0;
+    let badclass = false;
+    let badalign = false;
+    // C: `else if (!is_covetous(mon->data) && !is_mplayer(mon->data))`
+    if (!is_covetous(mdat) && !is_mplayer(mdat)) {
+        badclass = !!self_willed && oart.role !== NON_PM
+            && oart !== list[ART_EXCALIBUR];
+        badalign = ((oart.spfx & SPFX_RESTR) !== 0)
+            && oart.alignment !== A_NONE
+            && oart.alignment !== mon_aligntyp_nam(mon);
+    } else {
+        // C: covetous monsters and fake players touch anything except
+        // spec_applies artifacts — badclass/badalign stay FALSE.
+    }
+    // C: bane applies even when alignment otherwise matches.
+    if (!badalign) badalign = bane_applies(oart, mon);
+    // C blast gate for monsters: `((badclass||badalign) && self_willed) ||
+    // (badalign && !yours)` refuses; the evade gate below it needs badalign
+    // too, so anything refused here returns 0 and the rest returns 1.
+    if (((badclass || badalign) && self_willed) || badalign) return 0;
+    return 1;
+}
+
+/**
  * C ref: artifact.c touch_artifact `:907–974` — hero blast + refuse arms
  * in exact C order (touch_blasted reset, NONART gate, yours/self_willed,
- * badclass/badalign, bane, blast gate, evade/control). Monster
- * covetous/mplayer role/align arms stay deferred (named below).
- * Returns 1 if held, 0 if refused.
+ * badclass/badalign, bane, blast gate, evade/control). Monster role/align
+ * arms run through sync touch_artifact_mon (same file, shared with
+ * can_touch_safely). Returns 1 if held, 0 if refused.
  */
 export async function touch_artifact(obj, mon) {
     const oart = get_artifact(obj);
@@ -1128,9 +1179,11 @@ export async function touch_artifact(obj, mon) {
         badalign = ((oart.spfx & SPFX_RESTR) !== 0
             && oart.alignment !== A_NONE
             && (oart.alignment !== atype || arec < 0));
+    } else {
+        // C monster role/align arms + silent refuse — sync helper shared
+        // with can_touch_safely (mon.c); returns here for monsters.
+        return touch_artifact_mon(obj, mon);
     }
-    /* C covetous/mplayer role/align arms deferred → monster badclass/
-       badalign stay false; bane below still applies to monsters. */
     if (!badalign) badalign = bane_applies(oart, mon);
 
     if (((badclass || badalign) && self_willed)
@@ -1154,7 +1207,10 @@ export async function touch_artifact(obj, mon) {
         if (game._losehp_needs_done) {
             const { finish_losehp_done } = await import('./end.js');
             await finish_losehp_done();
-            return 0;
+            // C artifact.c:959 — losehp returns after lifesave / wizard
+            // `Die?` decline (end.c savelife); exercise still runs. Only a
+            // real death (gameover) skips it (scen-wish-Valkyrie-92014:48).
+            if (game.program_state?.gameover) return 0;
         }
         exercise(A_WIS, false);
     }
@@ -2176,14 +2232,184 @@ export function spec_dbon(otmp, mon, tmp) {
     return 0;
 }
 
+/* C artifact.c:1232–1239 — Magicbane effect indices. */
+const MB_INDEX_PROBE = 0;
+const MB_INDEX_STUN = 1;
+const MB_INDEX_SCARE = 2;
+const MB_INDEX_CANCEL = 3;
+/* C artifact.c:1241 — MB_MAX_DIEROLL 8: rolls above this aren't magical. */
+const MB_MAX_DIEROLL = 8;
+/* C artifact.c:1242–1245 — mb_verb[hallu][index]. */
+const MB_VERB = [
+    ['probe', 'stun', 'scare', 'cancel'],
+    ['prod', 'amaze', 'tickle', 'purge'],
+];
+/** C artifact.c:1340 — mdef->data identity for the cancel clay-golem arm. */
+const PM_CLAY_GOLEM = monsterNames.indexOf('PM_CLAY_GOLEM');
+/* C monattk.h AT_MAGC — JS mattk encoding 255 (mhitm.js:217; eat.js precedent). */
+const AT_MAGC = 255;
+/**
+ * C ref: mondata.h attacktype — true if any mattk slot has aatyp.
+ * File-local per eat.js/engrave.js precedent (uhitm.js edge would cycle).
+ */
+function attacktype(ptr, aatyp) {
+    const slots = ptr?.mattk;
+    if (!slots) return false;
+    for (const a of slots) {
+        if ((a?.aatyp | 0) === (aatyp | 0)) return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: artifact.c Mb_hit :1248–1434 — called when someone is hit by
+ * Magicbane. Picks probe/stun/scare/cancel from spe + dieroll (RNG order:
+ * rn2(11|7) stun gate, then one rnd(4) per reached tier), prints the
+ * magic-absorbing blade hit pline, then runs the tier effect (cancel /
+ * scare / probe; stun is a flag), then stun/confuse application and the
+ * resisted/stunned-and-confused side-effect plines.
+ * @param {object} dmgBox mutable `{ dmg }` (C int *dmgptr)
+ * @param {string} hittee target's name (C char[BUFSZ]; re-set on cancel poly)
+ * @returns {boolean} whether caller should suppress ordinary hit pline
+ */
+export async function Mb_hit(magr, mdef, mb, dmgBox, dieroll, vis, hittee) {
+    const hero = game.youmonst;
+    const isHero = (m) => !!m && (m === hero || m === youmonst || !!m._youmonst);
+    const youattack = isHero(magr);
+    const youdefend = isHero(mdef);
+    const u = game.u || (game.u = {});
+    let resisted = false;
+    let do_stun;
+    let do_confuse;
+    let result = false; /* no message given yet */
+    let dr = dieroll | 0;
+    let scare_dieroll = MB_MAX_DIEROLL / 2;
+    let hb = hittee;
+    /* C :1266–1271 — severe effects less likely at higher enchantment; a
+       resisted bonus-damage roll also damps the special effects. */
+    if (((mb?.spe | 0) >= 3)) scare_dieroll = Math.trunc(scare_dieroll / (1 << Math.trunc((mb.spe | 0) / 3)));
+    if (!spec_dbon_applies) dr += 1;
+    /* C :1277 — might stun even when attempting a more severe effect. */
+    do_stun = Math.max((mb?.spe | 0), 0) < rn2(spec_dbon_applies ? 11 : 7);
+    /* C :1286–1299 — cumulative tiers; stun damage may be skipped while the
+       stun flag still applies. Base is 1d4 (athame) or 2d4 with spec_dbon. */
+    let attack_indx = MB_INDEX_PROBE;
+    dmgBox.dmg = (dmgBox.dmg | 0) + rnd(4); /* (2..3)d4 */
+    if (do_stun) {
+        attack_indx = MB_INDEX_STUN;
+        dmgBox.dmg = (dmgBox.dmg | 0) + rnd(4); /* (3..4)d4 */
+    }
+    if (dr <= scare_dieroll) {
+        attack_indx = MB_INDEX_SCARE;
+        dmgBox.dmg = (dmgBox.dmg | 0) + rnd(4); /* (3..5)d4 */
+    }
+    if (dr <= Math.trunc(scare_dieroll / 2)) {
+        attack_indx = MB_INDEX_CANCEL;
+        dmgBox.dmg = (dmgBox.dmg | 0) + rnd(4); /* (4..6)d4 */
+    }
+    /* C :1301–1311 — hit message before the effects. */
+    const verb = MB_VERB[Hallucination() ? 1 : 0][attack_indx];
+    if (youattack || youdefend || vis) {
+        result = true;
+        await pline(`The magic-absorbing blade ${vtense(null, verb)} ${hb}!`);
+        if (attack_indx === MB_INDEX_PROBE && !canspotmon(mdef)) map_invisible(mdef.mx | 0, mdef.my | 0);
+    }
+    /* C :1314–1388 — the special effects. */
+    if (attack_indx === MB_INDEX_CANCEL) {
+        const old_mdat = youdefend ? game.youmonst?.data : mdef?.data;
+        if (!(await cancel_monst(mdef, mb, youattack, false, false))) {
+            resisted = true;
+        } else {
+            do_stun = false;
+            if (youdefend) {
+                if (game.youmonst?.data !== old_mdat) dmgBox.dmg = 0; /* rehumanized */
+                if ((u.uenmax | 0) > 0) {
+                    u.uenmax = (u.uenmax | 0) - 1;
+                    if ((u.uen | 0) > 0) u.uen = (u.uen | 0) - 1;
+                    if (game.disp) game.disp.botl = true;
+                    if (game.flags) game.flags.botl = true;
+                    await pline('You lose magical energy!');
+                }
+            } else {
+                if (mdef?.data !== old_mdat) hb = mon_nam(mdef);
+                if (((mdef?.data?.mndx ?? mdef?.mnum ?? -1) | 0) === PM_CLAY_GOLEM) mdef.mhp = 1;
+                if (youattack && attacktype(mdef?.data, AT_MAGC)) {
+                    u.uenmax = (u.uenmax | 0) + 1;
+                    if ((u.uenmax | 0) > (u.uenpeak | 0)) u.uenpeak = u.uenmax;
+                    u.uen = (u.uen | 0) + 1;
+                    if (game.disp) game.disp.botl = true;
+                    if (game.flags) game.flags.botl = true;
+                    await pline('You absorb magical energy!');
+                }
+            }
+        }
+    } else if (attack_indx === MB_INDEX_SCARE) {
+        if (youdefend) {
+            if (Antimagic_hero()) {
+                resisted = true;
+            } else {
+                nomul(-3);
+                game.multi_reason = 'being scared stiff';
+                game.nomovemsg = '';
+                if (magr && (u.ustuck === magr) && sticks(game.youmonst?.data)) {
+                    set_ustuck(null);
+                    await pline(`You release ${mon_nam(magr)}!`);
+                }
+            }
+        } else {
+            if (rn2(2) && (await resist(mdef, WEAPON_CLASS, 0, NOTELL))) resisted = true;
+            else await monflee(mdef, 3, false, ((mdef?.mhp | 0) > (dmgBox.dmg | 0)));
+        }
+        if (!resisted) do_stun = false;
+    } else if (attack_indx === MB_INDEX_PROBE) {
+        if (youattack && (((mb?.spe | 0) === 0) || !rn2(3 * Math.abs(mb?.spe | 0)))) {
+            await pline(`The ${verb} is insightful.`);
+            await probe_monster(mdef);
+        }
+    }
+    /* C :1377–1379 MB_INDEX_STUN arm is just do_stun = TRUE (redundant). */
+    /* C :1389–1406 — stun if selected and no worse effect occurred. */
+    if (do_stun) {
+        if (youdefend) await make_stunned((((u.HStun | 0) & TIMEOUT) + 3) | 0, false);
+        else mdef.mstun = 1;
+        /* avoid extra stun message below if we used mb_verb["stun"] above */
+        if (attack_indx === MB_INDEX_STUN) do_stun = false;
+    }
+    /* C :1399–1406 — lastly, all this magic can be confusing... */
+    do_confuse = !rn2(12);
+    if (do_confuse) {
+        if (youdefend) await make_confused((((u.HConfusion | 0) & TIMEOUT) + 4) | 0, false);
+        else mdef.mconf = 1;
+    }
+    /* C :1408–1431 — side-effect messages. C decl.c:51 fakename[] is
+       { "mon", "you" } and C vtense treats "you" as plural, so the fake
+       verb is the raw verb for the hero and vtense('mon', verb) else. */
+    if (youattack || youdefend || vis) {
+        hb = upstart(hb); /* capitalize */
+        if (resisted) {
+            await pline(`${hb} ${youdefend ? 'resist' : vtense('mon', 'resist')}!`);
+            await shieldeff(youdefend ? (u.ux | 0) : (mdef.mx | 0), youdefend ? (u.uy | 0) : (mdef.my | 0));
+        }
+        if ((do_stun || do_confuse) && (game.flags?.verbose !== false)) {
+            let buf = '';
+            if (do_stun) buf += 'stunned';
+            if (do_stun && do_confuse) buf += ' and ';
+            if (do_confuse) buf += 'confused';
+            await pline(`${hb} ${youdefend ? 'are' : vtense('mon', 'are')} ${buf}${(do_stun && do_confuse) ? '!' : '.'}`);
+        }
+    }
+    return result;
+}
+
 /**
  * C ref: artifact.c artifact_hit :1447–1721 — preamble + four basic
- * attacks (FIRE/COLD/ELEC/MAGM) with realizes_damage plines.
+ * attacks (FIRE/COLD/ELEC/MAGM) with realizes_damage plines + SPFX_BEHEAD.
  * Ported: spec_dbon add; youattack/youdefend/vis/realizes_damage/hittee;
  * impossible self-attack; elemental plines in C order; ELEC wake_nearto
- * when spec_dbon_applies; rn2(4)/rn2(5) gates burned; Slimed burn_away.
+ * when spec_dbon_applies; rn2(4)/rn2(5) gates burned; Slimed burn_away;
+ * Mb_hit (Magicbane specials).
  * Named omissions: destroy_items/ignite_items bodies (gates still burned);
- * Mb_hit; SPFX_BEHEAD; SPFX_DRLI.
+ * SPFX_DRLI.
  * @param {object} dmgBox mutable `{ dmg }` (C int *dmgptr)
  * @returns {boolean} whether caller should suppress ordinary hit pline
  */
@@ -2269,13 +2495,103 @@ export async function artifact_hit(magr, mdef, otmp, dmgBox, dieroll) {
         }
         return realizes_damage;
     }
-    // C: MB_MAX_DIEROLL 8 — rolls above this aren't magical
-    if (attacks(AD_STUN, otmp) && (dieroll | 0) <= 8) {
-        // Mb_hit deferred — Magicbane specials
-        return false;
+    // C :1537–1540 — Magicbane's special attacks (possibly modifies hittee[]).
+    if (attacks(AD_STUN, otmp) && (dieroll | 0) <= MB_MAX_DIEROLL) {
+        return await Mb_hit(magr, mdef, otmp, dmgBox, dieroll | 0, vis, hittee);
     }
     if (!spec_dbon_applies) return false;
-    // SPFX_BEHEAD / SPFX_DRLI deferred
+    // C :1550–1644 — SPFX_BEHEAD (Tsurugi of Muramasa + Vorpal Blade).
+    if (spec_ability(otmp, SPFX_BEHEAD)) {
+        const u = game.u || {};
+        if (is_art(otmp, ART_TSURUGI_OF_MURAMASA) && (dieroll | 0) === 1) {
+            const sharpdesc = 'The razor-sharp blade';
+            /* not really beheading, but so close, why add another SPFX */
+            if (youattack && engulfing_u(mdef)) {
+                await pline(`You slice ${mon_nam(mdef)} wide open!`);
+                dmgBox.dmg = 2 * (mdef?.mhp | 0) + FATAL_DAMAGE_MODIFIER;
+                return true;
+            }
+            if (!youdefend) {
+                /* allow normal cutworm() call to add extra damage */
+                if (game.notonhead) return false;
+                if (bigmonst(mdef?.data)) {
+                    if (youattack) {
+                        await pline(`You slice deeply into ${mon_nam(mdef)}!`);
+                    } else if (vis) {
+                        await pline(`${Monnam(magr)} cuts deeply into ${hittee}!`);
+                    }
+                    dmgBox.dmg = (dmgBox.dmg | 0) * 2;
+                    return true;
+                }
+                dmgBox.dmg = 2 * (mdef?.mhp | 0) + FATAL_DAMAGE_MODIFIER;
+                await pline(`${sharpdesc} cuts ${mon_nam(mdef)} in half!`);
+                observe_object(otmp);
+                return true;
+            }
+            if (bigmonst(game.youmonst?.data)) {
+                await pline(`${magr ? Monnam(magr) : sharpdesc} cuts deeply into you!`);
+                dmgBox.dmg = (dmgBox.dmg | 0) * 2;
+                return true;
+            }
+            /* Players with negative AC's take less damage instead
+             * of just not getting hit.  We must add a large enough
+             * value to the damage so that this reduction in
+             * damage does not prevent death.
+             */
+            dmgBox.dmg = 2 * (Upolyd(u) ? (u.mh | 0) : (u.uhp | 0))
+                + FATAL_DAMAGE_MODIFIER;
+            await pline(`${sharpdesc} cuts you in half!`);
+            observe_object(otmp);
+            return true;
+        }
+        if (is_art(otmp, ART_VORPAL_BLADE)
+            && ((dieroll | 0) === 1 || (mdef?.data?.mndx | 0) === PM_JABBERWOCK)) {
+            // C hack.h ROLL_FROM — behead_msg[rn2(2)]; the draw always fires.
+            if (youattack && engulfing_u(mdef)) return false;
+            const wepdesc = get_artifact(otmp)?.name || 'Vorpal Blade';
+            if (!youdefend) {
+                if (!has_head(mdef?.data) || game.notonhead || u.uswallow) {
+                    if (youattack) {
+                        await pline(`Somehow, you miss ${mon_nam(mdef)} wildly.`);
+                    } else if (vis) {
+                        await pline(`Somehow, ${mon_nam(magr)} misses wildly.`);
+                    }
+                    dmgBox.dmg = 0;
+                    return !!(youattack || vis);
+                }
+                if (noncorporeal(mdef?.data) || amorphous(mdef?.data)) {
+                    await pline(`${wepdesc} slices through ${s_suffix(mon_nam(mdef))} ${mbodypart(mdef, NECK)}.`);
+                    return true;
+                }
+                dmgBox.dmg = 2 * (mdef?.mhp | 0) + FATAL_DAMAGE_MODIFIER;
+                const beheadverb = ['beheads', 'decapitates'][rn2(2)];
+                await pline(`${wepdesc} ${beheadverb} ${mon_nam(mdef)}!`);
+                if (Hallucination() && !game.flags?.female) {
+                    await pline("Good job Henry, but that wasn't Anne.");
+                }
+                observe_object(otmp);
+                return true;
+            }
+            if (!has_head(game.youmonst?.data)) {
+                await pline(`Somehow, ${magr ? mon_nam(magr) : wepdesc} misses you wildly.`);
+                dmgBox.dmg = 0;
+                return true;
+            }
+            if (noncorporeal(game.youmonst?.data)
+                || amorphous(game.youmonst?.data)) {
+                await pline(`${wepdesc} slices through your ${body_part(NECK)}.`);
+                return true;
+            }
+            dmgBox.dmg = 2 * (Upolyd(u) ? (u.mh | 0) : (u.uhp | 0))
+                + FATAL_DAMAGE_MODIFIER;
+            const beheadverb = ['beheads', 'decapitates'][rn2(2)];
+            await pline(`${wepdesc} ${beheadverb} you!`);
+            observe_object(otmp);
+            /* Should amulets fall off? */
+            return true;
+        }
+    }
+    // SPFX_DRLI deferred
     return false;
 }
 

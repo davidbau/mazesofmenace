@@ -1687,7 +1687,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         restore_light_sources(info.lights);
         game.billobjs = info.billobjs || null;
         // C restore.c rest_bubbles before rest_track
-        if (info.waterlevel) restore_waterlevel(info.waterlevel);
+        if (info.waterlevel) await restore_waterlevel(info.waterlevel);
         rest_track(info.track);
         // C: Sokoban ≡ level.flags.sokoban_rules — sync JS alias after getlev
         // (clear_level_structures only runs on mklev, not stash restore).
@@ -1865,7 +1865,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     // C: do.c goto_level — movebubbles / fumaroles before vision_recalc
     // (allmain moveloop EOT twin D-1168).
     if (Is_waterlevel(u.uz) || Is_airlevel(u.uz)) {
-        movebubbles();
+        await movebubbles();
     } else if (game.level?.flags?.fumaroles) {
         await fumaroles();
     }

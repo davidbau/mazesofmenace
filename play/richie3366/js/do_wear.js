@@ -1028,7 +1028,8 @@ export function suit_simple_name(suit) {
 /**
  * C ref: objnam.c cloak_simple_name `:5491–5509` — robe / wrapping /
  * smock-or-apron, else cloak. Exported for worn.c mon_break_armor
- * (D-1914); mhitu/uhitm/trap locals predate it.
+ * (D-1914) and the trap.js burn/water paths; mhitu/uhitm locals are
+ * C-matched twins of this body.
  */
 export function cloak_simple_name(cloak) {
     if (cloak) {
@@ -1041,6 +1042,16 @@ export function cloak_simple_name(cloak) {
         }
     }
     return 'cloak';
+}
+
+/**
+ * C ref: objnam.c helm_simple_name `:5512–5528` — hard headgear is a
+ * "helm", the rest a "hat" (consistency with the bonk-protection
+ * messages). Single canonical home for the armor-noun family;
+ * trap.js burn/water/rock paths import this (D-2186).
+ */
+export function helm_simple_name(helmet) {
+    return hard_helmet(helmet) ? 'helm' : 'hat';
 }
 
 /**
@@ -1089,7 +1100,7 @@ export function armor_simple_name(armor) {
     case ARM_CLOAK:
         return cloak_simple_name(armor);
     case ARM_HELM:
-        return hard_helmet(armor) ? 'helm' : 'hat';
+        return helm_simple_name(armor);
     case ARM_GLOVES:
         return gloves_simple_name(armor);
     case ARM_BOOTS:
@@ -1116,7 +1127,7 @@ function armor_doff_simple_name(otmp) {
     switch (armcat(otmp)) {
         case ARM_SUIT: return suit_simple_name(otmp);
         case ARM_SHIELD: return shield_simple_name(otmp);
-        case ARM_HELM: return hard_helmet(otmp) ? 'helm' : 'hat';
+        case ARM_HELM: return helm_simple_name(otmp);
         case ARM_GLOVES: return gloves_simple_name(otmp);
         case ARM_BOOTS: return boots_simple_name(otmp);
         case ARM_CLOAK: return cloak_simple_name(otmp);

@@ -272,7 +272,7 @@ async function expulsion(seal) {
 }
 
 /** C ref: questpgr.c is_quest_artifact — oartifact == urole.questarti. */
-function is_quest_artifact(obj) {
+export function is_quest_artifact(obj) {
     const want = game.urole?.questarti | 0;
     return want !== 0 && (obj?.oartifact | 0) === want;
 }
