@@ -108,7 +108,7 @@ import { mk_mplayer } from './mplayer.js';
 import { can_saddle, put_saddle_on_mon } from './steed.js';
 import { m_at, mnearto, mnexto, elemental_clog } from './mon.js';
 import { enexto, rloc, goodpos, migrate_to_level } from './teleport.js';
-import { clear_wormdata, remove_worm } from './worm.js';
+import { clear_wormdata, flip_worm_segs_horizontal, flip_worm_segs_vertical, remove_worm } from './worm.js';
 import { obj_resists } from './dogmove.js';
 import {
     PM_ELF, PM_DWARF, PM_ORC, PM_GNOME, PM_HUMAN,
@@ -1471,7 +1471,8 @@ function reset_xystart_size() {
  * Mon-strt, Mon-loca, Mon-goal, Mon-fila, Mon-filb,
  * Cav-strt, Cav-loca, Cav-goal, Cav-fila, Cav-filb, knox.
  * Named omissions:
- * create_maze makemaz("") fallback; hellfill rnd_hell_prefab; dmonsfree.
+ * hellfill rnd_hell_prefab; dmonsfree on the load_special path;
+ * populate_maze trap loop (no JS mktrap).
  */
 async function makemaz(s) {
     const g = game;
@@ -1506,7 +1507,8 @@ async function makemaz(s) {
     // C: wizard SPLEVTYPE override deferred (getenv)
 
     if (!protofile) {
-        // create_maze fallback deferred (C-JS-MAP)
+        // C ref: mkmaze.c:1197-1222 — no proto: straight to mazification
+        makemaz_maze_fallback();
         return;
     }
 
@@ -1516,10 +1518,43 @@ async function makemaz(s) {
 
     g.in_mk_themerooms = false;
     if (await load_special_proto(protofile)) {
-        // C: dmonsfree() after successful load_special
+        // C: dmonsfree() after successful load_special (named omit, mon.c)
         return;
     }
-    // C: impossible → create_maze; deferred — leave empty rather than wrong RNG
+    // C ref: mkmaze.c:1194 — proto load failed: impossible, then mazify
+    impossible(`Couldn't load "${protofile}" - making a maze.`);
+    makemaz_maze_fallback();
+}
+
+/**
+ * C ref: mkmaze.c makemaz `:1197-1222` — maze fallback tail: is_maze_lev +
+ * corrmaze roll, create_maze variant choice, wallification, stairs (or the
+ * vibrating-square spot on Invocation_lev), branch placement, populate_maze.
+ */
+function makemaz_maze_fallback() {
+    const g = game;
+    const mm = { x: 0, y: 0 };
+    g.level.flags.is_maze_lev = true;
+    g.level.flags.corrmaze = rn2(3) === 0;
+    if (!Invocation_lev_mk(g.u?.uz) && rn2(2))
+        create_maze(-1, -1, rn2(5) === 0);
+    else
+        create_maze(1, 1, false);
+    if (!g.level.flags.corrmaze)
+        wallification(2, 2, maze_x_max(), maze_y_max());
+    mazexy(mm);
+    mkstairs(mm.x, mm.y, 1, 0);
+    if (!Invocation_lev_mk(g.u?.uz)) {
+        mazexy(mm);
+        mkstairs(mm.x, mm.y, 0, 0);
+    } else { /* choose "vibrating square" location */
+        pick_vibrasquare_location();
+        const ip = svi_inv_pos();
+        maketrap(ip.x, ip.y, VIBRATING_SQUARE);
+    }
+    /* place branch stair or portal */
+    place_branch(is_branchlev(), 0, 0);
+    populate_maze();
 }
 
 /**
@@ -16867,8 +16902,8 @@ function flip_level_rnd(flp, extras) {
  * shrpos / shk shk|shd via Flip_coord (inFlipArea+x gate); ungated stairs;
  * `_level_monsters` swap (C level.monsters[][]). Named omissions:
  * SpLev_Map flip (C leaves unflipped); drawbridge helpers; vault-guard
- * extras; worm-seg helpers beyond grid swap; ball/chain;
- * flip_visuals(extras). Exclusion rectangles flip with the level (D-1109).
+ * extras; ball/chain; flip_visuals(extras).
+ * Exclusion rectangles flip with the level (D-1109).
  */
 function flip_level(flp, _extras) {
     if ((flp & 3) === 0) return;
@@ -16946,7 +16981,8 @@ function flip_level(flp, _extras) {
         if (flp & 2) otmp.ox = FlipX(otmp.ox);
     }
 
-    // monsters — C sp_lev.c flip_level: mx/my + mgoal (+ priest/shk extras)
+    // monsters — C sp_lev.c flip_level: mx/my + mgoal (+ priest/shk extras;
+    // wormno tail segs via flip_worm_segs_vertical/horizontal, D-2222)
     if (game.fmon) {
         for (const mtmp of game.fmon) {
             if (!mtmp || !inFlipArea(mtmp.mx, mtmp.my)) continue;
@@ -16959,6 +16995,11 @@ function flip_level(flp, _extras) {
             } else if (mtmp.isshk && mtmp.mextra?.eshk) {
                 Flip_coord(mtmp.mextra.eshk.shk);
                 Flip_coord(mtmp.mextra.eshk.shd);
+            } else if (mtmp.wormno) {
+                // C ref: sp_lev.c flip_level :661–666 — tail segs flip
+                // with the head (D-2222; js/worm.js walkers).
+                if (flp & 1) flip_worm_segs_vertical(mtmp, miny, maxy);
+                if (flp & 2) flip_worm_segs_horizontal(mtmp, minx, maxx);
             }
         }
     }
@@ -18075,8 +18116,10 @@ function walkfrom(x, y, typ) {
         else if (dir === 2) y++;
         else if (dir === 3) x--;
         {
+            // C mkmaze.c:1306 sets the wall cell typ only (flags cleared
+            // on the start cell above, :1293-1294).
             const loc = game.level.at(x, y);
-            if (loc) { loc.typ = typ; loc.flags = 0; }
+            if (loc) loc.typ = typ;
         }
         if (dir === 0) y--;
         else if (dir === 1) x++;
@@ -18234,6 +18277,38 @@ function create_maze(corrwid, wallthick, rmdeadends) {
             rx += mx;
             x++;
         }
+    }
+}
+
+/**
+ * C ref: mkmaze.c populate_maze `:1097-1124` — stock a mazified level:
+ * gems/objects, boulders, minotaur + random monsters, gold, then traps.
+ * Named omit: the trap loop — C `mktrap(0, MKTRAP_MAZEFLAG, NULL, NULL)`
+ * picks a random type and maze-aware spot internally, but JS has no `mktrap`
+ * (only `maketrap(x, y, type)` with an explicit type); faking one would
+ * invent RNG draws C never makes.
+ */
+function populate_maze() {
+    const mm = { x: 0, y: 0 };
+    for (let i = rn1(8, 11); i; i--) {
+        mazexy(mm);
+        mkobj_at(rn2(2) ? GEM_CLASS : RANDOM_CLASS, mm.x, mm.y, true);
+    }
+    for (let i = rn1(10, 2); i; i--) {
+        mazexy(mm);
+        mksobj_at(BOULDER, mm.x, mm.y, true, false);
+    }
+    for (let i = rn2(3); i; i--) {
+        mazexy(mm);
+        makemon(mons(PM_MINOTAUR), mm.x, mm.y, NO_MM_FLAGS);
+    }
+    for (let i = rn1(5, 7); i; i--) {
+        mazexy(mm);
+        makemon(null, mm.x, mm.y, NO_MM_FLAGS);
+    }
+    for (let i = rn1(6, 7); i; i--) {
+        mazexy(mm);
+        mkgold(0, mm.x, mm.y);
     }
 }
 
@@ -28101,13 +28176,16 @@ function wallification(x1, y1, x2, y2) {
 /* C ref: mkmaze.c mazexy `:1316-1350` — random ROOM point (CORR on corrmaze),
  * so populate_maze/makemaz don't create items in moats, bunkers, or walls. */
 export function mazexy(cc) {
+    // C reads gx.x_maze_max/gy.y_maze_max (mutated by create_maze while
+    // scaling); maze_x_max()/maze_y_max() are those globals, defaulting
+    // to X_MAZE_MAX/Y_MAZE_MAX when create_maze holds no scaled bounds.
     const allowedtyp = game.level?.flags?.corrmaze ? CORR : ROOM;
     let cpt = 0;
     let x, y;
     do {
         /* C comment: 1+rn2(N) is rnd(N); outer boundary walls waste attempts. */
-        x = rnd(X_MAZE_MAX);
-        y = rnd(Y_MAZE_MAX);
+        x = rnd(maze_x_max());
+        y = rnd(maze_y_max());
         if ((game.level?.at(x, y)?.typ ?? STONE) === allowedtyp) {
             cc.x = x;
             cc.y = y;
@@ -28115,8 +28193,8 @@ export function mazexy(cc) {
         }
     } while (++cpt < 100);
     /* 100 random attempts failed; systematically try every possibility */
-    for (x = 1; x <= X_MAZE_MAX; x++)
-        for (y = 1; y <= Y_MAZE_MAX; y++)
+    for (x = 1; x <= maze_x_max(); x++)
+        for (y = 1; y <= maze_y_max(); y++)
             if ((game.level?.at(x, y)?.typ ?? STONE) === allowedtyp) {
                 cc.x = x;
                 cc.y = y;

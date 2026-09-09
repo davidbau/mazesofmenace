@@ -606,7 +606,8 @@ export function mon_break_armor(mon, polyspot) {
  * C ref: worn.c mon_set_minvis :474–484 — permanent invis from
  * potion/wand. FALSE = not a cursed potion → perminvis 1.
  * Caller zap.c bhitm WAN_MAKE_INVISIBLE (D-1414). see_wsegs when
- * wormno (D-1529). muse.c / mon.c local clones still named.
+ * wormno (D-1529). Callers muse.c use_misc (js/muse.js) + mon.c mon_givit
+ * stalker arm (js/mon.js) import this export (no local clones).
  */
 export function mon_set_minvis(mon, cursed_potion) {
     if (!mon) return;

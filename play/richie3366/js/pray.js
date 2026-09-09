@@ -15,8 +15,9 @@
 // digactualhole altar → desecrate_altar; angrygods 0–8 + default zap
 // (punish/attrcurse/rndcurse/summon_minion/god_zaps_you);
 // #offer corpse → offer_corpse (D-1678).
-// Named omissions: pleased pat_on_head gift-switch wiring (gcrownu /
-// at_your_feet live below, unwired) / give_spell;
+// Named omissions: pleased pat_on_head cases 1-4 gift arms, cases 7/8
+// gcrownu caller wiring (gcrownu / at_your_feet live below, unwired),
+// case 6 give_spell (no JS export); case-5 SetVoice pitch;
 // p_type -2/-1/1/2 outcome bodies beyond water_prayer scan;
 // pray_revive; offer_different_alignment_altar / bestow_artifact /
 // angry_priest from sacrifice_your_race; offer_too_soon /
@@ -33,8 +34,8 @@
 // redraw; Blindfolded cream/itch; attacktype_fordmg swallow Blind gate.
 
 import { game } from './gstate.js';
-import { rn2, rn1, rnl, rnz, rnd, d } from './rng.js';
-import { pline, verbalize, You_feel, newsym } from './display.js';
+import { rn2, rn1, rnl, rnz, rnd, d, rn2_on_display_rng } from './rng.js';
+import { pline, verbalize, You_feel, newsym, impossible, see_monsters } from './display.js';
 import { nomul, carrying } from './hack.js';
 import { upstart } from './hacklib.js';
 import { weapon_type, unrestrict_weapon_skill, add_weapon_skill } from './weapon.js';
@@ -48,7 +49,7 @@ import {
     A_WIS, A_STR, A_MAX, change_luck, adjattrib, adjalign, exercise,
     ALIGNLIM,
 } from './attrib.js';
-import { align_gname, align_str, xlev_to_rank, uhim, u_gname, uhis } from './roles.js';
+import { align_gname, align_str, xlev_to_rank, uhim, u_gname, uhis, roles } from './roles.js';
 import {
     objects_at, uncurse, peek_at_iced_corpse_age, eaten_stat, get_mtraits,
     mksobj, bless,
@@ -121,7 +122,7 @@ import {
     IS_ALTAR, Amask2align, AM_MASK, AM_SHRINE, AM_SANCTUM, AM_CHAOTIC,
     A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, ECMD_OK, ECMD_TIME,
     PARANOID_PRAY, PARANOID_CONFIRM, LL_CONDUCT, LL_DIVINEGIFT, LL_ARTIFACT,
-    LL_SPOILER, CXN_ARTICLE, FROMOUTSIDE,
+    LL_SPOILER, CXN_ARTICLE, FROMOUTSIDE, INTRINSIC,
     LUCKMAX, has_omonst, NON_PM, ROOM, FOOT, something, Something,
     STRAT_APPEARMSG, MM_NOMSG,
     M_AP_TYPE, M_AP_FURNITURE, has_mcorpsenm, MCORPSENM,
@@ -1312,9 +1313,12 @@ async function gods_upset(g_align) {
  * C ref: pray.c pleased — successful prayer favor.
  * Branch envelope: You_feel align msg; off-altar/low-record adjalign;
  * action rn1 + STRIDENT clamp; fix_worst_trouble switch (HIT D-0920);
+ * pat_on_head rn2 dispatch + case-5 intrinsic gift-grant (D-2219);
  * ublesscnt rnz(350) (+udemigod kick).
- * Named omissions: pleased pat_on_head gift switch;
- * moves>100000 ublesscnt incr; on_altar wrong-god early return polish.
+ * Named omissions: pleased pat_on_head cases 1-4 (uwep repair / tune hints /
+ * golden heal / invent uncurse), cases 7/8 gcrownu caller wiring + case 6
+ * give_spell; moves>100000 ublesscnt incr; on_altar wrong-god early return
+ * polish; SetVoice pitch on the gift verbalize (file convention).
  */
 async function pleased(g_align) {
     const u = game.u || (game.u = {});
@@ -1380,8 +1384,61 @@ async function pleased(g_align) {
         }
     }
 
-    // pat_on_head gift switch deferred
-    void pat_on_head;
+    // C ref: pray.c:1167-1354 — pat_on_head gift switch in C order.
+    // Only case 5 (intrinsic gift-grant) is live; the other arms stay
+    // named-deferred in the map (no stub in a live arm).
+    if (pat_on_head) {
+        switch (rn2((Luck() + 6) >> 1)) {
+        case 0:
+            break;
+        case 1:
+            // deferred: uwep erosion/bless/uncurse repair (C :1170-1217)
+            break;
+        case 3:
+            // deferred: Castle tune hints (C :1218-1245)
+            break;
+        case 2:
+            // deferred: golden-glow heal + level restore (C :1246-1282)
+            break;
+        case 4:
+            // deferred: uncurse worn/carried invent (C :1283-1309)
+            break;
+        case 5: {
+            // C: static msg[] = "\"and thus I grant thee the gift of %s!\""
+            await godvoice(u.ualign?.type | 0, 'Thou hast pleased me with thy progress,');
+            if (!((u.HTelepat | 0) & INTRINSIC)) {
+                u.HTelepat = (u.HTelepat | 0) | FROMOUTSIDE;
+                await pline('"and thus I grant thee the gift of Telepathy!"');
+                if (Blind()) see_monsters();
+            } else if (!((u.HFast | 0) & INTRINSIC)) {
+                u.HFast = (u.HFast | 0) | FROMOUTSIDE;
+                await pline('"and thus I grant thee the gift of Speed!"');
+            } else if (!((u.HStealth | 0) & INTRINSIC)) {
+                u.HStealth = (u.HStealth | 0) | FROMOUTSIDE;
+                await pline('"and thus I grant thee the gift of Stealth!"');
+            } else {
+                if (!((u.HProtection | 0) & INTRINSIC)) {
+                    u.HProtection = (u.HProtection | 0) | FROMOUTSIDE;
+                    if (!(u.ublessed | 0)) u.ublessed = rn1(3, 2);
+                } else u.ublessed = (u.ublessed | 0) + 1;
+                await pline('"and thus I grant thee the gift of my protection!"');
+            }
+            // SetVoice pitch deferred (file convention)
+            await verbalize('Use it wisely in my name!');
+            break;
+        }
+        case 7:
+        case 8:
+            // deferred: gcrownu crowning, live below but unwired (C :1340-1347)
+            break;
+        case 6:
+            // deferred: give_spell, no JS export (C :1348-1350)
+            break;
+        default:
+            await impossible('Confused deity!');
+            break;
+        }
+    }
     u.ublesscnt = rnz(350);
     let kick_on_butt = u.uevent?.udemigod ? 1 : 0;
     if (u.uevent?.uhand_of_elbereth) kick_on_butt++;
@@ -2180,13 +2237,71 @@ function Role_if(pm) {
     return (game.urole?.mnum | 0) === (pm | 0);
 }
 
-/** C: pray.c halu_gname — non-Hallu → align_gname; Hallu RNG deferred. */
-function halu_gname(alignment) {
-    if (Hallucination()) {
-        // randrole + rn2_on_display_rng pantheon pick deferred
+/**
+ * C ref: pray.c halu_gname `:2577–2619` — non-Hallu → align_gname;
+ * Hallu → randrole(TRUE) pantheon pick (roles with null lgod, e.g. Priest,
+ * re-rolled) + rn2_on_display_rng(9) god slot. All Hallu draws are on the
+ * display stream (randrole(TRUE) ≡ rn2_on_display_rng(SIZE(roles)-1);
+ * JS roles[] has no terminator entry so roles.length ≡ SIZE(roles)-1).
+ * Live callers: doturn, temple_priest_sound (sounds.js).
+ */
+export async function halu_gname(alignment) {
+    if (!Hallucination()) {
         return align_gname(game.urole, alignment);
     }
-    return align_gname(game.urole, alignment);
+    // C: do which = randrole(TRUE); while (!roles[which].lgod);
+    let which;
+    do {
+        which = rn2_on_display_rng(roles.length);
+    } while (!roles[which]?.lgod);
+    // C: static hallu_gods[] (pray.c:2558–2573).
+    const hallu_gods = [
+        'the Flying Spaghetti Monster',
+        'Eris',
+        'the Martians',
+        'Xom',
+        'AnDoR dRaKoN',
+        'the Central Bank of Yendor',
+        'Tooth Fairy',
+        'Om',
+        'Yawgmoth',
+        'Morgoth',
+        'Cthulhu',
+        'the Ori',
+        'destiny',
+        'your Friend the Computer',
+    ];
+    let gnam;
+    switch (rn2_on_display_rng(9)) {
+    case 0:
+    case 1:
+        gnam = roles[which].lgod;
+        break;
+    case 2:
+    case 3:
+        gnam = roles[which].ngod;
+        break;
+    case 4:
+    case 5:
+        gnam = roles[which].cgod;
+        break;
+    case 6:
+    case 7:
+        gnam = hallu_gods[rn2_on_display_rng(hallu_gods.length)];
+        break;
+    case 8:
+        gnam = 'Moloch'; // C: static Moloch (pray.c:58)
+        break;
+    default:
+        await impossible('rn2 broken in halu_gname?!?');
+        break;
+    }
+    if (!gnam) {
+        await impossible('No random god name?');
+        gnam = 'your Friend the Computer'; // C: Paranoia fallback
+    }
+    if (gnam.charAt(0) === '_') gnam = gnam.slice(1);
+    return gnam;
 }
 
 /** Squared distance hero→mon (monmove.c mdistu). */
@@ -2287,7 +2402,7 @@ async function maybe_turn_mon_iter(mtmp, turn_undead_range, msgCnt) {
 /**
  * C ref: pray.c doturn — #turn undead (Knight / Cleric).
  * Named omissions: known_spell(SPE_TURN_UNDEAD)/spelleffects for other
- * roles; Hallu halu_gname pantheon RNG; resist TELL pline.
+ * roles; resist TELL pline.
  */
 export async function doturn() {
     const u = game.u || (game.u = {});
@@ -2302,7 +2417,7 @@ export async function doturn() {
         livelog_printf(LL_CONDUCT, 'rejected atheism by turning undead');
     }
 
-    const Gname = halu_gname(u.ualign?.type ?? 0);
+    const Gname = await halu_gname(u.ualign?.type ?? 0);
 
     if (!can_chant()) {
         const how = u.Strangled ? 'not able to call' : 'incapable of calling';

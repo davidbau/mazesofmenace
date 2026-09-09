@@ -262,7 +262,7 @@ function s_suffix(s) {
  * Named omissions: mon_perma_blind; raven-vs-raven; Blindfolded/ublindf you
  * arms; visored helmet scan; other aatyp (gaze/claw).
  */
-function can_blnd(magr, mdef, aatyp, obj) {
+export function can_blnd(magr, mdef, aatyp, obj) {
     if (!haseyes(mdef?.data)) return false;
     const is_you = mdef === game.youmonst;
     if (aatyp === AT_WEAP || aatyp === AT_SPIT || aatyp === AT_NONE) {

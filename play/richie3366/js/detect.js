@@ -468,8 +468,12 @@ export async function warnreveal() {
  */
 export async function dosearch0(aflag) {
     const u = game.u || {};
+    // C detect.c:2022–2024 — Norep (PLINE_NOREPEAT), not pline: a counted
+    // `20s` search while swallowed reprints this line every turn; C
+    // suppresses repeats (msgtype MSGTYP_NOREP vs gp.prevmsg), JS pline
+    // re-queued them behind --More-- (scen-wish-Knight-92130 step 179).
     if (u.uswallow) {
-        if (!aflag) await pline('What are you looking for?  The exit?');
+        if (!aflag) await Norep('What are you looking for?  The exit?');
         return 1;
     }
 
@@ -503,15 +507,20 @@ export async function dosearch0(aflag) {
                 nomul_clear();
                 // C: feel_location — make sure door shows up
                 feel_location(x, y);
+                // C detect.c:2050 — set_msg_xy before the find pline.
+                set_msg_xy(x, y);
                 await pline('You find a hidden door.');
             } else if (loc.typ === SCORR) {
                 if (rnl(7 - fund)) continue;
                 loc.typ = CORR;
-                recalc_block_point(x, y); // C: unblock_point
+                // C detect.c:2056 — unblock_point (vision), not recalc.
+                unblock_point(x, y);
                 exercise(A_WIS, true);
                 nomul_clear();
                 // C: feel_newsym — make sure passage shows up
                 feel_newsym(x, y);
+                // C detect.c:2060 — set_msg_xy before the find pline.
+                set_msg_xy(x, y);
                 await pline('You find a hidden passage.');
             } else {
                 let mtmp = null;

@@ -27,8 +27,8 @@
 // fix_shop_damage callers; holetime dig follow; angry
 // Displaced pline (shk path); following verbalize;
 // m_break_boulder; m_move_aggress; inhistemple callers; mapseen_temple;
-// m_canseeu for angry chase; ACH_SHOP mapseen; Hallu shkname;
-// Soundeffect robbed mutter; remaining SetVoice pick_pick / kops / pay-bill;
+// m_canseeu for angry chase; ACH_SHOP mapseen;
+// remaining SetVoice pick_pick / kops / pay-bill;
 // shk_move Fast + sobj_at pickaxe (u_entered_shop doorway is D-1080);
 // mongone full;
 // mnearto full (door yank uses enexto/rloc; home_shk still coord set);
@@ -88,6 +88,7 @@ import { cansee, recalc_block_point } from './vision.js';
 import { objectNames } from './generated/objects_data.js';
 import { mattacku } from './mhitu.js';
 import { PM_GRID_BUG, PM_TOURIST, PM_KNIGHT, PM_ROGUE } from './generated/monsters_data.js';
+import { se_mutter_imprecations } from './generated/seffects_data.js';
 import { Hello } from './roles.js';
 import { shtypes, shkname, Shknam, saleable, is_izchak } from './shknam.js';
 import {
@@ -527,9 +528,9 @@ async function deserted_shop(enterstring) {
 /**
  * C ref: shk.c u_entered_shop — welcome / deserted / blocking.
  * Covered: tended peaceful Welcome; deserted_shop + empty_shops latch;
- * Invis; angry / surcharge / robbed; pickaxe/mattock/steed/Fast doorway
- * + extra `dochug`. Named omit: Soundeffect robbed mutter;
- * Hallu shkname; C bill_p poison on !inhishop.
+ * Invis; angry / surcharge / robbed (Soundeffect wired); Hallu via
+ * `shkname` (shknam.c:873-890); bill_p -1000 poison on !inhishop;
+ * pickaxe/mattock/steed/Fast doorway + extra `dochug`.
  */
 export async function u_entered_shop(enterstring) {
     if (!enterstring) return;
@@ -551,6 +552,9 @@ export async function u_entered_shop(enterstring) {
 
     const eshkp = ESHK(shkp);
     if (!inhishop(shkp)) {
+        // C shk.c:776: poison bill_p so a later re-entry resets it
+        // (consumer: after_shk_move `bill_p === -1000` check).
+        eshkp.bill_p = -1000;
         if (!empty_shops.includes(enterstring.charAt(0))) {
             await deserted_shop(enterstring);
         }
@@ -616,7 +620,8 @@ export async function u_entered_shop(enterstring) {
         }
     } else if (eshkp.robbed) {
         if (!deaf) {
-            // Soundeffect(se_mutter_imprecations) deferred
+            // C shk.c:834 — no-op without SND_LIB, no RNG (D-2217 class).
+            Soundeffect(se_mutter_imprecations, 50);
             await pline(
                 `${Shknam(shkp)} mutters imprecations against shoplifters.`,
             );

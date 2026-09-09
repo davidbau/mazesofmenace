@@ -19,7 +19,7 @@ import {
     BZ_OFS_AD, BZ_VALID_ADTYP, BZ_M_BREATH, M_SEEN_REFL,
     BRK_BY_HERO, BRK_MELEE, W_NONDIGGABLE, WT_IRON_BALL_INCR,
     P_BOW, P_CROSSBOW, P_DART, P_SHURIKEN, P_SPEAR, P_KNIFE,
-    Has_contents,
+    Has_contents, KILLED_BY, TIMEOUT, STONED, EYE, FACE,
 } from './const.js';
 import { cansee, couldsee, clear_path } from './vision.js';
 import { worm_known } from './worm.js';
@@ -32,34 +32,36 @@ import {
     MON_WEP, select_rwep, mon_wield_item, monmulti, dmgval, hitval,
     should_mulch_missile,
 } from './weapon.js';
-import { find_mac, mondied, monkilled, shade_miss } from './mhitm.js';
-import { xkilled } from './uhitm.js';
+import { find_mac, mondied, monkilled, shade_miss, AT_WEAP, AT_SPIT } from './mhitm.js';
+import { xkilled, can_blnd } from './uhitm.js';
 import { ammo_and_launcher, is_launcher } from './wield.js';
-import { acurr, acurrstr, A_DEX, A_STR, exercise } from './attrib.js';
-import { calc_capacity } from './invent.js';
-import { losehp, nomul, maybe_half_phys, dissolve_bars, is_pool, is_lava } from './hack.js';
+import { acurr, acurrstr, A_DEX, A_STR, exercise, poisoned } from './attrib.js';
+import { calc_capacity, Blind } from './invent.js';
+import { losehp, nomul, maybe_half_phys, dissolve_bars, is_pool, is_lava, stop_occupation } from './hack.js';
 import { finish_losehp_done } from './end.js';
 import {
     pline, mon_visible, see_with_infrared, tmp_at, obj_glyph,
-    nh_delay_output, newsym, canspotmon,
+    nh_delay_output, newsym, canspotmon, impossible,
 } from './display.js';
 import { Monnam, mon_nam, s_suffix as s_suffix_ucatch } from './do_name.js';
 import {
     nohands, mons, throws_rocks, MZ_MEDIUM, MZ_TINY, nonliving,
-    is_unicorn,
+    is_unicorn, touch_petrifies, bigmonst, is_elf, poly_when_stoned,
+    eyecount,
 } from './monsters.js';
-import { xname, singular, an, vtense, the, makeplural, mshot_xname } from './objnam.js';
-import { mbodypart, body_part } from './polyself.js';
+import { xname, singular, an, vtense, the, makeplural, mshot_xname, killer_xname } from './objnam.js';
+import { mbodypart, body_part, polymon } from './polyself.js';
 import {
     VENOM_CLASS, POTION_CLASS, WEAPON_CLASS, GEM_CLASS, TOOL_CLASS,
     ARMOR_CLASS, ROCK_CLASS, FOOD_CLASS, SPBOOK_CLASS, WAND_CLASS,
     BALL_CLASS, CHAIN_CLASS, COIN_CLASS, SCROLL_CLASS,
-    objectNames,
+    objectNames, is_poisonable,
 } from './objects.js';
 import {
-    PM_MONK, PM_ROGUE, PM_HUMAN,
+    PM_MONK, PM_ROGUE, PM_HUMAN, monsterNames,
 } from './generated/monsters_data.js';
-import { potionhit } from './potion.js';
+import { potionhit, make_stoned } from './potion.js';
+import { make_blinded } from './do.js';
 import { dobuzz } from './zap.js';
 import {
     m_seenres, cvt_adtyp_to_mseenres, get_atkdam_type, mhim,
@@ -97,6 +99,15 @@ const BAG_OF_HOLDING = objectNames.indexOf('BAG_OF_HOLDING');
 const WAN_STRIKING = objectNames.indexOf('WAN_STRIKING');
 const BLINDING_VENOM = objectNames.indexOf('BLINDING_VENOM');
 const ACID_VENOM = objectNames.indexOf('ACID_VENOM');
+const EGG = objectNames.indexOf('EGG');
+const CREAM_PIE = objectNames.indexOf('CREAM_PIE');
+const ELVEN_BOW = objectNames.indexOf('ELVEN_BOW');
+const ELVEN_ARROW = objectNames.indexOf('ELVEN_ARROW');
+const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
+/** C youprop.h BlindedTimeout — HBlinded & TIMEOUT (apply.js idiom). */
+function BlindedTimeout() {
+    return (game.u?.HBlinded | 0) & TIMEOUT;
+}
 /** C ref: objects.h FIRST_GLASS_GEM / LAST_GLASS_GEM (mhitm.js idiom). */
 const FIRST_GLASS_GEM = objectNames.indexOf('WORTHLESS_WHITE_GLASS');
 const LAST_GLASS_GEM = objectNames.indexOf('WORTHLESS_VIOLET_GLASS');
@@ -956,6 +967,8 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
     const arw = autoreturn_weapon(obj);
     const tethered_weapon = !!(obj === MON_WEP(mon) && arw && arw.tethered);
     let return_flightpath = false;
+    // C mthrowu.c:583 — pie/venom blinding lands at flight end (:836-841)
+    let blindinc = 0;
     let singleobj;
     if ((obj.quan || 1) === 1) {
         if (MON_WEP(mon) === obj) {
@@ -1043,19 +1056,102 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
                     await potionhit(null, singleobj, POTHIT_MONST_THROW);
                     break;
                 }
-                let dam = dmgval(singleobj, null);
-                let hitv = 3 - distmin(u.ux, u.uy, mon.mx, mon.my);
-                if (hitv < -4) hitv = -4;
-                hitv += 8 + (singleobj.spe | 0);
-                if (dam < 1) dam = 1;
-                dam = maybe_half_phys(dam);
+                // C mthrowu.c:702 — mortality baseline for the poisoned arm
+                const oldumort = (u.umortality | 0);
+                const otyp = singleobj.otyp | 0;
                 const box = { obj: singleobj };
-                const hitu = await thitu(hitv, dam, box, null);
-                // C: losehp→done noreturn — no drop_throw / mulch after fatal
-                if (game.program_state?.gameover) {
-                    if (sym) tmp_at(DISP_END, 0);
-                    return;
+                let hitu = 0;
+                if (otyp === EGG) {
+                    // C :705-714 — non-petrifier egg is impossible (hitu = 0);
+                    // petrifier FALLTHROUGHs to the pie/venom thitu(8, 0)
+                    if (!touch_petrifies(mons(singleobj.corpsenm | 0))) {
+                        await impossible(`monster throwing egg type ${singleobj.corpsenm | 0}`);
+                    } else {
+                        hitu = await thitu(8, 0, box, null);
+                        // C: losehp→done noreturn — no drop_throw / mulch after fatal
+                        if (game.program_state?.gameover) {
+                            if (sym) tmp_at(DISP_END, 0);
+                            return;
+                        }
+                    }
+                } else if (otyp === CREAM_PIE || otyp === BLINDING_VENOM) {
+                    // C :715-717 — pie/venom thitu(8, 0)
+                    hitu = await thitu(8, 0, box, null);
+                    // C: losehp→done noreturn — no drop_throw / mulch after fatal
+                    if (game.program_state?.gameover) {
+                        if (sym) tmp_at(DISP_END, 0);
+                        return;
+                    }
+                } else {
+                    let dam = dmgval(singleobj, null);
+                    let hitv = 3 - distmin(u.ux, u.uy, mon.mx, mon.my);
+                    if (hitv < -4) hitv = -4;
+                    // C :727-734 — elves get a shooting bonus with bows
+                    if (is_elf(mon.data)
+                        && (game.objects?.[otyp]?.oc_skill | 0) === -P_BOW) {
+                        hitv++;
+                        if (MON_WEP(mon) && (MON_WEP(mon).otyp | 0) === ELVEN_BOW)
+                            hitv++;
+                        if (otyp === ELVEN_ARROW)
+                            dam++;
+                    }
+                    // C :735-736 — big hero easier to hit
+                    if (bigmonst(game.youmonst?.data)) hitv++;
+                    hitv += 8 + (singleobj.spe | 0);
+                    if (dam < 1) dam = 1;
+                    // C :740-741 — acid venom skips the half-phys reduction
+                    if (otyp !== ACID_VENOM) dam = maybe_half_phys(dam);
+                    hitu = await thitu(hitv, dam, box, null);
+                    // C: losehp→done noreturn — no drop_throw / mulch after fatal
+                    if (game.program_state?.gameover) {
+                        if (sym) tmp_at(DISP_END, 0);
+                        return;
+                    }
                 }
+                // C :745-754 — poisoned missile
+                if (hitu && singleobj.opoisoned && is_poisonable(singleobj)) {
+                    await poisoned(xname(singleobj), A_STR,
+                        killer_xname(singleobj),
+                        ((u.umortality | 0) > oldumort) ? 0 : 10, true);
+                    if (game.program_state?.gameover) {
+                        if (sym) tmp_at(DISP_END, 0);
+                        return;
+                    }
+                }
+                // C :755-778 — cream pie / blinding venom in the eyes
+                if (hitu && can_blnd(null, game.youmonst,
+                        otyp === BLINDING_VENOM ? AT_SPIT : AT_WEAP, singleobj)) {
+                    blindinc = rnd(25);
+                    if (otyp === CREAM_PIE) {
+                        if (!Blind())
+                            await pline("Yecch!  You've been creamed.");
+                        else
+                            await pline(`There's something sticky all over your ${body_part(FACE)}.`);
+                    } else if (otyp === BLINDING_VENOM) {
+                        let eyes = body_part(EYE);
+                        if (eyecount(game.youmonst?.data) !== 1)
+                            eyes = makeplural(eyes);
+                        if (!Blind())
+                            await pline('The venom blinds you.');
+                        else
+                            await pline(`Your ${eyes} ${vtense(eyes, 'sting')}.`);
+                    }
+                }
+                // C :779-785 — thrown petrifying egg
+                if (hitu && otyp === EGG) {
+                    const Stone_resistance = !!(u.Stone_resistance
+                        || u.HStone_resistance || u.EStone_resistance);
+                    const stoned = !!((u.Stoned | 0)
+                        || (u.uprops?.[STONED]?.intrinsic | 0));
+                    if (!stoned && !Stone_resistance
+                        && !(poly_when_stoned(game.youmonst?.data, game.mvitals)
+                            && await polymon(PM_STONE_GOLEM))) {
+                        await make_stoned(5, null, KILLED_BY, '');
+                    }
+                }
+                // C :786 — any missile reaching the hero interrupts occupation
+                // ("You stop searching." when counted `s` is running)
+                await stop_occupation();
                 if (hitu) {
                     if (!tethered_weapon) {
                         await drop_throw(singleobj, true, u.ux, u.uy);
@@ -1097,6 +1193,13 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
         tmp_at(DISP_END, 0);
     }
     game._mesg_given = 0;
+    // C mthrowu.c:836-841 — pie/venom blinding lands when the flight ends
+    if (blindinc) {
+        const uu = game.u || {};
+        uu.ucreamed = (uu.ucreamed | 0) + blindinc;
+        await make_blinded(BlindedTimeout() + blindinc, false);
+        if (!Blind()) await pline('Your vision clears.');
+    }
     game._thrownobj = null;
 }
 

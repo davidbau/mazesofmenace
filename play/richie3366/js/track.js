@@ -4,7 +4,13 @@
 //
 // Branch envelope: UTSZ ring, stealth-ring skip, gettrack ndist<=1
 // (on-cell → null, adjacent → coord). In-memory save_track/rest_track
-// for goto_level stash (D-0367). Named omissions: SFCTOOL-only paths.
+// for goto_level stash (D-0367).
+//
+// SFCTOOL (D-2225): C `track.c` wraps only settrack/gettrack in
+// `#ifndef SFCTOOL` (save-file tool build drops the gameplay writers);
+// initrack/hastrack/save_track/rest_track build in both. The single ESM
+// build has no tool binary, so the exclusion has no behavior to port —
+// the full six-function family ships here.
 
 import { game } from './gstate.js';
 import { objectNames } from './objects.js';
@@ -58,16 +64,22 @@ export function save_track() {
 
 /**
  * C ref: track.c rest_track — restore ring from level stash.
+ * C assigns the raw counts, then `panic("rest_track: impossible pt counts")`
+ * when utcnt/utpnt > UTSZ (loud throw ≡ C panic, lev_json/mklev house idiom).
+ * No clamp: C never clamps, and own-produced snaps always satisfy the
+ * invariant (settrack caps utcnt at UTSZ, wraps utpnt at UTSZ), so the guard
+ * fires only on corrupt input — exactly like C.
  */
 export function rest_track(snap) {
     initrack();
     if (!snap) return;
-    utcnt = Math.min(UTSZ, snap.utcnt | 0);
-    utpnt = snap.utpnt | 0;
-    if (utcnt > UTSZ || utpnt > UTSZ) {
-        initrack();
-        return;
+    const ncnt = snap.utcnt | 0;
+    const npnt = snap.utpnt | 0;
+    if (ncnt > UTSZ || npnt > UTSZ) {
+        throw new Error('rest_track: impossible pt counts');
     }
+    utcnt = ncnt;
+    utpnt = npnt;
     for (let i = 0; i < utcnt; i++) {
         const c = snap.utrack?.[i];
         utrack[i].x = c ? (c.x | 0) : 0;

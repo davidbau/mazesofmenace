@@ -39,7 +39,7 @@ import {
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, isok, IS_WALL, SDOOR, SIZE,
     ANY_SHOP, ANY_TYPE, OROOM, SHOPBASE, ROOMOFFSET, VAULT,
     COURT, BEEHIVE, MORGUE, BARRACKS, ZOO, EPRI, HAIR, NECK, HEAD,
-    ESHK, EMIN, has_emin, Is_astralevel, Is_oracle_level, In_endgame,
+    ESHK, EMIN, has_emin, Is_astralevel, Is_sanctum, Is_oracle_level, In_endgame,
     STRAT_WAITMASK, PLNMSG_GROWL, FULL_MOON, Upolyd, BLOOD,
     FEMALE, MALE,
 } from './const.js';
@@ -54,9 +54,15 @@ import { same_race } from './mondata.js';
 import { mhis } from './fountain.js';
 import { could_seduce, SYSOPT_SEDUCE } from './mhitm.js';
 import { doseduce } from './mhitu.js';
-import { SetVoice, voice_death } from './sndprocs.js';
+import { SetVoice, voice_death, Soundeffect } from './sndprocs.js';
+import {
+    se_courtly_conversation, se_sceptor_pounding,
+    se_low_buzzing, se_angry_drone, se_bees,
+    se_someone_searching, se_guards_footsteps,
+} from './generated/seffects_data.js';
 import { p_coaligned, priest_talk, inhistemple, temple_occupied } from './priest.js';
-import { uhis, align_gname } from './roles.js';
+import { uhis } from './roles.js';
+import { halu_gname } from './pray.js';
 import { cansee } from './vision.js';
 import { genus } from './mon.js';
 import { doconsult } from './rumors.js';
@@ -237,9 +243,9 @@ function gd_sound() {
 
 /**
  * C ref: sounds.c throne_mon_sound `:33–62` — (msleeping||lord||prince) +
- * !animal + COURT gate; which = rn2(3)+hallu: 0/1 → You_hear1, 2 → pline
- * 'Someone shouts "Off with %s head!"' with uhis().
- * Named omission: Soundeffect (no audio backend).
+ * !animal + COURT gate; which = rn2(3)+hallu: 0/1 → Soundeffect +
+ * You_hear1, 2 → pline 'Someone shouts "Off with %s head!"' with uhis().
+ * (Soundeffect is a no-op without SND_LIB, same as contest C.)
  */
 async function throne_mon_sound(mtmp) {
     if ((mtmp.msleeping || is_lord(mtmp.data) || is_prince(mtmp.data))
@@ -253,7 +259,11 @@ async function throne_mon_sound(mtmp) {
         ];
         const which = rn2(3) + (Hallucination() ? 1 : 0);
         if (which !== 2) {
-            // C: Soundeffect(se_courtly_conversation/se_sceptor_pounding)
+            if (which === 0) {
+                Soundeffect(se_courtly_conversation, 30);
+            } else if (which === 1) {
+                Soundeffect(se_sceptor_pounding, 100);
+            }
             await You_hear(throne_msg[which]);
         } else {
             await pline(`Someone shouts "Off with ${uhis()} head!"`);
@@ -266,7 +276,7 @@ async function throne_mon_sound(mtmp) {
 /**
  * C ref: sounds.c beehive_mon_sound `:65–91` — S_ANT flyer + BEEHIVE gate;
  * switch (rn2(2)+hallu): low buzzing / angry drone / bees-in-bonnet (uarmh).
- * Named omission: Soundeffect (no audio backend).
+ * (Soundeffect is a no-op without SND_LIB, same as contest C.)
  */
 async function beehive_mon_sound(mtmp) {
     if (mtmp.data?.mlet === 'S_ANT' && is_flyer(mtmp.data)
@@ -274,12 +284,15 @@ async function beehive_mon_sound(mtmp) {
         const hallu = Hallucination() ? 1 : 0;
         switch (rn2(2) + hallu) {
         case 0:
+            Soundeffect(se_low_buzzing, 30);
             await You_hear('a low buzzing.');
             break;
         case 1:
+            Soundeffect(se_angry_drone, 100);
             await You_hear('an angry drone.');
             break;
         case 2:
+            Soundeffect(se_bees, 100);
             await You_hear(`bees in your ${game.u?.uarmh ? '' : '(nonexistent) '}bonnet!`);
             break;
         }
@@ -338,8 +351,7 @@ async function zoo_mon_sound(mtmp) {
  * !helpless + hero-outside-temple gate; do-loop rn2(3+hallu) over temple_msg
  * with speechless (msound<=MS_ANIMAL skips '*') / in_sight
  * (canseemon||cansee(shrpos) skips '#') retries; strip flag chars; %s arms
- * hear halu_gname(shralign).
- * Named omission: Hallu pantheon RNG (pray.js halu_gname defers it too).
+ * hear halu_gname(shralign) (pray.js, display-stream RNG).
  */
 async function temple_priest_sound(mtmp) {
     const epri = EPRI(mtmp);
@@ -367,7 +379,7 @@ async function temple_priest_sound(mtmp) {
         } while (++trycount < 50);
         msg = msg.replace(/^[^A-Za-z]+/, ''); // C: while (!letter(*msg)) ++msg
         if (msg.includes('%')) {
-            await You_hear(msg.replace('%s', align_gname(game.urole, epri?.shralign | 0)));
+            await You_hear(msg.replace('%s', await halu_gname(epri?.shralign | 0)));
         } else {
             await You_hear(msg);
         }
@@ -398,15 +410,16 @@ async function oracle_sound(mtmp) {
 }
 
 /**
- * C ref: sounds.c dosounds — ambient feature rolls each EOT.
+ * C ref: sounds.c dosounds `:202–339` — ambient feature rolls each EOT.
  * Branch envelope: fountain/sink/court/swamp/vault/beehive/morgue/
  * barracks/zoo/shop/temple/oracle gates; vault body + You_hear
  * (gd_sound / gold_in_vault / vault_occupied FALLTHROUGH); shop body
  * search_special+tended_shop+You_hear(shop_msg)+noisy_shop;
  * swamp You1 + barracks You_hear1 + court/throne + beehive + morgue +
- * temple_priest + oracle bodies live (this D).
- * Named omissions: findgd migrating_mons; Is_sanctum; Soundeffect;
- * temple Hallu pantheon RNG.
+ * temple_priest + oracle bodies live; Soundeffect call sites wired
+ * (no-op without SND_LIB, same as contest C); temple gate carries
+ * Is_sanctum; %s arms hear halu_gname (display-stream RNG).
+ * (findgd migrating_mons + mx/gddone heal: vault.js, this D.)
  */
 export async function dosounds() {
     const lf = game.level?.flags;
@@ -472,6 +485,7 @@ export async function dosounds() {
                             ? 'someone counting gold coins.'
                             : 'the quarterback calling the play.');
                     } else {
+                        Soundeffect(se_someone_searching, 30);
                         await You_hear('someone searching.');
                     }
                     return;
@@ -479,6 +493,7 @@ export async function dosounds() {
                 which = 0; // C FALLTHROUGH into case 0
             }
             if (which === 0) {
+                Soundeffect(se_guards_footsteps, 30);
                 await You_hear('the footsteps of a guard on patrol.');
             } else if (which === 2) {
                 await You_hear('Ebenezer Scrooge!');
@@ -530,8 +545,8 @@ export async function dosounds() {
         }
         return;
     }
-    if (lf.has_temple && !rn2(200) && !Is_astralevel(game.u?.uz)) {
-        // Is_sanctum deferred (always false → gate may open on sanctum)
+    if (lf.has_temple && !rn2(200)
+        && !(Is_astralevel(game.u?.uz) || Is_sanctum(game.u?.uz))) {
         if (await get_iter_mons(temple_priest_sound)) return;
     }
     if (Is_oracle_level(game.u?.uz) && !rn2(400)) {

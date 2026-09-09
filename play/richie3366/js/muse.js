@@ -102,7 +102,7 @@ import { SchroedingersBox } from './pickup.js';
 import { age_is_relative, begin_burn } from './timeout.js';
 import { Inhell } from './minion.js';
 import { mon_has_amulet } from './apply.js';
-import { extract_from_minvent, which_armor } from './worn.js';
+import { extract_from_minvent, which_armor, mon_set_minvis } from './worn.js';
 import { hard_helmet } from './do_wear.js';
 import { obfree, inhishop } from './shk.js';
 import { xkilled, killed, attacktype_fordmg } from './uhitm.js';
@@ -2130,17 +2130,6 @@ function ledger_no(lev) {
 
 function on_level(a, b) {
     return (a?.dnum | 0) === (b?.dnum | 0) && (a?.dlevel | 0) === (b?.dlevel | 0);
-}
-
-/**
- * C ref: worn.c mon_set_minvis — permanent invis from potion/wand.
- * Worm segments / newsym polish deferred.
- */
-function mon_set_minvis(mon, cursed_potion) {
-    mon.perminvis = cursed_potion ? 0 : 1;
-    if (!mon.invis_blkd) {
-        mon.minvis = mon.perminvis;
-    }
 }
 
 /** C youprop.h See_invisible */

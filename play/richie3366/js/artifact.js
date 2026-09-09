@@ -111,6 +111,9 @@ import { monflee } from './monmove.js';
 import { make_stunned, make_confused } from './potion.js';
 import { upstart } from './hacklib.js';
 import { exercise, A_WIS } from './attrib.js';
+// C mondata.c defended — hoisted fn, cycle-safe (mondata.js already imports
+// artifact.js; runtime-only calls, no top-level reads either way).
+import { defended } from './mondata.js';
 
 const CRYSTAL_BALL = objectNames.indexOf('CRYSTAL_BALL');
 const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
@@ -1912,10 +1915,11 @@ export async function doinvoke() {
 /**
  * C ref: artifact.c spec_applies `:1008–1060` — whether artifact special
  * attacks apply. Branch envelope: PHYS early-return (no DBONUS|ATTK);
- * DMONS/DCLAS/DFLAG2/DALIGN; ATTK per-adtyp resists (hero props when the
- * hero is the target, `resists_*` when a monster is). Named omissions:
- * defended() (artifact/dragon-armor guard before the switch); DFLAG1
- * mflags1 arm; DFLAG2 yours/Upolyd/ulycn arms (hero as target);
+ * DMONS/DCLAS/DFLAG1/DFLAG2/DALIGN; ATTK defended() guard + per-adtyp
+ * resists (hero props when the hero is the target, `resists_*` when a
+ * monster is). defended() is the live mondata.js export (imported, not
+ * cloned); DFLAG1 has no artilist row today but the arm is live per C.
+ * Named omissions: DFLAG2 yours/Upolyd/ulycn arms (hero as target);
  * resists_* artifact/worn grants (inherited from the zap.js/monsters.js
  * bit subsets); hero Poison/Stone read H/E/sticky flats (no uprops
  * fallback, matching this function's Antimagic arm convention).
@@ -1937,8 +1941,8 @@ function spec_applies(weap, mtmp) {
         return ptr && weap.mtype === ptr.mlet ? 1 : 0;
     }
     if (spfx & SPFX_DFLAG1) {
-        // DFLAG1 mflags1 arms deferred
-        return 0;
+        // C :1024–1025: ((ptr->mflags1 & weap->mtype) != 0L)
+        return (((ptr?.mflags1 | 0) & (weap.mtype | 0)) !== 0) ? 1 : 0;
     }
     if (spfx & SPFX_DFLAG2) {
         const m2 = (ptr?.mflags2 | 0) & (weap.mtype | 0);
@@ -1953,8 +1957,10 @@ function spec_applies(weap, mtmp) {
         return (mal === A_NONE || sgn(mal) !== (weap.alignment | 0)) ? 1 : 0;
     }
     if (spfx & SPFX_ATTK) {
-        // defended(mtmp, adtyp) deferred → treat as undefended (named omit)
         const ad = weap.attk?.adtyp | 0;
+        // C :1036–1037: wielded-artifact / dragon-suit defense suppresses
+        // the special attack entirely (no bonus dice, no bonus pline)
+        if (defended(mtmp, ad)) return 0;
         const u = game.u || {};
         switch (ad) {
         case AD_FIRE:

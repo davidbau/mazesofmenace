@@ -279,7 +279,7 @@ import {
     openfallingtrap, self_invis_message, trapname, animate_statue,
 } from './trap.js';
 import { potionbreathe, make_stunned, speed_up } from './potion.js';
-import { carried, fix_petrification } from './eat.js';
+import { carried, fix_petrification, cant_finish_meal } from './eat.js';
 import { burn_away_slime, get_obj_location } from './timeout.js';
 import { show_transient_light, transient_light_cleanup } from './light.js';
 import { create_gas_cloud } from './region.js';
@@ -2923,6 +2923,10 @@ export async function revive(corpse, by_hero) {
     // Buried auto-reviver (troll/Rider) digs out like a zombie
     const is_zomb = !!(mptr0 && (mptr0.mlet === 'S_ZOMBIE'
         || (corpse.where === OBJ_BURIED && is_reviver(mptr0))));
+
+    // C zap.c:909 — stop eating the corpse first; done after makemon()
+    // would succeed is too late, skipped on failure is wrong. No RNG.
+    await cant_finish_meal(corpse);
 
     let x = 0;
     let y = 0;

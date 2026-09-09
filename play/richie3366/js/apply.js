@@ -125,6 +125,7 @@ import {
 import { polymon, mbodypart, body_part } from './polyself.js';
 import { unpunish } from './read.js';
 import { findit, openit } from './detect.js';
+import { surface } from './sit.js';
 import { level_difficulty } from './hacklib.js';
 import { mon_adjust_speed } from './muse.js';
 
@@ -3286,15 +3287,6 @@ function is_pool_or_lava_apply(x, y) {
     return is_pool(x, y) || is_lava(x, y);
 }
 
-function surface_apply(x, y) {
-    const loc = game.level?.at?.(x, y);
-    const typ = loc?.typ ?? 0;
-    if (IS_FURNITURE(typ)) return 'furniture';
-    if (IS_AIR(typ) || is_pool(x, y)) return 'water';
-    if (is_lava(x, y)) return 'lava';
-    return 'floor';
-}
-
 function ceiling_apply(_x, _y) {
     return 'ceiling';
 }
@@ -3442,7 +3434,7 @@ export async function use_whip(obj) {
             }
             if (otmp && proficient) {
                 await pline(
-                    `You wrap your bullwhip around ${an(singular(otmp, xname))} on the ${surface_apply(u.ux, u.uy)}.`,
+                    `You wrap your bullwhip around ${an(singular(otmp, xname))} on the ${surface(u.ux, u.uy)}.`,
                 );
                 if (rnl(6) || (await pickup_object(otmp, 1, true)) < 1) {
                     await pline(msg_slipsfree);
@@ -3548,7 +3540,7 @@ async function whip_attack(obj, mtmp, rx, ry, proficient) {
             switch (rn2(proficient + 1)) {
             case 2:
                 await pline(
-                    `You yank ${yname(otmp)} to the ${surface_apply(u.ux, u.uy)}!`,
+                    `You yank ${yname(otmp)} to the ${surface(u.ux, u.uy)}!`,
                 );
                 place_object(otmp, u.ux, u.uy);
                 stackobj(otmp);
@@ -3971,6 +3963,8 @@ function display_grapple_positions(on_off) {
 /**
  * C ref: apply.c use_grapple — getpos, skill menu, snag/hit/hurtle.
  * Named omit: untrap non-adjacent (C FIXME). S_goodpos tmp_at: D-1051.
+ * surface() is the canonical dungeon.c:1750 port from sit.js (D-2008);
+ * the local surface_apply stub (furniture/water/floor) is removed.
  */
 async function use_grapple(obj) {
     const res = ECMD_OK;
@@ -4012,13 +4006,13 @@ async function use_grapple(obj) {
     if (typ !== P_NONE && P_SKILL(typ) >= P_SKILLED) {
         const items = [
             {
-                text: `an object on the ${surface_apply(cc.x, cc.y)}`,
+                text: `an object on the ${surface(cc.x, cc.y)}`,
                 selectable: true,
                 tohit: 1,
             },
             { text: 'a monster', selectable: true, tohit: 2 },
             {
-                text: `the ${surface_apply(cc.x, cc.y)}`,
+                text: `the ${surface(cc.x, cc.y)}`,
                 selectable: true,
                 tohit: 3,
             },
@@ -4040,7 +4034,7 @@ async function use_grapple(obj) {
         const otmp = objects_at(cc.x, cc.y);
         if (otmp) {
             await pline(
-                `You snag an object from the ${surface_apply(cc.x, cc.y)}!`,
+                `You snag an object from the ${surface(cc.x, cc.y)}!`,
             );
             await pickup_object(otmp, 1, false);
             newsym(cc.x, cc.y);
@@ -4081,10 +4075,10 @@ async function use_grapple(obj) {
         const loc = game.level?.at?.(cc.x, cc.y);
         if (IS_AIR(loc?.typ) || is_pool(cc.x, cc.y)) {
             await pline(
-                `The hook slices through the ${surface_apply(cc.x, cc.y)}.`,
+                `The hook slices through the ${surface(cc.x, cc.y)}.`,
             );
         } else {
-            await pline(`You are yanked toward the ${surface_apply(cc.x, cc.y)}!`);
+            await pline(`You are yanked toward the ${surface(cc.x, cc.y)}!`);
             await hurtle(
                 sgn_apply(cc.x - u.ux), sgn_apply(cc.y - u.uy), 1, false,
             );

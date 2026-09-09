@@ -73,7 +73,7 @@ import {
 import { in_your_sanctuary, p_coaligned } from './priest.js';
 import { in_rooms, is_pool, is_lava, disturb_buried_zombies, stop_occupation } from './hack.js';
 import { inv_weight, weight_cap } from './invent.js';
-import { maybe_m_dowear_special, extract_from_minvent, update_mon_extrinsics } from './worn.js';
+import { maybe_m_dowear_special, extract_from_minvent, update_mon_extrinsics, mon_set_minvis } from './worn.js';
 import { adjalign } from './attrib.js';
 import { SetVoice } from './sndprocs.js';
 import { maybe_gasp, growl } from './sounds.js';
@@ -2255,15 +2255,6 @@ function res_to_mr_mon(r) {
 }
 
 /**
- * C ref: worn.c mon_set_minvis — permanent invis (FALSE = not cursed potion).
- * Worm segments / newsym polish deferred.
- */
-function mon_set_minvis_eat(mon, cursed_potion) {
-    mon.perminvis = cursed_potion ? 0 : 1;
-    if (!mon.invis_blkd) mon.minvis = mon.perminvis;
-}
-
-/**
  * C ref: mon.c mon_give_prop — MR_* mintrinsics from corpse resist props.
  * Strength / teleport / other hero-only props are ignored.
  */
@@ -2313,7 +2304,7 @@ export async function mon_givit(mtmp, ptr) {
     if ((ptr?.mndx | 0) === PM_STALKER) {
         if (!mtmp.perminvis || mtmp.invis_blkd) {
             const buf = Monnam(mtmp);
-            mon_set_minvis_eat(mtmp, false);
+            mon_set_minvis(mtmp, false);
             if (vis) {
                 let how;
                 if (!canspotmon(mtmp)) how = 'vanishes';

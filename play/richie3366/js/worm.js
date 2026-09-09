@@ -3,10 +3,12 @@
 //   place_worm_tail_randomly, place_worm_seg / remove_monster (rm.h),
 //   worm_move / shrink_worm / worm_nomove (D-1491), see_wsegs (D-1529),
 //   detect_wsegs (D-1545), worm_known (D-1548), cutworm / place_wsegs
-//   (D-1570), redraw_worm (D-1577), wormhitu (D-1798).
+//   (D-1570), redraw_worm (D-1577), wormhitu (D-1798),
+//   flip_worm_segs_vertical / flip_worm_segs_horizontal (D-2222;
+//   caller sp_lev.c flip_level wormno arm in js/mklev.js).
 // Named omissions: save/rest wsegs; mondead/dog wormgone callers;
 //   replmon/restore place_wsegs callers; muse.c / mhitu.c worm_move
-//   callers; flip_worm_segs_vertical / flip_worm_segs_horizontal.
+//   callers.
 
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d, rn2_on_display_rng } from './rng.js';
@@ -464,6 +466,33 @@ export function redraw_worm(worm) {
     let curr = wtails[worm.wormno | 0];
     while (curr) {
         newsym(curr.wx, curr.wy);
+        curr = curr.nseg;
+    }
+}
+
+/**
+ * C ref: worm.c flip_worm_segs_vertical `:968–976` — mirror every tail
+ * segment's wy about the extends bbox (maxy - wy + miny). Caller:
+ * sp_lev.c flip_level `:662–663` (`flp & 1`, after the head's own FlipY).
+ * Caller checks wormno; C does not re-check inside the walker.
+ */
+export function flip_worm_segs_vertical(worm, miny, maxy) {
+    let curr = wtails[worm.wormno | 0];
+    while (curr) {
+        curr.wy = (maxy - curr.wy + miny);
+        curr = curr.nseg;
+    }
+}
+
+/**
+ * C ref: worm.c flip_worm_segs_horizontal `:979–987` — mirror every tail
+ * segment's wx about the extends bbox (maxx - wx + minx). Caller:
+ * sp_lev.c flip_level `:664–665` (`flp & 2`, after the head's own FlipX).
+ */
+export function flip_worm_segs_horizontal(worm, minx, maxx) {
+    let curr = wtails[worm.wormno | 0];
+    while (curr) {
+        curr.wx = (maxx - curr.wx + minx);
         curr = curr.nseg;
     }
 }

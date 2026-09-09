@@ -113,7 +113,7 @@ import {
     make_stunned, make_hallucinated, make_sick,
 } from './potion.js';
 import { addinv_nomerge } from './u_init.js';
-import { dropy, dropx, make_blinded, revive_corpse } from './do.js';
+import { dropy, dropx, make_blinded, revive_corpse, donull } from './do.js';
 import { type_is_pname, rndmonnam, pmname, Ugender, mon_nam, Monnam } from './do_name.js';
 import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
 import { hands_obj } from './weapon.js';
@@ -1647,8 +1647,8 @@ async function givit(type, ptr) {
             || u.EAcid_resistance);
         if (!Acid_resistance) {
             await You_feel(hallu
-                ? 'secure from flashbacks'
-                : 'less concerned about being harmed by acid');
+                ? 'secure from flashbacks.'
+                : 'less concerned about being harmed by acid.');
         }
         incr_itimeout_prop(u, 'HAcid_resistance', d(3, 6));
         break;
@@ -1658,8 +1658,8 @@ async function givit(type, ptr) {
             || u.EStone_resistance);
         if (!Stone_resistance) {
             await You_feel(hallu
-                ? 'unusually limber'
-                : 'less concerned about becoming petrified');
+                ? 'unusually limber.'
+                : 'less concerned about becoming petrified.');
         }
         incr_itimeout_prop(u, 'HStone_resistance', d(3, 6));
         break;
@@ -2024,6 +2024,30 @@ async function eatfood() {
     }
     await done_eating(true);
     return 0;
+}
+
+/**
+ * C ref: eat.c `:3893–3912` cant_finish_meal — called by revive();
+ * sort of the opposite of maybe_finished_meal().
+ * When the revived corpse is the current meal, detach it first: the
+ * makemon() inside revive() may call stop_occupation(), which must not
+ * consume the corpse via maybe_finished_meal() when too little is left
+ * for another bite. revive() keeps the corpse and deletes it when done.
+ * No RNG.
+ */
+export async function cant_finish_meal(corpse) {
+    // C: go.occupation == eatfood && svc.context.victual.piece == corpse
+    if (game.occupation === eatfood && game.context?.victual?.piece === corpse) {
+        // C: svc.context.victual = zero_victual (piece = 0, o_id = 0);
+        // house idiom for the zeroed victual, as in done_eating/eatfood.
+        if (game.context) game.context.victual = {};
+        // C: [see consume_oeaten()] — smallest possible positive value
+        if (!corpse.oeaten) corpse.oeaten = 1;
+        // C: any non-Null other than eatfood()
+        game.occupation = donull;
+        await stop_occupation();
+        await newuhs(false);
+    }
 }
 
 /**

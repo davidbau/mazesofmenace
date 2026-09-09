@@ -6,8 +6,8 @@
 //        hidden_gold (D-1731; vault.c :1256–1268; doprgold FALSE);
 //        paygd (D-1812; vault.c :1204–1247; really_done);
 //        move_gold (D-1946; vault.c :632–643; live, wallify_vault unwired).
-// Named omissions: migrating_mons findgd park;
-// wallify_vault body (cleanup calls stub); Croesus mon_wield;
+// Named omissions: wallify_vault body (cleanup calls stub);
+// Croesus mon_wield;
 // fracture_rock boulder shatter; reset_faint; SetVoice; spot_stop_timers;
 // xy_set_wall_state; mimic_obj_name; full Deaf/Blind message variants that
 // need noit_mhis; gd_move goldincorridor (witness consume/destroy live);
@@ -18,6 +18,7 @@
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
 import { makemon, set_malign, newegd } from './makemon.js';
+import { mon_track_clear } from './monmove.js';
 import {
     pline, flush_topl_more, newsym, canspotmon, map_invisible, verbalize,
     map_location, unset_seenv,
@@ -338,8 +339,10 @@ export function vault_occupied(array) {
 }
 
 /**
- * C ref: vault.c findgd — first isgd on fmon for this level.
- * Named omission: migrating_mons park-at-<0,0> arm; mx/gddone heal.
+ * C ref: vault.c findgd `:204–232` — first isgd on fmon for this level
+ * (parked-at-<0,0> guard healed to full when not yet done), else first
+ * isgd waiting on migrating_mons, moved to fmon at <0,0> via parkguard.
+ * (JS fmon/migrating_mons are arrays: C nmon splice ≡ splice/unshift.)
  */
 export function findgd() {
     const uz = game.u?.uz;
@@ -351,6 +354,32 @@ export function findgd() {
                 || (gdlevel.dlevel | 0) !== (uz?.dlevel | 0))) {
             continue;
         }
+        // C: if (!mtmp->mx && !EGD(mtmp)->gddone) mtmp->mhp = mtmp->mhpmax
+        if (!(mtmp.mx | 0) && !EGD(mtmp)?.gddone) {
+            mtmp.mhp = mtmp.mhpmax;
+        }
+        return mtmp;
+    }
+    // C: if not on fmon, look for a guard waiting to migrate to this level
+    const mig = game.migrating_mons || [];
+    for (let i = 0; i < mig.length; i++) {
+        const mtmp = mig[i];
+        if (!mtmp?.isgd) continue;
+        const gdlevel = EGD(mtmp)?.gdlevel;
+        if (gdlevel
+            && ((gdlevel.dnum | 0) !== (uz?.dnum | 0)
+                || (gdlevel.dlevel | 0) !== (uz?.dlevel | 0))) {
+            continue;
+        }
+        // C: unlink from migrating_mons, prepend to fmon (simplified
+        // mon_arrive: park at <0,0>, never into limbo).
+        mig.splice(i, 1);
+        (game.fmon || (game.fmon = [])).unshift(mtmp);
+        mon_track_clear(mtmp);
+        mtmp.mux = game.u?.ux | 0;
+        mtmp.muy = game.u?.uy | 0;
+        mtmp.mx = mtmp.my = 0; // C: not on map (mx already 0)
+        parkguard(mtmp);
         return mtmp;
     }
     return null;

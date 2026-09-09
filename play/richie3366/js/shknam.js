@@ -442,9 +442,19 @@ function mkveggy_at(sx, sy) {
 /** C ref: shknam.c neweshk — re-export from makemon (MM_ESHK allocator). */
 export { neweshk };
 
-/** C ref: shknam.c shkname — strip non-letter prefix; Hallu deferred. */
+/** C ref: shknam.c shkname `:853–897` — strip non-letter prefix; Hallu random-name arm `:873–890`. */
 export function shkname(mtmp) {
     let shknm = ESHK(mtmp)?.shknam || '';
+    if (Hallucination() && !game.program_state?.gameover) {
+        // C: count non-unique shop types (prob != 0), pick one via rn2,
+        // then pick a name at random from that type's list.
+        let num = 0;
+        while (num < shtypes.length && shtypes[num].prob !== 0) num++;
+        if (num > 0) {
+            const nlp = shtypes[rn2(num)].shknms || [];
+            if (nlp.length > 0) shknm = nlp[rn2(nlp.length)];
+        }
+    }
     if (shknm && !/[A-Za-z]/.test(shknm[0])) shknm = shknm.slice(1);
     return shknm;
 }

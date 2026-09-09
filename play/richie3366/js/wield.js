@@ -24,7 +24,7 @@ import {
     has_oname, ONAME, COST_DEGRD, COST_DECHNT,
 } from './const.js';
 import { retouch_object, set_artifact_intrinsic, is_art, restrict_name } from './artifact.js';
-import { setworn } from './do_wear.js';
+import { setworn, reset_remarm } from './do_wear.js';
 import { ART_SNICKERSNEE, ART_MAGICBANE } from './generated/artifacts_data.js';
 import { makeknown, encumber_msg, compactify_invlets, update_inventory, getobj_take_count, getobj_apply_count, getobj_from_cmdq, getobj_display_pickinv, splittable, freeinv } from './invent.js';
 import { uncurse, weight, unsplitobj, clear_splitobjs, splitobj } from './mkobj.js';
@@ -362,7 +362,7 @@ export async function doswapweapon() {
     const u = game.u || (game.u = {});
     // C: cantwield → "Don't be ridiculous!" deferred (set_uasmon)
     if (welded(u.uwep)) {
-        await pline('Your weapon is welded to your hand!');
+        await weldmsg(u.uwep); // C wield.c:473 — Yobjnam2, not "weapon"
         return 0;
     }
 
@@ -619,7 +619,8 @@ export async function dowield() {
         return already_wielded_msg(wep);
     }
     if (welded(u.uwep)) {
-        await pline('Your weapon is welded to your hand!');
+        await weldmsg(u.uwep); // C wield.c:383 — Yobjnam2, not "weapon"
+        reset_remarm(); // C wield.c:385 — interrupted armor removal mustn't resume
         if (is_split_child(wep)) unsplitobj(wep);
         return 0;
     }
@@ -862,7 +863,8 @@ export async function doquiver_core(verb) {
     if (!go_quivering && newquiver === u.uwep) {
         const weld_res = !u.uwep.bknown;
         if (welded(u.uwep)) {
-            await pline('Your weapon is welded to your hand!');
+            await weldmsg(u.uwep); // C wield.c:572 — Yobjnam2, not "weapon"
+            reset_remarm(); // C wield.c:573 — same as dowield()
             return weld_res ? 1 : 0;
         }
         const uw = u.uwep;
