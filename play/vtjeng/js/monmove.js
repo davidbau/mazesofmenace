@@ -190,7 +190,7 @@ import { eaten_stat } from './eat.js';
 import { sengr_at, wipe_engr_at } from './engrave.js';
 import { makeplural } from './fruit.js';
 import { game } from './gstate.js';
-import { dist2, distmin, online2 } from './hacklib.js';
+import { dist2, distmin } from './hacklib.js';
 import { delobj, money_cnt } from './invent.js';
 import { picking_lock } from './lock.js';
 import { grow_up } from './makemon.js';
@@ -202,8 +202,15 @@ import {
     hideunder,
     m_carrying,
     m_consume_obj,
+    meatcorpse,
+    meatmetal,
+    meatobj,
     max_mon_load,
     mon_allowflags,
+    mm_aggression,
+    mm_displacement,
+    monlineu,
+    m_respond,
     mondied,
     mon_offmap,
     monkilled,
@@ -211,7 +218,6 @@ import {
     unstuck,
     wake_nearto,
     wakeup,
-    zombie_maker,
 } from './mon.js';
 import { can_carry } from './moncarry.js';
 import {
@@ -227,7 +233,6 @@ import {
     hides_under,
     is_animal,
     is_clinger,
-    is_displacer,
     is_floater,
     is_flyer,
     is_mind_flayer,
@@ -268,7 +273,6 @@ import {
     vegan,
     verysmall,
     webmaker,
-    zombie_form,
 } from './mondata.js';
 import {
     m_at,
@@ -287,7 +291,6 @@ import {
     MS_LEADER,
     MZ_SMALL,
     PM_ANGEL,
-    PM_BABY_PURPLE_WORM,
     PM_DISPLACER_BEAST,
     PM_ETTIN,
     PM_FLOATING_EYE,
@@ -301,9 +304,7 @@ import {
     PM_JABBERWOCK,
     PM_KILLER_BEE,
     PM_MINOTAUR,
-    PM_PURPLE_WORM,
     PM_QUEEN_BEE,
-    PM_SHRIEKER,
     PM_LEPRECHAUN,
     PM_STALKER,
     PM_STEAM_VORTEX,
@@ -491,7 +492,7 @@ async function msg_mon_movement(mtmp, omx, omy, env = {}) {
 // C ref: monmove.c mb_trapped() (54-77). A monster triggered a trapped door
 // lock. Prints a message, stuns the monster, deals 1-15 damage, and may kill
 // it. Returns true if the monster died.
-async function mb_trapped(mtmp, canseeit, env = {}) {
+export async function mb_trapped(mtmp, canseeit, env = {}) {
     const state = env.state ?? game;
     const random = env.random ?? { rnd };
     const message = env.message ?? ttyPline;
@@ -1200,78 +1201,6 @@ function wormCross(x1, y1, x2, y2, state) {
     return false;
 }
 
-function onWizardTowerLevel(state) {
-    const level = state.u?.uz;
-    return on_level(level, state.wiz1_level)
-        || on_level(level, state.wiz2_level)
-        || on_level(level, state.wiz3_level);
-}
-
-function inWizardTower(x, y, state) {
-    if (!onWizardTowerLevel(state)) return false;
-    const bounds = state.dndest;
-    if (!bounds?.nlx) return false;
-    return x >= bounds.nlx && x <= bounds.nhx
-        && y >= bounds.nly && y <= bounds.nhy;
-}
-
-function mmTwoWayAggression(attacker, defender, state) {
-    if (onWizardTowerLevel(state)) {
-        const heroInside = inWizardTower(state.u?.ux, state.u?.uy, state);
-        if (heroInside
-            ? (!inWizardTower(attacker.mx, attacker.my, state)
-                || !inWizardTower(defender.mx, defender.my, state))
-            : (inWizardTower(attacker.mx, attacker.my, state)
-                || inWizardTower(defender.mx, defender.my, state))) {
-            return 0;
-        }
-    }
-    if (zombie_maker(attacker)
-        && zombie_form(defender.data) >= 0) {
-        if (attacker.mgenmklev && defender.mgenmklev) return 0;
-        if (!on_level(state.u?.uz, state.stronghold_level)
-            && !unique_corpstat(attacker.data)
-            && !unique_corpstat(defender.data)) {
-            return ALLOW_M | ALLOW_TM;
-        }
-    }
-    return 0;
-}
-
-function mmAggression(attacker, defender, state) {
-    if (attacker.mtame && defender.mtame) return 0;
-    if ((isSpecies(attacker, PM_PURPLE_WORM, state)
-        || isSpecies(attacker, PM_BABY_PURPLE_WORM, state))
-        && isSpecies(defender, PM_SHRIEKER, state)) {
-        return ALLOW_M | ALLOW_TM;
-    }
-    return mmTwoWayAggression(attacker, defender, state)
-        | mmTwoWayAggression(defender, attacker, state);
-}
-
-function wormSegmentCount(monster, state) {
-    if (!monster.wormno) return 0;
-    const count = state.level?.worms?.[monster.wormno]?.segments?.length ?? 0;
-    return Math.max(0, count - 1);
-}
-
-function mmDisplacement(attacker, defender, state) {
-    const attackerSpecies = attacker.data;
-    const defenderSpecies = defender.data;
-    if (is_displacer(attackerSpecies)
-        && (!is_displacer(defenderSpecies)
-            || attacker.m_lev > defender.m_lev)
-        && !(attacker.mx !== defender.mx && attacker.my !== defender.my
-            && isSpecies(defender, PM_GRID_BUG, state))
-        && !defender.mtrapped
-        && (!defender.wormno || !wormSegmentCount(defender, state))
-        && (is_rider(attackerSpecies)
-            || attackerSpecies.msize >= defenderSpecies.msize)) {
-        return ALLOW_MDISP;
-    }
-    return 0;
-}
-
 // C ref: mon.c mfndpos()'s `memset(data, 0, sizeof(struct mfndposdata))`. Each
 // C call site declares a fresh local, and so does each caller here, so the
 // nine slots are rebuilt rather than reused.
@@ -1369,8 +1298,8 @@ function mfndposCore(monster, data, initialFlags, env = {}) {
     const onScaryCheck = env.onScary ?? onscary;
     const sanctuaryCheck = env.inYourSanctuary ?? in_your_sanctuary;
     const harmlessTrap = env.mHarmlessTrap ?? m_harmless_trap;
-    const aggression = env.mmAggression ?? mmAggression;
-    const displacement = env.mmDisplacement ?? mmDisplacement;
+    const aggression = env.mmAggression ?? mm_aggression;
+    const displacement = env.mmDisplacement ?? mm_displacement;
     resetMfndposData(data);
 
     const x = monster.mx;
@@ -1553,8 +1482,7 @@ function mfndposCore(monster, data, initialFlags, env = {}) {
                     if (!(flags & ALLOW_ROCK)) continue;
                     data.info[count] |= ALLOW_ROCK;
                 }
-                if (monsterSeesHero
-                    && online2(nx, ny, monster.mux, monster.muy)) {
+                if (monsterSeesHero && monlineu(monster, nx, ny)) {
                     if (flags & NOTONL) continue;
                     data.info[count] |= NOTONL;
                 }
@@ -2002,7 +1930,7 @@ async function bee_eat_jelly(mon, obj, env = {}) {
 // C ref: monmove.c gelcube_digests() (424-461). A gelatinous cube digests
 // an organic, non-artifact, non-prize item from its inventory.
 // Returns 0 if it used a move, -1 if it did not eat.
-function gelcube_digests(mtmp, env = {}) {
+async function gelcube_digests(mtmp, env = {}) {
     const state = env.state ?? game;
     if (mtmp.meating || !mtmp.minvent) return -1;
 
@@ -2017,7 +1945,7 @@ function gelcube_digests(mtmp, env = {}) {
 
     mtmp.meating = eaten_stat(mtmp.meating, otmp, env);
     extract_from_minvent(mtmp, otmp, true, true, state, env);
-    m_consume_obj(mtmp, otmp, env);
+    await m_consume_obj(mtmp, otmp, env);
     return 0;
 }
 
@@ -2373,7 +2301,7 @@ export async function wield_pre_move_weapon(monster, range, rawEnv = {}) {
 // as in C.  Steps C runs that this does not are listed with the source
 // condition that keeps them unreachable behind the current action boundary:
 //   quest_stat_check(), quest_talk()      no quest monster is reachable
-//   m_respond(), is_covetous() tactics    the boundary rejects both
+//   is_covetous() tactics                  the boundary rejects covetous forms
 //   release_hero(), u.ustuck              wired; no hero-grabbing monster is reachable
 //   Demonic Blackmail                     the boundary rejects demons
 //   watch_on_duty()                       wired
@@ -2488,9 +2416,10 @@ export async function dochug(monster, rawEnv = {}) {
             // removed.
             unsupported('fleeing monster teleport');
         }
-        // C ref: monmove.c:753-755.  m_respond() is inert for every species
-        // that reaches this code: Shrieker, Medusa, and Erinys are all behind
-        // the SPECIAL_RESPONDERS boundary.
+        // C ref: monmove.c:753-755. A Medusa gaze can kill the responder, so
+        // the dead-monster result is tested before fleeing recovery.
+        await m_respond(monster, env);
+        if (monster.mhp < 1) return 1;
         // C ref: monmove.c:758-760.  Fleeing monsters might regain courage.
         if (!monster.mfleetim
             && monster.mhp === monster.mhpmax
@@ -2539,7 +2468,7 @@ export async function dochug(monster, rawEnv = {}) {
             && (res = await bee_eat_jelly(monster, otmp, env)) >= 0)
             return res;
         if (species === state.mons?.[PM_GELATINOUS_CUBE]
-            && (res = gelcube_digests(monster, env)) >= 0)
+            && (res = await gelcube_digests(monster, env)) >= 0)
             return res;
     }
 
@@ -2754,7 +2683,7 @@ export function select_postmove_object_action(
         : { ...monster, mx: x, my: y };
     const species = subject.data;
 
-    if (!subject.mtame && metallivorous(species)) {
+    if (!rawEnv.skipConsumption && !subject.mtame && metallivorous(species)) {
         const rustMonster = species?.pmidx === M.PM_RUST_MONSTER;
         for (let obj = objects; obj; obj = obj.nexthere) {
             const material = objectType(obj, state).oc_material;
@@ -2782,7 +2711,13 @@ export function select_postmove_object_action(
         }
     }
 
-    if (!subject.mtame && CORPSE_EATERS.has(species?.pmidx)) {
+    if (!rawEnv.skipConsumption
+        && species?.pmidx === PM_GELATINOUS_CUBE) {
+        return { kind: 'eat objects' };
+    }
+
+    if (!rawEnv.skipConsumption
+        && !subject.mtame && CORPSE_EATERS.has(species?.pmidx)) {
         for (let obj = objects; obj; obj = obj.nexthere) {
             if (obj.otyp !== O.CORPSE) continue;
             const corpseSpecies = state.mons?.[obj.corpsenm];
@@ -3048,9 +2983,9 @@ export const INERT_DOOR_MASKS = new Set([D_NODOOR, D_BROKEN, D_ISOPEN]);
 // monsters.  The injected `unsupported` refuses the rest:
 // every door arm that needs a door trap, amorphous(), can_unlock or a
 // doorbuster, mdig_tunnel(), the engulfed-hero relocation, and
-// maybe_spin_web().  meatmetal(), meatobj() and meatcorpse() are refused
-// through select_postmove_object_action(), which selects them.  The ordinary
-// no-object arm of hideunder() is admitted below; object-backed hiders and
+// maybe_spin_web().  The meatmetal(), meatobj(), meatcorpse() and mpickstuff()
+// object arms are wired below. The ordinary no-object arm of hideunder() is
+// admitted below; object-backed hiders and
 // eels remain refused because their hideunder() branches have different
 // terrain and message behavior.  after_shk_move() (C:1700-1702) is guarded by
 // its own unsupported() inside the MMOVE_MOVED / MMOVE_DONE block; the
@@ -3244,20 +3179,34 @@ export async function postmov(
 
     if (mmoved === MMOVE_MOVED || mmoved === MMOVE_DONE) {
         if (state.level?.objects?.[monster.mx]?.[monster.my]) {
+            const consumptionEnv = {
+                ...env,
+                touchArtifact: () =>
+                    unsupported('monster artifact item interaction'),
+            };
+            if (metallivorous(species)) {
+                const eaten = await meatmetal(monster, consumptionEnv);
+                if (eaten >= 2) return MMOVE_DIED;
+            }
+            if (species === state.mons?.[PM_GELATINOUS_CUBE]) {
+                const eaten = await meatobj(monster, consumptionEnv);
+                if (eaten >= 2) return eaten;
+            }
+            if (CORPSE_EATERS.has(species?.pmidx)) {
+                const eaten = await meatcorpse(monster, consumptionEnv);
+                if (eaten >= 2) return eaten;
+            }
             const selected = select_postmove_object_action(
                 monster,
                 monster.mx,
                 monster.my,
                 {
                     ...env,
+                    skipConsumption: true,
                     touchArtifact: () =>
                         unsupported('monster artifact item interaction'),
                 },
             );
-            // Only mpickstuff()'s arm is ported; meatmetal(), meatobj() and
-            // meatcorpse() still stop the scan, and they precede it here.
-            if (selected && selected.kind !== 'pick up')
-                unsupported('ordinary monster item interaction');
             if (selected) {
                 const picked = await mpickstuff(
                     monster,

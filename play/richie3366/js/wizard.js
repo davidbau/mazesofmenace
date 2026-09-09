@@ -17,11 +17,12 @@ import {
     MM_NOWAIT, MM_NOMSG, NO_MM_FLAGS, STRAT_WAITMASK, STRAT_WAITFORU,
     STRAT_APPEARMSG, STRAT_NONE, STRAT_HEAL, STRAT_PLAYER, STRAT_GROUND,
     STRAT_MONSTR, STRAT_STRATMASK, STRAT_GOAL, RLOC_MSG, In_endgame,
-    M_AP_MONSTER, EMIN, BOLT_LIM, isok, u_at,
+    M_AP_MONSTER, EMIN, BOLT_LIM, isok, u_at, Is_astralevel, MAGIC_PORTAL,
 } from './const.js';
-import { pline, verbalize, Norep, newsym } from './display.js';
-import { Monnam } from './do_name.js';
-import { distant_name, doname } from './objnam.js';
+import { rndcurse } from './sit.js';
+import { pline, verbalize, Norep, newsym, You_feel } from './display.js';
+import { Monnam, hcolor } from './do_name.js';
+import { distant_name, doname, Tobjnam } from './objnam.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { noteleport_level, enexto, is_lminion, rloc, rloc_to } from './teleport.js';
 import { mnexto, wake_nearto, mnearto, healmon, monnear, m_at } from './mon.js';
@@ -710,4 +711,109 @@ export async function cuss(mtmp) {
         }
     }
     await wake_nearto(mtmp.mx, mtmp.my, 5 * 5);
+}
+
+// C ref: do_name.c NH_BLACK — hcolor pref, not an index.
+const NH_BLACK = 'black';
+
+/** C ref: youprop.h Blind ≡ (HBlinded || EBlinded) && !BBlinded (D-0716). */
+function Blind() {
+    const u = game.u || {};
+    if (u.uroleplay?.blind) return true;
+    return !!(((u.HBlinded | 0) || (u.EBlinded | 0)) && !(u.BBlinded | 0));
+}
+
+/** C ref: you.h m_next2u — squared distu ≤ 2. */
+function m_next2u(mtmp) {
+    const u = game.u || {};
+    const dx = (mtmp.mx | 0) - (u.ux | 0);
+    const dy = (mtmp.my | 0) - (u.uy | 0);
+    return dx * dx + dy * dy <= 2;
+}
+
+/**
+ * C ref: wizard.c amulet `:61–103` — worn/wielded-Amulet portal hint plus
+ * wake-the-Wizard. Branch/short-circuit order: the `!rn2(15)` hint roll
+ * runs only when `uamul`/`uwep` holds the Amulet (clang L→R over the
+ * `||`); the portal walk stops at the first MAGIC_PORTAL; the Wizard
+ * scan skips DEADMONSTER and returns after the first sleeping Wizard
+ * woken by `!rn2(40)`.
+ */
+export async function amulet() {
+    const u = game.u || {};
+    let amu = u.uamul;
+    if (!amu || (amu.otyp | 0) !== AMULET_OF_YENDOR) {
+        amu = u.uwep;
+        if (!amu || (amu.otyp | 0) !== AMULET_OF_YENDOR) amu = null;
+    }
+    if (amu && !rn2(15)) {
+        const traps = game.ftrap ?? game.level?.traps;
+        const visit = async (ttmp) => {
+            const du = dist2(u.ux | 0, u.uy | 0, ttmp.tx | 0, ttmp.ty | 0);
+            if (du <= 9) await pline(`${Tobjnam(amu, 'feel')} hot!`);
+            else if (du <= 64) await pline(`${Tobjnam(amu, 'feel')} very warm.`);
+            else if (du <= 144) await pline(`${Tobjnam(amu, 'feel')} warm.`);
+            /* else, the amulet feels normal */
+        };
+        if (Array.isArray(traps)) {
+            for (const ttmp of traps) {
+                if (!ttmp || (ttmp.ttyp | 0) !== MAGIC_PORTAL) continue;
+                await visit(ttmp);
+                break;
+            }
+        } else {
+            for (let ttmp = traps; ttmp; ttmp = ttmp.ntrap) {
+                if ((ttmp.ttyp | 0) !== MAGIC_PORTAL) continue;
+                await visit(ttmp);
+                break;
+            }
+        }
+    }
+
+    if (!(game.context?.no_of_wizards | 0)) return;
+    /* find Wizard, and wake him if necessary */
+    for (const mtmp of game.fmon || []) {
+        if (!mtmp || (mtmp.mhp | 0) <= 0) continue; // DEADMONSTER
+        if (mtmp.iswiz && mtmp.msleeping && !rn2(40)) {
+            mtmp.msleeping = 0;
+            if (!m_next2u(mtmp)) {
+                await pline('You get the creepy feeling that somebody noticed your taking the Amulet.');
+            }
+            return;
+        }
+    }
+}
+
+/**
+ * C ref: wizard.c intervene `:785–810` — udemigod harassment. `which` is
+ * `rnd(4)` (1–4) on the Astral level so cases 0 and 5 never run there,
+ * else `rn2(6)`. Case 2 paints the glow only when !Blind but always
+ * runs rndcurse; case 4 summons with a null caster; case 5 resurrects.
+ */
+export async function intervene() {
+    const u = game.u || {};
+    const which = Is_astralevel(u.uz) ? rnd(4) : rn2(6);
+
+    /* cases 0 and 5 don't apply on the Astral level */
+    switch (which) {
+    case 0:
+    case 1:
+        await You_feel('vaguely nervous.');
+        break;
+    case 2:
+        if (!Blind()) {
+            await pline(`You notice a ${hcolor(NH_BLACK)} glow surrounding you.`);
+        }
+        await rndcurse();
+        break;
+    case 3:
+        aggravate();
+        break;
+    case 4:
+        await nasty(null);
+        break;
+    case 5:
+        await resurrect();
+        break;
+    }
 }

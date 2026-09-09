@@ -51,8 +51,8 @@ import {
     WM_X_TL, WM_X_TR, WM_X_BL, WM_X_BR, WM_X_TLBR, WM_X_BLTR,
     BOOL_RANDOM,
     SET_LIT_RANDOM, SET_LIT_NOCHANGE,
-    LVLINIT_SOLIDFILL, LVLINIT_MAZEGRID, LVLINIT_MAZE, LVLINIT_MINES,
-    LVLINIT_SWAMP,
+    LVLINIT_NONE, LVLINIT_SOLIDFILL, LVLINIT_MAZEGRID, LVLINIT_MAZE,
+    LVLINIT_MINES, LVLINIT_ROGUE, LVLINIT_SWAMP,
     ACCESSIBLE,
     DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, DB_LAVA,
     In_mines,
@@ -17952,9 +17952,15 @@ function lvlfill_swamp(fg, bg, lit) {
     }
 }
 
-/** C ref: sp_lev.c splev_initlev — SOLIDFILL + MAZEGRID + MAZE + MINES + SWAMP */
+/** C ref: sp_lev.c splev_initlev — NONE + SOLIDFILL + MAZEGRID + MAZE + ROGUE + MINES + SWAMP */
 async function splev_initlev(linit) {
     switch (linit.init_style) {
+    default:
+        // C sp_lev.c:2986 — unrecognized style; draws no RNG
+        await impossible('Unrecognized level init style.');
+        break;
+    case LVLINIT_NONE:
+        break;
     case LVLINIT_SOLIDFILL:
         if (linit.lit === BOOL_RANDOM) linit.lit = rn2(2);
         lvlfill_solid(linit.filling, linit.lit);
@@ -17971,6 +17977,10 @@ async function splev_initlev(linit) {
             !!linit.rm_deadends,
         );
         break;
+    case LVLINIT_ROGUE:
+        // C sp_lev.c:3001-3003 — rogue style builds rogue rooms
+        makeroguerooms();
+        break;
     case LVLINIT_MINES:
         if (linit.lit === BOOL_RANDOM) linit.lit = rn2(2);
         if (linit.filling > -1) lvlfill_solid(linit.filling, 0);
@@ -17979,8 +17989,6 @@ async function splev_initlev(linit) {
     case LVLINIT_SWAMP:
         if (linit.lit === BOOL_RANDOM) linit.lit = rn2(2);
         lvlfill_swamp(linit.fg, linit.bg, linit.lit);
-        break;
-    default:
         break;
     }
 }

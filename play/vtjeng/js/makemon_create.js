@@ -167,6 +167,12 @@ import {
 } from './mondata.js';
 import { dochugw } from './monmove.js';
 import {
+    dealloc_monst,
+    pickvampshape,
+    validspecmon,
+    wiz_force_cham_form,
+} from './mon.js';
+import {
     m_at,
     newMonster,
     place_monster,
@@ -345,6 +351,7 @@ import {
     S_LIGHT,
     S_MIMIC,
     S_MIMIC_DEF,
+    monsterClassSymbol,
     S_MUMMY,
     S_NYMPH,
     S_OGRE,
@@ -834,6 +841,14 @@ function wormSlots(state) {
         throw new Error('worm lifecycle found invalid level worm slots');
     }
     return state.level.worms;
+}
+
+// C ref: worm.c count_wsegs(). The final array entry is the hidden segment
+// co-located with the head, so only the preceding visible tail entries count.
+export function count_wsegs(monster, state = game) {
+    if (!monster?.wormno) return 0;
+    const segments = wormSlots(state)[monster.wormno]?.segments;
+    return Math.max(0, (segments?.length ?? 0) - 1);
 }
 
 // C ref: worm.c get_wormno(). Slot zero remains reserved.
@@ -2928,6 +2943,7 @@ export function dmonsfree(state = game) {
             if (previous) previous.nmon = next;
             else state.level.monlist = next;
             current.nmon = null;
+            dealloc_monst(current);
             ++removed;
         } else {
             previous = current;
@@ -2974,30 +2990,6 @@ function pick_animal(normalized) {
     if (!animals.length)
         throw new Error('pick_animal requires at least one animal form');
     return animals[normalized.random.rn2(animals.length)];
-}
-
-// C ref: mon.c pickvampshape(), for the ordinary vampire variants reachable
-// from the Mausoleum's class descriptor.
-export function pick_vampire_shape(monster, normalized) {
-    const { random, state } = normalized;
-    const uppercaseOnly = isRogueLevel(state);
-    let mndx = NON_PM;
-    if (monster.cham === PM_VAMPIRE_LEADER
-        && !random.rn2(10)
-        && !uppercaseOnly) {
-        const typ = state.level.at(monster.mx, monster.my).typ;
-        if (!IS_POOL(typ) && !IS_LAVA(typ)) mndx = PM_WOLF;
-    }
-    if (mndx === NON_PM) {
-        mndx = !random.rn2(4) && !uppercaseOnly
-            ? PM_FOG_CLOUD : PM_VAMPIRE_BAT;
-    }
-    if ((state.mvitals[mndx].mvflags & G_GENOD)
-        || (monster.data !== state.mons[monster.cham]
-            && !random.rn2(4))) {
-        return monster.cham;
-    }
-    return mndx;
 }
 
 // C ref: topten.c tt_doppel(). Picks a random role monster for a
@@ -3059,27 +3051,45 @@ function select_newcham_form(monster, normalized) {
         }
     } else if (monster.cham === PM_CHAMELEON) {
         if (!random.rn2(3)) mndx = pick_animal(normalized);
-    } else if (monster.cham === PM_VAMPIRE
+    } else if (monster.cham === PM_VLAD_THE_IMPALER
+               || monster.cham === PM_VAMPIRE
                || monster.cham === PM_VAMPIRE_LEADER) {
-        return pick_vampire_shape(monster, normalized);
+        return pickvampshape(monster, normalized);
     } else {
         throw new UnsupportedMonsterCreationError(
             `initial shapechanger ${monster.cham}`,
         );
     }
     if (mndx === NON_PM) {
-        mndx = random.rn1(
-            SPECIAL_PM - LOW_PM,
-            LOW_PM,
-        );
+        tryct = 50;
+        do {
+            mndx = random.rn1(SPECIAL_PM - LOW_PM, LOW_PM);
+        } while (--tryct > 0
+                 && !validspecmon(monster, mndx, state)
+                 && (tryct > 40 && isRogueLevel(state)
+                     && !isUpperMonster(state.mons[mndx])));
     }
     return mndx;
+}
+
+function isUpperMonster(species) {
+    const symbol = monsterClassSymbol(species?.mlet);
+    return symbol >= 'A' && symbol <= 'Z';
+}
+
+async function select_newcham_form_for_distress(monster, normalized) {
+    if (normalized.state.wizard
+        && normalized.state.iflags?.mon_polycontrol) {
+        const forced = await wiz_force_cham_form(monster, normalized);
+        if (forced !== NON_PM) return forced;
+    }
+    return select_newcham_form(monster, normalized);
 }
 
 // C ref: mon.c accept_newcham_form(). The doppelganger and quest-guardian
 // branches of select_newcham_form() deliberately pick species at or above
 // SPECIAL_PM, so the range extends to the full catalog.
-function accept_newcham_form(monster, mndx, state) {
+export function accept_newcham_form(monster, mndx, state) {
     if (!Number.isInteger(mndx) || mndx < LOW_PM
         || mndx >= state.mons.length)
         return null;
@@ -3203,6 +3213,18 @@ function apply_newcham_form(monster, target, normalized) {
     // this empty inventory; check_gear_next_turn() still schedules a recheck.
     monster.misc_worn_check |= I_SPECIAL;
     return true;
+}
+
+// C ref: mon.c newcham(), explicit-target vampire reversion arm. The common
+// form transition is shared with the bounded creation callers; callers that
+// need inventory, equipment, disguise, or hero-attachment handling remain
+// outside this adapter.
+export function newcham(monster, target, rawEnv = {}) {
+    const normalized = creationEnv(rawEnv);
+    const { state } = normalized;
+    if (!target || state.mons?.[target.pmidx] !== target
+        || (state.mvitals[target.pmidx].mvflags & G_GENOD)) return false;
+    return apply_newcham_form(monster, target, normalized);
 }
 
 // C ref: mon.c newcham(..., NULL, NO_NC_FLAGS). Chameleon targets span the
@@ -3342,7 +3364,7 @@ export async function newcham_distress(
         for (let attempt = 0; attempt < 20 && !selected; ++attempt) {
             selected = accept_newcham_form(
                 monster,
-                select_newcham_form(monster, normalized),
+                await select_newcham_form_for_distress(monster, normalized),
                 state,
             );
         }

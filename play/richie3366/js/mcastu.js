@@ -32,7 +32,7 @@ import {
     makeplural, makesingular, an, vtense, the_unique_pm,
 } from './objnam.js';
 import { upstart } from './hacklib.js';
-import { mhe, monstseesu, monstunseesu } from './mondata.js';
+import { mhe, monstseesu, monstunseesu, m_seenres, cvt_adtyp_to_mseenres } from './mondata.js';
 import { acurr, losestr, minuhpmax, adjuhploss } from './attrib.js';
 import { rndcurse } from './sit.js';
 import { destroy_arm } from './do_wear.js';
@@ -837,11 +837,13 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
     }
 
     // C ref: mcastu.c:174-179 — monster unable to cast: cursetxt feedback.
-    if (mtmp.mcan || mtmp.mspec_used || !ml) {
+    // C order: mcan || mspec_used || !ml || m_seenres(cvt_adtyp_to_mseenres).
+    // AD_SPEL/CLRC map to M_SEEN_NOTHING so the last disjunct is a no-op there.
+    if (mtmp.mcan || mtmp.mspec_used || !ml
+        || m_seenres(mtmp, cvt_adtyp_to_mseenres(adtyp))) {
         await cursetxt(mtmp, is_undirected_spell(spellnum));
         return M_ATTK_MISS;
     }
-    // m_seenres(cvt_adtyp…) — AD_SPEL/CLRC map to M_SEEN_NOTHING in C
 
     if (adtyp === AD_SPEL || adtyp === AD_CLRC) {
         mtmp.mspec_used = (ml < 8) ? (10 - ml) : 2;
@@ -969,7 +971,12 @@ export async function buzzmu(mtmp, mattk) {
     const AD_MAGM = 1;
     const AD_SPC2 = 10; // approximate upper; SPEL/CLRC (240+) miss this
     if (adtyp < AD_MAGM || adtyp > AD_SPC2) return M_ATTK_MISS;
-    // Named omission: mcan/m_seenres cursetxt; lined_up rn2(3)+buzz
+    // C ref: mcastu.c:996 — cancelled or seen-resisted: cursetxt then miss.
+    if ((mtmp?.mcan | 0) || m_seenres(mtmp, cvt_adtyp_to_mseenres(adtyp))) {
+        await cursetxt(mtmp, false);
+        return M_ATTK_MISS;
+    }
+    // Named omission: lined_up rn2(3)+buzz
     void mtmp;
     return M_ATTK_MISS;
 }

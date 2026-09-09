@@ -41,7 +41,7 @@ import { run_timers, start_timer, stop_timer, weight,
     obj_has_timer, rider_revival_time, rot_corpse, set_corpsenm,
     free_omid, free_omonst,
 } from './mkobj.js';
-import { make_confused, make_deaf, make_hallucinated, make_sick, make_slimed, make_stoned, make_stunned, make_vomiting } from './potion.js';
+import { make_confused, make_deaf, make_hallucinated, make_sick, make_slimed, make_stoned, make_stunned, make_vomiting, set_itimeout } from './potion.js';
 import { make_blinded } from './do.js';
 import { Fumbling, Fast, Very_fast, acurr, adjattrib, exercise, stone_luck, A_STR, A_DEX, A_CON } from './attrib.js';
 import { pline, You_feel, newsym, canseemon, verbalize, Norep, see_monsters, impossible, urgent_pline, Hallucination } from './display.js';
@@ -56,7 +56,7 @@ import {
 } from './monsters.js';
 import { little_to_big, big_to_little, mhe, cantvomit, name_to_mon } from './mondata.js';
 import { dist2, ing_suffix, strsubst, strstri, upstart } from './hacklib.js';
-import { Popeye, morehungry, vomit } from './eat.js';
+import { Popeye, morehungry, vomit, Unaware, eating_dangerous_corpse } from './eat.js';
 import { phase_of_the_moon, friday_13th } from './calendar.js';
 import { zombie_form } from './mon.js';
 import { cry_sound } from './sounds.js';
@@ -110,6 +110,13 @@ const TIMEOUT_FLAT = {
        storage); the mirror keeps flat readers and the generic -- in sync
        for the wizintrinsic default arm (scen-intrinsic-Samurai-92017). */
     [SLEEPY]: 'HSleepy',
+    /* C youprop.h — HAcid_resistance/HStone_resistance ≡
+       uprops[ACID_RES/STONE_RES].intrinsic (single storage); givit
+       (eat.c) counts the meal-granted timeout down in the flat, so the
+       mirror must flow or the ACID_RES/STONE_RES expiry arms never fire
+       (scen-wish-Rogue-91119 step 108, D-2229). */
+    [ACID_RES]: 'HAcid_resistance',
+    [STONE_RES]: 'HStone_resistance',
 };
 
 /** C ref: weight.h WT_NOISY_INV — inv_weight() threshold for noisy fumbling. */
@@ -830,9 +837,12 @@ function nh_timeout_luck(u) {
  * switch cases for those props still deferred (silent clear).
  * HSleepy TIMEOUT → sleep_dialogue yawn at ==4 (C timeout.c
  * `:639–640`, `:267–274`; HSleepy mirror in TIMEOUT_FLAT).
+ * ACID_RES/STONE_RES TIMEOUT → meal-extension (`eating_dangerous_corpse`,
+ * eat.c `:472–493`) else expiry message unless resistant/Unaware (D-2229).
  * Named omissions: region_dialogue;
  * STUNNED/SEE_INVIS/HALLUC/SLEEPY/…
- * expiry messages; FLYING timed-land (wizintrinsic); GLIB `make_glib(0)`
+ * expiry messages; STONE_RES `wielding_corpse` pair (do_wear.c:606);
+ * FLYING timed-land (wizintrinsic); GLIB `make_glib(0)`
  * inventory on expiry; ublesscnt (in allmain); ugallop; delayed killers;
  * full ice/mount slip_or_trip arms; you_unwere callers
  * beyond mtimedone (pray TROUBLE / potion); surface() Underwater bottom.
@@ -1170,6 +1180,40 @@ export async function nh_timeout() {
             if (amulet && (amulet.otyp | 0) === AMULET_OF_STRANGULATION) {
                 await pline('Your amulet vanishes!');
                 useup(amulet);
+            }
+        }
+        if (!(next & TIMEOUT) && p === ACID_RES) {
+            /* C timeout.c ACID_RES arm — timed acid resistance runs out:
+             * still chewing an acidic corpse re-arms 1 (repeats till the
+             * meal ends); else the message unless resistant elsewhere
+             * or Unaware. */
+            if (!(u.Acid_resistance || u.HAcid_resistance
+                || u.EAcid_resistance)) {
+                if (eating_dangerous_corpse(ACID_RES)) {
+                    set_itimeout(u.uprops[ACID_RES], 1);
+                    u.HAcid_resistance =
+                        ((u.HAcid_resistance | 0) & ~TIMEOUT) | 1;
+                } else if (!Unaware()) {
+                    await pline('You no longer feel safe from acid.');
+                }
+            }
+        }
+        if (!(next & TIMEOUT) && p === STONE_RES) {
+            /* C timeout.c STONE_RES arm (owner line :836) — timed stoning
+             * resistance runs out: same extension/message shape as
+             * ACID_RES; the wielding_corpse pair (do_wear.c:606) stays
+             * named-omitted (map). */
+            if (!(u.Stone_resistance || u.HStone_resistance
+                || u.EStone_resistance)) {
+                if (eating_dangerous_corpse(STONE_RES)) {
+                    set_itimeout(u.uprops[STONE_RES], 1);
+                    u.HStone_resistance =
+                        ((u.HStone_resistance | 0) & ~TIMEOUT) | 1;
+                } else if (!Unaware()) {
+                    await pline(
+                        'You no longer feel secure from petrification.',
+                    );
+                }
             }
         }
     }

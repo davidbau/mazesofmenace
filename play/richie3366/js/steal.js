@@ -45,6 +45,7 @@ import {
 import { uwepgone, uswapwepgone, uqwepgone } from './wield.js';
 import { mpickobj } from './makemon.js';
 import { nomul, stop_occupation } from './hack.js';
+import { maybe_finished_meal } from './eat.js';
 import { encumber_msg, freeinv_core } from './invent.js';
 import { hero_conflict } from './mondata.js';
 
@@ -244,7 +245,9 @@ export async function steal(mtmp, objnambuf) {
     let retrycnt = 0;
     const was_punished = !!(u.uball || u.uchain);
 
-    // occupation meal finish deferred
+    // C steal.c:367-371 — food being eaten might already be used up but not
+    // yet removed from inventory; finish it now so it cannot be stolen.
+    if (game.occupation) await maybe_finished_meal(false);
     const icnt = inv_cnt(false);
     if (!icnt || (icnt === 1 && u.uskin)) {
         // nothing_to_steal: Punished/Blind arms deferred — still return 1

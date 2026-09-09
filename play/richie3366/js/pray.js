@@ -18,8 +18,10 @@
 // Named omissions: pleased pat_on_head cases 1-4 gift arms, cases 7/8
 // gcrownu caller wiring (gcrownu / at_your_feet live below, unwired),
 // case 6 give_spell (no JS export); case-5 SetVoice pitch;
-// p_type -2/-1/1/2 outcome bodies beyond water_prayer scan;
-// pray_revive; offer_different_alignment_altar / bestow_artifact /
+// p_type -2 (Moloch laughter + wake_nearby + adjalign + exercise,
+// Inhell fall-through) / -1 (undead godvoice + rehumanize + rnd(20)
+// losehp + exercise) / pray_revive (tame-corpse/statue scan + revive /
+// animate_statue ANIMATE_SPELL); offer_different_alignment_altar / bestow_artifact /
 // angry_priest from sacrifice_your_race; offer_too_soon /
 // offer_fake_amulet / offer_real_amulet (dosacrifice ECMD_TIME after
 // pick is D-1667);
@@ -36,7 +38,7 @@
 import { game } from './gstate.js';
 import { rn2, rn1, rnl, rnz, rnd, d, rn2_on_display_rng } from './rng.js';
 import { pline, verbalize, You_feel, newsym, impossible, see_monsters } from './display.js';
-import { nomul, carrying } from './hack.js';
+import { nomul, carrying, losehp, finish_maybe_wail } from './hack.js';
 import { upstart } from './hacklib.js';
 import { weapon_type, unrestrict_weapon_skill, add_weapon_skill } from './weapon.js';
 import {
@@ -44,9 +46,10 @@ import {
     ART_STORMBRINGER,
     ART_VORPAL_BLADE,
 } from './generated/artifacts_data.js';
-import { m_at } from './mon.js';
+import { m_at, wake_nearby } from './mon.js';
+import { revive } from './zap.js';
 import {
-    A_WIS, A_STR, A_MAX, change_luck, adjattrib, adjalign, exercise,
+    A_WIS, A_STR, A_CON, A_MAX, change_luck, adjattrib, adjalign, exercise,
     ALIGNLIM,
 } from './attrib.js';
 import { align_gname, align_str, xlev_to_rank, uhim, u_gname, uhis, roles } from './roles.js';
@@ -108,7 +111,7 @@ import { init_uhunger, floorfood, carried } from './eat.js';
 import { rider_corpse_revival } from './pickup.js';
 import { region_danger, region_safety } from './region.js';
 import { safe_teleds } from './teleport.js';
-import { reset_utrap, rescued_from_terrain, heal_legs } from './trap.js';
+import { reset_utrap, rescued_from_terrain, heal_legs, animate_statue } from './trap.js';
 import { welded, is_weptool } from './wield.js';
 import { which_armor } from './worn.js';
 import { rehumanize, body_part, mbodypart } from './polyself.js';
@@ -123,7 +126,8 @@ import {
     A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, ECMD_OK, ECMD_TIME,
     PARANOID_PRAY, PARANOID_CONFIRM, LL_CONDUCT, LL_DIVINEGIFT, LL_ARTIFACT,
     LL_SPOILER, CXN_ARTICLE, FROMOUTSIDE, INTRINSIC,
-    LUCKMAX, has_omonst, NON_PM, ROOM, FOOT, something, Something,
+    LUCKMAX, has_omonst, OMONST, NON_PM, ROOM, FOOT, something, Something,
+    ANIMATE_SPELL, KILLED_BY_AN,
     STRAT_APPEARMSG, MM_NOMSG,
     M_AP_TYPE, M_AP_FURNITURE, has_mcorpsenm, MCORPSENM,
     LL_MINORAC, BOLT_LIM, MAXULEV, TELL, NOTELL, Upolyd, ismnum,
@@ -141,6 +145,7 @@ import {
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
 const FAKE_AMULET_OF_YENDOR = objectNames.indexOf('FAKE_AMULET_OF_YENDOR');
 const CORPSE = objectNames.indexOf('CORPSE');
+const STATUE = objectNames.indexOf('STATUE');
 const SHIELD_OF_REFLECTION = objectNames.indexOf('SHIELD_OF_REFLECTION');
 const AMULET_OF_REFLECTION = objectNames.indexOf('AMULET_OF_REFLECTION');
 const SILVER_DRAGON_SCALES = objectNames.indexOf('SILVER_DRAGON_SCALES');
@@ -1693,10 +1698,36 @@ export async function gcrownu() {
 }
 
 /**
+ * C ref: pray.c pray_revive :2177-2195 — scan the hero's square for the
+ * first CORPSE/STATUE with a tame non-minion omonst; CORPSE →
+ * revive(otmp, TRUE), STATUE → animate_statue(ANIMATE_SPELL).
+ * @returns {Promise<boolean>}
+ */
+async function pray_revive() {
+    const u = game.u || (game.u = {});
+    let found = null;
+    for (let otmp = objects_at(u.ux, u.uy); otmp; otmp = otmp.nexthere) {
+        if ((otmp.otyp === CORPSE || otmp.otyp === STATUE)
+            && has_omonst(otmp)
+            && OMONST(otmp)?.mtame && !OMONST(otmp)?.isminion) {
+            found = otmp;
+            break;
+        }
+    }
+    if (!found) return false;
+    if (found.otyp === CORPSE) return (await revive(found, true)) !== null;
+    return (await animate_statue(found, u.ux, u.uy, ANIMATE_SPELL, null)) !== null;
+}
+
+/**
  * C ref: pray.c prayer_done — afternmv after nomul(-3).
- * Ported: p_type 0 (too soon) full path; p_type 3 → pleased envelope;
- * Inhell Gehennom gate + rnl(record) angrygods (pray.c:2307-2313);
- * other p_types partial/stub.
+ * Ported: p_type -2 (diabolical laughter + wake_nearby + adjalign(-2) +
+ * exercise WIS; Inhell falls through to the Gehennom gate) + p_type -1
+ * (undead godvoice + You_feel + rehumanize + rnd(20) losehp + exercise
+ * CON) (pray.c:2283-2305); p_type 0 (too soon) full path; p_type 1/2
+ * water_prayer/angrygods/pleased arms; p_type 3 coaligned pray_revive +
+ * water_prayer(TRUE) + pleased; Inhell Gehennom gate + rnl(record)
+ * angrygods (pray.c:2307-2313).
  */
 export async function prayer_done() {
     const u = game.u || (game.u = {});
@@ -1704,8 +1735,28 @@ export async function prayer_done() {
     const alignment = gp.p_aligntyp;
     u.uinvulnerable = false;
 
-    if (gp.p_type === -2 || gp.p_type === -1) {
-        // Moloch / undead paths deferred
+    if (gp.p_type === -2) {
+        // C pray.c:2283-2295 — praying at an unaligned altar; Inhell
+        // falls through to the regular Gehennom result below.
+        const Deaf = !!(u.Deaf || u.HDeaf || u.EDeaf || u.uroleplay?.deaf);
+        await pline(`You ${!Deaf ? 'hear' : 'intuit'} diabolical laughter all around you...`);
+        await wake_nearby(false);
+        adjalign(-2);
+        exercise(A_WIS, false);
+        if (!Inhell()) {
+            await pline('Nothing else happens.');
+            return 1;
+        }
+    } else if (gp.p_type === -1) {
+        // C pray.c:2296-2305 — poly'd undead praying to a non-chaotic god.
+        await godvoice(alignment, alignment === A_LAWFUL
+            ? 'Vile creature, thou durst call upon me?'
+            : 'Walk no more, perversion of nature!');
+        await You_feel('like you are falling apart.');
+        await rehumanize();
+        losehp(rnd(20), 'residual undead turning effect', KILLED_BY_AN);
+        await finish_maybe_wail();
+        exercise(A_CON, false);
         return 1;
     }
     if (Inhell()) {
@@ -1739,8 +1790,12 @@ export async function prayer_done() {
             await pleased(alignment);
         }
     } else {
-        // p_type 3 coaligned — pray_revive deferred
-        if (on_altar()) water_prayer(true);
+        // C pray.c:2336-2340 — coaligned: revive a tame corpse/statue,
+        // bless water, then please the god.
+        if (on_altar()) {
+            await pray_revive();
+            water_prayer(true);
+        }
         await pleased(alignment);
     }
     return 1;

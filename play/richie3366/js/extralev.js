@@ -6,8 +6,9 @@ import { game } from './gstate.js';
 import { rn2, rnd, rn1 } from './rng.js';
 import {
     CORR, SCORR, D_NODOOR, XL_UP, XL_DOWN, XL_LEFT, XL_RIGHT,
-    OROOM, NO_MM_FLAGS,
+    OROOM, NO_MM_FLAGS, IS_WALL,
 } from './const.js';
+import { impossible } from './display.js';
 import { mksobj_at, curse, weight } from './mkobj.js';
 import { makemon } from './makemon.js';
 import { mons } from './monsters.js';
@@ -80,7 +81,9 @@ function roguecorr(x, y, dir) {
             fromy = cell(cx, cy).rly + cell(cx, cy).dy;
             fromx += 1 + 26 * cx;
             fromy += 7 * cy;
-            // C: impossible if !IS_WALL
+            // C extralev.c:62 — wall check before the door goes in
+            if (!IS_WALL(g.level.at(fromx, fromy)?.typ))
+                impossible('down: no wall at %d,%d?', fromx, fromy);
             dodoor(fromx, fromy, g.level.rooms[cell(cx, cy).nroom]);
             const floc = g.level.at(fromx, fromy);
             if (floc) {
@@ -89,7 +92,11 @@ function roguecorr(x, y, dir) {
             }
             fromy++;
         }
-        if (cy >= 2) return;
+        if (cy >= 2) {
+            // C extralev.c:68 — down door off the 3x3 grid
+            impossible('down door from %d,%d going nowhere?', x, y);
+            return;
+        }
         cy++;
         cell(cx, cy).doortable &= ~XL_UP;
         if (!cell(cx, cy).real) {
@@ -102,6 +109,9 @@ function roguecorr(x, y, dir) {
             toy = cell(cx, cy).rly - 1;
             tox += 1 + 26 * cx;
             toy += 7 * cy;
+            // C extralev.c:84 — wall check before the door goes in
+            if (!IS_WALL(g.level.at(tox, toy)?.typ))
+                impossible('up: no wall at %d,%d?', tox, toy);
             dodoor(tox, toy, g.level.rooms[cell(cx, cy).nroom]);
             const tloc = g.level.at(tox, toy);
             if (tloc) {
@@ -112,8 +122,7 @@ function roguecorr(x, y, dir) {
         }
         roguejoin(fromx, fromy, tox, toy, false);
         return;
-    }
-    if (dir === XL_RIGHT) {
+    } else if (dir === XL_RIGHT) {
         cell(cx, cy).doortable &= ~XL_RIGHT;
         if (!cell(cx, cy).real) {
             fromx = cell(cx, cy).rlx;
@@ -125,6 +134,9 @@ function roguecorr(x, y, dir) {
             fromy = cell(cx, cy).rly + rn2(cell(cx, cy).dy);
             fromx += 1 + 26 * cx;
             fromy += 7 * cy;
+            // C extralev.c:104 — label is verbatim C ("down", not "right")
+            if (!IS_WALL(g.level.at(fromx, fromy)?.typ))
+                impossible('down: no wall at %d,%d?', fromx, fromy);
             dodoor(fromx, fromy, g.level.rooms[cell(cx, cy).nroom]);
             const floc = g.level.at(fromx, fromy);
             if (floc) {
@@ -133,7 +145,11 @@ function roguecorr(x, y, dir) {
             }
             fromx++;
         }
-        if (cx >= 2) return;
+        if (cx >= 2) {
+            // C extralev.c:110 — right door off the 3x3 grid
+            impossible('right door from %d,%d going nowhere?', x, y);
+            return;
+        }
         cx++;
         cell(cx, cy).doortable &= ~XL_LEFT;
         if (!cell(cx, cy).real) {
@@ -146,6 +162,9 @@ function roguecorr(x, y, dir) {
             toy = cell(cx, cy).rly + rn2(cell(cx, cy).dy);
             tox += 1 + 26 * cx;
             toy += 7 * cy;
+            // C extralev.c:126 — wall check before the door goes in
+            if (!IS_WALL(g.level.at(tox, toy)?.typ))
+                impossible('left: no wall at %d,%d?', tox, toy);
             dodoor(tox, toy, g.level.rooms[cell(cx, cy).nroom]);
             const tloc = g.level.at(tox, toy);
             if (tloc) {
@@ -156,6 +175,9 @@ function roguecorr(x, y, dir) {
         }
         roguejoin(fromx, fromy, tox, toy, true);
         return;
+    } else {
+        // C extralev.c:134 — roguecorr only runs for DOWN/RIGHT
+        impossible('corridor in direction %d?', dir);
     }
 }
 
@@ -259,6 +281,11 @@ export function makeroguerooms() {
             const here = cell(x, y);
             if (here.doortable & XL_DOWN) roguecorr(x, y, XL_DOWN);
             if (here.doortable & XL_RIGHT) roguecorr(x, y, XL_RIGHT);
+            // C extralev.c:270-273 — LEFT/UP ends are always connected
+            if (here.doortable & XL_LEFT)
+                impossible('left end of %d, %d never connected?', x, y);
+            if (here.doortable & XL_UP)
+                impossible('up end of %d, %d never connected?', x, y);
         }
     }
 }

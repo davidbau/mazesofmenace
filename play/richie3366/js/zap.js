@@ -257,7 +257,7 @@ import {
     hides_under, is_golem, is_mplayer, vegetarian, carnivorous, NUMMONS,
 } from './monsters.js';
 import { m_at, wakeup, seemimic, dead_species, normal_shape, replmon, find_mid, mongone, restore_cham, m_respond, hideunder, healmon, can_be_hatched, cant_drown } from './mon.js';
-import { find_mac, monkilled, shade_miss, resists_sleep_slee, resists_blnd_mm } from './mhitm.js';
+import { find_mac, monkilled, shade_miss, resists_sleep_slee, resists_blnd_mm, erode_armor } from './mhitm.js';
 import { update_mapseen_for } from './dungeon.js';
 import {
     find_drawbridge, open_drawbridge, close_drawbridge, is_db_wall,
@@ -277,6 +277,7 @@ import {
     burnarmor, t_at, maketrap, delfloortrap, dotrap, mintrap, deltrap,
     NO_TRAP_FLAGS, ignite_items, openholdingtrap, closeholdingtrap,
     openfallingtrap, self_invis_message, trapname, animate_statue,
+    acid_damage,
 } from './trap.js';
 import { potionbreathe, make_stunned, speed_up } from './potion.js';
 import { carried, fix_petrification, cant_finish_meal } from './eat.js';
@@ -362,7 +363,7 @@ import {
     IS_FURNITURE, IS_GRAVE, SCORR, VAULT, TEMPLE, In_quest, Is_firelevel,
     VIBRATING_SQUARE, MAGIC_PORTAL, HEADSTONE, TRAP_EXPLODE, is_magical_trap,
     GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_NOFLAGS,
-    has_mcorpsenm,
+    has_mcorpsenm, ERODE_CORRODE,
     LL_WISH, LL_CONDUCT, LL_ARTIFACT, ONAME_WISH, ONAME_KNOW_ARTI,
 } from './const.js';
 import { monstseesu, monstunseesu } from './mondata.js';
@@ -1915,7 +1916,10 @@ export async function zhitm(mon, type, nd, ootmp) {
  * monstunseesu (FIRE/COLD arms), ugolemeffects; MM-Antimagic shieldeff +
  * monstseesu and MM-hit monstunseesu live (C zap.c:4410–4419).
  * ZT_DEATH disintegration-breath arm (C zap.c:4465–4490); poison;
- * acid_damage/erode_armor bodies; killer buzzer verb polish.
+ * killer buzzer verb polish.
+ * ZT_ACID weapon/armor erosion live (D-2232): trap.js acid_damage +
+ * grease_protect under the C twoweap rn2 gates, mhitm.js erode_armor
+ * ERODE_CORRODE under rn2(6) (C zap.c:4528–4546).
  */
 async function zhitu(type, nd, fltxt, sx, sy) {
     let dam = 0;
@@ -2022,6 +2026,8 @@ async function zhitu(type, nd, fltxt, sx, sy) {
         // poisoned("blast", A_DEX, ...) deferred
         break;
     case ZT_ACID: {
+        // C zap.c:4528–4546 — resist message + d(nd,6)/exercise on the burn
+        // arm, then two-weapon acid_damage gates and erode_armor corrode.
         const u = game.u || {};
         if (Acid_resistance()) {
             await pline(`The ${hliquid('acid')} doesn't hurt.`);
@@ -2031,10 +2037,12 @@ async function zhitu(type, nd, fltxt, sx, sy) {
             dam = d(nd, 6);
             exercise(A_STR, false);
         }
-        // acid_damage / erode_armor bodies deferred; consume C rn2 gates
-        rn2(u.twoweap ? 3 : 6);
-        if (u.twoweap) rn2(3);
-        rn2(6);
+        // using two weapons at once makes both of them more vulnerable
+        if (!rn2(u.twoweap ? 3 : 6)) await acid_damage(u.uwep);
+        if (u.twoweap && !rn2(3)) await acid_damage(u.uswapwep);
+        if (!rn2(6)) {
+            await erode_armor(game.youmonst || { _youmonst: true }, ERODE_CORRODE);
+        }
         break;
     }
     default:
@@ -6136,7 +6144,10 @@ async function zap_updown(obj) {
             losehp(maybe_half_phys(dmg), 'falling rock', KILLED_BY_AN);
             if (game._losehp_needs_done || game.program_state?.gameover) {
                 await finish_losehp_done();
-                return disclose;
+                // C zap.c:3314-3316, like dig.c:1597-1598 — done() returns
+                // after lifesave (end.c savelife), so the dislodged rock
+                // still lands. Return only on true death.
+                if (game.program_state?.gameover) return disclose;
             }
             const otmp = mksobj_at(ROCK, x, y, false, false);
             if (otmp) {

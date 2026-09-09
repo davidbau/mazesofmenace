@@ -617,7 +617,8 @@ function xkilled_treasure_drop(mtmp, mdat, mndx, x, y) {
  * floor-boulder nocorpse (sobj_at 12 clones, no export), MAIL_DAEMON,
  * human-murder Blind_telepat see_monsters, quest leader/nemesis/
  * guardian/priest special adjalign arms, tame You_hear Soundeffect,
- * be_sad / vamp_rise_msg / thrownobj-into-engulfer.
+ * be_sad / vamp_rise_msg (+ xkilled disintegested=nocorpse writer and
+ * Maybe-not/vamp_rise readers around mondead) / thrownobj-into-engulfer.
  */
 export async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
     const nomsg = (xkill_flags & XKILL_NOMSG) !== 0;
@@ -670,7 +671,7 @@ export async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
     if (was_stoned) {
         await monstone(mtmp);
     } else {
-        mondead(mtmp);
+        await mondead(mtmp);
     }
     if ((mtmp.mhp | 0) >= 1) {
         if (game.context) game.context.stoned = false;

@@ -1670,6 +1670,28 @@ async function givit(type, ptr) {
 }
 
 /**
+ * C ref: eat.c eating_dangerous_corpse `:472–493` — hero is mid-meal of a
+ * CORPSE whose harm the named resistance guards (acidic for ACID_RES,
+ * flesh-petrifying — Medusa included, not just touch — for STONE_RES):
+ * the nh_timeout caller extends the timeout instead of expiring it.
+ * Must live here: the gate compares against the module-local `eatfood`
+ * identity (same reason as `cant_finish_meal`, D-2223).
+ */
+export function eating_dangerous_corpse(res) {
+    if (game.occupation !== eatfood) return false;
+    const food = game.context?.victual?.piece;
+    if (!food || (food.otyp | 0) !== CORPSE) return false;
+    const mnum = food.corpsenm | 0;
+    if (mnum < LOW_PM) return false;
+    const u = game.u || {};
+    if (!carried(food) && !obj_here(food, u.ux | 0, u.uy | 0)) return false;
+    if ((res | 0) === ACID_RES && acidic(mons(mnum))) return true;
+    /* C: flesh_petrifies() includes Medusa as well as touch_petrifies() */
+    if ((res | 0) === STONE_RES && flesh_petrifies(mons(mnum))) return true;
+    return false;
+}
+
+/**
  * C ref: eat.c corpse_intrinsic — pick one conveyable prop (or -1 STR).
  * Non-deterministic; call once per corpse.
  */
@@ -2048,6 +2070,35 @@ export async function cant_finish_meal(corpse) {
         await stop_occupation();
         await newuhs(false);
     }
+}
+
+/**
+ * C ref: eat.c `:3877–3889` maybe_finished_meal — eatfood-completion
+ * predicate; sort of the opposite of cant_finish_meal().
+ * In case consume_oeaten() has decided the food is all gone: when the
+ * current occupation is eatfood and the meal's usedtime has reached
+ * reqtime, finish it now via eatfood() (which calls done_eating() to use
+ * up svc.context.victual.piece). Must live here: the gate compares
+ * against the module-local `eatfood` identity (same reason as
+ * `cant_finish_meal`, D-2223, and `eating_dangerous_corpse`, D-2229).
+ * Callers: allmain.c stop_occupation(TRUE) (deferred per the lembas
+ * park — JS hack.js stop_occupation keeps its message path) and
+ * steal.c:371 (wired in js/steal.js). No RNG in the gate itself.
+ */
+export async function maybe_finished_meal(stopping) {
+    // C: go.occupation == eatfood
+    //     && svc.context.victual.usedtime >= svc.context.victual.reqtime
+    if (game.occupation === eatfood
+        && ((game.context?.victual?.usedtime | 0)
+            >= (game.context?.victual?.reqtime | 0))) {
+        // C: if (stopping) go.occupation = 0; /* for do_reset_eat */
+        // JS null idiom for C 0, as in done_eating / hack.js stop_occupation.
+        if (stopping) game.occupation = null;
+        // C: (void) eatfood();
+        await eatfood();
+        return true;
+    }
+    return false;
 }
 
 /**

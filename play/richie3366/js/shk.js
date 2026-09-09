@@ -3944,7 +3944,7 @@ export function money2mon(mon, amount) {
  * / buried / thrown / kicked / migrating, shop no_charge, then free
  * billobjs and zero billct/credit/debit/loan.
  */
-function setpaid(shkp) {
+export function setpaid(shkp) {
     clear_unpaid(shkp, game.invent);
     clear_unpaid(shkp, game.fobj);
     if (game.level?.buriedobjlist) {

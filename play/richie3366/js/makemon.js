@@ -109,7 +109,7 @@ import {
     ROOMOFFSET, LS_MONSTER,
     AM_NONE, AM_LAWFUL, AM_NEUTRAL, AM_CHAOTIC, ALIGNWEIGHT, Align2amask,
     PROT_FROM_SHAPE_CHANGERS,
-    In_quest, W_ARMH, W_SADDLE, P_POLEARMS, ROT_CORPSE, Is_waterlevel,
+    In_quest, W_ARM, W_ARMH, W_SADDLE, P_POLEARMS, ROT_CORPSE, Is_waterlevel,
     STRAT_CLOSE, STRAT_WAITFORU, STRAT_APPEARMSG, is_pit,
     PIT, HOLE, TRAPDOOR, ALL_TRAPS,
     A_LAWFUL, ONAME_RANDOM, EMIN,
@@ -156,7 +156,7 @@ import {
 } from './objects.js';
 import { ART_EXCALIBUR, ART_DEMONBANE } from './generated/artifacts_data.js';
 import { cansee, does_block, block_point } from './vision.js';
-import { newsym, Norep, canseemon, sensemon, canspotmon, pline, pline_mon } from './display.js';
+import { newsym, Norep, canseemon, sensemon, canspotmon, pline, pline_mon, impossible } from './display.js';
 import { mhidden_description } from './pager.js';
 import { emits_light, new_light_source, del_light_source } from './light.js';
 import { begin_burn } from './timeout.js';
@@ -172,6 +172,7 @@ import { can_be_hatched, m_at, seemimic, hideunder, onscary, monnear } from './m
 import { m_unleash, leashable } from './apply.js';
 import { update_inventory } from './invent.js';
 import { set_apparxy, monflee } from './monmove.js';
+import { roles } from './roles.js';
 
 /** C ref: shknam.c neweshk — allocate eshk for MM_ESHK makemon. */
 export function neweshk(mtmp) {
@@ -418,6 +419,22 @@ function otyp(name) {
 function pm(name) {
     const i = monsterNames.indexOf(`PM_${name}`);
     return i >= 0 ? i : NON_PM;
+}
+
+// C ref: obj.h:347–356 dragon gear — scales/mail otyp ranges; Dragon_*_to_pm
+// is PM_GRAY_DRAGON + otyp − base (gray..yellow contiguous in both tables,
+// same order as js/artifact.js Is_dragon_mail / do_wear.js consts).
+const GRAY_DRAGON_SCALES = objectNames.indexOf('GRAY_DRAGON_SCALES');
+const YELLOW_DRAGON_SCALES = objectNames.indexOf('YELLOW_DRAGON_SCALES');
+const GRAY_DRAGON_SCALE_MAIL = objectNames.indexOf('GRAY_DRAGON_SCALE_MAIL');
+const YELLOW_DRAGON_SCALE_MAIL = objectNames.indexOf('YELLOW_DRAGON_SCALE_MAIL');
+function Is_dragon_scales(obj) {
+    const t = obj?.otyp | 0;
+    return t >= GRAY_DRAGON_SCALES && t <= YELLOW_DRAGON_SCALES;
+}
+function Is_dragon_mail(obj) {
+    const t = obj?.otyp | 0;
+    return t >= GRAY_DRAGON_SCALE_MAIL && t <= YELLOW_DRAGON_SCALE_MAIL;
 }
 
 function level_difficulty() {
@@ -1049,15 +1066,39 @@ function get_rnd_toptenentry() {
 }
 
 /**
- * C ref: topten.c tt_doppel — role form from topten or rn1 Archeologist..Wizard.
- * Named omissions: plgend/classmon/christen when RECORD has entries.
+ * C ref: topten.c classmon `:1355–1375` — role filecode (ROLESZ 3-byte
+ * sensitive compare) → roles mnum (else PM_HUMAN); legacy "E" → Ranger;
+ * unknown → impossible + Human mummy.
  */
-function tt_doppel(_mon) {
+function classmon(plrole) {
+    const code = String(plrole ?? '');
+    for (let i = 0; i < roles.length; i++) {
+        if (code.slice(0, 3) === String(roles[i].filecode ?? '').slice(0, 3)) {
+            return roles[i].mnum !== NON_PM ? roles[i].mnum : pm('HUMAN');
+        }
+    }
+    if (code === 'E') return pm('RANGER');
+    impossible(`What weird role is this? (${code})`);
+    return pm('HUMAN_MUMMY');
+}
+
+/**
+ * C ref: topten.c tt_doppel `:1444–1464` — role form from topten or rn1
+ * Archeologist..Wizard. RECORD arms live (plgend female, classmon role,
+ * canseemon-gated christen); get_rnd_toptenentry stays null — no RECORD
+ * VFS under Rule #2 (rnd(10) footprint only).
+ */
+function tt_doppel(mon) {
     const tt = rn2(13) ? get_rnd_toptenentry() : null;
     if (!tt) {
         return rn1(pm('WIZARD') - pm('ARCHEOLOGIST') + 1, pm('ARCHEOLOGIST'));
     }
-    return pm('ARCHEOLOGIST'); // unreachable until RECORD stub returns entries
+    // C: record entry — gender, role form, name when visible (Kes)
+    if (tt.plgend && tt.plgend[0] === 'F') mon.female = 1;
+    else if (tt.plgend && tt.plgend[0] === 'M') mon.female = 0;
+    const ret = classmon(tt.plrole);
+    if (canseemon(mon)) christen_monst(mon, tt.name);
+    return ret;
 }
 
 /** Lazy animal_list for pick_animal — C mon.c mon_animal_list. */
@@ -1128,9 +1169,12 @@ function monsym_isupper(mdat) {
 }
 
 /**
- * C ref: mon.c select_newcham_form — sandestin/doppel/cham/vamp + random.
- * Named omissions: dragon-armor ordinary arm (which_armor); wizard
- * mon_polycontrol. Outer rogue tryct>15 is in newcham (D-1573).
+ * C ref: mon.c select_newcham_form `:5157–5225` — sandestin/doppel/cham/vamp +
+ * ordinary dragon-armor + random.
+ * Named omissions: wizard mon_polycontrol (mon.c:5209–5211 interactive
+ * wiz_force_cham_form — async getlin boundary through sync select, callees
+ * mkclass_poly/validvamp unported, no setter in scored runs). Outer rogue
+ * tryct>15 is in newcham (D-1573).
  */
 function select_newcham_form(mon) {
     let mndx = NON_PM;
@@ -1164,8 +1208,17 @@ function select_newcham_form(mon) {
         || cham === pm('VAMPIRE_LEADER')
         || cham === pm('VAMPIRE')) {
         mndx = pickvampshape(mon);
+    } else if (cham === NON_PM) {
+        // C mon.c:5198–5207 ordinary: worn dragon scales/mail → dragon form
+        const m_armr = which_armor(mon, W_ARM);
+        if (m_armr && Is_dragon_scales(m_armr)) {
+            mndx = pm('GRAY_DRAGON') + ((m_armr.otyp | 0) - GRAY_DRAGON_SCALES);
+        } else if (m_armr && Is_dragon_mail(m_armr)) {
+            mndx = pm('GRAY_DRAGON') + ((m_armr.otyp | 0) - GRAY_DRAGON_SCALE_MAIL);
+        }
     }
-    // NON_PM ordinary / dragon armor — deferred (which_armor)
+    // C mon.c:5209–5211 wizard debug control (iflags.mon_polycontrol →
+    // wiz_force_cham_form) stays named — see doc comment.
 
     // C: random arm only retries when invalid AND rogue uppercase bias
     // still applies; otherwise one rn1 and newcham's outer accept loop

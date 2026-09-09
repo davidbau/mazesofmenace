@@ -29,7 +29,7 @@ import { ceiling, t_at, instapetrify } from './trap.js';
 import { has_ceiling } from './dungeon.js';
 import { dryup } from './fountain.js';
 import { aggravate } from './wizard.js';
-import { wakeup } from './mon.js';
+import { wakeup, egg_type_from_parent } from './mon.js';
 import { Punished } from './pray.js';
 import { name_to_mon, set_mon_data } from './mondata.js';
 import {
@@ -45,7 +45,7 @@ import { dropx, canletgo, make_blinded } from './do.js';
 import { uswapwepgone, uwepgone, could_twoweap, untwoweapon } from './wield.js';
 import { races } from './roles.js';
 import { encumber_msg, useup, weapon_descr, update_inventory } from './invent.js';
-import { end_burn } from './timeout.js';
+import { end_burn, learn_egg_type } from './timeout.js';
 import { racial_exception, has_horns, num_horns, WrappingAllowed, is_flimsy } from './worn.js';
 import { helm_simple_name, digests, set_ustuck } from './mhitu.js';
 import { losehp, nomul, is_pool, waterbody_name } from './hack.js';
@@ -1184,6 +1184,16 @@ export async function polymon(mntmp) {
         await make_blinded(0, true);
     }
     newsym(u.ux, u.uy); /* Change symbol */
+    /* C polyself.c:905-911 — you now know what an egg of your type looks
+       like (moved up in case expels() -> spoteffects() drops you onto
+       eggs); queen bees also recognize killer bee eggs via the TRUE
+       (force_ordinary, draw-free) roll. sit.c lay_an_egg FALSE arm is
+       already wired in js/sit.js. */
+    if (lays_eggs(game.youmonst?.data)) {
+        learn_egg_type(u.umonnum | 0);
+        /* make queen bees recognize killer bee eggs */
+        learn_egg_type(egg_type_from_parent(u.umonnum | 0, true));
+    }
     // spoteffects / Passes_walls / amorphous / webmaker deferred
     // C: find_ac() before encumber_msg; tty more() paints *cached* botl
     // from the prior bot() (AC still stale at 9 after Cloak_off/setworn).

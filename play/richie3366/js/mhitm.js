@@ -133,6 +133,55 @@ import { make_stunned } from './potion.js';
 import { m_is_steadfast } from './uhitm.js';
 import { mintrap } from './trap.js';
 import { breamm, spitmm } from './mthrowu.js';
+// C ref: mon.c mondead tail (D-row for data.md:358) — one block for the
+// death-tail family. ESM permits several import statements per module;
+// every name below is new to this module (no duplicate bindings).
+// --can verdicts: pline SAFE (no cycle); dog/wizard/quest/insight/shknam/
+// shk/hack/light/dungeon/vault IN-SCC (same 90-module cycle, hoisted
+// function declarations, call-time use only — no top-level TDZ read);
+// eat SAFE (hoisted). Same shape as the 1866 existing edges.
+import { ordin, upstart } from './hacklib.js';
+import { create_gas_cloud } from './region.js';
+import { wormgone } from './worm.js';
+import { expels } from './mhitu.js';
+import { uunstick } from './polyself.js';
+import { makeknown } from './invent.js';
+import { check_gear_next_turn } from './worn.js';
+import { impossible, set_msg_xy } from './display.js';
+import { recalc_block_point } from './vision.js';
+import { mon_leaving_level } from './mon.js';
+import { wary_dog } from './dog.js';
+import { wizdeadorgone } from './wizard.js';
+import { nemdead, leaddead } from './quest.js';
+import { record_achievement } from './insight.js';
+import { livelog_printf } from './pline.js';
+import { shtypes } from './shknam.js';
+import { obfree, setpaid } from './shk.js';
+import { closed_door } from './hack.js';
+import { emits_light, del_light_source } from './light.js';
+import { on_level } from './dungeon.js';
+import { clear_fcorr, parkguard } from './vault.js';
+import {
+    ARTICLE_THE,
+    AUGMENT_IT,
+    EXACT_NAME,
+    MON_ENDGAME_FREE,
+    LL_UMONST,
+    LL_ACHIEVE,
+    ACH_MEDU,
+    D_NODOOR,
+    D_TRAPPED,
+    SHOPBASE,
+    ESHK,
+    ROOMOFFSET,
+    LS_MONSTER,
+    In_endgame,
+    DISMOUNT_GENERIC,
+} from './const.js';
+
+/** C monflag.h MS_LEADER/MS_NEMESIS — file-local consts (artifact.js:127). */
+const MS_LEADER = 36;
+const MS_NEMESIS = 37;
 
 const CORPSE = objectNames.indexOf('CORPSE');
 const GAUNTLETS_OF_POWER = objectNames.indexOf('GAUNTLETS_OF_POWER');
@@ -2640,8 +2689,9 @@ export async function monstone(mdef) {
     const x = mdef.mx | 0;
     const y = mdef.my | 0;
     mdef.mhp = 0;
-    // lifesaved_monster deferred
-    if ((mdef.mhp | 0) > 0) return;
+    // C mon.c monstone `:3301–3303` — lifesaving before the statue.
+    await lifesaved_monster(mdef);
+    if (!deadmonster(mdef)) return;
 
     mdef.mtrapped = 0;
 
@@ -2691,28 +2741,368 @@ export async function monstone(mdef) {
         unmap_object(x, y);
     }
     if (x > 0 && cansee(x, y)) newsym(x, y);
-    mondead(mdef);
+    await mondead(mdef);
 }
 
-// C ref: mon.c mondead `:3081–3177` — mhp=0, cham/were restore, mvitals,
-// quest/mail marks, Kops rnd(5)+makemon, unmap, m_detach(due_to_death).
-// Dead mons stay on fmon until dmonsfree (mon.c) — do not splice here.
-// Named omissions: lifesaved_monster + DEADMONSTER early return (callers
-// keep their mhp>=1 lifesaved checks); is_vampshifter+vamprises revert
-// (no JS export); be_sad pline (needs async; flag still cleared in C
-// order); steam-vortex create_gas_cloud (async; C draws rn2(10)+5 per
-// vortex death); isgd && !grddead vault-guard return (no JS export);
-// logdeadmon achievement/livelog; full m_detach wizdead/shkgone/wormgone
-// (inline subset kept: unleash, mvitals, MON_DETACH, relobj, unmap,
-// newsym). mklev edge: imports.mjs SAFE (hoisted fn, same SCC).
-export function mondead(mtmp) {
+/**
+ * C ref: mon.c set_mon_min_mhpmax `:2806–2823` — floor at m_lev+1, then at
+ * the caller's minimum (life-saving traditionally uses 10).
+ */
+function set_mon_min_mhpmax(mon, minimum_mhpmax) {
+    if ((mon.mhpmax | 0) < ((mon.m_lev | 0) + 1)) mon.mhpmax = (mon.m_lev | 0) + 1;
+    if ((mon.mhpmax | 0) < (minimum_mhpmax | 0)) mon.mhpmax = minimum_mhpmax | 0;
+}
+
+/**
+ * C ref: mon.c lifesaved_monster `:2838–2884` — amulet revives the monster
+ * (messages only if cansee; no canseemon/invis check — the medallion glows),
+ * m_useup + check_gear_next_turn, wary_dog for tame, mhp restore, and the
+ * genocided arm (still dies with a pline). mlifesaver/m_useup_mm are the
+ * module-local C-named helpers; attacktype_mm is the mondata.h macro.
+ */
+export async function lifesaved_monster(mtmp) {
+    const lifesave = mlifesaver(mtmp);
+    if (!lifesave) return;
+    if (cansee(mtmp.mx, mtmp.my)) {
+        await pline('But wait...');
+        await pline(`${s_suffix(Monnam(mtmp))} medallion begins to glow!`);
+        makeknown(AMULET_OF_LIFE_SAVING);
+        if (canseemon(mtmp)) {
+            if (attacktype_mm(mtmp.data, AT_EXPL)
+                || attacktype_mm(mtmp.data, AT_BOOM)) {
+                await pline(`${Monnam(mtmp)} reconstitutes!`);
+            } else {
+                await pline(`${Monnam(mtmp)} looks much better!`);
+            }
+        }
+        // C pline_The — "The " prefix rendered as plain pline (lock.js:675).
+        await pline('The medallion crumbles to dust!');
+    }
+    m_useup_mm(mtmp, lifesave);
+    check_gear_next_turn(mtmp);
+
+    const mndx = mtmp.mnum ?? mtmp.data?.mndx;
+    const surviver = !((game.mvitals?.[mndx]?.mvflags ?? 0) & G_GENOD);
+    mtmp.mcanmove = 1;
+    mtmp.mfrozen = 0;
+    if (mtmp.mtame && !mtmp.isminion) {
+        await wary_dog(mtmp, !surviver);
+    }
+    set_mon_min_mhpmax(mtmp, 10);
+    mtmp.mhp = mtmp.mhpmax | 0;
+
+    if (!surviver) {
+        if (cansee(mtmp.mx, mtmp.my)) {
+            await pline(
+                `Unfortunately, ${mon_nam(mtmp)} is still genocided...`,
+            );
+        }
+        mtmp.mhp = 0;
+    }
+}
+
+/**
+ * C ref: mon.c vamprises `:2888–2987` — vampire in bat/fog/wolf form reverts
+ * instead of dying (genocided true form stays dead). C order: G_GENOD gate,
+ * action string (Unaware dreams; spec_mon drops "seemingly dead";
+ * disintegested/noncorporeal/amorphous "reconstitutes"), mcanmove/mfrozen,
+ * mhp restore, ustuck release (expels when swallowing), newcham (a failed
+ * revert returns !DEADMONSTER), cham fixup, canspotmon rise pline +
+ * vamp_rise_msg, closed-door smash (You_hear/You_see/pline_The in C order,
+ * then D_NODOOR + recalc), newsym. Unaware is the house u.Unaware field.
+ * Named omissions: trapped-door mb_trapped + "is destroyed!" pline
+ * (monmove.js:1035 clone omits full mondead/lifesave — needs its own row);
+ * gd.disintegested writer in xkilled (uhitm names it; monkilled sets it).
+ */
+export async function vamprises(mtmp) {
+    const mndx = mtmp.cham;
+    const cur = mtmp.mnum ?? mtmp.data?.mndx;
+    if (ismnum(mndx) && mndx !== cur
+        && !((game.mvitals?.[mndx]?.mvflags ?? 0) & G_GENOD)) {
+        const spec_mon = nonliving(mtmp.data)
+            || noncorporeal(mtmp.data)
+            || amorphous(mtmp.data);
+        const spec_death = !!game.disintegested
+            || noncorporeal(mtmp.data)
+            || amorphous(mtmp.data);
+        const x = mtmp.mx, y = mtmp.my;
+        const unaware = !!(game.u?.Unaware);
+
+        const action = `${unaware ? 'you dream that ' : ''}${x_monnam(
+            mtmp, ARTICLE_THE, spec_mon ? null : 'seemingly dead',
+            SUPPRESS_INVISIBLE | AUGMENT_IT, false,
+        )} ${unaware ? '' : 'suddenly '}${spec_death ? 'reconstitutes' : 'transforms'} and rises as`;
+        mtmp.mcanmove = 1;
+        mtmp.mfrozen = 0;
+        set_mon_min_mhpmax(mtmp, 10);
+        mtmp.mhp = mtmp.mhpmax | 0;
+        if (mtmp === game.u?.ustuck) {
+            if (game.u?.uswallow) {
+                await expels(mtmp, mtmp.data, false);
+            } else {
+                await uunstick();
+            }
+        }
+
+        if (!newcham(mtmp, mons(mndx), NO_NC_FLAGS)) {
+            return !deadmonster(mtmp);
+        }
+        mtmp.cham = ((mtmp.data?.mndx | 0) === (mndx | 0)) ? NON_PM : mndx;
+
+        if (canspotmon(mtmp)) {
+            await pline_mon(
+                mtmp,
+                `${upstart(action)} ${x_monnam(
+                    mtmp, ARTICLE_A, null,
+                    SUPPRESS_NAME | SUPPRESS_IT | SUPPRESS_INVISIBLE, false,
+                )}!`,
+            );
+            game.vamp_rise_msg = true;
+        }
+        if (closed_door(x, y)) {
+            const door = game.level?.at?.(x, y);
+            const trapped = !!door && ((door.doormask | 0) & D_TRAPPED) !== 0;
+            const seeit = cansee(x, y);
+            set_msg_xy(x, y);
+            if (!seeit) {
+                await You_hear(trapped ? 'an explosion.' : 'a door being smashed.');
+            } else if (!canspotmon(mtmp)) {
+                const line = trapped ? 'a door exploding.' : 'a door being smashed.';
+                const u = game.u || {};
+                const blind = !!((u.HBlinded | 0) || (u.EBlinded | 0) || u.Blind);
+                // C You_see (pline.c): Unaware dreams, Blind senses (dbridge.js:74).
+                if (unaware) await pline(`You dream that you see ${line}`);
+                else if (blind) await pline(`You sense ${line}`);
+                else await pline(`You see ${line}`);
+            } else if (!unaware) {
+                await pline(`The door is smashed${trapped ? ' and it explodes!' : '.'}`);
+            }
+            set_msg_xy(0, 0);
+
+            if (door) door.doormask = D_NODOOR;
+            recalc_block_point(x, y);
+        }
+        newsym(x, y);
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: vault.c grddead `:174–189` — vault-guard death keeps the guard at
+ * <0,0> until the temporary corridor clears (clear first; if that fails,
+ * destroy the guard's gold, drop the rest, park at <0,0>, retry). isgd is
+ * cleared for dmonsfree only when the corridor is fully disposed.
+ * clear_fcorr/parkguard join the vault.js edge (same SCC, hoisted).
+ * The isgd-gold-vanish arm is steal.c relobj's (`:874–898`); the drop-rest
+ * half is relobj_on_death (mkobj.js:1922, mdrop_obj per head).
+ */
+export async function grddead(grd) {
+    let dispose = await clear_fcorr(grd, true);
+    if (!dispose) {
+        const gold = findgold(grd.minvent);
+        if (grd.isgd && gold) {
+            if (canspotmon(grd)) {
+                await pline(
+                    `${s_suffix(Monnam(grd))} gold ${canseemon(grd) ? 'vanishes' : 'seems to vanish'}.`,
+                );
+            }
+            obj_extract_self(gold);
+            obfree(gold, null);
+        }
+        relobj_on_death(grd);
+        grd.mhp = 0;
+        parkguard(grd);
+        dispose = await clear_fcorr(grd, true);
+    }
+    if (dispose) grd.isgd = 0;
+    return dispose;
+}
+
+/** C PM_HIGH_CLERIC for logdeadmon's non-unique priest arm (file PM idiom). */
+const PM_HIGH_CLERIC = monsterNames.indexOf('PM_HIGH_CLERIC');
+
+/**
+ * C ref: mon.c logdeadmon `:2995–3068` — first Medusa kill is an achievement;
+ * unique (G_UNIQ macro, mondata.h:174) and unrevived-shopkeeper kills are
+ * livelogged on the 1st–3rd, 5th, 10th, 25th and every 50th kill, major
+ * (LL_ACHIEVE) for firsts/Wizard/Riders. livelog_mon_nam is the C macro
+ * (mon.c:2991: x_monnam ARTICLE_THE/0/EXACT_NAME), expanded inline.
+ * record_achievement/livelog_printf are sync; cantsee/herodidit symmetric.
+ */
+export function logdeadmon(mtmp, mndx) {
+    let howmany = game.mvitals?.[mndx]?.died ?? 0;
+    if (mndx === PM_MEDUSA && howmany === 1) {
+        record_achievement(ACH_MEDU);
+    } else if ((((mtmp.data?.geno ?? 0) & G_UNIQ) !== 0
+        && (mndx !== PM_HIGH_CLERIC || !mtmp.mrevived))
+        || (mtmp.isshk && !mtmp.mrevived)) {
+        let shkdetail = '';
+        const herodidit = !game.context?.mon_moving;
+        if (mtmp.isshk) {
+            howmany = 1;
+            const st = shtypes[(ESHK(mtmp)?.shoptype | 0) - SHOPBASE];
+            shkdetail = `, the ${st?.name} ${mtmp.female ? 'proprietrix' : 'proprietor'}${herodidit ? '' : ','}`;
+        } else if (mndx === PM_HIGH_CLERIC) {
+            howmany = 1;
+        }
+        if (howmany <= 3 || howmany === 5 || howmany === 10 || howmany === 25
+            || (howmany % 50) === 0) {
+            let llevent_type = LL_UMONST;
+            if (howmany === 1 || mtmp.iswiz || is_rider(mtmp.data)) {
+                llevent_type |= LL_ACHIEVE;
+            }
+            let xtra = '';
+            if (howmany > 1) xtra = ` (${howmany}${ordin(howmany)} time)`;
+            const mkilled = nonliving(mtmp.data) ? 'destroyed' : 'killed';
+            const mnam = x_monnam(mtmp, ARTICLE_THE, null, EXACT_NAME, false);
+            if (herodidit) {
+                livelog_printf(llevent_type, '%s %s%s%s', mkilled, mnam, shkdetail, xtra);
+            } else {
+                livelog_printf(llevent_type, '%s%s has been %s%s', mnam, shkdetail, mkilled, xtra);
+            }
+        }
+    }
+}
+
+/**
+ * C ref: steal.c thiefdead `:119–128` — a dead thief ends theft-in-progress.
+ * Named omission: afternmv==stealarm → unstolenarm arm (steal-armor
+ * occupation never set in JS; steal.js:379).
+ */
+export function thiefdead() {
+    game.stealmid = 0;
+}
+
+/**
+ * C ref: shk.c shkgone `:234–269` — a dead shopkeeper's level effects:
+ * resident cleared, floor stock de-charged, bill paid out and the room
+ * struck from u.ushops (C strchr/memmove on the room-char string).
+ * ESHK/rooms/ushops follow the shk.js idioms (:253, :1031); floor stock is
+ * the game.fobj chain filtered by ox/oy (place_object stamps both).
+ * setpaid joins the shk.js edge (same SCC, hoisted).
+ * Named omissions: discard_damage_owned_by (no JS port) and the
+ * has_shop clear (needs search_special(ANY_SHOP); no JS port).
+ */
+export function shkgone(mtmp) {
+    const eshk = ESHK(mtmp);
+    if (!eshk) return;
+    if (on_level(eshk.shoplevel, game.u?.uz)) {
+        const sroom = game.level?.rooms?.[(eshk.shoproom | 0) - ROOMOFFSET];
+        if (sroom) sroom.resident = null;
+        if (sroom) {
+            const lx = sroom.lx | 0, hx = sroom.hx | 0;
+            const ly = sroom.ly | 0, hy = sroom.hy | 0;
+            for (let o = game.fobj; o; o = o.nobj) {
+                if ((o.ox | 0) >= lx && (o.ox | 0) <= hx
+                    && (o.oy | 0) >= ly && (o.oy | 0) <= hy) {
+                    o.no_charge = 0;
+                }
+            }
+        }
+        const ushops = game.u?.ushops || '';
+        const i = ushops.indexOf(String.fromCharCode(eshk.shoproom | 0));
+        if (i >= 0) {
+            setpaid(mtmp);
+            eshk.bill_p = null;
+            if (game.u) game.u.ushops = ushops.slice(0, i) + ushops.slice(i + 1);
+        }
+    }
+}
+
+/**
+ * C ref: mon.c m_detach `:2734–2803` — take the monster off the map (it
+ * stays on fmon until dmonsfree; sequencing comment `:2745–2752` kept:
+ * off-map before dropping belongings). C order: mleashed m_unleash,
+ * light source off (pre-death mptr form), mon_leaving_level (mtrapped
+ * clear, unstuck, grid removal, mimic/pit/newsym, polearm forget), mhp=0,
+ * iswiz wizdeadorgone, due_to_death nemesis/leader/relobj arms, theft
+ * (stealmid), shk, worm, endgame mark, MON_DETACH flag (+purge_monsters),
+ * usteed dismount. mptr is the pre-death data (mondeadsaves it before the
+ * cham/were restore, `:3112`). Callers: mondead (TRUE); mongone keeps its
+ * D-1149 body (FALSE arm still named).
+ * Named omissions: stinky_nemesis/nemesis_stinks gas (quest-text
+ * com_pager_core dependency; questpgr.js:811); minimal_monnam format in
+ * the already-detached impossible arm (no JS port; mon_nam used).
+ */
+export async function m_detach(mtmp, mptr, due_to_death) {
+    const mx = mtmp.mx, my = mtmp.my;
+
+    if (mtmp.mleashed) await m_unleash(mtmp, false);
+
+    if (mx > 0 && emits_light(mptr)) del_light_source(LS_MONSTER, mtmp);
+
+    await mon_leaving_level(mtmp);
+
+    mtmp.mhp = 0;
+    if (mtmp.iswiz) wizdeadorgone();
+    if (due_to_death) {
+        if ((mtmp.data?.msound | 0) === MS_NEMESIS) {
+            await nemdead();
+        }
+        if ((mtmp.data?.msound | 0) === MS_LEADER) leaddead();
+        relobj_on_death(mtmp);
+        // C relobj show=1: drop, then newsym if hero can see the spot.
+        if (mx > 0 && cansee(mx, my)) newsym(mx, my);
+    }
+
+    // C m_id==stealmid; the stealmid guard skips JS's unset m_id 0
+    // (dog.js:642) matching C, where m_id is never 0.
+    if ((game.stealmid | 0) && (mtmp.m_id | 0) === (game.stealmid | 0)) {
+        thiefdead();
+    }
+    if (mtmp.isshk) shkgone(mtmp);
+    if (mtmp.wormno) wormgone(mtmp);
+    if (In_endgame(game.u?.uz)) {
+        mtmp.mstate = (mtmp.mstate | 0) | MON_ENDGAME_FREE;
+    }
+
+    if (((mtmp.mstate | 0) & MON_DETACH) !== 0) {
+        // C impossible with minimal_monnam (no JS port; mon_nam stands in).
+        await impossible(`m_detach: ${mon_nam(mtmp)} is already detached?`);
+    } else {
+        mtmp.mstate = (mtmp.mstate | 0) | MON_DETACH;
+        if (game.iflags) {
+            game.iflags.purge_monsters = (game.iflags.purge_monsters | 0) + 1;
+        }
+    }
+
+    if (mtmp === game.u?.usteed) await dismount_steed(DISMOUNT_GENERIC);
+}
+
+// C ref: mon.c mondead `:3081–3177` — pet-message flag, lifesave,
+// vampshifter revert, be_sad, steam-vortex gas, vault guard, cham/were
+// restore, mvitals, quest/mail marks, Kops respawn, logdeadmon, unmap,
+// m_detach. Dead mons stay on fmon until dmonsfree — do not splice here.
+// Named omissions: mongone's m_detach(FALSE) caller arm (D-1149 body kept);
+// stinky_nemesis gas + minimal_monnam format inside m_detach; thiefdead
+// stealarm arm; shkgone damage/has_shop arms; xkilled-side disintegested
+// writer + Maybe-not/vamp_rise readers (uhitm names them).
+export async function mondead(mtmp) {
     // C `:3089–3090` — potential pet message flag; always cleared.
     const beSad = !!(game.iflags && game.iflags.sad_feeling);
     if (game.iflags) game.iflags.sad_feeling = false;
-    mtmp.mhp = 0;
+    mtmp.mhp = 0; // in case caller hasn't done this
+    await lifesaved_monster(mtmp);
+    if (!deadmonster(mtmp)) return;
+
+    // C `:3095–3098` — shifted vampire reverts instead of dying.
+    if (is_vampshifter(mtmp) && await vamprises(mtmp)) return;
+
+    if (beSad) {
+        await pline('You have a sad feeling for a moment, then it passes.');
+    }
+
+    if ((mtmp.data?.mndx | 0) === PM_STEAM_VORTEX) {
+        // C `:3103–3105` — harmless gas cloud, rn2(10)+5.
+        await create_gas_cloud(mtmp.mx, mtmp.my, rn2(10) + 5, 0);
+    }
+
+    // C `:3109–3110` — vault guard waits for its corridor.
+    if (mtmp.isgd && !await grddead(mtmp)) return;
+
+    const mptr = mtmp.data; // save this for m_detach()
     const mx = mtmp.mx, my = mtmp.my;
-    // C `:3100–3101` be_sad pline omitted (async) — flag cleared above.
-    void beSad;
     // C `:3115–3123` — restore chameleon, lycanthropes to true form.
     if (ismnum(mtmp.cham)) {
         set_mon_data(mtmp, mons(mtmp.cham));
@@ -2724,9 +3114,6 @@ export function mondead(mtmp) {
     } else if ((mtmp.data?.mndx | 0) === PM_WERERAT) {
         set_mon_data(mtmp, mons(PM_HUMAN_WERERAT));
     }
-    // C m_detach `:2741–2742` — m_unleash(mtmp, FALSE); no slack pline.
-    // Kept hoisted ahead of the C detach position; draw-free.
-    if (mtmp.mleashed) m_unleash(mtmp, false);
     // C `:3136–3138` — mvitals[monsndx].died++ on the restored form.
     const mndx = mtmp.mnum ?? mtmp.data?.mndx;
     record_mvitals_died(mndx);
@@ -2762,15 +3149,14 @@ export function mondead(mtmp) {
             break;
         }
     }
-    // C `:3169` logdeadmon omitted (see header).
-    mtmp.mstate = (mtmp.mstate | 0) | MON_DETACH;
-    // Keep mx/my for drop + make_corpse (C mon_leaving_level).
-    relobj_on_death(mtmp);
-    // C mon.c mondead `:3170` — glyph_is_invisible(levl.glyph).
+    // C `:3169` — achievement and/or livelog.
+    logdeadmon(mtmp, mndx);
+    // C `:3170` — glyph_is_invisible(levl.glyph).
     if (mx > 0 && memory_glyph_is_invisible(game.level?.at?.(mx, my))) {
         unmap_object(mx, my);
     }
-    if (mx > 0) newsym(mx, my);
+    // C `:3175` — remove from play; dmonsfree frees it after the move.
+    await m_detach(mtmp, mptr, true);
 }
 
 /**
@@ -2778,7 +3164,7 @@ export function mondead(mtmp) {
  * Named omission: accessible||is_pool gate (floor tiles always attempt).
  */
 export async function mondied(mdef) {
-    mondead(mdef);
+    await mondead(mdef);
     if ((mdef.mhp | 0) > 0) return; /* lifesaved */
     if (await corpse_chance(mdef)) await make_corpse(mdef);
 }
@@ -2803,7 +3189,10 @@ export async function monkilled(mdef, fltxt, how) {
     const howi = how | 0;
     const disintegested = howi === AD_DGST || howi === -AD_RBRE
         || (howi === AD_FIRE && completelyburns_mm(mdef.data));
-    if (disintegested) mondead(mdef);
+    // C mon.c monkilled `:3398` — gd.disintegested for vamprises wording
+    // (no reset here in C; xkilled resets after its own mondead call).
+    game.disintegested = disintegested;
+    if (disintegested) await mondead(mdef);
     else await mondied(mdef);
 }
 
@@ -4143,7 +4532,7 @@ export async function explmm(magr, mdef, mattk) {
 
     if (!(result & M_ATTK_AGR_DIED)) {
         const was_leashed = !!(magr.mleashed | 0);
-        mondead(magr);
+        await mondead(magr);
         if (!deadmonster(magr)) return result; /* life saved */
         result |= M_ATTK_AGR_DIED;
         /* C: mondead→m_detach→m_unleash(FALSE) suppresses slack; print here. */

@@ -532,7 +532,7 @@ export async function gain_guardian_angel() {
                 const arms = which_armor(mtmp, W_ARMS);
                 if (!arms || (arms.otyp | 0) !== SHIELD_OF_REFLECTION) {
                     mongets(mtmp, AMULET_OF_REFLECTION);
-                    m_dowear(mtmp, true);
+                    await m_dowear(mtmp, true);
                 }
             }
         }

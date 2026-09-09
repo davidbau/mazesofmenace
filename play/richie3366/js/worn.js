@@ -2,8 +2,7 @@
 // C ref: worn.c — which_armor, wearmask_to_obj, wearslot, mon_set_minvis,
 //   m_dowear, m_dowear_type, update_mon_extrinsics, extra_pref,
 //   racial_exception; mon.c check_gear_next_turn.
-// Named omissions: wear plines when !creation (freeze still applied);
-//   artifact_light begin_burn/end_burn;
+// Named omissions:
 //   dragon-scale altprop beyond alchemy smock;
 //   extract_from_minvent artifact_light/obj_no_longer_held.
 // D-0855: nambuf Monnam/mon_nam at m_dowear_type entry (Hallu display RNG).
@@ -16,7 +15,7 @@ import {
     INVIS, FAST, ANTIMAGIC, REFLECTING, PROTECTION, CLAIRVOYANT, STEALTH,
     TELEPAT, LEVITATION, FLYING, WWALKING, DISPLACED, FUMBLING, JUMPING,
     FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES,
-    ACID_RES, STONE_RES, MFAST, BLINDED,
+    ACID_RES, STONE_RES, MFAST, BLINDED, Something,
 } from './const.js';
 import {
     verysmall, nohands, is_animal, mindless, humanoid, noncorporeal,
@@ -37,13 +36,18 @@ import {
     canseemon, newsym, impossible, pline, pline_mon,
 } from './display.js';
 import { see_wsegs } from './worm.js';
-import { dist2 } from './hacklib.js';
+import { dist2, strsubst } from './hacklib.js';
 import {
-    Monnam, mon_nam, s_suffix, pmname, Mgender,
+    Monnam, mon_nam, s_suffix, pmname, Mgender, hcolor,
 } from './do_name.js';
-import { cansee } from './vision.js';
+import { cansee, vision_recalc } from './vision.js';
 import { mhim, mhis } from './mondata.js';
-import { an } from './objnam.js';
+import {
+    an, distant_name, doname, simpleonames, otense, Yname2,
+    arti_light_description,
+} from './objnam.js';
+import { artifact_light, begin_burn, end_burn } from './timeout.js';
+import { makeknown } from './invent.js';
 import { rnl } from './rng.js';
 import { Soundeffect } from './sndprocs.js';
 import {
@@ -82,6 +86,7 @@ const MUMMY_WRAPPING = objectNames.indexOf('MUMMY_WRAPPING');
 const CORNUTHAUM = objectNames.indexOf('CORNUTHAUM');
 const HELM_OF_OPPOSITE_ALIGNMENT = objectNames.indexOf('HELM_OF_OPPOSITE_ALIGNMENT');
 const DUNCE_CAP = objectNames.indexOf('DUNCE_CAP');
+const NH_BLACK = 'black'; // do_name.c NH_BLACK — hcolor pref, not an index
 const SPEED_BOOTS = objectNames.indexOf('SPEED_BOOTS');
 const ALCHEMY_SMOCK = objectNames.indexOf('ALCHEMY_SMOCK');
 const ELVEN_LEATHER_HELM = objectNames.indexOf('ELVEN_LEATHER_HELM');
@@ -800,18 +805,20 @@ function maybe_blocks(mon, obj, on, silently, unseen) {
 }
 
 /**
- * C ref: worn.c m_dowear_type — pick best slot item and wear it.
- * Sync: wear/invis plines when !creation still deferred (named omission);
- * mfrozen set. Hallu: always take mon_nam/Monnam into nambuf before
- * visibility changes (D-0855) — even when nothing is worn.
+ * C ref: worn.c m_dowear_type `:798–1002` — pick best slot item and wear it.
+ * Async: the !creation wear plines reach pline/pline_mon (nhgetch boundary).
+ * The creation path takes no await (messages + shine gated on !creation).
+ * Hallu: always take mon_nam/Monnam into nambuf before visibility changes
+ * (D-0855) — even when nothing is worn.
  */
-function m_dowear_type(mon, flag, creation, racialexception) {
+async function m_dowear_type(mon, flag, creation, racialexception) {
     if (mon.mfrozen) return;
 
-    // C: worn.c m_dowear_type — name before altering visibility
-    // (See_invisible ? Monnam : mon_nam). Hallu burns rndmonnam here.
+    // C `:809` — sawmon/sawloc before altering visibility; name before
+    // altering visibility (See_invisible ? Monnam : mon_nam).
+    // Hallu burns rndmonnam here.
+    const sawmon = canseemon(mon), sawloc = cansee(mon.mx, mon.my);
     const nambuf = game.u?.See_invisible ? Monnam(mon) : mon_nam(mon);
-    void nambuf; // invis "cannot see" pline deferred
 
     let old = which_armor(mon, flag);
     if (old && old.cursed) return;
@@ -889,7 +896,32 @@ function m_dowear_type(mon, flag, creation, racialexception) {
     }
 
     if (!creation) {
-        // wear plines deferred (named omission); delay still applied
+        // C `:920–951` — "<Mon> [removes <oldarm> and ]puts on <newarm>."
+        if (sawmon) {
+            let buf, oldarm, newarm;
+            if (old) {
+                oldarm = distant_name(old, doname);
+                buf = ` removes ${oldarm} and`;
+            } else {
+                buf = oldarm = '';
+            }
+            newarm = distant_name(best, doname);
+            // C: identical descriptions → "another <newarm>" for "a|an <newarm>".
+            // strcmpi/strncmpi have no exported home (local clones only);
+            // the comparison is inline, strsubst is the canonical import.
+            if (newarm.toLowerCase() === oldarm.toLowerCase()) {
+                if (newarm.slice(0, 2).toLowerCase() === 'a ') {
+                    newarm = strsubst(newarm, 'a ', 'another ');
+                } else if (newarm.slice(0, 3).toLowerCase() === 'an ') {
+                    newarm = strsubst(newarm, 'an ', 'another ');
+                }
+                // C newarm[BUFSZ-1] = '\0': no fixed buffer in JS.
+            }
+            await pline_mon(mon, `${Monnam(mon)}${buf} puts on ${newarm}.`);
+            if (autocurse) {
+                await pline(`${s_suffix(Monnam(mon))} ${simpleonames(best)} ${otense(best, 'glow')} ${hcolor(NH_BLACK)} for a moment.`);
+            }
+        } /* can see it */
         m_delay += game.objects?.[best.otyp]?.oc_delay | 0;
         mon.mfrozen = m_delay;
         if (mon.mfrozen) mon.mcanmove = 0;
@@ -897,24 +929,52 @@ function m_dowear_type(mon, flag, creation, racialexception) {
 
     if (old) {
         update_mon_extrinsics(mon, old, false, creation);
+
+        /* owornmask was cleared above but artifact_light() expects it */
         old.owornmask = oldmask;
-        // artifact_light end_burn deferred
+        if (old.lamplit && artifact_light(old)) {
+            end_burn(old, false);
+        }
         old.owornmask = 0;
     }
     mon.misc_worn_check = (mon.misc_worn_check || 0) | flag;
     best.owornmask = (best.owornmask || 0) | flag;
     if (autocurse) curse(best);
-    // artifact_light begin_burn deferred
+    if (artifact_light(best) && !best.lamplit) {
+        begin_burn(best, false);
+        vision_recalc(1);
+        if (!creation && best.lamplit && cansee(mon.mx, mon.my)) {
+            const adesc = arti_light_description(best);
+            if (sawmon) { /* could already see monster */
+                await pline(`${Yname2(best)} ${otense(best, 'begin')} to shine ${adesc}.`);
+            } else if (canseemon(mon)) { /* didn't see it until new light */
+                await pline(`${Yname2(best)} ${otense(best, 'are')} shining ${adesc}.`);
+            } else if (sawloc) { /* saw location but not invisible monster */
+                await pline(`${Something} begins to shine ${adesc}.`);
+            } else { /* didn't see location until new light */
+                await pline(`${Something} is shining ${adesc}.`);
+            }
+        }
+    }
     update_mon_extrinsics(mon, best, true, creation);
+    /* if couldn't see it but now can, or vice versa */
+    if (!creation && (sawmon ^ canseemon(mon))) {
+        if (mon.minvis && !game.u?.See_invisible) {
+            await pline(`Suddenly you cannot see ${nambuf}.`);
+            makeknown(best.otyp);
+        /* C else-branch is commented out (no "suddenly appears!" pline). */
+        }
+    }
 }
 
 /**
- * C ref: worn.c m_dowear — wear best of each armor type.
- * Sync (makemon creation path must not await).
+ * C ref: worn.c m_dowear `:762–796` — wear best of each armor type.
+ * Async only through m_dowear_type's !creation message path; creation
+ * callers (makemon/minion/mplayer/bones) take no await and run sync-through.
  * @param {object} mon
  * @param {boolean} creation — true → no wear delay / messages
  */
-export function m_dowear(mon, creation) {
+export async function m_dowear(mon, creation) {
     if (!mon?.data) return;
     const ptr = mon.data;
     if (verysmall(ptr) || nohands(ptr) || is_animal(ptr)) return;
@@ -924,28 +984,28 @@ export function m_dowear(mon, creation) {
         return;
     }
 
-    m_dowear_type(mon, W_AMUL, creation, false);
+    await m_dowear_type(mon, W_AMUL, creation, false);
     const can_wear_armor = !cantweararm(ptr);
     if (can_wear_armor && !((mon.misc_worn_check || 0) & W_ARM)) {
-        m_dowear_type(mon, W_ARMU, creation, false);
+        await m_dowear_type(mon, W_ARMU, creation, false);
     }
     if (can_wear_armor || WrappingAllowed(ptr)) {
-        m_dowear_type(mon, W_ARMC, creation, false);
+        await m_dowear_type(mon, W_ARMC, creation, false);
     }
-    m_dowear_type(mon, W_ARMH, creation, false);
+    await m_dowear_type(mon, W_ARMH, creation, false);
     // C: MON_WEP(mon) → mon->mw
     const mwep = mon.mw || null;
     if (!mwep || !bimanual(mwep)) {
-        m_dowear_type(mon, W_ARMS, creation, false);
+        await m_dowear_type(mon, W_ARMS, creation, false);
     }
-    m_dowear_type(mon, W_ARMG, creation, false);
+    await m_dowear_type(mon, W_ARMG, creation, false);
     if (!slithy(ptr) && ptr.mlet !== 'S_CENTAUR') {
-        m_dowear_type(mon, W_ARMF, creation, false);
+        await m_dowear_type(mon, W_ARMF, creation, false);
     }
     if (can_wear_armor) {
-        m_dowear_type(mon, W_ARM, creation, false);
+        await m_dowear_type(mon, W_ARM, creation, false);
     } else {
-        m_dowear_type(mon, W_ARM, creation, true); // RACE_EXCEPTION
+        await m_dowear_type(mon, W_ARM, creation, true); // RACE_EXCEPTION
     }
 }
 
@@ -954,13 +1014,13 @@ export function m_dowear(mon, creation) {
  * pickup; spend turn if worn mask changes or mfrozen.
  * @returns {boolean} true if turn spent equipping (caller should return)
  */
-export function maybe_m_dowear_special(mtmp) {
+export async function maybe_m_dowear_special(mtmp) {
     if (!mtmp || !((mtmp.misc_worn_check || 0) & I_SPECIAL)) return false;
     if (mtmp.mpeaceful || mtmp.mtame
         || dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) > (3 * 3)) {
         mtmp.misc_worn_check = (mtmp.misc_worn_check || 0) & ~I_SPECIAL;
         const oldworn = mtmp.misc_worn_check || 0;
-        m_dowear(mtmp, false);
+        await m_dowear(mtmp, false);
         if ((mtmp.misc_worn_check || 0) !== oldworn || !mtmp.mcanmove) {
             return true;
         }

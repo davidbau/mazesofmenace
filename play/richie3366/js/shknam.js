@@ -1,6 +1,6 @@
 // shknam.js — Shop types, shopkeeper init, and room stocking.
 // C ref: shknam.c shtypes[] / shkinit / stock_room / mkshobj_at / get_shop_item.
-// Named omissions: wizard SHOPTYPE; Izchak minetown light-shk;
+// Named omissions: wizard SHOPTYPE (nh_getenv; Rule #2);
 // irregular-shop edge cases; platform ifdef shktools names;
 // full mongone/shkgone beyond Orcus invent+detach;
 
@@ -29,7 +29,7 @@ import {
     D_NODOOR, D_ISOPEN, D_LOCKED, D_TRAPPED, DUST,
     IS_ROOM, isok, ESHK,
     HEALTHY_TIN, ROTTEN_TIN, HOMEMADE_TIN, SPINACH_TIN,
-    NON_PM, ismnum,
+    NON_PM, ismnum, In_mines,
 } from './const.js';
 import { makemon, mkmonmoney, mongets, mkclass, neweshk } from './makemon.js';
 import { mksobj_at, mkobj_at, obj_extract_self } from './mkobj.js';
@@ -486,10 +486,17 @@ export function is_izchak(shkp, override_hallucination) {
     return shknm === 'Izchak';
 }
 
-/** C ref: shknam.c nameshk */
+/** C ref: shknam.c nameshk `:486–536` */
 function nameshk(shk, nlpIn) {
     const eshk = ESHK(shk) || neweshk(shk);
     let nlp = nlpIn;
+    // C `:495–500`: minetown lighting shk is always "+Izchak" (male),
+    // skipping the nseed/clash name game below (straight to strncpy).
+    if (nlpIn === shklight && In_mines(game.u?.uz) && (Is_special(game.u?.uz)?.flags?.town)) {
+        shk.female = 0;
+        eshk.shknam = '+Izchak';
+        return;
+    }
     const nseed = Math.trunc((Number(game.ubirthday) || 0) / 257);
     let nameWanted = (shk.m_id | 0) + ledger_no(game.u?.uz)
         + (nseed % 13) - (nseed % 5);

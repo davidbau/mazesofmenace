@@ -1474,7 +1474,7 @@ async function savebones(how, when, corpse) {
            a wrapping unless already carrying one */
         if (mtmp.data?.mlet === 'S_MUMMY' && !m_carrying(mtmp, MUMMY_WRAPPING))
             mongets(mtmp, MUMMY_WRAPPING);
-        m_dowear(mtmp, true);
+        await m_dowear(mtmp, true);
         // C savebones mtmp tail — hero-level HP, hero gender, asleep
         // (ebones data stays a named omission, as in the ghost arm).
         mtmp.m_lev = (u.ulevel | 0) || 1;

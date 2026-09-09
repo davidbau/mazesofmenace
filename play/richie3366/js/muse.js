@@ -1461,7 +1461,7 @@ async function mon_consume_unstone(mon, obj, by_you, stoning) {
         if ((mon.mhp | 0) < 1) {
             await pline_mon(mon, `${Monnam(mon)} dies!`);
             if (by_you) await xkilled(mon, XKILL_NOMSG | XKILL_NOCONDUCT);
-            else mondead(mon);
+            else await mondead(mon);
             return;
         }
     }

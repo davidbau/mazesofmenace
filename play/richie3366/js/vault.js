@@ -12,8 +12,8 @@
 // xy_set_wall_state; mimic_obj_name; full Deaf/Blind message variants that
 // need noit_mhis; gd_move goldincorridor (witness consume/destroy live);
 // gd_mv_monaway; mpickgold; dig del_engr_at; confused-disappears arms;
-// Well begone verbalize; clear_fcorr: Punished/uball, yelp/rloc/m_into_limbo,
-// corridor-disappears / encased-in-rock pline.
+// Well begone verbalize; clear_fcorr: Punished/uball (occupant yelp/rloc/
+// m_into_limbo live); corridor-disappears / encased-in-rock pline.
 
 import { game } from './gstate.js';
 import { rn2 } from './rng.js';
@@ -32,6 +32,8 @@ import { cansee, couldsee, recalc_block_point } from './vision.js';
 import { COIN_CLASS } from './objects.js';
 import { del_engr_at, make_grave } from './engrave.js';
 import { t_at, deltrap } from './trap.js';
+import { rloc } from './teleport.js';
+import { yelp } from './sounds.js';
 import { place_object, stackobj, obj_extract_self } from './mkobj.js';
 import {
     VAULT, VAULT_GUARD_TIME, ROOMOFFSET, COLNO, ROWNO,
@@ -41,7 +43,7 @@ import {
     M_AP_OBJECT, M_AP_TYPE, EGD, u_at,
     A_LAWFUL, Has_contents, IS_ROOM, ACCESSIBLE, isok,
     GD_EATGOLD, GD_DESTROYGOLD,
-    RLOC_NOMSG, FEMALE, MALE,
+    RLOC_NOMSG, RLOC_MSG, FEMALE, MALE,
 } from './const.js';
 import { monsterNames, mons, pmnames } from './monsters.js';
 import { m_canseeu, mhe } from './mondata.js';
@@ -164,9 +166,12 @@ function blackout(x, y) {
 
 /**
  * C ref: vault.c clear_fcorr — restore fakecorr cells to saved typ/flags.
- * @returns {boolean} true if fully cleared
+ * Non-guard occupant: tame yelp, rloc, else limbo (mon.js edge dynamic —
+ * vault→mon static is a CHECK verdict), then keep clearing in C order.
+ * Punished/uball arm stays deferred (above).
+ * @returns {Promise<boolean>} true if fully cleared
  */
-function clear_fcorr(grd, forceshow) {
+export async function clear_fcorr(grd, forceshow) {
     const egrd = EGD(grd);
     if (!egrd) return true;
     const u = game.u;
@@ -200,10 +205,14 @@ function clear_fcorr(grd, forceshow) {
                 break;
             }
         }
+        /* C vault.c:80–87 — move the occupant aside, then keep clearing. */
         if (monThere) {
             if (monThere.isgd) return false;
-            // yelp / rloc / m_into_limbo deferred — cannot clear while occupied
-            return false;
+            if (monThere.mtame) await yelp(monThere);
+            if (!(await rloc(monThere, RLOC_MSG))) {
+                const { m_into_limbo } = await import('./mon.js');
+                await m_into_limbo(monThere);
+            }
         }
 
         const lev = game.level?.at?.(fcx, fcy);
@@ -234,8 +243,8 @@ function clear_fcorr(grd, forceshow) {
 /**
  * C ref: vault.c restfakecorr — clear temporary corridor; mongone guard.
  */
-function restfakecorr(grd) {
-    if (clear_fcorr(grd, false)) {
+async function restfakecorr(grd) {
+    if (await clear_fcorr(grd, false)) {
         grd.isgd = 0;
         mongone_guard(grd);
     }
@@ -245,7 +254,7 @@ function restfakecorr(grd) {
  * C ref: vault.c parkguard — park escort at <0,0> until corridor clears.
  * Named omission: polearm.hitmon clear; level.monsters[][] grid.
  */
-function parkguard(grd) {
+export function parkguard(grd) {
     if (!grd) return;
     const ox = grd.mx | 0;
     const oy = grd.my | 0;
@@ -304,7 +313,7 @@ async function gd_move_cleanup(grd, semi_dead, disappear_msg_seen) {
     const see_guard = canspotmon(grd);
     parkguard(grd);
     wallify_vault(grd);
-    restfakecorr(grd);
+    await restfakecorr(grd);
     const u = game.u;
     if (!semi_dead && u
         && (in_fcorridor(grd, u.ux, u.uy) || cansee(x, y))) {
@@ -752,7 +761,7 @@ function um_dist(x, y, n) {
  * Named omissions: goldincorridor; wallify body;
  * other verbalize arms; gd_mv_monaway; mpickgold; stuck
  * find_guard_dest retry / confused disappears; dig del_engr_at;
- * clear_fcorr Punished/rloc/yelp arms; corridor-disappears /
+ * clear_fcorr Punished arm (occupant yelp/rloc/limbo live); corridor-disappears /
  * encased pline; sticks() on ustuck (treat ustuck as blocking Move
  * along! like !sticks); Well begone verbalize; SetVoice on witness.
  *
@@ -829,7 +838,7 @@ export async function gd_move(grd) {
             && !u.uswallow && !u.ustuck) {
             await verbalize('Move along!');
         }
-        restfakecorr(grd);
+        await restfakecorr(grd);
         return 0;
     }
 

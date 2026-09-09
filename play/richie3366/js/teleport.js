@@ -1782,8 +1782,8 @@ export async function tele() {
 
 /**
  * C ref: teleport.c u_teleport_mon — hero teleports a monster.
- * Envelope: stasis; temple priest resist; rloc / rider-control enexto.
- * Named omit: engulfing_u unstuck + limbo; shop bill polish.
+ * Envelope: stasis; temple priest resist; engulfing release + rloc/limbo;
+ * rloc / rider-control enexto. Named omit: shop bill polish.
  * @returns {Promise<boolean>} true if relocated
  */
 export async function u_teleport_mon(mtmp, give_feedback) {
@@ -1803,8 +1803,20 @@ export async function u_teleport_mon(mtmp, give_feedback) {
         }
         return false;
     }
-    // engulfing_u + noteleport limbo deferred
-    void engulfing_u;
+    /* C teleport.c:2280–2285 — swallower on a noteleport level: release,
+     * rloc, else limbo. mon.js edge is dynamic (cycle CHECK verdict). */
+    if (engulfing_u(mtmp) && noteleport_level(mtmp)) {
+        if (give_feedback) {
+            await pline(`You are no longer inside ${mon_nam(mtmp)}!`);
+        }
+        const { unstuck } = await import('./mhitu.js');
+        await unstuck(mtmp);
+        if (!(await rloc(mtmp, RLOC_MSG))) {
+            const { m_into_limbo } = await import('./mon.js');
+            await m_into_limbo(mtmp);
+        }
+        return true;
+    }
     if ((is_rider(mtmp.data) || control_teleport(mtmp.data))
         && rn2(13)) {
         const cc = { x: 0, y: 0 };

@@ -1077,9 +1077,11 @@ export async function zap_dig() {
     }
 
     if (u.dz) {
-        /* C dig.c:1583–1612 — up or down. Fatal losehp is noreturn
-         * in C (done(DIED)), so finish + return like the zap.c:3311
-         * striking twin in js/zap.js (same killer, same dice). */
+        /* C dig.c:1583–1612 — up or down. done(DIED) returns after
+         * lifesave (end.c savelife), so the ceiling rock still lands
+         * (mksobj_at below); return only on true death. Same resume
+         * contract as the zap.c:3311 striking twin in js/zap.js
+         * (same killer, same dice). */
         if (!Is_airlevel(u.uz) && !Is_waterlevel(u.uz)
             && !(u.uinwater | 0)) {
             const ux = u.ux | 0;
@@ -1101,7 +1103,11 @@ export async function zap_dig() {
                     || game.program_state?.gameover) {
                     const { finish_losehp_done } = await import('./end.js');
                     await finish_losehp_done();
-                    return;
+                    // C dig.c:1597-1598 — done() returns after lifesave
+                    // (wizard `Die?` decline / Lifesaved amulet via
+                    // savelife, end.c), so zap_dig resumes and the
+                    // ceiling rock still lands. Return only on true death.
+                    if (game.program_state?.gameover) return;
                 }
                 const otmp = mksobj_at(ROCK, ux, uy, false, false);
                 if (otmp) {

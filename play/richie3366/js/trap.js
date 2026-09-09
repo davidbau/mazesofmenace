@@ -33,7 +33,7 @@ import {
     obj_glyph, flush_topl_more, feel_newsym, canspotmon, map_invisible,
     set_msg_xy, Hallucination, Norep,
 } from './display.js';
-import { doname, an, the, The, xname, yname, cxname, makeplural, vtense, ansimpleoname, safe_qbuf, gloves_simple_name } from './objnam.js';
+import { doname, an, the, The, xname, yname, cxname, makeplural, vtense, ansimpleoname, safe_qbuf, gloves_simple_name, aobjnam, Yobjnam2 } from './objnam.js';
 import {
     Amonnam, Monnam, mon_nam, x_monnam, y_monnam, noit_Monnam, pmname,
     christen_monst, rndmonnam, hliquid, rndcolor, mon_pmname, YMonnam,
@@ -92,7 +92,7 @@ import {
     CORPSTAT_FEMALE, MM_NOCOUNTBIRTH, MM_NOMSG, MM_ADJACENTOK, MM_MALE,
     MM_FEMALE, NO_MINVENT, M_AP_TYPE, ismnum, ANIMATE_NORMAL,
     ANIMATE_SHATTER, ANIMATE_SPELL, AS_OK, AS_NO_MON, AS_MON_IS_UNIQUE,
-    OBJ_INVENT, has_oname, has_omonst, ONAME, OMONST,
+    OBJ_INVENT, OBJ_MINVENT, has_oname, has_omonst, ONAME, OMONST,
     ROLL, LAUNCH_KNOWN, LAUNCH_UNSEEN, u_at, MIGR_RANDOM,
     DISP_FLASH, DISP_END,
     MAY_DESTROY, MAY_HIT, MAY_FRACTURE, VIS_EFFECTS,
@@ -1128,7 +1128,7 @@ async function corpse_chance(mon) {
 
 // C ref: mon.c mondied → mondead + maybe make_corpse
 async function mondied(mdef) {
-    mondead(mdef);
+    await mondead(mdef);
     if ((mdef.mhp | 0) > 0) return; /* lifesaved */
     if (await corpse_chance(mdef)) await make_corpse(mdef);
 }
@@ -3935,6 +3935,84 @@ export async function erode_obj(otmp, ostr, type, ef_flags) {
         return ER_DESTROYED;
     }
     return ER_NOTHING;
+}
+
+/**
+ * C ref: trap.c grease_protect `:360–386` — grease ablation for one object.
+ * C branch order: ostr message arm (hero Your / visible-monster pline) else
+ * ostr-less Yobjnam2 arm for hero/visible victims only; then rn2(2) wear-off
+ * (clears greased, carried `The grease dissolves.` + update_inventory).
+ * Async only because pline awaits; return value kept boolean per C (callers
+ * in acid_damage ignore it, same as C).
+ *
+ * @returns {Promise<boolean>} TRUE when the grease layer wore off
+ */
+export async function grease_protect(otmp, ostr, victim) {
+    const txt = 'protected by the layer of grease!';
+    const vismon = !!(victim && !is_youmonst(victim) && canseemon(victim));
+    if (ostr) {
+        if (is_youmonst(victim)) {
+            await pline(`Your ${ostr} ${vtense(ostr, 'are')} ${txt}`);
+        } else if (vismon) {
+            await pline(`${Monnam(victim)}'s ${ostr} ${vtense(ostr, 'are')} ${txt}`);
+        }
+    } else if (is_youmonst(victim) || vismon) {
+        await pline(`${Yobjnam2(otmp, 'are')} ${txt}`);
+    }
+    if (!rn2(2)) {
+        otmp.greased = 0;
+        if (carried_obj(otmp)) {
+            await pline('The grease dissolves.');
+            update_inventory();
+        }
+        return true;
+    }
+    return false;
+}
+
+/**
+ * C ref: trap.c acid_damage `:4618–4654` — acid erosion of one object.
+ * C branch/short-circuit order: Null return; victim is hero when carried
+ * else the monster carrying it (OBJ_MINVENT ocarry) else Null; visible-mon
+ * gate; hero inventory_resistance_check(AD_ACID) early return; greased →
+ * grease_protect body; scroll (not blank) → fade message (blank paper and,
+ * under MAIL_STRUCTURES, mail give none) then blank to SCR_BLANK_PAPER with
+ * spe/dknown cleared; else erode_obj ERODE_CORRODE EF_GREASE|EF_VERBOSE.
+ * Named omissions: inventory_resistance_check AD_ACID (same class as the
+ * AD_FIRE/AD_ACID deferrals in erode_obj — C draws rn2(100) only when an
+ * extrinsic acid ward is worn); erode_armor picker lives in mhitm.js.
+ */
+export async function acid_damage(obj) {
+    if (!obj) return;
+    const youmonst = game.youmonst;
+    const victim = carried_obj(obj)
+        ? youmonst
+        : ((obj.where | 0) === OBJ_MINVENT ? obj.ocarry || null : null);
+    const vismon = !!(victim && !is_youmonst(victim) && canseemon(victim));
+    if (is_youmonst(victim)) {
+        // inventory_resistance_check(AD_ACID) deferred — see header
+    }
+    if (obj.greased) {
+        await grease_protect(obj, null, victim);
+    } else if (obj.oclass === SCROLL_CLASS && obj.otyp !== SCR_BLANK_PAPER) {
+        // C MAIL_STRUCTURES: SCR_MAIL never shows the fade message (eat.js
+        // D-1204 idiom); it is still blanked below.
+        const mail = objectNames.indexOf('SCR_MAIL');
+        if (obj.otyp !== SCR_BLANK_PAPER && !(mail >= 0 && obj.otyp === mail)) {
+            if (!Blind()) {
+                if (is_youmonst(victim)) {
+                    await pline(`Your ${aobjnam(obj, 'fade')}.`);
+                } else if (vismon) {
+                    await pline(`${s_suffix(Monnam(victim))} ${aobjnam(obj, 'fade')}.`);
+                }
+            }
+        }
+        obj.otyp = SCR_BLANK_PAPER;
+        obj.spe = 0;
+        obj.dknown = 0;
+    } else {
+        await erode_obj(obj, null, ERODE_CORRODE, EF_GREASE | EF_VERBOSE);
+    }
 }
 
 /**

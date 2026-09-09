@@ -3583,7 +3583,7 @@ export async function explmu(mtmp, mattk, ufound) {
                     'You are caught in a blast of kaleidoscopic light!',
                 );
             }
-            mondead(mtmp);
+            await mondead(mtmp);
             kill_agr = false;
             const chg = await make_hallucinated(
                 (u.HHallucination | 0) + tmp,
@@ -3603,7 +3603,7 @@ export async function explmu(mtmp, mattk, ufound) {
         await pline('You seem unaffected by it.');
         await ugolemeffects(ad, tmp);
     }
-    if (kill_agr && (mtmp.mhp | 0) >= 1) mondead(mtmp);
+    if (kill_agr && (mtmp.mhp | 0) >= 1) await mondead(mtmp);
     await wake_nearto(mtmp.mx | 0, mtmp.my | 0, 7 * 7);
     return (mtmp.mhp | 0) >= 1 ? M_ATTK_MISS : M_ATTK_AGR_DIED;
 }

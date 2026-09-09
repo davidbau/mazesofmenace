@@ -54,6 +54,7 @@ import { dosounds } from './sounds.js';
 import { invault } from './vault.js';
 import { u_wipe_engr } from './engrave.js';
 import { nh_timeout, do_storms } from './timeout.js';
+import { amulet, intervene } from './wizard.js';
 import { run_regions, any_visible_region } from './region.js';
 import { m_everyturn_effect } from './monmove.js';
 import { tele } from './teleport.js';
@@ -1062,7 +1063,11 @@ export async function moveloop_core() {
                 // C: invault() before wipe_engr / amulet
                 await invault();
 
-                // C allmain.c `:360–361` — after invault / amulet() (named)
+                // C ref: allmain.c:359 — once-per-turn amulet() when the
+                // hero holds the Amulet (wizard.c:61; uhave.amulet gate).
+                if (g.u?.uhave?.amulet) await amulet();
+
+                // C allmain.c `:360–361` — after invault / amulet()
                 // if (!rn2(40 + ACURR(A_DEX)*3)) u_wipe_engr(rnd(3)).
                 // Callee D-1051; dokick(2) D-1360; uhitm(3) D-1373;
                 // dothrow(2) D-1374. dig.c still named.
@@ -1070,7 +1075,17 @@ export async function moveloop_core() {
                     u_wipe_engr(rnd(3));
                 }
 
-                // C allmain.c:370–377 — after udemigod intervene (named)
+                // C ref: allmain.c:362–368 — udemigod doom clock after
+                // wipe_engr (wizard.c intervene:785; rn1(200,50) reschedule).
+                if (g.u?.uevent?.udemigod && !g.u?.uinvulnerable) {
+                    if (g.u.udg_cnt) g.u.udg_cnt--;
+                    if (!g.u.udg_cnt) {
+                        await intervene();
+                        g.u.udg_cnt = rn1(200, 50);
+                    }
+                }
+
+                // C allmain.c:370–377 — after udemigod intervene
                 // before multi<0. Water/air movebubbles else fumaroles.
                 // Callee D-1156; this is the once-per-turn twin of
                 // goto_level (D-1168).
