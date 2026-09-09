@@ -2137,7 +2137,7 @@ function Is_dragon_mail(obj) {
     return t >= GRAY_DRAGON_SCALE_MAIL && t <= YELLOW_DRAGON_SCALE_MAIL;
 }
 
-function Is_dragon_armor(obj) {
+export function Is_dragon_armor(obj) {
     if (!obj) return false;
     const t = obj.otyp | 0;
     return (t >= GRAY_DRAGON_SCALES && t <= YELLOW_DRAGON_SCALES)

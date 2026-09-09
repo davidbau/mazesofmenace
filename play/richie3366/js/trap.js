@@ -19,7 +19,7 @@ import { game } from './gstate.js';
 import { rn2, rnd, rn1, d, rnl, rn2_on_display_rng } from './rng.js';
 import { rank_of } from './roles.js';
 import {
-    mksobj, place_object, weight, stackobj, relobj_on_death,
+    mksobj, place_object, weight, stackobj, dealloc_obj, relobj_on_death,
     is_flammable, is_rustprone, is_rottable, is_corrodeable, is_crackable,
     erosion_matters, delobj, mkcorpstat, add_to_container, obj_extract_self,
     objects_at, splitobj, nxtobj, add_to_migration,
@@ -35,7 +35,7 @@ import {
 } from './display.js';
 import { doname, an, the, The, xname, yname, cxname, makeplural, vtense, ansimpleoname, safe_qbuf, gloves_simple_name } from './objnam.js';
 import {
-    Amonnam, Monnam, mon_nam, x_monnam, x_monnam_tame, y_monnam, noit_Monnam, pmname,
+    Amonnam, Monnam, mon_nam, x_monnam, y_monnam, noit_Monnam, pmname,
     christen_monst, rndmonnam, hliquid, rndcolor, mon_pmname, YMonnam,
 } from './do_name.js';
 import { dist2, distmin, m_at, wakeup, seemimic, m_carrying, LEVEL_SPECIFIC_NOCORPSE, bad_rock, setmangry } from './mon.js';
@@ -131,12 +131,12 @@ import { welded, uwepgone, uswapwepgone } from './wield.js';
 import { count_wsegs, worm_known } from './worm.js';
 import { level_difficulty, depth } from './hacklib.js';
 import { make_stunned, make_hallucinated } from './potion.js';
-import { monstseesu, monstunseesu } from './mondata.js';
+import { monstseesu, monstunseesu, defended, resists_magm } from './mondata.js';
 import { get_obj_location } from './timeout.js';
 import { costly_spot, shop_keeper, stolen_value, make_angry_shk, add_damage, sellobj } from './shk.js';
 import { unpunish } from './read.js';
 import { create_gas_cloud } from './region.js';
-import { polymon, body_part, mbodypart } from './polyself.js';
+import { polymon, body_part, mbodypart, float_vs_flight } from './polyself.js';
 import { done } from './end.js';
 import { make_blinded, dropx } from './do.js';
 import { mon_adjust_speed } from './muse.js';
@@ -154,6 +154,8 @@ import { fill_pit, bury_an_obj } from './dig.js';
 import { u_wield_art, attacks, bare_artifactname, has_magic_key } from './artifact.js';
 import { ART_STING } from './generated/artifacts_data.js';
 import { maybe_unhide_at } from './monmove.js';
+// C obj.h stone_missile lives in dothrow.js (canonical); same-file passes_rocks below (D-2195).
+import { stone_missile } from './dothrow.js';
 
 const AD_ELEC = 6;
 const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
@@ -499,7 +501,10 @@ const BOULDER = objectNames.indexOf('BOULDER');
 const LOADSTONE = objectNames.indexOf('LOADSTONE');
 const the_your = ['the', 'your'];
 const AD_PHYS = 0;
+const AD_RBRE = 242; /* monattk.h */
+const AD_MAGM = 1; /* monattk.h */
 const AD_FIRE = 2; /* monattk.h */
+const AD_SLEE = 4; /* monattk.h */
 const TOWER_OF_FLAME = 'tower of flame';
 const VISION_CLEARS = 'vision clears.'; /* C c_vision_clears */
 // C ref: hack.h xdir/ydir — 8 dirs W,NW,N,NE,E,SE,S,SW
@@ -542,9 +547,12 @@ export function mons_see_trap(ttmp) {
 /**
  * C ref: trap.c m_harmless_trap — whether mfndpos may ignore this trap.
  * Envelope: !Sokoban floor_trigger+check_in_air; STATUE/MAGIC/VIBRATING;
- * BEAR_TRAP/WEB size·amorph·whirly·unsolid·webmaker; SLP_GAS resists_sleep;
- * RUST except iron golem; FIRE resists_fire; PIT/HOLE clinger (!Sokoban).
- * Named omission: defended(AD_SLEE/AD_FIRE); anti-magic resist arm.
+ * BEAR_TRAP/WEB size·amorph·whirly·unsolid·webmaker;
+ * SLP_GAS resists_sleep||defended(AD_SLEE); RUST except iron golem;
+ * FIRE resists_fire||defended(AD_FIRE); ANTI_MAGIC resists_magm||
+ * defended(AD_MAGM); PIT/HOLE clinger (!Sokoban). Default returns FALSE;
+ * C's impossible() on unknown ttyp stays named (sync port keeps no
+ * impossible path, per D-1868 review).
  */
 export function m_harmless_trap(mtmp, ttmp) {
     if (!ttmp) return true;
@@ -573,14 +581,17 @@ export function m_harmless_trap(mtmp, ttmp) {
         }
         return false;
     case SLP_GAS_TRAP:
-        // defended(AD_SLEE) deferred
-        return !!resists_sleep(mtmp);
+        // C trap.c:1133–1136 resists_sleep || defended(AD_SLEE)
+        return !!(resists_sleep(mtmp) || defended(mtmp, AD_SLEE));
     case RUST_TRAP:
         // C: only iron golem is harmed
         return (mdat?.mndx ?? -1) !== PM_IRON_GOLEM;
     case FIRE_TRAP:
-        // defended(AD_FIRE) deferred
-        return !!resists_fire(mtmp);
+        // C trap.c:1141–1144 resists_fire || defended(AD_FIRE)
+        return !!(resists_fire(mtmp) || defended(mtmp, AD_FIRE));
+    case ANTI_MAGIC:
+        // C trap.c:1173–1176 resists_magm || defended(AD_MAGM)
+        return !!(resists_magm(mtmp) || defended(mtmp, AD_MAGM));
     case PIT:
     case SPIKED_PIT:
     case HOLE:
@@ -1178,7 +1189,7 @@ export function wearing_iron_shoes(mtmp) {
     return (game.objects?.[armf.otyp]?.oc_material | 0) === MAT_IRON;
 }
 
-// C ref: trap.c thitm() — monster hit by trap missile / pit fall damage
+// C ref: trap.c:6711–6773 thitm() — monster hit by trap missile / pit fall damage
 async function thitm(tlev, mon, obj, d_override, nocorpse) {
     // C mon_leaving_level keeps stale mx/my after death for place_object
     const place_x = mon?.mx;
@@ -1194,43 +1205,44 @@ async function thitm(tlev, mon, obj, d_override, nocorpse) {
 
     let trapkilled = false;
     if (!strike) {
-        // C: pline before place_object — triggers --More-- after prior cursemsg
         if (obj && cansee(mon.mx, mon.my)) {
-            await pline(`${Monnam(mon)} is almost hit by ${doname(obj)}!`);
+            await pline_mon(mon, `${Monnam(mon)} is almost hit by ${doname(obj)}!`);
         }
     } else {
-        // C: stone_missile && passes_rocks → harmless (strike=0, keep missile)
-        // Named omission: stone_missile/harmless arm — not dart/arrow path.
+        // C obj.h stone_missile + mondata.h passes_rocks (D-2195)
+        const harmless = !!(obj && stone_missile(obj) && passes_rocks(mon.data));
         if (obj && cansee(mon.mx, mon.my)) {
-            await pline(`${Monnam(mon)} is hit by ${doname(obj)}!`);
+            await pline_mon(mon, `${Monnam(mon)} is hit by ${doname(obj)}${harmless ? ' but is not harmed.' : '!'}`);
         }
         let dam = 1;
         if (d_override) {
             dam = d_override;
         } else if (obj) {
-            // C ref: trap.c thitm — dam = dmgval(obj, mon); if (dam < 1) dam = 1
+            // C trap.c thitm — dam = dmgval(obj, mon); if (dam < 1) dam = 1
             dam = dmgval(obj, mon);
             if (dam < 1) dam = 1;
         }
-        mon.mhp = (mon.mhp || 0) - dam;
-        if (mon.mhp <= 0) {
-            const xx = mon.mx, yy = mon.my;
-            await monkilled(mon, '', nocorpse ? -AD_PHYS /* -AD_RBRE */ : AD_PHYS);
-            if ((mon.mhp | 0) <= 0) {
-                newsym(xx, yy);
-                trapkilled = true;
+        if (!harmless) {
+            mon.mhp = (mon.mhp || 0) - dam;
+            if (mon.mhp <= 0) {
+                const xx = mon.mx, yy = mon.my;
+                await monkilled(mon, '', nocorpse ? -AD_RBRE : AD_PHYS);
+                if ((mon.mhp | 0) <= 0) { // C DEADMONSTER(monst.h:214)
+                    newsym(xx, yy);
+                    trapkilled = true;
+                }
             }
-            if (obj) { /* dealloc_obj stub */ }
-            // place_object only when !strike || d_override — see below
-        } else if (obj) {
-            /* dealloc_obj stub — missile used up on hit */
+        } else {
+            strike = 0; /* harmless; don't use up the missile */
         }
     }
 
-    // C: place missile on miss (or d_override path); uses stale mon mx/my
+    // C: place missile on miss (or d_override path); else missile is used up
     if (obj && (!strike || d_override)) {
         place_object(obj, place_x, place_y);
         stackobj(obj);
+    } else if (obj) {
+        dealloc_obj(obj);
     }
     return trapkilled;
 }
@@ -2545,8 +2557,8 @@ function s_suffix(s) {
 }
 
 /**
- * C ref: trap.c set_utrap — set hero trap timer/type; botl when armed↔clear.
- * Named omission: float_vs_flight Lev/Fly block.
+ * C ref: trap.c:1029-1042 set_utrap — botl when armed↔clear (!u.utrap ^ !tim),
+ * then utrap/utraptype store, then float_vs_flight() (maybe block Lev/Fly).
  */
 export function set_utrap(tim, typ) {
     const u = game.u || (game.u = {});
@@ -2558,6 +2570,7 @@ export function set_utrap(tim, typ) {
     }
     u.utrap = tim | 0;
     u.utraptype = now ? (typ | 0) : TT_NONE;
+    float_vs_flight(); /* maybe block Lev and/or Fly */
 }
 
 /**
@@ -3133,7 +3146,8 @@ export async function selftouch(arg) {
  * Envelope: hero d(2,4) then Lev/Fly skip; feeltrap; amorph/whirly/unsolid
  * /small harmlessly; set_utrap(rn1(4,4)); steed thitm or wounded-legs+losehp;
  * exercise DEX. Monster: size/amorph/air catch + thitm(d(2,4)).
- * Named omissions: float_vs_flight; Yname2 iron-shoe msg;
+ * Lev/Fly toggle via set_utrap→float_vs_flight (trap.c:1041).
+ * Named omissions: Yname2 iron-shoe msg;
  * Soundeffect roar; which_armor wearing_iron_shoes body.
  */
 async function trapeffect_bear_trap(mtmp, trap, trflags) {
@@ -3433,8 +3447,8 @@ async function trapeffect_rust_trap(mtmp, trap, _trflags) {
  * Envelope: hero feeltrap + place ROCK at u.ux/uy + losehp; monster
  * once+tseen empty rn2(15)/deltrap else t_missile+thitm(d(2,6)).
  * Named omissions: vault/shop ceiling labels; helm_simple_name "hat";
- * Yname2 soft-helm verbose; empty-door pline_mon text; stone_missile
- * harmless arm in thitm; full body_part poly table (HEAD→"head").
+ * Yname2 soft-helm verbose; stone_missile harmless arm in thitm;
+ * full body_part poly table (HEAD→"head").
  */
 async function trapeffect_rocktrap(mtmp, trap, _trflags) {
     if (is_youmonst(mtmp)) {
@@ -3486,7 +3500,11 @@ async function trapeffect_rocktrap(mtmp, trap, _trflags) {
     // Monster branch
     const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
     if (trap.once && trap.tseen && !rn2(15)) {
-        // C: pline_mon when in_sight && cansee — display only; omit body
+        // C trap.c:1380–1388 — a seen empty rock trap announces itself
+        if (in_sight && cansee(mtmp.mx, mtmp.my)) {
+            await pline_mon(mtmp,
+                `A trap door above ${mon_nam(mtmp)} opens, but nothing falls out!`);
+        }
         deltrap(trap);
         newsym(mtmp.mx, mtmp.my);
         return Trap_Is_Gone;
@@ -3500,22 +3518,55 @@ async function trapeffect_rocktrap(mtmp, trap, _trflags) {
 }
 
 /**
- * C ref: trap.c trapeffect_sqky_board — monster branch (hero dotrap deferred).
- * Envelope: in-sight pline+seetrap; out-of-sight You_hear nearby|distance;
- * m_in_air skip; wake_nearto(40). Soundeffect no-op (no RNG).
- * Deaf+mindless silent cringe and hero Levitation/Flying named omissions.
+ * C ref: trap.c trapeffect_sqky_board `:1403–1476` — hero + monster arms.
+ * Hero: Levitation/Flying (!forcetrap) notices the board when !Blind;
+ * else seetrap + squeak/vibrate pline + wake_nearby. Soundeffect no-op
+ * (no audio backend; no RNG). Monster: in-sight pline+seetrap;
+ * out-of-sight You_hear nearby|distance; m_in_air skip; wake_nearto(40).
+ * C trap.c:1445–1457 — Deaf hero hears nothing; a Deaf witness sees the
+ * squeak pline, else only a non-mindless witness sees the cringe pline
+ * (Deaf+mindless: silent).
  */
-async function trapeffect_sqky_board(mtmp, trap, _trflags) {
+async function trapeffect_sqky_board(mtmp, trap, trflags) {
+    // C trap.c:1413–1415
+    const forcetrap = ((trflags & FORCETRAP) !== 0
+        || (trflags & FAILEDUNTRAP) !== 0
+        || (hero_Flying() && (trflags & VIASITTING) !== 0));
+    if (is_youmonst(mtmp)) {
+        // C trap.c:1417–1443 — hero arm
+        if ((hero_Levitation() || hero_Flying()) && !forcetrap) {
+            if (!Blind()) {
+                seetrap(trap);
+                if (Hallucination()) await pline('You notice a crease in the linoleum.');
+                else await pline('You notice a loose board below you.');
+            }
+        } else {
+            seetrap(trap);
+            // IndexOk/Soundeffect: no-op (no audio backend; draws no RNG).
+            if (!Deaf()) {
+                await pline(
+                    `A board beneath you squeaks ${trapnote(trap, false)} loudly.`,
+                );
+            } else {
+                await pline('A board beneath you vibrates.');
+            }
+            wake_nearby(false);
+        }
+        return Trap_Effect_Finished;
+    }
     const in_sight = canseemon(mtmp) || (mtmp === game.u?.usteed);
     if (m_in_air(mtmp)) return Trap_Effect_Finished;
 
     if (in_sight) {
         if (!game.u?.Deaf) {
-            await pline(
-                `A board beneath ${x_monnam_tame(mtmp)} squeaks ${trapnote(trap, false)} loudly.`,
+            // C trap.c:1450 — mon_nam (ARTICLE_THE), not ARTICLE_YOUR:
+            // even a tame pet prints "the kitten", never "your kitten".
+            await pline_mon(mtmp,
+                `A board beneath ${mon_nam(mtmp)} squeaks ${trapnote(trap, false)} loudly.`,
             );
             seetrap(trap);
-        } else {
+        } else if (!mindless(mtmp.data)) {
+            // C trap.c:1453 — mindless witnesses don't react either
             await pline(
                 `${Monnam(mtmp)} stops momentarily and appears to cringe.`,
             );
@@ -3954,9 +4005,10 @@ export async function burnarmor(victim) {
             break;
         }
         case 3: {
+            // C trap.c:143-146 passes literal "gloves", never gloves_simple_name
             const item = hitting_u ? u.uarmg : which_armor(victim, W_ARMG);
             if ((await erode_obj(
-                item, gloves_simple_name(item), ERODE_BURN, EF_GREASE,
+                item, 'gloves', ERODE_BURN, EF_GREASE,
             )) === ER_NOTHING) continue;
             break;
         }

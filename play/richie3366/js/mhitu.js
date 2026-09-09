@@ -4,7 +4,7 @@
 //         uhitm.c mhitm_ad_phys (mhitu bare / weapon subset).
 
 import { game } from './gstate.js';
-import { monnear, mnexto, mtrapped_in_pit, wake_nearto, m_at, mongone } from './mon.js';
+import { monnear, mnexto, mtrapped_in_pit, wake_nearto, m_at, mongone, um_dist } from './mon.js';
 import {
     Is_rogue_level, NEED_WEAPON, NEED_HTH_WEAPON, NATTK,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
@@ -1681,7 +1681,9 @@ export async function unstuck(mtmp) {
 }
 
 /**
- * C ref: mhitu.c expels — unstuck + mnexto; spoteffects / um_dist deferred.
+ * C ref: mhitu.c expels :263-306 — disp.botl, regurgitate/unfold/expel
+ * message arms, unstuck, mnexto(RLOC_NOMSG), newsym, um_dist land-hard
+ * pline, spoteffects(TRUE) (trap + autopickup → look_here feel when Blind).
  */
 export async function expels(mtmp, mdat, message) {
     if (!game.flags) game.flags = {};
@@ -1707,6 +1709,15 @@ export async function expels(mtmp, mdat, message) {
     // C: mnexto(mtmp, RLOC_NOMSG) — expel must not STRAT_APPEARMSG
     await mnexto(mtmp, RLOC_NOMSG);
     newsym(game.u.ux, game.u.uy);
+    /* C mhitu.c:302-304 — the monster may fail to land next to the hero. */
+    if (um_dist(mtmp.mx, mtmp.my, 1)) {
+        await pline('Brrooaa...  You land hard at some distance.');
+    }
+    /* C mhitu.c:305 — expulsion ends on the new square: trap +
+     * autopickup (Blind hero feels the floor here via look_here).
+     * Dynamic import: pickup.js already imports this module (mdamageu). */
+    const { spoteffects } = await import('./pickup.js');
+    await spoteffects(true);
 }
 
 /**

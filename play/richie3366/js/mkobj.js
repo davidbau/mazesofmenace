@@ -47,6 +47,7 @@ import {
     G_NOCORPSE, NON_PM as MON_NON_PM,
 } from './monsters.js';
 import { PM_SAMURAI } from './generated/monsters_data.js';
+import { update_inventory } from './invent.js';
 import { distant_name, doname, cxname, The, vtense, corpse_xname } from './objnam.js';
 import {
     ROT_AGE, TAINT_AGE, TROLL_REVIVE_CHANCE,
@@ -523,6 +524,17 @@ export function bless(otmp) {
 export function unbless(otmp) {
     if (!otmp) return;
     otmp.blessed = false;
+}
+
+/**
+ * C ref: mkobj.c set_bknown — set bless/curse-known flag; update_inventory
+ * only when the flag changed, the obj is in hero inventory, and moves > 1.
+ */
+export function set_bknown(obj, onoff) {
+    const val = (onoff | 0) ? 1 : 0;
+    if (!obj || (obj.bknown | 0) === val) return;
+    obj.bknown = val;
+    if (obj.where === OBJ_INVENT && (game.moves | 0) > 1) update_inventory();
 }
 
 /**
@@ -1957,7 +1969,14 @@ export function mergable(otmp, obj) {
     }
     // C: dknown must match; known may differ and is reconciled in merged()
     if (!!obj.dknown !== !!otmp.dknown) return false;
-    if ((obj.owornmask | 0) || (otmp.owornmask | 0)) return false;
+    // C invent.c mergable `:4379–4499` (whole body) has NO owornmask check:
+    // floor pickups merge into quivered/wielded stacks, and addinv_core0
+    // tries the quiver first (`:1098–1106`). Reject only a worn combine
+    // stack (`obj`): absorbing one needs C merged()'s setworn/setnotworn
+    // slot fixup (`:877–913`, #adjust wielded darts) with no JS port yet
+    // (map: turns wield `finish_splitting`). An unworn `obj` into a worn
+    // `otmp` needs no fixup on either side (fixup fires only on obj worn).
+    if ((obj.owornmask | 0)) return false;
     return true;
 }
 

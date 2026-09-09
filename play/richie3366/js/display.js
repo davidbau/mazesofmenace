@@ -5358,6 +5358,14 @@ export async function docrt() {
     if (game.program_state.in_docrt) return;
     game.program_state.in_docrt = true;
     try {
+        // C display.c cls — display_nhwindow(WIN_MESSAGE) flushes pending
+        // messages before clear_nhwindow(WIN_MAP). JS pline defers a
+        // concatenated --More-- past the pline, so resolve it here, before
+        // vision_recalc(2) swaps viz out and cls clears the map: the C wait
+        // sees make_hallucinated's see_* paint (potion.c:424-426), not the
+        // mid-redraw floor. No-op when nothing pends; burns no RNG
+        // (scen-intrinsic-Caveman-92052 step 17).
+        await flush_topl_more();
         // C docrt_flags: if uswallow → swallowed(1); skip map vision path
         if (game.u.uswallow) {
             await cls();
@@ -5614,10 +5622,17 @@ export function describe_level(dflgs = 1) {
     return buf;
 }
 
-// C ref: botl.c do_statusline2 `:100–250` — dloc/hlth/expr/tmmv pieces then
-// the cond list in C order `:170–206` (Stone/Slime/Strngl/Sick before
-// hunger, then hunger, enc, Blind/Deaf/Stun/Conf/Hallu/Lev/Fly/Ride),
-// then the COLNO reorder + mungspaces `:212–250`.
+// C ref: botl.c do_statusline2 `:100–250` — dloc/hlth/expr/tmmv pieces,
+// then hunger + enc + conditions. The live tty order is the FIELD path,
+// not the `:170–206` append order: bot() takes bot_via_windowport()
+// whenever VIA_WINDOWPORT() (botl.h:213; windows.c forces
+// WC2_FLUSH_STATUS) pushing BL_HUNGER, BL_CAP, BL_CONDITION (windows.c
+// fieldorder), and wintty.c `:5073–5104` draws BL_CONDITION words walking
+// cond_idx[] — the conditions[] ranking table (`:781–813`) sorted by
+// cond_cmp (`:1332–1342`: rank asc, useroption-alpha tiebreak; sorted at
+// options init, options.c:5002): Strngl(4); FoodPois/Slime/Stone/TermIll
+// (6, alpha); Blind/Conf/Deaf/Fly/Hallu/Lev/Ride/Stun (10, alpha).
+// Then the COLNO reorder + mungspaces `:212–250`.
 // Named omissions: flags.showvers/status_version (`:208–211`, vers="");
 // MAXCO panic (`:230–235`, unreachable — last-resort order + mungspaces);
 // C `%-2d` gold/AC pads (display-length only; the tty renders fit lines
@@ -5659,37 +5674,51 @@ function _statusLine2() {
         if (flags.showexp) expr += `/${u.uexp || 0}`;
     }
     const tmmv = flags.time ? `T:${game.moves || 1}` : '';
-    // C botl.c `:165–186` — fatal four first. JS keeps these flat
-    // (make_stoned/make_slimed/make_sick) or in uprops[].intrinsic
-    // (#wizintrinsic STRANGLED via incr_prop_timeout), so read both like
-    // timeout.js intr_bits; Strangled also covers the H/E flat mirrors.
+    // C botl.c `:165–186` + tty field path (see fn doc): each arm's
+    // predicate is unchanged (flats in make_stoned/make_slimed/make_sick
+    // or uprops[].intrinsic like timeout.js intr_bits; Strangled also
+    // covers the H/E flat mirrors); only emission order moves to the
+    // field order — BL_HUNGER, then BL_CAP, then rank-sorted
+    // BL_CONDITION. FoodPois and TermIll ride separate Sick gates so
+    // Stone/Slime sort between them.
     let cond = '';
-    if ((u.Stoned | 0) || (u.uprops?.[STONED]?.intrinsic | 0)) cond += ' Stone';
-    if ((u.Slimed | 0) || (u.uprops?.[SLIMED]?.intrinsic | 0)) cond += ' Slime';
-    if ((u.Strangled | 0) || (u.HStrangled | 0) || (u.EStrangled | 0)
-        || (u.uprops?.[STRANGLED]?.intrinsic | 0)
-        || (u.uprops?.[STRANGLED]?.extrinsic | 0)) cond += ' Strngl';
-    if ((u.Sick | 0) || (u.uprops?.[SICK]?.intrinsic | 0)) {
-        if ((u.usick_type | 0) & SICK_VOMITABLE) cond += ' FoodPois';
-        if ((u.usick_type | 0) & SICK_NONVOMITABLE) cond += ' TermIll';
-    }
-    // C do_statusline2 `:187–188` — hu_stat before enc_stat.
+    // C do_statusline2 `:187–188` + windows.c fieldorder — hu_stat, then
+    // enc_stat, both ahead of every condition word.
     const uhs = u.uhs ?? NOT_HUNGRY;
     if (uhs !== NOT_HUNGRY) {
         cond += ` ${HU_STAT[uhs] || ''}`;
     }
-    // C do_statusline2 `:189–206` — enc_stat then Blind…Ride.
     const cap = near_capacity();
     if (cap > UNENCUMBERED) {
         cond += ` ${ENC_STAT[cap] || ''}`;
     }
-    // C youprop.h Blind / Deaf / Stunned / Confusion.
+    // C rank-sorted BL_CONDITION: Strngl(4); FoodPois/Slime/Stone/TermIll
+    // (6, alpha); Blind/Conf/Deaf/Fly/Hallu/Lev/Ride/Stun (10, alpha).
+    if ((u.Strangled | 0) || (u.HStrangled | 0) || (u.EStrangled | 0)
+        || (u.uprops?.[STRANGLED]?.intrinsic | 0)
+        || (u.uprops?.[STRANGLED]?.extrinsic | 0)) cond += ' Strngl';
+    const sickActive = (u.Sick | 0) || (u.uprops?.[SICK]?.intrinsic | 0);
+    if (sickActive && ((u.usick_type | 0) & SICK_VOMITABLE)) cond += ' FoodPois';
+    if ((u.Slimed | 0) || (u.uprops?.[SLIMED]?.intrinsic | 0)) cond += ' Slime';
+    if ((u.Stoned | 0) || (u.uprops?.[STONED]?.intrinsic | 0)) cond += ' Stone';
+    if (sickActive && ((u.usick_type | 0) & SICK_NONVOMITABLE)) cond += ' TermIll';
+    // C youprop.h Blind / Confusion (rank 10, "blind" < "conf").
     if (hero_Blind()) cond += ' Blind';
+    if ((u.HConfusion | 0) || u.Confusion) cond += ' Conf';
+    // C youprop.h Deaf (rank 10, "conf" < "deaf").
     if ((u.HDeaf | 0) || (u.EDeaf | 0) || u.uroleplay?.deaf || u.Deaf) {
         cond += ' Deaf';
     }
-    if ((u.HStun | 0) || u.Stunned) cond += ' Stun';
-    if ((u.HConfusion | 0) || u.Confusion) cond += ' Conf';
+    // C youprop.h Flying — (H||E||steed is_flyer) && !B (rank 10, "deaf"
+    // < "fly" < "hallucinat").
+    if (u.Flying
+        || ((((u.HFlying | 0) || (u.EFlying | 0)
+            || (u.uprops?.[FLYING]?.intrinsic | 0)
+            || (u.uprops?.[FLYING]?.extrinsic | 0))
+            || !!(u.usteed && is_flyer(u.usteed.data)))
+            && !((u.BFlying | 0) || (u.uprops?.[FLYING]?.blocked | 0)))) {
+        cond += ' Fly';
+    }
     // C youprop.h Hallucination — HHallucination && !Halluc_resistance.
     if (Hallucination()) cond += ' Hallu';
     // C youprop.h Levitation — (H||E) && !B (plus the flat JS mirror).
@@ -5700,16 +5729,9 @@ function _statusLine2() {
             && !((u.BLevitation | 0) || (u.uprops?.[LEVITATION]?.blocked | 0)))) {
         cond += ' Lev';
     }
-    // C youprop.h Flying — (H||E||steed is_flyer) && !B.
-    if (u.Flying
-        || ((((u.HFlying | 0) || (u.EFlying | 0)
-            || (u.uprops?.[FLYING]?.intrinsic | 0)
-            || (u.uprops?.[FLYING]?.extrinsic | 0))
-            || !!(u.usteed && is_flyer(u.usteed.data)))
-            && !((u.BFlying | 0) || (u.uprops?.[FLYING]?.blocked | 0)))) {
-        cond += ' Fly';
-    }
     if (u.usteed) cond += ' Ride';
+    // C youprop.h Stunned (rank 10, last: "ride" < "stun").
+    if ((u.HStun | 0) || u.Stunned) cond += ' Stun';
     // C botl.c `:212–250` — fit keeps dloc hlth expr tmmv cond order;
     // overflow parks tmmv (then expr, then dloc) last for truncation.
     // vers is "" (showvers omit above); empty tmmv appends nothing (the

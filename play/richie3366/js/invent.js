@@ -5162,19 +5162,26 @@ export async function enlightenment(mode, final = 0) {
         name = String.fromCharCode(name.charCodeAt(0) - 32) + name.slice(1);
     }
     const female = !!(game.flags?.female);
+    // C insight.c:474-479 — when poly'd, role/rank/gender read the saved
+    // u.mfemale, not the current form gender (the Upolyd form arm :496-506,
+    // the were-form pmname and the form-line adj keep flags.female).
+    const innateFemale = Upolyd(u) ? !!u.mfemale : female;
     const hasFemaleName = !!game.urole?.name?.f;
-    const role = (female && game.urole?.name?.f)
+    // C insight.c:477-478 — role title follows innategend (saved gender
+    // when poly'd), same expression as the enlightenment title :392-397.
+    const role = (innateFemale && game.urole?.name?.f)
         ? game.urole.name.f
         : (game.urole?.name?.m || 'Adventurer');
-    // C insight.c enlightenment — rank_of(u.ulevel, Role_switch, innategend)
-    const rank = rank_of(u.ulevel | 0, game.urole?.mnum, female);
-    const gender = female ? 'female' : 'male';
+    // C insight.c background_enlightenment — rank_of(u.ulevel, Role_switch, innategend)
+    const rank = rank_of(u.ulevel | 0, game.urole?.mnum, innateFemale);
+    const gender = innateFemale ? 'female' : 'male';
     const atype = u.ualign?.type ?? A_NEUTRAL;
     const align = align_str(atype);
     const turns = game.moves | 0;
     const hand = (u.uhandedness === 1) ? 'left' : 'right';
     const allowGend = (game.urole?.allow ?? 0) & ROLE_GENDMASK;
-    const innategend = female ? 1 : 0;
+    // C insight.c:476 — innategend is the saved gender when poly'd.
+    const innategend = innateFemale ? 1 : 0;
     const initgend = game.flags?.initgend ? 1 : 0;
     const genderPart = (!hasFemaleName
         && (allowGend === (ROLE_MALE | ROLE_FEMALE) || innategend !== initgend))
@@ -5887,14 +5894,17 @@ export async function doattributes(enl_mode = null) {
         name = String.fromCharCode(name.charCodeAt(0) - 32) + name.slice(1);
     }
     const female = !!(game.flags?.female);
+    // C insight.c:474-479 — when poly'd, role/rank/gender read the saved
+    // u.mfemale, not the current form gender.
+    const innateFemale = Upolyd(u) ? !!u.mfemale : female;
     // C: insight.c — urole.name.f non-NULL (not same-string-as-m)
     const hasFemaleName = !!game.urole?.name?.f;
     // C: insight.c — role from name.f; rank via rank_of(u.ulevel, …)
-    const role = (female && game.urole?.name?.f)
+    const role = (innateFemale && game.urole?.name?.f)
         ? game.urole.name.f
         : (game.urole?.name?.m || 'Tourist');
-    const rank = rank_of(u.ulevel | 0, game.urole?.mnum, female);
-    const gender = female ? 'female' : 'male';
+    const rank = rank_of(u.ulevel | 0, game.urole?.mnum, innateFemale);
+    const gender = innateFemale ? 'female' : 'male';
     const atype = u.ualign?.type ?? A_NEUTRAL;
     const align = align_str(atype);
     const turns = game.moves | 0;
@@ -5903,7 +5913,8 @@ export async function doattributes(enl_mode = null) {
     // C ref: insight.c background_enlightenment — gender only when
     // !name.f AND (both genders allowed OR innategend != initgend)
     const allowGend = (game.urole?.allow ?? 0) & ROLE_GENDMASK;
-    const innategend = female ? 1 : 0;
+    // C insight.c:476 — innategend is the saved gender when poly'd.
+    const innategend = innateFemale ? 1 : 0;
     const initgend = game.flags?.initgend ? 1 : 0;
     const genderPart = (!hasFemaleName
         && (allowGend === (ROLE_MALE | ROLE_FEMALE) || innategend !== initgend))

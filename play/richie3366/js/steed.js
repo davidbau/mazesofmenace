@@ -22,7 +22,7 @@ import {
     DISMOUNT_BYCHOICE, DISMOUNT_THROWN, DISMOUNT_KNOCKED,
     DISMOUNT_FELL, DISMOUNT_POLY, DISMOUNT_ENGULFED, DISMOUNT_BONES,
     DISMOUNT_GENERIC,
-    BOTH_SIDES, KILLED_BY_AN, FLYING, LEVITATION,
+    BOTH_SIDES, KILLED_BY_AN, FLYING, LEVITATION, TIMEOUT,
     ACCESSIBLE, IS_DOOR, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN,
     N_DIRS, FROMOUTSIDE,
     DIR_ERR, xytodir, dirtocoord, DIR_LEFT, DIR_RIGHT,
@@ -43,7 +43,7 @@ import { m_at, cant_drown } from './mon.js';
 import { isok } from './hacklib.js';
 import { Monnam, mon_nam, monverbself, pmname, y_monnam, Hallucination, hliquid } from './do_name.js';
 import { losehp, maybe_half_phys, finish_maybe_wail, is_pool, is_lava } from './hack.js';
-import { set_wounded_legs, heal_legs, sokoban_guilt, mintrap } from './trap.js';
+import { set_wounded_legs, heal_legs, legs_in_no_shape, sokoban_guilt, mintrap } from './trap.js';
 import { finish_meating } from './dogmove.js';
 import { an } from './objnam.js';
 import { pmnames, PM_KNIGHT, PM_GRID_BUG, monsterNames } from './generated/monsters_data.js';
@@ -578,8 +578,8 @@ export function landing_spot(spot, reason, forceit) {
 /**
  * C ref: steed.c mount_steed
  * Branch envelope: sane adjacent tame saddled steed; Knight slip/success
- * via rnd(MAXULEV/2+5); losehp on slip. Deferred: Hallu/Wounded_legs yn,
- * Upolyd form, Blind/AP, long worm, Punished/ustuck/utrap, petrify,
+ * via rnd(MAXULEV/2+5); losehp on slip; Wounded_legs legs_in_no_shape +
+ * wizard-force heal_legs(0) gate. Deferred: Upolyd form, Blind/AP,
  * mtame-- non-Knight, Underwater, metallic armor, Levitation float,
  * polearm unweapon, full x_monnam killer string.
  */
@@ -594,9 +594,19 @@ export async function mount_steed(mtmp, force) {
         await pline('Maybe you should find a designated driver.');
         return false;
     }
-    if (u.Wounded_legs || u.HWounded_legs) {
-        // legs_in_no_shape + heal yn deferred → refuse
-        return false;
+    if (u.Wounded_legs || ((u.HWounded_legs | 0) & TIMEOUT)
+        || (u.EWounded_legs | 0)) {
+        // C ref: steed.c mount_steed `:228–238` — legs_in_no_shape("riding");
+        // wizard force may answer the heal yn and heal_legs(0) onward.
+        await legs_in_no_shape('riding', false);
+        const plural = (((u.HWounded_legs | 0) & BOTH_SIDES) === BOTH_SIDES)
+            ? 's' : '';
+        if (force && (game.flags?.debug || game.flags?.wizard)
+            && (await y_n(`Heal your leg${plural}?`)) === 'y') {
+            await heal_legs(0);
+        } else {
+            return false;
+        }
     }
     {
         const yd = you_data();

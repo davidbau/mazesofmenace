@@ -7,7 +7,7 @@ import { rn2, d } from './rng.js';
 import { depth } from './hacklib.js';
 import {
     pline, flush_topl_more, bot, You_feel, clear_nhwindow_message,
-    canspotmon, Hallucination,
+    canspotmon, Hallucination, curs_on_u, newsym,
 } from './display.js';
 import { yn_function, paranoid_query } from './getline.js';
 import { show_text_pages, show_nhw_menu_text } from './pager.js';
@@ -23,7 +23,7 @@ import {
     DIED, GENOCIDED, STONING, QUIT, ESCAPED, ASCENDED, STARVING, BURNING,
     CHOKING, NON_PM, LEAVESTATUE, DISSOLVED, TURNED_SLIME, G_GENOD,
     CORPSTAT_INIT, CORPSTAT_NONE,
-    OBJ_FREE, Upolyd, MM_NONAME, isok, u_at, ACCESSIBLE, MAGIC_PORTAL,
+    OBJ_FREE, Upolyd, MM_NONAME, NO_MINVENT, isok, u_at, ACCESSIBLE, MAGIC_PORTAL,
     ECMD_OK, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, PANICKED,
     DISCLOSE_YES_WITHOUT_PROMPT, DISCLOSE_NO_WITHOUT_PROMPT,
     DISCLOSE_SPECIAL_WITHOUT_PROMPT, DISCLOSE_PROMPT_DEFAULT_YES,
@@ -36,15 +36,16 @@ import {
     DELPHI, ROOMOFFSET, Is_oracle_level, Is_astralevel, In_endgame,
     In_quest, ismnum, has_ebones, has_mgivenname, MGIVENNAME,
     M_AP_TYPE, M_AP_MONSTER,
+    FIRE_RES, STONE_RES, INTRINSIC,
 } from './const.js';
 import { G_NOCORPSE, G_UNIQ, mons, likes_gold, likes_gems, likes_objs, likes_magic } from './monsters.js';
-import { m_at, mongone, dmonsfree, zombie_maker } from './mon.js';
+import { m_at, mongone, dmonsfree, zombie_maker, m_carrying } from './mon.js';
 import { can_carry, mon_offmap } from './monmove.js';
 import { enexto, rloc_to, single_level_branch } from './teleport.js';
-import { oname, christen_monst, free_oname, mon_nam, pmname, Ugender, Mgender, type_is_pname } from './do_name.js';
+import { oname, christen_monst, free_oname, mon_nam, Monnam, pmname, Ugender, Mgender, type_is_pname } from './do_name.js';
 import { mkcorpstat, curse, place_object, stackobj, mksobj, add_to_minv, add_to_container, weight } from './mkobj.js';
-import { make_grave } from './engrave.js';
-import { makemon, adj_lev } from './makemon.js';
+import { make_grave, sticks } from './engrave.js';
+import { makemon, adj_lev, mongets } from './makemon.js';
 import {
     write_bonesfile, bones_file_exists, delete_bonesfile,
     goodfruit, savebones_negate_fruit_ids,
@@ -68,7 +69,11 @@ import {
 import { show_overview } from './dungeon.js';
 import { A_CON, acurr, adjattrib } from './attrib.js';
 import { init_uhunger } from './eat.js';
+// C: end.c savelife release arms call mon.c unstuck + mhitu.c expels
+// (imports.mjs --can: SAFE, both hoisted function decls, call-time use only).
+import { unstuck, expels } from './mhitu.js';
 import { setworn } from './do_wear.js';
+import { m_dowear } from './worn.js';
 import { night, midnight, getnow, yyyymmddhhmmss } from './calendar.js';
 
 const CORPSE = objectNames.indexOf('CORPSE');
@@ -81,6 +86,7 @@ const PM_HUMAN = monsterNames.indexOf('PM_HUMAN');
 const STATUE = objectNames.indexOf('STATUE');
 const TIN = objectNames.indexOf('TIN');
 const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
+const MUMMY_WRAPPING = objectNames.indexOf('MUMMY_WRAPPING');
 const BAG_OF_TRICKS = objectNames.indexOf('BAG_OF_TRICKS');
 const LARGE_BOX = objectNames.indexOf('LARGE_BOX');
 const AMULET_OF_LIFE_SAVING = objectNames.indexOf('AMULET_OF_LIFE_SAVING');
@@ -1290,10 +1296,27 @@ function give_to_nearby_mon(otmp, x, y) {
 }
 
 /**
+ * C ref: mondata.c give_u_to_m_resistances — hero intrinsics to monster.
+ * FIRE_RES..STONE_RES with the INTRINSIC bit become MR bits via prop.h
+ * `res_to_mr` (`1 << (intr - 1)`); OR-accumulated into mintrinsics.
+ * RNG-free, like C.
+ */
+function give_u_to_m_resistances(mtmp) {
+    if (!mtmp) return;
+    const uprops = game.u?.uprops;
+    let bits = mtmp.mintrinsics | 0;
+    for (let intr = FIRE_RES; intr <= STONE_RES; intr++) {
+        if (((uprops?.[intr]?.intrinsic | 0) & INTRINSIC) !== 0)
+            bits |= 1 << (intr - 1);
+    }
+    mtmp.mintrinsics = bits;
+}
+
+/**
  * C ref: bones.c drop_upon_death `:259–303` — curse invent; mtmp /
  * cont / nearby-gate placement; cont owt refresh.
  * Named omissions: obj_no_longer_held (no JS equivalent); lamp
- * artifact_light/end_burn arm; mtmp add_to_minv arm (still places).
+ * artifact_light/end_burn arm.
  */
 function drop_upon_death(mtmp, cont, x, y) {
     const u = game.u || {};
@@ -1310,8 +1333,8 @@ function drop_upon_death(mtmp, cont, x, y) {
 
         if (rn2(5)) curse(otmp);
         if (mtmp) {
-            place_object(otmp, x, y);
-            stackobj(otmp);
+            // C `:290` — the risen monster takes the hero's inventory.
+            add_to_minv(mtmp, otmp);
         } else if (cont) {
             // C `:294–295` — into the statue, with no rn2(8) nearby gate
             void add_to_container(cont, otmp);
@@ -1387,8 +1410,7 @@ async function remove_mon_from_bones(mtmp) {
  * Named omissions: file compress; unleash_all/unpunish/dismount;
  * forget_engravings;
  * set_ghostly_objlist / resetobjs known-strip; map memory clear
- * (ux/uy zero); undead-arise mtmp arm (makemon + add_to_minv +
- * m_dowear); ebones; obj_attach_mid;
+ * (ux/uy zero); ebones; obj_attach_mid;
  * binary savelev (overview lists who/how, not when[]).
  */
 async function savebones(how, when, corpse) {
@@ -1430,9 +1452,36 @@ async function savebones(how, when, corpse) {
     savebones_negate_fruit_ids();
 
     const arise = u.ugrave_arise;
-    if (arise != null && arise !== NON_PM && arise >= 0) {
-        drop_upon_death(null, null, u.ux, u.uy);
-        return;
+    if (ismnum(arise)) {
+        // C bones.c:457–478 — the hero rises as an undead: create the
+        // monster first (makemon draws next_ident/newmonhp before the
+        // drop loop's rn2(5) curse draws), then drop the inventory into
+        // it, with no rn2(8) nearby-monster gate in that arm.
+        const prevMklev = game.in_mklev;
+        game.in_mklev = true; /* use <u.ux,u.uy> as-is */
+        let mtmp = makemon(mons(arise), u.ux | 0, u.uy | 0, NO_MINVENT);
+        game.in_mklev = prevMklev;
+        if (!mtmp) { /* arise-type might have been genocided */
+            drop_upon_death(null, null, u.ux, u.uy);
+            u.ugrave_arise = NON_PM; /* in case caller cares */
+            return;
+        }
+        give_u_to_m_resistances(mtmp);
+        mtmp = christen_monst(mtmp, game.plname || 'Player');
+        newsym(u.ux | 0, u.uy | 0);
+        drop_upon_death(mtmp, null, u.ux | 0, u.uy | 0);
+        /* 'mtmp' now has hero's inventory; if 'mtmp' is a mummy, give it
+           a wrapping unless already carrying one */
+        if (mtmp.data?.mlet === 'S_MUMMY' && !m_carrying(mtmp, MUMMY_WRAPPING))
+            mongets(mtmp, MUMMY_WRAPPING);
+        m_dowear(mtmp, true);
+        // C savebones mtmp tail — hero-level HP, hero gender, asleep
+        // (ebones data stays a named omission, as in the ghost arm).
+        mtmp.m_lev = (u.ulevel | 0) || 1;
+        mtmp.mhp = mtmp.mhpmax = u.uhpmax | 0;
+        mtmp.female = game.flags?.female ? 1 : 0;
+        mtmp.msleeping = 1;
+        void corpse;
     }
     // C bones.c:480–489 LEAVESTATUE arm — statue instead of corpse; the
     // drop loop containers inventory in the statue (no rn2(8) gate), then
@@ -1541,7 +1590,7 @@ export async function done2() {
 /**
  * C ref: end.c savelife — restore viable state after wizard/discover
  * decline-to-die (or Lifesaved). Named omissions: make_sick TIMEOUT==1;
- * endmultishot; curs_on_u; uswallow expels / ustuck release; livelog.
+ * endmultishot (!mon_moving gate arm); livelog.
  */
 async function savelife(how) {
     const u = game.u || (game.u = {});
@@ -1579,7 +1628,20 @@ async function savelife(how) {
     flags.botl = true;
     u.ugrave_arise = NON_PM;
     u.HUnchanging = 0;
-    // uswallow / ustuck / endmultishot / curs_on_u deferred
+    // C end.c:743 — cursor back on hero before the release messages.
+    await curs_on_u();
+    // C end.c:744-745 — !mon_moving endmultishot(FALSE) stays named (not live).
+    if ((u.uswallow | 0)) {
+        // C end.c:746-749 — might drop hero onto a trap that kills her again.
+        await expels(u.ustuck, u.ustuck.data, true);
+    } else if (u.ustuck) {
+        // C end.c:750-755 — poly'd sticker releases it, else it releases hero.
+        if (Upolyd(u) && sticks(game.youmonst?.data))
+            await pline(`You release ${mon_nam(u.ustuck)}.`);
+        else
+            await pline(`${Monnam(u.ustuck)} releases you.`);
+        await unstuck(u.ustuck);
+    }
 }
 
 /**

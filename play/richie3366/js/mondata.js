@@ -7,7 +7,7 @@ import { game } from './gstate.js';
 import { couldsee } from './vision.js';
 import { rnd, rn2 } from './rng.js';
 import { acurr, A_CHA } from './attrib.js';
-import { objectNames } from './objects.js';
+import { objectNames, ARMOR_CLASS, WEAPON_CLASS } from './objects.js';
 import {
     monsterNames, pmnames, NON_PM, LOW_PM, mons,
     MALE, FEMALE, NEUTRAL, NUM_MGENDERS,
@@ -15,7 +15,7 @@ import {
     is_human, is_elf, is_dwarf, is_gnome, is_orc, is_giant, is_golem,
     is_mind_flayer, is_minion, is_demon, is_undead, is_rider,
     is_unicorn, is_longworm,
-    breathless, verysmall, has_head,
+    breathless, dmgtype, verysmall, has_head,
     is_neuter, humanoid, G_UNIQ,
 } from './monsters.js';
 import {
@@ -24,7 +24,12 @@ import {
     CONFLICT,
     ANTIMAGIC, FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, POISON_RES,
     SHOCK_RES, ACID_RES, REFLECTING,
+    W_ARM, W_ARMOR, W_ACCESSORY, W_WEP, W_SWAPWEP,
 } from './const.js';
+import { defends, defends_when_carried, Is_dragon_armor } from './artifact.js';
+import { MON_WEP } from './weapon.js';
+import { is_weptool } from './wield.js';
+import { which_armor } from './worn.js';
 import { mon_msound } from './sounds.js';
 import { makesingular } from './objnam.js';
 import { genders } from './roles.js';
@@ -108,6 +113,88 @@ export function resist_conflict(mtmp) {
         (acurr(A_CHA) - (mtmp.m_lev | 0) + (game.u?.ulevel | 0)),
     );
     return rnd(20) > resist_chance;
+}
+
+const PM_GRAY_DRAGON = monsterNames.indexOf('PM_GRAY_DRAGON');
+const PM_YELLOW_DRAGON = monsterNames.indexOf('PM_YELLOW_DRAGON');
+const PM_BABY_GRAY_DRAGON = monsterNames.indexOf('PM_BABY_GRAY_DRAGON');
+const GRAY_DRAGON_SCALES = objectNames.indexOf('GRAY_DRAGON_SCALES');
+
+/** C ref: mondata.c monsndx — mons[] index of a permonst pointer. */
+function monsndx(ptr) {
+    return ((ptr?.mndx ?? ptr?.mnum ?? NON_PM) | 0);
+}
+
+/**
+ * C ref: mondata.c defended :89–124 — wielded artifact defends(adtyp);
+ * an adult dragon is its own suit (scales otyp derived from the
+ * monsndx range, since defends/Is_dragon_armor only read otyp);
+ * otherwise the worn W_ARM suit; dragon armor defends(adtyp).
+ * Caller: trap.c m_harmless_trap (ANTI_MAGIC/SLP_GAS/FIRE arms).
+ */
+export function defended(mon, adtyp) {
+    const u = game.u || {};
+    const isYou = mon === game.youmonst || !!mon?._youmonst;
+    // C: wielded artifact protecting against adtyp
+    let o = isYou ? (u.uwep || null) : MON_WEP(mon);
+    if (o?.oartifact && defends(adtyp, o)) return true;
+    // C: adult dragon treated as wearing its own scales
+    const mndx = monsndx(mon?.data);
+    if (mndx >= PM_GRAY_DRAGON && mndx <= PM_YELLOW_DRAGON) {
+        o = {
+            oclass: ARMOR_CLASS,
+            otyp: GRAY_DRAGON_SCALES + (mndx - PM_GRAY_DRAGON),
+        };
+    } else {
+        o = isYou ? (u.uarm || null) : which_armor(mon, W_ARM);
+    }
+    if (o && Is_dragon_armor(o) && defends(adtyp, o)) return true;
+    return false;
+}
+
+/**
+ * C ref: mondata.c resists_magm :214–244 — dmgtype AD_MAGM / baby gray /
+ * AD_RBRE; wielded-weapon artifact; worn-or-carried ANTIMAGIC oc_oprop or
+ * carried-artifact scan (hero: invent array; monster: minvent chain).
+ * Canonical port; the species-only file-local clones in explode.js /
+ * mhitm.js and the zap.js stub predate it (drift, named).
+ * Caller: trap.c m_harmless_trap (ANTI_MAGIC arm).
+ */
+export function resists_magm(mon) {
+    if (!mon) return false;
+    const ptr = mon.data;
+    if (!ptr) return false;
+    const u = game.u || {};
+    const isYou = mon === game.youmonst || !!mon._youmonst;
+    // C: gray dragons, Angels, Oracle, Yeenoghu; Chromatic Dragon (AD_RBRE)
+    if (dmgtype(ptr, AD_MAGM)) return true;
+    if (monsndx(ptr) === PM_BABY_GRAY_DRAGON) return true;
+    if (dmgtype(ptr, AD_RBRE)) return true;
+    // C: magic resistance granted by wielded weapon
+    let o = isYou ? (u.uwep || null) : MON_WEP(mon);
+    if (o?.oartifact && defends(AD_MAGM, o)) return true;
+    // C: worn or carried items; monsters don't wield non-weapons so
+    // their wielded slot always counts, heroes only with weapon/weptool
+    let slotmask = (W_ARMOR | W_ACCESSORY) | 0;
+    const uwep = u.uwep || null;
+    if (!isYou
+        || (uwep && (((uwep.oclass | 0) === WEAPON_CLASS) || is_weptool(uwep)))) {
+        slotmask |= W_WEP;
+    }
+    if (isYou && u.twoweap) slotmask |= W_SWAPWEP;
+    const grants = (it) => (((it?.owornmask | 0) & slotmask) !== 0
+        && ((game.objects?.[it.otyp | 0]?.oc_oprop | 0) === ANTIMAGIC))
+        || (it?.oartifact && defends_when_carried(AD_MAGM, it));
+    if (isYou) {
+        for (const it of game.invent || []) {
+            if (grants(it)) return true;
+        }
+    } else {
+        for (let it = mon.minvent; it; it = it.nobj) {
+            if (grants(it)) return true;
+        }
+    }
+    return false;
 }
 
 function pm(name) {

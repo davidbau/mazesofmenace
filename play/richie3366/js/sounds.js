@@ -33,12 +33,12 @@ import { nomul, You_hear } from './hack.js';
 import {
     is_animal, is_flyer, is_lord, is_prince, is_mercenary, is_undead,
     is_mplayer, is_elf, is_dwarf, is_gnome, likes_magic, monsterNames,
-    mons, G_UNIQ, carnivorous, herbivorous,
+    mons, G_UNIQ, carnivorous, herbivorous, is_vampshifter,
 } from './monsters.js';
 import {
     ECMD_OK, ECMD_TIME, ECMD_CANCEL, isok, IS_WALL, SDOOR, SIZE,
     ANY_SHOP, ANY_TYPE, OROOM, SHOPBASE, ROOMOFFSET, VAULT,
-    COURT, BEEHIVE, MORGUE, BARRACKS, ZOO,
+    COURT, BEEHIVE, MORGUE, BARRACKS, ZOO, EPRI, HAIR, NECK, HEAD,
     ESHK, EMIN, has_emin, Is_astralevel, Is_oracle_level, In_endgame,
     STRAT_WAITMASK, PLNMSG_GROWL, FULL_MOON, Upolyd, BLOOD,
     FEMALE, MALE,
@@ -55,7 +55,9 @@ import { mhis } from './fountain.js';
 import { could_seduce, SYSOPT_SEDUCE } from './mhitm.js';
 import { doseduce } from './mhitu.js';
 import { SetVoice, voice_death } from './sndprocs.js';
-import { p_coaligned, priest_talk } from './priest.js';
+import { p_coaligned, priest_talk, inhistemple, temple_occupied } from './priest.js';
+import { uhis, align_gname } from './roles.js';
+import { cansee } from './vision.js';
 import { genus } from './mon.js';
 import { doconsult } from './rumors.js';
 import { shk_chat, money_cnt } from './shk.js';
@@ -233,31 +235,80 @@ function gd_sound() {
     return !(vault_occupied(game.u?.urooms) || findgd());
 }
 
-/** C ref: sounds.c throne_mon_sound — RNG only; messages deferred. */
-function throne_mon_sound(mtmp) {
+/**
+ * C ref: sounds.c throne_mon_sound `:33–62` — (msleeping||lord||prince) +
+ * !animal + COURT gate; which = rn2(3)+hallu: 0/1 → You_hear1, 2 → pline
+ * 'Someone shouts "Off with %s head!"' with uhis().
+ * Named omission: Soundeffect (no audio backend).
+ */
+async function throne_mon_sound(mtmp) {
     if ((mtmp.msleeping || is_lord(mtmp.data) || is_prince(mtmp.data))
         && !is_animal(mtmp.data)
         && mon_in_room(mtmp, COURT)) {
-        rn2(3); // which = rn2(3)+hallu; hallu deferred
+        const throne_msg = [
+            'the tones of courtly conversation.',
+            'a sceptre pounded in judgment.',
+            'Someone shouts "Off with %s head!"',
+            "Queen Beruthiel's cats!",
+        ];
+        const which = rn2(3) + (Hallucination() ? 1 : 0);
+        if (which !== 2) {
+            // C: Soundeffect(se_courtly_conversation/se_sceptor_pounding)
+            await You_hear(throne_msg[which]);
+        } else {
+            await pline(`Someone shouts "Off with ${uhis()} head!"`);
+        }
         return true;
     }
     return false;
 }
 
-/** C ref: sounds.c beehive_mon_sound — RNG only. */
-function beehive_mon_sound(mtmp) {
+/**
+ * C ref: sounds.c beehive_mon_sound `:65–91` — S_ANT flyer + BEEHIVE gate;
+ * switch (rn2(2)+hallu): low buzzing / angry drone / bees-in-bonnet (uarmh).
+ * Named omission: Soundeffect (no audio backend).
+ */
+async function beehive_mon_sound(mtmp) {
     if (mtmp.data?.mlet === 'S_ANT' && is_flyer(mtmp.data)
         && mon_in_room(mtmp, BEEHIVE)) {
-        rn2(2); // +hallu deferred
+        const hallu = Hallucination() ? 1 : 0;
+        switch (rn2(2) + hallu) {
+        case 0:
+            await You_hear('a low buzzing.');
+            break;
+        case 1:
+            await You_hear('an angry drone.');
+            break;
+        case 2:
+            await You_hear(`bees in your ${game.u?.uarmh ? '' : '(nonexistent) '}bonnet!`);
+            break;
+        }
         return true;
     }
     return false;
 }
 
-/** C ref: sounds.c morgue_mon_sound — undead only; vampshifter deferred. */
-function morgue_mon_sound(mtmp) {
-    if (is_undead(mtmp.data) && mon_in_room(mtmp, MORGUE)) {
-        rn2(2);
+/**
+ * C ref: sounds.c morgue_mon_sound `:94–119` — undead||vampshifter + MORGUE
+ * gate; switch (rn2(2)+hallu): unnaturally quiet / hair-stands-up
+ * (body_part HAIR/NECK/HEAD + vtense).
+ */
+async function morgue_mon_sound(mtmp) {
+    if ((is_undead(mtmp.data) || is_vampshifter(mtmp))
+        && mon_in_room(mtmp, MORGUE)) {
+        const hallu = Hallucination() ? 1 : 0;
+        const hair = body_part(HAIR);
+        switch (rn2(2) + hallu) {
+        case 0:
+            await pline('You suddenly realize it is unnaturally quiet.');
+            break;
+        case 1:
+            await pline(`The ${hair} on the back of your ${body_part(NECK)} ${vtense(hair, 'stand')} up.`);
+            break;
+        case 2:
+            await pline(`The ${hair} on your ${body_part(HEAD)} ${vtense(hair, 'seem')} to stand up.`);
+            break;
+        }
         return true;
     }
     return false;
@@ -283,21 +334,66 @@ async function zoo_mon_sound(mtmp) {
 }
 
 /**
- * C ref: sounds.c temple_priest_sound — body deferred (inhistemple/altar).
- * Always false until priest temple wiring exists; gate still burns.
+ * C ref: sounds.c temple_priest_sound `:137–185` — ispriest + inhistemple +
+ * !helpless + hero-outside-temple gate; do-loop rn2(3+hallu) over temple_msg
+ * with speechless (msound<=MS_ANIMAL skips '*') / in_sight
+ * (canseemon||cansee(shrpos) skips '#') retries; strip flag chars; %s arms
+ * hear halu_gname(shralign).
+ * Named omission: Hallu pantheon RNG (pray.js halu_gname defers it too).
  */
-function temple_priest_sound(_mtmp) {
+async function temple_priest_sound(mtmp) {
+    const epri = EPRI(mtmp);
+    if (mtmp?.ispriest && inhistemple(mtmp)
+        && !helpless(mtmp)
+        && ((temple_occupied(game.u?.urooms).charCodeAt(0) | 0)
+            !== (epri?.shroom | 0))) {
+        const temple_msg = [
+            '*someone praising %s.', '*someone beseeching %s.',
+            '#an animal carcass being offered in sacrifice.',
+            '*a strident plea for donations.',
+        ];
+        const hallu = Hallucination() ? 1 : 0;
+        let trycount = 0;
+        const ax = epri?.shrpos?.x | 0;
+        const ay = epri?.shrpos?.y | 0;
+        const speechless = (mtmp.data?.msound | 0) <= MS_ANIMAL;
+        const in_sight = canseemon(mtmp) || cansee(ax, ay);
+        let msg;
+        do {
+            msg = temple_msg[rn2(temple_msg.length - 1 + hallu)];
+            if (msg.includes('*') && speechless) continue;
+            if (msg.includes('#') && in_sight) continue;
+            break; // msg is acceptable
+        } while (++trycount < 50);
+        msg = msg.replace(/^[^A-Za-z]+/, ''); // C: while (!letter(*msg)) ++msg
+        if (msg.includes('%')) {
+            await You_hear(msg.replace('%s', align_gname(game.urole, epri?.shralign | 0)));
+        } else {
+            await You_hear(msg);
+        }
+        return true;
+    }
     return false;
 }
 
 /**
- * C ref: sounds.c oracle_sound — PM_ORACLE hear; canseemon/Hallu gate.
- * Named omission: always takes hear path (canseemon deferred); may over-burn
- * rn2 when oracle is clearly visible and !Hallucination.
+ * C ref: sounds.c oracle_sound `:188–208` — PM_ORACLE only (always TRUE);
+ * print gated on Hallucination || !canseemon (no silly effects when she's
+ * clearly visible): You_hear1(ora_msg[rn2(3)+hallu*2]).
  */
-function oracle_sound(mtmp) {
+async function oracle_sound(mtmp) {
     if ((mtmp.data?.mndx | 0) !== PM_ORACLE) return false;
-    rn2(3); // C: ora_msg[rn2(3)+hallu*2] when Hallu || !canseemon
+    if (Hallucination() || !canseemon(mtmp)) {
+        const hallu = Hallucination() ? 1 : 0;
+        const ora_msg = [
+            'a strange wind.',
+            'convulsive ravings.',
+            'snoring snakes.',
+            'someone say "No more woodchucks!"',
+            'a loud ZOT!',
+        ];
+        await You_hear(ora_msg[rn2(3) + hallu * 2]);
+    }
     return true;
 }
 
@@ -307,10 +403,10 @@ function oracle_sound(mtmp) {
  * barracks/zoo/shop/temple/oracle gates; vault body + You_hear
  * (gd_sound / gold_in_vault / vault_occupied FALLTHROUGH); shop body
  * search_special+tended_shop+You_hear(shop_msg)+noisy_shop;
- * zoo body live (zoo_msg + You_hear); other mon_sound RNG-only.
- * Named omissions: swamp You1; barracks/court/throne/beehive You_hear plines;
- * findgd migrating_mons; vampshifter morgue; temple_priest body;
- * oracle canseemon; Is_sanctum; Soundeffect.
+ * swamp You1 + barracks You_hear1 + court/throne + beehive + morgue +
+ * temple_priest + oracle bodies live (this D).
+ * Named omissions: findgd migrating_mons; Is_sanctum; Soundeffect;
+ * temple Hallu pantheon RNG.
  */
 export async function dosounds() {
     const lf = game.level?.flags;
@@ -343,8 +439,13 @@ export async function dosounds() {
     if (lf.has_court && !rn2(200)) {
         if (await get_iter_mons(throne_mon_sound)) return;
     }
+    // C: You1(swamp_msg[rn2(2)+hallu]) — You1 ≡ You("%s") (hack.h:1028)
     if (lf.has_swamp && !rn2(200)) {
-        rn2(2); // swamp_msg; C returns after; You1 deferred
+        const swamp_msg = [
+            'hear mosquitoes!', 'smell marsh gas!', // so it's a smell...
+            'hear Donald Duck!',
+        ];
+        await pline(`You ${swamp_msg[rn2(2) + hallu]}`);
         return;
     }
     if (lf.has_vault && !rn2(200)) {
@@ -392,13 +493,18 @@ export async function dosounds() {
         if (await get_iter_mons(morgue_mon_sound)) return;
     }
     if (lf.has_barracks && !rn2(200)) {
+        const barracks_msg = [
+            'blades being honed.', 'loud snoring.', 'dice being thrown.',
+            'General MacArthur!',
+        ];
         let count = 0;
         for (const mtmp of game.fmon || []) {
             if (!mtmp || (mtmp.mhp | 0) < 1) continue;
             if (is_mercenary(mtmp.data)
                 && mon_in_room(mtmp, BARRACKS)
+                // sleeping implies not-yet-disturbed (usually)
                 && (mtmp.msleeping || ++count > 5)) {
-                rn2(3); // barracks_msg
+                await You_hear(barracks_msg[rn2(3) + hallu]);
                 return;
             }
         }

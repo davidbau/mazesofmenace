@@ -24,6 +24,7 @@ import {
     has_emin, has_epri, has_eshk, has_mcorpsenm, MCORPSENM,
     Has_contents, RLOC_MSG, RLOC_NOMSG, XKILL_NOMSG,
     NO_MM_FLAGS, NATTK, PROT_FROM_SHAPE_CHANGERS, NO_WEAPON_WANTED, engulfing_u,
+    W_SADDLE,
 } from './const.js';
 import { t_at, m_harmless_trap, water_damage_chain, fire_damage_chain, fixed_tele_trap } from './trap.js';
 import {
@@ -58,7 +59,7 @@ import { may_dig, fill_pit } from './dig.js';
 import { newsym, pline, pline_mon, verbalize, You_feel, sensemon, canseemon, canspotmon } from './display.js';
 import { online2, level_difficulty } from './hacklib.js';
 import { worm_cross, level_mon_at, remove_worm } from './worm.js';
-import { Monnam, mon_nam } from './do_name.js';
+import { Monnam, mon_nam, hliquid } from './do_name.js';
 import { cansee, couldsee, does_block, is_lightblocker_mappear, unblock_point } from './vision.js';
 import { fightm, mondead, mondied } from './mhitm.js';
 import { remove_monster } from './steed.js';
@@ -72,7 +73,7 @@ import {
 import { in_your_sanctuary, p_coaligned } from './priest.js';
 import { in_rooms, is_pool, is_lava, disturb_buried_zombies, stop_occupation } from './hack.js';
 import { inv_weight, weight_cap } from './invent.js';
-import { maybe_m_dowear_special } from './worn.js';
+import { maybe_m_dowear_special, extract_from_minvent, update_mon_extrinsics } from './worn.js';
 import { adjalign } from './attrib.js';
 import { SetVoice } from './sndprocs.js';
 import { maybe_gasp, growl } from './sounds.js';
@@ -1155,7 +1156,7 @@ function Deaf_respond() {
 }
 
 /** C apply.c um_dist — TRUE when Chebyshev dist to hero > n. */
-function um_dist(x, y, n) {
+export function um_dist(x, y, n) {
     const u = game.u || {};
     return Math.abs((u.ux | 0) - (x | 0)) > (n | 0)
         || Math.abs((u.uy | 0) - (y | 0)) > (n | 0);
@@ -1491,32 +1492,66 @@ function unlink_minvent(mon, obj) {
 }
 
 /**
- * C ref: steal.c mdrop_obj subset — extract to floor at mon. Named omit:
- * distant_name observe; extract_from_minvent worn extrinsics; saddle shop.
+ * C ref: steal.c mdrop_obj :808–849 — drop one obj from a (possibly dead)
+ * monster's inventory onto its floor square.
+ * Order: distant_name observe before extract; extract_from_minvent(FALSE,
+ * TRUE); tame-saddle no_charge in shop; verbosely pline; flooreffects
+ * "fall" gate before place+stack; update_mon_extrinsics when still alive
+ * and the obj was worn (saddle removal last — it can throw the rider).
  */
-function mdrop_obj_overcrowd(mon, obj) {
+async function mdrop_obj(mon, obj, verbosely) {
+    const omx = mon.mx | 0;
+    const omy = mon.my | 0;
+    const unwornmask = obj.owornmask | 0;
+    // C: distant_name(obj, doname) before extract — near observe side effects.
+    const obj_name = distant_name(obj, doname);
+    // C: extract_from_minvent(mon, obj, FALSE, TRUE); the unlink fallback
+    // keeps C's post-state when the obj lacks a MINVENT where-tag.
+    extract_from_minvent(mon, obj, false, true);
     unlink_minvent(mon, obj);
-    obj.owornmask = 0;
-    if (mon.mw === obj) mon.mw = null;
-    obj.nobj = null;
-    obj.nexthere = null;
-    place_object(obj, mon.mx | 0, mon.my | 0);
-    stackobj(obj);
+    // C steal.c:830–837 — don't charge for an owned saddle on a tame steed
+    // dropped in its shop (costly_spot guarantees roomno is not 0).
+    if (unwornmask && mon.mtame && (unwornmask & W_SADDLE)
+        && !obj.unpaid) {
+        const { costly_spot } = await import('./shk.js');
+        if (costly_spot(omx, omy)) {
+            const roomno = game.level?.at?.(omx, omy)?.roomno | 0;
+            const heroRooms = in_rooms(game.u?.ux, game.u?.uy, SHOPBASE) || '';
+            if (heroRooms.includes(String.fromCharCode(roomno))) {
+                obj.no_charge = 1;
+            }
+        }
+    }
+    if (verbosely && cansee(omx, omy)) {
+        await pline_mon(mon, `${Monnam(mon)} drops ${obj_name}.`);
+    }
+    const { flooreffects } = await import('./do.js');
+    if (!(await flooreffects(obj, omx, omy, 'fall'))) {
+        place_object(obj, omx, omy);
+        stackobj(obj);
+    }
+    // C: saddle removal last — it can throw the rider; extrinsics ran with
+    // do_intrinsics=FALSE above, so refresh them here when still alive.
+    if ((mon.mhp | 0) > 0 && unwornmask) {
+        update_mon_extrinsics(mon, obj, false, true);
+    }
 }
 
 /**
- * C ref: steal.c mdrop_special_objs — drop Amulet/invocation/Rider/quest
- * arti before migrate or mongone. Ordinary items still burn
+ * C ref: steal.c mdrop_special_objs :852–872 — drop Amulet/invocation/Rider/
+ * quest arti before migrate or mongone. Ordinary items still burn
  * obj_resists(0,0) rn2(100).
  */
-export function mdrop_special_objs(mon) {
+export async function mdrop_special_objs(mon) {
     if (!mon) return;
     for (let obj = mon.minvent; obj; ) {
         const next = obj.nobj;
         if (obj_resists_00(obj) || is_quest_artifact(obj)) {
             if (mon.mx) {
-                mdrop_obj_overcrowd(mon, obj);
+                await mdrop_obj(mon, obj, false);
             } else {
+                // C steal.c:865–868 — migrating mon off map: extract + rloco.
+                extract_from_minvent(mon, obj, true, true);
                 unlink_minvent(mon, obj);
                 obj.nobj = null;
                 obj.nexthere = null;
@@ -1535,7 +1570,7 @@ export async function migrate_mon(mtmp, target_lev, xyloc) {
     if ((mtmp.mx | 0)) {
         const { unstuck } = await import('./mhitu.js');
         await unstuck(mtmp);
-        mdrop_special_objs(mtmp);
+        await mdrop_special_objs(mtmp);
     }
     migrate_to_level(mtmp, target_lev, xyloc, null);
 }
@@ -2300,9 +2335,12 @@ export async function mon_givit(mtmp, ptr) {
  * Envelope: gremlin pool/fountain rn2(3)→split_mon + dryup (D-1095);
  * iron-golem inpool rust (D-1117); pool drown mondied vs xkilled (D-1117);
  * lava on_fire / mondead vs xkilled / fire_damage_chain (D-1138);
- * deal_with_overcrowding after failed survivor rloc (D-1148).
- * Named omissions: steed Flying/Levitation gate; engulfing_u drown flush;
- * mdrop_obj worn/saddle/`extract_from_minvent` (mongone specials D-1149).
+ * deal_with_overcrowding after failed survivor rloc (D-1148);
+ * steed Flying/Levitation gate (mon.c:975–981); engulfing_u drown flush
+ * (mon.c:1088–1093); mdrop_special_objs via steal.c mdrop_obj :808–849
+ * (distant_name observe, extract_from_minvent, saddle no_charge,
+ * flooreffects "fall" gate, update_mon_extrinsics).
+ * Named omissions: none new.
  */
 export async function minliquid(mtmp) {
     if (!mtmp || (mtmp.mhp | 0) <= 0) return 1;
@@ -2327,7 +2365,18 @@ async function minliquid_core(mtmp) {
         && !(is_flyer(ptr) || is_floater(ptr));
     const infountain = IS_FOUNTAIN(game.level?.at?.(mx, my)?.typ);
 
-    // steed Flying/Levitation deferred — usteed is on u_at, which gush skips
+    // C mon.c:975–981 — Flying/Levitation keeps the steed out of liquid
+    // (not water-walking/swimming; on the Plane of Water flight is blocked
+    // so the gate fails and the steed takes water effects, as intended).
+    // youprop.h:240,253 shape — flat cache or (H||E)&&!B, as in do.js.
+    if (mtmp === game.u?.usteed && !waterwall) {
+        const u = game.u || {};
+        const levitating = !!(u.Levitation
+            || (((u.HLevitation | 0) || (u.ELevitation | 0)) && !(u.BLevitation | 0)));
+        const flying = !!(u.Flying
+            || (((u.HFlying | 0) || (u.EFlying | 0)) && !(u.BFlying | 0)));
+        if (levitating || flying) return 0;
+    }
 
     // C minliquid_core:987–992 — gremlin split before iron-golem / lava
     if ((ptr?.mndx ?? -1) === PM_GREMLIN && (inpool || infountain) && rn2(3)) {
@@ -2421,7 +2470,11 @@ async function minliquid_core(mtmp) {
                     await pline(`You drown ${mon_nam(mtmp)}.`);
                 }
             }
-            // engulfing_u flush named
+            // C mon.c:1088–1093 — purple worm plucked the hero off a flying
+            // steed over water: the inrushing water flushes the hero out.
+            if (engulfing_u(mtmp)) {
+                await pline(`${Monnam(mtmp)} sinks as ${hliquid('water')} rushes in and flushes you out.`);
+            }
             if (game.context?.mon_moving) {
                 await mondied(mtmp);
             } else {
@@ -2885,7 +2938,7 @@ export async function mongone(mtmp) {
         const { unstuck } = await import('./mhitu.js');
         await unstuck(mtmp);
     }
-    mdrop_special_objs(mtmp);
+    await mdrop_special_objs(mtmp);
     discard_minvent(mtmp, false);
     const list = game.fmon;
     if (list) {

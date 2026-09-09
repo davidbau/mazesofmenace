@@ -93,6 +93,7 @@ import {
     WWALKING, MAGICAL_BREATHING, FLYING, GD_EATGOLD, Is_waterlevel,
     Is_astralevel, EXPL_FIERY,
     CHOKING, STARVING, STARVED, A_LAWFUL, STRANGLED, PARANOID_EATING,
+    POISONING,
     DEAF,
     GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GETOBJ_EXCLUDE_SELECTABLE,
     GETOBJ_EXCLUDE_NONINVENT, GETOBJ_NOFLAGS, GETOBJ_DOWNPLAY,
@@ -118,7 +119,7 @@ import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
 import { hands_obj } from './weapon.js';
 import {
     t_at, deltrap, reset_utrap, b_trapped, self_invis_message, float_up,
-    selftouch,
+    selftouch, heal_legs,
 } from './trap.js';
 import { done, delayed_killer } from './end.js';
 import { explode } from './explode.js';
@@ -127,7 +128,7 @@ import { costly_alteration, costly_spot } from './shk.js';
 import {
     wield_tool, uwepgone, uswapwepgone, uqwepgone,
 } from './wield.js';
-import { pluslvl, more_experienced, newexplevel } from './exper.js';
+import { pluslvl, more_experienced, newexplevel, setuhpmax } from './exper.js';
 import { toggle_displacement, setworn, Ring_gone } from './do_wear.js';
 import { attrcurse } from './sit.js';
 import { dismount_steed } from './steed.js';
@@ -222,6 +223,7 @@ const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_RAVEN = monsterNames.indexOf('PM_RAVEN');
 const PM_NEWT = monsterNames.indexOf('PM_NEWT');
 const PM_KILLER_BEE = monsterNames.indexOf('PM_KILLER_BEE');
+const PM_QUEEN_BEE = monsterNames.indexOf('PM_QUEEN_BEE');
 const PM_SCORPION = monsterNames.indexOf('PM_SCORPION');
 const PM_FIRE_ELEMENTAL = monsterNames.indexOf('PM_FIRE_ELEMENTAL');
 const PM_RUST_MONSTER = monsterNames.indexOf('PM_RUST_MONSTER');
@@ -1919,8 +1921,9 @@ async function cpostfx(pm) {
 
 /**
  * C ref: eat.c done_eating `:543–573` — finish meal; cpostfx for CORPSE; fpostfx.
- * Envelope: fortune cookie rumor; wolfsbane you_unwere(TRUE).
- * Named omissions: carrot blindness; other fpostfx otyps.
+ * Envelope: fortune cookie rumor; wolfsbane you_unwere(TRUE); royal-jelly
+ * fpostfx incl. heal_legs(0).
+ * Named omissions: carrot blindness; EGG + other fpostfx otyps.
  */
 async function done_eating(message) {
     const piece = game.context?.victual?.piece;
@@ -1957,6 +1960,43 @@ async function done_eating(message) {
         const u = game.u || {};
         if (ismnum(u.ulycn) || is_were(game.youmonst?.data)) {
             await you_unwere(true);
+        }
+    } else if (piece.otyp === LUMP_OF_ROYAL_JELLY) {
+        // C ref: eat.c fpostfx `:2540–2562` LUMP_OF_ROYAL_JELLY — killer-bee
+        // queen morph, gainstr, HP, then heal_legs(0) unless cursed.
+        const u = game.u || {};
+        const Unchanging = !!(u.Unchanging || u.HUnchanging || u.EUnchanging);
+        const formndx = (hero_form_data()?.mndx
+            ?? game.youmonst?.mnum ?? u.umonnum) | 0;
+        if (!(formndx === PM_KILLER_BEE && !Unchanging
+            && await polymon(PM_QUEEN_BEE))) {
+            /* This stuff seems to be VERY healthy! */
+            await gainstr(piece, 1, true);
+            if (Upolyd(u)) {
+                u.mh = (u.mh | 0) + (piece.cursed ? -rnd(20) : rnd(20));
+                if (game.disp) game.disp.botl = true;
+                if (game.flags) game.flags.botl = true;
+                if ((u.mh | 0) > (u.mhmax | 0)) {
+                    if (!rn2(17)) setuhpmax((u.mhmax | 0) + 1, false);
+                    u.mh = u.mhmax;
+                } else if ((u.mh | 0) <= 0) {
+                    await rehumanize();
+                }
+            } else {
+                u.uhp = (u.uhp | 0) + (piece.cursed ? -rnd(20) : rnd(20));
+                if (game.disp) game.disp.botl = true;
+                if (game.flags) game.flags.botl = true;
+                if ((u.uhp | 0) > (u.uhpmax | 0)) {
+                    if (!rn2(17)) setuhpmax((u.uhpmax | 0) + 1, false);
+                    u.uhp = u.uhpmax;
+                } else if ((u.uhp | 0) <= 0) {
+                    if (!game.killer) game.killer = { name: '', format: 0 };
+                    game.killer.format = KILLED_BY_AN;
+                    game.killer.name = 'rotten lump of royal jelly';
+                    await done(POISONING);
+                }
+            }
+            if (!piece.cursed) await heal_legs(0);
         }
     }
     if (carried(piece)) useup(piece);

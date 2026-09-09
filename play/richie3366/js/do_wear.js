@@ -8,13 +8,13 @@
 import { game } from './gstate.js';
 import {
     flush_topl_more, pline, You_feel, mark_topline_prompt,
-    newsym, see_monsters, urgent_pline, impossible,
+    newsym, see_monsters, urgent_pline, impossible, Hallucination,
 } from './display.js';
 import { yn_function } from './getline.js';
 import { an, doname, the, xname, xprname, vtense, makeplural, makesingular, otense, gloves_simple_name, simpleonames, body_part_latebound, Tobjnam } from './objnam.js';
 import { find_ac } from './u_init.js';
 import {
-    A_STR, A_CON, A_CHA, A_DEX, acurr, extremeattr, change_luck, Fast, Very_fast,
+    A_STR, A_INT, A_WIS, A_CON, A_CHA, A_DEX, acurr, extremeattr, change_luck, Fast, Very_fast,
 } from './attrib.js';
 import { nomul, unmul, stop_occupation } from './hack.js';
 import { retouch_object, set_artifact_intrinsic } from './artifact.js';
@@ -60,16 +60,17 @@ import {
     GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_INACCESS, GETOBJ_DOWNPLAY, GETOBJ_SUGGEST,
     GETOBJ_NOFLAGS, Upolyd,
 } from './const.js';
-import { x_monnam, trycall } from './do_name.js';
+import { x_monnam, trycall, hcolor } from './do_name.js';
+import { PM_CLERIC } from './generated/monsters_data.js';
 import { change_sex, poly_gender, Unchanging } from './polyself.js';
 import {
     ARMOR_CLASS, RING_CLASS, AMULET_CLASS, WEAPON_CLASS, TOOL_CLASS,
     objectNames, objectNameStrs, objectDescrs, is_sword,
 } from './objects.js';
-import { PM_ARCHEOLOGIST, PM_MONK, nolimbs, nohands, verysmall, slithy, MZ_SMALL } from './monsters.js';
+import { PM_ARCHEOLOGIST, PM_WIZARD, PM_MONK, nolimbs, nohands, verysmall, slithy, MZ_SMALL } from './monsters.js';
 import {
     is_flammable, is_rustprone, is_rottable, is_corrodeable, is_crackable,
-    erosion_matters, is_damageable, is_metallic,
+    erosion_matters, is_damageable, is_metallic, curse, set_bknown,
 } from './mkobj.js';
 import { erode_obj, selftouch } from './trap.js';
 import { artifact_light, end_burn } from './timeout.js';
@@ -78,6 +79,17 @@ import { set_mimic_blocking } from './vision.js';
 import { restartcham, rescham } from './mon.js';
 
 const FEDORA = objectNames.indexOf('FEDORA');
+const HELMET = objectNames.indexOf('HELMET');
+const DENTED_POT = objectNames.indexOf('DENTED_POT');
+const ELVEN_LEATHER_HELM = objectNames.indexOf('ELVEN_LEATHER_HELM');
+const DWARVISH_IRON_HELM = objectNames.indexOf('DWARVISH_IRON_HELM');
+const ORCISH_HELM = objectNames.indexOf('ORCISH_HELM');
+const HELM_OF_TELEPATHY = objectNames.indexOf('HELM_OF_TELEPATHY');
+const HELM_OF_CAUTION = objectNames.indexOf('HELM_OF_CAUTION');
+const HELM_OF_BRILLIANCE = objectNames.indexOf('HELM_OF_BRILLIANCE');
+const CORNUTHAUM = objectNames.indexOf('CORNUTHAUM');
+const HELM_OF_OPPOSITE_ALIGNMENT = objectNames.indexOf('HELM_OF_OPPOSITE_ALIGNMENT');
+const DUNCE_CAP = objectNames.indexOf('DUNCE_CAP');
 const MEAT_RING = objectNames.indexOf('MEAT_RING');
 const GAUNTLETS_OF_POWER = objectNames.indexOf('GAUNTLETS_OF_POWER');
 const GAUNTLETS_OF_FUMBLING = objectNames.indexOf('GAUNTLETS_OF_FUMBLING');
@@ -753,11 +765,88 @@ async function Armor_on() {
     return 0;
 }
 
+/**
+ * C ref: do_wear.c Helmet_on `:434–516` — helm switch after setworn.
+ * known=1 is assigned at the END (after messages) so the DUNCE_CAP glow
+ * still shows the unknown "conical hat". find_ac kept (house; C relies
+ * on the botl repaint instead).
+ */
 async function Helmet_on() {
-    const h = game.u?.uarmh;
-    if (h && !h.known) h.known = 1;
-    if (h && h.otyp === FEDORA && game.urole?.mnum === PM_ARCHEOLOGIST) {
-        change_luck(1);
+    const u = game.u || {};
+    const h = u.uarmh;
+    // C dereferences uarmh (non-null there); keep the old no-op when null.
+    if (!h) {
+        find_ac();
+        return 0;
+    }
+    switch ((h.otyp | 0)) {
+    case FEDORA:
+        if (h && (h.otyp | 0) === FEDORA
+            && game.urole?.mnum === PM_ARCHEOLOGIST) {
+            change_luck(1);
+        }
+        break;
+    case HELMET:
+    case DENTED_POT:
+    case ELVEN_LEATHER_HELM:
+    case DWARVISH_IRON_HELM:
+    case ORCISH_HELM:
+    case HELM_OF_TELEPATHY:
+        break;
+    case HELM_OF_CAUTION:
+        see_monsters();
+        break;
+    case HELM_OF_BRILLIANCE:
+        // C adj_abon `:3331–3339` helm half inlined (gloves half is inline
+        // in Gloves_on); makeknown only when spe nonzero, botl always.
+        if ((h.spe | 0)) {
+            makeknown(h.otyp);
+            if (!u.abon) u.abon = { a: [0, 0, 0, 0, 0, 0] };
+            u.abon.a[A_INT] = (u.abon.a[A_INT] || 0) + (h.spe | 0);
+            u.abon.a[A_WIS] = (u.abon.a[A_WIS] || 0) + (h.spe | 0);
+        }
+        if (!game.flags) game.flags = {};
+        game.flags.botl = true;
+        break;
+    case CORNUTHAUM:
+        // C: ABON(A_CHA) += wizard ? 1 : -1; disp.botl; makeknown.
+        if (!u.abon) u.abon = { a: [0, 0, 0, 0, 0, 0] };
+        u.abon.a[A_CHA] = (u.abon.a[A_CHA] || 0)
+            + ((game.urole?.mnum | 0) === PM_WIZARD ? 1 : -1);
+        if (!game.flags) game.flags = {};
+        game.flags.botl = true;
+        makeknown(h.otyp);
+        break;
+    // C HELM_OF_OPPOSITE_ALIGNMENT `:465–472` (uchangealign + FALLTHROUGH
+    // into the glow/curse block) deferred — uchangealign is unported, so
+    // such wears take the known tail only; see c-js-map.
+    case DUNCE_CAP:
+        if (h && !h.cursed) {
+            if (Blind()) await pline(`${Tobjnam(h, 'vibrate')} for a moment.`);
+            else await pline(`${Tobjnam(h, 'glow')} ${hcolor('black')} for a moment.`);
+            curse(h);
+            if (Blind()) set_bknown(h, 0);
+            else if ((game.urole?.mnum | 0) === PM_CLERIC) set_bknown(h, 1);
+            else if (h.bknown) update_inventory();
+        }
+        if (!game.flags) game.flags = {};
+        game.flags.botl = true;
+        if (Hallucination()) {
+            await pline('My brain hurts!');
+        } else if (h && (h.otyp | 0) === DUNCE_CAP) {
+            // C ACURR(A_INT) <= ABASE+ABON+ATEMP — u.acurr.a holds ABASE.
+            const base = (u.acurr?.a?.[A_INT] | 0) + (u.abon?.a?.[A_INT] | 0)
+                + (u.atemp?.a?.[A_INT] | 0);
+            await You_feel(`${acurr(A_INT) <= base ? 'like sitting in a corner' : 'giddy'}.`);
+        } else {
+            makeknown(HELM_OF_OPPOSITE_ALIGNMENT);
+        }
+        break;
+    }
+    // C `:509–513` — uarmh could be Null; helm +/- evident via status AC.
+    if (game.u?.uarmh && !game.u.uarmh.known) {
+        game.u.uarmh.known = 1;
+        update_inventory();
     }
     find_ac();
     return 0;

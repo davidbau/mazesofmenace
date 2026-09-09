@@ -41,7 +41,7 @@ import { run_timers, start_timer, stop_timer, weight,
     obj_has_timer, rider_revival_time, rot_corpse, set_corpsenm,
     free_omid, free_omonst,
 } from './mkobj.js';
-import { make_confused, make_deaf, make_sick, make_slimed, make_stoned, make_stunned, make_vomiting } from './potion.js';
+import { make_confused, make_deaf, make_hallucinated, make_sick, make_slimed, make_stoned, make_stunned, make_vomiting } from './potion.js';
 import { make_blinded } from './do.js';
 import { Fumbling, Fast, Very_fast, acurr, adjattrib, exercise, stone_luck, A_STR, A_DEX, A_CON } from './attrib.js';
 import { pline, You_feel, newsym, canseemon, verbalize, Norep, see_monsters, impossible, urgent_pline, Hallucination } from './display.js';
@@ -1014,12 +1014,39 @@ export async function nh_timeout() {
             if (p === STUNNED) u.Stunned = u.HStun;
             if (p === GLIB) u.HGlib = next;
         }
-        // Expiry switch (HALLUC/…) deferred — silent clear
-        // except STONED → stoning death (C `:674–685`),
-        // DETECT_MONSTERS → see_monsters (D-1418), LEVITATION
-        // → float_down (D-1419), INVIS → newsym + You (D-1421),
+        // Expiry switch deferred — silent clear except STONED → stoning
+        // death (C `:674–685`), DETECT_MONSTERS → see_monsters (D-1418),
+        // LEVITATION → float_down (D-1419), INVIS → newsym + You (D-1421),
         // SLIMED → slimed_to_death (C `:686–688`), and STRANGLED →
         // done_timeout(DIED, …) + amulet-vanishes (C `:890–900`).
+        if (!(next & TIMEOUT) && p === STUNNED) {
+            // C timeout.c:737-742 — set_itimeout(&HStun, 1L);
+            // make_stunned(0L, TRUE); if (!Stunned) stop_occupation().
+            // Re-arm the flat to 1 first: the -- above already zeroed it,
+            // and make_stunned only reports ("You feel a bit steadier
+            // now.") when old is nonzero — same shape as the HALLUC arm
+            // below and the CONFUSION/BLINDED/DEAF dedicated arms above.
+            // uprops already reads 0 here (generic loop), and
+            // make_stunned clears the flat, so both slots end at 0 and
+            // the arm cannot re-fire.
+            u.HStun = ((u.HStun | 0) & ~TIMEOUT) | 1;
+            u.Stunned = u.HStun;
+            await make_stunned(0, true);
+            if (!((u.HStun | 0) || (u.Stunned | 0))) await stop_occupation();
+        }
+        if (!(next & TIMEOUT) && p === HALLUC) {
+            // C timeout.c:777-783 — set_itimeout(&HHallucination, 1L);
+            // make_hallucinated(0L, TRUE, 0L); if (!Hallucination)
+            // stop_occupation(). Re-arm the flat to 1 first: the -- above
+            // already zeroed it, and make_hallucinated only reports changed
+            // (boring pline + see_* refresh) when old is nonzero — same
+            // shape as the CONFUSION arm above. uprops already reads 0
+            // here (generic loop), and make_hallucinated clears the flat,
+            // so both slots end at 0 and the arm cannot re-fire.
+            u.HHallucination = ((u.HHallucination | 0) & ~TIMEOUT) | 1;
+            await make_hallucinated(0, true, 0);
+            if (!Hallucination()) await stop_occupation();
+        }
         if (!(next & TIMEOUT) && p === DETECT_MONSTERS) {
             see_monsters();
         }

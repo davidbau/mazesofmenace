@@ -1517,7 +1517,8 @@ export async function getpos(ccp, force, goal, describeAt) {
         await pline('Done.');
         ccp.x = -1;
         ccp.y = 0;
-        g._pending_message = '';
+        // C: msg_given = FALSE; /* suppress clear */ — exitgetpos must
+        // leave "Unknown direction ... Done." on the message window.
         if (getpos_hilitefunc) getpos_hilitefunc(false);
         getpos_sethilite(null, null);
         return 0; // C: result = 0 (not -1)

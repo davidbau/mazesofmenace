@@ -17,33 +17,33 @@ import {
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_DEF_DIED, NATTK,
     M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_TYPE, M_AP_NOTHING,
     M_AP_TYPMASK, MHID_ALTMON,
-    MIM_REVEAL, MIM_OMIT_WAIT, engulfing_u, OBJ_FREE, MON_DETACH,
+    MIM_REVEAL, MIM_OMIT_WAIT, engulfing_u, OBJ_FREE, OBJ_INVENT, MON_DETACH,
     has_mgivenname, ARTICLE_NONE, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR, SUPPRESS_SADDLE,
     SUPPRESS_NAME, SUPPRESS_IT, SUPPRESS_INVISIBLE, EXACT_NAME,
     HAND, LEG, A_LAWFUL, Is_airlevel, Is_waterlevel, PARANOID_HIT, LOW_PM,
-    W_ARM, W_ARMC, W_ARMH, W_ARMU, W_ARMG, W_RINGL, W_RINGR, W_ARMF, W_AMUL,
-    MON_EXPLODE, NO_MM_FLAGS, NO_TRAP_FLAGS, DISP_ALWAYS, DISP_END, STOMACH, DIED, NO_KILLER_PREFIX, ERODE_CORRODE, EF_GREASE,
-    KILLED_BY_AN, PASSES_WALLS, SLOW_DIGESTION, MALE, FEMALE, MMOVE_DIED,
+    W_ARM, W_ARMC, W_ARMH, W_ARMU, W_ARMG, W_RINGL, W_RINGR, W_ARMF, W_AMUL, W_WEP,
+    MON_EXPLODE, NO_MM_FLAGS, NO_TRAP_FLAGS, DISP_ALWAYS, DISP_END, STOMACH, DIED, NO_KILLER_PREFIX, ERODE_CORRODE, ERODE_BURN, EF_GREASE, EF_NONE,
+    KILLED_BY_AN, PASSES_WALLS, SLOW_DIGESTION, MALE, FEMALE, MMOVE_DIED, CXN_ARTICLE,
 } from './const.js';
 import {
-    WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, FOOD_CLASS, RANDOM_CLASS,
+    WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, FOOD_CLASS, COIN_CLASS, RANDOM_CLASS,
     objectNameStrs, objectNames,
 } from './objects.js';
 import { exercise, A_STR, A_DEX, A_WIS, A_CON, acurr, adjalign, change_luck } from './attrib.js';
 import { overexertion, nomul, losehp, is_pool, maybe_half_phys } from './hack.js';
-import { ing_suffix } from './hacklib.js';
-import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, map_invisible, unmap_object, memory_glyph_is_invisible, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph, shieldeff } from './display.js';
+import { ing_suffix, upstart } from './hacklib.js';
+import { pline, pline_mon, newsym, canseemon, canspotmon, sensemon, map_invisible, unmap_object, memory_glyph_is_invisible, glyph_is_invisible_id, flush_topl_more, You_feel, tmp_at, map_location, nh_delay_output, mon_glyph, shieldeff, impossible } from './display.js';
 import { cansee } from './vision.js';
 import {
     dmgval, hitval, P_SKILL, weapon_hit_bonus, martial_bonus,
     dbon, weapon_dam_bonus, use_skill, weapon_type,
-    special_dmgval, silver_sears, MON_WEP, setmnotwielded,
+    special_dmgval, silver_sears, MON_WEP, setmnotwielded, possibly_unwield,
 } from './weapon.js';
 import {
     ammo_and_launcher, is_weptool, is_launcher, is_ammo, is_missile,
     is_pole, drop_uswapwep, uwepgone,
 } from './wield.js';
-import { near_capacity, useup } from './invent.js';
+import { near_capacity, useup, hold_another_object } from './invent.js';
 import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI, PM_ARCHEOLOGIST, PM_WIZARD, PM_HUMAN, PM_HEALER, PM_ROGUE } from './generated/monsters_data.js';
 import {
     find_mac, get_mattk, make_corpse, monstone, mhitm_knockback, monkilled, mondead,
@@ -53,7 +53,7 @@ import {
     AT_NONE, AT_WEAP, AT_KICK, AT_CLAW, AT_SPIT, AT_HUGS,
     AT_TUCH, AT_BITE, AT_BUTT, AT_STNG, AT_MAGC, AT_TENT,
     AT_EXPL, AT_ENGL, AT_BREA, AT_GAZE, AD_PHYS, AD_POLY, AD_DRIN, AD_SLEE,
-    AD_DRST, AD_SAMU, AD_DRLI,
+    AD_DRST, AD_SAMU, AD_DRLI, AD_SITM, AD_SEDU, AD_SSEX,
 } from './mhitm.js';
 import { resists_drli, resists_cold, destroy_items } from './zap.js';
 import {
@@ -61,14 +61,14 @@ import {
     bigmonst, thick_skinned, monsterNames, nonliving, haseyes,
     is_golem, is_mplayer, is_rider, is_undead, is_flyer, is_floater,
     is_demon, NON_PM, NUMMONS, has_head, mindless, unsolid, breathless, mons,
-    flaming, touch_petrifies, is_vampshifter, is_animal, amphibious,
+    flaming, touch_petrifies, is_neuter, is_vampshifter, is_animal, amphibious,
     is_swimmer, slithy,
     amorphous, noncorporeal, is_whirly, passes_walls, hates_silver, mon_hates_silver, humanoid,
     is_human, always_hostile, is_unicorn,
     MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
 } from './monsters.js';
 import {
-    mkobj, place_object, stackobj, delobj, relobj_on_death,
+    mkobj, place_object, stackobj, delobj, relobj_on_death, obj_extract_self,
 } from './mkobj.js';
 import {
     monnear, record_mvitals_died, seemimic, wakeup, setmangry, dist2,
@@ -81,10 +81,10 @@ import { experience, more_experienced, newexplevel } from './exper.js';
 import { explode, mon_explodes, adtyp_to_expltype } from './explode.js';
 import { rehumanize, body_part, mbodypart, uunstick } from './polyself.js';
 import { mon_nam, Monnam, x_monnam, x_monnam_tame, Hallucination, type_is_pname, pmname, a_monnam, safe_oname } from './do_name.js';
-import { artifact_hit, youmonst, is_art, artifact_exists, shade_glare } from './artifact.js';
-import { xname, vtense, The, An, an, singular, makeplural, cxname, simpleonames, otense, mshot_xname, Yobjnam2 } from './objnam.js';
+import { artifact_hit, youmonst, is_art, artifact_exists, shade_glare, find_artifact } from './artifact.js';
+import { xname, vtense, The, An, an, singular, makeplural, cxname, simpleonames, otense, mshot_xname, Yobjnam2, doname, corpse_xname } from './objnam.js';
 import { abuse_dog, tamedog } from './dog.js';
-import { makemon, makemon_appear_msg, newcham, adj_lev, clone_mon } from './makemon.js';
+import { makemon, makemon_appear_msg, newcham, adj_lev, clone_mon, mpickobj } from './makemon.js';
 import { ndemon } from './minion.js';
 import { ART_GIANTSLAYER, ART_STORMBRINGER, ART_SNICKERSNEE, ART_CLEAVER } from './generated/artifacts_data.js';
 import { paranoid_query } from './getline.js';
@@ -93,8 +93,10 @@ import { obj_resists } from './dogmove.js';
 import { u_wipe_engr } from './engrave.js';
 import { cutworm } from './worm.js';
 import { m_unleash } from './apply.js';
-import { mhis } from './mondata.js';
+import { mhe, mhis } from './mondata.js';
 import { hard_helmet } from './do_wear.js';
+import { findgold } from './steal.js';
+import { mselftouch, instapetrify } from './trap.js';
 
 const PM_BLACK_PUDDING = monsterNames.indexOf('PM_BLACK_PUDDING');
 const PM_BROWN_PUDDING = monsterNames.indexOf('PM_BROWN_PUDDING');
@@ -118,6 +120,7 @@ const MZ_HUMAN = MZ_MEDIUM;
 const AT_BOOM = 14; // monattk.h — explode on death
 const NATTK_CC = 6;
 const FIGURINE = objectNames.indexOf('FIGURINE');
+const CORPSE = objectNames.indexOf('CORPSE');
 const BOULDER = objectNames.indexOf('BOULDER');
 const PM_LIZARD = monsterNames.indexOf('PM_LIZARD');
 const PM_ORACLE = monsterNames.indexOf('PM_ORACLE');
@@ -610,7 +613,7 @@ function xkilled_treasure_drop(mtmp, mdat, mndx, x, y) {
 /**
  * C ref: mon.c xkilled — hero kill; treasure !rn2(6) then corpse_chance
  * → make_corpse; cleanup luck/align before experience.
- * Named omissions: flooreffects non-floor arms, wasinside spoteffects,
+ * Named omissions: flooreffects non-floor arms,
  * floor-boulder nocorpse (sobj_at 12 clones, no export), MAIL_DAEMON,
  * human-murder Blind_telepat see_monsters, quest leader/nemesis/
  * guardian/priest special adjalign arms, tame You_hear Soundeffect,
@@ -698,7 +701,15 @@ export async function xkilled(mtmp, xkill_flags = XKILL_GIVEMSG) {
                 game.zombify = false;
             }
         }
-        // C: wasinside → museum copy + spoteffects(TRUE) deferred
+        // C mon.c:3632-3640: wasinside → museum copy + spoteffects(TRUE)
+        // (poor man's expels); the release-square describe (e.g. stairs
+        // via pickup→check_here→describe_decor) comes from this call.
+        // Dynamic import: same-cycle idiom as mhitu.unstuck above and the
+        // expels-tail spoteffects call (D-2193); call-time use only.
+        if (wasinside) {
+            mtmp = { ...mtmp };
+            await (await import('./pickup.js')).spoteffects(true);
+        }
         if (x > 0) newsym(x, y);
     }
 
@@ -1435,7 +1446,7 @@ export async function mhitm_ad_wrap(magr, mattk, mdef, mhm) {
 
 /**
  * C ref: uhitm.c mhitm_adtyping youmonst subset for damageum.
- * AD_PHYS + AD_POLY + AD_DRIN skipdrin + AD_WRAP (D-1348) + AD_SLEE + AD_DRST + AD_SAMU + AD_DRLI/AD_PLYS + AD_COLD uhitm live;
+ * AD_PHYS + AD_POLY + AD_DRIN skipdrin + AD_WRAP (D-1348) + AD_SLEE + AD_DRST + AD_SAMU + AD_DRLI/AD_PLYS + AD_COLD + AD_SEDU/AD_SSEX/AD_SITM steal_it uhitm live;
  * remaining mhitm_ad_* named. mhitm wrap brush is D-1406.
  */
 
@@ -1569,6 +1580,157 @@ async function damageum_ad_cold(mdef, mhm) {
     mhm.damage = (mhm.damage | 0) + ((await destroy_items(mdef, AD_COLD, orig_dmg)) | 0);
 }
 
+/**
+ * C ref: uhitm.c theft_petrifies `:2147–2165` — staticfn; uarmg, non-corpse,
+ * non-petrifying and Stone_resistance gates return FALSE; the C-disabled
+ * `#if 0` poly_when_stoned arm stays omitted; else instapetrify + TRUE.
+ */
+async function theft_petrifies(otmp) {
+    const u = game.u || {};
+    if (u.uarmg || (otmp?.otyp | 0) !== CORPSE
+        || !touch_petrifies(mons(otmp.corpsenm))
+        || !!(u.Stone_resistance || u.HStone_resistance || u.EStone_resistance)) {
+        return false;
+    }
+    await instapetrify(corpse_xname(otmp, 'stolen', CXN_ARTICLE));
+    return true;
+}
+
+/**
+ * C ref: uhitm.c steal_it `:2173–2278` — staticfn; hero-as-attacker theft
+ * (AD_SEDU/AD_SSEX/AD_SITM via mhitm_ad_sedu `:4629–4632`). The
+ * could_seduce + mcanmove gate moves one worn suit (W_ARM) to the chain
+ * end (C panic on a second suit is impossible()); gold is shuffled out so
+ * steal-item is not a steal-gold superset; each taken item goes through
+ * hold_another_object ("You steal: " prefix, owner uhitm.c:2247),
+ * theft_petrifies, and the unwornmask W_WEP/W_ARMG fixups; ustealo takes
+ * everything, else one item. Named: none new (theft_petrifies above is
+ * the file's other staticfn).
+ */
+async function steal_it(mdef, mattk) {
+    const u = game.u || {};
+    let otmp = mdef?.minvent || null;
+    if (!otmp || ((otmp.oclass | 0) === COIN_CLASS && !otmp.nobj)) {
+        return; /* nothing to take */
+    }
+
+    /* look for worn body armor */
+    let ustealo = null;
+    if (could_seduce(game.youmonst, mdef, mattk) && mdef.mcanmove) {
+        /* find armor, and move it to end of inventory in the process */
+        let prev = null;
+        let cur = mdef.minvent;
+        while (cur) {
+            const next = cur.nobj || null;
+            if (((cur.owornmask | 0) & W_ARM) !== 0) {
+                if (ustealo) {
+                    await impossible('steal_it: multiple worn suits');
+                } else {
+                    if (prev) prev.nobj = next;
+                    else mdef.minvent = next;
+                    cur.nobj = null;
+                    ustealo = cur;
+                    cur = next;
+                    continue;
+                }
+            }
+            prev = cur;
+            cur = next;
+        }
+        if (ustealo) {
+            if (prev) prev.nobj = ustealo;
+            else mdef.minvent = ustealo;
+        }
+    }
+    let gold = findgold(mdef.minvent);
+
+    if (ustealo) { /* we will be taking everything */
+        /* 5.0: this uses hero's base gender rather than nymph femininity
+           but was using hardcoded pronouns She/her for target monster;
+           switch to dynamic pronoun */
+        const gdef = is_neuter(mdef?.data) ? 2 : (mdef?.female ? 1 : 0);
+        if (gdef === (u.mfemale ? 1 : 0)
+            && game.youmonst?.data?.mlet === 'S_NYMPH') {
+            await pline(`You charm ${mon_nam(mdef)}.  ${upstart(mhe(mdef))} gladly hands over ${gold ? 'most of ' : ''}${mhis(mdef)} possessions.`);
+        } else {
+            await pline(`You seduce ${mon_nam(mdef)} and ${mhe(mdef)} starts to take off ${mhis(mdef)} clothes.`);
+        }
+    }
+
+    /* prevent gold from being stolen so that steal-item isn't a superset
+       of steal-gold; shuffling it out of minvent before selecting next
+       item, and then back in case hero or monster dies (hero touching
+       stolen c'trice corpse or monster wielding one and having gloves
+       stolen) is less bookkeeping than skipping it within the loop or
+       taking it out once and then trying to figure out how to put it back */
+    if (gold) {
+        obj_extract_self(gold);
+    }
+
+    while ((otmp = mdef.minvent || null)) {
+        if (gold) { /* put 'mdef's gold back after remembering mdef->minvent */
+            mpickobj(mdef, gold);
+            gold = null;
+        }
+        if (!Upolyd(u)) {
+            break; /* no longer have ability to steal */
+        }
+        const unwornmask = otmp.owornmask | 0;
+        /* this would take place when doname() formats the object for
+           the hold_another_object() call, but we want to do it before
+           otmp gets removed from mdef's inventory */
+        if (otmp.oartifact && !Blind_that()) {
+            find_artifact(otmp);
+        }
+        /* take the object away from the monster */
+        extract_from_minvent(mdef, otmp, true, false);
+        /* special message for final item; no need to check owornmask because
+         * ustealo is only set on objects with (owornmask & W_ARM) */
+        if (otmp === ustealo) {
+            await pline(`${Monnam(mdef)} finishes taking off ${mhis(mdef)} suit.`);
+        }
+        /* give the object to the character */
+        otmp = await hold_another_object(otmp, 'You snatched but dropped %s.',
+            doname(otmp), 'You steal: ');
+        /* might have dropped otmp, and it might have broken or left level */
+        if (!otmp || (otmp.where | 0) !== OBJ_INVENT) {
+            continue;
+        }
+        if (await theft_petrifies(otmp)) {
+            break; /* stop thieving even though hero survived */
+        }
+        /* more take-away handling, after theft message */
+        if ((unwornmask & W_WEP) !== 0) { /* stole wielded weapon */
+            await possibly_unwield(mdef, false);
+        } else if ((unwornmask & W_ARMG) !== 0) { /* stole worn gloves */
+            await mselftouch(mdef, null, true);
+            if ((mdef.mhp | 0) < 1) { /* it's now a statue */
+                break; /* can't continue stealing */
+            }
+        }
+
+        if (!ustealo) {
+            break; /* only taking one item */
+        }
+
+        /* take gold out of minvent before making next selection; if it
+           is the only thing left, the loop will terminate and it will be
+           put back below */
+        gold = findgold(mdef.minvent);
+        if (gold) {
+            obj_extract_self(gold);
+        }
+    }
+
+    /* put gold back; won't happen if either hero or 'mdef' dies because
+       gold will be back in monster's inventory at either of those times
+       (so will be present in mdef's minvent for bones, or in its statue
+       now if it has just been turned into one) */
+    if (gold) {
+        mpickobj(mdef, gold);
+    }
+}
+
 async function damageum_adtyping(mattk, mdef, mhm) {
     const adtyp = mattk.adtyp | 0;
     if (adtyp === AD_PHYS) damageum_ad_phys(mdef, mattk, mhm);
@@ -1593,6 +1755,12 @@ async function damageum_adtyping(mattk, mdef, mhm) {
         /* C ref: uhitm.c mhitm_ad_samu `:4573–4576` — uhitm (hero as
            attacker) arm zeroes the leftover d(); no message, no steal
            roll (those are the mhitu `:4577–4586` arm). */
+        mhm.damage = 0;
+    } else if (adtyp === AD_SEDU || adtyp === AD_SSEX || adtyp === AD_SITM) {
+        /* C ref: uhitm.c mhitm_ad_sedu `:4629–4632` (AD_SSEX via
+           mhitm_ad_ssex `:4754–4758`) — uhitm (hero as attacker) arm:
+           steal_it, leftover d() zeroed. */
+        await steal_it(mdef, mattk);
         mhm.damage = 0;
     }
 }
@@ -1744,9 +1912,13 @@ async function passive_obj(mon, obj, mattk) {
     }
     switch (atk.adtyp | 0) {
     case AD_FIRE:
+        // C uhitm.c passive_obj :6156–6162 — burn the hitting weapon
+        // (erode_obj live in trap.js; dynamic import keeps this file's
+        // trap.js convention, cf. AD_CORR below).
         if (!rn2(6) && !mon.mcan
             && (mon.mnum ?? mon.data?.mndx ?? -1) !== PM_STEAM_VORTEX) {
-            // erode_obj ERODE_BURN deferred
+            const { erode_obj } = await import('./trap.js');
+            await erode_obj(weapon, null, ERODE_BURN, EF_NONE);
         }
         break;
     case AD_ACID:

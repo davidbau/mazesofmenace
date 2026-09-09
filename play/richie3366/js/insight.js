@@ -74,16 +74,29 @@ import { pline } from './display.js';
 import { livelog_printf } from './pline.js';
 import { objectNameStrs } from './objects.js';
 import { show_text_pages, show_nhw_menu_text, mhidden_description } from './pager.js';
-import { visible_region_at } from './region.js';
+import { visible_region_at, reg_damg } from './region.js';
 import {
-    NUMMONS, mons, G_UNIQ, M2_PNAME, monsterNames, pmnames, NEUTRAL,
+    NUMMONS, mons, haseyes, G_UNIQ, M2_PNAME, monsterNames, pmnames, NEUTRAL,
     MZ_TINY, MZ_SMALL, MZ_MEDIUM, MZ_LARGE, MZ_HUGE,
 } from './monsters.js';
 import { an, makeplural } from './objnam.js';
 import { align_str, rank_of, rank_to_xlev } from './roles.js';
-import { x_monnam_tame } from './do_name.js';
+import { x_monnam_tame, a_monnam } from './do_name.js';
 import { find_mac } from './mhitm.js';
+import { digests } from './mhitu.js';
+import { sticks } from './engrave.js';
+import { fingers_or_gloves } from './do_wear.js';
+import { body_part } from './polyself.js';
+import { Fast, Very_fast } from './attrib.js';
+import { Blind } from './invent.js';
+import { Invis } from './timeout.js';
+import { Glib } from './potion.js';
 import { A_NONE, A_LAWFUL, A_CHAOTIC, MHID_PREFIX, MHID_ARTICLE, MHID_ALTMON, MHID_REGION } from './const.js';
+import {
+    SICK, STONED, SLIMED, STRANGLED, VOMITING,
+    SICK_VOMITABLE, SICK_NONVOMITABLE, BOTH_SIDES,
+    M_AP_NOTHING, M_AP_TYPMASK, LEG, TIMEOUT, Upolyd,
+} from './const.js';
 
 const PM_HIGH_CLERIC = monsterNames.indexOf('PM_HIGH_CLERIC');
 
@@ -945,19 +958,103 @@ export async function mstatusline(mtmp) {
 }
 
 /**
- * C ref: insight.c ustatusline — one-line stethoscope/self-probe status.
- * Callers: apply.c use_stethoscope; zap.c zapyourself WAN_PROBING (D-1435).
- * Status ailments (Sick/Stoned/…) deferred; info suffix empty for now.
- * Upolyd mh/mlevel still named.
+ * C ref: insight.c:3402–3489 ustatusline — one-line stethoscope/self-probe
+ * status. Callers: apply.c use_stethoscope; zap.c zapyourself WAN_PROBING.
+ * Full info chain in C order: Sick dying-from, Stoned, Slimed, Strangled,
+ * Vomiting, Confusion, Blind (+ucreamed goop), Stunned, Wounded_legs
+ * (EWounded_legs side mask; no side naming per C), Glib, utrap,
+ * Fast/Very_fast, uundetected/U_AP_TYPE, Invis, ustuck/uswallow,
+ * visible-region cloud; Upolyd mh/mlevel arms live.
  */
 export async function ustatusline() {
     const u = game.u || {};
     const name = game.plname || 'Hero';
     const atype = u.ualign?.type ?? 0;
-    const info = '';
-    const level = u.ulevel ?? 1;
-    const hp = u.uhp ?? 0;
-    const hpmax = u.uhpmax ?? hp;
+    let info = '';
+    // C: Sick → ", dying from[ food poisoning][ and][ illness]"
+    if ((u.Sick | 0) || (u.uprops?.[SICK]?.intrinsic | 0)) {
+        info += ', dying from';
+        if ((u.usick_type | 0) & SICK_VOMITABLE) info += ' food poisoning';
+        if ((u.usick_type | 0) & SICK_NONVOMITABLE) {
+            if ((u.usick_type | 0) & SICK_VOMITABLE) info += ' and';
+            info += ' illness';
+        }
+    }
+    // C: Stoned / Slimed / Strangled / Vomiting / Confusion
+    if ((u.Stoned | 0) || (u.uprops?.[STONED]?.intrinsic | 0)) {
+        info += ', solidifying';
+    }
+    if ((u.Slimed | 0) || (u.uprops?.[SLIMED]?.intrinsic | 0)) {
+        info += ', becoming slimy';
+    }
+    if ((u.Strangled | 0) || (u.HStrangled | 0) || (u.EStrangled | 0)
+        || (u.uprops?.[STRANGLED]?.intrinsic | 0)
+        || (u.uprops?.[STRANGLED]?.extrinsic | 0)) {
+        info += ', being strangled';
+    }
+    if ((u.Vomiting | 0) || (u.uprops?.[VOMITING]?.intrinsic | 0)) {
+        info += ', nauseated'; /* !"nauseous" */
+    }
+    if ((u.HConfusion | 0) || u.Confusion) info += ', confused';
+    // C: Blind + ucreamed goop ("goop" == "glop"; variation intentional)
+    if (Blind()) {
+        info += ', blind';
+        if (u.ucreamed | 0) {
+            // C: (long) u.ucreamed < BlindedTimeout || Blindfolded
+            //     || !haseyes(youmonst.data); BlindedTimeout ≡ HBlinded &
+            //     TIMEOUT, Blindfolded ≡ EBlinded (cf. potion.js)
+            if (((u.ucreamed | 0) < (((u.HBlinded | 0) & TIMEOUT)))
+                || (u.EBlinded | 0) || !haseyes(game.youmonst?.data)) {
+                info += ', cover';
+            }
+            info += 'ed by sticky goop';
+        }
+    }
+    if ((u.HStun | 0) || u.Stunned) info += ', stunned';
+    // C: Wounded_legs && !u.usteed; EWounded_legs tracks left/right/both
+    // (HWounded_legs is the timeout); ustatusline never names the side
+    if (((u.HWounded_legs | 0) || (u.EWounded_legs | 0) || u.Wounded_legs)
+        && !u.usteed) {
+        const legs = (u.EWounded_legs | 0) & BOTH_SIDES;
+        let what = body_part(LEG);
+        if (legs === BOTH_SIDES) what = makeplural(what);
+        info += `, injured ${what}`;
+    }
+    // C: Glib / utrap / Fast
+    if (Glib()) info += `, slippery ${fingers_or_gloves(true)}`;
+    if (u.utrap) info += ', trapped';
+    if (Fast()) info += Very_fast() ? ', very fast' : ', fast';
+    // C: uundetected → concealed, else U_AP_TYPE → disguised
+    if (u.uundetected) {
+        info += ', concealed';
+    } else if (((game.youmonst?.m_ap_type | 0) & M_AP_TYPMASK)
+        !== M_AP_NOTHING) {
+        info += ', disguised';
+    }
+    if (Invis()) info += ', invisible';
+    // C: ustuck — uswallow digests ? digested : engulfed; else sticks ?
+    // holding : held; then a_monnam(u.ustuck)
+    if (u.ustuck) {
+        if (u.uswallow) {
+            info += digests(u.ustuck.data)
+                ? ', being digested by '
+                : ', engulfed by ';
+        } else if (!sticks(game.youmonst?.data)) {
+            info += ', held by ';
+        } else {
+            info += ', holding ';
+        }
+        info += a_monnam(u.ustuck);
+    }
+    // C: !uswallow + visible region at hero → cloud of poison gas / vapor
+    if (!u.uswallow) {
+        const reg = visible_region_at(u.ux, u.uy);
+        if (reg) info += `, in a cloud of ${reg_damg(reg) ? 'poison gas' : 'vapor'}`;
+    }
+    const poly = Upolyd(u);
+    const level = poly ? (mons(u.umonnum | 0)?.mlevel | 0) : (u.ulevel ?? 1);
+    const hp = poly ? (u.mh ?? 0) : (u.uhp ?? 0);
+    const hpmax = poly ? (u.mhmax ?? hp) : (u.uhpmax ?? hp);
     const ac = u.uac ?? 10;
     await pline(
         `Status of ${name} (${piousness(false, align_str(atype))}):  `

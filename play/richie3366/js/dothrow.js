@@ -1095,8 +1095,8 @@ function passes_rocks(ptr) {
     return !!(passes_walls(ptr) && !unsolid(ptr));
 }
 
-/** C obj.h stone_missile. */
-function stone_missile(obj) {
+/** C obj.h stone_missile — canonical home; trap.js thitm imports it (D-2195). */
+export function stone_missile(obj) {
     if (!obj) return false;
     const mat = game.objects?.[obj.otyp | 0]?.oc_material | 0;
     return (mat === GEMSTONE || mat === MINERAL)

@@ -975,9 +975,11 @@ function addinv_core1(obj) {
 }
 
 // C ref: invent.c addinv() → merged() for stack absorb + compare-learn pline.
-// Thrown-autoquiver fill (addinv_core0, live below). Named omissions:
-// quiver-prefer merge; addinv_before; oname absorb; worn-slot merge;
-// globby/pudding; lamplit timers; questart/artitouch; addinv_core2 luck.
+// Thrown-autoquiver fill (addinv_core0, live below). Quiver-prefer merge
+// (D-2207; was named). Named omissions: addinv_before; oname absorb;
+// worn combine-stack merge (mergable still rejects obj-worn: merged
+// setworn fixup unported); globby/pudding; lamplit timers;
+// questart/artitouch; addinv_core2 luck.
 export async function addinv(obj) {
     if (!game.invent) game.invent = [];
     // C invent.c addinv_core0 — obj_was_thrown captured before merge
@@ -991,11 +993,12 @@ export async function addinv(obj) {
     }
     // C invent.c addinv_core0 `:1082` — addinv_core1(obj) before merge/link
     addinv_core1(obj);
-    for (const otmp of game.invent) {
-        if (!mergable(otmp, obj)) continue;
-        // C invent.c merged(): age/quan/weight (+ coin bknown wipe) BEFORE
-        // known/bknown/rknown reconcile — gold bknown=0 must precede the
-        // bknown discovery check or COIN merges spuriously pline.
+    // C invent.c merged() absorb for invent stacks: age/quan/weight
+    // (+ coin bknown wipe) BEFORE known/bknown/rknown reconcile — gold
+    // bknown=0 must precede the bknown discovery check or COIN merges
+    // spuriously pline — then pickup_prev + compare-learn pline + the
+    // `added:` tail (addinv_core2/carry_obj_effects).
+    const absorbInto = async (otmp) => {
         if (!obj.lamplit && !obj.globby) {
             const oq = otmp.quan || 1;
             const nq = obj.quan || 1;
@@ -1045,6 +1048,15 @@ export async function addinv(obj) {
         await addinv_core2(otmp);
         carry_obj_effects(otmp);
         return otmp;
+    };
+    // C invent.c addinv_core0 `:1098–1106` — merge with quiver in preference
+    // to any other inventory slot (a quivered stack beats a wielded one
+    // when both are eligible); merged() re-checks mergable, as here.
+    const uq = game.u?.uquiver;
+    if (uq && mergable(uq, obj)) return await absorbInto(uq);
+    for (const otmp of game.invent) {
+        if (!mergable(otmp, obj)) continue;
+        return await absorbInto(otmp);
     }
     assigninvlet(obj);
     obj.where = OBJ_INVENT;

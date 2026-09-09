@@ -456,7 +456,7 @@ export async function keepdogs(pets_only = false) {
                 /* make sure steed is eligible to accompany hero */
                 mtmp.mtrapped = 0;        /* escape trap */
                 mtmp.meating = 0;         /* terminate eating */
-                mdrop_special_objs(mtmp); /* drop Amulet */
+                await mdrop_special_objs(mtmp); /* drop Amulet */
             } else if (mtmp.meating || mtmp.mtrapped) {
                 if (canseemon(mtmp)) {
                     await pline_mon(mtmp, `${Monnam(mtmp)} is still ${
