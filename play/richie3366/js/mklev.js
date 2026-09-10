@@ -11,8 +11,7 @@ import { rn2, rnd, rn1, rnz } from './rng.js';
 import { CLR_CYAN, CLR_GRAY, CLR_BRIGHT_BLUE } from './terminal.js';
 import { init_rect, rnd_rect, get_rect, split_rects } from './rect.js';
 import { depth as depth_of_level, dist2, distmin, level_difficulty as level_difficulty_of, strstri } from './hacklib.js';
-import { try_load_bones } from './bones.js';
-import { no_bones_level } from './end.js';
+import { getbones } from './bones.js';
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -29,7 +28,7 @@ import {
     DIR_N, DIR_S, DIR_E, DIR_W, DIR_180,
     IS_WALL, IS_STWALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, IS_FURNITURE, IS_POOL,
     IS_LAVA, IS_THRONE, SPACE_POS, isok, W_NONDIGGABLE, W_NONPASSWALL, FILL_NORMAL,
-    ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL,
+    ICE, MOAT, POOL, WATER, LAVAPOOL, LAVAWALL, DBWALL, ICED_POOL, ICED_MOAT,
     AIR, CLOUD, THRONE, TREE, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
     LADDER, LA_DOWN, LA_UP,
     MAX_TYPE, INVALID_TYPE, MATCH_WALL,
@@ -104,7 +103,7 @@ import {
 import {
     makemon, mkclass, MM_NOGRP, set_mimic_sym, mpickobj, add_to_minv, newcham,
     mongets, set_malign, rndmonnum,
-    select_newcham_form, validvamp, mgender_from_permonst,
+    select_newcham_form, validvamp, mgender_from_permonst, propagate,
 } from './makemon.js';
 import { mk_mplayer } from './mplayer.js';
 import { can_saddle, put_saddle_on_mon } from './steed.js';
@@ -1305,17 +1304,7 @@ function in_rooms(x, y, rtype) { return []; }
 // Core mklev functions (ported from main project's mklev.js)
 // ============================================================
 
-// C ref: bones.c getbones() — chance roll then VFS open/restore (D-0274).
-async function getbones() {
-    const flags = game.flags || {};
-    // C: discover global; JS playmode explore/discover both set flags.explore
-    if (flags.explore || flags.discover) return false;
-    if (flags.bones === false) return false;
-    if (rn2(3) && !flags.debug && !flags.wizard) return false;
-    // C: no_bones_level after chance roll (still burns rn2(3) first)
-    if (no_bones_level(game.u?.uz || { dnum: 0, dlevel: 1 })) return false;
-    return try_load_bones(game.u?.uz);
-}
+// getbones: bones.c — imported from bones.js (D-0274).
 
 // C ref: nhlua.c l_nhcore_init() — nhlib shuffle is the second load;
 // after nhl_loadlua("nhcore.lua") every nhcore_call_available[] is TRUE
@@ -1431,6 +1420,8 @@ function clear_level_structures() {
     init_rect();
     // C mklev.c:921 — gx.xstart=1 / gy.ystart=0 / full xsize,ysize
     reset_xystart_size();
+    // C: each level's des coder is fresh (sp_level_coder_init)
+    sp_level_coder_init_statics();
 }
 
 // C ref: mkmap.c litstate_rnd()
@@ -1456,6 +1447,18 @@ function reset_xystart_size() {
     game.splev_ysize = ROWNO;
     // C create_des_coder: memset SpLev_Map
     game.SpLev_Map = new Set();
+}
+
+// C ref: sp_lev.c:192 `static boolean splev_init_present, icedpools;`
+// set by lspo_level_init / lspo_level_flags("icedpools"), read by
+// splev_initlev MINES and sel_set_ter ICE.
+let splev_init_present = false;
+let icedpools = false;
+
+/** C ref: sp_lev.c:6350–6351 sp_level_coder_init — static resets. */
+function sp_level_coder_init_statics() {
+    splev_init_present = false;
+    icedpools = false;
 }
 
 /**
@@ -1572,6 +1575,7 @@ function makemaz_maze_fallback() {
 async function load_special_proto(protofile) {
     // C ref: sp_lev.c create_des_coder / reset_xystart_size at load start
     reset_xystart_size();
+    sp_level_coder_init_statics();
     if (protofile === 'minefill') {
         await load_minefill();
         return true;
@@ -2196,11 +2200,10 @@ function soko_load_epilogue(allowFlips = 3) {
 function load_bigrm_2() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -2304,11 +2307,10 @@ function load_bigrm_2() {
 function load_bigrm_3() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -2399,11 +2401,10 @@ function load_bigrm_3() {
 function load_bigrm_4() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -2502,11 +2503,10 @@ function splev_non_diggable() {
 function load_bigrm_5() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -2574,11 +2574,10 @@ function load_bigrm_5() {
 function load_bigrm_6() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -2669,7 +2668,7 @@ function load_bigrm_11() {
     // Lua table: corrwid = 3+nh.rn2(3) then deadends=t_or_f()
     const corrwid = 3 + rn2(3);
     const rm_deadends = !percent(50);
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_MAZE,
         corrwid,
         wallthick: 1,
@@ -2718,11 +2717,10 @@ function load_bigrm_11() {
 function load_bigrm_1() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -2824,11 +2822,10 @@ function load_bigrm_1() {
 function load_bigrm_10() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -2911,11 +2908,10 @@ function load_bigrm_10() {
 function load_bigrm_13() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -3000,38 +2996,6 @@ function load_bigrm_13() {
 }
 
 /**
- * C ref: makemon.c propagate + mbirth_limit — Medusa statue accept tally.
- * Named omission: full makemon-path propagate on every birth.
- */
-function medusa_statue_propagate(mndx) {
-    const g = game;
-    if (!g.mvitals) g.mvitals = [];
-    if (!g.mvitals[mndx]) g.mvitals[mndx] = { mvflags: 0, born: 0, died: 0 };
-    const ptr = mons(mndx);
-    const PM_NAZGUL = monsterNames.indexOf('PM_NAZGUL');
-    const PM_ERINYS = monsterNames.indexOf('PM_ERINYS');
-    const lim = mndx === PM_NAZGUL ? 9
-        : mndx === PM_ERINYS ? 3
-            : MAXMONNO;
-    const gone = ((g.mvitals[mndx].mvflags | 0) & G_GONE) !== 0;
-    const result = ((g.mvitals[mndx].born | 0) < lim && !gone);
-    if (ptr && (ptr.geno & G_UNIQ) !== 0
-        && mndx !== monsterNames.indexOf('PM_HIGH_CLERIC')) {
-        g.mvitals[mndx].mvflags = (g.mvitals[mndx].mvflags | 0) | G_EXTINCT;
-    }
-    // C: tally && (!ghostly || result) with tally=TRUE ghostly=FALSE → always
-    if ((g.mvitals[mndx].born | 0) < 255) {
-        g.mvitals[mndx].born = (g.mvitals[mndx].born | 0) + 1;
-    }
-    if ((g.mvitals[mndx].born | 0) >= lim
-        && ptr && (ptr.geno & G_NOGEN) === 0
-        && ((g.mvitals[mndx].mvflags | 0) & G_EXTINCT) === 0) {
-        g.mvitals[mndx].mvflags = (g.mvitals[mndx].mvflags | 0) | G_EXTINCT;
-    }
-    return result;
-}
-
-/**
  * C ref: sp_lev.c create_object Medusa special — empty statue (corpsenm NON_PM)
  * picks a non-stone-resistant corpsenm via makemon reject loop + invent transfer.
  */
@@ -3048,7 +3012,8 @@ function medusa_empty_statue_at(x, y) {
         if (!was) continue;
         if (!resists_ston(was)
             && !poly_when_stoned(mons(wastyp), g.mvitals)) {
-            medusa_statue_propagate(wastyp);
+            // C: propagate(wastyp, TRUE, FALSE) — MM_NOCOUNTBIRTH skipped tally
+            propagate(wastyp, true, false);
             break;
         }
         const list = g.fmon;
@@ -3157,11 +3122,10 @@ function medusa_mark_nondig(mx, my, x1, y1, x2, y2) {
 function load_medusa_1() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -3325,7 +3289,7 @@ function load_medusa_1() {
             if (!resists_ston(was)
                 && !poly_when_stoned(mons(wastyp), g.mvitals)) {
                 // C: propagate(wastyp, TRUE, FALSE) — MM_NOCOUNTBIRTH skipped tally
-                medusa_statue_propagate(wastyp);
+                propagate(wastyp, true, false);
                 break;
             }
             // C: mongone(was) — reject stone-resistant / poly-when-stoned
@@ -3449,11 +3413,10 @@ function load_medusa_1() {
 function load_medusa_3() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -3709,11 +3672,10 @@ function load_medusa_3() {
 function load_medusa_2() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -3873,11 +3835,10 @@ function load_medusa_2() {
 function load_medusa_4() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -4030,11 +3991,10 @@ function load_medusa_4() {
 function load_bigrm_7() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -4108,11 +4068,10 @@ function load_bigrm_7() {
 function load_bigrm_8() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -4184,11 +4143,10 @@ function load_bigrm_8() {
 function load_bigrm_9() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -4256,11 +4214,10 @@ function load_bigrm_9() {
 function load_bigrm_12() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -4359,11 +4316,10 @@ function load_bigrm_12() {
 function load_bar_strt() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -4568,11 +4524,10 @@ function load_bar_strt() {
 function load_wiz_strt() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -4799,11 +4754,10 @@ function load_wiz_strt() {
 function load_wiz_loca() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -5088,11 +5042,10 @@ function load_wiz_filb() {
 function load_wiz_goal() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -5264,11 +5217,10 @@ function load_wiz_goal() {
 function load_pri_strt() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -5479,11 +5431,10 @@ async function load_pri_loca() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " }) — lit defaults BOOL_RANDOM
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -5491,11 +5442,10 @@ async function load_pri_loca() {
 
     // des.level_init mines: fg=".", bg=".", smoothed=false, joined=false,
     // lit=1, walled=false — kludge for a lit open field (fg==bg)
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: ROOM, filling: ROOM,
         lit: 1, smoothed: false, joined: false, walled: false,
-        icedpools: false,
     });
 
     const PRI_LOCA_MAP = `
@@ -5675,22 +5625,20 @@ async function load_pri_goal() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
 
     // des.level_init mines: fg="L", bg=".", lit=0, smoothed/joined/walled false
     // C: filling defaults to fg when omitted (sp_lev.c get_table_mapchr_opt)
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: LAVAPOOL, bg: ROOM, filling: LAVAPOOL,
         lit: 0, smoothed: false, joined: false, walled: false,
-        icedpools: false,
     });
 
     const PRI_GOAL_MAP = `
@@ -5784,11 +5732,10 @@ xxxxx...xxxxxx....xxxxxxxx
 function load_arc_strt() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -5985,11 +5932,10 @@ function load_arc_strt() {
 function load_arc_loca() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -6209,11 +6155,10 @@ function load_arc_loca() {
 function load_arc_goal() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -6374,11 +6319,10 @@ async function load_kni_strt() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = "." })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: ROOM,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -6387,11 +6331,10 @@ async function load_kni_strt() {
 
     // des.level_init mines: fg=".", bg=".", smoothed=false, joined=false,
     // lit=1, walled=false — kludge for a lit open field (fg==bg)
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: ROOM, filling: ROOM,
         lit: 1, smoothed: false, joined: false, walled: false,
-        icedpools: false,
     });
 
     const KNI_STRT_MAP = `
@@ -6593,11 +6536,10 @@ async function load_kni_loca() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -6605,11 +6547,10 @@ async function load_kni_loca() {
 
     // des.level_init mines: fg=".", bg="P", smoothed=false, joined=true,
     // lit=1, walled=false — filling defaults to fg (ROOM)
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: POOL, filling: ROOM,
         lit: 1, smoothed: false, joined: true, walled: false,
-        icedpools: false,
     });
 
     const KNI_LOCA_MAP = `
@@ -6720,22 +6661,20 @@ async function load_kni_fila() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = "." })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: ROOM,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
 
     // des.level_init mines: fg=".", bg="P", smoothed=false, joined=true,
     // lit=1, walled=false
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: POOL, filling: ROOM,
         lit: 1, smoothed: false, joined: true, walled: false,
-        icedpools: false,
     });
 
     splev_create_stair(true);
@@ -6761,20 +6700,18 @@ async function load_kni_filb() {
     const g = game;
     nhlib_shuffle_align();
 
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: ROOM,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
 
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: POOL, filling: ROOM,
         lit: 1, smoothed: false, joined: true, walled: false,
-        icedpools: false,
     });
 
     splev_create_stair(true);
@@ -6801,11 +6738,10 @@ function load_kni_goal() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -6934,11 +6870,10 @@ function load_rog_strt() {
     const g = game;
     nhlib_shuffle_align();
 
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -7108,11 +7043,10 @@ function load_rog_loca() {
     const g = game;
     nhlib_shuffle_align();
 
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -7303,11 +7237,10 @@ function load_rog_goal() {
     const g = game;
     nhlib_shuffle_align();
 
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -7399,23 +7332,23 @@ function load_rog_goal() {
  * Norn CUSTOM_INVENT (banded mail +5, long sword +4) + chest + warriors;
  * non_diggable audience chamber; 6 fire traps; fixed fire-ant siege + 2
  * hostile fire giants.
- * Named omissions: map-drawn ICE icedpool (splev_init_present); ensure_way_out.
+ * Named omissions: ensure_way_out.
  */
 function load_val_strt() {
     const g = game;
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = "I" })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: ICE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
     g.level.flags.noteleport = true;
     g.level.flags.hardfloor = true;
+    icedpools = true; // C lspo_level_flags "icedpools"
 
     // random pools: 13× set() then west/north/random grow (C nhlsel order)
     let pools = selection_new();
@@ -7542,23 +7475,22 @@ async function load_val_loca() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
     g.level.flags.hardfloor = true;
+    icedpools = true; // C lspo_level_flags "icedpools"
 
     // des.level_init mines: fg=".", bg="I", smoothed, joined=false,
     // lit=1, walled=false — filling defaults to fg (ROOM)
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: ICE, filling: ROOM,
         lit: 1, smoothed: true, joined: false, walled: false,
-        icedpools: true,
     });
 
     const VAL_LOCA_MAP = `
@@ -7633,22 +7565,21 @@ async function load_val_goal() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = "L" })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: LAVAPOOL,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
+    icedpools = true; // C lspo_level_flags "icedpools"
 
     // des.level_init mines: fg=".", bg="L", smoothed, joined=true,
     // lit=1, walled=false — filling defaults to fg (ROOM)
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: LAVAPOOL, filling: ROOM,
         lit: 1, smoothed: true, joined: true, walled: false,
-        icedpools: true,
     });
 
     const VAL_GOAL_MAP = `
@@ -7751,22 +7682,21 @@ async function load_val_fila() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = "I" })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: ICE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
+    icedpools = true; // C lspo_level_flags "icedpools"
 
     // des.level_init mines: fg=".", bg="I", smoothed, joined=true,
     // lit=1, walled=false
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: ICE, filling: ROOM,
         lit: 1, smoothed: true, joined: true, walled: false,
-        icedpools: true,
     });
 
     splev_create_stair(true);
@@ -7795,22 +7725,21 @@ async function load_val_filb() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = "L" })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: LAVAPOOL,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
+    icedpools = true; // C lspo_level_flags "icedpools"
 
     // des.level_init mines: fg=".", bg="L", smoothed, joined=true,
     // lit=1, walled=false
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: LAVAPOOL, filling: ROOM,
         lit: 1, smoothed: true, joined: true, walled: false,
-        icedpools: true,
     });
 
     splev_create_stair(true);
@@ -7844,11 +7773,10 @@ function load_sam_strt() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -8003,11 +7931,10 @@ function load_sam_loca() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -8149,11 +8076,10 @@ function load_sam_goal() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -8269,22 +8195,20 @@ async function load_sam_fila() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
 
     // des.level_init mines: fg=".", bg="P", smoothed, joined=true,
     // walled=true (no lit key in lua) — filling defaults to fg (ROOM)
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: POOL, filling: ROOM,
         smoothed: true, joined: true, walled: true,
-        icedpools: false,
     });
 
     splev_create_stair(true);
@@ -8314,11 +8238,10 @@ function load_sam_filb() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -8387,11 +8310,10 @@ function load_hea_strt() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -8535,11 +8457,10 @@ async function load_hea_loca() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -8547,11 +8468,10 @@ async function load_hea_loca() {
 
     // des.level_init mines: fg=".", bg="P", smoothed=true, joined=true,
     // lit=1, walled=false — filling defaults to fg (ROOM)
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: POOL, filling: ROOM,
         lit: 1, smoothed: true, joined: true, walled: false,
-        icedpools: false,
     });
 
     const HEA_LOCA_MAP = `
@@ -8672,22 +8592,20 @@ async function load_hea_goal() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = "P" })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: POOL,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
 
     // des.level_init mines: fg=".", bg="P", smoothed=false, joined=true,
     // lit=1, walled=false — filling defaults to fg (ROOM)
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: POOL, filling: ROOM,
         lit: 1, smoothed: false, joined: true, walled: false,
-        icedpools: false,
     });
 
     const HEA_GOAL_MAP = `
@@ -8766,22 +8684,20 @@ async function load_hea_fila() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = "P" })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: POOL,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
 
     // des.level_init mines: fg=".", bg="P", smoothed=false, joined=true,
     // lit=1, walled=false — filling defaults to fg (ROOM)
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: POOL, filling: ROOM,
         lit: 1, smoothed: false, joined: true, walled: false,
-        icedpools: false,
     });
 
     splev_create_stair(true);
@@ -8814,22 +8730,20 @@ async function load_hea_filb() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = "P" })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: POOL,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
 
     // des.level_init mines: fg=".", bg="P", smoothed=false, joined=true,
     // lit=1, walled=false — filling defaults to fg (ROOM)
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: POOL, filling: ROOM,
         lit: 1, smoothed: false, joined: true, walled: false,
-        icedpools: false,
     });
 
     splev_create_stair(true);
@@ -8868,11 +8782,10 @@ function load_tou_strt() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -9049,11 +8962,10 @@ function load_tou_loca() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -9259,11 +9171,10 @@ function load_tou_goal() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -9470,22 +9381,20 @@ async function load_tou_fila() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
 
     // des.level_init mines: fg=".", bg=" " (no lit key in lua),
     // smoothed/joined/walled — filling defaults to fg (ROOM)
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         smoothed: true, joined: true, walled: true,
-        icedpools: false,
     });
 
     splev_create_stair(true);
@@ -9515,22 +9424,20 @@ async function load_tou_filb() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
 
     // des.level_init mines: fg=".", bg=" " (no lit key in lua),
     // smoothed/joined/walled — filling defaults to fg (ROOM)
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         smoothed: true, joined: true, walled: true,
-        icedpools: false,
     });
 
     splev_create_stair(true);
@@ -9571,11 +9478,10 @@ async function load_ran_strt() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = "." })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: ROOM,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -9585,11 +9491,10 @@ async function load_ran_strt() {
 
     // des.level_init mines: fg=".", bg=".", smoothed=true, joined=true,
     // lit=1, walled=false — filling defaults to fg (ROOM)
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: ROOM, filling: ROOM,
         lit: 1, smoothed: true, joined: true, walled: false,
-        icedpools: false,
     });
 
     // des.replace_terrain({ region={00,00,76,19}, fromterrain=".",
@@ -9728,11 +9633,10 @@ function load_ran_loca() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -9835,11 +9739,10 @@ function load_ran_goal() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -9991,22 +9894,20 @@ async function load_ran_fila() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
 
     // des.level_init mines: fg=".", bg="T", smoothed=true, joined=true,
     // walled=true (no lit key in lua) — filling defaults to fg (ROOM)
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: TREE, filling: ROOM,
         smoothed: true, joined: true, walled: true,
-        icedpools: false,
     });
 
     splev_create_stair(true);
@@ -10037,22 +9938,20 @@ async function load_ran_filb() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
 
     // des.level_init mines: fg=".", bg=" ", smoothed=true, joined=true,
     // walled=true (no lit key in lua) — filling defaults to fg (ROOM)
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         smoothed: true, joined: true, walled: true,
-        icedpools: false,
     });
 
     splev_create_stair(true);
@@ -10082,11 +9981,10 @@ async function load_ran_filb() {
 function load_mon_strt() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -10312,11 +10210,10 @@ function load_mon_loca() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -10423,11 +10320,10 @@ async function load_mon_goal() {
 
     // des.level_init mines: fg="L", bg=".", lit=0, smoothed/joined/walled false
     // C: filling defaults to fg when omitted (sp_lev.c get_table_mapchr_opt)
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: LAVAPOOL, bg: ROOM, filling: LAVAPOOL,
         lit: 0, smoothed: false, joined: false, walled: false,
-        icedpools: false,
     });
 
     const MON_GOAL_MAP = `
@@ -10648,11 +10544,10 @@ function load_mon_filb() {
 function load_cav_strt() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -10860,11 +10755,10 @@ function load_cav_strt() {
 function load_cav_loca() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -10996,11 +10890,10 @@ function load_cav_loca() {
 function load_cav_goal() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -11093,22 +10986,20 @@ async function load_cav_fila() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
 
     // des.level_init mines: fg=".", bg=" ", smoothed=true, joined=true,
     // walled=true (no lit key in lua) — filling defaults to fg (ROOM)
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         smoothed: true, joined: true, walled: true,
-        icedpools: false,
     });
 
     splev_create_stair(true);
@@ -11138,22 +11029,20 @@ async function load_cav_filb() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
 
     // des.level_init mines: fg=".", bg=" ", smoothed=true, joined=true,
     // walled=true (no lit key in lua) — filling defaults to fg (ROOM)
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         smoothed: true, joined: true, walled: true,
-        icedpools: false,
     });
 
     splev_create_stair(true);
@@ -11191,11 +11080,10 @@ function load_knox() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -11434,11 +11322,10 @@ function load_knox() {
 function load_bar_loca() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -11603,11 +11490,10 @@ function load_bar_loca() {
 function load_bar_goal() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -11767,11 +11653,10 @@ function splev_map_aligned_start(wid, hei, halign, valign) {
 function load_tower1() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -11970,11 +11855,10 @@ function load_tower1() {
 function load_tower2() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -12172,11 +12056,10 @@ function load_tower2() {
 function load_tower3() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -12364,11 +12247,10 @@ function load_tower3() {
 function load_soko1_1() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -12536,11 +12418,10 @@ function load_soko1_1() {
 function load_soko1_2() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -12698,11 +12579,10 @@ function load_soko1_2() {
 function load_soko3_1() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -12798,11 +12678,10 @@ function load_soko3_1() {
 function load_soko3_2() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -12900,11 +12779,10 @@ function load_soko3_2() {
 function load_soko4_1() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -13027,11 +12905,10 @@ function load_soko4_1() {
 function load_soko4_2() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -13133,11 +13010,10 @@ function load_earth() {
     const g = game;
     nhlib_shuffle_align();
     // des.level_init({ style = "solidfill", fg = " " }) — lit defaults BOOL_RANDOM
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -13337,11 +13213,10 @@ function load_earth() {
 function load_fire() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -13506,11 +13381,10 @@ function load_air() {
     const g = game;
     nhlib_shuffle_align();
     // des.level_init({ style = "solidfill", fg = " " }) — ' ' → STONE
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -13651,11 +13525,10 @@ function load_water() {
     const g = game;
     nhlib_shuffle_align();
     // des.level_init({ style = "solidfill", fg = " " }) — ' ' → STONE
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -13755,11 +13628,10 @@ function load_astral() {
     const g = game;
     nhlib_shuffle_align();
     // des.level_init({ style = "solidfill", fg = " " }) — ' ' → STONE
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -14067,11 +13939,10 @@ function load_astral() {
 function load_minend_1() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -14267,11 +14138,10 @@ function load_minend_1() {
 function load_minend_2() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -14513,11 +14383,10 @@ function load_minend_3() {
     const g = game;
     nhlib_shuffle_align();
     // C lspo_level_init solidfill fg="-" → filling HWALL; lit BOOL_RANDOM
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: HWALL,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -14740,11 +14609,10 @@ async function load_minetn_1() {
 
     // des.level_init({ style="mines", fg=".", bg=" ", smoothed=true,
     // joined=true, walled=true }) — filling defaults to fg; lit BOOL_RANDOM
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         lit: BOOL_RANDOM, smoothed: true, joined: true, walled: true,
-        icedpools: false,
     });
 
     const MINETN1_MAP = `
@@ -15363,11 +15231,10 @@ function load_minetn_5() {
     const align = g.splev_align || ['law', 'neutral', 'chaos'];
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -15602,11 +15469,10 @@ async function load_minetn_6() {
     const align = g.splev_align || ['law', 'neutral', 'chaos'];
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
 
     // des.level_flags("mazelevel", "inaccessibles") — ensure_way_out below
@@ -15615,11 +15481,10 @@ async function load_minetn_6() {
 
     // des.level_init({ style="mines", fg=".", bg="-", smoothed=true,
     // joined=true, lit=1, walled=true }) — filling defaults to fg
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: HWALL, filling: ROOM,
         lit: 1, smoothed: true, joined: true, walled: true,
-        icedpools: false,
     });
 
     const MINETN6_MAP = `
@@ -16509,11 +16374,10 @@ function Deaf_fumaroles() {
 function load_soko2_1() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -16610,11 +16474,10 @@ function load_soko2_1() {
 function load_soko2_2() {
     const g = game;
     nhlib_shuffle_align();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -17187,11 +17050,10 @@ function load_tut1() {
     // C: load_special loads nhlib.lua → shuffle(align) then runs tut-1.lua
     nhlib_shuffle_align();
     // des.level_init({ style = "solidfill", fg = " " }) — ' ' → STONE
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!game.level.flags) game.level.flags = {};
     game.level.flags.is_maze_lev = true;
@@ -17565,11 +17427,10 @@ function load_tut2() {
     // C: load_special loads nhlib.lua → shuffle(align) then runs tut-2.lua
     nhlib_shuffle_align();
     // des.level_init({ style = "solidfill", fg = " " }) — ' ' → STONE
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!game.level.flags) game.level.flags = {};
     game.level.flags.is_maze_lev = true;
@@ -17960,7 +17821,38 @@ function lvlfill_swamp(fg, bg, lit) {
     }
 }
 
-/** C ref: sp_lev.c splev_initlev — NONE + SOLIDFILL + MAZEGRID + MAZE + ROGUE + MINES + SWAMP */
+/**
+ * C ref: sp_lev.c:3834–3875 lspo_level_init — des.level_init table:
+ * get_table_*_opt defaults, splev_init_present = TRUE, bg INVALID_TYPE →
+ * MOAT (swamp) / STONE, then splev_initlev. JS: the Lua table is the
+ * literal object written by the hand-ported level loader (style already
+ * mapped to LVLINIT_*, map chars to typ). Named omission:
+ * gc.coder->lvl_is_joined (no reader in pinned C).
+ */
+async function lspo_level_init(tbl) {
+    splev_init_present = true;
+    const init_lev = {
+        init_style: tbl.init_style ?? LVLINIT_SOLIDFILL,
+        fg: tbl.fg ?? ROOM,
+        bg: tbl.bg ?? INVALID_TYPE,
+        smoothed: tbl.smoothed ?? false,
+        joined: tbl.joined ?? false,
+        lit: tbl.lit ?? BOOL_RANDOM,
+        walled: tbl.walled ?? false,
+        filling: undefined,
+        corrwid: tbl.corrwid ?? -1,
+        wallthick: tbl.wallthick ?? -1,
+        // C: rm_deadends = !get_table_boolean_opt(L, "deadends", TRUE)
+        rm_deadends: tbl.rm_deadends ?? false,
+        icedpools: false,
+    };
+    init_lev.filling = tbl.filling ?? init_lev.fg;
+    if (init_lev.bg === INVALID_TYPE)
+        init_lev.bg = (init_lev.init_style === LVLINIT_SWAMP) ? MOAT : STONE;
+    await splev_initlev(init_lev);
+}
+
+/** C ref: sp_lev.c:2981–3018 splev_initlev — NONE + SOLIDFILL + MAZEGRID + MAZE + ROGUE + MINES + SWAMP */
 async function splev_initlev(linit) {
     switch (linit.init_style) {
     default:
@@ -17974,16 +17866,13 @@ async function splev_initlev(linit) {
         lvlfill_solid(linit.filling, linit.lit);
         break;
     case LVLINIT_MAZEGRID:
-        // C: lvlfill_maze_grid(2, 0, x_maze_max, y_maze_max, bg)
-        lvlfill_maze_grid(2, 0, X_MAZE_MAX, Y_MAZE_MAX, linit.bg);
+        // C: lvlfill_maze_grid(2, 0, gx.x_maze_max, gy.y_maze_max, bg)
+        lvlfill_maze_grid(2, 0, maze_x_max(), maze_y_max(), linit.bg);
         break;
     case LVLINIT_MAZE:
-        // C: create_maze(corrwid, wallthick, rm_deadends)
-        create_maze(
-            linit.corrwid != null ? linit.corrwid : -1,
-            linit.wallthick != null ? linit.wallthick : -1,
-            !!linit.rm_deadends,
-        );
+        // C: create_maze(corrwid, wallthick, rm_deadends) — -1 defaults
+        // come from lspo_level_init
+        create_maze(linit.corrwid, linit.wallthick, !!linit.rm_deadends);
         break;
     case LVLINIT_ROGUE:
         // C sp_lev.c:3001-3003 — rogue style builds rogue rooms
@@ -17992,6 +17881,8 @@ async function splev_initlev(linit) {
     case LVLINIT_MINES:
         if (linit.lit === BOOL_RANDOM) linit.lit = rn2(2);
         if (linit.filling > -1) lvlfill_solid(linit.filling, 0);
+        // C sp_lev.c:3009 — des.level_flags("icedpools") → finish_map ice
+        linit.icedpools = icedpools;
         await mkmap(linit);
         break;
     case LVLINIT_SWAMP:
@@ -20123,7 +20014,7 @@ function load_castle() {
     nhlib_shuffle_align();
 
     // des.level_init({ style="mazegrid", bg="-" })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_MAZEGRID,
         bg: HWALL,
     });
@@ -20464,11 +20355,10 @@ function load_valley() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -20843,7 +20733,7 @@ function load_asmodeus() {
     nhlib_shuffle_align();
 
     // des.level_init({ style="mazegrid", bg="-" })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_MAZEGRID,
         bg: HWALL,
     });
@@ -21116,7 +21006,7 @@ function load_juiblex() {
 
     // des.level_init({ style = "swamp", lit = 0 })
     // C lspo_level_init: fg defaults ROOM; bg defaults MOAT for SWAMP
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SWAMP,
         fg: ROOM,
         bg: MOAT,
@@ -21387,11 +21277,10 @@ function load_baalz() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " ", lit = 0 })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: 0,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -21574,7 +21463,7 @@ function load_orcus() {
     nhlib_shuffle_align();
 
     // des.level_init({ style="mazegrid", bg="-" })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_MAZEGRID,
         bg: HWALL,
     });
@@ -21854,7 +21743,7 @@ function load_wizard1() {
     nhlib_shuffle_align();
 
     // des.level_init({ style="mazegrid", bg="-" })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_MAZEGRID,
         bg: HWALL,
     });
@@ -22160,7 +22049,7 @@ function load_wizard2() {
     nhlib_shuffle_align();
 
     // des.level_init({ style="mazegrid", bg="-" })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_MAZEGRID,
         bg: HWALL,
     });
@@ -22430,7 +22319,7 @@ function load_wizard3() {
     nhlib_shuffle_align();
 
     // des.level_init({ style="mazegrid", bg="-" })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_MAZEGRID,
         bg: HWALL,
     });
@@ -22786,7 +22675,7 @@ function load_fakewiz_tower(isFake1) {
     nhlib_shuffle_align();
 
     // des.level_init({ style="mazegrid", bg ="-" })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_MAZEGRID,
         bg: HWALL,
     });
@@ -22938,11 +22827,10 @@ function load_sanctum() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " })
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
@@ -23319,17 +23207,16 @@ async function hellfill_run_style(hellno) {
 
 /** hellfill.lua hells[1] — mines style with lava. */
 async function hellfill_style_mines_lava() {
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: 0,
     });
     hellfill_set_mazelevel_noflip();
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         lit: 0, smoothed: true, joined: true, walled: true,
-        icedpools: false,
     });
     hellfill_replace_terrain_all(STONE, LAVAPOOL, 100);
     hellfill_replace_terrain_all(ROOM, LAVAPOOL, 5);
@@ -23344,13 +23231,13 @@ async function hellfill_style_mines_lava() {
  */
 function hellfill_style_mazegrid_tweaks() {
     const g = game;
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: 0,
     });
     hellfill_set_mazelevel_noflip();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_MAZEGRID,
         bg: HWALL,
     });
@@ -23374,13 +23261,13 @@ function hellfill_style_mazegrid_tweaks() {
 
 /** hellfill.lua hells[3] — maze wallthick=1, random corrwid. */
 function hellfill_style_maze_wt1() {
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: 0,
     });
     hellfill_set_mazelevel_noflip();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_MAZE,
         corrwid: -1,
         wallthick: 1,
@@ -23394,13 +23281,13 @@ function hellfill_style_maze_wt1() {
  */
 function hellfill_style_maze_wall_replace() {
     const cwid = lua_random2(1, 4); // math.random(4)
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: 0,
     });
     hellfill_set_mazelevel_noflip();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_MAZE,
         corrwid: cwid,
         wallthick: 1,
@@ -23425,13 +23312,13 @@ function hellfill_style_maze_wall_replace() {
 /** hellfill.lua hells[5] — thick walls, optional lava walls. */
 function hellfill_style_maze_thick() {
     const wwid = 1 + lua_random2(1, 2); // 1+math.random(2)
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: 0,
     });
     hellfill_set_mazelevel_noflip();
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_MAZE,
         corrwid: lua_random2(1, 2),
         wallthick: wwid,
@@ -23458,14 +23345,14 @@ function hellfill_style_maze_thick() {
  */
 function hellfill_style_cold_maze() {
     const cwid = lua_random2(1, 4);
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: 0,
     });
     hellfill_set_mazelevel_noflip();
     if (game.level.flags) game.level.flags.temperature = -1; // cold
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_MAZE,
         corrwid: cwid,
         wallthick: 1,
@@ -23498,17 +23385,16 @@ function hellfill_style_cold_maze() {
 /** hellfill.lua hells[7] — open cavern mines. */
 async function hellfill_style_open_cavern() {
     const wter = percent(50) ? STONE : LAVAPOOL;
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: 0,
     });
     hellfill_set_mazelevel_noflip();
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: wter, filling: ROOM,
         lit: 0, smoothed: true, joined: true, walled: false,
-        icedpools: false,
     });
     let sel = selection_match_mapfrag('.');
     sel = selection_grow(sel, 'all');
@@ -23548,7 +23434,7 @@ async function load_minefill() {
     const g = game;
     nhlib_shuffle_align();
 
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         fg: STONE, bg: STONE, filling: STONE,
         lit: BOOL_RANDOM, smoothed: false, joined: false, walled: false,
@@ -23556,11 +23442,10 @@ async function load_minefill() {
 
     g.level.flags.is_maze_lev = true;
 
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         lit: BOOL_RANDOM, smoothed: true, joined: true, walled: true,
-        icedpools: false,
     });
 
     splev_create_stair(true);
@@ -23603,21 +23488,19 @@ async function load_bar_fila() {
     nhlib_shuffle_align();
 
     // des.level_init({ style = "solidfill", fg = " " }) — ' ' → STONE
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
 
     // des.level_init mines: fg=".", bg=".", lit=0, walled=false
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: ROOM, filling: ROOM,
         lit: 0, smoothed: true, joined: true, walled: false,
-        icedpools: false,
     });
 
     splev_create_stair(true);
@@ -23643,21 +23526,19 @@ async function load_bar_filb() {
     const g = game;
     nhlib_shuffle_align();
 
-    splev_initlev({
+    lspo_level_init({
         init_style: LVLINIT_SOLIDFILL,
         filling: STONE,
         lit: BOOL_RANDOM,
-        icedpools: false,
     });
     if (!g.level.flags) g.level.flags = {};
     g.level.flags.is_maze_lev = true;
 
     // des.level_init mines: fg=".", bg=" ", lit=0, walled=true
-    await splev_initlev({
+    await lspo_level_init({
         init_style: LVLINIT_MINES,
         fg: ROOM, bg: STONE, filling: ROOM,
         lit: 0, smoothed: true, joined: true, walled: true,
-        icedpools: false,
     });
 
     splev_create_stair(true);
@@ -25194,6 +25075,11 @@ function sel_set_ter(x, y, ter, tlit) {
             loc.horizontal = true;
     } else if (ter === HWALL || ter === IRONBARS) {
         loc.horizontal = true;
+    } else if (splev_init_present && ter === ICE) {
+        // C sp_lev.c:4625–4626 — remember what the ice melts back into
+        loc.icedpool = icedpools ? ICED_POOL : ICED_MOAT;
+    } else if (ter === CLOUD) {
+        del_engr_at(x, y); /* C: clouds cannot have engravings */
     }
 }
 

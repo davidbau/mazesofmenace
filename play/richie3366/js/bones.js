@@ -5,25 +5,32 @@
 
 import { game } from './gstate.js';
 import { vfsReadFile, vfsWriteFile, vfsDeleteFile } from './storage.js';
-import { next_ident } from './mkobj.js';
-import { mons } from './monsters.js';
-import { GameMap } from './game.js';
-import { OBJ_FLOOR, OBJ_MINVENT, OBJ_BURIED } from './const.js';
-import { peace_minded, set_malign, restmon_edog } from './makemon.js';
+import { next_ident, obj_extract_self, dealloc_obj } from './mkobj.js';
+import { peace_minded, set_malign, propagate } from './makemon.js';
+import {
+    OBJ_FLOOR, OBJ_CONTAINED, SHOPBASE, ROOMOFFSET, ONAME_BONES,
+    DEFUNCT_MONSTER, NON_PM, TRICKED, has_oname, has_mgivenname,
+} from './const.js';
+import { FOOD_CLASS } from './objects.js';
 import { save_track, rest_track } from './track.js';
 import { yn_function } from './getline.js';
-import { paint_gbuf_level_to_terminal } from './display.js';
+import { pline, paint_gbuf_level_to_terminal } from './display.js';
 import { vision_off_newsym_gbuf } from './vision.js';
 import { fruit_from_indx, fruit_from_name } from './objnam.js';
-import { rnd } from './rng.js';
+import { rn2, rnd } from './rng.js';
 import { objectNames } from './generated/objects_data.js';
-import { restcemetery } from './dungeon.js';
 import { update_mlstmv } from './dog.js';
-import {
-    serLevel,
-    deserObjChain,
-    deserTraps,
-} from './lev_json.js';
+import { serLevel, deserLevel } from './lev_json.js';
+import { exist_artifact, artifact_exists } from './artifact.js';
+import { is_quest_artifact } from './quest.js';
+import { safe_oname, free_oname } from './do_name.js';
+import { get_obj_location } from './timeout.js';
+import { inside_shop, fix_shop_damage } from './shk.js';
+import { in_rooms } from './hack.js';
+import { tended_shop } from './sounds.js';
+import { mongone } from './mon.js';
+import { no_bones_level, done } from './end.js';
+import { sanitize_engravings } from './engrave.js';
 
 const BONES_VFS_PREFIX = 'bones/';
 const SLIME_MOLD = objectNames.indexOf('SLIME_MOLD');
@@ -54,15 +61,82 @@ export function savebones_negate_fruit_ids() {
 }
 
 /**
- * C ref: bones.c resetobjs save path `:131–132` — SLIME_MOLD → goodfruit.
- * Recurses cobj then walks nobj like C. Other resetobjs arms (known /
- * dknown, name strip, unique corpse, invocation items) named.
- * @param {object|null} ochain
+ * C ref: bones.c sanitize_name — non-printable → '.'; 8-bit strip deferred
+ * (tty eight_bit_input always on for this port). C edits the buffer in
+ * place; JS strings are immutable, so callers store the result.
+ * @param {string} namebuf
+ * @returns {string}
  */
-function resetobjs_mark_slime_molds(ochain) {
-    for (let otmp = ochain; otmp; otmp = otmp.nobj) {
-        if (otmp.cobj) resetobjs_mark_slime_molds(otmp.cobj);
-        if ((otmp.otyp | 0) === SLIME_MOLD) goodfruit(otmp.spe);
+export function sanitize_name(namebuf) {
+    let out = '';
+    for (let i = 0; i < namebuf.length; i++) {
+        const c = namebuf.charCodeAt(i) & 0x7f;
+        if (c < 0x20 || c === 0x7f) out += '.';
+        else out += String.fromCharCode(c);
+    }
+    return out;
+}
+
+/**
+ * C ref: bones.c resetobjs `:50–193` — recurse cobj first, drop
+ * in_use objects, then the restore arm (artifact bookkeeping, oname
+ * sanitize, shop no_charge for partly eaten food) or the save arm.
+ * Save arm: SLIME_MOLD goodfruit only; the known/dknown/name strip,
+ * SCR_MAIL/EGG/TIN/unique-corpse and invocation-item arms are named
+ * (end.js set_ghostly_objlist covers the hero's dropped inventory).
+ * @param {object|null} ochain
+ * @param {boolean} restore
+ */
+function resetobjs(ochain, restore) {
+    let nobj;
+    for (let otmp = ochain; otmp; otmp = nobj) {
+        nobj = otmp.nobj;
+        if (otmp.cobj) resetobjs(otmp.cobj, restore);
+        if (otmp.in_use) {
+            obj_extract_self(otmp);
+            dealloc_obj(otmp);
+            continue;
+        }
+
+        if (restore) {
+            /* artifact bookkeeping needs to be done during
+               restore; other fixups are done while saving */
+            if (otmp.oartifact) {
+                if (exist_artifact(otmp.otyp, safe_oname(otmp))
+                    || is_quest_artifact(otmp)) {
+                    /* prevent duplicate--revert to ordinary obj */
+                    otmp.oartifact = 0;
+                    if (has_oname(otmp)) free_oname(otmp);
+                } else {
+                    artifact_exists(otmp, safe_oname(otmp), true,
+                        ONAME_BONES);
+                }
+            } else if (has_oname(otmp)) {
+                otmp.oextra.oname = sanitize_name(otmp.oextra.oname);
+            }
+            /* 3.6.3: set no_charge for partly eaten food in shop;
+               all other items become goods for sale if in a shop */
+            if ((otmp.oclass | 0) === FOOD_CLASS && otmp.oeaten) {
+                let top;
+                let loc;
+                let p;
+                for (top = otmp; (top.where | 0) === OBJ_CONTAINED;
+                    top = top.ocontainer) {
+                    continue;
+                }
+                otmp.no_charge = ((top.where | 0) === OBJ_FLOOR
+                    && (loc = get_obj_location(top, 0))
+                    /* can't use costly_spot() since its
+                       result depends upon hero's location */
+                    && inside_shop(loc.x, loc.y)
+                    && (p = in_rooms(loc.x, loc.y, SHOPBASE)).length > 0
+                    && tended_shop(
+                        game.level.rooms[p.charCodeAt(0) - ROOMOFFSET]))
+                    ? 1 : 0;
+            }
+        } else if ((otmp.otyp | 0) === SLIME_MOLD) { /* saving */
+            goodfruit(otmp.spe);
+        }
     }
 }
 
@@ -175,15 +249,15 @@ export function write_bonesfile(lev) {
             m.mtame = 0;
             m.mpeaceful = 0;
         }
-        // C resetobjs(minvent, FALSE) SLIME_MOLD arm — after drop_upon_death
-        resetobjs_mark_slime_molds(m.minvent);
+        // C resetobjs(mtmp->minvent, FALSE) — after drop_upon_death
+        resetobjs(m.minvent, false);
     }
-    // C resetobjs(fobj) / resetobjs(buriedobjlist) SLIME_MOLD arm
-    resetobjs_mark_slime_molds(game.fobj);
+    // C resetobjs(fobj, FALSE) / resetobjs(buriedobjlist, FALSE)
+    resetobjs(game.fobj, false);
     if (Array.isArray(lvl?.buriedobjlist)) {
-        for (const o of lvl.buriedobjlist) resetobjs_mark_slime_molds(o);
+        for (const o of lvl.buriedobjlist) resetobjs(o, false);
     } else {
-        resetobjs_mark_slime_molds(lvl?.buriedobjlist);
+        resetobjs(lvl?.buriedobjlist, false);
     }
     // migrating_mons are off-level (mx==0); C savelev does not include them.
 
@@ -288,11 +362,20 @@ function remapObjChainIds(head) {
 }
 
 /**
- * C ref: restore.c restmonchn ghostly — next_ident per mon, then minvent objs.
+ * C ref: restore.c restmonchn ghostly `:399–416` — next_ident per mon,
+ * then propagate(mndx, TRUE, ghostly) on the true form (cham, else the
+ * saved mnum == monsndx(data)); a species that can no longer be born
+ * gets the DEFUNCT_MONSTER cookie getbones purges. Then minvent objs.
  */
 function remapMonChainIds(monsList) {
     for (const mtmp of monsList) {
         mtmp.m_id = next_ident();
+        const mndx = (mtmp.cham == null || mtmp.cham === NON_PM)
+            ? (mtmp.mnum | 0) : (mtmp.cham | 0);
+        if (!propagate(mndx, true, true)) {
+            /* cookie to trigger purge in getbones() */
+            mtmp.mhpmax = DEFUNCT_MONSTER;
+        }
         remapObjChainIds(mtmp.minvent);
     }
 }
@@ -313,30 +396,114 @@ function rebuildObjectsAt(fobj) {
 }
 
 /**
- * C ref: bones.c getbones open + getlev + ghostly id remap + delete.
- * Wizard Get bones? / Unlink bones? via y_n (D-0581).
- * @returns {Promise<boolean>} true if bones loaded (mklev should return).
+ * C ref: restore.c trickery `:1034–1042` (JS has no restore.js; getbones
+ * is the only caller here). killer.name carries the reason into done().
+ * @param {string} reason
  */
-export async function try_load_bones(lev) {
-    const { filename, bonesid } = set_bonesfile_name(lev);
-    const raw = vfsReadFile(vfsPath(filename));
-    if (raw == null) return false;
+async function trickery(reason) {
+    await pline('Strange, this map is not as I remember it.');
+    await pline('Somebody is trying some trickery here...');
+    await pline('This game is void.');
+    if (!game.killer) game.killer = { name: '', format: 0 };
+    game.killer.name = reason || '';
+    await done(TRICKED);
+}
 
-    let payload;
-    try {
-        payload = JSON.parse(raw);
-    } catch {
-        vfsDeleteFile(vfsPath(filename));
-        return false;
+/**
+ * C ref: restore.c getlev(nhfp, 0, 0) for a bones file (ghostly) —
+ * shared JSON hydration `deserLevel` (relinks RANGE_LEVEL timers/lights
+ * against the blob, review 657), then the ghostly arms: loadfruitchn →
+ * restmonchn/restobjchn id remap + propagate + ghostfruit, peace/malign
+ * reset for the new hero, install, rest_track, freefruitchn.
+ * Named omissions: installing the blob's RANGE_LEVEL timers/lights,
+ * regions and lastseentyp (C getlev restores them); shk residency peace;
+ * hide_monst.
+ * @param {object} payload  bones VFS payload (top-level level blob)
+ */
+function getlev_bones(payload) {
+    // C getlev ghostly: go.oldfruit = loadfruitchn before restobjchn
+    // so ghostfruit can remap SLIME_MOLD spe (D-1541).
+    game.oldfruit = loadfruitchn(payload.fruitchn);
+    const info = deserLevel(payload);
+    const map = info.level;
+    for (const col of map.locations || []) {
+        for (const cell of col || []) {
+            if (!cell) continue;
+            // C savebones cleared glyph memory; strip any stale
+            // display/memory fields from older JS bones payloads.
+            cell.seenv = 0;
+            cell.waslit = false;
+            cell.remembered_glyph = undefined;
+            cell.disp_ch = ' ';
+            cell.disp_color = 8;
+            cell.disp_decgfx = false;
+            cell.disp_attr = 0;
+            cell.gnew = 0;
+            cell.glyph_symidx = -1;
+        }
     }
-    if (!payload || payload.bonesid !== bonesid) {
-        // C: trickery / abandon — treat as miss for non-wizard
-        vfsDeleteFile(vfsPath(filename));
-        return false;
+    const fmon = info.fmon;
+
+    // C restmonchn / restobjchn order: mons(+invent), fobj, buried, bill
+    remapMonChainIds(fmon);
+    remapObjChainIds(info.fobj);
+    remapObjChainIds(map.buriedobjlist);
+    remapObjChainIds(info.billobjs);
+
+    // C ref: restore.c getlev ghostly — reset peaceful/malign for new hero
+    // (shopkeepers keep saved peace; unicorn coalign special before peace_minded).
+    const sgn = (x) => (x < 0 ? -1 : x > 0 ? 1 : 0);
+    const ual = game.u?.ualign?.type ?? 0;
+    for (const mtmp of fmon) {
+        if (!mtmp.isshk) {
+            const ptr = mtmp.data;
+            const uniCoalign = !!(ptr && ptr.mlet === 'S_UNICORN'
+                && sgn(ual) === sgn(ptr.maligntyp | 0));
+            mtmp.mpeaceful = uniCoalign ? 1 : (peace_minded(ptr) ? 1 : 0);
+        }
+        set_malign(mtmp);
     }
 
+    game.level = map;
+    game.fmon = fmon;
+    game.fobj = info.fobj;
+    game.billobjs = info.billobjs;
+    game.ftrap = map.traps;
+    game.head_engr = info.head_engr;
+    game.stairs = info.stairs;
+    rebuildObjectsAt(info.fobj);
+    // C ref: restore.c getlev → rest_track (bones NHFILE includes utrack)
+    rest_track(info.track);
+    // C getlev ghostly: freefruitchn(oldfruit) after restobjchn / rest_track.
+    game.oldfruit = null;
+}
+
+/**
+ * C ref: bones.c getbones `:629–756`. Rule #2 analogue of the NHFILE:
+ * open_bonesfile → frozen-VFS read; validate() → JSON parse + payload
+ * version; Sfi_char bonesid → payload.bonesid; close_nhfile and
+ * compress_bonesfile have nothing to do on the VFS. Wizard debugpline
+ * ("Abandoning bones", "Removing defunct monster") is debug-file only.
+ * @returns {Promise<number>} ok — mklev returns when nonzero
+ */
+export async function getbones() {
     const flags = game.flags || {};
     const wizard = !!(flags.wizard || flags.debug);
+    const ps = game.program_state || (game.program_state = {});
+    let ok;
+
+    // C: discover global; JS playmode explore/discover both set flags.explore
+    if (flags.explore || flags.discover) return 0;
+    if (flags.bones === false) return 0;
+    /* only once in three times do we find bones */
+    if (rn2(3) && !wizard) return 0;
+    if (no_bones_level(game.u?.uz || { dnum: 0, dlevel: 1 })) return 0;
+
+    const lev = game.u?.uz;
+    const { filename, bonesid } = set_bonesfile_name(lev);
+    const raw = vfsReadFile(vfsPath(filename));
+    if (raw == null) return 0;
+
     // Keep stale terminal map through Get/Unlink yn like C gbuf (display
     // redraw waits until goto_level flush_screen(-1) / docrt).
     // C: vision_recalc(2) newsyms leave-level into gbuf; Get bones? yn
@@ -366,122 +533,88 @@ export async function try_load_bones(lev) {
         game.fmon = savedFmon;
     }
     try {
-        // C: after validate OK — wizard y_n("Get bones?"); 'n' → leave file
-        if (wizard) {
-            if ((await yn_function('Get bones?', 'yn', 'n')) === 'n') {
-                return false;
-            }
+        ps.reading_bonesfile = 1;
+        let payload = null;
+        try {
+            payload = JSON.parse(raw);
+        } catch {
+            payload = null;
         }
-
-        // C getlev ghostly: go.oldfruit = loadfruitchn before restobjchn
-        // so ghostfruit can remap SLIME_MOLD spe (D-1541).
-        game.oldfruit = loadfruitchn(payload.fruitchn);
-
-        const map = new GameMap();
-    if (payload.locations) {
-        for (let x = 0; x < payload.locations.length; x++) {
-            const col = payload.locations[x];
-            if (!col) continue;
-            for (let y = 0; y < col.length; y++) {
-                if (col[y] && map.locations[x]) {
-                    const cell = { ...map.locations[x][y], ...col[y] };
-                    // C savebones cleared glyph memory; strip any stale
-                    // display/memory fields from older JS bones payloads.
-                    cell.seenv = 0;
-                    cell.waslit = false;
-                    cell.remembered_glyph = undefined;
-                    cell.disp_ch = ' ';
-                    cell.disp_color = 8;
-                    cell.disp_decgfx = false;
-                    cell.disp_attr = 0;
-                    cell.gnew = 0;
-                    cell.glyph_symidx = -1;
-                    map.locations[x][y] = cell;
+        if (!payload || typeof payload !== 'object' || payload.version !== 1) {
+            // C: validate(nhfp, gb.bones, FALSE) != SF_UPTODATE
+            if (!wizard) {
+                await pline('Discarding unusable bones; no need to panic...');
+            }
+            ok = 0;
+            ps.reading_bonesfile = 0;
+        } else {
+            ok = 1;
+            if (wizard) {
+                if ((await yn_function('Get bones?', 'yn', 'n')) === 'n') {
+                    ps.reading_bonesfile = 0;
+                    return 0;
                 }
             }
-        }
-    }
-    map.rooms = payload.rooms || [];
-    map.nroom = payload.nroom | 0;
-    map.doors = payload.doors || [];
-    map.doorindex = payload.doorindex | 0;
-    map.flags = { ...map.flags, ...(payload.flags || {}) };
-    map.upstair = payload.upstair || null;
-    map.dnstair = payload.dnstair || null;
-    map.buriedobjlist = null;
-    map.traps = deserTraps(payload.traps ?? payload.ftrap);
+            // C Sfi_char "bones_count" = strlen + 1; > sizeof oldbonesid
+            // (40) → abandon without reading the level.
+            const oldbonesid = String(payload.bonesid ?? '');
+            if (oldbonesid.length + 1 > 40) {
+                /* ToDo: maybe unlink these problematic bones? */
+                ps.reading_bonesfile = 0;
+                return 0;
+            }
+            if (bonesid !== oldbonesid) {
+                const errbuf = `This is bones level '${oldbonesid}', not '${
+                    bonesid}'!`;
+                if (wizard) {
+                    await pline(errbuf);
+                    ok = 0; /* won't die of trickery */
+                }
+                ps.reading_bonesfile = 0;
+                await trickery(errbuf);
+            } else {
+                getlev_bones(payload);
 
-    const fmon = [];
-    for (const rawM of payload.fmon || []) {
-        const mtmp = { ...rawM };
-        mtmp.minvent = deserObjChain(rawM.minvent, OBJ_MINVENT);
-        for (let o = mtmp.minvent; o; o = o.nobj) o.ocarry = mtmp;
-        const mnum = mtmp.mnum | 0;
-        mtmp.data = mons(mnum);
-        // C ref: restore.c restmon — mtrack is part of struct monst (not cleared)
-        mtmp.mtrack = [];
-        for (let j = 0; j < 4; j++) {
-            const c = rawM.mtrack?.[j];
-            mtmp.mtrack.push({ x: c?.x | 0, y: c?.y | 0 });
-        }
-        // C restore.c restmon `:349–361` — newedog + apport clamp.
-        restmon_edog(mtmp);
-        fmon.push(mtmp);
-    }
-
-    const fobj = deserObjChain(payload.fobj, OBJ_FLOOR);
-    const buried = deserObjChain(payload.buriedobjlist, OBJ_BURIED);
-    const billobjs = deserObjChain(payload.billobjs, OBJ_FLOOR);
-
-    // C restmonchn / restobjchn order: mons(+invent), fobj, buried, bill
-    remapMonChainIds(fmon);
-    remapObjChainIds(fobj);
-    remapObjChainIds(buried);
-    remapObjChainIds(billobjs);
-
-    // C ref: restore.c getlev ghostly — reset peaceful/malign for new hero
-    // (shopkeepers keep saved peace; unicorn coalign special before peace_minded).
-    // Named omission: shk name-based residency peace; hide_monst after.
-    const sgn = (x) => (x < 0 ? -1 : x > 0 ? 1 : 0);
-    const ual = game.u?.ualign?.type ?? 0;
-    for (const mtmp of fmon) {
-        if (!mtmp.isshk) {
-            const ptr = mtmp.data;
-            const uniCoalign = !!(ptr && ptr.mlet === 'S_UNICORN'
-                && sgn(ual) === sgn(ptr.maligntyp | 0));
-            mtmp.mpeaceful = uniCoalign ? 1 : (peace_minded(ptr) ? 1 : 0);
-        }
-        set_malign(mtmp);
-    }
-
-    game.level = map;
-    game.fmon = fmon;
-    game.fobj = fobj;
-    map.buriedobjlist = buried;
-    game.billobjs = billobjs;
-    game.ftrap = map.traps;
-    game.head_engr = payload.head_engr || null;
-    game.stairs = payload.stairs || null;
-    // C: restcemetery → level.bonesinfo (bones_include_name / familiar)
-    map.bonesinfo = restcemetery(payload.bonesinfo);
-    rebuildObjectsAt(fobj);
-    // C ref: restore.c getlev → rest_track (bones NHFILE includes utrack)
-    rest_track(payload.track);
-    // C getlev ghostly: freefruitchn(oldfruit) after restobjchn / rest_track.
-    game.oldfruit = null;
-
-    if (!game.u) game.u = {};
-    if (!game.u.uroleplay) game.u.uroleplay = {};
-    game.u.uroleplay.numbones = (game.u.uroleplay.numbones | 0) + 1;
-
-    // C: wizard y_n("Unlink bones?"); 'n' → keep file
-        if (wizard) {
-            if ((await yn_function('Unlink bones?', 'yn', 'n')) === 'n') {
-                return true;
+                /* getlev() tracks birth counts; an extinct or genocided
+                   species came back with mhpmax = DEFUNCT_MONSTER */
+                for (const mtmp of [...(game.fmon || [])]) {
+                    if (has_mgivenname(mtmp)) {
+                        if (mtmp.mextra?.mgivenname) {
+                            mtmp.mextra.mgivenname = sanitize_name(
+                                mtmp.mextra.mgivenname);
+                        } else {
+                            mtmp.mgivenname = sanitize_name(mtmp.mgivenname);
+                        }
+                    }
+                    if (mtmp.mhpmax === DEFUNCT_MONSTER) {
+                        await mongone(mtmp);
+                    } else {
+                        /* to correctly reset named artifacts on the level */
+                        resetobjs(mtmp.minvent, true);
+                    }
+                }
+                resetobjs(game.fobj, true);
+                resetobjs(game.level.buriedobjlist, true);
+                await fix_shop_damage();
             }
         }
-        vfsDeleteFile(vfsPath(filename));
-        return true;
+        ps.reading_bonesfile = 0;
+        sanitize_engravings();
+        if (!game.u) game.u = {};
+        if (!game.u.uroleplay) game.u.uroleplay = {};
+        game.u.uroleplay.numbones = (game.u.uroleplay.numbones | 0) + 1;
+
+        if (wizard) {
+            if ((await yn_function('Unlink bones?', 'yn', 'n')) === 'n') {
+                return ok;
+            }
+        }
+        if (!delete_bonesfile(lev)) {
+            /* N games restoring the same bones: the N-1 losers just
+               generate a new level */
+            return 0;
+        }
+        return ok;
     } finally {
         game._stale_map_flush = false;
         game._leave_gbuf_level = null;

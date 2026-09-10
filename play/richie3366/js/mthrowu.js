@@ -1,5 +1,5 @@
 // mthrowu.js — Monster ranged throw/shoot (partial).
-// C ref: mthrowu.c thrwmu / monshoot / m_throw / ohitmon / thitu /
+// C ref: mthrowu.c thrwmm / thrwmu / monshoot / m_throw / ohitmon / thitu /
 //         lined_up / m_lined_up / spitmm / spitmu / breamm / breamu /
 //         u_catch_thrown_obj / ucatchgem / drop_throw / return_from_mtoss.
 
@@ -9,7 +9,8 @@ import {
     distmin, dist2, m_at, m_carrying, seemimic, setmangry, wake_nearto,
 } from './mon.js';
 import {
-    COLNO, ROWNO, BOLT_LIM, IS_OBSTRUCTED, IS_DOOR, D_CLOSED, D_LOCKED,
+    COLNO, ROWNO, BOLT_LIM, PET_MISSILE_RANGE2, IS_OBSTRUCTED, IS_DOOR,
+    D_CLOSED, D_LOCKED,
     NEED_WEAPON, NEED_RANGED_WEAPON, SLT_ENCUMBER, Is_rogue_level, W_WEP,
     POTHIT_MONST_THROW, POTHIT_OTHER_THROW, LAVAWALL, IS_WATERWALL, Upolyd, M_AP_TYPE,
     M_AP_NOTHING, M_AP_MONSTER, u_at, P_NONE,
@@ -34,22 +35,22 @@ import {
 } from './weapon.js';
 import { find_mac, mondied, monkilled, shade_miss, AT_WEAP, AT_SPIT } from './mhitm.js';
 import { xkilled, can_blnd } from './uhitm.js';
-import { ammo_and_launcher, is_launcher } from './wield.js';
+import { ammo_and_launcher, is_launcher, is_pole } from './wield.js';
 import { acurr, acurrstr, A_DEX, A_STR, exercise, poisoned } from './attrib.js';
 import { calc_capacity, Blind } from './invent.js';
 import { losehp, nomul, maybe_half_phys, dissolve_bars, is_pool, is_lava, stop_occupation } from './hack.js';
 import { finish_losehp_done } from './end.js';
 import {
     pline, mon_visible, see_with_infrared, tmp_at, obj_glyph,
-    nh_delay_output, newsym, canspotmon, impossible,
+    nh_delay_output, newsym, canspotmon, impossible, set_msg_xy,
 } from './display.js';
-import { Monnam, mon_nam, s_suffix as s_suffix_ucatch } from './do_name.js';
+import { Monnam, mon_nam, s_suffix as s_suffix_ucatch, some_mon_nam } from './do_name.js';
 import {
     nohands, mons, throws_rocks, MZ_MEDIUM, MZ_TINY, nonliving,
     is_unicorn, touch_petrifies, bigmonst, is_elf, poly_when_stoned,
     eyecount,
 } from './monsters.js';
-import { xname, singular, an, vtense, the, makeplural, mshot_xname, killer_xname } from './objnam.js';
+import { xname, singular, an, vtense, the, makeplural, mshot_xname, killer_xname, obj_is_pname } from './objnam.js';
 import { mbodypart, body_part, polymon } from './polyself.js';
 import {
     VENOM_CLASS, POTION_CLASS, WEAPON_CLASS, GEM_CLASS, TOOL_CLASS,
@@ -345,34 +346,40 @@ export function linedup(ax, ay, bx, by, boulderhandling = 0) {
 }
 
 /**
- * C ref: mthrowu.c m_lined_up — line-of-fire vs mtarg (hero or monster).
- * Hero: mux/muy + Upolyd concealment rn2(25) + boulderhandling 1|2.
- * Mon-mon: mtarg mx/my + boulderhandling 0.
+ * C ref: mthrowu.c:1375–1393 m_lined_up — line-of-fire vs mtarg.
+ * Hero (`gy.youmonst`): mux/muy as-is (zeromonst 0 until set_apparxy),
+ * Upolyd concealment `rn2(25)` short-circuit, boulderhandling 1|2.
+ * Mon-mon: mtarg mx/my + boulderhandling 0. Do not fall back to u.ux:
+ * C reads `mtmp->mux` even when 0.
  */
 export function m_lined_up(mtarg, mtmp) {
     const you = game.youmonst;
+    // JS youmonst vs u: callers may pass either; C is only &gy.youmonst.
     const utarget = mtarg === you || mtarg === game.u;
-    const u = game.u || {};
-    const tx = utarget ? (mtmp.mux ?? u.ux) : mtarg.mx;
-    const ty = utarget ? (mtmp.muy ?? u.uy) : mtarg.my;
+    const u = game.u;
+    const tx = utarget ? (mtmp.mux | 0) : (mtarg.mx | 0);
+    const ty = utarget ? (mtmp.muy | 0) : (mtarg.my | 0);
     const ignore_boulders = utarget && (throws_rocks(mtmp.data)
         || !!m_carrying(mtmp, WAN_STRIKING));
-    // C: utarget && Upolyd && rn2(25) && (uundetected || unusual AP)
-    if (utarget && Upolyd(u) && rn2(25)) {
-        const ap = M_AP_TYPE(you);
-        if (u.uundetected || (ap !== M_AP_NOTHING && ap !== M_AP_MONSTER)) {
-            return false;
-        }
+
+    /* hero concealment usually trumps monst awareness of being lined up */
+    // C: U_AP_TYPE is (youmonst.m_ap_type & M_AP_TYPMASK) — M_AP_TYPE(you).
+    if (utarget && Upolyd(u) && rn2(25)
+        && (u.uundetected || (M_AP_TYPE(you) !== M_AP_NOTHING
+                              && M_AP_TYPE(you) !== M_AP_MONSTER))) {
+        return false;
     }
+
+    /* [no callers care about the 1 vs 2 situation any more] */
     return linedup(tx, ty, mtmp.mx, mtmp.my,
         utarget ? (ignore_boulders ? 1 : 2) : 0);
 }
 
 /**
- * C ref: mthrowu.c lined_up — m_lined_up vs hero.
+ * C ref: mthrowu.c:1396–1401 lined_up — m_lined_up vs hero.
  */
 export function lined_up(mtmp) {
-    return m_lined_up(game.youmonst || game.u, mtmp);
+    return m_lined_up(game.youmonst || game.u, mtmp) ? true : false;
 }
 
 /**
@@ -407,9 +414,9 @@ export async function spitmm(mtmp, mattk, mtarg) {
     if (m_lined_up(mtarg, mtmp)) {
         const you = game.youmonst;
         const utarg = mtarg === you || mtarg === game.u;
-        const u = game.u || {};
-        const tx = utarg ? (mtmp.mux ?? u.ux) : mtarg.mx;
-        const ty = utarg ? (mtmp.muy ?? u.uy) : mtarg.my;
+        // C: mux/muy, not hero ux — same as m_lined_up (mthrowu.c:1033–1035).
+        const tx = utarg ? (mtmp.mux | 0) : (mtarg.mx | 0);
+        const ty = utarg ? (mtmp.muy | 0) : (mtarg.my | 0);
         const adtyp = mattk?.adtyp | 0;
         let otmp;
         if (adtyp === AD_BLND || adtyp === AD_DRST) {
@@ -1229,39 +1236,98 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
 }
 
 /**
- * C ref: mthrowu.c monshoot — multishot + pline + m_throw loop.
+ * C ref: mthrowu.c:260–314 monshoot — throw/shoot otmp at gm.mtarget or
+ * the shooter's mux/muy. Caller has linedup() so gt.tbx/tby are set.
+ * Distance is mtarg mx/my when mtarget is set (thrwmm), else mux/muy
+ * with no hero-ux fallback (thrwmu). Staticfn in C — same-file only.
  */
 async function monshoot(mtmp, otmp, mwep) {
-    const u = game.u || {};
-    const dm = distmin(mtmp.mx, mtmp.my, mtmp.mux ?? u.ux, mtmp.muy ?? u.uy);
+    const mtarg = game.mtarget;
+    const dm = distmin(
+        mtmp.mx, mtmp.my,
+        mtarg ? mtarg.mx : (mtmp.mux | 0),
+        mtarg ? mtarg.my : (mtmp.muy | 0),
+    );
     const multishot = monmulti(mtmp, otmp, mwep);
 
+    if (!game.m_shot) game.m_shot = { i: 0, n: 0, o: 0, s: false };
+
     if (canseemon(mtmp)) {
-        const shooting = ammo_and_launcher(otmp, mwep);
         let onm;
         if (multishot > 1) {
             onm = `${multishot} ${xname(otmp)}`;
         } else {
-            // C: singular then obj_is_pname ? the : an
-            onm = an(singular(otmp, xname));
+            onm = singular(otmp, xname);
+            onm = obj_is_pname(otmp) ? the(onm) : an(onm);
         }
-        // C: pline before m_throw — await any --More-- before flight flash
-        await pline(`${Monnam(mtmp)} ${shooting ? 'shoots' : 'throws'} ${onm}!`);
+        game.m_shot.s = !!ammo_and_launcher(otmp, mwep);
+        const trgbuf = mtarg ? some_mon_nam(mtarg) : '';
+        set_msg_xy(mtmp.mx, mtmp.my);
+        await pline(
+            `${Monnam(mtmp)} ${game.m_shot.s ? 'shoots' : 'throws'} ${onm}`
+            + `${mtarg ? ' at ' : ''}${trgbuf}!`,
+        );
+        game.m_shot.o = otmp.otyp | 0;
+    } else {
+        game.m_shot.o = 0; /* STRANGE_OBJECT — no multishot feedback */
     }
-
-    for (let i = 1; i <= multishot; i++) {
+    game.m_shot.n = multishot;
+    for (game.m_shot.i = 1; game.m_shot.i <= game.m_shot.n; game.m_shot.i++) {
         await m_throw(
             mtmp, mtmp.mx, mtmp.my,
-            sgn(game._tbx || 0), sgn(game._tby || 0),
+            sgn(game._tbx), sgn(game._tby),
             dm, otmp,
         );
-        if (game.program_state?.gameover) break;
-        if ((mtmp.mhp | 0) < 1) break;
-        // After first shot, otmp may be depleted; stop if stack gone
-        if (!otmp.where && !otmp.nobj && (otmp.quan | 0) < 1 && i < multishot) {
-            // stack consumed
+        /* conceptually all N missiles are in flight at once */
+        if ((mtmp.mhp | 0) < 1 && game.m_shot.i < game.m_shot.n) break;
+    }
+    game.m_shot.n = 0;
+    game.m_shot.i = 0;
+    game.m_shot.o = 0;
+    game.m_shot.s = false;
+}
+
+/**
+ * C ref: mthrowu.c:968–1012 thrwmm — monster throws/shoots at another
+ * monster. Polearms are not applied vs monsters. `m_lined_up` then the
+ * flee `rn2(chance)` gate, PET_MISSILE_RANGE2 ammo skip, then
+ * gm.marcher/gm.mtarget + monshoot.
+ */
+export async function thrwmm(mtmp, mtarg) {
+    if ((mtmp.weapon_check | 0) === NEED_WEAPON || !MON_WEP(mtmp)) {
+        mtmp.weapon_check = NEED_RANGED_WEAPON;
+        if ((await mon_wield_item(mtmp)) !== 0) return M_ATTK_MISS;
+    }
+
+    const otmp = select_rwep(mtmp);
+    if (!otmp) return M_ATTK_MISS;
+    const ispole = is_pole(otmp);
+
+    const x = mtmp.mx;
+    const y = mtmp.my;
+    const mwep = MON_WEP(mtmp);
+
+    if (!ispole && m_lined_up(mtarg, mtmp)) {
+        const chance = Math.max(
+            BOLT_LIM - distmin(x, y, mtarg.mx, mtarg.my), 1,
+        );
+
+        if (!mtarg.mflee || !rn2(chance)) {
+            if (ammo_and_launcher(otmp, mwep)
+                && dist2(mtmp.mx, mtmp.my, mtarg.mx, mtarg.my)
+                   > PET_MISSILE_RANGE2) {
+                return M_ATTK_MISS; /* Out of range */
+            }
+            game.mtarget = mtarg;
+            game.marcher = mtmp;
+            await monshoot(mtmp, otmp, mwep);
+            game.marcher = null;
+            game.mtarget = null;
+            nomul(0);
+            return M_ATTK_HIT;
         }
     }
+    return M_ATTK_MISS;
 }
 
 /**
@@ -1297,7 +1363,7 @@ async function thrwmu_body(mtmp) {
 
     if (!lined_up(mtmp)
         || (uretreating
-            && rn2(BOLT_LIM - distmin(x, y, mtmp.mux ?? u.ux, mtmp.muy ?? u.uy)))) {
+            && rn2(BOLT_LIM - distmin(x, y, mtmp.mux | 0, mtmp.muy | 0)))) {
         return;
     }
 

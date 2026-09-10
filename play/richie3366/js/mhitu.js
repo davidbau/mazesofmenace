@@ -929,9 +929,9 @@ async function mhitm_ad_fire_u(mtmp, mattk, mhm) {
     if (!(await mhitm_mgc_atk_negated(mtmp, null, true))) {
         const pd = game.youmonst?.data;
         await pline(`You're ${on_fire(pd, mattk)}!`);
-        /* C mondata.h:223 completelyburns — paper or straw golem hero */
-        if ((pd ?? null) === mons[PM_PAPER_GOLEM]
-            || (pd ?? null) === mons[PM_STRAW_GOLEM]) {
+        /* C mondata.h:223 completelyburns(ptr) — JS mndx (mons() is a factory) */
+        if ((pd?.mndx | 0) === PM_PAPER_GOLEM
+            || (pd?.mndx | 0) === PM_STRAW_GOLEM) {
             await pline('You go up in flames!');
             monstunseesu(M_SEEN_FIRE);
             /* C: KMH -- this is okay with unchanging */
@@ -2410,7 +2410,7 @@ async function mhitm_ad_drli_u(mtmp, mattk, mhm) {
  * `:2299–2316`. hitmsg always; cancelled → return; iron-golem hero
  * (completelyrusts, mondata.h:227) "rust!" + rehumanize; else
  * erode_armor(youmonst, ERODE_RUST). Base hitmu d() is kept (unlike
- * default zero). DCAY mhitu arm still deferred.
+ * default zero). DCAY mhitu arm is D-2251; golem identity is mndx (D-2259).
  */
 async function mhitm_ad_rust_u(mtmp, mattk, mhm) {
     void mhm;
@@ -2418,8 +2418,8 @@ async function mhitm_ad_rust_u(mtmp, mattk, mhm) {
     if (mtmp.mcan) {
         return;
     }
-    /* C mondata.h:227 completelyrusts(ptr) — ptr == &mons[PM_IRON_GOLEM] */
-    if ((game.youmonst?.data ?? null) === mons[PM_IRON_GOLEM]) {
+    /* C mondata.h:227 completelyrusts(ptr) — JS mndx (mons() is a factory) */
+    if ((game.youmonst?.data?.mndx | 0) === PM_IRON_GOLEM) {
         await pline('You rust!');
         /* C: KMH -- this is okay with unchanging */
         await rehumanize();
@@ -2795,7 +2795,8 @@ async function mhitm_ad_sgld_u(mtmp, mattk, mhm) {
 
 /**
  * C ref: uhitm.c mhitm_ad_curs `:3014–3096` — mhitu arm. hitmsg always;
- * daytime gremlin → return (night() before the rn2, C order);
+ * daytime gremlin → return (`(data?.mndx | 0) === PM_GREMLIN`; night()
+ * before the rn2, C order);
  * !mcan && !rn2(10) → laughter unless Deaf (Blind «You hear laughter.»
  * else «<Mon> chuckles.»), clay-golem hero → writing vanishes +
  * rehumanize, else mon_give_prop(magr, attrcurse()) — the intrinsic the
@@ -2805,7 +2806,8 @@ async function mhitm_ad_sgld_u(mtmp, mattk, mhm) {
 async function mhitm_ad_curs_u(mtmp, mattk, mhm) {
     void mhm;
     await hitmsg(mtmp, mattk);
-    if (!night() && mtmp.data === mons[PM_GREMLIN]) return;
+    /* C: pa == &mons[PM_GREMLIN] — JS mndx (mons() is a factory; hates_light) */
+    if (!night() && (mtmp.data?.mndx | 0) === PM_GREMLIN) return;
     if (!mtmp.mcan && !rn2(10)) {
         if (!hero_Deaf()) {
             Soundeffect(se_laughter, 40);
@@ -2832,9 +2834,9 @@ async function mhitm_ad_dcay_u(mtmp, mattk, mhm) {
     void mhm;
     await hitmsg(mtmp, mattk);
     if (mtmp.mcan) return;
-    /* C mondata.h:225 completelyrots(ptr) — wood or leather golem */
+    /* C mondata.h:225 completelyrots(ptr) — JS mndx (mons() is a factory) */
     const pd = game.youmonst?.data ?? null;
-    if (pd === mons[PM_WOOD_GOLEM] || pd === mons[PM_LEATHER_GOLEM]) {
+    if ((pd?.mndx | 0) === PM_WOOD_GOLEM || (pd?.mndx | 0) === PM_LEATHER_GOLEM) {
         await pline('You rot!');
         /* C: KMH -- this is okay with unchanging */
         await rehumanize();
@@ -2865,7 +2867,7 @@ async function mhitm_ad_slim_u(mtmp, mattk, mhm) {
         await pline('The slime burns away!');
         mhm.damage = 0;
     } else if (Unchanging() || noncorporeal(pd)
-               || pd === mons[PM_GREEN_SLIME]) {
+               || (pd?.mndx | 0) === PM_GREEN_SLIME) {
         await pline('You are unaffected.');
         mhm.damage = 0;
     } else if (!(game.u?.Slimed | 0)) {

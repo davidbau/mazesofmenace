@@ -192,7 +192,7 @@ function inhishop(shkp) {
 }
 
 /** C ref: shk.c tended_shop */
-function tended_shop(sroom) {
+export function tended_shop(sroom) {
     const mtmp = sroom?.resident;
     return !!(mtmp && inhishop(mtmp));
 }

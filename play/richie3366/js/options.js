@@ -82,6 +82,7 @@ import {
     gp,
 } from './const.js';
 import { game } from './gstate.js';
+import { sanitize_name } from './bones.js';
 import { rnd } from './rng.js';
 import { str_end_is, str_start_is, highc, strstri, strsubst } from './hacklib.js';
 import { name_to_mon } from './mondata.js';
@@ -1299,19 +1300,7 @@ function mungspaces(s) {
     return String(s || '').trim().replace(/\s+/g, ' ');
 }
 
-/**
- * C ref: bones.c sanitize_name — non-printable → '.'; 8-bit strip deferred
- * (tty eight_bit_input always on for this port).
- */
-function sanitize_name(namebuf) {
-    let out = '';
-    for (let i = 0; i < namebuf.length; i++) {
-        const c = namebuf.charCodeAt(i) & 0x7f;
-        if (c < 0x20 || c === 0x7f) out += '.';
-        else out += String.fromCharCode(c);
-    }
-    return out;
-}
+// sanitize_name: bones.c — imported from bones.js (read lazily in bodies).
 
 /**
  * C ref: options.c fruitadd `:8169–8287` — user-specified pl_fruit path

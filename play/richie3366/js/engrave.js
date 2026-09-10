@@ -40,6 +40,7 @@
 // Engraving map glyphs (S_engroom/S_engrcorr) live in display.js newsym.
 
 import { game } from './gstate.js';
+import { sanitize_name } from './bones.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { pline, newsym, impossible, Hallucination } from './display.js';
 import { getlin, yn_function } from './getline.js';
@@ -129,6 +130,20 @@ export function engr_at(x, y) {
         if (ep.engr_x === x && ep.engr_y === y) return ep;
     }
     return null;
+}
+
+/**
+ * C ref: engrave.c sanitize_engravings `:1496–1505` — bones engravings
+ * may carry control characters from another game; sanitize_name each
+ * actual text in place (JS strings: write back).
+ */
+export function sanitize_engravings() {
+    for (let ep = game.head_engr; ep; ep = ep.nxt_engr) {
+        if (ep.engr_txt) {
+            ep.engr_txt.actual_text = sanitize_name(
+                String(ep.engr_txt.actual_text ?? ''));
+        }
+    }
 }
 
 /** C ref: engrave.c del_engr_at — delete any engraving at <x,y>. */

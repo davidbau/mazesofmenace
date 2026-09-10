@@ -1463,6 +1463,39 @@ function mbirth_limit(mndx) {
     return MAXMONNO;
 }
 
+/**
+ * C ref: makemon.c propagate `:957–982` — birth tally, unique → extinct,
+ * auto-extinction at mbirth_limit. `ghostly` (bones restmonchn) tallies
+ * only when the species could still be born. Wizard "Automatically
+ * extinguished" is a debugpline (debug-file only): nothing to print.
+ * @returns {boolean} result — born < limit && !G_GONE, before the tally
+ */
+export function propagate(mndx, tally, ghostly) {
+    const g = game;
+    if (!g.mvitals) g.mvitals = [];
+    if (!g.mvitals[mndx]) g.mvitals[mndx] = { mvflags: 0, born: 0, died: 0 };
+    const mv = g.mvitals[mndx];
+    const ptr = mons(mndx);
+    const lim = mbirth_limit(mndx);
+    const gone = ((mv.mvflags | 0) & G_GONE) !== 0; /* geno'd|extinct */
+    const result = (mv.born | 0) < lim && !gone;
+
+    /* if it's unique, don't ever make it again */
+    if ((ptr.geno & G_UNIQ) !== 0
+        && mndx !== monsterNames.indexOf('PM_HIGH_CLERIC')) {
+        mv.mvflags = (mv.mvflags | 0) | G_EXTINCT;
+    }
+    if ((mv.born | 0) < 255 && tally && (!ghostly || result)) {
+        mv.born = (mv.born | 0) + 1;
+    }
+    if ((mv.born | 0) >= lim
+        && (ptr.geno & G_NOGEN) === 0
+        && ((mv.mvflags | 0) & G_EXTINCT) === 0) {
+        mv.mvflags = (mv.mvflags | 0) | G_EXTINCT;
+    }
+    return result;
+}
+
 const PM_GIANT_EEL = monsterNames.indexOf('PM_GIANT_EEL');
 
 /**

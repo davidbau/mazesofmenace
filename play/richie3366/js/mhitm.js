@@ -132,7 +132,7 @@ import { hurtle, mhurtle, will_hurtle } from './dothrow.js';
 import { make_stunned } from './potion.js';
 import { m_is_steadfast } from './uhitm.js';
 import { mintrap } from './trap.js';
-import { breamm, spitmm } from './mthrowu.js';
+import { breamm, spitmm, thrwmm } from './mthrowu.js';
 // C ref: mon.c mondead tail (D-row for data.md:358) — one block for the
 // death-tail family. ESM permits several import statements per module;
 // every name below is new to this module (no duplicate bindings).
@@ -4637,11 +4637,12 @@ export async function mattackm(magr, mdef) {
 
         switch (mattk.aatyp) {
             case AT_WEAP: {
-                // C ref: mhitm.c mattackm AT_WEAP — ranged thrwmm deferred;
-                // mon_wield_item spends the attack (return M_ATTK_MISS).
+                // C ref: mhitm.c:393–404 — distmin>1 → thrwmm (ranged).
                 if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1) {
-                    // thrwmm deferred → treat as miss
-                    strike = 0;
+                    strike = ((await thrwmm(magr, mdef)) === M_ATTK_MISS) ? 0 : 1;
+                    if (strike) res[i] |= M_ATTK_HIT;
+                    if (deadmonster(mdef)) res[i] = M_ATTK_DEF_DIED;
+                    if (deadmonster(magr)) res[i] |= M_ATTK_AGR_DIED;
                     break;
                 }
                 if ((magr.weapon_check | 0) === NEED_WEAPON || !MON_WEP(magr)) {
@@ -4653,9 +4654,6 @@ export async function mattackm(magr, mdef) {
                 await possibly_unwield(magr, false);
                 mwep = MON_WEP(magr);
                 // C ref: mhitm.c mattackm `:413–414` — swing pline when seen.
-                // Named omit: ranged thrwmm arm (mthrowu `monshoot` is a
-                // local clone there, not an export; distant AT_WEAP stays
-                // a miss until it is exported).
                 if (mwep && _mm_vis) await mswingsm(magr, mdef, mwep);
                 if (mwep) tmp += hitval(mwep, mdef);
                 // FALLTHROUGH to melee hit roll

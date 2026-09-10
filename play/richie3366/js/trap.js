@@ -31,7 +31,7 @@ import {
     newsym, pline, pline_mon, pline_xy, urgent_pline, mon_visible, see_with_infrared,
     You_feel, unmap_object, glyph_is_invisible, tmp_at, nh_delay_output,
     obj_glyph, flush_topl_more, feel_newsym, canspotmon, map_invisible,
-    set_msg_xy, Hallucination, Norep,
+    set_msg_xy, Hallucination, Norep, impossible,
 } from './display.js';
 import { doname, an, the, The, xname, yname, cxname, makeplural, vtense, ansimpleoname, safe_qbuf, gloves_simple_name, aobjnam, Yobjnam2 } from './objnam.js';
 import {
@@ -51,7 +51,7 @@ import {
     bigmonst, is_golem, is_mplayer, is_rider,
     nohands, extra_nasty, acidic, poly_when_stoned, touch_petrifies,
     resists_ston, MALE, FEMALE, NEUTRAL, nonliving, is_vampshifter,
-    hides_under, metallivorous,
+    hides_under, metallivorous, is_neuter,
 } from './monsters.js';
 import {
     DART_TRAP, ARROW_TRAP, ROCKTRAP, FORCETRAP, NOWEBMSG, FORCEBUNGLE, RECURSIVETRAP,
@@ -84,8 +84,9 @@ import {
     DISMOUNT_POLY, DISMOUNT_FELL,
     WATER, BURNING, DROWNING, DISSOLVED, PLNMSG_BACK_ON_GROUND,
     TT_NONE, TT_BEARTRAP, TT_PIT, TT_WEB, TT_LAVA, TT_INFLOOR, TT_BURIEDBALL,
-    LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES, FOOT, LEG,
+    LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES, FOOT, LEG, SPINE,
     HEAD, ARM, FINGER, HAND,
+    NOTELL, NC_SHOW_MSG,
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_WEP, W_SWAPWEP,
     W_SADDLE, I_SPECIAL,
     CORPSTAT_NONE, CORPSTAT_HISTORIC, CORPSTAT_GENDER, CORPSTAT_MALE,
@@ -112,10 +113,10 @@ import {
     in_rooms, set_uinwater,
 } from './hack.js';
 import { goodpos, mlevel_tele_trap, mtele_trap, tele_trap, level_tele_trap, domagicportal, rloco, random_teleport_level, teleds } from './teleport.js';
-import { get_level } from './dungeon.js';
+import { get_level, on_level, at_dgn_entrance } from './dungeon.js';
 import {
     objectNames, POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, ARMOR_CLASS,
-    WEAPON_CLASS, TOOL_CLASS, is_blade,
+    WEAPON_CLASS, TOOL_CLASS, WAND_CLASS, is_blade,
 } from './objects.js';
 import { monsterNames, PM_ROGUE } from './generated/monsters_data.js';
 import { thitu, ohitmon, hits_bars } from './mthrowu.js';
@@ -134,7 +135,7 @@ import { make_stunned, make_hallucinated } from './potion.js';
 import { monstseesu, monstunseesu, defended, resists_magm } from './mondata.js';
 import { get_obj_location } from './timeout.js';
 import { costly_spot, shop_keeper, stolen_value, make_angry_shk, add_damage, sellobj } from './shk.js';
-import { unpunish } from './read.js';
+import { unpunish, seffects } from './read.js';
 import { create_gas_cloud } from './region.js';
 import { polymon, body_part, mbodypart, float_vs_flight } from './polyself.js';
 import { done } from './end.js';
@@ -150,6 +151,7 @@ import { ynq } from './getline.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { killed, stumble_onto_mimic } from './uhitm.js';
 import { rider_cant_reach, dismount_steed } from './steed.js';
+import { resist } from './zap.js';
 import { fill_pit, bury_an_obj } from './dig.js';
 import { u_wield_art, attacks, bare_artifactname, has_magic_key } from './artifact.js';
 import { ART_STING } from './generated/artifacts_data.js';
@@ -188,6 +190,7 @@ const PM_CYCLOPS = monsterNames.indexOf('PM_CYCLOPS');
 const PM_LORD_SURTUR = monsterNames.indexOf('PM_LORD_SURTUR');
 const STATUE = objectNames.indexOf('STATUE');
 const AMULET_OF_YENDOR = objectNames.indexOf('AMULET_OF_YENDOR');
+const SPE_REMOVE_CURSE = objectNames.indexOf('SPE_REMOVE_CURSE');
 const AD_RUST = 24; /* monattk.h */
 const PM_FLESH_GOLEM = monsterNames.indexOf('PM_FLESH_GOLEM');
 const PM_DOPPELGANGER = monsterNames.indexOf('PM_DOPPELGANGER');
@@ -1777,25 +1780,76 @@ async function finish_hero_losehp() {
 }
 
 /**
- * C ref: trap.c steedintrap — PIT/SPIKED_PIT arm only (other types omit).
- * Returns 0 when no steed (hero takes the fall); 1 if steed was hit;
- * Trap_Killed_Mon if the steed died.
+ * C ref: trap.c steedintrap `:3101–3168`
+ * Returns 0 when no steed (hero takes the hit); 1 if the steed was hit;
+ * Trap_Killed_Mon if the steed died. MAGIC_TRAP (and other default ttyp)
+ * only writes mx/my. Dart/arrow/slp-gas/landmine/poly callers of this
+ * helper remain named omitted at those trapeffect sites.
  */
-async function steedintrap_pit(trap) {
+async function steedintrap(trap, otmp) {
     const u = game.u || {};
     const steed = u.usteed;
     if (!steed || !trap) return Trap_Effect_Finished;
+    const tt = trap.ttyp | 0;
     steed.mx = u.ux;
     steed.my = u.uy;
-    const tt = trap.ttyp | 0;
-    const trapkilled = (steed.mhp | 0) <= 0
-        || await thitm(0, steed, null, rnd(tt === PIT ? 6 : 10), false);
+    let trapkilled = false;
+    let steedhit = false;
+
+    switch (tt) {
+    case ARROW_TRAP:
+        if (!otmp) {
+            await impossible('steed hit by non-existent arrow?');
+            return Trap_Effect_Finished;
+        }
+        trapkilled = !!(await thitm(8, steed, otmp, 0, false));
+        steedhit = true;
+        break;
+    case DART_TRAP:
+        if (!otmp) {
+            await impossible('steed hit by non-existent dart?');
+            return Trap_Effect_Finished;
+        }
+        trapkilled = !!(await thitm(7, steed, otmp, 0, false));
+        steedhit = true;
+        break;
+    case SLP_GAS_TRAP:
+        if (!resists_sleep(steed) && !breathless(steed.data)
+            && !helpless(steed)) {
+            if (sleep_monst(steed, rnd(25), -1)) {
+                /* no in_sight check here; you can feel it even if blind */
+                await pline(`${Monnam(steed)} suddenly falls asleep!`);
+            }
+        }
+        steedhit = true;
+        break;
+    case LANDMINE:
+        trapkilled = !!(await thitm(0, steed, null, rnd(16), false));
+        steedhit = true;
+        break;
+    case PIT:
+    case SPIKED_PIT:
+        trapkilled = ((steed.mhp | 0) < 1)
+            || !!(await thitm(0, steed, null, rnd(tt === PIT ? 6 : 10), false));
+        steedhit = true;
+        break;
+    case POLY_TRAP:
+        if (!resists_magm(steed)
+            && !(await resist(steed, WAND_CLASS, 0, NOTELL))) {
+            /* newcham() will probably end up calling poly_steed() */
+            void (await newcham(steed, null, NC_SHOW_MSG));
+        }
+        steedhit = true;
+        break;
+    default:
+        break;
+    }
+
     if (trapkilled) {
-        const { dismount_steed } = await import('./steed.js');
         await dismount_steed(DISMOUNT_POLY);
         return Trap_Killed_Mon;
     }
-    return 1;
+    return steedhit ? 1 : 0;
 }
 
 /** C youprop.h Passes_walls (hero intrinsics/extrinsics). */
@@ -1977,7 +2031,7 @@ async function trapeffect_pit(mtmp, trap, trflags) {
             }
         }
         set_utrap(rn1(6, 2), TT_PIT);
-        if (!await steedintrap_pit(trap)) {
+        if (!await steedintrap(trap, null)) {
             if (relevant_spikes) {
                 const oldumort = u.umortality | 0;
                 losehp(
@@ -4346,10 +4400,11 @@ async function dofiretrap(box) {
 }
 
 /**
- * C ref: trap.c domagictrap
+ * C ref: trap.c domagictrap `:4316–4451`
  * Envelope: rnd(20) fate; <10 flash+deaf+makemon+wake; 10 noop; 11 HInvis
- * toggle; 12 dofiretrap; 13–18 feel/hear; 19 adjattrib+tamedog; 20 seffects
- * SPE_REMOVE_CURSE deferred.
+ * toggle; 12 dofiretrap; 13 body_part(SPINE); 14 howl; 15 qstart prodigal
+ * else yearn (Hallu / In_quest||at_dgn_entrance); 16–18 pack/smell/tired;
+ * 19 adjattrib+tamedog; 20 seffects(SPE_REMOVE_CURSE) with HConfusion saved.
  */
 async function domagictrap() {
     const u = game.u || (game.u = {});
@@ -4407,7 +4462,7 @@ async function domagictrap() {
             await dofiretrap(null);
             break;
         case 13:
-            await pline('A shiver runs up and down your spine!');
+            await pline(`A shiver runs up and down your ${body_part(SPINE)}!`);
             break;
         case 14:
             await You_hear(
@@ -4415,12 +4470,20 @@ async function domagictrap() {
             );
             break;
         case 15:
-            if (Hallucination()) {
-                await pline('You suddenly yearn for Cleveland.');
-            } else if (In_quest(u.uz)) {
-                await pline('You suddenly yearn for your nearby homeland.');
+            if (on_level(u.uz, game.qstart_level)) {
+                const oddly = (game.flags?.female
+                    || (Upolyd(u) && is_neuter(game.youmonst?.data)))
+                    ? 'oddly '
+                    : '';
+                await You_feel(`${oddly}like the prodigal son.`);
             } else {
-                await pline('You suddenly yearn for your distant homeland.');
+                await pline(`You suddenly yearn for ${
+                    Hallucination()
+                        ? 'Cleveland'
+                        : (In_quest(u.uz) || at_dgn_entrance('The Quest'))
+                            ? 'your nearby homeland'
+                            : 'your distant homeland'
+                }.`);
             }
             break;
         case 16:
@@ -4445,9 +4508,17 @@ async function domagictrap() {
             }
             break;
         }
-        case 20:
-            // seffects(SPE_REMOVE_CURSE) deferred
+        case 20: {
+            /* force 'uncursed' and zero out oextra */
+            const save_conf = u.HConfusion;
+            u.HConfusion = 0;
+            await seffects({
+                otyp: SPE_REMOVE_CURSE,
+                oclass: SPBOOK_CLASS,
+            });
+            u.HConfusion = save_conf;
             break;
+        }
         default:
             break;
         }
@@ -4455,9 +4526,9 @@ async function domagictrap() {
 }
 
 /**
- * C ref: trap.c trapeffect_magic_trap
- * Envelope: hero — seetrap; rn2(30) explosion else domagictrap. Monsters —
- * rn2(21)→fire. steedintrap MAGIC_TRAP is default no-op without usteed.
+ * C ref: trap.c trapeffect_magic_trap `:2292–2320`
+ * Envelope: hero — seetrap; rn2(30) explosion (return, no steed) else
+ * domagictrap then steedintrap. Monsters — rn2(21)→fire.
  */
 async function trapeffect_magic_trap(mtmp, trap, trflags) {
     if (is_youmonst(mtmp)) {
@@ -4465,7 +4536,7 @@ async function trapeffect_magic_trap(mtmp, trap, trflags) {
         seetrap(trap);
         if (!rn2(30)) {
             deltrap(trap);
-            newsym(u.ux, u.uy);
+            newsym(u.ux, u.uy); /* update position */
             await pline('You are caught in a magical explosion!');
             losehp(rnd(10), 'magical explosion', KILLED_BY_AN);
             await pline('Your body absorbs some of the magical energy!');
@@ -4473,8 +4544,10 @@ async function trapeffect_magic_trap(mtmp, trap, trflags) {
             u.uen = u.uenmax;
             if ((u.uenmax | 0) > (u.uenpeak | 0)) u.uenpeak = u.uenmax;
             return Trap_Effect_Finished;
+        } else {
+            await domagictrap();
         }
-        await domagictrap();
+        void (await steedintrap(trap, null));
         void trflags;
         return Trap_Effect_Finished;
     }

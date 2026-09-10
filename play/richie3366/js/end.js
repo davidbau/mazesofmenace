@@ -24,7 +24,7 @@ import {
     CHOKING, NON_PM, LEAVESTATUE, DISSOLVED, TURNED_SLIME, G_GENOD,
     CORPSTAT_INIT, CORPSTAT_NONE,
     OBJ_FREE, Upolyd, MM_NONAME, NO_MINVENT, isok, u_at, ACCESSIBLE, MAGIC_PORTAL,
-    ECMD_OK, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, PANICKED,
+    ECMD_OK, KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX, PANICKED, TRICKED,
     DISCLOSE_YES_WITHOUT_PROMPT, DISCLOSE_NO_WITHOUT_PROMPT,
     DISCLOSE_SPECIAL_WITHOUT_PROMPT, DISCLOSE_PROMPT_DEFAULT_YES,
     DISCLOSE_PROMPT_DEFAULT_NO, DISCLOSE_PROMPT_DEFAULT_SPECIAL, NUM_DISCLOSURE_OPTIONS,
@@ -1654,6 +1654,17 @@ async function savelife(how) {
  */
 export async function done(how) {
     const flags = game.flags || (game.flags = {});
+    // C end.c:1024–1034 — TRICKED first: paniclog("trickery") is a file
+    // write (Rule #2: named, not ported) that clears killer.name; a
+    // wizard survives the trickery.
+    if (how === TRICKED) {
+        if (game.killer?.name) game.killer.name = '';
+        if (flags.wizard || flags.debug) {
+            await pline('You are a very tricky wizard, it seems.');
+            if (game.killer) game.killer.format = KILLED_BY_AN; /* reset to 0 */
+            return;
+        }
+    }
     // C: skip bot when panicking / hangup / QUIT with done_stopprint
     const stopprint = game.program_state?.done_stopprint | 0;
     if (game.program_state?.panicking || (how === QUIT && stopprint)) {
