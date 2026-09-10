@@ -13,6 +13,7 @@ import {
     MM_ANGRY, MM_NOMSG, Upolyd, ismnum, DETECT_MONSTERS,
     M_SEEN_MAGR, M_SEEN_FIRE, M_SEEN_COLD, M_SEEN_ELEC, M_SEEN_REFL,
     M_AP_TYPE, M_AP_OBJECT, SEE_INVIS,
+    BZ_VALID_ADTYP, BZ_OFS_AD, BZ_M_SPELL,
 } from './const.js';
 import { mon_adjust_speed } from './muse.js';
 import {
@@ -23,7 +24,7 @@ import {
     Monnam, mon_nam, bogusmon, pmname, type_is_pname, Mgender,
 } from './do_name.js';
 import { nomul, You_hear, losehp } from './hack.js';
-import { nasty, aggravate, clonewiz } from './wizard.js';
+import { nasty, aggravate, clonewiz, has_aggravatables } from './wizard.js';
 import {
     M1_SEE_INVIS, eyecount, nonliving, is_demon, mons,
 } from './monsters.js';
@@ -38,7 +39,10 @@ import { rndcurse } from './sit.js';
 import { destroy_arm } from './do_wear.js';
 import { make_stunned, make_confused } from './potion.js';
 import { mon_set_minvis } from './worn.js';
-import { destroy_items, flashburn, mon_spell_hits_spot } from './zap.js';
+import {
+    destroy_items, flashburn, mon_spell_hits_spot, buzz, flash_str,
+} from './zap.js';
+import { lined_up } from './mthrowu.js';
 import { burnarmor, ignite_items } from './trap.js';
 import { mkclass, makemon, set_malign } from './makemon.js';
 import { monster_census } from './minion.js';
@@ -86,7 +90,7 @@ function Half_physical_damage() {
  * (scen-tour-Wizard-92103 step 100: C "momentarily weakened", JS
  * "suddenly feel weaker" + rnd(25)). Keep the flats for eat/poly paths.
  */
-function Antimagic() {
+export function Antimagic() {
     const u = game.u || {};
     const e = u.uprops?.[ANTIMAGIC];
     return !!((u.Antimagic || u.HAntimagic || u.EAntimagic)
@@ -221,8 +225,8 @@ function is_undirected_spell(spellnum) {
 
 /**
  * C ref: mcastu.c spell_would_be_useless — RNG arms for DEATH_TOUCH /
- * GEYSER / AGGRAVATION preserved. has_aggravatables deferred → treat as
- * none (AGGRAVATION almost always useless via rn2(100)).
+ * GEYSER / AGGRAVATION preserved; AGGRAVATION's rn2(100) only when
+ * wizard.c has_aggravatables finds nothing to wake.
  */
 function spell_would_be_useless(mtmp, spellnum) {
     const flags = mcast_data[spellnum]?.flags | 0;
@@ -247,8 +251,11 @@ function spell_would_be_useless(mtmp, spellnum) {
         if (!mtmp.iswiz || ((game.context?.no_of_wizards | 0) > 1)) return true;
         break;
     case MCAST_AGGRAVATION:
-        // has_aggravatables deferred → always the "nothing to wake" arm
-        return rn2(100) ? true : false;
+        // C: if nothing needs to be awakened the spell is useless, but the
+        // caster might not realize that — small chance to pick it anyway.
+        if (!has_aggravatables(mtmp))
+            return rn2(100) ? true : false;
+        break;
     case MCAST_HASTE_SELF:
         if ((mtmp.permspeed | 0) === MFAST) return true;
         break;
@@ -962,22 +969,37 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
 }
 
 /**
- * C ref: mcastu.c buzzmu — ranged AT_MAGC. AD_SPEL/CLRC fail BZ_VALID_ADTYP
- * (no RNG). Real zap path (lined_up rn2(3) + buzz) deferred.
+ * C ref: mcastu.c:988–1012 buzzmu — ranged AT_MAGC. AD_SPEL/CLRC fail
+ * BZ_VALID_ADTYP (silent miss, no RNG); cancelled / seen-resisted →
+ * cursetxt; else lined_up (m_lined_up rn2(25) + linedup boulder rn2) &&
+ * rn2(3) → nomul, "zaps you with a <flash_str>!", buzz(BZ_M_SPELL).
  */
 export async function buzzmu(mtmp, mattk) {
     const adtyp = mattk?.adtyp | 0;
-    // C: BZ_VALID_ADTYP — AD_MAGM..AD_SPC2; SPEL/CLRC are outside
-    const AD_MAGM = 1;
-    const AD_SPC2 = 10; // approximate upper; SPEL/CLRC (240+) miss this
-    if (adtyp < AD_MAGM || adtyp > AD_SPC2) return M_ATTK_MISS;
-    // C ref: mcastu.c:996 — cancelled or seen-resisted: cursetxt then miss.
+    // don't print constant stream of curse messages for 'normal'
+    // spellcasting monsters at range
+    if (!BZ_VALID_ADTYP(adtyp)) return M_ATTK_MISS;
+
     if ((mtmp?.mcan | 0) || m_seenres(mtmp, cvt_adtyp_to_mseenres(adtyp))) {
         await cursetxt(mtmp, false);
         return M_ATTK_MISS;
     }
-    // Named omission: lined_up rn2(3)+buzz
-    void mtmp;
+    // C: lined_up(mtmp) && rn2(3) — short-circuit: no rn2(3) when not lined up
+    if (lined_up(mtmp) && rn2(3)) {
+        nomul(0);
+        if (canseemon(mtmp)) {
+            // C: flash_str(BZ_OFS_AD(adtyp), FALSE) — hallu arm draws rn2
+            await pline_mon(mtmp, `${Monnam(mtmp)} zaps you with a ${
+                flash_str(BZ_OFS_AD(adtyp), false)}!`);
+        }
+        // C: gb.buzzer (JS game._buzzer, read by muse.c find_offensive)
+        game._buzzer = mtmp;
+        // C: sgn(gt.tbx), sgn(gt.tby) — set by linedup via lined_up above
+        await buzz(BZ_M_SPELL(BZ_OFS_AD(adtyp)), mattk.damn | 0,
+            mtmp.mx, mtmp.my, Math.sign(game._tbx | 0), Math.sign(game._tby | 0));
+        game._buzzer = null;
+        return M_ATTK_HIT;
+    }
     return M_ATTK_MISS;
 }
 

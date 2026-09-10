@@ -170,14 +170,39 @@ export async function nasty(summoner) {
 }
 
 /**
- * C ref: wizard.c aggravate — wake/unfreeze monsters on this W-tower side.
- * Named omission: In_W_tower filter (always treat same side until W-tower
- * regions exist) — both hero and mon treated as non-tower.
+ * C ref: wizard.c has_aggravatables :472–490 — are there any monsters mon
+ * could aggravate? Caster and hero must share a W-tower side; then any
+ * live same-side monster waiting for the hero or helpless counts.
+ */
+export function has_aggravatables(mon) {
+    const u = game.u || {};
+    const in_w_tower = In_W_tower(mon.mx, mon.my, u.uz);
+
+    if (in_w_tower !== In_W_tower(u.ux, u.uy, u.uz)) return false;
+
+    for (const mtmp of game.fmon || []) {
+        if (!mtmp || (mtmp.mhp | 0) <= 0) continue; // C DEADMONSTER
+        if (in_w_tower !== In_W_tower(mtmp.mx, mtmp.my, u.uz)) continue;
+        // C you.h helpless: msleeping || !mcanmove
+        if (((mtmp.mstrategy | 0) & STRAT_WAITFORU) !== 0
+            || mtmp.msleeping || !(mtmp.mcanmove ?? 1)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * C ref: wizard.c aggravate :492–510 — wake/unfreeze monsters on the
+ * hero's W-tower side.
  */
 export function aggravate() {
+    const u = game.u || {};
+    const in_w_tower = In_W_tower(u.ux, u.uy, u.uz);
+
     for (const mtmp of game.fmon || []) {
         if (!mtmp || (mtmp.mhp | 0) <= 0) continue;
-        // In_W_tower mismatch skip deferred (always same side)
+        if (in_w_tower !== In_W_tower(mtmp.mx, mtmp.my, u.uz)) continue;
         mtmp.mstrategy = (mtmp.mstrategy | 0)
             & ~(STRAT_WAITFORU | STRAT_APPEARMSG);
         mtmp.msleeping = 0;

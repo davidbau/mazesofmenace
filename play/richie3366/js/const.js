@@ -421,6 +421,8 @@ export function BZ_VALID_ADTYP(adtyp) {
 }
 /** C ref: hack.h BZ_M_BREATH — monster breath buzz type (-29..-20) */
 export function BZ_M_BREATH(bztyp) { return -20 - (bztyp | 0); }
+/** C ref: hack.h BZ_M_SPELL — monster spell buzz type (-19..-10) */
+export function BZ_M_SPELL(bztyp) { return -10 - (bztyp | 0); }
 /** C ref: hack.h BZ_M_WAND — monster wand buzz type (-39..-30); not -0 */
 export function BZ_M_WAND(bztyp) { return -30 - (bztyp | 0); }
 /** C ref: hack.h BZ_U_BREATH — hero breath buzz type (20..29) */

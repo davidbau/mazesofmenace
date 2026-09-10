@@ -4,7 +4,7 @@
 //         uhitm.c mhitm_ad_phys (mhitu bare / weapon subset).
 
 import { game } from './gstate.js';
-import { monnear, mnexto, mtrapped_in_pit, wake_nearto, m_at, mongone, um_dist } from './mon.js';
+import { monnear, mnexto, mtrapped_in_pit, wake_nearto, m_at, mongone, um_dist, mon_give_prop } from './mon.js';
 import {
     Is_rogue_level, NEED_WEAPON, NEED_HTH_WEAPON, NATTK,
     M_ATTK_MISS, M_ATTK_HIT, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE,
@@ -19,7 +19,7 @@ import {
     REFLECTING, A_CHAOTIC, LARGEST_INT,
     M_AP_NOTHING, M_AP_OBJECT, WORN_HELMET, TELEDS_ALLOW_DRAG,
     something, Something, u_at, ERODE_RUST, ERODE_CORRODE,
-    SICK_ALL, SICK_NONVOMITABLE, SICK_RES,
+    SICK_ALL, SICK_NONVOMITABLE, SICK_RES, AD_CURS, ERODE_ROT, SLIMED,
 } from './const.js';
 import { thrwmu, spitmu, breamu } from './mthrowu.js';
 import { find_offensive, use_offensive } from './muse.js';
@@ -44,8 +44,8 @@ import { is_pole, welded, is_weptool } from './wield.js';
 import { xname, doname, an, yname, the, simpleonames, safe_qbuf, mimic_obj_name, makeplural, Yobjnam2 } from './objnam.js';
 import { objectNames, ARMOR_CLASS, COIN_CLASS, SILVER, WEAPON_CLASS } from './objects.js';
 import { objects_at } from './mkobj.js';
-import { steal, stealamulet, unresponsive, remove_worn_item } from './steal.js';
-import { cloneu, split_mon } from './sit.js';
+import { steal, stealamulet, stealgold, unresponsive, remove_worn_item } from './steal.js';
+import { cloneu, split_mon, attrcurse } from './sit.js';
 import {
     stop_donning, setworn, Ring_on, Ring_gone, suit_simple_name, hard_helmet,
     some_armor,
@@ -64,10 +64,10 @@ import {
     MZ_HUGE, M1_SEE_INVIS, MALE, FEMALE, haseyes, resists_ston,
     hides_under, is_flyer, thick_skinned, nolimbs, touch_petrifies,
     poly_when_stoned, has_head, slithy, amphibious, breathless, is_swimmer,
-    is_hider, likes_gold, mons,
+    is_hider, likes_gold, mons, noncorporeal,
     MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
 } from './monsters.js';
-import { done_in_by, done, finish_losehp_done } from './end.js';
+import { done_in_by, done, finish_losehp_done, delayed_killer } from './end.js';
 import { make_blinded } from './do.js';
 import { msummon, Inhell } from './minion.js';
 import { new_were, were_summon, Protection_from_shape_changers, set_ulycn } from './were.js';
@@ -98,14 +98,14 @@ import {
     AD_SAMU,
 } from './mhitm.js';
 import { morehungry, is_fainted } from './eat.js';
-import { castmu, buzzmu } from './mcastu.js';
-import { rehumanize, polymon, body_part } from './polyself.js';
+import { castmu, buzzmu, touch_of_death, Antimagic } from './mcastu.js';
+import { rehumanize, polymon, body_part, Unchanging } from './polyself.js';
 import { set_wounded_legs, burnarmor, ignite_items, ceiling, drain_en } from './trap.js';
 import { mon_explodes } from './explode.js';
-import { make_hallucinated, make_confused, make_stunned, make_sick } from './potion.js';
+import { make_hallucinated, make_confused, make_stunned, make_sick, make_slimed } from './potion.js';
 import { SetVoice, Soundeffect } from './sndprocs.js';
 import { ART_SNICKERSNEE } from './generated/artifacts_data.js';
-import { se_rushing_wind_noise } from './generated/seffects_data.js';
+import { se_rushing_wind_noise, se_laughter } from './generated/seffects_data.js';
 import { worm_move } from './worm.js';
 import { place_monster, remove_monster } from './steed.js';
 
@@ -138,6 +138,11 @@ const PM_ARCHON = monsterNames.indexOf('PM_ARCHON');
 const PM_SILVER_DRAGON = monsterNames.indexOf('PM_SILVER_DRAGON');
 const PM_CHROMATIC_DRAGON = monsterNames.indexOf('PM_CHROMATIC_DRAGON');
 const PM_STONE_GOLEM = monsterNames.indexOf('PM_STONE_GOLEM');
+const PM_WOOD_GOLEM = monsterNames.indexOf('PM_WOOD_GOLEM');
+const PM_LEATHER_GOLEM = monsterNames.indexOf('PM_LEATHER_GOLEM');
+const PM_CLAY_GOLEM = monsterNames.indexOf('PM_CLAY_GOLEM');
+const PM_GREMLIN = monsterNames.indexOf('PM_GREMLIN');
+const PM_GREEN_SLIME = monsterNames.indexOf('PM_GREEN_SLIME');
 const DUNCE_CAP = objectNames.indexOf('DUNCE_CAP');
 const OILSKIN_CLOAK = objectNames.indexOf('OILSKIN_CLOAK');
 /** C objclass.h ARM_HELM — helm_simple_name via oc_skill. */
@@ -191,6 +196,10 @@ const AD_SLOW = 13; /* slows — monattk.h */
 const AD_DGST = 26;
 const AD_WRAP = 28;
 const AD_DISE = 33;
+const AD_SGLD = 20; /* steals gold (leprechaun) — monattk.h */
+const AD_DCAY = 34; /* decays organics (brown pudding) — monattk.h */
+const AD_DETH = 37; /* for Death only — monattk.h */
+const AD_SLIM = 40; /* turns you into green slime — monattk.h */
 
 /** C ref: objclass.h — weapon strike modes overload oc_dir. */
 const PIERCE = 1;
@@ -685,7 +694,7 @@ async function ugolemeffects(damtype, dam) {
 }
 
 /** C ref: youprop.h Levitation — (H||E) && !B. */
-function Levitation() {
+export function Levitation() {
     const u = game.u || {};
     if (u.Levitation) return true;
     return !!(((u.HLevitation | 0) || (u.ELevitation | 0))
@@ -693,7 +702,7 @@ function Levitation() {
 }
 
 /** C ref: youprop.h Flying — (H||E||steed flyer) && !B; Lev overrides elsewhere. */
-function Flying() {
+export function Flying() {
     const u = game.u || {};
     if (u.Flying) return true;
     const steedFly = !!(u.usteed && is_flyer(u.usteed.data));
@@ -2770,12 +2779,158 @@ async function mhitm_ad_conf_u(mtmp, mattk, mhm) {
 }
 
 /**
+ * C ref: uhitm.c mhitm_ad_sgld `:2789–2855` — mhitu (monster→you) arm.
+ * hitmsg always; hero form of the attacker's mlet (poly'd leprechaun) →
+ * return; !mcan → steal.c stealgold. Base hitmu d() is kept. The uhitm
+ * arm stays named; the mhitm arm is D-1907.
+ */
+async function mhitm_ad_sgld_u(mtmp, mattk, mhm) {
+    void mhm;
+    const pa = mtmp.data;
+    const pd = game.youmonst?.data;
+    await hitmsg(mtmp, mattk);
+    if (pd && pa && pd.mlet === pa.mlet) return;
+    if (!mtmp.mcan) await stealgold(mtmp);
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_curs `:3014–3096` — mhitu arm. hitmsg always;
+ * daytime gremlin → return (night() before the rn2, C order);
+ * !mcan && !rn2(10) → laughter unless Deaf (Blind «You hear laughter.»
+ * else «<Mon> chuckles.»), clay-golem hero → writing vanishes +
+ * rehumanize, else mon_give_prop(magr, attrcurse()) — the intrinsic the
+ * hero loses passes to the gremlin. Base hitmu d() is kept. The uhitm
+ * (night chuckle/cancel) and mhitm arms stay named.
+ */
+async function mhitm_ad_curs_u(mtmp, mattk, mhm) {
+    void mhm;
+    await hitmsg(mtmp, mattk);
+    if (!night() && mtmp.data === mons[PM_GREMLIN]) return;
+    if (!mtmp.mcan && !rn2(10)) {
+        if (!hero_Deaf()) {
+            Soundeffect(se_laughter, 40);
+            if (Blind()) await You_hear('laughter.');
+            else await pline_mon(mtmp, `${Monnam(mtmp)} chuckles.`);
+        }
+        if ((game.u?.umonnum ?? NON_PM) === PM_CLAY_GOLEM) {
+            await pline('Some writing vanishes from your head!');
+            /* KMH -- this is okay with unchanging */
+            await rehumanize();
+            return;
+        }
+        await mon_give_prop(mtmp, await attrcurse());
+    }
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_dcay `:2362–2415` — mhitu arm. hitmsg always;
+ * cancelled → return; rotting golem hero → «You rot!» + rehumanize, else
+ * erode_armor(youmonst, ERODE_ROT). Base hitmu d() is kept (like the
+ * rust/corr siblings). The uhitm/mhitm arms stay named.
+ */
+async function mhitm_ad_dcay_u(mtmp, mattk, mhm) {
+    void mhm;
+    await hitmsg(mtmp, mattk);
+    if (mtmp.mcan) return;
+    /* C mondata.h:225 completelyrots(ptr) — wood or leather golem */
+    const pd = game.youmonst?.data ?? null;
+    if (pd === mons[PM_WOOD_GOLEM] || pd === mons[PM_LEATHER_GOLEM]) {
+        await pline('You rot!');
+        /* C: KMH -- this is okay with unchanging */
+        await rehumanize();
+        return;
+    }
+    await erode_armor(game.youmonst, ERODE_ROT);
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_slim `:3525–3600` — mhitu arm.
+ * mhitm_mgc_atk_negated(FALSE) first (draws burn before hitmsg), hitmsg;
+ * negated → «You escape harm.» unless cancelled, damage kept; flaming
+ * form burns the slime off / Unchanging, noncorporeal or green-slime form
+ * unaffected (both zero damage); else start sliming (make_slimed(10) +
+ * SLIMED delayed killer naming the attacker) or «Yuck!» if already Slimed
+ * (youprop.h:95 ≡ u.Slimed, the make_slimed field). The uhitm/mhitm
+ * munslime/newcham arms stay named.
+ */
+async function mhitm_ad_slim_u(mtmp, mattk, mhm) {
+    const negated = await mhitm_mgc_atk_negated(mtmp, null, false);
+    const pd = game.youmonst?.data ?? null;
+    await hitmsg(mtmp, mattk);
+    if (negated) {
+        if (!mtmp.mcan) await pline('You escape harm.');
+        return;
+    }
+    if (flaming(pd)) {
+        await pline('The slime burns away!');
+        mhm.damage = 0;
+    } else if (Unchanging() || noncorporeal(pd)
+               || pd === mons[PM_GREEN_SLIME]) {
+        await pline('You are unaffected.');
+        mhm.damage = 0;
+    } else if (!(game.u?.Slimed | 0)) {
+        await pline("You don't feel very well.");
+        await make_slimed(10, null);
+        delayed_killer(SLIMED, KILLED_BY_AN, pmname(mtmp.data, Mgender(mtmp)));
+    } else {
+        await pline('Yuck!');
+    }
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_deth `:3836–3894` — mhitu arm (Death).
+ * Reach-out pline_mon always (no hitmsg); undead hero form → half
+ * damage rounded up + «Was that the touch of death?»; else one rn2(20):
+ * 17–19 without Antimagic → touch_of_death, zero damage; 17–19 with
+ * Antimagic fall through to 5–16 → life-force drain (permdmg = 1, the
+ * hitmu caller rolls the max-HP cut); 0–4 → shieldeff if Antimagic +
+ * «Lucky for you», zero damage. The mhitm (drli) arm stays named.
+ */
+async function mhitm_ad_deth_u(mtmp, mattk, mhm) {
+    void mattk;
+    const pd = game.youmonst?.data ?? null;
+    await pline_mon(mtmp, `${Monnam(mtmp)} reaches out with its deadly touch.`);
+    if (is_undead(pd)) {
+        /* still does some damage */
+        mhm.damage = Math.trunc(((mhm.damage | 0) + 1) / 2);
+        await pline('Was that the touch of death?');
+        return;
+    }
+    switch (rn2(20)) {
+    case 19:
+    case 18:
+    case 17:
+        if (!Antimagic()) {
+            await touch_of_death(mtmp);
+            mhm.damage = 0;
+            return;
+        }
+        /* FALLTHROUGH */
+    default: /* case 16: ... case 5: */
+        await You_feel('your life force draining away...');
+        mhm.permdmg = 1; /* actual damage done by caller */
+        return;
+    case 4:
+    case 3:
+    case 2:
+    case 1:
+    case 0: {
+        const u = game.u || {};
+        if (Antimagic()) await shieldeff(u.ux, u.uy);
+        await pline("Lucky for you, it didn't work!");
+        mhm.damage = 0;
+        return;
+    }
+    }
+}
+
+/**
  * C ref: uhitm.c mhitm_adtyping — mhitu (monster→you) subset.
  * PHYS + ELEC + COLD + FIRE + ACID + TLPT + DRST/DRDX/DRCO + SITM/SEDU + SSEX (D-1750)
  * + BLND + STON + LEGS + POLY (D-1004) + DRIN (D-1329) + WRAP (D-1331) + SLEE
  * + DRLI + DREN + RUST + CORR + STCK + PLYS + FAMN + SLOW + CONF + WERE + HEAL + PEST
- * + SAMU + STUN + DISE + ENCH; other adtyps (SGLD CURS DCAY SLIM DGST HALU
- * DETH + default) zero damage.
+ * + SAMU + STUN + DISE + ENCH + SGLD + CURS + DCAY + SLIM + DETH (D-2251);
+ * DGST/HALU mhitu arms and the default zero damage.
  */
 async function mhitm_adtyping_u(mtmp, mattk, mhm) {
     switch (mattk.adtyp | 0) {
@@ -2878,6 +3033,23 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
     case AD_DISE:
         await mhitm_ad_dise_u(mtmp, mattk, mhm);
         break;
+    case AD_SGLD:
+        await mhitm_ad_sgld_u(mtmp, mattk, mhm);
+        break;
+    case AD_CURS:
+        await mhitm_ad_curs_u(mtmp, mattk, mhm);
+        break;
+    case AD_DCAY:
+        await mhitm_ad_dcay_u(mtmp, mattk, mhm);
+        break;
+    case AD_SLIM:
+        await mhitm_ad_slim_u(mtmp, mattk, mhm);
+        break;
+    case AD_DETH:
+        await mhitm_ad_deth_u(mtmp, mattk, mhm);
+        break;
+    case AD_DGST: /* C uhitm.c:4502–4504 mhitu arm: damage = 0 */
+    case AD_HALU: /* C uhitm.c:3907–3909 mhitu arm: damage = 0 */
     default:
         mhm.damage = 0;
         break;

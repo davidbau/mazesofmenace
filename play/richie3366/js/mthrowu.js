@@ -130,6 +130,31 @@ const BREATHWEP = [
     'strange breath #9',
 ];
 
+/** C ref: mthrowu.c hallublasts[] — hallucinatory ray types. */
+const HALLUBLASTS = [
+    'asteroids', 'beads', 'bubbles', 'butterflies', 'champagne', 'chaos',
+    'coins', 'cotton candy', 'crumbs', 'dark matter', 'darkness', 'data',
+    'dust specks', 'emoticons', 'emotions', 'entropy', 'flowers', 'foam',
+    'fog', 'gamma rays', 'gelatin', 'gemstones', 'ghosts', 'glass shards',
+    'glitter', 'good vibes', 'gravel', 'gravity', 'gravy', 'grawlixes',
+    'holy light', 'hornets', 'hot air', 'hyphens', 'hypnosis', 'infrared',
+    'insects', 'jargon', 'laser beams', 'leaves', 'lightening', 'logic gates',
+    'magma', 'marbles', 'mathematics', 'megabytes', 'metal shavings',
+    'metapatterns', 'meteors', 'mist', 'mud', 'music', 'nanites', 'needles',
+    'noise', 'nostalgia', 'oil', 'paint', 'photons', 'pixels', 'plasma',
+    'polarity', 'powder', 'powerups', 'prismatic light', 'pure logic',
+    'purple', 'radio waves', 'rainbows', 'rock music', 'rocket fuel', 'rope',
+    'sadness', 'salt', 'sand', 'scrolls', 'sludge', 'smileys', 'snowflakes',
+    'sparkles', 'specularity', 'spores', 'stars', 'steam', 'tetrahedrons',
+    'text', 'the past', 'tornadoes', 'toxic waste', 'ultraviolet light',
+    'viruses', 'water', 'waveforms', 'wind', 'X-rays', 'zorkmids',
+];
+
+/** C ref: mthrowu.c rnd_hallublast — ROLL_FROM(hallublasts): core rn2. */
+export function rnd_hallublast() {
+    return HALLUBLASTS[rn2(HALLUBLASTS.length)];
+}
+
 /**
  * C ref: mthrowu.c m_useup `:1161–1170` + m_useupall `:1153–1158` —
  * quan>1 decrements (+weight); else extract_from_minvent(TRUE, FALSE)

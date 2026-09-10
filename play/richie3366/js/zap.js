@@ -272,6 +272,7 @@ import {
     disguised_as_mon, disguised_as_non_mon,
 } from './uhitm.js';
 import { mon_nam, Monnam, noit_Monnam, christen_monst, hliquid, Hallucination, rndmonnam } from './do_name.js';
+import { rnd_hallublast } from './mthrowu.js';
 import { finish_losehp_done, done } from './end.js';
 import {
     burnarmor, t_at, maketrap, delfloortrap, dotrap, mintrap, deltrap,
@@ -814,10 +815,17 @@ function BZ_U_SPELL(bztyp) {
 
 /**
  * C ref: zap.c flash_types — wand 0..9 / spell 10..19 / breath 20..29.
- * Empty slots match C; Hallucination suppress deferred (caller passes
- * fltyp already via zaptype).
+ * Empty slots match C. C: flash_str(typ, nohallu) — Hallucination &&
+ * !nohallu → "blast of <rnd_hallublast()>" (core rn2). Only callers that
+ * pass an explicit `false` get the hallu arm; the one-arg dobuzz/zhitu
+ * sites keep the plain name (their eager-evaluation order vs C's
+ * message guards is unaudited — named in c-js-map zap.c).
  */
-export function flash_str(fltyp) {
+export function flash_str(fltyp, nohallu = true) {
+    if (Hallucination() && nohallu === false) {
+        // always return "blast of foo" for simplicity
+        return `blast of ${rnd_hallublast()}`;
+    }
     const names = [
         'magic missile', 'bolt of fire', 'bolt of cold', 'sleep ray',
         'death ray', 'bolt of lightning', '', '', '', '',

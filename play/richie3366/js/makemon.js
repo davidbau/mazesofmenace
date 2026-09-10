@@ -1018,9 +1018,10 @@ function is_pool_or_lava_at(x, y) {
 }
 
 /**
- * C ref: mon.c pickvampshape — Vlad/leader/vampire alternate forms.
- * Named omissions: mon_has_special Vlad stay-form (makemon skips newcham
- * for Vlad); already covered geno / already-alt rn2(4) return-to-cham.
+ * C ref: mon.c:4940–4979 pickvampshape — Vlad/leader/vampire alternate
+ * forms; C switch FALLTHROUGH order Vlad → leader → vampire, Vlad holding
+ * a special (Candelabrum) keeps mndx = cham; then geno / already-alt
+ * rn2(4) return-to-cham.
  */
 function pickvampshape(mon) {
     let mndx = mon.cham | 0;
@@ -1033,16 +1034,23 @@ function pickvampshape(mon) {
     const PM_FOG = pm('FOG_CLOUD');
     const PM_VBAT = pm('VAMPIRE_BAT');
 
-    if (mndx === PM_VLAD) wolfchance = 3;
-    if (mndx === PM_VLAD || mndx === PM_VLED) {
+    switch (mndx) {
+    case PM_VLAD:
+        // C: ensure Vlad can keep carrying the Candelabrum
+        if (mon_has_special(mon)) break; // leave mndx as is
+        wolfchance = 3;
+        // FALLTHROUGH
+    case PM_VLED: // vampire lord or Vlad can become wolf
         if (!rn2(wolfchance) && !uppercase_only
+            // C: no walking form that would drown or immolate at once
             && !is_pool_or_lava_at(mon.mx, mon.my)) {
             mndx = PM_WOLF;
-        } else {
-            mndx = (!rn2(4) && !uppercase_only) ? PM_FOG : PM_VBAT;
+            break;
         }
-    } else if (mndx === PM_VAMP) {
+        // FALLTHROUGH
+    case PM_VAMP: // any vampire can become fog or bat
         mndx = (!rn2(4) && !uppercase_only) ? PM_FOG : PM_VBAT;
+        break;
     }
 
     if (((game.mvitals?.[mndx]?.mvflags ?? 0) & G_GENOD) !== 0

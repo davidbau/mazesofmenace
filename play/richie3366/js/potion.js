@@ -102,7 +102,7 @@ import {
 } from './objects.js';
 import {
     weight, obj_extract_self, bless, curse, unbless, uncurse,
-    splitobj, mkobj, fixup_oil,
+    splitobj, mkobj, fixup_oil, mksobj, dealloc_obj,
     is_rustprone, is_corrodeable,
 } from './mkobj.js';
 import {
@@ -117,7 +117,7 @@ import {
 import { yn_function } from './getline.js';
 import {
     doname, xname, short_oname, thesimpleoname, simpleonames, makeplural,
-    The, the, vtense, an, cxname, yname,
+    The, the, vtense, an, cxname, yname, Yobjnam2,
 } from './objnam.js';
 import {
     dipfountain, drinkfountain, drinksink, dipsink,
@@ -187,6 +187,7 @@ import { which_armor, mon_set_minvis } from './worn.js';
 import { polyself, body_part } from './polyself.js';
 import { permapoisoned } from './artifact.js';
 import { poly_obj, obj_unpolyable } from './zap.js';
+import { obj_resists } from './dogmove.js';
 import { livelog_printf } from './pline.js';
 import { uhis } from './roles.js';
 import { hard_helmet } from './do_wear.js';
@@ -3561,10 +3562,35 @@ async function H2Opotion_dip(potion, targobj, useeit, objphrase) {
                 await costly_alteration(targobj, costchange);
             }
         }
-        func(targobj);
+        /* finally, change curse/bless state; C `(*func)(targobj)` —
+           bless/curse/unbless/uncurse are async for their lamplit
+           maybe_adjust_light tail ("It shines brighter.") (D-2244) */
+        await func(targobj);
         res = true;
     }
     return res;
+}
+
+/**
+ * C ref: potion.c impact_arti_light `:1591–1621` — blessed or cursed
+ * scroll of light (read.c litroom) meets a lit artifact light (wielded
+ * Sunsword or worn gold dragon scales/mail): unless already at the
+ * worst/best BUC state or obj_resists(25, 75), treat it like a dip in
+ * holy/unholy water (BUC change + glow message). curse()/bless() on the
+ * temporary water, then bless()/curse()/unbless()/uncurse() on obj via
+ * H2Opotion_dip, take care of maybe_adjust_light(). C `#if 0`
+ * update_inventory stays out (deferred to the caller in C too).
+ */
+export async function impact_arti_light(obj, worsen, seeit) {
+    /* if already worst/best BUC it can be, or if it resists, do nothing */
+    if ((worsen ? obj.cursed : obj.blessed) || obj_resists(obj, 25, 75))
+        return;
+
+    const otmp = mksobj(POT_WATER, true, false);
+    if (worsen) await curse(otmp);
+    else await bless(otmp);
+    await H2Opotion_dip(otmp, obj, seeit, seeit ? Yobjnam2(obj, 'glow') : '');
+    dealloc_obj(otmp);
 }
 
 /**

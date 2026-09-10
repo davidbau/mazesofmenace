@@ -163,6 +163,8 @@ import { readmail } from './mail.js';
 import { has_ceiling, avoid_ceiling } from './dungeon.js';
 import { explode } from './explode.js';
 import { burn_away_slime, artifact_light, arti_light_radius } from './timeout.js';
+import { snuff_lit } from './apply.js';
+import { impact_arti_light } from './potion.js';
 
 const SCR_MAGIC_MAPPING = objectNames.indexOf('SCR_MAGIC_MAPPING');
 const SPE_MAGIC_MAPPING = objectNames.indexOf('SPE_MAGIC_MAPPING');
@@ -375,8 +377,9 @@ function set_lit(x, y, val) {
  * C ref: read.c litroom — light/darken nearby terrain + message.
  * Envelope: ordinary scroll light/dark; Rogue whole-room; swallow/water
  * no_op message; vision_recalc(2) + delayed full recalc.
- * Deferred: snuff_lit / artifact_light / Punished move_bc / gremlin hits /
- * Underwater beyond no_op gate.
+ * Invent lights: `!on` snuff_lit / impact_arti_light(worsen) + still_lit
+ * dimmer message; blessed `on` impact_arti_light(raise) (C `:2503–2552`).
+ * Deferred: Punished move_bc / gremlin hits / Underwater beyond no_op gate.
  */
 export async function litroom(on, obj) {
     const u = game.u || {};
@@ -385,16 +388,44 @@ export async function litroom(on, obj) {
     const no_op = !!(u.uswallow || u.Underwater || Is_waterlevel(u.uz));
 
     if (!on) {
-        // Inventory lamp snuff / artifact impact deferred
+        let still_lit = 0;
+        /* C read.c litroom `:2503–2539` — the magic douses lamps too and
+           might curse artifact lights (hero's invent only; C FIXME).
+           Snapshot = C's `nextobj = otmp->nobj` captured before each
+           body runs. */
+        for (const otmp of [...(game.invent || [])]) {
+            if (otmp.lamplit) {
+                if (!artifact_light(otmp))
+                    await snuff_lit(otmp);
+                else
+                    /* wielded Sunsword or worn gold dragon scales/mail;
+                       maybe lower its BUC state if not already cursed */
+                    await impact_arti_light(otmp, true, !Blind);
+
+                if (otmp.lamplit)
+                    ++still_lit;
+            }
+        }
         if (!Blind) {
-            if (u.uswallow) {
+            if (still_lit) {
+                await pline('The ambient light seems dimmer.');
+            } else if (u.uswallow) {
                 await pline('It seems even darker in here than before.');
             } else {
                 await pline('You are surrounded by darkness!');
             }
         }
     } else {
-        // Blessed artifact_light impact deferred
+        if (blessed_effect) {
+            /* C read.c litroom `:2543–2552` — might bless artifact lights;
+               no effect on ordinary lights */
+            for (const otmp of [...(game.invent || [])]) {
+                if (otmp.lamplit && artifact_light(otmp))
+                    /* wielded Sunsword or worn gold dragon scales/mail;
+                       maybe raise its BUC state if not already blessed */
+                    await impact_arti_light(otmp, false, !Blind);
+            }
+        }
         if (u.uswallow) {
             // engulfer-lit messages deferred (Blind-silent matches C)
         } else if (!Blind && (!Is_rogue_level(u.uz)

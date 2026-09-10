@@ -909,7 +909,7 @@ async function do_improvisation(instr) {
                 instr.otyp === FROST_HORN ? AD_COLD : AD_FIRE,
             );
             if (!Blind()) {
-                await pline(`A ${flash_str(type)} blasts out of the horn!`);
+                await pline(`A ${flash_str(type, false)} blasts out of the horn!`);
             }
             Hero_playnotes(itmp_otyp, improvisation, 50);
             game.current_wand = instr;

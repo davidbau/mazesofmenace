@@ -23,20 +23,20 @@ import {
     W_ARMOR, W_ACCESSORY, W_WEAPONS,
     W_AMUL, W_RING, W_TOOL, W_RINGL, W_RINGR, W_BALL, W_CHAIN,
     LEFT_RING, RIGHT_RING, ADORNED, LOST_STOLEN,
-    LARGEST_INT, PLNMSG_MON_TAKES_OFF_ITEM, FAINTED, RLOC_MSG,
+    LARGEST_INT, PLNMSG_MON_TAKES_OFF_ITEM, FAINTED, RLOC_MSG, FOOT,
 } from './const.js';
 import {
     COIN_CLASS, ARMOR_CLASS, TOOL_CLASS, AMULET_CLASS, RING_CLASS,
-    FOOD_CLASS, objectNames,
+    FOOD_CLASS, objectNames, objects,
 } from './objects.js';
 import { monnear } from './mon.js';
-import { is_animal, throws_rocks, can_teleport } from './monsters.js';
-import { subfrombill, shop_keeper } from './shk.js';
+import { is_animal, throws_rocks, can_teleport, slithy } from './monsters.js';
+import { subfrombill, shop_keeper, money_cnt } from './shk.js';
 import { tele_restrict, rloc } from './teleport.js';
 import { ART_ORB_OF_DETECTION } from './generated/artifacts_data.js';
-import { canspotmon, pline } from './display.js';
-import { Monnam, Some_Monnam } from './do_name.js';
-import { doname } from './objnam.js';
+import { canspotmon, pline, newsym } from './display.js';
+import { Monnam, Some_Monnam, s_suffix, y_monnam } from './do_name.js';
+import { doname, makeplural } from './objnam.js';
 import {
     setworn,
     Armor_off, Cloak_off, Boots_off, Gloves_off,
@@ -48,6 +48,10 @@ import { nomul, stop_occupation } from './hack.js';
 import { maybe_finished_meal } from './eat.js';
 import { encumber_msg, freeinv_core } from './invent.js';
 import { hero_conflict } from './mondata.js';
+import { g_at, add_to_minv, obj_extract_self, splitobj } from './mkobj.js';
+import { mbodypart, body_part } from './polyself.js';
+import { monflee } from './monmove.js';
+import { Levitation, Flying } from './mhitu.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
 // stealamulet quest/invocation targets (C otyp constants via objects[] index)
@@ -80,6 +84,69 @@ export function inv_cnt(inclgold) {
         n++;
     }
     return n;
+}
+
+/**
+ * C ref: steal.c stealgold `:57–116` — mhitu AD_SGLD (leprechaun) theft.
+ * Floor gold under the hero (lesser coins skipped) is taken when the hero
+ * carries none, the pile is bigger, or !rn2(5) — C short-circuit, so the
+ * draw only happens when both exist and the pile isn't bigger; else a
+ * somegold() share of the purse. Either branch may rloc(RLOC_MSG) +
+ * monflee. Caller: mhitu.js mhitm_ad_sgld_u.
+ */
+export async function stealgold(mtmp) {
+    const u = game.u || {};
+    let fgold = g_at(u.ux, u.uy);
+
+    /* skip lesser coins on the floor */
+    while (fgold && fgold.otyp !== GOLD_PIECE) fgold = fgold.nexthere;
+
+    /* Do you have real gold? — C findgold(gi.invent); JS invent is an array */
+    let ygold = (game.invent || []).find((o) => o && o.otyp === GOLD_PIECE) || null;
+
+    if (fgold && (!ygold || (fgold.quan | 0) > (ygold.quan | 0) || !rn2(5))) {
+        obj_extract_self(fgold);
+        add_to_minv(mtmp, fgold);
+        newsym(u.ux, u.uy);
+        let who, whose, what;
+        if (u.usteed) {
+            who = u.usteed;
+            whose = s_suffix(y_monnam(who));
+            what = makeplural(mbodypart(who, FOOT));
+        } else {
+            who = game.youmonst;
+            whose = 'your';
+            what = makeplural(body_part(FOOT));
+        }
+        /* [ avoid "between your rear regions" :-] */
+        if (slithy(who?.data)) what = 'coils';
+        /* reduce "rear hooves/claws" to "hooves/claws" */
+        if (what.startsWith('rear ')) what = what.slice(5);
+        await pline(`${Monnam(mtmp)} quickly snatches some gold from ${
+            (Levitation() || Flying()) ? 'beneath' : 'between'} ${whose} ${what}!`);
+        if (!ygold || !rn2(5)) {
+            if (!(await tele_restrict(mtmp))) await rloc(mtmp, RLOC_MSG);
+            await monflee(mtmp, 0, false, false);
+        }
+    } else if (ygold) {
+        const gold_price = objects()[GOLD_PIECE].oc_cost | 0;
+        let tmp = Math.trunc((somegold(money_cnt(game.invent)) + gold_price - 1)
+                             / gold_price);
+        tmp = Math.min(tmp, ygold.quan | 0);
+        if (tmp < (ygold.quan | 0)) {
+            ygold = splitobj(ygold, tmp);
+        } else {
+            const { setnotworn } = await import('./do.js');
+            setnotworn(ygold);
+        }
+        freeinv(ygold);
+        add_to_minv(mtmp, ygold);
+        await pline('Your purse feels lighter.');
+        if (!(await tele_restrict(mtmp))) await rloc(mtmp, RLOC_MSG);
+        await monflee(mtmp, 0, false, false);
+        if (game.disp) game.disp.botl = true;
+        if (game.flags) game.flags.botl = true;
+    }
 }
 
 /**
