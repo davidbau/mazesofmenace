@@ -1053,7 +1053,7 @@ function Stone_resistance_hero() {
  * C ref: invent.c merge_choice — first mergable invent slot.
  * Named omit: shop no_charge / inhishop unpaid reject.
  */
-function merge_choice_invent(obj) {
+export function merge_choice_invent(obj) {
     if (!obj || (obj.otyp | 0) === SCR_SCARE_MONSTER) return null;
     for (const otmp of game.invent || []) {
         if (mergable(otmp, obj)) return otmp;

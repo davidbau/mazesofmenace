@@ -24,6 +24,7 @@ import {
     W_ARM, W_ARMC, W_ARMH, W_ARMU, W_ARMG, W_RINGL, W_RINGR, W_ARMF, W_AMUL, W_WEP,
     MON_EXPLODE, NO_MM_FLAGS, NO_TRAP_FLAGS, DISP_ALWAYS, DISP_END, STOMACH, DIED, NO_KILLER_PREFIX, ERODE_CORRODE, ERODE_BURN, EF_GREASE, EF_NONE,
     KILLED_BY_AN, PASSES_WALLS, SLOW_DIGESTION, MALE, FEMALE, MMOVE_DIED, CXN_ARTICLE,
+    ERODE_ROT, NO_NC_FLAGS, AD_CURS,
 } from './const.js';
 import {
     WEAPON_CLASS, ARMOR_CLASS, TOOL_CLASS, FOOD_CLASS, COIN_CLASS, RANDOM_CLASS,
@@ -43,13 +44,13 @@ import {
     ammo_and_launcher, is_weptool, is_launcher, is_ammo, is_missile,
     is_pole, drop_uswapwep, uwepgone,
 } from './wield.js';
-import { near_capacity, useup, hold_another_object } from './invent.js';
+import { near_capacity, useup, hold_another_object, Blind } from './invent.js';
 import { PM_BARBARIAN, PM_MONK, PM_KNIGHT, PM_SAMURAI, PM_ARCHEOLOGIST, PM_WIZARD, PM_HUMAN, PM_HEALER, PM_ROGUE } from './generated/monsters_data.js';
 import {
     find_mac, get_mattk, make_corpse, monstone, mhitm_knockback, monkilled, mondead,
     troll_baned, mhitm_ad_poly, mhitm_ad_slee, could_seduce, failed_grab, shade_miss,
     paralyze_monst,
-    mhitm_mgc_atk_negated, resists_poison_mm,
+    mhitm_mgc_atk_negated, resists_poison_mm, erode_armor,
     AT_NONE, AT_WEAP, AT_KICK, AT_CLAW, AT_SPIT, AT_HUGS,
     AT_TUCH, AT_BITE, AT_BUTT, AT_STNG, AT_MAGC, AT_TENT,
     AT_EXPL, AT_ENGL, AT_BREA, AT_GAZE, AD_PHYS, AD_POLY, AD_DRIN, AD_SLEE,
@@ -64,7 +65,7 @@ import {
     flaming, touch_petrifies, is_neuter, is_vampshifter, is_animal, amphibious,
     is_swimmer, slithy,
     amorphous, noncorporeal, is_whirly, passes_walls, hates_silver, mon_hates_silver, humanoid,
-    is_human, always_hostile, is_unicorn,
+    is_human, always_hostile, is_unicorn, slimeproof,
     MR_FIRE, MR_COLD, MR_ELEC, MR_ACID,
 } from './monsters.js';
 import {
@@ -95,8 +96,13 @@ import { cutworm } from './worm.js';
 import { m_unleash } from './apply.js';
 import { mhe, mhis } from './mondata.js';
 import { hard_helmet } from './do_wear.js';
-import { findgold } from './steal.js';
+import { findgold, inv_cnt } from './steal.js';
 import { mselftouch, instapetrify } from './trap.js';
+import { merge_choice_invent } from './pickup.js';
+import { addinv } from './u_init.js';
+import { dropy } from './do.js';
+import { munslime } from './muse.js';
+import { night } from './calendar.js';
 
 const PM_BLACK_PUDDING = monsterNames.indexOf('PM_BLACK_PUDDING');
 const PM_BROWN_PUDDING = monsterNames.indexOf('PM_BROWN_PUDDING');
@@ -143,6 +149,11 @@ const AD_DGST = 26;
 const AD_WRAP = 28;
 const AD_ENCH = 41;
 const AD_CORR = 42;
+const AD_SGLD = 20; /* steals gold (leprechaun) — monattk.h */
+const AD_DCAY = 34; /* decays organics (brown pudding) — monattk.h */
+const AD_SLIM = 40; /* turns victim into green slime — monattk.h */
+/* C hack.h invlet_basic — a-zA-Z invent slots. */
+const invlet_basic = 52;
 
 const PM_FLOATING_EYE = monsterNames.indexOf('PM_FLOATING_EYE');
 const PM_STEAM_VORTEX = monsterNames.indexOf('PM_STEAM_VORTEX');
@@ -150,6 +161,9 @@ const PM_SHADE = monsterNames.indexOf('PM_SHADE');
 const PM_FOG_CLOUD = monsterNames.indexOf('PM_FOG_CLOUD');
 const PM_MEDUSA = monsterNames.indexOf('PM_MEDUSA');
 const PM_GREEN_SLIME = monsterNames.indexOf('PM_GREEN_SLIME');
+const PM_CLAY_GOLEM = monsterNames.indexOf('PM_CLAY_GOLEM');
+const PM_WOOD_GOLEM = monsterNames.indexOf('PM_WOOD_GOLEM');
+const PM_LEATHER_GOLEM = monsterNames.indexOf('PM_LEATHER_GOLEM');
 const PM_FLESH_GOLEM = monsterNames.indexOf('PM_FLESH_GOLEM');
 const PM_IRON_GOLEM = monsterNames.indexOf('PM_IRON_GOLEM');
 const AMULET_OF_LIFE_SAVING = objectNames.indexOf('AMULET_OF_LIFE_SAVING');
@@ -1732,6 +1746,97 @@ async function steal_it(mdef, mattk) {
     }
 }
 
+/**
+ * C ref: uhitm.c mhitm_ad_sgld `:2797–2811` — uhitm (hero as attacker) arm.
+ * mdef's gold goes to the purse when it merges (merge_choice) or a basic
+ * invlet is free (inv_cnt(FALSE) < invlet_basic), else "no room" + dropy;
+ * exercise(A_DEX) either way; leftover d() zeroed. mhitu arm D-2251,
+ * mhitm arm D-1907.
+ */
+async function damageum_ad_sgld(mdef, mhm) {
+    const mongold = findgold(mdef.minvent);
+    if (mongold) {
+        obj_extract_self(mongold);
+        if (merge_choice_invent(mongold) || inv_cnt(false) < invlet_basic) {
+            await addinv(mongold);
+            await pline('Your purse feels heavier.');
+        } else {
+            await pline(`You grab ${mon_nam(mdef)}'s gold, but find no room in your knapsack.`);
+            await dropy(mongold);
+        }
+    }
+    exercise(A_DEX, true);
+    mhm.damage = 0;
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_curs `:3022–3035` — uhitm arm. C short-circuit
+ * night() && !rn2(10) && !mcan: clay golem → !Blind «writing vanishes» +
+ * xkilled(NOMSG) (no return: hp<1 with damage 0 reaches the damageum pet
+ * message), else mcan + «You chuckle.»; leftover d() zeroed.
+ */
+async function damageum_ad_curs(mdef, mhm) {
+    const pd = mdef.data;
+    if (night() && !rn2(10) && !mdef.mcan) {
+        if ((pd?.mndx | 0) === PM_CLAY_GOLEM) {
+            if (!Blind()) {
+                await pline(`Some writing vanishes from ${s_suffix(mon_nam(mdef))} head!`);
+            }
+            await xkilled(mdef, XKILL_NOMSG);
+            /* Don't return yet; keep hp<1 and mhm.damage=0 for pet msg */
+        } else {
+            mdef.mcan = 1;
+            await pline('You chuckle.');
+        }
+    }
+    mhm.damage = 0;
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_dcay `:2369–2377` — uhitm arm. completelyrots
+ * (wood/leather golem, by mndx per D-2259) → «falls|starts to fall to
+ * pieces!» + xkilled(NOMSG); erode_armor(ERODE_ROT) runs regardless, as
+ * in C; leftover d() zeroed.
+ */
+async function damageum_ad_dcay(mdef, mhm) {
+    const pd = mdef.data;
+    /* C mondata.h completelyrots(ptr) — PM_WOOD_GOLEM || PM_LEATHER_GOLEM */
+    if ((pd?.mndx | 0) === PM_WOOD_GOLEM || (pd?.mndx | 0) === PM_LEATHER_GOLEM) {
+        await pline(`${Monnam(mdef)} ${
+            !mlifesaver_you(mdef) ? 'falls' : 'starts to fall'} to pieces!`);
+        await xkilled(mdef, XKILL_NOMSG);
+    }
+    await erode_armor(mdef, ERODE_ROT);
+    mhm.damage = 0;
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_slim `:3530–3552` — uhitm arm. mgc_negated(FALSE)
+ * burns first for every branch; negated keeps the physical leftover. Else
+ * !rn2(4) && !slimeproof: munslime(TRUE) cure attempt, survivors get «You
+ * turn <mon> into slime.» + newcham(green slime); a fatal munslime →
+ * DEF_DIED + done (skip death message); else leftover zeroed.
+ */
+async function damageum_ad_slim(mdef, mhm) {
+    const negated = await mhitm_mgc_atk_negated(game.youmonst, mdef, false);
+    if (negated) return; /* physical damage only */
+    if (!rn2(4) && !slimeproof(mdef.data)) {
+        if (!(await munslime(mdef, true)) && !((mdef.mhp | 0) < 1)) {
+            /* this assumes newcham() won't fail; since hero has
+               a slime attack, green slimes haven't been geno'd */
+            await pline(`You turn ${mon_nam(mdef)} into slime.`);
+            await newcham(mdef, mons(PM_GREEN_SLIME), NO_NC_FLAGS);
+        }
+        /* munslime attempt could have been fatal */
+        if ((mdef.mhp | 0) < 1) {
+            mhm.hitflags = M_ATTK_DEF_DIED; /* skip death message */
+            mhm.done = true;
+            return;
+        }
+        mhm.damage = 0;
+    }
+}
+
 async function damageum_adtyping(mattk, mdef, mhm) {
     const adtyp = mattk.adtyp | 0;
     if (adtyp === AD_PHYS) damageum_ad_phys(mdef, mattk, mhm);
@@ -1763,6 +1868,14 @@ async function damageum_adtyping(mattk, mdef, mhm) {
            steal_it, leftover d() zeroed. */
         await steal_it(mdef, mattk);
         mhm.damage = 0;
+    } else if (adtyp === AD_SGLD) {
+        await damageum_ad_sgld(mdef, mhm);
+    } else if (adtyp === AD_CURS) {
+        await damageum_ad_curs(mdef, mhm);
+    } else if (adtyp === AD_DCAY) {
+        await damageum_ad_dcay(mdef, mhm);
+    } else if (adtyp === AD_SLIM) {
+        await damageum_ad_slim(mdef, mhm);
     }
 }
 

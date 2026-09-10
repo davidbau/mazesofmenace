@@ -584,8 +584,8 @@ export async function mattacku(monster, rawEnv = {}) {
         : (rawEnv.markInvisible ?? map_invisible);
     const env = {
         ...rawEnv, state, message, redraw, statusRefresh, markInvisible,
+        planningDeath: (subject) => new MonsterDeathPlanningError(subject),
     };
-
     const mdat = monster.data;
     const initial = calc_mattacku_vars(monster, env);
     let { range2, foundyou } = initial;
@@ -886,6 +886,12 @@ export async function mattacku(monster, rawEnv = {}) {
         default: /* no attack */
             break;
         }
+        // C's mdamageu() calls done_in_by(), whose ordinary death path does
+        // not return to mattacku().  really_done() signals that NORETURN path
+        // with gameover so the JavaScript display can unwind; stop the
+        // attacker's remaining attack slots at the same point.
+        if (state.program_state?.gameover)
+            return 1;
         if (state.disp?.botl) await statusRefresh();
         /* give player a chance of waking up before dying -kaa */
         if (sum[i] === M_ATTK_HIT) { /* successful attack */

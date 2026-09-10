@@ -432,7 +432,7 @@ const GRAY_DRAGON_SCALES = objectNames.indexOf('GRAY_DRAGON_SCALES');
 const YELLOW_DRAGON_SCALES = objectNames.indexOf('YELLOW_DRAGON_SCALES');
 const GRAY_DRAGON_SCALE_MAIL = objectNames.indexOf('GRAY_DRAGON_SCALE_MAIL');
 const YELLOW_DRAGON_SCALE_MAIL = objectNames.indexOf('YELLOW_DRAGON_SCALE_MAIL');
-function Is_dragon_scales(obj) {
+export function Is_dragon_scales(obj) {
     const t = obj?.otyp | 0;
     return t >= GRAY_DRAGON_SCALES && t <= YELLOW_DRAGON_SCALES;
 }

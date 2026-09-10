@@ -3,7 +3,7 @@
 
 import { game } from './gstate.js';
 import { rn2, rn1, d, rnd } from './rng.js';
-import { dist2 } from './hacklib.js';
+import { dist2, strstri, strsubst } from './hacklib.js';
 import {
     pline, urgent_pline, newsym, see_monsters, impossible,
 } from './display.js';
@@ -18,10 +18,10 @@ import { attacktype_fordmg, killed } from './uhitm.js';
 import {
     AT_SPIT, AT_GAZE, AD_BLND, AD_DRST, AD_ACID,
 } from './mhitm.js';
-import { mksobj, objects_at } from './mkobj.js';
+import { mksobj, objects_at, maybe_adjust_light } from './mkobj.js';
 import { throwit } from './dothrow.js';
 import { ubuzz, ubreatheu } from './zap.js';
-import { were_summon } from './were.js';
+import { were_summon, were_beastie, counter_were } from './were.js';
 import { unpunish } from './read.js';
 import { surface, split_mon } from './sit.js';
 import { sticks } from './engrave.js';
@@ -44,8 +44,8 @@ import {
 import { dropx, canletgo, make_blinded } from './do.js';
 import { uswapwepgone, uwepgone, could_twoweap, untwoweapon } from './wield.js';
 import { races } from './roles.js';
-import { encumber_msg, useup, weapon_descr, update_inventory } from './invent.js';
-import { end_burn, learn_egg_type } from './timeout.js';
+import { encumber_msg, useup, weapon_descr, update_inventory, observe_object } from './invent.js';
+import { end_burn, learn_egg_type, artifact_light, arti_light_radius } from './timeout.js';
 import { racial_exception, has_horns, num_horns, WrappingAllowed, is_flimsy } from './worn.js';
 import { helm_simple_name, digests, set_ustuck } from './mhitu.js';
 import { losehp, nomul, is_pool, waterbody_name } from './hack.js';
@@ -80,6 +80,7 @@ import {
     is_floater,
     is_vampire,
     is_vampshifter,
+    is_bat,
     your_race,
     G_UNIQ,
     is_were,
@@ -107,7 +108,7 @@ import {
     MR_ACID,
     MR_STONE,
 } from './monsters.js';
-import { golemhp, is_home_elemental, mkclass_poly } from './makemon.js';
+import { golemhp, is_home_elemental, mkclass_poly, Is_dragon_scales } from './makemon.js';
 import {
     POLY_CONTROLLED,
     POLY_LOW_CTRL,
@@ -179,6 +180,7 @@ import {
     PM_ELF,
     PM_DWARF,
     PM_GNOME,
+    PM_CLERIC,
     SPECIAL_PM,
     monsterNames,
 } from './generated/monsters_data.js';
@@ -247,6 +249,15 @@ const PM_RAVEN = monsterNames.indexOf('PM_RAVEN');
 const PM_KI_RIN = monsterNames.indexOf('PM_KI_RIN');
 const PM_ROTHE = monsterNames.indexOf('PM_ROTHE');
 const PM_STALKER = monsterNames.indexOf('PM_STALKER');
+// C polyself.c:545–558 placeholder substitutes + :572–575 own-role cleric.
+const PM_GIANT = monsterNames.indexOf('PM_GIANT');
+const PM_HILL_ORC = monsterNames.indexOf('PM_HILL_ORC');
+const PM_MORDOR_ORC = monsterNames.indexOf('PM_MORDOR_ORC');
+const PM_GREEN_ELF = monsterNames.indexOf('PM_GREEN_ELF');
+const PM_GREY_ELF = monsterNames.indexOf('PM_GREY_ELF');
+const PM_STONE_GIANT = monsterNames.indexOf('PM_STONE_GIANT');
+const PM_HILL_GIANT = monsterNames.indexOf('PM_HILL_GIANT');
+const PM_ALIGNED_CLERIC = monsterNames.indexOf('PM_ALIGNED_CLERIC');
 
 // C ref: monattk.h AT_BREA / AT_CLAW
 const AT_BREA = 12;
@@ -746,7 +757,8 @@ export async function uunstick() {
  * Envelope: restore macurr/mamax; clear mh/mtimedone; set_uasmon; sticking
  * uunstick (D-2131); find_ac; newsym; pline; was_blind→make_blinded;
  * see_monsters.
- * Named omissions: skinback; ugenocided; mimic/twoweapon;
+ * skinback(FALSE) `:217` (D-2262).
+ * Named omissions: ugenocided; mimic/twoweapon;
  * strangling; pool spoteffects; retouch_equipment/selftouch.
  */
 async function polyman(fmt, arg) {
@@ -767,7 +779,7 @@ async function polyman(fmt, arg) {
     u.mh = 0;
     u.mhmax = 0;
     u.mtimedone = 0;
-    // skinback deferred
+    await skinback(false);
     u.uundetected = 0;
     // C :220–221 — release the hold before the return-to-form pline
     if (sticking) await uunstick();
@@ -1134,7 +1146,7 @@ async function break_armor() {
  * find_ac; newsym; botl; see_monsters; encumber_msg; verbose ability tips.
  * Named omissions: Stoned/Sick/Slimed/strangle/glib; hideunder; utrap;
  * egg learn; swallow expel; light sources;
- * full skinback; livelog first-poly text; break_armor horns /
+ * livelog first-poly text; break_armor horns /
  * flimsy-helm pierce / ublindf; retouch_equipment.
  * @param {number} mntmp
  * @returns {Promise<number>} 1 on success, 0 on geno abort
@@ -1233,6 +1245,11 @@ export async function polymon(mntmp) {
         u.mtimedone = Math.trunc((u.mtimedone | 0) * (u.ulevel | 0) / mlvl);
     }
 
+    // C polyself.c:886–887 — a merged dragon skin reverts unless the new
+    // form is that same dragon (the do_merge polymon keeps it).
+    if (u.uskin && mntmp !== armor_to_dragon(u.uskin.otyp | 0)) {
+        await skinback(false);
+    }
     await break_armor();
     // C: drop_weapon(1) — cantwield (dragon/nohands) must drop uwep
     await drop_weapon(1);
@@ -1335,27 +1352,52 @@ export async function polymon(mntmp) {
 }
 
 /**
- * C ref: polyself.c polyself — system-shock, POLY_CONTROLLED getlin,
- * random ordinary pick, then polymon/newman.
+ * C ref: polyself.c skinback `:1953–1969` — dragon armor merged into the
+ * hero's skin (uskin) goes back to being worn body armor.
+ * @param {boolean} silently
+ */
+export async function skinback(silently) {
+    const u = game.u || (game.u = {});
+    if (u.uskin) {
+        const old_light = arti_light_radius(u.uskin);
+
+        if (!silently) await pline('Your skin returns to its original form.');
+        u.uarm = u.uskin;
+        u.uskin = null;
+        /* undo save/restore hack */
+        u.uarm.owornmask = (u.uarm.owornmask | 0) & ~I_SPECIAL;
+
+        if (artifact_light(u.uarm)) await maybe_adjust_light(u.uarm, old_light);
+    }
+}
+
+/**
+ * C ref: polyself.c polyself `:469–733` — system-shock, POLY_CONTROLLED
+ * getlin, special forms (do_merge / do_shift / do_vampyr), random
+ * ordinary pick, then polymon/newman.
  * Live: POLY_LOW_CTRL forcecontrol downgrade (D-1428);
  * controllable_poly getlin incl. non-force ESC-to-random (D-2177);
  * !polyok the()/bare/an() article (D-2063); POLY_MONSTER isvamp
- * do_vampyr shape change (D-2063).
- * Live: by_class class-word pick (D-2248: module-local `armor_to_dragon`
- * for worn-dragon S_DRAGON, else `mkclass_poly`; `rn2(3)` retry);
- * class-miss `You can't polymorph into any of those` fork.
- * Named omissions: were/dragon-merge/POLY_REVERT; placeholder orc/elf/giant
- * substitutes; post-loop isvamp/draconian goto;
- * wizard rehumanize own-role; light-source bookkeeping.
+ * do_vampyr shape change (D-2063); by_class class-word pick with the
+ * `rn2(3)` re-pick (D-2248).
+ * Live (D-2262): POLY_REVERT; placeholder orc/elf/giant substitutes;
+ * wizard own-role rehumanize; were do_shift; draconian do_merge into
+ * uskin; post-loop draconian/isvamp gotos. The C gotos are flattened
+ * into `target` (the label control jumps to).
+ * Named omissions: made_change light-source bookkeeping (JS
+ * do_light_sources has no hero arm like C get_mon_location, so a
+ * youmonst LS_MONSTER source would be misplaced).
  * @param {number} [psflags=POLY_NOFLAGS]
  */
 export async function polyself(psflags = 0) {
     const u = game.u || (game.u = {});
     let forcecontrol = (psflags & POLY_CONTROLLED) !== 0;
     const low_control = (psflags & POLY_LOW_CTRL) !== 0;
-    const monsterpoly = (psflags & POLY_MONSTER) !== 0;
-    // formrevert named omit
-    void (psflags & POLY_REVERT);
+    let monsterpoly = (psflags & POLY_MONSTER) !== 0;
+    const formrevert = (psflags & POLY_REVERT) !== 0;
+    // C :472 — gvariant starts NEUTRAL, name_to_mon fills it, and the
+    // do_vampyr "Become %s?" prompt reads it; one box for the whole loop.
+    const gvariant = { gender: NEUTRAL };
 
     if (Unchanging(u)) {
         await pline('You fail to transform!');
@@ -1369,7 +1411,7 @@ export async function polyself(psflags = 0) {
     const isvamp = !!(is_vampire(youdata) || is_vampshifter(game.youmonst));
     // C polyself.c:480 — controllable_poly = Polymorph_control && !(Stunned || Unaware);
     // Stunned shape mirrors hack.js Stunned_prop ((u.HStun|0) || u.Stunned).
-    const controllable_poly = Polymorph_control(u) && !((u.HStun | 0) || u.Stunned) && !Unaware();
+    let controllable_poly = Polymorph_control(u) && !((u.HStun | 0) || u.Stunned) && !Unaware();
     if (!Polymorph_control(u) && !forcecontrol && !draconian && !iswere
         && !isvamp) {
         // C: if (rn2(20) > ACURR(A_CON)) system shock
@@ -1384,6 +1426,15 @@ export async function polyself(psflags = 0) {
         }
     }
 
+    let mntmp = NON_PM;
+    // C :500–504 — POLY_REVERT: back to the vampshifter's base form, as a
+    // monster poly with no control prompt.
+    if (formrevert) {
+        mntmp = game.youmonst?.cham ?? NON_PM;
+        monsterpoly = true;
+        controllable_poly = false;
+    }
+
     // C polyself.c :506–508 — blessed potion LOW_CTRL does not prompt
     // when already a dragon-merge / monster-poly / vamp / were form.
     if (forcecontrol && low_control
@@ -1391,14 +1442,17 @@ export async function polyself(psflags = 0) {
         forcecontrol = false;
     }
 
-    let mntmp = NON_PM;
-    // C polyself.c:511 — `if (monsterpoly && isvamp) goto do_vampyr`: a #monster
+    // C gotos flattened: `target` names the label control jumps to —
+    // 'do_merge' | 'do_shift' | 'do_vampyr' | 'made_change'; null falls
+    // through to the :698 random funnel.
+    let target = null;
+    // C polyself.c:510 — `if (monsterpoly && isvamp) goto do_vampyr`: a #monster
     // shape change as a vampire skips the getlin block entirely.
-    const vampyr_goto = monsterpoly && isvamp;
-    // C polyself.c:513 — `if (controllable_poly || forcecontrol)`: poly-control
-    // (worn ring) prompts even for POLY_NOFLAGS (D-2177). `!vampyr_goto`
-    // is C :510–511 (monster-poly vampire jumps straight to do_vampyr).
-    if ((controllable_poly || forcecontrol) && !vampyr_goto) {
+    if (monsterpoly && isvamp) {
+        target = 'do_vampyr';
+    } else if (controllable_poly || forcecontrol) {
+        // C polyself.c:513 — poly-control (worn ring) prompts even for
+        // POLY_NOFLAGS (D-2177).
         let tryct = 5;
         do {
             mntmp = NON_PM;
@@ -1418,20 +1472,21 @@ export async function polyself(psflags = 0) {
                 tryct = 0;
                 continue;
             }
-            mntmp = name_to_mon(buf);
             // C polyself.c:536 — `class` is 0 unless the by_class arm below
             // resolves a class word (name_to_monclass returns 0 on no match).
             let cls = 0;
-            if (mntmp < LOW_PM) {
-                // C polyself.c:537-542 by_class: a class word (single symbol
-                // or explain text) resolves to a candidate type — a specific
-                // match rides as-is, otherwise a worn-dragon draconian merges
-                // with their armor and any other class picks via mkclass_poly
-                // (no polyok() check — the caller accepts choices polyok()
-                // would reject). C :598-604: a !polyok() class pick usually
-                // re-picks (goto by_class) — the for(;;) below; only the
-                // exhausted fall-through reaches the message.
-                for (;;) {
+            mntmp = name_to_mon(buf, gvariant);
+            let by_class = mntmp < LOW_PM;
+            let accepted = false;
+            // One pass per C arm chain; `continue` is C :600 `goto by_class`,
+            // which re-enters the class pick without re-running name_to_mon.
+            for (;;) {
+                if (by_class) {
+                    // C polyself.c:537-542 by_class: a class word (single
+                    // symbol or explain text) resolves to a candidate type —
+                    // a specific match rides as-is, otherwise a worn-dragon
+                    // draconian merges with their armor and any other class
+                    // picks via mkclass_poly (no polyok() check here).
                     const box = { mndx: NON_PM };
                     cls = name_to_monclass(buf, box);
                     mntmp = box.mndx | 0;
@@ -1440,65 +1495,146 @@ export async function polyself(psflags = 0) {
                             ? armor_to_dragon(u.uarm?.otyp | 0)
                             : mkclass_poly(cls);
                     }
-                    // Shared-accept preview (same arms as the checks below):
-                    // nothing picked, a specific-type match, a polyok() pick,
-                    // or the human/own-race/own-role pass all fall through.
-                    if (mntmp < LOW_PM || !cls || polyok(mons(mntmp))
-                        || mntmp === PM_HUMAN
-                        || (your_race(mons(mntmp)) && ((mons(mntmp)?.geno | 0) & G_UNIQ) === 0)
-                        || mntmp === (game.urole?.mnum | 0)) break;
-                    // C :599-604 — `if (rn2(3) || --tryct > 0) goto by_class`
-                    // short-circuit kept: a nonzero rn2(3) re-picks without
-                    // consuming a try.
-                    if (rn2(3) || --tryct > 0) continue;
-                    ++tryct;
-                    break;
+                } else if (is_placeholder(mons(mntmp))
+                    /* when your own race, fall to !polyok() case */
+                    && !your_race(mons(mntmp))
+                    /* same for generic human, even if hero isn't human */
+                    && mntmp !== PM_HUMAN) {
+                    // C :544–563 — placeholders are reasonable polymorph
+                    // targets; pick a substitute (which might be geno'd).
+                    if (mntmp === PM_ORC)
+                        mntmp = rn2(3) ? PM_HILL_ORC : PM_MORDOR_ORC;
+                    else if (mntmp === PM_ELF)
+                        mntmp = rn2(3) ? PM_GREEN_ELF : PM_GREY_ELF;
+                    else if (mntmp === PM_GIANT)
+                        mntmp = rn2(3) ? PM_STONE_GIANT : PM_HILL_GIANT;
                 }
-            }
-            if (mntmp < LOW_PM) {
-                // C :566-569 — bare-name miss vs class with no live pick.
-                if (!cls) await pline("I've never heard of such monsters.");
-                else await pline("You can't polymorph into any of those.");
-            } else if (!cls && is_placeholder(mons(mntmp))
-                && mntmp !== PM_HUMAN
-                /* your_race placeholder arm deferred */) {
-                await pline(`You can't polymorph into ${an(pmname(mntmp, FEMALE))}.`);
-                mntmp = NON_PM;
-            } else if (!polyok(mons(mntmp))
-                // C polyself.c:596–601 — own race (non-unique) and own role
-                // force newman() instead of this message.
-                && !(mntmp === PM_HUMAN
-                    || (your_race(mons(mntmp)) && ((mons(mntmp)?.geno | 0) & G_UNIQ) === 0)
-                    || mntmp === (game.urole?.mnum | 0))) {
-                // C polyself.c:610–615 — unique → the(), proper name → bare,
-                // otherwise an().
-                const mptr = mons(mntmp);
-                let pm_name = pmname(mntmp, game.flags?.female ? FEMALE : MALE);
-                if (the_unique_pm(mptr)) pm_name = the(pm_name);
-                else if (!type_is_pname(mptr)) pm_name = an(pm_name);
-                await pline(`You can't polymorph into ${pm_name}.`);
-                mntmp = NON_PM;
-            } else {
+
+                if (mntmp < LOW_PM) {
+                    // C :566-569 — bare-name miss vs class with no live pick.
+                    if (!cls) await pline("I've never heard of such monsters.");
+                    else await pline("You can't polymorph into any of those.");
+                } else if ((game.flags?.debug || game.flags?.wizard) && Upolyd(u)
+                    && (mntmp === (u.umonster | 0)
+                        /* "priest" and "priestess" match the monster rather
+                           than the role; override that unless the text
+                           explicitly contains "aligned" */
+                        || ((u.umonster | 0) === PM_CLERIC
+                            && mntmp === PM_ALIGNED_CLERIC
+                            && !strstri(buf, 'aligned')))) {
+                    // C :570–582 — wizard mode: own role while poly'd reverts
+                    // without newman()'s chance of level or sex change.
+                    // (C's `old_light = 0` belongs to the omitted light arm.)
+                    await rehumanize();
+                    target = 'made_change';
+                } else if (iswere && (were_beastie(mntmp) === u.ulycn
+                    || mntmp === counter_were(u.ulycn)
+                    || (Upolyd(u) && mntmp === PM_HUMAN))) {
+                    target = 'do_shift'; // C :583–586
+                } else if (!polyok(mons(mntmp))
+                    // C polyself.c:587–597 — humans are illegal as monsters,
+                    // but an illegal monster forces newman(), which is what
+                    // own race (non-unique) and own role want.
+                    && !(mntmp === PM_HUMAN
+                        || (your_race(mons(mntmp)) && ((mons(mntmp)?.geno | 0) & G_UNIQ) === 0)
+                        || mntmp === (game.urole?.mnum | 0))) {
+                    // C :598-604 — mkclass_poly() can pick a !polyok()
+                    // candidate; if so, usually try again. The rn2(3)
+                    // short-circuit re-picks without consuming a try; on
+                    // exhaustion one try goes back so the loop decrement
+                    // yields 0 (thats_enough_tries).
+                    if (cls) {
+                        if (rn2(3) || --tryct > 0) {
+                            by_class = true;
+                            continue;
+                        }
+                        ++tryct;
+                    }
+                    // C polyself.c:608–613 — unique → the(), proper name →
+                    // bare, otherwise an(). mntmp is not reset: C keeps it, so
+                    // a last refused pick reaches newman() below, not the
+                    // random funnel.
+                    const mptr = mons(mntmp);
+                    let pm_name = pmname(mntmp, game.flags?.female ? FEMALE : MALE);
+                    if (the_unique_pm(mptr)) pm_name = the(pm_name);
+                    else if (!type_is_pname(mptr)) pm_name = an(pm_name);
+                    await pline(`You can't polymorph into ${pm_name}.`);
+                } else {
+                    accepted = true;
+                }
                 break;
             }
+            if (target || accepted) break;
         } while (--tryct > 0);
 
-        // C :616–619 — no return: ordinary forms fall through to the :698
-        // random funnel below (D-2177; JS wrongly aborted the poly).
-        if (!tryct) {
-            await pline("That's enough tries!");
+        // The do_shift / made_change gotos leave before this tail.
+        // C :618–625 — no return:
+        // ordinary forms fall through to the :698 random funnel (D-2177).
+        if (!target) {
+            if (!tryct) {
+                await pline("That's enough tries!");
+            }
+            /* allow skin merging, even when polymorph is controlled */
+            if (draconian
+                && (tryct <= 0 || mntmp === armor_to_dragon(u.uarm.otyp | 0))) {
+                target = 'do_merge';
+            } else if (isvamp
+                && (tryct <= 0 || mntmp === PM_WOLF || mntmp === PM_FOG_CLOUD
+                    || is_bat(mons(mntmp)))) {
+                target = 'do_vampyr';
+            }
         }
+    } else if (draconian) {
+        // C :626 — special changes that don't require polyok()
+        target = 'do_merge';
+    } else if (iswere) {
+        target = 'do_shift';
+    } else if (isvamp) {
+        target = 'do_vampyr';
     }
 
-    // C polyself.c do_vampyr — vampire shape change skips the polyok gate:
-    // re-pick wolf/fog/bat (cham override), y_n prompt when controlled,
-    // then polymon/newman directly (no sex_change_ok wrap; goto made_change,
-    // whose light-source bookkeeping stays deferred like the random path).
-    // Second disjunct is C's `else if (draconian || iswere || isvamp)` taken
-    // when NOT (controllable || forcecontrol); dragon/were arms stay deferred.
-    if (vampyr_goto || (!forcecontrol && !controllable_poly && isvamp && !draconian && !iswere)) {
-        // C re-pick guard `mntmp < LOW_PM || geno & G_UNIQ`; RNG short-circuit
-        // order kept: leader rn2(10) first, else rn2(4), then cham rn2(2).
+    if (target === 'do_merge') {
+        // C polyself.c:629–664 do_merge — worn dragon armor becomes uskin.
+        mntmp = armor_to_dragon(u.uarm.otyp | 0);
+        if (!((game.mvitals?.[mntmp]?.mvflags | 0) & G_GENOD)) {
+            const uarm = u.uarm;
+            const was_lit = uarm.lamplit;
+            const arm_light = artifact_light(uarm) ? arti_light_radius(uarm) : 0;
+
+            /* allow G_EXTINCT */
+            if (Is_dragon_scales(uarm)) {
+                /* dragon scales remain intact as uskin */
+                await pline('You merge with your scaly armor.');
+            } else { /* dragon scale mail reverts to scales */
+                /* similar to noarmor(invent.c),
+                   shorten to "<color> scale mail" */
+                const buf = strsubst(simpleonames(uarm), ' dragon ', ' ');
+                /* dragon scale mail is singular, dragon scales plural */
+                await pline(`Your ${buf} reverts to scales as you merge with them.`);
+                /* uarm->spe enchantment remains unchanged */
+                uarm.otyp = (uarm.otyp | 0) + GRAY_DRAGON_SCALES - GRAY_DRAGON_SCALE_MAIL;
+                observe_object(uarm);
+                if (game.flags) game.flags.botl = true; /* AC is changing */
+                if (game.disp) game.disp.botl = true;
+            }
+            u.uskin = uarm;
+            u.uarm = null;
+            /* save/restore hack */
+            u.uskin.owornmask = (u.uskin.owornmask | 0) | I_SPECIAL;
+            if (was_lit) await maybe_adjust_light(u.uskin, arm_light);
+            update_inventory();
+        }
+    } else if (target === 'do_shift') {
+        // C polyself.c:665–670 do_shift
+        if (Upolyd(u) && were_beastie(mntmp) !== u.ulycn)
+            mntmp = PM_HUMAN; /* Illegal; force newman() */
+        else
+            mntmp = u.ulycn;
+    } else if (target === 'do_vampyr') {
+        // C polyself.c:671–686 do_vampyr — vampire shape change skips the
+        // polyok gate: re-pick wolf/fog/bat (cham override), y_n prompt when
+        // controlled. RNG short-circuit order kept: leader rn2(10) first,
+        // else rn2(4), then cham rn2(2).
         if (mntmp < LOW_PM || ((mons(mntmp)?.geno | 0) & G_UNIQ)) {
             const isLeader = (youdata?.mndx ?? -1) === PM_VAMPIRE_LEADER;
             if (isLeader && !rn2(10)) mntmp = PM_WOLF;
@@ -1508,40 +1644,45 @@ export async function polyself(psflags = 0) {
             if (ismnum(cham) && !is_vampire(youdata) && !rn2(2)) mntmp = cham;
         }
         if (controllable_poly) {
-            // C gvariant is NEUTRAL here — no getlin ran on this path.
-            if ((await y_n(`Become ${an(pmname(mntmp, NEUTRAL))}?`)) !== 'y') return;
+            if ((await y_n(`Become ${an(pmname(mntmp, gvariant.gender))}?`)) !== 'y') return;
         }
-        if (mntmp === PM_HUMAN) await newman();
+    }
+
+    if (target === 'do_merge' || target === 'do_shift' || target === 'do_vampyr') {
+        // C :688–695 — if polymon fails, "you feel" message has been given
+        // so don't follow up with another polymon or newman; sex_change_ok
+        // left disabled here; then goto made_change.
+        if (mntmp === PM_HUMAN) await newman(); /* werecritter */
         else await polymon(mntmp);
-        return;
-    }
-
-    // C: mntmp < LOW_PM → tryct=200; rn1(SPECIAL_PM-LOW_PM, LOW_PM)
-    if (mntmp < LOW_PM) {
-        let tryct = 200;
-        do {
-            mntmp = rn1(SPECIAL_PM - LOW_PM, LOW_PM);
-            if (polyok(mons(mntmp)) && !is_placeholder(mons(mntmp))) {
-                break;
-            }
-        } while (--tryct > 0);
-    }
-
-    game.sex_change_ok = (game.sex_change_ok | 0) + 1;
-    try {
-        const ptr = mons(mntmp);
-        const yourRaceBit = game.urace?.selfmask | 0;
-        const isYourRace = yourRaceBit !== 0
-            && ((ptr?.mflags2 | 0) & yourRaceBit) !== 0;
-        // C: !polyok || (!forcecontrol && !rn2(5)) || your_race → newman()
-        if (!polyok(ptr) || (!forcecontrol && !rn2(5)) || isYourRace) {
-            await newman();
-        } else {
-            await polymon(mntmp);
+    } else if (!target) {
+        // C: mntmp < LOW_PM → tryct=200; rn1(SPECIAL_PM-LOW_PM, LOW_PM)
+        if (mntmp < LOW_PM) {
+            let tryct = 200;
+            do {
+                mntmp = rn1(SPECIAL_PM - LOW_PM, LOW_PM);
+                if (polyok(mons(mntmp)) && !is_placeholder(mons(mntmp))) {
+                    break;
+                }
+            } while (--tryct > 0);
         }
-    } finally {
-        game.sex_change_ok = (game.sex_change_ok | 0) - 1;
+
+        game.sex_change_ok = (game.sex_change_ok | 0) + 1;
+        try {
+            const ptr = mons(mntmp);
+            const yourRaceBit = game.urace?.selfmask | 0;
+            const isYourRace = yourRaceBit !== 0
+                && ((ptr?.mflags2 | 0) & yourRaceBit) !== 0;
+            // C: !polyok || (!forcecontrol && !rn2(5)) || your_race → newman()
+            if (!polyok(ptr) || (!forcecontrol && !rn2(5)) || isYourRace) {
+                await newman();
+            } else {
+                await polymon(mntmp);
+            }
+        } finally {
+            game.sex_change_ok = (game.sex_change_ok | 0) - 1;
+        }
     }
+    // C made_change `:720–730` — light-source bookkeeping named omission.
 }
 
 /**
