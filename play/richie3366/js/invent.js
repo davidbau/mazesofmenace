@@ -312,6 +312,7 @@ import {
     query_category, query_objlist,
 } from './pickup.js';
 import { is_ammo } from './wield.js';
+import { learn_egg_type } from './timeout.js';
 
 // C monflag.h MZ_HUMAN ≡ MZ_MEDIUM
 const MZ_HUMAN = 2;
@@ -2782,8 +2783,9 @@ export function set_cknown_lknown(obj) {
 }
 
 /**
- * C ref: invent.c fully_identify_obj.
- * Named omissions: learn_egg_type.
+ * C ref: invent.c fully_identify_obj — makeknown, oartifact
+ * discover_artifact, observe_object, known/bknown/rknown,
+ * set_cknown_lknown, then EGG + corpsenm learn_egg_type.
  */
 export function fully_identify_obj(otmp) {
     if (!otmp) return;
@@ -2792,7 +2794,9 @@ export function fully_identify_obj(otmp) {
     observe_object(otmp);
     otmp.known = otmp.bknown = otmp.rknown = 1;
     set_cknown_lknown(otmp);
-    // learn_egg_type deferred (EGG + corpsenm)
+    if ((otmp.otyp | 0) === EGG && (otmp.corpsenm | 0) !== NON_PM) {
+        learn_egg_type(otmp.corpsenm | 0);
+    }
 }
 
 /** C ref: invent.c identify — fully_identify_obj + prinv. */

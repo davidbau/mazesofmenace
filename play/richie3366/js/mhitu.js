@@ -15,7 +15,7 @@ import {
     POOL, DROWNING, KILLED_BY_AN,
     MAGICAL_BREATHING, SWIMMING, Is_medusa_level, Is_waterlevel,
     W_ARMS, W_WEP, W_AMUL, W_ARM, W_ARMG, NEUTRAL, BOLT_LIM, STONING, KILLED_BY, M_SEEN_FIRE,
-    M_SEEN_SLEEP, STUNNED, TELEPORT_CONTROL,
+    M_SEEN_SLEEP, M_SEEN_ACID, STUNNED, TELEPORT_CONTROL,
     REFLECTING, A_CHAOTIC, LARGEST_INT,
     M_AP_NOTHING, M_AP_OBJECT, WORN_HELMET, TELEDS_ALLOW_DRAG,
     something, Something, u_at, ERODE_RUST, ERODE_CORRODE,
@@ -2711,11 +2711,71 @@ async function mhitm_ad_stun_u(mtmp, mattk, mhm) {
 }
 
 /**
+ * C ref: uhitm.c mhitm_ad_acid `:2742–2786` — mhitu (monster→you) arm.
+ * hitmsg always; `!mcan && !rn2(3)` → Acid_resistance (youprop.h:61,
+ * H||E only) harmless pline + monstseesu + zero, else burns pline +
+ * exercise(A_STR,FALSE) + monstunseesu with the leftover d() kept;
+ * cancelled/resisted draws zero. The uhitm/mhitm arms stay named.
+ */
+async function mhitm_ad_acid_u(mtmp, mattk, mhm) {
+    await hitmsg(mtmp, mattk);
+    if (!(mtmp.mcan | 0) && !rn2(3)) {
+        const u = game.u || {};
+        if ((u.HAcid_resistance | 0) || (u.EAcid_resistance | 0)) {
+            await pline(`You're covered in ${hliquid('acid')}, but it seems harmless.`);
+            monstseesu(M_SEEN_ACID);
+            mhm.damage = 0;
+        } else {
+            await pline(`You're covered in ${hliquid('acid')}!  It burns!`);
+            exercise(A_STR, false);
+            monstunseesu(M_SEEN_ACID);
+        }
+    } else {
+        mhm.damage = 0;
+    }
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_dren `:2418–2442` — mhitu (monster→you) arm.
+ * mhitm_mgc_atk_negated(FALSE) first (its draws burn even when negated,
+ * like the sibling _u arms), then hitmsg; `!negated && !rn2(4)` →
+ * drain_en(leftover damage, FALSE); damage always zero after.
+ * The uhitm/mhitm xdrainenergym arms stay named.
+ */
+async function mhitm_ad_dren_u(mtmp, mattk, mhm) {
+    const negated = await mhitm_mgc_atk_negated(mtmp, null, false);
+    await hitmsg(mtmp, mattk);
+    if (!negated && !rn2(4)) await drain_en(mhm.damage, false);
+    mhm.damage = 0;
+}
+
+/**
+ * C ref: uhitm.c mhitm_ad_conf `:3690–3726` — mhitu (monster→you) arm.
+ * hitmsg always; `!mcan && !rn2(4) && !mspec_used` → mspec_used +=
+ * leftover damage + rn2(6), Confusion (youprop.h:84 ≡ HConfusion)
+ * picks the pline, make_confused(HConfusion + leftover, FALSE);
+ * damage always zero after. The uhitm/mhitm arms stay named.
+ */
+async function mhitm_ad_conf_u(mtmp, mattk, mhm) {
+    await hitmsg(mtmp, mattk);
+    if (!(mtmp.mcan | 0) && !rn2(4) && !(mtmp.mspec_used | 0)) {
+        const dmg = mhm.damage | 0;
+        mtmp.mspec_used = (mtmp.mspec_used | 0) + (dmg + rn2(6));
+        const u = game.u || {};
+        if ((u.HConfusion | 0)) await pline('You are getting even more confused.');
+        else await pline('You are getting confused.');
+        await make_confused((u.HConfusion | 0) + dmg, false);
+    }
+    mhm.damage = 0;
+}
+
+/**
  * C ref: uhitm.c mhitm_adtyping — mhitu (monster→you) subset.
- * PHYS + ELEC + COLD + FIRE + TLPT + DRST/DRDX/DRCO + SITM/SEDU + SSEX (D-1750)
+ * PHYS + ELEC + COLD + FIRE + ACID + TLPT + DRST/DRDX/DRCO + SITM/SEDU + SSEX (D-1750)
  * + BLND + STON + LEGS + POLY (D-1004) + DRIN (D-1329) + WRAP (D-1331) + SLEE
- * + DRLI + RUST + CORR + STCK + PLYS + FAMN + SLOW + WERE + HEAL + PEST
- * + SAMU + STUN + DISE + ENCH; other adtyps zero damage.
+ * + DRLI + DREN + RUST + CORR + STCK + PLYS + FAMN + SLOW + CONF + WERE + HEAL + PEST
+ * + SAMU + STUN + DISE + ENCH; other adtyps (SGLD CURS DCAY SLIM DGST HALU
+ * DETH + default) zero damage.
  */
 async function mhitm_adtyping_u(mtmp, mattk, mhm) {
     switch (mattk.adtyp | 0) {
@@ -2730,6 +2790,9 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
         break;
     case AD_FIRE:
         await mhitm_ad_fire_u(mtmp, mattk, mhm);
+        break;
+    case AD_ACID:
+        await mhitm_ad_acid_u(mtmp, mattk, mhm);
         break;
     case AD_TLPT:
         await mhitm_ad_tlpt_u(mtmp, mattk, mhm);
@@ -2770,6 +2833,9 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
     case AD_DRLI:
         await mhitm_ad_drli_u(mtmp, mattk, mhm);
         break;
+    case AD_DREN:
+        await mhitm_ad_dren_u(mtmp, mattk, mhm);
+        break;
     case AD_RUST:
         await mhitm_ad_rust_u(mtmp, mattk, mhm);
         break;
@@ -2790,6 +2856,9 @@ async function mhitm_adtyping_u(mtmp, mattk, mhm) {
         break;
     case AD_SLOW:
         await mhitm_ad_slow_u(mtmp, mattk, mhm);
+        break;
+    case AD_CONF:
+        await mhitm_ad_conf_u(mtmp, mattk, mhm);
         break;
     case AD_WERE:
         await mhitm_ad_were_u(mtmp, mattk, mhm);
@@ -2994,7 +3063,8 @@ function Amonnam(mtmp) {
 /**
  * C ref: mhitu.c hitmu `:1144–1267` — base d() + midnight undead extra +
  * adtyping + knockback + AC + Half/Mitre + permdmg hpmax cut + mdamageu
- * + passiveum. Named: full mhitm_adtyping arms beyond mhitm_adtyping_u.
+ * + passiveum. Named: mhitm_adtyping SGLD/CURS/DCAY/SLIM/DGST/HALU/DETH
+ * arms + the uhitm/mhitm arms of every live _u arm.
  */
 async function hitmu(mtmp, mattk) {
     const mhm = {

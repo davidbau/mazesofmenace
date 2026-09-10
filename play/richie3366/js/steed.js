@@ -33,6 +33,7 @@ import {
     P_RIDING, P_ISRESTRICTED, P_UNSKILLED, P_BASIC, P_SKILLED, P_EXPERT,
     A_DEX, A_CHA, A_WIS,
     MON_FLOOR, MON_OFFMAP,
+    ARTICLE_YOUR, SUPPRESS_SADDLE,
 } from './const.js';
 import { objectNames, objectDescrs } from './objects.js';
 import { rnd, rn2, rn1 } from './rng.js';
@@ -40,8 +41,8 @@ import { pline, newsym, canspotmon, describe_level, impossible } from './display
 import { getdir } from './lock.js';
 import { y_n } from './getline.js';
 import { m_at, cant_drown } from './mon.js';
-import { isok } from './hacklib.js';
-import { Monnam, mon_nam, monverbself, pmname, y_monnam, Hallucination, hliquid } from './do_name.js';
+import { isok, strsubst } from './hacklib.js';
+import { Monnam, mon_nam, monverbself, pmname, y_monnam, Hallucination, hliquid, x_monnam } from './do_name.js';
 import { losehp, maybe_half_phys, finish_maybe_wail, is_pool, is_lava } from './hack.js';
 import { set_wounded_legs, heal_legs, legs_in_no_shape, sokoban_guilt, mintrap } from './trap.js';
 import { finish_meating } from './dogmove.js';
@@ -968,6 +969,30 @@ export async function dismount_steed(reason) {
     if (u.uwep && is_pole(u.uwep)) {
         if (!game.gu) game.gu = {};
         game.gu.unweapon = true;
+    }
+}
+
+/**
+ * C ref: steed.c poly_steed `:851–873` — steed has taken on a new shape.
+ * Called from mon.c newcham `:5517–5518` when `mtmp == u.usteed`, after
+ * mon_break_armor (which dismounts via m_lose_armor when the saddle is
+ * lost) and the boulder drop, before the Elbereth re-check.
+ * C short-circuit `!can_saddle || !can_ride` → `dismount_steed(FELL)`;
+ * else `x_monnam(ARTICLE_YOUR, SUPPRESS_SADDLE)` + `strsubst "your " →
+ * "your new "` when the shape pointer changed + `You("adjust...")` +
+ * `steed_vs_stealth()`. Async: dismount_steed + pline both await.
+ */
+export async function poly_steed(steed, oldshape) {
+    if (!can_saddle(steed) || !can_ride(steed)) {
+        // C comment: can't get here — newcham → mon_break_armor →
+        // m_lose_armor already removed the saddle or dismounted first.
+        await dismount_steed(DISMOUNT_FELL);
+    } else {
+        let buf = x_monnam(steed, ARTICLE_YOUR, null, SUPPRESS_SADDLE, false);
+        if (oldshape !== steed?.data) buf = strsubst(buf, 'your ', 'your new ');
+        await pline(`You adjust yourself in the saddle on ${buf}.`);
+        // C: riding blocks stealth unless hero+steed fly.
+        steed_vs_stealth();
     }
 }
 

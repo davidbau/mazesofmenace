@@ -1012,7 +1012,7 @@ export function do_mapping() {
 }
 
 /** C youprop.h Clairvoyant — (H||E) && !B. */
-function Clairvoyant() {
+export function Clairvoyant() {
     const u = game.u || {};
     const p = u.uprops?.[CLAIRVOYANT];
     const h = (u.HClairvoyant | 0) || (p?.intrinsic | 0);
@@ -2192,7 +2192,10 @@ export async function object_detect(detector, oclass) {
         ter_typ |= TER_MON;
     }
     await pline(`You detect the ${ct ? 'presence' : 'absence'} of ${stuff}.`);
-    await flush_topl_more();
+    // C detect.c:780 You("detect...") then browse_map→getpos.c:843-846
+    // verbose pline appends "(For instructions...)" on the same topline
+    // (topl.c NEED_MORE + room → two-space join); no more() between —
+    // a flush here paints a spurious --More-- (same class as D-2081 monster_detect).
 
     if (!ct) {
         // C: display_nhwindow(WIN_MAP, TRUE) — flush only (named)

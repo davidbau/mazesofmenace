@@ -11,6 +11,7 @@ import {
     AUTOUNLOCK_FORCE,
     AUTOUNLOCK_KICK,
     AUTOUNLOCK_UNTRAP,
+    BUFSZ,
     CLR_MAX,
     COLNO,
     DISCLOSE_PROMPT_DEFAULT_NO,
@@ -40,6 +41,7 @@ import {
     Is_rogue_level,
     INVOPT_IN_USE,
     INVOPT_NONE,
+    INVOPT_ON,
     INV_SPARSE,
     LARGEST_INT,
     MENU_COMBINATION,
@@ -64,6 +66,7 @@ import {
     MSGTYP_NOSHOW,
     MSGTYP_STOP,
     NUM_DISCLOSURE_OPTIONS,
+    NH_ALTPALETTE,
     OVERLOADED,
     PARANOID_AUTOALL,
     PARANOID_BONES,
@@ -82,6 +85,7 @@ import {
     PICK_ONE,
     ECMD_FAIL,
     ECMD_OK,
+    PREFIX_COUNT,
     PRIMARYSET,
     QBUFSZ,
     ROGUESET,
@@ -137,18 +141,27 @@ import {
     NO_COLOR,
 } from './terminal.js';
 import {
+    choose_random_part,
     cnf_line_BOULDER,
     cnf_line_MENUCOLOR,
     cnf_line_WARNINGS,
     config_error_add,
     config_error_init,
     config_error_nextline,
+    free_config_sections,
     get_configfile,
+    handle_config_section,
 } from './cfgfiles.js';
-import { count_menucolors } from './coloratt.js';
+import {
+    count_menucolors,
+    match_str2clr as colorattMatchStr2clr,
+    rgbstr_to_int32,
+} from './coloratt.js';
 import {
     DEFAULT_FRUIT,
     finish_fruit_option,
+    fruit_from_name,
+    fruitadd,
     normalize_initial_fruit,
 } from './fruit.js';
 import {
@@ -156,9 +169,11 @@ import {
     encodeUtf8ByteString,
     encodeUtf8Text,
     fuzzymatch,
+    highc,
     letter,
     lowc,
     str_start_is,
+    strstri,
     truncateByteString,
     visctrl,
 } from './hacklib.js';
@@ -182,6 +197,7 @@ import {
 } from './display.js';
 import { reassign, update_inventory } from './invent.js';
 import { ttyPline } from './tty_message.js';
+import { tty_preference_update } from './wintty.js';
 import { vision_recalc } from './vision.js';
 import { sourceGlyphName } from './glyph_ids.js';
 import { allopt, optionParserMetadata } from './optlist_data.js';
@@ -192,6 +208,10 @@ import {
     MOUSECMD,
     extcmdlist,
 } from './extcmdlist_data.js';
+import {
+    createCommandBindingModel,
+    keyForCommand,
+} from './command_bindings.js';
 import {
     count_autocompletions,
     initialExtcmdFlags,
@@ -245,10 +265,16 @@ import { escapes } from './options_escapes.js';
 import {
     finish_boulder_symbol,
     MAXMCLASSES,
+    switch_symbols,
 } from './symbols.js';
-import { apply_customizations, inspect_glyphrep } from './glyphs.js';
-import { choose_classes_menu } from './windows.js';
+import {
+    apply_customizations,
+    glyphrep_to_custom_map_entries,
+    inspect_glyphrep,
+} from './glyphs.js';
+import { choose_classes_menu, select_menu } from './windows.js';
 import { displayTtyTextWindow } from './tty_menu.js';
+import { note_unported } from './unported.js';
 
 const PET_NAME_BYTE_LIMIT = 62; // PL_PSIZ - 1
 const PLAYER_NAME_BYTE_LIMIT = 31; // PL_NSIZ - 1
@@ -256,6 +282,25 @@ const CONFIG_BUFFER_BYTE_CAPACITY = 4 * 256; // cfgfiles.c: 4 * BUFSZ
 const OPTION_ELEMENT_BYTE_LIMIT = 256 / 2; // options.c: BUFSZ / 2
 const SET_WIZONLY = 5; // global.h enum optset_restrictions
 const SET_WIZNOFUZ = 6; // global.h enum optset_restrictions
+
+// global.h:option_phases.  These are separate from set_in_* restrictions:
+// roleoptvals records the source that supplied each role-selection value.
+const PHASE_NOT_SET = 0;
+const BUILTIN_OPT = 1;
+const SYSCF_OPT = 2;
+const RC_FILE_OPT = 3;
+const ENVIRON_OPT = 4;
+const CMDLINE_OPT = 5;
+const PLAY_OPT = 6;
+const NUM_OPT_PHASES = 7;
+
+// options.c's request values are local enum constants.  Keeping them here
+// makes the small handlers below mirror their C request switch explicitly.
+const DO_INIT = 1;
+const DO_SET = 2;
+const DO_HANDLER = 3;
+const GET_VAL = 4;
+const GET_CNF_VAL = 5;
 
 // C ref: options.c:allopt[] and determine_ambiguities().  Matching is
 // case-insensitive, so the generated catalog is folded once here.  The full
@@ -403,6 +448,13 @@ function defaultRoleFilter() {
         roles: Array(roles.length).fill(false),
         mask: 0,
     };
+}
+
+function defaultRoleoptvals() {
+    return Array.from(
+        { length: 4 },
+        () => Array(NUM_OPT_PHASES).fill(null),
+    );
 }
 
 // allopt[].addr names the C lvalue a boolean option writes.  Its four roots
@@ -573,6 +625,11 @@ function defaultResult() {
             crash_email: null,
             crash_name: null,
             crash_urlmax: -1,
+            // cfgfiles.c handle_config_section() owns these parser pointers
+            // in instance_globals_c.  They are reset by
+            // free_config_sections() when one configuration read ends.
+            config_section_chosen: null,
+            config_section_current: null,
             // decl.c instance_globals_c zeroes this fixed buffer. During the
             // Unix startup configuration pass, optfn_windowtype() is its sole
             // writer and jsmain.js installs this same value on the game.
@@ -581,9 +638,17 @@ function defaultResult() {
             // allmain.c activates it after configuration and name parsing.
             chosen_soundlib: soundlib_nosound,
         },
+        // decl.c instance_globals_f starts every configured full-path prefix
+        // as NULL. cfgfiles.c adjust_prefix() is the source-owned writer.
+        gf: {
+            fqn_prefix: Array(PREFIX_COUNT).fill(null),
+        },
         ga: {
             // decl.c instance_globals_a starts on the built-in interface.
             active_soundlib: soundlib_nosound,
+            // coloratt.c alternative_palette() stores NH_ALTPALETTE-tagged
+            // RGB values here when CHANGE_COLOR is enabled.
+            altpalette: Array(CLR_MAX).fill(0),
         },
         gp: {
             // decl.c instance_globals_p starts this list at NULL. Each valid
@@ -603,6 +668,10 @@ function defaultResult() {
             warnsyms: def_warnsyms.map(({ ch }) => ch.charCodeAt(0)),
         },
         roleFilter: defaultRoleFilter(),
+        // options.c roleoptvals[MAX_ROLEOPT][num_opt_phases].  The parser
+        // uses the rc-file phase; later menu code can use play_opt without
+        // overwriting the value saved for the configuration file.
+        roleoptvals: defaultRoleoptvals(),
         uroleplay: defaultRoleplay(),
         playmode: 'normal',
         preferred_pet: '',
@@ -619,9 +688,13 @@ function defaultResult() {
         // decl.c zeros these option-transition flags. Symbol-set handlers set
         // all three during the configuration pass, before the first input.
         go: {
+            opt_phase: RC_FILE_OPT,
+            opt_initial: true,
+            opt_from_file: true,
             opt_need_redraw: false,
             opt_need_glyph_reset: false,
             opt_symset_changed: false,
+            opt_update_basic_palette: false,
         },
         // cmd.c extcmdlist[] is mutable in C. Keep its flags per game so one
         // runSegment() cannot carry configuration into the next one.
@@ -1054,115 +1127,273 @@ function complain_about_duplicate(result, option, metadata, usingAlias) {
     );
 }
 
-// C ref: options.c parse_role_opt() (7904-8016), the shared body of
-// optfn_role() (3588-3623), optfn_race() (3506-3547), optfn_gender()
-// (1776-1817) and optfn_alignment() (884-925).  This covers everything the
-// four reach from a configuration file, which is their whole do_set arm; the
-// get_val and get_cnf_val requests belong to the options menu.
-//
-// Every message C writes here leaves the file being read, so this reports and
-// returns rather than throwing.  Each return is one of C's two failure exits
-// and they are indistinguishable from applyOption(): parse_role_opt() answering
-// FALSE becomes optn_silenterr and the unknown-value arm becomes optn_err, and
-// parseoptions() turns both into a discarded FALSE for a row whose optlist.h
-// pfx is false, which all four of these are.
-//
-// C's `duplicate` is the value duplicate_opt_detection() returned before this
-// handler ran. The general parse path owns that counter and passes its answer
-// here, just as parseoptions() leaves the file-static value for optfn_role().
-function setCharacterOption(
-    result, optionState, option, statement, negated, usingAlias, duplicate,
+// C refs: options.c opt2roleopt(), getoptstr(), saveoptstr(),
+// unsaveoptstr(), freeroleoptvals(), saveoptvals() and restoptvals()
+// (709-844). The save/restore pair is inside the source's #if 0 block; its
+// plain-object form is retained here for callers that inspect the dormant
+// helpers.
+export function opt2roleopt(optidx) {
+    switch (optidx) {
+    case 3: return 0; // opt_role
+    case 4: return 1; // opt_race
+    case 5: return 2; // opt_gender
+    case 6: return 3; // opt_alignment
+    default: return 0; // options.c's default case is opt_role
+    }
+}
+
+function roleoptIndex(optidx) {
+    if (optidx && typeof optidx === 'object') {
+        return roleoptIndex(optidx.name);
+    }
+    if (typeof optidx === 'string') {
+        return opt2roleopt(allopt.findIndex(
+            (option) => option.name.toLowerCase() === optidx.toLowerCase(),
+        ));
+    }
+    return opt2roleopt(optidx);
+}
+
+function ensureRoleoptvals(state) {
+    if (!Array.isArray(state.roleoptvals)
+        || state.roleoptvals.length !== 4) {
+        state.roleoptvals = defaultRoleoptvals();
+    }
+    for (let index = 0; index < 4; ++index) {
+        if (!Array.isArray(state.roleoptvals[index])
+            || state.roleoptvals[index].length !== NUM_OPT_PHASES) {
+            state.roleoptvals[index] = Array(NUM_OPT_PHASES).fill(null);
+        }
+    }
+    return state.roleoptvals;
+}
+
+export function getoptstr(state, optidx, ophase = state.go?.opt_phase) {
+    const phase = ophase ?? RC_FILE_OPT;
+    const values = ensureRoleoptvals(state)[roleoptIndex(optidx)];
+    if (phase === NUM_OPT_PHASES) {
+        for (let index = NUM_OPT_PHASES - 1; index >= 0; --index) {
+            if (values[index] != null) return values[index];
+        }
+        return null;
+    }
+    if (phase < 0 || phase >= NUM_OPT_PHASES)
+        throw new Error(`invalid option phase ${phase}`);
+    return values[phase];
+}
+
+function saveoptstr(state, optidx, optstr, ophase = state.go?.opt_phase) {
+    const phase = ophase ?? RC_FILE_OPT;
+    const values = ensureRoleoptvals(state)[roleoptIndex(optidx)];
+    let value = String(optstr ?? '');
+    const colon = value.indexOf(':');
+    const equals = value.indexOf('=');
+    const delimiter = colon < 0 || (equals >= 0 && equals < colon)
+        ? equals : colon;
+    if (delimiter >= 0) value = value.slice(delimiter + 1);
+    if (phase < 0 || phase >= NUM_OPT_PHASES)
+        throw new Error(`invalid option phase ${phase}`);
+    values[phase] = value;
+}
+
+function unsaveoptstr(state, optidx, ophase = state.go?.opt_phase) {
+    const phase = ophase ?? RC_FILE_OPT;
+    const values = ensureRoleoptvals(state)[roleoptIndex(optidx)];
+    if (phase < 0 || phase >= NUM_OPT_PHASES)
+        throw new Error(`invalid option phase ${phase}`);
+    values[phase] = null;
+}
+
+function freeroleoptvals(state) {
+    for (const roleValues of ensureRoleoptvals(state)) roleValues.fill(null);
+}
+
+function saveoptvals(state, nhfp) {
+    const values = ensureRoleoptvals(state).map((roleValues) => [
+        ...roleValues,
+    ]);
+    if (nhfp && typeof nhfp === 'object') nhfp.roleoptvals = values;
+    return values;
+}
+
+function restoptvals(state, nhfp) {
+    if (!nhfp?.roleoptvals) return;
+    state.roleoptvals = nhfp.roleoptvals.map((roleValues) => [
+        ...roleValues,
+    ]);
+}
+
+// C ref: options.c parse_role_opt() (7904-8016). It returns both the C
+// boolean answer and the value left through `opp`; a role filter leaves the
+// latter as the literal "!" so the caller skips str2role/str2race/etc.
+function parse_role_opt(
+    result, optidx, negated, fullname, opts, duplicate, usingAlias,
 ) {
-    const optionName = option.name.toLowerCase();
-    // parse_role_opt():7935 reads the value with
-    // string_for_env_opt(fullname, opts, FALSE), whose mandatory parameter is
-    // what reports a statement that carries none.  `ok` stays FALSE, so the
-    // handler answers optn_silenterr without a second message.
-    const op = string_for_env_opt(statement, false, result);
-    if (op === '') return;
+    const op = string_for_env_opt(opts, false, result);
+    if (op === '') return { ok: false, op: '' };
 
-    const normalized = mungspaces(op);
-    const values = normalized ? normalized.split(' ') : [];
+    const values = mungspaces(op).split(' ').filter((value) => value !== '');
     let previousValueNegated = false;
-    let filtered = false;
-    let selectedValue = '';
+    let first = true;
+    let finalOp = '';
+    const optionName = String(fullname).toLowerCase();
 
-    for (let index = 0; index < values.length; ++index) {
-        const valueNegation = stripValueNegation(values[index]);
+    for (const rawValue of values) {
+        const valueNegation = stripValueNegation(rawValue);
         const token = valueNegation.token;
         const valueNegated = valueNegation.negated;
         if (!token) {
-            configErrorAdd(result, `Negated nothing for '${optionName}'`);
-            return;
+            configErrorAdd(result, `Negated nothing for '${fullname}'`);
+            return { ok: false, op: '' };
         }
-        if (index > 0) {
+        if (!first) {
             if ((valueNegated !== previousValueNegated)
                 || (negated && valueNegated)) {
                 configErrorAdd(
                     result,
-                    'Invalid mixed negation for'
-                    + ` '${negated ? '!' : ''}${optionName}'`,
+                    `Invalid mixed negation for '${negated ? '!' : ''}${fullname}'`,
                 );
-                return;
+                return { ok: false, op: '' };
             }
             if (!negated && !valueNegated) {
                 configErrorAdd(
                     result,
                     'Multiple role values only allowed when list is negated',
                 );
-                return;
+                return { ok: false, op: '' };
             }
         }
+        first = false;
         previousValueNegated = valueNegated;
 
-        const prior = optionState.values[optionName];
+        const prior = getoptstr(result, optidx, result.go?.opt_phase);
         if (valueNegated || negated) {
-            if (!prior || !prior.startsWith('!')) {
+            if (!prior || !prior.startsWith('!'))
                 clearRoleFilter(result.roleFilter, optionName);
-            }
             if (!setRoleFilter(result.roleFilter, token)) {
-                configErrorAdd(
-                    result, `Invalid ${optionName} '${token}'`,
-                );
-                return;
+                configErrorAdd(result, `Invalid ${fullname} '${token}'`);
+                return { ok: false, op: '' };
             }
-            optionState.values[optionName] = roleFilterString(
+            saveoptstr(result, optidx, roleFilterString(
                 result.roleFilter, optionName,
-            );
-            filtered = true;
+            ));
+            finalOp = '!';
         } else {
             if (duplicate && prior?.startsWith('!')) {
+                const option = typeof optidx === 'number'
+                    ? allopt[optidx] : optidx;
                 complain_about_duplicate(
-                    result, option, optionParserMetadata[option.name] ?? {},
+                    result, option, optionParserMetadata[fullname] ?? {},
                     usingAlias,
                 );
-                return;
+                return { ok: false, op: '' };
             }
-            optionState.values[optionName] = token;
-            selectedValue = token;
-            filtered = false;
+            saveoptstr(result, optidx, token);
+            finalOp = token;
         }
     }
+    return { ok: true, op: finalOp };
+}
 
-    // C's `if (*op != '!')`: parse_role_opt() leaves *opp pointing at the
-    // literal "!" once any value in the list was negated, so a filter skips
-    // the handler's own str2<aspect>() lookup.
-    if (filtered) return;
+function get_cnf_role_opt(state, optidx) {
+    for (let phase = NUM_OPT_PHASES - 1; phase >= 0; --phase) {
+        if (phase === CMDLINE_OPT || phase === ENVIRON_OPT
+            || phase === BUILTIN_OPT) continue;
+        const value = getoptstr(state, optidx, phase);
+        if (value != null) return value;
+    }
+    return null;
+}
+
+function applyParsedCharacterOption(result, option, parsedOp) {
+    if (parsedOp === '!') return;
+    const optionName = option.name.toLowerCase();
     const choice = CHARACTER_OPTIONS[optionName];
-    const parsed = choice.parser(selectedValue);
+    const parsed = choice.parser(parsedOp);
     if (parsed === ROLE_NONE) {
-        // C's "Unknown %s '%s'" names allopt[optidx].name, so alignment
-        // reports "alignment" rather than the shorter field it writes.
-        configErrorAdd(
-            result, `Unknown ${optionName} '${selectedValue}'`,
-        );
+        configErrorAdd(result, `Unknown ${option.name} '${parsedOp}'`);
         return;
     }
     result[choice.resultField] = parsed;
     result.flags[choice.flagField] = parsed;
-    if (optionName === 'gender' && parsed !== ROLE_RANDOM) {
+    const table = optionName === 'role' ? roles
+        : optionName === 'race' ? races
+            : optionName === 'gender' ? genders : aligns;
+    const field = optionName === 'role' ? (entry) => entry.name.m
+        : optionName === 'race' ? (entry) => entry.noun
+            : (entry) => entry.adj;
+    if (optionName === 'gender' && parsed !== ROLE_RANDOM)
         result.flags.female = parsed === 1;
+    saveoptstr(result, option, rolestring(parsed, table, field));
+}
+
+function characterOptionValue(result, option) {
+    const optionName = (typeof option === 'number'
+        ? allopt[option]?.name : option?.name)?.toLowerCase();
+    const choice = CHARACTER_OPTIONS[optionName];
+    if (!choice) return ROLE_NONE;
+    const table = optionName === 'gender' ? genders : aligns;
+    return rolestring(
+        result.flags[choice.flagField],
+        table,
+        (entry) => entry.adj,
+    );
+}
+
+// C refs: optfn_alignment() and optfn_gender() (884-919 and 1777-1812).
+function optfn_alignment(
+    result, option, requestOrStatement, negated, duplicate, usingAlias,
+) {
+    if (requestOrStatement === DO_INIT) return optn_ok;
+    if (requestOrStatement === GET_VAL)
+        return characterOptionValue(result, option);
+    if (requestOrStatement === GET_CNF_VAL)
+        return get_cnf_role_opt(result, option) ?? 'none';
+    const parsed = parse_role_opt(
+        result, option, negated, option.name, requestOrStatement,
+        duplicate, usingAlias,
+    );
+    if (parsed.ok) applyParsedCharacterOption(result, option, parsed.op);
+    return optn_ok;
+}
+
+function optfn_gender(
+    result, option, requestOrStatement, negated, duplicate, usingAlias,
+) {
+    if (requestOrStatement === DO_INIT) return optn_ok;
+    if (requestOrStatement === GET_VAL)
+        return characterOptionValue(result, option);
+    if (requestOrStatement === GET_CNF_VAL)
+        return get_cnf_role_opt(result, option) ?? 'none';
+    const parsed = parse_role_opt(
+        result, option, negated, option.name, requestOrStatement,
+        duplicate, usingAlias,
+    );
+    if (parsed.ok) applyParsedCharacterOption(result, option, parsed.op);
+    return optn_ok;
+}
+
+// The role and race rows already share this path; keeping the source-shaped
+// helper here makes all four aspects use the same phase table.
+function setCharacterOption(
+    result, optionState, option, statement, negated, usingAlias, duplicate,
+) {
+    if (option.name.toLowerCase() === 'alignment') {
+        optfn_alignment(
+            result, option, statement, negated, duplicate, usingAlias,
+        );
+    } else if (option.name.toLowerCase() === 'gender') {
+        optfn_gender(
+            result, option, statement, negated, duplicate, usingAlias,
+        );
+    } else {
+        const parsed = parse_role_opt(
+            result, option, negated, option.name, statement,
+            duplicate, usingAlias,
+        );
+        if (parsed.ok) applyParsedCharacterOption(result, option, parsed.op);
     }
+    void optionState;
 }
 
 // C ref: options.c optfn_playmode() (3470-3499), its do_set arm.  The handler
@@ -1243,30 +1474,316 @@ function sanitizePetName(value, eightBitTty) {
 // neither a message nor the name: the handler reads the value parseoptions()
 // already found rather than asking for a mandatory one of its own.
 function setPetName(result, field, value) {
-    if (value == null || value === '') return; /* optn_err, silently */
+    if (value == null) return; /* optn_err, silently */
+    if (value === '') {
+        result[field] = '';
+        return;
+    }
     result[field] = value === 'none' || value === '(none)'
         ? '' : sanitizePetName(value, result.iflags.wc_eight_bit_input);
 }
 
-// C ref: options.c optfn_fruit(do_set) during initial option parsing.
-// Singularization and fruit-chain insertion are deferred to
-// initoptions_finish(), after the complete configuration has been read.
-// optlist.h:339-340 gives fruit negateok No, so parseoptions() answers a
-// negated spelling with bad_negation() and optfn_fruit()'s negation arm
-// (options.c:1717-1724), which resets svp.pl_fruit through `goodfruit`, is
-// unreachable from a configuration file.
-//
-// That negation is also the whole of C's val_optional argument here:
-// `negated || !go.opt_initial` is FALSE for every configuration-file read that
-// gets this far, so the value is mandatory and string_for_opt() reports a
-// statement without one.  The handler adds nothing of its own afterwards.
-function setFruit(result, statement) {
-    const op = string_for_opt(statement, false, result);
-    if (op === '') return;
-    result.pl_fruit = normalize_initial_fruit(
-        op,
-        result.iflags.wc_eight_bit_input,
-    );
+function petnameValue(result, field, request) {
+    const value = result[field] ?? '';
+    return value || (request === GET_CNF_VAL ? 'none' : none);
+}
+
+// C ref: options.c petname_optfn() and its three forwarding handlers
+// (846-873, 1248-1254, 1563-1568 and 1896-1902).
+function petnameHandler(result, field, request, negated, value) {
+    if (request === DO_INIT) return optn_ok;
+    if (request === DO_SET) {
+        if ((value == null || value === '') && !negated) return optn_err;
+        if (negated || value === 'none' || value === none) {
+            setPetName(result, field, '');
+        } else {
+            setPetName(result, field, value);
+        }
+        return optn_ok;
+    }
+    if (request === GET_VAL || request === GET_CNF_VAL)
+        return petnameValue(result, field, request);
+    return optn_ok;
+}
+
+function optfn_catname(result, request, negated, opts, op) {
+    return petnameHandler(result, 'catname', request, negated, op
+        ?? string_for_opt(opts, true, result));
+}
+
+function optfn_dogname(result, request, negated, opts, op) {
+    return petnameHandler(result, 'dogname', request, negated, op
+        ?? string_for_opt(opts, true, result));
+}
+
+function optfn_horsename(result, request, negated, opts, op) {
+    return petnameHandler(result, 'horsename', request, negated, op
+        ?? string_for_opt(opts, true, result));
+}
+
+// C ref: options.c optfn_altkeyhandling() (1022-1065). This build is UNIX
+// TTY, so the compiled do_set and get_val arms consume no state.
+function optfn_altkeyhandling(result, request, negated, opts, op) {
+    void result;
+    void negated;
+    void opts;
+    void op;
+    if (request === GET_VAL || request === GET_CNF_VAL) return '';
+    return optn_ok;
+}
+
+function optfn_dungeon(result, request, negated, opts, op) {
+    void result;
+    void negated;
+    void opts;
+    void op;
+    if (request === GET_VAL) return to_be_done;
+    if (request === GET_CNF_VAL) return '';
+    return optn_ok;
+}
+
+function optfn_effects(result, request, negated, opts, op) {
+    void result;
+    void negated;
+    void opts;
+    void op;
+    if (request === GET_VAL) return to_be_done;
+    if (request === GET_CNF_VAL) return '';
+    return optn_ok;
+}
+
+function fruitNodeCount(state) {
+    let count = 0;
+    for (let fruit = state.gf?.ffruit; fruit; fruit = fruit.nextf) ++count;
+    return count;
+}
+
+// C ref: options.c optfn_fruit() (1706-1774). Initial configuration keeps
+// the singularization and fruit-chain insertion in initoptions_finish(); an
+// in-game caller updates svp.pl_fruit and calls the already ported fruitadd().
+function optfn_fruit(result, request, negated, opts, op) {
+    if (request === DO_INIT) return optn_ok;
+    if (request === DO_SET) {
+        const initial = result.go?.opt_initial !== false;
+        // optfn_fruit() deliberately re-reads opts; the mandatory flag is
+        // false during startup, so `fruit:` reports its own missing value.
+        const value = string_for_opt(
+            opts,
+            negated || !initial,
+            result,
+        );
+        if (negated) {
+            if (value !== '') {
+                bad_negation(result, 'fruit');
+                return optn_err;
+            }
+        } else if (value === '') {
+            return optn_err;
+        }
+
+        const munged = mungspaces(value);
+        let original = null;
+        if (!initial) {
+            const found = fruit_from_name(munged, false, result);
+            if (!found) {
+                if (!result.flags.made_fruit)
+                    original = fruit_from_name(result.svp.pl_fruit, false, result);
+                if (!original && fruitNodeCount(result) >= 100) {
+                    configErrorAdd(
+                        result,
+                        'Doing that so many times isn\'t very fruitful.',
+                    );
+                    return optn_ok;
+                }
+            }
+        }
+
+        const fruit = normalize_initial_fruit(
+            munged,
+            result.iflags?.wc_eight_bit_input,
+        );
+        if (initial) {
+            result.pl_fruit = fruit;
+        } else {
+            result.svp.pl_fruit = fruit;
+            // C discards fruitadd()'s fid; the callee is ported and its
+            // mutation is the behavior that matters here.
+            fruitadd(result.svp.pl_fruit, original, {
+                state: result,
+                userSpecified: true,
+            });
+            if (result.give_opt_msg && result.startupEvents) {
+                result.startupEvents.push({
+                    type: 'message',
+                    text: `Fruit is now "${result.svp.pl_fruit}".`,
+                });
+            }
+        }
+        return optn_ok;
+    }
+    if (request === GET_VAL || request === GET_CNF_VAL)
+        return result.svp?.pl_fruit ?? result.pl_fruit ?? DEFAULT_FRUIT;
+    return optn_ok;
+}
+
+function legacySymbolName(result, set) {
+    return result.gs?.symset?.[set]?.name
+        ?? result.parserGlyphSetContext?.names?.[set]
+        ?? null;
+}
+
+function selectLegacyPrimary(result, name) {
+    const context = result.parserGlyphSetContext;
+    const current = legacySymbolName(result, PRIMARYSET);
+    if (current) return false;
+    context.set = 'primary';
+    if (!read_sym_file(name)) {
+        context.names.primary = null;
+        result.symbolOperations.push({
+            kind: 'clear', set: 'primary', nameToo: true,
+        });
+        return false;
+    }
+    context.names.primary = name;
+    appendSymbolSelection(result, 'primary', name, { legacyIfUnset: true });
+    if (result.gs?.symset) switch_symbols(result, true);
+    return true;
+}
+
+// C refs: options.c optfn_cursesgraphics() (1345-1391) and
+// optfn_DECgraphics() (1393-1441). CURSES_GRAPHICS is not in this TTY build,
+// but the named handler remains source-complete for callers that invoke it.
+function optfn_cursesgraphics(result, request, negated, opts, op) {
+    void opts;
+    void op;
+    if (request === DO_SET && !negated) {
+        const name = 'cursesgraphics';
+        if (!selectLegacyPrimary(result, name)) {
+            configErrorAdd(result, `Failure to load symbol set ${name}.`);
+            return optn_err;
+        }
+    }
+    if (request === GET_VAL || request === GET_CNF_VAL) return '';
+    return optn_ok;
+}
+
+function optfn_DECgraphics(result, request, negated, opts, op) {
+    void opts;
+    void op;
+    if (request === DO_SET && !negated) {
+        const name = 'DECgraphics';
+        if (!selectLegacyPrimary(result, name)) {
+            configErrorAdd(result, `Failure to load symbol set ${name}.`);
+            return optn_err;
+        }
+    }
+    if (request === GET_VAL || request === GET_CNF_VAL) return '';
+    return optn_ok;
+}
+
+function optfn_glyph(result, request, negated, opts, op) {
+    if (request === DO_SET) {
+        const value = op ?? string_for_opt(opts, true, result);
+        if (negated && value !== '') {
+            bad_negation(result, 'glyph');
+            return optn_err;
+        }
+        if (value === '') return optn_err;
+        const glyphValue = mungspaces(value);
+        // glyphrep_to_custom_map_entries() is the C callee whose boolean
+        // result controls this handler's optn_err/optn_ok answer.
+        if (!glyphrep_to_custom_map_entries(glyphValue, result))
+            return optn_err;
+        const inspected = inspect_glyphrep(glyphValue);
+        const context = result.parserGlyphSetContext;
+        result.symbolOperations.push({
+            kind: 'glyph-customization',
+            set: context.set,
+            raw: glyphValue,
+        });
+        if (!context.names[context.set]) {
+            if (inspected.hasUnicode && !context.unicodeNagged) {
+                context.unicodeNagged = true;
+                configErrorAdd(
+                    result,
+                    'Unimplemented customization feature, ignoring for now',
+                );
+            }
+            if (inspected.hasColor && !context.colorNagged) {
+                context.colorNagged = true;
+                configErrorAdd(
+                    result,
+                    'Unimplemented customization feature, ignoring for now',
+                );
+            }
+        }
+        return optn_ok;
+    }
+    if (request === GET_VAL) return to_be_done;
+    if (request === GET_CNF_VAL) return '';
+    return optn_ok;
+}
+
+function optfn_hilite_status(result, request, negated, opts, op) {
+    if (request === DO_SET) {
+        const value = op ?? string_for_opt(opts, true, result);
+        setStatusHiliteOption(result, value, negated);
+        return optn_ok;
+    }
+    if (request === GET_VAL)
+        return count_status_hilites(result)
+            ? '(see "status highlight rules" below)' : none;
+    if (request === GET_CNF_VAL) return '';
+    return optn_ok;
+}
+
+function optfn_IBMgraphics(result, request, negated, opts, op) {
+    void opts;
+    void op;
+    if (request === DO_SET && !negated) {
+        const context = result.parserGlyphSetContext;
+        const names = [
+            ['primary', 'IBMgraphics'],
+            ['rogue', 'RogueIBM'],
+        ];
+        let bad = false;
+        let badName = 'IBMgraphics';
+        for (const [set, name] of names) {
+            if (legacySymbolName(result, set)) {
+                bad = true;
+                continue;
+            }
+            if (set === 'rogue') badName = name;
+            context.set = set;
+            if (!read_sym_file(name)) {
+                bad = true;
+                context.names[set] = null;
+                result.symbolOperations.push({ kind: 'clear', set, nameToo: true });
+                break;
+            }
+            context.names[set] = name;
+        }
+        result.symbolOperations.push({
+            kind: 'select',
+            set: 'primary',
+            name: 'IBMgraphics',
+            legacyIfUnset: true,
+            legacyIBM: true,
+        });
+        if (bad) {
+            configErrorAdd(result, `Failure to load symbol set ${badName}.`);
+            return optn_err;
+        }
+        if (result.gs?.symset) switch_symbols(result, true);
+        if (result.go?.opt_initial === false
+            && Is_rogue_level(result.u?.uz)) {
+            // C discards assign_graphics()'s void result; the callee is not
+            // ported in symbols.c, so record the permitted discarded-result gap.
+            note_unported('symbols.c assign_graphics');
+        }
+    }
+    if (request === GET_VAL || request === GET_CNF_VAL) return '';
+    return optn_ok;
 }
 
 // C ref: options.c optfn_autounlock() (1066-1168), its startup do_set arm.
@@ -2338,28 +2855,203 @@ function setStatusHiliteDuration(result, value, negated) {
     result.iflags.hilite_delta = parsed < 0 ? 1 : parsed;
 }
 
-// C ref: options.c optfn_menu_headings() (2182-2212), its do_set arm.  The
-// handler reads the value parseoptions() already found, so a statement without
-// one is not an error at all: it means "no colour and inverse", or "no colour
-// and no attribute" when negated.  optlist.h gives menu_headings negateok Yes,
-// so the negation arms below are the live ones, unlike petattr's beneath.
-// color_attr_parse_str() reports everything C says about a value it cannot
-// read, and the handler adds nothing to it.
-function setMenuHeadings(result, value, negated) {
-    if (value == null || value === '') {
-        result.iflags.menu_headings = {
-            attr: negated ? ATR_NONE : ATR_INVERSE,
-            color: NO_COLOR,
-        };
-        return;
+// C refs: coloratt.c query_color(), query_attr(), query_color_attr(), and
+// options.c handler_menu_headings().  The C query temporarily replaces the
+// user's menu-colour rules with the canonical colour list.  Explicit item
+// colours and skipMenuColors reproduce that visible result in the TTY port;
+// the state flag itself is never changed by this temporary display.
+function optionMenuSelect(state, spec, helpers) {
+    if (typeof helpers?.selectMenu === 'function')
+        return helpers.selectMenu(spec);
+    return select_menu(state, {
+        ...spec,
+        overlay: state.iflags?.menu_overlay !== false,
+    });
+}
+
+function selectedMenuValue(selection, fallback, allowMany) {
+    if (allowMany) {
+        if (!Array.isArray(selection) || selection.length === 0) return -1;
+        return selection.reduce((bits, entry) => {
+            const value = typeof entry === 'object' ? entry.value : entry;
+            return bits | (value ?? 0);
+        }, 0);
     }
-    if (negated) { /* 'op != empty_optstr' to get here */
-        bad_negation(result, 'menu_headings');
-        return;
+    if (selection === null || selection === undefined) return -1;
+    if (Array.isArray(selection)) {
+        if (selection.length === 0) return fallback;
+        const first = selection[0];
+        return typeof first === 'object' ? first.value : first;
     }
-    const ca = color_attr_parse_str(result, value);
-    if (ca === null) return;
-    result.iflags.menu_headings = ca;
+    if (typeof selection === 'object') return selection.value ?? fallback;
+    return selection;
+}
+
+async function query_color(state, prompt, dflt, helpers) {
+    const items = COLOR_NAMES.map(([name, color]) => ({
+        text: name,
+        value: color,
+        color: color === CLR_BLACK || color === CLR_GRAY
+            || color === CLR_WHITE || color === NO_COLOR
+            ? NO_COLOR : color,
+        attr: ATR_NONE,
+        selected: color === dflt,
+        skipMenuColors: true,
+    }));
+    const selection = await optionMenuSelect(state, {
+        items,
+        how: PICK_ONE,
+        title: prompt || 'Pick a color',
+        preselected: dflt,
+        cancelValue: null,
+    }, helpers);
+    return selectedMenuValue(selection, dflt, false);
+}
+
+async function query_attr(state, prompt, dflt, helpers) {
+    const allowMany = typeof prompt === 'string'
+        && prompt.slice(0, 6).toLowerCase() === 'choose';
+    const rawAttributes = [
+        ['none', 0], ['bold', 2], ['dim', 3], ['italic', 5],
+        ['underline', 4], ['blink', 6], ['inverse', 1],
+    ];
+    const items = [
+        ...rawAttributes,
+    ].map(([name, rawAttr], index) => ({
+        text: name,
+        value: rawAttr,
+        sourceIndex: index,
+        // The recorder's TTY attribute vocabulary collapses dim, italic and
+        // blink to ATR_NONE; the selection value still retains C's raw
+        // attribute so PICK_ANY can form the HL_* mask exactly.
+        attr: MENU_HEADING_ATTRIBUTES[name],
+        color: NO_COLOR,
+        selected: rawAttr === dflt,
+        skipMenuColors: true,
+    }));
+    const selection = await optionMenuSelect(state, {
+        items,
+        how: allowMany ? PICK_ANY : PICK_ONE,
+        title: prompt || 'Pick an attribute',
+        preselected: dflt,
+        cancelValue: null,
+    }, helpers);
+    if (!allowMany) {
+        const raw = selectedMenuValue(selection, dflt, false);
+        if (raw === -1) return -1;
+        return raw === 0 || raw === 3 || raw === 5 || raw === 6
+            ? ATR_NONE : raw;
+    }
+    if (!Array.isArray(selection) || selection.length === 0) return -1;
+    let bits = 0;
+    for (const entry of selection) {
+        const raw = typeof entry === 'object' ? entry.value : entry;
+        if (raw === 0 && selection.length > 1) continue;
+        bits |= raw === 0 ? HL_NONE
+            : raw === 1 ? HL_INVERSE
+                : raw === 2 ? HL_BOLD
+                    : raw === 3 ? HL_DIM
+                        : raw === 4 ? HL_ULINE
+                            : raw === 5 ? HL_ITALIC
+                                : raw === 6 ? HL_BLINK : 0;
+    }
+    return bits;
+}
+
+async function query_color_attr(state, ca, prompt, helpers) {
+    const queried = { ...ca };
+    const color = await query_color(state, prompt, queried.color, helpers);
+    if (color === -1) return false;
+    const attr = await query_attr(state, prompt, queried.attr, helpers);
+    if (attr === -1) return false;
+    ca.color = color;
+    ca.attr = attr;
+    return true;
+}
+
+// C ref: options.c shared_menu_optfn() and the thirteen wrapper functions
+// immediately following it (2052-2180).  The wrappers are intentionally
+// separate: allopt[] stores each source function name, while the C body is
+// shared only through this helper.
+export function shared_menu_optfn(
+    result, optidx, request, negated, opts, op,
+) {
+    if (request === DO_INIT) return optn_ok;
+    if (request === DO_SET) {
+        const res = check_misc_menu_command(opts, op);
+        if (res < 0) return optn_err;
+        return spcfn_misc_menu_cmd(result, res, request, negated, opts, op);
+    }
+    if (request === GET_VAL) return to_be_done;
+    if (request === GET_CNF_VAL) return '';
+    return optn_ok;
+}
+
+export function optfn_menu_deselect_all(...args) { return shared_menu_optfn(...args); }
+export function optfn_menu_deselect_page(...args) { return shared_menu_optfn(...args); }
+export function optfn_menu_first_page(...args) { return shared_menu_optfn(...args); }
+export function optfn_menu_invert_all(...args) { return shared_menu_optfn(...args); }
+export function optfn_menu_invert_page(...args) { return shared_menu_optfn(...args); }
+export function optfn_menu_last_page(...args) { return shared_menu_optfn(...args); }
+export function optfn_menu_next_page(...args) { return shared_menu_optfn(...args); }
+export function optfn_menu_previous_page(...args) { return shared_menu_optfn(...args); }
+export function optfn_menu_search(...args) { return shared_menu_optfn(...args); }
+export function optfn_menu_select_all(...args) { return shared_menu_optfn(...args); }
+export function optfn_menu_select_page(...args) { return shared_menu_optfn(...args); }
+export function optfn_menu_shift_left(...args) { return shared_menu_optfn(...args); }
+export function optfn_menu_shift_right(...args) { return shared_menu_optfn(...args); }
+
+// C ref: options.c optfn_menu_headings() (2182-2212).  The do_set arm reads
+// an empty_optstr as a request for the default style, whereas the get arms
+// write into the caller's buffer; returning that string is the JavaScript
+// equivalent used by optionValue().
+async function handler_menu_headings(state, helpers) {
+    state.iflags ??= {};
+    state.go ??= {};
+    const current = { ...(state.iflags.menu_headings ?? {
+        color: NO_COLOR,
+        attr: ATR_INVERSE,
+    }) };
+    const gotca = await query_color_attr(
+        state, current, 'How to highlight menu headings:', helpers,
+    );
+    if (gotca) {
+        state.iflags.menu_headings = current;
+        if (state.iflags.perm_invent) update_inventory({ state });
+    }
+    adjust_menu_promptstyle(state);
+    return optn_ok;
+}
+
+export function optfn_menu_headings(
+    result, optidx, request, negated, opts, op, helpers,
+) {
+    if (request === DO_INIT) return optn_ok;
+    if (request === DO_SET) {
+        const value = op === undefined
+            ? string_for_opt(opts, true, result) : op;
+        if (value === '') {
+            result.iflags.menu_headings = {
+                attr: negated ? ATR_NONE : ATR_INVERSE,
+                color: NO_COLOR,
+            };
+            return optn_ok;
+        }
+        if (negated) {
+            bad_negation(result, allopt[optidx]?.name ?? 'menu_headings');
+            return optn_silenterr;
+        }
+        const ca = color_attr_parse_str(result, value);
+        if (ca === null) return optn_err;
+        result.iflags.menu_headings = ca;
+        return optn_ok;
+    }
+    if (request === GET_VAL || request === GET_CNF_VAL) {
+        return color_attr_to_str(result.iflags.menu_headings)
+            .replaceAll(' ', '-');
+    }
+    if (request === DO_HANDLER) return handler_menu_headings(result, helpers);
+    return optn_ok;
 }
 
 // C ref: options.c set_menuobjsyms_flags() (7446-7451).  The numeric mode is
@@ -2409,6 +3101,49 @@ function optfn_menu_objsyms(result, statement, value, negated) {
         }
     }
     set_menuobjsyms_flags(result, osyms);
+}
+
+// C ref: options.c objsymvals[] (273-279) and handler_menu_objsyms()
+// (5795-5831).  The descriptions stay beside objsymvals[] so the option
+// parser and its menu use the same source order.
+const objsym_descriptions = Object.freeze([
+    "don't show object symbols in menus",
+    'show object symbols in menu header lines',
+    'show object symbols in individual menu entries',
+    'show object symbols in headers and menu entries',
+    'show objsyms in entries if no headers are shown',
+    'show objsyms in header, in entries if no header',
+]);
+
+export function menuObjsymItems(menuobjsyms, separator = ' ') {
+    return objsymvals.map((name, index) => ({
+        text: `${name.slice(0, 12).padEnd(12)}${separator}`
+            + objsym_descriptions[index].slice(0, 60),
+        value: index + 1,
+        selector: String.fromCharCode('0'.charCodeAt(0) + index),
+        groupSelector: name[0],
+        selected: index === menuobjsyms,
+    }));
+}
+
+async function handler_menu_objsyms(state, helpers) {
+    const separator = state.iflags.menu_tab_sep ? '\t' : ' ';
+    const picked = await optionMenuSelect(state, {
+        items: menuObjsymItems(state.iflags.menuobjsyms, separator),
+        how: PICK_ONE,
+        title: 'Set object symbols in menus to what?',
+        cancelValue: null,
+    }, helpers);
+    const values = menuSelectionValues(picked);
+    if (values.length > 0) {
+        let index = values[0] - 1;
+        // If a test or window port returns both the preselected row and the
+        // newly chosen row, C uses the row that was not preselected.
+        if (values.length > 1 && index === state.iflags.menuobjsyms)
+            index = values[1] - 1;
+        set_menuobjsyms_flags(state, index);
+    }
+    return optn_ok;
 }
 
 // C ref: options.c optfn_menuinvertmode() (2290-2317), its startup do_set
@@ -2486,6 +3221,35 @@ const MENU_COMMAND_OPTIONS = Object.freeze([
 const MENU_COMMAND_BY_NAME = new Map(
     MENU_COMMAND_OPTIONS.map(({ name, command }) => [name, command]),
 );
+
+// C ref: options.c check_misc_menu_command() (694-707). The handler accepts
+// only a complete canonical name, even though parseoptions() accepts the
+// shorter unambiguous prefix before it reaches the handler.
+export function check_misc_menu_command(opts, op) {
+    void op;
+    for (let index = 0; index < MENU_COMMAND_OPTIONS.length; ++index) {
+        const { name } = MENU_COMMAND_OPTIONS[index];
+        if (match_optname(opts, name, name.length, true)) return index;
+    }
+    return -1;
+}
+
+const MENU_OPTION_FUNCTIONS = Object.freeze({
+    menu_deselect_all: optfn_menu_deselect_all,
+    menu_deselect_page: optfn_menu_deselect_page,
+    menu_first_page: optfn_menu_first_page,
+    menu_invert_all: optfn_menu_invert_all,
+    menu_invert_page: optfn_menu_invert_page,
+    menu_last_page: optfn_menu_last_page,
+    menu_next_page: optfn_menu_next_page,
+    menu_previous_page: optfn_menu_previous_page,
+    menu_search: optfn_menu_search,
+    menu_select_all: optfn_menu_select_all,
+    menu_select_page: optfn_menu_select_page,
+    menu_shift_left: optfn_menu_shift_left,
+    menu_shift_right: optfn_menu_shift_right,
+    menu_headings: optfn_menu_headings,
+});
 
 // C ref: options.c get_menu_cmd_key() (8094-8105). A configured alias is
 // displayed in place of its source command byte; when several incoming keys
@@ -2621,9 +3385,8 @@ function menuCommandOption(name) {
     // parseoptions() initially accepts unambiguous prefixes, but
     // shared_menu_optfn() calls check_misc_menu_command(), which requires
     // the complete canonical name. Preserve that handler-level quirk.
-    return MENU_COMMAND_OPTIONS.find(
-        ({ name: canonical }) => canonical === name,
-    ) ?? null;
+    const index = check_misc_menu_command(name, name);
+    return index >= 0 ? MENU_COMMAND_OPTIONS[index] : null;
 }
 
 function isMenuCommandPrefix(name) {
@@ -2749,19 +3512,31 @@ function addMenuCommandAlias(result, fromKey, command) {
     result.iflags.mapped_menu_op += command;
 }
 
-// C ref: options.c spcfn_misc_menu_cmd() (5451-5477), the do_set request.  Its
-// own bad_negation() arm (5458-5460) is unreachable from a configuration file:
-// every menu command option's optlist.h negateok is No, so parseoptions()
-// answers a negated spelling before the handler runs.  The remaining two arms
-// both report and leave the alias list alone: string_for_opt(opts, FALSE)
-// names the whole statement when no value follows the separator, and
-// illegal_menu_cmd_key() reports for itself.
-function setMenuCommandOption(result, descriptor, statement) {
-    const op = string_for_opt(statement, false, result);
-    if (op === '') return;
-    const key = textToKey(op);
-    if (illegalMenuCommandKey(result, key)) return;
-    addMenuCommandAlias(result, key, descriptor.command);
+// C ref: options.c spcfn_misc_menu_cmd() (5451-5477).  shared_menu_optfn()
+// passes the complete allopt statement because this function deliberately
+// calls string_for_opt(..., FALSE), which reports a missing value using that
+// complete spelling.  The caller ignores the returned status only where C's
+// parseoptions() does; the alias and diagnostic side effects remain here.
+function spcfn_misc_menu_cmd(result, midx, request, negated, opts, op) {
+    void op;
+    if (request === DO_INIT) return optn_ok;
+    if (request === DO_SET) {
+        if (negated) {
+            bad_negation(result, MENU_COMMAND_OPTIONS[midx].name, false);
+            return optn_err;
+        }
+        const value = string_for_opt(opts, false, result);
+        if (value !== '') {
+            const key = textToKey(value);
+            if (illegalMenuCommandKey(result, key)) return optn_err;
+            addMenuCommandAlias(
+                result, key, MENU_COMMAND_OPTIONS[midx].command,
+            );
+        }
+        return optn_ok;
+    }
+    if (request === GET_VAL || request === GET_CNF_VAL) return '';
+    return optn_ok;
 }
 
 function bindingSeparator(bindings) {
@@ -2951,47 +3726,832 @@ function atol(str) {
     return value;
 }
 
-// C ref: options.c optfn_number_pad() (2573-2645), its do_set arm.  These
-// fields affect cmd_from_ecname() during tutorial generation and the same
-// source-ordered runtime bindings.  optlist.h:535-536 gives the option
-// negateok No, so parseoptions() answers a negated spelling with
-// bad_negation(); the handler's own bad_negation() and its
-// `iflags.num_pad = !negated` both see a negation that cannot happen.
-//
-// `compat` is what decides whether a statement without a value is reported:
-// C measures the whole statement and treats ten bytes or fewer as the historic
-// spelling that means number_pad:1, so "number_pad" is silent while
-// "number_pad:" is one byte longer and reports.  Either way the arm that
-// follows sets the option, because go.opt_initial makes its guard hold.
-function setNumberPadOption(result, statement) {
-    const compat = encodeUtf8ByteString(statement).length <= 10;
-    const op = string_for_opt(statement, compat, result);
-    let enabled;
-    let mode;
-    if (op === '') {
-        /* for backwards compatibility, "number_pad" without a
-           value is a synonym for number_pad:1 */
-        enabled = true;
-        mode = 0;
-    } else {
-        const parsed = atoi(op);
-        if (parsed < -1 || parsed > 4 || (parsed === 0 && op[0] !== '0')) {
-            configErrorAdd(
-                result, `Illegal number_pad parameter '${op}'`,
-            );
-            return;
-        }
-        enabled = parsed > 0;
-        mode = parsed < 0 ? 1
-            : (parsed === 2 ? 1 : parsed === 3 ? 2 : parsed === 4 ? 3 : 0);
+// C ref: options.c nmcpy() (6861-6876). This is byte-oriented, stops at a
+// comma, and always leaves room for the terminating NUL. The player name
+// handler below stores its result in `name` during startup and `plname` in a
+// live game; both are the same C svp.plname value.
+function nmcpy(value, maxlen) {
+    const bytes = encodeUtf8ByteString(value);
+    const copied = [];
+    for (const byte of bytes) {
+        if (byte === 0 || byte === 0x2C || copied.length >= maxlen - 1)
+            break;
+        copied.push(byte);
     }
-    result.iflags.num_pad = enabled;
-    result.iflags.num_pad_mode = mode;
-    result.commandOperations.push({
-        type: 'number_pad',
-        enabled,
-        mode,
-    });
+    return decodeUtf8ByteString(copied);
+}
+
+function optionOwnerName(state) {
+    return state.plname ?? state.name ?? '';
+}
+
+// C ref: options.c optfn_monsters() (2378-2395). The tty build has no monster
+// symbol setter in this handler; all four requests are deliberately no-ops.
+export function optfn_monsters(
+    state, optidx, request, negated, opts, op,
+) {
+    void state;
+    void optidx;
+    void negated;
+    void opts;
+    void op;
+    if (request === GET_VAL || request === GET_CNF_VAL) return '';
+    return optn_ok;
+}
+
+// C ref: options.c optfn_msg_window() (2456-2522), PREV_MSGS's tty branch.
+export function optfn_msg_window(
+    state, optidx, request, negated, opts, op, helpers,
+) {
+    if (request === DO_INIT) return optn_ok;
+    if (request === DO_SET) {
+        const value = op ?? string_for_opt(opts, true, state);
+        let mode;
+        if (value === '') {
+            mode = negated ? 's' : 'f';
+        } else if (negated) {
+            bad_negation(state, allopt[optidx]?.name ?? 'msg_window', true);
+            return optn_err;
+        } else {
+            mode = lowc(value[0]);
+        }
+        if (!'scfr'.includes(mode)) {
+            configErrorAdd(
+                state,
+                `Unknown ${allopt[optidx]?.name ?? 'msg_window'} parameter '${value}'`,
+            );
+            return optn_err;
+        }
+        state.iflags.prevmsg_window = mode;
+        return optn_ok;
+    }
+    if (request === GET_VAL || request === GET_CNF_VAL) {
+        // The curses arm rewrites single/combination to reversed. This build
+        // is tty, so all four source names remain available.
+        const mode = state.iflags.prevmsg_window;
+        return mode === 's' ? 'single'
+            : mode === 'c' ? 'combination'
+                : mode === 'f' ? 'full' : 'reversed';
+    }
+    if (request === DO_HANDLER)
+        return handler_msg_window(state, optidx, helpers);
+    return optn_ok;
+}
+
+// C ref: options.c optfn_name() (2549-2570). `string_for_env_opt()` is
+// mandatory here; nmcpy()'s comma stop and byte limit are both observable.
+export function optfn_name(
+    state, optidx, request, negated, opts, op,
+) {
+    void optidx;
+    void negated;
+    if (request === DO_INIT) return optn_ok;
+    if (request === DO_SET) {
+        const value = op ?? string_for_env_opt(opts, false, state);
+        if (value === '') return optn_err;
+        // The C call passes PL_NSIZ (32), while the public limit constant is
+        // the 31 bytes available before its terminating NUL.
+        const name = nmcpy(value, PLAYER_NAME_BYTE_LIMIT + 1);
+        if (Object.hasOwn(state, 'name')) state.name = name;
+        else state.plname = name;
+        return optn_ok;
+    }
+    if (request === GET_VAL || request === GET_CNF_VAL)
+        return optionOwnerName(state);
+    return optn_ok;
+}
+
+function numberPadModeValue(state) {
+    const mode = state.iflags.num_pad_mode ?? 0;
+    if (state.iflags.num_pad) {
+        return (mode & 2) ? ((mode & 1) ? 4 : 3)
+            : ((mode & 1) ? 2 : 1);
+    }
+    return (mode & 1) ? 5 : 0;
+}
+
+function setNumberPadState(state, enabled, mode, helpers) {
+    state.iflags.num_pad = enabled;
+    state.iflags.num_pad_mode = mode;
+    state.commandOperations ??= [];
+    state.commandOperations.push({ type: 'number_pad', enabled, mode });
+    numberPadTerminalUpdate(state, helpers);
+}
+
+function numberPadTerminalUpdate(state, helpers) {
+    // cmd.c reset_commands() is wired by js/cmd.js for the interactive path.
+    // During startup the command model is rebuilt after parsing and the
+    // operation above is its source-ordered input.
+    if (typeof helpers?.resetCommands === 'function') helpers.resetCommands();
+    // wintty.c number_pad() is a void terminal-mode hook. The command model
+    // above owns its observable key behavior; this call is the discarded
+    // window-port side effect.
+    note_unported('wintty.c tty_number_pad');
+}
+
+// C ref: options.c optfn_number_pad() (2573-2645), including its historic
+// value-less spelling and the packed equivalent of gc.Cmd's three fields.
+export function optfn_number_pad(
+    state, optidx, request, negated, opts, op, helpers,
+) {
+    if (request === DO_INIT) return optn_ok;
+    if (request === DO_SET) {
+        const compat = encodeUtf8ByteString(opts).length <= 10;
+        const value = op ?? string_for_opt(
+            opts, compat || state.go?.opt_initial !== true, state,
+        );
+        if (value === '') {
+            if (compat || negated || state.go?.opt_initial === true)
+                setNumberPadState(state, !negated, 0, helpers);
+            else numberPadTerminalUpdate(state, helpers);
+        } else if (negated) {
+            bad_negation(state, allopt[optidx]?.name ?? 'number_pad', true);
+            return optn_err;
+        } else {
+            const modeValue = atoi(value);
+            if (modeValue < -1 || modeValue > 4
+                || (modeValue === 0 && value[0] !== '0')) {
+                configErrorAdd(
+                    state,
+                    `Illegal ${allopt[optidx]?.name ?? 'number_pad'} parameter '${value}'`,
+                );
+                return optn_err;
+            }
+            if (modeValue <= 0) {
+                setNumberPadState(state, false, modeValue < 0 ? 1 : 0, helpers);
+            } else {
+                let mode = 0;
+                if (modeValue === 2 || modeValue === 4) mode |= 1;
+                if (modeValue === 3 || modeValue === 4) mode |= 2;
+                setNumberPadState(state, true, mode, helpers);
+            }
+        }
+        // The C handler calls reset_commands() even when a value-less spelling
+        // is rejected by a non-initial parse; the helper above preserves that
+        // side effect without inventing a state change.
+        return optn_ok;
+    }
+    if (request === GET_VAL) {
+        return [
+            '0=off', '1=on', '2=on, MSDOS compatible',
+            '3=on, phone-style layout',
+            '4=on, phone layout, MSDOS compatible',
+            '-1=off, y & z swapped',
+        ][numberPadModeValue(state)];
+    }
+    if (request === GET_CNF_VAL) {
+        const mode = numberPadModeValue(state);
+        return mode === 5 ? '-1' : `${mode}`;
+    }
+    if (request === DO_HANDLER) return handler_number_pad(state, helpers);
+    return optn_ok;
+}
+
+// C ref: options.c optfn_objects() (2660-2679). Object symbols are not
+// configurable in this build; the getter exposes the source placeholder.
+export function optfn_objects(
+    state, optidx, request, negated, opts, op,
+) {
+    void optidx;
+    void negated;
+    void opts;
+    void op;
+    if (request === GET_VAL) return to_be_done;
+    if (request === GET_CNF_VAL) return '';
+    return optn_ok;
+}
+
+function altColorSpec(value) {
+    const text = String(value);
+    const hexDigits = '00112233445566778899aAbBcCdDeEfF';
+    const decimal = '0123456789';
+    const octal = '01234567';
+    let cp = 0;
+    let result = -1;
+    let limit = 6;
+    let hex = text[0] === '\\' && text[1]
+        && (text[1] === 'x' || text[1] === 'X') && text[2];
+    let oct = !hex && text[0] === '\\' && text[1]
+        && (text[1] === 'o' || text[1] === 'O') && text[2];
+    let count = 0;
+    if (hex || oct) {
+        result = 0;
+        cp = 2;
+        if (oct) limit = 8;
+    } else if (text[0] === '#' && text[1]) {
+        hex = true;
+        result = 0;
+        cp = 1;
+    } else if (text[1]) {
+        result = 0;
+        limit = 8;
+    } else if (!text[1]) {
+        if (decimal.includes(text[0] ?? '')) result = Number(text[0]);
+        limit = 1;
+        cp = 1;
+    }
+    while (cp < text.length) {
+        const char = text[cp];
+        if (!hex && !oct && decimal.includes(char))
+            result = result * 10 + Number(char);
+        else if (oct && octal.includes(char))
+            result = result * 8 + Number(char);
+        else if (hex) {
+            const digit = hexDigits.indexOf(char);
+            if (digit >= 0) result = result * 16 + Math.floor(digit / 2);
+        }
+        ++cp;
+        if (++count > limit) return -1;
+    }
+    return result;
+}
+
+// C ref: coloratt.c count_alt_palette() and alternative_palette() (1036-1095).
+export function count_alt_palette(state) {
+    return (state.ga?.altpalette ?? []).slice(0, CLR_MAX)
+        .filter((value) => value !== 0).length;
+}
+
+export function alternative_palette(state, op) {
+    if (op == null) return 0;
+    const buf = decodeUtf8ByteString(
+        encodeUtf8ByteString(op).slice(0, BUFSZ - 1),
+    );
+    const firstSlash = buf.indexOf('/');
+    const colorId = firstSlash < 0 ? buf : buf.slice(0, firstSlash);
+    const colorValue = firstSlash < 0 ? null : buf.slice(buf.lastIndexOf('/') + 1);
+    const id = colorId.startsWith(' ') ? colorId.slice(1) : colorId;
+    const value = colorValue?.startsWith(' ')
+        ? colorValue.slice(1) : colorValue;
+    const colorIndex = colorattMatchStr2clr(id, true);
+    if (value == null || colorIndex == null || colorIndex >= CLR_MAX)
+        return 0;
+    let rgb = rgbstr_to_int32(value);
+    if (rgb === -1) rgb = altColorSpec(value);
+    if (rgb === -1) return 0;
+    state.ga ??= {};
+    state.ga.altpalette ??= Array(CLR_MAX).fill(0);
+    state.ga.altpalette[colorIndex] = rgb | NH_ALTPALETTE;
+    return 1;
+}
+
+// C ref: options.c optfn_palette() (2699-2734), compiled only with
+// CHANGE_COLOR. It is retained here even though the recorder's tty build does
+// not expose the option row, because direct source-shaped calls and future
+// builds must keep the conditional behavior.
+export function optfn_palette(
+    state, optidx, request, negated, opts, op,
+) {
+    void negated;
+    if (request === DO_INIT) return optn_ok;
+    if (request === DO_SET) {
+        const value = op ?? string_for_opt(opts, true, state);
+        if (value === '') return optn_err;
+        if (match_optname(opts, 'palette', 3, true)) {
+            if (!alternative_palette(state, value)) {
+                configErrorAdd(
+                    state,
+                    `Error in palette parameter '${value}'`,
+                );
+                return optn_err;
+            }
+            if (state.go?.opt_initial === false)
+                state.go.opt_update_basic_palette = true;
+        }
+        return optn_ok;
+    }
+    if (request === GET_VAL || request === GET_CNF_VAL) {
+        if (opts == null) return optn_err;
+        return n_currently_set(count_alt_palette(state));
+    }
+    void optidx;
+    return optn_ok;
+}
+
+// The source's #if 0 Mac OS 9 duplicate remains a separate callable helper,
+// rather than competing with the active optfn_palette definition above.
+export function optfn_palette_legacy(
+    state, optidx, request, negated, opts, op,
+) {
+    void optidx;
+    void negated;
+    if (request === DO_INIT) return optn_ok;
+    if (request === DO_SET) {
+        if ((op ?? string_for_opt(opts, true, state)) === '') return optn_err;
+        const value = op ?? string_for_opt(opts, true, state);
+        if (!match_optname(opts, 'palette', 3, true)
+            && !match_optname(opts, 'hicolor', 3, true)) return optn_ok;
+        const hicolor = match_optname(opts, 'hicolor', 3, true);
+        let color = hicolor ? CLR_MAX + 4 : 0;
+        const increment = hicolor ? -1 : 1;
+        let at = 0;
+        while (at < value.length && color >= 0) {
+            let reverse = 0;
+            if (value[at] === '-') {
+                reverse = 1;
+                ++at;
+            }
+            let rgb = 0;
+            for (let count = 0; count < 3; ++count) {
+                if (value[at] && value[at] !== '/') {
+                    let digit = value[at++];
+                    if (/^[A-Za-z]$/u.test(digit))
+                        digit = String.fromCharCode((digit.charCodeAt(0) + 9) & 0xF);
+                    else digit = String.fromCharCode(digit.charCodeAt(0) & 0xF);
+                    const nibble = digit.charCodeAt(0);
+                    rgb = (rgb << 8) + (nibble << 4) + nibble;
+                }
+            }
+            if (value[at] === '/') ++at;
+            // C discards change_color()'s void terminal result. The palette
+            // bookkeeping itself is still the source's parsed branch.
+            note_unported('wintty.c tty_change_color');
+            color += increment;
+        }
+        if (state.go?.opt_initial === false)
+            state.go.opt_update_basic_palette = true;
+        return optn_ok;
+    }
+    if (request === GET_VAL || request === GET_CNF_VAL) {
+        if (opts == null) return optn_err;
+        return n_currently_set(count_alt_palette(state));
+    }
+    return optn_ok;
+}
+
+function messageWindowChoices(state) {
+    const separator = state.iflags.menu_tab_sep ? '\t' : ' ';
+    return [
+        ['single', '[show one old message at a time,', ' most recent first]'],
+        ['combination', '[for consecutive ^P requests, use', " 'single' for first two, then 'full']"],
+        ['full', '[show all available messages,', ' oldest first and most recent last]'],
+        ['reversed', '[show all available messages,', ' most recent first]'],
+    ].map(([name, first, second]) => ({
+        name,
+        first: `${name.padEnd(12)}${separator}${first}`,
+        second: `${' '.repeat(16)}${separator}${second}`,
+        selector: name[0],
+    }));
+}
+
+async function handler_msg_window(state, optidx, helpers) {
+    void optidx;
+    const old = state.iflags.prevmsg_window;
+    const choices = messageWindowChoices(state);
+    const items = [];
+    for (const choice of choices) {
+        items.push({
+            value: choice.selector,
+            selector: choice.selector,
+            text: choice.first,
+            selected: choice.selector === old,
+        });
+        items.push({ text: choice.second });
+    }
+    const selected = await optionMenuSelect(state, {
+        items,
+        how: PICK_ONE,
+        title: 'Select message history display type:',
+        cancelValue: null,
+    }, helpers);
+    if (selected !== null && selected !== undefined)
+        state.iflags.prevmsg_window = selected;
+    const changed = state.iflags.prevmsg_window !== old;
+    if (changed || state.flags?.verbose) {
+        const value = optfn_msg_window(state, null, GET_VAL, false, '', '');
+        await ttyPline(
+            `'msg_window' ${changed ? 'changed to' : 'is still'} "${value}".`,
+            state,
+        );
+    }
+    return optn_ok;
+}
+
+async function handler_number_pad(state, helpers) {
+    const choices = [
+        ' 0 (off)', ' 1 (on)', ' 2 (on, MSDOS compatible)',
+        ' 3 (on, phone-style digit layout)',
+        ' 4 (on, phone-style layout, MSDOS compatible)',
+        "-1 (off, 'z' to move upper-left, 'y' to zap wands)",
+    ];
+    const selected = await optionMenuSelect(state, {
+        items: choices.map((text, index) => ({
+            value: index,
+            selector: String.fromCharCode(97 + index),
+            text,
+        })),
+        how: PICK_ONE,
+        title: 'Select number_pad mode:',
+        cancelValue: null,
+    }, helpers);
+    if (selected !== null && selected !== undefined) {
+        const modes = [
+            [false, 0], [true, 0], [true, 1],
+            [true, 2], [true, 3], [false, 1],
+        ];
+        const [enabled, mode] = modes[selected] ?? [null, null];
+        if (enabled !== null) setNumberPadState(state, enabled, mode, helpers);
+    }
+    return optn_ok;
+}
+
+// C ref: options.c handler_paranoid_confirmation() (5953-6016).  The command
+// binding model is the JavaScript equivalent of cmd_from_func(): it preserves
+// the source's printable-key preference, control-key fallback, and space-last
+// rule.  The handler itself owns only the menu; the option parser above owns
+// the same flags.paranoia_bits value for configuration-file input.
+export async function handler_paranoid_confirmation(state, helpers) {
+    const model = state.commandBindings ??= createCommandBindingModel(state);
+    const menuItems = [];
+    for (const [mask, argname, , , , explanation] of paranoia) {
+        if (mask === 0) break;
+        if (mask === PARANOID_BONES && !state.wizard) continue;
+
+        let text = explanation;
+        if (strstri(text, "'m'") >= 0) {
+            const mkey = keyForCommand(model, 'reqmenu');
+            if (mkey !== 'm'.charCodeAt(0)) {
+                const replacement = mkey
+                    ? `'${visctrl(mkey)}'`
+                    : "'#reqmenu'";
+                text = text.replace("'m'", replacement);
+            }
+        }
+        menuItems.push({
+            value: mask,
+            selector: argname[0],
+            text,
+            selected: (state.flags.paranoia_bits & mask) !== 0,
+        });
+    }
+    const selected = await optionMenuSelect(state, {
+        items: menuItems,
+        how: PICK_ANY,
+        title: 'Actions requiring extra confirmation:',
+        cancelValue: null,
+    }, helpers);
+    if (selected !== null && selected !== undefined) {
+        let bits = 0;
+        for (const value of menuSelectionValues(selected)) bits |= value;
+        state.flags.paranoia_bits = bits >>> 0;
+    }
+    return optn_ok;
+}
+
+function perminvModeDescription(state, includeInactiveStatus) {
+    const mode = state.iflags.perminv_mode;
+    const entry = PERMINV_MODES[mode];
+    if (!entry) return '';
+    let description = entry.description;
+    if (includeInactiveStatus && mode !== INVOPT_NONE
+        && !state.iflags.perm_invent) {
+        description = mode === INVOPT_IN_USE
+            ? description.replace(' currently', '')
+            : description.replace(' inventory', ' invent');
+        description += (mode & INV_SPARSE) !== 0
+            ? ' (Off)' : " ('perm_invent' is Off)";
+    }
+    return description;
+}
+
+// C ref: options.c handler_perminv_mode() (6019-6087).  This recorder build
+// has no TTY_PERM_INVENT rows, but the handler remains source-shaped so a
+// window port that advertises the option can use the same state transition.
+export async function handler_perminv_mode(state, helpers) {
+    state.iflags ??= {};
+    state.flags ??= {};
+    const old_perm_invent = Boolean(state.iflags.perm_invent);
+    const old_pi = state.iflags.perminv_mode ?? INVOPT_NONE;
+    let new_pi = old_pi;
+    const widest = 11; // WINDOWPORT(tty): "full+grid__" in options.c
+    const items = [];
+
+    for (let index = 0; index < PERMINV_MODES.length; ++index) {
+        const entry = PERMINV_MODES[index];
+        if (!entry) continue;
+        const separator = state.iflags.menu_tab_sep
+            ? '\t'
+            : ' '.repeat(Math.max(widest - entry.name.length, 1));
+        const text = `${entry.name}${separator}${entry.description}`;
+        const selector = (index & INV_SPARSE) !== 0
+            ? highc(entry.alias[0]) : entry.name[0];
+        items.push({
+            value: index + 1,
+            selector,
+            groupSelector: String.fromCharCode('0'.charCodeAt(0) + index),
+            text,
+            selected: index === old_pi,
+        });
+    }
+    const selected = await optionMenuSelect(state, {
+        items,
+        how: PICK_ONE,
+        title: 'Choose permanent inventory mode:',
+        cancelValue: null,
+    }, helpers);
+    const values = menuSelectionValues(selected);
+    if (values.length > 0) {
+        new_pi = values[0] - 1;
+        if (values.length > 1 && new_pi === old_pi)
+            new_pi = values[1] - 1;
+        state.iflags.perminv_mode = new_pi;
+    }
+    if (selected !== null && selected !== undefined) {
+        await ttyPline(
+            `'perminv_mode' ${new_pi !== old_pi ? 'changed to' : 'is still'} `
+                + `'${PERMINV_MODES[new_pi].name}' `
+                + `(${perminvModeDescription(state, false)}).`,
+            state,
+        );
+        if (new_pi !== INVOPT_NONE && !old_perm_invent)
+            state.iflags.perm_invent = can_set_perm_invent(state);
+        else if (new_pi === INVOPT_NONE && old_perm_invent)
+            state.iflags.perm_invent = false;
+
+        if (new_pi !== old_pi
+            || Boolean(state.iflags.perm_invent) !== old_perm_invent) {
+            state.go ??= {};
+            state.go.opt_need_redraw = true;
+        }
+    }
+    return optn_ok;
+}
+
+// C ref: options.c handler_pickup_burden() (6089-6112).  No row is
+// preselected: selecting nothing is a committed empty PICK_ONE result in the
+// C handler and therefore leaves flags.pickup_burden unchanged.
+export async function handler_pickup_burden(state, helpers) {
+    state.flags ??= {};
+    const burdenLetters = 'ubsntl';
+    const items = burdentype.map((name, index) => ({
+        value: index + 1,
+        selector: burdenLetters[index],
+        text: name,
+    }));
+    const selected = await optionMenuSelect(state, {
+        items,
+        how: PICK_ONE,
+        title: 'Select encumbrance level:',
+        cancelValue: null,
+    }, helpers);
+    const values = menuSelectionValues(selected);
+    if (values.length > 0)
+        state.flags.pickup_burden = values[0] - 1;
+    return optn_ok;
+}
+
+// C ref: options.c can_set_perm_invent() (5488-5530).  This TTY build does
+// not advertise WC_PERM_INVENT, and TTY_PERM_INVENT is not compiled, so the
+// capability check is the only reachable arm.  Keep the mode update for a
+// window port that does advertise the capability; the compiled-out C arm that
+// creates WIN_INVEN has no JavaScript callee to invoke.
+export function can_set_perm_invent(state) {
+    state.iflags ??= {};
+    const old_perminv_mode = state.iflags.perminv_mode;
+    if (!wc_supported('perm_invent')) return false;
+    if (state.iflags.perminv_mode === INVOPT_NONE)
+        state.iflags.perminv_mode = INVOPT_ON;
+    // options.c:5527's nhUse(old_perminv_mode); the non-TTY-PERM-INVENT
+    // build deliberately leaves this saved value unused.
+    void old_perminv_mode;
+    return true;
+}
+
+// C ref: options.c check_perm_invent_again() (5532-5543).  The source places
+// this function behind TTY_PERM_INVENT, but keeping its state transition here
+// preserves the exported allmain.c entry point for a later persistent-window
+// port.
+export function check_perm_invent_again(state) {
+    state.iflags ??= {};
+    if (!state.iflags.perm_invent_pending) return;
+    state.iflags.perm_invent = false;
+    if (can_set_perm_invent(state)) state.iflags.perm_invent = true;
+    state.iflags.perm_invent_pending = false;
+}
+
+function menuSelectionValues(selection) {
+    if (selection === null || selection === undefined) return [];
+    const values = Array.isArray(selection) ? selection : [selection];
+    return values
+        .map((entry) => typeof entry === 'object' ? entry?.value : entry)
+        .filter((value) => value !== null && value !== undefined);
+}
+
+// C ref: options.c handler_menustyle() (5544-5585).  select_menu() returns a
+// scalar in the TTY port; accepting an array as well preserves C's PICK_ONE
+// handling when a test double supplies both the preselected and new item.
+async function handler_menustyle(state, helpers) {
+    const old_menu_style = state.flags.menu_style;
+    const separator = state.iflags.menu_tab_sep ? '\t' : ' ';
+    const items = [];
+    for (let index = 0; index < menutype.length; ++index) {
+        const [name, first, second] = menutype[index];
+        items.push({
+            text: `${name.padEnd(12)}${separator}${first}`,
+            value: index + 1,
+            selector: name[0],
+            selected: index === old_menu_style,
+        });
+        items.push({ text: `${' '.repeat(16)}${separator}${second}` });
+    }
+    const selected = await optionMenuSelect(state, {
+        items,
+        how: PICK_ONE,
+        title: 'Select menustyle:',
+        cancelValue: null,
+    }, helpers);
+    const values = menuSelectionValues(selected);
+    if (values.length > 0) {
+        let style = values[0] - 1;
+        if (values.length > 1 && style === old_menu_style)
+            style = values[1] - 1;
+        state.flags.menu_style = style;
+    }
+    const changed = state.flags.menu_style !== old_menu_style;
+    if (changed || state.flags.verbose) {
+        await ttyPline(
+            `'menustyle' ${changed ? 'changed to' : 'is still'} `
+                + `"${menutype[state.flags.menu_style][0]}".`,
+            state,
+        );
+    }
+    return optn_ok;
+}
+
+// C ref: options.c handler_align_misc() (5586-5623).  The item values are
+// the alignment constants themselves, so the selected value can update the
+// corresponding field without another enum conversion.
+async function handler_align_misc(state, optidx, helpers) {
+    const items = [
+        ['t', 'top', ALIGN_TOP],
+        ['b', 'bottom', ALIGN_BOTTOM],
+        ['l', 'left', ALIGN_LEFT],
+        ['r', 'right', ALIGN_RIGHT],
+    ].map(([selector, text, value]) => ({
+        selector,
+        text,
+        value,
+    }));
+    const selected = await optionMenuSelect(state, {
+        items,
+        how: PICK_ONE,
+        title: `Select ${optidx === allopt.findIndex(
+            ({ name }) => name === 'align_message',
+        ) ? 'message' : 'status'} window placement relative to the map:`,
+        cancelValue: null,
+    }, helpers);
+    const values = menuSelectionValues(selected);
+    if (values.length > 0) {
+        if (optidx === allopt.findIndex(
+            ({ name }) => name === 'align_message',
+        )) {
+            state.iflags.wc_align_message = values[0];
+        } else {
+            state.iflags.wc_align_status = values[0];
+        }
+    }
+    return optn_ok;
+}
+
+function autounlockHandlerValue(state) {
+    const bits = state.flags.autounlock;
+    if (!bits) return 'none';
+    return unlocktypes
+        .filter((_name, index) => (bits & (1 << index)) !== 0)
+        .map((name) => name[0])
+        .join(' + ');
+}
+
+// C ref: options.c handler_autounlock() (5624-5674).  PICK_ANY returns an
+// ordered array of selected values in the TTY port, with [] representing C's
+// n == 0 commit and null representing cancellation.
+async function handler_autounlock(state, optidx, helpers) {
+    const oldflags = state.flags.autounlock;
+    const optname = allopt[optidx]?.name ?? 'autounlock';
+    const separator = state.iflags.menu_tab_sep ? '\t' : ' ';
+    const descriptions = [
+        '(might fail)', '', '(doors only)', '(chests/boxes only)',
+    ];
+    const items = unlocktypes.map((name, index) => ({
+        text: `${name.padEnd(10)}${separator}${descriptions[index]}`,
+        value: index + 1,
+        selector: name[0],
+        selected: (state.flags.autounlock & (1 << index)) !== 0,
+    }));
+    const selected = await optionMenuSelect(state, {
+        items,
+        how: PICK_ANY,
+        title: `Select '${optname}' actions:`,
+        cancelValue: null,
+    }, helpers);
+    if (selected !== null && selected !== undefined) {
+        const values = menuSelectionValues(selected);
+        let newflags = 0;
+        for (const value of values)
+            newflags |= 1 << (value - 1);
+        state.flags.autounlock = newflags;
+    }
+    const changed = state.flags.autounlock !== oldflags;
+    if ((changed || state.flags.verbose)
+        && state.give_opt_msg !== false) {
+        await ttyPline(
+            `'${optname}' ${changed ? 'changed to' : 'is still'} `
+                + `'${autounlockHandlerValue(state)}'.`,
+            state,
+        );
+    }
+    return optn_ok;
+}
+
+// C ref: options.c handler_disclose() (5675-5779).  The category menu uses
+// disclosure_options[] as explicit accelerators.  Its per-category menus pass
+// zero as the explicit accelerator, so the TTY assigns letters and the
+// meaningful alternate selectors arrive as group accelerators.
+const disclosure_names = Object.freeze([
+    'inventory', 'attributes', 'vanquished',
+    'genocides', 'conduct', 'overview',
+]);
+
+export function disclosureCategoryItems(disclosureName, current) {
+    const items = [
+        [
+            DISCLOSE_NO_WITHOUT_PROMPT,
+            'Never disclose, without prompting',
+        ],
+        [
+            DISCLOSE_YES_WITHOUT_PROMPT,
+            'Always disclose, without prompting',
+        ],
+    ];
+    if (disclosureName[0] === 'v' || disclosureName[0] === 'g') {
+        items.push([
+            DISCLOSE_SPECIAL_WITHOUT_PROMPT,
+            'Always disclose, pick sort order from menu',
+        ]);
+    }
+    items.push(
+        [
+            DISCLOSE_PROMPT_DEFAULT_NO,
+            'Prompt, with default answer of "No"',
+        ],
+        [
+            DISCLOSE_PROMPT_DEFAULT_YES,
+            'Prompt, with default answer of "Yes"',
+        ],
+    );
+    if (disclosureName[0] === 'v' || disclosureName[0] === 'g') {
+        items.push([
+            DISCLOSE_PROMPT_DEFAULT_SPECIAL,
+            'Prompt, with default answer of "Ask" to request sort menu',
+        ]);
+    }
+    return items.map(([value, text]) => ({
+        text,
+        value,
+        // options.c passes `any.a_char` as gch.  '-' is handled by the
+        // menu's unselect-page command before group accelerators are tested.
+        ...(value === DISCLOSE_NO_WITHOUT_PROMPT
+            ? {} : { groupSelector: value }),
+        selected: value === current,
+    }));
+}
+
+async function handler_disclose(state, helpers) {
+    const categoryItems = disclosure_names.map((name, index) => ({
+        text: `${name.padEnd(12)}[${state.flags.end_disclose[index]}`
+            + `${disclosure_options[index]}]`,
+        value: index + 1,
+        selector: disclosure_options[index],
+    }));
+    const selectedCategories = await optionMenuSelect(state, {
+        items: categoryItems,
+        how: PICK_ANY,
+        title: 'Change which disclosure options categories:',
+        cancelValue: null,
+    }, helpers);
+    const selected = new Set(menuSelectionValues(selectedCategories));
+
+    for (let index = 0; index < disclosure_names.length; ++index) {
+        if (!selected.has(index + 1)) continue;
+        const current = state.flags.end_disclose[index];
+        const picked = await optionMenuSelect(state, {
+            items: disclosureCategoryItems(disclosure_names[index], current),
+            how: PICK_ONE,
+            title: `Disclosure options for ${disclosure_names[index]}:`,
+            cancelValue: null,
+        }, helpers);
+        const values = menuSelectionValues(picked);
+        if (values.length > 0) {
+            let setting = values[0];
+            // C's TTY PICK_ONE normally returns one item.  The second value
+            // covers the source's preselected-item tie-break when a window
+            // port supplies both entries.
+            if (values.length > 1 && setting === current)
+                setting = values[1];
+            state.flags.end_disclose[index] = setting;
+        }
+    }
+    return optn_ok;
 }
 
 // C ref: options.c optfn_runmode() (3626-3670). Its four names are matched
@@ -4175,19 +5735,15 @@ function optfn_suppress_alert(result, value) {
     feature_alert_opts(result, value, 'suppress_alert');
 }
 
-// C ref: options.c bad_negation() (6692-6697).  Three of its callers are
-// reachable here -- parseoptions() (627), optfn_menu_headings() (2201) and
-// optfn_pile_limit() (3421) -- and all three pass with_parameter TRUE, whether
-// or not the statement carried a value, so the message names a value either
-// way.  The two that pass FALSE, optfn_suppress_alert() (4144) and
-// spcfn_misc_menu_cmd() (5459), sit behind rows whose optlist.h negateok is
-// No, so parseoptions() has already answered the negation by the time either
-// handler runs.  That is also why several C handlers declare their `negated`
-// argument UNUSED.
-function bad_negation(result, optname) {
+// C ref: options.c bad_negation() (6692-6697).  The with_parameter flag keeps
+// the two source messages distinct: menu_headings and parseoptions() name the
+// value-bearing form, while spcfn_misc_menu_cmd() passes FALSE and says only
+// that the option may not be negated.
+function bad_negation(result, optname, withParameter = true) {
     configErrorAdd(
         result,
-        `The ${optname} option may not both have a value and be negated.`,
+        `The ${optname} option may not ${withParameter
+            ? 'both have a value and ' : ''}be negated.`,
     );
 }
 
@@ -4654,12 +6210,10 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
     if (name === 'windowtype') {
         optfn_windowtype(result, statement);
     } else if (name === 'name') {
-        // C ref: options.c optfn_name() (2548-2570), its do_set arm.  The
-        // value is mandatory, so a statement without one is reported by
-        // string_for_env_opt() and leaves svp.plname alone.
-        const op = string_for_env_opt(statement, false, result);
-        if (op === '') return;
-        result.name = truncateByteString(op, PLAYER_NAME_BYTE_LIMIT);
+        optfn_name(
+            result, allopt.indexOf(matchedRow), DO_SET, negated,
+            statement, undefined,
+        );
     } else if (name === 'disclose') {
         optfn_disclose(result, statement, negated);
     } else if (name === 'role' || name === 'race' || name === 'gender'
@@ -4675,15 +6229,21 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
     } else if (name === 'menuinvertmode') {
         optfn_menuinvertmode(result, value);
     } else if (name === 'menu_headings') {
-        setMenuHeadings(result, value, negated);
+        optfn_menu_headings(
+            result, allopt.indexOf(matchedRow), DO_SET, negated,
+            statement, value ?? '', null,
+        );
     } else if (name === 'petattr') {
         setPetAttribute(result, statement);
     } else if (name === 'hilite_status') {
-        setStatusHiliteOption(result, value, negated);
+        optfn_hilite_status(result, DO_SET, negated, statement, value);
     } else if (name === 'statushilites') {
         setStatusHiliteDuration(result, value, negated);
     } else if (menuCommand && parsedName === name) {
-        setMenuCommandOption(result, menuCommand, statement);
+        MENU_OPTION_FUNCTIONS[name](
+            result, allopt.indexOf(matchedRow), DO_SET, negated,
+            statement, value ?? '', null,
+        );
     } else if (menuCommand || isMenuCommandPrefix(parsedName)) {
         optionError(
             lineNumber,
@@ -4695,7 +6255,7 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
     } else if (name === 'pettype') {
         setPettype(result, statement, negated);
     } else if (name === 'fruit') {
-        setFruit(result, statement);
+        optfn_fruit(result, DO_SET, negated, statement, value);
     } else if (name === 'autounlock') {
         optfn_autounlock(result, statement, negated);
     } else if (name === 'boulder') {
@@ -4710,56 +6270,19 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         optfn_crash_urlmax(result, statement);
     } else if (name === 'catname' || name === 'dogname'
                || name === 'horsename') {
-        setPetName(result, name, value);
+        const petHandler = name === 'catname' ? optfn_catname
+            : name === 'dogname' ? optfn_dogname : optfn_horsename;
+        petHandler(result, DO_SET, negated, statement, value);
+    } else if (name === 'altkeyhandling') {
+        optfn_altkeyhandling(result, DO_SET, negated, statement, value);
+    } else if (name === 'dungeon') {
+        optfn_dungeon(result, DO_SET, negated, statement, value);
+    } else if (name === 'effects') {
+        optfn_effects(result, DO_SET, negated, statement, value);
     } else if (name === 'decgraphics') {
-        result.flags.decgraphics = !negated;
-        if (!negated) {
-            appendSymbolSelection(result, 'primary', 'DECgraphics', {
-                legacyIfUnset: true,
-            });
-            // BACKWARD_COMPAT's handler calls read_sym_file(PRIMARYSET) only
-            // when that slot has no name.  read_sym_file() is what changes
-            // symset_which_set, so a failed legacy selection leaves the prior
-            // glyph association alone.
-            const context = result.parserGlyphSetContext;
-            if (!context.names.primary) {
-                context.set = 'primary';
-                context.names.primary = 'DECgraphics';
-            }
-        }
+        optfn_DECgraphics(result, DO_SET, negated, statement, value);
     } else if (name === 'ibmgraphics') {
-        result.flags.ibmgraphics = !negated;
-        if (!negated) {
-            appendSymbolSelection(result, 'primary', 'IBMgraphics', {
-                legacyIfUnset: true,
-                legacyIBM: true,
-            });
-            // IBMgraphics examines primary and rogue independently. Each
-            // empty slot loads even when the other is occupied, and the last
-            // successful load owns subsequent glyph rows. Any occupied slot
-            // makes the whole option report failure after those partial loads.
-            const context = result.parserGlyphSetContext;
-            let failed = false;
-            let failedName = 'IBMgraphics';
-            if (context.names.primary) {
-                failed = true;
-            } else {
-                context.set = 'primary';
-                context.names.primary = 'IBMgraphics';
-            }
-            if (context.names.rogue) {
-                failed = true;
-            } else {
-                failedName = 'RogueIBM';
-                context.set = 'rogue';
-                context.names.rogue = 'RogueIBM';
-            }
-            if (failed) {
-                configErrorAdd(
-                    result, `Failure to load symbol set ${failedName}.`,
-                );
-            }
-        }
+        optfn_IBMgraphics(result, DO_SET, negated, statement, value);
     } else if (isSymbolAssignment) {
         // parsesymbols() does not receive parseoptions()'s negation flag.
         appendSymbolOverrides(result, 'primary', [{
@@ -4767,7 +6290,25 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
             rawValue: value,
         }]);
     } else if (name === 'number_pad') {
-        setNumberPadOption(result, statement);
+        optfn_number_pad(
+            result, allopt.indexOf(matchedRow), DO_SET, negated,
+            statement, undefined,
+        );
+    } else if (name === 'monsters') {
+        optfn_monsters(
+            result, allopt.indexOf(matchedRow), DO_SET, negated,
+            statement, undefined,
+        );
+    } else if (name === 'objects') {
+        optfn_objects(
+            result, allopt.indexOf(matchedRow), DO_SET, negated,
+            statement, undefined,
+        );
+    } else if (name === 'palette') {
+        optfn_palette(
+            result, allopt.indexOf(matchedRow), DO_SET, negated,
+            statement, undefined,
+        );
     } else if (name === 'whatis_coord') {
         setWhatisCoord(result, statement, negated);
     } else if (name === 'whatis_filter') {
@@ -4844,32 +6385,10 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
             parsedName === 'prayconfirm',
         );
     } else if (name === 'msg_window') {
-        // C ref: options.c optfn_msg_window()'s do_set arm. PREV_MSGS is 1
-        // for this tty build. parseoptions() reads this option's value as
-        // optional, so the spellings with no value reach the handler with
-        // empty_optstr, which means 'f' plain and 's' negated; a negation
-        // that does carry a value is bad_negation(). Otherwise C keeps the
-        // lowercased first letter and rejects anything but s, c, f or r.
-        let tmp;
-        if (!value) {
-            tmp = negated ? 's' : 'f';
-        } else if (negated) {
-            configErrorAdd(
-                result,
-                'The msg_window option may not both have a value and be'
-                + ' negated.',
-            );
-            return;
-        } else {
-            tmp = lowc(value[0]);
-        }
-        if (!'scfr'.includes(tmp)) {
-            configErrorAdd(
-                result, `Unknown msg_window parameter '${value}'`,
-            );
-            return;
-        }
-        result.iflags.prevmsg_window = tmp;
+        optfn_msg_window(
+            result, allopt.indexOf(matchedRow), DO_SET, negated,
+            statement, undefined,
+        );
     } else if (name === 'sortloot') {
         // C ref: options.c optfn_sortloot()'s do_set arm, which stores the
         // lowercased first letter and rejects anything else. optlist.h gives
@@ -4939,39 +6458,7 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         // report it.
         applyBooleanOption(result, name, matchedRow, statement, value, negated);
     } else if (name === 'glyph') {
-        // C ref: options.c optfn_glyph(). Empty spellings fail silently. A
-        // valid ID succeeds even when an invalid payload contributes no
-        // Unicode or color detail.
-        if (value == null || value === '') return;
-        if (negated) {
-            bad_negation(result, name);
-            return;
-        }
-        const glyphValue = mungspaces(value);
-        const inspected = inspect_glyphrep(glyphValue);
-        if (!inspected.valid) return;
-        const context = result.parserGlyphSetContext;
-        result.symbolOperations.push({
-            kind: 'glyph-customization',
-            set: context.set,
-            raw: glyphValue,
-        });
-        if (!context.names[context.set]) {
-            if (inspected.hasUnicode && !context.unicodeNagged) {
-                context.unicodeNagged = true;
-                configErrorAdd(
-                    result,
-                    'Unimplemented customization feature, ignoring for now',
-                );
-            }
-            if (inspected.hasColor && !context.colorNagged) {
-                context.colorNagged = true;
-                configErrorAdd(
-                    result,
-                    'Unimplemented customization feature, ignoring for now',
-                );
-            }
-        }
+        optfn_glyph(result, DO_SET, negated, statement, value);
     } else if (name === 'symset' || name === 'roguesymset') {
         // C refs: options.c optfn_symset() (4166-4201) and
         // optfn_roguesymset() (3543-3585). parseoptions() passes each handler
@@ -5248,44 +6735,6 @@ export function msgtype_type(message, norepeat, state = game) {
     return norepeat ? MSGTYP_NOREP : MSGTYP_NORMAL;
 }
 
-function configSection(line) {
-    if (!line.startsWith('[')) return null;
-    const close = line.indexOf(']', 1);
-    if (close < 0) return null;
-    let suffixIndex = close + 1;
-    while (line[suffixIndex] === ' ') ++suffixIndex;
-    if (suffixIndex < line.length && line[suffixIndex] !== '#') return null;
-    return { name: trimspaces(line.slice(1, close)) };
-}
-
-// C ref: cfgfiles.c:choose_random_part().  Keep its separator walk (including
-// empty-part quirks) rather than using split(), and consume rn2(1) for a
-// single candidate just as the source does. For ",a", draw 0 returns "a"
-// while draw 1 returns null.
-function chooseRandomPart(value, random) {
-    let choices = 1;
-    for (const character of value) {
-        if (character === ',') ++choices;
-    }
-    let choice = random(choices);
-    if (!Number.isInteger(choice) || choice < 0 || choice >= choices) {
-        throw new RangeError(`random(${choices}) returned ${choice}`);
-    }
-
-    let index = 0;
-    while (choice > 0 && index < value.length) {
-        ++index;
-        if (value[index] === ',') --choice;
-    }
-    if (index < value.length) {
-        if (value[index] === ',') ++index;
-        const begin = index;
-        while (index < value.length && value[index] !== ',') ++index;
-        if (index > begin) return value.slice(begin, index);
-    }
-    return null;
-}
-
 export function parseNethackrc(rc, random = rn2) {
     const result = defaultResult();
     if (!rc) return result;
@@ -5299,11 +6748,10 @@ export function parseNethackrc(rc, random = rn2) {
         },
     };
 
-    // chosenSection is CHOOSE's active target; null disables filtering.
-    // currentSection names the section being gated; null means that no named
-    // section gate is active. An empty [] header clears both.
-    let chosenSection = null;
-    let currentSection = null;
+    // cfgfiles.c keeps section selection in instance_globals_c.  The parser
+    // result carries that same state through the source-owned helpers rather
+    // than keeping a second local representation here.
+    free_config_sections(result);
     const lines = logicalConfigLines(rc, result.configErrorFrame);
     for (const configLine of lines) {
         const { lineNumber } = configLine;
@@ -5315,26 +6763,10 @@ export function parseNethackrc(rc, random = rn2) {
         const mungedLine = mungspaces(paddingTrimmedLine);
         if (!mungedLine || mungedLine.startsWith('#')) continue;
 
-        const section = configSection(paddingTrimmedLine);
-        if (section) {
-            currentSection = null;
-            // cfgfiles.c handle_config_section():560-563.  A section header
-            // read before any CHOOSE is reported and then skipped like any
-            // other; the file keeps being read.
-            if (chosenSection == null) {
-                configErrorAdd(
-                    result, `Section "[${section.name}]" without CHOOSE`,
-                );
-                continue;
-            }
-            if (section.name) currentSection = section.name;
-            else chosenSection = null;
-            continue;
-        }
-        if (currentSection != null
-            && (chosenSection == null || currentSection !== chosenSection)) {
-            continue;
-        }
+        // parse_conf_buf() calls handle_config_section() before CHOOSE and
+        // before the regular config statement handler.  It returns true for a
+        // header and for every statement gated out by a non-selected section.
+        if (handle_config_section(paddingTrimmedLine, result)) continue;
 
         const delimiter = configDelimiter(mungedLine);
         const statementNameText = delimiter >= 0
@@ -5350,12 +6782,12 @@ export function parseNethackrc(rc, random = rn2) {
                 );
                 continue;
             }
-            chosenSection = null;
+            result.gc.config_section_chosen = null;
             const rawDelimiter = configDelimiter(paddingTrimmedLine);
-            chosenSection = chooseRandomPart(
-                paddingTrimmedLine.slice(rawDelimiter + 1), random,
+            result.gc.config_section_chosen = choose_random_part(
+                paddingTrimmedLine.slice(rawDelimiter + 1), ',', random,
             );
-            if (chosenSection == null)
+            if (result.gc.config_section_chosen == null)
                 configErrorAdd(result, 'No config section to choose');
             continue;
         }
@@ -5485,6 +6917,7 @@ export function parseNethackrc(rc, random = rn2) {
         applyDirectOption(result, statement.directName, normalizedValue);
     }
 
+    free_config_sections(result);
     return result;
 }
 
@@ -5879,19 +7312,32 @@ const known_handling = Object.freeze([
 // the two config-only choices at the end.  The value getter stops at "none",
 // the first zero mask, so neither config-only choice is ever printed.
 const paranoia = Object.freeze([
-    [PARANOID_CONFIRM, 'Confirm', 1, 'Paranoia', 2],
-    [PARANOID_QUIT, 'quit', 1, 'explore', 2],
-    [PARANOID_DIE, 'die', 1, 'death', 2],
-    [PARANOID_BONES, 'bones', 1, null, 0],
-    [PARANOID_HIT, 'attack', 1, 'hit', 1],
-    [PARANOID_BREAKWAND, 'wand-break', 2, 'break-wand', 2],
-    [PARANOID_EATING, 'eat', 1, 'continue', 4],
-    [PARANOID_WERECHANGE, 'Were-change', 2, null, 0],
-    [PARANOID_PRAY, 'pray', 1, null, 0],
-    [PARANOID_TRAP, 'trap', 1, 'move-trap', 1],
-    [PARANOID_AUTOALL, 'Autoall', 2, 'autoselect-all', 2],
-    [PARANOID_SWIM, 'swim', 1, null, 0],
-    [PARANOID_REMOVE, 'Remove', 1, 'Takeoff', 1],
+    [PARANOID_CONFIRM, 'Confirm', 1, 'Paranoia', 2,
+        'for "yes" confirmations, require "no" to reject'],
+    [PARANOID_QUIT, 'quit', 1, 'explore', 2,
+        'yes vs y to quit or to enter explore mode'],
+    [PARANOID_DIE, 'die', 1, 'death', 2,
+        'yes vs y to die (explore mode or debug mode)'],
+    [PARANOID_BONES, 'bones', 1, null, 0,
+        'yes vs y to save bones data when dying in debug mode'],
+    [PARANOID_HIT, 'attack', 1, 'hit', 1,
+        'yes vs y to attack a peaceful monster'],
+    [PARANOID_BREAKWAND, 'wand-break', 2, 'break-wand', 2,
+        'yes vs y to break a wand via (a)pply'],
+    [PARANOID_EATING, 'eat', 1, 'continue', 4,
+        'yes vs y to continue eating after first bite when satiated'],
+    [PARANOID_WERECHANGE, 'Were-change', 2, null, 0,
+        'yes vs y to change form when lycanthropy is controllable'],
+    [PARANOID_PRAY, 'pray', 1, null, 0,
+        'y required to pray (supersedes old "prayconfirm" option)'],
+    [PARANOID_TRAP, 'trap', 1, 'move-trap', 1,
+        'y required to enter known trap unless considered harmless'],
+    [PARANOID_AUTOALL, 'Autoall', 2, 'autoselect-all', 2,
+        "y required to pick filter choice 'A' for menustyle:Full"],
+    [PARANOID_SWIM, 'swim', 1, null, 0,
+        "'m' prefix necessary to deliberately walk into lava or water"],
+    [PARANOID_REMOVE, 'Remove', 1, 'Takeoff', 1,
+        'always pick from inventory for Remove and Takeoff'],
     [0, 'none', 4, null, 0],
     [0xFFFFFFFF, 'all', 3, null, 0],
 ]);
@@ -6053,8 +7499,13 @@ const OPTION_VALUE_HANDLERS = Object.freeze({
     windowtype: () => ACTIVE_WINDOWPROCS_NAME,
     playmode: (state) => (state.flags.debug ? 'debug'
         : state.flags.explore ? 'explore' : 'normal'),
-    // svp.plname; jsmain.js installs the same value as state.plname.
-    name: (state) => state.plname ?? '',
+    // svp.plname; jsmain.js installs the startup parser's `name` here.
+    name: (state, option) => optfn_name(
+        state, allopt.indexOf(option), GET_VAL, false, '', '',
+    ),
+    monsters: (state, option) => optfn_monsters(
+        state, allopt.indexOf(option), GET_VAL, false, '', '',
+    ),
     role: (state) => rolestring(
         state.flags.initrole, roles, (entry) => entry.name.m,
     ),
@@ -6066,6 +7517,9 @@ const OPTION_VALUE_HANDLERS = Object.freeze({
     ),
     alignment: (state) => rolestring(
         state.flags.initalign, aligns, (entry) => entry.adj,
+    ),
+    altkeyhandling: () => optfn_altkeyhandling(
+        null, GET_VAL, false, '', '',
     ),
     align_message: (state) => windowAlignmentValue(
         state.iflags.wc_align_message,
@@ -6104,28 +7558,32 @@ const OPTION_VALUE_HANDLERS = Object.freeze({
     crash_email: (state) => state.gc?.crash_email ?? '',
     crash_name: (state) => state.gc?.crash_name ?? '',
     crash_urlmax: (state) => `${state.gc?.crash_urlmax ?? -1}`,
+    DECgraphics: () => optfn_DECgraphics(
+        null, GET_VAL, false, '', '',
+    ),
     disclose: (state) => state.flags.end_disclose
         .map((setting, index) => `${setting}${disclosure_options[index]}`)
         .join(' '),
+    dungeon: () => optfn_dungeon(null, GET_VAL, false, '', ''),
+    effects: () => optfn_effects(null, GET_VAL, false, '', ''),
     fruit: (state) => state.svp.pl_fruit,
     glyph: () => to_be_done,
     hilite_status: (state) => (count_status_hilites(state)
         ? '(see "status highlight rules" below)' : none),
+    IBMgraphics: () => optfn_IBMgraphics(
+        null, GET_VAL, false, '', '',
+    ),
     // strNsubst(ca_buf, " ", "-", 0) replaces every space, so a two-word
     // color or attribute name becomes hyphenated.
-    menu_headings: (state) => color_attr_to_str(state.iflags.menu_headings)
-        .replaceAll(' ', '-'),
+    menu_headings: (state, option) => optfn_menu_headings(
+        state, allopt.indexOf(option), GET_VAL, false, '', '', null,
+    ),
     menu_objsyms: (state) => objsymvals[state.iflags.menuobjsyms],
     menuinvertmode: (state) => `${state.iflags.menuinvertmode}`,
     menustyle: (state) => menutype[state.flags.menu_style],
-    // WINDOWPORT(curses) rewrites two of the four settings; this build's
-    // interface is tty, which supports all four.
-    msg_window: (state) => {
-        const tmp = state.iflags.prevmsg_window;
-        return tmp === 's' ? 'single'
-            : tmp === 'c' ? 'combination'
-                : tmp === 'f' ? 'full' : 'reversed';
-    },
+    msg_window: (state, option) => optfn_msg_window(
+        state, allopt.indexOf(option), GET_VAL, false, '', '',
+    ),
     // The non-WIN32 get_val arm.  TTY does not advertise WC_MOUSE_SUPPORT,
     // so its option menus exclude this row before asking for the value.
     mouse_support: (state) => {
@@ -6144,37 +7602,17 @@ const OPTION_VALUE_HANDLERS = Object.freeze({
         ];
         return names[state.iflags.wc_map_mode] ?? 'default';
     },
-    perminv_mode: (state) => {
-        const mode = state.iflags.perminv_mode;
-        const entry = PERMINV_MODES[mode];
-        if (!entry) return '';
-        let description = entry.description;
-        if (mode !== INVOPT_NONE && !state.iflags.perm_invent) {
-            description = mode === INVOPT_IN_USE
-                ? description.replace(' currently', '')
-                : description.replace(' inventory', ' invent');
-            description += (mode & INV_SPARSE) !== 0
-                ? ' (Off)' : " ('perm_invent' is Off)";
-        }
-        return description;
-    },
+    perminv_mode: (state) => perminvModeDescription(state, true),
     windowcolors: (state) => windowColorsValue(state),
-    number_pad: (state) => {
-        const numpadmodes = [
-            '0=off', '1=on', '2=on, MSDOS compatible',
-            '3=on, phone-style layout',
-            '4=on, phone layout, MSDOS compatible',
-            '-1=off, y & z swapped',
-        ];
-        // gc.Cmd's three parsed fields, which js/options.js packs into
-        // iflags.num_pad_mode: bit 0 is pcHack_compat when the pad is on and
-        // swap_yz when it is off, and bit 1 is phone_layout.
-        const mode = state.iflags.num_pad_mode;
-        const indx = state.iflags.num_pad
-            ? ((mode & 2) ? ((mode & 1) ? 4 : 3) : ((mode & 1) ? 2 : 1))
-            : ((mode & 1) ? 5 : 0);
-        return numpadmodes[indx];
-    },
+    number_pad: (state, option) => optfn_number_pad(
+        state, allopt.indexOf(option), GET_VAL, false, '', '',
+    ),
+    objects: (state, option) => optfn_objects(
+        state, allopt.indexOf(option), GET_VAL, false, '', '',
+    ),
+    palette: (state, option) => optfn_palette(
+        state, allopt.indexOf(option), GET_VAL, false, '', '',
+    ),
     packorder: (state) => oc_to_str(state.flags.inv_order),
     paranoid_confirmation: (state) => {
         const bits = state.flags.paranoia_bits;
@@ -6295,6 +7733,12 @@ const OPTION_VALUE_HANDLERS = Object.freeze({
     o_message_types: (state) => n_currently_set(msgtype_count(state)),
     o_status_cond: (state) => n_currently_set(count_cond(state)),
     o_status_hilites: (state) => n_currently_set(count_status_hilites(state)),
+    ...Object.fromEntries(MENU_COMMAND_OPTIONS.map(({ name }) => [
+        name,
+        (state, option) => MENU_OPTION_FUNCTIONS[name](
+            state, allopt.indexOf(option), GET_VAL, false, '', '', null,
+        ),
+    ])),
 });
 
 // C ref: optfn_symset() and optfn_roguesymset(), which differ only in the set
@@ -6495,6 +7939,7 @@ export function dosetMenuItems(state, helpers, skiphelp) {
 // other two stop with a refusal below.  parseoptions() treats it as every
 // other error anyway.  The configuration-file parser above does port the
 // negation arm at 5220, in optfn_boolean_returns_before_setting().
+const optn_silenterr = -1;
 const optn_err = 0;
 const optn_ok = 1;
 
@@ -6627,18 +8072,11 @@ function adjust_menu_promptstyle(state) {
     state.go.opt_need_promptstyle = false;
 }
 
-// C ref: win/tty/wintty.c tty_preference_update().  Its one compiled arm tests
-// for "statuslines"; genl_preference_update() below it returns at once and the
-// TTY_PERM_INVENT block is not compiled, so every other preference is a no-op.
+// C ref: options.c's caller of win/tty/wintty.c tty_preference_update(). Keep
+// this adapter in options.c's source-shaped flow while the window-port
+// implementation remains owned by js/wintty.js.
 function preference_update(state, pref) {
-    if (pref === 'statuslines') {
-        // Unreachable from either menu: 'statuslines' is a CompOpt with no
-        // handler, so applyOptionMenuPick() refuses at its getlin() arm before
-        // reaching this call.
-        throw new UnsupportedOptionMenuError(
-            'tty_preference_update("statuslines")',
-        );
-    }
+    return tty_preference_update(pref, state);
 }
 
 // C ref: options.c optfn_boolean()'s `*(allopt[optidx].addr) = !negated`
@@ -6733,10 +8171,11 @@ async function optfn_boolean(state, optidx, negated, opts, helpers) {
         );
     case 'perm_invent':
         // options.c:5267-5270 asks can_set_perm_invent() whether the
-        // interface can show a persistent inventory window.  The port's
-        // TTY_WINCAP carries no WC_PERM_INVENT, so unsupportedWindowOption()
-        // keeps 'perm_invent' out of the menu entirely.
-        throw new UnsupportedOptionMenuError('can_set_perm_invent()');
+        // interface can show a persistent inventory window.
+        if (!negated && !state.go.opt_initial
+            && !can_set_perm_invent(state))
+            return optn_silenterr;
+        break;
     default:
         break;
     }
@@ -6948,6 +8387,26 @@ async function optfn_pickup_types(state, optidx, negated, opts, helpers) {
     return parsed.badopt ? optn_err : optn_ok;
 }
 
+function setMenuOptionFromParse(state, optidx, negated, opts, helpers) {
+    const name = allopt[optidx].name;
+    const optfn = MENU_OPTION_FUNCTIONS[name];
+    if (!optfn) throw new UnsupportedOptionMenuError(`optfn_${name}()`);
+    return optfn(
+        state,
+        optidx,
+        DO_SET,
+        negated,
+        opts,
+        string_for_opt(opts, true, state),
+        helpers,
+    );
+}
+
+const MENU_OPTION_SET_HANDLERS = Object.freeze(Object.fromEntries([
+    ...MENU_COMMAND_OPTIONS.map(({ name }) => name),
+    'menu_headings',
+].map((name) => [name, setMenuOptionFromParse])));
+
 // C ref: options.c parseoptions() (489-681)'s handler table, C's
 // allopt[optidx].optfn(optidx, do_set, ...).  The key is that function's own
 // name, as OPTION_VALUE_HANDLERS' keys are.
@@ -6956,7 +8415,26 @@ const OPTION_SET_HANDLERS = Object.freeze({
     cond_: (state, _optidx, negated, opts) => pfxfn_cond_(
         state, negated, opts,
     ),
+    monsters: (state, optidx, negated, opts) => optfn_monsters(
+        state, optidx, DO_SET, negated, opts,
+    ),
+    msg_window: (state, optidx, negated, opts) => optfn_msg_window(
+        state, optidx, DO_SET, negated, opts,
+    ),
+    name: (state, optidx, negated, opts) => optfn_name(
+        state, optidx, DO_SET, negated, opts,
+    ),
+    number_pad: (state, optidx, negated, opts, helpers) => optfn_number_pad(
+        state, optidx, DO_SET, negated, opts, undefined, helpers,
+    ),
+    objects: (state, optidx, negated, opts) => optfn_objects(
+        state, optidx, DO_SET, negated, opts,
+    ),
+    palette: (state, optidx, negated, opts) => optfn_palette(
+        state, optidx, DO_SET, negated, opts,
+    ),
     pickup_types: optfn_pickup_types,
+    ...MENU_OPTION_SET_HANDLERS,
 });
 
 // C ref: options.c parseoptions() (489-681), the path doset()'s pick loop
@@ -7064,7 +8542,33 @@ async function handler_pickup_types(state, helpers) {
 // interactive editor doset()'s pick loop opens for a compound option.  Keyed
 // on the handler's own option, as OPTION_SET_HANDLERS is.
 const OPTION_HANDLERS = Object.freeze({
+    align_message: (state, helpers) => handler_align_misc(
+        state, allopt.findIndex(({ name }) => name === 'align_message'),
+        helpers,
+    ),
+    align_status: (state, helpers) => handler_align_misc(
+        state, allopt.findIndex(({ name }) => name === 'align_status'),
+        helpers,
+    ),
+    autounlock: (state, helpers) => handler_autounlock(
+        state, allopt.findIndex(({ name }) => name === 'autounlock'), helpers,
+    ),
+    disclose: handler_disclose,
+    menustyle: (state, helpers) => handler_menustyle(state, helpers),
+    menu_objsyms: handler_menu_objsyms,
+    msg_window: (state, helpers) => optfn_msg_window(
+        state, allopt.findIndex(({ name }) => name === 'msg_window'),
+        DO_HANDLER, false, '', '', helpers,
+    ),
+    number_pad: (state, helpers) => optfn_number_pad(
+        state, allopt.findIndex(({ name }) => name === 'number_pad'),
+        DO_HANDLER, false, '', '', helpers,
+    ),
+    paranoid_confirmation: handler_paranoid_confirmation,
+    perminv_mode: handler_perminv_mode,
+    pickup_burden: handler_pickup_burden,
     pickup_types: handler_pickup_types,
+    menu_headings: (state, helpers) => handler_menu_headings(state, helpers),
 });
 
 // C ref: options.c reset_needed_visuals() (8977-9010), which doset() runs once

@@ -312,8 +312,8 @@ export async function rndcurse() {
                 continue;
             }
 
-            if (otmp.blessed) unbless(otmp);
-            else curse(otmp);
+            if (otmp.blessed) await unbless(otmp);
+            else await curse(otmp);
         }
         // update_inventory deferred
     }

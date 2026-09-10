@@ -65,7 +65,8 @@ import {
     Is_medusa_level,
     Is_baal_level,
     RLOC_ERR,
-    DUST, MARK as ENGRAVE_MARK, M_AP_OBJECT, M_AP_FURNITURE, ENGRAVE,
+    DUST, MARK as ENGRAVE_MARK, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, M_AP_NOTHING, ENGRAVE,
+    LS_MONSTER, ismnum,
     S_dnstair,
     MM_ASLEEP, MM_NOCOUNTBIRTH, MM_NOMSG, IS_TREE, G_GENOD,
     G_EXTINCT, MAXMONNO,
@@ -103,6 +104,7 @@ import {
 import {
     makemon, mkclass, MM_NOGRP, set_mimic_sym, mpickobj, add_to_minv, newcham,
     mongets, set_malign, rndmonnum,
+    select_newcham_form, validvamp, mgender_from_permonst,
 } from './makemon.js';
 import { mk_mplayer } from './mplayer.js';
 import { can_saddle, put_saddle_on_mon } from './steed.js';
@@ -121,8 +123,9 @@ import {
     passes_walls, noncorporeal, likes_fire,
     mon_learns_traps,
     resists_ston, poly_when_stoned,
+    is_vampshifter,
 } from './monsters.js';
-import { name_to_monplus, name_to_mon } from './mondata.js';
+import { name_to_monplus, name_to_mon, set_mon_data } from './mondata.js';
 import { fruit_from_name } from './objnam.js';
 import { christen_monst, christen_orc, rndorcname, new_oname, oname, lookup_novel } from './do_name.js';
 import { makeroguerooms, makerogueghost } from './extralev.js';
@@ -138,7 +141,9 @@ import {
     clear_heros_fault,
 } from './region.js';
 import { Norep, newsym, impossible } from './display.js';
-import { block_point, unblock_point } from './vision.js';
+import { block_point, unblock_point, does_block } from './vision.js';
+import { emits_light, new_light_source, del_light_source } from './light.js';
+import { monst_to_any } from './hack.js';
 import { begin_burn } from './timeout.js';
 import { nexttodoor } from './fountain.js';
 import { ndemon } from './minion.js';
@@ -229,6 +234,9 @@ const PM_ELECTRIC_EEL = monsterNames.indexOf('PM_ELECTRIC_EEL');
 const PM_SMALL_MIMIC = monsterNames.indexOf('PM_SMALL_MIMIC');
 const PM_LARGE_MIMIC = monsterNames.indexOf('PM_LARGE_MIMIC');
 const PM_GIANT_MIMIC = monsterNames.indexOf('PM_GIANT_MIMIC');
+const PM_WIZARD_OF_YENDOR = monsterNames.indexOf('PM_WIZARD_OF_YENDOR');
+const PM_STALKER = monsterNames.indexOf('PM_STALKER');
+const PM_BLACK_LIGHT = monsterNames.indexOf('PM_BLACK_LIGHT');
 const PM_BUGBEAR = monsterNames.indexOf('PM_BUGBEAR');
 const PM_HOBGOBLIN = monsterNames.indexOf('PM_HOBGOBLIN');
 const PM_KNIGHT = monsterNames.indexOf('PM_KNIGHT');
@@ -18680,10 +18688,14 @@ function sp_amask_to_amask(sp_amask) {
 /**
  * C ref: sp_lev.c create_monster :1924–2187.
  * Spawn: sp_amask != RANDOM → mk_roamer; else makemon(mm_flags).
- * Post: female always; peaceful > BOOL_RANDOM then set_malign (:2125–2129).
- * Named omit: mk_mplayer role-id; appear_as; christen; invent DEFAULT/CUSTOM;
- * cancelled/revived/avenge/stun/conf/invis/blind/para/flee; waiting
- * vampshifted newcham; m_lev_adj; G_UNIQ extinct return; G_GONE → random.
+ * Post: appear_as shapeshifter fixup (:2002–2123, M_AP_MONSTER arm live);
+ * female always; peaceful > BOOL_RANDOM then set_malign (:2125–2129).
+ * Named omit: mk_mplayer role-id; appear_as FURNITURE/OBJECT generic arms
+ * (live levels use hand-rolled paths: Rog-strt ter:staircase, soko/juiblex
+ * obj:boulder/fountain, minend obj:stones, themerms obj:chest); christen;
+ * invent DEFAULT/CUSTOM; cancelled/revived/avenge/stun/conf/invis/blind/
+ * para/flee; waiting vampshifted newcham; m_lev_adj; G_UNIQ extinct return;
+ * G_GONE → random.
  */
 export function splev_create_monster(id_or_class, peaceful, opts) {
     const sp_amask = opts?.sp_amask ?? AM_SPLEV_RANDOM;
@@ -18691,6 +18703,11 @@ export function splev_create_monster(id_or_class, peaceful, opts) {
     const croom = opts?.croom ?? null;
     const rx = opts?.rx ?? -1;
     const ry = opts?.ry ?? -1;
+    // C: m->appear (M_AP_* int, cf. lsp_monster appear_as "obj:/mon:/ter:"
+    // prefix parse :3326–3338) + m->appear_as.str. No caller passes them
+    // yet — the arm below is live but dormant until one does.
+    const appear = opts?.appear ?? 0;
+    const appear_as = (typeof opts?.appear_as === 'string') ? opts.appear_as : '';
     let pm = null;
     let female = 0;
     let mid = NON_PM;
@@ -18739,6 +18756,10 @@ export function splev_create_monster(id_or_class, peaceful, opts) {
     // C: always mtmp->female = m->female after spawn (D-0873). Named id →
     // find_montype gender; des.monster() / class letter → female stays 0.
     if (mtmp) {
+        // C sp_lev.c:2002–2123 appear_as fixup — runs BEFORE the :2125
+        // female clobber below, so the arm's mgender/gender draws keep C
+        // RNG order (the female assignment here overwrites them, like C).
+        splev_create_monster_appear_fixup(mtmp, appear, appear_as);
         mtmp.female = (typeof id_or_class === 'string' && id_or_class.length > 1)
             ? female
             : 0;
@@ -18752,6 +18773,113 @@ export function splev_create_monster(id_or_class, peaceful, opts) {
             mtmp.mstrategy = (mtmp.mstrategy || 0) | STRAT_WAITFORU;
     }
     return mtmp;
+}
+
+/**
+ * C ref: sp_lev.c create_monster :2002–2123 appear_as fixup — the M_AP_MONSTER
+ * arm (second C caller of `select_newcham_form`, :2067). Sync: the wizard
+ * mon_polycontrol prompt inside `select_newcham_form` returns a Promise that
+ * sync level-gen cannot await (cf. newcham D-1648/D-2245) — a thenable falls
+ * to NON_PM, i.e. the C ESC-keeps-form path is never taken here. FURNITURE /
+ * OBJECT generic arms stay named-deferred (no live JS defsyms/OBJ_NAME table;
+ * live levels use the hand-rolled paths cited on `splev_create_monster`).
+ * Runs before the :2125 female clobber, like C.
+ */
+function splev_create_monster_appear_fixup(mtmp, appear, appear_as) {
+    if (!appear_as) return;
+    // C :2002–2006 gate: mimic, or cham-valid shifter with a MONSTER appear,
+    // and no Protection_from_shape_changers.
+    const u = game.u || {};
+    const prot = !!((u.HProtection_from_shape_changers | 0)
+        || (u.EProtection_from_shape_changers | 0)
+        || u.Protection_from_shape_changers);
+    if (!(mtmp.data?.mlet === 'S_MIMIC'
+        || (ismnum(mtmp.cham | 0) && (appear | 0) === M_AP_MONSTER))
+        || prot) {
+        return;
+    }
+    if ((appear | 0) === M_AP_MONSTER) {
+        // C :2063–2069 — "random" (strcmpi) re-rolls via select_newcham_form,
+        // else a named monster with its gendered-name form.
+        const gbox = { gender: NEUTRAL };
+        let mndx;
+        if (appear_as.toLowerCase() === 'random') {
+            const sel = select_newcham_form(mtmp);
+            mndx = (sel instanceof Promise) ? NON_PM : sel;
+        } else {
+            mndx = name_to_mon(appear_as, gbox);
+        }
+        // C :2071 — vampshifter choices gate through validvamp(S_HUMAN).
+        const vbox = { mndx };
+        if (mndx === NON_PM
+            || (is_vampshifter(mtmp) && !validvamp(mtmp, vbox, 'S_HUMAN'))) {
+            // C :2073–2081 invalid-appearance impossible (same index
+            // comparison as below — `mons()` is fresh per call).
+            const kind = mtmp.data?.mlet === 'S_MIMIC' ? 'mimic appearance'
+                : (mtmp.data?.mndx | 0) === PM_WIZARD_OF_YENDOR ? 'Wizard appearance'
+                : is_vampshifter(mtmp) ? 'vampire shape' : 'chameleon shape';
+            impossible('create_monster: invalid %s ("%s")', kind, appear_as);
+        } else {
+            mndx = vbox.mndx;
+            // C :2082 compares `&mons[mndx] == mtmp->data` — pointer
+            // identity into the static C array. JS `mons()` builds a fresh
+            // object per call, so compare indices, not references.
+            if ((mtmp.data?.mndx | 0) === mndx) {
+                // C :2082–2085 — explicitly forcing a mimic to appear as
+                // itself: no disguise.
+                mtmp.m_ap_type = M_AP_NOTHING;
+                mtmp.mappearance = 0;
+            } else if (mtmp.data?.mlet === 'S_MIMIC'
+                || (mtmp.data?.mndx | 0) === PM_WIZARD_OF_YENDOR) {
+                // C :2086–2091 — mimic / Wizard clone keeps its body and
+                // wears the appearance.
+                mtmp.m_ap_type = M_AP_MONSTER;
+                mtmp.mappearance = mndx;
+            } else {
+                // C :2092–2112 — chameleon or vampire takes the new form.
+                const mdat = mons(mndx);
+                const olddata = mtmp.data;
+                mgender_from_permonst(mtmp, mdat);
+                if (gbox.gender !== NEUTRAL) mtmp.female = gbox.gender;
+                set_mon_data(mtmp, mdat);
+                // C :2100–2108 light-source swap on changed emission.
+                if (emits_light(olddata) !== emits_light(mtmp.data)) {
+                    if (emits_light(olddata)) {
+                        del_light_source(LS_MONSTER, monst_to_any(mtmp));
+                    }
+                    if (emits_light(mtmp.data)) {
+                        new_light_source(mtmp.mx, mtmp.my,
+                            emits_light(mtmp.data), LS_MONSTER,
+                            monst_to_any(mtmp));
+                    }
+                }
+                // C :2110–2111 pm_invisible (mondata.h macro: stalker /
+                // black light, same idiom as newcham in makemon.js).
+                const old_invis = (olddata?.mndx | 0) === PM_STALKER
+                    || (olddata?.mndx | 0) === PM_BLACK_LIGHT;
+                const new_invis = (mdat?.mndx | 0) === PM_STALKER
+                    || (mdat?.mndx | 0) === PM_BLACK_LIGHT;
+                if (!mtmp.perminvis || old_invis) {
+                    mtmp.perminvis = new_invis ? 1 : 0;
+                }
+            }
+        }
+    } else if ((appear | 0) === M_AP_NOTHING) {
+        // C :2010–2014 — appearance string but no type.
+        impossible('create_monster: mon has an appearance, "%s", but no type',
+            appear_as);
+    } else if ((appear | 0) !== M_AP_FURNITURE
+        && (appear | 0) !== M_AP_OBJECT) {
+        // C :2115–2119 — default: unimplemented appear type.
+        impossible('create_monster: unimplemented mon appear type [%d,"%s"]',
+            appear, appear_as);
+    }
+    // C :2024 FURNITURE / :2029 OBJECT generic arms stay named-deferred (see
+    // `splev_create_monster` doc) — neither rewrites the mon here.
+    // C :2121–2122 — re-block a square the disguise now closes.
+    if (does_block(mtmp.mx, mtmp.my, game.level?.at?.(mtmp.mx, mtmp.my))) {
+        block_point(mtmp.mx, mtmp.my);
+    }
 }
 
 // C ref: sp_lev.c — static container_obj[MAX_CONTAINMENT] / container_idx

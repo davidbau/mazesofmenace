@@ -58,6 +58,7 @@ export {
     PM_ARCHEOLOGIST,
     PM_WIZARD,
     PM_MONK,
+    PM_LONG_WORM,
     monsterNames,
     pmnames,
     mcolors,

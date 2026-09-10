@@ -79,7 +79,7 @@
 // costly_alteration; Punished/unpunish; buried_ball_to_freedom; steed saddle
 // Yobjnam2 glow; update_inventory; enchant-weapon confused erodeproof
 // Yobjnam2/hcolor polish; twoweapon secondary; shop costly_alteration on
-// proof strip; enchant-armor adj_abon / maybe_adjust_light;
+// proof strip; enchant-armor adj_abon (maybe_adjust_light wired D-2244);
 // mail readmail (mail.js D-1958); create_particular class-letter / * random /
 // tame|peaceful|hostile|saddled|sleeping|invisible|hidden prefixes /
 // create_particular → makemon_appear_msg (makemon in-body still deferred;
@@ -96,7 +96,7 @@ import {
     ARMOR_CLASS, BALL_CLASS, CHAIN_CLASS, WAND_CLASS, RING_CLASS, TOOL_CLASS,
     NODIR, objectNames,
 } from './objects.js';
-import { weight, uncurse, curse, bless, blessorcurse, mkobj, mksobj, place_object, stackobj, delobj, oc_merge_of } from './mkobj.js';
+import { weight, uncurse, curse, bless, blessorcurse, maybe_adjust_light, mkobj, mksobj, place_object, stackobj, delobj, oc_merge_of } from './mkobj.js';
 import { A_WIS, A_STR, A_CON, exercise, adjalign } from './attrib.js';
 import {
     makeknown, getobj, identify_pack, near_capacity, update_inventory,
@@ -162,7 +162,7 @@ import { ART_SUNSWORD } from './generated/artifacts_data.js';
 import { readmail } from './mail.js';
 import { has_ceiling, avoid_ceiling } from './dungeon.js';
 import { explode } from './explode.js';
-import { burn_away_slime } from './timeout.js';
+import { burn_away_slime, artifact_light, arti_light_radius } from './timeout.js';
 
 const SCR_MAGIC_MAPPING = objectNames.indexOf('SCR_MAGIC_MAPPING');
 const SPE_MAGIC_MAPPING = objectNames.indexOf('SPE_MAGIC_MAPPING');
@@ -542,10 +542,10 @@ async function seffect_remove_curse(sobj) {
                 // shop POT_WATER unpaid costly_alteration / alter_cost deferred
                 void POT_WATER;
                 if (confused) {
-                    blessorcurse(obj, 2);
+                    await blessorcurse(obj, 2);
                     obj.bknown = 0;
                 } else if (obj.cursed) {
-                    uncurse(obj);
+                    await uncurse(obj);
                     if (obj.bknown && otyp === SCR_REMOVE_CURSE) {
                         learnscrolltyp(SCR_REMOVE_CURSE);
                     }
@@ -1361,7 +1361,7 @@ async function seffect_scare_monster(sobj) {
     }
 }
 
-/** C read.c seffect_enchant_armor `:1115–1290`. Omits: adj_abon, maybe_adjust_light. */
+/** C read.c seffect_enchant_armor `:1115–1290`. Omits: adj_abon. Dragon-scale remail maybe_adjust_light wired (D-2244). */
 async function seffect_enchant_armor(sobj) {
     const sblessed = !!sobj.blessed;
     const scursed = !!sobj.cursed;
@@ -1437,6 +1437,11 @@ async function seffect_enchant_armor(sobj) {
     if (s > 11) s = 11;
     if (scursed) s = -s;
     if (s >= 0 && otyp >= GRAY_DRAGON_SCALES && otyp <= YELLOW_DRAGON_SCALES) {
+        // C read.c `:1226–1227` — capture the scales light before the otyp
+        // flip (scales -> mail is a second radius increase with its own
+        // message, so bless/uncurse below must not adjust).
+        const was_lit = otmp.lamplit ? 1 : 0;
+        const old_light = artifact_light(otmp) ? arti_light_radius(otmp) : 0;
         await pline(`${Yname2(otmp)} merges and hardens!`);
         setworn(null, W_ARM);
         otmp.otyp = otyp + (GRAY_DRAGON_SCALE_MAIL - GRAY_DRAGON_SCALES);
@@ -1444,21 +1449,22 @@ async function seffect_enchant_armor(sobj) {
         if (sblessed) {
             otmp.spe = (otmp.spe | 0) + 1;
             cap_spe(otmp);
-            if (!otmp.blessed) bless(otmp);
+            if (!otmp.blessed) await bless(otmp);
         } else if (otmp.cursed) {
-            uncurse(otmp);
+            await uncurse(otmp);
         }
         otmp.known = 1;
         setworn(otmp, W_ARM);
         if (otmp.unpaid) alter_cost(otmp, 0);
-        // maybe_adjust_light deferred (light radius)
+        otmp.lamplit = was_lit;
+        if (old_light) await maybe_adjust_light(otmp, old_light);
         return sobj;
     }
     await pline(`${Yname2(otmp)} ${s === 0 ? 'violently ' : ''}${otense(otmp, Blind ? 'vibrate' : 'glow')}${(!Blind && !same_color) ? ' ' : ''}${(Blind || same_color) ? '' : hcolor(scursed ? NH_BLACK : NH_SILVER)} for a ${(s * s > 1) ? 'while' : 'moment'}.`);
     if (s < 0) await costly_alteration(otmp, COST_DECHNT);
-    if (scursed && !otmp.cursed) curse(otmp);
-    else if (sblessed && !otmp.blessed) bless(otmp);
-    else if (!scursed && otmp.cursed) uncurse(otmp);
+    if (scursed && !otmp.cursed) await curse(otmp);
+    else if (sblessed && !otmp.blessed) await bless(otmp);
+    else if (!scursed && otmp.cursed) await uncurse(otmp);
     if (s) {
         const oldspe = otmp.spe | 0;
         otmp.spe = oldspe + s;

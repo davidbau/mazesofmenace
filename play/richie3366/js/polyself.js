@@ -31,7 +31,7 @@ import { dryup } from './fountain.js';
 import { aggravate } from './wizard.js';
 import { wakeup, egg_type_from_parent } from './mon.js';
 import { Punished } from './pray.js';
-import { name_to_mon, set_mon_data } from './mondata.js';
+import { name_to_mon, name_to_monclass, set_mon_data } from './mondata.js';
 import {
     exercise, acurr, A_STR, A_CON, A_WIS, adjabil, redist_attr, newhp,
 } from './attrib.js';
@@ -107,7 +107,7 @@ import {
     MR_ACID,
     MR_STONE,
 } from './monsters.js';
-import { golemhp, is_home_elemental } from './makemon.js';
+import { golemhp, is_home_elemental, mkclass_poly } from './makemon.js';
 import {
     POLY_CONTROLLED,
     POLY_LOW_CTRL,
@@ -185,11 +185,36 @@ import {
 import { objectNames, is_sword } from './objects.js';
 
 const GRAY_DRAGON_SCALES = objectNames.indexOf('GRAY_DRAGON_SCALES');
+const SILVER_DRAGON_SCALES = objectNames.indexOf('SILVER_DRAGON_SCALES');
+const GOLD_DRAGON_SCALES = objectNames.indexOf('GOLD_DRAGON_SCALES');
+const RED_DRAGON_SCALES = objectNames.indexOf('RED_DRAGON_SCALES');
+const ORANGE_DRAGON_SCALES = objectNames.indexOf('ORANGE_DRAGON_SCALES');
+const WHITE_DRAGON_SCALES = objectNames.indexOf('WHITE_DRAGON_SCALES');
+const BLACK_DRAGON_SCALES = objectNames.indexOf('BLACK_DRAGON_SCALES');
+const BLUE_DRAGON_SCALES = objectNames.indexOf('BLUE_DRAGON_SCALES');
+const GREEN_DRAGON_SCALES = objectNames.indexOf('GREEN_DRAGON_SCALES');
 const YELLOW_DRAGON_SCALES = objectNames.indexOf('YELLOW_DRAGON_SCALES');
 const GRAY_DRAGON_SCALE_MAIL = objectNames.indexOf('GRAY_DRAGON_SCALE_MAIL');
+const SILVER_DRAGON_SCALE_MAIL = objectNames.indexOf('SILVER_DRAGON_SCALE_MAIL');
+const GOLD_DRAGON_SCALE_MAIL = objectNames.indexOf('GOLD_DRAGON_SCALE_MAIL');
+const RED_DRAGON_SCALE_MAIL = objectNames.indexOf('RED_DRAGON_SCALE_MAIL');
+const ORANGE_DRAGON_SCALE_MAIL = objectNames.indexOf('ORANGE_DRAGON_SCALE_MAIL');
+const WHITE_DRAGON_SCALE_MAIL = objectNames.indexOf('WHITE_DRAGON_SCALE_MAIL');
+const BLACK_DRAGON_SCALE_MAIL = objectNames.indexOf('BLACK_DRAGON_SCALE_MAIL');
+const BLUE_DRAGON_SCALE_MAIL = objectNames.indexOf('BLUE_DRAGON_SCALE_MAIL');
+const GREEN_DRAGON_SCALE_MAIL = objectNames.indexOf('GREEN_DRAGON_SCALE_MAIL');
 const YELLOW_DRAGON_SCALE_MAIL = objectNames.indexOf('YELLOW_DRAGON_SCALE_MAIL');
 
 const PM_GRAY_DRAGON = monsterNames.indexOf('PM_GRAY_DRAGON');
+const PM_SILVER_DRAGON = monsterNames.indexOf('PM_SILVER_DRAGON');
+const PM_GOLD_DRAGON = monsterNames.indexOf('PM_GOLD_DRAGON');
+const PM_RED_DRAGON = monsterNames.indexOf('PM_RED_DRAGON');
+const PM_ORANGE_DRAGON = monsterNames.indexOf('PM_ORANGE_DRAGON');
+const PM_WHITE_DRAGON = monsterNames.indexOf('PM_WHITE_DRAGON');
+const PM_BLACK_DRAGON = monsterNames.indexOf('PM_BLACK_DRAGON');
+const PM_BLUE_DRAGON = monsterNames.indexOf('PM_BLUE_DRAGON');
+const PM_GREEN_DRAGON = monsterNames.indexOf('PM_GREEN_DRAGON');
+const PM_YELLOW_DRAGON = monsterNames.indexOf('PM_YELLOW_DRAGON');
 const PM_DEATH = monsterNames.indexOf('PM_DEATH');
 const PM_URUK_HAI = monsterNames.indexOf('PM_URUK_HAI');
 const PM_ORC_CAPTAIN = monsterNames.indexOf('PM_ORC_CAPTAIN');
@@ -266,6 +291,51 @@ function Is_dragon_armor(obj) {
     const t = obj.otyp | 0;
     return (t >= GRAY_DRAGON_SCALES && t <= YELLOW_DRAGON_SCALES)
         || (t >= GRAY_DRAGON_SCALE_MAIL && t <= YELLOW_DRAGON_SCALE_MAIL);
+}
+
+/**
+ * C ref: polyself.c armor_to_dragon `:2191–2225` (C staticfn: same-file
+ * callers only — module-local here). Worn dragon armor otyp → adult dragon
+ * mndx, else NON_PM. SHIMMERING pair omitted: C keeps it under
+ * `#if 0 // DEFERRED`.
+ * @param {number} atyp worn-armor otyp
+ * @returns {number} mndx
+ */
+function armor_to_dragon(atyp) {
+    switch (atyp | 0) {
+    case GRAY_DRAGON_SCALE_MAIL:
+    case GRAY_DRAGON_SCALES:
+        return PM_GRAY_DRAGON;
+    case SILVER_DRAGON_SCALE_MAIL:
+    case SILVER_DRAGON_SCALES:
+        return PM_SILVER_DRAGON;
+    case GOLD_DRAGON_SCALE_MAIL:
+    case GOLD_DRAGON_SCALES:
+        return PM_GOLD_DRAGON;
+    case RED_DRAGON_SCALE_MAIL:
+    case RED_DRAGON_SCALES:
+        return PM_RED_DRAGON;
+    case ORANGE_DRAGON_SCALE_MAIL:
+    case ORANGE_DRAGON_SCALES:
+        return PM_ORANGE_DRAGON;
+    case WHITE_DRAGON_SCALE_MAIL:
+    case WHITE_DRAGON_SCALES:
+        return PM_WHITE_DRAGON;
+    case BLACK_DRAGON_SCALE_MAIL:
+    case BLACK_DRAGON_SCALES:
+        return PM_BLACK_DRAGON;
+    case BLUE_DRAGON_SCALE_MAIL:
+    case BLUE_DRAGON_SCALES:
+        return PM_BLUE_DRAGON;
+    case GREEN_DRAGON_SCALE_MAIL:
+    case GREEN_DRAGON_SCALES:
+        return PM_GREEN_DRAGON;
+    case YELLOW_DRAGON_SCALE_MAIL:
+    case YELLOW_DRAGON_SCALES:
+        return PM_YELLOW_DRAGON;
+    default:
+        return NON_PM;
+    }
 }
 
 /** C ref: youprop.h Polymorph_control — H || E via flat + uprops. */
@@ -1271,8 +1341,11 @@ export async function polymon(mntmp) {
  * controllable_poly getlin incl. non-force ESC-to-random (D-2177);
  * !polyok the()/bare/an() article (D-2063); POLY_MONSTER isvamp
  * do_vampyr shape change (D-2063).
+ * Live: by_class class-word pick (D-2248: module-local `armor_to_dragon`
+ * for worn-dragon S_DRAGON, else `mkclass_poly`; `rn2(3)` retry);
+ * class-miss `You can't polymorph into any of those` fork.
  * Named omissions: were/dragon-merge/POLY_REVERT; placeholder orc/elf/giant
- * substitutes; mkclass_poly; post-loop isvamp/draconian goto;
+ * substitutes; post-loop isvamp/draconian goto;
  * wizard rehumanize own-role; light-source bookkeeping.
  * @param {number} [psflags=POLY_NOFLAGS]
  */
@@ -1346,9 +1419,47 @@ export async function polyself(psflags = 0) {
                 continue;
             }
             mntmp = name_to_mon(buf);
+            // C polyself.c:536 — `class` is 0 unless the by_class arm below
+            // resolves a class word (name_to_monclass returns 0 on no match).
+            let cls = 0;
             if (mntmp < LOW_PM) {
-                await pline("I've never heard of such monsters.");
-            } else if (is_placeholder(mons(mntmp))
+                // C polyself.c:537-542 by_class: a class word (single symbol
+                // or explain text) resolves to a candidate type — a specific
+                // match rides as-is, otherwise a worn-dragon draconian merges
+                // with their armor and any other class picks via mkclass_poly
+                // (no polyok() check — the caller accepts choices polyok()
+                // would reject). C :598-604: a !polyok() class pick usually
+                // re-picks (goto by_class) — the for(;;) below; only the
+                // exhausted fall-through reaches the message.
+                for (;;) {
+                    const box = { mndx: NON_PM };
+                    cls = name_to_monclass(buf, box);
+                    mntmp = box.mndx | 0;
+                    if (cls && mntmp === NON_PM) {
+                        mntmp = (draconian && cls === 'S_DRAGON')
+                            ? armor_to_dragon(u.uarm?.otyp | 0)
+                            : mkclass_poly(cls);
+                    }
+                    // Shared-accept preview (same arms as the checks below):
+                    // nothing picked, a specific-type match, a polyok() pick,
+                    // or the human/own-race/own-role pass all fall through.
+                    if (mntmp < LOW_PM || !cls || polyok(mons(mntmp))
+                        || mntmp === PM_HUMAN
+                        || (your_race(mons(mntmp)) && ((mons(mntmp)?.geno | 0) & G_UNIQ) === 0)
+                        || mntmp === (game.urole?.mnum | 0)) break;
+                    // C :599-604 — `if (rn2(3) || --tryct > 0) goto by_class`
+                    // short-circuit kept: a nonzero rn2(3) re-picks without
+                    // consuming a try.
+                    if (rn2(3) || --tryct > 0) continue;
+                    ++tryct;
+                    break;
+                }
+            }
+            if (mntmp < LOW_PM) {
+                // C :566-569 — bare-name miss vs class with no live pick.
+                if (!cls) await pline("I've never heard of such monsters.");
+                else await pline("You can't polymorph into any of those.");
+            } else if (!cls && is_placeholder(mons(mntmp))
                 && mntmp !== PM_HUMAN
                 /* your_race placeholder arm deferred */) {
                 await pline(`You can't polymorph into ${an(pmname(mntmp, FEMALE))}.`);

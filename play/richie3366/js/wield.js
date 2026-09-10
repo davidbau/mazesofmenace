@@ -1177,7 +1177,7 @@ export async function chwepon(otmp, amount) {
             } else {
                 buf = `Your right ${body_part_latebound(HAND)} tingles.`;
             }
-            uncurse(uwep);
+            await uncurse(uwep);
             update_inventory();
         } else {
             buf = `Your ${makeplural(body_part_latebound(HAND))} ${amount >= 0 ? 'twitch' : 'itch'}.`;
@@ -1200,7 +1200,7 @@ export async function chwepon(otmp, amount) {
             uwep.quan = 1;
             uwep.owt = weight(uwep);
         }
-        if (uwep.cursed) uncurse(uwep);
+        if (uwep.cursed) await uncurse(uwep);
         if (uwep.unpaid) alter_cost(uwep, 0);
         if (otyp !== STRANGE_OBJECT) makeknown(otyp);
         if (multiple) await encumber_msg();
@@ -1264,7 +1264,7 @@ export async function chwepon(otmp, amount) {
     if (amount < 0) await costly_alteration(uwep, COST_DECHNT);
     uwep.spe = (uwep.spe | 0) + (amount | 0);
     if (amount > 0) {
-        if (uwep.cursed) uncurse(uwep);
+        if (uwep.cursed) await uncurse(uwep);
         if (uwep.unpaid) alter_cost(uwep, 0);
     }
 

@@ -4,12 +4,42 @@
 // config_error_done(); pline.c config_error_add().
 
 import { game } from './gstate.js';
-import { encodeUtf8ByteString } from './hacklib.js';
-import { WARNCOUNT } from './const.js';
+import {
+    encodeUtf8ByteString,
+    trimspaces,
+    truncateByteString,
+} from './hacklib.js';
+import {
+    BUFSZ,
+    ECMD_OK,
+    PREFIX_COUNT,
+    WARNCOUNT,
+} from './const.js';
 import { add_menu_coloring } from './coloratt.js';
+import { get_feature_notice_ver } from './version.js';
+import { note_unported } from './unported.js';
+import { rn2 } from './rng.js';
 
 // C ref: cfgfiles.c default_configfile (126-139), the UNIX arm.
 export const DEFAULT_CONFIGFILE = '.nethackrc';
+
+// C ref: global.h set_in_sysconf (581).  The JavaScript parser receives the
+// configuration text directly, so this value is used only when a source-shaped
+// fopen_config_file() caller identifies the system configuration path.
+export const SET_IN_SYSCONF = 0;
+
+const FEATURE_NOTICE_3_7_0 = Number(get_feature_notice_ver('3.7.0'));
+const OVERWRITE_PROMPT_FORMAT = 'Overwrite config file %.*s?';
+// C's sizeof overwrite_prompt includes its terminating NUL, and the extra two
+// bytes leave room for the formatted string's own terminating NUL and margin.
+const OVERWRITE_FILENAME_LIMIT = BUFSZ
+    - (OVERWRITE_PROMPT_FORMAT.length + 1) - 2;
+
+// C ref: cfgfiles.c get_default_configfile() (149-152).  The recorder builds
+// the UNIX configuration path, whose compiled-in basename is .nethackrc.
+export function get_default_configfile() {
+    return DEFAULT_CONFIGFILE;
+}
 
 // C ref: cfgfiles.c get_configfile().  set_configfile_name() stores the path
 // fopen_config_file() opened, which on UNIX is "$HOME/.nethackrc".  A segment
@@ -21,7 +51,213 @@ export const DEFAULT_CONFIGFILE = '.nethackrc';
 // config_error_done() below prints the whole path and cannot match a
 // recording.
 export function get_configfile(state = game) {
-    return state?.configfile ?? DEFAULT_CONFIGFILE;
+    return state?.configfile ?? get_default_configfile();
+}
+
+// C ref: cfgfiles.c do_write_config_file() (169-212).  The browser and the
+// scorer provide configuration as segment text, not as a host pathname.  This
+// function preserves the messages, waits, overwrite decision, and return code;
+// after the decision, the unavailable fopen()/fwrite() side is an explicit gap.
+export async function do_write_config_file(state = game, env = {}) {
+    const message = env.message ?? (async () => {});
+    const wait = env.wait ?? (async () => {});
+    const query = env.query ?? env.paranoidQuery;
+    const configfile = state?.configfile ?? '';
+
+    if (!configfile) {
+        await message('Strange, could not figure out config file name.', state);
+        return ECMD_OK;
+    }
+
+    if (Number(state.flags?.suppress_alert ?? 0)
+        < FEATURE_NOTICE_3_7_0) {
+        await message('Warning: saveoptions is highly experimental!', state);
+        await wait(state);
+        await message('Some settings are not saved!', state);
+        await wait(state);
+        await message(
+            'All manual customization and comments are removed from the file!',
+            state,
+        );
+        await wait(state);
+    }
+
+    const filename = truncateByteString(
+        configfile, OVERWRITE_FILENAME_LIMIT,
+    );
+    const prompt = `Overwrite config file ${filename}?`;
+    // cmd.c paranoid_query(TRUE, ...) is the source's input operation.  Keep
+    // it injectable so tests can exercise both answers without making this
+    // leaf import cmd.js (which would close options.js's import cycle).
+    if (typeof query !== 'function') {
+        note_unported('cmd.c paranoid_query');
+        return ECMD_OK;
+    }
+    if (!await query(true, prompt, state)) return ECMD_OK;
+
+    // C now opens configfile for writing and serializes all_options_strbuf().
+    // JavaScript has no host filesystem in the contest runtime, so do not
+    // invent a pathname or a second configuration store for this operation.
+    note_unported('cfgfiles.c fopen');
+    return ECMD_OK;
+}
+
+// C ref: cfgfiles.c set_configfile_name() (216-220).  configfile is a fixed
+// BUFSZ-byte C buffer; truncate by UTF-8 bytes and leave one byte for NUL.
+export function set_configfile_name(fname, state = game) {
+    state.configfile = truncateByteString(String(fname ?? ''), BUFSZ - 1);
+}
+
+// C ref: cfgfiles.c fopen_config_file() (223-370).  parseNethackrc() already
+// has the configuration text, so this source-shaped helper never reads a host
+// file.  It still follows the UNIX name-selection order and leaves the selected
+// name in state.configfile for diagnostics and option messages.
+export function fopen_config_file(filename, src, state = game) {
+    const supplied = filename != null && String(filename).length > 0;
+    if (src === SET_IN_SYSCONF) {
+        if (supplied) {
+            // fqname() would add the compiled system prefix. That prefix is
+            // not part of the text-backed segment input, so retain the name
+            // the caller supplied while recording the skipped open.
+            set_configfile_name(filename, state);
+            note_unported('cfgfiles.c fopen');
+        }
+        return null;
+    }
+
+    if (supplied) {
+        // The UNIX ~/ expansion depends on HOME, which the browser contract
+        // does not expose. Keep the source spelling in the diagnostic state.
+        set_configfile_name(filename, state);
+        note_unported('cfgfiles.c fopen');
+    }
+
+    // UNIX falls through to $HOME/.nethackrc; without a host HOME value the
+    // text-backed equivalent is the compiled-in basename. There is no FILE*
+    // to return because the segment supplied the text independently.
+    set_configfile_name(get_default_configfile(), state);
+    note_unported('cfgfiles.c fopen');
+    return null;
+}
+
+// C ref: cfgfiles.c adjust_prefix() (441-459), compiled under
+// NOCWD_ASSUMPTIONS.  The contest runtime is the UNIX build, so the WIN32
+// fqn_prefix_locked[] guard is not part of this path.  JavaScript strings are
+// immutable; the C input buffer's trailing `;n` is therefore represented by
+// the shortened value stored in gf.fqn_prefix rather than by an in-place edit.
+export function adjust_prefix(bufp, prefixid, state = game) {
+    if (bufp == null) return;
+
+    const prefix = String(bufp).split(';', 1)[0];
+    if (!prefix) return;
+
+    state.gf ??= {};
+    state.gf.fqn_prefix ??= Array(PREFIX_COUNT).fill(null);
+    // C's UNIX append_slash() appends '/', unless the name already ends in
+    // one.  It is a void system helper, so preserve its observable mutation
+    // here rather than creating a second public helper for it.
+    state.gf.fqn_prefix[prefixid] = prefix.endsWith('/')
+        ? prefix : `${prefix}/`;
+}
+
+// C ref: cfgfiles.c choose_random_part() (464-504).  The source walks the
+// mutable NUL-terminated buffer one separator at a time, so empty candidates
+// at the beginning or end still consume a random choice and return NULL.  A
+// JavaScript string cannot be NUL-terminated or modified in place; the
+// selected substring is the value the C callers immediately duplicate.
+export function choose_random_part(str, sep = ',', random = rn2) {
+    if (str == null) return null;
+
+    const value = String(str);
+    let nsep = 1;
+    for (const character of value) {
+        if (character === sep) ++nsep;
+    }
+
+    const csep = random(nsep);
+    let remaining = csep;
+    let index = 0;
+    while (remaining > 0 && index < value.length) {
+        ++index;
+        if (value[index] === sep) --remaining;
+    }
+    if (index < value.length) {
+        if (value[index] === sep) ++index;
+        const begin = index;
+        while (index < value.length && value[index] !== sep) ++index;
+        if (index > begin) return value.slice(begin, index);
+    }
+    return null;
+}
+
+// C ref: cfgfiles.c free_config_sections() (507-517).  The C free() calls
+// release allocated strings; JavaScript strings are garbage-collected, so
+// clearing both owning fields is the corresponding state mutation.
+export function free_config_sections(state = game) {
+    state.gc ??= {};
+    state.gc.config_section_chosen = null;
+    state.gc.config_section_current = null;
+}
+
+// C ref: cfgfiles.c is_config_section() (519-549).  The returned empty string
+// is significant: C returns a non-NULL pointer for `[]`, and
+// handle_config_section() treats that as the end-of-sections marker.
+export function is_config_section(str) {
+    if (str == null) return null;
+
+    const trimmed = trimspaces(String(str));
+    if (trimmed[0] !== '[') return null;
+
+    const body = trimmed.slice(1);
+    const close = body.indexOf(']');
+    if (close < 0) return null;
+
+    // cfgfiles.c skips only literal spaces after ']'; a tab there is not a
+    // valid section suffix.  A comment may contain anything after '#'.
+    let suffix = close + 1;
+    while (body[suffix] === ' ') ++suffix;
+    if (suffix < body.length && body[suffix] !== '#') return null;
+
+    return trimspaces(body.slice(0, close));
+}
+
+function section_config_error(state, text) {
+    state.configErrorFrame ??= config_error_init(state.startupEvents ?? []);
+    config_error_add(state.configErrorFrame, text);
+}
+
+// C ref: cfgfiles.c handle_config_section() (552-581).  `state` is the
+// parser result during parseNethackrc(), where its gc object is the JS home of
+// C's instance_globals_c fields.  It is also accepted explicitly for focused
+// tests and future cfgfiles.c callers.
+export function handle_config_section(buf, state = game) {
+    state.gc ??= {};
+    const sect = is_config_section(buf);
+
+    if (sect !== null) {
+        state.gc.config_section_current = null;
+        if (state.gc.config_section_chosen == null) {
+            section_config_error(
+                state, `Section "[${sect}]" without CHOOSE`,
+            );
+            return true;
+        }
+        if (sect) {
+            // C uses dupstr() here; an immutable JS string already has the
+            // required independent value semantics.
+            state.gc.config_section_current = String(sect);
+        } else {
+            free_config_sections(state);
+        }
+        return true;
+    }
+
+    if (state.gc.config_section_current != null) {
+        if (state.gc.config_section_chosen == null) return true;
+        if (state.gc.config_section_current
+            !== state.gc.config_section_chosen) return true;
+    }
+    return false;
 }
 
 // C ref: cfgfiles.c struct _config_error_frame (1455-1464) and

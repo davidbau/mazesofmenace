@@ -89,7 +89,8 @@ export function del_light_source(type, id) {
  * (C `gv.vision_full_recalc`), then returns. Falls through to
  * `impossible(xname(obj))` when no entry matches (async pline in JS,
  * hence async). `| 0` int idiom on the range compare/assign.
- * Caller mkobj.c maybe_adjust_light stays named (bless/curse wiring).
+ * Caller mkobj.c maybe_adjust_light wired (D-2244; bless/curse/
+ * unbless/uncurse lamplit tails + read.c dragon-scale remail).
  */
 export async function obj_adjust_light_radius(obj, new_radius) {
     const nr = new_radius | 0;

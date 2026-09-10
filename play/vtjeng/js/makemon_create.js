@@ -168,10 +168,12 @@ import {
 import { dochugw } from './monmove.js';
 import {
     dealloc_monst,
+    mon_animal_list,
     pickvampshape,
     validspecmon,
     wiz_force_cham_form,
 } from './mon.js';
+import { shkgone } from './shk.js';
 import {
     m_at,
     newMonster,
@@ -2920,6 +2922,7 @@ export function mongone(monster, env = {}) {
         }
         redrawSquare(monster.mx, monster.my, normalized);
     }
+    if (monster.isshk) shkgone(monster, state);
     if (monster.wormno) wormgone(monster, state);
     monster.mstate |= MON_DETACH;
     state.iflags ??= {};
@@ -2982,14 +2985,13 @@ function isPlaceholderForm(mndx) {
 }
 
 function pick_animal(normalized) {
-    const animals = [];
-    for (let mndx = LOW_PM; mndx < SPECIAL_PM; ++mndx) {
-        if (normalized.state.mons[mndx].mflags1 & M1_ANIMAL)
-            animals.push(mndx);
-    }
-    if (!animals.length)
+    const { state } = normalized;
+    if (!state.ga?.animal_list) mon_animal_list(true, state);
+    if (!state.ga?.animal_list_count)
         throw new Error('pick_animal requires at least one animal form');
-    return animals[normalized.random.rn2(animals.length)];
+    return state.ga.animal_list[
+        normalized.random.rn2(state.ga.animal_list_count)
+    ];
 }
 
 // C ref: topten.c tt_doppel(). Picks a random role monster for a
@@ -3385,6 +3387,8 @@ export async function newcham_distress(
     if (!canSpotNow) {
         if (seenOrSensed)
             await message(`${oldName} disappears!`, state, normalized);
+        const { usmellmon } = await import('./mon.js');
+        await usmellmon(selected, normalized);
     } else if (!seenOrSensed) {
         const newName = distressShapechangeNewName(monster);
         const appeared = newName

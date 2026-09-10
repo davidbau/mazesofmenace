@@ -502,7 +502,7 @@ async function fix_curse_trouble(otmp, what) {
         await pline(`${glow} ${hcolor('amber')}.`);
         otmp.bknown = !Hallucination();
     }
-    uncurse(otmp);
+    await uncurse(otmp);
 }
 
 /**

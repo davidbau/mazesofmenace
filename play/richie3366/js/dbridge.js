@@ -47,7 +47,7 @@ import { Fumbling } from './attrib.js';
 import { dist2 } from './hacklib.js';
 import { unpunish } from './read.js';
 import {
-    isok, u_at, ENTITIES, IS_DRAWBRIDGE, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
+    isok, u_at, ENTITIES, IS_DRAWBRIDGE, IS_WATERWALL, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN,
     DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, DB_DIR, DB_MOAT, DB_LAVA, DB_ICE,
     DB_UNDER, W_NONDIGGABLE,
     DOOR, D_NODOOR, DBWALL, MOAT, LAVAPOOL, ROOM, ICE, ICED_MOAT,
@@ -123,6 +123,14 @@ function sobj_at(otyp, x, y) {
         if ((o.otyp | 0) === (otyp | 0)) return o;
     }
     return null;
+}
+
+/**
+ * C ref: dbridge.c is_waterwall `:37–43` — WATER typ at a valid spot.
+ */
+export function is_waterwall(x, y) {
+    if (isok(x, y) && IS_WATERWALL(game.level?.at(x, y)?.typ)) return true;
+    return false;
 }
 
 /**

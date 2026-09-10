@@ -10,37 +10,61 @@
 
 import {
     A_CHA,
+    ANY_SHOP,
     ACH_SHOP,
     BUFSZ,
     CONFLICT,
+    DETECT_MONSTERS,
     DEAF,
     FAST,
+    G_GONE,
     helpless,
     HUNGRY,
     INVIS,
     isok,
     LOW_PM,
+    M_AP_MONSTER,
+    M_AP_NOTHING,
+    M_AP_TYPE,
     MS_ANIMAL,
     OBJ_BURIED,
     OBJ_CONTAINED,
     OBJ_FLOOR,
     OBJ_MINVENT,
+    OBJ_ONBILL,
+    PLINE_SPEECH,
+    PLINE_VERBALIZE,
     PL_NSIZ,
     ROOMOFFSET,
     SHOPBASE,
+    TELEPAT,
+    u_at,
 } from './const.js';
-import { acurr } from './attrib.js';
-import { on_level } from './dungeon.js';
+import { acurr, adjalign } from './attrib.js';
+import { assign_level, on_level } from './dungeon.js';
 import { game } from './gstate.js';
-import { dist2, online2, s_suffix } from './hacklib.js';
-import { carrying } from './invent.js';
+import { dist2, online2, sgn, s_suffix, strncmpi } from './hacklib.js';
+import { inv_cnt } from './hack.js';
+import {
+    add_to_minv,
+    addinv,
+    carrying,
+    count_unpaid,
+    currency,
+    freeinv,
+    INVLET_BASIC,
+    merge_choice,
+    obj_extract_self,
+} from './invent.js';
 import { record_achievement } from './insight.js';
 import { get_obj_location } from './light.js';
 import { set_malign } from './makemon.js';
 import { mongone } from './makemon_create.js';
-import { wake_nearto } from './mon.js';
+import { angry_guards, wake_nearto } from './mon.js';
+import { search_special } from './mkroom.js';
 import {
-    carried, hasContents, isCandle, isContainer, objectType, sobj_at,
+    carried, hasContents, isCandle, isContainer, is_pick, objectType,
+    sobj_at, splitobj,
 } from './obj.js';
 import {
     ARMOR_CLASS,
@@ -60,13 +84,174 @@ import {
     WAND_CLASS,
     WEAPON_CLASS,
 } from './objects.js';
-import { PM_TOURIST } from './monsters.js';
-import { resist_conflict } from './mondata.js';
+import {
+    PM_KEYSTONE_KOP,
+    PM_KOP_KAPTAIN,
+    PM_KOP_LIEUTENANT,
+    PM_KOP_SERGEANT,
+    PM_ROGUE,
+    PM_TOURIST,
+} from './monsters.js';
+import { haseyes, is_demon, resist_conflict } from './mondata.js';
 import { Hello } from './role_init.js';
 import { in_rooms } from './rooms.js';
 import { move_special } from './priest.js';
 import { SHTYPES } from './shtypes_data.js';
+import { m_at } from './monst.js';
+import { poly_gender } from './polyself.js';
+import {
+    canSeeMonster,
+    heroIsBlind,
+    sensesMonster,
+} from './startup_a11y.js';
+import { set_voice } from './sounds.js';
 import { ttyPline } from './tty_message.js';
+import { note_unported } from './unported.js';
+import { findgold, remove_worn_item } from './steal.js';
+
+// C ref: shk.c money2mon() (157-184). Transfer an exact gold stack from the
+// hero's inventory to a monster. The diagnostic branches are impossible in a
+// valid payment, so their discarded pline.c result is recorded as a gap.
+export function money2mon(monster, amount, state = game) {
+    const gold = findgold(state.invent);
+    const payment = Math.trunc(amount);
+    if (payment <= 0) {
+        note_unported('pline.c impossible');
+        return 0;
+    }
+    if (!gold || gold.quan < payment) {
+        note_unported('pline.c impossible');
+        return 0;
+    }
+
+    let paid = gold;
+    if (gold.quan > payment)
+        paid = splitobj(gold, payment, { state });
+    else if (gold.owornmask)
+        remove_worn_item(gold, false, state);
+    freeinv(paid, { state });
+    add_to_minv(monster, paid, { state });
+    state.disp ??= {};
+    state.disp.botl = true;
+    return payment;
+}
+
+// C ref: shk.c money2u() (186-212). Transfer gold from a monster's inventory
+// to the hero, merging it when possible and dropping it when all ordinary
+// inventory letters are occupied.
+export async function money2u(monster, amount, state = game) {
+    const gold = findgold(monster.minvent);
+    const payment = Math.trunc(amount);
+    if (payment <= 0) {
+        note_unported('pline.c impossible');
+        return;
+    }
+    if (!gold || gold.quan < payment) {
+        // C formats a_monnam(monster) while building an impossible() message;
+        // the diagnostic is discarded here because this path is invalid.
+        note_unported('pline.c impossible');
+        return;
+    }
+
+    let paid = gold;
+    if (gold.quan > payment)
+        paid = splitobj(gold, payment, { state });
+    obj_extract_self(paid, { state });
+
+    if (!merge_choice(state.invent, paid, state)
+        && inv_cnt(false, state) >= INVLET_BASIC) {
+        await ttyPline('You have no room for the gold!', state);
+        const { dropy } = await import('./do.js');
+        await dropy(paid, { state });
+    } else {
+        addinv(paid, { state });
+        state.disp ??= {};
+        state.disp.botl = true;
+    }
+}
+
+// C ref: shk.c shkgone() (235-270). Remove the keeper from the shop-room
+// record, clear floor charges, settle its bill when the hero is in that shop,
+// and remove the room from u.ushops. Damage-owned records are not modelled;
+// C discards that helper's return value, so record the gap at its call site.
+export function shkgone(monster, state = game) {
+    const eshk = monster.mextra.eshk;
+    const room = state.level.rooms[eshk.shoproom - ROOMOFFSET];
+
+    if (on_level(eshk.shoplevel, state.u.uz)) {
+        note_unported('shk.c discard_damage_owned_by');
+        room.resident = null;
+        if (!search_special(ANY_SHOP, state)) {
+            state.level.flags ??= {};
+            state.level.flags.has_shop = false;
+        }
+
+        for (let x = room.lx; x <= room.hx; ++x) {
+            for (let y = room.ly; y <= room.hy; ++y) {
+                for (let obj = state.level.objects[x][y]; obj;
+                    obj = obj.nexthere) {
+                    obj.no_charge = false;
+                }
+            }
+        }
+
+        const shops = state.u.ushops ?? [];
+        const index = shops.findIndex(
+            (roomno) => Math.trunc(roomno ?? 0) === eshk.shoproom,
+        );
+        if (index >= 0) {
+            setpaid(monster, state);
+            eshk.bill_p = null;
+            for (let i = index; i + 1 < shops.length; ++i)
+                shops[i] = shops[i + 1] ?? 0;
+            if (shops.length) shops[shops.length - 1] = 0;
+        }
+    }
+}
+
+// C ref: shk.c set_residency() (272-278). Update the resident pointer only
+// when the shopkeeper's home level is the current level.
+export function set_residency(shopkeeper, zero_out, state = game) {
+    const eshk = shopkeeper.mextra.eshk;
+    if (on_level(eshk.shoplevel, state.u.uz)) {
+        state.level.rooms[eshk.shoproom - ROOMOFFSET].resident = zero_out
+            ? null : shopkeeper;
+    }
+}
+
+// C ref: shk.c replshk() (280-288). Replace a shopkeeper's monster record
+// while keeping the room resident and any active bill pointer aligned.
+export function replshk(oldShopkeeper, newShopkeeper, state = game) {
+    const oldEshk = oldShopkeeper.mextra.eshk;
+    const newEshk = newShopkeeper.mextra.eshk;
+    state.level.rooms[newEshk.shoproom - ROOMOFFSET].resident = newShopkeeper;
+    if (inhishop(oldShopkeeper, state)
+        && state.u.ushops?.[0] === oldEshk.shoproom) {
+        newEshk.bill_p = newEshk.bill ?? [];
+    }
+}
+
+// C ref: shk.c restshk() (290-308). Restore the bill-array pointer and, for a
+// ghostly shopkeeper, move its home level and pacify it when it is not the
+// same player recorded as its customer.
+export function restshk(shopkeeper, ghostly, state = game) {
+    if (state.u.uz.dlevel) {
+        const eshk = shopkeeper.mextra.eshk;
+        if (eshk.bill_p !== -1000)
+            eshk.bill_p = eshk.bill ?? [];
+        if (ghostly) {
+            assign_level(eshk.shoplevel, state.u.uz);
+            if (!shopkeeper.mpeaceful
+                && strncmpi(
+                    eshk.customer ?? '',
+                    state.plname ?? '',
+                    PL_NSIZ,
+                ) !== 0) {
+                note_unported('shk.c pacify_shk');
+            }
+        }
+    }
+}
 
 // C ref: shk.c inhishop().
 export function inhishop(shopkeeper, state) {
@@ -96,6 +281,65 @@ export async function noisy_shop(sroom, rawEnv = {}) {
     }
 }
 
+// C ref: shk.c addupbill() (496-507).  bill_p is the active C bill array;
+// billct, rather than the array length, determines which entries contribute.
+export function addupbill(shopkeeper) {
+    const eshk = shopkeeper.mextra.eshk;
+    const bill = eshk.bill_p ?? [];
+    let total = 0;
+    for (let index = 0; index < Math.trunc(eshk.billct); ++index) {
+        const entry = bill[index];
+        total += entry.price * entry.bquan;
+    }
+    return total;
+}
+
+// C ref: shk.c call_kops() (509-564).  Soundeffect() is a no-op with the
+// recorder's nosound backend.  The Kops creation helpers are not ported and
+// have discarded return values, so each reached call is recorded as a gap.
+async function call_kops(
+    shopkeeper,
+    nearshop,
+    state = game,
+    { message = ttyPline } = {},
+) {
+    if (!shopkeeper) return;
+
+    const deaf = heroIsDeaf(state);
+    if (!deaf) await message('An alarm sounds!', state);
+
+    const mvitals = state.mvitals ?? state.svm?.mvitals ?? [];
+    const gone = (mnum) => Boolean((mvitals[mnum]?.mvflags ?? 0) & G_GONE);
+    const nokops = gone(PM_KEYSTONE_KOP)
+        && gone(PM_KOP_SERGEANT)
+        && gone(PM_KOP_LIEUTENANT)
+        && gone(PM_KOP_KAPTAIN);
+
+    if (!await angry_guards(deaf, { state, message }) && nokops) {
+        if (state.flags?.verbose && !deaf)
+            await message('But no one seems to respond to it.', state);
+        return;
+    }
+    if (nokops) return;
+
+    // choose_stairs() writes only output coordinates; its result is not used
+    // when the unported makekops() calls below are skipped.
+    note_unported('wizard.c choose_stairs');
+    const sx = 0;
+    const sy = 0;
+
+    if (nearshop) {
+        if (state.flags?.verbose)
+            await message('The Keystone Kops appear!', state);
+        note_unported('shk.c makekops');
+        return;
+    }
+    if (state.flags?.verbose)
+        await message('The Keystone Kops are after you!', state);
+    if (isok(sx, sy)) note_unported('shk.c makekops');
+    note_unported('shk.c makekops');
+}
+
 // C ref: shk.c inside_shop(). A wall, boundary square, or non-shop room is
 // not strictly inside even when in_rooms() associates it with a shop.
 export function inside_shop(x, y, state = game) {
@@ -114,6 +358,33 @@ export function shop_keeper(roomno, state = game) {
     const resident = state.level?.rooms?.[roomno - ROOMOFFSET]?.resident;
     return resident?.isshk
         && resident.mextra?.eshk?.shoproom === roomno ? resident : null;
+}
+
+// C ref: shk.c find_objowner() (1084-1114). The caller supplies the object's
+// current location because the object's stored coordinates may be stale while
+// sanity checking. Used-up objects have no useful coordinates, so search every
+// shopkeeper whose bill still contains them; other objects check every shop
+// room at the location and retain the first keeper as a fallback owner.
+export function find_objowner(obj, x, y, state = game) {
+    let defaultShopkeeper = null;
+    if (obj.where === OBJ_ONBILL) {
+        for (let shopkeeper = next_shkp(
+            shopkeeperList(state), true, state,
+        ); shopkeeper; shopkeeper = next_shkp(
+            shopkeeper.nmon, true, state,
+        )) {
+            if (onshopbill(obj, shopkeeper, true)) return shopkeeper;
+        }
+    } else {
+        const rooms = in_rooms(x, y, SHOPBASE, state);
+        for (const roomno of rooms) {
+            const shopkeeper = shop_keeper(roomno, state);
+            if (!shopkeeper) continue;
+            if (onshopbill(obj, shopkeeper, true)) return shopkeeper;
+            if (!defaultShopkeeper) defaultShopkeeper = shopkeeper;
+        }
+    }
+    return defaultShopkeeper;
 }
 
 // The generated-shop subset of shk.c:u_entered_shop(). The source performs
@@ -199,10 +470,14 @@ export function preflight_shop_transition(
     );
 }
 
-// C ref: shk.c u_left_shop(). Only its three no-effect returns are ported;
-// preflight_shop_transition() prevents the remaining branches from reaching
-// this post-move check in ordinary movement.
-export function u_left_shop(leavestring, _newlev, state = game) {
+// C ref: shk.c u_left_shop() (578-625).  The boundary speech remains in the
+// preflight seam; this post-move function handles robbery and the Kops call.
+export async function u_left_shop(
+    leavestring,
+    newlev,
+    state = game,
+    { message = ttyPline } = {},
+) {
     const left = Array.from(leavestring ?? []).filter(Boolean);
     const from = state.level?.at(state.u?.ux0, state.u?.uy0);
     const to = state.level?.at(state.u?.ux, state.u?.uy);
@@ -219,10 +494,289 @@ export function u_left_shop(leavestring, _newlev, state = game) {
     if (!extension.billct) {
         if (!extension.debit) return;
     }
-    throw new UnsupportedShopError(
-        left.length
-            ? 'u_left_shop() leaving a shop with debt'
-            : 'u_left_shop() reaching a shop boundary with debt',
+    // C's no-leavestring branch tries to make the hero pay at the shop
+    // boundary.  The movement preflight owns that still-unported speech and
+    // refusal, so do not turn a boundary arrival into a robbery here.
+    if (!left.length)
+        throw new UnsupportedShopError(
+            'u_left_shop() reaching a shop boundary with debt',
+        );
+    if (await rob_shop(shopkeeper, state, { message })) {
+        await call_kops(
+            shopkeeper,
+            !newlev && Boolean(from?.edge),
+            state,
+            { message },
+        );
+    }
+}
+
+// C ref: shknam.c shkname() and Shknam(). The shopkeeper name is stored with
+// a leading marker for gender or proper-name metadata; the marker is not part
+// of the name shown in ordinary messages.
+function shkname(shopkeeper) {
+    const stored = shopkeeper.mextra?.eshk?.shknam;
+    if (typeof stored === 'string' && stored.length)
+        return /^[A-Za-z]/u.test(stored) ? stored : stored.slice(1);
+    return 'shopkeeper';
+}
+
+function Shknam(shopkeeper) {
+    const name = shkname(shopkeeper);
+    return name ? name[0].toUpperCase() + name.slice(1) : name;
+}
+
+// C ref: shk.c cad() (5908-5934). pick_pick() uses only the ordinary,
+// unquoted result, but keep the alternate formatting arm in source order.
+function cad(altusage, state = game) {
+    let result;
+    switch (is_demon(state.youmonst?.data) ? 3 : poly_gender(state)) {
+    case 0:
+        result = 'cad';
+        break;
+    case 1:
+        result = 'minx';
+        break;
+    case 2:
+        result = 'beast';
+        break;
+    case 3:
+        result = 'fiend';
+        break;
+    default:
+        note_unported('pline.c impossible');
+        result = 'thing';
+        break;
+    }
+    return altusage ? `"${result[0].toUpperCase()}${result.slice(1)}!  `
+        : result;
+}
+
+// C ref: shk.c pick_pick() (921-949). Removing a pick from a container is
+// one turn's shopkeeper feedback at most, even when a sack contains many.
+let pickmovetime = 0;
+
+export async function pick_pick(
+    obj,
+    state = game,
+    { message = ttyPline } = {},
+) {
+    if (obj.unpaid || !is_pick(obj, state)) return;
+
+    const shopkeeper = shop_keeper(state.u?.ushops?.[0] ?? 0, state);
+    if (!shopkeeper || !inhishop(shopkeeper, state)) return;
+
+    const moves = Math.trunc(state.moves ?? state.svm?.moves ?? 0);
+    if (moves !== pickmovetime) {
+        if (!heroIsDeaf(state) && !muteshk(shopkeeper)) {
+            set_voice(shopkeeper, 0, 80, 0, state);
+            state.gp.pline_flags |= PLINE_VERBALIZE;
+            try {
+                await message(
+                    `"You sneaky ${cad(false, state)}!  Get out of here with that pick!"`,
+                    state,
+                );
+            } finally {
+                state.gp.pline_flags &= ~(PLINE_SPEECH | PLINE_VERBALIZE);
+            }
+        } else {
+            await message(
+                `${Shknam(shopkeeper)} ${haseyes(shopkeeper.data)
+                    ? 'glares at' : 'is dismayed because of'} your pick!`,
+                state,
+            );
+        }
+    }
+    pickmovetime = moves;
+}
+
+function shopkeeperList(state) {
+    return state.level?.monlist ?? state.fmon ?? null;
+}
+
+// C ref: shk.c same_price() (955-987). The bill entries must belong to the
+// same keeper and quote the same price before inventory.c can merge them.
+export function same_price(obj1, obj2, state = game) {
+    let shkp1;
+    let shkp2;
+    let bp1 = null;
+    let bp2 = null;
+
+    for (shkp1 = next_shkp(shopkeeperList(state), true, state);
+        shkp1;
+        shkp1 = next_shkp(shkp1.nmon, true, state)) {
+        bp1 = onbill(obj1, shkp1, true);
+        if (bp1) break;
+    }
+
+    if (shkp1 && (bp2 = onbill(obj2, shkp1, true))) {
+        shkp2 = shkp1;
+    } else {
+        for (shkp2 = next_shkp(shopkeeperList(state), true, state);
+            shkp2;
+            shkp2 = next_shkp(shkp2.nmon, true, state)) {
+            bp2 = onbill(obj2, shkp2, true);
+            if (bp2) break;
+        }
+    }
+
+    if (!bp1 || !bp2) {
+        note_unported('pline.c impossible');
+        return false;
+    }
+    return shkp1 === shkp2 && bp1.price === bp2.price;
+}
+
+// C ref: shk.c shop_debt() (990-998). The report includes every active bill
+// entry and the keeper's debit, but deliberately ignores robbed merchandise.
+export function shop_debt(eshkp) {
+    let debt = eshkp.debit;
+    const bill = eshkp.bill_p ?? [];
+    for (let index = 0; index < Math.trunc(eshkp.billct); ++index) {
+        const entry = bill[index];
+        debt += entry.price * entry.bquan;
+    }
+    return debt;
+}
+
+// C ref: shk.c credit_report() (627-661).  These snapshots are static in C,
+// so they intentionally belong to the module rather than to a game state.
+const credit_snap = [[0, 0, 0], [0, 0, 0]];
+
+export async function credit_report(
+    shopkeeper,
+    idx,
+    silent,
+    state = game,
+    { message = ttyPline } = {},
+) {
+    const eshk = shopkeeper.mextra.eshk;
+    if (!idx) {
+        credit_snap[0].fill(0);
+        credit_snap[1].fill(0);
+    } else {
+        idx = 1;
+    }
+
+    credit_snap[idx][0] = eshk.credit;
+    credit_snap[idx][1] = eshk.debit;
+    credit_snap[idx][2] = eshk.loan;
+
+    if (idx && !silent) {
+        let amount = 0;
+        let text = 'debt has increased';
+        if (credit_snap[1][0] < credit_snap[0][0]) {
+            amount = credit_snap[0][0] - credit_snap[1][0];
+            text = 'credit has been reduced';
+        } else if (credit_snap[1][1] > credit_snap[0][1]) {
+            amount = credit_snap[1][1] - credit_snap[0][1];
+        } else if (credit_snap[1][2] > credit_snap[0][2]) {
+            amount = credit_snap[1][2] - credit_snap[0][2];
+        }
+        if (amount) {
+            await message(
+                `Your ${text} by ${amount} ${currency(amount, state)}.`,
+                state,
+            );
+        }
+    }
+}
+
+// C ref: shk.c remote_burglary() (663-682).  The robbery path is shared with
+// u_left_shop(), including its Kops response and credit settlement.
+export async function remote_burglary(
+    x,
+    y,
+    state = game,
+    { message = ttyPline } = {},
+) {
+    const roomno = in_rooms(x, y, SHOPBASE, state)[0] ?? 0;
+    const shopkeeper = shop_keeper(roomno, state);
+    if (!shopkeeper || !inhishop(shopkeeper, state)) return;
+
+    const eshk = shopkeeper.mextra.eshk;
+    if (!eshk.billct && !eshk.debit) return;
+    if (await rob_shop(shopkeeper, state, { message }))
+        await call_kops(shopkeeper, false, state, { message });
+}
+
+// C ref: shk.c rob_shop() (684-719).  rouse_shk(), hot_pursuit(), and the
+// livelog_printf() result are discarded here because those C helpers are not
+// ported; preserve their reached gaps without inventing state or output.
+async function rob_shop(
+    shopkeeper,
+    state = game,
+    { message = ttyPline } = {},
+) {
+    const eshk = shopkeeper.mextra.eshk;
+    note_unported('shk.c rouse_shk');
+    let total = addupbill(shopkeeper) + eshk.debit;
+    if (eshk.credit >= total) {
+        await message(
+            `Your credit of ${eshk.credit} ${currency(eshk.credit, state)}`
+                + ' is used to cover your shopping bill.',
+            state,
+        );
+        total = 0;
+    } else {
+        await message('You escaped the shop without paying!', state);
+        total -= eshk.credit;
+    }
+
+    setpaid(shopkeeper, state);
+    if (!total) return false;
+
+    eshk.robbed += total;
+    await message(
+        `You stole ${total} ${currency(total, state)} worth of merchandise.`,
+        state,
+    );
+    note_unported('pline.c livelog_printf');
+    if (state.urole?.mnum !== PM_ROGUE)
+        adjalign(-sgn(state.u.ualign.type), state);
+    note_unported('shk.c hot_pursuit');
+    return true;
+}
+
+// C ref: shk.c deserted_shop() (721-747).  `sensemon()` and `canseemon()`
+// are the shared visibility helpers; the latter is gated by the mimic's
+// appearance type exactly as in the source.
+async function deserted_shop(
+    enterstring,
+    state = game,
+    { message = ttyPline } = {},
+) {
+    const roomno = Math.trunc(enterstring?.[0] ?? 0);
+    const room = state.level.rooms[roomno - ROOMOFFSET];
+    let sensed = 0;
+    let total = 0;
+
+    for (let x = room.lx; x <= room.hx; ++x) {
+        for (let y = room.ly; y <= room.hy; ++y) {
+            if (u_at(x, y, state)) continue;
+            const monster = m_at(x, y, state);
+            if (!monster) continue;
+            ++total;
+            if (sensesMonster(monster, state)
+                || ((M_AP_TYPE(monster) === M_AP_NOTHING
+                    || M_AP_TYPE(monster) === M_AP_MONSTER)
+                    && canSeeMonster(monster, state))) {
+                ++sensed;
+            }
+        }
+    }
+
+    if (heroIsBlind(state)
+        && !(state.u?.uprops?.[TELEPAT]?.intrinsic
+            || state.u?.uprops?.[TELEPAT]?.extrinsic
+            || state.u?.uprops?.[DETECT_MONSTERS]?.intrinsic
+            || state.u?.uprops?.[DETECT_MONSTERS]?.extrinsic)) {
+        ++total;
+    }
+    await message(
+        `This shop ${sensed < total ? 'seems to be' : 'is'} `
+            + `${total ? 'untended' : 'deserted'}.`,
+        state,
     );
 }
 
@@ -547,6 +1101,17 @@ export function costly_spot(x, y, state = game) {
     const extension = shopkeeper.mextra.eshk;
     return inside_shop(x, y, state) === roomno
         && !(x === extension.shk.x && y === extension.shk.y);
+}
+
+// C ref: shk.c costly_adjacent() (5369-5381). Boundary squares and the free
+// spot immediately inside a shop door retain shop ownership for sanity checks.
+export function costly_adjacent(shopkeeper, x, y, state = game) {
+    if (!shopkeeper || !inhishop(shopkeeper, state) || !isok(x, y))
+        return false;
+    const extension = shopkeeper.mextra.eshk;
+    const location = state.level?.at(x, y);
+    return Boolean(location?.edge
+        || (x === extension.shk.x && y === extension.shk.y));
 }
 
 // C ref: shk.c NOTANGRY() (54). Peacefulness is the whole test; shk.c also
@@ -881,6 +1446,20 @@ function onbill(obj, shopkeeper, silent) {
     return null;
 }
 
+// C ref: shk.c onshopbill() (1160-1163). Expose only the boolean answer; the
+// bill entry itself remains private to this file, as it is in the C split
+// between onbill() and this wrapper.
+export function onshopbill(obj, shopkeeper, silent) {
+    return Boolean(onbill(obj, shopkeeper, silent));
+}
+
+// C ref: shk.c is_unpaid() (1167-1171). A container is unpaid when it is
+// marked unpaid itself or when any recursively nested object is unpaid.
+export function is_unpaid(obj) {
+    return Boolean(obj.unpaid
+        || (hasContents(obj) && count_unpaid(obj.cobj)));
+}
+
 // C ref: shk.c clear_unpaid_obj() (307-315) and clear_unpaid() (317-323).
 function clear_unpaid_obj(shopkeeper, otmp) {
     if (hasContents(otmp)) clear_unpaid(shopkeeper, otmp.cobj);
@@ -927,6 +1506,18 @@ function clear_no_charge_obj(shopkeeper, otmp, state) {
 function clear_no_charge(shopkeeper, list, state) {
     for (let obj = list; obj; obj = obj.nobj) {
         clear_no_charge_obj(shopkeeper, obj, state);
+    }
+}
+
+// C ref: shk.c clear_no_charge_pets() (389-399). Walks fmon and clears
+// no_charge from the inventories of tame monsters only. hot_pursuit() is not
+// ported, so this helper has no JavaScript caller yet.
+export function clear_no_charge_pets(shopkeeper, state = game) {
+    for (let mtmp = state.level?.monlist ?? null;
+        mtmp;
+        mtmp = mtmp.nmon) {
+        if (mtmp.mtame && mtmp.minvent)
+            clear_no_charge(shopkeeper, mtmp.minvent, state);
     }
 }
 

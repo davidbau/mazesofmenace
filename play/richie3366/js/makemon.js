@@ -6,7 +6,7 @@
 import { game } from './gstate.js';
 import { rn2, rnd, rn1, d } from './rng.js';
 import { depth as depth_of_level, level_difficulty as level_difficulty_of, upstart } from './hacklib.js';
-import { put_saddle_on_mon, can_saddle, place_monster } from './steed.js';
+import { put_saddle_on_mon, can_saddle, place_monster, poly_steed } from './steed.js';
 import {
     m_dowear, which_armor, check_gear_next_turn, bypass_obj, mon_break_armor,
 } from './worn.js';
@@ -88,7 +88,7 @@ import {
     throws_rocks,
     M3_CLOSE, M3_WAITFORU, M3_WAITMASK, M3_COVETOUS,
 } from './monsters.js';
-import { big_to_little, set_mon_data } from './mondata.js';
+import { big_to_little, set_mon_data, name_to_mon, name_to_monclass } from './mondata.js';
 import {
     NO_MINVENT, NO_MM_FLAGS, MM_NOGRP, MM_ASLEEP, MM_NONAME, MM_ESHK, MM_EGD,
     MM_EMIN, MM_EPRI, MM_EDOG, MM_ANGRY, MM_ADJACENTOK, MM_NOTAIL, MM_NOWAIT,
@@ -114,6 +114,8 @@ import {
     PIT, HOLE, TRAPDOOR, ALL_TRAPS,
     A_LAWFUL, ONAME_RANDOM, EMIN,
     MFAST, MAXMONNO, DF_NONE, u_at,
+    BUFSZ, QBUFSZ, GPCOORDS_NONE, GPCOORDS_MAP,
+    thats_enough_tries, ismnum,
 } from './const.js';
 import {
     enexto, enexto_core, enexto_gpflags, goodpos, noteleport_level,
@@ -126,6 +128,8 @@ import {
 } from './mkobj.js';
 import { flooreffects } from './do.js';
 import { monst_to_any } from './hack.js';
+import { getlin, mungspaces } from './getline.js';
+import { mon_has_special } from './muse.js';
 
 export { add_to_minv };
 
@@ -156,11 +160,11 @@ import {
 } from './objects.js';
 import { ART_EXCALIBUR, ART_DEMONBANE } from './generated/artifacts_data.js';
 import { cansee, does_block, block_point } from './vision.js';
-import { newsym, Norep, canseemon, sensemon, canspotmon, pline, pline_mon, impossible } from './display.js';
+import { newsym, Norep, canseemon, sensemon, canspotmon, pline, pline_mon, impossible, coord_desc } from './display.js';
 import { mhidden_description } from './pager.js';
 import { emits_light, new_light_source, del_light_source } from './light.js';
 import { begin_burn } from './timeout.js';
-import { christen_monst, oname, x_monnam, noname_monnam } from './do_name.js';
+import { christen_monst, oname, x_monnam, noname_monnam, noit_mon_nam } from './do_name.js';
 import { vtense } from './objnam.js';
 import { get_shop_item, shkname } from './shknam.js';
 import {
@@ -743,6 +747,50 @@ function mk_gen_ok(mndx, mvflagsmask, genomask) {
     return true;
 }
 
+/**
+ * C ref: makemon.c mkclass_poly `:1983–2012` — weighted pick within one
+ * mlet class by geno freq, skipping genocided (G_GENOD) and usually
+ * hell-excluded types. No polyok() check — the caller accepts choices
+ * polyok() would reject. mletClass is an S_* mlet name.
+ */
+export function mkclass_poly(mletClass) {
+    let first;
+    for (first = LOW_PM; first < SPECIAL_PM; first++) {
+        if (mons(first)?.mlet === mletClass) break;
+    }
+    if (first === SPECIAL_PM) return NON_PM;
+
+    let gmask = G_NOGEN | G_UNIQ;
+    // C: mkclass() does this on a per monster type basis, but doing that
+    // here would make the two loops inconsistent with each other for non L
+    if (rn2(9) || mletClass === 'S_LICH') {
+        // C Inhell — dungeon hellish flag, not dnum (D-0747, cf. uncommon)
+        gmask |= game.dungeons?.[game.u?.uz?.dnum | 0]?.flags?.hellish
+            ? G_NOHELL
+            : G_HELL;
+    }
+
+    let num = 0;
+    let last;
+    for (last = first;
+        last < SPECIAL_PM && mons(last)?.mlet === mletClass;
+        last++) {
+        if (mk_gen_ok(last, G_GENOD, gmask)) {
+            num += (mons(last)?.geno ?? 0) & G_FREQ;
+        }
+    }
+    if (!num) return NON_PM;
+
+    for (num = rnd(num); num > 0; first++) {
+        if (mk_gen_ok(first, G_GENOD, gmask)) {
+            num -= (mons(first)?.geno ?? 0) & G_FREQ;
+        }
+    }
+    first--; /* correct an off-by-one error */
+
+    return first;
+}
+
 // C ref: makemon.c init_mongen_order — stable sort by (mlet<<8)|difficulty
 function init_mongen_order() {
     if (mongen_order) return;
@@ -1169,14 +1217,147 @@ function monsym_isupper(mdat) {
 }
 
 /**
- * C ref: mon.c select_newcham_form `:5157–5225` — sandestin/doppel/cham/vamp +
- * ordinary dragon-armor + random.
- * Named omissions: wizard mon_polycontrol (mon.c:5209–5211 interactive
- * wiz_force_cham_form — async getlin boundary through sync select, callees
- * mkclass_poly/validvamp unported, no setter in scored runs). Outer rogue
- * tryct>15 is in newcham (D-1573).
+ * C ref: mon.c validvamp `:5028–5075` — gate a monpolycontrol choice for a
+ * vampshifter. Plain vampires can't become wolves; any vampshifter can
+ * become fog or bat; class choices map onto the shifter's own forms.
+ * mndx_p is a `{ mndx }` out-box for C's `int *mndx_p` (same convention
+ * as name_to_monclass).
  */
-function select_newcham_form(mon) {
+export function validvamp(mon, mndx_p, monclass) {
+    // C: simplify caller's usage
+    if (!is_vampshifter(mon)) return validspecmon(mon, mndx_p.mndx);
+    const cham = mon.cham | 0;
+
+    if (cham === pm('VLAD_THE_IMPALER') && mon_has_special(mon)) {
+        // C: Vlad with Candelabrum; override choice, then accept it
+        mndx_p.mndx = pm('VLAD_THE_IMPALER');
+        return true;
+    }
+    if (ismnum(mndx_p.mndx) && is_shapeshifter(mons(mndx_p.mndx))) {
+        // C: player picked some type of shapeshifter; use mon's self
+        // (vampire or chameleon)
+        mndx_p.mndx = cham;
+        return true;
+    }
+    // C: basic vampires can't become wolves; any can become fog or bat
+    // (we don't enforce upper-case only for rogue level here)
+    if (mndx_p.mndx === pm('WOLF')) return cham !== pm('VAMPIRE');
+    if (mndx_p.mndx === pm('FOG_CLOUD')
+        || mndx_p.mndx === pm('VAMPIRE_BAT')) {
+        return true;
+    }
+
+    // C: if we get here, specific type was no good; try by class
+    switch (monclass) {
+    case 'S_VAMPIRE':
+        mndx_p.mndx = cham;
+        break;
+    case 'S_BAT':
+        mndx_p.mndx = pm('VAMPIRE_BAT');
+        break;
+    case 'S_VORTEX':
+        mndx_p.mndx = pm('FOG_CLOUD');
+        break;
+    case 'S_DOG':
+        if (cham !== pm('VAMPIRE')) {
+            mndx_p.mndx = pm('WOLF');
+            break;
+        }
+        // FALLTHROUGH
+    default:
+        mndx_p.mndx = NON_PM;
+        break;
+    }
+    return mndx_p.mndx !== NON_PM;
+}
+
+/**
+ * C ref: mon.c wiz_force_cham_form `:5078–5154` (staticfn — the wizard
+ * monpolycontrol prompt inside select_newcham_form). TRYLIMIT 5 with the
+ * "into what kind of monster?" first-retry reprompt; ESC keeps the form
+ * picked above (might be NON_PM); "*" / "random" forces the random arm.
+ * EDIT_GETLIN is off in contest C (config.h:655), so there is no prevbuf
+ * repeat-guard (nhUse). Async getlin boundary — returns a Promise.
+ */
+export async function wiz_force_cham_form(mon) {
+    // C: construct prompt in pieces
+    let pprompt = `Change ${noit_mon_nam(mon)}`;
+    const gpc = game.iflags?.getpos_coords;
+    const parttwo = ` @ ${coord_desc(mon.mx | 0, mon.my | 0,
+        (gpc && gpc !== GPCOORDS_NONE) ? gpc : GPCOORDS_MAP)} into what?`;
+    // C: combine the two parts, not exceeding QBUFSZ-1 in overall length;
+    // if too long it has to be the monster's name, so chop enough of that
+    // off to fit the second part
+    const len = pprompt.length + parttwo.length;
+    if (len >= QBUFSZ) {
+        pprompt = pprompt.slice(0, pprompt.length - (len - (QBUFSZ - 1)));
+    }
+    pprompt += parttwo;
+
+    let mndx = NON_PM;
+    let monclass = 0;
+    let tryct = 5; // C: TRYLIMIT 5
+    do {
+        if (tryct === 5 - 1) { // C: first retry (TRYLIMIT - 1)
+            // C: change "into what?" to "into what kind of monster?"
+            if (pprompt.length + ' kind of monster'.length < QBUFSZ) {
+                pprompt = pprompt.slice(0, -1) + ' kind of monster?';
+            }
+        }
+        monclass = 0;
+        let buf = await getlin(pprompt, '');
+        buf = mungspaces(buf);
+        // C: for ESC, take form selected above (might be NON_PM)
+        if (buf[0] === '\x1b') break;
+        // C: for "*", use NON_PM to pick an arbitrary shape below
+        if (buf === '*' || buf.toLowerCase() === 'random') { // C strcmpi
+            mndx = NON_PM;
+            break;
+        }
+        mndx = name_to_mon(buf, null);
+        if (mndx === NON_PM) {
+            // C: didn't get a type, so check whether it's a class
+            // (single letter or text match with def_monsyms[])
+            const box = { mndx: NON_PM };
+            monclass = name_to_monclass(buf, box);
+            mndx = box.mndx;
+            if (monclass && mndx === NON_PM) mndx = mkclass_poly(monclass);
+        }
+        if (ismnum(mndx)) {
+            // C: got a specific type of monster; use it if we can
+            const vbox = { mndx };
+            if (validvamp(mon, vbox, monclass)) {
+                mndx = vbox.mndx;
+                break;
+            }
+            // C: can't; revert to random in case we exhaust tryct
+            mndx = NON_PM;
+        }
+
+        await pline("It can't become that.");
+        // C: EDIT_GETLIN prevbuf repeat-guard is off here (nhUse(prevbuf))
+    } while (--tryct > 0);
+
+    if (!tryct) await pline(thats_enough_tries);
+    if (is_vampshifter(mon)) {
+        const fbox = { mndx };
+        // C: don't resort to arbitrary
+        mndx = validvamp(mon, fbox, monclass)
+            ? fbox.mndx
+            : pickvampshape(mon);
+    }
+    return mndx;
+}
+
+/**
+ * C ref: mon.c select_newcham_form `:5157–5225` — sandestin/doppel/cham/vamp +
+ * ordinary dragon-armor + random. Wizard mon_polycontrol arm
+ * (`mon.c:5209–5211` interactive wiz_force_cham_form) is live; its async
+ * getlin boundary means the wizard path returns a Promise while scored
+ * runs keep a plain int (cf. newcham D-1648). Outer rogue tryct>15 is in
+ * newcham (D-1573).
+ */
+export function select_newcham_form(mon) {
     let mndx = NON_PM;
     const cham = mon.cham | 0;
 
@@ -1218,26 +1399,43 @@ function select_newcham_form(mon) {
         }
     }
     // C mon.c:5209–5211 wizard debug control (iflags.mon_polycontrol →
-    // wiz_force_cham_form) stays named — see doc comment.
-
-    // C: random arm only retries when invalid AND rogue uppercase bias
-    // still applies; otherwise one rn1 and newcham's outer accept loop
-    // re-enters select_newcham_form (D-0928 #1111).
-    if (mndx === NON_PM) {
-        let tryct = 50;
-        do {
-            mndx = rn1(SPECIAL_PM - LOW_PM, LOW_PM);
-        } while (--tryct > 0 && !validspecmon(mon, mndx)
-            && (tryct > 40 && Is_rogue_level(game.u?.uz)
-                && !monsym_isupper(mons(mndx))));
+    // wiz_force_cham_form). Async getlin boundary: the wizard path returns
+    // a Promise; scored runs keep the plain int below (cf. newcham D-1648).
+    if ((game.flags?.debug || game.flags?.wizard || game.wizard)
+        && game.iflags?.mon_polycontrol) {
+        return wiz_force_cham_form(mon).then((forced) => {
+            if (forced !== NON_PM) return forced;
+            return select_newcham_random(mon);
+        });
     }
+
+    if (mndx === NON_PM) mndx = select_newcham_random(mon);
+    return mndx;
+}
+
+/**
+ * C ref: mon.c select_newcham_form `:5214–5224` — random fallback arm.
+ * Retries only when invalid AND the rogue uppercase bias still applies;
+ * otherwise one rn1 and newcham's outer accept loop re-enters
+ * select_newcham_form (D-0928 #1111).
+ */
+function select_newcham_random(mon) {
+    let mndx = NON_PM;
+    let tryct = 50;
+    do {
+        mndx = rn1(SPECIAL_PM - LOW_PM, LOW_PM);
+    } while (--tryct > 0 && !validspecmon(mon, mndx)
+        && (tryct > 40 && Is_rogue_level(game.u?.uz)
+            && !monsym_isupper(mons(mndx))));
     return mndx;
 }
 
 /**
  * C ref: mon.c mgender_from_permonst — sex from new form.
+ * Exported for the second C caller family (`sp_lev.c` create_monster
+ * M_AP_MONSTER arm, cf. D-2245 `mon_has_special` one-word export).
  */
-function mgender_from_permonst(mtmp, mdat) {
+export function mgender_from_permonst(mtmp, mdat) {
     if (is_male(mdat)) mtmp.female = 0;
     else if (is_female(mdat)) mtmp.female = 1;
     else if (!is_neuter(mdat)) {
@@ -1514,7 +1712,7 @@ function newcham_post_set_mon_data(mtmp, olddata, mdat, pfsc) {
 
     // W_ARMG mselftouch still named (mon_break_armor runs in after_armor)
     check_gear_next_turn(mtmp);
-    // poly_steed still named (boulders run in after_boulder)
+    // poly_steed runs in after_steed (after boulders, before Elbereth)
 }
 
 /**
@@ -1556,9 +1754,9 @@ function newcham_drop_boulders(mtmp, mdat, polyspot) {
 }
 
 /**
- * Rest of newcham after mleashed. SHOW_MSG, mon_break_armor, boulders
- * and Elbereth monflee may return a Promise; NO_NC_FLAGS without those
- * stays boolean true.
+ * Rest of newcham after mleashed. SHOW_MSG, mon_break_armor, boulders,
+ * poly_steed and Elbereth monflee may return a Promise; NO_NC_FLAGS without
+ * those stays boolean true.
  */
 function newcham_after_unleash(
     mtmp, olddata, mdat, msg, oldname, seenorsensed, pfsc, polyspot,
@@ -1575,11 +1773,16 @@ function newcham_after_unleash(
         }
         return true;
     };
+    const after_steed = () => {
+        // C `:5517–5518` if (mtmp == u.usteed) poly_steed(mtmp, olddata).
+        if (mtmp !== game.u?.usteed) return after_pu();
+        return Promise.resolve(poly_steed(mtmp, olddata)).then(after_pu);
+    };
     const after_boulder = () => {
         // C boulder loop after check_gear, before poly_steed.
         const bd = newcham_drop_boulders(mtmp, mdat, polyspot);
-        if (bd) return Promise.resolve(bd).then(after_pu);
-        return after_pu();
+        if (bd) return Promise.resolve(bd).then(after_steed);
+        return after_steed();
     };
     const after_armor = () => {
         // C :5485 mon_break_armor(mtmp, polyspot) after possibly_unwield
@@ -1617,8 +1820,9 @@ function newcham_after_unleash(
  * mon_break_armor (worn.c `:1177–1335`, NC_VIA_WAND_OR_SPELL polyspot;
  * D-1914) + boulder bypass+flooreffects (D-1914); possibly_unwield is
  * D-1744;
+ * poly_steed steed.c `:851–873` wired after boulders, before Elbereth.
  * Named omissions: W_ARMG mselftouch; ustuck expels/unstuck (async;
- * l_oldname still captured for Hallu RNG); poly_steed.
+ * l_oldname still captured for Hallu RNG).
  * @returns {boolean|Promise<boolean>} true if form changed
  */
 export function newcham(mtmp, mdat, ncflags = 0) {
@@ -1663,7 +1867,31 @@ export function newcham(mtmp, mdat, ncflags = 0) {
     if (!mdat) {
         let tryct = 20;
         do {
-            const mndx = select_newcham_form(mtmp);
+            const sel = select_newcham_form(mtmp);
+            if (sel instanceof Promise) {
+                // C mon.c:5209–5211 wizard mon_polycontrol: the prompt is
+                // async, so finish the retry loop (C re-enters select each
+                // try, re-prompting) asynchronously. The Promise exists only
+                // on this path — scored runs stay sync (cf. D-1648).
+                return (async () => {
+                    let mndx = await sel;
+                    for (;;) {
+                        mdat = accept_newcham_form(mtmp, mndx);
+                        // C: first several tries require uppercase on rogue
+                        if (tryct > 15 && Is_rogue_level(game.u?.uz)
+                            && mdat && !monsym_isupper(mdat)) {
+                            mdat = null;
+                        }
+                        if (mdat) break;
+                        if (--tryct <= 0) break;
+                        mndx = await select_newcham_form(mtmp);
+                    }
+                    if (!mdat) return false;
+                    return newcham_apply_form(mtmp, mdat, olddata, msg,
+                        oldname, seenorsensed, pfsc, polyspot);
+                })();
+            }
+            const mndx = sel;
             mdat = accept_newcham_form(mtmp, mndx);
             // C: first several tries require uppercase on the rogue level
             if (tryct > 15 && Is_rogue_level(game.u?.uz)
@@ -1678,6 +1906,21 @@ export function newcham(mtmp, mdat, ncflags = 0) {
         if (((game.mvitals?.[mndx]?.mvflags ?? 0) & G_GENOD) !== 0)
             return false;
     }
+    return newcham_apply_form(mtmp, mdat, olddata, msg, oldname,
+        seenorsensed, pfsc, polyspot);
+}
+
+/**
+ * C ref: mon.c newcham — apply the accepted mdat: same-form reject,
+ * mgender, endgame mplayer mgivenname trim, wormno replace, seemimic,
+ * newmonhp scaling, set_mon_data, mleashed unleash / SHOW_MSG / Elbereth
+ * tail. Split out of newcham (pure code motion) so the wizard
+ * mon_polycontrol prompt path can finish asynchronously while scored
+ * runs keep the sync boolean (cf. D-1648).
+ * @returns {boolean|Promise<boolean>} true if form changed
+ */
+function newcham_apply_form(mtmp, mdat, olddata, msg, oldname, seenorsensed,
+    pfsc, polyspot) {
     if ((mdat?.mndx | 0) === (olddata?.mndx | 0)) return false;
 
     mgender_from_permonst(mtmp, mdat);

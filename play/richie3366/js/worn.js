@@ -16,11 +16,12 @@ import {
     TELEPAT, LEVITATION, FLYING, WWALKING, DISPLACED, FUMBLING, JUMPING,
     FIRE_RES, COLD_RES, SLEEP_RES, DISINT_RES, SHOCK_RES, POISON_RES,
     ACID_RES, STONE_RES, MFAST, BLINDED, Something,
+    NON_PM, Has_contents, has_mcorpsenm,
 } from './const.js';
 import {
     verysmall, nohands, is_animal, mindless, humanoid, noncorporeal,
     bigmonst, is_whirly, touch_petrifies, M1_SLITHY, MZ_SMALL, MZ_HUGE,
-    monsterNames, PM_WIZARD,
+    monsterNames, PM_WIZARD, PM_LONG_WORM,
 } from './monsters.js';
 import { is_art } from './artifact.js';
 import { ART_EYES_OF_THE_OVERWORLD } from './generated/artifacts_data.js';
@@ -1078,4 +1079,69 @@ export function nxt_unbypassed_obj(objchain) {
         o = o.nobj;
     }
     return null;
+}
+
+/**
+ * C ref: worn.c clear_bypass `:1054–1064` (staticfn) — zero `bypass` down
+ * an object chain, recursing into container contents. JS invent is an
+ * Array; monster and floor chains stay nobj-linked like C.
+ * @param {object[]|object|null} objchn
+ */
+function clear_bypass(objchn) {
+    const clear1 = (o) => {
+        o.bypass = 0;
+        if (Has_contents(o)) clear_bypass(o.cobj);
+    };
+    if (Array.isArray(objchn)) {
+        for (const o of objchn) {
+            if (o) clear1(o);
+        }
+        return;
+    }
+    for (let o = objchn; o; o = o.nobj) clear1(o);
+}
+
+/**
+ * C ref: worn.c clear_bypasses `:1067–1116` — called from moveloop_core
+ * when `context.bypasses` is set (worn.c `:1126` bypass_objlist and
+ * `:1140` nxt_unbypassed_obj set it). Clears every bypass flag C tracks:
+ * floor, hero invent, migrating objects, buried, bill, deleted, each live
+ * monster's invent (long worm polymorphed this turn also gets its
+ * mcorpsenm reverted to NON_PM so it is polymorphable again), migrating
+ * and accompanying monsters, floating ball and chain — then the flag.
+ * Draw-free and display-free, like C.
+ */
+export function clear_bypasses() {
+    clear_bypass(game.fobj || null);
+    clear_bypass(game.invent || null);
+    clear_bypass(game.migrating_objs || null);
+    clear_bypass(game.level?.buriedobjlist || null);
+    clear_bypass(game.billobjs || null);
+    if (game.objs_deleted) clear_bypass(game.objs_deleted);
+    for (const mtmp of game.fmon || []) {
+        if (!mtmp || (mtmp.mhp | 0) <= 0) continue; // C DEADMONSTER skip
+        clear_bypass(mtmp.minvent || null);
+        // C: long worm created by polymorph has mcorpsenm set to flag it
+        // exempt from a second polymorph on the same zap; clearing reverts
+        // it to normal. `data?.mndx ?? mnum` is the live mon-index idiom.
+        if ((mtmp.data?.mndx ?? mtmp.mnum ?? -1) === PM_LONG_WORM
+            && has_mcorpsenm(mtmp) && mtmp.mextra) {
+            mtmp.mextra.mcorpsenm = NON_PM;
+        }
+    }
+    // C: no mcorpsenm check on migrating monsters; long worms cannot be
+    // freshly polymorphed and migrating at the same time.
+    for (const mtmp of game.migrating_mons || []) {
+        if (mtmp) clear_bypass(mtmp.minvent || null);
+    }
+    // C: mydogs walk is a no-op at this point (only set during level
+    // change or ascension) but kept for thoroughness.
+    for (const mtmp of game.mydogs || []) {
+        if (mtmp) clear_bypass(mtmp.minvent || null);
+    }
+    // C: ball and chain can float off-chain (hero swallowed, for instance).
+    const u = game.u || {};
+    if (u.uball) u.uball.bypass = 0;
+    if (u.uchain) u.uchain.bypass = 0;
+    if (game.context) game.context.bypasses = false;
 }

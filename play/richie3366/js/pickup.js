@@ -22,7 +22,7 @@ import {
     taking_off, count_unpaid, getobj, Blind, hold_another_object, currency,
 } from './invent.js';
 import {
-    nomul, check_special_room, is_pool, is_lava, in_rooms, dosinkfall,
+    nomul, check_special_room, set_uinwater, is_pool, is_lava, in_rooms, dosinkfall,
     SURFACE_AT, switch_terrain, maybe_half_phys, waterbody_name,
 } from './hack.js';
 import {
@@ -46,7 +46,7 @@ import {
     OBJ_FREE, OBJ_CONTAINED,
     is_pit, LOST_DROPPED, LOST_THROWN, LOST_STOLEN, LOST_EXPLODING,
     STONE, ICE, MAX_TYPE, STAIRS, HOLE, TRAPDOOR,
-    IS_POOL, IS_LAVA, IS_FURNITURE, IS_WATERWALL, IS_SINK,
+    IS_POOL, IS_LAVA, IS_FURNITURE, IS_SINK,
     IS_THRONE, IS_FOUNTAIN, IS_DOOR, IS_ALTAR, D_ISOPEN,
     LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE, LOOKHERE_NOFLAGS,
     Has_contents, Is_container, Is_box,
@@ -71,7 +71,8 @@ import {
     NO_TRAP,
     MELT_ICE_AWAY, LEVITATION, WARNING, u_at, FUMBLING, PLNMSG_BACK_ON_GROUND,
     IS_GRAVE, W_SADDLE, SUPPRESS_SADDLE, ynqchars,
-    P_RIDING, P_BASIC, Is_waterlevel, WWALKING, FLYING, MAGICAL_BREATHING,
+    P_RIDING, P_BASIC, Is_waterlevel, Is_airlevel, Upolyd, WWALKING, FLYING, SWIMMING,
+    MAGICAL_BREATHING, DISMOUNT_FELL, DISMOUNT_GENERIC,
     MAY_HIT, MAY_DESTROY,
 } from './const.js';
 import {
@@ -79,7 +80,7 @@ import {
     back_on_ground, uteetering_at_seen_pit, uescaped_shaft,
 } from './trap.js';
 import { nhgetch } from './input.js';
-import { m_at, mnexto, hideunder } from './mon.js';
+import { m_at, mnexto, hideunder, ceiling_hider } from './mon.js';
 import { oclass_to_sym, regex_match, select_menu_pick_any, select_menu_pick_one } from './options.js';
 import {
     objectNames, COIN_CLASS, VENOM_CLASS, POTION_CLASS,
@@ -94,7 +95,7 @@ import {
     nohands, nolimbs, M1_NOTAKE, touch_petrifies, poly_when_stoned, is_rider,
     mons,
     monsterNames,
-    is_floater, is_clinger, likes_lava, is_flyer, breathless, hides_under,
+    is_floater, is_swimmer, is_clinger, likes_lava, amphibious, grounded, is_flyer, breathless, hides_under,
 } from './monsters.js';
 import { welded, weldmsg, setuwep, setuswapwep, setuqwep } from './wield.js';
 import { yn_function, getlin } from './getline.js';
@@ -110,7 +111,8 @@ import { more_experienced, newexplevel } from './exper.js';
 import { hard_helmet } from './do_wear.js';
 import { mdamageu, digests } from './mhitu.js';
 import { P_SKILL } from './weapon.js';
-import { rider_cant_reach } from './steed.js';
+import { rider_cant_reach, dismount_steed } from './steed.js';
+import { is_waterwall } from './dbridge.js';
 import { is_ice } from './zap.js';
 import { incr_itimeout_HLevitation } from './potion.js';
 import { which_armor, extract_from_minvent } from './worn.js';
@@ -1853,29 +1855,109 @@ export async function dopickup() {
 }
 
 /**
- * C ref: hack.c pooleffects(newspot).
- * Branch envelope: enter pool/lava → drown/lava_effects; leave-water /
- * set_uinwater / steed / ceiling_hider / Wwalking arms deferred.
+ * C ref: hack.c pooleffects `:3233–3309` (newspot TRUE from spoteffects).
+ * Leave-water arms (air-bubble pop / lava-leave / back_on_ground; waterlevel /
+ * Levitation / Flying / Wwalking pop-out; set_uinwater(0) + docrt /
+ * vision_full_recalc when surfacing) then enter pool/lava (floating-steed
+ * safe; dismount_steed FELL-vs-GENERIC + air/water-level early FALSE +
+ * check_special_room(newspot) TRUE; ceiling-hider stay-out; lava_effects /
+ * Wwalking-waterwall-gated drown with the Swimming/Amphibious/Breathless
+ * stay-wet gate).
+ * C dbridge.c is_pool_or_lava `:76–83` ≡ is_pool||is_lava (inline here; no
+ * 4th clone — dig/eat/trap hold the other three); ceiling_hider is the
+ * canonical mondata.h macro export from mon.js; C Underwater ≡ u.uinwater.
  * @returns {Promise<boolean>} true → skip rest of spoteffects
  */
 export async function pooleffects(newspot) {
     const u = game.u;
     if (!u) return false;
 
-    // leaving-water arm deferred
+    /* C youprop.h Wwalking `:260` ≡ (HWwalking||EWwalking) &&
+       !Is_waterlevel (same-file pickup_checks idiom + uprops flats). */
+    const propW = u.uprops?.[WWALKING];
+    const wwalking = !!(((propW?.intrinsic | 0) || (propW?.extrinsic | 0)
+        || (u.HWwalking | 0) || (u.EWwalking | 0)) && !Is_waterlevel(u.uz));
+    const youdata = game.youmonst?.data;
+    /* C youprop.h Swimming `:266` (H||E||swimmer steed); Amphibious `:272`
+       and Breathless `:276` (H||E Magical_breathing || data fn). */
+    const propS = u.uprops?.[SWIMMING];
+    const swimming = !!((propS?.intrinsic | 0) || (propS?.extrinsic | 0)
+        || (u.HSwimming | 0) || (u.ESwimming | 0)
+        || (u.usteed && is_swimmer(u.usteed.data)));
+    const propB = u.uprops?.[MAGICAL_BREATHING];
+    const heroAmphibious = !!((propB?.intrinsic | 0) || (propB?.extrinsic | 0)
+        || (u.HMagical_breathing | 0) || (u.EMagical_breathing | 0)
+        || amphibious(youdata));
+    const heroBreathless = !!((propB?.intrinsic | 0) || (propB?.extrinsic | 0)
+        || (u.HMagical_breathing | 0) || (u.EMagical_breathing | 0)
+        || breathless(youdata));
 
+    /* C `:3236–3265` — leaving water. */
+    if (u.uinwater) {
+        let stillInwater = false; /* C: still_inwater */
+        if (!is_pool(u.ux, u.uy)) {
+            if (Is_waterlevel(u.uz)) {
+                await pline('You pop into an air bubble.');
+                if (!game.iflags) game.iflags = {};
+                game.iflags.last_msg = PLNMSG_BACK_ON_GROUND;
+            } else if (is_lava(u.ux, u.uy)) {
+                await pline(`You leave the ${hliquid('water')}...`);
+            } else {
+                await back_on_ground(false);
+            }
+        } else if (Is_waterlevel(u.uz)) {
+            stillInwater = true;
+        } else if (u.Levitation) {
+            await pline(`You pop out of the ${hliquid('water')} like a cork!`);
+        } else if (u.Flying) {
+            await pline(`You fly out of the ${hliquid('water')}.`);
+        } else if (wwalking) {
+            await pline('You slowly rise above the surface.');
+        } else {
+            stillInwater = true;
+        }
+        if (!stillInwater) {
+            /* C: was_underwater ≡ Underwater(u.uinwater) && !Is_waterlevel */
+            const wasUnderwater = !!u.uinwater && !Is_waterlevel(u.uz);
+            await set_uinwater(0); /* u.uinwater = 0; leave the water */
+            if (wasUnderwater) { /* restore vision */
+                await docrt();
+                game.vision_full_recalc = 1;
+            }
+        }
+    }
+
+    /* C `:3267–3307` — entering water or lava. */
     if (!u.ustuck && !u.Levitation && !u.Flying
         && (is_pool(u.ux, u.uy) || is_lava(u.ux, u.uy))) {
-        // steed / ceiling_hider deferred
+        if (u.usteed && !grounded(u.usteed.data)) {
+            /* floating or clinging steed keeps hero safe */
+            return false;
+        } else if (u.usteed) {
+            /* steed enters pool */
+            await dismount_steed(
+                u.uinwater ? DISMOUNT_FELL : DISMOUNT_GENERIC,
+            ); /* C: Underwater ≡ u.uinwater */
+            /* dismount_steed() -> float_down() did spoteffects trap+pickup
+               work already (float_down skips autopickup on Air/Water) */
+            if (Is_airlevel(u.uz) || Is_waterlevel(u.uz)) return false;
+            if (newspot) await check_special_room(false); /* spoteffects */
+            return true;
+        }
+        /* not mounted */
+
+        /* hiding on ceiling: don't automatically enter pool */
+        if (Upolyd(u) && ceiling_hider(mons(u.umonnum)) && u.uundetected) {
+            return false;
+        }
+
+        /* drown()/lava_effects() TRUE when hero relocates surviving */
         if (is_lava(u.ux, u.uy)) {
             if (await lava_effects()) return true;
-        } else {
-            // C: (!Wwalking || waterwall) && (newspot || !uinwater || !(Swim|…))
-            const typ = game.level?.at(u.ux, u.uy)?.typ;
-            const waterwall = IS_WATERWALL(typ);
-            if (waterwall || newspot || !u.uinwater) {
-                if (await drown()) return true;
-            }
+        } else if ((!wwalking || is_waterwall(u.ux, u.uy))
+            && (newspot || !u.uinwater
+                || !(swimming || heroAmphibious || heroBreathless))) {
+            if (await drown()) return true;
         }
     }
     return false;

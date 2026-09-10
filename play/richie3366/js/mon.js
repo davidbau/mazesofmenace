@@ -3047,8 +3047,10 @@ function m_next2u(mtmp) {
 
 /**
  * C ref: mondata.h ceiling_hider — hider that clings/flies (not mimic).
+ * Canonical export: engrave/music hold identical locals; pooleffects imports
+ * this one (no 4th clone).
  */
-function ceiling_hider(ptr) {
+export function ceiling_hider(ptr) {
     if (!is_hider(ptr)) return false;
     return (is_clinger(ptr) && ptr.mlet !== 'S_MIMIC') || is_flyer(ptr);
 }

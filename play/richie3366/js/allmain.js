@@ -4,7 +4,7 @@
 import { game } from './gstate.js';
 import { rnd, rn2, rn1 } from './rng.js';
 import { mklev, l_nhcore_init, u_on_upstairs, fumaroles, movebubbles } from './mklev.js';
-import { dobjsfree } from './mkobj.js';
+import { dobjsfree, clear_splitobjs } from './mkobj.js';
 import { rhack, continue_run, run_active, continue_search, search_repeat_active, dolookaround, end_of_input } from './cmd.js';
 import {
     docrt, cls, bot, flush_screen, pline, Norep, flush_topl_more, see_monsters,
@@ -32,7 +32,7 @@ import {
     A_DEX, A_STR, A_CON, A_WIS, A_INT, A_MAX, acurr, exercise, adjattrib,
     change_luck, Fast, Very_fast, Searching, Fumbling,
 } from './attrib.js';
-import { dosearch0, warnreveal } from './detect.js';
+import { dosearch0, warnreveal, do_vicinity_map, Clairvoyant } from './detect.js';
 import { nhgetch } from './input.js';
 import {
     unmul, nomul, monster_nearby, stop_occupation, overexert_hp, is_pool,
@@ -40,6 +40,7 @@ import {
 } from './hack.js';
 import { reset_justpicked } from './pickup.js';
 import { set_wear, glibr } from './do_wear.js';
+import { clear_bypasses } from './worn.js';
 import { gethungry } from './eat.js';
 import { age_spells } from './spell.js';
 import { near_capacity, paint_corner_nhw_menu, encumber_msg, update_inventory, prepare_perminvent } from './invent.js';
@@ -67,7 +68,7 @@ import {
     UTOTYPE_NONE, TIMEOUT, REGENERATION, CLAIRVOYANT,
     MAXULEV, ENERGY_REGENERATION, MAGICAL_BREATHING, GLIB,
     TELEPORT, TELEPAT, POLYMORPH, UNCHANGING, NON_PM, POLY_NOFLAGS, ismnum,
-    WARNING, HALF_PHDAM, Is_waterlevel, Is_airlevel,
+    WARNING, HALF_PHDAM, Is_waterlevel, Is_airlevel, In_endgame,
     WIN_ERR, MENU_BEHAVE_STANDARD, MENU_BEHAVE_PERMINV,
     WC2_HILITE_STATUS, WC2_FLUSH_STATUS,
 } from './const.js';
@@ -951,11 +952,22 @@ export async function moveloop_core() {
         return;
     }
 
-    // C allmain.c:192–201 — dobjsfree then bypasses / resume_wish named.
-    // sanity_check before context.move (opt_in Off; gold/invlet D-1664).
+    // C allmain.c:186–201 — get_nh_event is a tty no-op (wintty.c:758) and
+    // POSITIONBAR is off in unixconf.h, so the spine starts at dobjsfree,
+    // then bypasses, sanity_check, resume_wish in C order.
     dobjsfree();
+    // C allmain.c:194–196 — bypass flags left by bypass_objlist /
+    // nxt_unbypassed_obj (worn.c:1067); worm mcorpsenm back to NON_PM.
+    if (g.context.bypasses) clear_bypasses();
+    // sanity_check before context.move (opt_in Off; gold/invlet D-1664).
     if (g.iflags?.sanity_check || g.iflags?.debug_fuzzer) {
         await sanity_check();
+    }
+    // C allmain.c:199–201 — a wish cut short by term_gone resumes here
+    // (zap.c:6341 sets, makewish clears at entry per zap.c:6323).
+    if (g.context.resume_wish) {
+        const { makewish } = await import('./zap.js');
+        await makewish();
     }
 
     // C: if (svc.context.move) { actual time passed ... }
@@ -1114,10 +1126,24 @@ export async function moveloop_core() {
         // (allmain.c: moves*8 + n for n == 1..7)
         g.hero_seq = (g.hero_seq | 0) + 1;
 
+        // C allmain.c — although encumbrance was checked above, check again
+        // for message purposes: inventory weight may have changed in
+        // nh_timeout(), so the player gets immediate feedback if their own
+        // action encumbered them.
+        await encumber_msg();
+
         // C: once-per-hero-took-time — seer_turn after umovement loop
         // (not inside once-per-turn EOT). Always rolls rn1 even without
-        // Clairvoyant; do_vicinity_map deferred.
+        // Clairvoyant; the vicinity map only with Amulet/Clairvoyance.
         if ((g.moves || 0) >= (g.context.seer_turn || 0)) {
+            // C allmain.c — (uhave.amulet || Clairvoyant) && !In_endgame &&
+            // !BClairvoyant → do_vicinity_map((struct obj *)0), i.e. the
+            // random-farsight arm (detect.c, D-1391).
+            const su = g.u || {};
+            if ((su.uhave?.amulet || Clairvoyant())
+                && !In_endgame(su.uz) && !(su.BClairvoyant | 0)) {
+                await do_vicinity_map(null);
+            }
             g.context.seer_turn = g.moves + rn1(31, 15);
         }
         // C: sink_into_lava / pooleffects / under_water|ground deferred;
@@ -1126,8 +1152,10 @@ export async function moveloop_core() {
     }
 
     // Vision + display (before getch — screen capture in nhgetch)
-    // C: allmain.c once-per-player-input — Amulet wish before find_ac
+    // C: allmain.c once-per-player-input — clear_splitobjs() first (zero
+    // split parent/child oids, mkobj.c), then Amulet wish before find_ac
     // (D-0559). display_nhwindow(WIN_MESSAGE,TRUE) ≈ flush pending More.
+    clear_splitobjs();
     {
         const u = g.u;
         if (u && (u.uhave?.amulet || u.uhave_amulet)
@@ -1180,9 +1208,6 @@ export async function moveloop_core() {
     // (not ux0 trail — that is m_postmove_effect / D-1167).
     await m_everyturn_effect(game.youmonst);
 
-    // C: u.umoved = FALSE before occupation / rhack (allmain.c)
-    g.u.umoved = false;
-
     // C: svc.context.move = 1; then occupation or rhack(0)
     // When multi < 0 (dressing etc.), skip input; leave move=1 for next turn.
     g.context.move = 1;
@@ -1196,6 +1221,10 @@ export async function moveloop_core() {
         await runmode_delay_output();
         return;
     }
+    // C allmain.c — u.umoved = FALSE after the occupation arm (which
+    // returns) and before the multi branches, so an ongoing occupation
+    // still sees last turn's umoved.
+    g.u.umoved = false;
     if ((g.multi || 0) < 0) {
         // multi-turn inactivity continues without nhgetch
     } else if (run_active()) {

@@ -157,6 +157,7 @@ import {
     ROCK,
     SCR_BLANK_PAPER,
     SCR_MAIL,
+    SCR_SCARE_MONSTER,
     SCROLL_CLASS,
     SLIME_MOLD,
     SPE_BOOK_OF_THE_DEAD,
@@ -201,7 +202,15 @@ import {
 } from './objnam.js';
 import { ILLOBJ_CLASS, MAXOCLASSES } from './objects.js';
 import { is_quest_artifact } from './questpgr.js';
-import { UnsupportedShopError, costly_spot } from './shk.js';
+import {
+    inhishop,
+    inside_shop,
+    same_price,
+    shop_keeper,
+    shop_debt,
+    UnsupportedShopError,
+    costly_spot,
+} from './shk.js';
 import { set_moreluck } from './attrib.js';
 import { is_pole } from './worn.js';
 
@@ -2120,7 +2129,8 @@ export function mergable(otmp, obj, env = {}) {
     }
     if (obj.otyp === POT_OIL && obj.lamplit) return false;
     if (obj.unpaid) {
-        const samePrice = requiredHook(normalized, 'samePrice', obj);
+        const samePrice = normalized.hooks?.samePrice
+            ?? ((first, second, env) => same_price(first, second, env.state));
         if (!samePrice(obj, otmp, normalized)) return false;
     }
     if (obj.oextra?.omonst
@@ -2153,6 +2163,37 @@ export function mergable(otmp, obj, env = {}) {
         return false;
     }
     return true;
+}
+
+// C ref: invent.c merge_choice() (775-807). Find an inventory object that
+// can merge with `obj`, accounting for the attributes a shop-floor object
+// will have after pickup. The temporary no_charge write is restored on every
+// path that reaches the scan; the early billable-shop return leaves it alone,
+// matching the source's branch order.
+export function merge_choice(objlist, obj, state = game) {
+    if (!objlist) return null;
+    if (obj.otyp === SCR_SCARE_MONSTER) return null;
+
+    const saveNoCharge = obj.no_charge;
+    if (objlist === state.invent && obj.where === OBJ_FLOOR) {
+        const shopkeeper = shop_keeper(
+            inside_shop(obj.ox, obj.oy, state),
+            state,
+        );
+        if (shopkeeper) {
+            if (obj.no_charge) {
+                obj.no_charge = false;
+            } else if (inhishop(shopkeeper, state)) {
+                return null;
+            }
+        }
+    }
+
+    let current = objlist;
+    while (current && !mergable(current, obj, { state }))
+        current = current.nobj;
+    obj.no_charge = saveNoCharge;
+    return current ?? null;
 }
 
 function stopObjectTimers(obj, env) {
@@ -3508,16 +3549,17 @@ export async function doprgold(state = game) {
 async function shopper_financial_report(state) {
     const { inside_shop, shop_keeper } = await import('./shk.js');
     const thisShkp = shop_keeper(inside_shop(state.u.ux, state.u.uy, state), state);
-    if (thisShkp && !thisShkp.eshk?.credit && !thisShkp.eshk?.debit
-        && !thisShkp.eshk?.robbed) {
+    if (thisShkp && !thisShkp.mextra?.eshk?.credit
+        && !shop_debt(thisShkp.mextra.eshk)) {
         await ttyPline('You have no credit or debt in here.', state);
         return;
     }
     if (!thisShkp) {
-        for (let mtmp = state.fmon; mtmp; mtmp = mtmp.nmon) {
-            if (mtmp.deadMonster) continue;
-            if (!mtmp.isshk) continue;
-            const eshk = mtmp.eshk;
+        for (let mtmp = state.level?.monlist ?? state.fmon;
+            mtmp;
+            mtmp = mtmp.nmon) {
+            if ((mtmp.mhp ?? 0) < 1 || !mtmp.isshk) continue;
+            const eshk = mtmp.mextra?.eshk;
             if (!eshk) continue;
             if (eshk.credit) {
                 await ttyPline(
@@ -3527,10 +3569,11 @@ async function shopper_financial_report(state) {
                     state,
                 );
             }
-            if (eshk.debit) {
+            const debt = shop_debt(eshk);
+            if (debt) {
                 await ttyPline(
                     `You owe ${mtmp.mname || 'the shopkeeper'} `
-                    + `${eshk.debit} ${currency(eshk.debit, state)}.`,
+                    + `${debt} ${currency(debt, state)}.`,
                     state,
                 );
             }

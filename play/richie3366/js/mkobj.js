@@ -47,8 +47,8 @@ import {
     G_NOCORPSE, NON_PM as MON_NON_PM,
 } from './monsters.js';
 import { PM_SAMURAI } from './generated/monsters_data.js';
-import { update_inventory } from './invent.js';
-import { distant_name, doname, cxname, The, vtense, corpse_xname } from './objnam.js';
+import { update_inventory, Blind } from './invent.js';
+import { distant_name, doname, cxname, The, vtense, corpse_xname, Yname2, otense } from './objnam.js';
 import {
     ROT_AGE, TAINT_AGE, TROLL_REVIVE_CHANCE,
     ROT_ORGANIC, ROT_CORPSE, REVIVE_MON, ZOMBIFY_MON,
@@ -65,14 +65,15 @@ import {
     Is_rogue_level, isok, ICE, DRAWBRIDGE_UP, DB_UNDER, DB_ICE,
     LS_OBJECT, LS_MONSTER, OMONST, has_omonst, OMID, has_omid, MON_DETACH,
     IRONBARS, ROOM, IS_ALTAR, Is_airlevel, Is_waterlevel,
-    MAX_OIL_IN_FLASK, nothing_happens, EPRI,
+    MAX_OIL_IN_FLASK, nothing_happens, EPRI, PLNMSG_OBJ_GLOWS,
 } from './const.js';
-import { recalc_block_point } from './vision.js';
-import { del_light_source, discard_flashes, obj_sheds_light } from './light.js';
+import { recalc_block_point, cansee } from './vision.js';
+import { del_light_source, discard_flashes, obj_sheds_light, obj_adjust_light_radius } from './light.js';
+import { arti_light_radius, get_obj_location } from './timeout.js';
 import { obfree } from './shk.js';
 import { hands_obj } from './weapon.js';
 import { obj_resists } from './dogmove.js';
-import { newsym } from './display.js';
+import { newsym, pline } from './display.js';
 import { maybe_unhide_at } from './monmove.js';
 
 const GOLD_PIECE = objectNames.indexOf('GOLD_PIECE');
@@ -498,8 +499,19 @@ export function unsplitobj(obj) {
     return null;
 }
 
-export function curse(otmp) {
+/**
+ * C ref: mkobj.c curse `:1782–1819` — async only for the lamplit tail
+ * (`maybe_adjust_light` plines); every state change below precedes the
+ * first await, so long-standing sync callers (mksobj_init, mklev gen,
+ * mplayer loadout — always unlit there) observe identical behavior.
+ * Named omit: COIN_CLASS guard, confers_luck/set_moreluck, BAG_OF_HOLDING
+ * weight, uwep bimanual/reset_remarm, uswapwep drop, SPBOOK book_cursed.
+ */
+export async function curse(otmp) {
     if (!otmp) return;
+    // C `:1786–1791` old_light before the bless/curse flags flip
+    // (arti_light_radius reads the pre-change state).
+    const old_light = otmp.lamplit ? arti_light_radius(otmp) : 0;
     otmp.cursed = true;
     otmp.blessed = false;
     // C mkobj.c curse — FIGURINE attach when carried/mcarried + typed
@@ -509,21 +521,35 @@ export function curse(otmp) {
         && figurine_is_carried(otmp)) {
         attach_fig_transform_timeout(otmp);
     }
+    if (otmp.lamplit) await maybe_adjust_light(otmp, old_light);
 }
-export function bless(otmp) {
+/**
+ * C ref: mkobj.c bless `:1744–1764` — async only for the lamplit tail;
+ * state changes precede the first await (see curse). Named omit:
+ * COIN_CLASS guard, confers_luck/set_moreluck, BAG_OF_HOLDING weight.
+ */
+export async function bless(otmp) {
     if (!otmp) return;
+    const old_light = otmp.lamplit ? arti_light_radius(otmp) : 0;
     otmp.blessed = true;
     otmp.cursed = false;
     // C mkobj.c bless — stop FIG_TRANSFORM if figurine timed
     if ((otmp.otyp | 0) === FIGURINE && (otmp.timed | 0)) {
         stop_timer(FIG_TRANSFORM, otmp);
     }
+    if (otmp.lamplit) await maybe_adjust_light(otmp, old_light);
 }
 
-/** C ref: mkobj.c unbless — clear blessed only. */
-export function unbless(otmp) {
+/**
+ * C ref: mkobj.c unbless `:1766–1780` — async only for the lamplit tail;
+ * state change precedes the first await (see curse). Named omit:
+ * confers_luck/set_moreluck, BAG_OF_HOLDING weight.
+ */
+export async function unbless(otmp) {
     if (!otmp) return;
+    const old_light = otmp.lamplit ? arti_light_radius(otmp) : 0;
     otmp.blessed = false;
+    if (otmp.lamplit) await maybe_adjust_light(otmp, old_light);
 }
 
 /**
@@ -538,25 +564,65 @@ export function set_bknown(obj, onoff) {
 }
 
 /**
- * C ref: mkobj.c uncurse — clear cursed; bag weight; figurine stop
- * FIG_TRANSFORM. luck / lamplit adjust still deferred.
+ * C ref: mkobj.c uncurse `:1821–1838` — async only for the lamplit tail;
+ * state changes precede the first await (see curse). Named omit:
+ * confers_luck/set_moreluck.
  */
-export function uncurse(otmp) {
+export async function uncurse(otmp) {
     if (!otmp) return;
+    const old_light = otmp.lamplit ? arti_light_radius(otmp) : 0;
     otmp.cursed = false;
     const bag = objectNames.indexOf('BAG_OF_HOLDING');
     if (bag >= 0 && (otmp.otyp | 0) === bag) otmp.owt = weight(otmp);
     else if ((otmp.otyp | 0) === FIGURINE && (otmp.timed | 0)) {
         stop_timer(FIG_TRANSFORM, otmp);
     }
+    if (otmp.lamplit) await maybe_adjust_light(otmp, old_light);
 }
 
-// C ref: mkobj.c blessorcurse()
-export function blessorcurse(otmp, chance) {
+// C ref: mkobj.c blessorcurse() — async for the curse/bless lamplit tail.
+export async function blessorcurse(otmp, chance) {
     if (!otmp || otmp.blessed || otmp.cursed) return;
     if (!rn2(chance)) {
-        if (!rn2(2)) curse(otmp);
-        else bless(otmp);
+        if (!rn2(2)) await curse(otmp);
+        else await bless(otmp);
+    }
+}
+
+/**
+ * C ref: mkobj.c maybe_adjust_light `:1703–1736` — light radius of a
+ * light-emitting artifact varies by curse/bless state, so bless/curse/
+ * unbless/uncurse (plus read.c dragon-scale remail and polyself skin
+ * paths) re-sync it after the flip. No RNG on any arm. Async: the light
+ * update awaits `obj_adjust_light_radius` (async for its impossible
+ * fallthrough) and the intensity change plines.
+ */
+export async function maybe_adjust_light(obj, old_range) {
+    if (!obj) return;
+    const new_range = arti_light_radius(obj);
+    const delta = (new_range | 0) - (old_range | 0);
+    if (!delta) return;
+    await obj_adjust_light_radius(obj, new_range);
+    /* simplifying assumptions: hero is wielding or wearing this object;
+       artifacts have to be in use to emit light and monsters' gear won't
+       change bless or curse state */
+    const loc = get_obj_location(obj, 0);
+    if (!Blind() && loc) {
+        let buf = '';
+        if ((game.iflags?.last_msg | 0) === PLNMSG_OBJ_GLOWS)
+            /* we just saw "The <obj> glows <color>." from dipping */
+            buf = ((obj.quan | 0) === 1) ? 'It' : 'They';
+        else if (((obj.where | 0) === OBJ_INVENT) || cansee(loc.x, loc.y))
+            buf = Yname2(obj);
+        if (buf) {
+            /* initial activation says "dimly" if cursed, "brightly" if
+               uncursed, and "brilliantly" if blessed; when changing
+               intensity, "less brightly" dims but brightening needs
+               "brighter" rather than "more brightly"; ugh */
+            await pline(`${buf} ${otense(obj, 'shine')} `
+                + `${Math.abs(delta) > 1 ? 'much ' : ''}`
+                + `${delta > 0 ? 'brighter' : 'less brightly'}.`);
+        }
     }
 }
 

@@ -1356,7 +1356,7 @@ function reveal_trap(t, seeit) {
 }
 
 /** C ref: wizard.c mon_has_special `:116` — oartifact >= ART_ORB_OF_DETECTION. */
-function mon_has_special(mtmp) {
+export function mon_has_special(mtmp) {
     for (let otmp = mtmp?.minvent; otmp; otmp = otmp.nobj) {
         const otyp = otmp.otyp | 0;
         if (otyp === AMULET_OF_YENDOR
