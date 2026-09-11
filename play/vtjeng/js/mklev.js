@@ -1716,6 +1716,9 @@ async function ensureSpecialLevelLoaders() {
     const { ASMODEUS_LEVEL_LOADERS } = await import('./asmodeus_levels.js');
     const { BAALZ_LEVEL_LOADERS } = await import('./baalz_levels.js');
     const { JUIBLEX_LEVEL_LOADERS } = await import('./juiblex_levels.js');
+    const { ORCUS_LEVEL_LOADERS } = await import('./orcus_levels.js');
+    const { WIZARD1_LEVEL_LOADERS } = await import('./wizard1_levels.js');
+    const { WIZARD2_LEVEL_LOADERS } = await import('./wizard2_levels.js');
     SPECIAL_LEVEL_LOADERS = {
         ...BIGRM_LOADERS,
         ...QUEST_LEVEL_LOADERS,
@@ -1731,6 +1734,9 @@ async function ensureSpecialLevelLoaders() {
         ...ASMODEUS_LEVEL_LOADERS,
         ...BAALZ_LEVEL_LOADERS,
         ...JUIBLEX_LEVEL_LOADERS,
+        ...ORCUS_LEVEL_LOADERS,
+        ...WIZARD1_LEVEL_LOADERS,
+        ...WIZARD2_LEVEL_LOADERS,
     };
 }
 
@@ -5590,7 +5596,16 @@ function fill_empty_maze(frame, state, env) {
                 while (is_pit(trytrap) || is_hole(trytrap))
                     trytrap = rndtrap(state);
             }
-            maketrap(mm.x, mm.y, trytrap, env);
+            // sp_lev.c calls maketrap() directly here. Route through the
+            // mklev wrapper to install its statue-trap capability while
+            // retaining direct-call semantics for web and victim handling.
+            make_level_trap(
+                trytrap,
+                MKTRAP_NOSPIDERONWEB | MKTRAP_NOVICTIM,
+                null,
+                mm,
+                env,
+            );
         }
     }
 }

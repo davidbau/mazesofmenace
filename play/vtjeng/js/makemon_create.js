@@ -284,6 +284,7 @@ import {
     PM_MINOTAUR,
     PM_GIANT_EEL,
     PM_GUARD,
+    PM_NAZGUL,
     PM_MORDOR_ORC,
     PM_SMALL_MIMIC,
     PM_NEANDERTHAL,
@@ -511,6 +512,7 @@ import {
     RANSEUR,
     RING_MAIL,
     RING_CLASS,
+    RIN_INVISIBILITY,
     ROCK,
     ROBE,
     ROCK_CLASS,
@@ -2461,6 +2463,18 @@ function m_initinv(monster, normalized) {
             obj.owt = weight(obj, normalized);
             addFreshMonsterObject(monster, obj, normalized);
         }
+    } else if (ptr.mlet === S_WRAITH && ptr.pmidx === PM_NAZGUL) {
+        // C ref: makemon.c:752-759. Every Nazgul starts with a cursed
+        // invisibility ring; mksobj() consumes next_ident before the BUC
+        // mutation, then mpickobj() links the object to the monster.
+        const ring = mksobj(
+            RIN_INVISIBILITY,
+            false,
+            false,
+            normalized,
+        );
+        curseFreeObject(ring, normalized);
+        addFreshMonsterObject(monster, ring, normalized);
     } else if (ptr.mlet === S_LICH) {
         // C ref: makemon.c:759-771. Master liches rarely receive an athame
         // or empty wand; arch-liches can receive a higher-quality weapon.
@@ -3311,7 +3325,8 @@ function requiredDistressShapechangeOperation(env, name) {
 
 function preflightDistressShapechange(monster, normalized) {
     const { state } = normalized;
-    const supportedShifter = monster?.cham === PM_CHAMELEON
+    const supportedShifter = monster?.cham === PM_SANDESTIN
+        || monster?.cham === PM_CHAMELEON
         || monster?.cham === PM_VAMPIRE
         || monster?.cham === PM_VAMPIRE_LEADER;
     if (!supportedShifter) {
@@ -3319,10 +3334,11 @@ function preflightDistressShapechange(monster, normalized) {
             `distress shapechanger ${monster?.cham}`,
         );
     }
-    // The initial-D:1 forms admitted here are empty-inventory chameleons and
-    // Mausoleum vampires. General newcham() has additional owners for worm
-    // teardown, disguise, leash/steed/engulfment, armor, wielding, and
-    // self-touch. Refuse those states before selection can consume RNG.
+    // The initial-D:1 forms admitted here are empty-inventory chameleons,
+    // Sandestins, and Mausoleum vampires. General newcham() has additional
+    // owners for worm teardown, disguise, leash/steed/engulfment, armor,
+    // wielding, and self-touch. Refuse those states before selection can
+    // consume RNG.
     if (monster.minvent || monster.wormno || monster.m_ap_type
         || monster.mleashed || state.u?.ustuck === monster
         || state.u?.usteed === monster) {

@@ -17,11 +17,14 @@ import {
     CORR,
     DOOR,
     D_CLOSED,
+    D_LOCKED,
+    D_TRAPPED,
     FIRE_RES,
     HEADSTONE,
     INVIS,
     IS_FOUNTAIN,
-    IS_FURNITURE,
+    IS_OBSTRUCTED,
+    IS_ROOM,
     IS_STWALL,
     IS_TREE,
     IS_WATERWALL,
@@ -30,11 +33,11 @@ import {
     NEED_WEAPON,
     NORMAL_SPEED,
     OBJ_MINVENT,
-    ROOM,
     SLEEP_RES,
     SLP_GAS_TRAP,
     FIRE_TRAP,
     ANTI_MAGIC,
+    STRAT_WAITMASK,
 } from './const.js';
 import { exercise } from './attrib.js';
 // js/allmain.js imports this file's action runners, so this edge closes an
@@ -58,7 +61,13 @@ import { capitalizedMonsterName } from './do_name.js';
 import { on_level } from './dungeon.js';
 import { engr_at, wipe_engr_at } from './engrave.js';
 import { game } from './gstate.js';
-import { losehp, may_dig, nh_delay_output, nomul } from './hack.js';
+import {
+    losehp,
+    may_dig,
+    may_passwall,
+    nh_delay_output,
+    nomul,
+} from './hack.js';
 import { hands_obj, obj_extract_self, stackobj } from './invent.js';
 import { any_light_source } from './light.js';
 import { m_dowear, set_mimic_sym } from './makemon_create.js';
@@ -66,7 +75,7 @@ import { fightm } from './mhitm.js';
 import { mattacku, mdamageu, MonsterDeathPlanningError } from './mhitu.js';
 import { buzzmu, castmu } from './mcastu.js';
 import { m_throw, thitu, thrwmu } from './mthrowu.js';
-import { AKLYS } from './objects.js';
+import { AKLYS, WOOD } from './objects.js';
 import { quest_stat_check, quest_talk } from './quest.js';
 import { whimper } from './sounds.js';
 import {
@@ -100,7 +109,6 @@ import {
     AD_SPEL,
     AT_MAGC,
     PM_FLOATING_EYE,
-    PM_FOG_CLOUD,
     PM_GELATINOUS_CUBE,
     PM_GREMLIN,
     PM_IRON_GOLEM,
@@ -162,6 +170,7 @@ import {
 } from './startup_a11y.js';
 import { is_ice } from './terrain.js';
 import { is_lava, is_pool, t_at } from './trap.js';
+import { noteleport_level } from './teleport.js';
 import { ttyPline, ttyPlineWillWait } from './tty_message.js';
 import { passive_obj } from './uhitm.js';
 import {
@@ -214,6 +223,24 @@ function activeProperty(state, property, blockedMatters = true) {
 function liveOnMap(monster) {
     return monster.mhp > 0
         && (monster.mstate ?? MON_FLOOR) === MON_FLOOR;
+}
+
+// C ref: monmove.c gelcube_digests()'s inventory scan (424-434). The
+// digestion effect remains behind the special-action boundary, but a cube
+// whose pack contains no eligible object reaches ordinary dochug() unchanged.
+function gelcubeHasDigestibleObject(monster, state) {
+    if (monster.meating || !monster.minvent) return false;
+    const achieveo = state.context?.achieveo;
+    for (let obj = monster.minvent; obj; obj = obj.nobj) {
+        const organic = (state.objects?.[obj.otyp]?.oc_material ?? 0) <= WOOD;
+        const minesPrize = Boolean(achieveo?.mines_prize_oid)
+            && obj.o_id === achieveo.mines_prize_oid;
+        const sokoPrize = Boolean(achieveo?.soko_prize_oid)
+            && obj.o_id === achieveo.soko_prize_oid;
+        if (organic && !obj.oartifact && !minesPrize && !sokoPrize)
+            return true;
+    }
+    return false;
 }
 
 function assertSimpleScanState(monster, state) {
@@ -331,7 +358,31 @@ function assertSimpleActionState(monster, state) {
 
     if (monster.mtame || monster.isminion)
         unsupported('minion movement');
-    if (monster.wormno || is_covetous(monster.data)) {
+    const covetous = is_covetous(monster.data);
+    // C ref: monmove.c dochug() checks msleeping at :726-731 before its
+    // covetous tactics() call at :782. When couldsee() is false, disturb()
+    // returns 0 without drawing or changing the monster, so this is the one
+    // covetous state that can pass through the existing early return safely.
+    // Keep every other covetous state behind the special-movement boundary.
+    const sleepingOutOfSightCovetous = covetous
+        && monster.msleeping
+        && !couldsee(monster.mx, monster.my, state);
+    // dochug() returns before tactics() when the monster is waiting for the
+    // hero (or otherwise cannot move).  A covetous monster in that early arm
+    // has no special movement to preflight, even when a prior Conflict attack
+    // has cleared its sleeping bit in this scan.
+    const waitingCovetous = covetous
+        && (!monster.mcanmove || (monster.mstrategy & STRAT_WAITMASK));
+    // C ref: monmove.c dochug() checks msleeping before m_move()'s wormno
+    // branch. A long worm outside couldsee() therefore takes the ordinary
+    // disturb() no-op; awake or visible worms still reach unported m_move()
+    // behavior and remain fail-closed.
+    const sleepingOutOfSightWorm = monster.wormno > 0
+        && monster.msleeping
+        && !couldsee(monster.mx, monster.my, state);
+    if ((monster.wormno > 0 && !sleepingOutOfSightWorm) || (covetous
+        && !sleepingOutOfSightCovetous
+        && !waitingCovetous)) {
         unsupported('special monster movement');
     }
     // isgd is admitted: m_move() dispatches to gd_move() which handles the
@@ -353,11 +404,19 @@ function assertSimpleActionState(monster, state) {
         && !monster.mtame
         && !monster.isminion
         && !couldsee(monster.mx, monster.my, state);
-    if (monster.data?.pmidx === PM_TENGU
+    const digestibleGelatinousCube =
+        monster.data?.pmidx === PM_GELATINOUS_CUBE
+        && gelcubeHasDigestibleObject(monster, state);
+    // monmove.c m_move() consumes Tengu's natural-teleport roll before
+    // tele_restrict() rejects it on a no-teleport level. A permitted level
+    // reaches rloc()/mnexto(), whose complete action path remains gated.
+    if ((monster.data?.pmidx === PM_TENGU
+        && !noteleport_level(monster, state))
         || (monster.data?.pmidx === PM_LEPRECHAUN
             && !sleepingOutOfSightLeprechaun)
         || monster.data?.pmidx === PM_KILLER_BEE
-        || monster.data?.pmidx === PM_GELATINOUS_CUBE) {
+        || (monster.data?.pmidx === PM_GELATINOUS_CUBE
+            && digestibleGelatinousCube)) {
         unsupported('a special monster action');
     }
 }
@@ -739,14 +798,16 @@ function resistsTrapEffect(monster, trapType, env) {
 }
 
 // C ref: monmove.c postmov()'s `here->doormask == D_CLOSED && can_open` arm
-// (1576-1592), plus the block's own entry test at 1520-1522. can_open repeats
-// mon.c mon_allowflags():2067, so mfndpos() has already refused this square to
-// a monster without it; a wall-walker or a tunneler skips the block instead and
-// leaves the door closed, which is a separate behavior and stays refused.
+// (1576-1592), plus the block's own entry test at 1520-1522. mfndpos() admits
+// a trapped closed door when OPENDOOR is set; postmov() checks the trap before
+// its whole-mask D_CLOSED arm, so retain the D_TRAPPED bit here and let that
+// source-owned boundary run. can_open repeats mon.c mon_allowflags():2067; a
+// wall-walker or a tunneler skips the block instead and leaves the door closed.
 function opensClosedDoor(monster, location, doorMask) {
     const species = monster.data;
     return location?.typ === DOOR
-        && doorMask === D_CLOSED
+        && (doorMask & D_CLOSED)
+        && !(doorMask & D_LOCKED)
         && !(nohands(species) || verysmall(species))
         && !passes_walls(species)
         && !tunnels(species);
@@ -843,15 +904,18 @@ function digsDestination(location, x, y, env) {
     return may_dig(x, y, env.state);
 }
 
+function transitionCallbackUnset(callback) {
+    return callback == null || callback === -1;
+}
 
 async function admitSimpleDestinationAndRegion(monster, x, y, env) {
     const { state } = env;
     const location = state.level.at(x, y);
     const doorMask = location?.flags || location?.doormask || 0;
-    // Every IS_FURNITURE type is ordinary terrain for a monster that is not
-    // covetous: all seven are ACCESSIBLE, so mon.c mfndpos() and teleport.c
-    // goodpos() admit them with no furniture branch, and monmove.c postmov()
-    // has none either. Three furniture tests do sit on the monster-move path.
+    // Every IS_ROOM type is ordinary terrain for a monster that is not
+    // covetous: mon.c mfndpos() admits typ >= ROOM directly, so this includes
+    // all furniture plus ICE, DRAWBRIDGE_DOWN, AIR and CLOUD. No terrain arm
+    // in monmove.c postmov() changes those destinations.
     // monmove.c:274 onscary()'s vampire-fears-altar arm is ported in
     // js/monmove.js; monmove.c:1233 holds_up_web() is ported in
     // js/monmove.js and reached from maybe_spin_web(); and
@@ -872,27 +936,42 @@ async function admitSimpleDestinationAndRegion(monster, x, y, env) {
     const inertDoorway = location?.typ === DOOR
         && INERT_DOOR_MASKS.has(doorMask);
     const opensDoor = opensClosedDoor(monster, location, doorMask);
+    // mfndpos() admits an open or closed trapped door when it is otherwise
+    // passable; postmov() checks btrapped before its door-state arm.
+    const trappedDoor = location?.typ === DOOR
+        && (doorMask & D_TRAPPED)
+        && !(doorMask & D_LOCKED);
     // C ref: mon.c mfndpos() :2166-2170. poolok and lavaok decide whether the
     // monster can step onto pool and lava tiles. m_in_air() covers flyers,
-    // floaters, and ceiling-clinging clingers; is_swimmer() covers swimmers
-    // (but not eels that *want* pool -- assertSimpleScanState refuses eels
-    // before this point); likes_lava() covers fire elementals and salamanders.
-    // PM_FLOATING_EYE overrides lavaok to FALSE at :2169-2170 (prefers to
-    // avoid heat). On the Plane of Water, Is_waterlevel at :2166 suppresses
-    // m_in_air() for poolok; that level is not yet reachable.
-    const poolOkay = m_in_air(monster, state)
-        || (is_swimmer(monster.data) && monster.data.mlet !== S_EEL);
+    // floaters, and ceiling-clinging clingers; is_swimmer() covers swimmers;
+    // likes_lava() covers fire elementals and salamanders. PM_FLOATING_EYE
+    // overrides lavaok to FALSE at :2169-2170. The pool test below is the
+    // source's `(poolok || is_pool(nx,ny) == wantpool)` predicate, including
+    // its second scan for an eel that starts on land.
+    let wantsPool = monster.data?.mlet === S_EEL;
+    const poolOkay = (!on_level(state.u?.uz, state.water_level)
+            && m_in_air(monster, state))
+        || (is_swimmer(monster.data) && !wantsPool);
+    const sourceIsPool = is_pool(monster.mx, monster.my, state);
+    if (!poolOkay && wantsPool && !sourceIsPool) wantsPool = false;
     const lavaOkay = (m_in_air(monster, state) || likes_lava(monster.data))
         && monsndx(monster.data) !== PM_FLOATING_EYE;
-    const liquidDestination = (is_pool(x, y, state) && poolOkay)
-        || (is_lava(x, y, state) && lavaOkay);
+    const passwallDestination = IS_OBSTRUCTED(location?.typ)
+        && passes_walls(monster.data)
+        && may_passwall(x, y, state);
+    const destinationPool = is_pool(x, y, state);
+    const destinationLava = is_lava(x, y, state);
+    const liquidDestination = (destinationPool || destinationLava)
+        && (poolOkay || destinationPool === wantsPool)
+        && (lavaOkay || !destinationLava);
     const digsWall = digsDestination(location, x, y, env);
     const ordinaryDestination = location
-        && (location.typ === ROOM
+        && (IS_ROOM(location.typ)
             || location.typ === CORR
-            || IS_FURNITURE(location.typ)
             || inertDoorway
             || opensDoor
+            || trappedDoor
+            || passwallDestination
             || digsWall
             || liquidDestination);
     if (!ordinaryDestination)
@@ -909,21 +988,19 @@ async function admitSimpleDestinationAndRegion(monster, x, y, env) {
         const destinationInside = inside_region(region, x, y);
         if (currentlyInside === destinationInside) continue;
 
-        // This boundary admits only monmove.c m_everyturn_effect()'s harmless
-        // fog vapor. Its transition callbacks are unset, so the selected path
-        // only removes the moving fog's cached ID. Other species can reach
-        // monmove.c m_postmove_effect() after this transition, and callback-
-        // bearing regions can change more than cached membership; both stay
-        // fail-closed until their complete source paths are ported.
-        const leavesHarmlessFogVapor = currentlyInside
-            && monsndx(monster.data) === PM_FOG_CLOUD
-            && region.inside_f === 'inside_gas_cloud'
+        // C region.c m_in_out_region() permits callback-free membership
+        // changes for every monster. This boundary admits only the harmless
+        // gas-cloud regions whose transition callbacks therefore do no work;
+        // callback-bearing and harmful regions remain fail-closed until their
+        // complete movement paths are ported.
+        const callbackFreeHarmlessGas = region.inside_f
+            === 'inside_gas_cloud'
             && Math.trunc(region.arg ?? 0) === 0
-            && region.can_enter_f == null
-            && region.enter_f == null
-            && region.can_leave_f == null
-            && region.leave_f == null;
-        if (!leavesHarmlessFogVapor)
+            && transitionCallbackUnset(region.can_enter_f)
+            && transitionCallbackUnset(region.enter_f)
+            && transitionCallbackUnset(region.can_leave_f)
+            && transitionCallbackUnset(region.leave_f);
+        if (!callbackFreeHarmlessGas)
             unsupported('a region transition');
     }
     // Last, so that a destination another guard rejects prepares nothing.
