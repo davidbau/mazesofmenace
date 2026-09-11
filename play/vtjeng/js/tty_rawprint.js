@@ -7,7 +7,10 @@
 import { game } from './gstate.js';
 import { encodeUtf8ByteString } from './hacklib.js';
 import { ATR_BOLD, NO_COLOR } from './terminal.js';
-import { xwaitforspace } from './tty_message.js';
+import {
+    showPendingTtyMessage,
+    xwaitforspace,
+} from './tty_message.js';
 
 // Buffer.toString('utf8') in record-session.mjs preserves a leading U+FEFF
 // from the capture payload. TextDecoder's counterintuitive ignoreBOM option
@@ -116,10 +119,19 @@ async function getret(state) {
     await xwaitforspace(state, ' ');
 }
 
-// C ref: win/tty/wintty.c tty_wait_synch() (3623-3647).  This port covers the
-// getret() arm, which is the one taken while WIN_MAP is still WIN_ERR; the
-// other arm redisplays the map window and cannot be reached before
-// tty_init_nhwindows() creates it.
+// C ref: win/tty/wintty.c tty_wait_synch() (3623-3647). The startup/raw-print
+// arm waits for a space. Once a map is live, the window arm repaints it and
+// leaves any pending message's --More-- marker for the next reader.
 export async function tty_wait_synch(state = game) {
+    // The browser has no separate WinDesc for WIN_MAP, but a generated level
+    // and initialized hero are the same source boundary: normal play has a
+    // map window even though the terminal renderer owns its cells directly.
+    // The preceding death pline() has already flushed the canonical map. C's
+    // tty_display_nhwindow(WIN_MAP, FALSE) has no status refresh here, so do
+    // not route this arm through flush_screen(), which calls bot() first.
+    if (state.level?.at && state.u?.ux && state.iflags?.window_inited !== false) {
+        showPendingTtyMessage(state);
+        return;
+    }
     await getret(state);
 }

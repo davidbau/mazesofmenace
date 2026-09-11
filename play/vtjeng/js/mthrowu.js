@@ -37,10 +37,12 @@ import {
     KILLED_BY,
     KILLED_BY_AN,
     LAVAWALL,
+    LOW_PM,
     M_AP_MONSTER,
     M_AP_NOTHING,
     M_AP_TYPE,
     M_ATTK_HIT,
+    M_SEEN_ACID,
     M_ATTK_MISS,
     M_SEEN_REFL,
     Upolyd,
@@ -72,10 +74,14 @@ import {
 import { acurr, acurrstr } from './attrib.js';
 import { freehand } from './engrave.js';
 import { game } from './gstate.js';
-import { calc_capacity, nomul, rounddiv } from './hack.js';
+import { calc_capacity, end_running, nomul, rounddiv } from './hack.js';
 import { dist2, distmin, s_suffix, sgn, upstart } from './hacklib.js';
 import { hands_obj, hold_another_object, obfree, obj_extract_self, stackobj, add_to_minv } from './invent.js';
-import { multishot_class_bonus, omon_adj } from './dothrow.js';
+import {
+    multishot_class_bonus,
+    omon_adj,
+    should_mulch_missile,
+} from './dothrow.js';
 import { m_carrying, mondied, seemimic, setmangry, xkilled } from './mon.js';
 import {
     amorphous,
@@ -84,10 +90,13 @@ import {
     cvt_adtyp_to_mseenres,
     get_atkdam_type,
     is_elf,
+    hates_silver,
     is_unicorn,
     mhim,
     mon_hates_silver,
     monster_resists_element,
+    monstseesu,
+    monstunseesu,
     nohands,
     noncorporeal,
     passes_rocks,
@@ -172,6 +181,7 @@ import {
 } from './objects.js';
 import {
     an,
+    donameFresh,
     distant_name,
     isPoisonable,
     killer_xname,
@@ -461,7 +471,12 @@ function u_catch_thrown_obj(obj, env) {
 export async function drop_throw(obj, ohit, x, y, rawEnv = {}) {
     const state = rawEnv.state ?? game;
     const env = { ...rawEnv, state };
-    const shouldMulch = requireRangedOperation(env, 'shouldMulch');
+    const shouldMulch = env.shouldMulch
+        ?? ((missile, actionEnv) => should_mulch_missile(
+            missile,
+            state,
+            actionEnv,
+        ));
     const shipsAway = requireRangedOperation(env, 'shipsAway');
     const monsterAt = requireRangedOperation(env, 'monsterAt');
     const floorEffects = requireRangedOperation(env, 'floorEffects');
@@ -921,6 +936,13 @@ export async function m_throw(monster, x, y, dx, dy, range, obj, rawEnv = {}) {
             if (singleobj.otyp !== ACID_VENOM)
                 damage = maybeHalfPhysical(damage, state);
             hit = Boolean(await hitHero(hitv, damage, singleobj, env));
+            // C thitu() calls losehp(), whose lethal done() path is NORETURN.
+            // The JavaScript end-game path returns after setting gameover so
+            // the replay can capture its final screen. done_object_cleanup()
+            // has already settled gt.thrownobj in that path; continuing here
+            // would pass the same floor object to drop_throw() a second time.
+            if (state.program_state?.gameover)
+                return 0;
             await stopOccupation(state, env);
             if (hit) {
                 if (!tethered_weapon) {
@@ -1520,7 +1542,7 @@ export async function thitu(tlev, dam, obj, name, state = game, env = {}) {
 
     if (!named) {
         if (!obj) throw new Error('thitu: name & obj both null?');
-        name = obj.quan > 1 ? refuseRanged(env, 'plural monster missile name')
+        name = obj.quan > 1 ? donameFresh(obj, state)
             : mshot_xname(obj, state);
         knm = killer_xname(obj, state);
         kprefix = KILLED_BY;
@@ -1562,39 +1584,61 @@ export async function thitu(tlev, dam, obj, name, state = game, env = {}) {
     else
         await message(`You are hit by ${onm}${exclam(dam)}`, state);
 
-    if (is_acid) {
-        // C ref: mthrowu.c:123-125. Acid_resistance and monstseesu() are not
-        // ported; a dart is never acid, so this cannot fire for the dart trap
-        // caller.
-        throw new Error('thitu acid branch is not yet ported');
+    if (is_acid && propertyActive(state, ACID_RES)) {
+        // C ref: mthrowu.c:123-125. The resistance ledger is maintained by
+        // mondata.c monstseesu(); the acid-resistance property is the same
+        // intrinsic-or-extrinsic test used by youprop.h Acid_resistance.
+        await message("It doesn't seem to hurt you.", state);
+        monstseesu(M_SEEN_ACID, state);
     } else if (obj && !is_acid
-               && env.stone_missile?.(obj)
-               && env.passes_rocks?.(state.youmonst.data)) {
-        // C ref: mthrowu.c:126-133. stone_missile + passes_rocks: not ported,
-        // unreachable for a dart.
-        throw new Error('thitu stone missile branch is not yet ported');
-    } else if (obj && obj.oclass === env.POTION_CLASS) {
-        // C ref: mthrowu.c:134-138. potionhit() is not ported, unreachable
-        // for a dart.
-        throw new Error('thitu potion branch is not yet ported');
+               && stone_missile(obj, state)
+               && passes_rocks(state.youmonst.data)) {
+        // C ref: mthrowu.c:126-133. A rock-passing hero is unharmed. The
+        // source's `named` approximation distinguishes an overhead hit from
+        // a horizontal missile, which stops at the hero.
+        await message(
+            `It ${named ? 'passes harmlessly through' : "doesn't harm"} you.`,
+            state,
+        );
+    } else if (obj && obj.oclass === POTION_CLASS) {
+        // C ref: mthrowu.c:134-138. potionhit() is only partially ported for
+        // hero targets, so record the source gap and leave its consumed-object
+        // handoff to the caller that owns the potion flight.
+        note_unported('potion.c potionhit');
     } else {
-        // C ref: mthrowu.c:139-151. The generic hit path that runs for darts,
-        // arrows, rocks, and any non-special missile.
+        // C ref: mthrowu.c:139-151. The generic hit path runs for ordinary
+        // darts, arrows, rocks, and other non-special missiles.
         //
-        // Silver searing: the dart is iron, not silver. For a future caller
-        // whose missile is silver and the hero hates silver, exercise(A_CON,
-        // FALSE) and the message need to fire. Both Hate_silver and the
-        // material lookup are unported; guard them behind optional env hooks.
-        if (obj && env.objectMaterial?.(obj, state) === SILVER
-            && env.Hate_silver?.(state)) {
+        // C ref: youprop.h:401 Hate_silver. This macro combines lycanthropy
+        // with the hero's current form, so keep its two source terms here.
+        if (obj && objectType(obj, state).oc_material === SILVER
+            && ((state.u.ulycn ?? -1) >= LOW_PM
+                || hates_silver(state.youmonst.data))) {
             await message('The silver sears your flesh!', state);
             await exercise(A_CON, false, state);
         }
-        // is_acid is false here for a dart; the burn + monstunseesu path does
-        // not fire.
-        if (env.requireHit && dam >= state.u.uhp)
-            return refuseRanged(env, 'fatal monster missile hit');
-        await losehp(dam, knm, kprefix, state);
+        if (is_acid) {
+            await message('It burns!', state);
+            monstunseesu(M_SEEN_ACID, state);
+        }
+        if (env.planning && dam >= state.u.uhp
+            && typeof env.planningDeath === 'function') {
+            // losehp() would enter end.c done() on the clone. Reproduce its
+            // state writes, then hand the monster identity to the live pass.
+            end_running(true, state);
+            state.disp ??= {};
+            state.disp.botl = true;
+            state.u.uhp -= dam;
+            throw env.planningDeath();
+        }
+        await losehp(dam, knm, kprefix, state, {
+            fromMonster: Boolean(env.fromMonster),
+            message,
+        });
+        // C losehp() enters end.c really_done() on lethal damage, whose
+        // NORETURN path never reaches exercise(A_STR, FALSE).
+        if (state.program_state?.gameover)
+            return 1;
         await exercise(A_STR, false, state);
     }
     return 1;

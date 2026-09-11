@@ -9,8 +9,8 @@
 // player declines death. The life-saving amulet's earlier reprieve remains
 // refused. really_done() covers the mounted-slip prefix through cleanup, time
 // bookkeeping, inventory identification, disclosure, grave creation, score
-// calculation, and the Save bones? prompt; savebones(), tombstone, and the
-// score file remain refused.
+// calculation, the Save bones? prompt, and savebones()'s level snapshot. The
+// post-bones score-file path remains outside this port.
 //
 // savelife() (end.c:704-756) restores the hero to a viable state after the
 // death is declined in wizard or explore mode. Two of its branches remain
@@ -51,6 +51,7 @@ import {
     G_GENOD,
     G_GONE,
     GENOCIDED,
+    isok,
     IS_GRAVE,
     KILLED_BY,
     KILLED_BY_AN,
@@ -66,6 +67,7 @@ import {
     PARANOID_DIE,
     PLNMSG_OK_DONT_DIE,
     QUIT,
+    OBJ_FREE,
     SICK,
     SORTLOOT_LOOT,
     SORTLOOT_PACK,
@@ -111,9 +113,10 @@ import {
 import { endmultishot } from './dothrow.js';
 import { upstart } from './hacklib.js';
 import {
-    display_inventory, money_cnt, sortloot, update_inventory,
+    display_inventory, money_cnt, sortloot, stackobj, update_inventory,
+    useup,
 } from './invent.js';
-import { isContainer } from './obj.js';
+import { isContainer, place_object, remove_object } from './obj.js';
 import { discover_object } from './o_init.js';
 import { BAG_OF_TRICKS, CORPSE, LARGE_BOX, STATUE, TIN } from './objects.js';
 import {
@@ -135,9 +138,12 @@ import { makeplural } from './fruit.js';
 import { Goodbye } from './role_init.js';
 import { reset_utrap } from './trap.js';
 import { ttyPline } from './tty_message.js';
+import { tty_wait_synch } from './tty_rawprint.js';
 import { init_uhunger } from './u_init.js';
 import { hidden_gold } from './u_init_inventory_attrs.js';
 import { shkname, shkname_is_pname } from './shknam.js';
+import { accessible } from './monmove.js';
+import { note_unported } from './unported.js';
 
 export class UnsupportedEndOfGameError extends Error {
     constructor(message) {
@@ -971,24 +977,66 @@ async function disclose(how, taken, state) {
     }
 }
 
-function done_object_cleanup(state) {
-    for (let obj = state.invent; obj; obj = obj.nobj) {
-        if (obj.in_use) {
-            throw new UnsupportedEndOfGameError(
-                'done_object_cleanup() with an active inventory object',
-            );
+// C ref: restore.c inven_inuse() (113-128), called by end.c's
+// done_object_cleanup(). Store the next link before useup() because consuming
+// the last item in a stack removes it from the inventory chain.
+function finishInUseInventory(state) {
+    // The recorder's TTY window hook is a no-op, but useup() still checks that
+    // an update hook exists while the permanent inventory option is enabled.
+    const hooks = { updateInventory() {} };
+    for (let obj = state.invent; obj;) {
+        const next = obj.nobj;
+        if (obj.in_use)
+            useup(obj, { state, hooks });
+        obj = next;
+    }
+}
+
+// C ref: end.c done_object_cleanup() (851-906). The C globals gt.thrownobj
+// and gk.kickedobj are represented by both the grouped state fields used by
+// monster throws and the legacy root fields used by hero throws in this port.
+export function done_object_cleanup(state) {
+    finishInUseInventory(state);
+
+    const ox0 = state.u.ux + state.u.dx;
+    const oy0 = state.u.uy + state.u.dy;
+    const [ox, oy] = (!isok(ox0, oy0) || !accessible(ox0, oy0, state))
+        ? [state.u.ux, state.u.uy]
+        : [ox0, oy0];
+    const placeFreeTransitObject = (obj, groups) => {
+        if (!obj || obj.where !== OBJ_FREE) return;
+        place_object(obj, ox, oy, { state });
+        stackobj(obj, {
+            state,
+            // stackobj() may merge an existing floor object. C's
+            // obj_extract_self() can remove that floor member here.
+            hooks: { extractExternalObject: remove_object },
+        });
+        for (const [container, field] of groups) {
+            if (container?.[field] === obj) container[field] = null;
         }
+    };
+
+    placeFreeTransitObject(
+        state.gt?.thrownobj ?? state.thrownobj,
+        [[state.gt, 'thrownobj'], [state, 'thrownobj']],
+    );
+    placeFreeTransitObject(
+        state.gk?.kickedobj ?? state.kickedobj,
+        [[state.gk, 'kickedobj'], [state, 'kickedobj']],
+    );
+
+    const uchain = state.uchain;
+    if (uchain && uchain.where === OBJ_FREE) {
+        // C's result is discarded. ball.c is not ported, so preserve this
+        // source boundary without raising a refusal or inventing placement.
+        note_unported('ball.c lift_covet_and_placebc');
     }
-    if (state.gt?.thrownobj || state.thrownobj
-        || state.gk?.kickedobj || state.kickedobj
-        || state.uchain || state.uball) {
-        throw new UnsupportedEndOfGameError(
-            'done_object_cleanup() with an object in transit or punishment',
-        );
-    }
-    // perm_invent_toggled(TRUE) destroys the persistent inventory window.
-    // The port has no such window; its corresponding state is this flag.
-    state.iflags.perm_invent = false;
+
+    // The TTY build has no persistent inventory window to destroy; clearing
+    // the corresponding option is the complete effect available in JS.
+    if (state.iflags.perm_invent)
+        state.iflags.perm_invent = false;
 }
 
 function identifyInventoryForDisclosure(state) {
@@ -1007,11 +1055,13 @@ function identifyInventoryForDisclosure(state) {
     }
 }
 
-// C ref: end.c really_done() (1130-1369).  Covers the ordinary death path
-// through disclosure, grave creation, score calculation, and the Save bones?
-// prompt.  savebones() and the post-bones code remain refused.
+// C ref: end.c really_done() (1130-1369). Covers the ordinary death path
+// through disclosure, grave creation, score calculation, the Save bones?
+// prompt, and savebones()'s level snapshot. The post-bones score-file path
+// remains outside this port.
 async function really_done(how, state) {
     const programState = state.program_state;
+    const haveWindows = state.iflags?.window_inited !== false;
     programState.gameover = 1;
     // JS can unwind an exhausted replay queue out of this still-running C
     // function. jsmain uses the marker to avoid treating that suspension as
@@ -1045,6 +1095,12 @@ async function really_done(how, state) {
             'really_done() first-move death message',
         );
     }
+
+    // C ref: end.c:1189. Flush the final death message before asking
+    // can_make_bones(); the live map-window arm leaves its --More-- marker
+    // for the disclosure reader.
+    if (haveWindows)
+        await tty_wait_synch(state);
 
     const bonesOk = can_make_bones(state);
     if (how !== DIED || state.u.ugrave_arise !== NON_PM) {

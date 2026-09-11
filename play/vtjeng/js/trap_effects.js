@@ -2,7 +2,7 @@
 // C ref: trap.c -- wearing_iron_shoes(), floor_trigger(), check_in_air(),
 // seetrap(), feeltrap(), trapnote(), t_missile(), thitm(),
 // trapeffect_sqky_board(), trapeffect_dart_trap(), trapeffect_rocktrap(),
-// trapeffect_bear_trap(),
+// trapeffect_bear_trap(), trapeffect_slp_gas_trap(),
 // mselftouch(), trapeffect_pit(), trapeffect_telep_trap(),
 // trapeffect_magic_trap(), trapeffect_rolling_boulder_trap(),
 // launch_drop_spot(), launch_obj(), trapeffect_selector(), dotrap(), mintrap().
@@ -31,6 +31,7 @@ import {
     DOOR,
     FAILEDUNTRAP,
     FIRE_TRAP,
+    FIRE_RES,
     FOOT,
     FORCEBUNGLE,
     FORCETRAP,
@@ -58,6 +59,8 @@ import {
     ROLL,
     ROLLING_BOULDER_TRAP,
     RUST_TRAP,
+    SLEEP_RES,
+    M_SEEN_SLEEP,
     SLP_GAS_TRAP,
     SPIKED_PIT,
     SPINE,
@@ -77,6 +80,7 @@ import {
     VIBRATING_SQUARE,
     WEB,
     W_ARMF,
+    helpless,
     is_hole,
     is_pit,
     isok,
@@ -86,8 +90,17 @@ import { stop_occupation } from './allmain.js';
 import { exercise, poisoned } from './attrib.js';
 import { map_trap, newsym, obj_to_glyph, tmp_at } from './display.js';
 import { set_wounded_legs } from './do.js';
-import { at_dgn_entrance, Can_fall_thru, on_level } from './dungeon.js';
-import { capitalizedMonsterName, monsterCommonName } from './do_name.js';
+import {
+    at_dgn_entrance,
+    Can_fall_thru,
+    on_level,
+    surface,
+} from './dungeon.js';
+import {
+    capitalizedMonsterName,
+    monsterCommonName,
+    mon_nam,
+} from './do_name.js';
 import { game } from './gstate.js';
 import { setmangry } from './mon.js';
 import { dist2, distmin, sgn } from './hacklib.js';
@@ -104,6 +117,8 @@ import { count_wsegs } from './makemon_create.js';
 import { maybe_unhide_at, monkilled, wake_nearto } from './mon.js';
 import {
     amorphous,
+    breathless,
+    defended,
     grounded,
     is_floater,
     is_flyer,
@@ -111,24 +126,34 @@ import {
     is_whirly,
     metallivorous,
     mindless,
+    monster_resists_element,
     mon_knows_traps,
     mon_learns_traps,
     mons_see_trap,
+    monstseesu,
+    monstunseesu,
     passes_rocks,
     passes_walls,
     touch_petrifies,
     unsolid,
 } from './mondata.js';
 import {
+    AD_FIRE,
     AD_PHYS,
     AD_RBRE,
+    AD_SLEE,
     MZ_HUGE,
     MZ_SMALL,
     PM_BUGBEAR,
+    PM_LEATHER_GOLEM,
     PM_OWLBEAR,
+    PM_PAPER_GOLEM,
     PM_PIT_FIEND,
     PM_PIT_VIPER,
+    PM_STRAW_GOLEM,
+    PM_WOOD_GOLEM,
 } from './monsters.js';
+import { finish_meating } from './dogmove.js';
 import { m_at } from './monst.js';
 import { thitu } from './mthrowu.js';
 import {
@@ -160,6 +185,12 @@ import {
 } from './trap.js';
 import { mlevel_tele_trap, mtele_trap, tele_trap } from './teleport.js';
 import { ttyPline } from './tty_message.js';
+import { burnarmor } from './trap_erode_obj.js';
+import { burn_floor_objects, destroy_items } from './zap_destroy_items.js';
+import { ignite_items } from './apply_catch_lit.js';
+import { is_ice } from './terrain.js';
+import { fall_asleep } from './timeout.js';
+import { note_unported } from './unported.js';
 import { dmgval } from './weapon.js';
 import {
     block_point,
@@ -838,6 +869,80 @@ async function trapeffect_bear_trap(mtmp, trap, trflags, env) {
     return Trap_Effect_Finished;
 }
 
+// C ref: mhitm.c sleep_monst() (1221-1245), the how=-1 path used by the
+// sleep-gas monster arm below. The caller performs the resistance, breathing,
+// and helplessness checks; this helper keeps the return-valued state change
+// and the meal interruption in the same source order as C.
+function sleep_monst(mtmp, amount, _how, env) {
+    const { state } = env;
+
+    if (monster_resists_element(mtmp, SLEEP_RES, state)
+        || defended(mtmp, AD_SLEE, state)) {
+        // C calls shieldeff() here. It only animates the display and has no
+        // state or RNG effect, so record the discarded call and continue.
+        note_unported('mhitm.c shieldeff');
+        return false;
+    }
+    if (!mtmp.mcanmove) return false;
+
+    finish_meating(mtmp, { state, redraw: env.redraw });
+    amount += mtmp.mfrozen ?? 0;
+    if (amount > 0) {
+        mtmp.mcanmove = false;
+        mtmp.mfrozen = Math.min(amount, 127);
+    } else {
+        mtmp.msleeping = true;
+    }
+    return true;
+}
+
+// C ref: trap.c trapeffect_slp_gas_trap() (1563-1592), both hero and monster
+// arms. `trflags` is intentionally unused by the C function.
+async function trapeffect_slp_gas_trap(mtmp, trap, _trflags, env) {
+    const { state } = env;
+    const random = env.random;
+    const message = requireTrapOperation(env, 'message');
+
+    if (mtmp === state.youmonst) {
+        seetrap(trap, env);
+        const resistance = state.u?.uprops?.[SLEEP_RES];
+        if (resistance?.intrinsic || resistance?.extrinsic
+            || breathless(state.youmonst.data)) {
+            await message('You are enveloped in a cloud of gas!', state, env);
+            monstseesu(M_SEEN_SLEEP, state);
+        } else {
+            await message('A cloud of gas puts you to sleep!', state, env);
+            await fall_asleep(-random.rnd(25), true, state, { message });
+            monstunseesu(M_SEEN_SLEEP, state);
+        }
+        // The return value is discarded. The mounted case is admitted only
+        // after preflight_dotrap() rejects it because steedintrap() is not
+        // ported, while an unmounted hero reaches C's no-op guard here.
+        note_unported('trap.c steedintrap');
+    } else {
+        const in_sight = canSeeMonster(mtmp, state)
+            || mtmp === state.u?.usteed;
+        if (!monster_resists_element(mtmp, SLEEP_RES, state)
+            && !breathless(mtmp.data) && !helpless(mtmp)
+            && sleep_monst(mtmp, random.rnd(25), -1, env)
+            && in_sight) {
+            await message(
+                messageAt(
+                    `${capitalizedMonsterName(mtmp, state)}`
+                    + ' suddenly falls asleep!',
+                    mtmp.mx,
+                    mtmp.my,
+                    state,
+                ),
+                state,
+                env,
+            );
+            seetrap(trap, env);
+        }
+    }
+    return Trap_Effect_Finished;
+}
+
 // C ref: trap.c mselftouch() (3912-3933). A monster that has just been thrown
 // about touches its own wielded corpse; trapeffect_pit()'s monster arm below
 // is the caller this port was written for.
@@ -1193,7 +1298,139 @@ async function trapeffect_level_telep(mtmp, trap, trflags, env) {
     return result === 'moved' ? Trap_Moved_Mon : Trap_Effect_Finished;
 }
 
-// C ref: trap.c trapeffect_magic_trap() (2293-2320), hero arm only.
+// C ref: trap.c trapeffect_fire_trap() (1729-1821), monster arm
+// (1738-1819). The hero arm still stops at dofiretrap(), because dotrap()'s
+// preflight rejects FIRE_TRAP. The monster arm is live through mintrap() and
+// is also the return-valued callee of trapeffect_magic_trap().
+async function trapeffect_fire_trap(mtmp, trap, _trflags, env) {
+    const { state } = env;
+    const random = env.random;
+    const message = requireTrapOperation(env, 'message');
+    const unsupported = requireTrapOperation(env, 'unsupported');
+
+    if (mtmp === state.youmonst) {
+        seetrap(trap, env);
+        unsupported('dofiretrap()');
+        return Trap_Effect_Finished; // unreachable
+    }
+
+    const tx = trap.tx;
+    const ty = trap.ty;
+    const inSight = canSeeMonster(mtmp, state)
+        || mtmp === state.u?.usteed;
+    const seeIt = cansee(tx, ty, state);
+    let trapkilled = false;
+    const species = mtmp.data;
+    const origDmg = random.d(2, 4);
+
+    if (inSight) {
+        await message(
+            messageAt(
+                `A tower of flame erupts from the ${surface(mtmp.mx, mtmp.my, state)}`
+                + ` under ${mon_nam(mtmp, state)}!`,
+                mtmp.mx,
+                mtmp.my,
+                state,
+            ),
+            state,
+            env,
+        );
+    } else if (seeIt) {
+        // C sets the message coordinate before You_see(); messageAt() carries
+        // that same location into the accessible-message representation.
+        await message(
+            messageAt(
+                `You see a tower of flame erupt from the ${surface(mtmp.mx, mtmp.my, state)}!`,
+                mtmp.mx,
+                mtmp.my,
+                state,
+            ),
+            state,
+            env,
+        );
+    }
+
+    if (monster_resists_element(mtmp, FIRE_RES, state)) {
+        if (inSight) {
+            // shieldeff() only animates the terminal and has no state or RNG
+            // result in this port; preserve the source gap explicitly.
+            note_unported('pager.c shieldeff');
+            await message(
+                messageAt(
+                    `${capitalizedMonsterName(mtmp, state)} is uninjured.`,
+                    mtmp.mx,
+                    mtmp.my,
+                    state,
+                ),
+                state,
+                env,
+            );
+        }
+    } else {
+        let num = origDmg;
+        let alt = 0;
+        let immolate = false;
+        switch (species?.pmidx) {
+        case PM_PAPER_GOLEM:
+            immolate = true;
+            alt = mtmp.mhpmax;
+            break;
+        case PM_STRAW_GOLEM:
+            alt = Math.trunc(mtmp.mhpmax / 2);
+            break;
+        case PM_WOOD_GOLEM:
+            alt = Math.trunc(mtmp.mhpmax / 4);
+            break;
+        case PM_LEATHER_GOLEM:
+            alt = Math.trunc(mtmp.mhpmax / 8);
+            break;
+        default:
+            break;
+        }
+        if (alt > num) num = alt;
+
+        if (await thitm(0, mtmp, null, num, immolate, env)) {
+            trapkilled = true;
+        } else {
+            mtmp.mhpmax -= random.rn2(num + 1);
+            if (mtmp.mhp > mtmp.mhpmax)
+                mtmp.mhp = mtmp.mhpmax;
+        }
+    }
+
+    if (await burnarmor(mtmp, env) || random.rn2(3)) {
+        const extraDamage = await destroy_items(mtmp, AD_FIRE, origDmg, env);
+        await ignite_items(mtmp.minvent, env);
+        if (mtmp.mhp >= 1) {
+            mtmp.mhp -= extraDamage;
+            if (mtmp.mhp < 1) {
+                await monkilled(mtmp, '', AD_FIRE, state, env);
+                trapkilled = true;
+            }
+        }
+    }
+
+    const burned = await burn_floor_objects(tx, ty, seeIt, false, {
+        ...env,
+        igniteItems: ignite_items,
+    });
+    if (burned && !seeIt
+        && dist2(tx, ty, state.u.ux, state.u.uy) <= 3 * 3) {
+        await message('You smell smoke.', state, env);
+    }
+    if (is_ice(tx, ty))
+        note_unported('zap.c melt_ice()');
+    if (mtmp.mhp < 1) trapkilled = true;
+    if (seeIt) {
+        const currentTrap = t_at(tx, ty, state);
+        if (currentTrap) seetrap(currentTrap, env);
+    }
+
+    return trapkilled ? Trap_Killed_Mon
+        : mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
+}
+
+// C ref: trap.c trapeffect_magic_trap() (2293-2320), both arms.
 //
 // The hero arm calls seetrap(), rolls rn2(30) for a 1/30 magical-explosion
 // branch, and otherwise dispatches to domagictrap(). The 1/30 explosion
@@ -1202,11 +1439,6 @@ async function trapeffect_level_telep(mtmp, trap, trflags, env) {
 // steedintrap() at line 2313 is effectively dead: preflight_dotrap() refuses
 // mounted heroes before the trap fires, so u.usteed is always null here.
 //
-// The monster arm (lines 2314-2318) rolls rn2(21) and dispatches to
-// trapeffect_fire_trap(); it runs only when trapeffect_selector() dispatches
-// a monster, but MAGIC_TRAP is still in UNPORTED_TRAP_EFFECTS for the
-// monster arm because trapeffect_fire_trap() is not ported. The hero arm
-// uses this dedicated function instead of the selector's refusal.
 async function trapeffect_magic_trap(mtmp, trap, _trflags, env) {
     const { state } = env;
     const random = env.random;
@@ -1228,10 +1460,11 @@ async function trapeffect_magic_trap(mtmp, trap, _trflags, env) {
         // steedintrap() would return 0 without side effects.
         return Trap_Effect_Finished;
     }
-    // Monster arm: rn2(21) then trapeffect_fire_trap(). The monster dispatch
-    // through UNPORTED_TRAP_EFFECTS refuses before reaching here.
-    unsupported('a monster on a magic trap');
-    return Trap_Effect_Finished; // unreachable
+    // C:2315-2317. Monsters usually resist magic traps; a zero roll turns the
+    // trap into an ordinary fire trap and returns that effect's status.
+    if (!random.rn2(21))
+        return trapeffect_fire_trap(mtmp, trap, _trflags, env);
+    return Trap_Effect_Finished;
 }
 
 // C ref: trap.c launch_drop_spot() (3222-3233). Marks a spot where a launched
@@ -1515,18 +1748,16 @@ function heroIsDeaf(state) {
 
 // The trap types whose trapeffect_*() body has no arm in the port yet. C
 // dispatches all of them; each stops the scan before the effect changes state,
-// draws, or writes a message. BEAR_TRAP, DART_TRAP and MAGIC_TRAP are absent
-// because their hero arms are ported (MAGIC_TRAP's monster arm refuses inside
-// trapeffect_magic_trap() itself). ROCKTRAP is absent for the mirror reason:
-// its monster arm is ported and its own body refuses the hero arm. PIT is absent because its own body owns the
-// refusal: its monster arm is ported and its hero arm stops there. SPIKED_PIT
-// stays here even though C sends it to trapeffect_pit() as well, because
-// neither arm's spike handling is ported.
+// draws, or writes a message. BEAR_TRAP, DART_TRAP, MAGIC_TRAP and SLP_GAS_TRAP
+// are absent because their hero arms are ported. ROCKTRAP is absent for the
+// mirror reason: its monster arm is ported and its own body refuses the hero
+// arm. PIT is absent because its own body owns the refusal: its monster arm is
+// ported and its hero arm stops there. SPIKED_PIT stays here even though C
+// sends it to trapeffect_pit() as well, because neither arm's spike handling is
+// ported.
 const UNPORTED_TRAP_EFFECTS = Object.freeze(new Set([
     ARROW_TRAP,
-    SLP_GAS_TRAP,
     RUST_TRAP,
-    FIRE_TRAP,
     SPIKED_PIT,
     MAGIC_PORTAL,
     WEB,
@@ -1553,8 +1784,12 @@ export async function trapeffect_selector(monster, trap, trflags, env) {
         return trapeffect_bear_trap(monster, trap, trflags, env);
     if (trap.ttyp === PIT)
         return trapeffect_pit(monster, trap, trflags, env);
+    if (trap.ttyp === FIRE_TRAP)
+        return trapeffect_fire_trap(monster, trap, trflags, env);
     if (trap.ttyp === MAGIC_TRAP)
         return trapeffect_magic_trap(monster, trap, trflags, env);
+    if (trap.ttyp === SLP_GAS_TRAP)
+        return trapeffect_slp_gas_trap(monster, trap, trflags, env);
     if (trap.ttyp === HOLE || trap.ttyp === TRAPDOOR)
         return trapeffect_hole(monster, trap, trflags, env);
     if (trap.ttyp === LEVEL_TELEP)
@@ -1574,8 +1809,8 @@ export async function trapeffect_selector(monster, trap, trflags, env) {
 // that arrives another way.
 //
 // The stops, and what each of them needs:
-//   every type but BEAR_TRAP, DART_TRAP, MAGIC_TRAP, TELEP_TRAP, and
-//     ROLLING_BOULDER_TRAP -- its own trapeffect_*() arm;
+//   every type but BEAR_TRAP, DART_TRAP, MAGIC_TRAP, SLP_GAS_TRAP, TELEP_TRAP,
+//     and ROLLING_BOULDER_TRAP -- its own trapeffect_*() arm;
 //   a magic-resistant hero on a teleport trap -- shieldeff(), a tmp_at()
 //     animation, at teleport.c:1503;
 //   a fixed-destination teleport trap with a monster standing on the
@@ -1592,7 +1827,8 @@ export async function trapeffect_selector(monster, trap, trflags, env) {
 //   iron shoes -- Yname2(uarmf), at trap.c:1518 (bear trap only).
 export function preflight_dotrap(trap, state = game) {
     if (trap.ttyp !== BEAR_TRAP && trap.ttyp !== DART_TRAP
-        && trap.ttyp !== MAGIC_TRAP && trap.ttyp !== TELEP_TRAP
+        && trap.ttyp !== MAGIC_TRAP && trap.ttyp !== SLP_GAS_TRAP
+        && trap.ttyp !== TELEP_TRAP
         && trap.ttyp !== ROLLING_BOULDER_TRAP)
         throw new UnsupportedHeroMoveBoundaryError('trap activation');
     if (trap.ttyp === TELEP_TRAP) {
@@ -1725,21 +1961,23 @@ export async function mintrap(monster, mintrapflags, rawEnv = {}) {
     // been emitted. A refusal has to precede the state change, not follow it.
     // The random set covers every operation trapeffect_selector() can dispatch
     // to, not only mintrap()'s own rn2(4) and rnl(5): the dart arm reaches
-    // mksobj() and next_ident(), which need rn1, rnd and rne. Proving them
-    // here rather than in the arm matters, because the arm runs after
+    // mksobj() and next_ident(), which need rn1, rnd and rne, while the fire
+    // trap arms need d(). Proving these owners here rather than in the arm
+    // matters, because the arm runs after
     // mon_learns_traps() has written mtrapseen on the victim and every
     // onlooker, and after the rn2(4) and rnl(5) gates may have drawn -- so a
     // late proof would refuse with state already changed, and with a bare
     // TypeError that ELAPSED_TURN_PLANNING_REFUSALS does not convert.
     const random = env.random;
-    for (const name of ['rn1', 'rn2', 'rnd', 'rne', 'rnl'])
+    const tt = trap.ttyp;
+    const randomNames = ['rn1', 'rn2', 'rnd', 'rne', 'rnl'];
+    if (tt === FIRE_TRAP || tt === MAGIC_TRAP) randomNames.push('d');
+    for (const name of randomNames)
         if (typeof random?.[name] !== 'function')
-            throw new TypeError('mintrap requires rn1, rn2, rnd, rne and rnl');
+            throw new TypeError(`mintrap requires ${randomNames.join(', ')}`);
     for (const name of ['redraw', 'mInAir', 'heroDeaf', 'youHear'])
         requireTrapOperation(env, name);
     const message = requireTrapOperation(env, 'message');
-
-    const tt = trap.ttyp;
 
     if (monster.mtrapped) { /* is currently in the trap */
         // C ref: trap.c:3741-3789. Two of the arm's blocks are unreachable for
