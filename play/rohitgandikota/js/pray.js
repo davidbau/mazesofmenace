@@ -139,7 +139,7 @@ const DEVOUT = 14, STRIDENT = 4, PIOUS = 20;
 const Role_if = (pm) => game.urole?.mnum === pm;
 
 // src/pray.c:116 critically_low_hp()
-function critically_low_hp(only_if_injured) {
+export function critically_low_hp(only_if_injured) {
     const curhp = Upolyd(game.u) ? game.u.mh : game.u.uhp;
     let maxhp = Upolyd(game.u) ? game.u.mhmax : game.u.uhpmax;
 
@@ -202,7 +202,7 @@ function blocked_boulder(dx, dy) {
 
 // src/pray.c:180 stuck_in_wall() — every neighbouring square is rock, wall
 // or an immovable boulder
-function stuck_in_wall() {
+export function stuck_in_wall() {
     const u = game.u;
     let count = 0;
     if (Passes_walls())

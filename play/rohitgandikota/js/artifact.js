@@ -97,6 +97,7 @@ import { ONAME_VIA_NAMING, ONAME_WISH, ONAME_GIFT, ONAME_VIA_DIP,
          DISMOUNT_THROWN, IS_ALTAR } from './const.js';
 import { obj_shuffle_range } from './o_init.js';
 import { OBJ_DESCR } from './objnam.js';
+import { PROTECTION } from './const.js';
 
 /* include/artilist.h — artilist[i].otyp, resolved from the generated
    ONAMES-key table. Index 0 is the dummy (STRANGE_OBJECT == 0). */
@@ -535,6 +536,17 @@ export function artifact_confers_luck(obj) {
 }
 
 // src/artifact.c:716 set_artifact_intrinsic(), wielded and worn effects.
+// src/artifact.c:698 protects() — determine whether an item confers Protection
+export function protects(otmp, being_worn) {
+    if (being_worn && game.objects[otmp.otyp].oc_oprop === PROTECTION)
+        return true;
+    const arti = get_artifact(otmp);
+    if (arti === artifact_records[0])
+        return false;
+    return ((arti.cspfx & SPFX_PROTECT) !== 0
+            || (being_worn && (arti.spfx & SPFX_PROTECT) !== 0));
+}
+
 export function set_artifact_intrinsic(obj, on, wp_mask) {
     const art = get_artifact(obj);
     if (art === artifact_records[0])

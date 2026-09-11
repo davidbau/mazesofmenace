@@ -11,7 +11,7 @@ import { Confusion, Stunned, Acid_resistance, Hate_silver } from './youprop.js';
 import { has_magic_key, u_wield_art, attacks } from './artifact.js';
 import { ART_STING } from './artilist_data.js';
 import { test_move, bad_rock, check_capacity } from './hack.js';
-import { getdir, preparePunishmentMove, finishPunishmentMove } from './cmd.js';
+import { getdir } from './cmd.js';
 import { u_on_newpos } from './teleport.js';
 import { check_leash, consume_obj_charge } from './apply.js';
 import { inv_weight, weight_cap, calc_capacity, adjalign } from './attrib.js';
@@ -114,8 +114,7 @@ import { strongmonst } from './mondata.js';
 import { digests } from './mondata.js';
 import { can_teleport } from './mondata.js';
 import { schedule_goto } from './do.js';
-import { unplacebc } from './do.js';
-import { placebc } from './do.js';
+import { unplacebc, placebc } from './ball.js';
 import { maybe_dunk_boulders } from './apply.js';
 import { next_to_u } from './apply.js';
 import { unleash_all } from './apply.js';
@@ -347,6 +346,14 @@ import { ECMD_OK } from './const.js';
 import { TRAP_NOT_IMMUNE, TRAP_CLEARLY_IMMUNE, TRAP_HIDDEN_IMMUNE } from './const.js';
 import { mon_has_amulet } from './wizard.js';
 import { impossible } from './pline.js';
+import { A_CHA, SPINE, FROMOUTSIDE } from './const.js';
+import { incr_itimeout } from './potion.js';
+import { self_invis_message } from './do_wear.js';
+import { pm_invisible, is_neuter } from './mondata.js';
+import { at_dgn_entrance } from './dungeon.js';
+import { adjattrib } from './attrib.js';
+import { tamedog } from './dog.js';
+import { seffects } from './read.js';
 
 // src/trap.c:6694 b_trapped(), shared by trapped doors and tins.
 export async function b_trapped(item, bodypart) {
@@ -696,9 +703,15 @@ export function untrap_prob(ttmp) {
 // src/trap.c:5393 move_into_trap(), including punishment and forced triggering.
 export async function move_into_trap(ttmp) {
     const u = game.u, x = ttmp.tx, y = ttmp.ty;
-    let punishmentMove = null;
+    const bc = { bc_control: 0, ballx: 0, bally: 0, chainx: 0, chainy: 0,
+                 cause_delay: false };
+
+    /* we know there's no monster in the way and we're not trapped, but
+       need to make sure the move is not diagonally into or out of a
+       doorway; the sgn() calls are redundant since ttmp is adjacent */
     if (await test_move(u.ux, u.uy, Math.sign(x - u.ux), Math.sign(y - u.uy), TEST_MOVE)
-        && (!Punished() || (punishmentMove = await preparePunishmentMove(x, y, true)))) {
+        && (!Punished()
+            || await drag_ball(x, y, bc, true))) {
         u.ux0 = u.ux;
         u.uy0 = u.uy;
         u_on_newpos(x, y);
@@ -706,7 +719,8 @@ export async function move_into_trap(ttmp) {
         newsym(u.ux0, u.uy0);
         vision_recalc(1);
         await check_leash(u.ux0, u.uy0);
-        if (Punished()) finishPunishmentMove(punishmentMove);
+        if (Punished())
+            move_bc(0, bc.bc_control, bc.ballx, bc.bally, bc.chainx, bc.chainy);
         ttmp.tseen = 0;
         game.iflags.failing_untrap = (game.iflags.failing_untrap || 0) + 1;
         await spoteffects(true);
@@ -2325,69 +2339,137 @@ async function trapeffect_fire_trap(mtmp, trap, trflags) {
 async function domagictrap() {
     const fate = rnd(20);
 
+    /* What happened to the poor sucker? */
+
     if (fate < 10) {
+        /* Most of the time, it creates some monsters. */
         let cnt = rnd(4);
 
-        if (!resists_blnd(null)) {
+        /* blindness effects */
+        if (!resists_blnd(game.youmonst)) {
             await You('are momentarily blinded by a flash of light!');
             const { make_blinded } = await import('./potion.js');
             await make_blinded(rn1(5, 10), false);
-            if (!game.u.ublind)
+            if (!Blind())
                 await Your('vision clears.');
-        } else if (!game.u.ublind) {
+        } else if (!Blind()) {
             await You_see('a flash of light!');
         }
 
-        const intr = (game.u.intrinsic ||= {});
+        /* deafness effects */
         if (!Deaf()) {
             await You_hear('a deafening roar!');
-            intr.HDeaf = Math.min(TIMEOUT,
-                (intr.HDeaf | 0) + rn1(20, 30));
+            incr_itimeout('HDeaf', rn1(20, 30));
+            (game.disp ||= {}).botl = true;
         } else {
+            /* magic vibrations still hit you */
             await You_feel('rankled.');
-            intr.HDeaf = Math.min(TIMEOUT,
-                (intr.HDeaf | 0) + rn1(5, 15));
+            incr_itimeout('HDeaf', rn1(5, 15));
+            (game.disp ||= {}).botl = true;
         }
-        (game.disp ||= {}).botl = true;
-
         while (cnt--)
             await makemon(null, game.u.ux, game.u.uy, NO_MM_FLAGS);
+        /* roar: wake monsters in vicinity, after placing trap-created ones */
         await wake_nearto(game.u.ux, game.u.uy, 7 * 7);
-        return;
-    }
-
-    switch (fate) {
-    case 11: { /* toggle intrinsic invisibility */
-        await You_hear('a low hum.');
-        const was_invisible = Invis();
-        if (!was_invisible && !game.u.ublind) {
-            await pline(`${Hallucination() ? 'Far out, man!  You'
-                                           : 'Gee!  All of a sudden, you'} ${
-                See_invisible() ? 'can see right through yourself'
-                                : "can't see yourself"}.`);
+        /* [flash: should probably also hit nearby gremlins with light] */
+    } else {
+        switch (fate) {
+        case 10:
+            /* sometimes nothing happens */
+            break;
+        case 11: { /* toggle intrinsic invisibility */
+            const intr = (game.u.intrinsic ||= {});
+            await You_hear('a low hum.');
+            if (!Invis()) {
+                if (!Blind())
+                    await self_invis_message();
+            } else if (!game.u.uprops?.INVIS
+                       && !pm_invisible(game.youmonst.data)) {
+                if (!Blind()) {
+                    if (!See_invisible())
+                        await You('can see yourself again!');
+                    else
+                        await You_cant('see through yourself anymore.');
+                }
+            } else {
+                /* If we're invisible from another source */
+                await You_feel(`a little more ${
+                    intr.HInvis ? 'obvious' : 'hidden'} now.`);
+            }
+            intr.HInvis = intr.HInvis ? 0 : (intr.HInvis | FROMOUTSIDE);
+            newsym(game.u.ux, game.u.uy);
+            break;
         }
-        (game.u.uprops ||= {}).INVIS = !was_invisible;
-        newsym(game.u.ux, game.u.uy);
-        break;
-    }
-    case 13:  /* odd feelings */
-        await pline('A shiver runs up and down your spine!');
-        break;
-    case 14:
-        await You_hear('distant howling.');
-        break;
-    case 16:
-        await Your('pack shakes violently!');
-        break;
-    case 17:
-        await You('smell charred flesh.');
-        break;
-    case 18:
-        await You_feel('tired.');
-        break;
-    default:
-        note_unported_trap(`domagictrap:fate=${fate}`);
-        break;
+        case 12: /* a flash of fire */
+            await dofiretrap(null);
+            break;
+
+        /* odd feelings */
+        case 13:
+            await pline(`A shiver runs up and down your ${
+                body_part(SPINE)}!`);
+            break;
+        case 14:
+            await You_hear(Hallucination() ? 'the moon howling at you.'
+                                           : 'distant howling.');
+            break;
+        case 15:
+            if (on_level(game.u.uz, game.qstart_level))
+                await You_feel(`${
+                    (game.flags.female
+                     || (Upolyd(game.u) && is_neuter(game.youmonst.data)))
+                        ? 'oddly '
+                        : ''}like the prodigal son.`);
+            else
+                await You(`suddenly yearn for ${
+                    Hallucination()
+                        ? 'Cleveland'
+                        : (In_quest(game.u.uz) || at_dgn_entrance('The Quest'))
+                              ? 'your nearby homeland'
+                              : 'your distant homeland'}.`);
+            break;
+        case 16:
+            await Your('pack shakes violently!');
+            break;
+        case 17:
+            await You(Hallucination() ? 'smell hamburgers.'
+                                      : 'smell charred flesh.');
+            break;
+        case 18:
+            await You_feel('tired.');
+            break;
+
+        /* very occasionally something nice happens. */
+        case 19: { /* tame nearby monsters */
+            await adjattrib(A_CHA, 1, false);
+            for (let i = -1; i <= 1; i++)
+                for (let j = -1; j <= 1; j++) {
+                    if (!isok(game.u.ux + i, game.u.uy + j))
+                        continue;
+                    const mtmp = m_at(game.u.ux + i, game.u.uy + j);
+                    if (mtmp)
+                        await tamedog(mtmp, null, true);
+                }
+            break;
+        }
+        case 20: { /* uncurse stuff */
+            const intr = (game.u.intrinsic ||= {});
+            const save_conf = intr.HConfusion | 0;
+
+            /* pseudo = cg.zeroobj; force 'uncursed' and zero out oextra */
+            /* used to be SCR_REMOVE_CURSE but that could cause seffects()
+               to have hero discover scroll of remove curse */
+            const pseudo = { otyp: ONAMES.SPE_REMOVE_CURSE,
+                             oclass: OCLASSES.SPBOOK_CLASS,
+                             blessed: 0, cursed: 0, quan: 0, owornmask: 0 };
+            intr.HConfusion = 0;
+            await seffects(pseudo);
+            intr.HConfusion = save_conf;
+            break;
+        }
+        default:
+            break;
+        }
     }
 }
 
@@ -5357,6 +5439,7 @@ import { closed_door } from './cmd.js';
 import { is_pool_or_lava } from './dbridge.js';
 import { stackobj } from './invent.js';
 import { isok } from './hacklib.js';
+import { drag_ball, move_bc } from './ball.js';
 
 // src/trap.c:3695 isclearpath() — may a boulder roll `distance` squares
 // from cc along (dx,dy)? Walks the squares; on success cc is advanced to

@@ -20,6 +20,7 @@ import { Upolyd } from './const.js';
 import { unconscious } from './trap.js';
 import { is_fainted } from './eat.js';
 import { ONAMES } from './objects_data.js';
+import { I_SPECIAL, TIMEOUT, W_ARTI } from './const.js';
 
 // include/youprop.h:116 HHallucination — u.uprops[HALLUC].intrinsic.
 // The C comment above it reads "Hallucination is solely a timeout", which is
@@ -45,9 +46,13 @@ export const Deaf = () => !!game.u?.intrinsic?.HDeaf
 
 // include/youprop.h:103 Blind. An eyeless polymorph form contributes the
 // FROMFORM half of HBlinded in C, alongside timed and equipment blindness.
-export const Blind = () => !!game.u?.ublind
-                         || !!(Upolyd(game.u) && game.youmonst?.data
-                               && !haseyes(game.youmonst.data));
+// include/youprop.h:103 Blind — ((HBlinded || EBlinded) && !BBlinded). Read
+// from the property words, not from the cached u.ublind: nh_timeout() tests
+// Blind right after decrementing HBlinded to zero, and the C sees no
+// blindness there (so a rush is not interrupted by "You can see again.").
+// An eyeless polymorph form carries the FROMFORM bit (set_uasmon()).
+export const Blind = () => !game.u?.blocked?.BLINDED
+    && (!!game.u?.intrinsic?.HBlinded || Blindfolded());
 
 // include/youprop.h:92 Blinded, :96 Blindfolded, :97 Blindfolded_only.
 export const Blinded = () => !game.u?.blocked?.BLINDED
@@ -108,10 +113,28 @@ export const Invisible = () => Invis() && !See_invisible();
 export const Displaced = () => !!(game.u?.intrinsic?.HDisplaced
                                   || game.u?.uprops?.DISPLACED);
 
+// include/youprop.h:143 Sleepy — (HSleepy || ESleepy).
+export const Sleepy = () => !!(game.u?.intrinsic?.HSleepy
+                               || game.u?.uprops?.SLEEPY);
+
+// include/youprop.h:170 Warn_of_mon — (HWarn_of_mon || EWarn_of_mon).
+export const Warn_of_mon = () => !!(game.u?.intrinsic?.HWarn_of_mon
+                                    || game.u?.uprops?.WARN_OF_MON);
+
 // include/youprop.h:240 Levitation — ((HLevitation || ELevitation) && !BLevitation).
 export const Levitation = () =>
     !!(game.u?.intrinsic?.HLevitation || game.u?.uprops?.LEVITATION)
     && !game.u?.blocked?.LEVITATION;
+
+// include/youprop.h:242 Lev_at_will — levitation the hero can end at will:
+// the I_SPECIAL bit (a blessed potion, a spell) or an artifact, with no
+// other source in either word.
+export const Lev_at_will = () => {
+    const h = game.u?.intrinsic?.HLevitation | 0, e = game.u?.uprops?.LEVITATION | 0;
+    return ((h & I_SPECIAL) !== 0 || (e & W_ARTI) !== 0)
+        && (h & ~(I_SPECIAL | TIMEOUT)) === 0
+        && (e & ~W_ARTI) === 0;
+};
 
 // include/youprop.h:253 Flying — note the steed term: riding a flying mount
 // counts, which is why this cannot be a plain uprops read.
@@ -236,3 +259,9 @@ export const Jumping = () =>
 // include/youprop.h Conflict — HConflict || EConflict
 export const Conflict = () =>
     !!(game.u?.intrinsic?.HConflict || game.u?.uprops?.CONFLICT);
+
+// include/youprop.h:77 Punished — (uball != 0).
+export const Punished = () => !!game.u?.uball;
+
+// include/you.h:464 Luck — (u.uluck + u.moreluck).
+export const Luck = () => (game.u?.uluck | 0) + (game.u?.moreluck | 0);

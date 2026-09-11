@@ -15,6 +15,10 @@ import { switch_terrain } from './hack.js';
 import { in_rooms } from './hack.js';
 import { Is_special } from './dungeon.js';
 import { game } from './gstate.js';
+import { set_msg_xy, pline_The } from './pline.js';
+import { bill_dummy_object } from './mkobj.js';
+import { fracture_rock } from './zap.js';
+import { rn1 } from './rng.js';
 import { mpickstuff, mondied, wake_nearto, wake_msg, wakeup,
          monkilled, meatcorpse } from './mon.js';
 import { sengr_at, wipe_engr_at } from './engrave.js';
@@ -946,6 +950,37 @@ export function m_can_break_boulder(mtmp) {
                 || mtmp.data.msound === MSOUND.MS_LEADER));
 }
 
+// src/monmove.c:143 m_break_boulder() — a shopkeeper, priest, leader or
+// Rider smashes the boulder in its way.
+export async function m_break_boulder(mtmp, x, y) {
+    let otmp;
+
+    if (m_can_break_boulder(mtmp)
+        && (otmp = sobj_at(ONAMES.BOULDER, x, y)) != null) {
+        if (!is_rider(mtmp.data)) {
+            if (!Deaf() && (mdistu(mtmp) < 4 * 4)) {
+                if (canspotmon(mtmp))
+                    set_msg_xy(mtmp.mx, mtmp.my);
+                await pline(`${Monnam(mtmp)} mutters ${
+                    mtmp.ispriest ? 'a prayer' : 'an incantation'}.`);
+            }
+            mtmp.mspec_used = (mtmp.mspec_used | 0) + rn1(20, 10);
+        }
+        if (cansee(x, y)) {
+            set_msg_xy(x, y);
+            await pline_The('boulder falls apart.');
+        }
+
+        /* fracture_rock() calls obfree() which calls dealloc_obj() and
+           an item not in hero's inventory can have its unpaid flag set;
+           if the boulder isn't already on the bill, don't charge for it */
+        if (otmp.unpaid) {
+            await bill_dummy_object(otmp);
+        }
+        await fracture_rock(otmp);
+    }
+}
+
 export function onscary(x, y, mtmp) {
     /* <0,0> is used by musical scaring; it doesn't care about scrolls or
        engravings or dungeon branch */
@@ -1657,7 +1692,7 @@ export async function itsstuck(mtmp) {
 
 // src/monmove.c:2088 m_move_aggress(), attack the monster occupying the
 // selected square, or spend the move attacking an empty displaced image.
-async function m_move_aggress(mtmp, x, y) {
+export async function m_move_aggress(mtmp, x, y) {
     const mtmp2 = m_at(x, y);
     let mstatus = 0;
     let mattackm;

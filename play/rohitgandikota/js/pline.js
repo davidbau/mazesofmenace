@@ -9,8 +9,8 @@
 // carry a trailing space that is easy to lose.
 
 import { dirtocoord } from './cmd.js';
-import { PLINE_VERBALIZE, BUFSZ, DEVTEAM_EMAIL, URGENT_MESSAGE } from './const.js';
-import { pline, message_with_location } from './display.js';
+import { PLINE_VERBALIZE, PLINE_NOREPEAT, BUFSZ, DEVTEAM_EMAIL, URGENT_MESSAGE } from './const.js';
+import { pline } from './display.js';
 import { game } from './gstate.js';
 import { Deaf, Unaware, Underwater } from './youprop.js';
 
@@ -134,13 +134,13 @@ export async function There(line) {
 }
 
 
-// src/pline.c Norep(): pline unless the text matches the preceding
-// individual message. gp.prevmsg is separate from the tty's combined top
-// line, which can contain several messages joined with two spaces.
+// src/pline.c:270 Norep(): pline with PLINE_NOREPEAT, so vpline()'s
+// MSGTYPE gate drops the text when it matches the preceding individual
+// message (gp.prevmsg, which is separate from the tty's combined top line).
 export async function Norep(line) {
-    line = message_with_location(line);
-    if ((game._prevmsg || '') !== line)
-        await pline(line);
+    game.pline_flags = (game.pline_flags | 0) | PLINE_NOREPEAT;
+    await pline(line);
+    game.pline_flags &= ~PLINE_NOREPEAT;
 }
 
 

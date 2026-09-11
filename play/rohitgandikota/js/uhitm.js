@@ -212,6 +212,16 @@ import { set_ulycn, is_were, were_change } from './were.js';
 
 import { night } from './calendar.js';
 import { attrcurse } from './sit.js';
+import { make_confused } from './potion.js';
+import { Confusion } from './youprop.js';
+import { stealgold } from './steal.js';
+import { diseasemu } from './mhitu.js';
+import { dog_nutrition } from './dog.js';
+import { add_to_minv, set_corpsenm } from './mkobj.js';
+import { merge_choice, addinv } from './invent.js';
+import { inv_cnt } from './hack.js';
+import { dropy } from './do.js';
+import { invlet_basic, EDOG } from './const.js';
 function note_unported_uhitm(what) {
     (game.unported ||= new Set()).add(`uhitm:${what}`);
 }
@@ -3356,6 +3366,29 @@ export async function mhitm_ad_curs(magr, mattk, mdef, mhm) {
     }
 }
 
+// src/uhitm.c:3897 mhitm_ad_halu()
+export async function mhitm_ad_halu(magr, mattk, mdef, mhm) {
+    const pd = mdef.data;
+
+    if (magr === game.youmonst) {
+        /* uhitm */
+        mhm.damage = 0;
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        mhm.damage = 0;
+    } else {
+        /* mhitm */
+        if (!magr.mcan && haseyes(pd) && mdef.mcansee) {
+            if (game.vis && canseemon(mdef))
+                await pline_mon(mdef, `${Monnam(mdef)} looks ${
+                    mdef.mconf ? 'more ' : ''}confused.`);
+            mdef.mconf = 1;
+            mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
+        }
+        mhm.damage = 0;
+    }
+}
+
 // src/uhitm.c:3981 mhitm_ad_phys() — the AD_PHYS arm of mhitm_adtyping.
 //
 // The mhitu (monster hits hero) and mhitm (monster vs monster) branches are
@@ -3519,6 +3552,38 @@ export async function mhitm_ad_slim(magr, mattk, mdef, mhm) {
     }
 }
 
+// src/uhitm.c:3690 mhitm_ad_conf()
+export async function mhitm_ad_conf(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        /* uhitm */
+        if (!mdef.mconf) {
+            if (canseemon(mdef))
+                await pline(`${Monnam(mdef)} looks confused.`);
+            mdef.mconf = 1;
+        }
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk, mhm.indx);
+        if (!magr.mcan && !rn2(4) && !magr.mspec_used) {
+            magr.mspec_used = (magr.mspec_used | 0) + (mhm.damage + rn2(6));
+            if (Confusion())
+                await You('are getting even more confused.');
+            else
+                await You('are getting confused.');
+            await make_confused((game.u.intrinsic?.HConfusion | 0) + mhm.damage, false);
+        }
+        mhm.damage = 0;
+    } else {
+        /* mhitm */
+        if (!magr.mcan && !mdef.mconf && !magr.mspec_used) {
+            if (game.vis && canseemon(mdef))
+                await pline_mon(mdef, `${Monnam(mdef)} looks confused.`);
+            mdef.mconf = 1;
+            mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
+        }
+    }
+}
+
 // src/uhitm.c:3729 mhitm_ad_poly()
 export async function mhitm_ad_poly(magr, mattk, mdef, mhm) {
     const negated = (await mhitm_mgc_atk_negated(magr, mdef, false))
@@ -3658,6 +3723,69 @@ export async function mhitm_ad_drli(magr, mattk, mdef, mhm) {
     }
 }
 
+// src/uhitm.c:2790 mhitm_ad_sgld()
+export async function mhitm_ad_sgld(magr, mattk, mdef, mhm) {
+    const pa = magr.data;
+    const pd = mdef.data;
+
+    if (magr === game.youmonst) {
+        /* uhitm */
+        const mongold = findgold(mdef.minvent);
+
+        if (mongold) {
+            obj_extract_self(mongold);
+            if (merge_choice(game.invent, mongold)
+                    || inv_cnt(false) < invlet_basic) {
+                addinv(mongold);
+                await Your('purse feels heavier.');
+            } else {
+                await You(`grab ${mon_nam(mdef)}'s gold, but find no room in your knapsack.`);
+                await dropy(mongold);
+            }
+        }
+        exercise(A_DEX, true);
+        mhm.damage = 0;
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk, mhm.indx);
+        if (pd.mlet === pa.mlet)
+            return;
+        if (!magr.mcan)
+            await stealgold(magr);
+    } else {
+        /* mhitm */
+        let buf;
+
+        mhm.damage = 0;
+        if (magr.mcan)
+            return;
+        /* technically incorrect; no check for stealing gold from
+         * between mdef's feet...
+         */
+        {
+            const gold = findgold(mdef.minvent);
+
+            if (!gold)
+                return;
+            obj_extract_self(gold);
+            add_to_minv(magr, gold);
+        }
+        mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
+        buf = Monnam(magr);
+        if (game.vis && canseemon(mdef)) {
+            await pline(`${buf} steals some gold from ${mon_nam(mdef)}.`);
+        }
+        if (!tele_restrict(magr)) {
+            const couldspot = canspotmon(magr);
+
+            mhm.hitflags = M_ATTK_AGR_DONE;
+            await rloc(magr, RLOC_NOMSG);
+            if (game.vis && couldspot && !canspotmon(magr))
+                await pline(`${buf} suddenly disappears!`);
+        }
+    }
+}
+
 // src/uhitm.c:2859 mhitm_ad_tlpt(), teleportation attacks in all three
 // combat directions. A successful teleport must leave its target alive.
 export async function mhitm_ad_tlpt(magr, mattk, mdef, mhm) {
@@ -3725,6 +3853,30 @@ export async function mhitm_ad_tlpt(magr, mattk, mdef, mhm) {
             }
         }
     }
+}
+
+// src/uhitm.c:4593 mhitm_ad_dise()
+export async function mhitm_ad_dise(magr, mattk, mdef, mhm) {
+    const pa = magr.data, pd = mdef.data;
+
+    if (magr === game.youmonst) {
+        /* uhitm */
+        /* this won't happen; if it could, it would be the same as the
+           mhitm case except for messaging */
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk, mhm.indx);
+        if (!await diseasemu(pa))
+            mhm.damage = 0;
+        return;
+    }
+    /* mhitm (and the impossible uhitm case) */
+    /* only fungus and ghouls are immune; the defended() test covers the
+       hero gaining sick resistance combined with any hero wielding a
+       weapon or wearing dragon scales/mail that guards against disease */
+    if (pd.mlet === MONSYMS.S_FUNGUS || pd === game.mons[PMNAMES.PM_GHOUL]
+        || defended(mdef, ATTKS.AD_DISE))
+        mhm.damage = 0;
 }
 
 // src/uhitm.c:4623 mhitm_ad_sedu(), shared hero and monster seduction and
@@ -3892,6 +4044,78 @@ export async function mhitm_ad_ench(magr, mattk, mdef, mhm) {
     }
     if (obj && await drain_item(obj, false))
         await pline(`${Yobjnam2(obj, 'seem')} less effective.`);
+}
+
+// src/uhitm.c:4492 mhitm_ad_dgst()
+export async function mhitm_ad_dgst(magr, mattk, mdef, mhm) {
+    const pd = mdef.data;
+
+    if (magr === game.youmonst) {
+        /* uhitm */
+        mhm.damage = 0;
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        mhm.damage = 0;
+    } else {
+        /* mhitm */
+        let num;
+        let obj;
+
+        /* eating a Rider or its corpse is fatal */
+        if (is_rider(pd)) {
+            if (game.vis && canseemon(magr))
+                await pline_mon(magr, `${Monnam(magr)} ${
+                      (pd === game.mons[PMNAMES.PM_FAMINE])
+                          ? 'belches feebly, shrivels up and dies'
+                          : (pd === game.mons[PMNAMES.PM_PESTILENCE])
+                                ? 'coughs spasmodically and collapses'
+                                : 'vomits violently and drops dead'}!`);
+            await mondied(magr);
+            if (!DEADMONSTER(magr)) {
+                mhm.hitflags = M_ATTK_MISS; /* lifesaved */
+                mhm.done = true;
+                return;
+            } else if (magr.mtame && !game.vis)
+                await You('have a queasy feeling for a moment, then it passes.');
+            mhm.hitflags = M_ATTK_AGR_DIED;
+            mhm.done = true;
+            return;
+        }
+        if (game.flags?.verbose && !Deaf()) {
+            await verbalize('Burrrrp!');
+        }
+        await wake_nearto(magr.mx, magr.my, 2 * 2); /* Burrrrp! */
+        mhm.damage = mdef.mhp;
+        /* Use up amulet of life saving */
+        if ((obj = mlifesaver(mdef)) != null)
+            m_useup(mdef, obj);
+
+        /* Is a corpse for nutrition possible?  It may kill magr */
+        if (!await corpse_chance(mdef, magr, true) || DEADMONSTER(magr))
+            return;
+
+        /* Pets get nutrition from swallowing monster whole.
+         * No nutrition from G_NOCORPSE monster, eg, undead.
+         * DGST monsters don't die from undead corpses
+         */
+        num = monsndx(pd);
+        if (magr.mtame && !magr.isminion
+            && !(game.mvitals[num].mvflags & MFLAGS.G_NOCORPSE)) {
+            const virtualcorpse = mksobj(ONAMES.CORPSE, false, false);
+            let nutrit;
+
+            set_corpsenm(virtualcorpse, num);
+            nutrit = dog_nutrition(magr, virtualcorpse);
+            /* dealloc_obj(virtualcorpse) */
+
+            /* only 50% nutrition, 25% of normal eating time */
+            if (magr.meating > 1)
+                magr.meating = Math.trunc((magr.meating + 3) / 4);
+            if (nutrit > 1)
+                nutrit = Math.trunc(nutrit / 2);
+            EDOG(magr).hungrytime += nutrit;
+        }
+    }
 }
 
 // src/uhitm.c:4565 mhitm_ad_samu(). A successful special hit always prints
@@ -4702,6 +4926,28 @@ export async function mhitm_ad_slee(magr, mattk, mdef, mhm) {
     }
 }
 
+// src/uhitm.c:2338 mhitm_ad_corr()
+export async function mhitm_ad_corr(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        /* uhitm */
+        await erode_armor(mdef, ERODE_CORRODE);
+        mhm.damage = 0;
+    } else if (mdef === game.youmonst) {
+        /* mhitu */
+        await hitmsg(magr, mattk, mhm.indx);
+        if (magr.mcan)
+            return;
+        await erode_armor(mdef, ERODE_CORRODE);
+    } else {
+        /* mhitm */
+        if (magr.mcan)
+            return;
+        await erode_armor(mdef, ERODE_CORRODE);
+        mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITFORU;
+        mhm.damage = 0;
+    }
+}
+
 // src/uhitm.c:2418 mhitm_ad_dren()
 export async function mhitm_ad_dren(magr, mattk, mdef, mhm) {
     const negated = await mhitm_mgc_atk_negated(magr, mdef, false);
@@ -5144,7 +5390,7 @@ export async function mhitm_ad_heal(magr, mattk, mdef, mhm) {
         (game.disp ||= {}).botl = true;
 
         if (goaway) {
-            mongone(magr);
+            await mongone(magr);
             mhm.done = true;
             mhm.hitflags = M_ATTK_DEF_DIED;
             return;

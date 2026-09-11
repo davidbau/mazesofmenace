@@ -617,6 +617,13 @@ async function really_done(how) {
         record_achievement(ACH_UWIN);
     }
 
+    /* Sometimes you die on the first move.  Life's not fair.
+     * On those rare occasions you get hosed immediately, go out
+     * smiling... :-)  -3.
+     */
+    if ((game.moves | 0) <= 1 && how < PANICKED && !game.done_stopprint)
+        await pline(`Do not pass Go.  Do not collect 200 ${currency(200)}.`);
+
     const { can_make_bones, savebones, drop_upon_death } = await import('./bones.js');
     const bones_ok = (how < GENOCIDED) && can_make_bones();
 

@@ -19,6 +19,8 @@ import { MAY_HIT, MAY_DESTROY } from './const.js';
 import { scatter } from './explode.js';
 import { def_oc_syms } from './drawing_data.js';
 import { game } from './gstate.js';
+import { makesingular } from './objnam.js';
+import { regex_match } from './posixregex.js';
 import { addinv, prinv, obj_extract_self, inv_order, let_to_name,
          freeinv, getobj, update_inventory, loot_classify, weight, mergable, merged, money_cnt,
          useup, useupf, obfree, stackobj, count_unpaid, count_buc, is_worn,
@@ -630,6 +632,23 @@ export async function loot_mon(mtmp, passed_info, prev_loot) {
     return timepassed;
 }
 
+// src/pickup.c:915 check_autopickup_exceptions()
+function check_autopickup_exceptions(obj) {
+    /*
+     *  Does the text description of this match an exception?
+     */
+    const apelist = game.apelist || [];
+    let i = 0;
+
+    if (apelist.length) {
+        const objdesc = makesingular(doname(obj));
+
+        while (i < apelist.length && !regex_match(objdesc, apelist[i].regex))
+            i++;
+    }
+    return apelist[i] || null;
+}
+
 // src/pickup.c:934 autopick_testobj()'s cached cost applies to the whole pile.
 let autopick_costly = false;
 
@@ -647,9 +666,16 @@ export function autopick_testobj(otmp, calc_costly) {
         return false;
     if (otmp.how_lost === LOST_EXPLODING)
         return false;
-    if (game.apelist)
-        note_unported_pickup('autopick_testobj:exceptions');
-    return !otypes || otypes.includes(def_oc_syms[otmp.oclass]);
+
+    /* check for pickup_types */
+    let pickit = (!otypes || otypes.includes(def_oc_syms[otmp.oclass]));
+
+    /* check for autopickup exceptions */
+    const ape = check_autopickup_exceptions(otmp);
+    if (ape)
+        pickit = ape.grab;
+
+    return pickit;
 }
 
 // src/pickup.c:979 autopick(). Arrays already carry the requested chain order.

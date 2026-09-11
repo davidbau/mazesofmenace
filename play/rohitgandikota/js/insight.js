@@ -81,6 +81,12 @@ import { artifact_names } from './artilist_data.js';
 import { carried_artifact_conveys } from './artifact.js';
 import { body_part } from './polyself.js';
 import { is_metallic } from './obj.js';
+import { dxdy_to_dist_descr } from './getpos.js';
+import { which_armor } from './worn.js';
+import { s_suffix } from './hacklib.js';
+import { digests, dmgtype } from './mondata.js';
+import { ATTKS } from './monst_data.js';
+import { has_mgivenname, MGIVENNAME, W_SADDLE } from './const.js';
 
 const EXTRINSIC_KEYS = {
     HFire_resistance: 'FIRE_RES',
@@ -753,23 +759,6 @@ function characteristics_enlightenment() {
         one_characteristic(a);
 }
 
-// src/getpos.c:557 dxdy_to_dist_descr(), full-direction form.
-function full_direction(dx, dy) {
-    if (!dx && !dy)
-        return 'here';
-    if (Math.abs(dx) <= 1 && Math.abs(dy) <= 1) {
-        const vertical = dy < 0 ? 'north' : dy > 0 ? 'south' : '';
-        const horizontal = dx < 0 ? 'west' : dx > 0 ? 'east' : '';
-        return vertical + horizontal;
-    }
-    const parts = [];
-    if (dy)
-        parts.push(`${Math.abs(dy)}${dy < 0 ? 'north' : 'south'}`);
-    if (dx)
-        parts.push(`${Math.abs(dx)}${dx < 0 ? 'west' : 'east'}`);
-    return parts.join(',');
-}
-
 // src/insight.c:1180 status_enlightenment() — only the last-resort entries a
 // fresh hero reaches.
 // src/insight.c:233 trap_predicament() — describe u.utraptype; used by
@@ -807,6 +796,17 @@ export function trap_predicament(final, wizxtra) {
 
 function status_enlightenment() {
     const u = game.u;
+    const Riding = !!(u.usteed
+                      /* if hero dies while dismounting, u.usteed will still
+                         be set; we want to ignore steed in that situation */
+                      && !(en_final === ENL_GAMEOVERDEAD
+                           && game.killer?.name === 'riding accident'));
+    const steedname = (!Riding ? null
+                       : x_monnam(u.usteed,
+                                  u.usteed.mtame ? ARTICLE_YOUR : ARTICLE_THE,
+                                  null,
+                                  (SUPPRESS_SADDLE | SUPPRESS_HALLUCINATION),
+                                  false));
     out('');
     out(`${en_final ? 'Final ' : ''}Status:`);
 
@@ -856,11 +856,6 @@ function status_enlightenment() {
 
         const predicament = trap_predicament(en_final, game.wizard);
         if (u.usteed) { /* not `Riding' here */
-            const steedname = x_monnam(u.usteed,
-                                       u.usteed.mtame ? ARTICLE_YOUR : ARTICLE_THE,
-                                       null,
-                                       (SUPPRESS_SADDLE | SUPPRESS_HALLUCINATION),
-                                       false);
             let buf = `${anchored ? 'you and ' : ''}${steedname} `;
             buf = highc(buf[0]) + buf.slice(1);
             enl_msg(buf, (anchored ? 'are ' : 'is '),
@@ -869,16 +864,40 @@ function status_enlightenment() {
             you_are(predicament, '');
     } /* (u.utrap) */
 
-    if (game.u.ustuck && !game.u.uswallow) {
-        const holder = game.u.ustuck;
-        let heldmon = a_monnam(holder);
-        if (heldmon === 'it' && holder.mgivenname !== 'it')
+    let heldmon = ''; /* lint suppression */
+    if (u.ustuck) { /* includes u.uswallow */
+        heldmon = a_monnam(u.ustuck);
+        if (heldmon === 'it'
+            && (!has_mgivenname(u.ustuck)
+                || MGIVENNAME(u.ustuck) !== 'it'))
             heldmon = 'an unseen creature';
-        const relation = Upolyd(game.u) && sticks(game.youmonst.data)
-            ? 'holding' : 'held by';
-        const direction = full_direction(holder.mx - game.u.ux,
-                                         holder.my - game.u.uy);
-        you_are(`${relation} ${heldmon} (${direction})`);
+    }
+    if (u.uswallow) {
+        let buf = `${digests(u.ustuck.data) ? 'swallowed' : 'engulfed'} by ${
+            heldmon}`;
+        if (dmgtype(u.ustuck.data, ATTKS.AD_DGST)) {
+            /* if final, death via digestion can be deduced by u.uswallow
+               still being True and u.uswldtim having been decremented to 0 */
+            if (en_final && !u.uswldtim)
+                buf += ' and got totally digested';
+            else
+                buf += ` and ${en_final ? 'were' : 'are'} being digested`;
+        }
+        if (game.wizard)
+            buf += ` (${u.uswldtim | 0})`;
+        you_are(buf, '');
+    } else if (u.ustuck) {
+        const ustick = (Upolyd(u) && sticks(game.youmonst.data));
+        const dx = u.ustuck.mx - u.ux, dy = u.ustuck.my - u.uy;
+
+        you_are(`${ustick ? 'holding' : 'held by'} ${heldmon} (${
+            dxdy_to_dist_descr(dx, dy, true)})`, '');
+    }
+    if (Riding) {
+        const saddle = which_armor(u.usteed, W_SADDLE);
+
+        if (saddle && saddle.cursed)
+            you_are(`stuck to ${s_suffix(steedname)} ${simpleonames(saddle)}`, '');
     }
 
     if (((game.u.intrinsic?.HWounded_legs | 0) > 0

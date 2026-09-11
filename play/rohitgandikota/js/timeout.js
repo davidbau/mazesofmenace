@@ -47,6 +47,36 @@ import { get_obj_location } from './zap.js';
 import { impossible } from './pline.js';
 import { xname } from './objnam.js';
 import { find_oid } from './shk.js';
+import { Shk_Your } from './shk.js';
+import { buzz } from './zap.js';
+import { carried, Is_candle } from './obj.js';
+import { obfree, useupall, obj_extract_self, sobj_at, weight } from './invent.js';
+import { m_at, maybe_unhide_at, is_pool, restartcham } from './mon.js';
+import { is_ice, is_pool_or_lava } from './dbridge.js';
+import { surface } from './dungeon.js';
+import { cansee } from './vision.js';
+import { You, Your, You_feel, You_see } from './pline.js';
+import { Yname2, doname, vtense, makeplural } from './objnam.js';
+import { Monnam, x_monnam, upstart } from './do_name.js';
+import { s_suffix, highc } from './hacklib.js';
+import { body_part, rehumanize } from './polyself.js';
+import { you_unwere } from './were.js';
+import { is_were, touch_petrifies } from './mondata.js';
+import { ACURR } from './attrib.js';
+import { which_armor } from './worn.js';
+import { dismount_steed } from './steed.js';
+import { hurtle } from './dothrow.js';
+import { confdir } from './cmd.js';
+import { NODIAG, spoteffects } from './hack.js';
+import { instapetrify, float_down, unconscious } from './trap.js';
+import { toggle_displacement } from './do_wear.js';
+import { region_danger } from './region.js';
+import { stuck_in_wall } from './pray.js';
+import { set_mimic_blocking, see_monsters, vobj_at } from './display.js';
+import { incr_itimeout } from './potion.js';
+import { Invis, See_invisible, Sleepy, Sleep_resistance, Flying, Fire_resistance, Wwalking, Displaced, Warn_of_mon, Passes_walls, Breathless, Poison_resistance, Protection_from_shape_changers, Unchanging, Stunned, Confusion } from './youprop.js';
+import { ACCESSIBLE, Is_waterlevel, W_SADDLE, DISMOUNT_FELL, ARTICLE_THE, SUPPRESS_SADDLE, NON_PM, NEUTRAL, BZ_OFS_AD, BZ_M_SPELL } from './const.js';
+import { ATTKS } from './monst_data.js';
 
 // src/timeout.c:129 stoned_texts[], :138 stoned_dialogue()
 const stoned_texts = [
@@ -182,6 +212,49 @@ const slime_texts = [
     'You are turning into %s.',
     'You have become %s.',
 ];
+// src/timeout.c:268 sleep_dialogue()
+async function sleep_dialogue() {
+    const i = ((game.u.intrinsic?.HSleepy | 0) & TIMEOUT);
+
+    if (i === 4)
+        await You('yawn.');
+}
+
+// src/timeout.c:347 levi_texts[]
+const levi_texts = [
+    'You float slightly lower.',
+    'You wobble unsteadily %s the %s.',
+];
+
+// src/timeout.c:353 levitation_dialogue()
+async function levitation_dialogue() {
+    const u = game.u;
+    const hlev = (u.intrinsic?.HLevitation | 0);
+    const i = Math.trunc(((hlev & TIMEOUT) - 1) / 2);
+
+    if (u.uprops?.LEVITATION) /* ELevitation */
+        return;
+
+    if (!ACCESSIBLE(game.level.at(u.ux, u.uy).typ)
+        && !is_pool_or_lava(u.ux, u.uy))
+        return;
+
+    if (((hlev & TIMEOUT) % 2) && i > 0 && i <= levi_texts.length) {
+        const s = levi_texts[levi_texts.length - i];
+
+        if (s.includes('%')) {
+            const danger = (is_pool_or_lava(u.ux, u.uy)
+                            && !Is_waterlevel(u.uz));
+
+            await urgent_pline(s.replace('%s', danger ? 'over' : 'in')
+                                .replace('%s', danger ? surface(u.ux, u.uy)
+                                                      : 'air'));
+        } else
+            await pline(s);
+        await stop_occupation();
+    }
+}
+
 async function slime_dialogue() {
     const t = game.u.uprops.SLIMED & TIMEOUT, i = Math.trunc(t / 2);
     const intr = (game.u.intrinsic ||= {});
@@ -599,195 +672,309 @@ function cleanup_burn(obj, expire_time) {
         update_inventory();
 }
 
+// src/timeout.c:1345 see_lamp_flicker()
+async function see_lamp_flicker(obj, tailer) {
+    switch (obj.where) {
+    case OBJ_INVENT:
+    case OBJ_MINVENT:
+        await pline(`${Yname2(obj)} flickers${tailer}.`);
+        break;
+    case OBJ_FLOOR:
+        await You_see(`${an(xname(obj))} flicker${tailer}.`);
+        break;
+    }
+}
+
+// src/timeout.c:1360 lantern_message()
+async function lantern_message(obj) {
+    switch (obj.where) {
+    case OBJ_INVENT:
+        await Your('lantern is getting dim.');
+        if (Hallucination())
+            await pline('Batteries have not been invented yet.');
+        break;
+    case OBJ_FLOOR:
+        await You_see('a lantern getting dim.');
+        break;
+    case OBJ_MINVENT:
+        await pline(`${s_suffix(Monnam(obj.ocarry))} lantern is getting dim.`);
+        break;
+    }
+}
+
+// src/timeout.c:1383 burn_object() — a lit lamp, candle or potion of oil
+// burns down; the timer function for BURN_OBJECT.
 async function burn_object(obj, timeout) {
-    const lamp = obj?.otyp === ONAMES.BRASS_LANTERN
-        || obj?.otyp === ONAMES.OIL_LAMP;
-    const candle = ordinary_candle(obj);
-    const menorah = obj?.otyp === ONAMES.CANDELABRUM_OF_INVOCATION;
-    if (obj?.otyp !== ONAMES.POT_OIL && !lamp && !candle && !menorah) {
-        note_unported_timeout('burn_object:otyp=' + obj?.otyp);
-        return;
-    }
+    let canseeit, need_newsym, need_invupdate;
+    let x = 0, y = 0;
+    let whose = '';
 
-    if (timeout !== (game.moves ?? 0)) {
-        const how_long = (game.moves ?? 0) - timeout;
-        if (how_long < (obj.age || 0)) {
-            obj.age -= how_long;
-            await begin_burn(obj, true);
-            return;
-        }
-        obj.age = 0;
-        await end_burn(obj, false);
-        if (menorah) {
-            obj.spe = 0;
-            const { weight, update_inventory } = await import('./invent.js');
-            obj.owt = weight(obj);
-            if (obj.where === OBJ_INVENT)
-                update_inventory();
-        } else if ((candle || obj.otyp === ONAMES.POT_OIL)
-                   && (obj.where === OBJ_FLOOR || obj.where === OBJ_MINVENT)) {
-            const was_floor = obj.where === OBJ_FLOOR;
-            const ox = obj.ox, oy = obj.oy;
-            const { obj_extract_self } = await import('./invent.js');
-            obj_extract_self(obj);
-            if (was_floor) {
-                const { newsym } = await import('./display.js');
-                newsym(ox, oy);
-            }
-        }
-        return;
-    }
-
-    let x, y;
-    if (obj.where === OBJ_INVENT) {
-        x = game.u.ux;
-        y = game.u.uy;
-    } else if (obj.where === OBJ_FLOOR) {
-        x = obj.ox;
-        y = obj.oy;
-    } else if (obj.where === OBJ_MINVENT && obj.ocarry) {
-        x = obj.ocarry.mx;
-        y = obj.ocarry.my;
-    }
-    const [{ Blind, Hallucination }, { cansee }, names] = await Promise.all([
-        import('./youprop.js'), import('./vision.js'), import('./objnam.js'),
-    ]);
-    const canseeit = x !== undefined && !Blind() && cansee(x, y);
-    const bytouch = obj.where === OBJ_INVENT
-        && obj.otyp !== ONAMES.BRASS_LANTERN;
+    const menorah = obj.otyp === ONAMES.CANDELABRUM_OF_INVOCATION;
     const many = menorah ? obj.spe > 1 : obj.quan > 1;
 
-    if (obj.otyp === ONAMES.POT_OIL) {
+    /* timeout while away */
+    if (timeout !== game.moves) {
+        const how_long = game.moves - timeout;
+
+        if (how_long >= obj.age) {
+            obj.age = 0;
+            await end_burn(obj, false);
+
+            if (menorah) {
+                obj.spe = 0; /* no more candles */
+                obj.owt = weight(obj);
+            } else if (Is_candle(obj) || obj.otyp === ONAMES.POT_OIL) {
+                let mtmp = null;
+
+                if (obj.where === OBJ_FLOOR)
+                    mtmp = m_at(obj.ox, obj.oy);
+                /* get rid of candles and burning oil potions;
+                   we know this object isn't carried by hero,
+                   nor is it migrating */
+                obj_extract_self(obj);
+                obfree(obj, null);
+                obj = null;
+                if (mtmp)
+                    maybe_unhide_at(mtmp.mx, mtmp.my);
+            }
+
+        } else {
+            obj.age -= how_long;
+            await begin_burn(obj, true);
+        }
+        return;
+    }
+
+    const cc = { x: 0, y: 0 };
+    if (get_obj_location(obj, cc, 0)) {
+        x = cc.x, y = cc.y;
+        canseeit = !Blind() && cansee(x, y);
+        whose = Shk_Your(obj);
+    } else {
+        canseeit = false;
+    }
+    /* "yours" here is a hint that the hero will feel the heat of a lamp
+       or candle so you'll be notified when it burns out even if blind at
+       the time; brass lantern doesn't radiate sufficient heat for that
+       (however, inventory formatting drops "(lit)" so player can tell) */
+    const bytouch = (obj.where === OBJ_INVENT && obj.otyp !== ONAMES.BRASS_LANTERN);
+    need_newsym = need_invupdate = false;
+
+    switch (obj.otyp) {
+    case ONAMES.POT_OIL:
         if (canseeit) {
-            if (obj.where === OBJ_INVENT)
-                await pline('Your potion of oil has burnt away.');
-            else if (obj.where === OBJ_FLOOR) {
-                const { You_see } = await import('./pline.js');
+            switch (obj.where) {
+            case OBJ_INVENT:
+                need_invupdate = true;
+                /*FALLTHRU*/
+            case OBJ_MINVENT:
+                await pline(`${whose}potion of oil has burnt away.`);
+                break;
+            case OBJ_FLOOR:
                 await You_see('a burning potion of oil go out.');
-            } else {
-                note_unported_timeout('burn_object:minvent_message');
+                need_newsym = true;
+                break;
             }
         }
-        await end_burn(obj, false);
-        const { obj_extract_self, useupall } = await import('./invent.js');
-        if (obj.where === OBJ_INVENT) {
+        await end_burn(obj, false); /* turn off light source */
+        if (carried(obj)) {
             useupall(obj);
         } else {
-            const was_floor = obj.where === OBJ_FLOOR;
-            const ox = obj.ox, oy = obj.oy;
+            /* clear migrating obj's destination code before obfree
+               to avoid false complaint of deleting worn item */
+            if (obj.where === OBJ_MIGRATING)
+                obj.owornmask = 0;
             obj_extract_self(obj);
-            if (was_floor) {
-                const { newsym } = await import('./display.js');
-                newsym(ox, oy);
-            }
+            obfree(obj, null);
         }
-        return;
-    }
+        obj = null;
+        break;
 
-    if (lamp) {
-        if (obj.age === 150 || obj.age === 100 || obj.age === 50) {
-            if (canseeit) {
-                if (obj.otyp === ONAMES.BRASS_LANTERN) {
-                    await pline('Your lantern is getting dim.');
-                } else {
-                    await pline(`${names.Yname2(obj)} flickers${
-                        obj.age === 50 ? ' considerably' : ''}.`);
-                }
-            }
-        } else if (obj.age === 25) {
+    case ONAMES.BRASS_LANTERN:
+    case ONAMES.OIL_LAMP:
+        switch (obj.age | 0) {
+        case 150:
+        case 100:
+        case 50:
             if (canseeit) {
                 if (obj.otyp === ONAMES.BRASS_LANTERN)
-                    await pline('Your lantern is getting dim.');
+                    await lantern_message(obj);
                 else
-                    await pline(`${names.Yname2(obj)} seems about to go out.`);
+                    await see_lamp_flicker(obj,
+                                           obj.age === 50 ? ' considerably' : '');
             }
-        } else if (obj.age === 0) {
+            break;
+
+        case 25:
+            if (canseeit) {
+                if (obj.otyp === ONAMES.BRASS_LANTERN) {
+                    await lantern_message(obj);
+                } else {
+                    switch (obj.where) {
+                    case OBJ_INVENT:
+                    case OBJ_MINVENT:
+                        await pline(`${Yname2(obj)} seems about to go out.`);
+                        break;
+                    case OBJ_FLOOR:
+                        await You_see(`${an(xname(obj))} about to go out.`);
+                        break;
+                    }
+                }
+            }
+            break;
+
+        case 0:
             if (canseeit || bytouch) {
-                await pline(obj.otyp === ONAMES.BRASS_LANTERN
-                    ? 'Your lantern has run out of power.'
-                    : `${names.Yname2(obj)} has gone out.`);
+                switch (obj.where) {
+                case OBJ_INVENT:
+                    need_invupdate = true;
+                    /*FALLTHRU*/
+                case OBJ_MINVENT:
+                    if (obj.otyp === ONAMES.BRASS_LANTERN)
+                        await pline(`${whose}lantern has run out of power.`);
+                    else
+                        await pline(`${Yname2(obj)} has gone out.`);
+                    break;
+                case OBJ_FLOOR:
+                    if (obj.otyp === ONAMES.BRASS_LANTERN)
+                        await You_see('a lantern run out of power.');
+                    else
+                        await You_see(`${an(xname(obj))} go out.`);
+                    break;
+                }
             }
             await end_burn(obj, false);
+            break;
+
+        default:
+            break;
         }
+
         if (obj.age)
             await begin_burn(obj, true);
-        return;
-    }
 
-    if (obj.age === 75 && canseeit) {
-        if (obj.where === OBJ_FLOOR) {
-            const { You_see } = await import('./pline.js');
-            await You_see(`${menorah ? "a candelabrum's " : many ? 'some ' : 'a '
-                }candle${many ? 's' : ''} getting short.`);
-        } else {
-            const subject = menorah
-                ? `Your candelabrum's candle${many ? 's are' : ' is'}`
-                : `${many ? 'Your candles are' : 'Your candle is'}`;
-            await pline(`${subject} getting short.`);
-        }
-    } else if (obj.age === 15 && canseeit) {
-        if (obj.where === OBJ_FLOOR) {
-            const { You_see } = await import('./pline.js');
-            await You_see(`${menorah ? "a candelabrum's " : many ? 'some ' : 'a '
-                }candle${many ? "s'" : "'s"} flame${many ? 's' : ''} flicker low!`);
-        } else {
-            const subject = menorah
-                ? `Your candelabrum's candle${many ? "s'" : "'s"}`
-                : many ? "Your candles'" : "Your candle's";
-            await pline(`${subject} flame${many ? 's' : ''} flicker${
-                many ? '' : 's'} low!`);
-        }
-    } else if (obj.age === 0) {
-        if (canseeit || bytouch) {
+        break;
+
+    case ONAMES.CANDELABRUM_OF_INVOCATION:
+    case ONAMES.TALLOW_CANDLE:
+    case ONAMES.WAX_CANDLE:
+        switch (obj.age) {
+        case 75:
+            if (canseeit)
+                switch (obj.where) {
+                case OBJ_INVENT:
+                case OBJ_MINVENT:
+                    await pline(`${whose}${menorah ? "candelabrum's " : ''}candle${
+                        many ? 's are' : ' is'} getting short.`);
+                    break;
+                case OBJ_FLOOR:
+                    await You_see(`${menorah ? "a candelabrum's " : many ? 'some '
+                                                                          : 'a '}candle${
+                        many ? 's' : ''} getting short.`);
+                    break;
+                }
+            break;
+
+        case 15:
+            if (canseeit)
+                switch (obj.where) {
+                case OBJ_INVENT:
+                case OBJ_MINVENT:
+                    await pline(`${whose}${menorah ? "candelabrum's " : ''}candle${
+                        many ? "s'" : "'s"} flame${many ? 's' : ''} flicker${
+                        many ? '' : 's'} low!`);
+                    break;
+                case OBJ_FLOOR:
+                    await You_see(`${menorah ? "a candelabrum's " : many ? 'some '
+                                                                          : 'a '}candle${
+                        many ? "s'" : "'s"} flame${many ? 's' : ''} flicker low!`);
+                    break;
+                }
+            break;
+
+        case 0:
+            if (canseeit || bytouch) {
+                if (menorah) {
+                    switch (obj.where) {
+                    case OBJ_INVENT:
+                        need_invupdate = true;
+                        /*FALLTHRU*/
+                    case OBJ_MINVENT:
+                        await pline(`${whose}candelabrum's flame${
+                            many ? 's die' : ' dies'}.`);
+                        break;
+                    case OBJ_FLOOR:
+                        await You_see(`a candelabrum's flame${many ? 's' : ''} die.`);
+                        break;
+                    }
+                } else {
+                    switch (obj.where) {
+                    case OBJ_INVENT:
+                        /* no need_invupdate for update_inventory() here;
+                           useupall() -> freeinv() handles it */
+                        /*FALLTHRU*/
+                    case OBJ_MINVENT:
+                        await pline(`${Yname2(obj)} ${many ? 'are' : 'is'} consumed!`);
+                        break;
+                    case OBJ_FLOOR:
+                        /*
+                          You see some wax candles consumed!
+                          You see a wax candle consumed!
+                         */
+                        await You_see(`${many ? 'some ' : ''}${
+                            many ? xname(obj) : an(xname(obj))} consumed!`);
+                        need_newsym = true;
+                        break;
+                    }
+
+                    await pline(Hallucination()
+                                    ? (many ? 'They shriek!' : 'It shrieks!')
+                                    : Blind() ? '' : (many ? 'Their flames die.'
+                                                           : 'Its flame dies.'));
+                }
+            }
+            await end_burn(obj, false);
+
             if (menorah) {
-                if (obj.where === OBJ_FLOOR) {
-                    const { You_see } = await import('./pline.js');
-                    await You_see(`a candelabrum's flame${many ? 's' : ''} die.`);
-                } else {
-                    await pline(`Your candelabrum's flame${
-                        many ? 's die' : ' dies'}.`);
-                }
+                obj.spe = 0; /* no candles */
+                obj.owt = weight(obj);
+                if (carried(obj))
+                    need_invupdate = true;
             } else {
-                if (obj.where === OBJ_FLOOR) {
-                    const { You_see } = await import('./pline.js');
-                    await You_see(`${many ? 'some ' : ''}${
-                        many ? names.xname(obj) : names.an(names.xname(obj))
-                    } consumed!`);
+                if (carried(obj)) {
+                    useupall(obj);
                 } else {
-                    await pline(`${names.Yname2(obj)} ${
-                        many ? 'are' : 'is'} consumed!`);
+                    const onfloor = (obj.where === OBJ_FLOOR);
+
+                    /* clear migrating obj's destination code
+                       so obfree won't think this item is worn */
+                    if (obj.where === OBJ_MIGRATING)
+                        obj.owornmask = 0;
+                    obj_extract_self(obj);
+                    if (onfloor)
+                        maybe_unhide_at(x, y);
+                    obfree(obj, null);
                 }
-                if (Hallucination())
-                    await pline(many ? 'They shriek!' : 'It shrieks!');
-                else if (!Blind())
-                    await pline(many ? 'Their flames die.' : 'Its flame dies.');
+                obj = null;
             }
+            break; /* case [age ==] 0 */
+
+        default:
+            break;
         }
-        await end_burn(obj, false);
-        if (menorah) {
-            obj.spe = 0;
-            const { weight, update_inventory } = await import('./invent.js');
-            obj.owt = weight(obj);
-            if (obj.where === OBJ_INVENT)
-                update_inventory();
-        } else {
-            const { obj_extract_self, useupall } = await import('./invent.js');
-            if (obj.where === OBJ_INVENT)
-                useupall(obj);
-            else {
-                const was_floor = obj.where === OBJ_FLOOR;
-                const ox = obj.ox, oy = obj.oy;
-                obj_extract_self(obj);
-                if (was_floor) {
-                    const { newsym } = await import('./display.js');
-                    newsym(ox, oy);
-                }
-            }
-        }
-        return;
+
+        if (obj && obj.age)
+            await begin_burn(obj, true);
+        break; /* case [otyp ==] candelabrum|tallow_candle|wax_candle */
+
+    default:
+        void impossible(`burn_object: unexpected obj ${xname(obj)}`);
+        break;
     }
-    if (obj.age)
-        await begin_burn(obj, true);
+    if (need_newsym)
+        newsym(x, y);
+    if (need_invupdate)
+        update_inventory();
 }
 
 // src/timeout.c:2416 spot_stop_timers(); stop all timers at a location
@@ -910,92 +1097,123 @@ export function learn_egg_type(mnum) {
     update_inventory();
 }
 
-// src/timeout.c:1221 slip_or_trip() — feedback when FUMBLING expires after a
-// move. The floor-object and ordinary on-foot paths are common. Ice and
-// mounted movement retain their exact gates and record only the unported
-// forced-movement tail.
+// src/timeout.c:1222 slip_or_trip() — feedback when FUMBLING expires after
+// a move: trip over what is underfoot, slip on ice, or just stumble.
 async function slip_or_trip() {
     const u = game.u;
+    const intr = u.intrinsic || {};
+    let otmp = vobj_at(u.ux, u.uy), otmp2, saddle;
+    let what;
     const on_foot = !u.usteed;
-    let otmp = (game.level?.objects || [])
-        .find(o => o.ox === u.ux && o.oy === u.uy) || null;
-    const { is_pool } = await import('./mon.js');
+
     if (otmp && on_foot && !u.uinwater && is_pool(u.ux, u.uy))
         otmp = null;
 
-    const { You } = await import('./pline.js');
-    const { Hallucination } = await import('./youprop.js');
-    if (otmp && on_foot) {
-        const { doname } = await import('./objnam.js');
-        const { body_part } = await import('./polyself.js');
-        let what;
-        if (game.iflags?.last_msg === PLNMSG_ONE_ITEM_HERE)
-            what = (otmp.quan === 1) ? 'it'
-                 : Hallucination() ? 'they' : 'them';
-        else if (otmp.dknown || !u.ublind)
-            what = doname(otmp);
-        else {
-            const rock = (game.level.objects || [])
-                .find(o => o.ox === u.ux && o.oy === u.uy
-                           && o.otyp === ONAMES.ROCK);
-            what = !rock ? 'something'
-                 : rock.quan === 1 ? 'a rock' : 'some rocks';
-        }
+    if (otmp && on_foot) { /* trip over something in particular */
+        /*
+          If there is only one item, it will have just been named
+          during the move, so refer to it by pronoun; otherwise,
+          if the top item has been or can be seen, refer to it by
+          name; if not, look for rocks to trip over; trip over
+          anonymous "something" if there aren't any rocks.
+        */
+        what = (game.iflags?.last_msg === PLNMSG_ONE_ITEM_HERE)
+                ? ((otmp.quan === 1) ? 'it'
+                      : Hallucination() ? 'they' : 'them')
+                : (otmp.dknown || !Blind())
+                      ? doname(otmp)
+                      : ((otmp2 = sobj_at(ONAMES.ROCK, u.ux, u.uy)) == null
+                             ? 'something'
+                             : (otmp2.quan === 1 ? 'a rock' : 'some rocks'));
         if (Hallucination()) {
-            const { pline } = await import('./display.js');
-            const cap = what.charAt(0).toUpperCase() + what.slice(1);
-            await pline(`Egads!  ${cap} bite${otmp.quan === 1 ? 's' : ''} `
-                        + `your ${body_part(FOOT)}!`);
+            what = highc(what.charAt(0)) + what.slice(1);
+            await pline(`Egads!  ${what} bite${
+                (!otmp || otmp.quan === 1) ? 's' : ''} your ${body_part(FOOT)}!`);
         } else {
             await You(`trip over ${what}.`);
         }
-        if (!u.uarmf && otmp.otyp === ONAMES.CORPSE)
-            note_unported_timeout('slip_or_trip:petrifying_corpse');
-        return;
-    }
-
-    const { is_ice } = await import('./dbridge.js');
-    const intrinsic = u.intrinsic || {};
-    if ((intrinsic.HFumbling & FROMOUTSIDE)
-        || (is_ice(u.ux, u.uy) && !rn2(3))) {
-        const { pline } = await import('./display.js');
-        const verb = rn2(2) ? 'slip' : 'slide';
-        await pline(`You ${verb} ${is_ice(u.ux, u.uy) ? 'on' : 'off'} the ice.`);
-        if (!on_foot) {
-            note_unported_timeout('slip_or_trip:mounted_ice');
-        } else {
-            const { ACURR } = await import('./attrib.js');
-            if (!rn2(10 + ACURR(A_DEX)))
-                note_unported_timeout('slip_or_trip:hurtle');
+        if (!u.uarmf && otmp.otyp === ONAMES.CORPSE
+            && touch_petrifies(game.mons[otmp.corpsenm]) && !Stone_resistance()) {
+            (game.killer ||= {}).name = `tripping over ${
+                an(game.mons[otmp.corpsenm].pmnames[NEUTRAL])} corpse`;
+            await instapetrify(game.killer.name);
         }
-        return;
-    }
+    } else if (((intr.HFumbling | 0) & FROMOUTSIDE)
+               || (is_ice(u.ux, u.uy) && !rn2(3))) {
+        /* EFumbling || (HFumbling & ~FROMOUTSIDE) */
+        const ice_only = !(u.uprops?.FUMBLING
+                           || ((intr.HFumbling | 0) & ~FROMOUTSIDE));
 
-    if (on_foot) {
-        switch (rn2(4)) {
-        case 1: {
-            const { body_part } = await import('./polyself.js');
-            const { makeplural } = await import('./objnam.js');
-            await You(`trip over your own ${Hallucination()
-                       ? 'elbow' : makeplural(body_part(FOOT))}.`);
-            break;
-        }
-        case 2:
-            await You(`slip ${Hallucination()
-                      ? 'on a banana peel' : 'and nearly fall'}.`);
-            break;
-        case 3:
-            await You('flounder.');
-            break;
-        default:
-            await You('stumble.');
-            break;
+        await pline(`${u.usteed ? upstart(x_monnam(u.usteed, ARTICLE_THE, null,
+                                                    SUPPRESS_SADDLE, false))
+                               : 'You'} ${
+              /* "steed slips" or "you slip"; use "steed" as the subject
+                 regardless of what u.usteed might be named, as opposed to
+                 "you" (second person, which won't have final 's' added) */
+              vtense(u.usteed ? 'steed' : 'you', rn2(2) ? 'slip' : 'slide')} ${
+              /* hero has just moved off the ice; phrase things differently then */
+              is_ice(u.ux, u.uy) ? 'on' : 'off'} the ice.`);
+        /* fumbling on ice while riding: when fumbling, the hero can only
+           fall from the saddle (unless it is cursed), so to avoid a
+           counterintuitive effect where ice makes riding _less_ hazardous,
+           unconditionally dismount if fumbling is from a non-ice source */
+        if (!on_foot
+            && ((saddle = which_armor(u.usteed, W_SADDLE)) == null
+                || !saddle.cursed)
+            && (!ice_only || !rn2(3))) {
+            await You('lose your balance.');
+            await dismount_steed(DISMOUNT_FELL);
+        } else if (!rn2(10 + ACURR(A_DEX))) {
+            /* slip_or_trip() is called after the move has finished, so
+               the hero has already changed location.  If the hero is
+               in grid bug form, only allow forward hurtle, otherwise a
+               90 degree orthogonal one after the step would make the
+               combined move appear to be a single diagonal step. */
+            if (!NODIAG(u.umonnum))
+                confdir(true); /* sets u.dx and u.dy */
+            /* if new direction happens to be back to where we came from,
+               hurtle to same spot where this move started. */
+            if (u.ux + u.dx !== u.ux0 || u.uy + u.dy !== u.uy0)
+                await hurtle(u.dx, u.dy, 1, false);
         }
     } else {
-        /* The mounted branch uses the same rn2(4), then dismounts unless the
-           saddle is cursed. Keep the draw while its steed plumbing is absent. */
-        rn2(4);
-        note_unported_timeout('slip_or_trip:mounted');
+        if (on_foot) {
+            switch (rn2(4)) {
+            case 1:
+                await You(`trip over your own ${
+                    Hallucination() ? 'elbow' : makeplural(body_part(FOOT))}.`);
+                break;
+            case 2:
+                await You(`slip ${
+                    Hallucination() ? 'on a banana peel' : 'and nearly fall'}.`);
+                break;
+            case 3:
+                await You('flounder.');
+                break;
+            default:
+                await You('stumble.');
+                break;
+            }
+        /* fumbling while mounted: fall off the steed, but
+           don't fall off when it happens to be cursed */
+        } else if ((saddle = which_armor(u.usteed, W_SADDLE)) == null
+                   || !saddle.cursed) {
+            switch (rn2(4)) {
+            case 1:
+                await Your(`${makeplural(body_part(FOOT))} slip out of the stirrups.`);
+                break;
+            case 2:
+                await You('let go of the reins.');
+                break;
+            case 3:
+                await You('bang into the saddle-horn.');
+                break;
+            default:
+                await You('slide to one side of the saddle.');
+                break;
+            }
+            await dismount_steed(DISMOUNT_FELL);
+        }
     }
 }
 
@@ -1102,6 +1320,22 @@ export async function nh_timeout() {
         exercise(A_CON, false);
     }
 
+    if ((intr.HLevitation | 0) & TIMEOUT)
+        await levitation_dialogue();
+    if ((intr.HPasses_walls | 0) & TIMEOUT)
+        await phaze_dialogue();
+    if ((intr.HMagical_breathing | 0) & TIMEOUT)
+        await region_dialogue();
+    if ((intr.HSleepy | 0) & TIMEOUT)
+        await sleep_dialogue();
+    if (u.mtimedone && !--u.mtimedone) {
+        if (Unchanging())
+            u.mtimedone = rnd(100 * game.youmonst.data.mlevel + 1);
+        else if (is_were(game.youmonst.data))
+            await you_unwere(false); /* if polycontrl, asks whether to rehumanize */
+        else
+            await rehumanize();
+    }
     /* src/timeout.c:649, before intrinsic timeouts are decremented. */
     if (u.ucreamed)
         u.ucreamed--;
@@ -1118,6 +1352,12 @@ export async function nh_timeout() {
         }
     }
 
+    if (u.ugallop) {
+        if (--u.ugallop === 0 && u.usteed)
+            await pline(`${Monnam(u.usteed)} stops galloping.`);
+    }
+
+    const was_flying = Flying();
     /* include/prop.h and include/youprop.h: visit intrinsic slots in
        property-number order, independent of when JS fields were created. */
     for (const key of [
@@ -1252,30 +1492,36 @@ export async function nh_timeout() {
         }
         case 'HConfusion': {
             const { make_confused } = await import('./potion.js');
-            intr.HConfusion = 1; /* so make_confused works properly */
+            set_itimeout('HConfusion', 1);
             await make_confused(0, true);
-            if (!game.u.uprops?.CONFUSION) {
-                const { stop_occupation } = await import('./allmain.js');
+            if (!Confusion())
                 await stop_occupation();
-            }
             break;
         }
         case 'HStun': {
             const { make_stunned } = await import('./potion.js');
-            intr.HStun = 1; /* preserve the old timeout for the cure */
+            set_itimeout('HStun', 1);
             await make_stunned(0, true);
+            if (!Stunned())
+                await stop_occupation();
             break;
         }
         case 'HHallucination': {
             const { make_hallucinated } = await import('./potion.js');
-            intr.HHallucination = 1;
+            set_itimeout('HHallucination', 1);
             await make_hallucinated(0, true, 0);
+            if (!Hallucination())
+                await stop_occupation();
             break;
         }
         case 'HBlinded': {
             const { make_blinded } = await import('./potion.js');
-            intr.HBlinded = 1; /* preserve the old timeout for the cure */
+            const was_blind = !!Blind();
+
+            set_itimeout('HBlinded', 1);
             await make_blinded(0, true);
+            if (was_blind && !Blind())
+                await stop_occupation();
             break;
         }
         case 'HGlib': {
@@ -1302,13 +1548,21 @@ export async function nh_timeout() {
             }
             break;
         }
-        case 'HSee_invisible': {
-            const { newsym, see_monsters } = await import('./display.js');
-            see_monsters();
-            newsym(game.u.ux, game.u.uy);
+        case 'HInvis':
+            newsym(u.ux, u.uy);
+            if (!Invis() && !u.blocked?.INVIS && !Blind()) {
+                await You(!See_invisible()
+                          ? 'are no longer invisible.'
+                          : 'can no longer see through yourself.');
+                await stop_occupation();
+            }
+            break;
+        case 'HSee_invisible':
+            set_mimic_blocking(); /* do special mimic handling */
+            see_monsters();       /* make invis mons appear */
+            newsym(u.ux, u.uy);   /* make self appear */
             await stop_occupation();
             break;
-        }
         case 'HFumbling': {
             const { Levitation, Flying, Deaf } = await import('./youprop.js');
             if (game.u.umoved && !(Levitation() || Flying())) {
@@ -1334,13 +1588,86 @@ export async function nh_timeout() {
             }
             break;
         }
-        case 'HDetect_monsters': {
-            const { see_monsters } = await import('./display.js');
+        case 'HSleepy':
+            if (unconscious() || Sleep_resistance()) {
+                incr_itimeout('HSleepy', rnd(100));
+            } else if (Sleepy()) {
+                await You('fall asleep.');
+                const sleeptime = rnd(20);
+                await fall_asleep(-sleeptime, true);
+                incr_itimeout('HSleepy', sleeptime + rnd(100));
+            }
+            break;
+        case 'HLevitation':
+            /* timed Levitation and timed Flying can only be combined via
+               #wizintrinsic only; still, we want to avoid float_down()
+               reporting "you have stopped levitating and are now flying"
+               when both are timing out together; if that is about to
+               happen, end Flying early to skip feedback about it;
+               assumes Levitation is handled before Flying */
+            if (((intr.HFlying | 0) & TIMEOUT) === 1)
+                set_itimeout('HFlying', 0); /* bypass 'case FLYING' */
+            await float_down(I_SPECIAL | TIMEOUT, 0);
+            break;
+        case 'HFlying':
+            if (was_flying && !Flying()) {
+                (game.disp ||= {}).botl = true;
+                await You('land.');
+                await spoteffects(true);
+            }
+            break;
+        case 'HFire_resistance':
+            /* timed Fire_resistance is only granted by lifesave_lava(),
+               as a way to survive lava after multiple life-saving
+               attempts fail to relocate hero; skip timeout message
+               if hero has acquired fire resistance in the meantime */
+            if (!Fire_resistance())
+                await Your('temporary ability to survive burning has ended.');
+            break;
+        case 'HWwalking':
+            if (!Wwalking())
+                await Your('temporary ability to walk on liquid has ended.');
+            break;
+        case 'HDisplaced':
+            if (!Displaced()) /* give a message */
+                await toggle_displacement(null, 0, false);
+            break;
+        case 'HWarn_of_mon':
+            if (!Warn_of_mon()) {
+                const warntype = ((game.context ||= {}).warntype ||= {});
+                const wptr = warntype.species;
+
+                warntype.species = null;
+                warntype.speciesidx = NON_PM;
+                if (wptr)
+                    await You(`are no longer warned about ${
+                        makeplural(wptr.pmnames[NEUTRAL])}.`);
+            }
+            break;
+        case 'HPasses_walls':
+            if (!Passes_walls()) {
+                if (stuck_in_wall())
+                    await You_feel('hemmed in again.');
+                else
+                    await pline(`You're back to your ${
+                        !Upolyd(u) ? 'normal' : 'unusual'} self again.`);
+            }
+            break;
+        case 'HMagical_breathing':
+            if (!Breathless()) {
+                if (region_danger())
+                    await You(`cough${Poison_resistance() ? '.'
+                                                          : ' and spit blood!'}`);
+            }
+            break;
+        case 'HDetect_monsters':
             see_monsters();
             break;
-        }
-        default:
-            note_unported_timeout(`nh_timeout:${key}`);
+        case 'HProtection_from_shape_changers':
+            /* timed Protection_from_shape_changers can only be granted by
+               #wizintrinsic only */
+            if (!Protection_from_shape_changers())
+                restartcham();
             break;
         }
     }
@@ -1371,10 +1698,6 @@ export async function nh_timeout() {
 
     /* src/timeout.c:947 — expired timers fire at the end of nh_timeout */
     await run_timers();
-}
-
-function note_unported_timeout(what) {
-    (game.unported ||= new Set()).add(what);
 }
 
 // src/timeout.c:981 attach_egg_hatch_timeout() — decide if and when the egg
@@ -1581,8 +1904,10 @@ export async function do_storms() {
         if (count < 100) {
             const dirx = rn2(3) - 1;
             const diry = rn2(3) - 1;
-            if (dirx !== 0 || diry !== 0)
-                note_unported_timeout('do_storms:buzz');
+            if (dirx !== 0 || diry !== 0) {
+                game.buzzer = null; /* unspecified attacker */
+                await buzz(BZ_M_SPELL(BZ_OFS_AD(ATTKS.AD_ELEC)), 8, x, y, dirx, diry);
+            }
         }
     }
 

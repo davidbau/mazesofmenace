@@ -31,6 +31,21 @@ import { is_demon, is_lord, is_prince } from './mondata.js';
 import { ART_DEMONBANE } from './artilist_data.js';
 import { show_transient_light } from './light.js';
 import { sgn } from './hacklib.js';
+import { u_wield_art } from './artifact.js';
+import { set_malign, Inhell } from './makemon.js';
+import { is_fainted, reset_faint } from './eat.js';
+import { unmul, nomul } from './hack.js';
+import { stop_occupation } from './allmain.js';
+import { mon_has_amulet } from './wizard.js';
+import { tele_restrict, rloc } from './teleport.js';
+import { livelog_printf, You } from './pline.js';
+import { x_monnam, mon_nam } from './do_name.js';
+import { money_cnt, currency } from './invent.js';
+import { money2mon } from './shk.js';
+import { getlin } from './cmd.js';
+import { ACURR } from './attrib.js';
+import { ART_EXCALIBUR } from './artilist_data.js';
+import { EXACT_NAME, ARTICLE_A, LL_UMONST, RLOC_MSG, A_CHA } from './const.js';
 
 function note_unported_minion(what) {
     (game.unported ||= new Set()).add('minion:' + what);
@@ -260,6 +275,129 @@ export function ndemon(atyp) {
     return ptr && is_ndemon(ptr) ? monsndx(ptr) : -1;
 }
 
+/* src/minion.c:259 Athome */
+const Athome = (mtmp) => (Inhell() && (mtmp.cham ?? NON_PM) === NON_PM);
+
+// src/minion.c:263 demon_talk() — a peaceful demon lord or prince demands
+// gold for safe passage; returns 1 if the demon is satisfied and leaves.
+export async function demon_talk(mtmp) {
+    let cash, demand, offer;
+
+    if (u_wield_art(ART_EXCALIBUR) || u_wield_art(ART_DEMONBANE)) {
+        if (canspotmon(mtmp))
+            await pline(`${Amonnam(mtmp)} looks very angry.`);
+        else
+            await You_feel('tension building.');
+        mtmp.mpeaceful = mtmp.mtame = 0;
+        set_malign(mtmp);
+        newsym(mtmp.mx, mtmp.my);
+        return 0;
+    }
+
+    if (is_fainted()) {
+        await reset_faint(); /* if fainted - wake up */
+    } else {
+        await stop_occupation();
+        if (game.multi > 0) {
+            nomul(0);
+            await unmul(null);
+        }
+    }
+
+    /* Slight advantage given. */
+    if (is_dprince(mtmp.data) && mtmp.minvis) {
+        const wasunseen = !canspotmon(mtmp);
+
+        mtmp.minvis = mtmp.perminvis = 0;
+        if (wasunseen && canspotmon(mtmp)) {
+            await pline(`${Amonnam(mtmp)} appears before you.`);
+            mtmp.mstrategy = (mtmp.mstrategy | 0) & ~STRAT_APPEARMSG;
+        }
+        newsym(mtmp.mx, mtmp.my);
+    }
+    if (game.youmonst.data.mlet === MONSYMS.S_DEMON) { /* Won't blackmail their own. */
+        if (!Deaf())
+            await pline(`${Amonnam(mtmp)} says, "Good hunting, ${
+                game.flags?.female ? 'Sister' : 'Brother'}."`);
+        else if (canseemon(mtmp))
+            await pline(`${Amonnam(mtmp)} says something.`);
+        if (!tele_restrict(mtmp))
+            await rloc(mtmp, RLOC_MSG);
+        return 1;
+    }
+    cash = money_cnt(game.invent || []);
+    demand = Math.trunc((cash * (rnd(80) + 20 * (Athome(mtmp) ? 1 : 0)))
+           / (100 * (1 + ((sgn(game.u.ualign.type) === sgn(mtmp.data.maligntyp)) ? 1 : 0))));
+
+    if (!demand || game.multi < 0) { /* you have no gold or can't move */
+        mtmp.mpeaceful = 0;
+        set_malign(mtmp);
+        return 0;
+    } else {
+        /* make sure that the demand is unmeetable if the monster
+           has the Amulet, preventing monster from being satisfied
+           and removed from the game (along with said Amulet...) */
+        /* [actually the Amulet is safe; it would be dropped when
+           mongone() gets rid of the monster; force combat anyway;
+           also make it unmeetable if the player is Deaf, to simplify
+           handling that case as player-won't-pay] */
+        if (mon_has_amulet(mtmp) || Deaf())
+            demand = cash + rn1(1000, 125);
+
+        if (!Deaf())
+            await pline(`${Amonnam(mtmp)} demands ${demand} ${currency(demand)} for safe passage.`);
+        else if (canseemon(mtmp))
+            await pline(`${Amonnam(mtmp)} seems to be demanding something.`);
+        offer = 0;
+        if (!Deaf()
+            && ((offer = await bribe(mtmp, 'How much will you offer?')) >= demand)) {
+            await pline(`${Amonnam(mtmp)} vanishes, laughing about cowardly mortals.`);
+        } else if (offer > 0
+                   && rnd(5 * ACURR(A_CHA)) > (demand - offer)) {
+            await pline(`${Amonnam(mtmp)} scowls at you menacingly, then vanishes.`);
+        } else {
+            await pline(`${Amonnam(mtmp)} gets angry...`);
+            mtmp.mpeaceful = 0;
+            set_malign(mtmp);
+            return 0;
+        }
+    }
+    /* mtmp may be a shapeshifter; use its true identity, and also since
+       #chronicle will reveal its true identity -- just live with that;
+       also, avoid random hallucinatory currency() units */
+    livelog_printf(LL_UMONST, `bribed ${
+        x_monnam(mtmp, ARTICLE_A, null, EXACT_NAME, false)} with ${offer} ${
+        (offer === 1) ? 'zorkmid' : 'zorkmids'} for safe passage`);
+    await mongone(mtmp);
+    return 1;
+}
+
+// src/minion.c:361 bribe() — how much gold the hero hands over.
+async function bribe(mtmp, prompt) {
+    let offer;
+    const umoney = money_cnt(game.invent || []);
+
+    const buf = await getlin(prompt, null);
+    const m = /^\s*([-+]?\d+)/.exec(buf || '');
+    offer = m ? parseInt(m[1], 10) : 0; /* sscanf(buf, "%ld", &offer) */
+
+    if (offer < 0) {
+        await You(`try to shortchange ${mon_nam(mtmp)}, but fumble.`);
+        return 0;
+    } else if (offer === 0) {
+        await You('refuse.');
+        return 0;
+    } else if (offer >= umoney) {
+        await You(`give ${mon_nam(mtmp)} all your gold.`);
+        offer = umoney;
+    } else {
+        await You(`give ${mon_nam(mtmp)} ${offer} ${currency(offer)}.`);
+    }
+    await money2mon(mtmp, offer);
+    (game.disp ||= {}).botl = true;
+    return offer;
+}
+
 // src/minion.c:469 lose_guardian_angel() — the angel rebukes a conflict
 // hero (or never appears) and 2 to 4 hostile angels arrive instead.
 export async function lose_guardian_angel(mon) {
@@ -274,7 +412,7 @@ export async function lose_guardian_angel(mon) {
                 await pline(`${Monnam(mon)} vanishes!`);
             }
         }
-        mongone(mon);
+        await mongone(mon);
     }
     /* create 2 to 4 hostile angels to replace the lost guardian */
     for (let i = rn1(3, 2); i > 0; --i) {

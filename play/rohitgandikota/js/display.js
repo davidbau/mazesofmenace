@@ -2,6 +2,7 @@
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
 
 import { PLNMSG_UNKNOWN, MAX_TYPE } from './const.js';
+import { MSGTYP_NORMAL, MSGTYP_NOREP, MSGTYP_NOSHOW, MSGTYP_STOP, PLINE_NOREPEAT, OVERRIDE_MSGTYPE, URGENT_MESSAGE } from './const.js';
 import { DISP_BEAM, DISP_ALL, DISP_TETHER, DISP_FLASH, DISP_ALWAYS,
          DISP_CHANGE, DISP_END, DISP_FREEMEM, BACKTRACK, HI_ZAP,
          NUM_ZAP } from './const.js';
@@ -67,6 +68,7 @@ import { NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE,
          ATR_BOLD as TERM_BOLD,
          ATR_UNDERLINE as TERM_UNDERLINE } from './terminal.js';
 import { notice_all_mons_flush } from './hack.js';
+import { critically_low_hp } from './pray.js';
 
 // ── ANSI color codes ──
 // Maps CLR_* constants (0-15) to ANSI SGR color codes.
@@ -1906,7 +1908,24 @@ function _statusLine1() {
        (16) name characters even for a long polymorph title. */
     if (name.length + 5 + role.length > 30)
         name = name.slice(0, Math.max(30 - 5 - role.length, 16));
-    const title = `${name} the ${role}`;
+    let title = `${name} the ${role}`;
+    /* win/tty/wintty.c:4562 — when hitpointbar is enabled, rendering
+       enforces a length of 30 on the title ("%-30.30s"), padded or
+       truncated, inside '[' and ']'; critically low HP repads the
+       trailing blanks with dashes (botl.c:2170 repad_with_dashes) */
+    if (game.flags?.hitpointbar) {
+        let bar = title.length > 30 ? title.slice(0, 30) : title.padEnd(30);
+        if (critically_low_hp(true)) {
+            let p = bar.length;
+            const arr = bar.split('');
+            while (p >= 2 && arr[p - 1] === ' ' && arr[p - 2] === ' ') {
+                arr[p - 1] = '-';
+                p -= 2;
+            }
+            bar = arr.join('');
+        }
+        title = `[${bar}]`;
+    }
     /* src/botl.c:87 — u.acurr.a[] is indexed by the include/attrib.h enum
        (A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA), which is NOT the order the
        status line prints them in. This used to read a[0..5] straight through,
@@ -2367,8 +2386,54 @@ export async function bot() {
 
         const s1 = _statusLine1().replace(/\x1b\[[0-9;]*[A-Za-z]/g, m =>
             m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2))) : '');
+        /* win/tty/wintty.c:5117 — the title's hit-point bar: the first
+           (30 * percent / 100) characters are drawn in inverse (all 30 at
+           full HP), percentage() rounding a nonzero HP up to at least 1% */
+        let bar_hi = -1;
+        if (game.flags?.hitpointbar) {
+            const hp = Upolyd(game.u) ? game.u.mh : game.u.uhp;
+            const hpmax = Upolyd(game.u) ? game.u.mhmax : game.u.uhpmax;
+            let percent = hpmax > 0 ? Math.trunc((100 * hp) / hpmax) : 0;
+            if (percent === 0 && hp !== 0)
+                percent = 1;
+            if (percent < 100) {
+                let bar_pos = Math.trunc((30 * percent) / 100);
+                if (bar_pos < 1 && percent > 0)
+                    bar_pos = 1;
+                if (bar_pos >= 30 && percent < 100)
+                    bar_pos = 29;
+                bar_hi = bar_pos; /* columns 1..bar_pos */
+            } else {
+                bar_hi = 30;
+            }
+        }
+        /* The reference screens come out of scripts/record-session.mjs
+           compressAnsiLine(): any run of five or more spaces in the tty's
+           output line becomes a cursor-forward, whatever SGR state is in
+           effect, and screen-decode.mjs restores such a run as plain cells.
+           So inside the bar's inverse part a run of >= 5 padding spaces
+           decodes without the inverse attribute, and shorter runs keep it. */
+        const plain_run = new Array(CO).fill(false);
+        if (bar_hi >= 1) {
+            let c = 1;
+            while (c <= bar_hi) {
+                if (s1[c] === ' ') {
+                    let e = c;
+                    while (e + 1 <= bar_hi && s1[e + 1] === ' ')
+                        e++;
+                    if (e - c + 1 >= 5)
+                        for (let k = c; k <= e; k++)
+                            plain_run[k] = true;
+                    c = e + 1;
+                } else {
+                    c++;
+                }
+            }
+        }
         for (let c = 0; c < CO; c++)
-            display.setCell(c, 22, c < s1.length ? s1[c] : ' ', NO_COLOR, 0);
+            display.setCell(c, 22, c < s1.length ? s1[c] : ' ', NO_COLOR,
+                            (bar_hi >= 0 && c >= 1 && c <= bar_hi && !plain_run[c])
+                                ? TERM_INVERSE : 0);
         const s2 = _statusLine2();
         for (let c = 0; c < CO; c++)
             display.setCell(c, 23, c < s2.length ? s2[c] : ' ', NO_COLOR, 0);
@@ -2442,6 +2507,21 @@ export async function pline(msg) {
     await notice_all_mons_flush();
     msg = message_with_location(msg);
     if (!msg) return;
+    let msgtyp = MSGTYP_NORMAL;
+
+    /* src/pline.c:244 vpline(): the MSGTYPE gate, before the vision
+       recalculation and the screen flush */
+    const no_repeat = ((game.pline_flags | 0) & PLINE_NOREPEAT) !== 0;
+    if (((game.pline_flags | 0) & OVERRIDE_MSGTYPE) === 0) {
+        /* options.js imports this module; a static import back would put
+           the tty tables ahead of const.js in the load order */
+        const { msgtype_type } = await import('./options.js');
+        msgtyp = msgtype_type(msg, no_repeat);
+        if (((game.pline_flags | 0) & URGENT_MESSAGE) === 0
+            && (msgtyp === MSGTYP_NOSHOW
+                || (msgtyp === MSGTYP_NOREP && msg === (game._prevmsg || ''))))
+            return; /* pline_done */
+    }
     await prepare_pline();
 
     /* src/pline.c vpline() -> putstr(WIN_MESSAGE) -> tty_putstr() ->
@@ -2455,6 +2535,8 @@ export async function pline(msg) {
        the tty has accepted it. Norep compares against this, not against the
        combined top line that update_topl may have built. */
     game._prevmsg = msg;
+    if (msgtyp === MSGTYP_STOP)
+        await display_nhwindow_message(); /* --more-- */
 }
 
 // custompline(SUPPRESS_HISTORY | OVERRIDE_MSGTYPE | NO_CURS_ON_U).
@@ -2496,6 +2578,10 @@ export async function pline_nohistory_no_cursor(msg) {
 export async function urgent_pline(msg) {
     msg = message_with_location(msg);
     if (!msg) return;
+    /* custompline(URGENT_MESSAGE, ...): the message type still applies,
+       though URGENT_MESSAGE keeps NOSHOW and NOREP from suppressing it */
+    const { msgtype_type } = await import('./options.js');
+    const msgtyp = msgtype_type(msg, false);
     await prepare_pline();
     if (game._win_stop) {
         tty_clear_nhwindow_message(game._topl_cury || 0);
@@ -2506,6 +2592,8 @@ export async function urgent_pline(msg) {
     game._win_nostop = false; /* tty_putstr: one message only */
     (game.iflags ||= {}).last_msg = PLNMSG_UNKNOWN;
     game._prevmsg = msg;
+    if (msgtyp === MSGTYP_STOP)
+        await display_nhwindow_message(); /* --more-- */
 }
 
 // win/tty/topl.c more() — draw the suffix, block for a key, clear the top line.

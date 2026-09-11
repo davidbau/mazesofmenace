@@ -47,10 +47,17 @@ import { sanitize_name } from './bones.js';
 import { rnd } from './rng.js';
 import { def_char_to_monclass } from './drawing.js';
 import { visctrl } from './hacklib.js';
+import { strsubst, highc, strstri } from './hacklib.js';
+import { regex_match } from './posixregex.js';
+import { query_color_attr } from './coloratt.js';
+import { adjust_menu_promptstyle } from './tty/wintty.js';
+import { gp, ALIGN_TOP, ALIGN_BOTTOM, ALIGN_LEFT, ALIGN_RIGHT, GFILTER_NONE, GFILTER_VIEW, GFILTER_AREA, VI_NUMBER, VI_NAME, VI_BRANCH, InvOptNone, InvOptOn, InvSparse, MSGTYP_NORMAL, MSGTYP_NOREP, MSGTYP_NOSHOW, MSGTYP_STOP } from './const.js';
 import { MAXMCLASSES, SYM_OFF_X, go_ov_primary_syms, go_ov_rogue_syms, escapes } from './symbols.js';
 import { WARNCOUNT, SYM_BOULDER } from './const.js';
 import { NUM_DISCLOSURE_OPTIONS, DISCLOSE_PROMPT_DEFAULT_YES, DISCLOSE_PROMPT_DEFAULT_NO, DISCLOSE_PROMPT_DEFAULT_SPECIAL, DISCLOSE_YES_WITHOUT_PROMPT, DISCLOSE_NO_WITHOUT_PROMPT, DISCLOSE_SPECIAL_WITHOUT_PROMPT } from './const.js';
 import { RUN_TPORT, RUN_LEAP, RUN_STEP, RUN_CRAWL } from './const.js';
+import { Is_rogue_level, H_MAC, H_UNK } from './const.js';
+import { There } from './pline.js';
 
 function note_unported_options(what) {
     (game.unported ||= new Set()).add('options:' + what);
@@ -1219,6 +1226,20 @@ const burdentype = [
 ];
 
 /* src/options.c:217 runmodes[] */
+// src/options.c:225 perminv_modes[][3] — second column is an alias for the
+// first; third is brief explanation; entries 5 and 6 are 1|4 and 2|4 (tty
+// only, and TTY_PERM_INVENT is not defined in the reference build)
+const perminv_modes = [
+  /*0*/ ['none',      'off',        'no permanent inventory window'],
+  /*1*/ ['all' ,      'on',         'all inventory except for gold'],
+  /*2*/ ['full',      'gold',       'full inventory including gold'],
+  /*3*/ [null,        null,         null],
+  /*4*/ [null,        null,         null],
+  /*5*/ [null,        null,         null],
+  /*6*/ [null,        null,         null],
+  /*7*/ [null,        null,         null],
+  /*8*/ ['in-use',    'inuse-only', 'subset: items currently in use'],
+];
 const runmodes = ['teleport', 'run', 'walk', 'crawl'];
 
 /* src/options.c:220 sortltype[] */
@@ -1255,20 +1276,33 @@ const ALL_PARANOIA_BITS = PARANOID_CONFIRM | PARANOID_QUIT | PARANOID_DIE
     | PARANOID_BONES | PARANOID_HIT | PARANOID_PRAY | PARANOID_REMOVE
     | PARANOID_BREAKWAND | PARANOID_WERECHANGE | PARANOID_EATING
     | PARANOID_SWIM | PARANOID_TRAP | PARANOID_AUTOALL;
-const paranoia = [
-    [PARANOID_CONFIRM, 'Confirm'],
-    [PARANOID_QUIT, 'quit'],
-    [PARANOID_DIE, 'die'],
-    [PARANOID_BONES, 'bones'],
-    [PARANOID_HIT, 'attack'],
-    [PARANOID_BREAKWAND, 'wand-break'],
-    [PARANOID_EATING, 'eat'],
-    [PARANOID_WERECHANGE, 'Were-change'],
-    [PARANOID_PRAY, 'pray'],
-    [PARANOID_TRAP, 'trap'],
-    [PARANOID_AUTOALL, 'Autoall'],
-    [PARANOID_SWIM, 'swim'],
-    [PARANOID_REMOVE, 'Remove'],
+const paranoia = [ /* flagmask, argname, explain (for interactive menu) */
+    [PARANOID_CONFIRM, 'Confirm',
+     'for "yes" confirmations, require "no" to reject'],
+    [PARANOID_QUIT, 'quit',
+     'yes vs y to quit or to enter explore mode'],
+    [PARANOID_DIE, 'die',
+     'yes vs y to die (explore mode or debug mode)'],
+    [PARANOID_BONES, 'bones',
+     'yes vs y to save bones data when dying in debug mode'],
+    [PARANOID_HIT, 'attack',
+     'yes vs y to attack a peaceful monster'],
+    [PARANOID_BREAKWAND, 'wand-break',
+     'yes vs y to break a wand via (a)pply'],
+    [PARANOID_EATING, 'eat',
+     'yes vs y to continue eating after first bite when satiated'],
+    [PARANOID_WERECHANGE, 'Were-change',
+     'yes vs y to change form when lycanthropy is controllable'],
+    [PARANOID_PRAY, 'pray',
+     'y required to pray (supersedes old "prayconfirm" option)'],
+    [PARANOID_TRAP, 'trap',
+     'y required to enter known trap unless considered harmless'],
+    [PARANOID_AUTOALL, 'Autoall',
+     "y required to pick filter choice 'A' for menustyle:Full"],
+    [PARANOID_SWIM, 'swim',
+     "'m' prefix necessary to deliberately walk into lava or water"],
+    [PARANOID_REMOVE, 'Remove',
+     'always pick from inventory for Remove and Takeoff'],
 ];
 
 const paranoia_parameters = [
@@ -1504,7 +1538,7 @@ function get_option_value(o) {
     case 'bind keys':               /* src/options.c optfn_o_bind_keys */
         return n_currently_set((game.rc?.bindings || []).length);
     case 'message types':           /* src/options.c optfn_o_message_types */
-        return n_currently_set((game.rc?.msgtypes || []).length);
+        return n_currently_set(msgtype_count());
     case 'fruit':                   /* src/options.c:1769 optfn_fruit */
         return game.svp?.pl_fruit || 'slime mold';
     case 'number_pad': {            /* src/options.c:2622 optfn_number_pad */
@@ -1552,7 +1586,7 @@ function get_option_value(o) {
     /* src/options.c:8314,8379,8430,8461 — the list-valued options report how
        many entries the player has configured. */
     case 'autopickup exceptions':
-        return n_currently_set((game.apelist || []).length);
+        return n_currently_set(count_apes());
     case 'menu colors':
         return n_currently_set(count_menucolors());
     case 'status condition fields':
@@ -1679,6 +1713,10 @@ async function doset_simple_menu() {
                     await cond_menu();
                 else if (allopt[k].name === 'status highlight rules')
                     await status_hilite_menu();
+                else if (allopt[k].name === 'autopickup exceptions')
+                    await handler_autopickup_exception();
+                else if (allopt[k].name === 'message types')
+                    await handler_msgtype();
                 else
                     note_unported_options(`doset_simple:other=${allopt[k].name}`);
             } else if (allopt[k].hasHandler !== 'Yes') {
@@ -1720,11 +1758,32 @@ async function doset_simple_menu() {
                 await handler_menu_objsyms();
             } else if (allopt[k].name === 'symset') {
                 /* src/options.c handler_symset() via allopt[k].optfn */
-                await do_symset();
+                await do_symset(false);
+            } else if (allopt[k].name === 'roguesymset') {
+                await do_symset(true);
             } else if (allopt[k].name === 'whatis_coord') {
                 await handler_whatis_coord();
             } else if (allopt[k].name === 'petattr') {
                 await handler_petattr();
+            } else if (allopt[k].name === 'align_message'
+                       || allopt[k].name === 'align_status') {
+                await handler_align_misc(allopt[k].name);
+            } else if (allopt[k].name === 'menu_headings') {
+                await handler_menu_headings();
+            } else if (allopt[k].name === 'paranoid_confirmation') {
+                await handler_paranoid_confirmation();
+            } else if (allopt[k].name === 'perminv_mode') {
+                await handler_perminv_mode();
+            } else if (allopt[k].name === 'pickup_burden') {
+                await handler_pickup_burden();
+            } else if (allopt[k].name === 'sortloot') {
+                await handler_sortloot();
+            } else if (allopt[k].name === 'whatis_filter') {
+                await handler_whatis_filter();
+            } else if (allopt[k].name === 'versinfo') {
+                await optfn_versinfo();
+            } else if (allopt[k].name === 'windowborders') {
+                await handler_windowborders();
             } else {
                 note_unported_options(`doset_simple:set=${allopt[k].name}`);
             }
@@ -1811,49 +1870,103 @@ function doset_add_menu(tmpwin, o, fmtstr, indexoffset) {
 }
 
 // src/symbols.c:909 do_symset(), primary-set path for the pinned tty build.
-async function do_symset() {
-    const current = gs_symset[PRIMARYSET]?.name || null;
+// src/symbols.c:909 do_symset() — the symbol set menu for the primary set
+// or, with rogueflag, for the rogue level's set. The list is dat/symbols
+// (primary_symsets, read at build time); sets restricted to the other level
+// and MAC-handled sets are left out as the C does.
+async function do_symset(rogueflag) {
+    let ready_to_switch = false, nothing_to_do = false;
+    let chosen = -2, defindx = 0;
+    const which_set = rogueflag ? ROGUESET : PRIMARYSET;
+    const symset_name = gs_symset[which_set]?.name || null;
+    const symset_list = primary_symsets.filter(sl => sl.name);
+    let setcount = 0;
+
+    let biggest = 'Default Symbols'.length;
+    for (const sl of symset_list) {
+        if (rogueflag ? sl.primary : sl.rogue)
+            continue;
+        if (sl.handling === H_MAC)
+            continue;
+        setcount++;
+        const thissize = sl.name ? sl.name.length : 0;
+        if (thissize > biggest)
+            biggest = thissize;
+    }
+    if (!setcount) {
+        await There(`are no appropriate ${rogueflag ? 'rogue level' : 'primary'} symbol sets available.`);
+        return true;
+    }
+
     const tmpwin = tty_create_nhwindow(NHW_MENU);
     tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
-
-    let defindx = current ? 0 : 1;
-    tty_add_menu(tmpwin, null, 1, 0, 0, ATR_NONE, NO_COLOR,
-                 'Default Symbols', defindx === 1
-                     ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
-
-    const width = Math.max('Default Symbols'.length,
-                           ...primary_symsets.filter(s => s.name)
-                               .map(s => s.name.length)) + 2;
-    for (const entry of primary_symsets) {
-        if (!entry.name)
+    let any = 1; /* -1 + 2 [see 'if (sl->name) {' below]*/
+    if (!symset_name)
+        defindx = any;
+    tty_add_menu(tmpwin, null, any, 0, 0, ATR_NONE, NO_COLOR, 'Default Symbols',
+                 (any === defindx) ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+    for (const sl of symset_list) {
+        if (rogueflag ? sl.primary : sl.rogue)
             continue;
-        const id = entry.index + 2;
-        if (entry.name.toLowerCase() === current?.toLowerCase())
-            defindx = id;
-        const text = `${entry.name.padEnd(width)} ${entry.description}`;
-        tty_add_menu(tmpwin, null, id, 0, 0, ATR_NONE, NO_COLOR, text,
-                     id === defindx ? MENU_ITEMFLAGS_SELECTED
-                                    : MENU_ITEMFLAGS_NONE);
+        if (sl.handling === H_MAC)
+            continue;
+        if (sl.name) {
+            /* +2: both symset index and dynamic subindex
+               +1 because Defaults are implicitly in slot [0];
+               +1 again so that valid data is never 0 */
+            any = sl.index + 2;
+            if (symset_name && sl.name.toLowerCase() === symset_name.toLowerCase())
+                defindx = any;
+            const text = `${sl.name.padEnd(biggest + 2)} ${sl.description ? sl.description : ''}`;
+            tty_add_menu(tmpwin, null, any, 0, 0, ATR_NONE, NO_COLOR, text,
+                         (any === defindx) ? MENU_ITEMFLAGS_SELECTED
+                                           : MENU_ITEMFLAGS_NONE);
+        }
     }
-    tty_end_menu(tmpwin, 'Select symbol set:');
+    tty_end_menu(tmpwin, `Select ${rogueflag ? 'rogue level ' : ''}symbol set:`);
     const picks = await tty_select_menu(tmpwin, PICK_ONE);
-
-    let chosen = -2;
-    if (picks.length) {
+    if (picks.length > 0) {
         chosen = picks[0];
+        /* if picking the preselected entry yields 2, make sure
+           that we're going with the non-preselected one */
         if (picks.length === 2 && chosen === defindx)
             chosen = picks[1];
-        chosen -= 2;
-    } else if (!picks.cancelled && defindx > 0) {
+        chosen -= 2; /* convert menu index to symset index;
+                      * "Default symbols" have index -1 */
+    } else if (picks.length === 0 && !picks.cancelled && defindx > 0) {
         chosen = defindx - 2;
     }
     tty_destroy_nhwindow(tmpwin);
 
-    if (chosen >= -1) {
-        const entry = primary_symsets.find(s => s.index === chosen);
-        assign_graphics(entry?.name || false);
-    }
+    if (chosen > -1) {
+        /* chose an actual symset name from file */
+        const sl = symset_list.find(e => e.index === chosen);
+        if (sl) {
+            /* free the old one */
+            gs_symset[which_set] = { name: sl.name, handling: sl.handling };
+            ready_to_switch = true;
+        }
+    } else if (chosen === -1) {
+        /* explicit selection of defaults */
+        /* free the old symset name if there is one */
+        gs_symset[which_set] = { name: null, handling: H_UNK };
+    } else
+        nothing_to_do = true;
+
+    if (nothing_to_do)
+        return true;
+
+    /* init_rogue_symbols()/init_primary_symbols(), read_sym_file(which_set)
+       and switch_symbols(): the loaded sets are the build-time tables */
+    if (ready_to_switch && !rogueflag)
+        switch_symbols(true);
+    if (Is_rogue_level(game.u.uz)) {
+        if (rogueflag)
+            note_unported_options('do_symset:assign_graphics(ROGUESET)');
+    } else if (!rogueflag)
+        assign_graphics(gs_symset[PRIMARYSET]?.name || false);
     game.opt_need_redraw = true;
+    return true;
 }
 
 // src/cmd.c:2408 handler_rebind_keys(), the outer action picker.
@@ -2234,7 +2347,9 @@ export async function doset() {
                 /* compound option with a handler: optfn's do_handler arm */
                 await optfn_pickup_types();
             } else if (o.hasHandler === 'Yes' && o.name === 'symset') {
-                await do_symset();
+                await do_symset(false);
+            } else if (o.hasHandler === 'Yes' && o.name === 'roguesymset') {
+                await do_symset(true);
             } else if (o.hasHandler === 'Yes' && o.name === 'sortdiscoveries') {
                 await choose_disco_sort(0);
             } else if (o.hasHandler === 'Yes' && o.name === 'menustyle') {
@@ -2267,6 +2382,28 @@ export async function doset() {
                 await cond_menu();
             } else if (o.name === 'status highlight rules') {
                 await status_hilite_menu();
+            } else if (o.name === 'align_message' || o.name === 'align_status') {
+                await handler_align_misc(o.name);
+            } else if (o.name === 'menu_headings') {
+                await handler_menu_headings();
+            } else if (o.name === 'paranoid_confirmation') {
+                await handler_paranoid_confirmation();
+            } else if (o.name === 'perminv_mode') {
+                await handler_perminv_mode();
+            } else if (o.name === 'pickup_burden') {
+                await handler_pickup_burden();
+            } else if (o.name === 'sortloot') {
+                await handler_sortloot();
+            } else if (o.name === 'whatis_filter') {
+                await handler_whatis_filter();
+            } else if (o.name === 'versinfo') {
+                await optfn_versinfo();
+            } else if (o.name === 'windowborders') {
+                await handler_windowborders();
+            } else if (o.name === 'autopickup exceptions') {
+                await handler_autopickup_exception();
+            } else if (o.name === 'message types') {
+                await handler_msgtype();
             } else if (o.hasHandler === 'Yes') {
                 note_unported_options(`doset:handler=${o.name}`);
             } else {
@@ -2507,6 +2644,91 @@ async function handler_menu_colors() {
     }
 }
 
+// src/options.c:7676 msgtype_names[]
+const msgtype_names = [ /* name, msgtyp, descr */
+    ['show', MSGTYP_NORMAL, 'Show message normally'],
+    ['hide', MSGTYP_NOSHOW, 'Hide message'],
+    ['noshow', MSGTYP_NOSHOW, null],
+    ['stop', MSGTYP_STOP, 'Prompt for more after the message'],
+    ['more', MSGTYP_STOP, null],
+    ['norep', MSGTYP_NOREP, 'Do not repeat the message'],
+];
+
+// src/options.c:7690 msgtype2name()
+function msgtype2name(typ) {
+    for (let i = 0; i < msgtype_names.length; i++)
+        if (msgtype_names[i][2] && msgtype_names[i][1] === typ)
+            return msgtype_names[i][0];
+    return null;
+}
+
+// src/options.c:7701 query_msgtype()
+async function query_msgtype() {
+    const clr = NO_COLOR;
+
+    const tmpwin = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    for (let i = 0; i < msgtype_names.length; i++)
+        if (msgtype_names[i][2]) {
+            tty_add_menu(tmpwin, null, msgtype_names[i][1] + 1, 0, 0,
+                         ATR_NONE, clr,
+                         msgtype_names[i][2], MENU_ITEMFLAGS_NONE);
+        }
+    tty_end_menu(tmpwin, 'How to show the message');
+    const picks = await tty_select_menu(tmpwin, PICK_ONE);
+    tty_destroy_nhwindow(tmpwin);
+    if (picks.length > 0)
+        return picks[0] - 1;
+    return -1;
+}
+
+// src/options.c:7731 msgtype_add() — gp.plinemsg_types is newest first, as
+// the C's prepended list is
+function msgtype_add(typ, pattern) {
+    const re_error = 'MSGTYPE regex error';
+    const tmp = { msgtype: typ, regex: regex_init(), pattern: null };
+
+    /* test_regex_pattern() has already validated this regexp but parsing
+       it again could conceivably run out of memory */
+    if (!regex_compile(pattern, tmp.regex)) {
+        const re_error_desc = regex_error_desc(tmp.regex);
+
+        /* free first in case reason for failure was insufficient memory */
+        regex_free(tmp.regex);
+        config_error_add(`${re_error}: ${re_error_desc}`);
+        return false;
+    }
+    tmp.pattern = pattern;
+    (gp.plinemsg_types ||= []).unshift(tmp);
+    return true;
+}
+
+// src/options.c:7772 free_one_msgtype()
+function free_one_msgtype(idx) { /* 0 .. */
+    const list = gp.plinemsg_types || [];
+
+    if (idx >= 0 && idx < list.length) {
+        regex_free(list[idx].regex);
+        list.splice(idx, 1);
+    }
+}
+
+// src/options.c:7797 msgtype_type()
+export function msgtype_type(msg, norepeat) { /* called from Norep(via pline) */
+    for (const tmp of gp.plinemsg_types || []) {
+        /* we don't exclude entries with negative msgtype values
+           because then the msg might end up matching a later pattern */
+        if (regex_match(msg, tmp.regex))
+            return tmp.msgtype;
+    }
+    return norepeat ? MSGTYP_NOREP : MSGTYP_NORMAL;
+}
+
+// src/options.c:7831 msgtype_count()
+function msgtype_count() {
+    return (gp.plinemsg_types || []).length;
+}
+
 // src/options.c:7871 test_regex_pattern()
 async function test_regex_pattern(str, errmsg) {
     const def_errmsg = 'NHregex error';
@@ -2576,6 +2798,88 @@ async function handle_add_list_remove(optname, numtotal) {
     return opt_idx;
 }
 
+// src/options.c:9285 count_apes()
+function count_apes() {
+    return (game.apelist || []).length;
+}
+
+/* sscanf(mapping, "\"<%253[^\"]\" %c", text, &end) and its two siblings:
+   'lead' is the literal prefix; n counts the assigned items the way sscanf
+   does (the %[ set needs at least one character, a missing closing quote
+   still leaves text assigned, and the %c after the blank is the next
+   non-space character if any) */
+function scan_ape(mapping, lead) {
+    if (!mapping.startsWith(lead))
+        return null;
+    let i = lead.length, text = '';
+    while (i < mapping.length && mapping[i] !== '"' && text.length < 253)
+        text += mapping[i++];
+    if (!text)
+        return null;
+    if (mapping[i] !== '"')
+        return { n: 1, text };
+    i++;
+    while (i < mapping.length && /\s/.test(mapping[i]))
+        i++;
+    if (i >= mapping.length)
+        return { n: 1, text };
+    return { n: 2, text, end: mapping[i] };
+}
+
+// src/options.c:9300 add_autopickup_exception() — game.apelist is newest
+// first, as the C's prepended list is
+export function add_autopickup_exception(mapping) {
+    const APE_regex_error = 'regex error in AUTOPICKUP_EXCEPTION',
+          APE_syntax_error = 'syntax error in AUTOPICKUP_EXCEPTION';
+    let r, grab = false;
+
+    /* scan length limit used to be 255, but smaller size allows the
+       quoted value to fit within BUFSZ, simplifying formatting elsewhere;
+       this used to ignore the possibility of trailing junk but now checks
+       for it, accepting whitespace but rejecting anything else unless it
+       starts with '#" for a comment */
+    if ((r = scan_ape(mapping, '"<')) && (r.n === 1
+                                          || (r.n === 2 && r.end === '#'))) {
+        grab = true;
+    } else if (((r = scan_ape(mapping, '">')) && r.n === 1)
+               || ((r = scan_ape(mapping, '"'))
+                   && (r.n === 1 || (r.n === 2 && r.end === '#')))) {
+        grab = false;
+    } else {
+        config_error_add(APE_syntax_error);
+        return 0;
+    }
+    const text = r.text;
+
+    const ape = { regex: regex_init(), pattern: null, grab: false };
+    if (!regex_compile(text, ape.regex)) {
+        const re_error_desc = regex_error_desc(ape.regex);
+
+        /* free first in case reason for failure was insufficient memory */
+        regex_free(ape.regex);
+        config_error_add(`${APE_regex_error}: ${re_error_desc}`);
+        return 0;
+    }
+    ape.pattern = text;
+    ape.grab = grab;
+    (game.apelist ||= []).unshift(ape);
+    return 1;
+}
+
+// src/options.c:9349 remove_autopickup_exception()
+function remove_autopickup_exception(whichape) {
+    const apelist = game.apelist || [];
+
+    for (let i = 0; i < apelist.length; ) {
+        if (apelist[i] === whichape) {
+            regex_free(apelist[i].regex);
+            apelist.splice(i, 1);
+        } else {
+            i++;
+        }
+    }
+}
+
 // src/options.c:5544 handler_menustyle().
 // src/options.c optfn_sortvanquished(), the do_handler arm
 async function optfn_sortvanquished() {
@@ -2588,6 +2892,463 @@ async function optfn_sortvanquished() {
     await pline(`'${optname}' ${(mode === prev_sortmode)
                                  ? 'not changed, still' : 'changed to'} "${
                 vanqorders[mode][0]}: ${vanqorders[mode][1]}".`);
+    return 0;
+}
+
+// src/options.c:5488 can_set_perm_invent()
+function can_set_perm_invent() {
+    /*
+     * Assumption: only called when iflags.perm_invent is False
+     * and is about to be changed to True.
+     */
+    if (!wc_supported('perm_invent')) /* windowprocs.wincap & WC_PERM_INVENT */
+        return false;
+
+    if ((game.iflags?.perminv_mode ?? InvOptNone) === InvOptNone)
+        (game.iflags ||= {}).perminv_mode = InvOptOn;
+
+    /* TTY_PERM_INVENT is not defined in the reference build */
+    return true;
+}
+
+// src/options.c:5586 handler_align_misc()
+async function handler_align_misc(optidx) {
+    const clr = NO_COLOR;
+
+    const tmpwin = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    tty_add_menu(tmpwin, null, ALIGN_TOP, 't', 0, ATR_NONE, clr, 'top',
+                 MENU_ITEMFLAGS_NONE);
+    tty_add_menu(tmpwin, null, ALIGN_BOTTOM, 'b', 0, ATR_NONE, clr, 'bottom',
+                 MENU_ITEMFLAGS_NONE);
+    tty_add_menu(tmpwin, null, ALIGN_LEFT, 'l', 0, ATR_NONE, clr, 'left',
+                 MENU_ITEMFLAGS_NONE);
+    tty_add_menu(tmpwin, null, ALIGN_RIGHT, 'r', 0, ATR_NONE, clr, 'right',
+                 MENU_ITEMFLAGS_NONE);
+    const abuf = `Select ${(optidx === 'align_message') ? 'message' : 'status'
+                 } window placement relative to the map:`;
+    tty_end_menu(tmpwin, abuf);
+    const window_pick = await tty_select_menu(tmpwin, PICK_ONE);
+    if (window_pick.length > 0) {
+        if (optidx === 'align_message')
+            (game.iflags ||= {}).wc_align_message = window_pick[0];
+        else
+            (game.iflags ||= {}).wc_align_status = window_pick[0];
+    }
+    tty_destroy_nhwindow(tmpwin);
+    return 0;
+}
+
+// src/options.c:5780 handler_menu_headings()
+async function handler_menu_headings() {
+    const ca = ((game.iflags ||= {}).menu_headings
+                ??= { color: NO_COLOR, attr: ATR_INVERSE });
+    const gotca = await query_color_attr(ca, 'How to highlight menu headings:');
+
+    if (gotca) {
+        /* header highlighting affects persistent inventory display */
+        if (game.iflags.perm_invent)
+            update_inventory();
+    }
+    adjust_menu_promptstyle(ca); /* (WIN_INVEN, &iflags.menu_headings) */
+    return 0;
+}
+
+// src/options.c:5953 handler_paranoid_confirmation()
+async function handler_paranoid_confirmation() {
+    let mkey, mbuf, explain, cmdnm;
+    const clr = NO_COLOR;
+    const { cmd_from_func, cmdname_from_func } = await import('./cmd.js');
+
+    const tmpwin = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    for (let i = 0; i < paranoia.length; ++i) {
+        const [flagmask, argname] = paranoia[i];
+
+        if (flagmask === PARANOID_BONES && !game.wizard)
+            continue;
+        /* the 'swim' choice mentions the 'm' movement prefix in its
+           explanation; if that's been bound to something else or been
+           unbound altogether, substitute the replacement in the text */
+        explain = paranoia[i][2];
+        if (strstri(explain, "'m'") >= 0
+            && (mkey = cmd_from_func('reqmenu')) !== 'm') {
+            if (mkey !== '\0') { /* key for 'm' prefix */
+                mbuf = `'${visctrl(mkey).slice(0, 9)}'`; /* .5 is enough */
+            } else { /* extended command name for 'm' prefix */
+                cmdnm = cmdname_from_func('reqmenu', true);
+                if (!cmdnm)
+                    cmdnm = 'reqmenu';
+                mbuf = `'${(cmdnm[0] !== '#') ? '#' : ''}${cmdnm.slice(0, 31)}'`;
+            }
+            explain = strsubst(explain, "'m'", mbuf);
+        }
+        tty_add_menu(tmpwin, null, flagmask, argname[0],
+                     0, ATR_NONE, clr, explain,
+                     (paranoia_bits() & flagmask)
+                         ? MENU_ITEMFLAGS_SELECTED
+                         : MENU_ITEMFLAGS_NONE);
+    }
+    tty_end_menu(tmpwin, 'Actions requiring extra confirmation:');
+    const paranoia_picks = await tty_select_menu(tmpwin, PICK_ANY);
+    let i = paranoia_picks.cancelled ? -1 : paranoia_picks.length;
+    if (i >= 0) {
+        /* player didn't cancel; we reset all the paranoia options
+           here even if there were no items picked, since user
+           could have toggled off preselected ones to end up with 0 */
+        game.flags.paranoia_bits = 0;
+        if (i > 0) {
+            /* at least 1 item set, either preselected or newly picked */
+            while (--i >= 0)
+                game.flags.paranoia_bits |= paranoia_picks[i];
+        }
+    }
+    tty_destroy_nhwindow(tmpwin);
+    return 0;
+}
+
+// src/options.c:6011 handler_perminv_mode()
+async function handler_perminv_mode() {
+    let let_, buf, sepbuf;
+    const old_perm_invent = !!game.iflags?.perm_invent;
+    const old_pi = game.iflags?.perminv_mode ?? InvOptNone;
+    let new_pi = old_pi;
+    const widest = 11; /* WINDOWPORT(tty): "full+grid__" */
+
+    const tmpwin = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    for (let i = 0; i < perminv_modes.length; ++i) {
+        const pi0 = perminv_modes[i][0];
+        if (!pi0)
+            continue;
+        const pi1 = perminv_modes[i][1];
+        if (!game.iflags?.menu_tab_sep) {
+            const numspaces = widest - pi0.length;
+
+            sepbuf = ' '.repeat(Math.max(numspaces, 1)); /* "%*s" */
+        } else {
+            sepbuf = '\t';
+        }
+        buf = `${pi0}${sepbuf}${perminv_modes[i][2]}`;
+        let_ = ((i & InvSparse) !== 0) ? highc(pi1[0]) : pi0[0];
+        tty_add_menu(tmpwin, null, i + 1, let_, String.fromCharCode(48 + i),
+                     ATR_NONE, NO_COLOR,
+                     buf, (i === old_pi) ? MENU_ITEMFLAGS_SELECTED
+                                         : MENU_ITEMFLAGS_NONE);
+    }
+    tty_end_menu(tmpwin, 'Choose permanent inventory mode:');
+    const pi_pick = await tty_select_menu(tmpwin, PICK_ONE);
+    const n = pi_pick.cancelled ? -1 : pi_pick.length;
+    tty_destroy_nhwindow(tmpwin);
+    if (n > 0) {
+        new_pi = pi_pick[0] - 1;
+        if (n > 1 && new_pi === old_pi)
+            new_pi = pi_pick[1] - 1;
+        (game.iflags ||= {}).perminv_mode = new_pi;
+    }
+    if (n >= 0) { /* not ESC */
+        /* optfn_perminv_mode(opt_perm_invent, get_val, FALSE, buf, NULL):
+           with a Null 'op' the value is just the mode's explanation */
+        buf = perminv_modes[game.iflags?.perminv_mode ?? InvOptNone][2];
+        await pline(`'perminv_mode' ${
+            (new_pi !== old_pi) ? 'changed to' : 'is still'} '${
+            perminv_modes[new_pi][0]}' (${buf}).`);
+        if (new_pi !== InvOptNone && !old_perm_invent)
+            (game.iflags ||= {}).perm_invent = can_set_perm_invent();
+        else if (new_pi === InvOptNone && old_perm_invent)
+            game.iflags.perm_invent = false;
+
+        if (new_pi !== old_pi || !!game.iflags?.perm_invent !== old_perm_invent) {
+            game.opt_need_redraw = true;
+        }
+    }
+    return 0;
+}
+
+// src/options.c:6086 handler_pickup_burden()
+async function handler_pickup_burden() {
+    const burden_letters = 'ubsntl';
+    const clr = NO_COLOR;
+
+    const tmpwin = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    for (let i = 0; i < burdentype.length; i++) {
+        const burden_name = burdentype[i];
+        tty_add_menu(tmpwin, null, i + 1, burden_letters[i],
+                     0, ATR_NONE, clr, burden_name, MENU_ITEMFLAGS_NONE);
+    }
+    tty_end_menu(tmpwin, 'Select encumbrance level:');
+    const burden_pick = await tty_select_menu(tmpwin, PICK_ONE);
+    if (burden_pick.length > 0)
+        game.flags.pickup_burden = burden_pick[0] - 1;
+    tty_destroy_nhwindow(tmpwin);
+    return 0;
+}
+
+// src/options.c:6167 handler_sortloot()
+async function handler_sortloot() {
+    const clr = NO_COLOR;
+
+    const tmpwin = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    for (let i = 0; i < sortltype.length; i++) {
+        const sortl_name = sortltype[i];
+        tty_add_menu(tmpwin, null, sortl_name[0], sortl_name[0],
+                     0, ATR_NONE, clr,
+                     sortl_name, ((game.flags?.sortloot ?? 'l') === sortl_name[0])
+                                    ? MENU_ITEMFLAGS_SELECTED
+                                    : MENU_ITEMFLAGS_NONE);
+    }
+    tty_end_menu(tmpwin, 'Select loot sorting type:');
+    const sortl_pick = await tty_select_menu(tmpwin, PICK_ONE);
+    const n = sortl_pick.cancelled ? -1 : sortl_pick.length;
+    if (n > 0) {
+        let c = sortl_pick[0];
+
+        if (n > 1 && c === (game.flags?.sortloot ?? 'l'))
+            c = sortl_pick[1];
+        game.flags.sortloot = c;
+        /* changing to or from 'f' affects persistent inventory display */
+        if (game.iflags?.perm_invent)
+            update_inventory();
+    }
+    tty_destroy_nhwindow(tmpwin);
+    return 0;
+}
+
+// src/options.c:6279 handler_whatis_filter()
+async function handler_whatis_filter() {
+    const gfilt = game.iflags?.getloc_filter ?? GFILTER_NONE;
+    const clr = NO_COLOR;
+
+    const tmpwin = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    tty_add_menu(tmpwin, null, GFILTER_NONE + 1, 'n',
+                 0, ATR_NONE, clr, 'no filtering',
+                 (gfilt === GFILTER_NONE)
+                    ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+    tty_add_menu(tmpwin, null, GFILTER_VIEW + 1, 'v',
+                 0, ATR_NONE, clr, 'in view only',
+                 (gfilt === GFILTER_VIEW)
+                    ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+    tty_add_menu(tmpwin, null, GFILTER_AREA + 1, 'a',
+                 0, ATR_NONE, clr, 'in same area',
+                 (gfilt === GFILTER_AREA)
+                    ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+    tty_end_menu(tmpwin,
+      'Select location filtering when going for next/previous map position:');
+    const window_pick = await tty_select_menu(tmpwin, PICK_ONE);
+    const pick_cnt = window_pick.cancelled ? -1 : window_pick.length;
+    if (pick_cnt > 0) {
+        (game.iflags ||= {}).getloc_filter = (window_pick[0] - 1);
+        /* PICK_ONE doesn't unselect preselected entry when
+           selecting another one */
+        if (pick_cnt > 1 && game.iflags.getloc_filter === gfilt)
+            game.iflags.getloc_filter = (window_pick[1] - 1);
+    }
+    tty_destroy_nhwindow(tmpwin);
+    return 0;
+}
+
+// src/options.c:6331 handler_autopickup_exception()
+async function handler_autopickup_exception() {
+    const clr = NO_COLOR;
+    const { getlin } = await import('./cmd.js');
+
+    for (;;) { /* ape_again: */
+        const numapes = count_apes();
+        const opt_idx = await handle_add_list_remove('autopickup exception',
+                                                     numapes);
+        if (opt_idx === 3) { /* done */
+            return true;
+        } else if (opt_idx === 0) { /* add new */
+            /* EDIT_GETLIN:  assume user doesn't user want previous
+               exception used as default input string for this one... */
+            let apebuf = await getlin('What new autopickup exception pattern?');
+            apebuf = mungspaces(apebuf ?? '\x1b'); /* regularize whitespace */
+            if (apebuf[0] === '\x1b')
+                return true;
+            if (apebuf) {
+                /* guarantee room for \" prefix and \"\0 suffix;
+                   -2 is good enough for apebuf[] but -3 makes
+                   sure the whole thing fits within normal BUFSZ */
+                apebuf = ('"' + apebuf).slice(0, BUFSZ) + '"';
+                add_autopickup_exception(apebuf);
+            }
+            continue; /* goto ape_again */
+        } else { /* list (1) or remove (2) */
+            const tmpwin = tty_create_nhwindow(NHW_MENU);
+            tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+            if (numapes) {
+                const apelist = game.apelist || [];
+                add_menu_heading(tmpwin,
+                                 "Always pickup '<'; never pickup '>'");
+                for (let i = 0; i < numapes && i < apelist.length; i++) {
+                    const ape = apelist[i];
+                    const any = (opt_idx === 1) ? 0 : ape;
+                    /* length of pattern plus quotes (plus '<'/'>') is
+                       less than BUFSZ */
+                    const apebuf = `"${ape.grab ? '<' : '>'}${ape.pattern}"`;
+                    tty_add_menu(tmpwin, null, any, 0, 0,
+                                 ATR_NONE, clr, apebuf, MENU_ITEMFLAGS_NONE);
+                }
+            }
+            tty_end_menu(tmpwin, `${(opt_idx === 1) ? 'List of' : 'Remove which'
+                                   } autopickup exceptions`);
+            const pick_list = await tty_select_menu(tmpwin,
+                                                    (opt_idx === 1) ? PICK_NONE
+                                                                    : PICK_ANY);
+            const pick_cnt = pick_list.cancelled ? -1 : pick_list.length;
+            if (pick_cnt > 0) {
+                for (let pick_idx = 0; pick_idx < pick_cnt; ++pick_idx)
+                    remove_autopickup_exception(pick_list[pick_idx]);
+            }
+            tty_destroy_nhwindow(tmpwin);
+            if (pick_cnt >= 0)
+                continue; /* goto ape_again */
+        }
+        return 0; /* optn_ok */
+    }
+}
+
+// src/options.c:6502 handler_msgtype()
+async function handler_msgtype() {
+    const { getlin } = await import('./cmd.js');
+
+    for (;;) { /* msgtypes_again: */
+        const nmt = msgtype_count();
+        const opt_idx = await handle_add_list_remove('message type', nmt);
+        if (opt_idx === 3) { /* done */
+            return true;
+        } else if (opt_idx === 0) { /* add new */
+            const mtbuf = await getlin('What new message pattern?');
+            if (mtbuf === null || mtbuf[0] === '\x1b')
+                return true;
+            let mttyp;
+            if (mtbuf
+                && await test_regex_pattern(mtbuf, 'MSGTYPE regex')
+                && (mttyp = await query_msgtype()) !== -1
+                && !msgtype_add(mttyp, mtbuf)) {
+                await pline('Error adding the message type.');
+                await tty_wait_synch();
+            }
+            continue; /* goto msgtypes_again */
+        } else { /* list (1) or remove (2) */
+            const clr = NO_COLOR;
+
+            const tmpwin = tty_create_nhwindow(NHW_MENU);
+            tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+            let mt_idx = 0;
+            for (const tmp of gp.plinemsg_types || []) {
+                const mtype = msgtype2name(tmp.msgtype);
+                const any = ++mt_idx;
+                let mtbuf = `${String(mtype).padEnd(5)} "`; /* "%-5s \"" */
+                const ln = BUFSZ - mtbuf.length - 2; /* sizeof "\"" */
+                if (tmp.pattern.length > ln)
+                    mtbuf += tmp.pattern.slice(0, ln - 3) + '..."';
+                else
+                    mtbuf += tmp.pattern + '"';
+                tty_add_menu(tmpwin, null, any, 0, 0,
+                             ATR_NONE, clr, mtbuf, MENU_ITEMFLAGS_NONE);
+            }
+            tty_end_menu(tmpwin, `${(opt_idx === 1) ? 'List of' : 'Remove which'
+                                   } message types`);
+            const pick_list = await tty_select_menu(tmpwin,
+                                                    (opt_idx === 1) ? PICK_NONE
+                                                                    : PICK_ANY);
+            const pick_cnt = pick_list.cancelled ? -1 : pick_list.length;
+            if (pick_cnt > 0) {
+                for (let pick_idx = 0; pick_idx < pick_cnt; ++pick_idx)
+                    free_one_msgtype(pick_list[pick_idx] - 1 - pick_idx);
+            }
+            tty_destroy_nhwindow(tmpwin);
+            if (pick_cnt >= 0)
+                continue; /* goto msgtypes_again */
+        }
+        return 0; /* optn_ok */
+    }
+}
+
+// src/options.c:6573 handler_versinfo()
+async function handler_versinfo() {
+    const have_branch = false; /* nomakedefs.git_branch is empty, version.js */
+    const vi = game.flags?.versinfo ?? 1;
+    let n;
+
+    const tmpwin = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+
+    n = VI_NUMBER; /* 1 */
+    tty_add_menu(tmpwin, null, n, 'n', String.fromCharCode(n + 48), ATR_NONE,
+                 NO_COLOR, 'version number',
+                 (vi & n) ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+    n = VI_NAME; /* 2 */
+    tty_add_menu(tmpwin, null, n, 'g', String.fromCharCode(n + 48), ATR_NONE,
+                 NO_COLOR, 'game name',
+                 (vi & n) ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+    n = VI_BRANCH; /* 4 */
+    tty_add_menu(tmpwin, null, n, 'b', String.fromCharCode(n + 48), ATR_NONE,
+                 NO_COLOR,
+                 (have_branch ? 'development branch'
+                              : '(not applicable)'), /* NH_STATUS_RELEASED */
+                 (vi & n) ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
+
+    tty_end_menu(tmpwin, 'Select version information flags:');
+    const vi_pick = await tty_select_menu(tmpwin, PICK_ANY);
+    n = vi_pick.cancelled ? -1 : vi_pick.length;
+    if (n > 0) {
+        let newval = 0;
+
+        for (let i = 0; i < n; ++i)
+            newval |= vi_pick[i];
+        newval &= 7;
+        if (newval)
+            game.flags.versinfo = newval;
+    }
+    tty_destroy_nhwindow(tmpwin);
+    return 0;
+}
+
+// src/options.c:4472 optfn_versinfo(), the do_handler arm
+async function optfn_versinfo() {
+    const optname = 'versinfo';
+    const vi = game.flags?.versinfo ?? 1;
+
+    /* return handler_versinfo(); */
+    await handler_versinfo();
+    await pline(`'${optname}' ${
+        ((game.flags?.versinfo ?? 1) === vi) ? 'not changed, still'
+                                             : 'changed to'} ${
+        game.flags?.versinfo ?? 1}.`);
+    return 0;
+}
+
+// src/options.c:6620 handler_windowborders()
+async function handler_windowborders() {
+    const clr = NO_COLOR;
+    const windowborders_text = [
+        'Off, never show borders',
+        'On, always show borders',
+        'Auto, on if display is at least (24+2)x(80+2)',
+        'On, except forced off for perm_invent',
+        'Auto, except forced off for perm_invent',
+    ];
+
+    const tmpwin = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    for (let i = 0; i < windowborders_text.length; i++) {
+        const mode_name = windowborders_text[i];
+        /* index 'i' matches the numeric setting for windowborders,
+           so allow corresponding digit as group accelerator */
+        tty_add_menu(tmpwin, null, i + 1, String.fromCharCode(97 + i),
+                     String.fromCharCode(48 + i),
+                     ATR_NONE, clr, mode_name, MENU_ITEMFLAGS_NONE);
+    }
+    tty_end_menu(tmpwin, 'Select window borders mode:');
+    const mode_pick = await tty_select_menu(tmpwin, PICK_ONE);
+    if (mode_pick.length > 0)
+        (game.iflags ||= {}).wc2_windowborders = mode_pick[0] - 1;
+    tty_destroy_nhwindow(tmpwin);
     return 0;
 }
 

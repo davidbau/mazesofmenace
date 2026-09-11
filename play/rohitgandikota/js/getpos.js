@@ -39,7 +39,7 @@ import { PMNAMES } from './monst_data.js';
 import { ONAMES } from './objects_data.js';
 import { t_at } from './mon.js';
 import { invocation_pos } from './hack.js';
-import { xytodir, directionname } from './cmd.js';
+import { xytodir, directionname, cmd_from_func } from './cmd.js';
 import { You } from './pline.js';
 import { an } from './objnam.js';
 import { tty_start_menu, tty_add_menu, tty_end_menu, tty_select_menu,
@@ -545,7 +545,11 @@ export async function getpos(ccp, force, goal) {
                 } else {
                     const note = !force
                         ? 'aborted'
-                        : "use 'h', 'j', 'k', 'l' or '.'";
+                        : /* hjkl */ `use '${visctrl(cmd_from_func('movewest'))}', '${
+                            visctrl(cmd_from_func('movesouth'))}', '${
+                            visctrl(cmd_from_func('movenorth'))}', '${
+                            visctrl(cmd_from_func('moveeast'))}' or '${
+                            visctrl('.')}'`; /* gc.Cmd.spkeys[NHKF_GETPOS_PICK] */
                     await pline(`Unknown direction: '${visctrl(ch)}' (${note}).`);
                     msg_given = true;
                     /* no goto here: an unknown key falls through to the
@@ -775,7 +779,7 @@ function cmp_coord_distu(c1, c2) {
 }
 
 // src/getpos.c:561 dxdy_to_dist_descr()
-function dxdy_to_dist_descr(dx, dy, fulldir) {
+export function dxdy_to_dist_descr(dx, dy, fulldir) {
     let dst;
     if (!dx && !dy)
         return 'here';

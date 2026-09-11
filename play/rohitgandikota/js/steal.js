@@ -23,6 +23,11 @@ import { costly_spot, subfrombill, shop_keeper, find_objowner } from './shk.js';
 import { obj_resists } from './zap.js';
 import { any_quest_artifact, is_quest_artifact } from './questpgr.js';
 import { W_SADDLE } from './const.js';
+import { in_rooms } from './hack.js';
+import { SHOPBASE } from './const.js';
+import { extract_from_minvent, update_mon_extrinsics } from './worn.js';
+import { obfree } from './invent.js';
+import { rloco } from './teleport.js';
 import { rn2, rn1, rnd } from './rng.js';
 import { setnotworn } from './worn.js';
 import { stop_occupation } from './allmain.js';
@@ -48,6 +53,16 @@ import { o_unleash } from './apply.js';
 import { openholdingtrap, minstapetrify } from './trap.js';
 import { touch_artifact } from './artifact.js';
 import { HAND, OBJ_INVENT } from './const.js';
+import { g_at, money_cnt } from './invent.js';
+import { findgold } from './makemon.js';
+import { y_monnam } from './do_name.js';
+import { s_suffix } from './hacklib.js';
+import { mbodypart } from './polyself.js';
+import { slithy } from './mondata.js';
+import { Levitation, Flying } from './youprop.js';
+import { FOOT } from './const.js';
+import { splitobj } from './mkobj.js';
+import { Your } from './pline.js';
 
 // src/steal.c:120 thiefdead()
 export function thiefdead() {
@@ -179,6 +194,65 @@ export async function remove_worn_item(obj, unchain_ball) {
 
 function note_unported_steal(what) {
     (game.unported ||= new Set()).add(what);
+}
+
+// src/steal.c:58 stealgold() — a leprechaun grabs gold from the floor
+// under the hero or from the hero's purse, then usually teleports away.
+export async function stealgold(mtmp) {
+    let fgold = g_at(game.u.ux, game.u.uy);
+    let ygold;
+    let tmp;
+    let who;
+    let whose, what;
+
+    while (fgold && fgold.otyp !== ONAMES.GOLD_PIECE)
+        fgold = fgold.nexthere;
+
+    ygold = findgold(game.invent);
+
+    if (fgold && (!ygold || fgold.quan > ygold.quan || !rn2(5))) {
+        obj_extract_self(fgold);
+        add_to_minv(mtmp, fgold);
+        newsym(game.u.ux, game.u.uy);
+        if (game.u.usteed) {
+            who = game.u.usteed;
+            whose = s_suffix(y_monnam(who));
+            what = makeplural(mbodypart(who, FOOT));
+        } else {
+            who = game.youmonst;
+            whose = 'your';
+            what = makeplural(body_part(FOOT));
+        }
+        /* [ avoid "between your rear regions" :-] */
+        if (slithy(who.data))
+            what = 'coils';
+        /* reduce "rear hooves/claws" to "hooves/claws" */
+        if (what.startsWith('rear '))
+            what = what.slice(5);
+        await pline(`${Monnam(mtmp)} quickly snatches some gold from ${
+            (Levitation() || Flying()) ? 'beneath' : 'between'} ${whose} ${what}!`);
+        if (!ygold || !rn2(5)) {
+            if (!tele_restrict(mtmp))
+                await rloc(mtmp, RLOC_MSG);
+            await monflee(mtmp, 0, false, false);
+        }
+    } else if (ygold) {
+        const gold_price = game.objects[ONAMES.GOLD_PIECE].oc_cost;
+
+        tmp = Math.trunc((somegold(money_cnt(game.invent)) + gold_price - 1) / gold_price);
+        tmp = Math.min(tmp, ygold.quan);
+        if (tmp < ygold.quan)
+            ygold = splitobj(ygold, tmp);
+        else
+            setnotworn(ygold);
+        freeinv(ygold);
+        add_to_minv(mtmp, ygold);
+        await Your('purse feels lighter.');
+        if (!tele_restrict(mtmp))
+            await rloc(mtmp, RLOC_MSG);
+        await monflee(mtmp, 0, false, false);
+        (game.disp ||= {}).botl = true;
+    }
 }
 
 // src/steal.c:14 somegold() — choose the proportional amount used by theft
@@ -470,7 +544,7 @@ export async function stealamulet(mtmp) {
     if (otmp.owornmask)
         await worn_item_removal(mtmp, otmp);
     if (otmp.unpaid)
-        note_unported_steal('stealamulet:subfrombill');
+        subfrombill(otmp, shop_keeper((game.u.ushops || '').charCodeAt(0)));
 
     freeinv(otmp);
     const stolenName = doname(otmp);
@@ -522,17 +596,14 @@ export async function mdrop_obj(mon, obj, verbosely) {
        pet drops "a wand", a near one "an iron wand" */
     const obj_name = distant_name(obj, doname);
 
-    /* extract_from_minvent(mon, obj, FALSE, TRUE) — unlink, keep intrinsics
-       for the update_mon_extrinsics call below. */
-    obj_extract_self(obj);
-    obj.owornmask = 0;
+    await extract_from_minvent(mon, obj, false, true);
 
     /* don't charge for an owned saddle on dead steed (provided that the
        hero is within the same shop at the time) */
     if (unwornmask && mon.mtame && (unwornmask & W_SADDLE) !== 0
-        && !obj.unpaid && costly_spot(omx, omy)) {
-        /* the in_rooms() membership test needs shop room chains */
-        note_unported_steal('mdrop_obj:saddle_no_charge');
+        && !obj.unpaid && costly_spot(omx, omy)
+        && in_rooms(game.u.ux, game.u.uy, SHOPBASE)
+               .includes(String.fromCharCode(game.level.at(omx, omy).roomno))) {
         obj.no_charge = 1;
     }
 
@@ -547,27 +618,32 @@ export async function mdrop_obj(mon, obj, verbosely) {
         stackobj(obj);
     }
 
-    /* removing worn gear adjusts the monster's properties */
-    if (mon.mhp > 0 && unwornmask)
-        note_unported_steal('mdrop_obj:update_mon_extrinsics');
+    /* do this last, after placing obj on the floor; removing steed's saddle
+       throws rider, possibly inflicting fatal damage and producing bones; this
+       is why we had to call extract_from_minvent() with do_intrinsics=FALSE */
+    if (!DEADMONSTER(mon) && unwornmask)
+        update_mon_extrinsics(mon, obj, false, true);
 }
 
-// src/steal.c:852 mdrop_special_objs() — rescue the Amulet, invocation
-// tools, Rider corpses and the current role's quest artifact before a pack
-// is discarded.
-//
-// The DRAW is obj_resists(obj, 0, 0): one rn2(100) per ordinary object even
-// though a 0% chance can never pass, so scanning a monster's pack costs one
-// call per item. The rescue arm itself (mdrop_obj / rloco) is only reachable
-// when one of those unique objects is actually carried — never during quest
-// START generation — and is recorded rather than half-done, because
-// mdrop_obj is async and this runs inside the synchronous create_monster.
-export function mdrop_special_objs(mon) {
+// src/steal.c:852 mdrop_special_objs() — a dying or migrating monster drops
+// (or, off the map, relocates) the unique objects it carries.  The DRAW is
+// obj_resists(obj, 0, 0): one rn2(100) per ordinary object even though a 0%
+// chance can never pass.
+export async function mdrop_special_objs(mon) {
     /* C caches obj->nobj before the body because the drop unlinks obj;
        walking a snapshot of the chain is the same traversal. */
     for (const obj of [...(mon.minvent || [])]) {
+        /* the Amulet, invocation tools, and Rider corpses resist even when
+           artifacts and ordinary objects are given 0% resistance chance;
+           current role's quest artifact is rescued too--quest artifacts
+           for the other roles are not */
         if (obj_resists(obj, 0, 0) || is_quest_artifact(obj)) {
-            note_unported_steal('mdrop_special_objs:rescue');
+            if (mon.mx) {
+                await mdrop_obj(mon, obj, false);
+            } else { /* migrating monster not on map */
+                await extract_from_minvent(mon, obj, true, true);
+                await rloco(obj);
+            }
         }
     }
 }
@@ -576,11 +652,17 @@ export function mdrop_special_objs(mon) {
 export async function relobj(mtmp, show, is_pet) {
     const omx = mtmp.mx, omy = mtmp.my;
 
-    /* vault guard's gold goes away rather than be dropped */
-    if (mtmp.isgd)
-        note_unported_steal('relobj:vault_guard_gold');
-
     let otmp;
+
+    /* vault guard's gold goes away rather than be dropped */
+    if (mtmp.isgd && (otmp = findgold(mtmp.minvent)) != null) {
+        if (canspotmon(mtmp))
+            await pline(`${s_suffix(Monnam(mtmp))} gold ${
+                canseemon(mtmp) ? 'vanishes' : 'seems to vanish'}.`);
+        obj_extract_self(otmp);
+        obfree(otmp, null);
+    } /* isgd && has gold */
+
     while ((otmp = is_pet ? droppables(mtmp) : (mtmp.minvent || [])[0])) {
         await mdrop_obj(mtmp, otmp, is_pet && !!game.flags?.verbose);
     }

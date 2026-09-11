@@ -106,7 +106,7 @@ import { trapname, deltrap } from './trap.js';
 import { picking_at } from './lock.js';
 import { stop_occupation } from './allmain.js';
 import { tty_wait_synch } from './tty/wintty.js';
-import { unplacebc, placebc } from './do.js';
+import { unplacebc, placebc } from './ball.js';
 import { next_ident, mksobj, place_object } from './mkobj.js';
 import { ansimpleoname } from './objnam.js';
 import { check_special_room } from './hack.js';
@@ -1956,6 +1956,10 @@ export function obfree_bill(obj, merge = null) {
 
 // Preserve existing imports while the implementation lives in its C module.
 export { costly_alteration } from './mkobj.js';
+import { noit_mhe, noit_mhim } from './mondata.js';
+import { body_part } from './polyself.js';
+import { ARM } from './const.js';
+import { is_izchak } from './shknam.js';
 
 // src/shk.c:186 money2u(); split gold stays linked until extraction.
 export async function money2u(mon, amount) {
@@ -2196,7 +2200,7 @@ async function menu_pick_pay_items(items) {
 }
 
 // src/shk.c money2mon() -- transfer a simple gold payment to a monster.
-async function money2mon(mon, amount) {
+export async function money2mon(mon, amount) {
     const gold = (game.invent || [])
         .find(obj => obj.oclass === OCLASSES.COIN_CLASS);
     if (!gold || amount <= 0 || gold.quan < amount)
@@ -2356,7 +2360,7 @@ async function kops_gone(silent) {
     for (const kop of kops) {
         if (canspotmon(kop))
             ++seen;
-        mongone(kop);
+        await mongone(kop);
     }
     if (seen && !silent) {
         await pline(seen === 1
@@ -2403,7 +2407,7 @@ export async function make_happy_shk(shkp, silentkops) {
                 vanished = true;
             const { mdrop_special_objs } = await import('./steal.js');
             const { migrate_monster } = await import('./trap.js');
-            mdrop_special_objs(shkp);
+            await mdrop_special_objs(shkp);
             const oldx = shkp.mx, oldy = shkp.my;
             migrate_monster(shkp, eshk.shoplevel || game.u.uz,
                             MIGR_APPROX_XY, eshk.shd);
@@ -3652,6 +3656,143 @@ export function shk_your(obj) {
 
 /* include/hack.h um_dist() */
 const um_dist = (x, y, n) => (Math.abs(game.u.ux - x) > n || Math.abs(game.u.uy - y) > n);
+
+// src/shk.c:992 shop_debt() — what the hero owes: the running debit plus
+// every unpaid item on the bill.
+function shop_debt(eshkp) {
+    let debt = eshkp.debit | 0;
+
+    for (const bp of (eshkp.bill_p || []))
+        debt += bp.price * bp.bquan;
+    return debt;
+}
+
+// src/shk.c:1003 shopper_financial_report() — the '$' command's credit and
+// debt summary, this shop first and then every other shop on the level.
+export async function shopper_financial_report() {
+    let shkp, this_shkp = shop_keeper(inside_shop(game.u.ux, game.u.uy));
+    let eshkp;
+    let amt;
+    let pass;
+    const mons = game.level?.monsters || [];
+
+    eshkp = this_shkp ? ESHK(this_shkp) : null;
+    if (eshkp && !(eshkp.credit || shop_debt(eshkp))) {
+        await You('have no credit or debt in here.');
+        this_shkp = null; /* skip first pass */
+    }
+
+    /* pass 0: report for the shop we're currently in, if any;
+       pass 1: report for all other shops on this level. */
+    for (pass = this_shkp ? 0 : 1; pass <= 1; pass++)
+        for (shkp = next_shkp(mons[0] ?? null, false); shkp;
+             shkp = next_shkp(mons[mons.indexOf(shkp) + 1] ?? null, false)) {
+            if ((shkp !== this_shkp) ^ pass)
+                continue;
+            eshkp = ESHK(shkp);
+            if ((amt = eshkp.credit | 0) !== 0)
+                await You(`have ${amt} ${currency(amt)} credit at ${
+                    s_suffix(shkname(shkp))} ${shtypes[eshkp.shoptype - SHOPBASE].name}.`);
+            else if (shkp === this_shkp)
+                await You('have no credit in here.');
+            if ((amt = shop_debt(eshkp)) !== 0)
+                await You(`owe ${shkname(shkp)} ${amt} ${currency(amt)}.`);
+            else if (shkp === this_shkp)
+                await You("don't owe any gold here.");
+        }
+}
+
+// src/shk.c:496 addupbill() — the sum of everything on the bill.
+function addupbill(shkp) {
+    let total = 0;
+
+    for (const bp of (ESHK(shkp).bill_p || []))
+        total += bp.price * bp.bquan;
+    return total;
+}
+
+// src/shk.c:5508 Izchak_speaks[]
+const Izchak_speaks = [
+    "%s says: 'These shopping malls give me a headache.'",
+    "%s says: 'Slow down.  Think clearly.'",
+    "%s says: 'You need to take things one at a time.'",
+    "%s says: 'I don't like poofy coffee... give me Colombian Supremo.'",
+    "%s says that getting the devteam's agreement on anything is difficult.",
+    "%s says that he has noticed those who serve their deity will prosper.",
+    "%s says: 'Don't try to steal from me - I have friends in high places!'",
+    "%s says: 'You may well need something from this shop in the future.'",
+    '%s comments about the Valley of the Dead as being a gateway.',
+];
+
+// src/shk.c:5521 shk_chat() — #chat with a shopkeeper.
+export async function shk_chat(shkp) {
+    let eshk;
+    let shkmoney;
+
+    if (!shkp.isshk) {
+        /* The monster type is shopkeeper, but this monster is
+           not actually a shk, which could happen if someone
+           wishes for a shopkeeper statue and then animates it.
+           (Note: shkname() would be "" in a case like this.) */
+        await pline(`${Monnam(shkp)} asks whether you've seen any untended shops recently.`);
+        /* [Perhaps we ought to check whether this conversation
+           is taking place inside an untended shop, but a shopless
+           shk can probably be expected to be rather disoriented.] */
+        return;
+    }
+
+    eshk = ESHK(shkp);
+    if (!shkp.mpeaceful) { /* ANGRY(shkp) */
+        await pline(`${Shknam(shkp)} ${
+            (!Deaf() && !muteshk(shkp)) ? 'mentions' : 'indicates'} how much ${
+            noit_mhe(shkp)} dislikes ${eshk.robbed ? 'non-paying' : 'rude'} customers.`);
+    } else if (eshk.following) {
+        if ((eshk.customer || '') !== (game.plname || '')) {
+            if (!Deaf() && !muteshk(shkp)) {
+                await verbalize(`${Hello(shkp)} ${game.plname}!  I was looking for ${eshk.customer}.`);
+            }
+            eshk.following = 0;
+        } else {
+            if (!Deaf() && !muteshk(shkp)) {
+                await verbalize(`${Hello(shkp)} ${game.plname}!  Didn't you forget to pay?`);
+            } else {
+                await pline(`${Shknam(shkp)} taps you on the ${body_part(ARM)}.`);
+            }
+        }
+    } else if (eshk.billct) {
+        const total = addupbill(shkp) + (eshk.debit | 0);
+
+        await pline(`${Shknam(shkp)} ${
+            (!Deaf() && !muteshk(shkp)) ? 'says' : 'indicates'} that your bill comes to ${
+            total} ${currency(total)}.`);
+    } else if (eshk.debit) {
+        await pline(`${Shknam(shkp)} ${
+            (!Deaf() && !muteshk(shkp)) ? 'reminds you' : 'indicates'} that you owe ${
+            noit_mhim(shkp)} ${eshk.debit} ${currency(eshk.debit)}.`);
+    } else if (eshk.credit) {
+        await pline(`${Shknam(shkp)} encourages you to use your ${eshk.credit} ${
+            currency(eshk.credit)} of credit.`);
+    } else if (eshk.robbed) {
+        await pline(`${Shknam(shkp)} ${
+            (!Deaf() && !muteshk(shkp)) ? 'complains' : 'indicates concern'} about a recent robbery.`);
+    } else if (eshk.surcharge) {
+        await pline(`${Shknam(shkp)} ${
+            (!Deaf() && !muteshk(shkp)) ? 'warns you' : 'indicates'} that ${
+            noit_mhe(shkp)} is watching you carefully.`);
+    } else if ((shkmoney = money_cnt(shkp.minvent || [])) < 50) {
+        await pline(`${Shknam(shkp)} ${
+            (!Deaf() && !muteshk(shkp)) ? 'complains' : 'indicates'} that business is bad.`);
+    } else if (shkmoney > 4000) {
+        await pline(`${Shknam(shkp)} ${
+            (!Deaf() && !muteshk(shkp)) ? 'says' : 'indicates'} that business is good.`);
+    } else if (is_izchak(shkp, false)) {
+        if (!Deaf() && !muteshk(shkp))
+            await pline(Izchak_speaks[rn2(Izchak_speaks.length)].replace('%s', shkname(shkp)));
+    } else {
+        if (!Deaf() && !muteshk(shkp))
+            await pline(`${Shknam(shkp)} talks about the problem of shoplifters.`);
+    }
+}
 
 // src/shk.c:5019 shopdig(); the hero digs in a shop: warning (fall==0) or,
 // when the hole opens (fall==1), the shopkeeper grabs the pack

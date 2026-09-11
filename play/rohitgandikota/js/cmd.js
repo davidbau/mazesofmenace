@@ -2150,7 +2150,7 @@ export async function rhack(key) {
            the history, both queues are dropped, and only context.move and
            multi are cleared; reset_cmd_vars() does NOT run, so a rush or
            run prefix typed just before survives into the next command */
-        await pline_nohistory(`Unknown command '${ch}'.`);
+        await pline_nohistory(`Unknown command '${visctrl(ch)}'.`);
         cmdq_clear(CQ_CANNED);
         cmdq_clear(CQ_REPEAT);
         /* didn't move */
@@ -2216,350 +2216,6 @@ async function maybe_smudge_engr(x1, y1, x2, y2) {
             && (ep = engr_at(x2, y2)) && ep.engr_type !== HEADSTONE)
             wipe_engr_at(x2, y2, rnd(5), false);
     }
-}
-
-const BCPOS_DIFFER = 0;
-const BCPOS_CHAIN = 1;
-const BCPOS_BALL = 2;
-
-// src/ball.c bc_order() and the sighted arm of move_bc(). The floor object
-// list is newest-first, so the first matching piece is the visible one.
-function punishmentOrder(ball, chain, ballOnFloor) {
-    if (!ballOnFloor || ball.ox !== chain.ox || ball.oy !== chain.oy
-        || game.u.uswallow)
-        return BCPOS_DIFFER;
-    for (const obj of game.level?.objects || []) {
-        if (obj.ox !== ball.ox || obj.oy !== ball.oy)
-            continue;
-        if (obj === chain)
-            return BCPOS_CHAIN;
-        if (obj === ball)
-            return BCPOS_BALL;
-    }
-    return BCPOS_DIFFER;
-}
-
-// src/ball.c:380 set_bc(): preserve what lies beneath the punishment pieces
-// just before sight is lost, then mark the pieces as felt.
-export function set_bc(alreadyBlind = false) {
-    const u = game.u;
-    const ball = u.uball;
-    const chain = u.uchain;
-    if (!ball || !chain)
-        return;
-
-    const ballOnFloor = ball.where === OBJ_FLOOR;
-    u.bc_order = punishmentOrder(ball, chain, ballOnFloor);
-    u.bc_felt = ballOnFloor ? BC_BALL | BC_CHAIN : BC_CHAIN;
-
-    const memoryAt = (x, y) => game.level?.at(x, y)?.remembered_glyph;
-    if (alreadyBlind || u.uswallow) {
-        u.cglyph = u.bglyph = memoryAt(u.ux, u.uy);
-        return;
-    }
-
-    obj_extract_self(chain);
-    if (ballOnFloor)
-        obj_extract_self(ball);
-
-    newsym(chain.ox, chain.oy);
-    u.cglyph = memoryAt(chain.ox, chain.oy);
-
-    if (u.bc_order === BCPOS_DIFFER) {
-        place_object(chain, chain.ox, chain.oy);
-        newsym(chain.ox, chain.oy);
-        if (ballOnFloor) {
-            newsym(ball.ox, ball.oy);
-            u.bglyph = memoryAt(ball.ox, ball.oy);
-            place_object(ball, ball.ox, ball.oy);
-            newsym(ball.ox, ball.oy);
-        }
-    } else {
-        u.bglyph = u.cglyph;
-        if (u.bc_order === BCPOS_CHAIN) {
-            if (ballOnFloor)
-                place_object(ball, ball.ox, ball.oy);
-            place_object(chain, chain.ox, chain.oy);
-        } else {
-            place_object(chain, chain.ox, chain.oy);
-            if (ballOnFloor)
-                place_object(ball, ball.ox, ball.oy);
-        }
-        newsym(chain.ox, chain.oy);
-    }
-}
-
-function chainRock(x, y) {
-    const loc = game.level?.at?.(x, y);
-    return !loc || IS_OBSTRUCTED(loc.typ) || closed_door(x, y);
-}
-
-function chainInMiddle(heroX, heroY, chainX, chainY, ballX, ballY) {
-    return distmin(heroX, heroY, chainX, chainY) <= 1
-           && distmin(chainX, chainY, ballX, ballY) <= 1;
-}
-
-/* src/ball.c drag_ball(). This prepares the new coordinates and removes the
-   pieces before the hero moves. finishPunishmentMove() puts them back after
-   vision has been recalculated, matching move_bc(1) and move_bc(0). */
-export async function preparePunishmentMove(x, y, allowDrag = true) {
-    const u = game.u;
-    const ball = u.uball;
-    const chain = u.uchain;
-    const ballOnFloor = ball.where === OBJ_FLOOR;
-    const state = {
-        ball, chain, ballOnFloor,
-        ballx: ball.ox, bally: ball.oy,
-        chainx: chain.ox, chainy: chain.oy,
-        control: 0, causeDelay: false,
-        order: punishmentOrder(ball, chain, ballOnFloor),
-    };
-
-    if (dist2(x, y, chain.ox, chain.oy) > 2) {
-        let dragBoth = false;
-
-        if (!ballOnFloor || distmin(x, y, ball.ox, ball.oy) <= 2) {
-            const oldchainx = chain.ox, oldchainy = chain.oy;
-            state.control = BC_CHAIN;
-
-            if (!ballOnFloor) {
-                if (distmin(x, y, chain.ox, chain.oy) > 1) {
-                    state.chainx = u.ux;
-                    state.chainy = u.uy;
-                }
-            } else {
-                const alreadyInRock = chainRock(u.ux, u.uy)
-                                      || chainRock(chain.ox, chain.oy)
-                                      || chainRock(ball.ox, ball.oy);
-                const wouldForceDrag = (cx, cy) => chainRock(cx, cy)
-                                                     && !alreadyInRock;
-                const ballDistance = dist2(x, y, ball.ox, ball.oy);
-
-                switch (ballDistance) {
-                case 8:
-                    state.chainx = Math.trunc((ball.ox + x) / 2);
-                    state.chainy = Math.trunc((ball.oy + y) / 2);
-                    dragBoth = wouldForceDrag(state.chainx, state.chainy);
-                    break;
-                case 5: {
-                    let tempx, tempy, tempx2, tempy2;
-                    if (Math.abs(x - ball.ox) === 1) {
-                        tempx = x;
-                        tempx2 = ball.ox;
-                        tempy = tempy2 = Math.trunc((ball.oy + y) / 2);
-                    } else {
-                        tempx = tempx2 = Math.trunc((ball.ox + x) / 2);
-                        tempy = y;
-                        tempy2 = ball.oy;
-                    }
-                    const rock1 = chainRock(tempx, tempy);
-                    const rock2 = chainRock(tempx2, tempy2);
-                    if (rock1 && !rock2 && !alreadyInRock) {
-                        if (allowDrag
-                            && ((dist2(u.ux, u.uy, ball.ox, ball.oy) === 5
-                                 && dist2(x, y, tempx, tempy) === 1)
-                                || (dist2(u.ux, u.uy, ball.ox, ball.oy) === 4
-                                    && dist2(x, y, tempx, tempy) === 2))) {
-                            dragBoth = true;
-                        } else {
-                            state.chainx = tempx2;
-                            state.chainy = tempy2;
-                        }
-                    } else if (!rock1 && rock2 && !alreadyInRock) {
-                        if (allowDrag
-                            && ((dist2(u.ux, u.uy, ball.ox, ball.oy) === 5
-                                 && dist2(x, y, tempx2, tempy2) === 1)
-                                || (dist2(u.ux, u.uy, ball.ox, ball.oy) === 4
-                                    && dist2(x, y, tempx2, tempy2) === 2))) {
-                            dragBoth = true;
-                        } else {
-                            state.chainx = tempx;
-                            state.chainy = tempy;
-                        }
-                    } else if (rock1 && rock2 && !alreadyInRock) {
-                        dragBoth = true;
-                    } else {
-                        const d1 = dist2(tempx, tempy, chain.ox, chain.oy);
-                        const d2 = dist2(tempx2, tempy2, chain.ox, chain.oy);
-                        if (d1 < d2 || (d1 === d2 && rn2(2))) {
-                            state.chainx = tempx;
-                            state.chainy = tempy;
-                        } else {
-                            state.chainx = tempx2;
-                            state.chainy = tempy2;
-                        }
-                    }
-                    break;
-                }
-                case 4:
-                    if (!chainInMiddle(x, y, chain.ox, chain.oy,
-                                       ball.ox, ball.oy)) {
-                        state.chainx = Math.trunc((x + ball.ox) / 2);
-                        state.chainy = Math.trunc((y + ball.oy) / 2);
-                        dragBoth = wouldForceDrag(state.chainx, state.chainy);
-                    }
-                    break;
-                case 2:
-                    if (dist2(x, y, chain.ox, chain.oy) === 4) {
-                        if (chain.oy === y)
-                            state.chainx = ball.ox;
-                        else
-                            state.chainy = ball.oy;
-                        dragBoth = wouldForceDrag(state.chainx, state.chainy);
-                        break;
-                    }
-                    // Fall through to the adjacent-ball cases.
-                case 1:
-                case 0:
-                    if (!chainInMiddle(x, y, chain.ox, chain.oy,
-                                       ball.ox, ball.oy)) {
-                        if (chainInMiddle(x, y, u.ux, u.uy,
-                                          ball.ox, ball.oy)) {
-                            state.chainx = u.ux;
-                            state.chainy = u.uy;
-                        } else {
-                            state.chainx = x;
-                            state.chainy = y;
-                        }
-                    }
-                    break;
-                default:
-                    state.chainx = oldchainx;
-                    state.chainy = oldchainy;
-                    dragBoth = true;
-                    break;
-                }
-            }
-        } else {
-            dragBoth = true;
-        }
-
-        if (dragBoth) {
-            if (near_capacity() > SLT_ENCUMBER
-                && dist2(x, y, u.ux, u.uy) <= 2) {
-                await You(`cannot ${(game.invent || []).length
-                    ? 'carry all that and also ' : ''}drag the heavy iron ball.`);
-                nomul(0);
-                return null;
-            }
-
-            state.control = BC_BALL | BC_CHAIN;
-            if (dist2(x, y, u.ux, u.uy) > 2) {
-                state.ballx = state.chainx = x;
-                state.bally = state.chainy = y;
-            } else {
-                let newchainx = u.ux, newchainy = u.uy;
-                if (dist2(x, y, chain.ox, chain.oy) === 4
-                    && !chainRock(newchainx, newchainy)) {
-                    newchainx = Math.trunc((x + chain.ox) / 2);
-                    newchainy = Math.trunc((y + chain.oy) / 2);
-                    if (chainRock(newchainx, newchainy)) {
-                        newchainx = u.ux;
-                        newchainy = u.uy;
-                    }
-                }
-                state.ballx = chain.ox;
-                state.bally = chain.oy;
-                state.chainx = newchainx;
-                state.chainy = newchainy;
-            }
-            state.causeDelay = true;
-        }
-    }
-
-    if (!Blind()) {
-        obj_extract_self(chain);
-        newsym(chain.ox, chain.oy);
-        if (ballOnFloor) {
-            obj_extract_self(ball);
-            newsym(ball.ox, ball.oy);
-        }
-    }
-    return state;
-}
-
-export function finishPunishmentMove(state) {
-    if (!state)
-        return;
-
-    if (Blind()) {
-        const u = game.u;
-        const { ball, chain } = state;
-        const memoryAt = (x, y) => game.level?.at(x, y)?.remembered_glyph;
-        const setMemory = (x, y, glyph) => {
-            const loc = game.level?.at(x, y);
-            if (loc)
-                loc.remembered_glyph = glyph;
-        };
-        const moveObject = (obj, x, y) => {
-            obj_extract_self(obj);
-            place_object(obj, x, y);
-        };
-        const control = state.control;
-
-        if ((control & BC_BALL) && (control & BC_CHAIN)) {
-            if ((u.bc_felt | 0) & BC_BALL)
-                setMemory(ball.ox, ball.oy, u.bglyph);
-            if ((u.bc_felt | 0) & BC_CHAIN)
-                setMemory(chain.ox, chain.oy, u.cglyph);
-            u.bc_felt = 0;
-            u.bglyph = memoryAt(state.ballx, state.bally);
-            u.cglyph = memoryAt(state.chainx, state.chainy);
-            moveObject(ball, state.ballx, state.bally);
-            moveObject(chain, state.chainx, state.chainy);
-        } else if (control & BC_BALL) {
-            if ((u.bc_felt | 0) & BC_BALL) {
-                if (u.bc_order === BCPOS_DIFFER) {
-                    setMemory(ball.ox, ball.oy, u.bglyph);
-                } else if (u.bc_order === BCPOS_BALL) {
-                    if ((u.bc_felt | 0) & BC_CHAIN)
-                        map_object(chain, 0);
-                    else
-                        setMemory(ball.ox, ball.oy, u.bglyph);
-                }
-                u.bc_felt &= ~BC_BALL;
-            }
-            u.bglyph = (state.ballx !== state.chainx
-                        || state.bally !== state.chainy)
-                ? memoryAt(state.ballx, state.bally) : u.cglyph;
-            moveObject(ball, state.ballx, state.bally);
-        } else if (control & BC_CHAIN) {
-            if ((u.bc_felt | 0) & BC_CHAIN) {
-                if (u.bc_order === BCPOS_DIFFER) {
-                    setMemory(chain.ox, chain.oy, u.cglyph);
-                } else if (u.bc_order === BCPOS_CHAIN) {
-                    if ((u.bc_felt | 0) & BC_BALL)
-                        map_object(ball, 0);
-                    else
-                        setMemory(chain.ox, chain.oy, u.cglyph);
-                }
-                u.bc_felt &= ~BC_CHAIN;
-            }
-            u.cglyph = (state.ballx !== state.chainx
-                        || state.bally !== state.chainy)
-                ? memoryAt(state.chainx, state.chainy) : u.bglyph;
-            moveObject(chain, state.chainx, state.chainy);
-        }
-
-        u.bc_order = punishmentOrder(ball, chain,
-                                     ball.where === OBJ_FLOOR);
-        return;
-    }
-
-    const chainOnTop = (state.control & BC_CHAIN)
-                       || (!state.control && state.order === BCPOS_CHAIN);
-    if (chainOnTop) {
-        if (state.ballOnFloor)
-            place_object(state.ball, state.ballx, state.bally);
-        place_object(state.chain, state.chainx, state.chainy);
-    } else {
-        place_object(state.chain, state.chainx, state.chainy);
-        if (state.ballOnFloor)
-            place_object(state.ball, state.ballx, state.bally);
-    }
-    newsym(state.chainx, state.chainy);
-    if (state.ballOnFloor)
-        newsym(state.ballx, state.bally);
 }
 
 // src/hack.c:2639 escape_from_sticky_mon(). A failed pull consumes the move;
@@ -2912,14 +2568,12 @@ async function domove_core() {
         }
     }
 
-    /* src/hack.c:2860. drag_ball() removes both floor pieces before the hero
-       moves and computes where each will be replaced afterward. */
-    let punishmentMove = null;
-    if (u.uball && u.uchain) {
-        punishmentMove = await preparePunishmentMove(newx, newy);
-        if (!punishmentMove)
+    /* Move ball and chain.  */
+    const bc = { bc_control: 0, ballx: 0, bally: 0, chainx: 0, chainy: 0,
+                 cause_delay: false };
+    if (Punished())
+        if (!await drag_ball(newx, newy, bc, true))
             return;
-    }
 
     // src/hack.c:2867, check regions before tentatively moving the hero.
     if (!(await in_out_region(newx, newy)))
@@ -3043,16 +2697,17 @@ async function domove_core() {
         game.u.umoved = true;
     }
 
-    /* src/hack.c:2977. The ball and chain return after vision recalculation
-       and before floor effects inspect the destination. */
-    finishPunishmentMove(punishmentMove);
+    if (Punished()) /* put back ball and chain */
+        move_bc(0, bc.bc_control, bc.ballx, bc.bally, bc.chainx, bc.chainy);
 
     /* src/hack.c:2980 — "if (u.umoved) spoteffects(TRUE);". The move above
        either happened or returned early, so reaching here means umoved. */
     if (u.ux !== u.ux0 || u.uy !== u.uy0)
         await spoteffects(true);
 
-    if (punishmentMove?.causeDelay) {
+    /* delay next move because of ball dragging */
+    /* must come after we finished picking up, in spoteffects() */
+    if (bc.cause_delay) {
         nomul(-2);
         game.multi_reason = 'dragging an iron ball';
         game.nomovemsg = '';
@@ -3817,6 +3472,8 @@ function queue_item_action(action, obj) {
 }
 
 export { reset_remarm } from './do_wear.js';
+import { drag_ball, move_bc } from './ball.js';
+import { Punished } from './youprop.js';
 
 // src/lock.c:259 reset_pick() — forget a partly-finished lock pick or force.
 export function reset_pick() {
@@ -4295,18 +3952,73 @@ export async function paranoid_query(be_paranoid, prompt) {
     return (await paranoid_ynq(be_paranoid, prompt, false)) === 'y';
 }
 
-// src/cmd.c cmd_from_func(), the key a command is bound to.  The JS
+// src/cmd.c:3083 cmd_from_func(), the key a command is bound to.  The JS
 // dispatch is by command name, so this takes the name: a BIND line in the
-// rc file wins, else the command's default key.
+// rc file wins, else the lowest key of the live Cmd.commands[] table
+// (cmdbind_table(): number_pad rebinding and the direction keys included).
 export function cmd_from_func(name) {
     for (const [key, bound] of Object.entries(game.rc_key_bindings || {}))
         if (bound === name)
             return key;
-    const e = extcmdlist.find((x) => x.ef_txt === name);
-    if (e && e.key)
-        return String.fromCharCode(e.key);
-    /* movement commands get their keys from Cmd.move[] in reset_commands() */
-    return MOVE_DEFAULT_KEYS[name] ?? '\0';
+    const binds = cmdbind_table();
+    for (let i = 0; i < 256; ++i) {
+        const e = binds.get(i);
+        if (e && e.ef_txt === name)
+            return String.fromCharCode(i);
+    }
+    return '\0';
+}
+
+// src/cmd.c:3106 cmdname_from_func() — the command name for a function; as
+// with cmd_from_func() the JS dispatch is by name, so 'name' is the
+// extcmdlist ef_txt.  fullname false: just enough to disambiguate.
+export function cmdname_from_func(name, fullname) {
+    let cmdptr = null;
+    let res = null;
+    let outbuf;
+
+    for (const extcmd of extcmdlist)
+        if (extcmd.ef_txt === name) {
+            cmdptr = extcmd;
+            res = cmdptr.ef_txt;
+            break;
+        }
+
+    if (!res) {
+        /* make sure output buffer doesn't contain junk or stale data;
+           return Null below */
+        outbuf = '';
+    } else if (fullname) {
+        /* easy; the entire command name */
+        res = outbuf = res;
+    } else {
+        let matchcmd = 0, i = 0;
+        let len = 0;
+        const maxlen = res.length;
+
+        /* find the shortest leading substring which is unambiguous */
+        do {
+            if (++len >= maxlen)
+                break;
+            for (i = matchcmd; i < extcmdlist.length; ++i) {
+                const extcmd = extcmdlist[i];
+
+                if (extcmd === cmdptr)
+                    continue;
+                if ((extcmd.flags & EXTCMD_FLAGS.CMD_NOT_AVAILABLE) !== 0
+                    || ((extcmd.flags & EXTCMD_FLAGS.WIZMODECMD) !== 0
+                        && !game.wizard))
+                    continue;
+                if (res.slice(0, len) === extcmd.ef_txt.slice(0, len)) {
+                    matchcmd = i;
+                    break;
+                }
+            }
+        } while (i < extcmdlist.length);
+        outbuf = res.slice(0, len); /* copynchars(outbuf, res, len) */
+        res = outbuf;
+    }
+    return res;
 }
 
 /* src/cmd.c move_funcs[][]: the movement command names by direction and
@@ -4323,14 +4035,6 @@ const move_funcs = [
     ['down', 'down', 'down'],
     ['up', 'up', 'up'],
 ];
-/* src/cmd.c reset_commands() binds Cmd.move[] ("hjklyubn", or the number
-   pad digits) and Cmd.rush/run to the movement commands; this port keeps
-   the default vi-key layout, in sdir order */
-const MOVE_DEFAULT_KEYS = { movewest: 'h', movenorthwest: 'y', movenorth: 'k',
-                            movenortheast: 'u', moveeast: 'l',
-                            movesoutheast: 'n', movesouth: 'j',
-                            movesouthwest: 'b' };
-
 // src/cmd.c:3343 reset_commands() — the Cmd state derived from the
 // number_pad setting. Key lookups in this port (cmdbind_table(), movecmd())
 // read game.iflags.num_pad and game.Cmd live instead of a rebound

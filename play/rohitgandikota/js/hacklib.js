@@ -138,10 +138,39 @@ export function tabexpand(s) {
 
 // src/hacklib.c mungspaces() — expand tabs to spaces, squeeze runs of
 // spaces to one, strip leading and trailing space, truncate at newline.
+// src/hacklib.c:69 letter() — is 'c' a letter (or '@')?
+export function letter(c) {
+    return ('@' <= c && c <= 'Z') || ('a' <= c && c <= 'z');
+}
+
 // src/hacklib.c highc()
 export function highc(c) {
     return ('a' <= c && c <= 'z') ? c.toUpperCase() : c;
 }
+
+// src/hacklib.c lowc()
+export function lowc(c) {
+    return ('A' <= c && c <= 'Z') ? c.toLowerCase() : c;
+}
+
+// src/hacklib.c:717 strncmpi() — case-insensitive compare of the first n
+// characters; include/global.h:113 makes strcmpi(a, b) strncmpi(a, b, -1).
+export function strncmpi(s1, s2, n) {
+    let i = 0;
+
+    while (n--) {
+        if (i >= s2.length)
+            return (i < s1.length) ? 1 : 0; /* s1 >= s2 */
+        else if (i >= s1.length)
+            return -1; /* s1  < s2 */
+        const t1 = lowc(s1[i]), t2 = lowc(s2[i]);
+        i++;
+        if (t1 !== t2)
+            return (t1 > t2) ? 1 : -1;
+    }
+    return 0; /* s1 == s2 */
+}
+export function strcmpi(s1, s2) { return strncmpi(s1, s2, -1); }
 
 export function mungspaces(bp) {
     let out = '';

@@ -9,7 +9,7 @@ import { monmax_difficulty } from './makemon.js';
 import { simple_typename } from './objnam.js';
 import { The } from './objnam.js';
 import { pline_mon } from './pline.js';
-import { MON_LIMBO } from './const.js';
+import { MON_LIMBO, is_hole } from './const.js';
 import { MIGR_APPROX_XY } from './const.js';
 import { NATTK } from './const.js';
 import { c_obj_colors } from './const.js';
@@ -21,7 +21,8 @@ import { wary_dog } from './dog.js';
 import { makeknown } from './o_init.js';
 import { unmap_object, glyph_is_invisible_at } from './display.js';
 import { is_vampshifter } from './monst.js';
-import { revive_corpse, placebc } from './do.js';
+import { revive_corpse } from './do.js';
+import { placebc } from './ball.js';
 import { monsndx } from './makemon.js';
 import { kill_egg } from './timeout.js';
 import { Has_contents } from './obj.js';
@@ -35,7 +36,10 @@ import { fill_pit, mselftouch } from './trap.js';
 import { poly_steed } from './steed.js';
 import { possibly_unwield } from './weapon.js';
 import { Protection_from_shape_changers } from './youprop.js';
-import { remove_worm } from './worm.js';
+import { remove_worm, wormgone } from './worm.js';
+import { grddead } from './vault.js';
+import { wizdeadorgone } from './wizard.js';
+import { MON_ENDGAME_FREE } from './const.js';
 import { mon_offmap, is_lightblocker_mappear } from './monst.js';
 import { dist2 } from './hacklib.js';
 import { m_dowear, mon_break_armor } from './worn.js';
@@ -2116,19 +2120,15 @@ import { worm_known } from './worm.js';
 // identifies the actual missing behavior.
 export function m_detach(mtmp, mptr, due_to_death) {
     const mx = mtmp.mx, my = mtmp.my;
-    const onmap = mx > 0
+    /* mon_leaving_level()'s test: the raw grid, which still holds a
+       monster whose mhp is already zero */
+    const onmap = isok(mx, my)
         && game.level?.monAt?.get(`${mx},${my}`) === mtmp;
 
     if (mtmp.mleashed)
         (game.unported ||= new Set()).add('mon:m_detach:m_unleash');
-    if (mtmp.iswiz)
-        (game.unported ||= new Set()).add('mon:m_detach:wizdeadorgone');
-    if (mtmp.wormno)
-        (game.unported ||= new Set()).add('mon:m_detach:wormgone');
     if (due_to_death)
         (game.unported ||= new Set()).add('mon:m_detach:due_to_death');
-    if (In_endgame(game.u.uz))
-        (game.unported ||= new Set()).add('mon:m_detach:endgame_free');
     if (mtmp === game.u.usteed)
         (game.unported ||= new Set()).add('mon:m_detach:dismount_steed');
 
@@ -2136,14 +2136,44 @@ export function m_detach(mtmp, mptr, due_to_death) {
     if (mx > 0 && emits_light(mptr))
         del_light_source(LS_MONSTER, mtmp.m_id);
 
-    /* mon_leaving_level() — off the map, but still on the fmon chain */
+    /* src/mon.c:2696 mon_leaving_level() — off the map, but still on the
+       fmon chain. m_detach() is synchronous, so the body is inlined without
+       its unstuck() and fill_pit() calls, which both need the message loop;
+       mongone() has already called unstuck() in the C */
+    mtmp.mtrapped = 0;
+    if (game.u.ustuck === mtmp)
+        (game.unported ||= new Set()).add('mon:m_detach:unstuck');
+    /* vault guard might be at <0,0> */
+    if (onmap || mtmp === game.level?.monAt?.get('0,0')) {
+        if (mtmp.wormno)
+            remove_worm(mtmp);
+        else
+            remove_monster(mx, my);
+    }
     if (onmap) {
-        remove_monster(mx, my);
-        mtmp.mundetected = 0;
+        mtmp.mundetected = 0; /* for migration; doesn't matter for death */
+        /* mimic must be revealed if it is going to migrate to another level
+           or it is accompanying the hero to another level */
+        if (M_AP_TYPE(mtmp) !== M_AP_NOTHING && M_AP_TYPE(mtmp) !== M_AP_MONSTER)
+            seemimic(mtmp);
+        /* fill_pit(mx, my): a boulder settling into a pit here */
+        {
+            const t = t_at(mx, my);
+            if (t && (is_pit(t.ttyp) || is_hole(t.ttyp))
+                && sobj_at(ONAMES.BOULDER, mx, my))
+                (game.unported ||= new Set()).add('mon:m_detach:fill_pit');
+        }
         newsym(mx, my);
     }
+    if (mtmp === game.context?.polearm?.hitmon)
+        game.context.polearm.hitmon = null;
 
     mtmp.mhp = 0;               /* simplify some tests: force mhp to 0 */
+
+    /* death of the Wizard of Yendor or leaving the dungeon alive rather
+       than dying */
+    if (mtmp.iswiz)
+        wizdeadorgone();
 
     if (mtmp.m_id === game.stealmid)
         thiefdead();
@@ -2151,6 +2181,10 @@ export function m_detach(mtmp, mptr, due_to_death) {
     /* src/mon.c:2790, a removed shopkeeper no longer owns a shop */
     if (mtmp.isshk)
         shkgone(mtmp);
+    if (mtmp.wormno)
+        wormgone(mtmp);
+    if (In_endgame(game.u.uz))
+        mtmp.mstate = (mtmp.mstate | 0) | MON_ENDGAME_FREE;
 
     mtmp.mstate = (mtmp.mstate || 0) | MON_DETACH;
     game.iflags = game.iflags || {};
@@ -2165,11 +2199,18 @@ export function m_detach(mtmp, mptr, due_to_death) {
 //
 // discard_minvent() removes the pack FROM THE GAME rather than dropping it,
 // which is why mk_trap_statue moves the objects into the statue first.
-export function mongone(mdef) {
+export async function mongone(mdef) {
     mdef.mhp = 0;               /* can skip some inventory bookkeeping */
 
-    if (mdef.isgd)
-        (game.unported ||= new Set()).add('mon:mongone:grddead');
+    /* dead vault guard is actually kept at coordinate <0,0> until
+       his temporary corridor to/from the vault has been removed */
+    if (mdef.isgd && !await grddead(mdef))
+        return;
+    /* unstuck() is a no-op unless mdef holds the hero; the test keeps
+       mongone() synchronous for create_object() and mk_trap_statue(),
+       whose freshly made monsters never do */
+    if (game.u.ustuck === mdef)
+        await unstuck(mdef);
     /* src/mon.c mdrop_special_objs() checks every carried object. Ordinary
        objects fail obj_resists(obj, 0, 0), but each check still draws
        rn2(100). Orcus-town removes its two shopkeepers after stocking their
@@ -4446,10 +4487,10 @@ export async function wake_nearto(x, y, distance) {
 }
 
 // src/mon.c:4649 restore_cham() — reloaded shapechanger bookkeeping.
-export function restore_cham(mon) {
-    if (/* Protection_from_shape_changers: no source yet || */ mon.mcan) {
+export async function restore_cham(mon) {
+    if (Protection_from_shape_changers() || mon.mcan) {
         /* force chameleon or mimic to revert to its natural shape */
-        (game.unported ||= new Set()).add('mon:restore_cham:normal_shape');
+        await normal_shape(mon);
     } else if ((mon.cham ?? NON_PM) === NON_PM) {
         /* chameleon doesn't change shape here, just gets allowed to do so;
            pm_to_cham: only M2_SHAPESHIFTER species map to themselves */

@@ -2,10 +2,6 @@
 // C ref: src/mhitu.c
 //
 // mattacku() and its message/damage helpers are ported in full for the melee
-// attack types; the special attack forms (gaze, explosion, engulf, breath,
-// spit, cast) and the seduction/disease substitution arms need subsystems
-// that are absent and are recorded through note_unported_mhitu() at the
-// exact C decision point, so game.unported names what a divergence wanted.
 
 import { unmul, losehp, showdamage } from './hack.js';
 import { mimic_obj_name } from './objnam.js';
@@ -20,7 +16,8 @@ import { pline_The, pline_mon, verbalize } from './pline.js';
 import { update_inventory } from './invent.js';
 import { cloak_simple_name, helm_simple_name, Ring_gone, Ring_on,
          stop_donning } from './do_wear.js';
-import { mhitm_ad_poly, mhitm_ad_deth, mhitm_ad_tlpt, mhitm_ad_curs, mhitm_ad_acid, mhitm_ad_drin, mhitm_ad_dren, mhitm_ad_slow } from './uhitm.js';
+import { mhitm_ad_poly, mhitm_ad_deth, mhitm_ad_tlpt, mhitm_ad_curs, mhitm_ad_acid, mhitm_ad_drin, mhitm_ad_dren, mhitm_ad_slow,
+         mhitm_ad_corr, mhitm_ad_sgld, mhitm_ad_conf, mhitm_ad_halu, mhitm_ad_dgst, mhitm_ad_dise } from './uhitm.js';
 import { monsndx, is_home_elemental } from './makemon.js';
 import { split_mon } from './potion.js';
 import { Your } from './pline.js';
@@ -28,7 +25,7 @@ import { ugolemeffects } from './polyself.js';
 import { make_blinded, make_hallucinated, make_stunned, incr_itimeout } from './potion.js';
 import { snuff_lit, number_leashed, unleash_all } from './apply.js';
 import { engulf_target, failed_grab } from './mhitm.js';
-import { unplacebc, placebc } from './do.js';
+import { unplacebc, placebc } from './ball.js';
 import { dismount_steed } from './steed.js';
 import { reset_occupations } from './cmd.js';
 import { mondead, wake_nearto } from './mon.js';
@@ -123,12 +120,10 @@ import { burn_away_slime } from './timeout.js';
 
 
 
-function note_unported_mhitu(what) {
-    (game.unported ||= new Set()).add(what);
-}
-
 /* include/monst.h:71 U_AP_TYPE; include/you.h:555 Ugender */
 const U_AP_TYPE = () => (game.youmonst.m_ap_type & M_AP_TYPMASK);
+/* include/mondata.h is_minion() */
+const is_minion = (ptr) => (ptr.mflags2 & MFLAGS.M2_MINION) !== 0;
 const Ugender = () => ((Upolyd(game.u) ? game.u.mfemale : game.flags.female) ? 1 : 0);
 
 // src/mhitu.c:1033 diseasemu(). Pestilence gives a fatal illness unless
@@ -321,8 +316,8 @@ async function wildmiss(mtmp, mattk) {
     const usubmerged = Underwater();
 
     if (!unotseen && !unotthere && !usubmerged) {
-        /* impossible("%s attacks you without knowing your location?") */
-        note_unported_mhitu('wildmiss:impossible');
+        /* this used to be the 'else' case below */
+        void impossible(`${Some_Monnam(mtmp)} attacks you without knowing your location?`);
         return;
     }
 
@@ -672,8 +667,18 @@ export function getmattk(magr, mdef, indx, prev_result) {
     const weap = (magr === game.youmonst) ? game.u.uwep : MON_WEP(magr);
     const udefend = mdef === game.youmonst;
 
-    if (mptr.mattk[0][1] === A.AD_SSEX || attk[1] === A.AD_SSEX)
-        note_unported_mhitu('getmattk:SEDUCE');
+    /* honor SEDUCE=0 */
+    if (!SYSOPT_SEDUCE) {
+        /* if the first attack is for SSEX damage, all six attacks will be
+           substituted (expected succubus/incubus handling); if it isn't
+           but another one is, only that other one will be substituted */
+        if (mptr.mattk[0][1] === A.AD_SSEX) {
+            attk = c_sa_no[indx];
+        } else if (attk[1] === A.AD_SSEX) {
+            attk = [...attk];
+            attk[1] = A.AD_DRLI;
+        }
+    }
 
     /* prevent a monster with two consecutive disease or hunger attacks
        from hitting with both of them on the same turn; if the first has
@@ -899,12 +904,105 @@ export async function mattacku(mtmp) {
         game.u.uundetected = 0;
         if (is_hider(game.youmonst.data)
             && game.u.umonnum !== PMNAMES.PM_TRAPPER) {
-            /* ceiling hider: enexto/teleds relocation and the piercer
-               counterattack need subsystems that are absent */
-            note_unported_mhitu('mattacku:ceiling_hider');
+            /* ceiling hider */
+            const cc = { x: 0, y: 0 }; /* maybe we need a unexto() function? */
+            let obj;
+
+            await You(`fall from the ${ceiling(game.u.ux, game.u.uy)}!`);
+            /* take monster off map now so that its location
+               is eligible for placing hero; we assume that a
+               removed monster remembers its old spot <mx,my> */
+            remove_monster(mtmp.mx, mtmp.my);
+            if (!enexto(cc, game.u.ux, game.u.uy, game.youmonst.data)
+                /* a fish won't voluntarily swap positions
+                   when it's in water and hero is over land */
+                || (mtmp.data.mlet === MONSYMS.S_EEL
+                    && is_pool(mtmp.mx, mtmp.my)
+                    && !is_pool(game.u.ux, game.u.uy))) {
+                /* couldn't find any spot for hero; this used to
+                   kill off attacker, but now we just give a "miss"
+                   message and keep both mtmp and hero at their
+                   original positions; hero has become unconcealed
+                   so mtmp's next move will be a regular attack */
+                place_monster(mtmp, mtmp.mx, mtmp.my); /* put back */
+                newsym(game.u.ux, game.u.uy); /* u.uundetected was toggled */
+                await pline(`${Monnam(mtmp)} draws back as you drop!`);
+                return 0;
+            }
+
+            /* put mtmp at hero's spot and move hero to <cc.x,.y> */
+            newsym(mtmp.mx, mtmp.my); /* finish removal */
+            place_monster(mtmp, game.u.ux, game.u.uy);
+            if (mtmp.wormno) {
+                worm_move(mtmp);
+                /* tail hasn't grown, so if it now occupies <cc.x,.y>
+                   then one of its original spots must be free */
+                if (m_at(cc.x, cc.y))
+                    enexto(cc, game.u.ux, game.u.uy, game.youmonst.data);
+            }
+            await teleds(cc.x, cc.y, TELEDS_ALLOW_DRAG); /* move hero */
+            set_apparxy(mtmp);
+            newsym(game.u.ux, game.u.uy);
+
+            if (game.youmonst.data.mlet !== MONSYMS.S_PIERCER)
+                return 0; /* lurkers don't attack */
+
+            obj = which_armor(mtmp, W_ARMH);
+            if (hard_helmet(obj)) {
+                await Your(`blow glances off ${s_suffix(mon_nam(mtmp))} ${
+                           helm_simple_name(obj)}.`);
+            } else {
+                if (3 + find_mac(mtmp) <= rnd(20)) {
+                    await pline(`${Monnam(mtmp)} is hit by a falling piercer (you)!`);
+                    if ((mtmp.mhp -= d(3, 6)) < 1) {
+                        const { killed } = await import('./mon.js');
+                        await killed(mtmp);
+                    }
+                } else
+                    await pline(`${Monnam(mtmp)} is almost hit by a falling piercer (you)!`);
+            }
+
         } else {
             /* surface hider */
-            note_unported_mhitu('mattacku:surface_hider_reveal');
+            if (!v.youseeit) {
+                await pline('It tries to move where you are hiding.');
+            } else {
+                /* Ugly kludge for eggs.  The message is phrased so as
+                 * to be directed at the monster, not the player,
+                 * which makes "laid by you" wrong.  For the
+                 * parallelism to work, we can't rephrase it, so we
+                 * zap the "laid by you" momentarily instead.
+                 */
+                const obj = (game.level?.objects || [])
+                    .find(o => o.ox === game.u.ux && o.oy === game.u.uy);
+
+                if (obj || game.u.umonnum === PMNAMES.PM_TRAPPER
+                    || (game.youmonst.data.mlet === MONSYMS.S_EEL
+                        && is_pool(game.u.ux, game.u.uy))) {
+                    let save_spe = 0; /* suppress warning */
+
+                    if (obj) {
+                        save_spe = obj.spe;
+                        if (obj.otyp === ONAMES.EGG)
+                            obj.spe = 0;
+                    }
+                    /* note that m_monnam() overrides hallucination, which is
+                       what we want when message is from mtmp's perspective */
+                    if (game.youmonst.data.mlet === MONSYMS.S_EEL
+                        || game.u.umonnum === PMNAMES.PM_TRAPPER)
+                        await pline(`Wait, ${m_monnam(mtmp)}!  There's a hidden ${
+                                    pmname(game.youmonst.data, Ugender())} named ${
+                                    game.plname} there!`);
+                    else
+                        await pline(`Wait, ${m_monnam(mtmp)}!  There's a ${
+                                    pmname(game.youmonst.data, Ugender())} named ${
+                                    game.plname} hiding under ${
+                                    doname(obj)}!`);
+                    if (obj)
+                        obj.spe = save_spe;
+                } else
+                    void impossible('hiding under nothing?');
+            }
             newsym(game.u.ux, game.u.uy);
         }
         return 0;
@@ -1265,26 +1363,39 @@ export function magic_negation(mon) {
 
     const chain = is_you ? (game.invent || []) : (mon.minvent || []);
     for (const o of chain) {
+        /* a_can field is only applicable for armor (which must be worn) */
         if ((o.owornmask ?? 0) & W_ARMOR) {
             const armpro = game.objects[o.otyp].a_can | 0;
             if (armpro > mc)
                 mc = armpro;
         } else if ((o.owornmask ?? 0) & W_AMUL) {
-            if (o.otyp === ONAMES.AMULET_OF_GUARDING)
-                via_amul = true;
+            via_amul = (o.otyp === ONAMES.AMULET_OF_GUARDING);
         }
-        if (!is_you && !gotprot && o.oartifact)
-            note_unported_mhitu('magic_negation:monster_artifact_protection');
+        /* if we've already confirmed Protection, skip additional checks */
+        if (is_you || gotprot)
+            continue;
+
+        /* omit W_SWAPWEP+W_QUIVER; W_ART+W_ARTI handled by protects() */
+        let wearmask = W_ARMOR | W_ACCESSORY;
+        if (o.oclass === OCLASSES.WEAPON_CLASS || is_weptool(o, game.objects))
+            wearmask |= W_WEP;
+        if (protects(o, ((o.owornmask ?? 0) & wearmask) !== 0))
+            gotprot = true;
     }
 
     if (gotprot) {
         mc += via_amul ? 2 : 1;
         if (mc > 3)
             mc = 3;
-    } else if (mc < 1 && is_you
-               && ((game.u.intrinsic?.HProtection && game.u.ublessed > 0)
-                   || game.u.uspellprot)) {
-        mc = 1;
+    } else if (mc < 1) {
+        /* intrinsic Protection is weaker (play balance; obtaining divine
+           protection is too easy); it confers minimum mc 1 instead of 0 */
+        if ((is_you && ((game.u.intrinsic?.HProtection && game.u.ublessed > 0)
+                        || game.u.uspellprot))
+            /* aligned priests and angels have innate intrinsic Protection */
+            || (mon?.data?.pmidx === PMNAMES.PM_ALIGNED_CLERIC
+                || (mon?.data && is_minion(mon.data))))
+            mc = 1;
     }
 
     return mc;
@@ -1492,11 +1603,21 @@ async function hitmu(mtmp, mattk, indx) {
                 await erode_armor(game.youmonst, ERODE_ROT);
             }
         }
+    } else if (mattk[1] === A.AD_CORR) {
+        await mhitm_ad_corr(mtmp, mattk, game.youmonst, mhm);
+    } else if (mattk[1] === A.AD_SGLD) {
+        await mhitm_ad_sgld(mtmp, mattk, game.youmonst, mhm);
+    } else if (mattk[1] === A.AD_CONF) {
+        await mhitm_ad_conf(mtmp, mattk, game.youmonst, mhm);
+    } else if (mattk[1] === A.AD_HALU) {
+        await mhitm_ad_halu(mtmp, mattk, game.youmonst, mhm);
+    } else if (mattk[1] === A.AD_DGST) {
+        await mhitm_ad_dgst(mtmp, mattk, game.youmonst, mhm);
+    } else if (mattk[1] === A.AD_DISE) {
+        await mhitm_ad_dise(mtmp, mattk, game.youmonst, mhm);
     } else {
-        note_unported_mhitu(`hitmu:adtyp=${mattk[1]}`);
-        /* the generic arms still print the plain hit message */
-        await hitmsg(mtmp, mattk, indx);
-        mhm.hitflags |= M_ATTK_HIT;
+        /* src/uhitm.c mhitm_adtyping() default */
+        mhm.damage = 0;
     }
 
     await mhitm_knockback(mtmp, game.youmonst, mattk, mhm,
@@ -1589,6 +1710,11 @@ export async function mdamageu(mtmp, n) {
 // src/sys.c:100 sysopt.seduce — "if it's compiled in, default to on", and the
 // SEDUCE=0 line in sys/unix/sysconf is commented out, so this is 1.
 const SYSOPT_SEDUCE = 1;
+/* src/monst.c:79 c_sa_no[NATTK] = SEDUCTION_ATTACKS_NO (include/monsters.h:2925) */
+const c_sa_no = [
+    [ATTKS.AT_CLAW, ATTKS.AD_PHYS, 1, 3], [ATTKS.AT_CLAW, ATTKS.AD_PHYS, 1, 3],
+    [ATTKS.AT_BITE, ATTKS.AD_DRLI, 2, 6], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0],
+];
 
 // src/mhitu.c:1934 could_seduce() — 0 no, 1 yes, 2 "nymph-style".
 //
@@ -1644,6 +1770,15 @@ export function could_seduce(magr, mdef, mattk) {
 }
 
 import { unresponsive } from './steal.js';
+import { ceiling } from './dungeon.js';
+import { enexto, teleds } from './teleport.js';
+import { TELEDS_ALLOW_DRAG, W_ARMH, W_ACCESSORY, W_WEP } from './const.js';
+import { worm_move } from './worm.js';
+import { set_apparxy } from './monmove.js';
+import { which_armor, find_mac } from './worn.js';
+import { hard_helmet } from './do_wear.js';
+import { is_weptool } from './mkobj.js';
+import { protects } from './artifact.js';
 
 function carried_gloves() {
     if (game.u.uarmg)

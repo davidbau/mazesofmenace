@@ -103,6 +103,16 @@ import { add_to_minv, is_flammable } from './mkobj.js';
 import { obj_sheds_light } from './light.js';
 import { mbodypart } from './polyself.js';
 import { mhis } from './mondata.js';
+import { spec_abon } from './artifact.js';
+import { munstone } from './muse.js';
+import { minstapetrify } from './trap.js';
+import { shade_miss } from './uhitm.js';
+import { Stone_resistance } from './youprop.js';
+import { poly_when_stoned } from './mondata.js';
+import { polymon } from './polyself.js';
+import { make_stoned } from './potion.js';
+import { KILLED_BY } from './const.js';
+import { otense } from './objnam.js';
 import { tmp_at } from './display.js';
 import { Something, something, HAND, FOOT, ARM, BACKTRACK, DISP_TETHER,
          DISP_FLASH, DISP_END } from './const.js';
@@ -251,7 +261,7 @@ export async function ohitmon(mtmp, otmp, range, verbose) {
         if (game.marcher.m_lev > 5)
             tmp += game.marcher.m_lev - 5;
         if (mon_launcher && mon_launcher.oartifact)
-            note_unported_mthrowu('ohitmon:spec_abon');
+            tmp += spec_abon(mon_launcher, mtmp);
     }
     if (tmp < rnd(20)) {
         if (!ismimic) {
@@ -344,7 +354,8 @@ export async function ohitmon(mtmp, otmp, range, verbose) {
         }
         if (otmp.otyp === ONAMES.EGG
             && touch_petrifies(game.mons[otmp.corpsenm])) {
-            note_unported_mthrowu('ohitmon:egg_petrify');
+            if (!await munstone(mtmp, false))
+                await minstapetrify(mtmp, false);
             if (resists_ston(mtmp))
                 damage = 0;
         }
@@ -408,8 +419,8 @@ function can_blnd_mt(otmp) {
 }
 
 /* src/mthrowu.c:552 MT_FLIGHTCHECK — can the missile enter the next square?
-   hits_bars (iron bars breakage) records; the bars still stop the missile. */
-function mt_flightcheck(pre, singleobj, dx, dy) {
+   sobj is the { obj } box hits_bars() may empty when the missile breaks. */
+async function mt_flightcheck(pre, sobj, dx, dy, forcehit) {
     const nx = game.bhitpos.x + dx, ny = game.bhitpos.y + dy;
 
     if (!isok(nx, ny))
@@ -419,10 +430,12 @@ function mt_flightcheck(pre, singleobj, dx, dy) {
         return true;                        /* wall */
     if (closed_door(nx, ny))
         return true;
-    if (nloc.typ === IRONBARS) {
-        note_unported_mthrowu('m_throw:hits_bars');
+    /* missile might hit iron bars; the random chance for small objects
+       hitting bars is skipped when reaching them at point blank range */
+    if (nloc.typ === IRONBARS
+        && await hits_bars(sobj, game.bhitpos.x, game.bhitpos.y, nx, ny,
+                           (pre ? 0 : forcehit), 0))
         return true;
-    }
     if (!pre && IS_SINK(game.level.at(game.bhitpos.x, game.bhitpos.y).typ))
         return true;                        /* thrown objects "sink" */
     return false;
@@ -561,7 +574,9 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
         }
     }
 
-    if (mt_flightcheck(true, singleobj, dx, dy)) {
+    const sobj = { obj: singleobj }; /* &singleobj for hits_bars() */
+    if (await mt_flightcheck(true, sobj, dx, dy, 0)) {
+        singleobj = sobj.obj;
         await drop_throw(singleobj, 0, game.bhitpos.x, game.bhitpos.y);
         return;
     }
@@ -582,11 +597,9 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
             observe_object(singleobj);
 
         mtmp = m_at(game.bhitpos.x, game.bhitpos.y);
-        if (mtmp && game.mons[mtmp.mnum].mlet === MONSYMS.S_GHOST
-            && singleobj.oclass !== OCLASSES.WEAPON_CLASS) {
-            /* shade_miss(): only silver or blessed connects; the full test
-               lives in mhitm and is recorded there. Keep going. */
-            note_unported_mthrowu('m_throw:shade_miss');
+        if (mtmp && await shade_miss(mon, mtmp, singleobj, true, true)) {
+            /* if mtmp is a shade and missile passes harmlessly through it,
+               give message and skip it in order to keep going */
             mtmp = null;
         } else if (mtmp) {
             if (await ohitmon(mtmp, singleobj, range, true))
@@ -675,7 +688,11 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
                 }
             }
             if (hitu && singleobj.otyp === ONAMES.EGG) {
-                note_unported_mthrowu('m_throw:egg_stoning');
+                if (!game.u.uprops?.STONED && !Stone_resistance()
+                    && !(poly_when_stoned(game.youmonst.data)
+                         && await polymon(PMNAMES.PM_STONE_GOLEM))) {
+                    await make_stoned(5, null, KILLED_BY, '');
+                }
             }
             await stop_occupation();
             if (hitu) {
@@ -690,10 +707,20 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
         }
 
         const forcehit = !rn2(5);
-        if (!range || mt_flightcheck(false, singleobj, dx, dy)) {
+        sobj.obj = singleobj;
+        if (!range || await mt_flightcheck(false, sobj, dx, dy, forcehit)) {
+            singleobj = sobj.obj;
             /* end of path or blocked */
             if (singleobj) { /* hits_bars might have destroyed it */
-                if ((game.m_shot?.n ?? 0) > 1
+                /* note: pline(The(missile)) rather than pline_The(missile)
+                   in order to get "Grimtooth" rather than "The Grimtooth" */
+                if (range && cansee(game.bhitpos.x, game.bhitpos.y)
+                    && IS_SINK(game.level.at(game.bhitpos.x,
+                                             game.bhitpos.y).typ))
+                    await pline(`${The(mshot_xname(singleobj))} ${
+                        otense(singleobj, Hallucination() ? 'plop' : 'drop')
+                        } onto the sink.`);
+                else if ((game.m_shot?.n ?? 0) > 1
                     && (!game.mesg_given
                         || game.bhitpos.x !== game.u.ux
                         || game.bhitpos.y !== game.u.uy)
@@ -710,7 +737,6 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
             }
             break;
         }
-        void forcehit; /* consumed by the flightcheck's hits_bars in C */
         await show_missile();
     }
     await show_missile();

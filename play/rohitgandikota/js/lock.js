@@ -919,11 +919,11 @@ async function chest_shatter_msg(otmp) {
     }
     /* We have functions for distant and singular names, but not one */
     /* which does _both_... */
-    /* u.ublind is the JS twin of HBlinded; the BBlinded half has no twin */
-    save_HBlinded = game.u.ublind,  save_BBlinded = 0;
-    game.u.ublind = 1;
+    const intr = (game.u.intrinsic ||= {}), blocked = (game.u.blocked ||= {});
+    save_HBlinded = intr.HBlinded | 0,  save_BBlinded = blocked.BLINDED | 0;
+    intr.HBlinded = 1,  blocked.BLINDED = 0;
     thing = singular(otmp, xname);
-    game.u.ublind = save_HBlinded;
+    intr.HBlinded = save_HBlinded,  blocked.BLINDED = save_BBlinded;
     switch (game.objects[otmp.otyp].oc_material) {
     case MATERIALS.PAPER:
         disposition = 'is torn to shreds';

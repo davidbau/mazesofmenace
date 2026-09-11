@@ -58,6 +58,9 @@ import { is_ice } from './dbridge.js';
 import { obj_ice_effects } from './mkobj.js';
 import { spot_stop_timers } from './timeout.js';
 import { count_level_features } from './mklev.js';
+import { impossible } from './pline.js';
+import { unplacebc_and_covet_placebc, lift_covet_and_placebc } from './ball.js';
+import { Punished } from './youprop.js';
 
 
 
@@ -120,7 +123,7 @@ export async function makemaz(s) {
                           && protofile === 'minetn-1');
         if (await load_special(protofile))
             return true;
-        note_unported_mkmaze(`makemaz:${protofile}`);
+        void impossible(`Couldn't load "${protofile}" - making a maze.`);
     }
 
     game.level.flags.is_maze_lev = 1;
@@ -261,7 +264,7 @@ export async function place_lregion(lx, ly, hx, hy, nlx, nly, nhx, nhy, rtype, l
                                        rtype, true, lev))
                 return;
 
-    note_unported_mkmaze('place_lregion:failed');
+    void impossible(`Couldn't place lregion type ${rtype}!`);
 }
 
 /* mkstairs/place_branch live in js/mklev.js, which imports this file;
@@ -956,8 +959,7 @@ export function mkportal(x, y, todnum, todlevel) {
     const ttmp = mkmaze_mklev_fns?.maketrap?.(x, y, MAGIC_PORTAL);
 
     if (!ttmp) {
-        /* impossible("portal on top of portal?") */
-        note_unported_mkmaze('mkportal:refused');
+        void impossible('portal on top of portal?');
         return;
     }
     ttmp.dst = { dnum: todnum, dlevel: todlevel };
@@ -1071,6 +1073,7 @@ export function reset_mkmaze() {
 }
 
 export async function movebubbles() {
+    let bcpin = 0;
     const g = game;
 
     /* set up the portal the first time bubbles are moved */
@@ -1083,8 +1086,8 @@ export async function movebubbles() {
 
     if (Is_waterlevel(g.u.uz)) {
         /* keep attached ball&chain separate from bubble objects */
-        if (g.uball)
-            note_unported_mkmaze('movebubbles:unplacebc');
+        if (Punished())
+            bcpin = unplacebc_and_covet_placebc();
 
         /*
          * Pick up everything inside of a bubble then fill all bubble
@@ -1177,8 +1180,8 @@ export async function movebubbles() {
     }
 
     /* put attached ball&chain back */
-    if (Is_waterlevel(g.u.uz) && g.uball)
-        note_unported_mkmaze('movebubbles:placebc');
+    if (Is_waterlevel(g.u.uz) && Punished())
+        await lift_covet_and_placebc(bcpin);
     g.vision_full_recalc = 1;
 }
 

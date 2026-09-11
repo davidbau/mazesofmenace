@@ -106,10 +106,10 @@ function place_worm_seg(worm, x, y) {
 /* src/worm.c:146 toss_wsegs() — discard segments */
 function toss_wsegs(curr, display_update) {
     while (curr) {
+        /* remove from level.monsters[][] */
+        /* need to check curr->wx for genocided while migrating_mon */
         if (curr.wx) {
-            const w = game.level?.monAt?.get(`${curr.wx},${curr.wy}`);
-            if (w && w.wormno)
-                game.level.monAt.delete(`${curr.wx},${curr.wy}`);
+            remove_monster(curr.wx, curr.wy);
             if (display_update)
                 newsym(curr.wx, curr.wy);
         }
@@ -266,8 +266,7 @@ export function wormgone(worm) {
 }
 
 // src/worm.c:714 remove_worm(), take a worm's tail segments off the map.
-export async function remove_worm(worm) {
-    const { remove_monster } = await import('./makemon.js');
+export function remove_worm(worm) {
     const w = wstate();
     let curr = w.wtails[worm.wormno];
 

@@ -33,6 +33,7 @@ import {
     IS_STWALL, IS_POOL, IS_ROOM, ACCESSIBLE, ARTICLE_A, BLCORNER,
     BRCORNER, RLOC_MSG, TLCORNER, TRCORNER,
 } from './const.js';
+import { relobj } from './steal.js';
 
 
 export function vault_occupied(urooms) {
@@ -265,6 +266,23 @@ async function gd_move_cleanup(guard, semi_dead, disappear_msg_seen) {
         return 1;
     }
     return -2;
+}
+
+// src/vault.c:175 grddead() — a guard is done for: clear his corridor now,
+// or park him at <0,0> until the corridor can go.
+export async function grddead(grd) {
+    let dispose = await clear_fcorr(grd, true);
+
+    if (!dispose) {
+        /* destroy guard's gold; drop any other inventory */
+        await relobj(grd, 0, false);
+        grd.mhp = 0;
+        parkguard(grd);
+        dispose = await clear_fcorr(grd, true);
+    }
+    if (dispose)
+        grd.isgd = 0; /* for dmonsfree() */
+    return dispose;
 }
 
 // src/vault.c:281 find_guard_dest().  The perimeter scan and its early
@@ -654,7 +672,7 @@ export async function invault() {
         || identity === 'creosote') {
         if (!(game.mvitals?.[PMNAMES.PM_CROESUS]?.died || 0)) {
             await pline('"Oh, yes, of course.  Sorry to have disturbed you."');
-            mongone(guard);
+            await mongone(guard);
         } else {
             guard.mpeaceful = 0;
             await pline('"Back from the dead, are you?  I\'ll remedy that!"');

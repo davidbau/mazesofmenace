@@ -1086,7 +1086,7 @@ async function montraits(obj, cc, adjacentok) {
 
         /* in case Protection_from_shape_changers is different
            now than it was when the traits were stored */
-        restore_cham(mtmp);
+        await restore_cham(mtmp);
         return mtmp;
     }
     return mtmp2;
@@ -1342,7 +1342,7 @@ export async function revive(corpse, by_hero) {
             /* was ghost, now alive, it's all very confusing */
             mtmp.mconf = 1;
             /* separate ghost monster no longer exists */
-            mongone(ghost);
+            await mongone(ghost);
         }
         free_omid(corpse);
     }

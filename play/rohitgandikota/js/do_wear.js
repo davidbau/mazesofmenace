@@ -90,6 +90,7 @@ import { MFLAGS, MONSYMS } from './monst_data.js';
 import { TT_LAVA, TT_BURIEDBALL, FOOT, LEG, plur, RIGHT_HANDED, Upolyd } from './const.js';
 import { uchangealign } from './attrib.js';
 import { A_CG_HELM_ON, A_CG_HELM_OFF } from './const.js';
+import { W_ACCESSORY } from './const.js';
 
 const OCLASSES_ARMOR = OCLASSES.ARMOR_CLASS;
 const OCLASSES_RING = OCLASSES.RING_CLASS;
@@ -1844,8 +1845,7 @@ export async function accessory_or_armor_on(obj) {
     const eyewear = obj.otyp === ONAMES.BLINDFOLD || obj.otyp === ONAMES.TOWEL
         || obj.otyp === ONAMES.LENSES;
 
-    if (obj.owornmask & (W_ARM | W_ARMC | W_ARMH | W_ARMS | W_ARMG | W_ARMF
-                         | W_ARMU | W_RINGL | W_RINGR | W_AMUL)) {
+    if (obj.owornmask & (W_ACCESSORY | W_ARMOR)) {
         await You('are already wearing that!');
         return ECMD_OK;
     }

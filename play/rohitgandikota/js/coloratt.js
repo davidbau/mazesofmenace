@@ -244,6 +244,19 @@ export async function query_color(prompt, dflt_color) {
     return -1;
 }
 
+// src/coloratt.c:304 query_color_attr()
+export async function query_color_attr(ca, prompt) {
+    const c = await query_color(prompt, ca.color);
+    if (c === -1)
+        return false;
+    const a = await query_attr(prompt, ca.attr);
+    if (a === -1)
+        return false;
+    ca.color = c;
+    ca.attr = a;
+    return true;
+}
+
 // src/coloratt.c:530 basic_menu_colors() — True: temporarily replace menu
 // color entries with a fake set of menu colors which match their names;
 // False: restore user-specified colorings. iflags.use_menu_color is

@@ -122,6 +122,9 @@ import { make_grave } from './mklev.js';
 import { Align2amask, AM_NONE, T_LOOTED, FOUNTAIN, THRONE, ALTAR, SINK } from './const.js';
 import { Inhell } from './makemon.js';
 import { defsyms } from './drawing_data.js';
+import { burn_away_slime } from './timeout.js';
+import { selftouch, deltrap } from './trap.js';
+import { container_impact_dmg } from './dokick.js';
 
 
 
@@ -363,147 +366,6 @@ export async function zombify_mon(body) {
     }
 }
 
-// src/ball.c:147 unplacebc_core(): detach punishment pieces from this level.
-export function unplacebc() {
-    const u = game.u;
-    const ball = u.uball;
-    const chain = u.uchain;
-    if (!ball || !chain || u.uswallow)
-        return;
-
-    if (ball.where !== OBJ_INVENT) {
-        const bx = ball.ox, by = ball.oy;
-        obj_extract_self(ball);
-        if (Blind() && ((u.bc_felt | 0) & BC_BALL)) {
-            const loc = game.level?.at(bx, by);
-            if (loc)
-                loc.remembered_glyph = u.bglyph;
-        }
-        newsym(bx, by);
-    }
-    const cx = chain.ox, cy = chain.oy;
-    obj_extract_self(chain);
-    if (Blind() && ((u.bc_felt | 0) & BC_CHAIN)) {
-        const loc = game.level?.at(cx, cy);
-        if (loc)
-            loc.remembered_glyph = u.cglyph;
-    }
-    newsym(cx, cy);
-    u.bc_felt = 0;
-}
-
-// src/ball.c:120 placebc_core(): put punishment pieces under the arriving hero.
-export async function placebc() {
-    const u = game.u;
-    const ball = u.uball;
-    const chain = u.uchain;
-    if (!ball || !chain)
-        return;
-
-    await flooreffects(chain, u.ux, u.uy, '');
-    if (ball.where === OBJ_INVENT) {
-        u.bc_order = 0; /* BCPOS_DIFFER */
-    } else {
-        await flooreffects(ball, u.ux, u.uy, '');
-        place_object(ball, u.ux, u.uy);
-        u.bc_order = 1; /* BCPOS_CHAIN */
-    }
-    place_object(chain, u.ux, u.uy);
-    u.bglyph = u.cglyph = game.level?.at(u.ux, u.uy)?.remembered_glyph;
-    newsym(u.ux, u.uy);
-}
-
-function maybe_half_physical(damage) {
-    return game.u.uprops?.HALF_PHDAM
-        ? Math.trunc((damage + 1) / 2)
-        : damage;
-}
-
-// src/ball.c:966 litter(): the ball can knock carried objects down the stairs.
-async function litter() {
-    const capacity = weight_cap();
-    const { setnotworn } = await import('./worn.js');
-    const { yname, otense } = await import('./objnam.js');
-
-    // C saves nextobj before removing the current object. A snapshot has the
-    // same traversal semantics for this port's flat inventory array.
-    for (const obj of [...(game.invent || [])]) {
-        if (obj === game.u.uball || rnd(capacity) > obj.owt)
-            continue;
-        if (!canletgo(obj, ''))
-            continue;
-
-        await You(`drop ${yname(obj)} and ${obj.quan === 1 ? 'it' : 'they'} `
-                  + `${otense(obj, 'fall')} down the stairs with you.`);
-        setnotworn(obj);
-        freeinv(obj);
-        // hitfloor(obj, FALSE) reaches dropz(obj, TRUE) on ordinary stair
-        // terrain. The existing drop path records a downward shipping gate.
-        if (ship_object_fn
-            && ship_object_fn(obj, game.u.ux, game.u.uy, false))
-            continue;
-        await dropz(obj, true);
-    }
-}
-
-// src/ball.c:990 drag_down(): punishment damage during stair descent.
-async function drag_down() {
-    const u = game.u;
-    const ball = u.uball;
-    let dragchance = 3;
-    const carried = ball?.where === OBJ_INVENT;
-    const forward = carried
-        && (u.uwep === ball || !u.uwep || !rn2(3));
-
-    if (carried && !welded(ball))
-        await You('lose your grip on the iron ball.');
-
-    await cls();
-
-    if (forward) {
-        if (rn2(6)) {
-            await pline_The('iron ball drags you downstairs!');
-            await losehp(maybe_half_physical(rnd(6)),
-                         'dragged downstairs by an iron ball',
-                         NO_KILLER_PREFIX);
-            await litter();
-        }
-    } else {
-        if (rn2(2)) {
-            await pline_The('iron ball smacks into you!');
-            await losehp(maybe_half_physical(rnd(20)),
-                         'iron ball collision', KILLED_BY_AN);
-            exercise(A_STR, false);
-            dragchance -= 2;
-        }
-        if (dragchance >= rnd(6)) {
-            await pline_The('iron ball drags you downstairs!');
-            await losehp(maybe_half_physical(rnd(3)),
-                         'dragged downstairs by an iron ball',
-                         NO_KILLER_PREFIX);
-            exercise(A_STR, false);
-            await litter();
-        }
-    }
-}
-
-// src/ball.c:23 ballrelease(FALSE): let go without placing the ball yet.
-async function ballrelease() {
-    const u = game.u;
-    const ball = u.uball;
-    if (!ball || ball.where !== OBJ_INVENT || welded(ball))
-        return;
-
-    if (u.uwep === ball)
-        await setuwep_with_feedback(null);
-    if (u.uswapwep === ball)
-        setuswapwep(null);
-    if (u.uquiver === ball)
-        setuqwep(null);
-    freeinv(ball);
-    await encumber_msg();
-}
-
 // src/do.c:50 boulder_hits_pool(). A boulder fills ordinary water nine times
 // in ten and lava one time in ten; otherwise it sinks. Pushed boulders use a
 // direct push message when they fill, while falling boulders always splash.
@@ -574,8 +436,7 @@ export async function boulder_hits_pool(obj, x, y, pushing) {
                                Math.abs(game.u.uy - y)) <= 1) {
             await You('are hit by molten ' + hliquid('lava')
                 + (Fire_resistance() ? '.' : '!'));
-            if (game.u.uprops?.SLIMED)
-                note_unported_do('boulder_hits_pool:burn_away_slime');
+            await burn_away_slime();
             let damage = d(Fire_resistance() ? 1 : 3, 6);
             if (game.u.uprops?.HALF_PHDAM)
                 damage = Math.trunc((damage + 1) / 2);
@@ -1398,7 +1259,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
                 await mon_catchup_elapsed_time(mtmp, elapsed);
             /* update shape-changers in case protection against them is
                different now than when the level was saved */
-            restore_cham(mtmp);
+            await restore_cham(mtmp);
             /* give hiders a chance to hide before their next move */
             if (elapsed > 0 && elapsed > rnd(10))
                 hide_monst(mtmp);
@@ -1492,22 +1353,17 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             if (game.u.uball) {
                 await drag_down();
                 if (!welded(game.u.uball))
-                    await ballrelease();
+                    await ballrelease(false);
             }
             if (game.u.usteed) {
                 const { dismount_steed } = await import('./steed.js');
                 await dismount_steed(1 /* DISMOUNT_FELL */);
             } else {
-                await losehp(maybe_half_physical(rnd(3)),
+                await losehp(Maybe_Half_Phys(rnd(3)),
                              'tumbling down a flight of stairs',
                              KILLED_BY);
             }
-            /* selftouch("Falling, you") draws nothing unless a petrifying
-               corpse is wielded; that fatal branch remains explicit. */
-            if (game.u.uwep?.otyp === ONAMES.CORPSE
-                || (game.u.twoweap
-                    && game.u.uswapwep?.otyp === ONAMES.CORPSE))
-                note_unported_do('goto_level:selftouch');
+            await selftouch('Falling, you');
         } else { /* ordinary descent */
             if (game.flags?.verbose)
                 await You('descend the stairs.');
@@ -1516,12 +1372,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         const { u_on_rndspot } = await import('./dungeon.js');
         await u_on_rndspot(up ? 1 : 0);
         if (falling) {
-            if (game.u.uball)
-                note_unported_do('goto_level:ballfall');
-            if (game.u.uwep?.otyp === ONAMES.CORPSE
-                || (game.u.twoweap
-                    && game.u.uswapwep?.otyp === ONAMES.CORPSE))
-                note_unported_do('goto_level:selftouch');
+            if (Punished() && !welded(game.u.uball))
+                await ballfall();
+            await selftouch('Falling, you');
             do_fall_dmg = true;
         }
     }
@@ -1782,7 +1635,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     /* src/do.c:1989, a trapdoor or hole inflicts impact damage only after
        the new level is drawn and its arrival messages have been handled. */
     if (do_fall_dmg) {
-        await losehp(maybe_half_physical(d(Math.max(dist, 1), 6)),
+        await losehp(Maybe_Half_Phys(d(Math.max(dist, 1), 6)),
                      'falling down a mine shaft', KILLED_BY);
     }
 
@@ -1799,9 +1652,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
 // monster is moved next to the hero (mnexto draws). The fallback rloc/limbo
 // arm is recorded.
 async function u_collide_m(mtmp, m_at, mnexto) {
-    const { enexto_core } = await import('./teleport.js');
+    const { enexto_core, rloc } = await import('./teleport.js');
     const { goodpos } = await import('./makemon.js');
-    const { GP_CHECKSCARY } = await import('./const.js');
+    const { m_into_limbo } = await import('./mon.js');
+    const { GP_CHECKSCARY, RLOC_NOMSG } = await import('./const.js');
     const { game: g } = await import('./gstate.js');
 
     const cc = { x: 0, y: 0 };
@@ -1820,8 +1674,16 @@ async function u_collide_m(mtmp, m_at, mnexto) {
         await mnexto(mtmp);
     }
 
-    if (m_at(g.u.ux, g.u.uy))
-        note_unported_do('u_collide_m:rloc_limbo');
+    if ((mtmp = m_at(g.u.ux, g.u.uy)) != null) {
+        /* there was an unconditional impossible("mnexto failed")
+           here, but it's not impossible and we're prepared to cope
+           with the situation, so only say something when debugging */
+        if (g.wizard)
+            await pline("(monster in hero's way)");
+        if (!await rloc(mtmp, RLOC_NOMSG) || (mtmp = m_at(g.u.ux, g.u.uy)) != null)
+            /* no room to move it; send it away, to return later */
+            await m_into_limbo(mtmp);
+    }
 }
 
 /* src/dungeon.c depth() — local copy to keep this module's import graph
@@ -1927,8 +1789,14 @@ export async function deferred_goto() {
                          !!(typmask & UTOTYPE_FALLING),
                          !!(typmask & UTOTYPE_PORTAL));
 
-        if (typmask & UTOTYPE_RMPORTAL)
-            note_unported_do('deferred_goto:remove portal');
+        if (typmask & UTOTYPE_RMPORTAL) { /* remove portal */
+            const t = t_at(game.u.ux, game.u.uy);
+
+            if (t) {
+                deltrap(t);
+                newsym(game.u.ux, game.u.uy);
+            }
+        }
 
         if (game.dfr_post_msg
             && !(game.u.uz.dnum === oldlev.dnum
@@ -1976,10 +1844,10 @@ export async function dropz(obj, with_impact) {
             return;
         place_object(obj, game.u.ux, game.u.uy);
         if (with_impact)
-            note_unported_do('dropz:container_impact_dmg');
+            await container_impact_dmg(obj, game.u.ux, game.u.uy);
         impact_disturbs_zombies(obj, with_impact);
         if (obj === game.u.uball)
-            note_unported_do('dropz:drop_ball');
+            await drop_ball(game.u.ux, game.u.uy);
         else if (game.level?.flags?.has_shop) {
             const { sellobj } = await import('./shk.js');
             await sellobj(obj, game.u.ux, game.u.uy);
@@ -2061,6 +1929,8 @@ export async function doaltarobj(obj) {
 
 // Keep existing callers compatible with hitfloor's C-owned module.
 export { hitfloor } from './dothrow.js';
+import { placebc, unplacebc, ballfall, ballrelease, drag_down, drop_ball } from './ball.js';
+import { Punished } from './youprop.js';
 
 // src/do.c:404 polymorph_sink() — the sink underfoot becomes a fountain,
 // throne, altar, grave or plain floor

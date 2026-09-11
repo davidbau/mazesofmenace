@@ -79,6 +79,7 @@ import { pline } from './display.js';
 import { tty_yn_function } from './tty/topl.js';
 import { Blind, Flying, Glib, Levitation } from './youprop.js';
 import { DEADMONSTER } from './monst.js';
+import { impossible } from './pline.js';
 
 const {
     COIN_CLASS, POTION_CLASS, SCROLL_CLASS, WAND_CLASS, SPBOOK_CLASS,
@@ -187,6 +188,26 @@ export function obj_typename(otyp) {
 // ---------------------------------------------------------------------------
 
 // src/objnam.c:245 simple_typename(); less verbose result than obj_typename()
+// src/objnam.c safe_typename() — the type name of any otyp, forced known;
+// sanity checks name objects that might be garbage.
+export function safe_typename(otyp) {
+    let save_nameknown;
+    let res = null;
+
+    if (otyp < 0 || otyp >= game.objects.length
+        || !OBJ_NAME(game.objects[otyp])) {
+        res = `glorkum[${otyp}]`;
+        void impossible(`safe_typename: ${res}`);
+    } else {
+        /* force it to be treated as fully discovered */
+        save_nameknown = game.objects[otyp].oc_name_known;
+        game.objects[otyp].oc_name_known = 1;
+        res = simple_typename(otyp);
+        game.objects[otyp].oc_name_known = save_nameknown;
+    }
+    return res;
+}
+
 export function simple_typename(otyp) {
     const save_uname = game.objects[otyp].oc_uname;
 

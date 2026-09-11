@@ -30,6 +30,8 @@ import { make_engr_at } from './engrave.js';
 import { DUST, CORR, ROOM } from './const.js';
 import { in_rooms } from './hack.js';
 import { SHKNAMES, SHKNMS_ORDER } from './shknam_data.js';
+import { in_town } from './hack.js';
+import { letter } from './hacklib.js';
 
 // src/shknam.c:19 VEGETARIAN_CLASS — not a real object class, a marker the
 // health food store uses to route through mkveggy_at().
@@ -424,7 +426,7 @@ export async function stock_room(shp_indx, sroom) {
     const orcus = game.special_levels?.orcus_level;
     if (orcus && game.u.uz.dnum === orcus.dnum
         && game.u.uz.dlevel === orcus.dlevel) {
-        mongone(sroom.resident);
+        await mongone(sroom.resident);
         sroom.resident = null;
     }
 
@@ -477,4 +479,20 @@ export function shkname(mtmp) {
 // src/shknam.c Shknam(); shkname() with its first letter capitalized
 export function Shknam(mtmp) {
     return upstart(shkname(mtmp));
+}
+
+// src/shknam.c:908 is_izchak() — the lighting-shop keeper of Minetown.
+export function is_izchak(shkp, override_hallucination) {
+    let shknm;
+
+    if (Hallucination() && !override_hallucination)
+        return false;
+    if (!shkp.isshk)
+        return false;
+    if (!in_town(shkp.mx, shkp.my))
+        return false;
+    shknm = ESHK(shkp).shknam || '';
+    if (!letter(shknm[0] || ''))
+        shknm = shknm.slice(1);
+    return shknm === 'Izchak';
 }

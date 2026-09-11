@@ -31,8 +31,8 @@ import { actualoname, suit_simple_name, simpleonames, singular } from './objnam.
 import { TIMEOUT } from './const.js';
 import { make_stunned } from './potion.js';
 import { disintegrate_arm, any_worn_armor_ok, destroy_arm, greatest_erosion } from './do_wear.js';
-import { set_bc } from './cmd.js';
-import { dropy, placebc } from './do.js';
+import { set_bc, placebc, move_bc } from './ball.js';
+import { dropy } from './do.js';
 import { is_whirly } from './mondata.js';
 import { WT_IRON_BALL_INCR } from './const.js';
 import { game } from './gstate.js';
@@ -136,6 +136,14 @@ import { Underwater } from './youprop.js';
 import { digests } from './mondata.js';
 import { buried_ball_to_freedom } from './dig.js';
 import { LEG } from './const.js';
+import { getpos } from './getpos.js';
+import { explode } from './explode.js';
+import { EXPL_FIERY, M_SEEN_FIRE, u_at, PLNMSG_TOWER_OF_FLAME } from './const.js';
+import { monstseesu, monstunseesu } from './mondata.js';
+import { shieldeff } from './display.js';
+import { hliquid } from './do_name.js';
+import { Fire_resistance } from './youprop.js';
+import { burn_away_slime } from './timeout.js';
 function note_unported_read(what) {
     (game.unported ||= new Set()).add('read:' + what);
 }
@@ -1287,8 +1295,11 @@ export async function seffects(sobj) {
     case ONAMES.SCR_MAIL:
         await seffect_mail(sobj);
         break;
+    case ONAMES.SCR_FIRE:
+        await seffect_fire(sobj);
+        return true; /* the scroll is used up */
     default:
-        note_unported_read(`seffects:otyp=${otyp}`);
+        void impossible(`What weird effect is this? (${otyp})`);
         break;
     }
     return false;
@@ -1541,7 +1552,7 @@ async function do_class_genocide() {
                 for (const mtmp of [...(game.level.monsters || [])]) {
                     if (DEADMONSTER(mtmp))
                         continue;
-                    mongone(mtmp);
+                    await mongone(mtmp);
                     gonecnt++;
                 }
                 await pline(`Eliminated ${gonecnt} monster${plur(gonecnt)}.`);
@@ -2020,6 +2031,73 @@ async function seffect_stinking_cloud(sobj) {
     await do_stinking_cloud(sobj, already_known);
 }
 
+// src/read.c:1850 seffect_fire() — the scroll of fire: a burnt hand when
+// confused, a chosen center when blessed, then explode().
+async function seffect_fire(sobj) {
+    const otyp = sobj.otyp;
+    const sblessed = !!sobj.blessed;
+    const confused = !!Confusion();
+    const already_known = (sobj.oclass === OCLASSES.SPBOOK_CLASS /* spell */
+                           || game.objects[otyp].oc_name_known);
+    const cc = { x: 0, y: 0 };
+    let dam, cval;
+
+    cc.x = game.u.ux;
+    cc.y = game.u.uy;
+    cval = bcsign(sobj);
+    dam = Math.trunc((2 * (rn1(3, 3) + 2 * cval) + 1) / 3);
+    useup(sobj);
+    /* *sobjp = 0: the scroll is gone; seffects() returns that below */
+    if (!already_known)
+        learnscrolltyp(ONAMES.SCR_FIRE);
+    if (confused) {
+        if (Underwater()) {
+            await pline(`A little ${hliquid('water')} around you vaporizes.`);
+        }
+        else if (Fire_resistance()) {
+            await shieldeff(game.u.ux, game.u.uy);
+            monstseesu(M_SEEN_FIRE);
+            if (!Blind())
+                await pline(`Oh, look, what a pretty fire in your ${
+                    makeplural(body_part(HAND))}.`);
+            else
+                await You_feel(`a pleasant warmth in your ${
+                    makeplural(body_part(HAND))}.`);
+        } else {
+            monstunseesu(M_SEEN_FIRE);
+            await pline_The(`scroll catches fire and you burn your ${
+                makeplural(body_part(HAND))}.`);
+            await losehp(1, 'scroll of fire', KILLED_BY_AN);
+        }
+        return;
+    }
+    if (Underwater()) {
+        await pline_The(`${hliquid('water')} around you vaporizes violently!`);
+    } else {
+        if (sblessed) {
+            if (!already_known)
+                await pline('This is a scroll of fire!');
+            dam *= 5;
+            await pline('Where do you want to center the explosion?');
+            /* getpos_sethilite(display_stinking_cloud_positions,
+               can_center_cloud): the highlight pass draws nothing */
+            await getpos(cc, true, 'the desired position');
+            if (!can_center_cloud(cc.x, cc.y)) {
+                /* try to reach too far, get burned */
+                cc.x = game.u.ux;
+                cc.y = game.u.uy;
+            }
+        }
+        if (u_at(cc.x, cc.y)) {
+            await pline_The('scroll erupts in a tower of flame!');
+            (game.iflags ||= {}).last_msg = PLNMSG_TOWER_OF_FLAME; /* for explode() */
+            await burn_away_slime();
+        }
+    }
+    const ZT_SPELL_O_FIRE = 11; /* explained in splatter_burning_oil(explode.c) */
+    await explode(cc.x, cc.y, ZT_SPELL_O_FIRE, dam, OCLASSES.SCROLL_CLASS, EXPL_FIERY);
+}
+
 // src/read.c:1115 seffect_enchant_armor()
 async function seffect_enchant_armor(sobj) {
     let s;
@@ -2458,7 +2536,7 @@ export async function litroom(on, obj) {
      *  that we don't remember them if they are out of sight.
      */
     if (game.u.uball && !on && !Blind())
-        note_unported_read('litroom:move_bc'); /* ball.c move_bc() */
+        move_bc(1, 0, game.u.uball.ox, game.u.uball.oy, game.u.uchain.ox, game.u.uchain.oy);
 
     if (Is_rogue_level(game.u.uz)) {
         /* Can't use do_clear_area because MAX_RADIUS is too small */
@@ -2493,7 +2571,7 @@ export async function litroom(on, obj) {
 
         /* replace ball&chain */
         if (game.u.uball && !on)
-            note_unported_read('litroom:move_bc'); /* ball.c move_bc() */
+            move_bc(0, 0, game.u.uball.ox, game.u.uball.oy, game.u.uchain.ox, game.u.uchain.oy);
     }
 
     game.vision_full_recalc = 1; /* delayed vision recalculation */

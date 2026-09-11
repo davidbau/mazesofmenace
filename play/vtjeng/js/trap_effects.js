@@ -32,9 +32,11 @@ import {
     FAILEDUNTRAP,
     FIRE_TRAP,
     FIRE_RES,
+    FAINTED,
     FOOT,
     FORCEBUNGLE,
     FORCETRAP,
+    FROMOUTSIDE,
     HALF_PHDAM,
     HALLUC,
     HALLUC_RES,
@@ -52,6 +54,7 @@ import {
     LEVEL_TELEP,
     MAGIC_PORTAL,
     MAGIC_TRAP,
+    INVIS,
     PIT,
     POLY_TRAP,
     RIGHT_SIDE,
@@ -60,6 +63,7 @@ import {
     ROLLING_BOULDER_TRAP,
     RUST_TRAP,
     SLEEP_RES,
+    SEE_INVIS,
     M_SEEN_SLEEP,
     SLP_GAS_TRAP,
     SPIKED_PIT,
@@ -132,6 +136,7 @@ import {
     mons_see_trap,
     monstseesu,
     monstunseesu,
+    pm_invisible,
     passes_rocks,
     passes_walls,
     touch_petrifies,
@@ -179,6 +184,7 @@ import {
     Flying,
     Levitation,
     deltrap,
+    unconscious,
     set_utrap,
     t_at,
     trapname,
@@ -190,6 +196,7 @@ import { burn_floor_objects, destroy_items } from './zap_destroy_items.js';
 import { ignite_items } from './apply_catch_lit.js';
 import { is_ice } from './terrain.js';
 import { fall_asleep } from './timeout.js';
+import { self_invis_message } from './potion.js';
 import { note_unported } from './unported.js';
 import { dmgval } from './weapon.js';
 import {
@@ -947,9 +954,9 @@ async function trapeffect_slp_gas_trap(mtmp, trap, _trflags, env) {
 // about touches its own wielded corpse; trapeffect_pit()'s monster arm below
 // is the caller this port was written for.
 //
-// Only the guard is ported. The body needs minstapetrify(), corpse_xname()
-// and mwepgone(), none of which is ported, so it stops the scan. The stop is
-// one conjunct wider than C's condition: monst.h:279 resists_ston() expands to
+// Only the guard is ported. The body needs minstapetrify() and corpse_xname(),
+// neither of which is ported, so it stops the scan. The stop is one conjunct
+// wider than C's condition: monst.h:279 resists_ston() expands to
 // mondata.c Resists_Elem() (129-231), which is not ported either, so the port
 // also stops for a stone-resistant monster, which C would let walk away.
 function mselftouch(mon, _arg, _byplayer, env) {
@@ -1067,12 +1074,43 @@ function Hallucination(state) {
 //   fate < 10: blindness, deafness, monster creation -- refused (needs
 //     make_blinded, incr_itimeout, Soundeffect, makemon, wake_nearto).
 //   fate 10: no-op.
-//   fate 11: toggle HInvis -- refused (needs self_invis_message, HInvis
-//     toggle, pm_invisible, See_invisible, EInvis).
+//   fate 11: toggle HInvis, including self_invis_message() and redraw.
 //   fate 12: dofiretrap() -- refused (not ported).
 //   fate 13-18: odd-feelings messages, fully ported.
 //   fate 19: tame nearby monsters -- refused (needs adjattrib, tamedog).
 //   fate 20: uncurse items -- refused (needs seffects with SPE_REMOVE_CURSE).
+
+// C ref: youprop.h:198 Invis, the intrinsic or extrinsic invisibility source
+// minus its block; :152 See_invisible has no block term. Each C file spells
+// these macros out beside its callers, so domagictrap keeps local copies.
+function Invis(state) {
+    const property = state.u?.uprops?.[INVIS];
+    return Boolean((property?.intrinsic || property?.extrinsic)
+        && !property?.blocked);
+}
+
+function See_invisible(state) {
+    const property = state.u?.uprops?.[SEE_INVIS];
+    return Boolean(property?.intrinsic || property?.extrinsic);
+}
+
+// C ref: youprop.h:399 Unaware and pline.c You_hear() (435-451). This local
+// composition keeps the trap effect independent from monmove.js, which imports
+// trap_effects.js for the monster movement dispatcher.
+function heroUnaware(state) {
+    return Math.trunc(state.multi ?? 0) < 0
+        && (unconscious(state) || state.u?.uhs === FAINTED);
+}
+
+function magicTrapHear(line, state) {
+    if ((heroIsDeaf(state) && !heroUnaware(state))
+        || !state.flags?.acoustics)
+        return null;
+    if (state.u?.uinwater) return `You barely hear ${line}`;
+    if (heroUnaware(state)) return `You dream that you hear ${line}`;
+    return `You hear ${line}`;
+}
+
 async function domagictrap(env) {
     const { state } = env;
     const random = env.random;
@@ -1092,10 +1130,40 @@ async function domagictrap(env) {
             /* sometimes nothing happens */
             break;
         case 11: /* toggle intrinsic invisibility */
-            // Needs self_invis_message(), HInvis toggle, pm_invisible(),
-            // See_invisible, EInvis.
-            unsupported('magic trap invisibility toggle');
-            break; // unreachable; unsupported throws
+            // Soundeffect(se_low_hum, 100) is a tty-sound hook that writes
+            // nothing. You_hear() still applies its Deaf and acoustics gates.
+            {
+                const heard = magicTrapHear('a low hum.', state);
+                if (heard !== null) await message(heard, state);
+            }
+            const invisProp = state.u.uprops[INVIS];
+            if (!Invis(state)) {
+                if (!heroIsBlind(state))
+                    await self_invis_message(state, { message });
+            } else if (!invisProp.extrinsic
+                       && !pm_invisible(state.youmonst.data)) {
+                if (!heroIsBlind(state)) {
+                    if (!See_invisible(state))
+                        await message('You can see yourself again!', state);
+                    else
+                        await message("You can't see through yourself anymore.", state);
+                }
+            } else {
+                await message(
+                    `You feel a little more ${invisProp.intrinsic
+                        ? 'obvious' : 'hidden'} now.`,
+                    state,
+                );
+            }
+            // C preserves any existing HInvis value only when it is false;
+            // the true arm clears it before redraw.
+            invisProp.intrinsic = invisProp.intrinsic
+                ? 0 : invisProp.intrinsic | FROMOUTSIDE;
+            requireTrapOperation(env, 'redraw')(
+                state.u.ux,
+                state.u.uy,
+            );
+            break;
         case 12: /* a flash of fire */
             // Needs dofiretrap(), which is not ported.
             unsupported('magic trap fire');
@@ -1296,6 +1364,25 @@ async function trapeffect_level_telep(mtmp, trap, trflags, env) {
         },
     );
     return result === 'moved' ? Trap_Moved_Mon : Trap_Effect_Finished;
+}
+
+// C ref: trap.c trapeffect_magic_portal() (2710-2724). The hero arm remains
+// behind preflight_dotrap(), which excludes MAGIC_PORTAL before dotrap() can
+// call feeltrap() or the unported domagicportal(). A monster takes the same
+// level-migration path as LEVEL_TELEP, with mlevel_tele_trap() selecting the
+// portal-specific endgame gate and MIGR_PORTAL mode.
+async function trapeffect_magic_portal(mtmp, trap, trflags, env) {
+    const { state } = env;
+    if (mtmp === state.youmonst) {
+        // Keep the direct selector call explicit as well as the production
+        // preflight boundary. C calls feeltrap() before domagicportal(); the
+        // latter remains unported, so this branch cannot continue.
+        seetrap(trap, env);
+        const unsupported = requireTrapOperation(env, 'unsupported');
+        unsupported('domagicportal()');
+        return Trap_Effect_Finished; // unreachable
+    }
+    return trapeffect_level_telep(mtmp, trap, trflags, env);
 }
 
 // C ref: trap.c trapeffect_fire_trap() (1729-1821), monster arm
@@ -1759,7 +1846,6 @@ const UNPORTED_TRAP_EFFECTS = Object.freeze(new Set([
     ARROW_TRAP,
     RUST_TRAP,
     SPIKED_PIT,
-    MAGIC_PORTAL,
     WEB,
     STATUE_TRAP,
     ANTI_MAGIC,
@@ -1794,6 +1880,8 @@ export async function trapeffect_selector(monster, trap, trflags, env) {
         return trapeffect_hole(monster, trap, trflags, env);
     if (trap.ttyp === LEVEL_TELEP)
         return trapeffect_level_telep(monster, trap, trflags, env);
+    if (trap.ttyp === MAGIC_PORTAL)
+        return trapeffect_magic_portal(monster, trap, trflags, env);
     if (trap.ttyp === TELEP_TRAP)
         return trapeffect_telep_trap(monster, trap, trflags, env);
     if (trap.ttyp === ROLLING_BOULDER_TRAP)

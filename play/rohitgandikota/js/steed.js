@@ -80,6 +80,10 @@ import { objdescr_is } from './o_init.js';
 import { remove_worn_item, mpickobj } from './steal.js';
 import { freeinv } from './invent.js';
 import { YMonnam } from './do_name.js';
+import { mhe } from './do_name.js';
+import { trapname } from './trap.js';
+import { Lev_at_will } from './youprop.js';
+import { use_skill } from './weapon.js';
 
 // src/steed.c:17 rider_cant_reach().
 export async function rider_cant_reach() {
@@ -426,7 +430,10 @@ export async function mount_steed(mtmp, force) {
         return false;
     }
     if (mtmp.mtrapped) {
-        note_unported_steed('mount:trapped_steed');
+        const t = t_at(mtmp.mx, mtmp.my);
+
+        await You_cant(`mount ${mon_nam(mtmp)} while ${mhe(mtmp)}'s trapped in ${
+            an(trapname(t.ttyp, false))}.`);
         return false;
     }
     if (!can_saddle(mtmp) || !can_ride(mtmp)) {
@@ -436,9 +443,9 @@ export async function mount_steed(mtmp, force) {
 
     /* Is the player impaired? */
     const ptr = mtmp.data;
-    if (!force && !is_floater(ptr) && !is_flyer(ptr)
-        && game.u.uprops?.LEVITATION) {
-        note_unported_steed('mount:levitation');
+    if (!force && !is_floater(ptr) && !is_flyer(ptr) && Levitation()
+        && !Lev_at_will()) {
+        await You(`cannot reach ${mon_nam(mtmp)}.`);
         return false;
     }
     if (!force && game.u.uarm && is_metallic(game.u.uarm)
@@ -480,8 +487,13 @@ export async function mount_steed(mtmp, force) {
     if (game.u.uwep && is_pole(game.u.uwep))
         game.unweapon = false;
     game.u.usteed = mtmp;
-    if (game.u.uprops?.STEALTH)
-        note_unported_steed('mount:steed_vs_stealth');
+    {
+        const was_stealthy = Stealth();
+
+        steed_vs_stealth();
+        if (was_stealthy && !Stealth())
+            await You("aren't stealthy anymore.");
+    }
     remove_monster(mtmp.mx, mtmp.my);
     await teleds(mtmp.mx, mtmp.my, TELEDS_ALLOW_DRAG);
     (game.disp ||= {}).botl = true;
@@ -489,13 +501,13 @@ export async function mount_steed(mtmp, force) {
 }
 
 // src/steed.c:386 exercise_steed() — riding skill accrues per 100 turns.
-export function exercise_steed() {
+export async function exercise_steed() {
     if (!game.u.usteed)
         return;
     game.u.urideturns = (game.u.urideturns || 0) + 1;
     if (game.u.urideturns >= 100) {
         game.u.urideturns = 0;
-        note_unported_steed('exercise_steed:use_skill');
+        await use_skill(P_RIDING, 1);
     }
 }
 

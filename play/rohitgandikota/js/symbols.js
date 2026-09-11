@@ -45,14 +45,29 @@ export const primary_symsets = [
       'special line-drawing characters used for walls', handling: H_IBM },
     { index: 3, name: 'IBMGraphics_1', description: '', handling: H_IBM },
     { index: 4, name: 'IBMGraphics_2', description: '', handling: H_IBM },
+    /* "Restrictions: rogue" sets are offered for the rogue level only */
+    { index: 5, name: 'RogueIBM', description: '', handling: H_IBM,
+      rogue: true },
+    { index: 6, name: 'RogueEpyx', description:
+      'rogue level color symbol set like Epyx Rogue', handling: H_IBM,
+      rogue: true },
+    { index: 7, name: 'RogueWindows', description: '', handling: H_IBM,
+      rogue: true },
+    /* "Restrictions: primary" sets are not offered for the rogue level */
     { index: 8, name: 'curses', description:
-      'approximation of IBMgraphics using DECgraphics', handling: H_DEC },
+      'approximation of IBMgraphics using DECgraphics', handling: H_DEC,
+      primary: true },
     { index: 9, name: 'DECgraphics', description:
-      'special line-drawing characters used for walls', handling: H_DEC },
+      'special line-drawing characters used for walls', handling: H_DEC,
+      primary: true },
+    /* MAC handling is skipped by do_symset() without MAC_GRAPHICS_ENV */
+    { index: 10, name: 'MACgraphics', description: '', handling: H_MAC },
     { index: 11, name: 'Enhanced1', description:
-      'Enhanced with Unicode glyphs and 24-bit color', handling: H_UTF8 },
+      'Enhanced with Unicode glyphs and 24-bit color', handling: H_UTF8,
+      primary: true },
     { index: 12, name: 'Enhanced2', description:
-      'Enhanced with more Unicode glyphs and 24-bit color', handling: H_UTF8 },
+      'Enhanced with more Unicode glyphs and 24-bit color', handling: H_UTF8,
+      primary: true },
     { index: 13, name: 'AmigaFont', description:
       'Amiga hack.font line-drawing and effect characters', handling: H_UNK },
 ];

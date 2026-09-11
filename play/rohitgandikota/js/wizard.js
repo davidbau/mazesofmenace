@@ -23,6 +23,7 @@ import { attacktype, is_covetous } from './mondata.js';
 import { inhishop, inhistemple } from './monmove.js';
 import { builds_up } from './dungeon.js';
 import { DEADMONSTER, helpless } from './monst.js';
+import { rn1 } from './rng.js';
 
 // src/wizard.c:61 amulet() — carrying the Amulet: a worn or wielded Amulet
 // senses the portal (rn2(15) gate), and while the Wizard of Yendor is in
@@ -529,6 +530,16 @@ const random_malediction = [
     'Verily, thou shalt be one dead',
 ];
 
+// src/wizard.c:815 wizdeadorgone() — the Wizard of Yendor died or left:
+// one fewer Wizard about, and the demigod harassment clock starts.
+export function wizdeadorgone() {
+    (game.context ||= {}).no_of_wizards = (game.context.no_of_wizards | 0) - 1;
+    if (!game.u.uevent?.udemigod) {
+        (game.u.uevent ||= {}).udemigod = true;
+        game.u.udg_cnt = rn1(250, 50);
+    }
+}
+
 // src/wizard.c:846 cuss(), spoken taunts for the Wizard, demons, and minions.
 export async function cuss(mtmp) {
     const { Deaf } = await import('./youprop.js');
@@ -741,7 +752,7 @@ export async function nasty(summoner) {
                                 vitals.mvflags &= ~MFLAGS.G_EXTINCT;
                             mtmp.mhp = 0;
                             discard_minvent(mtmp, true);
-                            mongone(mtmp);
+                            await mongone(mtmp);
                             mtmp = null;
                         }
                     }

@@ -1779,7 +1779,13 @@ export function create_monster(m, croom) {
            closure hand over replacements via invent_carrying_monster. Kept
            LAST in the mtmp block, as in C, so its draws follow any others. */
         if (!(m.has_invent & DEFAULT_INVENT)) {
-            mdrop_special_objs(mtmp);
+            /* create_monster() is a synchronous Lua binding, so the
+               rescue arm's awaits cannot be waited for here; only the
+               obj_resists() draws run before that arm, and no des monster
+               with a custom inventory gets a unique object from makemon
+               (the nemesis' Bell, Vlad's Candelabrum and the Wizard's
+               wand of digging all come with the default inventory) */
+            void mdrop_special_objs(mtmp);
             discard_minvent(mtmp, true);
         }
         if (m.has_invent & CUSTOM_INVENT) {

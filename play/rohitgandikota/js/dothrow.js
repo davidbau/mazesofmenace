@@ -184,6 +184,25 @@ import { u_wipe_engr } from './engrave.js';
 import { is_quest_artifact } from './questpgr.js';
 import { prinv } from './invent.js';
 import { P_DAGGER } from './const.js';
+import { stone_missile } from './obj.js';
+import { passes_rocks } from './uhitm.js';
+import { dmgval } from './weapon.js';
+import { artifact_hit } from './artifact.js';
+import { WT_TO_DMG, STONING, FACE, KILLED_BY_AN, TIMEOUT } from './const.js';
+import { Hate_silver } from './youprop.js';
+import { poly_when_stoned, mon_hates_blessings, can_blnd } from './mondata.js';
+import { polymon } from './polyself.js';
+import { make_blinded, potionhit } from './potion.js';
+import { done } from './end.js';
+import { has_ceiling } from './dungeon.js';
+import { helm_simple_name, hard_helmet } from './do_wear.js';
+import { rn1 } from './rng.js';
+import { hit } from './zap.js';
+import { thesimpleoname } from './objnam.js';
+import { dropy } from './do.js';
+import { spec_abon } from './artifact.js';
+import { drag_ball, move_bc, drop_ball } from './ball.js';
+import { Punished } from './youprop.js';
 // include/mondata.h:255 befriend_with_obj(). This predicate is checked before
 // dogfood(), so a domestic monster offered normal food does not spend
 // dogfood()'s obj_resists draw until tamedog() inspects the meal.
@@ -397,12 +416,15 @@ export async function throw_obj(obj, shotlimit) {
     m_shot.s = false;
 
     /* src/dothrow.c:290 — undo a pre-existing object split if the leftover
-       stack is one of its halves; unsplitobj is not ported and no current
-       flow leaves this true. */
+       stack is one of its halves */
     if (obj && obj !== game.u.uquiver && save_osplit
         && (obj.o_id === save_osplit.parent_oid
-            || obj.o_id === save_osplit.child_oid))
-        note_unported_dothrow('throw_obj:unsplitobj');
+            || obj.o_id === save_osplit.child_oid)) {
+        /* futureproofing: objsplit will have been affected if partial stack
+           was thrown; objects will have been split off stack to throw. */
+        (game.context ||= {}).objsplit = save_osplit;
+        await unsplitobj(obj);
+    }
     return res;
 }
 
@@ -636,10 +658,13 @@ export async function throwit(obj, wep_mask, twoweap = false,
     if ((obj.cursed || obj.greased) && (u.dx || u.dy) && !rn2(7)) {
         let slipok = true;
         if (ammo_and_launcher(obj, game.u.uwep)) {
-            note_unported_dothrow('throwit:misfire_msg');
+            await pline(`${Tobjnam(obj, 'misfire')}!`);
         } else {
+            /* only slip if it's greased or meant to be thrown */
             if (obj.greased || throwing_weapon(obj))
-                note_unported_dothrow('throwit:slip_msg');
+                /* BUG: this message is grammatically incorrect if obj has
+                   a plural name; greased gloves or boots for instance. */
+                await pline(`${Tobjnam(obj, 'slip')} as you throw it!`);
             else
                 slipok = false;
         }
@@ -684,23 +709,7 @@ export async function throwit(obj, wep_mask, twoweap = false,
                 ceiling(u.ux, u.uy)} and returns to your hand!`);
             obj = await return_throw_to_inv(obj, wep_mask, twoweap, oldslot);
         } else if (u.dz < 0) {
-            const hitsroof = !!rn2(5) && !Underwater();
-            if (obj.oclass === OCLASSES.POTION_CLASS) {
-                if (hitsroof && breaktest(obj)) {
-                    await pline(`${upstart(doname(obj))} hits the ${
-                        ceiling(u.ux, u.uy)}.`);
-                    await break_potion_after_test(obj);
-                } else {
-                    await pline(`${upstart(doname(obj))} ${
-                        hitsroof ? 'hits' : 'almost hits'} the ${
-                        ceiling(u.ux, u.uy)}, then falls back on top of your ${
-                        body_part(HEAD)}.`);
-                    const { potionhit } = await import('./potion.js');
-                    await potionhit(game.youmonst, obj, POTHIT_HERO_THROW);
-                }
-            } else {
-                note_unported_dothrow('throwit:vertical_throw');
-            }
+            await toss_up(obj, !!rn2(5) && !Underwater());
         } else if (u.dz > 0 && u.usteed && obj.oclass === OCLASSES.POTION_CLASS
                    && rn2(6)) {
             const { potionhit } = await import('./potion.js');
@@ -928,7 +937,7 @@ export async function throwit(obj, wep_mask, twoweap = false,
 
     stackobj(obj);
     if (obj === u.uball)
-        note_unported_dothrow('throwit:drop_ball'); /* drop_ball(bx, by) */
+        await drop_ball(bx, by);
     if (cansee(bx, by))
         newsym(bx, by);
     if (obj_sheds_light(obj))
@@ -1116,7 +1125,7 @@ export async function thitmonst(mon, obj) {
                 tmp += (u.uwep.spe || 0) - greatest_erosion(u.uwep);
                 tmp += weapon_hit_bonus(u.uwep);
                 if (u.uwep.oartifact)
-                    note_unported_dothrow('thitmonst:launcher_artifact');
+                    tmp += spec_abon(u.uwep, mon);
             }
         } else {
             if (obj.otyp === ONAMES.BOOMERANG)
@@ -1241,52 +1250,181 @@ export function breaktest(obj) {
     }
 }
 
-// src/dothrow.c:breakmsg(), breakobj(), and hero_breaks(), narrowed to
-// potions. Vertical throws call this after breaktest() selects breakage.
-async function break_potion_after_test(obj, impactX = null, impactY = null) {
-    const wasOnFloor = obj.where === OBJ_FLOOR;
-    const floorX = obj.ox, floorY = obj.oy;
-    const x = wasOnFloor ? floorX
-            : impactX === null ? game.u.ux : impactX;
-    const y = wasOnFloor ? floorY
-            : impactY === null ? game.u.uy : impactY;
 
-    if (Blind())
-        await You_hear('something shatter!');
-    else
-        await pline(`${upstart(doname(obj))} shatters!`);
+// src/dothrow.c:1256 toss_up() — an object thrown upward comes back down on
+// the hero's head. Returns FALSE if the object was destroyed.
+export async function toss_up(obj, hitsroof) {
+    let action;
+    const otyp = obj.otyp;
+    const petrifier = ((otyp === ONAMES.EGG || otyp === ONAMES.CORPSE)
+                       && ismnum(obj.corpsenm)
+                       && touch_petrifies(game.mons[obj.corpsenm]));
+    /* note: obj->quan == 1 */
 
-    obj.in_use = true;
-    if (obj.otyp === ONAMES.POT_OIL && obj.lamplit) {
-        const { explode_oil } = await import('./explode.js');
-        await explode_oil(obj, x, y);
-    } else if (!breathless(game.youmonst.data)
-               || haseyes(game.youmonst.data)) {
-        const wetTowel = game.u.ublindf?.otyp === ONAMES.TOWEL
-            && (game.u.ublindf.spe | 0) > 0;
-        const halfGasDamage = wetTowel || game.u.uprops?.HALF_GAS_DAMAGE;
-        if (obj.otyp !== ONAMES.POT_WATER && !halfGasDamage) {
-            if (!breathless(game.youmonst.data))
-                await You('smell a peculiar odor...');
-            else {
-                const count = eyecount(game.youmonst.data);
-                let eyes = body_part(EYE);
-                if (count !== 1)
-                    eyes = makeplural(eyes);
-                await Your(`${eyes} ${count === 1 ? 'waters' : 'water'}.`);
+    if (!has_ceiling(game.u.uz)) {
+        action = 'flies up into'; /* into "the sky" or "the water above" */
+    } else if (hitsroof) {
+        if (breaktest(obj)) {
+            await pline(`${Doname2(obj)} hits the ${ceiling(game.u.ux, game.u.uy)}.`);
+            await breakmsg(obj, !Blind());
+            /* crackable armor will return True for breaktest() but will
+               usually return False for breakobj() */
+            if (!await breakobj(obj, game.u.ux, game.u.uy, true, true)) {
+                await hitfloor(obj, false);
+                game.thrownobj = null;
+                return true;
             }
+            return false;
         }
-        const { potionbreathe } = await import('./potion.js');
-        await potionbreathe(obj);
+        action = 'hits';
+    } else {
+        action = 'almost hits';
     }
-    /* delobj_core() makes one final indestructibility check before obfree(). */
-    obj_resists(obj, 0, 0);
-    const { obfree, obj_extract_self } = await import('./invent.js');
-    if (wasOnFloor)
-        obj_extract_self(obj);
-    obfree(obj);
-    if (wasOnFloor)
-        newsym(floorX, floorY);
+    await pline(`${Doname2(obj)} ${action} the ${ceiling(game.u.ux, game.u.uy)
+                }, then falls back on top of your ${body_part(HEAD)}.`);
+
+    /* object now hits you */
+
+    if (obj.oclass === OCLASSES.POTION_CLASS) {
+        await potionhit(game.youmonst, obj, POTHIT_HERO_THROW);
+    } else if (breaktest(obj)) {
+        let blindinc;
+
+        /* need to check for blindness result prior to destroying obj */
+        blindinc = ((otyp === ONAMES.CREAM_PIE || otyp === ONAMES.BLINDING_VENOM)
+                    /* AT_WEAP is ok here even if attack type was AT_SPIT */
+                    && can_blnd(game.youmonst, game.youmonst, ATTKS.AT_WEAP, obj))
+                       ? rnd(25)
+                       : 0;
+        await breakmsg(obj, !Blind());
+        if (await breakobj(obj, game.u.ux, game.u.uy, true, true))
+            obj = null; /* it's now gone */
+
+        switch (otyp) {
+        case ONAMES.EGG:
+            if (petrifier && !Stone_resistance()
+                && !(poly_when_stoned(game.youmonst.data)
+                     && await polymon(PMNAMES.PM_STONE_GOLEM))) {
+                /* egg ends up "all over your face"; perhaps
+                   visored helmet should still save you here */
+                if (game.u.uarmh)
+                    await Your(`${helm_simple_name(game.u.uarmh)} fails to protect you.`);
+                return await toss_up_petrify(obj);
+            }
+            /* FALLTHRU */
+        case ONAMES.CREAM_PIE:
+        case ONAMES.BLINDING_VENOM:
+            await pline(`You've got it all over your ${body_part(FACE)}!`);
+            if (blindinc) {
+                if (otyp === ONAMES.BLINDING_VENOM && !Blind())
+                    await pline('It blinds you!');
+                game.u.ucreamed = (game.u.ucreamed | 0) + blindinc;
+                await make_blinded(((game.u.intrinsic?.HBlinded | 0) & TIMEOUT) + blindinc, false);
+                if (!Blind())
+                    await Your('vision quickly clears.'); /* Your1(vision_clears) */
+            }
+            break;
+        default:
+            break;
+        }
+        if (!obj)
+            return false;
+        /* 'obj' still exists, so drop it and return True */
+        await hitfloor(obj, false);
+        game.thrownobj = null;
+    } else if (harmless_missile(obj)) {
+        await pline("It doesn't hurt.");
+        await hitfloor(obj, false);
+        game.thrownobj = null;
+    } else { /* neither potion nor other breaking object */
+        const material = game.objects[otyp].oc_material;
+        const is_silver = (material === MATERIALS.SILVER);
+        const less_damage = (hard_helmet(game.u.uarmh)
+                             && (!is_silver || !Hate_silver()));
+        let harmless = (stone_missile(obj)
+                        && passes_rocks(game.youmonst.data));
+        let artimsg = false;
+        let dmg = dmgval(obj, game.youmonst);
+
+        if (obj.oartifact && !harmless) {
+            /* need a fake die roll here; rn1(18,2) avoids 1 and 20 */
+            const dmgptr = { v: dmg };
+            artimsg = await artifact_hit(null, game.youmonst, obj, dmgptr, rn1(18, 2));
+            dmg = dmgptr.v;
+        }
+
+        if (!dmg) { /* probably wasn't a weapon; base damage on weight */
+            dmg = Math.trunc((obj.owt + (WT_TO_DMG - 1)) / WT_TO_DMG);
+            dmg = (dmg <= 1) ? 1 : rnd(dmg);
+            if (dmg > 6)
+                dmg = 6;
+            /* since obj is a non-weapon, bonuses for silver and blessed
+               haven't been applied (otherwise '!dmg' test will fail when
+               they're applicable here); we don't have to worry about
+               dmgval()'s artifact light against gremlin or axe against
+               woody creature since both involve weapons; hero-as-shade is
+               hypothetical because hero can't polymorph into that form */
+            if (game.youmonst.data === game.mons[PMNAMES.PM_SHADE] && !is_silver)
+                dmg = 0;
+            if (obj.blessed && mon_hates_blessings(game.youmonst))
+                dmg += rnd(4);
+            if (is_silver && Hate_silver())
+                dmg += rnd(20);
+        }
+        if (dmg > 1 && less_damage)
+            dmg = 1;
+        if (dmg > 0)
+            dmg += (game.u.udaminc | 0);
+        if (dmg < 0)
+            dmg = 0; /* beware negative rings of increase damage */
+        dmg = Maybe_Half_Phys(dmg);
+
+        if (game.u.uarmh) {
+            /* note: 'harmless' and 'petrifier' are mutually exclusive */
+            if ((less_damage && dmg < (Upolyd(game.u) ? game.u.mh : game.u.uhp)) || harmless) {
+                if (!artimsg) {
+                    if (!harmless) /* !harmless => less_damage here */
+                        await pline('Fortunately, you are wearing a hard helmet.');
+                    else
+                        await pline(`Unfortunately, you are wearing ${
+                                    an(helm_simple_name(game.u.uarmh))}.`); /* helm or hat */
+                }
+
+            /* helmet definitely protects you when it blocks petrification */
+            } else if (!petrifier) {
+                if (game.flags.verbose)
+                    await Your(`${helm_simple_name(game.u.uarmh)} does not protect you.`);
+            }
+            /* stone missile against hero in xorn form would have been
+               harmless, but hitting a worn helmet negates that */
+            harmless = false;
+        } else if (petrifier && !Stone_resistance()
+                   && !(poly_when_stoned(game.youmonst.data)
+                        && await polymon(PMNAMES.PM_STONE_GOLEM))) {
+            return await toss_up_petrify(obj);
+        }
+        if (is_silver && Hate_silver())
+            await pline_The('silver sears you!');
+        if (harmless)
+            await hit(thesimpleoname(obj), game.youmonst, " but doesn't hurt.");
+
+        await hitfloor(obj, true);
+        game.thrownobj = null;
+        if (!harmless)
+            await losehp(dmg, 'falling object', KILLED_BY_AN);
+    }
+    return true;
+}
+
+/* the `petrify:` label of src/dothrow.c toss_up(): "what goes up..." */
+async function toss_up_petrify(obj) {
+    game.killer = { format: KILLED_BY, name: 'elementary physics' };
+    await You('turn to stone.');
+    if (obj)
+        await dropy(obj); /* bypass most of hitfloor() */
+    game.thrownobj = null; /* now either gone or on floor */
+    await done(STONING);
+    return obj ? true : false;
 }
 
 // src/dothrow.c:1430 throwing_weapon() — a weapon meant to be thrown.
@@ -1486,7 +1624,6 @@ const Maybe_Half_Phys = (dmg) =>
     (game.u.intrinsic?.HHalf_physical_damage || game.u.uprops?.HALF_PHDAM)
         ? Math.trunc((dmg + 1) / 2) : dmg;
 /* include/youprop.h */
-const Punished = () => !!game.u.uball;
 const Wwalking = () => !!(game.u.intrinsic?.HWwalking || game.u.uprops?.WWALKING);
 const Swimming = () => !!(game.u.intrinsic?.HSwimming || game.u.uprops?.SWIMMING);
 const Passes_walls = () => !!(game.u.intrinsic?.HPasses_walls || game.u.uprops?.WALLWALK);
@@ -1607,8 +1744,11 @@ export async function hurtle_step(arg, x, y) {
     /* caller has already determined that dragging the ball is allowed;
        if ball is carried we might still need to drag the chain */
     if (Punished()) {
-        /* drag_ball()/move_bc() are ball.c, not ported */
-        note_unported_dothrow('hurtle_step:drag_ball');
+        const bc = { bc_control: 0, ballx: 0, bally: 0, chainx: 0, chainy: 0,
+                     cause_delay: false };
+
+        if (await drag_ball(x, y, bc, true))
+            move_bc(0, bc.bc_control, bc.ballx, bc.bally, bc.chainx, bc.chainy);
     }
 
     ox = game.u.ux;

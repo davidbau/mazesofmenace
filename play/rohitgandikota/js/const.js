@@ -250,6 +250,7 @@ export function STR19(x) { return 100 + x; } // 19 and above
 // C ref: zap.h — BZ_OFS_AD(x) = (x) - 1
 export function BZ_OFS_AD(adtyp) { return adtyp - 1; }
 export function BZ_U_BREATH(bztyp) { return 20 + bztyp; }  /* 20..29 */
+export function BZ_M_SPELL(bztyp) { return -10 - bztyp; }  /* -19..-10 */
 
 // Room types (mkroom.h)
 export const OROOM = 0;
@@ -1252,6 +1253,11 @@ export const WC_POPUP_DIALOG = 0x01000000;
 export const WC_SCROLL_AMOUNT = 0x02000000;
 export const WC_EIGHT_BIT_IN = 0x04000000;
 export const WC_PERM_INVENT = 0x08000000;
+// include/wintype.h:181 enum inv_modes and :194 the 'perminv_mode' settings
+export const InvNormal = 1, InvShowGold = 2, InvSparse = 4, InvInUse = 8;
+export const InvOptNone = 0, InvOptOn = InvNormal, InvOptFull = InvShowGold,
+             InvOptOn_grid = InvNormal | InvSparse,
+             InvOptFull_grid = InvShowGold | InvSparse, InvOptInUse = InvInUse;
 export const WC_MAP_MODE = 0x10000000;
 export const WC_WINDOWCOLORS = 0x20000000;
 export const WC_PLAYER_SELECTION = 0x40000000;
@@ -1971,6 +1977,9 @@ export const A_CG_HELM_OFF = 2;
 // Runtime fields:
 // - drag_ball control mask in punishment movement
 // - map rectangle generation limits in room splitting
+// include/hack.h:110 enum bcargs
+export const override_restriction = -1;
+
 export const BC_BALL = 0x01;
 export const BC_CHAIN = 0x02;
 export const XLIM = 4;

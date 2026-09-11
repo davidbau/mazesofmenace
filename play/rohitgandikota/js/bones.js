@@ -728,7 +728,7 @@ export async function getbones_load() {
                 ? true : peace_minded(m.data);
         }
         set_malign(m);
-        restore_cham(m);
+        await restore_cham(m);
         hide_monst(m);
     }
 

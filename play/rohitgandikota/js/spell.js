@@ -91,6 +91,9 @@ import { unturn_dead } from './zap.js';
 import { Maybe_Half_Phys } from './do.js';
 import { tele } from './teleport.js';
 import { aggravate } from './wizard.js';
+import { impossible } from './pline.js';
+import { tty_add_menu_str } from './tty/wintty.js';
+import { strcmpi } from './hacklib.js';
 
 // src/spell.c — NO_SPELL sentinel and the spell list accessor.
 const NO_SPELL = 0;
@@ -129,10 +132,9 @@ export function initialspell(obj) {
             break;
 
     if (i === MAXSPELL) {
-        note_unported_spell('initialspell:too many spells');
+        void impossible('Too many spells memorized!');
     } else if (spellid(i) !== NO_SPELL) {
-        /* initial inventory should not contain duplicate spellbooks */
-        note_unported_spell('initialspell:duplicate');
+        void impossible(`Spell ${OBJ_NAME(game.objects[otyp])} already known.`);
     } else {
         (game.spl_book ||= [])[i] = {
             sp_id: otyp,
@@ -418,7 +420,7 @@ async function learn() {
 
     let faded_to_blank = false;
     if (i === MAXSPELL) {
-        note_unported_spell('learn:too_many_spells');
+        void impossible('Too many spells memorized!');
     } else if (spellid(i) === booktype) {
         if ((book.spestudied | 0) > MAX_SPELL_STUDY) {
             await pline('This spellbook is too faint to be read any more.');
@@ -1132,8 +1134,7 @@ export async function spelleffects(spell_otyp, atme, force) {
         await cast_chain_lightning();
         break;
     default:
-        /* impossible("Unknown spell %d attempted.") */
-        note_unported_spell('spelleffects:unknown');
+        void impossible(`Unknown spell ${otyp} attempted.`);
         obfree(pseudo);
         return ECMD_OK;
     }
@@ -1182,7 +1183,7 @@ export function tport_spell(what) {
             break;
     }
     if (i === MAXSPELL) {
-        note_unported_spell('tport_spell:spellbook full');
+        void impossible('tport_spell: spellbook full');
     } else if (spellid(i) === NO_SPELL) {
         if (what === HIDE_SPELL || what === REMOVESPELL) {
             savedTeleportSpell = null;
@@ -1663,6 +1664,152 @@ function spellretention(idx) {
 }
 
 // src/spell.c:2058 SPELLMENU codes (include/spell.h)
+// src/spell.c:1841 enum spl_sort_types
+const SORTBY_LETTER = 0, SORTBY_ALPHA = 1, SORTBY_LVL_LO = 2, SORTBY_LVL_HI = 3,
+      SORTBY_SKL_AL = 4, SORTBY_SKL_LO = 5, SORTBY_SKL_HI = 6, SORTBY_CURRENT = 7,
+      SORTRETAINORDER = 8;
+
+// src/spell.c:1855 spl_sortchoices[]
+const spl_sortchoices = [
+    'by casting letter',
+    'alphabetically',
+    'by level, low to high',
+    'by level, high to low',
+    'by skill group, alphabetized within each group',
+    'by skill group, low to high level within group',
+    'by skill group, high to low level within group',
+    'maintain current ordering',
+    /* a menu choice rather than a sort choice */
+    'reassign casting letters to retain current order',
+];
+
+// src/spell.c:1868 spell_cmp() — qsort callback routine
+function spell_cmp(indx1, indx2) {
+    /*
+     * gather up all of the possible parameters except spell name
+     * in advance, even though some might not be needed:
+     *  indx. = spl_orderindx[] index into spl_book[];
+     *  otyp. = spl_book[] index into objects[];
+     *  levl. = spell level;
+     *  skil. = skill group aka spell class.
+     */
+    const otyp1 = game.spl_book[indx1].sp_id, otyp2 = game.spl_book[indx2].sp_id,
+          levl1 = game.objects[otyp1].oc_level, levl2 = game.objects[otyp2].oc_level,
+          skil1 = game.objects[otyp1].oc_skill, skil2 = game.objects[otyp2].oc_skill;
+
+    switch (game.spl_sortmode | 0) {
+    case SORTBY_LETTER:
+        return indx1 - indx2;
+    case SORTBY_ALPHA:
+        break;
+    case SORTBY_LVL_LO:
+        if (levl1 !== levl2)
+            return levl1 - levl2;
+        break;
+    case SORTBY_LVL_HI:
+        if (levl1 !== levl2)
+            return levl2 - levl1;
+        break;
+    case SORTBY_SKL_AL:
+        if (skil1 !== skil2)
+            return skil1 - skil2;
+        break;
+    case SORTBY_SKL_LO:
+        if (skil1 !== skil2)
+            return skil1 - skil2;
+        if (levl1 !== levl2)
+            return levl1 - levl2;
+        break;
+    case SORTBY_SKL_HI:
+        if (skil1 !== skil2)
+            return skil1 - skil2;
+        if (levl1 !== levl2)
+            return levl2 - levl1;
+        break;
+    case SORTBY_CURRENT:
+    default:
+        return 0; /* keep current order; the C compares the element addresses */
+    }
+    return strcmpi(OBJ_NAME(game.objects[otyp1]), OBJ_NAME(game.objects[otyp2]));
+}
+
+// src/spell.c:1926 sortspells() — sort the index used to display the spell
+// list (sortmode == SORTBY_xxx), or sort the spellbook itself to make the
+// current display order stick (sortmode == SORTRETAINORDER)
+function sortspells() {
+    let i, n;
+
+    if ((game.spl_sortmode | 0) === SORTBY_CURRENT)
+        return;
+    for (n = 0; n < MAXSPELL && spellid(n) !== NO_SPELL; ++n)
+        continue;
+    if (n < 2)
+        return; /* not enough entries to need sorting */
+
+    if (!game.spl_orderindx) {
+        if ((game.spl_sortmode | 0) === SORTBY_LETTER /* default */
+            || (game.spl_sortmode | 0) === SORTRETAINORDER)
+            return;
+        game.spl_orderindx = new Array(MAXSPELL);
+        for (i = 0; i < MAXSPELL; i++)
+            game.spl_orderindx[i] = i;
+    }
+
+    if ((game.spl_sortmode | 0) === SORTRETAINORDER) {
+        const tmp_book = new Array(MAXSPELL);
+
+        /* sort spl_book[] rather than spl_orderindx[];
+           this also updates the index to reflect the new ordering (we
+           could just free it since that ordering becomes the default) */
+        for (i = 0; i < MAXSPELL; i++)
+            tmp_book[i] = game.spl_book[game.spl_orderindx[i]];
+        for (i = 0; i < MAXSPELL; i++)
+            game.spl_book[i] = tmp_book[i], game.spl_orderindx[i] = i;
+        game.spl_sortmode = SORTBY_LETTER; /* reset */
+        return;
+    }
+
+    /* qsort(spl_orderindx, n, sizeof *spl_orderindx, spell_cmp) */
+    const sorted = game.spl_orderindx.slice(0, n).sort(spell_cmp);
+    for (i = 0; i < n; i++)
+        game.spl_orderindx[i] = sorted[i];
+}
+
+// src/spell.c:1975 spellsortmenu()
+async function spellsortmenu() {
+    let let_, i, choice;
+
+    const tmpwin = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+
+    for (i = 0; i < spl_sortchoices.length; i++) {
+        if (i === SORTRETAINORDER) {
+            let_ = 'z'; /* assumes fewer than 26 sort choices... */
+            /* separate final choice from others with a blank line */
+            tty_add_menu_str(tmpwin, '');
+        } else {
+            let_ = String.fromCharCode('a'.charCodeAt(0) + i);
+        }
+        tty_add_menu(tmpwin, null, i + 1, let_, 0, ATR_NONE, NO_COLOR,
+                     spl_sortchoices[i],
+                     (i === (game.spl_sortmode | 0)) ? MENU_ITEMFLAGS_SELECTED
+                                                     : MENU_ITEMFLAGS_NONE);
+    }
+    tty_end_menu(tmpwin, 'View known spells list sorted');
+
+    const selected = await tty_select_menu(tmpwin, PICK_ONE);
+    tty_destroy_nhwindow(tmpwin);
+    if (selected.length > 0) {
+        choice = selected[0] - 1;
+        /* skip preselected entry if we have more than one item chosen */
+        if (selected.length > 1 && choice === (game.spl_sortmode | 0))
+            choice = selected[1] - 1;
+        game.spl_sortmode = choice;
+        return true;
+    }
+    return false;
+}
+
 const SPELLMENU_CAST = -2, SPELLMENU_VIEW = -1, SPELLMENU_SORT = -3;
 
 // src/spell.c:2075 dospellmenu()
@@ -1682,15 +1829,17 @@ async function dospellmenu(prompt, splaction) {
     tty_add_menu(win, null, 0, 0, 0, ATR_INVERSE, NO_COLOR, header,
                  MENU_ITEMFLAGS_NONE);
     for (let i = 0; i < MAXSPELL && spellid(i) !== NO_SPELL; i++) {
-        let buf = spellname(i).padEnd(20)
-            + '  ' + String(spellev(i)).padStart(2)
-            + '   ' + spelltypemnemonic(spell_skilltype(spellid(i))).padEnd(12)
-            + ' ' + String(100 - percent_success(i)).padStart(3) + '%'
-            + ' ' + spellretention(i).padStart(9);
+        const splnum = !game.spl_orderindx ? i : game.spl_orderindx[i];
+        let buf = spellname(splnum).padEnd(20)
+            + '  ' + String(spellev(splnum)).padStart(2)
+            + '   ' + spelltypemnemonic(spell_skilltype(spellid(splnum))).padEnd(12)
+            + ' ' + String(100 - percent_success(splnum)).padStart(3) + '%'
+            + ' ' + spellretention(splnum).padStart(9);
         if (game.wizard)
             buf += ' ' + String(spellknow(i)).padStart(6);
-        tty_add_menu(win, null, i + 1, spellet(i), 0, ATR_NONE, NO_COLOR,
-                     buf, (i === splaction) ? MENU_ITEMFLAGS_SELECTED
+        tty_add_menu(win, null, splnum + 1, spellet(splnum), 0, ATR_NONE,
+                     NO_COLOR, buf,
+                     (splnum === splaction) ? MENU_ITEMFLAGS_SELECTED
                                             : MENU_ITEMFLAGS_NONE);
     }
     let how = PICK_ONE;
@@ -1735,8 +1884,8 @@ export async function dovspell() {
             if (!r.chosen)
                 break;
             if (r.spell_no === SPELLMENU_SORT) {
-                /* spellsortmenu() offers the sort orders */
-                note_unported_spell('dovspell:spellsortmenu');
+                if (await spellsortmenu())
+                    sortspells();
             } else {
                 const q = `Reordering spells; swap '${spellet(r.spell_no)}' with`;
                 const r2 = await dospellmenu(q, r.spell_no);
@@ -1748,6 +1897,9 @@ export async function dovspell() {
             }
         }
     }
+    if (game.spl_orderindx)
+        game.spl_orderindx = null;
+    game.spl_sortmode = SORTBY_LETTER; /* 0 */
     return ECMD_OK;
 }
 

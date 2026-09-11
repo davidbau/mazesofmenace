@@ -40,6 +40,10 @@ import { nomul } from './hack.js';
 import { poly_gender } from './polyself.js';
 import { midnight, night } from './calendar.js';
 import { cansee } from './vision.js';
+import { Blind } from './youprop.js';
+import { shk_chat } from './shk.js';
+import { demon_talk } from './minion.js';
+import { humanoid } from './mondata.js';
 
 
 // src/sounds.c:202 dosounds()
@@ -236,9 +240,10 @@ export async function dochat() {
         if (!Deaf() && (IS_WALL(loc.typ) || loc.typ === SDOOR)) {
             /* Talking to a wall; a secret door remains hidden by behaving
                like a wall. The Blind arm needs lastseentyp and is recorded. */
-            /* this tree tracks blindness as game.u.ublind */
-            if (game.u?.ublind) {
-                note_unported_sounds('dochat:blind_wall');
+            if (Blind() && !IS_WALL(loc.lastseentyp ?? 0)) {
+                /* Blind: the wall at the target must have
+                   already been mapped as a wall */
+                ;
             } else if (!Hallucination()) {
                 await pline("It's like talking to a wall.");
             } else {
@@ -282,7 +287,12 @@ export async function dochat() {
         return ECMD_OK;
     }
     if (Deaf()) {
-        note_unported_sounds('dochat:deaf');
+        const xresponse = humanoid(game.youmonst.data)
+                    ? 'falls on deaf ears'
+                    : 'is inaudible';
+
+        await pline(`Any response${canspotmon(mtmp) ? ' from ' : ''}${
+            canspotmon(mtmp) ? mon_nam(mtmp) : ''} ${xresponse}.`);
         return ECMD_OK;
     }
 
@@ -358,7 +368,7 @@ export async function domonnoise(mtmp) {
     case MSOUND.MS_SELL:
         if (!Hallucination() || ptr.msound === MSOUND.MS_SILENT
             || (mtmp.isshk && !rn2(2))) {
-            note_unported_sounds('domonnoise:shk_chat');
+            await shk_chat(mtmp);
         } else {
             const { currency } = await import('./invent.js');
             verbl_msg = `15 minutes could save you 15 ${currency(15)}.`;
@@ -653,7 +663,7 @@ export async function domonnoise(mtmp) {
         break;
     case MSOUND.MS_BRIBE:
         if (mtmp.mpeaceful && !mtmp.mtame) {
-            note_unported_sounds('domonnoise:demon_talk');
+            await demon_talk(mtmp);
             break;
         }
         /* FALLTHRU */
@@ -730,8 +740,20 @@ export async function domonnoise(mtmp) {
         }
         break;
     }
-    default:
-        note_unported_sounds(`domonnoise:msound=${msound}`);
+    case MSOUND.MS_DJINNI:
+        if (mtmp.mtame) {
+            verbl_msg = "Sorry, I'm all out of wishes.";
+        } else if (mtmp.mpeaceful) {
+            if (ptr === game.mons[PMNAMES.PM_WATER_DEMON])
+                pline_msg = 'gurgles.';
+            else
+                verbl_msg = "I'm free!";
+        } else {
+            if (ptr !== game.mons[PMNAMES.PM_PRISONER])
+                verbl_msg = 'This will teach you not to disturb me!';
+            else /* vague because prisoner might already be out of cell */
+                verbl_msg = 'Get me out of here.';
+        }
         break;
     }
 

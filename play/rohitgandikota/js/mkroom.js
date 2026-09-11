@@ -14,6 +14,8 @@ import { revive } from './zap.js';
 import { sobj_at } from './invent.js';
 import { enexto } from './teleport.js';
 import { game } from './gstate.js';
+import { impossible } from './pline.js';
+import { del_engr_at } from './engrave.js';
 import { rnd, rn2, rn1 } from './rng.js';
 import { level_difficulty, Inhell, set_malign, mongets, MM_ASLEEP,
          MM_NOGRP, NO_MM_FLAGS } from './makemon.js';
@@ -154,7 +156,7 @@ export function do_mkroom(roomtype) {
         case COCKNEST:  mkzoo(COCKNEST);  break;
         case ANTHOLE:   mkzoo(ANTHOLE);   break;
         default:
-            note_unported_mkroom(`do_mkroom:${roomtype}`);
+            void impossible(`Tried to make a room of type ${roomtype}.`);
         }
     }
 }
@@ -282,16 +284,29 @@ export function fill_zoo(sroom) {
     const mm = { x: 0, y: 0 };
 
     switch (type) {
-    case COURT:
-        if (game.level.flags.is_maze_lev)
-            note_unported_mkroom('fill_zoo:maze_throne_scan');
-        i = 100;
-        do {                    /* don't place throne on top of stairs */
-            somexyspace(sroom, mm);
-            tx = mm.x; ty = mm.y;
-        } while (occupied(tx, ty) && --i > 0);
+    case COURT: {
+        let throne_placed = false;
+
+        if (game.level.flags.is_maze_lev) {
+            scan:
+            for (tx = sroom.lx; tx <= sroom.hx; tx++)
+                for (ty = sroom.ly; ty <= sroom.hy; ty++)
+                    if (IS_THRONE(game.level.at(tx, ty).typ)) {
+                        throne_placed = true; /* goto throne_placed */
+                        break scan;
+                    }
+        }
+        if (!throne_placed) {
+            i = 100;
+            do {                /* don't place throne on top of stairs */
+                somexyspace(sroom, mm);
+                tx = mm.x; ty = mm.y;
+            } while (occupied(tx, ty) && --i > 0);
+        }
+        /* throne_placed: */
         mk_zoo_thronemon(tx, ty);
         break;
+    }
     case BEEHIVE:
         tx = sroom.lx + Math.trunc((sroom.hx - sroom.lx + 1) / 2);
         ty = sroom.ly + Math.trunc((sroom.hy - sroom.ly + 1) / 2);
@@ -600,7 +615,7 @@ function mkswamp() {
                 if (!OBJ_AT(sx, sy) && !m_at(sx, sy) && !t_at(sx, sy)
                     && !nexttodoor(sx, sy)) {
                     if ((sx + sy) % 2) {
-                        note_unported_mkroom('mkswamp:del_engr_at');
+                        del_engr_at(sx, sy);
                         lev.typ = POOL;
                         if (!eelct || !rn2(4)) {
                             /* mkclass() won't do, as we might get kraken */

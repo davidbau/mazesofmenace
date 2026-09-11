@@ -5,7 +5,7 @@
 // anger are implemented here.
 
 import { ATTKS } from './monst_data.js';
-import { BZ_OFS_AD } from './const.js';
+import { BZ_OFS_AD, BZ_M_SPELL } from './const.js';
 import { Amask2align } from './const.js';
 import { IS_DOOR } from './const.js';
 import { u_at } from './const.js';
@@ -43,6 +43,8 @@ import { ARTICLE_NONE, ARTICLE_A, ARTICLE_THE, ARTICLE_YOUR,
 import { helpless } from './monst.js';
 import { adjalign, exercise } from './attrib.js';
 import { in_rooms } from './hack.js';
+import { m_break_boulder, m_move_aggress } from './monmove.js';
+import { check_special_room } from './hack.js';
 import { pronoun_gender } from './mondata.js';
 import { genders } from './role_data.js';
 import { record_achievement } from './insight.js';
@@ -590,13 +592,15 @@ export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid,
 
     if (nix !== omx || niy !== omy) {
         if (ninfo & ALLOW_ROCK) {
-            /* m_break_boulder(): no shk/priest has reached a boulder yet */
-            note_unported_priest('move_special:m_break_boulder');
+            await m_break_boulder(mtmp, nix, niy);
             return 1;
         } else if (ninfo & ALLOW_M) {
-            /* m_move_aggress(): monster-vs-monster attack from the walk */
-            note_unported_priest('move_special:m_move_aggress');
-            return 0;
+            switch (await m_move_aggress(mtmp, nix, niy)) {
+            case 2:
+                return -2; /* died making the attack */
+            case 3:
+                return 1; /* attacked and spent this move */
+            }
         }
 
         if (m_at(nix, niy) || (nix === game.u.ux && niy === game.u.uy))
@@ -604,11 +608,8 @@ export async function move_special(mtmp, in_his_shop, appr, uondoor, avoid,
         remove_monster(omx, omy);
         place_monster(mtmp, nix, niy);
         newsym(nix, niy);
-        if (mtmp.isshk && !in_his_shop && inhishop(mtmp)) {
-            /* check_special_room(FALSE): shop re-entry bookkeeping is not
-               ported yet (js/hack.js spoteffects notes the same gap) */
-            note_unported_priest('move_special:check_special_room');
-        }
+        if (mtmp.isshk && !in_his_shop && inhishop(mtmp))
+            await check_special_room(false);
         return 1;
     }
     return 0;
@@ -738,9 +739,6 @@ export function temple_occupied(array) {
             return ch;
     return '';
 }
-
-/* include/hack.h:1486 BZ_M_SPELL() */
-const BZ_M_SPELL = (bztyp) => (-10 - (bztyp));
 
 // src/priest.c ghod_hitsu(); the temple's god retaliates against a hero
 // who hits its priest

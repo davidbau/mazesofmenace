@@ -1396,7 +1396,7 @@ async function precheck(mon, obj) {
                     await verbalize('It is about time.');
                     if (vis)
                         await pline(`${Monnam(mtmp)} vanishes.`);
-                    mongone(mtmp);
+                    await mongone(mtmp);
                 }
             }
             return 2;
@@ -1587,7 +1587,7 @@ async function mon_escape(mtmp, vismon) {
         return 0;
     if (vismon)
         await pline_mon(mtmp, `${Monnam(mtmp)} escapes the dungeon!`);
-    mongone(mtmp);
+    await mongone(mtmp);
     return 2;
 }
 /* src/wizard.c:117 mon_has_special() */

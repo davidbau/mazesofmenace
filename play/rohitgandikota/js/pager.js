@@ -16,6 +16,7 @@ import { visible_region_at } from './region.js';
 import { is_pool } from './mon.js';
 import { surface } from './dungeon.js';
 import { ceiling_hider } from './mondata.js';
+import { is_orc } from './mondata.js';
 import { is_hider } from './mondata.js';
 import { hides_under } from './mondata.js';
 import { obj_descr } from './objects_data.js';
@@ -59,7 +60,7 @@ import { an, the, makesingular, singular, xname, distant_name,
 import { mkobj, mksobj } from './mkobj.js';
 import { observe_object } from './o_init.js';
 import { Blind, Hallucination } from './youprop.js';
-import { pmatch, tabexpand, mungspaces, isok } from './hacklib.js';
+import { pmatch, tabexpand, mungspaces, isok, strstri } from './hacklib.js';
 import { data as DATAFILE } from './dat_files.js';
 import * as DAT from './dat_files.js';
 import { getpos, LOOK_QUICK, LOOK_ONCE, LOOK_VERBOSE } from './getpos.js';
@@ -1176,7 +1177,7 @@ export async function do_look(mode) {
     let sym = 0;
     let firstmatch;
     let out_str = '';
-    let pm = null;
+    let pm = null, supplemental_pm = null;
     let ans = 0;
     const cc = { x: 0, y: 0 };
     let from_screen;
@@ -1311,17 +1312,23 @@ export async function do_look(mode) {
         const res = do_screen_description(cc, from_screen, sym);
         firstmatch = res.firstmatch;
         out_str = res.out_str;
-        pm = res.pm;
+        if (res.pm)
+            supplemental_pm = res.pm; /* the &supplemental_pm out-param */
 
         if (res.found) {
             await pline(out_str); /* putmixed() */
             if (res.found === 1 && ans !== LOOK_QUICK && ans !== LOOK_ONCE
                 && (ans === LOOK_VERBOSE
                     || (game.flags?.help !== false && !quick))) {
+                const supplemental = { name: '' }; /* supplemental_name[] */
                 await checkfile(firstmatch, pm,
                                 (ans === LOOK_VERBOSE) ? chkfilDontAsk
                                                        : chkfilNone,
-                                null);
+                                supplemental);
+                if (supplemental_pm)
+                    await do_supplemental_info(supplemental.name,
+                                               supplemental_pm,
+                                               ans === LOOK_VERBOSE);
             }
         } else {
             await pline("I've never heard of such things.");
@@ -1534,6 +1541,83 @@ async function look_engrs(nearby) {
         await pline('No engravings seen or remembered'
             + `${nearby ? ' nearby' : ''}.`);
         tty_destroy_nhwindow(win);
+    }
+}
+
+// src/pager.c:2230 suptext1[]
+const suptext1 = [
+    '%s is a member of a marauding horde of orcs',
+    'rumored to have brutally attacked and plundered',
+    'the ordinarily sheltered town that is located ',
+    'deep within The Gnomish Mines.',
+    '',
+    'The members of that vicious horde proudly and ',
+    'defiantly acclaim their allegiance to their',
+    'leader %s in their names.',
+];
+
+// src/pager.c:2242 suptext2[]
+const suptext2 = [
+    '"%s" is the common dungeon name of',
+    'a nefarious orc who is known to acquire property',
+    'from thieves and sell it off for profit.',
+    '',
+    'The perpetrator was last seen hanging around the',
+    'stairs leading to the Gnomish Mines.',
+];
+
+// src/pager.c:2253 do_supplemental_info()
+async function do_supplemental_info(name, pm, without_asking) {
+    let textp;
+    const entrytext = name;
+    let bp = -1, bp2 = -1;
+    let yes_to_moreinfo = false;
+    const is_marauder = is_orc(pm);
+
+    /*
+     * Provide some info on some specific things
+     * meant to support in-game mythology, and not
+     * available from data.base or other sources.
+     */
+    if (is_marauder && name.length < 255) {
+        bp = strstri(name, ' of ');
+        bp2 = strstri(name, ' the Fence');
+
+        if (bp >= 0 || bp2 >= 0) {
+            const fullname = name;
+            if (!without_asking) {
+                const question = `More info about "${entrytext}"?`;
+                if (await tty_yn_function(question, 'yn', 'n') === 'y')
+                    yes_to_moreinfo = true;
+            }
+            if (yes_to_moreinfo) {
+                let subs = 0;
+                let gang = null;
+
+                if (bp >= 0) {
+                    textp = suptext1;
+                    gang = name.slice(bp + 4);
+                    name = name.slice(0, bp); /* *bp = '\0' */
+                } else {
+                    textp = suptext2;
+                    gang = '';
+                }
+                const datawin = tty_create_nhwindow(NHW_MENU);
+                for (let i = 0; i < textp.length; i++) {
+                    let txt;
+
+                    if (textp[i].includes('%s')) {
+                        txt = textp[i].replace('%s', subs++ ? gang : fullname);
+                    } else
+                        txt = textp[i];
+                    tty_putstr(datawin, 0, txt);
+                }
+                await tty_display_nhwindow(datawin);
+                await xwaitforspace(quitchars);
+                tty_destroy_nhwindow(datawin);
+                await docrt();
+            }
+        }
     }
 }
 

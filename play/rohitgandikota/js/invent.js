@@ -648,6 +648,9 @@ export function addinv_core2(obj) {
                scrolls */
             game.u.uconduct ||= {};
             game.u.uconduct.literate = (game.u.uconduct.literate || 0) + 1;
+            if (game.u.uconduct.literate === 1)
+                livelog_printf(LL_CONDUCT,
+                               'became literate by deciphering a scroll label');
         });
     }
     return null;
@@ -1508,6 +1511,36 @@ export async function display_inventory(lets, want_reply) {
 // src/decl.c:96 quitchars — the keys that abandon a prompt.
 const quitchars = ' \r\n\x1b';
 
+// src/invent.c:1678 mime_action() — "You mime <verb>ing something." when the
+// hero picks '-' for a command that needs an object.
+async function mime_action(word) {
+    let buf = word;
+    let bp = null, pfx = null, sfx = null;
+    let i;
+
+    if ((i = buf.indexOf(' on the ')) >= 0) {
+        /* rub on the stone[s] */
+        sfx = buf.slice(i + 1); /* "something <sfx>" */
+        buf = buf.slice(0, i);
+    }
+    if ((buf.startsWith('rub the ') && buf.slice(8).includes(' on'))
+        || (buf.startsWith('dip ') && buf.slice(4).includes(' into'))) {
+        /* "rub the royal jelly on" -> "rubbing the royal jelly on", or
+           "dip <foo> into" => "dipping <foo> into" */
+        pfx = buf.slice(3 + 1); /* "<pfx> something" */
+        buf = buf.slice(0, 3);
+    }
+    if ((i = buf.indexOf(' or ')) >= 0) {
+        const alt = buf.slice(i + 4);
+        buf = buf.slice(0, i);
+        bp = (rn2(2) ? buf : alt);
+    } else
+        bp = buf;
+
+    await You(`mime ${ing_suffix(bp)}${pfx ? ' ' : ''}${pfx ? pfx : ''} something${
+        sfx ? ' ' : ''}${sfx ? sfx : ''}.`);
+}
+
 // src/invent.c:1752 getobj() — ask which carried object a command applies to.
 //
 // The whole point of porting this is key consumption. C reads ONE key here for
@@ -1771,15 +1804,10 @@ export async function getobj(word, obj_ok_func, ctrlflags) {
                 cmdq_clear(CQ_REPEAT);
             return null;
         }
-        if (ilet === '-') {
-            /* HANDS_SYM — "your hands" as the object; C returns &hands_obj
-               when the filter allows the no-object choice */
-            const v = obj_ok_func ? await obj_ok_func(null) : GETOBJ_EXCLUDE;
-            if (v === GETOBJ_SUGGEST || v === GETOBJ_DOWNPLAY
-                || v === GETOBJ_EXCLUDE_INACCESS || v === GETOBJ_EXCLUDE_SELECTABLE)
-                return hands_obj;
-            note_unported_invent('getobj:hands');
-            return null;
+        if (ilet === HANDS_SYM) { /* '-' */
+            if (!allownone)
+                await mime_action(word);
+            return (allownone ? hands_obj : null);
         }
         if (ilet === '?' || ilet === '*') {
             /* src/invent.c:1963 — '?' lists only the letters this command
@@ -2967,18 +2995,35 @@ async function display_inuse_inventory(objs, altLabel) {
     }
 }
 
-// src/invent.c:2963 dispinv_with_action().
+// src/invent.c:2964 dispinv_with_action() — display a subset of inventory
+// (the callers pass the objects rather than the C's invlet string) and, in
+// menu mode, let the player pick one for a context-sensitive item action.
 async function dispinv_with_action(objs, useInuseOrdering = false,
                                    altLabel = null) {
     const len = objs?.length ?? 0;
     const menumode = len !== 1 || !!game.iflags?.menu_requested;
+    const save_force_invmenu = game.iflags?.force_invmenu;
+
+    (game.iflags ||= {}).force_invmenu = false;
+    let c = 0;
     if (!menumode) {
+        /* display_inventory(lets, FALSE) with a single letter: the one line */
         const o = objs[0];
         await pline(`${o.invlet} - ${doname(o)}.`);
     } else if (useInuseOrdering) {
+        /* flags.sortloot = 'i' and the alternate "Accessories" label */
         await display_inuse_inventory(objs, altLabel);
     } else {
-        note_unported_invent('dispinv_with_action:menu');
+        const lets = (objs || []).map(o => o.invlet).join('');
+        c = await display_inventory(lets, menumode);
+    }
+    game.iflags.force_invmenu = save_force_invmenu;
+
+    if (c && c !== '\x1b') {
+        for (const otmp of [...(game.invent || [])]) {
+            if (otmp.invlet === c)
+                return await itemactions(otmp);
+        }
     }
     return ECMD_OK;
 }
@@ -3050,26 +3095,78 @@ export async function doprinuse() {
 }
 
 
-// src/invent.c:1546 currency() — "zorkmid"/"zorkmids"; the hallucinatory
-// currency roll is recorded because it DRAWS.
+// src/invent.c:1521 currencies[] — other worlds' money, for a hallucinating
+// hero counting zorkmids.
+const currencies = [
+    'Altarian Dollar',       /* The Hitchhiker's Guide to the Galaxy */
+    'Ankh-Morpork Dollar',   /* Discworld */
+    'auric',                 /* The Domination of Draka */
+    'buckazoid',             /* Space Quest */
+    'cirbozoid',             /* Starslip */
+    'credit chit',           /* Deus Ex */
+    'cubit',                 /* Battlestar Galactica */
+    'Flanian Pobble Bead',   /* The Hitchhiker's Guide to the Galaxy */
+    'fretzer',               /* Jules Verne */
+    'imperial credit',       /* Star Wars */
+    'Hong Kong Luna Dollar', /* The Moon is a Harsh Mistress */
+    'kongbuck',              /* Snow Crash */
+    'nanite',                /* System Shock 2 */
+    'quatloo',               /* Star Trek, Sim City */
+    'simoleon',              /* Sim City */
+    'solari',                /* Spaceballs */
+    'spacebuck',             /* Spaceballs */
+    'sporebuck',             /* Spore */
+    'Triganic Pu',           /* The Hitchhiker's Guide to the Galaxy */
+    'woolong',               /* Cowboy Bebop */
+    'zorkmid',               /* Zork, NetHack */
+];
+
+// src/invent.c:1546 currency() — "zorkmid"/"zorkmids", or ROLL_FROM(currencies)
+// when hallucinating (hack.h:1493: array[rn2(SIZE(array))]).
 export function currency(amount) {
-    if (game.u.uprops?.HALLUC)
-        note_unported_invent('currency:hallucinatory');
-    return amount !== 1 ? 'zorkmids' : 'zorkmid';
+    let res;
+
+    res = Hallucination() ? currencies[rn2(currencies.length)] : 'zorkmid';
+    if (amount !== 1)
+        res = makeplural(res);
+    return res;
 }
 
-// src/invent.c doprgold() — the '$' command. No draws.
+// src/invent.c:4560 doprgold() — the '$' command.
 export async function doprgold() {
     const umoney = money_cnt(game.invent || []);
-    /* hidden_gold(FALSE) — gold inside carried containers; containers are
-       not carried on this tree, so it is zero */
+    /* Include gold stashed in containers, but not in the hero's pack;
+       the player can somehow tell if there is any gold anywhere on your
+       person, but you have no such preternatural gold-sense. */
+    const hmoney = hidden_gold(game.invent || [], false);
+
     if (game.flags?.verbose !== false) {
-        const buf = !umoney ? 'Your wallet is empty'
-                            : `Your wallet contains ${umoney} ${currency(umoney)}`;
+        let buf;
+
+        if (!umoney) {
+            buf = 'Your wallet is empty';
+        } else {
+            buf = `Your wallet contains ${umoney} ${currency(umoney)}`;
+        }
+        if (hmoney) {
+            buf += `, ${umoney ? 'and' : 'but'} you have ${hmoney} ${
+                umoney ? 'more' : currency(hmoney)} stashed away in your pack`;
+        }
         await pline(`${buf}.`);
     } else {
-        note_unported_invent('doprgold:terse');
+        const total = umoney + hmoney;
+        if (total)
+            await You(`are carrying a total of ${total} ${currency(total)}.`);
+        else
+            await You('have no money.');
     }
+    await shopper_financial_report();
+
+    if (umoney && game.iflags?.menu_requested) {
+        await dispinv_with_action((game.invent || []).filter(o => o.oclass === OCLASSES.COIN_CLASS),
+                                  false, null);
+    }
+
     return ECMD_OK;
 }
 
@@ -3429,6 +3526,11 @@ export async function identify_pack(id_limit, learning_id) {
 // src/invent.c:1664 splittable() — can this stack be split off from?
 import { welded } from './wield.js';
 import { pline_The } from './pline.js';
+import { livelog_printf } from './pline.js';
+import { LL_CONDUCT } from './const.js';
+import { shopper_financial_report } from './shk.js';
+import { rn2 } from './rng.js';
+import { ing_suffix } from './hacklib.js';
 
 
 
