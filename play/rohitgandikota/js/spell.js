@@ -727,6 +727,36 @@ export async function getspell(spell_noRef) {
     return false;
 }
 
+// src/spell.c:787 dowizcast() — #wizcast: cast any spell
+export async function dowizcast() {
+    let i, n;
+    const { tty_create_nhwindow, tty_destroy_nhwindow, tty_start_menu,
+            tty_add_menu, tty_end_menu, tty_select_menu, NHW_MENU, ATR_NONE }
+        = await import('./tty/wintty.js');
+    const { MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ONE }
+        = await import('./const.js');
+    const { NO_COLOR } = await import('./terminal.js');
+
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+    for (i = 0; i < MAXSPELL; i++) {
+        n = (ONAMES.SPE_DIG + i);
+        if (n >= ONAMES.SPE_BLANK_PAPER)
+            break;
+        tty_add_menu(win, null, n, 0, 0, ATR_NONE, NO_COLOR,
+                     OBJ_NAME(game.objects[n]), MENU_ITEMFLAGS_NONE);
+    }
+    tty_end_menu(win, 'Cast which spell?');
+    const selected = await tty_select_menu(win, PICK_ONE);
+    n = selected.length;
+    tty_destroy_nhwindow(win);
+    if (n > 0) {
+        i = selected[0];
+        return await spelleffects(i, false, true);
+    }
+    return ECMD_OK;
+}
+
 // src/spell.c:820 docast() — the 'Z' command.
 export async function docast() {
     const ref = { v: 0 };
@@ -968,7 +998,9 @@ async function cast_protection() {
 
 // src/spell.c spelleffects(), cast the selected spell.
 export async function spelleffects(spell_otyp, atme, force) {
-    const spell = spell_idx(spell_otyp);
+    /* src/spell.c:1387 — a forced cast (#wizcast, ^T without teleportitis)
+       names the spell by its otyp; the others by their spellbook slot */
+    const spell = force ? spell_otyp : spell_idx(spell_otyp);
     const energy = { v: 0 };
 
     if (!force) {

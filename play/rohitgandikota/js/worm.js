@@ -22,7 +22,7 @@ import { show_glyph_cell } from './display.js';
 import { NUMMONS } from './monst_data.js';
 import { rn2_on_display_rng } from './rng.js';
 import { Hallucination } from './youprop.js';
-import { NON_PM, NORMAL_SPEED, MHPMAX } from './const.js';
+import { NON_PM, NORMAL_SPEED, MHPMAX, SIZEOF_STRUCT_WSEG } from './const.js';
 import { PMNAMES } from './monst_data.js';
 import { game } from './gstate.js';
 import { rn2, rn1 } from './rng.js';
@@ -102,6 +102,11 @@ export async function wormhitu(worm) {
             if (await mattacku(worm))
                 return 1; /* your passive ability killed the worm */
     return 0;
+}
+
+// src/worm.c:827 size_wseg() — the bytes a worm's tail segments occupy
+export function size_wseg(worm) {
+    return count_wsegs(worm) * SIZEOF_STRUCT_WSEG;
 }
 
 export function count_wsegs(mtmp) {

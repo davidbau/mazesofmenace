@@ -25,6 +25,7 @@ import {
 } from './const.js';
 import { NO_COLOR } from './terminal.js';
 import { allopt, findOption } from './optlist.js';
+import { ECMD_OK as ECMD_OK_, ECMD_FAIL as ECMD_FAIL_ } from './const.js';
 import { condtests, status_hilite_menu, count_status_hilites } from './botl.js';
 import {
     assign_graphics, gs_symset, gc_currentgraphics, known_handling,
@@ -250,6 +251,17 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
     if (opt.type === 'BoolOpt') {
         result.opts[opt.name] = !negated;
         (result.optSetInConfig ||= {})[opt.name] = true;
+    } else if ((opt.name === 'symset' || opt.name === 'roguesymset')
+               && value !== null && value !== '') {
+        /* src/options.c:4198 optfn_symset() / :3567 optfn_roguesymset()
+           do_set: a loaded set leaves the redraw and glyph-reset flags up,
+           at startup too, so the first reset_needed_visuals() of the game
+           (the options menu, a BIND'd #toggle) redraws and flushes the
+           message line with --More-- */
+        game.opt_need_redraw = true;
+        game.opt_need_glyph_reset = true;
+        game.opt_symset_changed = true;
+        result.opts[opt.name] = value;
     } else if (opt.name === 'statushilites') {
         /* src/options.c:4018 optfn_statushilites() do_set: control over
            whether highlights should be displayed (non-zero), and also for
@@ -1714,6 +1726,13 @@ async function doset_simple_menu() {
             }
         }
         tty_end_menu(tmpwin, 'Options');
+        /* src/options.c:8644 — the flags a startup symset left up don't
+           count as this menu's changes */
+        game.opt_need_redraw = false;
+        game.opt_need_glyph_reset = false;
+        game.opt_reset_customcolors = false;
+        game.opt_reset_customsymbols = false;
+        game.opt_update_basic_palette = false;
 
         const picks = await tty_select_menu(tmpwin, PICK_ONE);
         pick_cnt = picks ? picks.length : 0;
@@ -2475,6 +2494,11 @@ export async function doset() {
 // src/options.c:9131 reset_needed_visuals() — apply whatever display
 // refreshes the option changes queued up.
 async function reset_needed_visuals() {
+    if (game.opt_need_glyph_reset) {
+        const { reset_glyphmap } = await import('./display.js');
+        const { gm_optionchange } = await import('./const.js');
+        reset_glyphmap(gm_optionchange);
+    }
     if (game.opt_need_redraw) {
         reglyph_darkroom(); /* src/options.c:8999, with check_gold_symbol() */
         await docrt();
@@ -2484,6 +2508,7 @@ async function reset_needed_visuals() {
         await bot();
         if (game.disp) game.disp.botl = game.disp.botlx = false;
     }
+    game.opt_need_glyph_reset = false;
 }
 
 /* src/options.c:118 def_inv_order[] — the object classes in the order the
@@ -3689,4 +3714,29 @@ export async function dotogglepickup() {
     }
     await pline(`Autopickup: ${buf}.`);
     return ECMD_OK;
+}
+
+// src/options.c:9278 toggle_bool_option() — flip the boolean option a
+// "BIND=key:toggle(option)" line names; every in-game boolean whose name
+// starts with the text is toggled
+export async function toggle_bool_option(p) {
+    let ret = ECMD_FAIL_;
+
+    for (const o of allopt) {
+        if (o.name && o.name.slice(0, p.length).toLowerCase() === p.toLowerCase()
+            && o.type === 'BoolOpt'
+            && o.setwhere === 'set_in_game'
+            && !o.noaddr) {
+            /* parseoptions("[!]name", FALSE, FALSE): the boolean arm flips
+               *addr, runs the side-effect switch and, give_opt_msg being
+               set, reports the change (options.c:5438) */
+            const newval = !bool_optval(o);
+            set_bool_optval(o.name, newval);
+            boolopt_side_effects(o.name);
+            await pline(`'${o.name}' option toggled ${newval ? 'on' : 'off'}.`);
+            ret = ECMD_OK_;
+            await reset_needed_visuals();
+        }
+    }
+    return ret;
 }

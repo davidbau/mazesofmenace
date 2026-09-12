@@ -4,7 +4,7 @@
 // Only choose_classes_menu() so far: the object-class picker that
 // optfn_pickup_types() puts up for "Autopickup what?".
 
-import { MAXBLSTATS } from './const.js';
+import { MAXBLSTATS, CLR_MAX } from './const.js';
 import { NHW_STATUS, tty_status_enablefield, tty_status_update } from './tty/wintty.js';
 import {
     NHW_MENU, ATR_NONE,
@@ -185,4 +185,12 @@ export function status_enablefield(fieldidx, nm, fmt, enable) {
 }
 export function status_update(fldidx, ptr, chg, percent, color, colormasks) {
     return tty_status_update(fldidx, ptr, chg, percent, color, colormasks);
+}
+
+// src/windows.c:1397 has_color() — the tty port's windowprocs.has_color[]
+// covers all sixteen colours once color is on (termcap.c init_hilite()
+// gives every one of them a hilite string on the recorder's terminal)
+export function has_color(color) {
+    return !!(game.iflags?.use_color ?? game.flags?.color ?? true)
+        && color >= 0 && color < CLR_MAX;
 }

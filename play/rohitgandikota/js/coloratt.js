@@ -12,15 +12,18 @@ import {
 import {
     ATR_NONE, ATR_BOLD, ATR_DIM, ATR_ITALIC, ATR_ULINE, ATR_BLINK,
     ATR_INVERSE, NHW_MENU,
+} from './const.js';
+import {
     tty_create_nhwindow, tty_destroy_nhwindow, tty_start_menu, tty_add_menu,
     tty_end_menu, tty_select_menu,
 } from './tty/wintty.js';
 import {
-    CLR_MAX, BUFSZ, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE,
+    CLR_MAX, BUFSZ, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, NH_BASIC_COLOR,
     MENU_ITEMFLAGS_SELECTED, PICK_ONE, PICK_ANY,
     HL_NONE, HL_BOLD, HL_DIM, HL_ITALIC, HL_ULINE, HL_BLINK, HL_INVERSE,
 } from './const.js';
-import { fuzzymatch, mungspaces } from './hacklib.js';
+import { fuzzymatch, mungspaces, strstri } from './hacklib.js';
+import { colortable, color_256_definitions } from './coloratt_data.js';
 import {
     regex_id, regex_init, regex_compile, regex_free, regex_error_desc,
 } from './posixregex.js';
@@ -399,4 +402,169 @@ export function count_menucolors() {
 // src/coloratt.c:249 color_attr_to_str() — "color&attr".
 export function color_attr_to_str(ca) {
     return `${clr2colorname(ca.color)}&${attr2attrname(ca.attr)}`;
+}
+
+// src/coloratt.c:237 colortable_to_int32()
+export function colortable_to_int32(cte) {
+    let clr = NO_COLOR | NH_BASIC_COLOR;
+
+    if (cte.colortyp === rgb_color)
+        clr = (cte.r << 16) | (cte.g << 8) | cte.b;
+    else if (cte.colortyp === nh_color)
+        clr = cte.tableindex | NH_BASIC_COLOR;
+    return clr;
+}
+const no_color = 0, nh_color = 1, rgb_color = 2; /* include/color.h:61 */
+
+// src/coloratt.c:723 check_enhanced_colors() — a colour name, "#rrggbb"
+// or one of colortable[]'s names (grey matching gray); -1 when none
+export function check_enhanced_colors(buf) {
+    let retcolor = -1, color;
+    let m;
+
+    if ((color = match_str2clr(buf, true)) !== CLR_MAX) {
+        retcolor = color | NH_BASIC_COLOR;
+    } else if ((m = /^#([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})([0-9A-Fa-f]{2})(.?)/.exec(buf))) {
+        retcolor = !m[4] ? ((parseInt(m[1], 16) << 16) | (parseInt(m[2], 16) << 8)
+                            | parseInt(m[3], 16)) : -1;
+    } else {
+        /* altbuf: allow user's "grey" to match colortable[]'s "gray";
+         * fuzzymatch(): ignore spaces, hyphens, and underscores so that
+         * space or underscore in user-supplied name will match hyphen
+         * [note: caller splits text at spaces so we won't see any here]
+         */
+        let altbuf = null;
+        const greyoffset = strstri(buf, 'grey');
+        if (greyoffset >= 0)
+            altbuf = buf.slice(0, greyoffset) + 'gray' + buf.slice(greyoffset + 4);
+        for (color = 0; color < colortable.length; ++color) {
+            if (fuzzymatch(buf, colortable[color].name, ' -_', true)
+                || (altbuf && fuzzymatch(altbuf, colortable[color].name,
+                                         ' -_', true))) {
+                retcolor = colortable_to_int32(colortable[color]);
+                break;
+            }
+        }
+    }
+    return retcolor;
+}
+
+// src/coloratt.c:801 onlyhexdigits()
+function onlyhexdigits(buf) {
+    for (const c of buf)
+        if (!/[0-9A-Fa-f-]/.test(c))
+            return false;
+    return true;
+}
+
+// src/coloratt.c:813 rgbstr_to_int32() — "r-g-b" decimal triplets, else a
+// colour name; -1 when nothing matches
+export function rgbstr_to_int32(rgbstr) {
+    let r, g, b, milestone = 0;
+    let rgb = 0;
+    const buf = String(rgbstr ?? '');
+    let dash = false;
+
+    if (buf.length && onlyhexdigits(buf)) {
+        let c_r = '', c_g = null, c_b = null, cur = 'r';
+        for (const ch of buf) {
+            if (/[0-9]/.test(ch) || ch === '-') {
+                if (ch === '-') {
+                    milestone++;
+                    dash = true;
+                } else if (cur === 'r') {
+                    c_r += ch;
+                } else if (cur === 'g') {
+                    c_g += ch;
+                } else {
+                    c_b += ch;
+                }
+                if (dash) {
+                    if (milestone < 2) {
+                        c_g = '';
+                        cur = 'g';
+                    } else {
+                        c_b = '';
+                        cur = 'b';
+                    }
+                    dash = false;
+                }
+            } else {
+                return -1;
+            }
+        }
+        /* sanity checks */
+        if (c_r !== null && c_g !== null && c_b !== null
+            && (c_r.length > 0 && c_r.length < 4)
+            && (c_g.length > 0 && c_g.length < 4)
+            && (c_b.length > 0 && c_b.length < 4)) {
+            r = parseInt(c_r, 10);
+            g = parseInt(c_g, 10);
+            b = parseInt(c_b, 10);
+            rgb = (r << 16) | (g << 8) | (b << 0);
+            return rgb;
+        }
+    } else if (buf.length) {
+        /* perhaps an enhanced color name was used instead of rgb value? */
+        if ((rgb = check_enhanced_colors(buf)) !== -1)
+            return rgb;
+    }
+    return -1;
+}
+
+// src/coloratt.c:868 set_map_customcolor()
+export function set_map_customcolor(gmap, nhcolor) {
+    if (!gmap)
+        return 0;
+
+    gmap.customcolor = nhcolor;
+    const close = closest_color(nhcolor);
+    if (close)
+        gmap.color256idx = close.clridx;
+    else
+        gmap.color256idx = 0;
+    return 1;
+}
+
+// src/coloratt.c:979 color_distance() — the UnNetHack metric
+export function color_distance(rgb1, rgb2) {
+    const r1 = (rgb1 >> 16) & 0xFF, g1 = (rgb1 >> 8) & 0xFF, b1 = rgb1 & 0xFF;
+    const r2 = (rgb2 >> 16) & 0xFF, g2 = (rgb2 >> 8) & 0xFF, b2 = rgb2 & 0xFF;
+    const rmean = Math.trunc((r1 + r2) / 2);
+    const r = r1 - r2, g = g1 - g2, b = b1 - b2;
+    return (((512 + rmean) * r * r) >> 8) + 4 * g * g
+           + (((767 - rmean) * b * b) >> 8);
+}
+
+// src/coloratt.c:997 closest_color() — the xterm-256 entry nearest to a
+// colour, as { closecolor, clridx }, or null
+export function closest_color(lcolor) {
+    let color_index = -1, similar = Infinity, current;
+
+    for (let i = 0; i < color_256_definitions.length; i++) {
+        /* look for an exact match */
+        if (lcolor === color_256_definitions[i].value) {
+            color_index = i;
+            break;
+        }
+        /* find a close color match */
+        current = color_distance(lcolor, color_256_definitions[i].value);
+        if (current < similar) {
+            color_index = i;
+            similar = current;
+        }
+    }
+    if (color_index >= 0)
+        return { closecolor: color_256_definitions[color_index].value,
+                 clridx: color_256_definitions[color_index].index };
+    return null;
+}
+
+// src/coloratt.c:1020 get_nhcolor_from_256_index()
+export function get_nhcolor_from_256_index(idx) {
+    let retcolor = NO_COLOR | NH_BASIC_COLOR;
+
+    if (idx >= 0 && idx < color_256_definitions.length)
+        retcolor = color_256_definitions[idx].value;
+    return retcolor;
 }

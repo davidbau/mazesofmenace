@@ -12,7 +12,11 @@
 // the tty recorder.
 
 import { defsyms, def_oc_syms, def_monsyms } from './drawing_data.js';
-import { mungspaces } from './hacklib.js';
+import { mungspaces, fuzzymatch } from './hacklib.js';
+import { symbols as symbols_file } from './dat_files.js';
+import { match_glyph, glyphrep_to_custom_map_entries, purge_custom_entries,
+         apply_customizations } from './glyphs.js';
+import { def_warnsyms, do_custom_symbols, do_custom_colors, gm_symchange } from './const.js';
 import { game } from './gstate.js';
 
 /* src/decl.c gs.showsyms[] — the live table. Terrain entries only; object and
@@ -108,7 +112,18 @@ const DEF_NOTHING = ' '.charCodeAt(0);
 const DEF_INVISIBLE = 'I'.charCodeAt(0);
 const ROCK_CLASS = 14; /* include/objclass.h */
 /* include/sym.h symparse.range values */
-const SYM_CONTROL = 1, SYM_PCHAR = 2, SYM_OC = 3, SYM_MON = 4, SYM_OTH = 5;
+export const SYM_CONTROL = 1, SYM_PCHAR = 2, SYM_OC = 3, SYM_MON = 4, SYM_OTH = 5;
+
+/* src/decl.c gs.symset_which_set — the set a symset file or SYMBOLS= line
+   is being parsed for; gc.chosen_symset_start/end — inside the wanted set */
+export const gs_symset_which_set = { v: PRIMARYSET };
+const gc_chosen_symset = { start: false, end: false };
+/* src/decl.c gp.primary_syms[] / gr.rogue_syms[] — a loaded symset's own
+   symbols as character codes (init_primary_symbols() fills the defaults;
+   parse_sym_line() writes the set's entries). assign_graphics() carries the
+   sets this port draws with; these tables keep what the file said. */
+export const gp_primary_syms = new Array(SYM_MAX).fill(0);
+export const gr_rogue_syms = new Array(SYM_MAX).fill(0);
 
 /* src/decl.c go.ov_primary_syms[] / go.ov_rogue_syms[] — the SYMBOLS=
    overrides as character codes; 0 means "no override" */
@@ -183,7 +198,7 @@ const MONSYM_SYMS = [null, 'S_ANT', 'S_BLOB', 'S_COCKATRICE', 'S_DOG', 'S_EYE',
     'S_VAMPIRE', 'S_WRAITH', 'S_XORN', 'S_YETI', 'S_ZOMBIE', 'S_HUMAN',
     'S_GHOST', 'S_GOLEM', 'S_DEMON', 'S_EEL', 'S_LIZARD', 'S_WORM_TAIL',
     'S_MIMIC_DEF'];
-const loadsyms = [
+export const loadsyms = [
     { range: SYM_CONTROL, idx: 0, name: 'start' },
     { range: SYM_CONTROL, idx: 0, name: 'begin' },
     { range: SYM_CONTROL, idx: 1, name: 'finish' },
@@ -439,9 +454,9 @@ function parsesymbols_buf(buf, opts, which_set) {
 
     symp = match_sym(symname_s);
     if (!symp && symname_s[0] === 'G' && symname_s[1] === '_') {
-        /* match_glyph() (src/glyphs.c) accepts a customised glyph name */
-        note_unported_symbols('parsesymbols:match_glyph');
-        is_glyph = true;
+        /* src/symbols.c:826 — a customised glyph: the whole "G_x:val" goes
+           to match_glyph(), colour and unicode included */
+        is_glyph = !!match_glyph(`${symname_s}:${strval_s}`);
     }
     if (!symp && !is_glyph)
         return false;
@@ -449,8 +464,9 @@ function parsesymbols_buf(buf, opts, which_set) {
         if (symp.range && symp.range !== SYM_CONTROL) {
             if (gs_symset[which_set]?.handling === H_UTF8
                 || (strval_s[0]?.toLowerCase() === 'u' && strval_s[1] === '+')) {
-                /* glyphrep_to_custom_map_entries() (src/glyphs.c) */
-                note_unported_symbols('parsesymbols:glyphrep_to_custom_map_entries');
+                /* src/symbols.c:838 — a "U+xxxx" symbol becomes a glyph
+                   customization of every glyph drawn with that symbol */
+                glyphrep_to_custom_map_entries(`${symname_s}:${strval_s}`, null);
             } else {
                 val = sym_val(strval_s);
                 if (which_set === ROGUESET)
@@ -634,6 +650,20 @@ export function assign_graphics(set) {
         ? { name: entry.name, handling: entry.handling }
         : { name: null, handling: H_UNK };
     gc_currentgraphics.set = PRIMARYSET;
+    /* src/symbols.c:673 load_symset(): the set's own entries in dat/symbols,
+       including its G_ glyph customizations (DECgraphics colours the wall
+       glyphs of the Mines, Gehennom, Fort Ludios and Sokoban), then
+       apply_customizations() and reset_glyphmap(gm_symchange) */
+    purge_custom_entries(PRIMARYSET);
+    if (entry) {
+        read_sym_file(PRIMARYSET);
+        gs_symset[PRIMARYSET].name = entry.name;
+        gs_symset[PRIMARYSET].handling = entry.handling;
+    }
+    apply_customizations(gc_currentgraphics.set,
+                         do_custom_symbols | do_custom_colors);
+    if (display_fns)
+        display_fns.reset_glyphmap(gm_symchange);
 
     /* C's remembered map stores glyph numbers, then resolves those through
        the current glyph map while redrawing. This port also caches the old
@@ -660,3 +690,311 @@ export function assign_graphics(set) {
 export function showsym(cmap) {
     return gs_showsyms.P ? gs_showsyms.P[cmap] : null;
 }
+
+// src/symbols.c:167 init_primary_symbols() — the defaults, as character codes
+export function init_primary_symbols() {
+    let i;
+
+    for (i = 0; i < MAXPCHARS; i++)
+        gp_primary_syms[i + SYM_OFF_P] = defsyms[i].sym.charCodeAt(0);
+    for (i = 0; i < MAXOCLASSES; i++)
+        gp_primary_syms[i + SYM_OFF_O] = def_oc_syms[i].charCodeAt(0);
+    for (i = 0; i < MAXMCLASSES; i++)
+        gp_primary_syms[i + SYM_OFF_M] = def_monsyms[i].charCodeAt(0);
+    for (i = 0; i < WARNCOUNT; i++)
+        gp_primary_syms[i + SYM_OFF_W] = def_warnsyms[i].ch.charCodeAt(0);
+    for (i = 0; i < MAXOTHER; i++)
+        gp_primary_syms[i + SYM_OFF_X] = get_othersym(i, PRIMARYSET);
+    clear_symsetentry(PRIMARYSET, false);
+}
+
+// src/symbols.c:186 init_rogue_symbols()
+export function init_rogue_symbols() {
+    let i;
+
+    for (i = 0; i < MAXPCHARS; i++)
+        gr_rogue_syms[i + SYM_OFF_P] = defsyms[i].sym.charCodeAt(0);
+    for (i = 0; i < MAXOCLASSES; i++)
+        gr_rogue_syms[i + SYM_OFF_O] = def_oc_syms[i].charCodeAt(0);
+    for (i = 0; i < MAXMCLASSES; i++)
+        gr_rogue_syms[i + SYM_OFF_M] = def_monsyms[i].charCodeAt(0);
+    for (i = 0; i < WARNCOUNT; i++)
+        gr_rogue_syms[i + SYM_OFF_W] = def_warnsyms[i].ch.charCodeAt(0);
+    for (i = 0; i < MAXOTHER; i++)
+        gr_rogue_syms[i + SYM_OFF_X] = get_othersym(i, ROGUESET);
+    clear_symsetentry(ROGUESET, false);
+}
+
+// src/symbols.c:307 update_primary_symset() / :313 update_rogue_symset()
+export function update_primary_symset(symp, val) {
+    gp_primary_syms[symp.idx] = val;
+}
+export function update_rogue_symset(symp, val) {
+    gr_rogue_syms[symp.idx] = val;
+}
+
+// src/symbols.c:319 clear_symsetentry()
+export function clear_symsetentry(which_set, name_too) {
+    const ss = (gs_symset[which_set] ||= { name: null, handling: H_UNK });
+    if (ss.desc)
+        ss.desc = null;
+    if (name_too && ss.name)
+        ss.name = null;
+    ss.handling = H_UNK;
+    ss.nocolor = 0;
+    /* initialize restriction bits */
+    ss.primary = 0;
+    ss.rogue = 0;
+    purge_custom_entries(which_set);
+}
+
+// src/symbols.c:376 known_restrictions[]
+const known_restrictions = ['primary', 'rogue'];
+
+// src/symbols.c:657 set_symhandling()
+export function set_symhandling(handling, which_set) {
+    let i = 0;
+
+    gs_symset[which_set].handling = H_UNK;
+    while (i < known_handling.length) {
+        if (known_handling[i].toLowerCase() === handling.toLowerCase()) {
+            gs_symset[which_set].handling = i;
+            return;
+        }
+        i++;
+    }
+}
+
+// src/symbols.c:438 parse_sym_line() — one line of dat/symbols for
+// 'which_set'; returns 1 to keep reading, 0 on a bad line. With no symset
+// name set the C only builds a pick-list; that list is primary_symsets[]
+// here, so such a call is a no-op.
+export function parse_sym_line(line, which_set) {
+    let val, i;
+    let symp = null;
+    let bufp, commentp, altp;
+    let is_glyph = false;
+    let buf = String(line);
+
+    /* convert each instance of whitespace (tabs, consecutive spaces)
+       into a single space; leading and trailing spaces are stripped */
+    buf = mungspaces(buf);
+
+    /* remove trailing comment, if any (this isn't strictly needed for
+       individual symbols, and it won't matter if "X#comment" without
+       separating space slips through; for handling or set description,
+       symbol set creator is responsible for preceding '#' with a space
+       and that comment itself doesn't contain " #") */
+    if ((commentp = buf.lastIndexOf('#')) > 0 && buf[commentp - 1] === ' ')
+        buf = buf.slice(0, commentp - 1);
+
+    /* find the '=' or ':' */
+    bufp = buf.indexOf('=');
+    altp = buf.indexOf(':');
+
+    if (bufp < 0 || (altp >= 0 && altp < bufp))
+        bufp = altp;
+
+    if (bufp < 0) {
+        if (buf.slice(0, 6).toLowerCase() === 'finish') {
+            /* end current graphics set */
+            if (gc_chosen_symset.start)
+                gc_chosen_symset.end = true;
+            gc_chosen_symset.start = false;
+            return 1;
+        }
+        config_error_add('No "finish"');
+        return 0;
+    }
+    const keyword = buf.slice(0, bufp);
+    /* skip '=' and space which follows, if any */
+    ++bufp;
+    if (buf[bufp] === ' ')
+        ++bufp;
+    let valstr = buf.slice(bufp);
+
+    symp = match_sym(buf);
+    if (!symp && buf[0] === 'G' && buf[1] === '_') {
+        if (gc_chosen_symset.start) {
+            is_glyph = !!match_glyph(buf);
+        } else {
+            is_glyph = true; /* report error only once */
+        }
+    }
+    if (!symp && !is_glyph) {
+        config_error_add('Unknown sym keyword');
+        return 0;
+    }
+    if (symp) {
+        if (!gs_symset[which_set]?.name) {
+            /* A null symset name indicates that we're just
+               building a pick-list of possible symset
+               values from the file, so only do that */
+            return 1;
+        }
+        if (symp.range && symp.range === SYM_CONTROL) {
+            switch (symp.idx) {
+            case 0:
+                /* start of symset */
+                if (valstr.toLowerCase() === gs_symset[which_set].name.toLowerCase()) {
+                    /* matches desired one */
+                    gc_chosen_symset.start = true;
+                    /* these init_*() functions clear symset fields too */
+                    if (which_set === ROGUESET)
+                        init_rogue_symbols();
+                    else if (which_set === PRIMARYSET)
+                        init_primary_symbols();
+                }
+                break;
+            case 1:
+                /* finish symset */
+                if (gc_chosen_symset.start)
+                    gc_chosen_symset.end = true;
+                gc_chosen_symset.start = false;
+                break;
+            case 2:
+                /* handler type identified */
+                if (gc_chosen_symset.start)
+                    set_symhandling(valstr, which_set);
+                break;
+            /* case 3: (description) is ignored here */
+            case 4: /* color:off */
+                if (gc_chosen_symset.start) {
+                    if (valstr) {
+                        const v = valstr.toLowerCase();
+                        if (v === 'true' || v === 'yes' || v === 'on')
+                            gs_symset[which_set].nocolor = 0;
+                        else if (v === 'false' || v === 'no' || v === 'off')
+                            gs_symset[which_set].nocolor = 1;
+                    }
+                }
+                break;
+            case 5: /* restrictions: xxxx*/
+                if (gc_chosen_symset.start) {
+                    let n = 0;
+                    while (n < known_restrictions.length) {
+                        if (known_restrictions[n].toLowerCase() === valstr.toLowerCase()) {
+                            switch (n) {
+                            case 0:
+                                gs_symset[which_set].primary = 1;
+                                break;
+                            case 1:
+                                gs_symset[which_set].rogue = 1;
+                                break;
+                            }
+                            break; /* while loop */
+                        }
+                        n++;
+                    }
+                }
+                break;
+            }
+        } else {
+            /* Not SYM_CONTROL */
+            if (gs_symset[which_set].handling !== H_UTF8) {
+                if (gc_chosen_symset.start) {
+                    val = sym_val(valstr);
+                    if (which_set === PRIMARYSET) {
+                        update_primary_symset(symp, val);
+                    } else if (which_set === ROGUESET) {
+                        update_rogue_symset(symp, val);
+                    }
+                }
+            } else {
+                /* ENHANCED_SYMBOLS: a UTF8 handler's "S_x: U+xxxx" lines are
+                   glyph customizations of every glyph drawn with the symbol */
+                if (gc_chosen_symset.start)
+                    glyphrep_to_custom_map_entries(`${keyword}:${valstr}`, null);
+            }
+        }
+    }
+    return 1;
+}
+
+// src/files.c:2631 read_sym_file() — read the chosen symset's entries out
+// of dat/symbols (embedded as js/dat_files.js `symbols`); returns 1 on
+// success (the default set counts), 0 when the named set isn't there
+export function read_sym_file(which_set) {
+    const ss = (gs_symset[which_set] ||= { name: null, handling: H_UNK });
+
+    ss.explicitly = false;
+    ss.explicitly = true;
+    gc_chosen_symset.start = gc_chosen_symset.end = false;
+    gs_symset_which_set.v = which_set;
+    /* parse_conf_file(fp, proc_symset_line): comment and blank lines skipped */
+    for (const raw of symbols_file.split('\n')) {
+        const line = raw.replace(/\r$/, '');
+        if (!line.trim() || line.trimStart()[0] === '#')
+            continue;
+        if (!parse_sym_line(line, which_set))
+            break;
+    }
+    if (!gc_chosen_symset.start && !gc_chosen_symset.end) {
+        /* name caller put in symset[which_set].name was not found;
+           if it looks like "Default symbols", null it out and return
+           success to use the default; otherwise, return failure */
+        if (ss.name
+            && (fuzzymatch(ss.name, 'Default symbols', ' -_', true)
+                || ss.name.toLowerCase() === 'default'))
+            clear_symsetentry(which_set, true);
+        /* If name was defined, it was invalid. Then we're loading fallback */
+        if (ss.name) {
+            ss.explicitly = false;
+            return 0;
+        }
+        return 1;
+    }
+    if (!gc_chosen_symset.end)
+        config_error_add(`Missing finish for symset "${
+            ss.name ? ss.name : 'unknown'}"`);
+    return 1;
+}
+
+// src/symbols.c:673 load_symset() — bundle some common usage into one
+// easy-to-use routine. assign_graphics() carries the switch_symbols() half
+// (the sets this port draws with); the file supplies the customizations.
+export function load_symset(s, which_set) {
+    clear_symsetentry(which_set, true);
+
+    gs_symset[which_set].name = s;
+
+    if (read_sym_file(which_set)) {
+        switch_symbols(true);
+        apply_customizations(gc_currentgraphics.set,
+                             do_custom_symbols | do_custom_colors);
+    } else {
+        clear_symsetentry(which_set, true);
+        return 0;
+    }
+    return 1;
+}
+
+/* gs.showsyms[symidx] as the character code the C table holds: a DEC
+   line-drawing entry is its meta character (0x80 | c) */
+export function showsym_code(entry) {
+    if (entry === null || entry === undefined)
+        return 0;
+    if (typeof entry === 'string')
+        return entry.charCodeAt(0);
+    if (typeof entry === 'number')
+        return entry;
+    const c = entry.ch ? entry.ch.charCodeAt(0) : 0;
+    return entry.dec ? (0x80 | c) : c;
+}
+export function showsyms_at(symidx) {
+    if (symidx < SYM_OFF_O)
+        return showsym_code(gs_showsyms.P ? gs_showsyms.P[symidx - SYM_OFF_P] : defsyms[symidx].sym);
+    if (symidx < SYM_OFF_M)
+        return showsym_code(showsym_oc(symidx - SYM_OFF_O));
+    if (symidx < SYM_OFF_W)
+        return showsym_code(showsym_mon(symidx - SYM_OFF_M));
+    if (symidx < SYM_OFF_X)
+        return showsym_code(gs_showsyms.W ? gs_showsyms.W[symidx - SYM_OFF_W]
+                                          : def_warnsyms[symidx - SYM_OFF_W].ch);
+    return showsym_code(showsym_other(symidx - SYM_OFF_X));
+}
+
+/* src/display.c reset_glyphmap() is late-bound: display.js imports this
+   module, so it registers the function here instead of being imported */
+let display_fns = null;
+export function symbols_wire_display(fns) { display_fns = fns; }

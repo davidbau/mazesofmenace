@@ -6,6 +6,7 @@
 // visible_region_at() for every map square during vision recalculation.
 
 import { pline, newsym } from './display.js';
+import { SIZEOF_NHREGION, SIZEOF_NHRECT, SIZEOF_REGION_MONSTER_ID } from './const.js';
 import { game } from './gstate.js';
 
 import { rn1, rn2, rnd, d } from './rng.js';
@@ -119,7 +120,10 @@ export function mon_in_region(reg, mon) {
 
 // src/region.c:285 add_region()
 export function add_region(reg) {
-    (game.regions ||= []).push(reg);
+    /* gr.regions[] grows by ten slots at a time; #stats counts the slots */
+    if ((game.max_regions | 0) <= (game.regions ||= []).length)
+        game.max_regions = (game.max_regions | 0) + 10;
+    game.regions.push(reg);
     for (let i = reg.bounding_box.lx; i <= reg.bounding_box.hx; i++)
         for (let j = reg.bounding_box.ly; j <= reg.bounding_box.hy; j++) {
             let is_inside = false;
@@ -181,6 +185,7 @@ export function save_regions() {
 // src/region.c:799 rest_regions()
 export function rest_regions(saved, ghostly, idmap) {
     game.regions = structuredClone(saved?.regions || []);
+    game.max_regions = game.regions.length;
     const elapsed = ghostly ? 0 : game.moves - (saved?.moves ?? game.moves);
     for (const reg of game.regions) {
         if (reg.ttl >= 0)
@@ -661,4 +666,64 @@ export function any_visible_region() {
         return true;
     }
     return false;
+}
+
+// src/region.c:674 visible_region_summary() — the visible regions, for
+// #timeout's listing
+export async function visible_region_summary(win) {
+    let buf, typbuf;
+    let damg, hdr_done = 0;
+    const fldsep = game.iflags?.menu_tab_sep ? '\t' : '  ';
+    /* late-bound: js/tty/wintty.js evaluates after this module */
+    const { tty_putstr } = await import('./tty/wintty.js');
+
+    for (const reg of game.regions || []) {
+        if (!reg.visible || reg.ttl === -2)
+            continue;
+
+        if (!hdr_done++) {
+            tty_putstr(win, 0, '');
+            tty_putstr(win, 0, 'Visible regions');
+        }
+        /*
+         * TODO? sort the regions by time-to-live or by bounding box.
+         */
+
+        /* we display relative time (turns left) rather than absolute
+           (the turn when region will go away);
+           since time-to-live has already been decremented, regions
+           which are due to timeout on the next turn have ttl==0;
+           adding 1 is intended to make the display be less confusing */
+        buf = String(reg.ttl + 1).padStart(5);
+        damg = reg.arg | 0;
+        if (damg)
+            typbuf = `poison gas (${damg})`;
+        else
+            typbuf = 'vapor';
+        buf += `${fldsep}${typbuf.padEnd(16)}`;
+        buf += `${fldsep}@[${reg.bounding_box.lx},${reg.bounding_box.ly}..${
+            reg.bounding_box.hx},${reg.bounding_box.hy}]`;
+        tty_putstr(win, 0, buf);
+    }
+}
+
+// src/region.c:899 region_stats() — count and bytes of the regions for
+// #stats; returns the header line the format asked for
+export function region_stats(hdrfmt) {
+    /* other stats formats take one parameter; this takes two */
+    const hdrbuf = hdrfmt.replace('%ld', String(SIZEOF_NHREGION))
+                         .replace('%ld', String(SIZEOF_NHRECT));
+    const regions = game.regions || [];
+    const count = regions.length; /* might be 0 even tho max_regions isn't */
+    let size = (game.max_regions | 0) * SIZEOF_NHREGION;
+    for (const rg of regions) {
+        size += rg.nrects * SIZEOF_NHRECT;
+        if (rg.enter_msg)
+            size += rg.enter_msg.length + 1;
+        if (rg.leave_msg)
+            size += rg.leave_msg.length + 1;
+        size += rg.max_monst * SIZEOF_REGION_MONSTER_ID;
+    }
+    /* ? */
+    return { hdrbuf, count, size };
 }

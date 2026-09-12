@@ -1033,6 +1033,7 @@ sp_lev_wire_mktrap(mktrap);
 sp_lev_wire_okdoor(okdoor);
 sp_lev_wire_subroom(create_subroom);
 sp_lev_wire_mklev({ mkstairs, makecorridors, wallification, makeroguerooms,
+                    clear_level_structures, level_finalize_topology,
                     count_level_features: recount_level_features,
                     create_room, topologize,
                     /* src/teleport.c:196 enexto() — CHECKSCARY pass, then

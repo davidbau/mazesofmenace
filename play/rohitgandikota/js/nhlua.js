@@ -49,6 +49,32 @@ export function nhl_init() {
     return align;
 }
 
+// src/nhlua.c:2392 load_lua() — run a script in a fresh state: nhl_init()
+// loads dat/nhlib.lua (its top level shuffles the `align` list, two draws),
+// then the file. This port has no Lua interpreter; the scripts it knows are
+// nhlib.lua itself (the shuffle again), the hand-ported level scripts
+// (js/dat/levels.js, run against the current level as the C would) and the
+// definition-only libraries. Returns true when the file was found.
+export async function load_lua(name) {
+    game.nhlib_align = nhl_init();
+    const base = name.replace(/\.lua$/, '');
+    if (base === 'nhlib') {
+        game.nhlib_align = nhl_init();
+        return true;
+    }
+    const { SPECIAL_LEVELS } = await import('./dat/levels.js');
+    if (SPECIAL_LEVELS[base]) {
+        await SPECIAL_LEVELS[base]();
+        return true;
+    }
+    if (['quest', 'dungeon', 'themerms', 'nhcore', 'tutorial'].includes(base))
+        return true;
+    /* nhlua.c:2200 nhl_loadlua() */
+    const { impossible } = await import('./pline.js');
+    await impossible(`nhl_loadlua: Error opening (${name})`);
+    return false;
+}
+
 // src/nhlua.c l_nhcore_init() — the core state, created once in newgame().
 export function l_nhcore_init() {
     game.splev_align = nhl_init();

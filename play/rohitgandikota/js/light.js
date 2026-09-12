@@ -19,7 +19,9 @@ import { FM_YOU, FM_FMON, FM_MIGRATE, FM_MYDOGS,
          FM_EVERYWHERE, RANGE_LEVEL } from './const.js';
 import { artifact_light } from './artifact.js';
 import { game } from './gstate.js';
-import { COLNO, ROWNO, OBJ_FREE, LS_NONE, LS_OBJECT, LS_MONSTER } from './const.js';
+import { COLNO, ROWNO, OBJ_FREE, LS_NONE, LS_OBJECT, LS_MONSTER,
+         NHW_MENU, ECMD_OK, SIZEOF_LIGHT_SOURCE } from './const.js';
+import { fmt_ptr } from './hacklib.js';
 import { ONAMES } from './objects_data.js';
 /* imported from vision.c, for small circles (src/light.c:56) */
 import { circle_ptr, clear_path, COULD_SEE, TEMP_LIT } from './vision.js';
@@ -519,4 +521,65 @@ export function obj_merge_light_sources(src, dest) {
             game.vision_full_recalc = 1; /* in case range changed */
             break;
         }
+}
+
+// src/light.c:501 light_stats() — count and bytes of the light sources for
+// #stats; returns the header line the format asked for
+export function light_stats(hdrfmt) {
+    const hdrbuf = hdrfmt.replace('%ld', String(SIZEOF_LIGHT_SOURCE));
+    let count = 0, size = 0;
+    for (const ls of lights()) {
+        ++count;
+        size += SIZEOF_LIGHT_SOURCE;
+    }
+    return { hdrbuf, count, size };
+}
+
+// src/light.c:935 wiz_light_sources() — the #lightsources command
+export async function wiz_light_sources() {
+    let buf;
+    /* late-bound: js/tty/wintty.js evaluates after this module */
+    const { tty_create_nhwindow, tty_destroy_nhwindow, tty_putstr,
+            tty_display_nhwindow, tty_next_page } = await import('./tty/wintty.js');
+    const { xwaitforspace } = await import('./tty/getline.js');
+
+    const win = tty_create_nhwindow(NHW_MENU); /* corner text window */
+
+    buf = `Mobile light sources: hero @ (${String(game.u.ux).padStart(2)},${
+        String(game.u.uy).padStart(2)})`;
+    tty_putstr(win, 0, buf);
+    tty_putstr(win, 0, '');
+
+    if (lights().length) {
+        tty_putstr(win, 0, 'location range flags  type    id');
+        tty_putstr(win, 0, '-------- ----- ------ ----  -------');
+        for (const ls of lights()) {
+            const mon = ls.type === LS_MONSTER ? find_mid(ls.id, FM_EVERYWHERE) : null;
+            const owner = ls.type === LS_OBJECT ? find_oid(ls.id) : mon;
+            buf = `  ${String(ls.x).padStart(2)},${String(ls.y).padStart(2)}   ${
+                String(ls.range).padStart(2)}   0x${
+                (ls.flags | 0).toString(16).padStart(4, '0')}  ${
+                ls.type === LS_OBJECT
+                    ? 'obj'
+                    : ls.type === LS_MONSTER
+                       ? ((mon && mon.mx > 0) /* mon_is_local() */
+                          ? 'mon'
+                          : (mon === game.youmonst)
+                             ? 'you'
+                             /* migrating monster */
+                             : '<m>')
+                       : '???'}  ${fmt_ptr(owner)}`;
+            tty_putstr(win, 0, buf);
+        }
+    } else
+        tty_putstr(win, 0, '<none>');
+
+    /* display_nhwindow(win, FALSE) */
+    await tty_display_nhwindow(win);
+    await xwaitforspace(' \r\n\x1b');
+    while (game.morc !== '\x1b' && tty_next_page(win))
+        await xwaitforspace(' \r\n\x1b');
+    tty_destroy_nhwindow(win);
+
+    return ECMD_OK;
 }

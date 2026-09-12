@@ -284,8 +284,11 @@ export const PICK_ONE = 1;
 export const PICK_ANY = 2;
 export const MENU_BEHAVE_STANDARD = 0;
 export const MENU_BEHAVE_PERMINV = 1;
+export const ATR_NONE = 0;
+export const ATR_BOLD = 1;
 export const ATR_ULINE = 4;
 export const ATR_BLINK = 5;
+export const ATR_INVERSE = 7;
 export const ATR_URGENT = 16;
 export const ATR_NOHISTORY = 32;
 
@@ -2536,6 +2539,125 @@ export const MAXTCHARS = TRAPNUM - 1;
 // ==========================================================================
 
 export const WARNCOUNT = 6;
+/* sizeof() of the recorder build's structures (macOS arm64, LP64), measured
+   with tools/struct-sizes.c; #stats (wizcmds.c wiz_show_stats()) and the
+   per-file *_stats() helpers print them */
+export const SIZEOF_STRUCT_OBJ = 112;
+export const SIZEOF_STRUCT_OEXTRA = 32;
+export const SIZEOF_STRUCT_MONST = 192;
+export const SIZEOF_STRUCT_MEXTRA = 64;
+export const SIZEOF_STRUCT_EGD = 640;
+export const SIZEOF_STRUCT_EPRI = 56;
+export const SIZEOF_STRUCT_ESHK = 4960;
+export const SIZEOF_STRUCT_EMIN = 8;
+export const SIZEOF_STRUCT_EDOG = 64;
+export const SIZEOF_STRUCT_EBONES = 28;
+export const SIZEOF_MAPSEEN = 384;
+export const SIZEOF_STRUCT_CEMETERY = 184;
+export const SIZEOF_STRUCT_TRAP = 32;
+export const SIZEOF_STRUCT_ENGR = 64;
+export const SIZEOF_LIGHT_SOURCE = 32;
+export const SIZEOF_TIMER_ELEMENT = 48;
+export const SIZEOF_STRUCT_DAMAGE = 32;
+export const SIZEOF_NHREGION = 96;
+export const SIZEOF_NHRECT = 8;
+export const SIZEOF_STRUCT_KINFO = 272;
+export const SIZEOF_STRUCT_WSEG = 16;
+export const SIZEOF_REGION_MONSTER_ID = 4; /* sizeof *NhRegion.monsters */
+/* include/display.h:500 enum glyph_offsets — the integer glyph numbering.
+   This port draws from {kind, ...} glyph records; the numbering serves
+   glyphs.c (glyph identifiers, symset customizations) and display.c's
+   glyphmap[]. NUMMONS (383) and NUM_OBJECTS (481) are the generated tables'
+   counts (js/monst_data.js, js/objects_data.js); const.js is a leaf and
+   cannot import them. The cmap indices are defsym.h's. */
+const GLYPH_NUMMONS = 383, GLYPH_NUM_OBJECTS = 481, GLYPH_MAXTCHARS = 25;
+const GLYPH_S_vwall = 1, GLYPH_S_trwall = 11, GLYPH_S_ndoor = 12,
+      GLYPH_S_brdnladder = 32, GLYPH_S_grave = 34, GLYPH_S_arrow_trap = 49,
+      GLYPH_S_digbeam = 78, GLYPH_S_goodpos = 87;
+export const GLYPH_MON_OFF = 0;
+export const GLYPH_MON_MALE_OFF = GLYPH_MON_OFF;
+export const GLYPH_MON_FEM_OFF = GLYPH_NUMMONS + GLYPH_MON_MALE_OFF;
+export const GLYPH_PET_OFF = GLYPH_NUMMONS + GLYPH_MON_FEM_OFF;
+export const GLYPH_PET_MALE_OFF = GLYPH_PET_OFF;
+export const GLYPH_PET_FEM_OFF = GLYPH_NUMMONS + GLYPH_PET_MALE_OFF;
+export const GLYPH_INVIS_OFF = GLYPH_NUMMONS + GLYPH_PET_FEM_OFF;
+export const GLYPH_DETECT_OFF = 1 + GLYPH_INVIS_OFF;
+export const GLYPH_DETECT_MALE_OFF = GLYPH_DETECT_OFF;
+export const GLYPH_DETECT_FEM_OFF = GLYPH_NUMMONS + GLYPH_DETECT_MALE_OFF;
+export const GLYPH_BODY_OFF = GLYPH_NUMMONS + GLYPH_DETECT_FEM_OFF;
+export const GLYPH_RIDDEN_OFF = GLYPH_NUMMONS + GLYPH_BODY_OFF;
+export const GLYPH_RIDDEN_MALE_OFF = GLYPH_RIDDEN_OFF;
+export const GLYPH_RIDDEN_FEM_OFF = GLYPH_NUMMONS + GLYPH_RIDDEN_MALE_OFF;
+export const GLYPH_OBJ_OFF = GLYPH_NUMMONS + GLYPH_RIDDEN_FEM_OFF;
+export const GLYPH_CMAP_OFF = GLYPH_NUM_OBJECTS + GLYPH_OBJ_OFF;
+export const GLYPH_CMAP_STONE_OFF = GLYPH_CMAP_OFF;
+export const GLYPH_CMAP_MAIN_OFF = 1 + GLYPH_CMAP_STONE_OFF;
+export const GLYPH_CMAP_MINES_OFF = ((GLYPH_S_trwall - GLYPH_S_vwall) + 1) + GLYPH_CMAP_MAIN_OFF;
+export const GLYPH_CMAP_GEH_OFF = ((GLYPH_S_trwall - GLYPH_S_vwall) + 1) + GLYPH_CMAP_MINES_OFF;
+export const GLYPH_CMAP_KNOX_OFF = ((GLYPH_S_trwall - GLYPH_S_vwall) + 1) + GLYPH_CMAP_GEH_OFF;
+export const GLYPH_CMAP_SOKO_OFF = ((GLYPH_S_trwall - GLYPH_S_vwall) + 1) + GLYPH_CMAP_KNOX_OFF;
+export const GLYPH_CMAP_A_OFF = ((GLYPH_S_trwall - GLYPH_S_vwall) + 1) + GLYPH_CMAP_SOKO_OFF;
+export const GLYPH_ALTAR_OFF = ((GLYPH_S_brdnladder - GLYPH_S_ndoor) + 1) + GLYPH_CMAP_A_OFF;
+export const GLYPH_CMAP_B_OFF = 5 + GLYPH_ALTAR_OFF;
+export const GLYPH_ZAP_OFF = (GLYPH_S_arrow_trap + GLYPH_MAXTCHARS - GLYPH_S_grave) + GLYPH_CMAP_B_OFF;
+export const GLYPH_CMAP_C_OFF = (NUM_ZAP << 2) + GLYPH_ZAP_OFF;
+export const GLYPH_SWALLOW_OFF = ((GLYPH_S_goodpos - GLYPH_S_digbeam) + 1) + GLYPH_CMAP_C_OFF;
+export const GLYPH_EXPLODE_OFF = (GLYPH_NUMMONS << 3) + GLYPH_SWALLOW_OFF;
+export const GLYPH_EXPLODE_DARK_OFF = GLYPH_EXPLODE_OFF;
+export const GLYPH_EXPLODE_NOXIOUS_OFF = MAXEXPCHARS + GLYPH_EXPLODE_DARK_OFF;
+export const GLYPH_EXPLODE_MUDDY_OFF = MAXEXPCHARS + GLYPH_EXPLODE_NOXIOUS_OFF;
+export const GLYPH_EXPLODE_WET_OFF = MAXEXPCHARS + GLYPH_EXPLODE_MUDDY_OFF;
+export const GLYPH_EXPLODE_MAGICAL_OFF = MAXEXPCHARS + GLYPH_EXPLODE_WET_OFF;
+export const GLYPH_EXPLODE_FIERY_OFF = MAXEXPCHARS + GLYPH_EXPLODE_MAGICAL_OFF;
+export const GLYPH_EXPLODE_FROSTY_OFF = MAXEXPCHARS + GLYPH_EXPLODE_FIERY_OFF;
+export const GLYPH_WARNING_OFF = MAXEXPCHARS + GLYPH_EXPLODE_FROSTY_OFF;
+export const GLYPH_STATUE_OFF = WARNCOUNT + GLYPH_WARNING_OFF;
+export const GLYPH_STATUE_MALE_OFF = GLYPH_STATUE_OFF;
+export const GLYPH_STATUE_FEM_OFF = GLYPH_NUMMONS + GLYPH_STATUE_MALE_OFF;
+export const GLYPH_PILETOP_OFF = GLYPH_NUMMONS + GLYPH_STATUE_FEM_OFF;
+export const GLYPH_OBJ_PILETOP_OFF = GLYPH_PILETOP_OFF;
+export const GLYPH_BODY_PILETOP_OFF = GLYPH_NUM_OBJECTS + GLYPH_OBJ_PILETOP_OFF;
+export const GLYPH_STATUE_MALE_PILETOP_OFF = GLYPH_NUMMONS + GLYPH_BODY_PILETOP_OFF;
+export const GLYPH_STATUE_FEM_PILETOP_OFF = GLYPH_NUMMONS + GLYPH_STATUE_MALE_PILETOP_OFF;
+export const GLYPH_UNEXPLORED_OFF = GLYPH_NUMMONS + GLYPH_STATUE_FEM_PILETOP_OFF;
+export const GLYPH_NOTHING_OFF = GLYPH_UNEXPLORED_OFF + 1;
+export const MAX_GLYPH = GLYPH_NOTHING_OFF + 1;
+export const NO_GLYPH = MAX_GLYPH;
+export const GLYPH_INVISIBLE = GLYPH_INVIS_OFF;
+export const GLYPH_UNEXPLORED = GLYPH_UNEXPLORED_OFF;
+export const GLYPH_NOTHING = GLYPH_NOTHING_OFF;
+/* include/display.h:970 */
+export const GLYPH_TRAP_OFF = GLYPH_CMAP_B_OFF + (GLYPH_S_arrow_trap - GLYPH_S_grave);
+/* include/display.h:996 glyphmap glyphflags */
+export const MG_HERO    = 0x00001;
+export const MG_CORPSE  = 0x00002;  /* represents a body */
+export const MG_INVIS   = 0x00004;  /* represents invisible monster */
+export const MG_DETECT  = 0x00008;  /* represents a detected monster */
+export const MG_PET     = 0x00010;  /* represents a pet */
+export const MG_RIDDEN  = 0x00020;  /* represents a ridden monster */
+export const MG_STATUE  = 0x00040;  /* represents a statue */
+export const MG_OBJPILE = 0x00080;  /* more than one stack of objects */
+export const MG_BW_LAVA = 0x00100;  /* 'black & white lava' */
+export const MG_BW_ICE  = 0x00200;  /* similar for ice vs floor */
+export const MG_BW_SINK = 0x00200;  /* identical for sink vs fountain */
+export const MG_BW_ENGR = 0x00200;  /* likewise for corridor engravings */
+export const MG_NOTHING = 0x00400;  /* char represents GLYPH_NOTHING */
+export const MG_UNEXPL  = 0x00800;  /* char represents GLYPH_UNEXPLORED */
+export const MG_MALE    = 0x01000;  /* represents a male mon or statue of one */
+export const MG_FEMALE  = 0x02000;  /* represents a female mon or statue of one */
+/* include/display.h:353 enum level_walls */
+export const main_walls = 0, mines_walls = 1, gehennom_walls = 2,
+             knox_walls = 3, sokoban_walls = 4;
+/* include/display.h:356 enum glyphmap_change_triggers */
+export const gm_nochange = 0, gm_newgame = 1, gm_levelchange = 2,
+             gm_optionchange = 3, gm_symchange = 4, gm_accessibility_change = 5;
+/* src/display.c gg.glyphmap_perlevel_flags */
+export const GMAP_SET = 0x00000001;
+export const GMAP_ROGUELEVEL = 0x00000002;
+/* include/sym.h:139 enum customization_types / :133 enum do_customizations */
+export const custom_none = 0, custom_symbols = 1, custom_ureps = 2,
+             custom_nhcolor = 3, custom_count = 4;
+export const do_custom_none = 0, do_custom_colors = 1, do_custom_symbols = 2;
 
 export const def_warnsyms = [
     // level 0: white warning

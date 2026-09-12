@@ -26,7 +26,7 @@ import { dmgtype_fromattack } from './mondata.js';
 import { within_bounded_area } from './mkmaze.js';
 import { Is_wiz1_level, Is_wiz2_level, Is_wiz3_level } from './const.js';
 import { game } from './gstate.js';
-import { Is_airlevel, MAGIC_PORTAL } from './const.js';
+import { Is_airlevel, MAGIC_PORTAL, SIZEOF_MAPSEEN, SIZEOF_STRUCT_CEMETERY } from './const.js';
 import { In_endgame, In_quest, Is_earthlevel, Is_firelevel, Is_waterlevel,
          ROOM, CORR, ICE, SDOOR, ALTAR, GRAVE, TREE, THRONE,
          FOUNTAIN, SINK, IRONBARS, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, IS_WALL,
@@ -1436,6 +1436,53 @@ export function update_lastseentyp(x, y) {
     if (mtmp && M_AP_TYPE(mtmp) === M_AP_FURNITURE && canseemon(mtmp))
         ltyp = cmap_to_type(mtmp.mappearance);
     loc.lastseentyp = ltyp;
+}
+
+// src/dungeon.c:2761 overview_stats() — count and bytes of the overview
+// data for #stats; statsfmt formats one line
+export function overview_stats(win, statsfmt) {
+    let buf, hdrbuf;
+    let ocount = 0, osize = 0, bcount = 0, bsize = 0, acount = 0, asize = 0;
+
+    for (const mptr of Object.values(game.mapseen || {})) {
+        ++ocount;
+        osize += SIZEOF_MAPSEEN;
+        for (let ce = mptr.final_resting_place; ce; ce = ce.next) {
+            ++bcount;
+            bsize += SIZEOF_STRUCT_CEMETERY;
+        }
+        if (mptr.custom_lth) {
+            ++acount;
+            asize += mptr.custom_lth + 1;
+        }
+    }
+
+    hdrbuf = `general, size ${SIZEOF_MAPSEEN}`;
+    buf = statsfmt(hdrbuf, ocount, osize);
+    tty_putstr(win, 0, buf);
+    if (bcount) {
+        hdrbuf = `cemetery, size ${SIZEOF_STRUCT_CEMETERY}`;
+        buf = statsfmt(hdrbuf, bcount, bsize);
+        tty_putstr(win, 0, buf);
+    }
+    if (acount) {
+        hdrbuf = 'annotations, text';
+        buf = statsfmt(hdrbuf, acount, asize);
+        tty_putstr(win, 0, buf);
+    }
+    return { count: ocount + bcount + acount, size: osize + bsize + asize };
+}
+
+// src/dungeon.c:2665 rm_mapseen() — discard the overview entry of one level
+// (its custom annotation and final resting places go with it)
+export function rm_mapseen(ledger_num) {
+    for (const [key, mptr] of Object.entries(game.mapseen || {})) {
+        if ((game.dungeons[mptr.dnum]?.ledger_start ?? 0) + mptr.dlevel
+            === ledger_num) {
+            delete game.mapseen[key];
+            return;
+        }
+    }
 }
 
 // src/dungeon.c:2831 init_mapseen() — start a mapseen entry for a level.

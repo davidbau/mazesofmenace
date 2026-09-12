@@ -70,7 +70,7 @@ export const extcmdlist = [
     { ef_txt: "look", ef_desc: "look at what is here", ef_funct: "dolook", key: 58, flags: 1 },
     { ef_txt: "lookaround", ef_desc: "describe what you can see", ef_funct: "dolookaround", key: 0, flags: 9 },
     { ef_txt: "loot", ef_desc: "loot a box on the floor", ef_funct: "doloot", key: 236, flags: 130 },
-    { ef_txt: "migratemons", ef_desc: "show migrating monsters and migrate N random ones", ef_funct: "", key: 0, flags: 7 },
+    { ef_txt: "migratemons", ef_desc: "show migrating monsters and migrate N random ones", ef_funct: "wiz_migrate_mons", key: 0, flags: 7 },
     { ef_txt: "monster", ef_desc: "use monster's special ability", ef_funct: "domonability", key: 237, flags: 3 },
     { ef_txt: "name", ef_desc: "same as call; name a monster or object or object type", ef_funct: "docallcmd", key: 238, flags: 11 },
     { ef_txt: "offer", ef_desc: "offer a sacrifice to the gods", ef_funct: "dosacrifice", key: 239, flags: 130 },

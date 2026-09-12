@@ -2007,6 +2007,21 @@ export async function m_move(mtmp, after) {
         if ((mfp.info[chi] & ALLOW_M)
             || (nix === mtmp.mux && niy === mtmp.muy))
             return await m_move_aggress(mtmp, nix, niy);
+
+        // src/monmove.c:2025 — a displacer moves the occupant out of the way
+        if ((mfp.info[chi] & ALLOW_MDISP) !== 0) {
+            const { mdisplacem } = await import('./mhitm.js');
+
+            const mtmp2 = m_at(nix, niy); /* ALLOW_MDISP implies m_at() is !Null */
+            const mstatus = await mdisplacem(mtmp, mtmp2, false);
+            /*[if either dies, this reports mtmp has died; is that correct?]*/
+            if (mstatus & (M_ATTK_AGR_DIED | M_ATTK_DEF_DIED))
+                return MMOVE_DIED;
+            if (mstatus & M_ATTK_HIT)
+                return MMOVE_MOVED;
+            return MMOVE_DONE;
+        }
+
         // src/monmove.c:2039, update the selected region membership.
         if (!(await m_in_out_region(mtmp, nix, niy)))
             return MMOVE_DONE;

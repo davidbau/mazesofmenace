@@ -23,7 +23,8 @@ import { rnd } from './rng.js';
 import { tty_create_nhwindow } from './tty/wintty.js';
 import { tty_putstr } from './tty/wintty.js';
 import { tty_display_nhwindow } from './tty/wintty.js';
-import { tty_destroy_nhwindow } from './tty/wintty.js';
+import { tty_destroy_nhwindow, tty_next_page } from './tty/wintty.js';
+import { xwaitforspace } from './tty/getline.js';
 import { NHW_TEXT } from './const.js';
 import { money_cnt } from './invent.js';
 import { currency } from './invent.js';
@@ -38,6 +39,8 @@ import { more_experienced } from './exper.js';
 import { newexplevel } from './exper.js';
 import { ECMD_OK } from './const.js';
 import { ECMD_TIME } from './const.js';
+import { impossible } from './pline.js';
+import { display_nhwindow_message } from './display.js';
 
 // include/global.h:41
 export const MD_PAD_RUMORS = 60;
@@ -150,6 +153,9 @@ export function get_rnd_text(fname, rng, padlength) {
     return get_rnd_line(fh, rng, starttxt, 0, padlength);
 }
 
+/* include/hack.h — quitchars */
+const quitchars = ' \r\n\x1b';
+
 const COOKIE_MARKER = '[cookie] ';
 
 // src/rumors.c:118 getrumor()
@@ -194,6 +200,207 @@ export function getrumor(truth, exclude_cookie) {
     if (!exclude_cookie && rumor_buf.startsWith(COOKIE_MARKER))
         rumor_buf = rumor_buf.slice(COOKIE_MARKER.length);
     return rumor_buf;
+}
+
+// src/rumors.c:196 rumor_check() — the #wizrumorcheck listing: the rumor
+// file's section offsets, the first and last true and false rumors, then
+// the engraving, epitaph and bogus-monster files via others_check()
+export async function rumor_check() {
+    let tmpwin = null;
+    let line, endp, l2;
+    const R = RUMOR_RANGES;
+    const chop = (str) => ((endp = str.indexOf('\n')) >= 0) ? str.slice(0, endp) : str;
+    const d6 = (n) => String(n).padStart(6, '0');
+    const x6 = (n) => (n >>> 0).toString(16).padStart(6, '0');
+
+    const rumors = (R.true_rumor_size >= 0) ? dlb_fopen('rumors') : null;
+    if (rumors) {
+        let ftell_rumor_start = 0;
+        let rumor_buf = '';
+
+        /* if this is 1st outrumor(): init_rumors() reads the section
+           offsets from the file's header; RUMOR_RANGES holds them here */
+        tmpwin = tty_create_nhwindow(NHW_TEXT);
+
+        /*
+         * reveal the values.
+         */
+        rumor_buf = `T start=${d6(R.true_rumor_start)} (${x6(R.true_rumor_start)}), end=${
+            d6(R.true_rumor_end)} (${x6(R.true_rumor_end)}), size=${
+            d6(R.true_rumor_size)} (${x6(R.true_rumor_size)})`;
+        tty_putstr(tmpwin, 0, rumor_buf);
+        rumor_buf = `F start=${d6(R.false_rumor_start)} (${x6(R.false_rumor_start)}), end=${
+            d6(R.false_rumor_end)} (${x6(R.false_rumor_end)}), size=${
+            d6(R.false_rumor_size)} (${x6(R.false_rumor_size)})`;
+        tty_putstr(tmpwin, 0, rumor_buf);
+
+        /*
+         * check the first rumor (start of true rumors) by
+         * skipping the first two lines.
+         *
+         * Then seek to the start of the false rumors (based on
+         * the value read in rumors, and display it.
+         */
+        rumor_buf = '';
+        dlb_fseek(rumors, R.true_rumor_start, 'SET');
+        ftell_rumor_start = dlb_ftell(rumors);
+        line = dlb_fgets(rumors) ?? '';
+        line = chop(line);
+        rumor_buf = `T ${d6(ftell_rumor_start)} ${xcrypt(line)}`;
+        tty_putstr(tmpwin, 0, rumor_buf);
+        /* find last true rumor: fgets() overwrites line before the
+           position test, so line ends up as the one that crossed the end */
+        while ((l2 = dlb_fgets(rumors)) !== null
+               && ((line = l2), dlb_ftell(rumors) < R.true_rumor_end))
+            continue;
+        line = chop(line);
+        rumor_buf = `  ${''.padStart(6)} ${xcrypt(line)}`;
+        tty_putstr(tmpwin, 0, rumor_buf);
+
+        rumor_buf = '';
+        dlb_fseek(rumors, R.false_rumor_start, 'SET');
+        ftell_rumor_start = dlb_ftell(rumors);
+        line = dlb_fgets(rumors) ?? '';
+        line = chop(line);
+        rumor_buf = `F ${d6(ftell_rumor_start)} ${xcrypt(line)}`;
+        tty_putstr(tmpwin, 0, rumor_buf);
+        /* find last false rumor */
+        while ((l2 = dlb_fgets(rumors)) !== null
+               && ((line = l2), dlb_ftell(rumors) < R.false_rumor_end))
+            continue;
+        line = chop(line);
+        rumor_buf = `  ${''.padStart(6)} ${xcrypt(line)}`;
+        tty_putstr(tmpwin, 0, rumor_buf);
+
+        /* (void) dlb_fclose(rumors); */
+
+    /* if a previous attempt couldn't open file or rejected its contents,
+       we didn't bother trying again this time */
+    } else if (R.true_rumor_size < 0) {
+        /* no_rumors: file could be opened but init_rumors() didn't like it */
+        await pline('rumors not accessible.');
+        /* engravings, epitaphs, and bogus monsters will still be shown,
+           and in tmpwin rather than via additional pline() calls */
+        await display_nhwindow_message(); /* --more-- */
+
+    /* first attempt to open file has just failed */
+    } else {
+        await couldnt_open_file('rumors');
+        R.true_rumor_size = -1; /* don't try to open it again */
+    }
+
+    /* initial implementation of default epitaph/engraving/bogusmon
+       contained an error; check those along with rumors */
+    const winptr = { win: tmpwin };
+    await others_check('Engravings:', 'engrave', winptr);
+    await others_check('Epitaphs:', 'epitaph', winptr);
+    await others_check('Bogus monsters:', 'bogusmon', winptr);
+    tmpwin = winptr.win;
+
+    if (tmpwin) {
+        /* display_nhwindow(tmpwin, TRUE): page through the text window,
+           ESC cancelling the remaining pages */
+        await tty_display_nhwindow(tmpwin);
+        for (;;) {
+            await xwaitforspace(quitchars);
+            if (game.morc === '\x1b')
+                break;
+            if (!tty_next_page(tmpwin))
+                break;
+        }
+        tty_destroy_nhwindow(tmpwin);
+    }
+}
+
+// src/rumors.c:305 others_check() — 5.0: augments rumors_check(); test
+// 'engrave' or 'epitaph' or 'bogusmon'. winptr.win is the text window for
+// output; created here if necessary.
+async function others_check(ftype, fname, winptr) {
+    const errfmt = (f, s) => `others_check("${f}"): ${s}`;
+    let line, xbuf = '', endp;
+    let tmpwin = winptr.win;
+    let entrycount = 0;
+    const chop = (str) => ((endp = str.indexOf('\n')) >= 0) ? str.slice(0, endp) : str;
+
+    const fh = FILES[fname] !== undefined ? dlb_fopen(fname) : null;
+    if (fh) {
+        if (!tmpwin) {
+            winptr.win = tmpwin = tty_create_nhwindow(NHW_TEXT);
+            /* (WIN_ERR: "can't create temporary window" can't happen with
+               the tty port's window table) */
+        }
+        tty_putstr(tmpwin, 0, '');
+        tty_putstr(tmpwin, 0, ftype);
+        /* "don't edit" comment */
+        line = dlb_fgets(fh);
+        if (line === null) {
+            tty_putstr(tmpwin, 0, errfmt(fname, "error; can't read comment line"));
+            return; /* closeit */
+        }
+        if (line[0] !== '#') {
+            tty_putstr(tmpwin, 0,
+                       errfmt(fname, 'malformed; first line is not a comment line:'));
+            /* show the bad line; we don't know whether it has been
+               encrypted via xcrypt() so show it both ways */
+            line = chop(line);
+            tty_putstr(tmpwin, 0, '- first line, as is');
+            tty_putstr(tmpwin, 0, line);
+            tty_putstr(tmpwin, 0, '- xcrypt of first line');
+            tty_putstr(tmpwin, 0, xcrypt(line));
+            return; /* closeit */
+        }
+        /* first line; should be default one inserted by makedefs when
+           building the file but we don't have the expected value so
+           can only require a line to exist */
+        line = dlb_fgets(fh);
+        if (line === null || line === '\n') {
+            tty_putstr(tmpwin, 0,
+                       errfmt(fname, line === null ? "can't read first non-comment line"
+                                                   : 'first non-comment line is empty'));
+            return; /* closeit */
+        }
+        ++entrycount;
+        line = chop(line);
+        tty_putstr(tmpwin, 0, xcrypt(line));
+        line = dlb_fgets(fh);
+        if (line === null) {
+            tty_putstr(tmpwin, 0, '(no second entry)');
+        } else {
+            let l2;
+            ++entrycount;
+            line = chop(line);
+            tty_putstr(tmpwin, 0, xcrypt(line));
+            while ((l2 = dlb_fgets(fh)) !== null) {
+                ++entrycount;
+                line = chop(l2);
+                xbuf = xcrypt(line);
+            }
+            /* count will be 2 if the default entry and the first ordinary
+               entry are the only ones present (if either of those were
+               missing, we wouldn't have gotten here...) */
+            if (entrycount === 2) {
+                tty_putstr(tmpwin, 0, '(only two entries)');
+            } else {
+                /* showing an ellipsis avoids ambiguity about whether
+                   there are other lines; doing so three times (once for
+                   each file) results in total output being 24 lines,
+                   forcing a --More-- prompt if using a 24 line screen;
+                   displaying 23 lines and --More-- followed by second
+                   page with 1 line doesn't look very good but isn't
+                   incorrect, and taller screens where that won't be an
+                   issue are more common than 24 line terminals nowadays */
+                if (entrycount > 3)
+                    tty_putstr(tmpwin, 0, ' ...');
+                tty_putstr(tmpwin, 0, xbuf); /* already decrypted */
+            }
+        }
+        /* closeit: (void) dlb_fclose(fh); */
+    } else {
+        /* since this comes out via impossible(), it won't be integrated
+           with the text window of values, but it shouldn't ever happen
+           so we won't waste effort integrating it */
+        await couldnt_open_file(fname);
+    }
 }
 
 // src/rumors.c:545 outrumor() — deliver a rumor via cookie, paper or Oracle.
@@ -380,4 +587,20 @@ export async function doconsult(oracl) {
         await newexplevel();
     }
     return ECMD_TIME;
+}
+
+// src/rumors.c:770 couldnt_open_file() — a data file that can't be read;
+// impossible() without its "saving and restoring might fix this" clause
+export async function couldnt_open_file(filename) {
+    const state = (game.program_state ||= {});
+    const save_something = state.something_worth_saving;
+
+    /* most likely the file is missing, so suppress impossible()'s
+       "saving and restoring might fix this" (unless the fuzzer,
+       which escalates impossible to panic, is running) */
+    if (!game.iflags?.debug_fuzzer)
+        state.something_worth_saving = 0;
+
+    await impossible(`Can't open '${filename}' file.`);
+    state.something_worth_saving = save_something;
 }

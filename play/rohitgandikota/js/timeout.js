@@ -28,6 +28,29 @@ import { game } from './gstate.js';
 import { rn2, rnd, d } from './rng.js';
 import { stop_occupation } from './allmain.js';
 import { nomul } from './hack.js';
+import { NHW_MENU, ECMD_OK, SIZEOF_TIMER_ELEMENT, COLD_RES, INVULNERABLE,
+         STUNNED, CONFUSION, HALLUC,
+         BLINDED, DEAF, VOMITING, GLIB, WOUNDED_LEGS, SLEEPY, TELEPORT,
+         POLYMORPH, LEVITATION, FAST, CLAIRVOYANT, DETECT_MONSTERS,
+         SEE_INVIS, INVIS, DISPLACED, PASSES_WALLS,
+         MAGICAL_BREATHING, WWALKING, FIRE_RES, SLEEP_RES, DISINT_RES,
+         SHOCK_RES, POISON_RES, DRAIN_RES, SICK_RES, ANTIMAGIC, HALLUC_RES,
+         BLND_RES, FUMBLING, HUNGER, TELEPAT, WARNING, WARN_OF_MON,
+         WARN_UNDEAD, SEARCHING, INFRAVISION, ADORNED, STEALTH,
+         AGGRAVATE_MONSTER, CONFLICT, JUMPING, TELEPORT_CONTROL, FLYING,
+         SWIMMING, SLOW_DIGESTION, HALF_SPDAM, HALF_PHDAM, REGENERATION,
+         ENERGY_REGENERATION, PROTECTION, PROT_FROM_SHAPE_CHANGERS,
+         POLYMORPH_CONTROL, UNCHANGING, REFLECTING, FREE_ACTION, FIXED_ABIL,
+         LIFESAVED } from './const.js';
+import { fmt_ptr } from './hacklib.js';
+
+/* the tty window functions are late-bound: js/tty/wintty.js evaluates after
+   this module in the game's import order, so a static import here would
+   drag it in early and re-enter it */
+let ttywin = null;
+async function tty() {
+    return ttywin ||= await import('./tty/wintty.js');
+}
 import { TIMEOUT, FROMOUTSIDE, I_SPECIAL, WT_NOISY_INV, FOOT, NECK,
          A_STR, A_DEX, A_CON, DIED, KILLED_BY, KILLED_BY_AN,
          NO_KILLER_PREFIX, STONED, SLIMED, SICK, STRANGLED,
@@ -339,6 +362,112 @@ async function slimed_to_death(kptr) {
     }
 }
 
+// src/timeout.c:27 propertynames[] — the hero properties in the order the
+// #timeout and #wizintrinsic listings use. `key` is where this port keeps
+// the property's intrinsic bits: u.uprops.<NAME> for the few kept there,
+// u.intrinsic.H<name> (the youprop.h HFoo macros) for the rest.
+export const propertynames = [
+    { prop_num: INVULNERABLE, prop_name: 'invulnerable', key: 'HInvulnerable' },
+    { prop_num: STONED, prop_name: 'petrifying', key: 'STONED' },
+    { prop_num: SLIMED, prop_name: 'becoming slime', key: 'SLIMED' },
+    { prop_num: STRANGLED, prop_name: 'strangling', key: 'HStrangled' },
+    { prop_num: SICK, prop_name: 'fatally sick', key: 'SICK' },
+    { prop_num: STUNNED, prop_name: 'stunned', key: 'HStun' },
+    { prop_num: CONFUSION, prop_name: 'confused', key: 'HConfusion' },
+    { prop_num: HALLUC, prop_name: 'hallucinating', key: 'HHallucination' },
+    { prop_num: BLINDED, prop_name: 'blinded', key: 'HBlinded' },
+    { prop_num: DEAF, prop_name: 'deafness', key: 'HDeaf' },
+    { prop_num: VOMITING, prop_name: 'vomiting', key: 'VOMITING' },
+    { prop_num: GLIB, prop_name: 'slippery fingers', key: 'HGlib' },
+    { prop_num: WOUNDED_LEGS, prop_name: 'wounded legs', key: 'HWounded_legs' },
+    { prop_num: SLEEPY, prop_name: 'sleepy', key: 'HSleepy' },
+    { prop_num: TELEPORT, prop_name: 'teleporting', key: 'HTeleportation' },
+    { prop_num: POLYMORPH, prop_name: 'polymorphing', key: 'HPolymorph' },
+    { prop_num: LEVITATION, prop_name: 'levitating', key: 'HLevitation' },
+    { prop_num: FAST, prop_name: 'very fast', key: 'HFast' }, /* timed 'FAST' is very fast */
+    { prop_num: CLAIRVOYANT, prop_name: 'clairvoyant', key: 'HClairvoyant' },
+    { prop_num: DETECT_MONSTERS, prop_name: 'monster detection', key: 'HDetect_monsters' },
+    { prop_num: SEE_INVIS, prop_name: 'see invisible', key: 'HSee_invisible' },
+    { prop_num: INVIS, prop_name: 'invisible', key: 'HInvis' },
+    /* temporary acid resistance and stone resistance can come from eating */
+    { prop_num: ACID_RES, prop_name: 'acid resistance', key: 'HAcid_resistance' },
+    { prop_num: STONE_RES, prop_name: 'stoning resistance', key: 'HStone_resistance' },
+    /* timed displacement is possible via eating a displacer beast corpse */
+    { prop_num: DISPLACED, prop_name: 'displaced', key: 'HDisplaced' },
+    /* timed pass-walls is a potential prayer result if surrounded by stone
+       with nowhere to be safely teleported to */
+    { prop_num: PASSES_WALLS, prop_name: 'pass thru walls', key: 'HPasses_walls' },
+    /* likewise for magical breathing vs poison gas regions */
+    { prop_num: MAGICAL_BREATHING, prop_name: 'magical breathing', key: 'HMagical_breathing' },
+    /* timed fire resistance and water walking are possible in explore mode
+       (as well as in wizard mode) after life-saving in lava if it fails to
+       teleport the hero to safety and player declines to die */
+    { prop_num: WWALKING, prop_name: 'water walking', key: 'HWwalking' },
+    { prop_num: FIRE_RES, prop_name: 'fire resistance', key: 'HFire_resistance' },
+    /*
+     * Properties beyond here don't have timed values during normal play,
+     * so there's not much point in trying to order them sensibly.
+     * They're either on or off based on equipment, role, actions, &c,
+     * but in wizard mode, #wizintrinsic can give them as timed effects.
+     */
+    { prop_num: COLD_RES, prop_name: 'cold resistance', key: 'HCold_resistance' },
+    { prop_num: SLEEP_RES, prop_name: 'sleep resistance', key: 'HSleep_resistance' },
+    { prop_num: DISINT_RES, prop_name: 'disintegration resistance', key: 'HDisint_resistance' },
+    { prop_num: SHOCK_RES, prop_name: 'shock resistance', key: 'HShock_resistance' },
+    { prop_num: POISON_RES, prop_name: 'poison resistance', key: 'HPoison_resistance' },
+    { prop_num: DRAIN_RES, prop_name: 'drain resistance', key: 'HDrain_resistance' },
+    { prop_num: SICK_RES, prop_name: 'sickness resistance', key: 'HSick_resistance' },
+    { prop_num: ANTIMAGIC, prop_name: 'magic resistance', key: 'HAntimagic' },
+    { prop_num: HALLUC_RES, prop_name: 'hallucination resistance', key: 'HHalluc_resistance' },
+    { prop_num: BLND_RES, prop_name: 'light-induced blindness resistance', key: 'HBlnd_resist' },
+    { prop_num: FUMBLING, prop_name: 'fumbling', key: 'HFumbling' },
+    { prop_num: HUNGER, prop_name: 'voracious hunger', key: 'HHunger' },
+    { prop_num: TELEPAT, prop_name: 'telepathic', key: 'HTelepat' },
+    { prop_num: WARNING, prop_name: 'warning', key: 'HWarning' },
+    { prop_num: WARN_OF_MON, prop_name: 'warn: monster type or class', key: 'HWarn_of_mon' },
+    { prop_num: WARN_UNDEAD, prop_name: 'warn: undead', key: 'HUndead_warning' },
+    { prop_num: SEARCHING, prop_name: 'searching', key: 'HSearching' },
+    { prop_num: INFRAVISION, prop_name: 'infravision', key: 'HInfravision' },
+    { prop_num: ADORNED, prop_name: 'adorned (+/- Cha)', key: 'HAdorned' },
+    { prop_num: STEALTH, prop_name: 'stealthy', key: 'HStealth' },
+    { prop_num: AGGRAVATE_MONSTER, prop_name: 'monster aggravation', key: 'HAggravate_monster' },
+    { prop_num: CONFLICT, prop_name: 'conflict', key: 'HConflict' },
+    { prop_num: JUMPING, prop_name: 'jumping', key: 'HJumping' },
+    { prop_num: TELEPORT_CONTROL, prop_name: 'teleport control', key: 'HTeleport_control' },
+    { prop_num: FLYING, prop_name: 'flying', key: 'HFlying' },
+    { prop_num: SWIMMING, prop_name: 'swimming', key: 'HSwimming' },
+    { prop_num: SLOW_DIGESTION, prop_name: 'slow digestion', key: 'HSlow_digestion' },
+    { prop_num: HALF_SPDAM, prop_name: 'half spell damage', key: 'HHalf_spell_damage' },
+    { prop_num: HALF_PHDAM, prop_name: 'half physical damage', key: 'HHalf_physical_damage' },
+    { prop_num: REGENERATION, prop_name: 'HP regeneration', key: 'HRegeneration' },
+    { prop_num: ENERGY_REGENERATION, prop_name: 'energy regeneration', key: 'HEnergy_regeneration' },
+    { prop_num: PROTECTION, prop_name: 'extra protection', key: 'HProtection' },
+    { prop_num: PROT_FROM_SHAPE_CHANGERS, prop_name: 'protection from shape changers', key: 'HProtection_from_shape_changers' },
+    { prop_num: POLYMORPH_CONTROL, prop_name: 'polymorph control', key: 'HPolymorph_control' },
+    { prop_num: UNCHANGING, prop_name: 'unchanging', key: 'HUnchanging' },
+    { prop_num: REFLECTING, prop_name: 'reflecting', key: 'HReflecting' },
+    { prop_num: FREE_ACTION, prop_name: 'free action', key: 'HFree_action' },
+    { prop_num: FIXED_ABIL, prop_name: 'fixed abilities', key: 'HFixed_abil' },
+    { prop_num: LIFESAVED, prop_name: 'life will be saved', key: 'HLifesaved' },
+];
+
+// the intrinsic word of a propertynames[] entry: u.uprops[p].intrinsic
+function property_intrinsic(pn) {
+    return pn.key.startsWith('H')
+        ? (game.u?.intrinsic?.[pn.key] | 0)
+        : (game.u?.uprops?.[pn.key] | 0);
+}
+
+// src/timeout.c:106 property_by_index() — name and number of the idx'th
+// property; an out-of-range index yields the terminating null entry
+export function property_by_index(idx, propertynum) {
+    if (!(idx >= 0 && idx < propertynames.length))
+        idx = propertynames.length;
+    if (propertynum)
+        propertynum.v = propertynames[idx]?.prop_num ?? 0;
+    return propertynames[idx]?.prop_name ?? null;
+}
+
 // include/timeout.h:11 enum timer_type
 export const TIMER_NONE = 0;
 export const TIMER_LEVEL = 1;
@@ -358,6 +487,24 @@ export const FIG_TRANSFORM = 6;
 export const SHRINK_GLOB = 7;
 export const MELT_ICE_AWAY = 8;
 export const NUM_TIME_FUNCS = 9;
+
+// src/timeout.c:1978 timeout_funcs[] — the timer functions by index; this
+// port dispatches on the index constants above, the names are what
+// print_queue() shows (VERBOSE_TIMER)
+const timeout_funcs = [
+    /* object timers */
+    { name: 'rot_organic' },
+    { name: 'rot_corpse' },
+    { name: 'revive_mon' },
+    { name: 'zombify_mon' },
+    { name: 'burn_object' },
+    { name: 'hatch_egg' },
+    { name: 'fig_transform' },
+    { name: 'shrink_glob' },
+    /* level timers */
+    { name: 'melt_ice_away' },
+    /* currently no monster or global timers */
+];
 
 // src/timeout.c:2467 insert_timer() — keep the queue sorted by timeout.
 //
@@ -455,6 +602,134 @@ export function relink_timers(ghostly, idmap) {
     }
 }
 
+// src/timeout.c:1995 kind_name()
+function kind_name(kind) {
+    switch (kind) {
+    case TIMER_NONE:
+        void impossible('no timer type');
+        return 'none';
+    case TIMER_LEVEL:
+        return 'level';
+    case TIMER_GLOBAL:
+        return 'global';
+    case TIMER_OBJECT:
+        return 'object';
+    case TIMER_MONSTER:
+        return 'monster';
+    }
+    return 'unknown';
+}
+
+// src/timeout.c:2014 print_queue() — the timer queue for #timeout
+function print_queue(win, base) {
+    const { tty_putstr } = ttywin;
+    if (!base || !base.length) {
+        tty_putstr(win, 0, ' <empty>');
+    } else {
+        tty_putstr(win, 0, 'timeout  id   kind   call');
+        for (const curr of base) {
+            /* VERBOSE_TIMER: " %4ld   %4ld  %-6s %s(%s)" */
+            tty_putstr(win, 0, ` ${String(curr.timeout).padStart(4)}   ${
+                String(curr.tid).padStart(4)}  ${kind_name(curr.kind).padEnd(6)} ${
+                timeout_funcs[curr.func_index].name}(${fmt_ptr(curr.arg)})`);
+        }
+    }
+}
+
+// src/timeout.c:2041 wiz_timeout_queue() — the #timeout command
+export async function wiz_timeout_queue() {
+    let buf;
+    let propname;
+    let intrinsic;
+    let i, p, count, longestlen, ln, specindx = 0;
+    const { tty_create_nhwindow, tty_destroy_nhwindow, tty_putstr,
+            tty_display_nhwindow, tty_next_page } = await tty();
+    const { xwaitforspace } = await import('./tty/getline.js');
+    const { any_visible_region, visible_region_summary } = await import('./region.js');
+
+    const win = tty_create_nhwindow(NHW_MENU); /* corner text window */
+
+    buf = `Current time = ${game.moves}.`;
+    tty_putstr(win, 0, buf);
+    tty_putstr(win, 0, '');
+    tty_putstr(win, 0, 'Active timeout queue:');
+    tty_putstr(win, 0, '');
+    print_queue(win, game.timer_base);
+
+    /* Timed properties:
+     * check every one; the majority can't obtain temporary timeouts in
+     * normal play but those can be forced via the #wizintrinsic command.
+     */
+    count = longestlen = 0;
+    for (i = 0; i < propertynames.length; ++i) {
+        propname = propertynames[i].prop_name;
+        p = propertynames[i].prop_num;
+        intrinsic = property_intrinsic(propertynames[i]);
+        if (intrinsic & TIMEOUT) {
+            ++count;
+            if ((ln = propname.length) > longestlen)
+                longestlen = ln;
+        }
+        if (specindx === 0 && p === COLD_RES) /* was FIRE_RES but has changed */
+            specindx = i;
+    }
+    tty_putstr(win, 0, '');
+    if (!count) {
+        tty_putstr(win, 0, 'No timed properties.');
+    } else {
+        tty_putstr(win, 0, 'Timed properties:');
+        tty_putstr(win, 0, '');
+        for (i = 0; i < propertynames.length; ++i) {
+            propname = propertynames[i].prop_name;
+            intrinsic = property_intrinsic(propertynames[i]);
+            if (intrinsic & TIMEOUT) {
+                if (specindx > 0 && i >= specindx) {
+                    tty_putstr(win, 0, ' -- settable via #wizintrinsic only --');
+                    specindx = 0;
+                }
+                /* timeout value can be up to 16777215 (0x00ffffff) but
+                   width of 4 digits should result in values lining up
+                   almost all the time (if/when they don't, it won't
+                   look nice but the information will still be accurate) */
+                buf = ` ${propname.padEnd(longestlen)} ${
+                    String(intrinsic & TIMEOUT).padStart(4)}`;
+                tty_putstr(win, 0, buf);
+            }
+        }
+    }
+    if (game.u.uswldtim) {
+        tty_putstr(win, 0, '');
+        /* decremented when engulfer makes a move, so can last longer than
+           the number of turns reported if engulfer is slow */
+        buf = `Swallow countdown is ${game.u.uswldtim}.`;
+        tty_putstr(win, 0, buf);
+    }
+    if (game.u.uinvault) {
+        tty_putstr(win, 0, '');
+        buf = `Vault counter is ${game.u.uinvault}.`;
+        tty_putstr(win, 0, buf);
+    }
+    if (any_visible_region()) {
+        await visible_region_summary(win);
+    }
+    if ((game.level?.flags?.stasis_until ?? 0) >= game.moves) {
+        tty_putstr(win, 0, '');
+        buf = `Level is no-teleport for ${
+            game.level.flags.stasis_until - game.moves + 1} ${
+            (game.level.flags.stasis_until - game.moves > 0)
+              ? 'turns' : 'more turn'}.`;
+        tty_putstr(win, 0, buf);
+    }
+    /* display_nhwindow(win, FALSE) */
+    await tty_display_nhwindow(win);
+    await xwaitforspace(' \r\n\x1b');
+    while (game.morc !== '\x1b' && tty_next_page(win))
+        await xwaitforspace(' \r\n\x1b');
+    tty_destroy_nhwindow(win);
+
+    return ECMD_OK;
+}
+
 // src/timeout.c:2247 start_timer() — schedule `func_index` for `arg` in `when`
 // turns. Returns whether it was scheduled.
 export function start_timer(when, kind, func_index, arg) {
@@ -469,7 +744,7 @@ export function start_timer(when, kind, func_index, arg) {
         return false;                   /* impossible(), aborted */
 
     const gnu = {
-        tid: (game.timer_id ??= 0),     /* svt.timer_id++ — post-increment */
+        tid: (game.timer_id ??= 1),     /* svt.timer_id++ — post-increment; decl.c:976 starts it at 1 */
         timeout: (game.moves ?? 0) + when,
         kind,
         needs_fixup: 0,
@@ -1945,4 +2220,16 @@ export function obj_has_timer(object, timer_type) {
     const timeout = peek_timer(timer_type, object);
 
     return (timeout !== 0);
+}
+
+// src/timeout.c:2735 timer_stats() — count and bytes of the timer queue for
+// #stats; returns the header line the format asked for
+export function timer_stats(hdrfmt) {
+    const hdrbuf = hdrfmt.replace('%ld', String(SIZEOF_TIMER_ELEMENT));
+    let count = 0, size = 0;
+    for (const te of game.timer_base || []) {
+        ++count;
+        size += SIZEOF_TIMER_ELEMENT;
+    }
+    return { hdrbuf, count, size };
 }

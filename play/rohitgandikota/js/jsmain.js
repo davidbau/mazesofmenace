@@ -141,12 +141,24 @@ export class NethackGame {
                 const ci = one.indexOf(':');
                 if (ci < 0) continue;
                 const keytxt = one.slice(0, ci).trim();
-                const cmdname = one.slice(ci + 1).trim();
+                let cmdname = one.slice(ci + 1).trim();
+                /* src/cmd.c:2680 bind_key() — "command(param)": the text in
+                   parentheses is the binding's parameter (#toggle's option),
+                   at most 30 characters */
+                let param = null;
+                const lp = cmdname.indexOf('('), rp = cmdname.lastIndexOf(')');
+                if (lp >= 0 && rp > lp) {
+                    param = cmdname.slice(lp + 1, rp).slice(0, 30);
+                    cmdname = cmdname.slice(0, lp);
+                }
                 const key = (keytxt.length === 2 && keytxt[0] === '^')
                     ? String.fromCharCode(keytxt.charCodeAt(1) & 0x1f)
                     : (keytxt.length === 1 ? keytxt : null);
-                if (key !== null)
+                if (key !== null) {
                     g.rc_key_bindings[key] = cmdname;
+                    if (param)
+                        (g.rc_key_params ||= {})[key] = param;
+                }
             }
         }
         /* src/symbols.c init_symbols() then assign_graphics(PRIMARYSET).
@@ -178,7 +190,10 @@ export class NethackGame {
         /* MENUCOLOR= lines in the rc have already set iflags.use_menu_color
            (coloratt.js add_menu_coloring_parsed()); keep what the parse left */
         g.iflags = { ...(g.iflags || {}),
-                     getpos_coords: rc.opts.getpos_coords ?? 'n' };
+                     getpos_coords: rc.opts.getpos_coords ?? 'n',
+                     /* win/tty/termcap.c:944 iflags.colorcount = tgetnum("Co"):
+                        the recorder's terminal reports 256 colours */
+                     colorcount: 256 };
         /* optlist.h homes some booleans in iflags; keep them where their
            readers and the 'O' menu look (see iflag_boolean_options) */
         for (const name of iflag_boolean_options) {

@@ -976,7 +976,7 @@ function clear_no_charge_pets(shkp) {
 }
 
 // src/shk.c:400 setpaid()
-function setpaid(shkp) {
+export function setpaid(shkp) {
     clear_unpaid(shkp, game.invent);
     clear_unpaid(shkp, game.level?.objects);
     if (game.level?.buriedobjs)

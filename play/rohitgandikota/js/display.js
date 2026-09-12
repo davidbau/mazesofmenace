@@ -31,7 +31,7 @@ import { rn2_on_display_rng } from './rng.js';
 import { update_inventory, sobj_at } from './invent.js';
 import { can_reach_floor } from './pickup.js';
 
-import { ONAMES, OCLASSES } from './objects_data.js';
+import { ONAMES, OCLASSES, objects as OBJECTS_DATA } from './objects_data.js';
 
 import { update_topl, show_topl_nohistory } from './tty/topl.js';
 
@@ -86,9 +86,32 @@ import { update_lastseentyp } from './dungeon.js';
 
 import { def_monsyms, def_oc_syms, cmap_names, defsyms } from './drawing_data.js';
 
-import { PMNAMES, mons, NUMMONS, MFLAGS } from './monst_data.js';
+import { PMNAMES, mons, NUMMONS, MFLAGS, mons as MONS_DATA } from './monst_data.js';
 
-import { showsym, showsym_mon, showsym_oc, showsym_other, SYM_BOULDER } from './symbols.js';
+import { showsym, showsym_mon, showsym_oc, showsym_other, SYM_BOULDER,
+         showsyms_at, gs_symset, gc_currentgraphics, H_IBM, ROGUESET, symbols_wire_display,
+         go_ov_primary_syms, go_ov_rogue_syms,
+         SYM_OFF_P, SYM_OFF_O, SYM_OFF_M, SYM_OFF_W, SYM_OFF_X } from './symbols.js';
+import { has_color } from './windows.js';
+import { MAX_GLYPH, GLYPH_NOTHING_OFF, GLYPH_UNEXPLORED_OFF,
+         GLYPH_STATUE_FEM_PILETOP_OFF, GLYPH_STATUE_MALE_PILETOP_OFF,
+         GLYPH_BODY_PILETOP_OFF, GLYPH_OBJ_PILETOP_OFF, GLYPH_STATUE_FEM_OFF,
+         GLYPH_STATUE_MALE_OFF, GLYPH_WARNING_OFF, GLYPH_EXPLODE_FROSTY_OFF,
+         GLYPH_EXPLODE_FIERY_OFF, GLYPH_EXPLODE_MAGICAL_OFF, GLYPH_EXPLODE_WET_OFF,
+         GLYPH_EXPLODE_MUDDY_OFF, GLYPH_EXPLODE_NOXIOUS_OFF, GLYPH_EXPLODE_DARK_OFF,
+         GLYPH_SWALLOW_OFF, GLYPH_CMAP_C_OFF, GLYPH_ZAP_OFF, GLYPH_CMAP_B_OFF,
+         GLYPH_ALTAR_OFF, GLYPH_CMAP_A_OFF, GLYPH_CMAP_SOKO_OFF, GLYPH_CMAP_KNOX_OFF,
+         GLYPH_CMAP_GEH_OFF, GLYPH_CMAP_MINES_OFF, GLYPH_CMAP_MAIN_OFF,
+         GLYPH_CMAP_STONE_OFF, GLYPH_OBJ_OFF, GLYPH_RIDDEN_FEM_OFF,
+         GLYPH_RIDDEN_MALE_OFF, GLYPH_BODY_OFF, GLYPH_DETECT_FEM_OFF,
+         GLYPH_DETECT_MALE_OFF, GLYPH_INVIS_OFF, GLYPH_PET_FEM_OFF,
+         GLYPH_PET_MALE_OFF, GLYPH_MON_FEM_OFF, GLYPH_MON_MALE_OFF,
+         MG_NOTHING, MG_UNEXPL, MG_STATUE, MG_FEMALE, MG_MALE, MG_OBJPILE,
+         MG_CORPSE, MG_BW_LAVA, MG_BW_ICE, MG_BW_SINK, MG_BW_ENGR, MG_RIDDEN,
+         MG_DETECT, MG_INVIS, MG_PET, GMAP_SET, GMAP_ROGUELEVEL, gm_levelchange,
+         main_walls, mines_walls, gehennom_walls, knox_walls, sokoban_walls,
+         SYM_NOTHING, SYM_UNEXPLORED, SYM_INVISIBLE, SYM_PET_OVERRIDE,
+         def_warnsyms } from './const.js';
 
 import { boolean_option } from './options.js';
 
@@ -3213,3 +3236,427 @@ export function display_self() {
                         false, 0, { kind: 'hero' });
     }
 }
+
+/* ---------------------------------------------------------------------------
+ * src/display.c:1672 glyphmap[MAX_GLYPH] and :2739 reset_glyphmap(). The
+ * port draws from glyph records, not from this table; it carries the C's
+ * per-glyph symbol index, colour, flags and symset customizations for
+ * #wizcustom and the customization pipeline (js/glyphs.js).
+ * ------------------------------------------------------------------------- */
+
+let glyphmap_table = null;
+export function glyphmap() {
+    if (!glyphmap_table) {
+        glyphmap_table = new Array(MAX_GLYPH);
+        for (let glyph = 0; glyph < MAX_GLYPH; ++glyph)
+            glyphmap_table[glyph] = { glyphflags: 0, sym: { symidx: 0, color: NO_COLOR },
+                                      customcolor: 0, color256idx: 0, u: null };
+    }
+    return glyphmap_table;
+}
+
+// src/display.c:2661 zapcolors[], :2666 altarcolors[], :2670 explodecolors[],
+// :2677 wallcolors[] (include/display.h:280 enum zap_colors, ...)
+export const zapcolors = [
+    HI_ZAP, CLR_ORANGE, CLR_WHITE, HI_ZAP, CLR_BLACK, CLR_WHITE, CLR_GREEN, CLR_YELLOW,
+];
+export const altarcolors = [CLR_RED, CLR_BLACK, CLR_GRAY, CLR_WHITE, CLR_BRIGHT_MAGENTA];
+export const explodecolors = [
+    CLR_BLACK, CLR_GREEN, CLR_BROWN, CLR_BLUE, CLR_MAGENTA, CLR_ORANGE, CLR_WHITE,
+];
+/* main_walls, mines_walls, gehennom_walls, knox_walls, sokoban_walls */
+export const wallcolors = [
+    /* default init value is to match defsym[S_vwall + n].color (CLR_GRAY) */
+    CLR_GRAY, CLR_GRAY, CLR_GRAY, CLR_GRAY, CLR_GRAY,
+    /* CLR_GRAY, CLR_BROWN, CLR_RED, CLR_GRAY, CLR_BRIGHT_BLUE, */
+];
+
+// src/display.c:2699 cmap_to_roguecolor()
+function cmap_to_roguecolor(cmap) {
+    let color = NO_COLOR;
+
+    if (gs_symset[gc_currentgraphics.set]?.nocolor)
+        return NO_COLOR;
+    if (cmap >= CM.S_vwall && cmap <= CM.S_hcdoor)
+        color = CLR_BROWN;
+    else if (cmap >= CM.S_arrow_trap && cmap <= CM.S_polymorph_trap)
+        color = CLR_MAGENTA;
+    else if (cmap === CM.S_corr || cmap === CM.S_litcorr)
+        color = CLR_GRAY;
+    else if (cmap >= CM.S_room && cmap <= CM.S_water
+             && cmap !== CM.S_darkroom)
+        color = CLR_GREEN;
+    else
+        color = NO_COLOR;
+    return color;
+}
+
+// src/display.c:2739 reset_glyphmap() — map every glyph to a symbol index
+// and colour. Warning: for speed, this makes an assumption on the order of
+// offsets. The order is set in display.h.
+export function reset_glyphmap(trigger) {
+    let glyph, offset;
+    let color = NO_COLOR;
+    const gm = glyphmap();
+    /* mons[] and objects[] are static data in the C; the game copies (the
+       shuffled object descriptions carry their colours) may not exist yet
+       when the startup symset selection reaches here */
+    const mons = game.mons || MONS_DATA, objects = game.objects || OBJECTS_DATA;
+    const usecolor = use_color();
+    /* condense multiple tests in macro version down to single */
+    const has_rogue_ibm_graphics = (gc_currentgraphics.set === ROGUESET
+                                    && gs_symset[gc_currentgraphics.set]?.handling === H_IBM),
+          has_rogue_color = (has_rogue_ibm_graphics
+                             && !gs_symset[gc_currentgraphics.set]?.nocolor);
+    const cmap_color = (n) => { color = usecolor ? defsyms[n].color : NO_COLOR; };
+    const obj_color = (n) => { color = usecolor ? objects[n].oc_color : NO_COLOR; };
+    const mon_color = (n) => { color = usecolor ? mons[n].mcolor : NO_COLOR; };
+    const invis_color = (n) => { color = NO_COLOR; };
+    const pet_color = (n) => { color = usecolor ? mons[n].mcolor : NO_COLOR; };
+    const warn_color = (n) => { color = usecolor ? def_warnsyms[n].color : NO_COLOR; };
+    const explode_color = (n) => { color = usecolor ? explodecolors[n] : NO_COLOR; };
+    const wall_color = (n) => { color = usecolor ? wallcolors[n] : NO_COLOR; };
+    const altar_color = (n) => { color = usecolor ? altarcolors[n] : NO_COLOR; };
+    const expl_dark = 0, expl_noxious = 1, expl_muddy = 2, expl_wet = 3,
+          expl_magical = 4, expl_fiery = 5, expl_frosty = 6;
+
+    if (trigger === gm_levelchange)
+        game.glyphmap_perlevel_flags = 0;
+
+    if (!game.glyphmap_perlevel_flags) {
+        /*
+         *    GMAP_SET                0x00000001
+         *    GMAP_ROGUELEVEL         0x00000002
+         */
+        game.glyphmap_perlevel_flags |= GMAP_SET;
+
+        if (Is_rogue_level(game.u?.uz))
+            game.glyphmap_perlevel_flags |= GMAP_ROGUELEVEL;
+    }
+
+    for (glyph = 0; glyph < MAX_GLYPH; ++glyph) {
+        const gmap = gm[glyph];
+        gmap.glyphflags = 0;
+
+        /*
+         *  Map the glyph to a character and color.
+         *
+         *  Warning:  For speed, this makes an assumption on the order of
+         *            offsets.  The order is set in display.h.
+         */
+        if ((offset = (glyph - GLYPH_NOTHING_OFF)) >= 0) {
+            gmap.sym.symidx = SYM_NOTHING + SYM_OFF_X;
+            color = NO_COLOR;
+            gmap.glyphflags |= MG_NOTHING;
+        } else if ((offset = (glyph - GLYPH_UNEXPLORED_OFF)) >= 0) {
+            gmap.sym.symidx = SYM_UNEXPLORED + SYM_OFF_X;
+            color = NO_COLOR;
+            gmap.glyphflags |= MG_UNEXPL;
+        } else if ((offset = (glyph - GLYPH_STATUE_FEM_PILETOP_OFF)) >= 0) {
+            gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M;
+            if (has_rogue_color)
+                color = CLR_RED;
+            else
+                obj_color(ONAMES.STATUE);
+            gmap.glyphflags |= (MG_STATUE | MG_FEMALE | MG_OBJPILE);
+        } else if ((offset = (glyph - GLYPH_STATUE_MALE_PILETOP_OFF)) >= 0) {
+            gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M;
+            if (has_rogue_color)
+                color = CLR_RED;
+            else
+                obj_color(ONAMES.STATUE);
+            gmap.glyphflags |= (MG_STATUE | MG_MALE | MG_OBJPILE);
+        } else if ((offset = (glyph - GLYPH_BODY_PILETOP_OFF)) >= 0) {
+            gmap.sym.symidx = objects[ONAMES.CORPSE].oc_class + SYM_OFF_O;
+            if (has_rogue_color)
+                color = CLR_RED;
+            else
+                mon_color(offset);
+            gmap.glyphflags |= (MG_CORPSE | MG_OBJPILE);
+        } else if ((offset = (glyph - GLYPH_OBJ_PILETOP_OFF)) >= 0) {
+            gmap.sym.symidx = objects[offset].oc_class + SYM_OFF_O;
+            if (offset === ONAMES.BOULDER)
+                gmap.sym.symidx = SYM_BOULDER + SYM_OFF_X;
+            if (has_rogue_color) {
+                switch (objects[offset].oc_class) {
+                case OCLASSES.COIN_CLASS:
+                    color = CLR_YELLOW;
+                    break;
+                case OCLASSES.FOOD_CLASS:
+                    color = CLR_RED;
+                    break;
+                default:
+                    color = CLR_BRIGHT_BLUE;
+                    break;
+                }
+            } else
+                obj_color(offset);
+            gmap.glyphflags |= MG_OBJPILE;
+        } else if ((offset = (glyph - GLYPH_STATUE_FEM_OFF)) >= 0) {
+            gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M;
+            if (has_rogue_color)
+                color = CLR_RED;
+            else
+                obj_color(ONAMES.STATUE);
+            gmap.glyphflags |= (MG_STATUE | MG_FEMALE);
+        } else if ((offset = (glyph - GLYPH_STATUE_MALE_OFF)) >= 0) {
+            gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M;
+            if (has_rogue_color)
+                color = CLR_RED;
+            else
+                obj_color(ONAMES.STATUE);
+            gmap.glyphflags |= (MG_STATUE | MG_MALE);
+        } else if ((offset = (glyph - GLYPH_WARNING_OFF)) >= 0) { /* warn flash */
+            gmap.sym.symidx = offset + SYM_OFF_W;
+            if (has_rogue_color)
+                color = NO_COLOR;
+            else
+                warn_color(offset);
+        } else if ((offset = (glyph - GLYPH_EXPLODE_FROSTY_OFF)) >= 0) {
+            gmap.sym.symidx = CM.S_expl_tl + offset + SYM_OFF_P;
+            explode_color(expl_frosty);
+        } else if ((offset = (glyph - GLYPH_EXPLODE_FIERY_OFF)) >= 0) {
+            gmap.sym.symidx = CM.S_expl_tl + offset + SYM_OFF_P;
+            explode_color(expl_fiery);
+        } else if ((offset = (glyph - GLYPH_EXPLODE_MAGICAL_OFF)) >= 0) {
+            gmap.sym.symidx = CM.S_expl_tl + offset + SYM_OFF_P;
+            explode_color(expl_magical);
+        } else if ((offset = (glyph - GLYPH_EXPLODE_WET_OFF)) >= 0) {
+            gmap.sym.symidx = CM.S_expl_tl + offset + SYM_OFF_P;
+            explode_color(expl_wet);
+        } else if ((offset = (glyph - GLYPH_EXPLODE_MUDDY_OFF)) >= 0) {
+            gmap.sym.symidx = CM.S_expl_tl + offset + SYM_OFF_P;
+            explode_color(expl_muddy);
+        } else if ((offset = (glyph - GLYPH_EXPLODE_NOXIOUS_OFF)) >= 0) {
+            gmap.sym.symidx = CM.S_expl_tl + offset + SYM_OFF_P;
+            explode_color(expl_noxious);
+        } else if ((offset = (glyph - GLYPH_EXPLODE_DARK_OFF)) >= 0) {
+            gmap.sym.symidx = CM.S_expl_tl + offset + SYM_OFF_P;
+            explode_color(expl_dark);
+        } else if ((offset = (glyph - GLYPH_SWALLOW_OFF)) >= 0) {
+            /* see swallow_to_glyph() in display.c */
+            gmap.sym.symidx = (CM.S_sw_tl + (offset & 0x7)) + SYM_OFF_P;
+            if (has_rogue_color)
+                color = NO_COLOR;
+            else
+                mon_color(offset >> 3);
+        } else if ((offset = (glyph - GLYPH_CMAP_C_OFF)) >= 0) {
+            gmap.sym.symidx = CM.S_digbeam + offset + SYM_OFF_P;
+            if (has_rogue_color)
+                color = cmap_to_roguecolor(CM.S_digbeam + offset);
+            else
+                cmap_color(CM.S_digbeam + offset);
+        } else if ((offset = (glyph - GLYPH_ZAP_OFF)) >= 0) {
+            /* see zapdir_to_glyph() in display.c */
+            gmap.sym.symidx = (CM.S_vbeam + (offset & 0x3)) + SYM_OFF_P;
+            if (has_rogue_color)
+                color = NO_COLOR;
+            else
+                color = usecolor ? zapcolors[offset >> 2] : NO_COLOR;
+        } else if ((offset = (glyph - GLYPH_CMAP_B_OFF)) >= 0) {
+            const cmap = CM.S_grave + offset;
+            const sym = showsyms_at(cmap + SYM_OFF_P);
+
+            gmap.sym.symidx = cmap + SYM_OFF_P;
+            cmap_color(cmap);
+            if (!usecolor) {
+                let spec_cmap = 0;
+
+                /* provide a visible difference between water and lava
+                   if they use the same symbol and color is disabled;
+                   similar for floor and ice, for fountain vs sink, and for
+                   corridor engravings (CMAP_A below) */
+                switch (cmap) {
+                case CM.S_lava:
+                case CM.S_lavawall:
+                    if (sym === showsyms_at(CM.S_pool + SYM_OFF_P)
+                        || sym === showsyms_at(CM.S_water + SYM_OFF_P))
+                        spec_cmap = MG_BW_LAVA;
+                    break;
+                case CM.S_ice:
+                    if (sym === showsyms_at(CM.S_room + SYM_OFF_P)
+                        || sym === showsyms_at(CM.S_darkroom + SYM_OFF_P))
+                        spec_cmap = MG_BW_ICE;
+                    break;
+                case CM.S_sink:
+                    if (sym === showsyms_at(CM.S_fountain + SYM_OFF_P))
+                        spec_cmap = MG_BW_SINK;
+                    break;
+                }
+                gmap.glyphflags |= spec_cmap;
+            } else if (has_rogue_color) {
+                color = cmap_to_roguecolor(cmap);
+            }
+        } else if ((offset = (glyph - GLYPH_ALTAR_OFF)) >= 0) {
+            /* unaligned, chaotic, neutral, lawful, other altar */
+            gmap.sym.symidx = CM.S_altar + SYM_OFF_P;
+            if (has_rogue_color)
+                color = cmap_to_roguecolor(CM.S_altar);
+            else
+                altar_color(offset);
+        } else if ((offset = (glyph - GLYPH_CMAP_A_OFF)) >= 0) {
+            const cmap = CM.S_ndoor + offset;
+
+            gmap.sym.symidx = cmap + SYM_OFF_P;
+            cmap_color(cmap);
+            const sym = showsyms_at(gmap.sym.symidx);
+            /*
+             *   Some specialty color mappings not hardcoded in data init
+             */
+            if (has_rogue_color) {
+                color = cmap_to_roguecolor(cmap);
+            /* provide a visible difference if normal and lit corridor
+               use the same symbol */
+            } else if (cmap === CM.S_litcorr
+                       && sym === showsyms_at(CM.S_corr + SYM_OFF_P)) {
+                color = CLR_WHITE;
+            /* likewise for corridor and engraving-in-corridor */
+            } else if (cmap === CM.S_engrcorr
+                       && (sym === showsyms_at(CM.S_corr + SYM_OFF_P)
+                           || sym === showsyms_at(CM.S_litcorr + SYM_OFF_P))) {
+                gmap.glyphflags |= MG_BW_ENGR;
+            }
+        } else if ((offset = (glyph - GLYPH_CMAP_SOKO_OFF)) >= 0) {
+            gmap.sym.symidx = CM.S_vwall + offset + SYM_OFF_P;
+            wall_color(sokoban_walls);
+        } else if ((offset = (glyph - GLYPH_CMAP_KNOX_OFF)) >= 0) {
+            gmap.sym.symidx = CM.S_vwall + offset + SYM_OFF_P;
+            wall_color(knox_walls);
+        } else if ((offset = (glyph - GLYPH_CMAP_GEH_OFF)) >= 0) {
+            gmap.sym.symidx = CM.S_vwall + offset + SYM_OFF_P;
+            wall_color(gehennom_walls);
+        } else if ((offset = (glyph - GLYPH_CMAP_MINES_OFF)) >= 0) {
+            gmap.sym.symidx = CM.S_vwall + offset + SYM_OFF_P;
+            wall_color(mines_walls);
+        } else if ((offset = (glyph - GLYPH_CMAP_MAIN_OFF)) >= 0) {
+            gmap.sym.symidx = CM.S_vwall + offset + SYM_OFF_P;
+            if (has_rogue_color)
+                color = cmap_to_roguecolor(CM.S_vwall + offset);
+            else
+                wall_color(main_walls);
+        } else if ((offset = (glyph - GLYPH_CMAP_STONE_OFF)) >= 0) {
+            gmap.sym.symidx = SYM_OFF_P;
+            cmap_color(CM.S_stone);
+        } else if ((offset = (glyph - GLYPH_OBJ_OFF)) >= 0) {
+            gmap.sym.symidx = objects[offset].oc_class + SYM_OFF_O;
+            if (offset === ONAMES.BOULDER)
+                gmap.sym.symidx = SYM_BOULDER + SYM_OFF_X;
+            if (has_rogue_color) {
+                switch (objects[offset].oc_class) {
+                case OCLASSES.COIN_CLASS:
+                    color = CLR_YELLOW;
+                    break;
+                case OCLASSES.FOOD_CLASS:
+                    color = CLR_RED;
+                    break;
+                default:
+                    color = CLR_BRIGHT_BLUE;
+                    break;
+                }
+            } else
+                obj_color(offset);
+        } else if ((offset = (glyph - GLYPH_RIDDEN_FEM_OFF)) >= 0) {
+            gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M;
+            if (has_rogue_color)
+                /* This currently implies that the hero is here -- monsters */
+                /* don't ride (yet...).  Should we set it to yellow like in */
+                /* the monster case below?  There is no equivalent in rogue.
+                 */
+                color = NO_COLOR;
+            else
+                mon_color(offset);
+            gmap.glyphflags |= (MG_RIDDEN | MG_FEMALE);
+        } else if ((offset = (glyph - GLYPH_RIDDEN_MALE_OFF)) >= 0) {
+            gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M;
+            if (has_rogue_color)
+                color = NO_COLOR;
+            else
+                mon_color(offset);
+            gmap.glyphflags |= (MG_RIDDEN | MG_MALE);
+        } else if ((offset = (glyph - GLYPH_BODY_OFF)) >= 0) {
+            gmap.sym.symidx = objects[ONAMES.CORPSE].oc_class + SYM_OFF_O;
+            if (has_rogue_color)
+                color = CLR_RED;
+            else
+                mon_color(offset);
+            gmap.glyphflags |= MG_CORPSE;
+        } else if ((offset = (glyph - GLYPH_DETECT_FEM_OFF)) >= 0) {
+            gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M;
+            if (has_rogue_color)
+                color = NO_COLOR;
+            else
+                mon_color(offset);
+            /* Disabled for now; anyone want to get reverse video to work? */
+            /* is_reverse = TRUE; */
+            gmap.glyphflags |= (MG_DETECT | MG_FEMALE);
+        } else if ((offset = (glyph - GLYPH_DETECT_MALE_OFF)) >= 0) {
+            gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M;
+            if (has_rogue_color)
+                color = NO_COLOR;
+            else
+                mon_color(offset);
+            /* Disabled for now; anyone want to get reverse video to work? */
+            /* is_reverse = TRUE; */
+            gmap.glyphflags |= (MG_DETECT | MG_MALE);
+        } else if ((offset = (glyph - GLYPH_INVIS_OFF)) >= 0) {
+            gmap.sym.symidx = SYM_INVISIBLE + SYM_OFF_X;
+            if (has_rogue_color)
+                color = NO_COLOR;
+            else
+                invis_color(offset);
+            gmap.glyphflags |= MG_INVIS;
+        } else if ((offset = (glyph - GLYPH_PET_FEM_OFF)) >= 0) {
+            gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M;
+            if (has_rogue_color)
+                color = NO_COLOR;
+            else
+                pet_color(offset);
+            gmap.glyphflags |= (MG_PET | MG_FEMALE);
+        } else if ((offset = (glyph - GLYPH_PET_MALE_OFF)) >= 0) {
+            gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M;
+            if (has_rogue_color)
+                color = NO_COLOR;
+            else
+                pet_color(offset);
+            gmap.glyphflags |= (MG_PET | MG_MALE);
+        } else if ((offset = (glyph - GLYPH_MON_FEM_OFF)) >= 0) {
+            gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M;
+            if (has_rogue_color) {
+                color = NO_COLOR;
+            } else {
+                mon_color(offset);
+            }
+            gmap.glyphflags |= MG_FEMALE;
+        } else if ((offset = (glyph - GLYPH_MON_MALE_OFF)) >= 0) {
+            gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M;
+            if (has_rogue_color) {
+                color = CLR_YELLOW;
+            } else {
+                mon_color(offset);
+            }
+            gmap.glyphflags |= MG_MALE;
+        }
+
+        /* This was requested by a blind player to enhance screen reader use
+         */
+        if (game.sysopt?.accessibility === 1 && (gmap.glyphflags & MG_PET) !== 0) {
+            const pet_override = ((game.glyphmap_perlevel_flags & GMAP_ROGUELEVEL)
+                         ? go_ov_rogue_syms[SYM_PET_OVERRIDE + SYM_OFF_X]
+                         : go_ov_primary_syms[SYM_PET_OVERRIDE + SYM_OFF_X]);
+
+            if (showsyms_at(pet_override) !== ' '.charCodeAt(0))
+                gmap.sym.symidx = SYM_PET_OVERRIDE + SYM_OFF_X;
+        }
+
+        /* Turn off color if no color defined, or rogue level w/o PC graphics.
+         */
+        if ((!has_color(color)
+             || ((game.glyphmap_perlevel_flags & GMAP_ROGUELEVEL)
+                 && !has_rogue_color)) || !usecolor)
+            color = NO_COLOR;
+        gmap.sym.color = color;
+    }
+    game.glyph_reset_timestamp = game.moves;
+}
+
+symbols_wire_display({ reset_glyphmap });

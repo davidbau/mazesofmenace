@@ -21,7 +21,7 @@ import { canspotmon, pline, newsym } from './display.js';
 import { getlin } from './cmd.js';
 import { set_occupation } from './allmain.js';
 import { exercise } from './attrib.js';
-import { A_WIS } from './const.js';
+import { A_WIS, SIZEOF_STRUCT_ENGR } from './const.js';
 import { xname, doname, yname, Yname2, Yobjnam2, Tobjnam, otense, The } from './objnam.js';
 import { more_experienced } from './exper.js';
 import { surface } from './dungeon.js';
@@ -355,6 +355,11 @@ export function make_engr_at(x, y, s, pristine_s, e_time, e_type) {
     if (old) del_engr(old);
 
     const txt = String(s);
+    /* src/engrave.c:418 — newengr(smem * 3): room for the actual, remembered
+       and pristine texts; #stats reports it as engr_alloc */
+    let smem = txt.length + 1;
+    if (pristine_s != null && String(pristine_s).length + 1 > smem)
+        smem = String(pristine_s).length + 1;
     /* src/engrave.c:442 — engraving "Elbereth": at mklev it guards objects,
        from the player it exercises wisdom */
     if (txt === 'Elbereth' && !game.in_mklev)
@@ -366,6 +371,7 @@ export function make_engr_at(x, y, s, pristine_s, e_time, e_type) {
         engr_txt_pristine: pristine_s != null ? String(pristine_s) : txt,
         engr_time: e_time,
         engr_type: (e_type > 0) ? e_type : rnd(N_ENGRAVE - 1),
+        engr_alloc: smem * 3,
         guardobjects: 0,
         nowipeout: false,
     };
@@ -1452,4 +1458,16 @@ export async function disturb_grave(x, y) {
         }
         exercise(A_WIS, false);
     }
+}
+
+// src/engrave.c:1626 engr_stats() — count and bytes of the engravings for
+// #stats; returns the header line the format asked for
+export function engr_stats(hdrfmt) {
+    const hdrbuf = hdrfmt.replace('%ld', String(SIZEOF_STRUCT_ENGR));
+    let count = 0, size = 0;
+    for (const ep of game.level?.lev_engr || []) {
+        ++count;
+        size += SIZEOF_STRUCT_ENGR + (ep.engr_alloc | 0);
+    }
+    return { hdrbuf, count, size };
 }

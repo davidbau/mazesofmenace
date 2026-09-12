@@ -1585,6 +1585,18 @@ const EXTCMD_FUNCS = {
     whatis: ['./pager.js', 'dowhatis'],
     wield: ['./wield.js', 'dowield'],
     wizlevelport: ['./wizcmds.js', 'wiz_level_tele'],
+    wizmakemap: ['./wizcmds.js', 'wiz_makemap'],
+    wizloaddes: ['./wizcmds.js', 'wiz_load_splua'],
+    wizcustom: ['./wizcmds.js', 'wiz_custom'],
+    wizcast: ['./spell.js', 'dowizcast'],
+    bugreport: ['./report.js', 'dobugreport'],
+    wizobjprobs: ['./wizcmds.js', 'wiz_objprobs'],
+    wizloadlua: ['./wizcmds.js', 'wiz_load_lua'],
+    stats: ['./wizcmds.js', 'wiz_show_stats'],
+    timeout: ['./timeout.js', 'wiz_timeout_queue'],
+    lightsources: ['./light.js', 'wiz_light_sources'],
+    wizrumorcheck: ['./wizcmds.js', 'wiz_rumor_check'],
+    wizdispmacros: ['./wizcmds.js', 'wiz_display_macros'],
     zap: ['./zap.js', 'dozap'],
 };
 
@@ -1592,10 +1604,8 @@ const EXTCMD_FUNCS = {
 // parameter is what gives it an option to flip
 async function dotoggleoption() {
     if (game.cmd_bind?.param) {
-        /* toggle_bool_option(gc.cmd_bind->param): BIND lines with a
-           parameter are not modelled */
-        note_unported_cmd('dotoggleoption:param');
-        return ECMD_OK;
+        const { toggle_bool_option } = await import('./options.js');
+        return await toggle_bool_option(game.cmd_bind.param);
     } else {
         await pline('Use #optionsfull to set any option instead.');
         return ECMD_OK;
@@ -2625,10 +2635,19 @@ export async function rhack(key) {
        reaches the same function C rebinds to. */
     {
         const boundname = game.rc_key_bindings?.[ch0];
+        /* src/cmd.c:4890 rhack() — gc.cmd_bind is the binding being run;
+           a "BIND=key:command(param)" line's parameter rides on it */
+        game.cmd_bind = (boundname !== undefined)
+            ? { param: game.rc_key_params?.[ch0] || null } : null;
+        game._bound_extcmd_name = null;
         if (boundname !== undefined) {
             const e = extcmdlist.find((x) => x.ef_txt === boundname);
             if (e && e.key)
                 ch0 = String.fromCharCode(e.key);
+            else if (e)
+                /* a command with no default key (#toggle, #wizcustom, ...)
+                   has no dispatch arm to reach; it runs by name below */
+                game._bound_extcmd_name = boundname;
         }
     }
 
@@ -2733,7 +2752,13 @@ export async function rhack(key) {
         return;
     }
 
-    if (isMovementKey(ch)) {
+    /* src/cmd.c:3689 — the bound command (tlist) runs; a BIND'd key whose
+       command has no default key of its own goes by name */
+    if (game._bound_extcmd_name) {
+        const name = game._bound_extcmd_name;
+        game._bound_extcmd_name = null;
+        useResult(await execute_extcmd(name));
+    } else if (isMovementKey(ch)) {
         /* src/cmd.c:1386 set_move_cmd() — sets u.dx/u.dy and, when no g/G
            prefix is pending, context.run. Keeping the direction on `u` is
            what lets moveloop's run branch call domove() again without
@@ -5041,6 +5066,126 @@ export function cmd_from_func(name) {
     if (sp && sp.ef_txt === name)
         return ' ';
     return ret;
+}
+
+// src/cmd.c:985 makemap_prepost() — the work before (pre) and after
+// replacing the current level in place: #wizmakemap, and the des-file test
+// loader (sp_lev.c lspo_reset_level()/lspo_finalize_level())
+export async function makemap_prepost(pre, wiztower) {
+    let mtmp;
+
+    if (pre) {
+        const { makemap_remove_mons } = await import('./wizcmds.js');
+        const { rm_mapseen, ledger_no, on_level } = await import('./dungeon.js');
+        await makemap_remove_mons();
+        rm_mapseen(ledger_no(game.u.uz)); /* discard overview info for level */
+        {
+            const Unachieve = '%s achievement revoked.';
+            const { remove_achievement } = await import('./insight.js');
+            const { ACH_MINE_PRIZE, ACH_SOKO_PRIZE, Lcheck } = await import('./const.js');
+
+            /* achievement tracking; if replacing a level that has a
+               special prize, lose credit for previously finding it and
+               reset for the new instance of that prize */
+            if (Lcheck(game.u.uz, game.special_levels?.mineend_level)) {
+                if (remove_achievement(ACH_MINE_PRIZE))
+                    await pline(Unachieve.replace('%s', "Mine's-end"));
+                ((game.context ||= {}).achieveo ||= {}).mines_prize_oid = 0;
+            } else if (Lcheck(game.u.uz, game.special_levels?.sokoend_level)) {
+                if (remove_achievement(ACH_SOKO_PRIZE))
+                    await pline(Unachieve.replace('%s', 'Soko-prize'));
+                ((game.context ||= {}).achieveo ||= {}).soko_prize_oid = 0;
+            }
+        }
+        if (Punished()) {
+            const { ballrelease, unplacebc } = await import('./ball.js');
+            await ballrelease(false);
+            unplacebc();
+        }
+        /* reset lock picking unless it's for a carried container */
+        const { maybe_reset_pick } = await import('./lock.js');
+        maybe_reset_pick(null);
+        /* reset interrupted digging if it was taking place on this level */
+        const { digging_context, clear_digging_context } = await import('./dig.js');
+        if (digging_context().level && on_level(digging_context().level, game.u.uz))
+            clear_digging_context();
+        /* reset cached targets */
+        (game.iflags ||= {}).travelcc = { x: 0, y: 0 }; /* travel destination */
+        if (game.context?.polearm)
+            game.context.polearm.hitmon = null; /* polearm target */
+        /* escape from trap */
+        const { reset_utrap } = await import('./trap.js');
+        await reset_utrap(false);
+        const { check_special_room, set_uinwater } = await import('./hack.js');
+        await check_special_room(true); /* room exit */
+        game.dndest = { lx: 0, ly: 0, hx: 0, hy: 0, nlx: 0, nly: 0, nhx: 0, nhy: 0 };
+        game.updest = { lx: 0, ly: 0, hx: 0, hy: 0, nlx: 0, nly: 0, nhx: 0, nhy: 0 };
+        game.u.ustuck = null;
+        game.u.uswallow = 0;
+        game.u.uswldtim = 0;
+        await set_uinwater(0); /* u.uinwater = 0 */
+        game.u.uundetected = 0; /* not hidden, even if means are available */
+        const { dmonsfree } = await import('./mon.js');
+        const { dobjsfree } = await import('./mkobj.js');
+        dmonsfree(); /* purge dead monsters from 'fmon' */
+        dobjsfree();
+
+        /* discard current level; "saving" is used to release dynamic data:
+           savelev() with a freeing nhfp lets go of the level-local timers
+           and light sources, the regions, the engravings and the bubbles
+           of a Plane; goto_level() keeps the same pieces with the level it
+           saves, this drops them */
+        {
+            const { save_timers } = await import('./timeout.js');
+            const { save_light_sources } = await import('./light.js');
+            const { RANGE_LEVEL, Is_waterlevel, Is_airlevel } = await import('./const.js');
+            const { save_engravings } = await import('./engrave.js');
+            save_timers(RANGE_LEVEL, true);
+            save_light_sources(RANGE_LEVEL, true);
+            game.regions = [];
+            game.max_regions = 0; /* free_regions() */
+            save_engravings();
+            if (Is_waterlevel(game.u.uz) || Is_airlevel(game.u.uz)) {
+                const { save_waterlevel } = await import('./mkmaze.js');
+                save_waterlevel();
+            }
+        }
+    } else {
+        const { vision_reset } = await import('./vision.js');
+        const { cls } = await import('./display.js');
+        vision_reset();
+        game.vision_full_recalc = 1;
+        await cls();
+        /* was using safe_teleds() but that doesn't honor arrival region
+           on levels which have such; we don't force stairs, just area */
+        const { u_on_rndspot } = await import('./dungeon.js');
+        await u_on_rndspot((game.u.uhave?.amulet ? 1 : 0) /* 'going up' flag */
+                           | (wiztower ? 2 : 0));
+        const { losedogs } = await import('./dog.js');
+        await losedogs();
+        const { kill_genocided_monsters, m_at, mnexto } = await import('./mon.js');
+        await kill_genocided_monsters();
+        /* u_on_rndspot() might pick a spot that has a monster, or losedogs()
+           might pick the hero's spot (only if there isn't already a monster
+           there), so we might have to move hero or the co-located monster */
+        if ((mtmp = m_at(game.u.ux, game.u.uy)) != null) {
+            const { u_collide_m } = await import('./do.js');
+            await u_collide_m(mtmp, m_at, mnexto);
+        }
+        const { initrack } = await import('./track.js');
+        initrack();
+        if (Punished()) {
+            const { unplacebc, placebc } = await import('./ball.js');
+            unplacebc();
+            await placebc();
+        }
+        await docrt();
+        await flush_screen(1);
+        const { deliver_splev_message } = await import('./questpgr.js');
+        await deliver_splev_message(); /* level entry */
+        const { check_special_room } = await import('./hack.js');
+        await check_special_room(false); /* room entry */
+    }
 }
 
 // src/cmd.c:118 levltyp[] — the names of the levl[][].typ values, for the

@@ -2201,6 +2201,12 @@ export function corpse_revive_type(obj) {
     return revivetype;
 }
 
+// src/mkobj.c:2831 dobjsfree() — release the objects queued for
+// deallocation (where == OBJ_DELETED). This port frees an object the
+// moment it is deleted, so the queue is always empty here.
+export function dobjsfree() {
+}
+
 // src/mkobj.c:2847 hornoplenty(); create one item for application or tipping.
 export async function hornoplenty(horn, tipping = false, targetbox = null) {
     if (!horn || horn.otyp !== ONAMES.HORN_OF_PLENTY) {

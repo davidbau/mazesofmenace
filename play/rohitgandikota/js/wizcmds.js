@@ -31,7 +31,7 @@ import { makewish } from './zap.js';
 import { encumber_msg } from './attrib.js';
 import { ECMD_OK, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ANY,
          TIMEOUT, ARTICLE_THE, ARTICLE_A, ARTICLE_YOUR, XKILL_NOMSG,
-         ECMD_CANCEL, UTOTYPE_NONE, SICK_VOMITABLE, SICK_NONVOMITABLE,
+         ECMD_CANCEL, UTOTYPE_NONE, SICK_VOMITABLE, SICK_NONVOMITABLE, PICK_NONE, PRIMARYSET,
          SUPPRESS_IT, SUPPRESS_HALLUCINATION, SUPPRESS_SADDLE,
          has_mgivenname }
     from './const.js';
@@ -55,7 +55,36 @@ import { m_at, xkilled } from './mon.js';
 import { DEADMONSTER } from './monst.js';
 import { nonliving } from './mondata.js';
 import { x_monnam } from './do_name.js';
-import { You } from './pline.js';
+import { You, impossible } from './pline.js';
+import { monsndx, rndmonst, makemon } from './makemon.js';
+import { G_UNIQ, G_EXTINCT, MON_OFFMAP, MON_MIGRATING, MON_LIMBO,
+         MON_ENDGAME_MIGR, ESHK, EPRI, EGD, MAX_GLYPH, NUM_ZAP,
+         EMIN, EDOG, EBONES, has_edog, has_oname, ONAME, MM_NOMSG, MIGR_RANDOM,
+         has_omonst, OMONST,
+         SIZEOF_STRUCT_OBJ, SIZEOF_STRUCT_OEXTRA, SIZEOF_STRUCT_MONST,
+         SIZEOF_STRUCT_MEXTRA, SIZEOF_STRUCT_EGD, SIZEOF_STRUCT_EPRI,
+         SIZEOF_STRUCT_ESHK, SIZEOF_STRUCT_EMIN, SIZEOF_STRUCT_EDOG,
+         SIZEOF_STRUCT_EBONES, SIZEOF_STRUCT_CEMETERY, SIZEOF_STRUCT_TRAP,
+         SIZEOF_STRUCT_DAMAGE, SIZEOF_STRUCT_KINFO } from './const.js';
+import { size_wseg } from './worm.js';
+import { engr_stats } from './engrave.js';
+import { light_stats } from './light.js';
+import { timer_stats } from './timeout.js';
+import { region_stats } from './region.js';
+import { overview_stats } from './dungeon.js';
+import { on_level, In_W_tower, ledger_no } from './dungeon.js';
+import { OBJ_NAME } from './objnam.js';
+import { ONAMES } from './objects_data.js';
+import { MAXOCLASSES } from './symbols.js';
+import { gs_symset, gc_currentgraphics, known_handling, showsyms_at } from './symbols.js';
+import { add_menu_heading } from './options.js';
+import { glyphmap } from './display.js';
+import { setpaid } from './shk.js';
+import { mongone, dmonsfree } from './mon.js';
+import { keepdogs, migrate_to_level } from './dog.js';
+import { makemap_prepost } from './cmd.js';
+import { NUMMONS } from './monst_data.js';
+import { NUM_OBJECTS } from './objects_data.js';
 import { notice_mon_off, notice_mon_on } from './hack.js';
 
 function note_unported_wizcmds(what) {
@@ -94,6 +123,104 @@ export async function wiz_identify() {
         }
     } else {
         await pline("Unavailable command '#wizidentify'.");
+    }
+    return ECMD_OK;
+}
+
+// src/wizcmds.c:73 makemap_unmakemon() — used when wiz_makemap() gets rid
+// of monsters for the old incarnation of a level before creating a new
+// incarnation of it
+async function makemap_unmakemon(mtmp, migratory) {
+    const ndx = monsndx(mtmp.data);
+
+    /* uncreate any unique monster so that it is eligible to be remade
+       on the new incarnation of the level; ignores DEADMONSTER() [why?] */
+    if (mtmp.data.geno & G_UNIQ)
+        game.mvitals[ndx].mvflags &= ~G_EXTINCT;
+    if (game.mvitals[ndx].born)
+        game.mvitals[ndx].born--;
+
+    /* vault is going away; get rid of guard who might be in play or
+       be parked at <0,0>; for the latter, might already be flagged as
+       dead but is being kept around because of the 'isgd' flag */
+    if (mtmp.isgd) {
+        mtmp.isgd = 0; /* after this, fall through to mongone() */
+    } else if (DEADMONSTER(mtmp)) {
+        return; /* already set to be discarded */
+    } else if (mtmp.isshk && on_level(game.u.uz, ESHK(mtmp).shoplevel)) {
+        setpaid(mtmp);
+    }
+    if (migratory) {
+        /* caller has removed 'mtmp' from migrating_mons; put it onto fmon
+           so that dmonsfree() bookkeeping for number of dead or removed
+           monsters won't get out of sync; it is not on the map but
+           mongone() -> m_detach() -> mon_leaving_level() copes with that */
+        mtmp.mstate = (mtmp.mstate | 0) | MON_OFFMAP;
+        mtmp.mstate &= ~(MON_MIGRATING | MON_LIMBO | MON_ENDGAME_MIGR);
+        (game.level.monsters ||= []).unshift(mtmp);
+    }
+    await mongone(mtmp);
+}
+
+// src/wizcmds.c:110 makemap_remove_mons() — get rid of the all the
+// monsters on--or intimately involved with--current level; used when
+// #wizmakemap destroys the level before replacing it
+export async function makemap_remove_mons() {
+    /* keep steed and other adjacent pets after releasing them
+       from traps, stopping eating, &c as if hero were ascending */
+    await keepdogs(true); /* (pets-only; normally we'd be using 'FALSE') */
+    /* get rid of all the monsters that didn't make it to 'mydogs' */
+    for (const mtmp of [...(game.level.monsters || [])]) {
+        /* if already dead, dmonsfree(below) will get rid of it */
+        if (DEADMONSTER(mtmp))
+            continue;
+        await makemap_unmakemon(mtmp, false);
+    }
+    /* some monsters retain details of this level in mon->mextra; that
+       data becomes invalid when the level is replaced by a new one;
+       get rid of them now if migrating or already arrived elsewhere;
+       [when on their 'home' level, the previous loop got rid of them;
+       if they aren't actually migrating but have been placed on some
+       'away' level, such monsters are treated like the Wizard:  kept
+       on migrating monsters list, scheduled to migrate back to their
+       present location instead of being saved with whatever level they
+       happen to be on; see keepdogs() and keep_mon_accessible(dog.c)] */
+    const migrating = (game.migrating_mons ||= []);
+    for (let i = 0; i < migrating.length; ) {
+        const mtmp = migrating[i];
+        if (mtmp.mextra
+            && ((mtmp.isshk && on_level(game.u.uz, ESHK(mtmp).shoplevel))
+                || (mtmp.ispriest && on_level(game.u.uz, EPRI(mtmp).shrlevel))
+                || (mtmp.isgd && on_level(game.u.uz, EGD(mtmp).gdlevel)))) {
+            migrating.splice(i, 1);
+            await makemap_unmakemon(mtmp, true);
+        } else {
+            ++i;
+        }
+    }
+    /* release dead and 'unmade' monsters */
+    dmonsfree();
+    if ((game.level.monsters || []).length) {
+        await impossible("makemap_remove_mons: 'fmon' did not get emptied?");
+    }
+    return;
+}
+
+// src/wizcmds.c:156 wiz_makemap() — #wizmakemap: discard current dungeon
+// level and replace with a new one
+export async function wiz_makemap() {
+    if (game.wizard) {
+        const was_in_W_tower = In_W_tower(game.u.ux, game.u.uy, game.u.uz);
+
+        await makemap_prepost(true, was_in_W_tower);
+        /* create a new level; various things like bestowing a guardian
+           angel on Astral or setting off alarm on Ft.Ludios are handled
+           by goto_level(do.c) so won't occur for replacement levels */
+        const { mklev } = await import('./mklev.js');
+        await mklev();
+        await makemap_prepost(false, was_in_W_tower);
+    } else {
+        await pline(unavailcmd.replace('%s', ecname_from_fn('wizmakemap')));
     }
     return ECMD_OK;
 }
@@ -551,6 +678,47 @@ function mungspaces(bp) {
     return bp.replace(/[ \t]+/g, ' ').replace(/^ | $/g, '');
 }
 
+// src/wizcmds.c:353 wiz_load_lua() — #wizloadlua: load and execute a lua
+// script (nhlua.js load_lua() says what this port can run)
+export async function wiz_load_lua() {
+    if (game.wizard) {
+        let buf = '';
+
+        buf = await getlin('Load which lua file?');
+        if (buf[0] === '\x1b' || buf === '')
+            return ECMD_CANCEL;
+        if (!buf.includes('.'))
+            buf += '.lua';
+        const { load_lua } = await import('./nhlua.js');
+        await load_lua(buf);
+    } else
+        await pline(unavailcmd.replace('%s', ecname_from_fn('wizloadlua')));
+    return ECMD_OK;
+}
+
+// src/wizcmds.c:376 wiz_load_splua() — #wizloaddes: load and execute a
+// special level description lua script in place of the current level
+export async function wiz_load_splua() {
+    if (game.wizard) {
+        let buf = '';
+
+        buf = await getlin('Load which des lua file?');
+        if (buf[0] === '\x1b' || buf === '')
+            return ECMD_CANCEL;
+        if (!buf.includes('.'))
+            buf += '.lua';
+
+        const { lspo_reset_level, load_special, lspo_finalize_level }
+            = await import('./sp_lev.js');
+        await lspo_reset_level(null);
+        await load_special(buf);
+        await lspo_finalize_level(null);
+
+    } else
+        await pline(unavailcmd.replace('%s', ecname_from_fn('wizloaddes')));
+    return ECMD_OK;
+}
+
 // src/wizcmds.c wiz_level_tele() — the ^V command.
 export async function wiz_level_tele() {
     if (game.wizard)
@@ -980,6 +1148,420 @@ export async function wiz_smell() {
     /* NOTREACHED */
 }
 
+// src/wizcmds.c:1102 wiz_rumor_check() — #wizrumorcheck
+export async function wiz_rumor_check() {
+    const { rumor_check } = await import('./rumors.js');
+    await rumor_check();
+    return ECMD_OK;
+}
+
+/*
+ * wizard mode sanity_check code
+ */
+
+// src/wizcmds.c:1112 template / stats_hdr / stats_sep — "%-27s  %4ld  %6ld"
+const template = (src, count, size) =>
+    `${src.padEnd(27)}  ${String(count).padStart(4)}  ${String(size).padStart(6)}`;
+const stats_hdr = '                             count  bytes';
+const stats_sep = '---------------------------  ----- -------';
+
+// src/wizcmds.c:1117 size_obj()
+function size_obj(otmp) {
+    let sz = SIZEOF_STRUCT_OBJ;
+
+    /* oextra: this port keeps the name flat, so a named object has one */
+    if (otmp.oextra || has_oname(otmp)) {
+        sz += SIZEOF_STRUCT_OEXTRA;
+        if (has_oname(otmp))
+            sz += ONAME(otmp).length + 1;
+        if (has_omonst(otmp))
+            sz += size_monst(OMONST(otmp), false);
+        if (otmp.oextra?.omailcmd)
+            sz += otmp.oextra.omailcmd.length + 1;
+        /* sz += (int) sizeof (unsigned); -- now part of oextra itself */
+    }
+    return sz;
+}
+
+// src/wizcmds.c:1135 count_obj() — tot is { count, size }
+function count_obj(chain, tot, top, recurse) {
+    let count = 0, size = 0;
+
+    for (const obj of chain || []) {
+        if (top) {
+            count++;
+            size += size_obj(obj);
+        }
+        if (recurse && obj.cobj?.length)
+            count_obj(obj.cobj, tot, true, true);
+    }
+    tot.count += count;
+    tot.size += size;
+}
+
+// src/wizcmds.c:1155 obj_chain()
+function obj_chain(win, src, chain, force, tot) {
+    const t = { count: 0, size: 0 };
+
+    count_obj(chain, t, true, false);
+
+    if (t.count || t.size || force) {
+        tot.count += t.count;
+        tot.size += t.size;
+        tty_putstr(win, 0, template(src, t.count, t.size));
+    }
+}
+
+// src/wizcmds.c:1175 mon_invent_chain()
+function mon_invent_chain(win, src, chain, tot) {
+    const t = { count: 0, size: 0 };
+
+    for (const mon of chain || [])
+        count_obj(mon.minvent, t, true, false);
+
+    if (t.count || t.size) {
+        tot.count += t.count;
+        tot.size += t.size;
+        tty_putstr(win, 0, template(src, t.count, t.size));
+    }
+}
+
+// src/wizcmds.c:1196 contained_stats()
+function contained_stats(win, src, tot) {
+    const t = { count: 0, size: 0 };
+
+    count_obj(game.invent, t, false, true);
+    count_obj(game.level?.objects, t, false, true);
+    count_obj(game.level?.buriedobjs, t, false, true);
+    count_obj(game.migrating_objs, t, false, true);
+    /* DEADMONSTER check not required in this loop since they have no
+     * inventory */
+    for (const mon of game.level?.monsters || [])
+        count_obj(mon.minvent, t, false, true);
+    for (const mon of game.migrating_mons || [])
+        count_obj(mon.minvent, t, false, true);
+
+    if (t.count || t.size) {
+        tot.count += t.count;
+        tot.size += t.size;
+        tty_putstr(win, 0, template(src, t.count, t.size));
+    }
+}
+
+// src/wizcmds.c:1224 size_monst()
+function size_monst(mtmp, incl_wsegs) {
+    let sz = SIZEOF_STRUCT_MONST;
+
+    if (mtmp.wormno && incl_wsegs)
+        sz += size_wseg(mtmp);
+
+    /* mextra: this port keeps a pet's edog and a given name flat too */
+    if (mtmp.mextra || has_mgivenname(mtmp) || has_edog(mtmp)) {
+        sz += SIZEOF_STRUCT_MEXTRA;
+        if (has_mgivenname(mtmp))
+            sz += MGIVENNAME(mtmp).length + 1;
+        if (EGD(mtmp))
+            sz += SIZEOF_STRUCT_EGD;
+        if (EPRI(mtmp))
+            sz += SIZEOF_STRUCT_EPRI;
+        if (ESHK(mtmp))
+            sz += SIZEOF_STRUCT_ESHK;
+        if (EMIN(mtmp))
+            sz += SIZEOF_STRUCT_EMIN;
+        if (EDOG(mtmp))
+            sz += SIZEOF_STRUCT_EDOG;
+        if (EBONES(mtmp))
+            sz += SIZEOF_STRUCT_EBONES;
+        /* mextra->mcorpsenm doesn't point to more memory */
+    }
+    return sz;
+}
+
+// src/wizcmds.c:1252 mon_chain()
+function mon_chain(win, src, chain, force, tot) {
+    let count, size;
+    /* mon->wormno means something different for migrating_mons and mydogs */
+    const incl_wsegs = src.toLowerCase() === 'fmon';
+
+    count = size = 0;
+    for (const mon of chain || []) {
+        count++;
+        size += size_monst(mon, incl_wsegs);
+    }
+    if (count || size || force) {
+        tot.count += count;
+        tot.size += size;
+        tty_putstr(win, 0, template(src, count, size));
+    }
+}
+
+// src/wizcmds.c:1277 misc_stats()
+function misc_stats(win, tot) {
+    let buf, hdrbuf;
+    let count, size;
+    let st;
+
+    /* traps and engravings are output unconditionally;
+     * others only if nonzero
+     */
+    count = size = 0;
+    for (const tt of game.level?.traps || []) {
+        ++count;
+        size += SIZEOF_STRUCT_TRAP;
+    }
+    tot.count += count;
+    tot.size += size;
+    hdrbuf = `traps, size ${SIZEOF_STRUCT_TRAP}`;
+    buf = template(hdrbuf, count, size);
+    tty_putstr(win, 0, buf);
+
+    st = engr_stats('engravings, size %ld+text');
+    tot.count += st.count;
+    tot.size += st.size;
+    buf = template(st.hdrbuf, st.count, st.size);
+    tty_putstr(win, 0, buf);
+
+    st = light_stats('light sources, size %ld');
+    if (st.count || st.size) {
+        tot.count += st.count;
+        tot.size += st.size;
+        buf = template(st.hdrbuf, st.count, st.size);
+        tty_putstr(win, 0, buf);
+    }
+
+    st = timer_stats('timers, size %ld');
+    if (st.count || st.size) {
+        tot.count += st.count;
+        tot.size += st.size;
+        buf = template(st.hdrbuf, st.count, st.size);
+        tty_putstr(win, 0, buf);
+    }
+
+    count = size = 0;
+    for (const sd of game.level?.damagelist || []) {
+        ++count;
+        size += SIZEOF_STRUCT_DAMAGE;
+    }
+    if (count || size) {
+        tot.count += count;
+        tot.size += size;
+        hdrbuf = `shop damage, size ${SIZEOF_STRUCT_DAMAGE}`;
+        buf = template(hdrbuf, count, size);
+        tty_putstr(win, 0, buf);
+    }
+
+    st = region_stats('regions, size %ld+%ld*rect+N');
+    if (st.count || st.size) {
+        tot.count += st.count;
+        tot.size += st.size;
+        buf = template(st.hdrbuf, st.count, st.size);
+        tty_putstr(win, 0, buf);
+    }
+
+    count = size = 0;
+    for (let k = game.killer?.next || null; k; k = k.next) {
+        ++count;
+        size += SIZEOF_STRUCT_KINFO;
+    }
+    if (count || size) {
+        tot.count += count;
+        tot.size += size;
+        hdrbuf = `delayed killer${plur(count)}, size ${SIZEOF_STRUCT_KINFO}`;
+        buf = template(hdrbuf, count, size);
+        tty_putstr(win, 0, buf);
+    }
+
+    count = size = 0;
+    for (let bi = game.level?.bonesinfo || null; bi; bi = bi.next) {
+        ++count;
+        size += SIZEOF_STRUCT_CEMETERY;
+    }
+    if (count || size) {
+        tot.count += count;
+        tot.size += size;
+        hdrbuf = `bones history, size ${SIZEOF_STRUCT_CEMETERY}`;
+        buf = template(hdrbuf, count, size);
+        tty_putstr(win, 0, buf);
+    }
+
+    count = size = 0;
+    for (let idx = 0; idx < NUM_OBJECTS; ++idx)
+        if (game.objects[idx]?.oc_uname) {
+            ++count;
+            size += game.objects[idx].oc_uname.length + 1;
+        }
+    if (count || size) {
+        tot.count += count;
+        tot.size += size;
+        hdrbuf = 'object type names, text';
+        buf = template(hdrbuf, count, size);
+        tty_putstr(win, 0, buf);
+    }
+}
+
+// src/wizcmds.c:1616 wiz_show_stats() — the #stats command: display memory
+// usage of all monsters and objects on the level
+export async function wiz_show_stats() {
+    let buf;
+    const total_obj = { count: 0, size: 0 },
+          total_mon = { count: 0, size: 0 },
+          total_ovr = { count: 0, size: 0 },
+          total_misc = { count: 0, size: 0 };
+
+    const win = tty_create_nhwindow(NHW_TEXT);
+    tty_putstr(win, 0, 'Current memory statistics:');
+
+    tty_putstr(win, 0, stats_hdr);
+    buf = `  Objects, base size ${SIZEOF_STRUCT_OBJ}`;
+    tty_putstr(win, 0, buf);
+    obj_chain(win, 'invent', game.invent, true, total_obj);
+    obj_chain(win, 'fobj', game.level?.objects, true, total_obj);
+    obj_chain(win, 'buried', game.level?.buriedobjs, false, total_obj);
+    obj_chain(win, 'migrating obj', game.migrating_objs, false, total_obj);
+    obj_chain(win, 'billobjs', game.billobjs, false, total_obj);
+    mon_invent_chain(win, 'minvent', game.level?.monsters, total_obj);
+    mon_invent_chain(win, 'migrating minvent', game.migrating_mons, total_obj);
+    contained_stats(win, 'contained', total_obj);
+    tty_putstr(win, 0, stats_sep);
+    buf = template('  Obj total', total_obj.count, total_obj.size);
+    tty_putstr(win, 0, buf);
+
+    tty_putstr(win, 0, '');
+    buf = `  Monsters, base size ${SIZEOF_STRUCT_MONST}`;
+    tty_putstr(win, 0, buf);
+    mon_chain(win, 'fmon', game.level?.monsters, true, total_mon);
+    mon_chain(win, 'migrating', game.migrating_mons, false, total_mon);
+    /* 'gm.mydogs' is only valid during level change or end of game disclosure,
+       but conceivably we've been called from within debugger at such time */
+    if (game.mydogs?.length) /* monsters accompanying hero */
+        mon_chain(win, 'mydogs', game.mydogs, false, total_mon);
+    tty_putstr(win, 0, stats_sep);
+    buf = template('  Mon total', total_mon.count, total_mon.size);
+    tty_putstr(win, 0, buf);
+
+    tty_putstr(win, 0, '');
+    tty_putstr(win, 0, '  Overview');
+    {
+        const ov = overview_stats(win, template);
+        total_ovr.count += ov.count;
+        total_ovr.size += ov.size;
+    }
+    tty_putstr(win, 0, stats_sep);
+    buf = template('  Over total', total_ovr.count, total_ovr.size);
+    tty_putstr(win, 0, buf);
+
+    tty_putstr(win, 0, '');
+    tty_putstr(win, 0, '  Miscellaneous');
+    misc_stats(win, total_misc);
+    tty_putstr(win, 0, stats_sep);
+    buf = template('  Misc total', total_misc.count, total_misc.size);
+    tty_putstr(win, 0, buf);
+
+    tty_putstr(win, 0, '');
+    tty_putstr(win, 0, stats_sep);
+    buf = template('  Grand total',
+                   (total_obj.count + total_mon.count
+                    + total_ovr.count + total_misc.count),
+                   (total_obj.size + total_mon.size
+                    + total_ovr.size + total_misc.size));
+    tty_putstr(win, 0, buf);
+
+    /* display_nhwindow(win, FALSE) */
+    await tty_display_nhwindow(win);
+    for (;;) {
+        await xwaitforspace(quitchars);
+        if (game.morc === '\x1b')
+            break; /* cancel remaining pages */
+        if (!tty_next_page(win))
+            break;
+    }
+    tty_destroy_nhwindow(win);
+    return ECMD_OK;
+}
+
+// src/wizcmds.c:1705 wiz_display_macros() — #wizdispmacros: verify that
+// some display macros are returning sane values. The C walks the integer
+// glyphs 0..MAX_GLYPH-1 and applies the macros to each; this port's glyphs
+// are {kind, ...} records, so it walks every cmap, zap, monster and object
+// glyph the port can make and applies the same bounds checks to each.
+export async function wiz_display_macros() {
+    const display_issues = 'Display macro issues:';
+    let test, trouble = 0;
+    const max_glyph = MAX_GLYPH;
+    const S_vbeam = cmap_names.S_vbeam, S_rslant = cmap_names.S_rslant;
+
+    const win = tty_create_nhwindow(NHW_TEXT);
+
+    /* glyph_is_cmap / glyph_to_cmap(): the plain cmap glyphs, then the
+       zap glyphs (a cmap S_vbeam..S_rslant per beam type and direction) */
+    const cmap_glyphs = [];
+    for (let cmap = 0; cmap < defsyms.length; ++cmap)
+        cmap_glyphs.push({ glyph: cmap, kind: 'cmap', cmap });
+    for (let beam_type = 0; beam_type < NUM_ZAP; ++beam_type)
+        for (let dir = 0; dir < 4; ++dir)
+            cmap_glyphs.push({ glyph: defsyms.length + (beam_type << 2) + dir,
+                               kind: 'zap', cmap: S_vbeam + dir });
+    for (const g of cmap_glyphs) {
+        test = g.cmap;
+        /* check for MAX_GLYPH return */
+        if (test === undefined) {
+            if (!trouble++)
+                tty_putstr(win, 0, display_issues);
+            tty_putstr(win, 0, `glyph_is_cmap() / glyph_to_cmap(glyph=${
+                g.glyph}) sync failure, returned NO_GLYPH (${max_glyph})`);
+        }
+        if (g.kind === 'zap' && !(test >= S_vbeam && test <= S_rslant)) {
+            if (!trouble++)
+                tty_putstr(win, 0, display_issues);
+            tty_putstr(win, 0, `glyph_is_cmap_zap(glyph=${
+                g.glyph}) returned non-zap cmap ${test}`);
+        }
+        /* check against defsyms array subscripts */
+        if (!(test >= 0 && test < defsyms.length)) {
+            if (!trouble++)
+                tty_putstr(win, 0, display_issues);
+            tty_putstr(win, 0, `glyph_to_cmap(glyph=${g.glyph}) returns ${
+                test} exceeds defsyms[${defsyms.length}] bounds (MAX_GLYPH = ${
+                max_glyph})`);
+        }
+    }
+    /* glyph_is_monster / glyph_to_mon */
+    for (let mnum = 0; mnum < NUMMONS; ++mnum) {
+        test = mnum; /* { kind: 'mon', mnum } */
+        /* check against mons array subscripts */
+        if (test < 0 || test >= NUMMONS) {
+            if (!trouble++)
+                tty_putstr(win, 0, display_issues);
+            tty_putstr(win, 0, `glyph_to_mon(glyph=${mnum}) returns ${
+                test} exceeds mons[${NUMMONS}] bounds`);
+        }
+    }
+    /* glyph_is_object / glyph_to_obj */
+    for (let otyp = 0; otyp < NUM_OBJECTS; ++otyp) {
+        test = otyp; /* { kind: 'obj', otyp } */
+        /* check against objects array subscripts */
+        if (test < 0 || test > NUM_OBJECTS) {
+            if (!trouble++)
+                tty_putstr(win, 0, display_issues);
+            tty_putstr(win, 0, `glyph_to_obj(glyph=${otyp}) returns ${
+                test} exceeds objects[${NUM_OBJECTS}] bounds`);
+        }
+    }
+    if (!trouble)
+        tty_putstr(win, 0, 'No display macro issues detected.');
+    /* display_nhwindow(win, FALSE) */
+    await tty_display_nhwindow(win);
+    for (;;) {
+        await xwaitforspace(quitchars);
+        if (game.morc === '\x1b')
+            break; /* cancel remaining pages */
+        if (!tty_next_page(win))
+            break;
+    }
+    tty_destroy_nhwindow(win);
+    return ECMD_OK;
+}
+
 // src/wizcmds.c:1790 wiz_mon_diff() — the #wizmondiff command
 export async function wiz_mon_diff() {
     const window_title = 'Review of monster difficulty ratings'
@@ -1156,6 +1738,52 @@ async function list_migrating_mons(nextlevl /* default destination for wiz_migra
     }
 }
 
+// src/wizcmds.c:1832 wiz_objprobs() — #wizobjprobs: the object generation
+// probabilities, each as its share of its class
+export async function wiz_objprobs() {
+    let buf;
+    const probsum = new Array(MAXOCLASSES).fill(0);
+    let otyp;
+    const FIRST_OBJECT = ONAMES.FIRST_OBJECT;
+    let oclass = game.objects[FIRST_OBJECT].oc_class;
+
+    for (otyp = FIRST_OBJECT; otyp < NUM_OBJECTS; otyp++) {
+        probsum[game.objects[otyp].oc_class] += game.objects[otyp].oc_prob;
+    }
+
+    const win = tty_create_nhwindow(NHW_TEXT);
+    for (otyp = FIRST_OBJECT; otyp < NUM_OBJECTS; otyp++) {
+        /* placeholders for extra descriptions aren't generatable objects */
+        if (!OBJ_NAME(game.objects[otyp]))
+            continue;
+
+        if (game.objects[otyp].oc_class !== oclass) {
+            tty_putstr(win, 0, '');
+        }
+        oclass = game.objects[otyp].oc_class;
+
+        /* "%4d / %4d (%6.2f%%): %s" in float arithmetic */
+        const pct = Math.fround(Math.fround(game.objects[otyp].oc_prob * 100)
+                                / Math.fround(probsum[oclass]));
+        buf = `${String(game.objects[otyp].oc_prob).padStart(4)} / ${
+            String(probsum[oclass]).padStart(4)} (${pct.toFixed(2).padStart(6)}%): ${
+            OBJ_NAME(game.objects[otyp])}`;
+        tty_putstr(win, 0, buf);
+    }
+    /* display_nhwindow(win, FALSE) */
+    await tty_display_nhwindow(win);
+    for (;;) {
+        await xwaitforspace(quitchars);
+        if (game.morc === '\x1b')
+            break; /* cancel remaining pages */
+        if (!tty_next_page(win))
+            break;
+    }
+    tty_destroy_nhwindow(win);
+
+    return ECMD_OK;
+}
+
 // src/wizcmds.c:1873 wiz_migrate_mons() — #migratemons command
 // (DEBUG_MIGRATING_MONS is not defined: the listing only)
 export async function wiz_migrate_mons() {
@@ -1171,5 +1799,110 @@ export async function wiz_migrate_mons() {
 
     await list_migrating_mons(tolevel);
 
+    /* DEBUG_MIGRATING_MONS (include/config.h:620, on with DEBUG) */
+    {
+        let inbuf = '';
+        let mcount, ptr, mtmp;
+        let use_random_mon = true;
+        const mongen_saved = game.iflags?.debug_mongen;
+
+        if (tolevel.dnum || tolevel.dlevel)
+            inbuf = await getlin('How many random monsters to migrate to next level? [0]');
+        else
+            await pline("Can't get there from here.");
+        if (inbuf[0] === '\x1b' || inbuf === '')
+            return ECMD_OK;
+
+        mcount = parseInt(inbuf, 10) || 0; /* atoi() */
+        if (mcount < 0) {
+            use_random_mon = false;
+            mcount *= -1;
+        }
+        if (mcount < 1)
+            mcount = 0;
+        else if (mcount > ((COLNO - 1) * ROWNO))
+            mcount = (COLNO - 1) * ROWNO;
+
+        (game.iflags ||= {}).debug_mongen = false;
+        while (mcount > 0) {
+            if (use_random_mon) {
+                ptr = rndmonst();
+                mtmp = makemon(ptr, 0, 0, MM_NOMSG);
+            } else {
+                mtmp = (game.level.monsters || [])[0] || null; /* fmon */
+            }
+            if (mtmp)
+                await migrate_to_level(mtmp, ledger_no(tolevel), MIGR_RANDOM, null);
+            mcount--;
+        }
+        game.iflags.debug_mongen = mongen_saved;
+    }
     return ECMD_OK;
+}
+
+// src/wizcmds.c:1934 wiz_custom() — #wizcustom: the glyphs the active
+// symset (or a SYMBOLS= line) customized, with their symbol, colour,
+// custom colour and unicode representation
+export async function wiz_custom() {
+    if (game.wizard) {
+        const wizcustom = '#wizcustom';
+        let buf, bufa;
+        let n;
+        const { glyphid_cache_status, fill_glyphid_cache, free_glyphid_cache,
+                wizcustom_glyphids } = await import('./glyphs.js');
+
+        if (!glyphid_cache_status())
+            fill_glyphid_cache();
+
+        const win = tty_create_nhwindow(NHW_MENU);
+        tty_start_menu(win, MENU_BEHAVE_STANDARD);
+        add_menu_heading(win,
+                         '    glyph  glyph identifier                        '
+                         + '     sym   clr customcolor unicode utf8');
+        bufa = `${wizcustom}: colorcount=${game.iflags?.colorcount | 0} ${
+            gs_symset[PRIMARYSET]?.name ? gs_symset[PRIMARYSET].name : 'default'}`;
+        if (gc_currentgraphics.set === PRIMARYSET && gs_symset[PRIMARYSET]?.name)
+            bufa += ', active';
+        if (gs_symset[PRIMARYSET]?.handling) {
+            bufa += `, handler=${known_handling[gs_symset[PRIMARYSET].handling]}`;
+        }
+        buf = bufa;
+        await wizcustom_glyphids(win);
+        tty_end_menu(win, bufa);
+        n = (await tty_select_menu(win, PICK_NONE)).length;
+        tty_destroy_nhwindow(win);
+        if (glyphid_cache_status())
+            free_glyphid_cache();
+        await docrt();
+    } else
+        await pline(unavailcmd.replace('%s', ecname_from_fn('wizcustom')));
+    return ECMD_OK;
+}
+
+// src/wizcmds.c:1979 wizcustom_callback() — one #wizcustom menu line
+export function wizcustom_callback(win, glyphnum, id) {
+    let buf, bufa, bufb, bufc, bufd, bufu;
+    const clr = NO_COLOR;
+
+    if (win && id) {
+        const cgm = glyphmap()[glyphnum];
+        if (cgm.u || cgm.customcolor !== 0) {
+            bufa = `[${String(glyphnum).padStart(4, '0')}] ${id.padEnd(44)}`;
+            bufb = `'\\${String(showsyms_at(cgm.sym.symidx)).padStart(3, '0')}' ${
+                String(cgm.sym.color).padStart(2, '0')}`;
+            bufc = (cgm.customcolor >>> 0).toString(16).padStart(11, '0');
+            bufu = '';
+            if (cgm.u && cgm.u.utf8str) {
+                bufu = `U+${(cgm.u.utf32ch >>> 0).toString(16).padStart(4, '0')}`;
+                for (const cp of cgm.u.utf8str) {
+                    bufd = ` <${cp}>`;
+                    bufu += bufd;
+                }
+            }
+            buf = `${bufa} ${bufb} ${bufc} ${bufu}`;
+            tty_add_menu(win, null, glyphnum + 1 /* avoid 0 */, 0, 0, ATR_NONE, clr, buf,
+                         MENU_ITEMFLAGS_NONE);
+        }
+    }
+    return;
 }

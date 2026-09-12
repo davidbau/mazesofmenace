@@ -70,7 +70,7 @@ import { NO_TRAP, VIBRATING_SQUARE,
          SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL,
          WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP } from './const.js';
 import { litstate_rnd, flood_fill_rm, mkmap } from './mkmap.js';
-import { depth, induced_align, Can_fall_thru, Invocation_lev, on_level } from './dungeon.js';
+import { depth, induced_align, Can_fall_thru, Invocation_lev, on_level, In_W_tower } from './dungeon.js';
 import { Punished } from './youprop.js';
 import { carried } from './obj.js';
 import { unplacebc, placebc } from './ball.js';
@@ -3132,9 +3132,15 @@ function SpLev_Map_get(x, y) {
 // levels; a missing entry returns false so makemaz() can record the gap.
 export async function load_special(name) {
     const { SPECIAL_LEVELS } = await import('./dat/levels.js');
-    const script = SPECIAL_LEVELS[name];
-    if (!script)
+    /* the C opens "<name>.lua" from the dlb; the scripts are keyed here by
+       their base name */
+    const script = SPECIAL_LEVELS[name.replace(/\.lua$/, '')];
+    if (!script) {
+        /* nhlua.c:2200 nhl_loadlua(): "(%s)" since it doesn't know whether
+           the name is inside a dlb container */
+        await impossible(`nhl_loadlua: Error opening (${name})`);
         return false;
+    }
 
     game.coder = null;
     create_des_coder();
@@ -3206,6 +3212,83 @@ export async function load_special(name) {
 
     game.coder = null;
     return true;
+}
+
+// src/sp_lev.c:5993 lspo_reset_level() — des.reset_level(): throw the
+// current level away and start an empty one; L is null when #wizloaddes
+// (wiz_load_splua()) calls it around load_special()
+export async function lspo_reset_level(L) {
+    const wtower = In_W_tower(game.u.ux, game.u.uy, game.u.uz);
+
+    (game.iflags ||= {}).lua_testing = true;
+    if (L) {
+        game.coder = null;
+        create_des_coder();
+    }
+    const { makemap_prepost } = await import('./cmd.js');
+    await makemap_prepost(true, wtower);
+    game.in_mklev = true;
+    const { oinit } = await import('./o_init.js');
+    oinit(); /* assign level dependent obj probabilities */
+    mklev_fns.clear_level_structures();
+    return 0;
+}
+
+// src/sp_lev.c:6014 lspo_finalize_level() — finalize_level is only needed
+// for testing purposes
+export async function lspo_finalize_level(L) {
+    const wtower = In_W_tower(game.u.ux, game.u.uy, game.u.uz);
+
+    if (L)
+        create_des_coder();
+
+    link_doors_rooms();
+    remove_boundary_syms();
+
+    /* TODO: ensure_way_out() needs rewrite */
+    if (L && game.coder?.check_inaccessibles)
+        ensure_way_out();
+
+    map_cleanup();
+
+    /* FIXME: Ideally, we want this call to only cover areas of the map
+     * which were not inserted directly by the special level file (see
+     * the insect legs on Baalzebub's level, for instance). Since that
+     * is currently not possible, we overload the corrmaze flag for this
+     * purpose.
+     */
+    if (!game.level.flags.corrmaze)
+        mklev_fns.wallification(1, 0, COLNO - 1, ROWNO - 1);
+
+    if (L)
+        await flip_level_rnd(game.coder?.allow_flips ?? 0, false);
+
+    mklev_fns.count_level_features();
+
+    if (L && game.coder?.solidify)
+        solidify_map();
+
+    /* This must be done before premap_detect(),
+     * otherwise branch stairs won't be premapped. */
+    {
+        const { fixup_special } = await import('./mkmaze.js');
+        await fixup_special();
+    }
+
+    if (L && game.coder?.premapped) {
+        const { premap_detect } = await import('./detect.js');
+        premap_detect();
+    }
+
+    mklev_fns.level_finalize_topology();
+
+    for (const croom of [...(game.level.rooms || [])])
+        await fill_special_room(croom);
+
+    const { makemap_prepost } = await import('./cmd.js');
+    await makemap_prepost(false, wtower);
+    game.iflags.lua_testing = false;
+    return 0;
 }
 
 /* ==== the map-based special-level verbs the castle needs ==== */

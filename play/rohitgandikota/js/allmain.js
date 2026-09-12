@@ -164,6 +164,12 @@ export async function newgame_moveloop_preamble(resuming = false) {
         g.u.umovement = NORMAL_SPEED;
         initrack();
     }
+    /* src/allmain.c:797 */
+    {
+        const { reset_glyphmap } = await import('./display.js');
+        const { gm_newgame } = await import('./const.js');
+        reset_glyphmap(gm_newgame);
+    }
     /* src/allmain.c:85 */
     (g.disp ||= {}).botlx = true; /* for STATUS_HILITES */
 }
