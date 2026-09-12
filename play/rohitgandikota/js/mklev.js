@@ -35,7 +35,7 @@ import { bury_an_obj, fill_special_room, sp_lev_wire_mklev,
          sp_lev_wire_walkfrom, sp_lev_wire_priest,
          reset_xystart_size } from './sp_lev.js';
 import { walkfrom, mazexy, mkmaze_wire_mklev, mkportal } from './mkmaze.js';
-import { enexto_core } from './teleport.js';
+import { enexto_core, u_on_newpos } from './teleport.js';
 import { goodpos, set_mimic_sym } from './makemon.js';
 import { GP_CHECKSCARY as GP_CHECKSCARY_MK,
          In_endgame as In_endgame_mk } from './const.js';
@@ -355,11 +355,6 @@ function stairway_find_special_dir(up) {
 }
 
 // ── Hero placement (C ref: stairs.c, mkmaze.c) ──
-
-function u_on_newpos(x, y) {
-    game.u.ux = x;
-    game.u.uy = y;
-}
 
 // C ref: mkmaze.c bad_location — simplified for skeleton
 function bad_location(x, y, nlx, nly, nhx, nhy) {

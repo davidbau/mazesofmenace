@@ -891,8 +891,8 @@ export async function throwit(obj, wep_mask, twoweap = false,
            but we want to force breakage even when location IS_SOFT() */
         || obj.oclass === OCLASSES.VENOM_CLASS) {
         /* tmp_at(DISP_FLASH, obj_to_glyph(obj, rn2_on_display_rng));
-           tmp_at(gb.bhitpos.x, gb.bhitpos.y);
-           nh_delay_output();
+           await tmp_at(gb.bhitpos.x, gb.bhitpos.y);
+           await nh_delay_output();
            tmp_at(DISP_END, 0); */
         if (cansee(bx, by)) {
             display_object_at(obj, bx, by, temporary_object_glyph(obj));

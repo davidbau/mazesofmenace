@@ -227,8 +227,10 @@ async function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
                 return false;
             }
         }
-        game.u.ux = x;
-        game.u.uy = y; /* u_on_newpos */
+        {
+            const { u_on_newpos } = await import('./teleport.js');
+            u_on_newpos(x, y);
+        }
         break;
     }
     case LR_PORTAL:
@@ -1527,8 +1529,10 @@ async function mv_bubble(b, dx, dy, ini) {
                 const mtmp = m_at(cons.x, cons.y);
                 const ux0 = game.u.ux, uy0 = game.u.uy;
 
-                game.u.ux = cons.x;     /* u_on_newpos() */
-                game.u.uy = cons.y;
+                {
+                    const { u_on_newpos } = await import('./teleport.js');
+                    u_on_newpos(cons.x, cons.y);
+                }
                 await newsym(ux0, uy0); /* clean up old position */
 
                 if (mtmp) {

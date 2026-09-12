@@ -19,7 +19,7 @@ import { Blind } from './youprop.js';
 import { cansee } from './vision.js';
 import { Yname2, otense, Doname2, The, aobjnam, vtense } from './objnam.js';
 import { pline } from './display.js';
-import { mk_artifact, nartifact_exist } from './artifact.js';
+import { mk_artifact, nartifact_exist, permapoisoned } from './artifact.js';
 // mkobj.js — object creation.
 // C ref: src/mkobj.c
 //
@@ -366,7 +366,7 @@ function is_multigen(otmp, objects) {
         && o.oc_subtyp >= -P_SHURIKEN && o.oc_subtyp <= -P_BOW;
 }
 function is_poisonable(otmp, objects) {
-    return is_multigen(otmp, objects);   /* plus permapoisoned(), not ported */
+    return is_multigen(otmp, objects) || permapoisoned(otmp);
 }
 
 // src/mkobj.c bcsign()
@@ -2156,6 +2156,8 @@ export function add_to_migration(obj) {
     if (Is_container(obj))
         maybe_reset_pick(obj);
     obj.where = OBJ_MIGRATING;
+    obj.omigr_from_dnum = game.u.uz.dnum;
+    obj.omigr_from_dlevel = game.u.uz.dlevel;
     (game.migrating_objs ||= []).unshift(obj);
 }
 

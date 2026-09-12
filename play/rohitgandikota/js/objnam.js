@@ -3518,7 +3518,7 @@ export async function readobjnam(bp, no_wish) {
      * since weight() is called below and addinv() will take care
      * of luck */
     if (d.iscursed) {
-        curse(d.otmp);
+        await curse(d.otmp);
     } else if (d.uncursed) {
         d.otmp.blessed = 0;
         d.otmp.cursed = (((game.u.uluck || 0) + (game.u.moreluck || 0)) < 0
@@ -3529,7 +3529,7 @@ export async function readobjnam(bp, no_wish) {
         d.otmp.cursed = (((game.u.uluck || 0) + (game.u.moreluck || 0)) < 0
                          && !game.wizard) ? 1 : 0;
     } else if (d.spesgn < 0) {
-        curse(d.otmp);
+        await curse(d.otmp);
     }
 
     /* set eroded and erodeproof */

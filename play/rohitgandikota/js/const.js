@@ -1331,6 +1331,7 @@ export const MON_MIGRATING = 0x04;
 export const MON_LIMBO = 0x08;
 export const MON_BUBBLEMOVE = 0x10;
 export const MON_ENDGAME_FREE = 0x20;
+export const MON_STILL_ARRIVING = 0x100;
 export const MON_ENDGAME_MIGR = 0x40;
 export const MON_OBLITERATE = 0x80;
 export const M_AP_TYPMASK = 0x7;

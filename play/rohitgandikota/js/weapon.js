@@ -60,7 +60,7 @@ import { spell_skilltype } from './spell.js';
 import { discover_object } from './o_init.js';
 import { P_NONE, P_NUM_SKILLS, P_BARE_HANDED_COMBAT, P_RIDING, P_HEALING_SPELL, P_CLERIC_SPELL, P_TWO_WEAPON_COMBAT, P_SKILLED, P_MASTER, P_GRAND_MASTER, P_ATTACK_SPELL, P_ENCHANTMENT_SPELL, P_BOW, P_CROSSBOW } from './const.js';
 import { PMNAMES } from './monst_data.js';
-import { artifact_light, spec_abon } from './artifact.js';
+import { artifact_light, spec_abon, spec_dbon, shade_glare } from './artifact.js';
 import { arti_light_description, arti_light_radius, del_light_source,
          LS_OBJECT, new_light_source } from './light.js';
 import { touch_artifact_mon } from './artifact.js';
@@ -806,7 +806,7 @@ export function dmgval(otmp, mon) {
     if (oc.oc_material <= MATERIALS.LEATHER && thick_skinned(ptr))
         /* thick-skinned or scaled creatures don't feel it */
         tmp = 0;
-    if (ptr === game.mons[PMNAMES.PM_SHADE] && !note_dmgval_unported('shade_glare'))
+    if (ptr === game.mons[PMNAMES.PM_SHADE] && !shade_glare(otmp))
         tmp = 0;
 
     /* "very heavy iron ball"; weight increase is in increments */
@@ -833,16 +833,12 @@ export function dmgval(otmp, mon) {
             bonus += rnd(4);
         if (oc.oc_material === MATERIALS.SILVER && mon_hates_silver(mon))
             bonus += rnd(20);
-        /* artifact_light() is true only for lit Sunsword; gate the record on
-           the pieces that exist so it cannot fire for ordinary weapons */
-        if (otmp.oartifact && otmp.lamplit && hates_light(ptr)
-            && note_dmgval_unported('artifact_light'))
+        if (artifact_light(otmp) && otmp.lamplit && hates_light(ptr))
             bonus += rnd(8);
 
         /* if the weapon is going to get a double damage bonus, adjust this
            bonus so that effectively it's added after the doubling */
-        if (bonus > 1 && otmp.oartifact
-            && note_dmgval_unported('spec_dbon') >= 25)
+        if (bonus > 1 && otmp.oartifact && spec_dbon(otmp, mon, 25) >= 25)
             bonus = ((bonus + 1) / 2) | 0;
 
         tmp += bonus;
@@ -916,13 +912,6 @@ export function special_dmgval(magr, mdef, armask, silverhitOut = null) {
 // include/weight.h:18 WT_IRON_BALL_INCR — verified against the header, not
 // recalled: the value was written from memory first and then checked.
 const WT_IRON_BALL_INCR = 160;
-
-// Predicates dmgval needs that are not ported. Each returns 0/false and is
-// recorded by name, so game.unported says which one a divergence wanted.
-function note_dmgval_unported(what) {
-    (game.unported ||= new Set()).add('weapon:dmgval:' + what);
-    return 0;
-}
 
 // src/weapon.c:476 oselect() — the first object of the given type in the
 // monster's inventory that it can safely use.

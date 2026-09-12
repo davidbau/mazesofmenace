@@ -727,7 +727,7 @@ export async function dipfountain(obj) {
             await pline(`A freezing mist rises from the ${hliquid('water')
                         } and envelopes the sword.`);
             await pline_The('fountain disappears!');
-            curse(obj);
+            await curse(obj);
             if (obj.spe > -6 && !rn2(3))
                 obj.spe--;
             obj.oerodeproof = 0;

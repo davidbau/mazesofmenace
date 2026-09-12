@@ -88,6 +88,7 @@ import { ATR_NONE, NHW_MENU, tty_add_menu, tty_create_nhwindow,
 import { NO_COLOR } from './terminal.js';
 import { tty_yn_function } from './tty/topl.js';
 import { arti_cost } from './artifact.js';
+import { holetime } from './dig.js';
 import { block_point, cansee } from './vision.js';
 import { del_engr_at } from './engrave.js';
 import { Norep, You_feel, You_hear } from './pline.js';
@@ -510,7 +511,7 @@ export async function finish_paybill() {
         /* this used to be suppressed as "don't bother" (too late to matter)
            but that led to "place_object: \"<item>\" off map <0,0>" warning */
         if (shkp)
-            impossible(`finish_paybill: bad location <${ox},${oy}>.`);
+            await impossible(`finish_paybill: bad location <${ox},${oy}>.`);
         /* force a valid location */
         ox = game.u.ux ? game.u.ux : game.u.ux0;
         oy = game.u.ux ? game.u.uy : game.u.uy0; /* [note: testing u.ux when setting oy
@@ -4125,15 +4126,6 @@ async function shk_fixes_damage(shkp) {
     const index = damage.indexOf(dam);
     if (index >= 0)
         damage.splice(index, 1);
-}
-
-// src/dig.c:597 holetime() — countdown until the hero's dig breaks
-// through, or -1 when the hero isn't digging in a shop. The digging
-// occupation is not ported, so the occupation test is by its label.
-function holetime() {
-    if (game.occtxt !== 'digging' || !(game.u.ushops || '').length)
-        return -1;
-    return Math.trunc((250 - (game.context?.digging?.effort ?? 0)) / 20);
 }
 
 // src/shk.c:4880 shk_move() — the shopkeeper's turn. Return values match

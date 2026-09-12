@@ -617,10 +617,7 @@ function Is_botlevel_tele(lev) {
     return lev.dlevel === dunlevs_in_dungeon(lev);
 }
 
-// src/teleport.c u_on_newpos() — move the hero to <x,y>.
-//
-// js/mklev.js has a private copy of this from level generation; C keeps the
-// one definition here. They should be consolidated.
+// src/dungeon.c:1568 u_on_newpos() — move the hero to <x,y>.
 export function u_on_newpos(x, y) {
     game.u.ux = x;
     game.u.uy = y;

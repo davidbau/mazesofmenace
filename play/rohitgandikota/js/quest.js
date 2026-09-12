@@ -16,7 +16,14 @@ import { align_str } from './role.js';
 import { rn2 } from './rng.js';
 import { A_WIS, A_CURRENT, A_ORIGINAL, MIN_QUEST_ALIGN,
          MIN_QUEST_LEVEL, STRAT_WAITMASK } from './const.js';
-import { MSOUND } from './monst_data.js';
+import { MSOUND, PMNAMES } from './monst_data.js';
+import { helpless } from './mondata.js';
+import { monnear } from './monmove.js';
+import { canseemon, pline } from './display.js';
+import { verbalize, impossible } from './pline.js';
+import { adjalign } from './attrib.js';
+import { angry_guards, setmangry } from './mon.js';
+import { Monnam, mon_nam } from './do_name.js';
 import { ONAMES } from './objects_data.js';
 import { find_quest_artifact } from './questpgr.js';
 import { OBJ_FLOOR } from './obj.js';
@@ -258,47 +265,110 @@ async function leader_speaks(mtmp) {
         await chat_with_leader(mtmp);
 }
 
-export async function quest_talk(mtmp) {
+// src/quest.c:394 chat_with_nemesis()
+async function chat_with_nemesis() {
+    /*  The nemesis will do most of the talking, but... */
+    await qt_pager('discourage');
+    if (!Qstat().met_nemesis)
+        Qstat().met_nemesis = (Qstat().met_nemesis ?? 0) + 1;
+}
+
+// src/quest.c:403 nemesis_speaks()
+async function nemesis_speaks() {
     const q = Qstat();
-    const msound = game.mons[mtmp.mnum].msound;
-    if (mtmp.m_id === q.leader_m_id) {
-        await leader_speaks(mtmp);
-    } else if (msound === MSOUND.MS_NEMESIS) {
-        if (!q.in_battle) {
-            if (game.u.uhave?.questart)
-                await qt_pager('nemesis_wantsit');
-            else if ((q.made_goal ?? 0) === 1 || !q.met_nemesis)
-                await qt_pager('nemesis_first');
-            else if ((q.made_goal ?? 0) < 4)
-                await qt_pager('nemesis_next');
-            else if ((q.made_goal ?? 0) < 7)
-                await qt_pager('nemesis_other');
-            else if (!rn2(5))
-                await qt_pager('discourage');
-            if ((q.made_goal ?? 0) < 7)
-                q.made_goal = (q.made_goal ?? 0) + 1;
-        } else if (!rn2(5)) {
+    if (!q.in_battle) {
+        if (game.u.uhave?.questart)
+            await qt_pager('nemesis_wantsit');
+        else if ((q.made_goal ?? 0) === 1 || !q.met_nemesis)
+            await qt_pager('nemesis_first');
+        else if ((q.made_goal ?? 0) < 4)
+            await qt_pager('nemesis_next');
+        else if ((q.made_goal ?? 0) < 7)
+            await qt_pager('nemesis_other');
+        else if (!rn2(5))
             await qt_pager('discourage');
-        }
+        if ((q.made_goal ?? 0) < 7)
+            q.made_goal = (q.made_goal ?? 0) + 1;
         q.met_nemesis = true;
-    }
-}
-
-export async function quest_chat(mtmp) {
-    const q = Qstat();
-    const msound = game.mons[mtmp.mnum].msound;
-    if (mtmp.m_id === q.leader_m_id || msound === MSOUND.MS_LEADER) {
-        await chat_with_leader(mtmp);
-    } else if (msound === MSOUND.MS_NEMESIS) {
+    } else /* he will spit out random maledictions */
+        if (!rn2(5))
         await qt_pager('discourage');
-        q.met_nemesis = true;
-    } else if (msound === MSOUND.MS_GUARDIAN) {
-        await qt_pager(game.u.uhave?.questart && q.killed_nemesis
-            ? 'guardtalk_after' : 'guardtalk_before');
+}
+
+// src/quest.c:441 chat_with_guardian()
+export async function chat_with_guardian() {
+    /*  These guys/gals really don't have much to say... */
+    if (game.u.uhave?.questart && Qstat().killed_nemesis)
+        await qt_pager('guardtalk_after');
+    else
+        await qt_pager('guardtalk_before');
+}
+
+// src/quest.c:451 prisoner_speaks()
+async function prisoner_speaks(mtmp) {
+    if (mtmp.mnum === PMNAMES.PM_PRISONER
+        && (mtmp.mstrategy & STRAT_WAITMASK)) {
+        /* Awaken the prisoner */
+        if (canseemon(mtmp))
+            await pline(`${Monnam(mtmp)} speaks:`);
+        await verbalize("I'm finally free!");
+        mtmp.mstrategy &= ~STRAT_WAITMASK;
+        mtmp.mpeaceful = 1;
+
+        /* Your god is happy... */
+        adjalign(3);
+
+        /* ...But the guards are not */
+        await angry_guards(false);
+    }
+    return;
+}
+
+// src/quest.c:473 quest_chat()
+export async function quest_chat(mtmp) {
+    if (mtmp.m_id === Qstat().leader_m_id) {
+        await chat_with_leader(mtmp);
+        /* leader might have become pissed during the chat */
+        if (Qstat().pissed_off)
+            await setmangry(mtmp, false);
+        return;
+    }
+    switch (game.mons[mtmp.mnum].msound) {
+    case MSOUND.MS_NEMESIS:
+        await chat_with_nemesis();
+        break;
+    case MSOUND.MS_GUARDIAN:
+        await chat_with_guardian();
+        break;
+    default:
+        await impossible(`quest_chat: Unknown quest character ${mon_nam(mtmp)}.`);
     }
 }
 
-// src/quest.c:25 on_start()
+// src/quest.c:495 quest_talk()
+export async function quest_talk(mtmp) {
+    if (mtmp.m_id === Qstat().leader_m_id) {
+        await leader_speaks(mtmp);
+        return;
+    }
+    switch (game.mons[mtmp.mnum].msound) {
+    case MSOUND.MS_NEMESIS:
+        await nemesis_speaks();
+        break;
+    case MSOUND.MS_DJINNI:
+        await prisoner_speaks(mtmp);
+        break;
+    default:
+        break;
+    }
+}
+
+// src/quest.c:514 quest_stat_check()
+export function quest_stat_check(mtmp) {
+    if (game.mons[mtmp.mnum].msound === MSOUND.MS_NEMESIS)
+        Qstat().in_battle = (!helpless(mtmp) && monnear(mtmp, game.u.ux, game.u.uy));
+}
+
 async function on_start() {
     const q = Qstat();
     if (!q.first_start) {

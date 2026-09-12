@@ -30,6 +30,10 @@ import { COST_DEGRD, COST_CONTENTS, A_NONE, MAX_EGG_HATCH_TIME } from './const.j
 import { picked_container, set_residency } from './shk.js';
 import { Has_contents, MAX_NUM_WORMS, W_ARMS } from './const.js';
 import { game } from './gstate.js';
+import { discard_minvent } from './mkobj.js';
+import { del_light_source, LS_MONSTER } from './light.js';
+import { OBJ_FREE } from './obj.js';
+import { MON_STILL_ARRIVING } from './const.js';
 import { impossible } from './pline.js';
 import { which_armor } from './worn.js';
 import { DEADMONSTER, is_vampshifter, MON_WEP } from './monst.js';
@@ -51,6 +55,7 @@ import { may_dig, in_rooms } from './hack.js';
 import { stairway_find_dir, somexy } from './mklev.js';
 import { is_metallic, OBJ_FLOOR } from './obj.js';
 import { obj_resists } from './zap.js';
+import { is_quest_artifact } from './questpgr.js';
 import { newsym, canspotmon, mon_visible, pline, canseemon } from './display.js';
 import { splitobj, peek_at_iced_corpse_age, place_object } from './mkobj.js';
 import { yelp, growl, whimper, beg } from './sounds.js';
@@ -724,10 +729,6 @@ export async function tamedog(mtmp, obj, givemsg) {
     }
     return true;
 }
-
-/* src/artifact.c is not ported; no session generates a quest artifact this
-   early, and the call draws nothing either way. */
-function is_quest_artifact(obj) { return false; }
 
 /* include/monst.h:277 resists_poison(). This read mon.data.mresists, but our
    monsters carry mnum indexing game.mons rather than a data pointer, so it
@@ -2257,7 +2258,6 @@ function levl_follower(mtmp) {
 }
 
 const Before_you = 0, With_you = 1, After_you = 2, Wiz_arrive = -1;
-const MON_STILL_ARRIVING = 0x100;
 
 // src/dog.c:304 losedogs(). Restore exact-position residents first, then
 // companions, then independent migrants scheduled for this level.
@@ -2695,4 +2695,50 @@ export async function migrate_to_level(mtmp, tolev, xyloc, cc) {
        from local (monst->mx > 0) to global (mx==0, not on this level) */
     if (emits_light(mtmp.data))
         vision_recalc(0);
+}
+
+// src/dog.c:938 discard_migrations() — get rid of monsters and objects
+// scheduled to migrate to levels which can no longer be reached
+export function discard_migrations() {
+    const dest = { dnum: 0, dlevel: 0 };
+
+    for (const mtmp of [...(game.migrating_mons || [])]) {
+        dest.dnum = mtmp.mux;
+        dest.dlevel = mtmp.muy;
+        /* the Wizard is kept regardless of location so that he is
+           ready to be brought back; nothing should be scheduled to
+           migrate to the endgame but if we find such, we'll keep it */
+        if (mtmp.iswiz || In_endgame(dest)) {
+            ; /* keep mtmp on migrating_mons */
+        } else {
+            const i = game.migrating_mons.indexOf(mtmp);
+            if (i >= 0) game.migrating_mons.splice(i, 1); /* remove mtmp from migrating_mons */
+            discard_minvent(mtmp, false);
+            /* bypass mongone() and its call to m_detach() plus dmonsfree() */
+            if (emits_light(game.mons[mtmp.mnum]))
+                del_light_source(LS_MONSTER, mtmp.m_id);
+        }
+    }
+
+    /* objects get similar treatment */
+    for (const otmp of [...(game.migrating_objs || [])]) {
+        dest.dnum = otmp.ox;
+        dest.dlevel = otmp.oy;
+        /* there is no special case like the Wizard (certainly not the
+           Amulet; the hero has to be carrying it to enter the endgame
+           which triggers the call to this routine); again we don't
+           expect any objects to be migrating to the endgame but will
+           keep any we find so that they could be delivered */
+        if (In_endgame(dest)) {
+            ; /* keep otmp on migrating_objs */
+        } else {
+            /* bypass obj_extract_self() */
+            const i = game.migrating_objs.indexOf(otmp);
+            if (i >= 0) game.migrating_objs.splice(i, 1); /* remove otmp from migrating_objs */
+            otmp.where = OBJ_FREE;
+            otmp.owornmask = 0; /* overloaded for destination usage;
+                                 * obfree() will complain if nonzero */
+            obfree(otmp, null); /* releases any contents too */
+        }
+    }
 }

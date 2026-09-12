@@ -1,9 +1,6 @@
 // dokick.js — kicking, and the object-shipping machinery that lives with it.
 // C ref: src/dokick.c
 //
-// Only down_gate() and ship_object()'s early returns so far; kicking itself
-// is not ported.
-//
 // NOTE ON WIRING: js/do.js calls ship_object() but must NOT import this file.
 // do.js does module-init-time wiring (do_wire_mklev), so any new module that
 // pulls do.js back in during its initialisation hits a temporal dead zone on
@@ -30,6 +27,9 @@ import { obj_extract_self, currency } from './invent.js';
 import { in_rooms } from './hack.js';
 import { costly_spot, shop_keeper, picked_container, hot_pursuit } from './shk.js';
 import { MIGR_WITH_HERO, Is_stronghold, In_endgame, Is_botlevel, ESHK, SHOPBASE } from './const.js';
+import { MIGR_NOBREAK, MIGR_NOSCATTER, MIGR_TO_SPECIES, IS_SOFT } from './const.js';
+import { stairway_find_from } from './stairs.js';
+import { delobj } from './mon.js';
 import { game } from './gstate.js';
 import { MIGR_NOWHERE, MIGR_RANDOM, MIGR_STAIRS_UP, MIGR_LADDER_UP,
          MIGR_SSTAIRS, TRAPDOOR, is_hole, SLT_ENCUMBER, STRAT_WAITMASK,
@@ -1328,7 +1328,7 @@ async function really_kick_object(x, y) {
             otense(game.kickedobj, 'slide')} across the ${surface(x, y)}.`);
 
     obj_extract_self(game.kickedobj);
-    snuff_candle(game.kickedobj);
+    await snuff_candle(game.kickedobj);
     newsym(x, y);
     const pobj = { obj: game.kickedobj };
     mon = await bhit(game.u.dx, game.u.dy, range, KICKED_WEAPON,
@@ -2285,6 +2285,91 @@ export async function impact_drop(missile, x, y, dlev) {
             const amt = (ESHK(shkp).debit - debit);
 
             await You(`owe ${Shknam(shkp)} ${amt} ${currency(amt)} for goods lost.`);
+        }
+    }
+}
+
+// src/dokick.c:1769 obj_delivery() — deliver migrating objects that are
+// destined for this level; `near_hero` selects the MIGR_WITH_HERO ones.
+export async function obj_delivery(near_hero) {
+    let nx = 0, ny = 0;
+    let where;
+    let nobreak, noscatter;
+    let stway;
+    const fromdlev = { dnum: 0, dlevel: 0 };
+    let isladder;
+
+    for (const otmp of [...(game.migrating_objs || [])]) {
+        if (otmp.ox !== game.u.uz.dnum || otmp.oy !== game.u.uz.dlevel)
+            continue;
+
+        where = (otmp.owornmask & 0x7fff); /* destination code */
+        if ((where & MIGR_TO_SPECIES) !== 0)
+            continue;
+
+        nobreak = (where & MIGR_NOBREAK) !== 0;
+        noscatter = (where & MIGR_WITH_HERO) !== 0;
+        where &= ~(MIGR_NOBREAK | MIGR_NOSCATTER);
+
+        if (!near_hero !== (where === MIGR_WITH_HERO))
+            continue;
+
+        obj_extract_self(otmp);
+        otmp.owornmask = 0;
+        fromdlev.dnum = otmp.omigr_from_dnum;
+        fromdlev.dlevel = otmp.omigr_from_dlevel;
+
+        isladder = false;
+
+        switch (where) {
+        case MIGR_LADDER_UP:
+            isladder = true;
+            /* FALLTHRU */
+        case MIGR_STAIRS_UP:
+        case MIGR_SSTAIRS:
+            if ((stway = stairway_find_from(fromdlev, isladder)) != null) {
+                nx = stway.sx;
+                ny = stway.sy;
+            }
+            break;
+        case MIGR_WITH_HERO:
+            nx = game.u.ux, ny = game.u.uy;
+            break;
+        default:
+        case MIGR_RANDOM:
+            nx = ny = 0;
+            break;
+        }
+        otmp.omigr_from_dnum = 0;
+        otmp.omigr_from_dlevel = 0;
+        if (nx > 0) {
+            place_object(otmp, nx, ny);
+            if (!nobreak && !IS_SOFT(game.level.at(nx, ny).typ)) {
+                const { breaks, breaktest } = await import('./dothrow.js');
+                if (where === MIGR_WITH_HERO) {
+                    if (await breaks(otmp, nx, ny))
+                        continue;
+                } else if (breaktest(otmp)) {
+                    /* assume it broke before player arrived, no messages */
+                    delobj(otmp);
+                    continue;
+                }
+            }
+            stackobj(otmp);
+            if (!noscatter)
+                await scatter(nx, ny, rnd(2), 0, otmp);
+            else
+                newsym(nx, ny);
+        } else { /* random location */
+            /* set dummy coordinates because place_object() doesn't like
+               current position for rloco() to update */
+            otmp.ox = otmp.oy = 0;
+            const { rloco } = await import('./teleport.js');
+            const { breaktest } = await import('./dothrow.js');
+            if (await rloco(otmp) && !nobreak && breaktest(otmp)) {
+                /* assume it broke before player arrived, no messages */
+                delobj(otmp);
+            }
         }
     }
 }

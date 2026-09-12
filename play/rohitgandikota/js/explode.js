@@ -733,7 +733,7 @@ export async function scatter(sx, sy, blastforce, scflags, obj) {
                                         .charCodeAt(0))) != null
                    && costly_spot(sx, sy));
     if (shop_origin)
-        credit_report(shkp, 0, true);   /* establish baseline, without msgs */
+        await credit_report(shkp, 0, true);   /* establish baseline, without msgs */
 
     /* svl.level.objects[sx][sy]: the top of the pile at <sx,sy> */
     const level_objects_at = (x, y) =>

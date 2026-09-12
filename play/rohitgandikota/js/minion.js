@@ -211,7 +211,7 @@ export async function msummon(mon) {
             }
 
             if (mtmp.data.mlet === MONSYMS.S_ANGEL && !game.u.ublind)
-                show_transient_light(null, mtmp.mx, mtmp.my);
+                await show_transient_light(null, mtmp.mx, mtmp.my);
 
             if (cnt === 1 && canseemon(mtmp)) {
                 const { cloud, what } = msummon_environ(mtmp.data);

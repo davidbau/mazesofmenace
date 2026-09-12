@@ -382,7 +382,7 @@ function worst_cursed_item() {
 // src/pray.c:349 fix_curse_trouble()
 async function fix_curse_trouble(otmp, what) {
     if (!otmp) {
-        impossible('fix_curse_trouble: nothing to uncurse.');
+        await impossible('fix_curse_trouble: nothing to uncurse.');
         return;
     }
     if (otmp === game.u.uarmg && Glib()) {
@@ -427,7 +427,7 @@ async function fix_worst_trouble(trouble) {
         break;
     case TROUBLE_LAVA:
         if (!(await safe_teleds(TELEDS_NO_FLAGS)))
-            reset_utrap(true);
+            await reset_utrap(true);
         await rescued_from_terrain(DISSOLVED); /* DISSOLVED: pending cause of death
                                                 * if trouble didn't get cured */
         break;
@@ -524,7 +524,7 @@ async function fix_worst_trouble(trouble) {
             }
         }
         if (nohands(game.youmonst.data) || !freehand())
-            impossible("fix_worst_trouble: couldn't cure hands.");
+            await impossible("fix_worst_trouble: couldn't cure hands.");
         break;
     case TROUBLE_CURSED_BLINDFOLD:
         otmp = u.ublindf;

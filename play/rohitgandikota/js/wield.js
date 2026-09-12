@@ -149,12 +149,12 @@ export async function doquiver_core(verb) {
            we don't want to split something already in the quiver;
            for any other item, we need to give it its own inventory slot */
         if (game.u.uquiver && game.u.uquiver.o_id === game.context.objsplit.parent_oid) {
-            unsplitobj(newquiver);
+            await unsplitobj(newquiver);
             flow = 'already_quivered';
         } else if (newquiver.oclass === OCLASSES.COIN_CLASS) {
             /* don't allow splitting a stack of coins into quiver */
             await You("can't ready only part of your gold.");
-            unsplitobj(newquiver);
+            await unsplitobj(newquiver);
             return ECMD_OK;
         } else {
             finish_splitting(newquiver);
@@ -213,7 +213,7 @@ export async function doquiver_core(verb) {
                 }
                 /* quivering main weapon, so no longer wielding it */
                 setuwep(null);
-                untwoweapon();
+                await untwoweapon();
                 was_uwep = true;
             }
         } else if (newquiver === uswapwep) {
@@ -254,7 +254,7 @@ export async function doquiver_core(verb) {
                 }
                 /* quivering alternate weapon, so no more uswapwep */
                 setuswapwep(null);
-                untwoweapon();
+                await untwoweapon();
             }
         }
     }
@@ -624,7 +624,7 @@ export async function dowield() {
     result = await ready_weapon(wep);
     if (game.flags.pushweapon && oldwep && game.u.uwep !== oldwep)
         setuswapwep(oldwep);
-    untwoweapon();
+    await untwoweapon();
 
     return result;
 }
@@ -666,7 +666,7 @@ export async function doswapweapon() {
     }
 
     if (game.u.twoweap && !(await can_twoweapon()))
-        untwoweapon();
+        await untwoweapon();
 
     return result;
 }
@@ -952,7 +952,7 @@ export async function wield_tool(obj, verb = 'wield') {
     if (game.u.uwep && game.u.uwep !== obj)
         return false;
     if (game.u.twoweap)
-        untwoweapon();
+        await untwoweapon();
     if (obj.oclass !== OCLASSES.WEAPON_CLASS)
         game.unweapon = true;
     return true;
@@ -990,9 +990,9 @@ export async function dotwoweapon() {
 }
 
 // src/wield.c:906 untwoweapon()
-export function untwoweapon() {
+export async function untwoweapon() {
     if (game.u.twoweap) {
-        You(`${can_no_longer_twoweap}.`);
+        await You(`${can_no_longer_twoweap}.`);
         set_twoweap(false); /* u.twoweap = FALSE */
         update_inventory();
     }

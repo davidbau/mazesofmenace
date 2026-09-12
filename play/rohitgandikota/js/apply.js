@@ -994,7 +994,7 @@ export async function use_whip(obj) {
                     /* to floor beneath mon */
                     await You(`yank ${the(onambuf)} from ${
                         s_suffix(mon_nam(mtmp))} ${mon_hand}!`);
-                    obj_no_longer_held(otmp);
+                    await obj_no_longer_held(otmp);
                     place_object(otmp, mtmp.mx, mtmp.my);
                     stackobj(otmp);
                     break;
@@ -3887,7 +3887,7 @@ export async function jump(magic) {
                 await You('rip yourself free of the bear trap!  Ouch!');
                 await losehp(Maybe_Half_Phys(rnd(10)), 'jumping out of a bear trap',
                              KILLED_BY);
-                set_wounded_legs(side, rn1(1000, 500));
+                await set_wounded_legs(side, rn1(1000, 500));
                 break;
             case TT_PIT:
                 await You('leap from the pit!');
@@ -3906,15 +3906,15 @@ export async function jump(magic) {
                     (game.u.utraptype === TT_INFLOOR)
                         ? 'stuck in the floor'
                         : 'attached to the buried ball'}.`);
-                set_wounded_legs(LEFT_SIDE, rn1(10, 11));
-                set_wounded_legs(RIGHT_SIDE, rn1(10, 11));
+                await set_wounded_legs(LEFT_SIDE, rn1(10, 11));
+                await set_wounded_legs(RIGHT_SIDE, rn1(10, 11));
                 return ECMD_TIME;
             default:
-                impossible(`Jumping out of strange trap (${game.u.utraptype})?`);
+                await impossible(`Jumping out of strange trap (${game.u.utraptype})?`);
                 break;
             }
             /* if we reach here, hero is no longer trapped */
-            reset_utrap(true);
+            await reset_utrap(true);
         }
 
         /* jumping on hero's same spot doesn't use walk_path() and isn't

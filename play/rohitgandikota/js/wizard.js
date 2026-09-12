@@ -585,7 +585,7 @@ export async function cuss(mtmp) {
     }
 
     const { wake_nearto } = await import('./mon.js');
-    wake_nearto(mtmp.mx, mtmp.my, 5 * 5);
+    await wake_nearto(mtmp.mx, mtmp.my, 5 * 5);
 }
 
 function is_lawful_minion_for_cuss(mtmp) {

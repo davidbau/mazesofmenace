@@ -776,7 +776,7 @@ export async function doclassdisco() {
     default: {
         const oclass = def_char_to_objclass(c);
         if (oclass === MAXOCLASSES)
-            impossible(`doclassdisco: invalid object class '${c}'`);
+            await impossible(`doclassdisco: invalid object class '${c}'`);
         const order = game.flags.discosort === 'o' ? 'order of discovery'
             : game.flags.discosort === 's' ? "'sortloot' order" : 'alphabetical order';
         tty_putstr(tmpwin, 0, `Discovered ${let_to_name(oclass)} in ${order}`);

@@ -2148,40 +2148,11 @@ export async function use_misc(mtmp) {
         return (await grow_up(mtmp, null)) ? 2 : 1;
     }
     case MUSE_WAN_SPEED_MONSTER: {
-        if (!obj || obj.spe < 1)
-            return 0;
-        const [{ canseemon, pline }, { couldsee }, { You_hear },
-               { Monnam }, { doname }, { unknow_object }, { learnwand }]
-            = await Promise.all([
-                import('./display.js'), import('./vision.js'),
-                import('./pline.js'), import('./do_name.js'),
-                import('./objnam.js'), import('./mkobj.js'),
-                import('./zap.js'),
-            ]);
-        const seen = canseemon(mtmp);
-
-        if (!seen) {
-            const range = couldsee(mtmp.mx, mtmp.my) ? 9 : 5;
-            const nearby = dist2(mtmp.mx, mtmp.my, game.u.ux, game.u.uy)
-                           <= range * range;
-            await You_hear(`a ${nearby ? 'nearby' : 'distant'} zap.`);
-            unknow_object(obj);
-        } else {
-            const self = mtmp.female ? 'herself' : 'himself';
-            await pline(`${Monnam(mtmp)} zaps ${self} with ${doname(obj)}!`);
-        }
-        obj.spe--;
-
-        const oldspeed = mtmp.mspeed ?? 0;
-        mtmp.permspeed = (mtmp.permspeed === MSLOW) ? 0 : MFAST;
-        mtmp.mspeed = mtmp.permspeed;
-        if (seen && mtmp.mspeed !== oldspeed && mtmp.data.mmove
-            && !mtmp.mfrozen && !mtmp.msleeping) {
-            const howmuch = (mtmp.mspeed + oldspeed === MFAST + MSLOW)
-                            ? 'much ' : '';
-            await pline(`${Monnam(mtmp)} is suddenly moving ${howmuch}faster.`);
-            learnwand(obj);
-        }
+        if (!obj)
+            return 0; /* panic(MissingMiscellaneousItem, "wand of speed monster") */
+        await mzapwand(mtmp, obj, true);
+        const { mon_adjust_speed } = await import('./worn.js');
+        await mon_adjust_speed(mtmp, 1, obj);
         return 2;
     }
     case MUSE_POT_SPEED: {
@@ -2433,7 +2404,7 @@ export async function use_misc(mtmp) {
     case 0:
         return 0; /* i.e. an exploded wand */
     default:
-        impossible(`${Monnam(mtmp)} wanted to perform action ${game.m?.has_misc}?`);
+        await impossible(`${Monnam(mtmp)} wanted to perform action ${game.m?.has_misc}?`);
         break;
     }
     return 0;

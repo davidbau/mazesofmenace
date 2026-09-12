@@ -198,6 +198,16 @@ export function nh_callback_run(cbname, ...args) {
 }
 
 export async function tutorial(entering) {
+    /* src/nhlua.c:1837 — l_nhcore_call() skips a callback whose
+       nhcore_call_available[] flag is off; leaving the tutorial turns both
+       tutorial callbacks off, so a later wizard-mode re-entry keeps the
+       hero's inventory */
+    const avail = (game.nhcore_call_available ||= { enter_tutorial: true, leave_tutorial: true });
+    if (!avail[entering ? 'enter_tutorial' : 'leave_tutorial'])
+        return;
+    if (!entering) { /* after leaving, can't go back */
+        avail.enter_tutorial = avail.leave_tutorial = false;
+    }
     if (entering) {
         nhl_gamestate_save();
         /* dat/nhlib.lua:194 tutorial_enter(): add the tutorial branch

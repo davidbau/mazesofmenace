@@ -87,7 +87,7 @@ import { Your, pline_The as pline_The2 } from './pline.js';
 import { stop_occupation } from './allmain.js';
 import { mswings_verb } from './mhitu.js';
 import { couldsee, clear_path } from './vision.js';
-import { lined_up, mdistu } from './monmove.js';
+import { mdistu } from './monmove.js';
 import { is_pole } from './u_init.js';
 import { rn2 } from './rng.js';
 import { ATTKS } from './monst_data.js';
@@ -1298,7 +1298,7 @@ export function linedup_callback(ax, ay, bx, by, fnc) {
 }
 
 // src/mthrowu.c:1376 m_lined_up() — is mtmp in position to use a ranged
-// attack on mtarg?  (lined_up(), the hero-target form, is in js/monmove.js.)
+// attack on mtarg?
 export function m_lined_up(mtarg, mtmp) {
     const utarget = (mtarg === game.youmonst);
     const tx = utarget ? mtmp.mux : mtarg.mx;
@@ -1316,6 +1316,12 @@ export function m_lined_up(mtarg, mtmp) {
     /* [no callers care about the 1 vs 2 situation any more] */
     return linedup(tx, ty, mtmp.mx, mtmp.my,
                    utarget ? (ignore_boulders ? 1 : 2) : 0);
+}
+
+// src/mthrowu.c:1398 lined_up() — is mtmp in position to use a ranged
+// attack on hero?
+export function lined_up(mtmp) {
+    return m_lined_up(game.youmonst, mtmp) ? true : false;
 }
 
 // src/mthrowu.c:1417 hit_bars(); objp is a {obj} box

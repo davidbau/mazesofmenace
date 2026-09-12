@@ -2898,7 +2898,7 @@ async function moverock_core(sx, sy) {
                                     (ttmp.ttyp === TRAPDOOR) ? 'trap door' : 'hole'} in the ${
                                     surface(rx, ry)}!`);
                     deltrap(ttmp);
-                    useupf(otmp, 1);
+                    await useupf(otmp, 1);
                     await bury_objs(rx, ry);
                     game.level.at(rx, ry).wall_info &= ~W_NONDIGGABLE;
                     game.level.at(rx, ry).candig = 1;

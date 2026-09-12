@@ -652,3 +652,13 @@ export async function region_safety() {
         await make_blinded(0, true);
     }
 }
+
+// src/region.c:660 any_visible_region() — is any region shown on the map?
+export function any_visible_region() {
+    for (const reg of (game.regions || [])) {
+        if (!reg.visible || reg.ttl === -2)
+            continue;
+        return true;
+    }
+    return false;
+}

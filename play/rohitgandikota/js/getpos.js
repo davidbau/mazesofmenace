@@ -212,7 +212,7 @@ export async function auto_describe(cx, cy) {
         await pline_nohistory_no_cursor(
             `${res.firstmatch}${invalid}${noTravelPath}`);
         curs_map(cx, cy);
-        flush_screen(0);
+        await flush_screen(0);
     }
 }
 
@@ -361,13 +361,13 @@ export async function getpos(ccp, force, goal) {
     game.getposx = c.x;
     game.getposy = c.y;
     curs_map(c.x, c.y);
-    flush_screen(0);
+    await flush_screen(0);
 
     for (;;) {
         if (show_goal_msg) {
             await pline(`Move cursor to ${goal}:`);
             curs_map(c.x, c.y);
-            flush_screen(0);
+            await flush_screen(0);
             show_goal_msg = false;
         } else if (game.iflags?.autodescribe !== false && !msg_given) {
             await auto_describe(c.x, c.y);
@@ -598,7 +598,7 @@ export async function getpos(ccp, force, goal) {
                     }
                     /* src/getpos.c:1113 goto nxtc, for found and not found */
                     curs_map(c.x, c.y);
-                    flush_screen(0);
+                    await flush_screen(0);
                     continue;
                 } else {
                     const note = !force
@@ -617,7 +617,7 @@ export async function getpos(ccp, force, goal) {
             /* quitchars: space/enter dismiss the picker */
             if (force) {
                 curs_map(c.x, c.y);
-                flush_screen(0);
+                await flush_screen(0);
                 continue;
             }
             await pline('Done.');
@@ -631,7 +631,7 @@ export async function getpos(ccp, force, goal) {
         game.getposx = c.x;
         game.getposy = c.y;
         curs_map(c.x, c.y);
-        flush_screen(0);
+        await flush_screen(0);
     }
 
     if (msg_given) {

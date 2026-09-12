@@ -412,6 +412,8 @@ export function ini_inv(trop_table) {
 // Only the `ini_inv` calls and their guarding draws are here; the skill and
 // intrinsic assignments around them draw nothing.
 export function u_init_role() {
+    /* src/u_init.c:950 — every game starts as a beginner */
+    (game.flags ||= {}).beginner = true;
     const u = game.u;
     const role = roleMnum();
 

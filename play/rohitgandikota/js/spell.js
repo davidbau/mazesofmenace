@@ -1091,7 +1091,7 @@ export async function spelleffects(spell_otyp, atme, force) {
         update_inventory();     /* spell may modify inventory */
         break;
 
-    /* these are all duplicates of scroll effects (seffects); not ported */
+    /* these are all duplicates of scroll effects (seffects) */
     case ONAMES.SPE_REMOVE_CURSE:
     case ONAMES.SPE_CONFUSE_MONSTER:
     case ONAMES.SPE_DETECT_FOOD:
@@ -1169,7 +1169,7 @@ export async function spelleffects(spell_otyp, atme, force) {
 
     /* gain skill for successful cast */
     if (!force)
-        use_skill(skill, spellev(spell));
+        await use_skill(skill, spellev(spell));
 
     obfree(pseudo);             /* now, get rid of it */
     return ECMD_TIME;

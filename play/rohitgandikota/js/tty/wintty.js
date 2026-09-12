@@ -702,7 +702,7 @@ export async function tty_display_nhwindow(window) {
     /* wintty.c:1966 — an unacknowledged message is flushed with a blocking
        --More-- BEFORE the window draws:
            if (ttyDisplay->toplin == TOPLINE_NEED_MORE)
-               tty_display_nhwindow(WIN_MESSAGE, TRUE);
+               await tty_display_nhwindow(WIN_MESSAGE, TRUE);
        That recursive call is the NHW_MESSAGE arm, i.e. more(). It is what
        puts the --More-- on "Please move the cursor to ..." while the getpos
        tip window waits behind it.

@@ -1073,32 +1073,47 @@ export function display_pickinv_entries(allowed_choices = null, want_reply = fal
     const out = [];
     const wizid = game.wizard && game.iflags?.override_ID;
     const sortpack = game.flags.sortpack !== false;
+
+    /* src/invent.c:3176 — the whole inventory is sorted first; with
+       sortpack on, sortloot_cmp()'s loot_classify() observes every carried
+       object (invent.c:171) whether or not the menu then lists it */
+    let sortflags = (game.flags.sortloot === 'f') ? SORTLOOT_LOOT : SORTLOOT_INVLET;
+    if (sortpack)
+        sortflags |= SORTLOOT_PACK;
+    const sortedinvent = sortloot(game.invent || [], sortflags, false, null);
+
     for (const oclass of sortpack ? [...inv_order(), OCLASSES.VENOM_CLASS] : [0]) {
-        const items = (game.invent || []).filter(
-            o => (!sortpack || o.oclass === oclass)
-                 && (!allowed_choices || allowed_choices.includes(o.invlet))
-                 && (!wizid || not_fully_identified(o)));
-        if (!items.length) continue;
-        /* add_menu_heading(win, class_header) — iflags.menu_headings style,
-           and src/windows.c:1822 suppresses the highlighting during
-           end-of-game disclosure */
-        if (sortpack)
-            out.push({ heading: true,
-                       str: let_to_name(oclass, false,
-                           want_reply && game.iflags.menu_head_objsym),
-                       attr: game.program_state_gameover ? ATR_NONE
-                             : (game.iflags?.menu_headings?.attr ?? ATR_INVERSE) });
-        for (const o of items) {
-            /* src/invent.c:1039 — displaying the item observes its type */
-            if (!Blind())
-                observe_object(o);
-            /* src/invent.c:3320. obj_to_glyph() precedes doname(), even when
-               the tty window never renders the supplied glyph. */
-            const glyphinfo = temporary_object_glyph(o);
-            out.push({ heading: false, str: doname(o), attr: ATR_NONE,
-                       invlet: o.invlet, glyphinfo });
+        /* nextclass: */
+        let classcount = 0;
+        for (const srtinv of sortedinvent) {
+            const otmp = srtinv.obj;
+            if (!otmp)
+                break;
+            if (allowed_choices && !allowed_choices.includes(otmp.invlet))
+                continue;
+            if (!sortpack || otmp.oclass === oclass) {
+                if (wizid && !not_fully_identified(otmp))
+                    continue;
+                if (sortpack && !classcount) {
+                    /* add_menu_heading(win, class_header) — iflags.menu_headings
+                       style, and src/windows.c:1822 suppresses the highlighting
+                       during end-of-game disclosure */
+                    out.push({ heading: true,
+                               str: let_to_name(oclass, false,
+                                   want_reply && game.iflags.menu_head_objsym),
+                               attr: game.program_state_gameover ? ATR_NONE
+                                     : (game.iflags?.menu_headings?.attr ?? ATR_INVERSE) });
+                    classcount++;
+                }
+                /* src/invent.c:3320. obj_to_glyph() precedes doname(), even when
+                   the tty window never renders the supplied glyph. */
+                const glyphinfo = temporary_object_glyph(otmp);
+                out.push({ heading: false, str: doname(otmp), attr: ATR_NONE,
+                           invlet: otmp.invlet, glyphinfo });
+            }
         }
     }
+    unsortloot(sortedinvent);
     return out;
 }
 
@@ -3482,6 +3497,37 @@ export async function askchain(objchn, olets, allflag, fn, ckfn, mx, word) {
 
 // src/invent.c:2673 fully_identify_obj() and :2687 identify().
 // identify() gives immediate feedback after updating every object-level flag.
+// src/invent.c:2750 learn_unseen_invent() — update dknown flag for inventory
+// picked up while blind
+export function learn_unseen_invent() {
+    let invupdated = false;
+
+    if (heroBlind())
+        return; /* sanity check */
+
+    const cleric = game.urole?.mnum === 'PM_CLERIC'
+        || game.urole?.mnum === PMNAMES.PM_CLERIC;
+    const archeologist = game.urole?.mnum === 'PM_ARCHEOLOGIST'
+        || game.urole?.mnum === PMNAMES.PM_ARCHEOLOGIST;
+    for (const otmp of (game.invent || [])) {
+        if (otmp.dknown && (otmp.bknown || !cleric)
+            && (otmp.oclass !== OCLASSES.SCROLL_CLASS || !archeologist))
+            continue; /* already seen */
+        invupdated = true;
+        /* xname() will set dknown, perhaps bknown (for priest[ess]);
+           result from xname() is immediately released for re-use */
+        xname(otmp);
+        addinv_core2(otmp); /* you react to seeing the object */
+
+        /*
+         * If object->eknown gets implemented (see learnwand(zap.c)),
+         * handle deferred discovery here.
+         */
+    }
+    if (invupdated)
+        update_inventory();
+}
+
 export function fully_identify_obj(otmp) {
     makeknown(otmp.otyp);
     if (otmp.oartifact)

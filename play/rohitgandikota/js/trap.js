@@ -4920,7 +4920,7 @@ async function trapeffect_rust_trap(mtmp, trap, trflags) {
             for (const otmp of [...game.invent]) {
                 if (otmp.lamplit && otmp !== game.u.uwep
                     && (otmp !== game.u.uswapwep || !game.u.twoweap))
-                    splash_lit(otmp);
+                    await splash_lit(otmp);
             }
             if (game.u.uarmc)
                 await water_damage(game.u.uarmc,
@@ -4980,7 +4980,7 @@ async function trapeffect_rust_trap(mtmp, trap, trflags) {
                 await pline(`${A_gush} ${mon_nam(mtmp)}!`);
             for (const otmp of (mtmp.minvent || []))
                 if (otmp.lamplit && (otmp.owornmask & (W_WEP | W_SWAPWEP)) === 0)
-                    splash_lit(otmp);
+                    await splash_lit(otmp);
             {
                 let target;
                 if ((target = which_armor(mtmp, W_ARMC)) != null)
@@ -4995,7 +4995,7 @@ async function trapeffect_rust_trap(mtmp, trap, trflags) {
         if (completelyrusts_tr(mptr)) {
             if (in_sight)
                 await pline(`${Monnam(mtmp)} falls to pieces!`);
-            monkilled(mtmp, null, ATTKS.AD_RUST);
+            await monkilled(mtmp, null, ATTKS.AD_RUST);
             if (DEADMONSTER(mtmp))
                 trapkilled = true;
         } else if (mptr.pmidx === PMNAMES.PM_GREMLIN && rn2(3)) {
@@ -5716,6 +5716,17 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
                 nomul(0);
             await thitu(9 + (singleobj.spe || 0), dam,
                         { obj: singleobj }, null);
+        }
+
+        if (style === ROLL) {
+            const { down_gate, ship_object } = await import('./dokick.js');
+            if (down_gate(x, y) !== -1) {
+                if (await ship_object(singleobj, x, y, false)) {
+                    used_up = true;
+                    launch_drop_spot(null, 0, 0);
+                    break;
+                }
+            }
         }
 
         if (rolling) {

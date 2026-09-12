@@ -48,7 +48,7 @@ import { mon_offmap, is_lightblocker_mappear } from './monst.js';
 import { dist2 } from './hacklib.js';
 import { m_dowear, mon_break_armor } from './worn.js';
 import { is_hider, perceives, is_human, is_unicorn , regenerates, hides_under } from './mondata.js';
-import { ceiling_hider, emits_light, resist_conflict, resists_fire } from './mondata.js';
+import { ceiling_hider, emits_light, resist_conflict, resists_fire, pm_invisible } from './mondata.js';
 import { new_light_source, del_light_source, any_light_source,
          LS_OBJECT, LS_MONSTER } from './light.js';
 import { sensemon } from './display.js';
@@ -1259,7 +1259,7 @@ async function meatbox(mon, otmp) {
     while ((cobj = (otmp.cobj && otmp.cobj[0])) != null) {
         obj_extract_self(cobj);
         if (otmp.otyp === ONAMES.ICE_BOX)
-            removed_from_icebox(cobj);
+            await removed_from_icebox(cobj);
         if (engulf_contents) {
             await mpickobj(mon, cobj);
         } else {
@@ -1382,12 +1382,12 @@ export function delobj_core(obj, force) {
     obfree(obj);
 }
 
-// src/mon.c:1465 meatmetal() — a rock mole or similar eats the topmost metal
+// src/mon.c:1463 meatmetal() — a rock mole or similar eats the topmost metal
 // object it is standing on.
-//
-// Reached from m_move()'s post-move block. Its rn2(100) is obj_resists', and
-// it is the first call seed0030 diverges on.
-export function meatmetal(mtmp) {
+export async function meatmetal(mtmp) {
+    let otmpname;
+    const vis = canseemon(mtmp);
+
     /* If a pet, eating is handled separately, in dog.c */
     if (mtmp.mtame)
         return 0;
@@ -1406,14 +1406,36 @@ export function meatmetal(mtmp) {
             && touch_artifact_mon(otmp, mtmp)) {
             if (game.mons[mtmp.mnum].pmidx === PMNAMES.PM_RUST_MONSTER
                 && otmp.oerodeproof) {
+                if (vis) {
+                    /* call distant_name() for its side-effects even when
+                       !verbose so won't be printed */
+                    otmpname = distant_name(otmp, doname);
+                    if (game.flags.verbose)
+                        await pline_mon(mtmp, `${Monnam(mtmp)} eats ${otmpname}!`);
+                }
                 /* The object's rustproofing is gone now */
                 otmp.oerodeproof = 0;
                 mtmp.mstun = 1;
-                /* "%s spits %s out in disgust!" */
+                if (vis) {
+                    /* (see above; format even if it won't be printed) */
+                    otmpname = distant_name(otmp, doname);
+                    if (game.flags.verbose)
+                        await pline_mon(mtmp, `${Monnam(mtmp)} spits ${otmpname} out in disgust!`);
+                }
             } else {
-                /* "%s eats %s!" / You_hear("a crunching sound.") */
+                if (cansee(mtmp.mx, mtmp.my)) {
+                    /* (see above; format even if it won't be printed) */
+                    otmpname = distant_name(otmp, doname);
+                    if (game.flags.verbose)
+                        await pline_mon(mtmp, `${Monnam(mtmp)} eats ${otmpname}!`);
+                } else {
+                    if (game.flags.verbose) {
+                        /* Soundeffect(se_crunching_sound, 50); */
+                        await You_hear('a crunching sound.');
+                    }
+                }
                 mtmp.meating = Math.trunc(otmp.owt / 2) + 1;
-                m_consume_obj(mtmp, otmp);
+                await m_consume_obj(mtmp, otmp);
                 if (DEADMONSTER(mtmp))
                     return 2;
                 /* Left behind a pile? */
@@ -2205,7 +2227,7 @@ export async function m_detach(mtmp, mptr, due_to_death) {
        detached template while they finish placing its statue */
     mtmp.mhp = 0; /* simplify some tests: force mhp to 0 */
     if (((mtmp.mstate | 0) & MON_DETACH) !== 0) {
-        impossible(`m_detach: ${minimal_monnam(mtmp, false)} is already detached?`);
+        await impossible(`m_detach: ${minimal_monnam(mtmp, false)} is already detached?`);
     } else {
         mtmp.mstate = (mtmp.mstate | 0) | MON_DETACH;
         game.iflags = game.iflags || {};
@@ -2415,8 +2437,6 @@ export async function unstuck(mtmp) {
 // hiding mimic is revealed by seemimic, everything else hiding is revealed
 // only when you deliberately F-fight its square.
 //
-// wake_msg, seemimic, finish_meating, growl, setmangry, ghod_hitsu and
-// hot_pursuit are recorded where they are not ported.
 export async function wakeup(mtmp, via_attack) {
     const was_sleeping = mtmp.msleeping;
 
@@ -2624,10 +2644,7 @@ async function peacefuls_respond(mtmp) {
 //      probably-wrong in a comment and keeps it; so do we.
 //
 // The Elbereth branch is the only source of a draw, rnd(5), and only when
-// alignment is already at or below 5. sengr_at is part of the engraving
-// subsystem, which is not ported, so no engraving exists to stand on and the
-// branch is unreachable today -- that is the honest state, not a stub: when
-// engravings land the condition starts being true on its own.
+// alignment is already at or below 5.
 export async function setmangry(mtmp, via_attack) {
     if (via_attack && sengr_at('Elbereth', game.u.ux, game.u.uy, true)
         /* only hypocritical if monster is vulnerable to Elbereth (or
@@ -3720,7 +3737,7 @@ export async function elemental_clog(mon) {
             const mx = mtmp.mx, my = mtmp.my;
 
             mtmp.mstate = (mtmp.mstate | 0) | MON_OBLITERATE;
-            mongone(mtmp);
+            await mongone(mtmp);
             /* places in the code might still reference mtmp->mx, mtmp->my */
             /* mtmp->mx = mtmp->my = 0; */
             await rloc_to(mon, mx, my);           /* note: mon, not mtmp */
@@ -4325,6 +4342,11 @@ export function newcham(mtmp, mdat, ncflags) {
                 new_light_source(mtmp.mx, mtmp.my, emits_light(mdat),
                                  LS_MONSTER, mtmp.m_id);
         }
+        if (!mtmp.perminvis || pm_invisible(olddata))
+            mtmp.perminvis = pm_invisible(mdat);
+        mtmp.minvis = mtmp.invis_blkd ? 0 : mtmp.perminvis;
+        if (mtmp.mundetected)
+            hideunder(mtmp);
 
         if (game.u.ustuck === mtmp) {
             return (async () => {
@@ -4399,10 +4421,20 @@ export function newcham(mtmp, mdat, ncflags) {
         const unwield = possibly_unwield(mtmp, polyspot); /* might lose use of weapon */
         if (had_wep)
             await unwield;
-        await mon_break_armor(mtmp, polyspot);
-        if (!(mtmp.misc_worn_check & W_ARMG))
-            await mselftouch(mtmp, 'No longer petrify-resistant, ',
-                             !game.context?.mon_moving);
+        /* likewise mon_break_armor() rolls its pronouns on entry and only
+           has asynchronous work (messages, m_useup, dismounting) when the
+           monster wears something or is the steed; mselftouch() does
+           nothing without a wielded weapon */
+        const had_worn = !!mtmp.misc_worn_check || mtmp === game.u.usteed;
+        const broke = mon_break_armor(mtmp, polyspot);
+        if (had_worn)
+            await broke;
+        if (!(mtmp.misc_worn_check & W_ARMG)) {
+            const touch = mselftouch(mtmp, 'No longer petrify-resistant, ',
+                                     !game.context?.mon_moving);
+            if (MON_WEP(mtmp))
+                await touch;
+        }
         check_gear_next_turn(mtmp);
 
         /* former giants can't continue carrying boulders */

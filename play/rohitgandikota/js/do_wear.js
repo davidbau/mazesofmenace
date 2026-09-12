@@ -12,7 +12,7 @@ import { shirt_simple_name, shield_simple_name, vtense } from './objnam.js';
 import { urgent_pline } from './display.js';
 import { artifact_light } from './artifact.js';
 import { condtests } from './botl.js';
-import { make_glib, make_hallucinated } from './potion.js';
+import { make_glib, make_hallucinated, toggle_blindness } from './potion.js';
 import { end_burn } from './timeout.js';
 import { setnotworn, which_armor } from './worn.js';
 import { game } from './gstate.js';
@@ -754,7 +754,7 @@ export async function set_wear(obj) {
         const o = slotobj(mask);
         if (o && (!obj || obj === o)) {
             if (arm === 'Armor_on')
-                Armor_on();
+                await Armor_on();
             else if (arm === 'Helmet_on' && o.otyp === ONAMES.FEDORA
                      && game.urole?.name?.m === 'Archeologist')
                 change_luck(1);
@@ -1042,7 +1042,7 @@ export async function Amulet_on(amul) {
     let on_msg_done = false;
 
     /* make sure amulet isn't wielded/alt-wielded/quivered, before wearing */
-    remove_worn_item(amul, false);
+    await remove_worn_item(amul, false);
     setworn(amul, W_AMUL);
 
     switch (amul.otyp) {
@@ -1972,12 +1972,6 @@ export async function accessory_or_armor_on(obj) {
 // src/do_wear.c:1461 Blindf_on() — wear a blindfold/towel/lenses. The
 // wielded-release, ball&chain and Eyes-of-the-Overworld arms need absent
 // state; the blindness toggle itself is the live path.
-async function toggle_blindness() {
-    (game.disp ||= {}).botl = true;
-    game.vision_full_recalc = 1;
-    const { vision_recalc } = await import('./vision.js');
-    vision_recalc(0);
-}
 
 function current_equipment_blindness() {
     const u = game.u;

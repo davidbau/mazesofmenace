@@ -4,7 +4,9 @@ import { IFBURIED, NOFUZZERCMD, MV_ANY, MV_RUN, MV_RUSH, MV_WALK, CMDQ_INT, CMDQ
 import { impossible } from './pline.js';
 import { nh_callback_run } from './nhlua.js';
 import { can_ooze } from './monmove.js';
-import { Confusion, Stunned, Fumbling, Underwater } from './youprop.js';
+import { Confusion, Stunned, Fumbling, Underwater, Swimming,
+         Protection_from_shape_changers } from './youprop.js';
+import { MOD_ENCUMBER, Is_waterlevel } from './const.js';
 import { tunnels, needspick, amorphous } from './mondata.js';
 import { dobreathe, dospit, doremove, dogaze, dosummon, dohide, dospinweb, domindblast, dopoly } from './polyself.js';
 import { pet_ranged_attk } from './dog.js';
@@ -345,15 +347,50 @@ export function u_maybe_impaired() {
     return !!(Stunned || (Confusion && !rn2(5)));
 }
 
-// src/cmd.c:3919 show_direction_keys() — the compass rose. The default
-// keybindings put the plain letters on the movement commands, so visctrl of
-// each is the letter itself; rebinding is not ported.
+// src/hack.c:2365 water_turbulence() — swimming or wading hero: water
+// friction may alter the destination; climbing out while overloaded fails.
+// `xy` carries the C's *x/*y out-parameters.
+async function water_turbulence(xy) {
+    const u = game.u;
+    if (u.uinwater) {
+        let wtcap;
+        const wtmod = (Swimming() ? MOD_ENCUMBER : SLT_ENCUMBER);
+        const { water_friction } = await import('./mkmaze.js');
+
+        await water_friction();
+        if (!u.dx && !u.dy) {
+            nomul(0);
+            return true;
+        }
+        xy.x = u.ux + u.dx;
+        xy.y = u.uy + u.dy;
+
+        /* are we trying to move out of water while carrying too much? */
+        if (isok(xy.x, xy.y) && !is_pool(xy.x, xy.y) && !Is_waterlevel(u.uz)
+            && (wtcap = near_capacity()) > wtmod) {
+            /* when escaping from drowning you need to be unencumbered
+               in order to crawl out of water, but when not drowning,
+               doing so while encumbered is feasible; if in an aquatic
+               form, stressed or less is allowed; otherwise (magical
+               breathing), only burdened is allowed */
+            await You('are carrying too much to climb out of the water.');
+            nomul(0);
+            return true;
+        }
+    }
+    return false;
+}
+
+// src/cmd.c:4122 show_direction_keys() — the compass rose.
 function show_direction_keys(win, centerchar, nodiag) {
-    /* visctrl(cmd_from_func(do_move_<dir>)): the key currently bound to
-       each movement command, i.e. Cmd.dirchars in sdir order (h y k u l n
-       j b with letters, 4 7 8 9 6 3 2 1 with number_pad) */
-    const dc = game.Cmd?.dirchars || 'hykulnjb><';
-    const [W, NW, N, NE, E, SE, S, SW] = [...dc.slice(0, 8)].map(visctrl);
+    const W = visctrl(cmd_from_func('movewest')),
+          NW = visctrl(cmd_from_func('movenorthwest')),
+          N = visctrl(cmd_from_func('movenorth')),
+          NE = visctrl(cmd_from_func('movenortheast')),
+          E = visctrl(cmd_from_func('moveeast')),
+          SE = visctrl(cmd_from_func('movesoutheast')),
+          S = visctrl(cmd_from_func('movesouth')),
+          SW = visctrl(cmd_from_func('movesouthwest'));
 
     if (!centerchar)
         centerchar = ' ';
@@ -747,7 +784,7 @@ export async function hooked_tty_getlin(query, hook, suppress_history = false) {
     /* win/tty/getline.c:53 — an unacknowledged message gets its --More--
        BEFORE the prompt appears:
            if (ttyDisplay->toplin == TOPLINE_NEED_MORE && !(cw->flags & WIN_STOP))
-               more();
+               await more();
        "You write in the dust with your fingertip." carries a --More-- for
        exactly this reason: doengrave's getlin comes right behind it. */
     if (game._toplin === TOPLINE_NEED_MORE && !game._win_stop)
@@ -1409,7 +1446,7 @@ async function execute_extcmd(name) {
                     o => o.where === OBJ_FLOOR && o.ox === x && o.oy === y);
                 before += pile.length;
                 for (const obj of pile)
-                    bury_an_obj(obj, null);
+                    await bury_an_obj(obj, null);
                 after += (game.level?.objects || []).filter(
                     o => o.where === OBJ_FLOOR && o.ox === x && o.oy === y)
                     .length;
@@ -3235,9 +3272,15 @@ async function domove_core() {
         } while (!isok(ix, iy) || bad_rock(game.youmonst.data, ix, iy));
     }
 
+    const xy = { x: u.ux + u.dx, y: u.uy + u.dy };
+
+    /* turbulence might alter your actual destination */
+    if (await water_turbulence(xy))
+        return;
+
     const dx = u.dx, dy = u.dy;
-    const newx = u.ux + dx;
-    const newy = u.uy + dy;
+    const newx = xy.x;
+    const newy = xy.y;
 
     if (await move_out_of_bounds(newx, newy))
         return;
@@ -3257,8 +3300,9 @@ async function domove_core() {
         const mtmp_run = m_at(newx, newy);
         if (mtmp_run && !is_safemon(mtmp_run) && game.context.run
             && ((!u.ublind && mon_visible(mtmp_run)
-                 && M_AP_TYPE(mtmp_run) !== M_AP_FURNITURE
-                 && M_AP_TYPE(mtmp_run) !== M_AP_OBJECT)
+                 && ((M_AP_TYPE(mtmp_run) !== M_AP_FURNITURE
+                      && M_AP_TYPE(mtmp_run) !== M_AP_OBJECT)
+                     || Protection_from_shape_changers()))
                 || sensemon(mtmp_run))) {
             nomul(0);
             game.context.move = 0;

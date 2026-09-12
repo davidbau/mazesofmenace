@@ -18,7 +18,7 @@ import { pudding_merge_message, obj_meld } from './mkobj.js';
 import { WT_SPLASH_THRESHOLD, ER_DESTROYED, HMON_THROWN, TRAPDOOR, HOLE, NO_TRAP } from './const.js';
 import { weight, ggetobj } from './invent.js';
 import { bypass_objlist, nxt_unbypassed_obj } from './worn.js';
-import { map_background } from './display.js';
+import { map_background , map_object } from './display.js';
 import { bury_objs } from './dig.js';
 import { Passes_walls, Underwater, Flying } from './youprop.js';
 import { is_vampshifter } from './monst.js';
@@ -401,7 +401,7 @@ export async function boulder_hits_pool(obj, x, y, pushing) {
             deltrap(trap);
         }
         const { bury_objs } = await import('./mklev.js');
-        bury_objs(x, y);
+        await bury_objs(x, y);
         newsym(x, y);
 
         if (pushing) {
@@ -553,7 +553,7 @@ export async function flooreffects(obj, x, y, verb) {
             if (game.u.utrap && u_at(x, y))
                 await reset_utrap(false);
         }
-        useupf(obj, 1);
+        await useupf(obj, 1);
         await bury_objs(x, y);
         newsym(x, y);
         res = true;
@@ -966,6 +966,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     let up = (depth_do(newlevel) < depth_do(game.u.uz));
     let do_fall_dmg = false;
     const newdungeon = (game.u.uz.dnum !== newlevel.dnum);
+    let leaving_tutorial = false;
 
     /* src/do.c:1492: the mysterious force must keep a hero who starts
        inside the Wizard's Tower inside it. The tower boundary is the
@@ -1002,6 +1003,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
             } else if (game.u.uz.dnum === game.tutorial_dnum) {
                 await tutorial(false); /* leaving tutorial */
                 up = false; /* re-enter level 1 as if starting new game */
+                leaving_tutorial = true;
             }
         }
     }
@@ -1116,6 +1118,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     if (game.level) {
         for (const mtmp of game.level.monsters || [])
             mtmp.mlstmv = game.moves;
+        /* src/save.c:515 — svm.moves is read back into svo.omoves */
+        game.level._saved_omoves = game.moves;
         /* src/save.c:553 save_track() — the hero's track is saved WITH
            the level and cleared (track.c:88); getlev's rest_track()
            restores it on a return visit. Trackers (jackals, pets) read
@@ -1157,10 +1161,31 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         for (const mtmp of game.level.monsters || [])
             if (mtmp.ispriest)
                 forget_temple_entry(mtmp);
-        (game.saved_levels ||= new Map())
-            .set(`${game.u.uz.dnum}:${game.u.uz.dlevel}`, game.level);
+        /* src/do.c:1640 — an outgoing level that can't be reached any more
+           is freed rather than saved: entering the endgame from another
+           dungeon, or leaving the tutorial */
+        const cant_go_back = (newdungeon && In_endgame(newlevel)) || leaving_tutorial;
+        (game.saved_levels ||= new Map());
+        if (!cant_go_back)
+            game.saved_levels.set(`${game.u.uz.dnum}:${game.u.uz.dlevel}`, game.level);
         (game.visited_ledgers ||= new Set())
             .add(`${game.u.uz.dnum}:${game.u.uz.dlevel}`);
+        if (cant_go_back) {
+            /* discard unreachable levels; keep #0 */
+            for (const key of [...game.saved_levels.keys()]) {
+                const dnum = Number(key.split(':')[0]);
+                if (!leaving_tutorial || dnum === game.tutorial_dnum)
+                    game.saved_levels.delete(key);
+            }
+            /* mark #overview data for all dungeon branches as uninteresting */
+            const { remdun_mapseen } = await import('./dungeon.js');
+            for (let l_idx = 0; l_idx < (game.dungeons?.length ?? 0); ++l_idx)
+                if (!leaving_tutorial || l_idx === game.tutorial_dnum)
+                    remdun_mapseen(l_idx);
+            /* get rid of mons & objs scheduled to migrate to discarded levels */
+            const { discard_migrations } = await import('./dog.js');
+            discard_migrations();
+        }
         /* src/save.c savelev() — leaving a Plane of Water/Air parks the
            bubble/cloud list with the level (and frees the live copy) */
         {
@@ -1253,10 +1278,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         const { DEADMONSTER } = await import('./monst.js');
         const { mon_catchup_elapsed_time } = await import('./dog.js');
         const { restore_cham, hide_monst } = await import('./mon.js');
+        /* src/restore.c:1111 elapsed = (svm.moves - svo.omoves) */
+        const elapsed = game.moves - (game.level._saved_omoves ?? game.moves);
         for (const mtmp of game.level.monsters || []) {
             if (DEADMONSTER(mtmp))
                 continue;
-            const elapsed = game.moves - (mtmp.mlstmv ?? game.moves);
             /* ghostly (bones) monsters go through the peacefulness reset
                instead; a reloaded live level takes the elapsed arm */
             if (elapsed > 0)
@@ -1289,6 +1315,11 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     } else {
         familiar_level = false;         /* src/do.c "new" is the inverse */
         /* entering this level for the first time; make it now */
+        if (game.visited_ledgers.has(ledger)) {
+            const { impossible } = await import('./pline.js');
+            await impossible('goto_level: returning to discarded level?');
+            game.visited_ledgers.delete(ledger);
+        }
         await mklev_fn();
     }
 
@@ -1326,8 +1357,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
            the arrival side traversed so known branch stairs turn yellow. */
         const arrival_stair = stairway_find_from(game.u.uz0, false);
         if (arrival_stair) {
-            game.u.ux = arrival_stair.sx;
-            game.u.uy = arrival_stair.sy;
+            const { u_on_newpos } = await import('./teleport.js');
+            u_on_newpos(arrival_stair.sx, arrival_stair.sy);
             arrival_stair.u_traversed = true;
         } else if (up) {
             /* src/do.c — arriving from below lands on the DOWN staircase
@@ -1386,8 +1417,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     if (game.u.uball)
         await placebc();
 
-    /* C runs ordinary migrating-object delivery here before monster arrivals.
-       Species-targeted loot is delivered through makemon()/mon_arrive(). */
+    {
+        const { obj_delivery } = await import('./dokick.js');
+        await obj_delivery(false);
+    }
     await losedogs();
 
     // src/do.c:1823, expired level timers run after their owners arrive.
@@ -1432,10 +1465,7 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
        odd if given after the various messages below, so give it before
        them; maybe_lvltport_feedback() clears dfr_post_msg so
        deferred_goto() won't repeat it */
-    if (game.dfr_post_msg && /^You materialize/i.test(game.dfr_post_msg)) {
-        await pline(game.dfr_post_msg);
-        game.dfr_post_msg = null;
-    }
+    await maybe_lvltport_feedback();
 
     /* src/do.c:1858 — special levels can have a custom arrival message */
     {
@@ -1647,6 +1677,10 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     /* src/do.c:1985: deliver one-time room and shop entry messages after
        all level-specific arrival messages, before pickup feedback. */
     await check_special_room(false);
+    {
+        const { obj_delivery } = await import('./dokick.js');
+        await obj_delivery(true);
+    }
 
     /* src/do.c:1989, a trapdoor or hole inflicts impact damage only after
        the new level is drawn and its arrival messages have been handled. */
@@ -1660,6 +1694,16 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
     {
         const { pickup } = await import('./pickup.js');
         await pickup(1);
+    }
+}
+
+// src/do.c:2032 maybe_lvltport_feedback() — deliver a pending level teleport
+// arrival message so that messages which follow it come after it
+export async function maybe_lvltport_feedback() {
+    if (game.dfr_post_msg && /^You materialize/i.test(game.dfr_post_msg)) {
+        /* "You materialize on a different level." */
+        await pline(game.dfr_post_msg);
+        game.dfr_post_msg = null;
     }
 }
 
@@ -1684,8 +1728,8 @@ async function u_collide_m(mtmp, m_at, mnexto) {
                         goodpos)
             || enexto_core(cc, g.u.ux, g.u.uy, g.youmonst?.data, 0, goodpos))
         && next2u(cc.x, cc.y)) {
-        g.u.ux = cc.x; /* u_on_newpos */
-        g.u.uy = cc.y;
+        const { u_on_newpos } = await import('./teleport.js');
+        u_on_newpos(cc.x, cc.y);
     } else {
         await mnexto(mtmp);
     }
@@ -1733,11 +1777,11 @@ async function final_level() {
 
 // src/stairs.c u_on_sstairs(), u_on_upstairs(), u_on_dnstairs().
 async function u_on_sstairs(upflag) {
+    const { u_on_newpos } = await import('./teleport.js');
     for (let stway = game.stairs; stway; stway = stway.next) {
         if (stway.tolev?.dnum !== game.u.uz.dnum
             && !!stway.up !== !!upflag) {
-            game.u.ux = stway.sx;
-            game.u.uy = stway.sy;
+            u_on_newpos(stway.sx, stway.sy);
             return;
         }
     }
@@ -1746,10 +1790,10 @@ async function u_on_sstairs(upflag) {
 }
 
 async function u_on_upstairs() {
+    const { u_on_newpos } = await import('./teleport.js');
     for (let stway = game.stairs; stway; stway = stway.next) {
         if (stway.up) {
-            game.u.ux = stway.sx;
-            game.u.uy = stway.sy;
+            u_on_newpos(stway.sx, stway.sy);
             return;
         }
     }
@@ -1757,10 +1801,10 @@ async function u_on_upstairs() {
 }
 
 async function u_on_dnstairs() {
+    const { u_on_newpos } = await import('./teleport.js');
     for (let stway = game.stairs; stway; stway = stway.next) {
         if (!stway.up) {
-            game.u.ux = stway.sx;
-            game.u.uy = stway.sy;
+            u_on_newpos(stway.sx, stway.sy);
             return;
         }
     }
@@ -1869,6 +1913,8 @@ export async function dropz(obj, with_impact) {
             await sellobj(obj, game.u.ux, game.u.uy);
         }
         stackobj(obj);
+        if (Blind() && Levitation())
+            map_object(obj, 0);
         newsym(game.u.ux, game.u.uy);   /* remap location under self */
     }
     await encumber_msg();

@@ -609,7 +609,8 @@ export function oname(obj, name, oflgs) {
     if (obj.oartifact) {
         /* can't dual-wield with artifact as secondary weapon */
         if (obj === game.u.uswapwep)
-            untwoweapon();
+            void untwoweapon(); /* oname() is synchronous here; only
+                                   its You() message is deferred */
         /* activate warning if you've just named your weapon "Sting" */
         if (obj === game.u.uwep)
             set_artifact_intrinsic(obj, true, W_WEP);

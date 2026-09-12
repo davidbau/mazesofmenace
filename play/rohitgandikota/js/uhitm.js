@@ -140,7 +140,9 @@ import { mintrap, instapetrify, minstapetrify, mselftouch, erode_obj,
 import { clone_mon, goodpos, place_monster, remove_monster,
          is_rider, grow_up, monsndx } from './makemon.js';
 import { rn2, rnd, d, rn2_on_display_rng } from './rng.js';
-import { is_safemon } from './display.js';
+import { is_safemon, tp_sensemon, display_nhwindow_message } from './display.js';
+import { l_monnam } from './do_name.js';
+import { Detect_monsters, Underwater } from './youprop.js';
 import { monflee, set_apparxy } from './monmove.js';
 import { monnear } from './monmove.js';
 import { IS_OBSTRUCTED, MON_POLE_DIST, M_ATTK_HIT, M_ATTK_MISS,
@@ -415,7 +417,7 @@ export async function light_hits_gremlin(mon, dmg) {
         await pline(`${Monnam(mon)} recoils from the light!`);
     }
     mon.mhp -= dmg;
-    wake_nearto(mon.mx, mon.my, 30);
+    await wake_nearto(mon.mx, mon.my, 30);
     if (DEADMONSTER(mon)) {
         if (game.context?.mon_moving)
             await monkilled(mon, null, ATTKS.AD_BLND);
@@ -483,7 +485,7 @@ export async function flash_hits_mon(mtmp, otmp) {
                     await pline(`${Monnam(mtmp)} recoils from the light!`);
                 }
                 mtmp.mhp -= amount;
-                wake_nearto(mx, my, 30);
+                await wake_nearto(mx, my, 30);
                 if (DEADMONSTER(mtmp))
                     await killed(mtmp);
                 else if (cansee(mx, my) && !canspotmon(mtmp))
@@ -509,11 +511,16 @@ export async function flash_hits_mon(mtmp, otmp) {
                 await pline(lit
                     ? `The flash of light shines on ${mon_nam(mtmp)}.`
                     : `${Monnam(mtmp)} is illuminated.`);
+                res = 2; /* 'message has been given' temporary value */
             }
         }
     }
-
-    return res ? 1 : 0;
+    if (res) {
+        if (!game.level?.at(mx, my)?.lit)
+            await display_nhwindow_message();
+        res &= 1; /* change temporary 2 back to 0 */
+    }
+    return res;
 }
 
 // include/mondata.h:29 passes_walls()
@@ -579,7 +586,7 @@ export async function do_attack(mtmp) {
                 return true;
             }
             if (mtmp.mtame)     /* see 'additional considerations' in the C */
-                monflee(mtmp, rnd(6), false, false);
+                await monflee(mtmp, rnd(6), false, false);
             /* You("stop.  %s is in the way!", highc(y_monnam(mtmp))) */
             {
                 const buf = upstart(y_monnam(mtmp));
@@ -620,7 +627,7 @@ export async function do_attack(mtmp) {
         return true;                            /* goto atk_done */
 
     if (game.u.twoweap && !(await can_twoweapon()))
-        untwoweapon();
+        await untwoweapon();
 
     if (game.unweapon) {
         game.unweapon = false;
@@ -789,22 +796,31 @@ export async function attack_checks(mtmp, wep) {
 
     if (!canspotmon(mtmp)
         && !glyph_is_warning(glyph) && !glyph_is_invisible(glyph)
-        && !(!game.u.ublind && mtmp.mundetected
+        && !(!Blind() && mtmp.mundetected
              && hides_under(mdat_of(mtmp)))) {
         await pline("Wait!  There's something there you can't see!");
         map_invisible(game.bhitpos.x, game.bhitpos.y);
-        if (mtmp.m_ap_type
-            && !game.u.uprops?.PROT_FROM_SHAPE_CHANGERS
-            && !game.u.ustuck && !mtmp.mflee
-            && dmgtype(mdat_of(mtmp), ATTKS.AD_STCK)
-            && distu(mtmp.mx, mtmp.my) <= 2)
-            set_ustuck(mtmp);
+        /* if it was an invisible mimic, treat it as if we stumbled
+         * onto a visible mimic
+         */
+        if (M_AP_TYPE(mtmp) && !Protection_from_shape_changers()) {
+            if (!game.u.ustuck && !mtmp.mflee
+                && dmgtype(mdat_of(mtmp), ATTKS.AD_STCK)
+                /* applied pole-arm attack is too far to get stuck */
+                && distu(mtmp.mx, mtmp.my) <= 2)
+                set_ustuck(mtmp);
+        }
         /* always necessary; also un-mimics mimics */
         await wakeup(mtmp, true);
         return true;
     }
 
-    if (mtmp.m_ap_type && !sensemon(mtmp) && !glyph_is_warning(glyph)) {
+    if (M_AP_TYPE(mtmp) && !Protection_from_shape_changers()
+        && !sensemon(mtmp) && !glyph_is_warning(glyph)) {
+        /* If a hidden mimic was in a square where a player remembers
+         * some (probably different) unseen monster, the player is in
+         * luck--he attacks it even though it's hidden.
+         */
         if (glyph_is_invisible(glyph)) {
             seemimic(mtmp);
             return false;
@@ -822,9 +838,22 @@ export async function attack_checks(mtmp, wep) {
             seemimic(mtmp);
             return false;
         }
-        if (!sensemon(mtmp)) {
-            await pline("Wait!  There's something there you can't see!");
-            map_invisible(game.bhitpos.x, game.bhitpos.y);
+        if (!tp_sensemon(mtmp) && !Detect_monsters()) {
+            const lmonbuf = l_monnam(mtmp);
+            /* might be unseen if invisible and hero can't see invisible */
+            const notseen = (lmonbuf === 'it'); /* note: not strcmpi() */
+            let obj;
+            if (!Blind() && Hallucination())
+                await pline(`A ${mtmp.mtame ? 'tame' : 'wild'} ${
+                            notseen ? 'creature' : lmonbuf} ${
+                            notseen ? 'is present' : 'appears'}!`);
+            else if (Blind() || (is_pool(mtmp.mx, mtmp.my) && !Underwater()))
+                await pline("Wait!  There's a hidden monster there!");
+            else if ((obj = (game.level?.objects || [])
+                          .find(o => o.ox === mtmp.mx && o.oy === mtmp.my)) != null)
+                await pline(`Wait!  There's ${
+                            notseen ? 'something' : an(lmonbuf)} hiding under ${
+                            doname(obj)}!`);
             return true;
         }
     }
@@ -2386,7 +2415,7 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
         await abuse_dog(mon); /* reduces tameness */
         /* flee if still alive and still tame */
         if (mon.mtame && !hmd.destroyed)
-            monflee(mon, 10 * rnd(hmd.dmg), false, false);
+            await monflee(mon, 10 * rnd(hmd.dmg), false, false);
     }
 
     /* src/uhitm.c hmon_hitmon_splitmon() — puddings split on iron/metal
@@ -3015,7 +3044,7 @@ async function hmon_hitmon_weapon_melee(hmd, mon, obj) {
                     await pline(`${Monnam(mon)} turns to flee.`);
                 }
             }
-            monflee(mon, fleetime, true, false);
+            await monflee(mon, fleetime, true, false);
         }
         hmd.hittxt = true;
     }
@@ -4106,7 +4135,7 @@ export async function mhitm_ad_dgst(magr, mattk, mdef, mhm) {
         mhm.damage = mdef.mhp;
         /* Use up amulet of life saving */
         if ((obj = mlifesaver(mdef)) != null)
-            m_useup(mdef, obj);
+            await m_useup(mdef, obj);
 
         /* Is a corpse for nutrition possible?  It may kill magr */
         if (!await corpse_chance(mdef, magr, true) || DEADMONSTER(magr))

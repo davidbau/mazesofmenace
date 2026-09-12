@@ -1063,7 +1063,7 @@ export async function run_timers() {
             break;
         }
         default:
-            impossible(`run_timers: bad timer function index ${curr.func_index}`);
+            await impossible(`run_timers: bad timer function index ${curr.func_index}`);
             break;
         }
     }
@@ -1886,7 +1886,7 @@ export async function hatch_egg(egg, timeout) {
 // Plane of Air) or too often even then: the rn2(8) gate is the only draw on
 // 7 of 8 stormy turns. A strike sequence spends rnd(64), a cloud hunt of
 // up to 100 coordinate pairs and an rn2(3) pair per strike; the bolt itself
-// is buzz(), the zap beam engine, which is not ported and records.
+// is buzz(), the zap beam engine.
 export async function do_storms() {
     const { rn2 } = await import('./rng.js');
     const { COLNO, ROWNO, CLOUD } = await import('./const.js');

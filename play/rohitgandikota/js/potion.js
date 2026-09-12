@@ -6,7 +6,9 @@
 import { slept_monst } from './mhitm.js';
 import { POLY_NOFLAGS, POLY_CONTROLLED, POLY_LOW_CTRL } from './const.js';
 import { polyself } from './polyself.js';
-import { Unchanging, Invisible, Glib } from './youprop.js';
+import { Unchanging, Invisible, Glib, Blind_telepat, Infravision } from './youprop.js';
+import { learn_unseen_invent } from './invent.js';
+import { W_WEP } from './const.js';
 import { clone_mon } from './makemon.js';
 import { cloneu } from './mhitu.js';
 import { object_detect } from './detect.js';
@@ -205,12 +207,17 @@ export async function healup(nhp, nxtra, curesick, cureblind) {
     const u = game.u;
 
     if (nhp) {
-        /* the Upolyd arm reads u.mh; polyself is not ported */
-        u.uhp += nhp;
-        if (u.uhp > u.uhpmax) {
-            u.uhp = (u.uhpmax += nxtra);
-            if (u.uhpmax > (u.uhppeak || 0))
-                u.uhppeak = u.uhpmax;
+        if (Upolyd(u)) {
+            u.mh += nhp;
+            if (u.mh > u.mhmax)
+                u.mh = (u.mhmax += nxtra);
+        } else {
+            u.uhp += nhp;
+            if (u.uhp > u.uhpmax) {
+                u.uhp = (u.uhpmax += nxtra);
+                if (u.uhpmax > (u.uhppeak || 0))
+                    u.uhppeak = u.uhpmax;
+            }
         }
     }
     if (cureblind) {
@@ -496,7 +503,7 @@ export async function impact_arti_light(obj, worsen, seeit) {
     /* curse() and bless() take care of maybe_adjust_light() */
     otmp = mksobj(ONAMES.POT_WATER, true, false);
     if (worsen)
-        curse(otmp);
+        await curse(otmp);
     else
         bless(otmp);
     await H2Opotion_dip(otmp, obj, seeit, seeit ? Yobjnam2(obj, 'glow') : '');
@@ -997,29 +1004,44 @@ export async function make_blinded(xtime, talk) {
     intr.HBlinded = sources | new_timeout;
     u.ublind = blind_now ? 1 : 0;
 
-    if (was_blind !== blind_now) {
-        (game.disp ||= {}).botl = true;
-        game.vision_full_recalc = 1;
-        vision_recalc(0);
-        if (was_blind && !blind_now) {
-            /* src/invent.c learn_unseen_invent(): carried objects picked up
-               while blind become visibly encountered as soon as sight
-               returns. */
-            const role = game.urole?.mnum;
-            const cleric = role === 'PM_CLERIC'
-                || role === PMNAMES.PM_CLERIC;
-            const archeologist = role === 'PM_ARCHEOLOGIST'
-                || role === PMNAMES.PM_ARCHEOLOGIST;
-            for (const obj of game.invent || []) {
-                if (obj.dknown && (obj.bknown || !cleric)
-                    && (obj.oclass !== OCLASSES.SCROLL_CLASS
-                        || !archeologist))
-                    continue;
-                xname(obj);
-            }
-        }
+    if (was_blind !== blind_now) { /* one or the other but not both */
+        await toggle_blindness();
     }
 }
+
+// src/potion.c:336 toggle_blindness() — blindness has just been toggled
+export async function toggle_blindness() {
+    const u = game.u;
+    const Stinging = !!(u.uwep && ((u.uprops?.WARN_OF_MON || 0) & W_WEP) !== 0);
+
+    /* blindness has just been toggled */
+    (game.disp ||= {}).botl = true; /* status conditions need update */
+    game.vision_full_recalc = 1; /* vision has changed */
+    /* this vision recalculation used to be deferred until moveloop(),
+       but that made it possible for vision irregularities to occur
+       (cited case was force bolt hitting an adjacent potion of blindness
+       and then a secret door; hero was blinded by vapors but then got the
+       message "a door appears in the wall" because wall spot was IN_SIGHT) */
+    vision_recalc(0);
+    if (Blind_telepat() || Infravision() || Stinging)
+        see_monsters(); /* also counts EWarn_of_mon monsters */
+    /*
+     * Avoid either of the sequences
+     * "Sting starts glowing", [become blind], "Sting stops quivering" or
+     * "Sting starts quivering", [regain sight], "Sting stops glowing"
+     * by giving "Sting is quivering" when becoming blind or
+     * "Sting is glowing" when regaining sight so that the eventual
+     * "stops" message matches the most recent "Sting is ..." one.
+     */
+    if (Stinging) {
+        const { Sting_effects } = await import('./artifact.js');
+        await Sting_effects(-1);
+    }
+    /* update dknown flag for inventory picked up while blind */
+    if (!Blind())
+        learn_unseen_invent();
+}
+
 
 // src/potion.c:68 itimeout_incr()
 const itimeout_incr = (old, incr) => itimeout((old & TIMEOUT) + incr);

@@ -569,7 +569,7 @@ async function polyman(fmt, arg) {
     if (!!See_invisible() ^ had_see_invis)
         set_mimic_blocking(); /* See_invisible just toggled */
     if (u.twoweap && !could_twoweap(youmonst.data))
-        untwoweapon();
+        await untwoweapon();
 
     if (u.utrap && u.utraptype === TT_PIT) {
         set_utrap(rn1(6, 2), TT_PIT); /* time to escape resets */
@@ -1607,7 +1607,7 @@ async function drop_weapon(alone) {
             if (updateinv)
                 update_inventory();
         } else if (!could_twoweap(game.youmonst.data)) {
-            untwoweapon();
+            await untwoweapon();
         }
     }
 }
@@ -1753,7 +1753,7 @@ export async function dospinweb() {
        webmaker and a flyer, but with the advent of amulet of flying that
        became a possibility; at present hero can spin a web while flying] */
     if (Levitation() || reject_terrain) {
-        You(`must be on ${reject_terrain ? 'solid' : 'the'} ground to spin a web.`);
+        await You(`must be on ${reject_terrain ? 'solid' : 'the'} ground to spin a web.`);
         return ECMD_OK;
     }
     if (u.uswallow) {

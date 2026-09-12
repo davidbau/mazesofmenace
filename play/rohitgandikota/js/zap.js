@@ -3331,7 +3331,7 @@ export async function bhitm(mtmp, otmp) {
             }
             if (!DEADMONSTER(mtmp)) {
                 await wakeup(mtmp, !mindless(mtmp.data));
-                abuse_dog(mtmp);
+                await abuse_dog(mtmp);
             }
         } else if ((obj = which_armor(mtmp, W_SADDLE)) != null) {
             learn_it = learn.v;
@@ -4604,7 +4604,7 @@ export async function melt_ice(x, y, msg = null) {
 
     obj_ice_effects(x, y, false);
     const { unearth_objs } = await import('./mklev.js');
-    unearth_objs(x, y);
+    await unearth_objs(x, y);
     if (Underwater())
         vision_recalc(1);
     newsym(x, y);
@@ -4792,7 +4792,7 @@ export async function zap_over_floor(
                     }
                 }
                 const { bury_objs } = await import('./mklev.js');
-                bury_objs(x, y);
+                await bury_objs(x, y);
                 if (!lava) {
                     /* Soundeffect(se_soft_crackling, 30); */
                 }

@@ -1565,9 +1565,8 @@ const NO_INVENT = 0, CUSTOM_INVENT = 0x01, DEFAULT_INVENT = 0x02;
 //
 // C also returns otmp2 (the pile's nexthere, read before the extract so the
 // caller can keep walking a chain it is mutating). This port keeps object
-// piles as a flat list rather than a nexthere chain (see js/invent.js:141), and
-// the only caller of that return value is bury_objs(), which is not ported, so
-// there is nothing here to return it from.
+// piles as a flat list rather than a nexthere chain (see js/invent.js:141);
+// bury_objs() in js/dig.js walks the pile list instead.
 /* bury_an_obj() lives in js/dig.js, where src/dig.c has it */
 export { bury_an_obj } from './dig.js';
 

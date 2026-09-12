@@ -1260,7 +1260,7 @@ async function eatcorpse(otmp) {
         if (carried(otmp))
             useup(otmp);
         else
-            useupf(otmp, 1);
+            await useupf(otmp, 1);
         return 2;
     } else if (acidic(game.mons[mnum]) && !Acid_resistance()) {
         tp++;
@@ -1304,7 +1304,7 @@ async function eatcorpse(otmp) {
             if (carried(otmp))
                 useup(otmp);
             else
-                useupf(otmp, 1);
+                await useupf(otmp, 1);
             retcode = 2;
         }
 
@@ -1544,7 +1544,7 @@ async function fprefx(otmp) {
             if (carried(otmp))
                 useup(otmp);
             else
-                useupf(otmp, 1);
+                await useupf(otmp, 1);
             await explode(game.u.ux, game.u.uy, -11, d(3, 6), 0, EXPL_FIERY);
             return false;
         } else if (stale_egg(otmp)) {

@@ -728,9 +728,6 @@ export function peace_minded(ptr) {
     return !!rn2(16 + (rec < -15 ? -15 : rec)) && !!rn2(2 + Math.abs(mal));
 }
 
-// src/makemon.c:900 mongets() — create otyp and hand it to the monster.
-// The blessing/curse fixups below need object subsystems that are not ported;
-// none of them draw, so the RNG stream is unaffected by their absence.
 // src/makemon.c:2181 mongets()
 export function mongets(mtmp, otyp) {
     let otmp;

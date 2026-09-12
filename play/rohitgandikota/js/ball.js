@@ -221,7 +221,7 @@ export async function lift_covet_and_placebc(pin) {
         void impossible('bc already placed?');
         return;
     }
-    placebc_core();
+    await placebc_core();
 }
 
 // src/ball.c:354 bc_order() — the object list is a stack: the first of the

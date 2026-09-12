@@ -222,6 +222,7 @@ export class NethackGame {
            nudist in options.c. */
         g.u = {
             ux: 0, uy: 0, ux0: 0, uy0: 0,
+            dx: 0, dy: 0, dz: 0,
             uroleplay: {
                 pauper: !!g.flags.pauper,
                 nudist: !!g.flags.nudist || !!g.flags.pauper,

@@ -467,7 +467,7 @@ export async function domonnoise(mtmp) {
         break;
     case MSOUND.MS_TRUMPET:
         pline_msg = 'trumpets!';
-        wake_nearto(mtmp.mx, mtmp.my, 11 * 11);
+        await wake_nearto(mtmp.mx, mtmp.my, 11 * 11);
         break;
     case MSOUND.MS_SHRIEK: {
         pline_msg = 'shrieks.';
@@ -547,7 +547,7 @@ export async function domonnoise(mtmp) {
             const cry = mtmp.mnum === PMNAMES.PM_HUMAN_WERERAT
                 ? 'shriek' : 'howl';
             await pline(`${Monnam(mtmp)} throws back ${mhis(mtmp)} head and lets out a blood curdling ${cry}!`);
-            wake_nearto(mtmp.mx, mtmp.my, 11 * 11);
+            await wake_nearto(mtmp.mx, mtmp.my, 11 * 11);
         } else {
             pline_msg = 'whispers inaudibly.  All you can make out is "moon".';
         }
@@ -563,7 +563,7 @@ export async function domonnoise(mtmp) {
                 break;
             default:
                 pline_msg = 'shouts "Fee Fie Foe Foo!" and guffaws.';
-                wake_nearto(mtmp.mx, mtmp.my, 7 * 7);
+                await wake_nearto(mtmp.mx, mtmp.my, 7 * 7);
                 break;
             }
             break;

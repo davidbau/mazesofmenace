@@ -260,7 +260,7 @@ export async function were_change(mon) {
                 }
                 if (howler) {
                     await You_hear(`a ${howler} howling at the moon.`);
-                    wake_nearto(mon.mx, mon.my, 4 * 4);
+                    await wake_nearto(mon.mx, mon.my, 4 * 4);
                 }
             }
         }

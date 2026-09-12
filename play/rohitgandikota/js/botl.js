@@ -444,8 +444,8 @@ export const terrain_descr = [
  * C keeps each field's rules on gb.blstats[0][fld].thresholds and the
  * condition colorings in gc.cond_hilites[]; here game.blstats_thresholds[fld]
  * (an array in insertion order) and game.cond_hilites[] (indexed by color
- * and HL_ATTCLR_*). Applying the rules to the status rows (the renderer)
- * is not ported yet; see NOTES.
+ * and HL_ATTCLR_*). The renderer that applies them to the status rows is
+ * tty_status_update() in js/tty/wintty.js.
  * ------------------------------------------------------------------------- */
 
 // src/botl.c:703 initblstats[] — name, format, value type, idxmax (the

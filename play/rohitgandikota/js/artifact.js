@@ -60,7 +60,9 @@ import { cansee } from './vision.js';
 import { ART_STORMBRINGER } from './artilist_data.js';
 import { ART_VORPAL_BLADE } from './artilist_data.js';
 import { ART_TSURUGI_OF_MURAMASA } from './artilist_data.js';
-import { The, the, Tobjnam } from './objnam.js';
+import { The, the, Tobjnam, otense } from './objnam.js';
+import { clr2colorname } from './coloratt.js';
+import * as TERMCOLORS from './terminal.js';
 import { xname, yname, killer_xname } from './objnam.js';
 import { distant_name } from './objnam.js';
 import { vtense } from './objnam.js';
@@ -593,6 +595,79 @@ export function what_gives(abil) {
         }
     }
     return null;
+}
+
+// src/artifact.c:2427 glow_color()
+function glow_color(arti_indx) {
+    /* artilist.h's colour column is kept as its CLR_* name */
+    const colornum = TERMCOLORS[artifact_records[arti_indx].acolor] ?? TERMCOLORS.NO_COLOR;
+    const colorstr = clr2colorname(colornum);
+
+    return hcolor(colorstr);
+}
+
+/* glow verb; [0] holds the value used when blind */
+const glow_verbs = ["quiver", "flicker", "glimmer", "gleam"];
+
+// src/artifact.c:2442 glow_strength() — relative strength that Sting is
+// glowing (0..3), to select verb
+function glow_strength(count) {
+    /* glow strength should also be proportional to proximity and
+       probably difficulty, but we don't have that information and
+       gathering it is more trouble than this would be worth */
+    return (count > 12) ? 3 : (count > 4) ? 2 : (count > 0 ? 1 : 0);
+}
+
+// src/artifact.c:2451 glow_verb()
+export function glow_verb(count, /* 0 means blind rather than no applicable creatures */
+                          ingsfx) {
+    let resbuf = glow_verbs[glow_strength(count)];
+    /* ing_suffix() will double the last consonant for all the words
+       we're using and none of them should have that, so bypass it */
+    if (ingsfx)
+        resbuf += "ing";
+    return resbuf;
+}
+
+// src/artifact.c:2466 Sting_effects() — use for warning "glow" for Sting,
+// Orcrist, and Grimtooth; gw.warn_obj_cnt is game.warn_obj_cnt
+export async function Sting_effects(orc_count) /* new count (warn_obj_cnt is old count);
+                                                * -1 is a flag value */
+{
+    const uwep = game.u.uwep;
+    if (u_wield_art(ART_STING)
+        || u_wield_art(ART_ORCRIST)
+        || u_wield_art(ART_GRIMTOOTH)) {
+        const oldstr = glow_strength(game.warn_obj_cnt ?? 0),
+              newstr = glow_strength(orc_count);
+
+        if (orc_count === -1 && (game.warn_obj_cnt ?? 0) > 0) {
+            /* -1 means that blindness has just been toggled; give a
+               'continue' message that eventual 'stop' message will match */
+            await pline(`${bare_artifactname(uwep)} is ${
+                        glow_verb(Blind() ? 0 : game.warn_obj_cnt, true)}.`);
+        } else if (newstr > 0 && newstr !== oldstr) {
+            /* goto_level() -> docrt() -> see_monsters() -> Sting_effects();
+               if "you materialize on a different level" is pending, give
+               it now so that start-glowing message comes after it */
+            const { maybe_lvltport_feedback } = await import('./do.js');
+            await maybe_lvltport_feedback(); /* usually called by goto_level() */
+
+            /* 'start' message */
+            if (!Blind())
+                await pline(`${bare_artifactname(uwep)} ${
+                            otense(uwep, glow_verb(orc_count, false))} ${
+                            glow_color(uwep.oartifact)}${
+                            (newstr > oldstr) ? '!' : '.'}`);
+            else if (oldstr === 0) /* quivers */
+                await pline(`${bare_artifactname(uwep)} ${
+                            otense(uwep, glow_verb(0, false))} slightly.`);
+        } else if (orc_count === 0 && (game.warn_obj_cnt ?? 0) > 0) {
+            /* 'stop' message */
+            await pline(`${bare_artifactname(uwep)} stops ${
+                        glow_verb(Blind() ? 0 : game.warn_obj_cnt, true)}.`);
+        }
+    }
 }
 
 // src/artifact.c:2264 artifact_light(). Sunsword is always a light source;
@@ -1709,6 +1784,24 @@ export function find_artifact(otmp) {
                      : '');
         livelog_printf(LL_ARTIFACT, `found ${bare_artifactname(otmp)}${where}`);
     }
+}
+
+// src/artifact.c:555 shade_glare() — decide whether this obj is effective
+// when attacking against shades; does not consider the bonus for blessed
+// objects versus undead
+export function shade_glare(obj) {
+    /* any silver object is effective */
+    if (game.objects[obj.otyp].oc_material === MATERIALS.SILVER)
+        return true;
+    /* non-silver artifacts with bonus against undead also are effective */
+    const arti = get_artifact(obj);
+    if (arti !== artifact_records[0] && (arti.spfx & SPFX_DFLAG2)
+        && mtype_value(arti) === MFLAGS.M2_UNDEAD)
+        return true;
+    /* [if there was anything with special bonus against noncorporeals,
+       it would be effective too] */
+    /* otherwise, harmless to shades */
+    return false;
 }
 
 // src/artifact.c:575 restrict_name() — returns TRUE if `name` is restricted

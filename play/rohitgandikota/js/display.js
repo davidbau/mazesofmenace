@@ -18,7 +18,9 @@ import { iter_mons } from './mon.js';
 
 import { block_point, unblock_point } from './vision.js';
 
-import { is_lightblocker_mappear } from './monst.js';
+import { is_lightblocker_mappear, DEADMONSTER } from './monst.js';
+import { MON_STILL_ARRIVING } from './const.js';
+import { see_wsegs } from './worm.js';
 
 import { game } from './gstate.js';
 
@@ -43,7 +45,7 @@ import { Upolyd, WARNCOUNT, IS_OBSTRUCTED, IS_ROOM, IS_POOL,
 import { cansee, couldsee, vision_recalc } from './vision.js';
 
 import { Blind, Infravision, Hallucination, Invis, See_invisible,
-         Underwater, Detect_monsters } from './youprop.js';
+         Underwater, Detect_monsters, Warn_of_mon } from './youprop.js';
 
 import { observe_object } from './o_init.js';
 
@@ -1233,7 +1235,7 @@ export async function swallowed(first) {
 
     if (first) {
         await cls();
-        bot();
+        await bot();
     } else {
         for (let y = swallowed_lasty - 1; y <= swallowed_lasty + 1; y++)
             for (let x = swallowed_lastx - 1; x <= swallowed_lastx + 1; x++)
@@ -2623,10 +2625,33 @@ export function see_monsters() {
     if (game.u?.ustuck)
         game.u.ustuck.meverseen = 1;
 
+    let new_warn_obj_cnt = 0;
+
+    /* loop through level.monsters (aka fmon) */
     for (const mon of game.level?.monsters || []) {
-        if (mon.mhp > 0)
-            newsym(mon.mx, mon.my);
+        if (DEADMONSTER(mon))
+            continue;
+        if ((mon.mstate & MON_STILL_ARRIVING) !== 0)
+            continue;
+        newsym(mon.mx, mon.my);
+        if (mon.wormno)
+            see_wsegs(mon);
+        if (Warn_of_mon()
+            && ((game.context?.warntype?.obj || 0) & mon.data.mflags2) !== 0)
+            new_warn_obj_cnt++;
     }
+
+    /*
+     * Make Sting glow blue or stop glowing if required.
+     */
+    if (new_warn_obj_cnt !== (game.warn_obj_cnt ?? 0)) {
+        /* see_monsters() is synchronous here as in the C; Sting_effects()'s
+           message is the only deferred part */
+        void import('./artifact.js').then(m => m.Sting_effects(new_warn_obj_cnt));
+        game.warn_obj_cnt = new_warn_obj_cnt;
+    }
+
+    /* when mounted, hero's location gets caught by monster loop */
     if (!game.u?.usteed)
         newsym(game.u.ux, game.u.uy);
 }
