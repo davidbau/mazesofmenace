@@ -964,6 +964,46 @@ const sir_Terry_novels = [
 // src/do_name.c:1611 noveltitle() — the rn2 over the title table fires even
 // when a fixed novidx overrides the pick. `box` stands in for C's int*: pass
 // { idx } and read the possibly-updated idx back.
+// src/do_name.c:1627 lookup_novel() — find a Discworld title by name,
+// accepting the variant spellings; idx (a box with .idx) receives the index.
+export function lookup_novel(lookname, idx) {
+    const eq = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
+    const NVL_COLOUR_OF_MAGIC = 0, NVL_SOURCERY = 4, NVL_MASKERADE = 17;
+    const NVL_AMAZING_MAURICE = sir_Terry_novels.indexOf('The Amazing Maurice and His Educated Rodents');
+    const NVL_THUD = sir_Terry_novels.indexOf('Thud!');
+
+    /*
+     * Accept variant spellings:
+     * _The_Colour_of_Magic_ uses British spelling, and American
+     * editions keep that, but we also recognize American spelling;
+     * _Sourcery_ is a joke rather than British spelling of "sorcery".
+     */
+    if (eq(The(lookname), 'The Color of Magic'))
+        lookname = sir_Terry_novels[NVL_COLOUR_OF_MAGIC];
+    else if (eq(lookname, 'Sorcery'))
+        lookname = sir_Terry_novels[NVL_SOURCERY];
+    else if (eq(lookname, 'Masquerade'))
+        lookname = sir_Terry_novels[NVL_MASKERADE];
+    else if (eq(The(lookname), 'The Amazing Maurice'))
+        lookname = sir_Terry_novels[NVL_AMAZING_MAURICE];
+    else if (eq(lookname, 'Thud'))
+        lookname = sir_Terry_novels[NVL_THUD];
+
+    for (let k = 0; k < sir_Terry_novels.length; ++k) {
+        if (eq(lookname, sir_Terry_novels[k])
+            || eq(The(lookname), sir_Terry_novels[k])) {
+            if (idx)
+                idx.idx = k;
+            return sir_Terry_novels[k];
+        }
+    }
+    /* name not found; if novelidx is already set, override the name */
+    if (idx && idx.idx >= 0 && idx.idx < sir_Terry_novels.length)
+        return sir_Terry_novels[idx.idx];
+
+    return null;
+}
+
 export function noveltitle(box) {
     const k = sir_Terry_novels.length;
     let j = rn2(k);
@@ -1104,6 +1144,29 @@ export function monverbself(mon, monnamtext, verb, othertext) {
 export { mhe } from './mondata.js';
 
 // src/do_name.c:1313 mon_pmname(); the monster's species name for its gender
+// src/do_name.c:2200 minimal_monnam() — for impossible() and debugging;
+// the C's out-of-range pointer arms cannot occur here.
+export function minimal_monnam(mon, ckloc) {
+    let outbuf;
+    let ptr;
+
+    if (!mon) {
+        outbuf = '[Null monster]';
+    } else if ((ptr = mon.data) == null) {
+        outbuf = '[Null mon->data]';
+    } else if (ckloc && ptr === game.mons[PMNAMES.PM_LONG_WORM] && mon.mx
+               && game.level?.monAt?.get(`${mon.mx},${mon.my}`) !== mon) {
+        outbuf = `${pmname(game.mons[PMNAMES.PM_LONG_WORM_TAIL], Mgender(mon))
+            } <${mon.mx},${mon.my}>`;
+    } else {
+        outbuf = `${mon.mtame ? 'tame ' : mon.mpeaceful ? 'peaceful ' : ''}${
+            mon_pmname(mon)} <${mon.mx},${mon.my}>`;
+        if (mon.cham !== NON_PM && mon.cham != null)
+            outbuf += `{${pmname(game.mons[mon.cham], Mgender(mon))}}`;
+    }
+    return outbuf;
+}
+
 export function mon_pmname(mon) {
     return pmname(mon.data, Mgender(mon));
 }

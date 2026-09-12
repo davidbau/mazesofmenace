@@ -24,6 +24,9 @@ import { In_endgame, NO_MM_FLAGS, MM_NOMSG } from './const.js';
 import { is_art, mk_artifact } from './artifact.js';
 import { ART_MAGICBANE } from './artilist_data.js';
 import { verbalize } from './pline.js';
+import { rloc } from './teleport.js';
+import { RLOC_ERR } from './const.js';
+import { RLOC_NOMSG } from './const.js';
 
 function note_unported_mplayer(what) {
     (game.unported ||= new Set()).add('mplayer:' + what);
@@ -155,8 +158,10 @@ export function mk_mplayer(ptr, x, y, special) {
         return null;
 
     if (m_at(x, y)) {
-        /* rloc(m_at(x, y), RLOC_ERR|RLOC_NOMSG) — insurance */
-        note_unported_mplayer('mk_mplayer:rloc');
+        /* the RLOC_NOMSG level-creation path of rloc() changes state
+           synchronously; the promise only carries message arms that
+           cannot fire here, so this synchronous creator does not wait */
+        void rloc(m_at(x, y), RLOC_ERR | RLOC_NOMSG); /* insurance */
     }
 
     if (!In_endgame(game.u.uz))

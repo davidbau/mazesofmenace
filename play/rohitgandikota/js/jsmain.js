@@ -198,6 +198,18 @@ export class NethackGame {
             delete g.flags.num_pad_mode;
             reset_commands(false);
         }
+        /* src/options.c:4099 optfn_statuslines() writes
+           iflags.wc2_statuslines and :4018 optfn_statushilites()
+           iflags.hilite_delta (the hilite_status rules were installed by
+           parseoptions() as the C's do_set does) */
+        if ('statuslines' in rc.opts) {
+            g.iflags.wc2_statuslines = rc.opts.statuslines;
+            delete g.flags.statuslines;
+        }
+        if ('statushilites' in rc.opts) {
+            g.iflags.hilite_delta = rc.opts.statushilites;
+            delete g.flags.statushilites;
+        }
         set_menuobjsyms_flags(rc.opts.menuobjsyms ?? 4);
         const pettype = optValue(rc, 'pettype');
         if (pettype) g.preferred_pet = pettype[0];

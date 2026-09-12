@@ -991,6 +991,7 @@ export const CMD_NOT_AVAILABLE = 0x0010;
 export const NOFUZZERCMD = 0x0020;
 export const INTERNALCMD = 0x0040;
 export const CMD_M_PREFIX = 0x0080;
+export const CMD_gGF_PREFIX = 0x0100; /* include/func_tab.h: accept g/G/F prefix */
 export const PREFIXCMD = 0x0200;
 export const MOVEMENTCMD = 0x0400;
 export const MOUSECMD = 0x0800;
@@ -2946,8 +2947,11 @@ export function MGIVENNAME(mtmp) { return mtmp?.mextra?.mgivenname || mtmp?.mgiv
 export function has_mgivenname(mtmp) { return !!(mtmp?.mextra?.mgivenname || mtmp?.mgivenname); }
 
 // C: you.h — #define Upolyd (u.mtimedone != 0)
+// include/you.h:554 Upolyd — (u.umonnum != u.umonster); polyman() calls
+// set_uasmon() after restoring umonnum but before clearing mtimedone, so the
+// timer is not the test
 export function Upolyd(player) {
-    return !!(player && player.mtimedone && player.mtimedone > 0);
+    return !!(player && player.umonnum !== player.umonster);
 }
 
 // Canonical macros — previously duplicated as local stubs in 15+ files

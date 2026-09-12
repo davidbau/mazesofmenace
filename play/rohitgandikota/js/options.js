@@ -3,6 +3,8 @@
 // include/optlist.h into js/optlist.js by tools/gen-optlist.mjs.
 
 import { game } from './gstate.js';
+import { parse_status_hl1, clear_status_hilites, reset_status_hilites, status_initialize } from './botl.js';
+import { new_status_window } from './tty/wintty.js';
 import { notice_all_mons_flush } from './hack.js';
 import { display_file } from './pager.js';
 import { optmenu } from './dat_files.js';
@@ -239,7 +241,8 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
         && !(opt.name === 'menustyle' && (negated || opts.length <= 5))
         && !(opt.name === 'whatis_coord' && negated)
         && !(opt.name === 'paranoid_confirmation' && negated)
-        && !(opt.name === 'number_pad' && (opts.length <= 10 || negated || tinitial))) {
+        && !(opt.name === 'number_pad' && (opts.length <= 10 || negated || tinitial))
+        && opt.name !== 'hilite_status') {
         config_error_add(`Missing value for '${opt.name}'`);
         return false;
     }
@@ -247,6 +250,34 @@ export function parseoptions(opts, tinitial, tfrom_file, result) {
     if (opt.type === 'BoolOpt') {
         result.opts[opt.name] = !negated;
         (result.optSetInConfig ||= {})[opt.name] = true;
+    } else if (opt.name === 'statushilites') {
+        /* src/options.c:4018 optfn_statushilites() do_set: control over
+           whether highlights should be displayed (non-zero), and also for
+           how long to show temporary ones (N turns; default 3) */
+        let delta;
+        if (negated) {
+            delta = 0;
+        } else {
+            delta = (value === null || value === '') ? 3 : (parseInt(value, 10) || 0);
+            if (delta < 0)
+                delta = 1;
+        }
+        result.opts.statushilites = delta;
+        if (!tfrom_file) {
+            (game.iflags ||= {}).hilite_delta = delta;
+            reset_status_hilites();
+        }
+    } else if (opt.name === 'hilite_status') {
+        /* src/options.c:2067 optfn_hilite_status() do_set: the rules go
+           straight onto the fields' threshold lists */
+        if (value !== null && value !== '' && negated) {
+            clear_status_hilites();
+        } else if (value === null || value === '') {
+            config_error_add('Value is mandatory for hilite_status');
+            return false;
+        } else if (!parse_status_hl1(value, tfrom_file)) {
+            return false;
+        }
     } else if (opt.name === 'paranoid_confirmation') {
         const current = result.opts.paranoia_bits
                         ?? DEFAULT_PARANOIA_BITS;
@@ -2157,7 +2188,14 @@ function boolopt_side_effects(name) {
     switch (name) {
     case 'terrainstatus': case 'weaponstatus': case 'armorstatus':
     case 'showscore': case 'showvers': case 'showexp': case 'time':
+        /* src/options.c:5349 — the field set is reassessed (VIA_WINDOWPORT) */
+        status_initialize(true); /* REASSESS_ONLY */
         (game.disp ||= {}).botl = true;
+        break;
+    case 'hitpointbar':
+        /* src/options.c:5388 — [is reassessment really needed here?] */
+        status_initialize(true); /* REASSESS_ONLY */
+        game.opt_need_redraw = true;
         break;
     case 'lit_corridor': case 'dark_room':
         /* vision_recalc(2) then delayed full recalc */
@@ -3554,11 +3592,13 @@ async function parseoptions_interactive(buf) {
             /* optfn_number_pad() writes iflags */
             (game.iflags ||= {})[name] = value;
         } else if (name === 'statuslines') {
-            /* iflags.wc2_statuslines; the 3-line status layout itself is
-               not ported, so a changed value is only recorded */
-            if ((game.iflags.wc2_statuslines | 0) !== value)
-                note_unported_options(`statuslines:${value}`);
+            /* iflags.wc2_statuslines; tty_preference_update("statuslines")
+               rebuilds the status window once it exists */
             game.iflags.wc2_statuslines = value;
+            if (game.blinit)
+                new_status_window();
+        } else if (name === 'statushilites') {
+            /* iflags.hilite_delta was written by parseoptions() */
         } else {
             game.flags[name] = value;
         }

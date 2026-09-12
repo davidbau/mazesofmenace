@@ -1057,11 +1057,13 @@ export async function run_timers() {
             await shrink_glob(curr.arg, curr.timeout);
             break;
         }
+        case MELT_ICE_AWAY: {
+            const { melt_ice_away } = await import('./zap.js');
+            await melt_ice_away(curr.arg, curr.timeout);
+            break;
+        }
         default:
-            /* The remaining callbacks each need their own subsystem; record
-               which one fired unported. */
-            (game.unported ||= new Set())
-                .add('timeout:run_timers:' + curr.func_index);
+            impossible(`run_timers: bad timer function index ${curr.func_index}`);
             break;
         }
     }

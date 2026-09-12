@@ -1,4 +1,4 @@
-import { DISMOUNT_KNOCKED, NON_PM } from './const.js';
+import { OBJ_FREE, DISMOUNT_KNOCKED, NON_PM } from './const.js';
 import { NEUTRAL } from './const.js';
 import { A_CON } from './const.js';
 import { RLOC_MSG } from './const.js';
@@ -51,7 +51,7 @@ import { can_be_strangled } from './mondata.js';
 import { stagger } from './mondata.js';
 import { make_stoned, make_slimed } from './potion.js';
 import { potionhit } from './potion.js';
-import { hold_another_object } from './invent.js';
+import { obfree, hold_another_object } from './invent.js';
 import { freeinv } from './invent.js';
 import { splitobj } from './mkobj.js';
 import { find_artifact, retouch_equipment } from './artifact.js';
@@ -62,7 +62,7 @@ import { bare_artifactname } from './objnam.js';
 import { cutworm } from './worm.js';
 import { mon_nam_too } from './do_name.js';
 import { noit_Monnam } from './do_name.js';
-import { MHID_ALTMON } from './pager.js';
+import { MHID_ALTMON, object_from_map } from './pager.js';
 import { mhidden_description } from './pager.js';
 import { m_move } from './monmove.js';
 import { setuwep } from './wield.js';
@@ -695,14 +695,20 @@ export async function that_is_a_mimic(mtmp, mimic_flags) {
                 fmt = `That ${explanation} actually is %s!`;
             }
         } else if (glyph?.kind === 'obj') {
-            const fake = mksobj(glyph.otyp, false, false);
-            if (fake.oclass === OCLASSES.COIN_CLASS)
-                fake.quan = 2;
-            else if (fake.otyp === ONAMES.SLIME_MOLD)
-                fake.spe = game.context?.current_fruit || 0;
-            const fake_name = simpleonames(fake);
-            fmt = `${is_plural(fake) ? 'Those' : 'That'} ${fake_name} `
-                + `${otense(fake, 'are')} %s!`;
+            /* object_from_map() manufactures the fake object (one rnd(2)
+               for its id) and stops its timers; it is freed right after
+               naming, so a corpse or egg disguise leaves no dangling timer
+               for relink_timers() to trip over on the next level change */
+            const { otmp, fake: fakeobj } =
+                object_from_map(glyph, mtmp.mx, mtmp.my);
+            const otmp_name = (otmp && otmp.otyp !== ONAMES.STRANGE_OBJECT)
+                              ? simpleonames(otmp) : 'strange object';
+            fmt = `${(otmp && is_plural(otmp)) ? 'Those' : 'That'} ${otmp_name} `
+                + `${otmp ? otense(otmp, 'are') : 'is'} %s!`;
+            if (fakeobj && otmp) {
+                otmp.where = OBJ_FREE; /* object_from_map set to OBJ_FLOOR */
+                obfree(otmp, null);
+            }
         } else if (glyph?.kind === 'mon') {
             const shown = game.mons[mtmp.mappearance];
             if (shown)

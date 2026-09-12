@@ -34,6 +34,13 @@ import {
     tty_destroy_nhwindow, NHW_MENU, NHW_TEXT,
 } from './tty/wintty.js';
 import { xwaitforspace } from './tty/getline.js';
+import { Has_contents } from './obj.js';
+import { OBJ_INVENT } from './obj.js';
+import { OBJ_FLOOR } from './obj.js';
+import { OBJ_MINVENT } from './obj.js';
+import { OBJ_MIGRATING } from './obj.js';
+import { OBJ_BURIED } from './obj.js';
+import { DEADMONSTER } from './monst.js';
 
 const Moloch = 'Moloch';
 
@@ -43,6 +50,53 @@ function note_unported(what) {
 
 // src/questpgr.c:67 is_quest_artifact() — the CURRENT role's quest artifact
 // only; other roles' artifacts do not count. Pure state test, no draw.
+// src/questpgr.c:73 find_qarti() — the quest artifact in an object chain,
+// looking inside containers.
+function find_qarti(ochain) {
+    let qarti;
+
+    for (const otmp of (ochain || [])) {
+        if (is_quest_artifact(otmp))
+            return otmp;
+        if (Has_contents(otmp) && (qarti = find_qarti(otmp.cobj)) != null)
+            return qarti;
+    }
+    return null;
+}
+
+// src/questpgr.c:89 find_quest_artifact() — check several object chains for
+// the quest artifact to determine whether it is present on the current level.
+export function find_quest_artifact(whichchains) {
+    let qarti = null;
+
+    if ((whichchains & (1 << OBJ_INVENT)) !== 0)
+        qarti = find_qarti(game.invent);
+    if (!qarti && (whichchains & (1 << OBJ_FLOOR)) !== 0)
+        qarti = find_qarti(game.level?.objects);
+    if (!qarti && (whichchains & (1 << OBJ_MINVENT)) !== 0)
+        for (const mtmp of (game.level?.monsters || [])) {
+            if (DEADMONSTER(mtmp))
+                continue;
+            if ((qarti = find_qarti(mtmp.minvent)) != null)
+                break;
+        }
+    if (!qarti && (whichchains & (1 << OBJ_MIGRATING)) !== 0) {
+        /* check migrating objects and minvent of migrating monsters */
+        for (const mtmp of (game.migrating_mons || [])) {
+            if (DEADMONSTER(mtmp))
+                continue;
+            if ((qarti = find_qarti(mtmp.minvent)) != null)
+                break;
+        }
+        if (!qarti)
+            qarti = find_qarti(game.migrating_objs);
+    }
+    if (!qarti && (whichchains & (1 << OBJ_BURIED)) !== 0)
+        qarti = find_qarti(game.level?.buriedobjs);
+
+    return qarti;
+}
+
 export function is_quest_artifact(otmp) {
     return (otmp.oartifact ?? 0) === game.urole.questarti;
 }

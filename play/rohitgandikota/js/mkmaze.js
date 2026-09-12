@@ -82,9 +82,14 @@ function note_unported_mkmaze(what) {
     (game.unported ||= new Set()).add(what);
 }
 
-// include/sp_lev.h lev_region types
-export const LR_TELE = 0, LR_UPTELE = 1, LR_DOWNTELE = 2, LR_PORTAL = 3,
-             LR_BRANCH = 4, LR_UPSTAIR = 5, LR_DOWNSTAIR = 6;
+// include/dungeon.h:35 enum level_region_types — the values live in
+// js/const.js; re-exported here because the lregion callers import them
+// from this file. sp_lev.js's teleport regions and exclusion zones use the
+// same scale, so LR_MONGEN never collides with LR_PORTAL.
+import { LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_PORTAL, LR_BRANCH, LR_UPSTAIR,
+         LR_DOWNSTAIR } from './const.js';
+export { LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_PORTAL, LR_BRANCH, LR_UPSTAIR,
+         LR_DOWNSTAIR };
 
 // src/mkmaze.c:1127 makemaz() — build a special (or proto-filled) level.
 // Returns true after either a registered level script or the random-maze
@@ -157,6 +162,22 @@ export async function makemaz(s) {
 export const within_bounded_area = (x, y, lx, ly, hx, hy) =>
     (x >= lx && x <= hx && y >= ly && y <= hy);
 
+// src/mkmaze.c:317 is_exclusion_zone() — is <x,y> inside a des.exclusion()
+// zone of the given type? Teleport regions of a direction also honour the
+// plain "teleport" zones.
+export function is_exclusion_zone(type, x, y) {
+    for (const ez of (game.exclusion_zones || [])) {
+        if (((type === LR_DOWNTELE
+              && (ez.zonetype === LR_DOWNTELE || ez.zonetype === LR_TELE))
+             || (type === LR_UPTELE
+                 && (ez.zonetype === LR_UPTELE || ez.zonetype === LR_TELE))
+             || type === ez.zonetype)
+            && within_bounded_area(x, y, ez.lx, ez.ly, ez.hx, ez.hy))
+            return true;
+    }
+    return false;
+}
+
 // src/mkmaze.c:341 bad_location()
 function bad_location(x, y, nlx, nly, nhx, nhy) {
     const typ = game.level.at(x, y)?.typ;
@@ -170,8 +191,8 @@ function bad_location(x, y, nlx, nly, nhx, nhy) {
 // src/mkmaze.c:413 put_lregion_here() — one attempt at placing the region
 // object (or the hero) at x,y.
 async function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
-    /* is_exclusion_zone(): no exclusion regions exist in this port */
-    if (bad_location(x, y, nlx, nly, nhx, nhy)) {
+    if (bad_location(x, y, nlx, nly, nhx, nhy)
+        || is_exclusion_zone(rtype, x, y)) {
         if (!oneshot) {
             return false; /* caller should try again */
         } else {
@@ -185,7 +206,8 @@ async function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
                     mtmp.mtrapped = 0;
                 deltrap(t);
             }
-            if (bad_location(x, y, nlx, nly, nhx, nhy))
+            if (bad_location(x, y, nlx, nly, nhx, nhy)
+                || is_exclusion_zone(rtype, x, y))
                 return false;
         }
     }

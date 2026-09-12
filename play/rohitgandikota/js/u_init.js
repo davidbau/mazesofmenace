@@ -511,8 +511,7 @@ export function u_init_role() {
         ini_inv(TROBJ.Wizard);
         if (!rn2(5)) ini_inv(TROBJ.Blindfold);
         break;
-    default:
-        (game.unported ||= new Set()).add(`u_init_role mnum=${role}`);
+    default: /* impossible */
         break;
     }
 }

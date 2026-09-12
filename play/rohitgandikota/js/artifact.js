@@ -94,10 +94,64 @@ import { ONAME_VIA_NAMING, ONAME_WISH, ONAME_GIFT, ONAME_VIA_DIP,
          nothing_happens, A_CON, A_WIS, KILLED_BY, W_ARM, W_WEP, W_ART, W_ARTI,
          SICK_ALL,
          I_SPECIAL, TIMEOUT, W_SWAPWEP, W_QUIVER, W_BALL, W_SADDLE,
+         W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU, W_AMUL, W_RINGL, W_RINGR, W_TOOL,
          DISMOUNT_THROWN, IS_ALTAR } from './const.js';
 import { obj_shuffle_range } from './o_init.js';
 import { OBJ_DESCR } from './objnam.js';
 import { PROTECTION } from './const.js';
+import { use_crystal_ball } from './detect.js';
+import { carried } from './obj.js';
+import { seffects } from './read.js';
+import { charge_ok } from './read.js';
+import { recharge } from './read.js';
+import { litroom } from './read.js';
+import { getobj } from './invent.js';
+import { update_inventory } from './invent.js';
+import { GETOBJ_ALLOWCNT } from './const.js';
+import { NON_PM } from './const.js';
+import { NHW_MENU } from './const.js';
+import { MENU_BEHAVE_STANDARD } from './const.js';
+import { ATR_NONE } from './tty/wintty.js';
+import { MENU_ITEMFLAGS_NONE } from './const.js';
+import { PICK_ONE } from './const.js';
+import { NO_COLOR } from './terminal.js';
+import { tty_create_nhwindow } from './tty/wintty.js';
+import { tty_start_menu } from './tty/wintty.js';
+import { tty_add_menu } from './tty/wintty.js';
+import { tty_end_menu } from './tty/wintty.js';
+import { tty_select_menu } from './tty/wintty.js';
+import { tty_destroy_nhwindow } from './tty/wintty.js';
+import { depth } from './dungeon.js';
+import { find_hell } from './dungeon.js';
+import { dunlevs_in_dungeon } from './dungeon.js';
+import { ledger_no } from './dungeon.js';
+import { In_endgame } from './const.js';
+import { In_quest } from './const.js';
+import { next_to_u } from './apply.js';
+import { do_blinding_ray } from './apply.js';
+import { goto_level } from './do.js';
+import { is_prince } from './mondata.js';
+import { is_lord } from './mondata.js';
+import { DEADMONSTER } from './monst.js';
+import { isok } from './hacklib.js';
+import { couldsee } from './vision.js';
+import { MSOUND } from './monst_data.js';
+import { Inhell } from './makemon.js';
+import { migrate_mon } from './mon.js';
+import { MIGR_RANDOM } from './const.js';
+import { u_teleport_mon } from './teleport.js';
+import { getdir } from './cmd.js';
+import { mksobj } from './mkobj.js';
+import { throwit } from './dothrow.js';
+import { Never_mind } from './const.js';
+import { nothing_seems_to_happen } from './const.js';
+import { spell_skilltype } from './spell.js';
+import { spelleffects } from './spell.js';
+import { P_SKILL } from './weapon.js';
+import { P_EXPERT } from './const.js';
+import { lightdamage } from './zap.js';
+import { flashburn } from './zap.js';
+import { impossible } from './pline.js';
 
 /* include/artilist.h — artilist[i].otyp, resolved from the generated
    ONAMES-key table. Index 0 is the dummy (STRANGE_OBJECT == 0). */
@@ -441,6 +495,106 @@ export function arti_cost(obj) {
     return get_artifact(obj).cost || 100 * base;
 }
 
+// src/artifact.c:2320 abil_to_adtyp() — the damage type an artifact must
+// defend against to convey this extrinsic property (the JS property key
+// stands in for the C's &EFoo pointer).
+function abil_to_adtyp(abil) {
+    const abil2adtyp = [
+        ['FIRE_RES', ADTYPES.AD_FIRE],
+        ['COLD_RES', ADTYPES.AD_COLD],
+        ['SHOCK_RES', ADTYPES.AD_ELEC],
+        ['ANTIMAGIC', ADTYPES.AD_MAGM],
+        ['DISINT_RES', ADTYPES.AD_DISN],
+        ['POISON_RES', ADTYPES.AD_DRST],
+        ['DRAIN_RES', ADTYPES.AD_DRLI],
+    ];
+    let k;
+
+    for (k = 0; k < abil2adtyp.length; k++) {
+        if (abil2adtyp[k][0] === abil)
+            return abil2adtyp[k][1];
+    }
+    return 0;
+}
+
+// src/artifact.c:2344 abil_to_spfx() — the SPFX flag that conveys this
+// extrinsic property.
+function abil_to_spfx(abil) {
+    const abil2spfx = [
+        ['SEARCHING', SPFX_SEARCH],
+        ['HALLUC_RES', SPFX_HALRES],
+        ['TELEPAT', SPFX_ESP],
+        ['STEALTH', SPFX_STLTH],
+        ['REGENERATION', SPFX_REGEN],
+        ['TELEPORT_CONTROL', SPFX_TCTRL],
+        ['WARN_OF_MON', SPFX_WARN],
+        ['WARNING', SPFX_WARN],
+        ['ENERGY_REGENERATION', SPFX_EREGEN],
+        ['HALF_SPDAM', SPFX_HSPDAM],
+        ['HALF_PHDAM', SPFX_HPHDAM],
+        ['REFLECTING', SPFX_REFLECT],
+    ];
+    let k;
+
+    for (k = 0; k < abil2spfx.length; k++) {
+        if (abil2spfx[k][0] === abil)
+            return abil2spfx[k][1];
+    }
+    return 0;
+}
+
+// src/artifact.c:2376 what_gives() — the inventory object conveying an
+// extrinsic property: an artifact whose carried/worn defense or special
+// flag matches, or the non-artifact worn in the property's slot.
+export function what_gives(abil) {
+    let obj;
+    let dtyp;
+    let spfx;
+    let wornbits;
+    let wornmask = (W_ARM | W_ARMC | W_ARMH | W_ARMS
+                    | W_ARMG | W_ARMF | W_ARMU
+                    | W_AMUL | W_RINGL | W_RINGR | W_TOOL
+                    | W_ART | W_ARTI);
+
+    if (game.u.twoweap)
+        wornmask |= W_SWAPWEP;
+    dtyp = abil_to_adtyp(abil);
+    spfx = abil_to_spfx(abil);
+    wornbits = (wornmask & (game.u.uprops?.[abil] | 0));
+
+    for (obj of (game.invent || [])) {
+        if (obj.oartifact
+            && (abil !== 'WARN_OF_MON' || game.context?.warntype?.obj)) {
+            const art = get_artifact(obj);
+
+            if (art !== artifact_records[ART_NONARTIFACT]) {
+                if (dtyp) {
+                    if (arti_adtyp(art.cary) === dtyp /* carried */
+                        || (arti_adtyp(art.defn) === dtyp /* defends while worn */
+                            && ((obj.owornmask | 0) & ~(W_ART | W_ARTI))))
+                        return obj;
+                }
+                if (spfx) {
+                    /* property conferred when carried */
+                    if (((art.cspfx | 0) & spfx) === spfx)
+                        return obj;
+                    /* property conferred when wielded or worn */
+                    if (((art.spfx | 0) & spfx) === spfx && obj.owornmask)
+                        return obj;
+                }
+                if (obj === game.u.uwep && abil === 'BLND_RES'
+                    && ((game.u.uprops?.BLND_RES | 0) & W_WEP) !== 0) {
+                    return obj; /* Sunsword */
+                }
+            }
+        } else {
+            if (wornbits && wornbits === (wornmask & (obj.owornmask | 0)))
+                return obj;
+        }
+    }
+    return null;
+}
+
 // src/artifact.c:2264 artifact_light(). Sunsword is always a light source;
 // gold dragon armor emits light only while worn as the suit.
 export function artifact_light(obj) {
@@ -513,21 +667,6 @@ const ARTIFACT_SPFX_PROPS = [
     [SPFX_TCTRL, 'TELEPORT_CONTROL'], [SPFX_HSPDAM, 'HALF_SPDAM'],
     [SPFX_HPHDAM, 'HALF_PHDAM'], [SPFX_PROTECT, 'PROTECTION'],
 ];
-
-// src/attrib.c what_gives(), carried-artifact arm used by debug attributes.
-export function carried_artifact_conveys(obj, key) {
-    const art = get_artifact(obj);
-    if (art === artifact_records[0])
-        return false;
-    if (ARTIFACT_DEFENSE_PROPS.get(arti_adtyp(art.cary)) === key)
-        return true;
-    const spfx = art.cspfx | 0;
-    if (ARTIFACT_SPFX_PROPS.some(([bit, prop]) => prop === key && (spfx & bit)))
-        return true;
-    if (spfx & SPFX_WARN)
-        return (mtype_value(art) ? 'WARN_OF_MON' : 'WARNING') === key;
-    return false;
-}
 
 // src/artifact.c:524 confers_luck(), SPFX_LUCK applies while carried.
 export function artifact_confers_luck(obj) {
@@ -859,10 +998,6 @@ export async function touch_artifact(obj, mon) {
    test synchronous so item-search predicates remain synchronous. */
 export function touch_artifact_mon(obj, mon) {
     return artifact_touch_decision(obj, mon).allowed ? 1 : 0;
-}
-
-function note_unported_art(what) {
-    (game.unported ||= new Set()).add(what);
 }
 
 // src/artifact.c:2508 retouch_object(), check whether the hero can still
@@ -1222,7 +1357,8 @@ async function invoke_property(obj, prop) {
         obj.age = game.moves + rnz(100);
 
     if ((eprop & ~W_ARTI) || game.u.intrinsic?.[prop]) {
-        note_unported_art('arti_invoke:property_already_present');
+        /* you had the property from some other source too */
+        await nothing_special(obj);
         return ECMD_TIME;
     }
 
@@ -1253,8 +1389,204 @@ async function invoke_property(obj, prop) {
             await Your('body seems to unfade...');
         break;
     default:
-        note_unported_art(`arti_invoke:property=${prop}`);
         break;
+    }
+    return ECMD_TIME;
+}
+
+// src/artifact.c:1769 invoke_taming() — a pseudo scroll of taming
+async function invoke_taming(obj) {
+    const pseudo = { otyp: ONAMES.SCR_TAMING, oclass: 0, blessed: 0, cursed: 0,
+                     spe: 0, quan: 1, o_id: 0 }; /* cg.zeroobj + otyp */
+    await seffects(pseudo);
+    return ECMD_TIME;
+}
+
+// src/artifact.c:1848 invoke_charge_obj()
+async function invoke_charge_obj(obj) {
+    const oart = get_artifact(obj);
+    const otmp = await getobj('charge', charge_ok,
+                              GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
+    let b_effect;
+
+    if (!otmp) {
+        obj.age = 0;
+        return ECMD_CANCEL;
+    }
+    b_effect = (obj.blessed && (role_matches(oart.role)
+                                || oart.role === 'NON_PM' || oart.role === NON_PM));
+    await recharge(otmp, b_effect ? 1 : obj.cursed ? -1 : 0);
+    update_inventory();
+    return ECMD_TIME;
+}
+
+// src/artifact.c:1867 invoke_create_portal()
+async function invoke_create_portal(obj) {
+    let i, num_ok_dungeons, last_ok_dungeon = 0;
+    const newlev = { dnum: 0, dlevel: 0 };
+    const tmpwin = tty_create_nhwindow(NHW_MENU);
+
+    tty_start_menu(tmpwin, MENU_BEHAVE_STANDARD);
+    /* use index+1 (can't use 0) as identifier */
+    for (i = num_ok_dungeons = 0; i < game.n_dgns; i++) {
+        if (!game.dungeons[i].dunlev_ureached)
+            continue;
+        if (i === game.tutorial_dnum) /* can't portal into tutorial */
+            continue;
+        tty_add_menu(tmpwin, null, i + 1, 0, 0, ATR_NONE, NO_COLOR,
+                     game.dungeons[i].dname, MENU_ITEMFLAGS_NONE);
+        num_ok_dungeons++;
+        last_ok_dungeon = i;
+    }
+    tty_end_menu(tmpwin, 'Open a portal to which dungeon?');
+    if (num_ok_dungeons > 1) {
+        /* more than one entry; display menu for choices */
+        const selected = await tty_select_menu(tmpwin, PICK_ONE);
+        if (selected.cancelled || selected.length <= 0) {
+            tty_destroy_nhwindow(tmpwin);
+            await nothing_special(obj);
+            return ECMD_TIME;
+        }
+        i = selected[0] - 1;
+    } else
+        i = last_ok_dungeon; /* also first & only OK dungeon */
+    tty_destroy_nhwindow(tmpwin);
+
+    /*
+     * i is now index into dungeon structure for the new dungeon.
+     * Find the closest level in the given dungeon, open
+     * a use-once portal to that dungeon and go there.
+     * The closest level is either the entry or dunlev_ureached.
+     */
+    newlev.dnum = i;
+    if (game.dungeons[i].depth_start >= depth(game.u.uz))
+        newlev.dlevel = game.dungeons[i].entry_lev;
+    else
+        newlev.dlevel = game.dungeons[i].dunlev_ureached;
+    if (game.u.uhave?.amulet || In_endgame(game.u.uz) || In_endgame(newlev)
+        || newlev.dnum === game.u.uz.dnum || !(await next_to_u())) {
+        await You_feel('very disoriented for a moment.');
+    } else {
+        if (!Blind())
+            await You('are surrounded by a shimmering sphere!');
+        else
+            await You_feel('weightless for a moment.');
+        await goto_level(newlev, false, false, false);
+    }
+    return ECMD_TIME;
+}
+
+// src/artifact.c:1963 invoke_banish() — demons in view go to Gehennom
+async function invoke_banish(obj) {
+    let nvanished = 0, nstayed = 0;
+    const dest = { dnum: 0, dlevel: 0 };
+    const is_dprince = (ptr) => is_demon(ptr) && is_prince(ptr);
+    const is_dlord = (ptr) => is_demon(ptr) && is_lord(ptr);
+
+    find_hell(dest);
+    for (const mtmp of [...(game.level?.monsters || [])]) {
+        let chance = 1;
+
+        if (DEADMONSTER(mtmp) || !isok(mtmp.mx, mtmp.my))
+            continue;
+        if (!is_demon(mtmp.data) && mtmp.data.mlet !== MONSYMS.S_IMP)
+            continue;
+        if (!couldsee(mtmp.mx, mtmp.my))
+            continue;
+        if (mtmp.data.msound === MSOUND.MS_NEMESIS)
+            continue;
+        if (In_quest(game.u.uz) && !game.quest_status?.killed_nemesis)
+            chance += 10;
+        if (is_dprince(mtmp.data))
+            chance += 2;
+        if (is_dlord(mtmp.data))
+            chance++;
+        mtmp.msleeping = mtmp.mtame = mtmp.mpeaceful = 0;
+        if (chance <= 1 || !rn2(chance)) {
+            if (!Inhell()) {
+                nvanished++;
+                /* banish to a random level in Gehennom */
+                dest.dlevel = rn2(dunlevs_in_dungeon(dest));
+                await migrate_mon(mtmp, ledger_no(dest), MIGR_RANDOM);
+            } else {
+                await u_teleport_mon(mtmp, false);
+            }
+        } else {
+            nstayed++;
+        }
+    }
+    if (nvanished) {
+        let subject = 'demons';
+
+        if (nvanished === 1)
+            subject = subject.slice(0, -1); /* remove 's' */
+        await pline(`${nstayed ? ((nvanished > nstayed)
+                                  ? 'Most of the'
+                                  : 'Some of the')
+                     : 'The'} ${subject} ${vtense(subject, 'disappear')} in a cloud of brimstone!`);
+    }
+    return ECMD_TIME;
+}
+
+// src/artifact.c:2022 invoke_fling_poison()
+async function invoke_fling_poison(obj) {
+    if (await getdir(null)) {
+        const venom = rn2(2) ? ONAMES.BLINDING_VENOM : ONAMES.ACID_VENOM;
+        const otmp = mksobj(venom, true, false);
+
+        otmp.spe = 1; /* the poison is yours */
+        await throwit(otmp, 0, false, null);
+    } else {
+        /* no direction picked */
+        await pline(Never_mind);
+        obj.age = game.moves;
+        return ECMD_CANCEL;
+    }
+    return ECMD_TIME;
+}
+
+// src/artifact.c:2040 invoke_storm_spell() — cast at Expert regardless of skill
+async function invoke_storm_spell(obj) {
+    const oart = get_artifact(obj);
+    const storm = oart.inv_prop === 'SNOWSTORM' ? ONAMES.SPE_CONE_OF_COLD : ONAMES.SPE_FIREBALL;
+    const skill = spell_skilltype(storm);
+    const expertise = P_SKILL(skill);
+
+    game.u.weapon_skills[skill].skill = P_EXPERT;
+    await spelleffects(storm, false, true);
+    game.u.weapon_skills[skill].skill = expertise;
+    return ECMD_TIME;
+}
+
+// src/artifact.c:2054 invoke_blinding_ray()
+async function invoke_blinding_ray(obj) {
+    if (await getdir(null)) {
+        if (game.u.dx || game.u.dy) {
+            await do_blinding_ray(obj);
+        } else if (game.u.dz) {
+            /* up or down => light this map spot; litroom() uses
+               radius 0 for Sunsword, except on Rogue level where
+               whole room gets lit and corridor spots remain unlit */
+            await litroom(true, obj);
+            const here = game.level.at(game.u.ux, game.u.uy);
+            await pline(((!Blind() && here.lit && !here.waslit)
+                         ? 'It is lit here now.'
+                         : nothing_seems_to_happen));
+        } else { /* zapyourself() */
+            const vulnerable = (game.u.umonnum === PMNAMES.PM_GREMLIN);
+            const damg = obj.blessed ? 15 : !obj.cursed ? 10 : 5;
+
+            if (vulnerable) /* could be fatal if Unchanging */
+                await lightdamage(obj, true, 2 * damg);
+            if (!(await flashburn(damg + rnd(damg), false))
+                && !vulnerable)
+                await pline(nothing_seems_to_happen);
+        }
+    } else {
+        /* no direction picked */
+        await pline(Never_mind);
+        obj.age = game.moves;
+        return ECMD_CANCEL;
     }
     return ECMD_TIME;
 }
@@ -1284,7 +1616,7 @@ export async function doinvoke() {
     const oart = get_artifact(obj);
     if (!obj.oartifact || !oart.inv_prop) {
         if (obj.otyp === ONAMES.CRYSTAL_BALL)
-            note_unported_art('arti_invoke:crystal_ball');
+            await use_crystal_ball(obj);
         else {
             const { pline } = await import('./display.js');
             await pline(nothing_happens);
@@ -1300,6 +1632,8 @@ export async function doinvoke() {
         return ECMD_TIME;
 
     switch (oart.inv_prop) {
+    case 'TAMING':
+        return invoke_taming(obj);
     case 'HEALING':
         return invoke_healing(obj);
     case 'ENERGY_BOOST':
@@ -1315,12 +1649,25 @@ export async function doinvoke() {
         await level_tele();
         return ECMD_TIME;
     }
+    case 'CHARGE_OBJ':
+        return invoke_charge_obj(obj);
+    case 'CREATE_PORTAL':
+        return invoke_create_portal(obj);
+    case 'BANISH':
+        return invoke_banish(obj);
+    case 'FLING_POISON':
+        return invoke_fling_poison(obj);
+    case 'SNOWSTORM':
+        /*FALLTHRU*/
+    case 'FIRESTORM':
+        return invoke_storm_spell(obj);
+    case 'BLINDING_RAY':
+        return invoke_blinding_ray(obj);
     default:
+        impossible(`Unknown invoke power ${oart.inv_prop}.`);
         break;
     }
-
-    note_unported_art(`arti_invoke:special_power=${oart.inv_prop}`);
-    return ECMD_TIME;
+    return ECMD_OK;
 }
 
 // src/artifact.c:409 found_artifact()

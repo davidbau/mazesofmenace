@@ -49,7 +49,16 @@ export function rn2_on_display_rng(x) {
         for (let i = 0; i < 8; i++) { bytes[i] = Number(s & 0xFFn); s >>= 8n; }
         game.dispCtx = isaac64_init(bytes);
     }
-    return Number(isaac64_next_uint64(game.dispCtx) % BigInt(x));
+    const val = Number(isaac64_next_uint64(game.dispCtx) % BigInt(x));
+    /* debug seam, like NETHACK_RNGLOG_DISP for the C recorder: log the
+       display draws with the same ~d prefix so they can be lined up */
+    if (_rngLogEnabled && globalThis.__rng_log_disp) {
+        _rngLog.push(_site(`~drn2(${x})=${val}`));
+        if (globalThis.__rng_stack_at !== undefined
+            && _rngLog.length - 1 === globalThis.__rng_stack_at)
+            console.error('RNGSTACK', _rngLog.length - 1, new Error().stack);
+    }
+    return val;
 }
 
 // C ref: rn2(x) — random number 0..x-1

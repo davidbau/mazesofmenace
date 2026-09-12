@@ -17,6 +17,20 @@
 // column 0 with the cursor at [9,23].
 
 import { game } from './../gstate.js';
+import { MAXBLSTATS, BL_FLUSH, BL_RESET, BL_TITLE, BL_STR, BL_DX, BL_CO, BL_IN, BL_WI, BL_CH, BL_ALIGN, BL_SCORE, BL_CAP, BL_GOLD, BL_ENE, BL_ENEMAX, BL_XP, BL_AC, BL_HD, BL_TIME, BL_HUNGER, BL_HP, BL_HPMAX, BL_LEVELDESC, BL_EXP, BL_CONDITION, BL_WEAPON, BL_ARMOR, BL_TERRAIN, BL_VERS, HL_BOLD, HL_DIM, HL_ITALIC, HL_ULINE, HL_BLINK, HL_INVERSE, HL_ATTCLR_BOLD, HL_ATTCLR_DIM, HL_ATTCLR_ITALIC, HL_ATTCLR_ULINE, HL_ATTCLR_BLINK, HL_ATTCLR_INVERSE, BL_ATTCLR_MAX, CLR_MAX } from './../const.js';
+import { genl_status, genl_status_init, genl_status_finish, genl_status_enablefield } from './../windows.js';
+/* botl.js wires the status pieces the renderer needs (conditions[],
+   cond_idx(), stat_cap_indx(), repad_with_dashes(), status_initialize());
+   a static import here closes an evaluation cycle through coloratt.js */
+let botl_fns = {};
+export function wintty_wire_botl(fns) { botl_fns = fns; }
+const conditions = () => botl_fns.conditions;
+const cond_idx = () => botl_fns.cond_idx();
+const stat_cap_indx = () => botl_fns.stat_cap_indx();
+const repad_with_dashes = (b) => botl_fns.repad_with_dashes(b);
+const status_initialize = (r) => botl_fns.status_initialize(r);
+import { critically_low_hp } from './../pray.js';
+import { impossible } from './../pline.js';
 import { TOPLINE_EMPTY, TOPLINE_NEED_MORE, more } from './../display.js';
 import { tty_clear_nhwindow_message, row_refresh, bot,
          docrt_sync_rebuild } from './../display.js';
@@ -161,6 +175,21 @@ export function tty_create_nhwindow(type) {
         npages: 0,
         cancelled: false,
     };
+    /* win/tty/wintty.c:1206 the NHW_STATUS arm: status window, 2 or 3
+       lines long, full width, bottom of screen */
+    if (type === NHW_STATUS) {
+        const iflags = (game.iflags ||= {});
+        if ((iflags.wc2_statuslines | 0) < 2 || (iflags.wc2_statuslines | 0) > 3)
+            iflags.wc2_statuslines = 2;
+        win.offx = 0;
+        const rowoffset = ROWS - iflags.wc2_statuslines;
+        win.offy = Math.min(rowoffset, ROWNO + 1);
+        win.rows = win.maxrow = iflags.wc2_statuslines;
+        win.cols = win.maxcol = COLS;
+        win.data = [];
+        for (let i = 0; i < win.maxrow; ++i)
+            win.data[i] = new Array(win.cols).fill(' ');
+    }
     windows[win.id] = win;
     return win.id;
 }
@@ -181,6 +210,20 @@ export function tty_destroy_nhwindow(window) {
 export function tty_clear_nhwindow(window) {
     const cw = windows[window];
     if (!cw) return;
+    if (cw.type === NHW_STATUS) {
+        /* win/tty/wintty.c:1332 the NHW_STATUS arm: erase the rows, blank
+           the window data and ask for a full status redraw */
+        const display = game?.nhDisplay;
+        const m = cw.maxrow, n = cw.cols;
+        for (let i = 0; i < m; ++i) {
+            if (display && !game._erasing_tty_screen)
+                for (let x = 0; x < COLS; x++)
+                    display.setCell(x, cw.offy + i, ' ', NO_COLOR, 0); /* cl_end() */
+            cw.data[i] = new Array(n).fill(' ');
+        }
+        (game.disp ||= {}).botlx = true;
+        return;
+    }
     if (cw.type === NHW_MENU || cw.type === NHW_TEXT) {
         cw.data = [];
         cw.attrs = [];
@@ -899,8 +942,13 @@ export async function tty_select_menu(window, how) {
            found there is MENU_EXPLICIT_CHOICE before map_menu_cmd() runs, so
            ':' selects a ':' entry instead of opening search and ',' picks
            the entry whose group accelerator is ',' instead of selecting the
-           page. The default arm tests gacc before the selectors. */
-        if (gacc.includes(morc)) {
+           page. The boundary covers the group accelerators only for a
+           PICK_ONE menu (wintty.c:1530); in a PICK_ANY menu a group
+           accelerator that is also a menu command is the command ('.' with
+           a venom entry selects everything), and one that is not reaches
+           the default arm, which tests gacc before the selectors. */
+        if (gacc.includes(morc)
+            && (how === PICK_ONE || !'^|><.-@,\\~:'.includes(morc))) {
             /* group accelerator; for the PICK_ONE case, we know that it
                matches exactly one item in order to be in gacc[] */
             invert_all(window, cw.curr_page, morc,
@@ -1197,4 +1245,846 @@ export async function bail(mesg) {
     const sig = new Error('nh_terminate');
     sig.__nh_gameover = true;
     throw sig;
+}
+
+/* ---------------------------------------------------------------------------
+ * win/tty/wintty.c:4225 the status line rendering (STATUS_HILITES).
+ * The tty statics (tty_status[NOW/BEFORE][], tty_condition_bits,
+ * tty_colormasks, hpbar_percent, finalx[][], the shrink levels) live on
+ * game._tty_status so that a fresh game starts them over.
+ * ------------------------------------------------------------------------- */
+
+const NOW = 1, BEFORE = 0;
+const MAX_STATUS_ROWS = 3;
+const StatusRows = () => (((game.iflags?.wc2_statuslines | 0) <= 2) ? 2 : MAX_STATUS_ROWS);
+const FORCE_RESET = true, NO_RESET = false;
+
+/* win/tty/wintty.c:4268 encvals[][] */
+const encvals = [
+    ['', 'Burdened', 'Stressed', 'Strained', 'Overtaxed', 'Overloaded'],
+    ['', 'Burden',   'Stress',   'Strain',   'Overtax',   'Overload'  ],
+    ['', 'Brd',      'Strs',     'Strn',     'Ovtx',      'Ovld'      ],
+];
+const blPAD = BL_FLUSH;
+/* win/tty/wintty.c:4278 the 2 or 3 status line field orders */
+const twolineorder = [
+    [BL_TITLE, BL_STR, BL_DX, BL_CO, BL_IN, BL_WI, BL_CH, BL_ALIGN,
+     BL_SCORE, BL_FLUSH],
+    [BL_LEVELDESC, BL_GOLD, BL_HP, BL_HPMAX, BL_ENE, BL_ENEMAX,
+     BL_AC, BL_XP, BL_EXP, BL_HD, BL_TIME, BL_HUNGER, BL_CAP,
+     BL_CONDITION, BL_WEAPON, BL_ARMOR, BL_TERRAIN, BL_VERS, BL_FLUSH],
+    /* third row of array isn't used for twolineorder */
+    [BL_FLUSH],
+];
+/* Align moved from 1 to 2, Leveldesc+Time+Cond+Vers moved from 2 to 3 */
+const threelineorder = [
+    [BL_TITLE, BL_STR, BL_DX, BL_CO, BL_IN, BL_WI, BL_CH, BL_SCORE, BL_FLUSH],
+    [BL_ALIGN, BL_GOLD, BL_HP, BL_HPMAX, BL_ENE, BL_ENEMAX,
+     BL_AC, BL_XP, BL_EXP, BL_HD, BL_HUNGER, BL_CAP, BL_FLUSH],
+    [BL_LEVELDESC, BL_TIME, BL_CONDITION, BL_WEAPON, BL_ARMOR, BL_TERRAIN,
+     BL_VERS, BL_FLUSH],
+];
+/* do_field_opt: skip fields that aren't flagged as requiring updating
+   during the current render_status() */
+const do_field_opt = 1;
+
+function tty_status_state() {
+    return game._tty_status;
+}
+
+// win/tty/wintty.c:4336 tty_status_init() — initialize the tty-specific
+// data structures; call genl_status_init() to initialize the general data.
+export function tty_status_init() {
+    let i;
+    const num_rows = StatusRows(); /* 2 or 3 */
+    const st = {
+        fieldorder: (num_rows !== 3) ? twolineorder : threelineorder,
+        tty_status: [[], []],
+        tty_condition_bits: 0,
+        tty_colormasks: null,
+        hpbar_percent: 0, hpbar_crit_hp: 0,
+        finalx: [[0, 0], [0, 0], [0, 0]],    /* [rows][NOW or BEFORE] */
+        windowdata_init: false,
+        cond_shrinklvl: 0,
+        enclev: 0, enc_shrinklvl: 0,
+        dlvl_shrinklvl: 0,
+        truncation_expected: false,
+        cur_color: NO_COLOR, cur_attr: 0,
+    };
+
+    for (i = 0; i < MAXBLSTATS; ++i) {
+        st.tty_status[NOW][i] = { idx: BL_FLUSH, color: NO_COLOR, attr: ATR_NONE,
+                                  x: 0, y: 0, lth: 0, valid: false, dirty: false,
+                                  redraw: false, sanitycheck: false };
+        st.tty_status[BEFORE][i] = { ...st.tty_status[NOW][i] };
+    }
+    game._tty_status = st;
+
+    /* let genl_status_init do most of the initialization */
+    genl_status_init();
+}
+
+// win/tty/wintty.c:4364 tty_status_enablefield()
+export function tty_status_enablefield(fieldidx, nm, fmt, enable) {
+    genl_status_enablefield(fieldidx, nm, fmt, enable);
+}
+
+// win/tty/wintty.c:4454 tty_status_update()
+export function tty_status_update(fldidx, ptr, chg, percent, color, colormasks) {
+    let attrmask;
+    let text = ptr;
+    let fmt;
+    let reset_state = NO_RESET;
+    const st = tty_status_state();
+    const g = genl_status();
+    const tty_status = st.tty_status;
+
+    if ((fldidx < BL_RESET) || (fldidx >= MAXBLSTATS))
+        return;
+
+    if ((fldidx >= 0 && fldidx < MAXBLSTATS) && !g.status_activefields[fldidx])
+        return;
+
+    switch (fldidx) {
+    case BL_RESET:
+        reset_state = FORCE_RESET;
+        /*FALLTHRU*/
+    case BL_FLUSH:
+        if (make_things_fit(reset_state) || st.truncation_expected) {
+            render_status();
+        }
+        return;
+    case BL_CONDITION:
+        tty_status[NOW][fldidx].idx = fldidx;
+        st.tty_condition_bits = ptr >>> 0;
+        st.tty_colormasks = colormasks;
+        tty_status[NOW][fldidx].valid = true;
+        tty_status[NOW][fldidx].dirty = true;
+        tty_status[NOW][fldidx].sanitycheck = true;
+        st.truncation_expected = false;
+        break;
+    case BL_GOLD:
+        /* text = decode_mixed(goldbuf, text): the gold symbol is already
+           plain here */
+        /*FALLTHRU*/
+    default:
+        attrmask = (color >> 8) & 0x00ff;
+        fmt = g.status_fieldfmt[fldidx];
+        if (!fmt)
+            fmt = '%s';
+        /* should be checking for first enabled field here rather than
+           just first field, but 'fieldorder' doesn't start any rows
+           with fields which can be disabled so [any_row][0] suffices */
+        if (fmt[0] === ' ' && (fldidx === st.fieldorder[0][0]
+                               || fldidx === st.fieldorder[1][0]
+                               || fldidx === st.fieldorder[2][0]))
+            fmt = fmt.slice(1); /* skip leading space for first field on line */
+        g.status_vals[fldidx] = sprintf_s(fmt, text == null ? '' : String(text));
+        tty_status[NOW][fldidx].idx = fldidx;
+        tty_status[NOW][fldidx].color = (color & 0x00ff);
+        tty_status[NOW][fldidx].attr = term_attr_fixup(attrmask);
+        tty_status[NOW][fldidx].lth = g.status_vals[fldidx].length;
+        tty_status[NOW][fldidx].valid = true;
+        tty_status[NOW][fldidx].dirty = true;
+        tty_status[NOW][fldidx].sanitycheck = true;
+        break;
+    }
+
+    /* The core botl engine sends a single blank to the window port
+       for carrying-capacity when it's unused. Let's suppress that */
+    if (fldidx >= 0 && fldidx < MAXBLSTATS
+        && tty_status[NOW][fldidx].lth === 1
+        && g.status_vals[fldidx][0] === ' ') {
+        g.status_vals[fldidx] = '';
+        tty_status[NOW][fldidx].lth = 0;
+    }
+
+    /* default processing above was required before these */
+    switch (fldidx) {
+    case BL_HP:
+        if (game.flags?.hitpointbar) {
+            /* Special additional processing for hitpointbar */
+            st.hpbar_percent = percent;
+            st.hpbar_crit_hp = critically_low_hp(true) ? 1 : 0;
+            tty_status[NOW][BL_TITLE].color = (color & 0x00ff);
+            attrmask = HL_INVERSE | (st.hpbar_crit_hp ? HL_BLINK : 0);
+            tty_status[NOW][BL_TITLE].attr = term_attr_fixup(attrmask);
+            tty_status[NOW][BL_TITLE].dirty = true;
+        }
+        break;
+    case BL_LEVELDESC:
+        st.dlvl_shrinklvl = 0; /* caller is passing full length string */
+        /*FALLTHRU*/
+    case BL_HUNGER:
+        /* The core sends trailing blanks for some fields.
+           Let's suppress the trailing blanks */
+        if (tty_status[NOW][fldidx].lth > 0) {
+            const trimmed = g.status_vals[fldidx].replace(/ +$/, '');
+            tty_status[NOW][fldidx].lth -= (g.status_vals[fldidx].length - trimmed.length);
+            g.status_vals[fldidx] = trimmed;
+        }
+        break;
+    case BL_TITLE:
+        /* when hitpointbar is enabled, rendering will enforce a length
+           of 30 on title, padding with spaces or truncating if necessary */
+        if (game.flags?.hitpointbar)
+            tty_status[NOW][fldidx].lth = 30 + 2; /* '[' and ']' */
+        break;
+    case BL_GOLD:
+        /* \GXXXXNNNN counts as 1 [moot since we use decode_mixed() above] */
+        break;
+    case BL_CAP:
+        st.enc_shrinklvl = 0; /* caller is passing full length string */
+        st.enclev = stat_cap_indx();
+        break;
+    }
+    /* As of 3.6.2 we only render on BL_FLUSH (or BL_RESET) */
+    return;
+}
+
+/* the C's Sprintf(buf, fmt, text) for the "%s"/" St:%s"/"(%s)"/"/%s" and
+   "%-30.30s" field formats */
+function sprintf_s(fmt, text) {
+    if (fmt === '%-30.30s')
+        return text.slice(0, 30).padEnd(30);
+    return fmt.replace('%s', text);
+}
+
+// win/tty/termcap.c:1411 term_attr_fixup() — underline, blink and dim keep
+// their sequences on the recorder's terminal, so nothing is converted
+function term_attr_fixup(msk) {
+    return msk;
+}
+
+// win/tty/wintty.c:4583 make_things_fit()
+function make_things_fit(force_update) {
+    let trycnt, fitting = 0, requirement;
+    const rowsz = [0, 0, 0];
+    let num_rows, condrow, otheroptions = 0;
+    const st = tty_status_state();
+    const cw = windows[game.WIN_STATUS];
+
+    num_rows = StatusRows();
+    condrow = num_rows - 1; /* always last row, 1 for 0..1 or 2 for 0..2 */
+    st.cond_shrinklvl = 0;
+    if (st.enc_shrinklvl > 0 && num_rows === 2)
+        shrink_enc(0);
+    if (st.dlvl_shrinklvl > 0)
+        shrink_dlvl(0);
+    set_condition_length();
+    for (trycnt = 0; trycnt < 6 && !fitting; ++trycnt) {
+        /* FIXME: this remeasures each line every time even though it
+           is only attempting to shrink one of them and the other one
+           (or two) remains the same */
+        if (!check_fields(force_update, rowsz)) {
+            fitting = 0;
+            break;
+        }
+
+        requirement = rowsz[condrow] - 1;
+        if (requirement <= cw.cols - 1) {
+            fitting = requirement;
+            break;  /* we're good */
+        }
+        if (trycnt < 2) {
+            if (st.cond_shrinklvl < trycnt + 1) {
+                st.cond_shrinklvl = trycnt + 1;
+                set_condition_length();
+            }
+            continue;
+        }
+        if (st.cond_shrinklvl >= 2) {
+            /* We've exhausted the condition identifiers shrinkage,
+             * so let's try shrinking other things...
+             */
+            if (otheroptions < 2) {
+                /* try shrinking the encumbrance word, but
+                   only when it's on the same line as conditions */
+                if (num_rows === 2)
+                    shrink_enc(otheroptions + 1);
+            } else if (otheroptions === 2) {
+                shrink_dlvl(1);
+            } else {
+                /* Last resort - turn on trunction */
+                st.truncation_expected = true;
+                break;
+            }
+            ++otheroptions;
+        }
+    }
+    return fitting;
+}
+
+// win/tty/wintty.c:4647 check_fields() — figure out where each field
+// should be placed, and flag whether the on-screen details must be
+// updated because they need to change.
+function check_fields(forcefields, sz) {
+    let c, i, row, col, num_rows, idx;
+    let valid = true, matchprev, update_right;
+    const st = tty_status_state();
+    const g = genl_status();
+    const tty_status = st.tty_status;
+
+    if (!st.windowdata_init && !check_windowdata())
+        return false;
+
+    num_rows = StatusRows(); /* 2 or 3 */
+    for (row = 0; row < num_rows; ++row) {
+        sz[row] = 0;
+        col = 1;
+        update_right = false;
+        for (i = 0; (idx = st.fieldorder[row][i]) !== BL_FLUSH; ++i) {
+            if (!g.status_activefields[idx])
+                continue;
+            if (!tty_status[NOW][idx].valid)
+                valid = false;
+            /* might be called more than once for shrink tests, so need
+               to reset these (redraw and x at any rate) each time */
+            tty_status[NOW][idx].redraw = false;
+            tty_status[NOW][idx].y = row;
+            tty_status[NOW][idx].x = col;
+
+            /* On a change to the field location, everything further
+               to the right must be updated as well.  (Not necessarily
+               everything; it's possible for complementary changes across
+               multiple fields to put stuff further right back in sync.) */
+            if (tty_status[NOW][idx].x + tty_status[NOW][idx].lth
+                !== tty_status[BEFORE][idx].x + tty_status[BEFORE][idx].lth)
+                update_right = true;
+            else if (tty_status[NOW][idx].lth !== tty_status[BEFORE][idx].lth
+                     || tty_status[NOW][idx].x !== tty_status[BEFORE][idx].x)
+                tty_status[NOW][idx].redraw = true;
+            else /* in case update_right is set, we're back in sync now */
+                update_right = false;
+
+            matchprev = false; /* assume failure */
+            if (valid && !update_right && !forcefields
+                && !tty_status[NOW][idx].redraw) {
+                /*
+                 * Check values against those already on the display.
+                 *  - Is the additional processing time for this worth it?
+                 */
+                if (do_field_opt
+                    /* color/attr checks aren't right for 'condition'
+                       and neither is examining status_vals[BL_CONDITION]
+                       so skip same-contents optimization for conditions */
+                    && idx !== BL_CONDITION
+                    && (tty_status[NOW][idx].color
+                        === tty_status[BEFORE][idx].color)
+                    && (tty_status[NOW][idx].attr
+                        === tty_status[BEFORE][idx].attr)) {
+                    matchprev = true; /* assume success */
+                    if (tty_status[NOW][idx].dirty) {
+                        /* compare values */
+                        const cw = windows[game.WIN_STATUS];
+                        const nb = g.status_vals[idx];
+                        let k = 0;
+
+                        c = col - 1;
+                        while (k < nb.length && c < cw.cols) {
+                            if (nb[k] !== cw.data[row][c])
+                                break;
+                            k++;
+                            c++;
+                        }
+                        /* if we're not at the end of new string, no match;
+                           we don't need to worry about whether there might
+                           be leftover old string; that could only happen
+                           if they have different lengths, in which case
+                           'update_right' will be set and we won't get here */
+                        if (k < nb.length)
+                            matchprev = false;
+                    }
+                }
+            }
+
+            if (forcefields || update_right
+                || (tty_status[NOW][idx].dirty && !matchprev))
+                tty_status[NOW][idx].redraw = true;
+
+            col += tty_status[NOW][idx].lth;
+        }
+        sz[row] = col;
+    }
+    return valid;
+}
+
+// win/tty/wintty.c:4803 tty_putstatusfield() — this is what places a field
+// on the tty display
+function tty_putstatusfield(text, x, y) {
+    let i, n, ncols, nrows, lth = 0;
+    const cw = windows[game.WIN_STATUS];
+    const st = tty_status_state();
+    const display = game?.nhDisplay;
+
+    if (!cw)
+        throw new Error('tty_putstatusfield: Invalid WinDesc'); /* panic */
+
+    ncols = cw.cols;
+    nrows = cw.maxrow;
+    lth = text.length;
+
+    if (x < ncols && y < nrows) {
+        if (x !== cw.curx || y !== cw.cury)
+            tty_curs_status(cw, x, y);
+        /* the recorder turns any run of five or more spaces of a row into
+           a cursor-forward whatever attributes are in effect, and the
+           judge's decoder restores such a run as plain cells; paint those
+           spaces plain here so the two agree */
+        const plain = new Array(lth).fill(false);
+        for (i = 0; i < lth; ++i) {
+            if (text[i] === ' ') {
+                let e = i;
+                while (e + 1 < lth && text[e + 1] === ' ')
+                    e++;
+                if (e - i + 1 >= 5)
+                    for (let k = i; k <= e; k++)
+                        plain[k] = true;
+                i = e;
+            }
+        }
+        for (i = 0; i < lth; ++i) {
+            n = i + x;
+            if (n < ncols) {
+                if (display)
+                    display.setCell(n - 1 + cw.offx, y + cw.offy, text[i],
+                                    plain[i] ? NO_COLOR : st.cur_color,
+                                    plain[i] ? 0 : st.cur_attr);
+                cw.curx++;
+                cw.data[y][n - 1] = text[i];
+            }
+        }
+    }
+}
+
+/* tty_curs(WIN_STATUS, x, y): the window's cursor; the terminal cursor
+   moves with the last cell written */
+function tty_curs_status(cw, x, y) {
+    cw.curx = x;
+    cw.cury = y;
+}
+
+/* cl_end() on the status window's row from the window cursor on */
+function status_cl_end(cw, y) {
+    const display = game?.nhDisplay;
+    if (!display)
+        return;
+    for (let x = cw.curx - 1 + cw.offx; x < COLS; x++)
+        display.setCell(x, y + cw.offy, ' ', NO_COLOR, 0);
+}
+
+// win/tty/wintty.c:4844 set_condition_length() — caller must set
+// cond_shrinklvl (0..2) before calling us
+function set_condition_length() {
+    let mask;
+    let c, lth = 0;
+    const st = tty_status_state();
+
+    if (st.tty_condition_bits) {
+        for (c = 0; c < conditions().length; ++c) {
+            mask = conditions()[c].mask;
+            if ((st.tty_condition_bits & mask) === mask)
+                lth += 1 + conditions()[c].text[st.cond_shrinklvl].length;
+        }
+    }
+    st.tty_status[NOW][BL_CONDITION].lth = lth;
+}
+
+// win/tty/wintty.c:4860 shrink_enc()
+function shrink_enc(lvl) {
+    const st = tty_status_state();
+    const g = genl_status();
+
+    /* shrink or restore the encumbrance word */
+    if (lvl <= 2) {
+        st.enc_shrinklvl = lvl;
+        g.status_vals[BL_CAP] = ` ${encvals[lvl][st.enclev]}`;
+    }
+    st.tty_status[NOW][BL_CAP].lth = g.status_vals[BL_CAP].length;
+}
+
+// win/tty/wintty.c:4871 shrink_dlvl() — try changing Dlvl: to Dl:
+function shrink_dlvl(lvl) {
+    const st = tty_status_state();
+    const g = genl_status();
+    const colon = g.status_vals[BL_LEVELDESC].indexOf(':');
+
+    if (colon >= 0) {
+        st.dlvl_shrinklvl = lvl;
+        g.status_vals[BL_LEVELDESC] = ((lvl === 0) ? 'Dlvl' : 'Dl')
+                                      + g.status_vals[BL_LEVELDESC].slice(colon);
+        st.tty_status[NOW][BL_LEVELDESC].lth = g.status_vals[BL_LEVELDESC].length;
+    }
+}
+
+// win/tty/wintty.c:4890 check_windowdata() — ensure the underlying status
+// window data start out blank and null-terminated
+function check_windowdata() {
+    const st = tty_status_state();
+
+    if (game.WIN_STATUS == null || !windows[game.WIN_STATUS]) {
+        /* paniclog("check_windowdata", " null status window."); */
+        return false;
+    } else if (!st.windowdata_init) {
+        tty_clear_nhwindow(game.WIN_STATUS); /* also sets cw->data[] to spaces */
+        st.windowdata_init = true;
+    }
+    return true;
+}
+
+// win/tty/wintty.c:4905 condcolor() — return what color this condition
+// should be displayed in based on user settings
+function condcolor(bm, bmarray) {
+    let i;
+
+    if (bm && bmarray)
+        for (i = 0; i < CLR_MAX; ++i) {
+            if ((bm & (bmarray[i] | 0)) !== 0)
+                return i;
+        }
+    return NO_COLOR;
+}
+
+// win/tty/wintty.c:4917 condattr()
+function condattr(bm, bmarray) {
+    let attr = 0;
+    let i;
+
+    if (bm && bmarray) {
+        for (i = HL_ATTCLR_BOLD; i < BL_ATTCLR_MAX; ++i) {
+            if ((bm & (bmarray[i] | 0)) !== 0) {
+                switch (i) {
+                case HL_ATTCLR_BOLD:
+                    attr |= HL_BOLD;
+                    break;
+                case HL_ATTCLR_DIM:
+                    attr |= HL_DIM;
+                    break;
+                case HL_ATTCLR_ITALIC:
+                    attr |= HL_ITALIC;
+                    break;
+                case HL_ATTCLR_ULINE:
+                    attr |= HL_ULINE;
+                    break;
+                case HL_ATTCLR_BLINK:
+                    attr |= HL_BLINK;
+                    break;
+                case HL_ATTCLR_INVERSE:
+                    attr |= HL_INVERSE;
+                    break;
+                }
+            }
+        }
+    }
+    return attr;
+}
+
+/* win/tty/wintty.c:4951 Begin_Attr()/End_Attr() and termcap's
+   term_start_color()/term_end_color(): the attribute and colour a status
+   field is painted with (the judge's decoder keeps inverse, bold and
+   underline; dim, italic and blink leave no cell trace) */
+function Begin_Attr(m) {
+    const st = tty_status_state();
+    if (m) {
+        if (m & HL_BOLD) st.cur_attr |= TERM_BOLD;
+        if (m & HL_ULINE) st.cur_attr |= TERM_UNDERLINE;
+        if (m & HL_INVERSE) st.cur_attr |= TERM_INVERSE;
+    }
+}
+function End_Attr(m) {
+    const st = tty_status_state();
+    if (m) {
+        if (m & HL_INVERSE) st.cur_attr &= ~TERM_INVERSE;
+        if (m & HL_ULINE) st.cur_attr &= ~TERM_UNDERLINE;
+        if (m & HL_BOLD) st.cur_attr &= ~TERM_BOLD;
+    }
+}
+function term_start_color(color) {
+    tty_status_state().cur_color = color;
+}
+function term_end_color() {
+    tty_status_state().cur_color = NO_COLOR;
+}
+
+// win/tty/wintty.c:4992 render_status()
+function render_status() {
+    let mask, bits;
+    let i, x, y, idx, c, ci, row, tlth, num_rows,
+        coloridx = 0, attrmask = 0;
+    let text;
+    const st = tty_status_state();
+    const g = genl_status();
+    const tty_status = st.tty_status;
+    const cw = windows[game.WIN_STATUS];
+
+    if (game.WIN_STATUS == null || !cw) {
+        /* paniclog("render_status", "WIN_ERR on status window."); */
+        return;
+    }
+    const fieldorder = st.fieldorder;
+    const cidx = cond_idx();
+
+    num_rows = StatusRows(); /* 2 or 3 */
+    for (row = 0; row < num_rows; ++row) {
+        y = row;
+        tty_curs_status(cw, 1, y);
+        for (i = 0; (idx = fieldorder[row][i]) !== BL_FLUSH; ++i) {
+            if (!g.status_activefields[idx])
+                continue;
+            x = tty_status[NOW][idx].x;
+            text = g.status_vals[idx]; /* always "" for BL_CONDITION */
+            tlth = tty_status[NOW][idx].lth; /* valid for BL_CONDITION */
+
+            if (tty_status[NOW][idx].redraw || !do_field_opt) {
+                const hitpointbar = (idx === BL_TITLE
+                                     && game.flags?.hitpointbar);
+
+                if (idx === BL_CONDITION) {
+                    /*
+                     * +-----------------+
+                     * | Condition Codes |
+                     * +-----------------+
+                     */
+                    bits = st.tty_condition_bits;
+                    /*
+                     * If no bits are set, we can fall through condition
+                     * rendering code to finalx[] handling (and subsequent
+                     * rest-of-line erasure if line is shorter than before).
+                     *
+                     * First, when conditions are on 3rd row, they might
+                     * be indented to line up with a position on 2nd row.
+                     */
+                    if (row === MAX_STATUS_ROWS - 1 && bits !== 0) {
+                        let cstart, last_col = cw.cols;
+                        const dat = cw.data[y];
+
+                        /* 'version' might follow conditions; if so, adjust
+                           expectations for where conditions should end;
+                           only matters when conditions are being indented */
+                        if (g.status_activefields[BL_VERS]
+                            && fieldorder[row][i + 1] === BL_VERS)
+                            last_col -= tty_status[NOW][BL_VERS].lth;
+                        /* line up with hunger (or where it would have
+                           been when currently omitted); if there isn't
+                           enough room for that, right justify; or place
+                           as-is if not even enough room for /that/; we
+                           expect hunger to be on preceding row, in which
+                           case its current data has been moved to [BEFORE] */
+                        if (tty_status[BEFORE][BL_HUNGER].y < row
+                            && x < tty_status[BEFORE][BL_HUNGER].x
+                            && (tty_status[BEFORE][BL_HUNGER].x + tlth
+                                < last_col - 1))
+                            cstart = tty_status[BEFORE][BL_HUNGER].x;
+                        else if (x + tlth < cw.cols - 1)
+                            cstart = last_col - tlth;
+                        else
+                            cstart = x;
+                        /* indent conditions to line them up with 2nd row */
+                        if (x < cstart) {
+                            do {
+                                if (dat[x - 1] !== ' ')
+                                    tty_putstatusfield(' ', x, y);
+                            } while (++x < cstart);
+                            tty_status[NOW][BL_CONDITION].x = x;
+                            tty_curs_status(cw, x, y);
+                        }
+                    }
+                    /* actually draw condition words */
+                    for (c = 0; c < conditions().length && bits !== 0; ++c) {
+                        ci = cidx[c];
+                        mask = conditions()[ci].mask;
+                        if (bits & mask) {
+                            let condtext;
+
+                            tty_putstatusfield(' ', x++, y);
+                            if (game.iflags?.hilite_delta) {
+                                attrmask = condattr(mask, st.tty_colormasks);
+                                Begin_Attr(attrmask);
+                                coloridx = condcolor(mask, st.tty_colormasks);
+                                if (coloridx !== NO_COLOR)
+                                    term_start_color(coloridx);
+                            }
+                            condtext = conditions()[ci].text[st.cond_shrinklvl];
+                            if (x >= cw.cols && !st.truncation_expected) {
+                                impossible(`Unexpected condition placement overflow for "${condtext}"`);
+                                condtext = '';
+                                bits = 0; /* skip any remaining conditions */
+                            }
+                            tty_putstatusfield(condtext, x, y);
+                            x += condtext.length;
+                            if (game.iflags?.hilite_delta) {
+                                if (coloridx !== NO_COLOR)
+                                    term_end_color();
+                                End_Attr(attrmask);
+                            }
+                            bits &= ~mask;
+                            bits >>>= 0;
+                        }
+                    }
+                    /* 'x' is 1-based and 'cols' and 'data' are 0-based,
+                       so x==cols means we just stored in data[N-2] and
+                       are now positioned at data[N-1], the terminator;
+                       that's ok as long as we don't write there */
+                    if (x > cw.cols) {
+                        /* paniclog("render_status()", " unexpected truncation.") */
+                        x = cw.cols;
+                    }
+                } else if (hitpointbar) {
+                    /*
+                     * +-------------------------+
+                     * | Title with Hitpoint Bar |
+                     * +-------------------------+
+                     */
+                    /* hitpointbar using hp percent calculation */
+                    let bar_len, bar_pos = 0;
+                    let bar, bar2 = null;
+                    const twoparts = (st.hpbar_percent < 100);
+
+                    /* force exactly 30 characters, padded with spaces
+                       if shorter or truncated if longer */
+                    if (text.length !== 30) {
+                        bar = text.slice(0, 30).padEnd(30); /* "%-30.30s" */
+                        g.status_vals[BL_TITLE] = bar;
+                    } else {
+                        bar = text;
+                    }
+                    if (st.hpbar_crit_hp)
+                        bar = repad_with_dashes(bar);
+                    bar_len = bar.length; /* always 30 */
+                    attrmask = 0; /* for the second part only case: dead */
+                    /* when at full HP, the whole title will be highlighted;
+                       when injured or dead, there will be a second portion
+                       which is not highlighted */
+                    if (twoparts) {
+                        /* figure out where to separate the two parts */
+                        bar_pos = Math.trunc((bar_len * st.hpbar_percent) / 100);
+                        if (bar_pos < 1 && st.hpbar_percent > 0)
+                            bar_pos = 1;
+                        if (bar_pos >= bar_len && st.hpbar_percent < 100)
+                            bar_pos = bar_len - 1;
+                        bar2 = bar.slice(bar_pos);
+                        bar = bar.slice(0, bar_pos);
+                    }
+                    tty_putstatusfield('[', x++, y);
+                    if (bar) { /* always True, unless twoparts+dead (0 HP) */
+                        coloridx = tty_status[NOW][BL_TITLE].color;
+                        attrmask = tty_status[NOW][BL_TITLE].attr;
+                        Begin_Attr(attrmask);
+                        if (game.iflags?.hilite_delta && coloridx !== NO_COLOR)
+                            term_start_color(coloridx);
+                        tty_putstatusfield(bar, x, y);
+                        x += bar.length;
+                        if (game.iflags?.hilite_delta && coloridx !== NO_COLOR)
+                            term_end_color();
+                        End_Attr(attrmask);
+                    }
+                    if (twoparts) {
+                        /* (attrmask & HL_BLINK) has no cell trace */
+                        tty_putstatusfield(bar2, x, y);
+                        x += bar2.length;
+                    }
+                    tty_putstatusfield(']', x++, y);
+                } else {
+                    /*
+                     * +-----------------------------+
+                     * | Everything else that is not |
+                     * |   in a special case above   |
+                     * +-----------------------------+
+                     */
+                    if (idx === BL_VERS
+                        /* if 'version' is the last field in its row, right
+                           justify it (otherwise just treat it as ordinary) */
+                        && fieldorder[row][i + 1] === BL_FLUSH) {
+                        let vstart;
+                        const dat = cw.data[y];
+                        /* FIXME:  there's something fishy going on here;
+                           'x' ends up out of synch when conditions have
+                           3rd row indentation and the indenting of version
+                           overwrites them with spaces; this hides that */
+                        const vx = tty_status[BEFORE][BL_CONDITION].x
+                                   + tty_status[BEFORE][BL_CONDITION].lth;
+
+                        if (i > 0 && fieldorder[row][i - 1] === BL_CONDITION
+                            && x !== vx) {
+                            x = vx;
+                            tty_curs_status(cw, x, y);
+                        }
+                        /* indent version to right justify it */
+                        vstart = cw.cols - tty_status[NOW][idx].lth;
+                        if (x < vstart) {
+                            do {
+                                if (dat[x - 1] !== ' ')
+                                    tty_putstatusfield(' ', x, y);
+                            } while (++x < vstart);
+                            tty_status[NOW][BL_VERS].x = x;
+                        }
+                    }
+                    if (game.iflags?.hilite_delta) {
+                        while (text[0] === ' ') {
+                            tty_putstatusfield(' ', x++, y);
+                            text = text.slice(1);
+                        }
+                        if (text[0] === '/' && idx === BL_EXP) {
+                            tty_putstatusfield('/', x++, y);
+                            text = text.slice(1);
+                        }
+                        attrmask = tty_status[NOW][idx].attr;
+                        Begin_Attr(attrmask);
+                        coloridx = tty_status[NOW][idx].color;
+                        if (coloridx !== NO_COLOR)
+                            term_start_color(coloridx);
+                    }
+                    tty_putstatusfield(text, x, y);
+                    x += text.length;
+                    if (game.iflags?.hilite_delta) {
+                        if (coloridx !== NO_COLOR)
+                            term_end_color();
+                        End_Attr(attrmask);
+                    }
+                }
+            } else {
+                /* not rendered => same text as before */
+                x += tlth;
+            }
+            st.finalx[row][NOW] = x - 1;
+            /* reset .redraw and .dirty now that field has been rendered */
+            tty_status[NOW][idx].dirty  = false;
+            tty_status[NOW][idx].redraw = false;
+            tty_status[NOW][idx].sanitycheck = false;
+            /*
+             * For comparison of current and previous:
+             * - Copy the entire tty_status struct.
+             */
+            tty_status[BEFORE][idx] = { ...tty_status[NOW][idx] };
+        } /* for i=..., idx=fieldorder[][i] */
+        x = st.finalx[row][NOW];
+        if ((x < st.finalx[row][BEFORE] || !st.finalx[row][BEFORE])
+            && x + 1 < cw.cols) {
+            tty_curs_status(cw, x + 1, y);
+            status_cl_end(cw, y);
+        }
+        /*
+         * For comparison of current and previous:
+         * - Copy the last written column number on the row.
+         */
+        st.finalx[row][BEFORE] = st.finalx[row][NOW];
+    } /* for row=... */
+    return;
+}
+
+// win/tty/wintty.c:559 new_status_window() — statuslines changed: rebuild
+// the status window and its tracking data
+export function new_status_window() {
+    if (game.WIN_STATUS != null && windows[game.WIN_STATUS]) {
+        /* in case it's shrinking, clear it before destroying so that
+           dropped portion won't show anything that's now becoming stale */
+        tty_clear_nhwindow(game.WIN_STATUS);
+        tty_destroy_nhwindow(game.WIN_STATUS), game.WIN_STATUS = null;
+    }
+    /* frees some status tracking data */
+    genl_status_finish();
+    /* creates status window and allocates tracking data */
+    tty_status_init();
+    tty_clear_nhwindow(game.WIN_STATUS); /* does some init, sets context.botlx */
+    status_initialize(true); /* REASSESS_ONLY */
 }

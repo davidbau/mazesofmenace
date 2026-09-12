@@ -164,18 +164,11 @@ export async function make_sick(xtime, cause, talk, type) {
         u.usick_type = (u.usick_type || 0) | type;
         (game.disp ||= {}).botl = true;
     } else if (old && (type & (u.usick_type || 0))) {
-        const old_sick_type = u.usick_type || 0;
         u.usick_type &= ~type;
         const still_sick = !!u.usick_type;
-        if (talk) {
-            game._deferred_status_sick_type = old_sick_type;
-            try {
-                await You_feel(still_sick ? 'somewhat better.'
-                                          : 'cured.  What a relief!');
-            } finally {
-                delete game._deferred_status_sick_type;
-            }
-        }
+        if (talk)
+            await You_feel(still_sick ? 'somewhat better.'
+                                      : 'cured.  What a relief!');
         props.SICK = still_sick ? old * 2 : 0;
         (game.disp ||= {}).botl = true;
     }

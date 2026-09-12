@@ -5,6 +5,7 @@
 // rehumanize(), and the #monster abilities.
 
 import { game } from './gstate.js';
+import { status_initialize } from './botl.js';
 import { is_neuter, humanoid, slithy, attacktype,
          strongmonst, sliparm, breakarm, nohands, verysmall,
          is_whirly, num_horns, has_head, hides_under, webmaker,
@@ -484,6 +485,8 @@ export function set_uasmon() {
        status fields; the tty port here rebuilds the whole bottom line on
        every bot() so there is nothing to re-initialize.] */
     game.were_changes = 0;
+    /* src/polyself.c:123 — switch the status fields between Xp and HD */
+    status_initialize(true); /* REASSESS_ONLY */
 }
 
 // src/polyself.c:168 check_strangling()

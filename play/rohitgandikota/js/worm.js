@@ -530,3 +530,14 @@ export function worm_known(worm) {
     }
     return false;
 }
+
+// src/worm.c:990 redraw_worm() — newsym() every segment of the worm.
+export function redraw_worm(worm) {
+    const w = wstate();
+    let curr = w.wtails[worm.wormno];
+
+    while (curr) {
+        newsym(curr.wx, curr.wy);
+        curr = curr.nseg;
+    }
+}

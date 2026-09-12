@@ -10,7 +10,7 @@
 // from enexto() to place it.
 
 import { vision_recalc } from './vision.js';
-import { emits_light } from './mondata.js';
+import { emits_light, same_race } from './mondata.js';
 import { ledger_to_dnum, ledger_to_dlev, depth, In_W_tower, builds_up, Is_qstart } from './dungeon.js';
 import { relmon, mondied } from './mon.js';
 import { m_unleash } from './apply.js';
@@ -18,7 +18,15 @@ import { pline_mon, Your, verbalize } from './pline.js';
 import { body_part } from './polyself.js';
 import { EYE, DISMOUNT_THROWN, STRAT_WAITFORU, NO_TRAP_FLAGS, DISMOUNT_GENERIC, In_endgame } from './const.js';
 import { dismount_steed } from './steed.js';
-import { count_wsegs, wormgone } from './worm.js';
+import { count_wsegs, wormgone, redraw_worm } from './worm.js';
+import { bee_eat_jelly, should_displace, undesirable_disp } from './monmove.js';
+import { costly_alteration } from './mkobj.js';
+import { unpaid_cost } from './shk.js';
+import { currency } from './invent.js';
+import { domonnoise } from './sounds.js';
+import { Conflict, Aggravate_monster } from './youprop.js';
+import { mhis } from './mondata.js';
+import { COST_DEGRD, COST_CONTENTS, A_NONE, MAX_EGG_HATCH_TIME } from './const.js';
 import { picked_container, set_residency } from './shk.js';
 import { Has_contents, MAX_NUM_WORMS, W_ARMS } from './const.js';
 import { game } from './gstate.js';
@@ -361,9 +369,9 @@ const is_rustprone = (otmp) => game.objects[otmp.otyp].oc_material === IRON;
    branch. */
 /* peek_at_iced_corpse_age() now lives in js/mkobj.js (its src/mkobj.c home) */
 
-function stale_egg(obj) {
-    note_unported('stale_egg');
-    return false;
+// include/obj.h:316 stale_egg()
+function stale_egg(egg) {
+    return (game.moves - egg.age) > (2 * MAX_EGG_HATCH_TIME);
 }
 
 function polyfood(obj) {
@@ -376,10 +384,9 @@ function polyfood(obj) {
               || dmgtype(ptr, ATTKS.AD_POLY));
 }
 
-export function same_race(pm1, pm2) {
-    note_unported('same_race');
-    return pm1 === pm2;
-}
+// src/mondata.c:771 same_race() lives in js/mondata.js; eat.js imports it
+// from here.
+export { same_race };
 
 function find_pmmonst(pm) {
     return (game.level?.monsters || []).find(m => m.mnum === pm) || null;
@@ -709,7 +716,7 @@ export async function tamedog(mtmp, obj, givemsg) {
 
     newsym(mtmp.mx, mtmp.my);
     if (mtmp.wormno)
-        note_unported('tamedog:redraw_worm');
+        redraw_worm(mtmp);
     if (attacktype(mtmp.data, ATTKS.AT_WEAP)) {
         mtmp.weapon_check = NEED_HTH_WEAPON;
         const { mon_wield_item } = await import('./weapon.js');
@@ -729,9 +736,6 @@ function resists_poison(mon) {
     return !!((game.mons[mon.mnum]?.mresists ?? 0) & MFLAGS.MR_POISON);
 }
 
-function note_unported(what) {
-    (game.unported ||= new Set()).add(what);
-}
 
 // src/dogmove.c:495 dog_goal() — pick somewhere worth walking to.
 //
@@ -835,18 +839,19 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
         newsym(x, y);
         newsym(mtmp.mx, mtmp.my);
     }
+    let res;
     if (game.mons[mtmp.mnum] === game.mons[PMNAMES.PM_KILLER_BEE]
-        && obj.otyp === ONAMES.LUMP_OF_ROYAL_JELLY) {
-        note_unported('dog_eat:bee_eat_jelly');
-        return 1;
-    }
+        && obj.otyp === ONAMES.LUMP_OF_ROYAL_JELLY
+        && (res = await bee_eat_jelly(mtmp, obj)) >= 0)
+        /* bypass most of dog_eat(), including apport update */
+        return (res + 1); /* 1 -> 2, 0 -> 1; -1, keep going */
 
     /* food items are eaten one at a time; entire stack for other stuff */
     if (obj.quan > 1 && obj.oclass === OCLASSES.FOOD_CLASS)
         obj = splitobj(obj, 1);
 
     if (obj.unpaid)
-        note_unported('dog_eat:shop');
+        (game.iflags ||= {}).suppress_price = (game.iflags.suppress_price || 0) + 1;
 
     /* src/dogmove.c:264 — announce the meal. The food is at the pet's
        CURRENT square; <x,y> is where it started the turn, and the two differ
@@ -858,23 +863,37 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
         const sawpet = cansee(x, y) && mon_visible(mtmp);
 
         if (sawpet || (seeobj && canspotmon(mtmp))) {
-            const obj_name = doname(obj);   /* distant_name(obj, doname) */
+            /* call distant_name() for possible side-effects even if the
+               result won't be printed */
+            const obj_name = distant_name(obj, doname);
             if (tunnels(game.mons[mtmp.mnum]))
                 await pline(`${noit_Monnam(mtmp)} digs in.`);
             else
                 await pline(`${noit_Monnam(mtmp)} ${
                     devour ? 'devours' : 'eats'} ${obj_name}.`);
         } else if (seeobj) {
-            const obj_name = doname(obj);
+            const obj_name = distant_name(obj, doname);
             await pline(`It ${devour ? 'devours' : 'eats'} ${obj_name}.`);
         }
     }
 
+    let objnambuf = '';
+    if (obj.unpaid) {
+        objnambuf = xname(obj);
+        game.iflags.suppress_price--;
+    }
     if (game.mons[mtmp.mnum] === game.mons[PMNAMES.PM_RUST_MONSTER]
         && obj.oerodeproof) {
-        note_unported('dog_eat:rustproof');
+        /* The object's rustproofing is gone now */
+        if (obj.unpaid)
+            await costly_alteration(obj, COST_DEGRD);
         obj.oerodeproof = 0;
         mtmp.mstun = 1;
+        if (canseemon(mtmp)) {
+            const obj_name = distant_name(obj, doname); /* (see above) */
+            if (game.flags?.verbose)
+                await pline(`${Monnam(mtmp)} spits ${obj_name} out in disgust!`);
+        }
     } else {
         /* It's a reward if it's DOGFOOD and the player dropped/threw it.
            We know the player had it if invlet is set. -dlc */
@@ -883,6 +902,14 @@ export async function dog_eat(mtmp, obj, x, y, devour) {
                                              - edog.droptime));
             if (edog.apport <= 0)
                 edog.apport = 1;        /* impossible() in C */
+        }
+        if (obj.unpaid) {
+            /* edible item owned by shop has been thrown or kicked
+               by hero and caught by tame or food-tameable monst */
+            const oprice = await unpaid_cost(obj, COST_CONTENTS);
+            await pline(`That ${objnambuf} will cost you ${oprice} ${currency(oprice)}.`);
+            /* m_consume_obj() -> delobj() -> obfree() will handle the shop
+               billing update */
         }
         await m_consume_obj(mtmp, obj);
     }
@@ -1192,19 +1219,34 @@ function score_targ(mtmp, mtarg) {
     let score = 0;
 
     /* Give 1 in 3 chance of safe breathing even if pet is confused */
-    if (!mtmp.mconf || !rn2(3)) {
+    if (!mtmp.mconf || !rn2(3) || Is_qstart(game.u.uz)) {
         let mtmp_lev;
         const tdat = (mtarg === game.u) ? null : game.mons[mtarg.mnum];
+        let align1 = A_NONE, align2 = A_NONE; /* For priests, minions */
+        let faith1 = true, faith2 = true;
 
-        /* the priest/minion alignment arms need the priest subsystem; no
-           minion or priest is adjacent to a pet on an ordinary level */
-        if (mtmp.isminion || mtmp.ispriest || mtarg.isminion || mtarg.ispriest)
-            note_unported('score_targ:faith');
+        if (mtmp.isminion)
+            align1 = mtmp.emin?.min_align ?? mtmp.mextra?.emin?.min_align ?? A_NONE;
+        else if (mtmp.ispriest)
+            align1 = (mtmp.epri || mtmp.mextra?.epri)?.shralign ?? A_NONE;
+        else
+            faith1 = false;
+        if (mtarg.isminion)
+            align2 = mtarg.emin?.min_align ?? mtarg.mextra?.emin?.min_align ?? A_NONE; /* MAR */
+        else if (mtarg.ispriest)
+            align2 = (mtarg.epri || mtarg.mextra?.epri)?.shralign ?? A_NONE; /* MAR */
+        else
+            faith2 = false;
 
         /* Never target quest friendlies */
         if (tdat && (tdat.msound === MSOUND.MS_LEADER
                      || tdat.msound === MSOUND.MS_GUARDIAN))
             return -5000;
+        /* D: Fixed angelic beings using gaze attacks on coaligned priests */
+        if (faith1 && faith2 && align1 === align2 && mtarg.mpeaceful) {
+            score -= 5000;
+            return score;
+        }
         /* Is monster adjacent? */
         if (distmin(mtmp.mx, mtmp.my, mtarg.mx ?? game.u.ux,
                     mtarg.my ?? game.u.uy) <= 1)
@@ -1341,11 +1383,8 @@ export async function pet_ranged_attk(mtmp, forced) {
          * and thus should lose the rest of its move. */
         if (mstatus !== M_ATTK_MISS)
             return MMOVE_DONE;
-    } else if (forced) {
-        /* domonnoise() (src/sounds.c) is not ported; only #chat-forced
-           calls pass forced=TRUE and none does yet */
-        note_unported('pet_ranged_attk:domonnoise');
-    }
+    } else if (forced)
+        await domonnoise(mtmp);
     return MMOVE_NOTHING;
 }
 
@@ -1424,8 +1463,10 @@ export async function dog_move(mtmp, after) {
        Conflict; a steed shares the hero's square so distu()==0, and C forces
        udist to 1 instead of taking the !udist early return. */
     if (mtmp === game.u.usteed) {
-        if (game.u.uprops?.CONFLICT)
-            note_unported('dog_move:steed_conflict_throw');
+        if (Conflict() && !resist_conflict(mtmp)) {
+            await dismount_steed(DISMOUNT_THROWN);
+            return MMOVE_MOVED;
+        }
         udist = 1;
     } else if (!udist) {
         /* maybe we tamed him while being swallowed --jgm */
@@ -1459,9 +1500,15 @@ export async function dog_move(mtmp, after) {
     /* src/dogmove.c:1046 — a conflicted pet rolls resist_conflict every
        action; an edog that fails just keeps going (the non-edog guardian
        angel arm needs minions) */
-    if (game.u.uprops?.CONFLICT && !resist_conflict(mtmp)) {
-        if (!edog)
-            (game.unported ||= new Set()).add('dog_move:lose_guardian_angel');
+    if (Conflict() && !resist_conflict(mtmp)) {
+        if (!edog) {
+            /* Guardian angel refuses to be conflicted; rather,
+             * it disappears, angrily, and sends in some nasties
+             */
+            const { lose_guardian_angel } = await import('./minion.js');
+            await lose_guardian_angel(mtmp);
+            return MMOVE_DIED; /* current monster is gone */
+        }
     }
 
     /* src/dogmove.c:1062 — the squares the pet may move to */
@@ -1504,6 +1551,10 @@ export async function dog_move(mtmp, after) {
     if (globalThis.__dog_trace)
         console.error(`DOGUNC t=${game.moves} uncursedcnt=${uncursedcnt}`);
 
+    /* src/dogmove.c:1080 — gg.gx/gg.gy is the goal dog_goal() published */
+    const better_with_displacing = should_displace(mtmp, mfp,
+                                                   game.gg.gx, game.gg.gy, cnt);
+
     let nix = omx, niy = omy, chi = -1, chcnt = 0;
     /* src/dogmove.c:1010 — do_eat and the obj it refers to are function-scope
        in C because the pet has to be MOVED before it can eat; the flag is what
@@ -1545,12 +1596,12 @@ export async function dog_move(mtmp, after) {
                          + Math.trunc((5 * mtmp.mhp) / mtmp.mhpmax) - 2;
 
             if (mtmp2.m_lev >= balk
-                || (mtmp2.mtame && mtmp.mtame /* && !Conflict */)
+                || (mtmp2.mtame && mtmp.mtame && !Conflict())
                 || (max_passive_dmg(mtmp2, mtmp) >= mtmp.mhp)
                 || ((mtmp.mhp * 4 < mtmp.mhpmax
                      || game.mons[mtmp2.mnum].msound === MSOUND.MS_GUARDIAN
                      || game.mons[mtmp2.mnum].msound === MSOUND.MS_LEADER)
-                    && mtmp2.mpeaceful /* && !Conflict */)) {
+                    && mtmp2.mpeaceful && !Conflict())) {
                 continue;
             }
             /* src/dogmove.c:1130 — the floating eye / gelatinous cube /
@@ -1587,10 +1638,15 @@ export async function dog_move(mtmp, after) {
             }
             return MMOVE_DONE;
         }
-        if ((mfp.info[i] & ALLOW_MDISP) && m_at(nx, ny)) {
-            /* mdisplacem — monster displacement is absent */
-            note_unported('dog_move displace branch');
-            continue;
+        if ((mfp.info[i] & ALLOW_MDISP) && m_at(nx, ny)
+            && better_with_displacing && !undesirable_disp(mtmp, nx, ny)) {
+            const mtmp2 = m_at(nx, ny);
+            const { mdisplacem } = await import('./mhitm.js');
+
+            const mstatus = await mdisplacem(mtmp, mtmp2, false); /* displace monster */
+            if (mstatus & M_ATTK_DEF_DIED)
+                return MMOVE_DIED;
+            return MMOVE_NOTHING;
         }
 
         /* src/dogmove.c:1182 — keep clear of the square the hero just kicked,
@@ -1709,8 +1765,11 @@ export async function dog_move(mtmp, after) {
         /* src/dogmove.c:1280 — a pet whose chosen square is the hero's
            attacks instead of moving (conflict, confusion). */
         if (chi >= 0 && (mfp.info[chi] & ALLOW_U)) {
-            if (mtmp.mleashed)
-                note_unported('newdogpos:m_unleash');
+            if (mtmp.mleashed) { /* play it safe */
+                await pline_mon(mtmp, `${Monnam(mtmp)} breaks loose of ${
+                    mhis(mtmp)} leash!`);
+                await m_unleash(mtmp, false);
+            }
             const { mattacku } = await import('./mhitu.js');
             await mattacku(mtmp);
             return MMOVE_DONE;
@@ -1908,7 +1967,8 @@ export async function dog_invent(mtmp, edog, udist) {
                         if (attacktype(mtmp.data, ATTKS.AT_WEAP)
                             && mtmp.weapon_check === NEED_WEAPON) {
                             mtmp.weapon_check = NEED_HTH_WEAPON;
-                            note_unported('dog_invent:mon_wield_item');
+                            const { mon_wield_item } = await import('./weapon.js');
+                            await mon_wield_item(mtmp);
                         }
                         check_gear_next_turn(mtmp);
                     }
@@ -2400,7 +2460,7 @@ export async function abuse_dog(mtmp) {
     if (!mtmp.mtame)
         return;
 
-    if (game.u.uprops?.AGGRAVATE_MONSTER || game.u.uprops?.CONFLICT)
+    if (Aggravate_monster() || Conflict())
         mtmp.mtame = (mtmp.mtame / 2) | 0;
     else
         mtmp.mtame--;
@@ -2409,7 +2469,7 @@ export async function abuse_dog(mtmp) {
         mtmp.edog.abuse++;
 
     if (!mtmp.mtame && mtmp.mleashed)
-        note_unported('abuse_dog:m_unleash');
+        await m_unleash(mtmp, true);
 
     /* don't make a sound if pet is in the middle of leaving the level */
     /* newsym isn't necessary in this case either */
@@ -2421,8 +2481,9 @@ export async function abuse_dog(mtmp) {
 
         if (!mtmp.mtame) {
             newsym(mtmp.mx, mtmp.my);
-            if (mtmp.wormno)
-                note_unported('abuse_dog:redraw_worm');
+            if (mtmp.wormno) {
+                redraw_worm(mtmp);
+            }
         }
     }
 }

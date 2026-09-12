@@ -36,8 +36,14 @@ import { livelog_printf } from './pline.js';
 import { LL_ALIGNMENT, A_CG_CONVERT, A_CG_HELM_ON, A_CG_HELM_OFF, A_CURRENT, Is_astralevel } from './const.js';
 import { aligns } from './role_data.js';
 import { summon_furies } from './makemon.js';
-import { retouch_equipment } from './artifact.js';
-import { Hallucination } from './youprop.js';
+import { retouch_equipment, what_gives, is_art } from './artifact.js';
+import { Hallucination, Blindfolded_only } from './youprop.js';
+import { ysimple_name, bare_artifactname } from './objnam.js';
+import { strstri } from './hacklib.js';
+import { body_part } from './polyself.js';
+import { FACE, something, ismnum, W_ARMC, W_ARMH, W_ARMF } from './const.js';
+import { haseyes } from './mondata.js';
+import { ART_EYES_OF_THE_OVERWORLD } from './artilist_data.js';
 
 // include/you.h:247 Role_if()
 export function Role_if(pm) {
@@ -574,36 +580,165 @@ function innately(abilKey) {
     return FROM_NONE;
 }
 
+/* include/youprop.h — the JS property model keeps the C's three words
+   under different roots: game.u.intrinsic.HFoo (u.uprops[FOO].intrinsic),
+   game.u.uprops.FOO (u.uprops[FOO].extrinsic, a worn-slot mask) and
+   game.u.blocked.FOO.  This table is the H-name to property-key map. */
+const EXTRINSIC_KEYS = {
+    HFire_resistance: 'FIRE_RES', HCold_resistance: 'COLD_RES',
+    HSleep_resistance: 'SLEEP_RES', HDisint_resistance: 'DISINT_RES',
+    HShock_resistance: 'SHOCK_RES', HPoison_resistance: 'POISON_RES',
+    HDrain_resistance: 'DRAIN_RES', HAntimagic: 'ANTIMAGIC',
+    HAcid_resistance: 'ACID_RES', HStone_resistance: 'STONE_RES',
+    HSick_resistance: 'SICK_RES', HInvulnerable: 'INVULNERABLE',
+    HStun: 'STUNNED', HConfusion: 'CONFUSION', HBlinded: 'BLINDED',
+    HDeaf: 'DEAF', HSick: 'SICK', HStoned: 'STONED', HStrangled: 'STRANGLED',
+    HVomiting: 'VOMITING', HGlib: 'GLIB', HSlimed: 'SLIMED',
+    HHallucination: 'HALLUC', HHalluc_resistance: 'HALLUC_RES',
+    HFumbling: 'FUMBLING', HWounded_legs: 'WOUNDED_LEGS', HSleepy: 'SLEEPY',
+    HHunger: 'HUNGER', HSee_invisible: 'SEE_INVIS', HTelepat: 'TELEPAT',
+    HWarning: 'WARNING', HWarn_of_mon: 'WARN_OF_MON',
+    HUndead_warning: 'WARN_UNDEAD', HSearching: 'SEARCHING',
+    HClairvoyant: 'CLAIRVOYANT', HInfravision: 'INFRAVISION',
+    HDetect_monsters: 'DETECT_MONSTERS', HBlnd_resist: 'BLND_RES',
+    HAdorned: 'ADORNED', HInvis: 'INVIS', HDisplaced: 'DISPLACED',
+    HStealth: 'STEALTH', HAggravate_monster: 'AGGRAVATE_MONSTER',
+    HConflict: 'CONFLICT', HJumping: 'JUMPING', HTeleportation: 'TELEPORT',
+    HTeleport_control: 'TELEPORT_CONTROL', HLevitation: 'LEVITATION',
+    HFlying: 'FLYING', HWwalking: 'WWALKING', HSwimming: 'SWIMMING',
+    HMagical_breathing: 'MAGICAL_BREATHING', HPasses_walls: 'PASSES_WALLS',
+    HSlow_digestion: 'SLOW_DIGESTION', HHalf_spell_damage: 'HALF_SPDAM',
+    HHalf_physical_damage: 'HALF_PHDAM', HRegeneration: 'REGENERATION',
+    HEnergy_regeneration: 'ENERGY_REGENERATION', HProtection: 'PROTECTION',
+    HProtection_from_shape_changers: 'PROT_FROM_SHAPE_CHANGERS',
+    HPolymorph: 'POLYMORPH', HPolymorph_control: 'POLYMORPH_CONTROL',
+    HUnchanging: 'UNCHANGING', HFast: 'FAST', HReflecting: 'REFLECTING',
+    HFree_action: 'FREE_ACTION', HFixed_abil: 'FIXED_ABIL',
+    HLifesaved: 'LIFESAVED',
+};
+
 // src/attrib.c:880 is_innate()
-export function is_innate(abilKey) {
-    if (abilKey === 'HFast' && Very_fast())
+export function is_innate(propidx) {
+    let innateness;
+
+    /* innately() would report FROM_FORM for this; caller wants specificity */
+    if (propidx === 'HDrain_resistance' && ismnum(game.u.ulycn))
+        return FROM_LYCN;
+    if (propidx === 'HFast' && Very_fast())
         return FROM_NONE; /* can't become very fast innately */
-    return innately(abilKey);
-    /* the DRAIN_RES lycanthropy, knight-jumping, and eyeless-blind arms
-       need states nothing sets yet */
+    if ((innateness = innately(propidx)) !== FROM_NONE)
+        return innateness;
+    if (propidx === 'HJumping' && Role_if(PMNAMES.PM_KNIGHT)
+        /* knight has intrinsic jumping, but extrinsic is more versatile so
+           ignore innateness if equipment is going to claim responsibility */
+        && !game.u.uprops?.[EXTRINSIC_KEYS[propidx]])
+        return FROM_ROLE_ABIL;
+    if ((propidx === 'HBlinded' && !haseyes(game.youmonst.data))
+        || (propidx === 'HBlnd_resist'
+            && ((game.u.intrinsic?.HBlnd_resist | 0) & FROMFORM) !== 0))
+        return FROM_FORM;
+    return FROM_NONE;
 }
 
 // src/attrib.c:905 from_what() — the source of the attribute, appended to
-// the ^X line; restricted to debug mode, like C.
-export function from_what(abilKey) {
+// the ^X line; restricted to debug mode, like C.  A leading '-' on the
+// property name is the C's negative propidx.
+export function from_what(propidx /* special cases can have negative values */) {
     let buf = '';
+
+    /*
+     * Restrict the source of the attributes just to debug mode for now
+     */
     if (game.wizard) {
-        const innateness = is_innate(abilKey);
-        if (innateness === FROM_ROLE_ABIL || innateness === FROM_RACE_ABIL)
-            buf = ' innately';
-        else if (innateness === FROM_INTR)
-            buf = ' intrinsically';
-        else if (innateness === FROM_EXP)
-            buf = ' because of your experience';
-        else if (innateness === FROM_FORM)
-            buf = ' from your creature form';
-        else {
-            /* the property is on but not from the innate tables or an
-               eaten corpse — " because of %s" needs what_gives() over
-               worn equipment; recorded until a wizard-mode hero has one */
-            (game.unported ||= new Set()).add('attrib:from_what:' + abilKey);
+        const because_of = (what) => ` because of ${what}`;
+
+        if (propidx[0] !== '-') {
+            let p;
+            let obj = null;
+            const innateness = is_innate(propidx);
+            const HFast = game.u.intrinsic?.HFast | 0,
+                  EFast = game.u.uprops?.FAST | 0;
+            const HBlinded = game.u.intrinsic?.HBlinded | 0,
+                  EBlinded = game.u.uprops?.BLINDED | 0;
+
+            /*
+             * Properties can be obtained from multiple sources and we
+             * try to pick the most significant one.  Classification
+             * priority is not set in stone; current precedence is:
+             * "from the start" (from role or race at level 1),
+             * "from outside" (eating corpse, divine reward, blessed potion),
+             * "from experience" (from role or race at level 2+),
+             * "from current form" (while polymorphed),
+             * "from timed effect" (potion or spell),
+             * "from worn/wielded equipment" (Firebrand, elven boots, &c),
+             * "from carried equipment" (mainly quest artifacts).
+             * There are exceptions.  Versatile jumping from spell or boots
+             * takes priority over knight's innate but limited jumping.
+             */
+            if ((propidx === 'HBlinded' && game.u.uroleplay?.blind)
+                || (propidx === 'HDeaf' && game.u.uroleplay?.deaf))
+                buf = ' from birth';
+            else if (innateness === FROM_ROLE_ABIL || innateness === FROM_RACE_ABIL)
+                buf = ' innately';
+            else if (innateness === FROM_INTR) /* [].intrinsic & FROMOUTSIDE */
+                buf = ' intrinsically';
+            else if (innateness === FROM_EXP)
+                buf = ' because of your experience';
+            else if (innateness === FROM_LYCN)
+                buf = ' due to your lycanthropy';
+            else if (innateness === FROM_FORM)
+                buf = ' from your creature form';
+            else if (propidx === 'HFast' && Very_fast())
+                buf = because_of(
+                        ((HFast & TIMEOUT) !== 0) ? 'a potion or spell'
+                          : ((EFast & W_ARMF) !== 0 && game.u.uarmf?.dknown
+                             && game.objects[game.u.uarmf.otyp].oc_name_known)
+                              ? ysimple_name(game.u.uarmf) /* speed boots */
+                                : EFast ? 'worn equipment'
+                                  : something);
+            else if (game.wizard
+                     && (obj = what_gives(EXTRINSIC_KEYS[propidx])))
+                buf = because_of(obj.oartifact
+                                 ? bare_artifactname(obj)
+                                 : ysimple_name(obj));
+            else if (propidx === 'HBlinded' && Blindfolded_only())
+                buf = because_of(ysimple_name(game.u.ublindf));
+            else if (propidx === 'HBlinded' && game.u.ucreamed
+                     && (HBlinded & TIMEOUT) === game.u.ucreamed
+                     && !EBlinded && !(HBlinded & ~TIMEOUT))
+                buf = `due to goop covering your ${body_part(FACE)}`;
+
+            /* remove some verbosity and/or redundancy */
+            if ((p = strstri(buf, ' pair of ')) >= 0)
+                buf = buf.slice(0, p + 1) + buf.slice(p + 9); /* copynchars */
+            else if (propidx === 'HStrangled'
+                     && (p = strstri(buf, ' of strangulation')) >= 0)
+                buf = buf.slice(0, p);
+
+        } else { /* negative property index */
+            /* if more blocking capabilities get implemented we'll need to
+               replace this with what_blocks() comparable to what_gives() */
+            switch (propidx.slice(1)) {
+            case 'HBlinded':
+                /* wearing the Eyes of the Overworld overrides blindness */
+                if (game.u.blocked?.BLINDED
+                    && is_art(game.u.ublindf, ART_EYES_OF_THE_OVERWORLD))
+                    buf = because_of(bare_artifactname(game.u.ublindf));
+                break;
+            case 'HInvis':
+                if ((game.u.blocked?.INVIS | 0) & W_ARMC)
+                    buf = because_of(
+                            ysimple_name(game.u.uarmc)); /* mummy wrapping */
+                break;
+            case 'HClairvoyant':
+                if (game.wizard && ((game.u.blocked?.CLAIRVOYANT | 0) & W_ARMH))
+                    buf = because_of(
+                            ysimple_name(game.u.uarmh)); /* cornuthaum */
+                break;
+            }
         }
-    }
+
+    } /*wizard*/
     return buf;
 }
 

@@ -11,6 +11,7 @@
 import { create_drawbridge } from './dbridge.js';
 import { bury_an_obj } from './dig.js';
 import { game } from './gstate.js';
+import { vision_reset } from './vision.js';
 import { mk_mplayer } from './mplayer.js';
 import { get_level_extends, fix_wall_spines, stairway_add,
          stairway_find_dir, occupied } from './mklev.js';
@@ -21,20 +22,27 @@ import { selection_iterate, selection_new, selection_clone,
          selection_not, selection_rndcoord } from './selvar.js';
 import { rn1, rn2, rnd } from './rng.js';
 import { isok, distmin, swapbits } from './hacklib.js';
-import { sobj_at, weight, obj_extract_self, stackobj } from './invent.js';
+import { sobj_at, weight, obj_extract_self, stackobj, obfree } from './invent.js';
+import { impossible } from './pline.js';
+import { can_saddle, put_saddle_on_mon } from './steed.js';
+import { artifact_exists } from './artifact.js';
+import { safe_oname } from './do_name.js';
+import { ONAME_NO_FLAGS } from './const.js';
+import { mk_roamer } from './priest.js';
 import { ONAMES, OCLASSES, MATERIALS } from './objects_data.js';
 import { mkobj_at, mksobj_at, add_to_container, set_corpsenm } from './mkobj.js';
 import { stock_room } from './shknam.js';
 import { fill_zoo } from './mkroom.js';
 import { OBJ_NAME, OBJ_DESCR } from './objnam.js';
 import { obj_resists } from './zap.js';
-import { OBJ_BURIED } from './obj.js';
+import { OBJ_BURIED, OBJ_FREE } from './obj.js';
 import { start_timer, TIMER_OBJECT, ROT_ORGANIC,
          begin_burn_level_object } from './timeout.js';
 import { new_light_source, LS_OBJECT } from './light.js';
 import { make_engr_at, engr_at, del_engr } from './engrave.js';
 import { oname, christen_monst } from './do_name.js';
-import { ONAME_LEVEL_DEF, is_pit } from './const.js';
+import { ONAME_LEVEL_DEF, is_pit, LR_TELE, LR_UPTELE, LR_DOWNTELE, LR_MONGEN, LR_PORTAL, LR_BRANCH, LR_UPSTAIR, LR_DOWNSTAIR } from './const.js';
+import { delete_contents } from './shk.js';
 import { DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, STRAT_WAITFORU,
          MM_NOCOUNTBIRTH, MM_NOMSG, G_UNIQ, G_EXTINCT, G_GONE } from './const.js';
 
@@ -62,7 +70,12 @@ import { NO_TRAP, VIBRATING_SQUARE,
          SPIKED_PIT, HOLE, TRAPDOOR, TELEP_TRAP, LEVEL_TELEP, MAGIC_PORTAL,
          WEB, STATUE_TRAP, MAGIC_TRAP, ANTI_MAGIC, POLY_TRAP } from './const.js';
 import { litstate_rnd, flood_fill_rm, mkmap } from './mkmap.js';
-import { depth, induced_align, Can_fall_thru, Invocation_lev } from './dungeon.js';
+import { depth, induced_align, Can_fall_thru, Invocation_lev, on_level } from './dungeon.js';
+import { Punished } from './youprop.js';
+import { carried } from './obj.js';
+import { unplacebc, placebc } from './ball.js';
+import { set_wall_state, terrain_glyph } from './display.js';
+import { SVALL } from './const.js';
 import { mkgold } from './mkobj.js';
 import { mkclass, makemon, is_male, is_female, mpickobj, rndmonnum,
          propagate } from './makemon.js';
@@ -170,9 +183,6 @@ export async function fill_special_room(croom) {
     }
 }
 
-function note_unported(what) {
-    (game.unported ||= new Set()).add(what);
-}
 
 
 // ---------------------------------------------------------------------------
@@ -1076,10 +1086,8 @@ export function create_object(o, croom) {
                    ['otmp' remains on floor] */
             } else {
                 obj_extract_self(otmp);     /* remove_object() */
-                if (otmp.otyp === ONAMES.SADDLE)
-                    /* can_saddle + put_saddle_on_mon; no ported des level
-                       hands a monster a saddle */
-                    note_unported('create_object:put_saddle_on_mon');
+                if (otmp.otyp === ONAMES.SADDLE && can_saddle(invent_carrying_monster))
+                    put_saddle_on_mon(otmp, invent_carrying_monster);
                 else
                     mpickobj(invent_carrying_monster, otmp);
             }
@@ -1095,19 +1103,27 @@ export function create_object(o, croom) {
                    container out from under us. C destroys the would-be content
                    rather than dropping it on the floor, and returns NULL. */
                 obj_extract_self(otmp);
+                /* uncreate a random artifact created in a container */
+                /* FIXME: it could be intentional rather than random */
                 if (otmp.oartifact)
-                    note_unported('create_object:artifact_exists');
-                return null;            /* obfree(otmp, NULL) */
+                    artifact_exists(otmp, safe_oname(otmp), false,
+                                    ONAME_NO_FLAGS); /* flags don't matter */
+                obfree(otmp, null);
+                return null;
             }
         }
     }
 
     if (o.containment & SP_OBJ_CONTAINER) {
-        otmp.cobj = [];                 /* delete_contents(otmp) */
+        /* shk.c:1175 delete_contents(): the random contents mkbox_cnts()
+           rolled are obfree()d one by one, which stops their timers; an
+           egg's hatch timer left behind here tripped relink_timers() on
+           the next visit (tour-s103-07) */
+        delete_contents(otmp);
         if (container_obj.length < MAX_CONTAINMENT)
             container_obj.push(otmp);
         else
-            note_unported('create_object:too deeply nested containers');
+            impossible('create_object: too deeply nested containers.');
     }
 
     /* src/sp_lev.c create_object() — a named montype is applied through
@@ -1690,11 +1706,7 @@ export function create_monster(m, croom) {
        passes m->peaceful (still -1 when unset) through a boolean. */
     let mtmp;
     if (m.sp_amask !== AM_SPLEV_RANDOM) {
-        if (!mk_roamer_fn) {
-            note_unported('create_monster:mk_roamer');
-            return null;
-        }
-        mtmp = mk_roamer_fn(pm, Amask2align_sp(amask), x, y, m.peaceful !== 0);
+        mtmp = mk_roamer(pm, Amask2align_sp(amask), x, y, m.peaceful !== 0);
     } else if (m.id >= PMNAMES.PM_ARCHEOLOGIST && m.id <= PMNAMES.PM_WIZARD) {
         /* src/sp_lev.c:1986 — player-class monsters take the mplayer path */
         mtmp = mk_mplayer(pm, x, y, false);
@@ -1769,7 +1781,8 @@ export function create_monster(m, croom) {
                     mtmp.mappearance = i;
                 } /* else impossible("can't find feature") */
             } else {
-                note_unported(`create_monster:appear_as:${kind}`);
+                impossible(`create_monster: unimplemented mon appear type [${
+                    kind},"${what}"]`);
             }
         }
 
@@ -2077,8 +2090,6 @@ let priestini_fn = null;
 export function sp_lev_wire_priest(fn) { priestini_fn = fn; }
 
 /* mk_roamer (src/priest.c:724) too — same cycle, same wire. */
-let mk_roamer_fn = null;
-export function sp_lev_wire_roamer(fn) { mk_roamer_fn = fn; }
 
 // src/sp_lev.c sp_amask_to_amask() — the three SPLEV pseudo-alignments resolve
 // against the HERO's original alignment, not the level's.
@@ -2200,8 +2211,10 @@ export function lspo_room(opts, create_room_fn, topologize_fn) {
 
     let rtype = OROOM;
     if (opts?.type !== undefined) {
+        /* get_table_roomtype_opt(): a name outside room_types[] is a Lua
+           error in the C, which nhl_error() reports as impossible */
         if (ROOMTYPES[opts.type] === undefined)
-            note_unported(`lspo_room:rtype=${opts.type}`);
+            impossible(`lspo_room: unknown room type "${opts.type}"`);
         else
             rtype = ROOMTYPES[opts.type];
     }
@@ -2477,7 +2490,7 @@ export function lspo_level_flags(...flags) {
         case 'stormy': game.level.flags.stormy = 1; break;
         case 'icedpools': game.splev_icedpools = true; break;
         default:
-            note_unported(`lspo_level_flags:${s}`);
+            impossible(`Unknown level flag ${s}`); /* nhl_error() */
             break;
         }
     }
@@ -2501,7 +2514,7 @@ export function lspo_feature(type, x, y) {
     const c = get_location_coord(-1, -1, humidity, game.coder?.croom, fcoord);
 
     if (typ === undefined) {
-        note_unported(`lspo_feature:${type}`);
+        impossible(`lspo_feature: unknown feature "${type}"`); /* nhl_error() */
         return;
     }
     /* src/sp_lev.c sel_set_feature() — existing furniture is never
@@ -2533,10 +2546,7 @@ export function lspo_stair(dir, x, y) {
     /* deltrap of a pre-existing trap here: no trap can exist yet */
     SpLev_Map_set(c.x, c.y);
 
-    if (mklev_fns.mkstairs)
-        mklev_fns.mkstairs(c.x, c.y, up, game.coder?.croom);
-    else
-        note_unported('lspo_stair:mkstairs');
+    mklev_fns.mkstairs(c.x, c.y, up, game.coder?.croom);
 }
 
 // src/sp_lev.c:4231 lspo_ladder() — l_create_stairway(L, TRUE): same
@@ -2581,10 +2591,7 @@ function good_stair_loc(x, y) {
 // des.random_corridors() (lspo_random_corridors, sp_lev.c:4139).
 export function lspo_random_corridors() {
     create_des_coder();
-    if (mklev_fns.makecorridors)
-        mklev_fns.makecorridors();
-    else
-        note_unported('lspo_random_corridors');
+    mklev_fns.makecorridors();
 }
 
 // src/sp_lev.c:1042 set_door_orientation()
@@ -2711,15 +2718,91 @@ function flip_encoded_dir_bits(flp, val) {
     return val;
 }
 
+// src/sp_lev.c:458 flip_visuals() — for #wizfliplevel: update seen vector
+// for whole flip area and glyph for known walls.
+function flip_visuals(flp, minx, miny, maxx, maxy) {
+    for (let y = miny; y <= maxy; ++y) {
+        for (let x = minx; x <= maxx; ++x) {
+            const lev = game.level.at(x, y);
+            let seenv = (lev.seenv | 0) & 0xff;
+            /* locations which haven't been seen can be skipped */
+            if (seenv === 0)
+                continue;
+            /* flip <x,y>'s seen vector; not necessary for locations seen
+               from all directions (the whole level after magic mapping) */
+            if (seenv !== SVALL) {
+                /* SV2 SV1 SV0 *
+                 * SV3 -+- SV7 *
+                 * SV4 SV5 SV6 */
+                if (flp & 1) { /* swap top and bottom */
+                    seenv = swapbits(seenv, 2, 4);
+                    seenv = swapbits(seenv, 1, 5);
+                    seenv = swapbits(seenv, 0, 6);
+                }
+                if (flp & 2) { /* swap left and right */
+                    seenv = swapbits(seenv, 2, 0);
+                    seenv = swapbits(seenv, 3, 7);
+                    seenv = swapbits(seenv, 4, 6);
+                }
+                lev.seenv = seenv;
+            }
+            /* if <x,y> is displayed as a wall, reset its display glyph so
+               that remembered, out of view T's and corners get flipped */
+            if ((IS_WALL(lev.typ) || lev.typ === SDOOR)
+                && lev.remembered_glyph?.glyph?.kind === 'cmap') {
+                const tg = terrain_glyph(lev, x, y); /* back_to_glyph() */
+                lev.remembered_glyph = { ch: tg.ch, color: tg.color, decgfx: tg.dec,
+                                         glyph: tg.glyph
+                                             ?? { kind: 'cmap', cmap: tg.cmap } };
+            }
+        }
+    }
+}
+
+// src/sp_lev.c:926 flip_vault_guard() — for #wizfliplevel, flip guard's egd
+// data; not needed for level creation.
+function flip_vault_guard(flp, grd, minx, miny, maxx, maxy) {
+    const FlipX = (v) => (maxx - v) + minx;
+    const FlipY = (v) => (maxy - v) + miny;
+    const inFlipArea = (x, y) =>
+        (x >= minx && x <= maxx && y >= miny && y <= maxy);
+    const egd = grd.mextra?.egd;
+
+    if (!egd)
+        return;
+    if (inFlipArea(egd.gdx, egd.gdy)) {
+        if (flp & 1)
+            egd.gdy = FlipY(egd.gdy);
+        if (flp & 2)
+            egd.gdx = FlipX(egd.gdx);
+    }
+    if (inFlipArea(egd.ogx, egd.ogy)) {
+        if (flp & 1)
+            egd.ogy = FlipY(egd.ogy);
+        if (flp & 2)
+            egd.ogx = FlipX(egd.ogx);
+    }
+    for (let i = egd.fcbeg | 0; i < (egd.fcend | 0); ++i) {
+        const fx = egd.fakecorr[i].fx, fy = egd.fakecorr[i].fy;
+
+        if (inFlipArea(fx, fy)) {
+            if (flp & 1)
+                egd.fakecorr[i].fy = FlipY(fy);
+            if (flp & 2)
+                egd.fakecorr[i].fx = FlipX(fx);
+        }
+    }
+}
+
 // src/sp_lev.c:967 flip_level_rnd() — one rn2(2) per allowed axis.
-function flip_level_rnd(flp) {
+export async function flip_level_rnd(flp) {
     let c = 0;
     if ((flp & 1) && rn2(2))
         c |= 1;
     if ((flp & 2) && rn2(2))
         c |= 2;
     if (c)
-        flip_level(c, false);
+        await flip_level(c, false);
 }
 
 // src/sp_lev.c:533 flip_level() — mirror the level on one or both axes.
@@ -2733,11 +2816,14 @@ function flip_level_rnd(flp) {
 // Recorded: the ball-and-chain repositioning, the vault guard's egd,
 // migrating monsters, timers and the level-teleport regions. `extras` is
 // false for the post-build flip, which is the only caller so far.
-export function flip_level(flp, extras) {
+export async function flip_level(flp, extras) {
+    /* extras: False: level creation; True: #wizfliplevel is altering an
+       active level so more needs to be done */
+    let ball_active = false, ball_fliparea = false;
+
+    /* nothing to do unless (flp & 1) or (flp & 2) or both */
     if ((flp & 3) === 0)
         return;
-    if (extras)
-        note_unported('flip_level:extras');
 
     const ext = get_level_extends();
     let minx = ext.xmin, miny = ext.ymin, maxx = ext.xmax, maxy = ext.ymax;
@@ -2751,6 +2837,26 @@ export function flip_level(flp, extras) {
     const FlipY = (v) => (maxy - v) + miny;
     const inFlipArea = (x, y) =>
         (x >= minx && x <= maxx && y >= miny && y <= maxy);
+
+    if (extras) {
+        if (Punished() && game.u.uball.where !== OBJ_FREE) {
+            ball_active = true;
+            /* if hero and ball and chain are all inside flip area,
+               flip b&c coordinates along with other objects; if they
+               are all outside, leave them to be rejected when flipping
+               so that they stay as is; if some are inside and some are
+               outside, un-place here and subsequently re-place them on
+               hero's [possibly new] spot below */
+            if (carried(game.u.uball))
+                game.u.uball.ox = game.u.ux, game.u.uball.oy = game.u.uy;
+            ball_fliparea = ((inFlipArea(game.u.uball.ox, game.u.uball.oy)
+                              === inFlipArea(game.u.uchain.ox, game.u.uchain.oy))
+                             && (inFlipArea(game.u.uball.ox, game.u.uball.oy)
+                                 === inFlipArea(game.u.ux, game.u.uy)));
+            if (!ball_fliparea)
+                unplacebc();
+        }
+    }
 
     /* stairs and ladders */
     for (let st = game.stairs; st; st = st.next) {
@@ -2832,6 +2938,13 @@ export function flip_level(flp, extras) {
         }
     }
     for (const m of (game.level?.monsters || [])) {
+        if (m.isgd) {
+            if (extras) /* flip mtmp->mextra->egd */
+                flip_vault_guard(flp, m, minx, miny, maxx, maxy);
+            if (m.mx === 0) /* not on map so don't flip guard->mx,my */
+                continue;
+        }
+        /* skip the occasional earth elemental outside the flip area */
         if (!inFlipArea(m.mx, m.my)) continue;
         if (flp & 1) m.my = FlipY(m.my);
         if (flp & 2) m.mx = FlipX(m.mx);
@@ -2850,9 +2963,27 @@ export function flip_level(flp, extras) {
             if (flp & 2)
                 flip_worm_segs_horizontal(m, minx, maxx);
         }
+        if (extras) {
+            if (m.mtame && m.edog)
+                Flip_coord(m.edog.ogoal);
+        }
     }
     for (const m of on_grid)
         (game.level.monAt ||= new Map()).set(`${m.mx},${m.my}`, m);
+    if (extras) { /* #wizfliplevel rather than level creation */
+        for (const mtmp of (game.migrating_mons || [])) {
+            if (mtmp.isgd && on_level(game.u.uz, mtmp.mextra?.egd?.gdlevel)) {
+                flip_vault_guard(flp, mtmp, minx, miny, maxx, maxy); /* egd */
+            } else if (mtmp.ispriest
+                       && on_level(game.u.uz, (mtmp.epri || mtmp.mextra?.epri)?.shrlevel)) {
+                Flip_coord((mtmp.epri || mtmp.mextra?.epri)?.shrpos); /* priest's altar */
+            } else if (mtmp.isshk
+                       && on_level(game.u.uz, mtmp.eshk?.shoplevel)) {
+                Flip_coord(mtmp.eshk?.shk); /* shk's preferred spot */
+                Flip_coord(mtmp.eshk?.shd); /* shop door */
+            }
+        }
+    }
 
     /* engravings */
     for (const e of (game.level?.lev_engr || [])) {
@@ -2938,12 +3069,55 @@ export function flip_level(flp, extras) {
             }
     }
 
+    /* exclusion zones (sp_lev.c:877) */
+    for (const ez of (game.exclusion_zones || [])) {
+        if (flp & 1) {
+            ez.ly = FlipY(ez.ly);
+            ez.hy = FlipY(ez.hy);
+            if (ez.ly > ez.hy) {
+                const itmp = ez.ly;
+                ez.ly = ez.hy;
+                ez.hy = itmp;
+            }
+        }
+        if (flp & 2) {
+            ez.lx = FlipX(ez.lx);
+            ez.hx = FlipX(ez.hx);
+            if (ez.lx > ez.hx) {
+                const itmp = ez.lx;
+                ez.lx = ez.hx;
+                ez.hx = itmp;
+            }
+        }
+    }
+
     /* src/sp_lev.c:915 — the swap moves wall SQUARES but leaves their corner
        and T-junction types pointing the old way; this recomputes them from
        the neighbours. Without it every corner glyph comes out mirrored. */
+    if (extras) { /* for #wizfliplevel rather than during level creation */
+        /* flip hero location only if inside the flippable area */
+        if (inFlipArea(game.u.ux, game.u.uy)) {
+            if (flp & 1)
+                game.u.uy = FlipY(game.u.uy);
+            if (flp & 2)
+                game.u.ux = FlipX(game.u.ux);
+            /* we could flip <ux0,uy0> too if it's inside the flip area,
+               but have to resort to this if outside, so just do this */
+            game.u.ux0 = game.u.ux, game.u.uy0 = game.u.uy;
+        }
+        if (ball_active && !ball_fliparea)
+            await placebc();
+        Flip_coord(game.iflags?.travelcc);
+        Flip_coord(game.context?.digging?.pos);
+    }
+
     fix_wall_spines(1, 0, COLNO - 1, ROWNO - 1);
-    /* C ends with vision_reset(); goto_level() already does one right after
-       the level is built, so it is left to that caller. */
+    if (extras && flp) {
+        set_wall_state();
+        /* after wall_spines; flips seenv and wall joins */
+        flip_visuals(flp, minx, miny, maxx, maxy);
+    }
+    vision_reset();
 }
 
 /* SpLev_Map — which map squares the special level explicitly touched. */
@@ -3008,14 +3182,10 @@ export async function load_special(name) {
 
     map_cleanup();
 
-    if (!game.level.flags.corrmaze) {
-        if (mklev_fns.wallification)
-            mklev_fns.wallification(1, 0, COLNO - 1, ROWNO - 1);
-        else
-            note_unported('load_special:wallification');
-    }
+    if (!game.level.flags.corrmaze)
+        mklev_fns.wallification(1, 0, COLNO - 1, ROWNO - 1);
 
-    flip_level_rnd(game.coder?.allow_flips ?? 0);
+    await flip_level_rnd(game.coder?.allow_flips ?? 0);
 
     if (mklev_fns.count_level_features)
         mklev_fns.count_level_features();
@@ -3179,9 +3349,12 @@ function splev_initlev(linit) {
             linit.lit = rn2(2);
         lvlfill_swamp(linit.fg, linit.bg, linit.lit);
         break;
+    case 'rogue':
+        /* src/sp_lev.c:3003 LVLINIT_ROGUE */
+        mklev_fns.makeroguerooms();
+        break;
     default:
-        /* the rogue style has no ported caller yet */
-        note_unported(`splev_initlev:${linit.init_style}`);
+        impossible('Unrecognized level init style.');
         break;
     }
 }
@@ -3322,19 +3495,20 @@ function l_get_lregion(opts) {
 }
 
 export function lspo_teleport_region(opts) {
-    const dirs = { both: 0 /* LR_TELE */, down: 2 /* LR_DOWNTELE */,
-                   up: 1 /* LR_UPTELE */ };
+    const dirs = { both: LR_TELE, down: LR_DOWNTELE, up: LR_UPTELE };
     const tmpl = l_get_lregion(opts);
-    tmpl.rtype = dirs[opts.dir ?? 'both'] ?? 0;
+    tmpl.rtype = dirs[opts.dir ?? 'both'] ?? LR_TELE;
     tmpl.padding = 0;
     levregion_add(tmpl);
 }
 
 export function lspo_levregion(opts) {
-    const types = { 'stair-down': 6, 'stair-up': 5, 'portal': 3, 'branch': 4,
-                    'teleport': 0, 'teleport-up': 1, 'teleport-down': 2 };
+    const types = { 'stair-down': LR_DOWNSTAIR, 'stair-up': LR_UPSTAIR,
+                    'portal': LR_PORTAL, 'branch': LR_BRANCH,
+                    'teleport': LR_TELE, 'teleport-up': LR_UPTELE,
+                    'teleport-down': LR_DOWNTELE };
     const tmpl = l_get_lregion(opts);
-    tmpl.rtype = types[opts.type ?? 'stair-down'] ?? 6;
+    tmpl.rtype = types[opts.type ?? 'stair-down'] ?? LR_DOWNSTAIR;
     tmpl.padding = opts.padding ?? 0;
     tmpl.rname = opts.name ?? null;
     levregion_add(tmpl);
@@ -3541,8 +3715,8 @@ export function lspo_non_passwall(x1, y1, x2, y2) {
    on sve.exclusion_zones and consults them when placing monsters, teleport
    destinations and so on (sp_lev.c:877). Draws nothing; the region corners go
    through get_location_coord, i.e. the map's xstart/ystart offset. */
-const EZ_TYPES = { teleport: 0, 'teleport-up': 1, 'teleport-down': 2,
-                   'monster-generation': 3 };
+const EZ_TYPES = { teleport: LR_TELE, 'teleport-up': LR_UPTELE,
+                   'teleport-down': LR_DOWNTELE, 'monster-generation': LR_MONGEN };
 
 export function lspo_exclusion(opts) {
     const r = opts.region || [];

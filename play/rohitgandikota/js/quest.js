@@ -18,6 +18,10 @@ import { A_WIS, A_CURRENT, A_ORIGINAL, MIN_QUEST_ALIGN,
          MIN_QUEST_LEVEL, STRAT_WAITMASK } from './const.js';
 import { MSOUND } from './monst_data.js';
 import { ONAMES } from './objects_data.js';
+import { find_quest_artifact } from './questpgr.js';
+import { OBJ_FLOOR } from './obj.js';
+import { OBJ_MINVENT } from './obj.js';
+import { OBJ_BURIED } from './obj.js';
 
 /* include/quest.h:8 struct q_score — zero-initialized at game start */
 function Qstat() {
@@ -337,10 +341,16 @@ async function on_goal() {
         await qt_pager('goal_first');
         q.made_goal = 1;
     } else {
-        /* the return visit needs find_quest_artifact() over the floor,
-           minvent and buried chains to pick goal_next vs goal_alt */
-        (game.unported ||= new Set()).add('quest:on_goal:find_quest_artifact');
-        await qt_pager('goal_next');
+        /*
+         * some kind of "you can't find the artifact" message might
+         * be appropriate; check whether it is present on the level
+         */
+        const whichobjchains = ((1 << OBJ_FLOOR)
+                                | (1 << OBJ_MINVENT)
+                                | (1 << OBJ_BURIED));
+        const qarti = find_quest_artifact(whichobjchains);
+
+        await qt_pager(qarti ? 'goal_next' : 'goal_alt');
         if (q.made_goal < 7)
             q.made_goal++;
     }

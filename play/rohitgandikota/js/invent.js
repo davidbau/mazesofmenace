@@ -37,6 +37,7 @@ import { Has_contents } from './obj.js';
 import { get_obj_location } from './zap.js';
 import { unpunish } from './read.js';
 import { game } from './gstate.js';
+import { OBJ_ONBILL } from './const.js';
 import { suppress_map_output } from './display.js';
 import { tty_update_inventory } from './tty/wintty.js';
 import { wc_supported } from './options.js';
@@ -110,6 +111,7 @@ import { obj_merge_light_sources } from './light.js';
 import { def_char_to_objclass } from './sp_lev.js';
 import { cxname_singular } from './objnam.js';
 import { greatest_erosion } from './do_wear.js';
+import { stolen_value } from './shk.js';
 
 // src/invent.c:70 inuse_classify()
 function inuse_classify(sort_item, obj) {
@@ -1973,7 +1975,7 @@ export async function useupf(obj, numused) {
         if (rooms && (game.u.urooms || '').includes(rooms[0]))
             await addtobill(otmp, false, false, false);
         else
-            (game.unported ||= new Set()).add('useupf:stolen_value');
+            await stolen_value(otmp, otmp.ox, otmp.oy, false, false);
     }
     delobj(otmp);
     if (otmp.where === OBJ_FREE)
@@ -2469,6 +2471,14 @@ export function obj_extract_self(obj) {
         break;
     case OBJ_BURIED: {
         const objs = game.level?.buriedobjs;
+        if (objs) {
+            const i = objs.indexOf(obj);
+            if (i >= 0) objs.splice(i, 1);
+        }
+        break;
+    }
+    case OBJ_ONBILL: {  /* src/mkobj.c:2585 extract_nobj(obj, &gb.billobjs) */
+        const objs = game.billobjs;
         if (objs) {
             const i = objs.indexOf(obj);
             if (i >= 0) objs.splice(i, 1);

@@ -4,13 +4,62 @@
 // Level descriptions, rank names, and status conditions.
 
 import { game } from './gstate.js';
+
+import { A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, A_CHAOTIC, A_NEUTRAL, MAX_TYPE, ICE, TT_BURIEDBALL, BOTL_NSIZ, QBUFSZ, MAXVALWIDTH, BL_CHARACTERISTICS, BL_RESET, CONDITION_COUNT, Is_rogue_level } from './const.js';
+import { ACURR } from './attrib.js';
+
+import { Upolyd } from './const.js';
+
+import { boolean_option, config_error_add } from './options.js';
+
+import { suppress_map_output } from './display.js';
+
+import { pmname } from './do_name.js';
+
+import { money_cnt } from './invent.js';
+
+import { status_version } from './version.js';
+
+import { classify_terrain } from './hack.js';
+
+import { sticks } from './mondata.js';
+
+import { MONSYMS } from './monst_data.js';
+
+import { Confusion, Hallucination, Stunned, Underwater, Glib, Wounded_legs } from './youprop.js';
+
+import { unconscious } from './trap.js';
+
+import { newuexp } from './exper.js';
+
+import { critically_low_hp } from './pray.js';
+
+import { fuzzymatch, trimspaces } from './hacklib.js';
+
+import { match_str2attr, match_str2clr } from './coloratt.js';
+
+import { def_oc_syms } from './drawing_data.js';
+
+import { gs_showsyms } from './symbols.js';
+
+import { status_update, status_enablefield } from './windows.js';
+
+import { tty_status_init, wintty_wire_botl,
+         ATR_BOLD, ATR_DIM, ATR_ITALIC, ATR_ULINE, ATR_BLINK, ATR_INVERSE } from './tty/wintty.js';
+
 import { roles } from './role_data.js';
+
 import { near_capacity } from './attrib.js';
+
 import { NOT_HUNGRY, UNENCUMBERED, SICK_VOMITABLE, SICK_NONVOMITABLE,
          TT_LAVA } from './const.js';
+
 import { Blind, Deaf, Levitation, Flying } from './youprop.js';
+
 import { Is_knox_level, In_quest, In_endgame, In_tutorial } from './const.js';
+
 import { depth, endgamelevelname } from './dungeon.js';
+
 import { BL_TITLE, BL_STR, BL_DX, BL_CO, BL_IN, BL_WI, BL_CH, BL_ALIGN,
          BL_SCORE, BL_CAP, BL_GOLD, BL_ENE, BL_ENEMAX, BL_XP, BL_AC, BL_HD,
          BL_TIME, BL_HUNGER, BL_HP, BL_HPMAX, BL_LEVELDESC, BL_EXP,
@@ -33,25 +82,43 @@ import { BL_TITLE, BL_STR, BL_DX, BL_CO, BL_IN, BL_WI, BL_CH, BL_ALIGN,
          SATIATED, STARVED, CLR_MAX, BUFSZ, MENU_BEHAVE_STANDARD,
          MENU_ITEMFLAGS_NONE, PICK_ONE, PICK_ANY, NHW_MENU,
          NHW_TEXT } from './const.js';
+
 import { NO_COLOR, ATR_NONE } from './terminal.js';
+
 import { tty_create_nhwindow, tty_destroy_nhwindow, tty_start_menu,
          tty_add_menu, tty_add_menu_str, tty_end_menu, tty_select_menu,
          tty_display_nhwindow, tty_putstr } from './tty/wintty.js';
+
 import { clr2colorname, query_color, query_attr } from './coloratt.js';
+
 import { strNsubst } from './hacklib.js';
+
 import { highc, strkitten } from './hacklib.js';
+
 import { humanoid } from './mondata.js';
+
 import { weapon_type, weapon_descr } from './weapon.js';
+
 import { is_sword } from './wield.js';
+
 import { bimanual } from './obj.js';
+
 import { is_weptool } from './mkobj.js';
+
 import { helm_simple_name } from './do_wear.js';
+
 import { upstart } from './do_name.js';
+
 import { OCLASSES, ONAMES } from './objects_data.js';
+
 import { ART_MITRE_OF_HOLINESS, ART_TSURUGI_OF_MURAMASA } from './artilist_data.js';
+
 import { P_LANCE, P_QUARTERSTAFF, P_MORNING_STAR, P_POLEARMS, P_UNICORN_HORN } from './const.js';
+
 import { pline } from './display.js';
+
 import { impossible } from './pline.js';
+
 
 // src/botl.c describe_level(), return the output buffer and classification.
 // The optional level replaces C callers' temporary assignment to u.uz.
@@ -311,60 +378,6 @@ export const enc_stat = [
 
 // src/botl.c:781 conditions[]/:1333 cond_cmp(), tty/wintty.c:5150.
 // Conditions follow hunger and capacity, sorted by rank then useroption.
-export function bot_conditions(shrinklvl = 0) {
-    const u = game.u;
-    const intr = u.intrinsic || {};
-    const props = u.uprops || {};
-    let cond = '';
-    if (u.uhs != null && u.uhs !== NOT_HUNGRY)
-        cond += ' ' + hu_stat[u.uhs].trimEnd();
-    const cap = near_capacity();
-    if (cap > UNENCUMBERED) cond += ' ' + enc_stat[cap];
-    /* src/botl.c:781 conditions[] — ranking, useroption (tie-break),
-       and the three text widths the tty falls back through when the row
-       does not fit (wintty.c cond_shrinklvl 0..2) */
-    const sick_type = game._deferred_status_sick_type ?? u.usick_type;
-    const blind = typeof game._deferred_status_blind === 'boolean'
-        ? game._deferred_status_blind : Blind();
-    const active = [];
-    const add = (rank, useroption, texts) => active.push({ rank, useroption, texts });
-    if (intr.HStrangled)
-        add(4, 'strngl', ['Strngl', 'Stngl', 'Str']);
-    if (sick_type & SICK_VOMITABLE)
-        add(6, 'foodPois', ['FoodPois', 'Fpois', 'Poi']);
-    if (props.SLIMED)
-        add(6, 'slime', ['Slime', 'Slim', 'Slm']);
-    if (props.STONED)
-        add(6, 'stone', ['Stone', 'Ston', 'Sto']);
-    if (sick_type & SICK_NONVOMITABLE)
-        add(6, 'termIll', ['TermIll', 'Ill', 'Ill']);
-    if (u.utrap && u.utraptype === TT_LAVA)
-        add(8, 'lava', ['InLava', 'Lav', 'La']);
-    if (blind)
-        add(10, 'blind', ['Blind', 'Blnd', 'Bl']);
-    if (intr.HConfusion || props.CONFUSION)
-        add(10, 'conf', ['Conf', 'Cnf', 'Cf']);
-    if (Deaf())
-        add(10, 'deaf', ['Deaf', 'Def', 'Df']);
-    if (Flying())
-        add(10, 'fly', ['Fly', 'Fly', 'Fl']);
-    if ((intr.HHallucination || props.HALLUC) && !props.HALLUC_RES)
-        add(10, 'hallucinat', ['Hallu', 'Hal', 'Hl']);
-    if (Levitation())
-        add(10, 'levitate', ['Lev', 'Lev', 'Lv']);
-    if (u.usteed)
-        add(10, 'ride', ['Ride', 'Rid', 'Rd']);
-    if (intr.HStun || props.STUNNED)
-        add(10, 'stun', ['Stun', 'Stun', 'St']);
-    /* src/botl.c:1333 cond_cmp(): ranking, then case-insensitive useroption */
-    active.sort((a, b) => (a.rank - b.rank)
-        || (a.useroption.toLowerCase() < b.useroption.toLowerCase() ? -1
-            : a.useroption.toLowerCase() > b.useroption.toLowerCase() ? 1 : 0));
-    for (const c of active)
-        cond += ' ' + c.texts[shrinklvl];
-    return cond;
-}
-
 /* src/botl.c:854 */
 const c_Wall = 'Wall';
 
@@ -555,9 +568,17 @@ function s_to_anything(buf, anytype) {
     return Number.isNaN(n) ? 0 : n;
 }
 
-// src/botl.c:2321 reset_status_hilites() — the per-field hilite timers
-// belong to the unported renderer; the status rows are redrawn
+// src/botl.c:2321 reset_status_hilites() — called by options handling when
+// 'statushilites' value is changed
 export function reset_status_hilites() {
+    if (game.iflags?.hilite_delta) {
+        let i;
+
+        if (game.blstats)
+            for (i = 0; i < MAXBLSTATS; ++i)
+                game.blstats[0][i].time = game.blstats[1][i].time = 0;
+        game.update_all = true;
+    }
     (game.disp ||= {}).botlx = true;
 }
 
@@ -1578,3 +1599,1661 @@ export async function status_hilite_menu() {
 
     return true;
 }
+
+/* ---------------------------------------------------------------------------
+ * The status lines through the window port: src/botl.c bot() /
+ * bot_via_windowport() and the STATUS_HILITES evaluation.  gb.blstats[2][]
+ * is game.blstats, gv.valset is game.valset, gn.now_or_before_idx is
+ * game.now_or_before_idx, gu.update_all is game.update_all and
+ * gb.bl_hilite_moves is game.bl_hilite_moves.
+ * ------------------------------------------------------------------------- */
+
+// src/botl.c:130 get_strength_str() — "18/xx" for exceptional strength
+export function get_strength_str() {
+    const STR18 = (x) => 18 + x;
+    const st = ACURR(A_STR);
+
+    if (st > 18) {
+        if (st > STR18(100))
+            return String(st - 100);
+        else if (st < STR18(100))
+            return `18/${String(st - 18).padStart(2, '0')}`;
+        else
+            return '18/**';
+    }
+    return String(st);
+}
+
+// src/botl.c:253 bot() — the status lines; every tty build has both
+// WC2_HILITE_STATUS and WC2_FLUSH_STATUS, so VIA_WINDOWPORT() is true
+export async function bot() {
+    if (game.bot_disabled)
+        return;
+    /* dosave() flags completion by setting u.uhp to -1; suppress_map_output()
+       covers program_state.restoring and is used for status as well as map */
+    if (game.u.uhp !== -1 && game.youmonst?.data
+        && boolean_option('status_updates') && !suppress_map_output()) {
+        bot_via_windowport();
+    }
+    const disp = (game.disp ||= {});
+    disp.botl = disp.botlx = disp.time_botl = false;
+}
+
+// src/botl.c:275 timebot() — special purpose status update: move counter
+// ('time' status) only
+export function timebot() {
+    if (game.bot_disabled)
+        return;
+    /* we're called when disp.time_botl is set and general disp.botl
+       is clear; disp.time_botl gets set whenever svm.moves changes value
+       so there's no benefit in tracking previous value to decide whether
+       to skip update; suppress_map_output() handles program_state.restoring
+       and program_state.done_hup (tty hangup => no further output at all)
+       and we use it for maybe skipping status as well as for the map */
+    if (game.flags?.time && boolean_option('status_updates')
+        && !suppress_map_output()) {
+        stat_update_time();
+    }
+    (game.disp ||= {}).time_botl = false;
+}
+
+/* src/botl.c:912 the caches for the unconscious/paralyzed condition tests */
+function cond_cache_prepA(cache) {
+    let clear_cache = false, refresh_cache = false;
+
+    if (game.multi < 0) {
+        if (game.nomovemsg || game.multi_reason) {
+            if (cache.nomovemsg !== (game.nomovemsg || null))
+                refresh_cache = true;
+            if (cache.multi_reason !== (game.multi_reason || null))
+                refresh_cache = true;
+        } else {
+            clear_cache = true;
+        }
+    } else {
+        clear_cache = true;
+    }
+    if (clear_cache) {
+        cache.nomovemsg = null;
+        cache.multi_reason = null;
+    }
+    if (refresh_cache) {
+        cache.nomovemsg = game.nomovemsg || null;
+        cache.multi_reason = game.multi_reason || null;
+    }
+    if (clear_cache || refresh_cache) {
+        cache.avail[0] = cache.avail[1] = false;
+        cache.reslt[0] = cache.reslt[1] = false;
+    }
+}
+
+/* the current gold symbol of the status line; the C passes
+   encglyph(objnum_to_glyph(GOLD_PIECE)) and the tty decodes it through
+   the current symset (the Rogue level shows the Rogue set's '*') */
+function status_gold_symbol() {
+    const u = game.u;
+    let goldch;
+
+    if (Is_rogue_level(u.uz))
+        goldch = def_oc_syms[OCLASSES.GEM_CLASS];
+    else
+        goldch = gs_showsyms.O?.[OCLASSES.COIN_CLASS] ?? def_oc_syms[OCLASSES.COIN_CLASS];
+    /* check_gold_symbol(): iflags.invis_goldsym = (goldch <= ' ') */
+    return (game.iflags?.in_dumplog || !goldch || goldch <= ' ') ? '$' : goldch;
+}
+
+// src/botl.c:962 bot_via_windowport()
+export function bot_via_windowport() {
+    let buf, titl, nb;
+    let i, idx, cap;
+    let money;
+    const u = game.u;
+    const flags = game.flags || {};
+
+    if (!game.blinit)
+        status_initialize(false); /* C panics "bot before init." */
+
+    /* toggle from previous iteration */
+    idx = 1 - (game.now_or_before_idx | 0); /* 0 -> 1, 1 -> 0 */
+    game.now_or_before_idx = idx;
+    const bl = game.blstats[idx];
+
+    /* clear the "value set" indicators */
+    const valset = game.valset = new Array(MAXBLSTATS).fill(false);
+
+    /*
+     * Note: min(x,9999) - we enforce the same maximum on hp, maxhp,
+     * pw, maxpw, and gold as basic status formatting so that the two
+     * modes of status display don't produce different information.
+     */
+
+    /*
+     *  Player name and title.
+     */
+    nb = buf = game.plname || '';
+    nb = highc(nb[0] || '') + nb.slice(1);
+    titl = !Upolyd(u) ? rank()
+           : pmname(game.mons[u.umonnum], (Upolyd(u) ? u.mfemale : flags.female) ? 1 : 0);
+    i = nb.length + ' the '.length + titl.length;
+    /* if "Name the Rank/monster" is too long, we truncate the name but
+       always keep at least BOTL_NSIZ characters of it; when hitpointbar is
+       enabled, anything beyond 30 (long monster name) will be truncated */
+    if (i > 30) {
+        i = 30 - (' the '.length + titl.length);
+        nb = nb.slice(0, Math.max(i, BOTL_NSIZ));
+    }
+    nb += ' the ';
+    if (Upolyd(u)) { /* when poly'd, capitalize monster name */
+        nb += titl.replace(/(^|\s)(\S)/g, (m, sp, ch) => sp + highc(ch));
+    } else {
+        nb += titl;
+    }
+    buf = nb;
+    bl[BL_TITLE].val = buf.padEnd(30); /* "%-30s" */
+    valset[BL_TITLE] = true; /* indicate val already set */
+
+    /* Strength */
+    bl[BL_STR].a = ACURR(A_STR);
+    bl[BL_STR].val = get_strength_str();
+    valset[BL_STR] = true; /* indicate val already set */
+
+    /*  Dexterity, constitution, intelligence, wisdom, charisma. */
+    bl[BL_DX].a = ACURR(A_DEX);
+    bl[BL_CO].a = ACURR(A_CON);
+    bl[BL_IN].a = ACURR(A_INT);
+    bl[BL_WI].a = ACURR(A_WIS);
+    bl[BL_CH].a = ACURR(A_CHA);
+
+    /* Alignment */
+    bl[BL_ALIGN].val = (u.ualign.type === A_CHAOTIC)
+                       ? 'Chaotic'
+                       : (u.ualign.type === A_NEUTRAL)
+                          ? 'Neutral'
+                          : 'Lawful';
+
+    /* Score */
+    bl[BL_SCORE].a = 0; /* SCORE_ON_BOTL is not defined */
+
+    /*  Hit points  */
+    i = (Upolyd(u) ? u.mh : u.uhp) | 0;
+    if (i < 0) /* gameover sets u.uhp to -1 */
+        i = 0;
+    bl[BL_HP].rawval = i;
+    bl[BL_HP].a = Math.min(i, 9999);
+    i = (Upolyd(u) ? u.mhmax : u.uhpmax) | 0;
+    bl[BL_HPMAX].rawval = i;
+    bl[BL_HPMAX].a = Math.min(i, 9999);
+
+    /*  Dungeon level. */
+    bl[BL_LEVELDESC].val = describe_level(1).text;
+    valset[BL_LEVELDESC] = true; /* indicate val already set */
+
+    /* Gold */
+    if ((money = money_cnt(game.invent)) < 0)
+        money = 0; /* ought to issue impossible() and then discard gold */
+    bl[BL_GOLD].rawval = money;
+    bl[BL_GOLD].a = Math.min(money, 999999);
+    /* the tty port needs to display the current symbol for gold as a
+       field header; the C encodes it as \GXXXXNNNN and the tty decodes it */
+    bl[BL_GOLD].val = `${status_gold_symbol()}:${bl[BL_GOLD].a}`;
+    valset[BL_GOLD] = true; /* indicate val already set */
+
+    /* Power (magical energy) */
+    bl[BL_ENE].rawval = u.uen | 0;
+    bl[BL_ENE].a = Math.min(u.uen | 0, 9999);
+    bl[BL_ENEMAX].rawval = u.uenmax | 0;
+    bl[BL_ENEMAX].a = Math.min(u.uenmax | 0, 9999);
+
+    /* Armor class */
+    bl[BL_AC].a = u.uac | 0;
+
+    /* Monster level (if Upolyd) */
+    bl[BL_HD].a = Upolyd(u) ? game.mons[u.umonnum].mlevel : 0;
+
+    /* Experience */
+    bl[BL_XP].a = u.ulevel | 0;
+    bl[BL_EXP].a = u.uexp | 0;
+
+    /* Time (moves) */
+    bl[BL_TIME].a = game.moves | 0;
+
+    /* Hunger */
+    bl[BL_HUNGER].a = u.uhs | 0;
+    bl[BL_HUNGER].val = (u.uhs !== NOT_HUNGRY) ? hu_stat[u.uhs] : '';
+    valset[BL_HUNGER] = true;
+
+    /* Carrying capacity */
+    cap = near_capacity();
+    bl[BL_CAP].a = cap;
+    bl[BL_CAP].val = (cap > UNENCUMBERED) ? enc_stat[cap] : '';
+    valset[BL_CAP] = true;
+
+    /* Version; unchanging unless player toggles 'showvers' option or
+       modifies 'versinfo' option; toggling showvers off will clear it */
+    if (bl[BL_VERS].a !== (flags.versinfo ?? 1)) {
+        bl[BL_VERS].a = (flags.versinfo ?? 1);
+        valset[BL_VERS] = false;
+    }
+    if (!valset[BL_VERS]) {
+        bl[BL_VERS].val = status_version(false);
+        valset[BL_VERS] = true;
+    }
+
+    /* Conditions */
+
+    bl[BL_CONDITION].a = 0;
+
+    const ct = condtests;
+    const test_if_enabled = (c, v) => { if (ct[c].enabled) ct[c].test = v; };
+    const bl_ = (id) => condtests.findIndex((t) => t.id === id);
+    const bl_bareh = bl_('bl_bareh'), bl_blind = bl_('bl_blind'),
+          bl_busy = bl_('bl_busy'), bl_conf = bl_('bl_conf'),
+          bl_deaf = bl_('bl_deaf'), bl_elf_iron = bl_('bl_elf_iron'),
+          bl_fly = bl_('bl_fly'), bl_foodpois = bl_('bl_foodpois'),
+          bl_glowhands = bl_('bl_glowhands'), bl_grab = bl_('bl_grab'),
+          bl_hallu = bl_('bl_hallu'), bl_held = bl_('bl_held'),
+          bl_icy = bl_('bl_icy'), bl_inlava = bl_('bl_inlava'),
+          bl_lev = bl_('bl_lev'), bl_parlyz = bl_('bl_parlyz'),
+          bl_ride = bl_('bl_ride'), bl_sleeping = bl_('bl_sleeping'),
+          bl_slime = bl_('bl_slime'), bl_slippery = bl_('bl_slippery'),
+          bl_stone = bl_('bl_stone'), bl_strngl = bl_('bl_strngl'),
+          bl_stun = bl_('bl_stun'), bl_submerged = bl_('bl_submerged'),
+          bl_termill = bl_('bl_termill'), bl_tethered = bl_('bl_tethered'),
+          bl_trapped = bl_('bl_trapped'), bl_unconsc = bl_('bl_unconsc'),
+          bl_woundedl = bl_('bl_woundedl'), bl_holding = bl_('bl_holding');
+
+    ct[bl_foodpois].test = ct[bl_termill].test = false;
+    if (u.uprops?.SICK) { /* Sick */
+        test_if_enabled(bl_foodpois, (u.usick_type & SICK_VOMITABLE) !== 0);
+        test_if_enabled(bl_termill, (u.usick_type & SICK_NONVOMITABLE) !== 0);
+    }
+    ct[bl_inlava].test = ct[bl_tethered].test = ct[bl_trapped].test = false;
+    if (u.utrap) {
+        test_if_enabled(bl_inlava, (u.utraptype === TT_LAVA));
+        test_if_enabled(bl_tethered, (u.utraptype === TT_BURIEDBALL));
+        /* if in-lava or tethered is disabled and the condition applies,
+           lump it in with trapped */
+        test_if_enabled(bl_trapped, (!ct[bl_inlava].test && !ct[bl_tethered].test));
+    }
+    ct[bl_grab].test = ct[bl_held].test = ct[bl_holding].test = false;
+    if (u.ustuck) {
+        /* it is possible for a hero in sticks() form to be swallowed,
+           so swallowed needs to be checked first; it is not possible for
+           a hero in sticks() form to be held--sticky hero does the holding
+           even if u.ustuck is also a holder */
+        if (u.uswallow) {
+            /* engulfed/swallowed isn't currently a tracked status condition;
+               "held" might look odd for it but seems better than blank */
+            test_if_enabled(bl_held, true);
+        } else if (Upolyd(u) && sticks(game.youmonst.data)) {
+            test_if_enabled(bl_holding, true);
+        } else {
+            /* grab == hero is held by sea monster and about to be drowned;
+               held == hero is held by something else and can't move away */
+            test_if_enabled(bl_grab, (u.ustuck.data.mlet === MONSYMS.S_EEL));
+            test_if_enabled(bl_held, !ct[bl_grab].test);
+        }
+    }
+    ct[bl_blind].test     = Blind() ? true : false;
+    ct[bl_conf].test      = Confusion() ? true : false;
+    ct[bl_deaf].test      = Deaf() ? true : false;
+    ct[bl_fly].test       = Flying() ? true : false;
+    ct[bl_glowhands].test = (u.umconf) ? true : false;
+    ct[bl_hallu].test     = Hallucination() ? true : false;
+    ct[bl_lev].test       = Levitation() ? true : false;
+    ct[bl_ride].test      = (u.usteed) ? true : false;
+    ct[bl_slime].test     = (u.uprops?.SLIMED) ? true : false;   /* Slimed */
+    ct[bl_stone].test     = (u.uprops?.STONED) ? true : false;   /* Stoned */
+    ct[bl_strngl].test    = (u.intrinsic?.HStrangled) ? true : false; /* Strangled */
+    ct[bl_stun].test      = Stunned() ? true : false;
+    ct[bl_submerged].test = Underwater() ? true : false;
+    test_if_enabled(bl_elf_iron, false);
+    test_if_enabled(bl_bareh, (!u.uarmg && !u.uwep));
+    test_if_enabled(bl_icy, (game.level.at(u.ux, u.uy).typ === ICE));
+    test_if_enabled(bl_slippery, Glib() ? true : false);
+    test_if_enabled(bl_woundedl, Wounded_legs() ? true : false);
+
+    if (game.multi < 0) {
+        const cache = (game._cond_cache ||= { nomovemsg: null, multi_reason: null,
+                                              avail: [false, false],
+                                              reslt: [false, false] });
+        cond_cache_prepA(cache);
+        if (ct[bl_unconsc].enabled
+            && cache.nomovemsg && !cache.avail[0]) {
+                cache.reslt[0] = (!u.usleep && unconscious());
+                cache.avail[0] = true;
+        }
+        if (ct[bl_parlyz].enabled
+            && cache.multi_reason && !cache.avail[1]) {
+                cache.reslt[1] = (cache.multi_reason.startsWith('paralyzed')
+                                 || cache.multi_reason.startsWith('frozen'));
+                cache.avail[1] = true;
+        }
+        if (cache.avail[0] && cache.reslt[0]) {
+            ct[bl_unconsc].test = cache.reslt[0];
+        } else if (cache.avail[1] && cache.reslt[1]) {
+            ct[bl_parlyz].test = cache.reslt[1];
+        } else if (ct[bl_sleeping].enabled && u.usleep) {
+            ct[bl_sleeping].test = true;
+        } else if (ct[bl_busy].enabled) {
+            ct[bl_busy].test = true;
+        }
+    } else {
+        ct[bl_unconsc].test = ct[bl_parlyz].test =
+            ct[bl_sleeping].test = ct[bl_busy].test = false;
+    }
+
+    for (i = 0; i < CONDITION_COUNT; ++i) {
+        if (ct[i].enabled
+             /* && i != bl_holding  */ /* uncomment to suppress UHold */
+                && ct[i].test)
+            bl[BL_CONDITION].a |= conditions[i].mask;
+    }
+
+    /*
+     * Optionally displayed weapon(s), armor, and terrain.
+     */
+    if (flags.weaponstatus)
+        bl[BL_WEAPON].val = weapon_status();
+    else
+        bl[BL_WEAPON].val = '';
+
+    if (flags.armorstatus)
+        bl[BL_ARMOR].val = armor_status();
+    else
+        bl[BL_ARMOR].val = '';
+
+    if (flags.terrainstatus) {
+        if ((game.iflags.terrain_typ ?? MAX_TYPE) === MAX_TYPE)
+            classify_terrain();
+        i = game.iflags.terrain_typ;
+        if (bl[BL_TERRAIN].a !== i) {
+            bl[BL_TERRAIN].val = terrain_descr[i];
+            bl[BL_TERRAIN].a = i;
+        }
+    } else {
+        bl[BL_TERRAIN].val = '';
+        /* MAX_TYPE is "none of the above" for levl[][].typ */
+        bl[BL_TERRAIN].a = MAX_TYPE;
+    }
+    valset[BL_TERRAIN] = true;
+
+    /* now request rendering */
+    evaluate_and_notify_windowport(valset, idx);
+}
+
+// src/botl.c:1285 stat_update_time() — update just the status lines'
+// 'time' field
+function stat_update_time() {
+    const idx = game.now_or_before_idx | 0; /* no 0/1 toggle */
+    const fld = BL_TIME;
+
+    if (!game.blinit)
+        return;
+    /* Time (moves) */
+    game.blstats[idx][fld].a = game.moves;
+    (game.valset ||= new Array(MAXBLSTATS).fill(false))[fld] = false;
+
+    eval_notify_windowport_field(fld, game.valset, idx);
+    status_update(BL_FLUSH, null, 0, 0, NO_COLOR, null); /* WC2_FLUSH_STATUS */
+    return;
+}
+
+// src/botl.c:1308 condopt() — deal with player's choice to change
+// processing of a condition; addr == null re-initializes the choices
+export function condopt(idx, addr, negated) {
+    let i;
+
+    /* sanity check */
+    if ((idx < 0 || idx >= CONDITION_COUNT))
+        return;
+
+    if (!addr) {
+        /* special: indicates a request to init so
+           set the choice values to match the defaults */
+        game.condmenu_sortorder = 0;
+        const cond_idx = (game.cond_idx = []);
+        for (i = 0; i < CONDITION_COUNT; ++i) {
+            cond_idx[i] = i;
+            condtests[i].choice = condtests[i].enabled;
+        }
+        cond_idx.sort(cond_cmp);
+    } else {
+        /* (addr == &condtests[idx].choice) */
+        condtests[idx].enabled = negated ? false : true;
+        condtests[idx].choice = condtests[idx].enabled;
+        /* avoid lingering false positives if test is no longer run */
+        condtests[idx].test = false;
+    }
+}
+
+// src/botl.c:1333 cond_cmp() — qsort callback routine for sorting the
+// condition index
+function cond_cmp(indx1, indx2) {
+    const c1 = conditions[indx1].ranking, c2 = conditions[indx2].ranking;
+
+    if (c1 !== c2)
+        return c1 - c2;
+    /* tie-breaker - visible alpha by name */
+    const a = condtests[indx1].useropt.toLowerCase(),
+          b = condtests[indx2].useropt.toLowerCase();
+    return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/* the sorted condition index; the C fills it from condopt(0, NULL, 0)
+   during option initialization */
+export function cond_idx() {
+    if (!game.cond_idx)
+        condopt(0, null, false);
+    return game.cond_idx;
+}
+
+// src/botl.c:1493 eval_notify_windowport_field()
+function eval_notify_windowport_field(fld, valsetlist, idx) {
+    let pc, chg, color = NO_COLOR;
+    let anytype;
+    let updated = false, reset;
+    let curr, prev;
+    let fldmax;
+
+    /*
+     *  Now pass the changed values to window port.
+     */
+    anytype = game.blstats[idx][fld].anytype;
+    curr = game.blstats[idx][fld];
+    prev = game.blstats[1 - idx][fld];
+    color = NO_COLOR;
+
+    chg = game.update_all ? 0 : compare_blstats(prev, curr);
+    if (((chg || game.update_all || fld === BL_XP)
+         && curr.percent_matters
+         && blstats_thresholds(fld).length)
+        /* when 'hitpointbar' is On, percent matters even if HP
+           hasn't changed and has no percentage rules (in case HPmax
+           has changed when HP hasn't, where we ordinarily wouldn't
+           update HP so would miss an update of the hitpoint bar) */
+        || (fld === BL_HP && game.flags?.hitpointbar)) {
+        fldmax = curr.idxmax;
+        pc = (fldmax === BL_EXP) ? exp_percentage()
+              : (fldmax >= 0 && fldmax < MAXBLSTATS)
+                 ? percentage(curr, game.blstats[idx][fldmax])
+                 : 0; /* bullet proofing; can't get here */
+        if (pc !== prev.percent_value)
+            chg = (pc < prev.percent_value) ? -1 : 1;
+        curr.percent_value = pc;
+    } else {
+        pc = 0;
+    }
+
+    /* Temporary? hack: moveloop()'s prolog for a new game sets
+     * svc.context.rndencode after the status window has been init'd,
+     * so $:0 has already been encoded and cached by the window
+     * port.  Without this hack, gold's \G sequence won't be
+     * recognized and ends up being displayed as-is for 'gu.update_all'.
+     *
+     * Also, even if svc.context.rndencode hasn't changed and the
+     * gold amount itself hasn't changed, the glyph portion of the
+     * encoding may have changed if a new symset was put into effect.
+     */
+    if (fld === BL_GOLD) {
+        const goldsym = status_gold_symbol();
+        if ((game.context?.rndencode | 0) !== (game._botl_oldrndencode | 0)
+            || goldsym !== game._botl_oldgoldsym) {
+            game.update_all = true; /* chg = 2; */
+            game._botl_oldrndencode = game.context?.rndencode | 0;
+            game._botl_oldgoldsym = goldsym;
+        }
+    }
+
+    reset = false;
+    if (game.update_all) {
+        chg = 0;
+        curr.time = prev.time = 0;
+    } else if (!chg && curr.time) {
+        reset = hilite_reset_needed(prev, game.bl_hilite_moves | 0);
+        if (reset)
+            curr.time = prev.time = 0;
+    }
+
+   if (game.update_all || chg || reset) {
+        if (!valsetlist[fld]) {
+            const sv = anything_to_s(curr.a, anytype); /* ANY_STR: do nothing */
+            if (sv !== undefined)
+                curr.val = sv;
+        }
+
+        if (anytype !== ANY_MASK32) {
+            if (chg || curr.val) {
+                /* if Xp percentage changed, we set 'chg' to 1 above;
+                   reset that if the Xp value hasn't actually changed
+                   or possibly went down rather than up (level loss) */
+                if (chg === 1 && fld === BL_XP)
+                    chg = compare_blstats(prev, curr);
+
+                const got = get_hilite(idx, fld, curr.a, chg, pc);
+                curr.hilite_rule = got.rule;
+                color = got.color;
+                prev.hilite_rule = curr.hilite_rule;
+                if (chg === 2) {
+                    color = NO_COLOR;
+                    chg = 0;
+                }
+            }
+            status_update(fld, curr.val, chg, pc, color, null);
+        } else {
+            /* Color for conditions is done through gc.cond_hilites[] */
+            status_update(fld, curr.a, chg, pc, color, cond_hilites());
+        }
+        curr.chg = prev.chg = true;
+        updated = true;
+    }
+    return updated;
+}
+
+// src/botl.c:1621 evaluate_and_notify_windowport()
+function evaluate_and_notify_windowport(valsetlist, idx) {
+    let i, fld, updated = 0;
+    const flags = game.flags || {};
+    const disp = (game.disp ||= {});
+
+    /*
+     *  Now pass the changed values to window port.
+     */
+    for (i = 0; i < MAXBLSTATS; i++) {
+        fld = initblstats[i].fld;
+        if (((fld === BL_SCORE) && !flags.showscore)
+            || ((fld === BL_EXP) && !flags.showexp)
+            || ((fld === BL_TIME) && !flags.time)
+            || ((fld === BL_HD) && !Upolyd(game.u))
+            || ((fld === BL_XP || fld === BL_EXP) && Upolyd(game.u))
+            || ((fld === BL_VERS) && !flags.showvers)
+            || ((fld === BL_TERRAIN) && !flags.terrainstatus)
+            || ((fld === BL_WEAPON) && !flags.weaponstatus)
+            || ((fld === BL_ARMOR) && !flags.armorstatus)
+            ) {
+            continue;
+        }
+        if (eval_notify_windowport_field(fld, valsetlist, idx))
+            updated++;
+    }
+    /* the tty port has WC2_RESET_STATUS and WC2_FLUSH_STATUS */
+    if (disp.botlx)
+        status_update(BL_RESET, null, 0, 0, NO_COLOR, null);
+    else if ((updated || disp.botlx))
+        status_update(BL_FLUSH, null, 0, 0, NO_COLOR, null);
+
+    disp.botl = disp.botlx = disp.time_botl = false;
+    game.update_all = false;
+}
+
+// src/botl.c:1683 status_initialize()
+export function status_initialize(reassessment /* True: just recheck fields without other init */) {
+    let fld;
+    let fldenabl;
+    let i;
+    let fieldfmt, fieldname;
+    const flags = game.flags || {};
+
+    if (!reassessment) {
+        if (game.blinit)
+            impossible('2nd status_initialize with full init.');
+        init_blstats();
+        tty_status_init(); /* (*windowprocs.win_status_init)() */
+        game.blinit = true;
+    } else if (!game.blinit) {
+        throw new Error("status 'reassess' before init"); /* panic */
+    }
+    for (i = 0; i < MAXBLSTATS; ++i) {
+        fld = initblstats[i].fld;
+        fldenabl = (fld === BL_SCORE) ? !!flags.showscore
+                   : (fld === BL_TIME) ? !!flags.time
+                     : (fld === BL_EXP) ? !!(flags.showexp && !Upolyd(game.u))
+                       : (fld === BL_XP) ? !Upolyd(game.u)
+                         : (fld === BL_HD) ? !!Upolyd(game.u)
+                           : (fld === BL_VERS) ? !!flags.showvers
+                             : (fld === BL_WEAPON) ? !!flags.weaponstatus
+                               : (fld === BL_ARMOR) ? !!flags.armorstatus
+                                 : (fld === BL_TERRAIN) ? !!flags.terrainstatus
+                                   : true;
+
+        fieldname = initblstats[i].fldname;
+        fieldfmt = (fld === BL_TITLE && flags.hitpointbar) ? '%-30.30s'
+                   : initblstats[i].fldfmt;
+        status_enablefield(fld, fieldname, fieldfmt, fldenabl);
+    }
+    game.update_all = true;
+    (game.disp ||= {}).botlx = true;
+}
+
+// src/botl.c:1759 init_blstats()
+function init_blstats() {
+    let i, j;
+
+    if (game._blstats_initalready) {
+        impossible('init_blstats called more than once.');
+        return;
+    }
+    game.blstats = [[], []];
+    for (i = 0; i <= 1; ++i) {
+        for (j = 0; j < MAXBLSTATS; ++j) {
+            const t = initblstats[j];
+            game.blstats[i][j] = {
+                fldname: t.fldname, fldfmt: t.fldfmt, time: 0, chg: false,
+                percent_matters: (t.idxmax !== -1), percent_value: 0,
+                anytype: t.anytype, a: 0, rawval: 0, val: '',
+                valwidth: 0, idxmax: t.idxmax, fld: t.fld,
+                hilite_rule: null,
+            };
+        }
+    }
+    game._blstats_initalready = true;
+}
+
+// src/botl.c:1810 compare_blstats() — 1 up, -1 down, 0 same; for
+// bitmasks and strings 0 = same, 1 = changed
+function compare_blstats(bl1, bl2) {
+    let use_rawval;
+    let anytype, fld, result = 0;
+
+    anytype = bl1.anytype;
+    /* cheat; terrain is highlighted as a string but we have a handy int
+       reflecting its value to use when checking for changes */
+    if (bl1.fld === BL_TERRAIN)
+        anytype = ANY_INT;
+
+    fld = bl1.fld;
+    use_rawval = (fld === BL_HP || fld === BL_HPMAX
+                  || fld === BL_ENE || fld === BL_ENEMAX
+                  || fld === BL_GOLD);
+    const a1 = use_rawval ? bl1.rawval : bl1.a;
+    const a2 = use_rawval ? bl2.rawval : bl2.a;
+
+    switch (anytype) {
+    case ANY_INT:
+    case ANY_LONG:
+        result = (a1 < a2) ? 1 : (a1 > a2) ? -1 : 0;
+        break;
+    case ANY_STR: {
+        const c = (bl1.val < bl2.val) ? -1 : (bl1.val > bl2.val) ? 1 : 0;
+        result = c; /* sgn(strcmp()) */
+        break;
+    }
+    case ANY_MASK32:
+        result = (a1 !== a2) ? 1 : 0;
+        break;
+    default:
+        result = 1;
+    }
+    return result;
+}
+
+// src/botl.c:1884 anything_to_s()
+function anything_to_s(a, anytype) {
+    switch (anytype) {
+    case ANY_MASK32:
+        return (a >>> 0).toString(16); /* "%lx" */
+    case ANY_LONG:
+    case ANY_INT:
+        return String(a);
+    case ANY_STR: /* do nothing */
+        return undefined;
+    default:
+        return '';
+    }
+}
+
+// src/botl.c:1977 percentage() — integer percentage is 100 * bl->a / maxbl->a
+function percentage(bl, maxbl) {
+    let result = 0;
+    let ival = 0, lval = 0;
+    let fld;
+    let use_rawval;
+
+    if (!bl || !maxbl) {
+        impossible('percentage: bad istat pointer');
+        return 0;
+    }
+
+    fld = bl.fld;
+    use_rawval = (fld === BL_HP || fld === BL_ENE);
+    if (maxbl.a) { /* maxbl->a.a_void */
+        switch (bl.anytype) {
+        case ANY_INT: {
+            /* HP and energy are int so this is the only case that cares
+               about 'rawval'; for them, we use that rather than their
+               potentially truncated (to 9999) display value */
+            ival = use_rawval ? bl.rawval : bl.a;
+            const mval = use_rawval ? maxbl.rawval : maxbl.a;
+            result = Math.trunc((100 * ival) / mval);
+            break;
+        }
+        case ANY_LONG:
+            lval = bl.a;
+            result = Math.trunc((100 * lval) / maxbl.a);
+            break;
+        }
+    }
+    /* don't let truncation from integer division produce a zero result
+       from a non-zero input */
+    if (result === 0 && (ival !== 0 || lval !== 0))
+        result = 1;
+
+    return result;
+}
+
+// src/botl.c:2052 exp_percentage() — percentage for both xp (level) and
+// exp (points) is the percentage for (curr_exp - this_level_start) in
+// (next_level_start - this_level_start)
+function exp_percentage() {
+    let res = 0;
+    const u = game.u;
+
+    if (u.ulevel < 30) {
+        let exp_val, nxt_exp_val, curlvlstart;
+
+        curlvlstart = newuexp(u.ulevel - 1);
+        exp_val = u.uexp - curlvlstart;
+        nxt_exp_val = newuexp(u.ulevel) - curlvlstart;
+        if (exp_val === nxt_exp_val - 1) {
+            /*
+             * Full 100% is unattainable since hero gains a level
+             * and the threshold for next level increases, but treat
+             * (next_level_start - 1 point) as a special case.
+             */
+            res = 100;
+        } else {
+            const curval = { anytype: ANY_LONG, a: exp_val, rawval: 0, fld: BL_EXP },
+                  maxval = { anytype: ANY_LONG, a: nxt_exp_val, rawval: 0, fld: BL_EXP };
+            res = percentage(curval, maxval);
+        }
+    }
+    return res;
+}
+
+// src/botl.c:2090 exp_percent_changing() — experience points have changed
+// but experience level hasn't; decide whether botl update is needed for a
+// different percentage highlight rule for Xp
+export function exp_percent_changing() {
+    let pc;
+
+    /* if status update is already requested, skip this processing */
+    if (!game.disp?.botl && game.blinit) {
+        const idx = game.now_or_before_idx | 0;
+        const curr = game.blstats[idx][BL_XP];
+        if (curr.percent_matters
+            && blstats_thresholds(BL_XP).length
+            && (pc = exp_percentage()) !== curr.percent_value) {
+            const rule = get_hilite(idx, BL_XP, game.u.ulevel, 0, pc).rule;
+            if (rule !== curr.hilite_rule)
+                return true; /* caller should set 'disp.botl' to True */
+        }
+    }
+    return false;
+}
+
+// src/botl.c:2131 stat_cap_indx()
+export function stat_cap_indx() {
+    return game.blstats[game.now_or_before_idx | 0][BL_CAP].a;
+}
+
+// src/botl.c:2146 stat_hunger_indx()
+export function stat_hunger_indx() {
+    return game.blstats[game.now_or_before_idx | 0][BL_HUNGER].a;
+}
+
+// src/botl.c:2160 bl_idx_to_fldname()
+export function bl_idx_to_fldname(idx) {
+    if (idx >= 0 && idx < MAXBLSTATS)
+        return initblstats[idx].fldname;
+    return null;
+}
+
+// src/botl.c:2170 repad_with_dashes() — inoutbuf[] has been padded with
+// trailing spaces; replace pairs of spaces with pairs of space+dash
+export function repad_with_dashes(inoutbuf) {
+    const arr = inoutbuf.split('');
+    let p = arr.length;
+
+    while (p >= 2 && arr[p - 1] === ' ' && arr[p - 2] === ' ') {
+        arr[p - 1] = '-';
+        p -= 2;
+    }
+    return arr.join('');
+}
+
+// src/botl.c:2197 fieldids_alias[]
+const fieldids_alias = [
+    { fieldname: 'characteristics',   fldid: BL_CHARACTERISTICS },
+    { fieldname: 'encumbrance',       fldid: BL_CAP },
+    { fieldname: 'experience-points', fldid: BL_EXP },
+    { fieldname: 'dx',       fldid: BL_DX },
+    { fieldname: 'co',       fldid: BL_CO },
+    { fieldname: 'con',      fldid: BL_CO },
+    { fieldname: 'points',   fldid: BL_SCORE },
+    { fieldname: 'cap',      fldid: BL_CAP },
+    { fieldname: 'pw',       fldid: BL_ENE },
+    { fieldname: 'pw-max',   fldid: BL_ENEMAX },
+    { fieldname: 'xl',       fldid: BL_XP },
+    { fieldname: 'xplvl',    fldid: BL_XP },
+    { fieldname: 'ac',       fldid: BL_AC },
+    { fieldname: 'hit-dice', fldid: BL_HD },
+    { fieldname: 'turns',    fldid: BL_TIME },
+    { fieldname: 'hp',       fldid: BL_HP },
+    { fieldname: 'hp-max',   fldid: BL_HPMAX },
+    { fieldname: 'dgn',      fldid: BL_LEVELDESC },
+    { fieldname: 'xp',       fldid: BL_EXP },
+    { fieldname: 'exp',      fldid: BL_EXP },
+    { fieldname: 'flags',    fldid: BL_CONDITION },
+];
+
+// src/botl.c:2221 fldname_to_bl_indx() — field name to bottom line index
+function fldname_to_bl_indx(name) {
+    let i, nmatches = 0, fld = 0;
+
+    if (name) {
+        /* check matches to canonical names */
+        for (i = 0; i < initblstats.length; i++)
+            if (fuzzymatch(initblstats[i].fldname, name, ' -_', true)) {
+                fld = initblstats[i].fld;
+                nmatches++;
+            }
+        if (!nmatches) {
+            /* check aliases */
+            for (i = 0; i < fieldids_alias.length; i++)
+                if (fuzzymatch(fieldids_alias[i].fieldname, name,
+                               ' -_', true)) {
+                    fld = fieldids_alias[i].fldid;
+                    nmatches++;
+                }
+        }
+        if (!nmatches) {
+            /* check partial matches to canonical names */
+            const len = name.length;
+
+            for (i = 0; i < initblstats.length; i++)
+                if (initblstats[i].fldname.slice(0, len).toLowerCase()
+                    === name.toLowerCase()) {
+                    fld = initblstats[i].fld;
+                    nmatches++;
+                }
+        }
+
+    }
+    return (nmatches === 1) ? fld : BL_FLUSH;
+}
+
+/* src/botl.c:2246 Is_Temp_Hilite() / has_hilite() */
+const Is_Temp_Hilite = (rule) => !!(rule && rule.behavior === BL_TH_UPDOWN);
+const has_hilite = (fldidx) => blstats_thresholds(fldidx).length > 0;
+
+// src/botl.c:2257 hilite_reset_needed()
+function hilite_reset_needed(bl_p, augmented_time) {
+    /*
+     * This 'multi' handling may need some tuning...
+     */
+    if (game.multi)
+        return false;
+
+    if (!Is_Temp_Hilite(bl_p.hilite_rule))
+        return false;
+
+    if (bl_p.time === 0 || bl_p.time >= augmented_time)
+        return false;
+
+    return true;
+}
+
+// src/botl.c:2279 status_eval_next_unhilite() — called from moveloop();
+// sets context.botl if temp hilites have timed out
+export function status_eval_next_unhilite() {
+    let i;
+    let curr;
+    let next_unhilite, this_unhilite;
+    const disp = (game.disp ||= {});
+
+    if (!game.blinit)
+        return;
+    game.bl_hilite_moves = game.moves; /* simplified; at one point we used to
+                                        * try to encode fractional amounts for
+                                        * multiple moves within same turn */
+    /* figure out whether an unhilight needs to be performed now */
+    next_unhilite = 0;
+    for (i = 0; i < MAXBLSTATS; ++i) {
+        curr = game.blstats[0][i]; /* blstats[0][*].time==blstats[1][*].time */
+
+        if (curr.chg) {
+            const prev = game.blstats[1][i];
+
+            if (Is_Temp_Hilite(curr.hilite_rule))
+                curr.time = (game.bl_hilite_moves + (game.iflags?.hilite_delta | 0));
+            else
+                curr.time = 0;
+            prev.time = curr.time;
+
+            curr.chg = prev.chg = false;
+            disp.botl = true;
+        }
+        if (disp.botl)
+            continue; /* just process other gb.blstats[][].time and .chg */
+
+        this_unhilite = curr.time;
+        if (this_unhilite > 0
+            && (next_unhilite === 0 || this_unhilite < next_unhilite)
+            && hilite_reset_needed(curr, this_unhilite + 1)) {
+            next_unhilite = this_unhilite;
+            if (next_unhilite < game.bl_hilite_moves)
+                disp.botl = true;
+        }
+    }
+}
+
+// src/botl.c:2336 noneoftheabove() — test whether the text from a title
+// rule matches the string for title-while-polymorphed in the 'textmatch'
+// menu
+function noneoftheabove(hl_text) {
+    if (fuzzymatch(hl_text, 'none of the above', '" -_', true)
+        || fuzzymatch(hl_text, '(polymorphed)', '"()', true)
+        || fuzzymatch(hl_text, 'none of the above (polymorphed)',
+                      '" -_()', true))
+        return true;
+    return false;
+}
+
+// src/botl.c:2364 get_hilite() — returns, based on the value and the
+// direction it is moving, the highlight rule that applies to the
+// specified field, and the rule's color ({rule, color})
+function get_hilite(idx, fldidx, value, chg, pc) {
+    let rule = null;
+    let txtstr;
+    const LARGEST_INT = 32767, LONG_MAX = 9007199254740991;
+
+    if (fldidx < 0 || fldidx >= MAXBLSTATS)
+        return { rule: null, color: NO_COLOR };
+
+    if (has_hilite(fldidx)) {
+        let dt;
+        /* there are hilites set here */
+        let max_pc = -1, min_pc = 101;
+        let max_ival = -LARGEST_INT, min_ival = LARGEST_INT;
+        let max_lval = -LONG_MAX, min_lval = LONG_MAX;
+        let exactmatch = false, updown = false, changed = false,
+            perc_or_abs = false, crit_hp = false;
+
+        /* min_/max_ are used to track best fit */
+        for (const hl of blstats_thresholds(fldidx)) {
+            dt = initblstats[fldidx].anytype; /* only needed for 'absolute' */
+            /* for HP, if we already have a critical-hp rule then we ignore
+               other HP rules unless we hit another critical-hp one (last
+               one found wins) */
+            if (crit_hp && hl.behavior !== BL_TH_CRITICALHP)
+                continue;
+            /* if we've already matched a temporary highlight, it takes
+               precedence over all persistent ones; we still process
+               updown rules to get the last one which qualifies */
+            if ((updown || changed) && hl.behavior !== BL_TH_UPDOWN)
+                continue;
+            /* among persistent highlights, if a 'percentage' or 'absolute'
+               rule has been matched, it takes precedence over 'always' */
+            if (perc_or_abs && hl.behavior === BL_TH_ALWAYS_HILITE)
+                continue;
+
+            switch (hl.behavior) {
+            case BL_TH_VAL_PERCENTAGE: /* percent values are always ANY_INT */
+                if (hl.rel === EQ_VALUE && pc === hl.value) {
+                    rule = hl;
+                    min_pc = max_pc = hl.value;
+                    exactmatch = perc_or_abs = true;
+                } else if (exactmatch) {
+                    ; /* already found best fit, skip lt,ge,&c */
+                } else if (hl.rel === LT_VALUE
+                           && (pc < hl.value)
+                           && (hl.value <= min_pc)) {
+                    rule = hl;
+                    min_pc = hl.value;
+                    perc_or_abs = true;
+                } else if (hl.rel === LE_VALUE
+                           && (pc <= hl.value)
+                           && (hl.value <= min_pc)) {
+                    rule = hl;
+                    min_pc = hl.value;
+                    perc_or_abs = true;
+                } else if (hl.rel === GT_VALUE
+                           && (pc > hl.value)
+                           && (hl.value >= max_pc)) {
+                    rule = hl;
+                    max_pc = hl.value;
+                    perc_or_abs = true;
+                } else if (hl.rel === GE_VALUE
+                           && (pc >= hl.value)
+                           && (hl.value >= max_pc)) {
+                    rule = hl;
+                    max_pc = hl.value;
+                    perc_or_abs = true;
+                }
+                break;
+            case BL_TH_UPDOWN: /* uses 'chg' (set by caller), not 'dt' */
+                /* specific 'up' or 'down' takes precedence over general
+                   'changed' regardless of their order in the rule set */
+                if (chg < 0 && hl.rel === LT_VALUE) {
+                    rule = hl;
+                    updown = true;
+                } else if (chg > 0 && hl.rel === GT_VALUE) {
+                    rule = hl;
+                    updown = true;
+                } else if (chg !== 0 && hl.rel === EQ_VALUE && !updown) {
+                    rule = hl;
+                    changed = true;
+                }
+                break;
+            case BL_TH_VAL_ABSOLUTE: { /* either ANY_INT or ANY_LONG */
+                /* the int and long variations of the C are identical aside
+                   from union field and min_/max_ variable names */
+                const isint = (dt === ANY_INT);
+                if (hl.rel === EQ_VALUE && hl.value === value) {
+                    rule = hl;
+                    if (isint) min_ival = max_ival = hl.value;
+                    else min_lval = max_lval = hl.value;
+                    exactmatch = perc_or_abs = true;
+                } else if (exactmatch) {
+                    ; /* already found best fit, skip lt,ge,&c */
+                } else if (hl.rel === LT_VALUE
+                           && (value < hl.value)
+                           && (hl.value <= (isint ? min_ival : min_lval))) {
+                    rule = hl;
+                    if (isint) min_ival = hl.value; else min_lval = hl.value;
+                    perc_or_abs = true;
+                } else if (hl.rel === LE_VALUE
+                           && (value <= hl.value)
+                           && (hl.value <= (isint ? min_ival : min_lval))) {
+                    rule = hl;
+                    if (isint) min_ival = hl.value; else min_lval = hl.value;
+                    perc_or_abs = true;
+                } else if (hl.rel === GT_VALUE
+                           && (value > hl.value)
+                           && (hl.value >= (isint ? max_ival : max_lval))) {
+                    rule = hl;
+                    if (isint) max_ival = hl.value; else max_lval = hl.value;
+                    perc_or_abs = true;
+                } else if (hl.rel === GE_VALUE
+                           && (value >= hl.value)
+                           && (hl.value >= (isint ? max_ival : max_lval))) {
+                    rule = hl;
+                    if (isint) max_ival = hl.value; else max_lval = hl.value;
+                    perc_or_abs = true;
+                }
+                break;
+            }
+            case BL_TH_TEXTMATCH: /* ANY_STR */
+                txtstr = game.blstats[idx][fldidx].val;
+                if (fldidx === BL_TITLE)
+                    /* "<name> the <rank-title>", skip past "<name> the " */
+                    txtstr = txtstr.slice((game.plname || '').length + ' the '.length);
+                if (hl.rel === TXT_VALUE && hl.textmatch) {
+                    if (fuzzymatch(hl.textmatch, txtstr, '" -_', true)) {
+                        rule = hl;
+                        exactmatch = true;
+                    } else if (exactmatch) {
+                        ; /* already found best fit, skip "noneoftheabove" */
+                    } else if (fldidx === BL_TITLE
+                               && Upolyd(game.u) && noneoftheabove(hl.textmatch)) {
+                        rule = hl;
+                    }
+                }
+                break;
+            case BL_TH_ALWAYS_HILITE:
+                rule = hl;
+                break;
+            case BL_TH_CRITICALHP:
+                if (fldidx === BL_HP && critically_low_hp(false)) {
+                    rule = hl;
+                    crit_hp = true;
+                    updown = changed = perc_or_abs = false;
+                }
+                break;
+            case BL_TH_NONE:
+                break;
+            default:
+                break;
+            }
+        }
+    }
+    return { rule, color: rule ? rule.coloridx : NO_COLOR };
+}
+
+// src/botl.c:2593 parse_status_hl1() — separates each hilite entry into a
+// set of field threshold/action component strings, then calls
+// parse_status_hl2() to parse further and configure the hilite.
+export function parse_status_hl1(op, from_configfile) {
+    const MAX_THRESH = 21;
+    let hsbuf;
+    let rslt, badopt = false;
+    let i, fldnum, ccount = 0;
+    let c;
+
+    fldnum = 0;
+    hsbuf = new Array(MAX_THRESH).fill('');
+    let k = 0;
+    while (k < op.length && fldnum < MAX_THRESH && ccount < (QBUFSZ - 2)) {
+        c = op[k].toLowerCase();
+        if (c === ' ') {
+            if (fldnum >= 1) {
+                if (fldnum === 1 && hsbuf[0].toLowerCase() === 'title') {
+                    /* spaces are allowed in title */
+                    hsbuf[fldnum] += c;
+                    ccount++;
+                    k++;
+                    continue;
+                }
+                rslt = parse_status_hl2(hsbuf, from_configfile);
+                if (!rslt) {
+                    badopt = true;
+                    break;
+                }
+            }
+            hsbuf = new Array(MAX_THRESH).fill('');
+            fldnum = 0;
+            ccount = 0;
+        } else if (c === '/') {
+            fldnum++;
+            ccount = 0;
+        } else {
+            hsbuf[fldnum] += c;
+            ccount++;
+        }
+        k++;
+    }
+    if (fldnum >= 1 && !badopt) {
+        rslt = parse_status_hl2(hsbuf, from_configfile);
+        if (!rslt)
+            badopt = true;
+    }
+    if (badopt)
+        return false;
+    /* make sure highlighting is On; use short duration for temp highlights */
+    if (!(game.iflags ||= {}).hilite_delta)
+        game.iflags.hilite_delta = 3;
+    return true;
+}
+
+// src/botl.c:2652 is_ltgt_percentnumber() — is str in the format of
+// "[<>]?=?[-+]?[0-9]+%?" regex
+function is_ltgt_percentnumber(str) {
+    return /^[<>]?=?[-+]?[0-9]+%?$/.test(str);
+}
+
+// src/botl.c:2673 has_ltgt_percentnumber() — does str only contain
+// "<>=-+0-9%" chars
+function has_ltgt_percentnumber(str) {
+    return /^[<>=\-+0-9%]*$/.test(str);
+}
+
+// src/botl.c:2688 splitsubfields() — splits str into '+' or '&' separated
+// strings; returns the strings, or null if more than maxsf or MAX_SUBFIELDS
+function splitsubfields(str, maxsf) {
+    const MAX_SUBFIELDS = 16;
+    const subfields = [];
+    let sf = 0;
+
+    if (!str)
+        return [];
+
+    maxsf = (maxsf === 0) ? MAX_SUBFIELDS : Math.min(maxsf, MAX_SUBFIELDS);
+
+    if (str.includes('+') || str.includes('&')) {
+        let st = 0;
+
+        sf = 0;
+        let c = 0;
+        while (c < str.length && sf < maxsf) {
+            if (str[c] === '&' || str[c] === '+') {
+                subfields[sf] = str.slice(st, c);
+                st = c + 1;
+                sf++;
+            }
+            c++;
+        }
+        if (sf >= maxsf - 1)
+            return null;
+        if (c === str.length && c !== st)
+            subfields[sf++] = str.slice(st, c);
+    } else {
+        sf = 1;
+        subfields[0] = str;
+    }
+    return subfields.slice(0, sf);
+}
+
+// src/botl.c:2730 is_fld_arrayvalues()
+function is_fld_arrayvalues(str, arr, arrmin, arrmax) {
+    let i;
+
+    for (i = arrmin; i < arrmax; i++)
+        if (arr[i] !== undefined && arr[i] !== null
+            && str.toLowerCase() === String(arr[i]).toLowerCase())
+            return i;
+    return -1;
+}
+
+// src/botl.c:2814 parse_status_hl2()
+function parse_status_hl2(s, from_configfile) {
+    const aligntxt = ['chaotic', 'neutral', 'lawful'];
+    /* hu_stat[] from eat.c has trailing spaces which foul up comparisons;
+       for the "not hungry" case, there's no text hence no way to highlight */
+    const hutxt = ['Satiated', '', 'Hungry', 'Weak', 'Fainting', 'Fainted', 'Starved'];
+    let tmp, how;
+    let sidx = 0, i = -1, dt = -1 /* ANY_INVALID */;
+    let coloridx = -1, successes = 0;
+    let disp_attrib = 0;
+    let percent, changed, numeric, down, up,
+        grt, lt, gte, le, eq, txtval, always, criticalhp;
+    let txt;
+    let fld = BL_FLUSH;
+    let hilite;
+
+    /* field name to statusfield */
+    fld = fldname_to_bl_indx(s[sidx]);
+
+    if (fld === BL_CHARACTERISTICS) {
+        let res = false;
+
+        /* recursively set each of strength, dexterity, constitution, &c */
+        for (fld = BL_STR; fld <= BL_CH; fld++) {
+            s[sidx] = initblstats[fld].fldname;
+            res = parse_status_hl2(s, from_configfile);
+            if (!res)
+                return false;
+        }
+        return true;
+    }
+    if (fld === BL_FLUSH) {
+        config_error_add(`Unknown status field '${s[sidx]}'`);
+        return false;
+    }
+    if (fld === BL_CONDITION)
+        return parse_condition(s, sidx);
+
+    ++sidx;
+    while (s[sidx]) {
+        let subfields;
+        let sf = 0;     /* subfield count */
+        let kidx;
+
+        txt = null;
+        percent = numeric = always = false;
+        down = up = changed = false;
+        criticalhp = false;
+        grt = gte = eq = le = lt = txtval = false;
+        hilite = { fld, set: false, anytype: 0, value: 0, behavior: 0,
+                   textmatch: '', rel: 0, coloridx: 0 };
+        hilite.set = false; /* mark it "unset" */
+        hilite.fld = fld;
+
+        if (!s[sidx + 1] || s[sidx].toLowerCase() === 'always') {
+            /* "field/always/color" OR "field/color" */
+            always = true;
+            if (!s[sidx + 1])
+                sidx--;
+        } else if (s[sidx].toLowerCase() === 'up' || s[sidx].toLowerCase() === 'down') {
+            if (initblstats[fld].anytype === ANY_STR)
+                /* ordered string comparison is supported but LT/GT for
+                   the string fields (title, dungeon-level, alignment)
+                   is pointless; treat 'up' or 'down' for string fields
+                   as 'changed' rather than rejecting them outright */
+                ;
+            else if (s[sidx].toLowerCase() === 'down')
+                down = true;
+            else
+                up = true;
+            changed = true;
+        } else if (fld === BL_CAP
+                   && (kidx = is_fld_arrayvalues(s[sidx], enc_stat,
+                                                 SLT_ENCUMBER, OVERLOADED + 1)) >= 0) {
+            txt = enc_stat[kidx];
+            txtval = true;
+        } else if (fld === BL_ALIGN
+                   && (kidx = is_fld_arrayvalues(s[sidx], aligntxt, 0, 3)) >= 0) {
+            txt = aligntxt[kidx];
+            txtval = true;
+        } else if (fld === BL_HUNGER
+                   && (kidx = is_fld_arrayvalues(s[sidx], hutxt,
+                                                 SATIATED, STARVED + 1)) >= 0) {
+            txt = hu_stat[kidx];   /* store hu_stat[] val, not hutxt[] */
+            txtval = true;
+        } else if (s[sidx].toLowerCase() === 'changed') {
+            changed = true;
+        } else if (fld === BL_HP && s[sidx].toLowerCase() === 'criticalhp') {
+            criticalhp = true;
+        } else if (is_ltgt_percentnumber(s[sidx])) {
+            let op;
+
+            tmp = s[sidx]; /* is_ltgt_() guarantees [<>]?=?[-+]?[0-9]+%? */
+            if (tmp.includes('%'))
+               percent = true;
+            if (tmp[0] === '<') {
+                if (tmp[1] === '=')
+                    le = true;
+                else
+                    lt = true;
+            } else if (tmp[0] === '>') {
+                if (tmp[1] === '=')
+                    gte = true;
+                else
+                    grt = true;
+            }
+            /* '%', '<', '>' have served their purpose, '=' is either
+               part of '<' or '>' or optional for '=N', unary '+' is
+               just decorative, so get rid of them, leaving -?[0-9]+ */
+            tmp = tmp.replace(/[%<>=+]/g, ''); /* stripchars() */
+            numeric = true;
+            dt = percent ? ANY_INT : initblstats[fld].anytype;
+            hilite.value = parseInt(tmp, 10) || 0; /* s_to_anything() */
+
+            op = grt ? '>' : gte ? '>=' : lt ? '<' : le ? '<=' : '=';
+            if (dt === ANY_INT
+                /* AC is the only field where negative values make sense but
+                   accept >-1 for other fields; reject <0 for non-AC */
+                && (hilite.value
+                    < ((fld === BL_AC) ? -128 : grt ? -1 : lt ? 1 : 0)
+                /* percentages have another more comprehensive check below */
+                    || hilite.value > (percent ? (lt ? 101 : 100)
+                                                   : 32767 /* LARGEST_INT */))) {
+                config_error_add(`${threshold_value}'${op}${hilite.value}${percent ? '%' : ''}'${is_out_of_range}`);
+                return false;
+            } else if (dt === ANY_LONG
+                       && hilite.value < (grt ? -1 : lt ? 1 : 0)) {
+                config_error_add(`${threshold_value}'${op}${hilite.value}'${is_out_of_range}`);
+                return false;
+            }
+        } else if (initblstats[fld].anytype === ANY_STR) {
+            txt = s[sidx];
+            txtval = true;
+        } else {
+            config_error_add(has_ltgt_percentnumber(s[sidx])
+                 ? `Wrong format '${s[sidx]}', expected a threshold number or percent`
+                 : `Unknown behavior '${s[sidx]}'`);
+            return false;
+        }
+
+        /* relationships {LT_VALUE, LE_VALUE, EQ_VALUE, GE_VALUE, GT_VALUE} */
+        if (grt || up)
+            hilite.rel = GT_VALUE;
+        else if (lt || down)
+            hilite.rel = LT_VALUE;
+        else if (gte)
+            hilite.rel = GE_VALUE;
+        else if (le)
+            hilite.rel = LE_VALUE;
+        else if (eq  || percent || numeric || changed)
+            hilite.rel = EQ_VALUE;
+        else if (txtval)
+            hilite.rel = TXT_VALUE;
+        else
+            hilite.rel = LT_VALUE;
+
+        if (initblstats[fld].anytype === ANY_STR && (percent || numeric)) {
+            config_error_add(`Field '${initblstats[fld].fldname}' does not support numeric values`);
+            return false;
+        }
+
+        if (percent) {
+            if (initblstats[fld].idxmax < 0) {
+                config_error_add(`Cannot use percent with '${initblstats[fld].fldname}'`);
+                return false;
+            } else if ((hilite.value < -1)
+                       || (hilite.value === -1
+                           && hilite.value !== GT_VALUE)
+                       || (hilite.value === 0
+                           && hilite.rel === LT_VALUE)
+                       || (hilite.value === 100
+                           && hilite.rel === GT_VALUE)
+                       || (hilite.value === 101
+                           && hilite.value !== LT_VALUE)
+                       || (hilite.value > 101)) {
+                config_error_add(`hilite_status: invalid percentage value '${
+                                 (hilite.rel === LT_VALUE) ? '<'
+                                   : (hilite.rel === LE_VALUE) ? '<='
+                                     : (hilite.rel === GT_VALUE) ? '>'
+                                       : (hilite.rel === GE_VALUE) ? '>='
+                                         : '='}${hilite.value}%'`);
+                return false;
+            }
+        }
+
+        /* actions */
+        sidx++;
+        how = s[sidx];
+        if (!how) {
+            if (!successes)
+                return false;
+        }
+        coloridx = -1;
+        subfields = splitsubfields(how || '', 0);
+        sf = subfields ? subfields.length : -1;
+
+        if (sf < 1)
+            return false;
+
+        disp_attrib = HL_UNDEF;
+
+        for (i = 0; i < sf; ++i) {
+            const a = match_str2attr(subfields[i], false);
+
+            if (a === ATR_BOLD)
+                disp_attrib |= HL_BOLD;
+            else if (a === ATR_DIM)
+                disp_attrib |= HL_DIM;
+            else if (a === ATR_ITALIC)
+                disp_attrib |= HL_ITALIC;
+            else if (a === ATR_ULINE)
+                disp_attrib |= HL_ULINE;
+            else if (a === ATR_BLINK)
+                disp_attrib |= HL_BLINK;
+            else if (a === ATR_INVERSE)
+                disp_attrib |= HL_INVERSE;
+            else if (a === ATR_NONE)
+                disp_attrib = HL_NONE;
+            else {
+                const c = match_str2clr(subfields[i], false);
+
+                if (c >= CLR_MAX || coloridx !== -1) {
+                    config_error_add(`bad color '${c} ${coloridx}'`);
+                    return false;
+                }
+                coloridx = c;
+            }
+        }
+        if (coloridx === -1)
+            coloridx = NO_COLOR;
+
+        /* Assign the values */
+        hilite.coloridx = coloridx | (disp_attrib << 8);
+
+        if (always)
+            hilite.behavior = BL_TH_ALWAYS_HILITE;
+        else if (percent)
+            hilite.behavior = BL_TH_VAL_PERCENTAGE;
+        else if (changed)
+            hilite.behavior = BL_TH_UPDOWN;
+        else if (numeric)
+            hilite.behavior = BL_TH_VAL_ABSOLUTE;
+        else if (txtval)
+            hilite.behavior = BL_TH_TEXTMATCH;
+        else if (hilite.value)
+            hilite.behavior = BL_TH_VAL_ABSOLUTE;
+        else if (criticalhp)
+            hilite.behavior = BL_TH_CRITICALHP;
+        else
+            hilite.behavior = BL_TH_NONE;
+
+        hilite.anytype = dt;
+
+        if (hilite.behavior === BL_TH_TEXTMATCH && txt) {
+            hilite.textmatch = trimspaces(txt.slice(0, MAXVALWIDTH - 1));
+        }
+
+        status_hilite_add_threshold(fld, hilite);
+
+        successes++;
+        sidx++;
+    }
+
+    return (successes > 0);
+}
+
+// src/botl.c:3178 match_str2conditionbitmask()
+function match_str2conditionbitmask(str) {
+    let i, nmatches = 0;
+    let mask = 0;
+
+    if (str) {
+        /* check matches to canonical names */
+        for (i = 0; i < conditions.length; i++)
+            if (fuzzymatch(conditions[i].text[0], str, ' -_', true)) {
+                mask |= conditions[i].mask;
+                nmatches++;
+            }
+
+        if (!nmatches) {
+            /* check aliases */
+            for (i = 0; i < condition_aliases.length; i++)
+                if (fuzzymatch(condition_aliases[i].id, str, ' -_', true)) {
+                    mask |= condition_aliases[i].bitmask;
+                    nmatches++;
+                }
+        }
+
+        if (!nmatches) {
+            /* check partial matches to aliases */
+            const len = str.length;
+
+            for (i = 0; i < condition_aliases.length; i++)
+                if (str.toLowerCase() === condition_aliases[i].id.slice(0, len).toLowerCase()) {
+                    mask |= condition_aliases[i].bitmask;
+                    nmatches++;
+                }
+        }
+    }
+
+    return mask >>> 0;
+}
+
+// src/botl.c:3209 str2conditionbitmask()
+function str2conditionbitmask(str) {
+    let conditions_bitmask = 0;
+    let i;
+
+    const subfields = splitsubfields(str, conditions.length);
+    const sf = subfields ? subfields.length : -1;
+
+    if (sf < 1)
+        return 0;
+
+    for (i = 0; i < sf; ++i) {
+        const bm = match_str2conditionbitmask(subfields[i]);
+
+        if (!bm) {
+            config_error_add(`Unknown condition '${subfields[i]}'`);
+            return 0;
+        }
+        conditions_bitmask |= bm;
+    }
+    return conditions_bitmask >>> 0;
+}
+
+// src/botl.c:3233 parse_condition()
+function parse_condition(s, sidx) {
+    let i;
+    let coloridx = NO_COLOR;
+    let tmp, how;
+    let conditions_bitmask = 0;
+    let result = false;
+    const ch = cond_hilites();
+
+    if (!s)
+        return false;
+
+    sidx++;
+    if (!s[sidx]) {
+        config_error_add('Missing condition(s)');
+        return false;
+    }
+    while (s[sidx]) {
+        let subfields;
+
+        tmp = s[sidx];
+        conditions_bitmask = str2conditionbitmask(tmp);
+
+        if (!conditions_bitmask)
+            return false;
+
+        /* actions */
+        sidx++;
+        how = s[sidx];
+        if (!how) {
+            config_error_add('Missing color+attribute');
+            return false;
+        }
+
+        subfields = splitsubfields(how, 0) || [];
+
+        /*
+         * Only 1 colour is allowed, but potentially multiple
+         * attributes are allowed.
+         */
+        for (i = 0; i < subfields.length; ++i) {
+            const a = match_str2attr(subfields[i], false);
+
+            if (a === ATR_BOLD)
+                ch[HL_ATTCLR_BOLD] |= conditions_bitmask;
+            else if (a === ATR_DIM)
+                ch[HL_ATTCLR_DIM] |= conditions_bitmask;
+            else if (a === ATR_ITALIC)
+                ch[HL_ATTCLR_ITALIC] |= conditions_bitmask;
+            else if (a === ATR_ULINE)
+                ch[HL_ATTCLR_ULINE] |= conditions_bitmask;
+            else if (a === ATR_BLINK)
+                ch[HL_ATTCLR_BLINK] |= conditions_bitmask;
+            else if (a === ATR_INVERSE)
+                ch[HL_ATTCLR_INVERSE] |= conditions_bitmask;
+            else if (a === ATR_NONE) {
+                ch[HL_ATTCLR_BOLD] &= ~conditions_bitmask;
+                ch[HL_ATTCLR_DIM] &= ~conditions_bitmask;
+                ch[HL_ATTCLR_ITALIC] &= ~conditions_bitmask;
+                ch[HL_ATTCLR_ULINE] &= ~conditions_bitmask;
+                ch[HL_ATTCLR_BLINK] &= ~conditions_bitmask;
+                ch[HL_ATTCLR_INVERSE] &= ~conditions_bitmask;
+            } else {
+                const k = match_str2clr(subfields[i], false);
+
+                if (k >= CLR_MAX) {
+                    config_error_add(`bad color ${k}`);
+                    return false;
+                }
+                coloridx = k;
+            }
+        }
+        /* set the bits in the appropriate member of the
+           condition array according to color chosen as index */
+
+        ch[coloridx] |= conditions_bitmask;
+        result = true;
+        sidx++;
+    }
+    return result;
+}
+
+// src/botl.c:3351 clear_status_hilites()
+export function clear_status_hilites() {
+    let i;
+
+    for (i = 0; i < MAXBLSTATS; ++i) {
+        blstats_thresholds(i).length = 0;
+        /* pointer into thresholds list, now stale */
+        if (game.blstats) {
+            game.blstats[0][i].hilite_rule = null;
+            game.blstats[1][i].hilite_rule = null;
+        }
+    }
+}
+
+wintty_wire_botl({ conditions, cond_idx, stat_cap_indx, repad_with_dashes, status_initialize });

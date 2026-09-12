@@ -144,6 +144,8 @@ async function getpos_help(force, goal) {
         if (!terrainmode) {
             if (getpos_getvalid)
                 put("Use 'z' or 'Z' to move to valid locations.");
+            if (getpos_hilitefunc)
+                put("Use '$' to toggle marking of valid locations.");
             put("Use '#' to toggle automatic description.");
             /* src/getpos.c:257 the cmdassist whatis_coord hint is formatted
                into sbuf but never putstr'd, so it prints nothing */
@@ -214,13 +216,25 @@ export async function auto_describe(cx, cy) {
     }
 }
 
-/* src/getpos.c gp_getvalid — the validator the current command installed. */
+/* src/getpos.c:27 getpos_hilitefunc / gp_getvalid — the marker and the
+   validator the current command installed. */
+let getpos_hilitefunc = null;
 let getpos_getvalid = null;
+/* src/getpos.c:30 enum getposHiliteState */
+const HiliteNormalMap = 0, HiliteGoodposSymbol = 1, HiliteBackground = 2;
+let getpos_hilite_state = HiliteNormalMap,
+    defaultHiliteState = HiliteNormalMap;
 
-// src/getpos.c:1560 getpos_sethilite()
+// src/getpos.c:45 getpos_sethilite()
 export async function getpos_sethilite(gp_hilitefunc, gp_getvalidfunc) {
     const old_getvalid = getpos_getvalid;
     const new_getvalid = gp_getvalidfunc || null;
+
+    defaultHiliteState = game.iflags?.bgcolors ? HiliteBackground : HiliteNormalMap;
+    if (new_getvalid !== old_getvalid)
+        getpos_hilite_state = defaultHiliteState;
+
+    getpos_hilitefunc = gp_hilitefunc || null;
     getpos_getvalid = new_getvalid;
 
     /* C redraws the union of locations accepted by the old and new
@@ -242,6 +256,46 @@ export async function getpos_sethilite(gp_hilitefunc, gp_getvalidfunc) {
         }
         if (last && new_getvalid)
             game._flush_cursor_override = { col: last.x, row: last.y + 1 };
+    }
+}
+
+// src/getpos.c:66 getpos_toggle_hilite_state() — cycle the state; without
+// bgcolors it alternates between not showing valid positions and showing
+// them via the temporary S_goodpos symbol.
+async function getpos_toggle_hilite_state() {
+    /* getpos_hilitefunc isn't Null */
+    if (getpos_hilite_state === HiliteGoodposSymbol) {
+        /* currently on, finish */
+        await getpos_hilitefunc(false); /* tmp_at(DISP_END) */
+    }
+
+    getpos_hilite_state = (getpos_hilite_state + 1)
+                          % (game.iflags?.bgcolors ? 3 : 2);
+    /* resetting the callback functions to their current values will draw
+       valid-spots with background color if that is the new state and turn
+       off that color if it was the previous state */
+    await getpos_sethilite(getpos_hilitefunc, getpos_getvalid);
+
+    if (getpos_hilite_state === HiliteGoodposSymbol) {
+        /* now on, begin */
+        await getpos_hilitefunc(true);
+    }
+}
+
+// src/getpos.c:750 getpos_refresh() — called when ^R typed; if '$' is being
+// shown for valid spots, remove that; if alternate background color is being
+// shown for that, redraw it.
+async function getpos_refresh() {
+    if (getpos_hilitefunc && getpos_hilite_state === HiliteGoodposSymbol) {
+        await getpos_hilitefunc(false); /* tmp_at(DISP_END) */
+        getpos_hilite_state = defaultHiliteState;
+    }
+
+    await docrt();
+
+    if (getpos_hilitefunc && getpos_hilite_state === HiliteBackground) {
+        /* resetting to current values will draw valid-spots highlighting */
+        await getpos_sethilite(getpos_hilitefunc, getpos_getvalid);
     }
 }
 
@@ -373,7 +427,7 @@ export async function getpos(ccp, force, goal) {
             truncate_to_map(c, dx, dy);
         } else if (ch === '?' || ch === '\x12') {
             if (ch === '\x12')
-                await docrt();
+                await getpos_refresh();
             else
                 await getpos_help(force, goal);
             show_goal_msg = true;
@@ -404,8 +458,12 @@ export async function getpos(ccp, force, goal) {
                 + 'kipping over similar terrain when fastmoving the cursor.');
             msg_given = true;
         } else if (ch === '$') {
-            note_unported_getpos(`key:${ch}`);
-            show_goal_msg = true;
+            /* NHKF_GETPOS_SHOWVALID */
+            if (getpos_hilitefunc) {
+                await getpos_toggle_hilite_state();
+                curs_map(c.x, c.y);
+            }
+            show_goal_msg = true; /* we're still targeting */
         } else if ('mMoOdDxXaAzZ'.includes(ch)) {
             /* src/getpos.c:1011 — 'm|M', 'o|O', &c: nearest or farthest
                monster, object, door, unexplored spot, interesting thing or

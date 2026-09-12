@@ -62,7 +62,8 @@ import { t_at, is_pool, is_lava, m_in_air, resists_ston } from './mon.js';
 import { touch_petrifies, mhe, nonliving } from './mondata.js';
 import { can_hide_under_obj, dochugw, set_apparxy } from './monmove.js';
 import { couldsee } from './vision.js';
-import { is_pit, OBJ_FLOOR, PLNMSG_HIDE_UNDER, Mgender } from './const.js';
+import { is_pit, OBJ_FLOOR, PLNMSG_HIDE_UNDER, Mgender, LR_MONGEN } from './const.js';
+import { is_exclusion_zone } from './mkmaze.js';
 import { ACCESSIBLE, POOL, LAVAPOOL,
     BLCORNER, CROSSWALL, DELPHI, FODDERSHOP, HWALL, IS_DOOR, IS_WALL, M_AP_FURNITURE, M_AP_OBJECT, OBJ_AT, OBJ_MINVENT, SCORR, SDOOR, SHOPBASE, TDWALL, TLCORNER, TRWALL, TUWALL, TEMPLE, VAULT, ZOO, ROOMOFFSET, GP_ALLOW_U, GP_CHECKSCARY, GP_AVOID_MONPOS, MM_IGNORELAVA,
     IS_WATERWALL, IS_ALTAR, Is_waterlevel, Is_airlevel, Is_firelevel,
@@ -1165,8 +1166,13 @@ const nonliving_mm = (ptr) =>
     || ptr.mlet === MONSYMS.S_GOLEM
     || ptr.mlet === MONSYMS.S_VORTEX;
 
-export function findgold(minvent) {
-    return (minvent || []).some(o => o.oclass === OCLASSES.COIN_CLASS);
+// src/steal.c:45 findgold() — the first gold stack in a chain (null when
+// there is none); callers that only test it read it as a boolean
+export function findgold(argchain) {
+    for (const chain of (argchain || []))
+        if (chain.otyp === ONAMES.GOLD_PIECE)
+            return chain;
+    return null;
 }
 
 // src/mon.c mkmonmoney()
@@ -1337,6 +1343,10 @@ export function goodpos(x, y, mtmp, gpflags = 0) {
     /* skip boulder locations for most creatures */
     if (sobj_at(ONAMES.BOULDER, x, y) && (!ptr || !throws_rocks(ptr)))
         return false;
+    /* pretend GP_AVOID_MONPOS == monster creation */
+    if ((gpflags & GP_AVOID_MONPOS) && is_exclusion_zone(LR_MONGEN, x, y))
+        return false;
+
     return true;
 }
 
@@ -1854,7 +1864,7 @@ function m_initweap(mtmp) {
     const P = PMNAMES, O = ONAMES;
     let otmp, bias, w1, w2;
 
-    if (game.level?.flags?.is_rogue_level)
+    if (Is_rogue_level(game.u.uz))
         return;
 
     switch (ptr.mlet) {
@@ -2320,9 +2330,15 @@ export function makemon(ptr, x, y, mmflags) {
             if (!(ptr = rndmonst()))
                 return null;
         } while (++tryct <= 50
+                 /* in Sokoban, don't accept a giant on first try;
+                    after that, boulder carriers are fair game */
                  && ((tryct === 1 && throws_rocks(ptr)
                       && In_sokoban(game.u.uz))
-                     || !goodpos(x, y, { data: ptr, wormno: 0 })));
+                     /* goodpos() with the caller's gpflags: a spot that
+                        already holds a monster (GP_AVOID_MONPOS) or is
+                        scary to the pick (GP_CHECKSCARY) re-rolls
+                        rndmonst() like the C (tour-s104-33) */
+                     || !goodpos(x, y, { data: ptr, wormno: 0 }, gpflags)));
         mndx = monsndx(ptr);
     }
     propagate(mndx, countbirth, false);

@@ -1,5 +1,5 @@
 import { PL_NSIZ, PICK_ONE } from './const.js';
-import { pmatchi } from './hacklib.js';
+import { pmatchi, trimspaces } from './hacklib.js';
 // plselect.js — interactive character selection.
 // C ref: src/role.c genl_player_setup() (:2206) and tty_askname().
 //
@@ -18,10 +18,11 @@ import { pmatchi } from './hacklib.js';
 // that fires when the RACE menu opens.
 
 import { game } from './gstate.js';
-import { tty_clear_nhwindow_message } from './display.js';
+import { tty_clear_nhwindow_message, pline } from './display.js';
 import { nhgetch } from './input.js';
 import {
     ROLE_NONE, ROLE_RANDOM, rigid_role_checks, ok_role, ok_race, ok_gend,
+    build_plselection_prompt, randrace, randgend, randalign,
     ok_align, pick_role, pick_race, pick_gend, pick_align,
     randrole, PICK_RANDOM, rfilter, setrolefilter, clearrolefilter,
     gotrolefilter, str2role, str2race, str2gend, str2align,
@@ -644,7 +645,16 @@ async function genl_player_setup(screenheight) {
     let pick4u = 'n';
     if (f.initrole === ROLE_NONE || f.initrace === ROLE_NONE
         || f.initgend === ROLE_NONE || f.initalign === ROLE_NONE) {
-        yn_prompt(build_plselection_prompt(f));
+        /* prompt[] contains "Shall I pick ... for you? [ynaq] "
+           y - game picks role,&c then asks player to confirm;
+           n - player manually chooses via menu selections;
+           a - like 'y', but skips confirmation and starts game;
+           q - quit
+         */
+        /* trimspaces(prompt): 'prompt' is constructed with trailing space;
+           yn_function() appends the final space again */
+        yn_prompt(trimspaces(build_plselection_prompt(f.initrole, f.initrace,
+                                                      f.initgend, f.initalign)));
         for (;;) {
             const c = String.fromCharCode(await nhgetch()).toLowerCase();
             if (c === '\x1b' || c === 'q') return false;
@@ -660,14 +670,21 @@ async function genl_player_setup(screenheight) {
        possibly redirects `nextpick`. */
     const doCategory = async (which) => {
         if (which === RS_ROLE) {
-            if (auto()) {
+            /* src/role.c:2291 — select a role, if necessary; we'll try to
+               be compatible with pre-selected race/gender/alignment, but
+               may not succeed. */
+            if (f.initrole >= 0) return RS_RACE;
+            if (auto() || f.initrole === ROLE_RANDOM) {
+                /* pick a random role */
                 let k = pick_role(f.initrace, f.initgend, f.initalign,
                                   PICK_RANDOM);
-                if (k < 0) k = randrole();
+                if (k < 0) {
+                    await pline('Incompatible role!');
+                    k = randrole();
+                }
                 f.initrole = k;
                 return RS_RACE;
             }
-            if (f.initrole >= 0) return RS_RACE;
             /* 'excess' is used to try to avoid tty pagination. C computes it
                BEFORE plsel_startmenu(), i.e. against the facets as they stand
                before that call's rigid_role_checks() can change them. */
@@ -707,13 +724,18 @@ async function genl_player_setup(screenheight) {
         }
         if (which === RS_RACE) {
             const after = (f.initrole < 0) ? RS_ROLE : RS_GENDER;
-            if (auto()) {
+            /* src/role.c:2382 — no race yet, or pre-selected race not valid */
+            if (f.initrace >= 0) return after;
+            if (auto() || f.initrace === ROLE_RANDOM) {
                 let k = pick_race(f.initrole, f.initgend, f.initalign,
                                   PICK_RANDOM);
-                f.initrace = (k < 0) ? 0 : k;
+                if (k < 0) {
+                    await pline('Incompatible race!');
+                    k = randrace(f.initrole);
+                }
+                f.initrace = k;
                 return after;
             }
-            if (f.initrace >= 0) return after;
             /* src/role.c:2388 — count first; the menu only opens when more
                than one race is valid, and with it the plsel_startmenu() draw. */
             let n = 0, k = 0;
@@ -751,13 +773,18 @@ async function genl_player_setup(screenheight) {
         if (which === RS_GENDER) {
             const after = (f.initrole < 0) ? RS_ROLE
                         : (f.initrace < 0) ? RS_RACE : RS_ALGNMNT;
-            if (auto()) {
+            /* src/role.c:2467 — no gender yet, or pre-selected gender not valid */
+            if (f.initgend >= 0) return after;
+            if (auto() || f.initgend === ROLE_RANDOM) {
                 let k = pick_gend(f.initrole, f.initrace, f.initalign,
                                   PICK_RANDOM);
-                f.initgend = (k < 0) ? 0 : k;
+                if (k < 0) {
+                    await pline('Incompatible gender!');
+                    k = randgend(f.initrole, f.initrace);
+                }
+                f.initgend = k;
                 return after;
             }
-            if (f.initgend >= 0) return after;
             let n = 0, k = 0;
             for (let i = 0; i < ROLE_GENDERS; i++)
                 if (ok_gend(f.initrole, f.initrace, i, f.initalign)) { n++; k = i; }
@@ -791,13 +818,18 @@ async function genl_player_setup(screenheight) {
         /* RS_ALGNMNT */
         const after = (f.initrole < 0) ? RS_ROLE
                     : (f.initrace < 0) ? RS_RACE : RS_GENDER;
-        if (auto()) {
+        /* src/role.c:2551 — no alignment yet, or pre-selected alignment not valid */
+        if (f.initalign >= 0) return after;
+        if (auto() || f.initalign === ROLE_RANDOM) {
             let k = pick_align(f.initrole, f.initrace, f.initgend,
                                PICK_RANDOM);
-            f.initalign = (k < 0) ? 1 : k;
+            if (k < 0) {
+                await pline('Incompatible alignment!');
+                k = randalign(f.initrole, f.initrace);
+            }
+            f.initalign = k;
             return after;
         }
-        if (f.initalign >= 0) return after;
         /* src/role.c:2564 — count first. The menu, and therefore
            plsel_startmenu()'s rigid_role_checks(), only happens when more than
            one alignment is valid. Calling it unconditionally makes a facet that
@@ -902,31 +934,26 @@ async function genl_player_setup(screenheight) {
 }
 
 
-// src/role.c:1590 build_plselection_prompt()
-//
-// Only the nothing-is-pinned case is ported, which is what all eight
-// interactive sessions use and which produces the same sentence in every one:
-//
-//   Shall I pick character's race, role, gender and alignment for you? [ynaq]
-//
-// C builds it as "Shall I pick " + "a " + root_plselection_prompt(...), applies
-// the possessive suffix, then substitutes "pick a character" -> "pick character"
-// because the full form runs past 80 columns. The trailing attribute list is
-// role_post_attribs in BP_RACE, BP_ROLE, BP_GEND, BP_ALIGN order.
-function build_plselection_prompt(f) {
-    if (f.initrole !== ROLE_NONE || f.initrace !== ROLE_NONE
-        || f.initgend !== ROLE_NONE || f.initalign !== ROLE_NONE) {
-        (game.unported ||= new Set()).add('build_plselection_prompt partial');
-    }
-    return "Shall I pick character's race, role, gender and alignment"
-         + ' for you? [ynaq]';
-}
-
 // win/tty/topl.c — a yn_function prompt sits on the message line and parks the
 // cursor just past it.
 function yn_prompt(prompt) {
+    /* tty_yn_function() paints "<prompt> " through the top line, whose
+       topl_putsym() wraps to the next row when curx reaches cols - 1; the
+       cursor rests just past the final space (row 1, col 1 for a 79-column
+       prompt) */
+    const text = prompt + ' ';
+    const cols = game?.nhDisplay?.cols ?? 80;
+    let col = 0, row = 0;
+
     tty_curs_base(1, 0);
-    tty_putstr_base(prompt);
-    tty_curs_base(prompt.length + 2, 0);
+    tty_putstr_base(text);
+    for (let i = 0; i < text.length; i++) {
+        if (col >= cols - 1) {
+            col = 0;
+            row++;
+        }
+        col++;
+    }
+    tty_curs_base(col + 1, row);
     tty_base_cursor();
 }

@@ -32,7 +32,7 @@ import { obj_extract_self, stackobj } from './invent.js';
 import { stop_timer, ROT_ORGANIC } from './timeout.js';
 import { PMNAMES, MONSYMS } from './monst_data.js';
 import { bury_an_obj, fill_special_room, sp_lev_wire_mklev,
-         sp_lev_wire_walkfrom, sp_lev_wire_priest, sp_lev_wire_roamer,
+         sp_lev_wire_walkfrom, sp_lev_wire_priest,
          reset_xystart_size } from './sp_lev.js';
 import { walkfrom, mazexy, mkmaze_wire_mklev, mkportal } from './mkmaze.js';
 import { enexto_core } from './teleport.js';
@@ -273,6 +273,8 @@ import { obj_ice_effects } from './mkobj.js';
 import { spot_stop_timers } from './timeout.js';
 import { set_levltyp } from './mkmaze.js';
 import { recalc_block_point } from './vision.js';
+import { begin_burn } from './timeout.js';
+import { impossible } from './pline.js';
 
 
 
@@ -737,6 +739,7 @@ function clear_level_structures() {
     g.level.nroom = 0;
     g.level.rooms = [];
     g.made_branch = false;
+    g.exclusion_zones = []; /* free_exclusions() */
     g.smeq = new Array(MAXNROFROOMS + 1).fill(0);
     g.level.doorindex = 0;
     g.level.doors = [];
@@ -1034,7 +1037,7 @@ mkroom_wire({ topologize });
 sp_lev_wire_mktrap(mktrap);
 sp_lev_wire_okdoor(okdoor);
 sp_lev_wire_subroom(create_subroom);
-sp_lev_wire_mklev({ mkstairs, makecorridors, wallification,
+sp_lev_wire_mklev({ mkstairs, makecorridors, wallification, makeroguerooms,
                     count_level_features: recount_level_features,
                     create_room, topologize,
                     /* src/teleport.c:196 enexto() — CHECKSCARY pass, then
@@ -1053,8 +1056,7 @@ sp_lev_wire_mklev({ mkstairs, makecorridors, wallification,
                     maketrap });
 sp_lev_wire_walkfrom(walkfrom);
 mkmaze_wire_mklev({ mkstairs, place_branch, wallification, maketrap, mktrap });
-import('./priest.js').then(m => { sp_lev_wire_priest(m.priestini);
-                                  sp_lev_wire_roamer(m.mk_roamer); });
+import('./priest.js').then(m => { sp_lev_wire_priest(m.priestini); });
 
 // C ref: mklev.c makerooms()
 async function makerooms() {
@@ -1330,7 +1332,7 @@ async function themerooms_generate(difficulty) {
         };
         break;
     default:
-        note_unported_lev(`themeroom ${pick.name}`); break;
+        impossible(`themeroom ${pick.name} is not transcribed`); break;
     }
 
     rn2(100);
@@ -1396,7 +1398,7 @@ function fill_eligible(fill, rm, difficulty) {
     if (rm != null && fill.eligible) {
         if (fill.eligible === 'return rm.lit == true;') return !!rm.lit;
         if (fill.eligible === 'return rm.lit == false;') return !rm.lit;
-        note_unported_lev(`fill eligible ${fill.name}`);
+        impossible(`themeroom fill ${fill.name}: eligible() not transcribed`);
         return true;
     }
     return true;
@@ -1426,7 +1428,7 @@ function themeroom_fill(rm) {
     if (contents)
         contents(rm);                   /* sp_lev.c:5704, already a Lua table */
     else
-        note_unported_lev(`themeroom_fill ${pick.name}`);
+        impossible(`themeroom_fill ${pick.name} is not transcribed`);
 }
 
 // src/nhlobj.c l_obj_new_readobjnam(), for the four exact names used by the
@@ -3180,7 +3182,7 @@ function mktrap_victim(trap) {
             curse(otmp);
             place_object(otmp, x, y);
             if (!game.level.at(x, y)?.lit)
-                note_unported_lev('mktrap_victim:begin_burn');
+                begin_burn(otmp, false);
         }
         break;
     default: victim_mnum = PMNAMES.PM_HUMAN; break;

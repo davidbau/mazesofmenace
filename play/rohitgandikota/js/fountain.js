@@ -818,10 +818,6 @@ export async function dipfountain(obj) {
         {
             let money = money_cnt(game.invent);
             if (money > 10) {
-                game._deferred_status_money = {
-                    value: money,
-                    throughMove: (game.moves ?? 0) + 1,
-                };
                 money = Math.trunc(somegold(money) / 10);
                 for (const coin of [...(game.invent || [])]) {
                     if (money <= 0)

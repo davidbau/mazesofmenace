@@ -26,7 +26,11 @@ import { ONAMES } from './objects_data.js';
 import { m_carrying, mnexto, mongone } from './mon.js';
 import { del_engr, engr_at } from './engrave.js';
 import { place_object } from './mkobj.js';
-import { You, You_hear, pline_The } from './pline.js';
+import { You, You_hear, Your, pline_The } from './pline.js';
+import { currency, freeinv } from './invent.js';
+import { make_grave } from './mklev.js';
+import { OCLASSES } from './objects_data.js';
+import { RLOC_NOMSG, MALE, FEMALE } from './const.js';
 import {
     A_LAWFUL, COLNO, ROWNO, ROOMOFFSET, VAULT, VAULT_GUARD_TIME,
     ROOM, STONE, CORR, SCORR, HWALL, VWALL, DOOR, D_NODOOR, IS_WALL,
@@ -34,6 +38,12 @@ import {
     BRCORNER, RLOC_MSG, TLCORNER, TRCORNER,
 } from './const.js';
 import { relobj } from './steal.js';
+import { m_into_limbo } from './mon.js';
+import { fracture_rock } from './zap.js';
+import { simpleonames } from './objnam.js';
+import { an } from './objnam.js';
+import { You_see } from './pline.js';
+import { Blind } from './youprop.js';
 
 
 export function vault_occupied(urooms) {
@@ -190,7 +200,7 @@ async function wallify_vault(guard) {
             if (occupant && occupant !== guard) {
                 const { rloc } = await import('./teleport.js');
                 if (!await rloc(occupant, RLOC_MSG))
-                    (game.unported ||= new Set()).add('vault:wallify_limbo');
+                    await m_into_limbo(occupant);
             }
             if (gold) {
                 move_gold(gold, egd.vroom);
@@ -603,6 +613,48 @@ export async function gd_move(guard) {
     return 1;
 }
 
+// src/vault.c:1205 paygd() — routine when dying or quitting with a vault
+// guard around. The C's "goto remove_guard" skips the coin transfer.
+export async function paygd(silently) {
+    const grd = findgd();
+    const umoney = money_cnt(game.invent || []);
+    let gdx, gdy;
+    let remove_guard = false;
+
+    if (!umoney || !grd)
+        return;
+
+    if (game.u.uinvault) {
+        if (!silently)
+            await Your(`${umoney} ${currency(umoney)} goes into the Magic Memory Vault.`);
+        gdx = game.u.ux;
+        gdy = game.u.uy;
+    } else if (grd.mpeaceful) { /* peaceful guard has no "right" to your gold */
+        remove_guard = true;
+    } else {
+        await mnexto(grd, RLOC_NOMSG);
+        if (!silently)
+            await pline(`${Monnam(grd)} remits your gold to the vault.`);
+        const egd = grd.mextra?.egd;
+        gdx = game.level.rooms[egd.vroom].lx + rn2(2);
+        gdy = game.level.rooms[egd.vroom].ly + rn2(2);
+        const buf = `To Croesus: here's the gold recovered from ${game.plname} the ${
+            pmname(game.mons[game.u.umonster], game.flags?.female ? FEMALE : MALE)}.`;
+        make_grave(gdx, gdy, buf);
+    }
+    if (!remove_guard) {
+        for (const coins of [...(game.invent || [])]) {
+            if (coins.oclass === OCLASSES.COIN_CLASS) {
+                freeinv(coins);
+                place_object(coins, gdx, gdy);
+                stackobj(coins);
+            }
+        }
+    }
+ /* remove_guard: */
+    await mongone(grd);
+}
+
 // src/vault.c:317 invault(), through the initial interrogation and doorway.
 export async function invault() {
     const u = game.u;
@@ -641,8 +693,24 @@ export async function invault() {
     });
     u.uinvault++;
 
-    if (sobj_at(ONAMES.BOULDER, guard.mx, guard.my))
-        (game.unported ||= new Set()).add('vault:guard_entry_boulder');
+    /* if there are any boulders in the guard's way, destroy them;
+       perhaps the guard knows a touch equivalent of force bolt;
+       otherwise the hero wouldn't be able to push one to follow the
+       guard out of the vault because that guard would be in its way */
+    let otmp;
+    if ((otmp = sobj_at(ONAMES.BOULDER, guard.mx, guard.my)) != null) {
+        const bname = simpleonames(otmp);
+        let bcnt = 0;
+
+        do {
+            ++bcnt;
+            await fracture_rock(otmp);
+            otmp = sobj_at(ONAMES.BOULDER, guard.mx, guard.my);
+        } while (otmp);
+        /* You_hear() will handle Deaf/!Deaf */
+        const func = !Blind() ? You_see : You_hear;
+        await func(`${(bcnt === 1) ? an(bname) : makeplural(bname)} shatter.`);
+    }
 
     if (canspotmon(guard)) {
         await pline(`Suddenly one of the Vault's ${

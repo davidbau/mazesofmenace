@@ -39,7 +39,8 @@ import { y_monnam } from './do_name.js';
 import { ansimpleoname } from './objnam.js';
 import { trap_predicament } from './insight.js';
 import { digests, sticks } from './mondata.js';
-import { glyph_is_trap, glyph_to_trap } from './display.js';
+import { rogue_cmap_sym, glyph_is_trap, glyph_to_trap } from './display.js';
+import { Is_rogue_level } from './const.js';
 import { trapped_chest_at, trapped_door_at } from './detect.js';
 import { COLNO, ROWNO, BOLT_LIM, STONE, SCORR, SDOOR, GRAVE, CORR,
          D_TRAPPED, D_BROKEN, IS_WALL,
@@ -494,9 +495,9 @@ export function mhidden_description(mon, mhid_flags) {
 
         /* at present, hero must be next to the monster; ... */
         if (distu(x, y) <= r * (r + 1) || force_region) {
-            const rglyph = reg.glyph;
-            const poison_gas = (rglyph?.kind === 'cmap'
-                                && rglyph.cmap === cmap_names.S_poisoncloud);
+            /* reg->glyph is the region's cmap glyph (region.js glyph_cmap):
+               glyph_is_cmap(rglyph) && glyph_to_cmap(rglyph) == S_poisoncloud */
+            const poison_gas = (reg.glyph_cmap === cmap_names.S_poisoncloud);
 
             outbuf += `, in a cloud of ${poison_gas ? 'poison gas' : 'vapor'}`;
         }
@@ -1114,7 +1115,15 @@ export function do_screen_description(cc, looked, sym) {
         const x_str = defsyms[alt_i].explain;
         if (!x_str) continue;
 
-        if (symeq(looked ? showsym(alt_i) : defsyms[alt_i], looked)) {
+        /* C compares against gs.showsyms[], which switch_symbols() swaps
+           to the Rogue set while on the Rogue level; the port keeps the
+           active set and maps at draw time (rogue_cmap_sym), so the same
+           mapping decides what a looked-at cell shows */
+        const shown = !looked ? defsyms[alt_i]
+            : Is_rogue_level(game.u?.uz)
+              ? { ch: rogue_cmap_sym(alt_i) ?? defsyms[alt_i].sym, dec: false }
+              : showsym(alt_i);
+        if (symeq(shown, looked)) {
             /* dark part of a room was already handled above */
             if (alt_i === CM.S_darkroom && glyph && glyph.kind === 'nothing')
                 continue;

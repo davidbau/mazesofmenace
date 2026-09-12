@@ -145,6 +145,11 @@ import { shieldeff } from './display.js';
 import { hliquid } from './do_name.js';
 import { Fire_resistance } from './youprop.js';
 import { burn_away_slime } from './timeout.js';
+import { tmp_at } from './display.js';
+import { showsym } from './symbols.js';
+import { cmap_names, defsyms } from './drawing_data.js';
+import { DISP_BEAM, DISP_END } from './const.js';
+import { getpos_sethilite } from './getpos.js';
 function note_unported_read(what) {
     (game.unported ||= new Set()).add('read:' + what);
 }
@@ -611,7 +616,7 @@ async function p_glow3(otmp, color) {
 }
 
 // src/read.c:689 charge_ok() — getobj callback for charging.
-function charge_ok(obj) {
+export function charge_ok(obj) {
     if (!obj)
         return GETOBJ_EXCLUDE;
 
@@ -1987,6 +1992,36 @@ export function valid_cloud_pos(x, y) {
 }
 
 // src/read.c:1080 can_center_cloud()
+// src/read.c:1850 display_stinking_cloud_positions() — the '$' marker beam
+// over the squares a cloud can be centered on
+async function display_stinking_cloud_positions(on_off) {
+    let x, y, dx, dy;
+    const dist = 6;
+
+    if (on_off) {
+        /* on */
+        const sym = showsym(cmap_names.S_goodpos) || defsyms[cmap_names.S_goodpos];
+        await tmp_at(DISP_BEAM, { ch: sym.ch, color: defsyms[cmap_names.S_goodpos].color,
+                                  decgfx: !!sym.dec,
+                                  glyph: { kind: 'cmap', cmap: cmap_names.S_goodpos } });
+        for (dx = -dist; dx <= dist; dx++)
+            for (dy = -dist; dy <= dist; dy++) {
+                x = game.u.ux + dx;
+                y = game.u.uy + dy;
+                /* hero's location is allowed but highlighting the hero's
+                   spot makes map harder to read (if using '$' rather than
+                   by changing background color) */
+                if (u_at(x, y))
+                    continue;
+                if (can_center_cloud(x, y))
+                    await tmp_at(x, y);
+            }
+    } else {
+        /* off */
+        await tmp_at(DISP_END, 0);
+    }
+}
+
 function can_center_cloud(x, y) {
     if (!valid_cloud_pos(x, y))
         return false;
@@ -2000,9 +2035,8 @@ async function do_stinking_cloud(sobj, mention_stinking) {
 
     await pline(`Where do you want to center the ${
         mention_stinking ? 'stinking ' : ''}cloud?`);
-    /* getpos_sethilite(display_stinking_cloud_positions, can_center_cloud):
-       the highlight pass draws nothing */
     const { getpos } = await import('./getpos.js');
+    await getpos_sethilite(display_stinking_cloud_positions, can_center_cloud);
     if (await getpos(cc, true, 'the desired position') < 0) {
         await pline('Never mind.');
         return;
@@ -2080,8 +2114,8 @@ async function seffect_fire(sobj) {
                 await pline('This is a scroll of fire!');
             dam *= 5;
             await pline('Where do you want to center the explosion?');
-            /* getpos_sethilite(display_stinking_cloud_positions,
-               can_center_cloud): the highlight pass draws nothing */
+            await getpos_sethilite(display_stinking_cloud_positions,
+                                   can_center_cloud);
             await getpos(cc, true, 'the desired position');
             if (!can_center_cloud(cc.x, cc.y)) {
                 /* try to reach too far, get burned */

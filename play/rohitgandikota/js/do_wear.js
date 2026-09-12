@@ -2481,7 +2481,6 @@ export async function Blindf_off(otmp) {
         return;
     const was_blind = Blind();
 
-    game._deferred_status_blind = was_blind;
     setworn(null, W_TOOL);   /* src/do_wear.c Blindf_off */
     game.u.ublind = current_equipment_blindness() ? 1 : 0;
     if (!nooffmsg)
@@ -2494,16 +2493,13 @@ export async function Blindf_off(otmp) {
                 await You('still cannot see.');
         } else {
             await You_cant('see anything now!');
-            delete game._deferred_status_blind;
             await toggle_blindness();
         }
     } else if (was_blind) {
         /* gulp_blnd_check() needs the engulfed state; absent */
         await You('can see again.');
-        delete game._deferred_status_blind;
         await toggle_blindness();
     }
-    delete game._deferred_status_blind;
 }
 
 /* src/do_wear.c:1733 count_worn_stuff() */

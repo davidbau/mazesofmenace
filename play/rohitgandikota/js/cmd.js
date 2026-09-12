@@ -18,11 +18,12 @@ import { IS_FOUNTAIN } from './const.js';
 import { ATTKS, MSOUND } from './monst_data.js';
 import { is_were } from './were.js';
 import { webmaker, can_breathe, attacktype, is_mind_flayer, is_unicorn, is_vampire } from './mondata.js';
-import { PICK_ONE, CMD_M_PREFIX, AUTOCOMPLETE, CMD_NOT_AVAILABLE, INTERNALCMD, WIZMODECMD, GENERALCMD, QBUFSZ } from './const.js';
+import { PICK_ONE, CMD_M_PREFIX, CMD_gGF_PREFIX, PREFIXCMD, AUTOCOMPLETE, CMD_NOT_AVAILABLE, INTERNALCMD, WIZMODECMD, GENERALCMD, QBUFSZ } from './const.js';
 import { add_menu_heading } from './options.js';
 import { pmatchi, visctrl, strstri, strsubst } from './hacklib.js';
 import { seemimic } from './mon.js';
 // cmd.js — Command dispatch and movement.
+import { PICK_NONE } from './const.js';
 // C ref: cmd.c rhack(), hack.c domove().
 //
 // Minimal skeleton: only hjklyubn movement is implemented.
@@ -261,6 +262,12 @@ async function blocksMove(x, y, dx, dy) {
         if (Passes_walls() || can_ooze(game.youmonst)) {
             const { test_move } = await import('./hack.js');
             return !(await test_move(game.u.ux, game.u.uy, dx, dy, DO_MOVE));
+        }
+        /* src/hack.c:1085 — the DOOR arm feels the square first when blind,
+           so the door the hero bumps into is mapped */
+        if (Blind()) {
+            const { feel_location } = await import('./display.js');
+            feel_location(x, y);
         }
         return true;
     }
@@ -721,7 +728,11 @@ function note_unported_cmd(what) {
 // which keys are consumed. Consumption is what matters here: a command line
 // left unread turns its own letters into commands, which is what "#jump\n"
 // was doing — j and u moved the hero and the rest were swallowed.
-export async function getlin(query, hook) {
+// win/tty/getline.c:43 hooked_tty_getlin() — the tty's line reader; the
+// core's getlin() wrapper below disables bot() around it, but
+// tty_get_ext_cmd() (getline.c:292) calls this directly for the '#' prompt,
+// so that prompt's flush repaints the status rows.
+export async function hooked_tty_getlin(query, hook, suppress_history = false) {
     /* C tracks two things: obufp, the buffer, and bufp, the insertion point
        inside it. They come apart under NEWAUTOCOMP (win/tty/getline.c:11,
        always defined) because a completion extends the buffer while leaving
@@ -748,7 +759,14 @@ export async function getlin(query, hook) {
     game._topline_physical_prefix = '';
     /* custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY, "%s ", query) goes
        through src/pline.c:282 vpline(), which records the prompt as the
-       previous message for Norep() */
+       previous message for Norep() and, first (pline.c:266), settles any
+       pending vision recalc and flushes the screen: that flush is what
+       repaints the status rows a just-dismissed full-width window (the
+       extended-command list behind '#') left blank */
+    if (game.vision_full_recalc)
+        vision_recalc(0);
+    if (game.u?.ux)
+        await flush_screen(1);
     game._prevmsg = query + ' ';
 
     for (;;) {
@@ -801,6 +819,9 @@ export async function getlin(query, hook) {
             display.setCursor(cursorCol, cursorRow);
         }
 
+        /* Strcat(strcat(strcpy(gt.toplines, query), " "), obufp): the
+           prompt and the answer so far are what ^P recalls */
+        game._toplines = `${query} ${buf}`;
         const c = String.fromCharCode(await nhgetch());
 
         if (c === '\x1b') {
@@ -811,9 +832,13 @@ export async function getlin(query, hook) {
                 buf = '';               /* obufp[0] = '\0'; bufp = obufp; */
                 shown = '';
                 pos = 0;
+                game._msg_maxcol = game._msg_maxrow || 0; /* cw->maxcol = cw->maxrow */
                 continue;
             }
             getlin_cleanup();
+            if (suppress_history)
+                game._toplines = ''; /* prevent next message from pushing
+                                        current query+answer into history */
             return '\x1b';
         } else if (c === '\n' || c === '\r') {
             /* NEWAUTOCOMP does NOT truncate here, so a completed name is
@@ -845,7 +870,25 @@ export async function getlin(query, hook) {
         }
     }
     getlin_cleanup();
+    if (suppress_history) {
+        /* prevent next message from pushing current query+answer into
+           tty message history */
+        game._toplines = '';
+    }
     return buf;
+}
+
+// src/windows.c:1868 getlin() — the core wrapper: bot() is disabled for the
+// duration of the prompt, so the status rows are not repainted by the
+// prompt's flush ("Set fruit to what?" over a blank status stays blank).
+export async function getlin(query, hook) {
+    const old_bot_disabled = !!game.bot_disabled;
+    game.bot_disabled = true;
+    try {
+        return await hooked_tty_getlin(query, hook);
+    } finally {
+        game.bot_disabled = old_bot_disabled;
+    }
 }
 
 // src/cmd.c:5588 paranoid_ynq(). A paranoid question requires the full word
@@ -938,7 +981,9 @@ async function get_ext_cmd() {
     /* mungspaces(): leading and trailing blanks go, and runs of blanks
        collapse to one before matching and before the unknown-command
        message echoes the text */
-    const buf = mungspaces(await getlin('#', ext_cmd_getlin_hook));
+    /* suppress_history = TRUE: the extended command prompt never enters
+       the ^P history */
+    const buf = mungspaces(await hooked_tty_getlin('#', ext_cmd_getlin_hook, true));
 
     if (buf === '' || buf === '\x1b')
         return null;
@@ -1050,32 +1095,6 @@ export const takeoff_ok = (o) => equip_ok(o, true,  false);
    is offered. A missing filter offers the WHOLE inventory, which is what
    js/cmd.js used to do by passing null.
 
-   'q', 'r' and 'd' carry their real filters. 'w' is dispatched to dowield()
-   and no longer routes through here. */
-const GETOBJ_CMD = {
-    q: { word: 'drink',   ok: drink_ok, flags: GETOBJ_NOFLAGS },
-    r: { word: 'read',    ok: read_ok,  flags: GETOBJ_PROMPT },
-    W: { word: 'wear',    ok: wear_ok,   flags: GETOBJ_NOFLAGS },
-    P: { word: 'put on',  ok: puton_ok,  flags: GETOBJ_NOFLAGS },
-    R: { word: 'remove',  ok: remove_ok, flags: GETOBJ_NOFLAGS },
-    d: { word: 'drop',    ok: any_obj_ok, flags: GETOBJ_NOFLAGS },
-};
-
-/* The commands whose first act is getobj() and which read nothing further.
-   Their effects need the use/wear/drop subsystems; what is ported is the
-   object prompt, because that is what decides where the next keystroke goes. */
-async function docmd_getobj(ch) {
-    const spec = GETOBJ_CMD[ch];
-    const obj = await getobj(spec ? spec.word : ch,
-                            spec ? spec.ok : null,
-                            spec ? spec.flags : 0);
-
-    if (!obj)
-        return ECMD_OK;   /* Never mind */
-
-    note_unported_cmd(`cmd:${ch}`);
-    return ECMD_TIME;
-}
 /* dofire() lives in js/dothrow.js, its C home (src/dothrow.c:469), with the
    fireassist launcher-wielding chain. The local stub that only reached
    getdir() was replaced when the command queue landed. */
@@ -1440,6 +1459,32 @@ async function execute_extcmd(name) {
         return await do_reqmenu();
     if (name === 'travel')
         return await dotravel();
+    /* src/cmd.c:1697 the prefixes, :2010 the movement entries and the
+       plain commands reachable by name (#fight, #moveeast, #up, ...):
+       the function sets the prefix or direction state; rhack()'s '#' arm
+       then waits for the next key or moves, as for a key bound to them */
+    if (name === 'fight')
+        return await do_fight();
+    if (name === 'run')
+        return await do_run();
+    if (name === 'rush')
+        return await do_rush();
+    if (name === 'up')
+        return await doup();
+    if (name === 'down')
+        return await dodown();
+    if (name === 'pickup')
+        return await dopickup();
+    if (name === 'prevmsg')
+        return await doprev_message();
+    if (name === '?')
+        return await doextlist();
+    if (name === '#')
+        return await doextcmd();
+    for (let dir = 0; dir < 8; dir++)
+        for (let mode = MV_WALK; mode <= MV_RUSH; mode++)
+            if (ext_func_tab_from_func(move_funcs[dir][mode]).ef_txt === name)
+                return await move_funcs[dir][mode]();
     const ef = EXTCMD_FUNCS[name];
     if (ef) {
         const mod = await import(ef[0]);
@@ -1465,6 +1510,14 @@ const EXTCMD_FUNCS = {
     glance: ['./pager.js', 'doquickwhatis'],
     history: ['./pager.js', 'dohistory'],
     inventtype: ['./invent.js', 'dotypeinv'],
+    wizborn: ['./insight.js', 'doborn'],
+    wizseenv: ['./wizcmds.js', 'wiz_show_seenv'],
+    vision: ['./wizcmds.js', 'wiz_show_vision'],
+    wmode: ['./wizcmds.js', 'wiz_show_wmodes'],
+    wizfliplevel: ['./wizcmds.js', 'wiz_flip_level'],
+    wizmondiff: ['./wizcmds.js', 'wiz_mon_diff'],
+    wizsmell: ['./wizcmds.js', 'wiz_smell'],
+    migratemons: ['./wizcmds.js', 'wiz_migrate_mons'],
     known: ['./o_init.js', 'dodiscovered'],
     knownclass: ['./o_init.js', 'doclassdisco'],
     look: ['./invent.js', 'dolook'],
@@ -1615,7 +1668,7 @@ async function lookaround_known_room(x, y) {
 
 // src/cmd.c:1310 dolookaround() — the #lookaround command: describe the
 // room and every interesting map location in view.
-async function dolookaround() {
+export async function dolookaround() {
     let x, y;
     const tmp_getloc_filter = game.iflags?.getloc_filter ?? GFILTER_NONE;
     const a11y = (game.a11y ||= {});
@@ -2365,6 +2418,36 @@ function reset_cmd_vars(reset_cmdq) {
     }
 }
 
+/* src/cmd.c:3773 rhack() after the command function ran: a movement
+   command (do_move_/do_run_/do_rush_, MOVEMENTCMD) only set the direction,
+   so the hero walks or rushes here; a non-movement command after a move
+   prefix does nothing more. */
+async function rhack_movement_after(tlist) {
+    if (tlist && !(tlist.flags & MOVEMENTCMD)
+        && game.domove_attempting) {
+        ; /* not a movement command, but a move prefix earlier? just do nothing */
+    } else if ((game.domove_attempting & (DOMOVE_RUSH | DOMOVE_WALK))
+               && !game.context.travel && !dxdy_moveok()) {
+        /* trying to move diagonally as a grid bug */
+        await You_cant('get there from here...');
+        reset_cmd_vars(true);
+    } else if (game.domove_attempting & DOMOVE_WALK) {
+        if (game.multi)
+            game.context.mv = true;
+        await domove();
+        game.context.forcefight = 0;
+        game.iflags.menu_requested = false;
+    } else if (game.domove_attempting & DOMOVE_RUSH) {
+        /* firsttime: the C's rhack() read this command itself */
+        if (!game.multi)
+            game.multi = Math.max(COLNO, ROWNO);
+        game.u.last_str_turn = 0;
+        game.context.mv = true;
+        await domove();
+        game.iflags.menu_requested = false;
+    }
+}
+
 export async function rhack(key) {
     /* src/cmd.c:3635 — every command begins with the menu-request and
        no-pickup markers cleared; set_move_cmd() re-raises nopick from
@@ -2398,32 +2481,7 @@ export async function rhack(key) {
                 /* src/cmd.c:3773 — a queued do_move_/do_run_/do_rush_
                    function (MOVEMENTCMD) only set the direction; rhack()
                    then walks or rushes, as after a movement key */
-                const tlist = ext_func_tab_from_func(cmdq.fn);
-                if (tlist && !(tlist.flags & MOVEMENTCMD)
-                    && game.domove_attempting) {
-                    ; /* just do nothing */
-                } else if ((game.domove_attempting & (DOMOVE_RUSH | DOMOVE_WALK))
-                           && !game.context.travel && !dxdy_moveok()) {
-                    await You_cant('get there from here...');
-                    reset_cmd_vars(true);
-                    return;
-                } else if (game.domove_attempting & DOMOVE_WALK) {
-                    if (game.multi)
-                        game.context.mv = true;
-                    await domove();
-                    game.context.forcefight = 0;
-                    game.iflags.menu_requested = false;
-                    return;
-                } else if (game.domove_attempting & DOMOVE_RUSH) {
-                    /* firsttime: a queued command read no key */
-                    if (!game.multi)
-                        game.multi = Math.max(COLNO, ROWNO);
-                    game.u.last_str_turn = 0;
-                    game.context.mv = true;
-                    await domove();
-                    game.iflags.menu_requested = false;
-                    return;
-                }
+                await rhack_movement_after(ext_func_tab_from_func(cmdq.fn));
                 return;
             }
             if (cmdq.typ === CMDQ_KEY) {
@@ -2580,6 +2638,11 @@ export async function rhack(key) {
     else if (moveBinding && moveBinding.mode === MV_RUSH)
         movemode = 3;
     const prefixCommand = cmdbind_table().get(ch0.charCodeAt(0));
+    /* src/cmd.c:3689 rhack() dispatches the bound command (tlist), so the
+       prefixes are recognized by the command a key is bound to: 'g'/'G'/
+       'F'/'m' by default, '5'/M-5/'-' as well under number_pad */
+    const prefixTxt = prefixCommand ? prefixCommand.ef_txt : null;
+    const is_prefixcmd = !!(prefixCommand && (prefixCommand.flags & PREFIXCMD));
     let boundCommand;
 
     /* src/cmd.c:3689 — use key to directly index cmdlist array */
@@ -2590,54 +2653,47 @@ export async function rhack(key) {
         return;
     }
 
-    /* src/cmd.c:3693-3723 -- g/G only modify movement commands.  C loops
-       for the second key inside one rhack() call; this port spans two calls,
-       so reject a known nonmovement command before its normal dispatch. An
-       unbound key falls through to bad_command, and another prefix is allowed
-       through, matching PREFIXCMD. */
-    /* src/cmd.c:2024 the rush and run table entries carry CMD_M_PREFIX
-       only ("accept m prefix but not g/G/F"), so a shifted or control
-       direction after g/G/F is refused like any other bound non-movement
-       command. */
-    /* C keys this on prefix_seen, a local of the rhack() call that read the
-       prefix; domove_attempting and context.run outlive that call (an
-       unknown command after 'g' leaves them for the next move) */
-    if (continuedPrefix && (game.domove_attempting & DOMOVE_RUSH)
-        && (movemode !== 0
-            || (!isMovementKey(ch) && !'gGmF-'.includes(ch) && prefixCommand))) {
-        const prefix = game.context.run === 3 ? 'G' : 'g';
-        const vertical = ch === '<' || ch === '>';
-        game.context.run = 0;
-        game.domove_attempting = 0;
-        game.context.move = 0;
-        await pline(`The '${prefix}' prefix should be followed by a movement command${vertical ? ' other than up or down' : ''}.`);
-        return;
-    }
+    /* src/cmd.c:3693 — a prefix was seen and the command that followed it
+       does not accept that prefix: rush/run/fight take movement commands
+       only (CMD_gGF_PREFIX; the shifted and control direction entries carry
+       CMD_M_PREFIX alone), the m prefix takes commands with CMD_M_PREFIX,
+       and another prefix (PREFIXCMD) is allowed through.  C loops for the
+       second key inside one rhack() call (prefix_seen); this port spans two
+       calls, so the check runs before the command's normal dispatch.  An
+       unbound key falls through to bad_command with the prefix state kept.
+       was_m_prefix is set only when do_reqmenu ran from its own key: through
+       #reqmenu the C's func is doextcmd, so that case takes the
+       movement-command message with 'm' as the prefix. */
+    if (continuedPrefix && prefixCommand && !(prefixCommand.flags & PREFIXCMD)
+        && !(prefixCommand.flags & (game._was_m_prefix ? CMD_M_PREFIX
+                                                        : CMD_gGF_PREFIX))) {
+        const prefix_seen = game._prefix_seen || 'reqmenu';
+        const pfxidx = cmd_from_func(prefix_seen);
+        const which = (pfxidx !== '\0') ? visctrl_key(pfxidx.charCodeAt(0))
+                      : (prefix_seen === 'reqmenu')
+                        ? 'move-no-pickup or request-menu'
+                        : prefix_seen;
 
-    /* src/cmd.c:3693-3723 applies the same prefix validation to do_fight.
-       A nonmovement key is consumed by the rejected F command rather than
-       dispatched as its ordinary command. */
-    if (continuedPrefix && game.context.forcefight
-        && (movemode !== 0
-            || (!isMovementKey(ch) && !'gGmF-'.includes(ch) && prefixCommand))) {
-        const vertical = ch === '<' || ch === '>';
-        game.context.forcefight = 0;
-        game.context.move = 0;
-        await pline("The 'F' prefix should be followed by a movement command"
-                    + `${vertical ? ' other than up or down' : ''}.`);
-        return;
-    }
+        /*
+         * We got a prefix previously and looped for another
+         * command instead of returning, but the command we got
+         * doesn't accept a prefix.  The feedback here supersedes
+         * the former call to help_dir() (for 'bad_command' below).
+         */
+        if (game._was_m_prefix) {
+            await pline_nohistory(`The ${prefixCommand.ef_txt} command does not accept '${which}' prefix.`);
+        } else {
+            const up = (prefixCommand.key === '<'.charCodeAt(0)
+                        || prefixCommand.ef_txt === 'up'),
+                  down = (prefixCommand.key === '>'.charCodeAt(0)
+                          || prefixCommand.ef_txt === 'down');
 
-    /* src/cmd.c:3693-3723: unlike g/G/F, the m prefix can also modify
-       selected nonmovement commands. Reject a known command whose cmdlist
-       entry lacks CMD_M_PREFIX instead of dispatching it normally. */
-    if (continuedPrefix && game.iflags.menu_requested
-        && !isMovementKey(ch) && !'gGmF-'.includes(ch)) {
-        if (prefixCommand && !accept_menu_prefix(prefixCommand)) {
-            await pline_nohistory(`The ${prefixCommand.ef_txt} command does not accept 'm' prefix.`);
-            reset_cmd_vars(true);
-            return;
+            await pline(`The '${which}' prefix should be followed by a movement command${
+                        (up || down) ? ' other than up or down' : ''}.`);
         }
+        /* res = ECMD_FAIL; prefix_seen = 0; ... reset_cmd_vars(TRUE) */
+        reset_cmd_vars(true);
+        return;
     }
 
     if (isMovementKey(ch)) {
@@ -2827,54 +2883,22 @@ export async function rhack(key) {
     } else if (ch === '^') {
         // src/pager.c doidtrap() describes a seen trap in one direction.
         game.context.move = ((await doidtrap()) === ECMD_TIME ? 1 : 0);
-    } else if (ch === 'g' || ch === 'G') {
-        // src/cmd.c:1588 do_rush()/do_run(): PREFIX commands. Lowercase g
-        // sets context.run = 2 and uppercase G sets it to 3; the following
-        // direction then carries the hero until something interesting stops
-        // the run. Neither prefix consumes game time by itself.
-        if (game.domove_attempting & DOMOVE_RUSH) {
-            await pline(`Double ${ch === 'g' ? 'rush' : 'run'} prefix, canceled.`);
-            game.context.run = 0;
-            game.domove_attempting = 0;
-            commandResult = ECMD_CANCEL;
-        } else {
-            game.context.run = (ch === 'g') ? 2 : 3;
-            game.domove_attempting |= DOMOVE_RUSH;
-            game._cmd_prefix_pending = true;
-        }
-        game.context.move = 0;
-    } else if (ch === 'm') {
-        // src/cmd.c:1829 do_reqmenu — a PREFIX setting iflags.menu_requested.
-        // For a movement command it means "move without picking up", which is
-        // a no-op while every recorded rc sets !autopickup; for others it asks
-        // for a menu. Reads no extra key.
-        if (game.iflags.menu_requested) {
-            await pline('Double m prefix, canceled.');
-            game.iflags.menu_requested = false;
-            commandResult = ECMD_CANCEL;
-        } else {
-            game.iflags.menu_requested = true;
-            game._cmd_prefix_pending = true;
-        }
-        game.context.move = 0;
-    } else if (ch === 'F' || ch === '-') {
-        // src/cmd.c:1622 do_fight — a PREFIX. It sets context.forcefight and
-        // returns WITHOUT reading another key. commands_init() (cmd.c:2772)
-        // also binds '-' to it, in both number_pad modes; the prefix message
-        // still names 'F' because cmd_from_func() skips '-' for !num_pad.
-        // returns WITHOUT reading another key; the direction that follows is a
-        // normal movement command that attacks instead of moving. Leaving 'F'
-        // unhandled therefore did not misalign keys, it displaced the HERO:
-        // C attacks and stays put where we walked into the square.
-        if (game.context.forcefight) {
-            await pline('Double fight prefix, canceled.');
-            game.context.forcefight = 0;
-            game.context.move = 0;
-            commandResult = ECMD_CANCEL;
-        } else {
-            game.context.forcefight = 1;
-            game._cmd_prefix_pending = true;
-            game.context.move = 0;
+    } else if (prefixTxt === 'rush' || prefixTxt === 'run'
+               || prefixTxt === 'reqmenu' || prefixTxt === 'fight') {
+        // src/cmd.c:1588 do_rush()/do_run(), :1622 do_fight(), :1575
+        // do_reqmenu(): PREFIX commands.  The function sets the prefix
+        // state and returns without reading a key; C loops for the next
+        // command inside the same rhack() (prefix_seen), this port spans
+        // two rhack() calls through _cmd_prefix_pending.  A double prefix
+        // returns ECMD_CANCEL and the C's reset_cmd_vars() follows below.
+        useResult(await (prefixTxt === 'rush' ? do_rush()
+                         : prefixTxt === 'run' ? do_run()
+                           : prefixTxt === 'fight' ? do_fight()
+                             : do_reqmenu()));
+        if (!(commandResult & ECMD_CANCEL)) {
+            game._cmd_prefix_pending = true;    /* prefix_seen = tlist */
+            game._prefix_seen = prefixTxt;
+            game._was_m_prefix = (prefixTxt === 'reqmenu');
         }
     } else if (ch === 't') {
         // src/cmd.c cmdlist — 't' is dothrow: getobj() for the object, then
@@ -2923,8 +2947,6 @@ export async function rhack(key) {
         else if (ch === 'w')
             // src/cmd.c cmdlist — 'w' is dowield.
             game.context.move = ((await dowield()) === ECMD_TIME ? 1 : 0);
-        else
-            game.context.move = (await docmd_getobj(ch) === ECMD_TIME ? 1 : 0);
     } else if (ch === '.') {
         // src/cmd.c:1930 — '.' is "wait", donull. cmd_safety_prevention
         // (flags.safe_wait, default On) refuses the rest next to a spottable
@@ -2955,6 +2977,19 @@ export async function rhack(key) {
             const name = game._last_extcmd_name;
             cmdq_add_ec(CQ_REPEAT, () => execute_extcmd(name));
             cmdq_shift(CQ_REPEAT);
+            /* src/cmd.c:3752 — doextcmd() reports the command it ran
+               (ext_tlist): a prefix command waits for the next key, a
+               movement command walks or rushes now */
+            const tlist = extcmdlist.find((e) => e.ef_txt === name);
+            if (tlist && (tlist.flags & PREFIXCMD)) {
+                if (!(commandResult & ECMD_CANCEL)) {
+                    game._cmd_prefix_pending = true;    /* prefix_seen = tlist */
+                    game._prefix_seen = name;
+                    game._was_m_prefix = false; /* func == doextcmd, not do_reqmenu */
+                }
+            } else {
+                await rhack_movement_after(tlist);
+            }
         }
     } else if (ch === '!') {
         game.context.move = ((await execute_extcmd('shell')) === ECMD_TIME
@@ -3214,6 +3249,31 @@ async function domove_core() {
     if (await escape_from_sticky_mon(newx, newy))
         return;
 
+    /* src/hack.c:2763 -- a run into a visible monster that is not currently
+       safe stops before attacking and costs no turn.  Confusion can make a
+       tame monster temporarily unsafe, so this guard must precede the normal
+       bump/attack path. */
+    {
+        const mtmp_run = m_at(newx, newy);
+        if (mtmp_run && !is_safemon(mtmp_run) && game.context.run
+            && ((!u.ublind && mon_visible(mtmp_run)
+                 && M_AP_TYPE(mtmp_run) !== M_AP_FURNITURE
+                 && M_AP_TYPE(mtmp_run) !== M_AP_OBJECT)
+                || sensemon(mtmp_run))) {
+            nomul(0);
+            game.context.move = 0;
+            return;
+        }
+    }
+
+    /* src/hack.c:2775 -- record the start of this move before the fight,
+       door, bump, attack, trap, liquid, and blocked-terrain exits.  Missile
+       AI later compares this position with the current one to decide
+       whether the hero is retreating, so updating it only after a
+       successful step leaves stale state. */
+    u.ux0 = u.ux;
+    u.uy0 = u.uy;
+
     /* src/hack.c:2242: force-fighting an empty square, or walking into a stale
        invisible-monster marker without nopick, attacks the square instead of
        moving onto it. */
@@ -3251,30 +3311,6 @@ async function domove_core() {
         return;
     }
 
-    /* src/hack.c:2763 -- a run into a visible monster that is not currently
-       safe stops before attacking and costs no turn.  Confusion can make a
-       tame monster temporarily unsafe, so this guard must precede the normal
-       bump/attack path. */
-    {
-        const mtmp_run = m_at(newx, newy);
-        if (mtmp_run && !is_safemon(mtmp_run) && game.context.run
-            && ((!u.ublind && mon_visible(mtmp_run)
-                 && M_AP_TYPE(mtmp_run) !== M_AP_FURNITURE
-                 && M_AP_TYPE(mtmp_run) !== M_AP_OBJECT)
-                || sensemon(mtmp_run))) {
-            nomul(0);
-            game.context.move = 0;
-            return;
-        }
-    }
-
-    /* src/hack.c:2775 -- record the start of this move before bump, attack,
-       trap, liquid, and blocked-terrain exits.  Missile AI later compares
-       this position with the current one to decide whether the hero is
-       retreating, so updating it only after a successful step leaves stale
-       state. */
-    u.ux0 = u.ux;
-    u.uy0 = u.uy;
 
     /* src/hack.c's domove_attackmon_at() call is NOT wired here yet.
        js/hack.js now holds that function (it was missing entirely; the C
@@ -3552,10 +3588,10 @@ async function domove_core() {
 
     await check_leash(game.u.ux0, game.u.uy0);
 
-    // Update display
+    /* Clean old position -- vision_recalc() will print our new one. */
     newsym(oldx, oldy);
-    vision_recalc(1);
-    newsym(newx, newy);
+    /* Since the hero has moved, adjust what can be seen/unseen. */
+    vision_recalc(1); /* Do the work now in the recover time. */
 
     /* src/hack.c:2964 — position changed: mark success for domove()'s
        smudge/bubble tail and set u.umoved, read by u_calc_moveamt (steed
@@ -3703,14 +3739,11 @@ async function show_attributes() {
     for (const l of enlightenment())
         tty_add_menu(win, null, 0, 0, 0, ATR_NONE, NO_COLOR, l,
                      MENU_ITEMFLAGS_NONE);
+    /* src/insight.c:456 — en_via_menu: end_menu() and select_menu(PICK_NONE),
+       so the tty's process_menu_window() reads the keys: RET finishes on any
+       page, space and '>' turn pages, other keys are ignored. */
     tty_end_menu(win, null);
-    await tty_display_nhwindow(win);
-
-    /* dmore() blocks once per page and accepts ONLY the quitchars: any
-       other key (a ^O pressed early) is swallowed while the window stays */
-    await xwaitforspace(' \r\n\x1b');
-    while (game.morc !== '\x1b' && tty_next_page(win))
-        await xwaitforspace(' \r\n\x1b');
+    await tty_select_menu(win, PICK_NONE);
 
     tty_destroy_nhwindow(win);
 }
@@ -3751,12 +3784,53 @@ function add_item_action(win, action, text) {
                  ATR_NONE, NO_COLOR, text, MENU_ITEMFLAGS_NONE);
 }
 
-// src/cmd.c:1575 do_reqmenu() — the m-prefix as a queued command: the next
-// command sees iflags.menu_requested. The key bound to it is the default m;
-// the port has no cmd_from_func() binding table, so the message names m.
+// src/cmd.c:1588 do_rush() — the rush prefix
+export async function do_rush() {
+    if ((game.domove_attempting & DOMOVE_RUSH)) {
+        await Norep('Double rush prefix, canceled.');
+        game.context.run = 0;
+        game.domove_attempting = 0;
+        return ECMD_CANCEL;
+    }
+
+    game.context.run = 2;
+    game.domove_attempting |= DOMOVE_RUSH;
+    return ECMD_OK;
+}
+
+// src/cmd.c:1603 do_run() — the run prefix
+export async function do_run() {
+    if ((game.domove_attempting & DOMOVE_RUSH)) {
+        await Norep('Double run prefix, canceled.');
+        game.context.run = 0;
+        game.domove_attempting = 0;
+        return ECMD_CANCEL;
+    }
+
+    game.context.run = 3;
+    game.domove_attempting |= DOMOVE_RUSH;
+    return ECMD_OK;
+}
+
+// src/cmd.c:1622 do_fight() — the fight prefix
+export async function do_fight() {
+    if (game.context.forcefight) {
+        await Norep('Double fight prefix, canceled.');
+        game.context.forcefight = 0;
+        game.domove_attempting = 0;
+        return ECMD_CANCEL;
+    }
+
+    game.context.forcefight = 1;
+    game.domove_attempting |= DOMOVE_WALK;
+    return ECMD_OK;
+}
+
+// src/cmd.c:1575 do_reqmenu() — the m-prefix: the next command sees
+// iflags.menu_requested.
 export async function do_reqmenu() {
     if (game.iflags?.menu_requested) {
-        await Norep(`Double ${visctrl_key('m'.charCodeAt(0))} prefix, canceled.`);
+        await Norep(`Double ${visctrl_key(cmd_from_func('reqmenu').charCodeAt(0))} prefix, canceled.`);
         game.iflags.menu_requested = false;
         return ECMD_CANCEL;
     }
@@ -4590,10 +4664,55 @@ function cmdbind_table() {
        Off, <space> is unbound and elicits "Unknown command ' '." */
     if (game.flags?.rest_on_space)
         binds.set(' '.charCodeAt(0), restonspace);
+    /* src/cmd.c:2195 cmdbind_swapkeys(): two keys trade bindings, and only
+       when both are bound */
+    const cmdbind_swapkeys = (key1, key2) => {
+        const bind1 = binds.get(key1);
+        const bind2 = binds.get(key2);
+
+        if (bind1 && bind2) {
+            binds.set(key1, bind2);
+            binds.set(key2, bind1);
+        }
+    };
+    /* src/cmd.c:3389 reset_commands(): the swap_yz, pcHack_compat and
+       phone_layout remaps act on the table as it stands before the
+       direction keys are (re)bound.  This table is rebuilt from Cmd's
+       flags on every lookup, so each remap is applied whenever its mode
+       is on (the C toggles them in place; the results agree because a
+       reversed toggle undoes the same swaps on the restored table). */
+    {
+        const Cmd = game.Cmd || {};
+        if (Cmd.swap_yz) {
+            /* FIXME? should Cmd.spkeys[] be scanned for y and/or z to swap? */
+            const ylist = [
+                'y'.charCodeAt(0), 'Y'.charCodeAt(0), 'y'.charCodeAt(0) & 0x1f,
+                0x80 | 'y'.charCodeAt(0), 0x80 | 'Y'.charCodeAt(0),
+                0x80 | ('y'.charCodeAt(0) & 0x1f),
+            ];
+            for (let i = 0; i < ylist.length; i++) {
+                const c = ylist[i] & 0xff;
+                cmdbind_swapkeys(c, c + 1);
+            }
+        }
+        if (Cmd.pcHack_compat) {
+            /* FIXME: NHKF_DOINV2 ought to be implemented instead of this */
+            binds.set(0x80 | '0'.charCodeAt(0),
+                      by_txt('inventtype')); /* ext_func_tab_from_func(dotypeinv) */
+        }
+        if (Cmd.phone_layout) {
+            for (let i = 0; i < 3; i++) {
+                let c = '1'.charCodeAt(0) + i;             /* 1,2,3 <-> 7,8,9 */
+                cmdbind_swapkeys(c, c + 6);
+                c = (0x80 | '1'.charCodeAt(0)) + i; /* M-1,M-2,M-3 <-> M-7,M-8,M-9 */
+                cmdbind_swapkeys(c, c + 6);
+            }
+        }
+    }
     /* src/cmd.c:3462 reset_commands(): the direction characters (and their
        run/rush forms) replace whatever commands_init() had on those keys,
        so cmdbind_get('l') is "moveeast" without number_pad and "loot"
-       with it. swap_yz and the phone layout are not modelled. */
+       with it. */
     {
         const num_pad = !!game.iflags?.num_pad;
         /* Cmd.dirchars from reset_commands(); the defaults cover callers
@@ -4844,16 +4963,40 @@ export function ext_func_tab_from_func(fn) {
 }
 
 export function cmd_from_func(name) {
+    let i;
+    let ret = '\0';
+
     for (const [key, bound] of Object.entries(game.rc_key_bindings || {}))
         if (bound === name)
             return key;
     const binds = cmdbind_table();
-    for (let i = 0; i < 256; ++i) {
+    /* the C walks its binding list newest-first; this table has no
+       history, so the keys are scanned in order (the two agree for every
+       key commands_init() and number_pad bind twice) */
+    for (i = 1; i < 256; ++i) {
+        /* skip space; we'll use it below as last resort if no other
+           keystroke invokes space's command */
+        if (i === ' '.charCodeAt(0))
+            continue;
+        /* skip digits if number_pad is Off; also skip '-' unless it has
+           been bound to something other than what number_pad assigns */
+        if (((i >= '0'.charCodeAt(0) && i <= '9'.charCodeAt(0))
+             || (i === '-'.charCodeAt(0) && name === 'fight'))
+            && !game.Cmd?.num_pad)
+            continue;
+
         const e = binds.get(i);
-        if (e && e.ef_txt === name)
-            return String.fromCharCode(i);
+        if (e && e.ef_txt === name) {
+            if (i >= ' '.charCodeAt(0) && i <= '~'.charCodeAt(0))
+                return String.fromCharCode(i);
+            else
+                ret = String.fromCharCode(i);
+        }
     }
-    return '\0';
+    const sp = binds.get(' '.charCodeAt(0));
+    if (sp && sp.ef_txt === name)
+        return ' ';
+    return ret;
 }
 
 // src/cmd.c:118 levltyp[] — the names of the levl[][].typ values, for the
@@ -4959,8 +5102,8 @@ const move_funcs = [
 // number_pad setting. Key lookups in this port (cmdbind_table(), movecmd())
 // read game.iflags.num_pad and game.Cmd live instead of a rebound
 // Cmd.commands[] table, so only the flags and direction strings are kept
-// here; swap_yz, the phone layout and the MSDOS M-0 binding have no key
-// tables of their own and are recorded as unported when they turn on.
+// here; cmdbind_table() applies the swap_yz, phone layout and MSDOS M-0
+// remaps from these flags.
 export function reset_commands(initial) {
     const sdir = 'hykulnjb><',
           sdir_swap_yz = 'hzkulnjb><',
@@ -4988,24 +5131,18 @@ export function reset_commands(initial) {
         if (flagtemp !== !!Cmd.swap_yz) {
             Cmd.swap_yz = flagtemp;
             ++updated;
-            if (flagtemp)
-                note_unported_cmd('reset_commands:swap_yz');
         }
         /* MSDOS compatibility mode (only applicable for num_pad) */
         flagtemp = ((iflags.num_pad_mode | 0) & 1) ? Cmd.num_pad : false;
         if (flagtemp !== !!Cmd.pcHack_compat) {
             Cmd.pcHack_compat = flagtemp;
             ++updated;
-            if (flagtemp)
-                note_unported_cmd('reset_commands:pcHack_compat');
         }
         /* phone keypad layout (only applicable for num_pad) */
         flagtemp = ((iflags.num_pad_mode | 0) & 2) ? Cmd.num_pad : false;
         if (flagtemp !== !!Cmd.phone_layout) {
             Cmd.phone_layout = flagtemp;
             ++updated;
-            if (flagtemp)
-                note_unported_cmd('reset_commands:phone_layout');
         }
     } /*?initial*/
 

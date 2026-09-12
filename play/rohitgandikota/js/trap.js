@@ -3598,37 +3598,10 @@ async function trapeffect_magic_portal(mtmp, trap, trflags) {
     if (mtmp === game.youmonst) {
         feeltrap(trap);
         await domagicportal(trap);
-        return Trap_Effect_Finished;
+    } else {
+        return trapeffect_level_telep(mtmp, trap, trflags);
     }
-    if (mtmp === game.u.usteed)
-        return Trap_Effect_Finished;
-
-    const in_sight = canseemon(mtmp);
-    if (In_endgame(game.u.uz)) {
-        const { mon_has_amulet } = await import('./wizard.js');
-        const { is_home_elemental } = await import('./makemon.js');
-        if (mon_has_amulet(mtmp) || is_home_elemental(mtmp.data) || rn2(7)) {
-            if (in_sight && mtmp.data.mlet !== MONSYMS.S_ELEMENTAL) {
-                await pline(`${Monnam(mtmp)} seems to shimmer for a moment.`);
-                seetrap(trap);
-            }
-            return Trap_Effect_Finished;
-        }
-    }
-
-    const dest = trap.dst;
-    if (!dest || dest.dnum < 0) {
-        note_unported_trap('trapeffect_magic_portal:no_destination');
-        return Trap_Effect_Finished;
-    }
-    if (in_sight) {
-        await pline(`Suddenly, ${mon_nam(mtmp)} disappears out of sight.`);
-        seetrap(trap);
-    }
-    if (!(mtmp.data.mflags1 & MFLAGS.M1_TPORT_CNTRL))
-        mtmp.mconf = 1;
-    migrate_monster(mtmp, dest, MIGR_PORTAL);
-    return Trap_Moved_Mon;
+    return Trap_Effect_Finished;
 }
 
 // src/trap.c:3733 mintrap() — a monster steps onto a trap.

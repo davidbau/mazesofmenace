@@ -25,6 +25,11 @@ import { lspo_engraving, lspo_terrain, lspo_trap, get_traptype_byname,
 import { create_gas_cloud_selection } from './region.js';
 import { start_timer, obj_stop_timers, TIMER_OBJECT, ZOMBIFY_MON }
     from './timeout.js';
+import { cvt_to_abscoord } from './sp_lev.js';
+import { isok } from './hacklib.js';
+import { spot_stop_timers } from './timeout.js';
+import { TIMER_LEVEL } from './timeout.js';
+import { MELT_ICE_AWAY } from './timeout.js';
 
 function note_unported_themerms(what) {
     (game.unported ||= new Set()).add(what);
@@ -52,12 +57,17 @@ export function fill_ice_room(rm) {
         const mintime = 1000 - (level_difficulty() * 100);
 
         l_selection_iterate(ice, (x, y) => {
-            /* nh.start_timer_at(x, y, "melt-ice", mintime + nh.rn2(1000)) —
-               the draw is real and ordered; the timer itself needs the timeout
-               queue, which is not ported. */
+            /* nh.start_timer_at(x, y, "melt-ice", mintime + nh.rn2(1000)):
+               nhlua.c:1610 nhl_timer_start_at() converts the callback's
+               room-relative spot back to absolute coordinates */
             const when = mintime + rn2(1000);
-            note_unported_themerms('start_timer_at:melt-ice');
-            return when;
+            const c = { x, y };
+            cvt_to_abscoord(c);
+            if (isok(c.x, c.y)) {
+                const where = (c.x << 16) | c.y;
+                spot_stop_timers(c.x, c.y, MELT_ICE_AWAY);
+                start_timer(when, TIMER_LEVEL, MELT_ICE_AWAY, where);
+            }
         });
     }
 }

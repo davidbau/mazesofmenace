@@ -9,6 +9,16 @@
 import { POLY_CONTROLLED } from './const.js';
 import { polyself } from './polyself.js';
 import { game } from './gstate.js';
+import { u_at, COULD_SEE, IN_SIGHT, TEMP_LIT, WM_MASK, IS_WALL, IS_ROOM, IS_DOOR, SDOOR, CORR, Never_mind, NEUTRAL, MIGR_EXACT_XY, MGIVENNAME, plur, Is_stronghold, Is_botlevel, ARM } from './const.js';
+import { tty_yn_function } from './tty/topl.js';
+import { flip_level, flip_level_rnd } from './sp_lev.js';
+import { olfaction, mstrength } from './mondata.js';
+import { usmellmon } from './mon.js';
+import { glyph_at, map_invisible } from './display.js';
+import { body_part } from './polyself.js';
+import { minimal_monnam } from './do_name.js';
+import { strsubst } from './hacklib.js';
+import { get_level, depth } from './dungeon.js';
 import { tty_putstr, tty_display_nhwindow, tty_next_page } from './tty/wintty.js';
 import { xwaitforspace } from './tty/getline.js';
 import { may_dig, notice_all_mons_flush } from './hack.js';
@@ -747,4 +757,419 @@ export async function wiz_levltyp_legend() {
     tty_destroy_nhwindow(win);
     await notice_all_mons_flush();
     return;
+}
+
+// src/wizcmds.c:412 wiz_flip_level() — #wizfliplevel - transpose the
+// current level
+export async function wiz_flip_level() {
+    const choices = '0123',
+          prmpt = 'Flip 0=randomly, 1=vertically, 2=horizontally, 3=both:';
+
+    /*
+     * Does not handle
+     *   levregions,
+     *   monster mtrack,
+     *   migrating monsters aimed at returning to specific coordinates
+     *     on this level
+     * as flipping is normally done only during level creation.
+     */
+    if (game.wizard) {
+        let c = await tty_yn_function(prmpt, choices, '\0', true);
+
+        if (c && choices.includes(c)) {
+            c = c.charCodeAt(0) - '0'.charCodeAt(0);
+
+            if (!c)
+                await flip_level_rnd(3, true);
+            else
+                await flip_level(c, true);
+
+            await docrt();
+        } else {
+            await pline(Never_mind);
+        }
+    }
+    return ECMD_OK;
+}
+
+// src/wizcmds.c:576 wiz_show_seenv() — #seenv command
+export async function wiz_show_seenv() {
+    let win;
+    let x, y, startx, stopx, curx;
+    let v;
+    let row;
+
+    win = tty_create_nhwindow(NHW_TEXT);
+    /*
+     * Each seenv description takes up 2 characters, so center
+     * the seenv display around the hero.
+     */
+    startx = Math.max(1, game.u.ux - Math.trunc(COLNO / 4));
+    stopx = Math.min(startx + Math.trunc(COLNO / 2), COLNO);
+    /* can't have a line exactly 80 chars long */
+    if (stopx - startx === Math.trunc(COLNO / 2))
+        startx++;
+
+    for (y = 0; y < ROWNO; y++) {
+        row = '';
+        for (x = startx, curx = 0; x < stopx; x++, curx += 2) {
+            if (u_at(x, y)) {
+                row += '@@';
+            } else {
+                v = (game.level.at(x, y).seenv | 0) & 0xff;
+                if (v === 0)
+                    row += '  ';
+                else
+                    row += v.toString(16).padStart(2, '0');
+            }
+        }
+        /* remove trailing spaces */
+        row = row.replace(/ +$/, '');
+
+        tty_putstr(win, 0, row);
+    }
+    /* display_nhwindow(win, TRUE): page through the text window, ESC
+       cancelling the remaining pages */
+    await tty_display_nhwindow(win);
+    for (;;) {
+        await xwaitforspace(quitchars);
+        if (game.morc === '\x1b')
+            break; /* cancel remaining pages */
+        if (!tty_next_page(win))
+            break;
+    }
+    tty_destroy_nhwindow(win);
+    return ECMD_OK;
+}
+
+// src/wizcmds.c:621 wiz_show_vision() — #vision command
+export async function wiz_show_vision() {
+    let win;
+    let x, y;
+    let v;
+    let row;
+
+    win = tty_create_nhwindow(NHW_TEXT);
+    row = `Flags: 0x${COULD_SEE.toString(16)} could see, 0x${IN_SIGHT.toString(16)} in sight, 0x${TEMP_LIT.toString(16)} temp lit`;
+    tty_putstr(win, 0, row);
+    tty_putstr(win, 0, '');
+    for (y = 0; y < ROWNO; y++) {
+        row = ' '; /* row[0] is never shown */
+        for (x = 1; x < COLNO; x++) {
+            if (u_at(x, y)) {
+                row += '@';
+            } else {
+                v = game.viz_array?.[y]?.[x] | 0; /* data access should be hidden */
+                row += (v === 0) ? ' ' : String.fromCharCode('0'.charCodeAt(0) + v);
+            }
+        }
+        /* remove trailing spaces */
+        row = row.replace(/ +$/, '');
+
+        tty_putstr(win, 0, row.slice(1));
+    }
+    /* display_nhwindow(win, TRUE): page through the text window, ESC
+       cancelling the remaining pages */
+    await tty_display_nhwindow(win);
+    for (;;) {
+        await xwaitforspace(quitchars);
+        if (game.morc === '\x1b')
+            break; /* cancel remaining pages */
+        if (!tty_next_page(win))
+            break;
+    }
+    tty_destroy_nhwindow(win);
+    return ECMD_OK;
+}
+
+// src/wizcmds.c:657 wiz_show_wmodes() — #wmode command
+export async function wiz_show_wmodes() {
+    let win;
+    let x, y;
+    let row;
+    let lev;
+    const istty = true; /* WINDOWPORT(tty) */
+
+    win = tty_create_nhwindow(NHW_TEXT);
+    if (istty)
+        tty_putstr(win, 0, ''); /* tty only: blank top line */
+    for (y = 0; y < ROWNO; y++) {
+        row = '';
+        for (x = 0; x < COLNO; x++) {
+            lev = game.level.at(x, y) || {};
+            if (u_at(x, y))
+                row += '@';
+            else if (IS_WALL(lev.typ) || lev.typ === SDOOR)
+                row += String.fromCharCode('0'.charCodeAt(0) + ((lev.wall_info | 0) & WM_MASK));
+            else if (lev.typ === CORR)
+                row += '#';
+            else if (IS_ROOM(lev.typ) || IS_DOOR(lev.typ))
+                row += '.';
+            else
+                row += 'x';
+        }
+        /* map column 0, levl[0][], is off the left edge of the screen */
+        tty_putstr(win, 0, row.slice(1));
+    }
+    /* display_nhwindow(win, TRUE): page through the text window, ESC
+       cancelling the remaining pages */
+    await tty_display_nhwindow(win);
+    for (;;) {
+        await xwaitforspace(quitchars);
+        if (game.morc === '\x1b')
+            break; /* cancel remaining pages */
+        if (!tty_next_page(win))
+            break;
+    }
+    tty_destroy_nhwindow(win);
+    return ECMD_OK;
+}
+
+// src/wizcmds.c:885 wiz_smell() — #wizsmell command - test usmellmon().
+export async function wiz_smell() {
+    let mtmp; /* monster being smelled */
+    let mptr;
+    let ans, glyph;
+    const cc = { x: game.u.ux, y: game.u.uy }; /* screen pos to sniff */
+    let is_you;
+    const glyph_is_monster = (g) => g?.kind === 'mon';
+    const glyph_is_invisible = (g) => g?.kind === 'invis';
+
+    if (!olfaction(game.youmonst.data)) {
+        await You('are incapable of detecting odors in your present form.');
+        return ECMD_OK;
+    }
+
+    await You('can move the cursor to a monster that you want to smell.');
+    do {
+        await pline('Pick a monster to smell.');
+        ans = await getpos(cc, true, 'a monster');
+        if (ans < 0 || cc.x < 0) {
+            return ECMD_CANCEL; /* done */
+        }
+        is_you = false;
+        if (u_at(cc.x, cc.y)) {
+            if (game.u.usteed) {
+                mptr = game.u.usteed.data;
+            } else {
+                mptr = game.youmonst.data;
+                is_you = true;
+            }
+        } else if ((mtmp = m_at(cc.x, cc.y)) !== null && mtmp !== undefined) {
+            mptr = mtmp.data;
+        } else {
+            mptr = null;
+        }
+        /* Buglet: mapping or unmapping "remembered, unseen monster" should
+           cause time to elapse; since we're in wizmode, don't bother */
+        glyph = glyph_at(cc.x, cc.y);
+        /* Is it a monster? */
+        if (mptr) {
+            if (is_you)
+                await You(`surreptitiously sniff under your ${body_part(ARM)}.`);
+            if (!(await usmellmon(mptr)))
+                await pline(`${is_you ? 'You seem' : 'That monster seems'} to not give off any smell.`);
+            if (!glyph_is_monster(glyph))
+                map_invisible(cc.x, cc.y);
+        } else {
+            await You("don't smell any monster there.");
+            if (glyph_is_invisible(glyph))
+                unmap_invisible(cc.x, cc.y);
+        }
+    } while (true);
+    /* NOTREACHED */
+}
+
+// src/wizcmds.c:1790 wiz_mon_diff() — the #wizmondiff command
+export async function wiz_mon_diff() {
+    const window_title = 'Review of monster difficulty ratings'
+                         + ' [index:level]:';
+    let buf;
+    let win;
+    let mhardcoded = 0, mcalculated = 0, trouble = 0, cnt = 0, mdiff = 0;
+    let mlev;
+    let ptr;
+
+    /*
+     * Possible extension:  choose between showing discrepancies,
+     * showing all monsters, or monsters within a particular class.
+     */
+
+    win = tty_create_nhwindow(NHW_TEXT);
+    for (cnt = 0; cnt < game.mons.length && (ptr = game.mons[cnt]).mlet; cnt++) {
+        mcalculated = mstrength(ptr);
+        mhardcoded = ptr.difficulty | 0;
+        mdiff = mhardcoded - mcalculated;
+        if (mdiff) {
+            if (!trouble++)
+                tty_putstr(win, 0, window_title);
+            mlev = ptr.mlevel | 0;
+            if (mlev > 50) /* hack for named demons */
+                mlev = 50;
+            buf = `${ptr.pmnames[NEUTRAL].padEnd(18)} [${String(cnt).padStart(3)}:${
+                  String(mlev).padStart(2)}]: calculated: ${String(mcalculated).padStart(2)}, hardcoded: ${
+                  String(mhardcoded).padStart(2)} (${mdiff >= 0 ? '+' : ''}${mdiff})`;
+            tty_putstr(win, 0, buf);
+        }
+    }
+    if (!trouble)
+        tty_putstr(win, 0, 'No monster difficulty discrepancies were detected.');
+    /* display_nhwindow(win, FALSE): page through the text window, ESC
+       cancelling the remaining pages */
+    await tty_display_nhwindow(win);
+    for (;;) {
+        await xwaitforspace(quitchars);
+        if (game.morc === '\x1b')
+            break; /* cancel remaining pages */
+        if (!tty_next_page(win))
+            break;
+    }
+    tty_destroy_nhwindow(win);
+    return ECMD_OK;
+}
+
+// src/wizcmds.c:1836 migrsort_cmp() — sort migrating monsters by
+// destination dungeon, level, then m_id
+function migrsort_cmp(m1, m2) {
+    const d1 = m1.mux | 0, l1 = m1.muy | 0,
+          d2 = m2.mux | 0, l2 = m2.muy | 0;
+
+    /* if different branches, sort by dungeon number */
+    if (d1 !== d2)
+        return d1 - d2;
+    /* within same branch, sort by level number */
+    if (l1 !== l2)
+        return l1 - l2;
+    /* same destination level:  use a tie-breaker to force stable sort;
+       monst->m_id is unsigned so we need more than just simple subtraction */
+    return (m1.m_id < m2.m_id) ? -1 : (m1.m_id > m2.m_id) ? 1 : 0;
+}
+
+// src/wizcmds.c:1856 list_migrating_mons()
+async function list_migrating_mons(nextlevl /* default destination for wiz_migrate_mons() */) {
+    let win = null;
+    let showit = false;
+    let n;
+    let xyloc;
+    let x, y;
+    let c, prmpt, xtra, buf;
+    let mtmp, marray;
+    let here = 0, nxtlv = 0, other = 0;
+    const uz = game.u.uz;
+
+    for (mtmp of (game.migrating_mons || [])) {
+        if (mtmp.mux === uz.dnum && mtmp.muy === uz.dlevel)
+            ++here;
+        else if (mtmp.mux === nextlevl.dnum && mtmp.muy === nextlevl.dlevel)
+            ++nxtlv;
+        else
+            ++other;
+    }
+    if (here + nxtlv + other === 0) {
+        await pline('No monsters currently migrating.');
+    } else {
+        await pline(`${here} mon${plur(here)} pending for current level, ${
+                    nxtlv} for next level, ${other} for others.`);
+        prmpt = xtra = '';
+        if (here) prmpt += 'c'; else xtra += 'c';
+        if (nxtlv) prmpt += 'n'; else xtra += 'n';
+        if (other) prmpt += 'o'; else xtra += 'o';
+        prmpt += 'a q';
+        if (xtra)
+            prmpt += '\x1b' + xtra;
+        c = await tty_yn_function('List which?', prmpt, 'q', true);
+        n = (c === 'c') ? here
+            : (c === 'n') ? nxtlv
+              : (c === 'o') ? other
+                : (c === 'a') ? here + nxtlv + other
+                  : 0;
+        if (n > 0) {
+            win = tty_create_nhwindow(NHW_TEXT);
+            switch (c) {
+            case 'c':
+            case 'n':
+            case 'o':
+                buf = `Monster${plur(n)} migrating to ${
+                      (c === 'c') ? 'current level'
+                      : (c === 'n') ? 'next level'
+                        : "'other' levels"}:`;
+                break;
+            default:
+                buf = 'All migrating monsters:';
+                break;
+            }
+            tty_putstr(win, 0, buf);
+            tty_putstr(win, 0, '');
+            /* collect the migrating monsters into an array; for 'o' and 'a'
+               where multiple destination levels might be present, sort by
+               the destination; 'c' and 'n' don't need to be sorted but we
+               do that anyway to get the same tie-breaker as 'o' and 'a' */
+            marray = [];
+            for (mtmp of (game.migrating_mons || [])) {
+                if (c === 'a')
+                    showit = true;
+                else if (mtmp.mux === uz.dnum && mtmp.muy === uz.dlevel)
+                    showit = (c === 'c');
+                else if (mtmp.mux === nextlevl.dnum
+                         && mtmp.muy === nextlevl.dlevel)
+                    showit = (c === 'n');
+                else
+                    showit = (c === 'o');
+
+                if (showit)
+                    marray.push(mtmp);
+            }
+            if (marray.length > 1)
+                marray.sort(migrsort_cmp); /* sort elements [0] through [n-1] */
+            for (n = 0; n < marray.length; ++n) {
+                mtmp = marray[n];
+                buf = `  ${minimal_monnam(mtmp, false)}`;
+                /* minimal_monnam() appends map coordinates; strip that */
+                buf = strsubst(buf, ' <0,0>', '');
+                if (has_mgivenname(mtmp)) /* if mtmp is named, include that */
+                    buf += ` named ${MGIVENNAME(mtmp)}`;
+                if (c === 'o' || c === 'a')
+                    buf += ` to ${mtmp.mux}:${mtmp.muy}`;
+                xyloc = mtmp.mtrack?.[0]?.x; /* (for legibility) */
+                if (xyloc === MIGR_EXACT_XY) {
+                    x = mtmp.mtrack[1].x;
+                    y = mtmp.mtrack[1].y;
+                    buf += ` at <${x},${y}>`;
+                }
+                tty_putstr(win, 0, buf);
+            }
+            /* display_nhwindow(win, FALSE): page through the text window, ESC
+       cancelling the remaining pages */
+    await tty_display_nhwindow(win);
+    for (;;) {
+        await xwaitforspace(quitchars);
+        if (game.morc === '\x1b')
+            break; /* cancel remaining pages */
+        if (!tty_next_page(win))
+            break;
+    }
+            tty_destroy_nhwindow(win);
+        } else if (c !== 'q') {
+            await pline('None.');
+        }
+
+    }
+}
+
+// src/wizcmds.c:1873 wiz_migrate_mons() — #migratemons command
+// (DEBUG_MIGRATING_MONS is not defined: the listing only)
+export async function wiz_migrate_mons() {
+    const tolevel = { dnum: 0, dlevel: 0 };
+
+    if (Is_stronghold(game.u.uz)) {
+        tolevel.dnum = game.valley_level.dnum; /* assign_level(&tolevel, &valley_level) */
+        tolevel.dlevel = game.valley_level.dlevel;
+    } else if (!Is_botlevel(game.u.uz))
+        get_level(tolevel, depth(game.u.uz) + 1);
+    else
+        tolevel.dnum = 0, tolevel.dlevel = 0;
+
+    await list_migrating_mons(tolevel);
+
+    return ECMD_OK;
 }

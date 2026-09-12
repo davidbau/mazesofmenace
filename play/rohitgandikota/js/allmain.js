@@ -8,6 +8,8 @@ import { POLY_NOFLAGS } from './const.js';
 import { set_uasmon } from './polyself.js';
 import { do_vicinity_map } from './detect.js';
 import { game } from './gstate.js';
+import { status_initialize, status_eval_next_unhilite } from './botl.js';
+import { new_status_window } from './tty/wintty.js';
 import { glibr, set_wear } from './do_wear.js';
 import { maybe_finished_meal, reset_eat } from './eat.js';
 
@@ -70,7 +72,7 @@ import { ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, A_CURRENT, In_endgame,
          Upolyd, Is_waterlevel, Is_airlevel, FROMFORM, TT_LAVA, NON_PM, RLOC_NOMSG }
          from './const.js';
 import { mklev, l_nhcore_init, u_on_upstairs } from './mklev.js';
-import { rhack, domove, enter_explore_mode } from './cmd.js';
+import { rhack, domove, enter_explore_mode, dolookaround } from './cmd.js';
 import { clear_bypasses } from './worn.js';
 import { lookaround, end_running, unmul, nomul,
          monster_nearby, in_rooms, runmode_delay_output, check_special_room } from './hack.js';
@@ -161,11 +163,21 @@ export async function newgame_moveloop_preamble(resuming = false) {
         g.u.umovement = NORMAL_SPEED;
         initrack();
     }
+    /* src/allmain.c:85 */
+    (g.disp ||= {}).botlx = true; /* for STATUS_HILITES */
 }
 
 // C ref: allmain.c newgame()
 export async function newgame() {
     const g = game;
+    /* src/allmain.c:721 init_sound_disp_gamewindows() — the status fields
+       are initialized when the windows are created, before a new game or a
+       restore; a restore in this process starts the tty status over as the
+       C's fresh process would */
+    if (!game.blinit)
+        status_initialize(false);
+    else
+        new_status_window();
 
     // src/allmain.c — character selection runs BEFORE newgame(), driven by
     // the session's own keystrokes when the rc pins nothing. It draws only
@@ -521,7 +533,7 @@ export async function newgame() {
     }
     notice_mon_on(); /* now we can notice monsters */
     if (g.flags?.mention_map) /* a11y.glyph_updates */
-        (game.unported ||= new Set()).add('allmain:dolookaround');
+        await dolookaround();
     else
         notice_all_mons(true);
     await notice_all_mons_flush();
@@ -734,6 +746,12 @@ export async function moveloop_core() {
             let monscanmove;
 
             await encumber_msg();
+
+            /* src/allmain.c:407 */
+
+            if (game.iflags?.hilite_delta)
+
+                status_eval_next_unhilite();
 
             /* src/allmain.c:211 — monsters keep taking turns until none of
                them has movement left, or until the hero has banked enough to
@@ -989,13 +1007,13 @@ export async function moveloop_core() {
        triggers it too) */
     if (g.u.uhave?.amulet && !g.u.uevent?.amulet_wish) {
         (g.u.uevent ||= {}).amulet_wish = 1;
-        /* display_nhwindow(WIN_MESSAGE, TRUE) — a BLOCKING flush: an
-           unacknowledged topline ("It is hot here." on the fire-plane
-           arrival) gets its --More-- and eats a key BEFORE the wish text;
-           skipping it glued both messages onto one line */
-        const { urgent_pline, more, TOPLINE_NEED_MORE } = await import('./display.js');
-        if (g._toplin === TOPLINE_NEED_MORE)
-            await more();
+        /* display_nhwindow(WIN_MESSAGE, TRUE): a blocking flush, so an
+           unacknowledged topline gets its --More-- BEFORE the wish text.
+           The tty arm returns early under WIN_STOP (ESC at the previous
+           --More--), leaving a buffered message unpainted; urgent_pline
+           then clears the line and lifts the suppression itself. */
+        const { urgent_pline, display_nhwindow_message } = await import('./display.js');
+        await display_nhwindow_message();
         await urgent_pline('The Amulet is bestowing a wish upon you!');
         const { makewish } = await import('./zap.js');
         await makewish();

@@ -66,7 +66,13 @@ import { dist2 } from './hacklib.js';
 import { rn2, rnd, d } from './rng.js';
 import { helpless } from './monst.js';
 import { PMNAMES, MFLAGS } from './monst_data.js';
-import { find_mac } from './worn.js';
+import { find_mac, which_armor } from './worn.js';
+import { remove_worm, place_worm_tail_randomly } from './worm.js';
+import { update_monster_region } from './region.js';
+import { is_rider } from './mondata.js';
+import { mon_to_stone } from './mon.js';
+import { flush_screen } from './display.js';
+import { STRAT_WAITMASK, M_AP_MONSTER } from './const.js';
 import { canseemon, sensemon } from './display.js';
 import { cansee } from './vision.js';
 import { m_at, monkilled, monstone, zombie_maker } from './mon.js';
@@ -246,6 +252,98 @@ export async function fightm(mtmp) {
         }
     }
     return 0;
+}
+
+// src/mhitm.c:9 brief_feeling[]
+const brief_feeling = 'have a %s feeling for a moment, then it passes.';
+
+// src/mhitm.c:179 mdisplacem() — attacker moves defender out of the way;
+// returns same results as mattackm().
+export async function mdisplacem(magr, mdef, quietly) {
+    let pa, pd;
+    let tx, ty, fx, fy;
+
+    /* sanity checks; could matter if we unexpectedly get a long worm */
+    if (!magr || !mdef || magr === mdef)
+        return M_ATTK_MISS;
+    pa = magr.data, pd = mdef.data;
+    tx = mdef.mx, ty = mdef.my; /* destination */
+    fx = magr.mx, fy = magr.my; /* current location */
+    if (m_at(fx, fy) !== magr || m_at(tx, ty) !== mdef)
+        return M_ATTK_MISS;
+
+    /* The 1 in 7 failure below matches the chance in do_attack()
+     * for pet displacement.
+     */
+    if (!rn2(7))
+        return M_ATTK_MISS;
+
+    /* Grid bugs cannot displace at an angle. */
+    if (pa === game.mons[PMNAMES.PM_GRID_BUG] && magr.mx !== mdef.mx
+        && magr.my !== mdef.my)
+        return M_ATTK_MISS;
+
+    /* undetected monster becomes un-hidden if it is displaced */
+    if (mdef.mundetected)
+        mdef.mundetected = 0;
+    if (M_AP_TYPE(mdef) && M_AP_TYPE(mdef) !== M_AP_MONSTER)
+        seemimic(mdef);
+    /* wake up the displaced defender */
+    mdef.msleeping = 0;
+    mdef.mstrategy = (mdef.mstrategy | 0) & ~STRAT_WAITMASK;
+    finish_meating(mdef);
+
+    /*
+     * Set up the visibility of action.
+     * You can observe monster displacement if you can see both of
+     * the monsters involved.
+     */
+    game.vis = (canspotmon(magr) && canspotmon(mdef));
+
+    if (touch_petrifies(pd) && !resists_ston(magr)) {
+        if (!which_armor(magr, W_ARMG)) {
+            if (poly_when_stoned(pa)) {
+                await mon_to_stone(magr);
+                return M_ATTK_HIT; /* no damage during the polymorph */
+            }
+            if (!quietly && canspotmon(magr)) {
+                if (game.vis) {
+                    await pline(`${Monnam(magr)} tries to move ${
+                        mon_nam(mdef)} out of ${
+                        is_rider(pa) ? 'the' : mhis(magr)} way.`);
+                }
+                await pline_mon(magr, `${Monnam(magr)} turns to stone!`);
+            }
+            await monstone(magr);
+            if (!DEADMONSTER(magr))
+                return M_ATTK_HIT; /* lifesaved */
+            else if (magr.mtame && !game.vis)
+                await You(brief_feeling.replace('%s', 'peculiarly sad'));
+            return M_ATTK_AGR_DIED;
+        }
+    }
+
+    remove_monster(fx, fy); /* pick up from orig position */
+    if (mdef.wormno)
+        remove_worm(mdef);
+    else
+        remove_monster(tx, ty);
+    place_monster(magr, tx, ty); /* put down at target spot */
+    place_monster(mdef, fx, fy);
+    if (mdef.wormno) /* now put down tail */
+        place_worm_tail_randomly(mdef, fx, fy);
+    /* either creature might move into or out of a poison gas cloud */
+    update_monster_region(magr);
+    update_monster_region(mdef);
+
+    if (game.vis && !quietly)
+        await pline(`${Monnam(magr)} moves ${mon_nam(mdef)} out of ${
+            is_rider(pa) ? 'the' : mhis(magr)} way!`);
+    newsym(fx, fy);  /* see it       */
+    newsym(tx, ty);  /*   all happen */
+    await flush_screen(0); /* make sure it shows up */
+
+    return M_ATTK_HIT;
 }
 
 // src/mhitm.c:293 mattackm() — one monster performs all its attacks on

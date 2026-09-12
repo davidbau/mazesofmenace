@@ -63,6 +63,7 @@ import { PMNAMES } from './monst_data.js';
 import { artifact_light, spec_abon } from './artifact.js';
 import { arti_light_description, arti_light_radius, del_light_source,
          LS_OBJECT, new_light_source } from './light.js';
+import { touch_artifact_mon } from './artifact.js';
 
 // include/skills.h:106 practice_needed_to_advance()
 const practice_needed_to_advance = (level) => level * level * 20;
@@ -972,10 +973,11 @@ export function select_hwep(mtmp) {
 
     /* prefer artifacts to everything else */
     for (const otmp of (mtmp.minvent || [])) {
-        if (otmp.oclass === OCLASSES.WEAPON_CLASS && otmp.oartifact) {
-            note_unported_weapon('select_hwep:artifact');
-            break;
-        }
+        if (otmp.oclass === OCLASSES.WEAPON_CLASS && otmp.oartifact
+            && touch_artifact_mon(otmp, mtmp)
+            && ((strong && !wearing_shield)
+                || !game.objects[otmp.otyp].oc_bimanual))
+            return otmp;
     }
 
     if (ptr.mlet === MONSYMS.S_GIANT) { /* giants just love to use clubs */

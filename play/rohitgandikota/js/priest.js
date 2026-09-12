@@ -31,7 +31,10 @@ import { ROOMOFFSET, W_ARMC, IS_ROOM, NOTONL, ALLOW_M,
          ALLOW_ROCK, SPINE, AM_MASK, AM_SHRINE, IS_ALTAR,
          In_endgame, A_WIS, FROMOUTSIDE, INTRINSIC, OBJ_FREE,
          PRONOUN_HALLU, TEMPLE, TIMEOUT } from './const.js';
-import { mfndpos, mon_allowflags, m_at, setmangry, wakeup, m_next2u } from './mon.js';
+import { mfndpos, mon_allowflags, m_at, setmangry, wakeup, m_next2u,
+         mongone } from './mon.js';
+import { DEADMONSTER } from './monst.js';
+import { on_level } from './dungeon.js';
 import { monnear, m_canseeu, histemple_at, inhishop,
          inhistemple } from './monmove.js';
 import { dist2, online2 } from './hacklib.js';
@@ -51,6 +54,8 @@ import { pronoun_gender } from './mondata.js';
 import { genders } from './role_data.js';
 import { record_achievement } from './insight.js';
 import { ACH_TMPL } from './const.js';
+import { rloc } from './teleport.js';
+import { RLOC_NOMSG } from './const.js';
 
 const xdir = [-1, -1, 0, 1, 1, 1, 0, -1];
 const ydir = [0, -1, -1, -1, 0, 1, 1, 1];
@@ -86,7 +91,7 @@ export function priestini(lvl, sroom, sx, sy, sanctum) {
 
     const squatter = game.level?.monAt?.get(`${px},${py}`);
     if (squatter)
-        note_unported_priest('priestini:rloc squatter');
+        void rloc(squatter, RLOC_NOMSG); /* insurance */
 
     const priest = makemon(prim, px, py, MMFLAGS.MM_EPRI);
     if (priest) {
@@ -659,11 +664,15 @@ export async function pri_move(priest) {
 
 // src/priest.c:724 mk_roamer() — an aligned wandering minion (aligned
 // cleric, angel) made by des.monster() with an explicit alignment.
+// rloc() moves the squatter before the new monster is placed; its
+// RLOC_NOMSG level-creation path changes state synchronously and the
+// promise only carries the message arms, none of which fire here, so
+// the synchronous Lua binding does not wait for it
 export function mk_roamer(ptr, alignment, x, y, peaceful) {
     const coaligned = (game.u.ualign.type === alignment);
 
     if (m_at(x, y))
-        note_unported_priest('mk_roamer:rloc squatter');
+        void rloc(m_at(x, y), RLOC_NOMSG); /* insurance */
 
     const roamer = makemon(ptr, x, y, MMFLAGS.MM_ADJACENTOK
                                       | MMFLAGS.MM_EMIN | MMFLAGS.MM_NOMSG);
@@ -730,6 +739,20 @@ export async function angry_priest() {
         delete priest.epri;
         priest.ispriest = 0;
         priest.isminion = 1;
+    }
+}
+
+// src/priest.c:919 clearpriests() — when saving bones, find priests that
+// aren't on their shrine level and remove them. This avoids big problems
+// when restoring bones.
+export async function clearpriests() {
+    for (const mtmp of [...(game.level?.monsters || [])]) {
+        if (DEADMONSTER(mtmp))
+            continue;
+        /* priestini() stores the record on the monster itself (priest.epri) */
+        const epri = mtmp.epri || EPRI(mtmp);
+        if (mtmp.ispriest && !on_level(epri?.shrlevel, game.u.uz))
+            await mongone(mtmp);
     }
 }
 

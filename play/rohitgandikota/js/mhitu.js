@@ -1973,12 +1973,6 @@ export async function doseduce(mon) {
         switch (rn2(5)) {
         case 0:
             await You_feel('drained of energy.');
-            if (!game.disp?.botl && !game.disp?.botlx) {
-                game._deferred_status_power_until_dirty = {
-                    current: u.uen,
-                    max: u.uenmax,
-                };
-            }
             u.uen = 0;
             u.uenmax -= rnd((game.u.intrinsic?.HHalf_physical_damage
                              || game.u.uprops?.HALF_PHDAM) ? 5 : 10);
@@ -2027,12 +2021,6 @@ export async function doseduce(mon) {
         case 0:
             await You_feel('raised to your full potential.');
             exercise(A_CON, true);
-            if (!game.disp?.botl && !game.disp?.botlx) {
-                game._deferred_status_power_until_dirty = {
-                    current: u.uen,
-                    max: u.uenmax,
-                };
-            }
             u.uenmax += rnd(5);
             u.uen = u.uenmax;
             if (u.uenmax > (u.uenpeak ?? 0))
@@ -2282,23 +2270,7 @@ async function passiveum(olduasmon, mtmp, mattk) {
                 tmp = 0;
                 break;
             }
-            const shownHp = game.u.mh;
-            const shownMaxHp = game.u.mhmax;
             await pline(`${Monnam(mtmp)} is suddenly very cold!`);
-            const pendingLine = (game._pending_message || '')
-                .split('\n').at(-1);
-            const cols = game.nhDisplay?.cols ?? 80;
-            /* A following "It dies!" adds three separator columns and eight
-               text columns. If that forces C's more(), its status row still
-               contains the pre-growth polymorph HP. */
-            const deathWillForceMore = mtmp.mhp - tmp <= 0
-                && !game._topl_cury
-                && pendingLine.length + 11 >= cols - 8;
-            if (deathWillForceMore) {
-                game._deferred_status_hp_until_more = shownHp;
-                game._deferred_status_hpmax_until_more = shownMaxHp;
-                game._deferred_status_hp_more_count = 1;
-            }
             game.u.mh += Math.trunc((tmp + rn2(2)) / 2);
             if (game.u.mhmax < game.u.mh)
                 game.u.mhmax = game.u.mh;

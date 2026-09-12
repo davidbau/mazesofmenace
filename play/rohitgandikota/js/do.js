@@ -1,6 +1,6 @@
 import { allow_all } from './pickup.js';
 import { TOOKPLUNGE } from './const.js';
-import { PICK_ANY, In_endgame, ESCAPED } from './const.js';
+import { PICK_ANY, In_endgame, ESCAPED, Is_knox_level } from './const.js';
 import { USE_INVLET, MENU_TRADITIONAL, MENU_COMBINATION, ALL_FINISHED, INCLUDE_VENOM, SELL_DELIBERATE, SELL_NORMAL } from './const.js';
 import { INVORDER_SORT } from './const.js';
 import { Has_contents, bimanual } from './obj.js';
@@ -584,7 +584,7 @@ export async function flooreffects(obj, x, y, verb) {
             } else {
                 await pline(`${Tobjnam(obj, 'tumble')} into ${the_your[t.madeby_u ? 1 : 0]} pit.`);
             }
-        } else if (ship_object_fn && ship_object_fn(obj, x, y, false)) {
+        } else if (ship_object_fn && await ship_object_fn(obj, x, y, false)) {
             /* ship_object will print an appropriate "the item falls
              * through the hole" message, so no need to do it here. */
             res = true;
@@ -1140,6 +1140,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
            the whole level instead of the scripted destination area. */
         game.level._saved_updest = { ...(game.updest || {}) };
         game.level._saved_dndest = { ...(game.dndest || {}) };
+        /* save.c:552 save_exclusions() */
+        game.level._saved_exclusion_zones = game.exclusion_zones || [];
         const { save_engravings } = await import('./engrave.js');
         game.level._saved_engravings = save_engravings();
         // src/save.c savelev(), local timers and lights remain on this level.
@@ -1233,6 +1235,8 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         }
         game.updest = { ...(game.level._saved_updest || game.updest) };
         game.dndest = { ...(game.level._saved_dndest || game.dndest) };
+        /* restore.c:1227 load_exclusions() */
+        game.exclusion_zones = game.level._saved_exclusion_zones || [];
         const { rest_engravings } = await import('./engrave.js');
         rest_engravings(game.level._saved_engravings);
         {
@@ -1503,6 +1507,18 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
         } else if (game.u.uz.dnum === game.quest_dnum) { /* In_quest() */
             const { onquest } = await import('./quest.js');
             await onquest();
+        } else if (Is_knox_level(game.u.uz)) {
+            /* alarm stops working once Croesus has died */
+            if (!familiar_level
+                || !game.mvitals?.[PMNAMES.PM_CROESUS]?.died) {
+                await You('have penetrated a high security area!');
+                await pline('An alarm sounds!');
+                for (const mtmp of game.level?.monsters || []) {
+                    if (DEADMONSTER(mtmp))
+                        continue;
+                    mtmp.msleeping = 0;
+                }
+            }
         } else if (game.u.uz.dnum === game.mines_dnum) {
             if (newdungeon) {
                 const { ACH_MINE, record_achievement } =
@@ -1999,7 +2015,7 @@ export async function dropx(obj) {
         /* src/do.c:298 — ship_object() sends the object down a hole or
            stairs and returns TRUE when it did, in which case dropy() must
            not also place it. */
-        if (ship_object_fn && ship_object_fn(obj, game.u.ux, game.u.uy, false))
+        if (ship_object_fn && await ship_object_fn(obj, game.u.ux, game.u.uy, false))
             return;
         if (IS_ALTAR(game.level.at(game.u.ux, game.u.uy)?.typ))
             await doaltarobj(obj);

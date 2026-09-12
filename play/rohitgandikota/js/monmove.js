@@ -8,7 +8,15 @@
 import { monsndx } from './makemon.js';
 import { mon_aligntyp } from './priest.js';
 import { is_obj_mappear } from './monst.js';
-import { Invis, Displaced, Underwater } from './youprop.js';
+import { Invis, Displaced, Underwater, Stealth, Aggravate_monster } from './youprop.js';
+import { artifact_light } from './artifact.js';
+import { add_damage } from './shk.js';
+import { g_at } from './invent.js';
+import { bury_an_obj } from './dig.js';
+import { mdrop_obj } from './steal.js';
+import { see_wsegs } from './worm.js';
+import { expels } from './mhitu.js';
+import { Conflict } from './youprop.js';
 import { CORR } from './const.js';
 import { ROOM } from './const.js';
 import { switch_terrain } from './hack.js';
@@ -214,14 +222,15 @@ export async function mb_trapped(mtmp, canseeit) {
 const is_lminion = (mon) =>
     is_minion(game.mons[mon.mnum]) && mon_aligntyp(mon) === A_LAWFUL;
 
-/* src/monmove.c:450 flees_light() — gremlins flee an artifact light source.
-   Needs artifact_light() and couldsee(), neither of which is ported; a gremlin
-   is the only monster it can ever be true for. */
+/* src/monmove.c:450 flees_light() — a gremlin flees the light of a lit
+   Sunsword or worn gold dragon scales/mail (artifact_light()), when it can
+   see and the hero is in its line of sight; the hero's invisibility does not
+   matter, the light being emitted isn't */
 function flees_light(mon) {
-    if (mon.mnum !== PMNAMES.PM_GREMLIN)
-        return false;
-    note_unported('flees_light');
-    return false;
+    return mon.mnum === PMNAMES.PM_GREMLIN
+        && ((game.uwep && game.uwep.lamplit && artifact_light(game.uwep))
+            || (game.uarm && game.uarm.lamplit && artifact_light(game.uarm)))
+        && !!mon.mcansee && couldsee(mon.mx, mon.my);
 }
 
 /* src/priest.c in_your_sanctuary() — a temple with a peaceful coaligned priest.
@@ -938,16 +947,10 @@ async function maybe_spin_web(mtmp) {
         await pline(`${upstart(name)} spins a web.`);
         trap.tseen = 1;
     }
-    if (game.in_rooms?.(mtmp.mx, mtmp.my, SHOPBASE))
-        note_unported('postmov:spin_web_shop_damage');
+    if (in_rooms(mtmp.mx, mtmp.my, SHOPBASE))
+        add_damage(mtmp.mx, mtmp.my, 0);
 }
 
-// include/youprop.h:218 Conflict — (HConflict || EConflict), the intrinsic or
-// the extrinsic. The port keeps the hero's properties on u.uprops, so this
-// reads them the same way the clairvoyance check in js/allmain.js does. There
-// is no source of conflict in the game yet, so it answers false today, but it
-// answers it by LOOKING rather than by assuming.
-const Conflict = () => !!(game.u?.uprops?.CONFLICT);
 
 export function m_can_break_boulder(mtmp) {
     return is_rider(mtmp.data)
@@ -1058,12 +1061,26 @@ export function onscary(x, y, mtmp) {
 //
 // The caller has already spent the rnd() that produces fleetime. The ordinary
 // and immobile message paths do not draw further RNG.
+// src/monmove.c:362 release_hero() — a monster holding or engulfing the hero
+// lets go: an engulfer expels, a grabber releases unless the hero's form
+// itself sticks.
+async function release_hero(mon) {
+    if (mon === game.u.ustuck) {
+        if (game.u.uswallow) {
+            await expels(mon, mon.data, true);
+        } else if (!sticks(game.youmonst.data)) {
+            await unstuck(mon); /* let go */
+            await You('get released!');
+        }
+    }
+}
+
 export async function monflee(mtmp, fleetime, first, fleemsg) {
     if (DEADMONSTER(mtmp))
         return;
 
     if (mtmp === game.u.ustuck)
-        note_unported('release_hero');
+        await release_hero(mtmp); /* expels/unstuck */
 
     if (!first || !mtmp.mflee) {
         /* don't lose untimed scare */
@@ -1317,7 +1334,7 @@ const is_organic = (o) => game.objects[o.otyp].oc_material <= MATERIALS.WOOD;
 // containing lump of royal jelly 'obj' and will eat it if there is no queen
 // bee on the level; return 1: mon died, 0: mon ate jelly and lived, -1: mon
 // didn't eat jelly to use its move
-async function bee_eat_jelly(mon, obj) {
+export async function bee_eat_jelly(mon, obj) {
     const { splitobj } = await import('./mkobj.js');
     const { delobj } = await import('./mon.js');
     const { grow_up } = await import('./makemon.js');
@@ -1417,9 +1434,8 @@ export async function dochug(mtmp) {
         && !mtmp.iswiz) {
         const { noteleport_level, rloc } = await import('./teleport.js');
         if (!noteleport_level(mtmp)) {
-            if (await rloc(mtmp, RLOC_MSG)
-                && game.mons[mtmp.mnum].mlet === MONSYMS.S_LEPRECHAUN)
-                note_unported('dochug:leppie_stash');
+            if (await rloc(mtmp, RLOC_MSG))
+                await leppie_stash(mtmp);
             return 0;
         }
     }
@@ -1439,7 +1455,13 @@ export async function dochug(mtmp) {
         && mtmp.mhp === mtmp.mhpmax && !rn2(25))
         mtmp.mflee = 0;
 
-    /* release_hero(): conflict-induced swallow/grab needs engulfing */
+    /* Cease conflict-induced swallow/grab if conflict has ended. Releasing
+       the hero in this way uses up the monster's turn. */
+    if (mtmp === game.u.ustuck && mtmp.mpeaceful && !mtmp.mconf
+        && !Conflict()) {
+        await release_hero(mtmp);
+        return 0;
+    }
 
     /* src/monmove.c:778 — must run after the hero moves and before the monster
        does, because inrange/nearby in distfleeck() are measured against the
@@ -2132,17 +2154,54 @@ async function m_digweapon_check(mtmp, nix, niy) {
     return false;
 }
 
+// src/monmove.c:2277 undesirable_disp() — is <x,y> a bad spot for 'mtmp'
+// to barge into? Pets avoid seen traps (rn2(40)) and cursed objects; other
+// monsters avoid trap types they know (rn2(40)); nobody swaps into rock,
+// a closed door or water unless already in water.
+export function undesirable_disp(mtmp, x, y) {
+    const is_pet = (mtmp.mtame && !mtmp.isminion);
+    const trap = t_at(x, y);
+
+    if (is_pet) {
+        /* Pets avoid a trap if you've seen it usually. */
+        if (trap && trap.tseen && rn2(40))
+            return true;
+        /* Pets avoid cursed locations */
+        if (cursed_object_at(x, y))
+            return true;
+
+    /* Monsters avoid a trap if they've seen that type before */
+    } else if (trap && rn2(40)
+               && mon_knows_traps(mtmp, trap.ttyp)) {
+        return true;
+    }
+
+    /* oversimplification:  creatures that bargethrough can't swap places
+       when target monster is in rock or closed door or water (in particular,
+       avoid moving to spots where mondied() won't leave a corpse; doesn't
+       matter whether barger is capable of moving to such a target spot if
+       it were unoccupied) */
+    if (!accessible(x, y)
+        /* mondied() allows is_pool() as an exception to !accessible(),
+           but we'll only do that if 'mtmp' is already at a water location
+           so that we don't swap a water critter onto land */
+        && !(is_pool(x, y) && is_pool(mtmp.mx, mtmp.my)))
+        return true;
+
+    return false;
+}
+
 // src/monmove.c:1070 should_displace() — is displacing a monster the only
-// way (or the shortest way) toward the goal? undesirable_disp is recorded
-// through the same gate C reads it in.
-function should_displace(mtmp, data, ggx, ggy, cnt) {
+// way (or the shortest way) toward the goal?
+export function should_displace(mtmp, data, ggx, ggy, cnt) {
     let shortest_with = -1, shortest_without = -1, count_without = 0;
 
     for (let i = 0; i < cnt; i++) {
         const nx = data.poss[i].x, ny = data.poss[i].y;
         const ndist = dist2(nx, ny, ggx, ggy);
         if (m_at(nx, ny) && (data.info[i] & ALLOW_MDISP)
-            && !(data.info[i] & ALLOW_M)) {
+            && !(data.info[i] & ALLOW_M)
+            && !undesirable_disp(mtmp, nx, ny)) {
             if (shortest_with === -1 || ndist < shortest_with)
                 shortest_with = ndist;
         } else {
@@ -2310,10 +2369,10 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs, can_tunnel) {
                         else if (!Deaf())
                             await You_hear('a door crash open.');
                     }
-                    /* if it's a shop door, schedule repair */
-                    if (mask === D_NODOOR)
-                        note_unported('postmov:doorbuster_shop_damage');
                 }
+                /* if it's a shop door, schedule repair */
+                if (in_rooms(mtmp.mx, mtmp.my, SHOPBASE))
+                    add_damage(mtmp.mx, mtmp.my, 0);
             }
         } else if (game.level.at(mtmp.mx, mtmp.my).typ === IRONBARS) {
             /* 3.6.2: was using may_dig() but that checks whether it's
@@ -2375,7 +2434,7 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs, can_tunnel) {
             if (mtmp.minvis) {
                 newsym(mtmp.mx, mtmp.my);
                 if (mtmp.wormno)
-                    note_unported('postmov:see_wsegs');
+                    see_wsegs(mtmp);
             }
         }
 
@@ -2451,24 +2510,56 @@ function note_unported(what) {
 //   ettin + stealthy hero        -> rn2(10)
 //   nymph, jabberwock, leprechaun-> rn2(50)
 //   anything not a dog or human  -> rn2(7)
+// src/monmove.c:1154 leppie_stash() — a leprechaun that has just relocated
+// out of the hero's sight, onto plain room floor outside a shop and off any
+// trap, drops and buries its gold three times in four.
+async function leppie_stash(mtmp) {
+    let gold;
+
+    if (mtmp.mnum === PMNAMES.PM_LEPRECHAUN
+        && !DEADMONSTER(mtmp)
+        && !m_canseeu(mtmp)
+        && !in_rooms(mtmp.mx, mtmp.my, SHOPBASE)
+        && game.level.at(mtmp.mx, mtmp.my)?.typ === ROOM
+        && !t_at(mtmp.mx, mtmp.my)
+        && rn2(4)
+        && (gold = findgold(mtmp.minvent)) != null) {
+        await mdrop_obj(mtmp, gold, false);
+        gold = g_at(mtmp.mx, mtmp.my);
+        if (gold)
+            await bury_an_obj(gold, null);
+    }
+}
+
 async function disturb(mtmp) {
     const d = mtmp.data;
 
-    if (!(couldsee(mtmp.mx, mtmp.my) && mdistu(mtmp) <= 100))
-        return 0;
-    /* Stealth is an intrinsic the hero does not have yet, so the ettin
-       rn2(10) cannot fire; when Stealth lands, this test comes with it. */
-    if (!(d.mlet !== MONSYMS.S_NYMPH
-          && d.pmidx !== PMNAMES.PM_JABBERWOCK
-          && d.mlet !== MONSYMS.S_LEPRECHAUN) && rn2(50))
-        return 0;
-    if (!((d.mlet === MONSYMS.S_DOG || d.mlet === MONSYMS.S_HUMAN)
-          || !rn2(7)))
-        return 0;
-
-    await wake_msg(mtmp, !mtmp.mpeaceful);
-    mtmp.msleeping = 0;
-    return 1;
+    /*
+     * + Ettins are hard to surprise.
+     * + Nymphs, jabberwocks, and leprechauns do not easily wake up.
+     *
+     * Wake up if:
+     *  in direct LOS                                           AND
+     *  within 10 squares                                       AND
+     *  not stealthy or (mon is an ettin and 9/10)              AND
+     *  (mon is not a nymph, jabberwock, or leprechaun) or 1/50 AND
+     *  Aggravate or mon is (dog or human) or
+     *      (1/7 and mon is not mimicking furniture or object)
+     */
+    if (couldsee(mtmp.mx, mtmp.my) && mdistu(mtmp) <= 100
+        && (!Stealth() || (d.pmidx === PMNAMES.PM_ETTIN && rn2(10)))
+        && (!(d.mlet === MONSYMS.S_NYMPH
+              || d.pmidx === PMNAMES.PM_JABBERWOCK
+              || d.mlet === MONSYMS.S_LEPRECHAUN) || !rn2(50))
+        && (Aggravate_monster()
+            || (d.mlet === MONSYMS.S_DOG || d.mlet === MONSYMS.S_HUMAN)
+            || (!rn2(7) && M_AP_TYPE(mtmp) !== M_AP_FURNITURE
+                && M_AP_TYPE(mtmp) !== M_AP_OBJECT))) {
+        await wake_msg(mtmp, !mtmp.mpeaceful);
+        mtmp.msleeping = 0;
+        return 1;
+    }
+    return 0;
 }
 
 /* src/mon.c mdistu() — squared distance from the hero to a monster.

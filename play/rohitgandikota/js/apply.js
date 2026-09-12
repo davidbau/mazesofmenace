@@ -198,6 +198,10 @@ import { cvt_sdoor_to_door } from './detect.js';
 import { recalc_block_point } from './vision.js';
 import { unblock_point } from './vision.js';
 import { vault_summon_gd } from './vault.js';
+import { tmp_at } from './display.js';
+import { showsym } from './symbols.js';
+import { cmap_names } from './drawing_data.js';
+import { DISP_BEAM, DISP_END } from './const.js';
 import { tele_to_rnd_pet } from './teleport.js';
 import { noteleport_level } from './teleport.js';
 import { fill_pit } from './trap.js';
@@ -2225,7 +2229,7 @@ export async function consume_obj_charge(obj, maybe_unpaid) /* false if caller h
 }
 
 // src/apply.c:60 do_blinding_ray() / :80 use_camera().
-async function do_blinding_ray(obj) {
+export async function do_blinding_ray(obj) {
     const ref = { obj };
     const mtmp = await bhit(game.u.dx, game.u.dy, COLNO, FLASHED_LIGHT,
                             null, null, ref);
@@ -3769,6 +3773,27 @@ export async function dojump() {
 }
 
 // src/apply.c:1988 jump() — 0=Physical, otherwise skill level
+// src/apply.c:2027 display_jump_positions() — the '$' marker beam over the
+// squares the hero can jump to
+async function display_jump_positions(on_off) {
+    let x, y, dx, dy;
+
+    if (on_off) {
+        /* on */
+        await tmp_at(DISP_BEAM, goodpos_cell());
+        for (dx = -4; dx <= 4; dx++)
+            for (dy = -4; dy <= 4; dy++) {
+                x = dx + game.u.ux;
+                y = dy + game.u.uy;
+                if (get_valid_jump_position(x, y) && !u_at(x, y))
+                    await tmp_at(x, y);
+            }
+    } else {
+        /* off */
+        await tmp_at(DISP_END, 0);
+    }
+}
+
 export async function jump(magic) {
     const cc = { x: 0, y: 0 };
 
@@ -3840,10 +3865,7 @@ export async function jump(magic) {
     cc.x = game.u.ux;
     cc.y = game.u.uy;
     game.jumping_is_magic = magic;
-    /* display_jump_positions (the tmp_at beam over the reachable squares)
-       is not ported; the validator is, because getpos' autodescribe prints
-       "(invalid target)" from it */
-    await getpos_sethilite(null, get_valid_jump_position);
+    await getpos_sethilite(display_jump_positions, get_valid_jump_position);
     if (await getpos(cc, true, 'the desired position') < 0)
         return ECMD_CANCEL; /* user pressed ESC */
     if (!(await is_valid_jump_pos(cc.x, cc.y, magic, true))) {
@@ -4101,24 +4123,33 @@ function get_valid_polearm_position(x, y) {
                                  && glyph_is_poleable(glyph))));
 }
 
-// src/apply.c:3391 display_polearm_positions(); getpos_sethilite() marks the
-// valid squares from the validator, so tmp_at() has no work here
-function display_polearm_positions(on_off) {
+// src/apply.c:3391 display_polearm_positions() — the '$' marker beam over
+// the squares the polearm can reach
+async function display_polearm_positions(on_off) {
     let x, y, dx, dy;
 
     if (on_off) {
-        /* on: tmp_at(DISP_BEAM, cmap_to_glyph(S_goodpos)) */
+        /* on */
+        await tmp_at(DISP_BEAM, goodpos_cell());
         for (dx = -3; dx <= 3; dx++)
             for (dy = -3; dy <= 3; dy++) {
                 x = dx + game.u.ux;
                 y = dy + game.u.uy;
-                if (get_valid_polearm_position(x, y)) {
-                    /* tmp_at(x, y) */
-                }
+                if (get_valid_polearm_position(x, y))
+                    await tmp_at(x, y);
             }
     } else {
-        /* off: tmp_at(DISP_END, 0) */
+        /* off */
+        await tmp_at(DISP_END, 0);
     }
+}
+
+/* cmap_to_glyph(S_goodpos) as the port's display cell */
+function goodpos_cell() {
+    const sym = showsym(cmap_names.S_goodpos) || defsyms[cmap_names.S_goodpos];
+    return { ch: sym.ch, color: defsyms[cmap_names.S_goodpos].color,
+             decgfx: !!sym.dec,
+             glyph: { kind: 'cmap', cmap: cmap_names.S_goodpos } };
 }
 
 // src/apply.c:3427 calc_pole_range(); Calculate allowable range (pole's
@@ -4332,23 +4363,24 @@ function can_grapple_location(x, y) {
     return (isok(x, y) && cansee(x, y) && distu(x, y) <= grapple_range());
 }
 
-// src/apply.c:3706 display_grapple_positions(); getpos_sethilite() marks
-// the valid squares from the validator, so tmp_at() has no work here
-function display_grapple_positions(on_off) {
+// src/apply.c:3706 display_grapple_positions() — the '$' marker beam over
+// the squares the grappling hook can reach
+async function display_grapple_positions(on_off) {
     let x, y, dx, dy;
 
     if (on_off) {
-        /* on: tmp_at(DISP_BEAM, cmap_to_glyph(S_goodpos)) */
+        /* on */
+        await tmp_at(DISP_BEAM, goodpos_cell());
         for (dx = -3; dx <= 3; dx++)
             for (dy = -3; dy <= 3; dy++) {
                 x = dx + game.u.ux;
                 y = dy + game.u.uy;
-                if (can_grapple_location(x, y) && !u_at(x, y)) {
-                    /* tmp_at(x, y) */
-                }
+                if (can_grapple_location(x, y) && !u_at(x, y))
+                    await tmp_at(x, y);
             }
     } else {
-        /* off: tmp_at(DISP_END, 0) */
+        /* off */
+        await tmp_at(DISP_END, 0);
     }
 }
 

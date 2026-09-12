@@ -100,7 +100,10 @@ import { BRK_KNOWN2BREAK } from './const.js';
 import { BRK_KNOWN_OUTCOME } from './const.js';
 import { BRK_FROM_INV } from './const.js';
 import { IS_ALTAR, TRAPDOOR, HOLE, PIT, SPIKED_PIT } from './const.js';
-import { ship_object, container_impact_dmg } from './dokick.js';
+import { ship_object, container_impact_dmg, ghitm } from './dokick.js';
+import { pline_The } from './pline.js';
+import { add_to_minv } from './mkobj.js';
+import { ZAP_POS } from './const.js';
 import { snuff_candle, use_whip, use_pole, could_pole_mon } from './apply.js';
 import { is_flammable } from './mkobj.js';
 import { obj_sheds_light } from './light.js';
@@ -280,6 +283,20 @@ export async function throw_obj(obj, shotlimit) {
     /* ask "in what direction?" */
     if (!await getdir(null))
         return ECMD_OK; /* ECMD_CANCEL — no time passes */
+
+    /*
+     * Throwing gold is usually for getting rid of it when
+     * a leprechaun approaches, or for bribing an oncoming
+     * angry monster.  So throw the whole object.
+     *
+     * If the gold is in quiver, throw one coin at a time,
+     * possibly using a sling.
+     */
+    if (obj.oclass === OCLASSES.COIN_CLASS && obj !== u.uquiver) {
+        /* throw_gold will unsplit the stack itself if necessary and may have
+           freed the object, so don't route through unsplit_stack here */
+        return throw_gold(obj); /* check */
+    }
 
     /* src/dothrow.c:127-131: direction selection precedes canletgo(), so a
        refused worn item still consumes the direction key but no game turn. */
@@ -635,7 +652,7 @@ export async function hitfloor(obj, verbosely) {
     }
     if (await hero_breaks(obj, u.ux, u.uy, BRK_FROM_INV))
         return;
-    if (ship_object(obj, u.ux, u.uy, false))
+    if (await ship_object(obj, u.ux, u.uy, false))
         return;
     await dropz(obj, true);
 }
@@ -918,7 +935,7 @@ export async function throwit(obj, wep_mask, twoweap = false,
         return;
     }
     await snuff_candle(obj);
-    if (!mon && ship_object(obj, bx, by, false)) {
+    if (!mon && await ship_object(obj, bx, by, false)) {
         throwit_return(true);
         return;
     }
@@ -2455,4 +2472,81 @@ export async function breakmsg(obj, in_view) {
         await pline('Splash!');
         break;
     }
+}
+
+// src/dothrow.c:2656 throw_gold() — the whole stack of gold is thrown (one
+// coin at a time only from the quiver, via throw_obj()).
+async function throw_gold(obj) {
+    const u = game.u;
+    let range, odx, ody;
+    let mon;
+
+    if (!u.dx && !u.dy && !u.dz) {
+        await You('cannot throw gold at yourself.');
+        /* If we tried to throw part of a stack, force it to merge back
+           together (same as in throw_obj).  Essential for gold. */
+        if (obj.o_id === game.context.objsplit?.parent_oid
+            || obj.o_id === game.context.objsplit?.child_oid)
+            await unsplitobj(obj);
+        return ECMD_CANCEL;
+    }
+    freeinv(obj);
+    if (u.uswallow) {
+        let swallower = mon_nam(u.ustuck);
+
+        if (digests(u.ustuck.data))
+            /* note: s_suffix() returns a modifiable buffer */
+            swallower = s_suffix(swallower) + ' entrails';
+        await pline_The(`gold disappears into ${swallower}.`);
+        add_to_minv(u.ustuck, obj);
+        return ECMD_TIME;
+    }
+
+    if (u.dz) {
+        if (u.dz < 0 && !Is_airlevel(u.uz) && !Underwater()
+            && !Is_waterlevel(u.uz)) {
+            await pline_The(`gold hits the ${ceiling(u.ux, u.uy)}, then falls back on top of your ${
+                body_part(HEAD)}.`);
+            /* some self damage? */
+            if (u.uarmh)
+                await pline(`Fortunately, you are wearing ${an(helm_simple_name(u.uarmh))}!`);
+        }
+        game.bhitpos = { x: u.ux, y: u.uy };
+    } else {
+        /* consistent with range for normal objects */
+        range = Math.trunc(acurrstr() / 2) - Math.trunc(obj.owt / 40);
+
+        /* see if the gold has a place to move into */
+        odx = u.ux + u.dx;
+        ody = u.uy + u.dy;
+        if (!isok(odx, ody)
+            || !ZAP_POS(game.level.at(odx, ody).typ) || closed_door(odx, ody)) {
+            game.bhitpos = { x: u.ux, y: u.uy };
+        } else {
+            const pobjRef = { obj };
+            mon = await bhit(u.dx, u.dy, range, THROWN_WEAPON, null, null, pobjRef);
+            obj = pobjRef.obj;
+            if (!obj)
+                return ECMD_TIME; /* object is gone */
+            if (mon) {
+                if (await ghitm(mon, obj)) /* was it caught? */
+                    return ECMD_TIME;
+            } else {
+                if (await ship_object(obj, game.bhitpos.x, game.bhitpos.y, false))
+                    return ECMD_TIME;
+            }
+        }
+    }
+
+    const { flooreffects } = await import('./do.js');
+    if (await flooreffects(obj, game.bhitpos.x, game.bhitpos.y, 'fall'))
+        return ECMD_TIME;
+    if (u.dz > 0)
+        await pline_The(`gold hits the ${surface(game.bhitpos.x, game.bhitpos.y)}.`);
+    place_object(obj, game.bhitpos.x, game.bhitpos.y);
+    if (u.ushops)
+        await sellobj(obj, game.bhitpos.x, game.bhitpos.y);
+    stackobj(obj);
+    newsym(game.bhitpos.x, game.bhitpos.y);
+    return ECMD_TIME;
 }

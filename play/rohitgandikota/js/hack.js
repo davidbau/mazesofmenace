@@ -24,7 +24,8 @@ import { is_flimsy } from './obj.js';
 import { You, You_feel, pline_xy, pline_The, set_msg_xy, Norep } from './pline.js';
 import { feel_location } from './display.js';
 import { can_ooze, accessible } from './monmove.js';
-import { dig_typ, use_pick_axe2, bury_objs } from './dig.js';
+import { dig_typ, use_pick_axe2, bury_objs, buried_ball } from './dig.js';
+import { docrt } from './display.js';
 import { worm_cross } from './worm.js';
 import { block_door, block_entry, u_entered_shop, u_left_shop } from './shk.js';
 import { curr_mon_load } from './mon.js';
@@ -61,7 +62,7 @@ import { livelog_printf } from './pline.js';
 import { watch_dig, digging_context, clear_digging_context, SHOP_WALL_DMG } from './dig.js';
 import { on_level } from './dungeon.js';
 import { d } from './rng.js';
-import { Warning, Half_physical_damage } from './youprop.js';
+import { Warning, Half_physical_damage, Protection_from_shape_changers } from './youprop.js';
 import { ESHK, RLOC_NOMSG, something, DISMOUNT_FELL, DISMOUNT_GENERIC, invlet_basic, GP_ALLOW_U, A_CON } from './const.js';
 import { hard_helmet, helm_simple_name } from './do_wear.js';
 import { fall_asleep } from './timeout.js';
@@ -88,7 +89,7 @@ import { defsyms } from './drawing_data.js';
 // None of them draws.
 
 import { game } from './gstate.js';
-import { do_attack, explum } from './uhitm.js';
+import { do_attack, explum, stumble_onto_mimic } from './uhitm.js';
 import { rehumanize } from './polyself.js';
 import { wake_nearto } from './mon.js';
 import { attacktype, attacktype_fordmg } from './mondata.js';
@@ -144,6 +145,7 @@ import { type_is_pname } from './mondata.js';
 import { impossible } from './pline.js';
 import { directionname } from './cmd.js';
 import { trapname } from './trap.js';
+import { Is_rogue_level } from './const.js';
 
 // src/hack.c:2996 runmode_delay_output(). Multi-turn actions and running
 // periodically expose their intermediate screen. The default "run" mode
@@ -495,7 +497,12 @@ export function cant_squeeze_thru(mon) {
 // rogue level itself is not modelled yet.
 export function doorless_door(x, y) {
     const lev_p = game.level?.at(x, y);
+
     if (!lev_p || !IS_DOOR(lev_p.typ))
+        return false;
+    /* all rogue level doors are doorless but disallow diagonal access, so
+       we treat them as if their non-existent doors were actually present */
+    if (Is_rogue_level(game.u.uz))
         return false;
     return !(lev_p.doormask & ~(D_NODOOR | D_BROKEN));
 }
@@ -1384,8 +1391,9 @@ export async function domove_bump_mon(mtmp, x, y) {
     if (game.context?.nopick && !game.context?.travel
         && (canspotmon(mtmp) || glyph?.kind === 'invis'
             || glyph?.kind === 'warn')) {
-        if (M_AP_TYPE(mtmp) && !sensemon(mtmp)) {
-            seemimic(mtmp);
+        if (M_AP_TYPE(mtmp) && !Protection_from_shape_changers()
+            && !sensemon(mtmp)) {
+            await stumble_onto_mimic(mtmp);
         } else if (mtmp.mpeaceful && !Hallucination()) {
             await pline(`Pardon me, ${m_monnam(mtmp)}.`);
         } else {
@@ -1437,11 +1445,12 @@ export async function pooleffects(newspot) {
             still_inwater = true;
         }
         if (!still_inwater) {
-            /* was_underwater display restore is tied to the underwater
-               constrained view, which is recorded rather than modelled */
-            if (u.uinwater) {
-                u.uinwater = 0;
-                (game.unported ||= new Set()).add('hack:pooleffects:leave');
+            const was_underwater = (Underwater() && !Is_waterlevel(game.u.uz));
+
+            await set_uinwater(0); /* u.uinwater = 0; leave the water */
+            if (was_underwater) { /* restore vision */
+                await docrt();
+                game.vision_full_recalc = 1;
             }
         }
     }
@@ -1602,8 +1611,7 @@ export function end_running(and_travel) {
     if (and_travel)
         ctx.travel = ctx.travel1 = ctx.mv = 0;
     if (game.travelmap) {
-        /* selection_free(gt.travelmap, TRUE) — the travel map is not ported */
-        (game.unported ||= new Set()).add('hack:end_running:travelmap');
+        /* selection_free(gt.travelmap, TRUE) */
         game.travelmap = null;
     }
     /* cancel multi */
@@ -2482,9 +2490,54 @@ export async function trapmove(x, y, desttrap) {
         game.u.umoved = true;
         break;
     case TT_INFLOOR:
-    case TT_BURIEDBALL:
-        (game.unported ||= new Set()).add('trapmove:' + game.u.utraptype);
+    case TT_BURIEDBALL: {
+        const steedname = !game.u.usteed ? null : y_monnam(game.u.usteed);
+        let predicament, culprit;
+        const anchored = (game.u.utraptype === TT_BURIEDBALL);
+        if (anchored) {
+            const cc = { x: game.u.ux, y: game.u.uy };
+            /* can move normally within radius 1 of buried ball */
+            if (buried_ball(cc) && dist2(x, y, cc.x, cc.y) <= 2) {
+                /* ugly hack: we need to issue some message here
+                   in case "you are chained to the buried ball"
+                   was the most recent message given, otherwise
+                   our next attempt to move out of tether range
+                   after this successful move would have its
+                   can't-do-that message suppressed by Norep */
+                if (game.flags?.verbose !== false)
+                    await Norep("You move within the chain's reach.");
+                return true;
+            }
+        }
+        if (--game.u.utrap) {
+            if (game.flags?.verbose !== false) {
+                if (anchored) {
+                    predicament = 'chained to the';
+                    culprit = 'buried ball';
+                } else {
+                    predicament = 'stuck in the';
+                    culprit = surface(game.u.ux, game.u.uy);
+                }
+                if (game.u.usteed) {
+                    if (anchored)
+                        await Norep(`You and ${steedname} are ${predicament} ${culprit}.`);
+                    else
+                        await Norep(`${upstart(steedname)} is ${predicament} ${culprit}.`);
+                } else
+                    await Norep(`You are ${predicament} ${culprit}.`);
+            }
+        } else {
+ /* wriggle_free: */
+            if (game.u.usteed)
+                await pline(`${upstart(steedname)} finally ${
+                    !anchored ? 'lurches' : 'wrenches the ball'} free.`);
+            else
+                await You(`finally ${!anchored ? 'wriggle' : 'wrench the ball'} free.`);
+            if (anchored)
+                await buried_ball_to_punishment();
+        }
         break;
+    }
     default:
         break;
     }

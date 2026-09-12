@@ -1,4 +1,4 @@
-import { um_dist } from './apply.js';
+import { um_dist, m_unleash } from './apply.js';
 import { gazemu } from './mhitu.js';
 import { aggravate } from './wizard.js';
 import { stop_occupation } from './allmain.js';
@@ -33,7 +33,11 @@ import { can_hide_under_obj } from './monmove.js';
 import { u_at, OBJ_AT } from './const.js';
 import { mon_explodes } from './explode.js';
 import { fill_pit, mselftouch } from './trap.js';
-import { poly_steed } from './steed.js';
+import { poly_steed, dismount_steed } from './steed.js';
+import { nemdead, nemesis_stinks, leaddead } from './quest.js';
+import { minimal_monnam } from './do_name.js';
+import { impossible } from './pline.js';
+import { DISMOUNT_GENERIC } from './const.js';
 import { possibly_unwield } from './weapon.js';
 import { Protection_from_shape_changers } from './youprop.js';
 import { remove_worm, wormgone } from './worm.js';
@@ -1598,7 +1602,7 @@ import { del_engr_at } from './engrave.js';
 import { pline_The } from './pline.js';
 import { verbalize } from './pline.js';
 import { is_watch } from './mondata.js';
-import { quest_info } from './questpgr.js';
+import { quest_info, stinky_nemesis } from './questpgr.js';
 import { NEUTRAL } from './const.js';
 import { vtense } from './objnam.js';
 import { XKILL_NOCONDUCT } from './const.js';
@@ -2166,7 +2170,7 @@ export function can_touch_safely(mtmp, otmp) {
    include/monst.h:279 via src/mondata.c:129. */
 
 
-import { thiefdead } from './steal.js';
+import { thiefdead, relobj } from './steal.js';
 import { completelyburns, completelyrusts, completelyrots } from './mondata.js';
 import { noit_mon_nam } from './do_name.js';
 import { worm_known } from './worm.js';
@@ -2179,80 +2183,71 @@ import { worm_known } from './worm.js';
 // this monster. What must happen immediately is the map slot, because m_at()
 // is what mfndpos() counts free squares with.
 //
-// Ported: map removal, light cleanup, shop cleanup, mhp = 0, and the detach
-// flag. The remaining special cases keep separate markers so a reached branch
-// identifies the actual missing behavior.
-export function m_detach(mtmp, mptr, due_to_death) {
+export async function m_detach(mtmp, mptr, due_to_death) {
     const mx = mtmp.mx, my = mtmp.my;
-    /* mon_leaving_level()'s test: the raw grid, which still holds a
-       monster whose mhp is already zero */
-    const onmap = isok(mx, my)
-        && game.level?.monAt?.get(`${mx},${my}`) === mtmp;
 
     if (mtmp.mleashed)
-        (game.unported ||= new Set()).add('mon:m_detach:m_unleash');
-    if (due_to_death)
-        (game.unported ||= new Set()).add('mon:m_detach:due_to_death');
-    if (mtmp === game.u.usteed)
-        (game.unported ||= new Set()).add('mon:m_detach:dismount_steed');
-
-    /* src/mon.c:2744 — a glowing monster takes its light with it */
+        await m_unleash(mtmp, false);
     if (mx > 0 && emits_light(mptr))
         del_light_source(LS_MONSTER, mtmp.m_id);
-
-    /* src/mon.c:2696 mon_leaving_level() — off the map, but still on the
-       fmon chain. m_detach() is synchronous, so the body is inlined without
-       its unstuck() and fill_pit() calls, which both need the message loop;
-       mongone() has already called unstuck() in the C */
-    mtmp.mtrapped = 0;
-    if (game.u.ustuck === mtmp)
-        (game.unported ||= new Set()).add('mon:m_detach:unstuck');
-    /* vault guard might be at <0,0> */
-    if (onmap || mtmp === game.level?.monAt?.get('0,0')) {
-        if (mtmp.wormno)
-            remove_worm(mtmp);
-        else
-            remove_monster(mx, my);
+    /*
+     * Take mtmp off map but not out of fmon list yet (dmonsfree does that).
+     *
+     * Sequencing issue:  mtmp's inventory should be dropped before taking
+     * it off the map but if that includes a boulder and mtmp is at a pit
+     * location, dropping minvent ought to be deferred until its corpse
+     * gets placed.  We compromise and just make sure mtmp is off the map
+     * before dropping its former belongings.
+     */
+    /* the C sets mhp and the detach flag after mon_leaving_level(); this
+       port sets them first because the await below yields to the
+       synchronous level-creation callers of mongone(), which must see a
+       detached template while they finish placing its statue */
+    mtmp.mhp = 0; /* simplify some tests: force mhp to 0 */
+    if (((mtmp.mstate | 0) & MON_DETACH) !== 0) {
+        impossible(`m_detach: ${minimal_monnam(mtmp, false)} is already detached?`);
+    } else {
+        mtmp.mstate = (mtmp.mstate | 0) | MON_DETACH;
+        game.iflags = game.iflags || {};
+        game.iflags.purge_monsters = (game.iflags.purge_monsters || 0) + 1;
     }
-    if (onmap) {
-        mtmp.mundetected = 0; /* for migration; doesn't matter for death */
-        /* mimic must be revealed if it is going to migrate to another level
-           or it is accompanying the hero to another level */
-        if (M_AP_TYPE(mtmp) !== M_AP_NOTHING && M_AP_TYPE(mtmp) !== M_AP_MONSTER)
-            seemimic(mtmp);
-        /* fill_pit(mx, my): a boulder settling into a pit here */
-        {
-            const t = t_at(mx, my);
-            if (t && (is_pit(t.ttyp) || is_hole(t.ttyp))
-                && sobj_at(ONAMES.BOULDER, mx, my))
-                (game.unported ||= new Set()).add('mon:m_detach:fill_pit');
-        }
-        newsym(mx, my);
-    }
-    if (mtmp === game.context?.polearm?.hitmon)
-        game.context.polearm.hitmon = null;
+    await mon_leaving_level(mtmp);
 
-    mtmp.mhp = 0;               /* simplify some tests: force mhp to 0 */
-
-    /* death of the Wizard of Yendor or leaving the dungeon alive rather
-       than dying */
+    /* death handling for the Wizard needs to take place even if he is
+       leaving the dungeon alive rather than dying */
     if (mtmp.iswiz)
         wizdeadorgone();
+    /* foodead() might give quest feedback for foo having died; skip that
+       if we're called for mongone() rather than mondead(); saving bones
+       or wizard mode genocide of "*" can result in special monsters going
+       away without having been killed */
+    if (due_to_death) {
+        if (mtmp.data.msound === MSOUND.MS_NEMESIS) {
+            await nemdead();
+            /* The Archeologist, Caveman, and Priest quest texts describe
+               the nemesis's body creating noxious fumes/gas when killed. */
+            if (stinky_nemesis(mtmp))
+                await nemesis_stinks(mx, my);
+        }
+        if (mtmp.data.msound === MSOUND.MS_LEADER)
+            leaddead();
+        /* release (drop onto map) all objects carried by mtmp; assumes that
+           mtmp->mx,my contains the appropriate location */
+        await relobj(mtmp, 1, false); /* drop mtmp->minvent, issue newsym(mx,my) */
+    }
 
     if (mtmp.m_id === game.stealmid)
-        thiefdead();
-
-    /* src/mon.c:2790, a removed shopkeeper no longer owns a shop */
+        thiefdead(); /* reset theft-in-progress data */
     if (mtmp.isshk)
         shkgone(mtmp);
     if (mtmp.wormno)
         wormgone(mtmp);
     if (In_endgame(game.u.uz))
         mtmp.mstate = (mtmp.mstate | 0) | MON_ENDGAME_FREE;
-
-    mtmp.mstate = (mtmp.mstate || 0) | MON_DETACH;
-    game.iflags = game.iflags || {};
-    game.iflags.purge_monsters = (game.iflags.purge_monsters || 0) + 1;
+    /* hero is thrown from his steed when it dies or gets genocided */
+    if (mtmp === game.u.usteed)
+        await dismount_steed(DISMOUNT_GENERIC);
+    return;
 }
 
 // src/mon.c:3267 mongone() — monster disappears, not dies.
@@ -2292,7 +2287,7 @@ export async function mongone(mdef) {
     /* discard_minvent(mdef, FALSE) — the pack leaves the game entirely */
     discard_minvent(mdef, false);
 
-    m_detach(mdef, mdef.data, false);
+    await m_detach(mdef, mdef.data, false);
 }
 
 // src/mon.c:3287 monstone(), turn a monster and its inventory into a statue.
@@ -3581,50 +3576,14 @@ export async function mondead(mdef) {
        Clear it before detaching so the corpse or dropped object can replace
        it on the same screen boundary. */
     unmap_invisible(mx, my);
-    /* src/mon.c:3177 m_detach(). A dead glowing monster must not leave an
-       orphaned source that forces vision recalculation on later turns. */
-    if (mx > 0 && emits_light(mptr))
-        del_light_source(LS_MONSTER, mdef.m_id);
-    /* src/mon.c:2757 m_detach(): mon_leaving_level() takes mtmp off the map
-       (remove_monster/remove_worm, fill_pit, newsym) */
-    await mon_leaving_level(mdef);
+    /* remove 'mtmp' from play; it will stay on the fmon list until end of
+       current move, then dmonsfree() will get rid of it */
+    await m_detach(mdef, mptr, true);
+    /* this port unlinks the dead monster at once instead of leaving it
+       for dmonsfree() */
     const idx = (game.level?.monsters || []).indexOf(mdef);
     if (idx >= 0)
         game.level.monsters.splice(idx, 1);
-
-    /* m_detach() handles quest deaths after taking the monster off the map
-       and before dropping its inventory. The order keeps the death pager
-       ahead of the Bell and quest artifact appearing on the floor. */
-    if (mdef.data.msound === MSOUND.MS_NEMESIS) {
-        const { nemdead, nemesis_stinks } = await import('./quest.js');
-        await nemdead();
-        const { stinky_nemesis } = await import('./questpgr.js');
-        if (stinky_nemesis())
-            await nemesis_stinks(mx, my);
-    }
-    if (mdef.data.msound === MSOUND.MS_LEADER) {
-        const { leaddead } = await import('./quest.js');
-        leaddead();
-    }
-
-    /* "this assumes that the dead monster's map coordinates remain accurate":
-       both relobj and any corpse read mx,my after this point */
-    mdef.mx = mx; mdef.my = my;
-    if ((mdef.minvent || []).length) {
-        const { relobj } = await import('./steal.js');
-        await relobj(mdef, 1, false);
-    }
-    if (mdef.m_id === game.stealmid)
-        thiefdead();
-    if (mdef.isshk)
-        shkgone(mdef);
-    /* src/mon.c:2808 m_detach(): a dead steed immediately stops being the
-       hero's mount. DISMOUNT_GENERIC is deliberately silent, but its cleanup
-       affects later display, targeting, and RNG through mattacku(). */
-    if (mdef === game.u.usteed) {
-        const { dismount_steed } = await import('./steed.js');
-        await dismount_steed(0 /* DISMOUNT_GENERIC */);
-    }
 }
 
 // src/mon.c:3253 mondied() — mondead() plus, maybe, a corpse.
@@ -4205,7 +4164,7 @@ export function mon_wire_cham(fns) { mon_fns_cham = fns; }
 // src/mon.c:5796 usmellmon(), used when a monster changes into an unseen
 // form. The species exclusions prevent a unicorn or jellyfish from falling
 // through to the generic class message.
-async function usmellmon(mdat) {
+export async function usmellmon(mdat) {
     if (!mdat || !olfaction(game.youmonst.data))
         return false;
 
@@ -4608,12 +4567,17 @@ export async function mon_leaving_level(mon) {
 
     /* to prevent an infinite relobj-flooreffects-hmon-killed loop */
     mon.mtrapped = 0;
-    await unstuck(mon); /* mon is not swallowing or holding you nor held by you */
+    /* mon is not swallowing or holding you nor held by you; the await is
+       taken only when there is something to release so that the synchronous
+       level-creation callers of mongone() (statue templates) see the map
+       removal below before they continue */
+    if (game.u.ustuck === mon)
+        await unstuck(mon);
 
     /* vault guard might be at <0,0> */
     if (onmap || mon === game.level?.monAt?.get('0,0')) {
         if (mon.wormno)
-            await remove_worm(mon);
+            remove_worm(mon);
         else
             remove_monster(mx, my);
     }
@@ -4623,7 +4587,14 @@ export async function mon_leaving_level(mon) {
            or it is accompanying the hero to another level */
         if (mon.m_ap_type !== M_AP_NOTHING && mon.m_ap_type !== M_AP_MONSTER)
             seemimic(mon);
-        await fill_pit(mx, my);
+        /* if mon is pinned by a boulder, removing mon lets boulder drop;
+           fill_pit()'s own guard, tested here so the await is only taken
+           when a boulder can settle */
+        {
+            const t = t_at(mx, my);
+            if (t && is_pit(t.ttyp) && sobj_at(ONAMES.BOULDER, mx, my))
+                await fill_pit(mx, my);
+        }
         newsym(mx, my);
     }
     if (mon === game.context?.polearm?.hitmon)

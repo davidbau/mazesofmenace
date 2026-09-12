@@ -54,6 +54,13 @@ import { INVIS, FAST, ANTIMAGIC, REFLECTING, PROTECTION, CLAIRVOYANT,
 import { You, You_hear } from './pline.js';
 import { surface } from './dungeon.js';
 import { can_saddle, can_ride } from './steed.js';
+import { rnl } from './rng.js';
+import { Stone_resistance } from './youprop.js';
+import { touch_petrifies } from './dog.js';
+import { an } from './objnam.js';
+import { pmname } from './do_name.js';
+import { Mgender } from './const.js';
+import { instapetrify } from './trap.js';
 
 /* src/worn.c:14 — the worn[] table: each W_* slot mask and the hero global
    holding what is worn there. C stores `struct obj **w_obj` pointers to
@@ -838,7 +845,11 @@ export async function mon_break_armor(mon, polyspot) {
     }
     if (noride || (mon === game.u.usteed && !can_ride(mon))) {
         await You(`can no longer ride ${mon_nam(mon)}.`);
-        note_unported_worn('mon_break_armor:steed-touch-petrification');
+        if (touch_petrifies(game.u.usteed.data) && !Stone_resistance() && rnl(3)) {
+            await You(`touch ${mon_nam(game.u.usteed)}.`);
+            await instapetrify(`falling off ${
+                an(pmname(game.u.usteed.data, Mgender(game.u.usteed)))}`);
+        }
         await dismount_steed(DISMOUNT_FELL);
     }
 }

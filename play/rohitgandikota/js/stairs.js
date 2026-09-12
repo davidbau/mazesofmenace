@@ -5,6 +5,7 @@
 // before this file existed.
 
 import { game } from './gstate.js';
+import { on_level } from './dungeon.js';
 
 // src/stairs.c:40 stairway_at()
 // src/stairs.c:50 stairway_find() — the stairway leading to fromdlev
@@ -87,10 +88,14 @@ export function stairs_description(sway, stcase) {
         if (!amulet) {
             outbuf = `${stairs} ${updown} out of the dungeon`;
         } else {
-            /* the Planes tests need on_level() against the endgame levels;
-               carrying the Amulet is not reachable yet */
-            note_unported_stairs('stairs_description:amulet_planes');
-            outbuf = `branch ${stairs} ${updown} to the end game`;
+            /* minimize our expectations about what comes next */
+            outbuf = `branch ${stairs} ${updown} ${
+                (on_level(tolev, game.earth_level)
+                 || on_level(tolev, game.air_level)
+                 || on_level(tolev, game.fire_level)
+                 || on_level(tolev, game.water_level))
+                    ? 'to the Elemental Planes'
+                    : 'to the end game'}`;
         }
     } else {
         /* known branch stairs; destination dungeon name */

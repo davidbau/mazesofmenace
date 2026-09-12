@@ -9,84 +9,122 @@
 // applied (" are not " -> " aren't " and friends). The menu layer adds a second
 // leading space, which is why body lines are indented two and headings one.
 //
-// Only the branches a level-1 hero on dlvl 1 reaches are ported. Everything
-// else records itself through note_unported() rather than guessing, because a
-// spurious line shifts every row below it and costs the whole frame.
+// A spurious line shifts every row below it and costs the whole frame, so
+// every branch is the C's.
 
 import { upstart } from './do_name.js';
+
 import { monexplain } from './drawing_data.js';
+
 import { is_rider, haseyes } from './mondata.js';
+
 import { NUMMONS, PMNAMES } from './monst_data.js';
-import { VANQ_MLVL_MNDX, VANQ_MSTR_MNDX, VANQ_ALPHA_SEP, VANQ_ALPHA_MIX, VANQ_MCLS_HTOL, VANQ_MCLS_LTOH, VANQ_COUNT_H_L, VANQ_COUNT_L_H, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_NONE, PICK_ONE, ECMD_OK, LOW_PM, NEUTRAL, G_UNIQ, G_GENOD, G_GONE, G_EXTINCT, LL_ACHIEVE, LL_UMONST, LL_MINORAC, LL_SPOILER, LL_DUMP, Is_rogue_level, FROMOUTSIDE, FACE } from './const.js';
+
+import { VANQ_MLVL_MNDX, VANQ_MSTR_MNDX, VANQ_ALPHA_SEP, VANQ_ALPHA_MIX, VANQ_MCLS_HTOL, VANQ_MCLS_LTOH, VANQ_COUNT_H_L, VANQ_COUNT_L_H, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_NONE, PICK_ONE, ECMD_OK, LOW_PM, NEUTRAL, G_UNIQ, G_GENOD, G_GONE, G_EXTINCT, LL_ACHIEVE, LL_UMONST, LL_MINORAC, LL_SPOILER, LL_DUMP, Is_rogue_level, FROMOUTSIDE } from './const.js';
 import { NO_COLOR } from './terminal.js';
+
 import { docrt } from './display.js';
+
 import { tty_yn_function } from './tty/topl.js';
+
 import { xwaitforspace } from './tty/getline.js';
+
 import { tty_create_nhwindow, tty_destroy_nhwindow, tty_putstr, tty_display_nhwindow, tty_next_page, tty_start_menu, tty_add_menu, tty_end_menu, tty_select_menu, NHW_MENU, ATR_NONE, ATR_INVERSE } from './tty/wintty.js';
+
 import { MONSYMS } from './monst_data.js';
+
 import { You, livelog_printf } from './pline.js';
+
 import { ceiling, surface, Is_bigroom } from './dungeon.js';
+
 import { hides_under, is_clinger } from './mondata.js';
+
 import { waterbody_name } from './pager.js';
+
 import { is_pool, t_at } from './mon.js';
-import { simple_typename, ansimpleoname, OBJ_NAME, ysimple_name, the } from './objnam.js';
+
+import { simple_typename, ansimpleoname, OBJ_NAME, the } from './objnam.js';
 import { M_AP_TYPE, M_AP_NOTHING, M_AP_OBJECT, M_AP_FURNITURE, M_AP_MONSTER, TT_PIT, SPIKED_PIT, TT_BURIEDBALL, TT_LAVA, TT_INFLOOR } from './const.js';
+
 import { trapname } from './trap.js';
+
 import { game } from './gstate.js';
+const quitchars = ' \r\n\x1b';
+import { NHW_TEXT } from './const.js';
+
 import { notice_all_mons_flush } from './hack.js';
+
 import { in_trouble, can_pray, u_gname } from './pray.js';
+
 import { Invulnerable, PermaBlind, Blnd_resist, Undead_warning, Clairvoyant, Adornment, Aggravate_monster, Protection, Polymorph, Lifesaved, Half_spell_damage, Blind_telepat, Warn_of_mon, Detect_monsters, Conflict, Displaced, Jumping, Wwalking, Slow_digestion, Underwater, Free_action, Half_gas_damage, Half_physical_damage, Invisible, Hate_silver, Fixed_abil, Unchanging, Polymorph_control, Protection_from_shape_changers, Wounded_legs, Confusion, Stunned, Glib } from './youprop.js';
+
 import { temp_resist } from './eat.js';
+
 import { u_adtyp_resistance_obj, item_what } from './zap.js';
-import { is_art } from './artifact.js';
-import { ART_EYES_OF_THE_OVERWORLD } from './artilist_data.js';
-import { bare_artifactname } from './objnam.js';
+
 import { strsubst, ordin } from './hacklib.js';
+
 import { impossible } from './pline.js';
+
 import { INTRINSIC, I_SPECIAL, NON_PM, SICK_VOMITABLE, SICK_NONVOMITABLE, M_AP_TYPMASK, NO_SPELL, ismnum } from './const.js';
+
 import { has_ceiling } from './dungeon.js';
+
 import { is_pool_or_lava } from './dbridge.js';
+
 import { visible_region_at, reg_damg } from './region.js';
+
 import { fingers_or_gloves } from './do_wear.js';
+
 import { spellid } from './spell.js';
+
 import { is_vampshifter } from './monst.js';
+
 import { is_vampire, lays_eggs } from './mondata.js';
-import { P_NONE, P_UNSKILLED, P_SKILLED, P_ISRESTRICTED, FULL_MOON, NEW_MOON, WEAK,
-         P_TWO_WEAPON_COMBAT, ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE,
-         ARTICLE_YOUR, ARTICLE_THE, SUPPRESS_IT, SUPPRESS_INVISIBLE, STRAT_WAITMASK,
-         SUPPRESS_SADDLE, SUPPRESS_HALLUCINATION,
-         MSLOW, MFAST, A_NONE, A_CURRENT, A_ORIGINAL, TIMEOUT,
-         W_ARM, W_ARMC, W_ARMH, W_ARMS,
-         W_ARMG, W_ARMF, W_ARMU, W_AMUL, W_RINGL, W_RINGR,
-         W_WEP, W_TOOL, W_ARMOR, W_ACCESSORY, W_ART,
-         LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES, LEG, Upolyd,
-         FROMFORM } from './const.js';
-import { makeplural, minimal_xname, simpleonames,
-         suit_simple_name } from './objnam.js';
+
+import { P_NONE, P_UNSKILLED, P_SKILLED, P_ISRESTRICTED, FULL_MOON, NEW_MOON, WEAK, P_TWO_WEAPON_COMBAT, ROLE_GENDMASK, ROLE_MALE, ROLE_FEMALE, ARTICLE_YOUR, ARTICLE_THE, SUPPRESS_IT, SUPPRESS_INVISIBLE, STRAT_WAITMASK, SUPPRESS_SADDLE, SUPPRESS_HALLUCINATION, MSLOW, MFAST, A_NONE, A_CURRENT, A_ORIGINAL, TIMEOUT, W_ARM, W_ARMS, W_ARMG, W_ARMU, W_AMUL, W_RINGL, W_RINGR, W_WEP, W_TOOL, W_ARMOR, W_ACCESSORY, W_ART, LEFT_SIDE, RIGHT_SIDE, BOTH_SIDES, LEG, Upolyd, FROMFORM } from './const.js';
+import { makeplural, simpleonames, suit_simple_name } from './objnam.js';
 import { weapon_descr, weapon_type, skill_name, skill_level_name, P_SKILL, can_advance } from './weapon.js';
+
 import { empty_handed, is_ammo } from './wield.js';
+
 import { magic_negation } from './mhitu.js';
 
-function note_unported_insight(what) {
-    (game.unported ||= new Set()).add('insight:' + what);
-}
+
 import { depth, dunlev, endgamelevelname } from './dungeon.js';
+
 import { In_endgame, In_quest, Is_knox_level } from './const.js';
+
 import { aligns } from './role_data.js';
+
 import { A_MAX, ACURR } from './attrib.js';
+
 import { hu_stat, rank_of, rank_to_xlev } from './botl.js';
+
 import { carrying, money_cnt, stone_luck } from './invent.js';
+
 import { costly_spot } from './shk.js';
+
 import { newuexp } from './exper.js';
+
 import { night, midnight } from './calendar.js';
+
 import { type_is_pname, sticks } from './mondata.js';
+
 import { MFLAGS } from './monst_data.js';
+
 import { inv_weight, near_capacity } from './attrib.js';
+
 import { ONAMES } from './objects_data.js';
+
 import { pline } from './display.js';
+
 import { a_monnam, x_monnam, pmname, hliquid } from './do_name.js';
+
 import { find_mac } from './worn.js';
-import { Fast, Very_fast, from_what as innate_source } from './attrib.js';
+
+import { Fast, Very_fast, from_what } from './attrib.js';
+
 import { Fire_resistance, Cold_resistance, Sleep_resistance,
          Disint_resistance, Shock_resistance, Poison_resistance,
          Acid_resistance, Drain_resistance, Sick_resistance,
@@ -95,128 +133,22 @@ import { Fire_resistance, Cold_resistance, Sleep_resistance,
          Infravision, Deaf, Blind, Hallucination, Halluc_resistance,
          Invis, Levitation, Flying, Swimming, Amphibious, Breathless,
          Passes_walls, Regeneration, Reflecting, Blindfolded, Blindfolded_only } from './youprop.js';
-import { artifact_names } from './artilist_data.js';
-import { carried_artifact_conveys } from './artifact.js';
+
 import { body_part } from './polyself.js';
+
 import { is_metallic } from './obj.js';
+
 import { dxdy_to_dist_descr } from './getpos.js';
+
 import { which_armor } from './worn.js';
+
 import { s_suffix } from './hacklib.js';
+
 import { digests, dmgtype } from './mondata.js';
+
 import { ATTKS } from './monst_data.js';
+
 import { has_mgivenname, MGIVENNAME, W_SADDLE } from './const.js';
-
-const EXTRINSIC_KEYS = {
-    HFire_resistance: 'FIRE_RES',
-    HCold_resistance: 'COLD_RES',
-    HSleep_resistance: 'SLEEP_RES',
-    HDisint_resistance: 'DISINT_RES',
-    HShock_resistance: 'SHOCK_RES',
-    HPoison_resistance: 'POISON_RES',
-    HAcid_resistance: 'ACID_RES',
-    HDrain_resistance: 'DRAIN_RES',
-    HSick_resistance: 'SICK_RES',
-    HStone_resistance: 'STONE_RES',
-    HHalluc_resistance: 'HALLUC_RES',
-    HBlnd_resist: 'BLND_RES',
-    HAntimagic: 'ANTIMAGIC',
-    HSee_invisible: 'SEE_INVIS',
-    HWarning: 'WARNING',
-    HSearching: 'SEARCHING',
-    HInfravision: 'INFRAVISION',
-    HTelepat: 'TELEPAT',
-    HStealth: 'STEALTH',
-    HDisplaced: 'DISPLACED',
-    HJumping: 'JUMPING',
-    HTeleport_control: 'TELEPORT_CONTROL',
-    HSlow_digestion: 'SLOW_DIGESTION',
-    HRegeneration: 'REGENERATION',
-    HHalf_physical_damage: 'HALF_PHDAM',
-    HHalf_spell_damage: 'HALF_SPDAM',
-    HFast: 'FAST',
-    HReflecting: 'REFLECTING',
-    HFree_action: 'FREE_ACTION',
-    HBlinded: 'BLINDED',
-    HInvis: 'INVIS',
-    HTeleportation: 'TELEPORT',
-    HLevitation: 'LEVITATION',
-    HFlying: 'FLYING',
-    HSwimming: 'SWIMMING',
-    HPasses_walls: 'PASSES_WALLS',
-};
-
-// src/attrib.c:905 from_what(), equipment arm. The flat extrinsic value is a
-// worn-slot mask, so it identifies the inventory object conveying the property.
-function from_what(abilKey) {
-    if (abilKey[0] === '-') { /* negative property index */
-        let buf = '';
-
-        if (game.wizard) {
-            /* since being blocked doesn't confer any time-out, the only
-               property in this game that can be blocked is Blindness (by
-               the Eyes of the Overworld), Invisibility (by a mummy
-               wrapping) and Clairvoyance (by a cornuthaum); replace this
-               with what_blocks() comparable to what_gives() */
-            switch (abilKey.slice(1)) {
-            case 'HBlinded':
-                if (game.u.blocked?.BLINDED
-                    && is_art(game.u.ublindf, ART_EYES_OF_THE_OVERWORLD))
-                    buf = ` because of ${bare_artifactname(game.u.ublindf)}`;
-                break;
-            case 'HInvis':
-                if ((game.u.blocked?.INVIS | 0) & W_ARMC)
-                    buf = ` because of ${
-                        ysimple_name(game.u.uarmc)}`; /* mummy wrapping */
-                break;
-            case 'HClairvoyant':
-                if (game.wizard && ((game.u.blocked?.CLAIRVOYANT | 0) & W_ARMH))
-                    buf = ` because of ${
-                        ysimple_name(game.u.uarmh)}`; /* cornuthaum */
-                break;
-            }
-        }
-        return buf;
-    }
-    const innate = innate_source(abilKey);
-    if (innate || !game.wizard)
-        return innate;
-
-    const mask = game.u.uprops?.[EXTRINSIC_KEYS[abilKey]] | 0;
-    if (abilKey === 'HFast' && Very_fast()) {
-        if ((game.u.intrinsic?.HFast | 0) & TIMEOUT)
-            return ' because of a potion or spell';
-        if ((mask & W_ARMF) && game.u.uarmf?.dknown
-            && game.objects[game.u.uarmf.otyp]?.oc_name_known)
-            return ` because of your ${minimal_xname(game.u.uarmf)
-                .replace(/\bpair of /i, '')}`;
-        if (mask)
-            return ' because of worn equipment';
-    }
-    const propKey = EXTRINSIC_KEYS[abilKey];
-    let obj = mask && (game.invent || []).find(
-        (candidate) => ((candidate.owornmask | 0) & mask) !== 0);
-    if (!obj && (mask & W_ART))
-        obj = (game.invent || []).find(
-            (candidate) => carried_artifact_conveys(candidate, propKey));
-    if (!obj) {
-        /* src/attrib.c:962 — a blindfold is not an extrinsic source, so
-           what_gives() finds nothing; the blindfold arm comes next, then
-           cream-pie goop over the eyes */
-        if (abilKey === 'HBlinded' && Blindfolded_only())
-            return ` because of ${ysimple_name(game.u.ublindf)}`;
-        if (abilKey === 'HBlinded') {
-            const HBlinded = game.u.intrinsic?.HBlinded | 0;
-            if (game.u.ucreamed && (HBlinded & TIMEOUT) === game.u.ucreamed
-                && !mask && !(HBlinded & ~TIMEOUT))
-                return `due to goop covering your ${body_part(FACE)}`;
-        }
-        return '';
-    }
-
-    const name = obj.oartifact ? artifact_names[obj.oartifact].replace(/^The /, 'the ')
-                               : minimal_xname(obj).replace(/\bpair of /i, '');
-    return ` because of ${obj.oartifact ? '' : 'your '}${name}`;
-}
 
 
 // src/insight.c:1468 item_resistance_message()
@@ -602,10 +534,6 @@ function align_gname(a) {
     /* src/pray.c align_gname(): a leading '_' marks a name that already has
        its article ("_The Lady") and is stripped before display. */
     return gnam && gnam[0] === '_' ? gnam.slice(1) : gnam;
-}
-
-function note_unported(what) {
-    (game.unported ||= new Set()).add(what);
 }
 
 // src/insight.c:280 background_enlightenment()
@@ -2616,5 +2544,49 @@ export async function list_genocided(defquery, ask) {
 // src/insight.c:3138 dogenocided(); #genocided command
 export async function dogenocided() {
     await list_genocided(game.iflags?.menu_requested ? 'a' : 'y', false);
+    return ECMD_OK;
+}
+
+// src/insight.c:3145 doborn() — #wizborn extended command
+export async function doborn() {
+    const fmt = (died, born, c, name) => `${String(died).padStart(4)} ${
+                String(born).padStart(4)} ${c} ${name.padEnd(30)}`;
+    let i;
+    const datawin = tty_create_nhwindow(NHW_TEXT);
+    let buf;
+    let nborn = 0, ndied = 0;
+
+    tty_putstr(datawin, 0, 'died born');
+    for (i = LOW_PM; i < NUMMONS; i++) {
+        const mv = game.mvitals?.[i] || {};
+        if (mv.born || mv.died
+            || ((mv.mvflags | 0) & G_GONE) !== 0) {
+            buf = fmt(mv.died | 0, mv.born | 0,
+                      (((mv.mvflags | 0) & G_GONE) === G_EXTINCT) ? 'E'
+                      : (((mv.mvflags | 0) & G_GONE) === G_GENOD) ? 'G'
+                        : (((mv.mvflags | 0) & G_GONE) !== 0) ? 'X'
+                          : ' ',
+                      game.mons[i].pmnames[NEUTRAL]);
+            tty_putstr(datawin, 0, buf);
+            nborn += mv.born | 0;
+            ndied += mv.died | 0;
+        }
+    }
+
+    tty_putstr(datawin, 0, '');
+    buf = fmt(ndied, nborn, ' ', ''); /* formatted but never shown, as in the C */
+
+    /* display_nhwindow(win, FALSE): page through the text window, ESC
+       cancelling the remaining pages */
+    await tty_display_nhwindow(datawin);
+    for (;;) {
+        await xwaitforspace(quitchars);
+        if (game.morc === '\x1b')
+            break; /* cancel remaining pages */
+        if (!tty_next_page(datawin))
+            break;
+    }
+    tty_destroy_nhwindow(datawin);
+
     return ECMD_OK;
 }

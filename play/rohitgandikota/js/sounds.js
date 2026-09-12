@@ -44,6 +44,9 @@ import { Blind } from './youprop.js';
 import { shk_chat } from './shk.js';
 import { demon_talk } from './minion.js';
 import { humanoid } from './mondata.js';
+import { doconsult } from './rumors.js';
+import { Death_quote } from './files.js';
+import { BUFSZ } from './const.js';
 
 
 // src/sounds.c:202 dosounds()
@@ -358,8 +361,7 @@ export async function domonnoise(mtmp) {
     const edog = mtmp.edog || {};
     switch (msound) {
     case MSOUND.MS_ORACLE:
-        note_unported_sounds('domonnoise:doconsult');
-        break;
+        return await doconsult(mtmp);
     case MSOUND.MS_PRIEST: {
         const { priest_talk } = await import('./priest.js');
         await priest_talk(mtmp);
@@ -731,8 +733,10 @@ export async function domonnoise(mtmp) {
             ? death_novel_notice() : null;
         if (notice) {
             verbl_msg = notice;
-        } else if (mtmp.mnum === PMNAMES.PM_DEATH && rn2(3)) {
-            verbl_msg = death_quote();
+        } else if (mtmp.mnum === PMNAMES.PM_DEATH && rn2(3)
+                   && (verbuf = await Death_quote(BUFSZ)) != null) {
+            verbl_msg = verbuf;
+        /* end of tribute addition */
         } else if (mtmp.mnum === PMNAMES.PM_DEATH && !rn2(10)) {
             pline_msg = 'is busy reading a copy of Sandman #8.';
         } else {
@@ -818,62 +822,6 @@ function death_novel_notice() {
         misquoted ? '  I may have been misquoted there.' : ''}`;
 }
 
-const death_quotes = [
-    'WHERE THE FIRST PRIMAL CELL WAS, THERE WAS I ALSO.  WHERE MAN IS, THERE AM I.  WHEN THE LAST LIFE CRAWLS UNDER FREEZING STARS, THERE WILL I BE.',
-    'I AM DEATH, NOT TAXES.  /I/ TURN UP ONLY ONCE.',
-    'THINK OF IT MORE AS BEING ... DIMENSIONALLY DISADVANTAGED.',
-    'I MAY HAVE ALLOWED MYSELF SOME FLICKER OF EMOTION IN THE RECENT PAST, BUT I CAN GIVE IT UP ANY TIME I LIKE.',
-    'HAVE YOU SPOKEN TO RONNIE LATELY?',
-    'PLEASE DO NOT PANIC.  YOU ARE MERELY DEAD.',
-    'THERE IS A LITTLE CONFUSION AT FIRST.  IT IS ONLY TO BE EXPECTED.',
-    'THERE IS ALWAYS TIME FOR ANOTHER LAST MINUTE.',
-    'MUSTARD IS ALWAYS TRICKY.',
-    "PICKLES OF ALL SORTS DON'T SEEM TO MAKE IT.  I'M SORRY.",
-    "IT WON'T HURT A BIT.",
-    'SHALL WE GO?',
-    'I HAVE COME FOR THEE.',
-    "DARK IN HERE, ISN'T IT?",
-    'THERE IS NO GOING BACK.  THERE IS NO GOING BACK.',
-    "I HAVEN'T GOT ALL DAY, YOU KNOW.",
-    'LIFE IS FOR THE LIVING.',
-    'NO-ONE EVER WANTED TO TALK TO ME BEFORE.',
-    "I HAVEN'T GOT A SINGLE FRIEND.  EVEN CATS FIND ME AMUSING.",
-    "YOU'RE ONLY PUTTING OFF THE INEVITABLE.",
-    "I SAID WAS.  IT'S CALLED THE PAST TENSE.  YOU'LL SOON GET USED TO IT.",
-    "DON'T LET IT UPSET YOU.",
-    'I CAN SEE THAT YOU HAVE GOT A LOT TO THINK ABOUT.',
-    "PERHAPS IT'S TIME TO CALL IT A DAY.",
-    "I KNOW WHEN EVERYONE'S HAD ENOUGH.",
-    'I HAVE ALWAYS DONE MY DUTY AS I SAW FIT.',
-    'I AM NOT KNOWN FOR MY SENSE OF FUN.',
-    'I MEAN THAT THERE IS A TIME FOR EVERYONE TO DIE.',
-    "JUST BECAUSE SOMETHING IS A METAPHOR DOESN'T MEAN IT CAN'T BE REAL.",
-    'I AM ALWAYS ALONE.  BUT JUST NOW I WANT TO BE ALONE BY MYSELF.',
-    'I HAD AN APPOINTMENT WITH YOU TONIGHT.',
-];
-
-/* src/files.c choose_passage() plus Death_quote(). Death uses object id 1 and
-   samples thirty of the thirty-one quotes when initializing its reservoir. */
-function death_quote() {
-    const novel = (game.context.novel ||= { id: 0, count: 0, pasg: [] });
-    if (novel.id !== 1 || novel.count === 0) {
-        let idx = 0, range = death_quotes.length, limit = 30;
-        novel.id = 1;
-        novel.count = 30;
-        novel.pasg = Array(30).fill(0);
-        for (let i = 0; i < death_quotes.length; i++, range--) {
-            if (range > 0 && rn2(range) < limit) {
-                novel.pasg[idx++] = i + 1;
-                limit--;
-            }
-        }
-    }
-    const idx = rn2(novel.count);
-    const result = novel.pasg[idx];
-    novel.count--;
-    novel.pasg[idx] = novel.pasg[novel.count];
-    return death_quotes[result - 1];
-}
 
 /* src/mondata.c same_race(), restricted to the player races which can turn
    an MS_ORC speaker into MS_HUMANOID here. */

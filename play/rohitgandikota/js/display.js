@@ -1,36 +1,56 @@
 // display.js — Map rendering and terminal output.
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
 
-import { PLNMSG_UNKNOWN, MAX_TYPE } from './const.js';
+import { PLNMSG_UNKNOWN } from './const.js';
 import { TRAPNUM } from './const.js';
+
 import { MSGTYP_NORMAL, MSGTYP_NOREP, MSGTYP_NOSHOW, MSGTYP_STOP, PLINE_NOREPEAT, OVERRIDE_MSGTYPE, URGENT_MESSAGE } from './const.js';
+
 import { DISP_BEAM, DISP_ALL, DISP_TETHER, DISP_FLASH, DISP_ALWAYS,
          DISP_CHANGE, DISP_END, DISP_FREEMEM, BACKTRACK, HI_ZAP,
          NUM_ZAP } from './const.js';
+
 import { impossible } from './pline.js';
+
 import { monsndx } from './makemon.js';
+
 import { iter_mons } from './mon.js';
+
 import { block_point, unblock_point } from './vision.js';
+
 import { is_lightblocker_mappear } from './monst.js';
+
 import { game } from './gstate.js';
+
+import { bot as botl_bot, timebot as botl_timebot } from './botl.js';
+
 import { rn2_on_display_rng } from './rng.js';
-import { money_cnt, update_inventory, sobj_at } from './invent.js';
+
+import { update_inventory, sobj_at } from './invent.js';
 import { can_reach_floor } from './pickup.js';
+
 import { ONAMES, OCLASSES } from './objects_data.js';
+
 import { update_topl, show_topl_nohistory } from './tty/topl.js';
+
 import { xwaitforspace } from './tty/getline.js';
+
 import { term_start_color } from './tty/termcap.js';
-import { rank, rank_of, bot_conditions, terrain_descr, weapon_status,
-         armor_status } from './botl.js';
+
 import { Upolyd, WARNCOUNT, IS_OBSTRUCTED, IS_ROOM, IS_POOL,
          OBJ_FLOOR, BC_CHAIN, BC_BALL } from './const.js';
+
 import { cansee, couldsee, vision_recalc } from './vision.js';
+
 import { Blind, Infravision, Hallucination, Invis, See_invisible,
          Underwater, Detect_monsters } from './youprop.js';
+
 import { observe_object } from './o_init.js';
+
 import { distu } from './hacklib.js';
-import { ACURR } from './attrib.js';
+
 import { m_at, t_at } from './mon.js';
+
 import {
     COLNO, ROWNO, STONE, ROOM, CORR, DOOR, STAIRS,
     HWALL, VWALL, TLCORNER, TRCORNER, BLCORNER, BRCORNER,
@@ -49,28 +69,42 @@ import {
     AM_NONE, AM_CHAOTIC, AM_NEUTRAL, AM_LAWFUL, AM_MASK, AM_SANCTUM,
     ACCESSIBLE, Is_rogue_level, Is_waterlevel,
 } from './const.js';
+
 import { engr_at, engr_can_be_felt } from './engrave.js';
+
 import { visible_region_at } from './region.js';
+
 import { is_pool_or_lava, is_ice } from './dbridge.js';
+
 import { is_pool } from './mon.js';
+
 import { nhgetch } from './input.js';
+
 import { update_lastseentyp } from './dungeon.js';
+
 import { def_monsyms, def_oc_syms, cmap_names, defsyms } from './drawing_data.js';
+
 import { PMNAMES, mons, NUMMONS, MFLAGS } from './monst_data.js';
+
 import { showsym, showsym_mon, showsym_oc, showsym_other, SYM_BOULDER } from './symbols.js';
+
 import { boolean_option } from './options.js';
+
 import { coord_desc } from './getpos.js';
+
 import { GPCOORDS_NONE, GPCOORDS_COMFULL } from './const.js';
-import { status_version } from './version.js';
-import { classify_terrain } from './hack.js';
+
 import { NO_COLOR, CLR_GRAY, CLR_BROWN, CLR_WHITE, CLR_YELLOW, CLR_BRIGHT_BLUE,
          CLR_GREEN, CLR_BLUE, CLR_RED, CLR_ORANGE, CLR_CYAN, CLR_BLACK,
          CLR_MAGENTA, CLR_BRIGHT_MAGENTA, CLR_BRIGHT_GREEN,
          DEC_TO_UNICODE, ATR_INVERSE as TERM_INVERSE,
          ATR_BOLD as TERM_BOLD,
          ATR_UNDERLINE as TERM_UNDERLINE } from './terminal.js';
+
 import { notice_all_mons_flush } from './hack.js';
-import { critically_low_hp } from './pray.js';
+
+import { worm_known } from './worm.js';
+
 
 // ── ANSI color codes ──
 // Maps CLR_* constants (0-15) to ANSI SGR color codes.
@@ -130,7 +164,7 @@ rogue_obj_syms[OCLASSES.AMULET_CLASS] = ',';
 rogue_obj_syms[OCLASSES.FOOD_CLASS] = ':';
 rogue_obj_syms[OCLASSES.COIN_CLASS] = def_oc_syms[OCLASSES.GEM_CLASS];
 
-function rogue_cmap_sym(cmap) {
+export function rogue_cmap_sym(cmap) {
     if (cmap === CM.S_ndoor || cmap === CM.S_vodoor
         || cmap === CM.S_hodoor)
         return '+';
@@ -866,7 +900,8 @@ export const GLYPH_NOTHING_CELL = Object.freeze({
 // defsym.h's CLR_BLACK collapses to the default foreground, so the cell
 // records identically to a plain floor except for its memory identity.
 function darkroomsym_cell() {
-    if (!dark_room_color())
+    /* include/sym.h:96 DARKROOMSYM is S_stone on the Rogue level */
+    if (!dark_room_color() || Is_rogue_level(game.u?.uz))
         return { ch: ' ', color: NO_COLOR, decgfx: false,
                  glyph: { kind: 'cmap', cmap: cmap_names.S_stone } };
     const s = showsym(cmap_names.S_darkroom);
@@ -1250,6 +1285,30 @@ export async function swallowed(first) {
 let underwater_lastx = 0, underwater_lasty = 0;
 let underwater_delayed = false;
 
+// src/display.c:1490 under_ground() — very restricted display: you can
+// only see yourself. Swallowing has a higher precedence than under ground.
+let underground_delayed = false;
+
+export async function under_ground(mode) {
+    if (game.u?.uswallow)
+        return;
+
+    /* full update */
+    if (mode === 1 || underground_delayed) {
+        await cls();
+        underground_delayed = false;
+
+    /* delayed full update */
+    } else if (mode === 2) {
+        underground_delayed = true;
+        return;
+
+    /* limited update */
+    } else {
+        newsym(game.u.ux, game.u.uy);
+    }
+}
+
 export async function under_water(mode) {
     const u = game.u;
     if (!u || Is_waterlevel(u.uz) || u.uswallow)
@@ -1542,6 +1601,7 @@ export function newsym(x, y) {
             show_glyph_cell(x, y, showsym_mon(shown.mlet) || '?',
                             shown.mcolor ?? NO_COLOR, false, attr,
                             { kind: 'mon', mon });
+            mon.meverseen = 1; /* display.c:620 display_monster() */
             return;
         }
 
@@ -1570,6 +1630,7 @@ export function newsym(x, y) {
             show_glyph_cell(x, y, showsym_mon(shown.mlet) || '?',
                             shown.mcolor ?? NO_COLOR, false, attr,
                             { kind: 'mon', mon });
+            mon.meverseen = 1; /* display.c:620 display_monster() */
             return;
         }
     }
@@ -1880,186 +1941,6 @@ function render_map_row(y) {
 // include/attrib.h:36-37: STR18(x) is 18+x and STR19(x) is 100+x, so a stored
 // 19 means 18/01 and a stored 119 means 19. Printing the raw number showed
 // "St:19" where C shows "St:18/01" — the value was right, the rendering wasn't.
-function get_strength_str() {
-    const STR18 = (x) => 18 + x;
-    const st = ACURR(0);                    /* ACURR(A_STR) as in C botl.c */
-
-    if (st > 18) {
-        if (st > STR18(100))
-            return String(st - 100);
-        else if (st < STR18(100))
-            return `18/${String(st - 18).padStart(2, '0')}`;
-        else
-            return '18/**';
-    }
-    return String(st);
-}
-
-// ── Status lines ──
-function _statusLine1() {
-    const u = game.u;
-    if (!u) return '';
-    /* src/botl.c:989 — the status line capitalises the first letter of the
-       name; svp.plname itself is left as the player typed it. */
-    const rawname = game.plname || 'Hero';
-    let name = rawname.charAt(0).toUpperCase() + rawname.slice(1);
-    /* src/botl.c rank() — the status line shows the RANK for the hero's
-       experience level, not the role name. This read urole.rank.m, which only
-       worked against the stub role record that used to be installed here. */
-    const polyname = Upolyd(u)
-        ? (mons[u.umonnum].pmnames[game.flags.female ? 1 : 0]
-           || mons[u.umonnum].pmnames[2] || mons[u.umonnum].pmnames[0])
-        : '';
-    const shownLevel = game._deferred_status_level_until_more ?? u.ulevel;
-    const role = Upolyd(u)
-        ? polyname.replace(/\b\w/g, c => c.toUpperCase())
-        : (shownLevel === u.ulevel
-           ? rank()
-           : rank_of(shownLevel, game.urole, !!game.flags.female));
-    /* src/botl.c bot_via_windowport(). Keep the title within 30 columns by
-       shortening only the hero name, while preserving at least BOTL_NSIZ
-       (16) name characters even for a long polymorph title. */
-    if (name.length + 5 + role.length > 30)
-        name = name.slice(0, Math.max(30 - 5 - role.length, 16));
-    let title = `${name} the ${role}`;
-    /* win/tty/wintty.c:4562 — when hitpointbar is enabled, rendering
-       enforces a length of 30 on the title ("%-30.30s"), padded or
-       truncated, inside '[' and ']'; critically low HP repads the
-       trailing blanks with dashes (botl.c:2170 repad_with_dashes) */
-    if (game.flags?.hitpointbar) {
-        let bar = title.length > 30 ? title.slice(0, 30) : title.padEnd(30);
-        if (critically_low_hp(true)) {
-            let p = bar.length;
-            const arr = bar.split('');
-            while (p >= 2 && arr[p - 1] === ' ' && arr[p - 2] === ' ') {
-                arr[p - 1] = '-';
-                p -= 2;
-            }
-            bar = arr.join('');
-        }
-        title = `[${bar}]`;
-    }
-    /* src/botl.c:87 — u.acurr.a[] is indexed by the include/attrib.h enum
-       (A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA), which is NOT the order the
-       status line prints them in. This used to read a[0..5] straight through,
-       which only worked while the values were a hardcoded array already
-       written in display order. */
-    const A_STR = 0, A_INT = 1, A_WIS = 2, A_DEX = 3, A_CON = 4, A_CHA = 5;
-    /* src/botl.c:87 prints ACURR(x), never the raw array: abon and atemp
-       (wounded legs' temporary Dex loss) are part of the shown value. */
-    const at = (i) => (game.u?.acurr ? ACURR(i) : '?');
-    const stats = `St:${get_strength_str()} Dx:${at(A_DEX)} Co:${at(A_CON)} `
-                + `In:${at(A_INT)} Wi:${at(A_WIS)} Ch:${at(A_CHA)}`;
-    const align = u.ualign?.type === 0 ? 'Neutral' : u.ualign?.type > 0 ? 'Lawful' : 'Chaotic';
-    // C uses cursor-forward for gap between title and stats
-    // C pads to align stats starting at a fixed column
-    const gap = Math.max(1, 31 - title.length);
-    if (gap > 4) return `${title}\x1b[${gap}C${stats} ${align}`;
-    return `${title}${' '.repeat(gap)}${stats} ${align}`;
-}
-
-function _statusLine2() {
-    const u = game.u;
-    if (!u) return '';
-    /* src/botl.c bot2str() — BL_EXP is only appended when flags.showexp is on,
-       and BL_TIME only when flags.time is. Both default OFF; seed8000's rc
-       happens to turn them on, which is what made hardcoding them look right. */
-    const f = game.flags || {};
-    /* src/botl.c:440 describe_level() — Knox shows the dungeon name, the
-       quest branch "Home n" (dunlev), the endgame its plane name, everything
-       else "Dlvl:depth" — depth(), not the raw dlevel, so Sokoban's first
-       level reads Dlvl:5. */
-    let lvldesc;
-    {
-        const uz = u.uz || { dnum: 0, dlevel: 1 };
-        const dgn = game.dungeons?.[uz.dnum];
-        const dep = dgn ? (dgn.depth_start + uz.dlevel - 1) : (uz.dlevel || 1);
-        if (dgn && dgn.dname === 'Fort Ludios') {
-            lvldesc = dgn.dname;
-        } else if (uz.dnum === game.quest_dnum) {
-            lvldesc = `Home ${uz.dlevel}`;
-        } else if (game.astral_level && uz.dnum === game.astral_level.dnum) {
-            /* src/dungeon.c:3410 endgamelevelname(), "Plane of " stripped */
-            lvldesc = dep === -5 ? 'Astral Plane'
-                    : dep === -4 ? 'Water' : dep === -3 ? 'Fire'
-                    : dep === -2 ? 'Air' : dep === -1 ? 'Earth' : `Dlvl:${dep}`;
-        } else if (game.tutorial_dnum !== undefined
-                   && uz.dnum === game.tutorial_dnum) {
-            lvldesc = `Tutorial:${dep}`;
-        } else {
-            lvldesc = `Dlvl:${dep}`;
-        }
-    }
-    let shownMoney = money_cnt(game.invent);
-    const deferredMoney = game._deferred_status_money;
-    if (deferredMoney) {
-        if ((game.moves ?? 0) <= deferredMoney.throughMove)
-            shownMoney = deferredMoney.value;
-        else
-            delete game._deferred_status_money;
-    }
-    const shownHp = game._deferred_status_hp_until_more
-        ?? Math.max((Upolyd(u) ? u.mh : u.uhp) | 0, 0);
-    const maxHp = game._deferred_status_hpmax_until_more
-        ?? (Upolyd(u) ? u.mhmax : u.uhpmax);
-    const shownPower = game._deferred_status_power_until_dirty;
-    let s = `${lvldesc} ${Is_rogue_level(u.uz) ? '*' : '$'}:${shownMoney}`
-          /* src/botl.c:120 — hp = max(hp, 0): the dying frame shows 0 */
-          + ` HP:${shownHp}(${maxHp || 0})`
-          + ` Pw:${shownPower?.current ?? u.uen ?? 0}(${shownPower?.max ?? u.uenmax ?? 0})`
-          + ` AC:${game._deferred_status_ac_until_more ?? u.uac ?? 0}`;
-    if (Upolyd(u))
-        s += ` HD:${mons[u.umonnum].mlevel}`;
-    else {
-        const shownLevel = game._deferred_status_level_until_more ?? u.ulevel;
-        s += ` Xp:${shownLevel || 1}`;
-        if (f.showexp) s += `/${u.uexp || 0}`;
-    }
-    if (f.time) s += ` T:${game.moves || 1}`;
-    /* src/botl.c:1251 bot_via_windowport(): the optional weapon, armor and
-       terrain fields (BL_WEAPON, BL_ARMOR, BL_TERRAIN), " %s" each; the
-       terrain type is classified first when it is unset */
-    let tail = '';
-    if (f.weaponstatus)
-        tail += ` ${weapon_status()}`;
-    if (f.armorstatus)
-        tail += ` ${armor_status()}`;
-    if (f.terrainstatus) {
-        if ((game.iflags.terrain_typ ?? MAX_TYPE) === MAX_TYPE)
-            classify_terrain();
-        tail += ` ${terrain_descr[game.iflags.terrain_typ]}`;
-    }
-    const vers = f.showvers ? ` ${status_version(false)}` : '';
-    /* win/tty/wintty.c:4585 tty_status_update()/check_fields(): the row,
-       every active field of it, must fit in cols - 1 cells; when it does
-       not, the condition names shrink to their second and then third form
-       (cond_shrinklvl 1, 2) before anything else is tried.  (The further
-       encumbrance/dlvl shrinking that follows level 2 is not ported.) */
-    {
-        const cols = game.nhDisplay?.cols ?? 80;
-        let conds = bot_conditions(0);
-        for (let lvl = 1;
-             lvl <= 2 && (s + conds + tail + vers).length > cols - 1; lvl++)
-            conds = bot_conditions(lvl);
-        s += conds;
-    }
-    s += tail;
-    /* win/tty/wintty.c:5185 render_status() — BL_VERS is the last field of
-       the row and is right justified: the row is padded with spaces up to
-       cols - strlen(field) and the field (" %s" of status_version()) is
-       written there; when the row is already longer, the field simply
-       follows it. */
-    if (f.showvers) {
-        /* tty_status[][].x and vstart are tty_curs() columns, which count
-           from 1, so the field starts one cell left of cols - lth here */
-        const vstart = (game.nhDisplay?.cols ?? 80) - vers.length - 1;
-        if (s.length < vstart)
-            s = s.padEnd(vstart);
-        s += vers;
-    }
-    return s;
-}
-
 // ── Serialize terminal grid for screen comparison ──
 export function serialize_terminal_grid(display) {
     let output = '';
@@ -2389,97 +2270,12 @@ export async function cls() {
 // src/botl.c:253 bot(). Repaint the two status rows and clear their dirty
 // flags. Between calls, even a blocking message keeps the painted status.
 export async function bot() {
-    if (game.bot_disabled)
-        return;
-    const display = game?.nhDisplay;
-    /* C also uses -1 while saving. The same guard preserves the last
-       painted status when a fatal path temporarily assigns that value. */
-    if (game.u.uhp !== -1 && game.youmonst?.data
-        && boolean_option('status_updates') && !suppress_map_output() && display) {
-        const CO = display.cols ?? 80;
-
-        /* doseduce() changes maximum energy without setting disp.botl. */
-        if (game._deferred_status_power_until_dirty
-            && (game.disp?.botl || game.disp?.botlx))
-            delete game._deferred_status_power_until_dirty;
-
-        const s1 = _statusLine1().replace(/\x1b\[[0-9;]*[A-Za-z]/g, m =>
-            m.match(/\x1b\[\d+C/) ? ' '.repeat(parseInt(m.slice(2))) : '');
-        /* win/tty/wintty.c:5117 — the title's hit-point bar: the first
-           (30 * percent / 100) characters are drawn in inverse (all 30 at
-           full HP), percentage() rounding a nonzero HP up to at least 1% */
-        let bar_hi = -1;
-        if (game.flags?.hitpointbar) {
-            const hp = Upolyd(game.u) ? game.u.mh : game.u.uhp;
-            const hpmax = Upolyd(game.u) ? game.u.mhmax : game.u.uhpmax;
-            let percent = hpmax > 0 ? Math.trunc((100 * hp) / hpmax) : 0;
-            if (percent === 0 && hp !== 0)
-                percent = 1;
-            if (percent < 100) {
-                let bar_pos = Math.trunc((30 * percent) / 100);
-                if (bar_pos < 1 && percent > 0)
-                    bar_pos = 1;
-                if (bar_pos >= 30 && percent < 100)
-                    bar_pos = 29;
-                bar_hi = bar_pos; /* columns 1..bar_pos */
-            } else {
-                bar_hi = 30;
-            }
-        }
-        /* The reference screens come out of scripts/record-session.mjs
-           compressAnsiLine(): any run of five or more spaces in the tty's
-           output line becomes a cursor-forward, whatever SGR state is in
-           effect, and screen-decode.mjs restores such a run as plain cells.
-           So inside the bar's inverse part a run of >= 5 padding spaces
-           decodes without the inverse attribute, and shorter runs keep it. */
-        const plain_run = new Array(CO).fill(false);
-        if (bar_hi >= 1) {
-            let c = 1;
-            while (c <= bar_hi) {
-                if (s1[c] === ' ') {
-                    let e = c;
-                    while (e + 1 <= bar_hi && s1[e + 1] === ' ')
-                        e++;
-                    if (e - c + 1 >= 5)
-                        for (let k = c; k <= e; k++)
-                            plain_run[k] = true;
-                    c = e + 1;
-                } else {
-                    c++;
-                }
-            }
-        }
-        for (let c = 0; c < CO; c++)
-            display.setCell(c, 22, c < s1.length ? s1[c] : ' ', NO_COLOR,
-                            (bar_hi >= 0 && c >= 1 && c <= bar_hi && !plain_run[c])
-                                ? TERM_INVERSE : 0);
-        const s2 = _statusLine2();
-        for (let c = 0; c < CO; c++)
-            display.setCell(c, 23, c < s2.length ? s2[c] : ' ', NO_COLOR, 0);
-    }
-    const disp = (game.disp ||= {});
-    disp.botl = disp.botlx = disp.time_botl = false;
+    return botl_bot();
 }
 
-// src/botl.c:278 timebot(), src/botl.c:1285 stat_update_time().
-// The tty window port updates BL_TIME from its saved status fields without
-// recomputing HP, attributes, or conditions. The painted row is this port's
-// saved tty status, so replace only that field and preserve every other one.
+// src/botl.c:275 timebot()
 export function timebot() {
-    if (game.bot_disabled)
-        return;
-    const display = game?.nhDisplay;
-    const disp = (game.disp ||= {});
-    if (!display || !game.flags?.time || !boolean_option('status_updates')
-        || suppress_map_output()) {
-        disp.time_botl = false;
-        return;
-    }
-    const row = (display.grid?.[23] || []).map((cell) => cell.ch || ' ').join('');
-    const updated = row.replace(/ T:\d+/, ` T:${game.moves || 1}`);
-    for (let c = 0; c < (display.cols ?? 80); c++)
-        display.setCell(c, 23, updated[c] || ' ', NO_COLOR, 0);
-    disp.time_botl = false;
+    return botl_timebot();
 }
 
 // include/wintty.h:85 — toplin states. NEED_MORE is 1 and NON_EMPTY is 2, the
@@ -2663,25 +2459,6 @@ export async function more() {
        and waits again, so a movement key pressed at a --More-- is still
        waiting to be read as a command afterwards. */
     await xwaitforspace('\x1b ');
-    if ((game._deferred_status_hp_more_count | 0) > 1) {
-        game._deferred_status_hp_more_count--;
-    } else {
-        delete game._deferred_status_hp_until_more;
-        delete game._deferred_status_hpmax_until_more;
-        delete game._deferred_status_hp_more_count;
-    }
-    if ((game._deferred_status_ac_more_count | 0) > 1) {
-        game._deferred_status_ac_more_count--;
-    } else {
-        delete game._deferred_status_ac_until_more;
-        delete game._deferred_status_ac_more_count;
-    }
-    if ((game._deferred_status_blind_more_count | 0) > 1) {
-        game._deferred_status_blind_more_count--;
-    } else if (game._deferred_status_blind_more_count) {
-        delete game._deferred_status_blind;
-        delete game._deferred_status_blind_more_count;
-    }
 
     /* win/tty/topl.c more():234 — ESC sets WIN_STOP: the player has asked to
        skip this turn's remaining messages. update_topl drops the paint (but
@@ -2824,9 +2601,8 @@ const infravisible = (ptr) => !!(ptr
 
 // include/display.h:117 _canseemon()
 export function canseemon(mon) {
-    if (mon.wormno)
-        (game.unported ||= new Set()).add('display:canseemon:worm_known');
-    return (cansee(mon.mx, mon.my) || see_with_infrared(mon))
+    return (mon.wormno ? worm_known(mon)
+            : (cansee(mon.mx, mon.my) || see_with_infrared(mon)))
            && mon_visible(mon);
 }
 
@@ -2838,6 +2614,15 @@ export function canspotmon(mon) {
 // src/display.c:1487 see_monsters() redraws every live monster, then the
 // hero. Callers use this when a sensing property changes or needs refreshing.
 export function see_monsters() {
+    /* steed and unseen engulfer/holder/holdee are recognized via touch
+       even if they aren't going to be rendered; other monsters
+       may get flagged as having been seen by display_monster() if it's
+       called by newsym() */
+    if (game.u?.usteed)
+        game.u.usteed.meverseen = 1;
+    if (game.u?.ustuck)
+        game.u.ustuck.meverseen = 1;
+
     for (const mon of game.level?.monsters || []) {
         if (mon.mhp > 0)
             newsym(mon.mx, mon.my);
@@ -3186,9 +2971,9 @@ export function magic_map_background(x, y, show) {
     if (!cansee(x, y) && !loc.waslit) {
         if (loc.typ === ROOM && tg.cmap === cmap_names.S_room) {
             if (dark_room_color()) {
-                const dr = darkroomsym_cell();
+                const dr = darkroomsym_cell(); /* DARKROOMSYM */
                 tg = { ch: dr.ch, color: dr.color, dec: dr.decgfx,
-                       cmap: cmap_names.S_darkroom };
+                       cmap: dr.glyph.cmap };
             } else {
                 tg = null;                      /* GLYPH_NOTHING */
             }
@@ -3210,8 +2995,10 @@ export function magic_map_background(x, y, show) {
     /* a memory record that names its glyph kind decides directly: only
        unexplored memory and cmap memory are background; an 'I' marker
        (kind 'invis'), an object, a trap or a monster stays put */
+    /* trap glyphs live in the cmap range in this port (trap_glyph()), but
+       C's glyph_is_cmap() is false for them: remembered traps stay put */
     const kind = rg?.glyph?.kind;
-    const is_background = !rg || kind === 'cmap'
+    const is_background = !rg || (kind === 'cmap' && !glyph_is_trap(rg.glyph))
                           || (kind === undefined && !is_obj_memory);
     if (game.level?.flags?.hero_memory && is_background)
         loc.remembered_glyph = tg

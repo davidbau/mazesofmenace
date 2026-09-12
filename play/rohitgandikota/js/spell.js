@@ -94,6 +94,14 @@ import { aggravate } from './wizard.js';
 import { impossible } from './pline.js';
 import { tty_add_menu_str } from './tty/wintty.js';
 import { strcmpi } from './hacklib.js';
+import { read_tribute } from './files.js';
+import { noveltitle } from './do_name.js';
+import { livelog_printf } from './pline.js';
+import { LL_CONDUCT } from './const.js';
+import { record_achievement } from './insight.js';
+import { ACH_NOVL } from './const.js';
+import { more_experienced } from './exper.js';
+import { newexplevel } from './exper.js';
 
 // src/spell.c — NO_SPELL sentinel and the spell list accessor.
 const NO_SPELL = 0;
@@ -510,8 +518,28 @@ export async function study_book(spellbook) {
             makeknown(booktype);
             return 1;
         }
+        /* 3.6 tribute */
         if (booktype === ONAMES.SPE_NOVEL) {
-            note_unported_spell('study_book:novel');
+            /* Obtain current Terry Pratchett book title */
+            const box = { idx: spellbook.novelidx ?? -1 };
+            const tribtitle = noveltitle(box);
+            spellbook.novelidx = box.idx;
+
+            if (await read_tribute('books', tribtitle, 0, null, 0, spellbook.o_id)) {
+                if (!(game.u.uconduct.literate++))
+                    livelog_printf(LL_CONDUCT, `became literate by reading ${tribtitle}`);
+
+                const { check_unpaid } = await import('./shk.js');
+                await check_unpaid(spellbook);
+                makeknown(booktype);
+                if (!game.u.uevent?.read_tribute) {
+                    record_achievement(ACH_NOVL);
+                    /* give bonus of 20 xp and 4*20+0 pts */
+                    more_experienced(20, 0);
+                    await newexplevel();
+                    (game.u.uevent ||= {}).read_tribute = 1; /* only once */
+                }
+            }
             return 1;
         }
 

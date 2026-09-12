@@ -82,6 +82,7 @@ import { tty_yn_function } from './tty/topl.js';
 import { Blind, Flying, Glib, Levitation } from './youprop.js';
 import { DEADMONSTER } from './monst.js';
 import { impossible } from './pline.js';
+import { lookup_novel } from './do_name.js';
 
 const {
     COIN_CLASS, POTION_CLASS, SCROLL_CLASS, WAND_CLASS, SPBOOK_CLASS,
@@ -688,7 +689,10 @@ export function minimal_xname(obj) {
         spe: (obj.otyp === ONAMES.SLIME_MOLD) ? obj.spe : 0,
     };
 
-    let bufp = xname(bareobj);
+    /* distant_name(): the bare object has no map location, so xname() runs
+       with distantname set and does not observe it; a dknown==0 scroll
+       stays "scroll" instead of picking up its label here */
+    let bufp = distant_name(bareobj, xname);
     /* undo forced setting of bareobj.blessed for cleric (priest[ess]) */
     if (bufp.startsWith('uncursed '))
         bufp = bufp.slice(9);
@@ -1154,9 +1158,38 @@ function billed_cost(obj) {
     return { price, found };
 }
 
+// src/objnam.c:1150 add_erosion_words() — the eroded words come first:
+// "very burnt", "thoroughly rusty", &c, then the -proof word once known.
+function add_erosion_words(obj, prefix) {
+    const override = !!game.iflags?.override_ID;
+
+    if (obj.oeroded) {
+        prefix += (obj.oeroded === 2) ? 'very '
+                  : (obj.oeroded === 3) ? 'thoroughly ' : '';
+        prefix += is_rustprone(obj, game.objects) ? 'rusty '
+                  : is_crackable(obj, game.objects) ? 'cracked '
+                    : 'burnt ';
+    }
+    if (obj.oeroded2) {
+        prefix += (obj.oeroded2 === 2) ? 'very '
+                  : (obj.oeroded2 === 3) ? 'thoroughly ' : '';
+        prefix += is_corrodeable(obj, game.objects) ? 'corroded '
+                  : 'rotted ';
+    }
+    if ((obj.rknown || override) && obj.oerodeproof)
+        prefix += is_rustprone(obj, game.objects) ? 'rustproof '
+                  : is_corrodeable(obj, game.objects) ? 'corrodeproof '
+                    : is_flammable(obj, game.objects) ? 'fireproof '
+                      : is_crackable(obj, game.objects) ? 'tempered '
+                        : is_rottable(obj, game.objects) ? 'rotproof '
+                          : '';
+    return prefix;
+}
+
 export function doname(obj, vague_quan = false) {
     const ocl = game.objects[obj.otyp];
     let bp = xname(obj);
+    let ispoisoned = false;
     /* xname() can update the object's observed and Priest-known flags. */
     const override = !!game.iflags?.override_ID;
     const known = override || obj.known, bknown = override || obj.bknown;
@@ -1220,33 +1253,14 @@ export function doname(obj, vague_quan = false) {
             prefix += 'unlocked ';
     }
 
+    /* must check opoisoned--someone can have a weirdly-named fruit */
+    if (bp.startsWith('poisoned ') && obj.opoisoned) {
+        bp = bp.slice(9); /* doesn't affect bp_eos or bpspaceleft */
+        ispoisoned = true;
+    }
+
     if (obj.greased)
         prefix += 'greased ';
-
-    /* src/objnam.c:1150 add_erosion_words — the eroded words come first:
-       "very burnt", "thoroughly rusty", &c. (is_damageable gate: every
-       reachable eroded item passes it, and !is_damageable items never
-       gain oeroded bits in this port) */
-    if (obj.oeroded) {
-        prefix += (obj.oeroded === 2) ? 'very '
-                  : (obj.oeroded === 3) ? 'thoroughly ' : '';
-        prefix += is_rustprone(obj, game.objects) ? 'rusty '
-                  : is_crackable(obj, game.objects) ? 'cracked '
-                    : 'burnt ';
-    }
-    if (obj.oeroded2) {
-        prefix += (obj.oeroded2 === 2) ? 'very '
-                  : (obj.oeroded2 === 3) ? 'thoroughly ' : '';
-        prefix += is_corrodeable(obj, game.objects) ? 'corroded '
-                  : 'rotted ';
-    }
-    if ((obj.rknown || override) && obj.oerodeproof)
-        prefix += is_rustprone(obj, game.objects) ? 'rustproof '
-                  : is_corrodeable(obj, game.objects) ? 'corrodeproof '
-                    : is_flammable(obj, game.objects) ? 'fireproof '
-                      : is_crackable(obj, game.objects) ? 'tempered '
-                        : is_rottable(obj, game.objects) ? 'rotproof '
-                          : '';
 
     /* src/objnam.c:1373 -- once a container's contents are known, doname()
        reports the number of separate stacks it holds. */
@@ -1271,6 +1285,9 @@ export function doname(obj, vague_quan = false) {
         }
         /* FALLTHRU */
     case WEAPON_CLASS:
+        if (ispoisoned)
+            prefix += 'poisoned ';
+        prefix = add_erosion_words(obj, prefix);
         if (known) prefix += `${obj.spe >= 0 ? '+' : ''}${obj.spe} `;
         break;
     case TOOL_CLASS:
@@ -1353,6 +1370,7 @@ export function doname(obj, vague_quan = false) {
         break;
     case BALL_CLASS:
     case CHAIN_CLASS:
+        prefix = add_erosion_words(obj, prefix);
         if (obj.owornmask & (W_BALL | W_CHAIN))
             bp += ` (${obj.owornmask & W_BALL ? 'chained' : 'attached'} to you)`;
         break;
@@ -3608,9 +3626,12 @@ export async function readobjnam(bp, no_wish) {
 
         /* 3.6 tribute - fix up novel */
         if (d.otmp.otyp === ONAMES.SPE_NOVEL) {
-            /* lookup_novel() and sv.novels are not ported; the name is
-               kept as given */
-            note_unported_objnam('readobjnam:lookup_novel');
+            const idx = { idx: d.otmp.novelidx ?? -1 };
+            const novelname = lookup_novel(d.name, idx);
+            if (novelname != null) {
+                d.otmp.novelidx = idx.idx;
+                d.name = novelname;
+            }
         }
 
         d.otmp = oname(d.otmp, d.name, ONAME_WISH);
@@ -3994,6 +4015,50 @@ export function Doname2(obj) {
     const s = doname(obj);
 
     return s ? s[0].toUpperCase() + s.slice(1) : s;
+}
+
+// src/objnam.c:2313 paydoname() — doname() for the shop bill: no
+// invent-style price, no wizweight, a container's contents hidden and
+// "your <container>"/"an unpaid <container>" phrasing.
+export function paydoname(obj) {
+    const and_contents = ' and its contents';
+    let p;
+    const save_cknown = obj.cknown;
+    const save_wizweight = game.iflags?.wizweight;
+
+    if (Has_contents(obj))
+        obj.cknown = 0;
+    /* avoid showing item weights to unclutter billing's pay-menu a bit */
+    (game.iflags ||= {}).wizweight = false;
+    /* suppress invent-style price; caller will add billing-style price */
+    game.iflags.suppress_price = (game.iflags.suppress_price | 0) + 1;
+    p = doname(obj); /* doname_base(obj, 0U) */
+    game.iflags.suppress_price--;
+    game.iflags.wizweight = save_wizweight;
+
+    if (Has_contents(obj)) {
+        /* buy_container() sets no_charge for a container that has just
+           been purchased so that when paydoname() is called by
+           shk_names_obj(), we'll provide "a/an <container>" instead of
+           "your <container>" */
+        if (!obj.no_charge) {
+            if (p.startsWith('a '))
+                p = p.slice(2);
+            else if (p.startsWith('an '))
+                p = p.slice(3);
+            p = (obj.unpaid ? 'an unpaid ' : 'your ') + p; /* strprepend */
+        }
+
+        if (!obj.cknown) {
+            if (obj.unpaid) {
+                p += and_contents;
+            } else {
+                p = 'the contents of ' + p; /* strprepend */
+            }
+        }
+    }
+    obj.cknown = save_cknown;
+    return p;
 }
 
 // src/objnam.c:2391 ysimple_name(), "your <simple name>" (or "the", or the

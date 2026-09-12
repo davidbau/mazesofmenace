@@ -11,6 +11,8 @@
 // more() is too, and both are really topl.c functions that should live here.
 
 import { game } from '../gstate.js';
+import { NHW_MENU } from '../const.js';
+import { tty_create_nhwindow, tty_putstr, tty_display_nhwindow, tty_destroy_nhwindow } from './wintty.js';
 import { more, TOPLINE_EMPTY, TOPLINE_NEED_MORE, TOPLINE_NON_EMPTY, TOPLINE_SPECIAL_PROMPT,
          paint_topline, tty_clear_nhwindow_message } from '../display.js';
 import { nhgetch } from '../input.js';
@@ -220,27 +222,114 @@ async function redotoplin(str) {
         await more();
 }
 
-// win/tty/topl.c tty_doprev_message(), default msg_window:single path. The
-// current logical top line is recalled first, then consecutive Ctrl-P
-// commands walk backward through the circular history and wrap to current.
+// win/tty/topl.c:73 tty_doprev_message() — ^P.  cw->maxrow/maxcol are
+// game._msg_maxrow/_msg_maxcol, cw->data[] is game._msg_history and
+// gt.toplines is game._toplines.
 export async function doprev_message() {
     const rows = game.iflags?.msg_history || 20;
     const maxrow = game._msg_maxrow || 0;
     let maxcol = game._msg_maxcol;
+    const data = (game._msg_history ||= []);
+    let prevmsg_win;
+    let i;
+    const prevmsg_window = game.iflags?.prevmsg_window ?? 's';
+    const ttyDisplay = (game.ttyDisplay ||= {});
+
     if (maxcol === undefined || maxcol === null)
         maxcol = maxrow;
 
-    const str = maxcol === maxrow
-        ? (game._toplines || '')
-        : (game._msg_history?.[maxcol] || '');
-    if (str)
-        await redotoplin(str);
+    if ((prevmsg_window !== 's')
+        && !ttyDisplay.inread) {           /* not single */
+        if (prevmsg_window === 'f') { /* full */
+            prevmsg_win = tty_create_nhwindow(NHW_MENU);
+            tty_putstr(prevmsg_win, 0, 'Message History');
+            tty_putstr(prevmsg_win, 0, '');
+            maxcol = maxrow;
+            i = maxcol;
+            do {
+                if (data[i] && data[i] !== '')
+                    tty_putstr(prevmsg_win, 0, data[i]);
+                i = (i + 1) % rows;
+            } while (i !== maxcol);
+            tty_putstr(prevmsg_win, 0, game._toplines || '');
+            await tty_display_nhwindow(prevmsg_win, true);
+            tty_destroy_nhwindow(prevmsg_win);
+        } else if (prevmsg_window === 'c') { /* combination */
+            do {
+                game.morc = 0;
+                if (maxcol === maxrow) {
+                    ttyDisplay.dismiss_more = '\x10'; /* ^P ok at --More-- */
+                    await redotoplin(game._toplines || '');
+                    maxcol--;
+                    if (maxcol < 0)
+                        maxcol = rows - 1;
+                    if (!data[maxcol])
+                        maxcol = maxrow;
+                } else if (maxcol === (maxrow - 1)) {
+                    ttyDisplay.dismiss_more = '\x10'; /* ^P ok at --More-- */
+                    await redotoplin(data[maxcol]);
+                    maxcol--;
+                    if (maxcol < 0)
+                        maxcol = rows - 1;
+                    if (!data[maxcol])
+                        maxcol = maxrow;
+                } else {
+                    prevmsg_win = tty_create_nhwindow(NHW_MENU);
+                    tty_putstr(prevmsg_win, 0, 'Message History');
+                    tty_putstr(prevmsg_win, 0, '');
+                    maxcol = maxrow;
+                    i = maxcol;
+                    do {
+                        if (data[i] && data[i] !== '')
+                            tty_putstr(prevmsg_win, 0, data[i]);
+                        i = (i + 1) % rows;
+                    } while (i !== maxcol);
+                    tty_putstr(prevmsg_win, 0, game._toplines || '');
+                    await tty_display_nhwindow(prevmsg_win, true);
+                    tty_destroy_nhwindow(prevmsg_win);
+                }
 
-    maxcol--;
-    if (maxcol < 0)
-        maxcol = rows - 1;
-    if (!game._msg_history?.[maxcol])
-        maxcol = maxrow;
+            } while (game.morc === '\x10');
+            ttyDisplay.dismiss_more = 0;
+        } else { /* reversed */
+            game.morc = 0;
+            prevmsg_win = tty_create_nhwindow(NHW_MENU);
+            tty_putstr(prevmsg_win, 0, 'Message History');
+            tty_putstr(prevmsg_win, 0, '');
+            tty_putstr(prevmsg_win, 0, game._toplines || '');
+            maxcol = maxrow - 1;
+            if (maxcol < 0)
+                maxcol = rows - 1;
+            do {
+                tty_putstr(prevmsg_win, 0, data[maxcol] || '');
+                maxcol--;
+                if (maxcol < 0)
+                    maxcol = rows - 1;
+                if (!data[maxcol])
+                    maxcol = maxrow;
+            } while (maxcol !== maxrow);
+
+            await tty_display_nhwindow(prevmsg_win, true);
+            tty_destroy_nhwindow(prevmsg_win);
+            maxcol = maxrow;
+            ttyDisplay.dismiss_more = 0;
+        }
+    } else if (prevmsg_window === 's') { /* single */
+        ttyDisplay.dismiss_more = '\x10'; /* <ctrl/P> allowed at --More-- */
+        do {
+            game.morc = 0;
+            if (maxcol === maxrow)
+                await redotoplin(game._toplines || '');
+            else if (data[maxcol])
+                await redotoplin(data[maxcol]);
+            maxcol--;
+            if (maxcol < 0)
+                maxcol = rows - 1;
+            if (!data[maxcol])
+                maxcol = maxrow;
+        } while (game.morc === '\x10');
+        ttyDisplay.dismiss_more = 0;
+    }
     game._msg_maxcol = maxcol;
     return 0;
 }

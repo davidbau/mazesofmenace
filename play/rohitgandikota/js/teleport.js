@@ -13,9 +13,17 @@
 // is placed.
 
 import { rn1 } from './rng.js';
-import { update_player_regions, update_monster_region } from './region.js';
+import { update_player_regions, update_monster_region, in_out_region } from './region.js';
 import { m_into_limbo } from './mon.js';
 import { unstuck } from './mon.js';
+import { maybe_unhide_at } from './mon.js';
+import { set_msg_xy } from './pline.js';
+import { makeknown } from './o_init.js';
+import { inhishop, dochugw } from './monmove.js';
+import { make_angry_shk, onshopbill } from './shk.js';
+import { mintrap } from './trap.js';
+import { NO_TRAP_FLAGS } from './const.js';
+import { check_special_room } from './hack.js';
 import { engulfing_u, In_mines, NO_KILLER_PREFIX, DIED, MAX_TYPE } from './const.js';
 import { place_object } from './mkobj.js';
 import { stolen_value, u_left_shop } from './shk.js';
@@ -104,7 +112,7 @@ import { m_next2u } from './mon.js';
 import { DEADMONSTER } from './monst.js';
 import { noit_mon_nam } from './do_name.js';
 import { uhis } from './mhitu.js';
-import { Levitation, Flying } from './youprop.js';
+import { Levitation, Flying, Passes_walls } from './youprop.js';
 import { done } from './end.js';
 import { tty_yn_function } from './tty/topl.js';
 import { notice_mon_off, notice_mon_on, notice_all_mons, notice_all_mons_flush } from './hack.js';
@@ -294,25 +302,36 @@ export async function level_tele() {
         let trycnt = 0;
 
         do {
-            if (++trycnt === 2)
-                qbuf += game.wizard ? ' [type a number, name, or ? for a menu]'
-                                    : ' [type a number or name]';
-            /* EDIT_GETLIN: a previous answer was invalid, so it is NOT
-               offered back as the default */
-            buf = await getlin(qbuf);
+            let via_menu = false;
+            if (game.iflags?.menu_requested) {
+                /* wizard mode 'm ^V' skips prompting on first pass
+                   (note: level Tport via menu won't have any second pass) */
+                game.iflags.menu_requested = false;
+                if (game.wizard)
+                    via_menu = true; /* goto levTport_menu */
+            }
+            if (!via_menu) {
+                if (++trycnt === 2)
+                    qbuf += game.wizard
+                            ? ' [type a number, name, or ? for a menu]'
+                            : ' [type a number or name]';
+                /* EDIT_GETLIN: a previous answer was invalid, so it is NOT
+                   offered back as the default */
+                buf = await getlin(qbuf);
 
-            if (buf === '*') {
-                random_port = true;
-                break;
-            } else if (Confusion() && rnl(5)) {
-                await pline('Oops...');
-                random_port = true;
-                break;
-            } else if (buf === '\x1b') {        /* cancelled */
-                return;
+                if (buf === '*') {
+                    random_port = true;
+                    break;
+                } else if (Confusion() && rnl(5)) {
+                    await pline('Oops...');
+                    random_port = true;
+                    break;
+                } else if (buf === '\x1b') {        /* cancelled */
+                    return;
+                }
             }
 
-            if (game.wizard && buf === '?') {
+            if (via_menu || (game.wizard && buf === '?')) {
                 const dest = { lev: 0, dnum: 0 };
 
                 newlev = await print_dungeon(true, dest);
@@ -726,6 +745,7 @@ function rloc_pos_ok(x, y, mtmp) {
 // src/teleport.c:1648 rloc_to_core(), ordinary non-worm relocation path.
 export async function rloc_to_core(mtmp, x, y, rlocflags) {
     const oldx = mtmp.mx, oldy = mtmp.my;
+    const resident_shk = mtmp.isshk && inhishop(mtmp);
     const preventmsg = (rlocflags & RLOC_NOMSG) !== 0;
     const vanishmsg = (rlocflags & RLOC_MSG) !== 0;
     let appearmsg = ((mtmp.mstrategy | 0) & STRAT_APPEARMSG) !== 0;
@@ -759,26 +779,84 @@ export async function rloc_to_core(mtmp, x, y, rlocflags) {
 
     if (mtmp.wormno) /* now put down tail */
         place_worm_tail_randomly(mtmp, x, y);
-    newsym(x, y);
-    set_apparxy(mtmp);
 
-    if (domsg && (canspotmon(mtmp) || appearmsg
-                  || mtmp === game.u.ustuck)) {
-        const du = distu(x, y);
-        const suffix = du <= 2 ? ' next to you'
-            : du <= BOLT_LIM * BOLT_LIM ? ' close by'
-            : telemsg && distu(oldx, oldy) !== du
-                ? (du < distu(oldx, oldy)
-                    ? ' closer to you' : ' farther away')
-                : '';
-        mtmp.mstrategy = (mtmp.mstrategy | 0) & ~STRAT_APPEARMSG;
-        if (telemsg && (couldsee(x, y) || sensemon(mtmp)))
-            await pline(`${Monnam(mtmp)} vanishes and reappears${suffix}.`);
-        else
-            await pline(`${appearmsg ? Amonnam(mtmp) : Monnam(mtmp)} ${
-                appearmsg ? 'suddenly ' : ''}${Blind() ? 'arrives' : 'appears'
-            }${suffix}!`);
+    if (game.u.ustuck === mtmp) {
+        if (game.u.uswallow) {
+            u_on_newpos(mtmp.mx, mtmp.my);
+            await check_special_room(false);
+            await docrt();
+        } else if (!m_next2u(mtmp)) {
+            await unstuck(mtmp);
+        }
     }
+
+    maybe_unhide_at(x, y);
+    newsym(x, y);      /* update new location */
+    set_apparxy(mtmp); /* orient monster */
+    if (domsg && (canspotmon(mtmp) || appearmsg || mtmp === game.u.ustuck)) {
+        const du = distu(x, y);
+        let olddu;
+        const next = (du <= 2) ? ' next to you' : null, /* next2u() */
+              nearu = (du <= BOLT_LIM * BOLT_LIM) ? ' close by' : null;
+
+        set_msg_xy(x, y);
+        mtmp.mstrategy = (mtmp.mstrategy | 0) & ~STRAT_APPEARMSG; /* one chance only */
+        if (mtmp === game.u.ustuck && !u_at(game.u.ux0, game.u.uy0)) {
+            await You(`and ${mon_nam(mtmp)} teleport together.`);
+        } else if (telemsg && (couldsee(x, y) || sensemon(mtmp))) {
+            await pline(`${Monnam(mtmp)} vanishes and reappears${
+                next ? next
+                : nearu ? nearu
+                  : ((olddu = distu(oldx, oldy)) === du) ? ''
+                    : (du < olddu) ? ' closer to you'
+                      : ' farther away'}.`);
+        } else {
+            await pline(`${appearmsg ? Amonnam(mtmp) : Monnam(mtmp)} ${
+                appearmsg ? 'suddenly ' : ''}${
+                !Blind() ? 'appears' : 'arrives'}${
+                next ? next : nearu ? nearu : ''}!`);
+        }
+        /* wand discovery only happens if a messaage is delivered (bug?);
+           if spell or q.mechanic attack or artifact #invoke for banish
+           then current_wand will be Null */
+        if (game.current_wand
+            && game.current_wand.otyp === ONAMES.WAN_TELEPORTATION)
+            makeknown(ONAMES.WAN_TELEPORTATION);
+    }
+
+    /* shopkeepers will only teleport if you zap them with a wand of
+       teleportation or if they've been transformed into a jumpy monster;
+       the latter only happens if you've attacked them with polymorph
+       [FIXME? or they've been hit by a genetic engineer, which won't
+       necessarily be due to Conflict by hero] */
+    if (resident_shk && !inhishop(mtmp))
+        await make_angry_shk(mtmp, oldx, oldy);
+
+    /* if a monster carrying shop goods teleports out of the shop, blame
+       it on the hero; chance of an unpaid item is vanishingly small, but
+       no_charge is easily possible and needs to be cleared if not in shop;
+       a for-sale item is ordinary here--shk won't notice it leaving; if
+       mtmp teleports from one shop into another, no_charge status sticks
+       and an item on the first shk's bill stays there */
+    if (mtmp.minvent?.length && !costly_spot(x, y)) {
+        const shkp = find_objowner(mtmp.minvent[0], oldx, oldy);
+        const peaceful = !shkp || shkp.mpeaceful;
+
+        for (const otmp of [...mtmp.minvent]) {
+            if (otmp.no_charge)
+                otmp.no_charge = 0;
+            else if (shkp && onshopbill(otmp, shkp, true))
+                await stolen_value(otmp, oldx, oldy, peaceful, false);
+        }
+    }
+
+    /* if hero is busy, maybe stop occupation */
+    if (game.occupation)
+        await dochugw(mtmp, false);
+
+    /* trapped monster teleported away */
+    if (mtmp.mtrapped && !mtmp.wormno)
+        await mintrap(mtmp, NO_TRAP_FLAGS);
 }
 
 // src/teleport.c:1777 rloc_to_flag().
@@ -889,7 +967,7 @@ export async function tele_restrict(mon) {
 }
 
 // src/teleport.c teleok() — may the hero teleport onto <x,y>?
-function teleok(x, y, trapok) {
+async function teleok(x, y, trapok) {
     if (!trapok) {
         /* allow teleportation onto vibrating square, it's not a real trap;
            also allow pits and holes if levitating or flying */
@@ -900,7 +978,7 @@ function teleok(x, y, trapok) {
         else if (trap.ttyp === VIBRATING_SQUARE)
             trapok = true;
         else if ((is_pit(trap.ttyp) || is_hole(trap.ttyp))
-                 && game.u.uprops?.LEVITATION)
+                 && (Levitation() || Flying()))
             trapok = true;
 
         if (!trapok)
@@ -908,8 +986,10 @@ function teleok(x, y, trapok) {
     }
     if (!goodpos(x, y, game.youmonst, 0))
         return false;
-    /* the caller's remaining tests (in_mklev, sokoban, vault guard) need
-       state no reachable teleport has yet */
+    if (!tele_jump_ok(game.u.ux, game.u.uy, x, y))
+        return false;
+    if (!await in_out_region(x, y))
+        return false;
     return true;
 }
 
@@ -1073,7 +1153,7 @@ export async function scrolltele(scroll) {
                 return;             /* abort */
             /* possible extensions: introduce a small error if magic power
                is low; allow transfer to solid rock */
-            if (teleok(cc.x, cc.y, false)) {
+            if (await teleok(cc.x, cc.y, false)) {
                 await teleds(cc.x, cc.y, TELEDS_TELEPORT);
                 if (game.iflags?.travelcc
                     && game.u.ux === game.iflags.travelcc.x
@@ -1102,7 +1182,7 @@ export async function safe_teleds(teleds_flags) {
     for (let tcnt = 0; tcnt < 40; ++tcnt) {
         nux = rnd(COLNO - 1);
         nuy = rn2(ROWNO);
-        if (teleok(nux, nuy, false)) {
+        if (await teleok(nux, nuy, false)) {
             await teleds(nux, nuy, teleds_flags);
             return true;
         }
@@ -1111,18 +1191,18 @@ export async function safe_teleds(teleds_flags) {
     /* get a shuffled list of candidate locations, starting with spots
        1 or 2 steps from hero, then 3 or 4, on up */
     let cc_flags = CC_RING_PAIRS | CC_SKIP_MONS;
-    if (!game.u.uprops?.PASSES_WALLS)
+    if (!Passes_walls())
         cc_flags |= CC_SKIP_INACCS;
     const candy = collect_coords(game.u.ux, game.u.uy, 0, cc_flags, null);
     let backupspot = null;
     /* skip trap locations but remember the first acceptable trap spot */
     for (let tcnt = 0; tcnt < candy.length; ++tcnt) {
         nux = candy[tcnt].x; nuy = candy[tcnt].y;
-        if (teleok(nux, nuy, false)) {
+        if (await teleok(nux, nuy, false)) {
             await teleds(nux, nuy, teleds_flags);
             return true;
         }
-        if (!backupspot && teleok(nux, nuy, true))
+        if (!backupspot && await teleok(nux, nuy, true))
             backupspot = { x: nux, y: nuy };
     }
     if (backupspot) {
@@ -1140,7 +1220,7 @@ export async function vault_tele() {
     const croom = search_special(VAULT);
     const c = { x: 0, y: 0 };
 
-    if (croom && somexyspace(croom, c) && teleok(c.x, c.y, false)) {
+    if (croom && somexyspace(croom, c) && await teleok(c.x, c.y, false)) {
         await teleds(c.x, c.y, TELEDS_TELEPORT);
         return;
     }
@@ -1698,7 +1778,7 @@ export async function tele_to_rnd_pet() {
         const tx = pet.mx + rn2(3) - 1,
               ty = pet.my + rn2(3) - 1;
 
-        if (isok(tx, ty) && teleok(tx, ty, false))
+        if (isok(tx, ty) && await teleok(tx, ty, false))
             await teleds(tx, ty, TELEDS_TELEPORT);
     }
 }

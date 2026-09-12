@@ -12,6 +12,9 @@ import { A_CON, A_WIS, NORMAL_SPEED, NATTK, LARGEST_INT, Upolyd,
          LL_MINORAC } from './const.js';
 import { find_mac } from './worn.js';
 import { Goodbye } from './role.js';
+import { resists_drli } from './mondata.js';
+import { livelog_printf } from './pline.js';
+import { Amphibious } from './youprop.js';
 
 // src/exper.c enermod() — role-based energy multiplier. Only reached above
 // level 0, so not exercised at character creation.
@@ -190,31 +193,38 @@ export function rndexp(gaining) {
 export async function losexp(drainer) {
     const u = game.u;
 
-    /* resists_drli(youmonst) — worn drain-resistance not modelled */
+    /* override life-drain resistance when handling an explicit
+       wizard mode request to reduce level; never fatal though */
+    if (drainer && drainer === '#levelchange')
+        drainer = null;
+    else if (resists_drli(game.youmonst))
+        return;
 
+    /* level-loss message; "Goodbye level 1." is fatal; divine anger
+       (drainer==NULL) resets a level 1 character to 0 experience points
+       without reducing level and that isn't fatal so suppress the message
+       in that situation */
     if (u.ulevel > 1 || drainer)
         await pline(`${Goodbye()} level ${u.ulevel}.`);
 
     if (u.ulevel > 1) {
         u.ulevel -= 1;
-        /* adjabil() can print an intrinsic-loss message before losexp() has
-           dirtied the status fields for the new level. If that message
-           collides with a full topline, C's blocking frame still shows the
-           prior level and rank. */
-        game._deferred_status_level_until_more = u.ulevel + 1;
         await adjabil(u.ulevel + 1, u.ulevel);
-        delete game._deferred_status_level_until_more;
-    } else {
+        livelog_printf(LL_MINORAC, `lost experience level ${u.ulevel + 1}`);
+    } else { /* u.ulevel==1 */
         if (drainer) {
             game.killer = { format: 1 /* KILLED_BY */, name: drainer };
             const { done } = await import('./end.js');
             const { DIED } = await import('./const.js');
             await done(DIED);
         }
+        /* no drainer or lifesaved */
+        if (u.ulevel > 1)
+            /* can happen during debug fuzzing if fuzzer_savelife() uses
+               a blessed potion of restore ability to restore lost levels */
+            return;
         u.uexp = 0;
-        /* src/exper.c:245 */
-        const { livelog_add } = await import('./pline.js');
-        livelog_add('lost all experience');
+        livelog_printf(LL_MINORAC, 'lost all experience');
     }
 
     const olduhpmax = u.uhpmax;
@@ -409,8 +419,8 @@ export function experience(mtmp, nk) {
         /* extra heavy damage bonus */
         if (ptr.mattk[i][3] * ptr.mattk[i][2] > 23)
             tmp += mtmp.m_lev;
-        if (tmp2 === A.AD_WRAP && ptr.mlet === MONSYMS.S_EEL)
-            note_unported_exper('experience:amphibious_eel');
+        if (tmp2 === A.AD_WRAP && ptr.mlet === MONSYMS.S_EEL && !Amphibious())
+            tmp += 1000;
     }
 
     /*  For certain "extra nasty" monsters, give even more */

@@ -12,6 +12,8 @@
 // `rn2(1) @ pick_align`.
 
 import { game } from './gstate.js';
+import { ROLE_CHAOTIC, ROLE_LAWFUL, ROLE_NEUTRAL, ROLE_MALE, ROLE_FEMALE, ROLE_NEUTER, BP_ALIGN, BP_GEND, BP_RACE, BP_ROLE, NUM_BP } from './const.js';
+import { s_suffix, strsubst, strkitten, strstri } from './hacklib.js';
 import { rn2 } from './rng.js';
 import { roles, races, genders, aligns } from './role_data.js';
 import { mons as MONS_INIT, PMNAMES, MSOUND, MFLAGS } from './monst_data.js';
@@ -608,7 +610,10 @@ export function algnmenu_letters() {
 export function Hello(mtmp) {
     switch (game.urole?.mnum) {
     case PMNAMES.PM_KNIGHT:   return 'Salutations';   /* Olde English */
-    case PMNAMES.PM_SAMURAI:  return 'Konnichi wa';   /* Japanese */
+    case PMNAMES.PM_SAMURAI:
+        return (mtmp && mtmp.data === game.mons[PMNAMES.PM_SHOPKEEPER])
+                    ? 'Irasshaimase'
+                    : 'Konnichi wa'; /* Japanese */
     case PMNAMES.PM_TOURIST:  return 'Aloha';         /* Hawaiian */
     case PMNAMES.PM_VALKYRIE: return 'Velkommen';     /* Norse */
     default:                  return 'Hello';
@@ -635,4 +640,358 @@ export function align_str(alignment) {
     case -128: return 'unaligned';
     default: return 'unknown';
     }
+}
+
+// src/role.c:396 randrace()
+export function randrace(rolenum) {
+    let i, n = 0;
+
+    /* Count the number of valid races */
+    for (i = 0; i < races.length; i++)
+        if (roles[rolenum].allow & races[i].allow & ROLE_RACEMASK)
+            n++;
+
+    /* Pick a random race */
+    /* Use a factor of 100 in case of bad random number generators */
+    if (n)
+        n = Math.trunc(rn2(n * 100) / 100);
+    for (i = 0; i < races.length; i++)
+        if (roles[rolenum].allow & races[i].allow & ROLE_RACEMASK) {
+            if (n)
+                n--;
+            else
+                return i;
+        }
+
+    /* This role has no permitted races? */
+    return rn2(races.length); /* rn2(SIZE(races) - 1) */
+}
+
+// src/role.c:455 randgend()
+export function randgend(rolenum, racenum) {
+    let i, n = 0;
+
+    /* Count the number of valid genders */
+    for (i = 0; i < ROLE_GENDERS; i++)
+        if (roles[rolenum].allow & races[racenum].allow & genders[i].allow
+            & ROLE_GENDMASK)
+            n++;
+
+    /* Pick a random gender */
+    if (n)
+        n = rn2(n);
+    for (i = 0; i < ROLE_GENDERS; i++)
+        if (roles[rolenum].allow & races[racenum].allow & genders[i].allow
+            & ROLE_GENDMASK) {
+            if (n)
+                n--;
+            else
+                return i;
+        }
+
+    /* This role/race has no permitted genders? */
+    return rn2(ROLE_GENDERS);
+}
+
+// src/role.c:499 randalign()
+export function randalign(rolenum, racenum) {
+    let i, n = 0;
+
+    /* Count the number of valid alignments */
+    for (i = 0; i < ROLE_ALIGNS; i++)
+        if (roles[rolenum].allow & races[racenum].allow & aligns[i].allow
+            & ROLE_ALIGNMASK)
+            n++;
+
+    /* Pick a random alignment */
+    if (n)
+        n = rn2(n);
+    for (i = 0; i < ROLE_ALIGNS; i++)
+        if (roles[rolenum].allow & races[racenum].allow & aligns[i].allow
+            & ROLE_ALIGNMASK) {
+            if (n)
+                n--;
+            else
+                return i;
+        }
+
+    /* This role/race has no permitted alignments? */
+    return rn2(ROLE_ALIGNS);
+}
+
+// src/role.c:2118 validrole()
+export function validrole(rolenum) {
+    return (rolenum >= 0 && rolenum < roles.length); /* IndexOkT(rolenum, roles) */
+}
+
+// src/role.c:2124 validrace()
+export function validrace(rolenum, racenum) {
+    /* Assumes validrole */
+    return ((racenum >= 0 && racenum < races.length)
+            && (roles[rolenum].allow & races[racenum].allow
+                & ROLE_RACEMASK) !== 0);
+}
+
+// src/role.c:2133 validgend()
+export function validgend(rolenum, racenum, gendnum) {
+    /* Assumes validrole and validrace */
+    return (gendnum >= 0 && gendnum < ROLE_GENDERS
+            && (roles[rolenum].allow & races[racenum].allow
+                & genders[gendnum].allow & ROLE_GENDMASK) !== 0);
+}
+
+// src/role.c:2142 validalign()
+export function validalign(rolenum, racenum, alignnum) {
+    /* Assumes validrole and validrace */
+    return (alignnum >= 0 && alignnum < ROLE_ALIGNS
+            && (roles[rolenum].allow & races[racenum].allow
+                & aligns[alignnum].allow & ROLE_ALIGNMASK) !== 0);
+}
+
+// src/role.c:1488 race_alignmentcount()
+function race_alignmentcount(racenum) {
+    let aligncount = 0;
+
+    if (racenum !== ROLE_NONE && racenum !== ROLE_RANDOM) {
+        if (races[racenum].allow & ROLE_CHAOTIC)
+            ++aligncount;
+        if (races[racenum].allow & ROLE_LAWFUL)
+            ++aligncount;
+        if (races[racenum].allow & ROLE_NEUTRAL)
+            ++aligncount;
+    }
+    return aligncount;
+}
+
+// src/role.c:1503 role_gendercount()
+function role_gendercount(rolenum) {
+    let gendcount = 0;
+
+    if (validrole(rolenum)) {
+        if (roles[rolenum].allow & ROLE_MALE)
+            ++gendcount;
+        if (roles[rolenum].allow & ROLE_FEMALE)
+            ++gendcount;
+        if (roles[rolenum].allow & ROLE_NEUTER)
+            ++gendcount;
+    }
+    return gendcount;
+}
+
+// src/role.c:1518 promptsep() — the separator before the next post
+// attribute; gr.role_post_attribs is game.role_post_attribs
+function promptsep(buf, num_post_attribs) {
+    const conjuct = 'and ';
+
+    if (num_post_attribs > 1 && game.role_post_attribs < num_post_attribs
+        && game.role_post_attribs > 1)
+        buf += ',';
+    buf += ' ';
+    --game.role_post_attribs;
+    if (!game.role_post_attribs && num_post_attribs > 1)
+        buf += conjuct;
+    return buf;
+}
+
+// src/role.c:1534 root_plselection_prompt() — "<lawful female gnomish
+// cavewoman>" for the facets already pinned; gr.role_pa[] (game.role_pa)
+// records the facets left to ask about
+export function root_plselection_prompt(rolenum, racenum, gendnum, alignnum) {
+    let k, gendercount = 0, aligncount = 0;
+    let buf;
+    let donefirst = false;
+
+    /* initialize these static variables each time this is called */
+    game.role_post_attribs = 0;
+    game.role_pa = [];
+    for (k = 0; k < NUM_BP; ++k)
+        game.role_pa[k] = 0;
+    buf = '';
+
+    /* How many alignments are allowed for the desired race? */
+    if (racenum !== ROLE_NONE && racenum !== ROLE_RANDOM)
+        aligncount = race_alignmentcount(racenum);
+
+    if (alignnum !== ROLE_NONE && alignnum !== ROLE_RANDOM
+        && ok_align(rolenum, racenum, gendnum, alignnum)) {
+        if (donefirst)
+            buf += ' ';
+        buf += aligns[alignnum].adj;
+        donefirst = true;
+    } else {
+        /* in case we got here by failing the ok_align() test */
+        if (alignnum !== ROLE_RANDOM)
+            alignnum = ROLE_NONE;
+        /* if alignment not specified, but race is specified
+           and only one choice of alignment for that race then
+           don't include it in the later list */
+        if ((((racenum !== ROLE_NONE && racenum !== ROLE_RANDOM)
+              && ok_race(rolenum, racenum, gendnum, alignnum))
+             && (aligncount > 1))
+            || (racenum === ROLE_NONE || racenum === ROLE_RANDOM)) {
+            game.role_pa[BP_ALIGN] = 1;
+            game.role_post_attribs++;
+        }
+    }
+    /* <your lawful> */
+
+    /* How many genders are allowed for the desired role? */
+    if (validrole(rolenum))
+        gendercount = role_gendercount(rolenum);
+
+    if (gendnum !== ROLE_NONE && gendnum !== ROLE_RANDOM) {
+        if (validrole(rolenum)) {
+            /* if role specified, and multiple choice of genders for it,
+               and name of role itself does not distinguish gender */
+            if ((rolenum !== ROLE_NONE) && (gendercount > 1)
+                && !roles[rolenum].name.f) {
+                if (donefirst)
+                    buf += ' ';
+                buf += genders[gendnum].adj;
+                donefirst = true;
+            }
+        } else {
+            if (donefirst)
+                buf += ' ';
+            buf += genders[gendnum].adj;
+            donefirst = true;
+        }
+    } else {
+        /* if gender not specified, but role is specified
+                and only one choice of gender then
+                don't include it in the later list */
+        if ((validrole(rolenum) && (gendercount > 1))
+            || !validrole(rolenum)) {
+            game.role_pa[BP_GEND] = 1;
+            game.role_post_attribs++;
+        }
+    }
+    /* <your lawful female> */
+
+    if (racenum !== ROLE_NONE && racenum !== ROLE_RANDOM) {
+        if (validrole(rolenum)
+            && ok_race(rolenum, racenum, gendnum, alignnum)) {
+            if (donefirst)
+                buf += ' ';
+            buf += (rolenum === ROLE_NONE) ? races[racenum].noun
+                                           : races[racenum].adj;
+            donefirst = true;
+        } else if (!validrole(rolenum)) {
+            if (donefirst)
+                buf += ' ';
+            buf += races[racenum].noun;
+            donefirst = true;
+        } else {
+            game.role_pa[BP_RACE] = 1;
+            game.role_post_attribs++;
+        }
+    } else {
+        game.role_pa[BP_RACE] = 1;
+        game.role_post_attribs++;
+    }
+    /* <your lawful female gnomish> || <your lawful female gnome> */
+
+    if (validrole(rolenum)) {
+        if (donefirst)
+            buf += ' ';
+        if (gendnum !== ROLE_NONE) {
+            if (gendnum === 1 && roles[rolenum].name.f)
+                buf += roles[rolenum].name.f;
+            else
+                buf += roles[rolenum].name.m;
+        } else {
+            if (roles[rolenum].name.f) {
+                buf += roles[rolenum].name.m;
+                buf += '/';
+                buf += roles[rolenum].name.f;
+            } else
+                buf += roles[rolenum].name.m;
+        }
+        donefirst = true;
+    } else if (rolenum === ROLE_NONE) {
+        game.role_pa[BP_ROLE] = 1;
+        game.role_post_attribs++;
+    }
+
+    if ((racenum === ROLE_NONE || racenum === ROLE_RANDOM)
+        && !validrole(rolenum)) {
+        if (donefirst)
+            buf += ' ';
+        buf += 'character';
+        /*donefirst = TRUE;*/
+    }
+    /* <your lawful female gnomish cavewoman> || <your lawful female gnome>
+     *    || <your lawful female character>
+     */
+    return buf;
+}
+
+// src/role.c:1636 build_plselection_prompt() — "Shall I pick your lawful
+// female gnome's role and alignment for you? [ynaq] "
+export function build_plselection_prompt(rolenum, racenum, gendnum, alignnum) {
+    let num_post_attribs = 0;
+    let tmpbuf, buf, p;
+    const flags = game.flags || {};
+
+    tmpbuf = 'Shall I pick ';
+    if (racenum !== ROLE_NONE || validrole(rolenum))
+        tmpbuf += 'your ';
+    else
+        tmpbuf += 'a ';
+    /* <your> */
+
+    tmpbuf += root_plselection_prompt(rolenum, racenum, gendnum, alignnum);
+    /* "Shall I pick a character's role, race, gender, and alignment for you?"
+       plus " [ynaq] (y)" is a little too long for a conventional 80 columns;
+       also, "pick a character's <anything>" sounds a bit stilted */
+    tmpbuf = strsubst(tmpbuf, 'pick a character', 'pick character');
+    buf = s_suffix(tmpbuf);
+    /* don't bother splitting caveman/cavewoman or priest/priestess
+       in order to apply possessive suffix to both halves, but do
+       change "priest/priestess'" to "priest/priestess's" */
+    if ((p = strstri(buf, "priest/priestess'")) >= 0
+        && p + "priest/priestess'".length === buf.length)
+        buf = strkitten(buf, 's');
+
+    /* buf should now be:
+     *    <your lawful female gnomish cavewoman's>
+     * || <your lawful female gnome's>
+     * || <your lawful female character's>
+     *
+     * Now append the post attributes to it
+     */
+    num_post_attribs = game.role_post_attribs;
+    if (!num_post_attribs) {
+        /* some constraints might have been mutually exclusive, in which case
+           some prompting that would have been omitted is needed after all */
+        if (flags.initrole === ROLE_NONE && !game.role_pa[BP_ROLE])
+            game.role_pa[BP_ROLE] = ++game.role_post_attribs;
+        if (flags.initrace === ROLE_NONE && !game.role_pa[BP_RACE])
+            game.role_pa[BP_RACE] = ++game.role_post_attribs;
+        if (flags.initalign === ROLE_NONE && !game.role_pa[BP_ALIGN])
+            game.role_pa[BP_ALIGN] = ++game.role_post_attribs;
+        if (flags.initgend === ROLE_NONE && !game.role_pa[BP_GEND])
+            game.role_pa[BP_GEND] = ++game.role_post_attribs;
+        num_post_attribs = game.role_post_attribs;
+    }
+    if (num_post_attribs) {
+        if (game.role_pa[BP_RACE]) {
+            buf = promptsep(buf, num_post_attribs);
+            buf += 'race';
+        }
+        if (game.role_pa[BP_ROLE]) {
+            buf = promptsep(buf, num_post_attribs);
+            buf += 'role';
+        }
+        if (game.role_pa[BP_GEND]) {
+            buf = promptsep(buf, num_post_attribs);
+            buf += 'gender';
+        }
+        if (game.role_pa[BP_ALIGN]) {
+            buf = promptsep(buf, num_post_attribs);
+            buf += 'alignment';
+        }
+    }
+    buf += ' for you? [ynaq] ';
+    return buf;
 }

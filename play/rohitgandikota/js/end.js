@@ -11,7 +11,7 @@ import { game } from './gstate.js';
 import { notice_all_mons_flush } from './hack.js';
 import { shkname, shkname_is_pname } from './shknam.js';
 import { m_monnam } from './do_name.js';
-import { has_ebones } from './const.js';
+import { In_tutorial, UTOTYPE_ATSTAIRS, has_ebones } from './const.js';
 import { pline, canspotmon, tty_clear_nhwindow_message } from './display.js';
 import { You, Your, You_feel, pline_The } from './pline.js';
 import { carrying, hidden_gold, money_cnt, useup, obfree, currency } from './invent.js';
@@ -610,7 +610,6 @@ async function really_done(how) {
     let corpse = null;
     let umoney;
     let taken = false;
-    let repos = null;
     let endtime;
 
     /* src/end.c:1144 — the game is now over; disclosure windows read this
@@ -637,7 +636,7 @@ async function really_done(how) {
     if ((game.moves | 0) <= 1 && how < PANICKED && !game.done_stopprint)
         await pline(`Do not pass Go.  Do not collect 200 ${currency(200)}.`);
 
-    const { can_make_bones, savebones, drop_upon_death } = await import('./bones.js');
+    const { can_make_bones, savebones } = await import('./bones.js');
     const bones_ok = (how < GENOCIDED) && can_make_bones();
 
     /* maintain ugrave_arise even for !bones_ok */
@@ -656,47 +655,21 @@ async function really_done(how) {
     if (how === QUIT || how === ESCAPED || how === PANICKED)
         game.killer.format = 2; /* NO_KILLER_PREFIX */
 
-    /* src/shk.c paybill()/inherits(): the resident or pursuing shopkeeper
-       gets first claim on a dead hero's inventory.  The full billing walk
-       reduces to these two early-game cases when there is one local keeper:
-       peaceful inheritance inside the shop, or confiscation by an angry or
-       unpaid keeper. */
-    if (how !== PANICKED && (game.invent || []).length) {
-        const ushops = u.ushops || '';
-        const shks = (game.level?.monsters || []).filter(m => m.isshk);
-        const priority = (shkp) => {
-            const eshk = shkp.eshk || shkp.mextra?.eshk || {};
-            const inside = ushops.includes(String.fromCharCode(eshk.shoproom || 0));
-            const owed = !!((eshk.billct | 0) || eshk.bill_p?.length
-                            || (eshk.debit | 0) || (eshk.robbed | 0));
-            if (inside && owed) return 0;
-            if (inside) return 1;
-            if (owed) return 2;
-            if (eshk.following || !shkp.mpeaceful) return 3;
-            return 4;
-        };
-        shks.sort((a, b) => priority(a) - priority(b));
-        const shkp = shks[0];
-        if (shkp) {
-            const eshk = shkp.eshk || shkp.mextra?.eshk || {};
-            const inside = ushops.includes(String.fromCharCode(eshk.shoproom || 0));
-            const owed = !!((eshk.billct | 0) || eshk.bill_p?.length
-                            || (eshk.debit | 0) || (eshk.robbed | 0));
-            const raw = shkp.shknam || eshk.shknam || 'the shopkeeper';
-            const shkname = /^[-+_|]/.test(raw) ? raw.slice(1) : raw;
-            const cleanInheritance = inside && shkp.mpeaceful
-                && !owed && !eshk.following && u.ugrave_arise < LOW_PM;
-            if (cleanInheritance) {
-                await pline(`${shkname} gratefully inherits all your possessions.`);
-                taken = true;
-            } else if (inside || owed || eshk.following || !shkp.mpeaceful) {
-                await pline(`${shkname} takes all your possessions.`);
-                taken = true;
-            }
-            if (taken)
-                repos = { x: u.ux || u.ux0, y: u.uy || u.uy0 };
-        }
-    }
+    if (how !== PANICKED) {
+        const silently = game.done_stopprint ? true : false;
+        const { paybill } = await import('./shk.js');
+        const { paygd } = await import('./vault.js');
+        const { clearpriests } = await import('./priest.js');
+
+        /* these affect score and/or bones, but avoid them during panic */
+        taken = await paybill((how === ESCAPED) ? -1 : (how !== QUIT) ? 1 : 0,
+                              silently);
+        await paygd(silently);
+        await clearpriests();
+    } else
+        taken = false; /* lint; assert( !bones_ok ); */
+
+    /* clearlocks() — file lock housekeeping (files.c), nothing to port */
 
     // src/end.c really_done(), acknowledge the message window before
     // disclosure. An already-read prompt keeps its pixels until overwritten.
@@ -744,8 +717,11 @@ async function really_done(how) {
     if (how === ESCAPED || how === ASCENDED)
         await keepdogs(true);
 
-    if (bones_ok && taken)
-        await drop_upon_death(null, null, repos.x, repos.y);
+    /* finish_paybill should be called after disclosure but before bones */
+    if (bones_ok && taken) {
+        const { finish_paybill } = await import('./shk.js');
+        await finish_paybill();
+    }
 
     /* grave creation after disclosure */
     if (bones_ok && u.ugrave_arise === -1
@@ -1152,16 +1128,36 @@ function Goodbye() {
 // src/end.c:89 done2() — the #quit command.
 export async function done2() {
     const { tty_yn_function } = await import('./tty/topl.js');
-    /* In_tutorial arm: the tutorial switch-back question */
+    let abandon_tutorial = false;
+
+    if (In_tutorial(game.u.uz)
+        && (await tty_yn_function(
+                'Switch from the tutorial back to regular play?', 'yn', 'n'))
+           === 'y')
+        abandon_tutorial = true;
+
     /* ParanoidQuit is not in the default paranoid_confirmation set, so
        this is a plain single-key yn with default 'n' */
-    const c0 = await tty_yn_function('Really quit without saving?', 'yn', 'n');
-    if (c0 !== 'y') {
+    if (abandon_tutorial
+        || (await tty_yn_function('Really quit without saving?', 'yn', 'n'))
+           !== 'y') {
         /* clear_nhwindow(WIN_MESSAGE); nomul(0) */
         tty_clear_nhwindow_message(game._topl_cury || 0);
         const { nomul } = await import('./hack.js');
         if ((game.multi ?? 0) > 0)
             nomul(0);
+        if ((game.multi ?? 0) === 0) {
+            game.u.uinvulnerable = false; /* avoid ctrl-C bug -dlc */
+            game.u.usleep = 0;
+        }
+
+        if (abandon_tutorial) {
+            const { schedule_goto } = await import('./do.js');
+            /* struct u is zeroed at start: a wizard-mode ^V into the
+               tutorial never set ucamefrom, so the C schedules {0,0} */
+            schedule_goto(game.u.ucamefrom ?? { dnum: 0, dlevel: 0 },
+                          UTOTYPE_ATSTAIRS, 'Resuming regular play.', null);
+        }
         return 0; /* ECMD_OK */
     }
 
@@ -1170,10 +1166,13 @@ export async function done2() {
            default, ESC included) suppresses the end-of-game printout */
         const c = await tty_yn_function('Dump core?', 'ynq', 'q');
         if (c === 'y') {
-            /* exit_nhwindows + abort: the session ends here */
-            game.program_state = game.program_state || {};
-            game.program_state.done = true;
-            return 0;
+            /* exit_nhwindows() + NH_abort(): the process ends here without
+               any further screen; the segment's remaining keys reach a dead
+               terminal (allmain.js moveloop_core's gameover arm) */
+            game.program_state_gameover = true;
+            const sig = new Error('nh_terminate');
+            sig.__nh_gameover = true;
+            throw sig;
         } else if (c === 'q')
             game.done_stopprint = (game.done_stopprint | 0) + 1;
     }

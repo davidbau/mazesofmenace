@@ -90,6 +90,9 @@ import { simpleonames } from './objnam.js';
 import { SHOPBASE, CONTAINED_TOO, COST_UNCURS, COST_UNBLSS,
          PLNMSG_OBJ_GLOWS } from './const.js';
 import { is_ice } from './dbridge.js';
+import { artifact_exists } from './artifact.js';
+import { safe_oname } from './do_name.js';
+import { rloco } from './teleport.js';
 
 
 // include/objclass.h:152 — #define SPBOOK_no_NOVEL (0 - (int) SPBOOK_CLASS)
@@ -345,7 +348,7 @@ export function mkobj(oclass, artif) {
        out is not merely dropping a diagnostic. If it ever fires, oc_prob or
        oclass_prob_totals is wrong. */
     if (objects[i].oc_class !== oclass || !obj_descr_name(i)) {
-        note_unported_obj(`probtype error oclass=${oclass} i=${i}`);
+        impossible(`probtype error, oclass=${oclass} i=${i}`);
         i = game.bases[oclass];
     }
 
@@ -1728,7 +1731,9 @@ export function mkcorpstat(objtype, mtmp, ptr, x, y, corpstatflags) {
 
     if (x === 0 && y === 0) {
         otmp = mksobj(objtype, init, false);
-        note_unported_obj('mkcorpstat:rloco');
+        /* every caller passes a real spot; rloco() draws its location
+           synchronously and only its landing arms await */
+        void rloco(otmp);
     } else {
         otmp = mksobj_at(objtype, x, y, init, false);
     }
@@ -2039,7 +2044,7 @@ export function discard_minvent(mtmp, uncreate_artifacts) {
         otmp.owornmask = 0;
         obj_extract_self(otmp);
         if (uncreate_artifacts && otmp.oartifact)
-            note_unported_obj('discard_minvent:artifact_exists');
+            artifact_exists(otmp, safe_oname(otmp), false, ONAME_NO_FLAGS);
         /* obfree(otmp, NULL) — no other reference remains */
     }
 }

@@ -239,6 +239,13 @@ export function strkitten(s, c) {
     return s + c;
 }
 
+// src/hacklib.c:258 trimspaces() — remove leading and trailing whitespace
+// (spaces and tabs); the C edits the buffer in place and returns a pointer
+// past the leading whitespace.
+export function trimspaces(txt) {
+    return txt.replace(/^[ \t]+/, '').replace(/[ \t]+$/, '');
+}
+
 export function strNsubst(inoutbuf, orig, replacement, n) {
     const len = orig.length;
     let ocount = 0, /* number of times 'orig' has been matched */

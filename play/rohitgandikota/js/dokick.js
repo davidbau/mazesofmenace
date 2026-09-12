@@ -228,6 +228,14 @@ import { legs_in_no_shape } from './do.js';
 import { t_at } from './mon.js';
 import { couldsee } from './vision.js';
 import { d } from './rng.js';
+import { on_level } from './dungeon.js';
+import { ok_to_quest } from './quest.js';
+import { Tobjnam } from './objnam.js';
+import { upstart } from './do_name.js';
+import { maybe_unhide_at } from './mon.js';
+import { is_unpaid } from './shk.js';
+import { breaktest } from './dothrow.js';
+import { remove_worn_item } from './steal.js';
 
 
 
@@ -519,12 +527,11 @@ export function down_gate(x, y) {
     const stway = stairway_at_fn ? stairway_at_fn(x, y) : null;
 
     game.gate_str = 0;
-    /* this matches the player restriction in goto_level().
-       on_level(&u.uz, &qstart_level) && !ok_to_quest() -- neither is ported,
-       and the quest start level is not reachable in an early-dungeon
-       session, so record rather than guess. */
-    if (game.level?.flags?.is_qstart)
-        (game.unported ||= new Set()).add('dokick:down_gate:quest');
+    /* this matches the player restriction in goto_level() */
+    if (game.qstart_level && on_level(game.u.uz, game.qstart_level)
+        && !ok_to_quest()) {
+        return MIGR_NOWHERE;
+    }
 
     if (stway && !stway.up && !stway.isladder) {
         game.gate_str = 'down the stairs';
@@ -545,20 +552,159 @@ export function down_gate(x, y) {
     return MIGR_NOWHERE;
 }
 
-// src/dokick.c ship_object() — send a dropped object down a hole or stairs.
-//
-// Only the two early returns are ported, and they are what answers on any
-// ordinary square: no object means FALSE, and no downward gate means FALSE.
-// The actual shipping needs drop_to(), the migration lists and the shop arms,
-// so a square that DOES have a gate records rather than guessing.
-export function ship_object(otmp, x, y, shop_floor_obj) {
+// src/dokick.c:1400 ship_object() — send a dropped object down a hole or
+// stairs; returns true when the object left (or broke), false when the
+// caller must finish the drop.
+export async function ship_object(otmp, x, y, shop_floor_obj) {
+    let toloc;
+    let ox, oy;
+    const cc = { x: 0, y: 0 };
+    let t;
+    let nodrop, unpaid, container, impact = false, chainthere = false;
+    let n = 0;
+
     if (!otmp)
         return false;
-    if (down_gate(x, y) === MIGR_NOWHERE)
+    if ((toloc = down_gate(x, y)) === MIGR_NOWHERE)
+        return false;
+    drop_to(cc, toloc, x, y);
+    if (!cc.y)
         return false;
 
-    (game.unported ||= new Set()).add('dokick:ship_object:migration');
-    return false;
+    /* objects other than attached iron ball always fall down ladder,
+       but have a chance of staying otherwise */
+    nodrop = (otmp === game.u.uball) || (otmp === game.u.uchain)
+             || (toloc !== MIGR_LADDER_UP && rn2(3));
+
+    container = Has_contents(otmp);
+    unpaid = is_unpaid(otmp);
+
+    if (OBJ_AT(x, y)) {
+        for (const obj of (game.level?.objects || [])) {
+            if (obj.ox !== x || obj.oy !== y)
+                continue;
+            if (obj === game.u.uchain)
+                chainthere = true;
+            else if (obj !== otmp)
+                n += obj.quan;
+        }
+        if (n)
+            impact = true;
+    }
+    /* boulders never fall through trap doors, but they might knock
+       other things down before plugging the hole */
+    if (otmp.otyp === ONAMES.BOULDER && (t = t_at(x, y)) != null
+        && is_hole(t.ttyp)) {
+        if (impact)
+            await impact_drop(otmp, x, y, 0);
+        return false; /* let caller finish the drop */
+    }
+
+    if (cansee(x, y))
+        await otransit_msg(otmp, nodrop, chainthere, n);
+
+    if (nodrop) {
+        if (impact) {
+            await impact_drop(otmp, x, y, 0);
+            maybe_unhide_at(x, y);
+        }
+        return false;
+    }
+
+    if (unpaid || shop_floor_obj) {
+        if (unpaid) {
+            await stolen_value(otmp, game.u.ux, game.u.uy, true, false);
+        } else {
+            ox = otmp.ox;
+            oy = otmp.oy;
+            await stolen_value(
+                otmp, ox, oy,
+                (costly_spot(game.u.ux, game.u.uy)
+                 && (game.u.urooms || '').includes((in_rooms(ox, oy, SHOPBASE) || '')[0] || '\0')),
+                false);
+        }
+        /* set otmp->no_charge to 0 */
+        if (container)
+            picked_container(otmp); /* happens to do the right thing */
+        if (otmp.oclass !== OCLASSES.COIN_CLASS)
+            otmp.no_charge = 0;
+    }
+
+    if (otmp.owornmask)
+        await remove_worn_item(otmp, true);
+
+    /* some things break rather than ship */
+    if (breaktest(otmp)) {
+        let result;
+
+        if (game.objects[otmp.otyp].oc_material === MATERIALS.GLASS
+            || otmp.otyp === ONAMES.EXPENSIVE_CAMERA) {
+            if (otmp.otyp === ONAMES.MIRROR)
+                change_luck(-2);
+            result = 'crash';
+        } else {
+            /* penalty for breaking eggs laid by you */
+            if (otmp.otyp === ONAMES.EGG && otmp.spe && ismnum(otmp.corpsenm))
+                change_luck(-Math.min(otmp.quan, 5));
+            result = 'splat';
+        }
+        /* Soundeffect(se_egg_splatting / se_glass_crashing, 25) */
+        await You_hear(`a muffled ${result}.`);
+        obj_extract_self(otmp);
+        obfree(otmp, null);
+        return true;
+    }
+
+    add_to_migration(otmp);
+    otmp.ox = cc.x;
+    otmp.oy = cc.y;
+    otmp.owornmask = toloc;
+    /* boulder from rolling boulder trap, no longer part of the trap */
+    if (otmp.otyp === ONAMES.BOULDER)
+        otmp.otrapped = 0;
+
+    if (impact) {
+        /* the objs impacted may be in a shop other than
+         * the one in which the hero is located.  another
+         * check for a shk is made in impact_drop.  it is, e.g.,
+         * possible to kick/throw an object belonging to one
+         * shop into another shop through a gap in the wall,
+         * and cause objects belonging to the other shop to
+         * fall down a trap door--thereby getting two shopkeepers
+         * angry at the hero in one shot.
+         */
+        await impact_drop(otmp, x, y, 0);
+        newsym(x, y);
+    }
+    return true;
+}
+
+// src/dokick.c:1909 otransit_msg() — "The <object> falls down the stairs."
+async function otransit_msg(otmp, nodrop, chainthere, num) {
+    let optr, xbuf;
+
+    if (otmp.otyp === ONAMES.CORPSE) {
+        /* Tobjnam() calls xname() and would yield "The corpse";
+           we want more specific "The newt corpse" or "Medusa's corpse" */
+        optr = upstart(corpse_xname(otmp, null, CXN_PFX_THE));
+    } else {
+        optr = Tobjnam(otmp, null);
+    }
+    const obuf = optr;
+    if (num || chainthere) {
+        if (num) { /* means: other objects are impacted */
+            xbuf = ` ${otense(otmp, 'hit')} ${(num === 1) ? 'another' : 'other'} object${
+                (num > 1) ? 's' : ''}`;
+        } else { /* chain-only msg */
+            xbuf = ` ${otense(otmp, 'rattle')} your chain`;
+        }
+        if (nodrop)
+            xbuf += '.';
+        else
+            xbuf += ` and ${otense(otmp, 'fall')} ${game.gate_str}.`;
+        await pline(`${obuf}${xbuf}`);
+    } else if (!nodrop)
+        await pline(`${obuf} ${otense(otmp, 'fall')} ${game.gate_str}.`);
 }
 
 
@@ -841,7 +987,7 @@ async function kick_monster(mon, x, y) {
 // src/dokick.c:295 ghitm(); gold hits a monster.  Return TRUE if caught
 // (the gold taken care of), FALSE otherwise.  The gold object is *not*
 // attached to the fobj chain!
-async function ghitm(mtmp, gold) {
+export async function ghitm(mtmp, gold) {
     let msg_given = false;
 
     if (!likes_gold(mtmp.data) && !mtmp.isshk && !mtmp.ispriest

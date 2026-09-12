@@ -4,6 +4,8 @@
 // Only choose_classes_menu() so far: the object-class picker that
 // optfn_pickup_types() puts up for "Autopickup what?".
 
+import { MAXBLSTATS } from './const.js';
+import { NHW_STATUS, tty_status_enablefield, tty_status_update } from './tty/wintty.js';
 import {
     NHW_MENU, ATR_NONE,
     tty_create_nhwindow, tty_destroy_nhwindow, tty_start_menu, tty_add_menu,
@@ -134,4 +136,53 @@ export function get_menu_coloring(str) {
             if (regex_match(str, tmpmc.match))
                 return { color: tmpmc.color, attr: tmpmc.attr };
     return null;
+}
+
+/* ---------------------------------------------------------------------------
+ * src/windows.c genl_status_*: the window-port side of the status fields.
+ * status_vals[], status_activefields[], status_fieldfmt[] and
+ * status_fieldnm[] live on game._genl_status.
+ * ------------------------------------------------------------------------- */
+
+export function genl_status() {
+    return (game._genl_status ||= genl_status_init());
+}
+
+// src/windows.c:1099 genl_status_init()
+export function genl_status_init() {
+    let i;
+    const st = { status_vals: [], status_activefields: [], status_fieldfmt: [],
+                 status_fieldnm: [] };
+
+    for (i = 0; i < MAXBLSTATS; ++i) {
+        st.status_vals[i] = '';
+        st.status_activefields[i] = false;
+        st.status_fieldfmt[i] = null;
+        st.status_fieldnm[i] = null;
+    }
+    game._genl_status = st;
+    /* Use a window for the genl version; backward port compatibility */
+    game.WIN_STATUS = tty_create_nhwindow(NHW_STATUS);
+    return st;
+}
+
+// src/windows.c:1114 genl_status_finish()
+export function genl_status_finish() {
+    game._genl_status = null;
+}
+
+// src/windows.c:1126 genl_status_enablefield()
+export function genl_status_enablefield(fieldidx, nm, fmt, enable) {
+    const st = genl_status();
+    st.status_fieldfmt[fieldidx] = fmt;
+    st.status_fieldnm[fieldidx] = nm;
+    st.status_activefields[fieldidx] = enable;
+}
+
+/* the windowprocs status hooks of the tty port */
+export function status_enablefield(fieldidx, nm, fmt, enable) {
+    return tty_status_enablefield(fieldidx, nm, fmt, enable);
+}
+export function status_update(fldidx, ptr, chg, percent, color, colormasks) {
+    return tty_status_update(fldidx, ptr, chg, percent, color, colormasks);
 }
