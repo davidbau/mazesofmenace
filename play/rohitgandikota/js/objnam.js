@@ -20,6 +20,8 @@ import { BUFSZ, QBUFSZ } from './const.js';
 import { shk_your } from './shk.js';
 import { carried, is_poisonable, Has_contents } from './obj.js';
 import { game } from './gstate.js';
+import { mon_pmname } from './do_name.js';
+import { genus } from './mon.js';
 import { vegetarian, name_to_monplus, type_is_pname, verysmall,
          is_neuter, is_human } from './mondata.js';
 import { MFLAGS, MSOUND, MONSYMS } from './monst_data.js';
@@ -1281,11 +1283,15 @@ export function doname(obj, vague_quan = false) {
         if (obj.otyp === ONAMES.LEASH && obj.leashmon) {
             const mlsh = (game.level?.monsters || [])
                 .find(candidate => candidate.m_id === obj.leashmon);
-            if (mlsh && !DEADMONSTER(mlsh))
+            if (mlsh && !DEADMONSTER(mlsh)) {
                 bp += ` (attached to ${noit_mon_nam(mlsh)})`;
-            else {
-                note_unported_objnam(mlsh ? 'doname:dead-leashed-monster'
-                                          : 'doname:missing-leashed-monster');
+            } else {
+                if (mlsh) /*&& DEADMONSTER(mlsh)*/
+                    void impossible(`leashed ${mon_pmname(mlsh)} #${
+                        obj.leashmon} is dead`);
+                else
+                    void impossible(`leashed monster #${
+                        obj.leashmon} not found`);
                 obj.leashmon = 0;
             }
             break;
@@ -3196,8 +3202,6 @@ export async function readobjnam(bp, no_wish) {
             const wishedTerrain = await wizterrainwish(d);
             if (wishedTerrain)
                 return wishedTerrain;
-            /* The remaining wizterrainwish paths replace other terrain. */
-            note_unported_objnam('readobjnam:wizterrainwish');
         }
 
         if (!d.oclass && !d.typ) {
@@ -3449,11 +3453,8 @@ export async function readobjnam(bp, no_wish) {
         case ONAMES.CORPSE:
             if ((!(game.mons[d.mntmp].geno & MFLAGS.G_UNIQ) || game.wizard)
                 && !(game.mvitals[d.mntmp].mvflags & MFLAGS.G_NOCORPSE)) {
-                if (game.mons[d.mntmp].msound === MSOUND.MS_GUARDIAN) {
-                    /* d.mntmp = genus(d.mntmp, 1) — quest guardian corpses
-                       become the role's genus; genus() is not ported */
-                    note_unported_objnam('readobjnam:genus');
-                }
+                if (game.mons[d.mntmp].msound === MSOUND.MS_GUARDIAN)
+                    d.mntmp = genus(d.mntmp, 1);
                 set_corpsenm(d.otmp, d.mntmp);
             }
             if (d.zombify) {

@@ -1328,7 +1328,7 @@ function refusedDiagonalDoorway(x, y, state) {
     return blocksDiagonalDoorwayExit(ux, uy, x, y, state);
 }
 
-// This repeated-command boundary owns entry into a ROOM, CORR, or
+// This repeated-command boundary owns entry into a ROOM, CORR, IS_AIR, or
 // IS_FURNITURE square, or a doorway whose mask is exactly D_NODOOR,
 // D_BROKEN, or D_ISOPEN. With autopickup disabled, it also admits the sighted
 // object descriptions and, now that js/dungeon.js surface() names every
@@ -1394,6 +1394,7 @@ export function requireSimpleHeroDestination(
     const ordinaryDestination = location
         && (location.typ === ROOM
             || location.typ === CORR
+            || IS_AIR(location.typ)
             || IS_FURNITURE(location.typ)
             || doorway);
     if (!ordinaryDestination) {
@@ -2490,10 +2491,20 @@ export async function test_move(
     const passesWalls = propertyPresent(state, PASSES_WALLS);
     const run = state.context.run ?? 0;
     const message = env.message ?? ttyPline;
-    const chewBoulder = env.stillChewing
-        ?? ((targetX, targetY) => still_chewing(targetX, targetY, state));
-    const pushBoulder = env.moverock
-        ?? (() => moverock(state, env));
+    // The C helper receives the boolean result of still_chewing() and the
+    // numeric result of moverock().  Keep the test seams usable with either
+    // their production callbacks or source-shaped scalar results; the latter
+    // is useful when a caller only needs to pin the branch's return value.
+    const chewBoulder = typeof env.stillChewing === 'function'
+        ? env.stillChewing
+        : env.stillChewing === undefined
+            ? (targetX, targetY) => still_chewing(targetX, targetY, state)
+            : async () => Boolean(env.stillChewing);
+    const pushBoulder = typeof env.moverock === 'function'
+        ? env.moverock
+        : env.moverock === undefined
+            ? () => moverock(state, env)
+            : async () => Number(env.moverock);
 
     // hack.c:1011-1072, physical obstacles. The feel happens before every
     // branch, and the pass-wall and tunnelling forms deliberately fall through
@@ -2512,7 +2523,7 @@ export async function test_move(
                 && (dmgtype(species, AD_RUST)
                     || dmgtype(species, AD_CORR)
                     || metallivorous(species))
-                && await still_chewing(x, y, state)) {
+                && await chewBoulder(x, y)) {
                 return false;
             }
             if (!(passesWalls || passes_bars(species))) {
@@ -2521,7 +2532,7 @@ export async function test_move(
                 return false;
             }
         } else if (tunnels(species) && !needspick(species)) {
-            if (mode === DO_MOVE && await still_chewing(x, y, state))
+            if (mode === DO_MOVE && await chewBoulder(x, y))
                 return false;
         } else if (state.flags?.autodig && !run
             && !state.context?.nopick && state.uwep
@@ -2567,7 +2578,7 @@ export async function test_move(
                 await message('There is an obstacle there.', state);
             return false;
         } else if (tunnels(species) && !needspick(species)) {
-            if (mode === DO_MOVE && await still_chewing(x, y, state))
+            if (mode === DO_MOVE && await chewBoulder(x, y))
                 return false;
         } else {
             if (mode === DO_MOVE) {
@@ -4724,7 +4735,8 @@ export function terrain_changed_under_hero(state = game) {
 }
 
 // C ref: hack.c spoteffects() (3312-3462), the arms an ordinary ROOM, CORR,
-// IS_FURNITURE or open doorway square reaches, plus the trap arm at 3373-3398.
+// IS_AIR, IS_FURNITURE or open doorway square reaches, plus the trap arm at
+// 3373-3398.
 // Its two ported callers, domove() and teleport.c teleds(), each admit their
 // destination through requireSimpleHeroDestination() first, which refuses
 // every square that could reach the pool, lava or ice-warning arms and hands

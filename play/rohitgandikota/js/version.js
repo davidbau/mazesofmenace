@@ -1,4 +1,5 @@
 import { game } from './gstate.js';
+import { ECMD_OK } from './const.js';
 import { VI_NUMBER, VI_NAME, VI_BRANCH, VERSION_MAJOR, VERSION_MINOR, PATCHLEVEL } from './const.js';
 // version.js — Build version info
 export const VERSION = '0.1.0';
@@ -51,4 +52,21 @@ export function status_version(indent) {
         buf += `${indentation}${VERSION_MAJOR}.${VERSION_MINOR}.${PATCHLEVEL}`;
     }
     return buf;
+}
+
+// src/version.c:156 doversion() — the 'V' command: the build's short version
+// string, or the whole #version window under the m prefix.
+export async function doversion() {
+    const { pline } = await import('./display.js');
+
+    if (game.iflags?.menu_requested) {
+        const { doextversion } = await import('./pager.js');
+        return await doextversion();
+    }
+
+    /* getversionstring(buf): nomakedefs.version_id, which is the banner
+       line of the recorder build */
+    const { VERSION_BANNER_LINE } = await import('./version_data.js');
+    await pline(VERSION_BANNER_LINE);
+    return ECMD_OK;
 }

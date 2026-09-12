@@ -39,6 +39,17 @@ import { tty_create_nhwindow, tty_destroy_nhwindow, tty_start_menu,
          tty_display_nhwindow, tty_putstr } from './tty/wintty.js';
 import { clr2colorname, query_color, query_attr } from './coloratt.js';
 import { strNsubst } from './hacklib.js';
+import { highc, strkitten } from './hacklib.js';
+import { humanoid } from './mondata.js';
+import { weapon_type, weapon_descr } from './weapon.js';
+import { is_sword } from './wield.js';
+import { bimanual } from './obj.js';
+import { is_weptool } from './mkobj.js';
+import { helm_simple_name } from './do_wear.js';
+import { upstart } from './do_name.js';
+import { OCLASSES, ONAMES } from './objects_data.js';
+import { ART_MITRE_OF_HOLINESS, ART_TSURUGI_OF_MURAMASA } from './artilist_data.js';
+import { P_LANCE, P_QUARTERSTAFF, P_MORNING_STAR, P_POLEARMS, P_UNICORN_HORN } from './const.js';
 import { pline } from './display.js';
 import { impossible } from './pline.js';
 
@@ -110,6 +121,137 @@ export const condtests = [
 // src/botl.c:298 xlev_to_rank()
 //
 //   1..2 => 0,  3..5 => 1,  6..9 => 2,  10..13 => 3, ... 26..29 => 7, 30 => 8
+// src/botl.c:478 weapon_status() — weapon description for status lines;
+// started as a terser version of what ^X shows but has diverged to some extent
+export function weapon_status() {
+    const u = game.u;
+    const uwep = u.uwep, uswapwep = u.uswapwep;
+    let res = null;
+    let outbuf = '';
+
+    if (!uwep) {
+        /* no weapon; gloves imply hands; humanoid also implies hands;
+           otherwise make no assumptions */
+        res = u.uarmg ? 'Empty-hnd' /* empty handed means "gloves only" */
+              : humanoid(game.youmonst.data) ? 'Bare-hnds' /* bare hands */
+                : 'No-weapon';
+    } else if (u.twoweap) {
+        /* two-weaponing implies hands and a weapon or wep-tool
+           (not other odd stuff) in each hand */
+        res = 'Dual-weps';
+        /* note: dual wielding two lances doesn't produce double joust */
+        if (u.usteed && (weapon_type(uwep) === P_LANCE
+                         || weapon_type(uswapwep) === P_LANCE))
+            res = 'Dual+joust'; /* lance behaves specially when mounted */
+    } else {
+        /* wielded weapon or wep-tool by its skill (an elven broadsword is
+           described as a long sword, for instance; mattock and hook are
+           exceptions), or wielded non-weapon item by its object class */
+        const skill = weapon_type(uwep);
+
+        if (u.usteed && skill === P_LANCE) {
+            res = 'joust';
+        } else if (uwep.otyp === ONAMES.AKLYS) {
+            /* aklys has skill P_CLUB but in order to be able to throw it,
+               give it a distinct name instead of skill name of "club";
+               [maybe FIXME?] for the time being
+               use real name even if 'obj' is undiscovered "thonged club" */
+            res = 'aklys';
+        } else if (is_sword(uwep)) {
+            /* use "sword" for all swords rather than specific type
+               (similar to messages when dropped due to slippery fingers) */
+            res = 'sword';
+        } else {
+            switch (skill) {
+            case P_QUARTERSTAFF:
+                res = 'staff';
+                break;
+            case P_MORNING_STAR:
+                res = 'mrng-star'; /* still pretty long */
+                break;
+            case P_POLEARMS:
+                res = 'pole';
+                break;
+            case P_UNICORN_HORN:
+                res = 'unihorn';
+                break;
+            default:
+                res = weapon_descr(uwep);
+                if (res.toLowerCase() === 'food'
+                    && uwep.otyp === ONAMES.CREAM_PIE)
+                    res = 'pie';
+                break;
+            }
+        }
+
+        if ((uwep.oclass === OCLASSES.WEAPON_CLASS
+             || is_weptool(uwep, game.objects))
+            && bimanual(uwep) && res[0] !== '2'
+            && res.slice(0, 3).toLowerCase() !== 'two')
+            outbuf += '2H-';
+        /* Strcpy(p = eos(outbuf), res), res = outbuf; *p = highc(*p); */
+        outbuf += highc(res[0]) + res.slice(1);
+        /* replace any spaces with hyphens so that it's treated as one field
+           of a space-separated status line */
+        outbuf = strNsubst(outbuf, ' ', '-', 0);
+        res = outbuf;
+    }
+
+    return res;
+}
+
+// src/botl.c:544 armor_status() — worn armor summary for status lines
+export function armor_status() {
+    const u = game.u;
+    const n = !!u.uarmg + !!u.uarmc + !!u.uarm + !!u.uarmu + !!u.uarmh
+              + !!u.uarmf + !!u.uarms;
+    let armbuf;
+
+    if (n === 0) { /* no armor */
+        armbuf = 'naked';
+    } else if (n === 1) { /* just one piece; spell it out */
+        armbuf = u.uarmg ? 'gloves'
+                 : u.uarmc ? 'cloak'
+                   : u.uarm ? 'suit'
+                     : u.uarmu ? 'shirt'
+                       : u.uarmh ? helm_simple_name(u.uarmh) /* hat|helm */
+                         : u.uarmf ? 'boots'
+                           : u.uarms ? 'shield'
+                             : ''; /* not possible */
+    } else { /* more than one piece */
+        armbuf = '';
+        /* gloves first since they're the most likely to be cursed, cloak
+           next since it tends to provide the most protection aside from
+           raw AC */
+        if (u.uarmg)
+            armbuf += 'G'; /* gloves */
+        if (u.uarmc)
+            armbuf += 'C'; /* cloak */
+        if (u.uarm)
+            armbuf += 'A'; /* suit but 's' is for shield */
+        if (u.uarmu)
+            armbuf += 'U'; /* underwear? => shirt */
+        if (u.uarmh)
+            armbuf += 'H'; /* hat/helm */
+        if (u.uarmf)
+            armbuf += 'B'; /* footwear => boots */
+        if (u.uarms)
+            armbuf += 'S'; /* shield */
+    }
+    /* a hint about MC: a plus sign when it is augmented (the C notes that
+       magical_negation() ought to answer this and that this is a shortcut
+       to avoid scanning the inventory during status updates) */
+    if ((u.uright && u.uright.otyp === ONAMES.RIN_PROTECTION)
+        || (u.uleft && u.uleft.otyp === ONAMES.RIN_PROTECTION)
+        || (u.uamul && u.uamul.otyp === ONAMES.AMULET_OF_GUARDING)
+        || (u.uarmc && u.uarmc.otyp === ONAMES.CLOAK_OF_PROTECTION)
+        || (u.uarmh && u.uarmh.oartifact === ART_MITRE_OF_HOLINESS)
+        || (u.uwep && u.uwep.oartifact === ART_TSURUGI_OF_MURAMASA))
+        armbuf = strkitten(armbuf, '+');
+
+    return upstart(armbuf);
+}
+
 export function xlev_to_rank(xlev) {
     return (xlev <= 2) ? 0 : (xlev <= 30) ? Math.trunc((xlev + 2) / 4) : 8;
 }

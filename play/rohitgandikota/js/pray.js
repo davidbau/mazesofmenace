@@ -225,7 +225,7 @@ export function stuck_in_wall() {
 }
 
 // src/pray.c:198 in_trouble() — worst trouble the hero is in
-function in_trouble() {
+export function in_trouble() {
     const u = game.u;
     let otmp;
 
@@ -786,25 +786,34 @@ export async function doturn() {
 }
 
 // src/pray.c:2124 can_pray() — set up p_type and p_aligntyp.
-function can_pray(praying) {
+export function can_pray(praying) {
     p_aligntyp = on_altar()
         ? Amask2align(game.level.at(game.u.ux, game.u.uy).altarmask ?? 0)
         : game.u.ualign.type;
     p_trouble = in_trouble();
 
-    /* is_demon(youmonst) repugnance arm — hero demon forms not modelled */
+    if (is_demon(game.youmonst.data) && (p_aligntyp !== A_CHAOTIC)) {
+        if (praying)
+            return (async () => {
+                await pline_The(`very idea of praying to a ${
+                    p_aligntyp ? 'lawful' : 'neutral'
+                    } god is repugnant to you.`);
+                return false;
+            })();
+        return false;
+    }
 
     if (praying)
         /* the promise below is awaited by dopray */
         return (async () => {
             await You(`begin praying to ${align_gname(p_aligntyp)}.`);
-            return finish_can_pray();
+            return finish_can_pray(praying);
         })();
 
-    return finish_can_pray();
+    return finish_can_pray(praying);
 }
 
-function finish_can_pray() {
+function finish_can_pray(praying) {
     const u = game.u;
     let alignment;
     if (u.ualign.type && u.ualign.type === -p_aligntyp)
@@ -829,9 +838,15 @@ function finish_can_pray() {
             p_type = 3;
     }
 
-    /* is_undead(youmonst) turning arm — hero undead forms not modelled */
+    if (is_undead(game.youmonst.data) && !Inhell()
+        && (p_aligntyp === A_LAWFUL
+            || (p_aligntyp === A_NEUTRAL && !rn2(10))))
+        p_type = -1;
+    /* Note: when !praying, the random factor for neutrals makes the
+       return value a non-deterministic approximation for enlightenment.
+       This case should be uncommon enough to live with... */
 
-    return true;
+    return !praying ? (p_type === 3 && !Inhell()) : true;
 }
 
 // src/pray.c:1436 gods_upset()
@@ -1151,7 +1166,7 @@ async function gods_angry(g_align) {
 /* include/align.h ALIGNLIM — (10L + (svm.moves / 200L)) */
 const ALIGNLIM = () => 10 + Math.trunc((game.moves || 0) / 200);
 // src/pray.c:2524 u_gname(), the name of the hero's own deity
-function u_gname() {
+export function u_gname() {
     return align_gname(game.u.ualign.type);
 }
 // src/pray.c:2507 a_gname(), the name of the deity of the altar underfoot

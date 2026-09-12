@@ -284,9 +284,10 @@ export async function tty_yn_function(query, resp, def, addcmdq = false) {
        parsing-only callers pass addcmdq=false and manage input themselves. */
     if (addcmdq) {
         const { cmdq_pop, cmdq_clear } = await import('../cmd.js');
-        const { CMDQ_KEY, CQ_CANNED } = await import('../const.js');
+        const { CMDQ_KEY, CMDQ_USER_INPUT, CQ_CANNED } = await import('../const.js');
         const queued = cmdq_pop();
-        if (queued) {
+        /* src/cmd.c:5504 — a CMDQ_USER_INPUT placeholder means: ask */
+        if (queued && queued.typ !== CMDQ_USER_INPUT) {
             let ch = '\x1b';
             if (queued.typ === CMDQ_KEY)
                 ch = queued.key;

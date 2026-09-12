@@ -30,6 +30,27 @@ import { seemimic } from './mon.js';
 // wear, wield, drop, throw, pray, cast, and all other commands.
 
 import { game } from './gstate.js';
+import { CLICK_1, CLICK_2, CMDQ_USER_INPUT, IS_SINK, IS_THRONE, W_SADDLE, SUPPRESS_SADDLE, VIBRATING_SQUARE, TEST_MOVE, D_ISOPEN, has_mgivenname, M_AP_MONSTER, MOVEMENTCMD } from './const.js';
+import { sgn, next2u } from './hacklib.js';
+import { upstart, mon_nam } from './do_name.js';
+import { doname } from './objnam.js';
+import { num_spells } from './spell.js';
+import { can_reach_floor } from './pickup.js';
+import { which_armor } from './worn.js';
+import { test_move } from './hack.js';
+import { vobj_at } from './display.js';
+import { auto_describe } from './getpos.js';
+import { dountrap } from './trap.js';
+import { dodip } from './potion.js';
+import { dotogglepickup } from './options.js';
+import { doversion } from './version.js';
+import { ddoinv, doperminv } from './invent.js';
+import { selection_new, set_selection_floodfillchk, selection_floodfill, selection_getpoint, selection_getbounds, selection_free, selection_size_description } from './selvar.js';
+import { gather_locs_interesting } from './getpos.js';
+import { do_screen_description } from './pager.js';
+import { set_msg_xy, pline_xy } from './pline.js';
+import { cansee } from './vision.js';
+import { IS_STWALL, IS_TREE, IS_WATERWALL, LAVAWALL, SCORR, SDOOR, DRAWBRIDGE_UP, ROOMOFFSET, u_at, CORR, IS_ROOM, GFILTER_NONE, GFILTER_VIEW, GLOC_INTERESTING } from './const.js';
 import { dodrop, doddrop } from './do.js';
 import { any_obj_ok, doprwep, doprarm, doprring, dopramulet, doprtool,
          doprinuse, doprgold, obj_extract_self, dotypeinv } from './invent.js';
@@ -73,7 +94,7 @@ import { an, cxname, simpleonames, the, makeplural, singular, xname,
 import { is_edible } from './eat.js';
 import { donull } from './do.js';
 import { shop_keeper, dopay } from './shk.js';
-import { in_rooms } from './hack.js';
+import { in_rooms, notice_all_mons_flush } from './hack.js';
 import { inhishop } from './monmove.js';
 import { IS_ALTAR, FINGER, HAND, SHOPBASE, W_AMUL, W_RING, W_TOOL, ONAME,
          has_oname, GC_ECHOFIRST, GC_CONDHIST, GC_SAVEHIST } from './const.js';
@@ -179,7 +200,7 @@ function movement_binding(ch) {
         return null;
     for (let dir = 0; dir < 8; dir++)
         for (let mode = MV_WALK; mode <= MV_RUSH; mode++)
-            if (move_funcs[dir][mode] === cmd.ef_txt)
+            if (ext_func_tab_from_func(move_funcs[dir][mode]) === cmd)
                 return { dir, mode };
     return null;
 }
@@ -431,6 +452,151 @@ export function set_move_cmd(dir, run) {
         game.context.run = run;
         game.domove_attempting |= (!run ? DOMOVE_WALK : DOMOVE_RUSH);
     }
+}
+
+/* move or attack */
+// src/cmd.c:1404 do_move_west()
+export function do_move_west() {
+    set_move_cmd(DIR_W, 0);
+    return ECMD_TIME;
+}
+
+// src/cmd.c:1411 do_move_northwest()
+export function do_move_northwest() {
+    set_move_cmd(DIR_NW, 0);
+    return ECMD_TIME;
+}
+
+// src/cmd.c:1418 do_move_north()
+export function do_move_north() {
+    set_move_cmd(DIR_N, 0);
+    return ECMD_TIME;
+}
+
+// src/cmd.c:1425 do_move_northeast()
+export function do_move_northeast() {
+    set_move_cmd(DIR_NE, 0);
+    return ECMD_TIME;
+}
+
+// src/cmd.c:1432 do_move_east()
+export function do_move_east() {
+    set_move_cmd(DIR_E, 0);
+    return ECMD_TIME;
+}
+
+// src/cmd.c:1439 do_move_southeast()
+export function do_move_southeast() {
+    set_move_cmd(DIR_SE, 0);
+    return ECMD_TIME;
+}
+
+// src/cmd.c:1446 do_move_south()
+export function do_move_south() {
+    set_move_cmd(DIR_S, 0);
+    return ECMD_TIME;
+}
+
+// src/cmd.c:1453 do_move_southwest()
+export function do_move_southwest() {
+    set_move_cmd(DIR_SW, 0);
+    return ECMD_TIME;
+}
+
+// src/cmd.c:1460 do_rush_west()
+export function do_rush_west() {
+    set_move_cmd(DIR_W, 3);
+    return ECMD_TIME;
+}
+
+// src/cmd.c:1467 do_rush_northwest()
+export function do_rush_northwest() {
+    set_move_cmd(DIR_NW, 3);
+    return ECMD_TIME;
+}
+
+// src/cmd.c:1474 do_rush_north()
+export function do_rush_north() {
+    set_move_cmd(DIR_N, 3);
+    return ECMD_TIME;
+}
+
+// src/cmd.c:1481 do_rush_northeast()
+export function do_rush_northeast() {
+    set_move_cmd(DIR_NE, 3);
+    return ECMD_TIME;
+}
+
+// src/cmd.c:1488 do_rush_east()
+export function do_rush_east() {
+    set_move_cmd(DIR_E, 3);
+    return ECMD_TIME;
+}
+
+// src/cmd.c:1495 do_rush_southeast()
+export function do_rush_southeast() {
+    set_move_cmd(DIR_SE, 3);
+    return ECMD_TIME;
+}
+
+// src/cmd.c:1502 do_rush_south()
+export function do_rush_south() {
+    set_move_cmd(DIR_S, 3);
+    return ECMD_TIME;
+}
+
+// src/cmd.c:1509 do_rush_southwest()
+export function do_rush_southwest() {
+    set_move_cmd(DIR_SW, 3);
+    return ECMD_TIME;
+}
+
+// src/cmd.c:1516 do_run_west()
+export function do_run_west() {
+    set_move_cmd(DIR_W, 1);
+    return ECMD_TIME;
+}
+
+// src/cmd.c:1523 do_run_northwest()
+export function do_run_northwest() {
+    set_move_cmd(DIR_NW, 1);
+    return ECMD_TIME;
+}
+
+// src/cmd.c:1530 do_run_north()
+export function do_run_north() {
+    set_move_cmd(DIR_N, 1);
+    return ECMD_TIME;
+}
+
+// src/cmd.c:1537 do_run_northeast()
+export function do_run_northeast() {
+    set_move_cmd(DIR_NE, 1);
+    return ECMD_TIME;
+}
+
+// src/cmd.c:1544 do_run_east()
+export function do_run_east() {
+    set_move_cmd(DIR_E, 1);
+    return ECMD_TIME;
+}
+
+// src/cmd.c:1551 do_run_southeast()
+export function do_run_southeast() {
+    set_move_cmd(DIR_SE, 1);
+    return ECMD_TIME;
+}
+
+// src/cmd.c:1558 do_run_south()
+export function do_run_south() {
+    set_move_cmd(DIR_S, 1);
+    return ECMD_TIME;
+}
+
+// src/cmd.c:1565 do_run_southwest()
+export function do_run_southwest() {
+    set_move_cmd(DIR_SW, 1);
+    return ECMD_TIME;
 }
 
 // src/cmd.c getdir() — read a direction key and set u.dx/u.dy/u.dz.
@@ -1175,6 +1341,10 @@ async function execute_extcmd(name) {
     }
     if (name === 'herecmdmenu')
         return await doherecmdmenu();
+    if (name === 'therecmdmenu')
+        return await dotherecmdmenu();
+    if (name === 'clicklook')
+        return await doclicklook();
     if (name === 'annotate') {
         return await donamelevel();
     }
@@ -1240,109 +1410,801 @@ async function execute_extcmd(name) {
     if (name === '?')
         return await doextlist();
 
+    /* src/cmd.c:1667 extcmdlist[] ef_funct: the entries whose function
+       also answers a key in rhack() above */
+    if (name === 'attributes') { /* doattributes(): enlightenment window */
+        await show_attributes();
+        return ECMD_OK;
+    }
+    if (name === 'inventory')
+        return await ddoinv();
+    if (name === 'autopickup')
+        return await dotogglepickup();
+    if (name === 'versionshort')
+        return await doversion();
+    if (name === 'perminv')
+        return await doperminv();
+    if (name === 'toggle')
+        return await dotoggleoption();
+    if (name === 'lookaround')
+        return await dolookaround();
+    if (name === 'read')
+        return await doread(read_ok);
+    if (name === 'repeat')
+        return await do_repeat();
+    if (name === 'retravel')
+        return await dotravel_target();
+    if (name === 'showtrap')
+        return await doidtrap();
+    if (name === 'reqmenu')
+        return await do_reqmenu();
+    if (name === 'travel')
+        return await dotravel();
+    const ef = EXTCMD_FUNCS[name];
+    if (ef) {
+        const mod = await import(ef[0]);
+        return await mod[ef[1]]();
+    }
+
     note_unported_cmd(`extcmd:${name}`);
     return ECMD_OK;
 }
 
-// src/cmd.c:4332 doherecmdmenu() and there_cmd_menu_self(). The command
-// presents actions available on the hero's square, then queues the selected
-// action so the normal command loop runs it on the next pass.
-async function doherecmdmenu() {
-    const { Is_container } = await import('./obj.js');
-    const { doname } = await import('./objnam.js');
-    const { num_spells } = await import('./spell.js');
-    const { can_reach_floor, dotip } = await import('./pickup.js');
-    const { dountrap } = await import('./trap.js');
-    const { donull } = await import('./do.js');
-    const {
-        FOUNTAIN, SINK, THRONE, ALTAR, VIBRATING_SQUARE,
-    } = await import('./const.js');
+/* src/cmd.c:1667 extcmdlist[] ef_funct — the command functions that live in
+   other modules, keyed by the ef_txt name: [module, function] */
+const EXTCMD_FUNCS = {
+    apply: ['./apply.js', 'doapply'],
+    call: ['./do_name.js', 'docallcmd'],
+    cast: ['./spell.js', 'docast'],
+    close: ['./lock.js', 'doclose'],
+    drop: ['./do.js', 'dodrop'],
+    droptype: ['./do.js', 'doddrop'],
+    eat: ['./eat.js', 'doeat'],
+    engrave: ['./engrave.js', 'doengrave'],
+    fire: ['./dothrow.js', 'dofire'],
+    glance: ['./pager.js', 'doquickwhatis'],
+    history: ['./pager.js', 'dohistory'],
+    inventtype: ['./invent.js', 'dotypeinv'],
+    known: ['./o_init.js', 'dodiscovered'],
+    knownclass: ['./o_init.js', 'doclassdisco'],
+    look: ['./invent.js', 'dolook'],
+    offer: ['./pray.js', 'dosacrifice'],
+    open: ['./lock.js', 'doopen'],
+    pay: ['./shk.js', 'dopay'],
+    puton: ['./do_wear.js', 'doputon'],
+    quaff: ['./potion.js', 'dodrink'],
+    quiver: ['./wield.js', 'dowieldquiver'],
+    remove: ['./do_wear.js', 'doremring'],
+    save: ['./save.js', 'dosave'],
+    search: ['./detect.js', 'dosearch'],
+    seeall: ['./invent.js', 'doprinuse'],
+    seeamulet: ['./invent.js', 'dopramulet'],
+    seearmor: ['./invent.js', 'doprarm'],
+    seerings: ['./invent.js', 'doprring'],
+    seetools: ['./invent.js', 'doprtool'],
+    seeweapon: ['./invent.js', 'doprwep'],
+    showgold: ['./invent.js', 'doprgold'],
+    showspells: ['./spell.js', 'dovspell'],
+    swap: ['./wield.js', 'doswapweapon'],
+    takeoff: ['./do_wear.js', 'dotakeoff'],
+    takeoffall: ['./do_wear.js', 'doddoremarm'],
+    teleport: ['./teleport.js', 'dotelecmd'],
+    throw: ['./dothrow.js', 'dothrow'],
+    wear: ['./do_wear.js', 'dowear'],
+    whatdoes: ['./pager.js', 'dowhatdoes'],
+    whatis: ['./pager.js', 'dowhatis'],
+    wield: ['./wield.js', 'dowield'],
+    wizlevelport: ['./wizcmds.js', 'wiz_level_tele'],
+    zap: ['./zap.js', 'dozap'],
+};
 
-    const win = tty_create_nhwindow(NHW_MENU);
-    tty_start_menu(win, MENU_BEHAVE_STANDARD);
-    const actions = new Map();
-    let nextId = 1;
-    const add = (text, fn, ...keys) => {
-        const id = nextId++;
-        actions.set(id, { fn, keys });
-        tty_add_menu(win, null, id, 0, 0, ATR_NONE, NO_COLOR, text,
-                     MENU_ITEMFLAGS_NONE);
-    };
+// src/cmd.c:1376 dotoggleoption() — the #toggle command; a key BIND with a
+// parameter is what gives it an option to flip
+async function dotoggleoption() {
+    if (game.cmd_bind?.param) {
+        /* toggle_bool_option(gc.cmd_bind->param): BIND lines with a
+           parameter are not modelled */
+        note_unported_cmd('dotoggleoption:param');
+        return ECMD_OK;
+    } else {
+        await pline('Use #optionsfull to set any option instead.');
+        return ECMD_OK;
+    }
+}
 
-    const u = game.u;
-    const loc = game.level?.at(u.ux, u.uy);
-    const typ = loc?.typ;
-    if ((typ === FOUNTAIN || typ === SINK) && can_reach_floor(false)) {
-        add(`Drink from the ${typ === FOUNTAIN ? 'fountain' : 'sink'}`,
-            () => dodrink(), 'y');
-    }
-    if (typ === FOUNTAIN && can_reach_floor(false)) {
-        const { dodip } = await import('./potion.js');
-        add('Dip something into the fountain', dodip);
-    }
-    if (typ === THRONE) {
-        const { dosit } = await import('./sit.js');
-        add('Sit on the throne', dosit);
-    }
-    if (typ === ALTAR)
-        add('Sacrifice something on the altar',
-            () => doextcmd_named_offer());
+// src/cmd.c:1195 u_have_seen_whole_selection()
+function u_have_seen_whole_selection(sel) {
+    const rect = { lx: 0, ly: 0, hx: 0, hy: 0 };
 
-    const stway = stairway_at(u.ux, u.uy);
-    if (stway) {
-        const kind = stway.isladder ? 'ladder' : 'stairs';
-        add(`Go ${stway.up ? 'up' : 'down'} the ${kind}`,
-            stway.up ? doup : dodown);
+    selection_getbounds(sel, rect);
+
+    for (let x = rect.lx; x <= rect.hx; x++)
+        for (let y = rect.ly; y <= rect.hy; y++)
+            if (isok(x, y) && selection_getpoint(x, y, sel)
+                && glyph_at(x, y).kind === 'unexplored') /* GLYPH_UNEXPLORED */
+                return false;
+
+    return true;
+}
+
+// src/cmd.c:1213 u_have_seen_bounds_selection()
+function u_have_seen_bounds_selection(sel) {
+    const rect = { lx: 0, ly: 0, hx: 0, hy: 0 };
+    let x, y;
+
+    selection_getbounds(sel, rect);
+
+    for (x = rect.lx; x <= rect.hx; x++) {
+        y = rect.ly;
+        if (isok(x, y) && selection_getpoint(x, y, sel)
+            && glyph_at(x, y).kind === 'unexplored')
+            return false;
+        y = rect.hy;
+        if (isok(x, y) && selection_getpoint(x, y, sel)
+            && glyph_at(x, y).kind === 'unexplored')
+            return false;
+    }
+    for (y = rect.ly; y <= rect.hy; y++) {
+        x = rect.lx;
+        if (isok(x, y) && selection_getpoint(x, y, sel)
+            && glyph_at(x, y).kind === 'unexplored')
+            return false;
+        x = rect.hx;
+        if (isok(x, y) && selection_getpoint(x, y, sel)
+            && glyph_at(x, y).kind === 'unexplored')
+            return false;
     }
 
-    const floor = (game.level?.objects || [])
-        .filter(o => o.ox === u.ux && o.oy === u.uy);
-    if (floor.length) {
-        const obj = floor[0];
-        add(`Pick up ${floor.length > 1 ? 'items' : doname(obj)}`, dopickup);
-        if (Is_container(obj)) {
-            add(`Loot ${doname(obj)}`, doloot);
-            add(`Tip ${doname(obj)}`, dotip, 'y');
+    return true;
+}
+
+// src/cmd.c:1246 u_can_see_whole_selection()
+function u_can_see_whole_selection(sel) {
+    const rect = { lx: 0, ly: 0, hx: 0, hy: 0 };
+
+    selection_getbounds(sel, rect);
+
+    for (let x = rect.lx; x <= rect.hx; x++)
+        for (let y = rect.ly; y <= rect.hy; y++)
+            if (isok(x, y) && selection_getpoint(x, y, sel) && !cansee(x, y))
+                return false;
+
+    return true;
+}
+
+// src/cmd.c:1263 dolookaround_floodfill_findroom()
+function dolookaround_floodfill_findroom(x, y) {
+    const typ = game.level.at(x, y).typ;
+
+    if (IS_STWALL(typ) || IS_DOOR(typ) || IS_TREE(typ)
+        || IS_WATERWALL(typ) || typ === LAVAWALL || typ === IRONBARS
+        || typ === SCORR || typ === SDOOR || typ === DRAWBRIDGE_UP)
+        return false;
+    return true;
+}
+
+// src/cmd.c:1276 lookaround_known_room()
+async function lookaround_known_room(x, y) {
+    const sel = selection_new();
+    const rmno = (game.u.urooms || '\0').charCodeAt(0) - ROOMOFFSET;
+
+    set_selection_floodfillchk(dolookaround_floodfill_findroom);
+    selection_floodfill(sel, x, y, true);
+
+    if (!u_at(x, y))
+        set_msg_xy(x, y);
+
+    if (u_have_seen_whole_selection(sel)) {
+        const u_in = !!selection_getpoint(x, y, sel);
+
+        await You(`${
+            u_at(x, y) && u_in && u_can_see_whole_selection(sel) ? 'are in'
+            : (u_at(x, y)) ? 'remember this as' : 'remember that as'} ${
+            an(selection_size_description(sel))} ${
+            rmno >= 0 ? 'room' : 'area'}.`);
+    } else if (u_have_seen_bounds_selection(sel)) {
+        await You(`guess ${u_at(x, y) ? 'this' : 'that'} to be ${
+            an(selection_size_description(sel))} ${
+            rmno >= 0 ? 'room' : 'area'}.`);
+    } else {
+        await You(`can't guess the size of ${
+            u_at(x, y) ? 'this' : 'that'} area.`);
+    }
+    selection_free(sel, true);
+}
+
+// src/cmd.c:1310 dolookaround() — the #lookaround command: describe the
+// room and every interesting map location in view.
+async function dolookaround() {
+    let x, y;
+    const tmp_getloc_filter = game.iflags?.getloc_filter ?? GFILTER_NONE;
+    const a11y = (game.a11y ||= {});
+    const tmp_accessiblemsg = !!a11y.accessiblemsg;
+    let corr_next2u = false;
+
+    a11y.accessiblemsg = true;
+    if (game.level.at(game.u.ux, game.u.uy).typ === CORR) {
+        corr_next2u = true;
+        /* TODO: how to describe the corridor the hero is in,
+           perhaps by describing the rooms? */
+    } else if (IS_DOOR(game.level.at(game.u.ux, game.u.uy).typ)) {
+        for (let i = DIR_W; i < N_DIRS; i += 2) {
+            x = game.u.ux + xdir[i];
+            y = game.u.uy + ydir[i];
+            if (isok(x, y) && IS_ROOM(game.level.at(x, y).typ))
+                await lookaround_known_room(x, y);
         }
-        if (obj.oclass === OCLASSES.FOOD_CLASS)
-            add(`Eat ${doname(obj)}`, doeat, 'y');
+        corr_next2u = true;
+    } else {
+        await lookaround_known_room(game.u.ux, game.u.uy);
     }
 
-    if ((game.invent || []).length) {
-        add('Inventory', show_inventory);
-        add('Drop items', dodrop);
-    }
-    add('Rest one turn', donull);
-    add('Search around you', dosearch);
-    add('Look at what is here', dolook);
-    if (num_spells() > 0)
-        add('Cast a spell', docast);
 
-    const trap = t_at(u.ux, u.uy);
-    if (trap?.tseen && trap.ttyp !== VIBRATING_SQUARE)
-        add('Attempt to disarm trap', dountrap);
+    (game.iflags ||= {}).getloc_filter = GFILTER_VIEW;
+    for (y = 0; y < ROWNO; y++)
+        for (x = 1; x < COLNO; x++) {
+            let glyph, mapsym;
+            const iscorr = (corr_next2u
+                            && (glyph = glyph_at(x, y)).kind === 'cmap'
+                            && ((mapsym = glyph.cmap) === cmap_names.S_corr
+                                || mapsym === cmap_names.S_litcorr));
 
-    tty_end_menu(win, 'What do you want to do?');
-    const picks = await tty_select_menu(win, 1 /* PICK_ONE */);
-    tty_destroy_nhwindow(win);
-    if (picks.length) {
-        const action = actions.get(picks[0]);
-        if (action) {
-            cmdq_add_ec(CQ_CANNED, action.fn);
-            for (const key of action.keys)
-                cmdq_add_key(CQ_CANNED, key);
+            if (!u_at(x, y)
+                && (await gather_locs_interesting(x, y, GLOC_INTERESTING)
+                    || iscorr)) {
+                const cc = { x, y };
+                const sym = 0;
+
+                const { firstmatch } = do_screen_description(cc, true, sym);
+                await pline_xy(x, y, `${firstmatch}.`);
+            }
         }
-    }
+
+    game.iflags.getloc_filter = tmp_getloc_filter;
+    a11y.accessiblemsg = tmp_accessiblemsg;
+
     return ECMD_OK;
 }
 
-async function doextcmd_named_offer() {
-    const loc = game.level?.at(game.u.ux, game.u.uy);
-    if (!loc || loc.typ !== (await import('./const.js')).ALTAR) {
-        await You('are not on an altar.');
-        return ECMD_OK;
+// src/cmd.c:4334 doherecmdmenu() — #herecmdmenu, the menu of things to do
+// on the hero's own spot
+async function doherecmdmenu() {
+    const ch = await here_cmd_menu();
+
+    /* C's char '\0' is false; the JS string '\0' is not */
+    return (ch && ch !== '\0' && ch !== '\x1b') ? ECMD_TIME : ECMD_OK;
+}
+
+// src/cmd.c:4343 dotherecmdmenu() — #therecmdmenu, the menu for the spot a
+// pending click named, else for a direction the player gives
+async function dotherecmdmenu() {
+    let ch;
+    const cc = (game.clicklook_cc ||= { x: 0, y: 0 });
+    const x = cc.x;
+    const y = cc.y;
+
+    game.iflags.getdir_click = CLICK_1 | CLICK_2; /* allow 'far' click */
+
+    if (isok(x, y)) {
+        if (x === game.u.ux && y === game.u.uy)
+            ch = await here_cmd_menu();
+        else
+            ch = await there_cmd_menu(x, y, game.iflags.getdir_click);
+        cc.x = cc.y = -1;
+        game.iflags.getdir_click = 0;
+        /* C's char '\0' is false; the JS string '\0' is not */
+    return (ch && ch !== '\0' && ch !== '\x1b') ? ECMD_TIME : ECMD_OK;
     }
-    note_unported_cmd('cmd:doextcmd:offer_rite');
+
+    const dir = await getdir(null);
+    const click = game.iflags.getdir_click;
+    game.iflags.getdir_click = 0;
+
+    if (!dir || !isok(game.u.ux + game.u.dx, game.u.uy + game.u.dy))
+        return ECMD_CANCEL;
+
+    if (game.u.dx || game.u.dy)
+        ch = await there_cmd_menu(game.u.ux + game.u.dx,
+                                  game.u.uy + game.u.dy, click);
+    else
+        ch = await here_cmd_menu();
+
+    /* C's char '\0' is false; the JS string '\0' is not */
+    return (ch && ch !== '\0' && ch !== '\x1b') ? ECMD_TIME : ECMD_OK;
+}
+
+/* src/cmd.c:4372 enum menucmd */
+const MCMD_NOTHING = 0,
+    MCMD_OPEN_DOOR = 1, MCMD_LOCK_DOOR = 2, MCMD_UNTRAP_DOOR = 3,
+    MCMD_KICK_DOOR = 4, MCMD_CLOSE_DOOR = 5, MCMD_SEARCH = 6,
+    MCMD_LOOK_TRAP = 7, MCMD_UNTRAP_TRAP = 8, MCMD_MOVE_DIR = 9,
+    MCMD_RIDE = 10, MCMD_REMOVE_SADDLE = 11, MCMD_APPLY_SADDLE = 12,
+    MCMD_TALK = 13, MCMD_NAME = 14,
+
+    MCMD_QUAFF = 15, MCMD_DIP = 16, MCMD_SIT = 17, MCMD_UP = 18,
+    MCMD_DOWN = 19, MCMD_DISMOUNT = 20, MCMD_MONABILITY = 21,
+    MCMD_PICKUP = 22, MCMD_LOOT = 23, MCMD_TIP = 24, MCMD_EAT = 25,
+    MCMD_DROP = 26, MCMD_REST = 27, MCMD_LOOK_HERE = 28, MCMD_LOOK_AT = 29,
+    MCMD_ATTACK_NEXT2U = 30, MCMD_UNTRAP_HERE = 31, MCMD_OFFER = 32,
+    MCMD_INVENTORY = 33, MCMD_CAST_SPELL = 34,
+
+    MCMD_THROW_OBJ = 35, MCMD_TRAVEL = 36;
+
+// src/cmd.c:4422 mcmd_addmenu() — the act is the entry's identifier
+function mcmd_addmenu(win, act, txt) {
+    tty_add_menu(win, null, act, 0, 0, ATR_NONE, NO_COLOR, txt,
+                 MENU_ITEMFLAGS_NONE);
+}
+
+// src/cmd.c:4435 there_cmd_menu_self() — the choices for the hero's spot
+function there_cmd_menu_self(win, x, y, act) {
+    let K = 0;
+    let buf;
+    const typ = game.level.at(x, y).typ;
+    const stway = stairway_at(x, y);
+    let ttmp;
+
+    if (!u_at(x, y))
+        return K;
+
+    if ((IS_FOUNTAIN(typ) || IS_SINK(typ)) && can_reach_floor(false)) {
+        buf = `Drink from the ${
+            defsyms[IS_FOUNTAIN(typ) ? cmap_names.S_fountain
+                                     : cmap_names.S_sink].explain}`;
+        mcmd_addmenu(win, MCMD_QUAFF, buf), ++K;
+    }
+    if (IS_FOUNTAIN(typ) && can_reach_floor(false))
+        mcmd_addmenu(win, MCMD_DIP, 'Dip something into the fountain'), ++K;
+    if (IS_THRONE(typ))
+        mcmd_addmenu(win, MCMD_SIT, 'Sit on the throne'), ++K;
+    if (IS_ALTAR(typ))
+        mcmd_addmenu(win, MCMD_OFFER, 'Sacrifice something on the altar'), ++K;
+
+    if (stway && stway.up) {
+        buf = `Go up the ${stway.isladder ? 'ladder' : 'stairs'}`;
+        mcmd_addmenu(win, MCMD_UP, buf), ++K;
+    }
+    if (stway && !stway.up) {
+        buf = `Go down the ${stway.isladder ? 'ladder' : 'stairs'}`;
+        mcmd_addmenu(win, MCMD_DOWN, buf), ++K;
+    }
+    if (game.u.usteed) { /* another movement choice */
+        buf = `Dismount ${x_monnam(game.u.usteed, ARTICLE_THE, null,
+                                   SUPPRESS_SADDLE, false)}`;
+        mcmd_addmenu(win, MCMD_DISMOUNT, buf), ++K;
+    }
+
+    /* the C's "Use %s special ability" entry is under #if 0 */
+
+    /* OBJ_AT(x, y): the top of the pile, nexthere the rest of it */
+    const otmp = vobj_at(x, y);
+    if (otmp) {
+        const nexthere = (game.level.objects || [])
+            .some((o) => o !== otmp && o.ox === x && o.oy === y);
+
+        buf = `Pick up ${nexthere ? 'items' : doname(otmp)}`;
+        mcmd_addmenu(win, MCMD_PICKUP, buf), ++K;
+
+        if (Is_container(otmp)) {
+            buf = `Loot ${doname(otmp)}`;
+            mcmd_addmenu(win, MCMD_LOOT, buf), ++K;
+
+            buf = `Tip ${doname(otmp)}`;
+            mcmd_addmenu(win, MCMD_TIP, buf), ++K;
+        }
+        if (otmp.oclass === OCLASSES.FOOD_CLASS) {
+            buf = `Eat ${doname(otmp)}`;
+            mcmd_addmenu(win, MCMD_EAT, buf), ++K;
+        }
+    }
+
+    if ((game.invent || []).length) {
+        mcmd_addmenu(win, MCMD_INVENTORY, 'Inventory'), ++K;
+        mcmd_addmenu(win, MCMD_DROP, 'Drop items'), ++K;
+    }
+    mcmd_addmenu(win, MCMD_REST, 'Rest one turn'), ++K;
+    mcmd_addmenu(win, MCMD_SEARCH, 'Search around you'), ++K;
+    mcmd_addmenu(win, MCMD_LOOK_HERE, 'Look at what is here'), ++K;
+
+    if (num_spells() > 0)
+        mcmd_addmenu(win, MCMD_CAST_SPELL, 'Cast a spell'), ++K;
+
+    if ((ttmp = t_at(x, y)) && ttmp.tseen) {
+        if (ttmp.ttyp !== VIBRATING_SQUARE)
+            mcmd_addmenu(win, MCMD_UNTRAP_HERE,
+                         'Attempt to disarm trap'), ++K;
+    }
+    return K;
+}
+
+// src/cmd.c:4524 there_cmd_menu_next2u() — the choices for an adjacent spot
+async function there_cmd_menu_next2u(win, x, y, mod, act) {
+    let K = 0;
+    let buf;
+    const loc = game.level.at(x, y);
+    const typ = loc.typ;
+    let ttmp;
+    let mtmp;
+
+    if (!next2u(x, y))
+        return K;
+
+    if (IS_DOOR(typ)) {
+        let key_or_pick, card;
+        const dm = loc.doormask;
+
+        if ((dm & (D_CLOSED | D_LOCKED))) {
+            mcmd_addmenu(win, MCMD_OPEN_DOOR, 'Open the door'), ++K;
+            /* unfortunately there's no lknown flag for doors to
+               remember the locked/unlocked state */
+            key_or_pick = (carrying(ONAMES.SKELETON_KEY)
+                           || carrying(ONAMES.LOCK_PICK));
+            card = !!carrying(ONAMES.CREDIT_CARD);
+            if (key_or_pick || card) {
+                buf = `${key_or_pick ? 'lock or ' : ''}unlock the door`;
+                mcmd_addmenu(win, MCMD_LOCK_DOOR, upstart(buf)), ++K;
+            }
+            /* unfortunately there's no tknown flag for doors (or other
+               spots) to remember whether a trap had been found */
+            mcmd_addmenu(win, MCMD_UNTRAP_DOOR,
+                         'Search the door for a trap'), ++K;
+            mcmd_addmenu(win, MCMD_KICK_DOOR, 'Kick the door'), ++K;
+        } else if ((dm & D_ISOPEN) && (mod === CLICK_2)) {
+            mcmd_addmenu(win, MCMD_CLOSE_DOOR, 'Close the door'), ++K;
+        }
+    }
+
+    if (typ <= SCORR)
+        mcmd_addmenu(win, MCMD_SEARCH, 'Search for secret doors'), ++K;
+
+    if ((ttmp = t_at(x, y)) && ttmp.tseen) {
+        mcmd_addmenu(win, MCMD_LOOK_TRAP, 'Examine trap'), ++K;
+        if (ttmp.ttyp !== VIBRATING_SQUARE)
+            mcmd_addmenu(win, MCMD_UNTRAP_TRAP,
+                         'Attempt to disarm trap'), ++K;
+        mcmd_addmenu(win, MCMD_MOVE_DIR, 'Move on the trap'), ++K;
+    }
+
+    /* levl[x][y].glyph == objnum_to_glyph(BOULDER): the remembered glyph
+       is this port's { kind: 'obj', otyp } record */
+    const rg = loc.remembered_glyph?.glyph;
+    if (rg && rg.kind === 'obj' && rg.otyp === ONAMES.BOULDER)
+        mcmd_addmenu(win, MCMD_MOVE_DIR, 'Push the boulder'), ++K;
+
+    mtmp = m_at(x, y);
+    if (mtmp && !canspotmon(mtmp))
+        mtmp = null;
+    if (mtmp && which_armor(mtmp, W_SADDLE)) {
+        const mnam = x_monnam(mtmp, ARTICLE_THE, null, SUPPRESS_SADDLE, false);
+
+        if (!game.u.usteed) {
+            buf = `Ride ${mnam}`;
+            mcmd_addmenu(win, MCMD_RIDE, buf), ++K;
+        }
+        buf = `Remove saddle from ${mnam}`;
+        mcmd_addmenu(win, MCMD_REMOVE_SADDLE, buf), ++K;
+    }
+    if (mtmp) {
+        const { can_saddle } = await import('./steed.js');
+        if (can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE)
+            && carrying(ONAMES.SADDLE)) {
+            buf = `Put saddle on ${mon_nam(mtmp)}`;
+            mcmd_addmenu(win, MCMD_APPLY_SADDLE, buf), ++K;
+        }
+    }
+    if (mtmp && (mtmp.mpeaceful || mtmp.mtame)) {
+        buf = `Talk to ${mon_nam(mtmp)}`;
+        mcmd_addmenu(win, MCMD_TALK, buf), ++K;
+
+        buf = `Swap places with ${mon_nam(mtmp)}`;
+        mcmd_addmenu(win, MCMD_MOVE_DIR, buf), ++K;
+
+        buf = `${!has_mgivenname(mtmp) ? 'Name' : 'Rename'} ${mon_nam(mtmp)}`;
+        mcmd_addmenu(win, MCMD_NAME, buf), ++K;
+    }
+
+    if ((mtmp && !(mtmp.mpeaceful || mtmp.mtame))
+        || glyph_is_invisible_at(x, y)) {
+        buf = `Attack ${mtmp ? mon_nam(mtmp) : 'unseen creature'}`;
+        mcmd_addmenu(win, MCMD_ATTACK_NEXT2U, buf), ++K;
+        act.v = MCMD_ATTACK_NEXT2U;
+    } else {
+        /* "Move %s", "northwest" -- (nothing) */
+    }
+    return K;
+}
+
+// src/cmd.c:4624 there_cmd_menu_far() — the choices for a distant spot
+async function there_cmd_menu_far(win, x, y, mod) {
+    let K = 0;
+
+    if (mod === CLICK_1) {
+        const { linedup } = await import('./mthrowu.js');
+        if (linedup(game.u.ux, game.u.uy, x, y, 1)
+            && dist2(game.u.ux, game.u.uy, x, y) < 18 * 18)
+            mcmd_addmenu(win, MCMD_THROW_OBJ, 'Throw something'), ++K;
+
+        mcmd_addmenu(win, MCMD_TRAVEL, 'Travel here'), ++K;
+    }
+    return K;
+}
+
+// src/cmd.c:4639 there_cmd_menu_common() — the choice every spot offers
+function there_cmd_menu_common(win, x, y, mod, act) {
+    let K = 0;
+
+    if (mod === CLICK_1 || mod === CLICK_2) { /* ignore iflags.clicklook here */
+        /* "Look at map symbol" unless hero's spot is being shown with the
+           ordinary hero symbol (steed, invisible w/o see invisible, ?);
+           glyph_at(x, y) != hero_glyph: this port's hero glyph record is
+           { kind: 'hero' }, the steed's carries the steed, and a mimicked
+           monster is drawn from youmonst.mappearance */
+        const g = glyph_at(x, y);
+        if (!u_at(x, y) || Upolyd(game.u)
+            || !(g && g.kind === 'hero' && !g.mon
+                 && M_AP_TYPE(game.youmonst) !== M_AP_MONSTER))
+            mcmd_addmenu(win, MCMD_LOOK_AT, 'Look at map symbol'), ++K;
+    }
+    return K;
+}
+
+// src/cmd.c:4656 act_on_act() — queue the canned command for a menu choice
+async function act_on_act(act, dx, dy) {
+    let otmp;
+    let dir;
+
+    switch (act) {
+    case MCMD_THROW_OBJ:
+    case MCMD_TRAVEL:
+    case MCMD_LOOK_AT:
+        break;
+    default:
+        dx = sgn(dx);
+        dy = sgn(dy);
+        break;
+    }
+
+    switch (act) {
+    case MCMD_TRAVEL:
+        /* FIXME: player has explicitly picked "travel to this location"
+           from the menu but it will only work if flags.travelcmd is True.
+           That option is intended as way to guard against stray mouse
+           clicks and shouldn't inhibit explicit travel. */
+        game.u.tx = game.u.ux + dx;
+        game.u.ty = game.u.uy + dy;
+        game.iflags.travelcc = { x: game.u.tx, y: game.u.ty };
+        cmdq_add_ec(CQ_CANNED, dotravel_target);
+        break;
+    case MCMD_THROW_OBJ:
+        cmdq_add_ec(CQ_CANNED, dothrow);
+        cmdq_add_userinput(CQ_CANNED);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_OPEN_DOOR:
+        cmdq_add_ec(CQ_CANNED, doopen);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_LOCK_DOOR:
+        otmp = carrying(ONAMES.SKELETON_KEY);
+        if (!otmp)
+            otmp = carrying(ONAMES.LOCK_PICK);
+        if (!otmp)
+            otmp = carrying(ONAMES.CREDIT_CARD);
+        if (otmp) {
+            cmdq_add_ec(CQ_CANNED, doapply);
+            cmdq_add_key(CQ_CANNED, otmp.invlet);
+            cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+            cmdq_add_key(CQ_CANNED, 'y'); /* "Lock it?" */
+        }
+        break;
+    case MCMD_UNTRAP_DOOR:
+        cmdq_add_ec(CQ_CANNED, dountrap);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_KICK_DOOR:
+        cmdq_add_ec(CQ_CANNED, dokick);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_CLOSE_DOOR:
+        cmdq_add_ec(CQ_CANNED, doclose);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_SEARCH:
+        cmdq_add_ec(CQ_CANNED, dosearch);
+        break;
+    case MCMD_LOOK_TRAP:
+        cmdq_add_ec(CQ_CANNED, doidtrap);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_UNTRAP_TRAP:
+        cmdq_add_ec(CQ_CANNED, dountrap);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_MOVE_DIR:
+        dir = xytodir(dx, dy);
+        cmdq_add_ec(CQ_CANNED, move_funcs[dir][MV_WALK]);
+        break;
+    case MCMD_RIDE: {
+        const { doride } = await import('./steed.js');
+        cmdq_add_ec(CQ_CANNED, doride);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    }
+    case MCMD_REMOVE_SADDLE:
+        /* m-prefix for #loot removes saddle */
+        cmdq_add_ec(CQ_CANNED, do_reqmenu);
+        cmdq_add_ec(CQ_CANNED, doloot);
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        cmdq_add_key(CQ_CANNED, 'y'); /* "Do you want to remove saddle? */
+        break;
+    case MCMD_APPLY_SADDLE:
+        if ((otmp = carrying(ONAMES.SADDLE))) {
+            cmdq_add_ec(CQ_CANNED, doapply);
+            cmdq_add_key(CQ_CANNED, otmp.invlet);
+            cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        }
+        break;
+    case MCMD_ATTACK_NEXT2U:
+        dir = xytodir(dx, dy);
+        cmdq_add_ec(CQ_CANNED, move_funcs[dir][MV_WALK]);
+        break;
+    case MCMD_TALK:
+        cmdq_add_ec(CQ_CANNED, dochat); /* C: dotalk */
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0);
+        break;
+    case MCMD_NAME:
+        cmdq_add_ec(CQ_CANNED, docallcmd);
+        cmdq_add_key(CQ_CANNED, 'm'); /* name a monster */
+        cmdq_add_dir(CQ_CANNED, dx, dy, 0); /* getpos() uses u.ux+dx,u.uy+dy */
+        break;
+    case MCMD_QUAFF:
+        cmdq_add_ec(CQ_CANNED, dodrink);
+        cmdq_add_key(CQ_CANNED, 'y'); /* "Drink from the fountain?" */
+        break;
+    case MCMD_DIP:
+        cmdq_add_ec(CQ_CANNED, dodip);
+        cmdq_add_userinput(CQ_CANNED);
+        cmdq_add_key(CQ_CANNED, 'y'); /* "Dip foo into the fountain?" */
+        break;
+    case MCMD_SIT: {
+        const { dosit } = await import('./sit.js');
+        cmdq_add_ec(CQ_CANNED, dosit);
+        break;
+    }
+    case MCMD_UP:
+        cmdq_add_ec(CQ_CANNED, doup);
+        break;
+    case MCMD_DOWN:
+        cmdq_add_ec(CQ_CANNED, dodown);
+        break;
+    case MCMD_DISMOUNT: {
+        const { doride } = await import('./steed.js');
+        cmdq_add_ec(CQ_CANNED, doride);
+        break;
+    }
+    case MCMD_MONABILITY:
+        cmdq_add_ec(CQ_CANNED, domonability);
+        break;
+    case MCMD_PICKUP:
+        cmdq_add_ec(CQ_CANNED, dopickup);
+        break;
+    case MCMD_LOOT:
+        cmdq_add_ec(CQ_CANNED, doloot);
+        break;
+    case MCMD_TIP:
+        cmdq_add_ec(CQ_CANNED, dotip);
+        cmdq_add_key(CQ_CANNED, 'y'); /* "There is foo here; tip it?" */
+        break;
+    case MCMD_EAT:
+        cmdq_add_ec(CQ_CANNED, doeat);
+        cmdq_add_key(CQ_CANNED, 'y'); /* "There is foo here; eat it?" */
+        break;
+    case MCMD_DROP:
+        cmdq_add_ec(CQ_CANNED, dodrop);
+        break;
+    case MCMD_INVENTORY:
+        cmdq_add_ec(CQ_CANNED, ddoinv);
+        break;
+    case MCMD_REST:
+        cmdq_add_ec(CQ_CANNED, donull);
+        break;
+    case MCMD_LOOK_HERE:
+        cmdq_add_ec(CQ_CANNED, dolook);
+        break;
+    case MCMD_LOOK_AT:
+        game.clicklook_cc = { x: game.u.ux + dx, y: game.u.uy + dy };
+        cmdq_add_ec(CQ_CANNED, doclicklook);
+        break;
+    case MCMD_UNTRAP_HERE:
+        cmdq_add_ec(CQ_CANNED, dountrap);
+        cmdq_add_dir(CQ_CANNED, 0, 0, 1);
+        break;
+    case MCMD_OFFER:
+        cmdq_add_ec(CQ_CANNED, dosacrifice);
+        cmdq_add_userinput(CQ_CANNED);
+        break;
+    case MCMD_CAST_SPELL:
+        cmdq_add_ec(CQ_CANNED, docast);
+        break;
+    default:
+        break;
+    }
+}
+
+// src/cmd.c:4843 there_cmd_menu() — generate a menu of the things the hero
+// can do at, or next to, the given spot; a few choices can be farther away
+async function there_cmd_menu(x, y, mod) {
+    let ch = '\0';
+    let npick = 0, K = 0;
+    let picks = null;
+    const dx = x - game.u.ux, dy = y - game.u.uy;
+    const act = { v: MCMD_NOTHING };
+
+    const win = tty_create_nhwindow(NHW_MENU);
+    tty_start_menu(win, MENU_BEHAVE_STANDARD);
+
+    if (u_at(x, y))
+        K += there_cmd_menu_self(win, x, y, act);
+    else if (next2u(x, y))
+        K += await there_cmd_menu_next2u(win, x, y, mod, act);
+    else
+        K += await there_cmd_menu_far(win, x, y, mod);
+    K += there_cmd_menu_common(win, x, y, mod, act);
+
+    if (!K) {
+        /* no menu options, try to move hero to that spot */
+        if (next2u(x, y)
+            && await test_move(game.u.ux, game.u.uy, dx, dy, TEST_MOVE)) {
+            const dir = xytodir(dx, dy);
+
+            cmdq_add_ec(CQ_CANNED, move_funcs[dir][MV_WALK]);
+        } else if (game.flags.travelcmd) {
+            game.u.tx = x;
+            game.u.ty = y;
+            game.iflags.travelcc = { x, y };
+            cmdq_add_ec(CQ_CANNED, dotravel_target);
+        }
+        npick = 0;
+        ch = '\0';
+    } else if (K === 1 && act.v !== MCMD_NOTHING && act.v !== MCMD_TRAVEL) {
+        /* only one useful action; just do it, skipping the menu */
+        tty_destroy_nhwindow(win);
+
+        await act_on_act(act.v, dx, dy);
+        return '\0';
+    } else {
+        tty_end_menu(win, 'What do you want to do?');
+        picks = await tty_select_menu(win, PICK_ONE);
+        npick = picks.length;
+        ch = '\x1b';
+    }
+    tty_destroy_nhwindow(win);
+    if (npick > 0) {
+        const actv = picks[0];
+
+        await act_on_act(actv, dx, dy);
+        return '\0';
+    }
+    return ch;
+}
+
+// src/cmd.c:4899 here_cmd_menu()
+async function here_cmd_menu() {
+    await there_cmd_menu(game.u.ux, game.u.uy, CLICK_1);
+    return '\0';
+}
+
+// src/cmd.c:5381 doclicklook() — #clicklook, describe the spot a click
+// (or the here/there menu's "Look at map symbol") named
+async function doclicklook() {
+    const cc = game.clicklook_cc || { x: 0, y: 0 };
+
+    if (!isok(cc.x, cc.y))
+        return ECMD_OK;
+
+    game.context.move = 0;
+    await auto_describe(cc.x, cc.y);
+
     return ECMD_OK;
 }
 
@@ -1412,9 +2274,11 @@ export async function doterrain() {
     case 4: /* full map */
         await reveal_terrain(TER_MAP | TER_FULL);
         break;
-    case 5: /* map internals: wiz_map_levltyp() */
-    case 6: /* internal details: wiz_levltyp_legend() */
-        note_unported_cmd('doterrain:wiz_levltyp');
+    case 5: /* map internals */
+        await (await import('./wizcmds.js')).wiz_map_levltyp();
+        break;
+    case 6: /* internal details */
+        await (await import('./wizcmds.js')).wiz_levltyp_legend();
         break;
     default:
         break;
@@ -1530,6 +2394,35 @@ export async function rhack(key) {
                 if (result & (ECMD_CANCEL | ECMD_FAIL)) {
                     cmdq_clear(CQ_CANNED);
                     cmdq_clear(CQ_REPEAT);
+                }
+                /* src/cmd.c:3773 — a queued do_move_/do_run_/do_rush_
+                   function (MOVEMENTCMD) only set the direction; rhack()
+                   then walks or rushes, as after a movement key */
+                const tlist = ext_func_tab_from_func(cmdq.fn);
+                if (tlist && !(tlist.flags & MOVEMENTCMD)
+                    && game.domove_attempting) {
+                    ; /* just do nothing */
+                } else if ((game.domove_attempting & (DOMOVE_RUSH | DOMOVE_WALK))
+                           && !game.context.travel && !dxdy_moveok()) {
+                    await You_cant('get there from here...');
+                    reset_cmd_vars(true);
+                    return;
+                } else if (game.domove_attempting & DOMOVE_WALK) {
+                    if (game.multi)
+                        game.context.mv = true;
+                    await domove();
+                    game.context.forcefight = 0;
+                    game.iflags.menu_requested = false;
+                    return;
+                } else if (game.domove_attempting & DOMOVE_RUSH) {
+                    /* firsttime: a queued command read no key */
+                    if (!game.multi)
+                        game.multi = Math.max(COLNO, ROWNO);
+                    game.u.last_str_turn = 0;
+                    game.context.mv = true;
+                    await domove();
+                    game.iflags.menu_requested = false;
+                    return;
                 }
                 return;
             }
@@ -1897,10 +2790,8 @@ export async function rhack(key) {
             cmdq_clear(CQ_REPEAT);
         }
     } else if (ch === 'V') {
-        // src/version.c doversion() prints the build's short version string.
-        const { VERSION_BANNER_LINE } = await import('./version_data.js');
-        await pline(VERSION_BANNER_LINE);
-        game.context.move = 0;
+        /* src/version.c:156 doversion() returns ECMD_OK */
+        useResult(await doversion());
     } else if (ch === '&') {
         // src/pager.c dowhatdoes() reads one key and describes its binding.
         game.context.move = ((await dowhatdoes()) === ECMD_TIME ? 1 : 0);
@@ -2104,28 +2995,8 @@ export async function rhack(key) {
         // src/cmd.c:1868 cmdlist — GOLD_SYM is doprgold.
         game.context.move = ((await doprgold()) === ECMD_TIME ? 1 : 0);
     } else if (ch === '@') {
-        /* src/options.c:9256 dotogglepickup — flips flags.pickup and says
-           so. C's FIELD is flags.pickup but the rc OPTION is named
-           "autopickup", and our option parser stores it under the option
-           name, so flags.autopickup is the one field; toggling a separate
-           flags.pickup left pickup() reading the untouched rc value. */
-        game.flags.autopickup = !game.flags.autopickup;
-        if (game.flags.autopickup) {
-            /* src/options.c:9262 — oc_to_str(flags.pickup_types) is empty
-               when no types are configured, and C then says "all". The
-               autopickup-exception suffix needs an apelist, which no
-               recorded rc defines. */
-            const ocl = game.flags.pickup_types || '';
-            await pline(`Autopickup: ON, for ${ocl || 'all'} objects${
-                        (game.apelist?.length)
-                            ? ((game.apelist.length === 1)
-                                   ? ', with one exception'
-                                   : ', with some exceptions')
-                            : ''}.`);
-        } else {
-            await pline('Autopickup: OFF.');
-        }
-        game.context.move = 0;
+        /* src/options.c:9256 dotogglepickup() returns ECMD_OK */
+        useResult(await dotogglepickup());
     } else if (ch === ':') {
         // src/cmd.c cmdlist — ':' is dolook. It returns ECMD_OK when not
         // blind, so looking does not consume a turn.
@@ -3540,6 +4411,12 @@ export function cmdq_add_dir(q, dx, dy, dz) {
     });
 }
 
+// src/cmd.c:316 cmdq_add_userinput() — add placeholder to the command
+// queue, allows user input there
+export function cmdq_add_userinput(q) {
+    ((game.command_queue ||= [])[q] ||= []).push({ typ: CMDQ_USER_INPUT });
+}
+
 // src/cmd.c:410 cmdq_pop() — pop the topmost command. The queue popped
 // depends on whether a do-again (^A) replay is in progress.
 export function cmdq_pop() {
@@ -3735,13 +4612,13 @@ function cmdbind_table() {
                 binds.delete(di | 0x80);
             }
             /* bind the new keys to movement commands */
-            binds.set(di, by_txt(move_funcs[i][0]));
+            binds.set(di, ext_func_tab_from_func(move_funcs[i][0]));
             if (!num_pad) {
-                binds.set(up, by_txt(move_funcs[i][1]));
-                binds.set(di & 0x1f, by_txt(move_funcs[i][2]));
+                binds.set(up, ext_func_tab_from_func(move_funcs[i][1]));
+                binds.set(di & 0x1f, ext_func_tab_from_func(move_funcs[i][2]));
             } else {
                 /* M(number) works when altmeta is on */
-                binds.set(di | 0x80, by_txt(move_funcs[i][1]));
+                binds.set(di | 0x80, ext_func_tab_from_func(move_funcs[i][1]));
                 /* can't bind highc() or C() of digits. just use the 5 prefix. */
             }
         }
@@ -3893,7 +4770,7 @@ export async function dokeylist() {
             break;
     }
     tty_destroy_nhwindow(win);
-    await docrt();
+    await notice_all_mons_flush();
     return 0; /* ECMD_OK */
 }
 
@@ -3956,6 +4833,16 @@ export async function paranoid_query(be_paranoid, prompt) {
 // dispatch is by command name, so this takes the name: a BIND line in the
 // rc file wins, else the lowest key of the live Cmd.commands[] table
 // (cmdbind_table(): number_pad rebinding and the direction keys included).
+// src/cmd.c:3016 ext_func_tab_from_func() — the extcmdlist entry of a
+// command function; the generated entries name their function (ef_funct)
+export function ext_func_tab_from_func(fn) {
+    for (const extcmd of extcmdlist)
+        if (extcmd.ef_funct === fn.name)
+            return extcmd;
+
+    return null;
+}
+
 export function cmd_from_func(name) {
     for (const [key, bound] of Object.entries(game.rc_key_bindings || {}))
         if (bound === name)
@@ -3967,6 +4854,37 @@ export function cmd_from_func(name) {
             return String.fromCharCode(i);
     }
     return '\0';
+}
+
+// src/cmd.c:118 levltyp[] — the names of the levl[][].typ values, for the
+// debug-mode #terrain views (wizcmds.c wiz_map_levltyp() and its legend)
+export const levltyp = [
+    'stone', 'vertical wall', 'horizontal wall', 'top-left corner wall',
+    'top-right corner wall', 'bottom-left corner wall',
+    'bottom-right corner wall', 'cross wall', 'tee-up wall', 'tee-down wall',
+    'tee-left wall', 'tee-right wall', 'drawbridge wall', 'tree',
+    'secret door', 'secret corridor', 'pool', 'moat', 'water',
+    'drawbridge up', 'lava pool', 'lava wall', 'iron bars', 'door',
+    'corridor', 'room', 'stairs', 'ladder', 'fountain', 'throne', 'sink',
+    'grave', 'altar', 'ice', 'drawbridge down', 'air', 'cloud',
+    /* not a real terrain type, but used for undiggable stone
+       by wiz_map_levltyp() */
+    'unreachable/undiggable',
+    /* padding in case the number of entries above is odd */
+    '',
+];
+
+// src/cmd.c:157 unavailcmd — for rejecting a command that this build or
+// this game mode does not offer
+export const unavailcmd = "Unavailable command '%s'.";
+
+// src/cmd.c:3092 ecname_from_fn() — the extended command name of a command
+// function; by name here, as with cmd_from_func()
+export function ecname_from_fn(name) {
+    for (const extcmd of extcmdlist)
+        if (extcmd.ef_txt === name)
+            return extcmd.ef_txt;
+    return null;
 }
 
 // src/cmd.c:3106 cmdname_from_func() — the command name for a function; as
@@ -4021,19 +4939,21 @@ export function cmdname_from_func(name, fullname) {
     return res;
 }
 
-/* src/cmd.c move_funcs[][]: the movement command names by direction and
-   mode; the direction keys themselves come from the current bindings */
+/* src/cmd.c:2070 move_funcs[][]: mapping direction and move mode to
+   extended command function */
 const move_funcs = [
-    ['movewest', 'runwest', 'rushwest'],
-    ['movenorthwest', 'runnorthwest', 'rushnorthwest'],
-    ['movenorth', 'runnorth', 'rushnorth'],
-    ['movenortheast', 'runnortheast', 'rushnortheast'],
-    ['moveeast', 'runeast', 'rusheast'],
-    ['movesoutheast', 'runsoutheast', 'rushsoutheast'],
-    ['movesouth', 'runsouth', 'rushsouth'],
-    ['movesouthwest', 'runsouthwest', 'rushsouthwest'],
-    ['down', 'down', 'down'],
-    ['up', 'up', 'up'],
+    [do_move_west,      do_run_west,      do_rush_west],
+    [do_move_northwest, do_run_northwest, do_rush_northwest],
+    [do_move_north,     do_run_north,     do_rush_north],
+    [do_move_northeast, do_run_northeast, do_rush_northeast],
+    [do_move_east,      do_run_east,      do_rush_east],
+    [do_move_southeast, do_run_southeast, do_rush_southeast],
+    [do_move_south,     do_run_south,     do_rush_south],
+    [do_move_southwest, do_run_southwest, do_rush_southwest],
+    /* misleading; rush and run for down or up are rejected by rhack()
+       because dodown() and doup() lack the CMD_gGF_PREFIX flag */
+    [dodown,            dodown,           dodown],
+    [doup,              doup,             doup],
 ];
 // src/cmd.c:3343 reset_commands() — the Cmd state derived from the
 // number_pad setting. Key lookups in this port (cmdbind_table(), movecmd())
@@ -4123,7 +5043,7 @@ async function can_do_extcmd(extcmd) {
 // src/cmd.c:3029 cmd_from_dir(); the key bound to the movement command for
 // direction 'dir' in mode 'mode'
 export function cmd_from_dir(dir, mode) {
-    return cmd_from_func(move_funcs[dir][mode]);
+    return cmd_from_func(ext_func_tab_from_func(move_funcs[dir][mode]).ef_txt);
 }
 
 // src/cmd.c:3869 movecmd(); returns True if the key is a movement command
@@ -4131,6 +5051,7 @@ export function cmd_from_dir(dir, mode) {
 export function movecmd(sym, mode) {
     let d = DIR_ERR;
     let bound = game.rc_key_bindings?.[sym];
+    const fn_txt = (fn) => ext_func_tab_from_func(fn).ef_txt;
 
     if (bound === undefined) {
         /* src/cmd.c:3462 reset_commands(): dirchars walk; without
@@ -4150,16 +5071,16 @@ export function movecmd(sym, mode) {
         };
         let dk = KEY_TO_DIR[letter_of(sym)];
         if (dk !== undefined)
-            bound = move_funcs[dk][MV_WALK];
+            bound = fn_txt(move_funcs[dk][MV_WALK]);
         else if (!num_pad && code >= 0x41 && code <= 0x5a
                  && (dk = KEY_TO_DIR[letter_of(sym.toLowerCase())]) !== undefined)
-            bound = move_funcs[dk][MV_RUN];     /* highc(dirchar) */
+            bound = fn_txt(move_funcs[dk][MV_RUN]);     /* highc(dirchar) */
         else if (!num_pad && code >= 0 && code < 0x20
                  && (dk = KEY_TO_DIR[letter_of(String.fromCharCode(code | 0x60))]) !== undefined)
-            bound = move_funcs[dk][MV_RUSH];    /* C(dirchar) */
+            bound = fn_txt(move_funcs[dk][MV_RUSH]);    /* C(dirchar) */
         else if (num_pad && code >= 0x80
                  && (dk = KEY_TO_DIR[letter_of(String.fromCharCode(code & 0x7f))]) !== undefined)
-            bound = move_funcs[dk][MV_RUN];     /* M(digit) */
+            bound = fn_txt(move_funcs[dk][MV_RUN]);     /* M(digit) */
         else if (sym === '<')
             bound = 'up';
         else if (sym === '>')
@@ -4168,13 +5089,13 @@ export function movecmd(sym, mode) {
     if (bound) {
         if (mode === MV_ANY) {
             for (d = N_DIRS_Z - 1; d > DIR_ERR; d--)
-                if (bound === move_funcs[d][MV_WALK]
-                    || bound === move_funcs[d][MV_RUN]
-                    || bound === move_funcs[d][MV_RUSH])
+                if (bound === fn_txt(move_funcs[d][MV_WALK])
+                    || bound === fn_txt(move_funcs[d][MV_RUN])
+                    || bound === fn_txt(move_funcs[d][MV_RUSH]))
                     break;
         } else {
             for (d = N_DIRS_Z - 1; d > DIR_ERR; d--)
-                if (bound === move_funcs[d][mode])
+                if (bound === fn_txt(move_funcs[d][mode]))
                     break;
         }
     }

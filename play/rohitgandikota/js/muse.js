@@ -59,6 +59,8 @@ import { pline_mon, pline_The, You, You_hear, verbalize } from './pline.js';
 import { canseemon, canspotmon, pline, newsym, shieldeff, map_invisible } from './display.js';
 import { cansee, couldsee } from './vision.js';
 import { game } from './gstate.js';
+import { worm_move } from './worm.js';
+import { find_drawbridge, destroy_drawbridge } from './dbridge.js';
 import { rn2, rn1, rnd, d, rn2_on_display_rng } from './rng.js';
 import { sgn, dist2, distmin, s_suffix } from './hacklib.js';
 import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
@@ -1935,7 +1937,7 @@ export async function use_defensive(mtmp) {
         newsym(mtmp.mx, mtmp.my); /* update old location */
         place_monster(mtmp, game.trapx, game.trapy);
         if (mtmp.wormno)
-            note_unported_muse('use_defensive:worm_move'); /* worm.c worm_move() */
+            worm_move(mtmp);
         newsym(game.trapx, game.trapy);
 
         await migrate_to_level(mtmp, ledger_no(game.u.uz) + 1, MIGR_RANDOM, null);
@@ -2025,7 +2027,7 @@ export async function use_defensive(mtmp) {
         newsym(mtmp.mx, mtmp.my); /* update old location */
         place_monster(mtmp, game.trapx, game.trapy);
         if (mtmp.wormno)
-            note_unported_muse('use_defensive:worm_move'); /* worm.c worm_move() */
+            worm_move(mtmp);
         maybe_unhide_at(mtmp.mx, mtmp.my);
         newsym(game.trapx, game.trapy);
 
@@ -2593,11 +2595,16 @@ export async function mbhit(mon, range, fhitm, fhito, obj) {
         if (await fhito_loc(obj, game.bhitpos.x, game.bhitpos.y, fhito))
             range--;
         ltyp = game.level.at(game.bhitpos.x, game.bhitpos.y).typ;
+        const db = { x, y }; /* dbx = x, dby = y */
         if (otyp === ONAMES.WAN_STRIKING
-            /* dbridge.c's find_drawbridge()/destroy_drawbridge() are not
-               ported; a wand of striking beam does not smash drawbridges */
-            && (ltyp === DRAWBRIDGE_UP || is_drawbridge_wall(x, y) >= 0)) {
-            note_unported_muse('mbhit:destroy_drawbridge');
+            /* if levl[x][y].typ is DRAWBRIDGE_UP then the zap is passing
+               over the moat in front of a closed drawbridge and doesn't
+               hit any part of the bridge's mechanism (yet; it might be
+               about to hit the closed portcullis on the next iteration) */
+            && ltyp !== DRAWBRIDGE_UP && find_drawbridge(db)) {
+            /* this might kill mon and destroy obj but they'll remain
+               accessible; (*fhitm)() and (*fhito)() use obj for zap type */
+            await destroy_drawbridge(db.x, db.y);
         } else if (IS_DOOR(ltyp) || ltyp === SDOOR) {
             switch (otyp) {
             /* note: monsters don't use opening or locking magic
@@ -2729,7 +2736,7 @@ async function muse_unslime(mon, obj, trap, by_you) {
             newsym(mon.mx, mon.my);
             place_monster(mon, trap.tx, trap.ty);
             if (mon.wormno) /* won't happen; worms don't MUSE to unslime */
-                note_unported_muse('muse_unslime:worm_move');
+                worm_move(mon);
             newsym(mon.mx, mon.my);
             if (vis)
                 await pline(`${Mnam} ${vtense(fakename[0], locomotion(mon.data, 'move'))} ${

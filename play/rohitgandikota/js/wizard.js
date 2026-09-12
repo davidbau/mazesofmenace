@@ -11,6 +11,8 @@ import { Protection_from_shape_changers } from './youprop.js';
 import { mksobj, add_to_minv } from './mkobj.js';
 import { makemon } from './makemon.js';
 import { game } from './gstate.js';
+import { expels } from './mhitu.js';
+import { rloc } from './teleport.js';
 import { rn2, rnd } from './rng.js';
 import { PMNAMES, MONSYMS, ATTKS, MFLAGS, GROWNUPS } from './monst_data.js';
 import { Is_rogue_level, MAGIC_PORTAL, BOLT_LIM, RLOC_MSG,
@@ -319,7 +321,7 @@ export async function tactics(mtmp) {
         mx = mtmp.mx; my = mtmp.my;
 
         if (game.u.uswallow && game.u.ustuck === mtmp)
-            note_unported_wizard('tactics:expels');
+            await expels(mtmp, mtmp.data, true);
 
         /* if wounded, hole up on or near the stairs (to block them) */
         const sxy = { sx: 0, sy: 0 };
@@ -329,7 +331,7 @@ export async function tactics(mtmp) {
         if (In_W_tower_w(mx, my)
             || (mtmp.iswiz && !sx && !mon_has_amulet(mtmp))) {
             if (!noteleport_level(mtmp) && !rn2(3 + Math.trunc(mtmp.mhp / 10)))
-                note_unported_wizard('tactics:rloc');
+                await rloc(mtmp, RLOC_MSG);
         } else if (sx && (mx !== sx || my !== sy)) {
             if (!noteleport_level(mtmp)
                 && !await mnearto(mtmp, sx, sy, true, RLOC_MSG)) {

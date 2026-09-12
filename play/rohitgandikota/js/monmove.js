@@ -15,6 +15,12 @@ import { switch_terrain } from './hack.js';
 import { in_rooms } from './hack.js';
 import { Is_special } from './dungeon.js';
 import { game } from './gstate.js';
+import { unstuck, m_next2u } from './mon.js';
+import { wormhitu } from './worm.js';
+import { select_rwep } from './weapon.js';
+import { dmgtype } from './mondata.js';
+import { Norep } from './pline.js';
+import { W_NONDIGGABLE } from './const.js';
 import { set_msg_xy, pline_The } from './pline.js';
 import { bill_dummy_object } from './mkobj.js';
 import { fracture_rock } from './zap.js';
@@ -1491,7 +1497,7 @@ export async function dochug(mtmp) {
         const mw_tmp = MON_WEP(mtmp);
         if (!(scared && mw_tmp && is_pick(mw_tmp))
             && mtmp.weapon_check === NEED_WEAPON
-            && !(mtmp.mtrapped && !nearby && select_rwep_absent(mtmp))) {
+            && !(mtmp.mtrapped && !nearby && select_rwep(mtmp))) {
             mtmp.weapon_check = NEED_HTH_WEAPON;
             if (await mon_wield_item(mtmp) !== 0)
                 return 0;
@@ -1578,8 +1584,8 @@ export async function dochug(mtmp) {
             break;
         case MMOVE_MOVED: /* monster moved */
             /* if confused grabber has wandered off, let go */
-            if (mtmp === game.u.ustuck && !(distu(mtmp.mx, mtmp.my) <= 2))
-                note_unported_monmove('dochug:unstuck');
+            if (mtmp === game.u.ustuck && !m_next2u(mtmp))
+                await unstuck(mtmp);
             {
                 const { grounded } = await import('./trap.js');
                 if (grounded(mdat))
@@ -1620,8 +1626,10 @@ export async function dochug(mtmp) {
             if (await mattacku(mtmp))
                 return 1; /* monster died (e.g. exploded) */
         }
-        if (mtmp.wormno)
-            note_unported_monmove('dochug:wormhitu');
+        if (mtmp.wormno) {
+            if (await wormhitu(mtmp))
+                return 1; /* worm died (poly'd hero passive counter-attack) */
+        }
     }
     /* special speeches for quest monsters */
     if (!helpless(mtmp) && nearby
@@ -1665,12 +1673,6 @@ export async function dochugw(mtmp, chug) {
 }
 
 
-/* src/weapon.c select_rwep() — the throwing subsystem is absent; reaching
-   this guard (a trapped weapon-monster out of melee range) is recorded. */
-function select_rwep_absent(mtmp) {
-    note_unported_monmove('dochug:select_rwep');
-    return false;
-}
 
 /* src/priest.c resist_conflict() — conflict resistance check for priests;
    only reachable under Conflict, which is recorded state already. */
@@ -2313,7 +2315,23 @@ async function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs, can_tunnel) {
                         note_unported('postmov:doorbuster_shop_damage');
                 }
             }
-        }
+        } else if (game.level.at(mtmp.mx, mtmp.my).typ === IRONBARS) {
+            /* 3.6.2: was using may_dig() but that checks whether it's
+               possible to dig through the terrain and bars are not
+               diggable; AD_RUST catches rust monsters but metallivorous()
+               is needed for xorns and rock moles */
+            if (!(game.level.at(mtmp.mx, mtmp.my).wall_info & W_NONDIGGABLE)
+                && (dmgtype(ptr, ATTKS.AD_RUST) || dmgtype(ptr, ATTKS.AD_CORR)
+                    || metallivorous(ptr))) {
+                if (canseemon(mtmp))
+                    await pline_mon(mtmp, `${Monnam(mtmp)} eats through the iron bars.`);
+                await dissolve_bars(mtmp.mx, mtmp.my);
+                return MMOVE_DONE;
+            } else if (game.flags?.verbose && canseemon(mtmp))
+                await Norep(`${Monnam(mtmp)} ${
+                    makeplural(locomotion(ptr, 'pass'))} ${
+                    passes_walls(ptr) ? 'through' : 'between'} the iron bars.`);
+        } /* doors and bars */
 
         /* src/monmove.c:1644 — possibly dig */
         if (can_tunnel && may_dig(mtmp.mx, mtmp.my)) {

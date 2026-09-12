@@ -27,6 +27,11 @@ export function distmin(x1, y1, x2, y2) {
 // include/hack.h:1531 distu() — squared distance from the hero.
 export const distu = (xx, yy) => dist2(xx, yy, game.u.ux, game.u.uy);
 
+// include/you.h:558 next2u() — the spot is the hero's or adjacent to it
+export function next2u(x, y) {
+    return distu(x, y) <= 2;
+}
+
 export function dist2(x1, y1, x2, y2) {
     return (x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2);
 }
@@ -229,6 +234,11 @@ export function strsubst(bp, orig, replacement) {
 // all) in inoutbuf; with an empty orig, insert in front of the Nth char.
 // C edits the buffer in place and returns the substitution count; this port
 // returns the edited string.
+// src/hacklib.c:276 strkitten() — append a character to a string
+export function strkitten(s, c) {
+    return s + c;
+}
+
 export function strNsubst(inoutbuf, orig, replacement, n) {
     const len = orig.length;
     let ocount = 0, /* number of times 'orig' has been matched */

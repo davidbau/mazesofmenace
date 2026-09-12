@@ -13,6 +13,8 @@ import { noit_mon_nam } from './do_name.js';
 import { rnd } from './rng.js';
 import { OCLASSES, ONAMES, MATERIALS } from './objects_data.js';
 import { game } from './gstate.js';
+import { mon_learns_traps } from './trap.js';
+import { ALL_TRAPS } from './const.js';
 import { rn2 } from './rng.js';
 import { isok, ROOMOFFSET, IS_ROOM, D_NODOOR, D_ISOPEN, D_LOCKED, D_TRAPPED,
          SDOOR, DOOR, MM_ESHK, NO_MM_FLAGS, HEALTHY_TIN,
@@ -280,6 +282,7 @@ async function shkinit(shp, sroom) {
     shk.isshk = shk.mpeaceful = 1;
     set_malign(shk);
     shk.msleeping = 0;
+    mon_learns_traps(shk, ALL_TRAPS); /* we know all the traps already */
     shk.eshk = (shk.mextra ||= {}).eshk = {
         shoproom: ((sroom.roomnoidx ?? game.level.rooms.indexOf(sroom))
                    + ROOMOFFSET),
@@ -431,6 +434,14 @@ export async function stock_room(shp_indx, sroom) {
     }
 
     game.level.flags.has_shop = true;
+}
+
+// src/shknam.c:890 shkname_is_pname() — a leading '-', '+' or '=' marks a
+// shopkeeper name that is a personal name (no "Mr."/"Ms.")
+export function shkname_is_pname(mtmp) {
+    const shknm = ESHK(mtmp).shknam;
+
+    return (shknm[0] === '-' || shknm[0] === '+' || shknm[0] === '=');
 }
 
 // src/shknam.c:856 shkname(), a shopkeeper's name (a random one of the

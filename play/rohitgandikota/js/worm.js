@@ -4,6 +4,8 @@
 // Creation, movement, cutting and tail bookkeeping follow src/worm.c.
 
 import { You } from './pline.js';
+import { mattacku } from './mhitu.js';
+import { distu } from './hacklib.js';
 import { Monnam } from './do_name.js';
 import { mon_nam } from './do_name.js';
 import { s_suffix } from './hacklib.js';
@@ -88,6 +90,20 @@ export function initworm(worm, wseg_count) {
 }
 
 // src/worm.c:836 count_wsegs()
+// src/worm.c:344 wormhitu() — every tail segment next to the hero gets a
+// chance to attack; returns 1 when the hero's passive response killed the
+// worm.
+export async function wormhitu(worm) {
+    const w = wstate();
+    const wnum = worm.wormno;
+
+    for (let seg = w.wtails[wnum]; seg !== w.wheads[wnum]; seg = seg.nseg)
+        if (distu(seg.wx, seg.wy) < 3)
+            if (await mattacku(worm))
+                return 1; /* your passive ability killed the worm */
+    return 0;
+}
+
 export function count_wsegs(mtmp) {
     const w = wstate();
     let count = 0;
@@ -458,7 +474,7 @@ export async function cutworm(worm, x, y, cuttier) {
         /* clone_mon() will fail if enough long worms have been
            created to have them be marked as extinct or if the hit
            that cut the current one has dropped it down to 1 HP */
-        new_worm = clone_mon(worm, x, y);
+        new_worm = await clone_mon(worm, x, y);
     }
 
     /* Sometimes the tail end dies. */

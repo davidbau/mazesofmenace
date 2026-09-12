@@ -210,6 +210,25 @@ import { surface } from './dungeon.js';
 import { FINGER, NH_GREEN, NO_PART, TIMEOUT } from './const.js';
 import { were_beastie } from './were.js';
 
+// src/eat.c:453 temp_resist() — the timeout of a resistance that is only
+// temporary: a timed intrinsic with no permanent source, no extrinsic and
+// not blocked.  'prop' is the extrinsic word, 'intr' the intrinsic word.
+export function temp_resist(prop, intr) {
+    const intrinsic = game.u.intrinsic?.[intr] | 0;
+    const timeout = intrinsic & TIMEOUT;
+
+    if (timeout
+        && (intrinsic & ~TIMEOUT) === 0
+        && !game.u.uprops?.[prop]
+        /* if blocked, there's no point in trying to extend it and the
+           attribute isn't active anyway, but if it's a permanent property
+           then the timeout doesn't matter so we won't extend that */
+        && !game.u.blocked?.[prop]) {
+        return timeout;
+    }
+    return 0;
+}
+
 // src/eat.c:3170 gethungry()
 export async function gethungry() {
     const u = game.u;

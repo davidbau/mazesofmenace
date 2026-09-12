@@ -3328,26 +3328,51 @@ function mkaltar(croom) {
     loc.flags = loc.altarmask;
 }
 
+// src/mklev.c:1462 mkgrave() — a grave in an ordinary room, with buried
+// gold and cursed objects under it.  `dobell` is an INITIALISER, so its
+// rn2(10) is drawn before the rtype test, not after it.
 function mkgrave_room(croom) {
-    /* src/mklev.c mkgrave() — `dobell` is an INITIALISER, so its rn2(10) is
-       drawn before the rtype test, not after it. */
+    const m = { x: 0, y: 0 };
+    let tryct = 0;
+    let otmp;
     const dobell = !rn2(10);
-    if (croom.rtype !== OROOM) return;
-    const pos = { x: 0, y: 0 };
-    if (!find_okay_roompos(croom, pos)) return;
-    make_grave(pos.x, pos.y, dobell ? 'Saved by the bell!' : null);
+
+    if (croom.rtype !== OROOM)
+        return;
+
+    if (!find_okay_roompos(croom, m))
+        return;
+
+    make_grave(m.x, m.y, dobell ? 'Saved by the bell!' : null);
+
+    /* Possibly fill it with objects */
     if (!rn2(3)) {
+        /* this used to use mkgold(), which puts a stack of gold on
+           the ground (or merges it with an existing one there if
+           present), and didn't bother burying it; now we create a
+           loose, easily buriable, stack but we make no attempt to
+           replicate mkgold()'s level-based formula for the amount */
         const gold = mksobj(GOLD_PIECE, true, false);
-        if (gold) {
-            const depth = game.u?.uz?.dlevel ?? 1;
-            gold.quan = rnd(20) + depth * rnd(5);
-        }
+
+        gold.quan = rnd(20) + level_difficulty() * rnd(5);
+        gold.owt = weight(gold);
+        gold.ox = m.x, gold.oy = m.y;
+        add_to_buried(gold);
     }
-    for (let tryct = rn2(5); tryct > 0; tryct--) {
-        const otmp = mkobj(RANDOM_CLASS, true);
+    for (tryct = rn2(5); tryct; tryct--) {
+        otmp = mkobj(RANDOM_CLASS, true);
+        if (!otmp)
+            return;
         curse(otmp);
+        otmp.ox = m.x;
+        otmp.oy = m.y;
+        add_to_buried(otmp);
     }
-    if (dobell) mksobj_at(BELL, pos.x, pos.y, true, false);
+
+    /* Leave a bell, in case we accidentally buried someone alive */
+    if (dobell)
+        mksobj_at(BELL, m.x, m.y, true, false);
+    return;
 }
 
 async function fill_ordinary_room(croom, bonus_items) {

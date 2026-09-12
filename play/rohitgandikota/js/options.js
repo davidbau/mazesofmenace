@@ -3,6 +3,9 @@
 // include/optlist.h into js/optlist.js by tools/gen-optlist.mjs.
 
 import { game } from './gstate.js';
+import { notice_all_mons_flush } from './hack.js';
+import { display_file } from './pager.js';
+import { optmenu } from './dat_files.js';
 import { reset_commands } from './cmd.js';
 import { set_vanq_order } from './insight.js';
 import { pline, docrt, bot, reglyph_darkroom, flush_screen } from './display.js';
@@ -936,7 +939,7 @@ const wc2_supported_names = [
     'use_darkgray', 'weaponstatus',
 ];
 function is_wc_option(n) { return wc_option_names.includes(n); }
-function wc_supported(n) { return wc_supported_names.includes(n); }
+export function wc_supported(n) { return wc_supported_names.includes(n); }
 function is_wc2_option(n) { return wc2_option_names.includes(n); }
 function wc2_supported(n) { return wc2_supported_names.includes(n); }
 
@@ -1112,7 +1115,7 @@ export async function option_help() {
             break;
     }
     tty_destroy_nhwindow(win);
-    await docrt();
+    await notice_all_mons_flush();
 }
 
 /* src/options.c:114 OptS_type[] — section headings, indexed by OptSection. */
@@ -2325,9 +2328,7 @@ export async function doset() {
         for (let pick_idx = 0; pick_idx < pick_cnt; ++pick_idx) {
             let opt_indx = picks[pick_idx] - 1;
             if (opt_indx === HELP_IDX) {
-                /* display_file(OPTMENUHELP): the dat/optmenu text is not
-                   ported yet */
-                note_unported_options('doset:optmenu_help');
+                await display_file(optmenu); /* display_file(OPTMENUHELP, FALSE) */
                 gavehelp = true;
                 continue; /* just handled '?'; there might be more picks */
             }
@@ -3623,4 +3624,29 @@ async function optfn_pickup_types() {
     config_error_data = null;
     for (const error of result.errors)
         await pline(error + (/[.!?]$/.test(error) ? '' : '.'));
+}
+
+// src/options.c:9256 dotogglepickup() — the '@' command flips flags.pickup
+// and says so.  C's FIELD is flags.pickup but the rc OPTION is named
+// "autopickup", and our option parser stores it under the option name, so
+// game.flags.autopickup is the one field.
+export async function dotogglepickup() {
+    let buf;
+
+    game.flags.autopickup = !game.flags.autopickup;
+    if (game.flags.autopickup) {
+        /* oc_to_str(flags.pickup_types, ocl) is empty when no types are
+           configured, and C then says "all" */
+        const ocl = game.flags.pickup_types || '';
+        buf = `ON, for ${ocl || 'all'} objects${
+            (game.apelist?.length)
+                ? ((count_apes() === 1)
+                       ? ', with one exception'
+                       : ', with some exceptions')
+                : ''}`;
+    } else {
+        buf = 'OFF';
+    }
+    await pline(`Autopickup: ${buf}.`);
+    return ECMD_OK;
 }

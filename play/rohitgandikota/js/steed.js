@@ -6,6 +6,9 @@
 // are live; dismount_steed() records its landing machinery.
 
 import { game } from './gstate.js';
+import { monverbself } from './do_name.js';
+import { highc } from './hacklib.js';
+import { m_unleash } from './apply.js';
 import { MONSYMS, MFLAGS } from './monst_data.js';
 import { humanoid, amorphous, noncorporeal, is_whirly,
          unsolid, verysmall, bigmonst, is_swimmer, is_floater,
@@ -347,14 +350,33 @@ export async function kick_steed() {
     if (!steed)
         return;
     if (helpless(steed)) {
-        note_unported_steed('kick:helpless');
+        const He = highc(mhe(steed));
+
+        if ((steed.mcanmove || steed.mfrozen) && !rn2(2)) {
+            if (steed.mcanmove)
+                steed.msleeping = 0;
+            else if (steed.mfrozen > 2)
+                steed.mfrozen -= 2;
+            else {
+                steed.mfrozen = 0;
+                steed.mcanmove = 1;
+            }
+            if (helpless(steed))
+                await pline(`${He} stirs.`);
+            else
+                /* "You rouse yourself" or "He rouses himself" (but
+                   "She rouses himself" is possible for a polymorphed
+                   steed) */
+                await pline(`${monverbself(steed, He, 'rouse', null)}!`);
+        } else
+            await pline(`${He} does not respond.`);
         return;
     }
 
     if (steed.mtame)
         steed.mtame--;
     if (!steed.mtame && steed.mleashed)
-        note_unported_steed('kick:m_unleash');
+        await m_unleash(steed, true);
     if (!steed.mtame
         || game.u.ulevel + steed.mtame < rnd(20)) {
         newsym(steed.mx, steed.my);

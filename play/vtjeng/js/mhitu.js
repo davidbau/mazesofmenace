@@ -9,6 +9,7 @@ import {
     AC_VALUE,
     BLINDED,
     CONFLICT,
+    DISPLACED,
     DIED,
     HALF_PHDAM,
     INVIS,
@@ -26,6 +27,8 @@ import {
     PROTECTION,
     P_WHIP,
     RLOC_NOMSG,
+    SEE_INVIS,
+    IS_WATERWALL,
     TT_PIT,
     W_AMUL,
     W_ARMOR,
@@ -56,7 +59,7 @@ import { In_hell, on_level } from './dungeon.js';
 import { done_in_by } from './end.js';
 import { game } from './gstate.js';
 import { nomul, showdamage, spoteffects } from './hack.js';
-import { dist2 } from './hacklib.js';
+import { dist2, distmin } from './hacklib.js';
 import { is_home_elemental } from './makemon.js';
 import { engulf_target, failed_grab } from './mhitm.js';
 import { set_ustuck, unstuck } from './mon.js';
@@ -69,9 +72,12 @@ import {
     is_demon,
     is_minion,
     is_orc,
+    nolimbs,
     is_undead,
     is_vampshifter,
     is_were,
+    dmgtype,
+    gender,
     mhis,
     monstunseesu,
     mon_hates_blessings,
@@ -97,6 +103,7 @@ import { rn2 } from './rng.js';
 import {
     canSeeMonster,
     canSpotMonster,
+    messageAt,
     monsterVisible,
 } from './startup_a11y.js';
 import { t_at } from './trap.js';
@@ -112,6 +119,7 @@ import { hitval } from './weapon.js';
 import { is_pole } from './worn.js';
 import { breamu, spitmu } from './mthrowu.js';
 import { mnexto } from './teleport.js';
+import { poly_gender } from './polyself.js';
 
 // Planning cannot call end.c done_in_by() on its cloned state: the ordinary
 // death entry updates the live terminal and then asks for input. This signal
@@ -165,45 +173,160 @@ export function m_next2u(monster, state) {
     return mdistu(monster, state) <= 2;
 }
 
+// C ref: mhitu.c wildmiss() (176-262). A monster can attack the wrong square
+// when it cannot see, when the hero is displaced, or while the hero is
+// underwater. The caller supplies the ordinary gameplay random source; the
+// display and message seams remain injectable so the planning pass can spend
+// gameplay draws without painting the live terminal.
+export async function wildmiss(mtmp, mattk, rawEnv = {}) {
+    const state = rawEnv.state ?? game;
+    const random = rawEnv.random ?? { rn2 };
+    const canSee = rawEnv.canSee
+        ?? ((x, y) => cansee(x, y, state));
+    const message = rawEnv.message ?? ttyPline;
+    const invisibleHero = activeHeroProperty(state, INVIS)
+        && !perceives(mtmp.data);
+    const unotseen = !mtmp.mcansee || invisibleHero;
+    const unotthere = Boolean(
+        state.u?.uprops?.[DISPLACED]?.intrinsic
+        || state.u?.uprops?.[DISPLACED]?.extrinsic,
+    );
+    const usubmerged = Boolean(state.u?.uinwater);
+
+    // C's impossible() diagnostic is not a gameplay message. This path means
+    // the caller violated mattacku()'s target invariant, so return after the
+    // diagnostic seam (when one is provided) without changing the PRNG.
+    if (!unotseen && !unotthere && !usubmerged) {
+        if (typeof rawEnv.impossible === 'function') {
+            rawEnv.impossible(
+                `${capitalizedMonsterName(mtmp, state, rawEnv)} attacks you `
+                + 'without knowing your location?',
+            );
+        }
+        return;
+    }
+
+    if (!state.flags?.verbose || !canSee(mtmp.mx, mtmp.my)) return;
+
+    // could_seduce() is evaluated before the monster name in C. Ordinary
+    // physical attacks return zero without a draw.
+    const compat = (mattk.adtyp === M.AD_SEDU || mattk.adtyp === M.AD_SSEX)
+        ? could_seduce(mtmp, state.youmonst, mattk, { ...rawEnv, state })
+        : 0;
+
+    if (unotseen) {
+        if (!compat) {
+            // C consumes this draw even during planning, but the planning pass
+            // must not evaluate display-only naming or write a line.
+            const outcome = random.rn2(3);
+            if (rawEnv.planning) return;
+            const name = capitalizedMonsterName(mtmp, state, rawEnv);
+            const swings = mattk.aatyp === M.AT_BITE ? 'snaps'
+                : mattk.aatyp === M.AT_KICK ? 'kicks'
+                    : mattk.aatyp === M.AT_STNG
+                        || mattk.aatyp === M.AT_BUTT
+                        || nolimbs(mtmp.data) ? 'lunges' : 'swings';
+            const target = (() => {
+                const location = state.level?.at?.(mtmp.mux, mtmp.muy);
+                return location && IS_WATERWALL(location.typ)
+                    ? 'empty water' : 'thin air';
+            })();
+            const text = outcome === 0
+                ? `${name} ${swings} wildly and misses!`
+                : outcome === 1
+                    ? `${name} attacks a spot beside you.`
+                    : `${name} strikes at ${target}!`;
+            await message(messageAt(text, mtmp.mx, mtmp.my, state), state);
+        } else if (!rawEnv.planning) {
+            const name = capitalizedMonsterName(mtmp, state, rawEnv);
+            await message(
+                messageAt(`${name} tries to touch you and misses!`,
+                    mtmp.mx, mtmp.my, state),
+                state,
+            );
+        }
+        return;
+    }
+
+    // The displacement message is intentionally emitted even while blind;
+    // at this point cansee() has established that the monster's own square is
+    // visible. Underwater is reached only when the preceding reason is off.
+    if (rawEnv.planning) return;
+    const name = capitalizedMonsterName(mtmp, state, rawEnv);
+    let text;
+    if (unotthere) {
+        text = compat
+            ? `${name} smiles ${compat === 2 ? 'engagingly' : 'seductively'} `
+                + `at your ${invisibleHero ? 'invisible ' : ''}`
+                + 'displaced image...'
+            : `${name} strikes at your ${invisibleHero ? 'invisible ' : ''}`
+                + 'displaced image and misses you!';
+    } else if (usubmerged) {
+        text = compat
+            ? `${name} reaches towards your distorted image.`
+            : `${name} is fooled by water reflections and misses!`;
+    } else {
+        // unotseen with compat != 0 is the seduction-specific message.
+        text = `${name} tries to touch you and misses!`;
+    }
+    await message(messageAt(text, mtmp.mx, mtmp.my, state), state);
+}
+
 // C ref: mhitu.c could_seduce() (1933-1984). "returns 0 if seduction
 // impossible, 1 if fine, 2 if wrong gender for nymph".
-//
-// Partial: it covers every aggressor whose species fails the S_NYMPH /
-// PM_AMOROUS_DEMON test at :1976, which is the whole answer for all of them
-// and is 0. An aggressor that passes it refuses, because the rest of the
-// function needs polyself.c poly_gender(), sysopt.seduce and the AD_SSEX /
-// AD_SEDU / AD_SITM damage types, none of which is ported.
-//
-// That refusal is a fail-closed stop, not the boundary of C's nonzero answer.
-// It is wider, in three directions, because it tests the species alone:
-//
-//   C's :1976-1977 is a disjunction, and its second half also demands an adtyp
-//     of AD_SEDU, AD_SSEX or AD_SITM. An amorous demon's claw carries
-//     ATTK(AT_CLAW, AD_PHYS, 1, 3) (monsters.h:2922-2923), for which C returns
-//     0 at :1978 and hitmsg() prints its default verb, while this refuses.
-//   C's :1969-1970 returns 0 for an unseen aggressor's AD_SEDU attack.
-//   C's :1980 returns 0 for an amorous demon whose gender matches the hero's.
-//
-// A caller that needs C's answer rather than a stop therefore has to complete
-// this function; it cannot read the refusal as "C would have said yes".
 export function could_seduce(magr, mdef, mattk, rawEnv = {}) {
     const state = rawEnv.state ?? game;
-    const unsupported = requireMattackuOperation(rawEnv, 'unsupported');
-
     if (is_animal(magr.data)) return 0;
+
+    let pagr;
+    let agrinvis;
+    let genagr;
+    if (magr === state.youmonst) {
+        pagr = state.youmonst.data;
+        const invis = state.u?.uprops?.[INVIS];
+        agrinvis = Boolean((invis?.intrinsic || invis?.extrinsic)
+            && !invis?.blocked);
+        genagr = poly_gender(state);
+    } else {
+        pagr = magr.data;
+        agrinvis = Boolean(magr.minvis);
+        genagr = gender(magr);
+    }
+
+    let defperc;
+    let gendef;
+    if (mdef === state.youmonst) {
+        const seeInvisible = state.u?.uprops?.[SEE_INVIS];
+        defperc = Boolean(seeInvisible?.intrinsic
+            || seeInvisible?.extrinsic);
+        gendef = poly_gender(state);
+    } else {
+        defperc = perceives(mdef.data);
+        gendef = gender(mdef);
+    }
+
+    let adtyp = mattk ? mattk.adtyp
+        : dmgtype(pagr, M.AD_SSEX) ? M.AD_SSEX
+            : dmgtype(pagr, M.AD_SEDU) ? M.AD_SEDU
+                : M.AD_PHYS;
+    if (adtyp === M.AD_SSEX && !(state.sysopt?.seduce ?? true))
+        adtyp = M.AD_SEDU;
+
+    if (agrinvis && !defperc && adtyp === M.AD_SEDU)
+        return 0;
+
     /* nymphs have two attacks, one for steal-item damage and the other
        for seduction, both pass the could_seduce() test;
        incubi/succubi have three attacks, their claw attacks for damage
        don't pass the test */
-    // C's comment describes both halves of its :1976-1977 test. Only the
-    // species half is ported, so the claw attacks its last line excuses refuse
-    // here instead of falling through.
-    const pagr = magr.data;
-    if (pagr.mlet === M.S_NYMPH
-        || pagr === state.mons?.[M.PM_AMOROUS_DEMON]) {
-        unsupported('a seductive monster attack');
-    }
-    return 0;
+    if ((pagr.mlet !== M.S_NYMPH
+        && pagr !== state.mons[M.PM_AMOROUS_DEMON])
+        || (adtyp !== M.AD_SEDU && adtyp !== M.AD_SSEX
+            && adtyp !== M.AD_SITM))
+        return 0;
+
+    return genagr === 1 - gendef ? 1
+        : pagr.mlet === M.S_NYMPH ? 2 : 0;
 }
 
 // allmain.c stop_occupation(), which mhitu.c calls from missmu() at :99 and
@@ -257,15 +380,13 @@ export async function hitmsg(mtmp, mattk, state = game, env = {}) {
 
     /* Note: if opposite gender, "seductively";
        if same gender, "engagingly" for nymph, normal msg for others. */
-    // C's first arm prints "%s smiles at you seductively." for a nonzero
-    // could_seduce(). It is left out because no route into hitmsg() can reach
-    // it, which is a fact about the callers rather than about the call below.
-    // uhitm.c mhitm_ad_phys() and mhitm_ad_elec() are the only two, and both
-    // pass a non-null mattk whose adtyp is AD_PHYS or AD_ELEC. mhitu.c:1977
-    // then holds for every aggressor, so C returns 0 at :1978 and the arm has
-    // no reachable spelling. The call stays for the refusal it carries, which
-    // is wider than C's nonzero set rather than equal to it; could_seduce()
-    // above says in which directions.
+    // C's first arm prints a seductive message for a nonzero could_seduce().
+    // No current hitmsg() caller reaches that arm, but keep the predicate in
+    // the source order so a future caller gets C's result.
+    // uhitm.c mhitm_ad_phys() and mhitm_ad_elec() are the only current callers,
+    // and both pass a non-null mattk whose adtyp is AD_PHYS or AD_ELEC. C
+    // returns zero for those attacks; calling the full helper preserves the
+    // source order for any future seductive caller.
     could_seduce(mtmp, state.youmonst, mattk, { ...env, state });
 
     switch (mattk.aatyp) {
@@ -689,7 +810,12 @@ export async function mattacku(monster, rawEnv = {}) {
         if (offended !== 0) return offended === 1 ? 1 : 0;
     }
 
+    // C resets the shared drain-inventory guard for each monster attack.
+    // mhitm.js uses the same field when a monster attacks another monster.
+    state.gs ??= {};
+    state.gs.skipdrin = false;
     const firstfoundyou = foundyou;
+    let skipnonmagc = false;
     const sum = new Array(NATTK).fill(M_ATTK_MISS);
 
     for (let i = 0; i < NATTK; i++) {
@@ -708,11 +834,16 @@ export async function mattacku(monster, rawEnv = {}) {
             // bhitpos, so that test is always false and is left out.
         }
         const mattk = getmattk(monster, state.youmonst, i, sum, env);
-        // C skips this attack for three reasons, none of which can be true
-        // here. u.uswallow is never set: js/mon.js clears it and no ported
-        // path writes it. skipnonmagc is wildmiss()'s, and gs.skipdrin is
-        // mhitm_ad_drin()'s; wildmiss() refuses below and mhitm_ad_drin()
-        // sits behind hitmu(), which refuses too.
+        // C skips swallowed non-engulfing attacks, all non-magical attacks
+        // after wildmiss(), and a second drain-inventory tentacle when the
+        // first one already handled it. The latter two state fields are kept
+        // here even though the selected recipe reaches only wildmiss().
+        if ((u.uswallow && mattk.aatyp !== M.AT_ENGL)
+            || (skipnonmagc && mattk.aatyp !== M.AT_MAGC)
+            || (state.gs?.skipdrin && mattk.aatyp === M.AT_TENT
+                && mattk.adtyp === M.AD_DRIN)) {
+            continue;
+        }
 
         switch (mattk.aatyp) {
         case M.AT_CLAW: /* "hand to hand" attacks */
@@ -746,7 +877,10 @@ export async function mattacku(monster, rawEnv = {}) {
                 } else {
                     // wildmiss() announces an attack on the wrong square and
                     // sets skipnonmagc for the rest of the loop.
-                    unsupported('a monster attacking where the hero is not');
+                    await wildmiss(monster, mattk, env);
+                    // C avoids repeating the same physical miss for the
+                    // attack slots that follow; magical attacks still run.
+                    skipnonmagc = true;
                 }
             }
             break;
@@ -862,7 +996,10 @@ export async function mattacku(monster, rawEnv = {}) {
                     if (mon_currwep)
                         tmp -= hittmp;
                 } else {
-                    unsupported('a monster attacking where the hero is not');
+                    await wildmiss(monster, mattk, env);
+                    // C avoids repeating the same physical miss for the
+                    // attack slots that follow; magical attacks still run.
+                    skipnonmagc = true;
                 }
             }
             break;
@@ -974,6 +1111,15 @@ export async function expels(mtmp, rawEnv = {}) {
         newsym(mtmp.mx, mtmp.my);
         newsym(state.u.ux, state.u.uy);
     }
+    // mhitu.c:302-304. um_dist() is Chebyshev distance, and the message is
+    // emitted only when mnexto() had to leave the monster beyond a neighboring
+    // square (for example through a controlled relocation seam).
+    if (!rawEnv.planning
+        && distmin(mtmp.mx, mtmp.my, state.u.ux, state.u.uy) > 1) {
+        await (rawEnv.message ?? ttyPline)(
+            'Brrooaa...  You land hard at some distance.', state,
+        );
+    }
     await spoteffects(true, state);
 }
 
@@ -1016,6 +1162,17 @@ async function gulpmu(mtmp, mattk, rawEnv = {}) {
         if (u.usteed || u.utrap)
             unsupported('engulfing a steed or trapped hero');
 
+        // C evaluates Monnam() for the urgent engulfing line before it shuts
+        // down vision.  A monster which moved onto the hero's square is
+        // visible to C at this point, while the JS sight grid deliberately
+        // omits that occupied square.  Supply the source's visibility fact
+        // for this pre-swallow name lookup; retaining it before placement
+        // also preserves C's display-RNG evaluation point.
+        const engulferName = rawEnv.planning
+            ? null : capitalizedMonsterName(mtmp, state, {
+                ...rawEnv,
+                canSpotMonster: () => !mtmp.minvis && !mtmp.mundetected,
+            });
         remove_monster(omx, omy, state);
         mtmp.mtrapped = false;
         place_monster(mtmp, u.ux, u.uy, state);
@@ -1030,7 +1187,7 @@ async function gulpmu(mtmp, mattk, rawEnv = {}) {
             // do_name.c's hallucinated rndmonnam() is a display-stream draw.
         } else {
             await (rawEnv.urgentMessage ?? ttyUrgentPline)(
-                `${capitalizedMonsterName(mtmp, state)} engulfs you!`, state,
+                `${engulferName} engulfs you!`, state,
             );
         }
         await mattackuStopOccupation(rawEnv);

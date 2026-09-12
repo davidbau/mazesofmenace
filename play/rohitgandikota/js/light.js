@@ -303,16 +303,32 @@ export function do_light_sources(cs_rows) {
 // vision pass maps terrain and monsters revealed during that instant, then
 // the object returns to OBJ_FREE while its flight continues.
 export async function show_transient_light(obj, x, y) {
-    if (!obj) {
-        note_unported_light('show_transient_light:camera_flash');
-        return;
-    }
+    let source = null;
 
-    const source = lights().find((ls) =>
-        ls.type === LS_OBJECT && ls.id === obj.o_id);
-    if (!source || obj.where !== OBJ_FREE) {
-        note_unported_light('show_transient_light:invalid-object');
-        return;
+    if (!obj) {
+        if (game.level.at(x, y).lit)
+            return;
+
+        /* a camera flash: no object; cg.zeroany is the id (a Null one) */
+        source = new_light_core(x, y, 0, LS_OBJECT, null);
+        /* new_light_core() only rejects range 0 when the id isn't Null */
+        if (!source) {
+            void impossible('show_transient_light: no flash?');
+            return;
+        }
+    } else {
+        /* thrown or kicked lit candle or lamp; locate its light source
+           to obtain its radius (for monster sightings) */
+        source = lights().find((ls) =>
+            ls.type === LS_OBJECT && ls.id === obj.o_id) || null;
+        if (!source || obj.where !== OBJ_FREE) {
+            const { simpleonames, otense } = await import('./objnam.js');
+
+            void impossible(`transient light ${obj.lamplit ? 'lit' : 'unlit'} ${
+                simpleonames(obj)} ${otense(obj, 'are')} not ${
+                !source ? 'a light source' : 'free'}?`);
+            return;
+        }
     }
 
     const [{ place_object }, { obj_extract_self },
@@ -322,7 +338,11 @@ export async function show_transient_light(obj, x, y) {
             import('./vision.js'), import('./display.js'),
         ]);
 
-    place_object(obj, game.bhitpos?.x ?? x, game.bhitpos?.y ?? y);
+    if (obj) /* put lit candle or lamp temporarily on the map */
+        place_object(obj, game.bhitpos?.x ?? x, game.bhitpos?.y ?? y);
+    else /* camera flash:  no object; directly set light source's location */
+        source.x = x, source.y = y;
+
     vision_recalc(0);
     await flush_screen(0);
 
@@ -335,9 +355,11 @@ export async function show_transient_light(obj, x, y) {
             mon.mtemplit = 1;
     }
 
-    if (game.animationFrame)
-        await game.animationFrame();
-    obj_extract_self(obj);
+    if (obj) { /* take thrown/kicked candle or lamp off the map */
+        if (game.animationFrame) /* nh_delay_output() */
+            await game.animationFrame();
+        obj_extract_self(obj); /* remove_object(obj) */
+    }
 }
 
 // src/light.c:331 transient_light_cleanup(). A light deleted during a
@@ -348,7 +370,10 @@ export async function transient_light_cleanup() {
     const { canspotmon, map_invisible, flush_screen } =
         await import('./display.js');
 
-    if (game.vision_full_recalc)
+    /* in case we're cleaning up after a camera flash, get rid of light
+       sources which aren't associated with a specific object */
+    discard_flashes();
+    if (game.vision_full_recalc) /* set by del_light_source() */
         vision_recalc(0);
 
     let changed = false;

@@ -524,11 +524,9 @@ export function Resists_Elem(mon, propindx) {
     case ANTIMAGIC:
         return resists_magm(mon);
     case DRAIN_RES:
-        note_unported_mondata('Resists_Elem:resists_drli');
-        return false;
+        return resists_drli(mon);
     case BLND_RES:
-        note_unported_mondata('Resists_Elem:resists_blnd');
-        return false;
+        return resists_blnd(mon);
 
     default:
         return false;                   /* impossible() */

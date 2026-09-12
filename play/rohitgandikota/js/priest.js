@@ -16,6 +16,8 @@ import { buzz } from './zap.js';
 import { linedup } from './mthrowu.js';
 import { a_gname_at, halu_gname } from './pray.js';
 import { game } from './gstate.js';
+import { mon_learns_traps } from './trap.js';
+import { ALL_TRAPS } from './const.js';
 import { impossible } from './pline.js';
 import { rn2, rn1, d } from './rng.js';
 import { makemon, remove_monster, place_monster,
@@ -95,11 +97,12 @@ export function priestini(lvl, sroom, sx, sy, sanctum) {
             shrpos: { x: sx, y: sy },
             shrlevel: { dnum: lvl.dnum, dlevel: lvl.dlevel },
         };
+        mon_learns_traps(priest, ALL_TRAPS); /* traps are known */
+        priest.mpeaceful = 1;
         priest.ispriest = 1;
         priest.isminion = 0;
-        priest.mpeaceful = 1;
         priest.msleeping = 0;
-        /* mon_learns_traps, set_malign: state only */
+        set_malign(priest); /* mpeaceful may have changed */
 
         /* now his/her goodies... src/priest.c:260 — the high priest of
            Moloch carries the real Amulet, but only on the sanctum level
@@ -672,8 +675,7 @@ export function mk_roamer(ptr, alignment, x, y, peaceful) {
                         renegade: !!(coaligned && !peaceful) };
         roamer.ispriest = 0;
         roamer.isminion = 1;
-        /* mon_learns_traps(roamer, ALL_TRAPS) — mtrapseen = ~0L, state only */
-        roamer.mtrapseen = ~0;
+        mon_learns_traps(roamer, ALL_TRAPS); /* traps are known */
         roamer.mpeaceful = peaceful ? 1 : 0;
         roamer.msleeping = 0;
         set_malign(roamer); /* peaceful may have changed */

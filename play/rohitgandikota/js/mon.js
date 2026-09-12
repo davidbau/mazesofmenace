@@ -59,6 +59,7 @@ import { mdistu, mon_track_clear, m_everyturn_effect,
 // with the wrong number of monsters desynchronises on its very first turn.
 
 import { game } from './gstate.js';
+import { is_elf, is_dwarf, is_gnome } from './mondata.js';
 import { set_mon_data } from './mondata.js';
 import { get_wormno, initworm, place_worm_tail_randomly,
          worm_cross, worm_wire } from './worm.js';
@@ -199,6 +200,69 @@ export const NORMAL_SPEED = 12;
 
 // include/monst.h — mspeed values
 const MSLOW = 1, MFAST = 2;
+
+// src/mon.c:470 genus() — the base type of a quest guardian or racial
+// monster: mode 1 gives the role's monster, 0 the race's.
+export function genus(mndx, mode) {
+    switch (mndx) {
+    case PMNAMES.PM_STUDENT:
+        mndx = mode ? PMNAMES.PM_ARCHEOLOGIST : PMNAMES.PM_HUMAN;
+        break;
+    case PMNAMES.PM_CHIEFTAIN:
+        mndx = mode ? PMNAMES.PM_BARBARIAN : PMNAMES.PM_HUMAN;
+        break;
+    case PMNAMES.PM_NEANDERTHAL:
+        mndx = mode ? PMNAMES.PM_CAVE_DWELLER : PMNAMES.PM_HUMAN;
+        break;
+    case PMNAMES.PM_ATTENDANT:
+        mndx = mode ? PMNAMES.PM_HEALER : PMNAMES.PM_HUMAN;
+        break;
+    case PMNAMES.PM_PAGE:
+        mndx = mode ? PMNAMES.PM_KNIGHT : PMNAMES.PM_HUMAN;
+        break;
+    case PMNAMES.PM_ABBOT:
+        mndx = mode ? PMNAMES.PM_MONK : PMNAMES.PM_HUMAN;
+        break;
+    case PMNAMES.PM_ACOLYTE:
+        mndx = mode ? PMNAMES.PM_CLERIC : PMNAMES.PM_HUMAN;
+        break;
+    case PMNAMES.PM_HUNTER:
+        mndx = mode ? PMNAMES.PM_RANGER : PMNAMES.PM_HUMAN;
+        break;
+    case PMNAMES.PM_THUG:
+        mndx = mode ? PMNAMES.PM_ROGUE : PMNAMES.PM_HUMAN;
+        break;
+    case PMNAMES.PM_ROSHI:
+        mndx = mode ? PMNAMES.PM_SAMURAI : PMNAMES.PM_HUMAN;
+        break;
+    case PMNAMES.PM_GUIDE:
+        mndx = mode ? PMNAMES.PM_TOURIST : PMNAMES.PM_HUMAN;
+        break;
+    case PMNAMES.PM_APPRENTICE:
+        mndx = mode ? PMNAMES.PM_WIZARD : PMNAMES.PM_HUMAN;
+        break;
+    case PMNAMES.PM_WARRIOR:
+        mndx = mode ? PMNAMES.PM_VALKYRIE : PMNAMES.PM_HUMAN;
+        break;
+    default:
+        if (ismnum(mndx)) {
+            const ptr = game.mons[mndx];
+
+            if (is_human(ptr))
+                mndx = PMNAMES.PM_HUMAN;
+            else if (is_elf(ptr))
+                mndx = PMNAMES.PM_ELF;
+            else if (is_dwarf(ptr))
+                mndx = PMNAMES.PM_DWARF;
+            else if (is_gnome(ptr))
+                mndx = PMNAMES.PM_GNOME;
+            else if (is_orc(ptr))
+                mndx = PMNAMES.PM_ORC;
+        }
+        break;
+    }
+    return mndx;
+}
 
 // src/mon.c:1130 mcalcmove()
 export function mcalcmove(mon, m_moving) {

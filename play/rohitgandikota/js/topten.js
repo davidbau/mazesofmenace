@@ -6,6 +6,8 @@
 // NetHack's record file outlives each process.
 
 import { game } from './gstate.js';
+import { canseemon } from './display.js';
+import { christen_monst } from './do_name.js';
 import { COLNO } from './const.js';
 import { tty_raw_print, tty_raw_print_bold, tty_base_cursor } from './tty/wintty.js';
 import { rn1, rn2, rnd } from './rng.js';
@@ -71,7 +73,15 @@ function outentry(rank, t1, so) {
     let second_line = true;
     const death = t1.death || 'died';
     if (death.startsWith('escaped')) {
-        note_unported_topten('outentry:escaped');
+        linebuf += `escaped the dungeon ${
+            death.slice(7).startsWith(' (') ? death.slice(7 + 2) : ''
+            }[max level ${t1.maxlvl}]`;
+        /* fixup for closing paren in "escaped... with...Amulet)[max..." */
+        const bp = linebuf.indexOf(')');
+        if (bp >= 0)
+            linebuf = linebuf.slice(0, bp)
+                + ((game.astral_level && t1.deathdnum === game.astral_level.dnum)
+                   ? '' : ' ' + linebuf.slice(bp + 1));
         second_line = false;
     } else if (death.startsWith('ascended')) {
         linebuf += `ascended to demigod${
@@ -97,7 +107,30 @@ function outentry(rank, t1, so) {
         }
 
         if (game.astral_level && t1.deathdnum === game.astral_level.dnum) {
-            note_unported_topten('outentry:endgame planes');
+            let fmt = ' on the Plane of %s', arg;
+
+            switch (t1.deathlev) {
+            case -5:
+                fmt = ' on the %s Plane';
+                arg = 'Astral';
+                break;
+            case -4:
+                arg = 'Water';
+                break;
+            case -3:
+                arg = 'Fire';
+                break;
+            case -2:
+                arg = 'Air';
+                break;
+            case -1:
+                arg = 'Earth';
+                break;
+            default:
+                arg = 'Void';
+                break;
+            }
+            linebuf += fmt.replace('%s', arg);
         } else {
             linebuf += ` in ${game.dungeons[t1.deathdnum].dname}`;
             if (!game.knox_level || t1.deathdnum !== game.knox_level.dnum)
@@ -285,8 +318,11 @@ export function tt_doppel(mon) {
         else if (tt.plgend?.[0] === 'M')
             mon.female = 0;
         ret = classmon(tt.plrole);
-        /* christen only when the player can see the doppelganger */
-        note_unported_topten('tt_doppel:christen');
+        /* Only take on a name if the player can see
+           the doppelganger, otherwise we end up with
+           named monsters spoiling the fun - Kes */
+        if (canseemon(mon))
+            christen_monst(mon, tt.name);
     }
     return ret;
 }

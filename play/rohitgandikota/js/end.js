@@ -8,6 +8,10 @@
 // swallowed and the next segment starts a fresh game.
 
 import { game } from './gstate.js';
+import { notice_all_mons_flush } from './hack.js';
+import { shkname, shkname_is_pname } from './shknam.js';
+import { m_monnam } from './do_name.js';
+import { has_ebones } from './const.js';
 import { pline, canspotmon, tty_clear_nhwindow_message } from './display.js';
 import { You, Your, You_feel, pline_The } from './pline.js';
 import { carrying, hidden_gold, money_cnt, useup, obfree, currency } from './invent.js';
@@ -155,31 +159,40 @@ export async function done_in_by(mtmp, how) {
         if (has_mgivenname(mtmp))
             buf += ` of ${MGIVENNAME(mtmp)}`;
     } else if (mtmp.isshk) {
-        const rawName = mtmp.shknam || mtmp.eshk?.shknam
-            || mtmp.mextra?.eshk?.shknam || '';
-        if (rawName) {
-            const personal = /^[-+=]/.test(rawName);
-            const shkname = /^[A-Za-z]/.test(rawName[0])
-                ? rawName : rawName.slice(1);
-            buf += `${personal ? '' : mtmp.female ? 'Ms. ' : 'Mr. '}`
-                + `${shkname}, the shopkeeper`;
-        } else {
-            note_unported_end('done_in_by:shopkeeper-name');
-            buf += pmname(original, monGender);
-        }
+        const shknm = shkname(mtmp),
+              honorific = shkname_is_pname(mtmp) ? ''
+                          : mtmp.female ? 'Ms. ' : 'Mr. ';
+
+        buf += `${honorific}${shknm}, the shopkeeper`;
         format = KILLED_BY;
     } else if (mtmp.ispriest || mtmp.isminion) {
-        note_unported_end('done_in_by:priest-or-minion-name');
-        buf += pmname(original, monGender);
+        /* m_monnam() suppresses "the" prefix plus "invisible", and
+           it overrides the effect of Hallucination on priestname() */
+        buf += m_monnam(mtmp);
     } else {
         buf += pmname(original, monGender);
         if (has_mgivenname(mtmp))
-            buf += ` called ${MGIVENNAME(mtmp)}`;
+            buf += ` ${has_ebones(mtmp) ? 'of' : 'called'} ${MGIVENNAME(mtmp)}`;
     }
 
     game.killer = { format, name: buf };
-    if (game.multi_reason)
-        note_unported_end('done_in_by:multi-reason-truncation');
+
+    /* might be killed by a monster which was the cause of hero's
+       helplessness; if so, shorten the reason to just the verb
+       ("paralyzed" rather than "paralyzed by a floating eye") */
+    if (game.multi_reason && game.multireasonbuf
+        && game.multireasonbuf.endsWith(game.multi_reason)) {
+        const m = /^(\d+):/.exec(game.multireasonbuf);
+
+        if (m && Number(m[1]) === mtmp.m_id) {
+            const p = game.multireasonbuf.indexOf(' ');
+
+            if (p >= 0) {
+                game.multireasonbuf = game.multireasonbuf.slice(0, p);
+                game.multi_reason = game.multireasonbuf.slice(m[0].length);
+            }
+        }
+    }
 
     if (original.mlet === MONSYMS.S_WRAITH) {
         game.u.ugrave_arise = PMNAMES.PM_WRAITH;
@@ -285,7 +298,7 @@ export async function container_contents(list, identified, all_containers, repor
                     await xwaitforspace(' \r\n\x1b');
                 } while (game.morc !== '\x1b' && tty_next_page(tmpwin));
                 tty_destroy_nhwindow(tmpwin);
-                await docrt();
+                await notice_all_mons_flush();
                 if (all_containers)
                     await container_contents(box.cobj, identified, true, reportempty);
             } else if (reportempty) {

@@ -16,7 +16,7 @@ import { NH_BLACK } from './const.js';
 import { NECK } from './const.js';
 import { Upolyd } from './const.js';
 import { engulfing_u } from './const.js';
-import { losehp, nomul } from './hack.js';
+import { losehp, nomul, notice_all_mons_flush } from './hack.js';
 import { nxtobj } from './invent.js';
 import { ART_MASTER_KEY_OF_THIEVERY } from './artilist_data.js';
 import { exercise, Role_if } from './attrib.js';
@@ -1177,7 +1177,7 @@ async function invoke_enlightening() {
     while (tty_next_page(win))
         await xwaitforspace(' \r\n\x1b');
     tty_destroy_nhwindow(win);
-    await docrt();
+    await notice_all_mons_flush();
     return ECMD_TIME;
 }
 

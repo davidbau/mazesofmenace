@@ -862,6 +862,22 @@ async function rob_shop(shkp) {
     return true;
 }
 
+// src/shk.c:722 remote_burglary() — the hero picked something up from a
+// shop's floor without being in the shop (telekinesis, a grappling hook)
+export async function remote_burglary(x, y) {
+    const shkp = shop_keeper((in_rooms(x, y, SHOPBASE) || '\0').charCodeAt(0));
+    if (!shkp || !inhishop(shkp))
+        return; /* shk died, teleported, changed levels... */
+
+    const eshkp = ESHK(shkp);
+    if (!eshkp.billct && !eshkp.debit) /* bill is settled */
+        return;
+
+    if (await rob_shop(shkp)) {
+        await call_kops(shkp, false);
+    }
+}
+
 // src/shk.c u_left_shop(), including credit settlement and the Kops alarm.
 export async function u_left_shop(leavestring, newlev) {
     const u = game.u;

@@ -9,6 +9,14 @@
 import { POLY_CONTROLLED } from './const.js';
 import { polyself } from './polyself.js';
 import { game } from './gstate.js';
+import { tty_putstr, tty_display_nhwindow, tty_next_page } from './tty/wintty.js';
+import { xwaitforspace } from './tty/getline.js';
+import { may_dig, notice_all_mons_flush } from './hack.js';
+import { Is_special, Invocation_lev, On_W_tower_level, In_sokoban } from './dungeon.js';
+import { NHW_TEXT, STONE, COLNO, ROWNO, In_endgame, Is_knox_level } from './const.js';
+import { defsyms, cmap_names } from './drawing_data.js';
+import { levltyp } from './cmd.js';
+import { unavailcmd, ecname_from_fn } from './cmd.js';
 import { makewish } from './zap.js';
 import { encumber_msg } from './attrib.js';
 import { ECMD_OK, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, PICK_ANY,
@@ -57,7 +65,7 @@ export async function wiz_wish() {
         game.flags.verbose = save_verbose;
         await encumber_msg();
     } else {
-        note_unported_wizcmds('wiz_wish:unavailcmd');
+        await pline(unavailcmd.replace('%s', ecname_from_fn('wizwish')));
     }
     return ECMD_OK;
 }
@@ -84,7 +92,7 @@ export async function wiz_identify() {
 // turn. The ordinary hero-credited path is the one exposed by #wizkill.
 export async function wiz_kill() {
     if (!game.wizard) {
-        note_unported_wizcmds('wiz_kill:unavailcmd');
+        await pline(unavailcmd.replace('%s', ecname_from_fn('wizkill')));
         return ECMD_OK;
     }
 
@@ -158,7 +166,7 @@ export async function wiz_telekinesis() {
 // src/wizcmds.c:176 wiz_map(): reveal the level, traps, and engravings.
 export async function wiz_map() {
     if (!game.wizard) {
-        note_unported_wizcmds('wiz_map:unavailcmd');
+        await pline(unavailcmd.replace('%s', ecname_from_fn('wizmap')));
         return ECMD_OK;
     }
 
@@ -546,4 +554,197 @@ export async function wiz_level_tele() {
 export async function wiz_polyself() {
     await polyself(POLY_CONTROLLED);
     return ECMD_OK;
+}
+
+/* include/hack.h — quitchars */
+const quitchars = ' \r\n\x1b';
+
+// src/wizcmds.c:693 wiz_map_levltyp() — the '#terrain' debug view: every
+// levl[][].typ as a base-36 digit, then a line describing the level
+export async function wiz_map_levltyp() {
+    let x, y;
+    let terrain;
+    const istty = true; /* windowprocs.name is "tty" */
+
+    const win = tty_create_nhwindow(NHW_TEXT);
+    if (istty)
+        tty_putstr(win, 0, ''); /* tty only: blank top line */
+    for (y = 0; y < ROWNO; y++) {
+        /* map column 0 is not used (it doesn't get saved/restored, and
+           it should always have terrain type "undiggable stone") */
+        let row = '';
+        for (x = 1; x < COLNO; x++) {
+            terrain = game.level.at(x, y).typ;
+            row += (terrain === STONE && !may_dig(x, y))
+                   ? '*'
+                   : (terrain < 10)
+                      ? String.fromCharCode(48 + terrain)
+                      : (terrain < 36)
+                         ? String.fromCharCode(97 + terrain - 10)
+                         : String.fromCharCode(65 + terrain - 36);
+        }
+        if (game.level.at(0, y).typ !== STONE || may_dig(0, y))
+            row += '!';
+        tty_putstr(win, 0, row);
+    }
+
+    {
+        const slev = Is_special(game.u.uz);
+        const uz = game.u.uz;
+        const lflags = game.level.flags || {};
+        let dsc = `D:${uz.dnum},L:${uz.dlevel}`;
+
+        if (slev) {
+            dsc += ` "${slev.proto}"`;
+            /* special level flags; not all of them are useful here
+               (rogue_like level is always mazelike, hellish levels are
+               always in Gehennom and a lot of them are mazelike too) */
+            if (slev.flags.maze_like)
+                dsc += ' mazelike';
+            if (slev.flags.hellish)
+                dsc += ' hellish';
+            if (slev.flags.town)
+                dsc += ' town';
+            if (slev.flags.rogue_like)
+                dsc += ' roguelike';
+        }
+        if (lflags.nfountains)
+            dsc += ` ${defsyms[cmap_names.S_fountain].sym}:${lflags.nfountains | 0}`;
+        if (lflags.nsinks)
+            dsc += ` ${defsyms[cmap_names.S_sink].sym}:${lflags.nsinks | 0}`;
+        if (lflags.has_vault)
+            dsc += ' vault';
+        if (lflags.has_shop)
+            dsc += ' shop';
+        if (lflags.has_temple)
+            dsc += ' temple';
+        if (lflags.has_court)
+            dsc += ' throne';
+        if (lflags.has_zoo)
+            dsc += ' zoo';
+        if (lflags.has_morgue)
+            dsc += ' morgue';
+        if (lflags.has_barracks)
+            dsc += ' barracks';
+        if (lflags.has_beehive)
+            dsc += ' hive';
+        if (lflags.has_swamp)
+            dsc += ' swamp';
+        if (lflags.noteleport)
+            dsc += ' noTport';
+        if (lflags.hardfloor)
+            dsc += ' noDig';
+        if (lflags.nommap)
+            dsc += ' noMMap';
+        if (!lflags.hero_memory)
+            dsc += ' noMem';
+        if (lflags.shortsighted)
+            dsc += ' shortsight';
+        if (lflags.graveyard)
+            dsc += ' graveyard';
+        if (lflags.is_maze_lev)
+            dsc += ' maze';
+        if (lflags.is_cavernous_lev)
+            dsc += ' cave';
+        if (lflags.arboreal)
+            dsc += ' tree';
+        if (In_sokoban(uz))
+            dsc += ' sokoban-rules';
+        /* non-flag info; not necessarily accurate (bones levels and the
+           checks (extra stairs and magic portals) here */
+        if (Invocation_lev(uz))
+            dsc += ' invoke';
+        if (On_W_tower_level(uz))
+            dsc += ' tower';
+        if (uz.dnum === 0)
+            dsc += ' dungeon';
+        else if (uz.dnum === game.mines_dnum)
+            dsc += ' mines';
+        else if (In_sokoban(uz))
+            dsc += ' sokoban';
+        else if (uz.dnum === game.quest_dnum)
+            dsc += ' quest';
+        else if (Is_knox_level(uz))
+            dsc += ' ludios';
+        else if (uz.dnum === 1)
+            dsc += ' gehennom';
+        else if (uz.dnum === game.tower_dnum)
+            dsc += ' vlad';
+        else if (In_endgame(uz))
+            dsc += ' endgame';
+        else {
+            let brname = game.dungeons[uz.dnum]?.dname;
+
+            if (!brname)
+                brname = 'unknown';
+            if (brname.slice(0, 4).toLowerCase() === 'the ')
+                brname = brname.slice(4);
+            dsc += ` ${brname}`;
+        }
+        if (dsc.length >= COLNO)
+            dsc = dsc.slice(0, COLNO - 1); /* truncate */
+        tty_putstr(win, 0, dsc);
+    }
+
+    /* display_nhwindow(win, TRUE): page through the text window, ESC
+       cancelling the remaining pages; destroy_nhwindow(win) redraws the
+       map through tty_dismiss_nhwindow() */
+    await tty_display_nhwindow(win);
+    for (;;) {
+        await xwaitforspace(quitchars);
+        if (game.morc === '\x1b')
+            break; /* cancel remaining pages */
+        if (!tty_next_page(win))
+            break;
+    }
+    tty_destroy_nhwindow(win);
+    await notice_all_mons_flush();
+    return;
+}
+
+// src/wizcmds.c:841 wiz_levltyp_legend() — explanation of the base-36
+// output from wiz_map_levltyp()
+export async function wiz_levltyp_legend() {
+    let i, j, last, c;
+    let dsc;
+    const fmt = ' %c - %-28s'; /* TODO: include tab-separated variant for win32 */
+    let buf = '';
+
+    const win = tty_create_nhwindow(NHW_TEXT);
+    tty_putstr(win, 0, '#terrain encodings:');
+    tty_putstr(win, 0, '');
+    /* output in pairs, left hand column holds [0],[1],...,[N/2-1]
+       and right hand column holds [N/2],[N/2+1],...,[N-1];
+       N ('last') will always be even, and may or may not include
+       the empty string entry to pad out the final pair, depending
+       upon how many other entries are present in levltyp[] */
+    last = levltyp.length & ~1;
+    for (i = 0; i < last / 2; ++i)
+        for (j = i; j < last; j += last / 2) {
+            dsc = levltyp[j];
+            c = !dsc ? ' '
+                   : dsc.startsWith('unreachable') ? '*'
+                      : (j < 10) ? String.fromCharCode(48 + j)
+                         : (j < 36) ? String.fromCharCode(97 + j - 10)
+                            : String.fromCharCode(65 + j - 36);
+            buf += fmt.replace('%c', c).replace('%-28s', dsc.padEnd(28));
+            if (j > i) {
+                tty_putstr(win, 0, buf);
+                buf = '';
+            }
+        }
+    /* display_nhwindow(win, TRUE): page through the text window, ESC
+       cancelling the remaining pages; destroy_nhwindow(win) redraws the
+       map through tty_dismiss_nhwindow() */
+    await tty_display_nhwindow(win);
+    for (;;) {
+        await xwaitforspace(quitchars);
+        if (game.morc === '\x1b')
+            break; /* cancel remaining pages */
+        if (!tty_next_page(win))
+            break;
+    }
+    tty_destroy_nhwindow(win);
+    await notice_all_mons_flush();
+    return;
 }

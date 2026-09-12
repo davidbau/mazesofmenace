@@ -11,6 +11,8 @@
 // the ones that pass, so its count depends on the first six results.
 
 import { game } from './gstate.js';
+import { stagger } from './mondata.js';
+import { shieldeff } from './display.js';
 import { You, Your } from './pline.js';
 import { pline, see_monsters } from './display.js';
 import { UNENCUMBERED, OVERLOADED , LEFT_SIDE, RIGHT_SIDE,
@@ -158,8 +160,8 @@ export async function encumber_msg() {
                 await You('rebalance your load.  Movement is difficult.');
                 break;
             case 3:
-                note_unported_attrib('encumber_msg:stagger');
-                await You('stagger under your heavy load.  Movement is very hard.');
+                await You(`${stagger(game.youmonst.data, 'stagger')
+                    } under your heavy load.  Movement is very hard.`);
                 break;
             default:
                 await You(`${newcap === 4 ? 'can barely' : "can't even"}`
@@ -179,8 +181,8 @@ export async function encumber_msg() {
                 await You('rebalance your load.  Movement is still difficult.');
                 break;
             case 3:
-                note_unported_attrib('encumber_msg:stagger');
-                await You('stagger under your load.  Movement is still very hard.');
+                await You(`${stagger(game.youmonst.data, 'stagger')
+                    } under your load.  Movement is still very hard.`);
                 break;
             }
             (game.disp ||= {}).botl = true;
@@ -425,7 +427,7 @@ export async function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {
     const { Poison_resistance } = await import('./youprop.js');
     if (Poison_resistance()) {
         if (blast)
-            note_unported_attrib('poisoned:shieldeff');
+            await shieldeff(game.u.ux, game.u.uy);
         const { pline_The } = await import('./pline.js');
         await pline_The("poison doesn't seem to affect you.");
         return;

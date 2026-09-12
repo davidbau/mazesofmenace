@@ -33,7 +33,7 @@ import { del_engr, engr_at } from './engrave.js';
 import { somegold } from './steal.js';
 import { hcolor, hliquid } from './do_name.js';
 import { Blind, Fire_resistance, Hallucination } from './youprop.js';
-import { losehp } from './hack.js';
+import { losehp, notice_all_mons_flush } from './hack.js';
 import { more_experienced, newexplevel } from './exper.js';
 import { Deaf } from './youprop.js';
 import { body_part } from './polyself.js';
@@ -420,7 +420,7 @@ export async function drinkfountain() {
                 while (tty_next_page(win))
                     await xwaitforspace(' \r\n\x1b');
                 tty_destroy_nhwindow(win);
-                await docrt();
+                await notice_all_mons_flush();
 
                 exercise(A_WIS, true);
                 await pline_The('feeling subsides.');

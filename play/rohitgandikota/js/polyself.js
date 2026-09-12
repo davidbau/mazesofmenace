@@ -460,7 +460,7 @@ export function set_uasmon() {
     PROPSET('HRegeneration', regenerates(mdat));
     PROPSET('HReflecting', (mdat === mons[PMNAMES.PM_SILVER_DRAGON]));
     PROPSET('HBlinded', !haseyes(mdat));
-    PROPSET('HBlnd_resistance', (dmgtype_fromattack(mdat, ATTKS.AD_BLND,
+    PROPSET('HBlnd_resist', (dmgtype_fromattack(mdat, ATTKS.AD_BLND,
                                                     ATTKS.AT_EXPL)
                                  || dmgtype_fromattack(mdat, ATTKS.AD_BLND,
                                                        ATTKS.AT_GAZE)));

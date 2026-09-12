@@ -210,10 +210,7 @@ async function put_lregion_here(x, y, nlx, nly, nhx, nhy, rtype, oneshot, lev) {
         break;
     }
     case LR_PORTAL:
-        if (lev)
-            mkportal(x, y, lev.dnum, lev.dlevel);
-        else
-            note_unported_mkmaze('put_lregion_here:mkportal');
+        mkportal(x, y, lev.dnum, lev.dlevel);
         break;
     case LR_DOWNSTAIR:
     case LR_UPSTAIR:
@@ -465,12 +462,8 @@ export async function fixup_special() {
                     lev = { dnum: game.u.uz.dnum,
                             dlevel: parseInt(r.rname, 10) };
                 } else {
-                    const sp = r.rname ? find_level(r.rname) : null;
-                    if (sp)
-                        lev = { dnum: sp.dlevel.dnum,
-                                dlevel: sp.dlevel.dlevel };
-                    else
-                        note_unported_mkmaze('fixup_special:portal_dest');
+                    const sp = find_level(r.rname);
+                    lev = { dnum: sp.dlevel.dnum, dlevel: sp.dlevel.dlevel };
                 }
             }
             await place_lregion(r.inarea.x1, r.inarea.y1,

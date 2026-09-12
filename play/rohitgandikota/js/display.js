@@ -2,6 +2,7 @@
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
 
 import { PLNMSG_UNKNOWN, MAX_TYPE } from './const.js';
+import { TRAPNUM } from './const.js';
 import { MSGTYP_NORMAL, MSGTYP_NOREP, MSGTYP_NOSHOW, MSGTYP_STOP, PLINE_NOREPEAT, OVERRIDE_MSGTYPE, URGENT_MESSAGE } from './const.js';
 import { DISP_BEAM, DISP_ALL, DISP_TETHER, DISP_FLASH, DISP_ALWAYS,
          DISP_CHANGE, DISP_END, DISP_FREEMEM, BACKTRACK, HI_ZAP,
@@ -19,7 +20,8 @@ import { ONAMES, OCLASSES } from './objects_data.js';
 import { update_topl, show_topl_nohistory } from './tty/topl.js';
 import { xwaitforspace } from './tty/getline.js';
 import { term_start_color } from './tty/termcap.js';
-import { rank, rank_of, bot_conditions, terrain_descr } from './botl.js';
+import { rank, rank_of, bot_conditions, terrain_descr, weapon_status,
+         armor_status } from './botl.js';
 import { Upolyd, WARNCOUNT, IS_OBSTRUCTED, IS_ROOM, IS_POOL,
          OBJ_FLOOR, BC_CHAIN, BC_BALL } from './const.js';
 import { cansee, couldsee, vision_recalc } from './vision.js';
@@ -654,6 +656,17 @@ const trap_cmap_color = {
     69: CLR_BRIGHT_BLUE, 70: CLR_BRIGHT_GREEN, 71: CLR_MAGENTA,
     72: CLR_ORANGE, 73: CLR_ORANGE,
 };
+
+// include/display.h glyph_is_trap()/glyph_to_trap() — trap glyphs are the
+// cmap entries S_arrow_trap + ttyp - 1 in this port (trap_glyph() below)
+export function glyph_is_trap(glyph) {
+    return !!glyph && glyph.kind === 'cmap'
+           && glyph.cmap >= CM.S_arrow_trap
+           && glyph.cmap < CM.S_arrow_trap + TRAPNUM - 1;
+}
+export function glyph_to_trap(glyph) {
+    return glyph.cmap - CM.S_arrow_trap + 1;
+}
 
 // include/rm.h:497 trap_to_defsym() — S_arrow_trap + ttyp - 1.
 export function trap_glyph(trap) {
@@ -2003,34 +2016,40 @@ function _statusLine2() {
         if (f.showexp) s += `/${u.uexp || 0}`;
     }
     if (f.time) s += ` T:${game.moves || 1}`;
-    /* win/tty/wintty.c:4585 tty_status_update()/check_fields(): the row
-       must fit in cols - 1 cells; when it does not, the condition names
-       shrink to their second and then third form (cond_shrinklvl 1, 2)
-       before anything else is tried.  (The further encumbrance/dlvl
-       shrinking that follows level 2 is not ported.) */
-    {
-        const cols = game.nhDisplay?.cols ?? 80;
-        let conds = bot_conditions(0);
-        for (let lvl = 1; lvl <= 2 && (s + conds).length > cols - 1; lvl++)
-            conds = bot_conditions(lvl);
-        s += conds;
-    }
-    /* src/botl.c:1259 bot_via_windowport(), BL_TERRAIN: " %s" of
-       terrain_descr[iflags.terrain_typ]; an unset type is classified first.
-       (BL_WEAPON and BL_ARMOR, the 'weaponstatus'/'armorstatus' fields that
-       precede it in the row, are not ported.) */
+    /* src/botl.c:1251 bot_via_windowport(): the optional weapon, armor and
+       terrain fields (BL_WEAPON, BL_ARMOR, BL_TERRAIN), " %s" each; the
+       terrain type is classified first when it is unset */
+    let tail = '';
+    if (f.weaponstatus)
+        tail += ` ${weapon_status()}`;
+    if (f.armorstatus)
+        tail += ` ${armor_status()}`;
     if (f.terrainstatus) {
         if ((game.iflags.terrain_typ ?? MAX_TYPE) === MAX_TYPE)
             classify_terrain();
-        s += ` ${terrain_descr[game.iflags.terrain_typ]}`;
+        tail += ` ${terrain_descr[game.iflags.terrain_typ]}`;
     }
+    const vers = f.showvers ? ` ${status_version(false)}` : '';
+    /* win/tty/wintty.c:4585 tty_status_update()/check_fields(): the row,
+       every active field of it, must fit in cols - 1 cells; when it does
+       not, the condition names shrink to their second and then third form
+       (cond_shrinklvl 1, 2) before anything else is tried.  (The further
+       encumbrance/dlvl shrinking that follows level 2 is not ported.) */
+    {
+        const cols = game.nhDisplay?.cols ?? 80;
+        let conds = bot_conditions(0);
+        for (let lvl = 1;
+             lvl <= 2 && (s + conds + tail + vers).length > cols - 1; lvl++)
+            conds = bot_conditions(lvl);
+        s += conds;
+    }
+    s += tail;
     /* win/tty/wintty.c:5185 render_status() — BL_VERS is the last field of
        the row and is right justified: the row is padded with spaces up to
        cols - strlen(field) and the field (" %s" of status_version()) is
        written there; when the row is already longer, the field simply
        follows it. */
     if (f.showvers) {
-        const vers = ` ${status_version(false)}`;
         /* tty_status[][].x and vstart are tty_curs() columns, which count
            from 1, so the field starts one cell left of cols - lth here */
         const vstart = (game.nhDisplay?.cols ?? 80) - vers.length - 1;

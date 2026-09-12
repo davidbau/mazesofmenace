@@ -32,6 +32,15 @@ import { obj_stop_timers } from './timeout.js';
 import { db_under_typ } from './dbridge.js';
 import { doextlist } from './cmd.js';
 import { game } from './gstate.js';
+import { notice_all_mons_flush } from './hack.js';
+import { Invis, senseself, Punished } from './youprop.js';
+import { Upolyd, M_AP_TYPMASK } from './const.js';
+import { y_monnam } from './do_name.js';
+import { ansimpleoname } from './objnam.js';
+import { trap_predicament } from './insight.js';
+import { digests, sticks } from './mondata.js';
+import { glyph_is_trap, glyph_to_trap } from './display.js';
+import { trapped_chest_at, trapped_door_at } from './detect.js';
 import { COLNO, ROWNO, BOLT_LIM, STONE, SCORR, SDOOR, GRAVE, CORR,
          D_TRAPPED, D_BROKEN, IS_WALL,
          POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE,
@@ -129,19 +138,26 @@ function encglyph_char(x, y) {
 
 // src/pager.c:108 self_lookat()
 export function self_lookat() {
+    let race = '';
+
     /* include race with role unless polymorphed */
-    const race = (game.u.umonnum === game.u.umonster)
-        ? `${game.urace?.adj || 'human'} ` : '';
-    const invis = false; /* Invis && (senseself() || !Blind) */
-    let outbuf = `${invis ? 'invisible ' : ''}${race}`
-        + `${pmname(game.mons[game.u.umonnum], game.flags?.female ? 1 : 0)}`
-        + ` called ${game.plname}`;
-    if (game.u.uball)
-        outbuf += `, chained to ${an(simpleonames(game.u.uball))}`;
+    if (!Upolyd(game.u))
+        race = `${game.urace?.adj || 'human'} `;
+    let outbuf = `${(Invis() && (senseself() || !Blind())) ? 'invisible ' : ''}${
+        race}${pmname(game.mons[game.u.umonnum], game.flags?.female ? 1 : 0)
+        } called ${game.plname}`;
     if (game.u.usteed)
-        note_unported_pager('self_lookat:steed');
-    if (game.u.utrap)
-        note_unported_pager('self_lookat:trap');
+        outbuf += `, mounted on ${y_monnam(game.u.usteed)}`;
+    if (game.u.uundetected
+        || (Upolyd(game.u) && (game.youmonst.m_ap_type & M_AP_TYPMASK))
+        || visible_region_at(game.u.ux, game.u.uy))
+        outbuf += mhidden_description(game.youmonst,
+                                      MHID_PREFIX | MHID_ARTICLE | MHID_REGION);
+    if (Punished())
+        outbuf += `, chained to ${
+            game.u.uball ? ansimpleoname(game.u.uball) : 'nothing?'}`;
+    if (game.u.utrap) /* bear trap, pit, web, in-floor, in-lava, tethered */
+        outbuf += `, ${trap_predicament(0, false)}`;
     return outbuf;
 }
 
@@ -263,8 +279,14 @@ function look_at_monster(mtmp, x, y) {
         + `${(mtmp.mtame && accurate) ? 'tame '
             : (mtmp.mpeaceful && accurate) ? 'peaceful ' : ''}`
         + name;
-    if (game.u.ustuck === mtmp)
-        note_unported_pager('look_at_monster:ustuck');
+    if (game.u.ustuck === mtmp) {
+        if (game.u.uswallow || game.iflags?.save_uswallow) /* monster detection */
+            buf += digests(mtmp.data) ? ', swallowing you'
+                                      : ', engulfing you';
+        else
+            buf += (Upolyd(game.u) && sticks(game.youmonst.data))
+                   ? ', being held' : ', holding you';
+    }
     if (mtmp.mfrozen)
         buf += ", can't move (paralyzed or sleeping or busy)";
     else if (mtmp.msleeping)
@@ -382,6 +404,16 @@ export function ice_descr(x, y) {
 
 /* include/hack.h:1179 MHID_* */
 export const MHID_PREFIX = 1, MHID_ARTICLE = 2, MHID_ALTMON = 4, MHID_REGION = 8;
+
+// src/pager.c:167 trap_description()
+function trap_description(tnum, x, y) {
+    if (trapped_chest_at(tnum, x, y))
+        return 'trapped chest'; /* might actually be a large box */
+    else if (trapped_door_at(tnum, x, y))
+        return 'trapped door'; /* not "trap door"... */
+    else
+        return trapname(tnum, false);
+}
 
 // src/pager.c:186 mhidden_description(); returns the description string
 export function mhidden_description(mon, mhid_flags) {
@@ -506,9 +538,10 @@ function lookat(x, y) {
         }
     } else if (glyph.kind === 'obj') {
         buf = look_at_object(x, y, glyph);
-    } else if (glyph.kind === 'trap') {
-        note_unported_pager('lookat:trap');
-        buf = 'trap';
+    } else if (glyph_is_trap(glyph)) {
+        const tnum = glyph_to_trap(glyph);
+
+        buf = trap_description(tnum, x, y);
     } else if (glyph.kind === 'warn') {
         buf = def_warnsyms[glyph.wl]?.desc || 'warning';
     } else if (glyph.kind === 'invis') {
@@ -778,7 +811,7 @@ export async function checkfile(inp, pm, chkflags, supplemental_box) {
                 await tty_display_nhwindow(datawin);
                 await xwaitforspace(quitchars);
                 tty_destroy_nhwindow(datawin);
-                await docrt();
+                await notice_all_mons_flush();
             }
         } else if (user_typed_name && pass === 0 && !pass1found_in_file) {
             await pline("You don't have any information on those things.");
@@ -1218,7 +1251,7 @@ export async function do_look(mode) {
         if (picks.length > 0)
             i = picks[0];
         tty_destroy_nhwindow(win);
-        await docrt();
+        await notice_all_mons_flush();
     } else {
         i = 'y';
     }
@@ -1416,7 +1449,7 @@ async function look_all(nearby, do_mons) {
         while (tty_next_page(win))
             await xwaitforspace(quitchars);
         tty_destroy_nhwindow(win);
-        await docrt();
+        await notice_all_mons_flush();
     } else {
         await pline(`No ${do_mons ? 'monsters' : 'objects'} are currently `
             + `shown ${nearby ? 'nearby' : 'on the map'}.`);
@@ -1480,7 +1513,7 @@ async function look_traps(nearby) {
         while (tty_next_page(win))
             await xwaitforspace(quitchars);
         tty_destroy_nhwindow(win);
-        await docrt();
+        await notice_all_mons_flush();
     } else {
         await pline(`No traps seen or remembered${nearby ? ' nearby' : ''}.`);
         tty_destroy_nhwindow(win);
@@ -1536,7 +1569,7 @@ async function look_engrs(nearby) {
         await tty_display_nhwindow(win);
         await xwaitforspace(quitchars);
         tty_destroy_nhwindow(win);
-        await docrt();
+        await notice_all_mons_flush();
     } else {
         await pline('No engravings seen or remembered'
             + `${nearby ? ' nearby' : ''}.`);
@@ -1615,7 +1648,7 @@ async function do_supplemental_info(name, pm, without_asking) {
                 await tty_display_nhwindow(datawin);
                 await xwaitforspace(quitchars);
                 tty_destroy_nhwindow(datawin);
-                await docrt();
+                await notice_all_mons_flush();
             }
         }
     }
@@ -1641,14 +1674,14 @@ export async function doextversion() {
     while (game.morc !== '\x1b' && tty_next_page(win))
         await xwaitforspace(quitchars);
     tty_destroy_nhwindow(win);
-    await docrt();
+    await notice_all_mons_flush();
     return ECMD_OK;
 }
 
 // win/tty/wintty.c tty_display_file() — page a dat file through an NHW_TEXT
 // window: strip the newline, tabexpand, one putstr per line. ESC at any
 // page's --More-- cancels the remaining pages (WIN_CANCELLED).
-async function display_file(text) {
+export async function display_file(text) {
     /* tty_clear_nhwindow(WIN_MESSAGE) first */
     tty_clear_nhwindow_message(game._topl_cury || 0);
     game._pending_message = '';
@@ -1672,7 +1705,7 @@ async function display_file(text) {
             break;
     }
     tty_destroy_nhwindow(win);
-    await docrt();
+    await notice_all_mons_flush();
     return ECMD_OK;
 }
 
@@ -1731,7 +1764,7 @@ async function domenucontrols() {
     await tty_display_nhwindow(cwin);
     await xwaitforspace(quitchars);
     tty_destroy_nhwindow(cwin);
-    await docrt();
+    await notice_all_mons_flush();
 }
 
 // src/pager.c:2694 docontact() — the support window. sysopt.support and
@@ -1748,7 +1781,7 @@ async function docontact() {
     await tty_display_nhwindow(win);
     await xwaitforspace(quitchars);
     tty_destroy_nhwindow(win);
-    await docrt();
+    await notice_all_mons_flush();
 }
 
 /* src/pager.c:2830 help_menu_items[] — texts exactly as the reference

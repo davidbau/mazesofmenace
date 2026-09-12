@@ -14,6 +14,7 @@
 // Nothing here draws.
 
 import { game } from './gstate.js';
+import { FROMOUTSIDE } from './const.js';
 import { amphibious, breathless, haseyes, is_flyer, is_swimmer,
          resists_cold, hates_silver } from './mondata.js';
 import { Upolyd } from './const.js';
@@ -265,3 +266,56 @@ export const Punished = () => !!game.u?.uball;
 
 // include/you.h:464 Luck — (u.uluck + u.moreluck).
 export const Luck = () => (game.u?.uluck | 0) + (game.u?.moreluck | 0);
+
+// include/youprop.h:73 Invulnerable — u.uprops[INVULNERABLE].intrinsic
+export const Invulnerable = () => !!game.u?.intrinsic?.HInvulnerable;
+
+// include/youprop.h:94 PermaBlind — ((HBlinded & FROMOUTSIDE) != 0L)
+export const PermaBlind = () =>
+    ((game.u?.intrinsic?.HBlinded | 0) & FROMOUTSIDE) !== 0;
+
+// include/youprop.h:155 Telepat — (HTelepat || ETelepat)
+export const Telepat = () => !!(game.u?.intrinsic?.HTelepat
+                                || game.u?.uprops?.TELEPAT);
+
+// include/youprop.h:161 Blnd_resist — (HBlnd_resist || EBlnd_resist)
+export const Blnd_resist = () => !!(game.u?.intrinsic?.HBlnd_resist
+                                    || game.u?.uprops?.BLND_RES);
+
+// include/youprop.h:173 Undead_warning — (HUndead_warning)
+export const Undead_warning = () => !!game.u?.intrinsic?.HUndead_warning;
+
+// include/youprop.h:182 Clairvoyant
+//     ((HClairvoyant || EClairvoyant) && !BClairvoyant)
+export const Clairvoyant = () => !!(game.u?.intrinsic?.HClairvoyant
+                                    || game.u?.uprops?.CLAIRVOYANT)
+                                 && !game.u?.blocked?.CLAIRVOYANT;
+
+// include/youprop.h:193 Adornment — u.uprops[ADORNED].extrinsic
+export const Adornment = () => !!game.u?.uprops?.ADORNED;
+
+// include/youprop.h:214 Aggravate_monster
+//     (HAggravate_monster || EAggravate_monster)
+export const Aggravate_monster = () =>
+    !!(game.u?.intrinsic?.HAggravate_monster
+       || game.u?.uprops?.AGGRAVATE_MONSTER);
+
+// include/youprop.h:295 Half_spell_damage
+//     (HHalf_spell_damage || EHalf_spell_damage)
+export const Half_spell_damage = () =>
+    !!(game.u?.intrinsic?.HHalf_spell_damage || game.u?.uprops?.HALF_SPDAM);
+
+// include/youprop.h:353 Protection — (HProtection || EProtection)
+export const Protection = () => !!(game.u?.intrinsic?.HProtection
+                                   || game.u?.uprops?.PROTECTION);
+
+// include/youprop.h:364 Polymorph — (HPolymorph || EPolymorph)
+export const Polymorph = () => !!(game.u?.intrinsic?.HPolymorph
+                                  || game.u?.uprops?.POLYMORPH);
+
+// include/youprop.h:387 Lifesaved — u.uprops[LIFESAVED].extrinsic
+export const Lifesaved = () => !!game.u?.uprops?.LIFESAVED;
+
+// include/display.h:175 senseself() — (Unblind_telepat || Detect_monsters);
+// Unblind_telepat is ETelepat alone
+export const senseself = () => !!(game.u?.uprops?.TELEPAT || Detect_monsters());

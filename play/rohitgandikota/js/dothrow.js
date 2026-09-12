@@ -5,6 +5,8 @@ import { TT_INFLOOR } from './const.js';
 import { TT_LAVA } from './const.js';
 import { TT_WEB } from './const.js';
 import { Upolyd } from './const.js';
+import { your_race } from './polyself.js';
+import { P_BOW } from './const.js';
 import { u_at } from './const.js';
 import { MM_IGNORELAVA } from './const.js';
 import { MM_IGNOREWATER } from './const.js';
@@ -1126,6 +1128,20 @@ export async function thitmonst(mon, obj) {
                 tmp += weapon_hit_bonus(u.uwep);
                 if (u.uwep.oartifact)
                     tmp += spec_abon(u.uwep, mon);
+                /*
+                 * Elves and Samurais are highly trained w/bows,
+                 * especially their own special types of bow.
+                 * Polymorphing won't make you a bow expert.
+                 */
+                if ((Race_if(PMNAMES.PM_ELF) || Role_if(PMNAMES.PM_SAMURAI))
+                    && (!Upolyd(u) || your_race(game.youmonst.data))
+                    && game.objects[u.uwep.otyp].oc_skill === P_BOW) {
+                    ++tmp;
+                    if ((Race_if(PMNAMES.PM_ELF) && u.uwep.otyp === ONAMES.ELVEN_BOW)
+                        || (Role_if(PMNAMES.PM_SAMURAI)
+                            && u.uwep.otyp === ONAMES.YUMI))
+                        ++tmp;
+                }
             }
         } else {
             if (obj.otyp === ONAMES.BOOMERANG)

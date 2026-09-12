@@ -124,6 +124,13 @@ const defmorestr = '--More--';
 // already ATR_INVERSE, which is what the recordings show.
 const tty_menu_promptstyle = { color: NO_COLOR, attr: ATR_NONE };
 
+// win/tty/wintty.c tty_update_inventory() — with TTY_PERM_INVENT not
+// defined in the reference build the tty has no persistent inventory
+// window to sync, so this does nothing.
+export function tty_update_inventory(arg) {
+    return;
+}
+
 // src/windows.c:1769 adjust_menu_promptstyle()
 export function adjust_menu_promptstyle(style) {
     tty_menu_promptstyle.color = style.color;

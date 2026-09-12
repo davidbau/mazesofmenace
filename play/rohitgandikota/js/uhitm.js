@@ -90,6 +90,8 @@ import { A_DEX, A_STR, A_INT, A_WIS, ERODE_NONE, ERODE_BURN, ERODE_RUST,
 // explicit markers so coverage work can find them.
 
 import { game } from './gstate.js';
+import { RIGHT_SIDE, LEFT_SIDE } from './const.js';
+import { set_wounded_legs } from './do.js';
 import { helpless, MON_WEP } from './monst.js';
 import { rn1 } from './rng.js';
 import { dmgtype, monstseesu, monstunseesu } from './mondata.js';
@@ -1478,6 +1480,13 @@ export async function hmonas(mon) {
                 && !cantwield(game.youmonst.data) && !weapon_used)
             || (aatyp === ATTKS.AT_TUCH && game.u.uwep
                 && game.youmonst.data.mlet === MONSYMS.S_LICH
+                && !weapon_used)
+            /* AT_MAGC: no check for uwep; if wielding nothing we want to
+               do the normal 1-2 points bare hand damage... */
+            || (aatyp === ATTKS.AT_MAGC
+                && (game.youmonst.data.mlet === MONSYMS.S_KOBOLD
+                    || game.youmonst.data.mlet === MONSYMS.S_ORC
+                    || game.youmonst.data.mlet === MONSYMS.S_GNOME)
                 && !weapon_used);
 
         if (aatyp === ATTKS.AT_BREA || aatyp === ATTKS.AT_SPIT
@@ -1652,7 +1661,9 @@ export async function hmonas(mon) {
                 }
             }
         } else {
-            note_unported_uhitm(`hmonas:aatyp=${aatyp}`);
+            /* AT_MAGC for anyone else falls through to the AT_NONE and
+               AT_BOOM arm: continue, not break, to avoid passive attacks
+               from the enemy */
             continue;
         }
 
@@ -1787,7 +1798,8 @@ export async function damageum(mon, mattk, specialdmg) {
             if (mhm.done)
                 return mhm.hitflags;
         } else {
-            note_unported_uhitm(`damageum:adtyp=${mattk[1]}`);
+            /* src/uhitm.c mhitm_adtyping() default */
+            damage = 0;
         }
     }
 
@@ -2385,7 +2397,7 @@ export async function hmon_hitmon(mon, obj, thrown, dieroll) {
             /* but not bashing with darts, arrows or ya */
             && !(is_ammo(obj) || is_missile(obj)))
         && hmd.hand_to_hand) {
-        const mclone = clone_mon(mon, 0, 0);
+        const mclone = await clone_mon(mon, 0, 0);
 
         if (mclone) {
             let withwhat = '';
@@ -5289,6 +5301,59 @@ export async function mhitm_ad_phys(magr, mattk, mdef, mhm) {
             if (mhm.damage >= mdef.mhp && mdef.mhp > 1)
                 mhm.damage = mdef.mhp - 1;
         }
+    }
+}
+
+// src/uhitm.c:4425 mhitm_ad_legs() — a xan's leg attack: the hero as
+// attacker or a monster target uses the physical hit; the hero as target
+// gets pricked, or has a boot scratched for nothing.
+export async function mhitm_ad_legs(magr, mattk, mdef, mhm) {
+    if (magr === game.youmonst) {
+        await mhitm_ad_phys(magr, mattk, mdef, mhm);
+        if (mhm.done)
+            return;
+    } else if (mdef === game.youmonst) {
+        const side = rn2(2) ? RIGHT_SIDE : LEFT_SIDE;
+        const sidestr = (side === RIGHT_SIDE) ? 'right' : 'left',
+              Monst_name = Monnam(magr), leg = body_part(LEG);
+
+        if ((game.u.usteed || Levitation() || Flying())
+            && !is_flyer(magr.data)) {
+            await pline(`${Monst_name} tries to reach your ${sidestr} ${leg}!`);
+            mhm.damage = 0;
+        } else if (magr.mcan) {
+            await pline_mon(magr, `${Monnam(magr)} nuzzles against your ${
+                sidestr} ${leg}!`);
+            mhm.damage = 0;
+        } else {
+            if (game.u.uarmf) {
+                if (rn2(2) && (game.u.uarmf.otyp === ONAMES.LOW_BOOTS
+                               || game.u.uarmf.otyp === ONAMES.IRON_SHOES)) {
+                    await pline(`${Monst_name} pricks the exposed part of your ${
+                        sidestr} ${leg}!`);
+                } else if (!rn2(5)) {
+                    await pline(`${Monst_name} pricks through your ${
+                        sidestr} boot!`);
+                } else {
+                    await pline(`${Monst_name} scratches your ${sidestr} boot!`);
+                    mhm.damage = 0;
+                    return;
+                }
+            } else
+                await pline(`${Monst_name} pricks your ${sidestr} ${leg}!`);
+
+            await set_wounded_legs(side, rnd(60 - ACURR(A_DEX)));
+            exercise(A_STR, false);
+            exercise(A_DEX, false);
+        }
+    } else {
+        if (magr.mcan) {
+            mhm.damage = 0;
+            return;
+        }
+        await mhitm_ad_phys(magr, mattk, mdef, mhm);
+        if (mhm.done)
+            return;
     }
 }
 

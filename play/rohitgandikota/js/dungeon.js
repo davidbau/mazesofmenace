@@ -992,6 +992,25 @@ export function builds_up(lev) {
     return false;
 }
 
+// src/dungeon.c:1700 deepest_lev_reached() — the deepest depth the hero has
+// reached in any dungeon (the quest excluded when asked)
+export function deepest_lev_reached(noquest) {
+    const tmp = { dnum: 0, dlevel: 0 };
+    let ret = 0;
+
+    for (let i = 0; i < (game.dungeons || []).length; i++) {
+        if (noquest && i === game.quest_dnum)
+            continue;
+        tmp.dlevel = game.dungeons[i].dunlev_ureached | 0;
+        if (tmp.dlevel === 0)
+            continue;
+        tmp.dnum = i;
+        if (depth(tmp) > ret)
+            ret = depth(tmp);
+    }
+    return ret;
+}
+
 // src/dungeon.c:2027 level_difficulty() — never negative even on the
 // Elemental Planes: the endgame reads as sanctum depth plus half the hero's
 // level, and a builds-up branch counts the climb beyond its entrance.
@@ -1002,9 +1021,9 @@ export function level_difficulty() {
         const sanctum = game.special_levels?.sanctum_level;
         res = (sanctum ? depth(sanctum) : 0) + ((game.u.ulevel / 2) | 0);
     } else if (game.u.uhave?.amulet) {
-        /* deepest_lev_reached() needs the per-dungeon reached tracking */
-        note_unported_dungeon('level_difficulty:deepest_lev_reached');
-        res = depth(game.u.uz);
+        /* [the amulet is an artifact so its 'reached' value is
+           effectively the deepest level reached] */
+        res = deepest_lev_reached(false);
     } else {
         res = depth(game.u.uz);
         if (builds_up(game.u.uz))
@@ -1026,8 +1045,15 @@ export async function u_on_rndspot(upflag) {
     const { place_lregion, LR_UPTELE, LR_DOWNTELE } =
         await import('./mkmaze.js');
 
-    if (was_in_W_tower) {
-        note_unported_dungeon('u_on_rndspot:W_tower');
+    if (was_in_W_tower && On_W_tower_level(game.u.uz)) {
+        /* Stay inside the Wizard's tower when feasible.
+           We use the W Tower's exclusion region for the
+           destination instead of its enclosing region.
+           Note: up vs down doesn't matter in this case
+           because both specify the same exclusion area. */
+        const r = game.dndest || {};
+        await place_lregion(r.nlx | 0, r.nly | 0, r.nhx | 0, r.nhy | 0,
+                            0, 0, 0, 0, LR_DOWNTELE, null);
     } else if (up) {
         const r = game.updest || {};
         await place_lregion(r.lx | 0, r.ly | 0, r.hx | 0, r.hy | 0,

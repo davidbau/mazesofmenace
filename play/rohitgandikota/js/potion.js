@@ -726,7 +726,7 @@ export async function potionhit(mon, obj, how) {
                 if ((mon.mhp | 0) > (mon.mhpmax | 0))
                     mon.mhp = mon.mhpmax;
                 const { clone_mon } = await import('./makemon.js');
-                const clone = (mon.mhp | 0) > 1 ? clone_mon(mon, 0, 0) : null;
+                const clone = (mon.mhp | 0) > 1 ? await clone_mon(mon, 0, 0) : null;
                 if (clone) {
                     clone.mhpmax = Math.trunc((mon.mhpmax | 0) / 2);
                     mon.mhpmax -= clone.mhpmax;
@@ -2668,7 +2668,7 @@ export async function split_mon(mon, mtmp) {
     } else {
         if (mon.mhp > mon.mhpmax) /* sanity precaution */
             mon.mhp = mon.mhpmax;
-        mtmp2 = (mon.mhp > 1) ? clone_mon(mon, 0, 0) : null;
+        mtmp2 = (mon.mhp > 1) ? await clone_mon(mon, 0, 0) : null;
         if (mtmp2) {
             /* clone_mon() has done mtmp2->mhpmax = mon->mhpmax, mtmp2->mhp =
                mhp = mon->mhp / 2, and mon->mh -= mtmp2->mhp;

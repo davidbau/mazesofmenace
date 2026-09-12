@@ -173,6 +173,15 @@ import { burn_floor_objects, destroy_items, melt_ice,
          obj_resists } from './zap.js';
 
 import { game } from './gstate.js';
+import { cant_revive } from './read.js';
+import { is_golem } from './makemon.js';
+import { montraits } from './zap.js';
+import { wary_dog } from './dog.js';
+import { quest_info } from './questpgr.js';
+import { ismnum, NO_NC_FLAGS, MM_NOCOUNTBIRTH } from './const.js';
+import { MSOUND } from './monst_data.js';
+import { strsubst } from './hacklib.js';
+import { nolimbs } from './mondata.js';
 import { rn2, rnd } from './rng.js';
 import { mksobj, place_object, splitobj } from './mkobj.js';
 import { weight } from './invent.js';
@@ -1331,24 +1340,59 @@ export function deltrap(trap) {
 // monster without a fresh inventory, transfers the statue's stored gear, and
 // consumes the statue only after the monster and its message exist.
 export async function animate_statue(statue, x, y, cause) {
-    const mptr = game.mons?.[statue?.corpsenm];
+    const mnum_box = { v: statue?.corpsenm };
+    let mptr = game.mons?.[mnum_box.v];
+    let mon = null;
+    let golem_xform = false, use_saved_traits;
     if (!mptr)
         return null;
 
-    const saved = statue.omonst || statue.oextra?.omonst;
-    if (saved)
-        note_unported_trap('animate_statue:saved_traits');
+    if (cant_revive(mnum_box, true, statue)) {
+        if (mnum_box.v !== PMNAMES.PM_DOPPELGANGER)
+            mptr = game.mons[mnum_box.v];
+        use_saved_traits = false;
+    } else if (is_golem(mptr) && cause === ANIMATE_SPELL) {
+        golem_xform = (mptr !== game.mons[PMNAMES.PM_FLESH_GOLEM]);
+        mnum_box.v = PMNAMES.PM_FLESH_GOLEM;
+        mptr = game.mons[PMNAMES.PM_FLESH_GOLEM];
+        use_saved_traits = (has_omonst(statue) && !golem_xform);
+    } else {
+        use_saved_traits = has_omonst(statue);
+    }
 
-    let mmflags = NO_MINVENT | MM_NOMSG;
-    const statueGender = (statue.spe | 0) & CORPSTAT_GENDER;
-    if (statueGender === CORPSTAT_MALE)
-        mmflags |= MM_MALE;
-    else if (statueGender === CORPSTAT_FEMALE)
-        mmflags |= MM_FEMALE;
-    if (cause === ANIMATE_SPELL)
-        mmflags |= MM_ADJACENTOK;
+    if (use_saved_traits) {
+        /* restore a petrified monster */
+        const cc = { x, y };
+        mon = await montraits(statue, cc, (cause === ANIMATE_SPELL));
+        if (mon && mon.mtame && !mon.isminion)
+            await wary_dog(mon, true);
+    } else {
+        const sgend = (statue.spe | 0) & CORPSTAT_GENDER;
+        let mmflags = (NO_MINVENT | MM_NOMSG
+                       | ((sgend === CORPSTAT_MALE) ? MM_MALE : 0)
+                       | ((sgend === CORPSTAT_FEMALE) ? MM_FEMALE : 0));
 
-    const mon = await makemon(mptr, x, y, mmflags);
+        /* statue of any golem hit by disintegration beam gets turned into
+           a flesh golem of the same type; other polymorph attempts fail
+           up here (cant_revive() sets mnum to be doppelganger;
+           mptr reflects the original form for use by newcham()) */
+        if ((mnum_box.v === PMNAMES.PM_DOPPELGANGER
+             && mptr !== game.mons[PMNAMES.PM_DOPPELGANGER])
+            || (mptr.msound === MSOUND.MS_GUARDIAN
+                && quest_info(MSOUND.MS_GUARDIAN) !== mnum_box.v)) {
+            mmflags |= MM_NOCOUNTBIRTH | MM_ADJACENTOK;
+            mon = await makemon(game.mons[PMNAMES.PM_DOPPELGANGER], x, y, mmflags);
+            /* if hero has protection from shape changers, cham field will
+               be NON_PM; otherwise, set form to match the statue */
+            if (mon && ismnum(mon.cham))
+                newcham(mon, mptr, NO_NC_FLAGS);
+        } else {
+            if (cause === ANIMATE_SPELL)
+                mmflags |= MM_ADJACENTOK;
+            mon = await makemon(mptr, x, y, mmflags);
+        }
+    }
+
     if (!mon)
         return null;
 
@@ -1906,13 +1950,10 @@ export async function dotrap(trap, trflags) {
         await activate_statue_trap(trap, game.u.ux, game.u.uy, false);
         return Trap_Effect_Finished;
     }
-    if (ttype === VIBRATING_SQUARE) {
-        trap.tseen = 1;                 /* feeltrap() */
-        newsym(trap.tx, trap.ty);
-        return Trap_Effect_Finished;
-    }
+    if (ttype === VIBRATING_SQUARE)
+        return await trapeffect_vibrating_square(game.youmonst, trap, trflags);
 
-    note_unported_trap(`dotrap:ttyp=${ttype}`);
+    void impossible(`You encountered a strange trap of type ${ttype}.`);
     return Trap_Effect_Finished;
 }
 
@@ -2471,6 +2512,40 @@ async function domagictrap() {
             break;
         }
     }
+}
+
+// src/trap.c:3040 trapeffect_vibrating_square()
+async function trapeffect_vibrating_square(mtmp, trap, trflags) {
+    if (mtmp === game.youmonst) {
+        feeltrap(trap);
+        /* messages handled elsewhere; the trap symbol is now shown on the
+           square for future reference */
+    } else {
+        const in_sight = canseemon(mtmp) || (mtmp === game.u.usteed);
+        const see_it = cansee(mtmp.mx, mtmp.my);
+
+        if (see_it && !Blind()) {
+            seetrap(trap); /* before messages */
+            if (in_sight) {
+                let buf;
+                const monnm = mon_nam(mtmp);
+
+                if (nolimbs(mtmp.data) || m_in_air(mtmp)) {
+                    buf = monnm;
+                } else {
+                    buf = `${s_suffix(monnm)} ${
+                        strsubst(makeplural(mbodypart(mtmp, FOOT)), 'rear ', '')}`;
+                }
+                await You_see(`a strange vibration beneath ${buf}.`);
+            } else {
+                /* notice something (hearing uses a different criterion
+                   for 'nearby') */
+                await You_see(`the ground vibrate ${
+                    (mdistu(mtmp) <= 2 * 2) ? 'nearby' : 'in the distance'}.`);
+            }
+        }
+    }
+    return Trap_Effect_Finished;
 }
 
 // src/trap.c:2565 trapeffect_magic_trap() — the hero's arm.
@@ -3410,8 +3485,11 @@ async function trapeffect_selector(mtmp, trap, trflags) {
         return await trapeffect_anti_magic(mtmp, trap, trflags);
     case POLY_TRAP:
         return await trapeffect_poly_trap(mtmp, trap, trflags);
+    case VIBRATING_SQUARE:
+        return await trapeffect_vibrating_square(mtmp, trap, trflags);
     default:
-        note_unported_trap(`trapeffect_selector:ttyp=${trap.ttyp}`);
+        void impossible(`${Monnam(mtmp)} encountered a strange trap of type ${
+            trap.ttyp}.`);
         return Trap_Effect_Finished;
     }
 }
@@ -4393,7 +4471,7 @@ export async function rnd_nextto_goodpos(cc, mtmp) {
 }
 
 // src/trap.c:4976 back_on_ground()
-async function back_on_ground(rescued) {
+export async function back_on_ground(rescued) {
     let preposit = (Levitation() || Flying()) ? 'over' : 'on',
         surf = surface(game.u.ux, game.u.uy), you_are_back;
 

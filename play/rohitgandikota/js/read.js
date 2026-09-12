@@ -36,6 +36,7 @@ import { dropy } from './do.js';
 import { is_whirly } from './mondata.js';
 import { WT_IRON_BALL_INCR } from './const.js';
 import { game } from './gstate.js';
+import { unavailcmd, ecname_from_fn } from './cmd.js';
 import { getobj, GETOBJ_PROMPT, ECMD_TIME, ECMD_OK } from './invent.js';
 import { ECMD_CANCEL, SPE_LIM, CORR, Is_rogue_level, W_ARMOR, W_ARM, NODIR,
          A_STR, A_CON, W_BALL, W_CHAIN, W_ART, W_ARTI, TT_BURIEDBALL,
@@ -3074,7 +3075,7 @@ export async function wiz_genesis() {
         await create_particular();
         if (game.iflags) game.iflags.debug_mongen = mongen_saved;
     } else {
-        note_unported_read('wiz_genesis:unavailcmd');
+        await pline(unavailcmd.replace('%s', ecname_from_fn('wizgenesis')));
     }
     return ECMD_OK;
 }

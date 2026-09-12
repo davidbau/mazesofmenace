@@ -93,7 +93,7 @@ import { mhitm_ad_phys, mhitm_ad_fire, mhitm_ad_cold, mhitm_ad_elec,
          mhitm_ad_blnd, mhitm_ad_ston, mhitm_ad_drli,
          mhitm_ad_ench, mhitm_ad_samu, mhitm_ad_sedu, mhitm_ad_wrap,
          mhitm_ad_heal, mhitm_ad_plys, mhitm_ad_slee, mhitm_ad_slim,
-         mhitm_knockback,
+         mhitm_knockback, mhitm_ad_legs,
          mhitm_mgc_atk_negated, attk_protection, erode_armor,
          golemeffects } from './uhitm.js';
 import { is_pool, t_at, newcham } from './mon.js';
@@ -1531,38 +1531,7 @@ async function hitmu(mtmp, mattk, indx) {
             mhm.damage = Math.trunc(mhm.damage / 2);
         }
     } else if (mattk[1] === A.AD_LEGS) {
-        const side = rn2(2) ? RIGHT_SIDE : LEFT_SIDE;
-        const sidestr = side === RIGHT_SIDE ? 'right' : 'left';
-        const leg = body_part(LEG);
-
-        if ((game.u.usteed || Levitation() || Flying()) && !is_flyer(mdat)) {
-            await pline(`${Monnam(mtmp)} tries to reach your ${sidestr} ${leg}!`);
-            mhm.damage = 0;
-        } else if (mtmp.mcan) {
-            await pline(`${Monnam(mtmp)} nuzzles against your ${sidestr} ${leg}!`);
-            mhm.damage = 0;
-        } else {
-            const boots = game.u.uarmf;
-            if (boots) {
-                if (rn2(2) && (boots.otyp === ONAMES.LOW_BOOTS
-                               || boots.otyp === ONAMES.IRON_SHOES)) {
-                    await pline(`${Monnam(mtmp)} pricks the exposed part of your ${sidestr} ${leg}!`);
-                } else if (!rn2(5)) {
-                    await pline(`${Monnam(mtmp)} pricks through your ${sidestr} boot!`);
-                } else {
-                    await pline(`${Monnam(mtmp)} scratches your ${sidestr} boot!`);
-                    mhm.damage = 0;
-                    return M_ATTK_HIT;
-                }
-            } else {
-                await pline(`${Monnam(mtmp)} pricks your ${sidestr} ${leg}!`);
-            }
-
-            const { set_wounded_legs } = await import('./do.js');
-            await set_wounded_legs(side, rnd(60 - ACURR(A_DEX)));
-            exercise(A_STR, false);
-            exercise(A_DEX, false);
-        }
+        await mhitm_ad_legs(mtmp, mattk, game.youmonst, mhm);
     } else if (mattk[1] === A.AD_SITM || mattk[1] === A.AD_SEDU) {
         await mhitm_ad_sedu(mtmp, mattk, game.youmonst, mhm);
     } else if (mattk[1] === A.AD_SSEX) {

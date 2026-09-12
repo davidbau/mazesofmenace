@@ -131,6 +131,18 @@ export function selection_recalc_bounds(sel) {
 
 // src/selvar.c:77 selection_getbounds() — an EMPTY selection reports the whole
 // map, not an empty rect, so an iterate over one walks every square.
+// src/selvar.c:33 selection_free() — drop the map; with freesel the whole
+// selection is discarded, otherwise it is zeroed for reuse.
+export function selection_free(sel, freesel) {
+    if (sel) {
+        sel.map = null;
+        if (!freesel) {
+            for (const k of Object.keys(sel))
+                delete sel[k];
+        }
+    }
+}
+
 export function selection_getbounds(sel, b) {
     if (!sel || !b)
         return;
@@ -570,4 +582,31 @@ export function selection_do_randline(x1, y1, x2, y2, rough, rec, ov) {
     selection_do_randline(mx, my, x2, y2, rough, rec, ov);
 
     selection_setpoint(x2, y2, ov, 1);
+}
+
+// src/selvar.c:743 selection_is_irregular() — does the selection have a
+// point inside its bounds that is not selected?
+export function selection_is_irregular(sel) {
+    const rect = { lx: 0, ly: 0, hx: 0, hy: 0 };
+
+    selection_getbounds(sel, rect);
+
+    for (let x = rect.lx; x <= rect.hx; x++)
+        for (let y = rect.ly; y <= rect.hy; y++)
+            if (isok(x, y) && !selection_getpoint(x, y, sel))
+                return true;
+
+    return false;
+}
+
+// src/selvar.c:764 selection_size_description()
+export function selection_size_description(sel) {
+    const rect = { lx: 0, ly: 0, hx: 0, hy: 0 };
+
+    selection_getbounds(sel, rect);
+    const dx = rect.hx - rect.lx + 1;
+    const dy = rect.hy - rect.ly + 1;
+    return `${selection_is_irregular(sel) ? 'irregularly shaped'
+             : (dx === dy) ? 'square'
+               : 'rectangular'} ${dx} by ${dy}`;
 }

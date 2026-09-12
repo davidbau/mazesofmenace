@@ -21,6 +21,12 @@ import { NHW_MENU, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE,
          ONAME_KNOW_ARTI, GETOBJ_NOFLAGS, OBJ_INVENT, OBJ_FREE, Upolyd } from './const.js';
 import { ATR_NONE, NO_COLOR } from './terminal.js';
 import { game } from './gstate.js';
+import { untwoweapon } from './wield.js';
+import { set_artifact_intrinsic } from './artifact.js';
+import { alter_cost } from './shk.js';
+import { livelog_printf } from './pline.js';
+import { bare_artifactname, ansimpleoname } from './objnam.js';
+import { W_WEP, LL_CONDUCT, LL_ARTIFACT } from './const.js';
 import { rn1, rn2, rn2_on_display_rng } from './rng.js';
 import { Hallucination, Deaf, See_invisible, Blind } from './youprop.js';
 import { PMNAMES, MFLAGS, MSOUND } from './monst_data.js';
@@ -579,7 +585,8 @@ async function name_from_player(prompt) {
 // src/do_name.c:372 oname() — assign a name to an object, creating the
 // artifact when the name matches one whose base type fits.
 export function oname(obj, name, oflgs) {
-    const skip_inv_update = (oflgs & ONAME_SKIP_INVUPD) !== 0;
+    const via_naming = (oflgs & ONAME_VIA_NAMING) !== 0,
+          skip_inv_update = (oflgs & ONAME_SKIP_INVUPD) !== 0;
 
     let lth = name ? name.length + 1 : 0;
     if (lth > PL_PSIZ) {
@@ -601,15 +608,26 @@ export function oname(obj, name, oflgs) {
         artifact_exists(obj, name, true, oflgs);
     if (obj.oartifact) {
         /* can't dual-wield with artifact as secondary weapon */
-        if (obj === game.uswapwep)
-            note_unported_do_name('oname:untwoweapon');
+        if (obj === game.u.uswapwep)
+            untwoweapon();
         /* activate warning if you've just named your weapon "Sting" */
-        if (obj === game.uwep)
-            note_unported_do_name('oname:set_artifact_intrinsic');
+        if (obj === game.u.uwep)
+            set_artifact_intrinsic(obj, true, W_WEP);
         /* if obj is owned by a shop, increase your bill */
         if (obj.unpaid)
-            note_unported_do_name('oname:alter_cost');
-        /* ONAME_VIA_NAMING literacy conduct + livelog are out-of-band */
+            alter_cost(obj, 0);
+        if (via_naming) {
+            const uconduct = (game.u.uconduct ||= {});
+
+            if (!uconduct.literate++)
+                livelog_printf(LL_CONDUCT | LL_ARTIFACT,
+                               `became literate by naming ${
+                                   bare_artifactname(obj)}`);
+            else
+                livelog_printf(LL_ARTIFACT,
+                               `chose ${ansimpleoname(obj)} to be named "${
+                                   bare_artifactname(obj)}"`);
+        }
     }
     if (carried(obj) && !skip_inv_update)
         update_inventory();

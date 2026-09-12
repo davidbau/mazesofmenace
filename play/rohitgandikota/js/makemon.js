@@ -12,6 +12,8 @@ import { newemin } from './minion.js';
 import { is_sword } from './wield.js';
 import { is_mplayer } from './mondata.js';
 import { game } from './gstate.js';
+import { shkname } from './shknam.js';
+import { tamedog } from './dog.js';
 import { def_monsyms } from './drawing_data.js';
 import { new_light_source, LS_OBJECT, LS_MONSTER } from './light.js';
 import { ARM_BONUS } from './do_wear.js';
@@ -2740,7 +2742,7 @@ function note_unported_makemon(what) {
 // src/makemon.c clone_mon() — split a new monster off `mon`, at (x,y) or
 // nearby. The rnd(2) inside next_ident() and the tame/peaceful rn2 draws
 // are the RNG shape; keep their order exactly.
-export function clone_mon(mon, x, y) {
+export async function clone_mon(mon, x, y) {
     const mm = { x: 0, y: 0 };
 
     /* may be too weak or have been extinguished for population control */
@@ -2801,7 +2803,7 @@ export function clone_mon(mon, x, y) {
     if (mon.mgivenname) {
         christen_monst(m2, mon.mgivenname);
     } else if (mon.isshk) {
-        note_unported_makemon('clone_mon:shkname');
+        m2 = christen_monst(m2, shkname(mon));
     }
 
     /* not all clones caused by player are tame or peaceful */
@@ -2813,13 +2815,22 @@ export function clone_mon(mon, x, y) {
     }
     /* isminion takes precedence over mtame */
     if (m2.isminion) {
-        note_unported_makemon('clone_mon:newemin');
+        newemin(m2);
+        Object.assign(m2.emin, mon.emin);
+        /* renegade when peaceful while being different alignment from hero
+           or when hostile while being same alignment as hero */
+        const atyp = m2.emin.min_align;
+        m2.emin.renegade = !!((atyp !== game.u.ualign.type) ^ !m2.mpeaceful);
     } else if (m2.mtame) {
-        /* C zeroes mtame then re-tames through tamedog() and copies EDOG;
-           tamedog is not ported, so the clone ends up untame and the gap
-           is recorded */
+        /* Because m2 is a copy of mon it is tame but not init'ed.
+           However, tamedog() will not re-tame a tame dog, so m2
+           must be made non-tame to get initialized properly. */
         m2.mtame = 0;
-        note_unported_makemon('clone_mon:tamedog');
+        if (await tamedog(m2, null, false)) {
+            m2.edog = { ...mon.edog };
+        }
+        /* [TODO? some (most? all?) edog fields probably ought to be
+           reinitialized rather that retain the 'parent's values] */
     }
     set_malign(m2);
     newsym(m2.mx, m2.my); /* display the new monster */

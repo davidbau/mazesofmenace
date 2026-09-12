@@ -32,6 +32,14 @@ import { You_feel } from './pline.js';
 import { shieldeff } from './display.js';
 import { Antimagic, Unchanging, Passes_walls, Unaware } from './youprop.js';
 import { game } from './gstate.js';
+import { Adjmonnam } from './do_name.js';
+import { resists_blnd, mhis } from './mondata.js';
+import { mon_explodes } from './explode.js';
+import { mondead } from './mon.js';
+import { Your } from './pline.js';
+import { snuff_lit } from './apply.js';
+import { breamm } from './mthrowu.js';
+import { M_AP_TYPMASK, M_AP_NOTHING } from './const.js';
 import { Deaf } from './youprop.js';
 import { You, You_hear } from './pline.js';
 import { M_AP_TYPE, NORMAL_SPEED, G_UNIQ, ARTICLE_THE, ARTICLE_NONE, PLNMSG_HIDE_UNDER } from './const.js';
@@ -440,11 +448,46 @@ export async function mattackm(magr, mdef) {
             }
             break;
 
-        case A.AT_GAZE: case A.AT_EXPL:
-        case A.AT_BREA: case A.AT_MAGC:
-            note_unported_mhitm(`mattackm:aatyp=${mattk[0]}`);
+        case A.AT_GAZE:
             strike = 0;
-            attk = 0;
+            res[i] = await gazemm(magr, mdef, mattk);
+            break;
+
+        case A.AT_EXPL:
+            if (distmin(magr.mx, magr.my, mdef.mx, mdef.my) > 1)
+                continue;
+
+            res[i] = await explmm(magr, mdef, mattk);
+            if (res[i] === M_ATTK_MISS) { /* cancelled--no attack */
+                strike = 0;
+                attk = 0;
+            } else
+                strike = 1; /* automatic hit */
+            break;
+
+        case A.AT_BREA:
+            /*
+             * Ranged attacks aren't allowed at point blank range.
+             *
+             * That impacts pet use of ranged attacks.  It's rather arbitrary
+             * but various parts of the code assume it to be the case, not to
+             * mention a part of player tactics when fighting dragons.
+             */
+            if (!monnear(magr, mdef.mx, mdef.my)) {
+                const mmtmp = await breamm(magr, mattk, mdef);
+
+                strike = (mmtmp === M_ATTK_MISS) ? 0 : 1;
+                /* We don't really know if we hit or not; pretend we did. */
+                if (strike)
+                    res[i] |= M_ATTK_HIT;
+                if (DEADMONSTER(mdef))
+                    res[i] = M_ATTK_DEF_DIED;
+                if (DEADMONSTER(magr))
+                    res[i] |= M_ATTK_AGR_DIED;
+            } else {
+                strike = 0;
+                attk = 0;
+            }
             break;
 
         default: /* no attack */
@@ -562,6 +605,115 @@ function engulfVerb(ptr) {
     return ['engulfs', 'expelled'];
 }
 
+// src/mhitm.c:736 gazemm() — monster gazing at monster; Medusa's gaze can
+// be reflected back at her, an Archon's blinds.
+export async function gazemm(magr, mdef, mattk) {
+    let buf;
+    const archon = (magr.data === game.mons[PMNAMES.PM_ARCHON]
+                    && mattk[1] === A.AD_BLND),
+          altmesg = (archon && !magr.mcansee);
+
+    /* this is the mhitm rather than mhitu case (the latter
+       is already done in pre_mm_attack() and shouldn't be needed here) */
+    if (mdef.data.mlet === MONSYMS.S_MIMIC
+        && (mdef.m_ap_type & M_AP_TYPMASK) !== M_AP_NOTHING)
+        seemimic(mdef);
+    mdef.mundetected = 0;
+
+    if (game.vis) {
+        buf = `${altmesg ? Adjmonnam(magr, 'blinded') : Monnam(magr)} gazes ${
+            altmesg ? 'toward' : 'at'}`;
+        await pline(`${buf} ${canspotmon(mdef) ? mon_nam(mdef) : 'something'}...`);
+    }
+
+    if (magr.mcan || !mdef.mcansee
+        || (archon ? resists_blnd(mdef) : !magr.mcansee)
+        || (magr.minvis && !perceives(mdef.data)) || mdef.msleeping) {
+        if (game.vis && canspotmon(mdef))
+            await pline('but nothing happens.');
+        return M_ATTK_MISS;
+    }
+    /* call mon_reflects 2x, first test, then, if so, print message */
+    if (magr.data === game.mons[PMNAMES.PM_MEDUSA] && await mon_reflects(mdef, null)) {
+        if (canseemon(mdef))
+            await mon_reflects(mdef, 'The gaze is reflected away by %s %s.');
+        if (mdef.mcansee) {
+            if (await mon_reflects(magr, null)) {
+                if (canseemon(magr))
+                    await mon_reflects(magr,
+                                       'The gaze is reflected away by %s %s.');
+                return M_ATTK_MISS;
+            }
+            if (mdef.minvis && !perceives(magr.data)) {
+                if (canseemon(magr)) {
+                    await pline(`${Monnam(magr)
+                        } doesn't seem to notice that ${mhis(magr)
+                        } gaze was reflected.`);
+                }
+                return M_ATTK_MISS;
+            }
+            if (canseemon(magr))
+                await pline_mon(magr, `${Monnam(magr)} is turned to stone!`);
+            await monstone(magr);
+            if (!DEADMONSTER(magr))
+                return M_ATTK_MISS;
+            return M_ATTK_AGR_DIED;
+        }
+    } else if (archon) {
+        await mhitm_ad_blnd(magr, mattk, mdef, null);
+        /* an Archon's gaze also stuns;
+           this is different from the way the hero gets stunned because
+           a stunned monster recovers randomly instead of via countdown;
+           both cases make an effort to prevent the target from being
+           continuously stunned due to repeated gaze attacks */
+        if (rn2(2))
+            mdef.mstun = 1;
+    }
+
+    return await mdamagem(magr, mdef, mattk, null, 0);
+}
+
+// src/mhitm.c:970 explmm() — monster explodes in the direction of the
+// defender.
+export async function explmm(magr, mdef, mattk) {
+    let result;
+
+    if (magr.mcan)
+        return M_ATTK_MISS;
+
+    if (cansee(magr.mx, magr.my))
+        await pline_mon(magr, `${Monnam(magr)} explodes!`);
+    else
+        await noises(magr, mattk);
+
+    if (mattk[1] === A.AD_FIRE || mattk[1] === A.AD_COLD
+        || mattk[1] === A.AD_ELEC) {
+        await mon_explodes(magr, mattk);
+        result = M_ATTK_AGR_DIED | (DEADMONSTER(mdef) ? M_ATTK_DEF_DIED : 0);
+    } else {
+        result = await mdamagem(magr, mdef, mattk, null, 0);
+    }
+
+    if (!(result & M_ATTK_AGR_DIED)) {
+        const was_leashed = (magr.mleashed !== 0 && !!magr.mleashed);
+
+        await mondead(magr);
+        if (!DEADMONSTER(magr))
+            return result; /* life saved */
+        result |= M_ATTK_AGR_DIED;
+
+        /* mondead() -> m_detach() -> m_unleash() would have handled this
+           if the explosion had killed magr; since it didn't, we need to
+           deliver the m_unleash() slack message here instead */
+        if (was_leashed)
+            await Your('leash falls slack.');
+    }
+    if (magr.mtame) /* give this one even if it was visible */
+        await You('have a melancholy feeling for a moment, then it passes.');
+
+    return result;
+}
+
 // src/mhitm.c:849 gulpmm(). Temporarily co-locate the aggressor and defender
 // so death, corpse, and display handling see the same map topology as C, then
 // restore both monsters when the defender survives.
@@ -572,8 +724,8 @@ export async function gulpmm(magr, mdef, mattk) {
     const [verb, release] = engulfVerb(magr.data);
     if (game.vis)
         await pline(`${Monnam(magr)} ${verb} ${mon_nam(mdef)}.`);
-    if ((mdef.minvent || []).some(obj => obj.lamplit))
-        note_unported_mhitm('gulpmm:snuff_lit');
+    for (const obj of [...(mdef.minvent || [])])
+        await snuff_lit(obj);
 
     const ax = magr.mx, ay = magr.my;
     let dx = mdef.mx, dy = mdef.my;
@@ -714,7 +866,8 @@ export async function mdamagem(magr, mdef, mattk, mwep, dieroll) {
     } else if (mattk[1] === A.AD_CURS) {
         await mhitm_ad_curs(magr, mattk, mdef, mhm);
     } else {
-        note_unported_mhitm(`mdamagem:adtyp=${mattk[1]}`);
+        /* src/uhitm.c mhitm_adtyping() default */
+        mhm.damage = 0;
     }
 
     if (await mhitm_knockback(magr, mdef, mattk, mhm, !!mwep)
