@@ -161,6 +161,7 @@ import {
     isContainer,
     objectType,
     place_object,
+    remove_object,
     sobj_at,
     splitobj,
     unbless,
@@ -173,6 +174,7 @@ import { an, ansimpleoname, distant_name, donameFresh, is_plural,
 import { discover_object, objdescr_is, observe_object } from './o_init.js';
 import { accessible, monflee, mon_would_take_item, monnear, onscary, youHear } from './monmove.js';
 import { lined_up, linedup_callback, m_useup } from './mthrowu.js';
+import { encumber_msg } from './pickup.js';
 import { in_your_sanctuary } from './priest.js';
 import { d, rn1, rn2, rn2_on_display_rng, rnd } from './rng.js';
 import { in_rooms } from './rooms.js';
@@ -197,6 +199,7 @@ import { cansee, canseemon, couldsee, recalc_block_point, unblock_point } from '
 import { body_part } from './polyself.js';
 import {
     extract_from_minvent, bimanual, find_mac, mon_adjust_speed,
+    mon_set_minvis,
 } from './worn.js';
 import { mwelded, welded } from './wield.js';
 import { mon_has_amulet, mon_has_special } from './wizard.js';
@@ -1410,7 +1413,6 @@ export async function mloot_container(mon, container, vismon, rawEnv = {}) {
 //
 // Unported callees whose results the C discards:
 //   mon.c m_useup       -- consumed object stays in monster inventory
-//   worn.c mon_set_minvis   -- visibility flag change skipped
 //   mon.c newcham           -- polymorph skipped
 //   worm.c worm_move        -- worm segment relocation skipped
 export async function use_misc(mtmp, selection, state, env = {}) {
@@ -1477,7 +1479,7 @@ export async function use_misc(mtmp, selection, state, env = {}) {
         }
         // format monster's name before altering its visibility
         const nambuf = monsterCommonName(mtmp, state);
-        note_unported('worn.c mon_set_minvis');
+        mon_set_minvis(mtmp, Boolean(otmp.cursed), state);
         if (vismon && mtmp.minvis) { /* was seen, now invisible */
             if (canSpotMonster(mtmp, state)) {
                 await ttyPline(messageAt(
@@ -1641,7 +1643,17 @@ export async function use_misc(mtmp, selection, state, env = {}) {
             await pline_mon(mtmp,
                 `${capitalizedMonsterName(mtmp, state)} yanks ${the_weapon} to the ${surface(state.u.ux, state.u.uy, state)}!`,
                 state);
-            await dropy(obj, { state });
+            // do.c dropz() always redraws the landing square, updates burden,
+            // and may extract a floor pile member while stacking. These are
+            // the same caller-owned hooks as pickup.c tipcontainer().
+            await dropy(obj, {
+                state,
+                hooks: {
+                    encumberMessage: encumber_msg,
+                    extractExternalObject: remove_object,
+                    newsym,
+                },
+            });
             break;
         case 3: /* into mon's inventory */
             await pline_mon(mtmp,

@@ -27,7 +27,9 @@ import {
     IS_DOOR,
     M_ATTK_AGR_DIED,
     M_ATTK_AGR_DONE,
+    M_ATTK_DEF_DIED,
     M_ATTK_HIT,
+    M_ATTK_MISS,
     RLOC_MSG,
     RLOC_NOMSG,
     M_SEEN_COLD,
@@ -63,6 +65,7 @@ import {
     isok,
     M_AP_TYPE,
     NO_TRAP_FLAGS,
+    XKILL_NOMSG,
     something,
 } from './const.js';
 import {
@@ -107,6 +110,7 @@ import {
     setmangry,
     set_ustuck,
     wakeup,
+    xkilled,
 } from './mon.js';
 import {
     amorphous,
@@ -118,6 +122,7 @@ import {
     haseyes,
     hides_under,
     is_animal,
+    is_demon,
     is_orc,
     is_undead,
     is_watch,
@@ -195,6 +200,8 @@ import {
     PM_HEALER,
     PM_KNIGHT,
     PM_MONK,
+    PM_AMOROUS_DEMON,
+    PM_BALROG,
     PM_FLOATING_EYE,
     PM_PURPLE_WORM,
     PM_ROGUE,
@@ -477,9 +484,6 @@ export async function stumble_onto_mimic(mtmp, state = game, env = {}) {
 //
 // Remaining unsupported arms:
 //   198-199  engulfing_u(): ported, returns false immediately.
-//   230-252  a target the hero cannot spot that is not hidden under something
-//            or disguised. Prints "Wait! There's something there you can't
-//            see!", marks the square, and calls wakeup before returning TRUE.
 //   308-324  paranoid_query() for a peaceful target, and the Stormbringer
 //            override above it.
 export async function attack_checks(mtmp, wep, state = game, env = {}) {
@@ -490,14 +494,15 @@ export async function attack_checks(mtmp, wep, state = game, env = {}) {
     if (engulfing_u(mtmp, state)) return false;
 
     if (state.context?.forcefight) {
-        if (!canSpotMonster(mtmp, state))
-            unsupported('force-fight at a monster the hero cannot spot');
+        // dokick.c sets forcefight so a kick can reach an invisible target.
+        // C's force-fight arm returns immediately, regardless of visibility.
         return false;
     }
 
     // 220: cache the shown glyph for the visibility and mimic tests below.
-    const glyph = glyph_at(
-        state.bhitpos?.x ?? mtmp.mx, state.bhitpos?.y ?? mtmp.my, state);
+    // hack.c stores the destination in gb.bhitpos before calling do_attack().
+    const bhitpos = state.gb?.bhitpos ?? { x: mtmp.mx, y: mtmp.my };
+    const glyph = glyph_at(bhitpos.x, bhitpos.y, state);
 
     // glyph_is_warning() is constantly false in this port: a warning glyph
     // needs a warning level this port never raises.
@@ -507,7 +512,24 @@ export async function attack_checks(mtmp, wep, state = game, env = {}) {
         && !glyph_is_invisible(glyph)
         && !(!(heroIsBlind(state)) && mtmp.mundetected
             && hides_under(mtmp.data))) {
-        unsupported('attacking an unseen monster (invisible marker path)');
+        const message = requireAttackOperation(env, 'message');
+        await message(
+            `Wait!  There's ${something} there you can't see!`,
+            state,
+        );
+        map_invisible(bhitpos.x, bhitpos.y, state);
+        // An unseen mimic is treated as though the hero stumbled onto a
+        // visible mimic, including the source's adjacent-sticking check.
+        if (M_AP_TYPE(mtmp)
+            && !propertyPresent(state.u, PROT_FROM_SHAPE_CHANGERS)
+            && !state.u.ustuck && !mtmp.mflee
+            && dmgtype(mtmp.data, AD_STCK)
+            && m_next2u(mtmp, state)) {
+            set_ustuck(mtmp, state);
+        }
+        // C passes TRUE so the attempted attack wakes and angers the target.
+        await wakeup(mtmp, true, { ...env, state });
+        return true;
     }
 
     // 254-266: a mimicking target the hero cannot sense.
@@ -623,8 +645,7 @@ export function mon_maybe_unparalyze(mtmp, random = { rn2 }) {
 // halves, because polyself is unported and Upolyd() is constantly false;
 // js/regen.js:52 records the same fact.
 //
-// The AT_KICK arm at 424-425 belongs to dokick.c and stops: this port has no
-// caller for it, and reaching it would mean a kick had been routed here.
+// The AT_KICK arm at 424-425 contributes the martial-arts weapon-hit bonus.
 export function find_roll_to_hit(
     mtmp,
     aatyp,
@@ -678,8 +699,8 @@ export function find_roll_to_hit(
     if (aatyp === AT_WEAP || aatyp === AT_CLAW) {
         if (weapon) tmp += hitval(weapon, mtmp, state, env);
         tmp += weapon_hit_bonus(weapon, state);
-    } else {
-        requireAttackOperation(env, 'unsupported')('kicked to-hit roll');
+    } else if (aatyp === AT_KICK && martial_bonus(state)) {
+        tmp += weapon_hit_bonus(null, state);
     }
 
     return tmp;
@@ -688,18 +709,14 @@ export function find_roll_to_hit(
 // C ref: uhitm.c do_attack() (446-583). The hero moves into a square holding a
 // monster. Returns TRUE when the step is used up.
 //
-// The `is_safemon(mtmp) && !forcefight` arm at 461-509 covers the ordinary
-// active starting pet only. The repeated-command boundary makes punishment,
-// shops and Stormbringer unreachable there and preflights long worms,
-// helplessness and obstructed source squares before this function can draw.
-// Result false lets hack.c swap places; true consumes the move after the pet
-// refuses. Everything from 511 on is the hostile arm.
+// The `is_safemon(mtmp) && !forcefight` arm at 461-509 covers safe peaceful
+// monsters as well as tame pets. Result false lets hack.c swap places; true
+// consumes the move after the monster refuses. Everything from 511 on is the
+// hostile arm.
 export async function do_attack(monster, state = game, env = {}) {
     const random = env.random ?? { d, rn1, rn2, rnd };
-    if (typeof random.rn2 !== 'function'
-        || typeof random.rnd !== 'function') {
-        throw new TypeError('do_attack random injection requires rn2 and rnd');
-    }
+    if (typeof random.rn2 !== 'function')
+        throw new TypeError('do_attack random injection requires rn2');
     const unsupported = requireAttackOperation(env, 'unsupported');
 
     if (is_safemon(monster, state) && !state.context?.forcefight) {
@@ -711,11 +728,17 @@ export async function do_attack(monster, state = game, env = {}) {
 
         if (random.rn2(7)) return false;
 
-        await makeFlee(monster, random.rnd(6), false, false, {
-            ...env,
-            state,
-            random,
-        });
+        // uhitm.c:497 only frightens a tame pet. A peaceful non-pet uses the
+        // same safety stop but must not consume the rnd(6) flee duration.
+        if (monster.mtame) {
+            if (typeof random.rnd !== 'function')
+                throw new TypeError('do_attack pet refusal requires rnd');
+            await makeFlee(monster, random.rnd(6), false, false, {
+                ...env,
+                state,
+                random,
+            });
+        }
         await message(
             `You stop.  ${capitalizedAlwaysVisibleMonsterName(monster, state)} `
                 + 'is in the way!',
@@ -2103,7 +2126,7 @@ export async function mhitm_ad_drst(
     }
 }
 
-// C ref: uhitm.c mhitm_ad_phys() (3980-4200), two of its three arms: the
+// C ref: uhitm.c mhitm_ad_phys() (3980-4200), its three arms: the
 // `mdef == &gy.youmonst` one (4021-4127), including an ordinary weapon hit,
 // and the mhitm one (4128-4200). An ordinary blow landing on the hero prints
 // its line and records the hit. A wielded ordinary weapon first adds dmgval()
@@ -2111,8 +2134,7 @@ export async function mhitm_ad_drst(
 // damage mdamagem() rolled and prints nothing, because mhitm.c hitmm() has
 // already printed.
 //
-// The third arm is the hero's own physical attack (uhitm). It has no caller
-// here, because js/uhitm.js damageum() is unported.
+// The hero's own physical arm is used by dokick.c's polymorphed kick path.
 //
 // Two pieces of the hero's arm stop where C acts:
 //
@@ -2130,8 +2152,8 @@ export async function mhitm_ad_drst(
 // mattacku()'s AT_WEAP arm leaves behind when mon_wield_item() finds it no
 // weapon to wield.
 //
-// Neither mhm->specialdmg nor gm.mhitu_dieroll is read on the admitted path.
-// specialdmg's two readers, 3992 and 3995, sit inside the hero-attacker arm.
+// Neither gm.mhitu_dieroll is read on the admitted path. mhm->specialdmg's
+// readers sit inside the hero-attacker arm.
 // The dieroll's readers, 4069 and 4107, sit in the artifact and poison paths,
 // which remain refusal boundaries.
 export async function mhitm_ad_phys(
@@ -2148,7 +2170,34 @@ export async function mhitm_ad_phys(
 
     if (magr === state.youmonst) {
         /* uhitm */
-        unsupported("the hero's own physical attack");
+        if (pd === state.mons[PM_SHADE]) {
+            mhm.damage = 0;
+            if (!mhm.specialdmg)
+                unsupported('a shade attack without special damage');
+        }
+        mhm.damage += mhm.specialdmg;
+
+        if (mattk.aatyp === AT_WEAP) {
+            /* hmonas() deals the ordinary physical weapon damage itself;
+               damageum() contributes nothing for this unusual arm. */
+            mhm.damage = 0;
+        } else if (mattk.aatyp === AT_KICK
+                   || mattk.aatyp === AT_CLAW
+                   || mattk.aatyp === AT_TUCH
+                   || mattk.aatyp === AT_HUGS) {
+            if (thick_skinned(pd)) {
+                mhm.damage = mattk.aatyp === AT_KICK
+                    ? 0 : Math.trunc((mhm.damage + 1) / 2);
+            }
+            /* Ring(s) of increase damage apply even when damage is zero. */
+            const udaminc = state.u.udaminc ?? 0;
+            if (udaminc > 0) {
+                mhm.damage += udaminc;
+            } else if (mhm.damage > 0) {
+                mhm.damage += udaminc;
+                if (mhm.damage < 1) mhm.damage = 1;
+            }
+        }
     } else if (mdef === state.youmonst) {
         /* mhitu */
         if (mattk.aatyp === AT_HUGS && !sticks(pd)) {
@@ -2347,6 +2396,77 @@ export async function mhitm_adtyping(
     default:
         mhm.damage = 0;
     }
+}
+
+// C ref: uhitm.c damageum() (4835-4883). Resolve one polymorphed hero attack,
+// including its physical damage arm and death handling. The other damage-type
+// arms remain explicit uhitm.c operation boundaries in mhitm_adtyping().
+export async function damageum(
+    mdef,
+    mattk,
+    specialdmg,
+    state = game,
+    env = {},
+) {
+    const unsupported = requireAttackOperation(env, 'unsupported');
+    const message = requireAttackOperation(env, 'message');
+    const random = env.random ?? { d, rn1, rn2, rnd };
+    const mhm = {
+        damage: random.d(mattk.damn, mattk.damd),
+        hitflags: M_ATTK_MISS,
+        permdmg: 0,
+        specialdmg,
+        done: false,
+    };
+
+    if (is_demon(state.youmonst?.data)
+        && !random.rn2(13)
+        && !state.uwep
+        && state.u.umonnum !== PM_AMOROUS_DEMON
+        && state.u.umonnum !== PM_BALROG) {
+        // demonpet() has no return value used by damageum().
+        note_unported('demon.c demonpet');
+        return M_ATTK_MISS;
+    }
+
+    await mhitm_adtyping(state.youmonst, mattk, mdef, mhm, state, {
+        ...env,
+        random,
+    });
+    if (mhm.done) return mhm.hitflags;
+
+    mdef.mstrategy &= ~STRAT_WAITFORU;
+    mdef.mhp -= mhm.damage;
+    if (mdef.mhp < 1) {
+        if (mdef.mtame && !cansee(mdef.mx, mdef.my, state)) {
+            await message('You feel embarrassed for a moment.', state);
+            if (mhm.damage)
+                await xkilled(mdef, XKILL_NOMSG, state, {
+                    ...env,
+                    random,
+                    message,
+                    unsupported,
+                });
+        } else if (!state.flags?.verbose) {
+            await message('You destroy it!', state);
+            if (mhm.damage)
+                await xkilled(mdef, XKILL_NOMSG, state, {
+                    ...env,
+                    random,
+                    message,
+                    unsupported,
+                });
+        } else if (mhm.damage) {
+            await killed(mdef, state, {
+                ...env,
+                random,
+                message,
+                unsupported,
+            });
+        }
+        return M_ATTK_DEF_DIED;
+    }
+    return M_ATTK_HIT;
 }
 
 // C ref: uhitm.c missum() (5197-5214). Reports a swing that did not land and
