@@ -171,7 +171,6 @@ import {
     docallcmd,
     mon_nam,
     x_monnam,
-    UnsupportedObjectNamingError,
 } from './do_name.js';
 import { dobjsfree, isContainer, UnsupportedObjectOperationError } from './obj.js';
 import { doloot, dotip, UnsupportedPickupError } from './pickup.js';
@@ -256,17 +255,22 @@ import {
 } from './hacklib.js';
 import {
     ddoinv,
+    dotypeinv,
+    doorganize,
+    adjust_split,
+    doperminv,
     dolook,
     dopramulet,
     doprarm,
+    doprinuse,
     doprgold,
     doprring,
+    doprtool,
     doprwep,
     carrying,
     getobj,
     hands_obj,
     UnsupportedFeatureDescriptionError,
-    UnsupportedObjectPromptError,
 } from './invent.js';
 import {
     doattributes,
@@ -1800,8 +1804,10 @@ export const ADMITTED_COMMANDS = Object.freeze([
     'wizwish', 'wizidentify', 'wizlevelport', 'wizgenesis', 'wizintrinsic', 'wizmap', 'fire', 'throw',
     'swap', 'kick',
     'save', 'wield', 'quiver', 'help', 'whatis', '#', 'loot', 'force', 'tip',
-    'glance', 'showgold', 'seeweapon', 'seearmor', 'seerings', 'seeamulet', 'teleport',
+    'glance', 'showgold', 'seeweapon', 'seearmor', 'seerings', 'seeamulet',
+    'seeall', 'seetools', 'teleport',
     'overview',
+    'inventtype', 'adjust', 'altadjust',
     'terrain', 'travel', 'dip', 'invoke', 'untrap', 'herecmdmenu', 'therecmdmenu',
 ]);
 const ADMITTED_BOUNDARY = 'the repeated-command boundary admits only '
@@ -2814,7 +2820,6 @@ export function failClosedCommandRefusals() {
         // eat.c newuhs() is shared: gethungry() calls it from the turn loop,
         // and done_eating() and lesshungry() call it from doeat().
         UnsupportedHungerTransitionError,
-        UnsupportedObjectPromptError,
         // read.c doread() raises this after getobj() returns an object and
         // before pickup_prev or any reading effect changes state. Cancellation
         // completes normally, so only selected objects reach this refusal.
@@ -2934,7 +2939,6 @@ export function failClosedCommandRefusals() {
         // (containers, scrolls, spellbooks, potions, lit items) whose
         // water-damage paths are not yet ported.
         WaterDamageError,
-        UnsupportedObjectNamingError,
         // Two paths raise this. invent.c hold_another_object(), which
         // makewish() calls unguarded, raises it from its drop, artifact,
         // Fumbling and autoquiver arms. A wish heavy or numerous enough to
@@ -5001,6 +5005,14 @@ async function doextcmd(key, state) {
         return await dooverview(state);
     case 'ddoinv':
         return await runInventoryCommand(key, state) ? ECMD_TIME : ECMD_OK;
+    case 'dotypeinv':
+        return await failClosedCommand(key, state, () => dotypeinv(state));
+    case 'doorganize':
+        return await failClosedCommand(key, state, () => doorganize(state));
+    case 'adjust_split':
+        return await failClosedCommand(key, state, () => adjust_split(state));
+    case 'doperminv':
+        return await doperminv(state);
     case 'dovspell':
         return await runShowspellsCommand(key, state) ? ECMD_TIME : ECMD_OK;
     case 'dodiscovered':
@@ -5028,8 +5040,14 @@ async function doextcmd(key, state) {
     case 'doprarm':
         await failClosedCommand(key, state, () => doprarm(state, inventoryMenuHooks(state)));
         return ECMD_OK;
+    case 'doprinuse':
+        await failClosedCommand(key, state, () => doprinuse(state, inventoryMenuHooks(state)));
+        return ECMD_OK;
     case 'doprring':
         await failClosedCommand(key, state, () => doprring(state, inventoryMenuHooks(state)));
+        return ECMD_OK;
+    case 'doprtool':
+        await failClosedCommand(key, state, () => doprtool(state, inventoryMenuHooks(state)));
         return ECMD_OK;
     case 'dopramulet':
         await failClosedCommand(key, state, () => dopramulet(state, inventoryMenuHooks(state)));

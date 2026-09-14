@@ -1,36 +1,47 @@
 // Monster names, naming commands, and novel-title data.
 // C ref: src/do_name.c docallcmd(), christen_monst(), docall(),
-// rndghostname(), bogusmon(), rndmonnam(),
+// rndghostname(), rndorcname(), christen_orc(), bogusmon(), rndmonnam(),
 // sir_Terry_novels[], noveltitle(), and lookup_novel().
 
 import {
+    A_CHA,
     ARTICLE_A,
     ARTICLE_NONE,
     ARTICLE_THE,
     ARTICLE_YOUR,
     AUGMENT_IT,
-    BLINDED,
     BOGUSMONFILE,
+    BUFSZ,
+    CMDQ_KEY,
+    CQ_CANNED,
     CORPSTAT_FEMALE,
     CORPSTAT_GENDER,
     CORPSTAT_MALE,
     CORPSTAT_RANDOM,
     ECMD_OK,
     EXACT_NAME,
-    In_endgame,
+    GETOBJ_NOFLAGS,
+    GETOBJ_PROMPT,
     GETOBJ_DOWNPLAY,
     GETOBJ_EXCLUDE,
     GETOBJ_SUGGEST,
     FEMALE,
     HALLUC,
     HALLUC_RES,
+    HAND,
+    INFRAVISION,
     ismnum,
     MALE,
     MD_PAD_BOGONS,
     M_AP_MONSTER,
+    M_AP_FURNITURE,
+    M_AP_OBJECT,
+    M_AP_TYPE,
     M_AP_TYPMASK,
+    MS_ANIMAL,
     NEUTRAL,
     NUM_MGENDERS,
+    ONAME_KNOW_ARTI,
     ONAME_SKIP_INVUPD,
     ONAME_VIA_NAMING,
     PICK_ONE,
@@ -43,30 +54,58 @@ import {
     SUPPRESS_NAME,
     SUPPRESS_SADDLE,
     NON_PM,
+    OBJ_FREE,
     OBJ_INVENT,
     W_SADDLE,
+    Upolyd,
     engulfing_u,
+    has_ebones,
+    has_mgivenname,
     has_oname,
+    helpless,
+    isok,
+    u_at,
+    SEE_INVIS,
+    DEAF,
 } from './const.js';
-import { artifact_exists, artifact_name, exist_artifact } from './artifacts.js';
-import { flush_screen, rank_of } from './display.js';
+import {
+    artifact_exists,
+    artifact_name,
+    exist_artifact,
+    restrict_name,
+} from './artifacts.js';
+import {
+    flush_screen,
+    glyph_at,
+    glyph_is_object,
+    glyph_is_swallow,
+    rank_of,
+    vobj_at,
+} from './display.js';
+import { getpos } from './getpos.js';
+import { body_part, poly_gender } from './polyself.js';
+import { cansee, couldsee } from './vision.js';
 import { priestname } from './priest.js';
 import { shkname } from './shknam.js';
-import { fruit_from_name, makeplural } from './fruit.js';
+import { makeplural } from './fruit.js';
 import { game } from './gstate.js';
 import {
     decodeUtf8ByteString,
     encodeUtf8ByteString,
+    fuzzymatch,
     mungspaces,
     s_suffix,
+    strstri,
     upstart,
 } from './hacklib.js';
-import { carrying, update_inventory } from './invent.js';
+import { carrying, getobj, update_inventory } from './invent.js';
 import {
-    gender,
     humanoid,
     is_animal,
     is_mplayer,
+    is_rider,
+    mhe,
+    mhis,
     mindless,
     pronoun_gender,
     type_is_pname,
@@ -79,11 +118,16 @@ import {
     PM_ALIGNED_CLERIC,
     PM_CLERIC,
     PM_GHOST,
+    PM_HIGH_CLERIC,
+    PM_LONG_WORM,
+    PM_LONG_WORM_TAIL,
+    PM_JUIBLEX,
     PM_SHOPKEEPER,
     PM_WIZARD_OF_YENDOR,
+    NUMMONS,
     SPECIAL_PM,
 } from './monsters.js';
-import { UnsupportedObjectOperationError, carried, objectType } from './obj.js';
+import { carried, dealloc_obj, objectType } from './obj.js';
 import {
     discover_object,
     undiscover_object,
@@ -92,20 +136,29 @@ import {
     AMULET_CLASS, AMULET_OF_YENDOR, ARMOR_CLASS, COIN_CLASS,
     CORPSE, FAKE_AMULET_OF_YENDOR, FIGURINE, FOOD_CLASS,
     GEM_CLASS, HEAVY_IRON_BALL, OBJ_DESCR, POTION_CLASS,
-    RING_CLASS, SCROLL_CLASS,
+    RING_CLASS, SCROLL_CLASS, STRANGE_OBJECT,
     SPBOOK_CLASS, SPE_NOVEL, STATUE, TIN, TOOL_CLASS, TOWEL,
     VENOM_CLASS, WAND_CLASS, WEAPON_CLASS,
 } from './objects.js';
-import { an, just_an, safe_qbuf, simpleonames, vtense, xnameFresh } from './objnam.js';
+import {
+    an, is_plural, just_an, safe_qbuf, simpleonames, The, vtense,
+    xnameFresh, Ysimple_name2,
+} from './objnam.js';
 import { get_rnd_text } from './random_text.js';
-import { HLIQUIDS } from './random_text_data.js';
-import { rn1, rn2, rn2_on_display_rng } from './rng.js';
+import { HCOLORS, HLIQUIDS } from './random_text_data.js';
+import { rn1, rn2, rn2_on_display_rng, rnd_on_display_rng } from './rng.js';
 import { getlin } from './windows.js';
+import { note_unported } from './unported.js';
+import { displayPendingTtyMessageWindow, ttyPline } from './tty_message.js';
+import { verbalize } from './pline.js';
+import { wipeout_text } from './engrave.js';
+import { acurr } from './attrib.js';
+import { hides_under } from './mondata.js';
 // display.h canspotmon() (129). js/startup_a11y.js owns it and imports
 // capitalizedMonsterName() from this file, so the two modules form a cycle.
 // Neither uses the other's binding while its module body evaluates, which is
 // what an ES module cycle requires; js/obj.js and this file already form one.
-import { canSpotMonster } from './startup_a11y.js';
+import { canSpotMonster, heroIsBlind, sensesMonster } from './startup_a11y.js';
 import { menuTitleStyle } from './tty_menu.js';
 import { select_menu } from './windows.js';
 
@@ -146,37 +199,61 @@ const GHOST_NAMES = Object.freeze([
     'Murphy',
 ]);
 
-// C ref: do_name.c new_oname() (60-77). C's two halves are an allocation and a
-// deallocation. Only the second survives translation: for a nonzero length C
-// frees the old name and allocates a buffer that oname() then copies into,
-// which in JavaScript is the assignment alone, so all this half owes is that
-// oextra exists to assign into.
+// C ref: do_name.c nextmbuf() (20-27), new_mgivenname() (31-47), and
+// free_mgivenname() (51-57). Strings supply the storage C gets from alloc().
+const NEXT_MBUF = Array.from({ length: 5 }, () => '');
+let nextMbufIndex = 0;
+
+export function nextmbuf() {
+    nextMbufIndex = (nextMbufIndex + 1) % NEXT_MBUF.length;
+    return NEXT_MBUF[nextMbufIndex];
+}
+
+export function new_mgivenname(mon, lth) {
+    if (lth) {
+        mon.mextra ??= {};
+        free_mgivenname(mon);
+    } else if (has_mgivenname(mon)) {
+        free_mgivenname(mon);
+    }
+}
+
+export function free_mgivenname(mon) {
+    if (has_mgivenname(mon)) {
+        if (mon.mextra) delete mon.mextra.mgivenname;
+        delete mon.mgivenname;
+    }
+}
+
+// C ref: do_name.c new_oname() (60-77). C retains oextra and releases a prior
+// string before assigning the replacement.
 export function new_oname(obj, lth) {
     if (lth) {
-        /* allocate oextra if necessary; otherwise get rid of old name */
         obj.oextra ??= {};
+        free_oname(obj);
     } else {
-        /* zero length: the new name is empty; get rid of the old name */
         if (has_oname(obj)) free_oname(obj);
     }
 }
 
-// C ref: do_name.c free_oname() (80-88). C keeps oextra and clears the name
-// field; deleting the property is this port's empty ONAME.
+// C ref: do_name.c free_oname() (80-88). C keeps oextra and clears ONAME.
 export function free_oname(obj) {
-    if (has_oname(obj)) delete obj.oextra.oname;
+    if (has_oname(obj)) {
+        if (obj.oextra) delete obj.oextra.oname;
+        delete obj.oname;
+    }
+}
+
+// C ref: do_name.c safe_oname() (95-100).
+export function safe_oname(obj) {
+    return obj?.oextra?.oname ?? obj?.oname ?? '';
 }
 
 // C ref: do_name.c oname() (371-426). Assigns a player-given or artifact name
 // and, when the name belongs to an artifact of this object's type, turns the
-// object into that artifact through artifact_exists().
-//
-// Four arms below the artifact test stop this port. Each needs a caller that
-// readobjnam()'s wish -- oname()'s only live caller -- cannot be: the wished
-// object is fresh from mksobj(), so it is neither wielded nor secondary-wielded
-// nor owned by a shop, and ONAME_WISH carries no ONAME_VIA_NAMING bit. The
-// fifth, update_inventory(), needs the object to be in inventory, and a wish
-// reaches hold_another_object() only after this returns.
+// object into that artifact through artifact_exists(). Unported side effects
+// retain their source order through note_unported() while gameplay state that
+// the JavaScript port owns is updated here.
 export function oname(obj, name, oflgs, env = {}) {
     const state = env.state ?? game;
     const via_naming = (oflgs & ONAME_VIA_NAMING) !== 0;
@@ -204,54 +281,49 @@ export function oname(obj, name, oflgs, env = {}) {
     if (lth) artifact_exists(obj, text, true, oflgs, state);
     if (obj.oartifact) {
         /* can't dual-wield with artifact as secondary weapon */
-        if (obj === state.uswapwep)
-            throw new UnsupportedObjectOperationError('untwoweapon()', obj);
-        /* activate warning if you've just named your weapon "Sting" */
-        if (obj === state.uwep) {
-            throw new UnsupportedObjectOperationError(
-                'set_artifact_intrinsic()', obj,
-            );
+        if (obj === state.uswapwep) {
+            state.u.twoweap = false;
+            note_unported('wield.c untwoweapon() message');
         }
+        /* activate warning if you've just named your weapon "Sting" */
+        if (obj === state.uwep)
+            note_unported('artifact.c set_artifact_intrinsic()');
         /* if obj is owned by a shop, increase your bill */
         if (obj.unpaid)
-            throw new UnsupportedObjectOperationError('alter_cost()', obj);
+            note_unported('shk.c alter_cost()');
         if (via_naming) {
             // do_name.c:414-424 violates illiteracy conduct and writes a
-            // livelog event. The conduct counter is saved state, so the arm
-            // cannot be skipped the way a livelog-only arm can.
-            throw new UnsupportedObjectOperationError(
-                'naming-conduct livelog', obj,
-            );
+            // livelog event. The counter is gameplay state; the file event is
+            // outside the browser port.
+            state.u.uconduct ??= {};
+            state.u.uconduct.literate = Math.trunc(
+                state.u.uconduct.literate ?? 0,
+            ) + 1;
+            note_unported('do_name.c livelog_printf()');
         }
     }
-    if (carried(obj) && !skip_inv_update) {
-        throw new UnsupportedObjectOperationError(
-            'update_inventory() after naming', obj,
-        );
-    }
+    if (carried(obj) && !skip_inv_update)
+        update_inventory({ state });
     return obj;
 }
 
 export function christen_monst(monster, name, env = {}) {
     if (!monster || typeof monster !== 'object')
         throw new TypeError('christen_monst requires a monster instance');
-    const updateInventory = env.updateInventory;
-    if (monster.mleashed && typeof updateInventory !== 'function') {
-        throw new Error(
-            'christen_monst requires update_inventory for a leashed monster',
-        );
-    }
     const bytes = encodeUtf8ByteString(String(name ?? ''));
-    if (!bytes.length) {
-        if (monster.mextra) delete monster.mextra.mgivenname;
-        if (monster.mleashed) updateInventory(env);
-        return monster;
+    const lth = bytes.length ? bytes.length + 1 : 0;
+    const clipped = lth > PL_PSIZ
+        ? decodeUtf8ByteString(bytes.slice(0, PL_PSIZ - 1))
+        : String(name ?? '');
+    new_mgivenname(monster, lth > PL_PSIZ ? PL_PSIZ : lth);
+    if (lth) {
+        monster.mextra ??= {};
+        monster.mextra.mgivenname = clipped;
     }
-    monster.mextra ??= {};
-    monster.mextra.mgivenname = decodeUtf8ByteString(
-        bytes.slice(0, PL_PSIZ - 1),
-    );
-    if (monster.mleashed) updateInventory(env);
+    if (monster.mleashed) {
+        if (typeof env.updateInventory === 'function') env.updateInventory(env);
+        else update_inventory({ state: env.state ?? game });
+    }
     return monster;
 }
 
@@ -288,9 +360,13 @@ export function rndorcname(random = { rn1, rn2 }) {
     let result = '';
     for (let i = 0; i < end; ++i) {
         vowelNext = 1 - vowelNext;
-        if (i > 0 && !random.rn2(30)) result += '-';
         const choices = vowelNext ? vowels : sounds;
-        result += choices[random.rn2(choices.length)];
+        // The patched C build evaluates the second Sprintf argument before
+        // the first.  Select the chunk before consuming the hyphen draw, then
+        // append them in the source's rendered order.
+        const chunk = choices[random.rn2(choices.length)];
+        if (i > 0 && !random.rn2(30)) result += '-';
+        result += chunk;
     }
     return result;
 }
@@ -299,13 +375,27 @@ export function rndorcname(random = { rn1, rn2 }) {
 // is capitalized and optionally followed by the invading gang name.
 export function christen_orc(monster, gang, other, env = {}) {
     const orcname = rndorcname(env.random ?? { rn1, rn2 });
-    if (!gang && !other) return monster;
-    const suffix = gang ? ` of ${upstart(gang)}` : (other ?? '');
-    const name = `${upstart(orcname)}${suffix}`;
-    return name.length < 256 ? christen_monst(monster, name, env) : monster;
+    let size = encodeUtf8ByteString(orcname).length;
+    // C tests pointers for presence, so an empty gang or suffix still names
+    // the monster and takes the corresponding branch.
+    if (gang !== null && gang !== undefined)
+        size += encodeUtf8ByteString(String(gang)).length + ' of '.length;
+    else if (other !== null && other !== undefined)
+        size += encodeUtf8ByteString(String(other)).length;
+
+    if (size < BUFSZ) {
+        let name;
+        if (gang !== null && gang !== undefined) {
+            name = `${upstart(orcname)} of ${upstart(String(gang))}`;
+        } else if (other !== null && other !== undefined) {
+            name = `${upstart(orcname)}${String(other)}`;
+        }
+        if (name !== undefined)
+            return christen_monst(monster, name, env);
+    }
+    return monster;
 }
 
-// An object-naming prompt this port cannot open yet.
 // C ref: do_name.c objtyp_is_callable() (429-463). Returns true when the
 // object type can be given a type-name by the player.
 export function objtyp_is_callable(otyp, state = game) {
@@ -357,11 +447,158 @@ export function call_ok(obj, state = game) {
     return GETOBJ_SUGGEST;
 }
 
-export class UnsupportedObjectNamingError extends Error {
-    constructor(reason) {
-        super(`naming an object type requires ${reason}`);
-        this.name = 'UnsupportedObjectNamingError';
-        this.reason = reason;
+// C ref: do_name.c alreadynamed() (158-195). This is async only because the
+// JavaScript terminal's pline() waits at a message boundary.
+export async function alreadynamed(monster, monnambuf, usrbuf, state = game) {
+    if (!usrbuf) {
+        const nameNotTitle = has_mgivenname(monster)
+            || type_is_pname(monster.data)
+            || monster.isshk;
+        await ttyPline(
+            `${upstart(monnambuf)} would rather keep `
+            + `${is_rider(monster.data) ? 'its' : mhis(monster, { state })} `
+            + `existing ${nameNotTitle ? 'name' : 'title'}.`,
+            state,
+        );
+        return true;
+    }
+
+    let match = fuzzymatch(usrbuf, monnambuf, ' -_', true);
+    const invisibleName = strstri(monnambuf, 'invisible ');
+    const ofName = strstri(monnambuf, ' of ');
+    if (!match && monnambuf.toLowerCase().startsWith('the '))
+        match = fuzzymatch(usrbuf, monnambuf.slice(4), ' -_', true);
+    if (!match && invisibleName >= 0)
+        match = fuzzymatch(usrbuf, monnambuf.slice(invisibleName + 10), ' -_', true);
+    if (!match && ofName >= 0)
+        match = fuzzymatch(usrbuf, monnambuf.slice(ofName + 4), ' -_', true);
+    if (match) {
+        if (is_rider(monster.data)) {
+            await ttyPline(`${upstart(monnambuf)} is already called that.`, state);
+        } else {
+            await ttyPline(
+                `${upstart(mhe(monster, { state }))} is already called ${monnambuf}.`,
+                state,
+            );
+        }
+        return true;
+    }
+
+    if (monster.data === state.mons?.[PM_JUIBLEX]
+        && strstri(monnambuf, 'Juiblex')
+        && usrbuf.toLowerCase() === 'jubilex') {
+        await ttyPline(
+            `${upstart(monnambuf)} doesn't like being called ${usrbuf}.`,
+            state,
+        );
+        return true;
+    }
+    return false;
+}
+
+function beautiful(state) {
+    const cha = acurr(state, A_CHA);
+    const feminine = poly_gender(state) === FEMALE;
+    if (cha >= 25) return 'sublime';
+    if (cha >= 19) return 'splendorous';
+    if (cha >= 16) return feminine ? 'beautiful' : 'handsome';
+    if (cha >= 14) return feminine ? 'winsome' : 'amiable';
+    if (cha >= 11) return 'cute';
+    if (cha >= 9) return 'plain';
+    if (cha >= 6) return 'homely';
+    if (cha >= 4) return 'ugly';
+    return 'hideous';
+}
+
+function see_with_infrared(monster, state) {
+    if (heroIsBlind(state) || !namingPropertyActive(state, INFRAVISION))
+        return false;
+    if (!(monster.data?.mflags3 & 0x0200)) return false;
+    return couldsee(monster.mx, monster.my, state);
+}
+
+// C ref: do_name.c do_mgivenname() (199-282).
+export async function do_mgivenname(state = game) {
+    if (namingPropertyActive(state, HALLUC)
+        && !namingPropertyActive(state, HALLUC_RES)) {
+        await ttyPline('You would never recognize it anyway.', state);
+        return;
+    }
+
+    const cc = { x: state.u.ux, y: state.u.uy };
+    if (await getpos(cc, false, 'the monster you want to name', state) < 0
+        || !isok(cc.x, cc.y)) return;
+
+    let monster = null;
+    let doSwallow = false;
+    if (u_at(cc.x, cc.y, state)) {
+        if (state.u.usteed && canSpotMonster(state.u.usteed, state)) {
+            monster = state.u.usteed;
+        } else {
+            await ttyPline(
+                `This ${beautiful(state)} creature is called ${state.plname}`
+                + ' and cannot be renamed.',
+                state,
+            );
+            return;
+        }
+    } else {
+        // m_at() is a direct coordinate lookup; importing monst.js here would
+        // add a cycle through the command dispatcher, so use the level index.
+        monster = state.level?.monsters?.[cc.x]?.[cc.y] ?? null;
+    }
+
+    if (!monster && state.u.uswallow) {
+        const glyph = glyph_at(cc.x, cc.y, state);
+        if (glyph_is_swallow(glyph)) {
+            monster = state.u.ustuck;
+            doSwallow = true;
+        }
+    }
+
+    const seeInvisible = namingPropertyActive(state, SEE_INVIS);
+    const appearance = monster ? M_AP_TYPE(monster) : 0;
+    if (!doSwallow && (!monster
+        || (!sensesMonster(monster, state)
+            && (!(cansee(cc.x, cc.y, state)
+                || see_with_infrared(monster, state))
+                || monster.mundetected
+                || appearance === M_AP_FURNITURE
+                || appearance === M_AP_OBJECT
+                || (monster.minvis && !seeInvisible))))) {
+        await ttyPline('I see no monster there.', state);
+        return;
+    }
+
+    const monnambuf = monsterCommonName(monster, state);
+    const buf = await name_from_player(
+        `What do you want to call ${monnambuf}?`,
+        has_mgivenname(monster) ? monster.mextra?.mgivenname : null,
+        state,
+    );
+    if (buf == null) return;
+
+    if ((monster.data?.geno & G_UNIQ) && !monster.ispriest) {
+        if (!await alreadynamed(monster, monnambuf, buf, state))
+            await ttyPline(`${upstart(monnambuf)} doesn't like being called names!`, state);
+    } else if (monster.isshk
+        && !namingPropertyActive(state, DEAF)
+        && !helpless(monster)
+        && (monster.data?.msound ?? 0) > MS_ANIMAL) {
+        if (!await alreadynamed(monster, monnambuf, buf, state)) {
+            // SetVoice() is a TTY sound no-op in this build.
+            await verbalize(`I'm ${shkname(monster, state)}, not ${buf}.`, state);
+        }
+    } else if (monster.ispriest || monster.isminion || monster.isshk
+        || monster.data === state.mons?.[PM_GHOST]
+        || has_ebones(monster)) {
+        if (!await alreadynamed(monster, monnambuf, buf, state))
+            await ttyPline(
+                `${upstart(monnambuf)} will not accept the name ${buf}.`,
+                state,
+            );
+    } else {
+        christen_monst(monster, buf, { state });
     }
 }
 
@@ -371,10 +608,21 @@ export class UnsupportedObjectNamingError extends Error {
 // 'q' (555), which falls through to case 'q': break (559-562) and returns
 // ECMD_OK (600).
 //
-// The cmdq_pop() / command-queue path (511-518) is not exercised and is left
-// as a boundary. The naming options (m, i, o, f, d, a) each dispatch to
-// their own handler and are left as boundaries for future slices.
 export async function docallcmd(state) {
+    // A canned key bypasses menu creation, exactly as cmdq_pop()'s early arm
+    // does in C. Importing here keeps the existing cmd/do_name cycle lazy.
+    const { cmdq_clear, cmdq_pop } = await import('./cmd.js');
+    const queued = cmdq_pop(state);
+    let queuedChoice = null;
+    if (queued) {
+        if (queued.typ === CMDQ_KEY) {
+            queuedChoice = typeof queued.key === 'number'
+                ? String.fromCharCode(queued.key)
+                : String(queued.key);
+        } else {
+            cmdq_clear(CQ_CANNED, state);
+        }
+    }
     /* if player wants a,b,c instead of i,o when looting, do that here too */
     const abc = Boolean(state.flags?.lootabc);
 
@@ -423,7 +671,7 @@ export async function docallcmd(state) {
         },
     );
 
-    const choice = await select_menu(state, {
+    const choice = queuedChoice ?? await select_menu(state, {
         title: 'What do you want to name?',
         ...menuTitleStyle(state),
         items,
@@ -439,15 +687,38 @@ export async function docallcmd(state) {
     default:
     case 'q':
         break;
-    case 'm': /* name a visible monster */
-    case 'i': /* name an individual object in inventory */
-    case 'o': /* name a type of object in inventory */
-    case 'f': /* name a type of object visible on the floor */
-    case 'd': /* name a type of object on the discoveries list */
-    case 'a': /* annotate level */
-        throw new UnsupportedObjectNamingError(
-            `docallcmd() naming option '${ch}'`,
-        );
+    case 'm':
+        await do_mgivenname(state);
+        break;
+    case 'i': {
+        const obj = await getobj('name', name_ok, GETOBJ_PROMPT, state);
+        if (obj) await do_oname(obj, state);
+        break;
+    }
+    case 'o': {
+        const obj = await getobj('call', call_ok, GETOBJ_NOFLAGS, state);
+        if (obj) {
+            // xname() observes an item picked up while blind, as in C.
+            xnameFresh(obj, state);
+            if (!obj.dknown) {
+                await ttyPline('You would never recognize another one.', state);
+            } else {
+                await docall(obj, state);
+            }
+        }
+        break;
+    }
+    case 'f':
+        await namefloorobj(state);
+        break;
+    case 'd':
+        note_unported('o_init.c rename_disco()');
+        break;
+    case 'a': {
+        const { donamelevel } = await import('./dungeon.js');
+        await donamelevel(state);
+        break;
+    }
     }
     return ECMD_OK;
 }
@@ -455,7 +726,7 @@ export async function docallcmd(state) {
 // C ref: do_name.c docall_xname() (604-633). For safe_qbuf(): strips cosmetic
 // attributes from a temporary copy of obj so the "Call <thing>:" prompt shows
 // a clean base name.
-function docall_xname(obj, state = game) {
+export function docall_xname(obj, state = game) {
     // Build a shallow temp copy; clear cosmetic fields that doname()/xname()
     // would format but that distract from the base type name.
     const otemp = { ...obj, oextra: null, quan: 1 };
@@ -482,9 +753,8 @@ function docall_xname(obj, state = game) {
 }
 
 // C ref: do_name.c name_from_player() (104-128). Wraps getlin() with
-// mungspaces() and PL_PSIZ truncation. Returns the trimmed string, or null
-// when the player cancels (empty input or ESC).
-async function name_from_player(prompt, defres, state = game) {
+// mungspaces() and PL_PSIZ byte truncation. Returns null for empty or ESC.
+export async function name_from_player(prompt, defres, state = game) {
     let outbuf = '';
     // EDIT_GETLIN: pass defres as preloaded text (not compiled in standard
     // tty, so this branch is dormant; kept for source fidelity).
@@ -495,8 +765,9 @@ async function name_from_player(prompt, defres, state = game) {
 
     /* strip leading and trailing spaces, condense internal sequences */
     outbuf = mungspaces(outbuf);
-    if (outbuf.length >= PL_PSIZ)
-        outbuf = outbuf.slice(0, PL_PSIZ - 1);
+    const bytes = encodeUtf8ByteString(outbuf);
+    if (bytes.length >= PL_PSIZ)
+        outbuf = decodeUtf8ByteString(bytes.slice(0, PL_PSIZ - 1));
     return outbuf;
 }
 
@@ -541,12 +812,129 @@ export async function docall(obj, state = game) {
         update_inventory({ state });
 }
 
-// A monster name this port cannot format yet.
-export class UnsupportedMonsterNameError extends Error {
-    constructor(reason) {
-        super(`unsupported monster name: ${reason}`);
-        this.name = 'UnsupportedMonsterNameError';
-        this.reason = reason;
+// C ref: do_name.c do_oname() (290-369). This is the command-side object
+// naming path; oname() owns the shared object mutation and artifact ownership.
+export async function do_oname(obj, state = game) {
+    let objtyp = STRANGE_OBJECT;
+    if (obj.otyp === SPE_NOVEL) {
+        await ttyPline(`${Ysimple_name2(obj, state)} already has a published name.`, state);
+        return;
+    }
+
+    const qbuf = safe_qbuf(
+        `What do you want to name ${is_plural(obj) ? 'these' : 'this'} `,
+        '?', obj, xnameFresh, simpleonames, 'item', state,
+    );
+    const buf = await name_from_player(qbuf, safe_oname(obj), state);
+    if (buf == null) return;
+
+    if (obj.oartifact) {
+        await ttyPline(
+            `${safe_oname(obj) || 'The artifact'} resists the attempt.`,
+            state,
+        );
+        return;
+    }
+
+    const artifactType = {};
+    const aname = artifact_name(buf, artifactType, true, state);
+    objtyp = artifactType.otyp ?? STRANGE_OBJECT;
+    let finalName = buf;
+    if (aname && (restrict_name(obj, aname, state)
+        || exist_artifact(obj.otyp, aname, state))) {
+        finalName = aname;
+        const original = finalName;
+        const offset = finalName.toLowerCase().startsWith('the ') ? 4 : 0;
+        do {
+            const prefix = finalName.slice(0, offset);
+            const target = finalName.slice(offset);
+            finalName = prefix + wipeout_text(target, rnd_on_display_rng(2), 0, {
+                random: { rn2: rn2_on_display_rng, rnd: rn2 },
+            });
+        } while (finalName === original);
+        await ttyPline(`While engraving, your ${body_part(HAND, state.youmonst)} slips.`, state);
+        await displayPendingTtyMessageWindow(state);
+        await ttyPline(`You engrave: "${finalName}".`, state);
+        state.u.uconduct ??= {};
+        state.u.uconduct.literate = Math.trunc(state.u.uconduct.literate ?? 0) + 1;
+    } else if (obj.otyp === objtyp) {
+        // artifact_name() set objtyp only when it returned a canonical name.
+        // The no-name case leaves the user's spelling intact.
+        if (aname) finalName = aname;
+    }
+
+    oname(obj, finalName,
+        ONAME_VIA_NAMING | ONAME_KNOW_ARTI, { state });
+}
+
+// C ref: do_name.c namefloorobj() (678-771). The floor object may be a
+// temporary reconstruction returned by pager.c's object_from_map().
+export async function namefloorobj(state = game) {
+    const cc = { x: state.u.ux, y: state.u.uy };
+    const overUnder = state.u.uundetected && hides_under(state.youmonst?.data)
+        ? 'over' : 'under';
+    const goal = `object on map (or '.' for one ${overUnder} you)`;
+    if (await getpos(cc, false, goal, state) < 0 || cc.x <= 0) return;
+
+    let obj = null;
+    let fakeobj = false;
+    if (u_at(cc.x, cc.y, state)) {
+        obj = vobj_at(state.u.ux, state.u.uy, state);
+    } else {
+        const glyph = glyph_at(cc.x, cc.y, state);
+        if (glyph_is_object(glyph)) {
+            const pager = await import('./pager.js');
+            const mapped = pager.object_from_map(glyph, cc.x, cc.y, state);
+            obj = mapped.object;
+            fakeobj = mapped.fakeobj;
+        }
+    }
+    if (!obj) {
+        await ttyPline(
+            `There doesn't seem to be any object ${u_at(cc.x, cc.y, state) ? 'under you' : 'there'}.`,
+            state,
+        );
+        return;
+    }
+
+    const buf = obj.otyp !== STRANGE_OBJECT
+        ? simpleonames(obj, state)
+        : state.obj_descr?.[STRANGE_OBJECT]?.oc_name ?? 'glorkum';
+    const usePlural = (obj.quan ?? 1) > 1;
+    if (namingPropertyActive(state, HALLUC)
+        && !namingPropertyActive(state, HALLUC_RES)) {
+        const female = poly_gender(state) === FEMALE;
+        const names = [
+            female ? state.urole?.name?.f : null,
+            rank_of(rn2_on_display_rng(30) + 1, state.urole?.mnum, female, state),
+            bogusmon({ state }).name,
+            null,
+            roguename(state),
+            'Wibbly Wobbly',
+        ];
+        names[0] ??= state.urole?.name?.m ?? 'Adventurer';
+        names[3] = names[2];
+        await ttyPline(
+            `${The(buf, state)} ${usePlural ? 'decide' : 'decides'} to call you "${names[rn2_on_display_rng(6)]}."`,
+            state,
+        );
+    } else if (call_ok(obj, state) === GETOBJ_EXCLUDE) {
+        await ttyPline(
+            `${usePlural ? 'Those' : 'That'} ${buf} ${usePlural ? "can't" : "can't"} be assigned a type name.`,
+            state,
+        );
+    } else if (!obj.dknown) {
+        await ttyPline(
+            `You don't know ${usePlural ? 'those' : 'that'} ${buf} well enough to name ${usePlural ? 'them' : 'it'}.`,
+            state,
+        );
+    } else {
+        await docall(obj, state);
+    }
+
+    if (fakeobj) {
+        obj.where = OBJ_FREE;
+        dealloc_obj(obj, { state });
     }
 }
 
@@ -554,6 +942,16 @@ function namingPropertyActive(state, property) {
     const value = state.u?.uprops?.[property];
     return Boolean(value?.intrinsic || value?.extrinsic)
         && !value?.blocked;
+}
+
+// C ref: youprop.h Hallucination (116-120). Hallucination is the intrinsic
+// timeout alone; unlike most properties, an extrinsic bit does not turn it
+// on. Either intrinsic or extrinsic hallucination resistance defeats it.
+function hallucinationActive(state) {
+    const hallucination = state.u?.uprops?.[HALLUC];
+    const resistance = state.u?.uprops?.[HALLUC_RES];
+    return Boolean(hallucination?.intrinsic)
+        && !(resistance?.intrinsic || resistance?.extrinsic);
 }
 
 // C ref: do_name.c x_monnam()'s do_it predicate (863-865). Six terms, and
@@ -586,11 +984,14 @@ function x_monnam_it(suppress, monster, state, env = {}) {
         return 'it';
     const mdat = monster.data;
     const s_one = humanoid(mdat) && !is_animal(mdat) && !mindless(mdat);
-    const hallucinating = namingPropertyActive(state, HALLUC)
-        && !namingPropertyActive(state, HALLUC_RES);
-    const displayRandom = env.displayRandom ?? rn2_on_display_rng;
+    const hallucinating = hallucinationActive(state);
+    // x_monnam() uses rn2(), rather than rn2_on_display_rng(), for the
+    // someone/something coin flip. Hallucinated species selection below is
+    // the display-only path; this branch is ordinary gameplay grammar.
+    const random = typeof env.random === 'function'
+        ? env.random : env.random?.rn2 ?? rn2;
     if ((!hallucinating || (suppress & SUPPRESS_HALLUCINATION))
-        ? s_one : !displayRandom(2))
+        ? s_one : !random(2))
         return 'someone';
     return 'something';
 }
@@ -605,66 +1006,22 @@ function x_monnam_it(suppress, monster, state, env = {}) {
 // retains the saddle adjective unless blindness or hallucination prevents
 // recognition.
 //
-// The mask is checked the way x_monnam() below checks its own, so the two
-// partial spellings of one C function agree on what an unported flag means.
-// Dropping a flag silently would answer a name C does not: a port of
-// noname_monnam() (1104-1107) passing SUPPRESS_NAME would get "Fido" from the
-// given-name line below, where do_name.c:872 computes do_name and answers
-// "the dog".
-const MONSTER_COMMON_NAME_FLAGS = SUPPRESS_IT | AUGMENT_IT;
-
 export function monsterCommonName(
     monster,
     state = game,
     suppress = 0,
     env = {},
 ) {
-    if (suppress & ~MONSTER_COMMON_NAME_FLAGS) {
-        throw new UnsupportedMonsterNameError(
-            `mon_nam() suppress flags 0x${suppress.toString(16)}`,
-        );
-    }
-    // mon_nam() always passes ARTICLE_THE, so the article term is constantly
-    // true here and SUPPRESS_IT is the only term a wrapper can move.
-    if (x_monnam_do_it(monster, ARTICLE_THE, suppress, state, env))
-        return x_monnam_it(suppress, monster, state, env);
-    const hallucinating = namingPropertyActive(state, HALLUC)
-        && !namingPropertyActive(state, HALLUC_RES);
-    // do_name.c x_monnam():876-885.  The ordinary visible shopkeeper name
-    // comes from shkname(), including its stored-name marker handling.  Keep
-    // this common-name helper aligned with mon_nam() because attack messages
-    // use it directly in several already ported callers.
-    if (monster.isshk && !hallucinating)
-        return shkname(monster, state, env);
-    if (hallucinating) {
-        // do_name.c:950-955. mon_nam() does not suppress hallucination, so
-        // the species is replaced after the "it" decision and before given
-        // names or saddle adjectives are considered. rndmonnam() consumes
-        // the display RNG, not the gameplay RNG.
-        return `the ${rndmonnam({
-            state,
-            random: env.displayRandom ?? rn2_on_display_rng,
-        })}`;
-    }
-    // do_name.c:911 `pm_name = mon_pmname(mtmp)`, which picks the species
-    // name by the monster's own gender and falls back to the neutral slot only
-    // when that one is empty. Reading the neutral slot directly named a male
-    // gnome king a "gnome ruler".
-    const speciesName = mon_pmname(monster) ?? 'monster';
-    const givenName = monster.mextra?.mgivenname
-        || monster.mgivenname
-        || monster.name;
-    if (givenName && monster.data === state.mons?.[PM_GHOST]) {
-        // do_name.c x_monnam():964-967. A named ghost keeps the given name
-        // and appends the species, with the name made possessive first.
-        return `${s_suffix(givenName)} ghost`;
-    }
-    if (givenName) return givenName;
-    const blind = namingPropertyActive(state, BLINDED)
-        || Boolean(state.u?.uroleplay?.blind);
-    const saddled = !blind && !hallucinating
-        && Boolean(monster.misc_worn_check & W_SADDLE);
-    return `the ${saddled ? 'saddled ' : ''}${speciesName}`;
+    const hasGivenName = has_mgivenname(monster);
+    return x_monnam(
+        monster,
+        ARTICLE_THE,
+        null,
+        suppress | (hasGivenName ? SUPPRESS_SADDLE : 0),
+        false,
+        state,
+        env,
+    );
 }
 
 export function capitalizedMonsterName(monster, state = game, env = {}) {
@@ -676,8 +1033,7 @@ export function capitalizedMonsterName(monster, state = game, env = {}) {
 // monster cannot be spotted, answers "someone" or "something" via AUGMENT_IT
 // instead of "it".
 export function some_mon_nam(monster, state = game, env = {}) {
-    const hasGivenName = !!(monster.mextra?.mgivenname
-        || monster.mgivenname);
+    const hasGivenName = has_mgivenname(monster);
     const suppress = hasGivenName
         ? (SUPPRESS_SADDLE | AUGMENT_IT)
         : AUGMENT_IT;
@@ -693,8 +1049,7 @@ export function Some_Monnam(monster, state = game, env = {}) {
 // C ref: do_name.c noit_mon_nam() (1048-1060). Like mon_nam() but suppresses
 // "it" so the hero always sees a name (used for probing and aggravation).
 export function noit_mon_nam(monster, state = game, env = {}) {
-    const hasGivenName = !!(monster.mextra?.mgivenname
-        || monster.mgivenname);
+    const hasGivenName = has_mgivenname(monster);
     const suppress = hasGivenName
         ? (SUPPRESS_SADDLE | SUPPRESS_IT)
         : SUPPRESS_IT;
@@ -711,11 +1066,24 @@ export function noit_Monnam(monster, state = game, env = {}) {
 // "the orc" for non-tame monsters.
 export function y_monnam(monster, state = game, env = {}) {
     const prefix = monster.mtame ? ARTICLE_YOUR : ARTICLE_THE;
-    const hasGivenName = !!(monster.mextra?.mgivenname
-        || monster.mgivenname);
+    const hasGivenName = has_mgivenname(monster);
     const suppression_flag = (hasGivenName || monster === state.u?.usteed)
         ? SUPPRESS_SADDLE : 0;
     return x_monnam(monster, prefix, null, suppression_flag, false, state, env);
+}
+
+// C ref: do_name.c YMonnam() (1133-1139). Sentence-initial spelling of the
+// pet-aware y_monnam() result; highc() changes only its first byte.
+export function YMonnam(monster, state = game, env = {}) {
+    return upstart(y_monnam(monster, state, env));
+}
+
+// C ref: do_name.c noname_monnam() (1102-1105). Suppress an assigned name
+// while retaining the visibility, hallucination, and article rules of
+// x_monnam(). A unique species with a proper name still wins through C's
+// type_is_pname() exception inside x_monnam().
+export function noname_monnam(monster, article, state = game, env = {}) {
+    return x_monnam(monster, article, null, SUPPRESS_NAME, false, state, env);
 }
 
 // C ref: decl.c c_obj_colors[] (20-37). Color names indexed by CLR_* value.
@@ -741,46 +1109,128 @@ const c_obj_colors = Object.freeze([
 const CLR_MAX = 16;
 const NO_COLOR = 8;
 
-// C ref: do_name.c hcolors[] (1430-1458). Hallucination color names drawn
-// from the display RNG. Duplicated locally in artifacts.js, muse.js, and
-// do_wear.js where each file's hcolor() needs the array.
-const hcolors = Object.freeze([
-    'ultraviolet', 'infrared', 'bluish-orange',
-    'reddish-green', 'dark white', 'light black', 'sky blue-Loss',
-    'pinkish-cyan', 'indigo-Loss', 'colorless',
-    'white', 'black', 'hot pink', 'chartreuse', 'periwinkle',
-    'mellow yellow', 'sarcoline', 'incarnadine', 'sinoper',
-    'zinnober', 'smaragdine', 'woad', 'watchet',
-    'keppel', 'feldgrau', 'glaucous', 'gamboge',
-    'falun red', 'aureolin', 'celadon', 'erin', 'coquelicot',
-    'nattier blue', 'mikado yellow', 'amaranth', 'viridian',
-    'feldgrau', 'amaranth', 'zinnober', 'smaragdine',
-    'coquelicot', 'glaucous', 'gamboge',
-    'bistre', 'ecru', 'fulvous', 'tekhelet', 'selective yellow',
-]);
-
+// C ref: do_name.c hcolors[] (1441-1458). Hallucination color names drawn
+// from the display RNG. Keep the source order: the same order is part of the
+// recorded random stream whenever hcolor() or rndcolor() is reached.
 // C ref: do_name.c rndcolor() (1470-1479). Random color from the gameplay
 // RNG; if hallucinating, picks a hallucination color from the display RNG
 // instead.
-export function rndcolor(state = game) {
-    const k = rn2(CLR_MAX);
-    const hallucinating = namingPropertyActive(state, HALLUC)
-        && !namingPropertyActive(state, HALLUC_RES);
-    if (hallucinating) {
-        return hcolors[rn2_on_display_rng(hcolors.length)];
-    }
-    return (k === NO_COLOR) ? 'colorless' : c_obj_colors[k];
+export function rndcolor(state = game, env = {}) {
+    const random = typeof env.random === 'function'
+        ? env.random : env.random?.rn2 ?? rn2;
+    const k = random(CLR_MAX);
+    return hallucinationActive(state)
+        ? hcolor(null, state, env)
+        : (k === NO_COLOR) ? 'colorless' : c_obj_colors[k];
+}
+
+// C ref: do_name.c hcolor() (1461-1466). A missing or hallucinated preferred
+// color always consumes one display-RNG draw; a real preferred color consumes
+// none. The optional env keeps deterministic tests on the same seam used by
+// x_monnam() without changing the C-shaped state argument.
+export function hcolor(colorpref, state = game, env = {}) {
+    const hallucinating = hallucinationActive(state);
+    if (!hallucinating && colorpref) return colorpref;
+    const random = displayRandomFunction(
+        env.displayRandom ?? env.random ?? rn2_on_display_rng,
+    );
+    return HCOLORS[random(HCOLORS.length)];
 }
 
 // C ref: do_name.c Adjmonnam() (1142-1149). "The <adj> <monster>".
 export function Adjmonnam(monster, adj, state = game, env = {}) {
-    const hasGivenName = !!(monster.mextra?.mgivenname
-        || monster.mgivenname);
+    const hasGivenName = has_mgivenname(monster);
     const suppress = hasGivenName ? SUPPRESS_SADDLE : 0;
     const name = x_monnam(
         monster, ARTICLE_THE, adj, suppress, false, state, env,
     );
     return `${name.charAt(0).toUpperCase()}${name.slice(1)}`;
+}
+
+// C ref: do_name.c distant_monnam() (1170-1186). The high priest on a remote
+// Astral square is deliberately identified only by rank, so the altar's
+// deity and proper name cannot be learned from a distant map glyph.
+export function distant_monnam(
+    monster,
+    article,
+    outbuf = undefined,
+    state = game,
+    env = {},
+) {
+    const hallucinating = hallucinationActive(state);
+    const level = state.u?.uz;
+    const astral = Boolean(
+        level && state.astral_level
+        && level.dnum === state.astral_level.dnum
+        && level.dlevel === state.astral_level.dlevel
+        && level.dlevel === 1,
+    );
+    const dx = Math.trunc(monster.mx ?? 0) - Math.trunc(state.u?.ux ?? 0);
+    const dy = Math.trunc(monster.my ?? 0) - Math.trunc(state.u?.uy ?? 0);
+    const adjacent = dx * dx + dy * dy <= 2;
+    const concealed = monster.data === state.mons?.[PM_HIGH_CLERIC]
+        && !hallucinating && astral && !adjacent;
+    const result = concealed
+        ? `${article === ARTICLE_THE ? 'the ' : ''}${monster.female
+            ? 'high priestess' : 'high priest'}`
+        : x_monnam(monster, article, null, 0, true, state, env);
+    if (Array.isArray(outbuf)) outbuf[0] = result;
+    else if (outbuf && typeof outbuf === 'object') outbuf.value = result;
+    return result;
+}
+
+function diagnosticPointer(value) {
+    if (value == null) return 'null';
+    if (value.m_id !== undefined) return `[mon#${value.m_id}]`;
+    return '[?]';
+}
+
+// C ref: do_name.c minimal_monnam() (1253-1285). This is a diagnostic helper;
+// source pointer ranges have no direct JavaScript equivalent, so the catalog
+// index and stable object id stand in for fmt_ptr() while preserving every
+// message branch and the long-worm-tail check.
+export function minimal_monnam(monster, ckloc, state = game) {
+    nextmbuf();
+    const out = (value) => value;
+    if (!monster) return out('[Null monster]');
+    const species = monster.data;
+    if (!species) return out('[Null mon->data]');
+    const index = species.pmidx;
+    if (!Number.isInteger(index) || index < 0) {
+        return out(`[Invalid mon.data ${diagnosticPointer(species)} < ${
+            diagnosticPointer(state.mons?.[0])}]`);
+    }
+    if (index >= NUMMONS) {
+        return out(`[Invalid mon.data ${diagnosticPointer(species)} >= ${
+            diagnosticPointer(state.mons?.[NUMMONS])}]`);
+    }
+    if (ckloc && index === PM_LONG_WORM && monster.mx
+        && state.level?.monsters?.[monster.mx]?.[monster.my] !== monster) {
+        return `${pmname(state.mons[PM_LONG_WORM_TAIL], Mgender(monster, state))} <${
+            monster.mx},${monster.my}>`;
+    }
+    const prefix = monster.mtame ? 'tame '
+        : monster.mpeaceful ? 'peaceful ' : '';
+    let result = `${prefix}${mon_pmname(monster, state)} <${monster.mx ?? 0},${
+        monster.my ?? 0}>`;
+    if (monster.cham !== undefined && monster.cham !== NON_PM
+        && Number.isInteger(monster.cham)
+        && state.mons?.[monster.cham]) {
+        result += `{${pmname(state.mons[monster.cham], Mgender(monster, state))}}`;
+    }
+    return result;
+}
+
+// C ref: do_name.c Mgender() (1288-1300). Monster gender is a binary bit,
+// except that the hero's bit comes from her current form while polymorphed.
+export function Mgender(monster, state = game) {
+    if (monster === state.youmonst) {
+        const female = Upolyd(state.u)
+            ? state.u?.mfemale
+            : state.flags?.female;
+        return female ? FEMALE : MALE;
+    }
+    return monster?.female ? FEMALE : MALE;
 }
 
 // C ref: do_name.c pmname() (1300-1308).
@@ -797,8 +1247,8 @@ export function pmname(species, mgender) {
 }
 
 // C ref: do_name.c mon_pmname() (1311-1317).
-export function mon_pmname(monster) {
-    return pmname(monster.data, gender(monster));
+export function mon_pmname(monster, state = game) {
+    return pmname(monster.data, Mgender(monster, state));
 }
 
 // C ref: do_name.c obj_pmname() (1321-1358). Corpses, statues, and figurines
@@ -824,18 +1274,11 @@ export function obj_pmname(obj, state = game) {
     return 'two-legged glorkum-seeker';
 }
 
-// C ref: do_name.c x_monnam() (826-1032). Four callers are ported: steed.c
-// mount_steed(), which builds the killer string for a slipped mount ("a
-// saddled pony", or "a saddled pony called Dobbin"); apply.c
-// use_stethoscope():392 and insight.c mstatusline():3392, which name the
-// monster a stethoscope was pointed at; and mon.c xkilled():3506-3510, which
-// names the pet the hero has just killed ("the poor kitten", "poor Fido").
-// The first three pass SUPPRESS_IT and SUPPRESS_INVISIBLE; xkilled() passes
-// neither, and passes SUPPRESS_SADDLE only for a named pet.
-//
-// monsterCommonName() and capitalizedMonsterName() above are the port's
-// mon_nam() and Monnam() subset; they answer ARTICLE_THE and share the
-// hallucination name branch with this function.
+// C ref: do_name.c x_monnam() (826-1032). The wrappers below expose its
+// source callers' article and suppression combinations, while existing game
+// modules use monsterCommonName()/capitalizedMonsterName() for mon_nam() and
+// Monnam(). Every path shares this one formatter so its RNG and visibility
+// decisions stay aligned.
 export function x_monnam(
     monster,
     article,
@@ -845,6 +1288,8 @@ export function x_monnam(
     state = game,
     env = {},
 ) {
+    // C obtains its reusable output slot before the first early return.
+    nextmbuf();
     if (monster === state.youmonst) return 'you';
     const mdat = monster.data;
 
@@ -866,8 +1311,7 @@ export function x_monnam(
     }
 
     // do_name.c:861-862.
-    const do_hallu = namingPropertyActive(state, HALLUC)
-        && !namingPropertyActive(state, HALLUC_RES)
+    const do_hallu = hallucinationActive(state)
         && !(effectiveSuppress & SUPPRESS_HALLUCINATION);
     const do_invis = Boolean(monster.minvis)
         && !(effectiveSuppress & SUPPRESS_INVISIBLE);
@@ -883,17 +1327,25 @@ export function x_monnam(
         || type_is_pname(mdat);
 
     if ((monster.ispriest || monster.isminion) && !do_mappear) {
-        const resistance = state.u.uprops[HALLUC_RES] ?? {};
-        const savedResistance = resistance.extrinsic;
+        const properties = state.u?.uprops;
+        const resistance = properties?.[HALLUC_RES];
+        const hadResistance = resistance != null;
+        const savedResistance = resistance?.extrinsic;
         const savedInvisible = monster.minvis;
         let name;
         try {
-            if (!do_hallu) resistance.extrinsic = 1;
+            if (!do_hallu && properties) {
+                if (resistance) resistance.extrinsic = 1;
+                else properties[HALLUC_RES] = { extrinsic: 1 };
+            }
             if (!do_invis) monster.minvis = 0;
             name = priestname(monster, effectiveArticle,
                 (effectiveSuppress & EXACT_NAME) === EXACT_NAME, state, env);
         } finally {
-            resistance.extrinsic = savedResistance;
+            if (!do_hallu && properties) {
+                if (hadResistance) resistance.extrinsic = savedResistance;
+                else delete properties[HALLUC_RES];
+            }
             monster.minvis = savedInvisible;
         }
         return effectiveArticle === ARTICLE_NONE && name.startsWith('the ')
@@ -905,14 +1357,26 @@ export function x_monnam(
     // read the real monster species, which produces C's deliberately odd
     // article when the apparent species has a personal name.
     const pm_name = do_mappear
-        ? pmname(state.mons[monster.mappearance], gender(monster))
-        : mon_pmname(monster);
+        ? pmname(
+            state.mons?.[monster.mappearance] ?? mdat,
+            Mgender(monster, state),
+        )
+        : mon_pmname(monster, state);
     let buf = '';
     if (monster.isshk && !do_hallu && !do_mappear) {
         if (adjective && effectiveArticle === ARTICLE_THE)
             return `the ${adjective} ${shkname(monster, state, env)}`;
         buf = shkname(monster, state, env);
-        if (mdat !== state.mons[PM_SHOPKEEPER] || do_invis)
+        // A reduced fixture can mark a monster as a shopkeeper without the
+        // eshk record that C's shkname() requires. Keep its fallback name
+        // intact instead of appending the same species a second time.
+        if (!monster.mextra?.eshk) return buf;
+        // A reduced diagnostic fixture can omit the global monster catalog;
+        // its only possible shopkeeper species is still the ordinary one.
+        if (mdat !== state.mons?.[PM_SHOPKEEPER]
+            && state.mons?.[PM_SHOPKEEPER])
+            buf += ` the ${do_invis ? 'invisible ' : ''}${pm_name}`;
+        else if (do_invis)
             buf += ` the ${do_invis ? 'invisible ' : ''}${pm_name}`;
         return buf;
     }
@@ -922,14 +1386,15 @@ export function x_monnam(
     // do_name.c:938-941 reads Blind and Hallucination directly here, not
     // do_hallu, so SUPPRESS_HALLUCINATION does not restore the saddle.
     if (do_saddle && (monster.misc_worn_check & W_SADDLE)
-        && !namingPropertyActive(state, BLINDED)
-        && !(namingPropertyActive(state, HALLUC)
-            && !namingPropertyActive(state, HALLUC_RES)))
+        && !heroIsBlind(state)
+        && !hallucinationActive(state))
         buf += 'saddled ';
     const has_adjectives = buf !== '';
 
     let name_at_start;
-    const givenName = monster.mextra?.mgivenname;
+    const givenName = has_mgivenname(monster)
+        ? (monster.mextra?.mgivenname ?? monster.mgivenname)
+        : '';
     if (do_hallu) {
         // do_name.c:949-955. The bogus name replaces the species outright,
         // after the adjectives already in the buffer. rndmonnam() spends the
@@ -958,7 +1423,11 @@ export function x_monnam(
             buf += givenName;
             name_at_start = true;
         }
-    } else if (is_mplayer(mdat) && !In_endgame(state.u.uz)) {
+    } else if (is_mplayer(mdat) && !(
+        state.astral_level
+        && state.u?.uz
+        && state.u.uz.dnum === state.astral_level.dnum
+    )) {
         buf += rank_of(monster.m_lev, mdat.pmidx, monster.female, state)
             .toLowerCase();
         name_at_start = false;
@@ -993,42 +1462,22 @@ export function x_monnam(
 // do_name.c:861 raises do_hallu for a hallucinating hero and :950-955 replaces
 // the whole name with rndmonnam(), which draws rn2_on_display_rng() once per
 // rejected species and once more for the gender (do_name.c:1399-1407).
-// monsterCommonName() below has no bogus-name arm and draws nothing, so this
-// stops rather than printing the true species name and skipping the draws.
-//
-// SUPPRESS_IT is passed on to monsterCommonName(). That is the whole point of
-// this wrapper -- C's comment at 1049-1052 says it names a monster "as if the
-// player can always see" it -- and without it a hero who cannot spot her own
-// pet would be told "It moves reluctantly." where C names the pet.
+// SUPPRESS_IT is the whole point of this wrapper: C's comment at 1049-1052
+// says it names a monster "as if the player can always see" it.
 export function alwaysVisibleMonsterName(
     monster,
     state = game,
+    env = {},
 ) {
-    // youprop.h:116-120 Hallucination: the intrinsic timeout alone, defeated
-    // by either half of Halluc_resistance.
-    const resistance = state.u?.uprops?.[HALLUC_RES];
-    if (state.u?.uprops?.[HALLUC]?.intrinsic
-        && !(resistance?.intrinsic || resistance?.extrinsic)) {
-        throw new UnsupportedMonsterNameError(
-            "noit_Monnam()'s hallucinated bogus name",
-        );
-    }
-    let name = monsterCommonName(monster, state, SUPPRESS_IT);
-    if (monster.mtame
-        && !monster.mextra?.mgivenname
-        && !monster.mgivenname
-        && !monster.name
-        && name.startsWith('the ')) {
-        name = `your ${name.slice(4)}`;
-    }
-    return name;
+    return noit_mon_nam(monster, state, env);
 }
 
 export function capitalizedAlwaysVisibleMonsterName(
     monster,
     state = game,
+    env = {},
 ) {
-    const name = alwaysVisibleMonsterName(monster, state);
+    const name = alwaysVisibleMonsterName(monster, state, env);
     return `${name.charAt(0).toUpperCase()}${name.slice(1)}`;
 }
 
@@ -1041,7 +1490,9 @@ export function capitalizedAlwaysVisibleMonsterName(
 // an rn2(4) for a hallucinating hero and needs canspotmon() otherwise. The
 // normal owner is supplied here; an explicit caller override remains intact.
 export function mon_nam_too(mon, other_mon, state = game, env = {}) {
-    if (mon !== other_mon) return monsterCommonName(mon, state);
+    if (mon !== other_mon) return mon_nam(mon, state, env);
+    // do_name.c takes a fresh nextmbuf() slot for the reflexive result.
+    nextmbuf();
     switch (pronoun_gender(mon, PRONOUN_HALLU, {
         canSpotMonster,
         ...env,
@@ -1077,7 +1528,7 @@ export function monverbself(mon, monnamtext, verb, othertext,
         }
     }
     result += ' ' + verbs;
-    if (othertext)
+    if (othertext && othertext.length)
         result += ' ' + othertext;
     result += ' ' + selfbuf;
     return result;
@@ -1178,34 +1629,13 @@ export function rndmonnam(env = {}) {
     return rndmonnamDetails(env).name;
 }
 
-// An invalid monster disguise has no species to name. Valid priests,
-// shopkeepers, minions and player monsters use x_monnam's source branches.
-export function a_monnam_unsupported(monster, state = game) {
-    return !apparent_species(monster, state);
-}
-
-// The species x_monnam() (do_name.c:908-910) names for a monster: what it
-// mimics when it is disguised as one, otherwise its own.
-function apparent_species(monster, state) {
-    const appearance = (monster.m_ap_type ?? 0) & M_AP_TYPMASK;
-    return appearance === M_AP_MONSTER
-        ? state.mons?.[monster.mappearance]
-        : monster.data;
-}
-
 // C ref: do_name.c a_monnam() (1152-1156), which delegates to x_monnam()
 // with ARTICLE_A.  makemon.c's runtime creation message and hack.c's
 // monster-behind-the-boulder arm therefore share every special naming branch,
 // including priests, shopkeepers and player monsters.
 export function a_monnam(monster, env = {}) {
     const state = env.state ?? game;
-    if (a_monnam_unsupported(monster, state)) {
-        throw new UnsupportedMonsterNameError(
-            'a_monnam() for an invalid monster appearance',
-        );
-    }
-    const hasGivenName = !!(monster.mextra?.mgivenname
-        || monster.mgivenname);
+    const hasGivenName = has_mgivenname(monster);
     const suppress = hasGivenName ? SUPPRESS_SADDLE : 0;
     return x_monnam(monster, ARTICLE_A, null, suppress, false,
         state, env);
@@ -1214,15 +1644,14 @@ export function a_monnam(monster, env = {}) {
 // C ref: do_name.c l_monnam() (1035-1039). Like mon_nam() with ARTICLE_NONE:
 // lowercase, no article. Named monsters suppress the saddle adjective.
 export function l_monnam(monster, state = game, env = {}) {
-    const hasGivenName = !!(monster.mextra?.mgivenname);
+    const hasGivenName = has_mgivenname(monster);
     return x_monnam(monster, ARTICLE_NONE, null,
         hasGivenName ? SUPPRESS_SADDLE : 0, true, state, env);
 }
 
 // C ref: do_name.c mon_nam() (1042-1046). Ordinary definite monster name.
 export function mon_nam(monster, state = game, env = {}) {
-    const hasGivenName = !!(monster.mextra?.mgivenname
-        || monster.mgivenname);
+    const hasGivenName = has_mgivenname(monster);
     return x_monnam(monster, ARTICLE_THE, null,
         hasGivenName ? SUPPRESS_SADDLE : 0, false, state, env);
 }
@@ -1233,11 +1662,11 @@ export function Monnam(monster, state = game, env = {}) {
     return upstart(mon_nam(monster, state, env));
 }
 
-// C ref: do_name.c m_monnam() (1110-1113). EXACT_NAME is the three
-// suppression bits below, so this reports the monster's own name.
+// C ref: do_name.c m_monnam() (1110-1113). EXACT_NAME carries the source's
+// suppression bits, so this reports the monster's own name.
 export function m_monnam(monster, state = game, env = {}) {
     return x_monnam(monster, ARTICLE_NONE, null,
-        SUPPRESS_INVISIBLE | SUPPRESS_HALLUCINATION | SUPPRESS_IT,
+        EXACT_NAME,
         false, state, env);
 }
 
@@ -1252,7 +1681,7 @@ export function Amonnam(monster, env = {}) {
 export function hliquid(liquidpref, env = {}) {
     const state = env.state ?? game;
     const random = displayRandomFunction(
-        env.random ?? rn2_on_display_rng,
+        env.displayRandom ?? env.random ?? rn2_on_display_rng,
     );
     const preferred = liquidpref == null ? '' : String(liquidpref);
     const hallucinating = Boolean(
@@ -1267,6 +1696,34 @@ export function hliquid(liquidpref, env = {}) {
         if (index < HLIQUIDS.length) return HLIQUIDS[index];
     }
     return preferred;
+}
+
+// C ref: do_name.c coyotename() (1525-1535). C writes into the caller's
+// buffer; arrays and `{ value }` cells are the port's mutable out-buffer
+// conventions, while the returned string is convenient for ordinary callers.
+const COYOTE_NAMES = Object.freeze([
+    'Carnivorous Vulgaris', 'Road-Runnerus Digestus', 'Eatibus Anythingus',
+    'Famishus-Famishus', 'Eatibus Almost Anythingus', 'Eatius Birdius',
+    'Famishius Fantasticus', 'Eternalii Famishiis', 'Famishus Vulgarus',
+    'Famishius Vulgaris Ingeniusi', 'Eatius-Slobbius',
+    'Hardheadipus Oedipus', 'Carnivorous Slobbius',
+    'Hard-Headipus Ravenus', 'Evereadii Eatibus', 'Apetitius Giganticus',
+    'Hungrii Flea-Bagius', 'Overconfidentii Vulgaris', 'Caninus Nervous Rex',
+    'Grotesques Appetitus', 'Nemesis Ridiculii', 'Canis latrans',
+]);
+
+export function coyotename(monster, outbuf, state = game, env = {}) {
+    if (!monster || !outbuf) return outbuf;
+    const personal = x_monnam(
+        monster, ARTICLE_NONE, null, 0, true, state, env,
+    );
+    const suffix = monster.mcan
+        ? COYOTE_NAMES[COYOTE_NAMES.length - 1]
+        : COYOTE_NAMES[monster.m_id % (COYOTE_NAMES.length - 1)];
+    const result = `${personal} - ${suffix}`;
+    if (Array.isArray(outbuf)) outbuf[0] = result;
+    else if (typeof outbuf === 'object') outbuf.value = result;
+    return result;
 }
 
 export const SIR_TERRY_NOVELS = Object.freeze([
@@ -1343,60 +1800,15 @@ function sameTitle(left, right) {
     return asciiFold(left) === asciiFold(right);
 }
 
-function startsWithThe(title) {
-    return sameTitle(String(title).slice(0, 4), 'the ');
-}
-
-function fruitNameForcesArticle(title, state) {
-    if (!state.gf?.ffruit) return false;
-    if (!fruit_from_name(title, true, state)) return false;
-    const artifactName = artifact_name(title, null, false, state);
-    return !artifactName || startsWithThe(artifactName);
-}
-
-// Lookup-specific port of the objnam.c the()/The() decisions which can affect
-// the fixed novel catalog.  Proper title casing normally suppresses “the,”
-// while a configured fruit name can force it back unless an artifact with the
-// same name deliberately lacks the article.
-function withDefiniteArticle(title, state) {
-    const text = String(title);
-    if (startsWithThe(text)) return `T${text.slice(1)}`;
-
-    let insertThe = !/^[A-Z]/u.test(text)
-        || fruitNameForcesArticle(text, state);
-    if (!insertThe) {
-        const lastSpace = text.lastIndexOf(' ');
-        const separator = lastSpace >= 0
-            ? lastSpace
-            : text.lastIndexOf('-');
-        if (separator >= 0 && !/^[A-Z]/u.test(text.slice(separator + 1))) {
-            insertThe = !text.includes("'");
-        } else if (separator >= 0 && text.indexOf(' ') < separator) {
-            const folded = asciiFold(text);
-            const ofIndex = folded.indexOf(' of ');
-            const namedIndex = folded.indexOf(' named ');
-            const calledIndex = folded.indexOf(' called ');
-            const namingIndex = namedIndex < 0
-                ? calledIndex
-                : calledIndex < 0
-                    ? namedIndex
-                    : Math.min(namedIndex, calledIndex);
-            insertThe = ofIndex >= 0
-                && (namingIndex < 0 || ofIndex < namingIndex);
-        }
-    }
-    const result = insertThe ? `the ${text}` : text;
-    return result ? result[0].toUpperCase() + result.slice(1) : result;
-}
-
 // C ref: do_name.c lookup_novel(). Preserve an already valid generated index
 // when the supplied title is unknown; sp_lev.c uses only the updated index and
 // leaves the explicitly supplied object name intact.
 export function lookup_novel(lookname, novelidx = undefined, env = {}) {
     const state = env.state ?? game;
     let sought = String(lookname);
+    const titled = () => The(sought, state);
     if (sameTitle(
-        withDefiniteArticle(sought, state),
+        titled(),
         'The Color of Magic',
     )) {
         sought = SIR_TERRY_NOVELS[0];
@@ -1405,7 +1817,7 @@ export function lookup_novel(lookname, novelidx = undefined, env = {}) {
     } else if (sameTitle(sought, 'Masquerade')) {
         sought = SIR_TERRY_NOVELS[17];
     } else if (sameTitle(
-        withDefiniteArticle(sought, state),
+        titled(),
         'The Amazing Maurice',
     )) {
         sought = SIR_TERRY_NOVELS[27];
@@ -1415,7 +1827,7 @@ export function lookup_novel(lookname, novelidx = undefined, env = {}) {
 
     const matchedIndex = SIR_TERRY_NOVELS.findIndex(
         (title) => sameTitle(sought, title)
-            || sameTitle(withDefiniteArticle(sought, state), title),
+            || sameTitle(titled(), title),
     );
     if (matchedIndex >= 0) {
         return {

@@ -51,6 +51,7 @@ import {
     MENU_PARTIAL,
     MENU_TRADITIONAL,
     MOD_ENCUMBER,
+    nothing_seems_to_happen,
     OBJ_FLOOR,
     OBJ_MINVENT,
     PICK_ANY,
@@ -113,14 +114,15 @@ import {
 } from './hack.js';
 import {
     INVLET_BASIC,
-    NOINVSYM,
     add_to_container,
     addinv_runtime,
     freeinv,
     carrying,
     count_unpaid,
+    tally_BUCX,
     dfeature_at,
     getobj,
+    merge_choice,
     let_to_name,
     look_here,
     money_cnt,
@@ -130,9 +132,10 @@ import {
     preflight_look_here,
     prinv,
     sortloot,
+    ckvalidcat,
+    askchain,
     update_inventory,
     will_feel_cockatrice,
-    xprname,
 } from './invent.js';
 import {
     bigmonst, is_rider, nohands, nolimbs, notake, throws_rocks,
@@ -140,7 +143,7 @@ import {
 } from './mondata.js';
 import { m_at } from './monst.js';
 import {
-    carried, hasContents, isBox, isContainer, obj_no_longer_held,
+    carried, hasContents, hornoplenty, isBox, isContainer, obj_no_longer_held,
     remove_object, set_bknown, splitobj, unsplitobj, weight,
 } from './obj.js';
 import { get_obj_location } from './light.js';
@@ -160,7 +163,9 @@ import {
     ysimple_name,
 } from './objnam.js';
 import { body_part } from './polyself.js';
-import { costly_spot, pick_pick, sellobj_state } from './shk.js';
+import {
+    check_unpaid_usage, costly_spot, pick_pick, sellobj_state,
+} from './shk.js';
 import { stairway_at } from './stairs.js';
 import { menuTitleStyle } from './tty_menu.js';
 import { is_lava, is_pool, t_at, chest_trap } from './trap.js';
@@ -1061,7 +1066,7 @@ export function preflight_projected_random_arrival_pickup(state) {
 //
 // The two lines pickup.c runs around pick_obj() that this port does not:
 // disp.botl for gold, because invent.c addinv_core1() sets the same flag on
-// the same object a moment later and js/invent.js addinvCore1() already
+// the same object a moment later and js/invent.js addinv_core1() already
 // carries it; and fix_ghostly_obj(), which needs an object read from a bones
 // file, and getbones() never loads one.
 async function pickup_object(obj, count, telekinesis, env, plan) {
@@ -1761,9 +1766,9 @@ export async function use_container(obj, held, more_containers, state) {
                     used = 1;
                 } else {
                     // in_container rejected the item; C calls unsplitobj()
-                    // here to undo a count-based split, but getobj throws
-                    // on count entry (get_count not ported), so no split
-                    // can have occurred.
+                    // here to undo a count-based split. The current path does
+                    // not yet wire that recovery helper, so the split context
+                    // remains for the caller's existing boundary.
                 }
             }
         }
@@ -1880,48 +1885,6 @@ function add_valid_menu_class(c, state) {
     }
 }
 
-// C ref: invent.c:2136-2139.  ckvalidcat() delegates to pickup.c
-// allow_category() (522-592).  For the take-out path the filter state is
-// set by query_classes(); askchain() checks it when bycat is true.
-function ckvalidcat(otmp, state) {
-    // allow_category(): if no filters are active, reject (the
-    // ParanoidAutoAll arm is not ported).
-    if (!state.gc?.class_filter && !state.gs?.shop_filter
-        && !state.gb?.bucx_filter && !state.gp?.picked_filter)
-        return false;
-    // Coins with an explicit class filter (C: 535-536).
-    if (otmp.oclass === COIN_CLASS && state.gc?.class_filter)
-        return (state.gv?.valid_menu_classes ?? '').includes(
-            String.fromCharCode(COIN_CLASS));
-    // BUC: class filter (C: 560-562).
-    if (state.gc?.class_filter
-        && !(state.gv?.valid_menu_classes ?? '').includes(
-            String.fromCharCode(otmp.oclass)))
-        return false;
-    // Unpaid filter (C: 565-567).
-    if (state.gs?.shop_filter && !otmp.unpaid
-        && !(hasContents(otmp) && count_unpaid(otmp.cobj) > 0))
-        return false;
-    // BUC filter (C: 569-586).
-    if (state.gb?.bucx_filter) {
-        let bucx;
-        if (otmp.oclass === COIN_CLASS) {
-            bucx = state.flags?.goldX ? 'X' : 'U';
-        } else {
-            bucx = !otmp.bknown ? 'X'
-                : otmp.blessed ? 'B'
-                    : otmp.cursed ? 'C'
-                        : 'U';
-        }
-        if (!(state.gv?.valid_menu_classes ?? '').includes(bucx))
-            return false;
-    }
-    // Picked filter (C: 588-589).
-    if (state.gp?.picked_filter && !otmp.pickup_prev)
-        return false;
-    return true;
-}
-
 // C ref: pickup.c:522-592. Kept as a named callback because query_objlist()
 // accepts the same source-shaped predicate as menu_loot().
 function allow_category(otmp, state) {
@@ -1950,25 +1913,6 @@ function collect_obj_classes(objs, here, filter) {
         otmp = here ? otmp.nexthere : otmp.nobj;
     }
     return { ilets, itemcount };
-}
-
-// C ref: invent.c:3580-3616. tally_BUCX().
-function tally_BUCX(list, by_nexthere, state) {
-    let bcnt = 0, ucnt = 0, ccnt = 0, xcnt = 0, ocnt = 0, jcnt = 0;
-    for (let obj = list; obj; obj = by_nexthere ? obj.nexthere : obj.nobj) {
-        // Role_if(PM_CLERIC) bknown assignment is not ported.
-        if (obj.pickup_prev) jcnt++;
-        if (obj.oclass === COIN_CLASS) {
-            if (state.flags?.goldX) xcnt++;
-            else ucnt++;
-            continue;
-        }
-        if (!obj.bknown) xcnt++;
-        else if (obj.blessed) bcnt++;
-        else if (obj.cursed) ccnt++;
-        else ucnt++;
-    }
-    return { bcnt, ucnt, ccnt, xcnt, ocnt, jcnt };
 }
 
 // C ref: pickup.c:140-261. query_classes().
@@ -2227,7 +2171,9 @@ async function lift_object(obj, container, cnt_p, telekinesis, state) {
     // Loadstone and boulder-by-giant override (C: 1721-1734).
     if (obj.otyp === LOADSTONE
         || (obj.otyp === BOULDER && throws_rocks(state.youmonst?.data))) {
-        if (inv_cnt(false, state) < INVLET_BASIC || !carrying(obj.otyp, state))
+        if (inv_cnt(false, state) < INVLET_BASIC
+            || !carrying(obj.otyp, state)
+            || merge_choice(state.invent, obj, state))
             return { result: 1, count: cnt_p };
         await ttyPline(
             `You are carrying too much stuff to pick up `
@@ -2244,7 +2190,8 @@ async function lift_object(obj, container, cnt_p, telekinesis, state) {
     if (count < 1) {
         result = -1;
     } else if (obj.oclass !== COIN_CLASS
-        && inv_cnt(false, state) >= INVLET_BASIC) {
+        && inv_cnt(false, state) >= INVLET_BASIC
+        && !merge_choice(state.invent, obj, state)) {
         // Knapsack full (C: 1740-1753).
         const goldHint = nxtobj(obj, GOLD_PIECE,
             obj.where === OBJ_FLOOR);
@@ -2510,168 +2457,6 @@ async function out_container(obj, state) {
         await bot();
     }
     return 1;
-}
-
-// ---------------------------------------------------------------
-// askchain
-// C ref: invent.c:2377-2541.
-// ---------------------------------------------------------------
-
-async function askchain(objchn, olets, allflag, fn, ckfn, mx, word, state) {
-    const take_out = (word === 'take out');
-    const put_in   = (word === 'put in');
-    const nodot    = (word === 'nodot' || word === 'drop'
-        || word === 'identify' || word === 'take out' || word === 'put in');
-    const ininv    = (objchn === 'invent'); // see caller convention below
-    const bycat    = menu_class_present('u', state)
-        || menu_class_present('B', state) || menu_class_present('U', state)
-        || menu_class_present('C', state) || menu_class_present('X', state)
-        || menu_class_present('P', state);
-
-    // C uses objchn as a pointer to the list head; we pass an accessor
-    // string ('invent' or 'cobj') and read the live head each iteration
-    // because the list can change under us (e.g., addinv moves items).
-    function getListHead() {
-        if (ininv) return state.invent;
-        return state.gc?.current_container?.cobj ?? null;
-    }
-
-    // sortloot() on the list (C: 2407-2408).
-    const sorted = sortloot(
-        getListHead(), SORTLOOT_INVLET, false, null, state);
-
-    let cnt = 0, dud = 0;
-    let first = true;
-    let oletIdx = 0; // index into olets string
-    const oletStr = olets ?? '';
-
-    // nextclass loop (C: 2416-2528).
-    for (;;) {
-        let ilet = 'a'.charCodeAt(0) - 1;
-        const listHead = getListHead();
-        if (listHead && listHead.oclass === COIN_CLASS)
-            ilet--;
-
-        // Walk sorted array, skip already-processed objects.
-        // C uses bypass bits; JS uses a Set of processed object identities.
-        const processed = new Set();
-
-        for (const entry of sorted) {
-            const otmp_candidate = entry.obj;
-            if (processed.has(otmp_candidate)) continue;
-            // Verify the object is still in the list.
-            let found = false;
-            for (let cur = getListHead(); cur; cur = cur.nobj) {
-                if (cur === otmp_candidate) { found = true; break; }
-            }
-            if (!found) continue;
-
-            processed.add(otmp_candidate);
-            let otmp = otmp_candidate;
-
-            if (ilet === 'z'.charCodeAt(0))
-                ilet = 'A'.charCodeAt(0);
-            else if (ilet === 'Z'.charCodeAt(0))
-                ilet = NOINVSYM.charCodeAt(0);
-            else
-                ilet++;
-
-            // Class filter (C: 2440-2441).
-            if (oletStr.length > 0 && oletIdx < oletStr.length
-                && otmp.oclass !== oletStr.charCodeAt(oletIdx))
-                continue;
-            // Takeoff/identify filters are not relevant for take-out.
-            // ckfn filter (C: 2446-2447).
-            if (ckfn && !ckfn(otmp, state))
-                continue;
-            // BUC/category filter (C: 2448-2449).
-            if (bycat && !ckvalidcat(otmp, state))
-                continue;
-
-            let sym;
-            if (!allflag) {
-                // Build prompt (C: 2450-2470).
-                let qpfx = '';
-                if (first) {
-                    if (take_out || put_in) {
-                        qpfx = word.charAt(0).toUpperCase()
-                            + word.slice(1) + ': ';
-                    }
-                    first = false;
-                }
-                const namefn = ininv
-                    ? (o) => xprname(
-                        o, null, String.fromCharCode(ilet), !nodot,
-                        0, 0, state)
-                    : (o) => donameFresh(o, state);
-                const qbuf = safe_qbuf(
-                    qpfx, '?', otmp, namefn,
-                    (o) => donameFresh(o, state), 'item', state);
-                // Prompt: yn with possible count ('#') (C: 2467-2470).
-                const resp = await yn_function(
-                    qbuf,
-                    otmp.quan < 2 ? 'ynaq' : 'ynNaq',
-                    'n', false, state,
-                );
-                sym = String.fromCharCode(resp);
-            } else {
-                sym = 'y';
-            }
-
-            const otmpo = otmp;
-            if (sym === '#') {
-                // Count entry not ported for this slice.
-                throw new UnsupportedPickupError(
-                    'askchain: count (#) entry');
-            }
-
-            switch (sym) {
-            case 'a':
-                allflag = 1;
-                // fall through
-            case 'y': {
-                const tmp = await fn(otmp, state);
-                if (tmp <= 0) {
-                    if (container_gone(fn, state)) {
-                        otmp = null;
-                    } else if (otmp && otmp !== otmpo) {
-                        // splitobj happened but action rejected; unsplitobj
-                        // is not ported for this path.
-                    }
-                    if (tmp < 0) {
-                        // goto ret
-                        return cnt;
-                    }
-                }
-                cnt += tmp;
-                if (mx > 0 && --mx === 0) return cnt;
-                // C FALLTHROUGH to 'n' — dud counts items offered.
-            }
-            // falls through
-            case 'n':
-                if (nodot) dud++;
-                break;
-            case 'q':
-                return cnt;
-            default:
-                break;
-            }
-        }
-
-        // Advance to next class letter (C: 2527-2528).
-        if (oletStr.length > 0 && oletIdx < oletStr.length) {
-            oletIdx++;
-            if (oletIdx < oletStr.length) continue;
-        }
-        break;
-    }
-
-    if (dud || cnt)
-        await ttyPline('That was all.', state);
-    else if (!dud && !cnt)
-        await ttyPline('No applicable objects.', state);
-
-    return cnt;
 }
 
 // ---------------------------------------------------------------
@@ -3164,10 +2949,10 @@ async function tipcontainer_gettarget(box, state) {
 // C ref: pickup.c tipcontainer_checks() (3953-4055). Returns TIPCHECK_OK
 // when the box can be tipped, a non-zero TIPCHECK code otherwise.
 //
-// Handles: lknown discovery (3972-3976), locked message (3978-3980), and
-// empty container message (4047-4050). Locked, trapped, bag-of-tricks,
-// horn-of-plenty, and Schrodinger branches throw because their helpers
-// are unported.
+// Handles: lknown discovery (3972-3976), locked message (3978-3980), the
+// charged bag/horn loop (3993-4032), and empty container message
+// (4047-4050). Locked, trapped, shop billing, and Schrodinger branches still
+// stop at their own source subsystem boundaries.
 async function tipcontainer_checks(box, targetbox, allowempty, state) {
     // pickup.c:3962-3967. Undiscovered bag of tricks as destination:
     // apply it once before trying to tip source box.
@@ -3204,14 +2989,49 @@ async function tipcontainer_checks(box, targetbox, allowempty, state) {
     }
 
     // pickup.c:3993-4032. Bag of tricks or horn of plenty tipping loop.
-    // bagotricks() and hornoplenty() are ported, but the loop requires
-    // consume_obj_charge() (invent.c) to decrement spe; without it the
-    // loop condition (box->spe > 0) never becomes false. The surrounding
-    // shop billing (addtobill, subfrombill) is also unported.
+    // The source handles shop billing around this loop; leave that boundary
+    // before mutating a floor-owned box while carried containers proceed.
     if (box.otyp === BAG_OF_TRICKS || box.otyp === HORN_OF_PLENTY) {
-        throw new UnsupportedPickupError(
-            'tipcontainer_checks: bag/horn tipping loop (consume_obj_charge)',
-        );
+        if (targetbox
+            && (await tipcontainer_checks(targetbox, null, true, state))
+                !== TIPCHECK_OK) {
+            return TIPCHECK_CANNOT;
+        }
+        const location = get_obj_location(box, 0, state);
+        if (location) {
+            box.ox = location.x;
+            box.oy = location.y;
+        }
+        const maybeshopgoods = !carried(box)
+            && costly_spot(box.ox, box.oy, state);
+        if (maybeshopgoods && !box.no_charge) {
+            throw new UnsupportedPickupError(
+                'tipcontainer_checks: shop addtobill/subfrombill',
+            );
+        }
+
+        const oldSpe = box.spe;
+        let totalSeen = 0;
+        do {
+            if (box.otyp === BAG_OF_TRICKS) {
+                const result = await bagotricks(box, true, state);
+                totalSeen += result.seecount;
+            } else {
+                await hornoplenty(box, true, targetbox, { state });
+            }
+        } while (box.spe > 0);
+
+        if (box.spe < oldSpe) {
+            if (box.otyp === BAG_OF_TRICKS && !totalSeen)
+                await ttyPline(nothing_seems_to_happen, state);
+            // C restores the count while checking the eventual shop charge,
+            // then marks the container empty.
+            box.spe = oldSpe;
+            check_unpaid_usage(box, true, state);
+            box.spe = 0;
+            box.cknown = 1;
+        }
+        return TIPCHECK_CANNOT;
     }
 
     // pickup.c:4034-4045. Schrodinger's box.
