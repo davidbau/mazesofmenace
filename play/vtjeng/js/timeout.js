@@ -22,10 +22,14 @@ import {
     FLYING,
     FROMOUTSIDE,
     FUMBLING,
+    FAST,
+    FAINTED,
     HATCH_EGG,
     HALLUC,
     HALLUC_RES,
     ICE,
+    INTRINSIC,
+    INVULNERABLE,
     isok,
     LEVITATION,
     MAX_EGG_HATCH_TIME,
@@ -67,6 +71,7 @@ import { makeplural } from './fruit.js';
 import { carrying } from './invent.js';
 import { game } from './gstate.js';
 import { inv_weight, You_can_move_again, nomul } from './hack.js';
+import { make_deaf, set_itimeout } from './potion.js';
 import {
     candle_light_range,
     get_obj_location,
@@ -76,6 +81,7 @@ import { is_rider, is_were, zombie_form } from './mondata.js';
 import { body_part, rehumanize } from './polyself.js';
 import { wake_nearby } from './mon.js';
 import { note_unported } from './unported.js';
+import { unconscious } from './trap.js';
 import {
     PM_DEATH,
     PM_ARCHEOLOGIST,
@@ -423,6 +429,13 @@ function deaf(state) {
     );
 }
 
+// C ref: youprop.h Unaware. You_feel() changes its prefix when a negative
+// multi-turn state leaves the hero unconscious or fainted.
+function unaware(state) {
+    return Math.trunc(state.multi ?? 0) < 0
+        && (unconscious(state) || state.u?.uhs === FAINTED);
+}
+
 // C ref: timeout.c slip_or_trip() (1300-1317), the plain on-foot arm. The
 // random choice precedes its message, as in C's switch (rn2(4)).
 async function slipOrTripPlainOnFoot(state, random, message) {
@@ -469,22 +482,19 @@ export function preflight_nh_timeout_elapsed_turn(state = game, env = {}) {
     // nh_timeout_elapsed_turn() makes the same return, in C's position.
     if (u.uinvulnerable) return;
     const wipeOccupation = state.go?.occupation === wipeoff;
-    const ordinaryWipe = u.ucreamed === 3
-        && u.uprops?.[BLINDED]?.intrinsic === 3
-        && !u.uprops[BLINDED].extrinsic
-        && !u.uprops[BLINDED].blocked
-        && wipeOccupation;
+    // do.c wipeoff() owns the callback's independent four-turn clamps. The
+    // elapsed turn before that callback decrements any cream and temporary
+    // blindness timeout while the occupation is installed, regardless of
+    // their relative values.
     for (const [name, value] of [
         ['ucreamed', u.ucreamed],
         ['usptime', u.usptime],
         ['ugallop', u.ugallop],
     ]) {
-        if (name === 'ucreamed' && ordinaryWipe) continue;
+        if (name === 'ucreamed' && wipeOccupation) continue;
         if (Math.trunc(value ?? 0) !== 0) {
             throw new UnsupportedHeroTimeoutBoundaryError(
-                name === 'ucreamed' && wipeOccupation
-                    ? 'ordinary wipe occupation with matching three-turn blindness'
-                    : `zero ${name}`,
+                `zero ${name}`,
             );
         }
     }
@@ -499,8 +509,20 @@ export function preflight_nh_timeout_elapsed_turn(state = game, env = {}) {
         // HALLUC's timeout expiry still needs make_hallucinated(), but its
         // ordinary decrement is source-inert while more than one turn remains.
         if (index === HALLUC && timeout > 1) continue;
+        // timeout.c has no INVULNERABLE case in its expiry switch. A timed
+        // property therefore decrements to zero without feedback or cleanup;
+        // this is distinct from u.uinvulnerable's early return above.
+        if (index === INVULNERABLE) continue;
+        // timeout.c:725-729 only reads the FAST fields after decrementing the
+        // timeout. The expiry feedback and the silent Very_fast cases are all
+        // source-complete below.
+        if (index === FAST) continue;
         if (index === FUMBLING
             && (timeout > 1 || plainOnFootFumbleAdmitted(state))) continue;
+        // timeout.c:752-758 restores one turn before make_deaf() clears the
+        // timeout. Its talk path is planning-aware and has no RNG or other
+        // refusal, so every timed DEAF value is admitted here.
+        if (index === DEAF) continue;
         // timeout.c:784's SLEEPY case has no effect while its timeout remains
         // above one, regardless of whether the source is a worn amulet or an
         // intrinsic flag.  At expiry, the source-bearing and extrinsic cases
@@ -511,7 +533,7 @@ export function preflight_nh_timeout_elapsed_turn(state = game, env = {}) {
                 || ((Math.trunc(u.uprops[index]?.intrinsic ?? 0) & ~TIMEOUT)
                     === 0
                     && !(u.uprops[index]?.extrinsic ?? 0)))) continue;
-        if (index === BLINDED && ordinaryWipe) continue;
+        if (index === BLINDED && wipeOccupation) continue;
         throw new UnsupportedHeroTimeoutBoundaryError(
             `no active property timeout at index ${index}`,
         );
@@ -582,8 +604,9 @@ async function sleep_dialogue(state, env = {}) {
 // nonzero and runs the switch on each one that reaches zero. An invulnerable
 // hero never arrives, because the caller returns first exactly as
 // timeout.c:621 does; every other hero has been through the preflight. The
-// admitted rows here are WOUNDED_LEGS, the plain on-foot FUMBLING arm,
-// source-inert SLEEPY, and the non-expiring CONFUSION/HALLUC countdowns.
+// admitted rows here are INVULNERABLE's source-inert expiry, FAST's speed
+// feedback, WOUNDED_LEGS, the plain on-foot FUMBLING arm, source-inert SLEEPY,
+// and the non-expiring CONFUSION/HALLUC countdowns.
 //
 // C reads find_delayed_killer() at 672 before switching, but only its STONED,
 // SLIMED and SICK cases use the result and none of the three is admitted here.
@@ -592,6 +615,44 @@ async function decrement_property_timeouts(state, env) {
         const property = state.u.uprops[index];
         if ((Math.trunc(property?.intrinsic ?? 0) & TIMEOUT) === 0) continue;
         if ((--property.intrinsic & TIMEOUT) !== 0) continue;
+        if (index === DEAF) {
+            // timeout.c:752-754. Keep HDeaf nonzero while make_deaf() tests
+            // the old status, then clear it and deliver its source-ordered
+            // feedback through the live or planning message seam.
+            set_itimeout(property, 1);
+            await make_deaf(0, true, state, {
+                message: env.message ?? ttyPline,
+            });
+            state.disp ??= {};
+            state.disp.botl = true;
+            // timeout.c:756-758 leaves an occupation alone while an
+            // extrinsic or role deafness source still keeps Deaf true.
+            if (!deaf(state))
+                await stop_occupation(state, env);
+            continue;
+        }
+        // timeout.c has no INVULNERABLE case. Its timed intrinsic still loses
+        // one turn above, but expiry has no message, RNG draw, or state change.
+        if (index === INVULNERABLE) continue;
+        if (index === FAST) {
+            // timeout.c:725-729 tests Very_fast and Fast after the common
+            // timeout decrement. A timed speed ending while no other speed
+            // source remains therefore reports a plain slowdown; a permanent
+            // intrinsic source keeps Fast true and adds "a bit". Extrinsic or
+            // non-intrinsic intrinsic speed keeps Very_fast true and is silent.
+            const HFast = property.intrinsic;
+            const EFast = property.extrinsic;
+            const Very_fast = Boolean((HFast & ~INTRINSIC) || EFast);
+            if (!Very_fast) {
+                const Fast = Boolean(HFast || EFast);
+                await (env.message ?? ttyPline)(
+                    `${unaware(state) ? 'You dream that you feel' : 'You feel'} `
+                        + `yourself slow down${Fast ? ' a bit' : ''}.`,
+                    state,
+                );
+            }
+            continue;
+        }
         if (index === FUMBLING) {
             const random = env.random ?? { rn2, rnd };
             const message = env.message ?? ttyPline;

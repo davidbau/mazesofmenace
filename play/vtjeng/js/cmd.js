@@ -135,7 +135,6 @@ import {
     dodrop,
     dowipe,
     doup,
-    UnsupportedWipeError,
     UnsupportedDropError,
     UnsupportedLevelChangeError,
 } from './do.js';
@@ -239,6 +238,7 @@ import { game } from './gstate.js';
 import { getnow } from './calendar.js';
 import { getpos } from './getpos.js';
 import {
+    dooverview,
     donamelevel,
     ledger_no,
     on_level,
@@ -282,7 +282,7 @@ import {
     show_menu_controls,
     UnsupportedOptionMenuError,
 } from './options.js';
-import { dopray, UnsupportedPrayerError } from './pray.js';
+import { dopray, doturn, UnsupportedPrayerError } from './pray.js';
 import { UnsupportedHideError } from './mon.js';
 import { dosave, dosave0, savelev } from './save.js';
 import {
@@ -353,8 +353,8 @@ import {
     dopoly, doremove, dospinweb, dospit, dosummon,
 } from './polyself.js';
 import {
-    wiz_genesis, wiz_intrinsic, wiz_level_change, wiz_level_tele, wiz_map,
-    wiz_polyself, wiz_wish,
+    wiz_genesis, wiz_identify, wiz_intrinsic, wiz_level_change,
+    wiz_level_tele, wiz_map, wiz_polyself, wiz_wish,
 } from './wizcmds.js';
 import {
     dozap,
@@ -1797,10 +1797,11 @@ export const ADMITTED_COMMANDS = Object.freeze([
     'takeoff', 'wear',
     'puton', 'quaff', 'read', 'zap', 'cast', 'reqmenu', 'fight', 'rush', 'run', 'repeat',
     'options', 'autopickup',
-    'wizwish', 'wizlevelport', 'wizgenesis', 'wizintrinsic', 'wizmap', 'fire', 'throw',
+    'wizwish', 'wizidentify', 'wizlevelport', 'wizgenesis', 'wizintrinsic', 'wizmap', 'fire', 'throw',
     'swap', 'kick',
     'save', 'wield', 'quiver', 'help', 'whatis', '#', 'loot', 'force', 'tip',
     'glance', 'showgold', 'seeweapon', 'seearmor', 'seerings', 'seeamulet', 'teleport',
+    'overview',
     'terrain', 'travel', 'dip', 'invoke', 'untrap', 'herecmdmenu', 'therecmdmenu',
 ]);
 const ADMITTED_BOUNDARY = 'the repeated-command boundary admits only '
@@ -2960,11 +2961,6 @@ export function failClosedCommandRefusals() {
         // have stopped raising the class, because dropping it early costs the
         // turn-boundary conversion too.
         UnsupportedPrayerError,
-        // do.c dowipe() and wipeoff() raise this for every face or blindness
-        // state outside the selected ordinary three-turn cream occupation.
-        // wipeoff() runs at the turn boundary, so allmain.js consumes this
-        // same list when the installed callback refuses a changed state.
-        UnsupportedWipeError,
         // sit.c dosit() raises this from the eleven terrain and trap arms it
         // leaves unported, each at its own condition and so before that arm
         // has printed anything or changed the hero.
@@ -3427,6 +3423,12 @@ async function runWishCommand(key, state) {
     return failClosedCommand(key, state, () => wiz_wish(state));
 }
 
+// C ref: wizcmds.c wiz_identify(). Its inventory menu and selected-item
+// updates complete with ECMD_OK, so the command never consumes a turn.
+async function runIdentifyCommand(key, state) {
+    return failClosedCommand(key, state, () => wiz_identify(state));
+}
+
 // C ref: wizcmds.c wiz_level_tele(). Like wiz_wish() it ends `return ECMD_OK`
 // on both arms, so a cancelled level teleport spends no turn.
 async function runLevelTeleCommand(key, state) {
@@ -3564,30 +3566,29 @@ async function runChatCommand(key, state) {
 
 // C ref: weapon.c enhance_weapon_skill(). Like dosearch() and doeat() it
 // returns its own ECMD_* result, which for this command is always ECMD_OK.
-// The whole skill listing is formatted before select_menu() draws anything, so
-// an unported skill display stops with the screen untouched.
+// The whole skill listing is formatted before select_menu() draws anything.
 async function runEnhanceCommand(key, state) {
     return failClosedCommand(key, state, () => enhance_weapon_skill(state, {
         // weapon.c add_skills_to_menu() opens each skill range with
         // add_menu_heading(), which draws it with iflags.menu_headings;
         // menuTitleStyle() reads that style. end_menu()'s prompt line takes
         // the same style through allmain.c adjust_menu_promptstyle().
-        menu: (lines, prompt) => select_menu(state, {
-            lines: lines.map((line) => (line.heading
+        menu: (items, how, prompt) => select_menu(state, {
+            items: items.map((item) => (item.heading
                 ? {
-                    ...line,
+                    ...item,
                     attr: menuTitleStyle(state).titleAttr,
                     color: menuTitleStyle(state).titleColor,
                 }
-                : line)),
-            // Every entry is display-only, so select_menu(PICK_NONE) ends
-            // only on a dismissal and always answers cancelValue.
-            how: PICK_NONE,
+                : item)),
+            how,
             title: prompt,
             ...menuTitleStyle(state),
             cancelValue: null,
             overlay: state.iflags?.menu_overlay !== false,
         }),
+        ask: (query) => y_n(query, state),
+        message: ttyPline,
     }));
 }
 
@@ -4994,6 +4995,10 @@ async function doextcmd(key, state) {
         return await runLookCommand(key, state) ? ECMD_TIME : ECMD_OK;
     case 'doattributes':
         return await runAttributesCommand(key, state) ? ECMD_TIME : ECMD_OK;
+    case 'dooverview':
+        // C ref: dungeon.c dooverview(), which returns ECMD_OK after the
+        // overview menu has been dismissed.
+        return await dooverview(state);
     case 'ddoinv':
         return await runInventoryCommand(key, state) ? ECMD_TIME : ECMD_OK;
     case 'dovspell':
@@ -5072,6 +5077,9 @@ async function doextcmd(key, state) {
     case 'dopray':
         // C ref: pray.c dopray(), which returns its own ECMD_* result.
         return await dopray(state);
+    case 'doturn':
+        // C ref: pray.c doturn(), which returns its own ECMD_* result.
+        return await doturn(state);
     case 'dosit':
         // C ref: sit.c dosit(), which returns its own ECMD_* result.
         return await dosit(state);
@@ -5094,6 +5102,8 @@ async function doextcmd(key, state) {
         return await runLevelTeleCommand(key, state);
     case 'wiz_wish':
         return await runWishCommand(key, state);
+    case 'wiz_identify':
+        return await runIdentifyCommand(key, state);
     case 'wiz_genesis':
         return await runGenesisCommand(key, state);
     case 'wiz_map':
@@ -5881,6 +5891,14 @@ export async function rhack(key, state = game) {
             resetCommandVars(state, state.multi < 0);
             return;
         }
+        if (command === 'wizidentify') {
+            // C ref: rhack()'s result handling at cmd.c:3810-3818. Both
+            // wiz_identify() arms end with ECMD_OK, and display_inventory()
+            // is a display-only menu, so no turn is spent.
+            await runIdentifyCommand(key, state);
+            resetCommandVars(state, state.multi < 0);
+            return;
+        }
         if (command === 'wizlevelport') {
             // C ref: rhack()'s result handling, the same shape the `wizwish`
             // arm above spells out: wizcmds.c:405 ends both arms of
@@ -6121,6 +6139,14 @@ export async function rhack(key, state = game) {
             const elapsed = await runAttributesCommand(key, state);
             resetCommandVars(state);
             if (elapsed) commandTookTime(state);
+            return;
+        }
+        if (command === 'overview') {
+            const result = await dooverview(state);
+            if (result & (ECMD_CANCEL | ECMD_FAIL)) resetCommandVars(state);
+            else if ((result & (ECMD_OK | ECMD_TIME)) === ECMD_OK)
+                resetCommandVars(state, state.multi < 0);
+            if (result & ECMD_TIME) commandTookTime(state);
             return;
         }
         if (command === 'look') {
